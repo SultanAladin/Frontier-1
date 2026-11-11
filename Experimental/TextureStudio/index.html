@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Frontier Texture Studio — Experimental Remastered</title>
+    <link rel="stylesheet" href="./TextureStudio.css" />
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./Vendor/three.esm.min.js"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="app">
+        <header class="app-header">
+            <a class="brand brand-link" href="../">
+                <span class="brand-mark">frontier<span class="brand-dot">.</span></span>
+                <span class="experimental">EXPERIMENTAL</span>
+                <span class="studio-pill">TEXTURE STUDIO</span>
+            </a>
+
+            <nav class="workspace-switcher" aria-label="Texturing Workspaces">
+                <button class="ws-tab active" data-ws="material" type="button">
+                    <svg class="glyph" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/></svg>
+                    <span>Material</span>
+                </button>
+                <button class="ws-tab" data-ws="pattern" type="button">
+                    <svg class="glyph" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+                    <span>Pattern</span>
+                </button>
+                <button class="ws-tab" data-ws="stamp" type="button">
+                    <svg class="glyph" viewBox="0 0 24 24"><path d="M5 18h14v3H5z"/><path d="M7 14h10a2 2 0 0 1 2 2v2H5v-2a2 2 0 0 1 2-2z"/><path d="M12 14V9.5c0-1.2 2.2-2.2 2.2-4.2a2.2 2.2 0 1 0-4.4 0c0 2 2.2 3 2.2 4.2"/></svg>
+                    <span>Stamp</span>
+                </button>
+                <button class="ws-tab" data-ws="paint" type="button">
+                    <svg class="glyph" viewBox="0 0 24 24"><path d="M18.5 2.5a2.8 2.8 0 0 1 3 3L11.8 15.2l-3.6.6.6-3.6z"/><path d="M6.2 15.4c-1.8 0-3.2 1.4-3.2 3.2 0 .9-.7 1.6-1.5 1.9 1.3.7 3.3.9 4.8.2 1.3-.6 2.1-1.9 2.1-3.3a2.2 2.2 0 0 0-2.2-2z"/></svg>
+                    <span>Texture Paint</span>
+                </button>
+                <button class="ws-tab" data-ws="bake" type="button">
+                    <svg class="glyph" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12 4 7.5"/></svg>
+                    <span>Baking</span>
+                </button>
+            </nav>
+
+            <div class="header-end">
+                <a class="suite-pill-link" href="../UVEditor/">UV Studio</a>
+            </div>
+        </header>
+
+        <main class="studio-main" id="studio-main"></main>
+
+        <div id="asset-browser-host"></div>
+
+        <footer class="status-bar">
+            <span class="status-ready"><i></i><span id="status-active-ws">Workspace · Material</span></span>
+            <span class="status-divider"></span>
+            <span>Layer &amp; Modifier Stacks · Noise-Scaled Patterns · Seam-Free 3D Paint · 18 Maps + Volume SDF</span>
+            <div class="status-right">
+                <span class="gpu-dot"></span>
+                <span id="status-right-text">Initializing Engine…</span>
+            </div>
+        </footer>
+    </div>
+
+    <script type="module" src="./TextureStudio.js"></script>
+</body>
+</html>

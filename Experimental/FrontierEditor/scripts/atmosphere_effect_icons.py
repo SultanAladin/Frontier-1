@@ -1,0 +1,32 @@
+"""Dimensional native-SVG effects and a balanced sculpted gamepad."""
+
+
+def register_effect_icons(icon):
+    from weather_material_icons import lightning_art, register_weather_material_icons
+    defs,body=lightning_art()
+    icon('lightning','Lightning','Environment','A natural branching electrical discharge with an irregular white-hot channel, fine secondary forks and a cool blue corona. No solid bolt silhouette.',defs,body)
+    register_weather_material_icons(icon)
+
+    outline='M99 220c-23-2-33-20-23-35-27-7-33-35-14-50-22-20-8-50 18-50-9-24 8-46 31-43 8-23 41-24 54-3 23-2 39 24 24 43 23 16 14 44-8 51 18 22 2 48-20 48 9 19-5 36-24 39Z'
+    defs=f'''<radialGradient id="smoke-base" cx="26%" cy="18%" r="90%"><stop stop-color="#d0d1d0"/><stop offset=".35" stop-color="#969ba0"/><stop offset=".72" stop-color="#555f6d"/><stop offset="1" stop-color="#303b4b" stop-opacity=".2"/></radialGradient><radialGradient id="smoke-lobe" cx="33%" cy="24%" r="74%"><stop stop-color="#e0e0d9" stop-opacity=".7"/><stop offset=".5" stop-color="#8b949e" stop-opacity=".35"/><stop offset="1" stop-color="#3a475a" stop-opacity="0"/></radialGradient><linearGradient id="smoke-fade" x2="0" y2="1"><stop offset=".65" stop-color="white"/><stop offset="1" stop-color="white" stop-opacity=".12"/></linearGradient><mask id="smoke-mask"><rect width="256" height="256" fill="url(#smoke-fade)"/></mask><clipPath id="smoke-clip"><path d="{outline}"/></clipPath><filter id="smoke-edge" x="-15%" y="-15%" width="130%" height="130%"><feTurbulence baseFrequency=".045" numOctaves="3" seed="28" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="5"/><feGaussianBlur stdDeviation=".8"/></filter>'''
+    body=f'<g mask="url(#smoke-mask)" filter="url(#smoke-edge)"><path d="{outline}" fill="url(#smoke-base)"/><g clip-path="url(#smoke-clip)">'
+    for x,y,rx,ry in [(133,53,43,35),(93,89,43,37),(160,87,40,39),(81,135,36,40),(134,124,45,48),(149,161,34,41),(111,187,32,36)]:
+        body+=f'<circle r="{rx}" transform="translate({x} {y}) scale(1 {ry/rx})" fill="url(#smoke-lobe)"/>'
+    body+='</g></g>'
+    icon('smoke','Smoke','Environment','A rising volumetric smoke plume with soft overlapping billows, cool shaded folds, turbulent edges and a fading base. Transparent native SVG.',defs,body)
+
+    defs='''<linearGradient id="fire-outer" x1=".2" y1="0" x2=".7" y2="1"><stop stop-color="#ffd06a"/><stop offset=".32" stop-color="#ff923a"/><stop offset=".65" stop-color="#e44820"/><stop offset="1" stop-color="#812720"/></linearGradient><radialGradient id="fire-volume" cx="42%" cy="70%" r="68%"><stop stop-color="#fffac4"/><stop offset=".28" stop-color="#ffe875"/><stop offset=".55" stop-color="#ffa52d"/><stop offset="1" stop-color="#f24a1c" stop-opacity="0"/></radialGradient><linearGradient id="fire-heart" x1=".35" y1="1" x2=".55" y2="0"><stop stop-color="#fffce0"/><stop offset=".45" stop-color="#ffed87"/><stop offset="1" stop-color="#ffbd43"/></linearGradient><clipPath id="fire-clip"><path d="M130 27c16 37-28 56-8 84 12-8 22-27 18-42 41 31 61 60 53 96-7 34-32 55-68 55-37 0-66-24-65-59 0-25 19-42 17-62 14 7 18 21 16 33 28-28 4-65 37-105Z"/></clipPath>'''
+    body='''<path d="M130 27c16 37-28 56-8 84 12-8 22-27 18-42 41 31 61 60 53 96-7 34-32 55-68 55-37 0-66-24-65-59 0-25 19-42 17-62 14 7 18 21 16 33 28-28 4-65 37-105Z" fill="url(#fire-outer)"/><g clip-path="url(#fire-clip)"><circle r="65" transform="translate(127 162) scale(1 1.277)" fill="url(#fire-volume)"/><path d="M148 89c43 67 23 103-5 121 31-4 59-35 48-74Z" fill="#a22c1d" opacity=".34"/><path d="M125 111c-5 27-28 43-25 57 14-1 26-12 30-27 17 21 30 36 25 51-4 15-15 24-30 24-18 0-32-13-34-30-3-27 21-42 34-75Z" fill="url(#fire-heart)"/><path d="M78 144q-13 43 19 63" fill="none" stroke="#ffc65e" stroke-width="3" opacity=".48" stroke-linecap="round"/></g><path d="M166 46q-12 10-7 23 11-7 7-23Z" fill="#ffa83e"/><path d="M84 58q-7 9-3 16 7-4 3-16Z" fill="#e96e2d"/>'''
+    icon('fire','Fire','Environment','A sculpted flame with curved orange-red outer folds, a luminous golden inner volume, pale hot core and two floating embers. Native SVG, no raster.',defs,body)
+
+
+def controller_revision():
+    defs='''<linearGradient id="pad-shell" x1=".25" y1="0" x2=".65" y2="1"><stop stop-color="#f0f2ef"/><stop offset=".45" stop-color="#cdd4d7"/><stop offset="1" stop-color="#85949e"/></linearGradient><linearGradient id="pad-edge" x2=".6" y2="1"><stop stop-color="#71818c"/><stop offset="1" stop-color="#34424c"/></linearGradient><radialGradient id="pad-stick" cx="32%" cy="24%" r="80%"><stop stop-color="#657680"/><stop offset=".65" stop-color="#384751"/><stop offset="1" stop-color="#1f2c35"/></radialGradient>'''
+    silhouette='M76 74h104c21 0 30 16 35 41l12 59c4 22-9 33-22 23l-27-29q-7-8-17-8H95q-10 0-17 8l-27 29c-13 10-26-1-22-23l12-59c5-25 14-41 35-41Z'
+    body=f'''<rect x="53" y="67" width="38" height="20" rx="9" fill="#45535d"/><rect x="165" y="67" width="38" height="20" rx="9" fill="#45535d"/><path d="{silhouette}" transform="translate(0 5)" fill="url(#pad-edge)"/><path d="{silhouette}" fill="url(#pad-shell)" stroke="#e5edee" stroke-opacity=".4"/><path d="M48 139q1-50 27-58h104q22 5 29 32" fill="none" stroke="#f7faf7" stroke-width="2" opacity=".5"/><rect x="100" y="87" width="56" height="31" rx="6" fill="#687983"/><path d="M107 92h42" stroke="#a9b6bd" stroke-width="1.5"/><rect x="121" y="124" width="14" height="5" rx="2.5" fill="#66859a"/>
+<path d="M61 98h11v11h11v11H72v11H61v-11H50v-11h11Z" fill="#35434d" stroke="#26353e" stroke-width="1.5" stroke-linejoin="round"/>'''
+    for x in [102,154]:
+        body+=f'<circle cx="{x}" cy="149" r="18" fill="#74838c"/><circle cx="{x}" cy="149" r="15" fill="#25343e"/><circle cx="{x}" cy="147" r="12" fill="url(#pad-stick)" stroke="#a3b3ba" stroke-opacity=".35"/><path d="M{x-7} 141q6-5 12-1" stroke="#c0cbd0" stroke-opacity=".3" stroke-width="1.3" stroke-linecap="round"/>'
+    for x,y,c in [(182,96,'#caa86a'),(196,110,'#cc8585'),(182,124,'#80b6a0'),(168,110,'#82aacb')]:
+        body+=f'<circle cx="{x}" cy="{y+1}" r="6.8" fill="#5a6871"/><circle cx="{x}" cy="{y}" r="5.5" fill="{c}"/><path d="M{x-3} {y-2}q2-2 4-1" stroke="#fff" stroke-opacity=".45" stroke-width="1" stroke-linecap="round"/>'
+    return {'game-controller':('A balanced compact gamepad with rounded tapered grips, inset touchpad, a clear D-pad, two thumbsticks and four small muted action buttons. Sculpted pearl shell with charcoal controls.',defs,body)}

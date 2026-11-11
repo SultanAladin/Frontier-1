@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="environment-folder-title">
+<title id="environment-folder-title">Environment folder — compact outliner symbol</title>
+<path d="M26 64q0-18 18-18h59l24 20h85q18 0 18 18v112q0 18-18 18H44q-18 0-18-18Z" fill="#303030" stroke="#555" stroke-width="3"/>
+<path d="M26 98q0-18 18-18h59l24 18h85q18 0 18 18v80q0 18-18 18H44q-18 0-18-18Z" fill="#3c3c3c" stroke="#555" stroke-width="3"/>
+<circle cx="97" cy="139" r="24" fill="#E0BE7F"/>
+<path d="M110 178c-14 0-23-9-23-21 0-12 9-21 21-22 5-15 16-23 31-23 18 0 31 12 33 28h2c12 0 21 8 21 19s-9 19-21 19Z" fill="#A9C6DD" stroke="#3c3c3c" stroke-width="7" stroke-linejoin="round"/>
+</svg>

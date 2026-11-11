@@ -1,0 +1,60 @@
+--- a/imgui_widgets.cpp
++++ b/imgui_widgets.cpp
+@@ -11236,10 +11236,8 @@
+ //   ScaleAllSizes already multiplies -- so the button follows the artist's UI scale without a figure of
+ //   its own that would have to be scaled a second time.
+ //
+-//   The leading gap is what clears the PRECEDING tab's slanted trailing edge. PatchB pulls every advance
+-//   back by TabOverlap, so a button seated at its own bb.Min.x starts inside the tab before it. At the
+-//   button's vertical centre that tab's slant stands at (its Max.x - slant/2), so the disc must begin
+-//   beyond that point: overlap - slant/2, plus a pad.
++// [FRONTIER PATCH G] A trailing button belongs to a separate native section. The overlap applies only
++//   within a section, so compensating for it here inserted a second, artificial gap after the last tab.
+ struct FrontierButtonMetric
+ {
+     float Across;    // the strip's usable height
+@@ -11270,6 +11268,8 @@
+     // \U0001f534 The bar's OWN height when one is offered. A docked node builds its rect itself and does not
+     //   pass through BeginTabBar's TabHeight override, so its bar is shorter than Style.TabHeight -- a
+     //   disc sized on the style figure then stood taller than the strip and bled onto the workspace.
++    if (bar_across <= 0.0f && g.CurrentTabBar != NULL)
++        bar_across = g.CurrentTabBar->FrontierStripRect.GetHeight();
+     m.Across   = (bar_across > 0.0f) ? bar_across
+                : (g.Style.TabHeight > 0.0f) ? g.Style.TabHeight
+                : (g.FontSize + g.Style.FramePadding.y * 2.0f);
+@@ -11279,13 +11279,10 @@
+     //   rather than as a mark floating in it.
+     m.Diameter = ImMax(1.0f, m.Across * 0.80f);
+ 
+-    const float pad = m.Across * 0.55f;
+-
+-    // \U0001f534 The lead clears the PRECEDING tab's slanted trailing edge and nothing more. PatchB pulls every
+-    //   advance back by TabOverlap, so the button's own origin sits inside the tab before it; at the
+-    //   button's vertical centre that tab's slant stands half a slant in from its trailing edge.
+-    m.Lead     = ImMax(0.0f, g.Style.TabOverlap - g.Style.TabSlant * 0.5f) + pad;
+-    m.Advance  = m.Lead + m.Diameter + pad;
++    // [FRONTIER PATCH G] Trailing is its own section: no TabOverlap is subtracted at this boundary.
++    // Native section spacing already separates the disc from the preceding trapezoid.
++    m.Lead = 0.0f;
++    m.Advance = m.Diameter;
+ 
+     return m;
+ }
+@@ -11561,7 +11558,16 @@
+         const ImVec2 centre(bb.Min.x + m.Lead + m.Diameter * 0.5f, strip.GetCenter().y);
+         const ImVec2 seat(centre.x - run.x * 0.5f, centre.y - run.y * 0.5f);
+ 
+-        draw_list->AddText(g.Font, run_across, seat, GetColorU32(ImGuiCol_Text), label, label_end);
++        // [FRONTIER PATCH G] Centre the actual plus strokes, not the font's asymmetric line box.
++        if (label_end == label + 1 && label[0] == '+')
++        {
++            const float Arm = m.Diameter * 0.22f;
++            const float Stroke = ImMax(1.0f, g.Style._MainScale);
++            draw_list->AddLine(centre - ImVec2(Arm, 0), centre + ImVec2(Arm, 0), GetColorU32(ImGuiCol_Text), Stroke);
++            draw_list->AddLine(centre - ImVec2(0, Arm), centre + ImVec2(0, Arm), GetColorU32(ImGuiCol_Text), Stroke);
++        }
++        else
++            draw_list->AddText(g.Font, run_across, seat, GetColorU32(ImGuiCol_Text), label, label_end);
+     }
+     else
+     {

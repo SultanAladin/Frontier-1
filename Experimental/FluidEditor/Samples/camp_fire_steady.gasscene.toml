@@ -1,0 +1,105 @@
+# Frontier gas scene. Written by Experimental/Fluid; read by Engine/VolumetricDynamics.
+# Settings are sorted by name so the file diffs cleanly; order carries no meaning.
+
+format = "frontier-fluid-scene"
+version = 1
+name = "Camp fire, steady"
+
+[names]
+collider = "Stone ring"
+domain = "Fire domain"
+emitter = "Log fire"
+sun = "Moonlight"
+
+[camera]
+theta = 1.15
+phi = 1.28
+distance = 1.75
+centre = [0.0, 0.05, 0.0]
+
+[settings]
+ambientIntensity = 0.22
+atlasMinimapField = 0
+autoGpuGovernor = false
+autoTurntable = false
+blastFuel = 4.6
+blastLobes = 6
+blastRadius = 0.18
+blastSmoke = 2.6
+blastStrength = 9.8
+blastTemperature = 5.4
+bloomIntensity = 0.55
+boundsHeight = 2.2
+boundsWidth = 1.6
+buoyancy = 5.2
+burnHeat = 2.4
+burnRate = 1.5
+colliderAutoMove = true
+colliderSpeed = 1.25
+colorPalette = 0
+combustionExpansion = 2.8
+coolingRate = 1.55
+densityExtinction = 14.0
+dynamicBounds = false
+dynamicBoundsMax = 1.55
+emberAshiness = 0.25
+emberCount = 430
+emberIntensity = 1.6
+emberLifetime = 1.9
+emberSize = 0.8
+emitterEnabled = true
+emitterFuel = 2.3
+emitterHeight = 0.05
+emitterRadius = 0.15
+emitterRate = 0.95
+emitterSmoke = 0.95
+emitterSwirl = 1.7
+emitterTemperature = 3.1
+emitterUpwardVelocity = 2.5
+enclosedBox = false
+exposure = 1.25
+fireIntensity = 4.8
+godRaysIntensity = 0.45
+gridResolution = 64
+interactionMode = "orbit"
+internalScattering = 2.4
+macCormackAdvection = true
+obstacleRadius = 0.16
+obstacleType = 0
+obstacleX = 0.5
+obstacleY = 0.26
+obstacleZ = 0.5
+paused = false
+phaseAnisotropy = 0.38
+pressureIterations = 22
+raymarchSteps = 96
+renderChannel = 0
+renderScale = 1.0
+shadowDensity = 11.5
+shadowSteps = 6
+shockwaveStrength = 1.0
+showActiveVoxelCells = false
+showAtlasMinimap = true
+showBoundingBox = true
+showEmbers = true
+showFloorGrid = true
+showVoxelGridLines = true
+shrapnelEnabled = true
+sliceAxis = 2
+slicePosition = 0.5
+smokeAlbedo = 0.38
+smokeDissipation = 0.34
+smokeWeight = 0.85
+sootGeneration = 1.05
+sunAzimuth = 42.0
+sunElevation = 52.0
+sunIntensity = 1.2
+temperatureScale = 1.15
+timeScale = 1.0
+turbulenceScale = 4.6
+turbulenceStrength = 3.0
+velocityDamping = 0.06
+vorticityConfinement = 7.4
+voxelQuantization = 0
+windX = 0.32
+windZ = 0.0

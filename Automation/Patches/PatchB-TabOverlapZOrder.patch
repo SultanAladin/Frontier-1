@@ -1,0 +1,158 @@
+diff --git a/imgui.cpp b/imgui.cpp
+index d80d73391..e68259fa2 100644
+--- a/imgui.cpp
++++ b/imgui.cpp
+@@ -1573,6 +1573,9 @@ ImGuiStyle::ImGuiStyle()
+     TabRounding                 = 5.0f;             // Radius of upper corners of a tab. Set to 0.0f to have rectangular tabs.
+     TabBorderSize               = 0.0f;             // Thickness of border around tabs.
+     TabSlant                    = 0.0f;             // [FRONTIER PATCH A] Tab corner slant. Zero keeps stock ImGui; Frontier seats 14.0f to match DockWorkspace.html.
++    TabOverlap                  = 0.0f;             // [FRONTIER PATCH B] Overlap between adjacent tabs. Zero keeps stock ImGui; the sheet states 24.0f.
++    TabHeight                   = 0.0f;             // [FRONTIER PATCH B] Tab-bar height override. Zero derives it as ImGui does; the sheet states 24.0f.
++    TabStripPadTop              = 0.0f;             // [FRONTIER PATCH B] Strip visible above the tabs. The sheet's 28 px strip over a 24 px tab states 4.0f.
+     TabMinWidthBase             = 1.0f;             // Minimum tab width, to make tabs larger than their contents. TabBar buttons are not affected.
+     TabMinWidthShrink           = 80.0f;            // Minimum tab width after shrinking, when using ImGuiTabBarFlags_FittingPolicyMixed policy. FLT_MAX: never shrink, will behave like ImGuiTabBarFlags_FittingPolicyScroll.
+     TabCloseButtonMinWidthSelected   = -1.0f;       // -1: always visible. 0.0f: visible when hovered. >0.0f: visible when hovered if minimum width.
+@@ -1665,6 +1668,9 @@ void ImGuiStyle::ScaleAllSizes(float scale_factor)
+     TabRounding = ImTrunc(TabRounding * scale_factor);
+     TabBorderSize = ImTrunc(TabBorderSize * scale_factor);
+     TabSlant = ImTrunc(TabSlant * scale_factor);
++    TabOverlap = ImTrunc(TabOverlap * scale_factor);
++    TabHeight = ImTrunc(TabHeight * scale_factor);
++    TabStripPadTop = ImTrunc(TabStripPadTop * scale_factor);
+     TabMinWidthBase = ImTrunc(TabMinWidthBase * scale_factor);
+     TabMinWidthShrink = ImTrunc(TabMinWidthShrink * scale_factor);
+     TabCloseButtonMinWidthSelected = (TabCloseButtonMinWidthSelected > 0.0f && TabCloseButtonMinWidthSelected != FLT_MAX) ? ImTrunc(TabCloseButtonMinWidthSelected * scale_factor) : TabCloseButtonMinWidthSelected;
+diff --git a/imgui.h b/imgui.h
+index 53565e857..1d89dfe03 100644
+--- a/imgui.h
++++ b/imgui.h
+@@ -2432,6 +2432,9 @@ struct ImGuiStyle
+     float       TabRounding;                // Radius of upper corners of a tab. Set to 0.0f to have rectangular tabs.
+     float       TabBorderSize;              // Thickness of border around tabs.
+     float       TabSlant;                   // [FRONTIER PATCH A] Horizontal inset of a tab's two upper corners, in display pixels. 0.0f restores ImGui's rectangular tab.
++    float       TabOverlap;                 // [FRONTIER PATCH B] Horizontal overlap between adjacent tabs, in display pixels, so slanted edges interlock. 0.0f keeps ImGui's edge-to-edge layout.
++    float       TabHeight;                  // [FRONTIER PATCH B] Tab-bar height override, in display pixels. 0.0f derives it from FontSize and FramePadding as ImGui does.
++    float       TabStripPadTop;             // [FRONTIER PATCH B] Strip showing above the tabs, in display pixels. The tab is seated against the strip's lower edge.
+     float       TabMinWidthBase;            // Minimum tab width, to make tabs larger than their contents. TabBar buttons are not affected.
+     float       TabMinWidthShrink;          // Minimum tab width after shrinking, when using ImGuiTabBarFlags_FittingPolicyMixed policy.
+     float       TabCloseButtonMinWidthSelected;     // -1: always visible. 0.0f: visible when hovered. >0.0f: visible when hovered if minimum width. FLT_MAX: never shrink, will behave like ImGuiTabBarFlags_FittingPolicyScroll.
+diff --git a/imgui_internal.h b/imgui_internal.h
+index 39ef9be4e..0a6b6aa86 100644
+--- a/imgui_internal.h
++++ b/imgui_internal.h
+@@ -3154,6 +3154,8 @@ struct IMGUI_API ImGuiTabBar
+     bool                ScrollButtonEnabled;
+     ImS16               TabsActiveCount;        // Number of tabs submitted this frame.
+     ImS16               LastTabItemIdx;         // Index of last BeginTabItem() tab for use by EndTabItem()
++    ImDrawListSplitter  FrontierZSplitter;         // [FRONTIER PATCH B] Two channels so the selected tab draws over its overlapping neighbours
++    bool                FrontierZSplit;            // [FRONTIER PATCH B] Whether the splitter above stands open this frame
+     float               ItemSpacingY;
+     ImVec2              FramePadding;           // style.FramePadding locked at the time of BeginTabBar()
+     ImVec2              BackupCursorPos;
+diff --git a/imgui_widgets.cpp b/imgui_widgets.cpp
+index f93f37ca6..f73947243 100644
+--- a/imgui_widgets.cpp
++++ b/imgui_widgets.cpp
+@@ -9871,7 +9871,10 @@ bool    ImGui::BeginTabBar(const char* str_id, ImGuiTabBarFlags flags)
+ 
+     ImGuiID id = window->GetID(str_id);
+     ImGuiTabBar* tab_bar = g.TabBars.GetOrAddByKey(id);
+-    ImRect tab_bar_bb = ImRect(window->DC.CursorPos.x, window->DC.CursorPos.y, window->WorkRect.Max.x, window->DC.CursorPos.y + g.FontSize + g.Style.FramePadding.y * 2);
++    // [FRONTIER PATCH B] TabHeight overrides the derived bar height, and TabStripPadTop reserves a strip above
++    //   the tabs that the ground shows through -- the sheet's 28 px strip carrying a 24 px tab at flex-end.
++    const float frontier_tab_h = (g.Style.TabHeight > 0.0f) ? g.Style.TabHeight : (g.FontSize + g.Style.FramePadding.y * 2);
++    ImRect tab_bar_bb = ImRect(window->DC.CursorPos.x, window->DC.CursorPos.y + g.Style.TabStripPadTop, window->WorkRect.Max.x, window->DC.CursorPos.y + g.Style.TabStripPadTop + frontier_tab_h);
+     tab_bar->ID = id;
+     tab_bar->SeparatorMinX = tab_bar_bb.Min.x - IM_TRUNC(window->WindowPadding.x * 0.5f);
+     tab_bar->SeparatorMaxX = tab_bar_bb.Max.x + IM_TRUNC(window->WindowPadding.x * 0.5f);
+@@ -9939,6 +9942,18 @@ bool    ImGui::BeginTabBarEx(ImGuiTabBar* tab_bar, const ImRect& tab_bar_bb, ImG
+         const float y = tab_bar->BarRect.Max.y;
+         window->DrawList->AddRectFilled(ImVec2(tab_bar->SeparatorMinX, y - g.Style.TabBarBorderSize), ImVec2(tab_bar->SeparatorMaxX, y), col);
+     }
++
++    // [FRONTIER PATCH B] Overlapping tabs are submitted leading-to-trailing, so a selected tab is buried under
++    //   every tab after it -- the sheet gives the active tab z-index 100 for exactly this reason. Two draw
++    //   channels reproduce that ordering: quiet tabs record into the lower, the selected tab into the upper,
++    //   and the merge at EndTabBar concatenates them. Opened only when tabs actually overlap, so a stock
++    //   configuration pays nothing and records the identical command stream it always did.
++    tab_bar->FrontierZSplit = (g.Style.TabOverlap > 0.0f);
++    if (tab_bar->FrontierZSplit)
++    {
++        tab_bar->FrontierZSplitter.Split(window->DrawList, 2);
++        tab_bar->FrontierZSplitter.SetCurrentChannel(window->DrawList, 0);
++    }
+     return true;
+ }
+ 
+@@ -9952,6 +9967,14 @@ void    ImGui::EndTabBar()
+     ImGuiTabBar* tab_bar = g.CurrentTabBar;
+     IM_ASSERT_USER_ERROR_RET(tab_bar != NULL, "Mismatched BeginTabBar()/EndTabBar()!");
+ 
++    // [FRONTIER PATCH B] Merge the two z channels before anything else records into this window. Merged here
++    //   rather than at the end of the function because the layout fallback below may itself record.
++    if (tab_bar->FrontierZSplit)
++    {
++        tab_bar->FrontierZSplitter.Merge(window->DrawList);
++        tab_bar->FrontierZSplit = false;
++    }
++
+     // Fallback in case no TabItem have been submitted
+     if (tab_bar->WantLayout)
+         TabBarLayout(tab_bar);
+@@ -10192,7 +10215,16 @@
+             ImGuiTabItem* tab = &tab_bar->Tabs[section_tab_index + tab_n];
+             tab->Offset = tab_offset;
+             tab->NameOffset = -1;
+-            tab_offset += tab->Width + (tab_n < section->TabCount - 1 ? g.Style.ItemInnerSpacing.x : 0.0f);
++            // [FRONTIER PATCH B] The sheet interlocks its tabs with margin-right:-24px, so each tab's slanted
++            //   leading edge tucks under its predecessor's trailing edge. Subtracting the overlap from the
++            //   advance is the whole of it; every width, every hit rectangle and all the scroll arithmetic
++            //   downstream continue to read tab->Width, which is unchanged.
++            //   ⚠️ The sheet states margin-right:-24px OUTRIGHT, not net of a spacing. Subtracting the
++            //   overlap from ItemInnerSpacing left a 20 px advance reduction against a 28 px slant pair,
++            //   too little for the slants to interlock -- it read as a plain gap between rectangles.
++            tab_offset += tab->Width + (tab_n < section->TabCount - 1
++                                        ? (g.Style.TabOverlap > 0.0f ? -g.Style.TabOverlap : g.Style.ItemInnerSpacing.x)
++                                        : 0.0f);
+         }
+         tab_bar->WidthAllTabs += ImMax(section->Width + section->Spacing, 0.0f);
+         tab_offset += section->Spacing;
+@@ -10926,6 +10953,17 @@
+ 
+     // Render tab shape
+     const bool is_visible = (g.LastItemData.StatusFlags & ImGuiItemStatusFlags_Visible) && !(flags & ImGuiTabItemFlags_Invisible);
++
++    // [FRONTIER PATCH B] The selected tab, and a hovered one, record into the upper z channel so their slanted
++    //   edges sit over their neighbours' -- the sheet's z-index 100 for .active and 80 for :hover. Everything
++    //   else stays in the lower channel and keeps its submission order.
++    // [FRONTIER PATCH B] Only the SELECTED tab is raised. A hovered tab is recoloured where it stands and
++    //   keeps its place in the stack -- raising it pulled a background tab's trapezoid in front of its
++    //   neighbours, so merely passing the pointer along the strip made tabs jump forward one by one.
++    //   The sheet gives :hover a colour and no z-index; only .active carries one.
++    const bool frontier_raise = tab_bar->FrontierZSplit && tab_contents_visible;
++    if (frontier_raise)
++        tab_bar->FrontierZSplitter.SetCurrentChannel(window->DrawList, 1);
+     if (is_visible)
+     {
+         ImDrawList* display_draw_list = window->DrawList;
+@@ -10985,6 +11019,12 @@ bool    ImGui::TabItemEx(ImGuiTabBar* tab_bar, const char* label, bool* p_open,
+                 SetItemTooltip("%.*s", (int)(FindRenderedTextEnd(label) - label), label);
+     }
+ 
++    // [FRONTIER PATCH B] Lower the channel again. Raised across the shape AND the label so a selected tab's run
++    //   travels with its own shape; left raised, every later tab would record into the upper channel too and
++    //   the ordering would invert.
++    if (frontier_raise)
++        tab_bar->FrontierZSplitter.SetCurrentChannel(window->DrawList, 0);
++
+     // Restore main window position so user can draw there
+     if (want_clip_rect)
+         PopClipRect();
+@@ -11097,6 +11137,7 @@ void ImGui::TabItemBackground(ImDrawList* draw_list, const ImRect& bb, ImGuiTabI
+     const float rounding = ImMax(0.0f, ImMin((flags & ImGuiTabItemFlags_Button) ? g.Style.FrameRounding : g.Style.TabRounding, width * 0.5f - 1.0f));
+     const float y1 = bb.Min.y + 1.0f; // Leave a bit of room in title bars.
+     const float y2 = bb.Max.y - g.Style.TabBarBorderSize;
++
+     // [FRONTIER PATCH A] A button is a button and keeps its rectangle; only a genuine tab is slanted.
+     const float slant = (flags & ImGuiTabItemFlags_Button) ? 0.0f : ImMin(g.Style.TabSlant, width * 0.16f);
+     if (slant > 0.0f)

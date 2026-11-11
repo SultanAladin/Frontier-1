@@ -1,0 +1,79 @@
+"""Dimensional media, filing, and creative-tool icons drawn with native SVG."""
+import math
+from media_icons import clapper
+
+
+def reel_art(key):
+    defs=f'''<linearGradient id="{key}-rim" x2=".8" y2="1"><stop stop-color="#92999e"/><stop offset=".4" stop-color="#444c53"/><stop offset="1" stop-color="#212a32"/></linearGradient><linearGradient id="{key}-plate" x2=".8" y2="1"><stop stop-color="#e0e3e2"/><stop offset=".45" stop-color="#b1b9be"/><stop offset="1" stop-color="#737f89"/></linearGradient><radialGradient id="{key}-hole" cx="70%" cy="60%"><stop stop-color="#4e5962"/><stop offset=".6" stop-color="#222b32"/><stop offset="1" stop-color="#0d161d"/></radialGradient>'''
+    body=f'''<g transform="translate(117 114) rotate(-12) scale(.77 1)"><circle r="81" fill="url(#{key}-rim)" stroke="#abb4b9" stroke-opacity=".4"/><circle cx="-12" cy="4" r="76" fill="#1f2830"/><circle cx="-23" cy="5" r="78" fill="url(#{key}-rim)"/><circle cx="-26" cy="4" r="74" fill="url(#{key}-plate)" stroke="#eef3f4" stroke-opacity=".5" stroke-width="1.3"/>'''
+    for i in range(5):
+        a=math.radians(-90+i*72);x=-26+math.cos(a)*44;y=4+math.sin(a)*44
+        body+=f'<circle cx="{x}" cy="{y+1}" r="18" fill="#edf1f0" opacity=".55"/><circle cx="{x}" cy="{y}" r="17" fill="url(#{key}-hole)"/>'
+    body+=f'<circle cx="-26" cy="5" r="10.5" fill="#e2e6e5"/><circle cx="-26" cy="4" r="10" fill="url(#{key}-hole)"/></g>'
+    body+=f'''<path d="M165 149q24-1 37 27t38 28l-33 23q-31-7-43-38t-37-25Z" fill="#161f27"/><path d="M165 145q24-1 37 27t38 28l-33 23q-31-7-43-38t-37-25Z" fill="url(#{key}-rim)" stroke="#9ca9b1" stroke-opacity=".25"/><path d="m168 154 15-4q10 8 14 19l-19 7q-3-12-10-22Zm14 30 18-9q8 19 24 25l-19 13q-15-8-23-29Z" fill="url(#{key}-plate)" opacity=".65"/>'''
+    for x,y in [(154,155),(167,174),(178,199),(191,215),(191,154),(206,180),(228,202)]:
+        body+=f'<path d="m{x} {y} 4-2 2 2-4 2Z" fill="#111b23"/>'
+    return defs,body
+
+
+def register_creative_icons(register):
+    from creative_depth import refine_depth
+    def icon(key,name,group,description,defs,body):
+        defs,body=refine_depth(key,defs,body)
+        register(key,name,group,description,defs,body)
+    defs='''<linearGradient id="speaker-face" x2=".8" y2="1"><stop stop-color="#627d88"/><stop offset=".35" stop-color="#405865"/><stop offset="1" stop-color="#2d424f"/></linearGradient><linearGradient id="speaker-side" x2="1" y2=".6"><stop stop-color="#2e4653"/><stop offset="1" stop-color="#142732"/></linearGradient><linearGradient id="speaker-top" x2=".6" y2="1"><stop stop-color="#728b94"/><stop offset="1" stop-color="#344c59"/></linearGradient><radialGradient id="speaker-rubber"><stop offset=".55" stop-color="#374e5b"/><stop offset=".73" stop-color="#122733"/><stop offset=".87" stop-color="#354a57"/><stop offset="1" stop-color="#091d29"/></radialGradient><radialGradient id="speaker-cone" cx="35%" cy="25%" r="80%"><stop stop-color="#90a5a9"/><stop offset=".5" stop-color="#bcc7c5"/><stop offset="1" stop-color="#e0e4db"/></radialGradient><radialGradient id="speaker-cap" cx="34%" cy="25%"><stop stop-color="#64818e"/><stop offset=".6" stop-color="#293f4b"/><stop offset="1" stop-color="#102631"/></radialGradient>'''
+    body='''<path d="M56 49 109 26q7-3 16-1l72 15q14 3 14 18v131q0 11-9 17l-50 29-96-23Z" fill="url(#speaker-side)"/><path d="m56 49 53-23q7-3 16-1l72 15q10 2 11 10l-60 29Z" fill="url(#speaker-top)"/><path d="M51 65q0-18 17-14l75 17q13 3 13 17v139q0 13-14 10l-77-19q-14-3-14-18Z" fill="url(#speaker-face)"/><path d="m59 54 84 18q9 2 9 13" stroke="#a5bec3" stroke-opacity=".3" stroke-width="2"/>
+<g transform="matrix(.80 .15 0 .92 103 160)"><circle r="48" fill="#0b202c" stroke="#91a6aa" stroke-opacity=".4" stroke-width="1"/><circle r="44" fill="url(#speaker-rubber)"/><circle r="35" fill="url(#speaker-cone)" stroke="#e7eeea" stroke-width=".8"/><circle r="17" fill="#0d2531"/><circle r="14" fill="url(#speaker-cap)"/></g>
+<g transform="matrix(.86 .16 0 1 103 91)"><circle r="24" fill="url(#speaker-rubber)" stroke="#8aabb5" stroke-opacity=".5"/><circle r="16" fill="#091b24"/><circle r="12" fill="url(#speaker-cap)"/></g><g transform="matrix(.85 .16 0 1 137 216)"><circle r="6.5" fill="#102935" stroke="#bbd6cf" stroke-opacity=".55"/><circle r="4.8" fill="#39b9b5"/></g>'''
+    icon('speaker','Speaker','Objects','A blue-charcoal studio monitor with recessed tweeter, ivory woofer cone, and a small teal status light.',defs,body)
+    defs,body=reel_art('film-reel')
+    icon('film-reel','Film reel','Objects','A silver five-hole film reel with a shaded hub and a curling, perforated film leader.',defs,body)
+
+    defs='''<linearGradient id="document-bundle-folder" x2=".8" y2="1"><stop stop-color="#f3cd86"/><stop offset=".65" stop-color="#dcb16e"/><stop offset="1" stop-color="#ac7638"/></linearGradient><linearGradient id="document-bundle-paper" x2=".4" y2="1"><stop stop-color="#fffefa"/><stop offset="1" stop-color="#d6d4ce"/></linearGradient><linearGradient id="document-bundle-clip" x2="1" y2="1"><stop stop-color="#8cbcc4"/><stop offset="1" stop-color="#376e7e"/></linearGradient>'''
+    body='''<g transform="rotate(-32 128 128)"><path d="M48 67q0-9 9-9h53l13-16h45q8 0 8 9v159H48Z" fill="url(#document-bundle-folder)"/><rect x="81" y="64" width="117" height="155" rx="5" transform="rotate(12 139 140)" fill="#bfbbb3"/><rect x="80" y="61" width="117" height="155" rx="5" transform="rotate(12 139 140)" fill="url(#document-bundle-paper)"/><rect x="73" y="57" width="117" height="155" rx="5" transform="rotate(6 132 134)" fill="url(#document-bundle-paper)" stroke="#d6d1c8" stroke-width=".7"/><path d="M44 69q0-10 10-10h50l14-16h24q9 0 9 9v150q0 12-11 12H55q-11 0-11-11Z" fill="url(#document-bundle-folder)"/><path d="M47 76v123q0 11 9 11h83" stroke="#98652f" stroke-opacity=".2" stroke-width="2"/><path d="m76 52 33 0v20H76Z" fill="url(#document-bundle-clip)" stroke="#bee4e6" stroke-opacity=".25"/><path d="M83 69v8q0 3 3 3h2v13h13V80h2q3 0 3-3v-8" stroke="#f8edcf" stroke-width="2" stroke-linejoin="round"/></g>'''
+    icon('document-bundle','Document bundle','Organization','A warm kraft document folder, fanned ivory pages, and a teal binder clip.',defs,body)
+
+    defs='''<linearGradient id="file-folder-gold" x2=".7" y2="1"><stop stop-color="#ffe273"/><stop offset=".25" stop-color="#f8be21"/><stop offset=".75" stop-color="#d99a09"/><stop offset="1" stop-color="#af7907"/></linearGradient><linearGradient id="file-folder-inner" x2="1" y2="1"><stop stop-color="#e5a721"/><stop offset="1" stop-color="#8b5909"/></linearGradient><linearGradient id="file-folder-paper" x2=".2" y2="1"><stop stop-color="#fffef5"/><stop offset="1" stop-color="#d8ceba"/></linearGradient>'''
+    body='''<g transform="rotate(-9 128 128)"><path d="M35 75q0-12 12-12h58l13 14h87q12 0 12 12v116H47q-12 0-12-15Z" fill="url(#file-folder-inner)" stroke="#ffd977" stroke-width="2"/><path d="m43 94 156-20 3 120-156 7Z" fill="url(#file-folder-paper)"/><path d="m57 82 155 4-6 115-152-4Z" fill="url(#file-folder-paper)" stroke="#d9d0bc" stroke-width="1"/><path d="M43 112q0-10 11-10h99q8 0 13-9l7-11h42q9 0 9 11v107q0 11-12 11H50q-13 0-15-15V92q0 25 8 20Z" fill="url(#file-folder-gold)"/><path d="M44 196v-81q0-10 12-10h94q13 0 20-18" stroke="#ffe899" stroke-opacity=".65" stroke-width="2"/><path d="M39 191q0 15 11 15h156" stroke="#875b08" stroke-opacity=".22" stroke-width="1.2"/></g>'''
+    icon('file-folder','File folder','Organization','A new golden file-folder design with an open folded edge and ivory document inserts.',defs,body)
+
+    defs='''<linearGradient id="retro-tv-body" x2=".8" y2="1"><stop stop-color="#77818d"/><stop offset=".35" stop-color="#4e5b69"/><stop offset="1" stop-color="#2e3a48"/></linearGradient><linearGradient id="retro-tv-side" x2="1" y2=".5"><stop stop-color="#354250"/><stop offset="1" stop-color="#172635"/></linearGradient><linearGradient id="retro-tv-glass" x2="0" y2="1"><stop stop-color="#fff" stop-opacity=".24"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><clipPath id="retro-tv-screen"><rect x="45" y="90" width="110" height="105" rx="15"/></clipPath>'''
+    body='''<path d="M62 204v14q6 16 17 1v-11m98 12v14q9 12 17-2v-15" fill="url(#retro-tv-side)"/><path d="m60 66 123 11q31 3 37 24v99q0 12-13 20l-26 17-123-26Z" fill="url(#retro-tv-side)"/><path d="M32 91q0-30 29-25l110 21q20 4 20 27v106q0 21-21 16L52 213q-20-4-20-26Z" fill="url(#retro-tv-body)"/><path d="m43 74 123 24q15 3 17 16" stroke="#a6b6c1" stroke-opacity=".25" stroke-width="2"/>
+<g transform="matrix(1 .17 0 1 0 -7)"><rect x="40" y="85" width="120" height="115" rx="20" fill="#192f40"/><g clip-path="url(#retro-tv-screen)">'''
+    for i,c in enumerate(['#58cef0','#54d49a','#ffdc6e','#ff7974','#5c9ddd']):
+        body+=f'<rect x="{45+i*22}" y="90" width="22.5" height="105" fill="{c}"/>'
+    for i,c in enumerate(['#c75b9f','#3d9ed4','#354551','#eab63a','#dc574c']):
+        body+=f'<rect x="{45+i*22}" y="168" width="22.5" height="27" fill="{c}"/>'
+    body+='''<path d="M45 92h110v51q-54 18-110-2Z" fill="url(#retro-tv-glass)"/></g><rect x="45" y="90" width="110" height="105" rx="15" stroke="#b5d7e5" stroke-opacity=".25"/></g><circle cx="174" cy="135" r="11" fill="url(#retro-tv-side)"/><circle cx="171" cy="133" r="10" fill="url(#retro-tv-body)"/><circle cx="174" cy="165" r="9" fill="url(#retro-tv-side)"/><circle cx="172" cy="163" r="8" fill="url(#retro-tv-body)"/><path d="m166 188 13 3m-13 7 13 3m-13 7 13 3" stroke="#172a3a" stroke-width="4" stroke-linecap="round"/>
+<path d="m111 75-28-46m42 44 29-36" stroke="#253746" stroke-width="9" stroke-linecap="round"/><path d="m110 72-27-43m43 41 28-33" stroke="#8897a3" stroke-opacity=".25" stroke-width="2" stroke-linecap="round"/><path d="M96 79q1-29 24-24 20 3 22 29-22 4-46-5Z" fill="url(#retro-tv-body)"/>'''
+    icon('retro-tv','Retro TV','Objects','A charcoal television with rabbit-ear antennae, tactile tuning knobs, and a colorful test-pattern display.',defs,body)
+
+    cd,cb=clapper('cinema-slate');rd,rb=reel_art('cinema-reel')
+    icon('cinema','Cinema','Objects','An open film slate paired with a silver reel and curling film strip.',cd+rd,'<g transform="translate(0 9) scale(.8)">'+cb+'</g><g transform="translate(94 87) scale(.59)">'+rb+'</g>')
+    defs,body=clapper('video-slate',True)
+    # A new gold-play design, not the removed red-play Video asset.
+    defs=defs.replace('#ff8274','#ffe37b').replace('#ff5b50','#f4bd30').replace('#c92e29','#bb7e0a')
+    body=body.replace('#862324','#9b650b').replace('#ff9b83','#fff0af')
+    body=body.replace('<path d="M112 139', '<path transform="translate(0 -8)" d="M112 139').replace('<path d="M110 136', '<path transform="translate(0 -8)" d="M110 136')
+    # Add a bottom striped rail to match the supplied gold-play slate reference.
+    rail='<g transform="rotate(-10 128 128)"><rect x="46" y="195" width="168" height="25" rx="5" fill="url(#video-slate-white)"/>'
+    for x in [78,133,188]:
+        rail+=f'<path d="m{x} 195 22 0-14 25h-22Z" fill="url(#video-slate-bar)"/>'
+    rail+='</g>'
+    body+='<g transform="translate(16 26) scale(.87)">'+rail+'</g>'
+    icon('video-slate','Video slate','Objects','A new ivory-striped slate with a raised golden play button, gold hinge, and striped lower rail.',defs,body)
+
+    defs='''<linearGradient id="paint-palette-base" x2=".7" y2="1"><stop stop-color="#fff4ee"/><stop offset=".5" stop-color="#ded6e2"/><stop offset="1" stop-color="#aba5c4"/></linearGradient><linearGradient id="paint-palette-handle" x2="1" y2=".4"><stop stop-color="#ac8542"/><stop offset=".4" stop-color="#f0cf7c"/><stop offset="1" stop-color="#af8437"/></linearGradient><linearGradient id="paint-palette-metal" x2="1" y2=".3"><stop stop-color="#656477"/><stop offset=".4" stop-color="#eff0eb"/><stop offset=".7" stop-color="#aaaabc"/><stop offset="1" stop-color="#77788e"/></linearGradient><radialGradient id="paint-palette-bristle" cx="30%" cy="30%"><stop stop-color="#b88f53"/><stop offset=".5" stop-color="#795131"/><stop offset="1" stop-color="#443340"/></radialGradient>'''
+    for c,bright,dark in [('blue','#9dacdf','#6174a3'),('green','#badb92','#7b9e4c'),('pink','#f5b3b3','#c87383'),('gold','#ffe092','#d3a147'),('purple','#c5afe3','#8a6bae')]:
+        defs+=f'<radialGradient id="paint-palette-{c}" cx="65%" cy="70%"><stop stop-color="{bright}"/><stop offset=".85" stop-color="{bright}"/><stop offset="1" stop-color="{dark}"/></radialGradient>'
+    outline='M37 164C46 124 110 82 179 92c45 7 42 43 13 54-26 9-39 19-20 36 28 28-5 47-55 46-60-1-90-20-80-64Z M126 159a18 13-30 1 0 36-14 18 13-30 1 0-36 14Z'
+    body=f'''<path d="m128 153-31 84q-2 7 6 6l51-84Z" fill="url(#paint-palette-handle)"/><path d="{outline}" transform="translate(0 5)" fill="#9993ae" fill-rule="evenodd"/><path d="{outline}" fill="url(#paint-palette-base)" fill-rule="evenodd"/>'''
+    for x,y,c in [(72,157,'blue'),(64,191,'green'),(115,208,'pink'),(120,120,'gold'),(172,113,'purple')]:
+        body+=f'<g transform="translate({x} {y}) rotate(-20) scale(1 .58)"><circle r="20" fill="url(#paint-palette-{c})"/></g>'
+    body+='''<path d="m134 166 29-76 21 10-33 70q-9 6-17-4Z" fill="url(#paint-palette-handle)"/><path d="m163 90 17-41 18 8-14 43Z" fill="url(#paint-palette-metal)"/><path d="m168 79 19 9m-17-14 19 8" stroke="#55566b" stroke-width=".8"/><path d="M180 50q-14-24 8-36l13-10q-1 14 5 26 5 20-10 28Z" fill="url(#paint-palette-bristle)"/><path d="M185 42q-5-15 12-28" stroke="#cda772" stroke-opacity=".35" stroke-width="1.3"/>'''
+    # Inset the tall brush for consistent transparent margins.
+    icon('paint-palette','Paint palette','Objects','A pearl palette with five recessed pastel paint wells and a wood-handled brush with a metal ferrule.',defs,'<g transform="translate(5 10) scale(.94)">'+body+'</g>')
+
+    defs='''<linearGradient id="drawing-compass-pink" x2="1" y2=".3"><stop stop-color="#ffa5d1"/><stop offset=".4" stop-color="#f578b7"/><stop offset="1" stop-color="#cf3f86"/></linearGradient><radialGradient id="drawing-compass-yellow" cx="30%" cy="25%"><stop stop-color="#fff892"/><stop offset=".6" stop-color="#f9d637"/><stop offset="1" stop-color="#d4a31b"/></radialGradient><linearGradient id="drawing-compass-metal" x2="0" y2="1"><stop stop-color="#e0d5c5"/><stop offset=".35" stop-color="#faf7ee"/><stop offset=".65" stop-color="#a18c75"/><stop offset="1" stop-color="#62594f"/></linearGradient><radialGradient id="drawing-compass-dark" cx="30%" cy="20%"><stop stop-color="#777177"/><stop offset=".6" stop-color="#403940"/><stop offset="1" stop-color="#231e29"/></radialGradient>'''
+    body='''<path d="m112 53-6-25q-2-7 6-8t9 6l5 26Z" fill="url(#drawing-compass-dark)"/><path d="M116 61 170 204l15 15 11-5-4-22-58-141Z" fill="url(#drawing-compass-pink)"/><path d="m184 215 15 18-7-23Z" fill="url(#drawing-compass-metal)"/><rect x="58" y="126" width="131" height="9" rx="4" fill="url(#drawing-compass-metal)"/><g transform="translate(128 130) scale(.65 1)"><circle r="19" fill="url(#drawing-compass-dark)"/><circle cx="-4" r="15" fill="url(#drawing-compass-dark)"/></g><path d="M108 54 64 202l8 19 17-2L133 68Z" fill="url(#drawing-compass-pink)"/><path d="m111 65-37 132" stroke="#ffb4dc" stroke-opacity=".5" stroke-width="2"/><path d="m64 199-3 9 9 4 1 17 12 1 4-19 8-3-1-9Z" fill="url(#drawing-compass-yellow)"/><path d="m72 228 4 16q2 4 4-1l3-14Z" fill="url(#drawing-compass-dark)"/><g transform="translate(121 62) rotate(-14) scale(.85 1)"><circle r="29" fill="#c18b1e"/><circle cx="-3" cy="-2" r="28" fill="url(#drawing-compass-yellow)"/><circle cx="1" cy="-2" r="7" fill="url(#drawing-compass-metal)"/></g>'''
+    icon('drawing-compass','Drawing compass','Objects','A pink drafting compass with a golden hinge and pencil collar, metal adjustment screw, and pointed drawing tips.',defs,'<g transform="translate(4 0) scale(.96)">'+body+'</g>')

@@ -1,0 +1,105 @@
+# Frontier gas scene. Written by Experimental/Fluid; read by Engine/VolumetricDynamics.
+# Settings are sorted by name so the file diffs cleanly; order carries no meaning.
+
+format = "frontier-fluid-scene"
+version = 1
+name = "Tyre burnout"
+
+[names]
+collider = "Rear tyre"
+domain = "Contact patch"
+emitter = "Slip"
+sun = "Pit light"
+
+[camera]
+theta = 2.3
+phi = 1.52
+distance = 2.45
+centre = [0.0, -0.05, 0.0]
+
+[settings]
+ambientIntensity = 0.35
+atlasMinimapField = 0
+autoGpuGovernor = false
+autoTurntable = false
+blastFuel = 0.0
+blastLobes = 6
+blastRadius = 0.18
+blastSmoke = 5.5
+blastStrength = 9.8
+blastTemperature = 2.0
+bloomIntensity = 0.55
+boundsHeight = 1.7
+boundsWidth = 2.6
+buoyancy = 2.3
+burnHeat = 0.8
+burnRate = 0.4
+colliderAutoMove = false
+colliderSpeed = 1.25
+colorPalette = 1
+combustionExpansion = 0.4
+coolingRate = 2.6
+densityExtinction = 27.0
+dynamicBounds = false
+dynamicBoundsMax = 1.55
+emberAshiness = 0.0
+emberCount = 550
+emberIntensity = 1.4
+emberLifetime = 1.0
+emberSize = 1.0
+emitterEnabled = true
+emitterFuel = 0.2
+emitterHeight = 0.02
+emitterRadius = 0.13
+emitterRate = 1.9
+emitterSmoke = 4.2
+emitterSwirl = 3.2
+emitterTemperature = 0.9
+emitterUpwardVelocity = 1.4
+enclosedBox = false
+exposure = 1.25
+fireIntensity = 0.8
+godRaysIntensity = 0.45
+gridResolution = 96
+interactionMode = "orbit"
+internalScattering = 0.9
+macCormackAdvection = true
+obstacleRadius = 0.17
+obstacleType = 5
+obstacleX = 0.5
+obstacleY = 0.26
+obstacleZ = 0.5
+paused = false
+phaseAnisotropy = 0.38
+pressureIterations = 22
+raymarchSteps = 96
+renderChannel = 0
+renderScale = 1.0
+shadowDensity = 14.0
+shadowSteps = 6
+shockwaveStrength = 1.0
+showActiveVoxelCells = false
+showAtlasMinimap = true
+showBoundingBox = true
+showEmbers = false
+showFloorGrid = true
+showVoxelGridLines = true
+shrapnelEnabled = true
+sliceAxis = 2
+slicePosition = 0.5
+smokeAlbedo = 0.17
+smokeDissipation = 0.07
+smokeWeight = 1.25
+sootGeneration = 3.4
+sunAzimuth = 42.0
+sunElevation = 52.0
+sunIntensity = 2.2
+temperatureScale = 1.15
+timeScale = 1.0
+turbulenceScale = 4.2
+turbulenceStrength = 3.4
+velocityDamping = 0.05
+vorticityConfinement = 6.4
+voxelQuantization = 0
+windX = 1.15
+windZ = -0.35

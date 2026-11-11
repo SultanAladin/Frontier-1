@@ -1,0 +1,278 @@
+// Curated procedural candy, confectionery, sugar-crystal, taffy swirl, gummy,
+// and kandy-flake materials built from physical multi-strata GLSL kernels.
+export function candyCatalog() {
+  const rows = [];
+  const add = (name, type, recipeId, color, extra = {}) =>
+    rows.push({
+      id: name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/-$/, ""),
+      name,
+      category: "Candy",
+      type,
+      recipeId,
+      color,
+      colors: [color],
+      metalness: 0,
+      roughness: 0.16,
+      coat: 0.96,
+      coatRoughness: 0.05,
+      coatIor: 1.54,
+      ior: 1.54,
+      specular: 1,
+      depth: 0.55,
+      flakes: 0,
+      grain: 0.45,
+      detailScale: 24,
+      scattering: 0.65,
+      label: "CANDY · PROCEDURAL",
+      description: "Multi-strata confectionery shader with sugar crystals, syrup depth, and glaze.",
+      ...extra,
+    });
+
+  // Type 39: Sour Sugar Crystal & Rock Candy
+  add("Sour Strawberry Sugar", 39, "candyCrystal", "#e62447", {
+    secondaryColor: "#ffdbe2",
+    tertiaryColor: "#ff6e89",
+    attenuationColor: "#b80d2d",
+    roughness: 0.34,
+    coat: 0.48,
+    coatRoughness: 0.14,
+    translucency: 0.36,
+    grain: 0.78,
+    detailScale: 42,
+    scattering: 0.8,
+    label: "SOUR SUGAR · CRYSTAL COAT",
+    description: "Sparkling faceted sour-sugar grains dusted over bright ruby strawberry candy.",
+  });
+  add("Sour Blue Raspberry", 39, "candyCrystal", "#149cf5", {
+    secondaryColor: "#e1f6ff",
+    tertiaryColor: "#48d2ff",
+    attenuationColor: "#045aa8",
+    roughness: 0.32,
+    coat: 0.52,
+    coatRoughness: 0.12,
+    translucency: 0.42,
+    grain: 0.82,
+    detailScale: 46,
+    scattering: 0.78,
+    label: "SOUR SUGAR · CRYSTAL COAT",
+    description: "Electric blue raspberry candy encrusted in sharp specular sugar crystals.",
+  });
+  add("Green Apple Rock Candy", 39, "candyCrystal", "#45d138", {
+    secondaryColor: "#ecffd9",
+    tertiaryColor: "#9ef24b",
+    attenuationColor: "#1b7a16",
+    roughness: 0.19,
+    coat: 0.88,
+    coatRoughness: 0.06,
+    translucency: 0.64,
+    grain: 0.68,
+    detailScale: 16,
+    scattering: 0.75,
+    label: "ROCK CANDY · FACETED CRYSTAL",
+    description: "Large translucent emerald sugar crystal facets catching sharp key highlights.",
+  });
+  add("Lemon Drop Crystal", 39, "candyCrystal", "#ffcf1f", {
+    secondaryColor: "#fff9d1",
+    tertiaryColor: "#ffae19",
+    attenuationColor: "#d98200",
+    roughness: 0.24,
+    coat: 0.72,
+    coatRoughness: 0.08,
+    translucency: 0.58,
+    grain: 0.62,
+    detailScale: 34,
+    scattering: 0.74,
+    label: "HARD CANDY · SUGAR FROST",
+    description: "Sunlit tart lemon core veiled in a delicate crystalline sucrose crust.",
+  });
+
+  // Type 40: Swirled Peppermint, Taffy & Ribbon Confectionery
+  add("Peppermint Candy Cane", 40, "candySwirl", "#f7f4f0", {
+    secondaryColor: "#d9142b",
+    tertiaryColor: "#ff6b7d",
+    roughness: 0.11,
+    coat: 1,
+    coatRoughness: 0.035,
+    coatIor: 1.56,
+    grain: 0.25,
+    detailScale: 7.5,
+    translucency: 0.08,
+    label: "PULLED SUGAR · PEPPERMINT SWIRL",
+    description: "Lacquered crimson-and-ivory twisted peppermint ribbons under a wet sugar gloss.",
+  });
+  add("Cotton Candy Swirl", 40, "candySwirl", "#ff8cd1", {
+    secondaryColor: "#7ad7ff",
+    tertiaryColor: "#ffe5f4",
+    roughness: 0.74,
+    coat: 0.08,
+    coatRoughness: 0.4,
+    sheen: 0.92,
+    sheenColor: "#ffeaf7",
+    sheenRoughness: 0.58,
+    grain: 0.45,
+    detailScale: 9,
+    scattering: 0.9,
+    label: "SPUN SUGAR · VELVET SWIRL",
+    description: "Airy pastel pink and sky-blue spun sugar filaments with soft grazing sheen.",
+  });
+  add("Saltwater Taffy Ribbon", 40, "candySwirl", "#ff8c69", {
+    secondaryColor: "#fff1d6",
+    tertiaryColor: "#ff5c7c",
+    roughness: 0.28,
+    coat: 0.76,
+    coatRoughness: 0.11,
+    sheen: 0.35,
+    sheenColor: "#ffd8c4",
+    sheenRoughness: 0.45,
+    grain: 0.22,
+    detailScale: 6.5,
+    translucency: 0.18,
+    label: "TAFFY · PULLED RIBBON",
+    description: "Satiny peach-coral and vanilla cream pulled saltwater taffy marbling.",
+  });
+  add("Watermelon Sour Twist", 40, "candySwirl", "#ff3b6b", {
+    secondaryColor: "#4ce05a",
+    tertiaryColor: "#ffe6ee",
+    roughness: 0.3,
+    coat: 0.6,
+    coatRoughness: 0.12,
+    grain: 0.48,
+    detailScale: 8.5,
+    translucency: 0.26,
+    label: "TWISTED CANDY · WATERMELON",
+    description: "Vibrant watermelon pink braided with lime candy stripes and sugar sparkle.",
+  });
+
+  // Type 41: Translucent Gummy & Jelly Fruit Drops
+  add("Peach Ring Gummy", 41, "candyGummy", "#ff8a3d", {
+    secondaryColor: "#ffecd4",
+    tertiaryColor: "#ff483b",
+    attenuationColor: "#e64a00",
+    roughness: 0.28,
+    coat: 0.42,
+    coatRoughness: 0.18,
+    translucency: 0.84,
+    depth: 0.75,
+    grain: 0.55,
+    detailScale: 36,
+    scattering: 0.85,
+    label: "GUMMY · TRANSLUCENT JELLY",
+    description: "Warm translucent peach-nectar gummy gel dusted with fine sweet crystals.",
+  });
+  add("Cherry Cola Gummy", 41, "candyGummy", "#9e1526", {
+    secondaryColor: "#f59b6e",
+    tertiaryColor: "#3b0a0d",
+    attenuationColor: "#5e0810",
+    roughness: 0.14,
+    coat: 0.94,
+    coatRoughness: 0.05,
+    translucency: 0.88,
+    depth: 0.82,
+    grain: 0.18,
+    detailScale: 24,
+    scattering: 0.78,
+    label: "GUMMY · WET GLAZE JELLY",
+    description: "Deep cherry-cola gelatin with glossy wet refraction and trapped micro-bubbles.",
+  });
+  add("Lychee Jelly Drop", 41, "candyGummy", "#f7dce6", {
+    secondaryColor: "#ffffff",
+    tertiaryColor: "#ffc2d8",
+    attenuationColor: "#e889ad",
+    roughness: 0.17,
+    coat: 0.82,
+    coatRoughness: 0.06,
+    translucency: 0.82,
+    depth: 0.7,
+    grain: 0.2,
+    detailScale: 20,
+    iridescence: 0.35,
+    iridescenceIOR: 1.32,
+    filmThickness: 280,
+    scattering: 0.88,
+    label: "JELLY · OPAL MILKY GEL",
+    description: "Milky rose-tinted lychee gelatin with pearly translucency and dewy shine.",
+  });
+
+  // Type 42: Iridescent Pearl, Jawbreaker & Confetti Sprinkles
+  add("Bubblegum Pearl Glaze", 42, "candyPearl", "#ff77b7", {
+    secondaryColor: "#fff0f8",
+    tertiaryColor: "#9ef0ff",
+    colors: ["#ffb3d9", "#9ef0ff", "#ffe99e", "#c9b3ff", "#ffffff"],
+    roughness: 0.13,
+    coat: 1,
+    coatRoughness: 0.04,
+    iridescence: 0.92,
+    iridescenceIOR: 1.36,
+    filmThickness: 330,
+    filmVariation: 60,
+    flakes: 0.28,
+    detailScale: 28,
+    label: "CANDY PEARL · IRIDESCENT SHELL",
+    description: "Glossy pastel bubblegum dragee glaze with opalescent sugar sheen.",
+  });
+  add("Cosmic Jawbreaker Hologram", 42, "candyPearl", "#3a1e6e", {
+    secondaryColor: "#ff5ce1",
+    tertiaryColor: "#38f2ff",
+    colors: ["#ff4ecd", "#38f2ff", "#ffe359", "#72ff8d", "#ffffff"],
+    roughness: 0.11,
+    coat: 1,
+    coatRoughness: 0.03,
+    iridescence: 1,
+    iridescenceIOR: 1.48,
+    filmThickness: 540,
+    filmVariation: 85,
+    flakes: 0.62,
+    detailScale: 32,
+    label: "CONFECTION · RAINBOW SPECKLE",
+    description: "Deep cosmic berry candy shell scattered with rainbow nonpareil sugar specks.",
+  });
+  add("Salted Caramel Butterscotch", 41, "candyGummy", "#c97422", {
+    secondaryColor: "#fff7e6",
+    tertiaryColor: "#753607",
+    attenuationColor: "#853d06",
+    roughness: 0.12,
+    coat: 0.98,
+    coatRoughness: 0.04,
+    translucency: 0.52,
+    depth: 0.72,
+    grain: 0.34,
+    detailScale: 22,
+    scattering: 0.65,
+    label: "CARAMEL · AMBER GLAZE",
+    description: "Warm poured butterscotch caramel gloss flecked with crisp sea-salt crystals.",
+  });
+
+  // Type 0: Kandy-Kolor Automotive & Metallic Candy Coats
+  add("Candied Tangerine Flake", 0, "paint", "#e84a0c", {
+    roughness: 0.18,
+    metalness: 0.86,
+    depth: 0.88,
+    flakes: 0.68,
+    size: 0.34,
+    coat: 1,
+    coatRoughness: 0.045,
+    colors: ["#ff9d3b", "#ff542e", "#ffd466", "#ff77a8", "#ffffff"],
+    description: "Deep translucent tangerine lacquer glowing over golden metallic base flakes.",
+  });
+  add("Cobalt Blue Candy Coat", 0, "paint", "#0e48c9", {
+    roughness: 0.17,
+    metalness: 0.88,
+    depth: 0.92,
+    flakes: 0.7,
+    size: 0.32,
+    coat: 1,
+    coatRoughness: 0.04,
+    colors: ["#47b5ff", "#887aff", "#32f0d9", "#d6e9ff"],
+    paintEffect: "iridescent",
+    iridescence: 0.72,
+    iridescenceIOR: 1.38,
+    filmThickness: 420,
+    filmVariation: 50,
+    description: "Iconic kandy-kolor sapphire clearcoat over brilliant metallic silver flake.",
+  });
+
+  return rows;
+}

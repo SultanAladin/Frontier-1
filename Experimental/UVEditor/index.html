@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier. UV Studio — Experimental Remastered</title>
+<link rel="stylesheet" href="UVEditor.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./Vendor/three.esm.min.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <!-- TOP HEADER & DOCUMENT DOCK -->
+  <header class="app-header">
+    <div class="brand">
+      <a href="../index.html" class="brand-link" title="Back to Experimental Remastered Studio Suite">
+        <span class="brand-mark">Frontier<span class="brand-dot">.</span></span>
+      </a>
+      <span class="experimental">EXPERIMENTAL</span>
+      <span class="studio-pill">UV Studio</span>
+    </div>
+
+    <div class="document-dock">
+      <div class="document-tabs" id="document-tabs"></div>
+      <button id="spawn-tab-btn" type="button" title="New UV Document / Load Sample Asset">+</button>
+    </div>
+
+    <nav class="top-nav" id="stage-layout-nav" aria-label="Viewport Layout">
+      <button class="nav-button" data-stage-mode="split" type="button">Split 2D + 3D</button>
+      <button class="nav-button" data-stage-mode="uv" type="button">2D UV Atlas</button>
+      <button class="nav-button active" data-stage-mode="mesh" type="button">3D Mesh</button>
+    </nav>
+
+    <div class="header-end">
+      <span class="live-engine-tag" id="atlas-health-tag"><i></i><span>0 OVERLAPS</span></span>
+      <button class="icon-button" id="undo-btn" type="button" title="Undo (Ctrl+Z)"></button>
+      <button class="icon-button" id="redo-btn" type="button" title="Redo (Ctrl+Shift+Z)"></button>
+      <button class="button" id="import-obj-btn" type="button">Import OBJ</button>
+      <button class="icon-button" id="help-btn" type="button" title="Blender UV Hotkeys (?)"></button>
+      <button class="button warm-bridge-btn" id="send-to-texture-studio-btn" type="button" title="Send active mesh &amp; UVs to Frontier Texture Studio">Export to Texture Studio</button>
+      <button class="button export-button" id="export-obj-btn" type="button">Export OBJ</button>
+    </div>
+  </header>
+
+  <!-- 3-COLUMN STUDIO WORKSPACE -->
+  <main class="workspace" id="workspace">
+    <!-- LEFT OUTLINER: CENSUS + UDIM TILES + ISLAND TREE + QUICK UNWRAP PRESETS -->
+    <aside class="left-panel" id="left-panel">
+      <div class="outliner-heading">
+        <div>
+          <h1>UV Outliner</h1>
+          <span class="outliner-subtitle">Islands, UDIM tiles &amp; priority groups</span>
+        </div>
+        <div class="outliner-heading-actions">
+          <button class="icon-button" id="compact-outliner" type="button" title="Compact Outliner"></button>
+          <button class="icon-button" id="add-udim-quick" type="button" title="Add UDIM Tile"></button>
+        </div>
+      </div>
+
+      <div class="scene-statistics">
+        <div class="scene-stat">
+          <div class="stat-symbol enabled-symbol" id="stat-islands-icon"></div>
+          <span class="stat-label">UV Islands</span>
+          <strong id="stat-islands-count">0</strong>
+        </div>
+        <div class="scene-stat">
+          <div class="stat-symbol warm-symbol" id="stat-udim-icon"></div>
+          <span class="stat-label">UDIM Tiles</span>
+          <strong id="stat-udim-count">1</strong>
+        </div>
+      </div>
+
+      <label class="search">
+        <span class="search-icon" id="search-icon"></span>
+        <input id="outliner-search" type="search" placeholder="Filter islands, materials, UDIMs...">
+        <kbd>Ctrl+F</kbd>
+      </label>
+
+      <div class="scene-filters" id="outliner-filters">
+        <button class="active" data-filter="all" type="button">All</button>
+        <button data-filter="selected" type="button">Selected</button>
+        <button data-filter="grouped" type="button">Prioritized</button>
+        <button data-filter="issues" type="button">Issues</button>
+      </div>
+
+      <!-- UDIM Strip -->
+      <div class="udim-strip-header">
+        <span>UDIM ATLAS TILES</span>
+        <button class="text-pill-btn" id="frame-udims-btn" type="button">Frame All</button>
+      </div>
+      <div class="udim-chip-strip" id="udim-chip-strip"></div>
+
+      <!-- Scrollable Island Outliner -->
+      <div class="panel-scroll outliner-scroll" id="outliner-scroll">
+        <div class="panel-content" id="outliner-list"></div>
+      </div>
+
+      <!-- Embedded Quick Unwrap & Projection Presets -->
+      <div class="library" id="quick-unwrap-drawer">
+        <div class="panel-heading">
+          <span>Quick Unwrap &amp; Projections</span>
+          <button class="text-pill-btn" id="btn-smart-project-quick" type="button">Smart UV</button>
+        </div>
+        <div class="preset-list" id="quick-unwrap-list"></div>
+      </div>
+
+      <div class="left-footer">
+        <span class="footer-dot"></span>
+        <span id="left-footer-text">Drag-select islands · Shift+Click multi-select</span>
+      </div>
+    </aside>
+
+    <!-- CENTER STAGE: BLENDER TOOLBAR + 2D UV CANVAS + 3D MESH VIEWPORT + OPERATOR STRIP -->
+    <section class="center-panel" id="center-panel">
+      <div class="viewport-bar">
+        <div class="sel-mode-group" id="sel-mode-pills" title="Blender Selection Modes (Keys 1 / 2 / 3 / 4)">
+          <button type="button" data-mode="vertex" title="Vertex Mode (1)">1 Vert</button>
+          <button type="button" data-mode="edge" title="Edge Mode (2)">2 Edge</button>
+          <button type="button" data-mode="face" title="Face Mode (3)">3 Face</button>
+          <button type="button" class="active" data-mode="island" title="Island Mode (4)">4 Island</button>
+        </div>
+        <button class="pill-btn" id="select-menu-btn" type="button" title="Blender Select Menu — Loops, Select Similar (Shift+G), Select Random, Checker">Select ▾</button>
+        <span class="bar-divider"></span>
+        <button class="pill-btn active" id="sync-sel-btn" type="button" title="UV Sync Selection (2D ↔ 3D)">Sync 2D↔3D</button>
+        <div class="select-pill-wrap vp-compact-select">
+          <select id="pivot-select" title="Pivot Point (.)">
+            <option value="median">Pivot: Median</option>
+            <option value="bounds">Pivot: Bounding Box</option>
+            <option value="cursor">Pivot: 2D Cursor</option>
+            <option value="individual">Pivot: Individual</option>
+          </select>
+          <span class="pill-caret-divider"><svg class="glyph chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
+        </div>
+        <div class="select-pill-wrap vp-compact-select">
+          <select id="snap-select" title="Snap Mode (Shift+Tab)">
+            <option value="off">Snap: Off</option>
+            <option value="grid">Snap: Grid</option>
+            <option value="pixel">Snap: Pixel</option>
+            <option value="vertex">Snap: Vertex</option>
+          </select>
+          <span class="pill-caret-divider"><svg class="glyph chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
+        </div>
+        <button class="pill-btn" id="prop-edit-btn" type="button" title="Proportional Editing (O)">Prop (O)</button>
+        <span class="bar-divider"></span>
+        <div class="select-pill-wrap vp-compact-select">
+          <select id="uv-lens-select" title="2D UV Overlay Lens">
+            <option value="importance">Lens: Importance Zones</option>
+            <option value="clean">Lens: Clean Wireframe</option>
+            <option value="texel">Lens: Texel Density</option>
+            <option value="stretch-angle">Lens: Angle Stretch</option>
+            <option value="stretch-area">Lens: Area Stretch</option>
+            <option value="overlap">Lens: Overlaps &amp; Flipped</option>
+          </select>
+          <span class="pill-caret-divider"><svg class="glyph chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
+        </div>
+        <div class="select-pill-wrap vp-compact-select">
+          <select id="mesh-shade-select" title="3D Mesh Shading">
+            <option value="checker">3D: UV Checker</option>
+            <option value="flat">3D: Flat Shaded</option>
+            <option value="matcap">3D: Matcap Clay</option>
+            <option value="matcap-satin">3D: Matcap Satin</option>
+            <option value="importance">3D: Importance</option>
+            <option value="texel">3D: Texel Density</option>
+            <option value="stretch">3D: UV Stretch</option>
+          </select>
+          <span class="pill-caret-divider"><svg class="glyph chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
+        </div>
+        <div class="viewport-bar-end">
+          <button class="pill-btn active" id="toggle-checker-btn" type="button">Checker</button>
+          <button class="pill-btn active" id="toggle-seams-btn" type="button">Seams</button>
+          <button class="pill-btn active" id="toggle-boundaries-btn" type="button" title="Highlight Open &amp; Island Boundary Edges">Bounds</button>
+          <button class="icon-button" id="maximize-stage-btn" type="button" title="Maximize Stage"></button>
+        </div>
+      </div>
+
+      <div class="stage-split mode-mesh" id="stage-split">
+        <!-- 2D UV & UDIM STAGE -->
+        <div class="uv-stage" id="uv-stage">
+          <canvas id="uv-canvas-2d"></canvas>
+
+          <div class="viewport-caption">
+            <span class="live-pill"><i></i><span>2D UV ATLAS</span></span>
+            <span id="viewport-udim-pill" class="udim-caption-pill">UDIM 1001 · 4K</span>
+          </div>
+
+          <!-- Floating Blender-style Left Tool Rail -->
+          <div class="viewport-tools" id="uv-tool-rail">
+            <button class="icon-button active" data-tool="select" type="button" title="Tweak Select (W / Click)"></button>
+            <button class="icon-button" data-tool="move" type="button" title="Grab / Move (G)"></button>
+            <button class="icon-button" data-tool="rotate" type="button" title="Rotate (R)"></button>
+            <button class="icon-button" data-tool="scale" type="button" title="Scale (S)"></button>
+            <button class="icon-button" data-tool="box" type="button" title="Box Select (B)"></button>
+            <button class="icon-button" data-tool="circle" type="button" title="Paint Select / Circle Brush (C)"></button>
+            <button class="icon-button" data-tool="seam" type="button" title="Seam Brush — Click edge to toggle seam · Alt+Click loop (K)"></button>
+            <button class="icon-button" data-tool="cursor" type="button" title="Place 2D Cursor (Shift+RMB)"></button>
+          </div>
+
+          <div class="viewport-right-hud">
+            <span class="hud-pill" id="hud-cursor">Cursor <b>0.50, 0.50</b></span>
+            <span class="hud-pill" id="hud-selection">Sel <b>0</b></span>
+            <span class="hud-pill" id="hud-stretch">Stretch <b>0.0%</b></span>
+          </div>
+
+          <!-- Active Modal Transform HUD Banner (G / R / S) -->
+          <div class="modal-transform-banner" id="modal-transform-banner" hidden></div>
+
+          <!-- Importance Legend Strip bottom-left -->
+          <div class="uv-legend-strip" id="uv-legend-strip"></div>
+
+          <!-- Subtle Hotkey Bar bottom-center -->
+          <div class="viewport-help">
+            <span>Alt Loop · ^Alt Ring</span><i>·</i>
+            <span>⇧G Similar</span><i>·</i>
+            <span>L Island</span><i>·</i>
+            <span>K Seam Brush</span><i>·</i>
+            <span>G / R / S</span><i>·</i>
+            <span>U Unwrap</span>
+          </div>
+        </div>
+
+        <!-- RESIZABLE SPLIT DIVIDER -->
+        <div class="split-divider" id="split-divider" title="Drag to resize 2D UV / 3D Mesh viewports"></div>
+
+        <!-- 3D MESH VIEWPORT -->
+        <div class="mesh-stage" id="mesh-stage">
+          <div class="viewport-canvas-mount" id="mesh-viewport-mount"></div>
+          <div class="viewport-caption">
+            <span class="live-pill mesh-pill"><i></i><span>3D MESH</span></span>
+            <span id="mesh-object-pill" class="udim-caption-pill">Aero Coupe GT</span>
+          </div>
+          <div class="mesh-camera-bar">
+            <button class="pill-btn active" data-shade3d="checker" type="button" title="UV Checker 3D Shading">Check</button>
+            <button class="pill-btn" data-shade3d="flat" type="button" title="Flat Faceted 3D Shading">Flat</button>
+            <button class="pill-btn" data-shade3d="matcap" type="button" title="Matcap Studio Clay 3D Shading">Matcap</button>
+            <span class="bar-divider"></span>
+            <button class="pill-btn" data-cam="Persp" type="button">Persp</button>
+            <button class="pill-btn" data-cam="Front" type="button">Front</button>
+            <button class="pill-btn" data-cam="Side" type="button">Side</button>
+            <button class="pill-btn" data-cam="Top" type="button">Top</button>
+            <button class="pill-btn active" id="toggle-wire3d-btn" type="button">Wire</button>
+          </div>
+          <div class="mesh-hint-pill" id="mesh-hint-pill">Edge Mode: Click Edge · Alt Loop · Ctrl+Alt Ring · Ctrl Path · K Seam Brush</div>
+        </div>
+      </div>
+
+      <!-- BLENDER QUICK OPERATOR DOCK -->
+      <div class="operator-dock">
+        <div class="operator-group">
+          <button class="burst-button accent" id="op-unwrap" type="button" title="LSCM Conformal Unwrap (U)">Unwrap <kbd>U</kbd></button>
+          <button class="burst-button highlight-cream" id="op-pack-importance" type="button" title="Pack with Importance Budgets (Shift+P)">Pack Budgets <kbd>⇧P</kbd></button>
+          <button class="burst-button" id="op-relax" type="button" title="Minimize Stretch / Relax (Ctrl+V)">Relax <kbd>^V</kbd></button>
+          <button class="burst-button" id="op-avg-scale" type="button" title="Average Island Scale (Ctrl+A)">Avg Scale <kbd>^A</kbd></button>
+        </div>
+        <span class="bar-divider"></span>
+        <div class="operator-group">
+          <button class="burst-button" id="op-pin" type="button" title="Pin Selected UVs (P)">Pin <kbd>P</kbd></button>
+          <button class="burst-button" id="op-unpin" type="button" title="Unpin Selected UVs (Alt+P)">Unpin</button>
+          <button class="burst-button" id="op-seam" type="button" title="Mark Seam on Selected Edges / Boundaries">Mark Seam</button>
+          <button class="burst-button" id="op-clear-seam" type="button" title="Clear Seam on Selected Edges">Clear Seam</button>
+          <button class="burst-button" id="op-edge-menu" type="button" title="Edges &amp; Seams Menu (Ctrl+E)">Edges &amp; Seams <kbd>^E</kbd></button>
+          <button class="burst-button" id="op-stitch" type="button" title="Stitch Matching Boundary UVs (V)">Stitch <kbd>V</kbd></button>
+          <button class="burst-button" id="op-merge" type="button" title="Merge / Weld Selected UVs (M)">Weld <kbd>M</kbd></button>
+          <button class="burst-button" id="op-split" type="button" title="Split Selected Faces into Island (Y)">Split <kbd>Y</kbd></button>
+        </div>
+        <button class="icon-button log-toggle-btn" id="toggle-log-btn" type="button" title="Toggle Operator Console"></button>
+      </div>
+
+      <!-- COLLAPSIBLE OPERATOR LOG DRAWER -->
+      <div class="log-drawer" id="log-drawer" hidden>
+        <div class="log-head">
+          <span class="log-title">UV Studio Operator Log</span>
+          <button class="text-pill-btn" id="clear-log-btn" type="button">Clear</button>
+        </div>
+        <div class="panel-scroll log-scroll" id="log-scroll"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT INSPECTOR PANEL (SUN + FLUID DESIGN) -->
+    <aside class="inspector-panel" id="inspector-panel">
+      <div class="panel-heading inspector-top-heading">
+        <span class="inspector-crumb" id="inspector-crumb">UV Studio / Importance Pack</span>
+        <button class="reset-pill" id="reset-doc-btn" type="button">Reset Asset</button>
+      </div>
+
+      <div class="object-heading">
+        <div class="object-symbol" id="inspector-object-icon"></div>
+        <div class="object-heading-copy">
+          <input id="inspector-object-name" type="text" value="Aero Coupe GT" aria-label="Asset Name">
+          <span id="inspector-object-sub">30 ISLANDS · 2 UDIM TILES · HERO 70% / TRIM 10% / REST 20%</span>
+        </div>
+      </div>
+
+      <div class="inspector-tabs" id="inspector-tabs">
+        <button class="active" data-tab="packing" type="button">Packing</button>
+        <button data-tab="unwrap" type="button">Unwrap &amp; Edit</button>
+        <button data-tab="udim" type="button">UDIMs</button>
+        <button data-tab="check" type="button">Diagnostics</button>
+      </div>
+
+      <div class="panel-scroll inspector-scroll" id="inspector-scroll">
+        <div class="panel-content" id="inspector-body"></div>
+      </div>
+
+      <div class="inspector-footer">
+        <span id="inspector-footer-left">Conformal LSCM + Exact Concave Packer</span>
+        <span id="inspector-footer-right" class="tabular">UDIM 1001 · 4096 px</span>
+      </div>
+    </aside>
+  </main>
+
+  <!-- STATUS BAR -->
+  <footer class="status-bar">
+    <span class="status-ready"><i></i><span id="status-op">Ready</span></span>
+    <span class="status-divider"></span>
+    <span id="status-counts">0 verts · 0 faces · 0 islands</span>
+    <span class="status-divider"></span>
+    <span id="status-density">Avg Texel: 0.0 px/cm</span>
+    <span class="status-right">
+      <span class="gpu-dot"></span>
+      <span id="status-pack-time">Pack: — ms</span>
+      <span class="version">Frontier UV Studio · Experimental Remastered</span>
+    </span>
+  </footer>
+</div>
+
+<!-- HIDDEN FILE INPUTS -->
+<input type="file" id="obj-file-input" accept=".obj,text/plain" hidden>
+<input type="file" id="tex-file-input" accept="image/*" hidden>
+
+<!-- POPOVER: NEW ASSET / SAMPLE PICKER -->
+<div class="popover add-menu" id="spawn-menu" hidden>
+  <div class="popover-label">LOAD SAMPLE UV WORKSPACE</div>
+  <div id="spawn-menu-items"></div>
+  <div class="menu-divider"></div>
+  <button id="spawn-import-obj" type="button">
+    <span>Import Wavefront .OBJ…</span>
+    <small>Load external quad/triangle mesh into a new tab</small>
+  </button>
+</div>
+
+<!-- POPOVER: BLENDER SELECT MENU (ALL / LOOPS / SIMILAR / RANDOM) -->
+<div class="popover select-menu" id="select-menu" hidden>
+  <div class="popover-label">STANDARD SELECTION</div>
+  <button data-sel-op="all" type="button"><span>Select All</span><kbd>A</kbd></button>
+  <button data-sel-op="none" type="button"><span>Deselect All</span><kbd>Alt+A</kbd></button>
+  <button data-sel-op="invert" type="button"><span>Invert Selection</span><kbd>Ctrl+I</kbd></button>
+  <button data-sel-op="grow" type="button"><span>Select More / Grow</span><kbd>Ctrl++</kbd></button>
+  <button data-sel-op="shrink" type="button"><span>Select Less / Shrink</span><kbd>Ctrl+-</kbd></button>
+  <div class="menu-divider"></div>
+  <div class="popover-label">LOOPS, REGIONS &amp; LINKED</div>
+  <button data-sel-op="loop" type="button"><span>Select Edge / Face Loop</span><kbd>Alt+Click</kbd></button>
+  <button data-sel-op="ring" type="button"><span>Select Edge Ring</span><kbd>^Alt+Click</kbd></button>
+  <button data-sel-op="boundary-loop" type="button"><span>Select Boundary Loop</span><kbd>Region Rim</kbd></button>
+  <button data-sel-op="loop-inner-region" type="button"><span>Select Loop Inner-Region</span><kbd>Inside Loop</kbd></button>
+  <button data-sel-op="same-island" type="button"><span>Select Linked / Same UV Island</span><kbd>L / DblClick</kbd></button>
+  <button data-sel-op="linked-flat" type="button"><span>Select Linked Flat Faces</span><kbd>^⇧F</kbd></button>
+  <div class="menu-divider"></div>
+  <div class="popover-label">SELECT SIMILAR (SHIFT+G)</div>
+  <button data-sel-op="sim:same_island" type="button"><span>Same UV Island</span><kbd>Island</kbd></button>
+  <button data-sel-op="sim:perimeter_uv" type="button"><span>Similar UV Perimeter</span><kbd>⇧G</kbd></button>
+  <button data-sel-op="sim:perimeter_3d" type="button"><span>Similar 3D Perimeter</span><kbd>⇧G</kbd></button>
+  <button data-sel-op="sim:area_3d" type="button"><span>Similar 3D Area</span><kbd>⇧G</kbd></button>
+  <button data-sel-op="sim:area_uv" type="button"><span>Similar UV Area</span><kbd>⇧G</kbd></button>
+  <button data-sel-op="sim:normal" type="button"><span>Similar Normal</span><kbd>⇧G</kbd></button>
+  <button data-sel-op="sim:coplanar" type="button"><span>Coplanar Faces</span><kbd>⇧G</kbd></button>
+  <button data-sel-op="sim:same_part" type="button"><span>Same Surface Part</span><kbd>Material</kbd></button>
+  <button data-sel-op="open-similar" type="button"><span>All Select Similar Modes…</span><kbd>Shift+G</kbd></button>
+  <div class="menu-divider"></div>
+  <div class="popover-label">RANDOM, CHECKER &amp; TRAITS</div>
+  <div class="sel-inline-controls">
+    <div class="sel-inline-row">
+      <span>Random Ratio</span>
+      <input id="sel-random-ratio-input" type="number" min="1" max="99" step="5" value="50">
+      <button id="sel-random-apply-btn" type="button" class="sel-apply-chip">Run</button>
+    </div>
+    <div class="sel-rand-btns">
+      <button data-sel-op="random-10" type="button">10%</button>
+      <button data-sel-op="random-25" type="button">25%</button>
+      <button data-sel-op="random-50" type="button">50%</button>
+      <button data-sel-op="random-75" type="button">75%</button>
+      <button data-sel-op="random-desel" type="button">Deselect 50%</button>
+    </div>
+  </div>
+  <button data-sel-op="checker" type="button"><span>Checker Deselect (1 of 2)</span><kbd>Pattern</kbd></button>
+  <button data-sel-op="pinned" type="button"><span>Select Pinned UVs</span><kbd>Pins</kbd></button>
+</div>
+
+<!-- POPOVER: BLENDER SELECT SIMILAR (Shift+G) -->
+<div class="popover select-similar-menu" id="select-similar-menu" hidden>
+  <div class="popover-label" id="select-similar-heading">SELECT SIMILAR (SHIFT+G)</div>
+  <div id="select-similar-items"></div>
+  <div class="menu-divider"></div>
+  <div class="sel-inline-controls">
+    <div class="sel-inline-row">
+      <span>Tolerance %</span>
+      <input id="sim-tol-input" type="number" min="1" max="100" step="1" value="14">
+      <span>Angle °</span>
+      <input id="sim-angle-input" type="number" min="1" max="90" step="1" value="15">
+    </div>
+  </div>
+</div>
+
+<!-- POPOVER: UNIFIED RIGHT-CLICK CONTEXT MENU (TOOLS + SELECTION + OPERATIONS) -->
+<div class="popover uv-context-menu" id="uv-context-menu" hidden>
+  <div class="ctx-header-row">
+    <span class="popover-label">SELECTION TOOLS</span>
+    <span class="ctx-sel-badge" id="ctx-sel-badge">0 selected</span>
+  </div>
+  <div class="ctx-grid-2">
+    <button class="ctx-chip" data-ctx-tool="box" type="button"><span>Box Select</span><kbd>B</kbd></button>
+    <button class="ctx-chip" data-ctx-face-select="true" type="button"><span>Face Select</span><kbd>3</kbd></button>
+    <button class="ctx-chip" data-ctx-tool="circle" type="button"><span>Paint Select</span><kbd>C</kbd></button>
+    <button class="ctx-chip" data-ctx-tool="select" type="button"><span>Click / Tweak</span><kbd>W</kbd></button>
+  </div>
+  <div class="ctx-mode-row">
+    <button class="ctx-mode-btn" data-ctx-mode="vertex" type="button">1 Vert</button>
+    <button class="ctx-mode-btn" data-ctx-mode="edge" type="button">2 Edge</button>
+    <button class="ctx-mode-btn" data-ctx-mode="face" type="button">3 Face</button>
+    <button class="ctx-mode-btn" data-ctx-mode="island" type="button">4 Island</button>
+  </div>
+  <div class="ctx-brush-row" id="ctx-brush-row">
+    <span>Paint Radius</span>
+    <input id="ctx-paint-radius-slider" type="range" min="14" max="140" step="2" value="36">
+    <strong id="ctx-paint-radius-val">36px</strong>
+  </div>
+  <div class="menu-divider"></div>
+  <div class="popover-label">SELECTION OPTIONS</div>
+  <div class="ctx-grid-3">
+    <button class="ctx-chip" data-ctx-sel="all" type="button">All <kbd>A</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="none" type="button">None <kbd>⌥A</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="invert" type="button">Invert <kbd>^I</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="grow" type="button">Grow <kbd>^+</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="shrink" type="button">Shrink <kbd>^-</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="same-island" type="button">Island <kbd>L</kbd></button>
+  </div>
+  <div class="ctx-grid-2">
+    <button class="ctx-chip" data-ctx-sel="loop" type="button"><span>Face / Edge Loop</span><kbd>⌥Click</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="ring" type="button"><span>Edge Ring</span><kbd>^⌥</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="linked-flat" type="button"><span>Linked Flat Faces</span><kbd>^⇧F</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="loop-inner-region" type="button"><span>Inner Region</span><kbd>Loop</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="boundary-loop" type="button"><span>Boundary Loop</span><kbd>Rim</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="open-similar" type="button"><span>Select Similar…</span><kbd>⇧G</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="random-50" type="button"><span>Random 50%</span><kbd>Rand</kbd></button>
+    <button class="ctx-chip" data-ctx-sel="checker" type="button"><span>Checker Desel</span><kbd>1/2</kbd></button>
+  </div>
+  <div class="menu-divider"></div>
+  <div class="popover-label">OPERATIONS ON SELECTION</div>
+  <div class="ctx-grid-2">
+    <button class="ctx-chip accent" data-ctx-op="unwrap" type="button"><span>Unwrap (LSCM)</span><kbd>U</kbd></button>
+    <button class="ctx-chip accent" data-ctx-op="pack" type="button"><span>Pack Budgets</span><kbd>⇧P</kbd></button>
+    <button class="ctx-chip" data-ctx-op="smart" type="button"><span>Smart UV</span><kbd>Auto</kbd></button>
+    <button class="ctx-chip" data-ctx-op="relax" type="button"><span>Relax Stretch</span><kbd>^V</kbd></button>
+    <button class="ctx-chip" data-ctx-op="split" type="button"><span>Split Island</span><kbd>Y</kbd></button>
+    <button class="ctx-chip" data-ctx-op="stitch" type="button"><span>Stitch</span><kbd>V</kbd></button>
+    <button class="ctx-chip" data-ctx-op="weld" type="button"><span>Weld / Merge</span><kbd>M</kbd></button>
+    <button class="ctx-chip" data-ctx-op="avg-scale" type="button"><span>Average Scale</span><kbd>^A</kbd></button>
+    <button class="ctx-chip" data-ctx-op="pin" type="button"><span>Pin UVs</span><kbd>P</kbd></button>
+    <button class="ctx-chip" data-ctx-op="unpin" type="button"><span>Unpin UVs</span><kbd>⌥P</kbd></button>
+    <button class="ctx-chip" data-ctx-op="mirror-u" type="button"><span>Mirror X (U)</span><kbd>Flip</kbd></button>
+    <button class="ctx-chip" data-ctx-op="rotate-90" type="button"><span>Rotate 90°</span><kbd>90°</kbd></button>
+  </div>
+  <div class="menu-divider"></div>
+  <div class="popover-label">EDGES &amp; SEAMS</div>
+  <div class="ctx-grid-2">
+    <button class="ctx-chip warm" data-ctx-edge="mark-seam" type="button"><span>Mark Seam</span><kbd>Cut</kbd></button>
+    <button class="ctx-chip" data-ctx-edge="clear-seam" type="button"><span>Clear Seam</span><kbd>Clr</kbd></button>
+    <button class="ctx-chip" data-ctx-edge="clear-seam-weld" type="button"><span>Clear &amp; Weld</span><kbd>Heal</kbd></button>
+    <button class="ctx-chip" data-ctx-edge="seams-from-islands" type="button"><span>Seams ← Islands</span><kbd>Rim</kbd></button>
+  </div>
+  <button class="ctx-full-btn" data-ctx-op="open-edge-menu" type="button"><span>Full Edges, Boundaries &amp; Seams Menu…</span><kbd>Ctrl+E</kbd></button>
+</div>
+
+<!-- POPOVER: BLENDER EDGES, BOUNDARIES & SEAMS MENU (Ctrl+E) -->
+<div class="popover edge-seam-menu" id="edge-seam-menu" hidden>
+  <div class="popover-label">SELECT EDGES &amp; BOUNDARIES</div>
+  <button data-edge-op="select-loop" type="button"><span>Select Edge Loop</span><kbd>Alt+Click</kbd></button>
+  <button data-edge-op="select-ring" type="button"><span>Select Edge Ring</span><kbd>^Alt+Click</kbd></button>
+  <button data-edge-op="select-boundary-auto" type="button"><span>Select Boundary Loop</span><kbd>Rim / Island</kbd></button>
+  <button data-edge-op="select-boundary-mesh" type="button"><span>Select Open Mesh Boundaries</span><kbd>1-Face</kbd></button>
+  <button data-edge-op="select-sharp" type="button"><span>Select Sharp Edges</span><kbd>Dihedral °</kbd></button>
+  <button data-edge-op="select-seams" type="button"><span>Select All Seam Edges</span><kbd>Red Cuts</kbd></button>
+  <button data-edge-op="grow-sel" type="button"><span>Grow Selection</span><kbd>Ctrl++</kbd></button>
+  <button data-edge-op="shrink-sel" type="button"><span>Shrink Selection</span><kbd>Ctrl+-</kbd></button>
+  <div class="menu-divider"></div>
+  <div class="popover-label">MARK &amp; CLEAR SEAMS</div>
+  <button data-edge-op="mark-seam" type="button"><span>Mark Seam</span><kbd>Cut UVs</kbd></button>
+  <button data-edge-op="clear-seam" type="button"><span>Clear Seam</span><kbd>Unmark</kbd></button>
+  <button data-edge-op="clear-seam-weld" type="button"><span>Clear Seam &amp; Weld</span><kbd>Heal UVs</kbd></button>
+  <button data-edge-op="toggle-seam" type="button"><span>Toggle Seam</span><kbd>Flip</kbd></button>
+  <button data-edge-op="mark-boundary-seam" type="button"><span>Mark Boundaries as Seams</span><kbd>Rim Cut</kbd></button>
+  <button data-edge-op="mark-sharp-seam" type="button"><span>Mark Sharp Edges as Seams</span><kbd>Hard Edge</kbd></button>
+  <button data-edge-op="seams-from-islands" type="button"><span>Seams from Islands</span><kbd>Island Rim</kbd></button>
+  <button data-edge-op="clear-all-seams" type="button"><span>Clear All Seams</span><kbd>Reset</kbd></button>
+</div>
+
+<!-- BLENDER HOTKEY REFERENCE DIALOG -->
+<dialog id="help-dialog">
+  <div class="dialog-heading">
+    <h2>UV Studio Hotkeys (Blender Compatible)</h2>
+    <button class="icon-button" id="help-close-btn" type="button">×</button>
+  </div>
+  <p class="dialog-sub">Hover over the 2D UV Canvas or 3D Mesh Viewport and use standard Blender shortcuts seamlessly.</p>
+  <div class="shortcut-list">
+    <span>Selection Mode (Vert / Edge / Face / Island) <kbd>1 / 2 / 3 / 4</kbd></span>
+    <span>Edge / Face Loop · Ring · Shortest Path <kbd>Alt / ^Alt / ^Click</kbd></span>
+    <span>Select Similar Menu (Island, Perim, Area…) <kbd>Shift+G</kbd></span>
+    <span>Select Linked Island / Flat Faces <kbd>L / Ctrl+Shift+F</kbd></span>
+    <span>Seam Brush Tool (Single / Alt+Click Loop) <kbd>K</kbd></span>
+    <span>Cycle 3D Shading (Checker / Flat / Matcap) <kbd>Z</kbd></span>
+    <span>Edges, Boundaries &amp; Seams Menu <kbd>Ctrl+E / RMB</kbd></span>
+    <span>Select All / Deselect / Invert <kbd>A / Alt+A / Ctrl+I</kbd></span>
+    <span>Grow / Shrink / Checker / Random <kbd>^++ / ^+- / Select▾</kbd></span>
+    <span>Box Select / Circle Select <kbd>B / C</kbd></span>
+    <span>Move / Rotate / Scale (Modal) <kbd>G / R / S</kbd></span>
+    <span>Axis Lock during G/R/S <kbd>X or U / Y or V</kbd></span>
+    <span>Proportional Editing + Radius <kbd>O / Wheel</kbd></span>
+    <span>Mirror Horizontal / Vertical <kbd>Ctrl+M then X/Y</kbd></span>
+    <span>LSCM Unwrap / Pack Importance <kbd>U / Shift+P</kbd></span>
+    <span>Minimize Stretch / Average Scale <kbd>Ctrl+V / Ctrl+A</kbd></span>
+    <span>Pin / Unpin Vertices <kbd>P / Alt+P</kbd></span>
+    <span>Stitch / Merge / Split <kbd>V / M / Y</kbd></span>
+    <span>Snap Mode / Frame Selected <kbd>Shift+Tab / Home</kbd></span>
+    <span>Undo / Redo <kbd>Ctrl+Z / Ctrl+Shift+Z</kbd></span>
+  </div>
+  <div class="dialog-actions">
+    <button class="button" id="help-ok-btn" type="button">Close</button>
+  </div>
+</dialog>
+
+<!-- EXPORT DIALOG -->
+<dialog id="export-dialog">
+  <div class="dialog-heading">
+    <h2>Export Edited UVs &amp; Importance Layout</h2>
+    <button class="icon-button" id="export-close-btn" type="button">×</button>
+  </div>
+  <p class="dialog-sub">Download Wavefront .OBJ with updated multi-UDIM UVs, SVG layout wireframe, or JSON importance budget preset.</p>
+  <pre class="export-code" id="export-preview"></pre>
+  <div class="dialog-actions">
+    <button class="button" id="download-svg-btn" type="button">Download UV SVG</button>
+    <button class="button" id="download-json-btn" type="button">Download Budgets JSON</button>
+    <button class="button export-button" id="download-obj-btn" type="button">Download .OBJ</button>
+  </div>
+</dialog>
+
+<script type="module" src="UVEditor.js"></script>
+</body>
+</html>

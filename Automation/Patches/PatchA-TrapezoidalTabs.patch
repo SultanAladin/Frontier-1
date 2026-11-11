@@ -1,0 +1,112 @@
+diff --git a/imgui.cpp b/imgui.cpp
+index 98db04810..d80d73391 100644
+--- a/imgui.cpp
++++ b/imgui.cpp
+@@ -1572,6 +1572,7 @@ ImGuiStyle::ImGuiStyle()
+     ImageBorderSize             = 0.0f;             // Thickness of border around Image() calls.
+     TabRounding                 = 5.0f;             // Radius of upper corners of a tab. Set to 0.0f to have rectangular tabs.
+     TabBorderSize               = 0.0f;             // Thickness of border around tabs.
++    TabSlant                    = 0.0f;             // [FRONTIER PATCH A] Tab corner slant. Zero keeps stock ImGui; Frontier seats 14.0f to match DockWorkspace.html.
+     TabMinWidthBase             = 1.0f;             // Minimum tab width, to make tabs larger than their contents. TabBar buttons are not affected.
+     TabMinWidthShrink           = 80.0f;            // Minimum tab width after shrinking, when using ImGuiTabBarFlags_FittingPolicyMixed policy. FLT_MAX: never shrink, will behave like ImGuiTabBarFlags_FittingPolicyScroll.
+     TabCloseButtonMinWidthSelected   = -1.0f;       // -1: always visible. 0.0f: visible when hovered. >0.0f: visible when hovered if minimum width.
+@@ -1663,6 +1664,7 @@ void ImGuiStyle::ScaleAllSizes(float scale_factor)
+     ImageBorderSize = ImTrunc(ImageBorderSize * scale_factor);
+     TabRounding = ImTrunc(TabRounding * scale_factor);
+     TabBorderSize = ImTrunc(TabBorderSize * scale_factor);
++    TabSlant = ImTrunc(TabSlant * scale_factor);
+     TabMinWidthBase = ImTrunc(TabMinWidthBase * scale_factor);
+     TabMinWidthShrink = ImTrunc(TabMinWidthShrink * scale_factor);
+     TabCloseButtonMinWidthSelected = (TabCloseButtonMinWidthSelected > 0.0f && TabCloseButtonMinWidthSelected != FLT_MAX) ? ImTrunc(TabCloseButtonMinWidthSelected * scale_factor) : TabCloseButtonMinWidthSelected;
+diff --git a/imgui.h b/imgui.h
+index add91e829..53565e857 100644
+--- a/imgui.h
++++ b/imgui.h
+@@ -2431,6 +2431,7 @@ struct ImGuiStyle
+     float       ImageBorderSize;            // Thickness of border around Image() calls.
+     float       TabRounding;                // Radius of upper corners of a tab. Set to 0.0f to have rectangular tabs.
+     float       TabBorderSize;              // Thickness of border around tabs.
++    float       TabSlant;                   // [FRONTIER PATCH A] Horizontal inset of a tab's two upper corners, in display pixels. 0.0f restores ImGui's rectangular tab.
+     float       TabMinWidthBase;            // Minimum tab width, to make tabs larger than their contents. TabBar buttons are not affected.
+     float       TabMinWidthShrink;          // Minimum tab width after shrinking, when using ImGuiTabBarFlags_FittingPolicyMixed policy.
+     float       TabCloseButtonMinWidthSelected;     // -1: always visible. 0.0f: visible when hovered. >0.0f: visible when hovered if minimum width. FLT_MAX: never shrink, will behave like ImGuiTabBarFlags_FittingPolicyScroll.
+diff --git a/imgui_widgets.cpp b/imgui_widgets.cpp
+index 17968a54d..f93f37ca6 100644
+--- a/imgui_widgets.cpp
++++ b/imgui_widgets.cpp
+@@ -11039,6 +11039,54 @@ ImVec2 ImGui::TabItemCalcSize(ImGuiWindow* window)
+     return TabItemCalcSize(window->Name, window->HasCloseButton || (window->Flags & ImGuiWindowFlags_UnsavedDocument));
+ }
+ 
++// [FRONTIER PATCH A] Trapezoidal tab silhouette, transcribed from References/DockWorkspace.html.
++//   tabPath(w,h): slant = min(14, w * 0.16); the outline is [0,h] [slant,0] [w-slant,0] [w,h],
++//   with the two upper corners rounded at radius 5 and the two lower corners left square.
++//   The sheet rounds a corner by insetting along both incident edges and joining the two inset
++//   points with a quadratic through the corner itself -- its roundedPath() -- which is exactly
++//   PathBezierQuadraticCurveTo, so the curve is the browser's and not an approximation of it.
++//   The slant is read from Style.TabSlant in display pixels so ScaleAllSizes carries it; a slant
++//   fixed at 14 would be half as steep on a 2x display.
++//   Hit-testing is untouched: ItemAdd() and every drag path use the rectangular bb, precisely as
++//   the sheet's SVG is pointer-events:none over a rectangular <div>.
++static void FrontierTabOutline(ImDrawList* draw_list, const ImRect& bb, float slant, float rounding, float y1, float y2, float inset)
++{
++    const ImVec2 corner[4] = {
++        ImVec2(bb.Min.x + inset,         y2),      // lower leading, square
++        ImVec2(bb.Min.x + slant + inset, y1),      // upper leading, rounded
++        ImVec2(bb.Max.x - slant - inset, y1),      // upper trailing, rounded
++        ImVec2(bb.Max.x - inset,         y2),      // lower trailing, square
++    };
++    const float radius[4] = { 0.0f, rounding, rounding, 0.0f };
++
++    for (int n = 0; n < 4; n++)
++    {
++        const ImVec2& p0 = corner[(n + 3) & 3];
++        const ImVec2& p  = corner[n];
++        const ImVec2& p1 = corner[(n + 1) & 3];
++
++        const ImVec2 d0 = ImVec2(p0.x - p.x, p0.y - p.y);
++        const ImVec2 d1 = ImVec2(p1.x - p.x, p1.y - p.y);
++        const float  l0 = ImSqrt(d0.x * d0.x + d0.y * d0.y);
++        const float  l1 = ImSqrt(d1.x * d1.x + d1.y * d1.y);
++
++        // The sheet clamps the radius to half of each incident edge, so a narrow tab degrades to a
++        // plain corner instead of folding its own outline inside out.
++        float r = radius[n];
++        if (l0 > 0.0f) r = ImMin(r, l0 * 0.5f);
++        if (l1 > 0.0f) r = ImMin(r, l1 * 0.5f);
++
++        if (r <= 0.1f || l0 <= 0.0f || l1 <= 0.0f)
++        {
++            draw_list->PathLineTo(p);
++            continue;
++        }
++
++        draw_list->PathLineTo(ImVec2(p.x + d0.x / l0 * r, p.y + d0.y / l0 * r));
++        draw_list->PathBezierQuadraticCurveTo(p, ImVec2(p.x + d1.x / l1 * r, p.y + d1.y / l1 * r));
++    }
++}
++
+ void ImGui::TabItemBackground(ImDrawList* draw_list, const ImRect& bb, ImGuiTabItemFlags flags, ImU32 col)
+ {
+     // While rendering tabs, we trim 1 pixel off the top of our bounding box so they can fit within a regular frame height while looking "detached" from it.
+@@ -11049,6 +11097,20 @@ void ImGui::TabItemBackground(ImDrawList* draw_list, const ImRect& bb, ImGuiTabI
+     const float rounding = ImMax(0.0f, ImMin((flags & ImGuiTabItemFlags_Button) ? g.Style.FrameRounding : g.Style.TabRounding, width * 0.5f - 1.0f));
+     const float y1 = bb.Min.y + 1.0f; // Leave a bit of room in title bars.
+     const float y2 = bb.Max.y - g.Style.TabBarBorderSize;
++    // [FRONTIER PATCH A] A button is a button and keeps its rectangle; only a genuine tab is slanted.
++    const float slant = (flags & ImGuiTabItemFlags_Button) ? 0.0f : ImMin(g.Style.TabSlant, width * 0.16f);
++    if (slant > 0.0f)
++    {
++        FrontierTabOutline(draw_list, bb, slant, rounding, y1, y2, 0.0f);
++        draw_list->PathFillConvex(col);
++        if (g.Style.TabBorderSize > 0.0f)
++        {
++            FrontierTabOutline(draw_list, bb, slant, rounding, y1 + 0.5f, y2, 0.5f);
++            draw_list->PathStroke(GetColorU32(ImGuiCol_Border), ImDrawFlags_Closed, g.Style.TabBorderSize);
++        }
++        return;
++    }
++
+     draw_list->AddRectFilled(bb.Min, ImVec2(bb.Max.x, y2), col, rounding, ImDrawFlags_RoundCornersTop);
+     if (g.Style.TabBorderSize > 0.0f)
+     {

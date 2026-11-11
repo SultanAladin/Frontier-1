@@ -1,0 +1,2532 @@
+{
+  "SourceCommit": "9864969",
+  "Panels": {
+    "sun": [
+      {
+        "Label": "Angular Diameter",
+        "Control": "Slider",
+        "Group": "Sun Disk",
+        "NativeArguments": [
+          "0.1f",
+          "5.0f",
+          "SunDiskSize",
+          "2",
+          "\"deg\""
+        ],
+        "Minimum": 0.1,
+        "Maximum": 5.0,
+        "Decimals": 2,
+        "Unit": "deg",
+        "Default": 0.533
+      },
+      {
+        "Label": "Sun Tint",
+        "Control": "Colour",
+        "Group": "Sun Disk",
+        "NativeArguments": [
+          "SunUseTemperature ? SunRgbTint : Light.Colour"
+        ],
+        "Default": "#ffffff"
+      },
+      {
+        "Label": "Colour source",
+        "Control": "Select",
+        "Group": "Sun Disk",
+        "NativeArguments": [
+          "ColourSources",
+          "2u",
+          "SunUseTemperature ? 1u : 0u"
+        ],
+        "Options": [
+          "RGB tint",
+          "Temperature"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Temperature",
+        "Control": "Slider",
+        "Group": "Sun Disk",
+        "NativeArguments": [
+          "SunColourTemperature::MinimumKelvin",
+          "SunColourTemperature::MaximumKelvin",
+          "SunTemperatureKelvin",
+          "0",
+          "\"K\""
+        ],
+        "Minimum": 1000,
+        "Maximum": 40000,
+        "Decimals": 0,
+        "Unit": "K",
+        "Default": 6500
+      },
+      {
+        "Label": "Intensity",
+        "Control": "Slider",
+        "Group": "Sunlight gain",
+        "NativeArguments": [
+          "0.0f",
+          "60.0f",
+          "Light.Intensity",
+          "1",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 60.0,
+        "Decimals": 1,
+        "Unit": "x",
+        "Default": 22.0
+      },
+      {
+        "Label": "Direct",
+        "Control": "Slider",
+        "Group": "Sunlight gain",
+        "NativeArguments": [
+          "0.0f",
+          "5.0f",
+          "SunDirect",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 5.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 2.5
+      },
+      {
+        "Label": "Local Hours",
+        "Control": "Slider",
+        "Group": "Day cycle",
+        "NativeArguments": [
+          "0.0f",
+          "24.0f",
+          "Observation.LocalHours",
+          "2",
+          "\"h\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 24.0,
+        "Decimals": 2,
+        "Unit": "h",
+        "Default": 15.5
+      },
+      {
+        "Label": "Animate",
+        "Control": "Switch",
+        "Group": "Day cycle",
+        "NativeArguments": [
+          "Clock.Animate"
+        ],
+        "Default": false
+      },
+      {
+        "Label": "Day duration",
+        "Control": "Slider",
+        "Group": "Day cycle",
+        "NativeArguments": [
+          "0.01f",
+          "168.0f",
+          "24.0f / Clock.SpeedTimes",
+          "2",
+          "\"h\""
+        ],
+        "Minimum": 0.01,
+        "Maximum": 168.0,
+        "Decimals": 2,
+        "Unit": "h",
+        "Default": 3
+      },
+      {
+        "Label": "Speed",
+        "Control": "Select",
+        "Group": "Day cycle",
+        "NativeArguments": [
+          "Speeds",
+          "5u",
+          "Picked"
+        ],
+        "Options": [
+          "x1",
+          "x8",
+          "x30",
+          "x100",
+          "Custom"
+        ],
+        "Default": 1
+      },
+      {
+        "Label": "Latitude",
+        "Control": "Slider",
+        "Group": "Observer / date",
+        "NativeArguments": [
+          "-90.0f",
+          "90.0f",
+          "Observation.Latitude",
+          "2",
+          "\"deg\""
+        ],
+        "Minimum": -90.0,
+        "Maximum": 90.0,
+        "Decimals": 2,
+        "Unit": "deg",
+        "Default": -26.19
+      },
+      {
+        "Label": "Longitude",
+        "Control": "Slider",
+        "Group": "Observer / date",
+        "NativeArguments": [
+          "-180.0f",
+          "180.0f",
+          "Observation.Longitude",
+          "2",
+          "\"deg\""
+        ],
+        "Minimum": -180.0,
+        "Maximum": 180.0,
+        "Decimals": 2,
+        "Unit": "deg",
+        "Default": 28.32
+      },
+      {
+        "Label": "Day of Month",
+        "Control": "Slider",
+        "Group": "Observer / date",
+        "NativeArguments": [
+          "1.0f",
+          "31.0f",
+          "static_cast<float>(Observation.Day)",
+          "0",
+          "\"\""
+        ],
+        "Minimum": 1.0,
+        "Maximum": 31.0,
+        "Decimals": 0,
+        "Unit": "",
+        "Default": 4
+      },
+      {
+        "Label": "Month",
+        "Control": "Slider",
+        "Group": "Observer / date",
+        "NativeArguments": [
+          "1.0f",
+          "12.0f",
+          "static_cast<float>(Observation.Month)",
+          "0",
+          "\"\""
+        ],
+        "Minimum": 1.0,
+        "Maximum": 12.0,
+        "Decimals": 0,
+        "Unit": "",
+        "Default": 10
+      },
+      {
+        "Label": "Elevation",
+        "Control": "Readout",
+        "Group": "Solved direction",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      },
+      {
+        "Label": "Azimuth",
+        "Control": "Readout",
+        "Group": "Solved direction",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      },
+      {
+        "Label": "Declination",
+        "Control": "Readout",
+        "Group": "Solved direction",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      },
+      {
+        "Label": "Equation of Time",
+        "Control": "Readout",
+        "Group": "Solved direction",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      }
+    ],
+    "stars": [
+      {
+        "Label": "Brightness",
+        "Control": "Slider",
+        "Group": "Field",
+        "NativeArguments": [
+          "0.0f",
+          "4.0f",
+          "StarBrightness",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 4.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1
+      },
+      {
+        "Label": "Point Size",
+        "Control": "Slider",
+        "Group": "Field",
+        "NativeArguments": [
+          "0.4f",
+          "3.0f",
+          "StarSize",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.4,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1
+      },
+      {
+        "Label": "Star field",
+        "Control": "Switch",
+        "Group": "Field",
+        "NativeArguments": [
+          "Shown[static_cast<uint32_t>(CelestialEntity::Stars)]"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Limiting magnitude",
+        "Control": "Slider",
+        "Group": "Field",
+        "NativeArguments": [
+          "0",
+          "8",
+          "StarMagnitude",
+          "1",
+          "\"mag\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 8.0,
+        "Decimals": 1,
+        "Unit": "mag",
+        "Default": 5.5
+      },
+      {
+        "Label": "Twinkle",
+        "Control": "Switch",
+        "Group": "Field",
+        "NativeArguments": [
+          "StarTwinkle"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Twinkle depth",
+        "Control": "Slider",
+        "Group": "Field",
+        "NativeArguments": [
+          "0",
+          "100",
+          "StarDepth",
+          "0",
+          "\"%\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 100.0,
+        "Decimals": 0,
+        "Unit": "%",
+        "Default": 30
+      },
+      {
+        "Label": "Twinkle rate",
+        "Control": "Slider",
+        "Group": "Field",
+        "NativeArguments": [
+          ".2f",
+          "3",
+          "StarRate",
+          "2",
+          "\"Hz\""
+        ],
+        "Minimum": 0.2,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "Hz",
+        "Default": 1.2
+      },
+      {
+        "Label": "Celestial rotation",
+        "Control": "Slider",
+        "Group": "Field",
+        "NativeArguments": [
+          "0",
+          "360",
+          "StarRotation",
+          "1",
+          "\"deg\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 360.0,
+        "Decimals": 1,
+        "Unit": "deg",
+        "Default": 0.0
+      },
+      {
+        "Label": "Loaded",
+        "Control": "Readout",
+        "Group": "Catalogue",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      },
+      {
+        "Label": "Sidereal Time",
+        "Control": "Readout",
+        "Group": "Catalogue",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      }
+    ],
+    "wind": [
+      {
+        "Label": "Speed",
+        "Control": "Slider",
+        "Group": "Flow",
+        "NativeArguments": [
+          "0.0f",
+          "40.0f",
+          "SourceWind.Speed",
+          "1",
+          "\"m/s\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 40.0,
+        "Decimals": 1,
+        "Unit": "m/s",
+        "Default": 7.0
+      },
+      {
+        "Label": "Bearing",
+        "Control": "Slider",
+        "Group": "Flow",
+        "NativeArguments": [
+          "0.0f",
+          "360.0f",
+          "SourceWind.Bearing",
+          "0",
+          "\"deg\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 360.0,
+        "Decimals": 0,
+        "Unit": "deg",
+        "Default": 250.0
+      },
+      {
+        "Label": "Shear",
+        "Control": "Slider",
+        "Group": "Flow",
+        "NativeArguments": [
+          "0.0f",
+          "2.0f",
+          "SourceWind.Shear",
+          "2",
+          "\"/km\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 2.0,
+        "Decimals": 2,
+        "Unit": "/km",
+        "Default": 0.35
+      },
+      {
+        "Label": "Veer",
+        "Control": "Slider",
+        "Group": "Flow",
+        "NativeArguments": [
+          "-60.0f",
+          "60.0f",
+          "SourceWind.Veer",
+          "0",
+          "\"d/km\""
+        ],
+        "Minimum": -60.0,
+        "Maximum": 60.0,
+        "Decimals": 0,
+        "Unit": "d/km",
+        "Default": 12.0
+      },
+      {
+        "Label": "Air shear",
+        "Control": "Switch",
+        "Group": "Flow",
+        "NativeArguments": [
+          "SourceWind.Advection > 0.5f"
+        ],
+        "Default": false
+      },
+      {
+        "Label": "Gust",
+        "Control": "Slider",
+        "Group": "Gust",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "SourceWind.Gust",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.25
+      },
+      {
+        "Label": "Turbulence",
+        "Control": "Slider",
+        "Group": "Gust",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "SourceWind.Turbulence",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.3
+      },
+      {
+        "Label": "Steadiness",
+        "Control": "Slider",
+        "Group": "Gust",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "SourceWind.Steadiness",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 1.0
+      },
+      {
+        "Label": "Force",
+        "Control": "Readout",
+        "Group": "Beaufort",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      }
+    ],
+    "precipitation": [
+      {
+        "Label": "Enabled",
+        "Control": "Switch",
+        "Group": "Type",
+        "NativeArguments": [
+          "Precip.Enabled"
+        ],
+        "Default": false
+      },
+      {
+        "Label": "Precipitation",
+        "Control": "Select",
+        "Group": "Type",
+        "NativeArguments": [
+          "Types",
+          "5u",
+          "static_cast<uint32_t>(Precip.Category)"
+        ],
+        "Options": [
+          "Rain",
+          "Drizzle",
+          "Hail",
+          "Snow",
+          "Sleet"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Intensity",
+        "Control": "Slider",
+        "Group": "Type",
+        "NativeArguments": [
+          "0.0f",
+          "100.0f",
+          "Precip.RateMillimetresPerHour",
+          "1",
+          "\"mm/h\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 100.0,
+        "Decimals": 1,
+        "Unit": "mm/h",
+        "Default": 12.0
+      },
+      {
+        "Label": "Density",
+        "Control": "Slider",
+        "Group": "Type",
+        "NativeArguments": [
+          "0.1f",
+          "6.0f",
+          "Precip.Density",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.1,
+        "Maximum": 6.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.5
+      },
+      {
+        "Label": "Particle Size",
+        "Control": "Slider",
+        "Group": "Type",
+        "NativeArguments": [
+          "0.3f",
+          "3.0f",
+          "Precip.SizeScale",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.3,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.0
+      },
+      {
+        "Label": "Wind Drift",
+        "Control": "Slider",
+        "Group": "Wind",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "Precip.WindDrift",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.35
+      },
+      {
+        "Label": "Follow Wind",
+        "Control": "Switch",
+        "Group": "Wind",
+        "NativeArguments": [
+          "Precip.FollowWind"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Spawn from Clouds",
+        "Control": "Switch",
+        "Group": "Wind",
+        "NativeArguments": [
+          "Precip.SpawnFromClouds"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Ground Collision",
+        "Control": "Switch",
+        "Group": "Collision",
+        "NativeArguments": [
+          "Precip.GroundCollision"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Accumulation",
+        "Control": "Slider",
+        "Group": "Collision",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "Precip.Accumulation",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.4
+      },
+      {
+        "Label": "Particles",
+        "Control": "Readout",
+        "Group": "Live",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      },
+      {
+        "Label": "Snow Depth",
+        "Control": "Readout",
+        "Group": "Live",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      }
+    ],
+    "rainbow": [
+      {
+        "Label": "Enabled",
+        "Control": "Switch",
+        "Group": "Bow",
+        "NativeArguments": [
+          "Rainbow.Enabled"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Intensity",
+        "Control": "Slider",
+        "Group": "Bow",
+        "NativeArguments": [
+          "0.0f",
+          "3.0f",
+          "Rainbow.Intensity",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.0
+      },
+      {
+        "Label": "Width",
+        "Control": "Slider",
+        "Group": "Bow",
+        "NativeArguments": [
+          "0.1f",
+          "4.0f",
+          "Rainbow.Width",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.1,
+        "Maximum": 4.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.0
+      },
+      {
+        "Label": "Secondary",
+        "Control": "Slider",
+        "Group": "Bow",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "Rainbow.SecondaryGain",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 1.0
+      },
+      {
+        "Label": "Alexander's Band",
+        "Control": "Switch",
+        "Group": "Bow",
+        "NativeArguments": [
+          "Rainbow.AlexanderBand"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Minimum Path",
+        "Control": "Slider",
+        "Group": "Bow",
+        "NativeArguments": [
+          "1.0f",
+          "2000.0f",
+          "Rainbow.MinimumPathMetres",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 1.0,
+        "Maximum": 2000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 250.0
+      }
+    ],
+    "flare": [
+      {
+        "Label": "Enabled",
+        "Control": "Switch",
+        "Group": "Lens",
+        "NativeArguments": [
+          "Flare.Enabled"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Type",
+        "Control": "Select",
+        "Group": "Lens",
+        "NativeArguments": [
+          "Types",
+          "5u",
+          "Flare.CustomMix?4u:static_cast<uint32_t>(Flare.Category)"
+        ],
+        "Options": [
+          "Cinematic",
+          "Anamorphic",
+          "Starburst",
+          "Halo",
+          "Custom layers"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Intensity",
+        "Control": "Slider",
+        "Group": "Lens",
+        "NativeArguments": [
+          "0.0f",
+          "3.0f",
+          "Flare.Intensity",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.0
+      },
+      {
+        "Label": "Ghosts",
+        "Control": "Slider",
+        "Group": "Lens",
+        "NativeArguments": [
+          "0.0f",
+          "24.0f",
+          "static_cast<float>(Flare.GhostCount)",
+          "0",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 24.0,
+        "Decimals": 0,
+        "Unit": "",
+        "Default": 6
+      },
+      {
+        "Label": "Halo Radius",
+        "Control": "Slider",
+        "Group": "Lens",
+        "NativeArguments": [
+          "0.1f",
+          "1.2f",
+          "Flare.HaloRadius",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.1,
+        "Maximum": 1.2,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.28
+      },
+      {
+        "Label": "Chromatic",
+        "Control": "Slider",
+        "Group": "Lens",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "Flare.Chromatic",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.6
+      },
+      {
+        "Label": "Aperture Blades",
+        "Control": "Slider",
+        "Group": "Lens",
+        "NativeArguments": [
+          "3.0f",
+          "12.0f",
+          "static_cast<float>(Flare.ApertureBlades)",
+          "0",
+          "\"\""
+        ],
+        "Minimum": 3.0,
+        "Maximum": 12.0,
+        "Decimals": 0,
+        "Unit": "",
+        "Default": 6
+      },
+      {
+        "Label": "Streak gain",
+        "Control": "Slider",
+        "Group": "Lens",
+        "NativeArguments": [
+          "0.0f",
+          "3.0f",
+          "Flare.StreakGain",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.0
+      },
+      {
+        "Label": "Anamorphic",
+        "Control": "Switch",
+        "Group": "Layers",
+        "NativeArguments": [
+          "Flare.Layers.Anamorphic>0"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Streaks",
+        "Control": "Switch",
+        "Group": "Layers",
+        "NativeArguments": [
+          "Flare.Layers.Streaks>0"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Starburst",
+        "Control": "Switch",
+        "Group": "Layers",
+        "NativeArguments": [
+          "Flare.Layers.Burst>0"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Spread",
+        "Control": "Slider",
+        "Group": "Layers",
+        "NativeArguments": [
+          "0.25f",
+          "2.0f",
+          "Flare.Layers.Spread",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.25,
+        "Maximum": 2.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1
+      },
+      {
+        "Label": "Rotation",
+        "Control": "Slider",
+        "Group": "Layers",
+        "NativeArguments": [
+          "0.0f",
+          "180.0f",
+          "Flare.Layers.Rotation",
+          "1",
+          "\"deg\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 180.0,
+        "Decimals": 1,
+        "Unit": "deg",
+        "Default": 0.0
+      },
+      {
+        "Label": "Ray pairs",
+        "Control": "Slider",
+        "Group": "Layers",
+        "NativeArguments": [
+          "2.0f",
+          "12.0f",
+          "Flare.Layers.RayPairs",
+          "0",
+          "\"\""
+        ],
+        "Minimum": 2.0,
+        "Maximum": 12.0,
+        "Decimals": 0,
+        "Unit": "",
+        "Default": 6
+      },
+      {
+        "Label": "Ghost brightness",
+        "Control": "Slider",
+        "Group": "Ghosts / halo",
+        "NativeArguments": [
+          "0.0f",
+          "2.0f",
+          "Flare.Layers.GhostGain",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 2.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1
+      },
+      {
+        "Label": "Ghost spacing",
+        "Control": "Slider",
+        "Group": "Ghosts / halo",
+        "NativeArguments": [
+          "0.0f",
+          "2.0f",
+          "Flare.Layers.GhostSpacing",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 2.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1
+      },
+      {
+        "Label": "Halo brightness",
+        "Control": "Slider",
+        "Group": "Ghosts / halo",
+        "NativeArguments": [
+          "0.0f",
+          "3.0f",
+          "Flare.Layers.HaloGain",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1
+      },
+      {
+        "Label": "Halo width",
+        "Control": "Slider",
+        "Group": "Ghosts / halo",
+        "NativeArguments": [
+          "0.005f",
+          "0.2f",
+          "Flare.Layers.HaloWidth",
+          "3",
+          "\"\""
+        ],
+        "Minimum": 0.005,
+        "Maximum": 0.2,
+        "Decimals": 3,
+        "Unit": "",
+        "Default": 0.035
+      },
+      {
+        "Label": "Ghost shape",
+        "Control": "Select",
+        "Group": "Ghosts / halo",
+        "NativeArguments": [
+          "Shapes",
+          "3u",
+          "Flare.Layers.GhostSides==6?1u:Flare.Layers.GhostSides==8?2u:0u"
+        ],
+        "Options": [
+          "Round",
+          "Hexagon",
+          "Octagon"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Preview X",
+        "Control": "Slider",
+        "Group": "Preview pose",
+        "NativeArguments": [
+          "0.06f",
+          "0.94f",
+          "FlarePreviewX",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.06,
+        "Maximum": 0.94,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.28
+      },
+      {
+        "Label": "Preview Y",
+        "Control": "Slider",
+        "Group": "Preview pose",
+        "NativeArguments": [
+          "0.08f",
+          "0.92f",
+          "FlarePreviewY",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.08,
+        "Maximum": 0.92,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.43
+      }
+    ],
+    "atmosphere": [
+      {
+        "Label": "Rayleigh",
+        "Control": "Slider",
+        "Group": "Scattering",
+        "NativeArguments": [
+          "0.0f",
+          "4.0f",
+          "Medium.RayleighStrength",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 4.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.0
+      },
+      {
+        "Label": "Mie",
+        "Control": "Slider",
+        "Group": "Scattering",
+        "NativeArguments": [
+          "0.0f",
+          "6.0f",
+          "Medium.MieStrength",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 6.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.0
+      },
+      {
+        "Label": "Mie Anisotropy",
+        "Control": "Slider",
+        "Group": "Scattering",
+        "NativeArguments": [
+          "0.0f",
+          "0.99f",
+          "Medium.MieAnisotropy",
+          "3",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 0.99,
+        "Decimals": 3,
+        "Unit": "",
+        "Default": 0.78
+      },
+      {
+        "Label": "Ozone",
+        "Control": "Slider",
+        "Group": "Scattering",
+        "NativeArguments": [
+          "0.0f",
+          "4.0f",
+          "Medium.OzoneStrength",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 4.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.2
+      },
+      {
+        "Label": "Rayleigh Scale H",
+        "Control": "Slider",
+        "Group": "Planet",
+        "NativeArguments": [
+          "2000.0f",
+          "15000.0f",
+          "Medium.RayleighScaleHeight",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 2000.0,
+        "Maximum": 15000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 8000.0
+      },
+      {
+        "Label": "Mie Scale H",
+        "Control": "Slider",
+        "Group": "Planet",
+        "NativeArguments": [
+          "300.0f",
+          "4000.0f",
+          "Medium.MieScaleHeight",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 300.0,
+        "Maximum": 4000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 1200.0
+      },
+      {
+        "Label": "Atmosphere",
+        "Control": "Slider",
+        "Group": "Planet",
+        "NativeArguments": [
+          "10000.0f",
+          "120000.0f",
+          "Medium.AtmosphereHeight",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 10000.0,
+        "Maximum": 120000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 60000.0
+      },
+      {
+        "Label": "Horizon Glow",
+        "Control": "Slider",
+        "Group": "Twilight",
+        "NativeArguments": [
+          "0.0f",
+          "3.0f",
+          "Twilight.GlowIntensity",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.0
+      },
+      {
+        "Label": "White Line",
+        "Control": "Slider",
+        "Group": "Twilight",
+        "NativeArguments": [
+          "0.0f",
+          "3.0f",
+          "Twilight.LineIntensity",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.0
+      },
+      {
+        "Label": "Line at civil only",
+        "Control": "Switch",
+        "Group": "Twilight",
+        "NativeArguments": [
+          "Twilight.LineAtCivilOnly"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Air Mass",
+        "Control": "Readout",
+        "Group": "Live",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      },
+      {
+        "Label": "Tier Samples",
+        "Control": "Readout",
+        "Group": "Live",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      },
+      {
+        "Label": "Sky Tint",
+        "Control": "Colour",
+        "Group": "Appearance",
+        "NativeArguments": [
+          "SkyTint"
+        ],
+        "Default": "#ffffff"
+      },
+      {
+        "Label": "Sky Brightness",
+        "Control": "Slider",
+        "Group": "Appearance",
+        "NativeArguments": [
+          "0.0f",
+          "3.0f",
+          "SkyBrightness",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1
+      },
+      {
+        "Label": "Ground Albedo",
+        "Control": "Colour",
+        "Group": "Appearance",
+        "NativeArguments": [
+          "GroundAlbedo"
+        ],
+        "Default": "#796e60"
+      },
+      {
+        "Label": "Fetch Baked Dome",
+        "Control": "Switch",
+        "Group": "Baked Dome",
+        "NativeArguments": [
+          "SkyDomeBaked"
+        ],
+        "Default": false
+      },
+      {
+        "Label": "Dome Path",
+        "Control": "Readout",
+        "Group": "Baked Dome",
+        "NativeArguments": [
+          "QuerySkyDomeLive() ? \"fetch (256^2 RGBA16F)\" : \"march (analytic)\""
+        ],
+        "Default": "\u2014"
+      },
+      {
+        "Label": "Sheet",
+        "Control": "Readout",
+        "Group": "Baked Dome",
+        "NativeArguments": [
+          "SkyDomeSlot == kNoSkyDomeSlot ? \"none resident\"\n                                        : (SkyDomeSeated ? \"resident, staged\" : \"slot only\")"
+        ],
+        "Default": "\u2014"
+      }
+    ],
+    "local-cloud": [
+      {
+        "Label": "Enabled",
+        "Control": "Switch",
+        "Group": "Transform",
+        "NativeArguments": [
+          "LocalCloud.Enabled"
+        ],
+        "Default": false
+      },
+      {
+        "Label": "Centre",
+        "Control": "Axes",
+        "Group": "Transform",
+        "NativeArguments": [
+          "LocalCloud.Centre",
+          "1.0f"
+        ],
+        "Default": [
+          -100.0,
+          260.0,
+          130.0
+        ]
+      },
+      {
+        "Label": "Half Size",
+        "Control": "Axes",
+        "Group": "Transform",
+        "NativeArguments": [
+          "LocalCloud.HalfSize",
+          "1.0f"
+        ],
+        "Default": [
+          100.0,
+          100.0,
+          50.0
+        ]
+      },
+      {
+        "Label": "Density",
+        "Control": "Slider",
+        "Group": "Body",
+        "NativeArguments": [
+          "0.0f",
+          "4.0f",
+          "LocalCloud.Density",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 4.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 2.5
+      },
+      {
+        "Label": "Coverage",
+        "Control": "Slider",
+        "Group": "Body",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "LocalCloud.Coverage",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.8
+      },
+      {
+        "Label": "Feature Scale",
+        "Control": "Slider",
+        "Group": "Body",
+        "NativeArguments": [
+          "10.0f",
+          "600.0f",
+          "LocalCloud.Scale",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 10.0,
+        "Maximum": 600.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 40.0
+      },
+      {
+        "Label": "Anisotropy",
+        "Control": "Slider",
+        "Group": "Body",
+        "NativeArguments": [
+          "-0.9f",
+          "0.9f",
+          "LocalCloud.Anisotropy",
+          "2",
+          "\"\""
+        ],
+        "Minimum": -0.9,
+        "Maximum": 0.9,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.45
+      },
+      {
+        "Label": "Follow Wind",
+        "Control": "Switch",
+        "Group": "Body",
+        "NativeArguments": [
+          "LocalCloud.FollowWind"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Wind source",
+        "Control": "Select",
+        "Group": "Wind binding",
+        "Options": [
+          "Global wind",
+          "Cloud wind",
+          "Local cloud wind",
+          "Local fog wind",
+          "Height fog wind",
+          "Aerial fog wind"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Owned wind component",
+        "Control": "Switch",
+        "Group": "Wind binding",
+        "Default": false
+      }
+    ],
+    "clouds": [
+      {
+        "Label": "Enabled",
+        "Control": "Switch",
+        "Group": "Shape",
+        "NativeArguments": [
+          "Cloud.Enabled"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Type",
+        "Control": "Select",
+        "Group": "Shape",
+        "NativeArguments": [
+          "Types",
+          "6u",
+          "static_cast<uint32_t>(Cloud.Type)"
+        ],
+        "Options": [
+          "Stratus",
+          "Stratocumulus",
+          "Cumulus",
+          "Cumulonimbus",
+          "Altostratus",
+          "Cirrus"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Coverage",
+        "Control": "Slider",
+        "Group": "Shape",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "Cloud.Coverage",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.34
+      },
+      {
+        "Label": "Density",
+        "Control": "Slider",
+        "Group": "Shape",
+        "NativeArguments": [
+          "0.0f",
+          "4.0f",
+          "Cloud.Density",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 4.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 2.4
+      },
+      {
+        "Label": "Feature Scale",
+        "Control": "Slider",
+        "Group": "Shape",
+        "NativeArguments": [
+          "0.2f",
+          "3.0f",
+          "Cloud.Scale",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.2,
+        "Maximum": 3.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 0.35
+      },
+      {
+        "Label": "Base",
+        "Control": "Slider",
+        "Group": "Altitude",
+        "NativeArguments": [
+          "100.0f",
+          "Cloud.CeilingMetres",
+          "Cloud.Base",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 100.0,
+        "Maximum": 12000,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 1400.0
+      },
+      {
+        "Label": "Thickness",
+        "Control": "Slider",
+        "Group": "Altitude",
+        "NativeArguments": [
+          "100.0f",
+          "6000.0f",
+          "Cloud.Thickness",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 100.0,
+        "Maximum": 6000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 1100.0
+      },
+      {
+        "Label": "Ceiling",
+        "Control": "Slider",
+        "Group": "Altitude",
+        "NativeArguments": [
+          "4000.0f",
+          "20000.0f",
+          "Cloud.CeilingMetres",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 4000.0,
+        "Maximum": 20000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 14000.0
+      },
+      {
+        "Label": "Follow Wind",
+        "Control": "Switch",
+        "Group": "Altitude",
+        "NativeArguments": [
+          "Cloud.FollowWind"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Cloud March",
+        "Control": "Readout",
+        "Group": "Tier Budget",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      },
+      {
+        "Label": "Light Taps",
+        "Control": "Readout",
+        "Group": "Tier Budget",
+        "NativeArguments": [
+          "Text"
+        ],
+        "Default": "\u2014"
+      },
+      {
+        "Label": "Anvil",
+        "Control": "Slider",
+        "Group": "Shape",
+        "NativeArguments": [
+          "0",
+          "1",
+          "Cloud.Anvil",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.5
+      },
+      {
+        "Label": "Anisotropy",
+        "Control": "Slider",
+        "Group": "Shape",
+        "NativeArguments": [
+          "-.9f",
+          ".9f",
+          "Cloud.Anisotropy",
+          "2",
+          "\"\""
+        ],
+        "Minimum": -0.9,
+        "Maximum": 0.9,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.45
+      },
+      {
+        "Label": "Shadow Enabled",
+        "Control": "Switch",
+        "Group": "Cloud Shadows",
+        "NativeArguments": [
+          "ShadowStaging.Enabled"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Shadow Type",
+        "Control": "Select",
+        "Group": "Cloud Shadows",
+        "NativeArguments": [
+          "Types",
+          "6u",
+          "ShadowStaging.Type < 6u ? ShadowStaging.Type : 2u"
+        ],
+        "Options": [
+          "Stratus",
+          "Stratocumulus",
+          "Cumulus",
+          "Cumulonimbus",
+          "Altostratus",
+          "Cirrus"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Shadow Coverage",
+        "Control": "Slider",
+        "Group": "Cloud Shadows",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "ShadowStaging.Coverage",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 1.0
+      },
+      {
+        "Label": "Shadow Density",
+        "Control": "Slider",
+        "Group": "Cloud Shadows",
+        "NativeArguments": [
+          "0.0f",
+          "6.0f",
+          "ShadowStaging.Density",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 6.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1
+      },
+      {
+        "Label": "Shadow Scale",
+        "Control": "Slider",
+        "Group": "Cloud Shadows",
+        "NativeArguments": [
+          "0.01f",
+          "1.0f",
+          "ShadowStaging.Scale",
+          "3",
+          "\"\""
+        ],
+        "Minimum": 0.01,
+        "Maximum": 1.0,
+        "Decimals": 3,
+        "Unit": "",
+        "Default": 1.0
+      },
+      {
+        "Label": "Shadow Anvil",
+        "Control": "Slider",
+        "Group": "Cloud Shadows",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "ShadowStaging.Anvil",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 1.0
+      },
+      {
+        "Label": "Shadow Base",
+        "Control": "Slider",
+        "Group": "Cloud Shadows",
+        "NativeArguments": [
+          "0.0f",
+          "3000.0f",
+          "ShadowStaging.Base",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 3000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 1
+      },
+      {
+        "Label": "Shadow Thick",
+        "Control": "Slider",
+        "Group": "Cloud Shadows",
+        "NativeArguments": [
+          "50.0f",
+          "3000.0f",
+          "ShadowStaging.Thickness",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 50.0,
+        "Maximum": 3000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 50.0
+      },
+      {
+        "Label": "Shadow Ceil",
+        "Control": "Slider",
+        "Group": "Cloud Shadows",
+        "NativeArguments": [
+          "4000.0f",
+          "20000.0f",
+          "ShadowStaging.CeilingMetres",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 4000.0,
+        "Maximum": 20000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 4000.0
+      },
+      {
+        "Label": "Shadow Time",
+        "Control": "Slider",
+        "Group": "Shadow Clock",
+        "NativeArguments": [
+          "0.0f",
+          "86399.0f",
+          "ShadowTimeSeconds",
+          "0",
+          "\"s\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 86399.0,
+        "Decimals": 0,
+        "Unit": "s",
+        "Default": 1
+      },
+      {
+        "Label": "Shadow Wind",
+        "Control": "Slider",
+        "Group": "Shadow Clock",
+        "NativeArguments": [
+          "0.0f",
+          "40.0f",
+          "ShadowStaging.WindSpeed",
+          "1",
+          "\"m/s\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 40.0,
+        "Decimals": 1,
+        "Unit": "m/s",
+        "Default": 1
+      },
+      {
+        "Label": "Shadow Dir",
+        "Control": "Slider",
+        "Group": "Shadow Clock",
+        "NativeArguments": [
+          "0.0f",
+          "360.0f",
+          "ShadowStaging.WindBearing",
+          "0",
+          "\"deg\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 360.0,
+        "Decimals": 0,
+        "Unit": "deg",
+        "Default": 1
+      },
+      {
+        "Label": "Wind source",
+        "Control": "Select",
+        "Group": "Wind binding",
+        "Options": [
+          "Global wind",
+          "Cloud wind",
+          "Local cloud wind",
+          "Local fog wind",
+          "Height fog wind",
+          "Aerial fog wind"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Owned wind component",
+        "Control": "Switch",
+        "Group": "Wind binding",
+        "Default": false
+      }
+    ],
+    "height-fog": [
+      {
+        "Label": "Enabled",
+        "Control": "Switch",
+        "Group": "Medium",
+        "NativeArguments": [
+          "Fog.HeightEnabled"
+        ],
+        "Default": false
+      },
+      {
+        "Label": "Density",
+        "Control": "Slider",
+        "Group": "Medium",
+        "NativeArguments": [
+          "0.0f",
+          "0.2f",
+          "Fog.HeightDensity",
+          "4",
+          "\"1/m\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 0.2,
+        "Decimals": 4,
+        "Unit": "1/m",
+        "Default": 0.02
+      },
+      {
+        "Label": "Falloff Height",
+        "Control": "Slider",
+        "Group": "Medium",
+        "NativeArguments": [
+          "10.0f",
+          "3000.0f",
+          "Fog.FalloffHeight",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 10.0,
+        "Maximum": 3000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 400.0
+      },
+      {
+        "Label": "Sun Scatter",
+        "Control": "Slider",
+        "Group": "Medium",
+        "NativeArguments": [
+          "0.0f",
+          "2.0f",
+          "Fog.SunScatter",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 2.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 0.6
+      },
+      {
+        "Label": "Colour",
+        "Control": "Colour",
+        "Group": "Medium",
+        "NativeArguments": [
+          "Fog.HeightColour"
+        ],
+        "Default": "#ffffff"
+      },
+      {
+        "Label": "Wind source",
+        "Control": "Select",
+        "Group": "Wind binding",
+        "Options": [
+          "Global wind",
+          "Cloud wind",
+          "Local cloud wind",
+          "Local fog wind",
+          "Height fog wind",
+          "Aerial fog wind"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Owned wind component",
+        "Control": "Switch",
+        "Group": "Wind binding",
+        "Default": false
+      }
+    ],
+    "aerial-fog": [
+      {
+        "Label": "Enabled",
+        "Control": "Switch",
+        "Group": "Aerial Perspective",
+        "NativeArguments": [
+          "Fog.AerialEnabled"
+        ],
+        "Default": false
+      },
+      {
+        "Label": "Density",
+        "Control": "Slider",
+        "Group": "Aerial Perspective",
+        "NativeArguments": [
+          "0.0f",
+          "4.0f",
+          "Fog.AerialDensity",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 4.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1.0
+      },
+      {
+        "Label": "Start",
+        "Control": "Slider",
+        "Group": "Aerial Perspective",
+        "NativeArguments": [
+          "0.0f",
+          "2000.0f",
+          "Fog.AerialStart",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 2000.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 50.0
+      },
+      {
+        "Label": "Mie Blend",
+        "Control": "Slider",
+        "Group": "Aerial Perspective",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "Fog.AerialMie",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.4
+      },
+      {
+        "Label": "Wind source",
+        "Control": "Select",
+        "Group": "Wind binding",
+        "Options": [
+          "Global wind",
+          "Cloud wind",
+          "Local cloud wind",
+          "Local fog wind",
+          "Height fog wind",
+          "Aerial fog wind"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Owned wind component",
+        "Control": "Switch",
+        "Group": "Wind binding",
+        "Default": false
+      }
+    ],
+    "local-fog": [
+      {
+        "Label": "Enabled",
+        "Control": "Switch",
+        "Group": "Transform",
+        "NativeArguments": [
+          "V.Enabled"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Centre",
+        "Control": "Axes",
+        "Group": "Transform",
+        "NativeArguments": [
+          "V.Centre",
+          "1.0f"
+        ],
+        "Default": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "Label": "Half Size",
+        "Control": "Axes",
+        "Group": "Transform",
+        "NativeArguments": [
+          "V.HalfSize",
+          "1.0f"
+        ],
+        "Default": [
+          100,
+          100,
+          100
+        ]
+      },
+      {
+        "Label": "Density",
+        "Control": "Slider",
+        "Group": "Body",
+        "NativeArguments": [
+          "0.0f",
+          "4.0f",
+          "V.Density",
+          "2",
+          "\"x\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 4.0,
+        "Decimals": 2,
+        "Unit": "x",
+        "Default": 1
+      },
+      {
+        "Label": "Coverage",
+        "Control": "Slider",
+        "Group": "Body",
+        "NativeArguments": [
+          "0.0f",
+          "1.0f",
+          "V.Coverage",
+          "2",
+          "\"\""
+        ],
+        "Minimum": 0.0,
+        "Maximum": 1.0,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.55
+      },
+      {
+        "Label": "Feature Scale",
+        "Control": "Slider",
+        "Group": "Body",
+        "NativeArguments": [
+          "10.0f",
+          "600.0f",
+          "V.Scale",
+          "0",
+          "\"m\""
+        ],
+        "Minimum": 10.0,
+        "Maximum": 600.0,
+        "Decimals": 0,
+        "Unit": "m",
+        "Default": 100
+      },
+      {
+        "Label": "Anisotropy",
+        "Control": "Slider",
+        "Group": "Body",
+        "NativeArguments": [
+          "-0.9f",
+          "0.9f",
+          "V.Anisotropy",
+          "2",
+          "\"\""
+        ],
+        "Minimum": -0.9,
+        "Maximum": 0.9,
+        "Decimals": 2,
+        "Unit": "",
+        "Default": 0.6
+      },
+      {
+        "Label": "Follow Wind",
+        "Control": "Switch",
+        "Group": "Body",
+        "NativeArguments": [
+          "V.FollowWind"
+        ],
+        "Default": true
+      },
+      {
+        "Label": "Wind source",
+        "Control": "Select",
+        "Group": "Wind binding",
+        "Options": [
+          "Global wind",
+          "Cloud wind",
+          "Local cloud wind",
+          "Local fog wind",
+          "Height fog wind",
+          "Aerial fog wind"
+        ],
+        "Default": 0
+      },
+      {
+        "Label": "Owned wind component",
+        "Control": "Switch",
+        "Group": "Wind binding",
+        "Default": false
+      }
+    ],
+    "camera": [
+      {
+        "Label": "Focal Length",
+        "Control": "Slider",
+        "Minimum": 1,
+        "Maximum": 500,
+        "Default": 35,
+        "Unit": "mm",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Sensor Width",
+        "Control": "Slider",
+        "Minimum": 16,
+        "Maximum": 70,
+        "Default": 36,
+        "Unit": "mm",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Aperture",
+        "Control": "Slider",
+        "Minimum": 1.4,
+        "Maximum": 22,
+        "Default": 2.8,
+        "Unit": "f/",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Subject Distance",
+        "Control": "Slider",
+        "Minimum": 1,
+        "Maximum": 100,
+        "Default": 10,
+        "Unit": "m",
+        "Group": "Properties",
+        "Decimals": 2
+      }
+    ],
+    "moon": [
+      {
+        "Label": "Phase",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 1,
+        "Default": 0.62,
+        "Unit": "",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Bright",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 6,
+        "Default": 1.6,
+        "Unit": "x",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Glow",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 3,
+        "Default": 0.8,
+        "Unit": "x",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Size",
+        "Control": "Slider",
+        "Minimum": 0.1,
+        "Maximum": 180,
+        "Default": 0.52,
+        "Unit": "deg",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Azimuth",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 360,
+        "Default": 300,
+        "Unit": "deg",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Elevation",
+        "Control": "Slider",
+        "Minimum": -90,
+        "Maximum": 90,
+        "Default": 28,
+        "Unit": "deg",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Roll",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 360,
+        "Default": 0,
+        "Unit": "deg",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Pitch",
+        "Control": "Slider",
+        "Minimum": -180,
+        "Maximum": 180,
+        "Default": 0,
+        "Unit": "deg",
+        "Group": "Properties",
+        "Decimals": 2
+      },
+      {
+        "Label": "Visible",
+        "Control": "Switch",
+        "Default": true,
+        "Group": "Moon"
+      },
+      {
+        "Label": "Follow Sky",
+        "Control": "Switch",
+        "Default": false,
+        "Group": "Moon"
+      },
+      {
+        "Label": "Preset",
+        "Control": "Select",
+        "Options": [
+          "Luna",
+          "Ember",
+          "Glacier",
+          "Sulfur",
+          "Shroud",
+          "Shard"
+        ],
+        "Default": 0,
+        "Group": "Moon"
+      }
+    ],
+    "post": [
+      {
+        "Label": "EV Compensation",
+        "Control": "Slider",
+        "Minimum": -4,
+        "Maximum": 4,
+        "Default": 0,
+        "Unit": "EV",
+        "Group": "Exposure",
+        "Decimals": 2
+      },
+      {
+        "Label": "Saturation",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 2,
+        "Default": 1,
+        "Unit": "",
+        "Group": "Tone Mapping",
+        "Decimals": 2
+      },
+      {
+        "Label": "Contrast",
+        "Control": "Slider",
+        "Minimum": 0.5,
+        "Maximum": 2,
+        "Default": 1,
+        "Unit": "",
+        "Group": "Tone Mapping",
+        "Decimals": 2
+      },
+      {
+        "Label": "Bloom Intensity",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 1,
+        "Default": 0.05,
+        "Unit": "",
+        "Group": "Lens Effects",
+        "Decimals": 2
+      },
+      {
+        "Label": "Vignette",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 1,
+        "Default": 0.15,
+        "Unit": "",
+        "Group": "Lens Effects",
+        "Decimals": 2
+      }
+    ],
+    "geometry": [
+      {
+        "Label": "Position",
+        "Control": "Axes",
+        "Default": [
+          0,
+          0,
+          0
+        ],
+        "Group": "Transform",
+        "ReadOnly": true
+      },
+      {
+        "Label": "Rotation",
+        "Control": "Readout",
+        "Default": "+0\u00b0 about Z",
+        "Group": "Transform"
+      },
+      {
+        "Label": "Albedo",
+        "Control": "Colour",
+        "Default": "#c06bbf",
+        "Group": "Surface"
+      },
+      {
+        "Label": "Emission",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 64,
+        "Default": 0,
+        "Unit": "lx",
+        "Group": "Surface",
+        "Decimals": 1
+      },
+      {
+        "Label": "Roughness",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 1,
+        "Default": 0.4,
+        "Unit": "",
+        "Group": "Surface",
+        "Decimals": 2
+      },
+      {
+        "Label": "Metallic",
+        "Control": "Readout",
+        "Default": "0.00",
+        "Group": "Surface"
+      }
+    ],
+    "light": [
+      {
+        "Label": "Intensity",
+        "Control": "Slider",
+        "Minimum": 0,
+        "Maximum": 64,
+        "Default": 32,
+        "Unit": "lx",
+        "Group": "Light",
+        "Decimals": 1
+      },
+      {
+        "Label": "Colour",
+        "Control": "Colour",
+        "Default": "#ffffff",
+        "Group": "Light"
+      },
+      {
+        "Label": "Direction",
+        "Control": "Readout",
+        "Default": "\u2212Z (nadir)",
+        "Group": "Aim"
+      }
+    ],
+    "group": [
+      {
+        "Label": "Contents",
+        "Control": "Readout",
+        "Default": "5 direct \u00b7 14 total",
+        "Group": "Group"
+      },
+      {
+        "Label": "Tint",
+        "Control": "Colour",
+        "Default": "#9bacb4",
+        "Group": "Group"
+      }
+    ]
+  },
+  "SourceFiles": {
+    "Engine/Host/CelestialSequence.cpp": "48b06e0d3b29c6311a4808b67d26f7104e7e1162e7241962ab39f5b6ec50335b",
+    "Engine/DisplayPresentation/CelestialSolver.h": "840af5ebfed71cc11b0855b8687c81088662ba9d881ad8ad0438325780daac04",
+    "Engine/DisplayPresentation/../Host/CelestialSequence.h": "23a62bcfdf02eab86d53b011f5ad257cc6401aab3339f8f27b27365cabee39f1",
+    "Engine/DisplayPresentation/AtmosphereModel.h": "225aa6a3b997bd5c76f8513682bf6c1c7f59a1e8306464e76244e1313556c493",
+    "Engine/DisplayPresentation/WindField.h": "7df6eacbf25cc2afd4e8854c0cc215997729aa3744c4b3ce6f8df745f1f8aa62",
+    "Engine/DisplayPresentation/VolumetricMedia.h": "b05d112d7ddc2e1d58e1adea7ed71ac68875ac16929630af7d2414583147ee01",
+    "Engine/DisplayPresentation/Precipitation.h": "9af071dd45a9ba54a3f55e6a4deac8f2fc1a4cd0710c7d5c81f62d0876cba9da",
+    "Engine/DisplayPresentation/AtmosphericOptics.h": "7d57b143884647e249b803c06c5ba5a4ca221208b53c6758681f5ed9f745141c",
+    "Engine/Editor/AtmosphereSkyInspectorPanel.cpp": "360a56cb2648de4d4221b80e76114789cf2d9d5202c1d21520f09841828820a1",
+    "Engine/Editor/CameraInspectorPanel.cpp": "8eba0da583dea319451abc30eccd52af127207c0b8425260d9978d6bac89a0cc",
+    "Engine/Editor/CloudsInspectorPanel.cpp": "a247e1e48bc7d109e5c53c1316914994c2eafcf8598f1712cc79d367b8f51cef",
+    "Engine/Editor/FogInspectorPanel.cpp": "8452c27076926069544a2145f6a84c5d3ab314720ce88376641cd4304a264c9d",
+    "Engine/Editor/InspectorPanel.cpp": "38734f6df2d93099b3b946ec3ed1dca534487a897942aecb903a5324410a34a6",
+    "Engine/Editor/LensFlareInspectorPanel.cpp": "f3177a99cbaeb9e046778ce7f5688e77adc50dbe2d2d2261eaa20e4b2aa4cc69",
+    "Engine/Editor/MoonInspectorPanel.cpp": "0537a86c5f307280caa7f5721c2e57a6e6b0e7ca09846746b1745808f5cd8544",
+    "Engine/Editor/SolidArcInspectorPanel.cpp": "215fc1493bcf2631e7e90a17aa0e65f650c67304e577d3c12e83b993d59fa74e",
+    "Engine/Editor/StarsInspectorPanel.cpp": "c6760764a4065394b341d89b0808a7c286ae40486c21000e7e4ec5fbbd734208",
+    "Engine/Editor/SunInspectorPanel.cpp": "70fb629bd8a1e94b91725c6c558fe9a73877e61c3abb2206599e64b7fd3da147",
+    "Engine/Editor/TyreInspectorPanel.cpp": "c2e3f7a33116095444b0bc33b19cabe1dec5c45448342c22c83a98f905514265",
+    "Engine/Editor/WeatherInspectorPanel.cpp": "19f2315d7162e51ce564b48cadc5c6e1626ca6051b6df6fdc9cdad40f6807628",
+    "Engine/Editor/EditorStyleSpecification.h": "766ac32235f983b3ca18db02e07bf76119b357b12752b2c272df274e4a93238e",
+    "Engine/DisplayPresentation/ControlCentreHost.h": "a307b116f34d6475783b0778e703e6c8bf45b761a70b432afdd560d0e7596a26"
+  }
+}
