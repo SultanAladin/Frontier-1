@@ -170,6 +170,8 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Input/InputExchange.cpp
     Engine/Input/InputExtension.cpp
     Engine/Windowing/PlatformWindowStub.cpp
+    Engine/UVSpace/UVSurface.cpp
+    Engine/GeometricRaster/SurfaceShading.cpp
 )
 if(NOT ANDROID)
     list(APPEND FRONTIER_ENGINE_SOURCES Engine/Windowing/PlatformWindowDesktop.cpp)
@@ -217,4 +219,5 @@ if(BUILD_TESTING)
     frontier_register_exhibit(WindowValidation        Exhibits/WindowValidation.cpp        ${FRONTIER_SHIPPING_UI_SOURCES})
     frontier_register_exhibit(DockingValidation       Exhibits/DockingValidation.cpp       ${FRONTIER_SHIPPING_UI_SOURCES})
     frontier_register_exhibit(ControlCentreValidation Exhibits/ControlCentreValidation.cpp ${FRONTIER_SHIPPING_UI_SOURCES})
+    frontier_register_exhibit(UVSpaceValidation       Exhibits/UVSpaceValidation.cpp       ${FRONTIER_SHIPPING_UI_SOURCES})
 endif()

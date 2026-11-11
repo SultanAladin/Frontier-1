@@ -14,7 +14,7 @@ Deferred items live in [Backlog.md](Backlog.md); architectural invariants live i
 | **Phase 1** | **Input Foundation & Cross-Platform Windowing** | 🟢 Complete | `Engine/Input/` · `Engine/Windowing/` · `Exhibits/` |
 | **Phase 2** | **Shared UI Components & Multi-Document Workspace Groundwork** | 🟢 Active | `Engine/Components/` · `Engine/Workspaces/` · `Engine/Editor/` |
 | **Phase 3** | **`.slang` Shader Compiler, GPU Device Interface & GPU Viewport Overlays** | 🏳️ Planned | `Engine/GeometricRaster/` · `Engine/Shaders/` · `Engine/Annotation/` · `Engine/Editor/Viewports/` |
-| **Phase 4** | **Geometry Processing, UV Space, Color Space & Asset Interchange** | 🏳️ Planned | `Engine/MetricSpace/` · `Engine/GeometryProcessing/` · `Engine/UVSpace/` · `Engine/ColorSpace/` · `Engine/Interchange/` |
+| **Phase 4** | **Geometry Processing, UV Space, Color Space & Asset Interchange** | 🟢 Active | `Engine/MetricSpace/` · `Engine/GeometryProcessing/` · `Engine/UVSpace/` · `Engine/ColorSpace/` · `Engine/Interchange/` |
 | **Phase 5** | **Simulation, Audio & Networking Spaces** | 🏳️ Planned | `Engine/SimulationSpace/` · `Engine/AudioSpace/` · `Engine/NetworkingSpace/` |
 
 ---
@@ -51,6 +51,25 @@ Starting focus agreed with user: **`Input/` + `Editor/` groundwork**.
    - Deterministic CTest verification across `Editor`, `Development`, and `Shipping` profiles with 18 CPU-rasterized `.png` snapshots emitted under `Exhibits/Images/{Input,Windowing,Docking,ControlCentre}/`.
 6. **HTML-Only Reference Editor UIs & Studio Prototypes (`Experimental/`)**:
    - Staged HTML/JS `ProjectZeroEditor` (with embedded render in `Experimental/ProjectZeroEditor/README.md`), HTML/Vite `FrontierEditor` (`arena/f3437631-frontier`), and 8 domain studios (`FluidEditor`, `FractureEditor`, `ParticleEditor`, `PhotometricEditor`, `ForceFieldEditor`, `VehicleLab`, `UVEditor`, `TextureStudio`) under `Experimental/` (zero C++).
+
+---
+
+## Phase 4 — Native UV Studio Bringup (🟢 Active)
+
+The JavaScript UV reference is being translated into native C++20 and Slang according to
+[UVNativeTranslationPlan.md](UVNativeTranslationPlan.md).
+
+1. **`Engine/UVSpace/UVSurface.{h,cpp}`**: Corner-indexed UV topology, UDIM conversion, seam charts,
+   deterministic selection transforms and independently replaceable packed per-face matcap layers.
+2. **`Engine/GeometricRaster/SurfaceShading.{h,cpp}`**: Portable normalized Blinn–Phong EON lighting and
+   directional percentage-closer shadow filtering reference used for numeric parity validation.
+3. **`Engine/Shaders/Raster/FastSurfaceRaster.slang`**: Multi-matcap fragment shading and directional 3×3
+   PCF. Camera/resource integration remains dependent on the Phase 3 device interface.
+4. **`Exhibits/UVSpaceValidation.cpp`**: CTest coverage plus deterministic visual output under
+   `Exhibits/Images/UVSpace/`.
+
+Next native milestones: topology edit/history primitives, LSCM and packing, then shared GPU UV/perspective
+viewports after `GeometricRaster/` resource execution is available.
 
 ---
 
