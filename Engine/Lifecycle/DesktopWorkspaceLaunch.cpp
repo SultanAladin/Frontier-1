@@ -206,7 +206,7 @@ void SynchronizeGlfwToImGui(GLFWwindow* Win, ImGuiIO& Io, GlfwSupplementalQueue&
 //                                                PACKAGED LAYOUT RESOLUTION
 //------------------------------------------------------------------------------------------------------------------------
 
-// Redirects the content root and SPIR-V directory beside the executable when a packaged CompiledShaders/ directory exists there
+// Redirects the content root and SPIR-V directory beside the executable when PackageManifest.json marks a packaged folder
 [[nodiscard]] bool ResolvePackagedLayout(
     std::span<const char* const> CommandLineArgs,
     std::filesystem::path&       RepositoryRootPath,
@@ -227,7 +227,10 @@ void SynchronizeGlfwToImGui(GLFWwindow* Win, ImGuiIO& Io, GlfwSupplementalQueue&
 
     const std::filesystem::path ExecutableDir     = ExecutablePath.parent_path();
     const std::filesystem::path PackagedShaderDir = ExecutableDir / "CompiledShaders";
-    if (!std::filesystem::is_directory(PackagedShaderDir, PathFailure))
+    // ⚠️ Single-configuration build trees also hold CompiledShaders/ beside the executable; only PackageDesktopBinaries.py
+    //    writes PackageManifest.json, so in-place builds keep resolving ExternalPackages/ and EngineContent/ from the repository
+    if (!std::filesystem::is_regular_file(ExecutableDir / "PackageManifest.json", PathFailure) ||
+        !std::filesystem::is_directory(PackagedShaderDir, PathFailure))
     {
         return false;
     }
@@ -255,7 +258,7 @@ void SynchronizeGlfwToImGui(GLFWwindow* Win, ImGuiIO& Io, GlfwSupplementalQueue&
 
     if (!PackagedLayoutResolved)
     {
-        std::fprintf(stderr, "[FrontierHost] Packaged layout missing: no CompiledShaders directory beside the executable\n");
+        std::fprintf(stderr, "[FrontierHost] Packaged layout missing: no PackageManifest.json and CompiledShaders directory beside the executable\n");
         return 1;
     }
 
@@ -312,7 +315,8 @@ int LaunchDesktopWorkspace(
     const std::filesystem::path&  BuildRepositoryRootPath,
     const std::filesystem::path&  BuildCompiledShaderDir)
 {
-    // Packaged binaries carry CompiledShaders/ and EngineContent/ beside the executable; in-place builds keep the CMake paths.
+    // Packaged folders carry PackageManifest.json, CompiledShaders/ and EngineContent/ beside the executable;
+    // in-place builds keep the CMake paths.
     std::filesystem::path RepositoryRootPath = BuildRepositoryRootPath;
     std::filesystem::path CompiledShaderDir  = BuildCompiledShaderDir;
     const bool            PackagedLayoutResolved =

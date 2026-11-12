@@ -35,7 +35,8 @@ Launch
   FrontierUV.exe        Standalone UV workspace
   FrontierEditor.exe    Feature-set editor host with the UV workspace attached
 
-Keep CompiledShaders/ and EngineContent/ beside the executables; both are read relative to the executable location.
+Keep PackageManifest.json, CompiledShaders/ and EngineContent/ beside the executables; all are read relative to the
+executable location.
 A Vulkan 1.2 capable GPU driver is required.
 
 Verifying this download
