@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            UVWORKSPACESESSION.H
 ============================================================================================================================================*/
-// 🧩 Shared UV Workspace authoring state binding PolygonNetwork, SelectionMask, Interchange, GPU/Parallel Solvers, .UVSpace & Revisions
+// 🧩 Shared UV Workspace authoring session joining PolygonNetwork, SelectionMask, Interchange, GPU/Parallel Solvers, .UVSpace & Revisions
 
 #pragma once
 
@@ -50,8 +50,8 @@ enum class UVInspectorTab : uint8_t
 {
     Packing = 0u, // [-] - Layer share slider, Fill Pockets, Stack/Unstack & Concave Packing Engine
     Unwrap  = 1u, // [-] - LSCM/ABF++/Smart/Box/Cyl/Sphere/FollowQuads, Seams, Pins, Stitch & Relax
-    UDIM    = 2u, // [-] - Multi-UDIM tile table, 512..8K resolution, Backdrop & texel density
-    Shading = 3u, // [-] - 16-slot MatCap palette & Surface Material PBR sliders
+    UDIM    = 2u, // [-] - Multi-UDIM tile grid, 512..8K resolution, Backdrop & texel density
+    Shading = 3u, // [-] - 16-slot MatCap set & Surface Material PBR sliders
     Check   = 4u, // [-] - GPU Stretch/Overlap/Flip validator & viewport overlay switches
 };
 
@@ -227,7 +227,7 @@ public:
 
 private:
     void InitializeLoadedAssetLayout();
-    void RecordUVRevisionStep(std::string_view OperationTag);
+    void RegisterUVRevisionStep(std::string_view OperationTag);
     bool RestoreUVFromRevisionCursor();
     void SyncNetworkToGPU();
 

@@ -345,7 +345,7 @@ int main()
     }
 
     //--------------------------------------------------------------------------------------------------------------------
-    // 5. Outliner Layer Authoring + Full Docked UI + ImGuiOverlayRasterization (ImGuiComposite.slang) Proof
+    // 5. Outliner Layer Authoring + Full Docked UI + ImGuiOverlayRasterization (ImGuiOverlayRasterization.slang) Exhibit
     //--------------------------------------------------------------------------------------------------------------------
     Session.RenameSelectedLayer("Primary Aero Body");
     const uint16_t DupOrd = Session.DuplicateSelectedLayer();

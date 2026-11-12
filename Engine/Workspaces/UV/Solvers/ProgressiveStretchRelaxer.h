@@ -21,7 +21,7 @@ namespace Frontier::Workspaces
 
 struct StretchRelaxReport
 {
-    uint32_t WeldedCornersRelaxed = 0u;    // [count] - Unique welded UV corners evaluated per pass
+    uint32_t WeldedCornersRelaxed = 0u;    // [count] - Unique welded UV corners evaluated per iteration
     uint32_t ExecutedIterations       = 0u;    // [count] - Jacobi relaxation passes executed
     bool     ExecutedOnVulkanGPU  = false; // [-]     - True when dispatched via StretchRelaxCompute.comp.spv
     double   ElapsedMilliseconds  = 0.0;   // [ms]    - Total GPU/CPU relaxation wall time

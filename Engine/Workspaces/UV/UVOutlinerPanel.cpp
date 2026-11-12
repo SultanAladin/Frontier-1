@@ -62,12 +62,12 @@ namespace
 
 void UVOutlinerPanel::AttachSession(UVWorkspaceSession* TargetSession) noexcept
 {
-    Session               = TargetSession;
-    CachedNetworkRevision = UINT64_MAX;
-    CachedUVRevision      = UINT64_MAX;
+    Session                 = TargetSession;
+    RetainedNetworkRevision = UINT64_MAX;
+    RetainedUVRevision      = UINT64_MAX;
 }
 
-void UVOutlinerPanel::RefreshCachedAtlasTelemetry()
+void UVOutlinerPanel::RefreshChartSheetTelemetry()
 {
     if (Session == nullptr)
     {
@@ -75,13 +75,13 @@ void UVOutlinerPanel::RefreshCachedAtlasTelemetry()
     }
 
     const auto& Net = Session->Asset.Network;
-    if (CachedNetworkRevision != Net.NetworkRevision || CachedUVRevision != Net.UVRevision)
+    if (RetainedNetworkRevision != Net.NetworkRevision || RetainedUVRevision != Net.UVRevision)
     {
-        CachedNetworkRevision = Net.NetworkRevision;
-        CachedUVRevision      = Net.UVRevision;
+        RetainedNetworkRevision = Net.NetworkRevision;
+        RetainedUVRevision      = Net.UVRevision;
 
         const auto Islands = SeamCutGenerator::PartitionConnectedUVIslands(Net);
-        CachedIslandCount  = static_cast<uint32_t>(Islands.size());
+        RetainedIslandCount = static_cast<uint32_t>(Islands.size());
 
         double TotalUVArea = 0.0;
         for (uint32_t FaceIdx = 0u; FaceIdx < static_cast<uint32_t>(Net.Faces.size()); ++FaceIdx)
@@ -89,7 +89,7 @@ void UVOutlinerPanel::RefreshCachedAtlasTelemetry()
             TotalUVArea += std::max(0.0f, Net.EvaluateFaceSignedAreaUV(FaceIdx));
         }
         const double TileCount = static_cast<double>(std::max<std::size_t>(1u, Session->Asset.UDIMTiles.size()));
-        CachedUtilizationPct   = static_cast<float>(std::clamp((TotalUVArea / TileCount) * 100.0, 0.0, 100.0));
+        RetainedUtilizationPct = static_cast<float>(std::clamp((TotalUVArea / TileCount) * 100.0, 0.0, 100.0));
     }
 
     uint32_t CautionFaces = 0u;
@@ -103,11 +103,11 @@ void UVOutlinerPanel::RefreshCachedAtlasTelemetry()
                 ++CautionFaces;
             }
         }
-        CachedStretchCautionPct = (100.0f * static_cast<float>(CautionFaces)) / static_cast<float>(StretchVec.size());
+        RetainedStretchCautionPct = (100.0f * static_cast<float>(CautionFaces)) / static_cast<float>(StretchVec.size());
     }
     else
     {
-        CachedStretchCautionPct = 0.0f;
+        RetainedStretchCautionPct = 0.0f;
     }
 }
 
@@ -129,7 +129,7 @@ void UVOutlinerPanel::Render(
         return;
     }
 
-    RefreshCachedAtlasTelemetry();
+    RefreshChartSheetTelemetry();
 
     const Point2D Cursor  { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
     const bool    Pressed = Input.PrimaryPointer.Pressed;
@@ -153,7 +153,7 @@ void UVOutlinerPanel::Render(
         SubHeadBuf,
         sizeof(SubHeadBuf),
         "%u total islands · %zu UDIM",
-        CachedIslandCount,
+        RetainedIslandCount,
         std::max<std::size_t>(1u, Session->Asset.UDIMTiles.size()));
     WorkspaceAppearance::ConstructWeightedText(
         Surface,
@@ -354,7 +354,7 @@ void UVOutlinerPanel::Render(
         Surface.StrokeLine({ TrioBox.X + ColW * 2.0f, TrioBox.Y + 10.0f }, { TrioBox.X + ColW * 2.0f, TrioBox.Bottom() - 10.0f }, Theme.BorderSubtle, 1.0f);
 
         char UtilBuf[24]{}, SelBuf[32]{}, RemBuf[24]{};
-        std::snprintf(UtilBuf, sizeof(UtilBuf), "%.1f%%", CachedUtilizationPct);
+        std::snprintf(UtilBuf, sizeof(UtilBuf), "%.1f%%", RetainedUtilizationPct);
         std::snprintf(SelBuf, sizeof(SelBuf), "%uf", Session->SelectionMask.CountSelectedFaces());
         std::snprintf(RemBuf, sizeof(RemBuf), "%.0f%%", Session->Asset.Layers.DeriveRemainderSharePercent());
 
@@ -399,7 +399,7 @@ void UVOutlinerPanel::Render(
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { StretchBox.X + 18.0f, StretchBox.Y + 19.5f }, 10.5f, Theme.CautionInk, "a");
 
         char StretchVal[24]{};
-        std::snprintf(StretchVal, sizeof(StretchVal), "%.1f%%", CachedStretchCautionPct);
+        std::snprintf(StretchVal, sizeof(StretchVal), "%.1f%%", RetainedStretchCautionPct);
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { StretchBox.X + 41.0f, StretchBox.Y + 11.0f }, 13.0f, Theme.TextPrimary, StretchVal);
         WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { StretchBox.X + 41.0f, StretchBox.Y + 30.0f }, BoxW - 46.0f, 8.8f, Theme.TextMuted, "Stretch Caution");
 
@@ -463,15 +463,15 @@ void UVOutlinerPanel::Render(
             continue;
         }
 
-        const bool        IsActive  = (Session->SelectedLayerOrdinal == Layer.LayerOrdinal);
+        const bool        LayerActive = (Session->SelectedLayerOrdinal == Layer.LayerOrdinal);
         const ColorRgba   LayerCol  = LinearTintToRgba(Layer.LinearTintRGB);
         const auto&       PartRef   = Session->Asset.Layers.InspectPartitionSpan(Session->Asset.Network, Layer.LayerOrdinal);
         const Rectangle2D BoxRect   { LeftX, BodyY, InnerW, 42.0f };
         const bool        RowHover  = ScrollArea.Contains(Cursor) && BoxRect.Contains(Cursor);
 
         // Strictly 0.0f corner radius per Experimental/UVEditor .pz-frontier-layer-box!
-        Surface.FillRectangle(BoxRect, IsActive ? Theme.AccentSoft : (RowHover ? Theme.HoverBg : Theme.SectionBg), 0.0f);
-        Surface.StrokeRectangle(BoxRect, IsActive ? LayerCol : Theme.BorderSubtle, 0.0f, 1.0f);
+        Surface.FillRectangle(BoxRect, LayerActive ? Theme.AccentSoft : (RowHover ? Theme.HoverBg : Theme.SectionBg), 0.0f);
+        Surface.StrokeRectangle(BoxRect, LayerActive ? LayerCol : Theme.BorderSubtle, 0.0f, 1.0f);
         Surface.FillRectangle({ BoxRect.X, BoxRect.Y, 3.0f, BoxRect.Height }, LayerCol, 0.0f);
 
         // 12x12 sharp 0px colour swatch
@@ -626,7 +626,7 @@ void UVOutlinerPanel::Render(
     WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 17.0f, FooterRect.Y + 10.0f }, 9.8f, Theme.TextPrimary, FootLeft);
 
     char FootRight[48]{};
-    std::snprintf(FootRight, sizeof(FootRight), "%.1f%% filled · STRICT", CachedUtilizationPct);
+    std::snprintf(FootRight, sizeof(FootRight), "%.1f%% filled · STRICT", RetainedUtilizationPct);
     const float FootRightW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.0f, FootRight);
     WorkspaceAppearance::ConstructWeightedText(
         Surface,

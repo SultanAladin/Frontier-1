@@ -1,7 +1,7 @@
 //============================================================================================================================================
 //                                                          CONCAVEHORIZONCOMPUTE.SLANG
 //============================================================================================================================================
-// Parallel GPU candidate placement scorer evaluating concave skyline horizon height + wasted pocket area across columns & rotations
+// Parallel GPU candidate placement scorer evaluating concave skyline upper-boundary height + wasted pocket area across columns & rotations
 
 struct SkylineCandidateQuery
 {
@@ -28,7 +28,7 @@ struct SkylineDispatchParams
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<SkylineDispatchParams>   Params;
-[[vk::binding(1, 0)]] StructuredBuffer<uint>                  SkylineHeightColumns; // [GridColumns] current upper horizon
+[[vk::binding(1, 0)]] StructuredBuffer<uint>                  SkylineHeightColumns; // [GridColumns] current upper boundary height
 [[vk::binding(2, 0)]] StructuredBuffer<int2>                  IslandBottomTopSpan;  // .x = BottomOffset, .y = TopOffset per footprint column
 [[vk::binding(3, 0)]] StructuredBuffer<SkylineCandidateQuery> Queries;
 [[vk::binding(4, 0)]] RWStructuredBuffer<SkylineScoreResult>  Results;

@@ -63,8 +63,14 @@ target_compile_definitions(FrontierCompileSettings INTERFACE
     FRONTIER_PROFILE_SHIPPING=${FRONTIER_PROFILE_SHIPPING_DEF}
 )
 
+if(WIN32)
+    # Win32 headers must never leak min/max macros or legacy winsock into ISO C++20 translation units
+    target_compile_definitions(FrontierCompileSettings INTERFACE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+
 if(MSVC)
-    target_compile_options(FrontierCompileSettings INTERFACE /utf-8 /W4 /permissive-)
+    target_compile_options(FrontierCompileSettings INTERFACE /utf-8 /W4 /permissive- /bigobj)
+    target_compile_definitions(FrontierCompileSettings INTERFACE _CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
     if(FRONTIER_PROFILE STREQUAL "Shipping")
         target_compile_options(FrontierCompileSettings INTERFACE /O2 /DNDEBUG)
     else()
@@ -191,6 +197,9 @@ endif()
 #------------------------------------------------------------------------------------------------------------------------
 
 set(FRONTIER_SLANGC_BIN "${CMAKE_SOURCE_DIR}/ExternalPackages/VulkanCompute/Slang/slangtorch/bin/slangc")
+if(CMAKE_HOST_WIN32)
+    set(FRONTIER_SLANGC_BIN "${FRONTIER_SLANGC_BIN}.exe")
+endif()
 if(NOT EXISTS "${FRONTIER_SLANGC_BIN}")
     execute_process(
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/Automation/PrepareShaderToolchain.py"

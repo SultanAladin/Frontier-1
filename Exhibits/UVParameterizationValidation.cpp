@@ -182,7 +182,7 @@ int main()
     }
     if (!VerifyCondition(MaxUndoDiff < 1.0e-6f, "UndoParameterization restored bit-exact 65% Concave Pack UVs") ||
         !VerifyCondition(Session.RedoParameterization(), "RedoParameterization stepped forward cleanly") ||
-        !VerifyCondition(Session.UndoParameterization(), "Returned to 65% Concave Pack state before .UVSpace save"))
+        !VerifyCondition(Session.UndoParameterization(), "Returned to 65% Concave Pack layout before .UVSpace save"))
     {
         return 1;
     }
@@ -216,10 +216,10 @@ int main()
         return 1;
     }
 
-    // Capture AeroCoupeGT 65% packed 2D & 3D framebuffers for visual proof
+    // Capture AeroCoupeGT 65% packed 2D & 3D framebuffers for the visual exhibit
     Session.RefreshViewportFramebuffers(540u, 540u, 540u, 540u);
 
-    // 5. Compose Visual Exhibit: Exhibits/Images/UV/04-GPUConcavePackingAndSolvers.png
+    // 5. Stack Visual Exhibit: Exhibits/Images/UV/04-GPUConcavePackingAndSolvers.png
     constexpr uint32_t OutW = 1840u;
     constexpr uint32_t OutH = 920u;
 

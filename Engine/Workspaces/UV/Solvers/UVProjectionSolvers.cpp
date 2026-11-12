@@ -242,7 +242,7 @@ uint32_t UVProjectionSolvers::FlattenAngleBasedABF(
             LocalUVs.swap(NextUVs);
         }
 
-        // Atomic commit with strict per-face positive area verification
+        // Atomic finalize with strict per-face positive area verification
         std::vector<Mathematics::UVAxes> Backup(Island.CornerEdgeIndices.size());
         for (std::size_t K = 0u; K < Island.CornerEdgeIndices.size(); ++K)
         {
@@ -613,7 +613,7 @@ uint32_t UVProjectionSolvers::FollowActiveQuads(
     }
     Eligible[SeedQuad] = 1u;
 
-    // Rectify seed quad first so strip propagation starts from an orthogonal reference frame
+    // Rectify seed quad first so strip propagation starts from an orthogonal reference basis
     {
         const uint32_t E0 = Network.Faces[SeedQuad].BoundaryLoopEdgeIndex;
         const uint32_t E1 = Network.Edges[E0].NextEdgeIndex;

@@ -102,7 +102,7 @@ namespace
     Gizmo3D.EndDragInteraction();
     OutScaleHud = ScaleDelta.HudReadout;
     if (!VerifyCondition(ScaleDelta.TransformChanged && std::abs(TargetXform.Scale.Y - 1.20f) < 1.0e-4f, "+Y Ctrl-snap scale == x1.20") ||
-        !VerifyCondition(std::abs(Gizmo3D.QueryWorldRadius() - 1.05f) < 1.0e-6f, "Gizmo WorldRadius remains constant during object scaling"))
+        !VerifyCondition(std::abs(Gizmo3D.QueryWorldRadius() - 1.05f) < 1.0e-6f, "Gizmo WorldRadius remains constant during geometry scaling"))
     {
         return false;
     }
@@ -319,7 +319,7 @@ int main()
         return 1;
     }
 
-    // 5. Composite Visual Exhibit (Exhibits/Images/UV/01-VulkanRendersPickingAndGizmo.png)
+    // 5. Stacked Visual Exhibit (Exhibits/Images/UV/01-VulkanRendersPickingAndGizmo.png)
     constexpr uint32_t OutW = 1660u;
     constexpr uint32_t OutH = 880u;
 
@@ -359,12 +359,12 @@ int main()
         std::snprintf(AdapterTitle, sizeof(AdapterTitle), "Vulkan Adapter: %.*s", static_cast<int>(VkInterchange.QueryAdapterName().size()), VkInterchange.QueryAdapterName().data());
         ForegroundList->AddText(ImVec2(1240.0f, 33.0f), EmeraldOk, AdapterTitle);
 
-        // Left Viewport Frame (3D Surface + 16-MatCap + 3D Gizmo)
+        // Left Viewport Bounds (3D Surface + 16-MatCap + 3D Gizmo)
         ForegroundList->AddRectFilled(ImVec2(20.0f, 80.0f), ImVec2(820.0f, 672.0f), TileFill, 6.0f);
         ForegroundList->AddRect(ImVec2(20.0f, 80.0f), ImVec2(820.0f, 672.0f), TileBorder, 6.0f);
         ForegroundList->AddText(ImVec2(36.0f, 94.0f), AccentBlue, "1. 3D .SLANG SURFACE + 16-MATCAP + SLATE 3D GIZMO (MRT RGBA8 + R32G32B32A32_UINT)");
 
-        // Right Viewport Frame (2D UDIM 1001/1002 + 2D Gizmo)
+        // Right Viewport Bounds (2D UDIM 1001/1002 + 2D Gizmo)
         ForegroundList->AddRectFilled(ImVec2(840.0f, 80.0f), ImVec2(1640.0f, 672.0f), TileFill, 6.0f);
         ForegroundList->AddRect(ImVec2(840.0f, 80.0f), ImVec2(1640.0f, 672.0f), TileBorder, 6.0f);
         ForegroundList->AddText(ImVec2(856.0f, 94.0f), AccentBlue, "2. 2D .SLANG UDIM 1001 & 1002 CANVAS + SLATE 2D GIZMO (MRT RGBA8 + PICK)");

@@ -32,7 +32,7 @@ public:
     void PresentInImGuiPane(double Δt, float ScaleFactor = 1.0f);
 
 private:
-    void RefreshCachedAtlasTelemetry();
+    void RefreshChartSheetTelemetry();
 
     UVWorkspaceSession* Session                 = nullptr;
     uint32_t            CreatedLayerCount       = 3u;
@@ -42,11 +42,11 @@ private:
     TextEditBuffer      RenameEditBuffer        {};
     uint16_t            RenamingLayerOrd        = 0u;
 
-    uint64_t            CachedNetworkRevision   = UINT64_MAX;
-    uint64_t            CachedUVRevision        = UINT64_MAX;
-    uint32_t            CachedIslandCount       = 0u;
-    float               CachedUtilizationPct    = 0.0f;
-    float               CachedStretchCautionPct = 0.0f;
+    uint64_t            RetainedNetworkRevision   = UINT64_MAX;
+    uint64_t            RetainedUVRevision        = UINT64_MAX;
+    uint32_t            RetainedIslandCount       = 0u;
+    float               RetainedUtilizationPct    = 0.0f;
+    float               RetainedStretchCautionPct = 0.0f;
 };
 
 } // namespace Frontier::Workspaces

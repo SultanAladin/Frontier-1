@@ -58,8 +58,8 @@ UVViewportHost::~UVViewportHost() = default;
 
 void UVViewportHost::AttachSession(UVWorkspaceSession* TargetSession) noexcept
 {
-    Session          = TargetSession;
-    CachedUVRevision = UINT64_MAX;
+    Session            = TargetSession;
+    RetainedUVRevision = UINT64_MAX;
     Interactor.AttachSession(Session);
 
     if (Session == nullptr)
@@ -131,16 +131,16 @@ void UVViewportHost::SynchronizeProjectionPolicy() noexcept
     Projection.ConfigureSplitRatio(Session->WorkspaceConfig.InspectUVPreferences().SplitRatioNormalized);
 }
 
-void UVViewportHost::RefreshCachedIslandCount() noexcept
+void UVViewportHost::RefreshRetainedIslandCount() noexcept
 {
     if (Session == nullptr)
     {
         return;
     }
-    if (CachedUVRevision != Session->Asset.Network.UVRevision)
+    if (RetainedUVRevision != Session->Asset.Network.UVRevision)
     {
-        CachedUVRevision = Session->Asset.Network.UVRevision;
-        CachedChartCount = static_cast<uint32_t>(SeamCutGenerator::PartitionConnectedUVIslands(Session->Asset.Network).size());
+        RetainedUVRevision = Session->Asset.Network.UVRevision;
+        RetainedChartCount = static_cast<uint32_t>(SeamCutGenerator::PartitionConnectedUVIslands(Session->Asset.Network).size());
     }
 }
 
@@ -164,7 +164,7 @@ void UVViewportHost::Render(
     }
 
     SynchronizeProjectionPolicy();
-    RefreshCachedIslandCount();
+    RefreshRetainedIslandCount();
 
     const Point2D Cursor  { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
     const bool    Pressed = Input.PrimaryPointer.Pressed;
@@ -529,10 +529,10 @@ void UVViewportHost::Render(
                 ToolY += 5.0f;
             }
             const Rectangle2D Btn{ RailBounds.X + 4.0f, ToolY, 30.0f, 25.0f };
-            const bool        IsActive = (ActiveRailSlot == Slot);
+            const bool        RailSlotActive = (ActiveRailSlot == Slot);
             const bool        Hovered  = Btn.Contains(Cursor);
 
-            if (IsActive)
+            if (RailSlotActive)
             {
                 Surface.FillRectangle(Btn, Theme.AccentSoft, 8.0f);
                 Surface.StrokeRectangle(Btn, Theme.AccentBorder, 8.0f, 1.0f);
@@ -547,7 +547,7 @@ void UVViewportHost::Render(
                 { Btn.X + 7.5f, Btn.Y + 5.0f },
                 15.0f,
                 Slot,
-                IsActive ? ColorRgba{ 244, 244, 240, 255 } : ColorRgba{ 168, 168, 172, 255 });
+                RailSlotActive ? ColorRgba{ 244, 244, 240, 255 } : ColorRgba{ 168, 168, 172, 255 });
 
             if (Hovered && Pressed)
             {
@@ -606,7 +606,7 @@ void UVViewportHost::Render(
             "%s verts · %s faces · %u charts",
             FormatCountWithCommas(Session->Asset.Network.Vertices.size()).c_str(),
             FormatCountWithCommas(Session->Asset.Network.Faces.size()).c_str(),
-            CachedChartCount);
+            RetainedChartCount);
         WorkspaceAppearance::ConstructWeightedText(
             Surface,
             FontWeightClass::Regular,

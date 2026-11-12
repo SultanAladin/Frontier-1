@@ -118,7 +118,7 @@ RotatedCandidateProfile BuildRotatedSpanProfile(
     Prof.FootprintCols = std::min(SkylineGridColumns, RawCols + 2u * GutterCols);
     Prof.FootprintRows = std::min(SkylineGridColumns, RawRows + 2u * GutterCols);
 
-    // Initialize empty columns with sentinel [Max, 0] and rasterize actual concave polygon face spans!
+    // Initialize empty columns with the empty-span marker [Max, 0] and rasterize actual concave polygon face spans!
     std::vector<int32_t> ColBottom(Prof.FootprintCols, static_cast<int32_t>(Prof.FootprintRows));
     std::vector<int32_t> ColTop(Prof.FootprintCols, 0);
 
@@ -326,7 +326,7 @@ ConcavePackReport ConcaveSkylinePacker::PackConcaveSkyline(
         return AreaA > AreaB;
     });
 
-    // 3. Allocate GPU horizon candidate scoring buffers if Vulkan is active
+    // 3. Allocate GPU skyline candidate scoring buffers if Vulkan is active
     const bool UseGPU = (DeviceInterchange != nullptr && DeviceInterchange->Ready() && SkylineProgramHandle != UINT32_MAX);
     const uint32_t MaxRotations  = static_cast<uint32_t>(CandidateAngles.size());
     const uint32_t MaxCandidates = MaxRotations * SkylineGridColumns;

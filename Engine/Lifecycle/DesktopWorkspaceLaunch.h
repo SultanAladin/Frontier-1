@@ -38,7 +38,7 @@ struct DesktopLaunchOptions
 [[nodiscard]] int LaunchDesktopWorkspace(
     DesktopLaunchOptions                InitialOptions,
     std::span<const char* const>        CommandLineArgs,
-    const std::filesystem::path&        RepositoryRootPath,
-    const std::filesystem::path&        CompiledShaderDir);
+    const std::filesystem::path&        BuildRepositoryRootPath,
+    const std::filesystem::path&        BuildCompiledShaderDir);
 
 } // namespace Frontier::Lifecycle

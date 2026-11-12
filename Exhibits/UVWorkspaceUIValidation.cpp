@@ -125,7 +125,7 @@ int main()
             return 1;
         }
 
-        // Verify WorkspaceDocument::AccessViewportProjection() aspect-locked 1:1 planar bounds & ContentBrowser WorkspaceCategory::UV binding
+        // Verify WorkspaceDocument::AccessViewportProjection() aspect-locked 1:1 planar bounds & ContentBrowser WorkspaceCategory::UV linkage
         Mathematics::UVAxes MinUV {};
         Mathematics::UVAxes MaxUV {};
         StandaloneHost.InspectSession().InspectViewportProjection().EvaluateAspectLockedPlanarBounds(800u, 400u, MinUV, MaxUV);

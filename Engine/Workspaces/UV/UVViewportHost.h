@@ -41,15 +41,15 @@ public:
 
 private:
     void SynchronizeProjectionPolicy() noexcept;
-    void RefreshCachedIslandCount() noexcept;
+    void RefreshRetainedIslandCount() noexcept;
 
     UVWorkspaceSession*    Session               = nullptr;
     UVViewportInteractor   Interactor            {};
     ViewportProjectionPane ProjectionPane        {};
     bool                   MoreShelfExpanded     = false;
     uint32_t               ActiveRailSlot        = 0u;
-    uint64_t               CachedUVRevision      = UINT64_MAX;
-    uint32_t               CachedChartCount      = 0u;
+    uint64_t               RetainedUVRevision    = UINT64_MAX;
+    uint32_t               RetainedChartCount    = 0u;
 };
 
 } // namespace Frontier::Workspaces

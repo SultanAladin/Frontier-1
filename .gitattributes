@@ -1,0 +1,2 @@
+# Sources, patches, and pinned-digest inputs must reach every host byte-identical (no CRLF conversion on Windows runners)
+* -text

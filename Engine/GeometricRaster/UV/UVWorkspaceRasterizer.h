@@ -245,7 +245,7 @@ private:
     uint32_t                SurfaceVertexCount      = 0u;
     uint32_t                GroundGridVertexCount   = 6u;
     uint32_t                UVCanvasVertexCount     = 0u;
-    std::vector<float>      CachedFaceStretch       {};
+    std::vector<float>      RetainedFaceStretch     {};
 };
 
 } // namespace Frontier::GeometricRaster

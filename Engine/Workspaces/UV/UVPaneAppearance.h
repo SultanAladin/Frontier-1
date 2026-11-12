@@ -114,7 +114,7 @@ struct UVThemeColors
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-//                                         REUSABLE CAPSULE, SLIDER & SWITCH WIDGETS
+//                                         REUSABLE CAPSULE, SLIDER & SWITCH CONTROLS
 //------------------------------------------------------------------------------------------------------------------------
 
 inline bool ConstructCapsuleButton(

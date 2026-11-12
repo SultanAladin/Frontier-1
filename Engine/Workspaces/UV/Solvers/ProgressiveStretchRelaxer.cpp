@@ -24,7 +24,7 @@ namespace Frontier::Workspaces
 namespace
 {
 
-struct GPURelaxCornerRecord
+struct GPURelaxCornerLayout
 {
     float    CurrentUV[2]         {};
     float    NeighborAvgUV[2]     {};
@@ -181,11 +181,11 @@ StretchRelaxReport ProgressiveStretchRelaxer::RelaxStretch(
     if (UseGPU)
     {
         ParamBuf  = Encoder.AllocateHostWritableBuffer(sizeof(GPURelaxDispatchParams), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-        InputBuf  = Encoder.AllocateHostWritableBuffer(sizeof(GPURelaxCornerRecord) * JunctionCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        InputBuf  = Encoder.AllocateHostWritableBuffer(sizeof(GPURelaxCornerLayout) * JunctionCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         OutputBuf = Encoder.AllocateHostWritableBuffer(sizeof(float) * 2u * JunctionCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     }
 
-    std::vector<GPURelaxCornerRecord> Records(JunctionCount);
+    std::vector<GPURelaxCornerLayout> Records(JunctionCount);
     const uint32_t ClampedIterations = std::clamp(RelaxationIterations, 1u, 64u);
 
     for (uint32_t IterIdx = 0u; IterIdx < ClampedIterations; ++IterIdx)
@@ -193,7 +193,7 @@ StretchRelaxReport ProgressiveStretchRelaxer::RelaxStretch(
         for (uint32_t Idx = 0u; Idx < JunctionCount; ++Idx)
         {
             const auto& Junction = Junctions[Idx];
-            GPURelaxCornerRecord Rec {};
+            GPURelaxCornerLayout Rec {};
             Rec.CurrentUV[0]     = Junction.CurrentUV.U;
             Rec.CurrentUV[1]     = Junction.CurrentUV.V;
             Rec.PinnedOrSeamLock = Junction.PinnedOrSeamLock;
@@ -246,7 +246,7 @@ StretchRelaxReport ProgressiveStretchRelaxer::RelaxStretch(
             const GPURelaxDispatchParams Params { JunctionCount, StepScale, PreserveSeams ? 1u : 0u, 0u };
             const std::array<GPURelaxDispatchParams, 1u> PSpan {{ Params }};
             Encoder.UploadSpanToBuffer<GPURelaxDispatchParams>(ParamBuf, PSpan);
-            Encoder.UploadSpanToBuffer<GPURelaxCornerRecord>(InputBuf, Records);
+            Encoder.UploadSpanToBuffer<GPURelaxCornerLayout>(InputBuf, Records);
 
             VkCommandBuffer Cmd = DeviceInterchange->BeginSingleTimeCommands();
             const std::array<GeometricRaster::ComputeSlotDescriptor, 3u> Slots {{

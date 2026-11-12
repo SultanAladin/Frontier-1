@@ -138,7 +138,7 @@ bool UVWorkspaceHost::IntakeExternalFileDrop(
         return true;
     }
 
-    OutDiagnostic = "Unsupported UV Workspace drop extension: " + Ext;
+    OutDiagnostic = "Unsupported UV Workspace drop file suffix: " + Ext;
     return false;
 }
 

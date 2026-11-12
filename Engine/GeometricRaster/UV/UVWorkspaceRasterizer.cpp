@@ -116,7 +116,7 @@ void ComputeOrbitBasis(
     OutUp      = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(OutRight, OutForward), { 0.0f, 1.0f, 0.0f });
 }
 
-// Row-major Vulkan clip matrix (Y-flipped for Vulkan NDC, Z in [0, 1])
+// Row-major Vulkan clip-space transform (Y-flipped for Vulkan NDC, Z in [0, 1])
 void BuildRowMajorViewProjection(
     const CameraOrbitRig3D& Cam,
     float                     AspectRatio,
@@ -132,7 +132,7 @@ void BuildRowMajorViewProjection(
     const float FarZ       = 60.0f;
     const float ZRange     = FarZ / (NearZ - FarZ);
 
-    // View matrix rows: R, U, -F
+    // View transform rows: R, U, -F
     const float V[4][4] = {
         { Right.X, Right.Y, Right.Z, -Mathematics::EvaluateDot(Right, Eye) },
         { Up.X,    Up.Y,    Up.Z,    -Mathematics::EvaluateDot(Up, Eye)    },
@@ -236,7 +236,7 @@ bool UVWorkspaceRasterizer::InitializeRasterizer(
         return false;
     }
 
-    // Create Dual-Attachment MRT + DepthSpec RenderPass (Attachment 0: RGBA8, Attachment 1: R32G32B32A32_UINT, Attachment 2: D32_SFLOAT)
+    // Create Dual-Attachment MRT + DepthSpec VkRenderPass (Attachment 0: RGBA8, Attachment 1: R32G32B32A32_UINT, Attachment 2: D32_SFLOAT)
     std::array<VkAttachmentDescription, 3u> Attachments {};
     Attachments[0].format         = VK_FORMAT_R8G8B8A8_UNORM;
     Attachments[0].samples        = VK_SAMPLE_COUNT_1_BIT;
@@ -624,9 +624,9 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
     }
 
     UploadedFaceCount = static_cast<uint32_t>(Network.Faces.size());
-    if (CachedFaceStretch.size() != UploadedFaceCount)
+    if (RetainedFaceStretch.size() != UploadedFaceCount)
     {
-        CachedFaceStretch.assign(UploadedFaceCount, 1.0f);
+        RetainedFaceStretch.assign(UploadedFaceCount, 1.0f);
     }
 
     // 1. Pack FacePackedAttributes & SelectionBitmask
@@ -716,7 +716,7 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
         }
 
         const float SignedUV = Network.EvaluateFaceSignedAreaUV(FaceIdx);
-        const float Stretch  = FaceIdx < CachedFaceStretch.size() ? CachedFaceStretch[FaceIdx] : 1.0f;
+        const float Stretch  = FaceIdx < RetainedFaceStretch.size() ? RetainedFaceStretch[FaceIdx] : 1.0f;
 
         for (std::size_t Tri = 1u; Tri + 1u < LoopEdges.size(); ++Tri)
         {
@@ -979,7 +979,7 @@ GPUUVDistortionSummary UVWorkspaceRasterizer::EvaluateUVDistortionInspection(
     {
         Summary.PerFaceStretch[Idx] = Outputs[Idx].L2Stretch;
     }
-    CachedFaceStretch = Summary.PerFaceStretch;
+    RetainedFaceStretch = Summary.PerFaceStretch;
     return Summary;
 }
 

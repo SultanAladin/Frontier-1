@@ -264,7 +264,7 @@ uint32_t UVAuthoringOperations::StitchAcrossSelectedEdges(
             }
         }
 
-        // Weld exact seam endpoints and clear seam flag
+        // Weld exact seam endpoints and clear the seam marking
         const uint32_t Single[1] = { EIdx };
         StitchedCount += ClearSeamsWithUVWeld(Network, Single);
     }

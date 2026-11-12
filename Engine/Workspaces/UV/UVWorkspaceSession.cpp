@@ -473,7 +473,7 @@ void UVWorkspaceSession::RefreshGizmoAnchorsFromSelection() noexcept
 
 void UVWorkspaceSession::FinalizeInteractiveUVRevision(std::string_view OperationTag)
 {
-    RecordUVRevisionStep(OperationTag);
+    RegisterUVRevisionStep(OperationTag);
     Asset.Layers.SynchronizePartitions(Asset.Network, RootInstanceToken);
     SyncNetworkToGPU();
     RefreshGizmoAnchorsFromSelection();
@@ -557,56 +557,56 @@ bool UVWorkspaceSession::ExecuteDirective(
         {
             const uint32_t Marked = SeamCutGenerator::MarkDihedralSharpSeams(Asset.Network, SharpAngleThreshold, false);
             std::snprintf(Msg, sizeof(Msg), "Marked %u Dihedral Seam Edges (>= %.0f deg)", Marked, SharpAngleThreshold);
-            RecordUVRevisionStep("MarkSharpSeams");
+            RegisterUVRevisionStep("MarkSharpSeams");
             break;
         }
         case UVCommandDirective::UnwrapConformal:
         {
             const ConformalUnwrapReport Rep = ConformalUnwrapSolver::FlattenIslandsConformally(Asset.Network, OptionalChannels, 28u);
             std::snprintf(Msg, sizeof(Msg), "Conformal Unwrap: %u Islands in %.2f ms (0 Flips)", Rep.IslandsFlattened, Rep.ElapsedMilliseconds);
-            RecordUVRevisionStep("UnwrapConformal");
+            RegisterUVRevisionStep("UnwrapConformal");
             break;
         }
         case UVCommandDirective::FlattenAngleBasedABF:
         {
             const uint32_t Count = UVProjectionSolvers::FlattenAngleBasedABF(Asset.Network, 12u);
             std::snprintf(Msg, sizeof(Msg), "ABF++ Angle Flatten: %u Islands Optimized (0 Flips)", Count);
-            RecordUVRevisionStep("FlattenAngleBasedABF");
+            RegisterUVRevisionStep("FlattenAngleBasedABF");
             break;
         }
         case UVCommandDirective::ProjectSmartUV:
         {
             const uint32_t Clusters = UVProjectionSolvers::ProjectSmartAngleClusters(Asset.Network, 66.0f, 0.02f);
             std::snprintf(Msg, sizeof(Msg), "Smart UV Project: %u Normal Clusters", Clusters);
-            RecordUVRevisionStep("ProjectSmartUV");
+            RegisterUVRevisionStep("ProjectSmartUV");
             break;
         }
         case UVCommandDirective::ProjectCubicBox:
         {
             UVProjectionSolvers::ProjectCubicBox(Asset.Network, SelectionMask.CollectSelectedFaces());
             std::snprintf(Msg, sizeof(Msg), "Applied Triplanar Cubic Box Projection");
-            RecordUVRevisionStep("ProjectCubicBox");
+            RegisterUVRevisionStep("ProjectCubicBox");
             break;
         }
         case UVCommandDirective::ProjectCylindrical:
         {
             UVProjectionSolvers::ProjectCylindrical(Asset.Network, SelectionMask.CollectSelectedFaces());
             std::snprintf(Msg, sizeof(Msg), "Applied Polar Cylindrical Projection");
-            RecordUVRevisionStep("ProjectCylindrical");
+            RegisterUVRevisionStep("ProjectCylindrical");
             break;
         }
         case UVCommandDirective::ProjectSpherical:
         {
             UVProjectionSolvers::ProjectSpherical(Asset.Network, SelectionMask.CollectSelectedFaces());
             std::snprintf(Msg, sizeof(Msg), "Applied Equirectangular Spherical Projection");
-            RecordUVRevisionStep("ProjectSpherical");
+            RegisterUVRevisionStep("ProjectSpherical");
             break;
         }
         case UVCommandDirective::ProjectCameraView:
         {
             UVProjectionSolvers::ProjectFromCameraView(Asset.Network, ActiveDocument.InspectViewportProjection(), SelectionMask.CollectSelectedFaces());
             std::snprintf(Msg, sizeof(Msg), "Applied Camera View Planar Projection");
-            RecordUVRevisionStep("ProjectCameraView");
+            RegisterUVRevisionStep("ProjectCameraView");
             break;
         }
         case UVCommandDirective::FollowActiveQuads:
@@ -614,7 +614,7 @@ bool UVWorkspaceSession::ExecuteDirective(
             const uint32_t Count = UVProjectionSolvers::FollowActiveQuads(
                 Asset.Network, SelectionMask.ActiveFaceIndex, SelectionMask.CollectSelectedFaces());
             std::snprintf(Msg, sizeof(Msg), "Follow Active Quads: Propagated %u Quads", Count);
-            RecordUVRevisionStep("FollowActiveQuads");
+            RegisterUVRevisionStep("FollowActiveQuads");
             break;
         }
         case UVCommandDirective::MarkSelectedSeams:
@@ -626,7 +626,7 @@ bool UVWorkspaceSession::ExecuteDirective(
             }
             const uint32_t Marked = UVAuthoringOperations::MarkEdgesAsSeams(Asset.Network, Edges, true);
             std::snprintf(Msg, sizeof(Msg), "Marked %u Selected Seam Edges", Marked);
-            RecordUVRevisionStep("MarkSelectedSeams");
+            RegisterUVRevisionStep("MarkSelectedSeams");
             break;
         }
         case UVCommandDirective::ClearSelectedSeams:
@@ -638,28 +638,28 @@ bool UVWorkspaceSession::ExecuteDirective(
             }
             const uint32_t Welded = UVAuthoringOperations::ClearSeamsWithUVWeld(Asset.Network, Edges);
             std::snprintf(Msg, sizeof(Msg), "Cleared & Welded %u Seam Edges", Welded);
-            RecordUVRevisionStep("ClearSelectedSeams");
+            RegisterUVRevisionStep("ClearSelectedSeams");
             break;
         }
         case UVCommandDirective::DeriveSeamsFromIslands:
         {
             const uint32_t Seams = UVAuthoringOperations::DeriveSeamsFromIslands(Asset.Network);
             std::snprintf(Msg, sizeof(Msg), "Derived %u Seam Edges from UV Islands", Seams);
-            RecordUVRevisionStep("DeriveSeamsFromIslands");
+            RegisterUVRevisionStep("DeriveSeamsFromIslands");
             break;
         }
         case UVCommandDirective::PinSelectedUVs:
         {
             const uint32_t Pinned = UVAuthoringOperations::AssignPinLockOnFaces(Asset.Network, SelectionMask.CollectSelectedFaces(), true);
             std::snprintf(Msg, sizeof(Msg), "Pinned %u UV Corners (EnablePinLock)", Pinned);
-            RecordUVRevisionStep("PinSelectedUVs");
+            RegisterUVRevisionStep("PinSelectedUVs");
             break;
         }
         case UVCommandDirective::UnpinSelectedUVs:
         {
             const uint32_t Unpinned = UVAuthoringOperations::AssignPinLockOnFaces(Asset.Network, SelectionMask.CollectSelectedFaces(), false);
             std::snprintf(Msg, sizeof(Msg), "Unpinned %u UV Corners", Unpinned);
-            RecordUVRevisionStep("UnpinSelectedUVs");
+            RegisterUVRevisionStep("UnpinSelectedUVs");
             break;
         }
         case UVCommandDirective::StitchSelectedSeams:
@@ -671,21 +671,21 @@ bool UVWorkspaceSession::ExecuteDirective(
             }
             const uint32_t Stitched = UVAuthoringOperations::StitchAcrossSelectedEdges(Asset.Network, Edges);
             std::snprintf(Msg, sizeof(Msg), "Stitched %u Seam Edges Across Islands", Stitched);
-            RecordUVRevisionStep("StitchSelectedSeams");
+            RegisterUVRevisionStep("StitchSelectedSeams");
             break;
         }
         case UVCommandDirective::SplitSelectedIsland:
         {
             const uint32_t SplitCount = UVAuthoringOperations::SplitFacesIntoDetachedIsland(Asset.Network, SelectionMask);
             std::snprintf(Msg, sizeof(Msg), "Detached %u Faces into New UV Island", SplitCount);
-            RecordUVRevisionStep("SplitSelectedIsland");
+            RegisterUVRevisionStep("SplitSelectedIsland");
             break;
         }
         case UVCommandDirective::RectifySelectedQuads:
         {
             const uint32_t Rectified = UVAuthoringOperations::RectifySelectedQuadFaces(Asset.Network, SelectionMask.CollectSelectedFaces());
             std::snprintf(Msg, sizeof(Msg), "Rectified %u Quad Faces", Rectified);
-            RecordUVRevisionStep("RectifySelectedQuads");
+            RegisterUVRevisionStep("RectifySelectedQuads");
             break;
         }
         case UVCommandDirective::RelaxStretchGPU:
@@ -699,7 +699,7 @@ bool UVWorkspaceSession::ExecuteDirective(
                 Rep.ExecutedIterations,
                 Rep.ExecutedOnVulkanGPU ? "Vulkan .slang" : "CPU",
                 Rep.ElapsedMilliseconds);
-            RecordUVRevisionStep("RelaxStretchGPU");
+            RegisterUVRevisionStep("RelaxStretchGPU");
             break;
         }
         case UVCommandDirective::PackUVsConcaveSkyline:
@@ -720,21 +720,21 @@ bool UVWorkspaceSession::ExecuteDirective(
                 LatestPackReport.EvaluatedOnVulkanGPU ? "GPU Skyline" : "CPU Skyline",
                 LatestPackReport.PrimaryTileEfficiency * 100.0f,
                 LatestPackReport.ElapsedMilliseconds);
-            RecordUVRevisionStep("PackConcaveSkyline");
+            RegisterUVRevisionStep("PackConcaveSkyline");
             break;
         }
         case UVCommandDirective::StackSimilarIslands:
         {
             const uint32_t Stacked = UVIslandLayoutOperations::StackSimilarIslands(Asset.Network);
             std::snprintf(Msg, sizeof(Msg), "Stacked %u Congruent UV Islands", Stacked);
-            RecordUVRevisionStep("StackSimilarIslands");
+            RegisterUVRevisionStep("StackSimilarIslands");
             break;
         }
         case UVCommandDirective::UnstackOverlapping:
         {
             const uint32_t Unstacked = UVIslandLayoutOperations::UnstackOverlappingIslands(Asset.Network);
             std::snprintf(Msg, sizeof(Msg), "Unstacked %u Overlapping UV Islands", Unstacked);
-            RecordUVRevisionStep("UnstackOverlapping");
+            RegisterUVRevisionStep("UnstackOverlapping");
             break;
         }
         case UVCommandDirective::ExpandEmptyPockets:
@@ -742,7 +742,7 @@ bool UVWorkspaceSession::ExecuteDirective(
             const float MarginUV = Prefs.IslandMarginPixels / static_cast<float>(std::max(256u, Prefs.DefaultTileResolutionPx));
             const uint32_t Expanded = UVIslandLayoutOperations::ExpandIntoEmptyPockets(Asset.Network, MarginUV);
             std::snprintf(Msg, sizeof(Msg), "Fill Pockets: Expanded %u UV Islands", Expanded);
-            RecordUVRevisionStep("ExpandEmptyPockets");
+            RegisterUVRevisionStep("ExpandEmptyPockets");
             break;
         }
         case UVCommandDirective::EqualizeTexelDensity:
@@ -751,7 +751,7 @@ bool UVWorkspaceSession::ExecuteDirective(
             const TexelDensityReport Rep = TexelDensityEqualizer::EqualizePhysicalTexelDensity(
                 Asset.Network, Prefs.TargetTexelDensity, TileRes);
             std::snprintf(Msg, sizeof(Msg), "Equalized %u Islands -> %.0f px/m (@ %u px)", Rep.IslandsEqualized, Rep.AchievedMeanTexelPerM, TileRes);
-            RecordUVRevisionStep("EqualizeTexelDensity");
+            RegisterUVRevisionStep("EqualizeTexelDensity");
             break;
         }
         case UVCommandDirective::AutoDistributeUDIMs:
@@ -766,7 +766,7 @@ bool UVWorkspaceSession::ExecuteDirective(
                 LatestPackReport.IslandsPacked,
                 LatestPackReport.UDIMTilesOccupied,
                 LatestPackReport.ElapsedMilliseconds);
-            RecordUVRevisionStep("AutoDistributeUDIMs");
+            RegisterUVRevisionStep("AutoDistributeUDIMs");
             break;
         }
         case UVCommandDirective::SelectFlippedFaces:
@@ -844,7 +844,7 @@ bool UVWorkspaceSession::DispatchDirectiveAsync(
         OptionalCompletion);
 }
 
-void UVWorkspaceSession::RecordUVRevisionStep(std::string_view OperationTag)
+void UVWorkspaceSession::RegisterUVRevisionStep(std::string_view OperationTag)
 {
     const std::vector<float> UVStream = Asset.Network.ExtractParameterizedUVStream();
     const std::span<const std::byte> BytePayload(

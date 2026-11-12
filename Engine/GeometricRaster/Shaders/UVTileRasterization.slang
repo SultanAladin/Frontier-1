@@ -3,10 +3,10 @@
 //============================================================================================================================================
 // 2D UDIM UVTile parameter canvas shader rendering checker/custom backdrops, anti-aliased UV faces, GPU seam/pin beacons & 2D Pick IDs
 
-struct UVCanvasVertexRecord
+struct UVCanvasVertexLayout
 {
     float4 UVAndBaryXY;   // xy = ParameterUV (U, V), zw = Barycentric.xy
-    float4 BaryZAndStats; // x = Barycentric.z, y = StretchMetric, z = SignedAreaSign, w = OverlapFlag
+    float4 BaryZAndStats; // x = Barycentric.z, y = StretchMetric, z = SignedAreaSign, w = OverlapIndicator
     uint4  NetworkPickIDs;// x = InstanceSlot, y = FaceIndex, z = DirectedEdgeIndex, w = LayerOrd | (Pins<<16) | (Seams<<19)
 };
 
@@ -17,7 +17,7 @@ struct UVCanvasUniformBlock
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<UVCanvasUniformBlock>  CanvasUniforms;
-[[vk::binding(1, 0)]] StructuredBuffer<UVCanvasVertexRecord> CanvasVertices;
+[[vk::binding(1, 0)]] StructuredBuffer<UVCanvasVertexLayout> CanvasVertices;
 [[vk::binding(2, 0)]] StructuredBuffer<uint>                 FaceSelectionBitmask;
 
 struct UVVertexOutput
@@ -81,7 +81,7 @@ float3 EvaluateBackdropTexture(uint BackdropPreset, float2 LocalUV)
 [shader("vertex")]
 UVVertexOutput VertexEntry(uint VertexID : SV_VertexID)
 {
-    UVCanvasVertexRecord Rec = CanvasVertices[VertexID];
+    UVCanvasVertexLayout Rec = CanvasVertices[VertexID];
     float2 MinUV = CanvasUniforms.CanvasMinMaxUV.xy;
     float2 MaxUV = CanvasUniforms.CanvasMinMaxUV.zw;
     float2 Norm  = (Rec.UVAndBaryXY.xy - MinUV) / max(MaxUV - MinUV, float2(1.0e-5, 1.0e-5));
@@ -105,7 +105,7 @@ UVFragmentOutput FragmentEntry(UVVertexOutput In)
     bool PinOverlayOn   = (OverlayMask & 4u) != 0u;
     uint BackdropPreset = (OverlayMask >> 8u) & 0xFFu;
 
-    // Background UDIM Checker / Backdrop & Grid Pass (NetworkPickIDs.x == 0u)
+    // Background UDIM Checker / Backdrop & Grid Rasterization (NetworkPickIDs.x == 0u)
     if (In.IDs.x == 0u)
     {
         float2 UV     = In.ParameterUV;

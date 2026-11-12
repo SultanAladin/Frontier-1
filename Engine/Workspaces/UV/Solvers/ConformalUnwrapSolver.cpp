@@ -261,17 +261,17 @@ SolvedIslandUVs SolveSingleIslandConformal(
 
     // Verify every face in this island is strictly non-inverted; if the island wraps >180 deg (e.g. cylindrical tube),
     // preserve its existing developable parameterization coordinates and relax them harmonically in UV space!
-    bool HasFoldedFace = false;
+    bool FoldedFaceDetected = false;
     for (const uint32_t FaceIdx : Island.FaceIndices)
     {
         if (SignedFaceUVArea(FaceIdx) <= 1.0e-6f)
         {
-            HasFoldedFace = true;
+            FoldedFaceDetected = true;
             break;
         }
     }
 
-    if (HasFoldedFace)
+    if (FoldedFaceDetected)
     {
         for (std::size_t CornerIdx = 0u; CornerIdx < Island.CornerEdgeIndices.size(); ++CornerIdx)
         {

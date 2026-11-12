@@ -25,6 +25,9 @@ jobs:
       - name: Check out branch source
         uses: actions/checkout@v4
 
+      - name: Audit UV workspace banned vocabulary
+        run: python3 Automation/AuditBannedVocabulary.py
+
       - name: Install Linux build and Vulkan prerequisites
         run: |
           sudo apt-get update

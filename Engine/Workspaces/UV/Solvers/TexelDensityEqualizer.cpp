@@ -50,7 +50,7 @@ TexelDensityReport TexelDensityEqualizer::EqualizePhysicalTexelDensity(
         const float SpanU      = std::max(1.0e-4f, Isl.BoundsMaxUV.U - Isl.BoundsMinUV.U);
         const float SpanV      = std::max(1.0e-4f, Isl.BoundsMaxUV.V - Isl.BoundsMinUV.V);
 
-        // Clamp scale so a single oversized island never spills outside its 0.94 UDIM safe frame
+        // Clamp scale so a single oversized island never spills outside its 0.94 UDIM safe bounds
         const float MaxFitScale = std::min(0.92f / SpanU, 0.92f / SpanV);
         ScaleRatio              = std::min(ScaleRatio, MaxFitScale);
 

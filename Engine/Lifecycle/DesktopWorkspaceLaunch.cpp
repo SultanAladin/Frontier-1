@@ -40,6 +40,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -201,14 +202,113 @@ void SynchronizeGlfwToImGui(GLFWwindow* Win, ImGuiIO& Io, GlfwSupplementalQueue&
 }
 #endif
 
+//------------------------------------------------------------------------------------------------------------------------
+//                                                PACKAGED LAYOUT RESOLUTION
+//------------------------------------------------------------------------------------------------------------------------
+
+// Redirects the content root and SPIR-V directory beside the executable when a packaged CompiledShaders/ directory exists there
+[[nodiscard]] bool ResolvePackagedLayout(
+    std::span<const char* const> CommandLineArgs,
+    std::filesystem::path&       RepositoryRootPath,
+    std::filesystem::path&       CompiledShaderDir)
+{
+    if (CommandLineArgs.empty() || CommandLineArgs[0] == nullptr)
+    {
+        return false;
+    }
+
+    std::error_code             PathFailure {};
+    const std::filesystem::path ExecutablePath =
+        std::filesystem::weakly_canonical(std::filesystem::absolute(std::filesystem::path(CommandLineArgs[0]), PathFailure), PathFailure);
+    if (PathFailure || !ExecutablePath.has_parent_path())
+    {
+        return false;
+    }
+
+    const std::filesystem::path ExecutableDir     = ExecutablePath.parent_path();
+    const std::filesystem::path PackagedShaderDir = ExecutableDir / "CompiledShaders";
+    if (!std::filesystem::is_directory(PackagedShaderDir, PathFailure))
+    {
+        return false;
+    }
+
+    RepositoryRootPath = ExecutableDir;
+    CompiledShaderDir  = PackagedShaderDir;
+    return true;
+}
+
+// Confirms every packaged shader, geometry container, and typeface is present without requiring a Vulkan device
+[[nodiscard]] int VerifyPackagedLayout(
+    bool                         PackagedLayoutResolved,
+    const std::filesystem::path& RepositoryRootPath,
+    const std::filesystem::path& CompiledShaderDir)
+{
+    static constexpr const char* RequiredShaderBinaries[] = {
+        "SurfaceShading.vert.spv",            "SurfaceShading.frag.spv",
+        "UVTileRasterization.vert.spv",       "UVTileRasterization.frag.spv",
+        "GizmoRasterization.vert.spv",        "GizmoRasterization.frag.spv",
+        "ImGuiOverlayRasterization.vert.spv", "ImGuiOverlayRasterization.frag.spv",
+        "SelectionMaskCompute.comp.spv",      "ViewportPickReduction.comp.spv",
+        "UVDistortionInspection.comp.spv",    "StretchRelaxCompute.comp.spv",
+        "ConcaveSkylineCompute.comp.spv",
+    };
+
+    if (!PackagedLayoutResolved)
+    {
+        std::fprintf(stderr, "[FrontierHost] Packaged layout missing: no CompiledShaders directory beside the executable\n");
+        return 1;
+    }
+
+    std::error_code PathFailure {};
+    uint32_t        MissingCount = 0u;
+    for (const char* ShaderBinary : RequiredShaderBinaries)
+    {
+        if (!std::filesystem::is_regular_file(CompiledShaderDir / ShaderBinary, PathFailure))
+        {
+            std::fprintf(stderr, "[FrontierHost] Packaged shader missing: %s\n", ShaderBinary);
+            ++MissingCount;
+        }
+    }
+
+    const std::filesystem::path DefaultGeometry = RepositoryRootPath / "EngineContent/Geometry/ControlledIntegrator.GeometrySpace";
+    if (!std::filesystem::is_regular_file(DefaultGeometry, PathFailure))
+    {
+        std::fprintf(stderr, "[FrontierHost] Packaged geometry missing: %s\n", DefaultGeometry.string().c_str());
+        ++MissingCount;
+    }
+
+    TypographyRepository Typography {};
+    const uint32_t       TypefaceCount = Typography.LoadRepository(RepositoryRootPath / "EngineContent/FontsArchives");
+    if (TypefaceCount == 0u)
+    {
+        std::fprintf(stderr, "[FrontierHost] Packaged typefaces missing under EngineContent/FontsArchives\n");
+        ++MissingCount;
+    }
+
+    std::fprintf(
+        stdout,
+        "[FrontierHost] Packaged layout at %s: %u shaders, %u typefaces, %u missing\n",
+        RepositoryRootPath.string().c_str(),
+        static_cast<unsigned>(std::size(RequiredShaderBinaries)),
+        static_cast<unsigned>(TypefaceCount),
+        static_cast<unsigned>(MissingCount));
+    return MissingCount == 0u ? 0 : 1;
+}
+
 } // namespace
 
 int LaunchDesktopWorkspace(
     DesktopLaunchOptions          InitialOptions,
     std::span<const char* const>  CommandLineArgs,
-    const std::filesystem::path&  RepositoryRootPath,
-    const std::filesystem::path&  CompiledShaderDir)
+    const std::filesystem::path&  BuildRepositoryRootPath,
+    const std::filesystem::path&  BuildCompiledShaderDir)
 {
+    // Packaged binaries carry CompiledShaders/ and EngineContent/ beside the executable; in-place builds keep the CMake paths.
+    std::filesystem::path RepositoryRootPath = BuildRepositoryRootPath;
+    std::filesystem::path CompiledShaderDir  = BuildCompiledShaderDir;
+    const bool            PackagedLayoutResolved =
+        ResolvePackagedLayout(CommandLineArgs, RepositoryRootPath, CompiledShaderDir);
+
     Configuration::EngineConfiguration EngineConfig(
         InitialOptions.DefaultLaunchMode == Configuration::HostLaunchMode::StandaloneWorkspace
             ? Configuration::EngineConfiguration::ConstructStandaloneUVDefault()
@@ -247,6 +347,29 @@ int LaunchDesktopWorkspace(
         else if (Arg == "--open-browser")
         {
             InitialOptions.OpenContentBrowser = true;
+        }
+    }
+
+    if (PackagedLayoutResolved)
+    {
+        // Relative command-line paths stay anchored to the launch directory before content look-ups move beside the executable
+        std::error_code PathFailure {};
+        if (!InitialOptions.StartupImportPath.empty())
+        {
+            InitialOptions.StartupImportPath = std::filesystem::absolute(InitialOptions.StartupImportPath, PathFailure);
+        }
+        if (!InitialOptions.CapturePngOutputPath.empty())
+        {
+            InitialOptions.CapturePngOutputPath = std::filesystem::absolute(InitialOptions.CapturePngOutputPath, PathFailure);
+        }
+        std::filesystem::current_path(RepositoryRootPath, PathFailure);
+    }
+
+    for (const char* RawArg : CommandLineArgs)
+    {
+        if (RawArg != nullptr && std::string_view(RawArg) == "--verify-packaged-layout")
+        {
+            return VerifyPackagedLayout(PackagedLayoutResolved, RepositoryRootPath, CompiledShaderDir);
         }
     }
 

@@ -564,16 +564,16 @@ float UVInspectorPanel::RenderUDIMTab(
 
         for (const uint32_t TileCode : Session->Asset.UDIMTiles)
         {
-            const bool        IsAct = (Session->ActiveUDIMNumber == TileCode);
+            const bool        TileActive = (Session->ActiveUDIMNumber == TileCode);
             const auto        Cfg   = Session->QueryUDIMTileSetting(TileCode);
             const float       Occ   = EvaluateUDIMFillPercent(Session->Asset.Network, TileCode);
             const Rectangle2D Row   { SX, SY, SW, 32.0f };
             const bool        Hov   = Row.Contains(Cursor);
 
-            Surface.FillRectangle(Row, IsAct ? Theme.AccentSoft : (Hov ? Theme.HoverBg : Theme.WellBg), 8.0f);
-            Surface.StrokeRectangle(Row, IsAct ? Theme.AccentBorder : Theme.BorderSubtle, 8.0f, 1.0f);
+            Surface.FillRectangle(Row, TileActive ? Theme.AccentSoft : (Hov ? Theme.HoverBg : Theme.WellBg), 8.0f);
+            Surface.StrokeRectangle(Row, TileActive ? Theme.AccentBorder : Theme.BorderSubtle, 8.0f, 1.0f);
 
-            Surface.FillCircle({ Row.X + 12.0f, Row.Y + 14.0f }, 3.5f, IsAct ? Theme.AccentFill : Theme.TextMuted);
+            Surface.FillCircle({ Row.X + 12.0f, Row.Y + 14.0f }, 3.5f, TileActive ? Theme.AccentFill : Theme.TextMuted);
 
             char RowTxt[64]{};
             const uint32_t TU = (TileCode - 1001u) % 10u;

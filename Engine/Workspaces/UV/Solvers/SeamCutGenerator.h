@@ -30,7 +30,7 @@ struct UVIslandPartition
     float                 TotalAreaUV              = 0.0f;   // [uv^2] - Sum of positive UV face areas in this island
     Mathematics::UVAxes   BoundsMinUV              {};       // [uv]   - Current island UV AABB minimum
     Mathematics::UVAxes   BoundsMaxUV              {};       // [uv]   - Current island UV AABB maximum
-    std::vector<uint32_t> FaceIndices              {};       // [idx]  - Member Face indices inside PolygonNetwork
+    std::vector<uint32_t> FaceIndices              {};       // [idx]  - Enclosed Face indices inside PolygonNetwork
     std::vector<uint32_t> CornerEdgeIndices        {};       // [idx]  - All DirectedEdge corners belonging to this island
     std::vector<uint32_t> OrderedBoundaryVertices  {};       // [idx]  - Ordered outer boundary Vertex ring for conformal unwrap
 };
