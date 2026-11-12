@@ -1,0 +1,125 @@
+diff --git a/imgui.cpp b/imgui.cpp
+--- a/imgui.cpp
++++ b/imgui.cpp
+@@ -8616,7 +8616,8 @@
+ 
+         // Apply scrolling
+         window->Scroll = CalcNextScrollFromScrollTargetAndClamp(window);
+-        window->ScrollTarget = ImVec2(FLT_MAX, FLT_MAX);
++        // [FRONTIER PATCH H] ScrollTarget is retired inside CalcNextScrollFromScrollTargetAndClamp()
++        //   once the eased position settles; clearing it here would freeze smooth scrolls mid-flight.
+         window->DecoInnerSizeX1 = window->DecoInnerSizeY1 = 0.0f;
+ 
+         // DRAWING
+@@ -11280,7 +11281,13 @@
+                 LockWheelingWindow(window, wheel.x);
+                 float max_step = window->InnerRect.GetWidth() * 0.67f;
+                 float scroll_step = ImTrunc(ImMin(2 * window->FontRefSize, max_step));
+-                SetScrollX(window, window->Scroll.x - wheel.x * scroll_step);
++                // [FRONTIER PATCH H] Accumulate from the in-flight eased target (rapid wheel ticks
++                //   must not be swallowed by the lag), allow a small overshoot past either end, and
++                //   mark the target as wheel-owned (negative edge-snap distance) so only wheel
++                //   scrolling eases - programmatic positioning keeps stock snap behaviour.
++                float current_x = (window->ScrollTarget.x < FLT_MAX && window->ScrollTargetEdgeSnapDist.x < 0.0f) ? window->ScrollTarget.x : window->Scroll.x;
++                SetScrollX(window, ImClamp(current_x - wheel.x * scroll_step, -56.0f, window->ScrollMax.x + 56.0f));
++                window->ScrollTargetEdgeSnapDist.x = -1.0f;
+                 g.WheelingWindowScrolledFrame = g.FrameCount;
+             }
+             if (do_scroll[ImGuiAxis_Y])
+@@ -11288,7 +11295,10 @@
+                 LockWheelingWindow(window, wheel.y);
+                 float max_step = window->InnerRect.GetHeight() * 0.67f;
+                 float scroll_step = ImTrunc(ImMin(5 * window->FontRefSize, max_step));
+-                SetScrollY(window, window->Scroll.y - wheel.y * scroll_step);
++                // [FRONTIER PATCH H] Same target accumulation, overshoot and wheel-owned marker as X.
++                float current_y = (window->ScrollTarget.y < FLT_MAX && window->ScrollTargetEdgeSnapDist.y < 0.0f) ? window->ScrollTarget.y : window->Scroll.y;
++                SetScrollY(window, ImClamp(current_y - wheel.y * scroll_step, -56.0f, window->ScrollMax.y + 56.0f));
++                window->ScrollTargetEdgeSnapDist.y = -1.0f;
+                 g.WheelingWindowScrolledFrame = g.FrameCount;
+             }
+         }
+@@ -12755,10 +12765,26 @@
+ {
+     ImVec2 scroll = window->Scroll;
+     ImVec2 decoration_size(window->DecoOuterSizeX1 + window->DecoInnerSizeX1 + window->DecoOuterSizeX2, window->DecoOuterSizeY1 + window->DecoInnerSizeY1 + window->DecoOuterSizeY2);
++    // [FRONTIER PATCH H] Smooth *wheel* scrolling with overscroll: wheel targets (marked by
++    //   UpdateMouseWheel() with a negative ScrollTargetEdgeSnapDist, a value no other writer uses)
++    //   ease toward their destination with a short physical lag and may travel a little past either
++    //   end before springing back. Every other target - SetScroll*, SetScrollHere*, ScrollToItem /
++    //   ScrollToRectEx (combo popups centre their selected row through it on the Appearing frame),
++    //   nav scrolling, SetNextWindowScroll - keeps stock behaviour: applied in full, clamped to
++    //   [0, ScrollMax], retired immediately. ScrollToRectEx() even calls this function itself and
++    //   treats the result as final when offsetting parent rects, so easing those would corrupt its
++    //   deltas. Begin() no longer clears ScrollTarget; eased targets retire here once they settle
++    //   (out-of-range ones settle on the overshoot first, then retarget the boundary and bounce home).
++    const float frontier_dt = (GImGui->IO.DeltaTime > 0.0f) ? ImClamp(GImGui->IO.DeltaTime, 0.001f, 0.05f) : (1.0f / 60.0f);
++    const float frontier_alpha = ImClamp(frontier_dt * 16.0f, 0.05f, 1.0f);
++    const float frontier_overscroll = 56.0f;
+     for (int axis = 0; axis < 2; axis++)
+     {
++        const float visible_size = window->SizeFull[axis] - decoration_size[axis];
++        bool allow_overscroll = false;
+         if (window->ScrollTarget[axis] < FLT_MAX)
+         {
++            const bool eased = window->ScrollTargetEdgeSnapDist[axis] < 0.0f;
+             float center_ratio = window->ScrollTargetCenterRatio[axis];
+             float scroll_target = window->ScrollTarget[axis];
+             if (window->ScrollTargetEdgeSnapDist[axis] > 0.0f)
+@@ -12767,11 +12793,54 @@
+                 float snap_max = window->ScrollMax[axis] + window->SizeFull[axis] - decoration_size[axis];
+                 scroll_target = CalcScrollEdgeSnap(scroll_target, snap_min, snap_max, window->ScrollTargetEdgeSnapDist[axis], center_ratio);
+             }
+-            scroll[axis] = scroll_target - center_ratio * (window->SizeFull[axis] - decoration_size[axis]);
++            if (!eased)
++            {
++                scroll[axis] = scroll_target - center_ratio * visible_size;
++                window->ScrollTarget[axis] = FLT_MAX;
++            }
++            else
++            {
++                allow_overscroll = true;
++                float desired = ImClamp(scroll_target - center_ratio * visible_size, -frontier_overscroll, window->ScrollMax[axis] + frontier_overscroll);
++                const float settled_from = scroll[axis];
++                float eased_pos = settled_from + (desired - settled_from) * frontier_alpha;
++                if (ImAbs(desired - eased_pos) <= 1.0f)
++                    eased_pos = desired;
++                else if (ImRound64(eased_pos) == ImRound64(settled_from))
++                    eased_pos = settled_from + (desired > settled_from ? 1.0f : -1.0f); // never stall a pixel short
++                scroll[axis] = eased_pos;
++                if (eased_pos == desired)
++                {
++                    if (desired < 0.0f)
++                        window->ScrollTarget[axis] = center_ratio * visible_size; // spring back to 0
++                    else if (desired > window->ScrollMax[axis])
++                        window->ScrollTarget[axis] = window->ScrollMax[axis] + center_ratio * visible_size; // spring back to max
++                    else
++                    {
++                        window->ScrollTarget[axis] = FLT_MAX;
++                        window->ScrollTargetEdgeSnapDist[axis] = 0.0f;
++                    }
++                }
++            }
++        }
++        else if (!window->Collapsed && !window->SkipItems && (scroll[axis] < 0.0f || scroll[axis] > window->ScrollMax[axis]))
++        {
++            // Content shrank beneath an overshot position: glide back inside instead of jumping.
++            allow_overscroll = true;
++            const float bound = ImClamp(scroll[axis], 0.0f, window->ScrollMax[axis]);
++            scroll[axis] += (bound - scroll[axis]) * frontier_alpha;
++            if (ImAbs(bound - scroll[axis]) <= 1.0f)
++                scroll[axis] = bound;
++            else
++            {
++                window->ScrollTarget[axis] = bound;
++                window->ScrollTargetCenterRatio[axis] = 0.0f;
++                window->ScrollTargetEdgeSnapDist[axis] = -1.0f; // [FRONTIER PATCH H] eased wheel-family target
++            }
+         }
+-        scroll[axis] = ImRound64(ImMax(scroll[axis], 0.0f));
++        scroll[axis] = ImRound64(ImMax(scroll[axis], allow_overscroll ? -frontier_overscroll : 0.0f));
+         if (!window->Collapsed && !window->SkipItems)
+-            scroll[axis] = ImMin(scroll[axis], window->ScrollMax[axis]);
++            scroll[axis] = ImMin(scroll[axis], window->ScrollMax[axis] + (allow_overscroll ? frontier_overscroll : 0.0f));
+     }
+     return scroll;
+ }

@@ -1,0 +1,82 @@
+name: UV workspace regression checks
+
+on:
+  push:
+    branches:
+      - 'arena/**'
+    paths:
+      - '.github/workflows/uv-workspace-ci.yml'
+      - 'CMakeLists.txt'
+      - 'Automation/**'
+      - 'Engine/**'
+      - 'Exhibits/**'
+      - 'ExternalPackages/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-regression:
+    name: Linux C++20 and Vulkan checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out branch source
+        uses: actions/checkout@v4
+
+      - name: Install Linux build and Vulkan prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential cmake ninja-build python3 xvfb \
+            libvulkan-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxi-dev libwayland-dev wayland-protocols \
+            libxkbcommon-dev libgl1-mesa-dev
+
+      - name: Recover pinned dependencies, fonts and shader tools
+        run: |
+          python3 -m pip install --requirement Automation/FontRequirements.txt
+          python3 Automation/PrepareDependencies.py
+          python3 Automation/PrepareFonts.py
+          python3 Automation/PrepareShaderToolchain.py
+
+      - name: Build and run all checks across supported profiles
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: 4
+        run: |
+          set -o pipefail
+          for profile in Editor Development Shipping; do
+            build_dir="Build/CI/${profile}"
+            echo "===== Configure ${profile} ====="
+            cmake -S . -B "$build_dir" -G Ninja \
+              -DFRONTIER_PROFILE="$profile" \
+              -DBUILD_TESTING=ON
+            echo "===== Build ${profile} ====="
+            cmake --build "$build_dir" --parallel 4
+            echo "===== CTest ${profile} ====="
+            if ! xvfb-run -a ctest --test-dir "$build_dir" --output-on-failure; then
+              python3 - "$build_dir/Testing/Temporary/LastTest.log" "$profile" <<'PY'
+          from pathlib import Path
+          import sys
+
+          log_path = Path(sys.argv[1])
+          profile = sys.argv[2]
+          text = log_path.read_text(errors='replace') if log_path.exists() else 'CTest log was not produced.'
+          tail = text[-7000:].replace('%', '%25').replace('\\r', '%0D').replace('\\n', '%0A')
+          print(f'::error title=CTest-{profile}::{tail}')
+          PY
+              exit 1
+            fi
+          done
+
+      - name: Upload CTest diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uv-workspace-linux-diagnostics
+          path: |
+            Build/CI/**/Testing/Temporary/LastTest.log
+            Build/CI/**/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: warn
+          retention-days: 14

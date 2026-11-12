@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vehicle Lab · Frontier</title>
+<link rel="stylesheet" href="./AssetInspector.css">
+</head>
+<body>
+<div class="studio-shell">
+  <header class="doc-tab-bar">
+    <div class="doc-brand"><a class="brand-hub-link" href="../index.html">Frontier</a><span class="brand-divider">/</span><span class="brand-title">Vehicle Lab</span><span class="asset-caption">CONTROL VEHICLE · VEHICLE HMI ASSET</span></div>
+    <div class="doc-actions"><span class="save-state" id="SaveState"><i></i> SAVED</span><button class="action-btn" id="ResetBtn" type="button">Reset</button><button class="action-btn action-accent" id="ExportBtn" type="button">Export setup</button></div>
+  </header>
+  <main class="studio-workspace">
+    <aside class="studio-column outliner-column" aria-label="Vehicle Outliner">
+      <div class="outliner-top"><div class="search-wrap"><span class="search-symbol" data-icon="search"></span><input class="search-input" id="ComponentSearch" type="search" placeholder="Search vehicle parts…"></div><button class="icon-btn" id="AddComponent" data-icon="plus" aria-label="Add vehicle component" title="Add vehicle component"></button></div>
+      <div class="outliner-summary"><div class="summary-card"><span>VEHICLE MASS</span><strong id="OutlinerMass">1,300 <small>kg</small></strong></div><div class="summary-card"><span>ASSET STATE</span><strong><i class="online-dot"></i> READY</strong></div></div>
+      <div class="tree-scroll">
+        <div class="tree-group"><div class="tree-group-head"><span>CONTROL VEHICLE</span><span class="tree-group-count" id="BaseComponentCount">13</span></div>
+          <button class="tree-row selected" data-component="Vehicle"><span class="tree-caret">⌄</span><span class="tree-glyph vehicle-glyph" data-icon="vehicle"></span><b>ControlVehicle</b><span class="outliner-status warning-status" id="VehicleWarning" data-icon="warning" title="A vehicle source asset is missing" hidden></span><span class="outliner-status locked-status" data-icon="lock" title="Shared source asset · geometry locked"></span><em>ROOT</em></button>
+          <div class="tree-nest">
+            <button class="tree-row" data-component="Body"><span class="tree-glyph" data-icon="body"></span><b>Body shell</b><span class="outliner-status locked-status" data-icon="lock" title="Shared FCT1 source mesh · locked"></span><em>2.9k faces</em></button>
+            <button class="tree-row" data-component="Cabin"><span class="tree-glyph" data-icon="cabin"></span><b>Cabin &amp; HMI</b><em>Vehicle HMI</em></button>
+            <button class="tree-row" data-component="Powertrain"><span class="tree-caret">⌄</span><span class="tree-glyph amber-glyph" data-icon="engine"></span><b>Powertrain</b></button>
+            <div class="tree-nest nested"><button class="tree-row" data-component="Engine"><span class="tree-glyph" data-icon="engine"></span><b>VR38 engine</b></button><button class="tree-row" data-component="Turbo"><span class="tree-glyph" data-icon="turbo"></span><b>Turbocharger</b></button><button class="tree-row" data-component="Transmission"><span class="tree-glyph" data-icon="gears"></span><b>Transmission</b></button></div>
+            <button class="tree-row" data-component="Suspension"><span class="tree-caret">⌄</span><span class="tree-glyph violet-glyph" data-icon="suspension"></span><b>Suspension · 4 corners</b></button>
+            <button class="tree-row" data-component="Tyres"><span class="tree-caret">⌄</span><span class="tree-glyph mint-glyph" data-icon="tire"></span><b>Tyres · MF6.1</b></button>
+            <div class="tree-nest nested wheel-list"><button class="tree-row" data-component="WheelFL"><span class="wheel-dot front"></span><b>Front Left</b><span class="outliner-status locked-status" data-icon="lock" title="Shared FCT1 wheel mesh · locked"></span><em>FL</em></button><button class="tree-row" data-component="WheelFR"><span class="wheel-dot front"></span><b>Front Right</b><span class="outliner-status locked-status" data-icon="lock" title="Shared FCT1 wheel mesh · locked"></span><em>FR</em></button><button class="tree-row" data-component="WheelRL"><span class="wheel-dot rear"></span><b>Rear Left</b><span class="outliner-status locked-status" data-icon="lock" title="Shared FCT1 wheel mesh · locked"></span><em>RL</em></button><button class="tree-row" data-component="WheelRR"><span class="wheel-dot rear"></span><b>Rear Right</b><span class="outliner-status locked-status" data-icon="lock" title="Shared FCT1 wheel mesh · locked"></span><em>RR</em></button></div>
+          </div>
+        </div>
+        <div class="tree-group user-component-group"><div class="tree-group-head"><span>USER COMPONENTS</span><span class="tree-group-count" id="UserComponentCount">0</span></div><div id="UserComponentTree"><div class="tree-empty">Add a component to extend the vehicle</div></div></div>
+        <div class="tree-group extra-group"><div class="tree-group-head"><span>INSPECTION CHANNELS</span><span class="tree-group-count">10</span></div><button class="tree-row channel-row selected-channel" data-channel="Thermal"><span class="tree-glyph" data-icon="thermal"></span><b>Tyre temperature</b></button><button class="tree-row channel-row" data-channel="Contact"><span class="tree-glyph" data-icon="contact"></span><b>Contact patches</b></button><button class="tree-row channel-row" data-channel="Slip"><span class="tree-glyph" data-icon="slip"></span><b>Slip angle vectors</b></button><button class="tree-row channel-row" data-channel="Suspension"><span class="tree-glyph" data-icon="suspension"></span><b>Suspension travel</b></button><button class="tree-row channel-row" data-channel="Normals"><span class="tree-glyph" data-icon="normals"></span><b>Surface normals</b></button><button class="tree-row channel-row" data-channel="BrakeTemp"><span class="tree-glyph" data-icon="brakes"></span><b>Brake temperature</b></button><button class="tree-row channel-row" data-channel="WheelLoad"><span class="tree-glyph" data-icon="wheelLoad"></span><b>Wheel load vectors</b></button><button class="tree-row channel-row" data-channel="RideHeight"><span class="tree-glyph" data-icon="ride"></span><b>Ride height</b></button><button class="tree-row channel-row" data-channel="AeroLoad"><span class="tree-glyph" data-icon="aero"></span><b>Aerodynamic load</b></button><button class="tree-row channel-row" data-channel="Drivetrain"><span class="tree-glyph" data-icon="drivetrain"></span><b>Drivetrain torque</b></button></div>
+      </div>
+      <footer class="outliner-footer"><div class="asset-source"><span class="source-mark" data-icon="vehicle"></span><span><b>Vehicle HMI · ControlVehicle</b><small id="AssetLoadMeta">Loading authored facet meshes…</small></span><i class="online-dot" id="SourceStatus"></i></div><div class="source-note">FCT1 MESH · SAME ASSET AS THE VEHICLE HMI</div></footer>
+    </aside>
+
+    <section class="viewport-column" aria-label="Vehicle preview and curve editor">
+      <div class="viewport-toolbar"><div class="viewport-heading"><span class="stage-indicator"></span><b>STAGE</b><span class="heading-divider">/</span><span id="SelectedMeshLabel">ControlVehicle · Full Assembly</span></div><div class="viewport-controls"><button class="hud-pill simulate-pill" id="SimulateBtn" aria-label="Simulate vehicle setup"><span id="SimulateIcon" data-icon="play"></span><span id="SimulateLabel">Simulate</span></button><button class="hud-pill is-active" data-camera="Orbit">Orbit</button><button class="hud-pill" data-camera="Side">Side</button><button class="hud-pill" data-camera="Top">Top</button><span class="toolbar-divider"></span><button class="hud-pill" id="ResetCamera">Frame</button><button class="hud-pill debug-pill" id="DebugToggle">Debug: <span id="DebugLabel">Thermal</span></button></div></div>
+      <div class="viewport-stage-wrap" id="VehicleStage"><canvas id="VehicleCanvas" aria-label="Interactive ControlVehicle 3D model"></canvas>
+        <div class="stage-top-left"><span class="live-chip"><i></i> LIVE VEHICLE ASSET</span><span class="load-status" id="LoadStatus">Loading FCT1…</span></div>
+        <div class="stage-top-right"><span class="asset-readout" id="StageReadout">1300 KG <i>·</i> 0.53 M COG <i>·</i> MF6.1</span></div>
+        <div class="simulation-hud" id="SimulationHud" hidden><div class="simulation-hud-title"><span class="simulation-live-dot"></span><b id="SimulationStateLabel">SIMULATION RUNNING</b><span id="SimGear">GEAR 1</span><button class="sim-reset-btn" id="ResetSimulation" data-icon="reset" title="Reset simulation" aria-label="Reset simulation"></button></div><div class="simulation-metrics"><span><small>SPEED</small><b id="SimSpeed">0 km/h</b></span><span><small>ENGINE</small><b id="SimRpm">800 rpm</b></span><span><small>ACCEL</small><b id="SimAcceleration">0.0 m/s²</b></span><span><small>TORQUE</small><b id="SimTorque">0 N·m</b></span></div><div class="simulation-pedals"><label>THROTTLE <input id="ThrottleInput" type="range" min="0" max="1" step=".01" value=".62"><b id="ThrottleValue">62%</b></label><label>BRAKE <input id="BrakeInput" type="range" min="0" max="1" step=".01" value="0"><b id="BrakeValue">0%</b></label></div></div>
+        <div class="stage-bottom-left"><span>ORBIT <b>LEFT DRAG</b></span><span>ZOOM <b>SCROLL</b></span><span>PAN <b>RIGHT DRAG</b></span></div>
+        <div class="stage-bottom-right"><span id="SceneStats">BODY · 1,492 VERTICES</span><span class="render-status"><i></i> WEBGL</span></div>
+        <div class="debug-legend" id="DebugLegend" hidden><span id="DebugLegendTitle">TYRE THERMAL</span><i></i><small id="DebugLegendLow">COOL</small><small id="DebugLegendHigh">HOT</small></div>
+      </div>
+      <section class="curve-panel">
+        <div class="curve-panel-head"><div class="curve-panel-title"><span class="curve-kicker">PHYSICS RESPONSE</span><b id="CurveName">Engine torque</b></div><div class="curve-tabs" id="CurveTabs"><button class="curve-tab active" data-curve="Torque">Torque</button><button class="curve-tab" data-curve="Boost">Turbo</button><button class="curve-tab" data-curve="Pacejka">Pacejka</button></div><label class="curve-type-control" title="Choose how values are interpolated between curve points"><span>INTERPOLATION</span><select id="CurveInterpolation" aria-label="Curve interpolation type"><option value="linear">Linear</option><option value="smooth">Smooth spline</option><option value="ease">Ease in / out</option><option value="step">Step / hold</option></select></label><button id="ExportCurve" class="icon-btn curve-reset" data-icon="download" aria-label="Export curve CSV" title="Export curve CSV"></button><button id="ResetCurve" class="icon-btn curve-reset" data-icon="reset" aria-label="Reset selected response" title="Reset selected response"></button></div>
+        <div class="curve-body"><span class="curve-y-axis" id="AxisY">TORQUE · N·m</span><div class="curve-chart-wrap"><canvas id="CurveCanvas" aria-label="Draggable engine, boost or tyre response curve"></canvas><span class="curve-hint" id="CurveHint">DRAG CONTROL POINTS · DOUBLE-CLICK TO ADD</span></div><span class="curve-x-axis" id="AxisX">ENGINE SPEED · RPM</span><span class="curve-meta" id="CurveDescription">18 authored samples · peak 520 N·m</span></div>
+      </section>
+      <footer class="viewport-footer"><span><i class="footer-live"></i> VEHICLE LAB</span><span id="AssetSourceStatus">Z-UP AUTHORING · METRES</span><span class="footer-spacer"></span><span>480 HZ SOLVER SPEC</span></footer>
+    </section>
+
+    <aside class="studio-column inspector-column" aria-label="Vehicle Inspector">
+      <div class="inspector-header"><div class="inspector-entity"><span class="entity-glyph" id="EntityGlyph" data-icon="vehicle"></span><div><span class="inspector-kicker">VEHICLE INSPECTOR</span><h2 id="DetailsTitle">ControlVehicle</h2><small id="DetailsPath">Vehicle HMI / Root Assembly</small></div></div><button class="icon-btn" id="MoreBtn" data-icon="more" aria-label="Inspector options" title="Inspector options"></button></div>
+      <div class="inspector-tabs" id="InspectorTabs"><button class="inspector-tab active" data-category="Geometry">Chassis</button><button class="inspector-tab" data-category="Powertrain">Engine</button><button class="inspector-tab" data-category="Tyres">Tyres</button><button class="inspector-tab" data-category="Debug">Debug</button></div>
+      <div class="inspector-scroll" id="InspectorContent"></div>
+      <footer class="inspector-footer"><span><i data-icon="reset"></i> LIVE ASSET VALUES</span><span id="PropertyCount">00</span></footer>
+    </aside>
+  </main>
+</div>
+<dialog class="component-dialog" id="AddComponentDialog" aria-labelledby="AddComponentTitle">
+  <form id="AddComponentForm">
+    <div class="dialog-heading"><span class="dialog-icon" data-icon="plus"></span><div><h2 id="AddComponentTitle">Add vehicle component</h2><p>Create a child component and attach it to the selected vehicle location.</p></div><button class="icon-btn dialog-close" type="button" id="CloseComponentDialog" aria-label="Close dialog" data-icon="close"></button></div>
+    <label class="dialog-field">Component name<input id="NewComponentName" name="name" maxlength="32" placeholder="e.g. Roof sensor" required></label>
+    <div class="dialog-fields"><label class="dialog-field">Component type<select id="NewComponentType"><option value="Sensor">Sensor</option><option value="Camera">Camera</option><option value="Ballast">Ballast</option><option value="Aero Surface">Aero surface</option><option value="Light">Light</option></select></label><label class="dialog-field">Attach point<select id="NewComponentAttach"><option value="Roof">Roof</option><option value="Front">Front mount</option><option value="Rear">Rear mount</option><option value="Chassis">Chassis center</option><option value="Left">Left side</option><option value="Right">Right side</option></select></label></div>
+    <label class="dialog-field">Parent component<select id="NewComponentParent"><option value="Vehicle">ControlVehicle root</option><option value="Body">Body shell</option><option value="Cabin">Cabin &amp; HMI</option><option value="Suspension">Suspension</option><option value="Powertrain">Powertrain</option></select></label>
+    <div class="dialog-actions"><button class="action-btn" type="button" id="CancelComponent">Cancel</button><button class="action-btn action-accent" type="submit">Add to vehicle</button></div>
+  </form>
+</dialog>
+<script type="module" src="./AssetInspector.js"></script>
+</body>
+</html>

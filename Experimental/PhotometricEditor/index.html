@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontier · Photometric & Light Studio</title>
+    <link rel="stylesheet" href="./PhotometricEditor.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./Vendor/three.esm.min.js"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="StudioShell" class="studio-shell">
+        <!-- Slanted Document & Suite Tab Bar -->
+        <header id="DocTabBar" class="doc-tab-bar">
+            <div class="doc-brand">
+                <a class="brand-hub-link" href="../index.html" title="Experimental Remastered Studio Hub">Frontier</a>
+                <span class="brand-divider" aria-hidden="true">/</span>
+                <span class="brand-title">Photometric Studio</span>
+            </div>
+
+            <nav id="RigTabStrip" class="doc-tab-strip" aria-label="Lighting Rig Scenarios">
+                <button type="button" class="doc-tab is-active" data-scenario="roadway">ECE Roadway Bay</button>
+                <button type="button" class="doc-tab" data-scenario="gallery">Architectural Gallery</button>
+                <button type="button" class="doc-tab" data-scenario="studio">Softbox &amp; COB Rig</button>
+                <button type="button" class="doc-tab" data-scenario="lunar">Night &amp; Lunar Field</button>
+            </nav>
+
+            <div class="doc-actions">
+                <div class="suite-links" aria-label="Experimental Remastered Studios">
+                    <a class="suite-pill" href="../ParticleEditor/index.html">Particle</a>
+                    <a class="suite-pill" href="../FractureEditor/index.html">Fracture</a>
+                    <span class="suite-pill is-current">Light / IES</span>
+                    <a class="suite-pill" href="../ForceFieldEditor/index.html">Force Field</a>
+                </div>
+                <label class="action-btn action-upload" for="IesFileInput" title="Load LM-63 Type-C .ies photometric profile">
+                    <span data-icon="Upload"></span>
+                    <span>Load .ies</span>
+                    <input id="IesFileInput" type="file" accept=".ies,.IES" hidden>
+                </label>
+                <button type="button" id="BtnOpenMatrix" class="action-btn" title="Browse IES profiles in the Asset Browser (M)">
+                    <span data-icon="Photometry"></span>
+                    <span>IES Profiles</span>
+                </button>
+                <button type="button" id="BtnExportIes" class="action-btn" title="Export active luminaire as LM-63 .ies">
+                    <span data-icon="Download"></span>
+                    <span>Export .ies</span>
+                </button>
+                <button type="button" id="BtnExportRig" class="action-btn action-accent" title="Export full lighting rig (.photometric.toml)">
+                    <span data-icon="Download"></span>
+                    <span>Export Rig</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main 3-Column Studio Workspace -->
+        <main class="studio-workspace">
+            <!-- Left Column: Project Zero Outliner -->
+            <aside id="OutlinerColumn" class="studio-column outliner-column" aria-label="Scene Lighting Outliner">
+                <div class="outliner-top">
+                    <div class="search-wrap">
+                        <span class="search-icon" data-icon="Search"></span>
+                        <input id="OutlinerSearch" type="search" class="search-input" placeholder="Search lights, IES, sky…" autocomplete="off">
+                    </div>
+                    <button type="button" id="BtnAddLightMenu" class="icon-btn" title="Add Luminaire to Stage">
+                        <span data-icon="Plus"></span>
+                    </button>
+                </div>
+
+                <!-- Quick Add Light (via shared Asset Browser) -->
+                <div id="AddLightDrawer" class="add-light-drawer" hidden>
+                    <div class="drawer-head">
+                        <span>Add Physical Light</span>
+                        <button type="button" id="BtnCloseAddDrawer" class="icon-btn-sm"><span data-icon="Close"></span></button>
+                    </div>
+                    <div id="AddLightButtons" class="add-light-grid"></div>
+                </div>
+
+                <!-- Census Cards -->
+                <div class="census-grid">
+                    <div class="census-card">
+                        <span class="census-label">Luminaires</span>
+                        <strong id="CensusLightCount" class="census-value">0 / 0</strong>
+                        <small id="CensusTotalLumens" class="census-sub">0.0 klm active</small>
+                    </div>
+                    <div class="census-card">
+                        <span class="census-label">Environment</span>
+                        <strong id="CensusSunElev" class="census-value">0.0°</strong>
+                        <small id="CensusEnvMeta" class="census-sub">HDRI + EV 0.0</small>
+                    </div>
+                </div>
+
+                <!-- Hierarchical Outliner Tree -->
+                <div id="OutlinerTree" class="outliner-tree">
+                    <div class="tree-group">
+                        <div class="tree-group-head">
+                            <span>SCENE LUMINAIRES</span>
+                            <span id="GroupLightsCount" class="tree-group-count">0</span>
+                        </div>
+                        <ul id="LuminaireList" class="tree-list" role="listbox" aria-label="Scene Luminaires"></ul>
+                    </div>
+
+                    <div class="tree-group">
+                        <div class="tree-group-head">
+                            <span>ENVIRONMENT LIGHTS</span>
+                            <span class="tree-group-count">7</span>
+                        </div>
+                        <ul id="EnvironmentList" class="tree-list" role="listbox" aria-label="Environment Lights"></ul>
+                    </div>
+                </div>
+
+                <!-- Quick Photometric Presets -->
+                <div class="outliner-footer">
+                    <div class="preset-strip-head">
+                        <span data-icon="Presets"></span>
+                        <span>Quick Photometry</span>
+                    </div>
+                    <div id="QuickPresetChips" class="quick-preset-chips"></div>
+                </div>
+            </aside>
+
+            <!-- Center Column: Interactive 3D Photometric Stage & Transport -->
+            <section class="viewport-column" aria-label="3D Photometric Calibration Viewport">
+                <div class="viewport-stage-wrap">
+                    <div id="PhotometricViewportMount" class="viewport-canvas-mount"></div>
+
+                    <!-- Top Floating Viewport HUD -->
+                    <div class="viewport-hud-top">
+                        <div id="ShadingLensGroup" class="hud-pill-group" role="tablist" aria-label="Photometric Inspection Lens">
+                            <button type="button" class="hud-pill is-active" data-lens="pbr">ACES PBR</button>
+                            <button type="button" class="hud-pill" data-lens="lux">False-Colour Lux</button>
+                            <button type="button" class="hud-pill" data-lens="goniometer">Goniometer</button>
+                            <button type="button" class="hud-pill" data-lens="homologation">Homologation</button>
+                        </div>
+
+                        <div class="hud-pill-group" aria-label="Camera Presets">
+                            <button type="button" class="hud-pill" data-cam="orbit">Orbit</button>
+                            <button type="button" class="hud-pill" data-cam="top">Top Plan</button>
+                            <button type="button" class="hud-pill" data-cam="wall">Wall Screen</button>
+                            <button type="button" class="hud-pill" data-cam="roadway">Roadway</button>
+                            <button type="button" id="BtnToggleDarkRoom" class="hud-pill is-active" title="Isolate lights inside Dark Volumetric Fog Room (D)">Dark Fog Room</button>
+                            <button type="button" id="BtnToggleGizmos" class="hud-pill is-active" title="Toggle 3D Volumetric Light Cones (G)">Volumetrics</button>
+                        </div>
+                    </div>
+
+                    <!-- Top-Right Live Readout Chip -->
+                    <div class="viewport-telemetry-chip">
+                        <span id="TelemetryBackend" class="telemetry-backend">Initializing 3D…</span>
+                        <span id="TelemetrySummary" class="telemetry-stats">0 lx @ wall · 0 klm</span>
+                    </div>
+
+                    <!-- Isolux False-Colour Legend (Visible when lens === 'lux') -->
+                    <div id="LuxScaleBar" class="lux-scale-bar" hidden>
+                        <div class="lux-scale-title">Illuminance Isolux Scale (lx)</div>
+                        <div class="lux-scale-ramp"></div>
+                        <div class="lux-scale-ticks">
+                            <span>0.1</span>
+                            <span>5</span>
+                            <span>25</span>
+                            <span>100</span>
+                            <span>300</span>
+                            <span>1000+</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 52px Diurnal / Light Sweep Transport + Log Drawer -->
+                <footer class="transport-shell">
+                    <div id="ConsoleLogDrawer" class="console-log-drawer" hidden>
+                        <div class="console-drawer-head">
+                            <span>Photometric Console &amp; Validation Log</span>
+                            <button type="button" id="BtnClearLog" class="icon-btn-sm">Clear</button>
+                        </div>
+                        <div id="ConsoleLogBody" class="console-log-body"></div>
+                    </div>
+
+                    <div class="transport-bar">
+                        <div class="transport-controls">
+                            <button type="button" id="BtnStepBack" class="transport-btn" title="Step back 1 hour"><span data-icon="StepBack"></span></button>
+                            <button type="button" id="BtnPlayDiurnal" class="transport-btn transport-play" title="Animate Diurnal / Photometric Sweep (Space)"><span data-icon="Play"></span></button>
+                            <button type="button" id="BtnStepFwd" class="transport-btn" title="Step forward 1 hour"><span data-icon="StepFwd"></span></button>
+                            <button type="button" id="BtnResetDiurnal" class="transport-btn" title="Reset Sweep & Solar Noon"><span data-icon="Restart"></span></button>
+                        </div>
+
+                        <div class="transport-scrubber-wrap">
+                            <div class="transport-labels">
+                                <span id="TransportSweepMode">Diurnal Sweep</span>
+                                <span id="TransportClockReadout" class="tabular-readout">12:00 UTC+2 · El 63.8°</span>
+                            </div>
+                            <input id="DiurnalScrubber" class="diurnal-scrubber" type="range" min="0" max="24" step="0.05" value="12">
+                        </div>
+
+                        <button type="button" id="BtnToggleLog" class="transport-log-btn">
+                            <span data-icon="Log"></span>
+                            <span>Console</span>
+                            <span id="LogCountBadge" class="log-badge">0</span>
+                        </button>
+                    </div>
+                </footer>
+            </section>
+
+            <!-- Right Column: Project Zero Light & Environment Inspector -->
+            <aside id="InspectorColumn" class="studio-column inspector-column" aria-label="Photometric Light Inspector">
+                <div id="InspectorHeaderBar" class="inspector-header-bar">
+                    <div id="InspectorTitleWrap" class="inspector-title-wrap">
+                        <span id="InspectorGlyph" class="inspector-glyph"></span>
+                        <div>
+                            <h2 id="InspectorEntityName" class="inspector-entity-name">ECE Low Beam</h2>
+                            <span id="InspectorEntitySubtitle" class="inspector-entity-sub">IES PHOTOMETRIC · LM-63 TYPE C</span>
+                        </div>
+                    </div>
+                    <div class="inspector-header-actions">
+                        <button type="button" id="BtnDuplicateLight" class="icon-btn" title="Duplicate luminaire"><span data-icon="Duplicate"></span></button>
+                        <button type="button" id="BtnDeleteLight" class="icon-btn" title="Delete luminaire"><span data-icon="Trash"></span></button>
+                    </div>
+                </div>
+
+                <!-- Dynamic Project Zero Inspector Body -->
+                <div id="InspectorScrollBody" class="inspector-scroll-body"></div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- IES Photometric Matrix & Goniometer Modal Veil (M) -->
+    <div id="IesMatrixVeil" class="matrix-veil" hidden role="dialog" aria-modal="true" aria-labelledby="MatrixTitle">
+        <div class="matrix-card">
+            <header class="matrix-head">
+                <div>
+                    <h3 id="MatrixTitle">IES Photometric Goniometer &amp; LM-63 Catalogue</h3>
+                    <p>Compare all 7 measured LM-63 Type-C `.ies` distributions and Project Zero analytical beams side by side.</p>
+                </div>
+                <button type="button" id="BtnCloseMatrix" class="icon-btn"><span data-icon="Close"></span></button>
+            </header>
+            <div id="MatrixGrid" class="matrix-grid"></div>
+        </div>
+    </div>
+
+    <script type="module" src="./PhotometricEditor.js"></script>
+</body>
+</html>

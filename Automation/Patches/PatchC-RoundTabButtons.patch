@@ -1,0 +1,321 @@
+diff --git a/imgui.cpp b/imgui.cpp
+index e68259fa2..0ac59f0a8 100644
+--- a/imgui.cpp
++++ b/imgui.cpp
+@@ -1576,6 +1576,7 @@ ImGuiStyle::ImGuiStyle()
+     TabOverlap                  = 0.0f;             // [FRONTIER PATCH B] Overlap between adjacent tabs. Zero keeps stock ImGui; the sheet states 24.0f.
+     TabHeight                   = 0.0f;             // [FRONTIER PATCH B] Tab-bar height override. Zero derives it as ImGui does; the sheet states 24.0f.
+     TabStripPadTop              = 0.0f;             // [FRONTIER PATCH B] Strip visible above the tabs. The sheet's 28 px strip over a 24 px tab states 4.0f.
++    TabButtonRounding           = 0.0f;             // [FRONTIER PATCH C] Roundness of a tab's close mark and of a tab-bar button. Zero keeps ImGui's rectangle; Frontier seats 1.0f.
+     TabMinWidthBase             = 1.0f;             // Minimum tab width, to make tabs larger than their contents. TabBar buttons are not affected.
+     TabMinWidthShrink           = 80.0f;            // Minimum tab width after shrinking, when using ImGuiTabBarFlags_FittingPolicyMixed policy. FLT_MAX: never shrink, will behave like ImGuiTabBarFlags_FittingPolicyScroll.
+     TabCloseButtonMinWidthSelected   = -1.0f;       // -1: always visible. 0.0f: visible when hovered. >0.0f: visible when hovered if minimum width.
+@@ -1671,6 +1672,7 @@ void ImGuiStyle::ScaleAllSizes(float scale_factor)
+     TabOverlap = ImTrunc(TabOverlap * scale_factor);
+     TabHeight = ImTrunc(TabHeight * scale_factor);
+     TabStripPadTop = ImTrunc(TabStripPadTop * scale_factor);
++    // [FRONTIER PATCH C] A fraction, not a length: it is NOT scaled.
+     TabMinWidthBase = ImTrunc(TabMinWidthBase * scale_factor);
+     TabMinWidthShrink = ImTrunc(TabMinWidthShrink * scale_factor);
+     TabCloseButtonMinWidthSelected = (TabCloseButtonMinWidthSelected > 0.0f && TabCloseButtonMinWidthSelected != FLT_MAX) ? ImTrunc(TabCloseButtonMinWidthSelected * scale_factor) : TabCloseButtonMinWidthSelected;
+diff --git a/imgui.h b/imgui.h
+index 1d89dfe03..bd50ee167 100644
+--- a/imgui.h
++++ b/imgui.h
+@@ -2435,6 +2435,7 @@ struct ImGuiStyle
+     float       TabOverlap;                 // [FRONTIER PATCH B] Horizontal overlap between adjacent tabs, in display pixels, so slanted edges interlock. 0.0f keeps ImGui's edge-to-edge layout.
+     float       TabHeight;                  // [FRONTIER PATCH B] Tab-bar height override, in display pixels. 0.0f derives it from FontSize and FramePadding as ImGui does.
+     float       TabStripPadTop;             // [FRONTIER PATCH B] Strip showing above the tabs, in display pixels. The tab is seated against the strip's lower edge.
++    float       TabButtonRounding;          // [FRONTIER PATCH C] Roundness of a tab's close mark and of a tab-bar button, as a fraction of its extent. 0.0f keeps ImGui's rectangle; 1.0f is a full disc.
+     float       TabMinWidthBase;            // Minimum tab width, to make tabs larger than their contents. TabBar buttons are not affected.
+     float       TabMinWidthShrink;          // Minimum tab width after shrinking, when using ImGuiTabBarFlags_FittingPolicyMixed policy.
+     float       TabCloseButtonMinWidthSelected;     // -1: always visible. 0.0f: visible when hovered. >0.0f: visible when hovered if minimum width. FLT_MAX: never shrink, will behave like ImGuiTabBarFlags_FittingPolicyScroll.
+diff --git a/imgui_internal.h b/imgui_internal.h
+index 0a6b6aa86..c93056e7b 100644
+--- a/imgui_internal.h
++++ b/imgui_internal.h
+@@ -3156,6 +3156,7 @@ struct IMGUI_API ImGuiTabBar
+     ImS16               LastTabItemIdx;         // Index of last BeginTabItem() tab for use by EndTabItem()
+     ImDrawListSplitter  FrontierZSplitter;         // [FRONTIER PATCH B] Two channels so the selected tab draws over its overlapping neighbours
+     bool                FrontierZSplit;            // [FRONTIER PATCH B] Whether the splitter above stands open this frame
++    ImRect              FrontierStripRect;         // [FRONTIER PATCH C] The strip a tab-bar button sizes and centres its disc on
+     float               ItemSpacingY;
+     ImVec2              FramePadding;           // style.FramePadding locked at the time of BeginTabBar()
+     ImVec2              BackupCursorPos;
+@@ -4004,7 +4005,7 @@ namespace ImGui
+     IMGUI_API bool          TabBarProcessReorder(ImGuiTabBar* tab_bar);
+     IMGUI_API bool          TabItemEx(ImGuiTabBar* tab_bar, const char* label, bool* p_open, ImGuiTabItemFlags flags, ImGuiWindow* docked_window);
+     IMGUI_API void          TabItemSpacing(const char* str_id, ImGuiTabItemFlags flags, float width);
+-    IMGUI_API ImVec2        TabItemCalcSize(const char* label, bool has_close_button_or_unsaved_marker);
++    IMGUI_API ImVec2        TabItemCalcSize(const char* label, bool has_close_button_or_unsaved_marker, bool is_button = false);   // [FRONTIER PATCH C] is_button sizes a tab-bar button to a disc
+     IMGUI_API ImVec2        TabItemCalcSize(ImGuiWindow* window);
+     IMGUI_API void          TabItemBackground(ImDrawList* draw_list, const ImRect& bb, ImGuiTabItemFlags flags, ImU32 col);
+     IMGUI_API void          TabItemLabelAndCloseButton(ImDrawList* draw_list, const ImRect& bb, ImGuiTabItemFlags flags, ImVec2 frame_padding, const char* label, ImGuiID tab_id, ImGuiID close_button_id, bool is_contents_visible, bool* out_just_closed, bool* out_text_clipped);
+diff --git a/imgui_widgets.cpp b/imgui_widgets.cpp
+index f5b3e4b5d..699297096 100644
+--- a/imgui_widgets.cpp
++++ b/imgui_widgets.cpp
+@@ -926,8 +926,17 @@ bool ImGui::CloseButton(ImGuiID id, const ImVec2& pos)
+ 
+     // Render
+     ImU32 bg_col = GetColorU32(held ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered);
++    // [FRONTIER PATCH C] A round hit-mark rather than a square one. `DockWorkspace.html` draws its close
++    //   affordance as a disc, and a square highlight inside a slanted tab reads as a misaligned rectangle.
++    //   Falls back to the vendor's rectangle when the radius is zero, so an unpatched configuration is
++    //   byte-identical.
+     if (hovered)
+-        window->DrawList->AddRectFilled(bb.Min, bb.Max, bg_col);
++    {
++        if (g.Style.TabButtonRounding > 0.0f)
++            window->DrawList->AddCircleFilled(bb.GetCenter(), bb.GetWidth() * 0.5f * g.Style.TabButtonRounding, bg_col);
++        else
++            window->DrawList->AddRectFilled(bb.Min, bb.Max, bg_col);
++    }
+     RenderNavCursor(bb, id, ImGuiNavRenderCursorFlags_Compact);
+     const ImU32 cross_col = GetColorU32(ImGuiCol_Text);
+     const ImVec2 cross_center = bb.GetCenter() - ImVec2(0.5f, 0.5f);
+@@ -9825,6 +9834,16 @@ static int IMGUI_CDECL TabItemComparerBySection(const void* lhs, const void* rhs
+     const int b_section = TabItemGetSectionIdx(b);
+     if (a_section != b_section)
+         return a_section - b_section;
++
++    // [FRONTIER PATCH C] Within a section a BUTTON always sorts after a genuine tab. A button outlives the
++    //   tabs around it -- it is re-submitted every frame while windows come and go -- so a window docked
++    //   after the button was first seen carries a lower BeginOrder and laid out BEFORE it, giving
++    //   `tab [+] tab`. The sheet's addBtn is always last, so the rule is stated rather than inferred.
++    const int a_button = (a->Flags & ImGuiTabItemFlags_Button) ? 1 : 0;
++    const int b_button = (b->Flags & ImGuiTabItemFlags_Button) ? 1 : 0;
++    if (a_button != b_button)
++        return a_button - b_button;
++
+     return (int)(a->IndexDuringLayout - b->IndexDuringLayout);
+ }
+ 
+@@ -9948,6 +9967,12 @@ bool    ImGui::BeginTabBarEx(ImGuiTabBar* tab_bar, const ImRect& tab_bar_bb, ImG
+     //   channels reproduce that ordering: quiet tabs record into the lower, the selected tab into the upper,
+     //   and the merge at EndTabBar concatenates them. Opened only when tabs actually overlap, so a stock
+     //   configuration pays nothing and records the identical command stream it always did.
++    // [FRONTIER PATCH C] The strip's own rect, stamped where it is known. TabItemBackground is a free
++    //   function and cannot see the bar it is drawing into; a tab-bar button sized off its own bb instead
++    //   took its height from Style.TabHeight, which is TALLER than the bar a docked node lays out -- so
++    //   the disc stood proud of the header and spilled onto the workspace below it.
++    tab_bar->FrontierStripRect = tab_bar->BarRect;
++
+     tab_bar->FrontierZSplit = (g.Style.TabOverlap > 0.0f);
+     if (tab_bar->FrontierZSplit)
+     {
+@@ -10050,6 +10075,13 @@ static void ImGui::TabBarLayout(ImGuiTabBar* tab_bar)
+                 need_sort_by_section = true;
+             if (prev_tab_section_n == 2 && curr_tab_section_n != 2)
+                 need_sort_by_section = true;
++
++            // [FRONTIER PATCH C] A tab following a button in the same section means the button is no longer
++            //   last, which happens the moment a window docks after the button was first submitted.
++            if (prev_tab_section_n == curr_tab_section_n
++                && (prev_tab->Flags & ImGuiTabItemFlags_Button)
++                && !(tab->Flags & ImGuiTabItemFlags_Button))
++                need_sort_by_section = true;
+         }
+ 
+         sections[curr_tab_section_n].TabCount++;
+@@ -10124,7 +10156,12 @@ static void ImGui::TabBarLayout(ImGuiTabBar* tab_bar)
+         // and we cannot wait for the next BeginTabItem() call. We cannot compute this width within TabBarAddTab() because font size depends on the active window.
+         const char* tab_name = TabBarGetTabName(tab_bar, tab);
+         const bool has_close_button_or_unsaved_marker = (tab->Flags & ImGuiTabItemFlags_NoCloseButton) == 0 || (tab->Flags & ImGuiTabItemFlags_UnsavedDocument);
+-        tab->ContentWidth = (tab->RequestedWidth >= 0.0f) ? tab->RequestedWidth : TabItemCalcSize(tab_name, has_close_button_or_unsaved_marker).x;
++        // [FRONTIER PATCH C] The button flag reaches the layout's own measurement too. Without it a tab-bar
++        //   button was charged the tab's slant padding twice here, so a one-glyph "+" laid out 84 px wide
++        //   even though TabItemEx had measured it as a disc.
++        tab->ContentWidth = (tab->RequestedWidth >= 0.0f) ? tab->RequestedWidth
++                          : TabItemCalcSize(tab_name, has_close_button_or_unsaved_marker,
++                                            (tab->Flags & ImGuiTabItemFlags_Button) != 0).x;
+         if ((tab->Flags & ImGuiTabItemFlags_Button) == 0)
+             tab->ContentWidth = ImMax(tab->ContentWidth, g.Style.TabMinWidthBase);
+ 
+@@ -10769,7 +10806,9 @@ bool    ImGui::TabItemEx(ImGuiTabBar* tab_bar, const char* label, bool* p_open,
+     tab_bar->LastTabItemIdx = (ImS16)tab_bar->Tabs.index_from_ptr(tab);
+ 
+     // Calculate tab contents size
+-    ImVec2 size = TabItemCalcSize(label, (p_open != NULL) || (flags & ImGuiTabItemFlags_UnsavedDocument));
++    // [FRONTIER PATCH C] The button flag reaches the measurement, so a tab-bar button is sized as a disc.
++    ImVec2 size = TabItemCalcSize(label, (p_open != NULL) || (flags & ImGuiTabItemFlags_UnsavedDocument),
++                                  (flags & ImGuiTabItemFlags_Button) != 0);
+     tab->RequestedWidth = -1.0f;
+     if (g.NextItemData.HasFlags & ImGuiNextItemDataFlags_HasWidth)
+         size.x = tab->RequestedWidth = g.NextItemData.Width;
+@@ -11071,10 +11110,79 @@ void    ImGui::SetTabItemClosed(const char* label)
+     }
+ }
+ 
+-ImVec2 ImGui::TabItemCalcSize(const char* label, bool has_close_button_or_unsaved_marker)
++// [FRONTIER PATCH C] The geometry of a tab-bar button, in one place so the measurement and the drawing
++//   cannot drift apart. Everything is derived from the strip height and the slant figures, all of which
++//   ScaleAllSizes already multiplies -- so the button follows the artist's UI scale without a figure of
++//   its own that would have to be scaled a second time.
++//
++//   The leading gap is what clears the PRECEDING tab's slanted trailing edge. PatchB pulls every advance
++//   back by TabOverlap, so a button seated at its own bb.Min.x starts inside the tab before it. At the
++//   button's vertical centre that tab's slant stands at (its Max.x - slant/2), so the disc must begin
++//   beyond that point: overlap - slant/2, plus a pad.
++struct FrontierButtonMetric
++{
++    float Across;    // the strip's usable height
++    float Diameter;  // the disc
++    float Lead;      // gap from bb.Min.x to the disc's leading edge
++    float Advance;   // the whole width the layout reserves
++};
++
++// [FRONTIER PATCH C] The strip a tab-bar button is sized and centred on. `g.CurrentTabBar` stands throughout
++//   the submission of every item, which is when both the shape and the label are drawn, and the rect was
++//   stamped on it at layout. The fallback is the item's own box, which a tab-bar button cannot reach.
++static ImRect FrontierStripFor(const ImRect& fallback)
++{
++    ImGuiContext& g = *GImGui;
++
++    if (g.CurrentTabBar != NULL && g.CurrentTabBar->FrontierStripRect.GetHeight() > 0.0f)
++        return g.CurrentTabBar->FrontierStripRect;
++
++    return fallback;
++}
++
++static FrontierButtonMetric FrontierTabButtonMetric(float bar_across = 0.0f)
++{
++    ImGuiContext& g = *GImGui;
++
++    FrontierButtonMetric m;
++
++    // \U0001f534 The bar's OWN height when one is offered. A docked node builds its rect itself and does not
++    //   pass through BeginTabBar's TabHeight override, so its bar is shorter than Style.TabHeight -- a
++    //   disc sized on the style figure then stood taller than the strip and bled onto the workspace.
++    m.Across   = (bar_across > 0.0f) ? bar_across
++               : (g.Style.TabHeight > 0.0f) ? g.Style.TabHeight
++               : (g.FontSize + g.Style.FramePadding.y * 2.0f);
++
++    // \U0001f4dd Four fifths of the strip. The disc is centred between the header's own upper and lower edges
++    //   and a tenth of the height remains as inset on each side, so it reads as seated IN the header
++    //   rather than as a mark floating in it.
++    m.Diameter = ImMax(1.0f, m.Across * 0.80f);
++
++    const float pad = m.Across * 0.55f;
++
++    // \U0001f534 The lead clears the PRECEDING tab's slanted trailing edge and nothing more. PatchB pulls every
++    //   advance back by TabOverlap, so the button's own origin sits inside the tab before it; at the
++    //   button's vertical centre that tab's slant stands half a slant in from its trailing edge.
++    m.Lead     = ImMax(0.0f, g.Style.TabOverlap - g.Style.TabSlant * 0.5f) + pad;
++    m.Advance  = m.Lead + m.Diameter + pad;
++
++    return m;
++}
++
++ImVec2 ImGui::TabItemCalcSize(const char* label, bool has_close_button_or_unsaved_marker, bool is_button)
+ {
+     ImGuiContext& g = *GImGui;
+     ImVec2 label_size = CalcTextSize(label, NULL, true);
++
++    // [FRONTIER PATCH C] A tab-bar BUTTON is square, not a tab. Tab padding exists to clear the slant, and a
++    //   button carries none -- charged it twice, a one-glyph "+" measured 84 px and sat as a slab. The
++    //   button is sized to its glyph plus the tab height, so it reads as a disc seated in the strip.
++    if (is_button && g.Style.TabButtonRounding > 0.0f)
++    {
++        const FrontierButtonMetric m = FrontierTabButtonMetric();
++        return ImVec2(m.Advance, m.Across);
++    }
++
+     ImVec2 size = ImVec2(label_size.x + g.Style.FramePadding.x, label_size.y + g.Style.FramePadding.y * 2.0f);
+     if (has_close_button_or_unsaved_marker)
+         size.x += g.Style.FramePadding.x + (g.Style.ItemInnerSpacing.x + g.FontSize); // We use Y intentionally to fit the close button circle.
+@@ -11149,6 +11257,29 @@ void ImGui::TabItemBackground(ImDrawList* draw_list, const ImRect& bb, ImGuiTabI
+ 
+     // [FRONTIER PATCH A] A button is a button and keeps its rectangle; only a genuine tab is slanted.
+     const float slant = (flags & ImGuiTabItemFlags_Button) ? 0.0f : ImMin(g.Style.TabSlant, width * 0.16f);
++
++    // [FRONTIER PATCH C] A tab-bar button is drawn as a disc rather than a slab. The sheet's `addBtn` is a
++    //   round control seated at the end of the strip, and a full-height rectangle beside a slanted tab
++    //   reads as a broken tab rather than as a button.
++    if ((flags & ImGuiTabItemFlags_Button) && g.Style.TabButtonRounding > 0.0f)
++    {
++        // [FRONTIER PATCH C] Seated at the LEADING edge of its advance, one lead-gap in. Placed at the
++        //   trailing end instead it drifted the whole pad-plus-disc away from the last tab and read as a
++        //   stray control floating in the strip; the gap belongs BETWEEN the slant and the disc.
++        // [FRONTIER PATCH C] Sized AND centred on the STRIP, never on the item's own band. A button's band
++        //   runs y1..y2 off a bb that takes its height from Style.TabHeight -- 23 px against a strip of 19
++        //   in the sheet's configuration -- so a disc measured there stood taller than the header it sits
++        //   in and spilled over its lower edge onto the workspace. The strip IS the header.
++        const ImRect strip = FrontierStripFor(ImRect(bb.Min.x, y1, bb.Max.x, y2));
++
++        const FrontierButtonMetric m = FrontierTabButtonMetric(strip.GetHeight());
++
++        const float disc   = m.Diameter * 0.5f * g.Style.TabButtonRounding;
++        const float centre = bb.Min.x + m.Lead + m.Diameter * 0.5f;
++
++        draw_list->AddCircleFilled(ImVec2(centre, strip.GetCenter().y), disc, col, 24);
++        return;
++    }
+     if (slant > 0.0f)
+     {
+         FrontierTabOutline(draw_list, bb, slant, rounding, y1, y2, 0.0f);
+@@ -11196,8 +11327,14 @@ void ImGui::TabItemLabelAndCloseButton(ImDrawList* draw_list, const ImRect& bb,
+         g.Style.Alpha *= 0.7f;
+ #endif
+ 
++    // [FRONTIER PATCH C] The horizontal padding is clamped to what the tab can actually give. With the
++    //   sheet's 38 px padding a tab shrunk below 76 px inverts this box -- Min.x lands beyond Max.x -- and
++    //   the run is then laid against an inside-out rectangle, which is why a shrinking strip threw the
++    //   glyph clear of its own tab. A disc-sized tab-bar button is the same case at 24 px.
++    const float frontier_pad_x = ImMin(frame_padding.x, ImMax(0.0f, bb.GetWidth() * 0.5f - 1.0f));
++
+     // Render text label (with clipping + alpha gradient) + unsaved marker
+-    ImRect text_ellipsis_clip_bb(bb.Min.x + frame_padding.x, bb.Min.y + frame_padding.y, bb.Max.x - frame_padding.x, bb.Max.y);
++    ImRect text_ellipsis_clip_bb(bb.Min.x + frontier_pad_x, bb.Min.y + frame_padding.y, bb.Max.x - frontier_pad_x, bb.Max.y);
+ 
+     // Return clipped state ignoring the close button
+     if (out_text_clipped)
+@@ -11207,7 +11344,9 @@ void ImGui::TabItemLabelAndCloseButton(ImDrawList* draw_list, const ImRect& bb,
+     }
+ 
+     const float button_sz = g.FontSize;
+-    const ImVec2 button_pos(ImMax(bb.Min.x, bb.Max.x - frame_padding.x - button_sz), bb.Min.y + frame_padding.y);
++    // [FRONTIER PATCH C] Seated against the clamped padding for the same reason: a close mark placed by the
++    //   unclamped figure sits outside the tab it belongs to once the strip shrinks.
++    const ImVec2 button_pos(ImMax(bb.Min.x, bb.Max.x - frontier_pad_x - button_sz), bb.Min.y + frame_padding.y);
+ 
+     // Close Button & Unsaved Marker
+     // We are relying on a subtle and confusing distinction between 'hovered' and 'g.HoveredId' which happens because we are using ImGuiButtonFlags_AllowOverlapMode + SetItemAllowOverlap()
+@@ -11263,7 +11402,36 @@ void ImGui::TabItemLabelAndCloseButton(ImDrawList* draw_list, const ImRect& bb,
+         }
+     }
+     LogSetNextTextDecoration("/", "\\");
+-    RenderTextEllipsis(draw_list, text_ellipsis_clip_bb.Min, text_ellipsis_clip_bb.Max, ellipsis_max_x, label, label_end, &label_size);
++
++    // [FRONTIER PATCH C] A tab-bar button's run is CENTRED on its disc, not laid from the clip box's corner.
++    //   RenderTextEllipsis draws from Min, which for a tab is hidden by the frame padding -- but a disc
++    //   has no padding to hide it, so the glyph landed at the top-left of the advance while the circle
++    //   was drawn further along. Both are now derived from the same FrontierTabButtonMetric.
++    if ((flags & ImGuiTabItemFlags_Button) && g.Style.TabButtonRounding > 0.0f)
++    {
++        // [FRONTIER PATCH C] Sized and centred exactly as the disc is, off the same strip, so the glyph and
++        //   its circle cannot drift apart.
++        const ImRect strip = FrontierStripFor(bb);
++
++        const FrontierButtonMetric m = FrontierTabButtonMetric(strip.GetHeight());
++
++        // \U0001f4dd The glyph is scaled to the disc rather than left at the font's own size. A "+" drawn at
++        //   13 px inside an 11 px disc reads as a speck; three quarters of the diameter fills it as the
++        //   sheet's addBtn does, and the factor follows the disc, which follows the UI scale.
++        const float run_across = ImMax(1.0f, m.Diameter * 0.75f);
++        const float run_scale  = run_across / g.FontSize;
++
++        const ImVec2 run(label_size.x * run_scale, label_size.y * run_scale);
++
++        const ImVec2 centre(bb.Min.x + m.Lead + m.Diameter * 0.5f, strip.GetCenter().y);
++        const ImVec2 seat(centre.x - run.x * 0.5f, centre.y - run.y * 0.5f);
++
++        draw_list->AddText(g.Font, run_across, seat, GetColorU32(ImGuiCol_Text), label, label_end);
++    }
++    else
++    {
++        RenderTextEllipsis(draw_list, text_ellipsis_clip_bb.Min, text_ellipsis_clip_bb.Max, ellipsis_max_x, label, label_end, &label_size);
++    }
+ 
+ #if 0
+     if (!is_contents_visible)

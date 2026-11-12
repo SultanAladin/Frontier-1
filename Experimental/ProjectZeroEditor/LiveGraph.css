@@ -1,0 +1,417 @@
+.environment-live .property-card,
+.environment-live .generic-card {
+  background: #202020 !important;
+  border: 1px solid #ffffff08;
+  border-radius: 25px;
+  box-shadow: 0 10px 26px #00000012;
+}
+.environment-live .property-card > h3 {
+  font-size: 14px;
+  letter-spacing: 0;
+  font-weight: 300;
+  color: #d1d1ce;
+}
+.environment-live .metric {
+  font-weight: 300;
+  letter-spacing: -2px;
+}
+.environment-live .metric-fraction {
+  color: #696b69;
+}
+.environment-live .metric small {
+  color: #92938f;
+}
+.live-plot {
+  margin: 20px 0 12px;
+  min-width: 0;
+}
+.live-plot > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 130px;
+  touch-action: none;
+  cursor: crosshair;
+  overflow: visible;
+}
+.live-plot svg text,
+.atmosphere-map text {
+  font-family: inherit;
+  font-size: 11px;
+  fill: #8e918b;
+}
+.live-plot-value {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.live-plot-value > span:first-child {
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 300;
+}
+.live-plot-value small {
+  font-size: 10px;
+  color: #8a8c86;
+}
+.live-plot-value output {
+  display: block;
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+.environment-live .graph-note,
+.atmosphere-lab-window .graph-note {
+  font-size: 10px;
+  line-height: 1.6;
+  color: #888d87;
+  margin: 10px 0;
+}
+.graph-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: #a7b9a4;
+  margin: 16px 0;
+}
+.graph-metric {
+  font-size: 40px;
+  font-weight: 300;
+  letter-spacing: -1.5px;
+  color: #dadbd4;
+  line-height: 1.1;
+}
+.graph-metric small {
+  font-size: 15px;
+  margin-left: 8px;
+  color: #8f948a;
+}
+.graph-probes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.graph-probes label {
+  min-width: 0;
+  font-size: 10px;
+  color: #9ea394;
+}
+.graph-probes input {
+  width: 100%;
+  min-width: 0;
+  display: block;
+  margin-top: 7px;
+  background: #171918;
+  border: 1px solid #ffffff0d;
+  border-radius: 9px;
+  padding: 9px;
+  color: #d6dbce;
+}
+.property-graph {
+  border-top: 1px solid #ffffff0b;
+  margin-top: 20px;
+  padding-top: 12px;
+}
+.graph-disclosure {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  border: 0 !important;
+  background: none !important;
+  padding: 4px 0 !important;
+  color: #a5aca0 !important;
+  font-size: 10px !important;
+}
+.parameter-plot {
+  width: 100%;
+  height: auto;
+  touch-action: none;
+  display: block;
+}
+.parameter-plot text {
+  font-family: inherit;
+  font-size: 9px;
+  fill: #91998b;
+}
+.parameter-plot [role="slider"] {
+  cursor: ns-resize;
+}
+.parameter-readout {
+  font-size: 12px;
+  color: #c7cebf;
+  margin: 8px 0;
+}
+.parameter-plot [role="slider"]:focus-visible,
+.live-plot svg:focus-visible,
+.atmosphere-map [role="button"]:focus-visible {
+  outline: 1px solid #dac6a1;
+  outline-offset: 3px;
+}
+.atmosphere-atlas .graph-metric {
+  font-size: 26px;
+  letter-spacing: -0.7px;
+  margin-top: 20px;
+}
+.atmosphere-atlas > h3 {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+.atmosphere-atlas h3 small {
+  font-size: 8px;
+  color: #89917f;
+}
+.atmosphere-map {
+  width: 100%;
+  height: auto;
+  min-height: 190px;
+  touch-action: none;
+  display: block;
+  margin-top: 18px;
+}
+.atmosphere-map [role="button"] {
+  cursor: pointer;
+}
+.atlas-presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: 14px;
+}
+.atlas-presets button {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  text-align: left;
+  font: inherit;
+  font-size: 10px;
+  background: #272925;
+  color: #bfc7b7;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 10px 8px;
+  min-width: 0;
+}
+.atlas-presets button[aria-pressed="true"] {
+  border-color: #a8b19466;
+  background: #33392c;
+}
+.atlas-presets i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+.atlas-hover {
+  font-size: 11px !important;
+  min-height: 20px;
+}
+.atmosphere-space > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.atmosphere-space h3 {
+  margin: 0 !important;
+  font-size: 15px;
+  font-weight: 300;
+}
+.atmosphere-space canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 14/9;
+  image-rendering: auto;
+  border-radius: 16px;
+  touch-action: none;
+  cursor: grab;
+  background: #030507;
+  border: 1px solid #ffffff0b;
+}
+.space-controls {
+  display: grid;
+  gap: 16px;
+  margin: 20px 0;
+}
+.space-controls label {
+  font-size: 11px;
+  color: #a6b09e;
+}
+.space-controls output {
+  float: right;
+  color: #d2d6c9;
+}
+.space-controls input {
+  width: 100%;
+  display: block;
+  margin-top: 10px;
+  accent-color: #bac4a8;
+}
+.atmosphere-lab-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2800;
+  background: #000b;
+  backdrop-filter: blur(8px);
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.atmosphere-lab-window {
+  background: #141613;
+  border: 1px solid #ffffff18;
+  border-radius: 24px;
+  width: min(1450px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #d7dbd0;
+  font-family: "DM Sans", sans-serif;
+}
+.atmosphere-lab-window > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 22px 28px;
+  border-bottom: 1px solid #ffffff0d;
+}
+.atmosphere-lab-window header small {
+  color: #909d83;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+.atmosphere-lab-window h1 {
+  font-weight: 300;
+  font-size: 28px;
+  margin: 5px 0 0;
+}
+.atmosphere-lab-window button {
+  cursor: pointer;
+  background: #282d23;
+  border: 1px solid #ffffff12;
+  color: #d4dec8;
+  border-radius: 9px;
+  padding: 9px 13px;
+  font-family: inherit;
+}
+.atmosphere-lab-body {
+  overflow: auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 22px;
+  padding: 24px;
+}
+.atmosphere-lab-body .property-card {
+  background: #20221d;
+  padding: 24px;
+  min-width: 0;
+  border: 1px solid #ffffff08;
+  border-radius: 20px;
+}
+.atmosphere-lab-body .atlas-presets {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.atmosphere-lab-body .atmosphere-map {
+  min-height: 260px;
+}
+.atmosphere-lab-window p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #959f8b;
+}
+.atmosphere-lab-cards {
+  margin-top: 22px;
+}
+@media (max-width: 850px) {
+  .atmosphere-lab-body {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+  .atmosphere-lab-backdrop {
+    padding: 10px;
+  }
+  .atmosphere-lab-body .atlas-presets {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.graph-fraction {
+  color: #737670;
+}
+@media (max-height: 850px) and (min-width: 901px) {
+  .atmosphere-lab-window > header {
+    padding: 14px 24px;
+  }
+  .atmosphere-lab-window .atmosphere-map {
+    min-height: 190px;
+    max-height: 210px;
+    margin-top: 10px;
+  }
+  .atmosphere-lab-window .atmosphere-space canvas {
+    max-height: 250px;
+    object-fit: contain;
+  }
+  .atmosphere-lab-window .graph-metric {
+    margin: 12px 0;
+    font-size: 24px;
+  }
+  .atmosphere-lab-window .space-controls {
+    gap: 10px;
+    margin: 12px 0;
+  }
+  .atmosphere-lab-window .atlas-presets button {
+    padding: 8px;
+  }
+}
+
+.cloud-bounds-plot {
+  width: 100%;
+  height: auto;
+  touch-action: none;
+}
+.cloud-bounds-plot [role="slider"] {
+  cursor: move;
+}
+.cloud-bounds-plot text {
+  font:
+    14px "DM Sans",
+    sans-serif;
+  fill: #b7c6ce;
+}
+.cloud-bounds-data {
+  font-size: 10px;
+  color: #aab5b8;
+}
+.cloud-bounds-data > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid #ffffff0a;
+}
+.cloud-bounds-data output {
+  text-align: right;
+}
+.fog-visibility-heading .graph-metric small {
+  margin-left: 7px;
+}
+.fog-visibility-sample {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 2px;
+  color: #929292;
+  font-size: 9px;
+}
+.fog-visibility-sample strong {
+  color: #d8cbb0;
+  font-weight: 500;
+}

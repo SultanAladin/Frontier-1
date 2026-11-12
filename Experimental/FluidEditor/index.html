@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#17191c" />
+    <title>Fluid — Frontier Experimental</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2321252b'/%3E%3Cpath d='M18 5c1 8-7 8-3 14-4-1-4-5-4-5-8 12 11 19 14 7 1-6-3-12-7-16' fill='%23efa56f'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./src/FluidPanel.css" />
+    <link rel="stylesheet" href="./src/ThemeSpecification.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <div class="document-dock">
+          <div
+            id="document-tabs"
+            class="document-tabs"
+            role="tablist"
+            aria-label="Fluid documents"
+          ></div>
+          <button
+            id="new-document"
+            class="icon-button"
+            title="New Fluid document"
+            aria-label="New Fluid document"
+            data-icon="plus"
+          ></button>
+        </div>
+        <nav class="top-nav" aria-label="Workspace">
+          <button class="nav-button active" id="workspace-button">
+            Workspace</button
+          ><button class="nav-button" id="library-button">Presets</button>
+        </nav>
+        <div class="header-end">
+          <span class="gas-tag"><i></i> Gas simulation</span
+          ><button
+            class="icon-button"
+            id="help-button"
+            title="Shortcuts and prototype information"
+            aria-label="Help"
+            data-icon="help"
+          ></button
+          ><button id="export-button" class="button export-button">
+            <span data-icon="download"></span>Save scene
+          </button>
+        </div>
+      </header>
+      <div class="document-bar">
+        <span data-icon="file"></span
+        ><input
+          id="document-name"
+          value="Ember study"
+          aria-label="Scene name"
+          maxlength="64"
+        /><span class="document-extension">.fluid</span
+        ><span
+          id="dirty-indicator"
+          title="Unsaved settings"
+          class="dirty-indicator"
+        ></span
+        ><span class="document-note">Smoke / fire authoring</span
+        ><button id="import-button" class="text-button">
+          Open scene<span data-icon="folder"></span></button
+        ><input
+          type="file"
+          id="import-file"
+          accept=".json,.fluid,application/json"
+          hidden
+        /><span class="document-note sample-note">Samples</span
+        ><select id="sample-picker" class="sample-picker" aria-label="Load a sample scene">
+          <option value="">Load a sample scene…</option></select
+        ><button id="sample-toml-button" class="text-button">
+          Save as TOML<span data-icon="download"></span>
+        </button>
+      </div>
+      <main class="workspace" id="fluid-workspace">
+        <aside class="left-panel">
+          <div class="outliner-heading">
+            <div>
+              <h1>Outliner</h1>
+              <span class="outliner-subtitle"
+                >Scene · <span id="scene-count">3</span> nodes</span
+              >
+            </div>
+            <button
+              id="compact-outliner"
+              class="icon-button"
+              title="Compact outliner"
+              aria-label="Compact outliner"
+              aria-pressed="false"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 5v14M17 5v14" />
+              </svg>
+            </button>
+          </div>
+          <div class="scene-statistics">
+            <div class="scene-stat">
+              <span class="stat-symbol enabled-symbol">✓</span
+              ><span class="stat-label">Enabled</span
+              ><strong id="enabled-count">3</strong>
+            </div>
+            <div class="scene-stat">
+              <span
+                class="stat-symbol disabled-symbol"
+                data-icon="hidden"
+              ></span
+              ><span class="stat-label">Disabled</span
+              ><strong id="disabled-count">0</strong>
+            </div>
+          </div>
+          <label class="search scene-search"
+            ><span data-icon="search"></span
+            ><input
+              type="search"
+              id="scene-search"
+              placeholder="Search scene…"
+              aria-label="Search scene"
+            /><kbd>Ctrl ⇧ F</kbd></label
+          >
+          <div
+            class="scene-filters"
+            id="scene-filters"
+            aria-label="Outliner filters"
+          >
+            <button data-scene-filter="all" class="active" aria-pressed="true">
+              All</button
+            ><button data-scene-filter="gas" aria-pressed="false">Gas</button
+            ><button data-scene-filter="geometry" aria-pressed="false">
+              Geometry</button
+            ><button data-scene-filter="light" aria-pressed="false">
+              Lights
+            </button>
+          </div>
+          <div class="scene-toolbar">
+            <button
+              id="collection-toggle"
+              aria-expanded="true"
+              aria-controls="scene-tree"
+            >
+              <span class="collection-chevron">⌄</span
+              ><span data-icon="folder"></span
+              ><span>Scene collection</span></button
+            ><button
+              id="add-button"
+              class="icon-button"
+              title="Add to scene"
+              aria-label="Add to scene"
+              aria-expanded="false"
+              data-icon="plus"
+            ></button>
+          </div>
+          <div
+            id="scene-tree"
+            class="scene-tree"
+            role="tree"
+            aria-label="Scene objects"
+          ></div>
+          <div class="scene-footnote">
+            <span data-icon="link"></span>Editing live simulation
+          </div>
+          <div class="library" id="library">
+            <div class="panel-heading">
+              <span>Preset library</span
+              ><span class="count" id="preset-count"></span
+              ><span data-icon="grid"></span>
+            </div>
+            <label class="search"
+              ><span data-icon="search"></span
+              ><input
+                type="search"
+                id="preset-search"
+                placeholder="Find an effect…"
+                aria-label="Search presets"
+              /><kbd>/</kbd></label
+            >
+            <div class="filter-row" id="preset-filters">
+              <button class="active" data-filter="all">All</button
+              ><button data-filter="fire">Fire</button
+              ><button data-filter="smoke">Smoke</button
+              ><button data-filter="blast">Blast</button>
+            </div>
+            <div class="preset-list" id="presets-list"></div>
+            <div id="empty-presets" class="empty-presets" hidden>
+              No matching effects.<button class="text-button" id="reset-search">
+                Clear search
+              </button>
+            </div>
+          </div>
+          <div class="left-footer">
+            <span data-icon="box"></span
+            ><span>One domain · one source · one collider</span>
+          </div>
+        </aside>
+        <section class="center-panel">
+          <div class="viewport-bar">
+            <span data-icon="viewport"></span><strong>Scene view</strong
+            ><span class="bar-divider"></span
+            ><select id="camera-view" aria-label="Camera view">
+              <option value="perspective">Perspective</option>
+              <option value="front">Front</option>
+              <option value="side">Side</option>
+              <option value="top">Top</option>
+            </select>
+            <div class="viewport-bar-end">
+              <button
+                id="flipbook-button"
+                class="button bake-toolbar"
+                title="Bake flipbook"
+                aria-label="Bake flipbook"
+              >
+                <span data-icon="grid"></span>Bake</button
+              ><button
+                id="diagnostics-button"
+                class="icon-button"
+                title="Diagnostics"
+                aria-label="Diagnostics"
+                data-icon="viewport"
+              ></button>
+              <select id="render-channel" aria-label="Render channel"></select
+              ><button
+                id="overlays-button"
+                class="icon-button"
+                aria-label="Toggle domain bounds"
+                title="Domain bounds · B"
+                data-icon="box"
+              ></button
+              ><button
+                id="focus-button"
+                class="icon-button"
+                title="Focus volume · F"
+                aria-label="Focus volume"
+                data-icon="focus"
+              ></button
+              ><button
+                id="maximize-button"
+                class="icon-button"
+                title="Maximize viewport"
+                aria-label="Maximize viewport"
+                data-icon="maximize"
+              ></button>
+            </div>
+          </div>
+          <div class="viewport" id="viewport">
+            <canvas
+              id="pyro-canvas"
+              aria-label="Interactive live 3D smoke and fire viewport"
+            ></canvas>
+            <svg
+              id="domain-bounds"
+              class="domain-bounds"
+              aria-label="Projected simulation bounds"
+              hidden
+            ></svg>
+            <div class="viewport-caption">
+              <span class="live-pill" id="live-pill"
+                ><i></i><span>INITIALIZING</span></span
+              ><span id="viewport-object">Fire emitter</span
+              ><small id="viewport-subtitle"
+                >Eulerian volume · physically shaded</small
+              >
+            </div>
+            <div class="viewport-tools" aria-label="Viewport tools">
+              <button
+                class="active icon-button"
+                data-tool="orbit"
+                title="Orbit camera · 1"
+                aria-label="Orbit camera"
+                data-icon="orbit"
+              ></button
+              ><button
+                class="icon-button"
+                data-tool="flamethrower"
+                title="Source brush · 2 or Shift + drag"
+                aria-label="Source brush"
+                data-icon="brush"
+              ></button
+              ><button
+                class="icon-button"
+                data-tool="detonate"
+                title="Place burst · 3"
+                aria-label="Place burst"
+                data-icon="burst"
+              ></button
+              ><span></span
+              ><button
+                id="turntable-button"
+                class="icon-button"
+                title="Turntable · T"
+                aria-label="Toggle turntable"
+                data-icon="rotate"
+              ></button>
+            </div>
+            <div class="viewport-right-hud">
+              <span class="live-metric"><b id="fps">—</b> FPS</span
+              ><span class="live-metric" id="grid-hud">48³ GRID</span>
+            </div>
+            <div class="viewport-help">
+              <span>Drag to orbit</span><i>·</i><span>Right-drag to pan</span
+              ><i>·</i><span>Scroll to zoom</span>
+            </div>
+            <div class="axis-gizmo" aria-label="World axes">
+              <svg viewBox="0 0 76 76">
+                <path d="M38 39V10M38 39L11 55M38 39L65 55" />
+                <circle cx="38" cy="39" r="3" />
+                <text x="34" y="9" class="axis-y">Y</text>
+                <text x="3" y="64" class="axis-x">X</text>
+                <text x="64" y="64" class="axis-z">Z</text>
+              </svg>
+            </div>
+            <div class="gpu-error" id="gpu-error" hidden>
+              <span data-icon="warning"></span>
+              <h2>GPU renderer unavailable</h2>
+              <p id="gpu-error-message"></p>
+              <button class="button" id="retry-gpu">Retry WebGL2</button>
+            </div>
+            <div id="toast" class="toast" role="status" hidden></div>
+            <div id="diagnostics" class="diagnostics" hidden>
+              <div class="panel-heading">
+                LIVE DIAGNOSTICS<button
+                  class="icon-button"
+                  id="close-diagnostics"
+                  aria-label="Close diagnostics"
+                  data-icon="close"
+                ></button>
+              </div>
+              <dl id="diagnostic-values"></dl>
+              <p>
+                Submission time is CPU scheduling time, not a GPU timer. Dynamic
+                bounds keep the same voxel count.
+              </p>
+              <label>Debug field<select id="diagnostic-channel"></select></label
+              ><label class="inline-toggle"
+                >Atlas minimap<input type="checkbox" id="atlas-toggle"
+              /></label>
+            </div>
+          </div>
+          <div class="transport">
+            <div class="transport-buttons">
+              <button
+                class="icon-button"
+                id="reset-button"
+                title="Restart simulation · R"
+                aria-label="Restart simulation"
+                data-icon="rewind"
+              ></button
+              ><button
+                class="play-button"
+                id="play-button"
+                title="Play / pause · Space"
+                aria-label="Pause simulation"
+                data-icon="pause"
+              ></button
+              ><button
+                class="icon-button"
+                id="step-button"
+                title="Step once · S"
+                aria-label="Step simulation"
+                data-icon="step"
+              ></button>
+            </div>
+            <span class="timecode" id="timecode">00:00.000</span
+            ><span class="transport-divider"></span
+            ><select id="speed-select" aria-label="Simulation speed">
+              <option value="0.25">0.25×</option>
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1.0×</option>
+              <option value="2">2.0×</option></select
+            ><span class="transport-live"><i></i>Live / uncached</span>
+            <div class="transport-actions">
+              <select id="burst-kind" aria-label="Burst type">
+                <option value="burst">Single burst</option>
+                <option value="shrapnel">Shrapnel</option>
+                <option value="salvo">Cluster salvo</option>
+                <option value="collide">Colliding waves</option>
+                <option value="mushroom">Mushroom cloud</option></select
+              ><button class="button burst-button" id="burst-button">
+                <span data-icon="burst"></span>Trigger<span class="key-hint"
+                  >D</span
+                >
+              </button>
+            </div>
+          </div>
+          <div
+            class="timeline"
+            aria-label="Live simulation time, not a seekable cache"
+          >
+            <div class="timeline-label">
+              <span data-icon="clock"></span>SIMULATION<span id="frame-counter"
+                >FRAME 0000</span
+              >
+            </div>
+            <div class="ruler" id="ruler">
+              <div class="ruler-numbers">
+                <span>0s</span><span>5s</span><span>10s</span><span>15s</span
+                ><span>20s</span><span>25s</span><span>30s</span>
+              </div>
+              <div class="source-track">
+                <span id="source-track-label">Continuous emission</span><i></i>
+              </div>
+              <div class="playhead" id="playhead"><span></span></div>
+            </div>
+          </div>
+        </section>
+        <aside class="inspector-panel">
+          <div class="panel-heading">
+            <span>Inspector</span
+            ><button
+              id="reset-properties"
+              class="icon-button"
+              title="Reset this inspector tab"
+              aria-label="Reset this inspector tab"
+              data-icon="rotate"
+            ></button>
+          </div>
+          <div class="object-heading">
+            <div
+              class="object-symbol"
+              id="object-symbol"
+              data-icon="flame"
+            ></div>
+            <div>
+              <input
+                id="object-name"
+                value="Fire emitter"
+                maxlength="64"
+                aria-label="Object name"
+              /><span id="object-type">CONTINUOUS SOURCE</span>
+            </div>
+            <label class="switch" title="Enable selected object"
+              ><input
+                type="checkbox"
+                id="object-enabled"
+                aria-label="Enable selected object"
+                checked /><span></span
+            ></label>
+          </div>
+          <div class="inspector-tabs" id="inspector-tabs">
+            <button class="active" data-tab="source">Source</button
+            ><button data-tab="simulation">Simulation</button
+            ><button data-tab="rendering">Rendering</button>
+          </div>
+          <div id="inspector-body" class="inspector-body"></div>
+          <div class="inspector-footer">
+            <span data-icon="link"></span>Changes apply while rendering
+          </div>
+        </aside>
+      </main>
+      <footer class="status-bar">
+        <span class="status-ready" id="status-ready"
+          ><i></i>Initializing GPU</span
+        ><span class="status-divider"></span
+        ><span id="voxel-count">110,592 voxels</span
+        ><span class="status-divider"></span
+        ><span id="bounds-status">1.9 × 2.1 × 1.9 m</span
+        ><span class="status-right"
+          ><span class="gpu-dot"></span
+          ><select id="backend-select" aria-label="GPU backend">
+            <option value="webgl2">WebGL2</option>
+            <option value="webgpu">WebGPU · experimental</option></select
+          ><span class="status-divider"></span>FRONTIER / FLUID
+          <span class="version">0.1</span></span
+        >
+      </footer>
+    </div>
+    <div id="add-menu" class="popover add-menu" hidden role="menu">
+      <div class="popover-label">ADD TO SCENE</div>
+      <button data-add="fire" role="menuitem">
+        <span data-icon="flame"></span
+        ><span>Fire emitter<small>Fuel, heat and smoke</small></span></button
+      ><button data-add="smoke" role="menuitem">
+        <span data-icon="smoke"></span
+        ><span>Smoke emitter<small>A buoyant smoke source</small></span>
+      </button>
+      <div class="menu-divider"></div>
+      <button data-add="sphere" role="menuitem">
+        <span data-icon="sphere"></span>Sphere collider</button
+      ><button data-add="slab" role="menuitem">
+        <span data-icon="wall"></span>Deflector slab</button
+      ><button data-add="cylinder" role="menuitem">
+        <span data-icon="cylinder"></span>Cylinder collider
+      </button>
+      <p>
+        The upstream prototype supports one source and one collider per domain.
+        Adding replaces that slot.
+      </p>
+    </div>
+    <dialog id="help-dialog">
+      <div class="dialog-heading">
+        <span data-icon="flame"></span>
+        <h2>A workspace for moving air.</h2>
+        <button
+          class="icon-button"
+          id="close-help"
+          aria-label="Close help"
+          data-icon="close"
+        ></button>
+      </div>
+      <p>
+        Real 3D fire and smoke, running in your browser. This is the
+        experimental WebGL editor, not the native C++ port.
+      </p>
+      <div class="shortcut-list">
+        <span>Play / pause<kbd>Space</kbd></span
+        ><span>Single step<kbd>S</kbd></span
+        ><span>Trigger selected burst<kbd>D</kbd></span
+        ><span>Restart simulation<kbd>R</kbd></span
+        ><span>Focus volume<kbd>F</kbd></span
+        ><span>Orbit / brush / burst<kbd>1 / 2 / 3</kbd></span
+        ><span>Domain bounds<kbd>B</kbd></span
+        ><span>Turntable<kbd>T</kbd></span
+        ><span>Save scene settings<kbd>Ctrl S</kbd></span
+        ><span>Search presets<kbd>/</kbd></span>
+      </div>
+      <div class="help-note">
+        Scene files save settings and camera position, not simulation fields. Up
+        to four document tabs retain their GPU state in this session; inactive
+        documents do not advance. Double-click a tab to rename it. Drag a slider
+        or its numeric value to adjust it; Shift slows numeric dragging, Alt
+        speeds it up. The time ruler is live telemetry, not a cached timeline.
+        Water simulation is not included.
+      </div>
+      <a
+        href="https://github.com/eosclient0001-rgb/Frontier/tree/33c5f2e13dc3d6912a8bb2d887a4e8061b401b6b"
+        target="_blank"
+        rel="noreferrer"
+        >Based on the original Frontier pyro app ↗</a
+      >
+    </dialog>
+    <dialog id="flipbook-dialog">
+      <div class="dialog-heading">
+        <span data-icon="grid"></span>
+        <h2>Bake flipbook</h2>
+        <button
+          id="close-flipbook"
+          class="icon-button"
+          aria-label="Close flipbook"
+          data-icon="close"
+        ></button>
+      </div>
+      <p id="bake-scene-name"></p>
+      <p class="bake-description">
+        Bake a fresh simulation from this scene’s settings, with the current
+        camera locked to square framing. The live scene is held, not cleared.
+        This is a sequence of rendered frames—not the voxel atlas minimap.
+      </p>
+      <fieldset id="bake-settings" class="bake-settings">
+        <label
+          >Frames<select id="bake-count">
+            <option>4</option>
+            <option selected>16</option>
+            <option>32</option>
+            <option>64</option>
+          </select></label
+        >
+        <label
+          >Tile resolution<select id="bake-size">
+            <option value="64">64 × 64</option>
+            <option value="128">128 × 128</option>
+            <option value="256" selected>256 × 256</option>
+            <option value="512">512 × 512</option>
+          </select></label
+        >
+        <label
+          >Frames per second<select id="bake-rate">
+            <option>12</option>
+            <option selected>24</option>
+            <option>30</option>
+            <option>60</option>
+          </select></label
+        >
+        <label
+          >Warm-up · seconds<input
+            id="bake-warmup"
+            type="number"
+            min="0"
+            max="3"
+            step="0.05"
+            value="0.25"
+        /></label>
+        <label class="bake-check"
+          ><input id="bake-transparent" type="checkbox" checked />Transparent
+          background</label
+        >
+        <label class="bake-check"
+          ><input id="bake-burst" type="checkbox" />Start with a burst</label
+        >
+      </fieldset>
+      <div class="bake-actions">
+        <button id="bake-start" class="button">Bake frames</button
+        ><button id="bake-cancel" class="button" hidden>Cancel bake</button>
+      </div>
+      <progress id="bake-progress" max="1" value="0"></progress>
+      <p id="bake-progress-label" role="status">
+        PNG spritesheet + JSON frame rectangles, UVs and timing. Transparent
+        output uses straight alpha with an opacity/emission matte; no HDR or
+        engine-specific asset is exported.
+      </p>
+      <section id="bake-result" hidden>
+        <h3 id="bake-result-label"></h3>
+        <canvas
+          id="bake-preview"
+          width="256"
+          height="256"
+          aria-label="Baked flipbook preview"
+        ></canvas>
+        <div class="bake-preview-controls">
+          <label><input id="bake-play" type="checkbox" checked />Play</label
+          ><input
+            id="bake-frame"
+            type="range"
+            min="0"
+            max="15"
+            value="0"
+            aria-label="Flipbook preview frame"
+          /><output id="bake-frame-label">1 / 16</output>
+        </div>
+        <div class="bake-actions">
+          <button id="bake-png" class="button">Download PNG</button
+          ><button id="bake-json" class="button">Download metadata</button>
+        </div>
+      </section>
+    </dialog>
+    <script type="module" src="./src/FluidPanel.js"></script>
+  </body>
+</html>

@@ -1,0 +1,35 @@
+"""Reference-led package, retro terminal, and Command key. Standalone SVG."""
+def register_utility_icons(icon):
+    defs='''<linearGradient id="package-top" x2=".8" y2="1"><stop stop-color="#f6ce86"/><stop offset="1" stop-color="#d69b4e"/></linearGradient><linearGradient id="package-front" x2=".9" y2=".3"><stop stop-color="#eeb968"/><stop offset="1" stop-color="#d49a4e"/></linearGradient><linearGradient id="package-side" x2="1" y2=".6"><stop stop-color="#b87c39"/><stop offset="1" stop-color="#965b29"/></linearGradient><linearGradient id="package-tape" x2=".4" y2="1"><stop stop-color="#ffe0a2"/><stop offset=".5" stop-color="#f4cd88"/><stop offset="1" stop-color="#cd9956"/></linearGradient>'''
+    body='''<path d="M42 83 116 40q9-5 18-1l78 32q9 4 9 13v91q0 10-9 15l-69 39q-7 4-15 0l-78-33q-9-4-9-15V94q0-7 1-11Z" fill="url(#package-side)"/><path d="M42 83 116 40q9-5 18-1l78 32q7 3 7 8l-79 45q-5 3-11 0Z" fill="url(#package-top)"/><path d="M42 83 130 122q7 3 7 12v88q0 12-12 7l-75-33q-9-4-9-15V94q0-7 1-11Z" fill="url(#package-front)"/><path d="m45 85 84 38q7 4 7 11v84" stroke="#ffdc93" stroke-opacity=".42" stroke-width="2"/>
+<path d="m80 62 19-11 91 38q6 3 6 9v29q0 3-4 5l-12 7q-5 3-5-2v-30q0-5-6-8Z" fill="url(#package-tape)" stroke="#ffe5ad" stroke-opacity=".23" stroke-width=".6"/><path d="m83 63 87 37q7 3 7 10v24" stroke="#fff1c6" stroke-opacity=".35" stroke-width=".8"/>
+<g transform="matrix(1 .43 0 1 0 -29)" fill="#65401e" stroke="#f8c783" stroke-opacity=".25" stroke-width=".65"><path d="M105 191v-13h-4l7-8 7 8h-4v13Z"/><path d="M120 191v-13h-4l7-8 7 8h-4v13Z"/><rect x="102" y="195" width="26" height="3" rx=".7"/></g>'''
+    icon('package','Package','Objects','A warm cardboard parcel with softly bevelled edges, a continuous strip of packing tape, and two upright handling arrows.',defs,body)
+
+    defs='''<linearGradient id="terminal-case" x2=".7" y2="1"><stop stop-color="#d7cfb5"/><stop offset=".45" stop-color="#b7af96"/><stop offset="1" stop-color="#8b856f"/></linearGradient><linearGradient id="terminal-edge" x2="0" y2="1"><stop stop-color="#fff6d9" stop-opacity=".7"/><stop offset="1" stop-color="#4f4c40" stop-opacity=".8"/></linearGradient><linearGradient id="terminal-screen" x2=".3" y2="1"><stop stop-color="#202725"/><stop offset=".5" stop-color="#0c1110"/><stop offset="1" stop-color="#020605"/></linearGradient><linearGradient id="terminal-glass" x2="0" y2="1"><stop stop-color="#b9c6bb" stop-opacity=".2"/><stop offset="1" stop-color="#a8b6aa" stop-opacity=".025"/></linearGradient><filter id="terminal-glow" x="-40%" y="-60%" width="180%" height="220%"><feGaussianBlur stdDeviation="1.4"/></filter><clipPath id="terminal-badge"><rect x="73" y="189" width="12" height="12" rx="3"/></clipPath>'''
+    body='''<rect x="48" y="41" width="162" height="177" rx="28" fill="#4e4c40"/><rect x="47" y="37" width="162" height="178" rx="28" fill="url(#terminal-case)" stroke="url(#terminal-edge)" stroke-width="1.2"/><path d="M57 64q1-20 23-22h98" stroke="#fff8dc" stroke-opacity=".2" stroke-width="1"/><rect x="59" y="50" width="138" height="129" rx="24" fill="#696657" stroke="#e4dbc0" stroke-opacity=".65" stroke-width="1.4"/><rect x="62" y="53" width="132" height="123" rx="22" fill="#020605"/><rect x="65" y="56" width="126" height="117" rx="20" fill="url(#terminal-screen)"/><path d="M67 99V78q0-19 20-19h82q19 0 19 19v22q-59 24-121-1Z" fill="url(#terminal-glass)"/>
+<path d="m78 73 9 5-9 5m14 6h11" stroke="#65f043" stroke-opacity=".5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="url(#terminal-glow)"/><path d="m78 73 9 5-9 5m14 6h11" stroke="#78ec4a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M116 195h70l-4 5h-63Z" fill="#e5dcc0" fill-opacity=".5"/><path d="M116 193h69l-4 4h-62Z" fill="#302e26"/><path d="M158 191h26v7h-26Z" fill="#171b16"/><path d="M161 192h20" stroke="#696958" stroke-width=".7"/>
+<g clip-path="url(#terminal-badge)"><path d="M72 190h14" stroke="#69a346" stroke-width="4"/><path d="M72 193h14" stroke="#e4b44d" stroke-width="3"/><path d="M72 196h14" stroke="#d76440" stroke-width="3"/><path d="M72 198h14" stroke="#9b547b" stroke-width="2"/><path d="M72 200h14" stroke="#4c91b0" stroke-width="3"/></g>'''
+    icon('retro-terminal','Retro terminal','Objects','A warm beige vintage computer with a curved dark display, green terminal prompt, disk slot, and small rainbow badge.',defs,body)
+
+    defs='''<linearGradient id="command-key-frame" x2=".75" y2="1"><stop stop-color="#525455"/><stop offset=".28" stop-color="#1b1d1f"/><stop offset=".65" stop-color="#0b0e10"/><stop offset="1" stop-color="#252729"/></linearGradient><radialGradient id="command-key-face" cx="29%" cy="22%" r="100%"><stop stop-color="#353739"/><stop offset=".6" stop-color="#232628"/><stop offset="1" stop-color="#141719"/></radialGradient><linearGradient id="command-key-rim" x2=".4" y2="1"><stop stop-color="#969998" stop-opacity=".5"/><stop offset=".45" stop-color="#313536" stop-opacity=".2"/><stop offset="1" stop-color="#5b6163" stop-opacity=".5"/></linearGradient><linearGradient id="command-key-rainbow" x2="0" y2="1"><stop stop-color="#68a839"/><stop offset=".24" stop-color="#c4b541"/><stop offset=".43" stop-color="#dd8535"/><stop offset=".62" stop-color="#c74458"/><stop offset=".78" stop-color="#8557a4"/><stop offset="1" stop-color="#428bce"/></linearGradient>'''
+    body='''<rect x="34" y="35" width="189" height="192" rx="44" fill="#090c0e"/><rect x="33" y="30" width="190" height="193" rx="44" fill="url(#command-key-frame)" stroke="#676c6e" stroke-opacity=".25" stroke-width=".8"/><rect x="42" y="39" width="173" height="177" rx="38" fill="#020506"/><rect x="48" y="45" width="161" height="165" rx="34" fill="url(#command-key-face)" stroke="url(#command-key-rim)" stroke-width="1"/><path d="M215 80h8v33h-8Z" fill="url(#command-key-rainbow)"/>
+<g transform="translate(10 8) scale(.84)" stroke="#777c7c" stroke-opacity=".67" stroke-width="4.4" stroke-linejoin="round"><path d="M88 90h33v33H88Z"/><path d="M88 90H76a13 13 0 1 1 12-13v13Zm33 0V77a13 13 0 1 1 13 13h-13Zm0 33h13a13 13 0 1 1-13 13v-13Zm-33 0v13a13 13 0 1 1-13-13h13Z"/></g>'''
+    # Vector lettering keeps the keycap independent of installed fonts.
+    letters={
+        'c':('M12 3C-2-5-3 22 12 15',15),
+        'o':('M7 1C-2 1-2 18 7 18S16 1 7 1Z',17),
+        'm':('M1 18V2m0 4C3-1 10-1 10 6v12m0-12c3-7 10-7 10 0v12',24),
+        'a':('M1 4C5-1 14 0 14 6v12m0-11C-4 4-3 21 9 17l5-4',18),
+        'n':('M1 18V2m0 5C5-2 15-1 15 7v11',19),
+        'd':('M14 6C-4-8-4 25 10 17l4-4M14-5v23',18),
+    }
+    x=0
+    body+='<g transform="translate(65 179) scale(.83)" stroke="#858a88" stroke-opacity=".72" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
+    for letter in 'command':
+        path,width=letters[letter]
+        body+=f'<path d="{path}" transform="translate({x} 0)"/>'
+        x+=width
+    body+='</g>'
+    icon('command-key','Command key','Objects','A sculpted dark keycap with an outlined Command symbol, vector-lettered caption, and a narrow rainbow accent on the frame.',defs,body)

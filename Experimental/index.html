@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Experimental Studios — Frontier Reference Prototypes</title>
+    <link rel="stylesheet" href="./UVEditor/UVEditor.css" />
+    <style>
+        html, body { overflow: auto; }
+        body { display: grid; place-items: center; padding: 24px; }
+        .studio-index { width: min(1120px, 100%); background: #121212; border: 1px solid rgba(255,255,255,0.08); border-radius: 26px; padding: 28px; }
+        .studio-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+        .studio-head h1 { font-size: 28px; font-weight: 300; letter-spacing: -0.6px; margin-top: 4px; }
+        .studio-subtitle { font-size: 12px; color: #8c8c8c; margin-top: 4px; }
+        .studio-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; }
+        .studio-card { display: flex; flex-direction: column; gap: 8px; padding: 20px; border-radius: 20px; background: #1b1b1b; border: 1px solid rgba(255,255,255,0.07); text-decoration: none; color: inherit; }
+        .studio-card:hover { background: #232323; border-color: rgba(232, 194, 122, 0.45); }
+        .studio-card strong { font-size: 18px; font-weight: 400; color: #f2f2f2; }
+        .studio-card strong a { color: inherit; text-decoration: none; }
+        .studio-card p { font-size: 12px; color: #8c8c8c; line-height: 1.5; }
+        .studio-tag { align-self: flex-start; padding: 3px 9px; border-radius: 999px; font-size: 9.5px; letter-spacing: 0.9px; background: rgba(239, 244, 207, 0.14); color: #eff4cf; }
+        .studio-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .studio-pill { padding: 4px 10px; border-radius: 999px; font-size: 10.5px; background: rgba(255,255,255,0.06); color: #e2e2e2; border: 1px solid rgba(255,255,255,0.08); text-decoration: none; }
+        .studio-pill:hover { background: rgba(239, 244, 207, 0.2); color: #eff4cf; border-color: rgba(239, 244, 207, 0.45); }
+    </style>
+</head>
+<body>
+    <main class="studio-index">
+        <div class="studio-head">
+            <div>
+                <span class="brand-mark">Frontier<span class="brand-dot">.</span></span>
+                <h1>Experimental Reference Studios &amp; Editor UIs</h1>
+                <p class="studio-subtitle">Ten reference editor shells and web/GPU studios staged for shared C++20 UI components &amp; .slang conversion.</p>
+            </div>
+            <span class="experimental">C++20 CONVERSION TARGETS</span>
+        </div>
+        <div class="studio-grid">
+            <a class="studio-card" href="./FrontierEditor/dist/index.html">
+                <span class="studio-tag">FRONTIER EDITOR UI · HTML/VITE INITIAL</span>
+                <strong>Frontier Editor (Initial HTML)</strong>
+                <p>Initial HTML/JS scene inspector, automotive CAD workbench, and SVG icon catalog staged alongside Project-Zero.</p>
+            </a>
+            <a class="studio-card" href="./ProjectZeroEditor/">
+                <span class="studio-tag">PROJECT-ZERO EDITOR UI · SHELL &amp; CARDS</span>
+                <strong>Project-Zero Editor</strong>
+                <p>Interactive editor shell uniting Notch quick-tools, Outliner hierarchy, Construct menu, Asset drawer, and shared Light/Fog/Wind/Material inspector cards.</p>
+            </a>
+            <a class="studio-card" href="./FluidEditor/">
+                <span class="studio-tag">FLUID EDITOR · GAS &amp; PLUME SOLVER</span>
+                <strong>Fluid &amp; Combustion Editor</strong>
+                <p>WebGPU / WebGL2 gaseous plume, detonation, wildfire, and vortex solver with TOML scene codecs and flipbook export.</p>
+            </a>
+            <a class="studio-card" href="./FractureEditor/">
+                <span class="studio-tag">FRACTURE EDITOR · 6 SOLVERS</span>
+                <strong>Fracture Studio</strong>
+                <p>Baked engineering Voronoi fracture, fast runtime shattering, convex partitioning, piece SDF generation, and rigid-body debris playback.</p>
+            </a>
+            <a class="studio-card" href="./ParticleEditor/">
+                <span class="studio-tag">PARTICLE STUDIO · GPU COMPUTE</span>
+                <strong>Particle Studio</strong>
+                <p>GPU compute particle emitter, ribbon/fibre, and lightning authoring coupled with live force-field readback.</p>
+            </a>
+            <a class="studio-card" href="./PhotometricEditor/">
+                <span class="studio-tag">PHOTOMETRIC STUDIO · IES &amp; SKY</span>
+                <strong>Photometric &amp; Light Studio</strong>
+                <p>LM-63 .ies luminaire profiles, automotive headlamp beams, celestial atmosphere scattering, ACES tone mapping, and isolux metering.</p>
+            </a>
+            <a class="studio-card" href="./ForceFieldEditor/">
+                <span class="studio-tag">FORCE FIELD STUDIO · RK2 FLOW</span>
+                <strong>Force Field &amp; Wind Studio</strong>
+                <p>Global wind generators plus 16 bounded spatial force fields with RK2 streamline tracing and GPU field visualization.</p>
+            </a>
+            <a class="studio-card" href="./VehicleLab/">
+                <span class="studio-tag">VEHICLE LAB · POWERTRAIN &amp; MF6.1</span>
+                <strong>Vehicle Lab</strong>
+                <p>ControlVehicle FCT1 mesh inspection, VR38DETT torque &amp; turbo spool curves, Pacejka MF6.1 tyre slip/thermal model, and 10 live telemetry channels.</p>
+            </a>
+            <a class="studio-card" href="./UVEditor/">
+                <span class="studio-tag">UV EDITOR · LSCM + UDIM + PACKING</span>
+                <strong>UV Studio &amp; Importance Packer</strong>
+                <p>Synchronized 2D UDIM layout and 3D WebGL2 mesh viewport, LSCM conformal unwrapping, seam authoring, and importance-weighted packing.</p>
+            </a>
+            <div class="studio-card">
+                <span class="studio-tag">TEXTURE STUDIO · 5 WORKSPACES</span>
+                <strong><a href="./TextureStudio/">Texture Studio</a></strong>
+                <p>Procedural material look-dev, noise-scaled pattern stack, decal stamp authoring, seam-free 3D brush painting, and high-to-low mesh + volume SDF baking.</p>
+                <div class="studio-links">
+                    <a class="studio-pill" href="./TextureStudio/#material">Material</a>
+                    <a class="studio-pill" href="./TextureStudio/#pattern">Pattern</a>
+                    <a class="studio-pill" href="./TextureStudio/#stamp">Stamp</a>
+                    <a class="studio-pill" href="./TextureStudio/#paint">Paint</a>
+                    <a class="studio-pill" href="./TextureStudio/#bake">Bake + SDF</a>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

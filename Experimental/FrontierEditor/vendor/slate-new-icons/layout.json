@@ -1,0 +1,808 @@
+{
+  "slate-document": {
+    "side": "left",
+    "mainBounds": [
+      53,
+      66.5,
+      129.5,
+      129.5
+    ],
+    "badgeBounds": [
+      59,
+      134,
+      58,
+      42
+    ],
+    "mainTransform": [
+      1.46718,
+      0,
+      0,
+      1.46718,
+      3.30116,
+      -21.50579
+    ],
+    "badgeTransform": [
+      0.7931,
+      0,
+      0,
+      0.7931,
+      -49.62069,
+      53.58621
+    ]
+  },
+  "slate-image": {
+    "side": "left",
+    "mainBounds": [
+      67.5,
+      66.5,
+      113.5,
+      104.5
+    ],
+    "badgeBounds": [
+      64,
+      129,
+      50,
+      42
+    ],
+    "mainTransform": [
+      1.69163,
+      0,
+      0,
+      1.69163,
+      -7.18943,
+      -2.88546
+    ],
+    "badgeTransform": [
+      0.92,
+      0,
+      0,
+      0.92,
+      -46.48,
+      51.08
+    ]
+  },
+  "slate-image-widget-variant2": {
+    "side": "left",
+    "mainBounds": [
+      74,
+      74,
+      92,
+      92
+    ],
+    "badgeBounds": [
+      95,
+      144.5,
+      49.5,
+      49
+    ],
+    "mainTransform": [
+      2.06522,
+      0,
+      0,
+      2.06522,
+      0,
+      -5
+    ],
+    "badgeTransform": [
+      0.92929,
+      0,
+      0,
+      0.92929,
+      -74.76768,
+      29.69697
+    ]
+  },
+  "slate-image-widget-variant3": {
+    "side": "right",
+    "mainBounds": [
+      74,
+      74,
+      92,
+      87
+    ],
+    "badgeBounds": [
+      129,
+      94,
+      46,
+      46
+    ],
+    "mainTransform": [
+      2.08696,
+      0,
+      0,
+      2.08696,
+      0,
+      0.21739
+    ],
+    "badgeTransform": [
+      1,
+      0,
+      0,
+      1,
+      43,
+      78
+    ]
+  },
+  "slate-image-widget-variant4": {
+    "side": "right",
+    "mainBounds": [
+      75,
+      85,
+      90,
+      90
+    ],
+    "badgeBounds": [
+      134,
+      134,
+      42,
+      42
+    ],
+    "mainTransform": [
+      2.11111,
+      0,
+      0,
+      2.11111,
+      0,
+      -26.11111
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      36.66667,
+      36.66667
+    ]
+  },
+  "slate-clapboard": {
+    "side": "right",
+    "mainBounds": [
+      70.5,
+      55.5,
+      96,
+      115.5
+    ],
+    "badgeBounds": [
+      134,
+      139.5,
+      45.5,
+      45
+    ],
+    "mainTransform": [
+      1.64502,
+      0,
+      0,
+      1.64502,
+      2.46753,
+      6.1039
+    ],
+    "badgeTransform": [
+      1.01099,
+      0,
+      0,
+      1.01099,
+      37.84615,
+      32.79121
+    ]
+  },
+  "slate-video-player": {
+    "side": "right",
+    "mainBounds": [
+      59,
+      68.5,
+      152.5,
+      107.5
+    ],
+    "badgeBounds": [
+      144,
+      139,
+      58,
+      42
+    ],
+    "mainTransform": [
+      1.25902,
+      0,
+      0,
+      1.25902,
+      -19.2,
+      -7.83279
+    ],
+    "badgeTransform": [
+      0.7931,
+      0,
+      0,
+      0.7931,
+      32.96552,
+      49.62069
+    ]
+  },
+  "slate-film-strip": {
+    "side": "left",
+    "mainBounds": [
+      89.5,
+      37.5,
+      76,
+      159
+    ],
+    "badgeBounds": [
+      74,
+      129,
+      50,
+      50
+    ],
+    "mainTransform": [
+      1.19497,
+      0,
+      0,
+      1.19497,
+      -8.96226,
+      -1.41509
+    ],
+    "badgeTransform": [
+      0.92,
+      0,
+      0,
+      0.92,
+      -55.68,
+      43.72
+    ]
+  },
+  "slate-meeting-grid": {
+    "side": "right",
+    "mainBounds": [
+      64,
+      74,
+      112,
+      92
+    ],
+    "badgeBounds": [
+      139,
+      144.5,
+      49.5,
+      49
+    ],
+    "mainTransform": [
+      1.71429,
+      0,
+      0,
+      1.71429,
+      0,
+      -5
+    ],
+    "badgeTransform": [
+      0.92929,
+      0,
+      0,
+      0.92929,
+      34.34343,
+      29.69697
+    ]
+  },
+  "slate-live-broadcast": {
+    "side": "left",
+    "mainBounds": [
+      54,
+      79,
+      132,
+      82
+    ],
+    "badgeBounds": [
+      79,
+      139,
+      50,
+      50
+    ],
+    "mainTransform": [
+      1.45455,
+      0,
+      0,
+      1.45455,
+      0,
+      -5
+    ],
+    "badgeTransform": [
+      0.92,
+      0,
+      0,
+      0.92,
+      -60.28,
+      34.52
+    ]
+  },
+  "slate-old-gamepad-classic": {
+    "side": "right",
+    "mainBounds": [
+      63.5,
+      53.5,
+      113,
+      138
+    ],
+    "badgeBounds": [
+      104,
+      39,
+      32,
+      32
+    ],
+    "mainTransform": [
+      1.37681,
+      0,
+      0,
+      1.37681,
+      0,
+      -8.44203
+    ],
+    "badgeTransform": [
+      1.4375,
+      0,
+      0,
+      1.4375,
+      75,
+      168.4375
+    ]
+  },
+  "slate-fabric": {
+    "side": "left",
+    "mainBounds": [
+      63.5,
+      53.5,
+      120,
+      145
+    ],
+    "badgeBounds": [
+      88.5,
+      123.5,
+      35,
+      35
+    ],
+    "mainTransform": [
+      1.31034,
+      0,
+      0,
+      1.31034,
+      -4.58621,
+      -12.86207
+    ],
+    "badgeTransform": [
+      1.31429,
+      0,
+      0,
+      1.31429,
+      -56.6,
+      47.4
+    ]
+  },
+  "slate-ring-light": {
+    "side": "right",
+    "mainBounds": [
+      84.5,
+      64.5,
+      71,
+      133
+    ],
+    "badgeBounds": [
+      134.5,
+      74,
+      37,
+      38
+    ],
+    "mainTransform": [
+      1.42857,
+      0,
+      0,
+      1.42857,
+      0,
+      -20.71429
+    ],
+    "badgeTransform": [
+      1.21053,
+      0,
+      0,
+      1.21053,
+      35.65789,
+      107.68421
+    ]
+  },
+  "slate-spotlight": {
+    "side": "right",
+    "mainBounds": [
+      77.5,
+      77.5,
+      85,
+      106.5
+    ],
+    "badgeBounds": [
+      139,
+      74,
+      38,
+      38
+    ],
+    "mainTransform": [
+      1.80095,
+      0,
+      0,
+      1.80095,
+      0,
+      -25.26066
+    ],
+    "badgeTransform": [
+      1.21053,
+      0,
+      0,
+      1.21053,
+      29,
+      107.68421
+    ]
+  },
+  "slate-l-e-d-panel": {
+    "side": "left",
+    "mainBounds": [
+      68.5,
+      68.5,
+      103,
+      102
+    ],
+    "badgeBounds": [
+      74,
+      74,
+      38,
+      38
+    ],
+    "mainTransform": [
+      1.86275,
+      0,
+      0,
+      1.86275,
+      0,
+      -4.06863
+    ],
+    "badgeTransform": [
+      1.21053,
+      0,
+      0,
+      1.21053,
+      -42.31579,
+      107.68421
+    ]
+  },
+  "slate-lantern": {
+    "side": "right",
+    "mainBounds": [
+      78,
+      46.5,
+      83.5,
+      149
+    ],
+    "badgeBounds": [
+      134,
+      134,
+      38,
+      38
+    ],
+    "mainTransform": [
+      1.29252,
+      0,
+      0,
+      1.29252,
+      0,
+      -1.12245
+    ],
+    "badgeTransform": [
+      1.21053,
+      0,
+      0,
+      1.21053,
+      35.05263,
+      35.05263
+    ]
+  },
+  "slate-script-node": {
+    "side": "right",
+    "mainBounds": [
+      38,
+      89,
+      164,
+      87
+    ],
+    "badgeBounds": [
+      134,
+      74,
+      42,
+      42
+    ],
+    "mainTransform": [
+      1.17073,
+      0,
+      0,
+      1.17073,
+      0,
+      -19.63415
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      36.66667,
+      102.38095
+    ]
+  },
+  "slate-timeline": {
+    "side": "right",
+    "mainBounds": [
+      54,
+      84,
+      132,
+      72
+    ],
+    "badgeBounds": [
+      104,
+      139,
+      42,
+      42
+    ],
+    "mainTransform": [
+      1.45455,
+      0,
+      0,
+      1.45455,
+      0,
+      -5
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      69.52381,
+      31.19048
+    ]
+  },
+  "slate-tilemap": {
+    "side": "right",
+    "mainBounds": [
+      69,
+      69,
+      102,
+      102
+    ],
+    "badgeBounds": [
+      154,
+      154,
+      42,
+      42
+    ],
+    "mainTransform": [
+      1.86275,
+      0,
+      0,
+      1.86275,
+      0,
+      -5
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      14.7619,
+      14.7619
+    ]
+  },
+  "slate-sprite-sheet": {
+    "side": "right",
+    "mainBounds": [
+      39,
+      89,
+      162,
+      62
+    ],
+    "badgeBounds": [
+      164,
+      74,
+      42,
+      42
+    ],
+    "mainTransform": [
+      1.18519,
+      0,
+      0,
+      1.18519,
+      0,
+      -5
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      3.80952,
+      102.38095
+    ]
+  },
+  "slate-scene-hierarchy": {
+    "side": "left",
+    "mainBounds": [
+      64,
+      64,
+      112,
+      112
+    ],
+    "badgeBounds": [
+      74,
+      149,
+      42,
+      42
+    ],
+    "mainTransform": [
+      1.69643,
+      0,
+      0,
+      1.69643,
+      0,
+      -5
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      -47.61905,
+      20.2381
+    ]
+  },
+  "slate-color-picker": {
+    "side": "right",
+    "mainBounds": [
+      69,
+      64,
+      102,
+      112
+    ],
+    "badgeBounds": [
+      149,
+      74,
+      42,
+      42
+    ],
+    "mainTransform": [
+      1.69643,
+      0,
+      0,
+      1.69643,
+      0,
+      -5
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      20.2381,
+      102.38095
+    ]
+  },
+  "slate-terminal": {
+    "side": "right",
+    "mainBounds": [
+      58.5,
+      73.5,
+      123,
+      93
+    ],
+    "badgeBounds": [
+      154,
+      144,
+      42,
+      42
+    ],
+    "mainTransform": [
+      1.56098,
+      0,
+      0,
+      1.56098,
+      0,
+      -5
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      14.7619,
+      25.71429
+    ]
+  },
+  "slate-build": {
+    "side": "left",
+    "mainBounds": [
+      81,
+      85,
+      72,
+      73.5
+    ],
+    "badgeBounds": [
+      74,
+      139,
+      42,
+      42
+    ],
+    "mainTransform": [
+      2.58503,
+      0,
+      0,
+      2.58503,
+      7.7551,
+      -9.52381
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      -47.61905,
+      31.19048
+    ]
+  },
+  "slate-animation-curve": {
+    "side": "right",
+    "mainBounds": [
+      59,
+      74,
+      122,
+      92
+    ],
+    "badgeBounds": [
+      149,
+      144,
+      42,
+      42
+    ],
+    "mainTransform": [
+      1.57377,
+      0,
+      0,
+      1.57377,
+      0,
+      -5
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      20.2381,
+      25.71429
+    ]
+  },
+  "slate-shader-node": {
+    "side": "right",
+    "mainBounds": [
+      59.5,
+      83.5,
+      121,
+      63
+    ],
+    "badgeBounds": [
+      149,
+      139,
+      42,
+      42
+    ],
+    "mainTransform": [
+      1.58678,
+      0,
+      0,
+      1.58678,
+      0,
+      2.93388
+    ],
+    "badgeTransform": [
+      1.09524,
+      0,
+      0,
+      1.09524,
+      20.2381,
+      31.19048
+    ]
+  }
+}
