@@ -44,10 +44,10 @@ jobs:
       attestations: write    # store the provenance attestation on the repository
     steps:
       - name: Check out branch source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -71,9 +71,45 @@ jobs:
           -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 
       - name: Build FrontierUV and FrontierEditor
+        shell: pwsh
         env:
           CL: /MP
-        run: cmake --build Build/Windows --config Release --target FrontierUV FrontierEditor --parallel 4
+        run: |
+          cmake --build Build/Windows --config Release --target FrontierUV FrontierEditor --parallel 4 2>&1 | Tee-Object -FilePath Build/Windows/BuildOutput.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Surface compiler diagnostics on failure
+        if: failure()
+        shell: python
+        run: |
+          # Workflow logs are not reachable from every review environment, so compiler errors are repeated as annotations.
+          import pathlib, re
+          LogPath = pathlib.Path('Build/Windows/BuildOutput.log')
+          Lines = LogPath.read_text(encoding='utf-8', errors='replace').splitlines() if LogPath.exists() else ['Build log was not produced.']
+          Seen, Errors = set(), []
+          for Line in Lines:
+              if not re.search(r'(error|fatal error) [A-Z]+\d+|: error', Line):
+                  continue
+              Line = re.sub(r'\s*\[[A-Za-z]:\\[^\]]*\.vcxproj\]\s*$', '', Line.strip())
+              Line = re.sub(r'^[A-Za-z]:\\a\\[^\\]+\\[^\\]+\\', '', Line)
+              if Line not in Seen:
+                  Seen.add(Line)
+                  Errors.append(Line)
+          Chunk, Size, Part = [], 0, 1
+          def Flush():
+              global Chunk, Size, Part
+              if Chunk and Part <= 9:
+                  Body = '\n'.join(Chunk).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print('::error title=MSVC diagnostics {0} ({1} unique errors)::{2}'.format(Part, len(Errors), Body))
+                  Part += 1
+              Chunk, Size = [], 0
+          for Line in Errors:
+              Line = Line[:420]
+              if Size + len(Line) > 7000:
+                  Flush()
+              Chunk.append(Line)
+              Size += len(Line) + 1
+          Flush()
 
       - name: Collect relocatable package folder
         run: >
@@ -136,14 +172,14 @@ jobs:
           Get-Content "Build/Package/$env:PACKAGE_NAME/SHA256SUMS.txt" | Select-String '\.exe$' | ForEach-Object { $_.Line } >> $env:GITHUB_STEP_SUMMARY
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v3
         with:
           subject-path: |
             Build/Package/${{ env.PACKAGE_NAME }}/*.exe
             Build/Package/${{ env.PACKAGE_NAME }}.zip
 
       - name: Upload package (GitHub delivers this as one .zip)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ env.PACKAGE_NAME }}
           path: Build/Package/${{ env.PACKAGE_NAME }}/
