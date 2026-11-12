@@ -59,15 +59,30 @@ jobs:
             cmake --build "$build_dir" --parallel 4
             echo "===== CTest ${profile} ====="
             if ! xvfb-run -a ctest --test-dir "$build_dir" --output-on-failure; then
-              python3 - "$build_dir/Testing/Temporary/LastTest.log" "$profile" <<'PY'
+              python3 - "$build_dir" "$profile" <<'PY'
           from pathlib import Path
           import sys
 
-          log_path = Path(sys.argv[1])
+          build_dir = Path(sys.argv[1])
           profile = sys.argv[2]
-          text = log_path.read_text(errors='replace') if log_path.exists() else 'CTest log was not produced.'
-          tail = text[-7000:].replace('%', '%25').replace('\\r', '%0D').replace('\\n', '%0A')
-          print(f'::error title=CTest-{profile}::{tail}')
+
+          def annotate(title, text):
+              body = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::error title={title}::{body}')
+
+          failed_path = build_dir / 'Testing/Temporary/LastTestsFailed.log'
+          failed = failed_path.read_text(errors='replace').split() if failed_path.exists() else []
+          annotate(f'CTest-{profile} failed suites', ' '.join(failed) or 'LastTestsFailed.log was not produced.')
+
+          log_path = build_dir / 'Testing/Temporary/LastTest.log'
+          text = log_path.read_text(errors='replace') if log_path.exists() else ''
+          # Keep the tail of each failing suite's own output between its start and end stamps
+          for entry in failed[:8]:
+              name = entry.split(':')[-1]
+              start = text.find(f'"{name}" start time')
+              end = text.find(f'"{name}" end time', start)
+              if start >= 0:
+                  annotate(f'CTest-{profile} {name}', text[start:end if end >= 0 else None][-3500:])
           PY
               exit 1
             fi

@@ -27,12 +27,13 @@ namespace
 
 [[nodiscard]] constexpr ColorRgba ScaleAlpha(ColorRgba BaseColor, float Opacity) noexcept
 {
+    // 📝 std::round is not a constant expression in ISO C++20; adding 0.5 before truncation rounds identically for alpha >= 0
     const float Clamped = std::clamp(Opacity, 0.0f, 1.0f);
     return {
         BaseColor.Red,
         BaseColor.Green,
         BaseColor.Blue,
-        static_cast<uint8_t>(std::round(static_cast<float>(BaseColor.Alpha) * Clamped)),
+        static_cast<uint8_t>(static_cast<float>(BaseColor.Alpha) * Clamped + 0.5f),
     };
 }
 
