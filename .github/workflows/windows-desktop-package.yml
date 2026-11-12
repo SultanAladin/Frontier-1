@@ -185,7 +185,7 @@ jobs:
             Build/Package/${{ env.PACKAGE_NAME }}.zip
 
       - name: Upload package (GitHub delivers this as one .zip)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.PACKAGE_NAME }}
           path: Build/Package/${{ env.PACKAGE_NAME }}/

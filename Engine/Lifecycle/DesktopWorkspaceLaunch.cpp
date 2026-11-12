@@ -258,7 +258,9 @@ void SynchronizeGlfwToImGui(GLFWwindow* Win, ImGuiIO& Io, GlfwSupplementalQueue&
 
     if (!PackagedLayoutResolved)
     {
-        std::fprintf(stderr, "[FrontierHost] Packaged layout missing: no PackageManifest.json and CompiledShaders directory beside the executable\n");
+        std::fprintf(
+            stderr,
+            "[FrontierHost] Packaged layout missing: no PackageManifest.json and CompiledShaders directory beside the executable\n");
         return 1;
     }
 

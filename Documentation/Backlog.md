@@ -12,7 +12,10 @@ milestones stay focused and zero technical debt goes undocumented. Move items to
 | -- | ------ | ------------- | -------------- |
 | `BKL-001` | `Windowing/` · `Automation/` | Android NDK `GameActivity` / `ANativeWindow` packaging script (`PackageAndroidApk.py`) and Gradle-free APK/AAB bundler for `Shipping` builds. | After desktop + headless `PlatformWindow` & Vulkan surface validation complete. |
 | `BKL-002` | `Windowing/` | Native Wayland `pointer-constraints-unstable-v1` and `relative-pointer-unstable-v1` cursor lock for fly-camera viewport navigation in `PlatformWindowWayland.cpp`. | Phase 2 Viewport Camera Navigation. |
-| `BKL-003` | `Automation/Workflows/` | Cross-platform `Shipping` binary packaging workflow templates (Windows x64, Linux x64, Android ARM64). Keep retained under `Automation/Workflows/` (inactive) until explicit GitHub Actions approval. | First `SampleProject` `Shipping` milestone. |
+| `BKL-003` | `Automation/` · `.github/workflows/` | Linux x64 and Android ARM64 binary packaging workflows, and a `Shipping`-profile desktop executable. Windows x64 `Editor`-profile packaging is delivered (`windows-desktop-package.yml`, `PackageDesktopBinaries.py`). | First `SampleProject` `Shipping` milestone. |
+| `BKL-010` | `.github/workflows/` | Trusted Authenticode signing step (SignPath Foundation, Azure Artifact Signing, or cloud-HSM certificate) replacing the `.pfx` `signtool` call; add an open-source licence file first. See `Plans/UVWorkspaceAuditAndWindowsPackaging.md` §4. | User obtains a signing identity. |
+| `BKL-011` | `Engine/Codecs/` · `Engine/Workspaces/Revision/` | Rule on `SpaceExtensionCategory` / `ExtensionCategory` and `RecordParametricOperation` (barred `extension` / `Record`), then extend `AuditBannedVocabulary.py` gating beyond the UV workspace (526 findings repo-wide). | Next vocabulary ruling. |
+| `BKL-012` | `Engine/Lifecycle/` | First launch of the packaged Windows executables on a physical Vulkan GPU (CI runners have no Vulkan driver). | Windows test machine available. |
 
 ---
 

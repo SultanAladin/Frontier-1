@@ -96,6 +96,10 @@ Frontier/
 │   ├── UVEditor/                                  // LSCM unwrap, UDIM layout, and importance packer studio
 │   └── TextureStudio/                             // 5-workspace material, pattern, stamp, paint & SDF baker
 │
+├── .github/workflows/                             // GitHub Actions (run only with explicit user approval)
+│   ├── uv-workspace-ci.yml                        // Linux C++20 + Vulkan CTest regression across three profiles
+│   └── windows-desktop-package.yml                // MSVC x64 package, provenance attestation, optional Authenticode
+│
 ├── Automation/                                    // Build tooling, dependency pinning, patches, and studio server
 │   ├── Dependencies.json                          // SHA-256 pinned C/C++ package manifest
 │   ├── PrepareDependencies.py                     // Checksummed package fetcher & ImGui patch runner
@@ -110,6 +114,8 @@ Frontier/
 │   ├── ThorVGSoftware.cmake                       // Static ThorVG build definition
 │   ├── JoltPhysics.cmake                          // Deterministic x86_64/ARM64 JoltPhysics v5.6.0 definition
 │   ├── WindowsToolchain.cmake                     // Zig 0.13.0 Windows x64 cross-compile toolchain
+│   ├── AuditBannedVocabulary.py                   // BannedWordsVocabulary.md scanner (identifiers, comments, path names)
+│   ├── PackageDesktopBinaries.py                  // Relocatable FrontierUV / FrontierEditor folder collector & bundler
 │   └── Patches/                                   // Mandatory 8-patch ImGui stack (PatchA through PatchH)
 │
 ├── ExternalPackages/                              // Third-party external dependencies (git-ignored)
