@@ -521,6 +521,10 @@ int LaunchDesktopWorkspace(
 #if !defined(__ANDROID__)
         InputCoordinator.BeginTick();
         DesktopWindow.PollOperatingEvents(InputCoordinator);
+        // 📝 PollOperatingEvents only enqueues packets into the coordinator exchange. Without this drain the pointer snapshot
+        //    (including ScrollDelta) stays zero forever, ImGui never receives a wheel event, and every wheel consumer
+        //    (Inspector/Outliner scroll, 2D planar zoom, 3D dolly) silently does nothing.
+        (void)InputCoordinator.TickExchange();
         const auto Extent = DesktopWindow.InspectExtent();
         if (Extent.SurfacePixelWidth == 0u || Extent.SurfacePixelHeight == 0u)
         {
