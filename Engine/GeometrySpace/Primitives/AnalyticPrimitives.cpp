@@ -297,20 +297,38 @@ namespace
 [[nodiscard]] std::filesystem::path LocateControlledIntegratorContainer()
 {
     std::error_code FsErr {};
-    std::filesystem::path SearchDir = std::filesystem::current_path(FsErr);
-    for (uint32_t Depth = 0u; Depth < 6u && !SearchDir.empty(); ++Depth)
+
+    // Walks upward from a candidate root far enough to cover a packaged folder, a build tree, and a repository checkout.
+    const auto ClimbForContainer = [&FsErr](std::filesystem::path SearchDir) -> std::filesystem::path
     {
-        const std::filesystem::path Candidate = SearchDir / "EngineContent/Geometry/ControlledIntegrator.GeometrySpace";
-        if (std::filesystem::exists(Candidate, FsErr))
+        for (uint32_t Depth = 0u; Depth < 6u && !SearchDir.empty(); ++Depth)
         {
-            return Candidate;
+            const std::filesystem::path Candidate = SearchDir / "EngineContent/Geometry/ControlledIntegrator.GeometrySpace";
+            if (std::filesystem::exists(Candidate, FsErr))
+            {
+                return Candidate;
+            }
+            const std::filesystem::path UpperDir = SearchDir.parent_path();
+            if (UpperDir == SearchDir)
+            {
+                break;
+            }
+            SearchDir = UpperDir;
         }
-        const std::filesystem::path UpperDir = SearchDir.parent_path();
-        if (UpperDir == SearchDir)
-        {
-            break;
-        }
-        SearchDir = UpperDir;
+        return {};
+    };
+
+    // The content root the engine was compiled against is searched first so a launch from a foreign working directory
+    // (a packaged executable, a desktop shortcut, or `ctest --test-dir`) still finds the bundled sample geometry.
+#ifdef FRONTIER_REPO_ROOT_DIR
+    if (const std::filesystem::path RootedPath = ClimbForContainer(std::filesystem::path(FRONTIER_REPO_ROOT_DIR)); !RootedPath.empty())
+    {
+        return RootedPath;
+    }
+#endif
+    if (const std::filesystem::path WorkingPath = ClimbForContainer(std::filesystem::current_path(FsErr)); !WorkingPath.empty())
+    {
+        return WorkingPath;
     }
     return std::filesystem::path("EngineContent/Geometry/ControlledIntegrator.GeometrySpace");
 }

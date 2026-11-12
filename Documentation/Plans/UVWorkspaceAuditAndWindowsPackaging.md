@@ -1,6 +1,6 @@
 # UV Workspace Audit & Windows Desktop Package
 
-**Branch:** `arena/4c0111da-frontier-1` (source imported from `SultanAladin/Frontier` `arena/4c9015d5-frontier` @ `f73a5cf`)
+**Branch:** `arena/9de39b0d-frontier-1` (source imported from `SultanAladin/Frontier` `arena/4c9015d5-frontier` @ `f73a5cf`)
 
 **TL;DR**
 
@@ -17,6 +17,8 @@
 | UV banned-vocabulary audit (43 files) | Local + both workflows | 🟢 0 findings, 5 advisories |
 | MSVC x64 build, `Editor` profile, static runtime (`FrontierUV.exe`, `FrontierEditor.exe`) | `windows-2022` runner | 🟢 |
 | Packaged-layout self-check (`--verify-packaged-layout`, run from a foreign working directory) | `windows-2022` runner | 🟢 13 shaders, geometry, typefaces found |
+| `UVBoundaryValidation` (CPU-only hostile-input and packing checks) on Windows | `windows-2022` runner | 🟢 |
+| CTest from the build tree instead of the repository root | Local sandbox | 🟢 46/46 runs (`16` `Editor`, `16` `Development`, `14` `Shipping`) — fixes the cwd-dependent sample-asset load (§2.5) |
 | Build provenance attestation | `windows-2022` runner | 🟢 |
 | Zig 0.13 Windows cross-compile (`Automation/WindowsToolchain.cmake`) | Local sandbox | 🟢 links both executables |
 | Linux CTest, 3 profiles | `ubuntu-24.04` runner | 🟢 all suites pass (`Editor`, `Development`, `Shipping`) |
@@ -84,6 +86,9 @@ Most frequent words: `record` (80), `extension` (74), `base` (35), `cache` / `ca
 | 🐞 Shader and content paths were compiled in as absolute build-machine paths, so a copied executable could not find `CompiledShaders/` or `EngineContent/` | `ResolvePackagedLayout` in `DesktopWorkspaceLaunch.cpp` reads them beside the executable when `PackageManifest.json` is present |
 | 🐞 `PrepareShaderToolchain.py` pinned only the Linux Slang wheel | Windows hosts pin the `win_amd64` wheel of the same release (`slangc.exe`); SwiftShader stays Linux-only |
 | 🐞 CTest failure annotation in `uv-workspace-ci.yml` escaped the two-character text `\n` instead of line breaks, so only the first log line was reported | Reports failing suite names and each suite's own output |
+| 🐞 `LocateControlledIntegratorContainer` in `AnalyticPrimitives.cpp` searched only upward from the **working directory**, so any process launched outside the repository (`ctest --test-dir Build/…`, a packaged `.exe` started from another folder, a desktop shortcut) silently substituted the analytic placeholder and every downstream UV validation failed | Search starts at the content root — the packaged executable folder when `PackageManifest.json` is present, otherwise `FRONTIER_REPO_ROOT_DIR` — and falls back to the working directory. `FRONTIER_REPO_ROOT_DIR` moved to `FrontierEngine PUBLIC` so the engine, both executables, and every exhibit share one anchored root |
+| 🐞 The Windows workflow had dropped CTest entirely (`-DBUILD_TESTING=OFF`), so no UV logic was executed on the MSVC build | `BUILD_TESTING=ON` with a targeted `UVBoundaryValidation` build and run — the one exhibit with no Vulkan, window, or font dependency |
+| 🐞 An unsigned package produced no visible signal about the browser/SmartScreen prompt | The job summary lists shader count, signature state, revision, and per-executable SHA-256, and an unsigned build emits a warning annotation naming the provenance command |
 
 ---
 
@@ -97,9 +102,11 @@ Workflow: `.github/workflows/windows-desktop-package.yml` (runs on pushes to `ar
 | Recover | Pinned packages, fonts, `slangc.exe` (all SHA-256 verified) |
 | Build | MSVC x64, `Editor` profile, `Release`, static C runtime (no Visual C++ redistributable needed) |
 | Collect | `Automation/PackageDesktopBinaries.py --collect` → executables, `CompiledShaders/`, `EngineContent/`, `ThirdPartyNotices/`, `README.txt`, `PackageManifest.json` |
+| Validate | `UVBoundaryValidation` runs on the MSVC build (hostile interchange payloads, chart packing limits) |
 | Self-check | Each executable runs `--verify-packaged-layout` from another directory |
 | Sign | Authenticode, only when the certificate secrets exist |
 | Bundle | `SHA256SUMS.txt` + `.zip` |
+| Summarize | Job summary: shaders, signature state, revision, per-executable SHA-256; warning annotation while unsigned |
 | Attest | Sigstore build provenance for both executables and the `.zip` |
 | Upload | Artifact `FrontierUV-Windows-x64` (30 days) |
 

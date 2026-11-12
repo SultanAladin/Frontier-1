@@ -84,6 +84,8 @@ Starting focus agreed with user: **`Input/` + `Editor/` groundwork**.
    - ✔️ `Automation/AuditBannedVocabulary.py` gates `Engine/Workspaces/UV/`, `Engine/GeometricRaster/UV/`, `UVCodec`, the UV `.slang` shaders, and the UV exhibits at **0 findings** in both workflows; foreign-owned `SpaceExtensionCategory` / `RecordParametricOperation` remain advisories (`BKL-011`).
    - ✔️ `.github/workflows/windows-desktop-package.yml`: MSVC x64 `Editor`-profile `FrontierUV.exe` + `FrontierEditor.exe` (static runtime), `Automation/PackageDesktopBinaries.py` relocatable folder, `--verify-packaged-layout` self-check, Sigstore build provenance, and optional Authenticode signing (`BKL-010`).
    - ✔️ `DesktopWorkspaceLaunch` resolves `CompiledShaders/` and `EngineContent/` beside the executable when `PackageManifest.json` is present.
+   - ✔️ `UVBoundaryValidation` now runs on the MSVC build (CPU-only) and CTest passes `16/16` from the build tree: `LocateControlledIntegratorContainer` anchors to the content root (`FRONTIER_REPO_ROOT_DIR`, promoted to `FrontierEngine PUBLIC`) before the working directory, so a packaged `.exe` or `ctest --test-dir` launch no longer substitutes the analytic placeholder asset.
+   - ✔️ Unsigned builds surface the SmartScreen/reputation situation in the job summary (signature state, revision, per-executable SHA-256) and emit a warning annotation naming `gh attestation verify`.
    - 📝 Report: [Plans/UVWorkspaceAuditAndWindowsPackaging.md](Plans/UVWorkspaceAuditAndWindowsPackaging.md).
 7. **Remaining Domain Threads & Simulation Spaces (🚩 Next)**:
    - Design `GameThread` and remaining Option A domain threads before implementation.

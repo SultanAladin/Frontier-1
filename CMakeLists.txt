@@ -335,6 +335,8 @@ target_include_directories(FrontierEngine PUBLIC
 )
 target_compile_definitions(FrontierEngine PUBLIC
     "FRONTIER_COMPILED_SHADER_DIR=\"${FRONTIER_COMPILED_SHADER_DIR}\""
+    # Content-root fallback shared by the engine, both desktop executables, and every CTest validation exhibit
+    "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\""
 )
 target_link_libraries(FrontierEngine PUBLIC FrontierCompileSettings Threads::Threads ${CMAKE_DL_LIBS})
 if(NOT FRONTIER_PROFILE STREQUAL "Shipping")
@@ -351,11 +353,9 @@ endif()
 
 if(NOT ANDROID AND NOT FRONTIER_PROFILE STREQUAL "Shipping")
     add_executable(FrontierUV Engine/Lifecycle/FrontierUVLaunch.cpp)
-    target_compile_definitions(FrontierUV PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
     target_link_libraries(FrontierUV PRIVATE FrontierEngine FrontierImGui)
 
     add_executable(FrontierEditor Engine/Lifecycle/FrontierEditorLaunch.cpp)
-    target_compile_definitions(FrontierEditor PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
     target_link_libraries(FrontierEditor PRIVATE FrontierEngine FrontierImGui)
 endif()
 
@@ -376,7 +376,6 @@ if(BUILD_TESTING)
     function(frontier_register_exhibit EXHIBIT_NAME EXHIBIT_SOURCE)
         add_executable(${EXHIBIT_NAME} ${EXHIBIT_SOURCE} ${ARGN})
         target_include_directories(${EXHIBIT_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/ExternalPackages/stb")
-        target_compile_definitions(${EXHIBIT_NAME} PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
         if(FRONTIER_PROFILE STREQUAL "Shipping")
             target_link_libraries(${EXHIBIT_NAME} PRIVATE FrontierShippingExhibitUi FrontierEngine FrontierImGui)
         else()

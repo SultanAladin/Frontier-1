@@ -16,6 +16,7 @@ milestones stay focused and zero technical debt goes undocumented. Move items to
 | `BKL-010` | `.github/workflows/` | Trusted Authenticode signing step (SignPath Foundation, Azure Artifact Signing, or cloud-HSM certificate) replacing the `.pfx` `signtool` call; add an open-source licence file first. See `Plans/UVWorkspaceAuditAndWindowsPackaging.md` §4. | User obtains a signing identity. |
 | `BKL-011` | `Engine/Codecs/` · `Engine/Workspaces/Revision/` | Rule on `SpaceExtensionCategory` / `ExtensionCategory` and `RecordParametricOperation` (barred `extension` / `Record`), then extend `AuditBannedVocabulary.py` gating beyond the UV workspace (526 findings repo-wide). | Next vocabulary ruling. |
 | `BKL-012` | `Engine/Lifecycle/` | First launch of the packaged Windows executables on a physical Vulkan GPU (CI runners have no Vulkan driver). | Windows test machine available. |
+| `BKL-013` | `Engine/Workspaces/UV/` | `UVWorkspaceUIValidation` and both executable smoke tests still need a Vulkan device, so the Windows runner can only execute `UVBoundaryValidation`. Supply a software Vulkan ICD (SwiftShader is Linux-only in `PrepareShaderToolchain.py`) to widen Windows CTest coverage. | Windows software-Vulkan ICD packaged for CI. |
 
 ---
 
