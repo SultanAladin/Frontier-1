@@ -122,6 +122,12 @@ Workflow: `.github/workflows/windows-desktop-package.yml` (runs on pushes to `ar
 
 Chrome Safe Browsing and Windows SmartScreen decide from two things: **who signed the executable** and **how often that exact file or publisher has been downloaded**. A fresh unsigned `.exe` has neither. GitHub build provenance (what this workflow adds) proves where the binary came from, but browsers and SmartScreen do not read it.
 
+**No GitHub setting removes the prompt.** Making the repository public, publishing a Release instead of a workflow artifact, getting the workflow green, or ticking a checkbox in Settings changes none of it — the prompt is decided by the executable's signature and download reputation, not by how it was delivered.
+
+🚩 **Name mismatch you will see.** The Windows binary is `FrontierUV.exe` / `FrontierEditor.exe`, and the product is "Frontier UV". That is harmless for the prompt (it is keyed on signature and reputation), but SmartScreen's *"more info"* line and Chrome's download bubble show the file name, so expect wording that differs from the branding.
+
+The download itself arrives as a `.zip` from github.com — an HTTPS source Chrome already trusts — so the prompt normally appears **after extracting**, when the `.exe` is first run on Windows. Extracting with Explorer also stamps the Mark-of-the-Web; keeping the `.zip` unblocked (`Properties → Unblock`) is the only local workaround and it is not something the build can do for you.
+
 | Rank | Option | Cost | Removes the prompt | What is needed from you |
 | :---: | :--- | :--- | :---: | :--- |
 | 🥇 | **SignPath Foundation** (free certificate for open-source projects) | Free | 🟢 after approval | Apply at signpath.org; the repository needs an open-source licence file (none exists yet) |
