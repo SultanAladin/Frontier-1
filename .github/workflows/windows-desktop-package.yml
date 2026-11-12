@@ -2,7 +2,7 @@ name: Windows desktop package
 
 # Builds FrontierUV.exe and FrontierEditor.exe with MSVC, packages them with shaders and content, and attaches
 # verifiable provenance. Authenticode signing runs only when a certificate is configured (see
-# Documentation/Plans/WindowsPackagingAndSigning.md).
+# Documentation/Plans/UVWorkspaceAuditAndWindowsPackaging.md).
 
 on:
   push:
@@ -125,8 +125,14 @@ jobs:
           $Package = Resolve-Path "Build/Package/$env:PACKAGE_NAME"
           Push-Location $env:RUNNER_TEMP
           foreach ($Executable in Get-ChildItem "$Package\*.exe") {
-            & $Executable.FullName --verify-packaged-layout
-            if ($LASTEXITCODE -ne 0) { throw "$($Executable.Name) failed packaged layout verification" }
+            $Report = (& $Executable.FullName --verify-packaged-layout 2>&1 | Out-String).Trim()
+            $ExitCode = $LASTEXITCODE
+            Write-Output $Report
+            if ($ExitCode -ne 0) {
+              $Escaped = $Report.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Output "::error title=$($Executable.Name) packaged layout (exit $ExitCode)::$Escaped"
+              throw "$($Executable.Name) failed packaged layout verification"
+            }
           }
           Pop-Location
 

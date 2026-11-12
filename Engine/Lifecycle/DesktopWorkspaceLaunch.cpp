@@ -277,8 +277,17 @@ void SynchronizeGlfwToImGui(GLFWwindow* Win, ImGuiIO& Io, GlfwSupplementalQueue&
         ++MissingCount;
     }
 
-    TypographyRepository Typography {};
-    const uint32_t       TypefaceCount = Typography.LoadRepository(RepositoryRootPath / "EngineContent/FontsArchives");
+    // 📝 TypographyRepository needs a live ImGui font sheet, so the packaged typeface files are counted on disk instead
+    uint32_t TypefaceCount = 0u;
+    for (const auto& DirectoryEntry :
+         std::filesystem::recursive_directory_iterator(RepositoryRootPath / "EngineContent/FontsArchives", PathFailure))
+    {
+        const std::filesystem::path Suffix = DirectoryEntry.path().extension();
+        if (DirectoryEntry.is_regular_file(PathFailure) && (Suffix == ".ttf" || Suffix == ".otf"))
+        {
+            ++TypefaceCount;
+        }
+    }
     if (TypefaceCount == 0u)
     {
         std::fprintf(stderr, "[FrontierHost] Packaged typefaces missing under EngineContent/FontsArchives\n");

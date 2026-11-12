@@ -52,6 +52,7 @@ BarredPrefixExpression = re.compile(r'^(Is|Has|Was|Can|Should|On)[A-Z]')
 # §3.1 narrow exemptions plus the EngineContent/FontsArchives directory exemption from §1.1.
 ExemptIdentifiers = {
     'RecordEntries', 'RecordEntry', 'RecordToken', 'SelectionTraversal', 'FontsArchives',
+    'CMake',  # build tool proper noun, not the barred Make* verb prefix
     'RenderExtension', 'PhysicsExtension', 'InputExtension', 'AnnotationExtension',
     'WorkspaceExtension', 'RevisionExtension', 'NetworkingExtension', 'AudioExtension',
 }

@@ -54,7 +54,7 @@ Browser and SmartScreen prompts
 Browsers and Windows SmartScreen rate executables by publisher certificate and download reputation. A build without an
 Authenticode signature from a trusted certificate authority can still be reported as "not commonly downloaded" or
 "unrecognised app" even though the digests and provenance above verify. See
-Documentation/Plans/WindowsPackagingAndSigning.md in the repository for the certificate options.
+Documentation/Plans/UVWorkspaceAuditAndWindowsPackaging.md in the repository for the certificate options.
 '''
 
 
