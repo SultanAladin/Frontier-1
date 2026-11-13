@@ -62,6 +62,13 @@ public:
     void ActivateCircleBrush(bool Active) noexcept;
     void ResetActiveTools() noexcept;
 
+    [[nodiscard]] bool                 QueryDragCaptureActive() const noexcept
+    {
+        return DragCaptureActive || DraggingGizmo2D || DraggingGizmo3D || RegionStrokeActive ||
+            (ModalMode != ModalUVTransformMode::Inactive);
+    }
+    [[nodiscard]] bool                 ConsumeSecondarySheetRequest(Point2D& OutAnchor, bool& OutInPlanar) noexcept;
+
     [[nodiscard]] ModalUVTransformMode QueryModalTransformMode() const noexcept { return ModalMode; }
     [[nodiscard]] RegionSelectTool     QueryRegionSelectTool() const noexcept { return ActiveRegionTool; }
     [[nodiscard]] bool                 QueryRegionStrokeActive() const noexcept { return RegionStrokeActive; }
@@ -78,13 +85,24 @@ private:
     void HandleKeyboardShortcuts(const ViewportInteractionReading& Reading, bool InsidePlanar, bool InsideSpatial);
     void HandleModalTransformStep(const ViewportInteractionReading& Reading, bool InsidePlanar);
     void HandleGizmoOrSurfaceInteraction(const ViewportInteractionReading& Reading, bool InsidePlanar, bool InsideSpatial);
-    void ApplySurfaceHitSelection(const GeometricRaster::ViewportPickHit& Hit, const PaneInputReading& Input, bool PlanarMetric);
+    void ApplySurfaceHitSelection(
+        const GeometricRaster::ViewportPickHit& Hit,
+        const PaneInputReading&                 Input,
+        bool                                    PlanarMetric,
+        uint32_t                                ClickedVertexIndex);
 
     UVWorkspaceSession*   Session              = nullptr;
     bool                  DraggingGizmo2D      = false;
     bool                  DraggingGizmo3D      = false;
+    bool                  DragCaptureActive    = false;
+    bool                  DragTargetPlanar     = true;
+    bool                  DragOrbitActive      = false;
+    bool                  PendingSecondarySheet = false;
+    Point2D               SecondarySheetAnchor {};
+    bool                  SecondarySheetInPlanar = true;
     std::vector<float>                 DragBaselineUVStream       {};
-    std::vector<uint32_t>              DragTargetFaces             {};
+    std::vector<uint32_t>              DragTargetFaces            {};
+    std::vector<uint32_t>              DragTargetCorners          {};
     std::vector<Mathematics::Axis3D>   DragBaselineObjectVertices {};
     Mathematics::UVAxes                DragPivotUV                 { 0.5f, 0.5f };
     Mathematics::Axis3D                DragPivot3D                 {};

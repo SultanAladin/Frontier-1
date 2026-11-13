@@ -51,6 +51,9 @@ private:
     bool                   SurfaceDropdownOpen     = false;
     bool                   CanvasDebugDropdownOpen = false;
     bool                   ProjectionDropdownOpen  = false;
+    bool                   ViewportDirectiveSheetOpen = false;
+    Point2D                ViewportDirectiveAnchor    { 0.0f, 0.0f };
+    bool                   ViewportDirectiveInPlanar  = true;
     uint32_t               ActiveRailSlot          = 0u;
     uint64_t               CachedUVRevision        = UINT64_MAX;
     uint32_t               CachedChartCount        = 0u;

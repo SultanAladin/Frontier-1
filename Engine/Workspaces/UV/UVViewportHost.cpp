@@ -214,9 +214,10 @@ void UVViewportHost::Render(
     const bool    Pressed = Input.PrimaryPointer.Pressed;
     if (Input.EscapePressed)
     {
-        SurfaceDropdownOpen     = false;
-        CanvasDebugDropdownOpen = false;
-        ProjectionDropdownOpen  = false;
+        SurfaceDropdownOpen        = false;
+        CanvasDebugDropdownOpen    = false;
+        ProjectionDropdownOpen     = false;
+        ViewportDirectiveSheetOpen = false;
     }
     Rectangle2D SurfaceDropdownBounds{};
     Rectangle2D SurfaceSheetAnchor{};
@@ -394,21 +395,26 @@ void UVViewportHost::Render(
         Surface.StrokeLine({ CurX, StripY + 6.0f }, { CurX, StripY + 25.0f }, Theme.BorderSubtle, 1.0f);
         CurX += 8.0f;
 
-        // [ 1 | 2 | 3 | 4 ] Component Selection Mode Capsule (118x31)
-        const Rectangle2D CompGroup{ CurX, StripY, 118.0f, 31.0f };
+        // [ 1 | 2 | 3 | 4 | 5 ] Component Selection Mode Capsule (146x31)
+        const Rectangle2D CompGroup{ CurX, StripY, 146.0f, 31.0f };
         Surface.FillRectangle(CompGroup, Theme.WellBg, 15.5f);
         Surface.StrokeRectangle(CompGroup, Theme.BorderSubtle, 15.5f, 1.0f);
-        constexpr std::array<UVSelectionMode, 4u> SlotModes {{
-            UVSelectionMode::Faces,
+        constexpr std::array<UVSelectionMode, 5u> SlotModes {{
+            UVSelectionMode::Vertices,
             UVSelectionMode::Edges,
+            UVSelectionMode::Faces,
             UVSelectionMode::Islands,
             UVSelectionMode::Layers,
         }};
-        constexpr std::array<const char*, 4u> SelectionModeNames {{ "Faces", "Edges", "Islands", "Layers" }};
-        constexpr std::array<const char*, 4u> SelectionModeTips {{
-            "Select UV faces.", "Select mesh edges.", "Select complete UV islands.", "Select priority layers." }};
-        constexpr std::array<uint32_t, 3u> ComponentGlyphIndices {{ 2u, 1u, 3u }};
-        for (uint32_t ModeIdx = 0u; ModeIdx < 4u; ++ModeIdx)
+        constexpr std::array<const char*, 5u> SelectionModeNames {{ "Vertices", "Edges", "Faces", "Islands", "Layers" }};
+        constexpr std::array<const char*, 5u> SelectionModeTips {{
+            "Select mesh and UV vertices. [1]",
+            "Select mesh edges. [2]",
+            "Select UV faces. [3]",
+            "Select complete UV islands. [4]",
+            "Select priority layers. [5]" }};
+        constexpr std::array<uint32_t, 4u> ComponentIconOrdinals {{ 0u, 1u, 2u, 3u }};
+        for (uint32_t ModeIdx = 0u; ModeIdx < 5u; ++ModeIdx)
         {
             const Rectangle2D Cell{ CompGroup.X + 3.0f + static_cast<float>(ModeIdx) * 28.0f, CompGroup.Y + 3.0f, 26.0f, 25.0f };
             const auto        TargetMode = SlotModes[ModeIdx];
@@ -433,7 +439,7 @@ void UVViewportHost::Render(
             {
                 ConstructComponentModeIcon(
                     Surface, { Cell.X + 6.5f, Cell.Y + 6.0f }, 13.0f,
-                    ComponentGlyphIndices[ModeIdx], Active ? Theme.TextPrimary : Theme.TextMuted);
+                    ComponentIconOrdinals[ModeIdx], Active ? Theme.TextPrimary : Theme.TextMuted);
             }
             if (Hovered)
             {
@@ -442,9 +448,8 @@ void UVViewportHost::Render(
             }
             if (Hovered && Pressed)
             {
-                OverlayCapturedClick       = true;
-                Session->SelectionMode     = TargetMode;
-                Session->FramebuffersDirty = true;
+                OverlayCapturedClick = true;
+                Session->AssignSelectionMode(TargetMode);
             }
         }
         CurX = CompGroup.Right() + 8.0f;
@@ -494,12 +499,16 @@ void UVViewportHost::Render(
                 ControlIcon::LayersSlabs,
                 OptionalTooltip::FromTitled(
                     "3D Surface Shading", "Select the 3D surface shading channel."));
+            if (SurfHit.Pressed || SurfHit.Clicked)
+            {
+                OverlayCapturedClick = true;
+            }
             if (SurfHit.Clicked)
             {
-                SurfaceDropdownOpen     = !SurfaceDropdownOpen;
-                CanvasDebugDropdownOpen = false;
-                ProjectionDropdownOpen  = false;
-                OverlayCapturedClick    = true;
+                SurfaceDropdownOpen        = !SurfaceDropdownOpen;
+                CanvasDebugDropdownOpen    = false;
+                ProjectionDropdownOpen     = false;
+                ViewportDirectiveSheetOpen = false;
             }
             CurX = SurfaceDropdownBounds.Right() + 6.0f;
         }
@@ -516,12 +525,16 @@ void UVViewportHost::Render(
                 ControlIcon::SlidersQuality,
                 OptionalTooltip::FromTitled(
                     "2D UV Debug", "Select the 2D UV canvas inspection channel."));
+            if (DbgHit.Pressed || DbgHit.Clicked)
+            {
+                OverlayCapturedClick = true;
+            }
             if (DbgHit.Clicked)
             {
-                CanvasDebugDropdownOpen = !CanvasDebugDropdownOpen;
-                SurfaceDropdownOpen     = false;
-                ProjectionDropdownOpen  = false;
-                OverlayCapturedClick    = true;
+                CanvasDebugDropdownOpen    = !CanvasDebugDropdownOpen;
+                SurfaceDropdownOpen        = false;
+                ProjectionDropdownOpen     = false;
+                ViewportDirectiveSheetOpen = false;
             }
             CurX = CanvasDebugDropdownBounds.Right() + 6.0f;
         }
@@ -539,12 +552,16 @@ void UVViewportHost::Render(
                 ControlIcon::DisplayMonitor,
                 OptionalTooltip::FromTitled(
                     "3D View Projection", "Choose perspective, orthographic, or an axial camera view."));
+            if (ViewHit.Pressed || ViewHit.Clicked)
+            {
+                OverlayCapturedClick = true;
+            }
             if (ViewHit.Clicked)
             {
-                ProjectionDropdownOpen  = !ProjectionDropdownOpen;
-                SurfaceDropdownOpen     = false;
-                CanvasDebugDropdownOpen = false;
-                OverlayCapturedClick    = true;
+                ProjectionDropdownOpen     = !ProjectionDropdownOpen;
+                SurfaceDropdownOpen        = false;
+                CanvasDebugDropdownOpen    = false;
+                ViewportDirectiveSheetOpen = false;
             }
         }
     }
@@ -735,11 +752,109 @@ void UVViewportHost::Render(
     const Rectangle2D PrePlanarNavCapsule  = ComputeZoomFitCapsuleBounds(ExpectedPlanarRect);
     const Rectangle2D PreSpatialNavCapsule = ComputeZoomFitCapsuleBounds(ExpectedSpatialRect);
 
+    std::vector<DropdownDirectiveEntry> DirectiveEntries {};
+    std::vector<UVCommandDirective>     DirectiveOps {};
+    Rectangle2D                         DirectiveSheetBounds {};
+    auto RebuildDirectiveSheet = [&]()
+    {
+        DirectiveEntries.clear();
+        DirectiveOps.clear();
+        auto PushRow = [&](const char* Label, const char* Hint, ControlIcon Icon, UVCommandDirective Op, bool Div = false)
+        {
+            DropdownDirectiveEntry E {};
+            E.Label        = Label;
+            E.ShortcutHint = Hint;
+            E.LeadingIcon  = Icon;
+            E.DividerAbove = Div;
+            DirectiveEntries.push_back(E);
+            DirectiveOps.push_back(Op);
+        };
+        auto PushCaption = [&](const char* Label)
+        {
+            DropdownDirectiveEntry E {};
+            E.Label          = Label;
+            E.SectionCaption = true;
+            DirectiveEntries.push_back(E);
+            DirectiveOps.push_back(UVCommandDirective::None);
+        };
+
+        switch (Session->SelectionMode)
+        {
+            case UVSelectionMode::Vertices: PushCaption("VERTEX DIRECTIVES"); break;
+            case UVSelectionMode::Edges:    PushCaption("EDGE DIRECTIVES");   break;
+            case UVSelectionMode::Faces:    PushCaption("FACE DIRECTIVES");   break;
+            case UVSelectionMode::Islands:  PushCaption("ISLAND DIRECTIVES"); break;
+            case UVSelectionMode::Layers:   PushCaption("LAYER DIRECTIVES");  break;
+        }
+        PushRow("Select Linked",    "Ctrl+L", ControlIcon::LayersSlabs,  UVCommandDirective::SelectLinkedIsland);
+        PushRow("Select All",       "Ctrl+A", ControlIcon::LayoutGrid,   UVCommandDirective::SelectAllComponents);
+        PushRow("Invert Selection", "Ctrl+I", ControlIcon::RefreshCycle, UVCommandDirective::InvertComponentSelection);
+
+        if (Session->SelectionMode == UVSelectionMode::Edges)
+        {
+            PushRow("Mark Seams",          "",      ControlIcon::SparklesAntiAliasing, UVCommandDirective::MarkSelectedSeams, true);
+            PushRow("Clear & Weld Seams",  "",      ControlIcon::RefreshCycle,         UVCommandDirective::ClearSelectedSeams);
+            PushRow("Stitch Across Seams", "V",     ControlIcon::LayoutSplit,          UVCommandDirective::StitchSelectedSeams);
+            PushRow("Align Vertical (U)",  "",      ControlIcon::LayoutColumns,        UVCommandDirective::AlignSelectedUVsU);
+            PushRow("Align Horizontal (V)","",      ControlIcon::LayoutRows,           UVCommandDirective::AlignSelectedUVsV);
+            PushRow("Pin Edges",           "P",     ControlIcon::LockClosed,           UVCommandDirective::PinSelectedUVs);
+            PushRow("Unpin Edges",         "Alt+P", ControlIcon::LockOpen,             UVCommandDirective::UnpinSelectedUVs);
+        }
+        else if (Session->SelectionMode == UVSelectionMode::Vertices)
+        {
+            PushRow("Align Vertical (U)",  "",      ControlIcon::LayoutColumns,        UVCommandDirective::AlignSelectedUVsU, true);
+            PushRow("Align Horizontal (V)","",      ControlIcon::LayoutRows,           UVCommandDirective::AlignSelectedUVsV);
+            PushRow("Pin Vertices",        "P",     ControlIcon::LockClosed,           UVCommandDirective::PinSelectedUVs);
+            PushRow("Unpin Vertices",      "Alt+P", ControlIcon::LockOpen,             UVCommandDirective::UnpinSelectedUVs);
+        }
+        else
+        {
+            PushRow("Unwrap Conformal", "U",      ControlIcon::LayoutGrid,    UVCommandDirective::UnwrapConformal, true);
+            PushRow("Pack UVs",         "Ctrl+P", ControlIcon::CubeShape,     UVCommandDirective::PackUVsConcaveSkyline);
+            PushRow("Split Island",     "Y",      ControlIcon::LayoutSplit,   UVCommandDirective::SplitSelectedIsland);
+            PushRow("Rectify Quads",    "",       ControlIcon::WrenchRepair,  UVCommandDirective::RectifySelectedQuads);
+            PushRow("Mirror U",         "",       ControlIcon::LayoutColumns, UVCommandDirective::MirrorSelectedHorizontal);
+            PushRow("Mirror V",         "",       ControlIcon::LayoutRows,    UVCommandDirective::MirrorSelectedVertical);
+            PushRow("Pin UVs",          "P",      ControlIcon::LockClosed,    UVCommandDirective::PinSelectedUVs);
+            PushRow("Unpin UVs",        "Alt+P",  ControlIcon::LockOpen,      UVCommandDirective::UnpinSelectedUVs);
+        }
+        PushRow("Fit Selection",   "F", ControlIcon::ExternalOpen, UVCommandDirective::FitActiveSelection, true);
+        PushRow("Clear Selection", "",  ControlIcon::CloseCross,   UVCommandDirective::ClearComponentSelection);
+
+        constexpr float SheetW = 232.0f;
+        DirectiveSheetBounds = DropdownSelector::QueryDirectiveSheetBounds(ViewportDirectiveAnchor, SheetW, DirectiveEntries);
+        if (DirectiveSheetBounds.Right() > Bounds.Right() - 6.0f)
+        {
+            DirectiveSheetBounds.X = std::max(Bounds.X + 6.0f, Bounds.Right() - 6.0f - DirectiveSheetBounds.Width);
+        }
+        if (DirectiveSheetBounds.Bottom() > Bounds.Bottom() - 6.0f)
+        {
+            DirectiveSheetBounds.Y = std::max(Bounds.Y + 6.0f, Bounds.Bottom() - 6.0f - DirectiveSheetBounds.Height);
+        }
+    };
+
+    if (ViewportDirectiveSheetOpen)
+    {
+        RebuildDirectiveSheet();
+        if (Input.SecondaryPressed && CanvasBounds.Contains(Cursor) && !DirectiveSheetBounds.Contains(Cursor))
+        {
+            ViewportDirectiveAnchor   = Cursor;
+            ViewportDirectiveInPlanar = ExpectedPlanarRect.Contains(Cursor);
+            RebuildDirectiveSheet();
+        }
+    }
+
+    const bool ViewportDragCaptured =
+        Interactor.QueryDragCaptureActive() || ProjectionPane.QuerySplitterDragActive();
+    const bool SheetCapturedClick = ViewportDirectiveSheetOpen &&
+        (DirectiveSheetBounds.Contains(Cursor) || Input.PrimaryPointer.Pressed || Input.SecondaryPressed);
     const bool PointerOverOverlayControls =
-        OverlayCapturedClick ||
-        RailBounds.Contains(Cursor) ||
-        (PrePlanarNavCapsule.Width > 0.0f && PrePlanarNavCapsule.Contains(Cursor)) ||
-        (PreSpatialNavCapsule.Width > 0.0f && PreSpatialNavCapsule.Contains(Cursor));
+        !ViewportDragCaptured && (
+            OverlayCapturedClick ||
+            SheetCapturedClick ||
+            RailBounds.Contains(Cursor) ||
+            (PrePlanarNavCapsule.Width > 0.0f && PrePlanarNavCapsule.Contains(Cursor)) ||
+            (PreSpatialNavCapsule.Width > 0.0f && PreSpatialNavCapsule.Contains(Cursor)));
     if (PointerOverOverlayControls)
     {
         // The interaction callback is intentionally suppressed over overlays; clear its
@@ -751,6 +866,21 @@ void UVViewportHost::Render(
     Rectangle2D SpatialRect {};
     ProjectionPane.RenderViewportCanvas(Surface, CanvasBounds, Input, !PointerOverOverlayControls, &PlanarRect, &SpatialRect);
     LastSpatialRectLogical = SpatialRect;
+
+    {
+        Point2D ReqAnchor {};
+        bool    ReqPlanar = true;
+        if (Interactor.ConsumeSecondarySheetRequest(ReqAnchor, ReqPlanar))
+        {
+            ViewportDirectiveSheetOpen = true;
+            ViewportDirectiveAnchor    = ReqAnchor;
+            ViewportDirectiveInPlanar  = ReqPlanar;
+            SurfaceDropdownOpen        = false;
+            CanvasDebugDropdownOpen    = false;
+            ProjectionDropdownOpen     = false;
+            RebuildDirectiveSheet();
+        }
+    }
 
     // Live Marquee [B] & Circle Brush [C] viewport overlays
     {
@@ -1272,6 +1402,31 @@ void UVViewportHost::Render(
         }
     }
 
+    if (ViewportDirectiveSheetOpen && !DirectiveEntries.empty())
+    {
+        int32_t ChosenIndex = -1;
+        const ControlContact SheetHit = DropdownSelector::ConstructDirectiveSheet(
+            Surface,
+            DirectiveSheetBounds,
+            DirectiveEntries,
+            Input.PrimaryPointer,
+            ChosenIndex);
+        if (SheetHit.Clicked && ChosenIndex >= 0 && ChosenIndex < static_cast<int32_t>(DirectiveOps.size()))
+        {
+            const UVCommandDirective ChosenOp = DirectiveOps[static_cast<std::size_t>(ChosenIndex)];
+            if (ChosenOp != UVCommandDirective::None)
+            {
+                (void)Session->ExecuteDirective(ChosenOp, nullptr);
+            }
+            ViewportDirectiveSheetOpen = false;
+        }
+        else if ((Input.PrimaryPointer.Pressed || Input.PrimaryPointer.Released) &&
+                 !DirectiveSheetBounds.Contains(Cursor))
+        {
+            ViewportDirectiveSheetOpen = false;
+        }
+    }
+
 
     Surface.PopClip();
     (void)ControlTooltip::PresentHoveredControlTooltip(Surface, Bounds, Input.PrimaryPointer);
@@ -1301,31 +1456,53 @@ void UVViewportHost::PresentInImGuiPane(double Δt, float ScaleFactor)
 
     if (Session != nullptr)
     {
-        if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+        const Point2D PhysicalCursor {
+            ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
+            ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
+        };
+        const bool BlockedByBrowser = [&]() noexcept
         {
-            const Point2D PhysicalCursor {
-                ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
-                ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
-            };
-            if (Browser->QueryBlocksPointerAt(PhysicalCursor) &&
-                !Interactor.QueryRegionStrokeActive() &&
-                Interactor.QueryModalTransformMode() == ModalUVTransformMode::Inactive)
+            if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
             {
-                Input.PrimaryPointer.Enabled  = false;
-                Input.PrimaryPointer.Pressed  = false;
-                Input.PrimaryPointer.Down     = false;
-                Input.PrimaryPointer.Released = false;
-                Input.SecondaryPressed        = false;
-                Input.SecondaryDown           = false;
-                Input.MiddlePressed           = false;
-                Input.MiddleDown              = false;
-                Input.DoubleClicked           = false;
-                Input.WheelDeltaY             = 0.0f;
+                return Browser->QueryBlocksPointerAt(PhysicalCursor) &&
+                    !Interactor.QueryDragCaptureActive() &&
+                    !ProjectionPane.QuerySplitterDragActive();
             }
+            return false;
+        }();
+        const bool BlockedByOwner =
+            Session->PointerOwnerPane != UVPointerOwnerPane::None &&
+            Session->PointerOwnerPane != UVPointerOwnerPane::ViewportHost;
+        if (BlockedByBrowser || BlockedByOwner)
+        {
+            Input.PrimaryPointer.Enabled  = false;
+            Input.PrimaryPointer.Pressed  = false;
+            Input.PrimaryPointer.Down     = false;
+            Input.PrimaryPointer.Released = false;
+            Input.SecondaryPressed        = false;
+            Input.SecondaryDown           = false;
+            Input.MiddlePressed           = false;
+            Input.MiddleDown              = false;
+            Input.DoubleClicked           = false;
+            Input.WheelDeltaY             = 0.0f;
         }
     }
 
     Render(Surface, LogicalBounds, Input, Δt);
+
+    if (Session != nullptr)
+    {
+        const bool HostCaptured = Interactor.QueryDragCaptureActive() || ProjectionPane.QuerySplitterDragActive();
+        if (HostCaptured)
+        {
+            Session->PointerOwnerPane = UVPointerOwnerPane::ViewportHost;
+        }
+        else if (Session->PointerOwnerPane == UVPointerOwnerPane::ViewportHost &&
+                 !Input.PrimaryPointer.Down && !Input.MiddleDown && !Input.SecondaryDown)
+        {
+            Session->PointerOwnerPane = UVPointerOwnerPane::None;
+        }
+    }
 
     if (Session != nullptr)
     {

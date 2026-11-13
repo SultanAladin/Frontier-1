@@ -86,6 +86,7 @@ public:
 
     [[nodiscard]] Editor::ViewportProjection&       AccessProjection() noexcept;
     [[nodiscard]] const Editor::ViewportProjection& InspectProjection() const noexcept;
+    [[nodiscard]] bool                              QuerySplitterDragActive() const noexcept { return SplitterDragActive; }
 
     void Render(
         PixelSpace&             Surface,

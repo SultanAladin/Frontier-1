@@ -10,13 +10,16 @@
 #include "Engine/Workspaces/UV/UVViewportInteractor.h"
 
 #include "Engine/Constants/MathConstants.h"
+#include "Engine/Mathematics/CoordinateSpace.h"
 #include "Engine/Workspaces/UV/UVPaneAppearance.h"
 
 #include <algorithm>
+#include <bit>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 namespace Frontier::Workspaces
 {
@@ -63,19 +66,209 @@ namespace
         std::abs(A.Scale.Z - B.Scale.Z) > Epsilon;
 }
 
+[[nodiscard]] uint32_t QueryOppositeIfCoincident2D(
+    const GeometrySpace::PolygonNetwork& Network,
+    uint32_t                             EdgeIndex) noexcept
+{
+    if (EdgeIndex >= Network.Edges.size())
+    {
+        return GeometrySpace::InvalidNetworkIndex;
+    }
+    const auto& Edge = Network.Edges[EdgeIndex];
+    const uint32_t OppIdx = Edge.OppositeEdgeIndex;
+    if (OppIdx >= Network.Edges.size() ||
+        GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSeamCut))
+    {
+        return GeometrySpace::InvalidNetworkIndex;
+    }
+    const uint32_t NextIdx    = Edge.NextEdgeIndex;
+    const uint32_t OppNextIdx = Network.Edges[OppIdx].NextEdgeIndex;
+    if (NextIdx >= Network.Edges.size() || OppNextIdx >= Network.Edges.size())
+    {
+        return GeometrySpace::InvalidNetworkIndex;
+    }
+    const auto& A0 = Edge.ParameterUV;
+    const auto& A1 = Network.Edges[NextIdx].ParameterUV;
+    const auto& B0 = Network.Edges[OppNextIdx].ParameterUV;
+    const auto& B1 = Network.Edges[OppIdx].ParameterUV;
+    if (std::hypot(A0.U - B0.U, A0.V - B0.V) <= 1.0e-4f &&
+        std::hypot(A1.U - B1.U, A1.V - B1.V) <= 1.0e-4f)
+    {
+        return OppIdx;
+    }
+    return GeometrySpace::InvalidNetworkIndex;
+}
+
+struct ScreenProjectionParameters
+{
+    bool                   PlanarProjectionEnabled = true;
+    Rectangle2D            Bounds                  {};
+    Mathematics::UVAxes    MinUV                   {};
+    Mathematics::UVAxes    MaxUV                   {};
+    float                  ViewProj[4][4]          {};
+};
+
+[[nodiscard]] ScreenProjectionParameters BuildScreenProjectionParameters(
+    const Editor::ViewportProjection&     Proj,
+    const GeometricRaster::CameraOrbitRig3D& CamRig,
+    Rectangle2D                           Bounds,
+    bool                                  Planar) noexcept
+{
+    ScreenProjectionParameters Params {};
+    Params.PlanarProjectionEnabled = Planar;
+    Params.Bounds                  = Bounds;
+    if (Planar)
+    {
+        const uint32_t W = static_cast<uint32_t>(std::max(16.0f, Bounds.Width));
+        const uint32_t H = static_cast<uint32_t>(std::max(16.0f, Bounds.Height));
+        Proj.EvaluateAspectLockedPlanarBounds(W, H, Params.MinUV, Params.MaxUV);
+    }
+    else
+    {
+        const float Aspect = std::max(0.01f, Bounds.Width / std::max(1.0f, Bounds.Height));
+        const Mathematics::Axis3D Eye = CamRig.TargetPivot + Mathematics::EvaluateOrbitOffsetFromAngles(
+            CamRig.DistanceMeters,
+            CamRig.YawRadians,
+            CamRig.PitchRadians,
+            CamRig.Basis);
+        Mathematics::Axis3D Right {}, Up {}, Fwd {};
+        Mathematics::EvaluateOrthonormalCameraBasis(Eye, CamRig.TargetPivot, CamRig.Basis, Right, Up, Fwd);
+        const float FarZ = std::max(250.0f, CamRig.DistanceMeters * 6.0f);
+        Mathematics::ClipTransform4x4 Clip {};
+        if (CamRig.OrthographicProjection)
+        {
+            const float TanHalf  = std::tan(std::clamp(CamRig.VerticalFovDeg, 5.0f, 165.0f) * Constants::DegToRadFloat * 0.5f);
+            const float VertSpan = std::max(0.10f, 2.0f * CamRig.DistanceMeters * TanHalf);
+            Clip = Mathematics::ConstructVulkanOrthographicViewClip(Eye, Right, Up, Fwd, VertSpan, Aspect, -FarZ * 0.5f, FarZ);
+        }
+        else
+        {
+            Clip = Mathematics::ConstructVulkanPerspectiveViewClip(Eye, Right, Up, Fwd, CamRig.VerticalFovDeg, Aspect, 0.08f, FarZ);
+        }
+        std::memcpy(Params.ViewProj, Clip.Rows, sizeof(Clip.Rows));
+    }
+    return Params;
+}
+
+[[nodiscard]] bool ProjectEdgeCornerToLogicalScreen(
+    const ScreenProjectionParameters&    Params,
+    const GeometrySpace::PolygonNetwork& Network,
+    uint32_t                             EdgeIndex,
+    Point2D&                             OutPoint) noexcept
+{
+    if (EdgeIndex >= Network.Edges.size())
+    {
+        return false;
+    }
+    const auto& DE = Network.Edges[EdgeIndex];
+    if (Params.PlanarProjectionEnabled)
+    {
+        const float SpanU = std::max(1.0e-5f, Params.MaxUV.U - Params.MinUV.U);
+        const float SpanV = std::max(1.0e-5f, Params.MaxUV.V - Params.MinUV.V);
+        const float Nx    = (DE.ParameterUV.U - Params.MinUV.U) / SpanU;
+        const float Ny    = (Params.MaxUV.V - DE.ParameterUV.V) / SpanV;
+        OutPoint          = { Params.Bounds.X + Nx * Params.Bounds.Width, Params.Bounds.Y + Ny * Params.Bounds.Height };
+        return true;
+    }
+
+    if (DE.OriginVertexIndex >= Network.Vertices.size())
+    {
+        return false;
+    }
+    const auto& P = Network.Vertices[DE.OriginVertexIndex].Axes;
+    const float Cx = Params.ViewProj[0][0] * P.X + Params.ViewProj[0][1] * P.Y + Params.ViewProj[0][2] * P.Z + Params.ViewProj[0][3];
+    const float Cy = Params.ViewProj[1][0] * P.X + Params.ViewProj[1][1] * P.Y + Params.ViewProj[1][2] * P.Z + Params.ViewProj[1][3];
+    const float Cw = Params.ViewProj[3][0] * P.X + Params.ViewProj[3][1] * P.Y + Params.ViewProj[3][2] * P.Z + Params.ViewProj[3][3];
+    if (Cw <= 1.0e-5f)
+    {
+        return false;
+    }
+    const float NdcX = Cx / Cw;
+    const float NdcY = Cy / Cw;
+    OutPoint = {
+        Params.Bounds.X + (NdcX * 0.5f + 0.5f) * Params.Bounds.Width,
+        Params.Bounds.Y + (NdcY * 0.5f + 0.5f) * Params.Bounds.Height,
+    };
+    return true;
+}
+
+[[nodiscard]] uint32_t FindNearestFaceVertexInScreenPixels(
+    const ScreenProjectionParameters&    Params,
+    const GeometrySpace::PolygonNetwork& Network,
+    uint32_t                             FaceIndex,
+    Point2D                              Cursor) noexcept
+{
+    if (FaceIndex >= Network.Faces.size())
+    {
+        return GeometrySpace::InvalidNetworkIndex;
+    }
+    const auto& F         = Network.Faces[FaceIndex];
+    uint32_t    BestVert  = GeometrySpace::InvalidNetworkIndex;
+    float       BestDist2 = 1.0e30f;
+    uint32_t    ECur      = F.BoundaryLoopEdgeIndex;
+    for (uint16_t C = 0u; C < F.CornerCount && ECur < Network.Edges.size(); ++C)
+    {
+        Point2D ScreenPt {};
+        if (ProjectEdgeCornerToLogicalScreen(Params, Network, ECur, ScreenPt))
+        {
+            const float Dx = ScreenPt.X - Cursor.X;
+            const float Dy = ScreenPt.Y - Cursor.Y;
+            const float D2 = Dx * Dx + Dy * Dy;
+            if (D2 < BestDist2)
+            {
+                BestDist2 = D2;
+                BestVert  = Network.Edges[ECur].OriginVertexIndex;
+            }
+        }
+        ECur = Network.Edges[ECur].NextEdgeIndex;
+    }
+    return BestVert;
+}
+
+[[nodiscard]] float PointToSegmentDistSq(Point2D P, Point2D A, Point2D B) noexcept
+{
+    const float Vx = B.X - A.X;
+    const float Vy = B.Y - A.Y;
+    const float LenSq = Vx * Vx + Vy * Vy;
+    if (LenSq <= 1.0e-6f)
+    {
+        return (P.X - A.X) * (P.X - A.X) + (P.Y - A.Y) * (P.Y - A.Y);
+    }
+    const float T  = std::clamp(((P.X - A.X) * Vx + (P.Y - A.Y) * Vy) / LenSq, 0.0f, 1.0f);
+    const float Cx = A.X + T * Vx;
+    const float Cy = A.Y + T * Vy;
+    return (P.X - Cx) * (P.X - Cx) + (P.Y - Cy) * (P.Y - Cy);
+}
+
 } // namespace
 
 void UVViewportInteractor::AttachSession(UVWorkspaceSession* TargetSession) noexcept
 {
-    Session            = TargetSession;
-    DraggingGizmo2D    = false;
-    DraggingGizmo3D    = false;
+    Session               = TargetSession;
+    DraggingGizmo2D       = false;
+    DraggingGizmo3D       = false;
+    DragCaptureActive     = false;
+    DragOrbitActive       = false;
+    PendingSecondarySheet = false;
     DragBaselineObjectVertices.clear();
-    ModalMode          = ModalUVTransformMode::Inactive;
-    ActiveRegionTool   = RegionSelectTool::Inactive;
-    RegionStrokeActive = false;
-    RegionTargetPlanar = true;
-    RegionHoverValid   = false;
+    DragTargetCorners.clear();
+    ModalMode             = ModalUVTransformMode::Inactive;
+    ActiveRegionTool      = RegionSelectTool::Inactive;
+    RegionStrokeActive    = false;
+    RegionTargetPlanar    = true;
+    RegionHoverValid      = false;
+}
+
+bool UVViewportInteractor::ConsumeSecondarySheetRequest(Point2D& OutAnchor, bool& OutInPlanar) noexcept
+{
+    if (!PendingSecondarySheet)
+    {
+        return false;
+    }
+    PendingSecondarySheet = false;
+    OutAnchor             = SecondarySheetAnchor;
+    OutInPlanar           = SecondarySheetInPlanar;
+    return true;
 }
 
 void UVViewportInteractor::ActivateBoxMarquee(bool Active) noexcept
@@ -168,6 +361,63 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
     //--------------------------------------------------------------------------------------------------------------------
     // 1. Camera Orbit, Pan & Cursor-Centered Zoom (MMB / Alt+LMB / Mouse Wheel)
     //--------------------------------------------------------------------------------------------------------------------
+    // 1. Camera Orbit, Pan & Cursor-Centered Zoom (MMB / Alt+LMB / Mouse Wheel) with Cross-Pane Drag Latch
+    //--------------------------------------------------------------------------------------------------------------------
+    auto ApplySpatialNavigation = [&]()
+    {
+        Session->SpatialNavigationActive = true;
+        if (std::abs(Input.PointerDeltaX) > 1.0e-4f || std::abs(Input.PointerDeltaY) > 1.0e-4f)
+        {
+            if (Input.ShiftHeld)
+            {
+                const float DistScale = Proj.InspectSpatialCamera().DistanceMeters * Calib.PanGainPerPixel * SensScale;
+                Proj.PanSpatialCamera(Input.PointerDeltaX * DistScale, Input.PointerDeltaY * DistScale);
+            }
+            else
+            {
+                const float PitchSign = Calib.InvertPitchAxis ? -1.0f : 1.0f;
+                const float OrbitGain = Calib.OrbitGainRadiansPerPixel * SensScale;
+                Proj.OrbitSpatialCamera(
+                    -Input.PointerDeltaX * OrbitGain,
+                    PitchSign * Input.PointerDeltaY * OrbitGain);
+            }
+            Session->FramebuffersDirty = true;
+        }
+    };
+
+    auto ApplyPlanarNavigation = [&]()
+    {
+        Mathematics::UVAxes VisMin {}, VisMax {};
+        Proj.EvaluateAspectLockedPlanarBounds(
+            static_cast<uint32_t>(std::max(16.0f, Interaction.PlanarBounds.Width)),
+            static_cast<uint32_t>(std::max(16.0f, Interaction.PlanarBounds.Height)),
+            VisMin,
+            VisMax);
+        const float SpanU = (VisMax.U - VisMin.U) / std::max(16.0f, Interaction.PlanarBounds.Width);
+        const float SpanV = (VisMax.V - VisMin.V) / std::max(16.0f, Interaction.PlanarBounds.Height);
+        Proj.PanPlanarWindow({ -Input.PointerDeltaX * SpanU, Input.PointerDeltaY * SpanV });
+        Session->FramebuffersDirty = true;
+    };
+
+    if (DragOrbitActive)
+    {
+        const bool AltDragHeld = Input.AltHeld && Input.PrimaryPointer.Down;
+        if (Input.MiddleDown || AltDragHeld)
+        {
+            if (DragTargetPlanar)
+            {
+                ApplyPlanarNavigation();
+            }
+            else
+            {
+                ApplySpatialNavigation();
+            }
+            return;
+        }
+        DragOrbitActive   = false;
+        DragCaptureActive = false;
+    }
+
     if (InsideSpatial)
     {
         if (std::abs(Input.WheelDeltaY) > 1.0e-4f)
@@ -192,26 +442,14 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
                 Session->FramebuffersDirty = true;
             }
         }
-        if (Input.MiddleDown || (Input.AltHeld && Input.PrimaryPointer.Down && !Input.PrimaryPointer.Pressed))
+        const bool AltOrbitMoved = Input.AltHeld && Input.PrimaryPointer.Down && !Input.PrimaryPointer.Pressed &&
+            (std::abs(Input.PointerDeltaX) > 1.0e-4f || std::abs(Input.PointerDeltaY) > 1.0e-4f);
+        if (Input.MiddleDown || AltOrbitMoved)
         {
-            Session->SpatialNavigationActive = true;
-            if (std::abs(Input.PointerDeltaX) > 1.0e-4f || std::abs(Input.PointerDeltaY) > 1.0e-4f)
-            {
-                if (Input.ShiftHeld)
-                {
-                    const float DistScale = Proj.InspectSpatialCamera().DistanceMeters * Calib.PanGainPerPixel * SensScale;
-                    Proj.PanSpatialCamera(Input.PointerDeltaX * DistScale, Input.PointerDeltaY * DistScale);
-                }
-                else
-                {
-                    const float PitchSign = Calib.InvertPitchAxis ? -1.0f : 1.0f;
-                    const float OrbitGain = Calib.OrbitGainRadiansPerPixel * SensScale;
-                    Proj.OrbitSpatialCamera(
-                        -Input.PointerDeltaX * OrbitGain,
-                        PitchSign * Input.PointerDeltaY * OrbitGain);
-                }
-                Session->FramebuffersDirty = true;
-            }
+            DragOrbitActive   = true;
+            DragCaptureActive = true;
+            DragTargetPlanar  = false;
+            ApplySpatialNavigation();
             return;
         }
     }
@@ -237,18 +475,14 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
                 Session->FramebuffersDirty = true;
             }
         }
-        if (Input.MiddleDown || (Input.AltHeld && Input.PrimaryPointer.Down && !Input.PrimaryPointer.Pressed && Input.ShiftHeld))
+        const bool AltPanMoved = Input.AltHeld && Input.PrimaryPointer.Down && !Input.PrimaryPointer.Pressed && Input.ShiftHeld &&
+            (std::abs(Input.PointerDeltaX) > 1.0e-4f || std::abs(Input.PointerDeltaY) > 1.0e-4f);
+        if (Input.MiddleDown || AltPanMoved)
         {
-            Mathematics::UVAxes VisMin {}, VisMax {};
-            Proj.EvaluateAspectLockedPlanarBounds(
-                static_cast<uint32_t>(std::max(16.0f, Interaction.PlanarBounds.Width)),
-                static_cast<uint32_t>(std::max(16.0f, Interaction.PlanarBounds.Height)),
-                VisMin,
-                VisMax);
-            const float SpanU = (VisMax.U - VisMin.U) / std::max(16.0f, Interaction.PlanarBounds.Width);
-            const float SpanV = (VisMax.V - VisMin.V) / std::max(16.0f, Interaction.PlanarBounds.Height);
-            Proj.PanPlanarWindow({ -Input.PointerDeltaX * SpanU, Input.PointerDeltaY * SpanV });
-            Session->FramebuffersDirty = true;
+            DragOrbitActive   = true;
+            DragCaptureActive = true;
+            DragTargetPlanar  = true;
+            ApplyPlanarNavigation();
             return;
         }
     }
@@ -259,6 +493,18 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
     if (ModalMode != ModalUVTransformMode::Inactive)
     {
         HandleModalTransformStep(Interaction, InsidePlanar);
+        return;
+    }
+
+    //--------------------------------------------------------------------------------------------------------------------
+    // 2b. Secondary Click Directive Sheet Request (outside gizmo/region drag)
+    //--------------------------------------------------------------------------------------------------------------------
+    if (Input.SecondaryPressed && (InsidePlanar || InsideSpatial) &&
+        !DraggingGizmo2D && !DraggingGizmo3D && !RegionStrokeActive)
+    {
+        PendingSecondarySheet  = true;
+        SecondarySheetAnchor   = Cursor;
+        SecondarySheetInPlanar = InsidePlanar;
         return;
     }
 
@@ -295,30 +541,41 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
         return;
     }
 
+    if (Input.ShortcutAll)
+    {
+        Session->SelectAllInActiveMode();
+        return;
+    }
+    if (Input.ShortcutInvert)
+    {
+        Session->InvertSelectionInActiveMode();
+        return;
+    }
+    if (Input.ShortcutLinked)
+    {
+        Session->SelectLinkedIslandInActiveMode();
+        return;
+    }
+
     for (const char RawCh : Input.TypedUtf8)
     {
         const char Ch = static_cast<char>(std::tolower(static_cast<unsigned char>(RawCh)));
         switch (Ch)
         {
             case '1':
-                Session->SelectionMode = UVSelectionMode::Faces;
-                Session->SynchronizeSelectionToGPU();
-                Session->StatusBannerText = "Selection Mode: Faces [1]";
+                Session->AssignSelectionMode(UVSelectionMode::Vertices);
                 break;
             case '2':
-                Session->SelectionMode = UVSelectionMode::Edges;
-                Session->SynchronizeSelectionToGPU();
-                Session->StatusBannerText = "Selection Mode: Edges [2]";
+                Session->AssignSelectionMode(UVSelectionMode::Edges);
                 break;
             case '3':
-                Session->SelectionMode = UVSelectionMode::Islands;
-                Session->SynchronizeSelectionToGPU();
-                Session->StatusBannerText = "Selection Mode: UV Islands [3]";
+                Session->AssignSelectionMode(UVSelectionMode::Faces);
                 break;
             case '4':
-                Session->SelectionMode = UVSelectionMode::Layers;
-                Session->SynchronizeSelectionToGPU();
-                Session->StatusBannerText = "Selection Mode: Priority Layers [4]";
+                Session->AssignSelectionMode(UVSelectionMode::Islands);
+                break;
+            case '5':
+                Session->AssignSelectionMode(UVSelectionMode::Layers);
                 break;
             case 'f':
                 Session->FitSelectionOrNetwork();
@@ -346,15 +603,7 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
                 ActivateCircleBrush(ActiveRegionTool != RegionSelectTool::CircleBrush);
                 break;
             case 'l':
-                if (Session->LastHoverHit.HitSurfaceFace())
-                {
-                    const auto Linked = GeometrySpace::GeometrySelection::EvaluateLinkedIslandFaces(
-                        Session->Asset.Network, Session->LastHoverHit.FaceIndex);
-                    Session->SelectionMode = UVSelectionMode::Islands;
-                    Session->SelectionMask.SelectFacesFromList(Linked, Input.ShiftHeld);
-                    Session->RefreshGizmoAnchorsFromSelection();
-                    Session->SynchronizeSelectionToGPU();
-                }
+                Session->SelectLinkedIslandInActiveMode();
                 break;
             case 'p':
                 Session->QueueDirective(Input.AltHeld ? UVCommandDirective::UnpinSelectedUVs : UVCommandDirective::PinSelectedUVs);
@@ -380,8 +629,10 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
             case 's':
                 if (InsidePlanar)
                 {
-                    DragTargetFaces = Session->SelectionMask.CollectSelectedFaces();
-                    if (!DragTargetFaces.empty())
+                    DragTargetFaces   = Session->SelectionMask.CollectSelectedFaces();
+                    DragTargetCorners = UVAuthoringOperations::CollectTransformableCornerEdges(
+                        Session->Asset.Network, Session->SelectionMask);
+                    if (!DragTargetCorners.empty())
                     {
                         DragBaselineUVStream = Session->Asset.Network.ExtractParameterizedUVStream();
                         Session->RefreshGizmoAnchorsFromSelection();
@@ -511,8 +762,16 @@ void UVViewportInteractor::HandleModalTransformStep(
         };
     }
 
-    UVAuthoringOperations::TransformSelectedFaceUVs(
-        Session->Asset.Network, DragTargetFaces, DragPivotUV, DeltaUV, RotRad, ScaleUV);
+    if (!DragTargetCorners.empty())
+    {
+        UVAuthoringOperations::TransformSelectedCornerUVs(
+            Session->Asset.Network, DragTargetCorners, DragPivotUV, DeltaUV, RotRad, ScaleUV);
+    }
+    else
+    {
+        UVAuthoringOperations::TransformSelectedFaceUVs(
+            Session->Asset.Network, DragTargetFaces, DragPivotUV, DeltaUV, RotRad, ScaleUV);
+    }
     Session->RefreshGizmoAnchorsFromSelection();
     if (auto* Rast = Session->AccessRasterizer())
     {
@@ -576,7 +835,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
             Snap,
             ActiveGizmoTransform);
 
-        if (Res.TransformChanged && !DragTargetFaces.empty())
+        if (Res.TransformChanged && (!DragTargetCorners.empty() || !DragTargetFaces.empty()))
         {
             (void)Session->Asset.Network.ApplyParameterizedUVStream(DragBaselineUVStream);
             const Mathematics::UVAxes DeltaUV {
@@ -587,13 +846,26 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 ActiveGizmoTransform.Scale.X,
                 ActiveGizmoTransform.Scale.Y,
             };
-            UVAuthoringOperations::TransformSelectedFaceUVs(
-                Session->Asset.Network,
-                DragTargetFaces,
-                DragPivotUV,
-                DeltaUV,
-                ActiveGizmoTransform.Rotation.Z,
-                Scale2D);
+            if (!DragTargetCorners.empty())
+            {
+                UVAuthoringOperations::TransformSelectedCornerUVs(
+                    Session->Asset.Network,
+                    DragTargetCorners,
+                    DragPivotUV,
+                    DeltaUV,
+                    ActiveGizmoTransform.Rotation.Z,
+                    Scale2D);
+            }
+            else
+            {
+                UVAuthoringOperations::TransformSelectedFaceUVs(
+                    Session->Asset.Network,
+                    DragTargetFaces,
+                    DragPivotUV,
+                    DeltaUV,
+                    ActiveGizmoTransform.Rotation.Z,
+                    Scale2D);
+            }
 
             (void)Rast->UploadPolygonNetwork(Session->Asset.Network, Session->RootInstanceToken.SlotIndex);
             Session->StatusBannerText  = Res.HudReadout;
@@ -687,17 +959,186 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
             return static_cast<uint32_t>(std::clamp(Local * ScaleY, 0.0f, static_cast<float>(FbH - 1u)));
         };
 
-        auto SyncReadbackToSession = [&]()
+        auto ApplyRegionWordsToSession = [&](
+            const std::vector<uint32_t>& HitFaceWords,
+            bool                         BoxMarqueeActive,
+            float                        LogicalMinX,
+            float                        LogicalMinY,
+            float                        LogicalMaxX,
+            float                        LogicalMaxY,
+            bool                         ClearBeforeApply) -> bool
         {
-            const auto PackedWords = Rast->ReadbackSelectionBitmaskWords();
-            Session->SelectionMask.SynchronizeCapacity(Session->Asset.Network);
-            Session->SelectionMask.SynchronizeCapacity(Session->Asset.Network);
-            Session->SelectionMask.LoadPackedFaceWords(PackedWords);
-            Session->SelectionMode = UVSelectionMode::Faces;
+            const auto& Net = Session->Asset.Network;
+            Session->SelectionMask.SynchronizeCapacity(Net);
+            const UVSelectionMode ActiveMode = Session->SelectionMode;
+            const bool ClearMode = ClearBeforeApply;
+
+            if (ActiveMode == UVSelectionMode::Vertices)
+            {
+                if (ClearMode)
+                {
+                    Session->SelectionMask.ClearAll();
+                }
+                const ScreenProjectionParameters ProjParams = BuildScreenProjectionParameters(
+                    Proj, Session->RenderOptions3D.Camera, Bounds, UsePlanar);
+                uint32_t AddedCount = 0u;
+                auto TestAndAddFaceVertices = [&](uint32_t FIdx)
+                {
+                    if (FIdx >= Net.Faces.size()) return;
+                    const auto& F = Net.Faces[FIdx];
+                    uint32_t    E = F.BoundaryLoopEdgeIndex;
+                    for (uint16_t C = 0u; C < F.CornerCount && E < Net.Edges.size(); ++C)
+                    {
+                        Point2D Pt {};
+                        if (ProjectEdgeCornerToLogicalScreen(ProjParams, Net, E, Pt))
+                        {
+                            const bool HitVert = BoxMarqueeActive
+                                ? (Pt.X >= LogicalMinX && Pt.X <= LogicalMaxX && Pt.Y >= LogicalMinY && Pt.Y <= LogicalMaxY)
+                                : ((Pt.X - LastRegionCursorLogical.X) * (Pt.X - LastRegionCursorLogical.X) +
+                                   (Pt.Y - LastRegionCursorLogical.Y) * (Pt.Y - LastRegionCursorLogical.Y) <=
+                                   BrushRadiusPixels * BrushRadiusPixels);
+                            if (HitVert)
+                            {
+                                Session->SelectionMask.AssignVertexSelected(Net.Edges[E].OriginVertexIndex, true);
+                                ++AddedCount;
+                            }
+                        }
+                        E = Net.Edges[E].NextEdgeIndex;
+                    }
+                };
+                for (uint32_t WordIdx = 0u; WordIdx < static_cast<uint32_t>(HitFaceWords.size()); ++WordIdx)
+                {
+                    uint32_t W = HitFaceWords[WordIdx];
+                    while (W != 0u)
+                    {
+                        const uint32_t Bit  = static_cast<uint32_t>(std::countr_zero(W));
+                        const uint32_t FIdx = (WordIdx << 5u) | Bit;
+                        TestAndAddFaceVertices(FIdx);
+                        W &= (W - 1u);
+                    }
+                }
+                if (BoxMarqueeActive && AddedCount == 0u)
+                {
+                    for (uint32_t FIdx = 0u; FIdx < static_cast<uint32_t>(Net.Faces.size()); ++FIdx)
+                    {
+                        TestAndAddFaceVertices(FIdx);
+                    }
+                }
+                Session->RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+                Session->RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+                Session->SpatialSelectionActive = (Session->SelectionMask.CountSelectedVertices() > 0u);
+                Session->RefreshGizmoAnchorsFromSelection();
+                Session->SynchronizeSelectionToGPU();
+                return AddedCount > 0u || Session->SpatialSelectionActive;
+            }
+
+            if (ActiveMode == UVSelectionMode::Edges)
+            {
+                if (ClearMode)
+                {
+                    Session->SelectionMask.ClearAll();
+                }
+                const ScreenProjectionParameters ProjParams = BuildScreenProjectionParameters(
+                    Proj, Session->RenderOptions3D.Camera, Bounds, UsePlanar);
+                uint32_t AddedCount = 0u;
+                auto SegmentHitsBox = [&](Point2D A, Point2D B) noexcept -> bool
+                {
+                    if ((A.X >= LogicalMinX && A.X <= LogicalMaxX && A.Y >= LogicalMinY && A.Y <= LogicalMaxY) ||
+                        (B.X >= LogicalMinX && B.X <= LogicalMaxX && B.Y >= LogicalMinY && B.Y <= LogicalMaxY))
+                    {
+                        return true;
+                    }
+                    const Point2D Mid{ 0.5f * (A.X + B.X), 0.5f * (A.Y + B.Y) };
+                    return Mid.X >= LogicalMinX && Mid.X <= LogicalMaxX && Mid.Y >= LogicalMinY && Mid.Y <= LogicalMaxY;
+                };
+                for (uint32_t WordIdx = 0u; WordIdx < static_cast<uint32_t>(HitFaceWords.size()); ++WordIdx)
+                {
+                    uint32_t W = HitFaceWords[WordIdx];
+                    while (W != 0u)
+                    {
+                        const uint32_t Bit  = static_cast<uint32_t>(std::countr_zero(W));
+                        const uint32_t FIdx = (WordIdx << 5u) | Bit;
+                        if (FIdx < Net.Faces.size())
+                        {
+                            const auto& F = Net.Faces[FIdx];
+                            uint32_t    E = F.BoundaryLoopEdgeIndex;
+                            for (uint16_t C = 0u; C < F.CornerCount && E < Net.Edges.size(); ++C)
+                            {
+                                const uint32_t ENext = Net.Edges[E].NextEdgeIndex;
+                                Point2D P0 {}, P1 {};
+                                if (ProjectEdgeCornerToLogicalScreen(ProjParams, Net, E, P0) &&
+                                    ProjectEdgeCornerToLogicalScreen(ProjParams, Net, ENext, P1))
+                                {
+                                    const bool HitEdge = BoxMarqueeActive
+                                        ? SegmentHitsBox(P0, P1)
+                                        : (PointToSegmentDistSq(LastRegionCursorLogical, P0, P1) <=
+                                           BrushRadiusPixels * BrushRadiusPixels);
+                                    if (HitEdge)
+                                    {
+                                        const bool IncludeOpp = !UsePlanar ||
+                                            (QueryOppositeIfCoincident2D(Net, E) != GeometrySpace::InvalidNetworkIndex);
+                                        Session->SelectionMask.AssignEdgeSelected(Net, E, true, IncludeOpp);
+                                        ++AddedCount;
+                                    }
+                                }
+                                E = ENext;
+                            }
+                        }
+                        W &= (W - 1u);
+                    }
+                }
+                Session->RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+                Session->RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+                Session->SpatialSelectionActive = (Session->SelectionMask.CountSelectedEdges() > 0u);
+                Session->RefreshGizmoAnchorsFromSelection();
+                Session->SynchronizeSelectionToGPU();
+                return AddedCount > 0u || Session->SpatialSelectionActive;
+            }
+
+            if (ActiveMode == UVSelectionMode::Islands)
+            {
+                std::vector<uint32_t> IslandFaces {};
+                for (uint32_t WordIdx = 0u; WordIdx < static_cast<uint32_t>(HitFaceWords.size()); ++WordIdx)
+                {
+                    uint32_t W = HitFaceWords[WordIdx];
+                    while (W != 0u)
+                    {
+                        const uint32_t Bit  = static_cast<uint32_t>(std::countr_zero(W));
+                        const uint32_t FIdx = (WordIdx << 5u) | Bit;
+                        const auto Island = GeometrySpace::GeometrySelection::EvaluateLinkedIslandFaces(Net, FIdx);
+                        IslandFaces.insert(IslandFaces.end(), Island.begin(), Island.end());
+                        W &= (W - 1u);
+                    }
+                }
+                Session->SelectionMask.SelectFacesFromList(IslandFaces, !ClearMode);
+            }
+            else
+            {
+                if (!ClearMode)
+                {
+                    const auto PrevWords = Session->SelectionMask.InspectPackedFaceWords();
+                    std::vector<uint32_t> Merged = HitFaceWords;
+                    const std::size_t OverlapN = std::min(PrevWords.size(), Merged.size());
+                    for (std::size_t I = 0u; I < OverlapN; ++I)
+                    {
+                        Merged[I] |= PrevWords[I];
+                    }
+                    Session->SelectionMask.LoadPackedFaceWords(Merged);
+                }
+                else
+                {
+                    Session->SelectionMask.LoadPackedFaceWords(HitFaceWords);
+                }
+            }
+            if (ActiveMode != UVSelectionMode::Layers)
+            {
+                Session->RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+                Session->RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+            }
             Session->SpatialSelectionActive = (Session->SelectionMask.CountSelectedFaces() > 0u);
             Session->RefreshGizmoAnchorsFromSelection();
             Session->SynchronizeSelectionToGPU();
-            Session->FramebuffersDirty      = true;
+            return Session->SpatialSelectionActive;
         };
 
         if (ActiveRegionTool == RegionSelectTool::CircleBrush)
@@ -708,10 +1149,10 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
 
             if (Input.PrimaryPointer.Pressed || (Input.PrimaryPointer.Down && (InsidePlanar || InsideSpatial)))
             {
-                if (Input.PrimaryPointer.Pressed && !Input.ShiftHeld)
-                {
-                    (void)Rast->DispatchGPUSelection(GeometricRaster::GPUSelectionOperation::ClearAll, 0u, false);
-                }
+                const auto SavedFaceSpan = Session->SelectionMask.InspectPackedFaceWords();
+                const std::vector<uint32_t> SavedFaceWords(SavedFaceSpan.begin(), SavedFaceSpan.end());
+                (void)Rast->DispatchGPUSelection(GeometricRaster::GPUSelectionOperation::ClearAll, 0u, false);
+
                 const float LocalX  = std::clamp(Input.PrimaryPointer.X - Bounds.X, 0.0f, std::max(0.0f, Bounds.Width - 1.0f));
                 const float LocalY  = std::clamp(Input.PrimaryPointer.Y - Bounds.Y, 0.0f, std::max(0.0f, Bounds.Height - 1.0f));
                 const uint32_t Cx   = ToFramebufferX(Input.PrimaryPointer.X);
@@ -725,9 +1166,18 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 const auto Summary = UsePlanar
                     ? Rast->Reduce2DRegionPick(MinX, MinY, MaxX, MaxY, Cx, Cy, RadiusPx)
                     : Rast->Reduce3DRegionPick(MinX, MinY, MaxX, MaxY, Cx, Cy, RadiusPx);
+                const std::vector<uint32_t> HitWords = Rast->ReadbackSelectionBitmaskWords();
+                Session->SelectionMask.LoadPackedFaceWords(SavedFaceWords);
+
                 if (Summary.HitPixelCount > 0u || Input.PrimaryPointer.Pressed)
                 {
-                    SyncReadbackToSession();
+                    const bool ClearOnFirstPress = Input.PrimaryPointer.Pressed && !Input.ShiftHeld;
+                    (void)ApplyRegionWordsToSession(
+                        HitWords, false, 0.0f, 0.0f, 0.0f, 0.0f, ClearOnFirstPress);
+                }
+                else
+                {
+                    Session->SynchronizeSelectionToGPU();
                 }
                 RegionStrokeActive = Input.PrimaryPointer.Down;
             }
@@ -757,10 +1207,9 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 LastRegionCursorLogical = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
                 RegionStrokeActive      = false;
 
-                if (!Input.ShiftHeld)
-                {
-                    (void)Rast->DispatchGPUSelection(GeometricRaster::GPUSelectionOperation::ClearAll, 0u, false);
-                }
+                const auto SavedFaceSpan = Session->SelectionMask.InspectPackedFaceWords();
+                const std::vector<uint32_t> SavedFaceWords(SavedFaceSpan.begin(), SavedFaceSpan.end());
+                (void)Rast->DispatchGPUSelection(GeometricRaster::GPUSelectionOperation::ClearAll, 0u, false);
 
                 const uint32_t Ax = ToFramebufferX(MarqueeAnchorLocalX);
                 const uint32_t Ay = ToFramebufferY(MarqueeAnchorLocalY);
@@ -771,16 +1220,22 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 const uint32_t MaxX = std::max(Ax, Bx);
                 const uint32_t MaxY = std::max(Ay, By);
 
+                const float LogicalMinX = std::min(MarqueeAnchorLocalX, Input.PrimaryPointer.X);
+                const float LogicalMinY = std::min(MarqueeAnchorLocalY, Input.PrimaryPointer.Y);
+                const float LogicalMaxX = std::max(MarqueeAnchorLocalX, Input.PrimaryPointer.X);
+                const float LogicalMaxY = std::max(MarqueeAnchorLocalY, Input.PrimaryPointer.Y);
+
                 const auto Summary = UsePlanar
                     ? Rast->Reduce2DRegionPick(MinX, MinY, MaxX, MaxY, 0u, 0u, 0u)
                     : Rast->Reduce3DRegionPick(MinX, MinY, MaxX, MaxY, 0u, 0u, 0u);
-                if (Summary.HitPixelCount == 0u && !Input.ShiftHeld)
+                const std::vector<uint32_t> HitWords = Rast->ReadbackSelectionBitmaskWords();
+                Session->SelectionMask.LoadPackedFaceWords(SavedFaceWords);
+
+                const bool Applied = ApplyRegionWordsToSession(
+                    HitWords, true, LogicalMinX, LogicalMinY, LogicalMaxX, LogicalMaxY, !Input.ShiftHeld);
+                if (!Applied && Summary.HitPixelCount == 0u && !Input.ShiftHeld)
                 {
                     Session->ClearViewportSelection();
-                }
-                else
-                {
-                    SyncReadbackToSession();
                 }
             }
             return;
@@ -829,13 +1284,43 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
         Session->Gizmo2D.AssignHoveredHandle(Editor::GizmoHandleOrdinal::None);
     }
 
-    if (Hit.FaceIndex != Session->LastHoverHit.FaceIndex ||
-        Hit.GizmoHandleOrdinal != Session->LastHoverHit.GizmoHandleOrdinal)
+    const auto& ActiveBounds = InsidePlanar ? Interaction.PlanarBounds : Interaction.SpatialBounds;
+    uint32_t HoveredFace = Hit.HitSurfaceFace() ? Hit.FaceIndex : GeometrySpace::InvalidNetworkIndex;
+    uint32_t HoveredEdge = Hit.HitSurfaceFace() ? Hit.DirectedEdgeIndex : GeometrySpace::InvalidNetworkIndex;
+    uint32_t HoveredOpp2D = GeometrySpace::InvalidNetworkIndex;
+    uint32_t HoveredOpp3D = GeometrySpace::InvalidNetworkIndex;
+    uint32_t HoveredVert = GeometrySpace::InvalidNetworkIndex;
+    if (Hit.HitSurfaceFace())
     {
-        Session->LastHoverHit                   = Hit;
-        Session->RenderOptions2D.HoveredFaceIndex = Hit.HitSurfaceFace() ? Hit.FaceIndex : GeometrySpace::InvalidNetworkIndex;
-        Session->RenderOptions3D.HoveredFaceIndex = Hit.HitSurfaceFace() ? Hit.FaceIndex : GeometrySpace::InvalidNetworkIndex;
-        Session->FramebuffersDirty              = true;
+        if (HoveredEdge < Session->Asset.Network.Edges.size())
+        {
+            HoveredOpp3D = Session->Asset.Network.Edges[HoveredEdge].OppositeEdgeIndex;
+            HoveredOpp2D = InsidePlanar
+                ? QueryOppositeIfCoincident2D(Session->Asset.Network, HoveredEdge)
+                : HoveredOpp3D;
+        }
+        const ScreenProjectionParameters ProjParams = BuildScreenProjectionParameters(
+            Proj, Session->RenderOptions3D.Camera, ActiveBounds, InsidePlanar);
+        HoveredVert = FindNearestFaceVertexInScreenPixels(
+            ProjParams, Session->Asset.Network, Hit.FaceIndex, { Input.PrimaryPointer.X, Input.PrimaryPointer.Y });
+    }
+
+    if (Hit.FaceIndex != Session->LastHoverHit.FaceIndex ||
+        Hit.DirectedEdgeIndex != Session->LastHoverHit.DirectedEdgeIndex ||
+        Hit.GizmoHandleOrdinal != Session->LastHoverHit.GizmoHandleOrdinal ||
+        HoveredVert != Session->RenderOptions3D.HoveredVertexIndex ||
+        HoveredOpp2D != Session->RenderOptions2D.HoveredOppositeEdgeIdx)
+    {
+        Session->LastHoverHit                           = Hit;
+        Session->RenderOptions2D.HoveredFaceIndex       = HoveredFace;
+        Session->RenderOptions3D.HoveredFaceIndex       = HoveredFace;
+        Session->RenderOptions2D.HoveredEdgeIndex       = HoveredEdge;
+        Session->RenderOptions3D.HoveredEdgeIndex       = HoveredEdge;
+        Session->RenderOptions2D.HoveredOppositeEdgeIdx = HoveredOpp2D;
+        Session->RenderOptions3D.HoveredOppositeEdgeIdx = HoveredOpp3D;
+        Session->RenderOptions2D.HoveredVertexIndex     = HoveredVert;
+        Session->RenderOptions3D.HoveredVertexIndex     = HoveredVert;
+        Session->FramebuffersDirty                      = true;
     }
 
     // Seam Brush Stroke (supports drag-painting along edges!)
@@ -865,8 +1350,10 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
     {
         if (InsidePlanar)
         {
-            DragTargetFaces = Session->SelectionMask.CollectSelectedFaces();
-            if (!DragTargetFaces.empty())
+            DragTargetFaces   = Session->SelectionMask.CollectSelectedFaces();
+            DragTargetCorners = UVAuthoringOperations::CollectTransformableCornerEdges(
+                Session->Asset.Network, Session->SelectionMask);
+            if (!DragTargetCorners.empty())
             {
                 DragBaselineUVStream = Session->Asset.Network.ExtractParameterizedUVStream();
                 const auto Pivot3D   = Session->Gizmo2D.QueryPivotOrigin();
@@ -918,13 +1405,74 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
         return;
     }
 
-    ApplySurfaceHitSelection(Hit, Input, InsidePlanar);
+    // Small silhouette-margin fallback on Pressed so clicking the outer edge of a 5px vertex dot selects cleanly
+    if (!Hit.HitSurfaceFace() &&
+        (Session->SelectionMode == UVSelectionMode::Vertices || Session->SelectionMode == UVSelectionMode::Edges))
+    {
+        const auto& Net = Session->Asset.Network;
+        const ScreenProjectionParameters ProjParams = BuildScreenProjectionParameters(
+            Proj, Session->RenderOptions3D.Camera, ActiveBounds, InsidePlanar);
+        const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+        uint32_t BestFace = GeometrySpace::InvalidNetworkIndex;
+        uint32_t BestEdge = GeometrySpace::InvalidNetworkIndex;
+        uint32_t BestVert = GeometrySpace::InvalidNetworkIndex;
+        float    BestD2   = 49.0f; // 7px outer tolerance for silhouette corner dots/edges
+        for (uint32_t FIdx = 0u; FIdx < static_cast<uint32_t>(Net.Faces.size()); ++FIdx)
+        {
+            const auto& F = Net.Faces[FIdx];
+            uint32_t    E = F.BoundaryLoopEdgeIndex;
+            for (uint16_t C = 0u; C < F.CornerCount && E < Net.Edges.size(); ++C)
+            {
+                const uint32_t ENext = Net.Edges[E].NextEdgeIndex;
+                Point2D P0 {};
+                if (Session->SelectionMode == UVSelectionMode::Vertices)
+                {
+                    if (ProjectEdgeCornerToLogicalScreen(ProjParams, Net, E, P0))
+                    {
+                        const float D2 = (P0.X - Cursor.X) * (P0.X - Cursor.X) + (P0.Y - Cursor.Y) * (P0.Y - Cursor.Y);
+                        if (D2 < BestD2)
+                        {
+                            BestD2   = D2;
+                            BestFace = FIdx;
+                            BestEdge = E;
+                            BestVert = Net.Edges[E].OriginVertexIndex;
+                        }
+                    }
+                }
+                else
+                {
+                    Point2D P1 {};
+                    if (ProjectEdgeCornerToLogicalScreen(ProjParams, Net, E, P0) &&
+                        ProjectEdgeCornerToLogicalScreen(ProjParams, Net, ENext, P1))
+                    {
+                        const float D2 = PointToSegmentDistSq(Cursor, P0, P1);
+                        if (D2 < BestD2)
+                        {
+                            BestD2   = D2;
+                            BestFace = FIdx;
+                            BestEdge = E;
+                        }
+                    }
+                }
+                E = ENext;
+            }
+        }
+        if (BestFace != GeometrySpace::InvalidNetworkIndex)
+        {
+            Hit.FaceIndex         = BestFace;
+            Hit.DirectedEdgeIndex = BestEdge;
+            HoveredVert           = BestVert;
+        }
+    }
+
+    ApplySurfaceHitSelection(Hit, Input, InsidePlanar, HoveredVert);
 }
 
 void UVViewportInteractor::ApplySurfaceHitSelection(
     const GeometricRaster::ViewportPickHit& Hit,
     const PaneInputReading&                 Input,
-    bool                                    PlanarMetric)
+    bool                                    PlanarMetric,
+    uint32_t                                ClickedVertexIndex)
 {
     auto& Mask = Session->SelectionMask;
     auto& Net  = Session->Asset.Network;
@@ -940,62 +1488,106 @@ void UVViewportInteractor::ApplySurfaceHitSelection(
     }
 
     Session->SpatialSelectionActive = true;
-    Session->RenderOptions3D.ActiveLayerOrdinal = Session->SelectedLayerOrdinal;
-    Session->RenderOptions2D.ActiveLayerOrdinal = Session->SelectedLayerOrdinal;
+    if (Session->SelectionMode != UVSelectionMode::Layers)
+    {
+        Session->RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+        Session->RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+    }
+    else
+    {
+        Session->RenderOptions3D.ActiveLayerOrdinal = Session->SelectedLayerOrdinal;
+        Session->RenderOptions2D.ActiveLayerOrdinal = Session->SelectedLayerOrdinal;
+    }
 
-    // Alt + Click = Edge Loop; Ctrl + Alt + Click = Edge Ring
+    // Alt + Click = Edge Loop (or Vertex Loop in Vertices mode); Ctrl + Alt + Click = Edge Ring
     if (Input.AltHeld && Hit.DirectedEdgeIndex != GeometrySpace::InvalidNetworkIndex)
     {
         const auto LoopOrRing = Input.ControlHeld
             ? GeometrySpace::GeometrySelection::EvaluateEdgeRing(Net, Hit.DirectedEdgeIndex)
             : GeometrySpace::GeometrySelection::EvaluateEdgeLoop(Net, Hit.DirectedEdgeIndex);
-        Session->SelectionMode = UVSelectionMode::Edges;
-        Mask.SelectEdgesFromList(Net, LoopOrRing, Input.ShiftHeld);
-        for (const uint32_t EIdx : LoopOrRing)
+        if (Session->SelectionMode == UVSelectionMode::Vertices)
         {
-            if (EIdx < Net.Edges.size() && Net.Edges[EIdx].EnclosingFaceIndex != GeometrySpace::InvalidNetworkIndex)
+            std::vector<uint32_t> LoopVerts {};
+            LoopVerts.reserve(LoopOrRing.size() * 2u);
+            for (const uint32_t EIdx : LoopOrRing)
             {
-                Mask.AssignFaceSelected(Net.Edges[EIdx].EnclosingFaceIndex, true);
+                if (EIdx < Net.Edges.size())
+                {
+                    LoopVerts.push_back(Net.Edges[EIdx].OriginVertexIndex);
+                    if (Net.Edges[EIdx].NextEdgeIndex < Net.Edges.size())
+                    {
+                        LoopVerts.push_back(Net.Edges[Net.Edges[EIdx].NextEdgeIndex].OriginVertexIndex);
+                    }
+                }
             }
+            if (!Input.ShiftHeld)
+            {
+                Mask.ClearAll();
+            }
+            Mask.SelectVerticesFromList(LoopVerts, true);
+        }
+        else
+        {
+            if (!Input.ShiftHeld)
+            {
+                Mask.ClearAll();
+            }
+            Session->SelectionMode = UVSelectionMode::Edges;
+            Mask.SelectEdgesFromList(Net, LoopOrRing, true);
         }
         Session->RefreshGizmoAnchorsFromSelection();
         Session->SynchronizeSelectionToGPU();
         return;
     }
 
-    // Ctrl + Click in Edge mode = Dijkstra Shortest Edge Path
-    if (Input.ControlHeld &&
-        Mask.ActiveEdgeIndex != GeometrySpace::InvalidNetworkIndex &&
-        Hit.DirectedEdgeIndex != GeometrySpace::InvalidNetworkIndex)
+    // Ctrl + Click = Shortest Path (Vertex path in Vertices mode, Edge path otherwise)
+    if (Input.ControlHeld)
     {
-        const auto Path = GeometrySpace::GeometrySelection::EvaluateShortestEdgePath(
-            Net, Mask.ActiveEdgeIndex, Hit.DirectedEdgeIndex, PlanarMetric);
-        Session->SelectionMode = UVSelectionMode::Edges;
-        Mask.SelectEdgesFromList(Net, Path, true);
-        for (const uint32_t EIdx : Path)
+        if (Session->SelectionMode == UVSelectionMode::Vertices &&
+            Mask.ActiveVertexIndex != GeometrySpace::InvalidNetworkIndex &&
+            ClickedVertexIndex != GeometrySpace::InvalidNetworkIndex)
         {
-            if (EIdx < Net.Edges.size() && Net.Edges[EIdx].EnclosingFaceIndex != GeometrySpace::InvalidNetworkIndex)
-            {
-                Mask.AssignFaceSelected(Net.Edges[EIdx].EnclosingFaceIndex, true);
-            }
+            const auto PathVerts = GeometrySpace::GeometrySelection::EvaluateShortestVertexPath(
+                Net, Mask.ActiveVertexIndex, ClickedVertexIndex, PlanarMetric);
+            Mask.SelectVerticesFromList(PathVerts, true);
+            Session->RefreshGizmoAnchorsFromSelection();
+            Session->SynchronizeSelectionToGPU();
+            return;
         }
-        Session->RefreshGizmoAnchorsFromSelection();
-        Session->SynchronizeSelectionToGPU();
-        return;
+        if (Session->SelectionMode == UVSelectionMode::Edges &&
+            Mask.ActiveEdgeIndex != GeometrySpace::InvalidNetworkIndex &&
+            Hit.DirectedEdgeIndex != GeometrySpace::InvalidNetworkIndex)
+        {
+            const auto Path = GeometrySpace::GeometrySelection::EvaluateShortestEdgePath(
+                Net, Mask.ActiveEdgeIndex, Hit.DirectedEdgeIndex, PlanarMetric);
+            Session->SelectionMode = UVSelectionMode::Edges;
+            Mask.SelectEdgesFromList(Net, Path, true);
+            Session->RefreshGizmoAnchorsFromSelection();
+            Session->SynchronizeSelectionToGPU();
+            return;
+        }
     }
 
     switch (Session->SelectionMode)
     {
-        case UVSelectionMode::Layers:
+        case UVSelectionMode::Vertices:
         {
-            const uint16_t Ord = Net.Faces[Hit.FaceIndex].PriorityLayerOrdinal;
-            Session->SelectPriorityLayer(Ord);
-            break;
-        }
-        case UVSelectionMode::Islands:
-        {
-            const auto Island = GeometrySpace::GeometrySelection::EvaluateLinkedIslandFaces(Net, Hit.FaceIndex);
-            Mask.SelectFacesFromList(Island, Input.ShiftHeld);
+            if (!Input.ShiftHeld)
+            {
+                Mask.ClearAll();
+            }
+            if (ClickedVertexIndex != GeometrySpace::InvalidNetworkIndex)
+            {
+                if (Input.ShiftHeld)
+                {
+                    Mask.ToggleVertexSelected(ClickedVertexIndex);
+                }
+                else
+                {
+                    Mask.AssignVertexSelected(ClickedVertexIndex, true);
+                }
+            }
+            Mask.ActiveFaceIndex = Hit.FaceIndex;
             Session->RefreshGizmoAnchorsFromSelection();
             Session->SynchronizeSelectionToGPU();
             break;
@@ -1008,9 +1600,36 @@ void UVViewportInteractor::ApplySurfaceHitSelection(
             }
             if (Hit.DirectedEdgeIndex != GeometrySpace::InvalidNetworkIndex)
             {
-                Mask.AssignEdgeSelected(Net, Hit.DirectedEdgeIndex, true);
+                const bool IncludeOpp = !PlanarMetric ||
+                    (QueryOppositeIfCoincident2D(Net, Hit.DirectedEdgeIndex) != GeometrySpace::InvalidNetworkIndex);
+                if (Input.ShiftHeld)
+                {
+                    Mask.ToggleEdgeSelected(Net, Hit.DirectedEdgeIndex, IncludeOpp);
+                }
+                else
+                {
+                    Mask.AssignEdgeSelected(Net, Hit.DirectedEdgeIndex, true, IncludeOpp);
+                }
             }
-            Mask.AssignFaceSelected(Hit.FaceIndex, true);
+            Mask.ActiveFaceIndex = Hit.FaceIndex;
+            Session->RefreshGizmoAnchorsFromSelection();
+            Session->SynchronizeSelectionToGPU();
+            break;
+        }
+        case UVSelectionMode::Layers:
+        {
+            const uint16_t Ord = Net.Faces[Hit.FaceIndex].PriorityLayerOrdinal;
+            Session->SelectPriorityLayer(Ord);
+            break;
+        }
+        case UVSelectionMode::Islands:
+        {
+            if (!Input.ShiftHeld)
+            {
+                Mask.ClearAll();
+            }
+            const auto Island = GeometrySpace::GeometrySelection::EvaluateLinkedIslandFaces(Net, Hit.FaceIndex);
+            Mask.SelectFacesFromList(Island, Input.ShiftHeld);
             Session->RefreshGizmoAnchorsFromSelection();
             Session->SynchronizeSelectionToGPU();
             break;

@@ -31,8 +31,35 @@ void ComponentSelectionMask::ClearAll() noexcept
     std::fill(VertexBits.begin(), VertexBits.end(), 0u);
     std::fill(EdgeBits.begin(), EdgeBits.end(), 0u);
     std::fill(FaceBits.begin(), FaceBits.end(), 0u);
-    ActiveFaceIndex = InvalidNetworkIndex;
-    ActiveEdgeIndex = InvalidNetworkIndex;
+    ActiveVertexIndex = InvalidNetworkIndex;
+    ActiveFaceIndex   = InvalidNetworkIndex;
+    ActiveEdgeIndex   = InvalidNetworkIndex;
+}
+
+void ComponentSelectionMask::SelectAllVertices(const PolygonNetwork& Network) noexcept
+{
+    SynchronizeCapacity(Network);
+    for (uint32_t Idx = 0u; Idx < VertexCapacity; ++Idx)
+    {
+        WriteBit(VertexBits, VertexCapacity, Idx, true);
+    }
+    if (VertexCapacity > 0u)
+    {
+        ActiveVertexIndex = 0u;
+    }
+}
+
+void ComponentSelectionMask::SelectAllEdges(const PolygonNetwork& Network) noexcept
+{
+    SynchronizeCapacity(Network);
+    for (uint32_t Idx = 0u; Idx < EdgeCapacity; ++Idx)
+    {
+        WriteBit(EdgeBits, EdgeCapacity, Idx, true);
+    }
+    if (EdgeCapacity > 0u)
+    {
+        ActiveEdgeIndex = 0u;
+    }
 }
 
 void ComponentSelectionMask::SelectAllFaces(const PolygonNetwork& Network) noexcept
@@ -41,6 +68,29 @@ void ComponentSelectionMask::SelectAllFaces(const PolygonNetwork& Network) noexc
     for (uint32_t Idx = 0u; Idx < FaceCapacity; ++Idx)
     {
         WriteBit(FaceBits, FaceCapacity, Idx, true);
+    }
+    if (FaceCapacity > 0u)
+    {
+        ActiveFaceIndex = 0u;
+    }
+}
+
+void ComponentSelectionMask::InvertVertices(const PolygonNetwork& Network) noexcept
+{
+    SynchronizeCapacity(Network);
+    for (uint32_t Idx = 0u; Idx < VertexCapacity; ++Idx)
+    {
+        WriteBit(VertexBits, VertexCapacity, Idx, !ReadBit(VertexBits, VertexCapacity, Idx));
+    }
+}
+
+void ComponentSelectionMask::InvertEdges(const PolygonNetwork& Network) noexcept
+{
+    SynchronizeCapacity(Network);
+    for (uint32_t Idx = 0u; Idx < EdgeCapacity; ++Idx)
+    {
+        const bool Next = !ReadBit(EdgeBits, EdgeCapacity, Idx);
+        WriteBit(EdgeBits, EdgeCapacity, Idx, Next);
     }
 }
 
@@ -82,6 +132,15 @@ bool ComponentSelectionMask::ReadBit(const std::vector<uint32_t>& Words, uint32_
 void ComponentSelectionMask::AssignVertexSelected(uint32_t VertexIndex, bool Selected) noexcept
 {
     WriteBit(VertexBits, VertexCapacity, VertexIndex, Selected);
+    if (Selected && VertexIndex < VertexCapacity)
+    {
+        ActiveVertexIndex = VertexIndex;
+    }
+}
+
+void ComponentSelectionMask::ToggleVertexSelected(uint32_t VertexIndex) noexcept
+{
+    AssignVertexSelected(VertexIndex, !QueryVertexSelected(VertexIndex));
 }
 
 void ComponentSelectionMask::AssignEdgeSelected(
@@ -99,10 +158,18 @@ void ComponentSelectionMask::AssignEdgeSelected(
             WriteBit(EdgeBits, EdgeCapacity, Opp, Selected);
         }
     }
-    if (Selected)
+    if (Selected && EdgeIndex < EdgeCapacity)
     {
         ActiveEdgeIndex = EdgeIndex;
     }
+}
+
+void ComponentSelectionMask::ToggleEdgeSelected(
+    const PolygonNetwork& Network,
+    uint32_t              EdgeIndex,
+    bool                  IncludeOpposite) noexcept
+{
+    AssignEdgeSelected(Network, EdgeIndex, !QueryEdgeSelected(EdgeIndex), IncludeOpposite);
 }
 
 void ComponentSelectionMask::AssignFaceSelected(uint32_t FaceIndex, bool Selected) noexcept
@@ -118,6 +185,18 @@ void ComponentSelectionMask::ToggleFaceSelected(uint32_t FaceIndex) noexcept
 {
     const bool Next = !QueryFaceSelected(FaceIndex);
     AssignFaceSelected(FaceIndex, Next);
+}
+
+void ComponentSelectionMask::SelectVerticesFromList(std::span<const uint32_t> VertexIndices, bool Additive)
+{
+    if (!Additive)
+    {
+        std::fill(VertexBits.begin(), VertexBits.end(), 0u);
+    }
+    for (const uint32_t VIdx : VertexIndices)
+    {
+        AssignVertexSelected(VIdx, true);
+    }
 }
 
 void ComponentSelectionMask::SelectFacesFromList(std::span<const uint32_t> FaceIndices, bool Additive)
@@ -145,6 +224,139 @@ void ComponentSelectionMask::SelectEdgesFromList(
     for (const uint32_t EIdx : EdgeIndices)
     {
         AssignEdgeSelected(Network, EIdx, true, true);
+    }
+}
+
+void ComponentSelectionMask::ExpandVertexSelection(const PolygonNetwork& Network)
+{
+    SynchronizeCapacity(Network);
+    std::vector<uint32_t> NextSelected {};
+    for (const auto& Edge : Network.Edges)
+    {
+        if (Edge.NextEdgeIndex == InvalidNetworkIndex)
+        {
+            continue;
+        }
+        const uint32_t U = Edge.OriginVertexIndex;
+        const uint32_t V = Network.Edges[Edge.NextEdgeIndex].OriginVertexIndex;
+        if (QueryVertexSelected(U))
+        {
+            NextSelected.push_back(V);
+        }
+        if (QueryVertexSelected(V))
+        {
+            NextSelected.push_back(U);
+        }
+    }
+    for (const uint32_t VIdx : NextSelected)
+    {
+        AssignVertexSelected(VIdx, true);
+    }
+}
+
+void ComponentSelectionMask::ShrinkVertexSelection(const PolygonNetwork& Network)
+{
+    SynchronizeCapacity(Network);
+    std::vector<uint32_t> ToDeselect {};
+    for (const auto& Edge : Network.Edges)
+    {
+        if (Edge.NextEdgeIndex == InvalidNetworkIndex)
+        {
+            continue;
+        }
+        const uint32_t U = Edge.OriginVertexIndex;
+        const uint32_t V = Network.Edges[Edge.NextEdgeIndex].OriginVertexIndex;
+        if (QueryVertexSelected(U) && !QueryVertexSelected(V))
+        {
+            ToDeselect.push_back(U);
+        }
+        if (QueryVertexSelected(V) && !QueryVertexSelected(U))
+        {
+            ToDeselect.push_back(V);
+        }
+    }
+    for (const uint32_t VIdx : ToDeselect)
+    {
+        AssignVertexSelected(VIdx, false);
+    }
+}
+
+void ComponentSelectionMask::ExpandEdgeSelection(const PolygonNetwork& Network)
+{
+    SynchronizeCapacity(Network);
+    std::vector<uint8_t> VertTouched(VertexCapacity, 0u);
+    for (uint32_t EIdx = 0u; EIdx < EdgeCapacity; ++EIdx)
+    {
+        if (!QueryEdgeSelected(EIdx))
+        {
+            continue;
+        }
+        const uint32_t U = Network.Edges[EIdx].OriginVertexIndex;
+        const uint32_t N = Network.Edges[EIdx].NextEdgeIndex;
+        if (U < VertexCapacity)
+        {
+            VertTouched[U] = 1u;
+        }
+        if (N != InvalidNetworkIndex && Network.Edges[N].OriginVertexIndex < VertexCapacity)
+        {
+            VertTouched[Network.Edges[N].OriginVertexIndex] = 1u;
+        }
+    }
+    for (uint32_t EIdx = 0u; EIdx < EdgeCapacity; ++EIdx)
+    {
+        const uint32_t U = Network.Edges[EIdx].OriginVertexIndex;
+        const uint32_t N = Network.Edges[EIdx].NextEdgeIndex;
+        const bool TouchU = (U < VertexCapacity) && (VertTouched[U] != 0u);
+        const bool TouchV = (N != InvalidNetworkIndex && Network.Edges[N].OriginVertexIndex < VertexCapacity) &&
+                            (VertTouched[Network.Edges[N].OriginVertexIndex] != 0u);
+        if (TouchU || TouchV)
+        {
+            AssignEdgeSelected(Network, EIdx, true, true);
+        }
+    }
+}
+
+void ComponentSelectionMask::ShrinkEdgeSelection(const PolygonNetwork& Network)
+{
+    SynchronizeCapacity(Network);
+    std::vector<uint8_t> UnselectedVertTouched(VertexCapacity, 0u);
+    for (uint32_t EIdx = 0u; EIdx < EdgeCapacity; ++EIdx)
+    {
+        if (QueryEdgeSelected(EIdx))
+        {
+            continue;
+        }
+        const uint32_t U = Network.Edges[EIdx].OriginVertexIndex;
+        const uint32_t N = Network.Edges[EIdx].NextEdgeIndex;
+        if (U < VertexCapacity)
+        {
+            UnselectedVertTouched[U] = 1u;
+        }
+        if (N != InvalidNetworkIndex && Network.Edges[N].OriginVertexIndex < VertexCapacity)
+        {
+            UnselectedVertTouched[Network.Edges[N].OriginVertexIndex] = 1u;
+        }
+    }
+    std::vector<uint32_t> ToDeselect {};
+    for (uint32_t EIdx = 0u; EIdx < EdgeCapacity; ++EIdx)
+    {
+        if (!QueryEdgeSelected(EIdx))
+        {
+            continue;
+        }
+        const uint32_t U = Network.Edges[EIdx].OriginVertexIndex;
+        const uint32_t N = Network.Edges[EIdx].NextEdgeIndex;
+        const bool BoundaryU = (U < VertexCapacity) && (UnselectedVertTouched[U] != 0u);
+        const bool BoundaryV = (N != InvalidNetworkIndex && Network.Edges[N].OriginVertexIndex < VertexCapacity) &&
+                               (UnselectedVertTouched[Network.Edges[N].OriginVertexIndex] != 0u);
+        if (BoundaryU && BoundaryV)
+        {
+            ToDeselect.push_back(EIdx);
+        }
+    }
+    for (const uint32_t EIdx : ToDeselect)
+    {
+        AssignEdgeSelected(Network, EIdx, false, true);
     }
 }
 
@@ -226,6 +438,16 @@ bool ComponentSelectionMask::QueryFaceSelected(uint32_t FaceIndex) const noexcep
     return ReadBit(FaceBits, FaceCapacity, FaceIndex);
 }
 
+uint32_t ComponentSelectionMask::CountSelectedVertices() const noexcept
+{
+    uint32_t Count = 0u;
+    for (const uint32_t Word : VertexBits)
+    {
+        Count += static_cast<uint32_t>(std::popcount(Word));
+    }
+    return Count;
+}
+
 uint32_t ComponentSelectionMask::CountSelectedFaces() const noexcept
 {
     uint32_t Count = 0u;
@@ -244,6 +466,19 @@ uint32_t ComponentSelectionMask::CountSelectedEdges() const noexcept
         Count += static_cast<uint32_t>(std::popcount(Word));
     }
     return Count;
+}
+
+std::vector<uint32_t> ComponentSelectionMask::CollectSelectedVertices() const
+{
+    std::vector<uint32_t> Out {};
+    for (uint32_t Idx = 0u; Idx < VertexCapacity; ++Idx)
+    {
+        if (QueryVertexSelected(Idx))
+        {
+            Out.push_back(Idx);
+        }
+    }
+    return Out;
 }
 
 std::vector<uint32_t> ComponentSelectionMask::CollectSelectedFaces() const

@@ -185,6 +185,40 @@ uint32_t UVAuthoringOperations::AssignPinLockOnEdges(
     return Modified;
 }
 
+uint32_t UVAuthoringOperations::AssignPinLockOnVertices(
+    GeometrySpace::PolygonNetwork& Network,
+    std::span<const uint32_t>      VertexIndices,
+    bool                           PinEnabled)
+{
+    if (VertexIndices.empty())
+    {
+        return 0u;
+    }
+    std::vector<uint8_t> SelectedV(Network.Vertices.size(), 0u);
+    for (const uint32_t VIdx : VertexIndices)
+    {
+        if (VIdx < SelectedV.size())
+        {
+            SelectedV[VIdx] = 1u;
+        }
+    }
+    uint32_t Modified = 0u;
+    for (uint32_t EIdx = 0u; EIdx < static_cast<uint32_t>(Network.Edges.size()); ++EIdx)
+    {
+        const uint32_t VIdx = Network.Edges[EIdx].OriginVertexIndex;
+        if (VIdx < SelectedV.size() && SelectedV[VIdx] != 0u)
+        {
+            Network.AssignCornerPin(EIdx, PinEnabled);
+            ++Modified;
+        }
+    }
+    if (Modified > 0u)
+    {
+        ++Network.UVRevision;
+    }
+    return Modified;
+}
+
 uint32_t UVAuthoringOperations::CountPinnedCorners(const GeometrySpace::PolygonNetwork& Network) noexcept
 {
     uint32_t Count = 0u;
@@ -339,6 +373,153 @@ void UVAuthoringOperations::TransformSelectedFaceUVs(
     ++Network.UVRevision;
 }
 
+void UVAuthoringOperations::TransformSelectedCornerUVs(
+    GeometrySpace::PolygonNetwork& Network,
+    std::span<const uint32_t>      CornerEdgeIndices,
+    Mathematics::UVAxes            PivotUV,
+    Mathematics::UVAxes            TranslationDelta,
+    float                          RotationRadians,
+    Mathematics::Scalar2D          ScaleFactor)
+{
+    if (CornerEdgeIndices.empty())
+    {
+        return;
+    }
+    const float CosR = std::cos(RotationRadians);
+    const float SinR = std::sin(RotationRadians);
+
+    for (const uint32_t CIdx : CornerEdgeIndices)
+    {
+        if (CIdx >= Network.Edges.size())
+        {
+            continue;
+        }
+        auto&       UV   = Network.Edges[CIdx].ParameterUV;
+        const float ScU  = (UV.U - PivotUV.U) * ScaleFactor.X;
+        const float ScV  = (UV.V - PivotUV.V) * ScaleFactor.Y;
+        const float RotU = ScU * CosR - ScV * SinR;
+        const float RotV = ScU * SinR + ScV * CosR;
+        UV = {
+            PivotUV.U + RotU + TranslationDelta.U,
+            PivotUV.V + RotV + TranslationDelta.V,
+        };
+    }
+    ++Network.UVRevision;
+}
+
+std::vector<uint32_t> UVAuthoringOperations::CollectTransformableCornerEdges(
+    const GeometrySpace::PolygonNetwork&         Network,
+    const GeometrySpace::ComponentSelectionMask& Selection)
+{
+    std::vector<uint32_t> Result {};
+    if (Network.Edges.empty())
+    {
+        return Result;
+    }
+    std::vector<uint8_t> Visited(Network.Edges.size(), 0u);
+    auto AddCorner = [&](uint32_t CIdx)
+    {
+        if (CIdx < Visited.size() && Visited[CIdx] == 0u)
+        {
+            Visited[CIdx] = 1u;
+            Result.push_back(CIdx);
+        }
+    };
+
+    const auto SelectedFaces = Selection.CollectSelectedFaces();
+    if (!SelectedFaces.empty())
+    {
+        for (const uint32_t FIdx : SelectedFaces)
+        {
+            if (FIdx >= Network.Faces.size())
+            {
+                continue;
+            }
+            const auto& Face = Network.Faces[FIdx];
+            uint32_t    Cur  = Face.BoundaryLoopEdgeIndex;
+            for (uint16_t C = 0u; C < Face.CornerCount && Cur < Network.Edges.size(); ++C)
+            {
+                AddCorner(Cur);
+                Cur = Network.Edges[Cur].NextEdgeIndex;
+            }
+        }
+        return Result;
+    }
+
+    const auto SelectedEdges = Selection.CollectSelectedEdges();
+    if (!SelectedEdges.empty())
+    {
+        std::vector<std::vector<uint32_t>> VertexCorners(Network.Vertices.size());
+        for (uint32_t CIdx = 0u; CIdx < static_cast<uint32_t>(Network.Edges.size()); ++CIdx)
+        {
+            const uint32_t VIdx = Network.Edges[CIdx].OriginVertexIndex;
+            if (VIdx < VertexCorners.size())
+            {
+                VertexCorners[VIdx].push_back(CIdx);
+            }
+        }
+
+        auto AddWeldedEndpoint = [&](uint32_t EndpointCornerIdx)
+        {
+            if (EndpointCornerIdx >= Network.Edges.size())
+            {
+                return;
+            }
+            AddCorner(EndpointCornerIdx);
+            const uint32_t            VIdx     = Network.Edges[EndpointCornerIdx].OriginVertexIndex;
+            const Mathematics::UVAxes AnchorUV = Network.Edges[EndpointCornerIdx].ParameterUV;
+            if (VIdx < VertexCorners.size())
+            {
+                for (const uint32_t Candidate : VertexCorners[VIdx])
+                {
+                    const auto& UV = Network.Edges[Candidate].ParameterUV;
+                    if (std::hypot(UV.U - AnchorUV.U, UV.V - AnchorUV.V) <= 1.0e-4f)
+                    {
+                        AddCorner(Candidate);
+                    }
+                }
+            }
+        };
+
+        for (const uint32_t EIdx : SelectedEdges)
+        {
+            if (EIdx >= Network.Edges.size())
+            {
+                continue;
+            }
+            AddWeldedEndpoint(EIdx);
+            const uint32_t NextIdx = Network.Edges[EIdx].NextEdgeIndex;
+            if (NextIdx < Network.Edges.size())
+            {
+                AddWeldedEndpoint(NextIdx);
+            }
+        }
+        return Result;
+    }
+
+    const auto SelectedVerts = Selection.CollectSelectedVertices();
+    if (!SelectedVerts.empty())
+    {
+        std::vector<uint8_t> SelectedV(Network.Vertices.size(), 0u);
+        for (const uint32_t VIdx : SelectedVerts)
+        {
+            if (VIdx < SelectedV.size())
+            {
+                SelectedV[VIdx] = 1u;
+            }
+        }
+        for (uint32_t CIdx = 0u; CIdx < static_cast<uint32_t>(Network.Edges.size()); ++CIdx)
+        {
+            const uint32_t VIdx = Network.Edges[CIdx].OriginVertexIndex;
+            if (VIdx < SelectedV.size() && SelectedV[VIdx] != 0u)
+            {
+                AddCorner(CIdx);
+            }
+        }
+    }
+    return Result;
+}
+
 void UVAuthoringOperations::MirrorSelectedFaceUVs(
     GeometrySpace::PolygonNetwork& Network,
     std::span<const uint32_t>      FaceIndices,
@@ -392,6 +573,66 @@ void UVAuthoringOperations::AlignSelectedEdgeUVs(
             {
                 Corners.push_back(Network.Edges[EIdx].NextEdgeIndex);
             }
+        }
+    }
+    if (Corners.empty())
+    {
+        return;
+    }
+
+    float SumU = 0.0f;
+    float SumV = 0.0f;
+    float MinU =  1.0e9f;
+    float MaxU = -1.0e9f;
+    for (const uint32_t CIdx : Corners)
+    {
+        const auto& UV = Network.Edges[CIdx].ParameterUV;
+        SumU += UV.U;
+        SumV += UV.V;
+        MinU  = std::min(MinU, UV.U);
+        MaxU  = std::max(MaxU, UV.U);
+    }
+    const float AvgU = SumU / static_cast<float>(Corners.size());
+    const float AvgV = SumV / static_cast<float>(Corners.size());
+
+    for (const uint32_t CIdx : Corners)
+    {
+        auto& UV = Network.Edges[CIdx].ParameterUV;
+        switch (AxisMode)
+        {
+            case UVAlignAxis::HorizontalU: UV.U = AvgU; break;
+            case UVAlignAxis::VerticalV:   UV.V = AvgV; break;
+            case UVAlignAxis::MinimumU:    UV.U = MinU; break;
+            case UVAlignAxis::MaximumU:    UV.U = MaxU; break;
+        }
+    }
+    ++Network.UVRevision;
+}
+
+void UVAuthoringOperations::AlignSelectedVertexUVs(
+    GeometrySpace::PolygonNetwork& Network,
+    std::span<const uint32_t>      VertexIndices,
+    UVAlignAxis                    AxisMode)
+{
+    if (VertexIndices.empty())
+    {
+        return;
+    }
+    std::vector<uint8_t> SelectedV(Network.Vertices.size(), 0u);
+    for (const uint32_t VIdx : VertexIndices)
+    {
+        if (VIdx < SelectedV.size())
+        {
+            SelectedV[VIdx] = 1u;
+        }
+    }
+    std::vector<uint32_t> Corners {};
+    for (uint32_t EIdx = 0u; EIdx < static_cast<uint32_t>(Network.Edges.size()); ++EIdx)
+    {
+        const uint32_t VIdx = Network.Edges[EIdx].OriginVertexIndex;
+        if (VIdx < SelectedV.size() && SelectedV[VIdx] != 0u)
+        {
+            Corners.push_back(EIdx);
         }
     }
     if (Corners.empty())

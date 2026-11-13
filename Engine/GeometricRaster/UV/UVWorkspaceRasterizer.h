@@ -76,14 +76,18 @@ struct CameraOrbitRig3D
 
 struct Viewport3DRenderOptions
 {
-    CameraOrbitRig3D  Camera              {};
-    SurfaceDisplayMode  DisplayMode         = SurfaceDisplayMode::SurfaceMaterial;
-    bool                WireframeEnabled    = true;
-    bool                SeamOverlayEnabled  = false; // Default OFF per workspace policy!
-    bool                GroundGridEnabled   = true;
-    bool                RenderGizmo         = true;
-    uint16_t            ActiveLayerOrdinal  = 0u;
-    uint32_t            HoveredFaceIndex    = GeometrySpace::InvalidNetworkIndex;
+    CameraOrbitRig3D  Camera                 {};
+    SurfaceDisplayMode  DisplayMode            = SurfaceDisplayMode::SurfaceMaterial;
+    bool                WireframeEnabled       = true;
+    bool                SeamOverlayEnabled     = false; // Default OFF per workspace policy!
+    bool                GroundGridEnabled      = true;
+    bool                RenderGizmo            = true;
+    uint16_t            ActiveLayerOrdinal     = 0u;
+    uint32_t            HoveredFaceIndex       = GeometrySpace::InvalidNetworkIndex;
+    uint32_t            HoveredEdgeIndex       = GeometrySpace::InvalidNetworkIndex;
+    uint32_t            HoveredOppositeEdgeIdx = GeometrySpace::InvalidNetworkIndex;
+    uint32_t            HoveredVertexIndex     = GeometrySpace::InvalidNetworkIndex;
+    uint32_t            SelectionModeOrdinal   = 4u; // Matches UVSelectionMode::Layers default
 };
 
 enum class UVBackdropPreset : uint8_t
@@ -99,16 +103,20 @@ enum class UVBackdropPreset : uint8_t
 
 struct Canvas2DRenderOptions
 {
-    Mathematics::UVAxes VisibleMinUV        { -0.06f, -0.06f };
-    Mathematics::UVAxes VisibleMaxUV        { 2.06f, 1.06f };
-    UVCanvasDisplayMode DisplayMode         = UVCanvasDisplayMode::PriorityLayerFill;
-    UVBackdropPreset    BackdropPreset      = UVBackdropPreset::None;
-    bool                CheckerEnabled      = true;
-    bool                SeamOverlayEnabled  = false; // Default OFF per workspace policy!
-    bool                PinOverlayEnabled   = true;  // GPU pin beacons for EnablePinLock corners
-    bool                RenderGizmo         = true;
-    uint16_t            ActiveLayerOrdinal  = 0u;
-    uint32_t            HoveredFaceIndex    = GeometrySpace::InvalidNetworkIndex;
+    Mathematics::UVAxes VisibleMinUV           { -0.06f, -0.06f };
+    Mathematics::UVAxes VisibleMaxUV           { 2.06f, 1.06f };
+    UVCanvasDisplayMode DisplayMode            = UVCanvasDisplayMode::PriorityLayerFill;
+    UVBackdropPreset    BackdropPreset         = UVBackdropPreset::None;
+    bool                CheckerEnabled         = true;
+    bool                SeamOverlayEnabled     = false; // Default OFF per workspace policy!
+    bool                PinOverlayEnabled      = true;  // GPU pin beacons for EnablePinLock corners
+    bool                RenderGizmo            = true;
+    uint16_t            ActiveLayerOrdinal     = 0u;
+    uint32_t            HoveredFaceIndex       = GeometrySpace::InvalidNetworkIndex;
+    uint32_t            HoveredEdgeIndex       = GeometrySpace::InvalidNetworkIndex;
+    uint32_t            HoveredOppositeEdgeIdx = GeometrySpace::InvalidNetworkIndex;
+    uint32_t            HoveredVertexIndex     = GeometrySpace::InvalidNetworkIndex;
+    uint32_t            SelectionModeOrdinal   = 4u;
 };
 
 struct GPUUVDistortionSummary
@@ -150,6 +158,8 @@ public:
         bool                  AdditiveMask = false);
 
     void UploadSelectionBitmaskWords(std::span<const uint32_t> PackedWords);
+    void UploadEdgeSelectionBitmaskWords(std::span<const uint32_t> PackedWords);
+    void UploadVertexSelectionBitmaskWords(std::span<const uint32_t> PackedWords);
     [[nodiscard]] std::vector<uint32_t> ReadbackSelectionBitmaskWords();
 
     [[nodiscard]] GPUUVDistortionSummary EvaluateUVDistortionInspection(
@@ -249,9 +259,11 @@ private:
     VkSampler              MatCapAtlasSampler               = VK_NULL_HANDLE;
     DeviceBufferResource    Gizmo3DVertexBuffer     {};
     DeviceBufferResource    Gizmo2DVertexBuffer     {};
-    DeviceBufferResource    FacePackedAttrBuffer    {};
-    DeviceBufferResource    SelectionBitmaskBuffer  {};
-    DeviceBufferResource    Viewport3DUniformBuffer {};
+    DeviceBufferResource    FacePackedAttrBuffer         {};
+    DeviceBufferResource    SelectionBitmaskBuffer       {};
+    DeviceBufferResource    EdgeSelectionBitmaskBuffer   {};
+    DeviceBufferResource    VertexSelectionBitmaskBuffer {};
+    DeviceBufferResource    Viewport3DUniformBuffer      {};
     DeviceBufferResource    Canvas2DUniformBuffer   {};
     DeviceBufferResource    Gizmo3DUniformBuffer    {};
     DeviceBufferResource    Gizmo2DUniformBuffer    {};
@@ -262,6 +274,8 @@ private:
     DeviceBufferResource    StretchCountersBuffer   {};
 
     uint32_t                UploadedFaceCount       = 0u;
+    uint32_t                UploadedEdgeCount       = 0u;
+    uint32_t                UploadedVertexCount     = 0u;
     uint32_t                SurfaceVertexCount      = 0u;
     uint32_t                GroundGridVertexCount   = 6u;
     uint32_t                UVCanvasVertexCount     = 0u;

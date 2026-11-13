@@ -31,6 +31,8 @@ struct alignas(16) GPUSurfaceVertex
     uint32_t NetworkPickIDs[4];
     float    Barycentric[4];
     float    MatCapTint[4];
+    uint32_t TriEdgeIDs[4];
+    uint32_t TriVertexIDs[4];
 };
 
 struct alignas(16) GPUUVCanvasVertex
@@ -38,6 +40,8 @@ struct alignas(16) GPUUVCanvasVertex
     float    UVAndBaryXY[4];
     float    BaryZAndStats[4];
     uint32_t NetworkPickIDs[4];
+    uint32_t TriEdgeIDs[4];
+    uint32_t TriVertexIDs[4];
 };
 
 struct alignas(16) GPUViewport3DUniforms
@@ -48,6 +52,8 @@ struct alignas(16) GPUViewport3DUniforms
     float    CameraUpAndSeam[4];
     float    CameraForwardAndLayer[4];
     uint32_t PickHighlightIDs[4];
+    uint32_t ComponentHighlightIDs[4];
+    float    ViewportSizeAndPad[4];
     float    LayerSwatches[16][4];
 };
 
@@ -55,6 +61,8 @@ struct alignas(16) GPUCanvas2DUniforms
 {
     float    CanvasMinMaxUV[4];
     uint32_t OverlayAndPick[4];
+    uint32_t ComponentHighlightIDs[4];
+    float    ViewportSizeAndPad[4];
     float    LayerSwatches[16][4];
 };
 
@@ -292,15 +300,19 @@ bool UVWorkspaceRasterizer::InitializeRasterizer(
         return false;
     }
 
-    const std::array<VkDescriptorType, 5u> SurfaceSetTypes {{
+    const std::array<VkDescriptorType, 7u> SurfaceSetTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
         VK_DESCRIPTOR_TYPE_SAMPLER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
     }};
-    const std::array<VkDescriptorType, 3u> UVCanvasSetTypes {{
+    const std::array<VkDescriptorType, 5u> UVCanvasSetTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
     }};
@@ -478,6 +490,8 @@ void UVWorkspaceRasterizer::TeardownRasterizer() noexcept
         DeviceInterchange->ReleaseBuffer(Gizmo2DVertexBuffer);
         DeviceInterchange->ReleaseBuffer(FacePackedAttrBuffer);
         DeviceInterchange->ReleaseBuffer(SelectionBitmaskBuffer);
+        DeviceInterchange->ReleaseBuffer(EdgeSelectionBitmaskBuffer);
+        DeviceInterchange->ReleaseBuffer(VertexSelectionBitmaskBuffer);
         DeviceInterchange->ReleaseBuffer(Viewport3DUniformBuffer);
         DeviceInterchange->ReleaseBuffer(Canvas2DUniformBuffer);
         DeviceInterchange->ReleaseBuffer(Gizmo3DUniformBuffer);
@@ -761,7 +775,9 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
         return false;
     }
 
-    UploadedFaceCount = static_cast<uint32_t>(Network.Faces.size());
+    UploadedFaceCount   = static_cast<uint32_t>(Network.Faces.size());
+    UploadedEdgeCount   = static_cast<uint32_t>(Network.Edges.size());
+    UploadedVertexCount = static_cast<uint32_t>(Network.Vertices.size());
     if (CachedFaceStretch.size() != UploadedFaceCount)
     {
         CachedFaceStretch.assign(UploadedFaceCount, 1.0f);
@@ -776,8 +792,10 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
         PackedFaceAttrs[FaceIdx] = (LayerOrd & 0xFFFFu) | ((PartOrd & 0xFFFFu) << 16u);
     }
 
-    const uint32_t BitmaskWordCount = (UploadedFaceCount + 31u) / 32u;
-    const uint64_t FaceAttrBytes = PackedFaceAttrs.size() * sizeof(uint32_t);
+    const uint32_t BitmaskWordCount   = (UploadedFaceCount + 31u) / 32u;
+    const uint32_t EdgeWordCount      = std::max(1u, (UploadedEdgeCount + 31u) / 32u);
+    const uint32_t VertexWordCount    = std::max(1u, (UploadedVertexCount + 31u) / 32u);
+    const uint64_t FaceAttrBytes      = PackedFaceAttrs.size() * sizeof(uint32_t);
     if (FacePackedAttrBuffer.ByteCapacity < FaceAttrBytes)
     {
         DeviceInterchange->ReleaseBuffer(FacePackedAttrBuffer);
@@ -793,6 +811,24 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         std::vector<uint32_t> ZeroWords(std::max(4u, BitmaskWordCount), 0u);
         ComputeEncoder.UploadSpanToBuffer<uint32_t>(SelectionBitmaskBuffer, ZeroWords);
+    }
+    if (EdgeSelectionBitmaskBuffer.ByteCapacity < EdgeWordCount * sizeof(uint32_t))
+    {
+        DeviceInterchange->ReleaseBuffer(EdgeSelectionBitmaskBuffer);
+        EdgeSelectionBitmaskBuffer = ComputeEncoder.AllocateHostWritableBuffer(
+            std::max<uint64_t>(16ull, EdgeWordCount * sizeof(uint32_t)),
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        std::vector<uint32_t> ZeroWords(std::max(4u, EdgeWordCount), 0u);
+        ComputeEncoder.UploadSpanToBuffer<uint32_t>(EdgeSelectionBitmaskBuffer, ZeroWords);
+    }
+    if (VertexSelectionBitmaskBuffer.ByteCapacity < VertexWordCount * sizeof(uint32_t))
+    {
+        DeviceInterchange->ReleaseBuffer(VertexSelectionBitmaskBuffer);
+        VertexSelectionBitmaskBuffer = ComputeEncoder.AllocateHostWritableBuffer(
+            std::max<uint64_t>(16ull, VertexWordCount * sizeof(uint32_t)),
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        std::vector<uint32_t> ZeroWords(std::max(4u, VertexWordCount), 0u);
+        ComputeEncoder.UploadSpanToBuffer<uint32_t>(VertexSelectionBitmaskBuffer, ZeroWords);
     }
 
     // 2. Build 3D SurfaceVertexBuffer (starting with 2 ground-grid triangles at NetworkPickIDs.x = 0)
@@ -898,14 +934,27 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
                 {{ 0.0f, 0.0f, 1.0f }},
             }};
 
-            const bool Pin0  = GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[0u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnablePinLock);
-            const bool Pin1  = GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[1u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnablePinLock);
-            const bool Pin2  = GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[2u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnablePinLock);
-            const bool Seam0 = GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[1u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSeamCut);
-            const bool Seam1 = (Tri + 2u == LoopEdges.size()) &&
-                               GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[2u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSeamCut);
-            const bool Seam2 = (Tri == 1u) &&
-                               GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[0u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSeamCut);
+            const bool Pin0          = GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[0u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnablePinLock);
+            const bool Pin1          = GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[1u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnablePinLock);
+            const bool Pin2          = GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[2u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnablePinLock);
+            const bool EdgeOppV0Auth = true; // TriEdges[1] = LoopEdges[Tri]: always authored exterior boundary edge
+            const bool EdgeOppV1Auth = (Tri + 2u == LoopEdges.size()); // TriEdges[2] = LoopEdges[Tri+1]: authored only on last fan triangle
+            const bool EdgeOppV2Auth = (Tri == 1u); // TriEdges[0] = LoopEdges[0]: authored only on first fan triangle
+            const bool Seam0         = EdgeOppV0Auth &&
+                                       GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[1u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSeamCut);
+            const bool Seam1         = EdgeOppV1Auth &&
+                                       GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[2u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSeamCut);
+            const bool Seam2         = EdgeOppV2Auth &&
+                                       GeometrySpace::QueryEdgeAttributeEnabled(Network.Edges[TriEdges[0u]].AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSeamCut);
+
+            const uint32_t AuthoredMask =
+                (EdgeOppV0Auth ? 1u : 0u) |
+                (EdgeOppV1Auth ? 2u : 0u) |
+                (EdgeOppV2Auth ? 4u : 0u);
+            const uint32_t SeamMask3 =
+                (Seam0 ? 1u : 0u) |
+                (Seam1 ? 2u : 0u) |
+                (Seam2 ? 4u : 0u);
 
             const uint32_t Packed2DMask =
                 (static_cast<uint32_t>(CurrentFace.PriorityLayerOrdinal) & 0xFFFFu) |
@@ -914,7 +963,16 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
                 (Pin2  ? (1u << 18u) : 0u) |
                 (Seam0 ? (1u << 19u) : 0u) |
                 (Seam1 ? (1u << 20u) : 0u) |
-                (Seam2 ? (1u << 21u) : 0u);
+                (Seam2 ? (1u << 21u) : 0u) |
+                ((AuthoredMask & 7u) << 22u);
+
+            const uint32_t EdgeOppV0 = TriEdges[1u];
+            const uint32_t EdgeOppV1 = EdgeOppV1Auth ? TriEdges[2u] : GeometrySpace::InvalidNetworkIndex;
+            const uint32_t EdgeOppV2 = EdgeOppV2Auth ? TriEdges[0u] : GeometrySpace::InvalidNetworkIndex;
+            const uint32_t TriVert0  = Network.Edges[TriEdges[0u]].OriginVertexIndex;
+            const uint32_t TriVert1  = Network.Edges[TriEdges[1u]].OriginVertexIndex;
+            const uint32_t TriVert2  = Network.Edges[TriEdges[2u]].OriginVertexIndex;
+            const uint32_t SurfVertAttributeMask = (AuthoredMask & 7u) | ((SeamMask3 & 7u) << 3u);
 
             for (std::size_t Corner = 0u; Corner < 3u; ++Corner)
             {
@@ -971,6 +1029,14 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
                 SV.MatCapTint[1]     = CurrentFace.Shading.MatCapTintLinearRGB.Y;
                 SV.MatCapTint[2]     = CurrentFace.Shading.MatCapTintLinearRGB.Z;
                 SV.MatCapTint[3]     = 1.0f;
+                SV.TriEdgeIDs[0]     = EdgeOppV0;
+                SV.TriEdgeIDs[1]     = EdgeOppV1;
+                SV.TriEdgeIDs[2]     = EdgeOppV2;
+                SV.TriEdgeIDs[3]     = 0u;
+                SV.TriVertexIDs[0]   = TriVert0;
+                SV.TriVertexIDs[1]   = TriVert1;
+                SV.TriVertexIDs[2]   = TriVert2;
+                SV.TriVertexIDs[3]   = SurfVertAttributeMask;
                 Verts3D.push_back(SV);
 
                 GPUUVCanvasVertex UVV {};
@@ -986,6 +1052,14 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
                 UVV.NetworkPickIDs[1] = FaceIdx;
                 UVV.NetworkPickIDs[2] = TriEdges[Corner];
                 UVV.NetworkPickIDs[3] = Packed2DMask;
+                UVV.TriEdgeIDs[0]     = EdgeOppV0;
+                UVV.TriEdgeIDs[1]     = EdgeOppV1;
+                UVV.TriEdgeIDs[2]     = EdgeOppV2;
+                UVV.TriEdgeIDs[3]     = 0u;
+                UVV.TriVertexIDs[0]   = TriVert0;
+                UVV.TriVertexIDs[1]   = TriVert1;
+                UVV.TriVertexIDs[2]   = TriVert2;
+                UVV.TriVertexIDs[3]   = 0u;
                 Verts2D.push_back(UVV);
             }
         }
@@ -1057,6 +1131,28 @@ void UVWorkspaceRasterizer::UploadSelectionBitmaskWords(std::span<const uint32_t
     const std::size_t MaxWords = static_cast<std::size_t>(SelectionBitmaskBuffer.ByteCapacity / sizeof(uint32_t));
     const std::size_t Count    = std::min(PackedWords.size(), MaxWords);
     ComputeEncoder.UploadSpanToBuffer<uint32_t>(SelectionBitmaskBuffer, PackedWords.subspan(0u, Count));
+}
+
+void UVWorkspaceRasterizer::UploadEdgeSelectionBitmaskWords(std::span<const uint32_t> PackedWords)
+{
+    if (DeviceInterchange == nullptr || EdgeSelectionBitmaskBuffer.BufferHandle == VK_NULL_HANDLE || PackedWords.empty())
+    {
+        return;
+    }
+    const std::size_t MaxWords = static_cast<std::size_t>(EdgeSelectionBitmaskBuffer.ByteCapacity / sizeof(uint32_t));
+    const std::size_t Count    = std::min(PackedWords.size(), MaxWords);
+    ComputeEncoder.UploadSpanToBuffer<uint32_t>(EdgeSelectionBitmaskBuffer, PackedWords.subspan(0u, Count));
+}
+
+void UVWorkspaceRasterizer::UploadVertexSelectionBitmaskWords(std::span<const uint32_t> PackedWords)
+{
+    if (DeviceInterchange == nullptr || VertexSelectionBitmaskBuffer.BufferHandle == VK_NULL_HANDLE || PackedWords.empty())
+    {
+        return;
+    }
+    const std::size_t MaxWords = static_cast<std::size_t>(VertexSelectionBitmaskBuffer.ByteCapacity / sizeof(uint32_t));
+    const std::size_t Count    = std::min(PackedWords.size(), MaxWords);
+    ComputeEncoder.UploadSpanToBuffer<uint32_t>(VertexSelectionBitmaskBuffer, PackedWords.subspan(0u, Count));
 }
 
 std::vector<uint32_t> UVWorkspaceRasterizer::ReadbackSelectionBitmaskWords()
@@ -1218,7 +1314,17 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
     Uniforms.CameraForwardAndLayer[2] = Fwd.Z;
     Uniforms.CameraForwardAndLayer[3] = static_cast<float>(Options.ActiveLayerOrdinal);
     Uniforms.PickHighlightIDs[0]      = Options.HoveredFaceIndex;
+    Uniforms.PickHighlightIDs[1]      = Options.HoveredEdgeIndex;
+    Uniforms.PickHighlightIDs[2]      = Options.HoveredOppositeEdgeIdx;
     Uniforms.PickHighlightIDs[3]      = static_cast<uint32_t>(Options.Camera.Basis);
+    Uniforms.ComponentHighlightIDs[0] = Options.HoveredVertexIndex;
+    Uniforms.ComponentHighlightIDs[1] = Options.SelectionModeOrdinal;
+    Uniforms.ComponentHighlightIDs[2] = 0u;
+    Uniforms.ComponentHighlightIDs[3] = 0u;
+    Uniforms.ViewportSizeAndPad[0]    = static_cast<float>(WidthPx);
+    Uniforms.ViewportSizeAndPad[1]    = static_cast<float>(HeightPx);
+    Uniforms.ViewportSizeAndPad[2]    = 0.0f;
+    Uniforms.ViewportSizeAndPad[3]    = 0.0f;
     std::memcpy(Uniforms.LayerSwatches, LayerSwatches.data(), sizeof(Uniforms.LayerSwatches));
 
     const std::array<GPUViewport3DUniforms, 1u> UniSpan {{ Uniforms }};
@@ -1266,14 +1372,16 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
         return false;
     }
 
-    const std::array<VkDescriptorBufferInfo, 3u> SurfBufs {{
+    const std::array<VkDescriptorBufferInfo, 5u> SurfBufs {{
         { Viewport3DUniformBuffer.BufferHandle, 0u, sizeof(GPUViewport3DUniforms) },
         { SurfaceVertexBuffer.BufferHandle, 0u, VK_WHOLE_SIZE },
         { SelectionBitmaskBuffer.BufferHandle, 0u, VK_WHOLE_SIZE },
+        { EdgeSelectionBitmaskBuffer.BufferHandle, 0u, VK_WHOLE_SIZE },
+        { VertexSelectionBitmaskBuffer.BufferHandle, 0u, VK_WHOLE_SIZE },
     }};
     const VkDescriptorImageInfo AtlasImageInfo{ VK_NULL_HANDLE, MatCapAtlasImage.ViewHandle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
     const VkDescriptorImageInfo AtlasSamplerInfo{ MatCapAtlasSampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED };
-    std::array<VkWriteDescriptorSet, 5u> SurfWrites {};
+    std::array<VkWriteDescriptorSet, 7u> SurfWrites {};
     for (uint32_t Idx = 0u; Idx < SurfWrites.size(); ++Idx)
     {
         SurfWrites[Idx].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1290,10 +1398,15 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
             SurfWrites[Idx].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
             SurfWrites[Idx].pImageInfo = &AtlasImageInfo;
         }
-        else
+        else if (Idx == 4u)
         {
             SurfWrites[Idx].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
             SurfWrites[Idx].pImageInfo = &AtlasSamplerInfo;
+        }
+        else
+        {
+            SurfWrites[Idx].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            SurfWrites[Idx].pBufferInfo = &SurfBufs[Idx - 2u];
         }
     }
     vkUpdateDescriptorSets(DeviceHandle, static_cast<uint32_t>(SurfWrites.size()), SurfWrites.data(), 0u, nullptr);
@@ -1431,6 +1544,14 @@ bool UVWorkspaceRasterizer::Rasterize2DUVCanvas(
     Uniforms.OverlayAndPick[1] = OverlayBits;
     Uniforms.OverlayAndPick[2] = Options.ActiveLayerOrdinal;
     Uniforms.OverlayAndPick[3] = Options.HoveredFaceIndex;
+    Uniforms.ComponentHighlightIDs[0] = Options.HoveredEdgeIndex;
+    Uniforms.ComponentHighlightIDs[1] = Options.HoveredOppositeEdgeIdx;
+    Uniforms.ComponentHighlightIDs[2] = Options.HoveredVertexIndex;
+    Uniforms.ComponentHighlightIDs[3] = Options.SelectionModeOrdinal;
+    Uniforms.ViewportSizeAndPad[0]    = static_cast<float>(WidthPx);
+    Uniforms.ViewportSizeAndPad[1]    = static_cast<float>(HeightPx);
+    Uniforms.ViewportSizeAndPad[2]    = 0.0f;
+    Uniforms.ViewportSizeAndPad[3]    = 0.0f;
     std::memcpy(Uniforms.LayerSwatches, LayerSwatches.data(), sizeof(Uniforms.LayerSwatches));
 
     const std::array<GPUCanvas2DUniforms, 1u> UniSpan {{ Uniforms }};
@@ -1474,13 +1595,15 @@ bool UVWorkspaceRasterizer::Rasterize2DUVCanvas(
         return false;
     }
 
-    const std::array<VkDescriptorBufferInfo, 3u> CanvBufs {{
+    const std::array<VkDescriptorBufferInfo, 5u> CanvBufs {{
         { Canvas2DUniformBuffer.BufferHandle, 0u, sizeof(GPUCanvas2DUniforms) },
         { UVCanvasVertexBuffer.BufferHandle, 0u, VK_WHOLE_SIZE },
         { SelectionBitmaskBuffer.BufferHandle, 0u, VK_WHOLE_SIZE },
+        { EdgeSelectionBitmaskBuffer.BufferHandle, 0u, VK_WHOLE_SIZE },
+        { VertexSelectionBitmaskBuffer.BufferHandle, 0u, VK_WHOLE_SIZE },
     }};
-    std::array<VkWriteDescriptorSet, 3u> CanvWrites {};
-    for (uint32_t Idx = 0u; Idx < 3u; ++Idx)
+    std::array<VkWriteDescriptorSet, 5u> CanvWrites {};
+    for (uint32_t Idx = 0u; Idx < CanvWrites.size(); ++Idx)
     {
         CanvWrites[Idx].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         CanvWrites[Idx].dstSet          = CanvasSet;
@@ -1489,7 +1612,7 @@ bool UVWorkspaceRasterizer::Rasterize2DUVCanvas(
         CanvWrites[Idx].descriptorType  = (Idx == 0u) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         CanvWrites[Idx].pBufferInfo     = &CanvBufs[Idx];
     }
-    vkUpdateDescriptorSets(DeviceHandle, 3u, CanvWrites.data(), 0u, nullptr);
+    vkUpdateDescriptorSets(DeviceHandle, static_cast<uint32_t>(CanvWrites.size()), CanvWrites.data(), 0u, nullptr);
 
     VkDescriptorSet GizmoSet = VK_NULL_HANDLE;
     if (GizmoVertCount > 0u)

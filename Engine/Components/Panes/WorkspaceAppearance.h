@@ -148,6 +148,8 @@ struct PaneInputReading
     bool           ShortcutFind      = false;// [-] - Ctrl+F shortcut pulse
     bool           ShortcutGroup     = false;// [-] - Ctrl+G shortcut pulse
     bool           ShortcutDuplicate = false;// [-] - Ctrl+D shortcut pulse
+    bool           ShortcutLinked    = false;// [-] - Ctrl+L linked selection shortcut pulse
+    bool           ShortcutInvert    = false;// [-] - Ctrl+I invert selection shortcut pulse
     bool           ShortcutUndo      = false;// [-] - Ctrl+Z undo shortcut pulse
     bool           ShortcutRedo      = false;// [-] - Ctrl+Shift+Z or Ctrl+Y redo shortcut pulse
     bool           ToggleDiagnostics = false;// [-] - F3 diagnostics shortcut pulse

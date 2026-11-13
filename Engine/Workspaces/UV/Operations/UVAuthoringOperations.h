@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <span>
+#include <vector>
 
 namespace Frontier::Workspaces
 {
@@ -67,6 +68,11 @@ public:
         std::span<const uint32_t>      EdgeIndices,
         bool                           PinEnabled);
 
+    static uint32_t AssignPinLockOnVertices(
+        GeometrySpace::PolygonNetwork& Network,
+        std::span<const uint32_t>      VertexIndices,
+        bool                           PinEnabled);
+
     static uint32_t CountPinnedCorners(const GeometrySpace::PolygonNetwork& Network) noexcept;
 
     // Stitch ('V'):rigidly transforms the opposite UV island to snap & weld across selected seam edges
@@ -89,6 +95,18 @@ public:
         float                          RotationRadians,
         Mathematics::Scalar2D          ScaleFactor);
 
+    static void TransformSelectedCornerUVs(
+        GeometrySpace::PolygonNetwork& Network,
+        std::span<const uint32_t>      CornerEdgeIndices,
+        Mathematics::UVAxes            PivotUV,
+        Mathematics::UVAxes            TranslationDelta,
+        float                          RotationRadians,
+        Mathematics::Scalar2D          ScaleFactor);
+
+    [[nodiscard]] static std::vector<uint32_t> CollectTransformableCornerEdges(
+        const GeometrySpace::PolygonNetwork&         Network,
+        const GeometrySpace::ComponentSelectionMask& Selection);
+
     static void MirrorSelectedFaceUVs(
         GeometrySpace::PolygonNetwork& Network,
         std::span<const uint32_t>      FaceIndices,
@@ -98,6 +116,11 @@ public:
     static void AlignSelectedEdgeUVs(
         GeometrySpace::PolygonNetwork& Network,
         std::span<const uint32_t>      EdgeIndices,
+        UVAlignAxis                    AxisMode);
+
+    static void AlignSelectedVertexUVs(
+        GeometrySpace::PolygonNetwork& Network,
+        std::span<const uint32_t>      VertexIndices,
         UVAlignAxis                    AxisMode);
 
     static uint32_t RectifySelectedQuadFaces(

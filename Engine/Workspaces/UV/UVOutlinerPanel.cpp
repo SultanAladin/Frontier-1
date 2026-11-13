@@ -1090,27 +1090,55 @@ void UVOutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
 
     if (Session != nullptr)
     {
-        if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+        const Point2D PhysicalCursor {
+            ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
+            ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
+        };
+        const bool BlockedByBrowser = [&]() noexcept
         {
-            const Point2D PhysicalCursor {
-                ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
-                ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
-            };
-            if (Browser->QueryBlocksPointerAt(PhysicalCursor))
+            if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
             {
-                Input.PrimaryPointer.Enabled  = false;
-                Input.PrimaryPointer.Pressed  = false;
-                Input.PrimaryPointer.Down     = false;
-                Input.PrimaryPointer.Released = false;
-                Input.SecondaryPressed        = false;
-                Input.SecondaryDown           = false;
-                Input.DoubleClicked           = false;
-                Input.WheelDeltaY             = 0.0f;
+                return Browser->QueryBlocksPointerAt(PhysicalCursor);
             }
+            return false;
+        }();
+        const bool BlockedByOwner =
+            Session->PointerOwnerPane != UVPointerOwnerPane::None &&
+            Session->PointerOwnerPane != UVPointerOwnerPane::OutlinerPanel;
+        if (BlockedByBrowser || BlockedByOwner)
+        {
+            Input.PrimaryPointer.Enabled  = false;
+            Input.PrimaryPointer.Pressed  = false;
+            Input.PrimaryPointer.Down     = false;
+            Input.PrimaryPointer.Released = false;
+            Input.SecondaryPressed        = false;
+            Input.SecondaryDown           = false;
+            Input.MiddlePressed           = false;
+            Input.MiddleDown              = false;
+            Input.DoubleClicked           = false;
+            Input.WheelDeltaY             = 0.0f;
         }
     }
 
     Render(Surface, LogicalBounds, Input, Δt);
+
+    if (Session != nullptr)
+    {
+        const Point2D PhysicalCursor {
+            ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
+            ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
+        };
+        const bool AnyBtnDown = Input.PrimaryPointer.Down || Input.MiddleDown || Input.SecondaryDown;
+        if (Session->PointerOwnerPane == UVPointerOwnerPane::None &&
+            ScreenBounds.Contains(PhysicalCursor) && AnyBtnDown)
+        {
+            Session->PointerOwnerPane = UVPointerOwnerPane::OutlinerPanel;
+        }
+        else if (Session->PointerOwnerPane == UVPointerOwnerPane::OutlinerPanel && !AnyBtnDown)
+        {
+            Session->PointerOwnerPane = UVPointerOwnerPane::None;
+        }
+    }
 
     if (Session != nullptr)
     {

@@ -109,7 +109,8 @@ void AppendCylinderHandle(
     float                        Radius,
     float                        Height,
     Mathematics::Scalar3D        Color,
-    GizmoHandleOrdinal           Handle)
+    GizmoHandleOrdinal           Handle,
+    float                        ShadingWeight = 1.0f)
 {
     constexpr uint32_t Segments = 24u;
     Mathematics::Axis3D U {}, V {};
@@ -131,10 +132,10 @@ void AppendCylinderHandle(
         const Mathematics::Axis3D P01 = TopCenter + R0 * Radius;
         const Mathematics::Axis3D SideNormal = Mathematics::NormalizeAxis(R0 + R1);
 
-        AppendTriangle(OutStream, P00, P10, P11, SideNormal, Color, 1.0f, 1.0f, Handle);
-        AppendTriangle(OutStream, P00, P11, P01, SideNormal, Color, 1.0f, 1.0f, Handle);
-        AppendTriangle(OutStream, TopCenter, P01, P11, AxisDir, Color, 1.0f, 1.0f, Handle);
-        AppendTriangle(OutStream, BotCenter, P10, P00, AxisDir * -1.0f, Color, 1.0f, 1.0f, Handle);
+        AppendTriangle(OutStream, P00, P10, P11, SideNormal, Color, 1.0f, ShadingWeight, Handle);
+        AppendTriangle(OutStream, P00, P11, P01, SideNormal, Color, 1.0f, ShadingWeight, Handle);
+        AppendTriangle(OutStream, TopCenter, P01, P11, AxisDir, Color, 1.0f, ShadingWeight, Handle);
+        AppendTriangle(OutStream, BotCenter, P10, P00, AxisDir * -1.0f, Color, 1.0f, ShadingWeight, Handle);
     }
 }
 
@@ -307,17 +308,33 @@ std::vector<GizmoGPUVertex> TransformGizmo::BuildTriangleStream(
     const Mathematics::Axis3D UnitY { 0.0f, 1.0f, 0.0f };
     const Mathematics::Axis3D UnitZ { 0.0f, 0.0f, 1.0f };
 
-    // Cohesive Slate axis stems radiating from outside the center ring (0.17 * L) to cone/scale collar
-    const float StemStart  = 0.17f * L;
-    const float StemFinish = EmitTranslate ? (TipDist - 0.09f * L) : (CylDist - 0.06f * L);
-    const float StemLen    = std::max(0.02f * L, StemFinish - StemStart);
-    const float StemMid    = 0.5f * (StemStart + StemFinish);
+    // Pure white axis stems radiating from the center ring (0.165 * L) and terminating cleanly at the scale cylinder
+    // collar (CylDist - 0.06 * L) so stems never penetrate or cross through the scale cylinder.
+    const float StemRadius     = 0.0080f * L;
+    const float InnerStart     = 0.165f * L;
+    const float InnerFinish    = EmitScale ? (CylDist - 0.06f * L) : (TipDist - 0.09f * L);
+    const float InnerLen       = std::max(0.02f * L, InnerFinish - InnerStart);
+    const float InnerMid       = 0.5f * (InnerStart + InnerFinish);
+    const float OuterStart     = CylDist + 0.06f * L;
+    const float OuterFinish    = TipDist - 0.09f * L;
+    const float OuterLen       = std::max(0.02f * L, OuterFinish - OuterStart);
+    const float OuterMid       = 0.5f * (OuterStart + OuterFinish);
+
+    auto AppendWhiteAxisStems = [&](Mathematics::Axis3D AxisDir, GizmoHandleOrdinal StemOrdinal)
+    {
+        AppendCylinderHandle(Stream, PivotPosition + AxisDir * InnerMid, AxisDir, StemRadius, InnerLen, ColorCenterRing, StemOrdinal, 0.0f);
+        if (EmitTranslate && EmitScale && OuterFinish > OuterStart + 0.005f * L)
+        {
+            AppendCylinderHandle(Stream, PivotPosition + AxisDir * OuterMid, AxisDir, StemRadius, OuterLen, ColorCenterRing, StemOrdinal, 0.0f);
+        }
+    };
+
     if (EmitTranslate || EmitScale)
     {
         const GizmoHandleOrdinal StemXOrd = EmitTranslate ? GizmoHandleOrdinal::TranslateX : GizmoHandleOrdinal::ScaleX;
         const GizmoHandleOrdinal StemYOrd = EmitTranslate ? GizmoHandleOrdinal::TranslateY : GizmoHandleOrdinal::ScaleY;
-        AppendCylinderHandle(Stream, PivotPosition + UnitX * StemMid, UnitX, 0.0095f * L, StemLen, ColorAxisX, StemXOrd);
-        AppendCylinderHandle(Stream, PivotPosition + UnitY * StemMid, UnitY, 0.0095f * L, StemLen, ColorAxisY, StemYOrd);
+        AppendWhiteAxisStems(UnitX, StemXOrd);
+        AppendWhiteAxisStems(UnitY, StemYOrd);
     }
 
     // +X / +U and +Y / +V Translate Cones & Inboard Scale Cylinders (shared by 3D & 2D)
@@ -342,7 +359,7 @@ std::vector<GizmoGPUVertex> TransformGizmo::BuildTriangleStream(
         if (EmitTranslate || EmitScale)
         {
             const GizmoHandleOrdinal StemZOrd = EmitTranslate ? GizmoHandleOrdinal::TranslateZ : GizmoHandleOrdinal::ScaleZ;
-            AppendCylinderHandle(Stream, PivotPosition + UnitZ * StemMid, UnitZ, 0.0095f * L, StemLen, ColorAxisZ, StemZOrd);
+            AppendWhiteAxisStems(UnitZ, StemZOrd);
         }
         if (EmitTranslate)
         {

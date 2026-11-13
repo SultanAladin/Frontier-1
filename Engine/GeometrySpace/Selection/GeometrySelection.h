@@ -42,6 +42,13 @@ public:
         uint32_t              EndEdgeIndex,
         bool                  UsePlanarUVMetric = false);
 
+    // Ctrl+Click in Vertex mode: Evaluates Dijkstra geodesic shortest vertex chain between StartVertexIndex and EndVertexIndex.
+    [[nodiscard]] static std::vector<uint32_t> EvaluateShortestVertexPath(
+        const PolygonNetwork& Network,
+        uint32_t              StartVertexIndex,
+        uint32_t              EndVertexIndex,
+        bool                  UsePlanarUVMetric = false);
+
     // Collects open geometric boundary edges or perimeter edges of the current face selection.
     [[nodiscard]] static std::vector<uint32_t> EvaluateBoundaryEdges(
         const PolygonNetwork&         Network,

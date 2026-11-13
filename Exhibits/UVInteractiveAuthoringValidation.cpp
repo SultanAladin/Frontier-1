@@ -27,10 +27,12 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -358,6 +360,341 @@ int main()
         {
             return 1;
         }
+        Session.SelectPriorityLayer(1u);
+    }
+
+    //--------------------------------------------------------------------------------------------------------------------
+    // 4b. Component Modes (1-5), Vertex/Edge Picking & Operations, Gizmo White Stems, Drag Capture & Context Sheet
+    //--------------------------------------------------------------------------------------------------------------------
+    {
+        // A. Pure-white unshaded Gizmo axis stems in 3D and 2D
+        const auto GizmoVerts3D = Session.Gizmo3D.BuildTriangleStream();
+        const auto GizmoVerts2D = Session.Gizmo2D.BuildTriangleStream();
+        auto CountWhiteStemVerts = [](const std::vector<Editor::GizmoGPUVertex>& Verts) noexcept -> uint32_t
+        {
+            uint32_t Count = 0u;
+            for (const auto& V : Verts)
+            {
+                if ((V.NormalAndHandle.W == 1.0f || V.NormalAndHandle.W == 2.0f || V.NormalAndHandle.W == 3.0f) &&
+                    V.ColorRGBAndShaded.W == 0.0f &&
+                    V.ColorRGBAndShaded.X > 0.99f &&
+                    V.ColorRGBAndShaded.Y > 0.99f &&
+                    V.ColorRGBAndShaded.Z > 0.99f)
+                {
+                    ++Count;
+                }
+            }
+            return Count;
+        };
+        if (!VerifyCheck(
+                CountWhiteStemVerts(GizmoVerts3D) > 0u && CountWhiteStemVerts(GizmoVerts2D) > 0u,
+                "3D & 2D TransformGizmos emit pure-white unshaded axis stems"))
+        {
+            return 1;
+        }
+
+        // B. Keyboard shortcuts 1-5 + Layer highlight isolation
+        const std::pair<const char*, UVSelectionMode> ShortcutBindings[5] = {
+            { "1", UVSelectionMode::Vertices },
+            { "2", UVSelectionMode::Edges },
+            { "3", UVSelectionMode::Faces },
+            { "4", UVSelectionMode::Islands },
+            { "5", UVSelectionMode::Layers },
+        };
+        for (const auto& [KeyText, ExpectedMode] : ShortcutBindings)
+        {
+            PaneInputReading KeyIn {};
+            KeyIn.PrimaryPointer.X = PlanarBounds.X + 24.0f;
+            KeyIn.PrimaryPointer.Y = PlanarBounds.Y + 24.0f;
+            KeyIn.TypedUtf8        = KeyText;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, KeyIn });
+            if (!VerifyCheck(Session.SelectionMode == ExpectedMode, "Shortcuts 1-5 switch UVSelectionMode"))
+            {
+                return 1;
+            }
+            if (ExpectedMode != UVSelectionMode::Layers)
+            {
+                if (!VerifyCheck(
+                        Session.RenderOptions3D.ActiveLayerOrdinal == UINT16_MAX &&
+                        Session.RenderOptions2D.ActiveLayerOrdinal == UINT16_MAX,
+                        "ActiveLayerOrdinal cleared outside Layers mode"))
+                {
+                    return 1;
+                }
+            }
+        }
+
+        // C. Quad TacticalCrate: EdgeLoop, ShortestVertexPath, Vertex/Edge Selection, Pin, Align & Welded Transform
+        Session.LoadSamplePreset(SampleAssetPreset::TacticalCrate);
+        auto& CrateNet = Session.Asset.Network;
+        const auto QuadLoop = GeometrySelection::EvaluateEdgeLoop(CrateNet, 0u);
+        const auto VertPath = GeometrySelection::EvaluateShortestVertexPath(CrateNet, 0u, 6u, false);
+        if (!VerifyCheck(QuadLoop.size() >= 2u && VertPath.size() >= 2u, "Quad EdgeLoop & ShortestVertexPath"))
+        {
+            return 1;
+        }
+
+        // Switch to Vertices mode via shortcut '1'
+        {
+            PaneInputReading Key1 {};
+            Key1.PrimaryPointer.X = PlanarBounds.X + 24.0f;
+            Key1.PrimaryPointer.Y = PlanarBounds.Y + 24.0f;
+            Key1.TypedUtf8        = "1";
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, Key1 });
+        }
+        Session.SelectionMask.ClearAll();
+        Session.SelectionMask.AssignVertexSelected(0u, true);
+        Session.SynchronizeSelectionToGPU();
+        const auto WeldedCorners = UVAuthoringOperations::CollectTransformableCornerEdges(CrateNet, Session.SelectionMask);
+        if (!VerifyCheck(!WeldedCorners.empty(), "CollectTransformableCornerEdges finds corners of selected vertex"))
+        {
+            return 1;
+        }
+        const Mathematics::UVAxes RefCornerUVBefore = CrateNet.Edges[WeldedCorners[0]].ParameterUV;
+        UVAuthoringOperations::TransformSelectedCornerUVs(
+            CrateNet,
+            WeldedCorners,
+            Mathematics::UVAxes{ 0.5f, 0.5f },
+            Mathematics::UVAxes{ 0.05f, -0.025f },
+            0.0f,
+            Mathematics::Scalar2D{ 1.0f, 1.0f });
+        if (!VerifyCheck(
+                std::abs(CrateNet.Edges[WeldedCorners[0]].ParameterUV.U - (RefCornerUVBefore.U + 0.05f)) < 1.0e-4f,
+                "TransformSelectedCornerUVs translates welded corners cleanly"))
+        {
+            return 1;
+        }
+        // Test Vertex pinning + alignment U/V
+        Session.SelectionMask.AssignVertexSelected(1u, true);
+        const auto SelVerts        = Session.SelectionMask.CollectSelectedVertices();
+        const uint32_t PinnedVerts = UVAuthoringOperations::AssignPinLockOnVertices(CrateNet, SelVerts, true);
+        UVAuthoringOperations::AlignSelectedVertexUVs(CrateNet, SelVerts, UVAlignAxis::HorizontalU);
+        const uint32_t UnpinnedV   = UVAuthoringOperations::AssignPinLockOnVertices(CrateNet, SelVerts, false);
+        const auto AlignedCorners  = UVAuthoringOperations::CollectTransformableCornerEdges(CrateNet, Session.SelectionMask);
+        const bool UAlignedSame    = AlignedCorners.size() >= 2u &&
+            std::abs(CrateNet.Edges[AlignedCorners.front()].ParameterUV.U - CrateNet.Edges[AlignedCorners.back()].ParameterUV.U) < 1.0e-4f;
+        if (!VerifyCheck(PinnedVerts > 0u && UnpinnedV > 0u && UAlignedSame, "Vertex Pin/Unpin & Align UVs"))
+        {
+            return 1;
+        }
+
+        // Ctrl+A / Ctrl+I / Ctrl+L in Vertices and Edges modes without touching FaceBits
+        Session.SelectAllInActiveMode();
+        if (!VerifyCheck(
+                Session.SelectionMask.CountSelectedVertices() == CrateNet.Vertices.size() &&
+                Session.SelectionMask.CountSelectedFaces() == 0u,
+                "SelectAll in Vertices mode does not pollute FaceBits"))
+        {
+            return 1;
+        }
+        Session.SelectionMask.AssignVertexSelected(0u, false);
+        Session.InvertSelectionInActiveMode();
+        if (!VerifyCheck(
+                Session.SelectionMask.CountSelectedVertices() == 1u &&
+                Session.SelectionMask.QueryVertexSelected(0u),
+                "InvertSelection in Vertices mode isolates unselected vertices"))
+        {
+            return 1;
+        }
+
+        // Switch to Edges mode via shortcut '2', verify Ctrl+A / Ctrl+I / Alt+Click edge loop
+        {
+            PaneInputReading Key2 {};
+            Key2.PrimaryPointer.X = PlanarBounds.X + 24.0f;
+            Key2.PrimaryPointer.Y = PlanarBounds.Y + 24.0f;
+            Key2.TypedUtf8        = "2";
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, Key2 });
+        }
+        Session.SelectAllInActiveMode();
+        if (!VerifyCheck(
+                Session.SelectionMask.CountSelectedEdges() == CrateNet.Edges.size() &&
+                Session.SelectionMask.CountSelectedFaces() == 0u,
+                "SelectAll in Edges mode selects all edges without touching FaceBits"))
+        {
+            return 1;
+        }
+        Session.ClearViewportSelection();
+
+        // D. GPU ClosestAuthEdge PickID verification & Interactive Edge/Vertex Click + Right-Click Sheet + Drag Capture
+        Session.FitSelectionOrNetwork();
+        Session.SynchronizeSelectionToGPU();
+        Session.RefreshViewportFramebuffers(
+            static_cast<uint32_t>(PlanarBounds.Width), static_cast<uint32_t>(PlanarBounds.Height),
+            static_cast<uint32_t>(SpatialBounds.Width), static_cast<uint32_t>(SpatialBounds.Height));
+
+        // Scan 3D center neighborhood for a surface pixel and verify Pick3DPixel returns ClosestAuthEdge in PickIDs.z
+        bool FoundSurfaceEdgePick = false;
+        Point2D SurfaceClickPt { SpatialBounds.X + SpatialBounds.Width * 0.5f, SpatialBounds.Y + SpatialBounds.Height * 0.5f };
+        for (int32_t Dy = -80; Dy <= 80 && !FoundSurfaceEdgePick; Dy += 12)
+        {
+            for (int32_t Dx = -80; Dx <= 80 && !FoundSurfaceEdgePick; Dx += 12)
+            {
+                const float Px = SpatialBounds.Width * 0.5f + static_cast<float>(Dx);
+                const float Py = SpatialBounds.Height * 0.5f + static_cast<float>(Dy);
+                const auto Hit3 = Rasterizer.Pick3DPixel(static_cast<uint32_t>(Px), static_cast<uint32_t>(Py));
+                if (Hit3.HitSurfaceFace() && Hit3.DirectedEdgeIndex != InvalidNetworkIndex)
+                {
+                    FoundSurfaceEdgePick = true;
+                    SurfaceClickPt = { SpatialBounds.X + Px, SpatialBounds.Y + Py };
+                }
+            }
+        }
+        if (!VerifyCheck(FoundSurfaceEdgePick, "Pick3DPixel returns ClosestAuthEdge in PickIDs.z"))
+        {
+            return 1;
+        }
+
+        // Alt+Click at SurfaceClickPt in Edges mode selects edge loop cleanly without setting FaceBits
+        {
+            PaneInputReading AltEdgeClick {};
+            AltEdgeClick.AltHeld                 = true;
+            AltEdgeClick.PrimaryPointer.X        = SurfaceClickPt.X;
+            AltEdgeClick.PrimaryPointer.Y        = SurfaceClickPt.Y;
+            AltEdgeClick.PrimaryPointer.Down     = true;
+            AltEdgeClick.PrimaryPointer.Pressed  = true;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, AltEdgeClick });
+            if (!VerifyCheck(
+                    Session.SelectionMask.CountSelectedEdges() >= 2u &&
+                    Session.SelectionMask.CountSelectedFaces() == 0u,
+                    "Alt+Click in Edges mode selects edge loop without setting FaceBits"))
+            {
+                return 1;
+            }
+        }
+
+        // Single click in Edges mode, then switch to Vertices mode for single click, Ctrl+Click path & BoxMarquee
+        {
+            PaneInputReading PlainEdgeClick {};
+            PlainEdgeClick.PrimaryPointer.X        = SurfaceClickPt.X;
+            PlainEdgeClick.PrimaryPointer.Y        = SurfaceClickPt.Y;
+            PlainEdgeClick.PrimaryPointer.Down     = true;
+            PlainEdgeClick.PrimaryPointer.Pressed  = true;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, PlainEdgeClick });
+            if (!VerifyCheck(
+                    Session.SelectionMask.CountSelectedEdges() >= 1u &&
+                    Session.SelectionMask.CountSelectedFaces() == 0u,
+                    "Single click in Edges mode selects edge without setting FaceBits"))
+            {
+                return 1;
+            }
+
+            Session.AssignSelectionMode(UVSelectionMode::Vertices);
+            PaneInputReading PlainVertClick {};
+            PlainVertClick.PrimaryPointer.X        = SurfaceClickPt.X;
+            PlainVertClick.PrimaryPointer.Y        = SurfaceClickPt.Y;
+            PlainVertClick.PrimaryPointer.Down     = true;
+            PlainVertClick.PrimaryPointer.Pressed  = true;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, PlainVertClick });
+            const uint32_t FirstVertSel = Session.SelectionMask.CountSelectedVertices();
+            if (!VerifyCheck(
+                    FirstVertSel == 1u && Session.SelectionMask.CountSelectedFaces() == 0u,
+                    "Single click in Vertices mode selects vertex without setting FaceBits"))
+            {
+                return 1;
+            }
+
+            Point2D SecondSurfacePt = SurfaceClickPt;
+            for (int32_t Offset = 48; Offset <= 96; Offset += 16)
+            {
+                const float Px = std::clamp(SurfaceClickPt.X - SpatialBounds.X + static_cast<float>(Offset), 8.0f, SpatialBounds.Width - 8.0f);
+                const float Py = std::clamp(SurfaceClickPt.Y - SpatialBounds.Y + static_cast<float>(Offset), 8.0f, SpatialBounds.Height - 8.0f);
+                const auto HitCand = Rasterizer.Pick3DPixel(static_cast<uint32_t>(Px), static_cast<uint32_t>(Py));
+                if (HitCand.HitSurfaceFace())
+                {
+                    SecondSurfacePt = { SpatialBounds.X + Px, SpatialBounds.Y + Py };
+                    break;
+                }
+            }
+            PaneInputReading CtrlVertClick {};
+            CtrlVertClick.ControlHeld             = true;
+            CtrlVertClick.PrimaryPointer.X        = SecondSurfacePt.X;
+            CtrlVertClick.PrimaryPointer.Y        = SecondSurfacePt.Y;
+            CtrlVertClick.PrimaryPointer.Down     = true;
+            CtrlVertClick.PrimaryPointer.Pressed  = true;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, CtrlVertClick });
+            if (!VerifyCheck(
+                    Session.SelectionMask.CountSelectedVertices() >= 1u &&
+                    Session.SelectionMask.CountSelectedFaces() == 0u,
+                    "Ctrl+Click in Vertices mode preserves vertex mode without setting FaceBits"))
+            {
+                return 1;
+            }
+
+            // BoxMarquee drag across 3D viewport in Vertices mode preserves Vertices mode
+            Interactor.ActivateBoxMarquee(true);
+            PaneInputReading BoxStart {};
+            BoxStart.PrimaryPointer.X       = SpatialBounds.X + 20.0f;
+            BoxStart.PrimaryPointer.Y       = SpatialBounds.Y + 20.0f;
+            BoxStart.PrimaryPointer.Down    = true;
+            BoxStart.PrimaryPointer.Pressed = true;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, BoxStart });
+
+            PaneInputReading BoxRelease {};
+            BoxRelease.PrimaryPointer.X        = SpatialBounds.Right() - 20.0f;
+            BoxRelease.PrimaryPointer.Y        = SpatialBounds.Bottom() - 20.0f;
+            BoxRelease.PrimaryPointer.Down     = false;
+            BoxRelease.PrimaryPointer.Released = true;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, BoxRelease });
+            Interactor.ActivateBoxMarquee(false);
+            if (!VerifyCheck(
+                    Session.SelectionMask.CountSelectedVertices() >= 4u &&
+                    Session.SelectionMask.CountSelectedFaces() == 0u,
+                    "BoxMarquee in Vertices mode selects enclosed vertices without setting FaceBits"))
+            {
+                return 1;
+            }
+        }
+
+        // SecondaryPressed opens viewport directive sheet cleanly
+        {
+            PaneInputReading RmbPress {};
+            RmbPress.SecondaryPressed = true;
+            RmbPress.SecondaryDown    = true;
+            RmbPress.PrimaryPointer.X = SurfaceClickPt.X;
+            RmbPress.PrimaryPointer.Y = SurfaceClickPt.Y;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, RmbPress });
+            Point2D SheetAnchor {};
+            bool    SheetPlanar = true;
+            if (!VerifyCheck(
+                    Interactor.ConsumeSecondarySheetRequest(SheetAnchor, SheetPlanar) && !SheetPlanar,
+                    "Right-click inside 3D viewport queues directive sheet request"))
+            {
+                return 1;
+            }
+        }
+
+        // MMB drag outside bounds keeps QueryDragCaptureActive() latched until released
+        {
+            PaneInputReading MmbStart {};
+            MmbStart.MiddlePressed    = true;
+            MmbStart.MiddleDown       = true;
+            MmbStart.PrimaryPointer.X = SpatialBounds.X + SpatialBounds.Width * 0.5f;
+            MmbStart.PrimaryPointer.Y = SpatialBounds.Y + SpatialBounds.Height * 0.5f;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, MmbStart });
+
+            PaneInputReading MmbDragOut {};
+            MmbDragOut.MiddleDown       = true;
+            MmbDragOut.PrimaryPointer.X = PlanarBounds.X + 10.0f; // dragged across into opposite pane!
+            MmbDragOut.PrimaryPointer.Y = PlanarBounds.Y + 10.0f;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, MmbDragOut });
+            if (!VerifyCheck(Interactor.QueryDragCaptureActive(), "MMB orbit drag latches QueryDragCaptureActive across pane boundary"))
+            {
+                return 1;
+            }
+
+            PaneInputReading MmbRelease {};
+            MmbRelease.MiddleDown       = false;
+            MmbRelease.PrimaryPointer.X = PlanarBounds.X + 10.0f;
+            MmbRelease.PrimaryPointer.Y = PlanarBounds.Y + 10.0f;
+            Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, MmbRelease });
+            if (!VerifyCheck(!Interactor.QueryDragCaptureActive(), "MMB release clears QueryDragCaptureActive"))
+            {
+                return 1;
+            }
+        }
+
+        // Restore AeroCoupeGT and Layer 1 selection for section 5 Outliner & ImGui Swapchain UI checks
+        Session.LoadSamplePreset(SampleAssetPreset::AeroCoupeGT);
         Session.SelectPriorityLayer(1u);
     }
 

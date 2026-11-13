@@ -166,6 +166,8 @@ PaneInputReading CaptureImGuiPaneInput(Rectangle2D ScreenBounds, float ScaleFact
     Reading.ShortcutFind      = Snapshot.ControlHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::F, false);
     Reading.ShortcutGroup     = Snapshot.ControlHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::G, false);
     Reading.ShortcutDuplicate = Snapshot.ControlHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::D, false);
+    Reading.ShortcutLinked    = Snapshot.ControlHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::L, false);
+    Reading.ShortcutInvert    = Snapshot.ControlHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::I, false);
     Reading.ShortcutUndo      = Snapshot.ControlHeld && !Snapshot.ShiftHeld && !Snapshot.AltHeld &&
                                 Snapshot.QueryKeyPressed(Input::InputLogicalKey::Z, false);
     Reading.ShortcutRedo      = Snapshot.ControlHeld && !Snapshot.AltHeld &&

@@ -67,10 +67,19 @@ enum class UVInspectorTab : uint8_t
 
 enum class UVSelectionMode : uint8_t
 {
-    Faces   = 0u,
-    Edges   = 1u,
-    Islands = 2u,
-    Layers  = 3u,
+    Vertices = 0u,
+    Edges    = 1u,
+    Faces    = 2u,
+    Islands  = 3u,
+    Layers   = 4u,
+};
+
+enum class UVPointerOwnerPane : uint8_t
+{
+    None           = 0u,
+    ViewportHost   = 1u,
+    OutlinerPanel  = 2u,
+    InspectorPanel = 3u,
 };
 
 enum class UVCommandDirective : uint8_t
@@ -103,8 +112,16 @@ enum class UVCommandDirective : uint8_t
     ExpandEmptyPockets       = 25u,
     SelectFlippedFaces       = 26u,
     SelectOverlappingFaces   = 27u,
-    FitActiveSelection     = 28u,
+    FitActiveSelection       = 28u,
     ResetFaceUVsToTile       = 29u,
+    AlignSelectedUVsU        = 30u,
+    AlignSelectedUVsV        = 31u,
+    MirrorSelectedHorizontal = 32u,
+    MirrorSelectedVertical   = 33u,
+    SelectLinkedIsland       = 34u,
+    SelectAllComponents      = 35u,
+    InvertComponentSelection = 36u,
+    ClearComponentSelection  = 37u,
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -167,6 +184,10 @@ public:
     bool                                TryConsumeGlobalHistoryShortcut(bool ShortcutUndo, bool ShortcutRedo, bool TextInputActive, uint64_t TickSequence);
 
     void SynchronizeSelectionToGPU();
+    void AssignSelectionMode(UVSelectionMode TargetMode);
+    void SelectAllInActiveMode();
+    void InvertSelectionInActiveMode();
+    void SelectLinkedIslandInActiveMode(uint32_t SeedFaceIndex = GeometrySpace::InvalidNetworkIndex);
     void ClearViewportSelection();
     void RefreshGizmoAnchorsFromSelection() noexcept;
     void FinalizeInteractiveUVRevision(std::string_view OperationTag);
@@ -261,6 +282,7 @@ public:
     bool                                     FramebuffersDirty    = true;
     bool                                     SpatialNavigationActive = false;
     bool                                     DeferredPlanarRefresh = false;
+    UVPointerOwnerPane                       PointerOwnerPane        = UVPointerOwnerPane::None;
 
 private:
     void InitializeLoadedAssetLayout();

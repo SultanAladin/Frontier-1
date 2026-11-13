@@ -930,24 +930,216 @@ UDIMTileSetting UVWorkspaceSession::QueryUDIMTileSetting(uint32_t UDIMNumber) co
 
 void UVWorkspaceSession::SynchronizeSelectionToGPU()
 {
+    RenderOptions3D.SelectionModeOrdinal = static_cast<uint32_t>(SelectionMode);
+    RenderOptions2D.SelectionModeOrdinal = static_cast<uint32_t>(SelectionMode);
     if (Rasterizer == nullptr)
     {
         return;
     }
     SelectionMask.SynchronizeCapacity(Asset.Network);
     Rasterizer->UploadSelectionBitmaskWords(SelectionMask.InspectPackedFaceWords());
+    Rasterizer->UploadEdgeSelectionBitmaskWords(SelectionMask.InspectPackedEdgeWords());
+    Rasterizer->UploadVertexSelectionBitmaskWords(SelectionMask.InspectPackedVertexWords());
     FramebuffersDirty = true;
+}
+
+void UVWorkspaceSession::AssignSelectionMode(UVSelectionMode TargetMode)
+{
+    SelectionMode = TargetMode;
+    if (TargetMode != UVSelectionMode::Layers)
+    {
+        RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+        RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+    }
+    else if (SpatialSelectionActive && SelectedLayerOrdinal != 0u)
+    {
+        RenderOptions3D.ActiveLayerOrdinal = SelectedLayerOrdinal;
+        RenderOptions2D.ActiveLayerOrdinal = SelectedLayerOrdinal;
+    }
+    SynchronizeSelectionToGPU();
+    switch (TargetMode)
+    {
+        case UVSelectionMode::Vertices: StatusBannerText = "Selection Mode: Vertices [1]"; break;
+        case UVSelectionMode::Edges:    StatusBannerText = "Selection Mode: Edges [2]"; break;
+        case UVSelectionMode::Faces:    StatusBannerText = "Selection Mode: Faces [3]"; break;
+        case UVSelectionMode::Islands:  StatusBannerText = "Selection Mode: UV Islands [4]"; break;
+        case UVSelectionMode::Layers:   StatusBannerText = "Selection Mode: Priority Layers [5]"; break;
+    }
+}
+
+void UVWorkspaceSession::SelectAllInActiveMode()
+{
+    SelectionMask.SynchronizeCapacity(Asset.Network);
+    if (SelectionMode == UVSelectionMode::Vertices)
+    {
+        SelectionMask.SelectAllVertices(Asset.Network);
+        RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+        RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+        StatusBannerText = "Selected All Vertices [Ctrl+A]";
+    }
+    else if (SelectionMode == UVSelectionMode::Edges)
+    {
+        SelectionMask.SelectAllEdges(Asset.Network);
+        RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+        RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+        StatusBannerText = "Selected All Edges [Ctrl+A]";
+    }
+    else
+    {
+        SelectionMask.SelectAllFaces(Asset.Network);
+        if (SelectionMode != UVSelectionMode::Layers)
+        {
+            RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+            RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+        }
+        StatusBannerText = "Selected All Faces [Ctrl+A]";
+    }
+    SpatialSelectionActive = !Asset.Network.Faces.empty();
+    RefreshGizmoAnchorsFromSelection();
+    SynchronizeSelectionToGPU();
+}
+
+void UVWorkspaceSession::InvertSelectionInActiveMode()
+{
+    SelectionMask.SynchronizeCapacity(Asset.Network);
+    if (SelectionMode == UVSelectionMode::Vertices)
+    {
+        SelectionMask.InvertVertices(Asset.Network);
+        RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+        RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+    }
+    else if (SelectionMode == UVSelectionMode::Edges)
+    {
+        SelectionMask.InvertEdges(Asset.Network);
+        RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+        RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+    }
+    else
+    {
+        SelectionMask.InvertFaces(Asset.Network);
+        RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+        RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+    }
+    SpatialSelectionActive =
+        (SelectionMask.CountSelectedFaces() > 0u) ||
+        (SelectionMask.CountSelectedEdges() > 0u) ||
+        (SelectionMask.CountSelectedVertices() > 0u);
+    RefreshGizmoAnchorsFromSelection();
+    SynchronizeSelectionToGPU();
+    StatusBannerText = "Inverted Selection [Ctrl+I]";
+}
+
+void UVWorkspaceSession::SelectLinkedIslandInActiveMode(uint32_t SeedFaceIndex)
+{
+    SelectionMask.SynchronizeCapacity(Asset.Network);
+    uint32_t SeedFace = SeedFaceIndex;
+    if (SeedFace >= Asset.Network.Faces.size() && LastHoverHit.HitSurfaceFace())
+    {
+        SeedFace = LastHoverHit.FaceIndex;
+    }
+    if (SeedFace >= Asset.Network.Faces.size())
+    {
+        SeedFace = SelectionMask.ActiveFaceIndex;
+    }
+    if (SeedFace >= Asset.Network.Faces.size() &&
+        SelectionMask.ActiveEdgeIndex < Asset.Network.Edges.size())
+    {
+        SeedFace = Asset.Network.Edges[SelectionMask.ActiveEdgeIndex].EnclosingFaceIndex;
+    }
+    if (SeedFace >= Asset.Network.Faces.size() &&
+        SelectionMask.ActiveVertexIndex < Asset.Network.Vertices.size())
+    {
+        for (const auto& Edge : Asset.Network.Edges)
+        {
+            if (Edge.OriginVertexIndex == SelectionMask.ActiveVertexIndex &&
+                Edge.EnclosingFaceIndex < Asset.Network.Faces.size())
+            {
+                SeedFace = Edge.EnclosingFaceIndex;
+                break;
+            }
+        }
+    }
+    if (SeedFace >= Asset.Network.Faces.size())
+    {
+        return;
+    }
+
+    const auto LinkedFaces = GeometrySpace::GeometrySelection::EvaluateLinkedIslandFaces(Asset.Network, SeedFace);
+    if (LinkedFaces.empty())
+    {
+        return;
+    }
+
+    if (SelectionMode == UVSelectionMode::Vertices)
+    {
+        std::vector<uint32_t> VertList {};
+        for (const uint32_t FIdx : LinkedFaces)
+        {
+            if (FIdx >= Asset.Network.Faces.size())
+            {
+                continue;
+            }
+            const auto& F = Asset.Network.Faces[FIdx];
+            uint32_t    E = F.BoundaryLoopEdgeIndex;
+            for (uint16_t C = 0u; C < F.CornerCount && E < Asset.Network.Edges.size(); ++C)
+            {
+                VertList.push_back(Asset.Network.Edges[E].OriginVertexIndex);
+                E = Asset.Network.Edges[E].NextEdgeIndex;
+            }
+        }
+        SelectionMask.SelectVerticesFromList(VertList, true);
+    }
+    else if (SelectionMode == UVSelectionMode::Edges)
+    {
+        std::vector<uint32_t> EdgeList {};
+        for (const uint32_t FIdx : LinkedFaces)
+        {
+            if (FIdx >= Asset.Network.Faces.size())
+            {
+                continue;
+            }
+            const auto& F = Asset.Network.Faces[FIdx];
+            uint32_t    E = F.BoundaryLoopEdgeIndex;
+            for (uint16_t C = 0u; C < F.CornerCount && E < Asset.Network.Edges.size(); ++C)
+            {
+                EdgeList.push_back(E);
+                E = Asset.Network.Edges[E].NextEdgeIndex;
+            }
+        }
+        SelectionMask.SelectEdgesFromList(Asset.Network, EdgeList, true);
+    }
+    else
+    {
+        SelectionMask.SelectFacesFromList(LinkedFaces, true);
+    }
+
+    if (SelectionMode != UVSelectionMode::Layers)
+    {
+        RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+        RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+    }
+    SpatialSelectionActive = true;
+    RefreshGizmoAnchorsFromSelection();
+    SynchronizeSelectionToGPU();
+    StatusBannerText = "Selected Linked UV Island [Ctrl+L]";
 }
 
 void UVWorkspaceSession::ClearViewportSelection()
 {
     SelectionMask.SynchronizeCapacity(Asset.Network);
     SelectionMask.ClearAll();
-    SpatialSelectionActive             = false;
-    RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
-    RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
-    RenderOptions3D.HoveredFaceIndex   = GeometrySpace::InvalidNetworkIndex;
-    RenderOptions2D.HoveredFaceIndex   = GeometrySpace::InvalidNetworkIndex;
+    SpatialSelectionActive                 = false;
+    RenderOptions3D.ActiveLayerOrdinal     = UINT16_MAX;
+    RenderOptions2D.ActiveLayerOrdinal     = UINT16_MAX;
+    RenderOptions3D.HoveredFaceIndex       = GeometrySpace::InvalidNetworkIndex;
+    RenderOptions2D.HoveredFaceIndex       = GeometrySpace::InvalidNetworkIndex;
+    RenderOptions3D.HoveredEdgeIndex       = GeometrySpace::InvalidNetworkIndex;
+    RenderOptions2D.HoveredEdgeIndex       = GeometrySpace::InvalidNetworkIndex;
+    RenderOptions3D.HoveredOppositeEdgeIdx = GeometrySpace::InvalidNetworkIndex;
+    RenderOptions2D.HoveredOppositeEdgeIdx = GeometrySpace::InvalidNetworkIndex;
+    RenderOptions3D.HoveredVertexIndex     = GeometrySpace::InvalidNetworkIndex;
+    RenderOptions2D.HoveredVertexIndex     = GeometrySpace::InvalidNetworkIndex;
+    LastHoverHit                           = {};
     Gizmo2D.AssignHoveredHandle(Editor::GizmoHandleOrdinal::None);
     Gizmo3D.AssignHoveredHandle(Editor::GizmoHandleOrdinal::None);
     SynchronizeSelectionToGPU();
@@ -971,18 +1163,67 @@ void UVWorkspaceSession::RefreshGizmoAnchorsFromSelection() noexcept
     }
 
     const auto Selected = SelectionMask.CollectSelectedFaces();
-    if (Selected.empty())
+    if (!Selected.empty())
     {
+        Mathematics::UVAxes SumUV {};
+        for (const uint32_t FIdx : Selected)
+        {
+            const auto CU = Asset.Network.EvaluateFaceCentroidUV(FIdx);
+            SumUV = { SumUV.U + CU.U, SumUV.V + CU.V };
+        }
+        const float Inv = 1.0f / static_cast<float>(Selected.size());
+        Gizmo2D.ConfigureAnchor({ SumUV.U * Inv, SumUV.V * Inv, 0.0f }, 0.30f);
         return;
     }
-    Mathematics::UVAxes SumUV {};
-    for (const uint32_t FIdx : Selected)
+
+    const auto SelectedEdges = SelectionMask.CollectSelectedEdges();
+    if (!SelectedEdges.empty())
     {
-        const auto CU = Asset.Network.EvaluateFaceCentroidUV(FIdx);
-        SumUV = { SumUV.U + CU.U, SumUV.V + CU.V };
+        Mathematics::UVAxes SumUV {};
+        uint32_t Count = 0u;
+        for (const uint32_t EIdx : SelectedEdges)
+        {
+            if (EIdx >= Asset.Network.Edges.size())
+            {
+                continue;
+            }
+            const auto& E = Asset.Network.Edges[EIdx];
+            SumUV = { SumUV.U + E.ParameterUV.U, SumUV.V + E.ParameterUV.V };
+            ++Count;
+            if (E.NextEdgeIndex < Asset.Network.Edges.size())
+            {
+                const auto& EN = Asset.Network.Edges[E.NextEdgeIndex];
+                SumUV = { SumUV.U + EN.ParameterUV.U, SumUV.V + EN.ParameterUV.V };
+                ++Count;
+            }
+        }
+        if (Count > 0u)
+        {
+            const float Inv = 1.0f / static_cast<float>(Count);
+            Gizmo2D.ConfigureAnchor({ SumUV.U * Inv, SumUV.V * Inv, 0.0f }, 0.24f);
+        }
+        return;
     }
-    const float Inv = 1.0f / static_cast<float>(Selected.size());
-    Gizmo2D.ConfigureAnchor({ SumUV.U * Inv, SumUV.V * Inv, 0.0f }, 0.30f);
+
+    const auto SelectedVerts = SelectionMask.CollectSelectedVertices();
+    if (!SelectedVerts.empty())
+    {
+        Mathematics::UVAxes SumUV {};
+        uint32_t Count = 0u;
+        for (const auto& E : Asset.Network.Edges)
+        {
+            if (SelectionMask.QueryVertexSelected(E.OriginVertexIndex))
+            {
+                SumUV = { SumUV.U + E.ParameterUV.U, SumUV.V + E.ParameterUV.V };
+                ++Count;
+            }
+        }
+        if (Count > 0u)
+        {
+            const float Inv = 1.0f / static_cast<float>(Count);
+            Gizmo2D.ConfigureAnchor({ SumUV.U * Inv, SumUV.V * Inv, 0.0f }, 0.22f);
+        }
+    }
 }
 
 void UVWorkspaceSession::FinalizeInteractiveUVRevision(std::string_view OperationTag)
@@ -999,6 +1240,57 @@ void UVWorkspaceSession::FitSelectionOrNetwork() noexcept
     auto Selected = SelectionMask.CollectSelectedFaces();
     if (Selected.empty())
     {
+        const auto SelEdges = SelectionMask.CollectSelectedEdges();
+        const auto SelVerts = SelectionMask.CollectSelectedVertices();
+        if (!SelEdges.empty() || !SelVerts.empty())
+        {
+            Mathematics::Axis3D Min3D {  1.0e9f,  1.0e9f,  1.0e9f };
+            Mathematics::Axis3D Max3D { -1.0e9f, -1.0e9f, -1.0e9f };
+            Mathematics::UVAxes MinUV {  1.0e9f,  1.0e9f };
+            Mathematics::UVAxes MaxUV { -1.0e9f, -1.0e9f };
+            if (!SelEdges.empty())
+            {
+                for (const uint32_t EIdx : SelEdges)
+                {
+                    if (EIdx >= Asset.Network.Edges.size()) continue;
+                    const auto& E0 = Asset.Network.Edges[EIdx];
+                    const auto& V0 = Asset.Network.Vertices[E0.OriginVertexIndex].Axes;
+                    Min3D = { std::min(Min3D.X, V0.X), std::min(Min3D.Y, V0.Y), std::min(Min3D.Z, V0.Z) };
+                    Max3D = { std::max(Max3D.X, V0.X), std::max(Max3D.Y, V0.Y), std::max(Max3D.Z, V0.Z) };
+                    MinUV = { std::min(MinUV.U, E0.ParameterUV.U), std::min(MinUV.V, E0.ParameterUV.V) };
+                    MaxUV = { std::max(MaxUV.U, E0.ParameterUV.U), std::max(MaxUV.V, E0.ParameterUV.V) };
+                    if (E0.NextEdgeIndex < Asset.Network.Edges.size())
+                    {
+                        const auto& E1 = Asset.Network.Edges[E0.NextEdgeIndex];
+                        const auto& V1 = Asset.Network.Vertices[E1.OriginVertexIndex].Axes;
+                        Min3D = { std::min(Min3D.X, V1.X), std::min(Min3D.Y, V1.Y), std::min(Min3D.Z, V1.Z) };
+                        Max3D = { std::max(Max3D.X, V1.X), std::max(Max3D.Y, V1.Y), std::max(Max3D.Z, V1.Z) };
+                        MinUV = { std::min(MinUV.U, E1.ParameterUV.U), std::min(MinUV.V, E1.ParameterUV.V) };
+                        MaxUV = { std::max(MaxUV.U, E1.ParameterUV.U), std::max(MaxUV.V, E1.ParameterUV.V) };
+                    }
+                }
+            }
+            else
+            {
+                for (const auto& E : Asset.Network.Edges)
+                {
+                    if (!SelectionMask.QueryVertexSelected(E.OriginVertexIndex)) continue;
+                    const auto& V = Asset.Network.Vertices[E.OriginVertexIndex].Axes;
+                    Min3D = { std::min(Min3D.X, V.X), std::min(Min3D.Y, V.Y), std::min(Min3D.Z, V.Z) };
+                    Max3D = { std::max(Max3D.X, V.X), std::max(Max3D.Y, V.Y), std::max(Max3D.Z, V.Z) };
+                    MinUV = { std::min(MinUV.U, E.ParameterUV.U), std::min(MinUV.V, E.ParameterUV.V) };
+                    MaxUV = { std::max(MaxUV.U, E.ParameterUV.U), std::max(MaxUV.V, E.ParameterUV.V) };
+                }
+            }
+            if (Min3D.X <= Max3D.X)
+            {
+                auto& Proj = ActiveDocument.AccessViewportProjection();
+                Proj.FitSpatialExtents(Min3D, Max3D);
+                Proj.FitPlanarExtents(MinUV, MaxUV);
+                FramebuffersDirty = true;
+                return;
+            }
+        }
         Selected.resize(Asset.Network.Faces.size());
         std::iota(Selected.begin(), Selected.end(), 0u);
     }
@@ -1042,6 +1334,44 @@ void UVWorkspaceSession::FitPlanarSelectionOrNetwork() noexcept
     auto Selected = SelectionMask.CollectSelectedFaces();
     if (Selected.empty())
     {
+        const auto SelEdges = SelectionMask.CollectSelectedEdges();
+        const auto SelVerts = SelectionMask.CollectSelectedVertices();
+        if (!SelEdges.empty() || !SelVerts.empty())
+        {
+            Mathematics::UVAxes MinUV {  1.0e9f,  1.0e9f };
+            Mathematics::UVAxes MaxUV { -1.0e9f, -1.0e9f };
+            if (!SelEdges.empty())
+            {
+                for (const uint32_t EIdx : SelEdges)
+                {
+                    if (EIdx >= Asset.Network.Edges.size()) continue;
+                    const auto& E0 = Asset.Network.Edges[EIdx];
+                    MinUV = { std::min(MinUV.U, E0.ParameterUV.U), std::min(MinUV.V, E0.ParameterUV.V) };
+                    MaxUV = { std::max(MaxUV.U, E0.ParameterUV.U), std::max(MaxUV.V, E0.ParameterUV.V) };
+                    if (E0.NextEdgeIndex < Asset.Network.Edges.size())
+                    {
+                        const auto& E1 = Asset.Network.Edges[E0.NextEdgeIndex];
+                        MinUV = { std::min(MinUV.U, E1.ParameterUV.U), std::min(MinUV.V, E1.ParameterUV.V) };
+                        MaxUV = { std::max(MaxUV.U, E1.ParameterUV.U), std::max(MaxUV.V, E1.ParameterUV.V) };
+                    }
+                }
+            }
+            else
+            {
+                for (const auto& E : Asset.Network.Edges)
+                {
+                    if (!SelectionMask.QueryVertexSelected(E.OriginVertexIndex)) continue;
+                    MinUV = { std::min(MinUV.U, E.ParameterUV.U), std::min(MinUV.V, E.ParameterUV.V) };
+                    MaxUV = { std::max(MaxUV.U, E.ParameterUV.U), std::max(MaxUV.V, E.ParameterUV.V) };
+                }
+            }
+            if (MinUV.U <= MaxUV.U)
+            {
+                ActiveDocument.AccessViewportProjection().FitPlanarExtents(MinUV, MaxUV);
+                FramebuffersDirty = true;
+                return;
+            }
+        }
         Selected.resize(Asset.Network.Faces.size());
         std::iota(Selected.begin(), Selected.end(), 0u);
     }
@@ -1076,6 +1406,47 @@ void UVWorkspaceSession::FitSpatialSelectionOrNetwork() noexcept
     auto Selected = SelectionMask.CollectSelectedFaces();
     if (Selected.empty())
     {
+        const auto SelEdges = SelectionMask.CollectSelectedEdges();
+        const auto SelVerts = SelectionMask.CollectSelectedVertices();
+        if (!SelEdges.empty() || !SelVerts.empty())
+        {
+            Mathematics::Axis3D Min3D {  1.0e9f,  1.0e9f,  1.0e9f };
+            Mathematics::Axis3D Max3D { -1.0e9f, -1.0e9f, -1.0e9f };
+            if (!SelEdges.empty())
+            {
+                for (const uint32_t EIdx : SelEdges)
+                {
+                    if (EIdx >= Asset.Network.Edges.size()) continue;
+                    const auto& E0 = Asset.Network.Edges[EIdx];
+                    const auto& V0 = Asset.Network.Vertices[E0.OriginVertexIndex].Axes;
+                    Min3D = { std::min(Min3D.X, V0.X), std::min(Min3D.Y, V0.Y), std::min(Min3D.Z, V0.Z) };
+                    Max3D = { std::max(Max3D.X, V0.X), std::max(Max3D.Y, V0.Y), std::max(Max3D.Z, V0.Z) };
+                    if (E0.NextEdgeIndex < Asset.Network.Edges.size())
+                    {
+                        const auto& E1 = Asset.Network.Edges[E0.NextEdgeIndex];
+                        const auto& V1 = Asset.Network.Vertices[E1.OriginVertexIndex].Axes;
+                        Min3D = { std::min(Min3D.X, V1.X), std::min(Min3D.Y, V1.Y), std::min(Min3D.Z, V1.Z) };
+                        Max3D = { std::max(Max3D.X, V1.X), std::max(Max3D.Y, V1.Y), std::max(Max3D.Z, V1.Z) };
+                    }
+                }
+            }
+            else
+            {
+                for (const uint32_t VIdx : SelVerts)
+                {
+                    if (VIdx >= Asset.Network.Vertices.size()) continue;
+                    const auto& V = Asset.Network.Vertices[VIdx].Axes;
+                    Min3D = { std::min(Min3D.X, V.X), std::min(Min3D.Y, V.Y), std::min(Min3D.Z, V.Z) };
+                    Max3D = { std::max(Max3D.X, V.X), std::max(Max3D.Y, V.Y), std::max(Max3D.Z, V.Z) };
+                }
+            }
+            if (Min3D.X <= Max3D.X)
+            {
+                ActiveDocument.AccessViewportProjection().FitSpatialExtents(Min3D, Max3D);
+                FramebuffersDirty = true;
+                return;
+            }
+        }
         Selected.resize(Asset.Network.Faces.size());
         std::iota(Selected.begin(), Selected.end(), 0u);
     }
@@ -1317,7 +1688,20 @@ bool UVWorkspaceSession::ExecuteDirective(
         }
         case UVCommandDirective::PinSelectedUVs:
         {
-            const uint32_t Pinned = UVAuthoringOperations::AssignPinLockOnFaces(Asset.Network, SelectionMask.CollectSelectedFaces(), true);
+            uint32_t Pinned = 0u;
+            const auto SelFaces = SelectionMask.CollectSelectedFaces();
+            if (!SelFaces.empty())
+            {
+                Pinned = UVAuthoringOperations::AssignPinLockOnFaces(Asset.Network, SelFaces, true);
+            }
+            else if (const auto SelEdges = SelectionMask.CollectSelectedEdges(); !SelEdges.empty())
+            {
+                Pinned = UVAuthoringOperations::AssignPinLockOnEdges(Asset.Network, SelEdges, true);
+            }
+            else if (const auto SelVerts = SelectionMask.CollectSelectedVertices(); !SelVerts.empty())
+            {
+                Pinned = UVAuthoringOperations::AssignPinLockOnVertices(Asset.Network, SelVerts, true);
+            }
             if (LiveUnwrapEnabled && Pinned > 0u)
             {
                 (void)ConformalUnwrapSolver::FlattenIslandsConformally(Asset.Network, OptionalChannels, 24u);
@@ -1328,7 +1712,20 @@ bool UVWorkspaceSession::ExecuteDirective(
         }
         case UVCommandDirective::UnpinSelectedUVs:
         {
-            const uint32_t Unpinned = UVAuthoringOperations::AssignPinLockOnFaces(Asset.Network, SelectionMask.CollectSelectedFaces(), false);
+            uint32_t Unpinned = 0u;
+            const auto SelFaces = SelectionMask.CollectSelectedFaces();
+            if (!SelFaces.empty())
+            {
+                Unpinned = UVAuthoringOperations::AssignPinLockOnFaces(Asset.Network, SelFaces, false);
+            }
+            else if (const auto SelEdges = SelectionMask.CollectSelectedEdges(); !SelEdges.empty())
+            {
+                Unpinned = UVAuthoringOperations::AssignPinLockOnEdges(Asset.Network, SelEdges, false);
+            }
+            else if (const auto SelVerts = SelectionMask.CollectSelectedVertices(); !SelVerts.empty())
+            {
+                Unpinned = UVAuthoringOperations::AssignPinLockOnVertices(Asset.Network, SelVerts, false);
+            }
             if (LiveUnwrapEnabled && Unpinned > 0u)
             {
                 (void)ConformalUnwrapSolver::FlattenIslandsConformally(Asset.Network, OptionalChannels, 24u);
@@ -1534,6 +1931,68 @@ bool UVWorkspaceSession::ExecuteDirective(
                 LatestMetrics.FlippedFaceCount,
                 LatestMetrics.OverlapFaceCount);
             StatusBannerText = Msg;
+            return true;
+        }
+        case UVCommandDirective::AlignSelectedUVsU:
+        {
+            if (const auto SelEdges = SelectionMask.CollectSelectedEdges(); !SelEdges.empty())
+            {
+                UVAuthoringOperations::AlignSelectedEdgeUVs(Asset.Network, SelEdges, UVAlignAxis::HorizontalU);
+            }
+            else if (const auto SelVerts = SelectionMask.CollectSelectedVertices(); !SelVerts.empty())
+            {
+                UVAuthoringOperations::AlignSelectedVertexUVs(Asset.Network, SelVerts, UVAlignAxis::HorizontalU);
+            }
+            std::snprintf(Msg, sizeof(Msg), "Aligned Selected UVs Vertically Along U");
+            RecordUVRevisionStep("AlignSelectedUVsU");
+            break;
+        }
+        case UVCommandDirective::AlignSelectedUVsV:
+        {
+            if (const auto SelEdges = SelectionMask.CollectSelectedEdges(); !SelEdges.empty())
+            {
+                UVAuthoringOperations::AlignSelectedEdgeUVs(Asset.Network, SelEdges, UVAlignAxis::VerticalV);
+            }
+            else if (const auto SelVerts = SelectionMask.CollectSelectedVertices(); !SelVerts.empty())
+            {
+                UVAuthoringOperations::AlignSelectedVertexUVs(Asset.Network, SelVerts, UVAlignAxis::VerticalV);
+            }
+            std::snprintf(Msg, sizeof(Msg), "Aligned Selected UVs Horizontally Along V");
+            RecordUVRevisionStep("AlignSelectedUVsV");
+            break;
+        }
+        case UVCommandDirective::MirrorSelectedHorizontal:
+        {
+            UVAuthoringOperations::MirrorSelectedFaceUVs(Asset.Network, SelectionMask.CollectSelectedFaces(), true);
+            std::snprintf(Msg, sizeof(Msg), "Mirrored Selected Face UVs Horizontally");
+            RecordUVRevisionStep("MirrorSelectedHorizontal");
+            break;
+        }
+        case UVCommandDirective::MirrorSelectedVertical:
+        {
+            UVAuthoringOperations::MirrorSelectedFaceUVs(Asset.Network, SelectionMask.CollectSelectedFaces(), false);
+            std::snprintf(Msg, sizeof(Msg), "Mirrored Selected Face UVs Vertically");
+            RecordUVRevisionStep("MirrorSelectedVertical");
+            break;
+        }
+        case UVCommandDirective::SelectLinkedIsland:
+        {
+            SelectLinkedIslandInActiveMode();
+            return true;
+        }
+        case UVCommandDirective::SelectAllComponents:
+        {
+            SelectAllInActiveMode();
+            return true;
+        }
+        case UVCommandDirective::InvertComponentSelection:
+        {
+            InvertSelectionInActiveMode();
+            return true;
+        }
+        case UVCommandDirective::ClearComponentSelection:
+        {
+            ClearViewportSelection();
             return true;
         }
         default:
@@ -2067,13 +2526,19 @@ void UVWorkspaceSession::RefreshViewportFramebuffers(
     RenderOptions3D.Camera.OrthographicProjection = (CamConfig.ProjectionMode == Components::CameraProjectionMode::Orthographic);
     RenderOptions3D.SeamOverlayEnabled            = WorkspaceConfig.InspectUVPreferences().SeamOverlayEnabled;
     RenderOptions3D.WireframeEnabled              = WorkspaceConfig.InspectUVPreferences().WireframeOverlayEnabled;
+    RenderOptions3D.SelectionModeOrdinal          = static_cast<uint32_t>(SelectionMode);
 
-    RenderOptions2D.CheckerEnabled        = WorkspaceConfig.InspectUVPreferences().CheckerOverlayEnabled;
-    RenderOptions2D.SeamOverlayEnabled    = WorkspaceConfig.InspectUVPreferences().SeamOverlayEnabled;
-    RenderOptions2D.BackdropPreset        = TileCfg.BackdropPreset;
+    RenderOptions2D.CheckerEnabled                = WorkspaceConfig.InspectUVPreferences().CheckerOverlayEnabled;
+    RenderOptions2D.SeamOverlayEnabled            = WorkspaceConfig.InspectUVPreferences().SeamOverlayEnabled;
+    RenderOptions2D.BackdropPreset                = TileCfg.BackdropPreset;
+    RenderOptions2D.SelectionModeOrdinal          = static_cast<uint32_t>(SelectionMode);
 
-    const bool ShowGizmo2D = (SelectionMask.CountSelectedFaces() > 0u) || Gizmo2D.QueryDragging();
-    const bool ShowGizmo3D = SpatialSelectionActive || (SelectionMask.CountSelectedFaces() > 0u) || Gizmo3D.QueryDragging();
+    const bool AnyComponentSelected =
+        (SelectionMask.CountSelectedFaces() > 0u) ||
+        (SelectionMask.CountSelectedEdges() > 0u) ||
+        (SelectionMask.CountSelectedVertices() > 0u);
+    const bool ShowGizmo2D = AnyComponentSelected || Gizmo2D.QueryDragging();
+    const bool ShowGizmo3D = SpatialSelectionActive || AnyComponentSelected || Gizmo3D.QueryDragging();
 
     if (Viewport3DW >= 16u && Viewport3DH >= 16u)
     {
