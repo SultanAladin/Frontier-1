@@ -89,7 +89,9 @@ struct alignas(64) ContentIndexEntry64
     uint8_t  TintGreen                  = 180u; // [0-255]- Primary preview tint G
     uint8_t  TintBlue                   = 180u; // [0-255]- Primary preview tint B
     uint8_t  ReadOnlyProtected          = 1u;   // [0/1]  - Non-zero for read-only EngineContent stock entries
-    uint8_t  ReservedAlignment[18]      {};     // [-]    - Zero-filled padding to exact 64-byte cache line
+    uint8_t  MatCapPresetMarker         = 0u;   // [0/1]  - Non-zero when Material entry represents a Studio MatCap sphere
+    uint8_t  MatCapSlotOrdinal          = 0u;   // [0-15] - Studio MatCap atlas slot ordinal (0..15)
+    uint8_t  ReservedAlignment[16]      {};     // [-]    - Zero-filled padding to exact 64-byte cache line
 };
 static_assert(sizeof(ContentIndexEntry64) == 64u, "ContentIndexEntry64 must occupy exactly 64 bytes");
 
@@ -170,6 +172,12 @@ public:
         const std::filesystem::path& DiskPath = {},
         bool                         BakeImmediately = true);
 
+    std::size_t RegisterStudioMatCapEntry(
+        uint8_t                      MatCapSlot,
+        std::string_view             DisplayTitle,
+        ColorRgba                    PreviewTint,
+        std::span<const uint8_t>     StudioAtlasRgba);
+
     [[nodiscard]] bool SaveBinaryIndexAndSheets(
         const std::filesystem::path& IndexFilePath,
         const std::filesystem::path& SheetFilePath,
@@ -196,7 +204,8 @@ public:
         WorkspaceCategory Workspace,
         ContentCategory Category,
         ContentOriginFilter Origin,
-        std::string_view    SearchQuery = {}) const;
+        std::string_view    SearchQuery         = {},
+        bool                MatCapMaterialsOnly = false) const;
 
     [[nodiscard]] std::span<const ContentRepositoryEntry> QueryAllEntries() const noexcept;
     [[nodiscard]] const ContentRepositoryEntry*           QueryEntryAt(std::size_t EntryIndex) const noexcept;

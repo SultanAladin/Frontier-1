@@ -78,7 +78,7 @@ PixelSpace::PixelSpace(ImDrawList *CanvasTarget, Point2D SurfaceOrigin, float Su
     : CanvasBuffer(CanvasTarget)
     , Origin(SurfaceOrigin)
     , Scale(SurfaceScale > 0.01f ? SurfaceScale : 1.0f)
-    , ActiveTypeface(DefaultTypeface ? DefaultTypeface : ImGui::GetFont())
+    , ActiveTypeface(DefaultTypeface ? DefaultTypeface : (ImGui::GetCurrentContext() ? ImGui::GetFont() : nullptr))
 {
 }
 
@@ -227,7 +227,7 @@ void PixelSpace::Text(Point2D Position, float PixelSize, ColorRgba Ink, const ch
 {
     if (!CanvasBuffer || !Utf8 || Ink.Alpha == 0 || PixelSize <= 0.0f)
         return;
-    ImFont *Font = ActiveTypeface ? ActiveTypeface : ImGui::GetFont();
+    ImFont *Font = ActiveTypeface ? ActiveTypeface : (ImGui::GetCurrentContext() ? ImGui::GetFont() : nullptr);
     if (!Font)
         return;
     const Point2D Phys = ToPhysical(Position);
@@ -245,7 +245,7 @@ void PixelSpace::TextVerticalUp(
     {
         return;
     }
-    ImFont* Font = ActiveTypeface ? ActiveTypeface : ImGui::GetFont();
+    ImFont* Font = ActiveTypeface ? ActiveTypeface : (ImGui::GetCurrentContext() ? ImGui::GetFont() : nullptr);
     if (!Font)
     {
         return;
@@ -287,7 +287,7 @@ Point2D PixelSpace::MeasureText(float PixelSize, const char *Utf8, const char *U
 {
     if (!Utf8 || PixelSize <= 0.0f)
         return {};
-    ImFont *Font = ActiveTypeface ? ActiveTypeface : ImGui::GetFont();
+    ImFont *Font = ActiveTypeface ? ActiveTypeface : (ImGui::GetCurrentContext() ? ImGui::GetFont() : nullptr);
     if (!Font)
         return {};
     const ImVec2 Raw = Font->CalcTextSizeA(PixelSize * Scale, 1.0e9f, 0.0f, Utf8, Utf8End);

@@ -64,12 +64,13 @@ enum class EdgeAttributeMask : uint8_t
 
 struct FaceShadingAssignment
 {
-    Mathematics::Scalar3D AlbedoLinearRGB { 0.30f, 0.49f, 0.79f }; // [0-1]  - Per-face linear RGB reflectance
-    float                 Metallic        = 0.60f;                 // [0-1]  - Metallic response
-    float                 Roughness       = 0.24f;                 // [0-1]  - Microfacet roughness
-    float                 Specular        = 0.68f;                 // [0-1]  - Dielectric F0 specular response
-    float                 MatCapBlend     = 0.62f;                 // [0-1]  - Blend weight in Material+MatCap mode
-    uint8_t               MatCapSlot      = 5u;                    // [0-15] - Procedural engineering MatCap slot
+    Mathematics::Scalar3D AlbedoLinearRGB     { 0.30f, 0.49f, 0.79f }; // [0-1]  - Independent per-face surface Albedo Colour (linear RGB)
+    Mathematics::Scalar3D MatCapTintLinearRGB { 1.00f, 1.00f, 1.00f }; // [0-1]  - Independent per-face Studio MatCap tint colour (linear RGB)
+    float                 Metallic            = 0.60f;                 // [0-1]  - Metallic response
+    float                 Roughness           = 0.24f;                 // [0-1]  - Microfacet roughness
+    float                 Specular            = 0.68f;                 // [0-1]  - Dielectric F0 specular response
+    float                 MatCapBlend         = 0.62f;                 // [0-1]  - Blend weight in Material+MatCap mode
+    uint8_t               MatCapSlot          = 5u;                    // [0-15] - Procedural engineering MatCap slot
 };
 
 struct Vertex

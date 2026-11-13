@@ -272,4 +272,28 @@ std::vector<uint32_t> ComponentSelectionMask::CollectSelectedEdges() const
     return Out;
 }
 
+void ComponentSelectionMask::LoadPackedFaceWords(std::span<const uint32_t> Words) noexcept
+{
+    std::fill(FaceBits.begin(), FaceBits.end(), 0u);
+    const std::size_t CopyCount = std::min(FaceBits.size(), Words.size());
+    for (std::size_t WordIdx = 0u; WordIdx < CopyCount; ++WordIdx)
+    {
+        FaceBits[WordIdx] = Words[WordIdx];
+    }
+    if (!FaceBits.empty() && (FaceCapacity & 31u) != 0u)
+    {
+        const uint32_t TailMask = (1u << (FaceCapacity & 31u)) - 1u;
+        FaceBits.back() &= TailMask;
+    }
+    ActiveFaceIndex = InvalidNetworkIndex;
+    for (uint32_t Idx = 0u; Idx < FaceCapacity; ++Idx)
+    {
+        if (QueryFaceSelected(Idx))
+        {
+            ActiveFaceIndex = Idx;
+            break;
+        }
+    }
+}
+
 } // namespace Frontier::GeometrySpace

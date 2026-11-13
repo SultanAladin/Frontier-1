@@ -13,6 +13,7 @@
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 #include "Engine/Workspaces/UV/UVWorkspaceSession.h"
 
+#include <utility>
 #include <vector>
 
 namespace Frontier::Workspaces
@@ -56,6 +57,9 @@ private:
     std::vector<float>   CachedIslandUVArea {};
     float               CachedUtilizationPct    = 0.0f;
     float               CachedStretchCautionPct = 0.0f;
+    std::vector<std::pair<uint16_t, Rectangle2D>> RenderedLayerSlotBounds {};
+    std::vector<uint16_t> PreviouslyRegisteredLayerOrdinals {};
+    uint64_t            HeadlessTickSequence    = 0u;
 };
 
 } // namespace Frontier::Workspaces

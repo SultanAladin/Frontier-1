@@ -10,6 +10,7 @@
 #include "Engine/Workspaces/UV/UVViewportInteractor.h"
 
 #include "Engine/Constants/MathConstants.h"
+#include "Engine/Workspaces/UV/UVPaneAppearance.h"
 
 #include <algorithm>
 #include <cctype>
@@ -73,9 +74,67 @@ void UVViewportInteractor::AttachSession(UVWorkspaceSession* TargetSession) noex
     ModalMode          = ModalUVTransformMode::Inactive;
     ActiveRegionTool   = RegionSelectTool::Inactive;
     RegionStrokeActive = false;
+    RegionTargetPlanar = true;
+    RegionHoverValid   = false;
 }
 
-void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading& Interaction)
+void UVViewportInteractor::ActivateBoxMarquee(bool Active) noexcept
+{
+    RegionStrokeActive = false;
+    RegionHoverValid   = false;
+    ActiveRegionTool   = Active ? RegionSelectTool::BoxMarquee : RegionSelectTool::Inactive;
+    if (Session != nullptr)
+    {
+        if (Active)
+        {
+            Session->SeamBrushActive = false;
+        }
+        Session->StatusBannerText = Active
+            ? "GPU Box Marquee Active [B]  |  Drag to Select"
+            : "Selection Tool Active";
+        Session->FramebuffersDirty = true;
+    }
+}
+
+void UVViewportInteractor::ActivateCircleBrush(bool Active) noexcept
+{
+    RegionStrokeActive = false;
+    RegionHoverValid   = false;
+    ActiveRegionTool   = Active ? RegionSelectTool::CircleBrush : RegionSelectTool::Inactive;
+    if (Session != nullptr)
+    {
+        if (Active)
+        {
+            Session->SeamBrushActive = false;
+        }
+        Session->StatusBannerText = Active
+            ? "GPU Circle Brush Active [C]  |  Wheel Adjusts Radius"
+            : "Selection Tool Active";
+        Session->FramebuffersDirty = true;
+    }
+}
+
+void UVViewportInteractor::ResetActiveTools() noexcept
+{
+    ActiveRegionTool   = RegionSelectTool::Inactive;
+    RegionStrokeActive = false;
+    RegionHoverValid   = false;
+}
+
+Rectangle2D UVViewportInteractor::QueryMarqueeOverlayRect() const noexcept
+{
+    if (!RegionStrokeActive || ActiveRegionTool != RegionSelectTool::BoxMarquee)
+    {
+        return {};
+    }
+    const float MinX = std::min(MarqueeAnchorLocalX, LastRegionCursorLogical.X);
+    const float MinY = std::min(MarqueeAnchorLocalY, LastRegionCursorLogical.Y);
+    const float MaxX = std::max(MarqueeAnchorLocalX, LastRegionCursorLogical.X);
+    const float MaxY = std::max(MarqueeAnchorLocalY, LastRegionCursorLogical.Y);
+    return { MinX, MinY, std::max(1.0f, MaxX - MinX), std::max(1.0f, MaxY - MinY) };
+}
+
+void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading& Interaction, uint64_t HistoryTickSequence)
 {
     if (Session == nullptr)
     {
@@ -89,8 +148,19 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
     const bool    InsidePlanar  = (Interaction.PlanarBounds.Width > 1.0f) && Interaction.PlanarBounds.Contains(Cursor);
     const bool    InsideSpatial = (Interaction.SpatialBounds.Width > 1.0f) && Interaction.SpatialBounds.Contains(Cursor);
 
+    const uint64_t ResolvedSeq = (HistoryTickSequence != 0u) ? HistoryTickSequence : ++FallbackTickSequence;
+    bool WantsUndo = false;
+    bool WantsRedo = false;
+    UVAppearance::ResolveHistoryShortcuts(Input, WantsUndo, WantsRedo);
+    if (ModalMode == ModalUVTransformMode::Inactive &&
+        Session->TryConsumeGlobalHistoryShortcut(WantsUndo, WantsRedo, false, ResolvedSeq))
+    {
+        return;
+    }
+
     auto& Proj = Session->AccessViewportProjection();
     Session->SpatialNavigationActive = false;
+    RegionHoverValid = false;
 
     const auto& Calib     = Session->AxisCalibration;
     const float SensScale = std::clamp(Calib.PointerSensitivityPercent / 50.0f, 0.10f, 4.0f);
@@ -215,39 +285,14 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
     if (Input.EscapePressed)
     {
         ActiveRegionTool          = RegionSelectTool::Inactive;
+        RegionStrokeActive        = false;
+        RegionHoverValid          = false;
         Session->SeamBrushActive  = false;
+        Session->Gizmo2D.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
+        Session->Gizmo3D.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
         Session->StatusBannerText = "Cleared Active Viewport Tool";
+        Session->FramebuffersDirty = true;
         return;
-    }
-
-    if (Input.ShortcutRedo)
-    {
-        (void)Session->RedoParameterization();
-        return;
-    }
-    if (Input.ShortcutUndo)
-    {
-        (void)Session->UndoParameterization();
-        return;
-    }
-
-    if (Input.ControlHeld && !Input.AltHeld)
-    {
-        for (const char Ch : Input.TypedUtf8)
-        {
-            if (Ch == 'z' || Ch == 'Z')
-            {
-                if (Input.ShiftHeld)
-                {
-                    (void)Session->RedoParameterization();
-                }
-                else
-                {
-                    (void)Session->UndoParameterization();
-                }
-                return;
-            }
-        }
     }
 
     for (const char RawCh : Input.TypedUtf8)
@@ -282,27 +327,23 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
             case 'k':
                 Session->SeamBrushActive  = !Session->SeamBrushActive;
                 ActiveRegionTool          = RegionSelectTool::Inactive;
+                RegionStrokeActive        = false;
+                if (Session->SeamBrushActive)
+                {
+                    Session->WorkspaceConfig.AccessUVPreferences().SeamOverlayEnabled = true;
+                    Session->RenderOptions2D.SeamOverlayEnabled = true;
+                    Session->RenderOptions3D.SeamOverlayEnabled = true;
+                }
+                Session->FramebuffersDirty = true;
                 Session->StatusBannerText = Session->SeamBrushActive
                     ? "Seam Brush Active [K]  |  Click Edges to Mark, Alt+Click to Clear, Ctrl+Click Loop"
                     : "Seam Brush Disabled";
                 break;
             case 'b':
-                ActiveRegionTool = (ActiveRegionTool == RegionSelectTool::BoxMarquee)
-                    ? RegionSelectTool::Inactive
-                    : RegionSelectTool::BoxMarquee;
-                Session->SeamBrushActive  = false;
-                Session->StatusBannerText = (ActiveRegionTool == RegionSelectTool::BoxMarquee)
-                    ? "GPU Box Marquee Active [B]  |  Drag to Select"
-                    : "Box Marquee Disabled";
+                ActivateBoxMarquee(ActiveRegionTool != RegionSelectTool::BoxMarquee);
                 break;
             case 'c':
-                ActiveRegionTool = (ActiveRegionTool == RegionSelectTool::CircleBrush)
-                    ? RegionSelectTool::Inactive
-                    : RegionSelectTool::CircleBrush;
-                Session->SeamBrushActive  = false;
-                Session->StatusBannerText = (ActiveRegionTool == RegionSelectTool::CircleBrush)
-                    ? "GPU Circle Brush Active [C]  |  Wheel Adjusts Radius"
-                    : "Circle Brush Disabled";
+                ActivateCircleBrush(ActiveRegionTool != RegionSelectTool::CircleBrush);
                 break;
             case 'l':
                 if (Session->LastHoverHit.HitSurfaceFace())
@@ -611,73 +652,144 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
             Session->Gizmo3D.EndDragInteraction();
             DraggingGizmo3D = false;
             DragBaselineObjectVertices.clear();
+            Session->FinalizeInteractiveUVRevision("Gizmo3DTransform");
             Session->FramebuffersDirty = true;
         }
         return;
     }
 
-    if (!InsidePlanar && !InsideSpatial)
-    {
-        return;
-    }
-
     //--------------------------------------------------------------------------------------------------------------------
-    // Region Marquee [B] & Circle Brush [C]
+    // Region Marquee [B] & Circle Brush [C] (handles continuation even if cursor drags outside viewport before release)
     //--------------------------------------------------------------------------------------------------------------------
-    if (ActiveRegionTool != RegionSelectTool::Inactive)
+    if (ActiveRegionTool != RegionSelectTool::Inactive &&
+        (RegionStrokeActive || InsidePlanar || InsideSpatial))
     {
-        const auto& Bounds = InsidePlanar ? Interaction.PlanarBounds : Interaction.SpatialBounds;
-        const float LocalX = std::clamp(Input.PrimaryPointer.X - Bounds.X, 0.0f, Bounds.Width - 1.0f);
-        const float LocalY = std::clamp(Input.PrimaryPointer.Y - Bounds.Y, 0.0f, Bounds.Height - 1.0f);
+        const bool UsePlanar = RegionStrokeActive ? RegionTargetPlanar : InsidePlanar;
+        const auto& Bounds   = UsePlanar ? Interaction.PlanarBounds : Interaction.SpatialBounds;
+        const uint32_t FbW   = UsePlanar
+            ? std::max(1u, Session->Framebuffer2DWidth > 0u ? Session->Framebuffer2DWidth : Rast->Query2DWidthPx())
+            : std::max(1u, Session->Framebuffer3DWidth > 0u ? Session->Framebuffer3DWidth : Rast->Query3DWidthPx());
+        const uint32_t FbH   = UsePlanar
+            ? std::max(1u, Session->Framebuffer2DHeight > 0u ? Session->Framebuffer2DHeight : Rast->Query2DHeightPx())
+            : std::max(1u, Session->Framebuffer3DHeight > 0u ? Session->Framebuffer3DHeight : Rast->Query3DHeightPx());
 
-        if (ActiveRegionTool == RegionSelectTool::CircleBrush && Input.PrimaryPointer.Down)
+        const float ScaleX = static_cast<float>(FbW) / std::max(1.0f, Bounds.Width);
+        const float ScaleY = static_cast<float>(FbH) / std::max(1.0f, Bounds.Height);
+
+        auto ToFramebufferX = [&](float LogicalX) noexcept -> uint32_t
         {
-            const uint32_t MinX = static_cast<uint32_t>(std::max(0.0f, LocalX - BrushRadiusPixels));
-            const uint32_t MinY = static_cast<uint32_t>(std::max(0.0f, LocalY - BrushRadiusPixels));
-            const uint32_t MaxX = static_cast<uint32_t>(LocalX + BrushRadiusPixels);
-            const uint32_t MaxY = static_cast<uint32_t>(LocalY + BrushRadiusPixels);
-            const auto Summary  = InsidePlanar
-                ? Rast->Reduce2DRegionPick(MinX, MinY, MaxX, MaxY, static_cast<uint32_t>(BrushRadiusPixels), true)
-                : Rast->Reduce3DRegionPick(MinX, MinY, MaxX, MaxY, static_cast<uint32_t>(BrushRadiusPixels), true);
-            if (Summary.HitPixelCount > 0u)
+            const float Local = std::clamp(LogicalX - Bounds.X, 0.0f, std::max(0.0f, Bounds.Width - 1.0f));
+            return static_cast<uint32_t>(std::clamp(Local * ScaleX, 0.0f, static_cast<float>(FbW - 1u)));
+        };
+        auto ToFramebufferY = [&](float LogicalY) noexcept -> uint32_t
+        {
+            const float Local = std::clamp(LogicalY - Bounds.Y, 0.0f, std::max(0.0f, Bounds.Height - 1.0f));
+            return static_cast<uint32_t>(std::clamp(Local * ScaleY, 0.0f, static_cast<float>(FbH - 1u)));
+        };
+
+        auto SyncReadbackToSession = [&]()
+        {
+            const auto PackedWords = Rast->ReadbackSelectionBitmaskWords();
+            Session->SelectionMask.SynchronizeCapacity(Session->Asset.Network);
+            Session->SelectionMask.SynchronizeCapacity(Session->Asset.Network);
+            Session->SelectionMask.LoadPackedFaceWords(PackedWords);
+            Session->SelectionMode = UVSelectionMode::Faces;
+            Session->SpatialSelectionActive = (Session->SelectionMask.CountSelectedFaces() > 0u);
+            Session->RefreshGizmoAnchorsFromSelection();
+            Session->SynchronizeSelectionToGPU();
+            Session->FramebuffersDirty      = true;
+        };
+
+        if (ActiveRegionTool == RegionSelectTool::CircleBrush)
+        {
+            LastRegionCursorLogical = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+            RegionTargetPlanar      = UsePlanar;
+            RegionHoverValid        = InsidePlanar || InsideSpatial;
+
+            if (Input.PrimaryPointer.Pressed || (Input.PrimaryPointer.Down && (InsidePlanar || InsideSpatial)))
             {
-                Session->SelectionMode     = UVSelectionMode::Faces;
-                Session->FramebuffersDirty = true;
+                if (Input.PrimaryPointer.Pressed && !Input.ShiftHeld)
+                {
+                    (void)Rast->DispatchGPUSelection(GeometricRaster::GPUSelectionOperation::ClearAll, 0u, false);
+                }
+                const float LocalX  = std::clamp(Input.PrimaryPointer.X - Bounds.X, 0.0f, std::max(0.0f, Bounds.Width - 1.0f));
+                const float LocalY  = std::clamp(Input.PrimaryPointer.Y - Bounds.Y, 0.0f, std::max(0.0f, Bounds.Height - 1.0f));
+                const uint32_t Cx   = ToFramebufferX(Input.PrimaryPointer.X);
+                const uint32_t Cy   = ToFramebufferY(Input.PrimaryPointer.Y);
+                const uint32_t MinX = static_cast<uint32_t>(std::clamp((LocalX - BrushRadiusPixels) * ScaleX, 0.0f, static_cast<float>(FbW - 1u)));
+                const uint32_t MinY = static_cast<uint32_t>(std::clamp((LocalY - BrushRadiusPixels) * ScaleY, 0.0f, static_cast<float>(FbH - 1u)));
+                const uint32_t MaxX = static_cast<uint32_t>(std::clamp((LocalX + BrushRadiusPixels) * ScaleX, 0.0f, static_cast<float>(FbW - 1u)));
+                const uint32_t MaxY = static_cast<uint32_t>(std::clamp((LocalY + BrushRadiusPixels) * ScaleY, 0.0f, static_cast<float>(FbH - 1u)));
+                const uint32_t RadiusPx = static_cast<uint32_t>(std::max(1.0f, BrushRadiusPixels * std::max(ScaleX, ScaleY)));
+
+                const auto Summary = UsePlanar
+                    ? Rast->Reduce2DRegionPick(MinX, MinY, MaxX, MaxY, Cx, Cy, RadiusPx)
+                    : Rast->Reduce3DRegionPick(MinX, MinY, MaxX, MaxY, Cx, Cy, RadiusPx);
+                if (Summary.HitPixelCount > 0u || Input.PrimaryPointer.Pressed)
+                {
+                    SyncReadbackToSession();
+                }
+                RegionStrokeActive = Input.PrimaryPointer.Down;
+            }
+            else if (!Input.PrimaryPointer.Down)
+            {
+                RegionStrokeActive = false;
             }
             return;
         }
 
         if (ActiveRegionTool == RegionSelectTool::BoxMarquee)
         {
-            if (Input.PrimaryPointer.Pressed)
+            if (Input.PrimaryPointer.Pressed && (InsidePlanar || InsideSpatial))
             {
-                RegionStrokeActive  = true;
-                MarqueeAnchorLocalX = LocalX;
-                MarqueeAnchorLocalY = LocalY;
+                RegionStrokeActive      = true;
+                RegionTargetPlanar      = InsidePlanar;
+                MarqueeAnchorLocalX     = Input.PrimaryPointer.X;
+                MarqueeAnchorLocalY     = Input.PrimaryPointer.Y;
+                LastRegionCursorLogical = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
             }
-            else if (RegionStrokeActive && Input.PrimaryPointer.Released)
+            else if (RegionStrokeActive && Input.PrimaryPointer.Down)
             {
-                RegionStrokeActive  = false;
-                const uint32_t MinX = static_cast<uint32_t>(std::min(MarqueeAnchorLocalX, LocalX));
-                const uint32_t MinY = static_cast<uint32_t>(std::min(MarqueeAnchorLocalY, LocalY));
-                const uint32_t MaxX = static_cast<uint32_t>(std::max(MarqueeAnchorLocalX, LocalX));
-                const uint32_t MaxY = static_cast<uint32_t>(std::max(MarqueeAnchorLocalY, LocalY));
-                const auto Summary = InsidePlanar
-                    ? Rast->Reduce2DRegionPick(MinX, MinY, MaxX, MaxY, 0u, Input.ShiftHeld)
-                    : Rast->Reduce3DRegionPick(MinX, MinY, MaxX, MaxY, 0u, Input.ShiftHeld);
+                LastRegionCursorLogical = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+            }
+            else if (RegionStrokeActive && (Input.PrimaryPointer.Released || !Input.PrimaryPointer.Down))
+            {
+                LastRegionCursorLogical = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+                RegionStrokeActive      = false;
+
+                if (!Input.ShiftHeld)
+                {
+                    (void)Rast->DispatchGPUSelection(GeometricRaster::GPUSelectionOperation::ClearAll, 0u, false);
+                }
+
+                const uint32_t Ax = ToFramebufferX(MarqueeAnchorLocalX);
+                const uint32_t Ay = ToFramebufferY(MarqueeAnchorLocalY);
+                const uint32_t Bx = ToFramebufferX(Input.PrimaryPointer.X);
+                const uint32_t By = ToFramebufferY(Input.PrimaryPointer.Y);
+                const uint32_t MinX = std::min(Ax, Bx);
+                const uint32_t MinY = std::min(Ay, By);
+                const uint32_t MaxX = std::max(Ax, Bx);
+                const uint32_t MaxY = std::max(Ay, By);
+
+                const auto Summary = UsePlanar
+                    ? Rast->Reduce2DRegionPick(MinX, MinY, MaxX, MaxY, 0u, 0u, 0u)
+                    : Rast->Reduce3DRegionPick(MinX, MinY, MaxX, MaxY, 0u, 0u, 0u);
                 if (Summary.HitPixelCount == 0u && !Input.ShiftHeld)
                 {
                     Session->ClearViewportSelection();
                 }
                 else
                 {
-                    Session->SpatialSelectionActive = true;
-                    Session->SelectionMode          = UVSelectionMode::Faces;
-                    Session->FramebuffersDirty      = true;
+                    SyncReadbackToSession();
                 }
             }
             return;
         }
+    }
+
+    if (!InsidePlanar && !InsideSpatial)
+    {
+        return;
     }
 
     //--------------------------------------------------------------------------------------------------------------------
@@ -736,6 +848,8 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
             Input.AltHeld);
         if (Modified > 0u)
         {
+            Session->WorkspaceConfig.AccessUVPreferences().SeamOverlayEnabled = true;
+            (void)Session->ApplyLiveUnwrapIfEnabled();
             Session->FinalizeInteractiveUVRevision("SeamBrushStroke");
         }
         return;

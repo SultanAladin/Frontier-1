@@ -14,6 +14,7 @@
 #include "Engine/Workspaces/UV/UVWorkspaceSession.h"
 
 #include <array>
+#include <string>
 
 namespace Frontier::Workspaces
 {
@@ -59,6 +60,13 @@ private:
     bool                ShadingModeDropdownOpen = false;
     bool                LayerColorPickerOpen = false;
     bool                LiveUnwrapEnabled = false;
+    bool                ShareSliderDragging = false;
+    bool                SurfaceSliderDragging = false;
+    std::string         PreEditLayerName {};
+    Rectangle2D         LastMatCapGridLogical {};
+    Rectangle2D         LastAlbedoButtonLogical {};
+    Rectangle2D         LastMatCapTintButtonLogical {};
+    uint64_t            HeadlessTickSequence = 0u;
 };
 
 } // namespace Frontier::Workspaces

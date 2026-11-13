@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/Configuration/BuildConfiguration.h"
 #include "Engine/Configuration/EngineConfiguration.h"
@@ -35,6 +36,7 @@ public:
     void ConfigureLaunchPolicy(const Configuration::EngineConfiguration& Config) noexcept;
     [[nodiscard]] bool AttachVulkanRasterizer(GeometricRaster::UVWorkspaceRasterizer* BoundRasterizer);
 
+    void AttachContentBrowserPanel(ContentBrowserPanel* TargetPanel);
 #if FRONTIER_EDITOR_ENABLED
     void AttachContentBrowser(Editor::Explorer::ContentBrowser* TargetBrowser);
 #endif
@@ -59,6 +61,7 @@ private:
     UVViewportHost                     ViewportHost       {};
     UVInspectorPanel                   Inspector          {};
     uint32_t                           RegisteredTabCount = 0u;
+    ContentBrowserPanel*               BoundBrowserPanel  = nullptr;
 #if FRONTIER_EDITOR_ENABLED
     Editor::Explorer::ContentBrowser*  BoundBrowser       = nullptr;
 #endif

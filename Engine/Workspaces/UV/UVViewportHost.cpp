@@ -9,6 +9,7 @@
 
 #include "Engine/Workspaces/UV/UVViewportHost.h"
 
+#include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/Controls/ControlTooltip.h"
 #include "Engine/Components/Controls/DropdownSelector.h"
 #include "Engine/Workspaces/UV/Solvers/SeamCutGenerator.h"
@@ -97,7 +98,7 @@ void UVViewportHost::AttachSession(UVWorkspaceSession* TargetSession) noexcept
     ProjectionPane.AssignInteractionCallback(
         [this](const ViewportInteractionReading& Reading)
         {
-            Interactor.ProcessViewportInput(Reading);
+            Interactor.ProcessViewportInput(Reading, ActiveHistoryTickSeq);
         });
 
     ProjectionPane.AssignSplitModeCallback(
@@ -193,6 +194,16 @@ void UVViewportHost::Render(
     {
         Surface.PopClip();
         return;
+    }
+
+    ActiveHistoryTickSeq = (ImGui::GetCurrentContext() != nullptr)
+        ? (static_cast<uint64_t>(ImGui::GetFrameCount()) + 1ull)
+        : ++HeadlessHistorySeq;
+    {
+        bool WantsUndo = false;
+        bool WantsRedo = false;
+        ResolveHistoryShortcuts(Input, WantsUndo, WantsRedo);
+        (void)Session->TryConsumeGlobalHistoryShortcut(WantsUndo, WantsRedo, false, ActiveHistoryTickSeq);
     }
 
     SynchronizeProjectionPolicy();
@@ -739,6 +750,39 @@ void UVViewportHost::Render(
     Rectangle2D PlanarRect  {};
     Rectangle2D SpatialRect {};
     ProjectionPane.RenderViewportCanvas(Surface, CanvasBounds, Input, !PointerOverOverlayControls, &PlanarRect, &SpatialRect);
+    LastSpatialRectLogical = SpatialRect;
+
+    // Live Marquee [B] & Circle Brush [C] viewport overlays
+    {
+        Surface.PushClip(CanvasBounds);
+        if (Interactor.QueryRegionStrokeActive() &&
+            Interactor.QueryRegionSelectTool() == RegionSelectTool::BoxMarquee)
+        {
+            const Rectangle2D Marquee = Interactor.QueryMarqueeOverlayRect();
+            const Rectangle2D SubClip = Interactor.QueryRegionStrokePlanar() ? PlanarRect : SpatialRect;
+            if (SubClip.Width > 1.0f && SubClip.Height > 1.0f)
+            {
+                Surface.PushClip(SubClip);
+                Surface.FillRectangle(Marquee, Theme.AccentSoft, 2.0f);
+                Surface.StrokeRectangle(Marquee, Theme.AccentBorder, 2.0f, 1.5f);
+                Surface.PopClip();
+            }
+        }
+        else if (Interactor.QueryRegionBrushHoverActive())
+        {
+            const Point2D BrushCenter = Interactor.QueryBrushOverlayCenter();
+            const float   BrushRadius = Interactor.QueryBrushRadiusPixels();
+            const Rectangle2D SubClip = PlanarRect.Contains(BrushCenter) ? PlanarRect : SpatialRect;
+            if (SubClip.Width > 1.0f && SubClip.Height > 1.0f)
+            {
+                Surface.PushClip(SubClip);
+                Surface.FillCircle(BrushCenter, BrushRadius, ColorRgba{ Theme.AccentBorder.Red, Theme.AccentBorder.Green, Theme.AccentBorder.Blue, 32u });
+                Surface.StrokeCircle(BrushCenter, BrushRadius, Theme.AccentBorder, 1.5f);
+                Surface.PopClip();
+            }
+        }
+        Surface.PopClip();
+    }
 
     // Subtle viewport corner indicators
     if (PlanarRect.Width >= 140.0f)
@@ -764,6 +808,34 @@ void UVViewportHost::Render(
 
     // 3a. Authoring Tool Rail (Left vertical rail by default; toggleable to Bottom horizontal dock via More shelf)
     {
+        auto SyncActiveRailSlotFromState = [&]() noexcept
+        {
+            if (Session->SeamBrushActive)
+            {
+                ActiveRailSlot = 7u;
+            }
+            else if (Interactor.QueryRegionSelectTool() == RegionSelectTool::BoxMarquee)
+            {
+                ActiveRailSlot = 1u;
+            }
+            else if (Interactor.QueryRegionSelectTool() == RegionSelectTool::CircleBrush)
+            {
+                ActiveRailSlot = 2u;
+            }
+            else
+            {
+                switch (Session->Gizmo2D.QueryHandleFilter())
+                {
+                    case Editor::GizmoHandleFilter::TranslateOnly: ActiveRailSlot = 3u; break;
+                    case Editor::GizmoHandleFilter::RotateOnly:    ActiveRailSlot = 4u; break;
+                    case Editor::GizmoHandleFilter::ScaleOnly:     ActiveRailSlot = 5u; break;
+                    case Editor::GizmoHandleFilter::Universal:
+                    default:                                       ActiveRailSlot = 0u; break;
+                }
+            }
+        };
+        SyncActiveRailSlotFromState();
+
         Surface.FillRectangle(RailBounds, ColorRgba{ 20, 20, 22, 226 }, 19.0f);
         Surface.StrokeRectangle(RailBounds, ColorRgba{ 255, 255, 255, 28 }, 19.0f, 1.0f);
 
@@ -838,18 +910,65 @@ void UVViewportHost::Render(
             {
                 switch (Slot)
                 {
-                    case 0u: ActiveRailSlot = 0u; Session->SeamBrushActive = false; break;
-                    case 1u: ActiveRailSlot = 1u; Session->SeamBrushActive = false; break;
-                    case 2u: ActiveRailSlot = 2u; Session->SeamBrushActive = false; break;
-                    case 3u: ActiveRailSlot = 3u; Session->SeamBrushActive = false; break;
-                    case 4u: ActiveRailSlot = 4u; Session->SeamBrushActive = false; break;
-                    case 5u: ActiveRailSlot = 5u; Session->SeamBrushActive = false; break;
-                    case 6u: (void)Session->ExecuteDirective(UVCommandDirective::SplitSelectedIsland, nullptr); break;
-                    case 7u: ActiveRailSlot = 7u; Session->SeamBrushActive = !Session->SeamBrushActive; break;
-                    case 8u: (void)Session->ExecuteDirective(UVCommandDirective::StitchSelectedSeams, nullptr); break;
-                    case 9u: (void)Session->ExecuteDirective(UVCommandDirective::PinSelectedUVs, nullptr);      break;
-                    default: (void)Session->ExecuteDirective(UVCommandDirective::RelaxStretchGPU, nullptr);     break;
+                    case 0u:
+                        Interactor.ResetActiveTools();
+                        Session->SeamBrushActive = false;
+                        Session->Gizmo2D.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
+                        Session->Gizmo3D.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
+                        Session->StatusBannerText = "Selection Tool Active";
+                        break;
+                    case 1u:
+                        Interactor.ActivateBoxMarquee(Interactor.QueryRegionSelectTool() != RegionSelectTool::BoxMarquee);
+                        break;
+                    case 2u:
+                        Interactor.ActivateCircleBrush(Interactor.QueryRegionSelectTool() != RegionSelectTool::CircleBrush);
+                        break;
+                    case 3u:
+                        Interactor.ResetActiveTools();
+                        Session->SeamBrushActive = false;
+                        Session->Gizmo2D.ConfigureHandleFilter(Editor::GizmoHandleFilter::TranslateOnly);
+                        Session->Gizmo3D.ConfigureHandleFilter(Editor::GizmoHandleFilter::TranslateOnly);
+                        Session->StatusBannerText = "Move Gizmo Active";
+                        break;
+                    case 4u:
+                        Interactor.ResetActiveTools();
+                        Session->SeamBrushActive = false;
+                        Session->Gizmo2D.ConfigureHandleFilter(Editor::GizmoHandleFilter::RotateOnly);
+                        Session->Gizmo3D.ConfigureHandleFilter(Editor::GizmoHandleFilter::RotateOnly);
+                        Session->StatusBannerText = "Rotate Gizmo Active";
+                        break;
+                    case 5u:
+                        Interactor.ResetActiveTools();
+                        Session->SeamBrushActive = false;
+                        Session->Gizmo2D.ConfigureHandleFilter(Editor::GizmoHandleFilter::ScaleOnly);
+                        Session->Gizmo3D.ConfigureHandleFilter(Editor::GizmoHandleFilter::ScaleOnly);
+                        Session->StatusBannerText = "Scale Gizmo Active";
+                        break;
+                    case 6u:
+                        (void)Session->ExecuteDirective(UVCommandDirective::SplitSelectedIsland, nullptr);
+                        break;
+                    case 7u:
+                        Session->SeamBrushActive = !Session->SeamBrushActive;
+                        if (Session->SeamBrushActive)
+                        {
+                            Interactor.ResetActiveTools();
+                            Session->WorkspaceConfig.AccessUVPreferences().SeamOverlayEnabled = true;
+                        }
+                        Session->StatusBannerText = Session->SeamBrushActive
+                            ? "Seam Brush Active [K]  |  Click Edges to Mark, Alt+Click to Clear, Ctrl+Click Loop"
+                            : "Seam Brush Disabled";
+                        break;
+                    case 8u:
+                        (void)Session->ExecuteDirective(UVCommandDirective::StitchSelectedSeams, nullptr);
+                        break;
+                    case 9u:
+                        (void)Session->ExecuteDirective(UVCommandDirective::PinSelectedUVs, nullptr);
+                        break;
+                    default:
+                        (void)Session->ExecuteDirective(UVCommandDirective::RelaxStretchGPU, nullptr);
+                        break;
                 }
+                SyncActiveRailSlotFromState();
                 Session->FramebuffersDirty = true;
             }
 
@@ -1174,10 +1293,101 @@ void UVViewportHost::PresentInImGuiPane(double Δt, float ScaleFactor)
 
     const Rectangle2D ScreenBounds{ WinPos.x, TopY, WinSize.x, PaneH };
     const Rectangle2D LogicalBounds{ 0.0f, 0.0f, WinSize.x / SafeScale, PaneH / SafeScale };
+    PaneScreenOrigin = { ScreenBounds.X, ScreenBounds.Y };
+    PaneScaleFactor  = SafeScale;
 
-    PixelSpace             Surface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
-    const PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+    PixelSpace       Surface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
+    PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+
+    if (Session != nullptr)
+    {
+        if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+        {
+            const Point2D PhysicalCursor {
+                ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
+                ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
+            };
+            if (Browser->QueryBlocksPointerAt(PhysicalCursor) &&
+                !Interactor.QueryRegionStrokeActive() &&
+                Interactor.QueryModalTransformMode() == ModalUVTransformMode::Inactive)
+            {
+                Input.PrimaryPointer.Enabled  = false;
+                Input.PrimaryPointer.Pressed  = false;
+                Input.PrimaryPointer.Down     = false;
+                Input.PrimaryPointer.Released = false;
+                Input.SecondaryPressed        = false;
+                Input.SecondaryDown           = false;
+                Input.MiddlePressed           = false;
+                Input.MiddleDown              = false;
+                Input.DoubleClicked           = false;
+                Input.WheelDeltaY             = 0.0f;
+            }
+        }
+    }
+
     Render(Surface, LogicalBounds, Input, Δt);
+
+    if (Session != nullptr)
+    {
+        if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+        {
+            Rectangle2D BrowserSpatialBounds {};
+            if (LastSpatialRectLogical.Width > 8.0f && LastSpatialRectLogical.Height > 8.0f)
+            {
+                const Rectangle2D PhysicalSpatial {
+                    PaneScreenOrigin.X + LastSpatialRectLogical.X * SafeScale,
+                    PaneScreenOrigin.Y + LastSpatialRectLogical.Y * SafeScale,
+                    LastSpatialRectLogical.Width * SafeScale,
+                    LastSpatialRectLogical.Height * SafeScale,
+                };
+                const float DrawerTopY = Browser->QueryDrawerTopPhysicalY();
+                if (PhysicalSpatial.Y < DrawerTopY)
+                {
+                    Rectangle2D ClippedPhysical = PhysicalSpatial;
+                    if (ClippedPhysical.Bottom() > DrawerTopY)
+                    {
+                        ClippedPhysical.Height = std::max(0.0f, DrawerTopY - ClippedPhysical.Y);
+                    }
+                    if (ClippedPhysical.Height >= 16.0f)
+                    {
+                        BrowserSpatialBounds = Browser->MapPhysicalToLogicalBounds(ClippedPhysical);
+                    }
+                }
+            }
+
+            Browser->RegisterMatCapSlot(MatCapSlotRegistration{
+                "uv.viewport3d.surface",
+                "3D Viewport Surface MatCap",
+                BrowserSpatialBounds,
+                [Sess = Session](uint8_t SlotOrdinal, const ContentRepositoryEntry&)
+                {
+                    if (Sess != nullptr)
+                    {
+                        Sess->ApplyMatCapToActiveSelection(SlotOrdinal, true);
+                    }
+                },
+            });
+            Browser->RegisterColourSlot(ColourSlotRegistration{
+                "uv.viewport3d.albedo_colour",
+                "3D Surface Albedo Colour",
+                BrowserSpatialBounds,
+                nullptr,
+                [Sess = Session](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                {
+                    if (Sess != nullptr)
+                    {
+                        Sess->ApplySurfaceAlbedoColour(
+                            {
+                                static_cast<float>(AssignedRgba.Red) / 255.0f,
+                                static_cast<float>(AssignedRgba.Green) / 255.0f,
+                                static_cast<float>(AssignedRgba.Blue) / 255.0f,
+                            },
+                            true);
+                    }
+                },
+            });
+        }
+    }
 }
 
 } // namespace Frontier::Workspaces

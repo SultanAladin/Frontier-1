@@ -30,6 +30,7 @@ struct alignas(16) GPUSurfaceVertex
     float    ShadingParams[4];
     uint32_t NetworkPickIDs[4];
     float    Barycentric[4];
+    float    MatCapTint[4];
 };
 
 struct alignas(16) GPUUVCanvasVertex
@@ -47,12 +48,14 @@ struct alignas(16) GPUViewport3DUniforms
     float    CameraUpAndSeam[4];
     float    CameraForwardAndLayer[4];
     uint32_t PickHighlightIDs[4];
+    float    LayerSwatches[16][4];
 };
 
 struct alignas(16) GPUCanvas2DUniforms
 {
     float    CanvasMinMaxUV[4];
     uint32_t OverlayAndPick[4];
+    float    LayerSwatches[16][4];
 };
 
 struct alignas(16) GPUGizmoUniforms
@@ -727,6 +730,28 @@ void UVWorkspaceRasterizer::ReleaseFramebufferTarget(MRTFramebufferTarget& Targe
 //                                      POLYGONNETWORK UPLOAD & GPU COMPUTE DISPATCH
 //------------------------------------------------------------------------------------------------------------------------
 
+void UVWorkspaceRasterizer::ConfigureLayerSwatches(
+    std::span<const GeometrySpace::PriorityAllocationLayer> Layers) noexcept
+{
+    LayerSwatches[0] = { 0.420f, 0.450f, 0.510f, 1.0f };
+    for (std::size_t Slot = 1u; Slot < LayerSwatches.size(); ++Slot)
+    {
+        LayerSwatches[Slot] = { 0.520f, 0.560f, 0.640f, 1.0f };
+    }
+    for (const GeometrySpace::PriorityAllocationLayer& Layer : Layers)
+    {
+        if (Layer.LayerOrdinal < LayerSwatches.size())
+        {
+            LayerSwatches[Layer.LayerOrdinal] = {
+                Layer.LinearTintRGB.X,
+                Layer.LinearTintRGB.Y,
+                Layer.LinearTintRGB.Z,
+                1.0f,
+            };
+        }
+    }
+}
+
 bool UVWorkspaceRasterizer::UploadPolygonNetwork(
     const GeometrySpace::PolygonNetwork& Network,
     uint32_t                             InstanceSlot)
@@ -795,6 +820,10 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
         GV.NormalAndV[2]     = GridUp.Z;
         GV.NetworkPickIDs[0] = 0u; // Ground Grid marker
         GV.NetworkPickIDs[1] = GeometrySpace::InvalidNetworkIndex;
+        GV.MatCapTint[0]     = 1.0f;
+        GV.MatCapTint[1]     = 1.0f;
+        GV.MatCapTint[2]     = 1.0f;
+        GV.MatCapTint[3]     = 1.0f;
         Verts3D.push_back(GV);
     }
     GroundGridVertexCount = 6u;
@@ -938,6 +967,10 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
                 SV.Barycentric[0]    = Barys[Corner][0];
                 SV.Barycentric[1]    = Barys[Corner][1];
                 SV.Barycentric[2]    = Barys[Corner][2];
+                SV.MatCapTint[0]     = CurrentFace.Shading.MatCapTintLinearRGB.X;
+                SV.MatCapTint[1]     = CurrentFace.Shading.MatCapTintLinearRGB.Y;
+                SV.MatCapTint[2]     = CurrentFace.Shading.MatCapTintLinearRGB.Z;
+                SV.MatCapTint[3]     = 1.0f;
                 Verts3D.push_back(SV);
 
                 GPUUVCanvasVertex UVV {};
@@ -1186,6 +1219,7 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
     Uniforms.CameraForwardAndLayer[3] = static_cast<float>(Options.ActiveLayerOrdinal);
     Uniforms.PickHighlightIDs[0]      = Options.HoveredFaceIndex;
     Uniforms.PickHighlightIDs[3]      = static_cast<uint32_t>(Options.Camera.Basis);
+    std::memcpy(Uniforms.LayerSwatches, LayerSwatches.data(), sizeof(Uniforms.LayerSwatches));
 
     const std::array<GPUViewport3DUniforms, 1u> UniSpan {{ Uniforms }};
     ComputeEncoder.UploadSpanToBuffer<GPUViewport3DUniforms>(Viewport3DUniformBuffer, UniSpan);
@@ -1397,6 +1431,7 @@ bool UVWorkspaceRasterizer::Rasterize2DUVCanvas(
     Uniforms.OverlayAndPick[1] = OverlayBits;
     Uniforms.OverlayAndPick[2] = Options.ActiveLayerOrdinal;
     Uniforms.OverlayAndPick[3] = Options.HoveredFaceIndex;
+    std::memcpy(Uniforms.LayerSwatches, LayerSwatches.data(), sizeof(Uniforms.LayerSwatches));
 
     const std::array<GPUCanvas2DUniforms, 1u> UniSpan {{ Uniforms }};
     ComputeEncoder.UploadSpanToBuffer<GPUCanvas2DUniforms>(Canvas2DUniformBuffer, UniSpan);

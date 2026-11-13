@@ -56,10 +56,23 @@ public:
 
     void AttachSession(UVWorkspaceSession* TargetSession) noexcept;
 
-    void ProcessViewportInput(const ViewportInteractionReading& Reading);
+    void ProcessViewportInput(const ViewportInteractionReading& Reading, uint64_t HistoryTickSequence = 0u);
+
+    void ActivateBoxMarquee(bool Active) noexcept;
+    void ActivateCircleBrush(bool Active) noexcept;
+    void ResetActiveTools() noexcept;
 
     [[nodiscard]] ModalUVTransformMode QueryModalTransformMode() const noexcept { return ModalMode; }
     [[nodiscard]] RegionSelectTool     QueryRegionSelectTool() const noexcept { return ActiveRegionTool; }
+    [[nodiscard]] bool                 QueryRegionStrokeActive() const noexcept { return RegionStrokeActive; }
+    [[nodiscard]] bool                 QueryRegionStrokePlanar() const noexcept { return RegionTargetPlanar; }
+    [[nodiscard]] bool                 QueryRegionBrushHoverActive() const noexcept
+    {
+        return ActiveRegionTool == RegionSelectTool::CircleBrush && RegionHoverValid;
+    }
+    [[nodiscard]] Rectangle2D          QueryMarqueeOverlayRect() const noexcept;
+    [[nodiscard]] Point2D              QueryBrushOverlayCenter() const noexcept { return LastRegionCursorLogical; }
+    [[nodiscard]] float                QueryBrushRadiusPixels() const noexcept { return BrushRadiusPixels; }
 
 private:
     void HandleKeyboardShortcuts(const ViewportInteractionReading& Reading, bool InsidePlanar, bool InsideSpatial);
@@ -86,9 +99,13 @@ private:
 
     RegionSelectTool      ActiveRegionTool     = RegionSelectTool::Inactive;
     bool                  RegionStrokeActive   = false;
+    bool                  RegionTargetPlanar   = true;
+    bool                  RegionHoverValid     = false;
     float                 MarqueeAnchorLocalX  = 0.0f;
     float                 MarqueeAnchorLocalY  = 0.0f;
+    Point2D               LastRegionCursorLogical {};
     float                 BrushRadiusPixels    = 22.0f;
+    uint64_t              FallbackTickSequence = 0u;
 };
 
 } // namespace Frontier::Workspaces

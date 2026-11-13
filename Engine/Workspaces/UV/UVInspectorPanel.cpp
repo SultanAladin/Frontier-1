@@ -9,6 +9,7 @@
 
 #include "Engine/Workspaces/UV/UVInspectorPanel.h"
 
+#include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/Controls/ControlTooltip.h"
 #include "Engine/Components/Controls/DropdownSelector.h"
 #include "Engine/Components/Controls/TextInputField.h"
@@ -177,7 +178,13 @@ void UVInspectorPanel::AttachSession(UVWorkspaceSession* TargetSession) noexcept
     PackingScopeDropdownOpen = false;
     ShadingModeDropdownOpen = false;
     LayerColorPickerOpen = false;
-    LiveUnwrapEnabled = false;
+    LiveUnwrapEnabled = (TargetSession != nullptr) ? TargetSession->LiveUnwrapEnabled : false;
+    ShareSliderDragging = false;
+    SurfaceSliderDragging = false;
+    PreEditLayerName.clear();
+    LastMatCapGridLogical       = {};
+    LastAlbedoButtonLogical     = {};
+    LastMatCapTintButtonLogical = {};
 }
 
 float UVInspectorPanel::RenderPackingTab(
@@ -311,11 +318,21 @@ float UVInspectorPanel::RenderPackingTab(
                     Surface, { SX, SY, SW, 46.0f }, "Space Share", ShareVal, NormShare, Theme, Cursor, Down, Pressed,
                     ColorRgba{ 0u, 0u, 0u, 0u }, ShareTip))
             {
-                Session->AdjustSelectedLayerShare(NormShare * 100.0f);
+                ShareSliderDragging = true;
+                Session->AdjustSelectedLayerShare(NormShare * 100.0f, false);
+            }
+            if (ShareSliderDragging && (Input.PrimaryPointer.Released || !Down))
+            {
+                ShareSliderDragging = false;
+                if (const auto* Updated = Session->Asset.Layers.InspectLayer(Session->SelectedLayerOrdinal))
+                {
+                    Session->AdjustSelectedLayerShare(Updated->TargetSharePercent, true);
+                }
             }
         }
         else
         {
+            ShareSliderDragging = false;
             float FixedNorm = RemPct * 0.01f;
             ConstructSliderControl(
                 Surface, { SX, SY, SW, 46.0f }, "Remainder Share (Auto)", RemStr, FixedNorm,
@@ -339,9 +356,16 @@ float UVInspectorPanel::RenderPackingTab(
             EditingLayerOrdinal = Session->SelectedLayerOrdinal;
             if (CurrentLayer != nullptr)
             {
+                PreEditLayerName = CurrentLayer->LayerTitle;
                 LayerNameEditor.Begin(CurrentLayer->LayerTitle.c_str());
                 LayerNameEditor.Active = false;
             }
+        }
+        else if (!LayerNameEditor.Active && CurrentLayer != nullptr && CurrentLayer->LayerTitle != LayerNameEditor.Text)
+        {
+            PreEditLayerName = CurrentLayer->LayerTitle;
+            LayerNameEditor.Begin(CurrentLayer->LayerTitle.c_str());
+            LayerNameEditor.Active = false;
         }
         const OptionalTooltip NameTip = OptionalTooltip::FromTitled(
             "Layer Name", "Rename the active priority layer. The updated name is shared with the UV outliner.");
@@ -349,6 +373,7 @@ float UVInspectorPanel::RenderPackingTab(
             Surface, NameBounds, LayerNameEditor, Input.PrimaryPointer, 11.5f, 1.0f, NameTip);
         if (NameContact.Clicked && CurrentLayer != nullptr)
         {
+            PreEditLayerName = CurrentLayer->LayerTitle;
             LayerNameEditor.Begin(CurrentLayer->LayerTitle.c_str());
             EditingLayerOrdinal = Session->SelectedLayerOrdinal;
         }
@@ -360,7 +385,9 @@ float UVInspectorPanel::RenderPackingTab(
                 LayerNameEditor.Cancel();
                 if (CurrentLayer != nullptr && EditingLayerOrdinal == Session->SelectedLayerOrdinal)
                 {
-                    Session->RenameSelectedLayer(LayerNameEditor.Text);
+                    Session->RenameSelectedLayer(PreEditLayerName.empty() ? LayerNameEditor.Text : PreEditLayerName, false);
+                    LayerNameEditor.Begin((PreEditLayerName.empty() ? std::string(LayerNameEditor.Text) : PreEditLayerName).c_str());
+                    LayerNameEditor.Active = false;
                 }
             }
             else if (Input.EnterPressed || (Input.PrimaryPointer.Pressed && !NameBounds.Contains(Cursor)))
@@ -370,11 +397,13 @@ float UVInspectorPanel::RenderPackingTab(
             if (LayerNameEditor.Active && CurrentLayer != nullptr && LayerNameEditor.Length > 0u &&
                 CurrentLayer->LayerTitle != LayerNameEditor.Text)
             {
-                Session->RenameSelectedLayer(LayerNameEditor.Text);
+                Session->RenameSelectedLayer(LayerNameEditor.Text, false);
             }
             if (LayerNameEditor.Finalized && CurrentLayer != nullptr)
             {
-                Session->RenameSelectedLayer(LayerNameEditor.Text);
+                const bool Changed = (PreEditLayerName != LayerNameEditor.Text);
+                Session->RenameSelectedLayer(LayerNameEditor.Text, Changed);
+                PreEditLayerName = CurrentLayer->LayerTitle;
                 LayerNameEditor.Finalized = false;
             }
         }
@@ -1014,7 +1043,7 @@ float UVInspectorPanel::RenderUnwrapTab(
         }};
         constexpr std::array<UVCommandDirective, 5u> ProjectionOps {{
             UVCommandDirective::ProjectCubicBox, UVCommandDirective::ProjectCylindrical,
-            UVCommandDirective::ProjectSpherical, UVCommandDirective::ProjectCameraView, UVCommandDirective::UnwrapConformal,
+            UVCommandDirective::ProjectSpherical, UVCommandDirective::ProjectCameraView, UVCommandDirective::ResetFaceUVsToTile,
         }};
         const float ProjectionGap = 5.0f;
         const float ProjectionW = (SW - ProjectionGap * 4.0f) / 5.0f;
@@ -1041,9 +1070,14 @@ float UVInspectorPanel::RenderUnwrapTab(
         if (ConstructSliderControl(Surface, { SX, SY, SW, 46.0f }, "Smart Angle Limit", AngleTxt, AngleNorm, Theme, Cursor, Down, Pressed))
             Session->SharpAngleThreshold = 10.0f + AngleNorm * 79.0f;
         SY += 52.0f;
-        (void)ConstructToggleRow(Surface, { SX, SY, SW, 42.0f }, "Live Unwrap", LiveUnwrapEnabled,
-            Theme, Cursor, Pressed, OptionalTooltip::FromText("Continuously re-solve LSCM while moving pins."),
-            "Continuously re-solve LSCM while moving pins", "");
+        LiveUnwrapEnabled = Session->LiveUnwrapEnabled;
+        if (ConstructToggleRow(Surface, { SX, SY, SW, 42.0f }, "Live Unwrap", LiveUnwrapEnabled,
+            Theme, Cursor, Pressed, OptionalTooltip::FromText("Continuously re-solve LSCM while marking/clearing seams or pins."),
+            "Continuously re-solve LSCM while editing seams or pins", ""))
+        {
+            Session->LiveUnwrapEnabled = LiveUnwrapEnabled;
+            (void)Session->ApplyLiveUnwrapIfEnabled();
+        }
         CurY += SecRect.Height + 10.0f;
     }
 
@@ -1077,7 +1111,7 @@ float UVInspectorPanel::RenderUnwrapTab(
 
         if (ConstructCapsuleButton(Surface, { SX, SY, ThirdW, 26.0f }, "Mark Seams", Theme, Cursor, Pressed, false, false, 9.2f, 9.0f))
         {
-            (void)Session->ExecuteDirective(UVCommandDirective::MarkSharpSeams, nullptr);
+            (void)Session->ExecuteDirective(UVCommandDirective::MarkSelectedSeams, nullptr);
         }
         if (ConstructCapsuleButton(Surface, { SX + ThirdW + 4.0f, SY, ThirdW, 26.0f }, "Clear Seams", Theme, Cursor, Pressed, false, false, 9.2f, 9.0f))
         {
@@ -1305,10 +1339,9 @@ float UVInspectorPanel::RenderUDIMTab(
             if (DeleteHit.Contains(Cursor))
             {
                 RecordControlTooltip(DeleteHit, "Remove Tile", OptionalTooltip::FromText("Remove this UDIM tile."), "Remove this UDIM tile.");
-                if (Pressed && Session->Asset.UDIMTiles.size() > 1u)
+                if (Pressed)
                 {
-                    std::erase(Session->Asset.UDIMTiles, TileCode);
-                    if (Session->ActiveUDIMNumber == TileCode) Session->ActiveUDIMNumber = Session->Asset.UDIMTiles.front();
+                    (void)Session->RemoveUDIMTile(TileCode);
                 }
             }
             if (Occupancy > 0.0f)
@@ -1497,10 +1530,35 @@ float UVInspectorPanel::RenderShadingTab(
         CurY += TileH * 2.0f + Gap + 10.0f;
     }
 
-    // Native material controls remain actionable; the MatCap palette and finish sliders
-    // use the existing assignment operations rather than visual-only placeholders.
+    // Native material controls remain actionable; the MatCap grid, live Colour drop buttons,
+    // and finish sliders sync bidirectionally with the active selection and Undo/Redo.
     {
-        const Rectangle2D Card{ LeftX, CurY, InnerW, 422.0f };
+        const auto SelectedFacesForShading = Session->SelectionMask.CollectSelectedFaces();
+        const uint32_t RepFaceIdx = (!SelectedFacesForShading.empty() && SelectedFacesForShading.front() < Network.Faces.size())
+            ? SelectedFacesForShading.front()
+            : 0u;
+        const auto RepShading = !Network.Faces.empty()
+            ? Network.Faces[RepFaceIdx].Shading
+            : GeometrySpace::FaceShadingAssignment{};
+        if (!SurfaceSliderDragging && !Network.Faces.empty())
+        {
+            SelectedMatCap   = RepShading.MatCapSlot;
+            SurfaceMetallic  = RepShading.Metallic;
+            SurfaceRoughness = RepShading.Roughness;
+            SurfaceSpecular  = RepShading.Specular;
+            SurfaceMatBlend  = RepShading.MatCapBlend;
+        }
+        auto LinearToSrgbSwatch = [](const Mathematics::Scalar3D& Linear) noexcept -> ColorRgba
+        {
+            auto ChannelByte = [](float C) noexcept -> uint8_t
+            {
+                const float Srgb = std::pow(std::clamp(C, 0.0f, 1.0f), 1.0f / 2.2f);
+                return static_cast<uint8_t>(std::clamp(Srgb * 255.0f + 0.5f, 0.0f, 255.0f));
+            };
+            return ColorRgba{ ChannelByte(Linear.X), ChannelByte(Linear.Y), ChannelByte(Linear.Z), 255u };
+        };
+
+        const Rectangle2D Card{ LeftX, CurY, InnerW, 462.0f };
         Surface.FillRectangle(Card, Theme.SectionBg, 20.0f);
         Surface.StrokeRectangle(Card, Theme.BorderSubtle, 20.0f, 1.0f);
         const float SX = Card.X + 16.0f;
@@ -1532,6 +1590,7 @@ float UVInspectorPanel::RenderShadingTab(
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular,
             { SX, SY + 3.0f }, 8.8f, Theme.TextMuted, "MatCap Library · 16");
         SY += 19.0f;
+        LastMatCapGridLogical = { SX, SY, SW, 62.0f };
         const float ColStep = SW / 8.0f;
         ImTextureData* MatCapAtlas = QueryMatCapAtlasTexture();
         for (uint32_t Slot = 0u; Slot < 16u; ++Slot)
@@ -1544,12 +1603,62 @@ float UVInspectorPanel::RenderShadingTab(
             if (Hit.Contains(Cursor) && Pressed)
             {
                 SelectedMatCap = static_cast<uint8_t>(Slot);
-                Session->ApplyMatCapToActiveSelection(SelectedMatCap);
+                Session->ApplyMatCapToActiveSelection(SelectedMatCap, true);
             }
             if (Hit.Contains(Cursor)) ControlAppearance::RecordHoveredTooltip(Hit,
-                OptionalTooltip::FromText("Select a procedural MatCap and apply it to the active selection."));
+                OptionalTooltip::FromText("Select a procedural MatCap or drop one from ContentBrowser onto the grid."));
         }
-        SY += 72.0f;
+        SY += 69.0f;
+
+        // Live Colour Drop Targets: Albedo Colour + MatCap Tint
+        {
+            const float BtnGap = 8.0f;
+            const float BtnW = (SW - BtnGap) * 0.5f;
+            const Rectangle2D AlbedoBtn{ SX, SY, BtnW, 28.0f };
+            const Rectangle2D TintBtn{ SX + BtnW + BtnGap, SY, BtnW, 28.0f };
+            LastAlbedoButtonLogical     = AlbedoBtn;
+            LastMatCapTintButtonLogical = TintBtn;
+
+            auto RenderColourTargetButton = [&](
+                Rectangle2D      TargetRect,
+                const char*      Label,
+                ColorRgba        Swatch,
+                const char*      SlotId,
+                const char*      TipText)
+            {
+                const bool Hovered = TargetRect.Contains(Cursor);
+                Surface.FillRectangle(TargetRect, Hovered ? Theme.HoverBg : ColorRgba{ 20, 20, 20, 255 }, 14.0f);
+                Surface.StrokeRectangle(TargetRect, Hovered ? Theme.AccentBorder : ColorRgba{ 48, 48, 48, 255 }, 14.0f, 1.0f);
+                Surface.FillCircle({ TargetRect.X + 15.0f, TargetRect.Y + 14.0f }, 7.5f, Swatch);
+                Surface.StrokeCircle({ TargetRect.X + 15.0f, TargetRect.Y + 14.0f }, 7.5f, ColorRgba{ 255, 255, 255, 72 }, 1.0f);
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface, FontWeightClass::Regular, { TargetRect.X + 29.0f, TargetRect.Y + 8.0f },
+                    TargetRect.Width - 36.0f, 9.8f, Theme.TextPrimary, Label);
+                if (Hovered)
+                {
+                    ControlAppearance::RecordHoveredTooltip(TargetRect, OptionalTooltip::FromTitled(Label, TipText));
+                    if (Pressed && Session->QueryBrowserPanel() != nullptr)
+                    {
+                        Session->QueryBrowserPanel()->FocusColourSlot(SlotId);
+                    }
+                }
+            };
+
+            RenderColourTargetButton(
+                AlbedoBtn,
+                "Surface Albedo",
+                LinearToSrgbSwatch(RepShading.AlbedoLinearRGB),
+                "uv.shading.albedo_colour",
+                "Click to focus or drop a ColourCodex swatch to set surface albedo.");
+            RenderColourTargetButton(
+                TintBtn,
+                "MatCap Tint",
+                LinearToSrgbSwatch(RepShading.MatCapTintLinearRGB),
+                "uv.shading.matcap_tint",
+                "Click to focus or drop a ColourCodex swatch to tint the MatCap shading.");
+        }
+        SY += 38.0f;
+
         char MetTxt[24]{}, RghTxt[24]{}, SpcTxt[24]{}, BldTxt[24]{};
         std::snprintf(MetTxt, sizeof(MetTxt), "%.2f", SurfaceMetallic);
         std::snprintf(RghTxt, sizeof(RghTxt), "%.2f", SurfaceRoughness);
@@ -1563,7 +1672,16 @@ float UVInspectorPanel::RenderShadingTab(
         Dirty |= ConstructSliderControl(Surface, { SX, SY, SW, 46.0f }, "Specular", SpcTxt, SurfaceSpecular, Theme, Cursor, Down, Pressed);
         SY += 50.0f;
         Dirty |= ConstructSliderControl(Surface, { SX, SY, SW, 46.0f }, "MatCap Blend", BldTxt, SurfaceMatBlend, Theme, Cursor, Down, Pressed);
-        if (Dirty) Session->ApplySurfaceRoughnessMetallic(SurfaceRoughness, SurfaceMetallic, SurfaceMatBlend, SurfaceSpecular);
+        if (Dirty)
+        {
+            SurfaceSliderDragging = true;
+            Session->ApplySurfaceRoughnessMetallic(SurfaceRoughness, SurfaceMetallic, SurfaceMatBlend, SurfaceSpecular, false);
+        }
+        if (SurfaceSliderDragging && (Input.PrimaryPointer.Released || !Down))
+        {
+            SurfaceSliderDragging = false;
+            Session->ApplySurfaceRoughnessMetallic(SurfaceRoughness, SurfaceMetallic, SurfaceMatBlend, SurfaceSpecular, true);
+        }
 
         if (ShadingModeDropdownOpen)
         {
@@ -1700,6 +1818,20 @@ void UVInspectorPanel::Render(
     {
         Surface.PopClip();
         return;
+    }
+
+    LastMatCapGridLogical       = {};
+    LastAlbedoButtonLogical     = {};
+    LastMatCapTintButtonLogical = {};
+    const uint64_t TickSequence = (ImGui::GetCurrentContext() != nullptr)
+        ? (static_cast<uint64_t>(ImGui::GetFrameCount()) + 1ull)
+        : ++HeadlessTickSequence;
+    {
+        bool WantsUndo = false;
+        bool WantsRedo = false;
+        ResolveHistoryShortcuts(Input, WantsUndo, WantsRedo);
+        (void)Session->TryConsumeGlobalHistoryShortcut(
+            WantsUndo, WantsRedo, LayerNameEditor.Active, TickSequence);
     }
 
     const Point2D Cursor  { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
@@ -1903,6 +2035,31 @@ void UVInspectorPanel::Render(
         case UVInspectorTab::Check:   ContentH = RenderCheckTab(Surface, LeftX, BodyStartY, InnerW, Input);   break;
     }
 
+    auto ClipToScrollRect = [&](Rectangle2D& Target) noexcept
+    {
+        if (Target.Width <= 0.0f || Target.Height <= 0.0f)
+        {
+            Target = {};
+            return;
+        }
+        if (Target.Bottom() <= ScrollRect.Y || Target.Y >= ScrollRect.Bottom())
+        {
+            Target = {};
+            return;
+        }
+        const float ClippedTop = std::max(Target.Y, ScrollRect.Y);
+        const float ClippedBtm = std::min(Target.Bottom(), ScrollRect.Bottom());
+        Target.Y      = ClippedTop;
+        Target.Height = std::max(0.0f, ClippedBtm - ClippedTop);
+        if (Target.Height < 10.0f)
+        {
+            Target = {};
+        }
+    };
+    ClipToScrollRect(LastMatCapGridLogical);
+    ClipToScrollRect(LastAlbedoButtonLogical);
+    ClipToScrollRect(LastMatCapTintButtonLogical);
+
     CachedTabContentHeights[TabIndex] = ContentH;
     const float MaxScroll = std::max(0.0f, ContentH - ScrollRect.Height);
     ScrollOffsetY = std::clamp(ScrollOffsetY, 0.0f, MaxScroll);
@@ -1955,9 +2112,120 @@ void UVInspectorPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
     const Rectangle2D ScreenBounds{ WinPos.x, TopY, WinSize.x, PaneH };
     const Rectangle2D LogicalBounds{ 0.0f, 0.0f, WinSize.x / SafeScale, PaneH / SafeScale };
 
-    PixelSpace             Surface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
-    const PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+    PixelSpace       Surface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
+    PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+
+    if (Session != nullptr)
+    {
+        if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+        {
+            const Point2D PhysicalCursor {
+                ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
+                ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
+            };
+            if (Browser->QueryBlocksPointerAt(PhysicalCursor) &&
+                !ShareSliderDragging &&
+                !SurfaceSliderDragging)
+            {
+                Input.PrimaryPointer.Enabled  = false;
+                Input.PrimaryPointer.Pressed  = false;
+                Input.PrimaryPointer.Down     = false;
+                Input.PrimaryPointer.Released = false;
+                Input.SecondaryPressed        = false;
+                Input.SecondaryDown           = false;
+                Input.DoubleClicked           = false;
+                Input.WheelDeltaY             = 0.0f;
+            }
+        }
+    }
+
     Render(Surface, LogicalBounds, Input, Δt);
+
+    if (Session != nullptr)
+    {
+        if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+        {
+            const float DrawerTopY = Browser->QueryDrawerTopPhysicalY();
+            auto ToBrowserBounds = [&](Rectangle2D LogicalRect) noexcept -> Rectangle2D
+            {
+                if (LogicalRect.Width <= 4.0f || LogicalRect.Height <= 4.0f)
+                {
+                    return {};
+                }
+                const Rectangle2D Physical {
+                    ScreenBounds.X + LogicalRect.X * SafeScale,
+                    ScreenBounds.Y + LogicalRect.Y * SafeScale,
+                    LogicalRect.Width * SafeScale,
+                    LogicalRect.Height * SafeScale,
+                };
+                if (Physical.Y >= DrawerTopY)
+                {
+                    return {};
+                }
+                Rectangle2D VisiblePhys = Physical;
+                if (VisiblePhys.Bottom() > DrawerTopY)
+                {
+                    VisiblePhys.Height = std::max(0.0f, DrawerTopY - VisiblePhys.Y);
+                }
+                if (VisiblePhys.Height < 10.0f)
+                {
+                    return {};
+                }
+                return Browser->MapPhysicalToLogicalBounds(VisiblePhys);
+            };
+
+            Browser->RegisterMatCapSlot(MatCapSlotRegistration{
+                "uv.shading.matcap_grid",
+                "Inspector MatCap Material",
+                ToBrowserBounds(LastMatCapGridLogical),
+                [Sess = Session](uint8_t SlotOrdinal, const ContentRepositoryEntry&)
+                {
+                    if (Sess != nullptr)
+                    {
+                        Sess->ApplyMatCapToActiveSelection(SlotOrdinal, true);
+                    }
+                },
+            });
+            Browser->RegisterColourSlot(ColourSlotRegistration{
+                "uv.shading.albedo_colour",
+                "Surface Albedo Colour",
+                ToBrowserBounds(LastAlbedoButtonLogical),
+                nullptr,
+                [Sess = Session](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                {
+                    if (Sess != nullptr)
+                    {
+                        Sess->ApplySurfaceAlbedoColour(
+                            {
+                                static_cast<float>(AssignedRgba.Red) / 255.0f,
+                                static_cast<float>(AssignedRgba.Green) / 255.0f,
+                                static_cast<float>(AssignedRgba.Blue) / 255.0f,
+                            },
+                            true);
+                    }
+                },
+            });
+            Browser->RegisterColourSlot(ColourSlotRegistration{
+                "uv.shading.matcap_tint",
+                "MatCap Tint Colour",
+                ToBrowserBounds(LastMatCapTintButtonLogical),
+                nullptr,
+                [Sess = Session](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                {
+                    if (Sess != nullptr)
+                    {
+                        Sess->ApplyMatCapTintColour(
+                            {
+                                static_cast<float>(AssignedRgba.Red) / 255.0f,
+                                static_cast<float>(AssignedRgba.Green) / 255.0f,
+                                static_cast<float>(AssignedRgba.Blue) / 255.0f,
+                            },
+                            true);
+                    }
+                },
+            });
+        }
+    }
 }
 
 } // namespace Frontier::Workspaces

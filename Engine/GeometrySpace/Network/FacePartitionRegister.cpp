@@ -204,6 +204,20 @@ std::span<const PriorityAllocationLayer> FacePartitionRegister::InspectLayers() 
     return Layers;
 }
 
+void FacePartitionRegister::RestoreLayers(
+    std::span<const PriorityAllocationLayer> SavedLayers,
+    uint16_t                                 SavedNextOrdinal)
+{
+    Layers.assign(SavedLayers.begin(), SavedLayers.end());
+    uint16_t HighestOrdinal = 0u;
+    for (const PriorityAllocationLayer& Entry : Layers)
+    {
+        HighestOrdinal = std::max(HighestOrdinal, Entry.LayerOrdinal);
+    }
+    NextLayerOrdinal     = std::max<uint16_t>(SavedNextOrdinal, static_cast<uint16_t>(HighestOrdinal + 1u));
+    SynchronizedRevision = 0ull;
+}
+
 float FacePartitionRegister::DeriveExplicitShareSum() const noexcept
 {
     float Total = 0.0f;

@@ -97,6 +97,30 @@ struct UVThemeColors
     };
 }
 
+inline void ResolveHistoryShortcuts(
+    const PaneInputReading& Input,
+    bool&                   OutUndo,
+    bool&                   OutRedo) noexcept
+{
+    OutUndo = Input.ShortcutUndo;
+    OutRedo = Input.ShortcutRedo;
+    if (!OutUndo && !OutRedo && Input.ControlHeld && !Input.AltHeld)
+    {
+        for (const char Ch : Input.TypedUtf8)
+        {
+            if (Ch == 'z' || Ch == 'Z')
+            {
+                OutUndo = !Input.ShiftHeld;
+                OutRedo = Input.ShiftHeld;
+            }
+            else if ((Ch == 'y' || Ch == 'Y') && !Input.ShiftHeld)
+            {
+                OutRedo = true;
+            }
+        }
+    }
+}
+
 inline void RecordControlTooltip(
     Rectangle2D AnchorBounds,
     std::string_view Label,

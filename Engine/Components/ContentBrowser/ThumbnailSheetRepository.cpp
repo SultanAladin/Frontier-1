@@ -788,10 +788,161 @@ std::size_t ThumbnailSheetRepository::RegisterPrebakedEntry(
     return Entries.size() - 1u;
 }
 
+std::size_t ThumbnailSheetRepository::RegisterStudioMatCapEntry(
+    uint8_t                  MatCapSlot,
+    std::string_view         DisplayTitle,
+    ColorRgba                PreviewTint,
+    std::span<const uint8_t> StudioAtlasRgba)
+{
+    const std::filesystem::path EntryPath =
+        ImportPolicy.EngineContentRoot / "MatCaps" / (std::string(DisplayTitle) + ".MaterialSpace");
+
+    const std::size_t SlotOrdinal = RegisterPrebakedEntry(
+        DisplayTitle,
+        ContentCategory::Materials,
+        ContentOriginFilter::Engine,
+        PreviewTint,
+        EntryPath,
+        false);
+
+    ContentRepositoryEntry& Entry               = Entries[SlotOrdinal];
+    Entry.IndexHeader.MatCapPresetMarker        = 1u;
+    Entry.IndexHeader.MatCapSlotOrdinal         = static_cast<uint8_t>(MatCapSlot & 15u);
+
+    constexpr std::size_t AtlasByteCount = 1024u * 1024u * 4u;
+    if (StudioAtlasRgba.size() >= AtlasByteCount)
+    {
+        constexpr uint32_t Dim  = TileDimensionPixels;
+        constexpr float    Half = static_cast<float>(Dim) * 0.5f;
+        std::vector<uint8_t> TileRgba(static_cast<std::size_t>(Dim) * Dim * 4u, 0u);
+
+        const uint32_t AtlasTileX = (static_cast<uint32_t>(MatCapSlot & 15u) % 4u) * 256u;
+        const uint32_t AtlasTileY = (static_cast<uint32_t>(MatCapSlot & 15u) / 4u) * 256u;
+
+        for (uint32_t Y = 0u; Y < Dim; ++Y)
+        {
+            for (uint32_t X = 0u; X < Dim; ++X)
+            {
+                const float Nx       = (static_cast<float>(X) + 0.5f - Half) / Half;
+                const float Ny       = (static_cast<float>(Y) + 0.5f - Half) / Half;
+                const float Radius   = std::hypot(Nx, Ny);
+                const float Vignette = 1.0f - 0.25f * Radius;
+                const float Bg       = 28.0f * Vignette;
+
+                if (Radius <= 0.80f)
+                {
+                    const float SphereU = std::clamp((Nx / 0.80f) * 0.485f + 0.5f, 0.0f, 0.999f);
+                    const float SphereV = std::clamp((Ny / 0.80f) * 0.485f + 0.5f, 0.0f, 0.999f);
+                    const uint32_t SrcX = AtlasTileX + std::min(254u, static_cast<uint32_t>(SphereU * 255.0f));
+                    const uint32_t SrcY = AtlasTileY + std::min(254u, static_cast<uint32_t>(SphereV * 255.0f));
+
+                    float SumR = 0.0f;
+                    float SumG = 0.0f;
+                    float SumB = 0.0f;
+                    for (uint32_t Dy = 0u; Dy < 2u; ++Dy)
+                    {
+                        for (uint32_t Dx = 0u; Dx < 2u; ++Dx)
+                        {
+                            const std::size_t Off = (static_cast<std::size_t>(SrcY + Dy) * 1024u + (SrcX + Dx)) * 4u;
+                            SumR += static_cast<float>(StudioAtlasRgba[Off + 0u]);
+                            SumG += static_cast<float>(StudioAtlasRgba[Off + 1u]);
+                            SumB += static_cast<float>(StudioAtlasRgba[Off + 2u]);
+                        }
+                    }
+                    const float EdgeCoverage = std::clamp((0.80f - Radius) * 44.0f, 0.0f, 1.0f);
+                    WriteTilePixel(
+                        TileRgba,
+                        X,
+                        Y,
+                        ClampChannel((SumR * 0.25f) * EdgeCoverage + Bg * (1.0f - EdgeCoverage)),
+                        ClampChannel((SumG * 0.25f) * EdgeCoverage + Bg * (1.0f - EdgeCoverage)),
+                        ClampChannel((SumB * 0.25f) * EdgeCoverage + (Bg + 3.0f) * (1.0f - EdgeCoverage)),
+                        255u);
+                }
+                else
+                {
+                    WriteTilePixel(TileRgba, X, Y, ClampChannel(Bg), ClampChannel(Bg), ClampChannel(Bg + 3.0f), 255u);
+                }
+            }
+        }
+        CopyTileBytesIntoPage(Entry.IndexHeader, TileRgba);
+        Entry.TileResident = true;
+    }
+    else
+    {
+        BakeProceduralTileIntoPage(Entry);
+    }
+
+    return SlotOrdinal;
+}
+
 void ThumbnailSheetRepository::PopulateDefaultEngineAndProjectEntries()
 {
     Entries.clear();
     SheetPages.clear();
+
+    struct MatCapSeed
+    {
+        uint8_t     Slot;
+        const char* Title;
+        ColorRgba   Tint;
+    };
+
+    constexpr std::array<MatCapSeed, 16> StudioMatCaps = {{
+        { 0u,  "CNC Aluminum",     { 196u, 202u, 210u, 255u } },
+        { 1u,  "Grade-5 Titanium", { 172u, 178u, 188u, 255u } },
+        { 2u,  "CAD Clay",         { 198u, 168u, 152u, 255u } },
+        { 3u,  "Class-A Chrome",   { 218u, 226u, 236u, 255u } },
+        { 4u,  "Gunmetal Ano",     { 96u,  104u, 118u, 255u } },
+        { 5u,  "Steel Blue",       { 92u,  144u, 198u, 255u } },
+        { 6u,  "Turned Brass",     { 214u, 178u, 96u,  255u } },
+        { 7u,  "Zebra CAD",        { 226u, 228u, 232u, 255u } },
+        { 8u,  "Vulcan Rubber",    { 76u,  80u,  88u,  255u } },
+        { 9u,  "Normal Map",       { 132u, 138u, 244u, 255u } },
+        { 10u, "Car Flake Blue",   { 56u,  122u, 224u, 255u } },
+        { 11u, "Car Flake Ruby",   { 206u, 52u,  74u,  255u } },
+        { 12u, "Carbon Fibre",     { 84u,  88u,  96u,  255u } },
+        { 13u, "Woven Fabric",     { 156u, 146u, 134u, 255u } },
+        { 14u, "Velvet Suede",     { 138u, 96u,  126u, 255u } },
+        { 15u, "Ripstop Nylon",    { 112u, 132u, 118u, 255u } },
+    }};
+
+    std::vector<uint8_t> StudioAtlasBytes{};
+    {
+        const std::array<std::filesystem::path, 4> CandidatePaths = {{
+            ImportPolicy.EngineContentRoot / "MatCaps/MatCapStudioAtlas.rgba",
+            "EngineContent/MatCaps/MatCapStudioAtlas.rgba",
+            "../EngineContent/MatCaps/MatCapStudioAtlas.rgba",
+            "../../EngineContent/MatCaps/MatCapStudioAtlas.rgba",
+        }};
+        constexpr std::size_t ExpectedAtlasBytes = 1024u * 1024u * 4u;
+        for (const std::filesystem::path& Candidate : CandidatePaths)
+        {
+            std::error_code IoErr{};
+            if (std::filesystem::exists(Candidate, IoErr) && std::filesystem::file_size(Candidate, IoErr) >= ExpectedAtlasBytes)
+            {
+                std::ifstream AtlasIn(Candidate, std::ios::binary);
+                if (AtlasIn.is_open())
+                {
+                    StudioAtlasBytes.resize(ExpectedAtlasBytes);
+                    AtlasIn.read(reinterpret_cast<char*>(StudioAtlasBytes.data()), static_cast<std::streamsize>(ExpectedAtlasBytes));
+                    if (!AtlasIn.good())
+                    {
+                        StudioAtlasBytes.clear();
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    for (const MatCapSeed& Seed : StudioMatCaps)
+    {
+        (void)RegisterStudioMatCapEntry(Seed.Slot, Seed.Title, Seed.Tint, StudioAtlasBytes);
+    }
 
     struct SeedEntry
     {
@@ -1184,7 +1335,8 @@ std::vector<std::size_t> ThumbnailSheetRepository::QueryFilteredEntries(
     WorkspaceCategory Workspace,
     ContentCategory Category,
     ContentOriginFilter Origin,
-    std::string_view    SearchQuery) const
+    std::string_view    SearchQuery,
+    bool                MatCapMaterialsOnly) const
 {
     std::vector<std::size_t> Filtered;
     if (!QueryCategoryPermitted(Workspace, Category))
@@ -1201,6 +1353,11 @@ std::vector<std::size_t> ThumbnailSheetRepository::QueryFilteredEntries(
 
         // Hard workspace compatibility gate
         if ((Entry.IndexHeader.WorkspaceCompatibilityMask & WorkspaceBit(Workspace)) == 0u)
+        {
+            continue;
+        }
+
+        if (MatCapMaterialsOnly && Entry.IndexHeader.MatCapPresetMarker == 0u)
         {
             continue;
         }

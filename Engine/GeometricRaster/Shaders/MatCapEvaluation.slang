@@ -20,7 +20,7 @@ public float3 SampleBakedMatCap(uint SlotIndex, float3 ViewSpaceNormal)
 public float3 SampleStudioMatCapMaterial(
     uint   SlotIndex,
     float3 ViewSpaceNormal,
-    float3 AlbedoLinear,
+    float3 MatCapTintLinear,
     float  Metallic,
     float  Roughness,
     float  Specular)
@@ -40,8 +40,8 @@ public float3 SampleStudioMatCapMaterial(
         RawMatCap    = (RawMatCap * 2.0 + TapX0 + TapX1 + TapY0 + TapY1) / 6.0;
     }
 
-    float3 AlbedoSrgb = pow(saturate(AlbedoLinear), float3(1.0 / 2.2));
-    float3 MetalTint  = lerp(float3(1.0), AlbedoSrgb * 1.35 + float3(0.04), saturate(Metallic) * 0.72);
+    float3 TintSrgb   = pow(saturate(MatCapTintLinear), float3(1.0 / 2.2));
+    float3 MetalTint  = TintSrgb * lerp(float3(1.0), float3(1.16), saturate(Metallic) * 0.55);
     float  Grazing    = pow(1.0 - saturate(abs(ViewSpaceNormal.z)), 4.0);
     float  SpecBoost  = 0.85 + 0.45 * saturate(Specular) * (1.0 - 0.55 * saturate(Roughness));
     return saturate(RawMatCap * MetalTint * SpecBoost + float3(0.14 * saturate(Specular) * Grazing));

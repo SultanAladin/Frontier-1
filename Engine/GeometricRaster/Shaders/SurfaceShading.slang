@@ -13,6 +13,7 @@ struct SurfaceVertexRecord
     float4 ShadingParams;      // x = Roughness, y = Specular, z = MatCapBlend, w = StretchMetric
     uint4  NetworkPickIDs;     // x = InstanceSlot, y = FaceIndex, z = DirectedEdgeIndex, w = SurfaceMask (bits 0..7 MatCap, 8..23 Layer, 24 Seam, 25 Border)
     float4 BarycentricAndPad;  // xyz = Triangle Barycentric (1,0,0)/(0,1,0)/(0,0,1), w = EdgeSeamMask
+    float4 MatCapTintAndPad;   // rgb = MatCapTintLinearRGB, a = 1.0
 };
 
 struct ViewportUniformBlock
@@ -23,6 +24,7 @@ struct ViewportUniformBlock
     float4   CameraUpAndSeam;         // xyz = Up,     w = SeamOverlayEnabled (0/1, default 0)
     float4   CameraForwardAndLayer;   // xyz = Fwd,    w = ActiveLayerOrdinal (0 = none)
     uint4    PickHighlightIDs;        // x = HoveredFaceIndex (0xFFFFFFFF = none), y = HoveredEdgeIndex, z = GroundGridPass, w = Reserved
+    float4   LayerSwatches[16];       // rgb = linear layer tint colour per layer ordinal [0..15]
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<ViewportUniformBlock> ViewportUniforms;
@@ -39,6 +41,7 @@ struct VertexInterpolators
     float4 ShadingParams      : TEXCOORD4;
     float3 Barycentric        : TEXCOORD5;
     nointerpolation uint4 IDs : TEXCOORD6;
+    float3 MatCapTintLinear   : TEXCOORD7;
 };
 
 struct FragmentAttachmentOutput
@@ -49,10 +52,10 @@ struct FragmentAttachmentOutput
 
 float3 ResolvePriorityLayerSwatch(uint LayerOrdinal)
 {
-    if (LayerOrdinal == 1u) return float3(0.937, 0.957, 0.812); // #EFF4CF Ivory
-    if (LayerOrdinal == 2u) return float3(0.620, 0.812, 1.000); // #9ECFFF Sky
-    if (LayerOrdinal == 3u) return float3(0.608, 0.855, 0.773); // #9BDAC5 Mint
-    if (LayerOrdinal == 4u) return float3(0.910, 0.760, 0.478); // #E8C27A Amber
+    if (LayerOrdinal < 16u)
+    {
+        return ViewportUniforms.LayerSwatches[LayerOrdinal].rgb;
+    }
     return float3(0.42, 0.45, 0.51);
 }
 
@@ -69,6 +72,7 @@ VertexInterpolators VertexEntry(uint VertexID : SV_VertexID)
     Out.ShadingParams     = Rec.ShadingParams;
     Out.Barycentric       = Rec.BarycentricAndPad.xyz;
     Out.IDs               = Rec.NetworkPickIDs;
+    Out.MatCapTintLinear  = Rec.MatCapTintAndPad.rgb;
     return Out;
 }
 
@@ -125,7 +129,7 @@ FragmentAttachmentOutput FragmentEntry(VertexInterpolators In)
     float3 MatCapSrgb = SampleStudioMatCapMaterial(
         MatCapSlot,
         ViewNormal,
-        In.AlbedoAndMetallic.rgb,
+        In.MatCapTintLinear,
         In.AlbedoAndMetallic.a,
         In.ShadingParams.x,
         In.ShadingParams.y);

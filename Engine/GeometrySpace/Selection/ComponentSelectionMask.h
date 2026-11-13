@@ -53,6 +53,7 @@ public:
     [[nodiscard]] std::vector<uint32_t> CollectSelectedFaces() const;
     [[nodiscard]] std::vector<uint32_t> CollectSelectedEdges() const;
     [[nodiscard]] std::span<const uint32_t> InspectPackedFaceWords() const noexcept { return FaceBits; }
+    void LoadPackedFaceWords(std::span<const uint32_t> Words) noexcept;
 
     uint32_t ActiveFaceIndex = InvalidNetworkIndex; // [idx] - Last clicked primary Face (for FollowActiveQuads / ShortestPath)
     uint32_t ActiveEdgeIndex = InvalidNetworkIndex; // [idx] - Last clicked primary DirectedEdge

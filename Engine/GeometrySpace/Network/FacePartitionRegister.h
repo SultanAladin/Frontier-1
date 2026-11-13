@@ -76,6 +76,8 @@ public:
     [[nodiscard]] PriorityAllocationLayer*                  ResolveLayer(uint16_t LayerOrdinal) noexcept;
     [[nodiscard]] const PriorityAllocationLayer*            InspectLayer(uint16_t LayerOrdinal) const noexcept;
     [[nodiscard]] std::span<const PriorityAllocationLayer>  InspectLayers() const noexcept;
+    [[nodiscard]] uint16_t                                  QueryNextLayerOrdinal() const noexcept { return NextLayerOrdinal; }
+    void                                                    RestoreLayers(std::span<const PriorityAllocationLayer> SavedLayers, uint16_t SavedNextOrdinal);
     [[nodiscard]] float                                     DeriveExplicitShareSum() const noexcept;
     [[nodiscard]] float                                     DeriveRemainderSharePercent() const noexcept;
 

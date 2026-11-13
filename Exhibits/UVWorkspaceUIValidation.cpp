@@ -140,12 +140,30 @@ int main()
         StandaloneHost.AttachContentBrowser(&Browser);
         const auto BrowserReading = Browser.QueryPanel().InspectReading();
         if (!VerifyCondition(BrowserReading.ActiveWorkspace == WorkspaceCategory::UV, "AttachContentBrowser configures WorkspaceCategory::UV") ||
-            !VerifyCondition(BrowserReading.PermittedCategoryCount == 6u, "WorkspaceCategory::UV exposes strictly 6 permitted UV asset categories") ||
+            !VerifyCondition(BrowserReading.PermittedCategoryCount == 2u, "UV ContentBrowser locks strictly to Colours & MatCap Materials") ||
             !VerifyCondition(Browser.AccessPanel().ApplyColourIndexToSlot(0u, "uv.priority_layer.tint"), "ColourCodex swatch tints UV Priority Layer"))
         {
             return 1;
         }
         const auto BrowserEntries = Browser.QueryPanel().QueryThumbnailRepository().QueryAllEntries();
+        uint32_t StudioMatCapCount = 0u;
+        std::size_t FirstMatCapEntryIdx = SIZE_MAX;
+        for (std::size_t Idx = 0u; Idx < BrowserEntries.size(); ++Idx)
+        {
+            if (BrowserEntries[Idx].IndexHeader.MatCapPresetMarker != 0u)
+            {
+                if (FirstMatCapEntryIdx == SIZE_MAX)
+                {
+                    FirstMatCapEntryIdx = Idx;
+                }
+                ++StudioMatCapCount;
+            }
+        }
+        if (!VerifyCondition(StudioMatCapCount == 16u && FirstMatCapEntryIdx != SIZE_MAX, "UV ContentBrowser exposes all 16 Studio MatCap spheres") ||
+            !VerifyCondition(Browser.AccessPanel().ApplyMatCapEntryToSlot(FirstMatCapEntryIdx, "uv.viewport3d.surface"), "Applying a ContentBrowser MatCap updates active UV faces"))
+        {
+            return 1;
+        }
         const auto AeroEntry = std::find_if(BrowserEntries.begin(), BrowserEntries.end(), [](const ContentRepositoryEntry& Entry)
         {
             return Entry.DisplayTitle == "Aero Coupe GT";

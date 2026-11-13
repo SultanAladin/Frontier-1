@@ -14,6 +14,7 @@ struct UVCanvasUniformBlock
 {
     float4 CanvasMinMaxUV;    // xy = VisibleMinUV, zw = VisibleMaxUV
     uint4  OverlayAndPick;    // x = DisplayMode, y = Checker|(Seam<<1)|(Pin<<2)|(Backdrop<<8), z = ActiveLayerOrd, w = HoveredFaceIdx
+    float4 LayerSwatches[16]; // rgb = priority layer tint colour per layer ordinal [0..15]
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<UVCanvasUniformBlock>  CanvasUniforms;
@@ -37,10 +38,10 @@ struct UVFragmentOutput
 
 float3 ResolveUVLayerColor(uint LayerOrdinal)
 {
-    if (LayerOrdinal == 1u) return float3(0.937, 0.957, 0.812); // #EFF4CF Ivory
-    if (LayerOrdinal == 2u) return float3(0.620, 0.812, 1.000); // #9ECFFF Sky
-    if (LayerOrdinal == 3u) return float3(0.608, 0.855, 0.773); // #9BDAC5 Mint
-    if (LayerOrdinal == 4u) return float3(0.910, 0.760, 0.478); // #E8C27A Amber
+    if (LayerOrdinal < 16u)
+    {
+        return CanvasUniforms.LayerSwatches[LayerOrdinal].rgb;
+    }
     return float3(0.52, 0.56, 0.64);
 }
 

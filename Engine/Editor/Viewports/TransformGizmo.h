@@ -29,6 +29,14 @@ enum class GizmoDimensionMode : uint8_t
     Planar2D  = 1u, // [-] - Planar 6-handle 2D UV/Vector Gizmo (+U/+V Cones, +U/+V Scale Cylinders, UV Quad, 45° Arc, Ring)
 };
 
+enum class GizmoHandleFilter : uint8_t
+{
+    Universal     = 0u,
+    TranslateOnly = 1u,
+    RotateOnly    = 2u,
+    ScaleOnly     = 3u,
+};
+
 enum class GizmoHandleOrdinal : uint32_t
 {
     None            = 0u,
@@ -81,6 +89,8 @@ public:
     TransformGizmo() = default;
 
     void ConfigureDimensionMode(GizmoDimensionMode Mode) noexcept;
+    void ConfigureHandleFilter(GizmoHandleFilter Filter) noexcept;
+    [[nodiscard]] GizmoHandleFilter QueryHandleFilter() const noexcept { return HandleFilter; }
     void ConfigureAnchor(Mathematics::Axis3D PivotOrigin, float ConstantWorldRadius = 1.0f) noexcept;
     void AssignHoveredHandle(GizmoHandleOrdinal Handle) noexcept;
 
@@ -124,6 +134,7 @@ public:
 
 private:
     GizmoDimensionMode            DimensionMode       = GizmoDimensionMode::Spatial3D;
+    GizmoHandleFilter             HandleFilter        = GizmoHandleFilter::Universal;
     Mathematics::Axis3D           PivotPosition       { 0.0f, 0.0f, 0.0f };
     float                         WorldRadius         = 1.0f;
     GizmoHandleOrdinal            HoveredHandle       = GizmoHandleOrdinal::None;

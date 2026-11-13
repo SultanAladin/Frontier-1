@@ -270,6 +270,11 @@ void TransformGizmo::ConfigureDimensionMode(GizmoDimensionMode Mode) noexcept
     DimensionMode = Mode;
 }
 
+void TransformGizmo::ConfigureHandleFilter(GizmoHandleFilter Filter) noexcept
+{
+    HandleFilter = Filter;
+}
+
 void TransformGizmo::ConfigureAnchor(Mathematics::Axis3D PivotOrigin, float ConstantWorldRadius) noexcept
 {
     PivotPosition = PivotOrigin;
@@ -290,6 +295,10 @@ std::vector<GizmoGPUVertex> TransformGizmo::BuildTriangleStream(
     std::vector<GizmoGPUVertex> Stream;
     Stream.reserve(DimensionMode == GizmoDimensionMode::Spatial3D ? 4200u : 2400u);
 
+    const bool EmitTranslate = (HandleFilter == GizmoHandleFilter::Universal || HandleFilter == GizmoHandleFilter::TranslateOnly);
+    const bool EmitRotate    = (HandleFilter == GizmoHandleFilter::Universal || HandleFilter == GizmoHandleFilter::RotateOnly);
+    const bool EmitScale     = (HandleFilter == GizmoHandleFilter::Universal || HandleFilter == GizmoHandleFilter::ScaleOnly);
+
     const float L       = WorldRadius;
     const float TipDist = 0.95f * L;
     const float CylDist = TipDist - 0.28f * L; // 0.67 * L
@@ -298,35 +307,58 @@ std::vector<GizmoGPUVertex> TransformGizmo::BuildTriangleStream(
     const Mathematics::Axis3D UnitY { 0.0f, 1.0f, 0.0f };
     const Mathematics::Axis3D UnitZ { 0.0f, 0.0f, 1.0f };
 
-    // Cohesive Slate axis stems radiating from outside the center ring (0.17 * L) to cone collar (TipDist - 0.09 * L)
+    // Cohesive Slate axis stems radiating from outside the center ring (0.17 * L) to cone/scale collar
     const float StemStart  = 0.17f * L;
-    const float StemFinish = TipDist - 0.09f * L;
+    const float StemFinish = EmitTranslate ? (TipDist - 0.09f * L) : (CylDist - 0.06f * L);
     const float StemLen    = std::max(0.02f * L, StemFinish - StemStart);
     const float StemMid    = 0.5f * (StemStart + StemFinish);
-    AppendCylinderHandle(Stream, PivotPosition + UnitX * StemMid, UnitX, 0.0095f * L, StemLen, ColorAxisX, GizmoHandleOrdinal::TranslateX);
-    AppendCylinderHandle(Stream, PivotPosition + UnitY * StemMid, UnitY, 0.0095f * L, StemLen, ColorAxisY, GizmoHandleOrdinal::TranslateY);
+    if (EmitTranslate || EmitScale)
+    {
+        const GizmoHandleOrdinal StemXOrd = EmitTranslate ? GizmoHandleOrdinal::TranslateX : GizmoHandleOrdinal::ScaleX;
+        const GizmoHandleOrdinal StemYOrd = EmitTranslate ? GizmoHandleOrdinal::TranslateY : GizmoHandleOrdinal::ScaleY;
+        AppendCylinderHandle(Stream, PivotPosition + UnitX * StemMid, UnitX, 0.0095f * L, StemLen, ColorAxisX, StemXOrd);
+        AppendCylinderHandle(Stream, PivotPosition + UnitY * StemMid, UnitY, 0.0095f * L, StemLen, ColorAxisY, StemYOrd);
+    }
 
     // +X / +U and +Y / +V Translate Cones & Inboard Scale Cylinders (shared by 3D & 2D)
-    AppendConeHandle(Stream, PivotPosition + UnitX * TipDist, UnitX, 0.055f * L, 0.18f * L, ColorAxisX, GizmoHandleOrdinal::TranslateX);
-    AppendConeHandle(Stream, PivotPosition + UnitY * TipDist, UnitY, 0.055f * L, 0.18f * L, ColorAxisY, GizmoHandleOrdinal::TranslateY);
-    AppendCylinderHandle(Stream, PivotPosition + UnitX * CylDist, UnitX, 0.048f * L, 0.12f * L, ColorAxisX, GizmoHandleOrdinal::ScaleX);
-    AppendCylinderHandle(Stream, PivotPosition + UnitY * CylDist, UnitY, 0.048f * L, 0.12f * L, ColorAxisY, GizmoHandleOrdinal::ScaleY);
-
-    // XY / UV Plane-Translate Quad & Z / UV 45° Rotation Arc Bar
-    AppendPlaneQuadHandle(Stream, PivotPosition, UnitX, UnitY, TipDist, 0.08f * L, 0.011f * L, ColorPlaneXY, GizmoHandleOrdinal::PlaneXY);
-    AppendRotationArcHandle(Stream, PivotPosition, UnitX, UnitY, TipDist * 0.62f, 0.034f * L, ColorAxisZ, GizmoHandleOrdinal::RotateZ);
+    if (EmitTranslate)
+    {
+        AppendConeHandle(Stream, PivotPosition + UnitX * TipDist, UnitX, 0.055f * L, 0.18f * L, ColorAxisX, GizmoHandleOrdinal::TranslateX);
+        AppendConeHandle(Stream, PivotPosition + UnitY * TipDist, UnitY, 0.055f * L, 0.18f * L, ColorAxisY, GizmoHandleOrdinal::TranslateY);
+        AppendPlaneQuadHandle(Stream, PivotPosition, UnitX, UnitY, TipDist, 0.08f * L, 0.011f * L, ColorPlaneXY, GizmoHandleOrdinal::PlaneXY);
+    }
+    if (EmitScale)
+    {
+        AppendCylinderHandle(Stream, PivotPosition + UnitX * CylDist, UnitX, 0.048f * L, 0.12f * L, ColorAxisX, GizmoHandleOrdinal::ScaleX);
+        AppendCylinderHandle(Stream, PivotPosition + UnitY * CylDist, UnitY, 0.048f * L, 0.12f * L, ColorAxisY, GizmoHandleOrdinal::ScaleY);
+    }
+    if (EmitRotate)
+    {
+        AppendRotationArcHandle(Stream, PivotPosition, UnitX, UnitY, TipDist * 0.62f, 0.034f * L, ColorAxisZ, GizmoHandleOrdinal::RotateZ);
+    }
 
     if (DimensionMode == GizmoDimensionMode::Spatial3D)
     {
-        AppendCylinderHandle(Stream, PivotPosition + UnitZ * StemMid, UnitZ, 0.0095f * L, StemLen, ColorAxisZ, GizmoHandleOrdinal::TranslateZ);
-        AppendConeHandle(Stream, PivotPosition + UnitZ * TipDist, UnitZ, 0.055f * L, 0.18f * L, ColorAxisZ, GizmoHandleOrdinal::TranslateZ);
-        AppendCylinderHandle(Stream, PivotPosition + UnitZ * CylDist, UnitZ, 0.048f * L, 0.12f * L, ColorAxisZ, GizmoHandleOrdinal::ScaleZ);
-
-        AppendPlaneQuadHandle(Stream, PivotPosition, UnitY, UnitZ, TipDist, 0.08f * L, 0.011f * L, ColorPlaneYZ, GizmoHandleOrdinal::PlaneYZ);
-        AppendPlaneQuadHandle(Stream, PivotPosition, UnitX, UnitZ, TipDist, 0.08f * L, 0.011f * L, ColorPlaneXZ, GizmoHandleOrdinal::PlaneXZ);
-
-        AppendRotationArcHandle(Stream, PivotPosition, UnitY, UnitZ, TipDist * 0.62f, 0.034f * L, ColorAxisX, GizmoHandleOrdinal::RotateX);
-        AppendRotationArcHandle(Stream, PivotPosition, UnitZ, UnitX, TipDist * 0.62f, 0.034f * L, ColorAxisY, GizmoHandleOrdinal::RotateY);
+        if (EmitTranslate || EmitScale)
+        {
+            const GizmoHandleOrdinal StemZOrd = EmitTranslate ? GizmoHandleOrdinal::TranslateZ : GizmoHandleOrdinal::ScaleZ;
+            AppendCylinderHandle(Stream, PivotPosition + UnitZ * StemMid, UnitZ, 0.0095f * L, StemLen, ColorAxisZ, StemZOrd);
+        }
+        if (EmitTranslate)
+        {
+            AppendConeHandle(Stream, PivotPosition + UnitZ * TipDist, UnitZ, 0.055f * L, 0.18f * L, ColorAxisZ, GizmoHandleOrdinal::TranslateZ);
+            AppendPlaneQuadHandle(Stream, PivotPosition, UnitY, UnitZ, TipDist, 0.08f * L, 0.011f * L, ColorPlaneYZ, GizmoHandleOrdinal::PlaneYZ);
+            AppendPlaneQuadHandle(Stream, PivotPosition, UnitX, UnitZ, TipDist, 0.08f * L, 0.011f * L, ColorPlaneXZ, GizmoHandleOrdinal::PlaneXZ);
+        }
+        if (EmitScale)
+        {
+            AppendCylinderHandle(Stream, PivotPosition + UnitZ * CylDist, UnitZ, 0.048f * L, 0.12f * L, ColorAxisZ, GizmoHandleOrdinal::ScaleZ);
+        }
+        if (EmitRotate)
+        {
+            AppendRotationArcHandle(Stream, PivotPosition, UnitY, UnitZ, TipDist * 0.62f, 0.034f * L, ColorAxisX, GizmoHandleOrdinal::RotateX);
+            AppendRotationArcHandle(Stream, PivotPosition, UnitZ, UnitX, TipDist * 0.62f, 0.034f * L, ColorAxisY, GizmoHandleOrdinal::RotateY);
+        }
     }
 
     const Mathematics::Axis3D RightN = DimensionMode == GizmoDimensionMode::Planar2D

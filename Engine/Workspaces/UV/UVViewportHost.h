@@ -51,9 +51,14 @@ private:
     bool                   SurfaceDropdownOpen     = false;
     bool                   CanvasDebugDropdownOpen = false;
     bool                   ProjectionDropdownOpen  = false;
-    uint32_t               ActiveRailSlot         = 0u;
-    uint64_t               CachedUVRevision       = UINT64_MAX;
-    uint32_t               CachedChartCount       = 0u;
+    uint32_t               ActiveRailSlot          = 0u;
+    uint64_t               CachedUVRevision        = UINT64_MAX;
+    uint32_t               CachedChartCount        = 0u;
+    Point2D                PaneScreenOrigin        { 0.0f, 0.0f };
+    float                  PaneScaleFactor         = 1.0f;
+    Rectangle2D            LastSpatialRectLogical  {};
+    uint64_t               ActiveHistoryTickSeq    = 0u;
+    uint64_t               HeadlessHistorySeq      = 0u;
 };
 
 } // namespace Frontier::Workspaces

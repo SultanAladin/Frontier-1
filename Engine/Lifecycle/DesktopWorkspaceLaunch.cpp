@@ -11,6 +11,7 @@
 
 #include "Engine/Components/Appearance/ThemeRepository.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"
+#include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
@@ -264,6 +265,10 @@ int LaunchDesktopWorkspace(
         {
             InitialOptions.OpenContentBrowser = true;
         }
+        else if (Arg == "--close-browser")
+        {
+            InitialOptions.OpenContentBrowser = false;
+        }
     }
 
     GeometricRaster::VulkanInterchange DeviceInterchange {};
@@ -337,6 +342,8 @@ int LaunchDesktopWorkspace(
     const bool UseFullEditorLifecycle = (EngineConfig.QueryLaunchMode() == Configuration::HostLaunchMode::FeatureSet);
     Lifecycle::EditorLifecycle EditorLoop {};
     Editor::Explorer::ContentBrowser StandaloneBrowser {};
+#else
+    ContentBrowserPanel StandaloneBrowserPanel {};
 #endif
 
     Components::HeadlessWorkspaceDockContainer StandaloneDock {};
@@ -358,10 +365,11 @@ int LaunchDesktopWorkspace(
             ImGui::DestroyContext(GuiCtx);
             return 1;
         }
-        if (InitialOptions.OpenContentBrowser)
-        {
-            EditorLoop.AccessContentBrowser().AccessPanel().ConfigureShelfExtent(ContentShelfExtent::SplitHalf, true);
-        }
+        auto& EditorBrowserPanel = EditorLoop.AccessContentBrowser().AccessPanel();
+        EditorBrowserPanel.ConfigureShelfExtent(
+            InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
+            true);
+        (void)EditorBrowserPanel.ActivateCategory(ContentCategory::Colours);
     }
     else
 #endif
@@ -377,11 +385,19 @@ int LaunchDesktopWorkspace(
         StandaloneControlCentre.ApplyDraftAppearanceImmediate();
         StandaloneControlCentre.AccessNotificationStream().ClearPending();
 #if FRONTIER_EDITOR_ENABLED
+        StandaloneBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
         UVHost.AttachContentBrowser(&StandaloneBrowser);
-        if (InitialOptions.OpenContentBrowser)
-        {
-            StandaloneBrowser.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::SplitHalf, true);
-        }
+        StandaloneBrowser.AccessPanel().ConfigureShelfExtent(
+            InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
+            true);
+        (void)StandaloneBrowser.AccessPanel().ActivateCategory(ContentCategory::Colours);
+#else
+        StandaloneBrowserPanel.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+        UVHost.AttachContentBrowserPanel(&StandaloneBrowserPanel);
+        StandaloneBrowserPanel.ConfigureShelfExtent(
+            InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
+            true);
+        (void)StandaloneBrowserPanel.ActivateCategory(ContentCategory::Colours);
 #endif
         UVHost.RegisterDockPanes(StandaloneDock);
     }
@@ -490,6 +506,8 @@ int LaunchDesktopWorkspace(
             const Rectangle2D FullBounds { 0.0f, 0.0f, static_cast<float>(SurfaceW), static_cast<float>(SurfaceH) };
 #if FRONTIER_EDITOR_ENABLED
             StandaloneBrowser.Render(FullBounds, Dt, 1.0f);
+#else
+            StandaloneBrowserPanel.Render(FullBounds, Dt, 1.0f);
 #endif
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }

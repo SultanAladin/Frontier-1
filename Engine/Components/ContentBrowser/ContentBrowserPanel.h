@@ -61,6 +61,14 @@ struct ColourSlotRegistration
     std::function<void(ColorRgba, const ColourCodexEntry&)> NotifyColourAssigned {};        // [-]  - Optional assignment callback
 };
 
+struct MatCapSlotRegistration
+{
+    std::string                                                 SlotIdentifier       {}; // [-]  - Stable MatCap drop-target key
+    std::string                                                 DisplayTitle         {}; // [-]  - Human-readable target label
+    Rectangle2D                                                 ScreenBounds         {}; // [px] - Logical drop-target rectangle
+    std::function<void(uint8_t, const ContentRepositoryEntry&)> NotifyMatCapAssigned {}; // [-]  - Callback receiving MatCap slot (0..15)
+};
+
 struct ContentBrowserPointerInput
 {
     float CursorX       = -10000.0f; // [px] - Logical pointer X coordinate
@@ -89,6 +97,7 @@ struct ContentBrowserReading
     uint32_t                       VisibleEntryCount      = 0u;                                             // [count] - Filtered visible entries
     bool                           ColourFiltersVisible   = false;                                          // [-]     - True only when Colours is active
     bool                           DraggingColourActive   = false;                                          // [-]     - True while dragging a ColourCodex swatch
+    bool                           DraggingMatCapActive   = false;                                          // [-]     - True while dragging a Studio MatCap sphere
     std::string                    SelectedColourAlias    {};                                               // [-]     - Selected ColourCodex alias name
     std::string                    LastStatusMessage      {};                                               // [-]     - Latest footer status feedback
 };
@@ -108,6 +117,8 @@ public:
 
     void ConfigureShelfExtent(ContentShelfExtent RequestedExtent, bool Immediate = false) noexcept;
     void ConfigureWorkspaceDomain(WorkspaceCategory Workspace) noexcept;
+    void ConfigureColourAndMatCapLock(bool Locked) noexcept;
+    [[nodiscard]] bool QueryColourAndMatCapLocked() const noexcept { return ColourAndMatCapLocked; }
     bool ActivateCategory(ContentCategory NextCategory) noexcept;
     void ConfigureOriginFilter(ContentOriginFilter Origin) noexcept;
     void ConfigureStandardLayout(StandardRepositoryLayout Layout) noexcept;
@@ -124,12 +135,15 @@ public:
     void ClearColourSlots() noexcept;
     void RegisterColourSlot(const ColourSlotRegistration& Registration);
     void FocusColourSlot(std::string_view SlotIdentifier) noexcept;
+    void ClearMatCapSlots() noexcept;
+    void RegisterMatCapSlot(const MatCapSlotRegistration& Registration);
     void AttachOutlinerFallback(OutlinerPanel* TargetOutliner) noexcept;
     void AttachThemeRepository(const ThemeRepository* SourceTheme) noexcept;
     void AssignContentActivationCallback(std::function<void(const ContentRepositoryEntry&)> ActivationCallback);
 
     bool ApplySelectedColourToActiveSlot();
     bool ApplyColourIndexToSlot(std::size_t ColourIndex, std::string_view TargetSlotIdentifier = {});
+    bool ApplyMatCapEntryToSlot(std::size_t EntryIndex, std::string_view TargetSlotIdentifier = {});
     bool ActivateContentEntryAt(std::size_t EntryIndex);
 
     void RenderWithInput(
@@ -143,9 +157,14 @@ public:
     [[nodiscard]] ContentBrowserReading               InspectReading() const noexcept;
     [[nodiscard]] bool                                QueryOpen() const noexcept;
     [[nodiscard]] bool                                QueryBlocksUnderlyingWorkspace() const noexcept;
+    [[nodiscard]] bool                                QueryBlocksPointerAt(Point2D PhysicalCursor) const noexcept;
+    [[nodiscard]] float                               QueryVisibleDrawerHeightRatio() const noexcept;
+    [[nodiscard]] float                               QueryDrawerTopPhysicalY() const noexcept;
+    [[nodiscard]] Rectangle2D                         MapPhysicalToLogicalBounds(Rectangle2D PhysicalBounds) const noexcept;
     [[nodiscard]] Rectangle2D                         QueryNotchTabBounds(Rectangle2D ViewportLogicalBounds) const noexcept;
     [[nodiscard]] Rectangle2D                         QuerySearchFieldBounds() const noexcept;
     [[nodiscard]] Rectangle2D                         QueryRenderedColourCellBounds(std::size_t ColourIndex) const noexcept;
+    [[nodiscard]] Rectangle2D                         QueryRenderedContentCellBounds(std::size_t EntryIndex) const noexcept;
     [[nodiscard]] ColourCodex&                        AccessColourCodex() noexcept;
     [[nodiscard]] const ColourCodex&                  QueryColourCodex() const noexcept;
     [[nodiscard]] ThumbnailSheetRepository&           AccessThumbnailRepository() noexcept;
@@ -162,8 +181,10 @@ private:
 
     [[nodiscard]] ControlColorSet ResolveActiveColorSet() const noexcept;
     [[nodiscard]] float           ResolveCornerRadius() const noexcept;
+    [[nodiscard]] bool            QueryCategoryAllowedInMode(ContentCategory Candidate) const noexcept;
 
-    void RenderColourSlotHighlights(PixelSpace& Canvas, Point2D Cursor, const ControlColorSet& AppearanceColors) const noexcept;
+    void RenderColourSlotHighlights(PixelSpace& Canvas, Point2D Cursor, float VisibleBottomY, const ControlColorSet& AppearanceColors) const noexcept;
+    void RenderMatCapSlotHighlights(PixelSpace& Canvas, Point2D Cursor, float VisibleBottomY, const ControlColorSet& AppearanceColors) const noexcept;
     void RenderBottomNotchHandle(PixelSpace& Canvas, Rectangle2D NotchBounds, bool Hovered, const ControlColorSet& AppearanceColors) const noexcept;
     void RenderColoursRepository(
         PixelSpace&                       Canvas,
@@ -207,16 +228,24 @@ private:
     std::string                         StatusMessage         {};                                       // [-]   - Latest footer status string
 
     std::vector<ColourSlotRegistration> RegisteredSlots       {};                                       // [-]   - Bound editor colour slots
+    std::vector<MatCapSlotRegistration> RegisteredMatCapSlots {};                                       // [-]   - Bound MatCap drop targets
     std::string                         FocusedSlotId         {};                                       // [-]   - Active target slot key
     OutlinerPanel*                      FallbackOutliner      = nullptr;                                // [-]   - Optional Outliner fallback
     const ThemeRepository*              AttachedTheme         = nullptr;                                // [-]   - Optional live ThemeRepository source
     std::function<void(const ContentRepositoryEntry&)> ContentActivationCallback {};                    // [-]   - Optional asset open callback
     std::vector<RecordedCellHitbox>     LastColourHitboxes    {};                                       // [-]   - Hitboxes for testing & drag
+    std::vector<RecordedCellHitbox>     LastContentHitboxes   {};                                       // [-]   - Content tile hitboxes for testing & drag
+    bool                                ColourAndMatCapLocked = false;                                  // [-]   - Restrict browser to Colours + MatCap Materials
 
     bool                                PotentialColourDrag   = false;                                  // [-]   - Pointer pressed on colour swatch
     bool                                DraggingColour        = false;                                  // [-]   - Active drag threshold crossed
     std::size_t                         DraggedColourIndex    = 0u;                                     // [idx] - ColourCodex entry being dragged
+    bool                                PotentialMatCapDrag   = false;                                  // [-]   - Pointer pressed on MatCap sphere
+    bool                                DraggingMatCap        = false;                                  // [-]   - Active MatCap drag threshold crossed
+    std::size_t                         DraggedMatCapIndex    = 0u;                                     // [idx] - ThumbnailSheetRepository MatCap index
     Point2D                             DragPressOrigin       {};                                       // [px]  - Press coordinate for deadzone
+    Rectangle2D                         LastHostBoundsPhysical{ 0.0f, 0.0f, 1840.0f, 980.0f };          // [px]  - Last host viewport physical bounds
+    float                               LastSafeScale         = 1.0f;                                   // [-]   - Last rendered DPI safe scale
 };
 
 } // namespace Frontier

@@ -18,6 +18,115 @@
 namespace Frontier::Workspaces
 {
 
+namespace
+{
+
+constexpr uint32_t AuthoringSnapshotMagic   = 0x5556534Eu; // 'UVSN'
+constexpr uint32_t AuthoringSnapshotVersion = 1u;
+
+struct UVTriangle2D
+{
+    uint32_t FaceIndex = 0u;
+    float    U0 = 0.0f, V0 = 0.0f;
+    float    U1 = 0.0f, V1 = 0.0f;
+    float    U2 = 0.0f, V2 = 0.0f;
+    float    MinU = 0.0f, MaxU = 0.0f;
+    float    MinV = 0.0f, MaxV = 0.0f;
+};
+
+[[nodiscard]] bool AxisSeparatesTriangles(
+    const UVTriangle2D& A,
+    const UVTriangle2D& B,
+    float               AxisU,
+    float               AxisV,
+    float               Epsilon) noexcept
+{
+    const float LenSq = AxisU * AxisU + AxisV * AxisV;
+    if (LenSq <= 1.0e-12f)
+    {
+        return false;
+    }
+    const float InvLen = 1.0f / std::sqrt(LenSq);
+    const float NU = AxisU * InvLen;
+    const float NV = AxisV * InvLen;
+
+    const float PA0 = A.U0 * NU + A.V0 * NV;
+    const float PA1 = A.U1 * NU + A.V1 * NV;
+    const float PA2 = A.U2 * NU + A.V2 * NV;
+    const float PB0 = B.U0 * NU + B.V0 * NV;
+    const float PB1 = B.U1 * NU + B.V1 * NV;
+    const float PB2 = B.U2 * NU + B.V2 * NV;
+
+    const float MinA = std::min({ PA0, PA1, PA2 });
+    const float MaxA = std::max({ PA0, PA1, PA2 });
+    const float MinB = std::min({ PB0, PB1, PB2 });
+    const float MaxB = std::max({ PB0, PB1, PB2 });
+    return (MaxA <= MinB + Epsilon) || (MaxB <= MinA + Epsilon);
+}
+
+[[nodiscard]] bool TrianglesOverlap2DSAT(
+    const UVTriangle2D& A,
+    const UVTriangle2D& B,
+    float               Epsilon = 2.5e-4f) noexcept
+{
+    if (AxisSeparatesTriangles(A, B, -(A.V1 - A.V0), (A.U1 - A.U0), Epsilon) ||
+        AxisSeparatesTriangles(A, B, -(A.V2 - A.V1), (A.U2 - A.U1), Epsilon) ||
+        AxisSeparatesTriangles(A, B, -(A.V0 - A.V2), (A.U0 - A.U2), Epsilon) ||
+        AxisSeparatesTriangles(A, B, -(B.V1 - B.V0), (B.U1 - B.U0), Epsilon) ||
+        AxisSeparatesTriangles(A, B, -(B.V2 - B.V1), (B.U2 - B.U1), Epsilon) ||
+        AxisSeparatesTriangles(A, B, -(B.V0 - B.V2), (B.U0 - B.U2), Epsilon))
+    {
+        return false;
+    }
+    return true;
+}
+
+template <typename T>
+void AppendPod(std::vector<std::byte>& Buffer, const T& Payload)
+{
+    const std::size_t Offset = Buffer.size();
+    Buffer.resize(Offset + sizeof(T));
+    std::memcpy(Buffer.data() + Offset, &Payload, sizeof(T));
+}
+
+void AppendString(std::vector<std::byte>& Buffer, std::string_view Text)
+{
+    const uint32_t Len = static_cast<uint32_t>(Text.size());
+    AppendPod(Buffer, Len);
+    if (Len > 0u)
+    {
+        const std::size_t Offset = Buffer.size();
+        Buffer.resize(Offset + Len);
+        std::memcpy(Buffer.data() + Offset, Text.data(), Len);
+    }
+}
+
+template <typename T>
+[[nodiscard]] bool ReadPod(std::span<const std::byte> Data, std::size_t& Cursor, T& OutValue) noexcept
+{
+    if (Cursor + sizeof(T) > Data.size())
+    {
+        return false;
+    }
+    std::memcpy(&OutValue, Data.data() + Cursor, sizeof(T));
+    Cursor += sizeof(T);
+    return true;
+}
+
+[[nodiscard]] bool ReadString(std::span<const std::byte> Data, std::size_t& Cursor, std::string& OutText)
+{
+    uint32_t Len = 0u;
+    if (!ReadPod(Data, Cursor, Len) || Cursor + Len > Data.size())
+    {
+        return false;
+    }
+    OutText.assign(reinterpret_cast<const char*>(Data.data() + Cursor), Len);
+    Cursor += Len;
+    return true;
+}
+
+} // namespace
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                      INITIALIZATION
 //------------------------------------------------------------------------------------------------------------------------
@@ -52,11 +161,13 @@ bool UVWorkspaceSession::AttachVulkanRasterizer(GeometricRaster::UVWorkspaceRast
     {
         return false;
     }
+    Rasterizer->ConfigureLayerSwatches(Asset.Layers.InspectLayers());
     const bool Uploaded = Rasterizer->UploadPolygonNetwork(Asset.Network, RootInstanceToken.SlotIndex);
     if (Uploaded)
     {
         SynchronizeSelectionToGPU();
-        LatestMetrics     = Rasterizer->EvaluateUVDistortionInspection(Asset.Network, true);
+        LatestMetrics = Rasterizer->EvaluateUVDistortionInspection(Asset.Network, true);
+        LatestMetrics.OverlapFaceCount = static_cast<uint32_t>(CollectOverlappingUVFaces().size());
         FramebuffersDirty = true;
     }
     return Uploaded;
@@ -105,8 +216,9 @@ void UVWorkspaceSession::InitializeLoadedAssetLayout()
     }
 
     RevisionHistory.Reset();
-    BaselineUVPairs      = Asset.Network.ExtractParameterizedUVStream();
-    RevisionStampCounter = 1ull;
+    BaselineUVPairs       = Asset.Network.ExtractParameterizedUVStream();
+    BaselineSnapshotBytes = CaptureAuthoringSnapshot();
+    RevisionStampCounter  = 1ull;
 
     Mathematics::Axis3D BoundsMin {  1.0e9f,  1.0e9f,  1.0e9f };
     Mathematics::Axis3D BoundsMax { -1.0e9f, -1.0e9f, -1.0e9f };
@@ -246,11 +358,9 @@ void UVWorkspaceSession::BindSelectionToPriorityLayer(uint16_t LayerOrdinal)
     }
     Asset.Layers.AssignFacesToLayer(Asset.Network, SelectedFaces, LayerOrdinal);
     Asset.Layers.SynchronizePartitions(Asset.Network, RootInstanceToken);
-    if (Rasterizer != nullptr)
-    {
-        (void)Rasterizer->UploadPolygonNetwork(Asset.Network, RootInstanceToken.SlotIndex);
-        SynchronizeSelectionToGPU();
-    }
+    RecordUVRevisionStep("BindSelectionToLayer");
+    SyncNetworkToGPU();
+    RefreshGizmoAnchorsFromSelection();
     FramebuffersDirty = true;
 }
 
@@ -271,10 +381,12 @@ uint16_t UVWorkspaceSession::CreatePriorityLayer(
         Asset.Layers.SynchronizePartitions(Asset.Network, RootInstanceToken);
     }
     SelectPriorityLayer(NewOrd);
+    RecordUVRevisionStep("CreatePriorityLayer");
+    SyncNetworkToGPU();
     return NewOrd;
 }
 
-void UVWorkspaceSession::RenameSelectedLayer(std::string_view NewTitle)
+void UVWorkspaceSession::RenameSelectedLayer(std::string_view NewTitle, bool RecordRevision)
 {
     if (SelectedLayerOrdinal == 0u || NewTitle.empty())
     {
@@ -282,7 +394,15 @@ void UVWorkspaceSession::RenameSelectedLayer(std::string_view NewTitle)
     }
     if (auto* Layer = Asset.Layers.ResolveLayer(SelectedLayerOrdinal))
     {
+        if (Layer->LayerTitle == NewTitle)
+        {
+            return;
+        }
         Layer->LayerTitle = std::string(NewTitle);
+        if (RecordRevision)
+        {
+            RecordUVRevisionStep("RenamePriorityLayer");
+        }
         FramebuffersDirty = true;
     }
 }
@@ -314,24 +434,38 @@ bool UVWorkspaceSession::DeleteSelectedLayer()
     Asset.Layers.SynchronizePartitions(Asset.Network, RootInstanceToken);
     const auto Remaining = Asset.Layers.InspectLayers();
     SelectPriorityLayer(Remaining.empty() ? 0u : Remaining.front().LayerOrdinal);
+    RecordUVRevisionStep("DeletePriorityLayer");
     SyncNetworkToGPU();
     return true;
 }
 
-void UVWorkspaceSession::AssignSelectedLayerTint(Mathematics::Scalar3D LinearTint) noexcept
+void UVWorkspaceSession::AssignSelectedLayerTint(Mathematics::Scalar3D LinearTint, bool RecordRevision)
 {
-    if (SelectedLayerOrdinal == 0u)
+    AssignLayerTintByOrdinal(SelectedLayerOrdinal, LinearTint, RecordRevision);
+}
+
+void UVWorkspaceSession::AssignLayerTintByOrdinal(uint16_t LayerOrdinal, Mathematics::Scalar3D LinearTint, bool RecordRevision)
+{
+    if (LayerOrdinal == 0u)
     {
         return;
     }
-    if (auto* Layer = Asset.Layers.ResolveLayer(SelectedLayerOrdinal))
+    if (auto* Layer = Asset.Layers.ResolveLayer(LayerOrdinal))
     {
         Layer->LinearTintRGB = LinearTint;
-        FramebuffersDirty    = true;
+        if (Rasterizer != nullptr)
+        {
+            Rasterizer->ConfigureLayerSwatches(Asset.Layers.InspectLayers());
+        }
+        if (RecordRevision)
+        {
+            RecordUVRevisionStep("TintPriorityLayer");
+        }
+        FramebuffersDirty = true;
     }
 }
 
-void UVWorkspaceSession::AdjustSelectedLayerShare(float RequestedSharePercent) noexcept
+void UVWorkspaceSession::AdjustSelectedLayerShare(float RequestedSharePercent, bool RecordRevision)
 {
     if (SelectedLayerOrdinal == 0u)
     {
@@ -353,7 +487,11 @@ void UVWorkspaceSession::AdjustSelectedLayerShare(float RequestedSharePercent) n
     }
     const float Ceiling       = std::max(0.0f, 100.0f - OtherSum);
     Layer->TargetSharePercent = std::clamp(RequestedSharePercent, 0.0f, Ceiling);
-    FramebuffersDirty         = true;
+    if (RecordRevision)
+    {
+        RecordUVRevisionStep("AdjustLayerShare");
+    }
+    FramebuffersDirty = true;
 }
 
 bool UVWorkspaceSession::MoveSelectedLayerToUDIM(uint32_t TargetUDIMNumber)
@@ -372,6 +510,7 @@ bool UVWorkspaceSession::MoveSelectedLayerToUDIM(uint32_t TargetUDIMNumber)
     if (TargetUDIMNumber == 0u)
     {
         Asset.Layers.SynchronizePartitions(Asset.Network, RootInstanceToken);
+        RecordUVRevisionStep("SetPriorityLayerAutoUDIM");
         FramebuffersDirty = true;
         return true;
     }
@@ -426,23 +565,18 @@ bool UVWorkspaceSession::MoveSelectedLayerToUDIM(uint32_t TargetUDIMNumber)
     if (MovedIslandCount > 0u)
     {
         ++Asset.Network.UVRevision;
-        FinalizeInteractiveUVRevision("Move priority layer to UDIM");
     }
-    else
-    {
-        Asset.Layers.SynchronizePartitions(Asset.Network, RootInstanceToken);
-        FramebuffersDirty = true;
-    }
+    FinalizeInteractiveUVRevision("MovePriorityLayerToUDIM");
     return true;
 }
 
-void UVWorkspaceSession::ApplyMatCapToActiveSelection(uint8_t MatCapSlot)
+void UVWorkspaceSession::ApplyMatCapToActiveSelection(uint8_t MatCapSlot, bool RecordRevision)
 {
     auto TargetFaces = SelectionMask.CollectSelectedFaces();
     if (TargetFaces.empty())
     {
-        const auto& Ref = Asset.Layers.InspectPartitionSpan(Asset.Network, SelectedLayerOrdinal, RootInstanceToken);
-        TargetFaces     = Ref.FaceIndices;
+        TargetFaces.resize(Asset.Network.Faces.size());
+        std::iota(TargetFaces.begin(), TargetFaces.end(), 0u);
     }
     for (const uint32_t FaceIdx : TargetFaces)
     {
@@ -451,7 +585,98 @@ void UVWorkspaceSession::ApplyMatCapToActiveSelection(uint8_t MatCapSlot)
             Asset.Network.Faces[FaceIdx].Shading.MatCapSlot = static_cast<uint8_t>(MatCapSlot & 15u);
         }
     }
+    if (RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MatCapPreview &&
+        RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap)
+    {
+        RenderOptions3D.DisplayMode = GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap;
+    }
     ++Asset.Network.ShadingRevision;
+    if (RecordRevision)
+    {
+        RecordUVRevisionStep("ApplyMatCapPreset");
+    }
+    if (Rasterizer != nullptr)
+    {
+        (void)Rasterizer->UploadPolygonNetwork(Asset.Network, RootInstanceToken.SlotIndex);
+    }
+    FramebuffersDirty = true;
+}
+
+void UVWorkspaceSession::ApplySurfaceAlbedoColour(Mathematics::Scalar3D SrgbColour, bool RecordRevision)
+{
+    auto ToLinearChannel = [](float Srgb) noexcept -> float
+    {
+        return std::pow(std::clamp(Srgb, 0.0f, 1.0f), 2.2f);
+    };
+    const Mathematics::Scalar3D LinearRGB {
+        ToLinearChannel(SrgbColour.X),
+        ToLinearChannel(SrgbColour.Y),
+        ToLinearChannel(SrgbColour.Z),
+    };
+    auto TargetFaces = SelectionMask.CollectSelectedFaces();
+    if (TargetFaces.empty())
+    {
+        TargetFaces.resize(Asset.Network.Faces.size());
+        std::iota(TargetFaces.begin(), TargetFaces.end(), 0u);
+    }
+    for (const uint32_t FaceIdx : TargetFaces)
+    {
+        if (FaceIdx < Asset.Network.Faces.size())
+        {
+            Asset.Network.Faces[FaceIdx].Shading.AlbedoLinearRGB = LinearRGB;
+        }
+    }
+    if (RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::SurfaceMaterial &&
+        RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap)
+    {
+        RenderOptions3D.DisplayMode = GeometricRaster::SurfaceDisplayMode::SurfaceMaterial;
+    }
+    ++Asset.Network.ShadingRevision;
+    if (RecordRevision)
+    {
+        RecordUVRevisionStep("ApplySurfaceAlbedoColour");
+    }
+    if (Rasterizer != nullptr)
+    {
+        (void)Rasterizer->UploadPolygonNetwork(Asset.Network, RootInstanceToken.SlotIndex);
+    }
+    FramebuffersDirty = true;
+}
+
+void UVWorkspaceSession::ApplyMatCapTintColour(Mathematics::Scalar3D SrgbColour, bool RecordRevision)
+{
+    auto ToLinearChannel = [](float Srgb) noexcept -> float
+    {
+        return std::pow(std::clamp(Srgb, 0.0f, 1.0f), 2.2f);
+    };
+    const Mathematics::Scalar3D LinearRGB {
+        ToLinearChannel(SrgbColour.X),
+        ToLinearChannel(SrgbColour.Y),
+        ToLinearChannel(SrgbColour.Z),
+    };
+    auto TargetFaces = SelectionMask.CollectSelectedFaces();
+    if (TargetFaces.empty())
+    {
+        TargetFaces.resize(Asset.Network.Faces.size());
+        std::iota(TargetFaces.begin(), TargetFaces.end(), 0u);
+    }
+    for (const uint32_t FaceIdx : TargetFaces)
+    {
+        if (FaceIdx < Asset.Network.Faces.size())
+        {
+            Asset.Network.Faces[FaceIdx].Shading.MatCapTintLinearRGB = LinearRGB;
+        }
+    }
+    if (RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MatCapPreview &&
+        RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap)
+    {
+        RenderOptions3D.DisplayMode = GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap;
+    }
+    ++Asset.Network.ShadingRevision;
+    if (RecordRevision)
+    {
+        RecordUVRevisionStep("ApplyMatCapTintColour");
+    }
     if (Rasterizer != nullptr)
     {
         (void)Rasterizer->UploadPolygonNetwork(Asset.Network, RootInstanceToken.SlotIndex);
@@ -463,7 +688,8 @@ void UVWorkspaceSession::ApplySurfaceRoughnessMetallic(
     float Roughness,
     float Metallic,
     float MatCapBlend,
-    float Specular)
+    float Specular,
+    bool  RecordRevision)
 {
     auto TargetFaces = SelectionMask.CollectSelectedFaces();
     if (TargetFaces.empty())
@@ -483,6 +709,10 @@ void UVWorkspaceSession::ApplySurfaceRoughnessMetallic(
         }
     }
     ++Asset.Network.ShadingRevision;
+    if (RecordRevision)
+    {
+        RecordUVRevisionStep("ApplySurfacePBR");
+    }
     if (Rasterizer != nullptr)
     {
         (void)Rasterizer->UploadPolygonNetwork(Asset.Network, RootInstanceToken.SlotIndex);
@@ -500,8 +730,183 @@ uint32_t UVWorkspaceSession::ConstructNextUDIMTile()
     Asset.UDIMTiles.push_back(NextCode);
     UDIMSettings[NextCode] = UDIMTileSetting{ WorkspaceConfig.InspectUVPreferences().DefaultTileResolutionPx, GeometricRaster::UVBackdropPreset::None };
     ActiveUDIMNumber       = NextCode;
+    RecordUVRevisionStep("AddUDIMTile");
     FramebuffersDirty      = true;
     return NextCode;
+}
+
+bool UVWorkspaceSession::RemoveUDIMTile(uint32_t UDIMNumber)
+{
+    if (UDIMNumber == 1001u || Asset.UDIMTiles.size() <= 1u)
+    {
+        return false;
+    }
+    const auto It = std::find(Asset.UDIMTiles.begin(), Asset.UDIMTiles.end(), UDIMNumber);
+    if (It == Asset.UDIMTiles.end())
+    {
+        return false;
+    }
+    Asset.UDIMTiles.erase(It);
+    UDIMSettings.erase(UDIMNumber);
+    if (ActiveUDIMNumber == UDIMNumber)
+    {
+        ActiveUDIMNumber = Asset.UDIMTiles.empty() ? 1001u : Asset.UDIMTiles.front();
+    }
+    if (OutlinerUDIMFilter == UDIMNumber)
+    {
+        OutlinerUDIMFilter = 0u;
+    }
+    RecordUVRevisionStep("RemoveUDIMTile");
+    SyncNetworkToGPU();
+    FramebuffersDirty = true;
+    return true;
+}
+
+std::vector<uint32_t> UVWorkspaceSession::CollectOverlappingUVFaces() const
+{
+    std::vector<UVTriangle2D> Tris;
+    Tris.reserve(Asset.Network.Faces.size() * 2u);
+
+    for (uint32_t FaceIdx = 0u; FaceIdx < static_cast<uint32_t>(Asset.Network.Faces.size()); ++FaceIdx)
+    {
+        const GeometrySpace::Face& CurrentFace = Asset.Network.Faces[FaceIdx];
+        if (CurrentFace.CornerCount < 3u)
+        {
+            continue;
+        }
+        std::vector<Mathematics::UVAxes> LoopUVs;
+        LoopUVs.reserve(CurrentFace.CornerCount);
+        uint32_t ECur = CurrentFace.BoundaryLoopEdgeIndex;
+        for (uint16_t Corner = 0u; Corner < CurrentFace.CornerCount && ECur < Asset.Network.Edges.size(); ++Corner)
+        {
+            LoopUVs.push_back(Asset.Network.Edges[ECur].ParameterUV);
+            ECur = Asset.Network.Edges[ECur].NextEdgeIndex;
+        }
+        if (LoopUVs.size() < 3u)
+        {
+            continue;
+        }
+
+        for (std::size_t Tri = 1u; Tri + 1u < LoopUVs.size(); ++Tri)
+        {
+            const auto& A = LoopUVs[0u];
+            const auto& B = LoopUVs[Tri];
+            const auto& C = LoopUVs[Tri + 1u];
+            const float Area2 = std::abs((B.U - A.U) * (C.V - A.V) - (B.V - A.V) * (C.U - A.U));
+            if (Area2 <= 1.0e-8f)
+            {
+                continue;
+            }
+            UVTriangle2D T {};
+            T.FaceIndex = FaceIdx;
+            T.U0 = A.U; T.V0 = A.V;
+            T.U1 = B.U; T.V1 = B.V;
+            T.U2 = C.U; T.V2 = C.V;
+            T.MinU = std::min({ A.U, B.U, C.U });
+            T.MaxU = std::max({ A.U, B.U, C.U });
+            T.MinV = std::min({ A.V, B.V, C.V });
+            T.MaxV = std::max({ A.V, B.V, C.V });
+            Tris.push_back(T);
+        }
+    }
+
+    std::sort(Tris.begin(), Tris.end(), [](const UVTriangle2D& L, const UVTriangle2D& R) noexcept
+    {
+        return L.MinU < R.MinU;
+    });
+
+    std::vector<uint8_t> Overlaps(Asset.Network.Faces.size(), 0u);
+    constexpr float SweepEps = 2.5e-4f;
+
+    for (std::size_t I = 0u; I < Tris.size(); ++I)
+    {
+        const UVTriangle2D& A = Tris[I];
+        for (std::size_t J = I + 1u; J < Tris.size(); ++J)
+        {
+            const UVTriangle2D& B = Tris[J];
+            if (B.MinU >= A.MaxU - SweepEps)
+            {
+                break;
+            }
+            if (A.FaceIndex == B.FaceIndex)
+            {
+                continue;
+            }
+            if (B.MinV >= A.MaxV - SweepEps || A.MinV >= B.MaxV - SweepEps)
+            {
+                continue;
+            }
+            if (TrianglesOverlap2DSAT(A, B, SweepEps))
+            {
+                Overlaps[A.FaceIndex] = 1u;
+                Overlaps[B.FaceIndex] = 1u;
+            }
+        }
+    }
+
+    std::vector<uint32_t> Result;
+    for (uint32_t FIdx = 0u; FIdx < static_cast<uint32_t>(Overlaps.size()); ++FIdx)
+    {
+        if (Overlaps[FIdx] != 0u)
+        {
+            Result.push_back(FIdx);
+        }
+    }
+    return Result;
+}
+
+bool UVWorkspaceSession::ApplyLiveUnwrapIfEnabled()
+{
+    if (!LiveUnwrapEnabled)
+    {
+        return false;
+    }
+    bool HasSeamOrPin = false;
+    for (const auto& Edge : Asset.Network.Edges)
+    {
+        if (GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSeamCut) ||
+            GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnablePinLock))
+        {
+            HasSeamOrPin = true;
+            break;
+        }
+    }
+    if (!HasSeamOrPin)
+    {
+        return false;
+    }
+    const ConformalUnwrapReport Rep = ConformalUnwrapSolver::FlattenIslandsConformally(Asset.Network, nullptr, 24u);
+    Asset.Layers.SynchronizePartitions(Asset.Network, RootInstanceToken);
+    SyncNetworkToGPU();
+    RefreshGizmoAnchorsFromSelection();
+    FramebuffersDirty = true;
+    return Rep.IslandsFlattened > 0u;
+}
+
+bool UVWorkspaceSession::TryConsumeGlobalHistoryShortcut(
+    bool     ShortcutUndo,
+    bool     ShortcutRedo,
+    bool     TextInputActive,
+    uint64_t TickSequence)
+{
+    if (TextInputActive || (!ShortcutUndo && !ShortcutRedo))
+    {
+        return false;
+    }
+    if (TickSequence != UINT64_MAX && TickSequence == LastHistoryTickSequence)
+    {
+        return false;
+    }
+    LastHistoryTickSequence = TickSequence;
+    if (ShortcutRedo)
+    {
+        return RedoParameterization();
+    }
+    if (ShortcutUndo)
+    {
+        return UndoParameterization();
+    }
+    return false;
 }
 
 UDIMTileSetting& UVWorkspaceSession::AccessUDIMTileSetting(uint32_t UDIMNumber)
@@ -530,14 +935,7 @@ void UVWorkspaceSession::SynchronizeSelectionToGPU()
         return;
     }
     SelectionMask.SynchronizeCapacity(Asset.Network);
-    if (SelectionMode == UVSelectionMode::Layers && SelectionMask.CountSelectedFaces() > 0u)
-    {
-        (void)Rasterizer->DispatchGPUSelection(GeometricRaster::GPUSelectionOperation::SelectByLayer, SelectedLayerOrdinal, false);
-    }
-    else
-    {
-        Rasterizer->UploadSelectionBitmaskWords(SelectionMask.InspectPackedFaceWords());
-    }
+    Rasterizer->UploadSelectionBitmaskWords(SelectionMask.InspectPackedFaceWords());
     FramebuffersDirty = true;
 }
 
@@ -740,8 +1138,83 @@ bool UVWorkspaceSession::ExecuteDirective(
         case UVCommandDirective::MarkSharpSeams:
         {
             const uint32_t Marked = SeamCutGenerator::MarkDihedralSharpSeams(Asset.Network, SharpAngleThreshold, false);
+            WorkspaceConfig.AccessUVPreferences().SeamOverlayEnabled = true;
+            if (LiveUnwrapEnabled && Marked > 0u)
+            {
+                (void)ConformalUnwrapSolver::FlattenIslandsConformally(Asset.Network, OptionalChannels, 24u);
+            }
             std::snprintf(Msg, sizeof(Msg), "Marked %u Dihedral Seam Edges (>= %.0f deg)", Marked, SharpAngleThreshold);
             RecordUVRevisionStep("MarkSharpSeams");
+            break;
+        }
+        case UVCommandDirective::ResetFaceUVsToTile:
+        {
+            auto TargetFaces = SelectionMask.CollectSelectedFaces();
+            if (TargetFaces.empty())
+            {
+                TargetFaces.resize(Asset.Network.Faces.size());
+                std::iota(TargetFaces.begin(), TargetFaces.end(), 0u);
+            }
+            const uint32_t TileIdx = (ActiveUDIMNumber >= 1001u) ? (ActiveUDIMNumber - 1001u) : 0u;
+            const float TileOriginU = static_cast<float>(TileIdx % 10u);
+            const float TileOriginV = static_cast<float>(TileIdx / 10u);
+            uint32_t ResetCount = 0u;
+            for (const uint32_t FaceIdx : TargetFaces)
+            {
+                if (FaceIdx >= Asset.Network.Faces.size())
+                {
+                    continue;
+                }
+                const auto& F = Asset.Network.Faces[FaceIdx];
+                if (F.CornerCount < 3u)
+                {
+                    continue;
+                }
+                std::vector<uint32_t> Loop;
+                Loop.reserve(F.CornerCount);
+                uint32_t E = F.BoundaryLoopEdgeIndex;
+                for (uint16_t C = 0u; C < F.CornerCount && E < Asset.Network.Edges.size(); ++C)
+                {
+                    Loop.push_back(E);
+                    E = Asset.Network.Edges[E].NextEdgeIndex;
+                }
+                if (Loop.size() == 4u)
+                {
+                    constexpr std::array<Mathematics::UVAxes, 4u> QuadUVs {{
+                        { 0.02f, 0.02f }, { 0.98f, 0.02f }, { 0.98f, 0.98f }, { 0.02f, 0.98f },
+                    }};
+                    for (std::size_t C = 0u; C < 4u; ++C)
+                    {
+                        Asset.Network.Edges[Loop[C]].ParameterUV = { TileOriginU + QuadUVs[C].U, TileOriginV + QuadUVs[C].V };
+                    }
+                }
+                else if (Loop.size() == 3u)
+                {
+                    constexpr std::array<Mathematics::UVAxes, 3u> TriUVs {{
+                        { 0.02f, 0.02f }, { 0.98f, 0.02f }, { 0.50f, 0.98f },
+                    }};
+                    for (std::size_t C = 0u; C < 3u; ++C)
+                    {
+                        Asset.Network.Edges[Loop[C]].ParameterUV = { TileOriginU + TriUVs[C].U, TileOriginV + TriUVs[C].V };
+                    }
+                }
+                else
+                {
+                    const float Step = 6.28318530718f / static_cast<float>(Loop.size());
+                    for (std::size_t C = 0u; C < Loop.size(); ++C)
+                    {
+                        const float Angle = Step * static_cast<float>(C);
+                        Asset.Network.Edges[Loop[C]].ParameterUV = {
+                            TileOriginU + 0.50f + 0.46f * std::cos(Angle),
+                            TileOriginV + 0.50f + 0.46f * std::sin(Angle),
+                        };
+                    }
+                }
+                ++ResetCount;
+            }
+            ++Asset.Network.UVRevision;
+            std::snprintf(Msg, sizeof(Msg), "Reset %u Face UVs to Tile %u", ResetCount, ActiveUDIMNumber);
+            RecordUVRevisionStep("ResetFaceUVsToTile");
             break;
         }
         case UVCommandDirective::UnwrapConformal:
@@ -809,6 +1282,11 @@ bool UVWorkspaceSession::ExecuteDirective(
                 Edges = GeometrySpace::GeometrySelection::EvaluateBoundaryEdges(Asset.Network, &SelectionMask);
             }
             const uint32_t Marked = UVAuthoringOperations::MarkEdgesAsSeams(Asset.Network, Edges, true);
+            WorkspaceConfig.AccessUVPreferences().SeamOverlayEnabled = true;
+            if (LiveUnwrapEnabled && Marked > 0u)
+            {
+                (void)ConformalUnwrapSolver::FlattenIslandsConformally(Asset.Network, OptionalChannels, 24u);
+            }
             std::snprintf(Msg, sizeof(Msg), "Marked %u Selected Seam Edges", Marked);
             RecordUVRevisionStep("MarkSelectedSeams");
             break;
@@ -821,6 +1299,10 @@ bool UVWorkspaceSession::ExecuteDirective(
                 Edges = GeometrySpace::GeometrySelection::EvaluateSeamEdges(Asset.Network);
             }
             const uint32_t Welded = UVAuthoringOperations::ClearSeamsWithUVWeld(Asset.Network, Edges);
+            if (LiveUnwrapEnabled && Welded > 0u)
+            {
+                (void)ConformalUnwrapSolver::FlattenIslandsConformally(Asset.Network, OptionalChannels, 24u);
+            }
             std::snprintf(Msg, sizeof(Msg), "Cleared & Welded %u Seam Edges", Welded);
             RecordUVRevisionStep("ClearSelectedSeams");
             break;
@@ -828,6 +1310,7 @@ bool UVWorkspaceSession::ExecuteDirective(
         case UVCommandDirective::DeriveSeamsFromIslands:
         {
             const uint32_t Seams = UVAuthoringOperations::DeriveSeamsFromIslands(Asset.Network);
+            WorkspaceConfig.AccessUVPreferences().SeamOverlayEnabled = true;
             std::snprintf(Msg, sizeof(Msg), "Derived %u Seam Edges from UV Islands", Seams);
             RecordUVRevisionStep("DeriveSeamsFromIslands");
             break;
@@ -835,6 +1318,10 @@ bool UVWorkspaceSession::ExecuteDirective(
         case UVCommandDirective::PinSelectedUVs:
         {
             const uint32_t Pinned = UVAuthoringOperations::AssignPinLockOnFaces(Asset.Network, SelectionMask.CollectSelectedFaces(), true);
+            if (LiveUnwrapEnabled && Pinned > 0u)
+            {
+                (void)ConformalUnwrapSolver::FlattenIslandsConformally(Asset.Network, OptionalChannels, 24u);
+            }
             std::snprintf(Msg, sizeof(Msg), "Pinned %u UV Corners (EnablePinLock)", Pinned);
             RecordUVRevisionStep("PinSelectedUVs");
             break;
@@ -842,6 +1329,10 @@ bool UVWorkspaceSession::ExecuteDirective(
         case UVCommandDirective::UnpinSelectedUVs:
         {
             const uint32_t Unpinned = UVAuthoringOperations::AssignPinLockOnFaces(Asset.Network, SelectionMask.CollectSelectedFaces(), false);
+            if (LiveUnwrapEnabled && Unpinned > 0u)
+            {
+                (void)ConformalUnwrapSolver::FlattenIslandsConformally(Asset.Network, OptionalChannels, 24u);
+            }
             std::snprintf(Msg, sizeof(Msg), "Unpinned %u UV Corners", Unpinned);
             RecordUVRevisionStep("UnpinSelectedUVs");
             break;
@@ -1014,15 +1505,22 @@ bool UVWorkspaceSession::ExecuteDirective(
         }
         case UVCommandDirective::SelectOverlappingFaces:
         {
-            SyncNetworkToGPU();
-            std::snprintf(Msg, sizeof(Msg), "GPU Distortion Inspection: %u Overlapping Faces", LatestMetrics.OverlapFaceCount);
+            const std::vector<uint32_t> Overlapping = CollectOverlappingUVFaces();
+            SelectionMode = UVSelectionMode::Faces;
+            SelectionMask.SelectFacesFromList(Overlapping, false);
+            SpatialSelectionActive = !Overlapping.empty();
+            RefreshGizmoAnchorsFromSelection();
+            SynchronizeSelectionToGPU();
+            LatestMetrics.OverlapFaceCount = static_cast<uint32_t>(Overlapping.size());
+            std::snprintf(Msg, sizeof(Msg), "Selected %zu Overlapping UV Faces", Overlapping.size());
             StatusBannerText = Msg;
+            FramebuffersDirty = true;
             return true;
         }
         case UVCommandDirective::FitActiveSelection:
         {
             FitSelectionOrNetwork();
-            StatusBannerText = "Framed Active Selection in 2D & 3D Viewports";
+            StatusBannerText = "Focused Active Selection in 2D & 3D Viewports";
             return true;
         }
         case UVCommandDirective::ValidateDistortionGPU:
@@ -1070,12 +1568,227 @@ bool UVWorkspaceSession::DispatchDirectiveAsync(
         OptionalCompletion);
 }
 
+std::vector<std::byte> UVWorkspaceSession::CaptureAuthoringSnapshot() const
+{
+    std::vector<std::byte> Buffer;
+    const auto LayerSpan = Asset.Layers.InspectLayers();
+
+    const std::size_t EstimatedBytes =
+        64u +
+        Asset.Network.Vertices.size() * sizeof(Mathematics::Axis3D) +
+        Asset.Network.Edges.size() * (sizeof(Mathematics::UVAxes) + sizeof(uint8_t)) +
+        Asset.Network.Faces.size() * (sizeof(uint16_t) * 2u + sizeof(GeometrySpace::FaceShadingAssignment)) +
+        LayerSpan.size() * 64u +
+        Asset.UDIMTiles.size() * 16u;
+    Buffer.reserve(EstimatedBytes);
+
+    AppendPod(Buffer, AuthoringSnapshotMagic);
+    AppendPod(Buffer, AuthoringSnapshotVersion);
+    AppendPod(Buffer, static_cast<uint32_t>(Asset.Network.Vertices.size()));
+    AppendPod(Buffer, static_cast<uint32_t>(Asset.Network.Edges.size()));
+    AppendPod(Buffer, static_cast<uint32_t>(Asset.Network.Faces.size()));
+    AppendPod(Buffer, static_cast<uint32_t>(LayerSpan.size()));
+    AppendPod(Buffer, static_cast<uint32_t>(Asset.UDIMTiles.size()));
+    AppendPod(Buffer, SelectedLayerOrdinal);
+    AppendPod(Buffer, Asset.Layers.QueryNextLayerOrdinal());
+    AppendPod(Buffer, ActiveUDIMNumber);
+
+    for (const auto& V : Asset.Network.Vertices)
+    {
+        AppendPod(Buffer, V.Axes);
+    }
+    for (const auto& E : Asset.Network.Edges)
+    {
+        AppendPod(Buffer, E.ParameterUV);
+        AppendPod(Buffer, static_cast<uint8_t>(E.AttributeMask));
+    }
+    for (const auto& F : Asset.Network.Faces)
+    {
+        AppendPod(Buffer, F.PriorityLayerOrdinal);
+        AppendPod(Buffer, F.PartGroupOrdinal);
+        AppendPod(Buffer, F.Shading);
+    }
+    for (const auto& Layer : LayerSpan)
+    {
+        AppendPod(Buffer, Layer.LayerOrdinal);
+        AppendPod(Buffer, Layer.TargetSharePercent);
+        AppendPod(Buffer, Layer.TargetUDIMNumber);
+        AppendPod(Buffer, Layer.LinearTintRGB);
+        AppendString(Buffer, Layer.LayerTitle);
+    }
+    for (const uint32_t Code : Asset.UDIMTiles)
+    {
+        AppendPod(Buffer, Code);
+        const auto Setting = QueryUDIMTileSetting(Code);
+        AppendPod(Buffer, Setting.ResolutionPx);
+        AppendPod(Buffer, static_cast<uint8_t>(Setting.BackdropPreset));
+    }
+    return Buffer;
+}
+
+bool UVWorkspaceSession::ApplyAuthoringSnapshot(std::span<const std::byte> SnapshotBytes)
+{
+    std::size_t Cursor = 0u;
+    uint32_t Magic = 0u, Version = 0u;
+    uint32_t VertCount = 0u, EdgeCount = 0u, FaceCount = 0u, LayerCount = 0u, UDIMCount = 0u;
+    uint16_t SavedSelectedLayer = 0u, SavedNextLayerOrd = 1u;
+    uint32_t SavedActiveUDIM = 1001u;
+
+    if (!ReadPod(SnapshotBytes, Cursor, Magic) || Magic != AuthoringSnapshotMagic ||
+        !ReadPod(SnapshotBytes, Cursor, Version) || Version != AuthoringSnapshotVersion ||
+        !ReadPod(SnapshotBytes, Cursor, VertCount) || VertCount != Asset.Network.Vertices.size() ||
+        !ReadPod(SnapshotBytes, Cursor, EdgeCount) || EdgeCount != Asset.Network.Edges.size() ||
+        !ReadPod(SnapshotBytes, Cursor, FaceCount) || FaceCount != Asset.Network.Faces.size() ||
+        !ReadPod(SnapshotBytes, Cursor, LayerCount) ||
+        !ReadPod(SnapshotBytes, Cursor, UDIMCount) ||
+        !ReadPod(SnapshotBytes, Cursor, SavedSelectedLayer) ||
+        !ReadPod(SnapshotBytes, Cursor, SavedNextLayerOrd) ||
+        !ReadPod(SnapshotBytes, Cursor, SavedActiveUDIM))
+    {
+        return false;
+    }
+
+    std::vector<Mathematics::Axis3D> SavedVerts(VertCount);
+    for (uint32_t I = 0u; I < VertCount; ++I)
+    {
+        if (!ReadPod(SnapshotBytes, Cursor, SavedVerts[I]))
+        {
+            return false;
+        }
+    }
+
+    std::vector<Mathematics::UVAxes> SavedUVs(EdgeCount);
+    std::vector<uint8_t> SavedMasks(EdgeCount);
+    for (uint32_t I = 0u; I < EdgeCount; ++I)
+    {
+        if (!ReadPod(SnapshotBytes, Cursor, SavedUVs[I]) || !ReadPod(SnapshotBytes, Cursor, SavedMasks[I]))
+        {
+            return false;
+        }
+    }
+
+    std::vector<uint16_t> SavedFaceLayers(FaceCount);
+    std::vector<uint16_t> SavedFaceParts(FaceCount);
+    std::vector<GeometrySpace::FaceShadingAssignment> SavedShading(FaceCount);
+    for (uint32_t I = 0u; I < FaceCount; ++I)
+    {
+        if (!ReadPod(SnapshotBytes, Cursor, SavedFaceLayers[I]) ||
+            !ReadPod(SnapshotBytes, Cursor, SavedFaceParts[I]) ||
+            !ReadPod(SnapshotBytes, Cursor, SavedShading[I]))
+        {
+            return false;
+        }
+    }
+
+    std::vector<GeometrySpace::PriorityAllocationLayer> SavedLayers(LayerCount);
+    for (uint32_t I = 0u; I < LayerCount; ++I)
+    {
+        if (!ReadPod(SnapshotBytes, Cursor, SavedLayers[I].LayerOrdinal) ||
+            !ReadPod(SnapshotBytes, Cursor, SavedLayers[I].TargetSharePercent) ||
+            !ReadPod(SnapshotBytes, Cursor, SavedLayers[I].TargetUDIMNumber) ||
+            !ReadPod(SnapshotBytes, Cursor, SavedLayers[I].LinearTintRGB) ||
+            !ReadString(SnapshotBytes, Cursor, SavedLayers[I].LayerTitle))
+        {
+            return false;
+        }
+    }
+
+    std::vector<uint32_t> SavedUDIMTiles(UDIMCount);
+    std::unordered_map<uint32_t, UDIMTileSetting> SavedUDIMSettings;
+    for (uint32_t I = 0u; I < UDIMCount; ++I)
+    {
+        uint32_t Code = 1001u;
+        uint32_t Res = 2048u;
+        uint8_t  Preset = 0u;
+        if (!ReadPod(SnapshotBytes, Cursor, Code) || !ReadPod(SnapshotBytes, Cursor, Res) || !ReadPod(SnapshotBytes, Cursor, Preset))
+        {
+            return false;
+        }
+        SavedUDIMTiles[I] = Code;
+        SavedUDIMSettings[Code] = UDIMTileSetting{ Res, static_cast<GeometricRaster::UVBackdropPreset>(Preset) };
+    }
+
+    for (uint32_t I = 0u; I < VertCount; ++I)
+    {
+        Asset.Network.Vertices[I].Axes = SavedVerts[I];
+    }
+    for (uint32_t I = 0u; I < EdgeCount; ++I)
+    {
+        Asset.Network.Edges[I].ParameterUV   = SavedUVs[I];
+        Asset.Network.Edges[I].AttributeMask = static_cast<GeometrySpace::EdgeAttributeMask>(SavedMasks[I]);
+    }
+    for (uint32_t I = 0u; I < FaceCount; ++I)
+    {
+        Asset.Network.Faces[I].PriorityLayerOrdinal = SavedFaceLayers[I];
+        Asset.Network.Faces[I].PartGroupOrdinal     = SavedFaceParts[I];
+        Asset.Network.Faces[I].Shading              = SavedShading[I];
+    }
+
+    Asset.Layers.RestoreLayers(SavedLayers, SavedNextLayerOrd);
+    Asset.UDIMTiles = std::move(SavedUDIMTiles);
+    if (Asset.UDIMTiles.empty())
+    {
+        Asset.UDIMTiles.push_back(1001u);
+    }
+    UDIMSettings         = std::move(SavedUDIMSettings);
+    SelectedLayerOrdinal = SavedSelectedLayer;
+    if (SelectedLayerOrdinal != 0u && Asset.Layers.InspectLayer(SelectedLayerOrdinal) == nullptr)
+    {
+        SelectedLayerOrdinal = SavedLayers.empty() ? 0u : SavedLayers.front().LayerOrdinal;
+    }
+    ActiveUDIMNumber = SavedActiveUDIM;
+    if (std::find(Asset.UDIMTiles.begin(), Asset.UDIMTiles.end(), ActiveUDIMNumber) == Asset.UDIMTiles.end())
+    {
+        ActiveUDIMNumber = Asset.UDIMTiles.front();
+    }
+    RenderOptions3D.ActiveLayerOrdinal = SelectedLayerOrdinal;
+    RenderOptions2D.ActiveLayerOrdinal = SelectedLayerOrdinal;
+
+    Asset.Network.RecomputeNormals();
+    ++Asset.Network.NetworkRevision;
+    ++Asset.Network.UVRevision;
+    ++Asset.Network.ShadingRevision;
+    return true;
+}
+
 void UVWorkspaceSession::RecordUVRevisionStep(std::string_view OperationTag)
 {
-    const std::vector<float> UVStream = Asset.Network.ExtractParameterizedUVStream();
-    const std::span<const std::byte> BytePayload(
-        reinterpret_cast<const std::byte*>(UVStream.data()),
-        UVStream.size() * sizeof(float));
+    const std::vector<std::byte> SnapshotBytes = CaptureAuthoringSnapshot();
+
+    // If appending this snapshot would cross the active document budget, advance BaselineSnapshotBytes
+    // cleanly to the next folded prefix step BEFORE OperationRecorder drops its ContentRegion bytes.
+    const std::size_t RequiredBytes = SnapshotBytes.size() + sizeof(ParametricRecordEntry) + 128u;
+    if (RevisionHistory.QueryBytesUsed() + RequiredBytes > RevisionHistory.QueryDocumentBudgetBytes())
+    {
+        (void)RevisionHistory.PurgeInactiveRedoBranches();
+        std::vector<uint32_t> ActiveChain;
+        while (RevisionHistory.QueryBytesUsed() + RequiredBytes > RevisionHistory.QueryDocumentBudgetBytes())
+        {
+            ActiveChain.clear();
+            RevisionHistory.InspectHistory().ExtractActiveRootToCursorChain(ActiveChain);
+            if (ActiveChain.size() <= 2u)
+            {
+                break;
+            }
+            const auto Entries = RevisionHistory.InspectHistory().InspectEntries();
+            const auto Records = RevisionHistory.InspectRecorder().InspectRecordEntries();
+            const uint32_t FoldStepIdx = ActiveChain[1u];
+            if (FoldStepIdx < Entries.size())
+            {
+                const uint32_t RecIdx = Entries[FoldStepIdx].RecordEntryIndex;
+                if (RecIdx < Records.size())
+                {
+                    const auto& Rec = Records[RecIdx];
+                    const auto  Raw = RevisionHistory.InspectRecorder().InspectContentRegion().InspectSpan(Rec.RegionByteOffset, Rec.RegionByteLength);
+                    if (!Raw.empty())
+                    {
+                        BaselineSnapshotBytes.assign(Raw.begin(), Raw.end());
+                    }
+                }
+            }
+            (void)RevisionHistory.FoldOldestPrefixSteps(1u);
+        }
+    }
 
     const ParametricOperationParameters Params = OperationRecorder::ConstructUVTileTransform(
         static_cast<int32_t>((ActiveUDIMNumber - 1001u) % 10u),
@@ -1087,7 +1800,7 @@ void UVWorkspaceSession::RecordUVRevisionStep(std::string_view OperationTag)
         WorkspaceConfig.InspectUVPreferences().TargetTexelDensity,
         OperationTag);
 
-    (void)RevisionHistory.RecordParametricOperation(Params, RevisionStampCounter++, BytePayload);
+    (void)RevisionHistory.RecordParametricOperation(Params, RevisionStampCounter++, SnapshotBytes);
 }
 
 bool UVWorkspaceSession::RestoreUVFromRevisionCursor()
@@ -1098,7 +1811,14 @@ bool UVWorkspaceSession::RestoreUVFromRevisionCursor()
 
     if (CursorIdx == RootIdx)
     {
-        if (!Asset.Network.ApplyParameterizedUVStream(BaselineUVPairs))
+        if (!BaselineSnapshotBytes.empty())
+        {
+            if (!ApplyAuthoringSnapshot(BaselineSnapshotBytes))
+            {
+                return false;
+            }
+        }
+        else if (!Asset.Network.ApplyParameterizedUVStream(BaselineUVPairs))
         {
             return false;
         }
@@ -1117,17 +1837,38 @@ bool UVWorkspaceSession::RestoreUVFromRevisionCursor()
             return false;
         }
         const auto& Rec       = Records[RecIdx];
-        const auto  RawSlice  = RevisionHistory.InspectRecorder().InspectContentRegion().InspectSpan(Rec.RegionByteOffset, Rec.RegionByteLength);
-        if (RawSlice.empty() || (RawSlice.size() % sizeof(float)) != 0u)
+        const auto  RawBytes  = RevisionHistory.InspectRecorder().InspectContentRegion().InspectSpan(Rec.RegionByteOffset, Rec.RegionByteLength);
+        if (RawBytes.empty())
         {
             return false;
         }
-        const std::span<const float> FloatSpan(
-            reinterpret_cast<const float*>(RawSlice.data()),
-            RawSlice.size() / sizeof(float));
-        if (!Asset.Network.ApplyParameterizedUVStream(FloatSpan))
+
+        uint32_t Magic = 0u;
+        if (RawBytes.size() >= sizeof(uint32_t))
         {
-            return false;
+            std::memcpy(&Magic, RawBytes.data(), sizeof(uint32_t));
+        }
+
+        if (Magic == AuthoringSnapshotMagic)
+        {
+            if (!ApplyAuthoringSnapshot(RawBytes))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if ((RawBytes.size() % sizeof(float)) != 0u)
+            {
+                return false;
+            }
+            const std::span<const float> FloatSpan(
+                reinterpret_cast<const float*>(RawBytes.data()),
+                RawBytes.size() / sizeof(float));
+            if (!Asset.Network.ApplyParameterizedUVStream(FloatSpan))
+            {
+                return false;
+            }
         }
     }
 
@@ -1144,7 +1885,12 @@ bool UVWorkspaceSession::UndoParameterization()
     {
         return false;
     }
-    return RestoreUVFromRevisionCursor();
+    if (RestoreUVFromRevisionCursor())
+    {
+        StatusBannerText = "Undo";
+        return true;
+    }
+    return false;
 }
 
 bool UVWorkspaceSession::RedoParameterization()
@@ -1153,7 +1899,12 @@ bool UVWorkspaceSession::RedoParameterization()
     {
         return false;
     }
-    return RestoreUVFromRevisionCursor();
+    if (RestoreUVFromRevisionCursor())
+    {
+        StatusBannerText = "Redo";
+        return true;
+    }
+    return false;
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -1218,6 +1969,16 @@ bool UVWorkspaceSession::LoadUVSpaceDocument(
     }
     ActiveUDIMNumber = Asset.UDIMTiles.front();
 
+    BaselineUVPairs = LoadedModel.ParameterizedUVPairs;
+    if (RevisionHistory.QueryLiveStepCount() <= 1u)
+    {
+        BaselineSnapshotBytes = CaptureAuthoringSnapshot();
+    }
+    else
+    {
+        BaselineSnapshotBytes.clear();
+    }
+
     Asset.Layers.SynchronizePartitions(Asset.Network, RootInstanceToken);
     SyncNetworkToGPU();
     RefreshGizmoAnchorsFromSelection();
@@ -1229,10 +1990,12 @@ void UVWorkspaceSession::SyncNetworkToGPU()
 {
     if (Rasterizer != nullptr)
     {
+        Rasterizer->ConfigureLayerSwatches(Asset.Layers.InspectLayers());
         (void)Rasterizer->UploadPolygonNetwork(Asset.Network, RootInstanceToken.SlotIndex);
         SynchronizeSelectionToGPU();
         LatestMetrics = Rasterizer->EvaluateUVDistortionInspection(Asset.Network, true);
     }
+    LatestMetrics.OverlapFaceCount = static_cast<uint32_t>(CollectOverlappingUVFaces().size());
 }
 
 void UVWorkspaceSession::AdvanceWorkspaceCamera(float DeltaSeconds) noexcept

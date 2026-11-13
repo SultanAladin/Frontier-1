@@ -9,6 +9,7 @@
 
 #include "Engine/Workspaces/UV/UVOutlinerPanel.h"
 
+#include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/Controls/ControlTooltip.h"
 #include "Engine/Components/Controls/DropdownSelector.h"
 #include "Engine/Workspaces/UV/Solvers/SeamCutGenerator.h"
@@ -157,6 +158,18 @@ void UVOutlinerPanel::Render(
     {
         Surface.PopClip();
         return;
+    }
+
+    RenderedLayerSlotBounds.clear();
+    const uint64_t TickSequence = (ImGui::GetCurrentContext() != nullptr)
+        ? (static_cast<uint64_t>(ImGui::GetFrameCount()) + 1ull)
+        : ++HeadlessTickSequence;
+    {
+        bool WantsUndo = false;
+        bool WantsRedo = false;
+        ResolveHistoryShortcuts(Input, WantsUndo, WantsRedo);
+        (void)Session->TryConsumeGlobalHistoryShortcut(
+            WantsUndo, WantsRedo, SearchEditBuffer.Active, TickSequence);
     }
 
     RefreshCachedAtlasTelemetry();
@@ -500,11 +513,7 @@ void UVOutlinerPanel::Render(
                     if (SwatchHit.Contains(Cursor))
                     {
                         ColorPaletteConsumedPress = true;
-                        if (auto* Layer = Session->Asset.Layers.ResolveLayer(ColorPickerLayerOrdinal))
-                        {
-                            Layer->LinearTintRGB = LayerColorPalette[Slot];
-                            Session->FramebuffersDirty = true;
-                        }
+                        Session->AssignLayerTintByOrdinal(ColorPickerLayerOrdinal, LayerColorPalette[Slot], true);
                         ColorPickerLayerOrdinal = 0u;
                         ColorPaletteLayerRow = -1;
                         break;
@@ -834,9 +843,21 @@ void UVOutlinerPanel::Render(
             Theme.TextMuted,
             SubMeta);
 
+        if (BoxRect.Y < ScrollArea.Bottom() && BoxRect.Bottom() > ScrollArea.Y)
+        {
+            const float ClipTop = std::max(BoxRect.Y, ScrollArea.Y);
+            const float ClipBtm = std::min(BoxRect.Bottom(), ScrollArea.Bottom());
+            if (ClipBtm - ClipTop >= 12.0f)
+            {
+                RenderedLayerSlotBounds.emplace_back(
+                    Layer.LayerOrdinal,
+                    Rectangle2D{ BoxRect.X, ClipTop, BoxRect.Width, ClipBtm - ClipTop });
+            }
+        }
+
         if (RowHover && Pressed && !SwatchHover && !ColorPaletteConsumedPress)
         {
-            if (DelHover && LayerSpan.size() > 1u)
+            if (DelHover)
             {
                 PendingDeleteLayer = Layer.LayerOrdinal;
             }
@@ -844,10 +865,18 @@ void UVOutlinerPanel::Render(
             {
                 SetActiveLayerWithoutChangingSelection(Layer.LayerOrdinal);
                 Session->BindSelectionToPriorityLayer(Layer.LayerOrdinal);
+                if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+                {
+                    Browser->FocusColourSlot("uv.priority_layer.tint");
+                }
             }
             else
             {
                 SelectLayerFacesInCurrentFilter(Layer.LayerOrdinal, false);
+                if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+                {
+                    Browser->FocusColourSlot("uv.priority_layer.tint");
+                }
                 if (Input.DoubleClicked)
                 {
                     Session->FitSelectionOrNetwork();
@@ -1056,9 +1085,134 @@ void UVOutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
     const Rectangle2D ScreenBounds{ WinPos.x, TopY, WinSize.x, PaneH };
     const Rectangle2D LogicalBounds{ 0.0f, 0.0f, WinSize.x / SafeScale, PaneH / SafeScale };
 
-    PixelSpace             Surface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
-    const PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+    PixelSpace       Surface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
+    PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+
+    if (Session != nullptr)
+    {
+        if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+        {
+            const Point2D PhysicalCursor {
+                ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
+                ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
+            };
+            if (Browser->QueryBlocksPointerAt(PhysicalCursor))
+            {
+                Input.PrimaryPointer.Enabled  = false;
+                Input.PrimaryPointer.Pressed  = false;
+                Input.PrimaryPointer.Down     = false;
+                Input.PrimaryPointer.Released = false;
+                Input.SecondaryPressed        = false;
+                Input.SecondaryDown           = false;
+                Input.DoubleClicked           = false;
+                Input.WheelDeltaY             = 0.0f;
+            }
+        }
+    }
+
     Render(Surface, LogicalBounds, Input, Δt);
+
+    if (Session != nullptr)
+    {
+        if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+        {
+            const float DrawerTopY = Browser->QueryDrawerTopPhysicalY();
+
+            // Zero out any previously registered Outliner row slots that scrolled off or were deleted
+            for (const uint16_t PrevOrd : PreviouslyRegisteredLayerOrdinals)
+            {
+                const std::string SlotId = "uv.outliner.layer." + std::to_string(PrevOrd);
+                Browser->RegisterColourSlot(ColourSlotRegistration{
+                    SlotId,
+                    "Priority Layer Row",
+                    Rectangle2D{},
+                    nullptr,
+                    [Sess = Session, PrevOrd](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                    {
+                        if (Sess != nullptr)
+                        {
+                            Sess->AssignLayerTintByOrdinal(
+                                PrevOrd,
+                                {
+                                    static_cast<float>(AssignedRgba.Red) / 255.0f,
+                                    static_cast<float>(AssignedRgba.Green) / 255.0f,
+                                    static_cast<float>(AssignedRgba.Blue) / 255.0f,
+                                },
+                                true);
+                        }
+                    },
+                });
+            }
+            PreviouslyRegisteredLayerOrdinals.clear();
+
+            for (const auto& [Ord, LogicalBox] : RenderedLayerSlotBounds)
+            {
+                const Rectangle2D PhysicalBox {
+                    ScreenBounds.X + LogicalBox.X * SafeScale,
+                    ScreenBounds.Y + LogicalBox.Y * SafeScale,
+                    LogicalBox.Width * SafeScale,
+                    LogicalBox.Height * SafeScale,
+                };
+                Rectangle2D MappedBounds {};
+                if (PhysicalBox.Y < DrawerTopY)
+                {
+                    Rectangle2D VisiblePhys = PhysicalBox;
+                    if (VisiblePhys.Bottom() > DrawerTopY)
+                    {
+                        VisiblePhys.Height = std::max(0.0f, DrawerTopY - VisiblePhys.Y);
+                    }
+                    if (VisiblePhys.Height >= 12.0f)
+                    {
+                        MappedBounds = Browser->MapPhysicalToLogicalBounds(VisiblePhys);
+                    }
+                }
+                const auto* LayerPtr = Session->Asset.Layers.InspectLayer(Ord);
+                const std::string Title = LayerPtr != nullptr ? LayerPtr->LayerTitle : ("Priority Layer " + std::to_string(Ord));
+                Browser->RegisterColourSlot(ColourSlotRegistration{
+                    "uv.outliner.layer." + std::to_string(Ord),
+                    Title,
+                    MappedBounds,
+                    nullptr,
+                    [Sess = Session, Ord](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                    {
+                        if (Sess != nullptr)
+                        {
+                            Sess->AssignLayerTintByOrdinal(
+                                Ord,
+                                {
+                                    static_cast<float>(AssignedRgba.Red) / 255.0f,
+                                    static_cast<float>(AssignedRgba.Green) / 255.0f,
+                                    static_cast<float>(AssignedRgba.Blue) / 255.0f,
+                                },
+                                true);
+                        }
+                    },
+                });
+                PreviouslyRegisteredLayerOrdinals.push_back(Ord);
+            }
+
+            // Keep uv.priority_layer.tint active for toolbar "Apply" without double-ringing selected row on drag
+            Browser->RegisterColourSlot(ColourSlotRegistration{
+                "uv.priority_layer.tint",
+                "Active UV Priority Layer Tint",
+                Rectangle2D{},
+                nullptr,
+                [Sess = Session](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                {
+                    if (Sess != nullptr)
+                    {
+                        Sess->AssignSelectedLayerTint(
+                            {
+                                static_cast<float>(AssignedRgba.Red) / 255.0f,
+                                static_cast<float>(AssignedRgba.Green) / 255.0f,
+                                static_cast<float>(AssignedRgba.Blue) / 255.0f,
+                            },
+                            true);
+                    }
+                },
+            });
+        }
+    }
 }
 
 } // namespace Frontier::Workspaces
