@@ -10,6 +10,7 @@
 #include "Engine/Components/Appearance/ThemeRepository.h"
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
+#include "Engine/Components/PixelSpace.h"
 #include "Engine/Configuration/EngineConfiguration.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/GeometricRaster/UV/UVWorkspaceRasterizer.h"
@@ -17,10 +18,13 @@
 #include "Engine/Workspaces/UV/Operations/UVAuthoringOperations.h"
 #include "Engine/Workspaces/UV/UVInspectorPanel.h"
 #include "Engine/Workspaces/UV/UVOutlinerPanel.h"
+#include "Engine/Workspaces/UV/UVPaneAppearance.h"
 #include "Engine/Workspaces/UV/UVViewportHost.h"
 #include "Engine/Workspaces/UV/UVViewportInteractor.h"
 #include "Engine/Workspaces/UV/UVWorkspaceHost.h"
 #include "Engine/Workspaces/UV/UVWorkspaceSession.h"
+
+#include <imgui.h>
 
 #include <algorithm>
 #include <array>
@@ -675,6 +679,298 @@ int main()
         }
     }
 
-    std::printf("[UVAuthoringChaosValidation] Passed multi-seed chaos, Bug A-G invariants, .UVSpace roundtrip & prefix-fold stress checks.\n");
+    //--------------------------------------------------------------------------------------------------------------------
+    // 6. Unwrap Menu (U) vs Immediate Unwrap (Ctrl+U), Lasso/Circle/Box Sync & Semi-Transparent Overlay Alpha Checks
+    //--------------------------------------------------------------------------------------------------------------------
+    {
+        IMGUI_CHECKVERSION();
+        ImGuiContext* GuiCtx = ImGui::CreateContext();
+        ImGui::SetCurrentContext(GuiCtx);
+        ImGuiIO& Io    = ImGui::GetIO();
+        Io.IniFilename = nullptr;
+        Io.LogFilename = nullptr;
+        Io.DisplaySize = ImVec2(900.0f, 800.0f);
+        Io.DeltaTime   = 1.0f / 60.0f;
+        unsigned char* AtlasPixels = nullptr;
+        int            AtlasW      = 0;
+        int            AtlasH      = 0;
+        Io.Fonts->GetTexDataAsRGBA32(&AtlasPixels, &AtlasW, &AtlasH);
+        Io.Fonts->SetTexID(static_cast<ImTextureID>(1));
+
+        UVWorkspaceHost Host {};
+        if (!VerifyInvariant(Host.AttachVulkanRasterizer(&Rasterizer), "AttachVulkanRasterizer for Section 6 UI/Lasso checks"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+        auto& Session = Host.AccessSession();
+        Session.LoadSamplePreset(SampleAssetPreset::TacticalCrate);
+        Session.SelectionMode = UVSelectionMode::Faces;
+        Session.SelectionMask.SelectFacesFromList(std::array<uint32_t, 2>{ 0u, 1u }, false);
+
+        // Scramble selected face UVs so UnwrapConformal produces a measurable change
+        for (uint32_t FIdx : std::array<uint32_t, 2>{ 0u, 1u })
+        {
+            uint32_t E = Session.Asset.Network.Faces[FIdx].BoundaryLoopEdgeIndex;
+            const auto& Face = Session.Asset.Network.Faces[FIdx];
+            for (uint16_t C = 0u; C < Face.CornerCount; ++C)
+            {
+                Session.Asset.Network.Edges[E].ParameterUV = { 0.05f + 0.01f * static_cast<float>(C), 0.05f };
+                E = Session.Asset.Network.Edges[E].NextEdgeIndex;
+            }
+        }
+
+        auto& Host2D = Host.Access2DViewportHost();
+        auto& Host3D = Host.Access3DViewportHost();
+        if (!VerifyInvariant(
+                Host2D.QueryHostRole() == UVViewportHostRole::Dedicated2D &&
+                    Host3D.QueryHostRole() == UVViewportHostRole::Dedicated3D,
+                "UVWorkspaceHost configures Dedicated2D and Dedicated3D hosts"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+
+        const Rectangle2D PaneBounds { 0.0f, 0.0f, 900.0f, 800.0f };
+        auto RenderHostFrame = [&](UVViewportHost& TargetHost, const PaneInputReading& Input) -> ImDrawData*
+        {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(PaneBounds.Width, PaneBounds.Height));
+            ImGui::Begin("ChaosViewportTest", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+            PixelSpace Surface(ImGui::GetWindowDrawList(), Point2D{ 0.0f, 0.0f }, 1.0f);
+            TargetHost.Render(Surface, PaneBounds, Input, 1.0 / 60.0);
+            ImGui::End();
+            ImGui::Render();
+            return ImGui::GetDrawData();
+        };
+
+        auto MakePointer = [](float X, float Y, bool Down, bool Pressed, bool Released, bool Enabled = true) -> ControlPointer
+        {
+            ControlPointer Ptr {};
+            Ptr.X        = X;
+            Ptr.Y        = Y;
+            Ptr.Down     = Down;
+            Ptr.Pressed  = Pressed;
+            Ptr.Released = Released;
+            Ptr.Enabled  = Enabled;
+            return Ptr;
+        };
+
+        // 6a. Plain [U] opens the Unwrap Directive Menu without changing UVs; Escape closes it; [Ctrl+U] unwraps immediately
+        const auto BeforeU = CaptureDigest(Session);
+        {
+            PaneInputReading PlainUInput {};
+            PlainUInput.KeyboardFocused = true;
+            PlainUInput.TypedUtf8       = "u";
+            PlainUInput.PrimaryPointer  = MakePointer(150.0f, 16.0f, false, false, false, true); // even over pane header!
+            (void)RenderHostFrame(Host2D, PlainUInput);
+        }
+        std::string DigestDiff {};
+        if (!VerifyInvariant(
+                BeforeU.Matches(CaptureDigest(Session), DigestDiff) &&
+                    Host2D.QueryDirectiveSheetOpen() &&
+                    Host2D.QueryDirectiveSheetKind() == ViewportDirectiveSheetKind::UnwrapMenu,
+                "Plain [U] opens the UnwrapMenu sheet without modifying UVs"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+        {
+            PaneInputReading EscInput {};
+            EscInput.KeyboardFocused = true;
+            EscInput.EscapePressed   = true;
+            EscInput.PrimaryPointer  = MakePointer(150.0f, 16.0f, false, false, false, true);
+            (void)RenderHostFrame(Host2D, EscInput);
+        }
+        if (!VerifyInvariant(!Host2D.QueryDirectiveSheetOpen(), "Escape closes the UnwrapMenu sheet"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+        {
+            PaneInputReading CtrlUInput {};
+            CtrlUInput.KeyboardFocused = true;
+            CtrlUInput.ShortcutUnwrap  = true;
+            CtrlUInput.PrimaryPointer  = MakePointer(150.0f, 16.0f, false, false, false, true);
+            (void)RenderHostFrame(Host2D, CtrlUInput);
+        }
+        if (!VerifyInvariant(
+                !BeforeU.Matches(CaptureDigest(Session), DigestDiff) &&
+                    !Host2D.QueryDirectiveSheetOpen(),
+                "[Ctrl+U] immediately runs UnwrapConformal without opening UnwrapMenu"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+
+        // 6b. Shared ActiveRegionTool sync across 2D & 3D hosts via [Q] -> LassoPolygon + multi-mode freehand selection
+        {
+            PaneInputReading QInput {};
+            QInput.KeyboardFocused = true;
+            QInput.TypedUtf8       = "q";
+            QInput.PrimaryPointer  = MakePointer(450.0f, 400.0f, false, false, false, true);
+            (void)RenderHostFrame(Host2D, QInput);
+            PaneInputReading IdleInput {};
+            IdleInput.PrimaryPointer = MakePointer(450.0f, 400.0f, false, false, false, false);
+            (void)RenderHostFrame(Host3D, IdleInput);
+        }
+        if (!VerifyInvariant(
+                Session.ActiveRegionTool == UVRegionSelectTool::LassoPolygon &&
+                    Host2D.AccessInteractor().QueryRegionSelectTool() == RegionSelectTool::LassoPolygon &&
+                    Host3D.AccessInteractor().QueryRegionSelectTool() == RegionSelectTool::LassoPolygon,
+                "[Q] switches ActiveRegionTool to LassoPolygon and syncs across 2D & 3D hosts"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+
+        // Reset faces to canonical full-tile UVs, then run a >160-point circular freehand Lasso around [0..1]^2 in Vertices, Edges, Faces
+        (void)Session.ExecuteDirective(UVCommandDirective::ResetFaceUVsToTile);
+        const float Cx = 480.0f;
+        const float Cy = 420.0f;
+        const float Rx = 350.0f;
+        const float Ry = 270.0f;
+
+        auto RunFreehandLasso = [&](UVSelectionMode Mode, bool ExpectTranslucentOverlay) -> bool
+        {
+            Session.AssignSelectionMode(Mode);
+            Session.SelectionMask.ClearAll();
+            Host2D.AccessInteractor().ActivateLassoPolygon(true);
+            bool FoundTranslucent = false;
+
+            const uint32_t SampleCount = 168u; // Exercises PixelSpace dynamic vector fallback (> 128 vertices)
+            for (uint32_t Idx = 0u; Idx <= SampleCount; ++Idx)
+            {
+                const float Angle = (static_cast<float>(Idx) / static_cast<float>(SampleCount)) * 6.2831853f;
+                PaneInputReading DragInput {};
+                DragInput.PrimaryPointer = MakePointer(
+                    Cx + std::cos(Angle) * Rx,
+                    Cy + std::sin(Angle) * Ry,
+                    Idx < SampleCount,
+                    Idx == 0u,
+                    Idx == SampleCount,
+                    true);
+                ImDrawData* DrawData = RenderHostFrame(Host2D, DragInput);
+                if (ExpectTranslucentOverlay && Idx == SampleCount / 2u && DrawData != nullptr)
+                {
+                    if (!Host2D.AccessInteractor().QueryRegionStrokeActive() ||
+                        Host2D.AccessInteractor().QueryLassoOverlayPoints().size() <= 8u)
+                    {
+                        return false;
+                    }
+                    for (int ListIdx = 0; ListIdx < DrawData->CmdListsCount; ++ListIdx)
+                    {
+                        const ImDrawList* List = DrawData->CmdLists[ListIdx];
+                        for (int VIdx = 0; VIdx < List->VtxBuffer.Size; ++VIdx)
+                        {
+                            const ImU32 Col = List->VtxBuffer[VIdx].col;
+                            const uint8_t R = static_cast<uint8_t>((Col >> IM_COL32_R_SHIFT) & 0xFFu);
+                            const uint8_t G = static_cast<uint8_t>((Col >> IM_COL32_G_SHIFT) & 0xFFu);
+                            const uint8_t B = static_cast<uint8_t>((Col >> IM_COL32_B_SHIFT) & 0xFFu);
+                            const uint8_t A = static_cast<uint8_t>((Col >> IM_COL32_A_SHIFT) & 0xFFu);
+                            if (A >= 20u && A <= 80u && (R != G || B > R))
+                            {
+                                FoundTranslucent = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            return !ExpectTranslucentOverlay || FoundTranslucent;
+        };
+
+        if (!VerifyInvariant(RunFreehandLasso(UVSelectionMode::Vertices, true), "Freehand >160-pt Lasso in Vertices mode renders translucent overlay (Alpha 20..80)"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+        if (!VerifyInvariant(
+                Session.SelectionMask.CountSelectedVertices() > 0u &&
+                    Session.SelectionMask.CountSelectedFaces() == 0u,
+                "Freehand Lasso in Vertices mode selects vertices without polluting SelectedFaceBits"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+        (void)RunFreehandLasso(UVSelectionMode::Edges, false);
+        if (!VerifyInvariant(Session.SelectionMask.CountSelectedEdges() > 0u, "Freehand Lasso in Edges mode selects enclosed edges"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+        (void)RunFreehandLasso(UVSelectionMode::Faces, false);
+        if (!VerifyInvariant(Session.SelectionMask.CountSelectedFaces() > 0u, "Freehand Lasso in Faces mode selects enclosed faces"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+
+        // Verify CircleBrush and BoxMarquee overlays also emit translucent fills matching AccentBorder (Alpha 38..42)
+        const ColorRgba ExpectedAccent = UVAppearance::QueryThemeColors().AccentBorder;
+        auto ContainsTranslucentAccentFill = [&](const ImDrawData* DrawData) -> bool
+        {
+            if (DrawData == nullptr)
+            {
+                return false;
+            }
+            for (int L = 0; L < DrawData->CmdListsCount; ++L)
+            {
+                const ImDrawList* List = DrawData->CmdLists[L];
+                for (int V = 0; V < List->VtxBuffer.Size; ++V)
+                {
+                    const ImU32 Col = List->VtxBuffer[V].col;
+                    const uint8_t R = static_cast<uint8_t>((Col >> IM_COL32_R_SHIFT) & 0xFFu);
+                    const uint8_t G = static_cast<uint8_t>((Col >> IM_COL32_G_SHIFT) & 0xFFu);
+                    const uint8_t B = static_cast<uint8_t>((Col >> IM_COL32_B_SHIFT) & 0xFFu);
+                    const uint8_t A = static_cast<uint8_t>((Col >> IM_COL32_A_SHIFT) & 0xFFu);
+                    if (R == ExpectedAccent.Red && G == ExpectedAccent.Green && B == ExpectedAccent.Blue &&
+                        A >= 20u && A <= 80u)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        auto CheckToolTranslucentFill = [&](bool UseBox) -> bool
+        {
+            if (UseBox)
+            {
+                Host2D.AccessInteractor().ActivateBoxMarquee(true);
+                PaneInputReading StartBox {};
+                StartBox.PrimaryPointer = MakePointer(Cx - 60.0f, Cy - 50.0f, true, true, false, true);
+                (void)RenderHostFrame(Host2D, StartBox);
+                PaneInputReading DragBox {};
+                DragBox.PrimaryPointer = MakePointer(Cx + 80.0f, Cy + 70.0f, true, false, false, true);
+                ImDrawData* DrawData = RenderHostFrame(Host2D, DragBox);
+                const bool HasFill =
+                    Host2D.AccessInteractor().QueryRegionStrokeActive() &&
+                    ContainsTranslucentAccentFill(DrawData);
+                PaneInputReading EndBox {};
+                EndBox.PrimaryPointer = MakePointer(Cx + 80.0f, Cy + 70.0f, false, false, true, true);
+                (void)RenderHostFrame(Host2D, EndBox);
+                return HasFill;
+            }
+            Host2D.AccessInteractor().ActivateCircleBrush(true);
+            PaneInputReading HoverCircle {};
+            HoverCircle.PrimaryPointer = MakePointer(Cx, Cy, false, false, false, true);
+            ImDrawData* DrawData = RenderHostFrame(Host2D, HoverCircle);
+            return Host2D.AccessInteractor().QueryRegionBrushHoverActive() &&
+                   ContainsTranslucentAccentFill(DrawData);
+        };
+
+        if (!VerifyInvariant(CheckToolTranslucentFill(true) && CheckToolTranslucentFill(false), "BoxMarquee and CircleBrush overlays render semi-transparent fills (Alpha 20..80)"))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+
+        ImGui::DestroyContext(GuiCtx);
+    }
+
+    std::printf("[UVAuthoringChaosValidation] Passed multi-seed chaos, Bug A-G invariants, .UVSpace roundtrip, prefix-fold, Lasso/Unwrap & translucent overlay checks.\n");
     return 0;
 }

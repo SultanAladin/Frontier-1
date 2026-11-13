@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 namespace Frontier
 {
@@ -173,14 +174,27 @@ void PixelSpace::FillPolygon(std::span<const Point2D> Vertices, ColorRgba Fill) 
 {
     if (!CanvasBuffer || Vertices.size() < 3u || Fill.Alpha == 0)
         return;
-    ImVec2 StackPoints[128];
-    const std::size_t Count = std::min<std::size_t>(Vertices.size(), 128u);
-    for (std::size_t Index = 0; Index < Count; ++Index)
+    const ImU32 Packed = PackColor(Fill);
+    if (Vertices.size() <= 128u)
     {
-        const Point2D Phys = ToPhysical(Vertices[Index]);
-        StackPoints[Index] = ImVec2(Phys.X, Phys.Y);
+        ImVec2 StackPoints[128];
+        for (std::size_t Index = 0; Index < Vertices.size(); ++Index)
+        {
+            const Point2D Phys = ToPhysical(Vertices[Index]);
+            StackPoints[Index] = ImVec2(Phys.X, Phys.Y);
+        }
+        CanvasBuffer->AddConcavePolyFilled(StackPoints, static_cast<int>(Vertices.size()), Packed);
     }
-    CanvasBuffer->AddConcavePolyFilled(StackPoints, static_cast<int>(Count), PackColor(Fill));
+    else
+    {
+        std::vector<ImVec2> HeapPoints(Vertices.size());
+        for (std::size_t Index = 0; Index < Vertices.size(); ++Index)
+        {
+            const Point2D Phys = ToPhysical(Vertices[Index]);
+            HeapPoints[Index] = ImVec2(Phys.X, Phys.Y);
+        }
+        CanvasBuffer->AddConcavePolyFilled(HeapPoints.data(), static_cast<int>(HeapPoints.size()), Packed);
+    }
 }
 
 void PixelSpace::StrokeLine(Point2D From, Point2D To, ColorRgba Stroke, float Thickness) noexcept
@@ -196,15 +210,29 @@ void PixelSpace::StrokePolyline(std::span<const Point2D> Vertices, ColorRgba Str
 {
     if (!CanvasBuffer || Vertices.size() < 2u || Stroke.Alpha == 0 || Thickness <= 0.0f)
         return;
-    ImVec2 StackPoints[128];
-    const std::size_t Count = std::min<std::size_t>(Vertices.size(), 128u);
-    for (std::size_t Index = 0; Index < Count; ++Index)
+    const ImU32     Packed     = PackColor(Stroke);
+    const ImDrawFlags Flags    = Closed ? ImDrawFlags_Closed : 0;
+    const float     StrokePx   = std::max(1.0f, Thickness * Scale);
+    if (Vertices.size() <= 128u)
     {
-        const Point2D Phys = ToPhysical(Vertices[Index]);
-        StackPoints[Index] = ImVec2(Phys.X, Phys.Y);
+        ImVec2 StackPoints[128];
+        for (std::size_t Index = 0; Index < Vertices.size(); ++Index)
+        {
+            const Point2D Phys = ToPhysical(Vertices[Index]);
+            StackPoints[Index] = ImVec2(Phys.X, Phys.Y);
+        }
+        CanvasBuffer->AddPolyline(StackPoints, static_cast<int>(Vertices.size()), Packed, Flags, StrokePx);
     }
-    CanvasBuffer->AddPolyline(StackPoints, static_cast<int>(Count), PackColor(Stroke), Closed ? ImDrawFlags_Closed : 0,
-                          std::max(1.0f, Thickness * Scale));
+    else
+    {
+        std::vector<ImVec2> HeapPoints(Vertices.size());
+        for (std::size_t Index = 0; Index < Vertices.size(); ++Index)
+        {
+            const Point2D Phys = ToPhysical(Vertices[Index]);
+            HeapPoints[Index] = ImVec2(Phys.X, Phys.Y);
+        }
+        CanvasBuffer->AddPolyline(HeapPoints.data(), static_cast<int>(HeapPoints.size()), Packed, Flags, StrokePx);
+    }
 }
 
 void PixelSpace::PushTypeface(ImFont *Typeface) noexcept

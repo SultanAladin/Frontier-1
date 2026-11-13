@@ -104,14 +104,15 @@ void PresentHostWindowImGuiDockRegion(
         ImGuiID RightRegionId     = 0;
         ImGuiID TopRegionId       = 0;
         ImGuiID BottomRegionId    = 0;
+        ImGuiID CenterRightId     = 0;
 
-        for (const auto &Entry : PanesInWindow)
+        std::vector<ImGuiID> PaneTargets(PanesInWindow.size(), 0);
+
+        // Pass 1: Carve perimeter dock regions (left/right/top/bottom) before subdividing the central viewport area.
+        for (std::size_t Idx = 0; Idx < PanesInWindow.size(); ++Idx)
         {
-            char PaneLabel[160]{};
-            FormatUniquePaneLabel(PaneLabel, sizeof(PaneLabel), Entry.TitleText, DomainToken, Entry.PaneIdentifier);
-
+            const auto &Entry        = PanesInWindow[Idx];
             const float ClampedRatio = std::clamp(Entry.SplitRatio, 0.10f, 0.85f);
-            ImGuiID     TargetId     = RemainingCenterId;
 
             switch (Entry.Placement)
             {
@@ -121,7 +122,7 @@ void PresentHostWindowImGuiDockRegion(
                     LeftRegionId = ImGui::DockBuilderSplitNode(RemainingCenterId, ImGuiDir_Left, ClampedRatio, nullptr,
                                                                &RemainingCenterId);
                 }
-                TargetId = LeftRegionId;
+                PaneTargets[Idx] = LeftRegionId;
                 break;
 
             case DockPlacementDirection::SplitRight:
@@ -130,7 +131,7 @@ void PresentHostWindowImGuiDockRegion(
                     RightRegionId = ImGui::DockBuilderSplitNode(RemainingCenterId, ImGuiDir_Right, ClampedRatio,
                                                                 nullptr, &RemainingCenterId);
                 }
-                TargetId = RightRegionId;
+                PaneTargets[Idx] = RightRegionId;
                 break;
 
             case DockPlacementDirection::SplitTop:
@@ -139,7 +140,7 @@ void PresentHostWindowImGuiDockRegion(
                     TopRegionId = ImGui::DockBuilderSplitNode(RemainingCenterId, ImGuiDir_Up, ClampedRatio, nullptr,
                                                               &RemainingCenterId);
                 }
-                TargetId = TopRegionId;
+                PaneTargets[Idx] = TopRegionId;
                 break;
 
             case DockPlacementDirection::SplitBottom:
@@ -148,15 +149,36 @@ void PresentHostWindowImGuiDockRegion(
                     BottomRegionId = ImGui::DockBuilderSplitNode(RemainingCenterId, ImGuiDir_Down, ClampedRatio,
                                                                  nullptr, &RemainingCenterId);
                 }
-                TargetId = BottomRegionId;
+                PaneTargets[Idx] = BottomRegionId;
                 break;
 
-            case DockPlacementDirection::CenterTabGroup:
             default:
-                TargetId = RemainingCenterId;
                 break;
             }
+        }
 
+        // Pass 2: Optionally split the central viewport into adjacent viewports and dock all remaining panes.
+        for (std::size_t Idx = 0; Idx < PanesInWindow.size(); ++Idx)
+        {
+            const auto &Entry = PanesInWindow[Idx];
+            if (Entry.Placement == DockPlacementDirection::CenterSplitRight)
+            {
+                if (CenterRightId == 0)
+                {
+                    const float ClampedRatio = std::clamp(Entry.SplitRatio, 0.10f, 0.85f);
+                    CenterRightId = ImGui::DockBuilderSplitNode(RemainingCenterId, ImGuiDir_Right, ClampedRatio,
+                                                                nullptr, &RemainingCenterId);
+                }
+                PaneTargets[Idx] = CenterRightId;
+            }
+        }
+
+        for (std::size_t Idx = 0; Idx < PanesInWindow.size(); ++Idx)
+        {
+            char PaneLabel[160]{};
+            FormatUniquePaneLabel(PaneLabel, sizeof(PaneLabel), PanesInWindow[Idx].TitleText, DomainToken,
+                                  PanesInWindow[Idx].PaneIdentifier);
+            const ImGuiID TargetId = (PaneTargets[Idx] != 0) ? PaneTargets[Idx] : RemainingCenterId;
             ImGui::DockBuilderDockWindow(PaneLabel, TargetId);
         }
 

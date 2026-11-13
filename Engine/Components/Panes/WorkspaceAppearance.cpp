@@ -170,12 +170,15 @@ PaneInputReading CaptureImGuiPaneInput(Rectangle2D ScreenBounds, float ScaleFact
     Reading.ShortcutDuplicate = Snapshot.ControlHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::D, false);
     Reading.ShortcutLinked    = Snapshot.ControlHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::L, false);
     Reading.ShortcutInvert    = Snapshot.ControlHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::I, false);
+    Reading.ShortcutUnwrap    = Snapshot.ControlHeld && !Snapshot.ShiftHeld && !Snapshot.AltHeld &&
+                                Snapshot.QueryKeyPressed(Input::InputLogicalKey::U, false);
     Reading.ShortcutUndo      = Snapshot.ControlHeld && !Snapshot.ShiftHeld && !Snapshot.AltHeld &&
                                 Snapshot.QueryKeyPressed(Input::InputLogicalKey::Z, false);
     Reading.ShortcutRedo      = Snapshot.ControlHeld && !Snapshot.AltHeld &&
                                 ((Snapshot.ShiftHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::Z, false)) ||
                                  (!Snapshot.ShiftHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::Y, false)));
     Reading.ToggleDiagnostics = Snapshot.QueryKeyPressed(Input::InputLogicalKey::F3, false);
+    Reading.KeyboardFocused   = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
     for (const uint32_t Codepoint : Snapshot.QueryTypedCodepoints())
     {

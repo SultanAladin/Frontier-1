@@ -384,38 +384,53 @@ inline void ConstructRailToolIcon(PixelSpace& Surface, Point2D Origin, float Siz
             Surface.StrokeCircle({ CX, CY }, Size * 0.36f, Ink, 1.35f);
             Surface.FillCircle({ CX, CY }, 1.4f, Ink);
             break;
-        case 3u: // Move (G)
+        case 3u: // Lasso Polygon
+        {
+            const std::array<Point2D, 7u> Loop {{
+                { Origin.X + 3.0f,         Origin.Y + Size * 0.42f },
+                { Origin.X + Size * 0.34f, Origin.Y + 2.2f },
+                { Origin.X + Size - 2.6f,  Origin.Y + Size * 0.30f },
+                { Origin.X + Size * 0.78f, Origin.Y + Size * 0.66f },
+                { Origin.X + Size * 0.44f, Origin.Y + Size - 2.5f },
+                { Origin.X + 2.6f,         Origin.Y + Size * 0.72f },
+                { Origin.X + 3.0f,         Origin.Y + Size * 0.42f },
+            }};
+            Surface.StrokePolyline(Loop, Ink, 1.3f, false);
+            Surface.FillCircle({ Origin.X + Size * 0.44f, Origin.Y + Size - 2.5f }, 1.6f, Ink);
+            break;
+        }
+        case 4u: // Move (G)
             Surface.StrokeLine({ CX, Origin.Y + 2.0f }, { CX, Origin.Y + Size - 2.0f }, Ink, 1.35f);
             Surface.StrokeLine({ Origin.X + 2.0f, CY }, { Origin.X + Size - 2.0f, CY }, Ink, 1.35f);
             break;
-        case 4u: // Rotate (R)
+        case 5u: // Rotate (R)
             Surface.StrokeCircle({ CX, CY }, Size * 0.34f, Ink, 1.35f);
             Surface.FillCircle({ CX + Size * 0.34f, CY }, 1.8f, Ink);
             break;
-        case 5u: // Scale (S)
+        case 6u: // Scale (S)
             Surface.StrokeRectangle({ Origin.X + 2.5f, Origin.Y + 5.5f, Size - 8.0f, Size - 8.0f }, Ink, 1.5f, 1.25f);
             Surface.StrokeLine({ Origin.X + 5.0f, Origin.Y + Size - 5.0f }, { Origin.X + Size - 2.5f, Origin.Y + 2.5f }, Ink, 1.35f);
             break;
-        case 6u: // Split / Scissors
+        case 7u: // Split / Scissors
             Surface.StrokeCircle({ Origin.X + 4.2f, Origin.Y + 4.5f }, 2.2f, Ink, 1.25f);
             Surface.StrokeCircle({ Origin.X + 4.2f, Origin.Y + Size - 4.5f }, 2.2f, Ink, 1.25f);
             Surface.StrokeLine({ Origin.X + 6.0f, Origin.Y + 5.5f }, { Origin.X + Size - 2.5f, Origin.Y + Size - 3.5f }, Ink, 1.35f);
             Surface.StrokeLine({ Origin.X + 6.0f, Origin.Y + Size - 5.5f }, { Origin.X + Size - 2.5f, Origin.Y + 3.5f }, Ink, 1.35f);
             break;
-        case 7u: // Seam Brush
+        case 8u: // Seam Brush
             Surface.StrokeLine({ Origin.X + 3.0f, Origin.Y + Size - 3.0f }, { Origin.X + Size - 3.0f, Origin.Y + 3.0f }, Ink, 1.65f);
             Surface.FillCircle({ CX, CY }, 2.0f, Ink);
             break;
-        case 8u: // Stitch / Weld
+        case 9u: // Stitch / Weld
             Surface.StrokeLine({ Origin.X + 3.0f, Origin.Y + 3.0f }, { Origin.X + 3.0f, Origin.Y + Size - 3.0f }, Ink, 1.35f);
             Surface.StrokeLine({ Origin.X + Size - 3.0f, Origin.Y + 3.0f }, { Origin.X + Size - 3.0f, Origin.Y + Size - 3.0f }, Ink, 1.35f);
             Surface.StrokeLine({ Origin.X + 4.5f, CY }, { Origin.X + Size - 4.5f, CY }, Ink, 1.35f);
             break;
-        case 9u: // Pin UV
+        case 10u: // Pin UV
             Surface.FillCircle({ CX, Origin.Y + 4.5f }, 2.6f, Ink);
             Surface.StrokeLine({ CX, Origin.Y + 7.0f }, { CX, Origin.Y + Size - 2.5f }, Ink, 1.45f);
             break;
-        case 10u: // Relax Stretch
+        case 11u: // Relax Stretch
             Surface.StrokeCircle({ CX, CY }, Size * 0.36f, Ink, 1.25f);
             Surface.StrokeCircle({ CX, CY }, Size * 0.16f, Ink, 1.25f);
             break;

@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -79,6 +80,7 @@ public:
     void ConfigurePaneIndicators(std::string_view PlanarIndicator, std::string_view SpatialIndicator);
     void ConfigureToolbarChips(std::vector<ViewportToolbarChip> Chips);
     void ConfigureStatusBanner(std::string_view BannerText);
+    void ConfigureLockedSplitMode(std::optional<Editor::ViewportSplitMode> Mode) noexcept { LockedSplitMode = Mode; }
     void AssignRasterBufferSource(RasterBufferSyncCallback SourceCallback);
     void AssignSplitModeCallback(SplitModeChangedCallback Callback);
     void AssignSplitRatioCallback(SplitRatioChangedCallback Callback);
@@ -86,6 +88,7 @@ public:
 
     [[nodiscard]] Editor::ViewportProjection&       AccessProjection() noexcept;
     [[nodiscard]] const Editor::ViewportProjection& InspectProjection() const noexcept;
+    [[nodiscard]] Editor::ViewportSplitMode         QueryEffectiveSplitMode() const noexcept;
     [[nodiscard]] bool                              QuerySplitterDragActive() const noexcept { return SplitterDragActive; }
 
     void Render(
@@ -119,6 +122,7 @@ private:
     ViewportInteractionCallback      InteractionCallback      {};
     ImTextureData                    PlanarTexture            {};
     ImTextureData                    SpatialTexture           {};
+    std::optional<Editor::ViewportSplitMode> LockedSplitMode  {};
     bool                             SplitterDragActive       = false;
 };
 

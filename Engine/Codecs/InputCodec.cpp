@@ -170,6 +170,9 @@ InputSpaceDocumentModel InputSpaceDocumentModel::ConstructFrontierStudioPreset()
         { "SplitSelection",    InputLogicalKey::Y,      0xFFu, 0u },
         { "BoxRegionSelect",   InputLogicalKey::B,      0xFFu, 0u },
         { "CircleBrushSelect", InputLogicalKey::C,      0xFFu, 0u },
+        { "LassoRegionSelect", InputLogicalKey::Q,      0xFFu, 0u },
+        { "UnwrapImmediate",   InputLogicalKey::U,      0xFFu, Control },
+        { "UnwrapMenu",        InputLogicalKey::U,      0xFFu, 0u },
         { "UndoOperation",     InputLogicalKey::Z,      0xFFu, Control },
         { "RedoOperation",     InputLogicalKey::Z,      0xFFu, static_cast<uint16_t>(Control | Shift) },
     };

@@ -150,9 +150,11 @@ struct PaneInputReading
     bool           ShortcutDuplicate = false;// [-] - Ctrl+D shortcut pulse
     bool           ShortcutLinked    = false;// [-] - Ctrl+L linked selection shortcut pulse
     bool           ShortcutInvert    = false;// [-] - Ctrl+I invert selection shortcut pulse
+    bool           ShortcutUnwrap    = false;// [-] - Ctrl+U immediate unwrap shortcut pulse
     bool           ShortcutUndo      = false;// [-] - Ctrl+Z undo shortcut pulse
     bool           ShortcutRedo      = false;// [-] - Ctrl+Shift+Z or Ctrl+Y redo shortcut pulse
     bool           ToggleDiagnostics = false;// [-] - F3 diagnostics shortcut pulse
+    bool           KeyboardFocused   = false;// [-] - Owning pane/window has keyboard focus
     std::string    TypedUtf8         {};    // [-]  - UTF-8 characters typed this step
 };
 

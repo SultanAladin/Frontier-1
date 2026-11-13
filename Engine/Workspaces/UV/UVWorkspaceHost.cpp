@@ -32,7 +32,10 @@ namespace
 UVWorkspaceHost::UVWorkspaceHost()
 {
     Outliner.AttachSession(&Session);
-    ViewportHost.AttachSession(&Session);
+    ViewportHost2D.ConfigureHostRole(UVViewportHostRole::Dedicated2D);
+    ViewportHost2D.AttachSession(&Session);
+    ViewportHost3D.ConfigureHostRole(UVViewportHostRole::Dedicated3D);
+    ViewportHost3D.AttachSession(&Session);
     Inspector.AttachSession(&Session);
 }
 
@@ -205,15 +208,24 @@ void UVWorkspaceHost::RegisterDockPanes(Components::HeadlessWorkspaceDockContain
         [this]() { Outliner.PresentInImGuiPane(1.0 / 60.0, 1.0f); },
     });
 
-    // Center Pane: Viewport (Standalone) or UV (FeatureSet multi-workspace group)
-    const char* CentralTitle =
-        (ActiveEngineConfig.QueryLaunchMode() == Configuration::HostLaunchMode::FeatureSet) ? "UV" : "Viewport";
+    // Separate Central Viewports: dedicated 2D UV Canvas & dedicated 3D Surface Viewport
     (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
-        CentralTitle,
+        "2D UV",
         DockPlacementDirection::CenterTabGroup,
-        0.57f,
+        0.50f,
         PaneDirectiveMask::CentralViewportDirectives,
-        [this]() { ViewportHost.PresentInImGuiPane(1.0 / 60.0, 1.0f); },
+        [this]() { ViewportHost2D.PresentInImGuiPane(1.0 / 60.0, 1.0f); },
+    });
+    ++RegisteredTabCount;
+
+    const float RightSplitRatio =
+        (ActiveEngineConfig.QueryLaunchMode() == Configuration::HostLaunchMode::FeatureSet) ? 0.42f : 0.50f;
+    (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
+        "3D Surface",
+        DockPlacementDirection::CenterSplitRight,
+        RightSplitRatio,
+        PaneDirectiveMask::CentralViewportDirectives,
+        [this]() { ViewportHost3D.PresentInImGuiPane(1.0 / 60.0, 1.0f); },
     });
     ++RegisteredTabCount;
 
@@ -231,7 +243,7 @@ void UVWorkspaceHost::RegisterDockPanes(Components::HeadlessWorkspaceDockContain
             (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
                 PeerTitle,
                 DockPlacementDirection::CenterTabGroup,
-                0.57f,
+                0.50f,
                 PaneDirectiveMask::CentralViewportDirectives,
                 [PeerTitle]()
                 {

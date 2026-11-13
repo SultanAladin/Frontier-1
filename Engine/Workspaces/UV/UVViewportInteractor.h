@@ -38,12 +38,7 @@ enum class ModalAxisConstraint : uint8_t
     LockV         = 2u,
 };
 
-enum class RegionSelectTool : uint8_t
-{
-    Inactive    = 0u,
-    BoxMarquee  = 1u,
-    CircleBrush = 2u,
-};
+using RegionSelectTool = UVRegionSelectTool;
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                      DECLARATIONS
@@ -60,6 +55,7 @@ public:
 
     void ActivateBoxMarquee(bool Active) noexcept;
     void ActivateCircleBrush(bool Active) noexcept;
+    void ActivateLassoPolygon(bool Active) noexcept;
     void ResetActiveTools() noexcept;
 
     [[nodiscard]] bool                 QueryDragCaptureActive() const noexcept
@@ -68,16 +64,21 @@ public:
             (ModalMode != ModalUVTransformMode::Inactive);
     }
     [[nodiscard]] bool                 ConsumeSecondarySheetRequest(Point2D& OutAnchor, bool& OutInPlanar) noexcept;
+    [[nodiscard]] bool                 ConsumeUnwrapSheetRequest(Point2D& OutAnchor, bool& OutInPlanar) noexcept;
 
     [[nodiscard]] ModalUVTransformMode QueryModalTransformMode() const noexcept { return ModalMode; }
-    [[nodiscard]] RegionSelectTool     QueryRegionSelectTool() const noexcept { return ActiveRegionTool; }
+    [[nodiscard]] RegionSelectTool     QueryRegionSelectTool() const noexcept
+    {
+        return (Session != nullptr) ? Session->ActiveRegionTool : ActiveRegionTool;
+    }
     [[nodiscard]] bool                 QueryRegionStrokeActive() const noexcept { return RegionStrokeActive; }
     [[nodiscard]] bool                 QueryRegionStrokePlanar() const noexcept { return RegionTargetPlanar; }
     [[nodiscard]] bool                 QueryRegionBrushHoverActive() const noexcept
     {
-        return ActiveRegionTool == RegionSelectTool::CircleBrush && RegionHoverValid;
+        return QueryRegionSelectTool() == RegionSelectTool::CircleBrush && RegionHoverValid;
     }
     [[nodiscard]] Rectangle2D          QueryMarqueeOverlayRect() const noexcept;
+    [[nodiscard]] const std::vector<Point2D>& QueryLassoOverlayPoints() const noexcept { return LassoPointsLogical; }
     [[nodiscard]] Point2D              QueryBrushOverlayCenter() const noexcept { return LastRegionCursorLogical; }
     [[nodiscard]] float                QueryBrushRadiusPixels() const noexcept { return BrushRadiusPixels; }
 
@@ -100,6 +101,9 @@ private:
     bool                  PendingSecondarySheet = false;
     Point2D               SecondarySheetAnchor {};
     bool                  SecondarySheetInPlanar = true;
+    bool                  PendingUnwrapSheet   = false;
+    Point2D               UnwrapSheetAnchor    {};
+    bool                  UnwrapSheetInPlanar  = true;
     std::vector<float>                 DragBaselineUVStream       {};
     std::vector<uint32_t>              DragTargetFaces            {};
     std::vector<uint32_t>              DragTargetCorners          {};
@@ -122,6 +126,7 @@ private:
     float                 MarqueeAnchorLocalX  = 0.0f;
     float                 MarqueeAnchorLocalY  = 0.0f;
     Point2D               LastRegionCursorLogical {};
+    std::vector<Point2D>  LassoPointsLogical   {};
     float                 BrushRadiusPixels    = 22.0f;
     uint64_t              FallbackTickSequence = 0u;
 };

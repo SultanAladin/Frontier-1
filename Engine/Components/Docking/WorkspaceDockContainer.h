@@ -44,11 +44,12 @@ struct WorkspaceDockPaneToken
 
 enum class DockPlacementDirection : uint8_t
 {
-    CenterTabGroup = 0,
-    SplitLeft      = 1,
-    SplitRight     = 2,
-    SplitTop       = 3,
-    SplitBottom    = 4,
+    CenterTabGroup   = 0,
+    SplitLeft        = 1,
+    SplitRight       = 2,
+    SplitTop         = 3,
+    SplitBottom      = 4,
+    CenterSplitRight = 5,
 };
 
 enum class PaneDirectiveMask : uint32_t

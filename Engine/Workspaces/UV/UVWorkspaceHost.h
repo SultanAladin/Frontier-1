@@ -50,7 +50,9 @@ public:
     [[nodiscard]] UVWorkspaceSession&       AccessSession() noexcept       { return Session; }
     [[nodiscard]] const UVWorkspaceSession& InspectSession() const noexcept { return Session; }
     [[nodiscard]] UVOutlinerPanel&          AccessOutliner() noexcept      { return Outliner; }
-    [[nodiscard]] UVViewportHost&           AccessViewportHost() noexcept  { return ViewportHost; }
+    [[nodiscard]] UVViewportHost&           AccessViewportHost() noexcept  { return ViewportHost2D; }
+    [[nodiscard]] UVViewportHost&           Access2DViewportHost() noexcept { return ViewportHost2D; }
+    [[nodiscard]] UVViewportHost&           Access3DViewportHost() noexcept { return ViewportHost3D; }
     [[nodiscard]] UVInspectorPanel&         AccessInspector() noexcept     { return Inspector; }
     [[nodiscard]] uint32_t                  QueryRegisteredTabCount() const noexcept { return RegisteredTabCount; }
 
@@ -58,7 +60,8 @@ private:
     Configuration::EngineConfiguration ActiveEngineConfig {};
     UVWorkspaceSession                 Session            {};
     UVOutlinerPanel                    Outliner           {};
-    UVViewportHost                     ViewportHost       {};
+    UVViewportHost                     ViewportHost2D     {};
+    UVViewportHost                     ViewportHost3D     {};
     UVInspectorPanel                   Inspector          {};
     uint32_t                           RegisteredTabCount = 0u;
     ContentBrowserPanel*               BoundBrowserPanel  = nullptr;

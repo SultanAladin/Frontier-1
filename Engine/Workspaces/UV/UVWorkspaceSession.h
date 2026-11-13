@@ -74,6 +74,14 @@ enum class UVSelectionMode : uint8_t
     Layers   = 4u,
 };
 
+enum class UVRegionSelectTool : uint8_t
+{
+    Inactive     = 0u,
+    BoxMarquee   = 1u,
+    CircleBrush  = 2u,
+    LassoPolygon = 3u,
+};
+
 enum class UVCommandDirective : uint8_t
 {
     None                     = 0u,
@@ -239,6 +247,7 @@ public:
 
     UVInspectorTab                           ActiveInspectorTab   = UVInspectorTab::Packing;
     UVSelectionMode                          SelectionMode        = UVSelectionMode::Layers;
+    UVRegionSelectTool                       ActiveRegionTool     = UVRegionSelectTool::Inactive;
     UVProjectionMethod                       ActiveUnwrapMethod   = UVProjectionMethod::ConformalLSCM;
     uint16_t                                 SelectedLayerOrdinal = 1u;
     uint32_t                                 ActiveUDIMNumber     = 1001u;
@@ -272,6 +281,8 @@ public:
     uint32_t                                 Framebuffer2DWidth   = 0u;
     uint32_t                                 Framebuffer2DHeight  = 0u;
     bool                                     FramebuffersDirty    = true;
+    bool                                     Framebuffer2DDirty   = true;
+    bool                                     Framebuffer3DDirty   = true;
     bool                                     SpatialNavigationActive = false;
     bool                                     DeferredPlanarRefresh = false;
 

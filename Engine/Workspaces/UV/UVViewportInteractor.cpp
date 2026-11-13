@@ -240,6 +240,91 @@ struct ScreenProjectionParameters
     return (P.X - Cx) * (P.X - Cx) + (P.Y - Cy) * (P.Y - Cy);
 }
 
+[[nodiscard]] bool PointInPolygon2D(Point2D Point, const std::vector<Point2D>& Polygon) noexcept
+{
+    if (Polygon.size() < 3u)
+    {
+        return false;
+    }
+    bool Inside = false;
+    std::size_t Prev = Polygon.size() - 1u;
+    for (std::size_t Cur = 0u; Cur < Polygon.size(); Prev = Cur++)
+    {
+        const Point2D A = Polygon[Cur];
+        const Point2D B = Polygon[Prev];
+        const bool CrossesY = ((A.Y > Point.Y) != (B.Y > Point.Y));
+        if (CrossesY)
+        {
+            const float Denom = (B.Y - A.Y);
+            if (std::abs(Denom) > 1.0e-6f)
+            {
+                const float IntersectX = (B.X - A.X) * (Point.Y - A.Y) / Denom + A.X;
+                if (Point.X < IntersectX)
+                {
+                    Inside = !Inside;
+                }
+            }
+        }
+    }
+    return Inside;
+}
+
+[[nodiscard]] bool SegmentsIntersect2D(Point2D A, Point2D B, Point2D C, Point2D D) noexcept
+{
+    const float MinAx = std::min(A.X, B.X), MaxAx = std::max(A.X, B.X);
+    const float MinAy = std::min(A.Y, B.Y), MaxAy = std::max(A.Y, B.Y);
+    const float MinCx = std::min(C.X, D.X), MaxCx = std::max(C.X, D.X);
+    const float MinCy = std::min(C.Y, D.Y), MaxCy = std::max(C.Y, D.Y);
+    if (MaxAx < MinCx || MaxCx < MinAx || MaxAy < MinCy || MaxCy < MinAy)
+    {
+        return false;
+    }
+    auto Cross = [](Point2D O, Point2D P, Point2D Q) noexcept -> float
+    {
+        return (P.X - O.X) * (Q.Y - O.Y) - (P.Y - O.Y) * (Q.X - O.X);
+    };
+    const float D1 = Cross(C, D, A);
+    const float D2 = Cross(C, D, B);
+    const float D3 = Cross(A, B, C);
+    const float D4 = Cross(A, B, D);
+    if (((D1 > 0.0f && D2 < 0.0f) || (D1 < 0.0f && D2 > 0.0f)) &&
+        ((D3 > 0.0f && D4 < 0.0f) || (D3 < 0.0f && D4 > 0.0f)))
+    {
+        return true;
+    }
+    constexpr float Eps = 1.0e-4f;
+    return (std::abs(D1) <= Eps && A.X >= MinCx && A.X <= MaxCx && A.Y >= MinCy && A.Y <= MaxCy) ||
+           (std::abs(D2) <= Eps && B.X >= MinCx && B.X <= MaxCx && B.Y >= MinCy && B.Y <= MaxCy) ||
+           (std::abs(D3) <= Eps && C.X >= MinAx && C.X <= MaxAx && C.Y >= MinAy && C.Y <= MaxAy) ||
+           (std::abs(D4) <= Eps && D.X >= MinAx && D.X <= MaxAx && D.Y >= MinAy && D.Y <= MaxAy);
+}
+
+[[nodiscard]] bool SegmentHitsPolygon2D(Point2D A, Point2D B, const std::vector<Point2D>& Polygon) noexcept
+{
+    if (Polygon.size() < 3u)
+    {
+        return false;
+    }
+    if (PointInPolygon2D(A, Polygon) || PointInPolygon2D(B, Polygon))
+    {
+        return true;
+    }
+    const Point2D Mid{ 0.5f * (A.X + B.X), 0.5f * (A.Y + B.Y) };
+    if (PointInPolygon2D(Mid, Polygon))
+    {
+        return true;
+    }
+    std::size_t Prev = Polygon.size() - 1u;
+    for (std::size_t Cur = 0u; Cur < Polygon.size(); Prev = Cur++)
+    {
+        if (SegmentsIntersect2D(A, B, Polygon[Prev], Polygon[Cur]))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 void UVViewportInteractor::AttachSession(UVWorkspaceSession* TargetSession) noexcept
@@ -250,10 +335,12 @@ void UVViewportInteractor::AttachSession(UVWorkspaceSession* TargetSession) noex
     DragCaptureActive     = false;
     DragOrbitActive       = false;
     PendingSecondarySheet = false;
+    PendingUnwrapSheet    = false;
     DragBaselineObjectVertices.clear();
     DragTargetCorners.clear();
+    LassoPointsLogical.clear();
     ModalMode             = ModalUVTransformMode::Inactive;
-    ActiveRegionTool      = RegionSelectTool::Inactive;
+    ActiveRegionTool      = (Session != nullptr) ? Session->ActiveRegionTool : RegionSelectTool::Inactive;
     RegionStrokeActive    = false;
     RegionTargetPlanar    = true;
     RegionHoverValid      = false;
@@ -271,13 +358,27 @@ bool UVViewportInteractor::ConsumeSecondarySheetRequest(Point2D& OutAnchor, bool
     return true;
 }
 
+bool UVViewportInteractor::ConsumeUnwrapSheetRequest(Point2D& OutAnchor, bool& OutInPlanar) noexcept
+{
+    if (!PendingUnwrapSheet)
+    {
+        return false;
+    }
+    PendingUnwrapSheet = false;
+    OutAnchor          = UnwrapSheetAnchor;
+    OutInPlanar        = UnwrapSheetInPlanar;
+    return true;
+}
+
 void UVViewportInteractor::ActivateBoxMarquee(bool Active) noexcept
 {
     RegionStrokeActive = false;
     RegionHoverValid   = false;
+    LassoPointsLogical.clear();
     ActiveRegionTool   = Active ? RegionSelectTool::BoxMarquee : RegionSelectTool::Inactive;
     if (Session != nullptr)
     {
+        Session->ActiveRegionTool = ActiveRegionTool;
         if (Active)
         {
             Session->SeamBrushActive = false;
@@ -293,9 +394,11 @@ void UVViewportInteractor::ActivateCircleBrush(bool Active) noexcept
 {
     RegionStrokeActive = false;
     RegionHoverValid   = false;
+    LassoPointsLogical.clear();
     ActiveRegionTool   = Active ? RegionSelectTool::CircleBrush : RegionSelectTool::Inactive;
     if (Session != nullptr)
     {
+        Session->ActiveRegionTool = ActiveRegionTool;
         if (Active)
         {
             Session->SeamBrushActive = false;
@@ -307,11 +410,36 @@ void UVViewportInteractor::ActivateCircleBrush(bool Active) noexcept
     }
 }
 
+void UVViewportInteractor::ActivateLassoPolygon(bool Active) noexcept
+{
+    RegionStrokeActive = false;
+    RegionHoverValid   = false;
+    LassoPointsLogical.clear();
+    ActiveRegionTool   = Active ? RegionSelectTool::LassoPolygon : RegionSelectTool::Inactive;
+    if (Session != nullptr)
+    {
+        Session->ActiveRegionTool = ActiveRegionTool;
+        if (Active)
+        {
+            Session->SeamBrushActive = false;
+        }
+        Session->StatusBannerText = Active
+            ? "Freehand Lasso Select Active [Q]  |  Drag Loop to Select"
+            : "Selection Tool Active";
+        Session->FramebuffersDirty = true;
+    }
+}
+
 void UVViewportInteractor::ResetActiveTools() noexcept
 {
     ActiveRegionTool   = RegionSelectTool::Inactive;
     RegionStrokeActive = false;
     RegionHoverValid   = false;
+    LassoPointsLogical.clear();
+    if (Session != nullptr)
+    {
+        Session->ActiveRegionTool = RegionSelectTool::Inactive;
+    }
 }
 
 Rectangle2D UVViewportInteractor::QueryMarqueeOverlayRect() const noexcept
@@ -340,6 +468,13 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
     const float   CursorY       = Cursor.Y;
     const bool    InsidePlanar  = (Interaction.PlanarBounds.Width > 1.0f) && Interaction.PlanarBounds.Contains(Cursor);
     const bool    InsideSpatial = (Interaction.SpatialBounds.Width > 1.0f) && Interaction.SpatialBounds.Contains(Cursor);
+
+    if (ActiveRegionTool != Session->ActiveRegionTool)
+    {
+        ActiveRegionTool   = Session->ActiveRegionTool;
+        RegionStrokeActive = false;
+        LassoPointsLogical.clear();
+    }
 
     const uint64_t ResolvedSeq = (HistoryTickSequence != 0u) ? HistoryTickSequence : ++FallbackTickSequence;
     bool WantsUndo = false;
@@ -531,8 +666,10 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
     if (Input.EscapePressed)
     {
         ActiveRegionTool          = RegionSelectTool::Inactive;
+        Session->ActiveRegionTool = RegionSelectTool::Inactive;
         RegionStrokeActive        = false;
         RegionHoverValid          = false;
+        LassoPointsLogical.clear();
         Session->SeamBrushActive  = false;
         Session->Gizmo2D.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
         Session->Gizmo3D.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
@@ -554,6 +691,13 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
     if (Input.ShortcutLinked)
     {
         Session->SelectLinkedIslandInActiveMode();
+        return;
+    }
+    if (Input.ShortcutUnwrap)
+    {
+        PendingUnwrapSheet    = false;
+        PendingSecondarySheet = false;
+        Session->QueueDirective(UVCommandDirective::UnwrapConformal);
         return;
     }
 
@@ -584,7 +728,9 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
             case 'k':
                 Session->SeamBrushActive  = !Session->SeamBrushActive;
                 ActiveRegionTool          = RegionSelectTool::Inactive;
+                Session->ActiveRegionTool = RegionSelectTool::Inactive;
                 RegionStrokeActive        = false;
+                LassoPointsLogical.clear();
                 if (Session->SeamBrushActive)
                 {
                     Session->WorkspaceConfig.AccessUVPreferences().SeamOverlayEnabled = true;
@@ -602,6 +748,9 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
             case 'c':
                 ActivateCircleBrush(ActiveRegionTool != RegionSelectTool::CircleBrush);
                 break;
+            case 'q':
+                ActivateLassoPolygon(ActiveRegionTool != RegionSelectTool::LassoPolygon);
+                break;
             case 'l':
                 Session->SelectLinkedIslandInActiveMode();
                 break;
@@ -609,7 +758,32 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
                 Session->QueueDirective(Input.AltHeld ? UVCommandDirective::UnpinSelectedUVs : UVCommandDirective::PinSelectedUVs);
                 break;
             case 'u':
-                Session->QueueDirective(UVCommandDirective::UnwrapConformal);
+                if (Input.ControlHeld)
+                {
+                    PendingUnwrapSheet    = false;
+                    PendingSecondarySheet = false;
+                    Session->QueueDirective(UVCommandDirective::UnwrapConformal);
+                }
+                else
+                {
+                    PendingSecondarySheet = false;
+                    PendingUnwrapSheet    = true;
+                    UnwrapSheetInPlanar   = InsidePlanar || !InsideSpatial;
+                    if (InsidePlanar || InsideSpatial)
+                    {
+                        UnwrapSheetAnchor = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+                    }
+                    else
+                    {
+                        const auto& AnchorRect = (Interaction.PlanarBounds.Width > 1.0f)
+                            ? Interaction.PlanarBounds
+                            : Interaction.SpatialBounds;
+                        UnwrapSheetAnchor = {
+                            AnchorRect.X + AnchorRect.Width * 0.5f,
+                            AnchorRect.Y + AnchorRect.Height * 0.35f,
+                        };
+                    }
+                }
                 break;
             case 'v':
                 Session->QueueDirective(UVCommandDirective::StitchSelectedSeams);
@@ -959,9 +1133,16 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
             return static_cast<uint32_t>(std::clamp(Local * ScaleY, 0.0f, static_cast<float>(FbH - 1u)));
         };
 
+        enum class ActiveRegionShapeKind : uint8_t
+        {
+            Circle = 0u,
+            Box    = 1u,
+            Lasso  = 2u,
+        };
+
         auto ApplyRegionWordsToSession = [&](
             const std::vector<uint32_t>& HitFaceWords,
-            bool                         BoxMarqueeActive,
+            ActiveRegionShapeKind        ShapeKind,
             float                        LogicalMinX,
             float                        LogicalMinY,
             float                        LogicalMaxX,
@@ -992,11 +1173,21 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                         Point2D Pt {};
                         if (ProjectEdgeCornerToLogicalScreen(ProjParams, Net, E, Pt))
                         {
-                            const bool HitVert = BoxMarqueeActive
-                                ? (Pt.X >= LogicalMinX && Pt.X <= LogicalMaxX && Pt.Y >= LogicalMinY && Pt.Y <= LogicalMaxY)
-                                : ((Pt.X - LastRegionCursorLogical.X) * (Pt.X - LastRegionCursorLogical.X) +
-                                   (Pt.Y - LastRegionCursorLogical.Y) * (Pt.Y - LastRegionCursorLogical.Y) <=
-                                   BrushRadiusPixels * BrushRadiusPixels);
+                            bool HitVert = false;
+                            if (ShapeKind == ActiveRegionShapeKind::Box)
+                            {
+                                HitVert = (Pt.X >= LogicalMinX && Pt.X <= LogicalMaxX && Pt.Y >= LogicalMinY && Pt.Y <= LogicalMaxY);
+                            }
+                            else if (ShapeKind == ActiveRegionShapeKind::Lasso)
+                            {
+                                HitVert = PointInPolygon2D(Pt, LassoPointsLogical);
+                            }
+                            else
+                            {
+                                HitVert = ((Pt.X - LastRegionCursorLogical.X) * (Pt.X - LastRegionCursorLogical.X) +
+                                           (Pt.Y - LastRegionCursorLogical.Y) * (Pt.Y - LastRegionCursorLogical.Y) <=
+                                           BrushRadiusPixels * BrushRadiusPixels);
+                            }
                             if (HitVert)
                             {
                                 Session->SelectionMask.AssignVertexSelected(Net.Edges[E].OriginVertexIndex, true);
@@ -1017,7 +1208,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                         W &= (W - 1u);
                     }
                 }
-                if (BoxMarqueeActive && AddedCount == 0u)
+                if (ShapeKind != ActiveRegionShapeKind::Circle && AddedCount == 0u)
                 {
                     for (uint32_t FIdx = 0u; FIdx < static_cast<uint32_t>(Net.Faces.size()); ++FIdx)
                     {
@@ -1051,6 +1242,43 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                     const Point2D Mid{ 0.5f * (A.X + B.X), 0.5f * (A.Y + B.Y) };
                     return Mid.X >= LogicalMinX && Mid.X <= LogicalMaxX && Mid.Y >= LogicalMinY && Mid.Y <= LogicalMaxY;
                 };
+                auto TestAndAddFaceEdges = [&](uint32_t FIdx)
+                {
+                    if (FIdx >= Net.Faces.size()) return;
+                    const auto& F = Net.Faces[FIdx];
+                    uint32_t    E = F.BoundaryLoopEdgeIndex;
+                    for (uint16_t C = 0u; C < F.CornerCount && E < Net.Edges.size(); ++C)
+                    {
+                        const uint32_t ENext = Net.Edges[E].NextEdgeIndex;
+                        Point2D P0 {}, P1 {};
+                        if (ProjectEdgeCornerToLogicalScreen(ProjParams, Net, E, P0) &&
+                            ProjectEdgeCornerToLogicalScreen(ProjParams, Net, ENext, P1))
+                        {
+                            bool HitEdge = false;
+                            if (ShapeKind == ActiveRegionShapeKind::Box)
+                            {
+                                HitEdge = SegmentHitsBox(P0, P1);
+                            }
+                            else if (ShapeKind == ActiveRegionShapeKind::Lasso)
+                            {
+                                HitEdge = SegmentHitsPolygon2D(P0, P1, LassoPointsLogical);
+                            }
+                            else
+                            {
+                                HitEdge = (PointToSegmentDistSq(LastRegionCursorLogical, P0, P1) <=
+                                           BrushRadiusPixels * BrushRadiusPixels);
+                            }
+                            if (HitEdge)
+                            {
+                                const bool IncludeOpp = !UsePlanar ||
+                                    (QueryOppositeIfCoincident2D(Net, E) != GeometrySpace::InvalidNetworkIndex);
+                                Session->SelectionMask.AssignEdgeSelected(Net, E, true, IncludeOpp);
+                                ++AddedCount;
+                            }
+                        }
+                        E = ENext;
+                    }
+                };
                 for (uint32_t WordIdx = 0u; WordIdx < static_cast<uint32_t>(HitFaceWords.size()); ++WordIdx)
                 {
                     uint32_t W = HitFaceWords[WordIdx];
@@ -1058,33 +1286,15 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                     {
                         const uint32_t Bit  = static_cast<uint32_t>(std::countr_zero(W));
                         const uint32_t FIdx = (WordIdx << 5u) | Bit;
-                        if (FIdx < Net.Faces.size())
-                        {
-                            const auto& F = Net.Faces[FIdx];
-                            uint32_t    E = F.BoundaryLoopEdgeIndex;
-                            for (uint16_t C = 0u; C < F.CornerCount && E < Net.Edges.size(); ++C)
-                            {
-                                const uint32_t ENext = Net.Edges[E].NextEdgeIndex;
-                                Point2D P0 {}, P1 {};
-                                if (ProjectEdgeCornerToLogicalScreen(ProjParams, Net, E, P0) &&
-                                    ProjectEdgeCornerToLogicalScreen(ProjParams, Net, ENext, P1))
-                                {
-                                    const bool HitEdge = BoxMarqueeActive
-                                        ? SegmentHitsBox(P0, P1)
-                                        : (PointToSegmentDistSq(LastRegionCursorLogical, P0, P1) <=
-                                           BrushRadiusPixels * BrushRadiusPixels);
-                                    if (HitEdge)
-                                    {
-                                        const bool IncludeOpp = !UsePlanar ||
-                                            (QueryOppositeIfCoincident2D(Net, E) != GeometrySpace::InvalidNetworkIndex);
-                                        Session->SelectionMask.AssignEdgeSelected(Net, E, true, IncludeOpp);
-                                        ++AddedCount;
-                                    }
-                                }
-                                E = ENext;
-                            }
-                        }
+                        TestAndAddFaceEdges(FIdx);
                         W &= (W - 1u);
+                    }
+                }
+                if (ShapeKind != ActiveRegionShapeKind::Circle && AddedCount == 0u)
+                {
+                    for (uint32_t FIdx = 0u; FIdx < static_cast<uint32_t>(Net.Faces.size()); ++FIdx)
+                    {
+                        TestAndAddFaceEdges(FIdx);
                     }
                 }
                 Session->RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
@@ -1095,12 +1305,96 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 return AddedCount > 0u || Session->SpatialSelectionActive;
             }
 
-            if (ActiveMode == UVSelectionMode::Islands)
+            std::vector<uint32_t> EffectiveFaceWords = HitFaceWords;
+            if (ShapeKind == ActiveRegionShapeKind::Lasso)
             {
-                std::vector<uint32_t> IslandFaces {};
+                const ScreenProjectionParameters ProjParams = BuildScreenProjectionParameters(
+                    Proj, Session->RenderOptions3D.Camera, Bounds, UsePlanar);
+                std::fill(EffectiveFaceWords.begin(), EffectiveFaceWords.end(), 0u);
+
+                auto TestFaceAgainstLasso = [&](uint32_t FIdx) -> bool
+                {
+                    if (FIdx >= Net.Faces.size()) return false;
+                    const auto& F = Net.Faces[FIdx];
+                    uint32_t E = F.BoundaryLoopEdgeIndex;
+                    std::vector<Point2D> ProjectedCorners {};
+                    ProjectedCorners.reserve(F.CornerCount);
+                    Point2D Centroid { 0.0f, 0.0f };
+                    for (uint16_t C = 0u; C < F.CornerCount && E < Net.Edges.size(); ++C)
+                    {
+                        Point2D Pt {};
+                        if (ProjectEdgeCornerToLogicalScreen(ProjParams, Net, E, Pt))
+                        {
+                            ProjectedCorners.push_back(Pt);
+                            Centroid.X += Pt.X;
+                            Centroid.Y += Pt.Y;
+                            if (PointInPolygon2D(Pt, LassoPointsLogical))
+                            {
+                                return true;
+                            }
+                        }
+                        E = Net.Edges[E].NextEdgeIndex;
+                    }
+                    if (!ProjectedCorners.empty())
+                    {
+                        Centroid.X /= static_cast<float>(ProjectedCorners.size());
+                        Centroid.Y /= static_cast<float>(ProjectedCorners.size());
+                        if (PointInPolygon2D(Centroid, LassoPointsLogical))
+                        {
+                            return true;
+                        }
+                        for (std::size_t I = 0u; I < ProjectedCorners.size(); ++I)
+                        {
+                            const Point2D& P0 = ProjectedCorners[I];
+                            const Point2D& P1 = ProjectedCorners[(I + 1u) % ProjectedCorners.size()];
+                            if (SegmentHitsPolygon2D(P0, P1, LassoPointsLogical))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                };
+
+                uint32_t MatchedFaces = 0u;
                 for (uint32_t WordIdx = 0u; WordIdx < static_cast<uint32_t>(HitFaceWords.size()); ++WordIdx)
                 {
                     uint32_t W = HitFaceWords[WordIdx];
+                    while (W != 0u)
+                    {
+                        const uint32_t Bit  = static_cast<uint32_t>(std::countr_zero(W));
+                        const uint32_t FIdx = (WordIdx << 5u) | Bit;
+                        if (TestFaceAgainstLasso(FIdx))
+                        {
+                            if (WordIdx < EffectiveFaceWords.size())
+                            {
+                                EffectiveFaceWords[WordIdx] |= (1u << Bit);
+                                ++MatchedFaces;
+                            }
+                        }
+                        W &= (W - 1u);
+                    }
+                }
+                if (MatchedFaces == 0u && UsePlanar)
+                {
+                    for (uint32_t FIdx = 0u; FIdx < static_cast<uint32_t>(Net.Faces.size()); ++FIdx)
+                    {
+                        const uint32_t WordIdx = FIdx >> 5u;
+                        const uint32_t Bit     = FIdx & 31u;
+                        if (WordIdx < EffectiveFaceWords.size() && TestFaceAgainstLasso(FIdx))
+                        {
+                            EffectiveFaceWords[WordIdx] |= (1u << Bit);
+                        }
+                    }
+                }
+            }
+
+            if (ActiveMode == UVSelectionMode::Islands)
+            {
+                std::vector<uint32_t> IslandFaces {};
+                for (uint32_t WordIdx = 0u; WordIdx < static_cast<uint32_t>(EffectiveFaceWords.size()); ++WordIdx)
+                {
+                    uint32_t W = EffectiveFaceWords[WordIdx];
                     while (W != 0u)
                     {
                         const uint32_t Bit  = static_cast<uint32_t>(std::countr_zero(W));
@@ -1117,7 +1411,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 if (!ClearMode)
                 {
                     const auto PrevWords = Session->SelectionMask.InspectPackedFaceWords();
-                    std::vector<uint32_t> Merged = HitFaceWords;
+                    std::vector<uint32_t> Merged = EffectiveFaceWords;
                     const std::size_t OverlapN = std::min(PrevWords.size(), Merged.size());
                     for (std::size_t I = 0u; I < OverlapN; ++I)
                     {
@@ -1127,7 +1421,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 }
                 else
                 {
-                    Session->SelectionMask.LoadPackedFaceWords(HitFaceWords);
+                    Session->SelectionMask.LoadPackedFaceWords(EffectiveFaceWords);
                 }
             }
             if (ActiveMode != UVSelectionMode::Layers)
@@ -1173,7 +1467,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 {
                     const bool ClearOnFirstPress = Input.PrimaryPointer.Pressed && !Input.ShiftHeld;
                     (void)ApplyRegionWordsToSession(
-                        HitWords, false, 0.0f, 0.0f, 0.0f, 0.0f, ClearOnFirstPress);
+                        HitWords, ActiveRegionShapeKind::Circle, 0.0f, 0.0f, 0.0f, 0.0f, ClearOnFirstPress);
                 }
                 else
                 {
@@ -1184,6 +1478,92 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
             else if (!Input.PrimaryPointer.Down)
             {
                 RegionStrokeActive = false;
+            }
+            return;
+        }
+
+        if (ActiveRegionTool == RegionSelectTool::LassoPolygon)
+        {
+            if (Input.PrimaryPointer.Pressed && (InsidePlanar || InsideSpatial))
+            {
+                RegionStrokeActive      = true;
+                RegionTargetPlanar      = InsidePlanar;
+                LastRegionCursorLogical = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+                LassoPointsLogical.clear();
+                LassoPointsLogical.push_back(LastRegionCursorLogical);
+            }
+            else if (RegionStrokeActive && Input.PrimaryPointer.Down)
+            {
+                LastRegionCursorLogical = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+                if (LassoPointsLogical.empty())
+                {
+                    LassoPointsLogical.push_back(LastRegionCursorLogical);
+                }
+                else
+                {
+                    const Point2D& Tail = LassoPointsLogical.back();
+                    const float Dx = LastRegionCursorLogical.X - Tail.X;
+                    const float Dy = LastRegionCursorLogical.Y - Tail.Y;
+                    if ((Dx * Dx + Dy * Dy) >= 9.0f)
+                    {
+                        LassoPointsLogical.push_back(LastRegionCursorLogical);
+                    }
+                }
+            }
+            else if (RegionStrokeActive && (Input.PrimaryPointer.Released || !Input.PrimaryPointer.Down))
+            {
+                LastRegionCursorLogical = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+                RegionStrokeActive      = false;
+                if (LassoPointsLogical.empty() ||
+                    ((LastRegionCursorLogical.X - LassoPointsLogical.back().X) *
+                     (LastRegionCursorLogical.X - LassoPointsLogical.back().X) +
+                     (LastRegionCursorLogical.Y - LassoPointsLogical.back().Y) *
+                     (LastRegionCursorLogical.Y - LassoPointsLogical.back().Y)) >= 2.0f)
+                {
+                    LassoPointsLogical.push_back(LastRegionCursorLogical);
+                }
+
+                if (LassoPointsLogical.size() >= 3u)
+                {
+                    float LogicalMinX = LassoPointsLogical.front().X;
+                    float LogicalMaxX = LassoPointsLogical.front().X;
+                    float LogicalMinY = LassoPointsLogical.front().Y;
+                    float LogicalMaxY = LassoPointsLogical.front().Y;
+                    for (const Point2D& Pt : LassoPointsLogical)
+                    {
+                        LogicalMinX = std::min(LogicalMinX, Pt.X);
+                        LogicalMaxX = std::max(LogicalMaxX, Pt.X);
+                        LogicalMinY = std::min(LogicalMinY, Pt.Y);
+                        LogicalMaxY = std::max(LogicalMaxY, Pt.Y);
+                    }
+
+                    const auto SavedFaceSpan = Session->SelectionMask.InspectPackedFaceWords();
+                    const std::vector<uint32_t> SavedFaceWords(SavedFaceSpan.begin(), SavedFaceSpan.end());
+                    (void)Rast->DispatchGPUSelection(GeometricRaster::GPUSelectionOperation::ClearAll, 0u, false);
+
+                    const uint32_t MinX = ToFramebufferX(LogicalMinX);
+                    const uint32_t MinY = ToFramebufferY(LogicalMinY);
+                    const uint32_t MaxX = ToFramebufferX(LogicalMaxX);
+                    const uint32_t MaxY = ToFramebufferY(LogicalMaxY);
+
+                    (void)(UsePlanar
+                        ? Rast->Reduce2DRegionPick(MinX, MinY, MaxX, MaxY, 0u, 0u, 0u)
+                        : Rast->Reduce3DRegionPick(MinX, MinY, MaxX, MaxY, 0u, 0u, 0u));
+                    const std::vector<uint32_t> HitWords = Rast->ReadbackSelectionBitmaskWords();
+                    Session->SelectionMask.LoadPackedFaceWords(SavedFaceWords);
+
+                    const bool Applied = ApplyRegionWordsToSession(
+                        HitWords, ActiveRegionShapeKind::Lasso, LogicalMinX, LogicalMinY, LogicalMaxX, LogicalMaxY, !Input.ShiftHeld);
+                    if (!Applied && !Input.ShiftHeld)
+                    {
+                        Session->ClearViewportSelection();
+                    }
+                }
+                else if (!Input.ShiftHeld)
+                {
+                    Session->ClearViewportSelection();
+                }
+                LassoPointsLogical.clear();
             }
             return;
         }
@@ -1232,7 +1612,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 Session->SelectionMask.LoadPackedFaceWords(SavedFaceWords);
 
                 const bool Applied = ApplyRegionWordsToSession(
-                    HitWords, true, LogicalMinX, LogicalMinY, LogicalMaxX, LogicalMaxY, !Input.ShiftHeld);
+                    HitWords, ActiveRegionShapeKind::Box, LogicalMinX, LogicalMinY, LogicalMaxX, LogicalMaxY, !Input.ShiftHeld);
                 if (!Applied && Summary.HitPixelCount == 0u && !Input.ShiftHeld)
                 {
                     Session->ClearViewportSelection();

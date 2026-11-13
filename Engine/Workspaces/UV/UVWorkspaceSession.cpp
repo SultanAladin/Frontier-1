@@ -2500,8 +2500,18 @@ void UVWorkspaceSession::RefreshViewportFramebuffers(
     const bool SizeChanged3D = SpatialViewportValid && ((Render3DW != Framebuffer3DWidth) || (Render3DH != Framebuffer3DHeight));
     const bool SizeChanged2D = PlanarViewportValid && ((Canvas2DW != Framebuffer2DWidth) || (Canvas2DH != Framebuffer2DHeight));
 
-    if (!FramebuffersDirty && !SizeChanged3D && !SizeChanged2D &&
-        !(DeferredPlanarRefresh && !SpatialNavigationActive))
+    if (FramebuffersDirty)
+    {
+        Framebuffer2DDirty = true;
+        Framebuffer3DDirty = true;
+        FramebuffersDirty  = false;
+    }
+
+    const bool NeedRender3D = SpatialViewportValid && (Framebuffer3DDirty || SizeChanged3D);
+    const bool NeedRender2D = PlanarViewportValid && !SpatialNavigationActive &&
+        (Framebuffer2DDirty || SizeChanged2D || DeferredPlanarRefresh);
+
+    if (!NeedRender3D && !NeedRender2D && !(SpatialNavigationActive && PlanarViewportValid))
     {
         return;
     }
@@ -2540,12 +2550,13 @@ void UVWorkspaceSession::RefreshViewportFramebuffers(
     const bool ShowGizmo2D = AnyComponentSelected || Gizmo2D.QueryDragging();
     const bool ShowGizmo3D = SpatialSelectionActive || AnyComponentSelected || Gizmo3D.QueryDragging();
 
-    if (Viewport3DW >= 16u && Viewport3DH >= 16u)
+    if (NeedRender3D)
     {
         if (Rasterizer->Rasterize3DViewport(Render3DW, Render3DH, RenderOptions3D, ShowGizmo3D ? &Gizmo3D : nullptr, &Framebuffer3DRGBA))
         {
             Framebuffer3DWidth  = Render3DW;
             Framebuffer3DHeight = Render3DH;
+            Framebuffer3DDirty  = false;
             (void)OpticsEncoder.ExecuteGPUOptics(Render3DW, Render3DH, CamConfig, {}, Framebuffer3DRGBA);
         }
     }
@@ -2554,7 +2565,7 @@ void UVWorkspaceSession::RefreshViewportFramebuffers(
     {
         DeferredPlanarRefresh = true;
     }
-    else if (Canvas2DW >= 16u && Canvas2DH >= 16u)
+    else if (NeedRender2D)
     {
         const float TileSpanU = static_cast<float>(std::max<std::size_t>(1u, Asset.UDIMTiles.size()));
         Projection.ConfigurePlanarDomainSpan(TileSpanU, 1.0f);
@@ -2562,8 +2573,9 @@ void UVWorkspaceSession::RefreshViewportFramebuffers(
 
         if (Rasterizer->Rasterize2DUVCanvas(Canvas2DW, Canvas2DH, RenderOptions2D, ShowGizmo2D ? &Gizmo2D : nullptr, &Framebuffer2DRGBA))
         {
-            Framebuffer2DWidth  = Canvas2DW;
-            Framebuffer2DHeight = Canvas2DH;
+            Framebuffer2DWidth    = Canvas2DW;
+            Framebuffer2DHeight   = Canvas2DH;
+            Framebuffer2DDirty    = false;
             DeferredPlanarRefresh = false;
         }
     }
@@ -2571,8 +2583,6 @@ void UVWorkspaceSession::RefreshViewportFramebuffers(
     {
         DeferredPlanarRefresh = false;
     }
-
-    FramebuffersDirty = false;
 }
 
 } // namespace Frontier::Workspaces
