@@ -97,6 +97,7 @@ void UVWorkspaceSession::InitializeLoadedAssetLayout()
 
     SelectionMask.SynchronizeCapacity(Asset.Network);
     SelectionMask.ClearAll();
+    SpatialSelectionActive = true;
     if (ActivePreset != GeometrySpace::SampleAssetPreset::ControlledIntegrator)
     {
         const auto& InitialSpan = Asset.Layers.InspectPartitionSpan(Asset.Network, SelectedLayerOrdinal, RootInstanceToken);
@@ -213,6 +214,7 @@ bool UVWorkspaceSession::ExportExternalGeometry(
 
 void UVWorkspaceSession::SelectPriorityLayer(uint16_t LayerOrdinal)
 {
+    SpatialSelectionActive             = true;
     SelectedLayerOrdinal               = LayerOrdinal;
     RenderOptions3D.ActiveLayerOrdinal = LayerOrdinal;
     RenderOptions2D.ActiveLayerOrdinal = LayerOrdinal;
@@ -528,7 +530,7 @@ void UVWorkspaceSession::SynchronizeSelectionToGPU()
         return;
     }
     SelectionMask.SynchronizeCapacity(Asset.Network);
-    if (SelectionMode == UVSelectionMode::Layers)
+    if (SelectionMode == UVSelectionMode::Layers && SelectionMask.CountSelectedFaces() > 0u)
     {
         (void)Rasterizer->DispatchGPUSelection(GeometricRaster::GPUSelectionOperation::SelectByLayer, SelectedLayerOrdinal, false);
     }
@@ -536,6 +538,22 @@ void UVWorkspaceSession::SynchronizeSelectionToGPU()
     {
         Rasterizer->UploadSelectionBitmaskWords(SelectionMask.InspectPackedFaceWords());
     }
+    FramebuffersDirty = true;
+}
+
+void UVWorkspaceSession::ClearViewportSelection()
+{
+    SelectionMask.SynchronizeCapacity(Asset.Network);
+    SelectionMask.ClearAll();
+    SpatialSelectionActive             = false;
+    RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
+    RenderOptions2D.ActiveLayerOrdinal = UINT16_MAX;
+    RenderOptions3D.HoveredFaceIndex   = GeometrySpace::InvalidNetworkIndex;
+    RenderOptions2D.HoveredFaceIndex   = GeometrySpace::InvalidNetworkIndex;
+    Gizmo2D.AssignHoveredHandle(Editor::GizmoHandleOrdinal::None);
+    Gizmo3D.AssignHoveredHandle(Editor::GizmoHandleOrdinal::None);
+    SynchronizeSelectionToGPU();
+    StatusBannerText  = "Cleared Selection";
     FramebuffersDirty = true;
 }
 
@@ -618,6 +636,74 @@ void UVWorkspaceSession::FitSelectionOrNetwork() noexcept
     auto& Proj = ActiveDocument.AccessViewportProjection();
     Proj.FitSpatialExtents(Min3D, Max3D);
     Proj.FitPlanarExtents(MinUV, MaxUV);
+    FramebuffersDirty = true;
+}
+
+void UVWorkspaceSession::FitPlanarSelectionOrNetwork() noexcept
+{
+    auto Selected = SelectionMask.CollectSelectedFaces();
+    if (Selected.empty())
+    {
+        Selected.resize(Asset.Network.Faces.size());
+        std::iota(Selected.begin(), Selected.end(), 0u);
+    }
+    if (Selected.empty())
+    {
+        return;
+    }
+
+    Mathematics::UVAxes MinUV {  1.0e9f,  1.0e9f };
+    Mathematics::UVAxes MaxUV { -1.0e9f, -1.0e9f };
+    for (const uint32_t FIdx : Selected)
+    {
+        if (FIdx >= Asset.Network.Faces.size())
+        {
+            continue;
+        }
+        uint32_t Cur = Asset.Network.Faces[FIdx].BoundaryLoopEdgeIndex;
+        for (uint16_t C = 0u; C < Asset.Network.Faces[FIdx].CornerCount && Cur != GeometrySpace::InvalidNetworkIndex; ++C)
+        {
+            const auto& UV = Asset.Network.Edges[Cur].ParameterUV;
+            MinUV = { std::min(MinUV.U, UV.U), std::min(MinUV.V, UV.V) };
+            MaxUV = { std::max(MaxUV.U, UV.U), std::max(MaxUV.V, UV.V) };
+            Cur   = Asset.Network.Edges[Cur].NextEdgeIndex;
+        }
+    }
+    ActiveDocument.AccessViewportProjection().FitPlanarExtents(MinUV, MaxUV);
+    FramebuffersDirty = true;
+}
+
+void UVWorkspaceSession::FitSpatialSelectionOrNetwork() noexcept
+{
+    auto Selected = SelectionMask.CollectSelectedFaces();
+    if (Selected.empty())
+    {
+        Selected.resize(Asset.Network.Faces.size());
+        std::iota(Selected.begin(), Selected.end(), 0u);
+    }
+    if (Selected.empty())
+    {
+        return;
+    }
+
+    Mathematics::Axis3D Min3D {  1.0e9f,  1.0e9f,  1.0e9f };
+    Mathematics::Axis3D Max3D { -1.0e9f, -1.0e9f, -1.0e9f };
+    for (const uint32_t FIdx : Selected)
+    {
+        if (FIdx >= Asset.Network.Faces.size())
+        {
+            continue;
+        }
+        uint32_t Cur = Asset.Network.Faces[FIdx].BoundaryLoopEdgeIndex;
+        for (uint16_t C = 0u; C < Asset.Network.Faces[FIdx].CornerCount && Cur != GeometrySpace::InvalidNetworkIndex; ++C)
+        {
+            const auto& V = Asset.Network.Vertices[Asset.Network.Edges[Cur].OriginVertexIndex].Axes;
+            Min3D = { std::min(Min3D.X, V.X), std::min(Min3D.Y, V.Y), std::min(Min3D.Z, V.Z) };
+            Max3D = { std::max(Max3D.X, V.X), std::max(Max3D.Y, V.Y), std::max(Max3D.Z, V.Z) };
+            Cur   = Asset.Network.Edges[Cur].NextEdgeIndex;
+        }
+    }
+    ActiveDocument.AccessViewportProjection().FitSpatialExtents(Min3D, Max3D);
     FramebuffersDirty = true;
 }
 
@@ -1224,10 +1310,11 @@ void UVWorkspaceSession::RefreshViewportFramebuffers(
     RenderOptions2D.BackdropPreset        = TileCfg.BackdropPreset;
 
     const bool ShowGizmo2D = (SelectionMask.CountSelectedFaces() > 0u) || Gizmo2D.QueryDragging();
+    const bool ShowGizmo3D = SpatialSelectionActive || (SelectionMask.CountSelectedFaces() > 0u) || Gizmo3D.QueryDragging();
 
     if (Viewport3DW >= 16u && Viewport3DH >= 16u)
     {
-        if (Rasterizer->Rasterize3DViewport(Render3DW, Render3DH, RenderOptions3D, &Gizmo3D, &Framebuffer3DRGBA))
+        if (Rasterizer->Rasterize3DViewport(Render3DW, Render3DH, RenderOptions3D, ShowGizmo3D ? &Gizmo3D : nullptr, &Framebuffer3DRGBA))
         {
             Framebuffer3DWidth  = Render3DW;
             Framebuffer3DHeight = Render3DH;

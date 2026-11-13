@@ -150,9 +150,12 @@ public:
     [[nodiscard]] UDIMTileSetting  QueryUDIMTileSetting(uint32_t UDIMNumber) const noexcept;
 
     void SynchronizeSelectionToGPU();
+    void ClearViewportSelection();
     void RefreshGizmoAnchorsFromSelection() noexcept;
     void FinalizeInteractiveUVRevision(std::string_view OperationTag);
     void FitSelectionOrNetwork() noexcept;
+    void FitPlanarSelectionOrNetwork() noexcept;
+    void FitSpatialSelectionOrNetwork() noexcept;
 
     void                             QueueDirective(UVCommandDirective Directive) noexcept;
     [[nodiscard]] UVCommandDirective ConsumePendingDirective() noexcept;
@@ -210,9 +213,10 @@ public:
     uint32_t                                 ActiveUDIMNumber     = 1001u;
     uint32_t                                 OutlinerUDIMFilter   = 0u; // 0 = All UDIMs
     std::string                              OutlinerSearchQuery  {};
-    bool                                     FillPocketsEnabled   = true;
-    bool                                     SeamBrushActive      = false;
-    float                                    SharpAngleThreshold  = 55.0f;
+    bool                                     FillPocketsEnabled      = true;
+    bool                                     SeamBrushActive         = false;
+    bool                                     SpatialSelectionActive  = true;
+    float                                    SharpAngleThreshold     = 55.0f;
     uint32_t                                 RelaxIterations      = 12u;
     std::unordered_map<uint32_t, UDIMTileSetting> UDIMSettings    {};
 

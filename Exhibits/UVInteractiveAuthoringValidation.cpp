@@ -344,6 +344,23 @@ int main()
         return 1;
     }
 
+    // Blank-space click in 3D viewport deselects all faces, layers, and active gizmos
+    {
+        PaneInputReading BlankClick {};
+        BlankClick.PrimaryPointer.X       = SpatialBounds.X + 8.0f;
+        BlankClick.PrimaryPointer.Y       = SpatialBounds.Y + 8.0f;
+        BlankClick.PrimaryPointer.Down    = true;
+        BlankClick.PrimaryPointer.Pressed = true;
+        Interactor.ProcessViewportInput(ViewportInteractionReading{ PlanarBounds, SpatialBounds, BlankClick });
+        if (!VerifyCheck(
+                !Session.SpatialSelectionActive && Session.SelectionMask.CountSelectedFaces() == 0u,
+                "Clicking blank viewport space deselects all faces, layers, and gizmos"))
+        {
+            return 1;
+        }
+        Session.SelectPriorityLayer(1u);
+    }
+
     //--------------------------------------------------------------------------------------------------------------------
     // 5. Outliner Layer Authoring + Full Docked UI + ImGuiOverlayRasterization (ImGuiComposite.slang) Proof
     //--------------------------------------------------------------------------------------------------------------------

@@ -651,8 +651,10 @@ void UVOutlinerPanel::Render(
 
     // 4d. Priority Allocation Layer Boxes (.pz-frontier-layer-box: STRICTLY 0px SHARP CORNERS!)
     uint16_t PendingDeleteLayer = 0u;
+    const bool AnySelectionActive = Session->SpatialSelectionActive || (Session->SelectionMask.CountSelectedFaces() > 0u);
     auto SetActiveLayerWithoutChangingSelection = [&](uint16_t LayerOrdinal)
     {
+        Session->SpatialSelectionActive = true;
         Session->SelectedLayerOrdinal = LayerOrdinal;
         Session->RenderOptions3D.ActiveLayerOrdinal = LayerOrdinal;
         Session->RenderOptions2D.ActiveLayerOrdinal = LayerOrdinal;
@@ -700,7 +702,7 @@ void UVOutlinerPanel::Render(
             continue;
         }
         const auto& Layer = *LayerPtr;
-        const bool RowSelected = (Session->SelectedLayerOrdinal == Layer.LayerOrdinal);
+        const bool RowSelected = AnySelectionActive && (Session->SelectedLayerOrdinal == Layer.LayerOrdinal);
         const ColorRgba LayerCol = LinearTintToRgba(Layer.LinearTintRGB);
         const auto& PartRef = Session->Asset.Layers.InspectPartitionSpan(Session->Asset.Network, Layer.LayerOrdinal);
         const Rectangle2D BoxRect   { LeftX, BodyY, InnerW, 39.0f };
@@ -865,7 +867,7 @@ void UVOutlinerPanel::Render(
     // 4e. Unassigned Remainder Box (.pz-frontier-layer-box.remainder, 0px corners, #6e6e6e bar)
     if (ShowRemainderBox)
     {
-        const bool RemActive = (Session->SelectedLayerOrdinal == 0u);
+        const bool RemActive = AnySelectionActive && (Session->SelectedLayerOrdinal == 0u);
         const ColorRgba RemCol{ 110, 110, 110, 255 };
         const Rectangle2D RemBox{ LeftX, BodyY, InnerW, 39.0f };
         const bool        RemHover  = ScrollArea.Contains(Cursor) && RemBox.Contains(Cursor);

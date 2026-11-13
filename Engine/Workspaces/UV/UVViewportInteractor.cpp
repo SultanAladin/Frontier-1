@@ -662,11 +662,19 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 const uint32_t MinY = static_cast<uint32_t>(std::min(MarqueeAnchorLocalY, LocalY));
                 const uint32_t MaxX = static_cast<uint32_t>(std::max(MarqueeAnchorLocalX, LocalX));
                 const uint32_t MaxY = static_cast<uint32_t>(std::max(MarqueeAnchorLocalY, LocalY));
-                (void)(InsidePlanar
+                const auto Summary = InsidePlanar
                     ? Rast->Reduce2DRegionPick(MinX, MinY, MaxX, MaxY, 0u, Input.ShiftHeld)
-                    : Rast->Reduce3DRegionPick(MinX, MinY, MaxX, MaxY, 0u, Input.ShiftHeld));
-                Session->SelectionMode     = UVSelectionMode::Faces;
-                Session->FramebuffersDirty = true;
+                    : Rast->Reduce3DRegionPick(MinX, MinY, MaxX, MaxY, 0u, Input.ShiftHeld);
+                if (Summary.HitPixelCount == 0u && !Input.ShiftHeld)
+                {
+                    Session->ClearViewportSelection();
+                }
+                else
+                {
+                    Session->SpatialSelectionActive = true;
+                    Session->SelectionMode          = UVSelectionMode::Faces;
+                    Session->FramebuffersDirty      = true;
+                }
             }
             return;
         }
@@ -812,11 +820,14 @@ void UVViewportInteractor::ApplySurfaceHitSelection(
     {
         if (!Input.ShiftHeld)
         {
-            Mask.ClearAll();
-            Session->SynchronizeSelectionToGPU();
+            Session->ClearViewportSelection();
         }
         return;
     }
+
+    Session->SpatialSelectionActive = true;
+    Session->RenderOptions3D.ActiveLayerOrdinal = Session->SelectedLayerOrdinal;
+    Session->RenderOptions2D.ActiveLayerOrdinal = Session->SelectedLayerOrdinal;
 
     // Alt + Click = Edge Loop; Ctrl + Alt + Click = Edge Ring
     if (Input.AltHeld && Hit.DirectedEdgeIndex != GeometrySpace::InvalidNetworkIndex)

@@ -438,18 +438,15 @@ void UVViewportHost::Render(
         }
         CurX = CompGroup.Right() + 8.0f;
 
-        // Right-aligned Wire | Seams | More capsules
+        // Right-aligned Wire | Seams | More capsules (Zoom/Fit moved into per-viewport vertical bottom-right capsules)
         const Rectangle2D MoreBtn { RightX - 58.0f, StripY, 58.0f, 31.0f };
         const Rectangle2D SeamBtn { MoreBtn.X - 6.0f - 58.0f, StripY, 58.0f, 31.0f };
-        const Rectangle2D WireBtn   { SeamBtn.X - 6.0f - 52.0f, StripY, 52.0f, 31.0f };
-        const Rectangle2D Fit3DBtn  { WireBtn.X - 103.0f, StripY, 40.0f, 31.0f };
-        const Rectangle2D ZoomOutBtn{ WireBtn.X - 62.0f, StripY, 28.0f, 31.0f };
-        const Rectangle2D ZoomInBtn { WireBtn.X - 31.0f, StripY, 28.0f, 31.0f };
+        const Rectangle2D WireBtn { SeamBtn.X - 6.0f - 52.0f, StripY, 52.0f, 31.0f };
 
         auto& Prefs = Session->WorkspaceConfig.AccessUVPreferences();
         if (ConstructCapsuleButton(
                 Surface, WireBtn, "Wire", Theme, Cursor, Pressed, Prefs.WireframeOverlayEnabled, false, 9.8f, -1.0f,
-                OptionalTooltip::FromText("Toggle 3D mesh wireframe overlay.")))
+                OptionalTooltip::FromText("Toggle 3D surface wireframe overlay.")))
         {
             OverlayCapturedClick          = true;
             Prefs.WireframeOverlayEnabled = !Prefs.WireframeOverlayEnabled;
@@ -470,44 +467,9 @@ void UVViewportHost::Render(
             OverlayCapturedClick = true;
             MoreShelfExpanded    = !MoreShelfExpanded;
         }
-        if (ConstructCapsuleButton(
-                Surface, Fit3DBtn, "Fit", Theme, Cursor, Pressed, false, false, 10.0f, -1.0f,
-                OptionalTooltip::FromText("Frame the complete object in the 3D viewport.")))
-        {
-            OverlayCapturedClick = true;
-            const auto& Vertices = Session->Asset.Network.Vertices;
-            if (!Vertices.empty())
-            {
-                Mathematics::Axis3D Min { 1.0e9f, 1.0e9f, 1.0e9f };
-                Mathematics::Axis3D Max { -1.0e9f, -1.0e9f, -1.0e9f };
-                for (const auto& Vertex : Vertices)
-                {
-                    Min = { std::min(Min.X, Vertex.Axes.X), std::min(Min.Y, Vertex.Axes.Y), std::min(Min.Z, Vertex.Axes.Z) };
-                    Max = { std::max(Max.X, Vertex.Axes.X), std::max(Max.Y, Vertex.Axes.Y), std::max(Max.Z, Vertex.Axes.Z) };
-                }
-                Session->AccessViewportProjection().FitSpatialExtents(Min, Max);
-                Session->FramebuffersDirty = true;
-            }
-        }
-        if (ConstructCapsuleButton(
-                Surface, ZoomOutBtn, "-", Theme, Cursor, Pressed, false, false, 14.0f, -1.0f,
-                OptionalTooltip::FromText("Zoom the 3D camera out.")))
-        {
-            OverlayCapturedClick = true;
-            Session->AccessViewportProjection().DollySpatialCamera(1.25f);
-            Session->FramebuffersDirty = true;
-        }
-        if (ConstructCapsuleButton(
-                Surface, ZoomInBtn, "+", Theme, Cursor, Pressed, false, false, 14.0f, -1.0f,
-                OptionalTooltip::FromText("Zoom the 3D camera in.")))
-        {
-            OverlayCapturedClick = true;
-            Session->AccessViewportProjection().DollySpatialCamera(0.80f);
-            Session->FramebuffersDirty = true;
-        }
 
         // Middle display/debug/view dropdowns when horizontal width permits
-        const float MiddleControlsRight = Fit3DBtn.X - 8.0f;
+        const float MiddleControlsRight = WireBtn.X - 10.0f;
         if (CurX + 138.0f < MiddleControlsRight)
         {
             SurfaceDropdownBounds = { CurX, StripY, 134.0f, 31.0f };
@@ -597,7 +559,16 @@ void UVViewportHost::Render(
             Prefs.CheckerOverlayEnabled = !Prefs.CheckerOverlayEnabled;
             Session->FramebuffersDirty  = true;
         }
-        OpX += 72.0f;
+        OpX += 70.0f;
+
+        if (ConstructCapsuleButton(
+                Surface, { OpX, OpY, 74.0f, 24.0f }, BottomToolRailEnabled ? "Rail: Btm" : "Rail: Left", Theme, Cursor, Pressed, BottomToolRailEnabled, false, 9.0f, -1.0f,
+                OptionalTooltip::FromText("Toggle the authoring tool rail between the left vertical edge and bottom horizontal dock.")))
+        {
+            OverlayCapturedClick  = true;
+            BottomToolRailEnabled = !BottomToolRailEnabled;
+        }
+        OpX += 78.0f;
 
         struct QuickOperation
         {
@@ -697,17 +668,67 @@ void UVViewportHost::Render(
         std::max(80.0f, Bounds.Bottom() - BottomBarH - CanvasTopY)
     };
 
-    // Pre-check overlay overlays so clicks on tool rail or asset drawer do not trigger 3D/2D picking underneath!
-    const Rectangle2D RailBounds{
-        CanvasBounds.X + 10.0f,
-        CanvasBounds.Y + 10.0f,
-        38.0f,
-        std::min(CanvasBounds.Height - 20.0f, 356.0f)
+    // Pre-compute sub-viewport rectangles and overlay capsules so clicks on the tool rail or bottom-right Zoom/Fit
+    // capsules never leak through into 2D/3D GPU picking or empty-space deselection!
+    constexpr uint32_t RailToolCount   = 11u;
+    const float        HorizontalRailW = std::min(CanvasBounds.Width - 20.0f, 326.0f);
+    const Rectangle2D  RailBounds      = BottomToolRailEnabled
+        ? Rectangle2D{
+              CanvasBounds.X + (CanvasBounds.Width - HorizontalRailW) * 0.5f,
+              CanvasBounds.Bottom() - 48.0f,
+              HorizontalRailW,
+              38.0f }
+        : Rectangle2D{
+              CanvasBounds.X + 10.0f,
+              CanvasBounds.Y + 10.0f,
+              38.0f,
+              std::min(CanvasBounds.Height - 20.0f, 326.0f) };
+
+    Rectangle2D ExpectedPlanarRect  {};
+    Rectangle2D ExpectedSpatialRect {};
+    {
+        auto& Projection = ProjectionPane.AccessProjection();
+        switch (Projection.QuerySplitMode())
+        {
+            case Editor::ViewportSplitMode::SplitPlanarAndSpatial:
+            {
+                const float Gap   = 4.0f;
+                const float LeftW = std::floor((CanvasBounds.Width - Gap) * Projection.QuerySplitRatio());
+                ExpectedPlanarRect  = { CanvasBounds.X, CanvasBounds.Y, LeftW, CanvasBounds.Height };
+                ExpectedSpatialRect = { CanvasBounds.X + LeftW + Gap, CanvasBounds.Y, CanvasBounds.Width - LeftW - Gap, CanvasBounds.Height };
+                break;
+            }
+            case Editor::ViewportSplitMode::Planar2DOnly:
+                ExpectedPlanarRect = CanvasBounds;
+                break;
+            case Editor::ViewportSplitMode::Spatial3DOnly:
+                ExpectedSpatialRect = CanvasBounds;
+                break;
+        }
+    }
+
+    auto ComputeZoomFitCapsuleBounds = [](Rectangle2D SubViewportRect) noexcept -> Rectangle2D
+    {
+        if (SubViewportRect.Width < 120.0f || SubViewportRect.Height < 140.0f)
+        {
+            return {};
+        }
+        return Rectangle2D{
+            SubViewportRect.Right() - 44.0f,
+            SubViewportRect.Bottom() - 106.0f,
+            34.0f,
+            96.0f
+        };
     };
+
+    const Rectangle2D PrePlanarNavCapsule  = ComputeZoomFitCapsuleBounds(ExpectedPlanarRect);
+    const Rectangle2D PreSpatialNavCapsule = ComputeZoomFitCapsuleBounds(ExpectedSpatialRect);
 
     const bool PointerOverOverlayControls =
         OverlayCapturedClick ||
-        RailBounds.Contains(Cursor);
+        RailBounds.Contains(Cursor) ||
+        (PrePlanarNavCapsule.Width > 0.0f && PrePlanarNavCapsule.Contains(Cursor)) ||
+        (PreSpatialNavCapsule.Width > 0.0f && PreSpatialNavCapsule.Contains(Cursor));
     if (PointerOverOverlayControls)
     {
         // The interaction callback is intentionally suppressed over overlays; clear its
@@ -741,16 +762,16 @@ void UVViewportHost::Render(
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CornerTag.X + 9.0f, CornerTag.Y + 4.5f }, 9.0f, ColorRgba{ 226, 226, 226, 255 }, ShaderIndicator);
     }
 
-    // 3a. overlay Left tool Tool Rail (.pz-tool-rail)
+    // 3a. Authoring Tool Rail (Left vertical rail by default; toggleable to Bottom horizontal dock via More shelf)
     {
-        Surface.FillRectangle(RailBounds, ColorRgba{ 20, 20, 22, 226 }, 15.0f);
-        Surface.StrokeRectangle(RailBounds, ColorRgba{ 255, 255, 255, 28 }, 15.0f, 1.0f);
+        Surface.FillRectangle(RailBounds, ColorRgba{ 20, 20, 22, 226 }, 19.0f);
+        Surface.StrokeRectangle(RailBounds, ColorRgba{ 255, 255, 255, 28 }, 19.0f, 1.0f);
 
-        constexpr std::array<const char*, 12u> RailToolNames {{
+        constexpr std::array<const char*, RailToolCount> RailToolNames {{
             "Select", "Box Select", "Circle Select", "Move", "Rotate", "Scale",
-            "Split Island", "Seam Brush", "Stitch Seams", "Pin UVs", "Relax Stretch", "Frame View" }};
-        constexpr std::array<const char*, 12u> RailToolTips {{
-            "Select UV or mesh components.",
+            "Split Island", "Seam Brush", "Stitch Seams", "Pin UVs", "Relax Stretch" }};
+        constexpr std::array<const char*, RailToolCount> RailToolTips {{
+            "Select UV or surface components.",
             "Select components inside a rectangular marquee.",
             "Paint-select components with a circular brush.",
             "Move the active UV or spatial selection.",
@@ -760,30 +781,43 @@ void UVViewportHost::Render(
             "Toggle seam edges with the seam brush.",
             "Stitch selected seam boundaries together.",
             "Pin selected UV corners in place.",
-            "Relax UV stretch using the available solver.",
-            "Frame the current selection or complete network." }};
-        float ToolY = RailBounds.Y + 5.0f;
-        for (uint32_t Slot = 0u; Slot < 12u; ++Slot)
+            "Relax UV stretch using the available solver." }};
+
+        float ToolPos = BottomToolRailEnabled ? (RailBounds.X + 6.0f) : (RailBounds.Y + 6.0f);
+        for (uint32_t Slot = 0u; Slot < RailToolCount; ++Slot)
         {
-            if (ToolY + 26.0f > RailBounds.Bottom() - 4.0f)
+            if (!BottomToolRailEnabled && (ToolPos + 26.0f > RailBounds.Bottom() - 4.0f))
+            {
+                break;
+            }
+            if (BottomToolRailEnabled && (ToolPos + 26.0f > RailBounds.Right() - 4.0f))
             {
                 break;
             }
             if (Slot == 3u || Slot == 6u)
             {
-                Surface.StrokeLine({ RailBounds.X + 8.0f, ToolY + 1.0f }, { RailBounds.Right() - 8.0f, ToolY + 1.0f }, ColorRgba{ 255, 255, 255, 24 }, 1.0f);
-                ToolY += 5.0f;
+                if (BottomToolRailEnabled)
+                {
+                    Surface.StrokeLine({ ToolPos + 1.0f, RailBounds.Y + 8.0f }, { ToolPos + 1.0f, RailBounds.Bottom() - 8.0f }, ColorRgba{ 255, 255, 255, 24 }, 1.0f);
+                }
+                else
+                {
+                    Surface.StrokeLine({ RailBounds.X + 8.0f, ToolPos + 1.0f }, { RailBounds.Right() - 8.0f, ToolPos + 1.0f }, ColorRgba{ 255, 255, 255, 24 }, 1.0f);
+                }
+                ToolPos += 5.0f;
             }
-            const Rectangle2D Btn{ RailBounds.X + 4.0f, ToolY, 30.0f, 25.0f };
-            const bool        IsActive = (ActiveRailSlot == Slot);
-            const bool        Hovered  = Btn.Contains(Cursor);
+            const Rectangle2D Btn = BottomToolRailEnabled
+                ? Rectangle2D{ ToolPos, RailBounds.Y + 6.0f, 26.0f, 26.0f }
+                : Rectangle2D{ RailBounds.X + 4.0f, ToolPos, 30.0f, 25.0f };
+            const bool SlotActive = (ActiveRailSlot == Slot);
+            const bool Hovered    = Btn.Contains(Cursor);
             if (Hovered)
             {
                 ControlAppearance::RecordHoveredTooltip(
                     Btn, OptionalTooltip::FromTitled(RailToolNames[Slot], RailToolTips[Slot]));
             }
 
-            if (IsActive)
+            if (SlotActive)
             {
                 Surface.FillRectangle(Btn, Theme.AccentSoft, 8.0f);
                 Surface.StrokeRectangle(Btn, Theme.AccentBorder, 8.0f, 1.0f);
@@ -795,10 +829,10 @@ void UVViewportHost::Render(
 
             ConstructRailToolIcon(
                 Surface,
-                { Btn.X + 7.5f, Btn.Y + 5.0f },
+                { Btn.X + (Btn.Width - 15.0f) * 0.5f, Btn.Y + (Btn.Height - 15.0f) * 0.5f },
                 15.0f,
                 Slot,
-                IsActive ? ColorRgba{ 244, 244, 240, 255 } : ColorRgba{ 168, 168, 172, 255 });
+                SlotActive ? ColorRgba{ 244, 244, 240, 255 } : ColorRgba{ 168, 168, 172, 255 });
 
             if (Hovered && Pressed)
             {
@@ -814,21 +848,158 @@ void UVViewportHost::Render(
                     case 7u: ActiveRailSlot = 7u; Session->SeamBrushActive = !Session->SeamBrushActive; break;
                     case 8u: (void)Session->ExecuteDirective(UVCommandDirective::StitchSelectedSeams, nullptr); break;
                     case 9u: (void)Session->ExecuteDirective(UVCommandDirective::PinSelectedUVs, nullptr);      break;
-                    case 10u: (void)Session->ExecuteDirective(UVCommandDirective::RelaxStretchGPU, nullptr);    break;
-                    default: Session->FitSelectionOrNetwork(); break;
+                    default: (void)Session->ExecuteDirective(UVCommandDirective::RelaxStretchGPU, nullptr);     break;
                 }
                 Session->FramebuffersDirty = true;
             }
 
-            ToolY += 27.0f;
+            ToolPos += BottomToolRailEnabled ? 28.0f : 27.0f;
         }
     }
 
-    // 3b. overlay Bottom-Left 2D UV Transform Readout (.pz-uv-transform-capsules)
-    if (CanvasBounds.Width >= 340.0f)
+    // 3b. Vertical Bottom-Right Zoom/Fit Navigation Capsules (+ | - | Fit icon) on BOTH 2D UV Canvas & 3D Surface Viewport
+    auto ConstructViewportZoomFitCapsule = [&](
+        Rectangle2D SubViewportRect,
+        const char* ZoomInTip,
+        const char* ZoomOutTip,
+        const char* FitViewTip,
+        auto&&      ZoomInCallback,
+        auto&&      ZoomOutCallback,
+        auto&&      FitCallback)
+    {
+        const Rectangle2D CapsuleRect = ComputeZoomFitCapsuleBounds(SubViewportRect);
+        if (CapsuleRect.Width <= 0.0f)
+        {
+            return;
+        }
+
+        Surface.FillRectangle(CapsuleRect, ColorRgba{ 20, 20, 22, 228 }, 17.0f);
+        Surface.StrokeRectangle(CapsuleRect, ColorRgba{ 255, 255, 255, 30 }, 17.0f, 1.0f);
+
+        const Rectangle2D ZoomInCell { CapsuleRect.X + 4.0f, CapsuleRect.Y + 4.0f,  26.0f, 26.0f };
+        const Rectangle2D ZoomOutCell{ CapsuleRect.X + 4.0f, CapsuleRect.Y + 35.0f, 26.0f, 26.0f };
+        const Rectangle2D FitCell    { CapsuleRect.X + 4.0f, CapsuleRect.Y + 66.0f, 26.0f, 26.0f };
+
+        Surface.StrokeLine(
+            { CapsuleRect.X + 8.0f, CapsuleRect.Y + 32.5f },
+            { CapsuleRect.Right() - 8.0f, CapsuleRect.Y + 32.5f },
+            ColorRgba{ 255, 255, 255, 22 },
+            1.0f);
+        Surface.StrokeLine(
+            { CapsuleRect.X + 8.0f, CapsuleRect.Y + 63.5f },
+            { CapsuleRect.Right() - 8.0f, CapsuleRect.Y + 63.5f },
+            ColorRgba{ 255, 255, 255, 22 },
+            1.0f);
+
+        // 1. Top '+' Zoom In
+        {
+            const bool Hovered = ZoomInCell.Contains(Cursor);
+            if (Hovered)
+            {
+                Surface.FillRectangle(ZoomInCell, ColorRgba{ 50, 50, 56, 235 }, 13.0f);
+                ControlAppearance::RecordHoveredTooltip(ZoomInCell, OptionalTooltip::FromText(ZoomInTip));
+            }
+            const Point2D C = ZoomInCell.Center();
+            const ColorRgba Ink = Hovered ? ColorRgba{ 244, 244, 240, 255 } : ColorRgba{ 196, 196, 202, 255 };
+            Surface.StrokeLine({ C.X - 4.8f, C.Y }, { C.X + 4.8f, C.Y }, Ink, 1.55f);
+            Surface.StrokeLine({ C.X, C.Y - 4.8f }, { C.X, C.Y + 4.8f }, Ink, 1.55f);
+            if (Hovered && Pressed)
+            {
+                ZoomInCallback();
+            }
+        }
+
+        // 2. Middle '-' Zoom Out
+        {
+            const bool Hovered = ZoomOutCell.Contains(Cursor);
+            if (Hovered)
+            {
+                Surface.FillRectangle(ZoomOutCell, ColorRgba{ 50, 50, 56, 235 }, 13.0f);
+                ControlAppearance::RecordHoveredTooltip(ZoomOutCell, OptionalTooltip::FromText(ZoomOutTip));
+            }
+            const Point2D C = ZoomOutCell.Center();
+            const ColorRgba Ink = Hovered ? ColorRgba{ 244, 244, 240, 255 } : ColorRgba{ 196, 196, 202, 255 };
+            Surface.StrokeLine({ C.X - 4.8f, C.Y }, { C.X + 4.8f, C.Y }, Ink, 1.55f);
+            if (Hovered && Pressed)
+            {
+                ZoomOutCallback();
+            }
+        }
+
+        // 3. Bottom Fit Icon (4-corner frame brackets)
+        {
+            const bool Hovered = FitCell.Contains(Cursor);
+            if (Hovered)
+            {
+                Surface.FillRectangle(FitCell, ColorRgba{ 50, 50, 56, 235 }, 13.0f);
+                ControlAppearance::RecordHoveredTooltip(FitCell, OptionalTooltip::FromText(FitViewTip));
+            }
+            const ColorRgba Ink = Hovered ? ColorRgba{ 244, 244, 240, 255 } : ColorRgba{ 196, 196, 202, 255 };
+            WorkspaceAppearance::ConstructFocusIcon(
+                Surface,
+                { FitCell.X + 5.5f, FitCell.Y + 5.5f },
+                15.0f,
+                Ink);
+            if (Hovered && Pressed)
+            {
+                FitCallback();
+            }
+        }
+    };
+
+    ConstructViewportZoomFitCapsule(
+        PlanarRect,
+        "Zoom in on the 2D UV canvas.",
+        "Zoom out on the 2D UV canvas.",
+        "Fit the active UV selection or full UDIM layout.",
+        [&]()
+        {
+            const uint32_t W = static_cast<uint32_t>(std::max(16.0f, PlanarRect.Width));
+            const uint32_t H = static_cast<uint32_t>(std::max(16.0f, PlanarRect.Height));
+            Session->AccessViewportProjection().ZoomPlanarAroundPoint(
+                W, H, PlanarRect.Width * 0.5f, PlanarRect.Height * 0.5f, 1.25f);
+            Session->FramebuffersDirty = true;
+        },
+        [&]()
+        {
+            const uint32_t W = static_cast<uint32_t>(std::max(16.0f, PlanarRect.Width));
+            const uint32_t H = static_cast<uint32_t>(std::max(16.0f, PlanarRect.Height));
+            Session->AccessViewportProjection().ZoomPlanarAroundPoint(
+                W, H, PlanarRect.Width * 0.5f, PlanarRect.Height * 0.5f, 0.80f);
+            Session->FramebuffersDirty = true;
+        },
+        [&]()
+        {
+            Session->FitPlanarSelectionOrNetwork();
+        });
+
+    ConstructViewportZoomFitCapsule(
+        SpatialRect,
+        "Zoom the 3D camera in.",
+        "Zoom the 3D camera out.",
+        "Fit the active selection or complete 3D surface.",
+        [&]()
+        {
+            Session->AccessViewportProjection().DollySpatialCamera(0.80f);
+            Session->FramebuffersDirty = true;
+        },
+        [&]()
+        {
+            Session->AccessViewportProjection().DollySpatialCamera(1.25f);
+            Session->FramebuffersDirty = true;
+        },
+        [&]()
+        {
+            Session->FitSpatialSelectionOrNetwork();
+        });
+
+    // 3c. Overlay Bottom-Left 2D UV Transform Readout (.pz-uv-transform-capsules)
+    if (PlanarRect.Width >= 340.0f)
     {
         const auto Anchor2D = Session->Gizmo2D.QueryPivotOrigin();
-        const Rectangle2D ReadoutBox{ CanvasBounds.X + 56.0f, CanvasBounds.Bottom() - 34.0f, 266.0f, 24.0f };
+        const float ReadoutX = BottomToolRailEnabled ? (PlanarRect.X + 12.0f) : (PlanarRect.X + 56.0f);
+        const float ReadoutY = BottomToolRailEnabled ? (PlanarRect.Bottom() - 80.0f) : (PlanarRect.Bottom() - 34.0f);
+        const Rectangle2D ReadoutBox{ ReadoutX, ReadoutY, 266.0f, 24.0f };
         Surface.FillRectangle(ReadoutBox, ColorRgba{ 18, 18, 20, 218 }, 12.0f);
         Surface.StrokeRectangle(ReadoutBox, ColorRgba{ 255, 255, 255, 24 }, 12.0f, 1.0f);
 

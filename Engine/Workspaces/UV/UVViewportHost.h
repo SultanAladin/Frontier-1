@@ -43,13 +43,14 @@ private:
     void SynchronizeProjectionPolicy() noexcept;
     void RefreshCachedIslandCount() noexcept;
 
-    UVWorkspaceSession*    Session                = nullptr;
-    UVViewportInteractor   Interactor             {};
-    ViewportProjectionPane ProjectionPane         {};
-    bool                   MoreShelfExpanded      = false;
-    bool                   SurfaceDropdownOpen    = false;
+    UVWorkspaceSession*    Session                 = nullptr;
+    UVViewportInteractor   Interactor              {};
+    ViewportProjectionPane ProjectionPane          {};
+    bool                   MoreShelfExpanded       = false;
+    bool                   BottomToolRailEnabled   = false;
+    bool                   SurfaceDropdownOpen     = false;
     bool                   CanvasDebugDropdownOpen = false;
-    bool                   ProjectionDropdownOpen = false;
+    bool                   ProjectionDropdownOpen  = false;
     uint32_t               ActiveRailSlot         = 0u;
     uint64_t               CachedUVRevision       = UINT64_MAX;
     uint32_t               CachedChartCount       = 0u;
