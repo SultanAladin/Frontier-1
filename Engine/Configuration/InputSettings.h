@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                                INPUTSETTINGS.H
 ============================================================================================================================================*/
-// 🧩 Editor shortcut chords, conflict validation, and pointer sensitivity scaling
+// 🧩 Editor shortcut chords, .InputSpace preset selection, conflict validation, and pointer sensitivity scaling
 
 #pragma once
 
@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Codecs/InputCodec.h"
 #include "Engine/Components/PixelSpace.h"
 
 #include <array>
@@ -67,10 +68,11 @@ struct InputPreferences
 {
     static constexpr uint32_t ShortcutCount = static_cast<uint32_t>(ShortcutCommand::Count); // [count] - Fixed shortcut slot count
 
-    float MouseSensitivity        = 50.0f; // [%] - Pointer speed percentage [0..100]
-    bool  CustomShortcutsEnabled  = false; // [-] - Custom shortcut profile active
-    bool  AdvancedControlsEnabled = false; // [-] - Advanced pointer axis options unlocked
-    bool  InvertedPitchEnabled    = false; // [-] - Vertical pointer delta sign inversion
+    float                     MouseSensitivity        = 50.0f;                                      // [%] - Pointer speed percentage [0..100]
+    Codecs::InputPresetOrigin ActivePreset            = Codecs::InputPresetOrigin::FrontierStudio;  // [-] - Selected .InputSpace preset
+    bool                      CustomShortcutsEnabled  = false;                                      // [-] - Custom shortcut profile active
+    bool                      AdvancedControlsEnabled = false;                                      // [-] - Advanced pointer axis options unlocked
+    bool                      InvertedPitchEnabled    = false;                                      // [-] - Vertical pointer delta sign inversion
 
     std::array<ShortcutChord, ShortcutCount> Shortcuts = {{
         { ShortcutKey::Comma,  true,  false, false, false }, // [-] - Control Centre: Ctrl + Comma
@@ -91,6 +93,7 @@ struct InputPreferences
 namespace InputSettingsRepository
 {
 
+[[nodiscard]] const char* QueryPresetDisplayLabel(Codecs::InputPresetOrigin Preset) noexcept;
 [[nodiscard]] const char* QueryCommandKey(ShortcutCommand Command) noexcept;
 [[nodiscard]] const char* QueryCommandLabel(ShortcutCommand Command) noexcept;
 [[nodiscard]] const char* QueryKeyIdentifier(ShortcutKey Key) noexcept;
@@ -98,6 +101,8 @@ namespace InputSettingsRepository
 [[nodiscard]] ShortcutKey DecodeKeyIdentifier(std::string_view Identifier) noexcept;
 [[nodiscard]] std::string FormatChordLabel(const ShortcutChord& Chord);
 [[nodiscard]] bool        ValidatePreferences(const InputPreferences& Preferences, std::string& Diagnostic) noexcept;
+[[nodiscard]] bool        PollExchangeChordCapture(ShortcutChord& CapturedChord, bool& CancelledWithEscape) noexcept;
+[[nodiscard]] bool        QueryChordTriggeredInExchange(const ShortcutChord& Chord) noexcept;
 [[nodiscard]] bool        PollImGuiChordCapture(ShortcutChord& CapturedChord, bool& CancelledWithEscape) noexcept;
 [[nodiscard]] bool        QueryChordTriggeredInImGui(const ShortcutChord& Chord) noexcept;
 

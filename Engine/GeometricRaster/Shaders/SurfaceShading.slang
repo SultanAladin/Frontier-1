@@ -80,15 +80,16 @@ FragmentAttachmentOutput FragmentEntry(VertexInterpolators In)
     // Ground Grid Analytic Pass (when NetworkPickIDs.x == 0u)
     if (In.IDs.x == 0u)
     {
-        float2 GridCoord = In.WorldPosition.xz * 2.0;
-        float2 Deriv     = max(fwidth(GridCoord), float2(1.0e-4, 1.0e-4));
-        float2 GridDist  = abs(frac(GridCoord - 0.5) - 0.5) / Deriv;
-        float  LineMask  = 1.0 - saturate(min(GridDist.x, GridDist.y));
-        float  Fade      = exp(-0.085 * dot(In.WorldPosition.xz, In.WorldPosition.xz));
+        float2 PlaneAxes  = (ViewportUniforms.PickHighlightIDs.w == 1u) ? In.WorldPosition.xz : In.WorldPosition.xy;
+        float2 GridCoord  = PlaneAxes * 2.0;
+        float2 Deriv      = max(fwidth(GridCoord), float2(1.0e-4, 1.0e-4));
+        float2 GridDist   = abs(frac(GridCoord - 0.5) - 0.5) / Deriv;
+        float  LineMask   = 1.0 - saturate(min(GridDist.x, GridDist.y));
+        float  Fade       = exp(-0.065 * dot(PlaneAxes, PlaneAxes));
         float3 GroundTone = float3(0.068, 0.072, 0.082);
-        float3 GridColor = lerp(GroundTone, float3(0.24, 0.27, 0.33), LineMask * Fade * 0.75);
-        Out.ColorRGBA    = float4(GridColor, 1.0);
-        Out.PickIDs      = uint4(0u, 0xFFFFFFFFu, 0xFFFFFFFFu, 0u);
+        float3 GridColor  = lerp(GroundTone, float3(0.24, 0.27, 0.33), LineMask * Fade * 0.75);
+        Out.ColorRGBA     = float4(GridColor, 1.0);
+        Out.PickIDs       = uint4(0u, 0xFFFFFFFFu, 0xFFFFFFFFu, 0u);
         return Out;
     }
 
@@ -116,12 +117,22 @@ FragmentAttachmentOutput FragmentEntry(VertexInterpolators In)
         In.ShadingParams.x,
         In.ShadingParams.y);
     float3 PbrSrgb = CompressRadiometricACESFilmic(LitLinear);
+    float3 NormN   = normalize(In.WorldNormal);
     float3 ViewNormal = normalize(float3(
-        dot(normalize(In.WorldNormal), ViewportUniforms.CameraRightAndWire.xyz),
-        dot(normalize(In.WorldNormal), ViewportUniforms.CameraUpAndSeam.xyz),
-        dot(normalize(In.WorldNormal), -ViewportUniforms.CameraForwardAndLayer.xyz)));
-    float3 MatCapSrgb = SampleBakedMatCap(MatCapSlot, ViewNormal);
-    float3 FinalColor = PbrSrgb;
+        dot(NormN, ViewportUniforms.CameraRightAndWire.xyz),
+        dot(NormN, ViewportUniforms.CameraUpAndSeam.xyz),
+        dot(NormN, -ViewportUniforms.CameraForwardAndLayer.xyz)));
+    float3 MatCapSrgb = SampleStudioMatCapMaterial(
+        MatCapSlot,
+        ViewNormal,
+        In.AlbedoAndMetallic.rgb,
+        In.AlbedoAndMetallic.a,
+        In.ShadingParams.x,
+        In.ShadingParams.y);
+
+    // Screen-space curvature bevel highlight & subtle cavity contrast
+    float  BevelCurvature = saturate((length(ddx(NormN)) + length(ddy(NormN))) * 0.32);
+    float3 FinalColor     = PbrSrgb;
     if (Mode > 3.5 && Mode < 4.5)
     {
         FinalColor = MatCapSrgb;
@@ -130,6 +141,7 @@ FragmentAttachmentOutput FragmentEntry(VertexInterpolators In)
     {
         FinalColor = lerp(PbrSrgb, MatCapSrgb, saturate(In.ShadingParams.z));
     }
+    FinalColor = saturate(FinalColor + float3(0.055 * BevelCurvature));
 
     if (Mode > 0.5 && Mode < 1.5) // Mode 1: Layer Allocation Tint
     {

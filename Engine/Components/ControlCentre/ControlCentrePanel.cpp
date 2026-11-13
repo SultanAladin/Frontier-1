@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
+#include "Engine/Input/InputExtension.h"
 
 #include <imgui.h>
 
@@ -473,8 +474,8 @@ void ControlCentrePanel::Render(Rectangle2D HostBoundsPhysical, double Δt, floa
         SyncAppliedControlColors();
     }
 
-    const ImGuiIO& Io            = ImGui::GetIO();
-    PreviewPointerDelta          = AppliedInput.TransformPointerDelta({ Io.MouseDelta.x, Io.MouseDelta.y });
+    const auto& EditorSnapshot  = Input::InputExtension::InspectActiveEditorSnapshot();
+    PreviewPointerDelta          = AppliedInput.TransformPointerDelta({ EditorSnapshot.TickDeltaX, EditorSnapshot.TickDeltaY });
     const bool     ModalBlocking = Dialogue.QueryOpen();
 
     if (!ModalBlocking)
@@ -483,10 +484,11 @@ void ControlCentrePanel::Render(Rectangle2D HostBoundsPhysical, double Δt, floa
         {
             ShortcutChord Captured{};
             bool          EscapeCancelled = false;
-            if (InputSettingsRepository::PollImGuiChordCapture(Captured, EscapeCancelled))
+            if (InputSettingsRepository::PollExchangeChordCapture(Captured, EscapeCancelled))
             {
                 InputPreferences Candidate                                          = DraftInput;
                 Candidate.CustomShortcutsEnabled                                    = true;
+                Candidate.ActivePreset                                              = Codecs::InputPresetOrigin::Custom;
                 Candidate.Shortcuts[static_cast<std::size_t>(CaptureShortcutSlot)] = Captured;
 
                 std::string ValidationMessage{};
@@ -509,25 +511,25 @@ void ControlCentrePanel::Render(Rectangle2D HostBoundsPhysical, double Δt, floa
         }
         else
         {
-            if (InputSettingsRepository::QueryChordTriggeredInImGui(
+            if (InputSettingsRepository::QueryChordTriggeredInExchange(
                     AppliedInput.QueryActiveShortcut(ShortcutCommand::ControlCentre)))
             {
                 ConfigureOpen(!Notch.QueryOpen(), false);
             }
-            else if (InputSettingsRepository::QueryChordTriggeredInImGui(
+            else if (InputSettingsRepository::QueryChordTriggeredInExchange(
                          AppliedInput.QueryActiveShortcut(ShortcutCommand::Typography)))
             {
                 ActivatePage(ControlCentrePage::Appearance, false);
                 ActivateAppearanceTab(AppearanceSectionTab::Typography);
             }
-            else if (InputSettingsRepository::QueryChordTriggeredInImGui(
+            else if (InputSettingsRepository::QueryChordTriggeredInExchange(
                          AppliedInput.QueryActiveShortcut(ShortcutCommand::Theme)))
             {
                 ActivatePage(ControlCentrePage::Appearance, false);
                 ActivateAppearanceTab(AppearanceSectionTab::Theme);
             }
             else if (Notch.QueryOpen() &&
-                     InputSettingsRepository::QueryChordTriggeredInImGui(
+                     InputSettingsRepository::QueryChordTriggeredInExchange(
                          AppliedInput.QueryActiveShortcut(ShortcutCommand::DismissPanel)))
             {
                 if (ActivePage == ControlCentrePage::QuickControls)
@@ -543,16 +545,16 @@ void ControlCentrePanel::Render(Rectangle2D HostBoundsPhysical, double Δt, floa
     }
 
     Notch.ConfigureExtent(HostBoundsPhysical.Width, HostBoundsPhysical.Height, Scale);
-    const float LocalMouseX = Io.MousePos.x - HostBoundsPhysical.X;
-    const float LocalMouseY = Io.MousePos.y - HostBoundsPhysical.Y;
+    const float LocalMouseX = EditorSnapshot.PositionX - HostBoundsPhysical.X;
+    const float LocalMouseY = EditorSnapshot.PositionY - HostBoundsPhysical.Y;
     if (!ModalBlocking)
     {
         Notch.IntegratePointer(
             LocalMouseX,
             LocalMouseY,
-            ImGui::IsMouseClicked(0),
-            ImGui::IsMouseDown(0),
-            ImGui::IsMouseReleased(0),
+            EditorSnapshot.QueryButtonPressed(0u),
+            EditorSnapshot.QueryButtonDown(0u),
+            EditorSnapshot.QueryButtonReleased(0u),
             Δt,
             false);
     }
@@ -609,9 +611,9 @@ void ControlCentrePanel::Render(Rectangle2D HostBoundsPhysical, double Δt, floa
     ControlPointer Pointer{};
     Pointer.X        = LocalMouseX / Scale;
     Pointer.Y        = LocalMouseY / Scale;
-    Pointer.Down     = !ModalBlocking && ImGui::IsMouseDown(0);
-    Pointer.Pressed  = !ModalBlocking && ImGui::IsMouseClicked(0);
-    Pointer.Released = !ModalBlocking && ImGui::IsMouseReleased(0);
+    Pointer.Down     = !ModalBlocking && EditorSnapshot.QueryButtonDown(0u);
+    Pointer.Pressed  = !ModalBlocking && EditorSnapshot.QueryButtonPressed(0u);
+    Pointer.Released = !ModalBlocking && EditorSnapshot.QueryButtonReleased(0u);
     Pointer.Enabled  = !ModalBlocking;
 
     const float Progress    = Notch.QueryProgress();
@@ -675,9 +677,9 @@ void ControlCentrePanel::Render(Rectangle2D HostBoundsPhysical, double Δt, floa
         ControlPointer ModalPointer{};
         ModalPointer.X        = LocalMouseX / Scale;
         ModalPointer.Y        = LocalMouseY / Scale;
-        ModalPointer.Down     = ImGui::IsMouseDown(0);
-        ModalPointer.Pressed  = ImGui::IsMouseClicked(0);
-        ModalPointer.Released = ImGui::IsMouseReleased(0);
+        ModalPointer.Down     = EditorSnapshot.QueryButtonDown(0u);
+        ModalPointer.Pressed  = EditorSnapshot.QueryButtonPressed(0u);
+        ModalPointer.Released = EditorSnapshot.QueryButtonReleased(0u);
         ModalPointer.Enabled  = true;
 
         const DialogueResponse ModalResult = Dialogue.ConstructModal(
@@ -1903,12 +1905,15 @@ float ControlCentrePanel::ConstructInputSettingsBody(
 
     InputProfileBounds = LayoutFormRow("Shortcut profile");
     ConstructFieldBox(InputProfileBounds);
+    const char* ProfileLabel = DraftInput.CustomShortcutsEnabled
+                                   ? InputSettingsRepository::QueryPresetDisplayLabel(Codecs::InputPresetOrigin::Custom)
+                                   : InputSettingsRepository::QueryPresetDisplayLabel(DraftInput.ActivePreset);
     ControlAppearance::TextLeading(
         Surface,
         InputProfileBounds,
         16.0f,
         Colors.Text.Faded(Opacity),
-        DraftInput.CustomShortcutsEnabled ? "Custom" : "Editor Default",
+        ProfileLabel,
         13.0f);
     ControlAppearance::ConstructIconCentered(
         Surface,
@@ -2065,13 +2070,19 @@ void ControlCentrePanel::ConstructInputProfileOverlay(PixelSpace& Surface, const
         return;
     }
 
+    constexpr Codecs::InputPresetOrigin PresetOptions[4] = {
+        Codecs::InputPresetOrigin::FrontierStudio,
+        Codecs::InputPresetOrigin::BlenderNavigation,
+        Codecs::InputPresetOrigin::UnrealNavigation,
+        Codecs::InputPresetOrigin::Custom,
+    };
+
     const ControlColorSet& Colors      = ControlAppearance::Colors();
-    const Rectangle2D      OverlayRect{ InputProfileBounds.X, InputProfileBounds.Bottom() + 6.0f, InputProfileBounds.Width, 88.0f };
+    const Rectangle2D      OverlayRect{ InputProfileBounds.X, InputProfileBounds.Bottom() + 6.0f, InputProfileBounds.Width, 168.0f };
     Surface.FillRectangle(OverlayRect, Colors.Field.Faded(Opacity).ToRgba8(), 8.0f);
     ControlAppearance::ConstructRoundedOutline(Surface, OverlayRect, Colors.StrokeStrong.Faded(Opacity), 8.0f);
 
-    constexpr const char* ProfileLabels[2] = { "Editor Default", "Custom" };
-    for (uint32_t Index = 0u; Index < 2u; ++Index)
+    for (uint32_t Index = 0u; Index < 4u; ++Index)
     {
         const Rectangle2D Row{
             InputProfileBounds.X + 4.0f,
@@ -2084,10 +2095,17 @@ void ControlCentrePanel::ConstructInputProfileOverlay(PixelSpace& Surface, const
         {
             Surface.FillRectangle(Row, Colors.Selected.Faded(Opacity).ToRgba8(), 4.0f);
         }
-        ControlAppearance::TextLeading(Surface, Row, 12.0f, Colors.Text.Faded(Opacity), ProfileLabels[Index], 13.0f);
+        ControlAppearance::TextLeading(
+            Surface,
+            Row,
+            12.0f,
+            Colors.Text.Faded(Opacity),
+            InputSettingsRepository::QueryPresetDisplayLabel(PresetOptions[Index]),
+            13.0f);
         if (Hover && Pointer.Released)
         {
-            DraftInput.CustomShortcutsEnabled = (Index == 1u);
+            DraftInput.ActivePreset           = PresetOptions[Index];
+            DraftInput.CustomShortcutsEnabled = (PresetOptions[Index] == Codecs::InputPresetOrigin::Custom);
             InputProfileSelectorOpen          = false;
             return;
         }

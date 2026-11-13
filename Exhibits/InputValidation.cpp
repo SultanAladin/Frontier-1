@@ -1,8 +1,10 @@
 /*============================================================================================================================================
                                                              INPUTVALIDATION.CPP
 ============================================================================================================================================*/
-// 🧩 Bi-directional InputExchange & InputExtension validation suite with CPU telemetry visual snapshot output
+// 🧩 Dual InputExchange, ImGuiInputAdapter & .InputSpace (FrontierStudio / BlenderNavigation / UnrealNavigation / Custom) validation suite
 
+#include "Engine/Codecs/InputCodec.h"
+#include "Engine/Input/ImGuiInputAdapter.h"
 #include "Engine/Input/InputExtension.h"
 #include "Engine/Windowing/PlatformWindow.h"
 #include "Exhibits/SoftwareCanvasRasterizer.h"
@@ -11,10 +13,16 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 
 namespace
 {
 
+using Frontier::Codecs::InputCodec;
+using Frontier::Codecs::InputPresetOrigin;
+using Frontier::Codecs::InputSpaceDocumentModel;
+using Frontier::Codecs::SpaceContainerDecoder;
+using Frontier::Codecs::SpaceExtensionCategory;
 using Frontier::Components::RgbaColor8;
 using Frontier::Exhibits::LoadWorkspaceDmSansFont;
 using Frontier::Exhibits::ResolveRepositoryRootPath;
@@ -22,8 +30,13 @@ using Frontier::Exhibits::SoftwareRasterCanvas;
 using Frontier::Input::ButtonTransitionCategory;
 using Frontier::Input::CursorConfinementMode;
 using Frontier::Input::HapticFeedbackDirective;
+using Frontier::Input::ImGuiInputAdapter;
 using Frontier::Input::InputExchange;
 using Frontier::Input::InputExtension;
+using Frontier::Input::InputLogicalKey;
+using Frontier::Input::InputModifierBits::Control;
+using Frontier::Input::InputModifierBits::Shift;
+using Frontier::Input::InputRoutingTarget;
 using Frontier::Input::InputSignalCategory;
 using Frontier::Input::InputSignalPacket;
 using Frontier::Windowing::HeadlessPlatformWindow;
@@ -54,6 +67,79 @@ bool VerifyCondition(bool Condition, const char* Label) noexcept
     return true;
 }
 
+bool ValidateAndGenerateInputSpacePresets(const std::filesystem::path& RepositoryRoot)
+{
+    const std::filesystem::path InputDir = RepositoryRoot / "EngineContent/Input";
+    std::error_code             Ec{};
+    std::filesystem::create_directories(InputDir, Ec);
+
+    SpaceExtensionCategory ResolvedCat{};
+    std::string            CanonicalExt{};
+    std::string            Diag{};
+    if (!VerifyCondition(
+            SpaceContainerDecoder::ResolveExtensionCaseInsensitive(".inputspace", ResolvedCat, CanonicalExt, Diag) &&
+                ResolvedCat == SpaceExtensionCategory::InputSpace &&
+                CanonicalExt == ".InputSpace",
+            "Case-insensitive .InputSpace container extension resolution"))
+    {
+        return false;
+    }
+
+    struct PresetExportTarget
+    {
+        InputPresetOrigin Origin;
+        const char*       FileName;
+    };
+    constexpr PresetExportTarget Targets[3] = {
+        { InputPresetOrigin::FrontierStudio,    "FrontierStudio.InputSpace"    },
+        { InputPresetOrigin::BlenderNavigation, "BlenderNavigation.InputSpace" },
+        { InputPresetOrigin::UnrealNavigation,  "UnrealNavigation.InputSpace"  },
+    };
+
+    for (const PresetExportTarget& Target : Targets)
+    {
+        const InputSpaceDocumentModel SourceModel = InputSpaceDocumentModel::ConstructPreset(Target.Origin);
+        const std::filesystem::path   FilePath    = InputDir / Target.FileName;
+        if (!VerifyCondition(InputCodec::Encoder::EncodeToFile(FilePath, SourceModel, Diag), Target.FileName))
+        {
+            std::fprintf(stderr, "[InputValidation] Encode diagnostic: %s\n", Diag.c_str());
+            return false;
+        }
+
+        InputSpaceDocumentModel DecodedModel{};
+        if (!VerifyCondition(InputCodec::Decoder::DecodeFromFile(FilePath, DecodedModel, Diag), "Decode .InputSpace preset") ||
+            !VerifyCondition(DecodedModel.PresetOrigin == Target.Origin, "PresetOrigin round-trip match") ||
+            !VerifyCondition(DecodedModel.NavigationProfile == SourceModel.NavigationProfile, "NavigationProfile round-trip match") ||
+            !VerifyCondition(DecodedModel.AxisCalibration == SourceModel.AxisCalibration, "AxisCalibration round-trip match") ||
+            !VerifyCondition(DecodedModel.ChordEntries == SourceModel.ChordEntries, "ChordEntries + Tier 2 binary verification"))
+        {
+            std::fprintf(stderr, "[InputValidation] Decode diagnostic: %s\n", Diag.c_str());
+            return false;
+        }
+    }
+
+    // Verify Custom .InputSpace in-memory round-trip
+    InputSpaceDocumentModel CustomModel = InputSpaceDocumentModel::ConstructPreset(InputPresetOrigin::Custom);
+    CustomModel.ProfileTitle                               = "StudioCustomRig";
+    CustomModel.AxisCalibration.PointerSensitivityPercent  = 72.5f;
+    CustomModel.AxisCalibration.InvertPitchAxis            = true;
+    CustomModel.ChordEntries.push_back({ "ToggleCameraLag", InputLogicalKey::L, 0xFFu, static_cast<uint16_t>(Control | Shift) });
+
+    std::vector<std::byte> EncodedBytes{};
+    InputSpaceDocumentModel DecodedCustom{};
+    if (!VerifyCondition(InputCodec::Encoder::EncodeToBytes(CustomModel, EncodedBytes, Diag), "Encode Custom .InputSpace") ||
+        !VerifyCondition(InputCodec::Decoder::DecodeFromBytes(EncodedBytes, DecodedCustom, Diag), "Decode Custom .InputSpace") ||
+        !VerifyCondition(DecodedCustom.PresetOrigin == InputPresetOrigin::Custom &&
+                             DecodedCustom.AxisCalibration.InvertPitchAxis &&
+                             DecodedCustom.ChordEntries.size() == CustomModel.ChordEntries.size(),
+                         "Custom .InputSpace fidelity"))
+    {
+        return false;
+    }
+
+    return true;
+}
+
 bool GenerateInputVisualSnapshot(
     uint64_t DrainedCount,
     float    CursorX,
@@ -75,12 +161,12 @@ bool GenerateInputVisualSnapshot(
     CanvasBuffer->AddText(
         ImVec2(36.0f, 24.0f),
         IM_COL32(238, 238, 244, 255),
-        "InputExchange & InputExtension Bi-Directional Verification  —  Inbound Hardware Ring & Outbound OS Directives");
+        "Dual InputExchange (Runtime & Editor) + .InputSpace Presets  -  Bi-Directional Hardware & OS Verification");
 
     // Left panel: Inbound OS -> Engine Signal Ring
     CanvasBuffer->AddRectFilled(ImVec2(36.0f, 68.0f), ImVec2(624.0f, 640.0f), IM_COL32(20, 20, 24, 255), 6.0f);
     CanvasBuffer->AddRect(ImVec2(36.0f, 68.0f), ImVec2(624.0f, 640.0f), IM_COL32(46, 46, 54, 255), 6.0f);
-    CanvasBuffer->AddText(ImVec2(56.0f, 86.0f), IM_COL32(34, 197, 94, 255), "OS -> Engine Inbound Signal Intake (InputExchange)");
+    CanvasBuffer->AddText(ImVec2(56.0f, 86.0f), IM_COL32(34, 197, 94, 255), "OS -> InputExtension -> RuntimeExchange & EditorExchange");
 
     char SummaryLine[160]{};
     std::snprintf(
@@ -94,11 +180,11 @@ bool GenerateInputVisualSnapshot(
     CanvasBuffer->AddText(ImVec2(56.0f, 118.0f), IM_COL32(214, 214, 222, 255), SummaryLine);
 
     const char* Channels[5] = {
-        "KeyboardKey  [Scancode 17 'W' Pressed -> Held -> Released]",
+        "KeyboardKey  [Scancode 17 'W' -> RuntimeExchange & EditorSnapshot]",
         "PointerMotion [Absolute (420.5, 310.25) + Delta (+14.0, -6.5)]",
-        "PointerButton [Button 0 Pressed -> Active]",
-        "ScrollWheel   [Vertical +3.0 Detents]",
-        "TouchContact  [Slot 0 Down @ (640.0, 360.0) — Android Ready]",
+        "PointerButton [Button 0 Pressed + Double-Click Edge Detection]",
+        "ScrollWheel   [Vertical +3.0 Detents -> One-Way ImGuiInputAdapter]",
+        ".InputSpace   [FrontierStudio | BlenderNavigation | UnrealNavigation]",
     };
     for (int Idx = 0; Idx < 5; ++Idx)
     {
@@ -119,12 +205,10 @@ bool GenerateInputVisualSnapshot(
     CanvasBuffer->AddRectFilled(ImVec2(696.0f, 232.0f), ImVec2(1204.0f, 312.0f), IM_COL32(16, 24, 20, 255), 4.0f);
     CanvasBuffer->AddText(ImVec2(716.0f, 262.0f), IM_COL32(34, 197, 94, 255), "VERIFIED: ActiveCursorMode == LockedRelativeHidden");
 
-    CanvasBuffer->AddRectFilled(ImVec2(676.0f, 368.0f), ImVec2(1224.0f, 608.0f), IM_COL32(26, 28, 34, 255), 5.0f);
-    char HapticTitle[128]{};
-    std::snprintf(HapticTitle, sizeof(HapticTitle), "HapticFeedbackDirective  (Delivered Pulses: %u)", HapticCount);
+    char HapticTitle[96]{};
+    std::snprintf(HapticTitle, sizeof(HapticTitle), "HapticFeedbackDirective Pulses Delivered: %u", HapticCount);
     CanvasBuffer->AddText(ImVec2(696.0f, 388.0f), IM_COL32(238, 238, 244, 255), HapticTitle);
 
-    // Motor amplitude bars
     CanvasBuffer->AddText(ImVec2(696.0f, 434.0f), IM_COL32(170, 174, 184, 255), "Low-Frequency Motor  (80%)");
     CanvasBuffer->AddRectFilled(ImVec2(696.0f, 460.0f), ImVec2(1204.0f, 482.0f), IM_COL32(14, 14, 18, 255), 4.0f);
     CanvasBuffer->AddRectFilled(ImVec2(696.0f, 460.0f), ImVec2(696.0f + 508.0f * 0.80f, 482.0f), IM_COL32(245, 158, 11, 255), 4.0f);
@@ -146,10 +230,17 @@ bool GenerateInputVisualSnapshot(
 
 int main()
 {
+    const auto RepositoryRoot = ResolveRepositoryRootPath();
+    if (!ValidateAndGenerateInputSpacePresets(RepositoryRoot))
+    {
+        return 1;
+    }
+
     InputExtension         Coordinator{};
     HeadlessPlatformWindow Window{};
 
     Coordinator.Initialize();
+    Coordinator.ConfigureEditorChannelEnabled(true);
     if (!VerifyCondition(
             Window.Initialize(WindowConfigurationDescriptor::ConstructApplicationWindow("Frontier Validation", 1920, 1080)),
             "Window initialization"))
@@ -162,6 +253,8 @@ int main()
         Packet.TimestampNanoseconds = 100'000ULL;
         Packet.PrimaryAxis          = 1.0f;
         Packet.ControlCode          = 17;
+        Packet.LogicalKey           = InputLogicalKey::W;
+        Packet.ModifierBitmask      = Control;
         Packet.Category             = InputSignalCategory::KeyboardKey;
         Packet.Transition           = ButtonTransitionCategory::Pressed;
         (void)Window.QueueSyntheticSignal(Packet);
@@ -204,6 +297,13 @@ int main()
         Packet.TouchPhase           = Frontier::Input::TouchContactCategory::Began;
         (void)Window.QueueSyntheticSignal(Packet);
     }
+    {
+        InputSignalPacket Packet{};
+        Packet.TimestampNanoseconds = 135'000ULL;
+        Packet.ControlCode          = static_cast<uint32_t>('U');
+        Packet.Category             = InputSignalCategory::TextCodepoint;
+        (void)Window.QueueSyntheticSignal(Packet);
+    }
 
     Coordinator.RequestCursorConfinement(CursorConfinementMode::LockedRelativeHidden);
     (void)Coordinator.RequestHapticFeedback(HapticFeedbackDirective{
@@ -218,11 +318,16 @@ int main()
     CountingSignalSink Downstream{};
     const std::size_t  Drained = Coordinator.TickExchangeWithSink(Downstream);
 
-    const auto& Pointer = Coordinator.InspectPointerSnapshot();
-    if (!VerifyCondition(Drained == 5, "Drained all 5 hardware packets") ||
-        !VerifyCondition(Downstream.ReceivedPackets == 5 && Downstream.LastKeyCode == 17, "Downstream sink received packets") ||
-        !VerifyCondition(Coordinator.QueryScanCodeHeld(17), "Key 17 consolidated down") ||
+    const auto& Pointer        = Coordinator.InspectPointerSnapshot();
+    const auto& EditorSnapshot = Coordinator.InspectEditorSnapshot();
+    if (!VerifyCondition(Drained == 6, "Drained all 6 hardware packets") ||
+        !VerifyCondition(Downstream.ReceivedPackets == 6 && Downstream.LastKeyCode == 17, "Downstream runtime sink received packets") ||
+        !VerifyCondition(Coordinator.InspectEditorExchange().PendingSignalCount() == 6, "EditorExchange queued all 6 packets independently") ||
+        !VerifyCondition(Coordinator.QueryScanCodeHeld(17), "Key 17 consolidated down in Runtime") ||
+        !VerifyCondition(EditorSnapshot.QueryKeyPressed(InputLogicalKey::W, false) && EditorSnapshot.ControlHeld, "EditorSnapshot key + Ctrl") ||
+        !VerifyCondition(EditorSnapshot.QueryTypedUtf8() == "U", "EditorSnapshot UTF-8 codepoint consolidated") ||
         !VerifyCondition((Pointer.HeldButtonsMask & 1u) != 0u, "Pointer button 0 consolidated down") ||
+        !VerifyCondition(EditorSnapshot.QueryButtonPressed(0u), "EditorSnapshot button 0 pressed edge") ||
         !VerifyCondition(std::fabs(Pointer.PositionX - 420.5f) < 1e-4f, "Pointer X position") ||
         !VerifyCondition(std::fabs(Pointer.TickDeltaX - 14.0f) < 1e-4f, "Pointer delta X") ||
         !VerifyCondition(std::fabs(Pointer.ScrollDeltaY - 3.0f) < 1e-4f, "Scroll vertical delta") ||
@@ -233,7 +338,43 @@ int main()
         return 1;
     }
 
-    const uint64_t TotalDrained = Coordinator.InspectExchange().ExchangedSignalTotal();
+    // Verify one-way ImGuiInputAdapter draining from EditorExchange
+    {
+        ImGuiContext* AdapterCtx = ImGui::CreateContext();
+        ImGui::SetCurrentContext(AdapterCtx);
+        ImGuiIO& AdapterIo = ImGui::GetIO();
+        AdapterIo.IniFilename = nullptr;
+        const std::size_t ForwardedCount = ImGuiInputAdapter::ForwardEditorExchangeToImGui(Coordinator, AdapterIo);
+        ImGui::DestroyContext(AdapterCtx);
+        if (!VerifyCondition(ForwardedCount == 6 && Coordinator.InspectEditorExchange().PendingSignalCount() == 0,
+                             "ImGuiInputAdapter drained EditorExchange cleanly"))
+        {
+            return 1;
+        }
+    }
+
+    // Verify InputRoutingTarget::RuntimeExchangeOnly isolates EditorExchange
+    Coordinator.BeginTick();
+    Coordinator.ConfigureRoutingTarget(InputRoutingTarget::RuntimeExchangeOnly);
+    {
+        InputSignalPacket ExclusivePacket{};
+        ExclusivePacket.TimestampNanoseconds = 200'000ULL;
+        ExclusivePacket.ControlCode          = 30;
+        ExclusivePacket.LogicalKey           = InputLogicalKey::A;
+        ExclusivePacket.Category             = InputSignalCategory::KeyboardKey;
+        ExclusivePacket.Transition           = ButtonTransitionCategory::Pressed;
+        (void)Coordinator.IntakeHardwareSignal(ExclusivePacket);
+    }
+    (void)Coordinator.TickExchange();
+    if (!VerifyCondition(Coordinator.QueryScanCodeHeld(30) &&
+                             !Coordinator.InspectEditorSnapshot().QueryKeyPressed(InputLogicalKey::A, false) &&
+                             Coordinator.InspectEditorExchange().PendingSignalCount() == 0,
+                         "RuntimeExchangeOnly isolates EditorExchange"))
+    {
+        return 1;
+    }
+
+    const uint64_t TotalDrained = Coordinator.InspectRuntimeExchange().ExchangedSignalTotal();
     const float    FinalCursorX = Pointer.PositionX;
     const float    FinalCursorY = Pointer.PositionY;
     const float    FinalScroll  = Pointer.ScrollDeltaY;
@@ -270,6 +411,6 @@ int main()
         return 1;
     }
 
-    std::printf("[InputValidation] All bi-directional InputExchange checks + visual snapshot PNG passed.\n");
+    std::printf("[InputValidation] All dual InputExchange, ImGuiInputAdapter & .InputSpace checks passed.\n");
     return 0;
 }

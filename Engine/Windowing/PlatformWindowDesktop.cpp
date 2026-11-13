@@ -83,6 +83,110 @@ std::atomic<uint32_t> ActiveGlfwWindowCount{ 0 }; // [count] - Reference-counted
     return Monitors[ClampedIndex];
 }
 
+[[nodiscard]] uint16_t TranslateGlfwModifierMask(int Mods) noexcept
+{
+    uint16_t Mask = 0u;
+    if ((Mods & GLFW_MOD_SHIFT) != 0)   Mask |= Input::InputModifierBits::Shift;
+    if ((Mods & GLFW_MOD_CONTROL) != 0) Mask |= Input::InputModifierBits::Control;
+    if ((Mods & GLFW_MOD_ALT) != 0)     Mask |= Input::InputModifierBits::Alt;
+    if ((Mods & GLFW_MOD_SUPER) != 0)   Mask |= Input::InputModifierBits::Super;
+    return Mask;
+}
+
+[[nodiscard]] Input::InputLogicalKey TranslateGlfwLogicalKey(int GlfwKey) noexcept
+{
+    switch (GlfwKey)
+    {
+        case GLFW_KEY_ESCAPE:        return Input::InputLogicalKey::Escape;
+        case GLFW_KEY_ENTER:         return Input::InputLogicalKey::Enter;
+        case GLFW_KEY_KP_ENTER:      return Input::InputLogicalKey::KeypadEnter;
+        case GLFW_KEY_TAB:           return Input::InputLogicalKey::Tab;
+        case GLFW_KEY_BACKSPACE:     return Input::InputLogicalKey::Backspace;
+        case GLFW_KEY_DELETE:        return Input::InputLogicalKey::Delete;
+        case GLFW_KEY_SPACE:         return Input::InputLogicalKey::Space;
+        case GLFW_KEY_LEFT:          return Input::InputLogicalKey::LeftArrow;
+        case GLFW_KEY_RIGHT:         return Input::InputLogicalKey::RightArrow;
+        case GLFW_KEY_UP:            return Input::InputLogicalKey::UpArrow;
+        case GLFW_KEY_DOWN:          return Input::InputLogicalKey::DownArrow;
+        case GLFW_KEY_HOME:          return Input::InputLogicalKey::Home;
+        case GLFW_KEY_END:           return Input::InputLogicalKey::End;
+        case GLFW_KEY_PAGE_UP:       return Input::InputLogicalKey::PageUp;
+        case GLFW_KEY_PAGE_DOWN:     return Input::InputLogicalKey::PageDown;
+        case GLFW_KEY_COMMA:         return Input::InputLogicalKey::Comma;
+        case GLFW_KEY_PERIOD:        return Input::InputLogicalKey::Period;
+        case GLFW_KEY_KP_DECIMAL:    return Input::InputLogicalKey::Period;
+        case GLFW_KEY_SLASH:         return Input::InputLogicalKey::Slash;
+        case GLFW_KEY_SEMICOLON:     return Input::InputLogicalKey::Semicolon;
+        case GLFW_KEY_A:             return Input::InputLogicalKey::A;
+        case GLFW_KEY_B:             return Input::InputLogicalKey::B;
+        case GLFW_KEY_C:             return Input::InputLogicalKey::C;
+        case GLFW_KEY_D:             return Input::InputLogicalKey::D;
+        case GLFW_KEY_E:             return Input::InputLogicalKey::E;
+        case GLFW_KEY_F:             return Input::InputLogicalKey::F;
+        case GLFW_KEY_G:             return Input::InputLogicalKey::G;
+        case GLFW_KEY_H:             return Input::InputLogicalKey::H;
+        case GLFW_KEY_I:             return Input::InputLogicalKey::I;
+        case GLFW_KEY_J:             return Input::InputLogicalKey::J;
+        case GLFW_KEY_K:             return Input::InputLogicalKey::K;
+        case GLFW_KEY_L:             return Input::InputLogicalKey::L;
+        case GLFW_KEY_M:             return Input::InputLogicalKey::M;
+        case GLFW_KEY_N:             return Input::InputLogicalKey::N;
+        case GLFW_KEY_O:             return Input::InputLogicalKey::O;
+        case GLFW_KEY_P:             return Input::InputLogicalKey::P;
+        case GLFW_KEY_Q:             return Input::InputLogicalKey::Q;
+        case GLFW_KEY_R:             return Input::InputLogicalKey::R;
+        case GLFW_KEY_S:             return Input::InputLogicalKey::S;
+        case GLFW_KEY_T:             return Input::InputLogicalKey::T;
+        case GLFW_KEY_U:             return Input::InputLogicalKey::U;
+        case GLFW_KEY_V:             return Input::InputLogicalKey::V;
+        case GLFW_KEY_W:             return Input::InputLogicalKey::W;
+        case GLFW_KEY_X:             return Input::InputLogicalKey::X;
+        case GLFW_KEY_Y:             return Input::InputLogicalKey::Y;
+        case GLFW_KEY_Z:             return Input::InputLogicalKey::Z;
+        case GLFW_KEY_0:
+        case GLFW_KEY_KP_0:          return Input::InputLogicalKey::Digit0;
+        case GLFW_KEY_1:
+        case GLFW_KEY_KP_1:          return Input::InputLogicalKey::Digit1;
+        case GLFW_KEY_2:
+        case GLFW_KEY_KP_2:          return Input::InputLogicalKey::Digit2;
+        case GLFW_KEY_3:
+        case GLFW_KEY_KP_3:          return Input::InputLogicalKey::Digit3;
+        case GLFW_KEY_4:
+        case GLFW_KEY_KP_4:          return Input::InputLogicalKey::Digit4;
+        case GLFW_KEY_5:
+        case GLFW_KEY_KP_5:          return Input::InputLogicalKey::Digit5;
+        case GLFW_KEY_6:
+        case GLFW_KEY_KP_6:          return Input::InputLogicalKey::Digit6;
+        case GLFW_KEY_7:
+        case GLFW_KEY_KP_7:          return Input::InputLogicalKey::Digit7;
+        case GLFW_KEY_8:
+        case GLFW_KEY_KP_8:          return Input::InputLogicalKey::Digit8;
+        case GLFW_KEY_9:
+        case GLFW_KEY_KP_9:          return Input::InputLogicalKey::Digit9;
+        case GLFW_KEY_F1:            return Input::InputLogicalKey::F1;
+        case GLFW_KEY_F2:            return Input::InputLogicalKey::F2;
+        case GLFW_KEY_F3:            return Input::InputLogicalKey::F3;
+        case GLFW_KEY_F4:            return Input::InputLogicalKey::F4;
+        case GLFW_KEY_F5:            return Input::InputLogicalKey::F5;
+        case GLFW_KEY_F6:            return Input::InputLogicalKey::F6;
+        case GLFW_KEY_F7:            return Input::InputLogicalKey::F7;
+        case GLFW_KEY_F8:            return Input::InputLogicalKey::F8;
+        case GLFW_KEY_F9:            return Input::InputLogicalKey::F9;
+        case GLFW_KEY_F10:           return Input::InputLogicalKey::F10;
+        case GLFW_KEY_F11:           return Input::InputLogicalKey::F11;
+        case GLFW_KEY_F12:           return Input::InputLogicalKey::F12;
+        case GLFW_KEY_LEFT_SHIFT:    return Input::InputLogicalKey::LeftShift;
+        case GLFW_KEY_RIGHT_SHIFT:   return Input::InputLogicalKey::RightShift;
+        case GLFW_KEY_LEFT_CONTROL:  return Input::InputLogicalKey::LeftControl;
+        case GLFW_KEY_RIGHT_CONTROL: return Input::InputLogicalKey::RightControl;
+        case GLFW_KEY_LEFT_ALT:      return Input::InputLogicalKey::LeftAlt;
+        case GLFW_KEY_RIGHT_ALT:     return Input::InputLogicalKey::RightAlt;
+        case GLFW_KEY_LEFT_SUPER:    return Input::InputLogicalKey::LeftSuper;
+        case GLFW_KEY_RIGHT_SUPER:   return Input::InputLogicalKey::RightSuper;
+        default:                     return Input::InputLogicalKey::Unassigned;
+    }
+}
+
 } // namespace
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -207,7 +311,12 @@ bool DesktopPlatformWindow::Initialize(const WindowConfigurationDescriptor& Desc
     GlfwWindowHandle = CreatedWindow;
     SelectedPlatform = ResolveGlfwPlatformCategory();
 
-    glfwSetWindowUserPointer(CreatedWindow, &CallbackExchange);
+    CursorPositionSeeded = false;
+    LastCursorX          = 0.0f;
+    LastCursorY          = 0.0f;
+    PendingDroppedPaths.clear();
+
+    glfwSetWindowUserPointer(CreatedWindow, this);
     if (SelectedPlatform != WindowPlatformCategory::GlfwNull)
     {
         glfwSetWindowSizeLimits(
@@ -232,13 +341,14 @@ bool DesktopPlatformWindow::Initialize(const WindowConfigurationDescriptor& Desc
     }
 
     glfwSetKeyCallback(CreatedWindow, [](GLFWwindow* Win, int Key, int Scancode, int KeyTransition, int Mods) {
-        auto* Exchange = static_cast<Input::InputExchange*>(glfwGetWindowUserPointer(Win));
-        if (Exchange == nullptr) return;
-        (void)Mods;
+        auto* Self = static_cast<DesktopPlatformWindow*>(glfwGetWindowUserPointer(Win));
+        if (Self == nullptr) return;
         Input::InputSignalPacket Packet{};
         Packet.TimestampNanoseconds = CurrentMonotonicNanoseconds();
         Packet.Category             = Input::InputSignalCategory::KeyboardKey;
-        Packet.ControlCode          = static_cast<uint32_t>(Scancode != 0 ? Scancode : Key);
+        Packet.ControlCode          = static_cast<uint32_t>(Scancode > 0 ? Scancode : (Key > 0 ? Key : 0));
+        Packet.LogicalKey           = TranslateGlfwLogicalKey(Key);
+        Packet.ModifierBitmask      = TranslateGlfwModifierMask(Mods);
         if (KeyTransition == GLFW_PRESS)
         {
             Packet.Transition  = Input::ButtonTransitionCategory::Pressed;
@@ -254,43 +364,72 @@ bool DesktopPlatformWindow::Initialize(const WindowConfigurationDescriptor& Desc
             Packet.Transition  = Input::ButtonTransitionCategory::Released;
             Packet.PrimaryAxis = 0.0f;
         }
-        (void)Exchange->IntakeSignal(Packet);
+        (void)Self->CallbackExchange.IntakeSignal(Packet);
+    });
+
+    glfwSetCharCallback(CreatedWindow, [](GLFWwindow* Win, unsigned int Codepoint) {
+        auto* Self = static_cast<DesktopPlatformWindow*>(glfwGetWindowUserPointer(Win));
+        if (Self == nullptr) return;
+        Input::InputSignalPacket Packet{};
+        Packet.TimestampNanoseconds = CurrentMonotonicNanoseconds();
+        Packet.Category             = Input::InputSignalCategory::TextCodepoint;
+        Packet.ControlCode          = static_cast<uint32_t>(Codepoint);
+        (void)Self->CallbackExchange.IntakeSignal(Packet);
     });
 
     glfwSetMouseButtonCallback(CreatedWindow, [](GLFWwindow* Win, int Button, int ButtonTransition, int Mods) {
-        auto* Exchange = static_cast<Input::InputExchange*>(glfwGetWindowUserPointer(Win));
-        if (Exchange == nullptr) return;
-        (void)Mods;
+        auto* Self = static_cast<DesktopPlatformWindow*>(glfwGetWindowUserPointer(Win));
+        if (Self == nullptr) return;
         Input::InputSignalPacket Packet{};
         Packet.TimestampNanoseconds = CurrentMonotonicNanoseconds();
         Packet.Category             = Input::InputSignalCategory::PointerButton;
         Packet.ControlCode          = static_cast<uint32_t>(Button);
+        Packet.ModifierBitmask      = TranslateGlfwModifierMask(Mods);
         Packet.Transition           = (ButtonTransition == GLFW_PRESS) ? Input::ButtonTransitionCategory::Pressed
                                                                        : Input::ButtonTransitionCategory::Released;
         Packet.PrimaryAxis          = (ButtonTransition == GLFW_PRESS) ? 1.0f : 0.0f;
-        (void)Exchange->IntakeSignal(Packet);
+        (void)Self->CallbackExchange.IntakeSignal(Packet);
     });
 
     glfwSetCursorPosCallback(CreatedWindow, [](GLFWwindow* Win, double PosX, double PosY) {
-        auto* Exchange = static_cast<Input::InputExchange*>(glfwGetWindowUserPointer(Win));
-        if (Exchange == nullptr) return;
+        auto* Self = static_cast<DesktopPlatformWindow*>(glfwGetWindowUserPointer(Win));
+        if (Self == nullptr) return;
+        const float NewX = static_cast<float>(PosX);
+        const float NewY = static_cast<float>(PosY);
         Input::InputSignalPacket Packet{};
         Packet.TimestampNanoseconds = CurrentMonotonicNanoseconds();
         Packet.Category             = Input::InputSignalCategory::PointerMotion;
-        Packet.PrimaryAxis          = static_cast<float>(PosX);
-        Packet.SecondaryAxis        = static_cast<float>(PosY);
-        (void)Exchange->IntakeSignal(Packet);
+        Packet.PrimaryAxis          = NewX;
+        Packet.SecondaryAxis        = NewY;
+        Packet.DeltaPrimary         = Self->CursorPositionSeeded ? (NewX - Self->LastCursorX) : 0.0f;
+        Packet.DeltaSecondary       = Self->CursorPositionSeeded ? (NewY - Self->LastCursorY) : 0.0f;
+        Self->LastCursorX           = NewX;
+        Self->LastCursorY           = NewY;
+        Self->CursorPositionSeeded  = true;
+        (void)Self->CallbackExchange.IntakeSignal(Packet);
     });
 
     glfwSetScrollCallback(CreatedWindow, [](GLFWwindow* Win, double ScrollX, double ScrollY) {
-        auto* Exchange = static_cast<Input::InputExchange*>(glfwGetWindowUserPointer(Win));
-        if (Exchange == nullptr) return;
+        auto* Self = static_cast<DesktopPlatformWindow*>(glfwGetWindowUserPointer(Win));
+        if (Self == nullptr) return;
         Input::InputSignalPacket Packet{};
         Packet.TimestampNanoseconds = CurrentMonotonicNanoseconds();
         Packet.Category             = Input::InputSignalCategory::ScrollWheel;
         Packet.PrimaryAxis          = static_cast<float>(ScrollX);
         Packet.SecondaryAxis        = static_cast<float>(ScrollY);
-        (void)Exchange->IntakeSignal(Packet);
+        (void)Self->CallbackExchange.IntakeSignal(Packet);
+    });
+
+    glfwSetDropCallback(CreatedWindow, [](GLFWwindow* Win, int Count, const char** Paths) {
+        auto* Self = static_cast<DesktopPlatformWindow*>(glfwGetWindowUserPointer(Win));
+        if (Self == nullptr || Paths == nullptr) return;
+        for (int Idx = 0; Idx < Count; ++Idx)
+        {
+            if (Paths[Idx] != nullptr)
+            {
+                Self->PendingDroppedPaths.emplace_back(Paths[Idx]);
+            }
+        }
     });
 
     RefreshCachedExtent();
@@ -319,7 +458,24 @@ void DesktopPlatformWindow::PollOperatingEvents(Input::InputExtension& InputCoor
 
     ForwardToCoordinatorSink Forwarder{ &InputCoordinator };
     (void)CallbackExchange.DrainSignals(Forwarder);
+
+    for (const std::string& PathEntry : PendingDroppedPaths)
+    {
+        InputCoordinator.IntakeExternalDroppedPath(PathEntry);
+    }
+    PendingDroppedPaths.clear();
+
     (void)InputCoordinator.FlushOutboundDirectives(*this);
+}
+
+void DesktopPlatformWindow::WaitOperatingEventsTimeout(double TimeoutSeconds) noexcept
+{
+    if (GlfwWindowHandle == nullptr)
+    {
+        return;
+    }
+    glfwWaitEventsTimeout(std::max(0.0, TimeoutSeconds));
+    RefreshCachedExtent();
 }
 
 void DesktopPlatformWindow::Finalize() noexcept
@@ -338,6 +494,10 @@ void DesktopPlatformWindow::Finalize() noexcept
     }
 
     CallbackExchange.Finalize();
+    PendingDroppedPaths.clear();
+    CursorPositionSeeded = false;
+    LastCursorX          = 0.0f;
+    LastCursorY          = 0.0f;
     ActiveExtent         = {};
     RestorableBounds     = {};
     CurrentMode          = WindowPresentationMode::Windowed;

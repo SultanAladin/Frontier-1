@@ -6,6 +6,7 @@
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 #include "Engine/Components/VectorIcons/VectorIconRepository.h"
+#include "Engine/Input/InputExtension.h"
 
 #include <imgui.h>
 
@@ -1899,10 +1900,10 @@ void ContentBrowserPanel::Render(Rectangle2D HostBoundsPhysical, double DeltaSec
         HostBoundsPhysical.Height / SafeScale,
     };
 
-    const ImGuiIO& Io = ImGui::GetIO();
+    const auto& Snapshot = Input::InputExtension::InspectActiveEditorSnapshot();
     if (QueryOpen())
     {
-        if (Io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F, false))
+        if (Snapshot.ControlHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::F, false))
         {
             PopulateEditBufferFromString(SearchEditor, SearchBuffer);
             SearchEditor.Active     = true;
@@ -1913,62 +1914,44 @@ void ContentBrowserPanel::Render(Rectangle2D HostBoundsPhysical, double DeltaSec
         if (SearchEditor.Active)
         {
             bool BufferDirty = false;
-            for (int CharIdx = 0; CharIdx < Io.InputQueueCharacters.Size; ++CharIdx)
+            const std::string_view TypedText = Snapshot.QueryTypedUtf8();
+            if (!TypedText.empty())
             {
-                const ImWchar Codepoint = Io.InputQueueCharacters[CharIdx];
-                if (Codepoint >= 32u && Codepoint != 127u)
-                {
-                    char EncodedUtf8[5]{};
-                    if (Codepoint < 0x80u)
-                    {
-                        EncodedUtf8[0] = static_cast<char>(Codepoint);
-                    }
-                    else if (Codepoint < 0x800u)
-                    {
-                        EncodedUtf8[0] = static_cast<char>(0xC0u | (Codepoint >> 6u));
-                        EncodedUtf8[1] = static_cast<char>(0x80u | (Codepoint & 0x3Fu));
-                    }
-                    else
-                    {
-                        EncodedUtf8[0] = static_cast<char>(0xE0u | (Codepoint >> 12u));
-                        EncodedUtf8[1] = static_cast<char>(0x80u | ((Codepoint >> 6u) & 0x3Fu));
-                        EncodedUtf8[2] = static_cast<char>(0x80u | (Codepoint & 0x3Fu));
-                    }
-                    SearchEditor.Insert(EncodedUtf8);
-                    BufferDirty = true;
-                }
+                SearchEditor.Insert(Snapshot.TypedUtf8Buffer.data());
+                BufferDirty = true;
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_Backspace, true))
+            if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::Backspace, true))
             {
                 SearchEditor.Backspace();
                 BufferDirty = true;
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_Delete, true))
+            if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::Delete, true))
             {
                 SearchEditor.DeleteForward();
                 BufferDirty = true;
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))
+            if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::LeftArrow, true))
             {
-                SearchEditor.MoveCaret(-1, Io.KeyShift);
+                SearchEditor.MoveCaret(-1, Snapshot.ShiftHeld);
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true))
+            if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::RightArrow, true))
             {
-                SearchEditor.MoveCaret(1, Io.KeyShift);
+                SearchEditor.MoveCaret(1, Snapshot.ShiftHeld);
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_Home, false))
+            if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::Home, false))
             {
-                SearchEditor.MoveHome(Io.KeyShift);
+                SearchEditor.MoveHome(Snapshot.ShiftHeld);
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_End, false))
+            if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::End, false))
             {
-                SearchEditor.MoveEnd(Io.KeyShift);
+                SearchEditor.MoveEnd(Snapshot.ShiftHeld);
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))
+            if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::Enter, false) ||
+                Snapshot.QueryKeyPressed(Input::InputLogicalKey::KeypadEnter, false))
             {
                 SearchEditor.Active = false;
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+            if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::Escape, false))
             {
                 ConfigureSearchQuery({});
                 SearchEditor.Active = false;
@@ -1982,13 +1965,13 @@ void ContentBrowserPanel::Render(Rectangle2D HostBoundsPhysical, double DeltaSec
     }
 
     ContentBrowserPointerInput Pointer{};
-    Pointer.CursorX       = (Io.MousePos.x - HostBoundsPhysical.X) / SafeScale;
-    Pointer.CursorY       = (Io.MousePos.y - HostBoundsPhysical.Y) / SafeScale;
-    Pointer.Pressed       = ImGui::IsMouseClicked(0);
-    Pointer.HeldDown      = ImGui::IsMouseDown(0);
-    Pointer.Released      = ImGui::IsMouseReleased(0);
-    Pointer.DoubleClicked = ImGui::IsMouseDoubleClicked(0);
-    Pointer.WheelDeltaY   = Io.MouseWheel;
+    Pointer.CursorX       = (Snapshot.PositionX - HostBoundsPhysical.X) / SafeScale;
+    Pointer.CursorY       = (Snapshot.PositionY - HostBoundsPhysical.Y) / SafeScale;
+    Pointer.Pressed       = Snapshot.QueryButtonPressed(0u);
+    Pointer.HeldDown      = Snapshot.QueryButtonDown(0u);
+    Pointer.Released      = Snapshot.QueryButtonReleased(0u);
+    Pointer.DoubleClicked = Snapshot.QueryButtonDoubleClicked(0u);
+    Pointer.WheelDeltaY   = Snapshot.ScrollDeltaY;
 
     RenderWithInput(Canvas, LogicalBounds, Pointer, DeltaSeconds);
 }

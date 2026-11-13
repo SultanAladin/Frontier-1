@@ -75,9 +75,11 @@ UVViewportHost::~UVViewportHost() = default;
 
 void UVViewportHost::AttachSession(UVWorkspaceSession* TargetSession) noexcept
 {
-    Session          = TargetSession;
-    ProjectionDropdownOpen = false;
-    CachedUVRevision = UINT64_MAX;
+    Session                 = TargetSession;
+    SurfaceDropdownOpen     = false;
+    CanvasDebugDropdownOpen = false;
+    ProjectionDropdownOpen  = false;
+    CachedUVRevision        = UINT64_MAX;
     Interactor.AttachSession(Session);
 
     if (Session == nullptr)
@@ -86,6 +88,7 @@ void UVViewportHost::AttachSession(UVWorkspaceSession* TargetSession) noexcept
         ProjectionPane.AssignInteractionCallback({});
         ProjectionPane.AssignRasterBufferSource({});
         ProjectionPane.AssignSplitModeCallback({});
+        ProjectionPane.AssignSplitRatioCallback({});
         return;
     }
 
@@ -106,6 +109,17 @@ void UVViewportHost::AttachSession(UVWorkspaceSession* TargetSession) noexcept
             }
             Session->WorkspaceConfig.AccessUVPreferences().InitialViewportLayout =
                 static_cast<Configuration::UVViewportLayoutMode>(static_cast<uint8_t>(NewMode));
+            Session->FramebuffersDirty = true;
+        });
+
+    ProjectionPane.AssignSplitRatioCallback(
+        [this](float NewRatio)
+        {
+            if (Session == nullptr)
+            {
+                return;
+            }
+            Session->WorkspaceConfig.AccessUVPreferences().SplitRatioNormalized = NewRatio;
             Session->FramebuffersDirty = true;
         });
 
@@ -182,14 +196,23 @@ void UVViewportHost::Render(
     }
 
     SynchronizeProjectionPolicy();
+    Session->AdvanceWorkspaceCamera(static_cast<float>(Δt));
     RefreshCachedIslandCount();
 
     const Point2D Cursor  { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
     const bool    Pressed = Input.PrimaryPointer.Pressed;
     if (Input.EscapePressed)
     {
-        ProjectionDropdownOpen = false;
+        SurfaceDropdownOpen     = false;
+        CanvasDebugDropdownOpen = false;
+        ProjectionDropdownOpen  = false;
     }
+    Rectangle2D SurfaceDropdownBounds{};
+    Rectangle2D SurfaceSheetAnchor{};
+    Rectangle2D SurfaceSheetBounds{};
+    Rectangle2D CanvasDebugDropdownBounds{};
+    Rectangle2D CanvasDebugSheetAnchor{};
+    Rectangle2D CanvasDebugSheetBounds{};
     Rectangle2D ViewProjectionDropdownBounds{};
     Rectangle2D ProjectionSheetAnchor{};
     Rectangle2D ProjectionSheetBounds{};
@@ -483,35 +506,51 @@ void UVViewportHost::Render(
             Session->FramebuffersDirty = true;
         }
 
-        // Middle display/debug/view capsules when horizontal width permits
+        // Middle display/debug/view dropdowns when horizontal width permits
         const float MiddleControlsRight = Fit3DBtn.X - 8.0f;
-        if (CurX + 126.0f < MiddleControlsRight)
+        if (CurX + 138.0f < MiddleControlsRight)
         {
-            const Rectangle2D SurfBtn{ CurX, StripY, 122.0f, 31.0f };
-            if (ConstructCapsuleButton(
-                    Surface, SurfBtn, QuerySurfaceDisplayLabel(Session->RenderOptions3D.DisplayMode), Theme, Cursor, Pressed, false, false, 9.6f, -1.0f,
-                    OptionalTooltip::FromText("Cycle 3D surface shading modes.")))
+            SurfaceDropdownBounds = { CurX, StripY, 134.0f, 31.0f };
+            const ControlContact SurfHit = DropdownSelector::ConstructButton(
+                Surface,
+                SurfaceDropdownBounds,
+                QuerySurfaceDisplayLabel(Session->RenderOptions3D.DisplayMode),
+                SurfaceDropdownOpen,
+                Input.PrimaryPointer,
+                1.0f,
+                ControlIcon::LayersSlabs,
+                OptionalTooltip::FromTitled(
+                    "3D Surface Shading", "Select the 3D surface shading channel."));
+            if (SurfHit.Clicked)
             {
-                OverlayCapturedClick = true;
-                const uint32_t Next = (static_cast<uint32_t>(Session->RenderOptions3D.DisplayMode) + 1u) % 6u;
-                Session->RenderOptions3D.DisplayMode = static_cast<GeometricRaster::SurfaceDisplayMode>(Next);
-                Session->FramebuffersDirty           = true;
+                SurfaceDropdownOpen     = !SurfaceDropdownOpen;
+                CanvasDebugDropdownOpen = false;
+                ProjectionDropdownOpen  = false;
+                OverlayCapturedClick    = true;
             }
-            CurX = SurfBtn.Right() + 6.0f;
+            CurX = SurfaceDropdownBounds.Right() + 6.0f;
         }
-        if (CurX + 112.0f < MiddleControlsRight)
+        if (CurX + 130.0f < MiddleControlsRight)
         {
-            const Rectangle2D DbgBtn{ CurX, StripY, 108.0f, 31.0f };
-            if (ConstructCapsuleButton(
-                    Surface, DbgBtn, QueryCanvasDebugLabel(Session->RenderOptions2D.DisplayMode), Theme, Cursor, Pressed, false, false, 9.6f, -1.0f,
-                    OptionalTooltip::FromText("Cycle UV canvas debug channels.")))
+            CanvasDebugDropdownBounds = { CurX, StripY, 126.0f, 31.0f };
+            const ControlContact DbgHit = DropdownSelector::ConstructButton(
+                Surface,
+                CanvasDebugDropdownBounds,
+                QueryCanvasDebugLabel(Session->RenderOptions2D.DisplayMode),
+                CanvasDebugDropdownOpen,
+                Input.PrimaryPointer,
+                1.0f,
+                ControlIcon::SlidersQuality,
+                OptionalTooltip::FromTitled(
+                    "2D UV Debug", "Select the 2D UV canvas inspection channel."));
+            if (DbgHit.Clicked)
             {
-                OverlayCapturedClick = true;
-                const uint32_t Next = (static_cast<uint32_t>(Session->RenderOptions2D.DisplayMode) + 1u) % 3u;
-                Session->RenderOptions2D.DisplayMode = static_cast<GeometricRaster::UVCanvasDisplayMode>(Next);
-                Session->FramebuffersDirty           = true;
+                CanvasDebugDropdownOpen = !CanvasDebugDropdownOpen;
+                SurfaceDropdownOpen     = false;
+                ProjectionDropdownOpen  = false;
+                OverlayCapturedClick    = true;
             }
-            CurX = DbgBtn.Right() + 6.0f;
+            CurX = CanvasDebugDropdownBounds.Right() + 6.0f;
         }
         if (CurX + 128.0f < MiddleControlsRight)
         {
@@ -529,8 +568,10 @@ void UVViewportHost::Render(
                     "3D View Projection", "Choose perspective, orthographic, or an axial camera view."));
             if (ViewHit.Clicked)
             {
-                ProjectionDropdownOpen = !ProjectionDropdownOpen;
-                OverlayCapturedClick = true;
+                ProjectionDropdownOpen  = !ProjectionDropdownOpen;
+                SurfaceDropdownOpen     = false;
+                CanvasDebugDropdownOpen = false;
+                OverlayCapturedClick    = true;
             }
         }
     }
@@ -605,31 +646,45 @@ void UVViewportHost::Render(
         CanvasTopY += 38.0f;
     }
 
-    if (ViewProjectionDropdownBounds.Width <= 0.0f)
+    auto ResolveDropdownSheetAnchor = [&](
+        bool&        SheetOpen,
+        Rectangle2D  ButtonBounds,
+        uint32_t     OptionCount,
+        Rectangle2D& OutAnchor,
+        Rectangle2D& OutSheetBounds) noexcept
     {
-        ProjectionDropdownOpen = false;
-    }
-    if (ProjectionDropdownOpen)
-    {
-        ProjectionSheetAnchor = ViewProjectionDropdownBounds;
-        ProjectionSheetBounds = DropdownSelector::QuerySheetBounds(ProjectionSheetAnchor, 5u);
-        if (ProjectionSheetBounds.Bottom() > Bounds.Bottom())
+        if (ButtonBounds.Width <= 0.0f)
         {
-            ProjectionSheetAnchor.Y -= ProjectionSheetBounds.Height +
-                2.0f * ControlMetrics::DropdownPaddingY + ProjectionSheetAnchor.Height;
-            const Rectangle2D AboveSheet = DropdownSelector::QuerySheetBounds(ProjectionSheetAnchor, 5u);
+            SheetOpen = false;
+            return;
+        }
+        if (!SheetOpen)
+        {
+            return;
+        }
+        OutAnchor      = ButtonBounds;
+        OutSheetBounds = DropdownSelector::QuerySheetBounds(OutAnchor, OptionCount);
+        if (OutSheetBounds.Bottom() > Bounds.Bottom())
+        {
+            OutAnchor.Y -= OutSheetBounds.Height +
+                2.0f * ControlMetrics::DropdownPaddingY + OutAnchor.Height;
+            const Rectangle2D AboveSheet = DropdownSelector::QuerySheetBounds(OutAnchor, OptionCount);
             if (AboveSheet.Y >= Bounds.Y)
             {
-                ProjectionSheetBounds = AboveSheet;
+                OutSheetBounds = AboveSheet;
             }
             else
             {
-                ProjectionSheetAnchor = ViewProjectionDropdownBounds;
+                OutAnchor = ButtonBounds;
             }
         }
-        OverlayCapturedClick = OverlayCapturedClick || ViewProjectionDropdownBounds.Contains(Cursor) ||
-            ProjectionSheetBounds.Contains(Cursor) || Input.PrimaryPointer.Released;
-    }
+        OverlayCapturedClick = OverlayCapturedClick || ButtonBounds.Contains(Cursor) ||
+            OutSheetBounds.Contains(Cursor) || Input.PrimaryPointer.Released;
+    };
+
+    ResolveDropdownSheetAnchor(SurfaceDropdownOpen, SurfaceDropdownBounds, 6u, SurfaceSheetAnchor, SurfaceSheetBounds);
+    ResolveDropdownSheetAnchor(CanvasDebugDropdownOpen, CanvasDebugDropdownBounds, 3u, CanvasDebugSheetAnchor, CanvasDebugSheetBounds);
+    ResolveDropdownSheetAnchor(ProjectionDropdownOpen, ViewProjectionDropdownBounds, 5u, ProjectionSheetAnchor, ProjectionSheetBounds);
 
     //--------------------------------------------------------------------------------------------------------------------
     // 3. viewport canvas Canvas (.pz-viewport canvas-wrap: 10px rounded #080809 GPU viewport + overlay tool Rail + UV Transform capsules)
@@ -832,6 +887,69 @@ void UVViewportHost::Render(
                     Theme.TextMuted,
                     RightStats);
             }
+        }
+    }
+
+    if (SurfaceDropdownOpen && SurfaceDropdownBounds.Width > 0.0f)
+    {
+        constexpr std::array<const char*, 6u> SurfaceOptions {{
+            "Surface Material",
+            "Priority Tint",
+            "Stretch Heat",
+            "UDIM Checker",
+            "MatCap Preview",
+            "Material + MatCap",
+        }};
+        const uint32_t CurrentIndex = static_cast<uint32_t>(Session->RenderOptions3D.DisplayMode);
+        uint32_t ChosenIndex = CurrentIndex;
+        const ControlContact Choice = DropdownSelector::ConstructOptionSheet(
+            Surface,
+            SurfaceSheetAnchor,
+            SurfaceOptions.data(),
+            static_cast<uint32_t>(SurfaceOptions.size()),
+            std::min<uint32_t>(CurrentIndex, static_cast<uint32_t>(SurfaceOptions.size() - 1u)),
+            Input.PrimaryPointer,
+            ChosenIndex);
+        if (Choice.Clicked && ChosenIndex < SurfaceOptions.size())
+        {
+            Session->RenderOptions3D.DisplayMode = static_cast<GeometricRaster::SurfaceDisplayMode>(ChosenIndex);
+            Session->FramebuffersDirty           = true;
+            SurfaceDropdownOpen                  = false;
+        }
+        else if (Input.PrimaryPointer.Released &&
+                 !SurfaceDropdownBounds.Contains(Cursor) && !SurfaceSheetBounds.Contains(Cursor))
+        {
+            SurfaceDropdownOpen = false;
+        }
+    }
+
+    if (CanvasDebugDropdownOpen && CanvasDebugDropdownBounds.Width > 0.0f)
+    {
+        constexpr std::array<const char*, 3u> DebugOptions {{
+            "Debug: Priority",
+            "Debug: Stretch",
+            "Debug: Overlaps",
+        }};
+        const uint32_t CurrentIndex = static_cast<uint32_t>(Session->RenderOptions2D.DisplayMode);
+        uint32_t ChosenIndex = CurrentIndex;
+        const ControlContact Choice = DropdownSelector::ConstructOptionSheet(
+            Surface,
+            CanvasDebugSheetAnchor,
+            DebugOptions.data(),
+            static_cast<uint32_t>(DebugOptions.size()),
+            std::min<uint32_t>(CurrentIndex, static_cast<uint32_t>(DebugOptions.size() - 1u)),
+            Input.PrimaryPointer,
+            ChosenIndex);
+        if (Choice.Clicked && ChosenIndex < DebugOptions.size())
+        {
+            Session->RenderOptions2D.DisplayMode = static_cast<GeometricRaster::UVCanvasDisplayMode>(ChosenIndex);
+            Session->FramebuffersDirty           = true;
+            CanvasDebugDropdownOpen              = false;
+        }
+        else if (Input.PrimaryPointer.Released &&
+                 !CanvasDebugDropdownBounds.Contains(Cursor) && !CanvasDebugSheetBounds.Contains(Cursor))
+        {
+            CanvasDebugDropdownOpen = false;
         }
     }
 

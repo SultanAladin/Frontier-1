@@ -184,6 +184,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/UV/UVViewportHost.cpp
     Engine/Workspaces/UV/UVWorkspaceHost.cpp
     Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.cpp
+    Engine/Input/ImGuiInputAdapter.cpp
     Engine/Configuration/InputSettings.cpp
     Engine/Configuration/ProjectSpaceRepository.cpp
     Engine/Lifecycle/WorkspaceLifecycle.cpp
@@ -252,12 +253,15 @@ frontier_compile_slang_shader(ViewportPickReduction.slang    ComputeEntry  compu
 frontier_compile_slang_shader(UVDistortionInspection.slang   ComputeEntry  compute  UVDistortionInspection.comp.spv)
 frontier_compile_slang_shader(StretchRelaxCompute.slang      ComputeEntry  compute  StretchRelaxCompute.comp.spv)
 frontier_compile_slang_shader(ConcaveSkylineCompute.slang    ComputeEntry  compute  ConcaveSkylineCompute.comp.spv)
+frontier_compile_slang_shader(CameraVisualEffects.slang      ComputeEntry  compute  CameraVisualEffects.comp.spv)
 
 add_custom_target(FrontierShaders DEPENDS ${FRONTIER_SPV_OUTPUTS})
 
 set(FRONTIER_ENGINE_SOURCES
     Engine/Configuration/EngineConfiguration.cpp
     Engine/Configuration/WorkspaceConfiguration.cpp
+    Engine/Components/Camera/CameraComponent.cpp
+    Engine/Components/Camera/VisualEffects/CameraOpticsEncoder.cpp
     Engine/GeometrySpace/Network/PolygonNetwork.cpp
     Engine/GeometrySpace/Network/GeometryInstance.cpp
     Engine/GeometrySpace/Network/FacePartitionRegister.cpp
@@ -285,6 +289,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Codecs/SpaceContainerCodec.cpp
     Engine/Codecs/RevisionCodec.cpp
     Engine/Codecs/ProjectCodec.cpp
+    Engine/Codecs/InputCodec.cpp
     Engine/Codecs/ColourCodec.cpp
     Engine/Codecs/FontCodec.cpp
     Engine/Codecs/UVCodec.cpp
@@ -387,6 +392,7 @@ if(BUILD_TESTING)
     endfunction()
 
     frontier_register_exhibit(InputValidation             Exhibits/InputValidation.cpp)
+    frontier_register_exhibit(CameraComponentValidation   Exhibits/CameraComponentValidation.cpp)
     frontier_register_exhibit(WindowValidation            Exhibits/WindowValidation.cpp)
     frontier_register_exhibit(DockingValidation           Exhibits/DockingValidation.cpp)
     frontier_register_exhibit(ControlCentreValidation     Exhibits/ControlCentreValidation.cpp)

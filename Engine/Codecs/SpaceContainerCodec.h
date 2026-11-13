@@ -48,7 +48,8 @@ enum class SpaceExtensionCategory : uint8_t
     Render          = 16, // [-] - .Render Option 1A natural camera/output target
     Photometry      = 17, // [-] - .Photometry Option 1A natural IES luminaire profile
     Terrain         = 18, // [-] - .Terrain Option 1A natural heightfield tile
-    Acoustic        = 19  // [-] - .Acoustic Option 1A natural impulse/propagation setup
+    Acoustic        = 19, // [-] - .Acoustic Option 1A natural impulse/propagation setup
+    InputSpace      = 20  // [-] - .InputSpace hardware chord registers, navigation presets & axis calibration
 };
 
 //------------------------------------------------------------------------------------------------------------------------

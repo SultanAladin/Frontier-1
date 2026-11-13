@@ -4,6 +4,7 @@
 // 🧩 Logical-to-physical 2D canvas implementation over patched Dear ImGui construct lists.
 
 #include "Engine/Components/PixelSpace.h"
+#include "Engine/Input/InputExtension.h"
 
 #include <imgui.h>
 
@@ -22,22 +23,22 @@ namespace
     return IM_COL32(Color.Red, Color.Green, Color.Blue, Color.Alpha);
 }
 
-[[nodiscard]] ImGuiKey TranslateKey(InterfaceKey Key) noexcept
+[[nodiscard]] Input::InputLogicalKey TranslateKey(InterfaceKey Key) noexcept
 {
     switch (Key)
     {
-    case InterfaceKey::Escape:    return ImGuiKey_Escape;
-    case InterfaceKey::Enter:     return ImGuiKey_Enter;
-    case InterfaceKey::Backspace: return ImGuiKey_Backspace;
-    case InterfaceKey::DeleteKey: return ImGuiKey_Delete;
-    case InterfaceKey::Left:      return ImGuiKey_LeftArrow;
-    case InterfaceKey::Right:     return ImGuiKey_RightArrow;
-    case InterfaceKey::Up:        return ImGuiKey_UpArrow;
-    case InterfaceKey::Down:      return ImGuiKey_DownArrow;
-    case InterfaceKey::Home:      return ImGuiKey_Home;
-    case InterfaceKey::End:       return ImGuiKey_End;
+    case InterfaceKey::Escape:    return Input::InputLogicalKey::Escape;
+    case InterfaceKey::Enter:     return Input::InputLogicalKey::Enter;
+    case InterfaceKey::Backspace: return Input::InputLogicalKey::Backspace;
+    case InterfaceKey::DeleteKey: return Input::InputLogicalKey::Delete;
+    case InterfaceKey::Left:      return Input::InputLogicalKey::LeftArrow;
+    case InterfaceKey::Right:     return Input::InputLogicalKey::RightArrow;
+    case InterfaceKey::Up:        return Input::InputLogicalKey::UpArrow;
+    case InterfaceKey::Down:      return Input::InputLogicalKey::DownArrow;
+    case InterfaceKey::Home:      return Input::InputLogicalKey::Home;
+    case InterfaceKey::End:       return Input::InputLogicalKey::End;
     }
-    return ImGuiKey_None;
+    return Input::InputLogicalKey::Unassigned;
 }
 
 uint32_t EncodeCodepointUtf8(uint32_t Codepoint, char *Out) noexcept
@@ -358,8 +359,8 @@ void PixelSpace::EndGroup(const GroupMarker &Marker) noexcept
 
 Point2D PixelSpace::QueryMousePosition() const noexcept
 {
-    const ImVec2 Raw = ImGui::GetIO().MousePos;
-    return {(Raw.x - Origin.X) / Scale, (Raw.y - Origin.Y) / Scale};
+    const auto& Snapshot = Input::InputExtension::InspectActiveEditorSnapshot();
+    return {(Snapshot.PositionX - Origin.X) / Scale, (Snapshot.PositionY - Origin.Y) / Scale};
 }
 
 bool PixelSpace::QueryMouseInside(Rectangle2D Bounds) const noexcept
@@ -371,58 +372,58 @@ bool PixelSpace::QueryMouseInside(Rectangle2D Bounds) const noexcept
 
 bool PixelSpace::QueryMouseDown(int Button) const noexcept
 {
-    return ImGui::IsMouseDown(Button);
+    return Button >= 0 && Input::InputExtension::InspectActiveEditorSnapshot().QueryButtonDown(static_cast<uint32_t>(Button));
 }
 
 bool PixelSpace::QueryMouseClicked(int Button) const noexcept
 {
-    return ImGui::IsMouseClicked(Button);
+    return Button >= 0 && Input::InputExtension::InspectActiveEditorSnapshot().QueryButtonPressed(static_cast<uint32_t>(Button));
 }
 
 bool PixelSpace::QueryMouseDoubleClicked(int Button) const noexcept
 {
-    return ImGui::IsMouseDoubleClicked(Button);
+    return Button >= 0 && Input::InputExtension::InspectActiveEditorSnapshot().QueryButtonDoubleClicked(static_cast<uint32_t>(Button));
 }
 
 bool PixelSpace::QueryMouseReleased(int Button) const noexcept
 {
-    return ImGui::IsMouseReleased(Button);
+    return Button >= 0 && Input::InputExtension::InspectActiveEditorSnapshot().QueryButtonReleased(static_cast<uint32_t>(Button));
 }
 
 float PixelSpace::QueryMouseWheelY() const noexcept
 {
-    return ImGui::GetIO().MouseWheel;
+    return Input::InputExtension::InspectActiveEditorSnapshot().ScrollDeltaY;
 }
 
 bool PixelSpace::QueryShiftHeld() const noexcept
 {
-    return ImGui::GetIO().KeyShift;
+    return Input::InputExtension::InspectActiveEditorSnapshot().ShiftHeld;
 }
 
 bool PixelSpace::QueryCtrlHeld() const noexcept
 {
-    return ImGui::GetIO().KeyCtrl;
+    return Input::InputExtension::InspectActiveEditorSnapshot().ControlHeld;
 }
 
 bool PixelSpace::QueryKeyPressed(InterfaceKey Key, bool Repeat) const noexcept
 {
-    const ImGuiKey Mapped = TranslateKey(Key);
-    return Mapped != ImGuiKey_None && ImGui::IsKeyPressed(Mapped, Repeat);
+    const Input::InputLogicalKey Mapped = TranslateKey(Key);
+    return Mapped != Input::InputLogicalKey::Unassigned &&
+           Input::InputExtension::InspectActiveEditorSnapshot().QueryKeyPressed(Mapped, Repeat);
 }
 
 uint32_t PixelSpace::ReadTypedUtf8(char *Destination, uint32_t Capacity) const noexcept
 {
     if (!Destination || Capacity == 0u)
         return 0u;
-    const ImGuiIO &Io      = ImGui::GetIO();
-    uint32_t       Written = 0u;
+    const auto&    Snapshot = Input::InputExtension::InspectActiveEditorSnapshot();
+    uint32_t       Written  = 0u;
     char           Chunk[4]{};
-    for (int Index = 0; Index < Io.InputQueueCharacters.Size; ++Index)
+    for (const uint32_t Codepoint : Snapshot.QueryTypedCodepoints())
     {
-        const ImWchar Codepoint = Io.InputQueueCharacters[Index];
         if (Codepoint < 0x20u || Codepoint == 0x7Fu)
             continue;
-        const uint32_t Len = EncodeCodepointUtf8(static_cast<uint32_t>(Codepoint), Chunk);
+        const uint32_t Len = EncodeCodepointUtf8(Codepoint, Chunk);
         if (Written + Len + 1u > Capacity)
             break;
         std::memcpy(Destination + Written, Chunk, Len);

@@ -1500,7 +1500,7 @@ float UVInspectorPanel::RenderShadingTab(
     // Native material controls remain actionable; the MatCap palette and finish sliders
     // use the existing assignment operations rather than visual-only placeholders.
     {
-        const Rectangle2D Card{ LeftX, CurY, InnerW, 372.0f };
+        const Rectangle2D Card{ LeftX, CurY, InnerW, 422.0f };
         Surface.FillRectangle(Card, Theme.SectionBg, 20.0f);
         Surface.StrokeRectangle(Card, Theme.BorderSubtle, 20.0f, 1.0f);
         const float SX = Card.X + 16.0f;
@@ -1550,17 +1550,20 @@ float UVInspectorPanel::RenderShadingTab(
                 OptionalTooltip::FromText("Select a procedural MatCap and apply it to the active selection."));
         }
         SY += 72.0f;
-        char MetTxt[24]{}, RghTxt[24]{}, BldTxt[24]{};
+        char MetTxt[24]{}, RghTxt[24]{}, SpcTxt[24]{}, BldTxt[24]{};
         std::snprintf(MetTxt, sizeof(MetTxt), "%.2f", SurfaceMetallic);
         std::snprintf(RghTxt, sizeof(RghTxt), "%.2f", SurfaceRoughness);
+        std::snprintf(SpcTxt, sizeof(SpcTxt), "%.2f", SurfaceSpecular);
         std::snprintf(BldTxt, sizeof(BldTxt), "%.0f%%", SurfaceMatBlend * 100.0f);
         bool Dirty = false;
         Dirty |= ConstructSliderControl(Surface, { SX, SY, SW, 46.0f }, "Metallic", MetTxt, SurfaceMetallic, Theme, Cursor, Down, Pressed);
         SY += 50.0f;
         Dirty |= ConstructSliderControl(Surface, { SX, SY, SW, 46.0f }, "Roughness", RghTxt, SurfaceRoughness, Theme, Cursor, Down, Pressed);
         SY += 50.0f;
+        Dirty |= ConstructSliderControl(Surface, { SX, SY, SW, 46.0f }, "Specular", SpcTxt, SurfaceSpecular, Theme, Cursor, Down, Pressed);
+        SY += 50.0f;
         Dirty |= ConstructSliderControl(Surface, { SX, SY, SW, 46.0f }, "MatCap Blend", BldTxt, SurfaceMatBlend, Theme, Cursor, Down, Pressed);
-        if (Dirty) Session->ApplySurfaceRoughnessMetallic(SurfaceRoughness, SurfaceMetallic, SurfaceMatBlend);
+        if (Dirty) Session->ApplySurfaceRoughnessMetallic(SurfaceRoughness, SurfaceMetallic, SurfaceMatBlend, SurfaceSpecular);
 
         if (ShadingModeDropdownOpen)
         {

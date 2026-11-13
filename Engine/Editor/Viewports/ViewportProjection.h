@@ -11,6 +11,7 @@
 
 #include "Engine/Editor/Viewports/TransformGizmo.h"
 #include "Engine/Mathematics/AxisCoordinates.h"
+#include "Engine/Mathematics/CoordinateSpace.h"
 
 #include <cstdint>
 
@@ -43,12 +44,13 @@ enum class SpatialProjectionPreset : uint8_t
 
 struct SpatialCameraRig
 {
-    Mathematics::Axis3D     TargetPivot    { 0.0f, 0.0f, 0.42f };               // [m]   - Orbit target point (Z-up)
-    float                   YawRadians     = 0.68f;                             // [rad] - Horizontal orbit angle
-    float                   PitchRadians   = 0.38f;                             // [rad] - Vertical elevation angle
-    float                   DistanceMeters = 6.20f;                             // [m]   - Camera distance from pivot
-    float                   VerticalFovDeg = 42.0f;                             // [deg] - Vertical perspective field of view
-    SpatialProjectionPreset Preset         = SpatialProjectionPreset::Perspective; // [-] - Active camera projection preset
+    Mathematics::Axis3D               TargetPivot    { 0.0f, 0.0f, 0.42f };                              // [m]   - Orbit target point
+    float                             YawRadians     = 0.68f;                                            // [rad] - Horizontal orbit angle
+    float                             PitchRadians   = 0.38f;                                            // [rad] - Vertical elevation angle
+    float                             DistanceMeters = 6.20f;                                            // [m]   - Camera distance from pivot
+    float                             VerticalFovDeg = 42.0f;                                            // [deg] - Vertical perspective field of view
+    SpatialProjectionPreset           Preset         = SpatialProjectionPreset::Perspective;             // [-]   - Active camera projection preset
+    Mathematics::WorldCoordinateBasis Basis          = Mathematics::WorldCoordinateBasis::RightHandedZUp;// [-]   - Active RHR world coordinate basis
 };
 
 struct PlanarWindowRig

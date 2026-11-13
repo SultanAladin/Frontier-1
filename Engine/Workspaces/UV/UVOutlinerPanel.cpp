@@ -442,8 +442,8 @@ void UVOutlinerPanel::Render(
         std::max(40.0f, Bounds.Bottom() - FooterH - CurY)
     };
 
-    const float BodyContentHeight = 158.0f + static_cast<float>(VisibleLayerOrdinals.size()) * 46.0f +
-        (ShowRemainderBox ? 48.0f : 0.0f);
+    const float BodyContentHeight = 158.0f + static_cast<float>(VisibleLayerOrdinals.size()) * 42.0f +
+        (ShowRemainderBox ? 44.0f : 0.0f);
     const float MaxScroll = std::max(0.0f, BodyContentHeight - ScrollArea.Height);
     if (ScrollArea.Contains(Cursor) && std::abs(Input.WheelDeltaY) > 1.0e-4f)
     {
@@ -472,10 +472,10 @@ void UVOutlinerPanel::Render(
         else
         {
             ColorPaletteLayerRow = static_cast<int32_t>(std::distance(VisibleLayerOrdinals.begin(), Found));
-            const float LayerY = ScrollArea.Y - ScrollOffsetY + 160.0f + static_cast<float>(ColorPaletteLayerRow) * 46.0f;
+            const float LayerY = ScrollArea.Y - ScrollOffsetY + 160.0f + static_cast<float>(ColorPaletteLayerRow) * 42.0f;
             const float PaletteW = std::min(152.0f, InnerW);
             const float PaletteX = LeftX + std::min(28.0f, std::max(0.0f, InnerW - PaletteW));
-            ColorPaletteBounds = { PaletteX, LayerY + 46.0f, PaletteW, 30.0f };
+            ColorPaletteBounds = { PaletteX, LayerY + 42.0f, PaletteW, 30.0f };
             if (ColorPaletteBounds.Bottom() > ScrollArea.Bottom())
             {
                 ColorPaletteBounds.Y = LayerY - ColorPaletteBounds.Height - 4.0f;
@@ -483,7 +483,7 @@ void UVOutlinerPanel::Render(
             ColorPaletteConsumedPress = Pressed && ColorPaletteBounds.Contains(Cursor);
             if (Pressed && !ColorPaletteBounds.Contains(Cursor))
             {
-                const Rectangle2D SwatchButton{ LeftX + 11.0f, LayerY + 15.0f, 12.0f, 12.0f };
+                const Rectangle2D SwatchButton{ LeftX + 10.0f, LayerY + 13.5f, 12.0f, 12.0f };
                 if (!SwatchButton.Contains(Cursor))
                 {
                     ColorPickerLayerOrdinal = 0u;
@@ -516,58 +516,43 @@ void UVOutlinerPanel::Render(
 
     // 4a. 3-Column KPI Trio (.pz-left-kpi-trio: Utilization | Selected | Remaining)
     {
-        const Rectangle2D TrioBox{ LeftX, BodyY, InnerW, 60.0f };
-        Surface.FillRectangle(TrioBox, Theme.SectionBg, 16.0f);
-        Surface.StrokeRectangle(TrioBox, Theme.BorderSubtle, 16.0f, 1.0f);
+        const float KpiGap   = 7.0f;
+        const float KpiCellW = (InnerW - KpiGap * 2.0f) / 3.0f;
+        const float KpiCellH = 60.0f;
 
-        const float ColW = InnerW / 3.0f;
-        // Highlight first cell softly like Experimental/UVEditor .pz-left-kpi.highlight
-        Surface.FillRectangle({ TrioBox.X + 2.0f, TrioBox.Y + 2.0f, ColW - 2.0f, TrioBox.Height - 4.0f }, Theme.AccentSoft, 14.0f);
-        Surface.StrokeLine({ TrioBox.X + ColW, TrioBox.Y + 10.0f }, { TrioBox.X + ColW, TrioBox.Bottom() - 10.0f }, Theme.BorderSubtle, 1.0f);
-        Surface.StrokeLine({ TrioBox.X + ColW * 2.0f, TrioBox.Y + 10.0f }, { TrioBox.X + ColW * 2.0f, TrioBox.Bottom() - 10.0f }, Theme.BorderSubtle, 1.0f);
-
-        char UtilBuf[24]{}, UtilSubBuf[48]{}, SelBuf[32]{}, SelSubBuf[32]{}, RemBuf[32]{};
+        char UtilBuf[24]{}, UtilSubBuf[32]{}, SelBuf[32]{}, SelSubBuf[32]{}, RemBuf[32]{};
         const uint32_t RemainderIslandCount = static_cast<uint32_t>(
             std::count(CachedIslandLayerOrdinal.begin(), CachedIslandLayerOrdinal.end(), static_cast<uint16_t>(0u)));
         std::snprintf(UtilBuf, sizeof(UtilBuf), "%.1f%%", CachedUtilizationPct);
-        std::snprintf(UtilSubBuf, sizeof(UtilSubBuf), "UDIM %u · %u isl", DisplayTile,
-                      static_cast<uint32_t>(std::count(CachedIslandUDIMNumber.begin(), CachedIslandUDIMNumber.end(), DisplayTile)));
+        std::snprintf(UtilSubBuf, sizeof(UtilSubBuf), "UDIM %u", DisplayTile);
         std::snprintf(SelBuf, sizeof(SelBuf), "%u / %u", SelectedIslandCount, CachedIslandCount);
-        std::snprintf(SelSubBuf, sizeof(SelSubBuf), "%s", SelectedIslandCount > 0u ? "Selected islands" : "Total islands");
+        std::snprintf(SelSubBuf, sizeof(SelSubBuf), "%s", SelectedIslandCount > 0u ? "Selected" : "Click islands");
         std::snprintf(RemBuf, sizeof(RemBuf), "%u / %u", RemainderIslandCount, CachedIslandCount);
 
         const ColorRgba UtilInk = Theme.LightSurface ? Theme.AccentFill : ColorRgba{ 239, 244, 207, 255 };
-        auto ConstructKpiColumn = [&](uint32_t Idx, const char* Val, const char* Cap, ColorRgba ValInk)
+        auto ConstructKpiCell = [&](uint32_t Idx, const char* TopLabel, const char* MainReading, const char* SubLabel, ColorRgba ValInk, bool Highlighted)
         {
-            const float CellX = TrioBox.X + ColW * static_cast<float>(Idx);
-            const float ValW  = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 14.0f, Val);
-            const float CapW  = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.0f, Cap);
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface,
-                FontWeightClass::Medium,
-                { CellX + (ColW - ValW) * 0.5f, TrioBox.Y + 11.0f },
-                14.0f,
-                ValInk,
-                Val);
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface,
-                FontWeightClass::Regular,
-                { CellX + (ColW - CapW) * 0.5f, TrioBox.Y + 35.0f },
-                9.0f,
-                Theme.TextMuted,
-                Cap);
+            const Rectangle2D CellRect{
+                LeftX + (KpiCellW + KpiGap) * static_cast<float>(Idx),
+                BodyY,
+                KpiCellW,
+                KpiCellH
+            };
+            Surface.FillRectangle(CellRect, Highlighted ? Theme.AccentSoft : Theme.SectionBg, 14.0f);
+            Surface.StrokeRectangle(CellRect, Highlighted ? Theme.AccentBorder : Theme.BorderSubtle, 14.0f, 1.0f);
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Medium,
+                { CellRect.X + 9.0f, CellRect.Y + 7.5f }, KpiCellW - 14.0f, 7.8f, Theme.TextMuted, TopLabel);
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Medium,
+                { CellRect.X + 9.0f, CellRect.Y + 21.5f }, KpiCellW - 14.0f, 13.0f, ValInk, MainReading);
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Regular,
+                { CellRect.X + 9.0f, CellRect.Y + 41.5f }, KpiCellW - 14.0f, 8.2f, Theme.TextMuted, SubLabel);
         };
-        ConstructKpiColumn(0u, UtilBuf, "Utilization", UtilInk);
-        WorkspaceAppearance::ConstructWeightedText(
-            Surface, FontWeightClass::Regular,
-            { TrioBox.X + ColW * 0.5f + (ColW - WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.0f, SelSubBuf)) * 0.5f,
-              TrioBox.Y + 35.0f },
-            9.0f, Theme.TextMuted, SelSubBuf);
-        ConstructKpiColumn(1u, SelBuf, "", Theme.TextPrimary);
-        ConstructKpiColumn(2u, RemBuf, "Remaining", Theme.TextPrimary);
-        WorkspaceAppearance::ConstructTruncatedText(
-            Surface, FontWeightClass::Regular,
-            { TrioBox.X + 8.0f, TrioBox.Y + 35.0f }, ColW - 16.0f, 8.2f, Theme.TextMuted, UtilSubBuf);
+        ConstructKpiCell(0u, "UTILIZATION", UtilBuf, UtilSubBuf, UtilInk, true);
+        ConstructKpiCell(1u, "SELECTED",    SelBuf,  SelSubBuf,  Theme.TextPrimary, false);
+        ConstructKpiCell(2u, "REMAINING",   RemBuf,  "Auto-fill", Theme.TextPrimary, false);
         BodyY += 68.0f;
     }
 
@@ -582,7 +567,10 @@ void UVOutlinerPanel::Render(
         Surface.StrokeRectangle(StretchBox, Theme.BorderSubtle, 16.0f, 1.0f);
         Surface.FillCircle({ StretchBox.X + 22.0f, StretchBox.Y + 27.0f }, 12.0f, Theme.CautionSoft);
         Surface.StrokeCircle({ StretchBox.X + 22.0f, StretchBox.Y + 27.0f }, 12.0f, Theme.CautionInk, 1.1f);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { StretchBox.X + 18.0f, StretchBox.Y + 19.5f }, 10.5f, Theme.CautionInk, "a");
+        VectorIconRepository::ConstructControl(
+            Surface,
+            ControlIcon::TriangleAlert,
+            VectorIconPlacement{ StretchBox.X + 15.5f, StretchBox.Y + 20.5f, 13.0f, Theme.CautionInk, 1.7f });
 
         char StretchVal[24]{};
         std::snprintf(StretchVal, sizeof(StretchVal), "%.1f%%", CachedStretchCautionPct);
@@ -596,7 +584,10 @@ void UVOutlinerPanel::Render(
         const ColorRgba OvSoft       = ZeroOverlaps ? ColorRgba{ 121, 189, 143, 34 } : Theme.DangerSoft;
         Surface.FillCircle({ OverlapBox.X + 22.0f, OverlapBox.Y + 27.0f }, 12.0f, OvSoft);
         Surface.StrokeCircle({ OverlapBox.X + 22.0f, OverlapBox.Y + 27.0f }, 12.0f, OvRing, 1.1f);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { OverlapBox.X + 19.5f, OverlapBox.Y + 19.5f }, 10.5f, OvRing, "!");
+        VectorIconRepository::ConstructControl(
+            Surface,
+            ZeroOverlaps ? ControlIcon::CircleCheck : ControlIcon::OctagonAlert,
+            VectorIconPlacement{ OverlapBox.X + 15.5f, OverlapBox.Y + 20.5f, 13.0f, OvRing, 1.7f });
 
         char OvVal[24]{};
         std::snprintf(OvVal, sizeof(OvVal), "%u", Session->LatestMetrics.OverlapFaceCount);
@@ -617,23 +608,32 @@ void UVOutlinerPanel::Render(
 
         struct OutlinerMiniOperation
         {
-            const char* Label;
-            const char* Tooltip;
+            ControlIcon        OperationIcon;
+            const char*        Tooltip;
             UVCommandDirective Directive;
-            bool UnassignSelection;
+            bool               UnassignSelection;
         };
         constexpr std::array<OutlinerMiniOperation, 3u> MiniOps {{
-            { "Stk", "Stack similar UV islands.", UVCommandDirective::StackSimilarIslands, false },
-            { "Uns", "Unstack overlapping UV islands.", UVCommandDirective::UnstackOverlapping, false },
-            { "Rst", "Unassign selected faces from their priority layer.", UVCommandDirective::FitActiveSelection, true },
+            { ControlIcon::LayersSlabs,  "Stack similar UV islands.",                        UVCommandDirective::StackSimilarIslands, false },
+            { ControlIcon::LayoutGrid,   "Unstack overlapping UV islands.",                  UVCommandDirective::UnstackOverlapping,  false },
+            { ControlIcon::RefreshCycle, "Unassign selected faces from their priority layer.", UVCommandDirective::FitActiveSelection,  true  },
         }};
-        float OpX = LeftX + InnerW - (28.0f * 3.0f + 8.0f);
+        float OpX = LeftX + InnerW - (24.0f * 3.0f + 8.0f);
         for (const auto& Op : MiniOps)
         {
-            const Rectangle2D OpBtn{ OpX, BodyY, 28.0f, 20.0f };
-            if (ConstructCapsuleButton(
-                    Surface, OpBtn, Op.Label, Theme, Cursor, Pressed, false, false, 8.2f, 5.0f,
-                    OptionalTooltip::FromText(Op.Tooltip)))
+            const Rectangle2D OpBtn{ OpX, BodyY, 24.0f, 20.0f };
+            const bool        OpHovered = ScrollArea.Contains(Cursor) && OpBtn.Contains(Cursor);
+            if (OpHovered)
+            {
+                ControlAppearance::RecordHoveredTooltip(OpBtn, OptionalTooltip::FromText(Op.Tooltip));
+            }
+            Surface.FillRectangle(OpBtn, OpHovered ? Theme.HoverBg : Theme.SectionBg, 5.0f);
+            Surface.StrokeRectangle(OpBtn, OpHovered ? Theme.BorderStrong : Theme.BorderSubtle, 5.0f, 1.0f);
+            VectorIconRepository::ConstructControl(
+                Surface,
+                Op.OperationIcon,
+                VectorIconPlacement{ OpBtn.X + 6.0f, OpBtn.Y + 4.0f, 12.0f, OpHovered ? Theme.TextPrimary : Theme.TextMuted, 1.6f });
+            if (OpHovered && Pressed)
             {
                 if (Op.UnassignSelection)
                 {
@@ -644,7 +644,7 @@ void UVOutlinerPanel::Render(
                     (void)Session->ExecuteDirective(Op.Directive, nullptr);
                 }
             }
-            OpX += 32.0f;
+            OpX += 28.0f;
         }
         BodyY += 26.0f;
     }
@@ -700,10 +700,10 @@ void UVOutlinerPanel::Render(
             continue;
         }
         const auto& Layer = *LayerPtr;
-        const bool IsActive = (Session->SelectedLayerOrdinal == Layer.LayerOrdinal);
+        const bool RowSelected = (Session->SelectedLayerOrdinal == Layer.LayerOrdinal);
         const ColorRgba LayerCol = LinearTintToRgba(Layer.LinearTintRGB);
         const auto& PartRef = Session->Asset.Layers.InspectPartitionSpan(Session->Asset.Network, Layer.LayerOrdinal);
-        const Rectangle2D BoxRect   { LeftX, BodyY, InnerW, 42.0f };
+        const Rectangle2D BoxRect   { LeftX, BodyY, InnerW, 39.0f };
         const bool        RowHover  = ScrollArea.Contains(Cursor) && BoxRect.Contains(Cursor);
         if (RowHover)
         {
@@ -711,15 +711,17 @@ void UVOutlinerPanel::Render(
                 BoxRect, OptionalTooltip::FromText("Select this layer's faces. Double-click to frame its UV bounds."));
         }
 
-        // Strictly 0.0f corner radius per Experimental/UVEditor .pz-frontier-layer-box!
-        Surface.FillRectangle(BoxRect, IsActive ? Theme.AccentSoft : (RowHover ? Theme.HoverBg : Theme.SectionBg), 0.0f);
-        Surface.StrokeRectangle(BoxRect, IsActive ? LayerCol : Theme.BorderSubtle, 0.0f, 1.0f);
+        // Strictly 0.0f corner radius per Experimental/UVEditor .pz-frontier-layer-box (#171717 / #1e1e1e / #262626)!
+        const ColorRgba BoxFill   = RowSelected ? ColorRgba{ 38, 38, 38, 255 } : (RowHover ? ColorRgba{ 30, 30, 30, 255 } : ColorRgba{ 23, 23, 23, 255 });
+        const ColorRgba BoxBorder = RowSelected ? ColorRgba{ 68, 68, 68, 255 } : (RowHover ? ColorRgba{ 52, 52, 52, 255 } : ColorRgba{ 39, 39, 39, 255 });
+        Surface.FillRectangle(BoxRect, BoxFill, 0.0f);
+        Surface.StrokeRectangle(BoxRect, BoxBorder, 0.0f, 1.0f);
         Surface.FillRectangle({ BoxRect.X, BoxRect.Y, 3.0f, BoxRect.Height }, LayerCol, 0.0f);
 
-        // 12x12 sharp 0px colour swatch
-        const Rectangle2D SwatchRect{ BoxRect.X + 11.0f, BoxRect.Y + 15.0f, 12.0f, 12.0f };
+        // 12x12 sharp 0px colour swatch (.pz-layer-sq-swatch)
+        const Rectangle2D SwatchRect{ BoxRect.X + 10.0f, BoxRect.Y + 13.5f, 12.0f, 12.0f };
         Surface.FillRectangle(SwatchRect, LayerCol, 0.0f);
-        Surface.StrokeRectangle(SwatchRect, ColorRgba{ 0, 0, 0, 90 }, 0.0f, 1.0f);
+        Surface.StrokeRectangle(SwatchRect, ColorRgba{ 255, 255, 255, 72 }, 0.0f, 1.0f);
         const bool SwatchHover = ScrollArea.Contains(Cursor) && SwatchRect.Contains(Cursor);
         if (SwatchHover)
         {
@@ -731,13 +733,13 @@ void UVOutlinerPanel::Render(
             ColorPickerLayerOrdinal = ColorPickerLayerOrdinal == Layer.LayerOrdinal ? 0u : Layer.LayerOrdinal;
         }
 
-        // Right-side controls: [55%] 0px box + [+] bind + [x] delete
-        const Rectangle2D DelBtn  { BoxRect.Right() - 24.0f, BoxRect.Y + 11.0f, 20.0f, 20.0f };
-        const Rectangle2D BindBtn { DelBtn.X - 22.0f, BoxRect.Y + 11.0f, 20.0f, 20.0f };
-        const Rectangle2D PctBox  { BindBtn.X - 40.0f, BoxRect.Y + 11.0f, 36.0f, 20.0f };
+        // Right-side controls: [55%] 0px box (.pz-layer-pct-box) + [+] bind + [x] delete
+        const Rectangle2D DelBtn  { BoxRect.Right() - 24.0f, BoxRect.Y + 9.5f, 20.0f, 20.0f };
+        const Rectangle2D BindBtn { DelBtn.X - 22.0f, BoxRect.Y + 9.5f, 20.0f, 20.0f };
+        const Rectangle2D PctBox  { BindBtn.X - 40.0f, BoxRect.Y + 9.5f, 36.0f, 20.0f };
 
-        Surface.FillRectangle(PctBox, Theme.WellBg, 0.0f);
-        Surface.StrokeRectangle(PctBox, Theme.BorderStrong, 0.0f, 1.0f);
+        Surface.FillRectangle(PctBox, ColorRgba{ 32, 32, 32, 255 }, 0.0f);
+        Surface.StrokeRectangle(PctBox, ColorRgba{ 50, 50, 50, 255 }, 0.0f, 1.0f);
         char PctStr[16]{};
         std::snprintf(PctStr, sizeof(PctStr), "%.0f%%", Layer.TargetSharePercent);
         const float PctW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 9.5f, PctStr);
@@ -746,7 +748,7 @@ void UVOutlinerPanel::Render(
             FontWeightClass::Medium,
             { PctBox.X + (PctBox.Width - PctW) * 0.5f, PctBox.Y + 3.5f },
             9.5f,
-            LayerCol,
+            ColorRgba{ 239, 244, 207, 255 },
             PctStr);
 
         // Bind '+' button
@@ -756,9 +758,12 @@ void UVOutlinerPanel::Render(
             ControlAppearance::RecordHoveredTooltip(
                 BindBtn, OptionalTooltip::FromText("Bind the currently selected faces to this priority layer."));
         }
-        Surface.FillRectangle(BindBtn, BindHover ? Theme.HoverBg : Theme.WellBg, 0.0f);
+        Surface.FillRectangle(BindBtn, BindHover ? Theme.HoverBg : ColorRgba{ 32, 32, 32, 255 }, 0.0f);
         Surface.StrokeRectangle(BindBtn, Theme.BorderSubtle, 0.0f, 1.0f);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BindBtn.X + 6.0f, BindBtn.Y + 2.5f }, 11.0f, Theme.TextMuted, "+");
+        VectorIconRepository::ConstructControl(
+            Surface,
+            ControlIcon::PlusAdd,
+            VectorIconPlacement{ BindBtn.X + 4.5f, BindBtn.Y + 4.5f, 11.0f, BindHover ? Theme.TextPrimary : Theme.TextMuted, 1.7f });
 
         // Delete 'x' button
         const bool DelHover = DelBtn.Contains(Cursor);
@@ -767,22 +772,22 @@ void UVOutlinerPanel::Render(
             ControlAppearance::RecordHoveredTooltip(
                 DelBtn, OptionalTooltip::FromText("Delete this priority layer and return its faces to the remainder."));
         }
-        Surface.FillRectangle(DelBtn, DelHover ? Theme.DangerSoft : Theme.WellBg, 0.0f);
+        Surface.FillRectangle(DelBtn, DelHover ? Theme.DangerSoft : ColorRgba{ 32, 32, 32, 255 }, 0.0f);
         Surface.StrokeRectangle(DelBtn, Theme.BorderSubtle, 0.0f, 1.0f);
         VectorIconRepository::ConstructControl(
             Surface,
             ControlIcon::CloseCross,
             VectorIconPlacement{ DelBtn.X + 4.5f, DelBtn.Y + 4.5f, 11.0f, DelHover ? Theme.DangerInk : Theme.TextMuted, 1.6f });
 
-        // Title & Subtitle
-        const float TextAvailW = std::max(40.0f, PctBox.X - (BoxRect.X + 30.0f) - 6.0f);
+        // Title & Subtitle (.pz-layer-box-title & .pz-layer-box-sub)
+        const float TextAvailW = std::max(40.0f, PctBox.X - (BoxRect.X + 31.0f) - 6.0f);
         WorkspaceAppearance::ConstructTruncatedText(
             Surface,
             FontWeightClass::Regular,
-            { BoxRect.X + 30.0f, BoxRect.Y + 6.0f },
+            { BoxRect.X + 31.0f, BoxRect.Y + 5.0f },
             TextAvailW,
             11.0f,
-            Theme.TextPrimary,
+            RowSelected ? ColorRgba{ 255, 255, 255, 255 } : Theme.TextPrimary,
             Layer.LayerTitle);
 
         char SubMeta[96]{};
@@ -821,7 +826,7 @@ void UVOutlinerPanel::Render(
         WorkspaceAppearance::ConstructTruncatedText(
             Surface,
             FontWeightClass::Regular,
-            { BoxRect.X + 30.0f, BoxRect.Y + 22.5f },
+            { BoxRect.X + 31.0f, BoxRect.Y + 21.0f },
             TextAvailW,
             8.8f,
             Theme.TextMuted,
@@ -848,7 +853,7 @@ void UVOutlinerPanel::Render(
             }
         }
 
-        BodyY += 46.0f;
+        BodyY += 42.0f;
     }
 
     if (PendingDeleteLayer != 0u)
@@ -862,17 +867,19 @@ void UVOutlinerPanel::Render(
     {
         const bool RemActive = (Session->SelectedLayerOrdinal == 0u);
         const ColorRgba RemCol{ 110, 110, 110, 255 };
-        const Rectangle2D RemBox{ LeftX, BodyY, InnerW, 42.0f };
+        const Rectangle2D RemBox{ LeftX, BodyY, InnerW, 39.0f };
         const bool        RemHover  = ScrollArea.Contains(Cursor) && RemBox.Contains(Cursor);
 
-        Surface.FillRectangle(RemBox, RemActive ? Theme.AccentSoft : (RemHover ? Theme.HoverBg : Theme.WellBg), 0.0f);
-        Surface.StrokeRectangle(RemBox, RemActive ? Theme.AccentBorder : Theme.BorderSubtle, 0.0f, 1.0f);
+        const ColorRgba RemFill   = RemActive ? ColorRgba{ 38, 38, 38, 255 } : (RemHover ? ColorRgba{ 30, 30, 30, 255 } : ColorRgba{ 20, 20, 20, 255 });
+        const ColorRgba RemBorder = RemActive ? ColorRgba{ 68, 68, 68, 255 } : ColorRgba{ 39, 39, 39, 255 };
+        Surface.FillRectangle(RemBox, RemFill, 0.0f);
+        Surface.StrokeRectangle(RemBox, RemBorder, 0.0f, 1.0f);
         Surface.FillRectangle({ RemBox.X, RemBox.Y, 3.0f, RemBox.Height }, RemCol, 0.0f);
-        Surface.FillRectangle({ RemBox.X + 11.0f, RemBox.Y + 15.0f, 12.0f, 12.0f }, RemCol, 0.0f);
+        Surface.FillRectangle({ RemBox.X + 10.0f, RemBox.Y + 13.5f, 12.0f, 12.0f }, RemCol, 0.0f);
 
-        const Rectangle2D PctBox{ RemBox.Right() - 44.0f, RemBox.Y + 11.0f, 36.0f, 20.0f };
-        Surface.FillRectangle(PctBox, Theme.SectionBg, 0.0f);
-        Surface.StrokeRectangle(PctBox, Theme.BorderSubtle, 0.0f, 1.0f);
+        const Rectangle2D PctBox{ RemBox.Right() - 44.0f, RemBox.Y + 9.5f, 36.0f, 20.0f };
+        Surface.FillRectangle(PctBox, ColorRgba{ 32, 32, 32, 255 }, 0.0f);
+        Surface.StrokeRectangle(PctBox, ColorRgba{ 50, 50, 50, 255 }, 0.0f, 1.0f);
         char RemPct[16]{};
         std::snprintf(RemPct, sizeof(RemPct), "%.0f%%", Session->Asset.Layers.DeriveRemainderSharePercent());
         const float PctW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 9.5f, RemPct);
@@ -881,8 +888,8 @@ void UVOutlinerPanel::Render(
         WorkspaceAppearance::ConstructTruncatedText(
             Surface,
             FontWeightClass::Regular,
-            { RemBox.X + 30.0f, RemBox.Y + 6.0f },
-            PctBox.X - (RemBox.X + 34.0f),
+            { RemBox.X + 31.0f, RemBox.Y + 5.0f },
+            PctBox.X - (RemBox.X + 35.0f),
             11.0f,
             Theme.TextPrimary,
             "Unassigned Remainder");
@@ -892,8 +899,8 @@ void UVOutlinerPanel::Render(
         WorkspaceAppearance::ConstructTruncatedText(
             Surface,
             FontWeightClass::Regular,
-            { RemBox.X + 30.0f, RemBox.Y + 22.5f },
-            PctBox.X - (RemBox.X + 34.0f),
+            { RemBox.X + 31.0f, RemBox.Y + 21.0f },
+            PctBox.X - (RemBox.X + 35.0f),
             8.8f,
             Theme.TextMuted,
             RemMeta);
@@ -907,7 +914,7 @@ void UVOutlinerPanel::Render(
         {
             SelectLayerFacesInCurrentFilter(0u, false);
         }
-        BodyY += 48.0f;
+        BodyY += 42.0f;
     }
 
     if (ColorPickerLayerOrdinal != 0u && ColorPaletteLayerRow >= 0 && ColorPaletteBounds.Height > 0.0f)

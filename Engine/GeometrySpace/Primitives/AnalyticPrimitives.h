@@ -12,6 +12,7 @@
 #include "Engine/GeometrySpace/Network/FacePartitionRegister.h"
 #include "Engine/GeometrySpace/Network/PolygonNetwork.h"
 #include "Engine/Mathematics/AxisCoordinates.h"
+#include "Engine/Mathematics/CoordinateSpace.h"
 
 #include <cstdint>
 #include <vector>
@@ -86,6 +87,8 @@ void AppendTorusRingPrimitive(
     uint16_t                     PriorityLayerOrdinal = 0u,
     uint16_t                     PartGroupOrdinal     = 0u);
 
-[[nodiscard]] ConstructedSampleAsset ConstructSamplePolygonNetwork(SampleAssetPreset Preset);
+[[nodiscard]] ConstructedSampleAsset ConstructSamplePolygonNetwork(
+    SampleAssetPreset                 Preset,
+    Mathematics::WorldCoordinateBasis TargetBasis = Mathematics::QueryActiveWorldBasis());
 
 } // namespace Frontier::GeometrySpace

@@ -9,6 +9,7 @@
 
 #include "Engine/Components/Controls/ConfirmationDialogue.h"
 #include "Engine/Components/Controls/CapsuleButton.h"
+#include "Engine/Input/InputExtension.h"
 
 #include <imgui.h>
 
@@ -251,13 +252,14 @@ DialogueResponse ConfirmationDialogue::ConstructModal(
         Response = DialogueResponse::Confirmed;
     }
 
-    if (ImGui::GetCurrentContext() != nullptr)
     {
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        const auto& Snapshot = Input::InputExtension::InspectActiveEditorSnapshot();
+        if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::Escape, false))
         {
             Response = DialogueResponse::Cancelled;
         }
-        else if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))
+        else if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::Enter, false) ||
+                 Snapshot.QueryKeyPressed(Input::InputLogicalKey::KeypadEnter, false))
         {
             Response = DialogueResponse::Confirmed;
         }

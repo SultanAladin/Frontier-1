@@ -68,11 +68,13 @@ bool UVWorkspaceSession::InitializeGPUSolvers(
 {
     const bool RelaxReady   = StretchRelaxer.InitializeGPUCompute(DeviceInterchange, CompiledShaderDir);
     const bool SkylineReady = SkylinePacker.InitializeGPUCompute(DeviceInterchange, CompiledShaderDir);
+    (void)OpticsEncoder.InitializeOpticsEncoder(DeviceInterchange, CompiledShaderDir);
     return RelaxReady && SkylineReady;
 }
 
 void UVWorkspaceSession::TeardownGPUSolvers() noexcept
 {
+    OpticsEncoder.TeardownOpticsEncoder();
     StretchRelaxer.TeardownGPUCompute();
     SkylinePacker.TeardownGPUCompute();
 }
@@ -143,6 +145,8 @@ void UVWorkspaceSession::InitializeLoadedAssetLayout()
         Rig.TargetPivot    = { 0.0f, 0.0f, 0.42f };
     }
     Projection.ConfigureSpatialCamera(Rig);
+    SpatialCameraComponent.AlignFromSpatialRig(Rig, true);
+    SmoothedCameraActive = false;
 
     const float MaxTileU = static_cast<float>(std::max<std::size_t>(1u, Asset.UDIMTiles.size()));
     Projection.ConfigurePlanarDomainSpan(MaxTileU, 1.0f);
@@ -453,7 +457,11 @@ void UVWorkspaceSession::ApplyMatCapToActiveSelection(uint8_t MatCapSlot)
     FramebuffersDirty = true;
 }
 
-void UVWorkspaceSession::ApplySurfaceRoughnessMetallic(float Roughness, float Metallic, float MatCapBlend)
+void UVWorkspaceSession::ApplySurfaceRoughnessMetallic(
+    float Roughness,
+    float Metallic,
+    float MatCapBlend,
+    float Specular)
 {
     auto TargetFaces = SelectionMask.CollectSelectedFaces();
     if (TargetFaces.empty())
@@ -468,6 +476,7 @@ void UVWorkspaceSession::ApplySurfaceRoughnessMetallic(float Roughness, float Me
             auto& Sh       = Asset.Network.Faces[FaceIdx].Shading;
             Sh.Roughness   = std::clamp(Roughness, 0.04f, 1.0f);
             Sh.Metallic    = std::clamp(Metallic, 0.0f, 1.0f);
+            Sh.Specular    = std::clamp(Specular, 0.0f, 1.0f);
             Sh.MatCapBlend = std::clamp(MatCapBlend, 0.0f, 1.0f);
         }
     }
@@ -1140,6 +1149,24 @@ void UVWorkspaceSession::SyncNetworkToGPU()
     }
 }
 
+void UVWorkspaceSession::AdvanceWorkspaceCamera(float DeltaSeconds) noexcept
+{
+    SmoothedCameraActive = true;
+    const auto& Rig      = ActiveDocument.InspectViewportProjection().InspectSpatialCamera();
+    SpatialCameraComponent.AlignFromSpatialRig(Rig, false);
+
+    const float SafeDt = std::clamp(DeltaSeconds, 1.0f / 500.0f, 0.10f);
+    const float Aspect = (Framebuffer3DHeight > 0u)
+                             ? (static_cast<float>(Framebuffer3DWidth) / static_cast<float>(Framebuffer3DHeight))
+                             : (16.0f / 9.0f);
+    const bool PreviouslySettling = SpatialCameraComponent.QuerySettlingMotion();
+    SpatialCameraComponent.AdvanceKinematics(SafeDt, Aspect);
+    if (PreviouslySettling || SpatialCameraComponent.QuerySettlingMotion())
+    {
+        FramebuffersDirty = true;
+    }
+}
+
 void UVWorkspaceSession::RefreshViewportFramebuffers(
     uint32_t Viewport3DW,
     uint32_t Viewport3DH,
@@ -1175,13 +1202,22 @@ void UVWorkspaceSession::RefreshViewportFramebuffers(
     const auto& Rig        = Projection.InspectSpatialCamera();
     const auto  TileCfg    = QueryUDIMTileSetting(ActiveUDIMNumber);
 
-    RenderOptions3D.Camera.TargetPivot    = Rig.TargetPivot;
-    RenderOptions3D.Camera.YawRadians     = Rig.YawRadians;
-    RenderOptions3D.Camera.PitchRadians   = Rig.PitchRadians;
-    RenderOptions3D.Camera.DistanceMeters = Rig.DistanceMeters;
-    RenderOptions3D.Camera.VerticalFovDeg = Rig.VerticalFovDeg;
-    RenderOptions3D.SeamOverlayEnabled    = WorkspaceConfig.InspectUVPreferences().SeamOverlayEnabled;
-    RenderOptions3D.WireframeEnabled      = WorkspaceConfig.InspectUVPreferences().WireframeOverlayEnabled;
+    if (!SmoothedCameraActive)
+    {
+        SpatialCameraComponent.AlignFromSpatialRig(Rig, true);
+    }
+    const auto& SmoothedPosture = SpatialCameraComponent.InspectPosture();
+    const auto& CamConfig       = SpatialCameraComponent.InspectConfiguration();
+
+    RenderOptions3D.Camera.TargetPivot            = SmoothedPosture.CurrentPivot;
+    RenderOptions3D.Camera.YawRadians             = SmoothedPosture.CurrentYawRadians;
+    RenderOptions3D.Camera.PitchRadians           = SmoothedPosture.CurrentPitchRadians;
+    RenderOptions3D.Camera.DistanceMeters         = SmoothedPosture.CurrentDistanceMeters;
+    RenderOptions3D.Camera.VerticalFovDeg         = SmoothedPosture.VerticalFovDegrees;
+    RenderOptions3D.Camera.Basis                  = CamConfig.WorldBasis;
+    RenderOptions3D.Camera.OrthographicProjection = (CamConfig.ProjectionMode == Components::CameraProjectionMode::Orthographic);
+    RenderOptions3D.SeamOverlayEnabled            = WorkspaceConfig.InspectUVPreferences().SeamOverlayEnabled;
+    RenderOptions3D.WireframeEnabled              = WorkspaceConfig.InspectUVPreferences().WireframeOverlayEnabled;
 
     RenderOptions2D.CheckerEnabled        = WorkspaceConfig.InspectUVPreferences().CheckerOverlayEnabled;
     RenderOptions2D.SeamOverlayEnabled    = WorkspaceConfig.InspectUVPreferences().SeamOverlayEnabled;
@@ -1195,6 +1231,7 @@ void UVWorkspaceSession::RefreshViewportFramebuffers(
         {
             Framebuffer3DWidth  = Render3DW;
             Framebuffer3DHeight = Render3DH;
+            (void)OpticsEncoder.ExecuteGPUOptics(Render3DW, Render3DH, CamConfig, {}, Framebuffer3DRGBA);
         }
     }
 

@@ -54,6 +54,7 @@ void EngineConfiguration::Configure(EngineConfigurationDescriptor NewDescriptor)
         ? std::max(2u, NewDescriptor.RequestedChannelLanes)
         : DeriveOptimalChannelLanes(HardwareThreads, NewDescriptor.ReservedDomainThreads);
 
+    Mathematics::AssignActiveWorldBasis(NewDescriptor.WorldBasis);
     Descriptor = std::move(NewDescriptor);
 }
 
@@ -101,6 +102,14 @@ void EngineConfiguration::ConfigureFromCommandLine(std::span<const std::string_v
         else if (Argument == "--disable-gpu-pick")
         {
             Modified.GPUPickingEnabled = false;
+        }
+        else if (Argument == "--basis=y-up" || Argument == "--world-basis=y-up")
+        {
+            Modified.WorldBasis = Mathematics::WorldCoordinateBasis::RightHandedYUp;
+        }
+        else if (Argument == "--basis=z-up" || Argument == "--world-basis=z-up")
+        {
+            Modified.WorldBasis = Mathematics::WorldCoordinateBasis::RightHandedZUp;
         }
     }
 
@@ -164,6 +173,11 @@ HostLaunchMode EngineConfiguration::QueryLaunchMode() const noexcept
 WorkspaceCategory EngineConfiguration::QueryWorkspaceCategory() const noexcept
 {
     return Descriptor.ActiveWorkspace;
+}
+
+Mathematics::WorldCoordinateBasis EngineConfiguration::QueryWorldBasis() const noexcept
+{
+    return Descriptor.WorldBasis;
 }
 
 uint32_t EngineConfiguration::QueryResolvedChannelLanes() const noexcept

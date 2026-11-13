@@ -66,6 +66,7 @@ public:
         uint32_t PlanarHeightPx)>;
 
     using SplitModeChangedCallback    = std::function<void(Editor::ViewportSplitMode NewMode)>;
+    using SplitRatioChangedCallback   = std::function<void(float NewRatio)>;
     using ViewportInteractionCallback = std::function<void(const ViewportInteractionReading& Reading)>;
 
     ViewportProjectionPane();
@@ -80,6 +81,7 @@ public:
     void ConfigureStatusBanner(std::string_view BannerText);
     void AssignRasterBufferSource(RasterBufferSyncCallback SourceCallback);
     void AssignSplitModeCallback(SplitModeChangedCallback Callback);
+    void AssignSplitRatioCallback(SplitRatioChangedCallback Callback);
     void AssignInteractionCallback(ViewportInteractionCallback Callback);
 
     [[nodiscard]] Editor::ViewportProjection&       AccessProjection() noexcept;
@@ -110,11 +112,13 @@ private:
     std::string                      SpatialIndicatorTitle    { "3D PROJECTION + MATCAP + GIZMO" };
     std::string                      StatusBanner         {};
     std::vector<ViewportToolbarChip> DomainChips          {};
-    RasterBufferSyncCallback          RasterBufferSource  {};
-    SplitModeChangedCallback         SplitChangedNotifier {};
-    ViewportInteractionCallback      InteractionCallback  {};
-    ImTextureData                    PlanarTexture        {};
-    ImTextureData                    SpatialTexture       {};
+    RasterBufferSyncCallback          RasterBufferSource       {};
+    SplitModeChangedCallback         SplitChangedNotifier     {};
+    SplitRatioChangedCallback        SplitRatioNotifier       {};
+    ViewportInteractionCallback      InteractionCallback      {};
+    ImTextureData                    PlanarTexture            {};
+    ImTextureData                    SpatialTexture           {};
+    bool                             SplitterDragActive       = false;
 };
 
 } // namespace Frontier

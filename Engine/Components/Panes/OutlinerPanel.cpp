@@ -1360,24 +1360,39 @@ void OutlinerPanel::Render(
                 }
             }
 
-            // Two-line row identity (title + subtitle) + optional right-side "locked" tag
+            // Two-line row identity (title + subtitle) + optional right-side lock icon & folder count indicator
             float RightLimitX = StatusCenter.X - 14.0f;
             if (Entry->Locked)
             {
-                const char* LockedTag = "locked";
-                const float LockedW   = WorkspaceAppearance::MeasureWeightedTextWidth(
+                RightLimitX -= 20.0f;
+                VectorIconRepository::ConstructControl(
                     Surface,
-                    FontWeightClass::Regular,
-                    9.5f,
-                    LockedTag);
-                RightLimitX -= (LockedW + 8.0f);
+                    ControlIcon::LockClosed,
+                    VectorIconPlacement{
+                        RightLimitX + 4.0f,
+                        RowRect.Center().Y - 6.0f,
+                        12.0f,
+                        ColorRgba{ 148, 148, 148, 255 }.ScaledAlpha(RowAlpha),
+                        1.7f });
+            }
+            if (Entry->Category == ConstructSlotCategory::Folder && RightLimitX > RowRect.X + 120.0f)
+            {
+                char CountLabel[24]{};
+                std::snprintf(CountLabel, sizeof(CountLabel), "%u", VisRow.NestedEntryCount);
+                const float CountTextW = WorkspaceAppearance::MeasureWeightedTextWidth(
+                    Surface, FontWeightClass::Medium, 9.0f, CountLabel);
+                const float BoxW = std::max(20.0f, CountTextW + 10.0f);
+                RightLimitX -= (BoxW + 6.0f);
+                const Rectangle2D CountBoxRect{ RightLimitX + 2.0f, RowRect.Center().Y - 9.0f, BoxW, 18.0f };
+                Surface.FillRectangle(CountBoxRect, ColorRgba{ 32, 32, 32, 255 }, 0.0f);
+                Surface.StrokeRectangle(CountBoxRect, ColorRgba{ 50, 50, 50, 255 }, 0.0f, 1.0f);
                 WorkspaceAppearance::ConstructWeightedText(
                     Surface,
-                    FontWeightClass::Regular,
-                    { RightLimitX + 4.0f, RowRect.Center().Y - 6.0f },
-                    9.5f,
-                    ColorRgba{ 138, 138, 138, 255 }.ScaledAlpha(RowAlpha),
-                    LockedTag);
+                    FontWeightClass::Medium,
+                    { CountBoxRect.X + (CountBoxRect.Width - CountTextW) * 0.5f, CountBoxRect.Y + 3.0f },
+                    9.0f,
+                    ColorRgba{ 196, 196, 196, 255 }.ScaledAlpha(RowAlpha),
+                    CountLabel);
             }
 
             const float IdentityX    = IconOrigin.X + 31.0f;

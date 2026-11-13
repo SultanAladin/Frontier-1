@@ -76,8 +76,8 @@ void PresentHostWindowImGuiDockRegion(
     char RootWindowName[96]{};
     FormatWindowRootLabel(RootWindowName, sizeof(RootWindowName), DomainToken, WindowToken);
 
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-    ImGui::SetNextWindowSize(ImVec2(SurfaceWidthPx, SurfaceHeightPx));
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(SurfaceWidthPx, SurfaceHeightPx), ImGuiCond_Always);
 
     constexpr ImGuiWindowFlags RootHostWindowMask =
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
@@ -90,9 +90,10 @@ void PresentHostWindowImGuiDockRegion(
     ImGui::Begin(RootWindowName, nullptr, RootHostWindowMask);
     ImGui::PopStyleVar(3);
 
-    const ImGuiID RootDockId = ImGui::GetID(RootWindowName);
+    const ImGuiID  RootDockId         = ImGui::GetID(RootWindowName);
+    ImGuiDockNode* ExistingRootRegion = ImGui::DockBuilderGetNode(RootDockId);
 
-    if (RebuildLayout || ImGui::DockBuilderGetNode(RootDockId) == nullptr)
+    if (RebuildLayout || ExistingRootRegion == nullptr)
     {
         ImGui::DockBuilderRemoveNode(RootDockId);
         ImGui::DockBuilderAddNode(RootDockId, ImGuiDockNodeFlags_DockSpace);
@@ -161,8 +162,13 @@ void PresentHostWindowImGuiDockRegion(
 
         ImGui::DockBuilderFinish(RootDockId);
     }
+    else if (std::abs(ExistingRootRegion->Size.x - SurfaceWidthPx) > 0.5f ||
+             std::abs(ExistingRootRegion->Size.y - SurfaceHeightPx) > 0.5f)
+    {
+        ImGui::DockBuilderSetNodeSize(RootDockId, ImVec2(SurfaceWidthPx, SurfaceHeightPx));
+    }
 
-    ImGui::DockSpace(RootDockId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None, &ApplicationDockClass);
+    ImGui::DockSpace(RootDockId, ImVec2(SurfaceWidthPx, SurfaceHeightPx), ImGuiDockNodeFlags_None, &ApplicationDockClass);
     ImGui::End();
 
     uint32_t ClickedAddTotal = 0u;

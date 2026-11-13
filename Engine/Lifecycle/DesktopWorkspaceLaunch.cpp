@@ -16,6 +16,7 @@
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.h"
 #include "Engine/GeometricRaster/UV/UVWorkspaceRasterizer.h"
+#include "Engine/Input/ImGuiInputAdapter.h"
 #include "Engine/Input/InputExtension.h"
 #include "Engine/Windowing/PlatformWindow.h"
 #include "Engine/Workspaces/UV/UVWorkspaceHost.h"
@@ -23,13 +24,6 @@
 #if FRONTIER_EDITOR_ENABLED
 #include "Engine/Editor/Explorer/ContentBrowser.h"
 #include "Engine/Lifecycle/EditorLifecycle.h"
-#endif
-
-#if !defined(__ANDROID__)
-#ifndef GLFW_INCLUDE_NONE
-#define GLFW_INCLUDE_NONE
-#endif
-#include <GLFW/glfw3.h>
 #endif
 
 #include <imgui.h>
@@ -48,16 +42,6 @@ namespace Frontier::Lifecycle
 
 namespace
 {
-
-struct GlfwSupplementalQueue
-{
-    GLFWcharfun                ChainCharCallback = nullptr;
-    GLFWdropfun                ChainDropCallback = nullptr;
-    std::vector<unsigned int>  CodePoints        {};
-    std::vector<std::string>   DroppedPaths      {};
-};
-
-GlfwSupplementalQueue* ActiveSupplementalQueue = nullptr;
 
 void AppendBigEndian32(std::vector<uint8_t>& Buffer, uint32_t Word)
 {
@@ -164,42 +148,6 @@ void AppendPngChunk(std::vector<uint8_t>& Stream, const char Type[4], const std:
     Out.write(reinterpret_cast<const char*>(Png.data()), static_cast<std::streamsize>(Png.size()));
     return Out.good();
 }
-
-#if !defined(__ANDROID__)
-void SynchronizeGlfwToImGui(GLFWwindow* Win, ImGuiIO& Io, GlfwSupplementalQueue& Queue)
-{
-    if (Win == nullptr)
-    {
-        return;
-    }
-    double MouseX = 0.0;
-    double MouseY = 0.0;
-    glfwGetCursorPos(Win, &MouseX, &MouseY);
-    Io.AddMousePosEvent(static_cast<float>(MouseX), static_cast<float>(MouseY));
-    Io.AddMouseButtonEvent(0, glfwGetMouseButton(Win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
-    Io.AddMouseButtonEvent(1, glfwGetMouseButton(Win, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
-    Io.AddMouseButtonEvent(2, glfwGetMouseButton(Win, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS);
-
-    const bool Ctrl  = glfwGetKey(Win, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || glfwGetKey(Win, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
-    const bool Shift = glfwGetKey(Win, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(Win, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
-    const bool Alt   = glfwGetKey(Win, GLFW_KEY_LEFT_ALT) == GLFW_PRESS || glfwGetKey(Win, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
-    Io.AddKeyEvent(ImGuiMod_Ctrl, Ctrl);
-    Io.AddKeyEvent(ImGuiMod_Shift, Shift);
-    Io.AddKeyEvent(ImGuiMod_Alt, Alt);
-    Io.AddKeyEvent(ImGuiKey_Escape, glfwGetKey(Win, GLFW_KEY_ESCAPE) == GLFW_PRESS);
-    Io.AddKeyEvent(ImGuiKey_Enter, glfwGetKey(Win, GLFW_KEY_ENTER) == GLFW_PRESS);
-    Io.AddKeyEvent(ImGuiKey_Backspace, glfwGetKey(Win, GLFW_KEY_BACKSPACE) == GLFW_PRESS);
-    Io.AddKeyEvent(ImGuiKey_Delete, glfwGetKey(Win, GLFW_KEY_DELETE) == GLFW_PRESS);
-    Io.AddKeyEvent(ImGuiKey_LeftArrow, glfwGetKey(Win, GLFW_KEY_LEFT) == GLFW_PRESS);
-    Io.AddKeyEvent(ImGuiKey_RightArrow, glfwGetKey(Win, GLFW_KEY_RIGHT) == GLFW_PRESS);
-
-    for (const unsigned int Cp : Queue.CodePoints)
-    {
-        Io.AddInputCharacter(Cp);
-    }
-    Queue.CodePoints.clear();
-}
-#endif
 
 } // namespace
 
@@ -345,44 +293,6 @@ int LaunchDesktopWorkspace(
         return 1;
     }
 
-    GlfwSupplementalQueue SupplementalQueue {};
-    ActiveSupplementalQueue = &SupplementalQueue;
-    if (auto* GlfwWin = static_cast<GLFWwindow*>(DesktopWindow.NativeGlfwHandle()))
-    {
-        SupplementalQueue.ChainCharCallback = glfwSetCharCallback(
-            GlfwWin,
-            [](GLFWwindow* W, unsigned int Codepoint)
-            {
-                if (ActiveSupplementalQueue != nullptr)
-                {
-                    ActiveSupplementalQueue->CodePoints.push_back(Codepoint);
-                    if (ActiveSupplementalQueue->ChainCharCallback != nullptr)
-                    {
-                        ActiveSupplementalQueue->ChainCharCallback(W, Codepoint);
-                    }
-                }
-            });
-        SupplementalQueue.ChainDropCallback = glfwSetDropCallback(
-            GlfwWin,
-            [](GLFWwindow* W, int Count, const char** Paths)
-            {
-                if (ActiveSupplementalQueue != nullptr && Paths != nullptr)
-                {
-                    for (int Idx = 0; Idx < Count; ++Idx)
-                    {
-                        if (Paths[Idx] != nullptr)
-                        {
-                            ActiveSupplementalQueue->DroppedPaths.emplace_back(Paths[Idx]);
-                        }
-                    }
-                    if (ActiveSupplementalQueue->ChainDropCallback != nullptr)
-                    {
-                        ActiveSupplementalQueue->ChainDropCallback(W, Count, Paths);
-                    }
-                }
-            });
-    }
-
     // In headless GLFW_PLATFORM_NULL environments without an interactive display server, bound frame loop unless specified
     if (DesktopWindow.PlatformCategory() == Windowing::WindowPlatformCategory::GlfwNull &&
         InitialOptions.BoundedStepLimit == 0u)
@@ -521,10 +431,13 @@ int LaunchDesktopWorkspace(
 #if !defined(__ANDROID__)
         InputCoordinator.BeginTick();
         DesktopWindow.PollOperatingEvents(InputCoordinator);
+        (void)InputCoordinator.TickExchange();
+        Input::InputExtension::AssignActiveCoordinator(&InputCoordinator);
+
         const auto Extent = DesktopWindow.InspectExtent();
         if (Extent.SurfacePixelWidth == 0u || Extent.SurfacePixelHeight == 0u)
         {
-            glfwWaitEventsTimeout(0.01);
+            DesktopWindow.WaitOperatingEventsTimeout(0.01);
             continue;
         }
         SurfaceW = Extent.SurfacePixelWidth;
@@ -537,21 +450,22 @@ int LaunchDesktopWorkspace(
                 HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
             }
         }
+        else
 #endif
-        if (auto* GlfwWin = static_cast<GLFWwindow*>(DesktopWindow.NativeGlfwHandle()))
         {
-            SynchronizeGlfwToImGui(GlfwWin, Io, SupplementalQueue);
+            if (auto* HostSurface = StandaloneDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+            {
+                HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
+            }
         }
-        Io.AddMouseWheelEvent(
-            InputCoordinator.InspectPointerSnapshot().ScrollDeltaX,
-            InputCoordinator.InspectPointerSnapshot().ScrollDeltaY);
 
-        for (const std::string& DropFile : SupplementalQueue.DroppedPaths)
+        (void)Input::ImGuiInputAdapter::ForwardEditorExchangeToImGui(InputCoordinator, Io);
+
+        for (const std::string& DropFile : InputCoordinator.ConsumeDroppedFilePaths())
         {
             std::string DropDiag {};
             (void)UVHost.IntakeExternalFileDrop(DropFile, DropDiag);
         }
-        SupplementalQueue.DroppedPaths.clear();
 #endif
 
         Io.DisplaySize = ImVec2(static_cast<float>(SurfaceW), static_cast<float>(SurfaceH));
@@ -563,6 +477,7 @@ int LaunchDesktopWorkspace(
         if (UseFullEditorLifecycle)
         {
             (void)EditorLoop.ExecuteAuthoringTick(Dt);
+            Input::InputExtension::AssignActiveCoordinator(&InputCoordinator);
             EditorLoop.PresentPrimaryEditorImGui(Dt);
         }
         else
@@ -621,7 +536,6 @@ int LaunchDesktopWorkspace(
     UVRasterizer.TeardownRasterizer();
     InputCoordinator.Finalize();
 #if !defined(__ANDROID__)
-    ActiveSupplementalQueue = nullptr;
     DesktopWindow.Finalize();
 #endif
     TypographyRepository::AssignCurrent(nullptr);

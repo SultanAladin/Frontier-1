@@ -307,8 +307,12 @@ bool GeometryInterchange::ImportWavefrontObjText(
                 std::isfinite(X) && std::isfinite(Y) && std::isfinite(Z) &&
                 std::abs(X) <= 20000.0f && std::abs(Y) <= 20000.0f && std::abs(Z) <= 20000.0f)
             {
-                TempPositions.push_back({ X, Y, Z });
-                (void)OutAsset.Network.AppendVertex({ X, Y, Z });
+                const Mathematics::Axis3D Converted = Mathematics::ConvertVectorBetweenBases(
+                    { X, Y, Z },
+                    Mathematics::WorldCoordinateBasis::RightHandedYUp,
+                    Mathematics::QueryActiveWorldBasis());
+                TempPositions.push_back(Converted);
+                (void)OutAsset.Network.AppendVertex(Converted);
             }
         }
         else if (RawLine.starts_with("vt "))
@@ -454,13 +458,22 @@ std::string GeometryInterchange::ExportWavefrontObjText(
     Out << "# Frontier GeometryInterchange Wavefront OBJ\n";
     Out << "o " << (Network.NetworkTitle.empty() ? "FrontierNetwork" : Network.NetworkTitle) << "\n";
 
+    const auto ActiveBasis = Mathematics::QueryActiveWorldBasis();
     for (const auto& Vert : Network.Vertices)
     {
-        Out << "v " << Vert.Axes.X << " " << Vert.Axes.Y << " " << Vert.Axes.Z << "\n";
+        const Mathematics::Axis3D P = Mathematics::ConvertVectorBetweenBases(
+            Vert.Axes,
+            ActiveBasis,
+            Mathematics::WorldCoordinateBasis::RightHandedYUp);
+        Out << "v " << P.X << " " << P.Y << " " << P.Z << "\n";
     }
     for (const auto& Vert : Network.Vertices)
     {
-        Out << "vn " << Vert.Normal.X << " " << Vert.Normal.Y << " " << Vert.Normal.Z << "\n";
+        const Mathematics::Axis3D N = Mathematics::ConvertVectorBetweenBases(
+            Vert.Normal,
+            ActiveBasis,
+            Mathematics::WorldCoordinateBasis::RightHandedYUp);
+        Out << "vn " << N.X << " " << N.Y << " " << N.Z << "\n";
     }
     for (const auto& Edge : Network.Edges)
     {
@@ -764,7 +777,11 @@ bool GeometryInterchange::ImportGltf2JsonText(
         auto [It, Inserted] = WeldedLookup.emplace(Key, 0u);
         if (Inserted)
         {
-            It->second = OutAsset.Network.AppendVertex(P);
+            const Mathematics::Axis3D Converted = Mathematics::ConvertVectorBetweenBases(
+                P,
+                Mathematics::WorldCoordinateBasis::RightHandedYUp,
+                Mathematics::QueryActiveWorldBasis());
+            It->second = OutAsset.Network.AppendVertex(Converted);
         }
         RemappedVerts[static_cast<std::size_t>(Idx)] = It->second;
 
@@ -905,20 +922,29 @@ std::string GeometryInterchange::ExportGltf2JsonText(const GeometrySpace::Polygo
             continue;
         }
         const uint32_t RootOut = static_cast<uint32_t>(Positions.size() / 3u);
+        const auto ActiveBasis = Mathematics::QueryActiveWorldBasis();
         for (const uint32_t EIdx : FaceEdges)
         {
             const auto& Edge = Network.Edges[EIdx];
             const auto& Vert = Network.Vertices[Edge.OriginVertexIndex];
-            Positions.insert(Positions.end(), { Vert.Axes.X, Vert.Axes.Y, Vert.Axes.Z });
-            Normals.insert(Normals.end(), { Vert.Normal.X, Vert.Normal.Y, Vert.Normal.Z });
+            const Mathematics::Axis3D P = Mathematics::ConvertVectorBetweenBases(
+                Vert.Axes,
+                ActiveBasis,
+                Mathematics::WorldCoordinateBasis::RightHandedYUp);
+            const Mathematics::Axis3D N = Mathematics::ConvertVectorBetweenBases(
+                Vert.Normal,
+                ActiveBasis,
+                Mathematics::WorldCoordinateBasis::RightHandedYUp);
+            Positions.insert(Positions.end(), { P.X, P.Y, P.Z });
+            Normals.insert(Normals.end(), { N.X, N.Y, N.Z });
             Texcoords.insert(Texcoords.end(), { Edge.ParameterUV.U, 1.0f - Edge.ParameterUV.V });
 
-            MinPos.X = std::min(MinPos.X, Vert.Axes.X);
-            MinPos.Y = std::min(MinPos.Y, Vert.Axes.Y);
-            MinPos.Z = std::min(MinPos.Z, Vert.Axes.Z);
-            MaxPos.X = std::max(MaxPos.X, Vert.Axes.X);
-            MaxPos.Y = std::max(MaxPos.Y, Vert.Axes.Y);
-            MaxPos.Z = std::max(MaxPos.Z, Vert.Axes.Z);
+            MinPos.X = std::min(MinPos.X, P.X);
+            MinPos.Y = std::min(MinPos.Y, P.Y);
+            MinPos.Z = std::min(MinPos.Z, P.Z);
+            MaxPos.X = std::max(MaxPos.X, P.X);
+            MaxPos.Y = std::max(MaxPos.Y, P.Y);
+            MaxPos.Z = std::max(MaxPos.Z, P.Z);
         }
         for (std::size_t Tri = 1u; Tri + 1u < FaceEdges.size(); ++Tri)
         {

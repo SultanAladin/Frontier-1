@@ -92,6 +92,9 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
     auto& Proj = Session->AccessViewportProjection();
     Session->SpatialNavigationActive = false;
 
+    const auto& Calib     = Session->AxisCalibration;
+    const float SensScale = std::clamp(Calib.PointerSensitivityPercent / 50.0f, 0.10f, 4.0f);
+
     //--------------------------------------------------------------------------------------------------------------------
     // 1. Camera Orbit, Pan & Cursor-Centered Zoom (MMB / Alt+LMB / Mouse Wheel)
     //--------------------------------------------------------------------------------------------------------------------
@@ -106,16 +109,15 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
             else if (Input.ShiftHeld)
             {
                 Session->SpatialNavigationActive = true;
-                const float PanScale = Proj.InspectSpatialCamera().DistanceMeters * 0.08f;
+                const float PanScale = Proj.InspectSpatialCamera().DistanceMeters * 0.08f * SensScale;
                 Proj.PanSpatialCamera(0.0f, Input.WheelDeltaY * PanScale);
                 Session->FramebuffersDirty = true;
             }
             else
             {
                 Session->SpatialNavigationActive = true;
-                // Treat one wheel notch as a clear dolly step, while bounding high-resolution
-                // wheel events so they cannot flip the multiplier or jump to a distance limit.
-                const float ZoomExponent = std::clamp(-Input.WheelDeltaY * 0.20f, -1.38629436f, 1.38629436f);
+                const float ZoomStep = std::max(0.02f, Calib.WheelZoomStepExponent * SensScale);
+                const float ZoomExponent = std::clamp(-Input.WheelDeltaY * ZoomStep, -1.38629436f, 1.38629436f);
                 Proj.DollySpatialCamera(std::exp(ZoomExponent));
                 Session->FramebuffersDirty = true;
             }
@@ -127,12 +129,16 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
             {
                 if (Input.ShiftHeld)
                 {
-                    const float DistScale = Proj.InspectSpatialCamera().DistanceMeters * 0.0018f;
+                    const float DistScale = Proj.InspectSpatialCamera().DistanceMeters * Calib.PanGainPerPixel * SensScale;
                     Proj.PanSpatialCamera(Input.PointerDeltaX * DistScale, Input.PointerDeltaY * DistScale);
                 }
                 else
                 {
-                    Proj.OrbitSpatialCamera(-Input.PointerDeltaX * 0.0065f, Input.PointerDeltaY * 0.0065f);
+                    const float PitchSign = Calib.InvertPitchAxis ? -1.0f : 1.0f;
+                    const float OrbitGain = Calib.OrbitGainRadiansPerPixel * SensScale;
+                    Proj.OrbitSpatialCamera(
+                        -Input.PointerDeltaX * OrbitGain,
+                        PitchSign * Input.PointerDeltaY * OrbitGain);
                 }
                 Session->FramebuffersDirty = true;
             }
@@ -211,6 +217,17 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
         ActiveRegionTool          = RegionSelectTool::Inactive;
         Session->SeamBrushActive  = false;
         Session->StatusBannerText = "Cleared Active Viewport Tool";
+        return;
+    }
+
+    if (Input.ShortcutRedo)
+    {
+        (void)Session->RedoParameterization();
+        return;
+    }
+    if (Input.ShortcutUndo)
+    {
+        (void)Session->UndoParameterization();
         return;
     }
 

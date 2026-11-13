@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Frontier::Windowing
 {
@@ -353,6 +354,7 @@ public:
 
     [[nodiscard]] bool Initialize(const WindowConfigurationDescriptor& Descriptor) noexcept;
     void               PollOperatingEvents(Input::InputExtension& InputCoordinator) noexcept;
+    void               WaitOperatingEventsTimeout(double TimeoutSeconds) noexcept;
     void               Finalize() noexcept;
 
     [[nodiscard]] bool ApplyPresentationMode(
@@ -404,6 +406,10 @@ private:
     uint32_t                     MaxHeightLimit       = 0;                                                 // [px]    - Maximum resize clamp height
     Input::CursorConfinementMode CurrentCursorMode    = Input::CursorConfinementMode::FreeVisible;         // [-]     - Latest cursor confinement applied
     uint32_t                     DeliveredHapticCount = 0;                                                 // [count] - Outbound haptic directives received
+    float                        LastCursorX          = 0.0f;                                              // [px]    - Previous GLFW cursor X for delta computation
+    float                        LastCursorY          = 0.0f;                                              // [px]    - Previous GLFW cursor Y for delta computation
+    bool                         CursorPositionSeeded = false;                                             // [-]     - True after initial cursor sample
+    std::vector<std::string>     PendingDroppedPaths{};                                                    // [-]     - External OS drop paths buffered until next poll
 };
 
 static_assert(PlatformWindowSurface<DesktopPlatformWindow>,

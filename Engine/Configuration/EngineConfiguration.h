@@ -10,6 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Configuration/BuildConfiguration.h"
+#include "Engine/Mathematics/CoordinateSpace.h"
 
 #include <cstdint>
 #include <span>
@@ -62,10 +63,11 @@ struct EngineConfigurationDescriptor
     std::string       ApplicationTitle      { "Frontier" };                  // [-]     - Window & dock title
     uint32_t          PrimaryWindowWidthPx  = 1600u;                         // [px]    - Initial window width
     uint32_t          PrimaryWindowHeightPx = 980u;                          // [px]    - Initial window height
-    uint32_t          RequestedChannelLanes = 0u;                            // [count] - 0 = derive from hardware threads
-    uint32_t          ReservedDomainThreads = 3u;                            // [count] - OS threads reserved for domains
-    bool              GPUComputeEnabled     = true;                          // [-]     - Enables .slang compute & readback
-    bool              GPUPickingEnabled     = true;                          // [-]     - Enables R32G32B32A32_UINT GPU pick
+    uint32_t                          RequestedChannelLanes = 0u;                            // [count] - 0 = derive from hardware threads
+    uint32_t                          ReservedDomainThreads = 3u;                            // [count] - OS threads reserved for domains
+    Mathematics::WorldCoordinateBasis WorldBasis            = Mathematics::WorldCoordinateBasis::RightHandedZUp; // [-] - Default RHR Z-Up
+    bool                              GPUComputeEnabled     = true;                          // [-]     - Enables .slang compute & readback
+    bool                              GPUPickingEnabled     = true;                          // [-]     - Enables R32G32B32A32_UINT GPU pick
 };
 
 class EngineConfiguration
@@ -89,6 +91,7 @@ public:
     [[nodiscard]] const EngineConfigurationDescriptor& InspectDescriptor() const noexcept;
     [[nodiscard]] HostLaunchMode                       QueryLaunchMode() const noexcept;
     [[nodiscard]] WorkspaceCategory                    QueryWorkspaceCategory() const noexcept;
+    [[nodiscard]] Mathematics::WorldCoordinateBasis    QueryWorldBasis() const noexcept;
     [[nodiscard]] uint32_t                             QueryResolvedChannelLanes() const noexcept;
     [[nodiscard]] bool                                 QueryInteractiveUIEnabled() const noexcept;
     [[nodiscard]] bool                                 QueryWorkspaceIncluded(WorkspaceCategory CandidateWorkspace) const noexcept;

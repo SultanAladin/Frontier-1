@@ -16,6 +16,7 @@
 #include "Engine/GeometricRaster/Picking/ViewportPickQuery.h"
 #include "Engine/GeometrySpace/Network/PolygonNetwork.h"
 #include "Engine/Mathematics/AxisCoordinates.h"
+#include "Engine/Mathematics/CoordinateSpace.h"
 
 #include <array>
 #include <cstdint>
@@ -63,11 +64,13 @@ enum class GPUSelectionOperation : uint32_t
 
 struct CameraOrbitRig3D
 {
-    Mathematics::Axis3D TargetPivot       { 0.0f, 0.0f, 0.35f }; // [m]   - Orbit target point (Z-up)
-    float               YawRadians        = 0.68f;               // [rad] - Horizontal orbit angle
-    float               PitchRadians      = 0.38f;               // [rad] - Elevation angle
-    float               DistanceMeters    = 4.60f;               // [m]   - Camera eye distance
-    float               VerticalFovDeg    = 42.0f;               // [°]   - Perspective vertical FOV
+    Mathematics::Axis3D               TargetPivot            { 0.0f, 0.0f, 0.35f };                              // [m]   - Orbit target point
+    float                             YawRadians             = 0.68f;                                            // [rad] - Horizontal orbit angle
+    float                             PitchRadians           = 0.38f;                                            // [rad] - Elevation angle
+    float                             DistanceMeters         = 4.60f;                                            // [m]   - Camera eye distance
+    float                             VerticalFovDeg         = 42.0f;                                            // [°]   - Perspective vertical FOV
+    bool                              OrthographicProjection = false;                                            // [-]   - True = parallel ortho view
+    Mathematics::WorldCoordinateBasis Basis                  = Mathematics::WorldCoordinateBasis::RightHandedZUp;// [-]   - Active RHR world basis
 };
 
 struct Viewport3DRenderOptions
@@ -207,7 +210,8 @@ private:
         const std::filesystem::path&      FragSpirv,
         std::span<const VkDescriptorType> SlotCategories,
         bool                              DepthTestAndWrite,
-        GraphicsProgramBundle&           OutBundle);
+        bool                              EnableColorAlphaBlend,
+        GraphicsProgramBundle&            OutBundle);
 
     void DestroyGraphicsProgram(GraphicsProgramBundle& Bundle) noexcept;
     [[nodiscard]] bool InitializeMatCapAtlas(const std::filesystem::path& CompiledShaderDirectory);
@@ -223,6 +227,7 @@ private:
 
     GraphicsProgramBundle  SurfaceProgram         {};
     GraphicsProgramBundle  UVCanvasProgram        {};
+    GraphicsProgramBundle  GizmoDepthOnProgram    {};
     GraphicsProgramBundle  GizmoDepthOffProgram   {};
 
     uint32_t                SelectionComputeProgram = UINT32_MAX;

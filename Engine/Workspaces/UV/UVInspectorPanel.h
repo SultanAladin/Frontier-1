@@ -48,6 +48,7 @@ private:
     std::array<float, 5u> CachedTabContentHeights {};
     float               SurfaceRoughness = 0.24f;
     float               SurfaceMetallic  = 0.60f;
+    float               SurfaceSpecular  = 0.50f;
     float               SurfaceMatBlend  = 0.62f;
     uint8_t             SelectedMatCap   = 5u;
     TextEditBuffer      LayerNameEditor  {};

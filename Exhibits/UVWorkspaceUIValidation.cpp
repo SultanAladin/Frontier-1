@@ -213,6 +213,24 @@ int main()
         {
             return 1;
         }
+
+        // Verify live window resize updates root dock container dimensions without requiring layout rebuild
+        if (auto* HostSurface = StandaloneDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+        {
+            HostSurface->ResizeSurface(2200u, 1200u, 1.0f);
+            Io.DisplaySize = ImVec2(2200.0f, 1200.0f);
+            Io.DeltaTime   = 1.0f / 60.0f;
+            ImGui::NewFrame();
+            StandaloneDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+            ImGui::Render();
+            const auto ResizedExtent = HostSurface->InspectExtent();
+            if (!VerifyCondition(
+                    ResizedExtent.PixelWidth == 2200u && ResizedExtent.PixelHeight == 1200u,
+                    "WorkspaceDockContainer propagates live host window resize"))
+            {
+                return 1;
+            }
+        }
         StandaloneDock.Finalize();
     }
 

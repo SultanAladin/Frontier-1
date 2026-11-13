@@ -424,9 +424,29 @@ namespace
     return true;
 }
 
+void ApplyBoundaryBasisConversionFromYUp(
+    PolygonNetwork&                   Network,
+    Mathematics::WorldCoordinateBasis TargetBasis)
+{
+    if (TargetBasis == Mathematics::WorldCoordinateBasis::RightHandedYUp)
+    {
+        return;
+    }
+    for (Vertex& Vert : Network.Vertices)
+    {
+        Vert.Axes = Mathematics::ConvertVectorBetweenBases(
+            Vert.Axes,
+            Mathematics::WorldCoordinateBasis::RightHandedYUp,
+            TargetBasis);
+    }
+    Network.RecomputeNormals();
+}
+
 } // namespace
 
-ConstructedSampleAsset ConstructSamplePolygonNetwork(SampleAssetPreset Preset)
+ConstructedSampleAsset ConstructSamplePolygonNetwork(
+    SampleAssetPreset                 Preset,
+    Mathematics::WorldCoordinateBasis TargetBasis)
 {
     ConstructedSampleAsset Result {};
 
@@ -436,6 +456,7 @@ ConstructedSampleAsset ConstructSamplePolygonNetwork(SampleAssetPreset Preset)
         {
             if (TryLoadControlledIntegratorVehicle(Result))
             {
+                ApplyBoundaryBasisConversionFromYUp(Result.Network, TargetBasis);
                 return Result;
             }
             Result.Network.NetworkTitle = "Controlled Integrator";
@@ -549,6 +570,7 @@ ConstructedSampleAsset ConstructSamplePolygonNetwork(SampleAssetPreset Preset)
         }
     }
 
+    ApplyBoundaryBasisConversionFromYUp(Result.Network, TargetBasis);
     Result.Network.LinkOppositeEdges(true);
     Result.Network.RecomputeNormals();
     Result.Network.MarkDihedralSharpSeams(52.0f, false);

@@ -222,6 +222,11 @@ bool VulkanInterchange::InitializeInterchange(
         EnabledDeviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     }
 
+    VkPhysicalDeviceFeatures SupportedDeviceFeatures {};
+    vkGetPhysicalDeviceFeatures(PhysicalAdapter, &SupportedDeviceFeatures);
+    VkPhysicalDeviceFeatures EnabledDeviceFeatures {};
+    EnabledDeviceFeatures.independentBlend = SupportedDeviceFeatures.independentBlend;
+
     VkPhysicalDeviceTimelineSemaphoreFeatures TimelineFeatures {};
     TimelineFeatures.sType             = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
     TimelineFeatures.timelineSemaphore = VK_TRUE;
@@ -240,6 +245,7 @@ bool VulkanInterchange::InitializeInterchange(
     DeviceCreate.pQueueCreateInfos       = &QueueCreate;
     DeviceCreate.enabledExtensionCount   = static_cast<uint32_t>(EnabledDeviceExtensions.size());
     DeviceCreate.ppEnabledExtensionNames = EnabledDeviceExtensions.data();
+    DeviceCreate.pEnabledFeatures        = &EnabledDeviceFeatures;
 
     if (vkCreateDevice(PhysicalAdapter, &DeviceCreate, nullptr, &LogicalDevice) != VK_SUCCESS)
     {

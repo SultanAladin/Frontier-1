@@ -56,6 +56,11 @@ void ViewportProjectionPane::AssignSplitModeCallback(SplitModeChangedCallback Ca
     SplitChangedNotifier = std::move(Callback);
 }
 
+void ViewportProjectionPane::AssignSplitRatioCallback(SplitRatioChangedCallback Callback)
+{
+    SplitRatioNotifier = std::move(Callback);
+}
+
 void ViewportProjectionPane::AssignInteractionCallback(ViewportInteractionCallback Callback)
 {
     InteractionCallback = std::move(Callback);
@@ -180,26 +185,68 @@ void ViewportProjectionPane::Render(
 
     Rectangle2D Rect2D {};
     Rectangle2D Rect3D {};
+    bool        SplitterHovered = false;
 
-    switch (Projection.QuerySplitMode())
+    auto RecomputeSplitRects = [&]() noexcept
     {
-        case Editor::ViewportSplitMode::SplitPlanarAndSpatial:
+        switch (Projection.QuerySplitMode())
         {
-            const float LeftW = std::floor((ContentW - 8.0f) * Projection.QuerySplitRatio());
-            Rect2D = { ContentX, ContentTop, LeftW, ContentH };
-            Rect3D = { ContentX + LeftW + 8.0f, ContentTop, ContentW - LeftW - 8.0f, ContentH };
-            break;
+            case Editor::ViewportSplitMode::SplitPlanarAndSpatial:
+            {
+                const float LeftW = std::floor((ContentW - 8.0f) * Projection.QuerySplitRatio());
+                Rect2D = { ContentX, ContentTop, LeftW, ContentH };
+                Rect3D = { ContentX + LeftW + 8.0f, ContentTop, ContentW - LeftW - 8.0f, ContentH };
+                break;
+            }
+            case Editor::ViewportSplitMode::Planar2DOnly:
+                Rect2D = { ContentX, ContentTop, ContentW, ContentH };
+                Rect3D = {};
+                break;
+            case Editor::ViewportSplitMode::Spatial3DOnly:
+                Rect2D = {};
+                Rect3D = { ContentX, ContentTop, ContentW, ContentH };
+                break;
         }
-        case Editor::ViewportSplitMode::Planar2DOnly:
-            Rect2D = { ContentX, ContentTop, ContentW, ContentH };
-            break;
-        case Editor::ViewportSplitMode::Spatial3DOnly:
-            Rect3D = { ContentX, ContentTop, ContentW, ContentH };
-            break;
+    };
+    RecomputeSplitRects();
+
+    if (Projection.QuerySplitMode() == Editor::ViewportSplitMode::SplitPlanarAndSpatial)
+    {
+        const Rectangle2D SplitterZone { Rect2D.Right(), ContentTop, 8.0f, ContentH };
+        SplitterHovered = !ToolbarCaught && SplitterZone.Contains(Cursor);
+        if (SplitterHovered && Clicked)
+        {
+            SplitterDragActive = true;
+        }
+        if (SplitterDragActive)
+        {
+            if (Input.PrimaryPointer.Down)
+            {
+                const float UpdatedRatio = (Input.PrimaryPointer.X - ContentX) / std::max(64.0f, ContentW);
+                Projection.ConfigureSplitRatio(UpdatedRatio);
+                if (SplitRatioNotifier)
+                {
+                    SplitRatioNotifier(Projection.QuerySplitRatio());
+                }
+                RecomputeSplitRects();
+            }
+            else
+            {
+                SplitterDragActive = false;
+            }
+        }
+        if ((SplitterHovered || SplitterDragActive) && ImGui::GetCurrentContext() != nullptr)
+        {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        }
+    }
+    else
+    {
+        SplitterDragActive = false;
     }
 
     // 3. Dispatch Interactive Camera, GPU Pick & TransformGizmo Input Before Framebuffer Refresh
-    if (!ToolbarCaught && InteractionCallback)
+    if (!ToolbarCaught && !SplitterDragActive && !(SplitterHovered && Clicked) && InteractionCallback)
     {
         InteractionCallback(ViewportInteractionReading{ Rect2D, Rect3D, Input });
     }
@@ -261,23 +308,66 @@ void ViewportProjectionPane::RenderViewportCanvas(
 
     Rectangle2D Rect2D {};
     Rectangle2D Rect3D {};
+    const Point2D Cursor { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+    bool          SplitterHovered = false;
 
-    switch (Projection.QuerySplitMode())
+    auto RecomputeCanvasSplitRects = [&]() noexcept
     {
-        case Editor::ViewportSplitMode::SplitPlanarAndSpatial:
+        switch (Projection.QuerySplitMode())
         {
-            const float Gap   = 2.0f;
-            const float LeftW = std::floor((CanvasBounds.Width - Gap) * Projection.QuerySplitRatio());
-            Rect2D = { CanvasBounds.X, CanvasBounds.Y, LeftW, CanvasBounds.Height };
-            Rect3D = { CanvasBounds.X + LeftW + Gap, CanvasBounds.Y, CanvasBounds.Width - LeftW - Gap, CanvasBounds.Height };
-            break;
+            case Editor::ViewportSplitMode::SplitPlanarAndSpatial:
+            {
+                const float Gap   = 4.0f;
+                const float LeftW = std::floor((CanvasBounds.Width - Gap) * Projection.QuerySplitRatio());
+                Rect2D = { CanvasBounds.X, CanvasBounds.Y, LeftW, CanvasBounds.Height };
+                Rect3D = { CanvasBounds.X + LeftW + Gap, CanvasBounds.Y, CanvasBounds.Width - LeftW - Gap, CanvasBounds.Height };
+                break;
+            }
+            case Editor::ViewportSplitMode::Planar2DOnly:
+                Rect2D = CanvasBounds;
+                Rect3D = {};
+                break;
+            case Editor::ViewportSplitMode::Spatial3DOnly:
+                Rect2D = {};
+                Rect3D = CanvasBounds;
+                break;
         }
-        case Editor::ViewportSplitMode::Planar2DOnly:
-            Rect2D = CanvasBounds;
-            break;
-        case Editor::ViewportSplitMode::Spatial3DOnly:
-            Rect3D = CanvasBounds;
-            break;
+    };
+    RecomputeCanvasSplitRects();
+
+    if (Projection.QuerySplitMode() == Editor::ViewportSplitMode::SplitPlanarAndSpatial)
+    {
+        const Rectangle2D SplitterZone { Rect2D.Right() - 2.0f, CanvasBounds.Y, 8.0f, CanvasBounds.Height };
+        SplitterHovered = AllowInteraction && SplitterZone.Contains(Cursor);
+        if (SplitterHovered && Input.PrimaryPointer.Pressed)
+        {
+            SplitterDragActive = true;
+        }
+        if (SplitterDragActive)
+        {
+            if (Input.PrimaryPointer.Down)
+            {
+                const float UpdatedRatio = (Input.PrimaryPointer.X - CanvasBounds.X) / std::max(64.0f, CanvasBounds.Width);
+                Projection.ConfigureSplitRatio(UpdatedRatio);
+                if (SplitRatioNotifier)
+                {
+                    SplitRatioNotifier(Projection.QuerySplitRatio());
+                }
+                RecomputeCanvasSplitRects();
+            }
+            else
+            {
+                SplitterDragActive = false;
+            }
+        }
+        if ((SplitterHovered || SplitterDragActive) && ImGui::GetCurrentContext() != nullptr)
+        {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        }
+    }
+    else
+    {
+        SplitterDragActive = false;
     }
 
     if (OutPlanarRect != nullptr)
@@ -289,7 +379,7 @@ void ViewportProjectionPane::RenderViewportCanvas(
         *OutSpatialRect = Rect3D;
     }
 
-    if (AllowInteraction && InteractionCallback)
+    if (AllowInteraction && !SplitterDragActive && !(SplitterHovered && Input.PrimaryPointer.Pressed) && InteractionCallback)
     {
         InteractionCallback(ViewportInteractionReading{ Rect2D, Rect3D, Input });
     }
@@ -304,23 +394,37 @@ void ViewportProjectionPane::RenderViewportCanvas(
             static_cast<uint32_t>(std::max(0.0f, Rect2D.Height)));
     }
 
-    const bool IsSplit = (Projection.QuerySplitMode() == Editor::ViewportSplitMode::SplitPlanarAndSpatial);
+    const bool SplitActive = (Projection.QuerySplitMode() == Editor::ViewportSplitMode::SplitPlanarAndSpatial);
 
     if (Rect2D.Width >= 16.0f && Rect2D.Height >= 16.0f && Slices.Planar2D.RgbaPixels != nullptr)
     {
         UploadTexturePixels(PlanarTexture, Slices.Planar2D);
-        Surface.FillTexturedRectangle(Rect2D, &PlanarTexture, { 0.0f, 0.0f }, { 1.0f, 1.0f }, IsSplit ? 8.0f : 10.0f);
+        Surface.FillTexturedRectangle(Rect2D, &PlanarTexture, { 0.0f, 0.0f }, { 1.0f, 1.0f }, SplitActive ? 8.0f : 10.0f);
     }
 
     if (Rect3D.Width >= 16.0f && Rect3D.Height >= 16.0f && Slices.Spatial3D.RgbaPixels != nullptr)
     {
         UploadTexturePixels(SpatialTexture, Slices.Spatial3D);
-        Surface.FillTexturedRectangle(Rect3D, &SpatialTexture, { 0.0f, 0.0f }, { 1.0f, 1.0f }, IsSplit ? 8.0f : 10.0f);
+        Surface.FillTexturedRectangle(Rect3D, &SpatialTexture, { 0.0f, 0.0f }, { 1.0f, 1.0f }, SplitActive ? 8.0f : 10.0f);
     }
 
-    if (IsSplit)
+    if (SplitActive)
     {
-        Surface.FillRectangle({ Rect2D.Right(), CanvasBounds.Y, 2.0f, CanvasBounds.Height }, ColorRgba{ 38, 38, 42, 255 });
+        const ColorRgba DividerInk = (SplitterHovered || SplitterDragActive)
+            ? ColorRgba{ 239, 244, 207, 165 }
+            : ColorRgba{ 44, 46, 52, 255 };
+        Surface.FillRectangle({ Rect2D.Right(), CanvasBounds.Y, 4.0f, CanvasBounds.Height }, ColorRgba{ 16, 17, 20, 255 });
+        Surface.FillRectangle({ Rect2D.Right() + 1.0f, CanvasBounds.Y, 2.0f, CanvasBounds.Height }, DividerInk);
+        if (CanvasBounds.Height >= 64.0f)
+        {
+            const ColorRgba GripInk = (SplitterHovered || SplitterDragActive)
+                ? ColorRgba{ 239, 244, 207, 235 }
+                : ColorRgba{ 132, 136, 146, 180 };
+            Surface.FillRectangle(
+                { Rect2D.Right() + 0.5f, CanvasBounds.Center().Y - 18.0f, 3.0f, 36.0f },
+                GripInk,
+                1.5f);
+        }
     }
 
     Surface.StrokeRectangle(CanvasBounds, ColorRgba{ 255, 255, 255, 18 }, 10.0f, 1.0f);

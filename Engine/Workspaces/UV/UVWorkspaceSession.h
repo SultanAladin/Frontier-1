@@ -9,7 +9,10 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Codecs/InputCodec.h"
 #include "Engine/Codecs/UVCodec.h"
+#include "Engine/Components/Camera/CameraComponent.h"
+#include "Engine/Components/Camera/VisualEffects/CameraOpticsEncoder.h"
 #include "Engine/Configuration/EngineConfiguration.h"
 #include "Engine/Configuration/WorkspaceConfiguration.h"
 #include "Engine/Editor/Viewports/TransformGizmo.h"
@@ -19,6 +22,7 @@
 #include "Engine/GeometrySpace/Primitives/AnalyticPrimitives.h"
 #include "Engine/GeometrySpace/Selection/ComponentSelectionMask.h"
 #include "Engine/GeometrySpace/Selection/GeometrySelection.h"
+#include "Engine/Input/InputExchange.h"
 #include "Engine/Interchange/GeometryInterchange.h"
 #include "Engine/Threading/Tasks/ExecutionChannels.h"
 #include "Engine/Threading/Threads/Workspace/WorkspaceThread.h"
@@ -139,7 +143,7 @@ public:
     void     AdjustSelectedLayerShare(float RequestedSharePercent) noexcept;
     [[nodiscard]] bool MoveSelectedLayerToUDIM(uint32_t TargetUDIMNumber);
     void     ApplyMatCapToActiveSelection(uint8_t MatCapSlot);
-    void     ApplySurfaceRoughnessMetallic(float Roughness, float Metallic, float MatCapBlend);
+    void     ApplySurfaceRoughnessMetallic(float Roughness, float Metallic, float MatCapBlend, float Specular = 0.50f);
 
     uint32_t ConstructNextUDIMTile();
     [[nodiscard]] UDIMTileSetting& AccessUDIMTileSetting(uint32_t UDIMNumber);
@@ -174,12 +178,15 @@ public:
         const std::filesystem::path& SourcePath,
         std::string&                 OutDiagnostic);
 
+    void AdvanceWorkspaceCamera(float DeltaSeconds) noexcept;
     void RefreshViewportFramebuffers(uint32_t Viewport3DW, uint32_t Viewport3DH, uint32_t Canvas2DW, uint32_t Canvas2DH);
 
     [[nodiscard]] WorkspaceDocument&                AccessDocument() noexcept { return ActiveDocument; }
     [[nodiscard]] const WorkspaceDocument&          InspectDocument() const noexcept { return ActiveDocument; }
     [[nodiscard]] Editor::ViewportProjection&       AccessViewportProjection() noexcept { return ActiveDocument.AccessViewportProjection(); }
     [[nodiscard]] const Editor::ViewportProjection& InspectViewportProjection() const noexcept { return ActiveDocument.InspectViewportProjection(); }
+    [[nodiscard]] Components::CameraComponent&       AccessSpatialCameraComponent() noexcept { return SpatialCameraComponent; }
+    [[nodiscard]] const Components::CameraComponent& InspectSpatialCameraComponent() const noexcept { return SpatialCameraComponent; }
 
     GeometrySpace::SampleAssetPreset         ActivePreset         = GeometrySpace::SampleAssetPreset::ControlledIntegrator;
     GeometrySpace::ConstructedSampleAsset    Asset                {};
@@ -211,6 +218,9 @@ public:
 
     Editor::TransformGizmo                   Gizmo3D              {};
     Editor::TransformGizmo                   Gizmo2D              {};
+    Components::CameraComponent              SpatialCameraComponent {};
+    Components::VisualEffects::CameraOpticsEncoder OpticsEncoder    {};
+    Codecs::InputAxisCalibration             AxisCalibration        {};
     GeometricRaster::Viewport3DRenderOptions RenderOptions3D      {};
     GeometricRaster::Canvas2DRenderOptions   RenderOptions2D      {};
     GeometricRaster::GPUUVDistortionSummary  LatestMetrics        {};
@@ -236,6 +246,7 @@ private:
 
     GeometricRaster::UVWorkspaceRasterizer*  Rasterizer           = nullptr;
     UVCommandDirective                       PendingDirective     = UVCommandDirective::None;
+    bool                                     SmoothedCameraActive = false;
 };
 
 } // namespace Frontier::Workspaces

@@ -59,6 +59,7 @@ struct alignas(16) GPUGizmoUniforms
 {
     float    ViewProjection[4][4];
     uint32_t HoverAndSpace[4];
+    float    HeadlightDirection[4];
 };
 
 struct alignas(16) GPUSelectionParams
@@ -101,23 +102,21 @@ void ComputeOrbitBasis(
     Mathematics::Axis3D&      OutUp,
     Mathematics::Axis3D&      OutForward) noexcept
 {
-    const float CosP = std::cos(Cam.PitchRadians);
-    const float SinP = std::sin(Cam.PitchRadians);
-    const float CosY = std::cos(Cam.YawRadians);
-    const float SinY = std::sin(Cam.YawRadians);
-
-    const Mathematics::Axis3D Offset {
-        Cam.DistanceMeters * CosP * SinY,
-        Cam.DistanceMeters * CosP * CosY,
-        Cam.DistanceMeters * SinP,
-    };
-    OutEye     = Cam.TargetPivot + Offset;
-    OutForward = Mathematics::NormalizeAxis(Cam.TargetPivot - OutEye, { 0.0f, -1.0f, 0.0f });
-    OutRight   = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(OutForward, { 0.0f, 0.0f, 1.0f }), { 1.0f, 0.0f, 0.0f });
-    OutUp      = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(OutRight, OutForward), { 0.0f, 0.0f, 1.0f });
+    OutEye = Cam.TargetPivot + Mathematics::EvaluateOrbitOffsetFromAngles(
+                                   Cam.DistanceMeters,
+                                   Cam.YawRadians,
+                                   Cam.PitchRadians,
+                                   Cam.Basis);
+    Mathematics::EvaluateOrthonormalCameraBasis(
+        OutEye,
+        Cam.TargetPivot,
+        Cam.Basis,
+        OutRight,
+        OutUp,
+        OutForward);
 }
 
-// Row-major Vulkan clip matrix (Y-flipped for Vulkan NDC, Z in [0, 1])
+// Row-major Vulkan clip transform (isolated Y-flip for Vulkan NDC, Z in [0, 1])
 void BuildRowMajorViewProjection(
     const CameraOrbitRig3D& Cam,
     float                     AspectRatio,
@@ -126,38 +125,19 @@ void BuildRowMajorViewProjection(
     Mathematics::Axis3D Eye {}, Right {}, Up {}, Fwd {};
     ComputeOrbitBasis(Cam, Eye, Right, Up, Fwd);
 
-    const float TanHalfFov = std::tan(Cam.VerticalFovDeg * Constants::DegToRadFloat * 0.5f);
-    const float ScaleX     = 1.0f / std::max(AspectRatio * TanHalfFov, 1.0e-5f);
-    const float ScaleY     = -1.0f / std::max(TanHalfFov, 1.0e-5f); // Flip Y for Vulkan top-down clip space
-    const float NearZ      = 0.08f;
-    const float FarZ       = std::max(250.0f, Cam.DistanceMeters * 6.0f);
-    const float ZRange     = FarZ / (NearZ - FarZ);
-
-    // View matrix rows: R, U, -F
-    const float V[4][4] = {
-        { Right.X, Right.Y, Right.Z, -Mathematics::EvaluateDot(Right, Eye) },
-        { Up.X,    Up.Y,    Up.Z,    -Mathematics::EvaluateDot(Up, Eye)    },
-        { -Fwd.X,  -Fwd.Y,  -Fwd.Z,   Mathematics::EvaluateDot(Fwd, Eye)   },
-        { 0.0f,    0.0f,    0.0f,     1.0f                                 },
-    };
-    const float P[4][4] = {
-        { ScaleX, 0.0f,   0.0f,    0.0f            },
-        { 0.0f,   ScaleY, 0.0f,    0.0f            },
-        { 0.0f,   0.0f,   ZRange,  NearZ * ZRange  },
-        { 0.0f,   0.0f,  -1.0f,    0.0f            },
-    };
-
-    for (int Row = 0; Row < 4; ++Row)
+    const float FarZ = std::max(250.0f, Cam.DistanceMeters * 6.0f);
+    Mathematics::ClipTransform4x4 Clip {};
+    if (Cam.OrthographicProjection)
     {
-        for (int Col = 0; Col < 4; ++Col)
-        {
-            OutVP[Row][Col] =
-                P[Row][0] * V[0][Col] +
-                P[Row][1] * V[1][Col] +
-                P[Row][2] * V[2][Col] +
-                P[Row][3] * V[3][Col];
-        }
+        const float TanHalf  = std::tan(std::clamp(Cam.VerticalFovDeg, 5.0f, 165.0f) * Constants::DegToRadFloat * 0.5f);
+        const float VertSpan = std::max(0.10f, 2.0f * Cam.DistanceMeters * TanHalf);
+        Clip = Mathematics::ConstructVulkanOrthographicViewClip(Eye, Right, Up, Fwd, VertSpan, AspectRatio, -FarZ * 0.5f, FarZ);
     }
+    else
+    {
+        Clip = Mathematics::ConstructVulkanPerspectiveViewClip(Eye, Right, Up, Fwd, Cam.VerticalFovDeg, AspectRatio, 0.08f, FarZ);
+    }
+    std::memcpy(OutVP, Clip.Rows, sizeof(Clip.Rows));
 }
 
 void BuildRowMajorOrtho2D(
@@ -331,18 +311,28 @@ bool UVWorkspaceRasterizer::InitializeRasterizer(
             CompiledShaderDirectory / "SurfaceShading.frag.spv",
             SurfaceSetTypes,
             true,
+            false,
             SurfaceProgram) ||
         !ConstructGraphicsProgram(
             CompiledShaderDirectory / "UVTileRasterization.vert.spv",
             CompiledShaderDirectory / "UVTileRasterization.frag.spv",
             UVCanvasSetTypes,
             false,
+            false,
             UVCanvasProgram) ||
         !ConstructGraphicsProgram(
             CompiledShaderDirectory / "GizmoRasterization.vert.spv",
             CompiledShaderDirectory / "GizmoRasterization.frag.spv",
             GizmoSetTypes,
+            true,
+            true,
+            GizmoDepthOnProgram) ||
+        !ConstructGraphicsProgram(
+            CompiledShaderDirectory / "GizmoRasterization.vert.spv",
+            CompiledShaderDirectory / "GizmoRasterization.frag.spv",
+            GizmoSetTypes,
             false,
+            true,
             GizmoDepthOffProgram))
     {
         TeardownRasterizer();
@@ -476,6 +466,7 @@ void UVWorkspaceRasterizer::TeardownRasterizer() noexcept
 
         DestroyGraphicsProgram(SurfaceProgram);
         DestroyGraphicsProgram(UVCanvasProgram);
+        DestroyGraphicsProgram(GizmoDepthOnProgram);
         DestroyGraphicsProgram(GizmoDepthOffProgram);
 
         DeviceInterchange->ReleaseBuffer(SurfaceVertexBuffer);
@@ -517,7 +508,8 @@ bool UVWorkspaceRasterizer::ConstructGraphicsProgram(
     const std::filesystem::path&      FragSpirv,
     std::span<const VkDescriptorType> SlotCategories,
     bool                              DepthTestAndWrite,
-    GraphicsProgramBundle&           OutBundle)
+    bool                              EnableColorAlphaBlend,
+    GraphicsProgramBundle&            OutBundle)
 {
     VkDevice DeviceHandle         = DeviceInterchange->AccessDevice();
     OutBundle.VertBinary = DeviceInterchange->LoadShaderBinary(VertSpirv);
@@ -594,10 +586,16 @@ bool UVWorkspaceRasterizer::ConstructGraphicsProgram(
     DepthStencil.depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL;
 
     std::array<VkPipelineColorBlendAttachmentState, 2u> BlendAtts {};
-    BlendAtts[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    BlendAtts[0].blendEnable    = VK_FALSE;
-    BlendAtts[1].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    BlendAtts[1].blendEnable    = VK_FALSE;
+    BlendAtts[0].colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    BlendAtts[0].blendEnable         = EnableColorAlphaBlend ? VK_TRUE : VK_FALSE;
+    BlendAtts[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    BlendAtts[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    BlendAtts[0].colorBlendOp        = VK_BLEND_OP_ADD;
+    BlendAtts[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    BlendAtts[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    BlendAtts[0].alphaBlendOp        = VK_BLEND_OP_ADD;
+    BlendAtts[1].colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    BlendAtts[1].blendEnable         = VK_FALSE;
 
     VkPipelineColorBlendStateCreateInfo ColorBlend {};
     ColorBlend.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -776,16 +774,25 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
     std::vector<GPUSurfaceVertex> Verts3D;
     Verts3D.reserve(6u + UploadedFaceCount * 6u);
 
-    constexpr float GridHalf = 4.2f;
-    const std::array<Mathematics::Axis3D, 6u> GridQuad {{
-        { -GridHalf, -GridHalf, -0.02f }, {  GridHalf, -GridHalf, -0.02f }, {  GridHalf,  GridHalf, -0.02f },
-        { -GridHalf, -GridHalf, -0.02f }, {  GridHalf,  GridHalf, -0.02f }, { -GridHalf,  GridHalf, -0.02f },
-    }};
+    const auto                ActiveBasis = Mathematics::QueryActiveWorldBasis();
+    const Mathematics::Axis3D GridUp      = Mathematics::QueryWorldUpAxis(ActiveBasis);
+    constexpr float           GridHalf    = 5.6f;
+    const std::array<Mathematics::Axis3D, 6u> GridQuad = (ActiveBasis == Mathematics::WorldCoordinateBasis::RightHandedYUp)
+        ? std::array<Mathematics::Axis3D, 6u> {{
+              { -GridHalf, -0.02f, -GridHalf }, {  GridHalf, -0.02f,  GridHalf }, {  GridHalf, -0.02f, -GridHalf },
+              { -GridHalf, -0.02f, -GridHalf }, { -GridHalf, -0.02f,  GridHalf }, {  GridHalf, -0.02f,  GridHalf },
+          }}
+        : std::array<Mathematics::Axis3D, 6u> {{
+              { -GridHalf, -GridHalf, -0.02f }, {  GridHalf, -GridHalf, -0.02f }, {  GridHalf,  GridHalf, -0.02f },
+              { -GridHalf, -GridHalf, -0.02f }, {  GridHalf,  GridHalf, -0.02f }, { -GridHalf,  GridHalf, -0.02f },
+          }};
     for (const Mathematics::Axis3D& GP : GridQuad)
     {
         GPUSurfaceVertex GV {};
         GV.PosAndU[0]        = GP.X; GV.PosAndU[1] = GP.Y; GV.PosAndU[2] = GP.Z;
-        GV.NormalAndV[2]     = 1.0f;
+        GV.NormalAndV[0]     = GridUp.X;
+        GV.NormalAndV[1]     = GridUp.Y;
+        GV.NormalAndV[2]     = GridUp.Z;
         GV.NetworkPickIDs[0] = 0u; // Ground Grid marker
         GV.NetworkPickIDs[1] = GeometrySpace::InvalidNetworkIndex;
         Verts3D.push_back(GV);
@@ -809,6 +816,24 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
         BV.NetworkPickIDs[1] = GeometrySpace::InvalidNetworkIndex;
         Verts2D.push_back(BV);
     }
+
+    // Build per-vertex incident face index list for 52 deg crease-angle-smoothed corner normals
+    std::vector<std::vector<uint32_t>> VertexIncidentFaces(Network.Vertices.size());
+    for (uint32_t FaceIdx = 0u; FaceIdx < UploadedFaceCount; ++FaceIdx)
+    {
+        const GeometrySpace::Face& F = Network.Faces[FaceIdx];
+        uint32_t ECur = F.BoundaryLoopEdgeIndex;
+        for (uint16_t C = 0u; C < F.CornerCount && ECur < Network.Edges.size(); ++C)
+        {
+            const uint32_t VIdx = Network.Edges[ECur].OriginVertexIndex;
+            if (VIdx < VertexIncidentFaces.size())
+            {
+                VertexIncidentFaces[VIdx].push_back(FaceIdx);
+            }
+            ECur = Network.Edges[ECur].NextEdgeIndex;
+        }
+    }
+    constexpr float CosCreaseLimit = 0.615661475f; // cos(52.0 deg)
 
     // Fan-triangulate each PolygonNetwork Face for both 3D and 2D streams
     for (uint32_t FaceIdx = 0u; FaceIdx < UploadedFaceCount; ++FaceIdx)
@@ -873,14 +898,30 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
                     ((static_cast<uint32_t>(CurrentFace.PriorityLayerOrdinal) & 0xFFFFu) << 8u) |
                     (SeamBit ? (1u << 24u) : 0u);
 
+                Mathematics::Axis3D SmoothNormal = CurrentFace.GeometricNormal;
+                if (DE.OriginVertexIndex < VertexIncidentFaces.size())
+                {
+                    Mathematics::Axis3D AccumNormal { 0.0f, 0.0f, 0.0f };
+                    for (const uint32_t AdjFaceIdx : VertexIncidentFaces[DE.OriginVertexIndex])
+                    {
+                        const GeometrySpace::Face& AdjFace = Network.Faces[AdjFaceIdx];
+                        if (AdjFace.PartGroupOrdinal == CurrentFace.PartGroupOrdinal &&
+                            Mathematics::EvaluateDot(CurrentFace.GeometricNormal, AdjFace.GeometricNormal) >= CosCreaseLimit)
+                        {
+                            AccumNormal = AccumNormal + AdjFace.GeometricNormal;
+                        }
+                    }
+                    SmoothNormal = Mathematics::NormalizeAxis(AccumNormal, CurrentFace.GeometricNormal);
+                }
+
                 GPUSurfaceVertex SV {};
                 SV.PosAndU[0]        = VX.Axes.X;
                 SV.PosAndU[1]        = VX.Axes.Y;
                 SV.PosAndU[2]        = VX.Axes.Z;
                 SV.PosAndU[3]        = DE.ParameterUV.U;
-                SV.NormalAndV[0]     = CurrentFace.GeometricNormal.X;
-                SV.NormalAndV[1]     = CurrentFace.GeometricNormal.Y;
-                SV.NormalAndV[2]     = CurrentFace.GeometricNormal.Z;
+                SV.NormalAndV[0]     = SmoothNormal.X;
+                SV.NormalAndV[1]     = SmoothNormal.Y;
+                SV.NormalAndV[2]     = SmoothNormal.Z;
                 SV.NormalAndV[3]     = DE.ParameterUV.V;
                 SV.AlbedoAndMetal[0] = CurrentFace.Shading.AlbedoLinearRGB.X;
                 SV.AlbedoAndMetal[1] = CurrentFace.Shading.AlbedoLinearRGB.Y;
@@ -1144,6 +1185,7 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
     Uniforms.CameraForwardAndLayer[2] = Fwd.Z;
     Uniforms.CameraForwardAndLayer[3] = static_cast<float>(Options.ActiveLayerOrdinal);
     Uniforms.PickHighlightIDs[0]      = Options.HoveredFaceIndex;
+    Uniforms.PickHighlightIDs[3]      = static_cast<uint32_t>(Options.Camera.Basis);
 
     const std::array<GPUViewport3DUniforms, 1u> UniSpan {{ Uniforms }};
     ComputeEncoder.UploadSpanToBuffer<GPUViewport3DUniforms>(Viewport3DUniformBuffer, UniSpan);
@@ -1168,6 +1210,13 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
             GizUni.HoverAndSpace[0] = static_cast<uint32_t>(OptionalGizmo3D->QueryHoveredHandle());
             GizUni.HoverAndSpace[1] = static_cast<uint32_t>(OptionalGizmo3D->QueryActiveHandle());
             GizUni.HoverAndSpace[2] = 0u;
+            const Mathematics::Axis3D KeyLight = Mathematics::NormalizeAxis(
+                Right * 0.38f + Up * 0.45f - Fwd * 0.85f,
+                { 0.45f, 0.72f, 0.52f });
+            GizUni.HeadlightDirection[0] = KeyLight.X;
+            GizUni.HeadlightDirection[1] = KeyLight.Y;
+            GizUni.HeadlightDirection[2] = KeyLight.Z;
+            GizUni.HeadlightDirection[3] = 1.0f;
             const std::array<GPUGizmoUniforms, 1u> GizSpan {{ GizUni }};
             ComputeEncoder.UploadSpanToBuffer<GPUGizmoUniforms>(Gizmo3DUniformBuffer, GizSpan);
         }
@@ -1218,7 +1267,7 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
     VkDescriptorSet GizmoSet = VK_NULL_HANDLE;
     if (GizmoVertCount > 0u)
     {
-        VkDescriptorSetAllocateInfo GizAlloc { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, GraphicsDescriptorAllocator, 1u, &GizmoDepthOffProgram.SlotLayout };
+        VkDescriptorSetAllocateInfo GizAlloc { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, GraphicsDescriptorAllocator, 1u, &GizmoDepthOnProgram.SlotLayout };
         if (vkAllocateDescriptorSets(DeviceHandle, &GizAlloc, &GizmoSet) != VK_SUCCESS || GizmoSet == VK_NULL_HANDLE)
         {
             return false;
@@ -1272,8 +1321,17 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
 
     if (GizmoVertCount > 0u)
     {
-        vkCmdBindPipeline(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, GizmoDepthOffProgram.ProgramHandle);
-        vkCmdBindDescriptorSets(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, GizmoDepthOffProgram.ProgramLayout, 0u, 1u, &GizmoSet, 0u, nullptr);
+        VkClearAttachment DepthClear {};
+        DepthClear.aspectMask              = VK_IMAGE_ASPECT_DEPTH_BIT;
+        DepthClear.clearValue.depthStencil = { 1.0f, 0u };
+        VkClearRect ClearRegion {};
+        ClearRegion.rect.extent    = { WidthPx, HeightPx };
+        ClearRegion.baseArrayLayer = 0u;
+        ClearRegion.layerCount     = 1u;
+        vkCmdClearAttachments(Cmd, 1u, &DepthClear, 1u, &ClearRegion);
+
+        vkCmdBindPipeline(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, GizmoDepthOnProgram.ProgramHandle);
+        vkCmdBindDescriptorSets(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, GizmoDepthOnProgram.ProgramLayout, 0u, 1u, &GizmoSet, 0u, nullptr);
         vkCmdDraw(Cmd, GizmoVertCount, 1u, 0u, 0u);
     }
 
@@ -1360,9 +1418,13 @@ bool UVWorkspaceRasterizer::Rasterize2DUVCanvas(
 
             GPUGizmoUniforms GizUni {};
             BuildRowMajorOrtho2D(Options.VisibleMinUV, Options.VisibleMaxUV, GizUni.ViewProjection);
-            GizUni.HoverAndSpace[0] = static_cast<uint32_t>(OptionalGizmo2D->QueryHoveredHandle());
-            GizUni.HoverAndSpace[1] = static_cast<uint32_t>(OptionalGizmo2D->QueryActiveHandle());
-            GizUni.HoverAndSpace[2] = 0u;
+            GizUni.HoverAndSpace[0]      = static_cast<uint32_t>(OptionalGizmo2D->QueryHoveredHandle());
+            GizUni.HoverAndSpace[1]      = static_cast<uint32_t>(OptionalGizmo2D->QueryActiveHandle());
+            GizUni.HoverAndSpace[2]      = 0u;
+            GizUni.HeadlightDirection[0] = 0.35f;
+            GizUni.HeadlightDirection[1] = 0.45f;
+            GizUni.HeadlightDirection[2] = 0.82f;
+            GizUni.HeadlightDirection[3] = 1.0f;
             const std::array<GPUGizmoUniforms, 1u> GizSpan {{ GizUni }};
             ComputeEncoder.UploadSpanToBuffer<GPUGizmoUniforms>(Gizmo2DUniformBuffer, GizSpan);
         }

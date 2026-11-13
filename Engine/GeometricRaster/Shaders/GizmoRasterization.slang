@@ -13,7 +13,8 @@ struct GizmoVertexRecord
 struct GizmoUniformBlock
 {
     float4x4 ViewProjection;
-    uint4    HoverAndSpace;   // x = HoveredHandleOrdinal (0 = none), y = ActiveDragOrdinal, z = DirectClipSpace (1 for 2D), w = Reserved
+    uint4    HoverAndSpace;      // x = HoveredHandleOrdinal (0 = none), y = ActiveDragOrdinal, z = DirectClipSpace (1 for 2D), w = Reserved
+    float4   HeadlightDirection; // xyz = Camera-relative key-light vector, w = 1.0
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<GizmoUniformBlock>    GizmoUniforms;
@@ -61,14 +62,16 @@ GizmoFSOutput FragmentEntry(GizmoVSOutput In)
         (In.Ordinal != 0u) &&
         (In.Ordinal == GizmoUniforms.HoverAndSpace.x || In.Ordinal == GizmoUniforms.HoverAndSpace.y);
 
-    float3 LightDir = normalize(float3(0.45, 0.72, 0.52));
-    float  Lambert  = 0.62 + 0.38 * saturate(dot(normalize(In.Normal + float3(0.0, 0.0, 1.0e-5)), LightDir));
-    float3 LitRGB   = lerp(In.TintAndAlpha.rgb, In.TintAndAlpha.rgb * Lambert, In.ShadingWeight);
+    float3 LightDir = normalize(GizmoUniforms.HeadlightDirection.xyz + float3(0.0, 0.0, 1.0e-5));
+    float3 SurfN    = normalize(In.Normal + float3(0.0, 0.0, 1.0e-5));
+    float  KeyTerm  = saturate(dot(SurfN, LightDir));
+    float  FillTerm = saturate(dot(SurfN, -LightDir)) * 0.25;
+    float  Lambert  = 0.58 + 0.42 * KeyTerm + FillTerm;
+    float3 LitRGB   = lerp(In.TintAndAlpha.rgb, saturate(In.TintAndAlpha.rgb * Lambert + float3(0.06) * pow(KeyTerm, 6.0)), In.ShadingWeight);
 
     float  Alpha = In.TintAndAlpha.a;
     if (HoveredOrActive)
     {
-        // Slate GizmoPRO hover rule: +0.33 emissive boost (#555555) and translucent plane alpha 0.28 -> 0.55
         LitRGB = saturate(LitRGB + float3(0.333, 0.333, 0.333));
         if (Alpha < 0.95)
         {
@@ -76,11 +79,8 @@ GizmoFSOutput FragmentEntry(GizmoVSOutput In)
         }
     }
 
-    // Blend translucent plane quads cleanly over dark viewport backdrop when alpha blending is disabled on integer MRT
-    float3 BlendedRGB = lerp(float3(0.10, 0.11, 0.14), LitRGB, Alpha);
-
     GizmoFSOutput Out;
-    Out.ColorRGBA = float4(BlendedRGB, Alpha);
+    Out.ColorRGBA = float4(LitRGB, Alpha);
     Out.PickIDs   = uint4(0u, 0xFFFFFFFFu, 0xFFFFFFFFu, In.Ordinal);
     return Out;
 }

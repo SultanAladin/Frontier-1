@@ -23,19 +23,65 @@ inline constexpr std::size_t DefaultFeedbackQueueCapacity = 64;   // [count] - P
 inline constexpr uint32_t    MaximumScanCodeCount         = 512;  // [count] - Bounded hardware keyboard scancode ceiling
 inline constexpr uint32_t    MaximumTouchContactSlots     = 16;   // [count] - Simultaneous multi-touch contact ceiling
 
+namespace InputModifierBits
+{
+
+inline constexpr uint16_t Shift   = 1u << 0; // [mask] - Left or Right Shift held
+inline constexpr uint16_t Control = 1u << 1; // [mask] - Left or Right Control held
+inline constexpr uint16_t Alt     = 1u << 2; // [mask] - Left or Right Alt/Option held
+inline constexpr uint16_t Super   = 1u << 3; // [mask] - Left or Right OS Super/Command held
+
+} // namespace InputModifierBits
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
 enum class InputSignalCategory : uint8_t
 {
-    KeyboardKey   = 0, // [-] - Physical scancode press, repeat, or release
-    PointerMotion = 1, // [-] - Desktop cursor or relative motion delta
-    PointerButton = 2, // [-] - Mouse or stylus button transition
-    ScrollWheel   = 3, // [-] - Precision two-axis wheel or trackpad scroll
-    TouchContact  = 4, // [-] - Android / touchscreen multi-touch contact sample
-    GamepadAxis   = 5, // [-] - Normalized analog stick or trigger deflection
-    GamepadButton = 6, // [-] - Digital gamepad button transition
+    KeyboardKey      = 0, // [-] - Physical scancode press, repeat, or release
+    PointerMotion    = 1, // [-] - Desktop cursor or relative motion delta
+    PointerButton    = 2, // [-] - Mouse or stylus button transition
+    ScrollWheel      = 3, // [-] - Precision two-axis wheel or trackpad scroll
+    TouchContact     = 4, // [-] - Android / touchscreen multi-touch contact sample
+    GamepadAxis      = 5, // [-] - Normalized analog stick or trigger deflection
+    GamepadButton    = 6, // [-] - Digital gamepad button transition
+    TextCodepoint    = 7, // [-] - Translated Unicode UTF-32 character codepoint
+    ExternalPathDrop = 8, // [-] - OS external file path drop notification
+};
+
+enum class InputLogicalKey : uint8_t
+{
+    Unassigned   = 0, // [-] - Unmapped or hardware-scancode-only key
+    Escape       = 1,
+    Enter        = 2,
+    KeypadEnter  = 3,
+    Tab          = 4,
+    Backspace    = 5,
+    Delete       = 6,
+    Space        = 7,
+    LeftArrow    = 8,
+    RightArrow   = 9,
+    UpArrow      = 10,
+    DownArrow    = 11,
+    Home         = 12,
+    End          = 13,
+    PageUp       = 14,
+    PageDown     = 15,
+    Comma        = 16,
+    Period       = 17,
+    Slash        = 18,
+    Semicolon    = 19,
+    A, B, C, D, E, F, G, H, I, J, K, L, M,
+    N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+    Digit0, Digit1, Digit2, Digit3, Digit4,
+    Digit5, Digit6, Digit7, Digit8, Digit9,
+    F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+    LeftShift, RightShift,
+    LeftControl, RightControl,
+    LeftAlt, RightAlt,
+    LeftSuper, RightSuper,
+    Count,
 };
 
 enum class ButtonTransitionCategory : uint8_t
@@ -73,12 +119,13 @@ struct alignas(16) InputSignalPacket
     float                    DeltaPrimary         = 0.0f;                               // [px]  - Relative X motion or contact pressure [0-1]
     float                    DeltaSecondary       = 0.0f;                               // [px]  - Relative Y motion or contact radius [px]
     uint32_t                 DeviceIdentifier     = 0;                                  // [idx] - Originating peripheral or touch digitizer ID
-    uint32_t                 ControlCode          = 0;                                  // [idx] - Scancode, button index, axis index, or finger ID
+    uint32_t                 ControlCode          = 0;                                  // [idx] - Scancode, button index, codepoint, or finger ID
     uint16_t                 ModifierBitmask      = 0;                                  // [mask]- Shift/Ctrl/Alt/Super bitfield
     InputSignalCategory      Category             = InputSignalCategory::KeyboardKey;   // [-]   - Discriminator for packet payload
     ButtonTransitionCategory Transition           = ButtonTransitionCategory::Released; // [-]   - Digital switch transition
     TouchContactCategory     TouchPhase           = TouchContactCategory::Began;        // [-]   - Multi-touch lifecycle phase
-    uint8_t                  ReservedPadding[3]   = { 0, 0, 0 };                        // [B]   - Explicit alignment padding to 48 bytes
+    InputLogicalKey          LogicalKey           = InputLogicalKey::Unassigned;        // [-]   - Normalized cross-platform logical key
+    uint8_t                  ReservedPadding[2]   = { 0, 0 };                           // [B]   - Explicit alignment padding to 48 bytes
 };
 
 static_assert(sizeof(InputSignalPacket) == 48, "InputSignalPacket size must remain 48 bytes across all target architectures.");

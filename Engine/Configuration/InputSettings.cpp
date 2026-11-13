@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                               INPUTSETTINGS.CPP
 ============================================================================================================================================*/
-// 🧩 Editor shortcut chord formatting, conflict validation, and Dear ImGui capture integration
+// 🧩 Editor shortcut chord formatting, conflict validation, and EditorInputExchange capture integration (zero direct ImGui polling)
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -9,7 +9,7 @@
 
 #include "Engine/Configuration/InputSettings.h"
 
-#include <imgui.h>
+#include "Engine/Input/InputExtension.h"
 
 #include <algorithm>
 #include <cmath>
@@ -26,10 +26,10 @@ namespace
 
 struct KeyMappingEntry
 {
-    ShortcutKey Key;          // [-] - Engine shortcut key enumerator
-    const char* Identifier;   // [-] - PascalCase serialized identifier in .projectspace
-    const char* DisplayLabel; // [-] - Human-readable UI label
-    ImGuiKey    ImGuiMapping; // [-] - Corresponding Dear ImGui key code
+    ShortcutKey            Key;          // [-] - Engine shortcut key enumerator
+    const char*            Identifier;   // [-] - PascalCase serialized identifier in .projectspace / .InputSpace
+    const char*            DisplayLabel; // [-] - Human-readable UI label
+    Input::InputLogicalKey LogicalKey;   // [-] - Authoritative InputExchange logical key
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -37,60 +37,60 @@ struct KeyMappingEntry
 //------------------------------------------------------------------------------------------------------------------------
 
 constexpr KeyMappingEntry KeyMappings[] = {
-    { ShortcutKey::None,      "None",      "Unassigned", ImGuiKey_None       },
-    { ShortcutKey::Escape,    "Escape",    "Escape",     ImGuiKey_Escape     },
-    { ShortcutKey::Comma,     "Comma",     "Comma",      ImGuiKey_Comma      },
-    { ShortcutKey::Period,    "Period",    "Period",     ImGuiKey_Period     },
-    { ShortcutKey::Slash,     "Slash",     "Slash",      ImGuiKey_Slash      },
-    { ShortcutKey::Semicolon, "Semicolon", ";",          ImGuiKey_Semicolon  },
-    { ShortcutKey::A,         "A",         "A",          ImGuiKey_A          },
-    { ShortcutKey::B,         "B",         "B",          ImGuiKey_B          },
-    { ShortcutKey::C,         "C",         "C",          ImGuiKey_C          },
-    { ShortcutKey::D,         "D",         "D",          ImGuiKey_D          },
-    { ShortcutKey::E,         "E",         "E",          ImGuiKey_E          },
-    { ShortcutKey::F,         "F",         "F",          ImGuiKey_F          },
-    { ShortcutKey::G,         "G",         "G",          ImGuiKey_G          },
-    { ShortcutKey::H,         "H",         "H",          ImGuiKey_H          },
-    { ShortcutKey::I,         "I",         "I",          ImGuiKey_I          },
-    { ShortcutKey::J,         "J",         "J",          ImGuiKey_J          },
-    { ShortcutKey::K,         "K",         "K",          ImGuiKey_K          },
-    { ShortcutKey::L,         "L",         "L",          ImGuiKey_L          },
-    { ShortcutKey::M,         "M",         "M",          ImGuiKey_M          },
-    { ShortcutKey::N,         "N",         "N",          ImGuiKey_N          },
-    { ShortcutKey::O,         "O",         "O",          ImGuiKey_O          },
-    { ShortcutKey::P,         "P",         "P",          ImGuiKey_P          },
-    { ShortcutKey::Q,         "Q",         "Q",          ImGuiKey_Q          },
-    { ShortcutKey::R,         "R",         "R",          ImGuiKey_R          },
-    { ShortcutKey::S,         "S",         "S",          ImGuiKey_S          },
-    { ShortcutKey::T,         "T",         "T",          ImGuiKey_T          },
-    { ShortcutKey::U,         "U",         "U",          ImGuiKey_U          },
-    { ShortcutKey::V,         "V",         "V",          ImGuiKey_V          },
-    { ShortcutKey::W,         "W",         "W",          ImGuiKey_W          },
-    { ShortcutKey::X,         "X",         "X",          ImGuiKey_X          },
-    { ShortcutKey::Y,         "Y",         "Y",          ImGuiKey_Y          },
-    { ShortcutKey::Z,         "Z",         "Z",          ImGuiKey_Z          },
-    { ShortcutKey::Digit0,    "Digit0",    "0",          ImGuiKey_0          },
-    { ShortcutKey::Digit1,    "Digit1",    "1",          ImGuiKey_1          },
-    { ShortcutKey::Digit2,    "Digit2",    "2",          ImGuiKey_2          },
-    { ShortcutKey::Digit3,    "Digit3",    "3",          ImGuiKey_3          },
-    { ShortcutKey::Digit4,    "Digit4",    "4",          ImGuiKey_4          },
-    { ShortcutKey::Digit5,    "Digit5",    "5",          ImGuiKey_5          },
-    { ShortcutKey::Digit6,    "Digit6",    "6",          ImGuiKey_6          },
-    { ShortcutKey::Digit7,    "Digit7",    "7",          ImGuiKey_7          },
-    { ShortcutKey::Digit8,    "Digit8",    "8",          ImGuiKey_8          },
-    { ShortcutKey::Digit9,    "Digit9",    "9",          ImGuiKey_9          },
-    { ShortcutKey::F1,        "F1",        "F1",         ImGuiKey_F1         },
-    { ShortcutKey::F2,        "F2",        "F2",         ImGuiKey_F2         },
-    { ShortcutKey::F3,        "F3",        "F3",         ImGuiKey_F3         },
-    { ShortcutKey::F4,        "F4",        "F4",         ImGuiKey_F4         },
-    { ShortcutKey::F5,        "F5",        "F5",         ImGuiKey_F5         },
-    { ShortcutKey::F6,        "F6",        "F6",         ImGuiKey_F6         },
-    { ShortcutKey::F7,        "F7",        "F7",         ImGuiKey_F7         },
-    { ShortcutKey::F8,        "F8",        "F8",         ImGuiKey_F8         },
-    { ShortcutKey::F9,        "F9",        "F9",         ImGuiKey_F9         },
-    { ShortcutKey::F10,       "F10",       "F10",        ImGuiKey_F10        },
-    { ShortcutKey::F11,       "F11",       "F11",        ImGuiKey_F11        },
-    { ShortcutKey::F12,       "F12",       "F12",        ImGuiKey_F12        },
+    { ShortcutKey::None,      "None",      "Unassigned", Input::InputLogicalKey::Unassigned },
+    { ShortcutKey::Escape,    "Escape",    "Escape",     Input::InputLogicalKey::Escape     },
+    { ShortcutKey::Comma,     "Comma",     "Comma",      Input::InputLogicalKey::Comma      },
+    { ShortcutKey::Period,    "Period",    "Period",     Input::InputLogicalKey::Period     },
+    { ShortcutKey::Slash,     "Slash",     "Slash",      Input::InputLogicalKey::Slash      },
+    { ShortcutKey::Semicolon, "Semicolon", ";",          Input::InputLogicalKey::Semicolon  },
+    { ShortcutKey::A,         "A",         "A",          Input::InputLogicalKey::A          },
+    { ShortcutKey::B,         "B",         "B",          Input::InputLogicalKey::B          },
+    { ShortcutKey::C,         "C",         "C",          Input::InputLogicalKey::C          },
+    { ShortcutKey::D,         "D",         "D",          Input::InputLogicalKey::D          },
+    { ShortcutKey::E,         "E",         "E",          Input::InputLogicalKey::E          },
+    { ShortcutKey::F,         "F",         "F",          Input::InputLogicalKey::F          },
+    { ShortcutKey::G,         "G",         "G",          Input::InputLogicalKey::G          },
+    { ShortcutKey::H,         "H",         "H",          Input::InputLogicalKey::H          },
+    { ShortcutKey::I,         "I",         "I",          Input::InputLogicalKey::I          },
+    { ShortcutKey::J,         "J",         "J",          Input::InputLogicalKey::J          },
+    { ShortcutKey::K,         "K",         "K",          Input::InputLogicalKey::K          },
+    { ShortcutKey::L,         "L",         "L",          Input::InputLogicalKey::L          },
+    { ShortcutKey::M,         "M",         "M",          Input::InputLogicalKey::M          },
+    { ShortcutKey::N,         "N",         "N",          Input::InputLogicalKey::N          },
+    { ShortcutKey::O,         "O",         "O",          Input::InputLogicalKey::O          },
+    { ShortcutKey::P,         "P",         "P",          Input::InputLogicalKey::P          },
+    { ShortcutKey::Q,         "Q",         "Q",          Input::InputLogicalKey::Q          },
+    { ShortcutKey::R,         "R",         "R",          Input::InputLogicalKey::R          },
+    { ShortcutKey::S,         "S",         "S",          Input::InputLogicalKey::S          },
+    { ShortcutKey::T,         "T",         "T",          Input::InputLogicalKey::T          },
+    { ShortcutKey::U,         "U",         "U",          Input::InputLogicalKey::U          },
+    { ShortcutKey::V,         "V",         "V",          Input::InputLogicalKey::V          },
+    { ShortcutKey::W,         "W",         "W",          Input::InputLogicalKey::W          },
+    { ShortcutKey::X,         "X",         "X",          Input::InputLogicalKey::X          },
+    { ShortcutKey::Y,         "Y",         "Y",          Input::InputLogicalKey::Y          },
+    { ShortcutKey::Z,         "Z",         "Z",          Input::InputLogicalKey::Z          },
+    { ShortcutKey::Digit0,    "Digit0",    "0",          Input::InputLogicalKey::Digit0     },
+    { ShortcutKey::Digit1,    "Digit1",    "1",          Input::InputLogicalKey::Digit1     },
+    { ShortcutKey::Digit2,    "Digit2",    "2",          Input::InputLogicalKey::Digit2     },
+    { ShortcutKey::Digit3,    "Digit3",    "3",          Input::InputLogicalKey::Digit3     },
+    { ShortcutKey::Digit4,    "Digit4",    "4",          Input::InputLogicalKey::Digit4     },
+    { ShortcutKey::Digit5,    "Digit5",    "5",          Input::InputLogicalKey::Digit5     },
+    { ShortcutKey::Digit6,    "Digit6",    "6",          Input::InputLogicalKey::Digit6     },
+    { ShortcutKey::Digit7,    "Digit7",    "7",          Input::InputLogicalKey::Digit7     },
+    { ShortcutKey::Digit8,    "Digit8",    "8",          Input::InputLogicalKey::Digit8     },
+    { ShortcutKey::Digit9,    "Digit9",    "9",          Input::InputLogicalKey::Digit9     },
+    { ShortcutKey::F1,        "F1",        "F1",         Input::InputLogicalKey::F1         },
+    { ShortcutKey::F2,        "F2",        "F2",         Input::InputLogicalKey::F2         },
+    { ShortcutKey::F3,        "F3",        "F3",         Input::InputLogicalKey::F3         },
+    { ShortcutKey::F4,        "F4",        "F4",         Input::InputLogicalKey::F4         },
+    { ShortcutKey::F5,        "F5",        "F5",         Input::InputLogicalKey::F5         },
+    { ShortcutKey::F6,        "F6",        "F6",         Input::InputLogicalKey::F6         },
+    { ShortcutKey::F7,        "F7",        "F7",         Input::InputLogicalKey::F7         },
+    { ShortcutKey::F8,        "F8",        "F8",         Input::InputLogicalKey::F8         },
+    { ShortcutKey::F9,        "F9",        "F9",         Input::InputLogicalKey::F9         },
+    { ShortcutKey::F10,       "F10",       "F10",        Input::InputLogicalKey::F10        },
+    { ShortcutKey::F11,       "F11",       "F11",        Input::InputLogicalKey::F11        },
+    { ShortcutKey::F12,       "F12",       "F12",        Input::InputLogicalKey::F12        },
 };
 
 [[nodiscard]] const KeyMappingEntry& LocateKeyMapping(ShortcutKey Key) noexcept
@@ -140,6 +140,18 @@ Point2D InputPreferences::TransformPointerDelta(Point2D RawDelta) const noexcept
 
 namespace InputSettingsRepository
 {
+
+const char* QueryPresetDisplayLabel(Codecs::InputPresetOrigin Preset) noexcept
+{
+    switch (Preset)
+    {
+        case Codecs::InputPresetOrigin::FrontierStudio:    return "Frontier Studio (.InputSpace)";
+        case Codecs::InputPresetOrigin::BlenderNavigation: return "Blender Navigation (.InputSpace)";
+        case Codecs::InputPresetOrigin::UnrealNavigation:  return "Unreal Navigation (.InputSpace)";
+        case Codecs::InputPresetOrigin::Custom:            return "Custom (.InputSpace)";
+    }
+    return "Frontier Studio (.InputSpace)";
+}
 
 const char* QueryCommandKey(ShortcutCommand Command) noexcept
 {
@@ -268,17 +280,13 @@ bool ValidatePreferences(const InputPreferences& Preferences, std::string& Diagn
     return true;
 }
 
-bool PollImGuiChordCapture(ShortcutChord& CapturedChord, bool& CancelledWithEscape) noexcept
+bool PollExchangeChordCapture(ShortcutChord& CapturedChord, bool& CancelledWithEscape) noexcept
 {
     CancelledWithEscape = false;
-    if (ImGui::GetCurrentContext() == nullptr)
-    {
-        return false;
-    }
+    const Input::EditorInputSnapshot& Snapshot = Input::InputExtension::InspectActiveEditorSnapshot();
 
-    const ImGuiIO& Io = ImGui::GetIO();
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) &&
-        !Io.KeyCtrl && !Io.KeyAlt && !Io.KeyShift && !Io.KeySuper)
+    if (Snapshot.QueryKeyPressed(Input::InputLogicalKey::Escape, false) &&
+        !Snapshot.ControlHeld && !Snapshot.AltHeld && !Snapshot.ShiftHeld && !Snapshot.SuperHeld)
     {
         CancelledWithEscape = true;
         return false;
@@ -290,14 +298,14 @@ bool PollImGuiChordCapture(ShortcutChord& CapturedChord, bool& CancelledWithEsca
         {
             continue;
         }
-        if (ImGui::IsKeyPressed(Mapping.ImGuiMapping, false))
+        if (Snapshot.QueryKeyPressed(Mapping.LogicalKey, false))
         {
             ShortcutChord Candidate{};
             Candidate.Key         = Mapping.Key;
-            Candidate.ControlHeld = Io.KeyCtrl;
-            Candidate.AltHeld     = Io.KeyAlt;
-            Candidate.ShiftHeld   = Io.KeyShift;
-            Candidate.SuperHeld   = Io.KeySuper;
+            Candidate.ControlHeld = Snapshot.ControlHeld;
+            Candidate.AltHeld     = Snapshot.AltHeld;
+            Candidate.ShiftHeld   = Snapshot.ShiftHeld;
+            Candidate.SuperHeld   = Snapshot.SuperHeld;
             CapturedChord         = Candidate;
             return true;
         }
@@ -305,23 +313,33 @@ bool PollImGuiChordCapture(ShortcutChord& CapturedChord, bool& CancelledWithEsca
     return false;
 }
 
-bool QueryChordTriggeredInImGui(const ShortcutChord& Chord) noexcept
+bool QueryChordTriggeredInExchange(const ShortcutChord& Chord) noexcept
 {
-    if (Chord.Key == ShortcutKey::None || ImGui::GetCurrentContext() == nullptr)
+    if (Chord.Key == ShortcutKey::None)
     {
         return false;
     }
 
-    const ImGuiIO&         Io      = ImGui::GetIO();
-    const KeyMappingEntry& Mapping = LocateKeyMapping(Chord.Key);
-    if (Mapping.ImGuiMapping == ImGuiKey_None || !ImGui::IsKeyPressed(Mapping.ImGuiMapping, false))
+    const Input::EditorInputSnapshot& Snapshot = Input::InputExtension::InspectActiveEditorSnapshot();
+    const KeyMappingEntry&            Mapping  = LocateKeyMapping(Chord.Key);
+    if (Mapping.LogicalKey == Input::InputLogicalKey::Unassigned || !Snapshot.QueryKeyPressed(Mapping.LogicalKey, false))
     {
         return false;
     }
-    return Io.KeyCtrl == Chord.ControlHeld &&
-           Io.KeyAlt == Chord.AltHeld &&
-           Io.KeyShift == Chord.ShiftHeld &&
-           Io.KeySuper == Chord.SuperHeld;
+    return Snapshot.ControlHeld == Chord.ControlHeld &&
+           Snapshot.AltHeld == Chord.AltHeld &&
+           Snapshot.ShiftHeld == Chord.ShiftHeld &&
+           Snapshot.SuperHeld == Chord.SuperHeld;
+}
+
+bool PollImGuiChordCapture(ShortcutChord& CapturedChord, bool& CancelledWithEscape) noexcept
+{
+    return PollExchangeChordCapture(CapturedChord, CancelledWithEscape);
+}
+
+bool QueryChordTriggeredInImGui(const ShortcutChord& Chord) noexcept
+{
+    return QueryChordTriggeredInExchange(Chord);
 }
 
 } // namespace InputSettingsRepository
