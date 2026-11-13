@@ -23,6 +23,7 @@ class UVOutlinerPanel
 {
 public:
     UVOutlinerPanel() noexcept = default;
+    ~UVOutlinerPanel() noexcept;
 
     void AttachSession(UVWorkspaceSession* TargetSession) noexcept;
 

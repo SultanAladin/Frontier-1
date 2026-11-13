@@ -23,6 +23,7 @@ class UVInspectorPanel
 {
 public:
     UVInspectorPanel() noexcept = default;
+    ~UVInspectorPanel() noexcept;
 
     void AttachSession(UVWorkspaceSession* TargetSession) noexcept;
 

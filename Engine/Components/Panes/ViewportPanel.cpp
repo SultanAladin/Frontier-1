@@ -91,6 +91,11 @@ ViewportPanel::ViewportPanel() noexcept
     }
 }
 
+ViewportPanel::~ViewportPanel() noexcept
+{
+    WorkspaceAppearance::ReleasePanePointerOwnership(this);
+}
+
 void ViewportPanel::ConfigureSceneTitle(std::string_view Title)
 {
     SceneTitle.assign(Title.begin(), Title.end());
@@ -295,6 +300,49 @@ void ViewportPanel::RenderCanvasPane(
             8.5f,
             ColorRgba{ 92, 92, 92, 255 },
             "NATIVE VIEWPORT  -  ANALYTICAL MARKERS");
+    }
+
+    // Bottom-right reusable + | - | Fit navigation capsule above 3D X/Y/Z orientation triad sign
+    if (!SplitViewportEnabled || ActivePaneIndex == PaneIndex)
+    {
+        LastCanvasPaneBounds = PaneBounds;
+    }
+    if (PaneBounds.Width >= 140.0f && PaneBounds.Height >= 186.0f &&
+        (!SplitViewportEnabled || ActivePaneIndex == PaneIndex))
+    {
+        ControlPointer NavPointer = Input.PrimaryPointer;
+        if (ConstructSheetOpen || SettingsSheetOpen)
+        {
+            NavPointer = {};
+        }
+        const ViewportNavigationDirective NavDirective =
+            CapsuleButton::ConstructViewportNavigationCapsule(
+                Surface,
+                PaneBounds,
+                NavPointer,
+                ViewportNavigationCapsuleSpec{
+                    "Zoom viewport in.",
+                    "Zoom viewport out.",
+                    "Fit active scene view.",
+                    12.0f,
+                    68.0f,
+                });
+        if (NavDirective == ViewportNavigationDirective::ZoomIn)
+        {
+            ViewportZoomScale = std::clamp(ViewportZoomScale * 1.15f, 0.25f, 4.0f);
+        }
+        else if (NavDirective == ViewportNavigationDirective::ZoomOut)
+        {
+            ViewportZoomScale = std::clamp(ViewportZoomScale / 1.15f, 0.25f, 4.0f);
+        }
+        else if (NavDirective == ViewportNavigationDirective::FitView)
+        {
+            ViewportZoomScale = 1.0f;
+        }
+        if (NavDirective != ViewportNavigationDirective::None && OnNavigationDirective)
+        {
+            OnNavigationDirective(NavDirective);
+        }
     }
 
     // Bottom-right 3D X/Y/Z orientation triad sign
@@ -1049,6 +1097,14 @@ void ViewportPanel::Render(
             { FocusBtn.X + 11.5f, FocusBtn.Y + 7.5f },
             16.0f,
             Hovered ? ColorRgba{ 222, 222, 222, 255 } : ColorRgba{ 147, 147, 147, 255 });
+        if (Hovered && Input.PrimaryPointer.Pressed)
+        {
+            ViewportZoomScale = 1.0f;
+            if (OnNavigationDirective)
+            {
+                OnNavigationDirective(ViewportNavigationDirective::FitView);
+            }
+        }
     }
 
     // Divider
@@ -1314,8 +1370,10 @@ void ViewportPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
     PixelSpace WindowSurface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
     PixelSpace ForegroundSurface(ImGui::GetForegroundDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
 
-    const PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+    PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+    WorkspaceAppearance::EnforcePanePointerOwnership(this, Input);
     Render(WindowSurface, LogicalBounds, Input, Δt, &ForegroundSurface);
+    WorkspaceAppearance::UpdatePanePointerOwnership(this, ScreenBounds, SafeScale, Input, false);
 }
 
 } // namespace Frontier

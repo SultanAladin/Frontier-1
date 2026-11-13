@@ -140,6 +140,7 @@ class OutlinerPanel
 {
 public:
     OutlinerPanel() noexcept;
+    ~OutlinerPanel() noexcept;
 
     void ConfigureTitleVariant(OutlinerTitleVariant Variant) noexcept;
     void ConfigureConstructTemplates(std::span<const OutlinerConstructTemplate> Templates);

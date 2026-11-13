@@ -193,6 +193,204 @@ ControlContact ConstructQuickCircleTile(PixelSpace &Surface, Rectangle2D DiscBou
     return Contact;
 }
 
+Rectangle2D QueryViewportNavigationCapsuleBounds(
+    Rectangle2D ViewportRect,
+    float       MarginRight,
+    float       MarginBottom) noexcept
+{
+    constexpr float CapsuleWidth  = 34.0f;
+    constexpr float CapsuleHeight = 96.0f;
+    if (ViewportRect.Width < 96.0f || ViewportRect.Height < (CapsuleHeight + MarginBottom + 24.0f))
+    {
+        return {};
+    }
+    return {
+        ViewportRect.Right() - MarginRight - CapsuleWidth,
+        ViewportRect.Bottom() - MarginBottom - CapsuleHeight,
+        CapsuleWidth,
+        CapsuleHeight,
+    };
+}
+
+ViewportNavigationDirective ConstructViewportNavigationCapsule(
+    PixelSpace&                        Surface,
+    Rectangle2D                        ViewportRect,
+    const ControlPointer&              Pointer,
+    const ViewportNavigationCapsuleSpec& Spec,
+    float                              Opacity) noexcept
+{
+    const Rectangle2D CapsuleRect =
+        QueryViewportNavigationCapsuleBounds(ViewportRect, Spec.MarginRight, Spec.MarginBottom);
+    if (CapsuleRect.Width <= 0.0f || CapsuleRect.Height <= 0.0f)
+    {
+        return ViewportNavigationDirective::None;
+    }
+
+    const float ClampedOpacity = std::clamp(Opacity, 0.0f, 1.0f);
+    auto ScaleAlpha = [ClampedOpacity](uint8_t R, uint8_t G, uint8_t B, uint8_t A) noexcept -> ColorRgba
+    {
+        return ColorRgba{ R, G, B, static_cast<uint8_t>(std::clamp(static_cast<float>(A) * ClampedOpacity, 0.0f, 255.0f)) };
+    };
+
+    Surface.FillRectangle(CapsuleRect, ScaleAlpha(20u, 20u, 22u, 228u), 17.0f);
+    Surface.StrokeRectangle(CapsuleRect, ScaleAlpha(255u, 255u, 255u, 30u), 17.0f, 1.0f);
+
+    const Rectangle2D ZoomInCell { CapsuleRect.X + 4.0f, CapsuleRect.Y + 4.0f,  26.0f, 26.0f };
+    const Rectangle2D ZoomOutCell{ CapsuleRect.X + 4.0f, CapsuleRect.Y + 35.0f, 26.0f, 26.0f };
+    const Rectangle2D FitCell    { CapsuleRect.X + 4.0f, CapsuleRect.Y + 66.0f, 26.0f, 26.0f };
+
+    Surface.StrokeLine(
+        { CapsuleRect.X + 8.0f, CapsuleRect.Y + 32.5f },
+        { CapsuleRect.Right() - 8.0f, CapsuleRect.Y + 32.5f },
+        ScaleAlpha(255u, 255u, 255u, 22u),
+        1.0f);
+    Surface.StrokeLine(
+        { CapsuleRect.X + 8.0f, CapsuleRect.Y + 63.5f },
+        { CapsuleRect.Right() - 8.0f, CapsuleRect.Y + 63.5f },
+        ScaleAlpha(255u, 255u, 255u, 22u),
+        1.0f);
+
+    ViewportNavigationDirective Triggered = ViewportNavigationDirective::None;
+
+    // 1. Top '+' Zoom In
+    {
+        const bool Hovered = ControlAppearance::QueryPointerOver(ZoomInCell, Pointer);
+        if (Hovered)
+        {
+            Surface.FillRectangle(ZoomInCell, ScaleAlpha(50u, 50u, 56u, 235u), 13.0f);
+            if (Spec.ZoomInTooltip != nullptr && Spec.ZoomInTooltip[0] != '\0')
+            {
+                ControlAppearance::RecordHoveredTooltip(ZoomInCell, OptionalTooltip::FromText(Spec.ZoomInTooltip));
+            }
+        }
+        const Point2D   C   = ZoomInCell.Center();
+        const ColorRgba Ink = Hovered
+                                  ? ScaleAlpha(244u, 244u, 240u, 255u)
+                                  : ScaleAlpha(196u, 196u, 202u, 255u);
+        Surface.StrokeLine({ C.X - 4.8f, C.Y }, { C.X + 4.8f, C.Y }, Ink, 1.55f);
+        Surface.StrokeLine({ C.X, C.Y - 4.8f }, { C.X, C.Y + 4.8f }, Ink, 1.55f);
+        if (Hovered && Pointer.Pressed)
+        {
+            Triggered = ViewportNavigationDirective::ZoomIn;
+        }
+    }
+
+    // 2. Middle '-' Zoom Out
+    {
+        const bool Hovered = ControlAppearance::QueryPointerOver(ZoomOutCell, Pointer);
+        if (Hovered)
+        {
+            Surface.FillRectangle(ZoomOutCell, ScaleAlpha(50u, 50u, 56u, 235u), 13.0f);
+            if (Spec.ZoomOutTooltip != nullptr && Spec.ZoomOutTooltip[0] != '\0')
+            {
+                ControlAppearance::RecordHoveredTooltip(ZoomOutCell, OptionalTooltip::FromText(Spec.ZoomOutTooltip));
+            }
+        }
+        const Point2D   C   = ZoomOutCell.Center();
+        const ColorRgba Ink = Hovered
+                                  ? ScaleAlpha(244u, 244u, 240u, 255u)
+                                  : ScaleAlpha(196u, 196u, 202u, 255u);
+        Surface.StrokeLine({ C.X - 4.8f, C.Y }, { C.X + 4.8f, C.Y }, Ink, 1.55f);
+        if (Hovered && Pointer.Pressed)
+        {
+            Triggered = ViewportNavigationDirective::ZoomOut;
+        }
+    }
+
+    // 3. Bottom Fit Icon (4-corner bracket outline + center focus disc)
+    {
+        const bool Hovered = ControlAppearance::QueryPointerOver(FitCell, Pointer);
+        if (Hovered)
+        {
+            Surface.FillRectangle(FitCell, ScaleAlpha(50u, 50u, 56u, 235u), 13.0f);
+            if (Spec.FitViewTooltip != nullptr && Spec.FitViewTooltip[0] != '\0')
+            {
+                ControlAppearance::RecordHoveredTooltip(FitCell, OptionalTooltip::FromText(Spec.FitViewTooltip));
+            }
+        }
+        const ColorRgba Ink = Hovered
+                                  ? ScaleAlpha(244u, 244u, 240u, 255u)
+                                  : ScaleAlpha(196u, 196u, 202u, 255u);
+        const Point2D Origin{ FitCell.X + 5.5f, FitCell.Y + 5.5f };
+        constexpr float Extent = 15.0f;
+        const auto PX = [&](float X) noexcept -> float { return Origin.X + (X / 24.0f) * Extent; };
+        const auto PY = [&](float Y) noexcept -> float { return Origin.Y + (Y / 24.0f) * Extent; };
+        Surface.FillRectangle({ PX(2.0f), PY(2.0f), PX(9.0f) - PX(2.0f), PY(5.0f) - PY(2.0f) }, Ink);
+        Surface.FillRectangle({ PX(2.0f), PY(2.0f), PX(5.0f) - PX(2.0f), PY(9.0f) - PY(2.0f) }, Ink);
+        Surface.FillRectangle({ PX(15.0f), PY(2.0f), PX(22.0f) - PX(15.0f), PY(5.0f) - PY(2.0f) }, Ink);
+        Surface.FillRectangle({ PX(19.0f), PY(2.0f), PX(22.0f) - PX(19.0f), PY(9.0f) - PY(2.0f) }, Ink);
+        Surface.FillRectangle({ PX(2.0f), PY(15.0f), PX(5.0f) - PX(2.0f), PY(22.0f) - PY(15.0f) }, Ink);
+        Surface.FillRectangle({ PX(2.0f), PY(19.0f), PX(9.0f) - PX(2.0f), PY(22.0f) - PY(19.0f) }, Ink);
+        Surface.FillRectangle({ PX(19.0f), PY(15.0f), PX(22.0f) - PX(19.0f), PY(22.0f) - PY(15.0f) }, Ink);
+        Surface.FillRectangle({ PX(15.0f), PY(19.0f), PX(22.0f) - PX(15.0f), PY(22.0f) - PY(19.0f) }, Ink);
+        Surface.FillCircle({ PX(12.0f), PY(12.0f) }, (3.0f / 24.0f) * Extent, Ink);
+
+        if (Hovered && Pointer.Pressed)
+        {
+            Triggered = ViewportNavigationDirective::FitView;
+        }
+    }
+
+    return Triggered;
+}
+
+void ConstructTelemetryCapsule(
+    PixelSpace&                            Surface,
+    Rectangle2D                            Bounds,
+    std::span<const CapsuleReadoutSegment> Segments,
+    float                                  FontPx,
+    float                                  Opacity) noexcept
+{
+    if (Bounds.Width <= 4.0f || Bounds.Height <= 4.0f)
+    {
+        return;
+    }
+
+    const float ClampedOpacity = std::clamp(Opacity, 0.0f, 1.0f);
+    const float Radius         = Bounds.Height * 0.5f;
+    Surface.FillRectangle(
+        Bounds,
+        ColorRgba{ 18u, 18u, 20u, static_cast<uint8_t>(std::clamp(218.0f * ClampedOpacity, 0.0f, 255.0f)) },
+        Radius);
+    Surface.StrokeRectangle(
+        Bounds,
+        ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(std::clamp(24.0f * ClampedOpacity, 0.0f, 255.0f)) },
+        Radius,
+        1.0f);
+
+    float FlowCursorX = Bounds.X + 11.0f;
+    const float TextY = Bounds.Y + (Bounds.Height - FontPx * 1.45f) * 0.5f;
+    for (std::size_t Idx = 0u; Idx < Segments.size(); ++Idx)
+    {
+        const CapsuleReadoutSegment& Seg = Segments[Idx];
+        if (Seg.Text == nullptr || Seg.Text[0] == '\0')
+        {
+            continue;
+        }
+        const float SegmentX = (Seg.OffsetX >= 0.0f) ? (Bounds.X + Seg.OffsetX) : FlowCursorX;
+        const ColorRgba ScaledInk{
+            Seg.Ink.Red,
+            Seg.Ink.Green,
+            Seg.Ink.Blue,
+            static_cast<uint8_t>(std::clamp(static_cast<float>(Seg.Ink.Alpha) * ClampedOpacity, 0.0f, 255.0f)),
+        };
+        Surface.Text({ SegmentX, TextY }, FontPx, ScaledInk, Seg.Text);
+        if (Seg.OffsetX < 0.0f)
+        {
+            const float TextW = Surface.MeasureTextWidth(FontPx, Seg.Text);
+            FlowCursorX       = SegmentX + TextW + 14.0f;
+            if (Idx + 1u < Segments.size() && FlowCursorX - 7.0f < Bounds.Right() - 8.0f)
+            {
+                Surface.StrokeLine(
+                    { FlowCursorX - 7.0f, Bounds.Y + 5.0f },
+                    { FlowCursorX - 7.0f, Bounds.Bottom() - 5.0f },
+                    ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(std::clamp(18.0f * ClampedOpacity, 0.0f, 255.0f)) },
+                    1.0f);
+            }
+        }
+    }
+}
+
 } // namespace CapsuleButton
 
 } // namespace Frontier

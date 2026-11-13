@@ -41,6 +41,7 @@ class InspectorPanel
 {
 public:
     InspectorPanel() noexcept = default;
+    ~InspectorPanel() noexcept;
 
     void AttachOutliner(OutlinerPanel* SourceOutliner) noexcept;
     void ConfigureNotesBoxOpen(bool Open) noexcept;

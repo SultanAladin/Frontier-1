@@ -278,6 +278,7 @@ ContentBrowserPanel::ContentBrowserPanel()
 
 ContentBrowserPanel::~ContentBrowserPanel() noexcept
 {
+    WorkspaceAppearance::ReleasePanePointerOwnership(this);
     StreamChannelThread.Finalize();
 }
 
@@ -2377,15 +2378,20 @@ void ContentBrowserPanel::Render(Rectangle2D HostBoundsPhysical, double DeltaSec
     }
 
     ContentBrowserPointerInput Pointer{};
-    Pointer.CursorX       = (Snapshot.PositionX - HostBoundsPhysical.X) / SafeScale;
-    Pointer.CursorY       = (Snapshot.PositionY - HostBoundsPhysical.Y) / SafeScale;
-    Pointer.Pressed       = Snapshot.QueryButtonPressed(0u);
-    Pointer.HeldDown      = Snapshot.QueryButtonDown(0u);
-    Pointer.Released      = Snapshot.QueryButtonReleased(0u);
-    Pointer.DoubleClicked = Snapshot.QueryButtonDoubleClicked(0u);
-    Pointer.WheelDeltaY   = Snapshot.ScrollDeltaY;
+    const bool                 BlockedByOtherPane = WorkspaceAppearance::QueryPointerBlockedForPane(this);
+    if (!BlockedByOtherPane)
+    {
+        Pointer.CursorX       = (Snapshot.PositionX - HostBoundsPhysical.X) / SafeScale;
+        Pointer.CursorY       = (Snapshot.PositionY - HostBoundsPhysical.Y) / SafeScale;
+        Pointer.Pressed       = Snapshot.QueryButtonPressed(0u);
+        Pointer.HeldDown      = Snapshot.QueryButtonDown(0u);
+        Pointer.Released      = Snapshot.QueryButtonReleased(0u);
+        Pointer.DoubleClicked = Snapshot.QueryButtonDoubleClicked(0u);
+        Pointer.WheelDeltaY   = Snapshot.ScrollDeltaY;
+    }
 
     RenderWithInput(Canvas, LogicalBounds, Pointer, DeltaSeconds);
+    WorkspaceAppearance::AssignExternalDragSuppression(DraggingColour || DraggingMatCap);
 }
 
 } // namespace Frontier

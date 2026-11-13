@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
+#include "Engine/Components/VectorIcons/VectorIconRepository.h"
 #include "Engine/Input/InputExtension.h"
 
 #include "imgui.h"
@@ -15,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <string>
 
 namespace Frontier::WorkspaceAppearance
 {
@@ -181,6 +183,153 @@ PaneInputReading CaptureImGuiPaneInput(Rectangle2D ScreenBounds, float ScaleFact
     }
 
     return Reading;
+}
+
+namespace
+{
+
+struct PointerOwnershipRegister
+{
+    const void* ActiveOwnerPane         = nullptr;
+    bool        ExternalDragSuppression = false;
+    uint32_t    OwnerStaleEnforceTicks  = 0u;
+};
+
+[[nodiscard]] PointerOwnershipRegister& AccessPointerOwnershipRegister() noexcept
+{
+    static PointerOwnershipRegister CoordinatorRegister{};
+    return CoordinatorRegister;
+}
+
+} // namespace
+
+void SuppressPanePointerInput(PaneInputReading& InOutInput) noexcept
+{
+    InOutInput.PrimaryPointer.X        = -1.0e6f;
+    InOutInput.PrimaryPointer.Y        = -1.0e6f;
+    InOutInput.PrimaryPointer.Enabled  = false;
+    InOutInput.PrimaryPointer.Pressed  = false;
+    InOutInput.PrimaryPointer.Down     = false;
+    InOutInput.PrimaryPointer.Released = false;
+    InOutInput.SecondaryPressed        = false;
+    InOutInput.SecondaryDown           = false;
+    InOutInput.SecondaryReleased       = false;
+    InOutInput.MiddlePressed           = false;
+    InOutInput.MiddleDown              = false;
+    InOutInput.MiddleReleased          = false;
+    InOutInput.DoubleClicked           = false;
+    InOutInput.WheelDeltaY             = 0.0f;
+}
+
+const void* QueryActivePointerOwner() noexcept
+{
+    return AccessPointerOwnershipRegister().ActiveOwnerPane;
+}
+
+bool QueryPointerBlockedForPane(const void* PaneIdentity) noexcept
+{
+    const auto& Reg = AccessPointerOwnershipRegister();
+    return Reg.ActiveOwnerPane != nullptr && Reg.ActiveOwnerPane != PaneIdentity;
+}
+
+void AssignExternalDragSuppression(bool ExternalDragActive) noexcept
+{
+    AccessPointerOwnershipRegister().ExternalDragSuppression = ExternalDragActive;
+}
+
+void EnforcePanePointerOwnership(const void* PaneIdentity, PaneInputReading& InOutInput) noexcept
+{
+    auto& Reg = AccessPointerOwnershipRegister();
+    if (Reg.ActiveOwnerPane == nullptr)
+    {
+        return;
+    }
+    if (Reg.ActiveOwnerPane == PaneIdentity)
+    {
+        Reg.OwnerStaleEnforceTicks        = 0u;
+        InOutInput.PrimaryPointer.Enabled = true;
+        return;
+    }
+
+    const auto& RawSnapshot = Input::InputExtension::InspectActiveEditorSnapshot();
+    const bool  RawButtonsDown =
+        RawSnapshot.QueryButtonDown(0u) ||
+        RawSnapshot.QueryButtonDown(1u) ||
+        RawSnapshot.QueryButtonDown(2u);
+    if (!RawButtonsDown)
+    {
+        ++Reg.OwnerStaleEnforceTicks;
+        if (Reg.OwnerStaleEnforceTicks > 16u)
+        {
+            Reg.ActiveOwnerPane        = nullptr;
+            Reg.OwnerStaleEnforceTicks = 0u;
+            return;
+        }
+    }
+    else
+    {
+        Reg.OwnerStaleEnforceTicks = 0u;
+    }
+
+    SuppressPanePointerInput(InOutInput);
+}
+
+void UpdatePanePointerOwnership(
+    const void*             PaneIdentity,
+    Rectangle2D             ScreenBounds,
+    float                   ScaleFactor,
+    const PaneInputReading& Input,
+    bool                    ActiveDragCaptured) noexcept
+{
+    if (PaneIdentity == nullptr)
+    {
+        return;
+    }
+
+    auto&       Reg         = AccessPointerOwnershipRegister();
+    const float SafeScale   = std::max(0.25f, ScaleFactor);
+    const Point2D PhysicalCursor{
+        ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
+        ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
+    };
+    const bool AnyButtonDown = Input.PrimaryPointer.Down || Input.MiddleDown || Input.SecondaryDown;
+
+    if (Reg.ActiveOwnerPane == PaneIdentity)
+    {
+        Reg.OwnerStaleEnforceTicks = 0u;
+        if (!ActiveDragCaptured && !AnyButtonDown)
+        {
+            Reg.ActiveOwnerPane = nullptr;
+        }
+        return;
+    }
+
+    if (Reg.ActiveOwnerPane == nullptr && !Reg.ExternalDragSuppression)
+    {
+        if (ActiveDragCaptured || (ScreenBounds.Contains(PhysicalCursor) && AnyButtonDown))
+        {
+            Reg.ActiveOwnerPane        = PaneIdentity;
+            Reg.OwnerStaleEnforceTicks = 0u;
+        }
+    }
+}
+
+void ReleasePanePointerOwnership(const void* PaneIdentity) noexcept
+{
+    auto& Reg = AccessPointerOwnershipRegister();
+    if (Reg.ActiveOwnerPane == PaneIdentity)
+    {
+        Reg.ActiveOwnerPane        = nullptr;
+        Reg.OwnerStaleEnforceTicks = 0u;
+    }
+}
+
+void ResetAllPanePointerOwnership() noexcept
+{
+    auto& Reg = AccessPointerOwnershipRegister();
+    Reg.ActiveOwnerPane         = nullptr;
+    Reg.ExternalDragSuppression = false;
+    Reg.OwnerStaleEnforceTicks  = 0u;
 }
 
 void ForwardInputToTextBuffer(TextEditBuffer& Buffer, const PaneInputReading& Input, double Δt) noexcept
@@ -958,6 +1107,39 @@ void ConstructFocusIcon(PixelSpace& Surface, Point2D TopLeft, float Extent, Colo
     Surface.FillCircle({ PX(12.0f), PY(12.0f) }, (3.0f / 24.0f) * Extent, Ink);
 }
 
+void ConstructComponentModeIcon(PixelSpace& Surface, Point2D Origin, float Extent, uint32_t ModeIdx, ColorRgba Ink) noexcept
+{
+    const float L = Origin.X + Extent * 0.18f;
+    const float R = Origin.X + Extent * 0.82f;
+    const float T = Origin.Y + Extent * 0.18f;
+    const float B = Origin.Y + Extent * 0.82f;
+    if (ModeIdx == 0u) // Vertex
+    {
+        Surface.FillCircle({ L, T }, 1.9f, Ink);
+        Surface.FillCircle({ R, T }, 1.9f, Ink);
+        Surface.FillCircle({ L, B }, 1.9f, Ink);
+        Surface.FillCircle({ R, B }, 1.9f, Ink);
+    }
+    else if (ModeIdx == 1u) // Edge
+    {
+        Surface.StrokeLine({ L, B }, { R, T }, Ink, 1.6f);
+        Surface.FillCircle({ L, B }, 1.8f, Ink);
+        Surface.FillCircle({ R, T }, 1.8f, Ink);
+    }
+    else if (ModeIdx == 2u) // Face
+    {
+        ColorRgba Soft = Ink;
+        Soft.Alpha     = 72u;
+        Surface.FillRectangle({ L, T, R - L, B - T }, Soft, 1.5f);
+        Surface.StrokeRectangle({ L, T, R - L, B - T }, Ink, 1.5f, 1.3f);
+    }
+    else // Island
+    {
+        Surface.StrokeRectangle({ Origin.X + Extent * 0.12f, Origin.Y + Extent * 0.14f, Extent * 0.42f, Extent * 0.42f }, Ink, 1.5f, 1.25f);
+        Surface.StrokeRectangle({ Origin.X + Extent * 0.46f, Origin.Y + Extent * 0.44f, Extent * 0.42f, Extent * 0.42f }, Ink, 1.5f, 1.25f);
+    }
+}
+
 void ConstructSplitViewportIcon(
     PixelSpace& Surface,
     Point2D     TopLeft,
@@ -1281,6 +1463,112 @@ void ConstructResetSymbol(
         { Tip.X + R * 0.68f, Tip.Y + R * 0.08f },
     }};
     Surface.StrokePolyline(Head, Ink, Thickness, false);
+}
+
+void ConstructSectionHeading(
+    PixelSpace&      Surface,
+    float            LeftX,
+    float            TopY,
+    float            Width,
+    std::string_view Title,
+    std::string_view RightTag,
+    ControlIcon      Icon,
+    ColorRgba        IconTint) noexcept
+{
+    const ControlColorSet& Colors = ControlAppearance::Colors();
+    const bool             HasIcon = (Icon != ControlIcon::Count);
+    if (HasIcon)
+    {
+        VectorIconRepository::ConstructControl(
+            Surface, Icon, VectorIconPlacement{ LeftX, TopY + 1.0f, 14.0f, IconTint, 1.8f });
+    }
+    else
+    {
+        Surface.FillRectangle({ LeftX, TopY + 2.0f, 3.0f, 14.0f }, Colors.Accent.ToRgba8(), 1.5f);
+    }
+
+    ConstructWeightedText(
+        Surface,
+        FontWeightClass::Regular,
+        { LeftX + (HasIcon ? 21.0f : 10.0f), TopY },
+        12.0f,
+        Colors.Text.ToRgba8(),
+        Title);
+
+    if (!RightTag.empty())
+    {
+        const float       TagW    = MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.5f, RightTag) + 12.0f;
+        const Rectangle2D TagRect { LeftX + Width - TagW, TopY - 1.0f, TagW, 18.0f };
+        const ColorQuad   WellCol = ColorQuad::Blend(Colors.Field, Colors.Panel, 0.35f);
+        const ColorQuad   EdgeCol = ColorQuad::Blend(Colors.StrokeStrong, Colors.Text, 0.14f);
+        Surface.FillRectangle(TagRect, WellCol.ToRgba8(), 9.0f);
+        Surface.StrokeRectangle(TagRect, EdgeCol.ToRgba8(), 9.0f, 1.0f);
+        ConstructWeightedText(
+            Surface,
+            FontWeightClass::Regular,
+            { TagRect.X + 6.0f, TagRect.Y + 3.5f },
+            8.5f,
+            Colors.TextDim.ToRgba8(),
+            RightTag);
+    }
+}
+
+bool ConstructCapsuleToggleRow(
+    PixelSpace&            Surface,
+    Rectangle2D            RowRect,
+    std::string_view       Label,
+    bool&                  InOutEnabled,
+    Point2D                Cursor,
+    bool                   Pressed,
+    const OptionalTooltip& Tooltip,
+    std::string_view       DetailFirstLine,
+    std::string_view       DetailSecondLine) noexcept
+{
+    const ControlColorSet& Colors = ControlAppearance::Colors();
+    ConstructWeightedText(
+        Surface, FontWeightClass::Regular, { RowRect.X, RowRect.Y }, 11.5f, Colors.Text.ToRgba8(), Label);
+    if (!DetailFirstLine.empty())
+    {
+        ConstructTruncatedText(
+            Surface, FontWeightClass::Regular, { RowRect.X, RowRect.Y + 16.0f }, RowRect.Width - 54.0f,
+            9.5f, Colors.TextDim.ToRgba8(), DetailFirstLine);
+        if (!DetailSecondLine.empty())
+        {
+            ConstructTruncatedText(
+                Surface, FontWeightClass::Regular, { RowRect.X, RowRect.Y + 27.0f }, RowRect.Width - 54.0f,
+                9.5f, Colors.TextDim.ToRgba8(), DetailSecondLine);
+        }
+    }
+
+    const Rectangle2D TrackCapsule{ RowRect.Right() - 44.0f, RowRect.Y + 3.0f, 44.0f, 25.0f };
+    const bool        Hovered = RowRect.Contains(Cursor);
+    if (Hovered)
+    {
+        std::string     TitleStorage{};
+        OptionalTooltip Effective = Tooltip;
+        if (!Effective.Enabled)
+        {
+            TitleStorage.assign(Label);
+            Effective = OptionalTooltip::FromTitled(TitleStorage.c_str(), "Toggle this workspace setting.");
+        }
+        ControlAppearance::RecordHoveredTooltip(RowRect, Effective);
+    }
+
+    Surface.FillRectangle(
+        TrackCapsule, InOutEnabled ? ColorRgba{ 255, 255, 255, 255 } : ColorRgba{ 35, 35, 35, 255 }, 13.0f);
+    Surface.StrokeRectangle(
+        TrackCapsule, InOutEnabled ? ColorRgba{ 255, 255, 255, 255 } : ColorRgba{ 255, 255, 255, 26 }, 13.0f, 1.0f);
+    const float KnobX = InOutEnabled ? (TrackCapsule.Right() - 13.0f) : (TrackCapsule.X + 13.0f);
+    Surface.FillCircle(
+        { KnobX, TrackCapsule.Y + 12.5f }, 9.5f,
+        InOutEnabled ? ColorRgba{ 17, 17, 17, 255 } : ColorRgba{ 188, 188, 188, 255 });
+
+    if (Hovered && Pressed)
+    {
+        InOutEnabled = !InOutEnabled;
+        return true;
+    }
+    return false;
 }
 
 } // namespace Frontier::WorkspaceAppearance

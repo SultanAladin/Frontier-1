@@ -9,10 +9,12 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Components/Controls/CapsuleButton.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <string_view>
 
 namespace Frontier
@@ -65,9 +67,13 @@ struct ViewportDisplaySettings
 class ViewportPanel
 {
 public:
+    using NavigationCallback = std::function<void(ViewportNavigationDirective)>;
+
     ViewportPanel() noexcept;
+    ~ViewportPanel() noexcept;
 
     void AttachOutliner(OutlinerPanel* SourceOutliner) noexcept;
+    void AssignNavigationCallback(NavigationCallback Callback);
     void ConfigureSceneTitle(std::string_view Title);
     void ConfigureExecutionMode(ViewportExecutionMode Mode, bool Paused = false) noexcept;
     void TogglePlayPause() noexcept;
@@ -98,6 +104,8 @@ public:
     [[nodiscard]] ViewportProjectionPreset       QueryPrimaryProjection() const noexcept;
     [[nodiscard]] ViewportProjectionPreset       QuerySecondaryProjection() const noexcept;
     [[nodiscard]] uint32_t                       QueryActivePaneIndex() const noexcept;
+    [[nodiscard]] float                          QueryViewportZoomScale() const noexcept;
+    [[nodiscard]] Rectangle2D                    QueryLastCanvasPaneBounds() const noexcept;
     [[nodiscard]] const ViewportDisplaySettings& QueryDisplaySettings() const noexcept;
     [[nodiscard]] ViewportDisplaySettings&       AccessDisplaySettings() noexcept;
 
@@ -147,6 +155,9 @@ private:
     uint32_t                   HistoryWriteCursor      = 0u;                                      // [idx] - Ring buffer write cursor
     ConstructCategoryRail      ConstructRail           = ConstructCategoryRail::All;              // [-]   - Active Construct category rail
     TextEditBuffer             ConstructSearchEditor   {};                                        // [-]   - Construct search filter buffer
+    float                      ViewportZoomScale       = 1.0f;                                    // [x]   - Interactive canvas zoom multiplier
+    Rectangle2D                LastCanvasPaneBounds    {};                                        // [px]  - Last rendered active sub-viewport rect
+    NavigationCallback         OnNavigationDirective   {};                                        // [-]   - Optional callback when + / - / Fit triggers
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -156,6 +167,21 @@ private:
 inline void ViewportPanel::AttachOutliner(OutlinerPanel* SourceOutliner) noexcept
 {
     AttachedOutliner = SourceOutliner;
+}
+
+inline void ViewportPanel::AssignNavigationCallback(NavigationCallback Callback)
+{
+    OnNavigationDirective = std::move(Callback);
+}
+
+inline float ViewportPanel::QueryViewportZoomScale() const noexcept
+{
+    return ViewportZoomScale;
+}
+
+inline Rectangle2D ViewportPanel::QueryLastCanvasPaneBounds() const noexcept
+{
+    return LastCanvasPaneBounds;
 }
 
 inline ViewportExecutionMode ViewportPanel::QueryExecutionMode() const noexcept

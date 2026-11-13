@@ -74,14 +74,6 @@ enum class UVSelectionMode : uint8_t
     Layers   = 4u,
 };
 
-enum class UVPointerOwnerPane : uint8_t
-{
-    None           = 0u,
-    ViewportHost   = 1u,
-    OutlinerPanel  = 2u,
-    InspectorPanel = 3u,
-};
-
 enum class UVCommandDirective : uint8_t
 {
     None                     = 0u,
@@ -282,7 +274,6 @@ public:
     bool                                     FramebuffersDirty    = true;
     bool                                     SpatialNavigationActive = false;
     bool                                     DeferredPlanarRefresh = false;
-    UVPointerOwnerPane                       PointerOwnerPane        = UVPointerOwnerPane::None;
 
 private:
     void InitializeLoadedAssetLayout();

@@ -8,7 +8,9 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Appearance/TypographyRepository.h"
+#include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
+#include "Engine/Components/Controls/CapsuleButton.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/Components/Panes/InspectorPanel.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
@@ -18,6 +20,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <vector>
@@ -254,6 +257,85 @@ bool ValidateOutlinerInspectorAndViewportSemantics()
             "Split Viewport and Diagnostics toggles activate cleanly"))
     {
         return false;
+    }
+
+    // 7. Shared cross-pane pointer ownership isolates peer panes during active drag across panels
+    {
+        Frontier::WorkspaceAppearance::ResetAllPanePointerOwnership();
+        Frontier::ContentBrowserPanel Browser{};
+        Frontier::Rectangle2D ViewportScreen{ 300.0f, 40.0f, 800.0f, 600.0f };
+        Frontier::PaneInputReading DragStart{};
+        DragStart.PrimaryPointer.X       = 100.0f;
+        DragStart.PrimaryPointer.Y       = 120.0f;
+        DragStart.PrimaryPointer.Enabled = true;
+        DragStart.PrimaryPointer.Pressed = true;
+        DragStart.PrimaryPointer.Down    = true;
+        Frontier::WorkspaceAppearance::UpdatePanePointerOwnership(&Viewport, ViewportScreen, 1.0f, DragStart, true);
+
+        if (!VerifyAssertion(
+                Frontier::WorkspaceAppearance::QueryActivePointerOwner() == &Viewport &&
+                Frontier::WorkspaceAppearance::QueryPointerBlockedForPane(&Outliner) &&
+                Frontier::WorkspaceAppearance::QueryPointerBlockedForPane(&Inspector) &&
+                Frontier::WorkspaceAppearance::QueryPointerBlockedForPane(&Browser) &&
+                !Frontier::WorkspaceAppearance::QueryPointerBlockedForPane(&Viewport),
+                "Shared WorkspaceAppearance pointer ownership locks active pane across all shared panels"))
+        {
+            return false;
+        }
+
+        Frontier::PaneInputReading OutlinerInput{};
+        OutlinerInput.PrimaryPointer.X       = 40.0f;
+        OutlinerInput.PrimaryPointer.Y       = 90.0f;
+        OutlinerInput.PrimaryPointer.Enabled = true;
+        OutlinerInput.PrimaryPointer.Pressed = true;
+        OutlinerInput.PrimaryPointer.Down    = true;
+        OutlinerInput.WheelDeltaY            = 2.0f;
+        Frontier::WorkspaceAppearance::EnforcePanePointerOwnership(&Outliner, OutlinerInput);
+        if (!VerifyAssertion(
+                !OutlinerInput.PrimaryPointer.Enabled &&
+                !OutlinerInput.PrimaryPointer.Pressed &&
+                !OutlinerInput.PrimaryPointer.Down &&
+                OutlinerInput.PrimaryPointer.X < -1.0e5f &&
+                OutlinerInput.WheelDeltaY == 0.0f,
+                "EnforcePanePointerOwnership blocks peer hover, clicks, and wheel when another pane owns drag"))
+        {
+            return false;
+        }
+
+        // Active owner continues receiving live coordinates even after moving outside its pane bounds
+        Frontier::PaneInputReading OutsideDrag{};
+        OutsideDrag.PrimaryPointer.X       = -40.0f;
+        OutsideDrag.PrimaryPointer.Y       = 120.0f;
+        OutsideDrag.PrimaryPointer.Enabled = false;
+        OutsideDrag.MiddleDown             = true;
+        Frontier::WorkspaceAppearance::EnforcePanePointerOwnership(&Viewport, OutsideDrag);
+        if (!VerifyAssertion(
+                OutsideDrag.PrimaryPointer.Enabled && OutsideDrag.MiddleDown,
+                "Active pointer owner retains enabled pointer outside its bounds"))
+        {
+            return false;
+        }
+
+        Frontier::PaneInputReading DragEnd{};
+        Frontier::WorkspaceAppearance::UpdatePanePointerOwnership(&Viewport, ViewportScreen, 1.0f, DragEnd, false);
+        if (!VerifyAssertion(
+                Frontier::WorkspaceAppearance::QueryActivePointerOwner() == nullptr &&
+                !Frontier::WorkspaceAppearance::QueryPointerBlockedForPane(&Outliner),
+                "Releasing drag clears shared pointer ownership across all panes"))
+        {
+            return false;
+        }
+
+        // ContentBrowser drag-and-drop suppression allows drop slots on peer panes without locking ownership
+        Frontier::WorkspaceAppearance::AssignExternalDragSuppression(true);
+        Frontier::WorkspaceAppearance::UpdatePanePointerOwnership(&Inspector, ViewportScreen, 1.0f, DragStart, false);
+        if (!VerifyAssertion(
+                Frontier::WorkspaceAppearance::QueryActivePointerOwner() == nullptr,
+                "External browser drag suppression prevents panes from capturing drop-target drags"))
+        {
+            return false;
+        }
+        Frontier::WorkspaceAppearance::AssignExternalDragSuppression(false);
     }
 
     return true;
@@ -539,6 +621,85 @@ bool GenerateWorkspacePaneExhibits(const std::filesystem::path& OutputDirectory)
         Viewport.ConfigureProjectionDropdownOpen(true);
 
         if (!CaptureExhibitSnapshot("Outliner", Outliner, Viewport, Inspector, "06-HeaderSettingsAndScrolledTree.png"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+    }
+
+    // Verify reusable + | - | Fit navigation capsule on shared ViewportPanel canvas
+    {
+        OutlinerPanel  Outliner{};
+        ViewportPanel  Viewport{};
+        Viewport.AttachOutliner(&Outliner);
+        Frontier::ViewportNavigationDirective LastNav =
+            Frontier::ViewportNavigationDirective::None;
+        Viewport.AssignNavigationCallback([&](Frontier::ViewportNavigationDirective Dir)
+        {
+            LastNav = Dir;
+        });
+
+        constexpr Frontier::Rectangle2D ViewportBounds{ 0.0f, 0.0f, 960.0f, 640.0f };
+        {
+            Io.DisplaySize = ImVec2(960.0f, 640.0f);
+            Io.DeltaTime   = 1.0f / 60.0f;
+            ImGui::NewFrame();
+            ImDrawList* ActiveDisplayList = ImGui::GetForegroundDrawList();
+            Frontier::PixelSpace Surface(ActiveDisplayList, { 0.0f, 0.0f }, 1.0f);
+            Frontier::PaneInputReading IdleInput{};
+            Viewport.Render(Surface, ViewportBounds, IdleInput, 1.0 / 60.0, &Surface);
+            ImGui::Render();
+        }
+        const Frontier::Rectangle2D NavCapsule =
+            Frontier::CapsuleButton::QueryViewportNavigationCapsuleBounds(
+                Viewport.QueryLastCanvasPaneBounds(), 12.0f, 68.0f);
+        if (!VerifyAssertion(NavCapsule.Width == 34.0f && NavCapsule.Height == 96.0f, "ViewportPanel navigation capsule bounds valid"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+
+        auto ClickNavButton = [&](float OffsetY)
+        {
+            Io.DisplaySize = ImVec2(960.0f, 640.0f);
+            Io.DeltaTime   = 1.0f / 60.0f;
+            ImGui::NewFrame();
+            ImDrawList* ActiveDisplayList = ImGui::GetForegroundDrawList();
+            Frontier::PixelSpace Surface(ActiveDisplayList, { 0.0f, 0.0f }, 1.0f);
+            Frontier::PaneInputReading Input{};
+            Input.PrimaryPointer.X       = NavCapsule.X + 17.0f;
+            Input.PrimaryPointer.Y       = NavCapsule.Y + OffsetY;
+            Input.PrimaryPointer.Enabled = true;
+            Input.PrimaryPointer.Pressed = true;
+            Input.PrimaryPointer.Down    = true;
+            Viewport.Render(Surface, ViewportBounds, Input, 1.0 / 60.0, &Surface);
+            ImGui::Render();
+        };
+
+        ClickNavButton(17.0f); // '+'
+        if (!VerifyAssertion(
+                LastNav == Frontier::ViewportNavigationDirective::ZoomIn &&
+                Viewport.QueryViewportZoomScale() > 1.0f,
+                "ViewportPanel reusable navigation capsule '+' zooms in"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+        ClickNavButton(48.0f); // '-'
+        ClickNavButton(48.0f); // '-'
+        if (!VerifyAssertion(
+                LastNav == Frontier::ViewportNavigationDirective::ZoomOut &&
+                Viewport.QueryViewportZoomScale() < 1.0f,
+                "ViewportPanel reusable navigation capsule '-' zooms out"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+        ClickNavButton(79.0f); // 'Fit'
+        if (!VerifyAssertion(
+                LastNav == Frontier::ViewportNavigationDirective::FitView &&
+                std::abs(Viewport.QueryViewportZoomScale() - 1.0f) < 1.0e-4f,
+                "ViewportPanel reusable navigation capsule 'Fit' resets zoom cleanly"))
         {
             ImGui::DestroyContext(GuiSession);
             return false;

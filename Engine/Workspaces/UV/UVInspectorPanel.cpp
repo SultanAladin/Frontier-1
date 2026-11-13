@@ -163,6 +163,11 @@ void ConstructPackingMetricCards(
 
 } // namespace
 
+UVInspectorPanel::~UVInspectorPanel() noexcept
+{
+    WorkspaceAppearance::ReleasePanePointerOwnership(this);
+}
+
 void UVInspectorPanel::AttachSession(UVWorkspaceSession* TargetSession) noexcept
 {
     Session       = TargetSession;
@@ -2114,62 +2119,28 @@ void UVInspectorPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
 
     PixelSpace       Surface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
     PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+    WorkspaceAppearance::EnforcePanePointerOwnership(this, Input);
 
-    if (Session != nullptr)
+    const bool SliderDragging = ShareSliderDragging || SurfaceSliderDragging;
+    if (Session != nullptr && !SliderDragging)
     {
         const Point2D PhysicalCursor {
             ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
             ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
         };
-        const bool BlockedByBrowser = [&]() noexcept
+        if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
         {
-            if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+            if (Browser->QueryBlocksPointerAt(PhysicalCursor))
             {
-                return Browser->QueryBlocksPointerAt(PhysicalCursor) &&
-                    !ShareSliderDragging &&
-                    !SurfaceSliderDragging;
+                WorkspaceAppearance::SuppressPanePointerInput(Input);
             }
-            return false;
-        }();
-        const bool BlockedByOwner =
-            Session->PointerOwnerPane != UVPointerOwnerPane::None &&
-            Session->PointerOwnerPane != UVPointerOwnerPane::InspectorPanel;
-        if (BlockedByBrowser || BlockedByOwner)
-        {
-            Input.PrimaryPointer.Enabled  = false;
-            Input.PrimaryPointer.Pressed  = false;
-            Input.PrimaryPointer.Down     = false;
-            Input.PrimaryPointer.Released = false;
-            Input.SecondaryPressed        = false;
-            Input.SecondaryDown           = false;
-            Input.MiddlePressed           = false;
-            Input.MiddleDown              = false;
-            Input.DoubleClicked           = false;
-            Input.WheelDeltaY             = 0.0f;
         }
     }
 
     Render(Surface, LogicalBounds, Input, Δt);
 
-    if (Session != nullptr)
-    {
-        const Point2D PhysicalCursor {
-            ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
-            ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
-        };
-        const bool AnyBtnDown = Input.PrimaryPointer.Down || Input.MiddleDown || Input.SecondaryDown;
-        if (ShareSliderDragging || SurfaceSliderDragging ||
-            (Session->PointerOwnerPane == UVPointerOwnerPane::None &&
-             ScreenBounds.Contains(PhysicalCursor) && AnyBtnDown))
-        {
-            Session->PointerOwnerPane = UVPointerOwnerPane::InspectorPanel;
-        }
-        else if (Session->PointerOwnerPane == UVPointerOwnerPane::InspectorPanel &&
-                 !ShareSliderDragging && !SurfaceSliderDragging && !AnyBtnDown)
-        {
-            Session->PointerOwnerPane = UVPointerOwnerPane::None;
-        }
-    }
+    WorkspaceAppearance::UpdatePanePointerOwnership(
+        this, ScreenBounds, SafeScale, Input, ShareSliderDragging || SurfaceSliderDragging);
 
     if (Session != nullptr)
     {

@@ -72,9 +72,14 @@ OutlinerPanel::OutlinerPanel() noexcept
     ConstructTemplates = {
         { "Add Item 1", "Item 1", "Type 1", "Position 0, 0, 0 m", ConstructSlotCategory::CategoryOne  },
         { "Add Item 2", "Item 2", "Type 2", "Position 0, 0, 0 m", ConstructSlotCategory::CategoryTwo },
-        { "Add Item 3", "Item 3", "Type 3", "Position 0, 0, 0 m", ConstructSlotCategory::CategoryThree  },
+        { "Add Item 3", "Item 3", "Type 3", "Position 0, 0, 0 m", ConstructSlotCategory::CategoryThree },
         { "Add Item 4", "Item 4", "Type 4", "Position 0, 0, 0 m", ConstructSlotCategory::CategoryFour },
     };
+}
+
+OutlinerPanel::~OutlinerPanel() noexcept
+{
+    WorkspaceAppearance::ReleasePanePointerOwnership(this);
 }
 
 void OutlinerPanel::ConfigureTitleVariant(OutlinerTitleVariant Variant) noexcept
@@ -1762,8 +1767,10 @@ void OutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
     PixelSpace WindowSurface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
     PixelSpace ForegroundSurface(ImGui::GetForegroundDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
 
-    const PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+    PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+    WorkspaceAppearance::EnforcePanePointerOwnership(this, Input);
     Render(WindowSurface, LogicalBounds, Input, Δt, &ForegroundSurface);
+    WorkspaceAppearance::UpdatePanePointerOwnership(this, ScreenBounds, SafeScale, Input, false);
 }
 
 } // namespace Frontier

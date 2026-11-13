@@ -11,6 +11,8 @@
 
 #include "Engine/Components/Controls/ControlAppearance.h"
 
+#include <span>
+
 namespace Frontier
 {
 
@@ -27,6 +29,14 @@ enum class ButtonTone : uint8_t
     Tinted    = 4, // [-] - Custom color-tinted button
 };
 
+enum class ViewportNavigationDirective : uint8_t
+{
+    None    = 0, // [-] - No navigation button triggered
+    ZoomIn  = 1, // [-] - Zoom viewport camera or planar canvas inward
+    ZoomOut = 2, // [-] - Zoom viewport camera or planar canvas outward
+    FitView = 3, // [-] - Enclose active selection or complete scene bounds
+};
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
@@ -40,6 +50,22 @@ struct ButtonDescriptor
     bool            Disabled = false;                 // [-]  - Disabled interaction toggle
     ColorQuad       Tint     = {};                    // [-]  - Custom fill color when Tone == ButtonTone::Tinted
     OptionalTooltip Tooltip  = {};                    // [-]  - Optional hover tooltip descriptor
+};
+
+struct ViewportNavigationCapsuleSpec
+{
+    const char* ZoomInTooltip  = "Zoom in.";                      // [-]  - Tooltip shown over '+' button
+    const char* ZoomOutTooltip = "Zoom out.";                     // [-]  - Tooltip shown over '-' button
+    const char* FitViewTooltip = "Fit active selection or view."; // [-]  - Tooltip shown over Fit icon button
+    float       MarginRight    = 12.0f;                           // [px] - Inset from SubViewport right edge
+    float       MarginBottom   = 12.0f;                           // [px] - Inset from SubViewport bottom edge
+};
+
+struct CapsuleReadoutSegment
+{
+    const char* Text    = "";                        // [-]  - Formatted telemetry label text
+    ColorRgba   Ink     { 220u, 220u, 220u, 255u };  // [-]  - Segment ink colour
+    float       OffsetX = -1.0f;                     // [px] - Explicit left offset inside capsule (<0 = auto layout)
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -93,6 +119,25 @@ namespace CapsuleButton
     bool                  Active,
     const ControlPointer& Pointer,
     float                 Opacity = 1.0f) noexcept;
+
+[[nodiscard]] Rectangle2D QueryViewportNavigationCapsuleBounds(
+    Rectangle2D ViewportRect,
+    float       MarginRight  = 12.0f,
+    float       MarginBottom = 12.0f) noexcept;
+
+[[nodiscard]] ViewportNavigationDirective ConstructViewportNavigationCapsule(
+    PixelSpace&                        Surface,
+    Rectangle2D                        ViewportRect,
+    const ControlPointer&              Pointer,
+    const ViewportNavigationCapsuleSpec& Spec    = {},
+    float                              Opacity = 1.0f) noexcept;
+
+void ConstructTelemetryCapsule(
+    PixelSpace&                            Surface,
+    Rectangle2D                            Bounds,
+    std::span<const CapsuleReadoutSegment> Segments,
+    float                                  FontPx  = 9.0f,
+    float                                  Opacity = 1.0f) noexcept;
 
 } // namespace CapsuleButton
 

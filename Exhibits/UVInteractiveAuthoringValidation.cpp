@@ -11,6 +11,8 @@
 #include "Engine/Components/Appearance/TypographyRepository.h"
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
+#include "Engine/Components/Panes/OutlinerPanel.h"
+#include "Engine/Components/Panes/WorkspaceAppearance.h"
 #include "Engine/Configuration/EngineConfiguration.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.h"
@@ -681,6 +683,31 @@ int main()
             {
                 return 1;
             }
+
+            // Shared WorkspaceAppearance pointer ownership isolates UVOutliner / UVInspector / generic Outliner cleanly
+            WorkspaceAppearance::ResetAllPanePointerOwnership();
+            OutlinerPanel GenericOutliner {};
+            WorkspaceAppearance::UpdatePanePointerOwnership(
+                &Host,
+                { 0.0f, 0.0f, 1280.0f, 720.0f },
+                1.0f,
+                MmbDragOut,
+                Interactor.QueryDragCaptureActive());
+            PaneInputReading PeerAttempt {};
+            PeerAttempt.PrimaryPointer.X       = 40.0f;
+            PeerAttempt.PrimaryPointer.Y       = 40.0f;
+            PeerAttempt.PrimaryPointer.Enabled = true;
+            PeerAttempt.PrimaryPointer.Pressed = true;
+            WorkspaceAppearance::EnforcePanePointerOwnership(&GenericOutliner, PeerAttempt);
+            if (!VerifyCheck(
+                    WorkspaceAppearance::QueryPointerBlockedForPane(&GenericOutliner) &&
+                    !PeerAttempt.PrimaryPointer.Pressed &&
+                    !PeerAttempt.PrimaryPointer.Enabled,
+                    "Active UV viewport drag blocks peer workspace panes via shared pointer ownership"))
+            {
+                return 1;
+            }
+            WorkspaceAppearance::ResetAllPanePointerOwnership();
 
             PaneInputReading MmbRelease {};
             MmbRelease.MiddleDown       = false;

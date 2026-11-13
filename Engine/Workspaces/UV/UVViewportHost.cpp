@@ -10,6 +10,7 @@
 #include "Engine/Workspaces/UV/UVViewportHost.h"
 
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
+#include "Engine/Components/Controls/CapsuleButton.h"
 #include "Engine/Components/Controls/ControlTooltip.h"
 #include "Engine/Components/Controls/DropdownSelector.h"
 #include "Engine/Workspaces/UV/Solvers/SeamCutGenerator.h"
@@ -72,7 +73,10 @@ UVViewportHost::UVViewportHost()
     ProjectionPane.ConfigurePaneIndicators("2D UDIM UVTILE", "3D FAST LIT + MATCAP");
 }
 
-UVViewportHost::~UVViewportHost() = default;
+UVViewportHost::~UVViewportHost()
+{
+    WorkspaceAppearance::ReleasePanePointerOwnership(this);
+}
 
 void UVViewportHost::AttachSession(UVWorkspaceSession* TargetSession) noexcept
 {
@@ -735,22 +739,10 @@ void UVViewportHost::Render(
         }
     }
 
-    auto ComputeZoomFitCapsuleBounds = [](Rectangle2D SubViewportRect) noexcept -> Rectangle2D
-    {
-        if (SubViewportRect.Width < 120.0f || SubViewportRect.Height < 140.0f)
-        {
-            return {};
-        }
-        return Rectangle2D{
-            SubViewportRect.Right() - 44.0f,
-            SubViewportRect.Bottom() - 106.0f,
-            34.0f,
-            96.0f
-        };
-    };
-
-    const Rectangle2D PrePlanarNavCapsule  = ComputeZoomFitCapsuleBounds(ExpectedPlanarRect);
-    const Rectangle2D PreSpatialNavCapsule = ComputeZoomFitCapsuleBounds(ExpectedSpatialRect);
+    const Rectangle2D PrePlanarNavCapsule  =
+        CapsuleButton::QueryViewportNavigationCapsuleBounds(ExpectedPlanarRect, 10.0f, 10.0f);
+    const Rectangle2D PreSpatialNavCapsule =
+        CapsuleButton::QueryViewportNavigationCapsuleBounds(ExpectedSpatialRect, 10.0f, 10.0f);
 
     std::vector<DropdownDirectiveEntry> DirectiveEntries {};
     std::vector<UVCommandDirective>     DirectiveOps {};
@@ -1106,151 +1098,78 @@ void UVViewportHost::Render(
         }
     }
 
-    // 3b. Vertical Bottom-Right Zoom/Fit Navigation Capsules (+ | - | Fit icon) on BOTH 2D UV Canvas & 3D Surface Viewport
-    auto ConstructViewportZoomFitCapsule = [&](
-        Rectangle2D SubViewportRect,
-        const char* ZoomInTip,
-        const char* ZoomOutTip,
-        const char* FitViewTip,
-        auto&&      ZoomInCallback,
-        auto&&      ZoomOutCallback,
-        auto&&      FitCallback)
+    // 3b. Vertical Bottom-Right Zoom/Fit Navigation Capsules (+ | - | Fit icon) via shared CapsuleButton component
     {
-        const Rectangle2D CapsuleRect = ComputeZoomFitCapsuleBounds(SubViewportRect);
-        if (CapsuleRect.Width <= 0.0f)
-        {
-            return;
-        }
-
-        Surface.FillRectangle(CapsuleRect, ColorRgba{ 20, 20, 22, 228 }, 17.0f);
-        Surface.StrokeRectangle(CapsuleRect, ColorRgba{ 255, 255, 255, 30 }, 17.0f, 1.0f);
-
-        const Rectangle2D ZoomInCell { CapsuleRect.X + 4.0f, CapsuleRect.Y + 4.0f,  26.0f, 26.0f };
-        const Rectangle2D ZoomOutCell{ CapsuleRect.X + 4.0f, CapsuleRect.Y + 35.0f, 26.0f, 26.0f };
-        const Rectangle2D FitCell    { CapsuleRect.X + 4.0f, CapsuleRect.Y + 66.0f, 26.0f, 26.0f };
-
-        Surface.StrokeLine(
-            { CapsuleRect.X + 8.0f, CapsuleRect.Y + 32.5f },
-            { CapsuleRect.Right() - 8.0f, CapsuleRect.Y + 32.5f },
-            ColorRgba{ 255, 255, 255, 22 },
-            1.0f);
-        Surface.StrokeLine(
-            { CapsuleRect.X + 8.0f, CapsuleRect.Y + 63.5f },
-            { CapsuleRect.Right() - 8.0f, CapsuleRect.Y + 63.5f },
-            ColorRgba{ 255, 255, 255, 22 },
-            1.0f);
-
-        // 1. Top '+' Zoom In
-        {
-            const bool Hovered = ZoomInCell.Contains(Cursor);
-            if (Hovered)
-            {
-                Surface.FillRectangle(ZoomInCell, ColorRgba{ 50, 50, 56, 235 }, 13.0f);
-                ControlAppearance::RecordHoveredTooltip(ZoomInCell, OptionalTooltip::FromText(ZoomInTip));
-            }
-            const Point2D C = ZoomInCell.Center();
-            const ColorRgba Ink = Hovered ? ColorRgba{ 244, 244, 240, 255 } : ColorRgba{ 196, 196, 202, 255 };
-            Surface.StrokeLine({ C.X - 4.8f, C.Y }, { C.X + 4.8f, C.Y }, Ink, 1.55f);
-            Surface.StrokeLine({ C.X, C.Y - 4.8f }, { C.X, C.Y + 4.8f }, Ink, 1.55f);
-            if (Hovered && Pressed)
-            {
-                ZoomInCallback();
-            }
-        }
-
-        // 2. Middle '-' Zoom Out
-        {
-            const bool Hovered = ZoomOutCell.Contains(Cursor);
-            if (Hovered)
-            {
-                Surface.FillRectangle(ZoomOutCell, ColorRgba{ 50, 50, 56, 235 }, 13.0f);
-                ControlAppearance::RecordHoveredTooltip(ZoomOutCell, OptionalTooltip::FromText(ZoomOutTip));
-            }
-            const Point2D C = ZoomOutCell.Center();
-            const ColorRgba Ink = Hovered ? ColorRgba{ 244, 244, 240, 255 } : ColorRgba{ 196, 196, 202, 255 };
-            Surface.StrokeLine({ C.X - 4.8f, C.Y }, { C.X + 4.8f, C.Y }, Ink, 1.55f);
-            if (Hovered && Pressed)
-            {
-                ZoomOutCallback();
-            }
-        }
-
-        // 3. Bottom Fit Icon (4-corner frame brackets)
-        {
-            const bool Hovered = FitCell.Contains(Cursor);
-            if (Hovered)
-            {
-                Surface.FillRectangle(FitCell, ColorRgba{ 50, 50, 56, 235 }, 13.0f);
-                ControlAppearance::RecordHoveredTooltip(FitCell, OptionalTooltip::FromText(FitViewTip));
-            }
-            const ColorRgba Ink = Hovered ? ColorRgba{ 244, 244, 240, 255 } : ColorRgba{ 196, 196, 202, 255 };
-            WorkspaceAppearance::ConstructFocusIcon(
+        const ViewportNavigationDirective PlanarNavDirective =
+            CapsuleButton::ConstructViewportNavigationCapsule(
                 Surface,
-                { FitCell.X + 5.5f, FitCell.Y + 5.5f },
-                15.0f,
-                Ink);
-            if (Hovered && Pressed)
-            {
-                FitCallback();
-            }
-        }
-    };
-
-    ConstructViewportZoomFitCapsule(
-        PlanarRect,
-        "Zoom in on the 2D UV canvas.",
-        "Zoom out on the 2D UV canvas.",
-        "Fit the active UV selection or full UDIM layout.",
-        [&]()
+                PlanarRect,
+                Input.PrimaryPointer,
+                ViewportNavigationCapsuleSpec{
+                    "Zoom in on the 2D UV canvas.",
+                    "Zoom out on the 2D UV canvas.",
+                    "Fit the active UV selection or full UDIM layout.",
+                    10.0f,
+                    10.0f,
+                });
+        if (PlanarNavDirective == ViewportNavigationDirective::ZoomIn)
         {
             const uint32_t W = static_cast<uint32_t>(std::max(16.0f, PlanarRect.Width));
             const uint32_t H = static_cast<uint32_t>(std::max(16.0f, PlanarRect.Height));
             Session->AccessViewportProjection().ZoomPlanarAroundPoint(
                 W, H, PlanarRect.Width * 0.5f, PlanarRect.Height * 0.5f, 1.25f);
             Session->FramebuffersDirty = true;
-        },
-        [&]()
+        }
+        else if (PlanarNavDirective == ViewportNavigationDirective::ZoomOut)
         {
             const uint32_t W = static_cast<uint32_t>(std::max(16.0f, PlanarRect.Width));
             const uint32_t H = static_cast<uint32_t>(std::max(16.0f, PlanarRect.Height));
             Session->AccessViewportProjection().ZoomPlanarAroundPoint(
                 W, H, PlanarRect.Width * 0.5f, PlanarRect.Height * 0.5f, 0.80f);
             Session->FramebuffersDirty = true;
-        },
-        [&]()
+        }
+        else if (PlanarNavDirective == ViewportNavigationDirective::FitView)
         {
             Session->FitPlanarSelectionOrNetwork();
-        });
+        }
+    }
 
-    ConstructViewportZoomFitCapsule(
-        SpatialRect,
-        "Zoom the 3D camera in.",
-        "Zoom the 3D camera out.",
-        "Fit the active selection or complete 3D surface.",
-        [&]()
+    {
+        const ViewportNavigationDirective SpatialNavDirective =
+            CapsuleButton::ConstructViewportNavigationCapsule(
+                Surface,
+                SpatialRect,
+                Input.PrimaryPointer,
+                ViewportNavigationCapsuleSpec{
+                    "Zoom the 3D camera in.",
+                    "Zoom the 3D camera out.",
+                    "Fit the active selection or complete 3D surface.",
+                    10.0f,
+                    10.0f,
+                });
+        if (SpatialNavDirective == ViewportNavigationDirective::ZoomIn)
         {
             Session->AccessViewportProjection().DollySpatialCamera(0.80f);
             Session->FramebuffersDirty = true;
-        },
-        [&]()
+        }
+        else if (SpatialNavDirective == ViewportNavigationDirective::ZoomOut)
         {
             Session->AccessViewportProjection().DollySpatialCamera(1.25f);
             Session->FramebuffersDirty = true;
-        },
-        [&]()
+        }
+        else if (SpatialNavDirective == ViewportNavigationDirective::FitView)
         {
             Session->FitSpatialSelectionOrNetwork();
-        });
+        }
+    }
 
-    // 3c. Overlay Bottom-Left 2D UV Transform Readout (.pz-uv-transform-capsules)
+    // 3c. Overlay Bottom-Left 2D UV Transform Readout via shared CapsuleButton telemetry bar
     if (PlanarRect.Width >= 340.0f)
     {
         const auto Anchor2D = Session->Gizmo2D.QueryPivotOrigin();
         const float ReadoutX = BottomToolRailEnabled ? (PlanarRect.X + 12.0f) : (PlanarRect.X + 56.0f);
         const float ReadoutY = BottomToolRailEnabled ? (PlanarRect.Bottom() - 80.0f) : (PlanarRect.Bottom() - 34.0f);
         const Rectangle2D ReadoutBox{ ReadoutX, ReadoutY, 266.0f, 24.0f };
-        Surface.FillRectangle(ReadoutBox, ColorRgba{ 18, 18, 20, 218 }, 12.0f);
-        Surface.StrokeRectangle(ReadoutBox, ColorRgba{ 255, 255, 255, 24 }, 12.0f, 1.0f);
 
         char UText[24]{}, VText[24]{}, SText[24]{}, UdimText[24]{};
         std::snprintf(UText, sizeof(UText), "U %.3f", Anchor2D.X);
@@ -1258,10 +1177,13 @@ void UVViewportHost::Render(
         std::snprintf(SText, sizeof(SText), "S %.2fx", Session->LatestMetrics.MeanL2Stretch);
         std::snprintf(UdimText, sizeof(UdimText), "UDIM %u", Session->ActiveUDIMNumber);
 
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { ReadoutBox.X + 11.0f, ReadoutBox.Y + 5.0f }, 9.0f, ColorRgba{ 207, 154, 147, 255 }, UText);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { ReadoutBox.X + 74.0f, ReadoutBox.Y + 5.0f }, 9.0f, ColorRgba{ 158, 195, 166, 255 }, VText);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { ReadoutBox.X + 137.0f, ReadoutBox.Y + 5.0f }, 9.0f, ColorRgba{ 145, 170, 206, 255 }, SText);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium,  { ReadoutBox.X + 200.0f, ReadoutBox.Y + 5.0f }, 9.0f, ColorRgba{ 214, 184, 124, 255 }, UdimText);
+        const std::array<CapsuleReadoutSegment, 4u> ReadoutSegments {{
+            { UText,    ColorRgba{ 207u, 154u, 147u, 255u }, 11.0f  },
+            { VText,    ColorRgba{ 158u, 195u, 166u, 255u }, 74.0f  },
+            { SText,    ColorRgba{ 145u, 170u, 206u, 255u }, 137.0f },
+            { UdimText, ColorRgba{ 214u, 184u, 124u, 255u }, 200.0f },
+        }};
+        CapsuleButton::ConstructTelemetryCapsule(Surface, ReadoutBox, ReadoutSegments, 9.0f);
     }
 
     //--------------------------------------------------------------------------------------------------------------------
@@ -1453,56 +1375,32 @@ void UVViewportHost::PresentInImGuiPane(double Δt, float ScaleFactor)
 
     PixelSpace       Surface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
     PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+    WorkspaceAppearance::EnforcePanePointerOwnership(this, Input);
 
-    if (Session != nullptr)
+    const bool HostDragActive = Interactor.QueryDragCaptureActive() || ProjectionPane.QuerySplitterDragActive();
+    if (Session != nullptr && !HostDragActive)
     {
         const Point2D PhysicalCursor {
             ScreenBounds.X + Input.PrimaryPointer.X * SafeScale,
             ScreenBounds.Y + Input.PrimaryPointer.Y * SafeScale,
         };
-        const bool BlockedByBrowser = [&]() noexcept
+        if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
         {
-            if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
+            if (Browser->QueryBlocksPointerAt(PhysicalCursor))
             {
-                return Browser->QueryBlocksPointerAt(PhysicalCursor) &&
-                    !Interactor.QueryDragCaptureActive() &&
-                    !ProjectionPane.QuerySplitterDragActive();
+                WorkspaceAppearance::SuppressPanePointerInput(Input);
             }
-            return false;
-        }();
-        const bool BlockedByOwner =
-            Session->PointerOwnerPane != UVPointerOwnerPane::None &&
-            Session->PointerOwnerPane != UVPointerOwnerPane::ViewportHost;
-        if (BlockedByBrowser || BlockedByOwner)
-        {
-            Input.PrimaryPointer.Enabled  = false;
-            Input.PrimaryPointer.Pressed  = false;
-            Input.PrimaryPointer.Down     = false;
-            Input.PrimaryPointer.Released = false;
-            Input.SecondaryPressed        = false;
-            Input.SecondaryDown           = false;
-            Input.MiddlePressed           = false;
-            Input.MiddleDown              = false;
-            Input.DoubleClicked           = false;
-            Input.WheelDeltaY             = 0.0f;
         }
     }
 
     Render(Surface, LogicalBounds, Input, Δt);
 
-    if (Session != nullptr)
-    {
-        const bool HostCaptured = Interactor.QueryDragCaptureActive() || ProjectionPane.QuerySplitterDragActive();
-        if (HostCaptured)
-        {
-            Session->PointerOwnerPane = UVPointerOwnerPane::ViewportHost;
-        }
-        else if (Session->PointerOwnerPane == UVPointerOwnerPane::ViewportHost &&
-                 !Input.PrimaryPointer.Down && !Input.MiddleDown && !Input.SecondaryDown)
-        {
-            Session->PointerOwnerPane = UVPointerOwnerPane::None;
-        }
-    }
+    WorkspaceAppearance::UpdatePanePointerOwnership(
+        this,
+        ScreenBounds,
+        SafeScale,
+        Input,
+        Interactor.QueryDragCaptureActive() || ProjectionPane.QuerySplitterDragActive());
 
     if (Session != nullptr)
     {
