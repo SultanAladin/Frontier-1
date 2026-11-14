@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier · Cluster LOD Studio</title>
+<link rel="stylesheet" href="./Studio.css">
+</head>
+<body>
+<div id="Studio" class="workspace">
+
+  <section class="dock left" aria-label="Outliner">
+    <div class="tab-strip"><div class="document-tab active">Outliner</div></div>
+    <div class="outliner-heading"><h1>Outliner</h1><small id="OutlinerSummary">—</small></div>
+    <div class="stats">
+      <div class="stat-tile"><span class="status-disc" data-icon="check"></span><small>Visible</small><strong id="StatDrawn">0</strong></div>
+      <div class="stat-tile"><span class="muted-disc" data-icon="cull"></span><small>Culled</small><strong id="StatCulled">0</strong></div>
+    </div>
+    <div class="outliner-scroll">
+      <div class="collection"><span data-icon="folder"></span><div><b>Source</b><small>Pick an asset or import your own</small></div></div>
+      <div id="SourceRows"></div>
+      <label class="entity import" tabindex="0" title="Wavefront OBJ: positions and faces are read, vertices are welded by position">
+        <span class="entity-icon" data-icon="upload"></span><div><b>Import OBJ…</b><small>Positions + faces · welded on load</small></div>
+        <input id="ObjInput" type="file" accept=".obj" hidden>
+      </label>
+      <div class="collection"><span data-icon="layers"></span><div><b>Hierarchy</b><small id="HierarchySummary">—</small></div></div>
+      <div id="LevelRows"></div>
+    </div>
+    <div class="dock-footer"><span><i>BUILD</i><b id="FootBuild">—</b></span><span><i>GPU</i><b id="FootGpu">—</b></span><span><i>SUBMIT</i><b id="FootSubmit">—</b></span></div>
+  </section>
+
+  <section class="dock centre" aria-label="Viewport">
+    <div class="tab-strip"><div class="document-tab active">Viewport</div></div>
+    <header class="viewport-heading">
+      <span data-icon="cube" class="scene-icon"></span>
+      <div class="scene-title"><b id="SceneTitle">Scene</b><small id="SceneNote">—</small></div>
+      <span id="SceneState" class="state-tag">LIVE</span>
+      <div class="spacer"></div>
+      <div id="ViewModes" class="segmented" role="radiogroup" aria-label="View mode"></div>
+    </header>
+    <div class="viewport-tools">
+      <button id="ToolWire" class="tool" title="Wireframe overlay (Z)"><span data-icon="wire"></span>Wire</button>
+      <button id="ToolBounds" class="tool" title="Bounds of the picked cluster (B)"><span data-icon="sphere"></span>Bounds</button>
+      <button id="ToolGrid" class="tool" title="Ground grid (G)"><span data-icon="grid"></span>Grid</button>
+      <span class="divider"></span>
+      <button id="ToolFreeze" class="tool" title="Freeze LOD + culling at the current camera, then fly around to inspect it (L)"><span data-icon="lock"></span>Freeze LOD</button>
+      <div class="spacer"></div>
+      <button id="ToolFrame" class="tool round" title="Frame everything (F)" aria-label="Frame everything"><span data-icon="frame"></span></button>
+      <button id="ToolHelp" class="tool round" title="Controls" aria-label="Controls"><span data-icon="help"></span></button>
+    </div>
+    <div class="stage">
+      <canvas id="Viewport" tabindex="0" aria-label="3D viewport"></canvas>
+      <div id="Readout" class="readout"></div>
+      <div id="Legend" class="legend"></div>
+      <div id="BuildOverlay" class="build-overlay"><div><b id="BuildLabel">Building…</b><div class="progress"><i id="BuildBar"></i></div><small id="BuildNote"></small></div></div>
+      <div id="Drawer" class="drawer">
+        <header><b>Hierarchy</b><small>Triangles per LOD level — dim: stored, bright: constructed this instant</small></header>
+        <canvas id="LevelChart"></canvas>
+        <header><b>Frame time</b><small id="FrameNote">—</small></header>
+        <canvas id="FrameChart"></canvas>
+      </div>
+    </div>
+    <footer class="strip"><span id="StripText">WEBGL2 PREVIEW</span></footer>
+    <button id="DrawerHandle" class="drawer-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 36 L22 0 L178 0 L200 36 Z"/></svg><span>Hierarchy</span></button>
+  </section>
+
+  <section class="dock right" aria-label="Inspector">
+    <div class="tab-strip"><div class="document-tab active">Inspector</div></div>
+    <div class="inspector-scroll">
+      <div class="crumbs">Inspector / Cluster LOD</div>
+      <h1 id="AssetTitle">—</h1>
+      <div class="subtitle" id="AssetNote">—</div>
+
+      <div class="hero">
+        <div class="hero-bar"><i id="HeroFill"></i></div>
+        <div class="hero-text"><b id="HeroPercent">—</b><small>of source triangles constructed</small></div>
+      </div>
+      <div class="metrics">
+        <div><b id="MetricTriangles">—</b><small>TRIANGLES</small></div>
+        <div><b id="MetricSource">—</b><small>SOURCE × INSTANCES</small></div>
+        <div><b id="MetricClusters">—</b><small>CLUSTERS</small></div>
+        <div><b id="MetricFrame">—</b><small>FRAME</small></div>
+      </div>
+
+      <h4>LOD SELECTION</h4>
+      <div class="panel">
+        <div class="field" data-slider="threshold"></div>
+        <div class="field"><label for="ForcedLevel">Level</label><select id="ForcedLevel"></select></div>
+        <div class="tiles">
+          <button class="tile" id="TileFrustum" title="Skip clusters and whole DAG branches outside the view"><span data-icon="frustum"></span><b>Frustum cull</b><small></small></button>
+          <button class="tile" id="TileCone" title="Skip clusters whose normal cone faces away from the camera (C)"><span data-icon="cone"></span><b>Cone cull</b><small></small></button>
+        </div>
+      </div>
+
+      <h4>PICKED CLUSTER</h4>
+      <div class="panel" id="PickedPanel"></div>
+
+      <h4>INSTANCES</h4>
+      <div class="panel">
+        <div class="field" data-slider="side"></div>
+        <div class="field" data-slider="spacing"></div>
+      </div>
+
+      <h4>DISPLAY</h4>
+      <div class="panel">
+        <div class="tiles">
+          <button class="tile" id="TileFlat" title="Face normals instead of source vertex normals"><span data-icon="flat"></span><b>Flat shading</b><small></small></button>
+          <button class="tile" id="TileBackTriangles" title="GPU back-face triangle culling"><span data-icon="cull"></span><b>Back faces</b><small></small></button>
+        </div>
+      </div>
+
+      <h4>BUILD</h4>
+      <div class="panel">
+        <div class="field"><label for="TriangleBudget">Source triangles</label><select id="TriangleBudget"></select></div>
+        <div class="field" data-slider="clusterTriangles"></div>
+        <div class="field" data-slider="groupClusters"></div>
+        <div class="field" data-slider="simplifyRatio"></div>
+        <button id="Rebuild" class="primary"><span data-icon="rebuild"></span>Rebuild hierarchy</button>
+        <p id="BuildReport"></p>
+      </div>
+      <p class="honest">Runs entirely in your browser: the cluster DAG is built in a worker, selection runs on the CPU each frame, and WebGL2 rasterises the selected clusters. Error values are quadric RMS estimates, not certified bounds. No occlusion culling, streaming or software rasteriser.</p>
+    </div>
+  </section>
+
+  <div id="Notch" class="notch-shell">
+    <div class="shade">
+      <div class="control-sheet">
+        <header><b>Cluster LOD Studio</b><button id="NotchClose" class="tool round" aria-label="Close"><span data-icon="close"></span></button></header>
+        <div class="keys">
+          <div><kbd>Drag</kbd><span>Orbit</span></div>
+          <div><kbd>Right-drag</kbd> / <kbd>Shift+drag</kbd><span>Pan</span></div>
+          <div><kbd>Wheel</kbd> / pinch<span>Zoom</span></div>
+          <div><kbd>W A S D</kbd> <kbd>Q E</kbd><span>Fly (hold Shift = faster)</span></div>
+          <div><kbd>Click</kbd><span>Pick a cluster → Inspector</span></div>
+          <div><kbd>Double-click</kbd><span>Orbit around the picked point</span></div>
+          <div><kbd>1</kbd>–<kbd>6</kbd><span>View modes</span></div>
+          <div><kbd>[</kbd> <kbd>]</kbd><span>Pixel error − / +</span></div>
+          <div><kbd>L</kbd><span>Freeze LOD + culling</span></div>
+          <div><kbd>Z</kbd> <kbd>B</kbd> <kbd>G</kbd> <kbd>C</kbd><span>Wire · Bounds · Grid · Cone cull</span></div>
+          <div><kbd>F</kbd><span>Frame everything</span></div>
+          <div><kbd>Esc</kbd><span>Clear picked cluster</span></div>
+        </div>
+        <p>How to read it: switch to <b>LOD level</b> and zoom — clusters swap to coarser levels as their projected error drops under the pixel threshold. Press <b>L</b> to freeze the cut, then fly out to see frustum and cone culling from the outside.</p>
+      </div>
+    </div>
+    <button id="NotchHandle" class="notch-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 0 L22 36 L178 36 L200 0 Z"/></svg><span>Frontier · Cluster LOD</span></button>
+  </div>
+</div>
+<script type="module" src="./Studio.js"></script>
+</body>
+</html>
