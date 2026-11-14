@@ -1,0 +1,248 @@
+/*============================================================================================================================================
+                                                            CLOTHEDITOR.CSS
+============================================================================================================================================*/
+/* Project-Zero Cloth & Tailoring Atelier extensions layered cleanly atop /UVEditor/UVEditor.css */
+
+.cloth-preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.cloth-preset-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 8px 9px;
+    background: #1b1d22;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: #cbd5e1;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.cloth-preset-card:hover {
+    background: #22252c;
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.cloth-preset-card.active {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: #3b82f6;
+    color: #f8fafc;
+}
+
+.cloth-preset-card strong {
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.cloth-preset-card small {
+    font-size: 10px;
+    color: #8b95a5;
+}
+
+.cloth-outliner-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #7c8594;
+    margin: 10px 0 5px 2px;
+}
+
+.cloth-piece-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 9px;
+    margin-bottom: 4px;
+    background: #1a1c21;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-left: 3px solid #3b82f6;
+    cursor: pointer;
+    font-size: 11.5px;
+    color: #d1d5db;
+}
+
+.cloth-piece-row:hover {
+    background: #22252b;
+}
+
+.cloth-piece-row.active {
+    background: rgba(59, 130, 246, 0.13);
+    border-color: rgba(96, 165, 250, 0.45);
+    border-left-color: #60a5fa;
+    color: #ffffff;
+}
+
+.cloth-piece-meta {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    color: #94a3b8;
+}
+
+.cloth-seam-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 8px;
+    margin-bottom: 3px;
+    background: #17191e;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 11px;
+    color: #cbd5e1;
+}
+
+.cloth-seam-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+}
+
+.swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 6px;
+    padding: 4px 0 6px;
+}
+
+.swatch-btn {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 4px;
+    border: 1.5px solid rgba(255, 255, 255, 0.14);
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.swatch-btn:hover {
+    transform: scale(1.08);
+}
+
+.swatch-btn.active {
+    border-color: #ffffff;
+    box-shadow: 0 0 0 2px #3b82f6;
+}
+
+.fit-cert-banner {
+    padding: 9px 11px;
+    background: #171a20;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+}
+
+.fit-cert-pill {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: rgba(148, 163, 184, 0.14);
+    color: #cbd5e1;
+}
+
+.fit-cert-pill.verified {
+    background: rgba(16, 185, 129, 0.18);
+    color: #34d399;
+    border: 1px solid rgba(52, 211, 153, 0.35);
+}
+
+.measure-table {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 5px 10px;
+    font-size: 11.5px;
+    padding: 4px 2px;
+}
+
+.measure-table span {
+    color: #94a3b8;
+}
+
+.measure-table strong {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: #f1f5f9;
+}
+
+.solver-compare-banner {
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.24);
+    font-size: 11px;
+    line-height: 1.45;
+    color: #cbd5e1;
+}
+
+.solver-compare-banner strong {
+    color: #93c5fd;
+}
+
+/* Ensure crisp 50/50 split between 2D Pattern Canvas and 3D Atelier Viewport */
+#stage-split.mode-split .uv-stage,
+#stage-split.mode-split .mesh-stage {
+    display: block;
+}
+
+#pattern-canvas-2d {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#garment-viewport-3d {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+#garment-viewport-3d canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+.pz-rail-btn svg.glyph {
+    width: 15px;
+    height: 15px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+}
+
+.heatmap-legend-pill {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    background: rgba(19, 21, 26, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    font-size: 10.5px;
+    color: #cbd5e1;
+    pointer-events: none;
+    z-index: 6;
+}
+
+.heatmap-gradient-bar {
+    width: 74px;
+    height: 7px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #2563eb 0%, #10b981 48%, #f59e0b 78%, #ef4444 100%);
+}

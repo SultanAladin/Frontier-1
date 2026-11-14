@@ -1,0 +1,105 @@
+# Frontier gas scene. Written by Experimental/Fluid; read by Engine/VolumetricDynamics.
+# Settings are sorted by name so the file diffs cleanly; order carries no meaning.
+
+format = "frontier-fluid-scene"
+version = 1
+name = "Cold dust fall"
+
+[names]
+collider = "Rubble"
+domain = "Dust domain"
+emitter = "Ledge spill"
+sun = "Overcast key"
+
+[camera]
+theta = 2.3
+phi = 1.52
+distance = 2.45
+centre = [0.0, -0.05, 0.0]
+
+[settings]
+ambientIntensity = 0.35
+atlasMinimapField = 0
+autoGpuGovernor = false
+autoTurntable = false
+blastFuel = 0.0
+blastLobes = 6
+blastRadius = 0.18
+blastSmoke = 5.5
+blastStrength = 9.8
+blastTemperature = 2.0
+bloomIntensity = 0.55
+boundsHeight = 1.8
+boundsWidth = 2.3
+buoyancy = 0.6
+burnHeat = 0.5
+burnRate = 0.2
+colliderAutoMove = true
+colliderSpeed = 1.25
+colorPalette = 1
+combustionExpansion = 0.0
+coolingRate = 3.5
+densityExtinction = 11.0
+dynamicBounds = false
+dynamicBoundsMax = 1.55
+emberAshiness = 0.0
+emberCount = 550
+emberIntensity = 1.4
+emberLifetime = 1.0
+emberSize = 1.0
+emitterEnabled = true
+emitterFuel = 0.0
+emitterHeight = 0.1
+emitterRadius = 0.18
+emitterRate = 0.6
+emitterSmoke = 2.4
+emitterSwirl = 0.6
+emitterTemperature = 0.2
+emitterUpwardVelocity = 0.8
+enclosedBox = false
+exposure = 1.25
+fireIntensity = 0.5
+godRaysIntensity = 0.45
+gridResolution = 64
+interactionMode = "orbit"
+internalScattering = 1.8
+macCormackAdvection = true
+obstacleRadius = 0.16
+obstacleType = 0
+obstacleX = 0.5
+obstacleY = 0.26
+obstacleZ = 0.5
+paused = false
+phaseAnisotropy = 0.18
+pressureIterations = 22
+raymarchSteps = 96
+renderChannel = 0
+renderScale = 1.0
+shadowDensity = 5.0
+shadowSteps = 6
+shockwaveStrength = 1.0
+showActiveVoxelCells = false
+showAtlasMinimap = true
+showBoundingBox = true
+showEmbers = false
+showFloorGrid = true
+showVoxelGridLines = true
+shrapnelEnabled = true
+sliceAxis = 2
+slicePosition = 0.5
+smokeAlbedo = 0.68
+smokeDissipation = 0.04
+smokeWeight = 2.4
+sootGeneration = 0.2
+sunAzimuth = 42.0
+sunElevation = 52.0
+sunIntensity = 2.2
+temperatureScale = 1.15
+timeScale = 1.0
+turbulenceScale = 2.8
+turbulenceStrength = 1.2
+velocityDamping = 0.12
+vorticityConfinement = 2.8
+voxelQuantization = 0
+windX = 0.38
+windZ = 0.0
