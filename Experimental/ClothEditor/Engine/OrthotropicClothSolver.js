@@ -111,7 +111,7 @@ export class OrthotropicClothSolver
         this.mannequin = mannequin;
 
         // Candidate research-solver architectures evaluated side by side (never removes A or B):
-        //   'avbd'   → Option A · AVBD        (Giles, Chen & Yuksel 2025)          Game Runtime + Authoring baseline
+        //   'avbd'   → Option A · AVBD        (Giles, Diaz & Yuksel 2025)          Game Runtime + Authoring baseline
         //   'xpbd'   → Option B · Orthotropic-XPBD (Macklin et al. 2016)           lightweight Game Runtime
         //   'scr'    → Option C · Stable Cosserat Rods (Hsu, Wang, Wu & Yuksel 2025)  yarn/knit/piping cloth
         //   'gn_knot'→ Option D · Unified Contact Gauss-Newton (Guo et al. 2025 FPB)  layered folds, knots & ties
@@ -212,10 +212,13 @@ export class OrthotropicClothSolver
             const dz = network.spawnPositions[b3 + 2] - network.spawnPositions[a3 + 2];
             const len = Math.max(1e-6, Math.sqrt(dx * dx + dy * dy + dz * dz));
             this.edgeRestLen[e] = len;
+            // Seed d3 = q*e3 onto the spawn segment direction (identity q would point every rod along +Z
+            // and the Eq. 28 stretch force below would fight the mesh on the very first substep).
             this.edgeQuats[e * 4] = 0.0;
             this.edgeQuats[e * 4 + 1] = 0.0;
             this.edgeQuats[e * 4 + 2] = 0.0;
             this.edgeQuats[e * 4 + 3] = 1.0;
+            quatFromTo(0.0, 0.0, 1.0, dx / len, dy / len, dz / len, this.edgeQuats, e * 4);
         }
 
         // ── Option D (Guo 2025 FPB) persistent contact memory: lifespan K_i weighted 1.2^min(K,12) ──
@@ -1141,8 +1144,10 @@ export class OrthotropicClothSolver
         const wx = windOn ? Math.sin(this.windPhase * 0.7) * this.windSpeed * 0.45 : 0.0;
         const wy = windOn ? 0.14 * Math.sin(this.windPhase * 1.7) * this.windSpeed : 0.0;
         const wz = windOn ? -(0.65 + 0.35 * Math.cos(this.windPhase)) * this.windSpeed : 0.0;
-        // Zsolnai-Fehér (2022, Nature Physics) boundary layer: normal pressure drag ~ C_N (v·n)^2,
-        // tangential skin friction ~ C_f |v_t| v_t. Anisotropic because C_f << C_N.
+        // Atelier anisotropic aero model: normal pressure drag ~ C_N (v·n)^2, tangential skin friction
+        // ~ C_f |v_t| v_t, C_f << C_N. Coefficients are Atelier calibrations. (The Nature Physics
+        // 2022 Comment s41567-022-01788-5 sometimes cited here is a survey of *fluid* simulation and
+        // contains no cloth/aero model -- it is not a source for this solver, see verification report.)
         const cNormal = 0.62;
         const cFriction = 0.048;
 
@@ -1225,7 +1230,7 @@ export class OrthotropicClothSolver
     }
 
     /*----------------------------------------------------------------------------------------------------------------------------------------
-      🧵 OPTION C: Stable Cosserat Rod Network (Hsu, Wang, Wu & Yuksel 2025, SIGGRAPH; + Hsu 2026 Kelvin–Voigt viscosity)
+      🧵 OPTION C: Stable Cosserat Rod Network (Hsu, Wang, Wu & Yuksel 2025, SIGGRAPH; Kelvin-Voigt yarn viscosity is an Atelier addition)
       Alg. 1/2 structure: interleave a per-vertex isotropic diagonal-Hessian VBD position update driven by the
       rod stretch force f_ss = (k_ss / l)( (x_j - x_i)/l - d3 ) with a closed-form per-edge orientation update
       q_e ← normalize( v b e3 + λ b ) where the Banach contraction state γ_e stores the fixed-point gain.
@@ -1257,7 +1262,7 @@ export class OrthotropicClothSolver
         // impedance of the AVBD/XPBD tiers (otherwise inertia is swamped and wind/dynamics cannot be felt).
         const kSS = Math.max(6.0, 0.45 * Eavg * hMeters / spacing);
         const kBt = kSS * Math.min(0.30, 0.03 + 0.22 * (tex.bendRigidity || 0.4));
-        // Hsu (2026) Kelvin–Voigt strain-rate viscosity along the yarn (2HB sets the loss factor).
+        // Kelvin–Voigt strain-rate viscosity along the yarn (Atelier addition; 2HB sets the loss factor).
         const cVisc = kSS * Math.min(0.35, 0.10 + 0.5 * (tex.bendHysteresis2HB ?? 0.06));
 
         // Symplectic-Euler advection to the inertial target before the implicit rod correction, exactly like the
@@ -1294,16 +1299,18 @@ export class OrthotropicClothSolver
             quatDirector(q[q4], q[q4 + 1], q[q4 + 2], q[q4 + 3], d3);
 
             const kAxial = kSS / l;
-            // Eq. 28–29 isotropic stretch force. The director d3 enters only through the rod's rest frame:
-            // pushing laterally on the tangent difference (d_hat - d3) would inject energy whenever the
-            // orientation lags by one substep, so bending is handled as true curvature across hinges below.
+            // Axial part of Eq. 28 only. VERIFIED EXPERIMENT (verification report Sec. 3): coupling the
+            // full (segment - l*d3) term into positions -- undamped or 25%-damped -- either never settles
+            // (RMS 3.1 -> 256 mm/s) or puffs/stiffens the drape (bbox 0.166 -> 0.226 m^3), because these
+            // mesh edges are membrane edges, not 1D yarns, and q here is a blended (not Eq. 18-exact)
+            // frame. So d3/q remain rod-frame state; fold formation is the hinge + patch passes below.
             const axialErr = len - l;
             let fx = kAxial * axialErr * dx / len;
             let fy = kAxial * axialErr * dy / len;
             let fz = kAxial * axialErr * dz / len;
             void d3;
 
-            // Kelvin–Voigt strain-rate viscosity (Hsu 2026): damps the axial closing speed only.
+            // Kelvin–Voigt strain-rate viscosity (Atelier addition): damps the axial closing speed only.
             const rvx = vel[b3] - vel[a3], rvy = vel[b3 + 1] - vel[a3 + 1], rvz = vel[b3 + 2] - vel[a3 + 2];
             const invL = 1.0 / len;
             const vAxial = (rvx * dx + rvy * dy + rvz * dz) * invL * invL;
@@ -1354,9 +1361,10 @@ export class OrthotropicClothSolver
             const q4 = e * 4;
             quatDirector(q[q4], q[q4 + 1], q[q4 + 2], q[q4 + 3], d3);
 
-            // v: stretch-driven rotation magnitude ‖v‖ = 2 k_ss l^-1 ‖x_{i+1} - x_i‖ strain
-            const strain = (len - restLen[e]) / Math.max(1e-6, restLen[e]);
-            const vLen = Math.abs(2.0 * kSS * strain);
+            // v (Eq. 15): v = -2 k_ss l^-1 (x_{i+1} - x_i), so |v| = 2 k_ss * len / l -- it is NOT
+            // proportional to strain (the previous code zeroed it at rest length, where the paper has
+            // |v| = 2 k_ss, and the orientation solve lost its stretch term exactly at equilibrium).
+            const vLen = Math.abs(2.0 * kSS * len / Math.max(1e-6, restLen[e]));
 
             // b: bending/twist transmission blended over the co-rod edges at both endpoints
             let bx = 0.0, by = 0.0, bz = 0.0, bw = 0.0, bW = 0.0;
@@ -1504,17 +1512,18 @@ export class OrthotropicClothSolver
         };
         for (let c = 0; c < this.contactCount; ++c)
         {
+            // Signed coefficients (see the H_con assembly): point +1, face vertices -bary, second point -1.
             pushContact(this.contactPointId[c], c, 1.0);
             const f = this.contactFaceId[c];
             if (f >= 0)
             {
-                pushContact(fIdx[f * 3], c, this.contactBary[c * 3]);
-                pushContact(fIdx[f * 3 + 1], c, this.contactBary[c * 3 + 1]);
-                pushContact(fIdx[f * 3 + 2], c, this.contactBary[c * 3 + 2]);
+                pushContact(fIdx[f * 3], c, -this.contactBary[c * 3]);
+                pushContact(fIdx[f * 3 + 1], c, -this.contactBary[c * 3 + 1]);
+                pushContact(fIdx[f * 3 + 2], c, -this.contactBary[c * 3 + 2]);
             }
             else
             {
-                pushContact(-1 - f, c, 1.0);
+                pushContact(-1 - f, c, -1.0);
             }
         }
 
@@ -1656,20 +1665,25 @@ export class OrthotropicClothSolver
                     h00 += hSeam; h11 += hSeam; h22 += hSeam;
                 }
 
-                // Contact Hessians H_con = G_con G_conᵀ with 1.2^min(K_i,12) persistence weights
+                // Contact Hessians H_con = G_con G_conᵀ with 1.2^min(K_i,12) persistence weights (Guo Sec. 6.1).
+                // conShare is a SIGNED coefficient: +1 for the point, -bary for face vertices (and -1 for the
+                // second point of a point-point record). With residual C = depth, dC/dx_j = -coeff_j * n, so
+                // the Gauss-Newton block is coeff^2 * n nᵀ and the RHS is +k*coeff*depth*n. The previous
+                // (I - n nᵀ) block was the tangential projector -- it had zero normal stiffness and pushed
+                // every participant along -n regardless of which side of the contact it was on.
                 for (let ck = conOff[i]; ck < conOff[i + 1]; ++ck)
                 {
                     const c = conItem[ck];
-                    const share = conShare[ck];
-                    if (share <= 0.0) continue;
+                    const coeff = conShare[ck];
+                    if (coeff === 0.0) continue;
                     const nx = this.contactNormal[c * 3], ny = this.contactNormal[c * 3 + 1], nz = this.contactNormal[c * 3 + 2];
                     const life = this.contactLife[c];
-                    const kc = contactK * share * Math.pow(1.2, Math.min(life, 12));
-                    // G Gᵀ = I - n nᵀ (normal-direction impedance inside the 3x3 block)
-                    h00 += kc * (1.0 - nx * nx); h01 += kc * (-nx * ny); h02 += kc * (-nx * nz);
-                    h11 += kc * (1.0 - ny * ny); h12 += kc * (-ny * nz); h22 += kc * (1.0 - nz * nz);
+                    const kBase = contactK * Math.pow(1.2, Math.min(life, 12));
+                    const kc = kBase * coeff * coeff;
+                    h00 += kc * nx * nx; h01 += kc * nx * ny; h02 += kc * nx * nz;
+                    h11 += kc * ny * ny; h12 += kc * ny * nz; h22 += kc * nz * nz;
                     const depth = this.contactDepth[c];
-                    rx -= kc * depth * nx; ry -= kc * depth * ny; rz -= kc * depth * nz;
+                    rx += kBase * coeff * depth * nx; ry += kBase * coeff * depth * ny; rz += kBase * coeff * depth * nz;
                 }
 
                 if (i === this.grabVertex)
@@ -2371,7 +2385,8 @@ export class OrthotropicClothSolver
         const C11 = tex.warpModulus || 1800;
         const C22 = tex.weftModulus || 1500;
         const nu = 0.12;
-        const C12 = -nu * Math.sqrt(C11 * C22);
+        // Orthotropic coupling modulus is positive (plane-stress C12 > 0); it couples *strains* below.
+        const C12 = nu * Math.sqrt(C11 * C22);
         const shearMod = tex.shearModulus || 40;
         const warpCrimp = (tex.warpCrimpPct || 2.0) * 0.01;
         const weftCrimp = (tex.weftCrimpPct || 2.5) * 0.01;
@@ -2451,10 +2466,13 @@ export class OrthotropicClothSolver
                     // Crimp interchange: in compression the yarns merely trade crimp, so the Poisson coupling
                     // is suppressed there (a woven shell has essentially no compressive Poisson resistance).
                     const c12eff = (envU.strain > 0.0 && envV.strain > 0.0) ? C12 : 0.0;
-                    let su = C11 * envU.tension + c12eff * envV.tension;
-                    let sv = c12eff * envU.tension + C22 * envV.tension;
-                    let tu = C11 * envU.tangent;
-                    let tv = C22 * envV.tangent;
+                    // wrapStrain() already returns stress (modulus x strain + cubic wall), so the coupled
+                    // law is su = stressU + C12*strainV (NOT C11*stressU, which squared the modulus and
+                    // made this shell ~1000x too stiff against inertia -> the "puffed jacket" stiffness).
+                    let su = envU.tension + c12eff * envV.strain;
+                    let sv = envV.tension + c12eff * envU.strain;
+                    let tu = envU.tangent;
+                    let tv = envV.tangent;
                     // Cerda–Mahadevan compressive buckling: beyond εc the sheet buckles and carries almost no load
                     if (envU.strain < -epsCrit)
                     {
@@ -2644,12 +2662,23 @@ export class OrthotropicClothSolver
             for (let i = 0; i < m3; ++i)
                 trial[i] = pos[i] - beta0 * (pos[i] - prevPos[0][i]) - beta1 * (pos[i] - prevPos[1][i]);
             let ok = true;
-            for (let i = 0; i < m3; i += 97)
-                if (!Number.isFinite(trial[i])) { ok = false; break; }
+            // AA history spans substeps whose operators (inertia target, contacts) have changed, so the
+            // extrapolated trial is only trustworthy as a small correction: cap its per-vertex move at
+            // 2 mm and demand a strict membrane-energy decrease. Without this, tailoredTee (jersey) was
+            // driven into a persistent 126 mm/s oscillation that the old <= e0*1.0001 guard accepted.
+            let maxTrialMove = 0.0;
+            for (let i = 0; i < n; ++i)
+            {
+                const i3 = i * 3;
+                const mv = Math.hypot(trial[i3] - pos[i3], trial[i3 + 1] - pos[i3 + 1], trial[i3 + 2] - pos[i3 + 2]);
+                if (!Number.isFinite(mv)) { ok = false; break; }
+                if (mv > maxTrialMove) maxTrialMove = mv;
+            }
+            if (ok && maxTrialMove > 0.002) ok = false;
             if (ok)
             {
                 const e1 = this._membraneEnergy(trial);
-                if (Number.isFinite(e1) && e1 <= e0 * 1.0001)
+                if (Number.isFinite(e1) && e1 < e0)
                 {
                     for (let i = 0; i < n; ++i)
                     {

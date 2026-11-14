@@ -1,5 +1,11 @@
 # Cloth Solver Showdown — Which Candidate Is Actually Best?
 
+> **⚠️ Superseded in part:** an independent paper-by-paper verification (with post-fix re-measurement)
+> lives in `ClothSolverVerificationReport.md`. It corrects several fidelity claims below (C's folds are
+> not produced by its Cosserat orientation solve; D's contact Hessian was the tangential projector; F had
+> a modulus-squaring bug and an Anderson oscillation). Rankings in §6 of the verification report replace
+> the rankings here.
+
 **Measured, not asserted.** All six architectures in the Atelier (`Experimental/ClothEditor/`, live on `0.0.0.0:8084`) share one mesh, one textile, one seam solver, one contact solver and one telemetry pipeline. They differ **only** in the local/global solve. Every number below comes from `ClothValidation.mjs` and `/tmp/bench.mjs` running headless on the same `FrontierMannequin.bin` SDF, 180 calm-air frames at 60 FPS.
 
 Micro-Delaunay test garments: **coutureDress** (3 576 pts / 6 690 tris, 135 GSM cotton poplin) and **tailoredTee** (2 198 pts / 4 044 tris, 190 GSM cotton jersey). Spawn reference (un-draped cut shell): **SDF gap 78.4 mm, bbox volume 0.189 m³** — so *smaller gap is closer to the body*, and *volume must fall toward ≈0.11 m³*; a volume that stays near 0.19 m³ is the "puffed jacket" artefact.

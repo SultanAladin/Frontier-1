@@ -197,9 +197,9 @@ export const SOLVER_CATALOG = {
         option: 'Option A',
         shortCode: 'A · AVBD',
         badge: 'OPT A · AVBD',
-        title: 'Option A · AVBD (Giles, Chen & Yuksel 2025)',
+        title: 'Option A · AVBD (Giles, Diaz & Yuksel 2025)',
         role: 'Game + Authoring Baseline',
-        citation: 'Giles, Chen & Yuksel (SIGGRAPH 2025) — Augmented Vertex Block Descent',
+        citation: 'Giles, Diaz & Yuksel (SIGGRAPH 2025) — Augmented Vertex Block Descent',
         summary: 'Per-vertex 3x3 SPD Hessian Newton descent with dual Lagrange multiplier stiffness augmentation across color batches.',
     },
     xpbd: {
@@ -219,8 +219,8 @@ export const SOLVER_CATALOG = {
         badge: 'OPT C · SCR',
         title: 'Option C · Stable Cosserat Rods (Hsu, Wang, Wu & Yuksel 2025)',
         role: 'Game + Knit/Piping/Yarn Cloth',
-        citation: 'Hsu, Wang, Wu & Yuksel (Utah Graphics Lab, SIGGRAPH 2025) + Hsu (2026) Viscous Stable Cosserat Rods',
-        summary: 'Split isotropic diagonal VBD position update + closed-form Banach fixed-point unit quaternion orientation solve (|q_i| = 1) with Kelvin-Voigt yarn viscosity.',
+        citation: 'Hsu, Wang, Wu & Yuksel (Utah Graphics Lab, SIGGRAPH 2025)',
+        summary: 'Adapted (not a yarn-level rod sim): mesh edges as rods, diagonal VBD position update (Eq. 28-29) + quaternion orientation state (Eq. 15/22/25-27, normalised blend, not the exact Eq. 18 product) + hinge/patch passes that actually make the folds.',
     },
     gn_knot: {
         id: 'gn_knot',
@@ -229,8 +229,8 @@ export const SOLVER_CATALOG = {
         badge: 'OPT D · FPB-GN',
         title: 'Option D · Unified Contact Gauss-Newton (Guo, Wang et al. 2025)',
         role: 'Authoring + Layered Folds/Knots',
-        citation: 'Guo, Wang, Liu, Li, Wang, Yang & Huamin Wang (2025, guo-2025-fpb) — Fast Physics-Based Modeling',
-        summary: 'Unified Gauss-Newton (H = J^T J) assembling VF/EE contact Hessians directly inside 3x3 block solves with 1.2^K lifespan-weighted contact history and 0.9^k intersection-safe step filtering.',
+        citation: 'Guo et al. (SIGGRAPH 2025, guo-2025-fpb) — Fast Physics-Based Modeling of Knots and Ties Using Templates (primary GN simulator, Sec. 6.1)',
+        summary: 'Adapted from Guo Sec. 6.1 only: Gauss-Newton (H = J^T J) with VF contact Hessians H_con = G_con G_con^T inside 3x3 block solves, 1.2^K lifespan weights (Sec. 5.2) and a 0.9^k-style step filter (Sec. 6.2, no CCD re-check). Knot templates/mapping are not wired to any garment.',
     },
     jgs2: {
         id: 'jgs2',
@@ -240,7 +240,7 @@ export const SOLVER_CATALOG = {
         title: 'Option E · Second-Order Schur-Coupled GS (Lan, Wang & Yang 2025)',
         role: '60 FPS GPU Game + Stiff Authoring',
         citation: 'Lan, Lu, Yuan, Xu, Su, Huamin Wang, Jiang & Yin Yang (ACM TOG 44(4), 2025) — JGS2',
-        summary: 'Eliminates local VBD/Jacobi overshoot via 1-ring Schur-complement perturbation subspace (H_ii - H_iC H_CC^-1 H_Ci) and neighbor residual lookahead.',
+        summary: 'JGS2-inspired only (no cubature precomputation from Lan et al.): 1-ring Schur-style block (H_ii - sum H_ij H_jj^-1 H_ji, invented rank-one H_ij) + 2.5 mm trust region that suppresses overshoot chatter.',
     },
     kes_aa: {
         id: 'kes_aa',
@@ -285,8 +285,12 @@ export function estimateClothResolutionPIE(textile)
     // Effective decrimp-to-taut volumetric Young's modulus E_vol [N/m^2] along Warp and Weft
     const decrimpFactorWarp = 1.0 / (1.0 + 0.18 * (tex.warpCrimpPct ?? 2.0));
     const decrimpFactorWeft = 1.0 / (1.0 + 0.18 * (tex.weftCrimpPct ?? 2.8));
-    const EwarpVol = Math.max(2e3, Math.min(2e6, ((tex.warpModulus || 1800) * decrimpFactorWarp) / hMeters));
-    const EweftVol = Math.max(2e3, Math.min(2e6, ((tex.weftModulus || 1500) * decrimpFactorWeft) / hMeters));
+    // NOTE: Zhang Eq. 4 is calibrated with E as a measured Young's modulus; the [2e3, 2e6] N/m^2 range
+    // in the paper is the calibration envelope, not a per-fabric clamp. The previous 2e6 cap truncated
+    // almost every Atelier textile to the same E, erasing warp/weft anisotropy (rWarp == rWeft for
+    // cottonPoplin despite 1850 vs 1550 N/m). Keep only a wide numerical safety bound.
+    const EwarpVol = Math.max(2e3, Math.min(1e8, ((tex.warpModulus || 1800) * decrimpFactorWarp) / hMeters));
+    const EweftVol = Math.max(2e3, Math.min(1e8, ((tex.weftModulus || 1500) * decrimpFactorWeft) / hMeters));
     const EisoVol = 0.5 * (EwarpVol + EweftVol);
 
     const rWarpMm = solvePiePolynomialRadiusMeters(B / EwarpVol) * 1000.0;
