@@ -174,6 +174,7 @@ Use the following distinct visual nouns according to their exact structural role
   - Barred `facet` / `facets` (use `Face` / `Faces`), `complex`, `topology`, and `assembly` (use `PolygonNetwork` for connected polygon structures).
   - Marked `substrate`, `atlas`, and `slice` as **discouraged (avoid)**.
 - **2026-11-14**: Barred the conjunction `And` inside any filename, class, struct, enum, function, variable, shader, or plan document name (`GpuTextureAndSdfBaker`, `BuildAndUploadStudy`, `CameraEyeAndMode`, `MasksAndIds`) — enforced in `CLAUDE.md` §2.7 and `SKILL-Naming.md` Gate ⑦.
+- **2026-11-14 (User Ruling)**: Barred `Law` / `Laws` across filenames, folders, and identifiers (use concrete physical/mechanical domain names such as `Dynamics/`, `BallisticMotion`, `StrandConstraint`, `ForceFieldCoupling`, `FlockBoids`). Also rejected `ParticleReadback`, `PlaybackTransportBar`, and `TimelineRulerScrubber` in favor of concrete mechanical names (`ParticleMetricsCollector`, `SimulationPlaybackControls`, `SimulationTimeRuler`).
 
 ---
 
@@ -191,7 +192,7 @@ Use this combined index to audit identifiers, filenames, directory names, and co
 - **H**: `Handler`, `harness`, `Helios`, `Helper`, `Hierarchy`, `hook`, `Horizon`, `Hub` / `hub`
 - **I**: `Info`, `Inscription` / `inscription`, `interpolant`, `Item` / `item`
 - **K**: `Kernel`, `kin`, `Kind`, `Kronos`
-- **L**: `lineage`, `Listener` / `listener`
+- **L**: `Law` / `Laws`, `lineage`, `Listener` / `listener`
 - **M**: `Maestro`, `Manager`, `map`, `Matrix`, `member`, `menu`, `Mesh` / `mesh`, `Module`, `mutation`
 - **N**: `Nexus` / `nexus`, `Node`, `Nova`
 - **O**: `Object`, `Observer` *(restricted — §3.1)*, `occupant`, `Odyssey`, `Oracle`, `Orion`, `Orphan`
