@@ -150,6 +150,12 @@
         <p>Planar island unwrap, computed in this browser. Tiny islands merge into a neighbour with a close plane. Amber lines are seams where islands meet. The 3D view does not sample these UVs yet.</p>
       </div>
 
+      <h4>GEOMETRY</h4>
+      <div class="panel">
+        <p>Scale, centre, mirror, rotate and flip the hero's source geometry. Nothing rebuilds until Apply.</p>
+        <button id="OpenGeometryEditor" class="primary"><span data-icon="rebuild"></span>Open Geometry Editor</button>
+      </div>
+
       <h4>BUILD</h4>
       <div class="panel">
         <div class="field"><label for="TriangleBudget">Source triangles</label><select id="TriangleBudget"></select></div>
@@ -233,6 +239,78 @@
           <button id="CompilerExportObj" class="primary">Export OBJ with UVs</button>
           <button id="CompilerExportSvg">Export UV layout SVG</button>
           <p>The OBJ keeps welded vertices and writes one texture coordinate per triangle corner, so seams survive a round trip through Import OBJ.</p>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <div id="GeometryEditor" class="geo-editor" role="dialog" aria-modal="true" aria-label="Geometry Editor" hidden>
+    <header class="geo-editor-head">
+      <span data-icon="rebuild" class="scene-icon"></span>
+      <div class="geo-editor-title"><b>Geometry Editor</b><small id="GeoSource">—</small></div>
+      <div class="spacer"></div>
+      <small class="geo-editor-keys">Drag the preview to orbit · Enter apply · Esc close</small>
+      <button id="GeoEditorClose" class="tool round" aria-label="Close Geometry Editor"><span data-icon="close"></span></button>
+    </header>
+    <div class="geo-editor-body">
+      <aside class="geo-editor-import">
+        <h4>IMPORT</h4>
+        <div class="panel">
+          <p>Import accepts these formats. The file reader is not connected in this build, so the button is disabled.</p>
+          <div class="geo-formats"><span>OBJ</span><span>glTF</span><span>GLB</span><span>STL</span><span>PLY</span><span>FBX</span></div>
+          <button id="GeoImport" class="tool" disabled>Import model…</button>
+        </div>
+      </aside>
+      <section class="geo-editor-main">
+        <canvas id="GeoPreview" aria-label="Transformed geometry preview"></canvas>
+        <p id="GeoPreviewNote" class="geo-editor-hint"></p>
+      </section>
+      <aside class="geo-editor-side">
+        <h4>SCALE</h4>
+        <div class="panel">
+          <label class="geo-check"><input type="checkbox" id="GeoUniform" checked> Uniform</label>
+          <div class="geo-row3">
+            <input type="number" id="GeoScaleX" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale X">
+            <input type="number" id="GeoScaleY" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale Y">
+            <input type="number" id="GeoScaleZ" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale Z">
+          </div>
+        </div>
+        <h4>CENTRE</h4>
+        <div class="panel">
+          <div class="segmented" role="group" aria-label="Centre">
+            <button data-centre="none" class="active" aria-pressed="true">Keep</button>
+            <button data-centre="origin" aria-pressed="false">Origin</button>
+            <button data-centre="floor" aria-pressed="false">Floor</button>
+          </div>
+          <p>Origin centres the bounds on zero. Floor centres X and Z and puts the lowest point on y = 0.</p>
+        </div>
+        <h4>MIRROR</h4>
+        <div class="panel">
+          <div class="geo-row3">
+            <button id="GeoMirrorX" class="tool" aria-pressed="false">X</button>
+            <button id="GeoMirrorY" class="tool" aria-pressed="false">Y</button>
+            <button id="GeoMirrorZ" class="tool" aria-pressed="false">Z</button>
+          </div>
+        </div>
+        <h4>ROTATE</h4>
+        <div class="panel">
+          <div class="geo-row3">
+            <input type="number" id="GeoRotX" class="geo-number" step="15" value="0" aria-label="Rotate X degrees">
+            <input type="number" id="GeoRotY" class="geo-number" step="15" value="0" aria-label="Rotate Y degrees">
+            <input type="number" id="GeoRotZ" class="geo-number" step="15" value="0" aria-label="Rotate Z degrees">
+          </div>
+          <p>Degrees, applied X then Y then Z.</p>
+        </div>
+        <h4>NORMALS</h4>
+        <div class="panel">
+          <button id="GeoFlip" class="tool" aria-pressed="false">Flip normals</button>
+          <p>Reverses triangle winding. Mirroring already reverses it, so flipping again restores it.</p>
+        </div>
+        <h4>RESULT</h4>
+        <div class="panel"><div class="rows" id="GeoStats"></div></div>
+        <div class="panel geo-actions">
+          <button id="GeoApply" class="primary">Rebuild hero</button>
+          <button id="GeoReset" class="tool">Reset</button>
+          <button id="GeoCancel" class="tool">Cancel</button>
         </div>
       </aside>
     </div>

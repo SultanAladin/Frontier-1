@@ -4,6 +4,8 @@ import { ViewportRasterization, VIEW_MODES } from './Engine/ViewportRasterizatio
 import { projectedError } from './Engine/ClusterSelection.js';
 import { createIconCapture } from './IconCapture.js';
 import { createUvWorkspace } from './UvWorkspace.js';
+import { createGeometryEditor } from './GeometryEditor.js';
+import { identityTransform } from './Engine/GeometryTransform.js';
 
 const $ = (id) => document.getElementById(id);
 const query = new URLSearchParams(location.search);
@@ -64,6 +66,7 @@ const build = {
   triangleBudget: +query.get('budget') || 200000,
   clusterTriangles: 128, groupClusters: 4, simplifyRatio: 0.5,
   objText: null, objName: '',
+  transform: identityTransform(),
 };
 const layout = { side: Math.min(15, Math.max(1, +query.get('side') || 5)), spacing: 3 };
 const camera = { target: [0, 0, 0], yaw: 0.7, pitch: 0.38, distance: 6, fov: (50 * Math.PI) / 180, eye: [0, 0, 0] };
@@ -211,7 +214,7 @@ function renderSources() {
     row.querySelector('small').textContent = entry.note;
     row.addEventListener('click', () => {
       if (entry.id === 'obj') return;
-      build.preset = entry.id; build.objText = null;
+      build.preset = entry.id; build.objText = null; build.transform = identityTransform();
       requestBuild();
     });
     host.append(row);
@@ -223,6 +226,7 @@ $('ObjInput').addEventListener('change', async (event) => {
   if (!file) return;
   build.objText = await file.text();
   build.objName = file.name;
+  build.transform = identityTransform();
   requestBuild();
 });
 document.querySelector('.entity.import').addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); $('ObjInput').click(); } });
@@ -289,7 +293,7 @@ function requestBuild() {
     else if (message.type === 'done') adopt(message.result);
   };
   worker.onerror = (event) => fail(event.message || 'Worker failed to start');
-  worker.postMessage({ ticket: mine, request: { preset: build.preset, triangleBudget: build.triangleBudget, objText: build.objText, build: { clusterTriangles: build.clusterTriangles, groupClusters: build.groupClusters, simplifyRatio: build.simplifyRatio } } });
+  worker.postMessage({ ticket: mine, request: { preset: build.preset, triangleBudget: build.triangleBudget, objText: build.objText, transform: build.transform, build: { clusterTriangles: build.clusterTriangles, groupClusters: build.groupClusters, simplifyRatio: build.simplifyRatio } } });
 }
 function fail(message) {
   building = false;
@@ -434,6 +438,7 @@ const held = new Set();
 window.addEventListener('keydown', (event) => {
   if (event.target.matches('input, select, textarea') || event.ctrlKey || event.metaKey || event.altKey) return;
   if (uvWorkspace.open) { uvWorkspace.keydown(event); return; }
+  if (geometryEditor.open) { geometryEditor.keydown(event); return; }
   const key = event.key.toLowerCase();
   if (key === 'i') { iconCapture.setActive(!iconCapture.active); return; }
   if (key === 'p' && iconCapture.active) { iconCapture.capture(); return; }
@@ -547,6 +552,13 @@ const uvWorkspace = createUvWorkspace({
   getName: () => currentSource().name,
   toast,
 });
+const geometryEditor = createGeometryEditor({
+  getBase: () => (geometry ? geometry.base : null),
+  getTransform: () => build.transform,
+  applyTransform: (transform) => { build.transform = transform; requestBuild(); },
+  getName: () => currentSource().name,
+  toast,
+});
 
 // --- Tick loop --------------------------------------------------------------------------------------------
 let last = performance.now(), smoothed = 16.7, nextReadout = 0;
@@ -607,4 +619,4 @@ requestBuild();
 requestAnimationFrame(tick);
 
 // Handle for the browser validation script and for poking around in the console.
-window.ClusterLodStudio = { settings, build, layout, camera, viewport, iconCapture, uvWorkspace, get geometry() { return geometry; }, get hierarchy() { return built; }, get building() { return building; }, setViewMode, setForcedLevel, setFrozen, fitAll, requestBuild };
+window.ClusterLodStudio = { settings, build, layout, camera, viewport, iconCapture, uvWorkspace, geometryEditor, get geometry() { return geometry; }, get hierarchy() { return built; }, get building() { return building; }, setViewMode, setForcedLevel, setFrozen, fitAll, requestBuild };

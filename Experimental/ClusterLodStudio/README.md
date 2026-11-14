@@ -15,6 +15,16 @@ node Experimental/ClusterLodStudio/Scripts/CheckClusterHierarchy.mjs
 
 URL parameters for repeatable captures: `?preset=vase|braid|torus|knot|asteroid|planet|terrain&budget=200000&side=5&mode=levels&error=1&wire&drawer`.
 
+## Geometry Editor
+
+`Open Geometry Editor` in the Inspector's GEOMETRY section (or the editor's own controls) transforms the current hero
+source before the cluster hierarchy is built: scale (uniform or per axis), centre (keep, origin or floor), mirror X/Y/Z,
+rotate in degrees, and flip normals. The preview runs on the main thread from an untransformed copy of the source, so
+nothing rebuilds until **Apply and rebuild hero**. A mirror reverses triangle winding so normals stay outward. The
+import area lists OBJ, glTF, GLB, STL, PLY and FBX, but the file reader is not connected in this build.
+
+Planned Hero Workspace and SDF Baker work is tracked in `Documentation/Plans/ClusterLodStudioHeroWorkspace.md`.
+
 ## Icons and the UV Workspace
 
 - **Icon camera** (`I`, or the **Icon** tool): a square camera box opens over the viewport at a default three-quarter
