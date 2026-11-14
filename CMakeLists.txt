@@ -329,12 +329,27 @@ endfunction()
 
 frontier_compile_modular_slang_shader(MaterialSpace/BounceLayerSummary.slang                     BounceSummaryComputeEntry       compute  BounceLayerSummary.comp.spv)
 frontier_compile_modular_slang_shader(Colour/ColourRampSampling.slang                            SampleColourRampLutComputeEntry compute  ColourRampSampling.comp.spv)
-frontier_compile_modular_slang_shader(Particles/ParticleReleaseCompute.slang                     ParticleReleaseComputeEntry     compute  ParticleReleaseCompute.comp.spv)
-frontier_compile_modular_slang_shader(Particles/ParticleAdvectCompute.slang                      ParticleAdvectComputeEntry      compute  ParticleAdvectCompute.comp.spv)
-frontier_compile_modular_slang_shader(Particles/ParticleSpriteRaster.slang                       ParticleSpriteVertexEntry       vertex   ParticleSpriteRaster.vert.spv)
-frontier_compile_modular_slang_shader(Particles/ParticleSpriteRaster.slang                       ParticleSpriteFragmentEntry     fragment ParticleSpriteRaster.frag.spv)
-frontier_compile_modular_slang_shader(Particles/ParticleRibbonRaster.slang                       ParticleRibbonVertexEntry       vertex   ParticleRibbonRaster.vert.spv)
-frontier_compile_modular_slang_shader(Particles/ParticleRibbonRaster.slang                       ParticleRibbonFragmentEntry     fragment ParticleRibbonRaster.frag.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleReleaseCompute.slang                     ParticleReleaseComputeEntry         compute  ParticleReleaseCompute.comp.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleAdvectCompute.slang                      ParticleAdvectComputeEntry          compute  ParticleAdvectCompute.comp.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleForceCoupling.slang                      ParticleForceCouplingEntry          compute  ParticleForceCoupling.comp.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleSpatialGridCompute.slang                 ParticleSpatialGridComputeEntry     compute  ParticleSpatialGridCompute.comp.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleReductionCompute.slang                   ParticleReductionComputeEntry       compute  ParticleReductionCompute.comp.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleSpriteRaster.slang                       ParticleSpriteVertexEntry           vertex   ParticleSpriteRaster.vert.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleSpriteRaster.slang                       ParticleSpriteFragmentEntry         fragment ParticleSpriteRaster.frag.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleRibbonRaster.slang                       ParticleRibbonVertexEntry           vertex   ParticleRibbonRaster.vert.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleRibbonRaster.slang                       ParticleRibbonFragmentEntry         fragment ParticleRibbonRaster.frag.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleSolidRasterization.slang                 ParticleSolidVertexEntry            vertex   ParticleSolidRasterization.vert.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleSolidRasterization.slang                 ParticleSolidFragmentEntry          fragment ParticleSolidRasterization.frag.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleWingedRasterization.slang                ParticleWingedVertexEntry           vertex   ParticleWingedRasterization.vert.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleWingedRasterization.slang                ParticleWingedFragmentEntry         fragment ParticleWingedRasterization.frag.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleLineArcRasterization.slang               ParticleLineArcVertexEntry          vertex   ParticleLineArcRasterization.vert.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleLineArcRasterization.slang               ParticleLineArcFragmentEntry        fragment ParticleLineArcRasterization.frag.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleLensRasterization.slang                  ParticleLensVertexEntry             vertex   ParticleLensRasterization.vert.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleLensRasterization.slang                  ParticleLensFragmentEntry           fragment ParticleLensRasterization.frag.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleSurfaceBackingRasterization.slang        ParticleSurfaceBackingVertexEntry   vertex   ParticleSurfaceBackingRasterization.vert.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleSurfaceBackingRasterization.slang        ParticleSurfaceBackingFragmentEntry fragment ParticleSurfaceBackingRasterization.frag.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleOverlayRasterization.slang               ParticleOverlayVertexEntry          vertex   ParticleOverlayRasterization.vert.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleOverlayRasterization.slang               ParticleOverlayFragmentEntry        fragment ParticleOverlayRasterization.frag.spv)
 frontier_compile_modular_slang_shader(MaterialSpace/OpenPbrSurfaceScattering.slang               ComputeEntry                    compute  OpenPbrSurfaceScattering.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/DepthPyramidDownsample.slang                    DepthPyramidComputeEntry        compute  DepthPyramidDownsample.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/ClusterVisibilityCull.slang                     ClusterCullComputeEntry         compute  ClusterVisibilityCull.comp.spv)
@@ -551,6 +566,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ColourSpace/ColourExtension.cpp
     Engine/Interchange/ColourInterchange.cpp
     Engine/Interchange/GeometryInterchange.cpp
+    Engine/Interchange/ParticleInterchange.cpp
     Engine/Editor/Viewports/TransformGizmo.cpp
     Engine/Editor/Viewports/ViewportProjection.cpp
     Engine/GeometricRaster/VulkanInterchange.cpp
@@ -602,6 +618,9 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ParticleSpace/Dynamics/OrbitalElectromagneticDynamics.cpp
     Engine/ParticleSpace/Dynamics/SwarmFlockingDynamics.cpp
     Engine/ParticleSpace/Dynamics/FluidGranularDynamics.cpp
+    Engine/ParticleSpace/Dynamics/MolecularReactionDynamics.cpp
+    Engine/ParticleSpace/Dynamics/SpecialEffectsDynamics.cpp
+    Engine/ParticleSpace/Simulation/ParticleMetricsCollector.cpp
     Engine/ParticleSpace/Simulation/ParticleSoftwareExecutor.cpp
     Engine/ParticleSpace/Simulation/ParticleVulkanExecutor.cpp
     Engine/ParticleSpace/Presets/ParticlePresetCatalogue.cpp
@@ -819,8 +838,12 @@ if(BUILD_TESTING)
     frontier_register_exhibit(ColourSpaceValidation          Exhibits/ColourSpaceValidation.cpp)
     frontier_register_exhibit(ColourCodecInterchangeValidation Exhibits/ColourCodecInterchangeValidation.cpp)
     frontier_register_exhibit(ColourComponentsValidation     Exhibits/ColourComponentsValidation.cpp)
-    frontier_register_exhibit(ParticleWorkspaceUIValidation  Exhibits/ParticleWorkspaceUIValidation.cpp)
-    frontier_register_exhibit(ParticleFoundationValidation   Exhibits/ParticleFoundationValidation.cpp)
+    frontier_register_exhibit(ParticleWorkspaceUIValidation       Exhibits/ParticleWorkspaceUIValidation.cpp)
+    frontier_register_exhibit(ParticleFoundationValidation        Exhibits/ParticleFoundationValidation.cpp)
+    frontier_register_exhibit(ParticleCodecInterchangeValidation  Exhibits/ParticleCodecInterchangeValidation.cpp)
+    frontier_register_exhibit(ParticleDynamicsValidation          Exhibits/ParticleDynamicsValidation.cpp)
+    frontier_register_exhibit(ParticleVulkanValidation            Exhibits/ParticleVulkanValidation.cpp)
+    frontier_register_exhibit(ParticlePresetParityValidation      Exhibits/ParticlePresetParityValidation.cpp)
     frontier_register_exhibit(GeometryNetworkValidation      Exhibits/GeometryNetworkValidation.cpp)
     frontier_register_exhibit(GeometryCompletionValidation   Exhibits/GeometryCompletionValidation.cpp)
     frontier_register_exhibit(MaterialScatteringValidation   Exhibits/MaterialScatteringValidation.cpp)

@@ -11,7 +11,9 @@
 
 #include "Engine/ParticleSpace/Dynamics/CurlManifoldDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/FluidGranularDynamics.h"
+#include "Engine/ParticleSpace/Dynamics/MolecularReactionDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/OrbitalElectromagneticDynamics.h"
+#include "Engine/ParticleSpace/Dynamics/SpecialEffectsDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/SwarmFlockingDynamics.h"
 
 #include <algorithm>
@@ -81,6 +83,9 @@ uint32_t ExecuteParticleRigStepCpu(
     if (D.Morpho.has_value())      StepMorphogeneticGrowthDynamics(*D.Morpho, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
     if (D.FluidSph.has_value())    StepFluidSphDynamics(*D.FluidSph, OriginCenter, RigSlots, DtSec);
     if (D.Thermal.has_value())     StepThermalFireworkDynamics(*D.Thermal, RigSlots, Context.ElapsedSeconds, DtSec);
+    if (D.Molecular.has_value())   StepMolecularReactionDynamics(*D.Molecular, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
+    if (D.Splash.has_value())      StepShallowWaterSplashDynamics(*D.Splash, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
+    if (D.Transition.has_value())  StepTransitionDerezDynamics(*D.Transition, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
 
     // 3. Ambient wind + ForceFieldAccumulator coupling + ballistic integration + colliders
     float AmbientV[3] = { 0.0f, 0.0f, 0.0f };
@@ -96,7 +101,14 @@ uint32_t ExecuteParticleRigStepCpu(
     const float DragMult = std::exp(-std::max(0.0f, D.Ballistic.AerodynamicDrag) * DtSec);
     const float WindRate = std::max(0.0f, D.ForceCouple.WindCouplingRate);
 
-    const bool OverrideKinematicPos = D.DielectricArc.has_value() || D.FieldMatrix.has_value() || D.Botanical.has_value();
+    const bool OverrideKinematicPos = D.DielectricArc.has_value()
+                                   || D.FieldMatrix.has_value()
+                                   || D.Botanical.has_value()
+                                   || D.Ferrofluid.has_value()
+                                   || D.Fracture.has_value()
+                                   || D.Shield.has_value()
+                                   || D.Spiderweb.has_value()
+                                   || D.Effector.has_value();
 
     for (auto& Slot : RigSlots)
     {
@@ -138,12 +150,17 @@ uint32_t ExecuteParticleRigStepCpu(
         }
     }
 
-    // 4. Post-advance positional constraints (Granular DEM, Elastic PBD Strands, Dielectric Arcs, Field Matrix, Botanical Sway)
+    // 4. Post-advance positional constraints (Granular, Strands, Arcs, Field Matrix, Botanical, Ferrofluid, Fracture, Shield, Spiderweb, Effectors)
     if (D.Granular.has_value())      StepGranularCollisionDynamics(*D.Granular, OriginCenter, RigSlots, DtSec);
     if (D.ElasticStrand.has_value()) StepElasticStrandDynamics(*D.ElasticStrand, RigSlots, DtSec);
     if (D.DielectricArc.has_value()) StepDielectricArcDynamics(*D.DielectricArc, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
     if (D.FieldMatrix.has_value())   StepFieldMatrixDynamics(*D.FieldMatrix, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
     if (D.Botanical.has_value())     StepBotanicalSwayDynamics(*D.Botanical, RigSlots, Context.ElapsedSeconds, DtSec);
+    if (D.Ferrofluid.has_value())    StepFerrofluidMeniscusDynamics(*D.Ferrofluid, OriginCenter, Context.Document.Collider, RigSlots, Context.ElapsedSeconds, DtSec);
+    if (D.Fracture.has_value())      StepFractureFissureDynamics(*D.Fracture, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
+    if (D.Shield.has_value())        StepShieldBarrierDynamics(*D.Shield, OriginCenter, Context.Document.Collider, RigSlots, Context.ElapsedSeconds, DtSec);
+    if (D.Spiderweb.has_value())     StepSpiderwebWeaveDynamics(*D.Spiderweb, RigSlots, Context.ElapsedSeconds, DtSec);
+    if (D.Effector.has_value())      StepEffectorLatticeDynamics(*D.Effector, OriginCenter, Context.Document.Collider, RigSlots, Context.ElapsedSeconds, DtSec);
 
     // 5. Floor bounce, interactive sphere collider, size curve, ribbon trail shift & ColourSpace tinting
     const uint32_t StrandVerts = [&]() -> uint32_t {
@@ -207,18 +224,18 @@ uint32_t ExecuteParticleRigStepCpu(
         // Ribbon trail history shift when RibbonStrandCarrier is active
         if (StrandVerts >= 2u && OptionalStrandHistory.size() >= (I + 1u) * StrandVerts)
         {
-            const std::size_t Base = I * StrandVerts;
+            const std::size_t StrandStart = I * StrandVerts;
             for (uint32_t V = StrandVerts - 1u; V > 0u; --V)
             {
-                OptionalStrandHistory[Base + V].PositionMeters[0] = OptionalStrandHistory[Base + V - 1u].PositionMeters[0];
-                OptionalStrandHistory[Base + V].PositionMeters[1] = OptionalStrandHistory[Base + V - 1u].PositionMeters[1];
-                OptionalStrandHistory[Base + V].PositionMeters[2] = OptionalStrandHistory[Base + V - 1u].PositionMeters[2];
-                OptionalStrandHistory[Base + V].NormalisedSpanU   = static_cast<float>(V) / static_cast<float>(StrandVerts - 1u);
+                OptionalStrandHistory[StrandStart + V].PositionMeters[0] = OptionalStrandHistory[StrandStart + V - 1u].PositionMeters[0];
+                OptionalStrandHistory[StrandStart + V].PositionMeters[1] = OptionalStrandHistory[StrandStart + V - 1u].PositionMeters[1];
+                OptionalStrandHistory[StrandStart + V].PositionMeters[2] = OptionalStrandHistory[StrandStart + V - 1u].PositionMeters[2];
+                OptionalStrandHistory[StrandStart + V].NormalisedSpanU   = static_cast<float>(V) / static_cast<float>(StrandVerts - 1u);
             }
-            OptionalStrandHistory[Base].PositionMeters[0] = Slot.PositionMeters[0];
-            OptionalStrandHistory[Base].PositionMeters[1] = Slot.PositionMeters[1];
-            OptionalStrandHistory[Base].PositionMeters[2] = Slot.PositionMeters[2];
-            OptionalStrandHistory[Base].NormalisedSpanU   = 0.0f;
+            OptionalStrandHistory[StrandStart].PositionMeters[0] = Slot.PositionMeters[0];
+            OptionalStrandHistory[StrandStart].PositionMeters[1] = Slot.PositionMeters[1];
+            OptionalStrandHistory[StrandStart].PositionMeters[2] = Slot.PositionMeters[2];
+            OptionalStrandHistory[StrandStart].NormalisedSpanU   = 0.0f;
         }
 
         // Size progression + ColourSpace tint evaluation

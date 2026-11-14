@@ -54,9 +54,9 @@ public float EvaluateSpriteCutoutMask(uint CutoutCode, uint BokehCode, float2 Lo
     {
         float Ang = atan2(LocalUv.y, LocalUv.x);
         float Rays = 0.5 + 0.5 * cos(Ang * 4.0);
-        float Core = exp(-R2 * 9.0);
+        float SparkHeart = exp(-R2 * 9.0);
         float Cross = exp(-R * (5.2 - 3.6 * Rays));
-        return saturate(Core + Cross * 0.75);
+        return saturate(SparkHeart + Cross * 0.75);
     }
 
     if (CutoutCode == 5u) // LeafBlade

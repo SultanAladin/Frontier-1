@@ -48,10 +48,10 @@ RibbonVertexOutput ParticleRibbonVertexEntry(uint VertexId : SV_VertexID, uint I
         return Out;
     }
 
-    uint Base   = InstanceId * SegVerts;
-    uint CurIdx = Base + RingIdx;
-    uint PrvIdx = Base + (RingIdx > 0u ? (RingIdx - 1u) : 0u);
-    uint NxtIdx = Base + min(RingIdx + 1u, SegVerts - 1u);
+    uint StrandStart = InstanceId * SegVerts;
+    uint CurIdx      = StrandStart + RingIdx;
+    uint PrvIdx      = StrandStart + (RingIdx > 0u ? (RingIdx - 1u) : 0u);
+    uint NxtIdx      = StrandStart + min(RingIdx + 1u, SegVerts - 1u);
 
     StrandVertexGpu CurV = StrandVertices[CurIdx];
     float3 Tangent = StrandVertices[NxtIdx].PositionMeters - StrandVertices[PrvIdx].PositionMeters;

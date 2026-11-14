@@ -735,8 +735,8 @@ int main()
 #else
         const bool Ok = VkExec.Initialize("build/CompiledShaders", VkDiag);
 #endif
-        Expect(Ok && VkExec.InspectTelemetry().CompiledShaderCount == 6u,
-               "ParticleVulkanExecutor verified all 6 SPIR-V 1.3 modules (" + VkDiag + ")");
+        Expect(Ok && VkExec.InspectTelemetry().CompiledShaderCount == 21u,
+               "ParticleVulkanExecutor verified all 21 SPIR-V 1.3 modules (" + VkDiag + ")");
     }
 
     // 8. Full 102-preset Catalogue verification (93 active + 9 quarantined across 15 categories, live stepped with 0 NaNs!)

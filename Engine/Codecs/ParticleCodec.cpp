@@ -202,6 +202,24 @@ SpaceContainerPayload ParticleEncoder::BuildPayload(
         std::memcpy(LutSec.PayloadBytes.data(), &Lut, sizeof(Lut));
         Payload.BinarySections.push_back(std::move(LutSec));
 
+        // Bake deterministic Tier 2 .StrandRest rest-length table whenever structural strands/webs/cloth/flora are active
+        if (Rig.Dynamics.ElasticStrand.has_value()
+         || Rig.Dynamics.Strand.has_value()
+         || Rig.Dynamics.Spiderweb.has_value()
+         || std::holds_alternative<ParticleSpace::SpiderwebOrigin>(Rig.Origin)
+         || std::holds_alternative<ParticleSpace::ClothGridOrigin>(Rig.Origin)
+         || std::holds_alternative<ParticleSpace::BotanicalRootOrigin>(Rig.Origin))
+        {
+            const float BaseRest = Rig.Dynamics.ElasticStrand.has_value() ? Rig.Dynamics.ElasticStrand->RestSegmentMeters : 0.16f;
+            std::vector<float> RestLengths(128u, BaseRest);
+            BinarySectionBlock RestSec {};
+            RestSec.SectionIdentifier = "StrandRest_" + std::to_string(I);
+            RestSec.SubFormatTag      = ".StrandRest";
+            RestSec.PayloadBytes.resize(RestLengths.size() * sizeof(float));
+            std::memcpy(RestSec.PayloadBytes.data(), RestLengths.data(), RestSec.PayloadBytes.size());
+            Payload.BinarySections.push_back(std::move(RestSec));
+        }
+
         RigsArr.push_back(std::move(R));
     }
     Payload.DomainManifest.insert("ParticleRig", std::move(RigsArr));

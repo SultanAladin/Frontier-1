@@ -1531,6 +1531,155 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         case 15u: Rig.Dynamics.Morpho        = MorphogeneticGrowthSpec {}; break;
         default:  break;
     }
+
+    // 6. Specialized domain solver & geometric 3D origin activations keyed by canonical preset identity
+    const std::string_view Pid(P.Identifier);
+    if (Pid == "ferrofluid-spikes" || Pid == "ferrofluid-orb")
+    {
+        FerrofluidMeniscusSpec Ferro {};
+        Ferro.LevitatedCrown = (Pid == "ferrofluid-orb");
+        Rig.Dynamics.Ferrofluid = Ferro;
+        if (Ferro.LevitatedCrown)
+        {
+            SurfaceAnchorOrigin Orb {};
+            Orb.Preset = SurfacePresetCategory::ObsidianSphere;
+            for (int K = 0; K < 3; ++K) { Orb.CenterMeters[K] = P.OriginCenter[K]; Orb.ScaleMeters[K] = 1.35f; }
+            Rig.Origin = Orb;
+        }
+        else
+        {
+            AnalyticDiscOrigin Dish {};
+            for (int K = 0; K < 3; ++K) Dish.CenterMeters[K] = P.OriginCenter[K];
+            Dish.RadiusMeters = 1.85f;
+            Rig.Origin = Dish;
+        }
+        Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
+        Rig.ColourProfile.Range.RangeMin = P.OriginCenter[1];
+        Rig.ColourProfile.Range.RangeMax = P.OriginCenter[1] + 0.95f;
+        ColourSpace::MultiStopGradientSource SpecGrad {};
+        SpecGrad.Stops = {
+            { 0.00f, ColourSpace::LinearRgba { 0.09f, 0.13f, 0.20f, 0.95f } },
+            { 0.55f, ColourSpace::LinearRgba { 0.36f, 0.54f, 0.72f, 0.98f } },
+            { 1.00f, ColourSpace::LinearRgba { 0.88f, 0.95f, 1.00f, 1.00f } },
+        };
+        Rig.ColourProfile.Source = std::move(SpecGrad);
+    }
+    else if (Pid == "cracked-ice-sheet" || Pid == "ground-crack-quake")
+    {
+        FractureFissureSpec Frac {};
+        Frac.SeismicBasalt = (Pid == "ground-crack-quake");
+        Rig.Dynamics.Fracture = Frac;
+        AnalyticDiscOrigin Slab {};
+        for (int K = 0; K < 3; ++K) Slab.CenterMeters[K] = P.OriginCenter[K];
+        Slab.RadiusMeters = 2.65f;
+        Rig.Origin = Slab;
+    }
+    else if (Pid == "car-puddle-splash" || Pid == "puddle-ripple-splash" || Pid == "mud-splatter-heavy" || Pid == "splatter-burst")
+    {
+        ShallowWaterSplashSpec Spl {};
+        if (Pid == "car-puddle-splash")      Spl.SplashVariant = 2u;
+        else if (Pid == "mud-splatter-heavy" || Pid == "splatter-burst") Spl.SplashVariant = 3u;
+        else                                 Spl.SplashVariant = 1u;
+        Rig.Dynamics.Splash = Spl;
+        AnalyticDiscOrigin Puddle {};
+        for (int K = 0; K < 3; ++K) Puddle.CenterMeters[K] = P.OriginCenter[K];
+        Puddle.RadiusMeters = 2.35f;
+        Rig.Origin = Puddle;
+    }
+    else if (Pid == "derez-cube" || Pid == "cube-coins" || Pid == "melt-away" || Pid == "reverse-derez"
+          || Pid == "voxel-explosion" || Pid == "coin-stack" || Pid == "dissolve-nothing"
+          || Pid == "dissolve-butterflies" || Pid == "glitch-dissolve" || Pid == "hologram-data-glitch")
+    {
+        TransitionDerezSpec Tr {};
+        if (Pid == "derez-cube")               Tr.TransitionVariant = 1u;
+        else if (Pid == "coin-stack")          Tr.TransitionVariant = 2u;
+        else if (Pid == "melt-away" || Pid == "dissolve-nothing") Tr.TransitionVariant = 3u;
+        else if (Pid == "reverse-derez")       Tr.TransitionVariant = 4u;
+        else if (Pid == "voxel-explosion")     Tr.TransitionVariant = 5u;
+        else if (Pid == "dissolve-butterflies")Tr.TransitionVariant = 6u;
+        else if (Pid == "glitch-dissolve" || Pid == "hologram-data-glitch") Tr.TransitionVariant = 7u;
+        Rig.Dynamics.Transition = Tr;
+        SurfaceAnchorOrigin Cube {};
+        Cube.Preset = SurfacePresetCategory::CubicVolume;
+        for (int K = 0; K < 3; ++K) { Cube.CenterMeters[K] = P.OriginCenter[K]; Cube.ScaleMeters[K] = 1.45f; }
+        Rig.Origin = Cube;
+    }
+    else if (Pid == "energy-shield-hex" || Pid == "energy-shield-prism" || Pid == "emp-pulse-dome")
+    {
+        ShieldBarrierSpec Sh {};
+        Sh.Form = (Pid == "energy-shield-prism") ? ShieldBarrierForm::HexagonWall : ShieldBarrierForm::SphereDome;
+        Rig.Dynamics.Shield = Sh;
+        SurfaceAnchorOrigin Dome {};
+        Dome.Preset = SurfacePresetCategory::ObsidianSphere;
+        for (int K = 0; K < 3; ++K) { Dome.CenterMeters[K] = P.OriginCenter[K]; Dome.ScaleMeters[K] = 1.85f; }
+        Rig.Origin = Dome;
+    }
+    else if (Pid == "spiderweb-orb" || Pid == "spiderweb-cobweb")
+    {
+        SpiderwebWeaveSpec Web {};
+        Web.MessyAtticCobweb = (Pid == "spiderweb-cobweb");
+        Rig.Dynamics.Spiderweb = Web;
+        SpiderwebOrigin WebOrig {};
+        for (int K = 0; K < 3; ++K) WebOrig.CenterMeters[K] = P.OriginCenter[K];
+        WebOrig.MessyCobweb = Web.MessyAtticCobweb;
+        Rig.Origin = WebOrig;
+    }
+    else if (Pid.rfind("effector-", 0u) == 0u)
+    {
+        EffectorLatticeSpec Eff {};
+        if (Pid == "effector-sphere-dots")       Eff.Driver = EffectorDriverCategory::OrbitingDual;
+        else if (Pid == "effector-torus-hex")    Eff.Driver = EffectorDriverCategory::ExpandingPulseRing;
+        else if (Pid == "effector-object-placer")Eff.Driver = EffectorDriverCategory::Placeable3DEffectors;
+        else                                     Eff.Driver = EffectorDriverCategory::FluidSimplexWave;
+        Rig.Dynamics.Effector = Eff;
+        SurfaceLatticeOrigin Lat {};
+        Lat.Columns = 24u;
+        Lat.Rows    = 24u;
+        for (int K = 0; K < 3; ++K) Lat.CenterMeters[K] = P.OriginCenter[K];
+        Lat.HalfExtentsMeters[0] = 2.6f;
+        Lat.HalfExtentsMeters[2] = 2.6f;
+        Rig.Origin = Lat;
+        Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
+        Rig.ColourProfile.Range.RangeMin = P.OriginCenter[1];
+        Rig.ColourProfile.Range.RangeMax = P.OriginCenter[1] + 1.0f;
+        ColourSpace::MultiStopGradientSource EffGrad {};
+        EffGrad.Stops = {
+            { 0.00f, ColourSpace::LinearRgba { 0.14f, 0.24f, 0.46f, 0.92f } },
+            { 0.50f, ColourSpace::LinearRgba { 0.24f, 0.72f, 0.96f, 0.96f } },
+            { 1.00f, ColourSpace::LinearRgba { 0.95f, 0.88f, 0.42f, 1.00f } },
+        };
+        Rig.ColourProfile.Source = std::move(EffGrad);
+    }
+    else if (Pid == "black-hole")
+    {
+        AnalyticDiscOrigin Disc {};
+        for (int K = 0; K < 3; ++K) Disc.CenterMeters[K] = P.OriginCenter[K];
+        Disc.RadiusMeters = 2.65f;
+        Rig.Origin = Disc;
+        OrbitalGravitySpec Orb {};
+        Orb.CentralMassParam = 8.5f;
+        Rig.Dynamics.Orbital = Orb;
+    }
+    else if (Pid == "flag-banner" || Pid == "ship-sail" || Pid == "velvet-theater-drapes" || Pid == "beaded-door-curtain")
+    {
+        ClothGridOrigin Cloth {};
+        for (int K = 0; K < 3; ++K) Cloth.OriginMeters[K] = P.OriginCenter[K];
+        Rig.Origin = Cloth;
+        if (!Rig.Dynamics.ElasticStrand.has_value()) Rig.Dynamics.ElasticStrand = ElasticStrandSpec {};
+    }
+    else if (Pid == "interactive-tree" || Pid == "grass-wheat-field" || Pid == "tall-reeds" || Pid == "interactive-fern" || Pid == "kelp-forest" || Pid == "sea-anemone")
+    {
+        BotanicalRootOrigin Bot {};
+        for (int K = 0; K < 3; ++K) Bot.CenterMeters[K] = P.OriginCenter[K];
+        Rig.Origin = Bot;
+        if (!Rig.Dynamics.Botanical.has_value()) Rig.Dynamics.Botanical = BotanicalSwaySpec {};
+    }
+    else if (Pid == "brownian" || Pid == "diffusion" || Pid == "crystallization" || Pid == "reaction")
+    {
+        MolecularKineticsSpec Mol {};
+        Mol.ChemicalReaction = (Pid == "reaction");
+        Rig.Dynamics.Molecular = Mol;
+    }
     return Rig;
 }
 
