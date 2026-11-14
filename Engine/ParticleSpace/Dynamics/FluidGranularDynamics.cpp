@@ -264,6 +264,20 @@ void StepElasticStrandDynamics(
     const float RestLen = std::max(0.04f, Spec.RestSegmentMeters);
     const uint32_t Iter = std::clamp<uint32_t>(Spec.SolverIterations, 1u, 8u);
 
+    // Gentle structural weft restoration so flags, sails, curtains & drapes billow gracefully instead of collapsing to 1D
+    const float SoftRestore = std::clamp(2.4f * Stiff * DeltaSeconds, 0.0f, 0.35f);
+    for (std::size_t I = 0u; I < Slots.size(); ++I)
+    {
+        ParticleSlot& S = Slots[I];
+        if (!IsParticleSlotAlive(S)) continue;
+        const float Wave = std::sin(S.AgeSeconds * 3.4f + S.OriginAnchor[0] * 1.9f + S.OriginAnchor[1] * 1.1f) * 0.24f;
+        const float Gust = std::cos(S.AgeSeconds * 2.1f + S.OriginAnchor[0] * 1.3f) * 0.14f;
+        S.PositionMeters[0] += ((S.OriginAnchor[0] + Gust) - S.PositionMeters[0]) * SoftRestore;
+        S.PositionMeters[1] += (S.OriginAnchor[1] - S.PositionMeters[1]) * (SoftRestore * 0.45f);
+        S.PositionMeters[2] += ((S.OriginAnchor[2] + Wave) - S.PositionMeters[2]) * SoftRestore;
+        S.AuxScalar = std::clamp((S.OriginAnchor[0] + 2.5f) * 0.22f, 0.0f, 1.0f);
+    }
+
     for (uint32_t It = 0u; It < Iter; ++It)
     {
         for (std::size_t I = 0u; I + 1u < Slots.size(); ++I)
@@ -355,19 +369,27 @@ void StepDielectricArcDynamics(
     if (DeltaSeconds <= 0.0f) return;
 
     const float QuantTime = std::floor(ElapsedSeconds * std::max(1.0f, Spec.RefreshRateHz));
-    for (auto& Slot : Slots)
+    const bool  IsBeam    = (Spec.JitterAmplitudeM < 0.08f);
+    constexpr uint32_t BranchCount = 5u;
+
+    for (std::size_t I = 0u; I < Slots.size(); ++I)
     {
+        ParticleSlot& Slot = Slots[I];
         if (!IsParticleSlotAlive(Slot)) continue;
-        // Midpoint-displaced plasma filament oscillating between electrode anchor and opposite terminal
-        const float SpanT  = Slot.SeedScalar;
+        // Multi-strand midpoint-displaced plasma filaments between cathode & anode electrodes
+        const uint32_t Branch = IsBeam ? 0u : static_cast<uint32_t>(I % BranchCount);
+        const float SpanT  = static_cast<float>((I / (IsBeam ? 1u : BranchCount)) % 48u) / 47.0f;
         const float Env    = std::sin(SpanT * 3.14159265f);
         const float Jitter = Spec.JitterAmplitudeM * Env;
-        const float Phase  = QuantTime * 13.7f + SpanT * 29.0f;
-        Slot.PositionMeters[0] = OriginCenter[0] + (SpanT - 0.5f) * 4.4f + std::sin(Phase) * Jitter * 0.3f;
-        Slot.PositionMeters[1] = OriginCenter[1] + 1.8f + std::sin(Phase * 1.7f) * Jitter;
-        Slot.PositionMeters[2] = OriginCenter[2] + std::cos(Phase * 2.1f) * Jitter;
+        const float BAngle = static_cast<float>(Branch) * 1.256637f + QuantTime * 0.7f;
+        const float Phase  = QuantTime * 13.7f + SpanT * 23.0f + static_cast<float>(Branch) * 4.3f;
+        const float ForkR  = IsBeam ? 0.02f : (0.42f * Env * (0.5f + 0.5f * std::sin(SpanT * 9.0f + Branch)));
+
+        Slot.PositionMeters[0] = OriginCenter[0] + (SpanT - 0.5f) * 4.6f + std::sin(Phase) * Jitter * 0.25f;
+        Slot.PositionMeters[1] = OriginCenter[1] + 1.6f + std::sin(BAngle) * ForkR + std::sin(Phase * 1.7f) * Jitter;
+        Slot.PositionMeters[2] = OriginCenter[2] + std::cos(BAngle) * ForkR + std::cos(Phase * 2.1f) * Jitter;
         Slot.VelocityMps[0] = 0.0f; Slot.VelocityMps[1] = 0.0f; Slot.VelocityMps[2] = 0.0f;
-        Slot.AuxScalar = Env;
+        Slot.AuxScalar = std::clamp(0.25f + 0.75f * Env, 0.0f, 1.0f);
     }
 }
 

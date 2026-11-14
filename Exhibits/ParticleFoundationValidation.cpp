@@ -385,7 +385,7 @@ void RenderDynamicsShowcaseSheet()
     Canvas.Clear(Rgba8 { 9, 11, 16, 255 });
     Canvas.FillRect(0, 0, 1440, 46, Rgba8 { 16, 19, 28, 255 });
     Canvas.FillRect(0, 45, 1440, 1, Rgba8 { 44, 52, 72, 255 });
-    Canvas.DrawText(22, 16, "FRONTIER C++ PARTICLESPACE  //  LIVE SIMULATED 3D PHYSICS SOLVERS (CURL, ATTRACTORS, CHLADNI, ORBITAL, LORENTZ, BOIDS, LIFE, SPH)", Rgba8 { 232, 238, 250, 255 }, 1);
+    Canvas.DrawText(22, 16, "FRONTIER C++ PARTICLESPACE  //  AUTHENTIC HTML PARTICLE STUDIO PRESETS (RIBBONS, FIREWORKS, TESLA, AURORA, BLACK HOLE, MAGNETS, BOIDS, WEB)", Rgba8 { 232, 238, 250, 255 }, 1);
 
     struct SimTile
     {
@@ -397,116 +397,25 @@ void RenderDynamicsShowcaseSheet()
         int         Steps;
     };
 
-    ColourSpace::ColourCodex Codex {};
-    auto ResolvePalette = [&](const char* Alias) {
-        ColourSpace::ColourSourceProfile P {};
-        if (!Codex.ResolveAliasToProfile(Alias, P))
-        {
-            const auto Grads = Codex.QueryIndicesByCategory(ColourSpace::ColourSourceCategory::MultiStopGradient);
-            if (!Grads.empty()) P = Codex.QueryAliasAt(Grads[0])->SourceProfile;
-        }
-        return P;
-    };
-
-    auto BaseRig = [&](const char* Alias, uint32_t Cap) {
-        ParticleRig R = ConstructDefaultStudioRig();
-        R.SlotCapacity = Cap;
-        R.ReleaseRatePerSec = 0.0f;
-        R.ColourProfile = ResolvePalette(Alias);
-        R.Dynamics = {};
-        R.Dynamics.Ballistic.GravityScale = 0.0f;
-        R.Dynamics.Ballistic.AerodynamicDrag = 0.12f;
-        R.Dynamics.ForceCouple.WindCouplingRate = 0.0f;
-        R.Kinematics.LifeMinSeconds = 12.0f;
-        R.Kinematics.LifeMaxSeconds = 18.0f;
-        return R;
+    // Authentic HTML Particle Studio presets ONLY (directly from Experimental/ParticleEditor Final/Engine/presets.js)
+    const struct { const char* PresetId; const char* Title; float Yaw; float Pitch; int Steps; } HtmlHeroes[8] = {
+        { "bokeh-object-pulse",   "01  OBJECT SURFACE POUR RIBBONS",  -26.0f, 16.0f, 70 },
+        { "fireworks-spectacle",  "02  NEW YEAR'S TEXT FIREWORKS",    -12.0f, 10.0f, 45 },
+        { "tesla-sphere-lightning","03  TESLA SPHERE LIGHTNING",      -22.0f, 14.0f, 45 },
+        { "aurora-borealis",      "04  AURORA BOREALIS CURTAINS",     -18.0f, 18.0f, 65 },
+        { "black-hole",           "05  BLACK HOLE ACCRETION",         -18.0f, 34.0f, 75 },
+        { "magnetic-particles",   "06  MAGNETIC PARTICLES",           -24.0f, 18.0f, 70 },
+        { "boids-flock",          "07  BOIDS FLOCK",                  -22.0f, 18.0f, 65 },
+        { "spiderweb-orb",        "08  ORB-WEAVE SPIDERWEB",          -16.0f, 16.0f, 55 },
     };
 
     std::vector<SimTile> Tiles;
-
-    // 1. Curl Manifold Sphere Shell
+    for (const auto& H : HtmlHeroes)
     {
-        ParticleRig R = BaseRig("Aurora", 1200u);
-        AnalyticSphereOrigin Sph {}; Sph.RadiusMeters = 1.65f; Sph.ShellOnly = true;
-        R.Origin = Sph;
-        CurlManifoldSpec Curl {}; Curl.ManifoldMode = 3u; Curl.ShellRadiusM = 1.65f; Curl.DriveSpeedMps = 3.2f;
-        R.Dynamics.Curl = Curl;
-        Tiles.push_back({ "01  CURL MANIFOLD SHELL (MODE 3)", "Aurora", -26.0f, 16.0f, std::move(R), 70 });
-    }
-    // 2. Lorenz Strange Attractor (RK4)
-    {
-        ParticleRig R = BaseRig("Plasma", 1200u);
-        AnalyticSphereOrigin Sph {}; Sph.CenterMeters[1] = 2.0f; Sph.RadiusMeters = 0.7f;
-        R.Origin = Sph;
-        R.Dynamics.Ballistic.AerodynamicDrag = 0.0f;
-        AttractorDynamicsSpec Att {}; Att.AttractorKind = 0u; Att.ScaleFactor = 0.11f; Att.TimeMultiplier = 1.4f;
-        R.Dynamics.Attractor = Att;
-        Tiles.push_back({ "02  LORENZ STRANGE ATTRACTOR (RK4)", "Plasma", -20.0f, 12.0f, std::move(R), 110 });
-    }
-    // 3. Aizawa Chaotic Torus Attractor (RK4)
-    {
-        ParticleRig R = BaseRig("Sunset", 1200u);
-        AnalyticSphereOrigin Sph {}; Sph.RadiusMeters = 0.55f;
-        R.Origin = Sph;
-        R.Dynamics.Ballistic.AerodynamicDrag = 0.0f;
-        AttractorDynamicsSpec Att {}; Att.AttractorKind = 2u; Att.ScaleFactor = 1.25f; Att.TimeMultiplier = 1.6f;
-        R.Dynamics.Attractor = Att;
-        Tiles.push_back({ "03  AIZAWA CHAOTIC ATTRACTOR (RK4)", "Sunset", -28.0f, 22.0f, std::move(R), 120 });
-    }
-    // 4. Chladni Acoustic Standing Wave (m=3, n=5)
-    {
-        ParticleRig R = BaseRig("Viridis", 1400u);
-        AnalyticBoxOrigin Box {}; Box.HalfExtentsMeters[0] = 3.0f; Box.HalfExtentsMeters[1] = 0.05f; Box.HalfExtentsMeters[2] = 3.0f;
-        R.Origin = Box;
-        R.Kinematics.SpeedMinMps = 0.0f; R.Kinematics.SpeedMaxMps = 0.1f;
-        R.Dynamics.Ballistic.AerodynamicDrag = 1.8f;
-        HarmonicWaveSpec Wave {}; Wave.ModeIndexM = 3u; Wave.ModeIndexN = 5u; Wave.AmplitudeMeters = 1.2f;
-        R.Dynamics.Harmonic = Wave;
-        Tiles.push_back({ "04  CHLADNI STANDING WAVE (M=3, N=5)", "Viridis", 0.0f, 76.0f, std::move(R), 100 });
-    }
-    // 5. Keplerian Spiral Galaxy Disk
-    {
-        ParticleRig R = BaseRig("Ocean", 1200u);
-        AnalyticDiscOrigin Disc {}; Disc.RadiusMeters = 2.8f;
-        R.Origin = Disc;
-        R.Kinematics.SpeedMinMps = 1.2f; R.Kinematics.SpeedMaxMps = 2.6f;
-        R.Dynamics.Ballistic.AerodynamicDrag = 0.05f;
-        OrbitalGravitySpec Orb {}; Orb.CentralMassParam = 14.0f; Orb.SofteningMeters = 0.32f; Orb.TangentialBoost = 4.2f;
-        R.Dynamics.Orbital = Orb;
-        Tiles.push_back({ "05  KEPLERIAN GALACTIC GRAVITY", "Ocean", -18.0f, 36.0f, std::move(R), 90 });
-    }
-    // 6. Boris Magnetic Dipole Plasma
-    {
-        ParticleRig R = BaseRig("Thermal", 1200u);
-        AnalyticSphereOrigin Sph {}; Sph.RadiusMeters = 1.9f;
-        R.Origin = Sph;
-        R.Kinematics.SpeedMinMps = 1.5f; R.Kinematics.SpeedMaxMps = 3.2f;
-        R.Dynamics.Ballistic.AerodynamicDrag = 0.04f;
-        ElectromagneticSpec Em {}; Em.ChargeToMassRatio = 1.8f; Em.MagneticFieldB[1] = 1.4f; Em.DipoleMoment = 3.8f;
-        R.Dynamics.Electro = Em;
-        Tiles.push_back({ "06  BORIS MAGNETIC DIPOLE PLASMA", "Thermal", -24.0f, 18.0f, std::move(R), 85 });
-    }
-    // 7. Reynolds Boids 3D Murmuration
-    {
-        ParticleRig R = BaseRig("Aurora", 600u);
-        AnalyticSphereOrigin Sph {}; Sph.RadiusMeters = 2.4f;
-        R.Origin = Sph;
-        R.Kinematics.SpeedMinMps = 1.4f; R.Kinematics.SpeedMaxMps = 2.8f;
-        R.Dynamics.Ballistic.AerodynamicDrag = 0.02f;
-        SwarmFlockingSpec Boids {}; Boids.PerceptionRadiusM = 1.1f; Boids.CohesionWeight = 1.4f; Boids.AlignmentWeight = 1.9f; Boids.SeparationWeight = 2.5f;
-        R.Dynamics.Swarm = Boids;
-        Tiles.push_back({ "07  REYNOLDS BOIDS 3D FLOCK", "Aurora", -22.0f, 18.0f, std::move(R), 65 });
-    }
-    // 8. Multi-Species Particle Life
-    {
-        ParticleRig R = BaseRig("Plasma", 600u);
-        AnalyticSphereOrigin Sph {}; Sph.RadiusMeters = 2.2f;
-        R.Origin = Sph;
-        R.Kinematics.SpeedMinMps = 0.1f; R.Kinematics.SpeedMaxMps = 0.4f;
-        R.Dynamics.Ballistic.AerodynamicDrag = 0.1f;
-        SpeciesLifeSpec Life {}; Life.SpeciesCount = 5u; Life.InteractionRadiusM = 1.15f; Life.ForceMultiplier = 2.8f;
-        R.Dynamics.SpeciesLife = Life;
-        Tiles.push_back({ "08  MULTI-SPECIES PARTICLE LIFE", "Plasma", -20.0f, 22.0f, std::move(R), 65 });
+        const auto* Meta = FindParticlePresetById(H.PresetId);
+        ParticleRig R = Meta ? InstantiateRigFromPreset(*Meta) : ConstructDefaultStudioRig();
+        R.SlotCapacity = std::min<uint32_t>(R.SlotCapacity, 1200u);
+        Tiles.push_back({ H.Title, "", H.Yaw, H.Pitch, std::move(R), H.Steps });
     }
 
     constexpr int Cols = 4;

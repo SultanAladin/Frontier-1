@@ -146,7 +146,16 @@ void ParticleExtension::SpawnSingleSlot(std::size_t RigIdx, RigRuntimeSlice& Sli
     OriginSpawnPoint Spawn {};
     if (Slice.AnchorCount > 0u)
     {
-        const uint32_t AIdx = Slice.AnchorOffset + (Rng.NextUint32() % Slice.AnchorCount);
+        // Preserve exact deterministic topological ordering for structural grids, webs, cloth, stalks & firework glyphs
+        const bool OrderedTopology = std::holds_alternative<SurfaceLatticeOrigin>(Rig.Origin)
+                                  || std::holds_alternative<SpiderwebOrigin>(Rig.Origin)
+                                  || std::holds_alternative<ClothGridOrigin>(Rig.Origin)
+                                  || std::holds_alternative<BotanicalRootOrigin>(Rig.Origin)
+                                  || std::holds_alternative<FireworkOrigin>(Rig.Origin);
+        const uint32_t LocalAnchor = OrderedTopology
+            ? (LocalSlot % Slice.AnchorCount)
+            : (Rng.NextUint32() % Slice.AnchorCount);
+        const uint32_t AIdx = Slice.AnchorOffset + LocalAnchor;
         const ParticleAnchorSample& Anc = AnchorBuffer[AIdx];
         for (int K = 0; K < 3; ++K)
         {
@@ -185,11 +194,11 @@ void ParticleExtension::SpawnSingleSlot(std::size_t RigIdx, RigRuntimeSlice& Sli
     if (Slice.StrandVertexCount > 0u)
     {
         const uint32_t VPer = Slice.StrandVertexCount / Slice.SlotCapacity;
-        const std::size_t Base = static_cast<std::size_t>(Slice.StrandOffset) + static_cast<std::size_t>(LocalSlot) * VPer;
-        for (uint32_t V = 0u; V < VPer && (Base + V) < StrandVertices.size(); ++V)
+        const std::size_t StrandStart = static_cast<std::size_t>(Slice.StrandOffset) + static_cast<std::size_t>(LocalSlot) * VPer;
+        for (uint32_t V = 0u; V < VPer && (StrandStart + V) < StrandVertices.size(); ++V)
         {
-            for (int K = 0; K < 3; ++K) StrandVertices[Base + V].PositionMeters[K] = Slot.PositionMeters[K];
-            StrandVertices[Base + V].NormalisedSpanU = (VPer > 1u) ? (static_cast<float>(V) / static_cast<float>(VPer - 1u)) : 0.0f;
+            for (int K = 0; K < 3; ++K) StrandVertices[StrandStart + V].PositionMeters[K] = Slot.PositionMeters[K];
+            StrandVertices[StrandStart + V].NormalisedSpanU = (VPer > 1u) ? (static_cast<float>(V) / static_cast<float>(VPer - 1u)) : 0.0f;
         }
     }
 

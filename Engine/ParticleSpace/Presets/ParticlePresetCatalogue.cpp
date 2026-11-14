@@ -142,7 +142,7 @@ constexpr std::array<ParticlePresetMetadata, 102> kPresetTable = {{
     },
     ParticlePresetMetadata {
         "paper", "Paper & debris", "Wind-Blown", "Wind-driven", "Light paper sheets: high wind coupling and strong sway.",
-        false, 600u, 8.0f, 8u, 0u, 2u, 0u, 0u, 0u, 14u, false,
+        false, 600u, 8.0f, 1u, 0u, 2u, 0u, 0u, 0u, 0u, false,
         { -2.0f, 3.0f, 2.0f }, 2.5f, { 0.0f, 0.0f, 0.0f },
         { 0.0f, -1.0f, 0.0f }, 0.4f, 0.1f, 0.5f,
         6.0f, 10.0f, 0.12f, 0.1f, 1.0f,
@@ -402,7 +402,7 @@ constexpr std::array<ParticlePresetMetadata, 102> kPresetTable = {{
     },
     ParticlePresetMetadata {
         "confetti", "Confetti & streamers", "Wind-Blown", "Wind-driven", "Paper pieces that tumble and flutter; strong wind coupling.",
-        false, 1200u, 25.0f, 8u, 0u, 2u, 0u, 0u, 0u, 14u, false,
+        false, 1200u, 25.0f, 1u, 0u, 2u, 0u, 0u, 0u, 0u, false,
         { 0.0f, 0.3f, -1.0f }, 0.5f, { 0.0f, 0.0f, 0.0f },
         { 0.0f, 1.0f, 0.0f }, 0.8f, 1.0f, 3.0f,
         5.0f, 8.0f, 0.09f, 0.08f, 1.0f,
@@ -1532,9 +1532,178 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         default:  break;
     }
 
-    // 6. Specialized domain solver & geometric 3D origin activations keyed by canonical preset identity
+    // 6. Authentic HTML Particle Studio preset mode & 3D origin bindings (exact 102 PE.Presets from presets.js)
     const std::string_view Pid(P.Identifier);
-    if (Pid == "ferrofluid-spikes" || Pid == "ferrofluid-orb")
+    if (Pid == "magnetic-particles")
+    {
+        ElectromagneticSpec Em {};
+        Em.DipoleMoment = 4.2f;
+        Rig.Dynamics.Electro = Em;
+        AnalyticSphereOrigin Sph {};
+        for (int K = 0; K < 3; ++K) Sph.CenterMeters[K] = P.OriginCenter[K];
+        Sph.RadiusMeters = 2.4f;
+        Rig.Origin = Sph;
+    }
+    else if (Pid == "tesla-sphere-lightning" || Pid == "static-sphere-shock"
+          || Pid == "plasma-cage-arcs" || Pid == "lightning-web-mesh" || Pid == "plasma-laser-beam")
+    {
+        DualElectrodeOrigin Elec {};
+        Elec.CathodeMeters[0] = P.OriginCenter[0];
+        Elec.CathodeMeters[1] = P.OriginCenter[1];
+        Elec.CathodeMeters[2] = P.OriginCenter[2];
+        if (Pid == "plasma-laser-beam")
+        {
+            Elec.AnodeMeters[0] = 2.45f; Elec.AnodeMeters[1] = 1.35f; Elec.AnodeMeters[2] = 0.25f;
+        }
+        else if (Pid == "static-sphere-shock")
+        {
+            Elec.AnodeMeters[0] = 1.75f; Elec.AnodeMeters[1] = 1.75f; Elec.AnodeMeters[2] = -0.75f;
+        }
+        else
+        {
+            Elec.AnodeMeters[0] = P.OriginCenter[0] + 3.2f;
+            Elec.AnodeMeters[1] = P.OriginCenter[1];
+            Elec.AnodeMeters[2] = P.OriginCenter[2];
+        }
+        Rig.Origin = Elec;
+        Rig.SlotCapacity = std::max<uint32_t>(Rig.SlotCapacity, 320u);
+        Rig.Kinematics.LifeMinSeconds = std::max(Rig.Kinematics.LifeMinSeconds, 4.0f);
+        Rig.Kinematics.LifeMaxSeconds = std::max(Rig.Kinematics.LifeMaxSeconds, 6.0f);
+        DielectricArcSpec Arc {};
+        Arc.JitterAmplitudeM = (Pid == "plasma-laser-beam") ? 0.03f : 0.34f;
+        Arc.RefreshRateHz    = (Pid == "plasma-laser-beam") ? 2.0f : 14.0f;
+        Rig.Dynamics.DielectricArc = Arc;
+        Rig.TintDriver.Channel = ParticleScalarChannel::PerParticleRandomSeed;
+    }
+    else if (Pid == "shockwave-ring" || Pid == "impact-dust-ring" || Pid == "splash")
+    {
+        Rig.Dynamics.Botanical.reset();
+        AnalyticDiscOrigin Ring {};
+        for (int K = 0; K < 3; ++K) Ring.CenterMeters[K] = P.OriginCenter[K];
+        Ring.RadiusMeters = (Pid == "splash") ? 2.2f : 1.15f;
+        Rig.Origin = Ring;
+        Rig.SlotCapacity = std::max<uint32_t>(Rig.SlotCapacity, 360u);
+        Rig.Kinematics.SpeedMinMps = std::max(Rig.Kinematics.SpeedMinMps, 2.2f);
+        Rig.Kinematics.SpeedMaxMps = std::max(Rig.Kinematics.SpeedMaxMps, 4.6f);
+        Rig.Kinematics.SpreadRadians = 1.52f;
+    }
+    else if (Pid == "radar-sweep" || Pid == "sonar-ping")
+    {
+        Rig.Dynamics.Botanical.reset();
+        AnalyticDiscOrigin Dish {};
+        for (int K = 0; K < 3; ++K) Dish.CenterMeters[K] = P.OriginCenter[K];
+        Dish.RadiusMeters = 2.85f;
+        Rig.Origin = Dish;
+        Rig.SlotCapacity = std::max<uint32_t>(Rig.SlotCapacity, 360u);
+        Rig.Kinematics.LifeMinSeconds = 8.0f;
+        Rig.Kinematics.LifeMaxSeconds = 10.0f;
+        HarmonicWaveSpec Wave {};
+        Wave.ModeIndexM = 4u;
+        Wave.ModeIndexN = (Pid == "radar-sweep") ? 2u : 5u;
+        Rig.Dynamics.Harmonic = Wave;
+        Rig.TintDriver.Channel = ParticleScalarChannel::DistanceFromOrigin;
+        Rig.ColourProfile.Range.RangeMin = 0.0f;
+        Rig.ColourProfile.Range.RangeMax = 2.85f;
+    }
+    else if (Pid == "aurora-borealis")
+    {
+        ClothGridOrigin Curtain {};
+        Curtain.Strands = 36u;
+        Curtain.SegmentsPerRow = 16u;
+        for (int K = 0; K < 3; ++K) Curtain.OriginMeters[K] = P.OriginCenter[K];
+        Curtain.OriginMeters[1] = 3.2f;
+        Curtain.SpanMeters = 8.4f;
+        Curtain.DropMeters = 2.6f;
+        Rig.Origin = Curtain;
+        Rig.SlotCapacity = std::max<uint32_t>(Rig.SlotCapacity, 576u);
+        Rig.Kinematics.LifeMinSeconds = 9999.0f;
+        Rig.Kinematics.LifeMaxSeconds = 9999.0f;
+        BotanicalSwaySpec Sway {};
+        Sway.StemStiffness = 1.4f;
+        Sway.WindSensitivity = 2.2f;
+        Sway.SwayFrequencyHz = 0.45f;
+        Rig.Dynamics.Botanical = Sway;
+        Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
+        Rig.ColourProfile.Range.RangeMin = 0.6f;
+        Rig.ColourProfile.Range.RangeMax = 3.2f;
+    }
+    else if (Pid == "fireworks" || Pid == "fireworks-spectacle")
+    {
+        FireworkOrigin Fw {};
+        Fw.Shape = (Pid == "fireworks-spectacle") ? FireworkShapeCategory::SkyText : FireworkShapeCategory::Bouquet;
+        Fw.SkyTextMessage = "2026";
+        Fw.ShellOrigin[0] = P.OriginCenter[0];
+        Fw.ShellOrigin[1] = std::max(3.6f, P.OriginCenter[1]);
+        Fw.ShellOrigin[2] = P.OriginCenter[2];
+        Fw.PatternRadius  = 2.6f;
+        Rig.Origin = std::move(Fw);
+        Rig.Dynamics.Thermal = ThermalFireworkSpec {};
+    }
+    else if (Pid == "curl-fur-field" || Pid == "curl-sphere-plasma" || Pid == "bokeh-stream-ribbons" || Pid == "bokeh-object-pulse")
+    {
+        if (Pid == "curl-sphere-plasma" || Pid == "bokeh-object-pulse")
+        {
+            SurfaceAnchorOrigin Sph {};
+            Sph.Preset = SurfacePresetCategory::ObsidianSphere;
+            for (int K = 0; K < 3; ++K) { Sph.CenterMeters[K] = P.OriginCenter[K]; Sph.ScaleMeters[K] = 1.65f; }
+            Rig.Origin = Sph;
+        }
+        else
+        {
+            AnalyticBoxOrigin Box {};
+            for (int K = 0; K < 3; ++K)
+            {
+                Box.CenterMeters[K]      = P.OriginCenter[K];
+                Box.HalfExtentsMeters[K] = std::max(0.25f, P.OriginHalf[K]);
+            }
+            Rig.Origin = Box;
+        }
+        if (Pid == "bokeh-stream-ribbons" || Pid == "bokeh-object-pulse")
+        {
+            RibbonStrandCarrier Rib {};
+            Rib.VerticesPerStrand = 16u;
+            Rig.Carrier = Rib;
+        }
+    }
+    else if (Pid == "projectile-trails" || Pid == "viscous-dripping")
+    {
+        RibbonStrandCarrier Rib {};
+        Rib.VerticesPerStrand = 14u;
+        Rig.Carrier = Rib;
+    }
+    else if (Pid == "boids-flock" || Pid == "boids-butterflies" || Pid == "boids-fish-school" || Pid == "starling-murmuration")
+    {
+        Rig.Dynamics.Botanical.reset();
+        AnalyticSphereOrigin Flock {};
+        for (int K = 0; K < 3; ++K) Flock.CenterMeters[K] = P.OriginCenter[K];
+        Flock.RadiusMeters = std::max(1.5f, P.OriginRadius);
+        Rig.Origin = Flock;
+        Rig.Dynamics.Swarm = SwarmFlockingSpec {};
+    }
+    else if (Pid == "tornado")
+    {
+        Rig.Dynamics.Botanical.reset();
+        // Tall rotating vortex funnel: spawn inside rising tapered column and swirl spirally upward
+        AnalyticBoxOrigin Funnel {};
+        Funnel.CenterMeters[0] = P.OriginCenter[0];
+        Funnel.CenterMeters[1] = 2.1f;
+        Funnel.CenterMeters[2] = P.OriginCenter[2];
+        Funnel.HalfExtentsMeters[0] = 1.25f;
+        Funnel.HalfExtentsMeters[1] = 2.0f;
+        Funnel.HalfExtentsMeters[2] = 1.25f;
+        Rig.Origin = Funnel;
+        Rig.Kinematics.LaunchDirection[0] = 0.0f; Rig.Kinematics.LaunchDirection[1] = 1.0f; Rig.Kinematics.LaunchDirection[2] = 0.0f;
+        Rig.Kinematics.SpeedMinMps = 1.4f; Rig.Kinematics.SpeedMaxMps = 3.2f;
+        Rig.Dynamics.Ballistic.GravityScale = -0.15f;
+        OrbitalGravitySpec Vortex {};
+        Vortex.CentralMassParam = 7.5f;
+        Vortex.TangentialBoost  = 4.6f;
+        Rig.Dynamics.Orbital = Vortex;
+        Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
+        Rig.ColourProfile.Range.RangeMin = 0.0f;
+        Rig.ColourProfile.Range.RangeMax = 4.0f;
+    }
+    else if (Pid == "ferrofluid-spikes" || Pid == "ferrofluid-orb")
     {
         FerrofluidMeniscusSpec Ferro {};
         Ferro.LevitatedCrown = (Pid == "ferrofluid-orb");
@@ -1543,14 +1712,14 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         {
             SurfaceAnchorOrigin Orb {};
             Orb.Preset = SurfacePresetCategory::ObsidianSphere;
-            for (int K = 0; K < 3; ++K) { Orb.CenterMeters[K] = P.OriginCenter[K]; Orb.ScaleMeters[K] = 1.35f; }
+            for (int K = 0; K < 3; ++K) { Orb.CenterMeters[K] = P.OriginCenter[K]; Orb.ScaleMeters[K] = 1.25f; }
             Rig.Origin = Orb;
         }
         else
         {
             AnalyticDiscOrigin Dish {};
             for (int K = 0; K < 3; ++K) Dish.CenterMeters[K] = P.OriginCenter[K];
-            Dish.RadiusMeters = 1.85f;
+            Dish.RadiusMeters = 2.05f;
             Rig.Origin = Dish;
         }
         Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
@@ -1571,7 +1740,7 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         Rig.Dynamics.Fracture = Frac;
         AnalyticDiscOrigin Slab {};
         for (int K = 0; K < 3; ++K) Slab.CenterMeters[K] = P.OriginCenter[K];
-        Slab.RadiusMeters = 2.65f;
+        Slab.RadiusMeters = 2.45f;
         Rig.Origin = Slab;
     }
     else if (Pid == "car-puddle-splash" || Pid == "puddle-ripple-splash" || Pid == "mud-splatter-heavy" || Pid == "splatter-burst")
@@ -1583,7 +1752,7 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         Rig.Dynamics.Splash = Spl;
         AnalyticDiscOrigin Puddle {};
         for (int K = 0; K < 3; ++K) Puddle.CenterMeters[K] = P.OriginCenter[K];
-        Puddle.RadiusMeters = 2.35f;
+        Puddle.RadiusMeters = std::max(0.65f, P.OriginRadius);
         Rig.Origin = Puddle;
     }
     else if (Pid == "derez-cube" || Pid == "cube-coins" || Pid == "melt-away" || Pid == "reverse-derez"
@@ -1599,10 +1768,10 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         else if (Pid == "dissolve-butterflies")Tr.TransitionVariant = 6u;
         else if (Pid == "glitch-dissolve" || Pid == "hologram-data-glitch") Tr.TransitionVariant = 7u;
         Rig.Dynamics.Transition = Tr;
-        SurfaceAnchorOrigin Cube {};
-        Cube.Preset = SurfacePresetCategory::CubicVolume;
-        for (int K = 0; K < 3; ++K) { Cube.CenterMeters[K] = P.OriginCenter[K]; Cube.ScaleMeters[K] = 1.45f; }
-        Rig.Origin = Cube;
+        SurfaceAnchorOrigin Surf {};
+        Surf.Preset = (Pid == "voxel-explosion") ? SurfacePresetCategory::ObsidianSphere : SurfacePresetCategory::CubicVolume;
+        for (int K = 0; K < 3; ++K) { Surf.CenterMeters[K] = P.OriginCenter[K]; Surf.ScaleMeters[K] = 1.25f; }
+        Rig.Origin = Surf;
     }
     else if (Pid == "energy-shield-hex" || Pid == "energy-shield-prism" || Pid == "emp-pulse-dome")
     {
@@ -1613,6 +1782,12 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         Dome.Preset = SurfacePresetCategory::ObsidianSphere;
         for (int K = 0; K < 3; ++K) { Dome.CenterMeters[K] = P.OriginCenter[K]; Dome.ScaleMeters[K] = 1.85f; }
         Rig.Origin = Dome;
+        Rig.SlotCapacity = std::max<uint32_t>(Rig.SlotCapacity, 420u);
+        Rig.Kinematics.LifeMinSeconds = 9999.0f;
+        Rig.Kinematics.LifeMaxSeconds = 9999.0f;
+        Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
+        Rig.ColourProfile.Range.RangeMin = P.OriginCenter[1] - 1.85f;
+        Rig.ColourProfile.Range.RangeMax = P.OriginCenter[1] + 1.85f;
     }
     else if (Pid == "spiderweb-orb" || Pid == "spiderweb-cobweb")
     {
@@ -1623,22 +1798,57 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         for (int K = 0; K < 3; ++K) WebOrig.CenterMeters[K] = P.OriginCenter[K];
         WebOrig.MessyCobweb = Web.MessyAtticCobweb;
         Rig.Origin = WebOrig;
+        Rig.TintDriver.Channel = ParticleScalarChannel::DistanceFromOrigin;
+        Rig.ColourProfile.Range.RangeMin = 0.0f;
+        Rig.ColourProfile.Range.RangeMax = 2.6f;
     }
     else if (Pid.rfind("effector-", 0u) == 0u)
     {
         EffectorLatticeSpec Eff {};
-        if (Pid == "effector-sphere-dots")       Eff.Driver = EffectorDriverCategory::OrbitingDual;
-        else if (Pid == "effector-torus-hex")    Eff.Driver = EffectorDriverCategory::ExpandingPulseRing;
-        else if (Pid == "effector-object-placer")Eff.Driver = EffectorDriverCategory::Placeable3DEffectors;
-        else                                     Eff.Driver = EffectorDriverCategory::FluidSimplexWave;
+        if (Pid == "effector-sphere-dots")
+        {
+            Eff.Driver = EffectorDriverCategory::OrbitingDual;
+            SurfaceAnchorOrigin S {};
+            S.Preset = SurfacePresetCategory::ObsidianSphere;
+            for (int K = 0; K < 3; ++K) { S.CenterMeters[K] = P.OriginCenter[K]; S.ScaleMeters[K] = 1.32f; }
+            Rig.Origin = S;
+        }
+        else if (Pid == "effector-hand-halftone")
+        {
+            Eff.Driver = EffectorDriverCategory::FluidSimplexWave;
+            SurfaceAnchorOrigin S {};
+            S.Preset = SurfacePresetCategory::ObsidianHandOrb;
+            for (int K = 0; K < 3; ++K) { S.CenterMeters[K] = P.OriginCenter[K]; S.ScaleMeters[K] = 1.35f; }
+            Rig.Origin = S;
+        }
+        else if (Pid == "effector-torus-hex")
+        {
+            Eff.Driver = EffectorDriverCategory::ExpandingPulseRing;
+            SurfaceAnchorOrigin S {};
+            S.Preset = SurfacePresetCategory::TorusRing;
+            for (int K = 0; K < 3; ++K) { S.CenterMeters[K] = P.OriginCenter[K]; S.ScaleMeters[K] = 1.35f; }
+            Rig.Origin = S;
+        }
+        else if (Pid == "effector-object-placer")
+        {
+            Eff.Driver = EffectorDriverCategory::Placeable3DEffectors;
+            SurfaceAnchorOrigin S {};
+            S.Preset = SurfacePresetCategory::UtahTeapot;
+            for (int K = 0; K < 3; ++K) { S.CenterMeters[K] = P.OriginCenter[K]; S.ScaleMeters[K] = 1.55f; }
+            Rig.Origin = S;
+        }
+        else
+        {
+            Eff.Driver = EffectorDriverCategory::FluidSimplexWave;
+            SurfaceLatticeOrigin Lat {};
+            Lat.Columns = 24u;
+            Lat.Rows    = 24u;
+            for (int K = 0; K < 3; ++K) Lat.CenterMeters[K] = P.OriginCenter[K];
+            Lat.HalfExtentsMeters[0] = 1.7f;
+            Lat.HalfExtentsMeters[2] = 1.7f;
+            Rig.Origin = Lat;
+        }
         Rig.Dynamics.Effector = Eff;
-        SurfaceLatticeOrigin Lat {};
-        Lat.Columns = 24u;
-        Lat.Rows    = 24u;
-        for (int K = 0; K < 3; ++K) Lat.CenterMeters[K] = P.OriginCenter[K];
-        Lat.HalfExtentsMeters[0] = 2.6f;
-        Lat.HalfExtentsMeters[2] = 2.6f;
-        Rig.Origin = Lat;
         Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
         Rig.ColourProfile.Range.RangeMin = P.OriginCenter[1];
         Rig.ColourProfile.Range.RangeMax = P.OriginCenter[1] + 1.0f;
@@ -1660,25 +1870,79 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         Orb.CentralMassParam = 8.5f;
         Rig.Dynamics.Orbital = Orb;
     }
-    else if (Pid == "flag-banner" || Pid == "ship-sail" || Pid == "velvet-theater-drapes" || Pid == "beaded-door-curtain")
+    else if (Pid == "cables-chains" || Pid == "vines-ropes" || Pid == "flag-banner" || Pid == "ship-sail"
+          || Pid == "velvet-theater-drapes" || Pid == "beaded-door-curtain" || Pid == "bamboo-wind-chimes")
     {
         ClothGridOrigin Cloth {};
         for (int K = 0; K < 3; ++K) Cloth.OriginMeters[K] = P.OriginCenter[K];
+        Cloth.OriginMeters[1] = std::max(2.4f, P.OriginCenter[1]);
+        Cloth.Strands        = (Pid == "cables-chains" || Pid == "vines-ropes") ? 14u : 28u;
+        Cloth.SegmentsPerRow = 16u;
+        Cloth.SpanMeters = (Pid == "bamboo-wind-chimes") ? 1.35f : 3.4f;
+        Cloth.DropMeters = (Pid == "flag-banner") ? 1.75f : ((Pid == "cables-chains" || Pid == "vines-ropes") ? 1.95f : 2.35f);
         Rig.Origin = Cloth;
+        Rig.SlotCapacity = std::max<uint32_t>(Rig.SlotCapacity, Cloth.Strands * Cloth.SegmentsPerRow);
         if (!Rig.Dynamics.ElasticStrand.has_value()) Rig.Dynamics.ElasticStrand = ElasticStrandSpec {};
+        Rig.TintDriver.Channel = (Pid == "flag-banner" || Pid == "ship-sail")
+            ? ParticleScalarChannel::DistanceFromOrigin
+            : ParticleScalarChannel::WorldElevation;
+        Rig.ColourProfile.Range.RangeMin = (Pid == "flag-banner" || Pid == "ship-sail")
+            ? 0.0f
+            : (Cloth.OriginMeters[1] - Cloth.DropMeters);
+        Rig.ColourProfile.Range.RangeMax = (Pid == "flag-banner" || Pid == "ship-sail")
+            ? (Cloth.SpanMeters * 0.65f)
+            : Cloth.OriginMeters[1];
     }
-    else if (Pid == "interactive-tree" || Pid == "grass-wheat-field" || Pid == "tall-reeds" || Pid == "interactive-fern" || Pid == "kelp-forest" || Pid == "sea-anemone")
+    else if (Pid == "interactive-tree" || Pid == "grass-wheat-field" || Pid == "tall-reeds"
+          || Pid == "interactive-fern" || Pid == "kelp-forest" || Pid == "sea-anemone"
+          || Pid == "blossom-branch-detach")
     {
+        Rig.Dynamics.ElasticStrand.reset();
         BotanicalRootOrigin Bot {};
         for (int K = 0; K < 3; ++K) Bot.CenterMeters[K] = P.OriginCenter[K];
+        Bot.RootCount       = 72u;
+        Bot.SegmentsPerStem = 8u;
+        Bot.PatchRadius     = (Pid == "sea-anemone") ? 0.95f : ((Pid == "interactive-tree") ? 1.45f : 2.6f);
+        if (Pid == "tall-reeds" || Pid == "kelp-forest") Bot.CanopyHeight = 2.35f;
+        else if (Pid == "interactive-tree")              Bot.CanopyHeight = 2.80f;
+        else if (Pid == "interactive-fern")              Bot.CanopyHeight = 1.45f;
+        else if (Pid == "sea-anemone")                   Bot.CanopyHeight = 1.15f;
+        else                                             Bot.CanopyHeight = 1.25f;
         Rig.Origin = Bot;
+        Rig.SlotCapacity = std::max<uint32_t>(Rig.SlotCapacity, Bot.RootCount * Bot.SegmentsPerStem);
         if (!Rig.Dynamics.Botanical.has_value()) Rig.Dynamics.Botanical = BotanicalSwaySpec {};
+        Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
+        Rig.ColourProfile.Range.RangeMin = Bot.CenterMeters[1];
+        Rig.ColourProfile.Range.RangeMax = Bot.CenterMeters[1] + Bot.CanopyHeight * 0.92f;
     }
-    else if (Pid == "brownian" || Pid == "diffusion" || Pid == "crystallization" || Pid == "reaction")
+    else if (Pid == "dandelion-puff")
     {
-        MolecularKineticsSpec Mol {};
-        Mol.ChemicalReaction = (Pid == "reaction");
-        Rig.Dynamics.Molecular = Mol;
+        SurfaceAnchorOrigin SeedOrb {};
+        SeedOrb.Preset = SurfacePresetCategory::ObsidianSphere;
+        for (int K = 0; K < 3; ++K) { SeedOrb.CenterMeters[K] = P.OriginCenter[K]; SeedOrb.ScaleMeters[K] = 0.72f; }
+        SeedOrb.CenterMeters[1] = 1.6f;
+        Rig.Origin = SeedOrb;
+        Rig.Dynamics.Botanical = BotanicalSwaySpec {};
+        Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
+        Rig.ColourProfile.Range.RangeMin = 0.85f;
+        Rig.ColourProfile.Range.RangeMax = 2.35f;
+    }
+    else if (Pid == "jelly-slime-blob" || Pid == "slime-tendril-cluster")
+    {
+        SurfaceAnchorOrigin Slime {};
+        Slime.Preset = (Pid == "jelly-slime-blob") ? SurfacePresetCategory::CubicVolume : SurfacePresetCategory::ObsidianSphere;
+        for (int K = 0; K < 3; ++K) { Slime.CenterMeters[K] = P.OriginCenter[K]; Slime.ScaleMeters[K] = 1.1f; }
+        Rig.Origin = Slime;
+        Rig.Dynamics.ElasticStrand = ElasticStrandSpec {};
+        Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
+        Rig.ColourProfile.Range.RangeMin = 0.0f;
+        Rig.ColourProfile.Range.RangeMax = 2.0f;
+    }
+    if (P.ColorByKey == "modeDefault" && Rig.Kinematics.LifeMinSeconds >= 500.0f
+        && (Rig.TintDriver.Channel == ParticleScalarChannel::ModeDefault
+         || Rig.TintDriver.Channel == ParticleScalarChannel::NormalizedLifetime))
+    {
+        Rig.TintDriver.Channel = ParticleScalarChannel::PerParticleRandomSeed;
     }
     return Rig;
 }

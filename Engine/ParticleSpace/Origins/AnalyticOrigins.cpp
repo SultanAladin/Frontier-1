@@ -303,22 +303,35 @@ std::vector<ParticleAnchorSample> BuildStructuralOriginAnchors(
 
     if (const auto* Flora = std::get_if<BotanicalRootOrigin>(&Origin))
     {
-        const uint32_t Count = std::min(MaxSampleCount, std::max(1u, Flora->RootCount));
-        Samples.reserve(Count);
-        for (uint32_t I = 0u; I < Count; ++I)
+        // Build vertical multi-segment stalks/blades so grass, wheat, reeds, ferns, kelp & anemones rise cleanly in 3D
+        const uint32_t SegsPerStalk = std::clamp(Flora->SegmentsPerStem, 4u, 16u);
+        const uint32_t StalkCount = std::max(1u, std::min(Flora->RootCount, MaxSampleCount / SegsPerStalk));
+        Samples.reserve(StalkCount * SegsPerStalk);
+        const float MaxH = std::max(0.45f, Flora->CanopyHeight);
+        for (uint32_t I = 0u; I < StalkCount; ++I)
         {
-            const float R   = Flora->PatchRadius * std::sqrt(Rng.NextUnitFloat());
-            const float Ang = Rng.NextUnitFloat() * TwoPi;
-            ParticleAnchorSample Sample {};
-            Sample.PositionMeters[0] = Flora->CenterMeters[0] + std::cos(Ang) * R;
-            Sample.PositionMeters[1] = Flora->CenterMeters[1];
-            Sample.PositionMeters[2] = Flora->CenterMeters[2] + std::sin(Ang) * R;
-            Sample.NormalUnit[0]     = 0.0f;
-            Sample.NormalUnit[1]     = 1.0f;
-            Sample.NormalUnit[2]     = 0.0f;
-            Sample.CurvatureWeight   = Rng.NextUnitFloat();
-            Sample.GroupIndex        = I;
-            Samples.push_back(Sample);
+            const float R      = Flora->PatchRadius * std::sqrt(Rng.NextUnitFloat());
+            const float Ang    = Rng.NextUnitFloat() * TwoPi;
+            const float RootX  = Flora->CenterMeters[0] + std::cos(Ang) * R;
+            const float RootZ  = Flora->CenterMeters[2] + std::sin(Ang) * R;
+            const float LeanA  = Rng.NextUnitFloat() * TwoPi;
+            const float StalkH = MaxH * (0.65f + 0.55f * Rng.NextUnitFloat());
+            const float Arch   = StalkH * (0.18f + 0.22f * Rng.NextUnitFloat());
+
+            for (uint32_t S = 0u; S < SegsPerStalk && Samples.size() < MaxSampleCount; ++S)
+            {
+                const float T = static_cast<float>(S) / static_cast<float>(SegsPerStalk - 1u);
+                ParticleAnchorSample Sample {};
+                Sample.PositionMeters[0] = RootX + std::cos(LeanA) * Arch * T * T;
+                Sample.PositionMeters[1] = Flora->CenterMeters[1] + StalkH * T;
+                Sample.PositionMeters[2] = RootZ + std::sin(LeanA) * Arch * T * T;
+                Sample.NormalUnit[0]     = 0.0f;
+                Sample.NormalUnit[1]     = 1.0f;
+                Sample.NormalUnit[2]     = 0.0f;
+                Sample.CurvatureWeight   = T;
+                Sample.GroupIndex        = I;
+                Samples.push_back(Sample);
+            }
         }
         return Samples;
     }
