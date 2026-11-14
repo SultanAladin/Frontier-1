@@ -8,6 +8,7 @@ import { PE } from "./pe.js";
   PE.SYS_SLOT = {
     origin: 0, dir: 1, speed: 2, life: 3, colA: 4, colB: 5, colC: 6, phys: 7,
     phys2: 8, phys3: 9, phys4: 10, mol: 11, mol2: 12, mol3: 13, emit: 14, misc: 15,
+    colorCfg: 16, colorCfg2: 17, extra0: 18, extra1: 19, extra2: 20, extra3: 21,
   };
   // Offsets (floats) into the Glob uniform (240 bytes).
   PE.GLOB_OFF = {
@@ -40,19 +41,42 @@ import { PE } from "./pe.js";
       const U = GPUBufferUsage;
       this.engine = engine;
       this.cap = Math.max(64, Math.floor(params.capacity));
-      this.isRibbon = !params.transition && ((params.curlMode || 0) === 3 || (params.trailMode || 0) > 0 || (params.webMode || 0) > 0 || (params.dynMode || 0) > 0 || (params.mudSplashMode || 0) > 0 || (params.ferroMode || 0) > 0 || (params.beadsMode || 0) > 0 || (params.seedHeadMode || 0) > 0 || (params.jellyMode || 0) > 0);
+      this.isRibbon = !params.transition && ((params.curlMode || 0) === 3 || (params.trailMode || 0) > 0 || (params.webMode || 0) > 0 || (params.dynMode || 0) > 0 || (params.mudSplashMode || 0) > 0 || (params.beadsMode || 0) > 0 || (params.seedHeadMode || 0) > 0 || (params.jellyMode || 0) > 0 || (params.flareMode || 0) > 0 || (params.fireworkMode || 0) > 0);
       this.parts = d.createBuffer({ size: this.cap * PART_BYTES, usage: U.STORAGE | U.COPY_SRC | U.COPY_DST });
       this.snap = d.createBuffer({ size: this.cap * PART_BYTES, usage: U.STORAGE | U.COPY_DST });
       this.trail = this.isRibbon ? d.createBuffer({ size: this.cap * TRAIL_SEGS * 16, usage: U.STORAGE | U.COPY_DST }) : null;
       this.stats = d.createBuffer({ size: 32, usage: U.STORAGE | U.COPY_SRC });
       this.statStage = d.createBuffer({ size: 32, usage: U.MAP_READ | U.COPY_DST });
-      this.uniform = d.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST });
+      this.uniform = d.createBuffer({ size: 352, usage: U.UNIFORM | U.COPY_DST });
       this.cellCount = engine.vacantCellCount;
       this.cellSlots = engine.vacantCellSlots;
       this.latticeBytes = 0;
-      const trailRes = this.trail || this.engine.dummySegs;
+      this.trailRes = this.trail || this.engine.dummySegs;
+      this.rampCap = 0;
+      this.ramp = null;
+      this.simBG = null;
+      this.renderBG = null;
+      this.ensureRamp(16);
+      this.cpu = new Float32Array(88);
+      this.statPending = false;
+      this.gone = false;
+      this.stats_ = null;       // latest decoded readback
+      this.readbackMs = 0;
+      this.readbackCount = 0;
+      this.lastReadAt = 0;
+    }
+    ensureRamp(stopCount) {
+      const need = Math.max(16, Math.ceil(stopCount || 1));
+      if (this.ramp && need <= this.rampCap) return;
+      let next = Math.max(16, this.rampCap || 16);
+      while (next < need) next *= 2;
+      const d = this.engine.device;
+      const old = this.ramp;
+      this.ramp = d.createBuffer({ size: next * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      this.rampCap = next;
+      if (old) old.destroy();
       this.simBG = d.createBindGroup({
-        layout: engine.gl1Sim,
+        layout: this.engine.gl1Sim,
         entries: [
           { binding: 0, resource: { buffer: this.uniform } },
           { binding: 1, resource: { buffer: this.parts } },
@@ -61,28 +85,23 @@ import { PE } from "./pe.js";
           { binding: 4, resource: { buffer: this.cellSlots } },
           { binding: 5, resource: { buffer: this.snap } },
           { binding: 6, resource: { buffer: this.engine.fieldBuf } },
-          { binding: 7, resource: { buffer: trailRes } },
+          { binding: 7, resource: { buffer: this.trailRes } },
+          { binding: 8, resource: { buffer: this.ramp } },
         ],
       });
       this.renderBG = d.createBindGroup({
-        layout: engine.gl1Render,
+        layout: this.engine.gl1Render,
         entries: [
           { binding: 0, resource: { buffer: this.uniform } },
           { binding: 1, resource: { buffer: this.parts } },
-          { binding: 2, resource: { buffer: trailRes } },
+          { binding: 2, resource: { buffer: this.trailRes } },
+          { binding: 3, resource: { buffer: this.ramp } },
         ],
       });
-      this.cpu = new Float32Array(64);
-      this.statPending = false;
-      this.gone = false;
-      this.stats_ = null;       // latest decoded readback
-      this.readbackMs = 0;
-      this.readbackCount = 0;
-      this.lastReadAt = 0;
     }
     destroy() {
       this.gone = true;
-      for (const b of [this.parts, this.snap, this.trail, this.stats, this.statStage, this.uniform]) {
+      for (const b of [this.parts, this.snap, this.trail, this.stats, this.statStage, this.uniform, this.ramp]) {
         if (b) b.destroy();
       }
     }
@@ -131,7 +150,8 @@ import { PE } from "./pe.js";
       this.meshes = d.createBuffer({ size: MAX_MESH_VERTS * MESH_BYTES, usage: U.VERTEX | U.COPY_DST });
       this.arcs = d.createBuffer({ size: MAX_ARC_VERTS * ARC_BYTES, usage: U.VERTEX | U.COPY_DST });
       this.arcScratch = new Float32Array(MAX_ARC_VERTS * 11);
-      this.dummySys = d.createBuffer({ size: 256, usage: U.UNIFORM | U.COPY_DST });
+      this.dummySys = d.createBuffer({ size: 352, usage: U.UNIFORM | U.COPY_DST });
+      this.dummyRamp = d.createBuffer({ size: 64, usage: U.STORAGE | U.COPY_DST });
       this.dummyParts = d.createBuffer({ size: PART_BYTES, usage: U.STORAGE });
       this.probeBuf = d.createBuffer({ size: 256, usage: U.COPY_DST | U.MAP_READ });
 
@@ -170,6 +190,7 @@ import { PE } from "./pe.js";
           { binding: 5, visibility: C, buffer: { type: "read-only-storage" } },
           { binding: 6, visibility: C, buffer: { type: "read-only-storage" } },
           { binding: 7, visibility: C, buffer: { type: "storage" } },
+          { binding: 8, visibility: C, buffer: { type: "read-only-storage" } },
         ],
       });
       // 📝 Force fields, written each frame (1040 bytes: count/time vec4 + 16 fields of 4 vec4).
@@ -184,6 +205,7 @@ import { PE } from "./pe.js";
           { binding: 0, visibility: VF, buffer: { type: "uniform" } },
           { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
           { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+          { binding: 3, visibility: VF, buffer: { type: "read-only-storage" } },
         ],
       });
       this.glWind = d.createBindGroupLayout({
@@ -216,6 +238,7 @@ import { PE } from "./pe.js";
           { binding: 0, resource: { buffer: this.dummySys } },
           { binding: 1, resource: { buffer: this.dummyParts } },
           { binding: 2, resource: { buffer: this.dummySegs } },
+          { binding: 3, resource: { buffer: this.dummyRamp } },
         ],
       });
 
@@ -269,7 +292,6 @@ import { PE } from "./pe.js";
       });
       this.lensUniform = d.createBuffer({ size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       this.lensSampler = d.createSampler({ magFilter: "linear", minFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge" });
-      this.pipe.partAlpha = mkR("vsPart", "fsPart", OVER);
       this.pipe.ribbonAdd = mkR("vsRibbon", "fsRibbon", ADD);
       this.pipe.ribbonAlpha = mkR("vsRibbon", "fsRibbon", OVER);
       this.pipe.arrow = mkR("vsArrow", "fsArrow", OVER, { depth: { depthWriteEnabled: true } });
@@ -411,7 +433,19 @@ import { PE } from "./pe.js";
         if (arcVerts) q.writeBuffer(this.arcs, 0, scratch, 0, arcVerts * 11);
       }
       for (const job of frame.jobs) {
-        if (job.draw) q.writeBuffer(job.gpu.uniform, 0, job.cpu);
+        if (job.draw) {
+          q.writeBuffer(job.gpu.uniform, 0, job.cpu);
+          if (job.rampData && job.rampCount > 0) {
+            job.gpu.ensureRamp(job.rampCount);
+            q.writeBuffer(job.gpu.ramp, 0, job.rampData);
+          }
+          if (job.anchorSnapData && job.anchorSnapKey && job.gpu._lastAnchorKey !== job.anchorSnapKey) {
+            if (job.anchorSnapData.byteLength <= job.gpu.cap * PART_BYTES) {
+              q.writeBuffer(job.gpu.snap, 0, job.anchorSnapData);
+            }
+            job.gpu._lastAnchorKey = job.anchorSnapKey;
+          }
+        }
       }
 
       const enc = d.createCommandEncoder({ label: "ParticleEditor frame" });
@@ -525,7 +559,8 @@ import { PE } from "./pe.js";
         if (job.gpu.isRibbon) {
           rp.setPipeline(job.alpha ? this.pipe.ribbonAlpha : this.pipe.ribbonAdd);
           rp.setBindGroup(1, job.gpu.renderBG);
-          rp.draw((TRAIL_SEGS - 1) * 6, job.gpu.cap);
+          const drawSegs = Math.max(TRAIL_SEGS - 1, Math.min(32, Math.round(job.curveSegs || (TRAIL_SEGS - 1))));
+          rp.draw(drawSegs * 6, job.gpu.cap);
         }
         if (job.cube) {
           rp.setPipeline(this.pipe.cube);
@@ -631,7 +666,8 @@ import { PE } from "./pe.js";
       stage.unmap();
       stage.destroy();
       let alive = 0;
-      for (let i = 0; i < gpu.cap; i++) if (data[i * 16 + 3] < data[i * 16 + 7]) alive++;
+      const stride = PART_BYTES / 4; // 20 floats (80 bytes) per Part
+      for (let i = 0; i < gpu.cap; i++) if (data[i * stride + 3] < data[i * stride + 7]) alive++;
       return { bytes: size, ms: t1 - t0, alive, mbPerSecond: size / 1048576 / ((t1 - t0) / 1000) };
     }
 
@@ -663,39 +699,53 @@ import { PE } from "./pe.js";
     set("dir", dl[0] / dlen, dl[1] / dlen, dl[2] / dlen, p.spread);
     set("speed", p.speedMin, p.speedMax, p.drag, p.gravity);
     set("life", p.lifeMin, p.lifeMax, p.sizeStart, p.sizeEnd);
-    set("colA", ...p.colA);
-    set("colB", ...p.colB);
-    set("colC", ...p.colC);
+    const ramp = PE.packColorRamp(p);
+    const stops = ramp.stops;
+    const cA = stops[0].color;
+    const cB = stops[stops.length - 1].color;
+    const cC = stops.length >= 3 ? stops[Math.floor((stops.length - 1) / 2)].color : (p.colC || cB);
+    set("colA", ...cA);
+    set("colB", ...cB);
+    set("colC", ...cC);
     set("phys", o.dt, o.time, o.frame, p.kind);
     set("phys2", p.windCoupling, p.bounce, p.buoyancy, p.flutter);
     set("phys3", o.cap, p.emitShape, 0.5, o.emitN);
-    set("phys4", p.boxHalf[0], p.boxHalf[1], p.boxHalf[2], o.head);
+    const bh = Array.isArray(p.boxHalf) ? p.boxHalf : [Number(p.boxHalf) || 0.6, Number(p.boxHalf) || 0.6, Number(p.boxHalf) || 0.6];
+    set("phys4", bh[0] ?? 0.6, bh[1] ?? 0.6, bh[2] ?? 0.6, o.head);
     const hasArc = p.arcMode === 0 || p.arcMode === 1 || p.arcMode === 2 || p.arcMode === 3;
     const hasBeam = (p.beamMode || 0) > 0;
     const isBoid = p.kind === 6;
     const isTrans = p.kind === 5 && !!p.transition;
-    const crackMode = !isTrans && !hasArc && !hasBeam && !isBoid ? Math.max(0, Math.min(2, p.crackMode | 0)) : 0;
-    const ferroMode = !isTrans && !hasArc && !hasBeam && !isBoid && !crackMode ? Math.max(0, Math.min(2, p.ferroMode | 0)) : 0;
-    const mudMode = !isTrans && !hasArc && !hasBeam && !isBoid && !crackMode && !ferroMode ? Math.max(0, Math.min(3, p.mudSplashMode | 0)) : 0;
-    const beadsMode = !isTrans && !hasArc && !hasBeam && !isBoid && !crackMode && !ferroMode && !mudMode ? Math.max(0, Math.min(3, p.beadsMode | 0)) : 0;
-    const seedHeadMode = !isTrans && !hasArc && !hasBeam && !isBoid && !crackMode && !ferroMode && !mudMode && !beadsMode ? Math.max(0, Math.min(2, p.seedHeadMode | 0)) : 0;
-    const jellyMode = !isTrans && !hasArc && !hasBeam && !isBoid && !crackMode && !ferroMode && !mudMode && !beadsMode && !seedHeadMode ? Math.max(0, Math.min(2, p.jellyMode | 0)) : 0;
-    const webMode = !isTrans && !hasArc && !hasBeam && !isBoid && !crackMode && !ferroMode && !mudMode && !beadsMode && !seedHeadMode && !jellyMode ? Math.max(0, Math.min(2, p.webMode | 0)) : 0;
-    const dynMode = !isTrans && !hasArc && !hasBeam && !isBoid && !crackMode && !ferroMode && !mudMode && !beadsMode && !seedHeadMode && !jellyMode && !webMode ? Math.max(0, Math.min(9, p.dynMode | 0)) : 0;
-    const gridMode = !isTrans && !hasArc && !hasBeam && !isBoid && !crackMode && !ferroMode && !mudMode && !beadsMode && !seedHeadMode && !jellyMode && !webMode && !dynMode ? Math.max(0, Math.min(2, p.gridMode | 0)) : 0;
-    const isRibbon = !crackMode && !ferroMode && !mudMode && !beadsMode && !seedHeadMode && !jellyMode && !webMode && !dynMode && !gridMode && (p.curlMode || 0) === 3;
+    const fireworkMode = !isTrans && !hasArc && !hasBeam && !isBoid ? Math.max(0, Math.min(2, p.fireworkMode | 0)) : 0;
+    const flareMode = !isTrans && !hasArc && !hasBeam && !isBoid && !fireworkMode ? Math.max(0, Math.min(2, p.flareMode | 0)) : 0;
+    const crackMode = !isTrans && !hasArc && !hasBeam && !isBoid && !fireworkMode && !flareMode ? Math.max(0, Math.min(2, p.crackMode | 0)) : 0;
+    const ferroMode = !isTrans && !hasArc && !hasBeam && !isBoid && !fireworkMode && !flareMode && !crackMode ? Math.max(0, Math.min(2, p.ferroMode | 0)) : 0;
+    const mudMode = !isTrans && !hasArc && !hasBeam && !isBoid && !fireworkMode && !flareMode && !crackMode && !ferroMode ? Math.max(0, Math.min(3, p.mudSplashMode | 0)) : 0;
+    const beadsMode = !isTrans && !hasArc && !hasBeam && !isBoid && !fireworkMode && !flareMode && !crackMode && !ferroMode && !mudMode ? Math.max(0, Math.min(3, p.beadsMode | 0)) : 0;
+    const seedHeadMode = !isTrans && !hasArc && !hasBeam && !isBoid && !fireworkMode && !flareMode && !crackMode && !ferroMode && !mudMode && !beadsMode ? Math.max(0, Math.min(2, p.seedHeadMode | 0)) : 0;
+    const jellyMode = !isTrans && !hasArc && !hasBeam && !isBoid && !fireworkMode && !flareMode && !crackMode && !ferroMode && !mudMode && !beadsMode && !seedHeadMode ? Math.max(0, Math.min(2, p.jellyMode | 0)) : 0;
+    const webMode = !isTrans && !hasArc && !hasBeam && !isBoid && !fireworkMode && !flareMode && !crackMode && !ferroMode && !mudMode && !beadsMode && !seedHeadMode && !jellyMode ? Math.max(0, Math.min(2, p.webMode | 0)) : 0;
+    const dynMode = !isTrans && !hasArc && !hasBeam && !isBoid && !fireworkMode && !flareMode && !crackMode && !ferroMode && !mudMode && !beadsMode && !seedHeadMode && !jellyMode && !webMode ? Math.max(0, Math.min(9, p.dynMode | 0)) : 0;
+    const gridMode = !isTrans && !hasArc && !hasBeam && !isBoid && !fireworkMode && !flareMode && !crackMode && !ferroMode && !mudMode && !beadsMode && !seedHeadMode && !jellyMode && !webMode && !dynMode ? Math.max(0, Math.min(2, p.gridMode | 0)) : 0;
+    const isRibbon = !fireworkMode && !flareMode && !crackMode && !ferroMode && !mudMode && !beadsMode && !seedHeadMode && !jellyMode && !webMode && !dynMode && !gridMode && (p.curlMode || 0) === 3;
     const tp = p.targetPos || [o.origin[0] + 4, o.origin[1], o.origin[2]];
     const packedDyn = dynMode > 0 ? (dynMode <= 7 ? 5 + dynMode : 6 + dynMode) : 0;
-    const packedCurlMode = jellyMode > 0 ? 21 : (seedHeadMode > 0 ? 20 : (beadsMode > 0 ? 19 : (crackMode > 0 ? 18 : (ferroMode > 0 ? 17 : (mudMode > 0 ? 16 : (webMode > 0 ? (3 + webMode) : (dynMode > 0 ? packedDyn : (gridMode > 0 ? 13 : (p.curlMode || 0)))))))));
-    const packedRate = (jellyMode > 0 || seedHeadMode > 0 || beadsMode > 0) ? (p.dynStiff ?? 1.25) : (crackMode > 0 ? (p.curlFreq ?? 1.15) : (ferroMode > 0 ? (p.ferroMagnetSpeed ?? 1.35) : (mudMode > 0 ? (p.carSpeed ?? 4.2) : (webMode > 0 ? (p.webSpinRate ?? 1.0) : (dynMode > 0 ? (p.dynStiff ?? 1.0) : (gridMode > 0 ? (p.gridContrast ?? 1.85) : (p.curlRate ?? 0.24)))))));
-    const packedFreq = crackMode > 0 ? (p.crackSpeed ?? 2.6) : (p.curlFreq ?? 0.85);
-    const packedAmp = crackMode > 0 ? (p.crackDepth ?? 0.44) : (p.curlAmp ?? 2.2);
+    const packedCurlMode = fireworkMode > 0 ? 23 : (flareMode > 0 ? 22 : (jellyMode > 0 ? 21 : (seedHeadMode > 0 ? 20 : (beadsMode > 0 ? 19 : (crackMode > 0 ? 18 : (ferroMode > 0 ? 17 : (mudMode > 0 ? 16 : (webMode > 0 ? (3 + webMode) : (dynMode > 0 ? packedDyn : (gridMode > 0 ? 13 : (p.curlMode || 0)))))))))));
+    const packedRate = fireworkMode > 0 ? (p.burstEvery ?? 3.1) : (flareMode > 0 ? (p.burstEvery ?? 2.2) : ((jellyMode > 0 || seedHeadMode > 0 || beadsMode > 0) ? (p.dynStiff ?? 1.25) : (crackMode > 0 ? (p.curlFreq ?? 1.15) : (ferroMode > 0 ? (p.ferroMagnetSpeed ?? 1.35) : (mudMode > 0 ? (p.carSpeed ?? 4.2) : (webMode > 0 ? (p.webSpinRate ?? 1.0) : (dynMode > 0 ? (p.dynStiff ?? 1.0) : (gridMode > 0 ? (p.gridContrast ?? 1.85) : (p.curlRate ?? 0.24)))))))));
+    const packedFreq = fireworkMode > 0 ? (p.fireworkScale ?? 2.6) : (flareMode > 0 ? (p.gravity ?? 0.68) : (crackMode > 0 ? (p.crackSpeed ?? 2.6) : (p.curlFreq ?? 0.85)));
+    const packedAmp = fireworkMode > 0 ? (p.gravity ?? 0.38) : (flareMode > 0 ? (p.drag ?? 1.55) : (crackMode > 0 ? (p.crackDepth ?? 0.44) : (p.curlAmp ?? 2.2)));
     set("mol", packedCurlMode, packedFreq, packedAmp, packedRate);
     if (isTrans) {
       const tr = p.transition;
       const waveId = tr.wave === "melt" ? 1 : tr.wave === "glitch" ? 2 : 0;
       set("mol2", waveId, tr.after === "butterfly" ? 1 : 0, tr.assemble | 0, tr.fragment ? 1 : 0);
       set("mol3", tr.holdBase ?? 0.5, tr.holdSpread ?? 1.5, tr.burstShare ?? 0.5, tr.childLife ?? 1.2);
+    } else if (fireworkMode > 0) {
+      set("mol2", fireworkMode, p.fireworkShape ?? 0, o.fireworkShellIdx ?? 0, p.drag ?? 1.55);
+      set("mol3", p.windCoupling ?? 0.42, p.showObject !== false ? 1 : 0, o.fireworkBurstX ?? o.origin[0], o.fireworkBurstZ ?? o.origin[2]);
+    } else if (flareMode > 0) {
+      set("mol2", flareMode, p.burstCount ?? 16, p.buoyancy ?? 0.35, p.bounce ?? 0.25);
+      set("mol3", p.windCoupling ?? 0.85, p.showObject !== false ? 1 : 0, 0, o.preseedCurtain ? 1 : 0);
     } else if (jellyMode > 0) {
       set("mol2", jellyMode, p.radius ?? 1.1, p.dynSag ?? 0.3, p.dynWaveSpeed ?? 4.5);
       set("mol3", p.dynTearThresh ?? 5.2, p.bounce ?? 0.65, p.windCoupling ?? 0.9, o.preseedCurtain ? 1 : 0);
@@ -711,7 +761,7 @@ import { PE } from "./pe.js";
       set("mol3", o.crackHit ? o.crackHit.t : -1.0, p.showObject !== false ? 1 : 0, 0, o.preseedCurtain ? 1 : 0);
     } else if (ferroMode > 0) {
       set("mol2", ferroMode, p.ferroSpikes ?? 520, 1, p.radius ?? 2.0);
-      set("mol3", p.boxHalf?.[1] ?? 1.05, p.streakThin ?? 1.0, 0, o.preseedCurtain ? 1 : 0);
+      set("mol3", (Array.isArray(p.boxHalf) ? p.boxHalf[1] : Number(p.boxHalf)) || 1.05, p.streakThin ?? 1.0, 0, o.preseedCurtain ? 1 : 0);
     } else if (mudMode > 0) {
       set("mol2", mudMode, p.carTrackRadius ?? 3.15, p.showObject !== false ? 1 : 0, p.sizeScale ?? 1.0);
       set("mol3", p.bounce ?? 0.04, p.radius ?? 1.8, o.crackHit ? o.crackHit.x : o.origin[0], o.preseedCurtain ? 1 : 0);
@@ -739,4 +789,17 @@ import { PE } from "./pe.js";
     }
     set("emit", o.head, o.seed, p.shape, p.leafMode);
     set("misc", p.sizeScale, gridMode > 0 ? (p.gridBillboard ? 1.0 : 0.0) : (p.streakThin ?? 1.0), hasArc ? (p.arcMode + 1) : 0, isTrans ? (p.transition.shell ?? 3.0) : (hasBeam ? (p.beamMode || 1) : 0));
+    set("colorCfg", ramp.count, ramp.byCode, ramp.min, ramp.max);
+    set("colorCfg2", ramp.repeat, ramp.wrapCode, ramp.phase, ramp.interpCode);
+    set("extra0", Math.max(2, Math.min(32, Math.round(p.dynSegs ?? 16))), Math.max(0.1, p.headScale ?? 1), dynMode > 0 ? (p.dynCurveDebug ? 1.0 : 0.0) : Math.max(0, Math.min(3, Math.round(p.headStyle ?? 0))), p.blend === "add" ? 1 : 0);
+    const effA = Array.isArray(p.effPos) ? p.effPos : [0, 1.5, 0];
+    const effB = Array.isArray(p.effPos2) ? p.effPos2 : [2.5, 1.5, 0];
+    if (ferroMode > 0) {
+      set("extra1", effA[0], effA[1], effA[2], p.ferroMagnetFree ? 1.0 : 0.0);
+    } else {
+      set("extra1", effA[0], effA[1], effA[2], Math.max(0, p.effSize ?? 0));
+    }
+    set("extra2", effB[0], effB[1], effB[2], Math.max(0, p.effSize2 ?? 0));
+    set("extra3", Math.max(0, Math.min(4, Math.round(p.effShape ?? 0))), Math.max(0, Math.min(4, Math.round(p.effShape2 ?? 0))), Math.max(0.1, p.dynAnemThick ?? 1.0), p.effBlend ? 1.0 : 0.0);
+    o._ramp = ramp;
   };

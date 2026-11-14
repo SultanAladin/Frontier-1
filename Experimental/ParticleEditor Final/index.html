@@ -30,7 +30,7 @@
 
             <nav class="top-nav" aria-label="Workspace views">
                 <button class="nav-button active" id="nav-workspace" type="button">Workspace</button>
-                <button class="nav-button" id="nav-library" type="button">Assets <small id="nav-preset-total">98</small></button>
+                <button class="nav-button" id="nav-library" type="button">Assets <small id="nav-preset-total">92</small></button>
                 <button class="nav-button" id="nav-log" type="button">Log Stream <small id="nav-log-count">0</small></button>
             </nav>
 
@@ -79,6 +79,7 @@
                 <div class="scene-filters" id="scene-filters" aria-label="Outliner category filters">
                     <button data-filter="all" class="active" type="button">All</button>
                     <button data-filter="effects" type="button">Effects</button>
+                    <button data-filter="vfx:Motion &amp; Grids" type="button">MoGraph</button>
                     <button data-filter="vfx:Cloth &amp; Rigging" type="button">Cloth</button>
                     <button data-filter="vfx:Foliage &amp; Flora" type="button">Flora</button>
                     <button data-filter="vfx:Ferrofluid &amp; Fields" type="button">Ferro</button>
@@ -92,6 +93,7 @@
                     <button data-filter="vfx:Atmosphere &amp; Sky" type="button">Sky</button>
                     <button data-filter="vfx:Wind-Blown" type="button">Wind</button>
                     <button data-filter="vfx:Storms &amp; Weather" type="button">Weather</button>
+                    <button data-filter="vfx:Quarantine" type="button">Quarantine</button>
                     <button data-filter="forces" type="button">Forces</button>
                 </div>
 
@@ -125,7 +127,6 @@
                     </select>
                     <div class="viewport-bar-end">
                         <button id="throw-ball-btn" class="button pill-btn" type="button" title="Toggle Throw Ball Tool (T) or throw sphere at selection (Alt+Click)">Throw Ball · T</button>
-                        <button id="trigger-spark-btn" class="button pill-btn spark-pill" type="button" title="Fire instantaneous spark arc between spheres (B)" hidden>⚡ Strike Spark</button>
                         <button id="toggle-overlay-btn" class="button pill-btn" type="button" title="Toggle field overlay (V)">Field · V</button>
                         <button id="toggle-arrows-btn" class="icon-button" type="button" title="Toggle 3D vector field arrows"></button>
                         <button id="toggle-minimap-btn" class="icon-button" type="button" title="Toggle lattice minimap"></button>
@@ -147,6 +148,7 @@
 
                     <div class="viewport-tools" id="ViewportTools" aria-label="Viewport tools">
                         <button class="active icon-button" data-vtool="orbit" type="button" title="Orbit camera (Drag)"></button>
+                        <button class="icon-button" data-vtool="handles" type="button" title="Show/hide movable 3D handles for objects, effectors, forces &amp; magnets (G)"></button>
                         <button class="icon-button" data-vtool="ball" type="button" title="Throw Interactive 3D Ball at Cloth, Webs, Grass &amp; Trees (T / Alt+Click)"></button>
                         <button class="icon-button" data-vtool="probe" type="button" title="Place or move Wind Anemometer in viewport (P)"></button>
                         <button class="icon-button" data-vtool="turntable" type="button" title="Auto turntable camera"></button>
@@ -157,7 +159,7 @@
                     <div class="viewport-right-hud" id="ViewportHud"></div>
                     <div class="viewport-readout" id="ViewportReadout"></div>
 
-                    <div class="viewport-inset minimap-inset shown" id="MinimapInset">
+                    <div class="viewport-inset minimap-inset" id="MinimapInset">
                         <canvas id="MinimapCanvas"></canvas>
                         <div class="inset-label" id="MinimapLabel"><span>Lattice domain</span><span>12 × 12 m</span></div>
                     </div>
@@ -173,7 +175,7 @@
                     </div>
 
                     <div class="viewport-help">
-                        <span>Drag to orbit</span><i>·</i><span>T throw ball</span><i>·</i><span>Alt+Click toss sphere</span><i>·</i><span>Right-drag pan</span><i>·</i><span>Space pause</span><i>·</i><span>V field</span>
+                        <span>Drag handles (Shift: Y)</span><i>·</i><span>G handles</span><i>·</i><span>Drop OBJ/STL</span><i>·</i><span>T throw ball</span><i>·</i><span>Space pause</span><i>·</i><span>V field</span>
                     </div>
                 </div>
 
@@ -285,6 +287,7 @@
         <button data-add-effect="effector-grid-cubes" type="button">Effector Cube Matrix · Height Up/Down <small>Fixed-footprint 3D cube lattice rising &amp; lowering on effector waves</small></button>
         <button data-add-effect="effector-sphere-dots" type="button">Halftone Effector Sphere · Circles <small>Dark obsidian 3D sphere wrapped in effector-driven halftone dots</small></button>
         <button data-add-effect="effector-hand-halftone" type="button">Obsidian Hand · Halftone &amp; Tiles <small>Sculpted hand + chrome orb with circles on palm &amp; height tiles up arm</small></button>
+        <button data-add-effect="effector-torus-hex" type="button">Kinetic Hex Torus Matrix <small>Revolving torus ring tiled with radial effector-modulated hexagons</small></button>
         <div class="popover-label">CLOTH, CABLES, VINES &amp; BALL-INTERACTIVE RIGGING</div>
         <button data-add-effect="flag-banner" type="button">Cloth Flag &amp; Banner <small>Seamless woven flag strips · deflects &amp; tears under projectile ball</small></button>
         <button data-add-effect="ship-sail" type="button">Bilged Ship Sail <small>Pinned canvas ship sail billowing in wind &amp; tearing on hard impact</small></button>
@@ -293,6 +296,12 @@
         <button data-add-effect="beaded-door-curtain" type="button">Crystal Bead Door Curtain <small>Faceted glass bead strands parting elastically around passing balls</small></button>
         <button data-add-effect="bamboo-wind-chimes" type="button">Bamboo &amp; Brass Wind Chimes <small>Tuned organ chime tubes &amp; central striker ring swaying &amp; glowing</small></button>
         <button data-add-effect="velvet-theater-drapes" type="button">Velvet Theatre Drape Strips <small>Pleated doorway curtains billowing softly &amp; parting on collision</small></button>
+        <div class="popover-label">3D OBJECT PLACER &amp; MOGRAPH EFFECTORS</div>
+        <button data-add-effect="effector-object-placer" type="button">Placeable 3D Object · MoGraph &amp; Effectors <small>Swap to any 3D object or drop OBJ/STL mesh + draggable Effectors A &amp; B</small></button>
+        <button data-add-effect="effector-hand-halftone" type="button">Obsidian Hand · Halftone &amp; Tiles <small>Sculpted hand (or any 3D object) wrapped in effector-driven dots &amp; tiles</small></button>
+        <button data-add-effect="effector-grid-cubes" type="button">Effector Cube Matrix · Height Up/Down <small>3D column heightfield driven by waves, placeable effectors &amp; Force Fields</small></button>
+        <button data-add-effect="effector-sphere-dots" type="button">Halftone Effector Sphere · Circles <small>Obsidian sphere wrapped in orbiting effector halftone discs</small></button>
+        <button data-add-effect="effector-torus-hex" type="button">Kinetic Hex Torus Matrix <small>Hexagonal effector plates rippling around a 3D torus ring</small></button>
         <div class="popover-label">INTERACTIVE FOLIAGE, GRASS, FERNS &amp; TREE</div>
         <button data-add-effect="grass-wheat-field" type="button">Grass &amp; Golden Wheat <small>Plumed grass/wheat meadow parting dynamically around the ball</small></button>
         <button data-add-effect="tall-reeds" type="button">Tall Reeds &amp; Cattails <small>Marsh reed stalks crowned with velvet cattails swaying in gusts</small></button>
@@ -301,13 +310,6 @@
         <button data-add-effect="kelp-forest" type="button">Giant Kelp Forest &amp; Bladders <small>Buoyant underwater kelp stipes with amber gas bladders swaying in current</small></button>
         <button data-add-effect="sea-anemone" type="button">Sea Anemone Bioluminescent Reef <small>Radial curling reef tentacles with glowing bioluminescent tip polyps</small></button>
         <button data-add-effect="dandelion-puff" type="button">Dandelion Puff &amp; Wish Seeds <small>Radial pappus parachute seeds detaching into wind/ball bursts</small></button>
-        <button data-add-effect="blossom-branch-detach" type="button">Spring Blossom Detachment <small>Orchard boughs shaking loose spinning 5-petal cherry blossoms</small></button>
-        <div class="popover-label">PUDDLES, CAR MUD &amp; SOFT-BODY SLIME</div>
-        <button data-add-effect="car-puddle-splash" type="button">Rally Car Mud Puddle &amp; Rooster-Tail <small>Shallow-water puddle waves + fine tire rooster-tail mud ligaments &amp; mist</small></button>
-        <button data-add-effect="puddle-ripple-splash" type="button">Rain Puddle Waves &amp; Crown <small>2D wave heightfield + Rayleigh-Taylor drop crown fingers &amp; micro-beads</small></button>
-        <button data-add-effect="mud-splatter-heavy" type="button">Mud Impact Fingers &amp; Clods <small>Compact 6-finger mud eruption with ragged micro-clods &amp; fluid streaks</small></button>
-        <button data-add-effect="jelly-slime-blob" type="button">Soft-Body Jelly Cube &amp; Tendrils <small>Volume-preserving bouncing neon jelly + sticky rubbery tendrils</small></button>
-        <button data-add-effect="slime-tendril-cluster" type="button">Elastic Slime Tendril Cluster <small>Glossy magenta slime colony gripping passing balls with elastic threads</small></button>
         <div class="popover-label">FERROFLUID &amp; MAGNETIC FIELDS</div>
         <button data-add-effect="ferrofluid-spikes" type="button">Ferrofluid Rosensweig Spikes <small>Chrome-black liquid cones tracking an orbiting Neodymium magnet</small></button>
         <button data-add-effect="ferrofluid-orb" type="button">Magnetic Ferrofluid Orb <small>Floating spiky chrome-black sphere pulsing around magnetic poles</small></button>
@@ -324,7 +326,6 @@
         <button data-add-effect="bokeh-stream-ribbons" type="button">Bokeh Stream Ribbons <small>Glowing bokeh particles with smooth tapered faded ribbons</small></button>
         <div class="popover-label">SHOCKWAVES, RADAR &amp; EXPANDING RINGS</div>
         <button data-add-effect="shockwave-ring" type="button">Blast &amp; Sonic Shockwave <small>Expanding supersonic Mach pressure rings</small></button>
-        <button data-add-effect="impact-dust-ring" type="button">Ground Impact Dust Ring <small>Ground-hugging turbulent radial dust shockwave</small></button>
         <button data-add-effect="emp-pulse-dome" type="button">EMP Energy Pulse Dome <small>Electromagnetic hemisphere pulse shell &amp; interference</small></button>
         <button data-add-effect="radar-sweep" type="button">Tactical Radar Sweep &amp; Blips <small>Rotating 3D phosphor sweep beam, range rings &amp; pinging contact blips</small></button>
         <button data-add-effect="sonar-ping" type="button">Acoustic Sonar Pulse Ping <small>Expanding concentric cyan-emerald sonar pulse waves &amp; crosshairs</small></button>
@@ -337,9 +338,10 @@
         <button data-add-effect="hologram-data-glitch" type="button">Hologram &amp; Data Glitch <small>Rising procedural matrix glyphs &amp; flickering scanline slices</small></button>
         <button data-add-effect="boids-flock" type="button">Boids Flock (Birds / Bats / Fish) <small>Cohesion, alignment &amp; separation flocking with wing animation</small></button>
         <button data-add-effect="boids-butterflies" type="button">Butterfly &amp; Wisp Swarm <small>Flocking luminous dual-wing butterflies &amp; wisps</small></button>
+        <button data-add-effect="boids-fish-school" type="button">Bioluminescent Fish School <small>Iridescent cyan &amp; coral reef fish swimming &amp; scattering around thrown balls</small></button>
         <button data-add-effect="starling-murmuration" type="button">Starling Murmuration &amp; Predator Scatter <small>520-boid dusk flock performing flash-split evasion around thrown balls</small></button>
         <button data-add-effect="viscous-dripping" type="button">Viscous Dripping &amp; Trails <small>Pure-particle surface-tension droplets &amp; drip ribbons</small></button>
-        <button data-add-effect="splatter-burst" type="button">Slime / Paint / Mud Splatter <small>Pure-particle thick droplet bursts forming floor puddles</small></button>
+        <button data-add-effect="glass" type="button">3D Glass Shards <small>Real 3D faceted glass shard meshes tumbling, bouncing &amp; catching glints</small></button>
         <div class="popover-label">MESH DEREZ, COINS &amp; TRANSITIONS</div>
         <button data-add-effect="derez-cube" type="button">Cube Derez Shatter <small>Corner-wave cube lattice breaking into 8 child sub-cubes on impact</small></button>
         <button data-add-effect="cube-coins" type="button">Cube → Coins Burst <small>Solid voxel lattice derezzing into bouncing gold coins</small></button>
@@ -384,7 +386,6 @@
         <button data-add-viz="Arrows" type="button">3D Vector Field <small>Toggle 3D lattice vector field arrows</small></button>
         <button data-add-viz="ShowInfluence" type="button">Finite Influence Bounds <small>Reach footprints &amp; source bearings</small></button>
         <button data-add-viz="Heatmap" type="button">Turbo Scalar Heatmap <small>Speed, Vertical, Curl ω, Div ∇·v</small></button>
-        <button data-add-viz="Tracers" type="button">Advect Flow Tracers <small>Lagrangian moving slice motes</small></button>
     </div>
 
     <!-- Full Particle Asset Gallery Sheet -->

@@ -7,11 +7,37 @@
 
 import { PE } from './Engine/pe.js';
 import './Engine/forcefields.js';
+import { SampleObjectAnchors } from './Engine/ObjectSurfaceSampler.js';
+import { SampleFireworkShell } from './Engine/FireworkPatterns.js';
 
 function LinearToCss(Linear, Alpha = 1)
 {
     const ToByte = C => Math.round(Math.min(1, Math.max(0, Math.pow(Math.max(0, C), 1 / 2.2))) * 255);
     return `rgba(${ToByte(Linear[0])}, ${ToByte(Linear[1])}, ${ToByte(Linear[2])}, ${Math.min(1, Math.max(0, Alpha)).toFixed(3)})`;
+}
+
+function HasCustomRamp(P)
+{
+    return Boolean(
+        (P?.colorBy && P.colorBy !== 'modeDefault')
+        || (Array.isArray(P?.colorStops) && P.colorStops.length > 0)
+        || (P?.colorInterp && P.colorInterp !== 'linear')
+        || (P?.colorWrap && P.colorWrap !== 'clamp')
+        || (Number.isFinite(P?.colorRepeat) && Math.abs(P.colorRepeat - 1) > 1e-4)
+        || (Number.isFinite(P?.colorPhase) && Math.abs(P.colorPhase) > 1e-4)
+    );
+}
+
+function EvalRampStopsAt(P, T)
+{
+    if (PE.evalColorRampAt && PE.getColorStops) return PE.evalColorRampAt(PE.getColorStops(P), T, P);
+    return P?.colA || [1, 1, 1, 1];
+}
+
+function EvalRampCol(P, DefT, Px = 0, Py = 0, Pz = 0, Vx = 0, Vy = 0, Vz = 0, Age = 0, Life = 1, Sz = 0.1, Ang = 0, Seed = 0, CamX = 0, CamY = 2, CamZ = 8, Time = 0)
+{
+    if (PE.evalParticleColorCPU) return PE.evalParticleColorCPU(P, DefT, Px, Py, Pz, Vx, Vy, Vz, Age, Life, Sz, Ang, Seed, CamX, CamY, CamZ, Time);
+    return P?.colA || [1, 1, 1, 1];
 }
 
 function ProjectPoint(VP, X, Y, Z, W, H)
@@ -475,7 +501,7 @@ function EvalDynStrandCPU(P, Slot, Cap, DynMode, Time, WindT, FieldScene, Prepar
             const FLen = Math.max(0.8, Ext[0] * 2.0);
             const PA = [MastX, YRow, Org[2]];
             const PB = [MastX + FDirX * FLen, YRow, Org[2] + FDirZ * FLen];
-            return { visible: true, kind: 3, rowV: RowV, nRows: NRows, waveSpd: WaveSpd, pA: PA, pB: PB, sag: 0.04, windScale: 0.65 / Stiff, pinnedEnd: false, radius: (FH / Math.max(1, NRows - 1)) * 0.60 };
+            return { visible: true, kind: 3, rowV: RowV, nRows: NRows, waveSpd: WaveSpd, pA: PA, pB: PB, sag: Math.max(0.02, Sag * 0.28), windScale: 0.65 / Stiff, pinnedEnd: false, radius: (FH / Math.max(1, NRows - 1)) * 0.60 };
         }
         const SH = Math.max(0.8, Ext[1] * 1.85);
         const YRow = Math.max(0.45, YTop - SH) + (YTop - Math.max(0.45, YTop - SH)) * RowV;
@@ -487,6 +513,8 @@ function EvalDynStrandCPU(P, Slot, Cap, DynMode, Time, WindT, FieldScene, Prepar
     }
     if (DynMode === 4 || DynMode === 5)
     {
+        const Limit = DynMode === 4 ? Math.max(24, Math.min(Cap, Rows * 6)) : Math.max(20, Math.min(Cap, Rows * 5));
+        if (Slot >= Limit) return { visible: false };
         const Sd = Slot * 41 + 17;
         const Ax = (WebHash(Sd, 1) * 2 - 1) * Ext[0];
         const Az = (WebHash(Sd, 2) * 2 - 1) * Ext[2];
@@ -497,7 +525,8 @@ function EvalDynStrandCPU(P, Slot, Cap, DynMode, Time, WindT, FieldScene, Prepar
         const Bend = DynMode === 4 ? (0.18 + 0.14 * WebHash(Sd, 6)) : 0.05;
         const WindG = SwayFn([PA[0], PA[1] + BladeH * 0.7, PA[2]], 0.9 / Stiff, Amp, Freq);
         const PB = [PA[0] + Lean + WindG[0] * 0.72, PA[1] + BladeH * (1 - Bend * 0.35), PA[2] + LeanZ + WindG[2] * 0.72];
-        return { visible: true, kind: DynMode, sub: Sub, hasTip: DynMode === 5 ? (Slot % 3 !== 0) : (Sub > 0.5 && (Slot % 2 === 0)), pA: PA, pB: PB, sag: -BladeH * Bend * 0.45, windScale: (DynMode === 5 ? 0.45 : 0.75) / Stiff, radius: (P.sizeStart || 0.025) * (0.75 + 0.55 * WebHash(Sd, 7)) };
+        const SagAmt = DynMode === 4 ? -Math.max(0.03, Sag * 0.35) * BladeH : -Math.max(0.08, Sag * 0.40) * BladeH;
+        return { visible: true, kind: DynMode, sub: Sub, hasTip: DynMode === 5 ? (Slot % 3 !== 0) : (Sub > 0.5 && (Slot % 2 === 0)), pA: PA, pB: PB, sag: SagAmt, windScale: (DynMode === 5 ? 0.45 : 0.75) / Stiff, radius: (P.sizeStart || 0.025) * (0.75 + 0.55 * WebHash(Sd, 7)) };
     }
     if (DynMode === 6)
     {
@@ -537,10 +566,12 @@ function EvalDynStrandCPU(P, Slot, Cap, DynMode, Time, WindT, FieldScene, Prepar
         const FLen = 0.34 + 0.36 * WebHash(Slot * 23, 9);
         const PA = [Org[0] + Gx, Math.max(0.08, Org[1] + KelpH * HU), Org[2] + Gz];
         const PB = [PA[0] + Math.cos(FAz) * FLen, PA[1] + FLen * 0.4, PA[2] + Math.sin(FAz) * FLen];
-        return { visible: true, kind: 8, role: 'kelpFrond', pA: PA, pB: PB, sag: -0.06, windScale: 1.05 / Stiff, radius: (P.sizeStart || 0.16) * 0.95 };
+        return { visible: true, kind: 8, role: 'kelpFrond', pA: PA, pB: PB, sag: -0.06, windScale: 1.05 / Stiff, radius: (P.sizeStart || 0.16) * 0.95, stalkIdx: StalkIdx, anchorHU: HU };
     }
     if (DynMode === 9)
     {
+        const NAnem = Math.max(18, Math.min(Cap, Rows * 3));
+        if (Slot >= NAnem) return { visible: false };
         const Cluster = Slot % 3;
         const CPhi = Cluster * 2.0943951 + 0.4;
         const CRad = Cluster === 0 ? 0 : 0.55 * Math.max(0.4, P.radius || 1.4);
@@ -552,7 +583,7 @@ function EvalDynStrandCPU(P, Slot, Cap, DynMode, Time, WindT, FieldScene, Prepar
         const PA = [MX + Math.cos(Az) * RingR, MY + 0.06 + (0.28 - Math.min(RingR, 0.25)) * 0.5, MZ + Math.sin(Az) * RingR];
         const Wg = SwayFn([MX + Math.cos(Az) * Flare, MY + TLen, MZ + Math.sin(Az) * Flare], 0.95 / Stiff, Amp, Freq);
         const PB = [MX + Math.cos(Az) * Flare + Wg[0] * 0.45, MY + TLen, MZ + Math.sin(Az) * Flare + Wg[2] * 0.45];
-        return { visible: true, kind: 9, pA: PA, pB: PB, sag: -Math.max(0.14, Sag * 0.65), windScale: 1.0 / Stiff, radius: (P.sizeStart || 0.07) * 0.92, hasBioTip: true };
+        return { visible: true, kind: 9, pA: PA, pB: PB, sag: -Math.max(0.14, Sag * 0.65), windScale: 1.0 / Stiff, radius: (P.sizeStart || 0.07) * 0.92 * Math.max(0.1, P.dynAnemThick ?? 1.0), hasBioTip: true };
     }
     const NLimbs = Math.max(8, Math.min(28, Rows));
     const TrunkBase = [Org[0], Math.max(0, Org[1]), Org[2]];
@@ -569,7 +600,7 @@ function EvalDynStrandCPU(P, Slot, Cap, DynMode, Time, WindT, FieldScene, Prepar
         const Reach = Hgt * (0.58 - 0.24 * Tier) * (0.82 + 0.35 * WebHash(Slot * 37, 2));
         const Lift = Hgt * (0.18 + 0.34 * Tier);
         const PB = [PA[0] + Math.cos(Az) * Reach, PA[1] + Lift, PA[2] + Math.sin(Az) * Reach];
-        return { visible: true, kind: 7, role: 'limb', anchU: AnchU, pA: PA, pB: PB, sag: -Reach * 0.14, windScale: 0.22 / Stiff, radius: Math.max(0.032, (P.sizeStart || 0.22) * (0.55 - 0.28 * Tier)) };
+        return { visible: true, kind: 7, role: 'limb', anchU: AnchU, pA: PA, pB: PB, sag: -Math.max(0.04, Sag * 0.35) * Reach, windScale: 0.22 / Stiff, radius: Math.max(0.032, (P.sizeStart || 0.22) * (0.55 - 0.28 * Tier)) };
     }
     const LeafIdx = Slot - 1 - NLimbs;
     const ParentLimb = 1 + (LeafIdx % NLimbs);
@@ -636,12 +667,31 @@ function EvalHandTubeCPU(Slot, Cap, Org, Sc)
 
 function EvalGridAnchorCPU(P, Slot, Cap)
 {
-    const Surf = Math.max(0, Math.min(5, Math.round(P.gridSurface ?? 0)));
+    const Surf = Math.max(0, Math.min(16, Math.round(P.gridSurface ?? 0)));
     const Org = P.origin || [0, 2, 0];
     const Bx = Math.max(0.35, P.boxHalf?.[0] || 1.7), By = Math.max(0.35, P.boxHalf?.[1] || 1.7), Bz = Math.max(0.35, P.boxHalf?.[2] || 1.7);
     const Cols = Math.max(2, Math.round(P.gridCols ?? 24));
     const Rows = Math.max(2, Math.round(P.gridRows ?? 24));
-    const RadR = Math.max(0.5, P.radius || Bx);
+    const RadR = Math.max(0.35, P.radius || Bx);
+
+    if (Surf >= 6)
+    {
+        const Sampled = SampleObjectAnchors(P, Math.max(1, Cap));
+        const A = Sampled?.anchors?.[Slot % Sampled.anchors.length];
+        if (A)
+        {
+            const N = A.norm;
+            return {
+                pos: [
+                    Org[0] + A.pos[0] * RadR + N[0] * 0.008,
+                    Org[1] + A.pos[1] * RadR + N[1] * 0.008,
+                    Org[2] + A.pos[2] * RadR + N[2] * 0.008,
+                ],
+                norm: N,
+                localY: A.localY,
+            };
+        }
+    }
 
     if (Surf === 2)
     {
@@ -678,7 +728,7 @@ function EvalGridAnchorCPU(P, Slot, Cap)
 function EvalGridParticleCPU(P, Slot, Cap, T, BallX, BallY, BallZ, BallR, FieldScene, Prepared, Solo)
 {
     const Gp = EvalGridAnchorCPU(P, Slot, Cap);
-    const Eff = Math.max(0, Math.min(4, Math.round(P.gridEffector ?? 0)));
+    const Eff = Math.max(0, Math.min(5, Math.round(P.gridEffector ?? 0)));
     const Freq = Math.max(0.15, P.curlFreq ?? 1.25);
     const Speed = Math.max(0, P.curlAmp ?? 0.65);
     const Org = P.origin || [0, 2, 0];
@@ -716,7 +766,60 @@ function EvalGridParticleCPU(P, Slot, Cap, T, BallX, BallY, BallZ, BallR, FieldS
         const Ph = Dist * Freq * 3.6 - T * Speed * 3.2;
         W = Math.pow(Math.max(0, 0.5 + 0.5 * Math.sin(Ph)), 1.4);
     }
-    else W = 0.02;
+    const EvalPlaceableEff = () =>
+    {
+        const EffSdf = (Pos, Shape, Size) =>
+        {
+            if (!Pos || Size <= 0.01) return 999;
+            const S = Math.max(0.05, Size);
+            const Ex = Gp.pos[0] - Pos[0], Ey = Gp.pos[1] - Pos[1], Ez = Gp.pos[2] - Pos[2];
+            if (Shape === 1) {
+                const Qx = Math.abs(Ex) - S, Qy = Math.abs(Ey) - S, Qz = Math.abs(Ez) - S;
+                return Math.max(0, Math.max(Qx, Qy, Qz)) + Math.min(0, Math.max(Qx, Math.max(Qy, Qz)));
+            }
+            if (Shape === 2) {
+                return Math.hypot(Math.hypot(Ex, Ez) - S, Ey) - S * 0.32;
+            }
+            if (Shape === 3) {
+                const H = S * 0.12;
+                const Qx = Math.hypot(Ex, Ez) - S, Qy = Math.abs(Ey) - H;
+                return Math.max(0, Math.max(Qx, Qy)) + Math.min(0, Math.max(Qx, Qy));
+            }
+            if (Shape === 4) {
+                const R = Math.hypot(Ex, Ez);
+                const Hh = Math.max(0.001, (Ey + S) / (2 * S));
+                const Hc = Math.min(1, Math.max(0, Hh));
+                const Rad = S * (1 - Hc);
+                const Side = (R - Rad) * 0.86;
+                const Cap = Math.max(Ey - S, -Ey - S);
+                return Math.max(Side, Cap);
+            }
+            return Math.hypot(Ex, Ey, Ez) - S;
+        };
+        let WA = 0, WB = 0;
+        if (P.effSize && P.effSize > 0.01) {
+            const SdfA = EffSdf(P.effPos, P.effShape || 0, P.effSize);
+            WA = Math.max(0, Math.min(1, 1 - Smooth(0, Math.max(0.35, P.effSize * 0.55), SdfA)));
+        }
+        if (P.effSize2 && P.effSize2 > 0.01) {
+            const SdfB = EffSdf(P.effPos2, P.effShape2 || 0, P.effSize2);
+            WB = Math.max(0, Math.min(1, 1 - Smooth(0, Math.max(0.35, P.effSize2 * 0.55), SdfB)));
+        }
+        return Math.max(WA, WB);
+    };
+
+    if (Eff === 5)
+    {
+        W = EvalPlaceableEff();
+    }
+    else if (Eff === 4)
+    {
+        W = 0.02;
+    }
+    if (Eff !== 5 && P.effBlend)
+    {
+        W = Math.max(W, EvalPlaceableEff());
+    }
 
     if (FieldScene && Prepared?.length)
     {
@@ -751,13 +854,8 @@ function EvalGridParticleCPU(P, Slot, Cap, T, BallX, BallY, BallZ, BallR, FieldS
         else { LatSize = CellW * (MinS + (1.38 - MinS) * W); CubeH = 0; }
     }
 
-    const CA = P.colA || [0.06, 0.06, 0.07, 1], CC = P.colC || P.colB || [1, 0.22, 0.16, 1], CB = P.colB || [1, 0.45, 0.28, 1];
-    const T1 = Smooth(0.06, 0.56, W), T2 = Smooth(0.56, 1.0, W);
-    const Col = [0, 1, 2, 3].map(I => {
-        const M1 = CA[I] * (1 - T1) + CC[I] * T1;
-        return M1 * (1 - T2) + CB[I] * T2;
-    });
-    Col[3] = (CA[3] ?? 1) * (0.45 + 0.55 * Smooth(0.0, 0.22, W));
+    const Col = EvalRampCol(P, W, Gp.pos[0], Gp.pos[1], Gp.pos[2], 0, 0, 0, T, 1e9, LatSize, 0, Slot, 0, 2, 8, T);
+    Col[3] = (Col[3] ?? 1) * (0.45 + 0.55 * Smooth(0.0, 0.22, W));
 
     return {
         x: Gp.pos[0], y: Gp.pos[1], z: Gp.pos[2],
@@ -913,8 +1011,12 @@ function DrawShallowWaterCPU(Ctx, VP, W, H, Swe, P, Additive)
     if (Additive) Ctx.globalCompositeOperation = 'lighter';
 }
 
-export function EvalFerroMagnetCPU(Time, Org, PoolR, MagSpd, FerroMode)
+export function EvalFerroMagnetCPU(Time, Org, PoolR, MagSpd, FerroMode, Params = null)
 {
+    if (Params?.ferroMagnetFree && Array.isArray(Params?.effPos))
+    {
+        return [Params.effPos[0], Params.effPos[1], Params.effPos[2]];
+    }
     const Ph = Time * (MagSpd || 1.35);
     const ROrb = (PoolR || 2.0) * (FerroMode === 2 ? 1.08 : 0.62);
     const HBase = FerroMode === 2 ? 0.35 * Math.sin(Ph * 1.4) : 0.55 + 0.18 * Math.sin(Ph * 1.7);
@@ -924,50 +1026,34 @@ export function EvalFerroMagnetCPU(Time, Org, PoolR, MagSpd, FerroMode)
 function EvalFerroFluidCPU(P, Count, Time, BallX, BallY, BallZ, BallR, FieldScene, Prepared, Solo)
 {
     const FerroMode = Math.max(1, Math.min(2, P.ferroMode | 0));
-    const PoolR = Math.max(0.45, P.radius || 2.0);
-    const BodyY = Math.max(0.25, P.boxHalf?.[1] || 1.0);
+    const PoolR = Math.max(0.55, P.radius || 2.05);
+    const BodyY = Math.max(0.25, Array.isArray(P.boxHalf) ? (P.boxHalf[1] || 1.05) : (Number(P.boxHalf) || 1.05));
     const MagSpd = P.ferroMagnetSpeed ?? 1.35;
-    const Freq = Math.max(0.2, P.curlFreq ?? 1.25);
-    const Amp = Math.max(0.1, P.curlAmp ?? 1.15);
+    const Freq = Math.max(0.25, P.curlFreq ?? 1.25);
+    const Amp = Math.max(0.15, P.curlAmp ?? 1.2);
     const Org = P.origin || [0, 0, 0];
-    const MPos = EvalFerroMagnetCPU(Time, Org, PoolR, MagSpd, FerroMode);
+    const MPos = EvalFerroMagnetCPU(Time, Org, PoolR, MagSpd, FerroMode, P);
+    const HScale = Math.max(0.30, Math.min(2.0, BodyY / 1.05));
     const Out = [];
-    for (let I = 0; I < Count; I++)
-    {
-        let Ax, Ay, Az, Nx, Ny, Nz;
-        if (FerroMode === 2)
-        {
-            const K = I + 0.5;
-            const Y01 = 1 - (2 * K) / Count;
-            const Rxz = Math.sqrt(Math.max(0, 1 - Y01 * Y01));
-            const Phi = I * 2.3999632;
-            Nx = Math.cos(Phi) * Rxz; Ny = Y01; Nz = Math.sin(Phi) * Rxz;
-            const Rb = Math.max(0.32, PoolR * 0.58);
-            Ax = Org[0] + Nx * Rb; Ay = Org[1] + Ny * Math.max(0.30, BodyY * 0.58); Az = Org[2] + Nz * Rb;
-        }
-        else
-        {
-            const U = Math.sqrt((I + 0.5) / Count);
-            const Phi = I * 2.3999632;
-            const Rad = U * PoolR;
-            Ax = Org[0] + Math.cos(Phi) * Rad;
-            Ay = Org[1] + 0.03 + 0.02 * (1 - U * U);
-            Az = Org[2] + Math.sin(Phi) * Rad;
-            Nx = 0; Ny = 1; Nz = 0;
-        }
+
+    // Helper: evaluate magnetic field intensity, pull direction & localized liquid swelling at (Ax, Ay, Az)
+    const EvalMagAt = (Ax, Ay, Az) => {
         let Bx = MPos[0] - Ax, By = MPos[1] - Ay, Bz = MPos[2] - Az;
         const Dm = Math.max(0.22, Math.hypot(Bx, By, Bz));
-        let Str = 1.45 / (0.28 + Dm * Dm * 0.85);
+        // Steep localized Gaussian-like magnetic field falloff so peaks cluster dramatically under the pole
+        // and transition smoothly into glassy low liquid mounds at the outer rim!
+        const FocusR = PoolR * (FerroMode === 2 ? 0.92 : 0.72);
+        let Str = 1.85 * Math.exp(-(Dm * Dm) / (FocusR * FocusR * 0.95)) + 0.14 / (0.35 + Dm * Dm * 0.55);
         let Px = Bx / Dm, Py = By / Dm, Pz = Bz / Dm;
         if (BallR > 0.04)
         {
             const Vx = BallX - Ax, Vy = BallY - Ay, Vz = BallZ - Az;
-            const Db = Math.max(0.20, Math.hypot(Vx, Vy, Vz));
-            const Bp = (BallR * 2.8) / (0.18 + Db * Db * 0.65);
+            const Db = Math.max(0.22, Math.hypot(Vx, Vy, Vz));
+            const Bp = 2.15 * Math.exp(-(Db * Db) / Math.max(0.45, (BallR + 1.1) * (BallR + 1.1)));
             const Dx = Px * Str + (Vx / Db) * Bp, Dy = Py * Str + (Vy / Db) * Bp, Dz = Pz * Str + (Vz / Db) * Bp;
             const Dl = Math.hypot(Dx, Dy, Dz) || 1;
             Px = Dx / Dl; Py = Dy / Dl; Pz = Dz / Dl;
-            Str = Math.max(Str, Bp);
+            Str = Math.min(2.35, Math.max(Str, Bp) + 0.35 * Math.min(Str, Bp));
         }
         if (FieldScene && Prepared)
         {
@@ -980,105 +1066,593 @@ function EvalFerroFluidCPU(P, Count, Time, BallX, BallY, BallZ, BallR, FieldScen
                 const Dz = Pz * Str + (Fv.accel[2] / Fm) * (Fm * 0.25);
                 const Dl = Math.hypot(Dx, Dy, Dz) || 1;
                 Px = Dx / Dl; Py = Dy / Dl; Pz = Dz / Dl;
-                Str = Math.min(2.4, Str + Fm * 0.14);
+                Str = Math.min(2.5, Str + Fm * 0.15);
             }
         }
-        const HexA = Math.sin(Ax * (6.2 * Freq) + Time * 0.4) * Math.sin(Az * (6.2 * Freq) - Time * 0.35);
-        const HexB = Math.cos((Ax * 0.5 + Az * 0.866) * (6.8 * Freq));
-        const Crest = Math.pow(Math.max(0, Math.min(1, 0.48 + 0.36 * HexA + 0.28 * HexB)), 1.35);
-        const HSpike = Math.max(0.04, Math.min(0.95, (0.12 + 0.88 * Str * Amp * 0.42) * Crest));
-        const Lean = Math.min(0.78, Math.max(0, Str * 0.58));
-        let Lx = Nx * (1 - Lean) + Px * Lean, Ly = Ny * (1 - Lean) + Py * Lean, Lz = Nz * (1 - Lean) + Pz * Lean;
+        return { str: Str, px: Px, py: Py, pz: Pz, dm: Dm };
+    };
+
+    // Tier A: Clean Hexagonal Rosensweig Liquid Lattice (bold sculptural concave cusps — zero polygon clutter!)
+    const LatticePts = [];
+    if (FerroMode === 2)
+    {
+        // Levitating Liquid-Obsidian Ferrofluid Orb: ~96 evenly spaced geodesic Rosensweig peaks
+        const NOrb = Math.max(54, Math.min(110, Math.round((P.ferroSpikes ?? 96) * 0.24) + 56));
+        const Rb = Math.max(0.42, PoolR * 0.62);
+        for (let I = 0; I < NOrb; I++)
+        {
+            const K = I + 0.5;
+            const Y01 = 1 - (2 * K) / NOrb;
+            const Rxz = Math.sqrt(Math.max(0, 1 - Y01 * Y01));
+            const Phi = I * 2.3999632 + Time * 0.12;
+            const Nx = Math.cos(Phi) * Rxz, Ny = Y01, Nz = Math.sin(Phi) * Rxz;
+            LatticePts.push({
+                ax: Org[0] + Nx * Rb, ay: Org[1] + Ny * Rb, az: Org[2] + Nz * Rb,
+                nx: Nx, ny: Ny, nz: Nz, rimFade: 1.0, seed: I * 31 + 7
+            });
+        }
+    }
+    else
+    {
+        // Studio Dish / Puddle: True hexagonal Rosensweig honeycomb packing inside PoolR * 0.86
+        const HexStep = Math.max(0.24, PoolR * 0.195);
+        const RowH = HexStep * 0.8660254;
+        const MaxR = PoolR * 0.84;
+        const NRows = Math.ceil(MaxR / RowH);
+        let Idx = 0;
+        for (let Row = -NRows; Row <= NRows; Row++)
+        {
+            const ZOff = Row * RowH;
+            const XShift = (Math.abs(Row) & 1) ? HexStep * 0.5 : 0;
+            const NCols = Math.ceil(MaxR / HexStep);
+            for (let Col = -NCols; Col <= NCols; Col++)
+            {
+                const Sd = Idx * 43 + 11;
+                // Subtle living liquid drift so hex peaks breathe organically as the magnet passes!
+                const Jx = Math.sin(Time * 1.1 + Sd * 0.37) * HexStep * 0.08;
+                const Jz = Math.cos(Time * 0.95 + Sd * 0.53) * HexStep * 0.08;
+                const XOff = Col * HexStep + XShift + Jx;
+                const ZNow = ZOff + Jz;
+                const Rad = Math.hypot(XOff, ZNow);
+                if (Rad > MaxR) continue;
+                const U = Rad / Math.max(0.01, MaxR);
+                const RimFade = Math.max(0, 1 - U * U * 0.72);
+                // Thick glossy curved liquid meniscus height at base
+                const BaseH = 0.06 + 0.12 * Math.pow(Math.max(0, 1 - U * U), 0.75);
+                LatticePts.push({
+                    ax: Org[0] + XOff, ay: Org[1] + BaseH, az: Org[2] + ZNow,
+                    nx: 0, ny: 1, nz: 0, rimFade: RimFade, seed: Sd
+                });
+                Idx++;
+            }
+        }
+    }
+
+    for (let I = 0; I < LatticePts.length; I++)
+    {
+        const Lp = LatticePts[I];
+        const Mag = EvalMagAt(Lp.ax, Lp.ay, Lp.az);
+        const Str = Mag.str;
+        const Ripple = 0.86 + 0.14 * Math.sin(Lp.ax * (4.2 * Freq) + Lp.az * (3.6 * Freq) - Time * 2.2);
+        // Smooth magnetic mound lift under the magnet + tall crisp Rosensweig peak!
+        const MoundLift = FerroMode === 1 ? Math.min(0.28, Str * 0.14) * Lp.rimFade : Math.min(0.14, Str * 0.07);
+        const Ax = Lp.ax + Lp.nx * MoundLift;
+        const Ay = Lp.ay + Lp.ny * MoundLift;
+        const Az = Lp.az + Lp.nz * MoundLift;
+
+        // Sharp Rosensweig peak height responds dramatically to field strength!
+        const HSpike = Math.max(0.06, Math.min(1.08, (0.04 + 0.48 * Math.pow(Math.min(2.2, Str), 1.18) * Amp * 0.55) * Ripple * Lp.rimFade * HScale));
+        // Graceful lean toward the magnet pole (keeps base rooted while cusp curves smoothly toward pole!)
+        const Lean = Math.min(0.56, Math.max(0, Str * 0.34));
+        let Lx = Lp.nx * (1 - Lean) + Mag.px * Lean;
+        let Ly = Lp.ny * (1 - Lean) + Mag.py * Lean;
+        let Lz = Lp.nz * (1 - Lean) + Mag.pz * Lean;
+        if (FerroMode === 1) Ly = Math.max(0.42, Ly);
         const Ll = Math.hypot(Lx, Ly, Lz) || 1;
         Lx /= Ll; Ly /= Ll; Lz /= Ll;
+
+        // Broad flared concave liquid skirt width proportional to hex lattice spacing so peaks fuse smoothly!
+        const WBase = Math.max(0.10, (FerroMode === 2 ? PoolR * 0.175 : PoolR * 0.145) * (0.78 + 0.32 * Math.min(1.4, Str)) * (P.sizeScale || 1));
         Out.push({
+            isCone: true,
             x: Ax, y: Ay, z: Az,
+            lx: Lx, ly: Ly, lz: Lz,
+            nx: Lp.nx, ny: Lp.ny, nz: Lp.nz,
             tx: Ax + Lx * HSpike, ty: Ay + Ly * HSpike, tz: Az + Lz * HSpike,
-            mx: Ax + Lx * HSpike * 0.52 + Nx * HSpike * 0.12, my: Ay + Ly * HSpike * 0.52 + Ny * HSpike * 0.12, mz: Az + Lz * HSpike * 0.52 + Nz * HSpike * 0.12,
-            wBase: Math.max(0.015, (P.sizeStart || 0.08) * (P.sizeScale || 1) * (0.48 + 0.68 * Crest)),
-            str: Str, crest: Crest, visibleStrand: true
+            hSpike: HSpike, wBase: WBase, str: Str, rimFade: Lp.rimFade, seed: Lp.seed, visibleStrand: true
         });
     }
+
+    // Tier B: Subtle glossy jet-black wet oil micro-droplets hugging the magnetic meniscus (zero noisy grey dots!)
+    const NBeads = 18;
+    for (let BIdx = 0; BIdx < NBeads; BIdx++)
+    {
+        const Sd = BIdx * 67 + 23;
+        const Ang = (BIdx / NBeads) * Math.PI * 2 + Time * (0.35 + 0.25 * WebHash(Sd, 1));
+        const RFrac = 0.22 + 0.52 * WebHash(Sd, 2);
+        let Px, Py, Pz;
+        if (FerroMode === 2)
+        {
+            const Y01 = (WebHash(Sd, 3) - 0.5) * 1.5;
+            const Rxz = Math.sqrt(Math.max(0.05, 1 - Y01 * Y01));
+            const R = PoolR * (0.74 + 0.14 * Math.sin(Time * 2.1 + Sd));
+            Px = Org[0] + Math.cos(Ang) * Rxz * R;
+            Py = Org[1] + Y01 * R;
+            Pz = Org[2] + Math.sin(Ang) * Rxz * R;
+        }
+        else
+        {
+            const Rad = PoolR * RFrac;
+            Px = MPos[0] * 0.55 + Org[0] * 0.45 + Math.cos(Ang) * Rad * 0.55;
+            Pz = MPos[2] * 0.55 + Org[2] * 0.45 + Math.sin(Ang) * Rad * 0.55;
+            Py = Org[1] + 0.16 + 0.18 * Math.abs(Math.sin(Time * 1.8 + Sd));
+        }
+        Out.push({
+            isCone: false,
+            x: Px, y: Py, z: Pz,
+            size: Math.max(0.032, PoolR * 0.026 * (0.7 + 0.6 * WebHash(Sd, 4))),
+            seed: Sd, visibleStrand: true
+        });
+    }
+
+    // Attach pool/orb & magnet metadata for the cohesive liquid obsidian body renderer
+    Out.ferroMeta = { mode: FerroMode, org: Org, poolR: PoolR, mpos: MPos };
     return Out;
+}
+
+function EvalCrackBranchPointCPU(Hx, Hz, ArmIdx, IsFork, Dist, MaxR, Freq)
+{
+    const BaseAng = (ArmIdx / 8) * Math.PI * 2 + (WebHash(ArmIdx * 19 + 3, 1) - 0.5) * 0.42;
+    const U = Math.max(0, Math.min(1, Dist / Math.max(0.35, MaxR)));
+    const Seg = Math.floor(U * 5);
+    const Zig = (WebHash(ArmIdx * 31 + Seg * 7, 2) - 0.5) * 0.34 * Math.sin(U * Math.PI) + Math.sin(U * 11.5 * Freq + ArmIdx * 2.1) * 0.08;
+    if (!IsFork)
+    {
+        const Ang = BaseAng + Zig;
+        return [Hx + Math.cos(Ang) * Dist, Hz + Math.sin(Ang) * Dist, Ang];
+    }
+    const ForkStart = MaxR * (0.24 + 0.38 * WebHash(ArmIdx * 29 + 5, 3));
+    const FSign = (ArmIdx % 2 === 0) ? 1 : -1;
+    const ForkAng = BaseAng + FSign * (0.52 + 0.38 * WebHash(ArmIdx * 41 + 7, 4));
+    const TrunkR = Math.min(Dist, ForkStart);
+    const TrunkZig = (WebHash(ArmIdx * 31 + Math.floor((TrunkR / Math.max(0.35, MaxR)) * 5) * 7, 2) - 0.5) * 0.30;
+    const Jx = Hx + Math.cos(BaseAng + TrunkZig) * TrunkR;
+    const Jz = Hz + Math.sin(BaseAng + TrunkZig) * TrunkR;
+    const BDist = Math.max(0, Dist - ForkStart);
+    return [Jx + Math.cos(ForkAng) * BDist, Jz + Math.sin(ForkAng) * BDist, ForkAng];
 }
 
 function EvalCrackSlabsCPU(P, Cap, Time, HitX, HitZ, HitT)
 {
     const Org = P.origin || [0, 0, 0];
-    const Ex = Math.max(0.65, P.boxHalf?.[0] || 2.0), Ey = Math.max(0.06, P.boxHalf?.[1] || 0.14), Ez = Math.max(0.65, P.boxHalf?.[2] || 2.0);
+    const Ex = Math.max(0.85, P.boxHalf?.[0] || 2.35), Ey = Math.max(0.08, P.boxHalf?.[1] || 0.14), Ez = Math.max(0.85, P.boxHalf?.[2] || 2.35);
     const CrackMode = Math.max(1, Math.min(2, P.crackMode | 0));
-    const Side = Math.max(6, Math.round(Math.sqrt(Math.max(64, Cap * 0.72))));
-    const SlabCap = Math.min(Cap, Side * Side);
-    const CSpd = Math.max(0.05, P.crackSpeed ?? 2.6);
-    const CDepth = Math.max(0.05, P.crackDepth ?? 0.44);
+    const CSpd = Math.max(0.25, P.crackSpeed ?? 2.8);
+    const CDepth = Math.max(0.10, P.crackDepth ?? 0.55);
     const Freq = Math.max(0.3, P.curlFreq ?? 1.15);
     const HasHit = HitT !== undefined && HitT >= 0;
-    const TSince = HasHit ? Math.max(0, Time - HitT) : ((Time % 5.2) + 5.2) % 5.2;
+    const CycleLen = 4.8;
+    const TSince = HasHit ? Math.max(0, Time - HitT) : ((Time % CycleLen) + CycleLen) % CycleLen;
     const Hx = HasHit ? HitX : Org[0], Hz = HasHit ? HitZ : Org[2];
-    const WaveR = TSince * CSpd;
-    const Slabs = [];
+    const MaxR = Math.hypot(Ex, Ez) * 0.92;
+    const WaveR = Math.min(MaxR, TSince * CSpd);
+    const Shards = [];
     const Debris = [];
-    const CellW = (Ex * 2) / Side, CellD = (Ez * 2) / Side;
+    if (WaveR < 0.04) return { slabs: Shards, debris: Debris };
 
-    for (let I = 0; I < SlabCap; I++)
+    const ShardCap = Math.floor(Cap * 0.68);
+    const FloorY = Org[1] + Ey + 0.03;
+
+    for (let I = 0; I < Cap; I++)
     {
-        const Gx = I % Side, Gz = Math.floor(I / Side);
-        const Sd = I * 37 + 11;
-        const Jx = (WebHash(Sd, 1) - 0.5) * 0.62 * CellW;
-        const Jz = (WebHash(Sd, 2) - 0.5) * 0.62 * CellD;
-        const Wx = Org[0] - Ex + (Gx + 0.5) * CellW + Jx;
-        const Wz = Org[2] - Ez + (Gz + 0.5) * CellD + Jz;
-        const Rx = Wx - Hx, Rz = Wz - Hz;
-        const RDist = Math.hypot(Rx, Rz);
-        const Ang = Math.atan2(Rz, Rx);
-        const Meander = Math.sin(RDist * (3.2 * Freq) + (I % 5)) * 0.24;
-        const ArmSec = (((Ang + Meander) / (Math.PI * 2)) * 7.0 % 1 + 1) % 1;
-        const FaultLineD = Math.abs(ArmSec - 0.5) * RDist * 0.88;
-        const RingD = Math.min(Math.abs(RDist - Math.max(0.45, Ex * 0.42)), Math.abs(RDist - Ex * 0.78));
-        const FaultD = Math.min(FaultLineD, RingD * 1.15);
-        const FaultProx = Math.exp(-FaultD * 3.8);
-        const OpenF = Smooth(WaveR + 0.12, Math.max(0, WaveR - 0.78), RDist);
-        const Shock = Math.exp(-Math.pow((RDist - WaveR + 0.18) * 2.6, 2)) * 0.65;
-        const CrackAmt = Math.min(1, Math.max(0, OpenF * (0.35 + 0.85 * FaultProx)));
-        const Asym = ArmSec >= 0.5 ? 1 : -1;
-        const HeaveY = CrackAmt * CDepth * (0.45 * FaultProx - 0.18 * (1 - FaultProx) + Shock * 0.55) + 0.02;
-        const TiltAng = CrackAmt * (0.28 + 0.48 * FaultProx + Shock * 0.35) * Asym;
-        const SlabY = Math.max(0.015, Org[1] + Ey * 0.38 + HeaveY);
-        const SlabW = Math.max(CellW, CellD) * 0.54;
-        const StressGlow = Math.min(1, Math.max(0, CrackAmt * (0.35 + 0.75 * FaultProx + Shock * 0.8)));
-        const SpDirX = -Rz * Asym + Rx * 0.35, SpDirZ = Rx * Asym + Rz * 0.35;
-        const SpLen = Math.hypot(SpDirX, SpDirZ) || 1;
-        const Sep = CrackAmt * CDepth * 0.24 * FaultProx;
-        Slabs.push({
-            isSlab: true, crackMode: CrackMode, x: Wx + (SpDirX / SpLen) * Sep, y: SlabY, z: Wz + (SpDirZ / SpLen) * Sep,
-            w: SlabW, h: Ey, tilt: TiltAng, rx: Rx, rz: Rz, stress: StressGlow, faultProx: FaultProx, shock: Shock, seed: Sd, visibleStrand: true
-        });
+        const IsShard = I < ShardCap;
+        const Sd = I * 47 + 13;
+        const ArmIdx = I % 8;
+        const IsFork = (Math.floor(I / 8) % 3) === 2;
+        const SpawnFrac = 0.04 + 0.94 * WebHash(Sd, 1);
+        const SpawnR = SpawnFrac * MaxR;
+        const ArrivalT = SpawnR / CSpd;
+        const LocAge = TSince - ArrivalT;
+        const LifeD = IsShard ? (1.05 + 0.95 * WebHash(Sd, 2)) : (0.55 + 0.65 * WebHash(Sd, 2));
+        if (LocAge < 0 || LocAge > LifeD * 1.45) continue;
+
+        const Br = EvalCrackBranchPointCPU(Hx, Hz, ArmIdx, IsFork, SpawnR, MaxR, Freq);
+        if (Math.abs(Br[0] - Org[0]) > Ex * 0.98 || Math.abs(Br[1] - Org[2]) > Ez * 0.98) continue;
+
+        const T01 = Math.max(0, Math.min(1, LocAge / LifeD));
+        const PerpAng = Br[2] + Math.PI * 0.5;
+        const SideSign = WebHash(Sd, 3) > 0.5 ? 1 : -1;
+        const LatOff = (WebHash(Sd, 4) - 0.5) * 0.10;
+        const Sx = Br[0] + Math.cos(PerpAng) * LatOff;
+        const Sz = Br[1] + Math.sin(PerpAng) * LatOff;
+
+        if (IsShard)
+        {
+            const UpSpd = (1.05 + 2.10 * WebHash(Sd, 5)) * (0.55 + CDepth * 1.15) * (1.15 - 0.45 * SpawnFrac);
+            const SideSpd = (0.28 + 0.97 * WebHash(Sd, 6)) * SideSign;
+            const FwdSpd = 0.15 + 0.60 * WebHash(Sd, 7);
+            const Vx = Math.cos(PerpAng) * SideSpd + Math.cos(Br[2]) * FwdSpd;
+            const Vz = Math.sin(PerpAng) * SideSpd + Math.sin(Br[2]) * FwdSpd;
+            const Grav = CrackMode === 2 ? 8.8 : 7.4;
+            let Py = FloorY + UpSpd * LocAge - 0.5 * Grav * LocAge * LocAge;
+            const THit = (2 * UpSpd) / Grav;
+            let Px = Sx + Vx * LocAge;
+            let Pz = Sz + Vz * LocAge;
+            const SpinRate = (4.0 + 7.5 * WebHash(Sd, 8)) * SideSign;
+            let SpinAng = LocAge * SpinRate;
+            if (Py < FloorY && LocAge > THit)
+            {
+                const Tb = LocAge - THit;
+                const VB = UpSpd * 0.36;
+                Py = Math.max(FloorY, FloorY + VB * Tb - 0.5 * Grav * Tb * Tb);
+                Px = Sx + Vx * THit + Vx * 0.38 * Math.min(Tb, 0.55);
+                Pz = Sz + Vz * THit + Vz * 0.38 * Math.min(Tb, 0.55);
+                SpinAng = THit * SpinRate + Math.min(Tb, 0.45) * 3.2 * SideSign;
+            }
+            const ShSz = Math.max(0.035, (P.sizeStart || 0.16) * (P.sizeScale || 1) * (0.45 + 0.83 * WebHash(Sd, 9))) * (1 - 0.25 * T01);
+            const Alpha = Smooth(0, 0.06, T01) * (1 - Smooth(0.72, 1.0, T01)) * 0.96;
+            Shards.push({
+                isShard: true, crackMode: CrackMode,
+                x: Px, y: Py, z: Pz,
+                size: ShSz, rot: SpinAng, heat: 1 - SpawnFrac, alpha: Alpha, seed: Sd, visibleStrand: true
+            });
+        }
+        else
+        {
+            const UpSpdF = (0.65 + 1.80 * WebHash(Sd, 5)) * (0.65 + CDepth * 0.9);
+            const Drift = (WebHash(Sd, 6) - 0.5) * 1.3;
+            const Vx = Math.cos(PerpAng) * Drift + Math.cos(Br[2]) * 0.45;
+            const Vz = Math.sin(PerpAng) * Drift + Math.sin(Br[2]) * 0.45;
+            const GravF = CrackMode === 2 ? -0.65 : 2.1;
+            const Px = Sx + Vx * LocAge;
+            const Py = Math.max(FloorY, FloorY + 0.02 + UpSpdF * LocAge - 0.5 * GravF * LocAge * LocAge);
+            const Pz = Sz + Vz * LocAge;
+            const FSz = Math.max(0.018, (P.sizeStart || 0.16) * (P.sizeScale || 1) * (0.22 + 0.36 * WebHash(Sd, 8))) * (1 - 0.5 * T01);
+            const AlphaF = Smooth(0, 0.10, T01) * (1 - Smooth(0.45, 1.0, T01)) * 0.92;
+            Debris.push({
+                isShard: false, crackMode: CrackMode,
+                x: Px, y: Py, z: Pz,
+                size: FSz, rot: LocAge * 4.0, alpha: AlphaF, seed: Sd
+            });
+        }
     }
-    const DebTotal = Math.max(0, Cap - SlabCap);
-    for (let DIdx = 0; DIdx < DebTotal; DIdx++)
+    return { slabs: Shards, debris: Debris };
+}
+
+function EvalFlareSalvoCPU(P, Time, SampleWind)
+{
+    const Org = P.origin || [0, 3.8, 0];
+    const Cycle = Math.max(1.6, P.burstEvery || 2.6);
+    const Grav = Math.max(0.25, P.gravity || 0.72) * 5.2;
+    const Drag = Math.max(0.55, P.drag || 1.45);
+    const Buoy = Math.max(0.0, P.buoyancy || 0.45);
+    const WCoup = P.windCoupling ?? 1.0;
+    const W0 = SampleWind ? SampleWind(Org[0], Org[1], Org[2], Time) : [0.55, 0.0, 0.15];
+    const Wx = W0[0] * WCoup * 0.55, Wy = W0[1] * WCoup * 0.35 + Buoy * 0.45, Wz = W0[2] * WCoup * 0.55;
+
+    const FlareCount = 7;
+    const Flares = [];
+    const Sparks = [];
+    const SmokePuffs = [];
+
+    const EvalFlarePos = (FIdx, SalvoNum, Tau) => {
+        const Side = (FIdx & 1) === 0 ? -1 : 1;
+        const SSeed = SalvoNum * 97 + FIdx * 31 + 11;
+        const PodX = Org[0] + Side * 0.44;
+        const PodY = Org[1] - 0.08;
+        const PodZ = Org[2] + (WebHash(SSeed, 1) - 0.5) * 0.18;
+        const Fan = 0.65 + (FIdx % 4) * 0.18 + (WebHash(SSeed, 2) - 0.5) * 0.14;
+        const V0x = Side * (3.1 + 1.55 * Fan);
+        const V0y = -(1.15 + 0.95 * WebHash(SSeed, 3));
+        const V0z = -(1.95 + 1.25 * WebHash(SSeed, 4)) + (WebHash(SSeed, 5) - 0.5) * 0.85;
+        const ExpD = Math.exp(-Drag * Tau);
+        const IntD = (1 - ExpD) / Math.max(0.05, Drag);
+        const DriftT = Math.max(0, Tau - IntD) / Math.max(0.15, Drag);
+        let Px = PodX + V0x * IntD + Wx * Tau * 0.55 + Math.sin(Tau * 3.1 + FIdx * 1.9) * 0.06 * Tau;
+        let Py = PodY + V0y * IntD - Grav * DriftT + Math.cos(Tau * 2.7 + FIdx) * 0.04 * Tau;
+        let Pz = PodZ + V0z * IntD + Wz * Tau * 0.55;
+        const HitFloor = Py < 0.07;
+        if (HitFloor) Py = 0.07;
+        return { x: Px, y: Py, z: Pz, vx: V0x * ExpD, vy: V0y * ExpD - Grav * IntD, vz: V0z * ExpD, side: Side, seed: SSeed, hitFloor: HitFloor };
+    };
+
+    for (let F = 0; F < FlareCount; F++)
     {
-        const SdD = (SlabCap + DIdx) * 53 + 7;
-        const CycleD = 1.05 + 0.75 * WebHash(SdD, 1);
-        const Ph = (Time + WebHash(SdD, 2) * 4.0) / CycleD;
-        const LocAge = (Ph - Math.floor(Ph)) * CycleD;
-        const T01 = LocAge / CycleD;
-        const ArmIdx = Math.floor(WebHash(SdD + Math.floor(Ph), 3) * 7.0);
-        const ArmAng = (ArmIdx / 7.0) * Math.PI * 2 + (WebHash(SdD, 4) - 0.5) * 0.28;
-        const RFront = Math.max(0.12, Math.min(Math.hypot(Ex, Ez) * 0.96, WaveR * (0.68 + 0.36 * WebHash(SdD, 5))));
-        const Sx = Hx + Math.cos(ArmAng) * RFront, Sz = Hz + Math.sin(ArmAng) * RFront;
-        if (Math.abs(Sx - Org[0]) > Ex * 1.04 || Math.abs(Sz - Org[2]) > Ez * 1.04 || WaveR < 0.08) continue;
-        const UpSpd = (1.4 + 2.2 * WebHash(SdD, 6)) * (0.65 + 0.55 * CDepth * 2);
-        const OutSpd = 0.4 + WebHash(SdD, 7);
-        const Grav = CrackMode === 2 ? 6.8 : 5.2;
-        const Dy = Math.max(Org[1] + 0.04, Org[1] + 0.14 + UpSpd * LocAge - 0.5 * Grav * LocAge * LocAge);
-        Debris.push({
-            isSlab: false, crackMode: CrackMode,
-            x: Sx + Math.cos(ArmAng) * OutSpd * LocAge, y: Dy, z: Sz + Math.sin(ArmAng) * OutSpd * LocAge,
-            size: Math.max(0.035, (P.sizeStart || 0.22) * (0.28 + 0.37 * WebHash(SdD, 10))) * (1 - 0.45 * T01),
-            alpha: Smooth(0, 0.12, T01) * (1 - Smooth(0.55, 1.0, T01)) * 0.95, seed: SdD
+        const Stagger = F * 0.17;
+        const Shifted = Time - Stagger;
+        if (Shifted < 0) continue;
+        const SalvoNum = Math.floor(Shifted / Cycle);
+        const Age = Shifted - SalvoNum * Cycle;
+        const BurnLife = Cycle * 0.92;
+        if (Age < 0 || Age > BurnLife) continue;
+        const T01 = Age / BurnLife;
+
+        const Head = EvalFlarePos(F, SalvoNum, Age);
+        const Flicker = 0.82 + 0.18 * Math.sin(Time * 46 + F * 7.1) * Math.cos(Time * 29 + F * 3.3);
+        const CoreAlpha = Smooth(0, 0.03, T01) * (1 - Smooth(0.80, 1.0, T01));
+        const FlareSz = Math.max(0.08, (P.sizeStart || 0.24) * (P.sizeScale || 1)) * (1.0 - 0.35 * T01);
+
+        Flares.push({
+            x: Head.x, y: Head.y, z: Head.z,
+            size: FlareSz, alpha: CoreAlpha, flicker: Flicker,
+            t01: T01, seed: Head.seed, side: Head.side
         });
+
+        // Billowing curling smoke ribbon trail (16 volumetric puffs along trajectory history)
+        const SmokeSteps = 16;
+        const TrailSpan = Math.min(Age, 1.65);
+        for (let S = 0; S < SmokeSteps; S++)
+        {
+            const Frac = (S + 0.5) / SmokeSteps; // 0 = right behind flare head, 1 = oldest tail puff
+            const Delay = Frac * TrailSpan;
+            const TauEmit = Age - Delay;
+            if (TauEmit < 0.01) continue;
+            const Base = EvalFlarePos(F, SalvoNum, TauEmit);
+            // Curl turbulence + thermal buoyant rise + wind advection after release
+            const CurlPh = TauEmit * 2.4 + Delay * 1.9 + F * 1.7;
+            const PuffCurl = Math.pow(Delay, 1.15) * 0.38;
+            const Sx = Base.x + Wx * Delay * 0.95 + Math.sin(CurlPh * 1.7 + Base.y) * PuffCurl;
+            const Sy = Math.max(0.08, Base.y + Wy * Delay * 1.05 + Math.cos(CurlPh * 1.3 + Base.x) * PuffCurl * 0.55);
+            const Sz = Base.z + Wz * Delay * 0.95 + Math.sin(CurlPh * 1.4 - Base.z) * PuffCurl;
+            const PuffR = (0.14 + Math.pow(Delay, 0.82) * 0.62) * (0.85 + 0.30 * WebHash(Head.seed + S * 19, 3));
+            const SAlpha = Smooth(0.0, 0.08, Frac) * (1 - Smooth(0.42, 1.0, Frac)) * (1 - Smooth(0.84, 1.0, T01)) * 0.62;
+            if (SAlpha > 0.015)
+            {
+                SmokePuffs.push({
+                    x: Sx, y: Sy, z: Sz,
+                    r: PuffR, alpha: SAlpha, heat: Math.max(0, 1 - Frac * 4.5),
+                    ageFrac: Frac, seed: Head.seed + S * 23, rot: CurlPh * 0.7
+                });
+            }
+        }
+
+        // Cascading shower of incandescent molten slag sparks behind each flare head
+        const SparkN = 14;
+        for (let K = 0; K < SparkN; K++)
+        {
+            const SpCycle = 0.38 + 0.32 * WebHash(Head.seed + K * 13, 6);
+            const SpAge = ((Age + WebHash(Head.seed + K * 17, 7) * SpCycle) % SpCycle);
+            const SpEmitTau = Age - SpAge;
+            if (SpEmitTau < 0.01) continue;
+            const Orig = EvalFlarePos(F, SalvoNum, SpEmitTau);
+            const SpAng = WebHash(Head.seed + K * 29, 1) * Math.PI * 2;
+            const SpSpd = 0.65 + 1.95 * WebHash(Head.seed + K * 29, 2);
+            const Spx = Orig.x + (Math.cos(SpAng) * SpSpd + Orig.vx * 0.25) * SpAge;
+            const Spy = Orig.y + (0.45 + Math.sin(SpAng * 1.3) * 0.9) * SpAge - 0.5 * 8.2 * SpAge * SpAge;
+            const Spz = Orig.z + (Math.sin(SpAng) * SpSpd + Orig.vz * 0.25) * SpAge;
+            if (Spy < 0.03) continue;
+            const SpF = 1 - SpAge / SpCycle;
+            Sparks.push({
+                x: Spx, y: Spy, z: Spz,
+                px: Orig.x + (Math.cos(SpAng) * SpSpd + Orig.vx * 0.25) * Math.max(0, SpAge - 0.035),
+                py: Math.max(0.03, Orig.y + (0.45 + Math.sin(SpAng * 1.3) * 0.9) * Math.max(0, SpAge - 0.035) - 0.5 * 8.2 * Math.pow(Math.max(0, SpAge - 0.035), 2)),
+                pz: Orig.z + (Math.sin(SpAng) * SpSpd + Orig.vz * 0.25) * Math.max(0, SpAge - 0.035),
+                alpha: SpF * SpF * CoreAlpha,
+                size: 0.025 + 0.025 * SpF
+            });
+        }
     }
-    return { slabs: Slabs, debris: Debris };
+    return { flares: Flares, smoke: SmokePuffs, sparks: Sparks };
+}
+
+function EvalFireworkShowCPU(P, Sys, Cap, Dt, Time, BallX, BallY, BallZ, BallR, SampleWind, Glob = null)
+{
+    const Org = P.origin || [0, 0, 0];
+    const Cycle = Math.max(2.2, P.burstEvery || 3.1);
+    const ShellIdx = Math.floor(Time / Cycle);
+    const LocalT = Time - ShellIdx * Cycle;
+    const Phase = LocalT / Cycle;
+    const FwShape = Math.max(0, Math.min(9, P.fireworkShape | 0));
+    const FwText = String(P.fireworkText || '2026').trim().toUpperCase().slice(0, 28) || '2026';
+    const PatScale = Math.max(1.0, P.fireworkScale || 2.8);
+    const LaunchEnd = 0.22;
+
+    // Smooth deterministic sky burst apex matching ParticleEditor.js Advance()
+    const Hx = Math.sin(ShellIdx * 19.37 + 1.7) * 43758.5453;
+    const Hz = Math.sin(ShellIdx * 31.13 + 4.3) * 43758.5453;
+    const Rx = (Hx - Math.floor(Hx)) - 0.5;
+    const Rz = (Hz - Math.floor(Hz)) - 0.5;
+    const SpreadX = ((P.fireworkMode || 1) === 2 || FwShape === 1 || FwShape === 9) ? 1.8 : 4.2;
+    const SpreadZ = ((P.fireworkMode || 1) === 2 || FwShape === 1 || FwShape === 9) ? 1.2 : 2.8;
+    const BurstX = Org[0] + Rx * SpreadX;
+    const BurstY = Org[1] + 5.2 + 0.65 * Math.sin(ShellIdx * 2.17);
+    const BurstZ = Org[2] + Rz * SpreadZ;
+
+    // Pick mortar tube on the 5-tube rack matching ShellIdx % 5
+    const TubeX = Org[0] + ((ShellIdx % 5) - 2) * 0.26;
+    const TubeY = Org[1] + 0.56;
+    const TubeZ = Org[2];
+
+    const ShellKey = `${ShellIdx}:${FwShape}:${FwText}:${PatScale.toFixed(2)}`;
+    if (!Sys.fwState || Sys.fwState.key !== ShellKey)
+    {
+        const StarN = Math.max(120, Math.min(Cap, 420));
+        const Sampled = SampleFireworkShell(FwShape, FwText, StarN, ShellIdx);
+        const Stars = Sampled.points.map((S, Idx) => ({
+            // Target offsets in world units
+            tx: S.x * PatScale,
+            ty: S.y * PatScale,
+            tz: S.z * PatScale,
+            x: BurstX, y: BurstY, z: BurstZ,
+            vx: 0, vy: 0, vz: 0,
+            r: S.r, g: S.g, b: S.b,
+            role: S.role || 1,
+            delay: S.delay || 0,
+            isWillow: !!Sampled.isWillow,
+            hasStrobe: !!Sampled.hasStrobe,
+            seed: ShellIdx * 997 + Idx * 13 + 7,
+            launched: false,
+            impactT: -1,      // >= 0 once star touches floor or any object
+            impactPos: null,  // exact world contact position for 0.13s micro-flare pop
+            dead: false,      // true after 0.13s pop expires -> vanishes completely!
+            trail: []
+        }));
+        Sys.fwState = {
+            key: ShellKey,
+            shellIdx: ShellIdx,
+            activeMode: Sampled.activeMode,
+            label: Sampled.shellName,
+            burstX: BurstX, burstY: BurstY, burstZ: BurstZ,
+            tubeX: TubeX, tubeY: TubeY, tubeZ: TubeZ,
+            stars: Stars,
+            impactsTriggered: 0
+        };
+    }
+
+    const St = Sys.fwState;
+    const W0 = SampleWind ? SampleWind(BurstX, BurstY, BurstZ, Time) : [0.3, 0, 0.1];
+    const WCoup = (P.windCoupling ?? 0.55) * 0.45;
+    const Wx = W0[0] * WCoup, Wy = W0[1] * WCoup * 0.2, Wz = W0[2] * WCoup;
+    const Grav = Math.max(0.15, P.gravity || 0.42) * 3.85;
+    const Drag = Math.max(0.65, P.drag || 1.45);
+    const SafeDt = Math.max(0.001, Math.min(0.05, Dt || 1 / 60));
+
+    // Rocket ascent stage (Phase 0..LaunchEnd)
+    let Rocket = null;
+    if (Phase < LaunchEnd)
+    {
+        const U = Math.min(1, Phase / LaunchEnd);
+        const Ease = 1 - Math.pow(1 - U, 2.25);
+        const RxNow = TubeX + (BurstX - TubeX) * U + Math.sin(U * 14 + ShellIdx) * 0.08 * (1 - U);
+        const RyNow = TubeY + (BurstY - TubeY) * Ease;
+        const RzNow = TubeZ + (BurstZ - TubeZ) * U + Math.cos(U * 12 + ShellIdx) * 0.08 * (1 - U);
+        const Trail = [];
+        for (let K = 0; K < 12; K++)
+        {
+            const Uk = Math.max(0, U - K * 0.032);
+            const Ek = 1 - Math.pow(1 - Uk, 2.25);
+            Trail.push([
+                TubeX + (BurstX - TubeX) * Uk + Math.sin(Uk * 14 + ShellIdx) * 0.08 * (1 - Uk),
+                TubeY + (BurstY - TubeY) * Ek,
+                TubeZ + (BurstZ - TubeZ) * Uk + Math.cos(Uk * 12 + ShellIdx) * 0.08 * (1 - Uk)
+            ]);
+        }
+        Rocket = { x: RxNow, y: RyNow, z: RzNow, u: U, trail: Trail };
+    }
+
+    // Burst flash corona right at Phase = LaunchEnd..LaunchEnd+0.11
+    const FlashAlpha = Phase >= LaunchEnd ? Math.max(0, 1 - (Phase - LaunchEnd) / 0.12) : 0;
+
+    let AliveCount = Rocket ? 1 : 0;
+    const BurstAge = Math.max(0, LocalT - LaunchEnd * Cycle);
+    const BurstLife = Math.max(0.5, (1 - LaunchEnd) * Cycle);
+
+    if (Phase >= LaunchEnd)
+    {
+        const IsShapeOrText = St.activeMode >= 1 && St.activeMode <= 8;
+        const FloorY = 0.04;
+        for (let I = 0; I < St.stars.length; I++)
+        {
+            const Star = St.stars[I];
+            if (Star.dead) continue;
+
+            // STRICT USER RULE: if this firework star already touched the floor or an object,
+            // hold ONLY a quick 0.13s impact flare/pop micro-particle and then vanish immediately!
+            if (Star.impactT >= 0)
+            {
+                if (Time - Star.impactT >= 0.13)
+                {
+                    Star.dead = true;
+                    Star.trail.length = 0;
+                }
+                else
+                {
+                    AliveCount++;
+                }
+                continue;
+            }
+
+            const StarAge = BurstAge - Star.delay;
+            if (StarAge < 0) continue;
+
+            // Initialize velocity at exact star ignition
+            if (!Star.launched)
+            {
+                Star.launched = true;
+                Star.x = BurstX;
+                Star.y = BurstY;
+                Star.z = BurstZ;
+                // Compute initial impulse so exponential drag reaches the exact target offset (tx, ty, tz) cleanly!
+                const EffDrag = IsShapeOrText ? 2.35 : (Star.isWillow ? 1.15 : Drag);
+                const Gain = IsShapeOrText ? (EffDrag * 1.06) : (EffDrag * 1.12);
+                Star.vx = Star.tx * Gain;
+                Star.vy = Star.ty * Gain + (Star.isWillow ? 0.55 : 0.25);
+                Star.vz = Star.tz * Gain;
+                Star.trail = [[Star.x, Star.y, Star.z]];
+            }
+
+            // Advance star physics (drag + willow droop gravity + gentle wind)
+            const EffDrag = IsShapeOrText ? 2.35 : (Star.isWillow ? 1.15 : Drag);
+            const StarGrav = IsShapeOrText ? (Grav * 0.42) : (Star.isWillow ? Grav * 1.18 : Grav * 0.85);
+            const Damp = Math.exp(-EffDrag * SafeDt);
+            Star.vx = Star.vx * Damp + Wx * SafeDt;
+            Star.vy = Star.vy * Damp - StarGrav * SafeDt + Wy * SafeDt;
+            Star.vz = Star.vz * Damp + Wz * SafeDt;
+            Star.x += Star.vx * SafeDt;
+            Star.y += Star.vy * SafeDt;
+            Star.z += Star.vz * SafeDt;
+
+            // Record smooth drooping glitter ribbon trail
+            if (!Star.trail.length || Math.hypot(Star.x - Star.trail[0][0], Star.y - Star.trail[0][1], Star.z - Star.trail[0][2]) > 0.055)
+            {
+                Star.trail.unshift([Star.x, Star.y, Star.z]);
+                const MaxT = Star.isWillow ? 11 : (IsShapeOrText ? 6 : 8);
+                if (Star.trail.length > MaxT) Star.trail.length = MaxT;
+            }
+
+            // STRICT USER RULE — Floor & Object Impact Check!
+            // If firework star touches the floor OR the interactive 3D ball OR any studio solid object:
+            // trigger a quick 0.13s flare/pop micro-particle and disappear immediately (NO bounce, NO lingering)!
+            let HitObject = Star.y <= FloorY;
+            if (!HitObject && BallR > 0.04)
+            {
+                const Dx = Star.x - BallX, Dy = Star.y - BallY, Dz = Star.z - BallZ;
+                if (Dx * Dx + Dy * Dy + Dz * Dz <= (BallR + 0.14) * (BallR + 0.14))
+                    HitObject = true;
+            }
+            if (!HitObject && Glob && Glob[31] > 0.01)
+            {
+                const InvSc = 1.0 / Glob[31];
+                const Dx = (Star.x - Glob[35]) * InvSc;
+                const Dz = (Star.z - Glob[19]) * InvSc;
+                const Dy = Star.y * InvSc;
+                const Cy = Math.cos(Glob[23]), Sy = Math.sin(Glob[23]);
+                const Lx = Dx * Cy - Dz * Sy;
+                const Lz = Dx * Sy + Dz * Cy;
+                if (Math.abs(Lx) < 3.12 && Math.abs(Lz) < 1.22 && Dy > 0.05 && Dy < 1.85)
+                    HitObject = true;
+            }
+            if (HitObject)
+            {
+                Star.impactT = Time;
+                Star.impactPos = [Star.x, Math.max(FloorY, Star.y), Star.z];
+                Star.vx = 0; Star.vy = 0; Star.vz = 0;
+                Star.trail.length = 0; // immediately clear trail on contact
+                St.impactsTriggered++;
+                AliveCount++;
+                continue;
+            }
+
+            const LifeFrac = StarAge / BurstLife;
+            if (LifeFrac >= 1.0)
+            {
+                Star.dead = true;
+                Star.trail.length = 0;
+                continue;
+            }
+            AliveCount++;
+        }
+    }
+
+    return {
+        state: St,
+        rocket: Rocket,
+        flashAlpha: FlashAlpha,
+        phase: Phase,
+        burstAge: BurstAge,
+        burstLife: BurstLife,
+        aliveCount: AliveCount
+    };
 }
 
 function EvalBeadsCPU(P, Sys, Cap, Dt, Time, BallX, BallY, BallZ, BallR, BallVx, BallVy, BallVz, SampleWind, FieldScene, Prepared, Solo)
@@ -1093,42 +1667,58 @@ function EvalBeadsCPU(P, Sys, Cap, Dt, Time, BallX, BallY, BallZ, BallR, BallVx,
     const WaveSpd = Math.max(0.35, P.dynWaveSpeed ?? 1.8);
     const WCoup = P.windCoupling ?? 1.0;
 
+    const CalcRest = (I) => {
+        const U = (I + 0.5) / NStrands;
+        const Sd = I * 37 + 13;
+        let Top = [Org[0] + (U - 0.5) * Ex * 2, Org[1] + DropH, Org[2] + (WebHash(Sd, 1) - 0.5) * Ez * 0.65];
+        let DropLen = DropH * (0.72 + 0.24 * Math.cos((U * 2 - 1) * 1.45));
+        let WSize = WBase, IsSail = 0;
+        if (BMode === 2)
+        {
+            const CrownR = Math.max(0.32, P.radius || 0.56);
+            if (I === 0) { Top = [Org[0], Org[1] + DropH, Org[2]]; DropLen = DropH * 0.86; WSize = WBase * 1.55; IsSail = 1; }
+            else
+            {
+                const Tu = (I - 1) / Math.max(1, NStrands - 1);
+                const Ang = Tu * Math.PI * 2;
+                Top = [Org[0] + Math.cos(Ang) * CrownR, Org[1] + DropH, Org[2] + Math.sin(Ang) * CrownR];
+                DropLen = DropH * (0.30 + 0.42 * Tu);
+                WSize = WBase * 1.05;
+            }
+        }
+        else if (BMode === 3)
+        {
+            const PleatZ = Math.sin(I * 2.1) * Ez * 0.72;
+            Top = [Org[0] + (U - 0.5) * Ex * 2.05, Org[1] + DropH, Org[2] + PleatZ];
+            DropLen = Math.max(0.65, DropH - 0.08);
+            WSize = Math.max(WBase, (Ex * 2.25) / NStrands * 0.58);
+        }
+        return { Top, DropLen, WSize, IsSail, Sd };
+    };
+
     if (!Sys.particles || Sys.particles.length !== NStrands)
     {
         Sys.particles = [];
         for (let I = 0; I < NStrands; I++)
         {
-            const U = (I + 0.5) / NStrands;
-            const Sd = I * 37 + 13;
-            let Top = [Org[0] + (U - 0.5) * Ex * 2, Org[1] + DropH, Org[2] + (WebHash(Sd, 1) - 0.5) * Ez * 0.65];
-            let DropLen = DropH * (0.72 + 0.24 * Math.cos((U * 2 - 1) * 1.45));
-            let WSize = WBase, IsSail = 0;
-            if (BMode === 2)
-            {
-                const CrownR = Math.max(0.32, P.radius || 0.56);
-                if (I === 0) { Top = [Org[0], Org[1] + DropH, Org[2]]; DropLen = DropH * 0.86; WSize = WBase * 1.55; IsSail = 1; }
-                else
-                {
-                    const Tu = (I - 1) / Math.max(1, NStrands - 1);
-                    const Ang = Tu * Math.PI * 2;
-                    Top = [Org[0] + Math.cos(Ang) * CrownR, Org[1] + DropH, Org[2] + Math.sin(Ang) * CrownR];
-                    DropLen = DropH * (0.30 + 0.42 * Tu);
-                    WSize = WBase * 1.05;
-                }
-            }
-            else if (BMode === 3)
-            {
-                const PleatZ = Math.sin(I * 2.1) * Ez * 0.72;
-                Top = [Org[0] + (U - 0.5) * Ex * 2.05, Org[1] + DropH, Org[2] + PleatZ];
-                DropLen = Math.max(0.65, DropH - 0.08);
-                WSize = Math.max(WBase, (Ex * 2.25) / NStrands * 0.58);
-            }
+            const { Top, DropLen, WSize, IsSail, Sd } = CalcRest(I);
             const Trail = Array.from({ length: 20 }, (_, K) => [Top[0], Top[1] - (DropLen * K) / 19, Top[2]]);
             Sys.particles.push({
                 x: Top[0], y: Top[1] - DropLen * 0.5, z: Top[2],
                 topPos: Top, dropLen: DropLen, wSize: WSize, isSail: IsSail,
                 phase: WebHash(Sd, 2) * Math.PI * 2, impactFlash: 0, trail: Trail
             });
+        }
+    }
+    else
+    {
+        for (let I = 0; I < NStrands; I++)
+        {
+            const { Top, DropLen, WSize, IsSail } = CalcRest(I);
+            Sys.particles[I].topPos = Top;
+            Sys.particles[I].dropLen = DropLen;
+            Sys.particles[I].wSize = WSize;
+            Sys.particles[I].isSail = IsSail;
         }
     }
 
@@ -1205,6 +1795,16 @@ function EvalSeedHeadCPU(P, Sys, Cap, Dt, Time, BallX, BallY, BallZ, BallR, Ball
                 seed: Sd, size: (P.sizeStart || 0.09) * (P.sizeScale || 1) * (0.85 + 0.32 * WebHash(Sd, 2)),
                 trail: I < NStems ? Array.from({ length: 20 }, () => [Org[0], Org[1], Org[2]]) : null
             });
+        }
+    }
+    else
+    {
+        for (let I = 0; I < Cap; I++)
+        {
+            const Pt = Sys.particles[I];
+            Pt.isStem = I < NStems;
+            if (Pt.isStem && !Pt.trail) Pt.trail = Array.from({ length: 20 }, () => [Org[0], Org[1], Org[2]]);
+            Pt.size = (P.sizeStart || 0.09) * (P.sizeScale || 1) * (0.85 + 0.32 * WebHash(Pt.seed, 2));
         }
     }
 
@@ -1307,6 +1907,9 @@ function EvalSeedHeadCPU(P, Sys, Cap, Dt, Time, BallX, BallY, BallZ, BallR, Ball
                 const Fv = EvaluateForceFields(FieldScene, Prepared, [Pt.x, Pt.y, Pt.z], [Pt.vx, Pt.vy, Pt.vz], { time: Time, solo: Solo }).accel;
                 Pt.vx += Fv[0] * Dt; Pt.vy += Fv[1] * Dt; Pt.vz += Fv[2] * Dt;
             }
+            const Flt = 0.35 + (P.flutter ?? 0.5) * 0.85;
+            const Cfl = AnalyticCurl3(Pt.x * 0.9 + Time * 0.35, Pt.y * 0.9 + Time * 0.35, Pt.z * 0.9 + Time * 0.35);
+            Pt.vx += Cfl[0] * Flt * Dt; Pt.vy += Cfl[1] * Flt * Dt; Pt.vz += Cfl[2] * Flt * Dt;
             Pt.vy += (-(P.gravity ?? 0.2) + (P.buoyancy ?? 0.2)) * 9.81 * Dt;
             if (BallR > 0.04)
             {
@@ -1345,7 +1948,9 @@ function EvalJellyCPU(P, Cap, Time, BallX, BallY, BallZ, BallR, SampleWind, Fiel
     const ImpSq = Math.exp(-Math.pow(Math.min(Cyc, 1 - Cyc) * 14, 2));
     const SquashY = Math.max(0.62, Math.min(1.32, 1 - 0.34 * ImpSq + 0.09 * Math.sin(Time * JFreq)));
     const ExpXZ = 1 / Math.sqrt(Math.max(0.4, SquashY));
-    const W = SampleWind(Org[0], Org[1], Org[2]);
+    const WRaw = SampleWind(Org[0], Org[1], Org[2]);
+    const WCoup = P.windCoupling ?? 0.9;
+    const W = [WRaw[0] * WCoup, WRaw[1] * WCoup, WRaw[2] * WCoup];
     let FJ = [0, 0, 0];
     if (FieldScene && Prepared) FJ = EvaluateForceFields(FieldScene, Prepared, Org, [0, 0, 0], { time: Time, solo: Solo }).accel;
     const ComX = Org[0] + Math.max(-0.8, Math.min(0.8, (W[0] + FJ[0] * 0.25) * 0.08));
@@ -1467,7 +2072,7 @@ export class SoftwarePreviewEngine
             readbackCount: 0,
             particles: [],
             splashes: [],
-            cpu: new Float32Array(64),
+            cpu: new Float32Array(PE.SYS_FLOATS || 88),
             destroy() { this.particles.length = 0; this.splashes.length = 0; }
         };
         this.systems.push(Sys);
@@ -1552,6 +2157,9 @@ export class SoftwarePreviewEngine
         const BgR = Math.round(Math.min(1, clear[0] * 1.4) * 255);
         const BgG = Math.round(Math.min(1, clear[1] * 1.4) * 255);
         const BgB = Math.round(Math.min(1, clear[2] * 1.4) * 255);
+        // Always reset composite state before background clear so additive jobs can never accumulate white across frames!
+        Ctx.globalCompositeOperation = 'source-over';
+        Ctx.globalAlpha = 1;
         Ctx.fillStyle = `rgb(${BgR}, ${BgG}, ${BgB})`;
         Ctx.fillRect(0, 0, W, H);
 
@@ -1724,19 +2332,21 @@ export class SoftwarePreviewEngine
             const Dt = GlobalDt > 0 ? GlobalDt : ((Job.simulate && Job.emitN > 0) ? (Job.cpu?.[28] || 1 / 60) : 0);
             const Tr = P.kind === 5 ? (P.transition || null) : null;
             const HasArc = P.arcMode === 0 || P.arcMode === 1 || P.arcMode === 2 || P.arcMode === 3;
-            const CrackMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 ? Math.max(0, Math.min(2, P.crackMode | 0)) : 0;
-            const FerroMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && CrackMode === 0 ? Math.max(0, Math.min(2, P.ferroMode | 0)) : 0;
-            const MudMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && CrackMode === 0 && FerroMode === 0 ? Math.max(0, Math.min(3, P.mudSplashMode | 0)) : 0;
-            const BeadsMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 ? Math.max(0, Math.min(3, P.beadsMode | 0)) : 0;
-            const SeedHeadMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 && BeadsMode === 0 ? Math.max(0, Math.min(2, P.seedHeadMode | 0)) : 0;
-            const JellyMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 && BeadsMode === 0 && SeedHeadMode === 0 ? Math.max(0, Math.min(2, P.jellyMode | 0)) : 0;
-            const GridMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 && BeadsMode === 0 && SeedHeadMode === 0 && JellyMode === 0 ? Math.max(0, Math.min(2, P.gridMode | 0)) : 0;
-            const DynMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 && BeadsMode === 0 && SeedHeadMode === 0 && JellyMode === 0 && GridMode === 0 ? Math.max(0, Math.min(9, P.dynMode | 0)) : 0;
-            const WebMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 && BeadsMode === 0 && SeedHeadMode === 0 && JellyMode === 0 && GridMode === 0 && DynMode === 0 ? Math.max(0, Math.min(2, P.webMode | 0)) : 0;
-            const CurlMode = JellyMode > 0 ? 21 : (SeedHeadMode > 0 ? 20 : (BeadsMode > 0 ? 19 : (CrackMode > 0 ? 18 : (FerroMode > 0 ? 17 : (MudMode > 0 ? 16 : (GridMode > 0 ? 13 : (DynMode > 0 ? (DynMode <= 7 ? 5 + DynMode : 6 + DynMode) : (WebMode > 0 ? (3 + WebMode) : (P.curlMode || 0)))))))));
+            const FireworkMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 ? Math.max(0, Math.min(2, P.fireworkMode | 0)) : 0;
+            const FlareMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && FireworkMode === 0 ? Math.max(0, Math.min(2, P.flareMode | 0)) : 0;
+            const CrackMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && FireworkMode === 0 && FlareMode === 0 ? Math.max(0, Math.min(2, P.crackMode | 0)) : 0;
+            const FerroMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && FireworkMode === 0 && FlareMode === 0 && CrackMode === 0 ? Math.max(0, Math.min(2, P.ferroMode | 0)) : 0;
+            const MudMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && FireworkMode === 0 && FlareMode === 0 && CrackMode === 0 && FerroMode === 0 ? Math.max(0, Math.min(3, P.mudSplashMode | 0)) : 0;
+            const BeadsMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && FireworkMode === 0 && FlareMode === 0 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 ? Math.max(0, Math.min(3, P.beadsMode | 0)) : 0;
+            const SeedHeadMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && FireworkMode === 0 && FlareMode === 0 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 && BeadsMode === 0 ? Math.max(0, Math.min(2, P.seedHeadMode | 0)) : 0;
+            const JellyMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && FireworkMode === 0 && FlareMode === 0 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 && BeadsMode === 0 && SeedHeadMode === 0 ? Math.max(0, Math.min(2, P.jellyMode | 0)) : 0;
+            const GridMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && FireworkMode === 0 && FlareMode === 0 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 && BeadsMode === 0 && SeedHeadMode === 0 && JellyMode === 0 ? Math.max(0, Math.min(2, P.gridMode | 0)) : 0;
+            const DynMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && FireworkMode === 0 && FlareMode === 0 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 && BeadsMode === 0 && SeedHeadMode === 0 && JellyMode === 0 && GridMode === 0 ? Math.max(0, Math.min(9, P.dynMode | 0)) : 0;
+            const WebMode = !Tr && !HasArc && !(P.beamMode > 0) && P.kind !== 6 && FireworkMode === 0 && FlareMode === 0 && CrackMode === 0 && FerroMode === 0 && MudMode === 0 && BeadsMode === 0 && SeedHeadMode === 0 && JellyMode === 0 && GridMode === 0 && DynMode === 0 ? Math.max(0, Math.min(2, P.webMode | 0)) : 0;
+            const CurlMode = FireworkMode > 0 ? 23 : (FlareMode > 0 ? 22 : (JellyMode > 0 ? 21 : (SeedHeadMode > 0 ? 20 : (BeadsMode > 0 ? 19 : (CrackMode > 0 ? 18 : (FerroMode > 0 ? 17 : (MudMode > 0 ? 16 : (GridMode > 0 ? 13 : (DynMode > 0 ? (DynMode <= 7 ? 5 + DynMode : 6 + DynMode) : (WebMode > 0 ? (3 + WebMode) : (P.curlMode || 0)))))))))));
             if (Job.simulate && Dt > 0)
             {
-                const MaxSoft = CrackMode > 0 ? Math.min(Sys.cap, 580) : (FerroMode > 0 ? Math.min(Sys.cap, 560) : (BeadsMode > 0 ? Math.min(Sys.cap, 280) : (SeedHeadMode > 0 ? Math.min(Sys.cap, 480) : (JellyMode > 0 ? Math.min(Sys.cap, 440) : (GridMode > 0 ? Math.min(Sys.cap, 1600) : ((WebMode > 0 || DynMode > 0) ? Sys.cap : (MudMode > 0 ? Math.min(Sys.cap, 260) : (Tr ? Math.min(Sys.cap, 384) : (CurlMode === 3 ? Math.min(Sys.cap, 520) : (CurlMode > 0 ? Math.min(Sys.cap, 1250) : Math.min(Sys.cap, 360)))))))))));
+                const MaxSoft = FireworkMode > 0 ? Math.min(Sys.cap, 440) : (FlareMode > 0 ? Math.min(Sys.cap, 360) : (CrackMode > 0 ? Math.min(Sys.cap, 640) : (FerroMode > 0 ? Math.min(Sys.cap, 760) : (BeadsMode > 0 ? Math.min(Sys.cap, 280) : (SeedHeadMode > 0 ? Math.min(Sys.cap, 480) : (JellyMode > 0 ? Math.min(Sys.cap, 440) : (GridMode > 0 ? Math.min(Sys.cap, 1600) : ((WebMode > 0 || DynMode > 0) ? Sys.cap : (MudMode > 0 ? Math.min(Sys.cap, 260) : (Tr ? Math.min(Sys.cap, 384) : (CurlMode === 3 ? Math.min(Sys.cap, 520) : (CurlMode > 0 ? Math.min(Sys.cap, 1250) : Math.min(Sys.cap, 360)))))))))))));
                 const BHx = P.boxHalf?.[0] || 0.8, BHy = P.boxHalf?.[1] || BHx, BHz = P.boxHalf?.[2] || BHx;
                 if (MudMode > 0)
                 {
@@ -1767,7 +2377,28 @@ export class SoftwarePreviewEngine
                     }
                     StepShallowWaterCPU(Swe, Dt);
                 }
-                if (BeadsMode > 0)
+                if (FireworkMode > 0)
+                {
+                    if (Job.emitN > 0 || Sys.fwSeeded || Sys.fwFrame)
+                    {
+                        Sys.fwSeeded = true;
+                        Sys.fwFrame = EvalFireworkShowCPU(P, Sys, MaxSoft, Dt, Time, BallX, BallY, BallZ, BallR, SampleWind, glob);
+                    }
+                    Sys.stats_ = { alive: Sys.fwFrame?.aliveCount || 0, energy: 0, A: 0, B: 0, C: 0 };
+                    Sys.readbackCount++;
+                }
+                else if (FlareMode > 0)
+                {
+                    if (Job.emitN > 0 || Sys.flareSeeded || Sys.flareFrame)
+                    {
+                        Sys.flareSeeded = true;
+                        Sys.flareFrame = EvalFlareSalvoCPU(P, Time, SampleWind);
+                    }
+                    const FF = Sys.flareFrame;
+                    Sys.stats_ = { alive: FF ? (FF.flares.length + FF.smoke.length + FF.sparks.length) : 0, energy: 0, A: 0, B: 0, C: 0 };
+                    Sys.readbackCount++;
+                }
+                else if (BeadsMode > 0)
                 {
                     if (Job.emitN > 0 || Sys.particles.length > 0)
                         EvalBeadsCPU(P, Sys, MaxSoft, Dt, Time, BallX, BallY, BallZ, BallR, BallVx, BallVy, BallVz, SampleWind, fieldScene, Prepared, Solo);
@@ -1790,8 +2421,9 @@ export class SoftwarePreviewEngine
                 }
                 else if (CrackMode > 0)
                 {
-                    if (Job.emitN > 0 || Sys.particles.length > 0)
+                    if (Job.emitN > 0 || Sys.crackSeeded || Sys.particles.length > 0)
                     {
+                        Sys.crackSeeded = true;
                         const HitX = Job.cpu ? Job.cpu[50] : P.origin[0];
                         const HitZ = Job.cpu ? Job.cpu[51] : P.origin[2];
                         const HitT = Job.cpu ? Job.cpu[52] : -1;
@@ -2066,7 +2698,9 @@ export class SoftwarePreviewEngine
                                 const Sp = (P.speedMin || 1) + Math.random() * Math.max(0.1, (P.speedMax || 3) - (P.speedMin || 1));
                                 if ((P.arcMode | 0) >= 2)
                                 {
-                                    const Capt = BallR > 0.04 && Math.hypot(BallX - P.origin[0], BallY - P.origin[1], BallZ - P.origin[2]) < RadA + 2.6;
+                                    const CageX = P.arcMode === 3 ? BHx * 0.92 : RadA * 0.85;
+                                    const CageZ = P.arcMode === 3 ? BHz * 0.92 : RadA * 0.85;
+                                    const Capt = BallR > 0.04 && Math.hypot(BallX - P.origin[0], BallY - P.origin[1], BallZ - P.origin[2]) < Math.max(RadA, BHx) + 2.6;
                                     if (Capt && Math.random() < 0.42)
                                     {
                                         Px = BallX + Jx * (BallR * 1.04); SpawnY = BallY + Jy * (BallR * 1.04); Pz = BallZ + Jz * (BallR * 1.04);
@@ -2075,11 +2709,11 @@ export class SoftwarePreviewEngine
                                     else
                                     {
                                         const AngN = Math.floor(Math.random() * 8) * 0.785398 + Time * 0.18;
-                                        const YB = P.arcMode === 3 ? (Math.random() - 0.5) * RadA * 0.9 : 0;
+                                        const YB = P.arcMode === 3 ? (Math.random() - 0.5) * BHy * 1.85 : 0;
                                         const RingP = Math.random() < 0.75;
-                                        Px = P.origin[0] + (RingP ? Math.cos(AngN) * RadA * 0.85 : 0) + Jx * 0.08;
+                                        Px = P.origin[0] + (RingP ? Math.cos(AngN) * CageX : 0) + Jx * 0.08;
                                         SpawnY = P.origin[1] + (RingP ? YB : 0) + Jy * 0.08;
-                                        Pz = P.origin[2] + (RingP ? Math.sin(AngN) * RadA * 0.85 : 0) + Jz * 0.08;
+                                        Pz = P.origin[2] + (RingP ? Math.sin(AngN) * CageZ : 0) + Jz * 0.08;
                                         Vx = Jx * Sp * 0.85; Vy = Jy * Sp * 0.85; Vz = Jz * Sp * 0.85;
                                     }
                                 }
@@ -2117,6 +2751,8 @@ export class SoftwarePreviewEngine
                             if ((P.beamMode || 0) > 0)
                             {
                                 const Tp = P.targetPos || [P.origin[0] + 4, P.origin[1], P.origin[2]];
+                                const RadA = Math.max(0.04, P.radius || 0.45);
+                                const RadB = Math.max(0.04, P.targetRadius || 0.45);
                                 let Dx = Tp[0] - P.origin[0], Dy = Tp[1] - P.origin[1], Dz = Tp[2] - P.origin[2];
                                 const DL = Math.hypot(Dx, Dy, Dz) || 1;
                                 Dx /= DL; Dy /= DL; Dz /= DL;
@@ -2129,14 +2765,14 @@ export class SoftwarePreviewEngine
                                 {
                                     let Sx = -Dx * 0.78 + Jx * 0.62, Sy = -Dy * 0.78 + Jy * 0.62, Sz = -Dz * 0.78 + Jz * 0.62;
                                     const SL = Math.hypot(Sx, Sy, Sz) || 1;
-                                    Px = Tp[0] + (Sx / SL) * 0.04; SpawnY = Tp[1] + (Sy / SL) * 0.04; Pz = Tp[2] + (Sz / SL) * 0.04;
+                                    Px = Tp[0] + (Sx / SL) * (RadB * 0.35 + 0.04); SpawnY = Tp[1] + (Sy / SL) * (RadB * 0.35 + 0.04); Pz = Tp[2] + (Sz / SL) * (RadB * 0.35 + 0.04);
                                     Vx = (Sx / SL) * Sp; Vy = (Sy / SL) * Sp; Vz = (Sz / SL) * Sp;
                                 }
                                 else if (Sel < 0.74)
                                 {
                                     let Mx = Dx * 0.68 + Jx * 0.72, My = Dy * 0.68 + Jy * 0.72, Mz = Dz * 0.68 + Jz * 0.72;
                                     const ML = Math.hypot(Mx, My, Mz) || 1;
-                                    Px = P.origin[0] + (Mx / ML) * 0.04; SpawnY = P.origin[1] + (My / ML) * 0.04; Pz = P.origin[2] + (Mz / ML) * 0.04;
+                                    Px = P.origin[0] + (Mx / ML) * (RadA * 0.25 + 0.04); SpawnY = P.origin[1] + (My / ML) * (RadA * 0.25 + 0.04); Pz = P.origin[2] + (Mz / ML) * (RadA * 0.25 + 0.04);
                                     Vx = (Mx / ML) * Sp * 0.72; Vy = (My / ML) * Sp * 0.72; Vz = (Mz / ML) * Sp * 0.72;
                                     Life *= 0.65;
                                 }
@@ -2466,6 +3102,18 @@ export class SoftwarePreviewEngine
                                     AnchorA = [TrNode[0], TrNode[1], TrNode[2]];
                                     AnchorB = [St.pB[0] + Dx * 1.35, St.pB[1] + Dy * 1.35, St.pB[2] + Dz * 1.35];
                                     TrunkShake = Math.max(TrunkShake, Math.hypot(Dx, Dy, Dz));
+                                }
+                            }
+                            if (DynMode === 8 && St.role === 'kelpFrond' && St.stalkIdx != null)
+                            {
+                                const Stalk = Sys.particles[St.stalkIdx];
+                                if (Stalk && Stalk.trail)
+                                {
+                                    const KNode = Math.min(19, Math.max(0, Math.round(St.anchorHU * 19)));
+                                    const SkNode = Stalk.trail[KNode];
+                                    const Dx = SkNode[0] - St.pA[0], Dy = SkNode[1] - St.pA[1], Dz = SkNode[2] - St.pA[2];
+                                    AnchorA = [SkNode[0], SkNode[1], SkNode[2]];
+                                    AnchorB = [St.pB[0] + Dx, St.pB[1] + Dy, St.pB[2] + Dz];
                                 }
                             }
 
@@ -2928,12 +3576,13 @@ export class SoftwarePreviewEngine
                             const MudMist = MudMode > 0 && Pt.mudRole === 2;
                             const MudClod = MudMode > 0 && Pt.mudRole === 1;
                             const GravMul = MudMist ? 0.38 : (MudClod ? 1.24 : 1.0);
+                            const BuoyMul = MudMode > 0 ? (MudMist ? 1.0 : 0.25) : 1.0;
                             const DragMul = MudMist ? 2.35 : 1.0;
                             const Coup = Math.min(1, (P.windCoupling || 0) * CGain * (MudMist ? 1.8 : 1.0) * Dt);
                             const CoupEff = (FlowMag > 0.05 || P.kind !== 0) ? Coup : Coup * 0.12;
                             const AccelGain = PShape === 7 ? 2.4 : (PShape === 0 && (P.gravity || 0) > 0.4 ? 1.35 : 1.0);
                             Pt.vx += (F.Velocity[0] * WindScale - Pt.vx) * CoupEff + F.Acceleration[0] * AccelGain * Dt;
-                            Pt.vy += (F.Velocity[1] * WindScale - Pt.vy) * CoupEff + (F.Acceleration[1] * AccelGain + (P.buoyancy || 0) - (P.gravity || 0) * 9.81 * GravMul) * Dt;
+                            Pt.vy += (F.Velocity[1] * WindScale - Pt.vy) * CoupEff + (F.Acceleration[1] * AccelGain + (P.buoyancy || 0) * BuoyMul - (P.gravity || 0) * 9.81 * GravMul) * Dt;
                             Pt.vz += (F.Velocity[2] * WindScale - Pt.vz) * CoupEff + F.Acceleration[2] * AccelGain * Dt;
                             const Keep = Math.exp(-(P.drag || 0) * DragMul * Dt) * Math.exp(-(F.Damping || 0) * Dt);
                             Pt.vx *= Keep; Pt.vy *= Keep; Pt.vz *= Keep;
@@ -2947,10 +3596,11 @@ export class SoftwarePreviewEngine
                             const MudMist = MudMode > 0 && Pt.mudRole === 2;
                             const MudClod = MudMode > 0 && Pt.mudRole === 1;
                             const GravMul = MudMist ? 0.38 : (MudClod ? 1.24 : 1.0);
+                            const BuoyMul = MudMode > 0 ? (MudMist ? 1.0 : 0.25) : 1.0;
                             const DragMul = MudMist ? 2.35 : 1.0;
                             const Coup = Math.min(1, (P.windCoupling || 0) * CGain * (MudMist ? 1.8 : 1.0) * Dt);
                             Pt.vx += (Wind[0] - Pt.vx) * Coup;
-                            Pt.vy += (Wind[1] - Pt.vy) * Coup + ((P.buoyancy || 0) - (P.gravity || 0) * 9.81 * GravMul) * Dt;
+                            Pt.vy += (Wind[1] - Pt.vy) * Coup + ((P.buoyancy || 0) * BuoyMul - (P.gravity || 0) * 9.81 * GravMul) * Dt;
                             Pt.vz += (Wind[2] - Pt.vz) * Coup;
                             const Damp = Math.exp(-(P.drag || 0) * DragMul * Dt);
                             Pt.vx *= Damp; Pt.vy *= Damp; Pt.vz *= Damp;
@@ -3115,7 +3765,12 @@ export class SoftwarePreviewEngine
                                 else
                                 {
                                     const Slip = ForceMag >= 0.35 ? 0.96 : 0.80;
-                                    Pt.vx *= Slip; Pt.vy = 0; Pt.vz *= Slip; Pt.spin *= 0.35;
+                                    Pt.vx *= Slip * Math.exp(-2.5 * Dt);
+                                    Pt.vy = 0;
+                                    Pt.vz *= Slip * Math.exp(-2.5 * Dt);
+                                    Pt.spin *= 0.35;
+                                    if (!Pt.landedAt) Pt.landedAt = Pt.age;
+                                    Pt.life = Math.max(Pt.life, 180.0);
                                 }
                             }
                             else if (P.kind === 1) { Pt.vx *= 0.55; Pt.vy = 0; Pt.vz *= 0.55; }
@@ -3140,7 +3795,7 @@ export class SoftwarePreviewEngine
                         }
                     }
                 }
-                if (CrackMode === 0 && FerroMode === 0 && BeadsMode === 0 && SeedHeadMode === 0 && JellyMode === 0 && GridMode === 0)
+                if (FireworkMode === 0 && FlareMode === 0 && CrackMode === 0 && FerroMode === 0 && BeadsMode === 0 && SeedHeadMode === 0 && JellyMode === 0 && GridMode === 0)
                 {
                     if (WebMode > 0 || DynMode > 0)
                     {
@@ -3160,6 +3815,8 @@ export class SoftwarePreviewEngine
 
             if (Job.draw)
             {
+                Ctx.globalCompositeOperation = 'source-over';
+                Ctx.globalAlpha = 1;
                 const Additive = !Job.alpha;
                 if (Additive) Ctx.globalCompositeOperation = 'lighter';
                 const Shape = P.shape ?? 3;
@@ -3188,6 +3845,7 @@ export class SoftwarePreviewEngine
                 {
                     const BMode = Math.max(1, Math.min(3, P.beadsMode | 0));
                     const ColC = P.colC || P.colB;
+                    const UseRampB = HasCustomRamp(P);
                     const MixRgb = (A, B, U) => [A[0] + (B[0] - A[0]) * U, A[1] + (B[1] - A[1]) * U, A[2] + (B[2] - A[2]) * U];
                     const Strands = (Sys.particles || []).map(Pt => {
                         const ScMid = ProjectPoint(VP, Pt.x, Pt.y, Pt.z, W, H);
@@ -3200,14 +3858,14 @@ export class SoftwarePreviewEngine
                         for (let K = 0; K < 20; K++)
                         {
                             const Pr = ProjectPoint(VP, Pt.trail[K][0], Pt.trail[K][1], Pt.trail[K][2], W, H);
-                            if (Pr) Pts2.push({ p: Pr, u: K / 19 });
+                            if (Pr) Pts2.push({ p: Pr, u: K / 19, w3: Pt.trail[K] });
                         }
                         if (Pts2.length < 2) continue;
                         const BasePx = Math.max(1.5, (Pt.wSize * (P.sizeScale || 1) * 240) / Math.max(1.8, It.d));
                         const Flash = Math.min(1, Pt.impactFlash * 0.65);
                         if (BMode === 1)
                         {
-                            Ctx.strokeStyle = LinearToCss(P.colA, 0.72);
+                            Ctx.strokeStyle = LinearToCss(UseRampB ? EvalRampCol(P, 0, Pt.x, Pt.y, Pt.z, 0, 0, 0, Time, 1e9, Pt.wSize, 0, Pt.phase, CamX, CamY, CamZ, Time) : P.colA, 0.72);
                             Ctx.lineWidth = Math.max(1.0, BasePx * 0.2);
                             Ctx.beginPath();
                             Ctx.moveTo(Pts2[0].p[0], Pts2[0].p[1]);
@@ -3216,8 +3874,10 @@ export class SoftwarePreviewEngine
                             for (let B = 1; B <= 12; B++)
                             {
                                 const K = Math.min(Pts2.length - 1, Math.round((B / 12) * (Pts2.length - 1)));
-                                const Bp = Pts2[K].p, U = Pts2[K].u;
-                                const BCol = MixRgb(MixRgb(P.colA, ColC, U), P.colB, Math.min(1, Flash + (U > 0.55 ? 0.35 : 0)));
+                                const Bp = Pts2[K].p, U = Pts2[K].u, W3 = Pts2[K].w3;
+                                const BCol = UseRampB
+                                    ? EvalRampCol(P, Math.min(1, U + Flash * 0.25), W3[0], W3[1], W3[2], 0, 0, 0, Time, 1e9, Pt.wSize, 0, B, CamX, CamY, CamZ, Time)
+                                    : MixRgb(MixRgb(P.colA, ColC, U), P.colB, Math.min(1, Flash + (U > 0.55 ? 0.35 : 0)));
                                 Ctx.fillStyle = LinearToCss(BCol, 0.94);
                                 Ctx.beginPath();
                                 Ctx.arc(Bp[0], Bp[1], Math.max(2.2, BasePx * 0.72), 0, Math.PI * 2);
@@ -3237,7 +3897,9 @@ export class SoftwarePreviewEngine
                             Ctx.moveTo(Pts2[0].p[0], Pts2[0].p[1]);
                             for (let K = 1; K <= CordEnd; K++) Ctx.lineTo(Pts2[K].p[0], Pts2[K].p[1]);
                             Ctx.stroke();
-                            const TCol = MixRgb(ColC, P.colB, Math.min(1, 0.25 + Flash * 0.85));
+                            const TCol = UseRampB
+                                ? EvalRampCol(P, Math.min(1, 0.35 + Flash * 0.65), Pt.x, Pt.y, Pt.z, 0, 0, 0, Time, 1e9, Pt.wSize, 0, Pt.phase, CamX, CamY, CamZ, Time)
+                                : MixRgb(ColC, P.colB, Math.min(1, 0.25 + Flash * 0.85));
                             Ctx.strokeStyle = LinearToCss(TCol, 0.96);
                             Ctx.lineCap = 'round';
                             Ctx.lineWidth = Math.max(3.0, BasePx * (Pt.isSail ? 1.55 : 1.05));
@@ -3248,7 +3910,10 @@ export class SoftwarePreviewEngine
                         }
                         else
                         {
-                            Ctx.strokeStyle = LinearToCss(MixRgb(P.colA, ColC, 0.68), 0.94);
+                            const DCol = UseRampB
+                                ? EvalRampCol(P, 0.5, Pt.x, Pt.y, Pt.z, 0, 0, 0, Time, 1e9, Pt.wSize, 0, Pt.phase, CamX, CamY, CamZ, Time)
+                                : MixRgb(P.colA, ColC, 0.68);
+                            Ctx.strokeStyle = LinearToCss(DCol, 0.94);
                             Ctx.lineCap = 'round';
                             Ctx.lineWidth = Math.max(4.0, BasePx * 1.45);
                             Ctx.beginPath();
@@ -3264,7 +3929,7 @@ export class SoftwarePreviewEngine
                 {
                     const SMode = Math.max(1, Math.min(2, P.seedHeadMode | 0));
                     const ColC = P.colC || P.colB;
-                    const MixRgb = (A, B, U) => [A[0] + (B[0] - A[0]) * U, A[1] + (B[1] - A[1]) * U, A[2] + (B[2] - A[2]) * U];
+                    const UseRampS = HasCustomRamp(P);
                     for (const Pt of (Sys.particles || []))
                     {
                         if (!Pt.isStem || !Pt.trail) continue;
@@ -3275,7 +3940,8 @@ export class SoftwarePreviewEngine
                             if (Pr) Pts2.push(Pr);
                         }
                         if (Pts2.length < 2) continue;
-                        Ctx.strokeStyle = LinearToCss(P.colA, 0.92);
+                        const SCol = UseRampS ? EvalRampCol(P, 0.12, Pt.x, Pt.y, Pt.z, 0, 0, 0, Time, 1e9, Pt.size, 0, Pt.seed, CamX, CamY, CamZ, Time) : P.colA;
+                        Ctx.strokeStyle = LinearToCss(SCol, 0.92);
                         Ctx.lineCap = 'round';
                         Ctx.lineWidth = SMode === 2 ? 4.2 : 2.2;
                         Ctx.beginPath();
@@ -3293,7 +3959,9 @@ export class SoftwarePreviewEngine
                         const R = Math.max(2.6, (S.size * 220) / Math.max(1.8, P2[2]));
                         const Alpha = S.detAge > 0.05 ? Math.max(0, 1 - SmoothT(0.75, 1.0, Math.min(1, S.detAge / 12.5))) : 0.96;
                         if (Alpha <= 0.01) continue;
-                        const Col = S.detAge > 0.05 ? P.colB : ColC;
+                        const Col = UseRampS
+                            ? EvalRampCol(P, S.detAge > 0.05 ? 1 - Math.min(1, S.detAge / 12.5) * 0.55 : 0.65, S.x, S.y, S.z, S.vx, S.vy, S.vz, S.detAge, 12.5, S.size, S.spin, S.seed, CamX, CamY, CamZ, Time)
+                            : (S.detAge > 0.05 ? P.colB : ColC);
                         Ctx.save();
                         Ctx.translate(P2[0], P2[1]);
                         Ctx.rotate(S.spin);
@@ -3309,7 +3977,7 @@ export class SoftwarePreviewEngine
                                 Ctx.lineTo(Math.cos(A) * R, Math.sin(A) * R);
                             }
                             Ctx.stroke();
-                            Ctx.fillStyle = LinearToCss(P.colB, Alpha);
+                            Ctx.fillStyle = LinearToCss(UseRampS ? Col : P.colB, Alpha);
                             Ctx.beginPath();
                             Ctx.arc(0, 0, Math.max(1.2, R * 0.28), 0, Math.PI * 2);
                             Ctx.fill();
@@ -3337,6 +4005,7 @@ export class SoftwarePreviewEngine
                 if (JellyMode > 0)
                 {
                     const ColC = P.colC || P.colB;
+                    const UseRampJ = HasCustomRamp(P);
                     const MixRgb = (A, B, U) => [A[0] + (B[0] - A[0]) * U, A[1] + (B[1] - A[1]) * U, A[2] + (B[2] - A[2]) * U];
                     const Nodes = [];
                     for (const It of (Sys.particles || []))
@@ -3348,7 +4017,10 @@ export class SoftwarePreviewEngine
                             const B = ProjectPoint(VP, It.tx, It.ty, It.tz, W, H);
                             if (!A || !M || !B) continue;
                             const Wpx = Math.max(1.8, (It.sz * 240) / Math.max(1.8, M[2]));
-                            Ctx.strokeStyle = LinearToCss(MixRgb(ColC, P.colB, It.stretch * 0.6), 0.85);
+                            const TCol = UseRampJ
+                                ? EvalRampCol(P, Math.min(1, 0.45 + It.stretch * 0.48), It.tx, It.ty, It.tz, 0, 0, 0, Time, 1e9, It.sz, 0, 0, CamX, CamY, CamZ, Time)
+                                : MixRgb(ColC, P.colB, It.stretch * 0.6);
+                            Ctx.strokeStyle = LinearToCss(TCol, 0.85);
                             Ctx.lineCap = 'round';
                             Ctx.lineWidth = Wpx;
                             Ctx.beginPath();
@@ -3367,7 +4039,9 @@ export class SoftwarePreviewEngine
                     {
                         const It = N.it, Sc = N.p;
                         const PrR = Math.max(3.0, (It.sz * 260) / Math.max(1.8, Sc[2]));
-                        const JCol = MixRgb(P.colA, ColC, Math.min(1, 0.35 + 0.55 * It.rShell + 0.25 * It.imp));
+                        const JCol = UseRampJ
+                            ? EvalRampCol(P, Math.min(1, 0.28 + 0.48 * It.rShell + 0.22 * It.imp), It.x, It.y, It.z, 0, 0, 0, Time, 1e9, It.sz, 0, 0, CamX, CamY, CamZ, Time)
+                            : MixRgb(P.colA, ColC, Math.min(1, 0.35 + 0.55 * It.rShell + 0.25 * It.imp));
                         Ctx.fillStyle = LinearToCss(JCol, 0.72);
                         Ctx.beginPath();
                         Ctx.arc(Sc[0], Sc[1], PrR, 0, Math.PI * 2);
@@ -3380,112 +4054,707 @@ export class SoftwarePreviewEngine
                     continue;
                 }
 
+                if (FlareMode > 0)
+                {
+                    const FF = Sys.flareFrame;
+                    if (FF)
+                    {
+                        // 1. Depth-sorted billowing curling volumetric smoke plumes (alpha-blended)
+                        Ctx.save();
+                        Ctx.globalCompositeOperation = 'source-over';
+                        const SortSm = [];
+                        for (const Sm of FF.smoke)
+                        {
+                            const Pr = ProjectPoint(VP, Sm.x, Sm.y, Sm.z, W, H);
+                            if (Pr) SortSm.push({ sm: Sm, sc: Pr });
+                        }
+                        SortSm.sort((A, B) => B.sc[2] - A.sc[2]);
+                        for (const It of SortSm)
+                        {
+                            const Sm = It.sm, Sc = It.sc;
+                            const R = Math.max(4, Math.min(180, (Sm.r * 215) / Sc[2]));
+                            // Render 2 slightly offset sunlit/shaded turbulent cloud lobes per smoke puff
+                            const OffX = Math.cos(Sm.rot) * R * 0.22;
+                            const OffY = Math.sin(Sm.rot) * R * 0.16;
+                            const Ht = Sm.heat;
+                            const TopR = Math.round(188 + Ht * 67), TopG = Math.round(192 + Ht * 44), TopB = Math.round(198 + Ht * 10);
+                            const LowR = Math.round(78 + Ht * 92), LowG = Math.round(84 + Ht * 46), LowB = Math.round(92 + Ht * 8);
+                            const Grad = Ctx.createRadialGradient(
+                                Sc[0] - R * 0.18 + OffX, Sc[1] - R * 0.24 + OffY, R * 0.08,
+                                Sc[0] + OffX * 0.4, Sc[1] + OffY * 0.4, R
+                            );
+                            Grad.addColorStop(0, `rgba(${TopR},${TopG},${TopB},${(Sm.alpha * 0.82).toFixed(3)})`);
+                            Grad.addColorStop(0.55, `rgba(${LowR},${LowG},${LowB},${(Sm.alpha * 0.56).toFixed(3)})`);
+                            Grad.addColorStop(1, `rgba(${LowR},${LowG},${LowB},0)`);
+                            Ctx.fillStyle = Grad;
+                            Ctx.beginPath();
+                            Ctx.arc(Sc[0] + OffX * 0.4, Sc[1] + OffY * 0.4, R, 0, Math.PI * 2);
+                            Ctx.fill();
+                        }
+
+                        // 2. Molten slag spark streaks & blinding magnesium flare cores (additive)
+                        Ctx.globalCompositeOperation = 'lighter';
+                        for (const Sp of FF.sparks)
+                        {
+                            const P0 = ProjectPoint(VP, Sp.px, Sp.py, Sp.pz, W, H);
+                            const P1 = ProjectPoint(VP, Sp.x, Sp.y, Sp.z, W, H);
+                            if (!P0 || !P1) continue;
+                            Ctx.strokeStyle = `rgba(255, 198, 95, ${(Sp.alpha * 0.92).toFixed(3)})`;
+                            Ctx.lineWidth = Math.max(1.0, (Sp.size * 110) / P1[2]);
+                            Ctx.beginPath();
+                            Ctx.moveTo(P0[0], P0[1]);
+                            Ctx.lineTo(P1[0], P1[1]);
+                            Ctx.stroke();
+                        }
+                        for (const Fl of FF.flares)
+                        {
+                            const Sc = ProjectPoint(VP, Fl.x, Fl.y, Fl.z, W, H);
+                            if (!Sc) continue;
+                            const A = Fl.alpha * Fl.flicker;
+                            const RCore = Math.max(6, Math.min(110, (Fl.size * 240) / Sc[2]));
+                            // Outer warm-gold magnesium bloom halo
+                            const Halo = Ctx.createRadialGradient(Sc[0], Sc[1], 0, Sc[0], Sc[1], RCore * 2.55);
+                            Halo.addColorStop(0, `rgba(255, 255, 248, ${Math.min(1, A * 1.15).toFixed(3)})`);
+                            Halo.addColorStop(0.24, `rgba(255, 232, 165, ${(A * 0.85).toFixed(3)})`);
+                            Halo.addColorStop(0.58, `rgba(255, 152, 52, ${(A * 0.42).toFixed(3)})`);
+                            Halo.addColorStop(1, 'rgba(255, 110, 20, 0)');
+                            Ctx.fillStyle = Halo;
+                            Ctx.beginPath();
+                            Ctx.arc(Sc[0], Sc[1], RCore * 2.55, 0, Math.PI * 2);
+                            Ctx.fill();
+
+                            // 6-ray cinematic optical lens starburst
+                            const RayLen = RCore * (2.6 + 0.55 * Fl.flicker);
+                            const BaseAng = (Fl.seed * 0.37) + Time * 0.25;
+                            Ctx.lineCap = 'round';
+                            for (let Ray = 0; Ray < 3; Ray++)
+                            {
+                                const Ang = BaseAng + Ray * (Math.PI / 3);
+                                const Dx = Math.cos(Ang) * RayLen, Dy = Math.sin(Ang) * RayLen;
+                                const Lg = Ctx.createLinearGradient(Sc[0] - Dx, Sc[1] - Dy, Sc[0] + Dx, Sc[1] + Dy);
+                                Lg.addColorStop(0, 'rgba(255, 220, 150, 0)');
+                                Lg.addColorStop(0.5, `rgba(255, 252, 235, ${(A * 0.92).toFixed(3)})`);
+                                Lg.addColorStop(1, 'rgba(255, 220, 150, 0)');
+                                Ctx.strokeStyle = Lg;
+                                Ctx.lineWidth = Math.max(1.2, RCore * 0.16);
+                                Ctx.beginPath();
+                                Ctx.moveTo(Sc[0] - Dx, Sc[1] - Dy);
+                                Ctx.lineTo(Sc[0] + Dx, Sc[1] + Dy);
+                                Ctx.stroke();
+                            }
+                        }
+                        Ctx.restore();
+                    }
+                    Ctx.globalCompositeOperation = 'source-over';
+                    continue;
+                }
+
+                if (FireworkMode > 0)
+                {
+                    const FW = Sys.fwFrame;
+                    if (FW && FW.state)
+                    {
+                        const St = FW.state;
+                        Ctx.save();
+                        Ctx.globalCompositeOperation = 'lighter';
+
+                        // 1. Rising mortar rocket comet + blazing spark tail
+                        if (FW.rocket)
+                        {
+                            const Rk = FW.rocket;
+                            const TrPts = Rk.trail;
+                            for (let K = 0; K < TrPts.length - 1; K++)
+                            {
+                                const A0 = ProjectPoint(VP, TrPts[K][0], TrPts[K][1], TrPts[K][2], W, H);
+                                const A1 = ProjectPoint(VP, TrPts[K + 1][0], TrPts[K + 1][1], TrPts[K + 1][2], W, H);
+                                if (!A0 || !A1) continue;
+                                const T = 1 - K / Math.max(1, TrPts.length - 1);
+                                Ctx.strokeStyle = `rgba(255, ${Math.round(180 + 70 * T)}, ${Math.round(70 + 140 * T)}, ${(T * T * 0.88).toFixed(3)})`;
+                                Ctx.lineWidth = Math.max(1.2, 3.6 * T);
+                                Ctx.beginPath();
+                                Ctx.moveTo(A0[0], A0[1]);
+                                Ctx.lineTo(A1[0], A1[1]);
+                                Ctx.stroke();
+                            }
+                            const Rh = ProjectPoint(VP, Rk.x, Rk.y, Rk.z, W, H);
+                            if (Rh)
+                            {
+                                const RR = Math.max(4, Math.min(20, 72 / Rh[2]));
+                                const Rg = Ctx.createRadialGradient(Rh[0], Rh[1], 0, Rh[0], Rh[1], RR * 2.0);
+                                Rg.addColorStop(0, 'rgba(255,255,238,0.95)');
+                                Rg.addColorStop(0.45, 'rgba(255,205,105,0.62)');
+                                Rg.addColorStop(1, 'rgba(255,130,30,0)');
+                                Ctx.fillStyle = Rg;
+                                Ctx.beginPath(); Ctx.arc(Rh[0], Rh[1], RR * 2.0, 0, Math.PI * 2); Ctx.fill();
+                            }
+                        }
+
+                        // 2. Compact, warm-gold shell detonation flash (never blows out to white screen!)
+                        if (FW.flashAlpha > 0.01)
+                        {
+                            const Fp = ProjectPoint(VP, St.burstX, St.burstY, St.burstZ, W, H);
+                            if (Fp)
+                            {
+                                const RF = Math.max(12, Math.min(58, (1.15 * (1.15 - FW.flashAlpha * 0.35) * 140) / Fp[2]));
+                                const FA = Math.min(0.48, FW.flashAlpha * 0.48);
+                                const Fg = Ctx.createRadialGradient(Fp[0], Fp[1], 0, Fp[0], Fp[1], RF);
+                                Fg.addColorStop(0, `rgba(255, 245, 210, ${FA.toFixed(3)})`);
+                                Fg.addColorStop(0.42, `rgba(255, 192, 95, ${(FA * 0.55).toFixed(3)})`);
+                                Fg.addColorStop(1, 'rgba(255, 130, 35, 0)');
+                                Ctx.fillStyle = Fg;
+                                Ctx.beginPath(); Ctx.arc(Fp[0], Fp[1], RF, 0, Math.PI * 2); Ctx.fill();
+                            }
+                        }
+
+                        // 3. Stars, drooping willow/comet glitter ribbons, strobes, and instant 0.13s floor/object impact micro-flare pops
+                        const IsShapeOrText = St.activeMode >= 1 && St.activeMode <= 8;
+                        const SzBase = Math.max(0.055, (P.sizeStart || 0.14) * (P.sizeScale || 1));
+                        for (let I = 0; I < St.stars.length; I++)
+                        {
+                            const Star = St.stars[I];
+                            if (Star.dead || !Star.launched) continue;
+
+                            // Brief 0.13s floor / object impact micro-flare pop -> then vanishes completely!
+                            if (Star.impactT >= 0 && Star.impactPos)
+                            {
+                                const PopU = Math.min(1, (Time - Star.impactT) / 0.13);
+                                const PopFade = (1 - PopU) * (1 - PopU);
+                                const Ip = ProjectPoint(VP, Star.impactPos[0], Star.impactPos[1], Star.impactPos[2], W, H);
+                                if (Ip && PopFade > 0.01)
+                                {
+                                    const Rp = Math.max(3.5, Math.min(28, (SzBase * (1.2 + PopU * 1.1) * 165) / Ip[2]));
+                                    const Pg = Ctx.createRadialGradient(Ip[0], Ip[1], 0, Ip[0], Ip[1], Rp);
+                                    Pg.addColorStop(0, `rgba(255, 252, 235, ${(PopFade * 0.92).toFixed(3)})`);
+                                    Pg.addColorStop(0.45, `rgba(255, 200, 98, ${(PopFade * 0.62).toFixed(3)})`);
+                                    Pg.addColorStop(1, 'rgba(255, 120, 30, 0)');
+                                    Ctx.fillStyle = Pg;
+                                    Ctx.beginPath(); Ctx.arc(Ip[0], Ip[1], Rp, 0, Math.PI * 2); Ctx.fill();
+                                    // Crisp 4-ray micro spark pop
+                                    Ctx.strokeStyle = `rgba(255, 244, 210, ${(PopFade * 0.85).toFixed(3)})`;
+                                    Ctx.lineWidth = 1.15;
+                                    const SpL = Rp * 1.1;
+                                    Ctx.beginPath();
+                                    Ctx.moveTo(Ip[0] - SpL, Ip[1]); Ctx.lineTo(Ip[0] + SpL, Ip[1]);
+                                    Ctx.moveTo(Ip[0], Ip[1] - SpL); Ctx.lineTo(Ip[0], Ip[1] + SpL);
+                                    Ctx.stroke();
+                                }
+                                continue;
+                            }
+
+                            const StarAge = Math.max(0, FW.burstAge - Star.delay);
+                            const LifeF = Math.min(1, StarAge / FW.burstLife);
+                            // Modulate early overlapping star intensity by separation distance so dense burst center stays vividly colored instead of clipping to white!
+                            const DistBurst = Math.hypot(Star.x - St.burstX, Star.y - St.burstY, Star.z - St.burstZ);
+                            const SepRamp = 0.16 + 0.84 * Smooth(0.16, 0.88, DistBurst);
+                            const Fade = Smooth(0, 0.05, LifeF) * (1 - Smooth(0.66, 1.0, LifeF)) * SepRamp;
+                            if (Fade <= 0.01) continue;
+
+                            const Cr = Math.round(Math.min(1, Math.max(0, Math.pow(Star.r, 1 / 2.2))) * 255);
+                            const Cg = Math.round(Math.min(1, Math.max(0, Math.pow(Star.g, 1 / 2.2))) * 255);
+                            const Cb = Math.round(Math.min(1, Math.max(0, Math.pow(Star.b, 1 / 2.2))) * 255);
+
+                            // Drooping willow / comet glitter ribbon trail
+                            const Tr = Star.trail;
+                            if (Tr.length >= 2)
+                            {
+                                for (let K = 0; K < Tr.length - 1; K++)
+                                {
+                                    const T0 = ProjectPoint(VP, Tr[K][0], Tr[K][1], Tr[K][2], W, H);
+                                    const T1 = ProjectPoint(VP, Tr[K + 1][0], Tr[K + 1][1], Tr[K + 1][2], W, H);
+                                    if (!T0 || !T1) continue;
+                                    const Tf = 1 - K / Math.max(1, Tr.length - 1);
+                                    const TrR = Star.isWillow ? 255 : Math.round(Cr * 0.78 + 255 * 0.22);
+                                    const TrG = Star.isWillow ? Math.round(188 + 42 * Tf) : Math.round(Cg * 0.78 + 190 * 0.22);
+                                    const TrB = Star.isWillow ? Math.round(72 + 55 * Tf) : Math.round(Cb * 0.78 + 85 * 0.22);
+                                    const TrA = Fade * Tf * Tf * (Star.isWillow ? 0.68 : (IsShapeOrText ? 0.42 : 0.56));
+                                    Ctx.strokeStyle = `rgba(${TrR},${TrG},${TrB},${TrA.toFixed(3)})`;
+                                    Ctx.lineWidth = Math.max(0.75, (Star.isWillow ? 2.2 : 1.7) * Tf);
+                                    Ctx.beginPath();
+                                    Ctx.moveTo(T0[0], T0[1]);
+                                    Ctx.lineTo(T1[0], T1[1]);
+                                    Ctx.stroke();
+                                }
+                            }
+
+                            // Incandescent Hanabi Star core + deeply saturated jewel bloom + crackling diamond strobe
+                            const Sp = ProjectPoint(VP, Star.x, Star.y, Star.z, W, H);
+                            if (!Sp) continue;
+                            let Strobe = 1.0;
+                            if (Star.hasStrobe)
+                            {
+                                const Fl = Math.sin(Time * 34 + Star.seed * 0.73);
+                                Strobe = Fl > 0.35 ? 1.35 : 0.40;
+                            }
+                            const StarR = Math.max(2.2, Math.min(18, (SzBase * (IsShapeOrText ? 0.92 : 0.80) * (1 - 0.35 * LifeF) * 165) / Sp[2]));
+                            const Sg = Ctx.createRadialGradient(Sp[0], Sp[1], 0, Sp[0], Sp[1], StarR * 1.75);
+                            Sg.addColorStop(0, `rgba(255, 252, 242, ${Math.min(0.95, Fade * 0.85 * Strobe).toFixed(3)})`);
+                            Sg.addColorStop(0.24, `rgba(${Cr}, ${Cg}, ${Cb}, ${Math.min(0.92, Fade * 0.82 * Strobe).toFixed(3)})`);
+                            Sg.addColorStop(0.62, `rgba(${Cr}, ${Cg}, ${Cb}, ${(Fade * 0.26 * Strobe).toFixed(3)})`);
+                            Sg.addColorStop(1, `rgba(${Cr}, ${Cg}, ${Cb}, 0)`);
+                            Ctx.fillStyle = Sg;
+                            Ctx.beginPath(); Ctx.arc(Sp[0], Sp[1], StarR * 1.75, 0, Math.PI * 2); Ctx.fill();
+
+                            // Crisp 4-ray diamond star flare on bright stars / Text / strobes
+                            if (IsShapeOrText || Strobe > 1.2)
+                            {
+                                const Ray = StarR * (Strobe > 1.2 ? 1.85 : 1.15);
+                                Ctx.strokeStyle = `rgba(${Math.min(255, Cr + 80)}, ${Math.min(255, Cg + 80)}, ${Math.min(255, Cb + 80)}, ${(Fade * 0.52).toFixed(3)})`;
+                                Ctx.lineWidth = 0.85;
+                                Ctx.beginPath();
+                                Ctx.moveTo(Sp[0] - Ray, Sp[1]); Ctx.lineTo(Sp[0] + Ray, Sp[1]);
+                                Ctx.moveTo(Sp[0], Sp[1] - Ray); Ctx.lineTo(Sp[0], Sp[1] + Ray);
+                                Ctx.stroke();
+                            }
+                        }
+
+                        Ctx.restore();
+                    }
+                    Ctx.globalCompositeOperation = 'source-over';
+                    continue;
+                }
+
                 if (CrackMode > 0)
                 {
-                    const Slabs = Sys.particles || [];
+                    const Shards = Sys.particles || [];
                     const Debris = Sys.crackDebris || [];
                     const CM = Math.max(1, Math.min(2, P.crackMode | 0));
                     const ColC = P.colC || P.colB;
-                    const MixRgb = (A, B, U) => [A[0] + (B[0] - A[0]) * U, A[1] + (B[1] - A[1]) * U, A[2] + (B[2] - A[2]) * U];
-                    const SortS = [];
-                    for (const Sb of Slabs)
+                    const UseRampC = HasCustomRamp(P);
+                    // Depth-sorted real 3D faceted beveled ice-crystal shards (CM=1) or volcanic basalt rock chunks (CM=2)
+                    const SortSh = [];
+                    for (const Sh of Shards)
                     {
-                        const Pr = ProjectPoint(VP, Sb.x, Sb.y, Sb.z, W, H);
-                        if (Pr) SortS.push({ sb: Sb, sc: Pr });
+                        const Pr = ProjectPoint(VP, Sh.x, Sh.y, Sh.z, W, H);
+                        if (Pr) SortSh.push({ sh: Sh, sc: Pr });
                     }
-                    SortS.sort((A, B) => B.sc[2] - A.sc[2]);
-                    for (const It of SortS)
+                    SortSh.sort((A, B) => B.sc[2] - A.sc[2]);
+                    const L1x = 0.45, L1y = 0.85, L1z = 0.42;
+                    const L1L = Math.hypot(L1x, L1y, L1z);
+                    const Lx = L1x / L1L, Ly = L1y / L1L, Lz = L1z / L1L;
+                    for (const It of SortSh)
                     {
-                        const Sb = It.sb;
-                        const Hw = Sb.w, Hh = Sb.h;
-                        const Tl = Math.hypot(Sb.rx, Sb.rz) || 1;
-                        const Tax = -Sb.rz / Tl, Taz = Sb.rx / Tl;
-                        const CosT = Math.cos(Sb.tilt), SinT = Math.sin(Sb.tilt);
-                        const RotTilt = (V) => {
-                            const KDot = Tax * V[0] + Taz * V[2];
+                        const Sh = It.sh;
+                        const Sd = Sh.seed || 1;
+                        const Sz = Sh.size * 1.12;
+                        const A1 = WebHash(Sd, 1) - 0.5, A2 = WebHash(Sd, 2) - 0.5 + 1e-4, A3 = WebHash(Sd, 3) - 0.5;
+                        const AL = Math.hypot(A1, A2, A3) || 1;
+                        const Kx = A1 / AL, Ky = A2 / AL, Kz = A3 / AL;
+                        const Cs = Math.cos(Sh.rot || 0), Sn = Math.sin(Sh.rot || 0);
+                        const Rot3 = (Vx, Vy, Vz) => {
+                            const KD = Kx * Vx + Ky * Vy + Kz * Vz;
                             return [
-                                V[0] * CosT + (0 - Taz * V[1]) * SinT + Tax * KDot * (1 - CosT),
-                                V[1] * CosT + (Taz * V[0] - Tax * V[2]) * SinT,
-                                V[2] * CosT + (Tax * V[1] - 0) * SinT + Taz * KDot * (1 - CosT)
+                                Vx * Cs + (Ky * Vz - Kz * Vy) * Sn + Kx * KD * (1 - Cs),
+                                Vy * Cs + (Kz * Vx - Kx * Vz) * Sn + Ky * KD * (1 - Cs),
+                                Vz * Cs + (Kx * Vy - Ky * Vx) * Sn + Kz * KD * (1 - Cs)
                             ];
                         };
-                        const TopPts = [];
-                        for (let C = 0; C < 5; C++)
+                        const Aspect = 0.42 + 0.58 * WebHash(Sd, 11);
+                        const Thick = CM === 1 ? (0.14 + 0.14 * WebHash(Sd, 12)) : (0.28 + 0.24 * WebHash(Sd, 12));
+                        const FrontW = [], BackW = [], FrontP = [], BackP = [];
+                        for (let K = 0; K < 5; K++)
                         {
-                            const Ang = (C / 5) * Math.PI * 2 + (Sb.seed % 6.28);
-                            const RJ = 0.86 + 0.26 * Math.sin(Ang * 3 + Sb.seed * 0.7);
-                            const Lp = RotTilt([Math.cos(Ang) * Hw * RJ, Hh * 0.5, Math.sin(Ang) * Hw * RJ]);
-                            const Pr = ProjectPoint(VP, Sb.x + Lp[0], Sb.y + Lp[1], Sb.z + Lp[2], W, H);
-                            if (Pr) TopPts.push(Pr);
+                            const Ang = (K / 5) * Math.PI * 2 + (WebHash(Sd, 20 + K) - 0.5) * 0.62;
+                            const Rad = (0.48 + 0.55 * WebHash(Sd, 30 + K)) * Sz;
+                            const Lx0 = Math.cos(Ang) * Rad, Ly0 = Math.sin(Ang) * Rad * Aspect;
+                            const Fw = Rot3(Lx0, Ly0, Thick * Sz);
+                            const Bw = Rot3(Lx0 * 0.88, Ly0 * 0.88, -Thick * Sz);
+                            FrontW.push([Sh.x + Fw[0], Sh.y + Fw[1], Sh.z + Fw[2]]);
+                            BackW.push([Sh.x + Bw[0], Sh.y + Bw[1], Sh.z + Bw[2]]);
+                            FrontP.push(ProjectPoint(VP, Sh.x + Fw[0], Sh.y + Fw[1], Sh.z + Fw[2], W, H));
+                            BackP.push(ProjectPoint(VP, Sh.x + Bw[0], Sh.y + Bw[1], Sh.z + Bw[2], W, H));
                         }
-                        if (TopPts.length >= 3)
+                        if (FrontP.some(Q => !Q) || BackP.some(Q => !Q)) continue;
+                        const Vdx = CamX - Sh.x, Vdy = CamY - Sh.y, Vdz = CamZ - Sh.z;
+                        const VL = Math.hypot(Vdx, Vdy, Vdz) || 1;
+                        const Vx = Vdx / VL, Vy = Vdy / VL, Vz = Vdz / VL;
+                        const Faces3D = [];
+                        // Front & Back crystal/rock faces + 5 beveled side quads
+                        const AddPoly = (PtsW, PtsP, IsEdge) => {
+                            const E1x = PtsW[1][0] - PtsW[0][0], E1y = PtsW[1][1] - PtsW[0][1], E1z = PtsW[1][2] - PtsW[0][2];
+                            const E2x = PtsW[2][0] - PtsW[0][0], E2y = PtsW[2][1] - PtsW[0][1], E2z = PtsW[2][2] - PtsW[0][2];
+                            let Nx = E1y * E2z - E1z * E2y, Ny = E1z * E2x - E1x * E2z, Nz = E1x * E2y - E1y * E2x;
+                            const NL = Math.hypot(Nx, Ny, Nz) || 1;
+                            Nx /= NL; Ny /= NL; Nz /= NL;
+                            if (Nx * Vx + Ny * Vy + Nz * Vz < 0) { Nx = -Nx; Ny = -Ny; Nz = -Nz; }
+                            let AvgZ = 0;
+                            for (const Q of PtsP) AvgZ += Q[2];
+                            Faces3D.push({ pts: PtsP, nx: Nx, ny: Ny, nz: Nz, z: AvgZ / PtsP.length, isEdge: IsEdge });
+                        };
+                        AddPoly(FrontW, FrontP, false);
+                        AddPoly(BackW, BackP, false);
+                        for (let K = 0; K < 5; K++)
                         {
-                            let CTop = MixRgb(P.colA, ColC, Math.min(1, Sb.faultProx * 0.75 + Sb.shock * 0.55));
-                            if (Sb.stress > 0.12) CTop = MixRgb(CTop, P.colB, Math.min(0.85, Sb.stress * 0.65));
-                            Ctx.fillStyle = LinearToCss(CTop, 0.96);
+                            const K2 = (K + 1) % 5;
+                            AddPoly([FrontW[K], FrontW[K2], BackW[K2], BackW[K]], [FrontP[K], FrontP[K2], BackP[K2], BackP[K]], true);
+                        }
+                        Faces3D.sort((A, B) => B.z - A.z);
+                        for (const F of Faces3D)
+                        {
+                            const NdL = Math.max(0, F.nx * Lx + F.ny * Ly + F.nz * Lz);
+                            const NdV = Math.max(0, F.nx * Vx + F.ny * Vy + F.nz * Vz);
+                            const Hx = Lx + Vx, Hy = Ly + Vy, Hz = Lz + Vz;
+                            const HL = Math.hypot(Hx, Hy, Hz) || 1;
+                            const Spec = Math.pow(Math.max(0, (F.nx * Hx + F.ny * Hy + F.nz * Hz) / HL), 36);
+                            const Fres = Math.pow(1 - NdV, 2.2);
+                            if (CM === 1)
+                            {
+                                const EdgeBoost = F.isEdge ? 0.34 : 0;
+                                const R = Math.min(1, 0.32 * (0.48 + 0.52 * NdL) + 0.65 * (Fres * 0.65 + EdgeBoost) + Spec * 1.45);
+                                const G = Math.min(1, 0.76 * (0.48 + 0.52 * NdL) + 0.25 * (Fres * 0.65 + EdgeBoost) + Spec * 1.45);
+                                const B = Math.min(1, 0.96 * (0.55 + 0.45 * NdL) + 0.14 * (Fres * 0.65 + EdgeBoost) + Spec * 1.45);
+                                const FA = Math.min(0.96, Sh.alpha * (0.56 + 0.36 * Fres + EdgeBoost * 0.75 + Spec * 0.35));
+                                Ctx.fillStyle = LinearToCss([R, G, B], FA);
+                            }
+                            else
+                            {
+                                const Heat = Math.min(1, ((F.isEdge ? 0.55 : 0) + Math.max(0, -F.ny) * 0.68) * (Sh.heat || 0.5));
+                                const Lit = 0.26 + 0.74 * NdL;
+                                const R = Math.min(1, (P.colA[0] * 1.35 * Lit) * (1 - Heat) + (ColC[0] * 1.35 + 0.35) * Heat);
+                                const G = Math.min(1, (P.colA[1] * 1.35 * Lit) * (1 - Heat) + (ColC[1] * 1.25 + 0.22) * Heat);
+                                const B = Math.min(1, (P.colA[2] * 1.35 * Lit) * (1 - Heat) + (ColC[2] * 0.85) * Heat);
+                                Ctx.fillStyle = LinearToCss([R, G, B], Math.min(0.98, Sh.alpha));
+                            }
                             Ctx.beginPath();
-                            TopPts.forEach((Q, K) => K === 0 ? Ctx.moveTo(Q[0], Q[1]) : Ctx.lineTo(Q[0], Q[1]));
+                            F.pts.forEach((Q, Idx) => Idx === 0 ? Ctx.moveTo(Q[0], Q[1]) : Ctx.lineTo(Q[0], Q[1]));
                             Ctx.closePath();
                             Ctx.fill();
-                            if (Sb.stress > 0.04)
+                            if (F.isEdge || CM === 1)
                             {
-                                const EdgeCol = CM === 2 ? [1.0, 0.42, 0.12] : [0.55, 0.95, 1.0];
-                                Ctx.strokeStyle = LinearToCss(EdgeCol, Math.min(0.95, 0.25 + Sb.stress * 0.85));
-                                Ctx.lineWidth = 1.0 + Sb.stress * 1.4;
+                                Ctx.strokeStyle = CM === 1
+                                    ? LinearToCss([0.92, 0.99, 1.0], Math.min(0.88, Sh.alpha * (0.42 + Fres * 0.45 + Spec * 0.4)))
+                                    : LinearToCss(F.isEdge ? [1.0, 0.52, 0.16] : [0.22, 0.18, 0.16], Math.min(0.75, Sh.alpha * (F.isEdge ? 0.45 * (Sh.heat || 0.5) : 0.32)));
+                                Ctx.lineWidth = CM === 1 ? 0.85 : 0.7;
                                 Ctx.stroke();
                             }
                         }
                     }
+                    // Crack-tip diamond-dust frost crystal sparkles (Mode 1) or glowing molten lava sparks (Mode 2)
                     for (const D of Debris)
                     {
                         const Pr = ProjectPoint(VP, D.x, D.y, D.z, W, H);
                         if (!Pr) continue;
-                        const Pr2 = Math.max(1.8, (D.size * 240) / Math.max(1.5, Pr[2]));
-                        Ctx.fillStyle = LinearToCss(CM === 2 ? P.colB : P.colC, D.alpha);
-                        Ctx.beginPath();
-                        Ctx.arc(Pr[0], Pr[1], Pr2, 0, Math.PI * 2);
-                        Ctx.fill();
+                        const PrR = Math.max(1.6, (D.size * 220) / Math.max(1.5, Pr[2]));
+                        if (CM === 1)
+                        {
+                            const DCol = UseRampC ? EvalRampCol(P, 0.78, D.x, D.y, D.z, 0, 0, 0, Time, 1.5, D.size, 0, D.seed, CamX, CamY, CamZ, Time) : [0.85, 0.97, 1.0];
+                            Ctx.fillStyle = LinearToCss(DCol, D.alpha * 0.52);
+                            Ctx.beginPath();
+                            Ctx.arc(Pr[0], Pr[1], PrR * 1.45, 0, Math.PI * 2);
+                            Ctx.fill();
+                            // Crisp 4-point ice diamond-dust glint
+                            Ctx.strokeStyle = LinearToCss([1, 1, 1], D.alpha * 0.92);
+                            Ctx.lineWidth = Math.max(0.8, PrR * 0.28);
+                            Ctx.beginPath();
+                            Ctx.moveTo(Pr[0] - PrR * 1.35, Pr[1]); Ctx.lineTo(Pr[0] + PrR * 1.35, Pr[1]);
+                            Ctx.moveTo(Pr[0], Pr[1] - PrR * 1.35); Ctx.lineTo(Pr[0], Pr[1] + PrR * 1.35);
+                            Ctx.stroke();
+                        }
+                        else
+                        {
+                            Ctx.fillStyle = LinearToCss(ColC, D.alpha * 0.55);
+                            Ctx.beginPath();
+                            Ctx.arc(Pr[0], Pr[1], PrR * 1.65, 0, Math.PI * 2);
+                            Ctx.fill();
+                            Ctx.fillStyle = LinearToCss([1.0, 0.94, 0.72], D.alpha * 0.96);
+                            Ctx.beginPath();
+                            Ctx.arc(Pr[0], Pr[1], Math.max(1.1, PrR * 0.62), 0, Math.PI * 2);
+                            Ctx.fill();
+                        }
                     }
                     continue;
                 }
 
                 if (FerroMode > 0)
                 {
-                    const Spikes = (Sys.particles || []).map(Sp => {
-                        const P0 = ProjectPoint(VP, Sp.x, Sp.y, Sp.z, W, H);
-                        return P0 ? { sp: Sp, p0: P0 } : null;
-                    }).filter(Boolean).sort((A, B) => B.p0[2] - A.p0[2]);
-                    for (const It of Spikes)
-                    {
-                        const Sp = It.sp, P0 = It.p0;
-                        const Pm = ProjectPoint(VP, Sp.mx, Sp.my, Sp.mz, W, H);
-                        const Pt = ProjectPoint(VP, Sp.tx, Sp.ty, Sp.tz, W, H);
-                        if (!Pm || !Pt) continue;
-                        const BasePx = Math.max(2.2, (Sp.wBase * 290) / Math.max(1.5, P0[2]));
+                    Ctx.save();
+                    Ctx.globalCompositeOperation = 'source-over';
+                    const Parts = Sys.particles || [];
+                    const Meta = Parts.ferroMeta || { mode: FerroMode, org: P.origin || [0, 0, 0], poolR: P.radius || 2.05, mpos: [0, 0.8, 0] };
+                    const Org = Meta.org, PoolR = Meta.poolR, MPos = Meta.mpos;
+                    const ColB = P.colB || [0.92, 0.97, 1.0];
+                    const ColC = P.colC || [0.16, 0.24, 0.36];
+                    const SpecR = Math.round(Math.min(255, 220 + ColB[0] * 35));
+                    const SpecG = Math.round(Math.min(255, 226 + ColB[1] * 29));
+                    const SpecB = Math.round(Math.min(255, 236 + ColB[2] * 19));
+                    const RimR = Math.round(Math.min(255, 70 + ColC[0] * 165));
+                    const RimG = Math.round(Math.min(255, 95 + ColC[1] * 160));
+                    const RimB = Math.round(Math.min(255, 130 + ColC[2] * 150));
+
+                    // Helper: paint a single sculpted smooth concave wet-black liquid Rosensweig cusp!
+                    const DrawLiquidCusp = (It, P0) => {
+                        const Pt = ProjectPoint(VP, It.tx, It.ty, It.tz, W, H);
+                        if (!Pt) return;
                         const Dx = Pt[0] - P0[0], Dy = Pt[1] - P0[1];
-                        const Dl = Math.hypot(Dx, Dy) || 1;
-                        const Nx = -Dy / Dl, Ny = Dx / Dl;
-                        Ctx.fillStyle = LinearToCss([0.03, 0.04, 0.06], 0.97);
+                        const LenPx = Math.hypot(Dx, Dy);
+                        // Compute screen-space flared base radius from 3D world width
+                        const BasePx = Math.max(4.5, Math.min(72, (It.wBase * 245) / Math.max(1.2, P0[2])));
+                        // Direction axis from base to tip in screen space (fallback straight up if viewed dead-on)
+                        let Ax = 0, Ay = -1;
+                        if (LenPx > 1.2) { Ax = Dx / LenPx; Ay = Dy / LenPx; }
+                        const Px = -Ay, Py = Ax; // perpendicular screen axis across spike width
+                        const TipR = Math.max(1.35, Math.min(6.0, BasePx * (0.14 + 0.08 * Math.max(0, 1 - It.hSpike))));
+
+                        // 1. Seamless fused wet-black basal meniscus collar merging peak into liquid pool
+                        const MenG = Ctx.createRadialGradient(P0[0] - BasePx * 0.22, P0[1] - BasePx * 0.16, BasePx * 0.08, P0[0], P0[1], BasePx * 1.25);
+                        MenG.addColorStop(0.0, 'rgba(8, 10, 15, 0.96)');
+                        MenG.addColorStop(0.65, 'rgba(4, 5, 8, 0.92)');
+                        MenG.addColorStop(1.0, 'rgba(3, 4, 7, 0.0)');
+                        Ctx.fillStyle = MenG;
                         Ctx.beginPath();
-                        Ctx.moveTo(P0[0] + Nx * BasePx, P0[1] + Ny * BasePx);
-                        Ctx.quadraticCurveTo(Pm[0] + Nx * BasePx * 0.25, Pm[1] + Ny * BasePx * 0.25, Pt[0], Pt[1]);
-                        Ctx.quadraticCurveTo(Pm[0] - Nx * BasePx * 0.25, Pm[1] - Ny * BasePx * 0.25, P0[0] - Nx * BasePx, P0[1] - Ny * BasePx);
+                        Ctx.ellipse(P0[0], P0[1], BasePx * 1.22, BasePx * 0.68, Math.atan2(Py, Px), 0, Math.PI * 2);
+                        Ctx.fill();
+
+                        // If nearly foreshortened head-on, draw glossy domed obsidian droplet peak
+                        if (LenPx < BasePx * 0.32)
+                        {
+                            const DomeG = Ctx.createRadialGradient(Pt[0] - BasePx * 0.28, Pt[1] - BasePx * 0.30, BasePx * 0.06, P0[0], P0[1], BasePx * 0.95);
+                            DomeG.addColorStop(0.0, `rgba(${SpecR},${SpecG},${SpecB},0.95)`);
+                            DomeG.addColorStop(0.18, `rgba(${RimR},${RimG},${RimB},0.62)`);
+                            DomeG.addColorStop(0.42, 'rgba(6, 8, 12, 0.98)');
+                            DomeG.addColorStop(0.84, 'rgba(3, 4, 7, 0.98)');
+                            DomeG.addColorStop(1.0, `rgba(${RimR},${RimG},${RimB},0.55)`);
+                            Ctx.fillStyle = DomeG;
+                            Ctx.beginPath();
+                            Ctx.arc(Pt[0], Pt[1], Math.max(3, BasePx * 0.85), 0, Math.PI * 2);
+                            Ctx.fill();
+                            return;
+                        }
+
+                        // 2. Smooth concave catenoid liquid horn silhouette (broad flared liquid skirt -> curved waist -> rounded wet peak!)
+                        const Lx = P0[0] - Px * BasePx, Ly = P0[1] - Py * BasePx;
+                        const Rx = P0[0] + Px * BasePx, Ry = P0[1] + Py * BasePx;
+                        // Concave waist control points pulled inward (~24% width at 34% height) for authentic Rosensweig neck curvature!
+                        const WaistU = 0.36;
+                        const WaistW = BasePx * 0.24;
+                        const CLx = P0[0] + Dx * WaistU - Px * WaistW;
+                        const CLy = P0[1] + Dy * WaistU - Py * WaistW;
+                        const CRx = P0[0] + Dx * WaistU + Px * WaistW;
+                        const CRy = P0[1] + Dy * WaistU + Py * WaistW;
+                        const TipLx = Pt[0] - Px * TipR, TipLy = Pt[1] - Py * TipR;
+                        const TipRx = Pt[0] + Px * TipR, TipRy = Pt[1] + Py * TipR;
+                        const ApexX = Pt[0] + Ax * TipR * 0.95, ApexY = Pt[1] + Ay * TipR * 0.95;
+
+                        // High-contrast wet jet-black obsidian body shading across spike width (left studio softbox + deep mirror-black core + right cool rim)
+                        const BodyG = Ctx.createLinearGradient(Lx, Ly, Rx, Ry);
+                        BodyG.addColorStop(0.00, `rgba(${RimR}, ${RimG}, ${RimB}, 0.88)`);
+                        BodyG.addColorStop(0.14, `rgba(${Math.round(SpecR * 0.65)}, ${Math.round(SpecG * 0.70)}, ${Math.round(SpecB * 0.78)}, 0.96)`);
+                        BodyG.addColorStop(0.30, 'rgba(10, 13, 20, 0.99)');
+                        BodyG.addColorStop(0.56, 'rgba(2, 3, 5, 0.995)');
+                        BodyG.addColorStop(0.84, 'rgba(5, 7, 11, 0.99)');
+                        BodyG.addColorStop(0.95, `rgba(${Math.round(RimR * 0.75)}, ${Math.round(RimG * 0.85)}, ${Math.round(RimB * 0.95)}, 0.78)`);
+                        BodyG.addColorStop(1.00, 'rgba(18, 26, 38, 0.92)');
+
+                        Ctx.fillStyle = BodyG;
+                        Ctx.beginPath();
+                        Ctx.moveTo(Lx, Ly);
+                        Ctx.quadraticCurveTo(CLx, CLy, TipLx, TipLy);
+                        Ctx.quadraticCurveTo(ApexX, ApexY, TipRx, TipRy);
+                        Ctx.quadraticCurveTo(CRx, CRy, Rx, Ry);
+                        // Rounded wet base curve
+                        Ctx.quadraticCurveTo(P0[0] - Ax * BasePx * 0.38, P0[1] - Ay * BasePx * 0.38, Lx, Ly);
                         Ctx.closePath();
                         Ctx.fill();
-                        Ctx.strokeStyle = LinearToCss(P.colB, 0.42 + 0.42 * Math.min(1, Sp.str));
-                        Ctx.lineWidth = Math.max(0.8, BasePx * 0.24);
+
+                        // 3. Razor-sharp curved studio softbox specular reflection ribbon sweeping along the lit concave flank!
+                        const SpecStr = Math.min(0.95, 0.48 + 0.42 * Math.min(1.2, It.str));
+                        const SBaseX = P0[0] - Px * BasePx * 0.48 + Ax * BasePx * 0.08;
+                        const SBaseY = P0[1] - Py * BasePx * 0.48 + Ay * BasePx * 0.08;
+                        const SCtrlX = P0[0] + Dx * 0.40 - Px * (BasePx * 0.16);
+                        const SCtrlY = P0[1] + Dy * 0.40 - Py * (BasePx * 0.16);
+                        const STipX = Pt[0] - Px * TipR * 0.32;
+                        const STipY = Pt[1] - Py * TipR * 0.32;
+
+                        const SpecGrad = Ctx.createLinearGradient(SBaseX, SBaseY, STipX, STipY);
+                        SpecGrad.addColorStop(0.0, `rgba(${RimR}, ${RimG}, ${RimB}, ${(SpecStr * 0.35).toFixed(3)})`);
+                        SpecGrad.addColorStop(0.32, `rgba(${SpecR}, ${SpecG}, ${SpecB}, ${(SpecStr * 0.92).toFixed(3)})`);
+                        SpecGrad.addColorStop(0.75, `rgba(255, 255, 255, ${(SpecStr * 0.98).toFixed(3)})`);
+                        SpecGrad.addColorStop(1.0, `rgba(${SpecR}, ${SpecG}, ${SpecB}, ${(SpecStr * 0.55).toFixed(3)})`);
+
+                        Ctx.strokeStyle = SpecGrad;
+                        Ctx.lineCap = 'round';
+                        Ctx.lineWidth = Math.max(1.15, Math.min(4.2, BasePx * 0.14));
                         Ctx.beginPath();
-                        Ctx.moveTo(P0[0] + Nx * BasePx * 0.72, P0[1] + Ny * BasePx * 0.72);
-                        Ctx.quadraticCurveTo(Pm[0] + Nx * BasePx * 0.2, Pm[1] + Ny * BasePx * 0.2, Pt[0], Pt[1]);
+                        Ctx.moveTo(SBaseX, SBaseY);
+                        Ctx.quadraticCurveTo(SCtrlX, SCtrlY, STipX, STipY);
                         Ctx.stroke();
+
+                        // Secondary subtle cyan-silver grazing edge highlight on the opposite shadow flank (separates black-on-black spikes cleanly!)
+                        const RBaseX = P0[0] + Px * BasePx * 0.66;
+                        const RBaseY = P0[1] + Py * BasePx * 0.66;
+                        const RCtrlX = P0[0] + Dx * 0.38 + Px * (BasePx * 0.22);
+                        const RCtrlY = P0[1] + Dy * 0.38 + Py * (BasePx * 0.22);
+                        Ctx.strokeStyle = `rgba(${RimR}, ${RimG}, ${RimB}, ${(SpecStr * 0.36).toFixed(3)})`;
+                        Ctx.lineWidth = Math.max(0.8, BasePx * 0.065);
+                        Ctx.beginPath();
+                        Ctx.moveTo(RBaseX, RBaseY);
+                        Ctx.quadraticCurveTo(RCtrlX, RCtrlY, TipRx, TipRy);
+                        Ctx.stroke();
+
+                        // 4. Blazing crisp liquid-bead specular pinpoint right on the glossy rounded apex!
+                        const GlintR = Math.max(1.0, Math.min(3.6, TipR * 0.85));
+                        Ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(0.98, 0.58 + 0.38 * Math.min(1, It.str)).toFixed(3)})`;
+                        Ctx.beginPath();
+                        Ctx.arc(Pt[0] - Px * TipR * 0.18 + Ax * TipR * 0.18, Pt[1] - Py * TipR * 0.18 + Ay * TipR * 0.18, GlintR, 0, Math.PI * 2);
+                        Ctx.fill();
+                    };
+
+                    // Helper: draw glossy jet-black wet oil meniscus droplet (pinpoint white spec, zero grey mud)
+                    const DrawOilDroplet = (It, P0) => {
+                        const PrR = Math.max(2.0, Math.min(11, (It.size * 225) / Math.max(1.2, P0[2])));
+                        const G = Ctx.createRadialGradient(P0[0] - PrR * 0.34, P0[1] - PrR * 0.36, PrR * 0.05, P0[0], P0[1], PrR);
+                        G.addColorStop(0.0, 'rgba(255, 255, 255, 0.98)');
+                        G.addColorStop(0.20, `rgba(${RimR}, ${RimG}, ${RimB}, 0.65)`);
+                        G.addColorStop(0.45, 'rgba(6, 8, 12, 0.99)');
+                        G.addColorStop(0.86, 'rgba(2, 3, 5, 0.99)');
+                        G.addColorStop(1.0, `rgba(${RimR}, ${RimG}, ${RimB}, 0.52)`);
+                        Ctx.fillStyle = G;
+                        Ctx.beginPath();
+                        Ctx.arc(P0[0], P0[1], PrR, 0, Math.PI * 2);
+                        Ctx.fill();
+                    };
+
+                    // 1. Draw cohesive glossy wet jet-black liquid pool base (FerroMode === 1)
+                    const OrgSc = ProjectPoint(VP, Org[0], Org[1] + 0.04, Org[2], W, H);
+                    if (FerroMode === 1 && OrgSc)
+                    {
+                        const PoolSegs = 48;
+                        const RingS = [], ShadowS = [];
+                        for (let K = 0; K < PoolSegs; K++)
+                        {
+                            const A = (K / PoolSegs) * Math.PI * 2;
+                            const DirX = Math.cos(A), DirZ = Math.sin(A);
+                            // Organic liquid bulge slightly pulling puddle perimeter toward magnet!
+                            const ToMx = MPos[0] - Org[0], ToMz = MPos[2] - Org[2];
+                            const ML = Math.hypot(ToMx, ToMz) || 1;
+                            const Bulge = 1.0 + 0.055 * Math.max(0, (DirX * ToMx + DirZ * ToMz) / ML) + 0.018 * Math.sin(A * 5 + Time * 1.4);
+                            const Pr = ProjectPoint(VP, Org[0] + DirX * PoolR * Bulge, Org[1] + 0.045, Org[2] + DirZ * PoolR * Bulge, W, H);
+                            const Sh = ProjectPoint(VP, Org[0] + DirX * PoolR * Bulge * 1.07, Org[1] + 0.012, Org[2] + DirZ * PoolR * Bulge * 1.07, W, H);
+                            if (Pr) RingS.push(Pr);
+                            if (Sh) ShadowS.push(Sh);
+                        }
+                        if (ShadowS.length >= 8)
+                        {
+                            Ctx.fillStyle = 'rgba(0, 0, 0, 0.56)';
+                            Ctx.beginPath();
+                            Ctx.moveTo(ShadowS[0][0], ShadowS[0][1]);
+                            for (let K = 1; K < ShadowS.length; K++) Ctx.lineTo(ShadowS[K][0], ShadowS[K][1]);
+                            Ctx.closePath();
+                            Ctx.fill();
+                        }
+                        if (RingS.length >= 8)
+                        {
+                            let MinX = Infinity, MaxX = -Infinity, MinY = Infinity, MaxY = -Infinity;
+                            for (const Pt of RingS)
+                            {
+                                if (Pt[0] < MinX) MinX = Pt[0]; if (Pt[0] > MaxX) MaxX = Pt[0];
+                                if (Pt[1] < MinY) MinY = Pt[1]; if (Pt[1] > MaxY) MaxY = Pt[1];
+                            }
+                            const PoolRpx = Math.max(20, (MaxX - MinX) * 0.52);
+                            const PoolG = Ctx.createRadialGradient(
+                                OrgSc[0] - PoolRpx * 0.28, OrgSc[1] - (MaxY - MinY) * 0.24, PoolRpx * 0.06,
+                                OrgSc[0], OrgSc[1], PoolRpx * 1.05
+                            );
+                            PoolG.addColorStop(0.0, 'rgba(18, 24, 34, 0.99)');
+                            PoolG.addColorStop(0.28, 'rgba(5, 7, 11, 0.995)');
+                            PoolG.addColorStop(0.76, 'rgba(2, 3, 5, 0.995)');
+                            PoolG.addColorStop(0.94, `rgba(${Math.round(RimR * 0.55)}, ${Math.round(RimG * 0.65)}, ${Math.round(RimB * 0.78)}, 0.92)`);
+                            PoolG.addColorStop(1.0, 'rgba(10, 14, 22, 0.96)');
+
+                            Ctx.fillStyle = PoolG;
+                            Ctx.beginPath();
+                            Ctx.moveTo(RingS[0][0], RingS[0][1]);
+                            for (let K = 1; K < RingS.length; K++) Ctx.lineTo(RingS[K][0], RingS[K][1]);
+                            Ctx.closePath();
+                            Ctx.fill();
+
+                            // Crisp mirror-liquid specular meniscus rim around puddle lip
+                            Ctx.strokeStyle = `rgba(${SpecR}, ${SpecG}, ${SpecB}, 0.42)`;
+                            Ctx.lineWidth = 1.65;
+                            Ctx.stroke();
+
+                            // Glossy overhead studio reflection arc gleaming on the smooth outer liquid rim
+                            Ctx.save();
+                            Ctx.clip();
+                            const RefG = Ctx.createLinearGradient(MinX, MinY, MaxX, MaxY);
+                            RefG.addColorStop(0.0, `rgba(${SpecR}, ${SpecG}, ${SpecB}, 0.24)`);
+                            RefG.addColorStop(0.26, 'rgba(255, 255, 255, 0.04)');
+                            RefG.addColorStop(0.60, 'rgba(0, 0, 0, 0)');
+                            RefG.addColorStop(1.0, `rgba(${RimR}, ${RimG}, ${RimB}, 0.14)`);
+                            Ctx.fillStyle = RefG;
+                            Ctx.fillRect(MinX, MinY, MaxX - MinX, MaxY - MinY);
+                            Ctx.restore();
+                        }
                     }
+
+                    // Prepare depth-sorted spikes & droplets
+                    const Items = [];
+                    for (const It of Parts)
+                    {
+                        const P0 = ProjectPoint(VP, It.x, It.y, It.z, W, H);
+                        if (P0) Items.push({ it: It, p0: P0 });
+                    }
+                    Items.sort((A, B) => B.p0[2] - A.p0[2]);
+
+                    if (FerroMode === 2 && OrgSc)
+                    {
+                        // Levitating Liquid-Obsidian Orb: draw back-hemisphere peaks -> glossy black mercury core sphere -> front-hemisphere peaks!
+                        const OrbDepth = OrgSc[2];
+                        const EdgeSc = ProjectPoint(VP, Org[0] + PoolR * 0.64, Org[1], Org[2], W, H);
+                        const OrbRpx = EdgeSc ? Math.max(18, Math.hypot(EdgeSc[0] - OrgSc[0], EdgeSc[1] - OrgSc[1])) : Math.max(24, (PoolR * 0.64 * 255) / Math.max(1.5, OrbDepth));
+
+                        for (const E of Items)
+                        {
+                            if (E.p0[2] > OrbDepth)
+                            {
+                                if (E.it.isCone) DrawLiquidCusp(E.it, E.p0);
+                                else DrawOilDroplet(E.it, E.p0);
+                            }
+                        }
+
+                        // Cohesive Mirror-Black Liquid Mercury Core Sphere
+                        const OrbG = Ctx.createRadialGradient(
+                            OrgSc[0] - OrbRpx * 0.34, OrgSc[1] - OrbRpx * 0.36, OrbRpx * 0.06,
+                            OrgSc[0], OrgSc[1], OrbRpx
+                        );
+                        OrbG.addColorStop(0.00, `rgba(${SpecR}, ${SpecG}, ${SpecB}, 0.96)`);
+                        OrbG.addColorStop(0.14, `rgba(${RimR}, ${RimG}, ${RimB}, 0.58)`);
+                        OrbG.addColorStop(0.32, 'rgba(8, 11, 18, 0.995)');
+                        OrbG.addColorStop(0.76, 'rgba(2, 3, 5, 0.998)');
+                        OrbG.addColorStop(0.93, `rgba(${RimR}, ${RimG}, ${RimB}, 0.68)`);
+                        OrbG.addColorStop(1.00, 'rgba(18, 28, 42, 0.95)');
+                        Ctx.fillStyle = OrbG;
+                        Ctx.beginPath();
+                        Ctx.arc(OrgSc[0], OrgSc[1], OrbRpx, 0, Math.PI * 2);
+                        Ctx.fill();
+
+                        for (const E of Items)
+                        {
+                            if (E.p0[2] <= OrbDepth)
+                            {
+                                if (E.it.isCone) DrawLiquidCusp(E.it, E.p0);
+                                else DrawOilDroplet(E.it, E.p0);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (const E of Items)
+                        {
+                            if (E.it.isCone) DrawLiquidCusp(E.it, E.p0);
+                            else DrawOilDroplet(E.it, E.p0);
+                        }
+                    }
+
+                    Ctx.restore();
+                    Ctx.globalCompositeOperation = 'source-over';
                     continue;
                 }
 
                 if (GridMode > 0)
                 {
-                    const Surf = Math.max(0, Math.min(5, Math.round(P.gridSurface ?? 0)));
-                    const OccludeBack = (P.showObject !== false) && (Surf === 2 || Surf === 3 || Surf === 4);
+                    const Surf = Math.max(0, Math.min(16, Math.round(P.gridSurface ?? 0)));
+                    const SolidBacking = (P.showObject !== false) && ((P.objStyle ?? 0) < 2);
+                    const OccludeBack = SolidBacking && (Surf === 2 || Surf === 3 || Surf === 4 || Surf >= 6);
                     const ProjGrid = [];
                     for (const Pt of Sys.particles)
                     {
@@ -3613,6 +4882,7 @@ export class SoftwarePreviewEngine
                 if (DynMode > 0)
                 {
                     const ColC = P.colC || P.colB;
+                    const UseRampD = HasCustomRamp(P);
                     const MixRgb = (A, B, U) => [A[0] + (B[0] - A[0]) * U, A[1] + (B[1] - A[1]) * U, A[2] + (B[2] - A[2]) * U];
                     const Sub = P.dynSub ?? 0;
 
@@ -3643,8 +4913,16 @@ export class SoftwarePreviewEngine
                                 const Sun = Math.abs(Nx * 0.42 + Ny * 0.58 + Nz * 0.69);
                                 const Lit = 0.48 + 0.58 * Sun;
                                 const UFrac = K / 19;
-                                let BaseRgb = MixRgb(P.colA, ColC, Math.min(1, UFrac * 1.15));
-                                if (Sub < 0.5 && Math.cos(RowU * Math.PI * 4) > 0) BaseRgb = MixRgb(BaseRgb, P.colB, 0.32);
+                                let BaseRgb;
+                                if (UseRampD)
+                                {
+                                    BaseRgb = EvalRampCol(P, UFrac, A3[0], A3[1], A3[2], 0, 0, 0, R0.age, R0.life, R0.dynMeta?.radius || 0.05, 0, R0.seed, CamX, CamY, CamZ, Time);
+                                }
+                                else
+                                {
+                                    BaseRgb = MixRgb(P.colA, ColC, Math.min(1, UFrac * 1.15));
+                                    if (Sub < 0.5 && Math.cos(RowU * Math.PI * 4) > 0) BaseRgb = MixRgb(BaseRgb, P.colB, 0.32);
+                                }
                                 Quads.push({ D: (A[2] + B[2] + C[2] + D[2]) * 0.25, A, B, C, Dp: D, Fill: LinearToCss([BaseRgb[0] * Lit, BaseRgb[1] * Lit, BaseRgb[2] * Lit], 0.96) });
                             }
                         }
@@ -3684,7 +4962,9 @@ export class SoftwarePreviewEngine
                             const Sc = ProjectPoint(VP, Pt.x, Pt.y, Pt.z, W, H);
                             if (!Sc) continue;
                             const LRad = Math.max(3.2, (St.radius || 0.08) * 195 / Math.max(1.8, Sc[2]));
-                            const LeafCol = MixRgb(ColC, P.colB, 0.25 + 0.55 * WebHash(Pt.slotIdx + 3, 2));
+                            const LeafCol = UseRampD
+                                ? EvalRampCol(P, 0.50 + 0.48 * WebHash(Pt.slotIdx + 3, 2), Pt.x, Pt.y, Pt.z, Pt.vx || 0, Pt.vy || 0, Pt.vz || 0, Pt.age, Pt.life, St.radius || 0.08, Pt.ang || 0, Pt.seed, CamX, CamY, CamZ, Time)
+                                : MixRgb(ColC, P.colB, 0.25 + 0.55 * WebHash(Pt.slotIdx + 3, 2));
                             const Ang = (Pt.detachAge >= 0 ? Time * 4.5 + Pt.seed : Pt.seed * 0.01);
                             Ctx.save();
                             Ctx.translate(Sc[0], Sc[1]);
@@ -3700,17 +4980,70 @@ export class SoftwarePreviewEngine
                         }
 
                         if (!Pt.trail || Pt.trail.length < 2) continue;
-                        const DrawChainRange = (FromK, ToK) => {
-                            const Pts2 = [];
-                            for (let K = FromK; K <= ToK; K++)
+                        const CurveSegs = Math.max(2, Math.min(32, Math.round(P.dynSegs ?? 16)));
+                        const ShowCurveDebug = !!P.dynCurveDebug;
+                        const EvalCatmull = (FromK, ToK, ULocal) => {
+                            const Span = Math.max(1, ToK - FromK);
+                            const F = Math.max(0, Math.min(1, ULocal)) * Span;
+                            const I1 = Math.min(ToK - 1, FromK + Math.floor(F));
+                            const T = Math.max(0, Math.min(1, F - (I1 - FromK)));
+                            const I0 = Math.max(FromK, I1 - 1);
+                            const I2 = Math.min(ToK, I1 + 1);
+                            const I3 = Math.min(ToK, I1 + 2);
+                            const P0 = Pt.trail[I0], P1 = Pt.trail[I1], P2 = Pt.trail[I2], P3 = Pt.trail[I3];
+                            const T2 = T * T, T3 = T2 * T;
+                            return [
+                                0.5 * ((2 * P1[0]) + (-P0[0] + P2[0]) * T + (2 * P0[0] - 5 * P1[0] + 4 * P2[0] - P3[0]) * T2 + (-P0[0] + 3 * P1[0] - 3 * P2[0] + P3[0]) * T3),
+                                0.5 * ((2 * P1[1]) + (-P0[1] + P2[1]) * T + (2 * P0[1] - 5 * P1[1] + 4 * P2[1] - P3[1]) * T2 + (-P0[1] + 3 * P1[1] - 3 * P2[1] + P3[1]) * T3),
+                                0.5 * ((2 * P1[2]) + (-P0[2] + P2[2]) * T + (2 * P0[2] - 5 * P1[2] + 4 * P2[2] - P3[2]) * T2 + (-P0[2] + 3 * P1[2] - 3 * P2[2] + P3[2]) * T3)
+                            ];
+                        };
+                        const DrawDebugOverlay = Pts2 => {
+                            if (!ShowCurveDebug || Pts2.length < 2) return;
+                            Ctx.save();
+                            Ctx.lineCap = 'round';
+                            Ctx.lineJoin = 'round';
+                            // Alternating segment highlight wireframe along curve spine
+                            for (let K = 0; K < Pts2.length - 1; K++)
                             {
-                                const Wp = Pt.trail[K];
+                                Ctx.strokeStyle = (K % 2 === 0) ? 'rgba(36, 240, 255, 0.96)' : 'rgba(130, 255, 212, 0.94)';
+                                Ctx.lineWidth = 1.6;
+                                Ctx.beginPath();
+                                Ctx.moveTo(Pts2[K].p[0], Pts2[K].p[1]);
+                                Ctx.lineTo(Pts2[K + 1].p[0], Pts2[K + 1].p[1]);
+                                Ctx.stroke();
+                            }
+                            // Crisp vertex joint nodes at EVERY subdivided curve point 0..N
+                            for (let K = 0; K < Pts2.length; K++)
+                            {
+                                const Q = Pts2[K].p;
+                                const IsRoot = K === 0, IsTip = K === Pts2.length - 1;
+                                const RNode = (IsRoot || IsTip) ? 3.2 : 2.35;
+                                Ctx.fillStyle = IsRoot ? '#39ff75' : (IsTip ? '#ff5e48' : '#ffe135');
+                                Ctx.strokeStyle = 'rgba(8, 12, 18, 0.92)';
+                                Ctx.lineWidth = 1.1;
+                                Ctx.beginPath();
+                                Ctx.arc(Q[0], Q[1], RNode, 0, Math.PI * 2);
+                                Ctx.fill();
+                                Ctx.stroke();
+                            }
+                            Ctx.restore();
+                        };
+                        const DrawChainRange = (FromK, ToK) => {
+                            const SpanK = Math.max(1, ToK - FromK);
+                            const SubSegs = Math.max(2, Math.round(CurveSegs * (SpanK / 19)));
+                            const Pts2 = [];
+                            for (let S = 0; S <= SubSegs; S++)
+                            {
+                                const ULocal = S / SubSegs;
+                                const UGlobal = (FromK + ULocal * SpanK) / 19;
+                                const Wp = EvalCatmull(FromK, ToK, ULocal);
                                 const Pr = ProjectPoint(VP, Wp[0], Wp[1], Wp[2], W, H);
-                                if (Pr) Pts2.push({ p: Pr, u: K / 19 });
+                                if (Pr) Pts2.push({ p: Pr, u: UGlobal, w3: Wp });
                             }
                             if (Pts2.length < 2) return;
                             const ZAvg = Pts2[Math.floor(Pts2.length * 0.5)].p[2];
-                            const BasePx = Math.max(1.0, (St.radius || 0.04) * (P.sizeScale || 1) * 260 / Math.max(1.8, ZAvg));
+                            const BasePx = Math.max(1.0, (St.radius || 0.04) * (P.sizeScale || 1) * Math.max(0.1, P.streakThin ?? 1.0) * 260 / Math.max(1.8, ZAvg));
 
                             if (DynMode === 1 && Sub > 0.5)
                             {
@@ -3721,23 +5054,27 @@ export class SoftwarePreviewEngine
                                     const Mx = 0.5 * (A[0] + B[0]), My = 0.5 * (A[1] + B[1]);
                                     const Ang = Math.atan2(B[1] - A[1], B[0] - A[0]);
                                     const Len = Math.max(3.0, Math.hypot(B[0] - A[0], B[1] - A[1]) * 0.62);
+                                    const LnkCol = UseRampD
+                                        ? EvalRampCol(P, Pts2[K].u, Pts2[K].w3[0], Pts2[K].w3[1], Pts2[K].w3[2], 0, 0, 0, Pt.age, Pt.life, St.radius || 0.04, Ang, Pt.seed, CamX, CamY, CamZ, Time)
+                                        : (K % 2 === 0 ? P.colB : ColC);
                                     Ctx.save();
                                     Ctx.translate(Mx, My);
                                     Ctx.rotate(Ang);
-                                    Ctx.strokeStyle = LinearToCss(K % 2 === 0 ? P.colB : ColC, 0.95);
+                                    Ctx.strokeStyle = LinearToCss(LnkCol, 0.95);
                                     Ctx.lineWidth = Math.max(1.6, BasePx * 0.42);
                                     Ctx.beginPath();
                                     Ctx.ellipse(0, 0, Len, Math.max(1.8, BasePx * 0.55), 0, 0, Math.PI * 2);
                                     Ctx.stroke();
                                     Ctx.restore();
                                 }
+                                DrawDebugOverlay(Pts2);
                                 return;
                             }
 
                             if (DynMode === 6)
                             {
                                 Ctx.lineCap = 'round';
-                                Ctx.strokeStyle = LinearToCss(P.colA, 0.94);
+                                Ctx.strokeStyle = LinearToCss(UseRampD ? EvalRampCol(P, 0, Pt.x, Pt.y, Pt.z, 0, 0, 0, Pt.age, Pt.life, St.radius || 0.16, 0, Pt.seed, CamX, CamY, CamZ, Time) : P.colA, 0.94);
                                 Ctx.lineWidth = Math.max(1.4, BasePx * 0.14);
                                 Ctx.beginPath();
                                 Ctx.moveTo(Pts2[0].p[0], Pts2[0].p[1]);
@@ -3749,9 +5086,11 @@ export class SoftwarePreviewEngine
                                     const Tx = Next[0] - Prev[0], Ty = Next[1] - Prev[1];
                                     const Tl = Math.hypot(Tx, Ty) || 1;
                                     const Nx = -Ty / Tl, Ny = Tx / Tl;
-                                    const U = Pts2[K].u;
+                                    const U = Pts2[K].u, W3 = Pts2[K].w3;
                                     const PinLen = BasePx * Math.sin(Math.min(1, U) * Math.PI) * (1.15 - 0.35 * U);
-                                    const PinCol = MixRgb(ColC, P.colB, U);
+                                    const PinCol = UseRampD
+                                        ? EvalRampCol(P, U, W3[0], W3[1], W3[2], 0, 0, 0, Pt.age, Pt.life, St.radius || 0.16, 0, Pt.seed, CamX, CamY, CamZ, Time)
+                                        : MixRgb(ColC, P.colB, U);
                                     Ctx.fillStyle = LinearToCss(PinCol, 0.92);
                                     for (const Sgn of [-1, 1])
                                     {
@@ -3765,6 +5104,7 @@ export class SoftwarePreviewEngine
                                         Ctx.fill();
                                     }
                                 }
+                                DrawDebugOverlay(Pts2);
                                 return;
                             }
 
@@ -3772,12 +5112,15 @@ export class SoftwarePreviewEngine
                             Ctx.lineJoin = 'round';
                             for (let K = 0; K < Pts2.length - 1; K++)
                             {
-                                const U = Pts2[K].u;
+                                const U = Pts2[K].u, W3 = Pts2[K].w3;
                                 const WFrac = (DynMode === 4 || DynMode === 5 || DynMode === 9) ? (1 - U * 0.86) : (DynMode === 7 ? (1 - U * 0.65) : 1.0);
-                                const SegCol = DynMode === 7
-                                    ? MixRgb(P.colA, ColC, U * 0.45)
-                                    : (DynMode === 9 ? MixRgb(MixRgb(P.colA, ColC, U), P.colB, Math.max(0, (U - 0.55) / 0.45)) : MixRgb(P.colA, ColC, Math.min(1, U * 1.15)));
-                                Ctx.strokeStyle = LinearToCss(SegCol, 0.95);
+                                const SegCol = UseRampD
+                                    ? EvalRampCol(P, U, W3[0], W3[1], W3[2], 0, 0, 0, Pt.age, Pt.life, St.radius || 0.04, 0, Pt.seed, CamX, CamY, CamZ, Time)
+                                    : (DynMode === 7
+                                        ? MixRgb(P.colA, ColC, U * 0.45)
+                                        : (DynMode === 9 ? MixRgb(MixRgb(P.colA, ColC, U), P.colB, Math.max(0, (U - 0.55) / 0.45)) : MixRgb(P.colA, ColC, Math.min(1, U * 1.15))));
+                                const SegAlpha = (Additive && DynMode === 8) ? 0.34 : 0.95;
+                                Ctx.strokeStyle = LinearToCss(SegCol, SegAlpha);
                                 Ctx.lineWidth = Math.max(1.0, BasePx * WFrac);
                                 Ctx.beginPath();
                                 Ctx.moveTo(Pts2[K].p[0], Pts2[K].p[1]);
@@ -3785,36 +5128,36 @@ export class SoftwarePreviewEngine
                                 Ctx.stroke();
                             }
 
-                            if (DynMode === 8 && St.hasBladder && Pts2.length >= 15)
+                            if (DynMode === 8 && St.hasBladder && Pts2.length >= 3)
                             {
-                                const PBlad = Pts2[14].p;
-                                Ctx.fillStyle = LinearToCss(P.colB, 0.96);
+                                const PBlad = Pts2[Math.min(Pts2.length - 1, Math.floor((Pts2.length - 1) * 0.74))].p;
+                                Ctx.fillStyle = LinearToCss(UseRampD ? EvalRampStopsAt(P, 1) : P.colB, Additive ? 0.36 : 0.96);
                                 Ctx.beginPath();
                                 Ctx.arc(PBlad[0], PBlad[1], Math.max(2.2, BasePx * 0.72), 0, Math.PI * 2);
                                 Ctx.fill();
                             }
-                            if (DynMode === 9 && St.hasBioTip && Pts2.length >= 16)
+                            if (DynMode === 9 && St.hasBioTip && Pts2.length >= 2)
                             {
                                 const PTp = Pts2[Pts2.length - 1].p;
-                                Ctx.fillStyle = LinearToCss(P.colB, 0.92);
+                                Ctx.fillStyle = LinearToCss(UseRampD ? EvalRampStopsAt(P, 1) : P.colB, 0.92);
                                 Ctx.beginPath();
                                 Ctx.arc(PTp[0], PTp[1], Math.max(2.0, BasePx * 0.55), 0, Math.PI * 2);
                                 Ctx.fill();
                             }
 
-                            if ((DynMode === 4 || DynMode === 5) && St.hasTip && Pts2.length >= 4)
+                            if ((DynMode === 4 || DynMode === 5) && St.hasTip && Pts2.length >= 3)
                             {
                                 const PTop = Pts2[Pts2.length - 1].p;
-                                const PPrev = Pts2[Pts2.length - 3].p;
+                                const PPrev = Pts2[Math.max(0, Pts2.length - 2)].p;
                                 const Ang = Math.atan2(PTop[1] - PPrev[1], PTop[0] - PPrev[0]);
                                 Ctx.save();
                                 Ctx.translate(PTop[0], PTop[1]);
                                 Ctx.rotate(Ang + Math.PI * 0.5);
+                                Ctx.fillStyle = LinearToCss(UseRampD ? EvalRampStopsAt(P, 1) : P.colB, DynMode === 4 ? 0.96 : 0.98);
                                 if (DynMode === 4)
                                 {
                                     const EarH = Math.max(5, BasePx * 4.8);
                                     const EarW = Math.max(2.2, BasePx * 1.35);
-                                    Ctx.fillStyle = LinearToCss(P.colB, 0.96);
                                     Ctx.beginPath();
                                     Ctx.ellipse(0, EarH * 0.25, EarW, EarH * 0.55, 0, 0, Math.PI * 2);
                                     Ctx.fill();
@@ -3823,13 +5166,13 @@ export class SoftwarePreviewEngine
                                 {
                                     const CatH = Math.max(7, BasePx * 4.2);
                                     const CatW = Math.max(3.2, BasePx * 1.45);
-                                    Ctx.fillStyle = LinearToCss(P.colB, 0.98);
                                     Ctx.beginPath();
                                     Ctx.roundRect(-CatW * 0.5, -CatH * 0.15, CatW, CatH, CatW * 0.45);
                                     Ctx.fill();
                                 }
                                 Ctx.restore();
                             }
+                            DrawDebugOverlay(Pts2);
                         };
 
                         if (Pt.tearPt >= 1 && Pt.tearPt <= 18)
@@ -3837,7 +5180,10 @@ export class SoftwarePreviewEngine
                             DrawChainRange(0, Pt.tearPt - 1);
                             DrawChainRange(Pt.tearPt, 19);
                         }
-                        else DrawChainRange(0, 19);
+                        else
+                        {
+                            DrawChainRange(0, 19);
+                        }
                     }
                     continue;
                 }
@@ -3849,6 +5195,7 @@ export class SoftwarePreviewEngine
                     if (WebMode > 0)
                     {
                         if (!Pt.visibleStrand || !Pt.trail || Pt.trail.length < 2) continue;
+                        const UseRampW = HasCustomRamp(P);
                         const DrawWebSpan = (FromK, ToK) => {
                             const Pts2 = [];
                             for (let K = FromK; K <= ToK; K++)
@@ -3861,9 +5208,11 @@ export class SoftwarePreviewEngine
                             const MidSc = Pts2[Math.floor(Pts2.length * 0.5)];
                             const ColC = P.colC || P.colB;
                             const RRole = Pt.role ?? 0.5;
-                            const SCol = RRole < 0.55
-                                ? [0, 1, 2, 3].map(K => P.colA[K] * (1 - RRole / 0.55) + ColC[K] * (RRole / 0.55))
-                                : [0, 1, 2, 3].map(K => ColC[K] * (1 - (RRole - 0.55) / 0.45) + P.colB[K] * ((RRole - 0.55) / 0.45));
+                            const SCol = UseRampW
+                                ? EvalRampCol(P, RRole, Pt.x, Pt.y, Pt.z, Pt.vx || 0, Pt.vy || 0, Pt.vz || 0, Pt.age, Pt.life, P.sizeStart || 0.018, 0, Pt.seed, CamX, CamY, CamZ, Time)
+                                : (RRole < 0.55
+                                    ? [0, 1, 2, 3].map(K => P.colA[K] * (1 - RRole / 0.55) + ColC[K] * (RRole / 0.55))
+                                    : [0, 1, 2, 3].map(K => ColC[K] * (1 - (RRole - 0.55) / 0.45) + P.colB[K] * ((RRole - 0.55) / 0.45)));
                             const Alpha = 0.72 * (0.72 + 0.28 * (Pt.grow ?? 1));
                             const SilkW = Math.max(0.55, (P.sizeStart || 0.018) * (P.sizeScale || 1) * (P.streakThin || 0.5) * 195 / Math.max(2.2, MidSc[2]));
                             Ctx.strokeStyle = LinearToCss(SCol, Alpha);
@@ -3921,7 +5270,10 @@ export class SoftwarePreviewEngine
                         }
                         if (PtsW.length >= 10)
                         {
-                            Ctx.strokeStyle = LinearToCss(P.colB || P.colC, RipA);
+                            const RipCol = HasCustomRamp(P)
+                                ? EvalRampCol(P, 0.35 + 0.65 * T, Pt.x, 0.020, Pt.z, 0, 0, 0, Pt.age, Pt.life, Pt.rippleRadius || 0.16, 0, Pt.seed || 0, CamX, CamY, CamZ, Time)
+                                : (P.colB || P.colC);
+                            Ctx.strokeStyle = LinearToCss(RipCol, RipA);
                             Ctx.lineWidth = Math.max(0.75, 1.35 * (1 - T * 0.6));
                             Ctx.beginPath();
                             PtsW.forEach((Q, K) => K === 0 ? Ctx.moveTo(Q[0], Q[1]) : Ctx.lineTo(Q[0], Q[1]));
@@ -3937,54 +5289,107 @@ export class SoftwarePreviewEngine
                         const Alpha = SmoothT(0, 0.12, T) * (1 - SmoothT(0.76, 1, T)) * 0.88 * PulseScale;
                         if (Alpha <= 0.005) continue;
                         const ColC = P.colC || P.colB;
-                        const BaseW = Math.max(0.6, (P.sizeStart * (1 - T) + P.sizeEnd * T) * (P.sizeScale || 1) * (P.streakThin || 0.34) * 280 / Math.max(2.0, Sc[2])) * (0.75 + 0.45 * HeadScale);
+                        const UseRampC3 = HasCustomRamp(P);
+                        const BaseWorldC3 = (P.sizeStart * (1 - T) + P.sizeEnd * T) * (P.sizeScale || 1);
+                        const BaseW = Math.max(0.6, BaseWorldC3 * (P.streakThin || 0.34) * 280 / Math.max(2.0, Sc[2])) * (0.75 + 0.45 * HeadScale);
+                        const HeadCol = UseRampC3
+                            ? EvalRampCol(P, 0, Pt.x, Pt.y, Pt.z, Pt.vx || 0, Pt.vy || 0, Pt.vz || 0, Pt.age, Pt.life, BaseWorldC3, Pt.ang || 0, Pt.seed || 0, CamX, CamY, CamZ, Time)
+                            : P.colB;
                         if (Pt.trail && Pt.trail.length >= 3)
                         {
                             const Pts2 = [];
+                            const NTr = Math.max(1, Pt.trail.length - 1);
                             for (let K = Pt.trail.length - 1; K >= 0; K--)
                             {
                                 const Wp = Pt.trail[K];
                                 const Pr = ProjectPoint(VP, Wp[0], Wp[1], Wp[2], W, H);
-                                if (Pr) Pts2.push(Pr);
+                                if (Pr) Pts2.push({ p: Pr, w: Wp, u: K / NTr });
                             }
                             if (Pts2.length >= 3)
                             {
-                                const TailPt = Pts2[0], HeadPt = Pts2[Pts2.length - 1];
-                                const Grad = Ctx.createLinearGradient(TailPt[0], TailPt[1], HeadPt[0], HeadPt[1]);
-                                Grad.addColorStop(0.00, LinearToCss(P.colA, 0.0));
-                                Grad.addColorStop(0.45, LinearToCss(ColC, Alpha * 0.34));
-                                Grad.addColorStop(1.00, LinearToCss(P.colB, Alpha * 0.82));
-                                Ctx.strokeStyle = Grad;
+                                const TailPt = Pts2[0].p, HeadPt = Pts2[Pts2.length - 1].p;
                                 Ctx.lineWidth = Math.max(0.65, BaseW * 1.05);
                                 Ctx.lineCap = 'round';
-                                Ctx.beginPath();
-                                Ctx.moveTo(Pts2[0][0], Pts2[0][1]);
-                                for (let K = 1; K < Pts2.length - 1; K++)
+                                if (UseRampC3 && ((P.colorBy && P.colorBy !== 'modeDefault') || P.colorInterp === 'stepped'))
                                 {
-                                    const Mx = 0.5 * (Pts2[K][0] + Pts2[K + 1][0]);
-                                    const My = 0.5 * (Pts2[K][1] + Pts2[K + 1][1]);
-                                    Ctx.quadraticCurveTo(Pts2[K][0], Pts2[K][1], Mx, My);
+                                    for (let K = 0; K < Pts2.length - 1; K++)
+                                    {
+                                        const S = K / Math.max(1, Pts2.length - 1);
+                                        const W3 = Pts2[K].w;
+                                        const SegCol = EvalRampCol(P, Pts2[K].u, W3[0], W3[1], W3[2], Pt.vx || 0, Pt.vy || 0, Pt.vz || 0, Pt.age, Pt.life, BaseWorldC3, Pt.ang || 0, Pt.seed || 0, CamX, CamY, CamZ, Time);
+                                        Ctx.strokeStyle = LinearToCss(SegCol, Alpha * Math.min(1, S * 1.45) * 0.84);
+                                        Ctx.beginPath();
+                                        Ctx.moveTo(Pts2[K].p[0], Pts2[K].p[1]);
+                                        Ctx.lineTo(Pts2[K + 1].p[0], Pts2[K + 1].p[1]);
+                                        Ctx.stroke();
+                                    }
                                 }
-                                Ctx.lineTo(HeadPt[0], HeadPt[1]);
-                                Ctx.stroke();
+                                else
+                                {
+                                    const Grad = Ctx.createLinearGradient(TailPt[0], TailPt[1], HeadPt[0], HeadPt[1]);
+                                    if (UseRampC3)
+                                    {
+                                        for (let G = 0; G <= 12; G++)
+                                        {
+                                            const S = G / 12;
+                                            Grad.addColorStop(S, LinearToCss(EvalRampStopsAt(P, 1 - S), Alpha * Math.min(1, S * 1.45) * 0.84));
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Grad.addColorStop(0.00, LinearToCss(P.colA, 0.0));
+                                        Grad.addColorStop(0.45, LinearToCss(ColC, Alpha * 0.34));
+                                        Grad.addColorStop(1.00, LinearToCss(P.colB, Alpha * 0.82));
+                                    }
+                                    Ctx.strokeStyle = Grad;
+                                    Ctx.beginPath();
+                                    Ctx.moveTo(TailPt[0], TailPt[1]);
+                                    for (let K = 1; K < Pts2.length - 1; K++)
+                                    {
+                                        const Mx = 0.5 * (Pts2[K].p[0] + Pts2[K + 1].p[0]);
+                                        const My = 0.5 * (Pts2[K].p[1] + Pts2[K + 1].p[1]);
+                                        Ctx.quadraticCurveTo(Pts2[K].p[0], Pts2[K].p[1], Mx, My);
+                                    }
+                                    Ctx.lineTo(HeadPt[0], HeadPt[1]);
+                                    Ctx.stroke();
+                                }
                                 const LeadStart = Math.max(0, Math.floor(Pts2.length * 0.56));
-                                Ctx.strokeStyle = LinearToCss(P.colB, Alpha * 0.52);
+                                Ctx.strokeStyle = LinearToCss(HeadCol, Alpha * 0.52);
                                 Ctx.lineWidth = Math.max(0.45, BaseW * 0.52);
                                 Ctx.beginPath();
-                                Ctx.moveTo(Pts2[LeadStart][0], Pts2[LeadStart][1]);
-                                for (let K = LeadStart + 1; K < Pts2.length; K++) Ctx.lineTo(Pts2[K][0], Pts2[K][1]);
+                                Ctx.moveTo(Pts2[LeadStart].p[0], Pts2[LeadStart].p[1]);
+                                for (let K = LeadStart + 1; K < Pts2.length; K++) Ctx.lineTo(Pts2[K].p[0], Pts2[K].p[1]);
                                 Ctx.stroke();
                             }
                         }
-                        const Dof = Pt.bokeh ?? 0.35;
+                        const HeadStyle = Math.max(0, Math.min(3, Math.round(P.headStyle ?? 0)));
+                        const RawDof = Pt.bokeh ?? 0.35;
+                        const Dof = HeadStyle === 1 ? 0.0 : (HeadStyle === 2 ? 1.0 : (HeadStyle === 3 ? 0.74 : RawDof));
                         const HeadR = Math.max(1.0, ((Dof > 0.62 ? (4.0 + (Dof - 0.62) * 24.0) : (1.1 + Dof * 1.9)) * 7.5) / Math.max(2.4, Sc[2])) * HeadScale;
-                        if (Dof > 0.62 && Ctx.createRadialGradient)
+                        if (HeadStyle === 3)
+                        {
+                            // Aperture rim ring bokeh matching GPU headStyle == 3u
+                            if (Ctx.createRadialGradient)
+                            {
+                                const RG = Ctx.createRadialGradient(Sc[0], Sc[1], HeadR * 0.45, Sc[0], Sc[1], HeadR);
+                                RG.addColorStop(0.0, LinearToCss(HeadCol, Alpha * 0.14));
+                                RG.addColorStop(0.68, LinearToCss(HeadCol, Alpha * 0.32));
+                                RG.addColorStop(0.88, LinearToCss(HeadCol, Alpha * 0.78));
+                                RG.addColorStop(1.0, LinearToCss(HeadCol, 0));
+                                Ctx.fillStyle = RG;
+                                Ctx.beginPath(); Ctx.arc(Sc[0], Sc[1], HeadR, 0, Math.PI * 2); Ctx.fill();
+                            }
+                            Ctx.strokeStyle = LinearToCss(HeadCol, Alpha * 0.72);
+                            Ctx.lineWidth = Math.max(1.0, HeadR * 0.14);
+                            Ctx.beginPath(); Ctx.arc(Sc[0], Sc[1], HeadR * 0.86, 0, Math.PI * 2); Ctx.stroke();
+                        }
+                        else if (Dof > 0.62 && Ctx.createRadialGradient)
                         {
                             const BG = Ctx.createRadialGradient(Sc[0], Sc[1], 0, Sc[0], Sc[1], HeadR);
-                            BG.addColorStop(0.0, LinearToCss(P.colB, Alpha * 0.55));
-                            BG.addColorStop(0.72, LinearToCss(P.colB, Alpha * 0.36));
-                            BG.addColorStop(0.90, LinearToCss(P.colB, Alpha * 0.44));
-                            BG.addColorStop(1.0, LinearToCss(P.colB, 0));
+                            BG.addColorStop(0.0, LinearToCss(HeadCol, Alpha * 0.55));
+                            BG.addColorStop(0.72, LinearToCss(HeadCol, Alpha * 0.36));
+                            BG.addColorStop(0.90, LinearToCss(HeadCol, Alpha * 0.44));
+                            BG.addColorStop(1.0, LinearToCss(HeadCol, 0));
                             Ctx.fillStyle = BG;
                             Ctx.beginPath(); Ctx.arc(Sc[0], Sc[1], HeadR, 0, Math.PI * 2); Ctx.fill();
                         }
@@ -3993,8 +5398,8 @@ export class SoftwarePreviewEngine
                             if (HeadR > 1.3 && Ctx.createRadialGradient)
                             {
                                 const HG = Ctx.createRadialGradient(Sc[0], Sc[1], 0, Sc[0], Sc[1], HeadR * 2.6);
-                                HG.addColorStop(0.0, LinearToCss(P.colB, Alpha * 0.55));
-                                HG.addColorStop(1.0, LinearToCss(P.colB, 0));
+                                HG.addColorStop(0.0, LinearToCss(HeadCol, Alpha * 0.55));
+                                HG.addColorStop(1.0, LinearToCss(HeadCol, 0));
                                 Ctx.fillStyle = HG;
                                 Ctx.beginPath(); Ctx.arc(Sc[0], Sc[1], HeadR * 2.6, 0, Math.PI * 2); Ctx.fill();
                             }
@@ -4008,9 +5413,12 @@ export class SoftwarePreviewEngine
                     {
                         const Cr = Pt.crest ?? 0.5;
                         const ColC = P.colC || P.colB;
-                        const Col = Cr < 0.52
-                            ? [0, 1, 2, 3].map(K => P.colA[K] * (1 - Cr / 0.52) + ColC[K] * (Cr / 0.52))
-                            : [0, 1, 2, 3].map(K => ColC[K] * (1 - (Cr - 0.52) / 0.48) + P.colB[K] * ((Cr - 0.52) / 0.48));
+                        const CurlWorldSz = (P.sizeStart * (1 - T) + P.sizeEnd * T) * (P.sizeScale || 1);
+                        const Col = HasCustomRamp(P)
+                            ? EvalRampCol(P, CurlMode === 2 ? 0.45 + 0.55 * Cr : Cr, Pt.x, Pt.y, Pt.z, Pt.vx || 0, Pt.vy || 0, Pt.vz || 0, Pt.age, Pt.life, CurlWorldSz, Pt.ang || 0, Pt.seed || 0, CamX, CamY, CamZ, Time)
+                            : (Cr < 0.52
+                                ? [0, 1, 2, 3].map(K => P.colA[K] * (1 - Cr / 0.52) + ColC[K] * (Cr / 0.52))
+                                : [0, 1, 2, 3].map(K => ColC[K] * (1 - (Cr - 0.52) / 0.48) + P.colB[K] * ((Cr - 0.52) / 0.48)));
                         let Alpha = SmoothT(0, 0.10, T) * (1 - SmoothT(0.72, 1, T)) * (CurlMode === 1 ? 0.52 : 0.62);
                         if (CurlMode === 2)
                         {
@@ -4053,13 +5461,16 @@ export class SoftwarePreviewEngine
                         continue;
                     }
 
-                    const ColC = P.colC || P.colB;
-                    const Col = ColC && ColC[3] > 0.01
-                        ? (T < 0.38
-                            ? [0, 1, 2, 3].map(I => P.colA[I] * (1 - T / 0.38) + ColC[I] * (T / 0.38))
-                            : [0, 1, 2, 3].map(I => ColC[I] * (1 - (T - 0.38) / 0.62) + P.colB[I] * ((T - 0.38) / 0.62)))
-                        : [0, 1, 2, 3].map(I => P.colA[I] * (1 - T) + P.colB[I] * T);
+                    const UseRampStd = HasCustomRamp(P);
                     const BaseWorldSize = (P.sizeStart * (1 - T) + P.sizeEnd * T) * (P.sizeScale || 1);
+                    const ColC = P.colC || P.colB;
+                    const Col = UseRampStd
+                        ? EvalRampCol(P, T, Pt.x, Pt.y, Pt.z, Pt.vx || 0, Pt.vy || 0, Pt.vz || 0, Pt.age, Pt.life, BaseWorldSize, Pt.ang || 0, Pt.seed || 0, CamX, CamY, CamZ, Time)
+                        : (ColC && ColC[3] > 0.01
+                            ? (T < 0.38
+                                ? [0, 1, 2, 3].map(I => P.colA[I] * (1 - T / 0.38) + ColC[I] * (T / 0.38))
+                                : [0, 1, 2, 3].map(I => ColC[I] * (1 - (T - 0.38) / 0.62) + P.colB[I] * ((T - 0.38) / 0.62)))
+                            : [0, 1, 2, 3].map(I => P.colA[I] * (1 - T) + P.colB[I] * T));
                     const R = Math.max(MudMode > 0 ? 0.65 : 1.8, Math.min(Shape === 10 || Shape === 11 || Shape === 15 || Shape === 16 || Shape === 17 ? 340 : 22, (BaseWorldSize * 180) / Sc[2]));
                     const PulseMul = (P.kind === 6 && (P.pulseDepth || 0) > 0)
                         ? (1 - P.pulseDepth + P.pulseDepth * (0.5 + 0.5 * Math.sin(Time * (P.pulseHz || 1) * Math.PI * 2 + (Pt.seed || 0))))
@@ -4073,9 +5484,12 @@ export class SoftwarePreviewEngine
                         const Flap = Math.cos(Pt.age * (9 + (Pt.seed % 5)) + Pt.seed);
                         const WingW = Math.max(0.22, Math.abs(Flap));
                         const Sz = Math.max(4, R * 3.8);
+                        const FlyCol = UseRampStd
+                            ? ((P.colorBy && P.colorBy !== 'modeDefault') ? Col : EvalRampStopsAt(P, WebHash(Pt.seed || 0, 8)))
+                            : Col;
                         Ctx.save();
                         Ctx.translate(Sc[0], Sc[1]);
-                        Ctx.fillStyle = LinearToCss(Col, Alpha * 0.92);
+                        Ctx.fillStyle = LinearToCss(FlyCol, Alpha * 0.92);
                         for (const Sgn of [-1, 1])
                         {
                             Ctx.beginPath();
@@ -4090,25 +5504,54 @@ export class SoftwarePreviewEngine
                     if ((P.trailMode || 0) > 0 && Pt.trail && Pt.trail.length >= 3)
                     {
                         const Pts2 = [];
+                        const NTr = Math.max(1, Pt.trail.length - 1);
                         for (let K = Pt.trail.length - 1; K >= 0; K--)
                         {
                             const Pr = ProjectPoint(VP, Pt.trail[K][0], Pt.trail[K][1], Pt.trail[K][2], W, H);
-                            if (Pr) Pts2.push(Pr);
+                            if (Pr) Pts2.push({ p: Pr, w: Pt.trail[K], u: K / NTr });
                         }
                         if (Pts2.length >= 2)
                         {
-                            const T0 = Pts2[0], T1 = Pts2[Pts2.length - 1];
-                            const Grad = Ctx.createLinearGradient(T0[0], T0[1], T1[0], T1[1]);
-                            Grad.addColorStop(0.0, LinearToCss(P.colA, 0.0));
-                            Grad.addColorStop(0.5, LinearToCss(ColC, Alpha * 0.42));
-                            Grad.addColorStop(1.0, LinearToCss(P.colB, Alpha * 0.88));
-                            Ctx.strokeStyle = Grad;
+                            const T0 = Pts2[0].p, T1 = Pts2[Pts2.length - 1].p;
                             Ctx.lineWidth = Math.max(1.1, R * (P.streakThin || 0.45) * 0.72);
                             Ctx.lineCap = 'round';
-                            Ctx.beginPath();
-                            Ctx.moveTo(Pts2[0][0], Pts2[0][1]);
-                            for (let K = 1; K < Pts2.length; K++) Ctx.lineTo(Pts2[K][0], Pts2[K][1]);
-                            Ctx.stroke();
+                            if (UseRampStd && ((P.colorBy && P.colorBy !== 'modeDefault') || P.colorInterp === 'stepped'))
+                            {
+                                for (let K = 0; K < Pts2.length - 1; K++)
+                                {
+                                    const S = K / Math.max(1, Pts2.length - 1);
+                                    const W3 = Pts2[K].w;
+                                    const SegCol = EvalRampCol(P, Pts2[K].u, W3[0], W3[1], W3[2], Pt.vx || 0, Pt.vy || 0, Pt.vz || 0, Pt.age, Pt.life, BaseWorldSize, Pt.ang || 0, Pt.seed || 0, CamX, CamY, CamZ, Time);
+                                    Ctx.strokeStyle = LinearToCss(SegCol, Alpha * Math.min(1, S * 1.4) * 0.88);
+                                    Ctx.beginPath();
+                                    Ctx.moveTo(Pts2[K].p[0], Pts2[K].p[1]);
+                                    Ctx.lineTo(Pts2[K + 1].p[0], Pts2[K + 1].p[1]);
+                                    Ctx.stroke();
+                                }
+                            }
+                            else
+                            {
+                                const Grad = Ctx.createLinearGradient(T0[0], T0[1], T1[0], T1[1]);
+                                if (UseRampStd)
+                                {
+                                    for (let G = 0; G <= 12; G++)
+                                    {
+                                        const S = G / 12;
+                                        Grad.addColorStop(S, LinearToCss(EvalRampStopsAt(P, 1 - S), Alpha * Math.min(1, S * 1.4) * 0.88));
+                                    }
+                                }
+                                else
+                                {
+                                    Grad.addColorStop(0.0, LinearToCss(P.colA, 0.0));
+                                    Grad.addColorStop(0.5, LinearToCss(ColC, Alpha * 0.42));
+                                    Grad.addColorStop(1.0, LinearToCss(P.colB, Alpha * 0.88));
+                                }
+                                Ctx.strokeStyle = Grad;
+                                Ctx.beginPath();
+                                Ctx.moveTo(T0[0], T0[1]);
+                                for (let K = 1; K < Pts2.length; K++) Ctx.lineTo(Pts2[K].p[0], Pts2[K].p[1]);
+                                Ctx.stroke();
+                            }
                         }
                     }
 
@@ -4387,7 +5830,7 @@ export class SoftwarePreviewEngine
                             if (Pt.splatted)
                             {
                                 const FleckR = Math.max(0.85, Math.min(2.2, R * 0.72));
-                                Ctx.fillStyle = LinearToCss(P.colA, Alpha * 0.74);
+                                Ctx.fillStyle = LinearToCss(UseRampStd ? Col : P.colA, Alpha * 0.74);
                                 Ctx.beginPath();
                                 for (let K = 0; K < 5; K++)
                                 {
@@ -4403,8 +5846,9 @@ export class SoftwarePreviewEngine
                             {
                                 const MistR = Math.max(1.8, Math.min(4.8, R * 1.55));
                                 const MG = Ctx.createRadialGradient(Sc[0], Sc[1], 0, Sc[0], Sc[1], MistR);
-                                MG.addColorStop(0, LinearToCss(P.colB || Col, Alpha * 0.24));
-                                MG.addColorStop(1, LinearToCss(P.colB || Col, 0));
+                                const MistCol = UseRampStd ? Col : (P.colB || Col);
+                                MG.addColorStop(0, LinearToCss(MistCol, Alpha * 0.24));
+                                MG.addColorStop(1, LinearToCss(MistCol, 0));
                                 Ctx.fillStyle = MG;
                                 Ctx.beginPath();
                                 Ctx.arc(Sc[0], Sc[1], MistR, 0, Math.PI * 2);
@@ -4419,8 +5863,8 @@ export class SoftwarePreviewEngine
                                 if (ScTail && Math.hypot(Sc[0] - ScTail[0], Sc[1] - ScTail[1]) > 1.35)
                                 {
                                     const GradL = Ctx.createLinearGradient(ScTail[0], ScTail[1], Sc[0], Sc[1]);
-                                    GradL.addColorStop(0, LinearToCss(P.colA, Alpha * 0.14));
-                                    GradL.addColorStop(0.55, LinearToCss(ColC, Alpha * 0.78));
+                                    GradL.addColorStop(0, LinearToCss(UseRampStd ? Col : P.colA, Alpha * 0.14));
+                                    GradL.addColorStop(0.55, LinearToCss(UseRampStd ? Col : ColC, Alpha * 0.78));
                                     GradL.addColorStop(1, LinearToCss(Col, Alpha * 0.94));
                                     Ctx.strokeStyle = GradL;
                                     Ctx.lineWidth = Math.max(0.75, DropR * (Pt.mudRole === 1 ? 1.15 : 0.88));
@@ -4639,12 +6083,14 @@ export class SoftwarePreviewEngine
                             Ctx.arc(Sc[0], Sc[1], RadS, 0, Math.PI * 2);
                         }
 
+                        const ShColMid = UseRampStd ? EvalRampStopsAt(P, 0.55) : (P.colC || Col);
+                        const ShColEdge = UseRampStd ? EvalRampStopsAt(P, 0.92) : (P.colB || Col);
                         if (Ctx.createRadialGradient)
                         {
                             const SG = Ctx.createRadialGradient(Sc[0], Sc[1], RadS * 0.12, Sc[0], Sc[1], RadS);
                             SG.addColorStop(0.0, LinearToCss(Col, Alpha * 0.10));
-                            SG.addColorStop(0.72, LinearToCss(Col, Alpha * 0.30));
-                            SG.addColorStop(0.95, LinearToCss(P.colC || Col, Alpha * 0.85));
+                            SG.addColorStop(0.72, LinearToCss(UseRampStd ? EvalRampStopsAt(P, 0.40) : Col, Alpha * 0.30));
+                            SG.addColorStop(0.95, LinearToCss(ShColEdge, Alpha * 0.85));
                             SG.addColorStop(1.0, LinearToCss(Col, 0));
                             Ctx.fillStyle = SG;
                         }
@@ -4661,7 +6107,7 @@ export class SoftwarePreviewEngine
 
                         if (ShieldMask & 1)
                         {
-                            Ctx.strokeStyle = LinearToCss(P.colC || Col, Alpha * 0.44);
+                            Ctx.strokeStyle = LinearToCss(ShColMid, Alpha * 0.44);
                             Ctx.lineWidth = 1.0;
                             for (let Hy = -Span; Hy <= Span; Hy++)
                             {
@@ -4683,7 +6129,7 @@ export class SoftwarePreviewEngine
                         }
                         if (ShieldMask & 2)
                         {
-                            Ctx.strokeStyle = LinearToCss(P.colB || Col, Alpha * 0.46);
+                            Ctx.strokeStyle = LinearToCss(ShColEdge, Alpha * 0.46);
                             Ctx.lineWidth = 1.0;
                             for (let Iy = -Span; Iy <= Span; Iy++)
                             {
@@ -4698,7 +6144,7 @@ export class SoftwarePreviewEngine
                         }
                         if (ShieldMask & 4)
                         {
-                            Ctx.strokeStyle = LinearToCss(P.colC || Col, Alpha * 0.44);
+                            Ctx.strokeStyle = LinearToCss(ShColMid, Alpha * 0.44);
                             Ctx.lineWidth = 0.95;
                             for (let Iy = -Span; Iy <= Span; Iy++)
                             {
@@ -4714,7 +6160,7 @@ export class SoftwarePreviewEngine
                         }
                         if (ShieldMask & 8)
                         {
-                            Ctx.strokeStyle = LinearToCss(P.colA || Col, Alpha * 0.42);
+                            Ctx.strokeStyle = LinearToCss(UseRampStd ? Col : (P.colA || Col), Alpha * 0.42);
                             Ctx.lineWidth = 0.95;
                             for (let Iy = -Span; Iy <= Span; Iy++)
                             {
@@ -4728,7 +6174,7 @@ export class SoftwarePreviewEngine
                         }
                         if (ShieldMask & 16)
                         {
-                            Ctx.strokeStyle = LinearToCss(P.colB || Col, Alpha * 0.44);
+                            Ctx.strokeStyle = LinearToCss(ShColEdge, Alpha * 0.44);
                             Ctx.lineWidth = 0.95;
                             for (let Iy = -Span; Iy <= Span; Iy++)
                             {
@@ -4805,7 +6251,7 @@ export class SoftwarePreviewEngine
                         Ctx.restore();
 
                         // Bright glowing outer barrier border matching the selected ShieldForm
-                        Ctx.strokeStyle = `rgba(215, 252, 255, ${(Alpha * 0.86).toFixed(3)})`;
+                        Ctx.strokeStyle = UseRampStd ? LinearToCss(ShColEdge, Alpha * 0.88) : `rgba(215, 252, 255, ${(Alpha * 0.86).toFixed(3)})`;
                         Ctx.lineWidth = 2.0;
                         Ctx.beginPath();
                         if (OutlineVerts)
@@ -4839,15 +6285,30 @@ export class SoftwarePreviewEngine
                         const Cw = Math.max(24, R * 1.85), Ch = Math.max(22, R * 0.98);
                         const AurRate = Math.max(0.02, P.curlRate ?? 0.52);
                         const AurFreq = Math.max(0.25, Math.min(4.0, P.curlFreq ?? 1.0));
+                        const UseAttrAur = Boolean(P.colorBy && P.colorBy !== 'modeDefault');
                         Ctx.save();
                         Ctx.translate(Sc[0], Sc[1]);
                         if (Ctx.createLinearGradient)
                         {
                             const AG = Ctx.createLinearGradient(0, Ch * 0.5, 0, -Ch * 0.55);
-                            AG.addColorStop(0.0, LinearToCss(P.colA, 0));
-                            AG.addColorStop(0.18, LinearToCss(P.colA, Alpha * 0.85));
-                            AG.addColorStop(0.55, LinearToCss(P.colC || P.colA, Alpha * 0.52));
-                            AG.addColorStop(1.0, LinearToCss(P.colB, 0));
+                            if (UseRampStd)
+                            {
+                                AG.addColorStop(0.0, LinearToCss(EvalRampStopsAt(P, 0.0), 0));
+                                for (const [StopT, StopAlpha] of [[0.14, 0.82], [0.28, 0.78], [0.42, 0.65], [0.56, 0.52], [0.70, 0.36], [0.85, 0.18]])
+                                {
+                                    let SCol = EvalRampStopsAt(P, StopT);
+                                    if (UseAttrAur) SCol = [SCol[0] * 0.28 + Col[0] * 0.72, SCol[1] * 0.28 + Col[1] * 0.72, SCol[2] * 0.28 + Col[2] * 0.72];
+                                    AG.addColorStop(StopT, LinearToCss(SCol, Alpha * StopAlpha));
+                                }
+                                AG.addColorStop(1.0, LinearToCss(EvalRampStopsAt(P, 1.0), 0));
+                            }
+                            else
+                            {
+                                AG.addColorStop(0.0, LinearToCss(P.colA, 0));
+                                AG.addColorStop(0.18, LinearToCss(P.colA, Alpha * 0.85));
+                                AG.addColorStop(0.55, LinearToCss(P.colC || P.colA, Alpha * 0.52));
+                                AG.addColorStop(1.0, LinearToCss(P.colB, 0));
+                            }
                             Ctx.fillStyle = AG;
                         }
                         else Ctx.fillStyle = LinearToCss(Col, Alpha * 0.65);
@@ -4860,13 +6321,172 @@ export class SoftwarePreviewEngine
                         Ctx.closePath();
                         Ctx.fill();
                         // Shimmering vertical geomagnetic rays inside curtain
-                        Ctx.strokeStyle = LinearToCss(P.colA, Alpha * 0.42);
+                        const RayCol = UseRampStd ? (UseAttrAur ? Col : EvalRampStopsAt(P, 0.25)) : P.colA;
+                        Ctx.strokeStyle = LinearToCss(RayCol, Alpha * 0.42);
                         Ctx.lineWidth = 1.6;
                         const RayCount = Math.max(2, Math.round(3 * AurFreq));
                         for (let Rk = -RayCount; Rk <= RayCount; Rk++)
                         {
                             const Rx = (Rk / Math.max(1, RayCount)) * (Cw * 0.36) + Math.sin(Time * (AurRate * 2.6923) + Rk + (Pt.seed || 0)) * 4;
                             Ctx.beginPath(); Ctx.moveTo(Rx, Ch * 0.42); Ctx.lineTo(Rx + 3, -Ch * 0.36); Ctx.stroke();
+                        }
+                        Ctx.restore();
+                        continue;
+                    }
+                    else if (Shape === 18)
+                    {
+                        // Real 3D faceted beveled glass shard mesh (jagged 4-vertex front/back prism + 4 thickness edges + specular glint & Fresnel rim)
+                        const Sd = Pt.seed || 1;
+                        const H0 = WebHash(Sd, 11), H1 = WebHash(Sd, 12), H2 = WebHash(Sd, 13);
+                        const H3 = WebHash(Sd, 14), H4 = WebHash(Sd, 15), H5 = WebHash(Sd, 16), H6 = WebHash(Sd, 17);
+                        const Asp = 0.45 + H0 * 1.00;
+                        const Th = 0.055 + H6 * 0.055;
+                        const Sz3D = Math.max(0.04, (Pt.size || P.sizeStart || 0.22) * (P.sizeScale || 1));
+                        const Base2 = [
+                            [(H1 - 0.5) * 0.35, 0.65 + H2 * 0.45],
+                            [(0.28 + H3 * 0.48) * Asp, (H4 - 0.35) * 0.52],
+                            [(H5 - 0.5) * 0.42 * Asp, -(0.45 + H1 * 0.42)],
+                            [-(0.24 + H2 * 0.46) * Asp, (H3 - 0.55) * 0.55]
+                        ];
+                        // Per-shard 3D tumbling axis & Rodrigues rotation
+                        let Ax = WebHash(Sd, 1) - 0.5, Ay = WebHash(Sd, 2) - 0.5 + 0.001, Az = WebHash(Sd, 3) - 0.5;
+                        const AL = Math.hypot(Ax, Ay, Az) || 1;
+                        Ax /= AL; Ay /= AL; Az /= AL;
+                        const Ang = Pt.ang || 0;
+                        const Ca = Math.cos(Ang), Sa = Math.sin(Ang), Oma = 1 - Ca;
+                        const Rot3 = (Vx, Vy, Vz) => {
+                            const Dot = Ax * Vx + Ay * Vy + Az * Vz;
+                            const Cx = Ay * Vz - Az * Vy, Cy = Az * Vx - Ax * Vz, Cz = Ax * Vy - Ay * Vx;
+                            return [
+                                Vx * Ca + Cx * Sa + Ax * Dot * Oma,
+                                Vy * Ca + Cy * Sa + Ay * Dot * Oma,
+                                Vz * Ca + Cz * Sa + Az * Dot * Oma
+                            ];
+                        };
+                        const FrontW = [], BackW = [], Front2 = [], Back2 = [];
+                        let Ok = true;
+                        for (let I = 0; I < 4; I++)
+                        {
+                            const Rf = Rot3(Base2[I][0] * Sz3D, Base2[I][1] * Sz3D, Th * Sz3D);
+                            const Rb = Rot3(Base2[I][0] * Sz3D, Base2[I][1] * Sz3D, -Th * Sz3D);
+                            const Wf = [Pt.x + Rf[0], Pt.y + Rf[1], Pt.z + Rf[2]];
+                            const Wb = [Pt.x + Rb[0], Pt.y + Rb[1], Pt.z + Rb[2]];
+                            const Pf = ProjectPoint(VP, Wf[0], Wf[1], Wf[2], W, H);
+                            const Pb = ProjectPoint(VP, Wb[0], Wb[1], Wb[2], W, H);
+                            if (!Pf || !Pb) { Ok = false; break; }
+                            FrontW.push(Wf); BackW.push(Wb); Front2.push(Pf); Back2.push(Pb);
+                        }
+                        if (!Ok) continue;
+                        const Vx = CamX - Pt.x, Vy = CamY - Pt.y, Vz = CamZ - Pt.z;
+                        const VL = Math.hypot(Vx, Vy, Vz) || 1;
+                        const Vn = [Vx / VL, Vy / VL, Vz / VL];
+                        const L1 = [0.422, 0.798, 0.431], L2 = [-0.677, 0.382, -0.629];
+                        const ShadeGlass = (NLocal, IsEdge) => {
+                            let N = Rot3(NLocal[0], NLocal[1], NLocal[2]);
+                            const NL = Math.hypot(N[0], N[1], N[2]) || 1;
+                            N = [N[0] / NL, N[1] / NL, N[2] / NL];
+                            let NdotV = N[0] * Vn[0] + N[1] * Vn[1] + N[2] * Vn[2];
+                            if (NdotV < 0) { N = [-N[0], -N[1], -N[2]]; NdotV = -NdotV; }
+                            const H1x = L1[0] + Vn[0], H1y = L1[1] + Vn[1], H1z = L1[2] + Vn[2];
+                            const H1L = Math.hypot(H1x, H1y, H1z) || 1;
+                            const H2x = L2[0] + Vn[0], H2y = L2[1] + Vn[1], H2z = L2[2] + Vn[2];
+                            const H2L = Math.hypot(H2x, H2y, H2z) || 1;
+                            const Spec = Math.pow(Math.max(0, (N[0] * H1x + N[1] * H1y + N[2] * H1z) / H1L), 34) * 1.85
+                                       + Math.pow(Math.max(0, (N[0] * H2x + N[1] * H2y + N[2] * H2z) / H2L), 24) * 0.75;
+                            const Fres = Math.pow(Math.max(0, 1 - NdotV), 2.3);
+                            const Diff = 0.42 + 0.45 * Math.max(0, N[0] * L1[0] + N[1] * L1[1] + N[2] * L1[2]);
+                            const MixE = Math.min(0.92, Fres * 0.62 + (IsEdge ? 0.32 : 0));
+                            const Rgb = [
+                                Math.min(1, Col[0] * Diff * (1 - MixE) + 0.94 * MixE + Spec),
+                                Math.min(1, Col[1] * Diff * (1 - MixE) + 0.99 * MixE + Spec * 0.99),
+                                Math.min(1, Col[2] * Diff * (1 - MixE) + 1.00 * MixE + Spec * 0.98)
+                            ];
+                            const FaceA = Math.min(0.98, Alpha * (0.36 + 0.52 * Fres + (IsEdge ? 0.34 : 0) + Math.min(0.55, Spec * 0.45)));
+                            return { css: LinearToCss(Rgb, FaceA), spec: Spec };
+                        };
+                        const Faces = [];
+                        const ZFront = 0.25 * (Front2[0][2] + Front2[1][2] + Front2[2][2] + Front2[3][2]);
+                        const ZBack = 0.25 * (Back2[0][2] + Back2[1][2] + Back2[2][2] + Back2[3][2]);
+                        Faces.push({ z: ZFront, pts: Front2, n: [0, 0, 1], edge: false });
+                        Faces.push({ z: ZBack, pts: Back2, n: [0, 0, -1], edge: false });
+                        for (let E = 0; E < 4; E++)
+                        {
+                            const En = (E + 1) & 3;
+                            const Ex = Base2[En][0] - Base2[E][0], Ey = Base2[En][1] - Base2[E][1];
+                            const EL = Math.hypot(Ex, Ey) || 1;
+                            const Ze = 0.25 * (Front2[E][2] + Front2[En][2] + Back2[En][2] + Back2[E][2]);
+                            Faces.push({ z: Ze, pts: [Front2[E], Front2[En], Back2[En], Back2[E]], n: [Ey / EL, -Ex / EL, 0], edge: true });
+                        }
+                        Faces.sort((A, B) => B.z - A.z);
+                        Ctx.save();
+                        for (const F of Faces)
+                        {
+                            const Sh = ShadeGlass(F.n, F.edge);
+                            Ctx.fillStyle = Sh.css;
+                            Ctx.beginPath();
+                            Ctx.moveTo(F.pts[0][0], F.pts[0][1]);
+                            for (let K = 1; K < F.pts.length; K++) Ctx.lineTo(F.pts[K][0], F.pts[K][1]);
+                            Ctx.closePath();
+                            Ctx.fill();
+                            if (!F.edge)
+                            {
+                                Ctx.strokeStyle = `rgba(235, 249, 255, ${(Math.min(0.95, Alpha * (0.42 + Sh.spec * 0.45))).toFixed(3)})`;
+                                Ctx.lineWidth = 0.85;
+                                Ctx.stroke();
+                            }
+                        }
+                        Ctx.restore();
+                        continue;
+                    }
+                    else if (Shape === 19 && Ctx.createRadialGradient)
+                    {
+                        // Volumetric sunlit water mist & fine aerosol spray cloud (3 organic turbulent vapor lobes + sunlit silver-cyan rim + shimmering micro-droplets)
+                        const Sd = Pt.seed || 1;
+                        const Rot = (Pt.ang || 0) * 0.45 + WebHash(Sd, 1) * Math.PI * 2;
+                        const AgeF = Math.min(1, Math.max(0, (Pt.age || 0) / Math.max(0.01, Pt.life || 1)));
+                        const Billow = 0.85 + 0.45 * AgeF;
+                        const RMist = Math.max(4, Math.min(170, R * (1.28 * Billow)));
+                        const BaseA = Alpha * (0.28 + 0.14 * (1 - AgeF));
+                        Ctx.save();
+                        for (let Lobe = 0; Lobe < 3; Lobe++)
+                        {
+                            const LAng = Rot + Lobe * 2.0944 + Math.sin(Time * 0.85 + Sd + Lobe) * 0.35;
+                            const LOff = RMist * (0.18 + 0.14 * WebHash(Sd + Lobe * 7, 2));
+                            const Lx = Sc[0] + Math.cos(LAng) * LOff;
+                            const Ly = Sc[1] + Math.sin(LAng) * LOff * 0.78;
+                            const LR = RMist * (0.68 + 0.28 * WebHash(Sd + Lobe * 11, 3));
+                            // Upper-left sunlit silver-white crest vs cool aquatic mist belly
+                            const SunGrad = Ctx.createRadialGradient(
+                                Lx - LR * 0.24, Ly - LR * 0.28, LR * 0.05,
+                                Lx, Ly, LR
+                            );
+                            const TopCol = [
+                                Math.min(1, Col[0] * 0.65 + 0.38),
+                                Math.min(1, Col[1] * 0.70 + 0.35),
+                                Math.min(1, Col[2] * 0.74 + 0.32)
+                            ];
+                            const MidCol = [Col[0] * 0.82, Col[1] * 0.88, Col[2] * 0.94];
+                            SunGrad.addColorStop(0, LinearToCss(TopCol, BaseA * 0.95));
+                            SunGrad.addColorStop(0.45, LinearToCss(MidCol, BaseA * 0.52));
+                            SunGrad.addColorStop(0.78, LinearToCss(MidCol, BaseA * 0.16));
+                            SunGrad.addColorStop(1, LinearToCss(MidCol, 0));
+                            Ctx.fillStyle = SunGrad;
+                            Ctx.beginPath();
+                            Ctx.arc(Lx, Ly, LR, 0, Math.PI * 2);
+                            Ctx.fill();
+                        }
+                        // Delicate sunlit shimmering micro-droplet glints inside the mist puff
+                        const SparklePh = Math.sin(Time * 5.2 + Sd * 1.9);
+                        if (SparklePh > 0.35 && RMist > 8)
+                        {
+                            const GlintA = (SparklePh - 0.35) * 1.35 * Alpha * 0.75;
+                            const Gx = Sc[0] + (WebHash(Sd, 5) - 0.5) * RMist * 0.72;
+                            const Gy = Sc[1] + (WebHash(Sd, 6) - 0.5) * RMist * 0.62;
+                            const Gr = Math.max(1.1, Math.min(3.2, RMist * 0.065));
+                            Ctx.fillStyle = `rgba(235, 250, 255, ${Math.min(0.85, GlintA).toFixed(3)})`;
+                            Ctx.beginPath();
+                            Ctx.arc(Gx, Gy, Gr, 0, Math.PI * 2);
+                            Ctx.fill();
                         }
                         Ctx.restore();
                         continue;
@@ -4907,13 +6527,16 @@ export class SoftwarePreviewEngine
                 }
                 if (Sys.shatters?.length)
                 {
+                    const UseRampSh = HasCustomRamp(P);
                     for (const C of Sys.shatters)
                     {
                         const Sc2 = ProjectPoint(VP, C.x, C.y, C.z, W, H);
                         if (!Sc2) continue;
                         const Side = Math.max(1.5, ((C.sz * 180) / Sc2[2]) * 1.15);
-                        const Fade = 1 - SmoothT(0.6, 1, C.age / Math.max(0.01, C.life));
-                        Ctx.fillStyle = LinearToCss(P.colA, Fade * 0.9);
+                        const ST = C.age / Math.max(0.01, C.life);
+                        const Fade = 1 - SmoothT(0.6, 1, ST);
+                        const ShCol = UseRampSh ? EvalRampCol(P, ST, C.x, C.y, C.z, C.vx || 0, C.vy || 0, C.vz || 0, C.age, C.life, C.sz, 0, C.seed || 0, CamX, CamY, CamZ, Time) : P.colA;
+                        Ctx.fillStyle = LinearToCss(ShCol, Fade * 0.9);
                         Ctx.fillRect(Sc2[0] - Side * 0.5, Sc2[1] - Side * 0.5, Side, Side);
                     }
                 }
@@ -4923,17 +6546,20 @@ export class SoftwarePreviewEngine
                     if (Bh)
                     {
                         const HorR = Math.max(12, ((P.blackHole.horizon * 180) / Bh[2]) * 1.45);
+                        const Ein = Math.max(0, P.blackHole.einstein ?? 3.0);
+                        const HaloMul = 1.45 + Math.min(2.2, Ein * 0.26);
+                        const RingBright = Math.min(1.0, 0.35 + Ein * 0.18);
                         Ctx.save();
                         Ctx.globalCompositeOperation = 'lighter';
                         if (Ctx.createRadialGradient)
                         {
-                            const EG = Ctx.createRadialGradient(Bh[0], Bh[1], HorR * 0.95, Bh[0], Bh[1], HorR * 2.1);
+                            const EG = Ctx.createRadialGradient(Bh[0], Bh[1], HorR * 0.95, Bh[0], Bh[1], HorR * HaloMul);
                             EG.addColorStop(0.0, 'rgba(255, 195, 105, 0)');
-                            EG.addColorStop(0.28, 'rgba(255, 205, 120, 0.85)');
-                            EG.addColorStop(0.55, 'rgba(255, 120, 42, 0.32)');
+                            EG.addColorStop(0.28, `rgba(255, 205, 120, ${RingBright.toFixed(3)})`);
+                            EG.addColorStop(0.55, `rgba(255, 120, 42, ${(RingBright * 0.38).toFixed(3)})`);
                             EG.addColorStop(1.0, 'rgba(255, 90, 20, 0)');
                             Ctx.fillStyle = EG;
-                            Ctx.beginPath(); Ctx.arc(Bh[0], Bh[1], HorR * 2.1, 0, Math.PI * 2); Ctx.fill();
+                            Ctx.beginPath(); Ctx.arc(Bh[0], Bh[1], HorR * HaloMul, 0, Math.PI * 2); Ctx.fill();
                         }
                         Ctx.globalCompositeOperation = 'source-over';
                         Ctx.fillStyle = 'rgba(2, 3, 6, 0.98)';
@@ -4947,18 +6573,24 @@ export class SoftwarePreviewEngine
                     if (Hs)
                     {
                         const ShR = Math.max(18, ((P.heatShimmer.radius * 135) / Hs[2]));
+                        const ShFreq = Math.max(2, Math.min(48, P.heatShimmer.freq ?? 14));
+                        const ShStr = Math.max(0, P.heatShimmer.strength ?? 0.03);
+                        const WaveCount = Math.max(3, Math.min(12, Math.round(ShFreq * 0.42)));
+                        const LatAmp = Math.max(4, Math.min(42, ShStr * 520));
+                        const ShAlpha = Math.min(0.42, 0.04 + ShStr * 2.8);
                         Ctx.save();
                         Ctx.globalCompositeOperation = 'lighter';
-                        for (let Wk = 0; Wk < 5; Wk++)
+                        for (let Wk = 0; Wk < WaveCount; Wk++)
                         {
-                            const OffY = ((Time * (P.heatShimmer.rate || 1.5) * 32 + Wk * ShR * 0.42) % (ShR * 1.6)) - ShR * 0.8;
+                            const SpanH = ShR * 1.6;
+                            const OffY = ((Time * (P.heatShimmer.rate || 1.5) * 32 + Wk * (SpanH / WaveCount)) % SpanH) - ShR * 0.8;
                             const WaveW = ShR * (0.85 - Math.abs(OffY) / (ShR * 1.4));
                             if (WaveW <= 4) continue;
-                            Ctx.strokeStyle = `rgba(210, 235, 255, ${(0.12 * (1 - Math.abs(OffY) / ShR)).toFixed(3)})`;
-                            Ctx.lineWidth = 1.6;
+                            Ctx.strokeStyle = `rgba(210, 235, 255, ${(ShAlpha * (1 - Math.abs(OffY) / ShR)).toFixed(3)})`;
+                            Ctx.lineWidth = Math.max(1.0, Math.min(2.8, 1.1 + ShStr * 18));
                             Ctx.beginPath();
                             Ctx.moveTo(Hs[0] - WaveW, Hs[1] - OffY);
-                            Ctx.quadraticCurveTo(Hs[0] + Math.sin(Time * 8 + Wk) * 14, Hs[1] - OffY - 7, Hs[0] + WaveW, Hs[1] - OffY);
+                            Ctx.quadraticCurveTo(Hs[0] + Math.sin(Time * 8 + Wk * 1.3) * LatAmp, Hs[1] - OffY - (4 + ShStr * 120), Hs[0] + WaveW, Hs[1] - OffY);
                             Ctx.stroke();
                         }
                         Ctx.restore();
@@ -5039,7 +6671,8 @@ export class SoftwarePreviewEngine
             }
             Ctx.restore();
         }
-
+        Ctx.globalCompositeOperation = 'source-over';
+        Ctx.globalAlpha = 1;
     }
 }
 

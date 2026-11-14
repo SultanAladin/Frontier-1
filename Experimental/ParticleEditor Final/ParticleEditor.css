@@ -979,6 +979,22 @@ svg.glyph.rich-icon { stroke: none; fill: none; stroke-width: initial; stroke-li
     border: 1px solid rgba(255, 255, 255, 0.045);
     padding: 8px 10px 4px;
 }
+.diagram-wrap.infographic-wrap {
+    padding: 6px 6px 6px;
+    transition: border-color 140ms ease, background 140ms ease;
+}
+.diagram-wrap.infographic-wrap:hover {
+    border-color: rgba(255, 255, 255, 0.11);
+    background: rgba(14, 14, 16, 0.72);
+}
+.infographic-canvas {
+    border-radius: 10px;
+    display: block;
+}
+.infographic-caption {
+    padding: 4px 4px 1px;
+    line-height: 1.35;
+}
 .diagram-wrap svg.diagram { width: 100%; display: block; overflow: visible; }
 .plot-caption { font-size: 10px; color: #757575; margin: 4px 0 4px; }
 
@@ -1189,6 +1205,19 @@ svg.glyph.rich-icon { stroke: none; fill: none; stroke-width: initial; stroke-li
 .colour-picker::-webkit-color-swatch { border: 0; border-radius: 6px; }
 .alpha-range { width: 100%; display: block; height: 20px; }
 .gradient-ribbon { height: 10px; border-radius: 999px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.08); }
+
+.ramp-editor { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.ramp-track { position: relative; height: 26px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.12); background: #0a0a0a; cursor: crosshair; touch-action: none; }
+.ramp-track-fill { position: absolute; inset: 0; border-radius: 999px; pointer-events: none; }
+.ramp-stop { position: absolute; top: 50%; width: 18px; height: 18px; margin-left: -9px; transform: translateY(-50%); border-radius: 50%; border: 2px solid rgba(255,255,255,0.85); box-shadow: 0 1px 6px rgba(0,0,0,0.65); cursor: ew-resize; padding: 0; touch-action: none; }
+.ramp-stop.selected { border-color: #ffffff; box-shadow: 0 0 0 3px rgba(232,194,122,0.55), 0 1px 6px rgba(0,0,0,0.65); }
+.ramp-meta { margin: 2px 0 4px; }
+.ramp-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.ramp-tools .chip-add-btn:disabled { opacity: 0.4; cursor: default; }
+.ramp-sel-label, .ramp-pal-label { margin-top: 6px; }
+.ramp-palettes { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.ramp-palette-btn { flex: 1 1 64px; height: 18px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); cursor: pointer; padding: 0; }
+.ramp-palette-btn:hover { border-color: rgba(255,255,255,0.4); }
 
 .action-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 7px; margin: 10px 0; }
 .action-button {

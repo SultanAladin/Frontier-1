@@ -929,6 +929,8 @@ export function SmoothScroll(Scroller, Content)
     };
 }
 
+export { ParticleInfographic, ForceFieldInfographic, DrawWindRoseInfographic } from './ParticleInfographics.js';
+
 export function Toast(Text)
 {
     let Element = document.querySelector('.toast');
