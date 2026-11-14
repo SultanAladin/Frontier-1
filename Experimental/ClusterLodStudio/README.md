@@ -27,11 +27,13 @@ Planned Hero Workspace and SDF Baker work is tracked in `Documentation/Plans/Clu
 
 ## Hero Workspace
 
-The Outliner's top tree is the hero's workspace list: **Metadata**, **Source**, **Geometry**, **Icon**, **UV**, **SDF**
-(closed surfaces only) and **Cluster LOD**. Cluster LOD is the nested viewport workspace and the default. Metadata and SDF
-cover the viewport with their own panes. UV and Geometry open their overlays. Icon turns on the icon camera.
+The Outliner's tree is the hero's workspace list: **Metadata**, **Source**, **Geometry**, **Icon**, **UV**, **SDF**
+(closed surfaces only) and **Cluster LOD**. Selecting a part scrolls the right-hand Inspector to its section, which holds
+the controls for that part, in this order: METADATA, SOURCE, ICON, UV LAYOUT, GEOMETRY, then CLUSTER LOD (preview, LOD
+selection, hierarchy levels, build). UV and Geometry also open their overlays, Icon turns on the icon camera, and SDF
+takes over the centre pane. Cluster LOD is the default and keeps the viewport.
 
-- **Metadata**: name, category, tags and info, saved in this browser per source. The name replaces the hero title.
+- **Metadata**: name, category, tags and info, edited in the Inspector and saved in this browser per source. The name replaces the hero title.
 - **SDF**: bakes a signed distance field on a worker at 32–64 cubed. The narrow band is 2 voxels, and the sign comes from
   crossing parity along +X, so open meshes get an approximate sign. The Slice view shows one Z plane. The Raymarch view
   sphere-traces the field on the CPU. The iso offset is a percentage of hero size. Preview only: the field does not feed

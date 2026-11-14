@@ -569,9 +569,18 @@ const geometryEditor = createGeometryEditor({
 });
 
 // --- Hero Workspace: outliner tree, Cluster LOD inspector preview, SDF baker -------------------------------
+// Metadata, Source, Icon, UV, Geometry and Cluster LOD are Inspector sections. Selecting one scrolls the Inspector to it
+// and flashes the heading; UV and Geometry also open their overlays, Icon turns on the icon camera, SDF has its own pane.
+const PART_SECTIONS = { metadata: 'PartMetadata', source: 'PartSource', icon: 'PartIcon', uv: 'PartUv', geometry: 'PartGeometry', cluster: 'PartCluster' };
 function selectHeroPart(part) {
-  if (part === 'uv') { uvWorkspace.show(); return; }
-  if (part === 'geometry') { geometryEditor.show(); return; }
+  const section = document.getElementById(PART_SECTIONS[part] || '');
+  if (section) {
+    section.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    section.classList.add('focused');
+    setTimeout(() => section.classList.remove('focused'), 1400);
+  }
+  if (part === 'uv') uvWorkspace.show();
+  if (part === 'geometry') geometryEditor.show();
   if (part === 'sdf') sdfBaker.refresh();
   if (iconCapture.active !== (part === 'icon')) iconCapture.setActive(part === 'icon');
 }

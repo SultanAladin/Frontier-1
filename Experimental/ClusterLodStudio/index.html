@@ -27,14 +27,6 @@
         <button class="entity" data-part="sdf" id="TreeSdf"><span class="entity-icon" data-icon="sphere"></span><div><b>SDF</b><small>Distance field, closed surfaces</small></div></button>
         <button class="entity" data-part="cluster"><span class="entity-icon" data-icon="cube"></span><div><b>Cluster LOD</b><small>Viewport, levels and build</small></div></button>
       </div>
-      <div class="collection"><span data-icon="folder"></span><div><b>Source</b><small>Pick a source or import your own</small></div></div>
-      <div id="SourceRows"></div>
-      <label class="entity import" tabindex="0" title="Wavefront OBJ: positions and faces are read, vertices are welded by position">
-        <span class="entity-icon" data-icon="upload"></span><div><b>Import OBJ…</b><small>Positions + faces · welded on load</small></div>
-        <input id="ObjInput" type="file" accept=".obj" hidden>
-      </label>
-      <div class="collection"><span data-icon="layers"></span><div><b>Hierarchy</b><small id="HierarchySummary">—</small></div></div>
-      <div id="LevelRows"></div>
     </div>
     <div class="dock-footer"><span><i>BUILD</i><b id="FootBuild">—</b></span><span><i>GPU</i><b id="FootGpu">—</b></span><span><i>SUBMIT</i><b id="FootSubmit">—</b></span></div>
   </section>
@@ -77,16 +69,6 @@
     </div>
     <footer class="strip"><span id="StripText">WEBGL2 PREVIEW</span></footer>
     <button id="DrawerHandle" class="drawer-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 36 L22 0 L178 0 L200 36 Z"/></svg><span>Hierarchy</span></button>
-    <div id="HeroPanelMetadata" class="hero-pane" hidden>
-      <header class="viewport-heading"><span data-icon="layers" class="scene-icon"></span><div class="scene-title"><b>Metadata</b><small>Name, category, tags and info for this hero</small></div></header>
-      <div class="meta-grid">
-        <label class="meta-field"><span>Name</span><input id="MetaName" type="text" maxlength="80" autocomplete="off"></label>
-        <label class="meta-field"><span>Category</span><select id="MetaCategory"></select></label>
-        <label class="meta-field wide"><span>Tags</span><input id="MetaTags" type="text" maxlength="200" placeholder="comma, separated, tags" autocomplete="off"></label>
-        <label class="meta-field wide"><span>Info</span><textarea id="MetaInfo" rows="8" maxlength="2000" placeholder="Notes, provenance, licence, or anything the team needs"></textarea></label>
-        <p id="MetaNote" class="meta-note"></p>
-      </div>
-    </div>
     <div id="HeroPanelSdf" class="hero-pane" hidden>
       <header class="viewport-heading"><span data-icon="sphere" class="scene-icon"></span><div class="scene-title"><b>SDF</b><small>Signed distance field · preview only, does not change the rendered hero</small></div></header>
       <div class="sdf-body">
@@ -124,6 +106,77 @@
       <h1 id="GeometryTitle">—</h1>
       <div class="subtitle" id="GeometryNote">—</div>
 
+      <div id="PartMetadata" class="inspector-part">
+        <h4>METADATA</h4>
+        <div class="panel meta-panel">
+          <label class="meta-field"><span>Name</span><input id="MetaName" type="text" maxlength="80" autocomplete="off"></label>
+        <label class="meta-field"><span>Category</span><select id="MetaCategory"></select></label>
+        <label class="meta-field wide"><span>Tags</span><input id="MetaTags" type="text" maxlength="200" placeholder="comma, separated, tags" autocomplete="off"></label>
+        <label class="meta-field wide"><span>Info</span><textarea id="MetaInfo" rows="8" maxlength="2000" placeholder="Notes, provenance, licence, or anything the team needs"></textarea></label>
+        <p id="MetaNote" class="meta-note"></p>
+        </div>
+      </div>
+
+      <div id="PartSource" class="inspector-part">
+        <h4>SOURCE</h4>
+        <div class="panel source-panel">
+          <div id="SourceRows"></div>
+          <label class="entity import" tabindex="0" title="Wavefront OBJ: positions and faces are read, vertices are welded by position">
+        <span class="entity-icon" data-icon="upload"></span><div><b>Import OBJ…</b><small>Positions + faces · welded on load</small></div>
+        <input id="ObjInput" type="file" accept=".obj" hidden>
+      </label>
+        </div>
+      </div>
+
+      <div id="PartIcon" class="inspector-part">
+      <h4>ICON</h4>
+      <div class="panel">
+        <div class="icon-preview">
+          <img id="IconImage" alt="Captured icon preview" hidden>
+          <span id="IconEmpty" class="icon-empty">No icon yet. Turn on the icon camera (I), frame the object inside the square, then capture (P).</span>
+        </div>
+        <div class="icon-meta" id="IconMeta">—</div>
+        <div class="tiles">
+          <button class="tile" id="IconCameraTile" aria-pressed="false" title="Square camera box over the viewport (I)"><span data-icon="camera"></span><b>Icon camera</b><small id="IconCameraState">OFF</small></button>
+          <button class="tile" id="IconResetAngle" title="Back to the default three-quarter angle, fitted to the box"><span data-icon="fit"></span><b>Default angle</b><small>FIT BOX</small></button>
+        </div>
+        <div class="field"><label for="IconSize">Output size</label><select id="IconSize"><option value="256">256 px</option><option value="512" selected>512 px</option><option value="1024">1024 px</option></select></div>
+        <div class="field"><span>Look</span><div class="segmented" role="radiogroup" aria-label="Look"><button data-look="shaded" class="active" role="radio">Shaded</button><button data-look="live" role="radio">Live view</button></div></div>
+        <div class="icon-actions">
+          <button id="IconCapture" class="primary"><span data-icon="camera"></span>Capture</button>
+          <button id="IconSaveButton">Save as icon</button>
+        </div>
+        <div class="icon-actions">
+          <button id="IconDownload">Download PNG</button>
+          <button id="IconCopy">Copy PNG</button>
+        </div>
+        <div id="IconLibrary" class="icon-library"></div>
+        <p>The square box is the exact crop of the saved PNG, with a transparent background. Saved icons stay in this browser and replace the Outliner thumbnail for their source.</p>
+      </div>
+      </div>
+
+      <div id="PartUv" class="inspector-part">
+      <h4>UV LAYOUT</h4>
+      <div class="panel">
+        <canvas id="UvPreview" class="uv-preview" aria-label="Static UV layout preview"></canvas>
+        <div class="rows">
+          <span>Islands · seams</span><b id="UvCharts">—</b>
+          <span>Texel scale</span><b id="UvScale">—</b>
+        </div>
+        <button id="OpenCompiler" class="primary"><span data-icon="uv"></span>Open UV Workspace</button>
+        <p>Planar island unwrap, computed in this browser. Tiny islands merge into a neighbour with a close plane. Amber lines are seams where islands meet. The 3D view does not sample these UVs yet.</p>
+      </div>
+      </div>
+
+      <div id="PartGeometry" class="inspector-part">
+      <h4>GEOMETRY</h4>
+      <div class="panel">
+        <p>Scale, centre, mirror, rotate and flip the hero's source geometry. Nothing rebuilds until Apply.</p>
+        <button id="OpenGeometryEditor" class="primary"><span data-icon="rebuild"></span>Open Geometry Editor</button>
+      </div>
+      </div>
+
+      <div id="PartCluster" class="inspector-part">
       <h4>CLUSTER PREVIEW</h4>
       <div class="panel">
         <canvas id="ClusterPreview" class="cluster-preview" aria-label="3D cluster preview of one LOD level"></canvas>
@@ -170,46 +223,10 @@
         </div>
       </div>
 
-      <h4>ICON</h4>
+      <h4>HIERARCHY</h4>
       <div class="panel">
-        <div class="icon-preview">
-          <img id="IconImage" alt="Captured icon preview" hidden>
-          <span id="IconEmpty" class="icon-empty">No icon yet. Turn on the icon camera (I), frame the object inside the square, then capture (P).</span>
-        </div>
-        <div class="icon-meta" id="IconMeta">—</div>
-        <div class="tiles">
-          <button class="tile" id="IconCameraTile" aria-pressed="false" title="Square camera box over the viewport (I)"><span data-icon="camera"></span><b>Icon camera</b><small id="IconCameraState">OFF</small></button>
-          <button class="tile" id="IconResetAngle" title="Back to the default three-quarter angle, fitted to the box"><span data-icon="fit"></span><b>Default angle</b><small>FIT BOX</small></button>
-        </div>
-        <div class="field"><label for="IconSize">Output size</label><select id="IconSize"><option value="256">256 px</option><option value="512" selected>512 px</option><option value="1024">1024 px</option></select></div>
-        <div class="field"><span>Look</span><div class="segmented" role="radiogroup" aria-label="Look"><button data-look="shaded" class="active" role="radio">Shaded</button><button data-look="live" role="radio">Live view</button></div></div>
-        <div class="icon-actions">
-          <button id="IconCapture" class="primary"><span data-icon="camera"></span>Capture</button>
-          <button id="IconSaveButton">Save as icon</button>
-        </div>
-        <div class="icon-actions">
-          <button id="IconDownload">Download PNG</button>
-          <button id="IconCopy">Copy PNG</button>
-        </div>
-        <div id="IconLibrary" class="icon-library"></div>
-        <p>The square box is the exact crop of the saved PNG, with a transparent background. Saved icons stay in this browser and replace the Outliner thumbnail for their source.</p>
-      </div>
-
-      <h4>UV LAYOUT</h4>
-      <div class="panel">
-        <canvas id="UvPreview" class="uv-preview" aria-label="Static UV layout preview"></canvas>
-        <div class="rows">
-          <span>Islands · seams</span><b id="UvCharts">—</b>
-          <span>Texel scale</span><b id="UvScale">—</b>
-        </div>
-        <button id="OpenCompiler" class="primary"><span data-icon="uv"></span>Open UV Workspace</button>
-        <p>Planar island unwrap, computed in this browser. Tiny islands merge into a neighbour with a close plane. Amber lines are seams where islands meet. The 3D view does not sample these UVs yet.</p>
-      </div>
-
-      <h4>GEOMETRY</h4>
-      <div class="panel">
-        <p>Scale, centre, mirror, rotate and flip the hero's source geometry. Nothing rebuilds until Apply.</p>
-        <button id="OpenGeometryEditor" class="primary"><span data-icon="rebuild"></span>Open Geometry Editor</button>
+        <small id="HierarchySummary">—</small>
+        <div id="LevelRows"></div>
       </div>
 
       <h4>BUILD</h4>
@@ -221,6 +238,8 @@
         <button id="Rebuild" class="primary"><span data-icon="rebuild"></span>Rebuild hierarchy</button>
         <p id="BuildReport"></p>
       </div>
+      </div>
+
       <p class="honest">Runs entirely in your browser: the cluster DAG is built in a worker, selection runs on the CPU each frame, and WebGL2 rasterises the selected clusters. Error values are quadric RMS estimates, not certified bounds. No occlusion culling, streaming or software rasteriser.</p>
     </div>
   </section>

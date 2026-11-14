@@ -4,8 +4,8 @@
 const $ = (id) => document.getElementById(id);
 const STORE_KEY = 'frontier.clusterLodStudio.heroes';
 export const CATEGORIES = ['Uncategorised', 'Organic', 'Architecture', 'Terrain', 'Prop', 'Abstract', 'Character'];
-const TABS = { cluster: 'Cluster LOD', source: 'Cluster LOD', icon: 'Icon', metadata: 'Metadata', sdf: 'SDF', uv: 'Cluster LOD', geometry: 'Cluster LOD' };
-const PANES = { metadata: 'HeroPanelMetadata', sdf: 'HeroPanelSdf' };
+// Metadata, Source, Icon, UV, Geometry and Cluster LOD live in the Inspector; only SDF takes over the centre pane.
+const PANES = { sdf: 'HeroPanelSdf' };
 
 function readStore() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (error) { return {}; }
@@ -44,7 +44,7 @@ export function createHeroWorkspace({ currentSource, getGeometry, onSelect, onMe
     const geometry = getGeometry();
     // SDF applies to closed surfaces only; open heroes hide the part.
     $('TreeSdf').hidden = !!geometry && !geometry.closed;
-    if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#HeroPanelMetadata')) return;
+    if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#PartMetadata')) return;
     fillForm();
   }
   function save() {
@@ -71,7 +71,7 @@ export function createHeroWorkspace({ currentSource, getGeometry, onSelect, onMe
   function showPane(part) {
     const shown = PANES[part] || null;
     for (const id of Object.values(PANES)) $(id).hidden = id !== shown;
-    $('CentreTab').textContent = TABS[part] || 'Cluster LOD';
+    $('CentreTab').textContent = part === 'sdf' ? 'SDF' : 'Cluster LOD';
   }
   function select(part) {
     active = part;
