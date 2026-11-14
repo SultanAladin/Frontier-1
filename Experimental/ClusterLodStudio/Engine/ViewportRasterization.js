@@ -174,7 +174,7 @@ function compile(gl, vs, fs) {
 export class ViewportRasterization {
   constructor(canvas) {
     this.canvas = canvas;
-    const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance' });
+    const gl = canvas.getContext('webgl2', { antialias: true, alpha: true, premultipliedAlpha: true, powerPreference: 'high-performance' });
     if (!gl) throw new Error('WebGL2 is not available in this browser');
     this.gl = gl;
     this.multiDraw = gl.getExtension('WEBGL_multi_draw');
@@ -189,22 +189,22 @@ export class ViewportRasterization {
     gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 28, 12);
     gl.bindVertexArray(null);
     this.lineData = [];
-    this.asset = null;
+    this.geometry = null;
     this.instances = [];
     this.frozen = null;
     this.planes = new Float32Array(24);
     this.model = new Float32Array(16);
     this.modelViewProj = new Float32Array(16);
-    this.statistics = { triangles: 0, clusters: 0, tests: 0, culledFrustum: 0, culledBackface: 0, ranges: 0, submissions: 0, instancesVisible: 0, selectMs: 0, levelTriangles: new Uint32Array(32), levelClusters: new Uint32Array(32) };
+    this.statistics = { triangles: 0, clusters: 0, tests: 0, culledFrustum: 0, culledBackface: 0, ranges: 0, drawCalls: 0, instancesVisible: 0, selectMs: 0, levelTriangles: new Uint32Array(32), levelClusters: new Uint32Array(32) };
     this.pickTarget = null;
   }
 
   dispose() {
-    const gl = this.gl, a = this.asset;
+    const gl = this.gl, a = this.geometry;
     if (!a) return;
     for (const t of [a.positions, a.normals, a.clusterA, a.clusterB]) gl.deleteTexture(t);
     gl.deleteBuffer(a.corners); gl.deleteVertexArray(a.array);
-    this.asset = null;
+    this.geometry = null;
   }
 
   floatTexture(width, data, count) {
@@ -220,7 +220,7 @@ export class ViewportRasterization {
     return texture;
   }
 
-  setAsset(result) {
+  setGeometry(result) {
     this.dispose();
     const gl = this.gl, h = result.hierarchy, vertexCount = result.vertexCount;
     const expand = (source) => {
@@ -250,9 +250,19 @@ export class ViewportRasterization {
     gl.enableVertexAttribArray(1); gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_INT, 8, 4);
     gl.bindVertexArray(null);
     let radius = 0;
-    for (let i = 0; i < result.positions.length; i += 3) radius = Math.max(radius, Math.hypot(result.positions[i], result.positions[i + 1], result.positions[i + 2]));
-    this.asset = {
-      hierarchy: h, radius, lowest: result.lowest,
+    const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < result.positions.length; i += 3) {
+      radius = Math.max(radius, Math.hypot(result.positions[i], result.positions[i + 1], result.positions[i + 2]));
+      for (let k = 0; k < 3; k++) { low[k] = Math.min(low[k], result.positions[i + k]); high[k] = Math.max(high[k], result.positions[i + k]); }
+    }
+    // Centre of the bounding box and the radius around it: the icon camera frames this, not the origin.
+    const centre = [(low[0] + high[0]) / 2, (low[1] + high[1]) / 2, (low[2] + high[2]) / 2];
+    let fitRadius = 0;
+    for (let i = 0; i < result.positions.length; i += 3) {
+      fitRadius = Math.max(fitRadius, Math.hypot(result.positions[i] - centre[0], result.positions[i + 1] - centre[1], result.positions[i + 2] - centre[2]));
+    }
+    this.geometry = {
+      hierarchy: h, radius, centre, fitRadius: Math.max(fitRadius, 1e-6), lowest: result.lowest,
       positions: this.floatTexture(VERTEX_TEX, expand(result.positions), vertexCount),
       normals: this.floatTexture(VERTEX_TEX, expand(result.normals), vertexCount),
       clusterA: this.floatTexture(CLUSTER_TEX, A, h.clusterCount),
@@ -271,7 +281,7 @@ export class ViewportRasterization {
       const yaw = side === 1 ? 0 : ((Math.imul(index + 1, 2654435761) >>> 0) / 4294967296) * Math.PI * 2;
       this.instances.push({ x: (i - (side - 1) / 2) * spacing, z: (j - (side - 1) / 2) * spacing, yaw, cos: Math.cos(yaw), sin: Math.sin(yaw) });
     }
-    this.extent = ((side - 1) / 2) * spacing * Math.SQRT2 + (this.asset ? this.asset.radius : 1);
+    this.extent = ((side - 1) / 2) * spacing * Math.SQRT2 + (this.geometry ? this.geometry.radius : 1);
   }
 
   instanceMatrix(instance, out) {
@@ -279,6 +289,18 @@ export class ViewportRasterization {
     out[0] = instance.cos; out[2] = -instance.sin; out[5] = 1; out[8] = instance.sin; out[10] = instance.cos;
     out[12] = instance.x; out[14] = instance.z; out[15] = 1;
     return out;
+  }
+  toWorld(instance, p) {
+    return [p[0] * instance.cos + p[2] * instance.sin + instance.x, p[1], -p[0] * instance.sin + p[2] * instance.cos + instance.z];
+  }
+  // The instance nearest the origin: the one the icon camera frames when the grid holds several copies.
+  centreInstance() {
+    let best = 0, distance = Infinity;
+    this.instances.forEach((instance, index) => {
+      const d = instance.x * instance.x + instance.z * instance.z;
+      if (d < distance) { distance = d; best = index; }
+    });
+    return best;
   }
   toLocal(instance, p) {
     const x = p[0] - instance.x, z = p[2] - instance.z;
@@ -298,11 +320,12 @@ export class ViewportRasterization {
   unfreeze() { this.frozen = null; }
 
   // Runs selection per instance and submits the ranges with `program` already bound.
-  submitInstances(program, lod, settings, collect) {
-    const gl = this.gl, a = this.asset, h = a.hierarchy, state = a.selection, stats = this.statistics;
+  submitInstances(program, lod, settings, collect, onlyIndex = -1) {
+    const gl = this.gl, a = this.geometry, h = a.hierarchy, state = a.selection, stats = this.statistics;
     const view = { eye: null, focal: lod.focal, near: lod.near, threshold: settings.threshold, planes: settings.frustumCull ? this.planes : null, backface: settings.backfaceCull, forcedLevel: settings.forcedLevel };
     let firstInstance = true;
     for (let index = 0; index < this.instances.length; index++) {
+      if (onlyIndex >= 0 && index !== onlyIndex) continue;
       const instance = this.instances[index];
       this.instanceMatrix(instance, this.model);
       view.eye = this.toLocal(instance, lod.eye);
@@ -324,7 +347,7 @@ export class ViewportRasterization {
       } else {
         for (let r = 0; r < state.rangeCount; r++) gl.drawArrays(gl.TRIANGLES, state.firsts[r], state.counts[r]);
       }
-      if (collect) { stats.ranges += state.rangeCount; stats.submissions += this.multiDraw ? 1 : state.rangeCount; stats.instancesVisible++; }
+      if (collect) { stats.ranges += state.rangeCount; stats.drawCalls += this.multiDraw ? 1 : state.rangeCount; stats.instancesVisible++; }
     }
     if (collect) {
       stats.triangles = firstInstance ? 0 : state.triangles; stats.clusters = firstInstance ? 0 : state.clusters; stats.tests = firstInstance ? 0 : state.tests;
@@ -334,7 +357,7 @@ export class ViewportRasterization {
   }
 
   bindSurface(program, camera, lod, settings) {
-    const gl = this.gl, a = this.asset, u = program.uniforms;
+    const gl = this.gl, a = this.geometry, u = program.uniforms;
     gl.useProgram(program.program);
     gl.bindVertexArray(a.array);
     [a.positions, a.normals, a.clusterA, a.clusterB].forEach((texture, unit) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, texture); });
@@ -364,7 +387,7 @@ export class ViewportRasterization {
     gl.viewport(0, 0, width, height);
     gl.clearColor(0.043, 0.045, 0.05, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    if (!this.asset) return stats;
+    if (!this.geometry) return stats;
     const camera = this.cameraMatrices(cameraInput, width, height);
     // LOD + culling use the frozen camera when present, so the cut can be inspected from outside.
     const lod = this.frozen ? { ...this.frozen, focal: height / (2 * Math.tan(this.frozen.fov / 2)) } : camera;
@@ -372,7 +395,7 @@ export class ViewportRasterization {
     gl.enable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
     if (settings.cullBackTriangles) { gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); } else gl.disable(gl.CULL_FACE);
-    stats.ranges = 0; stats.submissions = 0; stats.instancesVisible = 0;
+    stats.ranges = 0; stats.drawCalls = 0; stats.instancesVisible = 0;
     const started = performance.now();
     this.bindSurface(this.surface, camera, lod, settings);
     this.submitInstances(this.surface, lod, settings, true);
@@ -399,7 +422,7 @@ export class ViewportRasterization {
     }
   }
   renderLines(camera, settings) {
-    const gl = this.gl, a = this.asset, h = a.hierarchy;
+    const gl = this.gl, a = this.geometry, h = a.hierarchy;
     this.lineData.length = 0;
     if (settings.grid) {
       const y = a.lowest - 0.02, step = Math.max(0.5, Math.pow(2, Math.round(Math.log2((this.extent || 2) / 12))));
@@ -446,9 +469,40 @@ export class ViewportRasterization {
     gl.bindVertexArray(null);
   }
 
+  // Renders the centre instance alone into a size x size buffer with a transparent background. `camera` must
+  // already carry the icon crop as its fov. Returns top-down, unpremultiplied RGBA bytes.
+  captureIcon(camera, settings, size) {
+    const gl = this.gl;
+    const previous = [this.canvas.width, this.canvas.height];
+    this.canvas.width = size; this.canvas.height = size;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, size, size);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+    if (settings.cullBackTriangles) { gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); } else gl.disable(gl.CULL_FACE);
+    const view = this.cameraMatrices(camera, size, size);
+    const quiet = { ...settings, selected: null };
+    this.bindSurface(this.surface, view, view, quiet);
+    this.submitInstances(this.surface, view, quiet, false, this.centreInstance());
+    gl.bindVertexArray(null);
+    const raw = new Uint8Array(size * size * 4);
+    gl.readPixels(0, 0, size, size, gl.RGBA, gl.UNSIGNED_BYTE, raw);
+    this.canvas.width = previous[0]; this.canvas.height = previous[1];
+    // The framebuffer holds premultiplied colour; PNG wants straight alpha. Rows are flipped to top-down.
+    const out = new Uint8ClampedArray(size * size * 4);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const s = (y * size + x) * 4, d = ((size - 1 - y) * size + x) * 4, alpha = raw[s + 3];
+      if (!alpha) continue;
+      const k = 255 / alpha;
+      out[d] = Math.min(255, raw[s] * k); out[d + 1] = Math.min(255, raw[s + 1] * k); out[d + 2] = Math.min(255, raw[s + 2] * k); out[d + 3] = alpha;
+    }
+    return out;
+  }
+
   // Returns { cluster, instance } under the canvas-space pixel, or null.
   pick(cameraInput, settings, clientX, clientY) {
-    if (!this.asset) return null;
+    if (!this.geometry) return null;
     const gl = this.gl, width = this.canvas.width, height = this.canvas.height;
     if (!this.pickTarget || this.pickTarget.width !== width || this.pickTarget.height !== height) {
       if (this.pickTarget) { gl.deleteFramebuffer(this.pickTarget.framebuffer); gl.deleteTexture(this.pickTarget.color); gl.deleteRenderbuffer(this.pickTarget.depth); }

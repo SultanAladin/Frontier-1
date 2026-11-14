@@ -12,8 +12,10 @@ self.onmessage = (event) => {
     const hierarchy = buildClusterHierarchy(source.positions, source.indices, request.build, report);
     let lowest = Infinity;
     for (let i = 1; i < source.positions.length; i += 3) lowest = Math.min(lowest, source.positions[i]);
-    const result = { positions: source.positions, normals, hierarchy, closed: source.closed, lowest, vertexCount: source.positions.length / 3 };
-    self.postMessage({ ticket, type: 'done', result }, [source.positions.buffer, normals.buffer, ...hierarchyTransferables(hierarchy)]);
+    // Source triangles are copied for the UV layout, which the main thread builds from the welded positions.
+    const indices = new Uint32Array(source.indices);
+    const result = { positions: source.positions, normals, indices, hierarchy, closed: source.closed, lowest, vertexCount: source.positions.length / 3 };
+    self.postMessage({ ticket, type: 'done', result }, [source.positions.buffer, normals.buffer, indices.buffer, ...hierarchyTransferables(hierarchy)]);
   } catch (error) {
     self.postMessage({ ticket, type: 'error', message: String(error && error.message || error) });
   }

@@ -2,6 +2,8 @@
 import { SOURCE_PRESETS } from './Engine/SourceGeometry.js';
 import { ViewportRasterization, VIEW_MODES } from './Engine/ViewportRasterization.js';
 import { projectedError } from './Engine/ClusterSelection.js';
+import { createIconCapture } from './IconCapture.js';
+import { createGeometryCompiler } from './GeometryCompiler.js';
 
 const $ = (id) => document.getElementById(id);
 const query = new URLSearchParams(location.search);
@@ -20,14 +22,16 @@ const ICONS = {
   sphere: '<circle cx="8" cy="8" r="6"/><ellipse cx="8" cy="8" rx="6" ry="2.4"/>',
   grid: '<path d="M2 2h12v12H2z"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/>',
   lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/>',
-  frame: '<path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/>',
+  fit: '<path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/>',
+  camera: '<path d="M2 5.2h2.4L5.8 3.3h4.4l1.4 1.9H14v7.6H2z"/><circle cx="8" cy="8.6" r="2.4"/>',
+  uv: '<rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M2 9.5h4.5V14M9.5 2v4.5H14"/>',
   help: '<circle cx="8" cy="8" r="6.2"/><path d="M6.3 6.2a1.8 1.8 0 113 1.4c-.7.5-1.3.9-1.3 1.9"/><path d="M8 11.6v.2"/>',
   close: '<path d="M4 4l8 8M12 4l-8 8"/>',
   frustum: '<path d="M2 8l11-5v10z"/><path d="M8.5 5v6"/>',
   cone: '<path d="M8 2L3 12.5c1.5 1.4 8.5 1.4 10 0z"/>',
   flat: '<path d="M2 12l4-8 4 5 4-6v9z"/>',
   rebuild: '<path d="M13 8a5 5 0 11-1.5-3.5"/><path d="M13 2.5v3h-3"/>',
-  asset: '<path d="M8 1.8l5.4 3.1v6.2L8 14.2l-5.4-3.1V4.9z"/>',
+  cube: '<path d="M8 1.8l5.4 3.1v6.2L8 14.2l-5.4-3.1V4.9z"/>',
 };
 const icon = (name, size = 16) => `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
 const hydrateIcons = (root) => root.querySelectorAll('[data-icon]').forEach((node) => { if (!node.firstChild) node.innerHTML = icon(node.dataset.icon, node.classList.contains('scene-icon') ? 20 : 16); });
@@ -63,7 +67,7 @@ const build = {
 };
 const layout = { side: Math.min(15, Math.max(1, +query.get('side') || 5)), spacing: 3 };
 const camera = { target: [0, 0, 0], yaw: 0.7, pitch: 0.38, distance: 6, fov: (50 * Math.PI) / 180, eye: [0, 0, 0] };
-let asset = null, built = null, building = false;
+let geometry = null, built = null, building = false;
 
 let viewport;
 try {
@@ -79,10 +83,19 @@ function updateEye() {
   const cp = Math.cos(camera.pitch);
   camera.eye = [camera.target[0] + Math.sin(camera.yaw) * cp * camera.distance, camera.target[1] + Math.sin(camera.pitch) * camera.distance, camera.target[2] + Math.cos(camera.yaw) * cp * camera.distance];
 }
-function frameAll() {
+function fitAll() {
   camera.target = [0, 0, 0];
   camera.distance = Math.max(2.6, (viewport.extent || 1.5) * 1.9);
   camera.yaw = 0.7; camera.pitch = 0.38;
+}
+
+let toastTimer = 0;
+function toast(text) {
+  const node = $('Toast');
+  node.textContent = text;
+  node.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => node.classList.remove('show'), 2200);
 }
 
 // --- Sliders -----------------------------------------------------------------------------------------------
@@ -148,7 +161,7 @@ function setFrozen(on) {
   refreshToggles();
 }
 $('ToolFreeze').addEventListener('click', () => setFrozen(!viewport.frozen));
-$('ToolFrame').addEventListener('click', frameAll);
+$('ToolFit').addEventListener('click', fitAll);
 
 // --- View modes --------------------------------------------------------------------------------------------
 const modeHost = $('ViewModes');
@@ -175,6 +188,14 @@ function setViewMode(id) {
 }
 
 // --- Outliner: sources + levels ----------------------------------------------------------------------------
+// Stable key for a source: its preset id, or the imported file name. Icons are saved under this key.
+function sourceKeyOf(id) {
+  return id === 'obj' ? 'obj:' + build.objName : id;
+}
+function currentSource() {
+  const preset = SOURCE_PRESETS.find((p) => p.id === build.preset);
+  return build.objText ? { key: sourceKeyOf('obj'), name: build.objName } : { key: preset.id, name: preset.label };
+}
 function renderSources() {
   const host = $('SourceRows');
   host.innerHTML = '';
@@ -184,7 +205,8 @@ function renderSources() {
     const active = build.objText ? entry.id === 'obj' : entry.id === build.preset;
     const row = document.createElement('button');
     row.className = 'entity' + (active ? ' active' : '');
-    row.innerHTML = `<span class="entity-icon">${icon('asset', 18)}</span><div><b></b><small></small></div><span class="${active ? 'status-disc' : 'muted-disc'}">${active ? icon('check', 10) : ''}</span>`;
+    const saved = iconCapture ? iconCapture.iconFor(sourceKeyOf(entry.id)) : null;
+    row.innerHTML = `<span class="entity-icon">${saved ? `<img class="source-thumb" alt="" src="${saved}">` : icon('cube', 18)}</span><div><b></b><small></small></div><span class="${active ? 'status-disc' : 'muted-disc'}">${active ? icon('check', 10) : ''}</span>`;
     row.querySelector('b').textContent = entry.label;
     row.querySelector('small').textContent = entry.note;
     row.addEventListener('click', () => {
@@ -274,14 +296,14 @@ function fail(message) {
   $('BuildOverlay').classList.add('failed');
   $('BuildLabel').textContent = 'Build failed';
   $('BuildNote').textContent = message;
-  if (asset) setTimeout(() => $('BuildOverlay').classList.remove('open'), 3500);
+  if (geometry) setTimeout(() => $('BuildOverlay').classList.remove('open'), 3500);
   if (build.objText) { build.objText = null; renderSources(); }
   refreshToggles();
 }
 function adopt(result) {
   building = false;
-  asset = result; built = result.hierarchy;
-  try { viewport.setAsset(result); } catch (error) { fail(error.message); return; }
+  geometry = result; built = result.hierarchy;
+  try { viewport.setGeometry(result); } catch (error) { fail(error.message); return; }
   settings.selected = null;
   viewport.unfreeze();
   viewport.setInstanceGrid(layout.side, layout.spacing);
@@ -289,8 +311,8 @@ function adopt(result) {
   $('Rebuild').classList.remove('stale');
   const preset = SOURCE_PRESETS.find((p) => p.id === build.preset);
   const title = build.objText ? build.objName : preset.label;
-  $('AssetTitle').textContent = title;
-  $('AssetNote').textContent = `${result.closed ? 'Closed surface' : 'Open or imported surface'} · ${number(built.sourceTriangles)} triangles · ${number(result.vertexCount)} vertices`;
+  $('GeometryTitle').textContent = title;
+  $('GeometryNote').textContent = `${result.closed ? 'Closed surface' : 'Open or imported surface'} · ${number(built.sourceTriangles)} triangles · ${number(result.vertexCount)} vertices`;
   $('SceneTitle').textContent = title;
   $('OutlinerSummary').textContent = `${title} · ${built.levels.length} levels`;
   $('HierarchySummary').textContent = `${number(built.clusterCount)} clusters · ${number(built.groupCount)} groups`;
@@ -298,11 +320,13 @@ function adopt(result) {
   $('BuildReport').textContent = `Built in ${(built.buildMs / 1000).toFixed(2)} s: ${built.levels.length} levels, coarsest ${number(top.triangles)} triangles in ${top.clusters} cluster${top.clusters > 1 ? 's' : ''}.` +
     (built.stalled ? ' Stopped early: locked borders left too little to simplify — try larger clusters or groups.' : '');
   $('FootBuild').textContent = (built.buildMs / 1000).toFixed(2) + ' s';
-  $('FootGpu').textContent = (viewport.asset.gpuBytes / 1048576).toFixed(1) + ' MB';
+  $('FootGpu').textContent = (viewport.geometry.gpuBytes / 1048576).toFixed(1) + ' MB';
   renderSources();
   renderLevels();
   setViewMode(settings.viewMode);
-  frameAll();
+  fitAll();
+  if (iconCapture.active) iconCapture.setActive(true);
+  compiler.prepare();
   refreshToggles();
   renderPicked();
 }
@@ -409,7 +433,11 @@ canvas.addEventListener('wheel', (event) => {
 const held = new Set();
 window.addEventListener('keydown', (event) => {
   if (event.target.matches('input, select, textarea') || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (compiler.open) { compiler.keydown(event); return; }
   const key = event.key.toLowerCase();
+  if (key === 'i') { iconCapture.setActive(!iconCapture.active); return; }
+  if (key === 'p' && iconCapture.active) { iconCapture.capture(); return; }
+  if (key === 'u') { compiler.show(); return; }
   if ('wasdqe'.includes(key) && key.length === 1) { held.add(key); event.preventDefault(); return; }
   if (key >= '1' && key <= String(VIEW_MODES.length)) setViewMode(VIEW_MODES[+key - 1].id);
   else if (key === 'z') { settings.wireframe = !settings.wireframe; refreshToggles(); }
@@ -417,9 +445,13 @@ window.addEventListener('keydown', (event) => {
   else if (key === 'g') { settings.grid = !settings.grid; refreshToggles(); }
   else if (key === 'c') { settings.backfaceCull = !settings.backfaceCull; refreshToggles(); }
   else if (key === 'l') setFrozen(!viewport.frozen);
-  else if (key === 'f') frameAll();
+  else if (key === 'f') fitAll();
   else if (key === '[' || key === ']') { settings.threshold = Math.min(32, Math.max(0.1, settings.threshold * (key === ']' ? 1.25 : 0.8))); sliderNodes.threshold(); }
-  else if (key === 'escape') { if ($('Notch').classList.contains('open')) toggleNotch(false); else { settings.selected = null; renderPicked(); } }
+  else if (key === 'escape') {
+    if ($('Notch').classList.contains('open')) toggleNotch(false);
+    else if (iconCapture.active) iconCapture.setActive(false);
+    else { settings.selected = null; renderPicked(); }
+  }
 });
 window.addEventListener('keyup', (event) => held.delete(event.key.toLowerCase()));
 window.addEventListener('blur', () => held.clear());
@@ -486,32 +518,43 @@ function renderLevelChart(stats) {
     if (stats.levelTriangles[level]) { g.fillStyle = '#e6e6e6'; g.fillText(compact(stats.levelTriangles[level]), x + bw / 2, base - Math.max(stored, drawn) - 4); }
   });
 }
-const frameHistory = new Float32Array(240);
-let frameCursor = 0;
-function renderFrameChart() {
-  const node = $('FrameChart');
+const timeHistory = new Float32Array(240);
+let timeCursor = 0;
+function renderTimeChart() {
+  const node = $('TimeChart');
   if (!node.clientWidth) return;
   const g = fitCanvas(node), w = node.clientWidth, h = node.clientHeight;
   let peak = 20;
-  for (const v of frameHistory) peak = Math.max(peak, v);
+  for (const v of timeHistory) peak = Math.max(peak, v);
   g.strokeStyle = '#333'; g.lineWidth = 1;
   const guide = h - (16.7 / peak) * h;
   g.beginPath(); g.moveTo(0, guide); g.lineTo(w, guide); g.stroke();
   g.strokeStyle = '#d8d8d8'; g.beginPath();
-  for (let i = 0; i < frameHistory.length; i++) {
-    const v = frameHistory[(frameCursor + i) % frameHistory.length], x = (i / (frameHistory.length - 1)) * w, y = h - Math.min(1, v / peak) * (h - 2) - 1;
+  for (let i = 0; i < timeHistory.length; i++) {
+    const v = timeHistory[(timeCursor + i) % timeHistory.length], x = (i / (timeHistory.length - 1)) * w, y = h - Math.min(1, v / peak) * (h - 2) - 1;
     if (i) g.lineTo(x, y); else g.moveTo(x, y);
   }
   g.stroke();
 }
 
-// --- Frame loop --------------------------------------------------------------------------------------------
+// --- Icon camera + Geometry Compiler ----------------------------------------------------------------------
+const iconCapture = createIconCapture({
+  viewport, camera, settings, updateEye, toast, currentSource,
+  onLibraryChange: () => renderSources(),
+});
+const compiler = createGeometryCompiler({
+  getGeometry: () => geometry,
+  getName: () => currentSource().name,
+  toast,
+});
+
+// --- Tick loop --------------------------------------------------------------------------------------------
 let last = performance.now(), smoothed = 16.7, nextReadout = 0;
 function tick(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   smoothed += (dt * 1000 - smoothed) * 0.1;
-  frameHistory[frameCursor] = dt * 1000; frameCursor = (frameCursor + 1) % frameHistory.length;
+  timeHistory[timeCursor] = dt * 1000; timeCursor = (timeCursor + 1) % timeHistory.length;
   fly(dt, shiftHeld);
   updateEye();
   const stats = viewport.render(camera, settings);
@@ -524,10 +567,10 @@ function tick(now) {
     $('MetricTriangles').textContent = compact(stats.triangles);
     $('MetricSource').textContent = compact(sourceTotal);
     $('MetricClusters').textContent = `${compact(stats.clusters)} / ${compact(storedClusters)}`;
-    $('MetricFrame').textContent = `${smoothed.toFixed(1)} ms`;
+    $('MetricTime').textContent = `${smoothed.toFixed(1)} ms`;
     $('HeroPercent').textContent = (share * 100).toFixed(share < 0.1 ? 2 : 1) + ' %';
     $('HeroFill').style.width = Math.min(100, share * 100) + '%';
-    $('FootSubmit').textContent = `${stats.submissions} call${stats.submissions === 1 ? '' : 's'}`;
+    $('FootSubmit').textContent = `${stats.drawCalls} call${stats.drawCalls === 1 ? '' : 's'}`;
     $('SceneNote').textContent = `${instances} instance${instances > 1 ? 's' : ''} · ${stats.instancesVisible} in view`;
     $('Readout').textContent =
       `${(1000 / smoothed).toFixed(0).padStart(4)} fps   ${smoothed.toFixed(1)} ms\n` +
@@ -537,7 +580,7 @@ function tick(now) {
       `culled   ${number(stats.culledFrustum)} frustum · ${number(stats.culledBackface)} cone\n` +
       `select   ${stats.selectMs.toFixed(2)} ms cpu`;
     $('StripText').textContent = `WEBGL2 PREVIEW · ${viewport.multiDraw ? 'MULTI-DRAW' : 'RANGE LOOP'} · ${stats.ranges} RANGES · PIXEL ERROR ${settings.threshold.toFixed(2)} · ${settings.forcedLevel < 0 ? 'AUTOMATIC CUT' : 'FORCED LOD ' + settings.forcedLevel}`;
-    $('FrameNote').textContent = `${smoothed.toFixed(1)} ms average · guide at 16.7 ms`;
+    $('TimeNote').textContent = `${smoothed.toFixed(1)} ms average · guide at 16.7 ms`;
     for (const node of levelNodes) {
       if (node.level < 0) { node.share.textContent = compact(stats.triangles); node.meter.style.width = Math.min(100, share * 100) + '%'; continue; }
       const drawn = stats.levelTriangles[node.level];
@@ -545,7 +588,7 @@ function tick(now) {
       node.meter.style.width = (stats.triangles ? (drawn / stats.triangles) * 100 : 0) + '%';
       node.meter.style.background = ramp(node.level / Math.max(1, built.levels.length - 1));
     }
-    if ($('Drawer').classList.contains('open')) { renderLevelChart(stats); renderFrameChart(); }
+    if ($('Drawer').classList.contains('open')) { renderLevelChart(stats); renderTimeChart(); }
     if (settings.selected) renderPickedLive();
   }
   requestAnimationFrame(tick);
@@ -564,4 +607,4 @@ requestBuild();
 requestAnimationFrame(tick);
 
 // Handle for the browser validation script and for poking around in the console.
-window.ClusterLodStudio = { settings, build, layout, camera, viewport, get hierarchy() { return built; }, get building() { return building; }, setViewMode, setForcedLevel, setFrozen, frameAll, requestBuild };
+window.ClusterLodStudio = { settings, build, layout, camera, viewport, iconCapture, compiler, get geometry() { return geometry; }, get hierarchy() { return built; }, get building() { return building; }, setViewMode, setForcedLevel, setFrozen, fitAll, requestBuild };

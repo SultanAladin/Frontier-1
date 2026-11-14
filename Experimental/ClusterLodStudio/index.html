@@ -17,7 +17,7 @@
       <div class="stat-tile"><span class="muted-disc" data-icon="cull"></span><small>Culled</small><strong id="StatCulled">0</strong></div>
     </div>
     <div class="outliner-scroll">
-      <div class="collection"><span data-icon="folder"></span><div><b>Source</b><small>Pick an asset or import your own</small></div></div>
+      <div class="collection"><span data-icon="folder"></span><div><b>Source</b><small>Pick a source or import your own</small></div></div>
       <div id="SourceRows"></div>
       <label class="entity import" tabindex="0" title="Wavefront OBJ: positions and faces are read, vertices are welded by position">
         <span class="entity-icon" data-icon="upload"></span><div><b>Import OBJ…</b><small>Positions + faces · welded on load</small></div>
@@ -43,21 +43,26 @@
       <button id="ToolBounds" class="tool" title="Bounds of the picked cluster (B)"><span data-icon="sphere"></span>Bounds</button>
       <button id="ToolGrid" class="tool" title="Ground grid (G)"><span data-icon="grid"></span>Grid</button>
       <span class="divider"></span>
+      <button id="ToolIcon" class="tool" title="Icon camera: square box for thumbnails (I)"><span data-icon="camera"></span>Icon</button>
       <button id="ToolFreeze" class="tool" title="Freeze LOD + culling at the current camera, then fly around to inspect it (L)"><span data-icon="lock"></span>Freeze LOD</button>
       <div class="spacer"></div>
-      <button id="ToolFrame" class="tool round" title="Frame everything (F)" aria-label="Frame everything"><span data-icon="frame"></span></button>
+      <button id="ToolFit" class="tool round" title="Fit everything (F)" aria-label="Fit everything"><span data-icon="fit"></span></button>
       <button id="ToolHelp" class="tool round" title="Controls" aria-label="Controls"><span data-icon="help"></span></button>
     </div>
-    <div class="stage">
+    <div class="canvas-well" id="CanvasWell">
       <canvas id="Viewport" tabindex="0" aria-label="3D viewport"></canvas>
+      <div id="CaptureBox" class="capture-box" hidden>
+        <span id="CaptureLabel" class="capture-label">ICON</span>
+        <button id="CaptureShoot" class="capture-shoot primary">Capture</button>
+      </div>
       <div id="Readout" class="readout"></div>
       <div id="Legend" class="legend"></div>
       <div id="BuildOverlay" class="build-overlay"><div><b id="BuildLabel">Building…</b><div class="progress"><i id="BuildBar"></i></div><small id="BuildNote"></small></div></div>
       <div id="Drawer" class="drawer">
         <header><b>Hierarchy</b><small>Triangles per LOD level — dim: stored, bright: constructed this instant</small></header>
         <canvas id="LevelChart"></canvas>
-        <header><b>Frame time</b><small id="FrameNote">—</small></header>
-        <canvas id="FrameChart"></canvas>
+        <header><b>Redraw time</b><small id="TimeNote">—</small></header>
+        <canvas id="TimeChart"></canvas>
       </div>
     </div>
     <footer class="strip"><span id="StripText">WEBGL2 PREVIEW</span></footer>
@@ -68,8 +73,8 @@
     <div class="tab-strip"><div class="document-tab active">Inspector</div></div>
     <div class="inspector-scroll">
       <div class="crumbs">Inspector / Cluster LOD</div>
-      <h1 id="AssetTitle">—</h1>
-      <div class="subtitle" id="AssetNote">—</div>
+      <h1 id="GeometryTitle">—</h1>
+      <div class="subtitle" id="GeometryNote">—</div>
 
       <div class="hero">
         <div class="hero-bar"><i id="HeroFill"></i></div>
@@ -79,7 +84,7 @@
         <div><b id="MetricTriangles">—</b><small>TRIANGLES</small></div>
         <div><b id="MetricSource">—</b><small>SOURCE × INSTANCES</small></div>
         <div><b id="MetricClusters">—</b><small>CLUSTERS</small></div>
-        <div><b id="MetricFrame">—</b><small>FRAME</small></div>
+        <div><b id="MetricTime">—</b><small>REDRAW</small></div>
       </div>
 
       <h4>LOD SELECTION</h4>
@@ -107,6 +112,42 @@
           <button class="tile" id="TileFlat" title="Face normals instead of source vertex normals"><span data-icon="flat"></span><b>Flat shading</b><small></small></button>
           <button class="tile" id="TileBackTriangles" title="GPU back-face triangle culling"><span data-icon="cull"></span><b>Back faces</b><small></small></button>
         </div>
+      </div>
+
+      <h4>ICON</h4>
+      <div class="panel">
+        <div class="icon-preview">
+          <img id="IconImage" alt="Captured icon preview" hidden>
+          <span id="IconEmpty" class="icon-empty">No icon yet. Turn on the icon camera (I), frame the object inside the square, then capture (P).</span>
+        </div>
+        <div class="icon-meta" id="IconMeta">—</div>
+        <div class="tiles">
+          <button class="tile" id="IconCameraTile" aria-pressed="false" title="Square camera box over the viewport (I)"><span data-icon="camera"></span><b>Icon camera</b><small id="IconCameraState">OFF</small></button>
+          <button class="tile" id="IconResetAngle" title="Back to the default three-quarter angle, fitted to the box"><span data-icon="fit"></span><b>Default angle</b><small>FIT BOX</small></button>
+        </div>
+        <div class="field"><label for="IconSize">Output size</label><select id="IconSize"><option value="256">256 px</option><option value="512" selected>512 px</option><option value="1024">1024 px</option></select></div>
+        <div class="field"><span>Look</span><div class="segmented" role="radiogroup" aria-label="Look"><button data-look="shaded" class="active" role="radio">Shaded</button><button data-look="live" role="radio">Live view</button></div></div>
+        <div class="icon-actions">
+          <button id="IconCapture" class="primary"><span data-icon="camera"></span>Capture</button>
+          <button id="IconSaveButton">Save as icon</button>
+        </div>
+        <div class="icon-actions">
+          <button id="IconDownload">Download PNG</button>
+          <button id="IconCopy">Copy PNG</button>
+        </div>
+        <div id="IconLibrary" class="icon-library"></div>
+        <p>The square box is the exact crop of the saved PNG, with a transparent background. Saved icons stay in this browser and replace the Outliner thumbnail for their source.</p>
+      </div>
+
+      <h4>UV LAYOUT</h4>
+      <div class="panel">
+        <canvas id="UvPreview" class="uv-preview" aria-label="Static UV layout preview"></canvas>
+        <div class="rows">
+          <span>Charts · seams</span><b id="UvCharts">—</b>
+          <span>Texel scale</span><b id="UvScale">—</b>
+        </div>
+        <button id="OpenCompiler" class="primary"><span data-icon="uv"></span>Open Geometry Compiler</button>
+        <p>Planar chart unwrap, computed in this browser from the source triangles. Amber lines are seams where charts meet. The 3D view does not sample these UVs yet.</p>
       </div>
 
       <h4>BUILD</h4>
@@ -137,7 +178,9 @@
           <div><kbd>[</kbd> <kbd>]</kbd><span>Pixel error − / +</span></div>
           <div><kbd>L</kbd><span>Freeze LOD + culling</span></div>
           <div><kbd>Z</kbd> <kbd>B</kbd> <kbd>G</kbd> <kbd>C</kbd><span>Wire · Bounds · Grid · Cone cull</span></div>
-          <div><kbd>F</kbd><span>Frame everything</span></div>
+          <div><kbd>F</kbd><span>Fit everything</span></div>
+          <div><kbd>I</kbd><span>Icon camera · <kbd>P</kbd> capture</span></div>
+          <div><kbd>U</kbd><span>Geometry Compiler (UV layout)</span></div>
           <div><kbd>Esc</kbd><span>Clear picked cluster</span></div>
         </div>
         <p>How to read it: switch to <b>LOD level</b> and zoom — clusters swap to coarser levels as their projected error drops under the pixel threshold. Press <b>L</b> to freeze the cut, then fly out to see frustum and cone culling from the outside.</p>
@@ -146,6 +189,55 @@
     <button id="NotchHandle" class="notch-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 0 L22 36 L178 36 L200 0 Z"/></svg><span>Frontier · Cluster LOD</span></button>
   </div>
 </div>
+  <div id="Compiler" class="compiler" role="dialog" aria-modal="true" aria-label="Geometry Compiler" hidden>
+    <header class="compiler-head">
+      <span data-icon="uv" class="scene-icon"></span>
+      <div class="compiler-title"><b>Geometry Compiler</b><small id="CompilerSource">—</small></div>
+      <div class="spacer"></div>
+      <small class="compiler-keys">R rotate · M mirror · P pack · K checker · S seams · Esc</small>
+      <button id="CompilerClose" class="tool round" aria-label="Close Geometry Compiler"><span data-icon="close"></span></button>
+    </header>
+    <div class="compiler-body">
+      <aside class="compiler-charts">
+        <div class="collection"><span data-icon="layers"></span><div><b>Charts</b><small>Fit = share of the true area the projection keeps</small></div></div>
+        <div id="ChartRows" class="chart-rows"></div>
+      </aside>
+      <section class="compiler-main">
+        <div class="viewport-tools">
+          <button id="CompilerRotate" class="tool">Rotate 90°</button>
+          <button id="CompilerMirror" class="tool">Mirror</button>
+          <span class="divider"></span>
+          <button id="CompilerPack" class="tool">Pack all</button>
+          <button id="CompilerReset" class="tool">Reset</button>
+          <span class="spacer"></span>
+          <button id="CompilerChecker" class="tool active" aria-pressed="true">Checker</button>
+          <button id="CompilerSeams" class="tool active" aria-pressed="true">Seams</button>
+          <button id="CompilerFillToggle" class="tool active" aria-pressed="true">Fill</button>
+        </div>
+        <div class="uv-stage"><canvas id="UvCanvas" tabindex="0" aria-label="UV editor"></canvas></div>
+        <p class="compiler-hint">Drag a chart to move it. Click empty space to clear the selection. Every chart shares one texel density, so packing never stretches a chart.</p>
+      </section>
+      <aside class="compiler-side">
+        <h4>LAYOUT</h4>
+        <div class="panel">
+          <div class="rows">
+            <span>Charts · seams · borders</span><b id="CompilerCount">—</b>
+            <span>Texel scale</span><b id="CompilerScale">—</b>
+            <span>UV filled</span><b id="CompilerFill">—</b>
+          </div>
+        </div>
+        <h4>SELECTED CHART</h4>
+        <div class="panel" id="ChartDetail"></div>
+        <h4>EXPORT</h4>
+        <div class="panel">
+          <button id="CompilerExportObj" class="primary">Export OBJ with UVs</button>
+          <button id="CompilerExportSvg">Export UV layout SVG</button>
+          <p>The OBJ keeps welded vertices and writes one texture coordinate per triangle corner, so seams survive a round trip through Import OBJ.</p>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <div id="Toast" class="toast" role="status" aria-live="polite"></div>
 <script type="module" src="./Studio.js"></script>
 </body>
 </html>
