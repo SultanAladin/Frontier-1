@@ -141,6 +141,38 @@ SpectralCurveProfile ConstructBlackbodySpectrum(
     return Profile;
 }
 
+SpectralCurveProfile ConstructSpectrumFromLinearRgb(
+    LinearRgba LinearRgb,
+    float      StartNanometers,
+    float      EndNanometers,
+    float      StepNanometers)
+{
+    SpectralCurveProfile Profile {};
+    Profile.StartNanometers = StartNanometers;
+    Profile.StepNanometers  = std::max(1.0f, StepNanometers);
+    if (EndNanometers < StartNanometers)
+    {
+        return Profile;
+    }
+
+    const float R = std::max(0.0f, LinearRgb.Red);
+    const float G = std::max(0.0f, LinearRgb.Green);
+    const float B = std::max(0.0f, LinearRgb.Blue);
+
+    // Smooth tri-band Gaussian spectral reflectance upsampling (Blue 450 nm, Green 540 nm, Red 615 nm)
+    const std::size_t Count = static_cast<std::size_t>(std::floor((EndNanometers - StartNanometers) / Profile.StepNanometers)) + 1u;
+    Profile.RadiantPower.resize(Count, 0.0f);
+    for (std::size_t I = 0u; I < Count; ++I)
+    {
+        const float Nm = StartNanometers + static_cast<float>(I) * Profile.StepNanometers;
+        const float Wb = std::exp(-0.5f * ((Nm - 450.0f) / 36.0f) * ((Nm - 450.0f) / 36.0f));
+        const float Wg = std::exp(-0.5f * ((Nm - 540.0f) / 42.0f) * ((Nm - 540.0f) / 42.0f));
+        const float Wr = std::exp(-0.5f * ((Nm - 615.0f) / 48.0f) * ((Nm - 615.0f) / 48.0f));
+        Profile.RadiantPower[I] = R * Wr + G * Wg + B * Wb;
+    }
+    return Profile;
+}
+
 LinearRgba ConvertKelvinToLinearSrgb(float Kelvin, float Alpha, TransferCurveCategory Curve) noexcept
 {
     const float Temp = std::clamp(Kelvin, 700.0f, 15000.0f) * 0.01f;

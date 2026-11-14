@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/ColourSpace/ColourCodex.h"
 #include "Engine/ColourSpace/ColourPresetRepository.h"
 #include "Engine/Components/PixelSpace.h"
 
@@ -157,8 +158,21 @@ public:
     [[nodiscard]] bool                                                SaveSingleRampFile(std::size_t RampIndex, const std::filesystem::path& FilePath, std::string& OutDiagnostic) const;
     [[nodiscard]] bool                                                LoadSingleRampFile(const std::filesystem::path& FilePath, std::string& OutDiagnostic, std::size_t* OutAddedIndex = nullptr);
 
+    // 📝 Unified Engine/ColourSpace::ColourCodex domain backing (resolves named solids, ramps, blackbody & hex into any colour space)
+    [[nodiscard]] ColourSpace::ColourCodex&       AccessDomainCodex() noexcept { return DomainCodex; }
+    [[nodiscard]] const ColourSpace::ColourCodex& QueryDomainCodex() const noexcept { return DomainCodex; }
+    [[nodiscard]] bool ResolveAliasToProfile(std::string_view Token, ColourSpace::ColourSourceProfile& OutProfile) const
+    {
+        return DomainCodex.ResolveAliasToProfile(Token, OutProfile);
+    }
+    [[nodiscard]] bool ResolveAliasToLinear(std::string_view Token, ColourSpace::LinearRgba& OutLinear, float SampleT = 0.5f) const
+    {
+        return DomainCodex.ResolveAliasToLinear(Token, OutLinear, SampleT);
+    }
+
 private:
-    std::vector<ColourCodexEntry>       RepositoryEntries {}; // [-] - Ordered built-in and custom ColourCodex entries
+    ColourSpace::ColourCodex            DomainCodex       {}; // [-] - Canonical Engine/ColourSpace alias codex (solids, ramps, blackbody, custom)
+    std::vector<ColourCodexEntry>       RepositoryEntries {}; // [-] - Ordered UI-filtered swatch projection synchronized with DomainCodex
     ColourSpace::ColourPresetRepository RampRepository    {}; // [-] - Engine-wide built-in & custom multi-stop colour ramps
 };
 

@@ -233,64 +233,46 @@ ColourCodex::ColourCodex()
 void ColourCodex::ResetToBuiltInRepository()
 {
     RepositoryEntries.clear();
+    DomainCodex.ResetToBuiltInAliases();
     RampRepository.ResetToBuiltInPresets();
 
-    struct BuiltInSeed
+    // Project the 38 curated studio pigments from Engine/ColourSpace::ColourCodex into ContentBrowser's filter-bucket view
+    for (const ColourSpace::ColourAliasRecord& Alias : DomainCodex.QueryAliases())
     {
-        const char*       Name;
-        const char*       Hex;
-        const char*       Series;
-        ColourFilterGroup Group;
-    };
-
-    constexpr std::array<BuiltInSeed, 38> BuiltInSeeds = {{
-        // Reference tiles & primary named aliases
-        { "Fig Purple",       "#3B1F3A", "Botanical",            ColourFilterGroup::Purples             },
-        { "Pineapple Yellow", "#F6B800", "Botanical",            ColourFilterGroup::Yellows             },
-        { "Charcoal",         "#2B2D2F", "Neutral",              ColourFilterGroup::Neutrals            },
-        { "Midnight",         "#191970", "Deep Blue",            ColourFilterGroup::Blues               },
-        { "Royal Blue",       "#2454FF", "Blue",                 ColourFilterGroup::Blues               },
-        { "Arctic",           "#F8FAFC", "Neutral",              ColourFilterGroup::Neutrals            },
-        { "Strawberry",       "#E63956", "Botanical",            ColourFilterGroup::RedsAndBerries      },
-        { "Cherry",           "#990F2B", "Botanical",            ColourFilterGroup::RedsAndBerries      },
-        { "Banana",           "#FFE135", "Botanical",            ColourFilterGroup::Yellows             },
-        // "August Beige & Brown" 10-band warm spectrum ramp
-        { "August Blaze",     "#FF7B00", "August Beige & Brown", ColourFilterGroup::AugustBeigeAndBrown },
-        { "August Tangerine", "#FF8800", "August Beige & Brown", ColourFilterGroup::AugustBeigeAndBrown },
-        { "August Marigold",  "#FF9500", "August Beige & Brown", ColourFilterGroup::AugustBeigeAndBrown },
-        { "August Honey",     "#FFA200", "August Beige & Brown", ColourFilterGroup::AugustBeigeAndBrown },
-        { "August Amber",     "#FFAA00", "August Beige & Brown", ColourFilterGroup::AugustBeigeAndBrown },
-        { "August Saffron",   "#FFB700", "August Beige & Brown", ColourFilterGroup::AugustBeigeAndBrown },
-        { "August Sunbeam",   "#FFC300", "August Beige & Brown", ColourFilterGroup::AugustBeigeAndBrown },
-        { "August Gold",      "#FFD000", "August Beige & Brown", ColourFilterGroup::AugustBeigeAndBrown },
-        { "August Canary",    "#FFDD00", "August Beige & Brown", ColourFilterGroup::AugustBeigeAndBrown },
-        { "August Lemon",     "#FFEA00", "August Beige & Brown", ColourFilterGroup::AugustBeigeAndBrown },
-        // Extended botanical, mineral, and studio aliases
-        { "Coral Pink",       "#FF6F7D", "Botanical",            ColourFilterGroup::RedsAndBerries      },
-        { "Raspberry",        "#D72660", "Botanical",            ColourFilterGroup::RedsAndBerries      },
-        { "Crimson",          "#B81D24", "Mineral",              ColourFilterGroup::RedsAndBerries      },
-        { "Plum",             "#58284F", "Botanical",            ColourFilterGroup::Purples             },
-        { "Lavender",         "#A78BFA", "Botanical",            ColourFilterGroup::Purples             },
-        { "Tangerine",        "#F28500", "Botanical",            ColourFilterGroup::AugustBeigeAndBrown },
-        { "Amber",            "#F59E0B", "Mineral",              ColourFilterGroup::AugustBeigeAndBrown },
-        { "Terracotta",       "#C85A32", "Mineral",              ColourFilterGroup::AugustBeigeAndBrown },
-        { "Sandstone",        "#C9B49A", "Mineral",              ColourFilterGroup::AugustBeigeAndBrown },
-        { "Matcha",           "#74A12E", "Botanical",            ColourFilterGroup::Greens              },
-        { "Forest Pine",      "#1B4332", "Botanical",            ColourFilterGroup::Greens              },
-        { "Teal",             "#0D9488", "Mineral",              ColourFilterGroup::Greens              },
-        { "Cobalt",           "#1E40AF", "Blue",                 ColourFilterGroup::Blues               },
-        { "Sapphire",         "#0F52BA", "Blue",                 ColourFilterGroup::Blues               },
-        { "Glacier Blue",     "#7DD3FC", "Blue",                 ColourFilterGroup::Blues               },
-        { "Obsidian",         "#141518", "Neutral",              ColourFilterGroup::Neutrals            },
-        { "Graphite",         "#474B52", "Neutral",              ColourFilterGroup::Neutrals            },
-        { "Slate",            "#5B6770", "Neutral",              ColourFilterGroup::Neutrals            },
-        { "Ivory",            "#F5F1E6", "Neutral",              ColourFilterGroup::Neutrals            },
-    }};
-
-    RepositoryEntries.reserve(BuiltInSeeds.size());
-    for (const BuiltInSeed& Seed : BuiltInSeeds)
-    {
-        RepositoryEntries.push_back(ConstructEntryFromHex(Seed.Name, Seed.Hex, Seed.Series, Seed.Group, true));
+        if (Alias.QuerySourceCategory() != ColourSpace::ColourSourceCategory::SolidPigment || Alias.SeriesTitle == "Primary")
+        {
+            continue;
+        }
+        ColourFilterGroup Group = ColourFilterGroup::All;
+        if (Alias.SeriesTitle == "August Beige & Brown" || Alias.PrimaryAlias == "Tangerine" || Alias.PrimaryAlias == "Amber" || Alias.PrimaryAlias == "Terracotta" || Alias.PrimaryAlias == "Sandstone")
+        {
+            Group = ColourFilterGroup::AugustBeigeAndBrown;
+        }
+        else if (Alias.SeriesTitle == "Neutral")
+        {
+            Group = ColourFilterGroup::Neutrals;
+        }
+        else if (Alias.SeriesTitle == "Blue" || Alias.SeriesTitle == "Deep Blue")
+        {
+            Group = ColourFilterGroup::Blues;
+        }
+        else if (Alias.PrimaryAlias == "Fig Purple" || Alias.PrimaryAlias == "Plum" || Alias.PrimaryAlias == "Lavender")
+        {
+            Group = ColourFilterGroup::Purples;
+        }
+        else if (Alias.PrimaryAlias == "Pineapple Yellow" || Alias.PrimaryAlias == "Banana")
+        {
+            Group = ColourFilterGroup::Yellows;
+        }
+        else if (Alias.PrimaryAlias == "Matcha" || Alias.PrimaryAlias == "Forest Pine" || Alias.PrimaryAlias == "Teal")
+        {
+            Group = ColourFilterGroup::Greens;
+        }
+        else if (Alias.PrimaryAlias == "Strawberry" || Alias.PrimaryAlias == "Cherry" || Alias.PrimaryAlias == "Coral Pink" || Alias.PrimaryAlias == "Raspberry" || Alias.PrimaryAlias == "Crimson")
+        {
+            Group = ColourFilterGroup::RedsAndBerries;
+        }
+        RepositoryEntries.push_back(ConstructEntryFromHex(Alias.PrimaryAlias, Alias.HexUpper, Alias.SeriesTitle, Group, Alias.ReadOnlyEngineAlias));
     }
 }
 
@@ -493,8 +475,9 @@ std::size_t ColourCodex::AddProjectColour(
     std::string_view HexNotation,
     std::string_view SeriesTitle)
 {
-    RepositoryEntries.push_back(
-        ConstructEntryFromHex(AliasName, HexNotation, SeriesTitle, ColourFilterGroup::All, false));
+    const ColourCodexEntry Added = ConstructEntryFromHex(AliasName, HexNotation, SeriesTitle, ColourFilterGroup::All, false);
+    (void)DomainCodex.RegisterSolidHexAlias(Added.AliasName, Added.HexUpper, Added.SeriesTitle, {}, false);
+    RepositoryEntries.push_back(Added);
     return RepositoryEntries.size() - 1u;
 }
 
@@ -504,7 +487,14 @@ bool ColourCodex::RenameEntry(std::size_t EntryIndex, std::string_view NewAliasN
     {
         return false;
     }
+    (void)DomainCodex.RemoveCustomAlias(RepositoryEntries[EntryIndex].AliasName);
     RepositoryEntries[EntryIndex].AliasName = std::string(NewAliasName);
+    (void)DomainCodex.RegisterSolidHexAlias(
+        RepositoryEntries[EntryIndex].AliasName,
+        RepositoryEntries[EntryIndex].HexUpper,
+        RepositoryEntries[EntryIndex].SeriesTitle,
+        {},
+        false);
     return true;
 }
 
@@ -521,6 +511,12 @@ bool ColourCodex::UpdateEntryHex(std::size_t EntryIndex, std::string_view NewHex
         Current.SeriesTitle,
         ColourFilterGroup::All,
         false);
+    (void)DomainCodex.RegisterSolidHexAlias(
+        RepositoryEntries[EntryIndex].AliasName,
+        RepositoryEntries[EntryIndex].HexUpper,
+        RepositoryEntries[EntryIndex].SeriesTitle,
+        {},
+        false);
     return true;
 }
 
@@ -530,6 +526,7 @@ bool ColourCodex::RemoveCustomEntry(std::size_t EntryIndex)
     {
         return false;
     }
+    (void)DomainCodex.RemoveCustomAlias(RepositoryEntries[EntryIndex].AliasName);
     RepositoryEntries.erase(RepositoryEntries.begin() + static_cast<std::ptrdiff_t>(EntryIndex));
     return true;
 }
@@ -964,11 +961,13 @@ std::size_t ColourCodex::FindRampPresetIndex(std::string_view Identifier) const 
 
 std::size_t ColourCodex::AddProjectRamp(ColourSpace::ColourRampPresetEntry CustomRamp)
 {
+    (void)DomainCodex.SyncRampPreset(CustomRamp);
     return RampRepository.AddOrUpdateCustomRamp(std::move(CustomRamp));
 }
 
 bool ColourCodex::RemoveCustomRamp(std::string_view Identifier)
 {
+    (void)DomainCodex.RemoveCustomAlias(Identifier);
     return RampRepository.RemoveCustomRamp(Identifier);
 }
 
@@ -1009,6 +1008,7 @@ bool ColourCodex::LoadSingleRampFile(
     Preset.DefaultRange        = Decoded.Profile.Range;
     Preset.DefaultBlend        = Decoded.Profile.BlendEquation;
     Preset.ReadOnlyEngineEntry = false;
+    (void)DomainCodex.SyncRampPreset(Preset);
     const std::size_t Added    = RampRepository.AddOrUpdateCustomRamp(std::move(Preset));
     if (OutAddedIndex != nullptr)
     {

@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/ColourSpace/ChromaticitySpace.h"
+#include "Engine/ColourSpace/ColourCodex.h"
 #include "Engine/ColourSpace/ColourDocument.h"
 #include "Engine/ColourSpace/ColourExtension.h"
 #include "Engine/ColourSpace/ColourPresetRepository.h"
@@ -282,6 +283,7 @@ bool ValidateModularSources()
     };
     Extension.RegisterOrUpdateRamp(CustomRamp);
     if (!VerifyCheck(Extension.QueryBakedLutByIdentifier("frontier_cobalt_gold") != nullptr, "Custom ramp LUT cached")
+        || !VerifyCheck(Extension.QueryCodex().FindAlias("frontier_cobalt_gold") != nullptr, "ColourExtension synced custom ramp into ColourSpace::ColourCodex")
         || !VerifyCheck(ExchangeBus.QueryLatestGeneration() == 1ull, "ColourExtension publishes update to WorkspaceExchange"))
     {
         return false;
@@ -291,6 +293,100 @@ bool ValidateModularSources()
     Extension.Resume();
     Extension.Finalize();
     return VerifyCheck(!Extension.InspectMetrics().Initialized, "ColourExtension::Finalize");
+}
+
+bool ValidateColourCodexMultiFormat()
+{
+    ColourCodex Codex {};
+    if (!VerifyCheck(Codex.QueryAliases().size() >= 60u, "ColourSpace::ColourCodex ships >= 60 unified aliases (solids + ramps + illuminants)"))
+    {
+        return false;
+    }
+
+    // 1. Short colour alias ("Blue") resolves to Royal Blue (#2454FF) in RGB, Linear, Oklab, HSL, CMYK & ACEScg
+    SrgbRgba8 BlueRgb {};
+    LinearRgba BlueLin {};
+    LinearRgba BlueAces {};
+    OklabTriplet BlueLab {};
+    if (!VerifyCheck(Codex.ResolveAliasToSrgb8("Blue", BlueRgb)
+                  && BlueRgb.Red == 0x24u && BlueRgb.Green == 0x54u && BlueRgb.Blue == 0xFFu,
+                     "ColourCodex resolves 'Blue' -> #2454FF (Royal Blue)"))
+    {
+        return false;
+    }
+    if (!VerifyCheck(Codex.ResolveAliasToLinear("royal_blue", BlueLin)
+                  && Codex.ResolveAliasInPrimaries("BLUE", ChromaticityPrimaries::AcesCg, BlueAces)
+                  && Codex.ResolveAliasToOklab("Blue", BlueLab)
+                  && BlueLin.Blue > 0.9f && BlueAces.Blue > 0.5f && BlueLab.AxisB < -0.1f,
+                     "ColourCodex case/underscore-insensitive multi-space resolution (Linear, ACEScg, Oklab)"))
+    {
+        return false;
+    }
+
+    // Exact technical primary ("Pure Blue" -> #0000FF)
+    SrgbRgba8 PureBlue {};
+    if (!VerifyCheck(Codex.ResolveAliasToSrgb8("Pure Blue", PureBlue)
+                  && PureBlue.Red == 0u && PureBlue.Green == 0u && PureBlue.Blue == 255u,
+                     "ColourCodex resolves 'Pure Blue' -> #0000FF"))
+    {
+        return false;
+    }
+
+    // 2. Gradient / Ramp aliases ("Aurora", "Fire" -> thermal, "Spectrum" -> rainbow) resolve as MultiStopGradientSource
+    ColourSourceProfile AuroraProfile {};
+    ColourSourceProfile FireProfile {};
+    if (!VerifyCheck(Codex.ResolveAliasToProfile("Aurora", AuroraProfile)
+                  && QueryColourSourceCategory(AuroraProfile.Source) == ColourSourceCategory::MultiStopGradient
+                  && Codex.ResolveAliasToProfile("Fire", FireProfile)
+                  && QueryColourSourceCategory(FireProfile.Source) == ColourSourceCategory::MultiStopGradient,
+                     "ColourCodex resolves gradient aliases ('Aurora', 'Fire') as MultiStopGradientSource"))
+    {
+        return false;
+    }
+    LinearRgba FireStart {}, FireEnd {};
+    if (!VerifyCheck(Codex.ResolveAliasToLinear("Fire", FireStart, 0.0f)
+                  && Codex.ResolveAliasToLinear("Fire", FireEnd, 1.0f)
+                  && FireEnd.Blue > FireStart.Blue,
+                     "ColourCodex samples gradient alias at arbitrary normalized t"))
+    {
+        return false;
+    }
+
+    // 3. Blackbody / Illuminant aliases ("Tungsten" 3200K, "D65" 6504K, dynamic "4500K") + physical spectrum
+    ColourSourceProfile TungstenProfile {};
+    SpectralCurveProfile TungstenSpectrum {};
+    LinearRgba Kelvin4500 {};
+    if (!VerifyCheck(Codex.ResolveAliasToProfile("Tungsten", TungstenProfile)
+                  && QueryColourSourceCategory(TungstenProfile.Source) == ColourSourceCategory::BlackbodyThermal
+                  && Codex.ResolveAliasToSpectrum("Tungsten", TungstenSpectrum)
+                  && TungstenSpectrum.RadiantPower.size() == 81u
+                  && Codex.ResolveAliasToLinear("4500K", Kelvin4500)
+                  && Kelvin4500.Red > Kelvin4500.Blue,
+                     "ColourCodex resolves named & dynamic Kelvin blackbody aliases + 81-bin spectrum"))
+    {
+        return false;
+    }
+
+    // 4. Direct hex literal & custom modular LinearFill / QuantizedRamp / DiscreteTintSet registration
+    SrgbRgba8 HexLit {};
+    if (!VerifyCheck(Codex.ResolveAliasToSrgb8("#FF8800", HexLit) && HexLit.Red == 255u && HexLit.Green == 136u && HexLit.Blue == 0u,
+                     "ColourCodex resolves direct #RRGGBB literal"))
+    {
+        return false;
+    }
+
+    ColourSourceProfile CustomFill {};
+    CustomFill.Source = LinearFillSource { { 1.0f, 0.2f, 0.0f, 1.0f }, { 0.1f, 0.4f, 1.0f, 1.0f }, {}, false };
+    (void)Codex.RegisterSourceAlias("Frostfire Fill", CustomFill, "Project", { "Frostfire" }, false);
+    ColourSourceProfile ResolvedFill {};
+    if (!VerifyCheck(Codex.ResolveAliasToProfile("Frostfire", ResolvedFill)
+                  && QueryColourSourceCategory(ResolvedFill.Source) == ColourSourceCategory::LinearFill,
+                     "ColourCodex registers & resolves custom modular LinearFillSource alias"))
+    {
+        return false;
+    }
+
+    return true;
 }
 
 bool RenderVisualProofSheet()
@@ -390,6 +486,10 @@ int main()
         return 1;
     }
     if (!ValidateModularSources())
+    {
+        return 1;
+    }
+    if (!ValidateColourCodexMultiFormat())
     {
         return 1;
     }

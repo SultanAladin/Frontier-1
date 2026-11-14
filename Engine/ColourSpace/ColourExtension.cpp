@@ -73,6 +73,7 @@ void ColourExtension::Finalize() noexcept
 std::size_t ColourExtension::RegisterOrUpdateRamp(ColourRampPresetEntry PresetEntry)
 {
     const std::string NoticeId = PresetEntry.Identifier;
+    (void)DomainCodex.SyncRampPreset(PresetEntry);
     const std::size_t Index    = Repository.AddOrUpdateCustomRamp(std::move(PresetEntry));
     LutRebuildPending          = true;
     RebuildLutSheet();
@@ -86,6 +87,7 @@ bool ColourExtension::RemoveCustomRamp(std::string_view Identifier)
     {
         return false;
     }
+    (void)DomainCodex.RemoveCustomAlias(Identifier);
     LutRebuildPending = true;
     RebuildLutSheet();
     PublishChangeNotice(Identifier);
@@ -124,6 +126,7 @@ ColourExtensionMetrics ColourExtension::InspectMetrics() const noexcept
     return {
         static_cast<uint32_t>(Repository.QueryRampPresets().size()),
         static_cast<uint32_t>(Repository.QuerySwatches().size()),
+        static_cast<uint32_t>(DomainCodex.QueryAliases().size()),
         static_cast<uint32_t>(BakedLutSheet.size()),
         Generation,
         InitializationActive,

@@ -52,6 +52,12 @@ struct SpectralCurveProfile
     float EndNanometers   = 780.0f,
     float StepNanometers  = 5.0f);
 
+[[nodiscard]] SpectralCurveProfile ConstructSpectrumFromLinearRgb(
+    LinearRgba LinearRgb,
+    float      StartNanometers = 380.0f,
+    float      EndNanometers   = 780.0f,
+    float      StepNanometers  = 5.0f);
+
 [[nodiscard]] LinearRgba ConvertKelvinToLinearSrgb(
     float                 Kelvin,
     float                 Alpha = 1.0f,

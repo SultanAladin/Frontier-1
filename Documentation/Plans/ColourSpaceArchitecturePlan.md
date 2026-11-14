@@ -43,6 +43,7 @@ Engine/
 │   ├── ColourSourceTypes.h                            // Modular ColourSourceSpec (7 source variants), ColourStop, ColourWrapBehaviour, ColourBlendCurve, ColourRangeTransform
 │   ├── ColourRampSampler.h / .cpp                     // Arbitrary-stop sampling (Linear/Smooth/Stepped, LinearSrgb/Oklab), 3D lattice noise & 64/256-entry GPU LUT packing
 │   ├── ColourPresetRepository.h / .cpp                // Built-in & project swatches + built-in ramps (6 Studio ramps: Spectrum, Blackbody, Aurora, Plasma, Ocean, SunsetNeon + scientific/artistic sets)
+│   ├── ColourCodex.h / .cpp                           // Unified engine-wide named alias codex resolving solid pigments ("Blue" -> Royal Blue #2454FF, "Pure Blue" -> #0000FF), gradients ("Aurora", "Fire"), blackbody illuminants ("Tungsten", "D65", "4500K"), hex literals & custom modular ColourSourceProfiles into any colour space (Linear, ACEScg, Rec2020, DisplayP3, sRGB8, Oklab, Oklch, HSL, CMYK, Spectrum)
 │   ├── ColourDocument.h / .cpp                        // In-memory .ColourSpace document holding primaries, white point, swatches, modular ramps, spectral curves & baked LUTs
 │   └── ColourExtension.h / .cpp                       // Designated lifecycle coordinator (Initialize, Tick, Suspend, Resume, Finalize, LUT cache, WorkspaceExchange live sync)
 │
@@ -158,9 +159,9 @@ Parallels `Engine/Interchange/GeometryInterchange.{h,cpp}` for all external non-
 
 ## 6. Content Browser & Reusable UI Integration
 
-1. **Unify `ColourCodex` onto `Engine/ColourSpace/`**:
-   - `ColourCodex` keeps its existing `ColourCodexEntry` API intact so zero existing call sites break, while delegating HEX/RGB/HSL/CMYK/WCAG-luminance math to `Engine/ColourSpace/` (`ChromaticitySpace` & `TransferFunction`).
-   - Adds `ColourRampPresetEntry` storage backed by `ColourSpace::ColourPresetRepository` (built-in engine ramps + project-authored `.ColourRamp` / `.ColourSpace` ramps).
+1. **Promote `ColourCodex` into `Engine/ColourSpace/ColourCodex.{h,cpp}` with ContentBrowser facade**:
+   - **`Frontier::ColourSpace::ColourCodex`** is the canonical engine-wide alias repository owned by `ColourExtension`, unifying named solid pigments (`"Blue"`, `"Royal Blue"`, `"Fig Purple"`, `"Pure Blue"`), multi-stop gradients (`"Aurora"`, `"Fire"`, `"Spectrum"`), blackbody illuminants (`"Tungsten"`, `"D65"`, `"4500K"`), `#RRGGBB` literals, and custom modular `ColourSourceProfile` aliases — resolvable into ANY colour format (`ColourSourceProfile`, Linear Rec.709, ACEScg, Rec.2020, Display-P3, sRGB8, Oklab, Oklch, HSL, CMYK, or 81-bin `SpectralCurveProfile`).
+   - `Engine/Components/ContentBrowser/ColourCodex.{h,cpp}` delegates directly to `Frontier::ColourSpace::ColourCodex` (zero duplicated pigment data), keeping its UI filter-bucket API (`ColourCodexEntry`) intact for zero caller regression.
    - Adds a subtle mode pill inside `ContentCategory::Colours`: **`All` · `Swatches` · `Ramps`** so artists can browse both single swatches and multi-stop colour ramps cleanly in one place.
 2. **Gradient-Strip Thumbnails (`ThumbnailSheetRepository`)**:
    - Pre-bakes smooth horizontal anti-aliased RGBA gradient-strip tiles (with subtle stop-tick markers and contrast title label via `TransferFunction::QueryContrastInk`) into the Content Browser thumbnail sheet for every `ColourRampPresetEntry`.

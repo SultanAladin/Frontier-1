@@ -524,6 +524,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ColourSpace/GamutCompression.cpp
     Engine/ColourSpace/ColourRampSampler.cpp
     Engine/ColourSpace/ColourPresetRepository.cpp
+    Engine/ColourSpace/ColourCodex.cpp
     Engine/ColourSpace/ColourDocument.cpp
     Engine/ColourSpace/ColourExtension.cpp
     Engine/Interchange/ColourInterchange.cpp
