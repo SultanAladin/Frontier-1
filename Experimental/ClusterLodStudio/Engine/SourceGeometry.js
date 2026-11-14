@@ -107,44 +107,185 @@ function constructPlanet(budget) {
   });
 }
 
-// Closed tube swept along a (p, q) torus knot, with a bumpy radius.
-function constructKnot(budget) {
-  const radial = Math.max(8, Math.round(Math.sqrt(budget / 2 / 14)));
-  const along = Math.max(16, Math.round(budget / 2 / radial));
-  const p = 2, q = 3;
+// Flips every triangle if a closed surface came out inside-out (signed volume < 0).
+function orientOutward(positions, indices) {
+  let volume = 0;
+  for (let i = 0; i < indices.length; i += 3) {
+    const a = indices[i] * 3, b = indices[i + 1] * 3, c = indices[i + 2] * 3;
+    volume += positions[a] * (positions[b + 1] * positions[c + 2] - positions[b + 2] * positions[c + 1])
+      - positions[a + 1] * (positions[b] * positions[c + 2] - positions[b + 2] * positions[c])
+      + positions[a + 2] * (positions[b] * positions[c + 1] - positions[b + 1] * positions[c]);
+  }
+  if (volume < 0) for (let i = 0; i < indices.length; i += 3) { const t = indices[i + 1]; indices[i + 1] = indices[i + 2]; indices[i + 2] = t; }
+}
+
+// Doubly periodic grid (torus topology): rows wrap along `along`, columns wrap along `around`.
+function stitchPeriodicGrid(along, around) {
+  const indices = new Uint32Array(along * around * 6);
+  let o = 0;
+  for (let i = 0; i < along; i++) for (let j = 0; j < around; j++) {
+    const i1 = (i + 1) % along, j1 = (j + 1) % around;
+    const a = i * around + j, b = i1 * around + j, c = i1 * around + j1, d = i * around + j1;
+    // Alternate the diagonal so the triangulation has no directional grain.
+    if ((i + j) & 1) indices.set([a, c, b, a, d, c], o); else indices.set([a, d, b, b, d, c], o);
+    o += 6;
+  }
+  return indices;
+}
+
+// Closed tube swept along a (p, q) torus knot. The frame comes from the carrier torus normal, which is never
+// parallel to the knot tangent, so the sweep closes without twist for any coprime p, q.
+// radius(angle, t, x, y, z) returns the tube radius for a point on the cross-section.
+function constructTorusKnot(budget, p, q, major, minor, heightScale, baseRadius, radius) {
   const curve = (t) => {
-    const r = 0.62 + 0.26 * Math.cos(q * t);
-    return [r * Math.cos(p * t), 0.26 * Math.sin(q * t) * 1.25, r * Math.sin(p * t)];
+    const r = major + minor * Math.cos(q * t);
+    return [r * Math.cos(p * t), minor * Math.sin(q * t) * heightScale, r * Math.sin(p * t)];
   };
-  const positions = new Float32Array(along * radial * 3);
-  const indices = new Uint32Array(along * radial * 6);
+  let length = 0, previous = curve(0);
+  for (let i = 1; i <= 512; i++) {
+    const c = curve((i / 512) * Math.PI * 2);
+    length += Math.hypot(c[0] - previous[0], c[1] - previous[1], c[2] - previous[2]);
+    previous = c;
+  }
+  const aspect = length / (2 * Math.PI * baseRadius);
+  const around = Math.max(8, Math.round(Math.sqrt(budget / 2 / aspect)));
+  const along = Math.max(16, Math.round(budget / 2 / around));
+  const positions = new Float32Array(along * around * 3);
   for (let i = 0; i < along; i++) {
     const t = (i / along) * Math.PI * 2, e = 1e-4;
     const c = curve(t), c1 = curve(t + e), c0 = curve(t - e);
     let tx = c1[0] - c0[0], ty = c1[1] - c0[1], tz = c1[2] - c0[2];
     let l = Math.hypot(tx, ty, tz); tx /= l; ty /= l; tz /= l;
-    // Normal pointing away from the knot axis keeps the sweep twist-free and closed.
-    let nx = c[0], ny = 0, nz = c[2];
+    let nx = Math.cos(q * t) * Math.cos(p * t), ny = Math.sin(q * t), nz = Math.cos(q * t) * Math.sin(p * t);
     const d = nx * tx + ny * ty + nz * tz;
     nx -= d * tx; ny -= d * ty; nz -= d * tz;
     l = Math.hypot(nx, ny, nz); nx /= l; ny /= l; nz /= l;
     const bx = ty * nz - tz * ny, by = tz * nx - tx * nz, bz = tx * ny - ty * nx;
-    for (let j = 0; j < radial; j++) {
-      const a = (j / radial) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+    for (let j = 0; j < around; j++) {
+      const a = (j / around) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
       const dx = nx * ca + bx * sa, dy = ny * ca + by * sa, dz = nz * ca + bz * sa;
-      const px = c[0] + dx * 0.15, py = c[1] + dy * 0.15, pz = c[2] + dz * 0.15;
-      const r = 0.15 + 0.035 * fractalNoise(px * 9, py * 9, pz * 9, 4, true) + 0.012 * Math.sin(a * 6 + t * 40);
-      const o = (i * radial + j) * 3;
+      const r = radius(a, t, c[0] + dx * baseRadius, c[1] + dy * baseRadius, c[2] + dz * baseRadius);
+      const o = (i * around + j) * 3;
       positions[o] = c[0] + dx * r; positions[o + 1] = c[1] + dy * r; positions[o + 2] = c[2] + dz * r;
     }
   }
+  const indices = stitchPeriodicGrid(along, around);
+  orientOutward(positions, indices);
+  return { positions, indices, closed: true };
+}
+
+function constructKnot(budget) {
+  return constructTorusKnot(budget, 2, 3, 0.62, 0.26, 1.25, 0.15,
+    (a, t, x, y, z) => 0.15 + 0.035 * fractalNoise(x * 9, y * 9, z * 9, 4, true) + 0.012 * Math.sin(a * 6 + t * 40));
+}
+
+// (3, 7) knot with a twisting four-lobed rope profile: long, thin, heavily self-occluding.
+function constructBraid(budget) {
+  return constructTorusKnot(budget, 3, 7, 0.78, 0.34, 1, 0.085, (a, t) => {
+    const lobes = Math.cos(4 * a + 28 * t);
+    const strand = Math.cos(8 * a - 84 * t);
+    return 0.085 * (1 + 0.26 * lobes + 0.07 * strand * strand * strand);
+  });
+}
+
+// Torus with spiral grooves, raised studs and a hammered finish.
+function constructCarvedTorus(budget) {
+  const major = 0.76, minor = 0.33;
+  const around = Math.max(8, Math.round(Math.sqrt((budget / 2) * (minor / major))));
+  const along = Math.max(16, Math.round(budget / 2 / around));
+  const positions = new Float32Array(along * around * 3);
+  for (let i = 0; i < along; i++) {
+    const u = (i / along) * Math.PI * 2;
+    for (let j = 0; j < around; j++) {
+      const v = (j / around) * Math.PI * 2;
+      const groove = Math.pow(1 - Math.abs(Math.sin(5 * u + 2 * v)), 6);
+      const counter = Math.pow(1 - Math.abs(Math.sin(5 * u - 2 * v + 0.6)), 10);
+      const stud = Math.pow(Math.max(0, Math.cos(20 * u) * Math.cos(8 * v)), 5);
+      const px = (major + minor * Math.cos(v)) * Math.cos(u), py = minor * Math.sin(v), pz = (major + minor * Math.cos(v)) * Math.sin(u);
+      const r = minor - 0.06 * groove - 0.03 * counter + 0.035 * stud + 0.012 * fractalNoise(px * 18, py * 18, pz * 18, 3);
+      const o = (i * around + j) * 3;
+      positions[o] = (major + r * Math.cos(v)) * Math.cos(u); positions[o + 1] = r * Math.sin(v); positions[o + 2] = (major + r * Math.cos(v)) * Math.sin(u);
+    }
+  }
+  const indices = stitchPeriodicGrid(along, around);
+  orientOutward(positions, indices);
+  return { positions, indices, closed: true };
+}
+
+// Thin-walled vase: one closed lathe profile running up the outside, over the rim and down the inside, so the
+// interior is real geometry. Spiral flutes and embossed bands are carved into the outer wall only.
+function constructVase(budget) {
+  const outer = (y) => {
+    // y in -1..1: foot, belly, neck, flared lip.
+    const belly = 0.47 * Math.exp(-((y + 0.22) ** 2) / 0.32);
+    const lip = 0.2 * Math.exp(-((y - 1.02) ** 2) / 0.03);
+    const foot = 0.1 * Math.exp(-((y + 1) ** 2) / 0.012);
+    return 0.27 + belly + lip + foot;
+  };
+  const wall = 0.045, floor = -0.9;
+  // Dense polyline of the profile: [radius, height, carveMask].
+  const path = [];
+  const push = (r, y, mask) => path.push([r, y, mask]);
+  for (let i = 1; i <= 40; i++) push((outer(-1) * i) / 40, -1, 0);
+  for (let i = 1; i <= 400; i++) {
+    const y = -1 + (2 * i) / 400;
+    push(outer(y), y, Math.min(1, Math.min(y + 1, 1 - y) * 6));
+  }
+  for (let i = 1; i <= 24; i++) {
+    const a = (i / 24) * Math.PI;
+    push(outer(1) - wall / 2 + (wall / 2) * Math.cos(a), 1 + (wall / 2) * Math.sin(a), 0);
+  }
+  for (let i = 1; i <= 400; i++) {
+    const y = 1 + ((floor - 1) * i) / 400;
+    push(outer(y) - wall, y, 0);
+  }
+  const inner = outer(floor) - wall;
+  for (let i = 1; i < 40; i++) push(inner * (1 - i / 40), floor, 0);
+  const cumulative = [0];
+  for (let i = 1; i < path.length; i++) cumulative.push(cumulative[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
+  const total = cumulative[cumulative.length - 1] + inner / 40;
+  const around = Math.max(8, Math.round(Math.sqrt((budget / 2) * ((2 * Math.PI * 0.5) / total))));
+  const rings = Math.max(8, Math.round(budget / 2 / around));
+  const positions = new Float32Array((rings * around + 2) * 3);
+  let cursor = 0;
+  for (let i = 0; i < rings; i++) {
+    const target = (cumulative[cumulative.length - 1] * i) / (rings - 1);
+    while (cursor < path.length - 2 && cumulative[cursor + 1] < target) cursor++;
+    const span = cumulative[cursor + 1] - cumulative[cursor] || 1, f = Math.min(1, Math.max(0, (target - cumulative[cursor]) / span));
+    const r0 = path[cursor][0] + (path[cursor + 1][0] - path[cursor][0]) * f;
+    const y = path[cursor][1] + (path[cursor + 1][1] - path[cursor][1]) * f;
+    const mask = path[cursor][2] + (path[cursor + 1][2] - path[cursor][2]) * f;
+    for (let j = 0; j < around; j++) {
+      const a = (j / around) * Math.PI * 2;
+      let r = r0;
+      if (mask > 0) {
+        const flute = Math.pow(0.5 + 0.5 * Math.cos(14 * a + y * 5), 3);
+        const band = Math.exp(-((y - 0.42) ** 2) / 0.0016) + Math.exp(-((y + 0.74) ** 2) / 0.0016);
+        const beads = band * Math.pow(Math.max(0, Math.cos(28 * a)), 2);
+        const relief = 0.03 * flute * (1 - Math.min(1, band)) + 0.022 * band + 0.02 * beads;
+        r += mask * (relief - 0.012 + 0.006 * fractalNoise(Math.cos(a) * r0 * 22, y * 22, Math.sin(a) * r0 * 22, 3));
+      }
+      const o = (i * around + j) * 3;
+      positions[o] = Math.cos(a) * r * 0.95; positions[o + 1] = y * 0.95; positions[o + 2] = Math.sin(a) * r * 0.95;
+    }
+  }
+  const bottom = rings * around, floorCentre = bottom + 1;
+  positions[bottom * 3 + 1] = -0.95;
+  positions[floorCentre * 3 + 1] = floor * 0.95;
+  const indices = new Uint32Array(((rings - 1) * around * 2 + around * 2) * 3);
   let o = 0;
-  for (let i = 0; i < along; i++) for (let j = 0; j < radial; j++) {
-    const i1 = (i + 1) % along, j1 = (j + 1) % radial;
-    const a = i * radial + j, b = i1 * radial + j, c = i1 * radial + j1, d = i * radial + j1;
-    indices.set([a, c, b, a, d, c], o);
+  for (let i = 0; i + 1 < rings; i++) for (let j = 0; j < around; j++) {
+    const j1 = (j + 1) % around;
+    const a = i * around + j, b = (i + 1) * around + j, c = (i + 1) * around + j1, d = i * around + j1;
+    if ((i + j) & 1) indices.set([a, c, b, a, d, c], o); else indices.set([a, d, b, b, d, c], o);
     o += 6;
   }
+  for (let j = 0; j < around; j++) {
+    const j1 = (j + 1) % around;
+    indices.set([bottom, j, j1], o); o += 3;
+    indices.set([floorCentre, (rings - 1) * around + j1, (rings - 1) * around + j], o); o += 3;
+  }
+  orientOutward(positions, indices);
   return { positions, indices, closed: true };
 }
 
@@ -174,8 +315,11 @@ function constructTerrain(budget) {
 }
 
 export const SOURCE_PRESETS = [
+  { id: 'vase', label: 'Fluted Vase', note: 'Closed · thin wall + real interior', construct: constructVase },
+  { id: 'braid', label: 'Braided Knot', note: 'Closed · (3,7) knot · twisted rope', construct: constructBraid },
+  { id: 'torus', label: 'Carved Torus', note: 'Closed · grooves, studs, hammering', construct: constructCarvedTorus },
+  { id: 'knot', label: 'Trefoil Knot', note: 'Closed · (2,3) knot · ridged tube', construct: constructKnot },
   { id: 'asteroid', label: 'Asteroid', note: 'Closed · craters + fractal relief', construct: constructAsteroid },
-  { id: 'knot', label: 'Torus Knot', note: 'Closed · genus 1 · ridged tube', construct: constructKnot },
   { id: 'planet', label: 'Ridged Planet', note: 'Closed · flat seas + sharp ridges', construct: constructPlanet },
   { id: 'terrain', label: 'Terrain Tile', note: 'Open border · height field', construct: constructTerrain },
 ];

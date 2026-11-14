@@ -33,6 +33,17 @@ function signedVolume(positions, indices) {
   return v / 6;
 }
 
+// Duplicate positions would mean an unwelded seam (cracks the builder cannot see).
+function selfClearance(source) {
+  const seen = new Set();
+  for (let i = 0; i < source.positions.length; i += 3) {
+    const key = source.positions[i] + ',' + source.positions[i + 1] + ',' + source.positions[i + 2];
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
+}
+
 function random(seed) { let s = seed; return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296); }
 
 function validate(label, source, budgetNote) {
@@ -105,6 +116,7 @@ function validate(label, source, budgetNote) {
 for (const preset of SOURCE_PRESETS) {
   const source = constructSource(preset.id, 60000);
   if (source.closed) check(signedVolume(source.positions, source.indices) > 0, preset.id + ' faces outward');
+  if (source.closed) check(selfClearance(source) , preset.id + ' has no duplicate vertices');
   check(computeNormals(source.positions, source.indices).every(Number.isFinite), preset.id + ' normals finite');
   validate(preset.id, source, '');
 }

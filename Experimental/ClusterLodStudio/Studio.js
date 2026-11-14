@@ -56,7 +56,7 @@ const settings = {
   selected: null,
 };
 const build = {
-  preset: SOURCE_PRESETS.some((p) => p.id === query.get('preset')) ? query.get('preset') : 'asteroid',
+  preset: SOURCE_PRESETS.some((p) => p.id === query.get('preset')) ? query.get('preset') : 'vase',
   triangleBudget: +query.get('budget') || 200000,
   clusterTriangles: 128, groupClusters: 4, simplifyRatio: 0.5,
   objText: null, objName: '',

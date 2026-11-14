@@ -13,13 +13,13 @@ python3 Experimental/ClusterLodStudio/Serve.py 8093      # then open http://loca
 node Experimental/ClusterLodStudio/Scripts/CheckClusterHierarchy.mjs
 ```
 
-URL parameters for repeatable captures: `?preset=asteroid|knot|planet|terrain&budget=200000&side=5&mode=levels&error=1&wire&drawer`.
+URL parameters for repeatable captures: `?preset=vase|braid|torus|knot|asteroid|planet|terrain&budget=200000&side=5&mode=levels&error=1&wire&drawer`.
 
 ## How it works
 
 | Step | File | What happens |
 | :--- | :--- | :--- |
-| Source | `Engine/SourceGeometry.js` | Welded procedural assets (asteroid, torus knot, planet, open terrain) or an imported OBJ (positions + faces, welded by position). |
+| Source | `Engine/SourceGeometry.js` | Welded procedural assets (thin-walled fluted vase with a real interior, (3,7) braided knot, carved torus, trefoil knot, asteroid, planet, open terrain) or an imported OBJ (positions + faces, welded by position). |
 | Cluster | `Engine/ClusterHierarchy.js` | Triangles are split into clusters of ≤ 128 by median bisection of centroids. |
 | Group | `Engine/ClusterHierarchy.js` | ~4 neighbouring clusters are grouped by greedily maximising shared border edges. |
 | Simplify | `Engine/QuadricSimplification.js` | The group's outer border is locked; the interior is reduced to ~50 % by quadric edge collapse onto existing vertices. |
