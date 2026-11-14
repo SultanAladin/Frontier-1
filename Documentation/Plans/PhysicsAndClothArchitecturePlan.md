@@ -392,11 +392,11 @@ Measured over 180 calm-air frames per cell (peak → relaxed RMS speed; stretch,
 | Couture Dress | B `xpbd` | `336.3 → 8.4` | `1.046` | `1.7°` | `0.20 mm` | `0.00 mm` |
 | Couture Dress | C `scr` | `316.5 → 3.1` | `1.090` | `6.1°` | `0.41 mm` | `0.00 mm` |
 | Couture Dress | D `gn_knot` | `489.4 → 36.8` | `1.038` | `4.4°` | `0.28 mm` | `0.00 mm` |
-| Couture Dress | E `jgs2` | `167.9 → 31.1` | `1.032` | `9.6°` | `0.31 mm` | `0.00 mm` |
-| Couture Dress | F `kes_aa` | `422.6 → 28.6` | `1.064` | `13.3°` | `0.25 mm` | `0.00 mm` |
-| Gathered Skirt | A–F | `282 → 58`, `262 → 6.4`, `442 → 2.8`, `374 → 12.1`, `155 → 21.7`, `362 → 17.5` | `1.012–1.077` | `3.9–12.1°` | `< 0.55 mm` | `0.00 mm` |
-| Tailored Tee | A–F | `348 → 4.8`, `355 → 6.7`, `324 → 3.8`, `566 → 11.0`, `178 → 33.2`, `342 → 4.6` | `1.038–1.157` | `2.0–14.8°` | `< 0.43 mm` | `0.00 mm` |
-| Bias Silk Tunic | A–F | `576 → 313`, `393 → 21.6`, `551 → 3.2`, `340 → 25.5`, `170 → 24.2`, `342 → 17.5` | `1.014–1.075` | `3.1–15.0°` | `< 0.06 mm` | `0.00 mm` |
+| Couture Dress | E `jgs2` | `327.0 → 39.8` | `1.107` | `9.2°` | `0.45 mm` | `0.00 mm` |
+| Couture Dress | F `kes_aa` | `722.5 → 24.7` | `1.065` | `11.6°` | `0.35 mm` | `0.00 mm` |
+| Gathered Skirt | A–F | `282 → 58.2`, `262 → 6.4`, `442 → 2.8`, `374 → 12.1`, `434 → 27.5`, `737 → 28.2` | `1.015–1.087` | `1.4–9.6°` | `< 0.56 mm` | `0.00 mm` |
+| Tailored Tee | A–F | `348 → 4.8`, `355 → 6.7`, `324 → 3.8`, `566 → 11.0`, `338 → 57.9`, `656 → 8.2` | `1.038–1.157` | `2.0–11.0°` | `< 0.43 mm` | `0.00 mm` |
+| Bias Silk Tunic | A–F | `576 → 313`, `393 → 21.6`, `551 → 3.2`, `340 → 25.5`, `611 → 46.1`, `694 → 70.5` | `1.014–1.083` | `3.1–21.0°` | `< 0.12 mm` | `0.00 mm` |
 
 > *Bias silk keeps creeping/swinging at a low level: `2HG = 0.09` (almost no hysteresis) and friction-only support. It is bounded and physically dissipated — never frozen.*
 
@@ -405,3 +405,13 @@ Measured over 180 calm-air frames per cell (peak → relaxed RMS speed; stretch,
 - **Game Runtime** → **B (`xpbd`)** for budget-limited targets, **E (`jgs2`)** when stiff tailoring must still run at 60 FPS, **A (`avbd`)** as the quality/determinism reference.
 - **Garment Authoring** → **D (`gn_knot`)** for layered folds, knots and ties, **F (`kes_aa`)** for measured Kawabata drape fidelity and crisp hand-feel, **C (`scr`)** for knits, pipings and yarn-scale behaviour.
 - **`PIE Auto-Res`** should be run once per textile change; it sets authoring spacing, and reports the wrinkle wavelength/wrinklon transition used by the drape lens.
+
+### 10.7 Post-Fix Solver Corrections (E/F puff, E shimmer, D switch stall)
+
+Three defects identified during interactive evaluation were traced to root cause and fixed in `OrthotropicClothSolver.js` / `ClothStudioApp.js`:
+
+1. **E (`jgs2`) and F (`kes_aa`) puffed into an inflated "jacket".** Neither stiffness nor the cubic strain wall was responsible (varying `wallModulus` ×0.05/×0.25 and disabling the cubic wall moved the SDF gap < 2 mm). Both fed the *current* positions into a block/Newton solve whose inertial term is `m/h²`; at `h = 1/240 s` that term dominates gravity, so the solve cancelled gravity + aerodynamic drag every substep and the garment kept its spawn shell. Fix: advect every unpinned point to the inertial target (the symplectic-Euler tier AVBD and SCR already used) before assembling the block. Dress gap: E `30.6 → 24.9 mm`, F `46.2 → 30.5 mm`. F additionally gained a `_clothPatchProjection(h, 2)` jamming pass (yarn `1.097 → 1.065`, residual `74 → 21 mm/s`) and compressive-only Poisson suppression `c12eff = (εu>0 && εv>0) ? C12 : 0` (crimp interchange, gap `41.2 → 31.9 mm`).
+2. **E never settled (73–110 mm/s residual).** Not an energy leak — ablating the patch projection made it worse (304 mm/s), and extra block passes/substeps made it worse still. A Kelvin–Voigt dashpot on the inertial block (`c = ζ·m/h`, ζ ≤ 8) changed the residual by < 3 mm/s. The Schur solve was overshooting where its quadratic model is invalid. Fix: a **2.5 mm trust region per block pass** plus **2 patch-projection sweeps**. Residual `73 → 40 mm/s` (dress) and `64 → 27.5 mm/s` (skirt) while the gap improved `29.0 → 24.9 mm`; caps of 5/10/20 mm leave 92/211/349 mm/s.
+3. **D (`gn_knot`) appeared to freeze on switch.** The previous mode's contact manifold, `pointContactAge`, `_gnStepScale`, Anderson state, seam duals and XPBD `λ` arrays were retained, and a prior Verify-Fit bake had left `running = false`. Fix: `resetSolverMemory()` (also re-seeds Cosserat `edgeQuats`/`edgeGamma` from the current segment directions and resets `quietSettleTime`), plus `syncStateToGpu()`, `_lastSteppedMode` re-upload on return from a CPU-only mode, and auto-resume. D now moves `50.0 mm` in its first 5 frames after a switch (gap `18 → 17 mm`, no NaN).
+
+Full comparison, rankings and the A–F recommendation are in `Documentation/Plans/ClothSolverComparisonReport.md`.
