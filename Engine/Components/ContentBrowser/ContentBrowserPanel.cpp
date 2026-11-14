@@ -4,6 +4,9 @@
 // 🧩 Implementation of ContentBrowser drawer, pre-baked ThumbnailSheet rendering, SSD/HDD streaming, workspace masks & ThemeRepository styling
 
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
+#include "Engine/ColourSpace/ColourRampSampler.h"
+#include "Engine/ColourSpace/TransferFunction.h"
+#include "Engine/Codecs/ColourCodec.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 #include "Engine/Components/VectorIcons/VectorIconRepository.h"
 #include "Engine/Input/InputExtension.h"
@@ -38,6 +41,62 @@ namespace
     ColorQuad Mixed = ColorQuad::Blend(Left, Right, std::clamp(Ratio, 0.0f, 1.0f));
     Mixed.Alpha     = std::clamp(Mixed.Alpha * AlphaScale, 0.0f, 1.0f);
     return Mixed.ToRgba8();
+}
+
+void ConstructSmoothColourRampStrip(
+    PixelSpace&                               Canvas,
+    Rectangle2D                               StripRect,
+    const ColourSpace::ColourRampPresetEntry& Preset,
+    float                                     CornerRadius) noexcept
+{
+    if (StripRect.Width <= 1.0f || StripRect.Height <= 1.0f)
+    {
+        return;
+    }
+
+    ImDrawList* DrawList = Canvas.QueryCanvasBuffer();
+    if (DrawList == nullptr)
+    {
+        return;
+    }
+
+    Canvas.PushClip(StripRect);
+    const Rectangle2D Phys = Canvas.ToPhysical(StripRect);
+    constexpr uint32_t Segments = 48u;
+    const float SegWidth = Phys.Width / static_cast<float>(Segments);
+
+    const auto ToImCol = [](ColourSpace::SrgbRgba8 Srgb) noexcept -> ImU32 {
+        return IM_COL32(Srgb.Red, Srgb.Green, Srgb.Blue, Srgb.Alpha);
+    };
+
+    for (uint32_t I = 0u; I < Segments; ++I)
+    {
+        const float T0 = static_cast<float>(I) / static_cast<float>(Segments);
+        const float T1 = static_cast<float>(I + 1u) / static_cast<float>(Segments);
+        const auto  C0 = ColourSpace::ConvertLinearToSrgb8(
+            ColourSpace::SampleColourStopsAt(Preset.Stops, T0, Preset.DefaultRange),
+            ColourSpace::TransferCurveCategory::PureGamma22);
+        const auto  C1 = ColourSpace::ConvertLinearToSrgb8(
+            ColourSpace::SampleColourStopsAt(Preset.Stops, T1, Preset.DefaultRange),
+            ColourSpace::TransferCurveCategory::PureGamma22);
+        const ImU32 LeftCol  = ToImCol(C0);
+        const ImU32 RightCol = ToImCol(C1);
+        const float X0 = Phys.X + static_cast<float>(I) * SegWidth;
+        const float X1 = (I + 1u == Segments) ? (Phys.X + Phys.Width) : (X0 + SegWidth + 0.5f);
+        DrawList->AddRectFilledMultiColor(
+            ImVec2(X0, Phys.Y),
+            ImVec2(X1, Phys.Y + Phys.Height),
+            LeftCol,
+            RightCol,
+            RightCol,
+            LeftCol);
+    }
+
+    Canvas.PopClip();
+    if (CornerRadius > 0.0f)
+    {
+        Canvas.StrokeRectangle(StripRect, { 255u, 255u, 255u, 44u }, CornerRadius, 1.0f);
+    }
 }
 
 [[nodiscard]] std::pair<std::string, std::string> SplitUppercaseTileHeading(std::string_view Name)
@@ -419,6 +478,12 @@ void ContentBrowserPanel::ConfigureColourSort(ColourSortOrder NextOrder) noexcep
     ColourSort = NextOrder;
 }
 
+void ContentBrowserPanel::ConfigureColourCollectionScope(ColourCollectionScope Scope) noexcept
+{
+    ColourScope       = Scope;
+    RepositoryScrollY = 0.0f;
+}
+
 void ContentBrowserPanel::ConfigureSearchQuery(std::string_view SearchText)
 {
     SearchBuffer      = std::string(SearchText);
@@ -462,7 +527,15 @@ ImportIntakeResult ContentBrowserPanel::IntakeExternalAssetDrop(const std::files
     {
         std::string Diagnostic{};
         std::size_t AddedColourIdx = 0u;
-        if (ColourCodex::MatchesSwatchExtension(DroppedSourceFile))
+        if (Codecs::ColourDecoder::MatchesRampExtension(DroppedSourceFile))
+        {
+            if (CodexLibrary.LoadSingleRampFile(DroppedSourceFile, Diagnostic, &AddedColourIdx))
+            {
+                SelectedRampIndex = AddedColourIdx;
+                ColourScope       = ColourCollectionScope::Ramps;
+            }
+        }
+        else if (ColourCodex::MatchesSwatchExtension(DroppedSourceFile))
         {
             if (CodexLibrary.LoadSingleSwatchFile(DroppedSourceFile, Diagnostic, &AddedColourIdx))
             {
@@ -518,6 +591,45 @@ void ContentBrowserPanel::UpdateColourSlotBounds(std::string_view SlotIdentifier
             return;
         }
     }
+}
+
+void ContentBrowserPanel::ClearColourRampSlots() noexcept
+{
+    RegisteredRampSlots.clear();
+}
+
+void ContentBrowserPanel::RegisterColourRampSlot(const ColourRampSlotRegistration& Registration)
+{
+    for (ColourRampSlotRegistration& Existing : RegisteredRampSlots)
+    {
+        if (Existing.SlotIdentifier == Registration.SlotIdentifier)
+        {
+            Existing = Registration;
+            return;
+        }
+    }
+    RegisteredRampSlots.push_back(Registration);
+    if (FocusedRampSlotId.empty())
+    {
+        FocusedRampSlotId = Registration.SlotIdentifier;
+    }
+}
+
+void ContentBrowserPanel::UpdateColourRampSlotBounds(std::string_view SlotIdentifier, Rectangle2D UpdatedScreenBounds) noexcept
+{
+    for (ColourRampSlotRegistration& Existing : RegisteredRampSlots)
+    {
+        if (Existing.SlotIdentifier == SlotIdentifier)
+        {
+            Existing.ScreenBounds = UpdatedScreenBounds;
+            return;
+        }
+    }
+}
+
+void ContentBrowserPanel::FocusColourRampSlot(std::string_view SlotIdentifier) noexcept
+{
+    FocusedRampSlotId = std::string(SlotIdentifier);
 }
 
 void ContentBrowserPanel::ClearMatCapSlots() noexcept
@@ -620,6 +732,74 @@ float ContentBrowserPanel::ResolveCornerRadius() const noexcept
 bool ContentBrowserPanel::ApplySelectedColourToActiveSlot()
 {
     return ApplyColourIndexToSlot(SelectedColourIndex, FocusedSlotId);
+}
+
+bool ContentBrowserPanel::ApplySelectedRampToActiveSlot()
+{
+    return ApplyRampPresetToSlot(SelectedRampIndex, FocusedRampSlotId);
+}
+
+bool ContentBrowserPanel::ApplyRampPresetToSlot(
+    std::size_t      RampIndex,
+    std::string_view TargetSlotIdentifier,
+    Point2D          DropLogicalPos)
+{
+    const ColourSpace::ColourRampPresetEntry* Preset = CodexLibrary.QueryRampPresetAt(RampIndex);
+    if (Preset == nullptr)
+    {
+        return false;
+    }
+
+    ColourRampSlotRegistration* ChosenSlot = nullptr;
+    if (!TargetSlotIdentifier.empty())
+    {
+        for (ColourRampSlotRegistration& Slot : RegisteredRampSlots)
+        {
+            if (Slot.SlotIdentifier == TargetSlotIdentifier)
+            {
+                ChosenSlot = &Slot;
+                break;
+            }
+        }
+    }
+    if (ChosenSlot == nullptr && !FocusedRampSlotId.empty())
+    {
+        for (ColourRampSlotRegistration& Slot : RegisteredRampSlots)
+        {
+            if (Slot.SlotIdentifier == FocusedRampSlotId)
+            {
+                ChosenSlot = &Slot;
+                break;
+            }
+        }
+    }
+    if (ChosenSlot == nullptr && !RegisteredRampSlots.empty())
+    {
+        ChosenSlot = &RegisteredRampSlots.front();
+    }
+
+    if (ChosenSlot == nullptr)
+    {
+        StatusMessage = "Selected ramp " + Preset->DisplayTitle + " (register a Colour Ramp slot to assign)";
+        return false;
+    }
+
+    const ColourSpace::ColourSourceProfile Profile = ColourSpace::ConstructProfileFromRampPreset(*Preset);
+    if (ChosenSlot->TargetProfile != nullptr)
+    {
+        *ChosenSlot->TargetProfile = Profile;
+    }
+    if (ChosenSlot->NotifyRampAssignedAt)
+    {
+        ChosenSlot->NotifyRampAssignedAt(Profile, Preset->Identifier, DropLogicalPos);
+    }
+    else if (ChosenSlot->NotifyRampAssigned)
+    {
+        ChosenSlot->NotifyRampAssigned(Profile, Preset->Identifier);
+    }
+    FocusedRampSlotId = ChosenSlot->SlotIdentifier;
+    StatusMessage     = "Assigned ramp " + Preset->DisplayTitle + " -> " + ChosenSlot->DisplayTitle;
+    return true;
 }
 
 bool ContentBrowserPanel::ApplyColourIndexToSlot(
@@ -791,20 +971,26 @@ ContentBrowserReading ContentBrowserPanel::InspectReading() const noexcept
     Reading.ActiveWorkspace        = ActiveWorkspace;
     Reading.ActiveCategory         = Category;
     Reading.ActiveOrigin           = OriginScope;
-    Reading.ActiveColourLayout     = ColourLayout;
-    Reading.ActiveStandardLayout   = StandardRepositoryLayout(StandardLayout);
-    Reading.ActiveColourFilter     = ColourFilter;
-    Reading.ActiveColourSort       = ColourSort;
-    Reading.ActiveStorageTier      = StreamChannelThread.QueryResolvedTier();
-    Reading.ActiveImportMode       = ThumbnailRepository.QueryImportPolicy().Mode;
-    Reading.PermittedCategoryCount = PermittedCount;
-    Reading.VisibleEntryCount      = LastVisibleCount;
-    Reading.ColourFiltersVisible   = (Category == ContentCategory::Colours);
-    Reading.DraggingColourActive   = DraggingColour;
-    Reading.DraggingMatCapActive   = DraggingMatCap;
+    Reading.ActiveColourLayout       = ColourLayout;
+    Reading.ActiveColourScope        = ColourScope;
+    Reading.ActiveStandardLayout     = StandardRepositoryLayout(StandardLayout);
+    Reading.ActiveColourFilter       = ColourFilter;
+    Reading.ActiveColourSort         = ColourSort;
+    Reading.ActiveStorageTier        = StreamChannelThread.QueryResolvedTier();
+    Reading.ActiveImportMode         = ThumbnailRepository.QueryImportPolicy().Mode;
+    Reading.PermittedCategoryCount   = PermittedCount;
+    Reading.VisibleEntryCount        = LastVisibleCount;
+    Reading.ColourFiltersVisible     = (Category == ContentCategory::Colours);
+    Reading.DraggingColourActive     = DraggingColour;
+    Reading.DraggingColourRampActive = DraggingColourRamp;
+    Reading.DraggingMatCapActive     = DraggingMatCap;
     if (const ColourCodexEntry* Selected = CodexLibrary.QueryEntryAt(SelectedColourIndex))
     {
         Reading.SelectedColourAlias = Selected->AliasName;
+    }
+    if (const ColourSpace::ColourRampPresetEntry* SelectedRamp = CodexLibrary.QueryRampPresetAt(SelectedRampIndex))
+    {
+        Reading.SelectedRampIdentifier = SelectedRamp->Identifier;
     }
     Reading.LastStatusMessage = StatusMessage;
     return Reading;
@@ -817,7 +1003,7 @@ bool ContentBrowserPanel::QueryOpen() const noexcept
 
 bool ContentBrowserPanel::QueryBlocksUnderlyingWorkspace() const noexcept
 {
-    return TargetExtent == ContentShelfExtent::FullHeight && !DraggingColour && !DraggingMatCap && !DraggingContentEntry;
+    return TargetExtent == ContentShelfExtent::FullHeight && !DraggingColour && !DraggingColourRamp && !DraggingMatCap && !DraggingContentEntry;
 }
 
 float ContentBrowserPanel::QueryVisibleDrawerHeightRatio() const noexcept
@@ -920,7 +1106,7 @@ bool ContentBrowserPanel::QueryBlocksPointerAt(Point2D PhysicalCursor) const noe
             return true;
         }
     }
-    if (!DraggingColour && !DraggingMatCap && !DraggingContentEntry && QueryNotchTabBounds(LogicalViewport).Contains(LogicalCursor))
+    if (!DraggingColour && !DraggingColourRamp && !DraggingMatCap && !DraggingContentEntry && QueryNotchTabBounds(LogicalViewport).Contains(LogicalCursor))
     {
         return true;
     }
@@ -952,6 +1138,18 @@ Rectangle2D ContentBrowserPanel::QueryRenderedColourCellBounds(std::size_t Colou
     for (const RecordedCellHitbox& Hitbox : LastColourHitboxes)
     {
         if (Hitbox.EntryIndex == ColourIndex)
+        {
+            return Hitbox.Bounds;
+        }
+    }
+    return {};
+}
+
+Rectangle2D ContentBrowserPanel::QueryRenderedRampCellBounds(std::size_t RampIndex) const noexcept
+{
+    for (const RecordedCellHitbox& Hitbox : LastRampHitboxes)
+    {
+        if (Hitbox.EntryIndex == RampIndex)
         {
             return Hitbox.Bounds;
         }
@@ -1165,6 +1363,162 @@ void ContentBrowserPanel::RenderContentDropZoneHighlights(
             8.0f,
             Hovered ? 2.2f : 1.35f);
     }
+}
+
+void ContentBrowserPanel::RenderColourRampSlotHighlights(
+    PixelSpace&            Canvas,
+    Point2D                Cursor,
+    float                  VisibleBottomY,
+    const ControlColorSet& AppearanceColors) const noexcept
+{
+    if (!DraggingColourRamp)
+    {
+        return;
+    }
+
+    const ColorRgba ActiveRing = AppearanceColors.Accent.ToRgba8();
+    const ColorRgba IdleRing   = AppearanceColors.Accent.Faded(0.72f).ToRgba8();
+    for (const ColourRampSlotRegistration& Slot : RegisteredRampSlots)
+    {
+        if (Slot.ScreenBounds.Width <= 1.0f || Slot.ScreenBounds.Height <= 1.0f || Slot.ScreenBounds.Y >= VisibleBottomY)
+        {
+            continue;
+        }
+        Rectangle2D Clipped = Slot.ScreenBounds;
+        if (Clipped.Bottom() > VisibleBottomY)
+        {
+            Clipped.Height = std::max(0.0f, VisibleBottomY - Clipped.Y);
+        }
+        if (Clipped.Height <= 2.0f)
+        {
+            continue;
+        }
+        const bool Hovered = Clipped.Contains(Cursor);
+        Canvas.StrokeRectangle(Clipped.Inset(-3.0f), Hovered ? ActiveRing : IdleRing, 8.0f, Hovered ? 2.4f : 1.5f);
+    }
+}
+
+void ContentBrowserPanel::RenderColourRampsRepository(
+    PixelSpace&                       Canvas,
+    Rectangle2D                       RepositoryArea,
+    const ContentBrowserPointerInput& PointerInput,
+    const ControlColorSet&            AppearanceColors,
+    float                             SectionRadius)
+{
+    LastRampHitboxes.clear();
+    LastColourHitboxes.clear();
+    LastContentHitboxes.clear();
+
+    const Point2D Cursor { PointerInput.CursorX, PointerInput.CursorY };
+    const auto AllRamps = CodexLibrary.QueryRampPresets();
+    std::vector<std::size_t> FilteredRamps {};
+
+    std::string LowerQuery {};
+    LowerQuery.reserve(SearchBuffer.size());
+    for (char Ch : SearchBuffer)
+    {
+        LowerQuery.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(Ch))));
+    }
+
+    for (std::size_t Idx = 0u; Idx < AllRamps.size(); ++Idx)
+    {
+        const ColourSpace::ColourRampPresetEntry& Entry = AllRamps[Idx];
+        if (OriginScope == ContentOriginFilter::Engine && !Entry.ReadOnlyEngineEntry) continue;
+        if (OriginScope == ContentOriginFilter::Imported && Entry.ReadOnlyEngineEntry) continue;
+        if (!LowerQuery.empty())
+        {
+            std::string Combined = Entry.DisplayTitle + " " + Entry.Identifier + " " + Entry.SeriesTitle;
+            for (char& Ch : Combined) Ch = static_cast<char>(std::tolower(static_cast<unsigned char>(Ch)));
+            if (Combined.find(LowerQuery) == std::string::npos) continue;
+        }
+        FilteredRamps.push_back(Idx);
+    }
+    LastVisibleCount = static_cast<uint32_t>(FilteredRamps.size());
+
+    if (FilteredRamps.empty())
+    {
+        Canvas.TextCentered(RepositoryArea, 13.0f, AppearanceColors.TextDim.ToRgba8(), "No .ColourRamp presets match active filter");
+        return;
+    }
+
+    Canvas.PushClip(RepositoryArea);
+    if (RepositoryArea.Contains(Cursor) && std::fabs(PointerInput.WheelDeltaY) > 1.0e-4f)
+    {
+        RepositoryScrollY = std::max(0.0f, RepositoryScrollY - PointerInput.WheelDeltaY * 38.0f);
+    }
+
+    constexpr float Gap       = 10.0f;
+    constexpr float TileH     = 84.0f;
+    const uint32_t  Columns   = std::max(1u, static_cast<uint32_t>((RepositoryArea.Width + Gap) / 224.0f));
+    const float     TileW     = (RepositoryArea.Width - Gap * static_cast<float>(Columns - 1u)) / static_cast<float>(Columns);
+    const uint32_t  Rows      = static_cast<uint32_t>((FilteredRamps.size() + Columns - 1u) / Columns);
+    const float     MaxScroll = std::max(0.0f, static_cast<float>(Rows) * (TileH + Gap) - RepositoryArea.Height);
+    RepositoryScrollY         = std::min(RepositoryScrollY, MaxScroll);
+
+    const ColorRgba IdleFill     = AppearanceColors.SectionSurface.ToRgba8();
+    const ColorRgba HoverFill    = AppearanceColors.Raised.ToRgba8();
+    const ColorRgba SelectedFill = BlendRgba(AppearanceColors.Selected, AppearanceColors.Accent, 0.16f);
+    const ColorRgba IdleStroke   = AppearanceColors.Stroke.ToRgba8();
+    const ColorRgba SelStroke    = AppearanceColors.Accent.ToRgba8();
+
+    for (std::size_t Order = 0u; Order < FilteredRamps.size(); ++Order)
+    {
+        const std::size_t RampIdx = FilteredRamps[Order];
+        const ColourSpace::ColourRampPresetEntry& Entry = AllRamps[RampIdx];
+        const uint32_t Col = static_cast<uint32_t>(Order) % Columns;
+        const uint32_t Row = static_cast<uint32_t>(Order) / Columns;
+        const Rectangle2D TileRect {
+            RepositoryArea.X + static_cast<float>(Col) * (TileW + Gap),
+            RepositoryArea.Y + static_cast<float>(Row) * (TileH + Gap) - RepositoryScrollY,
+            TileW,
+            TileH,
+        };
+        if (TileRect.Bottom() < RepositoryArea.Y || TileRect.Y > RepositoryArea.Bottom())
+        {
+            continue;
+        }
+
+        const bool Selected = (SelectedRampIndex == RampIdx);
+        const bool Hovered  = RepositoryArea.Contains(Cursor) && TileRect.Contains(Cursor);
+
+        Canvas.FillRectangle(TileRect, Selected ? SelectedFill : (Hovered ? HoverFill : IdleFill), SectionRadius);
+        Canvas.StrokeRectangle(TileRect, Selected ? SelStroke : IdleStroke, SectionRadius, Selected ? 1.5f : 1.0f);
+
+        const Rectangle2D StripRect { TileRect.X + 8.0f, TileRect.Y + 8.0f, TileRect.Width - 16.0f, 34.0f };
+        ConstructSmoothColourRampStrip(Canvas, StripRect, Entry, 6.0f);
+
+        // Stop position ticks beneath gradient bar
+        for (const ColourSpace::ColourStop& Stop : Entry.Stops)
+        {
+            const float TickX = StripRect.X + std::clamp(Stop.Position01, 0.0f, 1.0f) * StripRect.Width;
+            const auto  Srgb  = ColourSpace::ConvertLinearToSrgb8(Stop.LinearTint, ColourSpace::TransferCurveCategory::PureGamma22);
+            Canvas.FillCircle({ TickX, StripRect.Bottom() + 5.0f }, 2.6f, { Srgb.Red, Srgb.Green, Srgb.Blue, 255u });
+            Canvas.StrokeCircle({ TickX, StripRect.Bottom() + 5.0f }, 2.6f, AppearanceColors.StrokeStrong.ToRgba8(), 0.8f);
+        }
+
+        Canvas.Text({ TileRect.X + 10.0f, StripRect.Bottom() + 13.0f }, 10.4f, AppearanceColors.Text.ToRgba8(), Entry.DisplayTitle.c_str());
+        const std::string Meta = Entry.SeriesTitle + " · " + std::to_string(Entry.Stops.size()) + " stops · .ColourRamp";
+        Canvas.Text({ TileRect.X + 10.0f, StripRect.Bottom() + 27.0f }, 8.6f, AppearanceColors.TextDim.ToRgba8(), Meta.c_str());
+
+        LastRampHitboxes.push_back({ RampIdx, TileRect });
+
+        if (Hovered)
+        {
+            if (PointerInput.DoubleClicked)
+            {
+                SelectedRampIndex = RampIdx;
+                (void)ApplyRampPresetToSlot(RampIdx);
+            }
+            else if (PointerInput.Pressed)
+            {
+                SelectedRampIndex = RampIdx;
+                PotentialRampDrag = true;
+                DraggedRampIndex  = RampIdx;
+                DragPressOrigin   = Cursor;
+            }
+        }
+    }
+    Canvas.PopClip();
 }
 
 void ContentBrowserPanel::RenderColoursRepository(
@@ -1636,7 +1990,76 @@ void ContentBrowserPanel::RenderContentDetailsSidebar(
     const ColorRgba EyebrowInk = BlendRgba(AppearanceColors.Accent, AppearanceColors.TextDim, 0.48f);
     Canvas.Text({ Inner.X, Inner.Y }, 9.0f, EyebrowInk, "CONTENT DETAILS");
 
-    if (Category == ContentCategory::Colours)
+    if (Category == ContentCategory::Colours && ColourScope == ColourCollectionScope::Ramps)
+    {
+        if (const ColourSpace::ColourRampPresetEntry* Preset = CodexLibrary.QueryRampPresetAt(SelectedRampIndex))
+        {
+            const Rectangle2D PreviewRect { Inner.X, Inner.Y + 22.0f, Inner.Width, 64.0f };
+            ConstructSmoothColourRampStrip(Canvas, PreviewRect, *Preset, 10.0f);
+
+            Canvas.Text({ Inner.X, PreviewRect.Bottom() + 10.0f }, 13.0f, AppearanceColors.Text.ToRgba8(), Preset->DisplayTitle.c_str());
+            const std::string Meta = Preset->SeriesTitle + " · " + std::to_string(Preset->Stops.size()) + " stops · ID: " + Preset->Identifier;
+            Canvas.Text({ Inner.X, PreviewRect.Bottom() + 29.0f }, 9.4f, AppearanceColors.TextDim.ToRgba8(), Meta.c_str());
+
+            float DotX = Inner.X + 8.0f;
+            const float DotY = PreviewRect.Bottom() + 52.0f;
+            for (const ColourSpace::ColourStop& Stop : Preset->Stops)
+            {
+                if (DotX + 10.0f > Inner.Right()) break;
+                const auto Srgb = ColourSpace::ConvertLinearToSrgb8(Stop.LinearTint, ColourSpace::TransferCurveCategory::PureGamma22);
+                Canvas.FillCircle({ DotX, DotY }, 7.0f, { Srgb.Red, Srgb.Green, Srgb.Blue, 255u });
+                Canvas.StrokeCircle({ DotX, DotY }, 7.0f, AppearanceColors.StrokeStrong.ToRgba8(), 1.0f);
+                DotX += 18.0f;
+            }
+
+            const Point2D Cursor { PointerInput.CursorX, PointerInput.CursorY };
+            if (PreviewRect.Contains(Cursor))
+            {
+                if (PointerInput.DoubleClicked)
+                {
+                    (void)ApplyRampPresetToSlot(SelectedRampIndex);
+                }
+                else if (PointerInput.Pressed)
+                {
+                    PotentialRampDrag = true;
+                    DraggedRampIndex  = SelectedRampIndex;
+                    DragPressOrigin   = Cursor;
+                }
+            }
+
+            std::string TargetLabel = "Active colour ramp slot";
+            for (const ColourRampSlotRegistration& Slot : RegisteredRampSlots)
+            {
+                if (Slot.SlotIdentifier == FocusedRampSlotId)
+                {
+                    TargetLabel = Slot.DisplayTitle;
+                    break;
+                }
+            }
+            if (TargetLabel == "Active colour ramp slot" && !RegisteredRampSlots.empty())
+            {
+                TargetLabel = RegisteredRampSlots.front().DisplayTitle;
+            }
+
+            const std::string TargetSummary = "Target: " + TargetLabel + "  ·  .ColourRamp";
+            Canvas.Text({ Inner.X, DotY + 18.0f }, 9.5f, AppearanceColors.TextDim.ToRgba8(), TargetSummary.c_str());
+
+            const std::string ApplyBtnText = "Apply Ramp to " + TargetLabel;
+            if (ConstructCapsuleControl(
+                    Canvas,
+                    { Inner.X, DotY + 38.0f, Inner.Width, 28.0f },
+                    ApplyBtnText.c_str(),
+                    false,
+                    PointerInput,
+                    AppearanceColors,
+                    10.0f,
+                    true))
+            {
+                (void)ApplyRampPresetToSlot(SelectedRampIndex);
+            }
+        }
+    }
+    else if (Category == ContentCategory::Colours)
     {
         if (const ColourCodexEntry* Entry = CodexLibrary.QueryEntryAt(SelectedColourIndex))
         {
@@ -1863,6 +2286,20 @@ void ContentBrowserPanel::RenderWithInput(
         }
     }
 
+    if (PotentialRampDrag && PointerInput.HeldDown && !DraggingColourRamp)
+    {
+        const float Dx = Cursor.X - DragPressOrigin.X;
+        const float Dy = Cursor.Y - DragPressOrigin.Y;
+        if (std::hypot(Dx, Dy) > 5.0f)
+        {
+            DraggingColourRamp = true;
+            if (TargetExtent == ContentShelfExtent::FullHeight)
+            {
+                ConfigureShelfExtent(ContentShelfExtent::SplitHalf, false);
+            }
+        }
+    }
+
     if (PotentialMatCapDrag && PointerInput.HeldDown && !DraggingMatCap)
     {
         const float Dx = Cursor.X - DragPressOrigin.X;
@@ -1907,6 +2344,20 @@ void ContentBrowserPanel::RenderWithInput(
                 }
             }
         }
+        if (DraggingColourRamp && Cursor.Y < VisibleBottomY)
+        {
+            for (const ColourRampSlotRegistration& Slot : RegisteredRampSlots)
+            {
+                if (Slot.ScreenBounds.Width > 1.0f &&
+                    Slot.ScreenBounds.Height > 1.0f &&
+                    Slot.ScreenBounds.Y < VisibleBottomY &&
+                    Slot.ScreenBounds.Contains(Cursor))
+                {
+                    (void)ApplyRampPresetToSlot(DraggedRampIndex, Slot.SlotIdentifier, Cursor);
+                    break;
+                }
+            }
+        }
         if (DraggingMatCap && Cursor.Y < VisibleBottomY)
         {
             for (const MatCapSlotRegistration& Slot : RegisteredMatCapSlots)
@@ -1944,6 +2395,8 @@ void ContentBrowserPanel::RenderWithInput(
         }
         PotentialColourDrag  = false;
         DraggingColour       = false;
+        PotentialRampDrag    = false;
+        DraggingColourRamp   = false;
         PotentialMatCapDrag  = false;
         DraggingMatCap       = false;
         PotentialContentDrag = false;
@@ -1966,6 +2419,7 @@ void ContentBrowserPanel::RenderWithInput(
     }
 
     RenderColourSlotHighlights(Canvas, Cursor, VisibleBottomY, AppearanceColors);
+    RenderColourRampSlotHighlights(Canvas, Cursor, VisibleBottomY, AppearanceColors);
     RenderMatCapSlotHighlights(Canvas, Cursor, VisibleBottomY, AppearanceColors);
     RenderContentDropZoneHighlights(Canvas, Cursor, VisibleBottomY, AppearanceColors);
 
@@ -1992,6 +2446,17 @@ void ContentBrowserPanel::RenderWithInput(
             {
                 Canvas.FillCircle(Cursor, 14.0f, Dragged->FillColour);
                 Canvas.StrokeCircle(Cursor, 14.0f, AppearanceColors.Text.ToRgba8(), 2.0f);
+            }
+        }
+        if (DraggingColourRamp)
+        {
+            if (const ColourSpace::ColourRampPresetEntry* DraggedRamp = CodexLibrary.QueryRampPresetAt(DraggedRampIndex))
+            {
+                const Rectangle2D GhostRect { Cursor.X - 64.0f, Cursor.Y - 18.0f, 128.0f, 36.0f };
+                Canvas.FillRectangle(GhostRect, AppearanceColors.Raised.ToRgba8(), 8.0f);
+                ConstructSmoothColourRampStrip(Canvas, { GhostRect.X + 4.0f, GhostRect.Y + 4.0f, GhostRect.Width - 8.0f, 18.0f }, *DraggedRamp, 4.0f);
+                Canvas.TextCentered({ GhostRect.X + 4.0f, GhostRect.Y + 23.0f, GhostRect.Width - 8.0f, 11.0f }, 8.5f, AppearanceColors.Text.ToRgba8(), DraggedRamp->DisplayTitle.c_str());
+                Canvas.StrokeRectangle(GhostRect, AppearanceColors.Accent.ToRgba8(), 8.0f, 1.8f);
             }
         }
         if (DraggingMatCap)
@@ -2392,47 +2857,78 @@ void ContentBrowserPanel::RenderWithInput(
     // 3. Dedicated Colour Filters Bar (ONLY visible when Colours category is active)
     if (Category == ContentCategory::Colours)
     {
-        Canvas.Text({ DrawerRect.X + PadX, CurY + 7.0f }, 9.0f, EyebrowInk, "COLOUR FILTERS");
-        float ChipX = DrawerRect.X + PadX + 104.0f;
-
-        constexpr std::array<ColourFilterGroup, 8> FilterOrder = {{
-            ColourFilterGroup::All,
-            ColourFilterGroup::AugustBeigeAndBrown,
-            ColourFilterGroup::RedsAndBerries,
-            ColourFilterGroup::Yellows,
-            ColourFilterGroup::Greens,
-            ColourFilterGroup::Blues,
-            ColourFilterGroup::Purples,
-            ColourFilterGroup::Neutrals,
-        }};
-
-        for (const ColourFilterGroup Group : FilterOrder)
-        {
-            const char* Title = ColourCodex::QueryFilterGroupTitle(Group);
-            const float BtnW  = std::max(54.0f, Canvas.MeasureTextWidth(9.5f, Title) + 22.0f);
-            if (ChipX + BtnW > DrawerRect.Right() - PadX - 122.0f)
-            {
-                break;
-            }
-            if (ConstructCapsuleControl(Canvas, { ChipX, CurY, BtnW, 25.0f }, Title, ColourFilter == Group, PointerInput, AppearanceColors, 9.5f))
-            {
-                ConfigureColourFilter(Group);
-            }
-            ChipX += BtnW + 6.0f;
-        }
-
-        const std::string SortCaption = std::string("Sort: ") + ColourCodex::QuerySortOrderTitle(ColourSort);
-        if (ConstructCapsuleControl(
+        float ChipX = DrawerRect.X + PadX;
+        const Rectangle2D ScopeTrack { ChipX, CurY - 1.0f, 140.0f, 27.0f };
+        ConstructSegmentedTrack(Canvas, ScopeTrack, AppearanceColors);
+        if (ConstructSegmentedOption(
                 Canvas,
-                { DrawerRect.Right() - PadX - 114.0f, CurY, 114.0f, 25.0f },
-                SortCaption.c_str(),
-                false,
+                { ScopeTrack.X + 3.0f, ScopeTrack.Y + 3.0f, 66.0f, 21.0f },
+                "Swatches",
+                ColourScope == ColourCollectionScope::Swatches,
                 PointerInput,
                 AppearanceColors,
-                9.5f))
+                9.2f))
         {
-            const uint8_t NextSort = (static_cast<uint8_t>(ColourSort) + 1u) % 3u;
-            ConfigureColourSort(static_cast<ColourSortOrder>(NextSort));
+            ConfigureColourCollectionScope(ColourCollectionScope::Swatches);
+        }
+        if (ConstructSegmentedOption(
+                Canvas,
+                { ScopeTrack.X + 71.0f, ScopeTrack.Y + 3.0f, 66.0f, 21.0f },
+                "Ramps",
+                ColourScope == ColourCollectionScope::Ramps,
+                PointerInput,
+                AppearanceColors,
+                9.2f))
+        {
+            ConfigureColourCollectionScope(ColourCollectionScope::Ramps);
+        }
+        ChipX = ScopeTrack.Right() + 14.0f;
+
+        if (ColourScope == ColourCollectionScope::Swatches)
+        {
+            constexpr std::array<ColourFilterGroup, 8> FilterOrder = {{
+                ColourFilterGroup::All,
+                ColourFilterGroup::AugustBeigeAndBrown,
+                ColourFilterGroup::RedsAndBerries,
+                ColourFilterGroup::Yellows,
+                ColourFilterGroup::Greens,
+                ColourFilterGroup::Blues,
+                ColourFilterGroup::Purples,
+                ColourFilterGroup::Neutrals,
+            }};
+
+            for (const ColourFilterGroup Group : FilterOrder)
+            {
+                const char* Title = ColourCodex::QueryFilterGroupTitle(Group);
+                const float BtnW  = std::max(54.0f, Canvas.MeasureTextWidth(9.5f, Title) + 22.0f);
+                if (ChipX + BtnW > DrawerRect.Right() - PadX - 122.0f)
+                {
+                    break;
+                }
+                if (ConstructCapsuleControl(Canvas, { ChipX, CurY, BtnW, 25.0f }, Title, ColourFilter == Group, PointerInput, AppearanceColors, 9.5f))
+                {
+                    ConfigureColourFilter(Group);
+                }
+                ChipX += BtnW + 6.0f;
+            }
+
+            const std::string SortCaption = std::string("Sort: ") + ColourCodex::QuerySortOrderTitle(ColourSort);
+            if (ConstructCapsuleControl(
+                    Canvas,
+                    { DrawerRect.Right() - PadX - 114.0f, CurY, 114.0f, 25.0f },
+                    SortCaption.c_str(),
+                    false,
+                    PointerInput,
+                    AppearanceColors,
+                    9.5f))
+            {
+                const uint8_t NextSort = (static_cast<uint8_t>(ColourSort) + 1u) % 3u;
+                ConfigureColourSort(static_cast<ColourSortOrder>(NextSort));
+            }
+        }
+        else
+        {
+            Canvas.Text({ ChipX, CurY + 7.0f }, 9.4f, AppearanceColors.TextDim.ToRgba8(), "Drag any gradient strip onto a Colour Ramp slot in any workspace");
         }
 
         CurY += 33.0f;
@@ -2504,7 +3000,14 @@ void ContentBrowserPanel::RenderWithInput(
 
     if (Category == ContentCategory::Colours)
     {
-        RenderColoursRepository(Canvas, CentreArea, PointerInput, AppearanceColors, SectionRadius);
+        if (ColourScope == ColourCollectionScope::Ramps)
+        {
+            RenderColourRampsRepository(Canvas, CentreArea, PointerInput, AppearanceColors, SectionRadius);
+        }
+        else
+        {
+            RenderColoursRepository(Canvas, CentreArea, PointerInput, AppearanceColors, SectionRadius);
+        }
     }
     else
     {
@@ -2519,7 +3022,9 @@ void ContentBrowserPanel::RenderWithInput(
 
     const char* DefaultHint =
         (Category == ContentCategory::Colours)
-            ? "Drag any .ColourSwatch circle/strip onto a colour slot or double-click to apply"
+            ? (ColourScope == ColourCollectionScope::Ramps
+                   ? "Drag any .ColourRamp gradient card onto a Colour Ramp slot or double-click to apply"
+                   : "Drag any .ColourSwatch circle/strip onto a colour slot or double-click to apply")
             : (ColourAndMatCapLocked
                    ? "Drag any Studio MatCap sphere onto Shading MatCap grid or 3D Viewport, or double-click to apply"
                    : "Pre-baked 1024x1024 ThumbnailSheet + 64B ContentIndex · Drop external files to quarantine & import");
@@ -2535,13 +3040,25 @@ void ContentBrowserPanel::RenderWithInput(
 
     Canvas.PopClip();
 
-    // Cursor-tracked colour or Studio MatCap marker while dragging onto workspace targets
+    // Cursor-tracked colour, colour ramp or Studio MatCap marker while dragging onto workspace targets
     if (DraggingColour)
     {
         if (const ColourCodexEntry* Dragged = CodexLibrary.QueryEntryAt(DraggedColourIndex))
         {
             Canvas.FillCircle(Cursor, 15.0f, Dragged->FillColour);
             Canvas.StrokeCircle(Cursor, 15.0f, AppearanceColors.Text.ToRgba8(), 2.0f);
+        }
+    }
+    if (DraggingColourRamp)
+    {
+        if (const ColourSpace::ColourRampPresetEntry* DraggedRamp = CodexLibrary.QueryRampPresetAt(DraggedRampIndex))
+        {
+            const Rectangle2D GhostRect { Cursor.X - 72.0f, Cursor.Y - 21.0f, 144.0f, 42.0f };
+            Canvas.FillRectangle({ GhostRect.X + 2.0f, GhostRect.Y + 4.0f, GhostRect.Width, GhostRect.Height }, ColorRgba { 0u, 0u, 0u, 115u }, 8.0f);
+            Canvas.FillRectangle(GhostRect, ColorRgba { 16u, 20u, 28u, 245u }, 8.0f);
+            ConstructSmoothColourRampStrip(Canvas, { GhostRect.X + 4.0f, GhostRect.Y + 4.0f, GhostRect.Width - 8.0f, 20.0f }, *DraggedRamp, 4.0f);
+            Canvas.TextCentered({ GhostRect.X + 4.0f, GhostRect.Y + 25.0f, GhostRect.Width - 8.0f, 14.0f }, 9.5f, AppearanceColors.Text.ToRgba8(), DraggedRamp->DisplayTitle.c_str());
+            Canvas.StrokeRectangle(GhostRect, AppearanceColors.Accent.ToRgba8(), 8.0f, 1.8f);
         }
     }
     if (DraggingMatCap)
@@ -2684,7 +3201,7 @@ void ContentBrowserPanel::Render(Rectangle2D HostBoundsPhysical, double DeltaSec
     }
 
     RenderWithInput(Canvas, LogicalBounds, Pointer, DeltaSeconds);
-    WorkspaceAppearance::AssignExternalDragSuppression(DraggingColour || DraggingMatCap || DraggingContentEntry);
+    WorkspaceAppearance::AssignExternalDragSuppression(DraggingColour || DraggingColourRamp || DraggingMatCap || DraggingContentEntry);
 }
 
 } // namespace Frontier

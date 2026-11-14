@@ -5,6 +5,11 @@
 
 #include "Engine/Components/ContentBrowser/ColourCodex.h"
 
+#include "Engine/Codecs/ColourCodec.h"
+#include "Engine/ColourSpace/ChromaticitySpace.h"
+#include "Engine/ColourSpace/ColourRampSampler.h"
+#include "Engine/ColourSpace/TransferFunction.h"
+
 #include <toml++/toml.hpp>
 
 #include <algorithm>
@@ -228,6 +233,7 @@ ColourCodex::ColourCodex()
 void ColourCodex::ResetToBuiltInRepository()
 {
     RepositoryEntries.clear();
+    RampRepository.ResetToBuiltInPresets();
 
     struct BuiltInSeed
     {
@@ -324,14 +330,7 @@ ColourCodexEntry ColourCodex::ConstructEntryFromHex(
 
 float ColourCodex::ComputeRelativeLuminance(ColorRgba FillColour) noexcept
 {
-    const auto Linearize = [](uint8_t Channel8) noexcept -> float
-    {
-        const float Srgb = static_cast<float>(Channel8) / 255.0f;
-        return (Srgb <= 0.04045f) ? (Srgb / 12.92f) : std::pow((Srgb + 0.055f) / 1.055f, 2.4f);
-    };
-    return 0.2126f * Linearize(FillColour.Red) +
-           0.7152f * Linearize(FillColour.Green) +
-           0.0722f * Linearize(FillColour.Blue);
+    return ColourSpace::ComputeWcagRelativeLuminance({ FillColour.Red, FillColour.Green, FillColour.Blue, FillColour.Alpha });
 }
 
 ColourContrastInk ColourCodex::QueryContrastInk(ColorRgba FillColour) noexcept
@@ -933,6 +932,89 @@ bool ColourCodex::LoadSingleSwatchFile(
     std::ostringstream Buffer;
     Buffer << Input.rdbuf();
     return DecodeSingleSwatchString(Buffer.str(), OutDiagnostic, OutAddedIndex);
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                      MULTI-STOP COLOUR RAMP PRESET REPOSITORY
+//------------------------------------------------------------------------------------------------------------------------
+
+std::span<const ColourSpace::ColourRampPresetEntry> ColourCodex::QueryRampPresets() const noexcept
+{
+    return RampRepository.QueryRampPresets();
+}
+
+const ColourSpace::ColourRampPresetEntry* ColourCodex::QueryRampPresetAt(std::size_t RampIndex) const noexcept
+{
+    const auto Ramps = RampRepository.QueryRampPresets();
+    return (RampIndex < Ramps.size()) ? &Ramps[RampIndex] : nullptr;
+}
+
+std::size_t ColourCodex::FindRampPresetIndex(std::string_view Identifier) const noexcept
+{
+    const auto Ramps = RampRepository.QueryRampPresets();
+    for (std::size_t Index = 0u; Index < Ramps.size(); ++Index)
+    {
+        if (Ramps[Index].Identifier == Identifier)
+        {
+            return Index;
+        }
+    }
+    return Ramps.size();
+}
+
+std::size_t ColourCodex::AddProjectRamp(ColourSpace::ColourRampPresetEntry CustomRamp)
+{
+    return RampRepository.AddOrUpdateCustomRamp(std::move(CustomRamp));
+}
+
+bool ColourCodex::RemoveCustomRamp(std::string_view Identifier)
+{
+    return RampRepository.RemoveCustomRamp(Identifier);
+}
+
+bool ColourCodex::SaveSingleRampFile(
+    std::size_t                  RampIndex,
+    const std::filesystem::path& FilePath,
+    std::string&                 OutDiagnostic) const
+{
+    const ColourSpace::ColourRampPresetEntry* Entry = QueryRampPresetAt(RampIndex);
+    if (Entry == nullptr)
+    {
+        OutDiagnostic = "Invalid ColourCodex ramp index for .ColourRamp save.";
+        return false;
+    }
+    ColourSpace::AuthoredColourRamp Authored {};
+    Authored.RampIdentifier = Entry->Identifier;
+    Authored.DisplayTitle   = Entry->DisplayTitle;
+    Authored.SeriesTitle    = Entry->SeriesTitle;
+    Authored.Profile        = ColourSpace::ConstructProfileFromRampPreset(*Entry);
+    return Codecs::ColourEncoder::EncodeStandaloneRampToFile(FilePath, Authored, OutDiagnostic);
+}
+
+bool ColourCodex::LoadSingleRampFile(
+    const std::filesystem::path& FilePath,
+    std::string&                 OutDiagnostic,
+    std::size_t*                 OutAddedIndex)
+{
+    ColourSpace::AuthoredColourRamp Decoded {};
+    if (!Codecs::ColourDecoder::DecodeStandaloneRampFromFile(FilePath, Decoded, OutDiagnostic))
+    {
+        return false;
+    }
+    ColourSpace::ColourRampPresetEntry Preset {};
+    Preset.Identifier          = Decoded.RampIdentifier;
+    Preset.DisplayTitle        = Decoded.DisplayTitle;
+    Preset.SeriesTitle         = Decoded.SeriesTitle.empty() ? "Imported" : Decoded.SeriesTitle;
+    Preset.Stops               = ColourSpace::ExtractOrderedStops(Decoded.Profile.Source);
+    Preset.DefaultRange        = Decoded.Profile.Range;
+    Preset.DefaultBlend        = Decoded.Profile.BlendEquation;
+    Preset.ReadOnlyEngineEntry = false;
+    const std::size_t Added    = RampRepository.AddOrUpdateCustomRamp(std::move(Preset));
+    if (OutAddedIndex != nullptr)
+    {
+        *OutAddedIndex = Added;
+    }
+    return true;
 }
 
 } // namespace Frontier

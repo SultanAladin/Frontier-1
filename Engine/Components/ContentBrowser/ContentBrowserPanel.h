@@ -62,6 +62,16 @@ struct ColourSlotRegistration
     std::function<void(ColorRgba, const ColourCodexEntry&, Point2D)>  NotifyColourAssignedAt {};        // [-]  - Optional coordinate-aware drop callback
 };
 
+struct ColourRampSlotRegistration
+{
+    std::string                                                                               SlotIdentifier         {};        // [-]  - Stable colour-ramp drop-target key
+    std::string                                                                               DisplayTitle           {};        // [-]  - Human-readable slot title
+    Rectangle2D                                                                               ScreenBounds           {};        // [px] - Logical drop-target rectangle
+    ColourSpace::ColourSourceProfile*                                                         TargetProfile          = nullptr; // [-]  - Optional direct ColourSourceProfile destination
+    std::function<void(const ColourSpace::ColourSourceProfile&, std::string_view)>            NotifyRampAssigned     {};        // [-]  - Optional assignment callback
+    std::function<void(const ColourSpace::ColourSourceProfile&, std::string_view, Point2D)>   NotifyRampAssignedAt   {};        // [-]  - Optional coordinate-aware drop callback
+};
+
 struct MatCapSlotRegistration
 {
     std::string                                                 SlotIdentifier       {}; // [-]  - Stable MatCap drop-target key
@@ -98,6 +108,7 @@ struct ContentBrowserReading
     ContentCategory            ActiveCategory         = ContentCategory::Materials;                 // [-]     - Selected left-rail category
     ContentOriginFilter            ActiveOrigin           = ContentOriginFilter::All;                       // [-]     - All, Project, Imported, or Engine
     ColourRepositoryLayout         ActiveColourLayout     = ColourRepositoryLayout::GridCircles;            // [-]     - Colours-only layout mode
+    ColourCollectionScope          ActiveColourScope      = ColourCollectionScope::Swatches;                // [-]     - Swatches vs Ramps sub-scope under Colours
     StandardRepositoryLayout       ActiveStandardLayout   = StandardRepositoryLayout::Grid;                 // [-]     - Non-Colours layout mode
     ColourFilterGroup              ActiveColourFilter     = ColourFilterGroup::All;                         // [-]     - Dedicated Colour Filters selection
     ColourSortOrder                ActiveColourSort       = ColourSortOrder::Spectrum;                      // [-]     - Colour sort ordering
@@ -107,8 +118,10 @@ struct ContentBrowserReading
     uint32_t                       VisibleEntryCount      = 0u;                                             // [count] - Filtered visible entries
     bool                           ColourFiltersVisible   = false;                                          // [-]     - True only when Colours is active
     bool                           DraggingColourActive   = false;                                          // [-]     - True while dragging a ColourCodex swatch
+    bool                           DraggingColourRampActive = false;                                        // [-]     - True while dragging a ColourSpace ramp preset
     bool                           DraggingMatCapActive   = false;                                          // [-]     - True while dragging a Studio MatCap sphere
     std::string                    SelectedColourAlias    {};                                               // [-]     - Selected ColourCodex alias name
+    std::string                    SelectedRampIdentifier {};                                               // [-]     - Selected ColourRamp preset identifier
     std::string                    LastStatusMessage      {};                                               // [-]     - Latest footer status feedback
 };
 
@@ -133,6 +146,7 @@ public:
     void ConfigureOriginFilter(ContentOriginFilter Origin) noexcept;
     void ConfigureStandardLayout(StandardRepositoryLayout Layout) noexcept;
     void ConfigureColourLayout(ColourRepositoryLayout Layout) noexcept;
+    void ConfigureColourCollectionScope(ColourCollectionScope Scope) noexcept;
     void ConfigureColourFilter(ColourFilterGroup Filter) noexcept;
     void ConfigureColourSort(ColourSortOrder Order) noexcept;
     void ConfigureSearchQuery(std::string_view SearchText);
@@ -146,6 +160,10 @@ public:
     void RegisterColourSlot(const ColourSlotRegistration& Registration);
     void UpdateColourSlotBounds(std::string_view SlotIdentifier, Rectangle2D UpdatedScreenBounds) noexcept;
     void FocusColourSlot(std::string_view SlotIdentifier) noexcept;
+    void ClearColourRampSlots() noexcept;
+    void RegisterColourRampSlot(const ColourRampSlotRegistration& Registration);
+    void UpdateColourRampSlotBounds(std::string_view SlotIdentifier, Rectangle2D UpdatedScreenBounds) noexcept;
+    void FocusColourRampSlot(std::string_view SlotIdentifier) noexcept;
     void ClearMatCapSlots() noexcept;
     void RegisterMatCapSlot(const MatCapSlotRegistration& Registration);
     void ClearContentDropZones() noexcept;
@@ -157,6 +175,8 @@ public:
 
     bool ApplySelectedColourToActiveSlot();
     bool ApplyColourIndexToSlot(std::size_t ColourIndex, std::string_view TargetSlotIdentifier = {}, Point2D DropLogicalPos = { -1.0f, -1.0f });
+    bool ApplySelectedRampToActiveSlot();
+    bool ApplyRampPresetToSlot(std::size_t RampIndex, std::string_view TargetSlotIdentifier = {}, Point2D DropLogicalPos = { -1.0f, -1.0f });
     bool ApplyMatCapEntryToSlot(std::size_t EntryIndex, std::string_view TargetSlotIdentifier = {});
     bool ApplyContentEntryToDropZone(std::size_t EntryIndex, std::string_view TargetSlotIdentifier, Point2D DropLogicalPos);
     bool ActivateContentEntryAt(std::size_t EntryIndex);
@@ -182,6 +202,7 @@ public:
     [[nodiscard]] Rectangle2D                         QueryNotchTabBounds(Rectangle2D ViewportLogicalBounds) const noexcept;
     [[nodiscard]] Rectangle2D                         QuerySearchFieldBounds() const noexcept;
     [[nodiscard]] Rectangle2D                         QueryRenderedColourCellBounds(std::size_t ColourIndex) const noexcept;
+    [[nodiscard]] Rectangle2D                         QueryRenderedRampCellBounds(std::size_t RampIndex) const noexcept;
     [[nodiscard]] Rectangle2D                         QueryRenderedContentCellBounds(std::size_t EntryIndex) const noexcept;
     [[nodiscard]] ColourCodex&                        AccessColourCodex() noexcept;
     [[nodiscard]] const ColourCodex&                  QueryColourCodex() const noexcept;
@@ -202,10 +223,17 @@ private:
     [[nodiscard]] bool            QueryCategoryAllowedInMode(ContentCategory Candidate) const noexcept;
 
     void RenderColourSlotHighlights(PixelSpace& Canvas, Point2D Cursor, float VisibleBottomY, const ControlColorSet& AppearanceColors) const noexcept;
+    void RenderColourRampSlotHighlights(PixelSpace& Canvas, Point2D Cursor, float VisibleBottomY, const ControlColorSet& AppearanceColors) const noexcept;
     void RenderMatCapSlotHighlights(PixelSpace& Canvas, Point2D Cursor, float VisibleBottomY, const ControlColorSet& AppearanceColors) const noexcept;
     void RenderContentDropZoneHighlights(PixelSpace& Canvas, Point2D Cursor, float VisibleBottomY, const ControlColorSet& AppearanceColors) const noexcept;
     void RenderBottomNotchHandle(PixelSpace& Canvas, Rectangle2D NotchBounds, bool Hovered, const ControlColorSet& AppearanceColors) const noexcept;
     void RenderColoursRepository(
+        PixelSpace&                       Canvas,
+        Rectangle2D                       RepositoryArea,
+        const ContentBrowserPointerInput& PointerInput,
+        const ControlColorSet&            AppearanceColors,
+        float                             SectionRadius);
+    void RenderColourRampsRepository(
         PixelSpace&                       Canvas,
         Rectangle2D                       RepositoryArea,
         const ContentBrowserPointerInput& PointerInput,
@@ -235,31 +263,39 @@ private:
     ContentOriginFilter                 OriginScope           = ContentOriginFilter::All;               // [-]   - Active origin scope
     StandardRepositoryLayout            StandardLayout        = StandardRepositoryLayout::Grid;         // [-]   - Non-Colours layout
     ColourRepositoryLayout              ColourLayout          = ColourRepositoryLayout::GridCircles;    // [-]   - Colours-only layout
+    ColourCollectionScope               ColourScope           = ColourCollectionScope::Swatches;        // [-]   - Swatches vs Ramps sub-scope under Colours
     ColourFilterGroup                   ColourFilter          = ColourFilterGroup::All;                 // [-]   - Dedicated Colour Filters selection
     ColourSortOrder                     ColourSort            = ColourSortOrder::Spectrum;              // [-]   - Colour sort order
     std::string                         SearchBuffer          {};                                       // [-]   - Active search filter text
     TextEditBuffer                      SearchEditor          {};                                       // [-]   - Interactive UTF-8 search edit buffer
     Rectangle2D                         LastSearchBounds      {};                                       // [px]  - Last rendered search input bounds
     std::size_t                         SelectedColourIndex   = 0u;                                     // [idx] - Selected ColourCodex index
+    std::size_t                         SelectedRampIndex     = 0u;                                     // [idx] - Selected ColourRamp preset index
     std::size_t                         SelectedContentIndex  = 0u;                                     // [idx] - Selected ThumbnailSheetRepository index
     float                               RepositoryScrollY     = 0.0f;                                   // [px]  - Vertical scroll offset
     uint32_t                            LastVisibleCount      = 0u;                                     // [cnt] - Cached visible entry count
     std::string                         StatusMessage         {};                                       // [-]   - Latest footer status string
 
     std::vector<ColourSlotRegistration>       RegisteredSlots       {};                                       // [-]   - Bound editor colour slots
+    std::vector<ColourRampSlotRegistration>   RegisteredRampSlots   {};                                       // [-]   - Bound editor colour ramp slots
     std::vector<MatCapSlotRegistration>       RegisteredMatCapSlots {};                                       // [-]   - Bound MatCap drop targets
     std::vector<ContentDropZoneRegistration>  RegisteredDropZones   {};                                       // [-]   - Generalized content drop zones (Vectors, Fonts, Materials)
-    std::string                         FocusedSlotId         {};                                       // [-]   - Active target slot key
+    std::string                         FocusedSlotId         {};                                       // [-]   - Active target colour slot key
+    std::string                         FocusedRampSlotId     {};                                       // [-]   - Active target colour ramp slot key
     OutlinerPanel*                      FallbackOutliner      = nullptr;                                // [-]   - Optional Outliner fallback
     const ThemeRepository*              AttachedTheme         = nullptr;                                // [-]   - Optional live ThemeRepository source
     std::function<void(const ContentRepositoryEntry&)> ContentActivationCallback {};                    // [-]   - Optional asset open callback
     std::vector<RecordedCellHitbox>     LastColourHitboxes    {};                                       // [-]   - Hitboxes for testing & drag
+    std::vector<RecordedCellHitbox>     LastRampHitboxes      {};                                       // [-]   - Ramp tile hitboxes for testing & drag
     std::vector<RecordedCellHitbox>     LastContentHitboxes   {};                                       // [-]   - Content tile hitboxes for testing & drag
     bool                                ColourAndMatCapLocked = false;                                  // [-]   - Restrict browser to Colours + MatCap Materials
 
     bool                                PotentialColourDrag   = false;                                  // [-]   - Pointer pressed on colour swatch
     bool                                DraggingColour        = false;                                  // [-]   - Active drag threshold crossed
     std::size_t                         DraggedColourIndex    = 0u;                                     // [idx] - ColourCodex entry being dragged
+    bool                                PotentialRampDrag     = false;                                  // [-]   - Pointer pressed on colour ramp tile
+    bool                                DraggingColourRamp    = false;                                  // [-]   - Active colour ramp drag threshold crossed
+    std::size_t                         DraggedRampIndex      = 0u;                                     // [idx] - ColourRamp preset index being dragged
     bool                                PotentialMatCapDrag   = false;                                  // [-]   - Pointer pressed on MatCap sphere
     bool                                DraggingMatCap        = false;                                  // [-]   - Active MatCap drag threshold crossed
     std::size_t                         DraggedMatCapIndex    = 0u;                                     // [idx] - ThumbnailSheetRepository MatCap index

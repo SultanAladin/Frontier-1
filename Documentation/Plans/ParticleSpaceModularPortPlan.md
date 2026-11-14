@@ -1,6 +1,6 @@
 # Frontier ParticleSpace Modular C++20 Port Plan
 
-> **Scope:** Strip out unaligned prototype C++ particle scaffolding (preserving our existing Vector Field Forces domain in `Engine/SimulationSpace/ForceFields/` untouched), adopt the latest HTML Particle Studio reference (`Experimental/ParticleEditor Final/` from `streamlinkinbox/Frontier@arena/4bfeedb2-frontier`, commit `5f14356`), and specify the complete Frontier-aligned modular architecture across `Engine/ParticleSpace/`, `ParticleExtension`, `Engine/Codecs/ParticleCodec`, `Engine/Interchange/ParticleInterchange`, `Engine/Workspaces/Particle/`, `Engine/Shaders/Particles/`, and reusable `Engine/Components/` UI units (including Content Browser drag-drop Colour Ramp presets) — verified via side-by-side HTML-vs-C++ screenshot parity for both UI and every rendered particle preset (all 102 presets reproduced verbatim in the final phase).
+> **Scope:** Strip out unaligned prototype C++ particle scaffolding (preserving our existing Vector Field Forces domain in `Engine/SimulationSpace/ForceFields/` untouched), adopt the latest HTML Particle Studio reference (`Experimental/ParticleEditor Final/` from `streamlinkinbox/Frontier@arena/4bfeedb2-frontier`, commit `5f14356`), delegate all reusable colour/gradient/ramp/fill/LUT/interchange responsibilities to **`Engine/ColourSpace/`**, **`Engine/Codecs/ColourCodec`**, and **`Engine/Interchange/ColourInterchange`** (specified in [`ColourSpaceArchitecturePlan.md`](ColourSpaceArchitecturePlan.md)), and build the complete Frontier-aligned modular architecture across `Engine/ParticleSpace/`, `ParticleExtension`, `Engine/Codecs/ParticleCodec`, `Engine/Interchange/ParticleInterchange`, `Engine/Workspaces/Particle/`, `Engine/Shaders/Particles/`, and reusable `Engine/Components/` UI units — verified via side-by-side HTML-vs-C++ screenshot parity for both UI and every rendered particle preset (all 102 presets reproduced verbatim in the final phase).
 
 ---
 
@@ -26,8 +26,9 @@ Every C++20 file, namespace, type, enum, `.slang` shader, and `.ParticleSpace` f
 2. **Two-Tier Hybrid Persistence (`ParticleCodec`) + External `Interchange` (`ParticleInterchange`)**:
    - Native `.ParticleSpace` containers use `SpaceExtensionCategory::ParticleSpace` (`Engine/Codecs/SpaceContainerCodec.h`, slot `10`): Tier 1 PascalCase TOML manifest + Tier 2 64-byte-aligned binary sections (`.RampLut`, `.SurfaceAnchor`, `.StrandRest`, `.Revision`), embedding/linking Vector Field Forces via `Codecs::SerializeInlineForceSourcesToManifest`.
    - External interchange lives in `Engine/Interchange/ParticleInterchange.{h,cpp}` (paralleling `Engine/Interchange/GeometryInterchange.{h,cpp}`): imports/exports HTML Particle Studio TOML/JSON snapshots, host-handoff packets, and external `.obj`/`.stl`/`.gltf` surface anchor meshes via `GeometryInterchange`.
-3. **Zero Duplication of Vector Field Forces (`Engine/SimulationSpace/ForceFields/`)**:
-   - `ParticleSpace` directly consumes `Frontier::SimulationSpace::ForceFields` (`ForceFieldAccumulator`, `FieldLatticeCascade`, `FieldLatticeVulkanExecutor`, `FieldFormulaCompiler`, `ForceFieldEvaluationShared.slang`, `VectorFieldCodec`) and reuses `ForceInspectorView`, `ForcePresetBrowserPanel`, `VectorFieldOverlaySequence`, and `VectorFieldViewportCoordinator`.
+3. **Zero Duplication of Reusable Domains (`Engine/ColourSpace/` & `Engine/SimulationSpace/ForceFields/`)**:
+   - **ColourSpace Reuse**: All modular colour sources (`SolidPigment`, `LinearFill`, `MultiStopGradient`, `QuantizedRamp`, `BlackbodyThermal`, `DiscreteTintSet`, `SpatialNoiseFill`), ramp presets, colorimetry, GPU LUT packing, `.ColourSpace`/`.ColourRamp` serialization, HTML/CSS/SVG/`.gpl`/`.ase`/`.cube` interchange, and `ColourRampSampling.slang` live in **`Engine/ColourSpace/`**, **`Engine/Codecs/ColourCodec`**, **`Engine/Interchange/ColourInterchange`**, and **`Engine/Shaders/Colour/`** (see [`ColourSpaceArchitecturePlan.md`](ColourSpaceArchitecturePlan.md)). `ParticleSpace` holds only `ParticleTintDriver.{h,cpp}` for the 15 particle-specific scalar input channels.
+   - **ForceFields Reuse**: `ParticleSpace` directly consumes `Frontier::SimulationSpace::ForceFields` (`ForceFieldAccumulator`, `FieldLatticeCascade`, `FieldLatticeVulkanExecutor`, `FieldFormulaCompiler`, `ForceFieldEvaluationShared.slang`, `VectorFieldCodec`) and reuses `ForceInspectorView`, `ForcePresetBrowserPanel`, `VectorFieldOverlaySequence`, and `VectorFieldViewportCoordinator`.
 4. **Strict Naming Compliance (`Documentation/BannedWordsVocabulary.md` + User Rulings)**:
    - Banned terms explicitly avoided everywhere: `Law`/`Laws`, `And` conjunctions, `Emitter`/`Emit`, `System`, `State`, `Node`, `Mesh`, `Palette`, `Module`, `Pipeline`, `Pass`, `Stage`, `Frame`, `Pool`, `Catalog`, `Kind`, `Flag`, `Value`, `Manager`, `Controller`, `Helper`, `Base`, `Common`, `Shared`, `ParticleReadback`, `PlaybackTransportBar`, `TimelineRulerScrubber`.
 5. **Mandatory HTML-vs-C++ Visual Screenshot Parity Gate (`CLAUDE.md §2.5`)**:
@@ -40,10 +41,14 @@ Every C++20 file, namespace, type, enum, `.slang` shader, and `.ParticleSpace` f
 
 ```text
 Engine/
+├── ColourSpace/                                        // Separate reusable Colour domain (full tree in ColourSpaceArchitecturePlan.md)
+│   └── ...                                             // ColourTypes, ChromaticitySpace, TransferFunction, SpectralDistribution, ColourSourceTypes, ColourRampSampler, ColourPresetRepository, ColourDocument, ColourExtension
+│
 ├── ParticleSpace/                                      // First-class modular particle domain (Frontier::ParticleSpace)
 │   ├── ParticleExtension.h / .cpp                      // Lifecycle coordinator (Initialize, Tick, Suspend, Resume, Finalize, Exchange)
 │   ├── ParticleDocument.h / .cpp                       // Authoritative in-memory ensemble of rigs, Vector Field Force links, colliders & clock
-│   ├── ParticleRig.h / .cpp                            // Single authored particle rig composing ReleaseOrigin + Dynamics + Colour + VisualCarrier
+│   ├── ParticleRig.h / .cpp                            // Single authored particle rig composing ReleaseOrigin + Dynamics + ColourSpace::ColourSourceProfile + ParticleTintDriver + VisualCarrier
+│   ├── ParticleTintDriver.h / .cpp                     // Particle-only scalar driver inputs (all 15 HTML COLOR_BY_MODES) routed into Engine/ColourSpace/ColourRampSampler
 │   ├── ParticleBuffers.h                               // 16B-aligned GPU layouts (ParticleSlot 80B, StrandVertex 16B, GlobalUniform 240B, RigUniform 256B)
 │   │
 │   ├── Origins/                                        // Modular release-origin geometry types
@@ -54,7 +59,7 @@ Engine/
 │   │   └── FireworkPatternSampler.h / .cpp             // All 10 FireworkShapes (Bouquet, SkyText, Heart, Star, Smiley, Saturn, Crown, Butterfly, Spiral, Finale)
 │   │
 │   ├── VisualCarriers/                                 // Modular render-geometry & shading carrier types
-│   │   ├── VisualCarrierTypes.h                        // VisualCarrierCategory + SpriteCutoutCategory (all 20 shapes 0..19) + OpticalBlendEquation
+│   │   ├── VisualCarrierTypes.h                        // VisualCarrierCategory + SpriteCutoutCategory (all 20 shapes 0..19) + ColourSpace::OpticalBlendEquation
 │   │   ├── SpriteBillboardCarrier.h                    // Camera/axis/velocity-aligned quads + bokeh head styles + streak thinness
 │   │   ├── RibbonStrandCarrier.h                       // 20-vertex strips: silk, cables, chains, solid woven cloth, grass/wheat blades, pinnate ferns, kelp, bark
 │   │   ├── OrientedSolidCarrier.h                      // 3D cubes, coins, 3D glass shards, 8-fragment shatter derez, MoGraph height-extruded solids
@@ -62,12 +67,6 @@ Engine/
 │   │   ├── DielectricBeamCarrier.h                     // Coherent laser/plasma beams, Tesla/static arcs, plasma cages, light fibres, strike sparks
 │   │   ├── RefractionLensCarrier.h                     // Relativistic gravitational lensing (black hole) + rising thermal heat shimmer distortion
 │   │   └── BackingSurfaceCarrier.h                     // Obsidian/chrome/wireframe backing geometry (hand+orb, teapot, car, bust, custom PolygonNetwork)
-│   │
-│   ├── Colour/                                         // Modular colour, gradient, fill & ramp types (coupled with ColourSpace/ColourCodec + ContentBrowser)
-│   │   ├── ParticleColourTypes.h                       // ColourSourceCategory (SolidPigment, LinearFill, MultiStopGradient, QuantizedRamp, BlackbodyThermal, SpeciesMapping, SpatialNoiseField)
-│   │   ├── ColourDriverTypes.h                         // All 15 ColourDriverChannel modes (ModeDefault..LifeDuration), ColourWrapBehaviour, ColourBlendCurve
-│   │   ├── ColourRampSampler.h / .cpp                  // Arbitrary-stop linear RGBA ramp sampling, 6 built-in ramp presets & 64B GPU LUT packing
-│   │   └── ParticleColourEncoder.h / .cpp              // Packs ColourRamp LUT + driver uniforms identically for GPU compute/raster & CPU execution
 │   │
 │   ├── Dynamics/                                       // Modular simulation behaviour & physics solvers
 │   │   ├── SimulationDynamicsTypes.h                   // Composable typed dynamics configuration (zero monolithic switch)
@@ -101,17 +100,20 @@ Engine/
 │       └── PresetDefinitionsFieldGridHold.cpp          // Motion & Grids (5), Ferrofluid & Fields (2), Fracture & Cracks (2), Quarantine (9)
 │
 ├── Codecs/
+│   ├── ColourCodec.h / .cpp                            // UPGRADED: .ColourSpace / .ColourRamp / .ColourSwatch + inline TOML helpers (reused by ParticleCodec)
 │   └── ParticleCodec.h / .cpp                          // Two-Tier Hybrid .ParticleSpace encoder/decoder (TOML manifest + 64B binary sections)
 │
 ├── Interchange/
+│   ├── ColourInterchange.h / .cpp                      // External HTML Studio colour blocks, CSS, SVG, GIMP .gpl/.ggr, Adobe .ase/.aco, .cube LUTs (reused by ParticleInterchange)
 │   └── ParticleInterchange.h / .cpp                    // External JSON/TOML HTML ParticleStudio import/export, OBJ/STL anchor bridge, Fluid handoff
 │
 ├── Components/                                         // NEW REUSABLE UI UNITS (shared across Particle, Fluid, Fracture, ForceField, Animation, Vehicle, Material)
 │   ├── Controls/
 │   │   ├── SimulationPlaybackControls.h / .cpp         // Play, Pause, SingleStep, Restart, Loop, TimeScale (0.25x..2x), BurstTrigger, Timecode
 │   │   ├── SimulationTimeRuler.h / .cpp                // Scrubbable simulation/animation time ruler, playhead needle, active track strip
-│   │   ├── ColourRampEditor.h / .cpp                   // Solid / Fill / Multi-Stop Gradient / Quantized Ramp editor + drop-target slot for ContentBrowser ramps
-│   │   └── ScalarCurveEditor.h / .cpp                  // Value-over-life / attenuation / falloff spline editor
+│   │   ├── ColourRampEditor.h / .cpp                   // Reusable ColourSpace::ColourSourceProfile editor + ContentBrowser drop-target slot
+│   │   ├── ColourSwatchPicker.h / .cpp                 // Reusable Linear/sRGB/Oklab/HEX/Kelvin swatch editor + ContentBrowser drop-target slot
+│   │   └── ScalarCurveEditor.h / .cpp                  // Size-over-life / attenuation / falloff spline editor
 │   ├── ContentBrowser/                                 // EXTENDED: built-in Colour Ramp presets + drag-and-drop ColourRampSlotRegistration
 │   │   ├── ColourCodex.h / .cpp                        // Adds ColourRampPresetEntry repository (Spectrum, Blackbody, Aurora, Plasma, Ocean, SunsetNeon + custom)
 │   │   ├── ThumbnailSheetRepository.h / .cpp           // Renders crisp gradient-strip thumbnails for ColourRamp presets under ContentCategory::Colours
@@ -132,8 +134,10 @@ Engine/
 │       └── ParticlePaneAppearance.h                    // Styling tokens aligned with ThemeRepository & StudioIconSet (particle-* & force-* icons)
 │
 └── Shaders/
+    ├── Colour/
+    │   └── ColourRampSampling.slang                    // Shared pure .slang colour ramp LUT sampling, wrap/curve, Oklab/LinearSrgb, Kelvin & 3D lattice noise
     └── Particles/                                      // Pure .slang (compiled via slangc / Automation/PrepareShaderToolchain.py)
-        ├── ParticleBuffers.slang                       // 16B-aligned structs, PRNG, basis, curl/simplex noise, colour ramp sampling
+        ├── ParticleBuffers.slang                       // 16B-aligned structs, PRNG, basis, curl/simplex noise; imports Engine/Shaders/Colour/ColourRampSampling.slang
         ├── ParticleForceCoupling.slang                 // Imports Engine/Shaders/Compute/ForceFieldEvaluationShared.slang (Vector Field Forces)
         ├── ParticleReleaseCompute.slang                // Compute release pass (all origins, webs, cloth grids, flora, fireworks, custom anchors)
         ├── ParticleAdvectCompute.slang                 // Compute simulation pass (ballistics, curl, XPBD strands, flora, ferro, cracks, splashes, grids, shields)
@@ -167,24 +171,20 @@ Every `ParticleRig` owns a typed `VisualCarrierSpec` (`std::variant`):
 | `RefractionLensCarrier` | `ParticleLensRasterization.slang` | Relativistic black-hole accretion gravitational lens distortion & rising thermal heat-shimmer refraction |
 | `BackingSurfaceCarrier` | `ParticleSurfaceBackingRasterization.slang` | Backing surface styles (`ObsidianDark`, `BrushedChrome`, `GhostWireframe`, `ParticlesOnlyHidden`) for all 17 surface presets + custom imported `PolygonNetwork` + interactive chrome ball collider + figure-8 rally vehicle hull |
 
-### 4.2 Modular Colour, Gradient, Fill & Ramp Types + Content Browser Drag-Drop
+### 4.2 Direct Reuse of `Engine/ColourSpace/`, `ColourCodec`, `ColourInterchange` & Content Browser Ramps
 
-Directly mirrors and generalizes HTML `COLOR_BY_MODES`, `COLOR_WRAP_MODES`, `COLOR_INTERP_MODES`, `COLOR_PALETTES`, and arbitrary-stop `colorStops`, coupled with `Engine/Codecs/ColourCodec.h` (`.ColourSpace`) and `Engine/Components/ContentBrowser/`:
+All modular colour sources, gradient stops, ramps, colorimetry, GPU LUT packing, file serialization, external format interchange, and Content Browser drag-drop live in the dedicated engine-wide **`Engine/ColourSpace/`** domain (full architecture in [`ColourSpaceArchitecturePlan.md`](ColourSpaceArchitecturePlan.md)). `ParticleSpace` does **not** re-implement colour types or ramp math:
 
-- **`ColourSourceSpec`** (`std::variant`):
-  1. `SolidPigmentSource` — single scene-linear RGBA tint + opacity multiplier.
-  2. `LinearFillSource` — two-stop or three-stop `ColA -> ColB -> ColC` fill (1:1 compatibility with legacy HTML presets).
-  3. `MultiStopGradientSource` — arbitrary ordered `std::vector<ColourStop>` (`Position01`, `LinearRgba`), supporting all 6 built-in presets (`Spectrum`, `Blackbody`, `Aurora`, `Plasma`, `Ocean`, `SunsetNeon`) plus user-authored `.ColourSpace` ramps.
-  4. `QuantizedRampSource` — stepped/banded ramp with configurable stop positions.
-  5. `BlackbodyThermalSource` — Kelvin temperature ramp (fire, welding, embers, flares, fireworks, plasma).
-  6. `SpeciesMappingSource` — discrete per-species / per-role colour slots (chemistry `A`/`B`/`C`, spiderweb silk/dew, tree trunk/leaves, firework sub-shells).
-  7. `SpatialNoiseFillSource` — 3D value-noise driven pigment modulation (`rampVNoise3` parity).
-- **15 Exact `ColourDriverChannel` Drivers** (1:1 with HTML `COLOR_BY_MODES` codes `0..14`):
-  - `0 ModeDefault` · `1 NormalizedLifetime` · `2 ParticleAgeSeconds` · `3 VelocitySpeed` · `4 VerticalVelocity` · `5 OriginAzimuthAngle` · `6 VelocityHeadingAngle` · `7 DistanceFromOrigin` · `8 WorldElevation` · `9 SpatialNoise3D` · `10 PerParticleRandomSeed` · `11 SpinOrientationAngle` · `12 DistanceToCamera` · `13 ParticleSizeMeters` · `14 AssignedLifespanSeconds`.
-- **Remapping Controls**: `RangeMin`, `RangeMax`, `RepeatCount`, `PhaseOffset`, `ColourWrapBehaviour` (`Clamp`, `Repeat`, `Mirror`), `ColourBlendCurve` (`Linear`, `Smooth`, `Stepped`).
-- **Content Browser Colour Ramp Presets & Drag-Drop**:
-  - `ColourCodex` and `ThumbnailSheetRepository` expose built-in and project-authored **Colour Ramp Presets** (with smooth gradient-strip previews under `ContentCategory::Colours`).
-  - `ContentBrowserPanel::RegisterColourRampSlot(ColourRampSlotRegistration)` allows dragging any Colour Ramp preset directly from the Content Browser into the **Colour Ramp Slot** of `ColourRampEditor` (usable across Particle, Material, Pattern, Stamp, Fluid, and ForceField workspaces).
+- **Consumed From `Engine/ColourSpace/`**:
+  - `ColourSpace::ColourSourceProfile` (`SolidPigmentSource`, `LinearFillSource`, `MultiStopGradientSource`, `QuantizedRampSource`, `BlackbodyThermalSource`, `DiscreteTintSetSource`, `SpatialNoiseFillSource`), `ColourRangeTransform` (`RangeMin`, `RangeMax`, `RepeatCount`, `PhaseOffset`, `ColourWrapBehaviour`, `ColourBlendCurve`, `ColourInterpolationSpace`), `ColourRampSampler`, `ColourRampLut64`, `ColourPresetRepository` (all 6 HTML Studio presets + scientific/artistic sets), and `ColourExtension`.
+  - `Engine/Codecs/ColourCodec` (`.ColourSpace` / `.ColourRamp` / `.ColourSwatch` + inline TOML manifest helpers invoked directly by `ParticleCodec`).
+  - `Engine/Interchange/ColourInterchange` (HTML Studio colour blocks, CSS, SVG, `.gpl`/`.ggr`, `.ase`/`.aco`, `.cube` — invoked directly by `ParticleInterchange`).
+  - `Engine/Shaders/Colour/ColourRampSampling.slang` (imported by `ParticleBuffers.slang`).
+  - `Engine/Components/ContentBrowser/` (`ColourCodex` + `ThumbnailSheetRepository` + `ContentBrowserPanel::RegisterColourRampSlot`) & `Engine/Components/Controls/ColourRampEditor`.
+- **Owned By `Engine/ParticleSpace/ParticleTintDriver.{h,cpp}` Only**:
+  - The **15 particle-specific `ParticleScalarChannel` inputs** (1:1 with HTML `COLOR_BY_MODES` codes `0..14`):
+    `0 ModeDefault` · `1 NormalizedLifetime` · `2 ParticleAgeSeconds` · `3 VelocitySpeed` · `4 VerticalVelocity` · `5 OriginAzimuthAngle` · `6 VelocityHeadingAngle` · `7 DistanceFromOrigin` · `8 WorldElevation` · `9 SpatialNoise3D` · `10 PerParticleRandomSeed` · `11 SpinOrientationAngle` · `12 DistanceToCamera` · `13 ParticleSizeMeters` · `14 AssignedLifespanSeconds`.
+  - Extracts the chosen particle scalar and passes it directly into `ColourSpace::SampleColourSource(...)` / `ColourSpace::PackColourRampLut64(...)`.
 
 ### 4.3 Direct Reuse of Vector Field Forces (`Engine/SimulationSpace/ForceFields/`)
 
@@ -211,19 +211,19 @@ Uses `SpaceContainerEncoder` (`SpaceExtensionCategory::ParticleSpace`, schema v1
 
 - **Tier 1 (PascalCase TOML Manifest)**:
   - `[Document]` — `Title`, `SchemaVersion`, `CoordinateSystem`, `Seed`, `TimeScale`, `PlaybackLoopSeconds`, `ActivePresetId`.
-  - `[[ParticleRig]]` — Modular sub-tables: `[ParticleRig.Origin]`, `[ParticleRig.Carrier]`, `[ParticleRig.Colour]`, `[[ParticleRig.Colour.Stop]]`, `[ParticleRig.Dynamics.*]` (only active dynamics sub-tables written).
+  - `[[ParticleRig]]` — Modular sub-tables: `[ParticleRig.Origin]`, `[ParticleRig.Carrier]`, `[ParticleRig.Colour]` (delegated directly to `ColourEncoder::SerializeSourceToManifest` or a linked `.ColourRamp`/`.ColourSpace` path + `ParticleScalarChannel`), `[ParticleRig.Dynamics.*]` (only active dynamics sub-tables written).
   - `[ForceField]` / `[[ForceSource]]` / `LinkedVectorFieldPaths` — serialized via `Codecs::SerializeInlineForceSourcesToManifest` (`VectorFieldCodec.h`).
   - `[InteractiveCollider]` — ball radius, bounce restitution, magnet position/orbit mode.
   - `[EditorViewport]` *(gated by `#if FRONTIER_EDITOR_ENABLED`)* — camera posture, overlay channel, minimap toggle, active tool.
 - **Tier 2 (64-Byte-Aligned Binary Sections with FNV-1a 64-bit Checksums)**:
-  - `.RampLut` — pre-baked linear RGBA gradient samples for zero-jitter GPU upload.
+  - `.ColourLut` — pre-baked `ColourSpace::ColourRampLut64` linear RGBA gradient samples (shared with `ColourCodec`) for zero-jitter GPU upload.
   - `.SurfaceAnchor` — cached sampled anchor positions/normals/curvature weights for custom `PolygonNetwork` surfaces.
   - `.StrandRest` — initial rest-length tables for spiderwebs, cloth grids, and canopy trees.
   - `.Revision` — optional embedded `RevisionTracker` undo/redo history via `RevisionCodec`.
 
 ### 5.2 External Interchange (`Engine/Interchange/ParticleInterchange.{h,cpp}`)
 
-- **HTML Particle Studio Import/Export**: Lossless conversion between `Experimental/ParticleEditor Final/` TOML/JSON snapshots (all 129 `PE.baseParams` keys + Y-Up ↔ Right-Hand `+Z Up` transform) and native `ParticleDocument`.
+- **HTML Particle Studio Import/Export**: Lossless conversion between `Experimental/ParticleEditor Final/` TOML/JSON snapshots (all 129 `PE.baseParams` keys + Y-Up ↔ Right-Hand `+Z Up` transform) and native `ParticleDocument`, delegating all colour/stop/ramp fields directly to `Interchange::ColourInterchange`.
 - **Host Handoff Packet (`ParticleHandoffPacket`)**: Mirrors `Engine/handoff.js` (`PresetId`, `RigName`, typed parameter overrides) and publishes live updates across `WorkspaceExchange` (`SpaceExtensionCategory::ParticleSpace`) for Fluid, Fracture, and World workspaces.
 - **External 3D Surface Intake**: Delegates `.obj` / `.stl` / `.gltf` drops to `Interchange::GeometryInterchange` → `PolygonNetwork` → `SurfaceAnchorSampler`.
 
@@ -249,9 +249,10 @@ Every reusable widget identified in the HTML Particle Studio is authored once un
 
 | Phase | Deliverable | Key Units & Mandatory Verification Gate |
 | :--- | :--- | :--- |
-| **Phase 0 — Milestone Lock** | Commit refined plan + BannedWords update as **`Pre Particle Editor Begin`** | Clean rollback checkpoint committed & pushed before any C++ particle source is written. |
-| **Phase 1 — Core Modular Types & `ParticleSpace` Foundation** | `ParticleBuffers.h`, `ParticleRig`, `ParticleDocument`, `ParticleExtension`, `Origins/*` (`AnalyticOrigins`, `StructuralOrigins`, `SurfaceAnchorSampler`, `FireworkPatternSampler`), `VisualCarriers/*`, `Colour/*`, `Dynamics/SimulationDynamicsTypes.h` | Compiles cleanly across `Editor`/`Development`/`Shipping`; zero banned words / zero `And` identifiers; `ParticleFoundationValidation` verifies 16B GPU struct alignment, all 15 colour drivers, 6 ramp presets, 17 surface anchor samplers, and 10 firework pattern samplers, emitting visual contact sheets into `Exhibits/Images/Particles/`. |
-| **Phase 2 — `.ParticleSpace` Codec & `ParticleInterchange`** | `Engine/Codecs/ParticleCodec.{h,cpp}`, `Engine/Interchange/ParticleInterchange.{h,cpp}`, `SpaceContainerCodec` wiring, inline `VectorFieldCodec` force-source round-trip | `ParticleCodecInterchangeValidation` proves bit-exact `.ParticleSpace` Two-Tier Hybrid round-trip (TOML + 64B binary sections + FNV-1a checksums + `.Revision`) and lossless import of all 102 presets exported directly from `Experimental/ParticleEditor Final/Engine/presets.js`. |
+| **Phase 0 — Milestone Lock** | Commit refined plan + BannedWords update as **`Pre Particle Editor Begin`** | Clean rollback checkpoint committed & pushed before any C++ source is written. |
+| **Phase 1A — Reusable `ColourSpace`, `ColourCodec`, `ColourInterchange` & Content Browser Ramps** | `Engine/ColourSpace/*` (`ColourTypes`, `ChromaticitySpace`, `TransferFunction`, `WhitePointAdaptation`, `SpectralDistribution`, `GamutCompression`, `ColourSourceTypes`, `ColourRampSampler`, `ColourPresetRepository`, `ColourDocument`, `ColourExtension`), upgraded `Engine/Codecs/ColourCodec`, `Engine/Interchange/ColourInterchange`, `Engine/Shaders/Colour/ColourRampSampling.slang`, Content Browser ramps + `ColourRampEditor` / `ColourSwatchPicker` | `ColourSpaceValidation`, `ColourCodecInterchangeValidation`, and `ColourComponentsValidation` verify full colorimetry round-trips, HTML bit-parity, `.ColourSpace`/`.ColourRamp` codecs, CSS/SVG/`.gpl`/`.ase`/`.cube` interchange, `slangc` compilation, and Content Browser gradient-strip drag-drop (details in `ColourSpaceArchitecturePlan.md`). |
+| **Phase 1B — Core Modular Types & `ParticleSpace` Foundation** | `ParticleBuffers.h`, `ParticleTintDriver.{h,cpp}`, `ParticleRig`, `ParticleDocument`, `ParticleExtension`, `Origins/*` (`AnalyticOrigins`, `StructuralOrigins`, `SurfaceAnchorSampler`, `FireworkPatternSampler`), `VisualCarriers/*`, `Dynamics/SimulationDynamicsTypes.h` | Compiles cleanly across `Editor`/`Development`/`Shipping`; zero banned words / zero `And` identifiers; `ParticleFoundationValidation` verifies 16B GPU struct alignment, all 15 particle scalar channels routed through `ColourSpace`, 17 surface anchor samplers, and 10 firework pattern samplers, emitting visual contact sheets into `Exhibits/Images/Particles/`. |
+| **Phase 2 — `.ParticleSpace` Codec & `ParticleInterchange`** | `Engine/Codecs/ParticleCodec.{h,cpp}` (delegating colour blocks to `ColourCodec` & force sources to `VectorFieldCodec`), `Engine/Interchange/ParticleInterchange.{h,cpp}` (delegating colour blocks to `ColourInterchange` & meshes to `GeometryInterchange`) | `ParticleCodecInterchangeValidation` proves bit-exact `.ParticleSpace` Two-Tier Hybrid round-trip (TOML + 64B binary sections + FNV-1a checksums + `.Revision`) and lossless import of all 102 presets exported directly from `Experimental/ParticleEditor Final/Engine/presets.js`. |
 | **Phase 3 — Modular Dynamics & Vector Field Force Coupling** | All 16 modular dynamics units under `Engine/ParticleSpace/Dynamics/` + `ParticleSoftwareExecutor` + `ParticleForceCoupling.slang` importing `ForceFieldEvaluationShared.slang` | `ParticleDynamicsValidation` verifies every physics solver independently (ballistics, all 19 `ForceModel`s & 7 channels, curl manifolds, XPBD 20-vertex strands + tearing, botanical sway, spiderweb weave, ferrofluid Rosensweig spikes, ice/seismic fracture, shallow-water mud splashes, MoGraph effectors, boids + predator scatter, Lennard-Jones + chemistry, derez transitions, shields, pyro/flares, ball/SDF collider). |
 | **Phase 4 — Pure `.slang` Vulkan 1.3 Compute & Raster Execution** | All 14 `.slang` shaders under `Engine/Shaders/Particles/` + `ParticleVulkanExecutor` (via `RenderDeviceInterface`) + `ParticleMetricsCollector` | Compiled via `slangc`; Hardware Vulkan + SwiftShader offscreen validation (`ParticleVulkanValidation`) renders every visual carrier to `.png` proofs under `Exhibits/Images/Particles/` and compares directly against headless Chromium HTML Particle Studio renders. |
 | **Phase 5 — Reusable `Engine/Components/` UI, Content Browser Ramps & `ParticleWorkspace`** | `SimulationPlaybackControls`, `SimulationTimeRuler`, `ColourRampEditor`, `ScalarCurveEditor`, Content Browser `ColourRampPresetEntry` + drag-drop `RegisterColourRampSlot`, `DiagnosticInfographicCanvas`, `LogStreamDrawer` + `Engine/Workspaces/Particle/*` + `WorkspaceCapabilityRegister` | **HTML-vs-C++ UI Screenshot Parity Gate (`CLAUDE.md §2.5`)**: Capture Chromium screenshot of `Experimental/ParticleEditor Final/index.html` first; then capture offscreen C++ `.png` of `ParticleWorkspaceUIValidation` and inspect side-by-side to verify 1:1 layout, controls, icons, and Content Browser Colour Ramp drag-drop. |

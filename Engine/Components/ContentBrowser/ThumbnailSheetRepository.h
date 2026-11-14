@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/ColourSpace/ColourPresetRepository.h"
 #include "Engine/Components/PixelSpace.h"
 #include "Engine/Configuration/EngineConfiguration.h"
 #include "Engine/Threading/Threads/Streaming/AssetStreamThread.h"
@@ -155,7 +156,12 @@ public:
     [[nodiscard]] static const char*         QueryCategoryTitle(ContentCategory Category) noexcept;
     [[nodiscard]] static const char*         QueryCanonicalExtension(ContentCategory Category) noexcept;
     [[nodiscard]] static const char*         QueryWorkspaceTitle(WorkspaceCategory Workspace) noexcept;
-    [[nodiscard]] static ContentCategory ClassifyExternalExtension(const std::filesystem::path& SourceFile) noexcept;
+    [[nodiscard]] static ContentCategory     ClassifyExternalExtension(const std::filesystem::path& SourceFile) noexcept;
+    static void                              BakeColourRampStripRgba32(
+        const ColourSpace::ColourRampPresetEntry& Preset,
+        uint32_t                                  WidthPx,
+        uint32_t                                  HeightPx,
+        std::vector<uint8_t>&                     OutRgbaBytes);
 
     void ConfigureImportPolicy(const ImportIntakeConfiguration& Policy);
     [[nodiscard]] const ImportIntakeConfiguration& QueryImportPolicy() const noexcept;

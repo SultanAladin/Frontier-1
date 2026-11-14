@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/ColourSpace/ColourPresetRepository.h"
 #include "Engine/Components/PixelSpace.h"
 
 #include <array>
@@ -51,6 +52,12 @@ enum class ColourRepositoryLayout : uint8_t
     GridCircles      = 0, // [-] - Flat circular colour swatches in a multi-column grid
     VerticalStrips   = 1, // [-] - Flush full-height vertical spectrum strips with rotated HEX labels
     HorizontalStrips = 2, // [-] - Flush full-width horizontal spectrum bands with name and HEX/RGB
+};
+
+enum class ColourCollectionScope : uint8_t
+{
+    Swatches = 0, // [-] - Curated named ColourCodex swatches (.ColourSwatch)
+    Ramps    = 1, // [-] - Built-in & project multi-stop colour ramps (.ColourRamp / .ColourSpace)
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -134,14 +141,25 @@ public:
 
     // 📝 Singular named colour swatch container (.ColourSwatch — case-insensitive load, canonical PascalCase write)
     static constexpr std::string_view CanonicalSwatchExtension = ".ColourSwatch";
+    static constexpr std::string_view CanonicalRampExtension   = ".ColourRamp";
     [[nodiscard]] static bool         MatchesSwatchExtension(const std::filesystem::path& FilePath) noexcept;
     [[nodiscard]] std::string         EncodeSingleSwatchString(std::size_t EntryIndex) const;
     [[nodiscard]] bool                DecodeSingleSwatchString(std::string_view SwatchDocument, std::string& OutDiagnostic, std::size_t* OutAddedIndex = nullptr);
     [[nodiscard]] bool                SaveSingleSwatchFile(std::size_t EntryIndex, const std::filesystem::path& FilePath, std::string& OutDiagnostic) const;
     [[nodiscard]] bool                LoadSingleSwatchFile(const std::filesystem::path& FilePath, std::string& OutDiagnostic, std::size_t* OutAddedIndex = nullptr);
 
+    // 📝 Built-in & project multi-stop colour ramp presets backed by Engine/ColourSpace/ColourPresetRepository
+    [[nodiscard]] std::span<const ColourSpace::ColourRampPresetEntry> QueryRampPresets() const noexcept;
+    [[nodiscard]] const ColourSpace::ColourRampPresetEntry*           QueryRampPresetAt(std::size_t RampIndex) const noexcept;
+    [[nodiscard]] std::size_t                                         FindRampPresetIndex(std::string_view Identifier) const noexcept;
+    std::size_t                                                       AddProjectRamp(ColourSpace::ColourRampPresetEntry CustomRamp);
+    bool                                                              RemoveCustomRamp(std::string_view Identifier);
+    [[nodiscard]] bool                                                SaveSingleRampFile(std::size_t RampIndex, const std::filesystem::path& FilePath, std::string& OutDiagnostic) const;
+    [[nodiscard]] bool                                                LoadSingleRampFile(const std::filesystem::path& FilePath, std::string& OutDiagnostic, std::size_t* OutAddedIndex = nullptr);
+
 private:
-    std::vector<ColourCodexEntry> RepositoryEntries {}; // [-] - Ordered built-in and custom ColourCodex entries
+    std::vector<ColourCodexEntry>       RepositoryEntries {}; // [-] - Ordered built-in and custom ColourCodex entries
+    ColourSpace::ColourPresetRepository RampRepository    {}; // [-] - Engine-wide built-in & custom multi-stop colour ramps
 };
 
 } // namespace Frontier

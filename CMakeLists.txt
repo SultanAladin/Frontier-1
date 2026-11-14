@@ -164,6 +164,8 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Controls/ControlAppearance.cpp
     Engine/Components/Controls/ControlTooltip.cpp
     Engine/Components/Controls/ScalarSlider.cpp
+    Engine/Components/Controls/ColourRampEditor.cpp
+    Engine/Components/Controls/ColourSwatchPicker.cpp
     Engine/Components/Controls/ExclusiveSelector.cpp
     Engine/Components/Controls/CapsuleButton.cpp
     Engine/Components/Controls/ThemePreviewTile.cpp
@@ -310,6 +312,7 @@ function(frontier_compile_modular_slang_shader DOMAIN_REL_PATH ENTRY_NAME SHADER
 endfunction()
 
 frontier_compile_modular_slang_shader(MaterialSpace/BounceLayerSummary.slang                     BounceSummaryComputeEntry       compute  BounceLayerSummary.comp.spv)
+frontier_compile_modular_slang_shader(Colour/ColourRampSampling.slang                            SampleColourRampLutComputeEntry compute  ColourRampSampling.comp.spv)
 frontier_compile_modular_slang_shader(MaterialSpace/OpenPbrSurfaceScattering.slang               ComputeEntry                    compute  OpenPbrSurfaceScattering.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/DepthPyramidDownsample.slang                    DepthPyramidComputeEntry        compute  DepthPyramidDownsample.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/ClusterVisibilityCull.slang                     ClusterCullComputeEntry         compute  ClusterVisibilityCull.comp.spv)
@@ -514,6 +517,16 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/SpatialAcceleration/ClusterPyramid.cpp
     Engine/SpatialAcceleration/WideBoundingTree.cpp
     Engine/DistanceFieldSpace/SignedDistanceVolume.cpp
+    Engine/ColourSpace/TransferFunction.cpp
+    Engine/ColourSpace/WhitePointAdaptation.cpp
+    Engine/ColourSpace/ChromaticitySpace.cpp
+    Engine/ColourSpace/SpectralDistribution.cpp
+    Engine/ColourSpace/GamutCompression.cpp
+    Engine/ColourSpace/ColourRampSampler.cpp
+    Engine/ColourSpace/ColourPresetRepository.cpp
+    Engine/ColourSpace/ColourDocument.cpp
+    Engine/ColourSpace/ColourExtension.cpp
+    Engine/Interchange/ColourInterchange.cpp
     Engine/Interchange/GeometryInterchange.cpp
     Engine/Editor/Viewports/TransformGizmo.cpp
     Engine/Editor/Viewports/ViewportProjection.cpp
@@ -765,6 +778,9 @@ if(BUILD_TESTING)
     frontier_register_exhibit(LifecycleValidation            Exhibits/LifecycleValidation.cpp)
     frontier_register_exhibit(WorkspaceRevisionValidation    Exhibits/WorkspaceRevisionValidation.cpp)
     frontier_register_exhibit(ContentBrowserValidation       Exhibits/ContentBrowserValidation.cpp)
+    frontier_register_exhibit(ColourSpaceValidation          Exhibits/ColourSpaceValidation.cpp)
+    frontier_register_exhibit(ColourCodecInterchangeValidation Exhibits/ColourCodecInterchangeValidation.cpp)
+    frontier_register_exhibit(ColourComponentsValidation     Exhibits/ColourComponentsValidation.cpp)
     frontier_register_exhibit(GeometryNetworkValidation      Exhibits/GeometryNetworkValidation.cpp)
     frontier_register_exhibit(GeometryCompletionValidation   Exhibits/GeometryCompletionValidation.cpp)
     frontier_register_exhibit(MaterialScatteringValidation   Exhibits/MaterialScatteringValidation.cpp)

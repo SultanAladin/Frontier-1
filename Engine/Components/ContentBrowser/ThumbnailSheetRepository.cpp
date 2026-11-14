@@ -5,6 +5,9 @@
 
 #include "Engine/Components/ContentBrowser/ThumbnailSheetRepository.h"
 
+#include "Engine/ColourSpace/ColourRampSampler.h"
+#include "Engine/ColourSpace/TransferFunction.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -575,7 +578,8 @@ const char* ThumbnailSheetRepository::QueryWorkspaceTitle(WorkspaceCategory Work
 ContentCategory ThumbnailSheetRepository::ClassifyExternalExtension(const std::filesystem::path& SourceFile) noexcept
 {
     const std::string Ext = LowercaseAscii(SourceFile.extension().string());
-    if (Ext == ".colourswatch" || Ext == ".colourspace" || Ext == ".toml")
+    if (Ext == ".colourswatch" || Ext == ".colourramp" || Ext == ".colourspace" || Ext == ".toml"
+        || Ext == ".gpl" || Ext == ".ggr" || Ext == ".ase" || Ext == ".aco" || Ext == ".cube")
     {
         return ContentCategory::Colours;
     }
@@ -1523,6 +1527,41 @@ ThumbnailUvQuad ThumbnailSheetRepository::QueryTileUv(std::size_t EntryIndex) co
 uint32_t ThumbnailSheetRepository::PageCount() const noexcept
 {
     return static_cast<uint32_t>(SheetPages.size());
+}
+
+void ThumbnailSheetRepository::BakeColourRampStripRgba32(
+    const ColourSpace::ColourRampPresetEntry& Preset,
+    uint32_t                                  WidthPx,
+    uint32_t                                  HeightPx,
+    std::vector<uint8_t>&                     OutRgbaBytes)
+{
+    const uint32_t SafeW = std::max(1u, WidthPx);
+    const uint32_t SafeH = std::max(1u, HeightPx);
+    OutRgbaBytes.resize(static_cast<std::size_t>(SafeW) * static_cast<std::size_t>(SafeH) * 4u);
+
+    std::vector<ColourSpace::SrgbRgba8> RowColours(SafeW);
+    for (uint32_t X = 0u; X < SafeW; ++X)
+    {
+        const float T = (SafeW > 1u) ? static_cast<float>(X) / static_cast<float>(SafeW - 1u) : 0.0f;
+        const ColourSpace::LinearRgba Sample = ColourSpace::SampleColourStopsAt(Preset.Stops, T, Preset.DefaultRange);
+        RowColours[X] = ColourSpace::ConvertLinearToSrgb8(Sample, ColourSpace::TransferCurveCategory::PureGamma22);
+    }
+
+    for (uint32_t Y = 0u; Y < SafeH; ++Y)
+    {
+        for (uint32_t X = 0u; X < SafeW; ++X)
+        {
+            const std::size_t Offset = (static_cast<std::size_t>(Y) * SafeW + X) * 4u;
+            const ColourSpace::SrgbRgba8 Pix = RowColours[X];
+            const bool Checker = (((X / 6u) + (Y / 6u)) & 1u) != 0u;
+            const uint8_t Bg   = Checker ? 54u : 38u;
+            const float   A    = static_cast<float>(Pix.Alpha) / 255.0f;
+            OutRgbaBytes[Offset + 0u] = static_cast<uint8_t>(std::lround(static_cast<float>(Pix.Red)   * A + static_cast<float>(Bg) * (1.0f - A)));
+            OutRgbaBytes[Offset + 1u] = static_cast<uint8_t>(std::lround(static_cast<float>(Pix.Green) * A + static_cast<float>(Bg) * (1.0f - A)));
+            OutRgbaBytes[Offset + 2u] = static_cast<uint8_t>(std::lround(static_cast<float>(Pix.Blue)  * A + static_cast<float>(Bg) * (1.0f - A)));
+            OutRgbaBytes[Offset + 3u] = 255u;
+        }
+    }
 }
 
 } // namespace Frontier
