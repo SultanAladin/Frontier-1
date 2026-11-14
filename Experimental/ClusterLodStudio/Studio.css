@@ -21,7 +21,7 @@ b { font-weight: 400; }
 ::-webkit-scrollbar-thumb { border-radius: 9px; background: #242424; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-.workspace { display: grid; grid-template-columns: 286px minmax(260px, 1fr) 324px; gap: 2px; background: #262626; }
+.workspace { display: grid; grid-template-columns: 324px minmax(260px, 1fr) 286px; gap: 2px; background: #262626; }
 .dock { background: #121212; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
 .tab-strip { height: 30px; flex: none; display: flex; align-items: end; padding: 4px 4px 0 0; background: #0a0a0a; }
 .document-tab { height: 26px; min-width: 118px; padding: 0 26px; background: #26262c; clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 100%, 0 100%); display: flex; align-items: center; font-size: 11px; color: #999; user-select: none; }
@@ -217,38 +217,23 @@ option { background: #1a1a1a; }
 kbd { font: 400 10px ui-monospace, SFMono-Regular, Menlo, monospace; background: #1e1e1e; border: 1px solid #333; border-radius: 6px; padding: 3px 7px; color: #ddd; }
 .control-sheet p { font-size: 12px; color: #9a9a9a; line-height: 1.6; margin-top: 22px; }
 
-@media (max-width: 1080px) { .workspace { grid-template-columns: minmax(260px, 1fr) 300px; } .dock.left { display: none; } }
+@media (max-width: 1080px) { .workspace { grid-template-columns: 300px minmax(260px, 1fr); } .dock.right { display: none; } }
 @media (max-width: 700px) {
-  .workspace { grid-template-columns: 1fr; grid-template-rows: 58% 42%; }
-  .workspace .dock.centre { grid-row: 1; } .workspace .dock.right { grid-row: 2; }
+  .workspace { grid-template-columns: 1fr; grid-template-rows: 50% 25% 25%; }
+  .workspace .dock.centre { grid-row: 1; } .workspace .dock.left { grid-row: 2; } .workspace .dock.right { grid-row: 3; }
   .scene-title, .state-tag { display: none; }
 }
 
 /* Geometry Editor */
-.geo-editor { position: fixed; inset: 0; z-index: 70; background: #090909; display: grid; grid-template-rows: 52px minmax(0, 1fr); }
-.geo-editor-head { display: flex; align-items: center; gap: 12px; padding: 0 14px 0 18px; background: #0a0a0a; border-bottom: 1px solid #1c1c1c; }
-.geo-editor-title b { display: block; font-size: 14px; }
-.geo-editor-keys { color: #5c5c5c; white-space: nowrap; }
-.geo-editor-body { display: grid; grid-template-columns: 260px minmax(0, 1fr) 300px; gap: 2px; background: #262626; min-height: 0; }
-.geo-editor-import, .geo-editor-main, .geo-editor-side { background: #121212; min-height: 0; overflow-y: auto; }
-.geo-editor-import, .geo-editor-side { padding: 0 16px 24px; }
-.geo-editor-import .panel, .geo-editor-side .panel { gap: 8px; }
-.geo-editor-import .panel p, .geo-editor-side .panel p { margin: 0; font-size: 10px; color: #6e6e6e; line-height: 1.5; }
-.geo-editor-import .tool { width: 100%; }
-.geo-editor-main { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 14px; }
 #GeoPreview { width: min(100%, calc(100vh - 170px)); aspect-ratio: 1; border-radius: 20px; background: #0d0d0f; border: 1px solid #262626; cursor: grab; touch-action: none; }
-.geo-editor-hint { font-size: 10px; color: #6e6e6e; margin: 10px 4px 0; }
 .geo-row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .geo-row3 .tool { width: 100%; }
 .geo-number { width: 100%; height: 30px; border: 0; border-radius: 12px; background: #000; color: #f0f0f0; padding: 0 10px; font-size: 11px; font-variant-numeric: tabular-nums; }
 .geo-check { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #c4c4c4; }
 .geo-formats { display: flex; flex-wrap: wrap; gap: 4px; }
 .geo-formats span { font-size: 10px; padding: 3px 9px; border-radius: 12px; background: #1c1c1c; color: #8a8a8a; }
-.geo-editor-side .segmented { display: flex; width: 100%; }
-.geo-editor-side .segmented button { flex: 1; }
 .geo-actions { gap: 8px; }
 .geo-actions .primary, .geo-actions .tool { width: 100%; }
-@media (max-width: 800px) { .geo-editor-body { grid-template-columns: 1fr; overflow-y: auto; } .geo-editor-keys { display: none; } }
 
 /* Hero Workspace: outliner tree, panes over the centre dock, metadata form, SDF panel, cluster preview */
 .hero-tree { display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #1c1c1c; }
@@ -265,7 +250,7 @@ kbd { font: 400 10px ui-monospace, SFMono-Regular, Menlo, monospace; background:
 .meta-field input, .meta-field select, .meta-field textarea { background: #000; border: 0; border-radius: 14px; padding: 9px 12px; color: #f0f0f0; font-size: 12px; width: 100%; }
 .meta-field textarea { resize: vertical; min-height: 130px; line-height: 1.5; font: inherit; }
 .meta-note { grid-column: 1 / -1; margin: 0; font-size: 10px; color: #6e6e6e; }
-.sdf-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 2px; background: #262626; flex: 1; min-height: 0; }
+.sdf-body { display: grid; grid-template-columns: minmax(0, 1fr); background: #262626; flex: 1; min-height: 0; }
 .sdf-well { background: #0d0d0f; display: flex; align-items: center; justify-content: center; padding: 14px; min-height: 0; }
 #SdfCanvas { width: min(100%, calc(100vh - 170px)); aspect-ratio: 1; border-radius: 20px; background: #0d0d0f; border: 1px solid #262626; cursor: grab; touch-action: none; }
 .sdf-side { background: #121212; padding: 0 16px 24px; overflow-y: auto; min-height: 0; }
@@ -280,13 +265,34 @@ kbd { font: 400 10px ui-monospace, SFMono-Regular, Menlo, monospace; background:
 .sdf-progress i { display: block; height: 100%; width: 0; background: #e8e8e8; transition: width 0.12s linear; }
 .cluster-preview { width: 100%; aspect-ratio: 1; border-radius: 14px; background: #101010; border: 1px solid #262626; cursor: grab; touch-action: none; }
 
-/* Inspector parts: Metadata, Source, Icon, UV, Geometry and Cluster LOD, selected from the Outliner tree */
-.inspector-part { scroll-margin-top: 12px; border-radius: 16px; transition: box-shadow 0.4s ease; }
-.inspector-part.focused { box-shadow: 0 0 0 1px #ffb238; }
-.inspector-part.focused > h4 { color: #ffb238; }
-.inspector-scroll .entity { padding-left: 10px; min-height: 40px; }
-.meta-panel { gap: 10px; }
-.meta-panel .meta-field input, .meta-panel .meta-field select, .meta-panel .meta-field textarea { font-size: 11px; }
-.meta-panel .meta-field textarea { min-height: 96px; }
-.meta-panel .meta-note { margin: 0; }
+/* Hero Workspace tree (right Outliner): hero row, workspace children, caret, thumbnail */
+.tree-group { display: flex; flex-direction: column; gap: 4px; }
+.tree-children { display: flex; flex-direction: column; gap: 2px; padding-left: 16px; border-left: 1px solid #1c1c1c; margin-left: 17px; }
+.tree-children[hidden] { display: none; }
+.hero-row { grid-template-columns: 14px 36px minmax(0, 1fr); padding-left: 8px; min-height: 54px; }
+.tree-caret { position: relative; width: 14px; height: 14px; cursor: pointer; }
+.tree-caret::before { content: ''; position: absolute; left: 3px; top: 4px; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid #9a9a9a; transition: transform 0.15s ease; }
+.tree-caret[aria-expanded="false"]::before { transform: rotate(-90deg); }
+.hero-thumb { width: 36px; height: 36px; border-radius: 10px; background: #0d0d0f; border: 1px solid #262626; display: flex; align-items: center; justify-content: center; overflow: hidden; color: #9a9a9a; }
+.hero-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.hero-thumb img[hidden] { display: none; }
+.hero-row.active { border-color: #2b2b2b; }
+.hero-row.active .hero-thumb { border-color: #ffb238; }
+
+/* Left Inspector: one workspace panel at a time, each with its preview, sliders and open buttons */
+.ws-panel[hidden] { display: none !important; }
+.ws-panel { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.geo-open { gap: 8px; }
+.geo-open button { width: 100%; }
+.geo-open p, .geo-panel-note { margin: 0; font-size: 10px; color: #6e6e6e; line-height: 1.5; }
+.geo-panel .segmented { display: flex; width: 100%; }
+.geo-panel .segmented button { flex: 1; }
+.geo-panel .tool { width: 100%; }
+.geo-panel .panel { gap: 8px; }
+.geo-panel .panel p { margin: 0; font-size: 10px; color: #6e6e6e; line-height: 1.5; }
+.source-body { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 22px 26px; max-width: 620px; }
 .source-panel { gap: 6px; padding: 8px; }
+
+/* Geometry Editor centre pane: the preview. Transform controls live in the left Inspector. */
+.geo-main { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 14px; background: #121212; }
+.geo-editor-hint { font-size: 10px; color: #6e6e6e; margin: 10px 4px 0; }

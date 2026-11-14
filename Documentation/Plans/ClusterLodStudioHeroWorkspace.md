@@ -34,6 +34,19 @@ Status: implemented, browser-tested. Branch `arena/453e172d-frontier-1`.
 - Real GPU preview for the SDF raymarch and the cluster preview (both are Canvas 2D projections today).
 - Metadata is per browser, not in the source file or a server.
 
+## Layout (current)
+
+- **Outliner (right)**: a tree. The hero row (thumbnail = saved icon) is the source; its children are Geometry Editor,
+  Cluster LOD Studio, Icon, UV Workspace and SDF Baker (SDF only for closed surfaces). Caret collapses the children.
+- **Centre**: Source list (hero row), Geometry Editor preview, SDF pane, or the Cluster LOD viewport.
+- **Inspector (left)**: one workspace panel at a time (Metadata, Geometry, Cluster LOD, Icon, UV, SDF). Each has its
+  controls, previews and sliders, and an open button that switches the studio.
+- Two studios on one page: Geometry Editor (home; transforms and Rebuild hero) and Cluster LOD Studio (viewport, LOD
+  slider, cut, hierarchy, build). Both use the same buttons, icons and Inspector components.
+- Source replaces the hero on import (one source at a time). Copy-alongside was not chosen.
+- Open items: the `draw` name in `ClusterPreview.js`, `base` variable names in `GeometryEditor.js`, and the
+  `info` metadata label (user-specified; kept).
+
 ## Original plan notes (superseded)
 
 

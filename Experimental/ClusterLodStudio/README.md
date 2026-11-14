@@ -17,7 +17,7 @@ URL parameters for repeatable captures: `?preset=vase|braid|torus|knot|asteroid|
 
 ## Geometry Editor
 
-`Open Geometry Editor` in the Inspector's GEOMETRY section (or the editor's own controls) transforms the current hero
+The Geometry Editor (the Outliner's Geometry row) transforms the current hero
 source before the cluster hierarchy is built: scale (uniform or per axis), centre (keep, origin or floor), mirror X/Y/Z,
 rotate in degrees, and flip normals. The preview runs on the main thread from an untransformed copy of the source, so
 nothing rebuilds until **Apply and rebuild hero**. A mirror reverses triangle winding so normals stay outward. The
@@ -27,19 +27,28 @@ Planned Hero Workspace and SDF Baker work is tracked in `Documentation/Plans/Clu
 
 ## Hero Workspace
 
-The Outliner's tree is the hero's workspace list: **Metadata**, **Source**, **Geometry**, **Icon**, **UV**, **SDF**
-(closed surfaces only) and **Cluster LOD**. Selecting a part scrolls the right-hand Inspector to its section, which holds
-the controls for that part, in this order: METADATA, SOURCE, ICON, UV LAYOUT, GEOMETRY, then CLUSTER LOD (preview, LOD
-selection, hierarchy levels, build). UV and Geometry also open their overlays, Icon turns on the icon camera, and SDF
-takes over the centre pane. Cluster LOD is the default and keeps the viewport.
+Three columns, one hero:
 
-- **Metadata**: name, category, tags and info, edited in the Inspector and saved in this browser per source. The name replaces the hero title.
-- **SDF**: bakes a signed distance field on a worker at 32–64 cubed. The narrow band is 2 voxels, and the sign comes from
-  crossing parity along +X, so open meshes get an approximate sign. The Slice view shows one Z plane. The Raymarch view
-  sphere-traces the field on the CPU. The iso offset is a percentage of hero size. Preview only: the field does not feed
-  the renderer.
-- **Cluster preview** (Inspector): one LOD level of the built hierarchy, drawn in 3D with one colour per cluster. The level
-  slider picks the level, and the triangle and cluster counts match the hierarchy exactly.
+- **Outliner** (right): a tree. The hero row (its thumbnail is the saved icon) is the source. Its children are the
+  workspaces: **Geometry Editor**, **Cluster LOD Studio**, **Icon**, **UV Workspace** and **SDF Baker** (SDF only for
+  closed surfaces). The caret collapses the children.
+- **Centre**: the view for the selected row. Hero row: **Source**, the presets and OBJ import (one source at a time; an
+  import replaces the current source). Geometry Editor: a preview of the pending transform. Cluster LOD Studio and Icon:
+  the 3D viewport. SDF Baker: the distance-field pane.
+- **Inspector** (left): one workspace panel at a time, each with its controls and an open button:
+  - Hero row: **Metadata** (name, category, tags, info), saved per source in this browser. The name replaces the hero title.
+  - Geometry Editor: scale (uniform toggle), centre (keep, origin, floor), mirror XYZ, rotate XYZ in degrees, flip
+    normals, Reset, and **Rebuild hero**. The draft is kept while you move between rows; it is reset when the source changes.
+    **Open Cluster LOD Studio** switches to the cluster viewport.
+  - Cluster LOD Studio: the cluster preview with the **LOD level** slider, LOD selection, the hierarchy levels and build.
+    **Open Geometry Editor** switches back.
+  - Icon: thumbnail camera box, default angle, capture, **Save as icon** (a 256 px copy in this browser that replaces the
+    outliner thumbnail), download and copy.
+  - UV Workspace: the static UV layout and **Open UV Workspace** (full-screen editor, Esc closes it).
+  - SDF Baker: bake resolution, slice or raymarch preview, slice depth and iso offset.
+
+Two studios share this page: the Geometry Editor (the home view, transforms the source) and the Cluster LOD Studio
+(the viewport and LOD tools). They use the same buttons, icons and Inspector components.
 
 ## Icons and the UV Workspace
 
@@ -47,8 +56,8 @@ takes over the centre pane. Cluster LOD is the default and keeps the viewport.
   angle, fitted to the centre instance. Orbit, zoom and pan as usual; the box is the exact crop of the saved PNG. `P` or
   **Capture** renders that one instance on a transparent background at 256, 512 or 1024 px, shaded or as the live view.
   The result shows in the Inspector, can be downloaded or copied, and **Save as icon** stores a 256 px copy in this
-  browser. Saved icons replace the Outliner thumbnail for their source.
-- **UV Workspace** (`U`, or **Open UV Workspace** in the Inspector's UV LAYOUT section): a full-screen UV editor for the
+  browser. Saved icons replace the hero row's thumbnail for their source.
+- **UV Workspace** (`U`, or **Open UV Workspace** in the Inspector's UV Workspace panel): a full-screen UV editor for the
   current geometry, including imported OBJ models. Islands come from a planar unwrap computed in the browser: triangles
   are flood-filled across shared edges while their normals stay within 60° of the seed, each island is projected onto
   its average plane, and islands smaller than 24 triangles merge into the neighbour they share the most edges with when

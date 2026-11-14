@@ -36,8 +36,6 @@ export function createGeometryEditor({ getBase, getTransform, applyTransform, ge
     }
     $('GeoReset').addEventListener('click', () => { pending = identityTransform(); syncControls(); schedule(); });
     $('GeoApply').addEventListener('click', apply);
-    $('GeoCancel').addEventListener('click', close);
-    $('GeoEditorClose').addEventListener('click', close);
     const canvas = $('GeoPreview');
     canvas.addEventListener('pointerdown', (event) => { drag = { x: event.clientX, y: event.clientY, yaw, pitch }; canvas.setPointerCapture(event.pointerId); });
     canvas.addEventListener('pointermove', (event) => {
@@ -153,39 +151,46 @@ export function createGeometryEditor({ getBase, getTransform, applyTransform, ge
 
   function apply() {
     const next = clone(pending);
-    close();
     applyTransform(next);
     toast('Rebuilding the hero with the new geometry transform');
   }
 
+  // The editor is a centre pane of the Hero Workspace. Edits stay as a draft until Rebuild hero applies them; the draft
+  // is kept while the pane is hidden and is only reset when the hero's base geometry changes (a new source).
+  let baseSeen = null, draftReady = false;
   function show() {
-    if (!getBase()) return toast('Wait for the hero to finish building');
-    pending = clone(getTransform());
     open = true;
     $('GeometryEditor').hidden = false;
     $('GeoSource').textContent = getName();
+    const base = getBase();
+    if (!base) { $('GeoPreviewNote').textContent = 'Building the hero…'; return; }
+    if (!draftReady) { pending = clone(getTransform()); draftReady = true; }
+    baseSeen = base;
     syncControls();
     render();
-    $('GeoCancel').focus({ preventScroll: true });
   }
   function close() {
     if (!open) return;
     open = false;
     $('GeometryEditor').hidden = true;
   }
+  function sync() {
+    const base = getBase();
+    if (!base || base === baseSeen) return;
+    baseSeen = base;
+    draftReady = false;
+    if (open) show();
+  }
   function keydown(event) {
     if (!open) return false;
-    const key = event.key.toLowerCase();
-    if (key === 'escape') close();
-    else if (key === 'enter' && event.target.tagName !== 'BUTTON') apply();
-    else return false;
+    if (event.key.toLowerCase() !== 'enter' || event.target.tagName === 'BUTTON') return false;
+    apply();
     event.preventDefault();
     return true;
   }
 
   bindInputs();
-  $('OpenGeometryEditor').addEventListener('click', show);
 
-  return { get open() { return open; }, show, close, keydown };
+  return { get open() { return open; }, show, close, sync, keydown };
 }
 

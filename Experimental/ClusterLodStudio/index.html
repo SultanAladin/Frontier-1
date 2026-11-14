@@ -9,104 +9,14 @@
 <body>
 <div id="Studio" class="workspace">
 
-  <section class="dock left" aria-label="Outliner">
-    <div class="tab-strip"><div class="document-tab active">Outliner</div></div>
-    <div class="outliner-heading"><h1>Outliner</h1><small id="OutlinerSummary">—</small></div>
-    <div class="stats">
-      <div class="stat-tile"><span class="status-disc" data-icon="check"></span><small>Visible</small><strong id="StatDrawn">0</strong></div>
-      <div class="stat-tile"><span class="muted-disc" data-icon="cull"></span><small>Culled</small><strong id="StatCulled">0</strong></div>
-    </div>
-    <div class="outliner-scroll">
-      <div class="hero-tree" id="HeroTree">
-        <div class="collection"><span data-icon="cube"></span><div><b id="HeroName">Hero</b><small id="HeroCategory">—</small></div></div>
-        <button class="entity" data-part="metadata"><span class="entity-icon" data-icon="layers"></span><div><b>Metadata</b><small>Name, category, tags, info</small></div></button>
-        <button class="entity" data-part="source"><span class="entity-icon" data-icon="folder"></span><div><b>Source</b><small>Presets and imported OBJ</small></div></button>
-        <button class="entity" data-part="geometry"><span class="entity-icon" data-icon="rebuild"></span><div><b>Geometry</b><small>Scale, centre, mirror, rotate, flip</small></div></button>
-        <button class="entity" data-part="icon"><span class="entity-icon" data-icon="camera"></span><div><b>Icon</b><small>Thumbnail camera and library</small></div></button>
-        <button class="entity" data-part="uv"><span class="entity-icon" data-icon="uv"></span><div><b>UV</b><small>Islands, seams, OBJ and SVG</small></div></button>
-        <button class="entity" data-part="sdf" id="TreeSdf"><span class="entity-icon" data-icon="sphere"></span><div><b>SDF</b><small>Distance field, closed surfaces</small></div></button>
-        <button class="entity" data-part="cluster"><span class="entity-icon" data-icon="cube"></span><div><b>Cluster LOD</b><small>Viewport, levels and build</small></div></button>
-      </div>
-    </div>
-    <div class="dock-footer"><span><i>BUILD</i><b id="FootBuild">—</b></span><span><i>GPU</i><b id="FootGpu">—</b></span><span><i>SUBMIT</i><b id="FootSubmit">—</b></span></div>
-  </section>
-
-  <section class="dock centre" aria-label="Viewport">
-    <div class="tab-strip"><div class="document-tab active" id="CentreTab">Cluster LOD</div></div>
-    <header class="viewport-heading">
-      <span data-icon="cube" class="scene-icon"></span>
-      <div class="scene-title"><b id="SceneTitle">Scene</b><small id="SceneNote">—</small></div>
-      <span id="SceneState" class="state-tag">LIVE</span>
-      <div class="spacer"></div>
-      <div id="ViewModes" class="segmented" role="radiogroup" aria-label="View mode"></div>
-    </header>
-    <div class="viewport-tools">
-      <button id="ToolWire" class="tool" title="Wireframe overlay (Z)"><span data-icon="wire"></span>Wire</button>
-      <button id="ToolBounds" class="tool" title="Bounds of the picked cluster (B)"><span data-icon="sphere"></span>Bounds</button>
-      <button id="ToolGrid" class="tool" title="Ground grid (G)"><span data-icon="grid"></span>Grid</button>
-      <span class="divider"></span>
-      <button id="ToolIcon" class="tool" title="Icon camera: square box for thumbnails (I)"><span data-icon="camera"></span>Icon</button>
-      <button id="ToolFreeze" class="tool" title="Freeze LOD + culling at the current camera, then fly around to inspect it (L)"><span data-icon="lock"></span>Freeze LOD</button>
-      <div class="spacer"></div>
-      <button id="ToolFit" class="tool round" title="Fit everything (F)" aria-label="Fit everything"><span data-icon="fit"></span></button>
-      <button id="ToolHelp" class="tool round" title="Controls" aria-label="Controls"><span data-icon="help"></span></button>
-    </div>
-    <div class="canvas-well" id="CanvasWell">
-      <canvas id="Viewport" tabindex="0" aria-label="3D viewport"></canvas>
-      <div id="CaptureBox" class="capture-box" hidden>
-        <span id="CaptureLabel" class="capture-label">ICON</span>
-        <button id="CaptureShoot" class="capture-shoot primary">Capture</button>
-      </div>
-      <div id="Readout" class="readout"></div>
-      <div id="Legend" class="legend"></div>
-      <div id="BuildOverlay" class="build-overlay"><div><b id="BuildLabel">Building…</b><div class="progress"><i id="BuildBar"></i></div><small id="BuildNote"></small></div></div>
-      <div id="Drawer" class="drawer">
-        <header><b>Hierarchy</b><small>Triangles per LOD level — dim: stored, bright: constructed this instant</small></header>
-        <canvas id="LevelChart"></canvas>
-        <header><b>Redraw time</b><small id="TimeNote">—</small></header>
-        <canvas id="TimeChart"></canvas>
-      </div>
-    </div>
-    <footer class="strip"><span id="StripText">WEBGL2 PREVIEW</span></footer>
-    <button id="DrawerHandle" class="drawer-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 36 L22 0 L178 0 L200 36 Z"/></svg><span>Hierarchy</span></button>
-    <div id="HeroPanelSdf" class="hero-pane" hidden>
-      <header class="viewport-heading"><span data-icon="sphere" class="scene-icon"></span><div class="scene-title"><b>SDF</b><small>Signed distance field · preview only, does not change the rendered hero</small></div></header>
-      <div class="sdf-body">
-        <div class="sdf-well"><canvas id="SdfCanvas" aria-label="SDF slice or raymarch preview"></canvas></div>
-        <aside class="sdf-side">
-          <h4>BAKE</h4>
-          <div class="panel">
-            <div class="segmented" role="group" aria-label="Bake resolution">
-              <button data-sdf-res="32">32³</button><button data-sdf-res="40" class="active">40³</button><button data-sdf-res="48">48³</button><button data-sdf-res="64">64³</button>
-            </div>
-            <button id="SdfBake" class="primary"><span data-icon="rebuild"></span>Bake distance field</button>
-            <div id="SdfProgress" class="sdf-progress" hidden><i id="SdfBar"></i></div>
-            <small id="SdfProgressLabel" class="sdf-note"></small>
-          </div>
-          <h4>PREVIEW</h4>
-          <div class="panel">
-            <div class="segmented" role="group" aria-label="Preview mode">
-              <button data-sdf-mode="slice" class="active" aria-pressed="true">Slice</button><button data-sdf-mode="raymarch" aria-pressed="false">Raymarch</button>
-            </div>
-            <div id="SdfSliceRow" class="field"><label for="SdfSlice">Slice depth (Z)</label><input id="SdfSlice" type="range" min="0" max="39" value="20"></div>
-            <div class="field"><label for="SdfIso">Iso offset</label><output id="SdfIsoOut">0 % of hero size</output><input id="SdfIso" type="range" min="-10" max="10" step="0.5" value="0"></div>
-            <p class="sdf-note">Slice: warm is inside, cool is outside, white is the surface. Raymarch: drag to orbit.</p>
-          </div>
-          <h4>RESULT</h4>
-          <div class="panel"><div class="rows" id="SdfStats"><span>Status</span><b>Not baked for this hero</b></div></div>
-        </aside>
-      </div>
-    </div>
-  </section>
-
-  <section class="dock right" aria-label="Inspector">
+  <section class="dock left" aria-label="Inspector">
     <div class="tab-strip"><div class="document-tab active">Inspector</div></div>
     <div class="inspector-scroll">
-      <div class="crumbs">Inspector / Cluster LOD</div>
+      <div class="crumbs" id="InspectorCrumb">Inspector / Geometry Editor</div>
       <h1 id="GeometryTitle">—</h1>
       <div class="subtitle" id="GeometryNote">—</div>
 
-      <div id="PartMetadata" class="inspector-part">
+      <div id="PanelHero" class="ws-panel">
         <h4>METADATA</h4>
         <div class="panel meta-panel">
           <label class="meta-field"><span>Name</span><input id="MetaName" type="text" maxlength="80" autocomplete="off"></label>
@@ -117,18 +27,7 @@
         </div>
       </div>
 
-      <div id="PartSource" class="inspector-part">
-        <h4>SOURCE</h4>
-        <div class="panel source-panel">
-          <div id="SourceRows"></div>
-          <label class="entity import" tabindex="0" title="Wavefront OBJ: positions and faces are read, vertices are welded by position">
-        <span class="entity-icon" data-icon="upload"></span><div><b>Import OBJ…</b><small>Positions + faces · welded on load</small></div>
-        <input id="ObjInput" type="file" accept=".obj" hidden>
-      </label>
-        </div>
-      </div>
-
-      <div id="PartIcon" class="inspector-part">
+      <div id="PanelIcon" class="ws-panel" hidden>
       <h4>ICON</h4>
       <div class="panel">
         <div class="icon-preview">
@@ -155,7 +54,7 @@
       </div>
       </div>
 
-      <div id="PartUv" class="inspector-part">
+      <div id="PanelUv" class="ws-panel" hidden>
       <h4>UV LAYOUT</h4>
       <div class="panel">
         <canvas id="UvPreview" class="uv-preview" aria-label="Static UV layout preview"></canvas>
@@ -168,15 +67,72 @@
       </div>
       </div>
 
-      <div id="PartGeometry" class="inspector-part">
-      <h4>GEOMETRY</h4>
-      <div class="panel">
-        <p>Scale, centre, mirror, rotate and flip the hero's source geometry. Nothing rebuilds until Apply.</p>
-        <button id="OpenGeometryEditor" class="primary"><span data-icon="rebuild"></span>Open Geometry Editor</button>
-      </div>
+      <div id="PanelGeometry" class="ws-panel geo-panel" hidden>
+        <div class="panel geo-open">
+          <button class="primary" data-open-part="cluster"><span data-icon="cube"></span>Open Cluster LOD Studio</button>
+          <p>Opens the cluster viewport with the LOD slider, cut selection and hierarchy build.</p>
+        </div>
+
+        <h4>IMPORT</h4>
+        <div class="panel">
+          <p>Import accepts these formats. The file reader is not connected in this build, so the button is disabled.</p>
+          <div class="geo-formats"><span>OBJ</span><span>glTF</span><span>GLB</span><span>STL</span><span>PLY</span><span>FBX</span></div>
+          <button id="GeoImport" class="tool" disabled>Import model…</button>
+        </div>
+
+        <h4>SCALE</h4>
+        <div class="panel">
+          <label class="geo-check"><input type="checkbox" id="GeoUniform" checked> Uniform</label>
+          <div class="geo-row3">
+            <input type="number" id="GeoScaleX" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale X">
+            <input type="number" id="GeoScaleY" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale Y">
+            <input type="number" id="GeoScaleZ" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale Z">
+          </div>
+        </div>
+        <h4>CENTRE</h4>
+        <div class="panel">
+          <div class="segmented" role="group" aria-label="Centre">
+            <button data-centre="none" class="active" aria-pressed="true">Keep</button>
+            <button data-centre="origin" aria-pressed="false">Origin</button>
+            <button data-centre="floor" aria-pressed="false">Floor</button>
+          </div>
+          <p>Origin centres the bounds on zero. Floor centres X and Z and puts the lowest point on y = 0.</p>
+        </div>
+        <h4>MIRROR</h4>
+        <div class="panel">
+          <div class="geo-row3">
+            <button id="GeoMirrorX" class="tool" aria-pressed="false">X</button>
+            <button id="GeoMirrorY" class="tool" aria-pressed="false">Y</button>
+            <button id="GeoMirrorZ" class="tool" aria-pressed="false">Z</button>
+          </div>
+        </div>
+        <h4>ROTATE</h4>
+        <div class="panel">
+          <div class="geo-row3">
+            <input type="number" id="GeoRotX" class="geo-number" step="15" value="0" aria-label="Rotate X degrees">
+            <input type="number" id="GeoRotY" class="geo-number" step="15" value="0" aria-label="Rotate Y degrees">
+            <input type="number" id="GeoRotZ" class="geo-number" step="15" value="0" aria-label="Rotate Z degrees">
+          </div>
+          <p>Degrees, applied X then Y then Z.</p>
+        </div>
+        <h4>NORMALS</h4>
+        <div class="panel">
+          <button id="GeoFlip" class="tool" aria-pressed="false">Flip normals</button>
+          <p>Reverses triangle winding. Mirroring already reverses it, so flipping again restores it.</p>
+        </div>
+        <h4>RESULT</h4>
+        <div class="panel"><div class="rows" id="GeoStats"></div></div>
+        <div class="panel geo-actions">
+          <button id="GeoApply" class="primary">Rebuild hero</button>
+          <button id="GeoReset" class="tool">Reset</button>
+        </div>
       </div>
 
-      <div id="PartCluster" class="inspector-part">
+      <div id="PanelCluster" class="ws-panel" hidden>
+        <div class="panel geo-open">
+          <button class="primary" data-open-part="geometry"><span data-icon="rebuild"></span>Open Geometry Editor</button>
+          <p>Back to scale, centre, mirror, rotate and flip for this hero.</p>
+        </div>
       <h4>CLUSTER PREVIEW</h4>
       <div class="panel">
         <canvas id="ClusterPreview" class="cluster-preview" aria-label="3D cluster preview of one LOD level"></canvas>
@@ -238,10 +194,127 @@
         <button id="Rebuild" class="primary"><span data-icon="rebuild"></span>Rebuild hierarchy</button>
         <p id="BuildReport"></p>
       </div>
+      <p class="honest">Runs entirely in your browser: the cluster DAG is built in a worker, selection runs on the CPU each frame, and WebGL2 rasterises the selected clusters. Error values are quadric RMS estimates, not certified bounds. No occlusion culling, streaming or software rasteriser.</p>
       </div>
 
-      <p class="honest">Runs entirely in your browser: the cluster DAG is built in a worker, selection runs on the CPU each frame, and WebGL2 rasterises the selected clusters. Error values are quadric RMS estimates, not certified bounds. No occlusion culling, streaming or software rasteriser.</p>
+      <div id="PanelSdf" class="ws-panel" hidden>
+
+          <h4>BAKE</h4>
+          <div class="panel">
+            <div class="segmented" role="group" aria-label="Bake resolution">
+              <button data-sdf-res="32">32³</button><button data-sdf-res="40" class="active">40³</button><button data-sdf-res="48">48³</button><button data-sdf-res="64">64³</button>
+            </div>
+            <button id="SdfBake" class="primary"><span data-icon="rebuild"></span>Bake distance field</button>
+            <div id="SdfProgress" class="sdf-progress" hidden><i id="SdfBar"></i></div>
+            <small id="SdfProgressLabel" class="sdf-note"></small>
+          </div>
+          <h4>PREVIEW</h4>
+          <div class="panel">
+            <div class="segmented" role="group" aria-label="Preview mode">
+              <button data-sdf-mode="slice" class="active" aria-pressed="true">Slice</button><button data-sdf-mode="raymarch" aria-pressed="false">Raymarch</button>
+            </div>
+            <div id="SdfSliceRow" class="field"><label for="SdfSlice">Slice depth (Z)</label><input id="SdfSlice" type="range" min="0" max="39" value="20"></div>
+            <div class="field"><label for="SdfIso">Iso offset</label><output id="SdfIsoOut">0 % of hero size</output><input id="SdfIso" type="range" min="-10" max="10" step="0.5" value="0"></div>
+            <p class="sdf-note">Slice: warm is inside, cool is outside, white is the surface. Raymarch: drag to orbit.</p>
+          </div>
+          <h4>RESULT</h4>
+          <div class="panel"><div class="rows" id="SdfStats"><span>Status</span><b>Not baked for this hero</b></div></div>
+      </div>
     </div>
+  </section>
+
+  <section class="dock centre" aria-label="Viewport">
+    <div class="tab-strip"><div class="document-tab active" id="CentreTab">Cluster LOD</div></div>
+    <header class="viewport-heading">
+      <span data-icon="cube" class="scene-icon"></span>
+      <div class="scene-title"><b id="SceneTitle">Scene</b><small id="SceneNote">—</small></div>
+      <span id="SceneState" class="state-tag">LIVE</span>
+      <div class="spacer"></div>
+      <div id="ViewModes" class="segmented" role="radiogroup" aria-label="View mode"></div>
+    </header>
+    <div class="viewport-tools">
+      <button id="ToolWire" class="tool" title="Wireframe overlay (Z)"><span data-icon="wire"></span>Wire</button>
+      <button id="ToolBounds" class="tool" title="Bounds of the picked cluster (B)"><span data-icon="sphere"></span>Bounds</button>
+      <button id="ToolGrid" class="tool" title="Ground grid (G)"><span data-icon="grid"></span>Grid</button>
+      <span class="divider"></span>
+      <button id="ToolIcon" class="tool" title="Icon camera: square box for thumbnails (I)"><span data-icon="camera"></span>Icon</button>
+      <button id="ToolFreeze" class="tool" title="Freeze LOD + culling at the current camera, then fly around to inspect it (L)"><span data-icon="lock"></span>Freeze LOD</button>
+      <div class="spacer"></div>
+      <button id="ToolFit" class="tool round" title="Fit everything (F)" aria-label="Fit everything"><span data-icon="fit"></span></button>
+      <button id="ToolHelp" class="tool round" title="Controls" aria-label="Controls"><span data-icon="help"></span></button>
+    </div>
+    <div class="canvas-well" id="CanvasWell">
+      <canvas id="Viewport" tabindex="0" aria-label="3D viewport"></canvas>
+      <div id="CaptureBox" class="capture-box" hidden>
+        <span id="CaptureLabel" class="capture-label">ICON</span>
+        <button id="CaptureShoot" class="capture-shoot primary">Capture</button>
+      </div>
+      <div id="Readout" class="readout"></div>
+      <div id="Legend" class="legend"></div>
+      <div id="BuildOverlay" class="build-overlay"><div><b id="BuildLabel">Building…</b><div class="progress"><i id="BuildBar"></i></div><small id="BuildNote"></small></div></div>
+      <div id="Drawer" class="drawer">
+        <header><b>Hierarchy</b><small>Triangles per LOD level — dim: stored, bright: constructed this instant</small></header>
+        <canvas id="LevelChart"></canvas>
+        <header><b>Redraw time</b><small id="TimeNote">—</small></header>
+        <canvas id="TimeChart"></canvas>
+      </div>
+    </div>
+    <footer class="strip"><span id="StripText">WEBGL2 PREVIEW</span></footer>
+    <button id="DrawerHandle" class="drawer-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 36 L22 0 L178 0 L200 36 Z"/></svg><span>Hierarchy</span></button>
+    <div id="HeroPanelSdf" class="hero-pane" hidden>
+      <header class="viewport-heading"><span data-icon="sphere" class="scene-icon"></span><div class="scene-title"><b>SDF</b><small>Signed distance field · preview only, does not change the rendered hero</small></div></header>
+      <div class="sdf-body">
+        <div class="sdf-well"><canvas id="SdfCanvas" aria-label="SDF slice or raymarch preview"></canvas></div>
+      </div>
+    </div>
+
+    <div id="SourcePane" class="hero-pane" hidden>
+      <header class="viewport-heading"><span data-icon="folder" class="scene-icon"></span><div class="scene-title"><b>Source</b><small>Presets and imported OBJ · pick a source to make it the hero</small></div></header>
+      <div class="source-body">
+        <div class="panel source-panel">
+          <div id="SourceRows"></div>
+          <label class="entity import" tabindex="0" title="Wavefront OBJ: positions and faces are read, vertices are welded by position">
+          <span class="entity-icon" data-icon="upload"></span><div><b>Import OBJ…</b><small>Positions + faces · welded on load</small></div>
+          <input id="ObjInput" type="file" accept=".obj" hidden>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div id="GeometryEditor" class="hero-pane geo-pane" hidden>
+      <header class="viewport-heading"><span data-icon="rebuild" class="scene-icon"></span><div class="scene-title"><b>Geometry Editor</b><small id="GeoSource">—</small></div></header>
+      <div class="geo-main">
+        <canvas id="GeoPreview" aria-label="Transformed geometry preview"></canvas>
+        <p id="GeoPreviewNote" class="geo-editor-hint"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="dock right" aria-label="Outliner">
+    <div class="tab-strip"><div class="document-tab active">Outliner</div></div>
+    <div class="outliner-heading"><h1>Outliner</h1><small id="OutlinerSummary">—</small></div>
+    <div class="stats">
+      <div class="stat-tile"><span class="status-disc" data-icon="check"></span><small>Visible</small><strong id="StatDrawn">0</strong></div>
+      <div class="stat-tile"><span class="muted-disc" data-icon="cull"></span><small>Culled</small><strong id="StatCulled">0</strong></div>
+    </div>
+    <div class="outliner-scroll">
+      <div class="hero-tree" id="HeroTree">
+        <div class="tree-group">
+          <button class="entity hero-row" data-part="source" aria-current="false">
+            <span class="tree-caret" data-tree-toggle role="button" aria-label="Expand or collapse the hero" aria-expanded="true"></span>
+            <span class="hero-thumb"><img id="HeroThumb" alt="" hidden><span data-icon="cube"></span></span>
+            <div><b id="HeroName">Hero</b><small id="HeroCategory">—</small></div>
+          </button>
+          <div class="tree-children" id="TreeChildren">
+            <button class="entity" data-part="geometry"><span class="entity-icon" data-icon="rebuild"></span><div><b>Geometry Editor</b><small>Scale, pivot, mirror, rotate, flip</small></div></button>
+            <button class="entity" data-part="cluster"><span class="entity-icon" data-icon="cube"></span><div><b>Cluster LOD Studio</b><small>Preview, levels, hierarchy, build</small></div></button>
+            <button class="entity" data-part="icon"><span class="entity-icon" data-icon="camera"></span><div><b>Icon</b><small>Thumbnail camera and library</small></div></button>
+            <button class="entity" data-part="uv"><span class="entity-icon" data-icon="uv"></span><div><b>UV Workspace</b><small>Islands, seams, OBJ and SVG</small></div></button>
+            <button class="entity" data-part="sdf" id="TreeSdf"><span class="entity-icon" data-icon="sphere"></span><div><b>SDF Baker</b><small>Distance field, closed surfaces</small></div></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dock-footer"><span><i>BUILD</i><b id="FootBuild">—</b></span><span><i>GPU</i><b id="FootGpu">—</b></span><span><i>SUBMIT</i><b id="FootSubmit">—</b></span></div>
   </section>
 
   <div id="Notch" class="notch-shell">
@@ -270,6 +343,7 @@
     <button id="NotchHandle" class="notch-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 0 L22 36 L178 36 L200 0 Z"/></svg><span>Frontier · Cluster LOD</span></button>
   </div>
 </div>
+
   <div id="UvWorkspace" class="uv-workspace" role="dialog" aria-modal="true" aria-label="UV Workspace" hidden>
     <header class="uv-workspace-head">
       <span data-icon="uv" class="scene-icon"></span>
@@ -314,78 +388,6 @@
           <button id="CompilerExportObj" class="primary">Export OBJ with UVs</button>
           <button id="CompilerExportSvg">Export UV layout SVG</button>
           <p>The OBJ keeps welded vertices and writes one texture coordinate per triangle corner, so seams survive a round trip through Import OBJ.</p>
-        </div>
-      </aside>
-    </div>
-  </div>
-  <div id="GeometryEditor" class="geo-editor" role="dialog" aria-modal="true" aria-label="Geometry Editor" hidden>
-    <header class="geo-editor-head">
-      <span data-icon="rebuild" class="scene-icon"></span>
-      <div class="geo-editor-title"><b>Geometry Editor</b><small id="GeoSource">—</small></div>
-      <div class="spacer"></div>
-      <small class="geo-editor-keys">Drag the preview to orbit · Enter apply · Esc close</small>
-      <button id="GeoEditorClose" class="tool round" aria-label="Close Geometry Editor"><span data-icon="close"></span></button>
-    </header>
-    <div class="geo-editor-body">
-      <aside class="geo-editor-import">
-        <h4>IMPORT</h4>
-        <div class="panel">
-          <p>Import accepts these formats. The file reader is not connected in this build, so the button is disabled.</p>
-          <div class="geo-formats"><span>OBJ</span><span>glTF</span><span>GLB</span><span>STL</span><span>PLY</span><span>FBX</span></div>
-          <button id="GeoImport" class="tool" disabled>Import model…</button>
-        </div>
-      </aside>
-      <section class="geo-editor-main">
-        <canvas id="GeoPreview" aria-label="Transformed geometry preview"></canvas>
-        <p id="GeoPreviewNote" class="geo-editor-hint"></p>
-      </section>
-      <aside class="geo-editor-side">
-        <h4>SCALE</h4>
-        <div class="panel">
-          <label class="geo-check"><input type="checkbox" id="GeoUniform" checked> Uniform</label>
-          <div class="geo-row3">
-            <input type="number" id="GeoScaleX" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale X">
-            <input type="number" id="GeoScaleY" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale Y">
-            <input type="number" id="GeoScaleZ" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale Z">
-          </div>
-        </div>
-        <h4>CENTRE</h4>
-        <div class="panel">
-          <div class="segmented" role="group" aria-label="Centre">
-            <button data-centre="none" class="active" aria-pressed="true">Keep</button>
-            <button data-centre="origin" aria-pressed="false">Origin</button>
-            <button data-centre="floor" aria-pressed="false">Floor</button>
-          </div>
-          <p>Origin centres the bounds on zero. Floor centres X and Z and puts the lowest point on y = 0.</p>
-        </div>
-        <h4>MIRROR</h4>
-        <div class="panel">
-          <div class="geo-row3">
-            <button id="GeoMirrorX" class="tool" aria-pressed="false">X</button>
-            <button id="GeoMirrorY" class="tool" aria-pressed="false">Y</button>
-            <button id="GeoMirrorZ" class="tool" aria-pressed="false">Z</button>
-          </div>
-        </div>
-        <h4>ROTATE</h4>
-        <div class="panel">
-          <div class="geo-row3">
-            <input type="number" id="GeoRotX" class="geo-number" step="15" value="0" aria-label="Rotate X degrees">
-            <input type="number" id="GeoRotY" class="geo-number" step="15" value="0" aria-label="Rotate Y degrees">
-            <input type="number" id="GeoRotZ" class="geo-number" step="15" value="0" aria-label="Rotate Z degrees">
-          </div>
-          <p>Degrees, applied X then Y then Z.</p>
-        </div>
-        <h4>NORMALS</h4>
-        <div class="panel">
-          <button id="GeoFlip" class="tool" aria-pressed="false">Flip normals</button>
-          <p>Reverses triangle winding. Mirroring already reverses it, so flipping again restores it.</p>
-        </div>
-        <h4>RESULT</h4>
-        <div class="panel"><div class="rows" id="GeoStats"></div></div>
-        <div class="panel geo-actions">
-          <button id="GeoApply" class="primary">Rebuild hero</button>
-          <button id="GeoReset" class="tool">Reset</button>
-          <button id="GeoCancel" class="tool">Cancel</button>
         </div>
       </aside>
     </div>

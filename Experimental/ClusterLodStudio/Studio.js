@@ -337,6 +337,7 @@ function adopt(result) {
   refreshToggles();
   renderPicked();
   heroWorkspace.refresh();
+  geometryEditor.sync();
   clusterPreview.refresh();
   // A bake belongs to one geometry; cluster-only rebuilds keep it.
   const signature = JSON.stringify([build.preset, build.objName, build.transform]);
@@ -446,7 +447,7 @@ const held = new Set();
 window.addEventListener('keydown', (event) => {
   if (event.target.matches('input, select, textarea') || event.ctrlKey || event.metaKey || event.altKey) return;
   if (uvWorkspace.open) { uvWorkspace.keydown(event); return; }
-  if (geometryEditor.open) { geometryEditor.keydown(event); return; }
+  if (geometryEditor.open && geometryEditor.keydown(event)) return;
   const key = event.key.toLowerCase();
   if (key === 'i') { iconCapture.setActive(!iconCapture.active); return; }
   if (key === 'p' && iconCapture.active) { iconCapture.capture(); return; }
@@ -553,7 +554,7 @@ function renderTimeChart() {
 // --- Icon camera + UV Workspace ----------------------------------------------------------------------
 const iconCapture = createIconCapture({
   viewport, camera, settings, updateEye, toast, currentSource,
-  onLibraryChange: () => renderSources(),
+  onLibraryChange: () => { renderSources(); heroWorkspace.refresh(); },
 });
 const uvWorkspace = createUvWorkspace({
   getGeometry: () => geometry,
@@ -569,18 +570,31 @@ const geometryEditor = createGeometryEditor({
 });
 
 // --- Hero Workspace: outliner tree, Cluster LOD inspector preview, SDF baker -------------------------------
-// Metadata, Source, Icon, UV, Geometry and Cluster LOD are Inspector sections. Selecting one scrolls the Inspector to it
-// and flashes the heading; UV and Geometry also open their overlays, Icon turns on the icon camera, SDF has its own pane.
-const PART_SECTIONS = { metadata: 'PartMetadata', source: 'PartSource', icon: 'PartIcon', uv: 'PartUv', geometry: 'PartGeometry', cluster: 'PartCluster' };
+// Hero Workspace. The Inspector on the left shows one workspace panel at a time (with its preview, sliders and open
+// buttons); the Outliner on the right picks it. The centre shows the Source list, the Geometry Editor preview, the SDF
+// pane, or the Cluster LOD viewport (the default layer under the other panes).
+const PART_LAYOUT = {
+  source:   { panel: 'PanelHero',     pane: 'SourcePane',   tab: 'Source',            title: null,               note: 'Metadata for this hero. The source list is in the centre pane.' },
+  geometry: { panel: 'PanelGeometry', pane: 'GeometryEditor', tab: 'Geometry Editor', title: 'Geometry Editor', note: 'Scale, centre, mirror, rotate and flip the source. Rebuild the hero to apply.' },
+  cluster:  { panel: 'PanelCluster',  pane: null,           tab: 'Cluster LOD Studio', title: 'Cluster LOD Studio', note: 'Preview one LOD level, pick the cut and rebuild the hierarchy.' },
+  icon:     { panel: 'PanelIcon',     pane: null,           tab: 'Cluster LOD Studio', title: 'Icon', note: 'Thumbnail camera box and library. Capture saves the icon for this hero.' },
+  uv:       { panel: 'PanelUv',       pane: null,           tab: 'Cluster LOD Studio', title: 'UV Workspace', note: 'Static UV layout. Open the UV Workspace to unwrap, select and pack islands.' },
+  sdf:      { panel: 'PanelSdf',      pane: 'HeroPanelSdf', tab: 'SDF Baker',         title: 'SDF Baker', note: 'Distance field preview. It does not change the rendered hero.' },
+};
+const LEFT_PANELS = ['PanelHero', 'PanelGeometry', 'PanelCluster', 'PanelIcon', 'PanelUv', 'PanelSdf'];
+const CENTRE_PANES = ['SourcePane', 'GeometryEditor', 'HeroPanelSdf'];
 function selectHeroPart(part) {
-  const section = document.getElementById(PART_SECTIONS[part] || '');
-  if (section) {
-    section.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    section.classList.add('focused');
-    setTimeout(() => section.classList.remove('focused'), 1400);
-  }
-  if (part === 'uv') uvWorkspace.show();
+  const layout = PART_LAYOUT[part] || PART_LAYOUT.cluster;
+  if (part !== 'geometry') geometryEditor.close();
+  for (const id of LEFT_PANELS) $(id).hidden = id !== layout.panel;
+  for (const id of CENTRE_PANES) $(id).hidden = id !== layout.pane;
+  $('GeometryTitle').textContent = part === 'source' ? heroWorkspace.title() : layout.title;
+  $('GeometryNote').textContent = layout.note;
+  $('InspectorCrumb').textContent = 'Inspector / ' + (part === 'source' ? 'Metadata' : layout.title);
+  $('CentreTab').textContent = layout.tab;
   if (part === 'geometry') geometryEditor.show();
+  if (part === 'cluster') clusterPreview.refresh();
+  if (part === 'uv') uvWorkspace.prepare();
   if (part === 'sdf') sdfBaker.refresh();
   if (iconCapture.active !== (part === 'icon')) iconCapture.setActive(part === 'icon');
 }
@@ -589,9 +603,11 @@ const sdfBaker = createSdfBaker({ getGeometry: () => geometry, toast });
 const heroWorkspace = createHeroWorkspace({
   currentSource,
   getGeometry: () => geometry,
+  getIcon: () => iconCapture.iconFor(currentSource().key),
   onSelect: selectHeroPart,
   onMetadataChanged: () => { renderSources(); $('SceneTitle').textContent = heroWorkspace.title(); },
 });
+heroWorkspace.select('geometry');
 let bakedSignature = null;
 
 // --- Tick loop --------------------------------------------------------------------------------------------
