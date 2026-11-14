@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier · Cloth &amp; Tailoring Atelier (Project-Zero UI)</title>
+<link rel="stylesheet" href="/UVEditor/UVEditor.css?v=4">
+<link rel="stylesheet" href="./ClothEditor.css?v=4">
+<script type="importmap">
+{
+  "imports": {
+    "three": "/UVEditor/Vendor/three.esm.min.js",
+    "three/addons/controls/OrbitControls.js": "/UVEditor/Vendor/orbit-controls.esm.min.js"
+  }
+}
+</script>
+</head>
+<body class="pz-uv-theme">
+<div id="app">
+  <!-- PROJECT-ZERO PULL-DOWN CONTROL NOTCH DRAWER -->
+  <div class="pz-notch-drawer" id="pz-notch-drawer" hidden>
+    <div class="pz-notch-drawer-inner">
+      <div class="pz-notch-section">
+        <span class="pz-notch-label">GARMENT BLOCKS</span>
+        <div class="document-dock">
+          <div class="document-tabs" id="notch-garment-tabs"></div>
+        </div>
+      </div>
+      <div class="pz-notch-actions">
+        <span class="live-engine-tag" id="compute-backend-tag"><i></i><span id="compute-backend-text">WebGPU / CPU</span></span>
+        <button class="button export-button" id="btn-export-svg" type="button" title="Export 1:1 Physical Cutting Pattern (.SVG)">Export 1:1 SVG</button>
+        <button class="button" id="btn-export-dxf" type="button" title="Export Industrial Apparel CAD (.DXF)">Export DXF</button>
+        <button class="button warm-bridge-btn" id="btn-export-obj" type="button" title="Export Draped 3D Garment (.OBJ)">Export Draped OBJ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3-COLUMN PROJECT-ZERO DOCK WORKSPACE -->
+  <main class="workspace" id="workspace">
+    <!-- LEFT DOCK PANE: PATTERN PIECES, M:N SEAMS & FIT TELEMETRY -->
+    <aside class="left-panel" id="left-panel">
+      <div class="pz-dock-tabbar">
+        <div class="pz-trap-tab active"><span>Pattern &amp; Seams</span><i class="pz-tab-x">×</i></div>
+        <button class="pz-tab-plus" id="btn-fit-2d-top" type="button" title="Frame 2D Pattern Sheet (F)">⌖</button>
+      </div>
+
+      <div class="outliner-heading">
+        <div class="pz-outliner-title-row">
+          <h1>Atelier Outliner</h1>
+          <span class="outliner-subtitle" id="outliner-summary">4 panels · 8 seams</span>
+        </div>
+      </div>
+
+      <div class="panel-scroll outliner-scroll" id="outliner-scroll">
+        <div class="panel-content" id="outliner-scroll-content">
+          <!-- Live Physics & Fit KPI Trio -->
+          <div class="kpi-trio pz-left-kpi-trio">
+            <button class="kpi-card highlight pz-kpi-btn" id="kpi-yarn-btn" type="button" title="Click to inspect Warp/Weft Yarn Strain Heatmap">
+              <span class="kpi-label">Yarn Stretch</span>
+              <strong class="kpi-value" id="kpi-yarn-val">+0.0%</strong>
+              <small class="kpi-sub" id="kpi-yarn-sub">Warp / Weft</small>
+            </button>
+            <button class="kpi-card pz-kpi-btn" id="kpi-seam-btn" type="button" title="Mean M:N Seam Stitch Gap (mm)">
+              <span class="kpi-label">Seam Gap</span>
+              <strong class="kpi-value" id="kpi-seam-val">0.0 mm</strong>
+              <small class="kpi-sub" id="kpi-seam-sub">M:N Stitched</small>
+            </button>
+            <button class="kpi-card pz-kpi-btn" id="kpi-pen-btn" type="button" title="Click to inspect Avatar Contact Pressure Heatmap">
+              <span class="kpi-label">Body Pen.</span>
+              <strong class="kpi-value" id="kpi-pen-val">0.00 mm</strong>
+              <small class="kpi-sub" id="kpi-pen-sub">OGC Barrier</small>
+            </button>
+          </div>
+
+          <div class="cloth-outliner-section-label">Garment Templates</div>
+          <div class="cloth-preset-grid" id="garment-preset-grid"></div>
+
+          <div class="cloth-outliner-section-label">2D Pattern Panels (mm)</div>
+          <div id="pattern-piece-list"></div>
+
+          <div class="cloth-outliner-section-label">M:N Sewing Stitches</div>
+          <div id="seam-stitch-list"></div>
+        </div>
+      </div>
+
+      <footer class="fit-cert-banner" id="fit-cert-footer">
+        <span>Cutting Readiness</span>
+        <span class="fit-cert-pill" id="fit-cert-pill">Live Drape</span>
+      </footer>
+      <div class="pz-col-resizer pz-resizer-left" id="pz-resizer-left" title="Drag to resize Outliner"></div>
+    </aside>
+
+    <!-- CENTER DOCK PANE: SPLIT 2D MILLIMETRE PATTERN + 3D WEBGPU/WEBGL ATELIER -->
+    <section class="center-panel" id="center-panel">
+      <div class="pz-dock-tabbar pz-center-tabbar">
+        <div class="pz-tab-left">
+          <div class="pz-trap-tab active"><span>Cloth Atelier</span><i class="pz-tab-x">×</i></div>
+        </div>
+        <button class="pz-notch-tab" id="pz-notch-toggle" type="button" title="Pull down Frontier Export &amp; Compute Controls">
+          <svg viewBox="0 0 400 36" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 0C15 0 20 6 25 15L35 28C40 34 45 36 52 36H348C355 36 360 34 365 28L375 15C380 6 385 0 400 0Z"></path>
+          </svg>
+          <span>Frontier</span>
+        </button>
+        <div class="pz-tab-right"></div>
+      </div>
+
+      <!-- Row 1: Active Garment + Stage Layout Capsule (Split | 2D Pattern | 3D Atelier) -->
+      <div class="pz-stage-header">
+        <div class="pz-scene-title">
+          <span class="pz-scene-cube"></span>
+          <div>
+            <strong id="active-garment-title">Atelier Fitted Bodice &amp; Flared A-Line Dress</strong>
+            <small id="active-garment-sub">OPTION A: DUAL-TIER AVBD + OGC · 135 GSM COTTON POPLIN</small>
+          </div>
+          <span class="pz-preview-tag" id="solver-tier-tag">AVBD</span>
+        </div>
+
+        <nav class="top-nav pz-mode-capsule" id="stage-layout-nav" aria-label="Viewport Layout">
+          <button class="nav-button active" data-stage-mode="split" type="button">Split</button>
+          <button class="nav-button" data-stage-mode="uv" type="button">2D Pattern</button>
+          <button class="nav-button" data-stage-mode="mesh" type="button">3D Atelier</button>
+        </nav>
+      </div>
+
+      <!-- Row 2: Live Drape + Pre-Cut Fit Bake + Option A/B Switch + Heatmap Lens + Camera -->
+      <div class="viewport-bar pz-action-strip">
+        <button class="pz-primary-pill" id="btn-play-pause" type="button" title="Toggle Live 60 FPS Draping (Space)">
+          <span id="play-glyph">❚❚</span><span id="play-label">Simulating</span><kbd>Space</kbd>
+        </button>
+        <button class="pz-secondary-pill" id="btn-verify-bake" type="button" title="Run SIGGRAPH Asia 2024 Cubic-Barrier + Strain-Limit Pre-Cut Fit Verification (B)">
+          <span>Verify Fit (Bake)</span><kbd>B</kbd>
+        </button>
+        <button class="pill-btn" id="btn-reset-drape" type="button" title="Re-arrange Panels &amp; Re-zip Seams (R)">Reset</button>
+        <button class="pill-btn" id="btn-pie-auto-res" type="button" title="Zhang et al. 2025 PIE: rebuild the pattern at the physics-optimal mesh resolution for this textile">PIE Auto-Res</button>
+
+        <span class="bar-divider"></span>
+
+        <!-- Top-2 Solver Architecture Selector -->
+        <div class="select-pill-wrap vp-compact-select">
+          <select id="solver-mode-select" title="Compare All Candidate Solver Architectures (A–F) for Game Runtime vs. Garment Authoring">
+            <option value="avbd" selected>A · AVBD — Game + Authoring baseline</option>
+            <option value="xpbd">B · XPBD — lightweight Game Runtime</option>
+            <option value="scr">C · Stable Cosserat Rods — yarn/knit drape</option>
+            <option value="gn_knot">D · Contact Gauss–Newton (FPB) — folds &amp; knots</option>
+            <option value="jgs2">E · JGS2 Schur block-GS — stiff 60 FPS</option>
+            <option value="kes_aa">F · Kawabata KES-FB + Anderson(2)</option>
+          </select>
+          <span class="pill-caret-divider"><svg class="glyph chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
+        </div>
+
+        <!-- Diagnostic Heatmap Selector -->
+        <div class="select-pill-wrap vp-compact-select">
+          <select id="heatmap-mode-select" title="Synchronized 2D &amp; 3D Diagnostic Heatmap">
+            <option value="textile" selected>Lens: Physical Textile</option>
+            <option value="strain">Lens: Warp/Weft Strain %</option>
+            <option value="shear">Lens: Bias Shear Angle (°)</option>
+            <option value="pressure">Lens: Fit Contact Pressure (kPa)</option>
+            <option value="batches">Lens: GPU Color Batches</option>
+          </select>
+          <span class="pill-caret-divider"><svg class="glyph chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
+        </div>
+
+        <!-- Camera Orientation Selector -->
+        <div class="select-pill-wrap vp-compact-select">
+          <select id="camera-preset-select" title="3D Atelier Camera Preset">
+            <option value="threeQuarter" selected>Cam: Three-Quarter</option>
+            <option value="front">Cam: Front</option>
+            <option value="side">Cam: Side Profile</option>
+            <option value="back">Cam: Back Seams</option>
+            <option value="bodice">Cam: Bodice Close-Up</option>
+          </select>
+          <span class="pill-caret-divider"><svg class="glyph chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
+        </div>
+
+        <div class="viewport-bar-end">
+          <button class="pill-btn" id="btn-toggle-wire" type="button" title="Toggle 3D Cloth Mesh Wireframe">Wire</button>
+          <button class="pill-btn active" id="btn-toggle-seams" type="button" title="Toggle Stitched Seam Lines">Seams</button>
+          <button class="pill-btn" id="btn-toggle-wind" type="button" title="Toggle Studio Runway Breeze">Wind</button>
+        </div>
+      </div>
+
+      <!-- SPLIT STAGE: LEFT = 2D PATTERN (MM) | RIGHT = 3D ATELIER (WEBGL2 / WEBGPU) -->
+      <div class="stage-split mode-split" id="stage-split">
+        <!-- FLOATING CONTEXT TOOL RAIL -->
+        <div class="pz-context-rail" id="pz-context-rail" aria-label="Quick Atelier Tools">
+          <button class="pz-rail-btn active" data-cloth-tool="orbit" type="button" title="Orbit Camera (Q)"></button>
+          <button class="pz-rail-btn" data-cloth-tool="grab" type="button" title="Interactive 3D Cloth Grab &amp; Pull (G / Alt+Drag)"></button>
+          <button class="pz-rail-btn" data-cloth-tool="pin" type="button" title="Pin / Unpin Cloth Vertices in 3D Space (P)"></button>
+          <span class="pz-rail-sep"></span>
+          <button class="pz-rail-btn" id="rail-clear-pins" type="button" title="Clear All Cloth Pins"></button>
+          <button class="pz-rail-btn" id="rail-fit-sheet" type="button" title="Frame 2D Pattern Sheet (F)"></button>
+          <button class="pz-rail-btn" id="rail-export-svg" type="button" title="Download 1:1 Cutting Pattern (.SVG)"></button>
+        </div>
+
+        <!-- 2D MILLIMETRE PATTERN DRAFTING STAGE -->
+        <div class="uv-stage" id="uv-stage">
+          <canvas id="pattern-canvas-2d"></canvas>
+          <div class="pz-uv-transform-pill" id="pattern-2d-hud">
+            <span class="pz-uv-axis-u" id="hud-piece-name">Bodice Front</span>
+            <span class="pz-uv-extent" id="hud-piece-dims">1:1 mm</span>
+            <span class="pz-uv-udim" id="hud-piece-grain">Grain 0°</span>
+          </div>
+        </div>
+
+        <div class="split-divider" id="split-divider" title="Drag to resize 2D Pattern / 3D Atelier viewports"></div>
+
+        <!-- 3D DRAPING VIEWPORT -->
+        <div class="mesh-stage" id="mesh-stage">
+          <div id="garment-viewport-3d"></div>
+          <div class="heatmap-legend-pill" id="heatmap-legend-pill" hidden>
+            <span id="heatmap-legend-min">Slack</span>
+            <span class="heatmap-gradient-bar"></span>
+            <span id="heatmap-legend-max">Lock Wall</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Telemetry Bar -->
+      <div class="pz-bottom-bar">
+        <span class="pz-bottom-meta" id="status-mesh-counts"><b>0</b> pts · <b>0</b> tris · <b>0</b> stitches · <b>0</b> color batches</span>
+        <button class="pz-bottom-drawer-tab" id="btn-cycle-garment" type="button" title="Cycle Garment Template">
+          <svg viewBox="0 0 400 36" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 36C15 36 20 30 25 21L35 8C40 2 45 0 52 0H348C355 0 360 2 365 8L375 21C380 30 385 36 400 36Z"></path>
+          </svg>
+          <span>Switch Garment</span>
+        </button>
+        <span class="pz-bottom-meta"><span id="status-solver-time">Solve: 0.0 ms</span> · <span id="status-shear-info">Shear: 0.0°</span> · <span id="status-backend-label">Init...</span></span>
+      </div>
+    </section>
+
+    <!-- RIGHT DOCK PANE: PROJECT-ZERO INSPECTOR -->
+    <aside class="inspector-panel" id="inspector-panel">
+      <div class="pz-col-resizer pz-resizer-right" id="pz-resizer-right" title="Drag to resize Inspector"></div>
+      <div class="pz-dock-tabbar">
+        <div class="pz-trap-tab active"><span>Inspector</span><i class="pz-tab-x">×</i></div>
+        <button class="pz-tab-plus" id="btn-inspector-svg" type="button" title="Export 1:1 Millimetre SVG">+</button>
+      </div>
+
+      <div class="panel-heading inspector-top-heading">
+        <span class="inspector-crumb" id="inspector-crumb">Inspector / Dual-Tier Solver</span>
+        <div class="pz-inspector-head-actions">
+          <button class="pz-dashed-action-btn" id="btn-quick-svg" type="button">+ 1:1 SVG</button>
+          <button class="reset-pill" id="btn-inspector-reset" type="button">Reset</button>
+        </div>
+      </div>
+
+      <div class="object-heading pz-borderless-heading">
+        <div class="object-heading-copy">
+          <input id="inspector-garment-name" class="pz-borderless-title" type="text" value="Couture Dress" readonly aria-label="Active Garment">
+          <span id="inspector-garment-sub">135 GSM Cotton Poplin · Atelier FR 36</span>
+        </div>
+      </div>
+
+      <div class="inspector-tabs" id="inspector-tabs">
+        <button class="active" data-tab="solver" type="button">Solver</button>
+        <button data-tab="textile" type="button">Textile</button>
+        <button data-tab="pattern" type="button">Pattern</button>
+        <button data-tab="avatar" type="button">Avatar</button>
+      </div>
+
+      <div class="panel-scroll inspector-scroll" id="inspector-scroll">
+        <div class="panel-content" id="inspector-body"></div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script type="module" src="./Engine/ClothStudioApp.js?v=4"></script>
+</body>
+</html>
