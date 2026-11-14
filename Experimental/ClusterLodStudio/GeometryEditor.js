@@ -10,7 +10,6 @@ const fmt = (n) => (Math.round(n * 1000) / 1000).toString();
 
 export function createGeometryEditor({ getBase, getTransform, applyTransform, getName, toast }) {
   let pending = identityTransform();
-  let open = false;
   let yaw = 0.6, pitch = 0.35;
   let redraw = 0;
   let drag = null;
@@ -155,12 +154,10 @@ export function createGeometryEditor({ getBase, getTransform, applyTransform, ge
     toast('Rebuilding the hero with the new geometry transform');
   }
 
-  // The editor is a centre pane of the Hero Workspace. Edits stay as a draft until Rebuild hero applies them; the draft
-  // is kept while the pane is hidden and is only reset when the hero's base geometry changes (a new source).
+  // The Geometry Editor is an Inspector section with its preview. Edits stay as a draft until Rebuild hero applies
+  // them; the draft is reset only when the hero's base geometry changes (a new source).
   let baseSeen = null, draftReady = false;
   function show() {
-    open = true;
-    $('GeometryEditor').hidden = false;
     $('GeoSource').textContent = getName();
     const base = getBase();
     if (!base) { $('GeoPreviewNote').textContent = 'Building the hero…'; return; }
@@ -169,28 +166,13 @@ export function createGeometryEditor({ getBase, getTransform, applyTransform, ge
     syncControls();
     render();
   }
-  function close() {
-    if (!open) return;
-    open = false;
-    $('GeometryEditor').hidden = true;
-  }
   function sync() {
     const base = getBase();
     if (!base || base === baseSeen) return;
     baseSeen = base;
     draftReady = false;
-    if (open) show();
+    show();
   }
-  function keydown(event) {
-    if (!open) return false;
-    if (event.key.toLowerCase() !== 'enter' || event.target.tagName === 'BUTTON') return false;
-    apply();
-    event.preventDefault();
-    return true;
-  }
-
-  bindInputs();
-
-  return { get open() { return open; }, show, close, sync, keydown };
+  return { sync };
 }
 

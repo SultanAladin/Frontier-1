@@ -27,28 +27,20 @@ Planned Hero Workspace and SDF Baker work is tracked in `Documentation/Plans/Clu
 
 ## Hero Workspace
 
-Three columns, one hero:
+Three columns:
 
-- **Outliner** (right): a tree. The hero row (its thumbnail is the saved icon) is the source. Its children are the
-  workspaces: **Geometry Editor**, **Cluster LOD Studio**, **Icon**, **UV Workspace** and **SDF Baker** (SDF only for
-  closed surfaces). The caret collapses the children.
-- **Centre**: the view for the selected row. Hero row: **Source**, the presets and OBJ import (one source at a time; an
-  import replaces the current source). Geometry Editor: a preview of the pending transform. Cluster LOD Studio and Icon:
-  the 3D viewport. SDF Baker: the distance-field pane.
-- **Inspector** (left): one workspace panel at a time, each with its controls and an open button:
-  - Hero row: **Metadata** (name, category, tags, info), saved per source in this browser. The name replaces the hero title.
-  - Geometry Editor: scale (uniform toggle), centre (keep, origin, floor), mirror XYZ, rotate XYZ in degrees, flip
-    normals, Reset, and **Rebuild hero**. The draft is kept while you move between rows; it is reset when the source changes.
-    **Open Cluster LOD Studio** switches to the cluster viewport.
-  - Cluster LOD Studio: the cluster preview with the **LOD level** slider, LOD selection, the hierarchy levels and build.
-    **Open Geometry Editor** switches back.
-  - Icon: thumbnail camera box, default angle, capture, **Save as icon** (a 256 px copy in this browser that replaces the
-    outliner thumbnail), download and copy.
-  - UV Workspace: the static UV layout and **Open UV Workspace** (full-screen editor, Esc closes it).
-  - SDF Baker: bake resolution, slice or raymarch preview, slice depth and iso offset.
-
-Two studios share this page: the Geometry Editor (the home view, transforms the source) and the Cluster LOD Studio
-(the viewport and LOD tools). They use the same buttons, icons and Inspector components.
+- **Outliner** (left): the scene objects. The hero is the one object, with its saved icon as thumbnail. Importing an
+  OBJ replaces it. Objects parented to it will nest under it (parenting is not built yet).
+- **Centre**: the Cluster LOD viewport. **Change source…** (in Metadata) opens the Source list over it: presets and OBJ
+  import. Picking a source closes it.
+- **Inspector** (right): every workspace in one column, each with its preview and controls. A jump bar at the top
+  scrolls to each one. Order:
+  1. **Metadata**: a thumbnail, name, category, tags and info, saved per source in this browser. The name replaces the hero title.
+  2. **Cluster LOD Studio**: the cluster preview with the **LOD level** slider, LOD selection, instances, display, hierarchy levels and build.
+  3. **UV Workspace**: the static UV layout and **Open UV Workspace** (full-screen editor, Esc closes it).
+  4. **SDF Baker**: distance-field preview, bake resolution, slice or raymarch, slice depth and iso offset. Closed surfaces only.
+  5. **Icon**: thumbnail camera box, default angle, capture, **Save as icon** (a 256 px copy in this browser that replaces the hero thumbnail), download and copy.
+  6. **Geometry Editor**: a preview of the pending transform, scale (uniform toggle), centre (keep, origin, floor), mirror XYZ, rotate XYZ in degrees, flip normals, Reset, and **Rebuild hero**. The draft is kept until you rebuild or the source changes.
 
 ## Icons and the UV Workspace
 

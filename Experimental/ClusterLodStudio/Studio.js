@@ -218,6 +218,7 @@ function renderSources() {
     row.addEventListener('click', () => {
       if (entry.id === 'obj') return;
       build.preset = entry.id; build.objText = null; build.transform = identityTransform();
+      showSource(false);
       requestBuild();
     });
     host.append(row);
@@ -339,6 +340,7 @@ function adopt(result) {
   heroWorkspace.refresh();
   geometryEditor.sync();
   clusterPreview.refresh();
+  sdfBaker.refresh();
   // A bake belongs to one geometry; cluster-only rebuilds keep it.
   const signature = JSON.stringify([build.preset, build.objName, build.transform]);
   if (signature !== bakedSignature) { sdfBaker.reset(); bakedSignature = signature; }
@@ -447,7 +449,6 @@ const held = new Set();
 window.addEventListener('keydown', (event) => {
   if (event.target.matches('input, select, textarea') || event.ctrlKey || event.metaKey || event.altKey) return;
   if (uvWorkspace.open) { uvWorkspace.keydown(event); return; }
-  if (geometryEditor.open && geometryEditor.keydown(event)) return;
   const key = event.key.toLowerCase();
   if (key === 'i') { iconCapture.setActive(!iconCapture.active); return; }
   if (key === 'p' && iconCapture.active) { iconCapture.capture(); return; }
@@ -570,44 +571,23 @@ const geometryEditor = createGeometryEditor({
 });
 
 // --- Hero Workspace: outliner tree, Cluster LOD inspector preview, SDF baker -------------------------------
-// Hero Workspace. The Inspector on the left shows one workspace panel at a time (with its preview, sliders and open
-// buttons); the Outliner on the right picks it. The centre shows the Source list, the Geometry Editor preview, the SDF
-// pane, or the Cluster LOD viewport (the default layer under the other panes).
-const PART_LAYOUT = {
-  source:   { panel: 'PanelHero',     pane: 'SourcePane',   tab: 'Source',            title: null,               note: 'Metadata for this hero. The source list is in the centre pane.' },
-  geometry: { panel: 'PanelGeometry', pane: 'GeometryEditor', tab: 'Geometry Editor', title: 'Geometry Editor', note: 'Scale, centre, mirror, rotate and flip the source. Rebuild the hero to apply.' },
-  cluster:  { panel: 'PanelCluster',  pane: null,           tab: 'Cluster LOD Studio', title: 'Cluster LOD Studio', note: 'Preview one LOD level, pick the cut and rebuild the hierarchy.' },
-  icon:     { panel: 'PanelIcon',     pane: null,           tab: 'Cluster LOD Studio', title: 'Icon', note: 'Thumbnail camera box and library. Capture saves the icon for this hero.' },
-  uv:       { panel: 'PanelUv',       pane: null,           tab: 'Cluster LOD Studio', title: 'UV Workspace', note: 'Static UV layout. Open the UV Workspace to unwrap, select and pack islands.' },
-  sdf:      { panel: 'PanelSdf',      pane: 'HeroPanelSdf', tab: 'SDF Baker',         title: 'SDF Baker', note: 'Distance field preview. It does not change the rendered hero.' },
-};
-const LEFT_PANELS = ['PanelHero', 'PanelGeometry', 'PanelCluster', 'PanelIcon', 'PanelUv', 'PanelSdf'];
-const CENTRE_PANES = ['SourcePane', 'GeometryEditor', 'HeroPanelSdf'];
-function selectHeroPart(part) {
-  const layout = PART_LAYOUT[part] || PART_LAYOUT.cluster;
-  if (part !== 'geometry') geometryEditor.close();
-  for (const id of LEFT_PANELS) $(id).hidden = id !== layout.panel;
-  for (const id of CENTRE_PANES) $(id).hidden = id !== layout.pane;
-  $('GeometryTitle').textContent = part === 'source' ? heroWorkspace.title() : layout.title;
-  $('GeometryNote').textContent = layout.note;
-  $('InspectorCrumb').textContent = 'Inspector / ' + (part === 'source' ? 'Metadata' : layout.title);
-  $('CentreTab').textContent = layout.tab;
-  if (part === 'geometry') geometryEditor.show();
-  if (part === 'cluster') clusterPreview.refresh();
-  if (part === 'uv') uvWorkspace.prepare();
-  if (part === 'sdf') sdfBaker.refresh();
-  if (iconCapture.active !== (part === 'icon')) iconCapture.setActive(part === 'icon');
-}
+// Hero Workspace. The Outliner (left) lists the scene objects: one hero, with parented objects nested under it. The
+// Inspector (right) shows every workspace in order, each with its preview. The centre is the Cluster LOD viewport; the
+// Source list opens over it.
+function showSource(open) { $('SourcePane').hidden = !open; }
 const clusterPreview = createClusterPreview({ getGeometry: () => geometry, getHierarchy: () => built });
 const sdfBaker = createSdfBaker({ getGeometry: () => geometry, toast });
 const heroWorkspace = createHeroWorkspace({
   currentSource,
   getGeometry: () => geometry,
   getIcon: () => iconCapture.iconFor(currentSource().key),
-  onSelect: selectHeroPart,
   onMetadataChanged: () => { renderSources(); $('SceneTitle').textContent = heroWorkspace.title(); },
+  onOpenSource: () => showSource(true),
 });
-heroWorkspace.select('geometry');
+$('SourceClose').addEventListener('click', () => showSource(false));
+for (const button of document.querySelectorAll('[data-jump]')) {
+  button.addEventListener('click', () => document.getElementById(button.dataset.jump).scrollIntoView({ block: 'start', behavior: 'smooth' }));
+}
 let bakedSignature = null;
 
 // --- Tick loop --------------------------------------------------------------------------------------------

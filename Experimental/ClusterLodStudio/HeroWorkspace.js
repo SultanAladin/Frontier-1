@@ -1,6 +1,6 @@
-// Hero Workspace: the Outliner tree on the right. The hero row is the source (its centre pane lists the presets and
-// imports). Its children are the workspaces: Geometry Editor, Cluster LOD Studio, Icon, UV Workspace and SDF Baker.
-// Metadata for the hero is edited in the left Inspector and saved per source in this browser.
+// Hero Workspace: the metadata of the scene's hero object, its thumbnail, and the SDF section's availability. The
+// Outliner (left) lists the objects; the Inspector (right) shows every workspace with its preview. Metadata is saved
+// per source in this browser.
 const $ = (id) => document.getElementById(id);
 const HEROES_KEY = 'frontier.clusterLodStudio.heroes';
 export const CATEGORIES = ['Uncategorised', 'Organic', 'Architecture', 'Terrain', 'Prop', 'Abstract', 'Character'];
@@ -12,9 +12,8 @@ function writeHeroes(heroes) {
   try { localStorage.setItem(HEROES_KEY, JSON.stringify(heroes)); } catch (error) { /* storage full or blocked */ }
 }
 
-export function createHeroWorkspace({ currentSource, getGeometry, getIcon, onSelect, onMetadataChanged }) {
+export function createHeroWorkspace({ currentSource, getGeometry, getIcon, onMetadataChanged, onOpenSource }) {
   let heroes = readHeroes();
-  let active = 'geometry';
 
   function metadataFor(key) {
     return { name: '', category: 'Uncategorised', tags: '', info: '', ...(heroes[key] || {}) };
@@ -40,11 +39,13 @@ export function createHeroWorkspace({ currentSource, getGeometry, getIcon, onSel
     const tags = m.tags.split(',').map((t) => t.trim()).filter(Boolean);
     $('HeroCategory').textContent = [m.category, ...tags.slice(0, 3)].join(' · ');
     const icon = getIcon ? getIcon() : null;
-    $('HeroThumb').src = icon || '';
-    $('HeroThumb').hidden = !icon;
+    for (const id of ['HeroThumb', 'MetaThumb']) {
+      $(id).src = icon || '';
+      $(id).hidden = !icon;
+    }
+    // SDF applies to closed surfaces only; the section is hidden for open heroes.
     const geometry = getGeometry();
-    // SDF applies to closed surfaces only; open heroes hide the workspace row.
-    $('TreeSdf').hidden = !!geometry && !geometry.closed;
+    $('PanelSdf').hidden = !!geometry && !geometry.closed;
     if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#PanelHero')) return;
     fillForm();
   }
@@ -62,43 +63,13 @@ export function createHeroWorkspace({ currentSource, getGeometry, getIcon, onSel
     $('HeroCategory').textContent = [$('MetaCategory').value, ...tags.slice(0, 3)].join(' · ');
     onMetadataChanged();
   }
-  function highlight(part) {
-    for (const button of document.querySelectorAll('[data-part]')) {
-      const on = button.dataset.part === part;
-      button.classList.toggle('active', on);
-      button.setAttribute('aria-current', on ? 'true' : 'false');
-    }
-  }
-  function setExpanded(open) {
-    $('TreeChildren').hidden = !open;
-    document.querySelector('[data-tree-toggle]').setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
-  function select(part) {
-    active = part;
-    highlight(part);
-    onSelect(part);
-  }
 
-  for (const button of document.querySelectorAll('[data-part]')) {
-    button.addEventListener('click', () => {
-      if (button.dataset.part === 'source') setExpanded(true);
-      select(button.dataset.part);
-    });
-  }
-  for (const button of document.querySelectorAll('[data-open-part]')) {
-    button.addEventListener('click', () => select(button.dataset.openPart));
-  }
-  document.querySelector('[data-tree-toggle]').addEventListener('click', (event) => {
-    event.stopPropagation();
-    setExpanded($('TreeChildren').hidden);
-  });
   for (const id of ['MetaName', 'MetaTags', 'MetaInfo']) $(id).addEventListener('input', save);
   $('MetaCategory').addEventListener('change', save);
   $('MetaCategory').innerHTML = CATEGORIES.map((c) => `<option value="${c}">${c}</option>`).join('');
-  highlight(active);
+  $('OpenSource').addEventListener('click', onOpenSource);
+  // The object row selects the hero: the Inspector returns to its first section.
+  document.querySelector('.hero-row').addEventListener('click', () => { $('InspectorScroll').scrollTo({ top: 0, behavior: 'smooth' }); });
 
-  return {
-    refresh, select, title,
-    get active() { return active; },
-  };
+  return { refresh, title };
 }
