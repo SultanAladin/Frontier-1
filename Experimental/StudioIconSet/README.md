@@ -18,7 +18,7 @@ python3 -m http.server 8094 --bind 0.0.0.0 -d Experimental/StudioIconSet
 | Force Field Editor | 17 | green | Wind, attractor, repulsor, vortex, turbulence, drag, gravity, point, curve guide, magnetic, falloff, range, strength, streamlines, vector grid, heatmap, obstacle |
 
 **Rules:** 24 x 24 grid, 2 px safe margin, 1.5 px round strokes, flat (no glow or gradients). Each icon has a neutral
-layer and one accent layer in the family colour; Mono mode drops the colour.
+layer and one accent layer in the family colour; Mono mode drops the colour. Colour mode makes every icon two colours: the base layer takes a contrasting hue per family (gold, sky or pink) and the accent keeps the family colour, with plain tiles.
 
 **Page:** search, size (16-32), stroke weight, two-tone / mono, dark / light stage, an "in context" strip showing the
 icons at 16 px in tool ribbons, and an inspector with pixel-grid preview, size ladder, Copy SVG, Download SVG and a
