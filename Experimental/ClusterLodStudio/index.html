@@ -143,11 +143,11 @@
       <div class="panel">
         <canvas id="UvPreview" class="uv-preview" aria-label="Static UV layout preview"></canvas>
         <div class="rows">
-          <span>Charts · seams</span><b id="UvCharts">—</b>
+          <span>Islands · seams</span><b id="UvCharts">—</b>
           <span>Texel scale</span><b id="UvScale">—</b>
         </div>
-        <button id="OpenCompiler" class="primary"><span data-icon="uv"></span>Open Geometry Compiler</button>
-        <p>Planar chart unwrap, computed in this browser from the source triangles. Amber lines are seams where charts meet. The 3D view does not sample these UVs yet.</p>
+        <button id="OpenCompiler" class="primary"><span data-icon="uv"></span>Open UV Workspace</button>
+        <p>Planar island unwrap, computed in this browser. Tiny islands merge into a neighbour with a close plane. Amber lines are seams where islands meet. The 3D view does not sample these UVs yet.</p>
       </div>
 
       <h4>BUILD</h4>
@@ -180,7 +180,7 @@
           <div><kbd>Z</kbd> <kbd>B</kbd> <kbd>G</kbd> <kbd>C</kbd><span>Wire · Bounds · Grid · Cone cull</span></div>
           <div><kbd>F</kbd><span>Fit everything</span></div>
           <div><kbd>I</kbd><span>Icon camera · <kbd>P</kbd> capture</span></div>
-          <div><kbd>U</kbd><span>Geometry Compiler (UV layout)</span></div>
+          <div><kbd>U</kbd><span>UV Workspace</span></div>
           <div><kbd>Esc</kbd><span>Clear picked cluster</span></div>
         </div>
         <p>How to read it: switch to <b>LOD level</b> and zoom — clusters swap to coarser levels as their projected error drops under the pixel threshold. Press <b>L</b> to freeze the cut, then fly out to see frustum and cone culling from the outside.</p>
@@ -189,20 +189,20 @@
     <button id="NotchHandle" class="notch-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 0 L22 36 L178 36 L200 0 Z"/></svg><span>Frontier · Cluster LOD</span></button>
   </div>
 </div>
-  <div id="Compiler" class="compiler" role="dialog" aria-modal="true" aria-label="Geometry Compiler" hidden>
-    <header class="compiler-head">
+  <div id="UvWorkspace" class="uv-workspace" role="dialog" aria-modal="true" aria-label="UV Workspace" hidden>
+    <header class="uv-workspace-head">
       <span data-icon="uv" class="scene-icon"></span>
-      <div class="compiler-title"><b>Geometry Compiler</b><small id="CompilerSource">—</small></div>
+      <div class="uv-workspace-title"><b>UV Workspace</b><small id="CompilerSource">—</small></div>
       <div class="spacer"></div>
-      <small class="compiler-keys">R rotate · M mirror · P pack · K checker · S seams · Esc</small>
-      <button id="CompilerClose" class="tool round" aria-label="Close Geometry Compiler"><span data-icon="close"></span></button>
+      <small class="uv-workspace-keys">Click / Shift / Ctrl select · R rotate · M mirror · A all · P pack · K checker · S seams · Esc</small>
+      <button id="CompilerClose" class="tool round" aria-label="Close UV Workspace"><span data-icon="close"></span></button>
     </header>
-    <div class="compiler-body">
-      <aside class="compiler-charts">
-        <div class="collection"><span data-icon="layers"></span><div><b>Charts</b><small>Fit = share of the true area the projection keeps</small></div></div>
+    <div class="uv-workspace-body">
+      <aside class="uv-workspace-charts">
+        <div class="collection"><span data-icon="layers"></span><div><b>Islands</b><small>Fit = share of the true area the projection keeps</small></div></div>
         <div id="ChartRows" class="chart-rows"></div>
       </aside>
-      <section class="compiler-main">
+      <section class="uv-workspace-main">
         <div class="viewport-tools">
           <button id="CompilerRotate" class="tool">Rotate 90°</button>
           <button id="CompilerMirror" class="tool">Mirror</button>
@@ -215,18 +215,18 @@
           <button id="CompilerFillToggle" class="tool active" aria-pressed="true">Fill</button>
         </div>
         <div class="uv-stage"><canvas id="UvCanvas" tabindex="0" aria-label="UV editor"></canvas></div>
-        <p class="compiler-hint">Drag a chart to move it. Click empty space to clear the selection. Every chart shares one texel density, so packing never stretches a chart.</p>
+        <p class="uv-workspace-hint">Drag selected islands to move them as a group. Click empty space to clear the selection. Every island shares one texel density, so packing never stretches an island.</p>
       </section>
-      <aside class="compiler-side">
+      <aside class="uv-workspace-side">
         <h4>LAYOUT</h4>
         <div class="panel">
           <div class="rows">
-            <span>Charts · seams · borders</span><b id="CompilerCount">—</b>
+            <span>Islands · seams · borders</span><b id="CompilerCount">—</b>
             <span>Texel scale</span><b id="CompilerScale">—</b>
             <span>UV filled</span><b id="CompilerFill">—</b>
           </div>
         </div>
-        <h4>SELECTED CHART</h4>
+        <h4>SELECTED ISLAND</h4>
         <div class="panel" id="ChartDetail"></div>
         <h4>EXPORT</h4>
         <div class="panel">

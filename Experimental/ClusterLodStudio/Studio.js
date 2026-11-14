@@ -3,7 +3,7 @@ import { SOURCE_PRESETS } from './Engine/SourceGeometry.js';
 import { ViewportRasterization, VIEW_MODES } from './Engine/ViewportRasterization.js';
 import { projectedError } from './Engine/ClusterSelection.js';
 import { createIconCapture } from './IconCapture.js';
-import { createGeometryCompiler } from './GeometryCompiler.js';
+import { createUvWorkspace } from './UvWorkspace.js';
 
 const $ = (id) => document.getElementById(id);
 const query = new URLSearchParams(location.search);
@@ -326,7 +326,7 @@ function adopt(result) {
   setViewMode(settings.viewMode);
   fitAll();
   if (iconCapture.active) iconCapture.setActive(true);
-  compiler.prepare();
+  uvWorkspace.prepare();
   refreshToggles();
   renderPicked();
 }
@@ -433,11 +433,11 @@ canvas.addEventListener('wheel', (event) => {
 const held = new Set();
 window.addEventListener('keydown', (event) => {
   if (event.target.matches('input, select, textarea') || event.ctrlKey || event.metaKey || event.altKey) return;
-  if (compiler.open) { compiler.keydown(event); return; }
+  if (uvWorkspace.open) { uvWorkspace.keydown(event); return; }
   const key = event.key.toLowerCase();
   if (key === 'i') { iconCapture.setActive(!iconCapture.active); return; }
   if (key === 'p' && iconCapture.active) { iconCapture.capture(); return; }
-  if (key === 'u') { compiler.show(); return; }
+  if (key === 'u') { uvWorkspace.show(); return; }
   if ('wasdqe'.includes(key) && key.length === 1) { held.add(key); event.preventDefault(); return; }
   if (key >= '1' && key <= String(VIEW_MODES.length)) setViewMode(VIEW_MODES[+key - 1].id);
   else if (key === 'z') { settings.wireframe = !settings.wireframe; refreshToggles(); }
@@ -537,12 +537,12 @@ function renderTimeChart() {
   g.stroke();
 }
 
-// --- Icon camera + Geometry Compiler ----------------------------------------------------------------------
+// --- Icon camera + UV Workspace ----------------------------------------------------------------------
 const iconCapture = createIconCapture({
   viewport, camera, settings, updateEye, toast, currentSource,
   onLibraryChange: () => renderSources(),
 });
-const compiler = createGeometryCompiler({
+const uvWorkspace = createUvWorkspace({
   getGeometry: () => geometry,
   getName: () => currentSource().name,
   toast,
@@ -607,4 +607,4 @@ requestBuild();
 requestAnimationFrame(tick);
 
 // Handle for the browser validation script and for poking around in the console.
-window.ClusterLodStudio = { settings, build, layout, camera, viewport, iconCapture, compiler, get geometry() { return geometry; }, get hierarchy() { return built; }, get building() { return building; }, setViewMode, setForcedLevel, setFrozen, fitAll, requestBuild };
+window.ClusterLodStudio = { settings, build, layout, camera, viewport, iconCapture, uvWorkspace, get geometry() { return geometry; }, get hierarchy() { return built; }, get building() { return building; }, setViewMode, setForcedLevel, setFrozen, fitAll, requestBuild };

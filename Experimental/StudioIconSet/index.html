@@ -90,7 +90,7 @@ code { font: 400 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; displa
     <input id="Search" class="search" type="search" placeholder="Search icons" aria-label="Search icons">
     <div class="segmented" id="Sizes" role="radiogroup" aria-label="Icon size"></div>
     <label class="weight">Stroke <input id="Weight" type="range" min="1" max="2" step="0.05" value="1.5"><b id="WeightValue">1.50</b></label>
-    <div class="segmented" id="Style" role="radiogroup" aria-label="Colour style"><button data-style="duo" class="active">Two-tone</button><button data-style="mono">Mono</button></div>
+    <div class="segmented" id="Style" role="radiogroup" aria-label="Colour style"><button data-style="duo" class="active">Two-tone</button><button data-style="mono">Mono</button><button data-style="colour">Colour</button></div>
     <div class="segmented" id="Stage" role="radiogroup" aria-label="Background"><button data-stage="dark" class="active">Dark</button><button data-stage="light">Light</button></div>
   </div>
   <section class="family" id="ContextSection">
@@ -130,8 +130,12 @@ const state = { size: 24, weight: 1.5, style: 'duo', selected: ICONS[0].id, quer
 const familyOf = (icon) => FAMILIES.find((f) => f.id === icon.family);
 
 // Builds standalone SVG markup. `ink` = neutral layer colour, `accent` = family layer colour.
+// Colour: the neutral layer takes a light family tint and the meaning layer the full family colour.
+const TINTS = { studio: '#e2d5ff', general: '#ffe6b3', uv: '#c6e0ff', particle: '#ffd2bd', force: '#b8f2c7' };
 function markup(icon, { size = 24, weight = state.weight, ink = 'currentColor', accent = null, standalone = false } = {}) {
-  const tone = accent || (state.style === 'duo' ? familyOf(icon).colour : ink);
+  const family = familyOf(icon);
+  const tone = accent || (state.style === 'mono' ? ink : family.colour);
+  if (!accent && state.style === 'colour') ink = TINTS[icon.family];
   const head = `<svg${standalone ? ' xmlns="http://www.w3.org/2000/svg"' : ''} width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${weight}" stroke-linecap="round" stroke-linejoin="round">`;
   const main = icon.main ? `<g color="${ink}">${icon.main}</g>` : '';
   const second = icon.accent ? `<g color="${tone}">${icon.accent}</g>` : '';
@@ -167,6 +171,7 @@ function renderFamilies() {
       tile.className = 'tile' + (icon.id === state.selected ? ' active' : '');
       tile.title = `${icon.name} — click to inspect, double-click to copy`;
       tile.innerHTML = `<div class="art">${art(icon, state.size)}</div><span>${icon.name}</span>`;
+      if (state.style === 'colour') tile.style.background = family.colour + '1c';
       tile.addEventListener('click', () => { state.selected = icon.id; renderFamilies(); renderInspector(); });
       tile.addEventListener('dblclick', () => copy(icon));
       sheet.append(tile);
@@ -211,8 +216,9 @@ $('Copy').addEventListener('click', () => copy(ICONS.find((i) => i.id === state.
 $('Download').addEventListener('click', () => { const icon = ICONS.find((i) => i.id === state.selected); download(icon.id + '.svg', exported(icon)); });
 $('Sprite').addEventListener('click', () => {
   const symbols = ICONS.map((icon) => {
-    const tone = state.style === 'duo' ? familyOf(icon).colour : 'currentColor';
-    return `<symbol id="${icon.id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${state.weight}" stroke-linecap="round" stroke-linejoin="round"><g>${icon.main}</g>${icon.accent ? `<g color="${tone}">${icon.accent}</g>` : ''}</symbol>`;
+    const tone = state.style === 'mono' ? 'currentColor' : familyOf(icon).colour;
+    const ink = state.style === 'colour' ? TINTS[icon.family] : 'currentColor';
+    return `<symbol id="${icon.id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${state.weight}" stroke-linecap="round" stroke-linejoin="round"><g color="${ink}">${icon.main}</g>${icon.accent ? `<g color="${tone}">${icon.accent}</g>` : ''}</symbol>`;
   }).join('\n');
   download('frontier-studio-icons.svg', `<svg xmlns="http://www.w3.org/2000/svg" style="display:none">\n${symbols}\n</svg>\n`);
   toast('Sprite saved — use <svg><use href="…#uv-unwrap"/></svg>');

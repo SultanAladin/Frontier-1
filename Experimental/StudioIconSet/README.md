@@ -1,6 +1,6 @@
 # Studio Icon Set (`Experimental/StudioIconSet`)
 
-> 91 original SVG icons for the Frontier studios: launchers, shared basic tools, UV Editor, Particle Editor and
+> 91 original SVG icons for the Frontier studios: launchers, shared basic tools, UV Workspace, Particle Editor and
 > Force Field Editor. One self-contained page, no dependencies.
 
 ![Studio Icon Set](Images/StudioIconSetOverview.png)
@@ -13,7 +13,7 @@ python3 -m http.server 8094 --bind 0.0.0.0 -d Experimental/StudioIconSet
 | :--- | ---: | :--- | :--- |
 | Studios | 9 | per studio | Launcher / tab icons: UV, Particle, Force Field, Cluster LOD, Fluid, Fracture, Texture, Material, Photometric |
 | Basic tools | 20 | amber | Select, box select, move, rotate, scale, gizmo, pivot, snap, frame, grid, undo/redo, duplicate, delete, visibility, lock, settings, import/export, search |
-| UV Editor | 22 | blue | Unwrap, seams, island select, pack, stitch, cut, relax, pin, align, straighten, flips, rotate, checker, texel density, UDIM, projections, overlap, distortion |
+| UV Workspace | 22 | blue | Unwrap, seams, island select, pack, stitch, cut, relax, pin, align, straighten, flips, rotate, checker, texel density, UDIM, projections, overlap, distortion |
 | Particle Editor | 23 | orange | Emitter shapes, burst, rate, lifetime, velocity, size/colour over life, gravity, collision, trail, sprite, sub-emitter, turbulence, curve, playback |
 | Force Field Editor | 17 | green | Wind, attractor, repulsor, vortex, turbulence, drag, gravity, point, curve guide, magnetic, falloff, range, strength, streamlines, vector grid, heatmap, obstacle |
 

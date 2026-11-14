@@ -11,7 +11,7 @@ const filled = (d, opacity = 1) => p(d, `fill="currentColor" stroke="none"${opac
 export const FAMILIES = [
   { id: 'studio', label: 'Studios', colour: '#b58cff', note: 'Launcher and tab icons for each editor' },
   { id: 'general', label: 'Basic tools', colour: '#ffb238', note: 'Shared by every studio: selection, transform, history, file' },
-  { id: 'uv', label: 'UV Editor', colour: '#4d9bff', note: 'Unwrap, seams, islands, layout and inspection' },
+  { id: 'uv', label: 'UV Workspace', colour: '#4d9bff', note: 'Unwrap, seams, islands, layout and inspection' },
   { id: 'particle', label: 'Particle Editor', colour: '#ff8a4c', note: 'Emitter shapes, modules over life, playback' },
   { id: 'force', label: 'Force Field Editor', colour: '#46d267', note: 'Field types, falloff and field visualisation' },
 ];
@@ -20,7 +20,7 @@ const I = (family, id, name, tags, main, accent = '') => ({ family, id: `${famil
 
 export const ICONS = [
   // ---------------------------------------------------------------- Studios
-  I('studio', 'uv-editor', 'UV Editor', 'unwrap texture coordinates', p('M4 3.5V20h16.5') + p('M2.5 5.5L4 3.5l1.5 2M18.5 18.5l2 1.5-2 1.5'), p('M8 16l1.5-7 6.5-1.5 2.5 5-4.5 4.5z') + dot(8, 16, 1.3) + dot(9.5, 9, 1.3) + dot(16, 7.5, 1.3) + dot(18.5, 12.5, 1.3) + dot(14, 17, 1.3)),
+  I('studio', 'uv-editor', 'UV Workspace', 'unwrap texture coordinates', p('M4 3.5V20h16.5') + p('M2.5 5.5L4 3.5l1.5 2M18.5 18.5l2 1.5-2 1.5'), p('M8 16l1.5-7 6.5-1.5 2.5 5-4.5 4.5z') + dot(8, 16, 1.3) + dot(9.5, 9, 1.3) + dot(16, 7.5, 1.3) + dot(18.5, 12.5, 1.3) + dot(14, 17, 1.3)),
   I('studio', 'particle-editor', 'Particle Editor', 'vfx sparks emitter', p('M11 3l1.9 5.6L18.5 10.5l-5.6 1.9L11 18l-1.9-5.6L3.5 10.5l5.6-1.9z'), p('M18.5 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z') + dot(19, 5, 1.3) + dot(5, 19, 1.3)),
   I('studio', 'forcefield-editor', 'Force Field Editor', 'forces wind vortex physics', p('M5 4c4.5 3 4.5 13 0 16M19 4c-4.5 3-4.5 13 0 16') + dashed('M12 3v5M12 16v5'), ring(12, 12, 3.2) + dot(12, 12, 1.2)),
   I('studio', 'cluster-lod', 'Cluster LOD Studio', 'nanite lod meshlet hierarchy', p('M12 3.5l9 16H3z'), p('M7.5 11.5h9L12 19.5z')),
@@ -52,7 +52,7 @@ export const ICONS = [
   I('general', 'export', 'Export', 'save bake write', p('M4.5 15.5V19a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-3.5'), p('M12 15V4M7.5 8.5L12 4l4.5 4.5')),
   I('general', 'search', 'Search', 'find filter', ring(10.5, 10.5, 6), p('M15 15l5.5 5.5')),
 
-  // ---------------------------------------------------------------- UV Editor
+  // ---------------------------------------------------------------- UV Workspace
   I('uv', 'unwrap', 'Unwrap', 'unfold net flatten', p('M9 3h6v6h6v6h-6v6H9v-6H3V9h6z'), dashed('M9 9h6v6H9z')),
   I('uv', 'seam-mark', 'Mark Seam', 'cut edge split', p('M12 3L4 12l8 9M12 3l8 9-8 9'), p('M12 3v18', 'stroke-width="2.4"')),
   I('uv', 'seam-clear', 'Clear Seam', 'remove seam edge', p('M12 3L4 12l8 9M12 3l8 9-8 9'), dashed('M12 3v18', '1.6 3')),

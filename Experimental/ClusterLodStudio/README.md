@@ -15,19 +15,21 @@ node Experimental/ClusterLodStudio/Scripts/CheckClusterHierarchy.mjs
 
 URL parameters for repeatable captures: `?preset=vase|braid|torus|knot|asteroid|planet|terrain&budget=200000&side=5&mode=levels&error=1&wire&drawer`.
 
-## Icons and the Geometry Compiler
+## Icons and the UV Workspace
 
 - **Icon camera** (`I`, or the **Icon** tool): a square camera box opens over the viewport at a default three-quarter
   angle, fitted to the centre instance. Orbit, zoom and pan as usual; the box is the exact crop of the saved PNG. `P` or
   **Capture** renders that one instance on a transparent background at 256, 512 or 1024 px, shaded or as the live view.
   The result shows in the Inspector, can be downloaded or copied, and **Save as icon** stores a 256 px copy in this
   browser. Saved icons replace the Outliner thumbnail for their source.
-- **Geometry Compiler** (`U`, or **Open Geometry Compiler** in the Inspector's UV LAYOUT section): a full-screen UV
-  editor. Charts come from a planar chart unwrap computed in the browser: triangles are flood-filled across shared edges
-  while their normals stay within 60° of the seed, each chart is projected onto its average plane, and all charts are
-  shelf-packed at one texel density. Drag a chart to move it; `R` rotates, `M` mirrors, `P` packs all, `Esc` clears the
-  selection. Export writes OBJ with one texture coordinate per triangle corner (round-trips through Import OBJ) or an SVG
-  layout sheet with seams in amber.
+- **UV Workspace** (`U`, or **Open UV Workspace** in the Inspector's UV LAYOUT section): a full-screen UV editor for the
+  current geometry, including imported OBJ models. Islands come from a planar unwrap computed in the browser: triangles
+  are flood-filled across shared edges while their normals stay within 60° of the seed, each island is projected onto
+  its average plane, and islands smaller than 24 triangles merge into the neighbour they share the most edges with when
+  that neighbour's plane is within 75°. Click selects an island, Shift-click selects a range, Ctrl/Cmd-click adds or
+  removes one, and `A` selects all. Drag selected islands to move them as a group; `R` rotates, `M` mirrors, `P` packs all
+  at one texel density, `Esc` closes. Export writes OBJ with one texture coordinate per triangle corner (round-trips
+  through Import OBJ) or an SVG layout sheet with seams in amber.
 
 The chart unwrap is a projection, not a least-squares conformal unwrap: charts that bend far from their plane are
 foreshortened, which the chart list reports as *projection fit*. The 3D view does not sample these UVs yet.
@@ -61,7 +63,7 @@ border vertices are locked, so any mix of levels meets exactly. Error is forced 
 | `Z` `B` `G` `C` | Wireframe · Picked bounds · Grid · Cone culling |
 | `F` · `Esc` | Fit everything · Clear pick (Esc also leaves the icon camera) |
 | `I` · `P` | Icon camera · Capture icon |
-| `U` | Geometry Compiler (UV layout) |
+| `U` | UV Workspace (island layout) |
 
 Inspector: icon capture and saved icons, the static UV layout, pixel error, forced level, culling toggles, instance grid, build parameters (cluster size, group size,
 keep ratio, source density), and for the picked cluster its level, triangle count, own/parent error in units and

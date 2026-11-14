@@ -1,12 +1,15 @@
-// UV charts for the Geometry Compiler.
+// UV islands for the UV workspace.
 //
-// 1. Charts: a flood fill across shared edges groups triangles whose face normals stay within `normalLimitDeg`
-//    of the seed triangle. Each chart is projected onto the plane through its area-weighted average normal.
-// 2. Packing: charts are shelf-packed in world units, then every chart is scaled by one factor, so all charts
-//    share one texel density and the layout fits the unit square.
+// 1. Seeds: a flood fill across shared edges groups triangles whose face normals stay within `normalLimitDeg`
+//    of the seed triangle.
+// 2. Merge: islands smaller than `mergeBelow` triangles join the neighbour they share the most edges with, if the
+//    neighbour's plane is within `mergeLimitDeg`. This removes most one-triangle slivers.
+// 3. Projection: each island is projected onto the plane through its area-weighted average normal.
+// 4. Packing: islands are shelf-packed in world units, then scaled by one factor, so every island shares one texel
+//    density and the layout fits the unit square.
 //
-// This is a projection chart unwrap, not a least-squares conformal one. Charts that bend strongly are
-// foreshortened; `projection` reports how much of each chart's true area survives the projection.
+// This is a projection unwrap, not a least-squares conformal one. Islands that bend far from their plane are
+// foreshortened; `projection` reports how much of each island's true area survives the projection.
 
 const EPSILON = 1e-12;
 
@@ -15,12 +18,13 @@ function normalise(x, y, z, fallback = [0, 1, 0]) {
   return l > EPSILON ? [x / l, y / l, z / l] : fallback;
 }
 
-// Triangle corner `slot` = triangle * 3 + corner. Chart UVs are a pure function of (layout, chart), so the
-// editor can move charts without touching the source positions.
-export function unwrapCharts(positions, indices, { normalLimitDeg = 60 } = {}) {
+// Triangle corner `slot` = triangle * 3 + corner. Island UVs are a pure function of (layout, island), so the
+// editor can move islands without touching the source positions.
+export function unwrapCharts(positions, indices, { normalLimitDeg = 60, mergeBelow = 24, mergeLimitDeg = 75 } = {}) {
   const triangleCount = indices.length / 3;
   const vertexCount = positions.length / 3;
   const cosLimit = Math.cos((normalLimitDeg * Math.PI) / 180);
+  const cosMerge = Math.cos((mergeLimitDeg * Math.PI) / 180);
 
   const normal = new Float32Array(triangleCount * 3);
   const area = new Float32Array(triangleCount);
@@ -48,21 +52,20 @@ export function unwrapCharts(positions, indices, { normalLimitDeg = 60 } = {}) {
     }
   }
 
+  // 1. Seeds.
   const chartOf = new Int32Array(triangleCount).fill(-1);
   const stack = new Int32Array(triangleCount);
-  const charts = [];
+  let members = [];
   for (let seed = 0; seed < triangleCount; seed++) {
     if (chartOf[seed] >= 0) continue;
-    const id = charts.length;
+    const id = members.length;
     const sx = normal[seed * 3], sy = normal[seed * 3 + 1], sz = normal[seed * 3 + 2];
-    const members = [];
-    let top = 0, ax = 0, ay = 0, az = 0, total = 0;
+    const list = [];
+    let top = 0;
     stack[top++] = seed; chartOf[seed] = id;
     while (top) {
       const t = stack[--top];
-      members.push(t);
-      ax += normal[t * 3] * area[t]; ay += normal[t * 3 + 1] * area[t]; az += normal[t * 3 + 2] * area[t];
-      total += area[t];
+      list.push(t);
       for (let k = 0; k < 3; k++) {
         const s = neighbour[t * 3 + k];
         if (s < 0) continue;
@@ -73,20 +76,69 @@ export function unwrapCharts(positions, indices, { normalLimitDeg = 60 } = {}) {
         stack[top++] = u;
       }
     }
-    charts.push({ members, normal: normalise(ax, ay, az), area: total });
+    members.push(list);
   }
 
-  // Projection basis per chart: local (u, v) in world units, stored per corner.
+  // Area-weighted normal sums per island, kept current through merges.
+  const sums = new Float64Array(members.length * 3);
+  for (let id = 0; id < members.length; id++) {
+    for (const t of members[id]) {
+      sums[id * 3] += normal[t * 3] * area[t]; sums[id * 3 + 1] += normal[t * 3 + 1] * area[t]; sums[id * 3 + 2] += normal[t * 3 + 2] * area[t];
+    }
+  }
+  const islandNormal = (id) => normalise(sums[id * 3], sums[id * 3 + 1], sums[id * 3 + 2]);
+
+  // 2. Merge small islands into their best-connected neighbour with a compatible plane.
+  const order = members.map((_, i) => i).sort((a, b) => members[a].length - members[b].length);
+  for (const id of order) {
+    if (members[id].length === 0 || members[id].length >= mergeBelow) continue;
+    const tally = new Map();
+    for (const t of members[id]) for (let k = 0; k < 3; k++) {
+      const s = neighbour[t * 3 + k];
+      if (s < 0) continue;
+      const u = chartOf[(s / 3) | 0];
+      if (u !== id) tally.set(u, (tally.get(u) || 0) + 1);
+    }
+    const mine = islandNormal(id);
+    let best = -1, bestEdges = 0;
+    for (const [u, edges] of tally) {
+      if (members[u].length === 0) continue;
+      const theirs = islandNormal(u);
+      if (mine[0] * theirs[0] + mine[1] * theirs[1] + mine[2] * theirs[2] < cosMerge) continue;
+      if (edges > bestEdges) { best = u; bestEdges = edges; }
+    }
+    if (best < 0) continue;
+    for (const t of members[id]) chartOf[t] = best;
+    members[best].push(...members[id]);
+    sums[best * 3] += sums[id * 3]; sums[best * 3 + 1] += sums[id * 3 + 1]; sums[best * 3 + 2] += sums[id * 3 + 2];
+    members[id] = [];
+  }
+
+  // Renumber the surviving islands.
+  const survivors = members.filter((list) => list.length);
+  const renumber = new Int32Array(members.length).fill(-1);
+  let next = 0;
+  members.forEach((list, id) => { if (list.length) renumber[id] = next++; });
+  for (let t = 0; t < triangleCount; t++) chartOf[t] = renumber[chartOf[t]];
+  const finalSums = new Float64Array(survivors.length * 3);
+  members.forEach((list, id) => {
+    if (!list.length) return;
+    const r = renumber[id];
+    finalSums[r * 3] = sums[id * 3]; finalSums[r * 3 + 1] = sums[id * 3 + 1]; finalSums[r * 3 + 2] = sums[id * 3 + 2];
+  });
+  members = survivors;
+
+  // 3. Projection basis per island: local (u, v) in world units, stored per corner.
   const local = new Float32Array(triangleCount * 6);
   const result = [];
-  for (let id = 0; id < charts.length; id++) {
-    const chart = charts[id];
-    const [nx, ny, nz] = chart.normal;
+  for (let id = 0; id < members.length; id++) {
+    const list = members[id];
+    const [nx, ny, nz] = normalise(finalSums[id * 3], finalSums[id * 3 + 1], finalSums[id * 3 + 2]);
     const helper = Math.abs(ny) < 0.9 ? [0, 1, 0] : [1, 0, 0];
     const [t1x, t1y, t1z] = normalise(ny * helper[2] - nz * helper[1], nz * helper[0] - nx * helper[2], nx * helper[1] - ny * helper[0], [1, 0, 0]);
     const t2x = ny * t1z - nz * t1y, t2y = nz * t1x - nx * t1z, t2z = nx * t1y - ny * t1x;
-    let minU = Infinity, minV = Infinity, maxU = -Infinity, maxV = -Infinity, projected = 0;
-    for (const t of chart.members) {
+    let minU = Infinity, minV = Infinity, maxU = -Infinity, maxV = -Infinity, projected = 0, total = 0;
+    for (const t of list) {
       const corners = [0, 0, 0];
       for (let k = 0; k < 3; k++) {
         const p = indices[t * 3 + k] * 3;
@@ -97,13 +149,14 @@ export function unwrapCharts(positions, indices, { normalLimitDeg = 60 } = {}) {
         corners[k] = [u, v];
       }
       projected += 0.5 * Math.abs((corners[1][0] - corners[0][0]) * (corners[2][1] - corners[0][1]) - (corners[2][0] - corners[0][0]) * (corners[1][1] - corners[0][1]));
+      total += area[t];
     }
     result.push({
       id,
-      triangles: Uint32Array.from(chart.members),
-      normal: chart.normal,
-      area: chart.area,
-      projection: chart.area > EPSILON ? Math.min(1, projected / chart.area) : 1,
+      triangles: Uint32Array.from(list),
+      normal: [nx, ny, nz],
+      area: total,
+      projection: total > EPSILON ? Math.min(1, projected / total) : 1,
       localCentre: [(minU + maxU) / 2, (minV + maxV) / 2],
       width: maxU - minU,
       height: maxV - minV,
@@ -113,7 +166,7 @@ export function unwrapCharts(positions, indices, { normalLimitDeg = 60 } = {}) {
     });
   }
 
-  // Seams: edge slots whose two sides sit in different charts. Borders: edge slots with no neighbour.
+  // Seams: edge slots whose two sides sit in different islands. Borders: edge slots with no neighbour.
   const seams = [], borders = [];
   for (let slot = 0; slot < neighbour.length; slot++) {
     const s = neighbour[slot];
@@ -133,7 +186,7 @@ export function unwrapCharts(positions, indices, { normalLimitDeg = 60 } = {}) {
   };
 }
 
-// Shelf-pack chart bounding boxes (honouring each chart's rotation), then scale the whole layout uniformly.
+// Shelf-pack island bounding boxes (honouring each island's rotation), then scale the whole layout uniformly.
 export function packCharts(layout) {
   const { charts } = layout;
   let total = 0;
@@ -182,7 +235,7 @@ export function cornerUvs(layout) {
   return out;
 }
 
-// Area share of each chart in UV space, and the uniform texel scale (UV units per world unit).
+// Total UV area of the layout and the uniform texel scale (UV units per world unit).
 export function layoutStatistics(layout, uvs) {
   let uvArea = 0;
   for (let t = 0; t < layout.triangleCount; t++) {
