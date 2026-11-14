@@ -16,6 +16,8 @@
 #include "Engine/Components/Controls/ScalarCurveEditor.h"
 #include "Engine/Components/Controls/SimulationTimeRuler.h"
 #include "Engine/Components/Diagnostics/LogStreamDrawer.h"
+#include "Engine/ParticleSpace/ParticleExtension.h"
+#include "Engine/ParticleSpace/Simulation/ParticleVulkanExecutor.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldDescriptors.h"
 #include "Engine/Workspaces/Revision/RevisionTracker.h"
 
@@ -238,9 +240,11 @@ public:
     uint32_t                           CompletedSamples = 28u;
     uint32_t                           ParameterRevision= 0u;
 
-    // Shared sub-component sessions
-    ColourSpace::ColourExtension       ColourCoordinator {};
-    ColourRampEditorSession            RampEditorSession {};
+    // Shared sub-component sessions & live C++ ParticleSpace runtime
+    ColourSpace::ColourExtension          ColourCoordinator   {};
+    ParticleSpace::ParticleExtension      SimulationExtension {};
+    ParticleSpace::ParticleVulkanExecutor VulkanExecutor      {};
+    ColourRampEditorSession               RampEditorSession   {};
     ColourSwatchPickerSession          SwatchSession     {};
     ScalarCurveEditorSession           CurveSession      {};
     SimulationTimeRulerSession         RulerSession      {};

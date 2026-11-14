@@ -11,6 +11,7 @@
 
 #include "Engine/ColourSpace/ChromaticitySpace.h"
 #include "Engine/ColourSpace/ColourPresetRepository.h"
+#include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
 
 #include <algorithm>
 #include <cmath>
@@ -207,33 +208,64 @@ void ParticleWorkspaceSession::ResetStudioDefaultScene()
     SelectedRigIndex = 0u;
     InspectorTab     = ParticleInspectorTab::Overview;
 
-    // Seed Assets Preset Browser cards matching HTML Studio's exact front-page preset lineup + full 93-active count
-    AssetPresets = {
-        { "coin_fountain",       "Coin fountain",       "Ballistics & Sparks", "BALLISTICS & SPARKS · COIN · VFX",       "Gold coins fired upward from one point, arcing over and bouncing onto the floor.",           "thermal",  false, false },
-        { "magnetic_particles",  "Magnetic particles",  "Ballistics & Sparks", "BALLISTICS & SPARKS · DIPOLE · FIELDS",  "Glowing particles steered by a magnetic dipole following local field lines.",               "sunset",   false, false },
-        { "bubbles",             "Bubbles",             "Pyro & Water",        "PYRO & WATER · BUBBLE · WATER",          "Soap bubbles: transparent spheres with fresnel rim rising on buoyancy and wind.",           "ocean",    false, false },
-        { "foam",                "Foam",                "Pyro & Water",        "PYRO & WATER · BUBBLE · WATER",          "Dense small bubbles that bunch up and bob near the floor pushed by ambient wind.",         "ocean",    false, false },
-        { "sparks",              "Sparks",              "Ballistics & Sparks", "BALLISTICS & SPARKS · STREAK · EFFECTS", "Hot metal sparks: gravity, aerodynamic drag, ground bounce and wind coupling.",            "thermal",  true,  false },
-        { "rain_streaks",        "Rain streaks",        "Storms & Weather",    "STORMS & WEATHER · STREAK · WEATHER",    "High-speed rain sheets falling through wind and bursting into ground splash rings.",       "ocean",    false, false },
-        { "hail",                "Hail",                "Storms & Weather",    "STORMS & WEATHER · ICE HAIL · WEATHER",  "Translucent faceted ice pellets dropping fast and ricocheting off ground and hulls.",      "ocean",    false, false },
-        { "leaves",              "Leaves",              "Wind-Blown",          "WIND-BLOWN · WIND-DRIVEN",               "Leaves released from a canopy; flutter, tumble and follow the active wind field.",         "viridis",  false, false },
-        { "paper_debris",        "Paper & debris",      "Wind-Blown",          "WIND-BLOWN · WIND-DRIVEN",               "Light paper sheets with strong wind coupling and aerodynamic flutter sway.",               "grayscale",false, false },
-        { "fire",                "Fire",                "Pyro & Water",        "PYRO & WATER · PYRO / GLOW · VFX",       "Buoyant additive flame tongues bent smoothly by the active force field.",                  "thermal",  true,  false },
-        { "smoke",               "Smoke",               "Pyro & Water",        "PYRO & WATER · PYRO / GLOW · VFX",       "Alpha-blended soft smoke plume that expands and drifts through the wind lattice.",         "grayscale",false, false },
-        { "explosion",           "Explosion",           "Pyro & Water",        "PYRO & WATER · PYRO / GLOW · VFX",       "Spherical additive shockwave burst triggered via the Burst [B] action.",                   "thermal",  false, false },
-        { "tornado_debris",      "Tornado debris",      "Storms & Weather",    "STORMS & WEATHER · WIND-DRIVEN",         "Debris lifted in a helical swirl column driven by the ForceField lattice.",                "magma",    false, false },
-        { "sandstorm",           "Sandstorm",           "Storms & Weather",    "STORMS & WEATHER · WIND-DRIVEN",         "Dense desert dust swept across the stage under prevailing 8 m/s wind.",                    "thermal",  false, false },
-        { "snow",                "Snow",                "Storms & Weather",    "STORMS & WEATHER · SNOWFLAKE · WEATHER", "Six-point crystalline snowflakes drifting and fluttering softly across the stage.",        "ocean",    false, false },
-        { "embers",              "Embers",              "Pyro & Water",        "PYRO & WATER · PYRO / GLOW · VFX",       "Glowing embers lifted on hot air; additive, short-lived, bent by wind gusts.",             "sunset",   false, false },
-        { "object_pour",         "Object Surface Pour", "Silk & Curl",         "SILK & CURL · BOKEH RIBBON · VFX",       "Luminous bokeh strands pouring seamlessly over an obsidian 3D backing surface.",           "aurora",   true,  false },
-        { "aurora_curtain",      "Aurora Curtain",      "Atmosphere & Sky",    "ATMOSPHERE & SKY · SILK · VFX",          "Shimmering geomagnetic aurora curtains undulating in upper-atmosphere currents.",          "aurora",   false, false },
-        { "orb_spiderweb",       "Orb Spiderweb",       "Cloth & Rigging",     "CLOTH & RIGGING · XPBD STRANDS",         "Real-time radial and spiral woven silk strands reacting to wind and thrown ball.",         "grayscale",false, false },
-        { "plasma_shield",       "Plasma Hex Shield",   "Shields & Tech",      "SHIELDS & TECH · BARRIER · VFX",         "Energy barrier dome with hexagonal interference ripples and impact flares.",               "plasma",   false, false },
-    };
+    // Populate full authoritative 102-preset Assets Browser catalogue directly from ParticleSpace::QueryAllParticlePresets()!
+    AssetPresets.clear();
+    const auto AllPresets = ParticleSpace::QueryAllParticlePresets();
+    AssetPresets.reserve(AllPresets.size());
+    for (const auto& Meta : AllPresets)
+    {
+        std::string UpperCat(Meta.CategoryLabel);
+        for (char& Ch : UpperCat)
+        {
+            if (Ch >= 'a' && Ch <= 'z') Ch = static_cast<char>(Ch - 'a' + 'A');
+        }
+        std::string UpperSub(Meta.SubLabel);
+        for (char& Ch : UpperSub)
+        {
+            if (Ch >= 'a' && Ch <= 'z') Ch = static_cast<char>(Ch - 'a' + 'A');
+        }
+        const bool IsInScene = (Meta.Identifier == "object-surface-pour"
+                             || Meta.Identifier == "sparks"
+                             || Meta.Identifier == "fire");
+        std::string RampId = "aurora";
+        if (Meta.CategoryLabel == "Pyro & Water" || Meta.CategoryLabel == "Ballistics & Sparks") RampId = "thermal";
+        else if (Meta.CategoryLabel == "Storms & Weather") RampId = "ocean";
+        else if (Meta.CategoryLabel == "Wind-Blown" || Meta.CategoryLabel == "Foliage & Flora") RampId = "viridis";
+        else if (Meta.CategoryLabel == "Shields & Tech" || Meta.CategoryLabel == "Space & Distortion") RampId = "plasma";
+        else if (Meta.CategoryLabel == "Cloth & Rigging") RampId = "grayscale";
+
+        AssetPresets.push_back(ParticleAssetPresetCard {
+            std::string(Meta.Identifier),
+            std::string(Meta.DisplayName),
+            std::string(Meta.CategoryLabel),
+            UpperCat + " · " + UpperSub,
+            std::string(Meta.SummaryText),
+            std::move(RampId),
+            IsInScene,
+            Meta.Quarantined,
+        });
+    }
+
+    // Initialize live C++ ParticleSpace::ParticleExtension + verify compiled Vulkan 1.3 SPIR-V shaders
+    ParticleSpace::ParticleDocument LiveDoc = ParticleSpace::ConstructStudioDefaultDocument();
+    LiveDoc.ForceSources = ForceSources;
+    (void)SimulationExtension.Initialize(LiveDoc);
+    SimulationExtension.TriggerBurst(0u, 320u);
+    for (int Warm = 0; Warm < 24; ++Warm)
+    {
+        SimulationExtension.Tick(1.0 / 60.0);
+    }
+
+    std::string VkDiag;
+#ifdef FRONTIER_COMPILED_SHADER_DIR
+    (void)VulkanExecutor.Initialize(FRONTIER_COMPILED_SHADER_DIR, VkDiag);
+#else
+    (void)VulkanExecutor.Initialize("build/CompiledShaders", VkDiag);
+#endif
 
     LogRecords = {
         { "21:03:19", LogChannelCategory::Forces,    "ForceFields solver active — 6 bounded sources + Ambient Wind" },
-        { "21:03:19", LogChannelCategory::Particles, "Engine ready · Vulkan 1.3 Compute & Software 3D preview — 6 effects · 93 active presets" },
+        { "21:03:19", LogChannelCategory::Particles, "ParticleSpace C++20 runtime active — " + std::to_string(AllPresets.size()) + " presets (" + (VkDiag.empty() ? "Vulkan 1.3 SPIR-V ready" : VkDiag) + ")" },
     };
 }
 
@@ -252,6 +284,13 @@ void ParticleWorkspaceSession::StepSimulationClock(double DeltaSeconds) noexcept
     {
         ElapsedSeconds = std::fmod(ElapsedSeconds, LoopDurationSec);
     }
+    SimulationExtension.AccessDocument().ForceSources = ForceSources;
+    SimulationExtension.Tick(DeltaSeconds);
+    const auto& Tel = SimulationExtension.InspectTelemetry();
+    if (Tel.LastStepMillis > 0.0)
+    {
+        ComputeTimeMs = static_cast<float>(Tel.LastStepMillis);
+    }
     ++StepCounter;
     ++CompletedSamples;
 }
@@ -259,6 +298,10 @@ void ParticleWorkspaceSession::StepSimulationClock(double DeltaSeconds) noexcept
 void ParticleWorkspaceSession::TriggerBurst() noexcept
 {
     ++BurstCount;
+    for (std::size_t I = 0u; I < SimulationExtension.InspectDocument().Rigs.size(); ++I)
+    {
+        SimulationExtension.TriggerBurst(I, 180u);
+    }
     for (AuthoredParticleRigUi& Rig : ParticleRigs)
     {
         if (Rig.Visible)
@@ -273,6 +316,8 @@ void ParticleWorkspaceSession::ResetPlayback() noexcept
 {
     ElapsedSeconds = 0.0;
     StepCounter    = 0u;
+    SimulationExtension.ResetSimulation();
+    SimulationExtension.TriggerBurst(0u, 240u);
     AppendLog(LogChannelCategory::Particles, "Simulation clock reset & particle slots re-seeded");
 }
 
@@ -421,7 +466,16 @@ void ParticleWorkspaceSession::AddPresetToScene(std::size_t AssetIndex)
     Added.FilterTag     = "Effects";
     Added.CapacityCount = 2400u;
     Added.AliveCount    = 1480u;
-    if (const auto* Preset = ColourSpace::FindBuiltInColourRampPreset(Card.RampPresetId))
+    if (const auto* Meta = ParticleSpace::FindParticlePresetById(Card.Identifier))
+    {
+        ParticleSpace::ParticleRig LiveRig = ParticleSpace::InstantiateRigFromPreset(*Meta);
+        Added.CapacityCount = LiveRig.SlotCapacity;
+        Added.ColourProfile = LiveRig.ColourProfile;
+        SimulationExtension.AccessDocument().Rigs.push_back(std::move(LiveRig));
+        SimulationExtension.ResetSimulation();
+        SimulationExtension.TriggerBurst(SimulationExtension.InspectDocument().Rigs.size() - 1u, 220u);
+    }
+    else if (const auto* Preset = ColourSpace::FindBuiltInColourRampPreset(Card.RampPresetId))
     {
         Added.ColourProfile = ColourSpace::ConstructProfileFromRampPreset(*Preset);
     }

@@ -258,6 +258,26 @@ void ParticleViewportHost::RenderViewportPreview3D(
         }
     }
 
+    // 3b. Project live simulated C++ ParticleExtension slots directly into the 3D viewport stage
+    const auto LiveSlots = Session.SimulationExtension.InspectParticleSlots();
+    uint32_t DrawnLive = 0u;
+    for (std::size_t S = 0u; S < LiveSlots.size() && DrawnLive < 480u; ++S)
+    {
+        const auto& Slot = LiveSlots[S];
+        if (!ParticleSpace::IsParticleSlotAlive(Slot)) continue;
+        Point2D Pt {};
+        float   Dp = 10.0f;
+        if (!Project3D(Slot.PositionMeters[0], Slot.PositionMeters[1], Slot.PositionMeters[2], Pt, Dp)) continue;
+
+        const ColourSpace::LinearRgba Lin { Slot.ColourLinear[0], Slot.ColourLinear[1], Slot.ColourLinear[2], 1.0f };
+        const ColourSpace::SrgbRgba8  Pix = ColourSpace::ConvertLinearToSrgb8(Lin, ColourSpace::TransferCurveCategory::PureGamma22);
+        const float DepthScale = std::clamp(11.0f / std::max(3.0f, Dp), 0.55f, 1.75f);
+        const float Rad        = std::clamp(Slot.SizeMeters * 38.0f * DepthScale, 1.4f, 4.8f);
+        Surface.FillCircle(Pt, Rad * 1.45f, ColorRgba { Pix.Red, Pix.Green, Pix.Blue, 52u });
+        Surface.FillCircle(Pt, Rad * 0.65f, ColorRgba { Pix.Red, Pix.Green, Pix.Blue, 210u });
+        ++DrawnLive;
+    }
+
     // 4. Optional Lattice Domain Minimap inset (12 x 12 m)
     if (Session.ShowMinimap)
     {

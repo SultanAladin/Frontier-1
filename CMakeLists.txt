@@ -293,6 +293,9 @@ function(frontier_compile_modular_slang_shader DOMAIN_REL_PATH ENTRY_NAME SHADER
         "${FRONTIER_MODULAR_SHADER_DIR}/Visibility/*.slang"
         "${FRONTIER_MODULAR_SHADER_DIR}/DirectLighting/*.slang"
         "${FRONTIER_MODULAR_SHADER_DIR}/GlobalIllumination/*.slang"
+        "${FRONTIER_MODULAR_SHADER_DIR}/Colour/*.slang"
+        "${FRONTIER_MODULAR_SHADER_DIR}/Compute/*.slang"
+        "${FRONTIER_MODULAR_SHADER_DIR}/Particles/*.slang"
     )
     add_custom_command(
         OUTPUT "${OUT_SPV}"
@@ -302,6 +305,9 @@ function(frontier_compile_modular_slang_shader DOMAIN_REL_PATH ENTRY_NAME SHADER
             -I "${FRONTIER_MODULAR_SHADER_DIR}/Visibility"
             -I "${FRONTIER_MODULAR_SHADER_DIR}/DirectLighting"
             -I "${FRONTIER_MODULAR_SHADER_DIR}/GlobalIllumination"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/Colour"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/Compute"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/Particles"
             -I "${FRONTIER_MODULAR_SHADER_DIR}"
             -target spirv
             -profile spirv_1_3+spvGroupNonUniformArithmetic+spvInt64Atomics
@@ -323,6 +329,12 @@ endfunction()
 
 frontier_compile_modular_slang_shader(MaterialSpace/BounceLayerSummary.slang                     BounceSummaryComputeEntry       compute  BounceLayerSummary.comp.spv)
 frontier_compile_modular_slang_shader(Colour/ColourRampSampling.slang                            SampleColourRampLutComputeEntry compute  ColourRampSampling.comp.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleReleaseCompute.slang                     ParticleReleaseComputeEntry     compute  ParticleReleaseCompute.comp.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleAdvectCompute.slang                      ParticleAdvectComputeEntry      compute  ParticleAdvectCompute.comp.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleSpriteRaster.slang                       ParticleSpriteVertexEntry       vertex   ParticleSpriteRaster.vert.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleSpriteRaster.slang                       ParticleSpriteFragmentEntry     fragment ParticleSpriteRaster.frag.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleRibbonRaster.slang                       ParticleRibbonVertexEntry       vertex   ParticleRibbonRaster.vert.spv)
+frontier_compile_modular_slang_shader(Particles/ParticleRibbonRaster.slang                       ParticleRibbonFragmentEntry     fragment ParticleRibbonRaster.frag.spv)
 frontier_compile_modular_slang_shader(MaterialSpace/OpenPbrSurfaceScattering.slang               ComputeEntry                    compute  OpenPbrSurfaceScattering.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/DepthPyramidDownsample.slang                    DepthPyramidComputeEntry        compute  DepthPyramidDownsample.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/ClusterVisibilityCull.slang                     ClusterCullComputeEntry         compute  ClusterVisibilityCull.comp.spv)
@@ -581,6 +593,21 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Codecs/NetworkCodec.cpp
     Engine/Codecs/VectorFieldCodec.cpp
     Engine/Codecs/ForceModelPresetCodec.cpp
+    Engine/Codecs/ParticleCodec.cpp
+    Engine/ParticleSpace/ParticleTintDriver.cpp
+    Engine/ParticleSpace/Origins/AnalyticOrigins.cpp
+    Engine/ParticleSpace/Origins/SurfaceAnchorSampler.cpp
+    Engine/ParticleSpace/Origins/FireworkPatternSampler.cpp
+    Engine/ParticleSpace/Dynamics/CurlManifoldDynamics.cpp
+    Engine/ParticleSpace/Dynamics/OrbitalElectromagneticDynamics.cpp
+    Engine/ParticleSpace/Dynamics/SwarmFlockingDynamics.cpp
+    Engine/ParticleSpace/Dynamics/FluidGranularDynamics.cpp
+    Engine/ParticleSpace/Simulation/ParticleSoftwareExecutor.cpp
+    Engine/ParticleSpace/Simulation/ParticleVulkanExecutor.cpp
+    Engine/ParticleSpace/Presets/ParticlePresetCatalogue.cpp
+    Engine/ParticleSpace/ParticleRig.cpp
+    Engine/ParticleSpace/ParticleDocument.cpp
+    Engine/ParticleSpace/ParticleExtension.cpp
     Engine/SimulationSpace/ForceFields/ForceMotionPath.cpp
     Engine/SimulationSpace/ForceFields/VectorField.cpp
     Engine/SimulationSpace/ForceFields/FlowField.cpp
@@ -793,6 +820,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(ColourCodecInterchangeValidation Exhibits/ColourCodecInterchangeValidation.cpp)
     frontier_register_exhibit(ColourComponentsValidation     Exhibits/ColourComponentsValidation.cpp)
     frontier_register_exhibit(ParticleWorkspaceUIValidation  Exhibits/ParticleWorkspaceUIValidation.cpp)
+    frontier_register_exhibit(ParticleFoundationValidation   Exhibits/ParticleFoundationValidation.cpp)
     frontier_register_exhibit(GeometryNetworkValidation      Exhibits/GeometryNetworkValidation.cpp)
     frontier_register_exhibit(GeometryCompletionValidation   Exhibits/GeometryCompletionValidation.cpp)
     frontier_register_exhibit(MaterialScatteringValidation   Exhibits/MaterialScatteringValidation.cpp)
