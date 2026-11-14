@@ -25,6 +25,20 @@ import area lists OBJ, glTF, GLB, STL, PLY and FBX, but the file reader is not c
 
 Planned Hero Workspace and SDF Baker work is tracked in `Documentation/Plans/ClusterLodStudioHeroWorkspace.md`.
 
+## Hero Workspace
+
+The Outliner's top tree is the hero's workspace list: **Metadata**, **Source**, **Geometry**, **Icon**, **UV**, **SDF**
+(closed surfaces only) and **Cluster LOD**. Cluster LOD is the nested viewport workspace and the default. Metadata and SDF
+cover the viewport with their own panes. UV and Geometry open their overlays. Icon turns on the icon camera.
+
+- **Metadata**: name, category, tags and info, saved in this browser per source. The name replaces the hero title.
+- **SDF**: bakes a signed distance field on a worker at 32–64 cubed. The narrow band is 2 voxels, and the sign comes from
+  crossing parity along +X, so open meshes get an approximate sign. The Slice view shows one Z plane. The Raymarch view
+  sphere-traces the field on the CPU. The iso offset is a percentage of hero size. Preview only: the field does not feed
+  the renderer.
+- **Cluster preview** (Inspector): one LOD level of the built hierarchy, drawn in 3D with one colour per cluster. The level
+  slider picks the level, and the triangle and cluster counts match the hierarchy exactly.
+
 ## Icons and the UV Workspace
 
 - **Icon camera** (`I`, or the **Icon** tool): a square camera box opens over the viewport at a default three-quarter

@@ -1,6 +1,6 @@
 # Cluster LOD Studio: Hero Workspace plan
 
-Status: in progress. Branch `arena/453e172d-frontier-1`.
+Status: implemented, browser-tested. Branch `arena/453e172d-frontier-1`.
 
 ## Decisions (from the user)
 
@@ -18,7 +18,24 @@ Status: in progress. Branch `arena/453e172d-frontier-1`.
 - `GeometryEditor.js` and overlay: transform controls, depth-sorted preview, Apply rebuilds the hero, Escape closes.
 - UV Workspace: planar unwrap with tiny-island merge, Shift/Ctrl multi-select, group move, rotate and mirror.
 
+## Done (second pass)
+
+- `Engine/SdfBake.js` and `Engine/SdfWorker.js`: narrow-band distance plus crossing-parity sign. Verified on a UV sphere
+  (max error 0.004 against the exact clamped distance, 112 surface voxels disagree out of 110,592).
+- `SdfBaker.js`: bake on a worker at 32–64 cubed, Slice and Raymarch previews, iso offset as a percentage of hero size.
+  Preview only.
+- `HeroWorkspace.js`: outliner tree (Metadata, Source, Geometry, Icon, UV, SDF for closed surfaces, Cluster LOD),
+  centre panes, metadata store in localStorage.
+- `ClusterPreview.js`: Inspector 3D preview of one LOD level with a level slider. Triangle and cluster counts match the
+  hierarchy exactly (checked for LOD 3 of the vase: 7,504 triangles, 64 clusters).
+
 ## Remaining
+
+- Real GPU preview for the SDF raymarch and the cluster preview (both are Canvas 2D projections today).
+- Metadata is per browser, not in the source file or a server.
+
+## Original plan notes (superseded)
+
 
 1. **SDF Baker** (`Engine/SdfBake.js` and `SdfWorker.js`): bake a distance grid on a worker from the hero's triangles,
    using a triangle-bin acceleration grid. Preview: slice view with a Z slider, and a CPU raymarch on a small canvas.

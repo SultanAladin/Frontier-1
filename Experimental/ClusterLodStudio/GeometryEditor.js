@@ -12,7 +12,7 @@ export function createGeometryEditor({ getBase, getTransform, applyTransform, ge
   let pending = identityTransform();
   let open = false;
   let yaw = 0.6, pitch = 0.35;
-  let frame = 0;
+  let redraw = 0;
   let drag = null;
 
   function bindInputs() {
@@ -70,8 +70,8 @@ export function createGeometryEditor({ getBase, getTransform, applyTransform, ge
   }
 
   function schedule() {
-    if (frame) return;
-    frame = requestAnimationFrame(() => { frame = 0; render(); });
+    if (redraw) return;
+    redraw = requestAnimationFrame(() => { redraw = 0; render(); });
   }
 
   // Projects the transformed base orthographically. Faces whose projected winding is reversed draw amber, which

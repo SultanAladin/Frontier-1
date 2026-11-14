@@ -5,6 +5,9 @@ import { projectedError } from './Engine/ClusterSelection.js';
 import { createIconCapture } from './IconCapture.js';
 import { createUvWorkspace } from './UvWorkspace.js';
 import { createGeometryEditor } from './GeometryEditor.js';
+import { createHeroWorkspace } from './HeroWorkspace.js';
+import { createClusterPreview } from './ClusterPreview.js';
+import { createSdfBaker } from './SdfBaker.js';
 import { identityTransform } from './Engine/GeometryTransform.js';
 
 const $ = (id) => document.getElementById(id);
@@ -317,7 +320,7 @@ function adopt(result) {
   const title = build.objText ? build.objName : preset.label;
   $('GeometryTitle').textContent = title;
   $('GeometryNote').textContent = `${result.closed ? 'Closed surface' : 'Open or imported surface'} · ${number(built.sourceTriangles)} triangles · ${number(result.vertexCount)} vertices`;
-  $('SceneTitle').textContent = title;
+  $('SceneTitle').textContent = heroWorkspace.title();
   $('OutlinerSummary').textContent = `${title} · ${built.levels.length} levels`;
   $('HierarchySummary').textContent = `${number(built.clusterCount)} clusters · ${number(built.groupCount)} groups`;
   const top = built.levels[built.levels.length - 1];
@@ -333,6 +336,11 @@ function adopt(result) {
   uvWorkspace.prepare();
   refreshToggles();
   renderPicked();
+  heroWorkspace.refresh();
+  clusterPreview.refresh();
+  // A bake belongs to one geometry; cluster-only rebuilds keep it.
+  const signature = JSON.stringify([build.preset, build.objName, build.transform]);
+  if (signature !== bakedSignature) { sdfBaker.reset(); bakedSignature = signature; }
 }
 
 // --- Picked cluster ----------------------------------------------------------------------------------------
@@ -560,6 +568,23 @@ const geometryEditor = createGeometryEditor({
   toast,
 });
 
+// --- Hero Workspace: outliner tree, Cluster LOD inspector preview, SDF baker -------------------------------
+function selectHeroPart(part) {
+  if (part === 'uv') { uvWorkspace.show(); return; }
+  if (part === 'geometry') { geometryEditor.show(); return; }
+  if (part === 'sdf') sdfBaker.refresh();
+  if (iconCapture.active !== (part === 'icon')) iconCapture.setActive(part === 'icon');
+}
+const clusterPreview = createClusterPreview({ getGeometry: () => geometry, getHierarchy: () => built });
+const sdfBaker = createSdfBaker({ getGeometry: () => geometry, toast });
+const heroWorkspace = createHeroWorkspace({
+  currentSource,
+  getGeometry: () => geometry,
+  onSelect: selectHeroPart,
+  onMetadataChanged: () => { renderSources(); $('SceneTitle').textContent = heroWorkspace.title(); },
+});
+let bakedSignature = null;
+
 // --- Tick loop --------------------------------------------------------------------------------------------
 let last = performance.now(), smoothed = 16.7, nextReadout = 0;
 function tick(now) {
@@ -619,4 +644,4 @@ requestBuild();
 requestAnimationFrame(tick);
 
 // Handle for the browser validation script and for poking around in the console.
-window.ClusterLodStudio = { settings, build, layout, camera, viewport, iconCapture, uvWorkspace, geometryEditor, get geometry() { return geometry; }, get hierarchy() { return built; }, get building() { return building; }, setViewMode, setForcedLevel, setFrozen, fitAll, requestBuild };
+window.ClusterLodStudio = { settings, build, layout, camera, viewport, iconCapture, uvWorkspace, geometryEditor, heroWorkspace, clusterPreview, sdfBaker, get geometry() { return geometry; }, get hierarchy() { return built; }, get building() { return building; }, setViewMode, setForcedLevel, setFrozen, fitAll, requestBuild };

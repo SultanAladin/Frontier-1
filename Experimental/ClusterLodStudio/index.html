@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Frontier · Cluster LOD Studio</title>
+<title>Frontier · Hero Workspace</title>
 <link rel="stylesheet" href="./Studio.css">
 </head>
 <body>
@@ -17,6 +17,16 @@
       <div class="stat-tile"><span class="muted-disc" data-icon="cull"></span><small>Culled</small><strong id="StatCulled">0</strong></div>
     </div>
     <div class="outliner-scroll">
+      <div class="hero-tree" id="HeroTree">
+        <div class="collection"><span data-icon="cube"></span><div><b id="HeroName">Hero</b><small id="HeroCategory">—</small></div></div>
+        <button class="entity" data-part="metadata"><span class="entity-icon" data-icon="layers"></span><div><b>Metadata</b><small>Name, category, tags, info</small></div></button>
+        <button class="entity" data-part="source"><span class="entity-icon" data-icon="folder"></span><div><b>Source</b><small>Presets and imported OBJ</small></div></button>
+        <button class="entity" data-part="geometry"><span class="entity-icon" data-icon="rebuild"></span><div><b>Geometry</b><small>Scale, centre, mirror, rotate, flip</small></div></button>
+        <button class="entity" data-part="icon"><span class="entity-icon" data-icon="camera"></span><div><b>Icon</b><small>Thumbnail camera and library</small></div></button>
+        <button class="entity" data-part="uv"><span class="entity-icon" data-icon="uv"></span><div><b>UV</b><small>Islands, seams, OBJ and SVG</small></div></button>
+        <button class="entity" data-part="sdf" id="TreeSdf"><span class="entity-icon" data-icon="sphere"></span><div><b>SDF</b><small>Distance field, closed surfaces</small></div></button>
+        <button class="entity" data-part="cluster"><span class="entity-icon" data-icon="cube"></span><div><b>Cluster LOD</b><small>Viewport, levels and build</small></div></button>
+      </div>
       <div class="collection"><span data-icon="folder"></span><div><b>Source</b><small>Pick a source or import your own</small></div></div>
       <div id="SourceRows"></div>
       <label class="entity import" tabindex="0" title="Wavefront OBJ: positions and faces are read, vertices are welded by position">
@@ -30,7 +40,7 @@
   </section>
 
   <section class="dock centre" aria-label="Viewport">
-    <div class="tab-strip"><div class="document-tab active">Viewport</div></div>
+    <div class="tab-strip"><div class="document-tab active" id="CentreTab">Cluster LOD</div></div>
     <header class="viewport-heading">
       <span data-icon="cube" class="scene-icon"></span>
       <div class="scene-title"><b id="SceneTitle">Scene</b><small id="SceneNote">—</small></div>
@@ -67,6 +77,44 @@
     </div>
     <footer class="strip"><span id="StripText">WEBGL2 PREVIEW</span></footer>
     <button id="DrawerHandle" class="drawer-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 36 L22 0 L178 0 L200 36 Z"/></svg><span>Hierarchy</span></button>
+    <div id="HeroPanelMetadata" class="hero-pane" hidden>
+      <header class="viewport-heading"><span data-icon="layers" class="scene-icon"></span><div class="scene-title"><b>Metadata</b><small>Name, category, tags and info for this hero</small></div></header>
+      <div class="meta-grid">
+        <label class="meta-field"><span>Name</span><input id="MetaName" type="text" maxlength="80" autocomplete="off"></label>
+        <label class="meta-field"><span>Category</span><select id="MetaCategory"></select></label>
+        <label class="meta-field wide"><span>Tags</span><input id="MetaTags" type="text" maxlength="200" placeholder="comma, separated, tags" autocomplete="off"></label>
+        <label class="meta-field wide"><span>Info</span><textarea id="MetaInfo" rows="8" maxlength="2000" placeholder="Notes, provenance, licence, or anything the team needs"></textarea></label>
+        <p id="MetaNote" class="meta-note"></p>
+      </div>
+    </div>
+    <div id="HeroPanelSdf" class="hero-pane" hidden>
+      <header class="viewport-heading"><span data-icon="sphere" class="scene-icon"></span><div class="scene-title"><b>SDF</b><small>Signed distance field · preview only, does not change the rendered hero</small></div></header>
+      <div class="sdf-body">
+        <div class="sdf-well"><canvas id="SdfCanvas" aria-label="SDF slice or raymarch preview"></canvas></div>
+        <aside class="sdf-side">
+          <h4>BAKE</h4>
+          <div class="panel">
+            <div class="segmented" role="group" aria-label="Bake resolution">
+              <button data-sdf-res="32">32³</button><button data-sdf-res="40" class="active">40³</button><button data-sdf-res="48">48³</button><button data-sdf-res="64">64³</button>
+            </div>
+            <button id="SdfBake" class="primary"><span data-icon="rebuild"></span>Bake distance field</button>
+            <div id="SdfProgress" class="sdf-progress" hidden><i id="SdfBar"></i></div>
+            <small id="SdfProgressLabel" class="sdf-note"></small>
+          </div>
+          <h4>PREVIEW</h4>
+          <div class="panel">
+            <div class="segmented" role="group" aria-label="Preview mode">
+              <button data-sdf-mode="slice" class="active" aria-pressed="true">Slice</button><button data-sdf-mode="raymarch" aria-pressed="false">Raymarch</button>
+            </div>
+            <div id="SdfSliceRow" class="field"><label for="SdfSlice">Slice depth (Z)</label><input id="SdfSlice" type="range" min="0" max="39" value="20"></div>
+            <div class="field"><label for="SdfIso">Iso offset</label><output id="SdfIsoOut">0 % of hero size</output><input id="SdfIso" type="range" min="-10" max="10" step="0.5" value="0"></div>
+            <p class="sdf-note">Slice: warm is inside, cool is outside, white is the surface. Raymarch: drag to orbit.</p>
+          </div>
+          <h4>RESULT</h4>
+          <div class="panel"><div class="rows" id="SdfStats"><span>Status</span><b>Not baked for this hero</b></div></div>
+        </aside>
+      </div>
+    </div>
   </section>
 
   <section class="dock right" aria-label="Inspector">
@@ -75,6 +123,14 @@
       <div class="crumbs">Inspector / Cluster LOD</div>
       <h1 id="GeometryTitle">—</h1>
       <div class="subtitle" id="GeometryNote">—</div>
+
+      <h4>CLUSTER PREVIEW</h4>
+      <div class="panel">
+        <canvas id="ClusterPreview" class="cluster-preview" aria-label="3D cluster preview of one LOD level"></canvas>
+        <div class="field"><label for="ClusterLevel">LOD level</label><output id="ClusterLevelOut">—</output><input id="ClusterLevel" type="range" min="0" max="0" value="0"></div>
+        <div class="rows"><span>Clusters · triangles</span><b id="ClusterLevelStats">—</b></div>
+        <p id="ClusterPreviewStats">Drag to orbit. Each colour is one cluster of the chosen level.</p>
+      </div>
 
       <div class="hero">
         <div class="hero-bar"><i id="HeroFill"></i></div>
