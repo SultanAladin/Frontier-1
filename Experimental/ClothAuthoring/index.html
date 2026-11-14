@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frontier · Cloth Authoring (XPBD Top-3)</title>
+  <link rel="stylesheet" href="ClothAuthoring.css" />
+</head>
+<body>
+  <div id="app">
+    <main class="workspace">
+      <!-- Left dock: Outliner -->
+      <section class="dock left" aria-label="Left editor dock">
+        <div class="tab-strip">
+          <div class="document-tab active">Outliner</div>
+          <div class="document-tab" id="tab-viewport">Viewport</div>
+          <div class="document-tab" id="tab-inspector">Inspector</div>
+          <button class="tab-add" title="Add panel">+</button>
+        </div>
+        <div class="dock-scroll">
+          <div class="card">
+            <div class="card-header"><span>Garments</span><span class="tabular" id="garment-count">3</span></div>
+            <div id="garment-list"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span>Form Presets</span><button class="mini-link" id="btn-reset-body" style="background:none;border:0;color:#3b82f6;cursor:pointer;font-size:11px;">Reset</button></div>
+            <div class="preset-grid" id="body-presets"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span>Tailor Measurements</span><span class="tabular" id="measure-badge">—</span></div>
+            <div class="tel-grid tabular" id="measure-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Centre: Viewport -->
+      <section class="viewport-pane">
+        <canvas id="cloth-canvas"></canvas>
+        <div class="viewport-hud-top">
+          <div class="hud-pill-badge tabular" id="hud-bwh">B — · W — · H — cm</div>
+          <div class="hud-pill-badge" id="hud-garment-info">Loading mannequin…</div>
+        </div>
+        <div class="viewport-hud-bottom">
+          <div class="hud-group" id="camera-views">
+            <button class="hud-chip" data-cam="front">Front</button>
+            <button class="hud-chip active" data-cam="threeQuarter">3/4</button>
+            <button class="hud-chip" data-cam="side">Side</button>
+            <button class="hud-chip" data-cam="back">Back</button>
+          </div>
+          <div class="hud-hints">Drag: Orbit · Right-drag: Pan · Scroll: Zoom</div>
+        </div>
+      </section>
+
+      <!-- Right dock: Inspector -->
+      <section class="dock right" aria-label="Right editor dock">
+        <div class="tab-strip">
+          <div class="document-tab active">Inspector</div>
+          <div class="document-tab" id="tab-solver">Solver</div>
+          <button class="tab-add" title="Add panel">+</button>
+        </div>
+        <div class="dock-scroll">
+          <div class="card">
+            <div class="card-header"><span>Top-3 Solver Picks</span><span class="tabular" id="solver-tier-badge">Pick 1</span></div>
+            <div class="solver-grid" id="solver-buttons">
+              <button class="solver-btn active" data-solver="xpbd_small">
+                <span class="solver-title">1 · XPBD Small-Steps</span>
+                <span class="solver-sub">Vellum / Chaos class · Authoring</span>
+              </button>
+              <button class="solver-btn" data-solver="xpbd_energy">
+                <span class="solver-title">2 · XPBD Energy-Aware</span>
+                <span class="solver-sub">Eurographics 2025 · Stiffness</span>
+              </button>
+              <button class="solver-btn" data-solver="avbd">
+                <span class="solver-title">3 · AVBD</span>
+                <span class="solver-sub">SIGGRAPH 2025 · Hard constraints</span>
+              </button>
+            </div>
+            <div class="pattern-note" id="solver-note">Small timesteps, 1 iteration/substep. Compliance-based stretch/shear/bend. The production authoring standard.</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span>Simulation</span><span class="tabular" id="frame-counter">Frame 0</span></div>
+            <div class="ctrl-row">
+              <div class="ctrl-head"><span>Substeps / Frame</span><span class="ctrl-val tabular" id="val-substeps">8</span></div>
+              <input type="range" id="rng-substeps" min="4" max="20" step="1" value="8" />
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-head"><span>Iterations / Substep</span><span class="ctrl-val tabular" id="val-iters">1</span></div>
+              <input type="range" id="rng-iters" min="1" max="4" step="1" value="1" />
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl-head"><span>Wind Draft</span><span class="ctrl-val tabular" id="val-wind">0.00×</span></div>
+              <input type="range" id="rng-wind" min="0" max="1.5" step="0.05" value="0" />
+            </div>
+            <div class="toggle-row"><span>Self-Collision (PT)</span><button class="switch" id="tgl-selfcol" aria-pressed="false"></button></div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button id="btn-play" style="flex:1;">Pause</button>
+              <button id="btn-recut" style="flex:1;">Re-cut</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span>Physics Telemetry</span><span class="tel-pill" id="tel-status">STABLE</span></div>
+            <div class="tel-card">
+              <div class="tel-head"><span class="tel-name" id="tel-solver-name">XPBD Small-Steps</span><span class="tel-ms tabular" id="tel-ms">0.0 ms</span></div>
+              <div class="tel-grid tabular">
+                <div class="tel-cell"><span class="tel-k">Peak Stretch</span><span class="tel-v" id="tel-maxstr">0.0%</span></div>
+                <div class="tel-cell"><span class="tel-k">Mean Stretch</span><span class="tel-v" id="tel-meanstr">0.0%</span></div>
+                <div class="tel-cell"><span class="tel-k">Skin Pen</span><span class="tel-v" id="tel-pen">0.00 mm</span></div>
+                <div class="tel-cell"><span class="tel-k">Invalid</span><span class="tel-v" id="tel-invalid">0</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Top notch: Project-Zero control centre -->
+    <div class="notch-shell" id="notch-shell">
+      <div class="shade">
+        <div class="control-dashboard">
+          <header><span>Project-Zero · Cloth Authoring</span><button id="notch-close" aria-label="Close">×</button></header>
+          <div class="dashboard-grid" id="notch-solvers">
+            <button data-solver="xpbd_small" class="active"><i>1</i>XPBD Small-Steps</button>
+            <button data-solver="xpbd_energy"><i>2</i>Energy-Aware</button>
+            <button data-solver="avbd"><i>3</i>AVBD</button>
+          </div>
+          <p style="margin-top:24px;">Top-3 picks from 2024–2026 research. XPBD small-steps is the Vellum/Chaos authoring standard; Energy-Aware adds stiffness feedback; AVBD adds hard-constraint bake stability.</p>
+        </div>
+      </div>
+      <button class="notch-handle" id="notch-handle">
+        <svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0,0 L40,0 L60,36 L140,36 L160,0 L200,0 L200,36 L0,36 Z"/></svg>
+        <span>Project-Zero</span>
+      </button>
+    </div>
+
+    <!-- Bottom drawer: Asset Browser (fabrics) -->
+    <div class="drawer" id="drawer">
+      <button class="drawer-handle" id="drawer-handle">Asset Browser · Fabrics</button>
+      <div class="drawer-body" id="fabric-row"></div>
+    </div>
+  </div>
+  <script type="module" src="ClothDemoApp.js"></script>
+</body>
+</html>
