@@ -12,7 +12,7 @@ import { MannequinAvatar } from './Engine/MannequinAvatar.js';
 import { cloneTextileMaterial } from './Engine/TextileCatalog.js';
 import { buildGarmentPresetSpec } from './Engine/GarmentPresets.js';
 import { compileGarmentNetwork } from './Engine/PatternDraftNetwork.js';
-import { OrthotropicClothSolver } from './Engine/OrthotropicClothSolver.js';
+import { ClothSolver } from './Engine/ClothSolver.js';
 import { evaluateHeatmapColorRGB } from './Engine/PatternCanvas2D.js';
 import { computeSeamAllowancePolygonMm } from './Engine/GarmentPatternExport.js';
 
@@ -363,7 +363,7 @@ avatar.ensureSignedDistanceVolume();
     {
         const spec = buildGarmentPresetSpec(key, avatar);
         const net = compileGarmentNetwork(spec, avatar, { particleSpacingMm: 15.5 });
-        const solver = new OrthotropicClothSolver(net, cloneTextileMaterial(spec.defaultTextile), avatar);
+        const solver = new ClothSolver(net, cloneTextileMaterial(spec.defaultTextile), avatar);
         for (let f = 0; f < 125; ++f) solver.stepFrame(1.0 / 60.0);
         renderDrapedViewport(fb, { x: 16 + idx * 394, y: 16, w: 382, h: 788 }, avatar, solver, hex, 'textile', yaw);
     });
@@ -377,12 +377,12 @@ avatar.ensureSignedDistanceVolume();
     const fb = new FrameBuffer(1600, 820);
     const specD = buildGarmentPresetSpec('coutureDress', avatar);
     const netD = compileGarmentNetwork(specD, avatar, { particleSpacingMm: 15.5 });
-    const solverD = new OrthotropicClothSolver(netD, cloneTextileMaterial('cottonPoplin'), avatar);
+    const solverD = new ClothSolver(netD, cloneTextileMaterial('cottonPoplin'), avatar);
     for (let f = 0; f < 125; ++f) solverD.stepFrame(1.0 / 60.0);
 
     const specB = buildGarmentPresetSpec('biasSilkTunic', avatar);
     const netB = compileGarmentNetwork(specB, avatar, { particleSpacingMm: 15.5 });
-    const solverB = new OrthotropicClothSolver(netB, cloneTextileMaterial('mulberrySilk'), avatar);
+    const solverB = new ClothSolver(netB, cloneTextileMaterial('mulberrySilk'), avatar);
     for (let f = 0; f < 125; ++f) solverB.stepFrame(1.0 / 60.0);
 
     renderPatternSheet2D(fb, { x: 16, y: 16, w: 600, h: 788 }, netD, solverD, 'strain');

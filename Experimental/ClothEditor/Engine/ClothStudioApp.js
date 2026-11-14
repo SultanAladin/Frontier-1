@@ -12,8 +12,7 @@ import { MannequinAvatar, AVATAR_BODY_PRESETS } from './MannequinAvatar.js?v=4';
 import { TEXTILE_CATALOG, TEXTILE_COLOR_SWATCHES, cloneTextileMaterial, SOLVER_CATALOG, estimateClothResolutionPIE } from './TextileCatalog.js?v=4';
 import { GARMENT_PRESET_CATALOG, buildGarmentPresetSpec } from './GarmentPresets.js?v=4';
 import { compileGarmentNetwork } from './PatternDraftNetwork.js?v=4';
-import { OrthotropicClothSolver } from './OrthotropicClothSolver.js?v=4';
-import { WebGpuClothAccelerator } from './WebGpuClothAccelerator.js?v=4';
+import { ClothSolver } from './ClothSolver.js?v=4';
 import { PatternCanvas2D } from './PatternCanvas2D.js?v=4';
 import { GarmentViewport3D } from './GarmentViewport3D.js?v=4';
 import { exportPatternSVG, exportPatternDXF, exportDrapedOBJ } from './GarmentPatternExport.js?v=4';
@@ -54,8 +53,6 @@ class ClothStudioApp
 
         this.network = null;
         this.solver = null;
-        this.gpu = new WebGpuClothAccelerator();
-        this.useWebGpu = true;
 
         this.running = true;
         this.stageMode = 'split';
@@ -68,14 +65,11 @@ class ClothStudioApp
     async initialize()
     {
         // 1. Load Parametric Mannequin Asset + Initialize WebGPU Compute Accelerator concurrently
-        const [mannequinBuf] = await Promise.all([
-            fetch('./Assets/FrontierMannequin.bin').then((r) =>
-            {
-                if (!r.ok) throw new Error(`Failed to load FrontierMannequin.bin (${r.status})`);
-                return r.arrayBuffer();
-            }),
-            this.gpu.initialize(),
-        ]);
+        const mannequinBuf = await fetch('./Assets/FrontierMannequin.bin').then((r) =>
+        {
+            if (!r.ok) throw new Error(`Failed to load FrontierMannequin.bin (${r.status})`);
+            return r.arrayBuffer();
+        });
 
         this.mannequin = MannequinAvatar.fromArrayBuffer(mannequinBuf);
         this.mannequin.applyBodyPreset(this.activeBodyPresetKey);
@@ -122,10 +116,7 @@ class ClothStudioApp
 
             if (this.running && this.solver)
             {
-                if (this.useWebGpu && this.gpu.supported)
-                    await this.gpu.stepGpuFrame(this.solver, dt);
-                else
-                    this.solver.stepFrame(dt);
+                this.solver.stepFrame(dt);
 
                 this.viewport3D.updateClothBuffers();
                 this._refreshHudAndStatus();
@@ -167,7 +158,7 @@ class ClothStudioApp
         this.network = compileGarmentNetwork(spec, this.mannequin, { particleSpacingMm: this.particleSpacingMm });
 
         if (!this.solver)
-            this.solver = new OrthotropicClothSolver(this.network, this.textile, this.mannequin);
+            this.solver = new ClothSolver(this.network, this.textile, this.mannequin);
         else
             this.solver.bindNetwork(this.network, this.textile);
 
@@ -175,8 +166,6 @@ class ClothStudioApp
         this.solver.windEnabled = prevWind;
         this.solver.enableSelfCollision = prevSelf;
 
-        if (this.gpu.supported)
-            this.gpu.uploadNetworkBuffers(this.solver);
 
         this.canvas2D.fabricHex = this.fabricHex;
         this.canvas2D.bindSimulation(this.network, this.solver);
@@ -199,8 +188,6 @@ class ClothStudioApp
             this.solver.stepFrame(1.0 / 60.0);
 
         const cert = this.solver.runCubicBarrierFitVerification(16);
-        if (this.gpu.supported)
-            this.gpu.syncStateToGpu(this.solver);
 
         this.running = false;
         this._syncPlayPauseUi();
@@ -270,7 +257,6 @@ class ClothStudioApp
         const doReset = () =>
         {
             this.solver.resetDrape();
-            if (this.gpu.supported) this.gpu.syncStateToGpu(this.solver);
             this.viewport3D.syncPinMarkers();
             this.viewport3D.updateClothBuffers();
             this.running = true;
@@ -293,9 +279,6 @@ class ClothStudioApp
             this.solver.resetSolverMemory();
             this.solver.wakeUp();
             // The CPU-side positions may have moved while a CPU-only architecture (C–F) was active; push them
-            // to the WebGPU buffers so switching back to A/B never snaps to a stale pose.
-            if (this.gpu.supported)
-                this.gpu.syncStateToGpu(this.solver);
             // A previous "Verify Fit (Bake)" pauses the loop — switching architecture always resumes live draping.
             this.running = true;
             this._syncPlayPauseUi();
@@ -407,7 +390,6 @@ class ClothStudioApp
         document.getElementById('rail-clear-pins').addEventListener('click', () =>
         {
             this.solver.clearAllPins();
-            if (this.gpu.supported) this.gpu.syncStateToGpu(this.solver);
             this.viewport3D.syncPinMarkers();
             Toast('Cleared all cloth pins');
         });
@@ -638,8 +620,7 @@ class ClothStudioApp
         document.getElementById('inspector-garment-sub').textContent =
             `${this.textile.shortLabel} · ${AVATAR_BODY_PRESETS[this.activeBodyPresetKey].name}`;
 
-        const gpuActive = this.useWebGpu && this.gpu.supported;
-        const backendTxt = gpuActive ? 'WebGPU Compute (WGSL)' : 'CPU Typed-Array (Deterministic)';
+        const backendTxt = 'CPU Typed-Array · A–F solver (from-scratch rewrite)';
         document.getElementById('compute-backend-text').textContent = backendTxt;
         document.getElementById('status-backend-label').textContent = backendTxt;
         const speedTxt = `RMS ${this.solver.rmsSpeedMmS.toFixed(1)} mm/s`;
@@ -683,7 +664,7 @@ class ClothStudioApp
         this.inspectorScope = OpenScope();
 
         const crumbMap = {
-            solver:  'Inspector / Top-2 Cloth Solvers & WebGPU',
+            solver:  'Inspector / Cloth Solvers A-F (CPU rewrite)',
             textile: 'Inspector / Orthotropic Textile Constitutive Law',
             pattern: 'Inspector / 2D Millimetre Pattern & Export',
             avatar:  'Inspector / Parametric Tailor Mannequin',
@@ -731,8 +712,6 @@ class ClothStudioApp
                 this.solver.fitVerifiedCertificate = null;
                 this.solver.resetSolverMemory();
                 this.solver.wakeUp();
-                if (this.gpu.supported)
-                    this.gpu.syncStateToGpu(this.solver);
                 this.running = true;
                 this._syncPlayPauseUi();
                 this._refreshHudAndStatus();
@@ -763,19 +742,14 @@ class ClothStudioApp
         }]);
 
         SwitchRow(archInner, {
-            Label: 'WebGPU Compute (WGSL)',
-            Detail: this.gpu.supported ? `Active: ${this.gpu.adapterName}` : 'Auto-fallback: CPU Typed-Array active',
-            Read: () => this.useWebGpu && this.gpu.supported,
+            Label: 'Knot-pipe colliders (Option D)',
+            Detail: 'Guo et al. templates from KnotTemplates.js; only solver D consumes them',
+            Read: () => this.solver.knotCollidersEnabled,
             Write: (v) =>
             {
-                this.useWebGpu = v;
-                if (v && this.gpu.supported) this.gpu.syncStateToGpu(this.solver);
-                this._refreshHudAndStatus();
+                this.solver.knotCollidersEnabled = v;
+                if (v && !this.solver._modeStates.gn?.pipe) this.solver.setKnotCollider('bow', [0, 1.05, 0.12]);
             },
-            Availability: () => ({
-                Enabled: this.gpu.supported,
-                Reason: 'WebGPU adapter unavailable in this browser; deterministic CPU Typed-Array solver active.',
-            }),
         });
 
         SliderRow(archInner, {
@@ -1110,7 +1084,6 @@ class ClothStudioApp
                     this.mannequin.ensureSignedDistanceVolume();
                     this.viewport3D.refreshMannequinGeometry();
                     this.solver.wakeUp();
-                    if (this.gpu.supported) this.gpu.syncStateToGpu(this.solver);
                     this._renderMeasureTable();
                 },
             });

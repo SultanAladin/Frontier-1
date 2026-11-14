@@ -189,90 +189,71 @@ export function cloneTextileMaterial(presetKey = 'cottonPoplin')
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------
-// Candidate Solver Architecture Catalog (Options A–F for Side-by-Side Game Runtime + Tailoring Authoring Evaluation)
+// Solver catalog (Options A-F). Written for the from-scratch ClothSolver.js -- each summary states
+// what that mode actually computes, including where it departs from its paper.
 // --------------------------------------------------------------------------------------------------------------------------------------------
 export const SOLVER_CATALOG = {
     avbd: {
-        id: 'avbd',
-        option: 'Option A',
-        shortCode: 'A · AVBD',
-        badge: 'OPT A · AVBD',
-        title: 'Option A · AVBD (Giles, Diaz & Yuksel 2025)',
-        role: 'Game + Authoring Baseline',
-        citation: 'Giles, Diaz & Yuksel (SIGGRAPH 2025) — Augmented Vertex Block Descent',
-        summary: 'Per-vertex 3x3 SPD Hessian Newton descent with dual Lagrange multiplier stiffness augmentation across color batches.',
+        id: 'avbd', option: 'Option A', shortCode: 'A · AVBD', badge: 'OPT A · AVBD',
+        title: 'Option A · AVBD — Augmented Vertex Block Descent',
+        role: 'Authoring fit + stiff game hero garments',
+        citation: 'Giles, Diaz & Yuksel, SIGGRAPH 2025 (extends VBD, Chen et al. 2024)',
+        summary: 'Colour-ordered per-vertex 3x3 Newton (VBD) on an orthotropic membrane. Seams and body contact are hard constraints in the AVBD sense: dual variables + a penalty that grows while their error stays large.',
     },
     xpbd: {
-        id: 'xpbd',
-        option: 'Option B',
-        shortCode: 'B · XPBD',
-        badge: 'OPT B · XPBD',
-        title: 'Option B · XPBD (Macklin et al. 2016)',
-        role: 'Lightweight Game Runtime',
-        citation: 'Macklin, Muller & Chentanez (MIG 2016) — Extended Position-Based Dynamics',
-        summary: 'Color-batched scalar compliance projection (alpha = 1 / (k h^2)) for orthotropic warp/weft/shear, bending, and seams.',
+        id: 'xpbd', option: 'Option B', shortCode: 'B · XPBD', badge: 'OPT B · XPBD',
+        title: 'Option B · XPBD — Extended Position-Based Dynamics',
+        role: 'Game runtime',
+        citation: 'Macklin, Müller & Chentanez, MIG 2016',
+        summary: 'Substepped constraint projection with physical compliance (alpha-tilde = 1/(k h^2)) and per-substep Lagrange multipliers for warp, weft, shear, bending and seams. The cheapest, most predictable mode.',
     },
     scr: {
-        id: 'scr',
-        option: 'Option C',
-        shortCode: 'C · Cosserat (Hsu 25)',
-        badge: 'OPT C · SCR',
-        title: 'Option C · Stable Cosserat Rods (Hsu, Wang, Wu & Yuksel 2025)',
-        role: 'Game + Knit/Piping/Yarn Cloth',
-        citation: 'Hsu, Wang, Wu & Yuksel (Utah Graphics Lab, SIGGRAPH 2025)',
-        summary: 'Adapted (not a yarn-level rod sim): mesh edges as rods, diagonal VBD position update (Eq. 28-29) + quaternion orientation state (Eq. 15/22/25-27, normalised blend, not the exact Eq. 18 product) + hinge/patch passes that actually make the folds.',
+        id: 'scr', option: 'Option C', shortCode: 'C · SCR', badge: 'OPT C · SCR',
+        title: 'Option C · Stable Cosserat Rods (graph form)',
+        role: 'Authoring — folds, knits, piping-like behaviour',
+        citation: 'Hsu, Wang, Wu & Yuksel, SIGGRAPH 2025 (+ Alg. 1/2)',
+        summary: 'Mesh edges are Cosserat rods: split position/orientation iterations, diagonal stretch Hessian (Eq. 29), and the closed-form quaternion update q = (v*b*e3 + lambda*b)/(lambda^2 - |v|^2) with lambda from |v|+|b| refined by the Banach fixed point stored as gamma (Eq. 22/25-27). Graph form of Eq. 17 for b. Hinge bending and a mass-weighted seam stitch pass are added, as membrane cloth still needs them (force balance alone leaves multi-mm seam gaps).',
     },
     gn_knot: {
-        id: 'gn_knot',
-        option: 'Option D',
-        shortCode: 'D · FPB-GN (Guo 25)',
-        badge: 'OPT D · FPB-GN',
-        title: 'Option D · Unified Contact Gauss-Newton (Guo, Wang et al. 2025)',
-        role: 'Authoring + Layered Folds/Knots',
-        citation: 'Guo et al. (SIGGRAPH 2025, guo-2025-fpb) — Fast Physics-Based Modeling of Knots and Ties Using Templates (primary GN simulator, Sec. 6.1)',
-        summary: 'Adapted from Guo Sec. 6.1 only: Gauss-Newton (H = J^T J) with VF contact Hessians H_con = G_con G_con^T inside 3x3 block solves, 1.2^K lifespan weights (Sec. 5.2) and a 0.9^k-style step filter (Sec. 6.2, no CCD re-check). Knot templates/mapping are not wired to any garment.',
+        id: 'gn_knot', option: 'Option D', shortCode: 'D · GN-KNOT', badge: 'OPT D · GN-KNOT',
+        title: 'Option D · Gauss-Newton knots & layers (Guo et al.)',
+        role: 'Authoring — layered cloth, knots & ties',
+        citation: 'Guo et al., SIGGRAPH 2025 (primary simulator Sec. 6.1; templates Sec. 4-5 in KnotTemplates.js)',
+        summary: 'Quasistatic Gauss-Newton: one Newton solve per substep with contact inside the system (H_con = G_con * G_con^T, signed barycentric gradients), then an intersection-checked step that backtracks by 0.9^k until penetration stops growing. Can drape over tessellated knot-pipe colliders.',
     },
     jgs2: {
-        id: 'jgs2',
-        option: 'Option E',
-        shortCode: 'E · JGS2 (Lan 25)',
-        badge: 'OPT E · JGS2',
-        title: 'Option E · Second-Order Schur-Coupled GS (Lan, Wang & Yang 2025)',
-        role: '60 FPS GPU Game + Stiff Authoring',
-        citation: 'Lan, Lu, Yuan, Xu, Su, Huamin Wang, Jiang & Yin Yang (ACM TOG 44(4), 2025) — JGS2',
-        summary: 'JGS2-inspired only (no cubature precomputation from Lan et al.): 1-ring Schur-style block (H_ii - sum H_ij H_jj^-1 H_ji, invented rank-one H_ij) + 2.5 mm trust region that suppresses overshoot chatter.',
+        id: 'jgs2', option: 'Option E', shortCode: 'E · JGS2', badge: 'OPT E · JGS2',
+        title: 'Option E · JGS2 — second-order Jacobi/Gauss-Seidel',
+        role: 'Stiff cloth, game-leaning research mode',
+        citation: 'Lan et al., ACM TOG 44(4) 2025',
+        summary: 'Local solves made second-order-aware: the Schur form (H_ii - H_iC H_CC^-1 H_Ci) dx = rhs - H_iC H_CC^-1 rhs_C (their Eq. 13) with coupling blocks H_ij assembled from the shared faces. H_CC is kept block-diagonal and there is no cubature precompute, so this is JGS2 with those two approximations stated. A seam stitch pass supplements the force solve.',
     },
     kes_aa: {
-        id: 'kes_aa',
-        option: 'Option F',
-        shortCode: 'F · KES-AA (Kawabata)',
-        badge: 'OPT F · KES-AA',
-        title: 'Option F · Kawabata Co-Rotational Shell + Anderson(2) (KES-FB + PIE)',
-        role: 'Precision CAD Authoring + Drape',
-        citation: 'Kawabata (Text. Res. J.); Peng & Cao (Composites A 2005); Walker & Ni (SIAM J. Numer. Anal. 2011); Cerda & Mahadevan (PRL 2003)',
-        summary: 'Non-orthogonal warp/weft fiber-frame co-rotational shell with measured KES-FB 2HG/2HB yarn-crossover hysteresis and energy-guarded Anderson(m=2) acceleration.',
+        id: 'kes_aa', option: 'Option F', shortCode: 'F · KES-AA', badge: 'OPT F · KES-AA',
+        title: 'Option F · Kawabata shell + Anderson(2)',
+        role: 'Authoring — textile hand-feel',
+        citation: 'Kawabata KES-FB data model; Anderson acceleration, Walker & Ni 2011',
+        summary: 'Non-orthogonal warp/weft shell: coupled stresses S_u = C11 e_u + C12 e_v (C12 > 0), compressive buckling cap, trellis shear lock, and 2HB/2HG hysteresis as rate damping. Anderson(m=2) is applied inside one substep, where the fixed-point operator is actually constant, and is rejected unless the total energy falls.',
     },
 };
 
 // --------------------------------------------------------------------------------------------------------------------------------------------
-// Zhang, Wang, Liu, Pei, Xu & Huamin Wang (2025, zhang-2025-pie): Physics-Inspired Estimation of Optimal Cloth Mesh Resolution
-// Solves c1 * r^6 + c2 * r^4 = B / E_vol (Eq. 4, calibrated on Cerda & Mahadevan 2003 & Vandeparre et al. 2011 wrinklon scaling)
+// Zhang et al. (SIGGRAPH 2025) "PIE": optimal cloth mesh resolution from material stiffness.
+// Their Eq. (4):   c1 * r^6 + c2 * r^4 = B / E,   c1 = 32.08 m^-3, c2 = -1.876e-4 m^-1,
+// with r in [2.5, 50] mm. B is bending stiffness [N m], E a Young's modulus [N/m^2].
+// r grows monotonically with B/E in the calibrated band, so bisection finds it.
+// The paper then builds non-uniform sizing maps around garment features; this Atelier keeps a
+// per-fabric (and per-axis) spacing, which is the global part of their method only.
 // --------------------------------------------------------------------------------------------------------------------------------------------
-function solvePiePolynomialRadiusMeters(yRatioM3)
+function radiusFromStiffnessRatio(B, E)
 {
-    const c1 = 32.08;          // [m^-3] Zhang-2025-PIE Section 4.1.1
-    const c2 = -1.876e-4;      // [m^-1]
-    const yClamped = Math.max(1e-12, Math.min(2e-6, yRatioM3));
-    let lo = 0.0025;           // 2.5 mm minimum physical mesh bound in Zhang-2025-PIE
-    let hi = 0.0500;           // 50.0 mm maximum coarse bound
-    for (let it = 0; it < 22; ++it)
+    const y = B / Math.max(1.0, E);
+    let lo = 0.0025, hi = 0.050;
+    for (let i = 0; i < 40; ++i)
     {
         const mid = 0.5 * (lo + hi);
-        const r2 = mid * mid;
-        const r4 = r2 * r2;
-        const val = c1 * r4 * r2 + c2 * r4;
-        if (val < yClamped) lo = mid;
-        else hi = mid;
+        const value = 32.08 * Math.pow(mid, 6) - 1.876e-4 * Math.pow(mid, 4);
+        if (value < y) lo = mid; else hi = mid;
     }
     return 0.5 * (lo + hi);
 }
@@ -280,45 +261,33 @@ function solvePiePolynomialRadiusMeters(yRatioM3)
 export function estimateClothResolutionPIE(textile)
 {
     const tex = textile || TEXTILE_CATALOG.cottonPoplin;
-    const hMeters = Math.max(1.2e-4, (tex.thicknessMm || 0.35) * 1e-3);
-    const B = Math.max(1e-8, (tex.bendRigidity || 0.42) * 1e-3); // [N*m]
-    // Effective decrimp-to-taut volumetric Young's modulus E_vol [N/m^2] along Warp and Weft
-    const decrimpFactorWarp = 1.0 / (1.0 + 0.18 * (tex.warpCrimpPct ?? 2.0));
-    const decrimpFactorWeft = 1.0 / (1.0 + 0.18 * (tex.weftCrimpPct ?? 2.8));
-    // NOTE: Zhang Eq. 4 is calibrated with E as a measured Young's modulus; the [2e3, 2e6] N/m^2 range
-    // in the paper is the calibration envelope, not a per-fabric clamp. The previous 2e6 cap truncated
-    // almost every Atelier textile to the same E, erasing warp/weft anisotropy (rWarp == rWeft for
-    // cottonPoplin despite 1850 vs 1550 N/m). Keep only a wide numerical safety bound.
-    const EwarpVol = Math.max(2e3, Math.min(1e8, ((tex.warpModulus || 1800) * decrimpFactorWarp) / hMeters));
-    const EweftVol = Math.max(2e3, Math.min(1e8, ((tex.weftModulus || 1500) * decrimpFactorWeft) / hMeters));
-    const EisoVol = 0.5 * (EwarpVol + EweftVol);
+    const thicknessM = Math.max(1e-4, (tex.thicknessMm || 0.35) * 1e-3);
+    const bendingB = Math.max(1e-9, (tex.bendRigidity || 0.42) * 1e-3); // catalog stores mN*m
+    // Sheet modulus [N/m] over thickness is a Young's modulus [N/m^2]. Woven yarns are not taut
+    // until crimp is pulled out, so discount by crimp; the factor is an Atelier calibration.
+    const youngWarp = ((tex.warpModulus || 1800) / (1 + 0.18 * (tex.warpCrimpPct ?? 2))) / thicknessM;
+    const youngWeft = ((tex.weftModulus || 1500) / (1 + 0.18 * (tex.weftCrimpPct ?? 2.5))) / thicknessM;
+    const youngIso = Math.sqrt(youngWarp * youngWeft);
 
-    const rWarpMm = solvePiePolynomialRadiusMeters(B / EwarpVol) * 1000.0;
-    const rWeftMm = solvePiePolynomialRadiusMeters(B / EweftVol) * 1000.0;
-    const rPieBaseMm = solvePiePolynomialRadiusMeters(B / EisoVol) * 1000.0;
+    const rWarpMm = radiusFromStiffnessRatio(bendingB, youngWarp) * 1000;
+    const rWeftMm = radiusFromStiffnessRatio(bendingB, youngWeft) * 1000;
+    const rPieBaseMm = radiusFromStiffnessRatio(bendingB, youngIso) * 1000;
 
-    // Cerda & Mahadevan (2003, PRL 90, 074302) characteristic wrinkle wavelength lambda ~ r_opt / c (c ~ 0.27 from Pythagorean quarter-wave Fig. 4)
+    // r_opt ~ c * lambda (Zhang Eq. after Fig. 4). c is left as one Atelier constant.
     const wavelengthMm = rPieBaseMm / 0.27;
-    // Vandeparre et al. (2011, PRL) wrinklon transition length L_w ~ lambda^(3/2) * (delta / h^2)^(1/4)
+    // Vandeparre et al. wrinklon transition L_w ~ lambda^(3/2) * (delta / h^2)^(1/4).
     const lambdaM = wavelengthMm * 1e-3;
-    const deltaComp = Math.max(0.015, tex.compressionRatio || 0.05);
-    const wrinklonTransitionMm = Math.pow(lambdaM, 1.5) * Math.pow(deltaComp / (hMeters * hMeters), 0.25) * 1000.0;
+    const wrinklonTransitionMm = Math.pow(lambdaM, 1.5)
+        * Math.pow(Math.max(0.01, tex.compressionRatio || 0.05) / (thicknessM * thicknessM), 0.25) * 1000;
 
-    // Interactive Atelier Authoring spacing (clamped to smooth interactive Delaunay grid [9.5, 19.0] mm) & 60 FPS Game Runtime spacing
-    const authoringSpacingMm = Math.round(Math.max(9.5, Math.min(18.5, rPieBaseMm * 1.35)) * 2.0) * 0.5;
-    const gameSpacingMm = Math.round(Math.max(13.5, Math.min(24.0, rPieBaseMm * 2.05)) * 2.0) * 0.5;
-    const seamSourceMm = Math.max(2.5, rPieBaseMm * 0.72);
-
+    const roundHalf = (v) => Math.round(v * 2) / 2;
     return {
-        rPieBaseMm,
-        rWarpMm,
-        rWeftMm,
+        rPieBaseMm, rWarpMm, rWeftMm,
         anisotropyRatio: rWarpMm / Math.max(0.1, rWeftMm),
-        wavelengthMm,
-        wrinklonTransitionMm,
-        seamSourceMm,
-        authoringSpacingMm,
-        gameSpacingMm,
+        wavelengthMm, wrinklonTransitionMm,
+        seamSourceMm: Math.max(2.5, rPieBaseMm * 0.72),
+        // Spacing choices for this app (not from the paper): authoring is finer than r*, games coarser.
+        authoringSpacingMm: roundHalf(Math.min(18.5, Math.max(9.5, rPieBaseMm * 1.35))),
+        gameSpacingMm: roundHalf(Math.min(24, Math.max(13.5, rPieBaseMm * 2.05))),
     };
 }
-

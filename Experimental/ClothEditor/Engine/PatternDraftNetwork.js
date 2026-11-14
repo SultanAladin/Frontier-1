@@ -5,76 +5,10 @@
 //    2D (u,v) Warp/Weft reference Dm^-1 operators, affine-invariant discrete plate bending stencils, M:N arc-length
 //    seam stitchers, and deterministic ConstraintBatchColoring for race-free WebGPU & CPU execution.
 //
-//    Also hosts the two research-derived authoring helpers:
-//      • Zhang et al. (2025) PIE  — physics-optimal mesh resolution (Cerda–Mahadevan / Vandeparre scaling)
-//      • Guo et al. (2025) FPB    — Bézier pipe knot & tie templates for the unified contact solver (Option D)
+//    Mesh resolution comes from Zhang et al. (2025) PIE (see TextileCatalog.estimateClothResolutionPIE).
+//    Knot/tie templates live in KnotTemplates.js (Guo et al. 2025) and are consumed by solver Option D.
 
 import { estimateClothResolutionPIE } from './TextileCatalog.js';
-
-// ---------------------------------------------------------------------------------------------------------------
-// Guo, Wang, Liu, Li, Wang, Yang & Wang (2025) — variable-radius Bézier pipe knot templates ("FPB", Sec. 4).
-// Each template is a list of cubic Bézier spans with a per-span radius, sampled into a tube that the unified
-// contact-coupled Gauss–Newton solver (Option D) can drape cloth over without tunnelling.
-// ---------------------------------------------------------------------------------------------------------------
-export const FPB_KNOT_TEMPLATES = {
-    fourInHand: {
-        id: 'fourInHand',
-        label: 'Four-in-Hand Tie',
-        spans: [
-            { p: [[0.00, 0.00, 0.00], [0.02, 0.03, 0.01], [0.05, 0.05, -0.02], [0.07, 0.02, 0.02]], r: [0.011, 0.014] },
-            { p: [[0.07, 0.02, 0.02], [0.09, -0.02, 0.05], [0.06, -0.05, 0.01], [0.03, -0.03, -0.02]], r: [0.014, 0.009] },
-            { p: [[0.03, -0.03, -0.02], [0.00, -0.01, -0.04], [0.01, 0.02, -0.01], [0.04, 0.03, 0.01]], r: [0.009, 0.012] },
-        ],
-    },
-    halfWindsor: {
-        id: 'halfWindsor',
-        label: 'Half-Windsor Tie',
-        spans: [
-            { p: [[0.00, 0.00, 0.00], [0.03, 0.04, -0.01], [0.06, 0.06, 0.02], [0.08, 0.01, 0.03]], r: [0.012, 0.016] },
-            { p: [[0.08, 0.01, 0.03], [0.10, -0.03, 0.05], [0.05, -0.06, 0.00], [0.02, -0.04, -0.03]], r: [0.016, 0.010] },
-            { p: [[0.02, -0.04, -0.03], [-0.01, -0.01, -0.05], [0.02, 0.02, -0.02], [0.05, 0.04, 0.02]], r: [0.010, 0.013] },
-        ],
-    },
-    grannyKnot: {
-        id: 'grannyKnot',
-        label: 'Granny Knot',
-        spans: [
-            { p: [[0.00, 0.00, 0.00], [0.03, 0.05, 0.00], [0.07, 0.03, 0.03], [0.06, -0.02, -0.01]], r: [0.010, 0.013] },
-            { p: [[0.06, -0.02, -0.01], [0.04, -0.06, -0.04], [-0.01, -0.03, -0.02], [0.00, 0.02, 0.02]], r: [0.013, 0.010] },
-        ],
-    },
-};
-
-function cubicBezier(p0, p1, p2, p3, t)
-{
-    const u = 1.0 - t;
-    const b0 = u * u * u, b1 = 3 * u * u * t, b2 = 3 * u * t * t, b3 = t * t * t;
-    return [
-        b0 * p0[0] + b1 * p1[0] + b2 * p2[0] + b3 * p3[0],
-        b0 * p0[1] + b1 * p1[1] + b2 * p2[1] + b3 * p3[1],
-        b0 * p0[2] + b1 * p1[2] + b2 * p2[2] + b3 * p3[2],
-    ];
-}
-
-// Sample a knot template into a polyline + per-sample radius (the pipe geometry FPB consumes).
-export function sampleKnotTemplate(templateId = 'fourInHand', samplesPerSpan = 14)
-{
-    const tpl = FPB_KNOT_TEMPLATES[templateId] || FPB_KNOT_TEMPLATES.fourInHand;
-    const points = [];
-    const radii = [];
-    for (const span of tpl.spans)
-    {
-        const [p0, p1, p2, p3] = span.p;
-        const [r0, r1] = span.r;
-        for (let k = 0; k < samplesPerSpan; ++k)
-        {
-            const t = k / samplesPerSpan;
-            points.push(cubicBezier(p0, p1, p2, p3, t));
-            radii.push(r0 + (r1 - r0) * t);
-        }
-    }
-    return { id: tpl.id, label: tpl.label, points, radii };
-}
 
 function evaluatePolylineAtArc(points, tNorm)
 {
