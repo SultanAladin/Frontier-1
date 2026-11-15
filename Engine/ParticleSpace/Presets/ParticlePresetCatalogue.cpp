@@ -1954,9 +1954,30 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
     else if (Pid.rfind("effector-", 0u) == 0u)
     {
         EffectorLatticeSpec Eff {};
+        Eff.WaveFrequencyPerM   = P.CurlFreq;
+        Eff.WaveDriveSpeed      = P.CurlAmp;
+        Eff.BaseCellWidthMeters = P.SizeBirth;
+        for (int K = 0; K < 3; ++K)
+        {
+            Eff.IdleColorLinear[K] = P.ColA[K];
+            Eff.MidColorLinear[K]  = P.ColMid[K];
+            Eff.PeakColorLinear[K] = P.ColB[K];
+        }
+
         if (Pid == "effector-sphere-dots")
         {
-            Eff.Driver = EffectorDriverCategory::OrbitingDual;
+            Eff.Driver              = EffectorDriverCategory::OrbitingDual;
+            Eff.HostSurface         = EffectorHostSurfaceKind::ObsidianSphere;
+            Eff.PrimitiveShape      = EffectorPrimitiveShape::HalftoneCircle;
+            Eff.GridColumns         = 28u;
+            Eff.GridRows            = 26u;
+            Eff.OriginExtentM[0]    = 1.32f;
+            Eff.OriginExtentM[1]    = 1.32f;
+            Eff.OriginExtentM[2]    = 1.32f;
+            Eff.MinScaleFraction    = 0.12f;
+            Eff.MaxExtrusionMeters  = 1.15f;
+            Eff.FalloffContrast     = 1.85f;
+            Eff.BaseCellWidthMeters = 0.12f;
             SurfaceAnchorOrigin S {};
             S.Preset = SurfacePresetCategory::ObsidianSphere;
             for (int K = 0; K < 3; ++K) { S.CenterMeters[K] = P.OriginCenter[K]; S.ScaleMeters[K] = 1.32f; }
@@ -1964,31 +1985,110 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         }
         else if (Pid == "effector-hand-halftone")
         {
-            Eff.Driver = EffectorDriverCategory::FluidSimplexWave;
+            // Sculpted Wet-Obsidian Controlled Integrator (ControlVehicle) wrapped in ruby-crimson halftone dots & raised upper tiles!
+            Rig.DisplayName         = "Obsidian Control Vehicle · Halftone & Tiles";
+            Rig.SlotCapacity        = 2400u;
+            Eff.Driver              = EffectorDriverCategory::FluidSimplexWave;
+            Eff.HostSurface         = EffectorHostSurfaceKind::ControlVehicle;
+            Eff.PrimitiveShape      = EffectorPrimitiveShape::AutoHalftoneUpperTiles;
+            Eff.BackingFinish       = EffectorBackingFinish::ObsidianGlossy;
+            Eff.IncludeVehicleWheels = false;
+            Eff.GridColumns         = 48u;
+            Eff.GridRows            = 50u;
+            Eff.OriginExtentM[0]    = 1.00f;
+            Eff.OriginExtentM[1]    = 1.00f;
+            Eff.OriginExtentM[2]    = 1.00f;
+            Eff.WaveFrequencyPerM   = 0.88f;
+            Eff.WaveDriveSpeed      = 0.72f;
+            Eff.MinScaleFraction    = 0.16f;
+            Eff.MaxExtrusionMeters  = 0.12f;
+            Eff.FalloffContrast     = 1.55f;
+            Eff.BaseCellWidthMeters = 0.068f;
+            Eff.IdleColorLinear[0]  = 0.010f; Eff.IdleColorLinear[1] = 0.011f; Eff.IdleColorLinear[2] = 0.016f;
+            Eff.MidColorLinear[0]   = 0.880f; Eff.MidColorLinear[1]  = 0.014f; Eff.MidColorLinear[2]  = 0.032f;
+            Eff.PeakColorLinear[0]  = 1.000f; Eff.PeakColorLinear[1] = 0.075f; Eff.PeakColorLinear[2] = 0.022f;
+            Eff.PrimaryVolume       = { EffectorVolumeShape::Sphere, {  1.15f, 1.05f,  0.45f }, 1.45f };
+            Eff.SecondaryVolume     = { EffectorVolumeShape::Sphere, { -1.35f, 0.85f, -0.35f }, 0.0f  };
             SurfaceAnchorOrigin S {};
-            S.Preset = SurfacePresetCategory::ObsidianHandOrb;
-            for (int K = 0; K < 3; ++K) { S.CenterMeters[K] = P.OriginCenter[K]; S.ScaleMeters[K] = 1.35f; }
+            S.Preset = SurfacePresetCategory::ControlVehicleIntegrator;
+            S.CenterMeters[0] = 0.0f; S.CenterMeters[1] = 0.0f; S.CenterMeters[2] = 0.0f;
+            S.ScaleMeters[0]  = 1.0f; S.ScaleMeters[1]  = 1.0f; S.ScaleMeters[2]  = 1.0f;
             Rig.Origin = S;
         }
         else if (Pid == "effector-torus-hex")
         {
-            Eff.Driver = EffectorDriverCategory::ExpandingPulseRing;
+            // Kinetic Hex Matrix on Frontier's Controlled Integrator (ControlVehicle) — switchable to TorusRing via HostSurface!
+            Rig.DisplayName         = "Kinetic Hex Matrix · Control Vehicle";
+            Rig.SlotCapacity        = 2400u;
+            Eff.Driver              = EffectorDriverCategory::ExpandingPulseRing;
+            Eff.HostSurface         = EffectorHostSurfaceKind::ControlVehicle;
+            Eff.PrimitiveShape      = EffectorPrimitiveShape::HexagonPlate;
+            Eff.BackingFinish       = EffectorBackingFinish::ObsidianGlossy;
+            Eff.IncludeVehicleWheels = false;
+            Eff.GridColumns         = 48u;
+            Eff.GridRows            = 50u;
+            Eff.OriginExtentM[0]    = 1.00f;
+            Eff.OriginExtentM[1]    = 1.00f;
+            Eff.OriginExtentM[2]    = 1.00f;
+            Eff.WaveFrequencyPerM   = 0.82f;
+            Eff.WaveDriveSpeed      = 0.78f;
+            Eff.MinScaleFraction    = 0.18f;
+            Eff.MaxExtrusionMeters  = 0.11f;
+            Eff.FalloffContrast     = 1.45f;
+            Eff.BaseCellWidthMeters = 0.070f;
+            Eff.IdleColorLinear[0]  = 0.007f; Eff.IdleColorLinear[1] = 0.010f; Eff.IdleColorLinear[2] = 0.022f;
+            Eff.MidColorLinear[0]   = 0.025f; Eff.MidColorLinear[1]  = 0.560f; Eff.MidColorLinear[2]  = 0.980f;
+            Eff.PeakColorLinear[0]  = 1.000f; Eff.PeakColorLinear[1] = 0.600f; Eff.PeakColorLinear[2] = 0.042f;
             SurfaceAnchorOrigin S {};
-            S.Preset = SurfacePresetCategory::TorusRing;
-            for (int K = 0; K < 3; ++K) { S.CenterMeters[K] = P.OriginCenter[K]; S.ScaleMeters[K] = 1.35f; }
+            S.Preset = SurfacePresetCategory::ControlVehicleIntegrator;
+            S.CenterMeters[0] = 0.0f; S.CenterMeters[1] = 0.0f; S.CenterMeters[2] = 0.0f;
+            S.ScaleMeters[0]  = 1.0f; S.ScaleMeters[1]  = 1.0f; S.ScaleMeters[2]  = 1.0f;
             Rig.Origin = S;
         }
         else if (Pid == "effector-object-placer")
         {
-            Eff.Driver = EffectorDriverCategory::Placeable3DEffectors;
+            // Placeable Twin 3D Effectors (Sphere + Box) sculpting Frontier's Controlled Integrator (ControlVehicle)
+            Rig.DisplayName         = "Control Vehicle · Placeable 3D Effectors";
+            Rig.SlotCapacity        = 2200u;
+            Eff.Driver              = EffectorDriverCategory::Placeable3DEffectors;
+            Eff.HostSurface         = EffectorHostSurfaceKind::ControlVehicle;
+            Eff.PrimitiveShape      = EffectorPrimitiveShape::AutoHalftoneUpperTiles;
+            Eff.BackingFinish       = EffectorBackingFinish::ObsidianGlossy;
+            Eff.IncludeVehicleWheels = false;
+            Eff.GridColumns         = 44u;
+            Eff.GridRows            = 50u;
+            Eff.OriginExtentM[0]    = 1.00f;
+            Eff.OriginExtentM[1]    = 1.00f;
+            Eff.OriginExtentM[2]    = 1.00f;
+            Eff.MinScaleFraction    = 0.18f;
+            Eff.MaxExtrusionMeters  = 0.13f;
+            Eff.FalloffContrast     = 1.48f;
+            Eff.BaseCellWidthMeters = 0.070f;
+            Eff.IdleColorLinear[0]  = 0.009f; Eff.IdleColorLinear[1] = 0.012f; Eff.IdleColorLinear[2] = 0.020f;
+            Eff.MidColorLinear[0]   = 0.022f; Eff.MidColorLinear[1]  = 0.680f; Eff.MidColorLinear[2]  = 0.220f;
+            Eff.PeakColorLinear[0]  = 0.980f; Eff.PeakColorLinear[1] = 0.640f; Eff.PeakColorLinear[2] = 0.055f;
+            Eff.PrimaryVolume       = { EffectorVolumeShape::Sphere, {  1.35f, 0.95f,  0.40f }, 1.40f };
+            Eff.SecondaryVolume     = { EffectorVolumeShape::Box,    { -1.45f, 1.05f, -0.35f }, 1.15f };
             SurfaceAnchorOrigin S {};
-            S.Preset = SurfacePresetCategory::UtahTeapot;
-            for (int K = 0; K < 3; ++K) { S.CenterMeters[K] = P.OriginCenter[K]; S.ScaleMeters[K] = 1.55f; }
+            S.Preset = SurfacePresetCategory::ControlVehicleIntegrator;
+            S.CenterMeters[0] = 0.0f; S.CenterMeters[1] = 0.0f; S.CenterMeters[2] = 0.0f;
+            S.ScaleMeters[0]  = 1.0f; S.ScaleMeters[1]  = 1.0f; S.ScaleMeters[2]  = 1.0f;
             Rig.Origin = S;
         }
         else
         {
-            Eff.Driver = EffectorDriverCategory::FluidSimplexWave;
+            Eff.Driver              = EffectorDriverCategory::FluidSimplexWave;
+            Eff.HostSurface         = EffectorHostSurfaceKind::FloorPlaneXZ;
+            Eff.PrimitiveShape      = EffectorPrimitiveShape::HeightExtrudedCube;
+            Eff.GridColumns         = 24u;
+            Eff.GridRows            = 24u;
+            Eff.OriginExtentM[0]    = 1.70f;
+            Eff.OriginExtentM[1]    = 0.25f;
+            Eff.OriginExtentM[2]    = 1.70f;
+            Eff.MinScaleFraction    = 0.05f;
+            Eff.MaxExtrusionMeters  = 1.15f;
+            Eff.FalloffContrast     = 1.90f;
+            Eff.BaseCellWidthMeters = 0.125f;
             SurfaceLatticeOrigin Lat {};
             Lat.Columns = 24u;
             Lat.Rows    = 24u;
@@ -1999,13 +2099,13 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         }
         Rig.Dynamics.Effector = Eff;
         Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
-        Rig.ColourProfile.Range.RangeMin = P.OriginCenter[1];
-        Rig.ColourProfile.Range.RangeMax = P.OriginCenter[1] + 1.0f;
+        Rig.ColourProfile.Range.RangeMin = 0.0f;
+        Rig.ColourProfile.Range.RangeMax = 1.0f;
         ColourSpace::MultiStopGradientSource EffGrad {};
         EffGrad.Stops = {
-            { 0.00f, ColourSpace::LinearRgba { 0.14f, 0.24f, 0.46f, 0.92f } },
-            { 0.50f, ColourSpace::LinearRgba { 0.24f, 0.72f, 0.96f, 0.96f } },
-            { 1.00f, ColourSpace::LinearRgba { 0.95f, 0.88f, 0.42f, 1.00f } },
+            { 0.00f, ColourSpace::LinearRgba { P.ColA[0],   P.ColA[1],   P.ColA[2],   1.0f } },
+            { 0.50f, ColourSpace::LinearRgba { P.ColMid[0], P.ColMid[1], P.ColMid[2], 1.0f } },
+            { 1.00f, ColourSpace::LinearRgba { P.ColB[0],   P.ColB[1],   P.ColB[2],   1.0f } },
         };
         Rig.ColourProfile.Source = std::move(EffGrad);
     }

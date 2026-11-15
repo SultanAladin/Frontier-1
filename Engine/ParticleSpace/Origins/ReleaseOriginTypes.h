@@ -51,10 +51,11 @@ enum class SurfacePresetCategory : uint8_t
     QuartzCrystalCluster  = 11u,
     ArchitecturalArchway  = 12u,
     BevelledMonolith      = 13u,
-    FacetedSpire          = 14u,
-    StellatedStarPoly     = 15u,
-    CustomPolygonNetwork  = 16u,
-    Count                 = 17u
+    FacetedSpire             = 14u,
+    StellatedStarPoly        = 15u,
+    CustomPolygonNetwork     = 16u,
+    ControlVehicleIntegrator = 17u,
+    Count                    = 18u
 };
 
 enum class SurfaceSamplingStrategy : uint8_t

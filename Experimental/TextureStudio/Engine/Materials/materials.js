@@ -20,6 +20,8 @@ import { sandGLSL, sandColor } from "./sandKernels.js";
 import { granularCatalog } from "./granularCatalog.js";
 import { candyCatalog } from "./candyCatalog.js";
 import { engineeringCatalog } from "./engineeringCatalog.js";
+import { animatedVfxCatalog } from "./animatedVfxCatalog.js";
+import { animatedVfxGLSL, animatedVfxColor } from "./animatedVfxKernels.js";
 import { normalizeSandLayers, sandLayerSeed } from "./materialProfiles.js";
 
 export const materials = [
@@ -725,6 +727,7 @@ export const materials = [
   ...granularCatalog(),
   ...candyCatalog(),
   ...engineeringCatalog(),
+  ...animatedVfxCatalog(),
 ].map(normalizeMaterial).flatMap(Parameters => Parameters.camouflage ? [Parameters, { ...Parameters, id: `${Parameters.id}-smooth`, name: `${Parameters.name} · Smooth`, camouflageStyle: "camouflage-smooth" }] : [Parameters]).map(Parameters =>
 {
   if (!Parameters.camouflage) return Parameters;
@@ -1032,6 +1035,8 @@ function buildMaterialShaderUniformValues(p, surfaceSources) {
     uPixelFill: p.pixelFill,
     uAoIntensity: p.aoIntensity ?? 1,
     uEmissionScale: Math.max(1, p.emissionStrength),
+    uTime: p.animTime ?? 0,
+    uAnimSpeed: p.animSpeed ?? 1,
     uAverageFlakeColor: averageColor,
     uType: p.type,
     uFlakes: p.flakes,
@@ -1170,11 +1175,11 @@ export function attachProceduralMaterialEvaluation(m, input, paintOverlayOpts = 
     }
 
     shader.vertexShader =
-      "varying vec3 vProcPosition;\nvarying vec3 vProcNormal;\nvarying vec2 vProcUv;\n" +
+      "varying vec3 vProcPosition;\nvarying vec3 vProcNormal;\nvarying vec2 vProcUv;\nvarying vec3 vProcWorldPos;\nvarying vec3 vProcWorldNormal;\n" +
       shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <begin_vertex>",
-      "#include <begin_vertex>\nvProcPosition=position;vProcNormal=normal;vProcUv=uv;",
+      "#include <begin_vertex>\nvProcPosition=position;vProcNormal=normal;vProcUv=uv;vProcWorldPos=(modelMatrix*vec4(position,1.0)).xyz;vProcWorldNormal=normalize(mat3(modelMatrix)*normal);",
     );
     shader.fragmentShader =
       `
@@ -1184,7 +1189,9 @@ export function attachProceduralMaterialEvaluation(m, input, paintOverlayOpts = 
       varying vec3 vProcPosition;
       varying vec3 vProcNormal;
       varying vec2 vProcUv;
-      #define uType ${Math.max(0, Math.min(46, Math.floor(Number(p.type) || 0)))}
+      varying vec3 vProcWorldPos;
+      varying vec3 vProcWorldNormal;
+      #define uType ${Math.max(0, Math.min(59, Math.floor(Number(p.type) || 0)))}
       #define uPotterySurface ${p.potterySurface ? 1 : 0}
       #define uMetalScratches ${p.metalScratches ? 1 : 0}
       #ifdef TP_PAINT_OVERLAY
@@ -1276,6 +1283,7 @@ export function attachProceduralMaterialEvaluation(m, input, paintOverlayOpts = 
       ${sandGLSL()}
 ${patternGLSL()}
 ${botanicalGLSL()}
+${animatedVfxGLSL()}
       vec3 flakeTint=vec3(0.);
       vec2 yarnUV=vec2(0.);
       float yarnDirection=0.;
@@ -1394,6 +1402,7 @@ ${botanicalGLSL()}
       ${sandColor()}
       if(uType==22 && uPotterySurface==1)surfaceHeight=(noise3(pp*220.)-.5)*.00004*(1.-smoothstep(.5,1.5,length(fwidth(pp*220.))));
 ${botanicalColor()}
+${animatedVfxColor()}
 ${patternColorGLSL()}
       #if uMetalScratches == 1
       vec3 metalCuts=scratchField(surfaceUV(pp,weights));
@@ -1441,6 +1450,7 @@ ${patternColorGLSL()}
       if(uType==44)roughnessFactor=mix(roughnessFactor,.22,engPadMask);
       if(uType==45 && uPanelMode>=0.5 && uPanelMode<1.5)roughnessFactor=mix(roughnessFactor,.62,engHoleMask);
       if(uType==46 && uPanelMode<0.5)roughnessFactor=mix(roughnessFactor,.85,engHoleMask);
+      if(uType>=47 && uType<=59 && vfxRoughOverride>=0.0)roughnessFactor=vfxRoughOverride;
       if(uType==29 || uMetalScratches==1)roughnessFactor=mix(roughnessFactor,min(1.,roughnessFactor+.3),scratchMask);
       #ifdef TP_PAINT_OVERLAY
       }
@@ -1463,6 +1473,7 @@ ${patternColorGLSL()}
       if(uType==17)metalnessFactor=mix(.25,.96,contactMask);
       if(uType==20)metalnessFactor=ledContact*.92;
       if(uType>=43 && uType<=46)metalnessFactor=clamp(max(metalnessFactor*(1.-engHoleMask),engMetalMask),0.,1.);
+      if(uType>=47 && uType<=59 && vfxMetalOverride>=0.0)metalnessFactor=vfxMetalOverride;
       #ifdef ALLOY_PATTERN
         metalnessFactor=mix(metalnessFactor,patternParamsSample.g,patternChannelMaskSample.g);
       #endif
@@ -1591,7 +1602,8 @@ ${patternColorGLSL()}
       "#include <emissivemap_fragment>",
       `#include <emissivemap_fragment>
       if(${m.userData.paintOverlay ? "_tpMatCov.r > 0.001 && " : ""}uType==20)totalEmissiveRadiance*=emitterMask;
-      if(${m.userData.paintOverlay ? "_tpMatCov.r > 0.001 && " : ""}uType==45)totalEmissiveRadiance=engEmitColor*engEmitMask*uEmissionScale;`,
+      if(${m.userData.paintOverlay ? "_tpMatCov.r > 0.001 && " : ""}uType==45)totalEmissiveRadiance=engEmitColor*engEmitMask*uEmissionScale;
+      if(${m.userData.paintOverlay ? "_tpMatCov.r > 0.001 && " : ""}(uType>=47 && uType<=59))totalEmissiveRadiance=vfxEmitColor*vfxEmitMask*uEmissionScale;`,
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <lights_fragment_end>",
@@ -1610,7 +1622,7 @@ ${patternColorGLSL()}
         "#include <opaque_fragment>",
         m.userData.paintOverlay
           ? "#include <opaque_fragment>\nif(_tpMatCov.r>0.001 && (uType==27 || uType==28)){if(surfaceCoverage<.001)discard;gl_FragColor.a=surfaceCoverage;}"
-          : "#include <opaque_fragment>\nif(uType==27 || uType==28){if(surfaceCoverage<.001)discard;gl_FragColor.a=surfaceCoverage;}",
+          : "#include <opaque_fragment>\nif(uType==27 || uType==28){if(surfaceCoverage<.001)discard;gl_FragColor.a=surfaceCoverage;}\nif(uType==47 && vfxDiscardMask>0.5)discard;\nif(uType==49 && vfxAlphaOverride>=0.0)gl_FragColor.a=vfxAlphaOverride;",
       );
     if (p.bakeMode)
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -1657,7 +1669,7 @@ export function createMaterial(input) {
     anisotropyRotation: ((p.anisotropyRotation ?? 0) * Math.PI * 2) + ((p.weaveAngle * Math.PI) / 180),
     transmission: p.Authoring ? p.translucency : p.type === 5 ? 0.97 : p.translucency,
     opacity: p.opacity ?? 1,
-    transparent: (p.opacity ?? 1) < 1,
+    transparent: Boolean(p.transparent) || (p.opacity ?? 1) < 1,
     emissive: p.type === 20 || p.type === 45 || (p.emissionStrength || 0) > 0 ? (p.emissionColor || "#000000") : "#000000",
     emissiveIntensity: p.emissionStrength,
     toneMapped: !p.bakeMode,

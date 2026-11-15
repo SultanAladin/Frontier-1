@@ -7,6 +7,7 @@
 
 #include "Engine/ColourSpace/ColourRampSampler.h"
 #include "Engine/ColourSpace/TransferFunction.h"
+#include "Engine/ParticleSpace/Sprites/ProceduralSpriteSynthesizer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -77,6 +78,211 @@ void WriteTilePixel(
     TileRgba[Offset + 1u]    = Green;
     TileRgba[Offset + 2u]    = Blue;
     TileRgba[Offset + 3u]    = Alpha;
+}
+
+void SynthesizeParticlePreviewTileRgba(
+    std::string_view   DisplayTitle,
+    ColorRgba          Tint,
+    std::span<uint8_t> OutTileRgba) noexcept
+{
+    constexpr uint32_t Size = ThumbnailSheetRepository::TileDimensionPixels;
+    const std::string LowerTitle = LowercaseAscii(DisplayTitle);
+    const uint32_t    TitleSeed  = static_cast<uint32_t>(ComputeFnv1a64(DisplayTitle) & 0xffffffffu);
+    const float       TintR      = static_cast<float>(Tint.Red) / 255.0f;
+    const float       TintG      = static_cast<float>(Tint.Green) / 255.0f;
+    const float       TintB      = static_cast<float>(Tint.Blue) / 255.0f;
+
+    std::vector<float> AccumR(static_cast<std::size_t>(Size) * Size, 0.0f);
+    std::vector<float> AccumG(static_cast<std::size_t>(Size) * Size, 0.0f);
+    std::vector<float> AccumB(static_cast<std::size_t>(Size) * Size, 0.0f);
+
+    for (uint32_t Y = 0u; Y < Size; ++Y)
+    {
+        const float Ny = (static_cast<float>(Y) + 0.5f) / static_cast<float>(Size) * 2.0f - 1.0f;
+        for (uint32_t X = 0u; X < Size; ++X)
+        {
+            const float Nx = (static_cast<float>(X) + 0.5f) / static_cast<float>(Size) * 2.0f - 1.0f;
+            const float Vig = std::clamp(1.0f - (Nx * Nx + Ny * Ny) * 0.36f, 0.25f, 1.0f);
+            const std::size_t Idx = static_cast<std::size_t>(Y) * Size + X;
+            AccumR[Idx] = (0.042f + 0.028f * TintR) * Vig;
+            AccumG[Idx] = (0.046f + 0.028f * TintG) * Vig;
+            AccumB[Idx] = (0.060f + 0.036f * TintB) * Vig;
+        }
+    }
+
+    auto AddGlowStamp = [&](float Cx, float Cy, float Radius, float Cr, float Cg, float Cb, float Gain) noexcept
+    {
+        const int32_t MinX = std::max<int32_t>(0, static_cast<int32_t>(std::floor(((Cx - Radius) * 0.5f + 0.5f) * Size)));
+        const int32_t MaxX = std::min<int32_t>(static_cast<int32_t>(Size) - 1, static_cast<int32_t>(std::ceil(((Cx + Radius) * 0.5f + 0.5f) * Size)));
+        const int32_t MinY = std::max<int32_t>(0, static_cast<int32_t>(std::floor(((Cy - Radius) * 0.5f + 0.5f) * Size)));
+        const int32_t MaxY = std::min<int32_t>(static_cast<int32_t>(Size) - 1, static_cast<int32_t>(std::ceil(((Cy + Radius) * 0.5f + 0.5f) * Size)));
+        for (int32_t Py = MinY; Py <= MaxY; ++Py)
+        {
+            const float Ny = (static_cast<float>(Py) + 0.5f) / static_cast<float>(Size) * 2.0f - 1.0f;
+            for (int32_t Px = MinX; Px <= MaxX; ++Px)
+            {
+                const float Nx = (static_cast<float>(Px) + 0.5f) / static_cast<float>(Size) * 2.0f - 1.0f;
+                const float D2 = ((Nx - Cx) * (Nx - Cx) + (Ny - Cy) * (Ny - Cy)) / std::max(1e-5f, Radius * Radius);
+                if (D2 >= 1.0f)
+                {
+                    continue;
+                }
+                const float W = std::exp(-D2 * 3.8f) * (1.0f - D2) * Gain;
+                const std::size_t Idx = static_cast<std::size_t>(Py) * Size + static_cast<std::size_t>(Px);
+                AccumR[Idx] += Cr * W;
+                AccumG[Idx] += Cg * W;
+                AccumB[Idx] += Cb * W;
+            }
+        }
+    };
+
+    auto CompositeSpriteStamp = [&](const ProceduralSpriteSpec& Spec, float Cx, float Cy, float HalfSize, uint32_t Seed, float Gain, bool Additive) noexcept
+    {
+        const int32_t MinX = std::max<int32_t>(0, static_cast<int32_t>(std::floor(((Cx - HalfSize) * 0.5f + 0.5f) * Size)));
+        const int32_t MaxX = std::min<int32_t>(static_cast<int32_t>(Size) - 1, static_cast<int32_t>(std::ceil(((Cx + HalfSize) * 0.5f + 0.5f) * Size)));
+        const int32_t MinY = std::max<int32_t>(0, static_cast<int32_t>(std::floor(((Cy - HalfSize) * 0.5f + 0.5f) * Size)));
+        const int32_t MaxY = std::min<int32_t>(static_cast<int32_t>(Size) - 1, static_cast<int32_t>(std::ceil(((Cy + HalfSize) * 0.5f + 0.5f) * Size)));
+        for (int32_t Py = MinY; Py <= MaxY; ++Py)
+        {
+            const float Ny = (static_cast<float>(Py) + 0.5f) / static_cast<float>(Size) * 2.0f - 1.0f;
+            const float Uy = (Ny - Cy) / HalfSize;
+            for (int32_t Px = MinX; Px <= MaxX; ++Px)
+            {
+                const float Nx = (static_cast<float>(Px) + 0.5f) / static_cast<float>(Size) * 2.0f - 1.0f;
+                const float Ux = (Nx - Cx) / HalfSize;
+                const ProceduralSpriteSample S = SampleProceduralSpriteUnit(Spec, Ux, Uy, Seed);
+                if (S.Alpha <= 0.01f)
+                {
+                    continue;
+                }
+                const std::size_t Idx = static_cast<std::size_t>(Py) * Size + static_cast<std::size_t>(Px);
+                const float A = std::clamp(S.Alpha * Gain, 0.0f, 1.0f);
+                if (Additive)
+                {
+                    AccumR[Idx] += S.Red * A;
+                    AccumG[Idx] += S.Green * A;
+                    AccumB[Idx] += S.Blue * A;
+                }
+                else
+                {
+                    AccumR[Idx] = AccumR[Idx] * (1.0f - A) + S.Red * A;
+                    AccumG[Idx] = AccumG[Idx] * (1.0f - A) + S.Green * A;
+                    AccumB[Idx] = AccumB[Idx] * (1.0f - A) + S.Blue * A;
+                }
+            }
+        }
+    };
+
+    if (LowerTitle.find("snow") != std::string::npos || LowerTitle.find("blizzard") != std::string::npos)
+    {
+        AddGlowStamp(0.0f, 0.0f, 0.92f, 0.14f, 0.34f, 0.58f, 0.48f);
+        const ProceduralSpriteSpec HeroSnow = QueryDefaultProceduralSpriteSpec(ProceduralSpriteArchetype::SnowStellarDendrite);
+        const ProceduralSpriteSpec SubSnow  = QueryDefaultProceduralSpriteSpec(ProceduralSpriteArchetype::SnowFernlikeDendrite);
+        CompositeSpriteStamp(SubSnow, -0.52f, -0.44f, 0.30f, TitleSeed + 11u, 0.72f, true);
+        CompositeSpriteStamp(SubSnow,  0.54f,  0.42f, 0.28f, TitleSeed + 23u, 0.68f, true);
+        CompositeSpriteStamp(HeroSnow, 0.00f,  0.00f, 0.66f, TitleSeed + 37u, 1.00f, true);
+    }
+    else if (LowerTitle.find("butterfly") != std::string::npos)
+    {
+        AddGlowStamp(-0.12f, 0.14f, 0.95f, 0.12f, 0.45f, 0.85f, 0.52f);
+        ProceduralSpriteSpec Morpho  = QueryDefaultProceduralSpriteSpec(ProceduralSpriteArchetype::BotanicalMorphoButterfly);
+        ProceduralSpriteSpec Monarch = Morpho;
+        Monarch.PrimaryTintR = 1.0f; Monarch.PrimaryTintG = 0.65f; Monarch.PrimaryTintB = 0.12f;
+        Monarch.SecondaryTintR = 0.95f; Monarch.SecondaryTintG = 0.26f; Monarch.SecondaryTintB = 0.05f;
+        CompositeSpriteStamp(Monarch, -0.44f,  0.34f, 0.34f, TitleSeed + 7u,  0.88f, false);
+        CompositeSpriteStamp(Morpho,   0.46f, -0.36f, 0.32f, TitleSeed + 19u, 0.92f, false);
+        CompositeSpriteStamp(Morpho,   0.00f, -0.02f, 0.56f, TitleSeed + 31u, 1.00f, false);
+    }
+    else if (LowerTitle.find("shield") != std::string::npos || LowerTitle.find("hex") != std::string::npos)
+    {
+        AddGlowStamp(0.0f, 0.0f, 0.96f, 0.08f, 0.48f, 0.92f, 0.62f);
+        const ProceduralSpriteSpec Hex = QueryDefaultProceduralSpriteSpec(ProceduralSpriteArchetype::TechHexEnergyShield);
+        CompositeSpriteStamp(Hex, -0.42f, -0.24f, 0.34f, TitleSeed + 5u,  0.65f, true);
+        CompositeSpriteStamp(Hex,  0.42f,  0.24f, 0.34f, TitleSeed + 13u, 0.65f, true);
+        CompositeSpriteStamp(Hex,  0.00f,  0.00f, 0.66f, TitleSeed + 29u, 1.00f, true);
+    }
+    else if (LowerTitle.find("derez") != std::string::npos || LowerTitle.find("reverse-rez") != std::string::npos || LowerTitle.find("controlvehicle") != std::string::npos)
+    {
+        AddGlowStamp(0.04f, 0.08f, 0.96f, 0.10f, 0.62f, 1.00f, 0.72f);
+        for (int C = 0; C < 28; ++C)
+        {
+            const uint32_t H = static_cast<uint32_t>(ComputeFnv1a64(std::to_string(C + static_cast<int>(TitleSeed))) & 0xffffffffu);
+            const float R1 = static_cast<float>(H & 0xffu) / 255.0f;
+            const float R2 = static_cast<float>((H >> 8u) & 0xffu) / 255.0f;
+            const float Cx = -0.68f + R1 * 1.36f;
+            const float Cy = -0.42f + R2 * 0.92f;
+            const float Hs = 0.065f + 0.055f * ((C % 3 == 0) ? 1.0f : 0.4f);
+            const float Glow = std::clamp(1.0f - std::fabs(Cx - 0.06f) * 1.35f, 0.15f, 1.0f);
+            const int32_t X0 = std::max<int32_t>(0, static_cast<int32_t>(((Cx - Hs) * 0.5f + 0.5f) * Size));
+            const int32_t X1 = std::min<int32_t>(static_cast<int32_t>(Size) - 1, static_cast<int32_t>(((Cx + Hs) * 0.5f + 0.5f) * Size));
+            const int32_t Y0 = std::max<int32_t>(0, static_cast<int32_t>(((Cy - Hs) * 0.5f + 0.5f) * Size));
+            const int32_t Y1 = std::min<int32_t>(static_cast<int32_t>(Size) - 1, static_cast<int32_t>(((Cy + Hs) * 0.5f + 0.5f) * Size));
+            for (int32_t Py = Y0; Py <= Y1; ++Py)
+            {
+                for (int32_t Px = X0; Px <= X1; ++Px)
+                {
+                    const bool Border = (Px == X0 || Px == X1 || Py == Y0 || Py == Y1);
+                    const std::size_t Idx = static_cast<std::size_t>(Py) * Size + static_cast<std::size_t>(Px);
+                    const float Shade = Border ? (0.45f + 0.85f * Glow) : (0.10f + 0.35f * Glow);
+                    AccumR[Idx] = std::max(AccumR[Idx], Shade * (0.28f + 0.72f * Glow * Glow));
+                    AccumG[Idx] = std::max(AccumG[Idx], Shade * (0.82f + 0.18f * Glow));
+                    AccumB[Idx] = std::max(AccumB[Idx], Shade * 1.15f);
+                }
+            }
+        }
+    }
+    else if (LowerTitle.find("silk") != std::string::npos || LowerTitle.find("curl") != std::string::npos || LowerTitle.find("cloth") != std::string::npos || LowerTitle.find("ribbon") != std::string::npos)
+    {
+        for (int Strand = 0; Strand < 11; ++Strand)
+        {
+            const float Phase = static_cast<float>(Strand) * 0.52f;
+            const float TNorm = static_cast<float>(Strand) / 10.0f;
+            const float Sr = 0.22f + 0.78f * TintR * (0.5f + 0.5f * TNorm);
+            const float Sg = 0.25f + 0.75f * TintG * (1.0f - 0.35f * TNorm);
+            const float Sb = 0.45f + 0.55f * TintB;
+            for (int Step = 0; Step < 42; ++Step)
+            {
+                const float U = static_cast<float>(Step) / 41.0f;
+                const float X = -0.82f + U * 1.64f;
+                const float Y = std::sin(U * 5.2f + Phase) * 0.34f + std::cos(U * 9.0f - Phase * 0.7f) * 0.14f + (TNorm - 0.5f) * 0.22f;
+                AddGlowStamp(X, Y, 0.085f, Sr, Sg, Sb, 0.26f);
+            }
+        }
+    }
+    else
+    {
+        AddGlowStamp(0.0f, 0.58f, 0.75f, TintR * 0.95f, TintG * 0.55f, TintB * 0.22f, 0.65f);
+        for (int Stream = 0; Stream < 14; ++Stream)
+        {
+            const float Spread = (static_cast<float>(Stream) / 13.0f - 0.5f) * 1.38f;
+            const float Peak   = 0.85f + 0.45f * std::fabs(std::sin(static_cast<float>(Stream) * 1.7f));
+            for (int S = 0; S < 14; ++S)
+            {
+                const float T = (static_cast<float>(S) + 0.35f) / 14.0f;
+                const float Px = Spread * T * 1.15f;
+                const float Py = 0.72f - (Peak * T * 1.85f - 1.28f * T * T);
+                const float Heat = std::clamp(1.0f - T * 0.78f, 0.12f, 1.0f);
+                const float R = std::clamp(TintR * (0.65f + 0.65f * Heat) + Heat * Heat * 0.35f, 0.0f, 1.4f);
+                const float G = std::clamp(TintG * (0.42f + 0.68f * Heat) + Heat * Heat * 0.25f, 0.0f, 1.3f);
+                const float B = std::clamp(TintB * 0.45f + Heat * Heat * Heat * 0.55f, 0.0f, 1.2f);
+                AddGlowStamp(Px, Py, 0.055f + 0.045f * (1.0f - T), R, G, B, 0.58f * Heat);
+            }
+        }
+    }
+
+    for (uint32_t Y = 0u; Y < Size; ++Y)
+    {
+        for (uint32_t X = 0u; X < Size; ++X)
+        {
+            const std::size_t Idx = static_cast<std::size_t>(Y) * Size + X;
+            const auto EncodePixel = [](float V) noexcept -> uint8_t
+            {
+                const float Tm = V / (1.0f + std::max(0.0f, V) * 0.65f);
+                return ClampChannel(std::pow(std::clamp(Tm, 0.0f, 1.0f), 1.0f / 2.2f) * 255.0f);
+            };
+            WriteTilePixel(OutTileRgba, X, Y, EncodePixel(AccumR[Idx]), EncodePixel(AccumG[Idx]), EncodePixel(AccumB[Idx]), 255u);
+        }
+    }
 }
 
 void SynthesizePrebakedTileRgba(
@@ -296,12 +502,7 @@ void SynthesizePrebakedTileRgba(
 
                 case ContentCategory::Particles:
                 {
-                    const float Angle = std::atan2(Ny, Nx);
-                    const float Spokes = std::fabs(std::sin(Angle * 6.0f));
-                    if (R <= 0.72f && (R < 0.14f || (Spokes > 0.92f && R > 0.18f)))
-                    {
-                        WriteTilePixel(OutTileRgba, X, Y, Tint.Red, Tint.Green, Tint.Blue);
-                    }
+                    // Fallback single-pixel path replaced at tile level by SynthesizeParticlePreviewTileRgba
                     break;
                 }
 
@@ -742,10 +943,16 @@ void ThumbnailSheetRepository::CopyTileBytesIntoPage(
 void ThumbnailSheetRepository::BakeProceduralTileIntoPage(ContentRepositoryEntry& Entry)
 {
     std::vector<uint8_t> TileRgba(static_cast<std::size_t>(TileDimensionPixels) * TileDimensionPixels * 4u, 0u);
-    SynthesizePrebakedTileRgba(
-        static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode),
-        ColorRgba{ Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u },
-        TileRgba);
+    const ContentCategory Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
+    const ColorRgba Tint{ Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u };
+    if (Category == ContentCategory::Particles)
+    {
+        SynthesizeParticlePreviewTileRgba(Entry.DisplayTitle, Tint, TileRgba);
+    }
+    else
+    {
+        SynthesizePrebakedTileRgba(Category, Tint, TileRgba);
+    }
     CopyTileBytesIntoPage(Entry.IndexHeader, TileRgba);
     Entry.TileResident = true;
 }
@@ -1021,7 +1228,7 @@ void ThumbnailSheetRepository::PopulateDefaultEngineAndProjectEntries()
         const char*         RelativePath    = nullptr;
     };
 
-    constexpr std::array<SeedEntry, 40> StockEntries = {{
+    constexpr std::array<SeedEntry, 46> StockEntries = {{
         // Materials (EngineContent/Materials/)
         { "Standard Preset",      ContentCategory::Materials,   ContentOriginFilter::Engine,  { 199u, 173u, 160u, 255u } },
         { "Dielectric Glass",     ContentCategory::Materials,   ContentOriginFilter::Engine,  { 176u, 222u, 242u, 255u } },
@@ -1065,11 +1272,17 @@ void ThumbnailSheetRepository::PopulateDefaultEngineAndProjectEntries()
         { "Lorentz Plasma Field", ContentCategory::Simulations, ContentOriginFilter::Project, { 188u, 124u, 244u, 255u }, ".VectorFieldSpace" },
         { "Voronoi Fracture Rig", ContentCategory::Simulations, ContentOriginFilter::Project, { 232u, 148u, 96u,  255u } },
         // Volumetrics, Particles, Photometry, Audio, Shaders
-        { "Cumulus Density SDF",  ContentCategory::Volumetrics, ContentOriginFilter::Engine,  { 198u, 214u, 232u, 255u } },
-        { "Ember Fountain GPU",   ContentCategory::Particles,   ContentOriginFilter::Engine,  { 250u, 166u, 68u,  255u } },
-        { "Downlight Narrow IES", ContentCategory::Photometry,  ContentOriginFilter::Engine,  { 248u, 224u, 134u, 255u } },
-        { "Turbine Loop Bus",     ContentCategory::Audio,       ContentOriginFilter::Engine,  { 124u, 218u, 156u, 255u } },
-        { "MicrofacetGGX.slang",  ContentCategory::Shaders,     ContentOriginFilter::Engine,  { 186u, 156u, 238u, 255u } },
+        { "Cumulus Density SDF",          ContentCategory::Volumetrics, ContentOriginFilter::Engine,  { 198u, 214u, 232u, 255u } },
+        { "Ember Fountain GPU",           ContentCategory::Particles,   ContentOriginFilter::Engine,  { 250u, 166u, 68u,  255u } },
+        { "ControlVehicle Derez Cubes",   ContentCategory::Particles,   ContentOriginFilter::Engine,  { 64u,  228u, 255u, 255u } },
+        { "ControlVehicle Reverse-Rez",   ContentCategory::Particles,   ContentOriginFilter::Engine,  { 96u,  214u, 255u, 255u } },
+        { "ControlVehicle Butterfly",     ContentCategory::Particles,   ContentOriginFilter::Engine,  { 48u,  204u, 252u, 255u } },
+        { "Silk & Curl Stream",           ContentCategory::Particles,   ContentOriginFilter::Engine,  { 236u, 118u, 198u, 255u } },
+        { "Snow Crystal Blizzard",        ContentCategory::Particles,   ContentOriginFilter::Engine,  { 196u, 232u, 255u, 255u } },
+        { "Hex Energy Shield",            ContentCategory::Particles,   ContentOriginFilter::Engine,  { 68u,  218u, 252u, 255u } },
+        { "Downlight Narrow IES",         ContentCategory::Photometry,  ContentOriginFilter::Engine,  { 248u, 224u, 134u, 255u } },
+        { "Turbine Loop Bus",             ContentCategory::Audio,       ContentOriginFilter::Engine,  { 124u, 218u, 156u, 255u } },
+        { "MicrofacetGGX.slang",          ContentCategory::Shaders,     ContentOriginFilter::Engine,  { 186u, 156u, 238u, 255u } },
     }};
 
     for (const SeedEntry& Seed : StockEntries)
@@ -1527,6 +1740,34 @@ ThumbnailUvQuad ThumbnailSheetRepository::QueryTileUv(std::size_t EntryIndex) co
 uint32_t ThumbnailSheetRepository::PageCount() const noexcept
 {
     return static_cast<uint32_t>(SheetPages.size());
+}
+
+bool ThumbnailSheetRepository::QueryTileRgbaPixels(std::size_t EntryIndex, std::vector<uint8_t>& OutTileRgba) const
+{
+    if (EntryIndex >= Entries.size())
+    {
+        return false;
+    }
+    const ContentIndexEntry64& Hdr = Entries[EntryIndex].IndexHeader;
+    if (Hdr.SheetPageOrdinal >= SheetPages.size() || !SheetPages[Hdr.SheetPageOrdinal])
+    {
+        return false;
+    }
+    const SheetPageTexture& Page = *SheetPages[Hdr.SheetPageOrdinal];
+    if (Page.BackingBytes.empty())
+    {
+        return false;
+    }
+    OutTileRgba.assign(static_cast<std::size_t>(TileDimensionPixels) * TileDimensionPixels * 4u, 255u);
+    const uint32_t SrcX = static_cast<uint32_t>(Hdr.TileColumn) * TileDimensionPixels;
+    const uint32_t SrcY = static_cast<uint32_t>(Hdr.TileRow) * TileDimensionPixels;
+    for (uint32_t Row = 0u; Row < TileDimensionPixels; ++Row)
+    {
+        const std::size_t SrcOff = (static_cast<std::size_t>(SrcY + Row) * SheetDimensionPixels + SrcX) * 4u;
+        const std::size_t DstOff = static_cast<std::size_t>(Row) * TileDimensionPixels * 4u;
+        std::memcpy(OutTileRgba.data() + DstOff, Page.BackingBytes.data() + SrcOff, TileDimensionPixels * 4u);
+    }
+    return true;
 }
 
 void ThumbnailSheetRepository::BakeColourRampStripRgba32(

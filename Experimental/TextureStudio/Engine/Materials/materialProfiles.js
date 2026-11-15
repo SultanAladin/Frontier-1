@@ -1418,6 +1418,25 @@ Object.assign(recipes, {
       direct("filmThickness", "Optical pitch phase", 160, 860, "iridescence", "nm"),
     ],
   },
+  animatedVfx: {
+    title: "Animated & VFX OpenPBR surface",
+    caption: "Live time-evolving procedural surface (proposed for C++ MaterialSpace): Derez, magma, hex shield, wet glass/asphalt, sparkle snow, caustics, mercury, and thin-film plasma.",
+    colors: [
+      { key: "color", label: "Base substrate albedo" },
+      { key: "secondaryColor", label: "Primary energy / accent" },
+      { key: "tertiaryColor", label: "Peak core / specular tint" },
+    ],
+    controls: [
+      rough("Base surface roughness", 0.03, 0.92),
+      direct("metalness", "Metalness", 0, 1, "finish"),
+      scale("detailScale", "Pattern / Lattice frequency"),
+      direct("grain", "Surface relief depth", 0.05, 1.0, "detail"),
+      direct("animSpeed", "Animation speed", 0.0, 3.0, "detail"),
+      direct("emissionStrength", "Emission intensity", 0.0, 5.0, "finish"),
+      direct("coat", "Clearcoat weight", 0, 1, "finish"),
+      direct("iridescence", "Thin-film iridescence", 0, 1, "iridescence"),
+    ],
+  },
 });
 
 export function materialFamily(p) {
@@ -1484,6 +1503,19 @@ export function materialFamily(p) {
       44: "wafer",
       45: "oled",
       46: "rfMesh",
+      47: "animatedVfx",
+      48: "animatedVfx",
+      49: "animatedVfx",
+      50: "animatedVfx",
+      51: "animatedVfx",
+      52: "animatedVfx",
+      53: "animatedVfx",
+      54: "animatedVfx",
+      55: "animatedVfx",
+      56: "animatedVfx",
+      57: "animatedVfx",
+      58: "animatedVfx",
+      59: "animatedVfx",
     }[p.type] || "paint"
   );
 }

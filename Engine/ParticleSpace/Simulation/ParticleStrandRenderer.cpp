@@ -10,7 +10,9 @@
 #include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
 
 #include "Engine/ParticleSpace/Dynamics/DynamicStrandSolver.h"
+#include "Engine/ParticleSpace/Dynamics/EffectorGridSolver.h"
 #include "Engine/ParticleSpace/Dynamics/SplineEnsembleSolver.h"
+#include "Engine/ParticleSpace/Origins/ControlVehicleSurfaceLoader.h"
 
 #include <algorithm>
 #include <array>
@@ -1360,6 +1362,648 @@ void RenderRigIntoPixelCanvas(
     }
 }
 
+// ============================================================================================================
+// Motion & Grids Z-Buffered 3D Effector Renderer (Controlled Integrator Vehicle + Kinetic Hex Torus + Halftone)
+// ============================================================================================================
+
+inline Vec3 ShadeObsidianSurfacePbr(
+    Vec3  WorldPos,
+    Vec3  NormalUnit,
+    Vec3  CamEye,
+    Vec3  AccentMid,
+    Vec3  AccentPeak,
+    uint32_t MaterialSlotCode,
+    EffectorBackingFinish Finish) noexcept
+{
+    Vec3 N = Norm3(NormalUnit);
+    const Vec3 V = Norm3(CamEye - WorldPos);
+    if (Dot3(N, V) < 0.0f) N = N * -1.0f;
+
+    const Vec3 KeyL  = Norm3({  0.42f, 0.86f,  0.46f });
+    const Vec3 FillL = Norm3({ -0.68f, 0.52f, -0.44f });
+    const Vec3 RimL  = Norm3({  0.12f, 0.35f, -0.92f });
+
+    const float NdotV = std::clamp(Dot3(N, V), 0.0f, 1.0f);
+    const float NdotK = std::max(0.0f, Dot3(N, KeyL));
+    const float NdotF = std::max(0.0f, Dot3(N, FillL));
+    const Vec3  Refl  = Norm3(N * (2.0f * NdotV) - V);
+
+    const float Hk = std::max(0.0f, Dot3(N, Norm3(KeyL + V)));
+    const float Hf = std::max(0.0f, Dot3(N, Norm3(FillL + V)));
+    const float Hr = std::max(0.0f, Dot3(N, Norm3(RimL + V)));
+    const float Fres = std::pow(1.0f - NdotV, 3.0f);
+
+    // Overhead twin studio softbox reflection bands (matches HTML studioChromeEnv wet-obsidian PBR)
+    const float Softbox1 = SmoothStepInv(0.55f, 0.88f, Refl.Y) * SmoothStepInv(-0.20f, 0.55f, Refl.X);
+    const float Softbox2 = SmoothStepInv(0.42f, 0.78f, Refl.Y) * SmoothStepInv(0.15f, -0.65f, Refl.Z) * 0.55f;
+    const float HorizonBand = std::exp(-std::pow((Refl.Y - 0.06f) * 6.5f, 2.0f));
+
+    if (Finish == EffectorBackingFinish::BrushedChrome)
+    {
+        const Vec3 ChromeBase { 0.24f, 0.27f, 0.32f };
+        const Vec3 Spec = Vec3{ 0.96f, 0.98f, 1.00f } * (std::pow(Hk, 32.0f) * 1.1f + Softbox1 * 0.55f + Softbox2 * 0.32f);
+        return ChromeBase * (0.28f + 0.65f * NdotK + 0.30f * NdotF) + Spec + AccentPeak * (Fres * 0.22f);
+    }
+
+    // Material-aware glossy obsidian automotive finish for Controlled Integrator (or pure obsidian for Torus/Sphere)
+    if (MaterialSlotCode == 13u)
+    {
+        // Front muscle-car fascia grille: sinister stealth smoked obsidian satin metallic
+        const Vec3 GrilleBase { 0.014f, 0.016f, 0.024f };
+        return GrilleBase * (0.45f + 0.85f * NdotK + 0.30f * NdotF)
+               + Vec3{ 0.34f, 0.40f, 0.52f } * (std::pow(Hk, 42.0f) * 0.55f + Fres * 0.28f)
+               + AccentMid * (Fres * 0.16f);
+    }
+    if (MaterialSlotCode == 12u || MaterialSlotCode == 15u)
+    {
+        // Stealth smoked trim recess & black anodized plate housing
+        const Vec3 TrimBase { 0.014f, 0.016f, 0.022f };
+        return TrimBase * (0.40f + 0.80f * NdotK) + Vec3{ 0.16f, 0.20f, 0.26f } * (std::pow(Hk, 28.0f) * 0.35f + Fres * 0.22f);
+    }
+    if (MaterialSlotCode == 14u)
+    {
+        // Deep ruby-red smoked LED taillight signature bar
+        return Vec3{ 0.92f, 0.035f, 0.045f } * (0.58f + 0.35f * NdotV);
+    }
+    if (MaterialSlotCode == 9u)
+    {
+        // Matte satin vulcanized rubber tyre (deep rich charcoal)
+        const Vec3 RubberBase { 0.014f, 0.015f, 0.018f };
+        return RubberBase * (0.42f + 0.85f * NdotK + 0.32f * NdotF) + Vec3{ 0.045f, 0.050f, 0.062f } * (std::pow(Hk, 18.0f) * 0.32f + Fres * 0.38f);
+    }
+    if (MaterialSlotCode == 10u || MaterialSlotCode == 11u)
+    {
+        // Forged dark titanium alloy rims & ceramic brake rotor
+        const Vec3 AlloyBase { 0.042f, 0.048f, 0.062f };
+        return AlloyBase * (0.35f + 0.92f * NdotK + 0.45f * NdotF)
+               + Vec3{ 0.65f, 0.72f, 0.84f } * (std::pow(Hk, 48.0f) * 0.88f + std::pow(Hf, 28.0f) * 0.32f)
+               + AccentMid * (Fres * 0.16f);
+    }
+    if (MaterialSlotCode == 7u)
+    {
+        // Ultra-dark mirror-tinted obsidian cabin glass
+        const Vec3 GlassBase { 0.004f, 0.006f, 0.010f };
+        return GlassBase
+               + Vec3{ 0.74f, 0.84f, 0.98f } * (Softbox1 * 0.42f + Softbox2 * 0.20f + std::pow(Hk, 110.0f) * 1.05f)
+               + Vec3{ 0.12f, 0.17f, 0.26f } * (Fres * 0.75f + HorizonBand * 0.15f)
+               + AccentMid * (Fres * 0.10f);
+    }
+
+    // Hero glossy liquid-obsidian sculpted clearcoat (BodyCoat / Torus / Sphere)
+    const Vec3 DeepObsidian { 0.008f, 0.010f, 0.015f };
+    const Vec3 DiffuseTerm  = DeepObsidian * (0.50f + 0.85f * NdotK + 0.38f * NdotF);
+    const Vec3 StudioRefl   = Vec3{ 0.48f, 0.56f, 0.70f } * (Softbox1 * 0.26f + Softbox2 * 0.14f)
+                            + Vec3{ 0.15f, 0.19f, 0.28f } * (HorizonBand * 0.18f)
+                            + Vec3{ 0.90f, 0.94f, 1.00f } * (std::pow(Hk, 96.0f) * 0.68f + std::pow(Hf, 48.0f) * 0.22f + std::pow(Hr, 36.0f) * 0.26f);
+    const Vec3 RimTint      = Mix3({ 0.10f, 0.14f, 0.22f }, AccentMid, 0.28f) * (Fres * 0.40f)
+                            + AccentPeak * (Fres * Softbox1 * 0.10f);
+    return DiffuseTerm + StudioRefl + RimTint;
+}
+
+void RasterizeWorldLitTriangle(
+    PixelCanvas&          Fb,
+    const ResolvedCamera& Cam,
+    Vec3                  Pa,
+    Vec3                  Pb,
+    Vec3                  Pc,
+    Vec3                  Na,
+    Vec3                  Nb,
+    Vec3                  Nc,
+    Vec3                  AccentMid,
+    Vec3                  AccentPeak,
+    uint32_t              MaterialSlotCode,
+    EffectorBackingFinish Finish) noexcept
+{
+    // Backface cull in world space against camera ray (skip culling only if thin/degenerate)
+    const Vec3 FaceN = Cross3(Pb - Pa, Pc - Pa);
+    const Vec3 Cent  = (Pa + Pb + Pc) * (1.0f / 3.0f);
+    if (Dot3(FaceN, Cam.Eye - Cent) < -1e-5f) return;
+
+    float Sxa, Sya, Sza, Sxb, Syb, Szb, Sxc, Syc, Szc;
+    if (!Cam.Project(Pa, Sxa, Sya, Sza) || !Cam.Project(Pb, Sxb, Syb, Szb) || !Cam.Project(Pc, Sxc, Syc, Szc))
+    {
+        return;
+    }
+
+    ScreenVert Va { Sxa, Sya, 1.0f / std::max(0.08f, Sza), ShadeObsidianSurfacePbr(Pa, Na, Cam.Eye, AccentMid, AccentPeak, MaterialSlotCode, Finish) };
+    ScreenVert Vb { Sxb, Syb, 1.0f / std::max(0.08f, Szb), ShadeObsidianSurfacePbr(Pb, Nb, Cam.Eye, AccentMid, AccentPeak, MaterialSlotCode, Finish) };
+    ScreenVert Vc { Sxc, Syc, 1.0f / std::max(0.08f, Szc), ShadeObsidianSurfacePbr(Pc, Nc, Cam.Eye, AccentMid, AccentPeak, MaterialSlotCode, Finish) };
+    RasterizeFlatTriangle(Fb, Va, Vb, Vc, 1.0f, true);
+}
+
+void RasterizeSolidFacetedTriangle(
+    PixelCanvas&          Fb,
+    const ResolvedCamera& Cam,
+    Vec3                  Pa,
+    Vec3                  Pb,
+    Vec3                  Pc,
+    Vec3                  FaceNormal,
+    Vec3                  BaseLinearCol,
+    float                 EffectorGlow,
+    float                 Alpha) noexcept
+{
+    const Vec3 Cent = (Pa + Pb + Pc) * (1.0f / 3.0f);
+    const Vec3 V    = Norm3(Cam.Eye - Cent);
+    Vec3 N = Norm3(FaceNormal);
+    if (Dot3(N, V) < 0.0f) return; // Backface cull closed 3D prisms & cubes cleanly!
+
+    float Sxa, Sya, Sza, Sxb, Syb, Szb, Sxc, Syc, Szc;
+    if (!Cam.Project(Pa, Sxa, Sya, Sza) || !Cam.Project(Pb, Sxb, Syb, Szb) || !Cam.Project(Pc, Sxc, Syc, Szc))
+    {
+        return;
+    }
+
+    const Vec3 L1 = Norm3({  0.48f, 0.82f,  0.40f });
+    const Vec3 L2 = Norm3({ -0.60f, 0.45f, -0.52f });
+    const float Ndot1 = std::max(0.0f, Dot3(N, L1));
+    const float Ndot2 = std::max(0.0f, Dot3(N, L2));
+    const float Spec  = std::pow(std::max(0.0f, Dot3(N, Norm3(L1 + V))), 32.0f);
+    const float Fres  = std::pow(1.0f - std::clamp(Dot3(N, V), 0.0f, 1.0f), 2.5f);
+
+    // Chroma-preserving studio lighting (rich saturated crimson / molten gold / electric cyan without pastel blowout)
+    const float Shade = 0.22f + 0.62f * Ndot1 + 0.18f * Ndot2 + 0.26f * EffectorGlow;
+    const Vec3  Lit   = BaseLinearCol * Shade
+                      + Mix3(BaseLinearCol, Vec3{ 1.00f, 0.98f, 0.95f }, 0.45f) * (Spec * (0.18f + 0.22f * EffectorGlow))
+                      + BaseLinearCol * (Fres * (0.18f + 0.26f * EffectorGlow));
+
+    const float DepthBias = 0.003f;
+    ScreenVert Va { Sxa, Sya, 1.0f / std::max(0.08f, Sza - DepthBias), Lit };
+    ScreenVert Vb { Sxb, Syb, 1.0f / std::max(0.08f, Szb - DepthBias), Lit };
+    ScreenVert Vc { Sxc, Syc, 1.0f / std::max(0.08f, Szc - DepthBias), Lit };
+    RasterizeFlatTriangle(Fb, Va, Vb, Vc, Alpha, true);
+}
+
+void RasterizeOrientedBox3D(
+    PixelCanvas&          Fb,
+    const ResolvedCamera& Cam,
+    Vec3                  BaseCenter,
+    Vec3                  AxisT,
+    Vec3                  AxisN,
+    Vec3                  AxisB,
+    float                 HalfW,
+    float                 HeightH,
+    Vec3                  ColLin,
+    float                 EffectorGlow,
+    float                 Alpha) noexcept
+{
+    const Vec3 T = AxisT * HalfW;
+    const Vec3 B = AxisB * HalfW;
+    const Vec3 H = AxisN * HeightH;
+
+    // 8 corners: 0..3 base ring, 4..7 top ring (CCW seen from +AxisN)
+    const Vec3 P[8] = {
+        BaseCenter - T - B,
+        BaseCenter + T - B,
+        BaseCenter + T + B,
+        BaseCenter - T + B,
+        BaseCenter - T - B + H,
+        BaseCenter + T - B + H,
+        BaseCenter + T + B + H,
+        BaseCenter - T + B + H,
+    };
+
+    const Vec3 TopCol  = ColLin * (1.06f + 0.22f * EffectorGlow);
+    const Vec3 SideCol = ColLin * 0.90f;
+
+    // Top face (+N)
+    RasterizeSolidFacetedTriangle(Fb, Cam, P[4], P[5], P[6], AxisN, TopCol, EffectorGlow, Alpha);
+    RasterizeSolidFacetedTriangle(Fb, Cam, P[4], P[6], P[7], AxisN, TopCol, EffectorGlow, Alpha);
+    // 4 Side walls
+    RasterizeSolidFacetedTriangle(Fb, Cam, P[0], P[1], P[5], AxisB * -1.0f, SideCol, EffectorGlow, Alpha);
+    RasterizeSolidFacetedTriangle(Fb, Cam, P[0], P[5], P[4], AxisB * -1.0f, SideCol, EffectorGlow, Alpha);
+    RasterizeSolidFacetedTriangle(Fb, Cam, P[1], P[2], P[6], AxisT,         SideCol, EffectorGlow, Alpha);
+    RasterizeSolidFacetedTriangle(Fb, Cam, P[1], P[6], P[5], AxisT,         SideCol, EffectorGlow, Alpha);
+    RasterizeSolidFacetedTriangle(Fb, Cam, P[2], P[3], P[7], AxisB,         SideCol, EffectorGlow, Alpha);
+    RasterizeSolidFacetedTriangle(Fb, Cam, P[2], P[7], P[6], AxisB,         SideCol, EffectorGlow, Alpha);
+    RasterizeSolidFacetedTriangle(Fb, Cam, P[3], P[0], P[4], AxisT * -1.0f, SideCol, EffectorGlow, Alpha);
+    RasterizeSolidFacetedTriangle(Fb, Cam, P[3], P[4], P[7], AxisT * -1.0f, SideCol, EffectorGlow, Alpha);
+}
+
+void RasterizeOrientedHexPrism3D(
+    PixelCanvas&          Fb,
+    const ResolvedCamera& Cam,
+    Vec3                  BaseCenter,
+    Vec3                  AxisT,
+    Vec3                  AxisN,
+    Vec3                  AxisB,
+    float                 HexRadius,
+    float                 ExtrudeHeight,
+    Vec3                  ColLin,
+    float                 EffectorGlow,
+    float                 Alpha) noexcept
+{
+    constexpr float CosHex[6] = { 1.0f,  0.5f, -0.5f, -1.0f, -0.5f,  0.5f };
+    constexpr float SinHex[6] = { 0.0f,  0.8660254f,  0.8660254f,  0.0f, -0.8660254f, -0.8660254f };
+
+    const Vec3 TopCenter = BaseCenter + AxisN * ExtrudeHeight;
+    const float TopBevelR = HexRadius * 0.90f; // Crisp subtle chamfered hex top edge!
+
+    Vec3 BaseRing[6] {};
+    Vec3 TopRing[6]  {};
+    for (int K = 0; K < 6; ++K)
+    {
+        const Vec3 Radial = AxisT * CosHex[K] + AxisB * SinHex[K];
+        BaseRing[K] = BaseCenter + Radial * HexRadius;
+        TopRing[K]  = TopCenter  + Radial * TopBevelR;
+    }
+
+    const Vec3 CapCol  = ColLin * (1.08f + 0.25f * EffectorGlow);
+    const Vec3 WallCol = ColLin * 0.82f;
+
+    for (int K = 0; K < 6; ++K)
+    {
+        const int Next = (K + 1) % 6;
+        // Top hexagonal cap triangle
+        RasterizeSolidFacetedTriangle(Fb, Cam, TopCenter, TopRing[K], TopRing[Next], AxisN, CapCol, EffectorGlow, Alpha);
+
+        // Beveled side prism wall (2 triangles)
+        const Vec3 MidRadial = Norm3(AxisT * (CosHex[K] + CosHex[Next]) + AxisB * (SinHex[K] + SinHex[Next]) + AxisN * 0.28f);
+        RasterizeSolidFacetedTriangle(Fb, Cam, BaseRing[K], BaseRing[Next], TopRing[Next], MidRadial, WallCol, EffectorGlow * 0.85f, Alpha);
+        RasterizeSolidFacetedTriangle(Fb, Cam, BaseRing[K], TopRing[Next],  TopRing[K],    MidRadial, WallCol, EffectorGlow * 0.85f, Alpha);
+    }
+}
+
+float EvaluateSignedDistEquilateralTri(float U, float V) noexcept
+{
+    constexpr float K = 1.7320508f;
+    float Px = std::fabs(U) - 1.0f;
+    float Py = V + 1.0f / K;
+    if (Px + K * Py > 0.0f)
+    {
+        const float Nx = (Px - K * Py) * 0.5f;
+        const float Ny = (-K * Px - Py) * 0.5f;
+        Px = Nx;
+        Py = Ny;
+    }
+    Px -= std::clamp(Px, -2.0f, 0.0f);
+    return -std::sqrt(Px * Px + Py * Py) * (Py < 0.0f ? -1.0f : 1.0f);
+}
+
+float EvaluateSignedDistHex2D(float U, float V) noexcept
+{
+    const float Ax = std::fabs(U);
+    const float Ay = std::fabs(V);
+    return std::max(Ax * 0.8660254f + Ay * 0.5f, Ay) - 0.8660254f;
+}
+
+void RasterizeSurfaceSdfPlate(
+    PixelCanvas&           Fb,
+    const ResolvedCamera&  Cam,
+    Vec3                   Center,
+    Vec3                   AxisT,
+    Vec3                   AxisN,
+    Vec3                   AxisB,
+    float                  HalfSpan,
+    EffectorPrimitiveShape Shape,
+    Vec3                   ColLin,
+    float                  EffectorGlow,
+    float                  Alpha) noexcept
+{
+    // Backface cull surface-conforming plates facing away from camera
+    const Vec3 ToCam = Norm3(Cam.Eye - Center);
+    const float Facing = Dot3(AxisN, ToCam);
+    if (Facing < -0.08f) return;
+
+    const Vec3 T = AxisT * HalfSpan;
+    const Vec3 B = AxisB * HalfSpan;
+    const Vec3 Corners[4] = {
+        Center - T - B,
+        Center + T - B,
+        Center + T + B,
+        Center - T + B,
+    };
+
+    float Sx[4] {}, Sy[4] {}, Sz[4] {};
+    for (int K = 0; K < 4; ++K)
+    {
+        if (!Cam.Project(Corners[K], Sx[K], Sy[K], Sz[K])) return;
+    }
+
+    const int Ix0 = std::clamp(static_cast<int>(std::floor(std::min({ Sx[0], Sx[1], Sx[2], Sx[3] }))), 0, Fb.Width - 1);
+    const int Ix1 = std::clamp(static_cast<int>(std::ceil(std::max({ Sx[0], Sx[1], Sx[2], Sx[3] }))), 0, Fb.Width - 1);
+    const int Iy0 = std::clamp(static_cast<int>(std::floor(std::min({ Sy[0], Sy[1], Sy[2], Sy[3] }))), 0, Fb.Height - 1);
+    const int Iy1 = std::clamp(static_cast<int>(std::ceil(std::max({ Sy[0], Sy[1], Sy[2], Sy[3] }))), 0, Fb.Height - 1);
+    if (Ix0 > Ix1 || Iy0 > Iy1) return;
+
+    const float L1Dot = std::max(0.0f, Dot3(AxisN, Norm3({ 0.48f, 0.82f, 0.40f })));
+    const float LightGain = 0.55f + 0.52f * L1Dot + 0.40f * EffectorGlow;
+
+    const int TriIdx[2][3] = { { 0, 1, 2 }, { 0, 2, 3 } };
+    const float QuadU[4] = { -1.0f,  1.0f, 1.0f, -1.0f };
+    const float QuadV[4] = { -1.0f, -1.0f, 1.0f,  1.0f };
+
+    for (int Ti = 0; Ti < 2; ++Ti)
+    {
+        const int Ia = TriIdx[Ti][0], Ib = TriIdx[Ti][1], Ic = TriIdx[Ti][2];
+        const float Area = (Sx[Ib] - Sx[Ia]) * (Sy[Ic] - Sy[Ia]) - (Sy[Ib] - Sy[Ia]) * (Sx[Ic] - Sx[Ia]);
+        if (std::fabs(Area) < 1e-4f) continue;
+        const float InvArea = 1.0f / Area;
+        const float IzA = 1.0f / std::max(0.08f, Sz[Ia]);
+        const float IzB = 1.0f / std::max(0.08f, Sz[Ib]);
+        const float IzC = 1.0f / std::max(0.08f, Sz[Ic]);
+
+        for (int Y = Iy0; Y <= Iy1; ++Y)
+        {
+            const float Py = static_cast<float>(Y) + 0.5f;
+            for (int X = Ix0; X <= Ix1; ++X)
+            {
+                const float Px = static_cast<float>(X) + 0.5f;
+                const float W0 = ((Sx[Ib] - Px) * (Sy[Ic] - Py) - (Sy[Ib] - Py) * (Sx[Ic] - Px)) * InvArea;
+                const float W1 = ((Sx[Ic] - Px) * (Sy[Ia] - Py) - (Sy[Ic] - Py) * (Sx[Ia] - Px)) * InvArea;
+                const float W2 = 1.0f - W0 - W1;
+                if (W0 < -1e-4f || W1 < -1e-4f || W2 < -1e-4f) continue;
+
+                const float InvZ = W0 * IzA + W1 * IzB + W2 * IzC;
+                if (InvZ <= 1e-6f) continue;
+                const float ViewZ = (1.0f / InvZ) - 0.005f;
+
+                const float P0 = (W0 * IzA) / InvZ;
+                const float P1 = (W1 * IzB) / InvZ;
+                const float P2 = (W2 * IzC) / InvZ;
+                const float U  = QuadU[Ia] * P0 + QuadU[Ib] * P1 + QuadU[Ic] * P2;
+                const float V  = QuadV[Ia] * P0 + QuadV[Ib] * P1 + QuadV[Ic] * P2;
+
+                float Mask = 0.0f;
+                float DomeShade = 1.0f;
+                if (Shape == EffectorPrimitiveShape::FlatSquareTile)
+                {
+                    const float Sq = std::max(std::fabs(U), std::fabs(V));
+                    if (Sq > 0.94f) continue;
+                    Mask = SmoothStepInv(0.94f, 0.72f, Sq);
+                    DomeShade = 0.86f + 0.26f * (1.0f - Sq);
+                }
+                else if (Shape == EffectorPrimitiveShape::TrianglePlate)
+                {
+                    const float Td = EvaluateSignedDistEquilateralTri(U * 1.12f, V * 1.12f);
+                    if (Td > 0.0f) continue;
+                    Mask = SmoothStepInv(0.0f, -0.16f, Td);
+                    DomeShade = 0.88f + 0.25f * std::clamp(-Td * 2.0f, 0.0f, 1.0f);
+                }
+                else if (Shape == EffectorPrimitiveShape::HexagonPlate)
+                {
+                    const float Hd = EvaluateSignedDistHex2D(U * 1.06f, V * 1.06f);
+                    if (Hd > 0.0f) continue;
+                    Mask = SmoothStepInv(0.0f, -0.15f, Hd);
+                    DomeShade = 0.86f + 0.28f * std::clamp(-Hd * 2.0f, 0.0f, 1.0f);
+                }
+                else
+                {
+                    // Antialiased glowing halftone circle disc
+                    const float R2 = U * U + V * V;
+                    if (R2 > 1.0f) continue;
+                    const float R = std::sqrt(R2);
+                    Mask = SmoothStepInv(1.0f, 0.70f, R);
+                    DomeShade = 0.82f + 0.34f * std::sqrt(std::max(0.0f, 1.0f - R2));
+                }
+
+                const Vec3 OutCol = ColLin * (DomeShade * LightGain) + Vec3{ 0.14f, 0.04f, 0.06f } * (EffectorGlow * 0.45f);
+                Fb.BlendPixel(X, Y, ViewZ, OutCol, Alpha * Mask, true);
+            }
+        }
+    }
+}
+
+void RasterizeEffectorVolumeWireframe(
+    PixelCanvas&                    Fb,
+    const ResolvedCamera&           Cam,
+    const EffectorVolumeDescriptor& Vol,
+    Vec3                            TintLin) noexcept
+{
+    if (Vol.RadiusMeters <= 0.05f) return;
+    const Vec3 C { Vol.CenterM[0], Vol.CenterM[1], Vol.CenterM[2] };
+    const float R = Vol.RadiusMeters;
+
+    if (Vol.Shape == EffectorVolumeShape::Box)
+    {
+        const Vec3 B[8] = {
+            { C.X - R, C.Y - R, C.Z - R }, { C.X + R, C.Y - R, C.Z - R },
+            { C.X + R, C.Y + R, C.Z - R }, { C.X - R, C.Y + R, C.Z - R },
+            { C.X - R, C.Y - R, C.Z + R }, { C.X + R, C.Y - R, C.Z + R },
+            { C.X + R, C.Y + R, C.Z + R }, { C.X - R, C.Y + R, C.Z + R },
+        };
+        constexpr int Edges[12][2] = {
+            {0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}
+        };
+        for (const auto& E : Edges)
+        {
+            float X0, Y0, Z0, X1, Y1, Z1;
+            if (Cam.Project(B[E[0]], X0, Y0, Z0) && Cam.Project(B[E[1]], X1, Y1, Z1))
+            {
+                RasterizeAdditiveSegment(Fb, X0, Y0, Z0, X1, Y1, Z1, 1.15f, TintLin, 0.36f, true);
+            }
+        }
+        return;
+    }
+
+    // 3 orthogonal latitude/longitude rings for Sphere / Torus / Disc
+    constexpr int Segs = 32;
+    for (int Plane = 0; Plane < 3; ++Plane)
+    {
+        for (int S = 0; S < Segs; ++S)
+        {
+            const float A0 = (static_cast<float>(S) / static_cast<float>(Segs)) * kTwoPi;
+            const float A1 = (static_cast<float>(S + 1) / static_cast<float>(Segs)) * kTwoPi;
+            auto RingPt = [&](float A) -> Vec3 {
+                if (Plane == 0) return { C.X + std::cos(A) * R, C.Y, C.Z + std::sin(A) * R };
+                if (Plane == 1) return { C.X + std::cos(A) * R, C.Y + std::sin(A) * R, C.Z };
+                return { C.X, C.Y + std::sin(A) * R, C.Z + std::cos(A) * R };
+            };
+            float X0, Y0, Z0, X1, Y1, Z1;
+            if (Cam.Project(RingPt(A0), X0, Y0, Z0) && Cam.Project(RingPt(A1), X1, Y1, Z1))
+            {
+                RasterizeAdditiveSegment(Fb, X0, Y0, Z0, X1, Y1, Z1, 1.05f, TintLin, 0.30f, true);
+            }
+        }
+    }
+}
+
+void RenderEffectorGridRigIntoCanvas(
+    PixelCanvas&                  Fb,
+    const ResolvedCamera&         Cam,
+    const ParticleRig&            Rig,
+    std::span<const ParticleSlot> Slots,
+    float                         ElapsedSeconds)
+{
+    if (!Rig.Dynamics.Effector.has_value()) return;
+    const EffectorLatticeSpec& Spec = *Rig.Dynamics.Effector;
+
+    Vec3 Org { 0.0f, 0.0f, 0.0f };
+    if (const auto* Surf = std::get_if<SurfaceAnchorOrigin>(&Rig.Origin))
+        Org = { Surf->CenterMeters[0], Surf->CenterMeters[1], Surf->CenterMeters[2] };
+    else if (const auto* Lat = std::get_if<SurfaceLatticeOrigin>(&Rig.Origin))
+        Org = { Lat->CenterMeters[0], Lat->CenterMeters[1], Lat->CenterMeters[2] };
+    else if (const auto* Box = std::get_if<AnalyticBoxOrigin>(&Rig.Origin))
+        Org = { Box->CenterMeters[0], Box->CenterMeters[1], Box->CenterMeters[2] };
+
+    const Vec3 AccentMid  { Spec.MidColorLinear[0],  Spec.MidColorLinear[1],  Spec.MidColorLinear[2]  };
+    const Vec3 AccentPeak { Spec.PeakColorLinear[0], Spec.PeakColorLinear[1], Spec.PeakColorLinear[2] };
+
+    // 1. Rasterize the sculpted 3D obsidian host geometry into the shared Z-buffer first for exact occlusion!
+    if (Spec.BackingFinish != EffectorBackingFinish::HiddenBacking)
+    {
+        if (Spec.HostSurface == EffectorHostSurfaceKind::ControlVehicle)
+        {
+            const auto& Vehicle = QueryControlVehicleGeometrySet();
+            const float Scale   = std::max(0.20f, Spec.OriginExtentM[0]);
+            const float YawRad  = Spec.VehicleYawDegrees * (kPi / 180.0f);
+            const float CosY    = std::cos(YawRad);
+            const float SinY    = std::sin(YawRad);
+
+            auto XformPos = [&](const float P[3]) -> Vec3 {
+                const float Sx = P[0] * Scale;
+                const float Sy = P[1] * Scale;
+                const float Sz = P[2] * Scale;
+                return { Org.X + Sx * CosY + Sz * SinY, Org.Y + Sy, Org.Z - Sx * SinY + Sz * CosY };
+            };
+            auto XformNorm = [&](const float N[3]) -> Vec3 {
+                return Norm3({ N[0] * CosY + N[2] * SinY, N[1], -N[0] * SinY + N[2] * CosY });
+            };
+
+            // Ground ambient contact shadow ellipse beneath the Controlled Integrator
+            constexpr int ShadowSegs = 28;
+            const float ShRx = Vehicle.HalfLengthM * Scale * 0.96f;
+            const float ShRz = 1.32f * Scale;
+            const Vec3 ShC { Org.X, Org.Y + 0.004f, Org.Z };
+            for (int S = 0; S < ShadowSegs; ++S)
+            {
+                const float A0 = (static_cast<float>(S) / static_cast<float>(ShadowSegs)) * kTwoPi;
+                const float A1 = (static_cast<float>(S + 1) / static_cast<float>(ShadowSegs)) * kTwoPi;
+                auto ShPt = [&](float A) -> Vec3 {
+                    const float Lx = std::cos(A) * ShRx;
+                    const float Lz = std::sin(A) * ShRz;
+                    return { Org.X + Lx * CosY + Lz * SinY, Org.Y + 0.004f, Org.Z - Lx * SinY + Lz * CosY };
+                };
+                float Cx, Cy, Cz, X0, Y0, Z0, X1, Y1, Z1;
+                if (Cam.Project(ShC, Cx, Cy, Cz) && Cam.Project(ShPt(A0), X0, Y0, Z0) && Cam.Project(ShPt(A1), X1, Y1, Z1))
+                {
+                    ScreenVert Vc { Cx, Cy, 1.0f / std::max(0.08f, Cz), { 0.002f, 0.003f, 0.005f } };
+                    ScreenVert V0 { X0, Y0, 1.0f / std::max(0.08f, Z0), { 0.005f, 0.007f, 0.010f } };
+                    ScreenVert V1 { X1, Y1, 1.0f / std::max(0.08f, Z1), { 0.005f, 0.007f, 0.010f } };
+                    RasterizeFlatTriangle(Fb, Vc, V0, V1, 0.68f, false);
+                }
+            }
+
+            // Full 25,068-triangle Controlled Integrator (Body + 4 Rims + 4 Tyres) into Z-buffer
+            for (const auto& Tri : Vehicle.Triangles)
+            {
+                RasterizeWorldLitTriangle(
+                    Fb, Cam,
+                    XformPos(Tri.PositionA), XformPos(Tri.PositionB), XformPos(Tri.PositionC),
+                    XformNorm(Tri.NormalA),  XformNorm(Tri.NormalB),  XformNorm(Tri.NormalC),
+                    AccentMid, AccentPeak, Tri.MaterialSlotCode, Spec.BackingFinish);
+            }
+        }
+        else if (Spec.HostSurface == EffectorHostSurfaceKind::TorusRing)
+        {
+            // Smooth analytic Wet-Obsidian 3D Torus matching Kinetic Hex Torus Matrix
+            constexpr int SegU = 64;
+            constexpr int SegV = 32;
+            const float Rmaj = std::max(0.5f, Spec.OriginExtentM[0]) * 0.992f;
+            const float Rmin = Rmaj * 0.376f;
+            const float Rev  = ElapsedSeconds * 0.22f;
+
+            auto TorusPt = [&](int Iu, int Iv, Vec3& OutN) -> Vec3 {
+                const float Phi   = (static_cast<float>(Iu) / static_cast<float>(SegU)) * kTwoPi + Rev;
+                const float Theta = (static_cast<float>(Iv) / static_cast<float>(SegV)) * kTwoPi;
+                const float Rad   = Rmaj + Rmin * std::cos(Theta);
+                OutN = { std::cos(Phi) * std::cos(Theta), std::sin(Theta), std::sin(Phi) * std::cos(Theta) };
+                return { Org.X + std::cos(Phi) * Rad, Org.Y + std::sin(Theta) * Rmin, Org.Z + std::sin(Phi) * Rad };
+            };
+
+            for (int U = 0; U < SegU; ++U)
+            {
+                for (int V = 0; V < SegV; ++V)
+                {
+                    Vec3 N00, N10, N11, N01;
+                    const Vec3 P00 = TorusPt(U,     V,     N00);
+                    const Vec3 P10 = TorusPt(U + 1, V,     N10);
+                    const Vec3 P11 = TorusPt(U + 1, V + 1, N11);
+                    const Vec3 P01 = TorusPt(U,     V + 1, N01);
+                    RasterizeWorldLitTriangle(Fb, Cam, P00, P01, P11, N00, N01, N11, AccentMid, AccentPeak, 6u, Spec.BackingFinish);
+                    RasterizeWorldLitTriangle(Fb, Cam, P00, P11, P10, N00, N11, N10, AccentMid, AccentPeak, 6u, Spec.BackingFinish);
+                }
+            }
+        }
+        else if (Spec.HostSurface == EffectorHostSurfaceKind::ObsidianSphere)
+        {
+            constexpr int Rings = 28;
+            constexpr int Sectors = 48;
+            const float Rad = std::max(0.35f, Spec.OriginExtentM[0]) * 0.992f;
+            auto SphPt = [&](int R, int S, Vec3& OutN) -> Vec3 {
+                const float Theta = (static_cast<float>(R) / static_cast<float>(Rings)) * kPi;
+                const float Phi   = (static_cast<float>(S) / static_cast<float>(Sectors)) * kTwoPi;
+                OutN = { std::sin(Theta) * std::cos(Phi), std::cos(Theta), std::sin(Theta) * std::sin(Phi) };
+                return Org + OutN * Rad;
+            };
+            for (int R = 0; R < Rings; ++R)
+            {
+                for (int S = 0; S < Sectors; ++S)
+                {
+                    Vec3 N00, N10, N11, N01;
+                    const Vec3 P00 = SphPt(R,     S,     N00);
+                    const Vec3 P10 = SphPt(R + 1, S,     N10);
+                    const Vec3 P11 = SphPt(R + 1, S + 1, N11);
+                    const Vec3 P01 = SphPt(R,     S + 1, N01);
+                    RasterizeWorldLitTriangle(Fb, Cam, P00, P10, P11, N00, N10, N11, AccentMid, AccentPeak, 6u, Spec.BackingFinish);
+                    RasterizeWorldLitTriangle(Fb, Cam, P00, P11, P01, N00, N11, N01, AccentMid, AccentPeak, 6u, Spec.BackingFinish);
+                }
+            }
+        }
+    }
+
+    // 2. Rasterize every depth-tested surface-conforming Effector primitive (3D Hex Plates, Extruded Cubes, Raised Tiles, Halftone Dots)
+    for (const auto& Slot : Slots)
+    {
+        if (!IsParticleSlotAlive(Slot)) continue;
+        if (Slot.SizeMeters <= 0.001f || Slot.ColourLinear[3] <= 0.01f) continue;
+
+        const Vec3 Pos { Slot.PositionMeters[0], Slot.PositionMeters[1], Slot.PositionMeters[2] };
+        const Vec3 N   = Norm3({ Slot.VelocityMps[0], Slot.VelocityMps[1], Slot.VelocityMps[2] });
+        // Align primitive tangent frame smoothly along longitudinal car +X axis (or world Y on Torus/Sphere) for sleek panel alignment
+        Vec3 Ref {};
+        if (Spec.HostSurface == EffectorHostSurfaceKind::ControlVehicle)
+        {
+            Ref = (std::fabs(N.X) > 0.88f) ? Vec3{ 0.0f, 0.0f, 1.0f } : Vec3{ 1.0f, 0.0f, 0.0f };
+        }
+        else
+        {
+            Ref = (std::fabs(N.Y) > 0.92f) ? Vec3{ 1.0f, 0.0f, 0.0f } : Vec3{ 0.0f, 1.0f, 0.0f };
+        }
+        const Vec3 T   = Norm3(Cross3(Ref, N));
+        const Vec3 B   = Cross3(N, T);
+
+        const Vec3  Col { Slot.ColourLinear[0], Slot.ColourLinear[1], Slot.ColourLinear[2] };
+        const float Alpha    = std::clamp(Slot.ColourLinear[3], 0.0f, 1.0f);
+        const float W        = std::clamp(Slot.AuxScalar, 0.0f, 1.0f);
+        const float ExtrudeH = Slot.SpinRadians;
+        const auto  Shape    = Spec.PrimitiveShape;
+
+        if (Shape == EffectorPrimitiveShape::HexagonPlate)
+        {
+            RasterizeOrientedHexPrism3D(Fb, Cam, Pos, T, N, B, Slot.SizeMeters * 0.92f, std::max(0.012f, ExtrudeH), Col, W, Alpha);
+        }
+        else if (Shape == EffectorPrimitiveShape::HeightExtrudedCube ||
+                 Shape == EffectorPrimitiveShape::UniformBox ||
+                 (Shape == EffectorPrimitiveShape::AutoHalftoneUpperTiles && ExtrudeH > 0.002f))
+        {
+            RasterizeOrientedBox3D(Fb, Cam, Pos, T, N, B, Slot.SizeMeters * 0.52f, std::max(0.010f, ExtrudeH), Col, W, Alpha);
+        }
+        else
+        {
+            const EffectorPrimitiveShape SdfShape =
+                (Shape == EffectorPrimitiveShape::AutoHalftoneUpperTiles) ? EffectorPrimitiveShape::HalftoneCircle : Shape;
+            RasterizeSurfaceSdfPlate(Fb, Cam, Pos, T, N, B, Slot.SizeMeters * 0.72f, SdfShape, Col, W, Alpha);
+        }
+    }
+
+    // 3. Subtle translucent 3D gizmo outlines when Placeable 3D Effectors are active
+    if (Spec.Driver == EffectorDriverCategory::Placeable3DEffectors || Spec.BlendPlaceable)
+    {
+        RasterizeEffectorVolumeWireframe(Fb, Cam, Spec.PrimaryVolume,   { 0.96f, 0.78f, 0.24f });
+        RasterizeEffectorVolumeWireframe(Fb, Cam, Spec.SecondaryVolume, { 0.14f, 0.84f, 0.42f });
+    }
+}
+
 } // namespace
 
 void RenderDynamicStrandRigRgba8(
@@ -1407,6 +2051,10 @@ void RenderDynamicStrandSceneRgba8(
         else if (D.DielectricArc.has_value())
         {
             RenderDielectricArcRigIntoCanvas(Fb, Cam, *Entry.Rig, Entry.Slots, Entry.Collider, Entry.ElapsedSeconds, Entry.ForcePeakArcDischarge);
+        }
+        else if (D.Effector.has_value())
+        {
+            RenderEffectorGridRigIntoCanvas(Fb, Cam, *Entry.Rig, Entry.Slots, Entry.ElapsedSeconds);
         }
     }
 

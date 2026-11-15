@@ -10,6 +10,7 @@
 #include "Engine/ParticleSpace/Origins/SurfaceAnchorSampler.h"
 
 #include "Engine/ParticleSpace/Origins/AnalyticOrigins.h"
+#include "Engine/ParticleSpace/Origins/ControlVehicleSurfaceLoader.h"
 
 #include <algorithm>
 #include <array>
@@ -43,6 +44,7 @@ constexpr std::array<const char*, static_cast<std::size_t>(SurfacePresetCategory
     "Faceted Spire / Cone",
     "Stellated Star Polyhedron",
     "Custom Imported PolygonNetwork",
+    "Controlled Integrator Vehicle",
 }};
 
 void NormalizeVec3(float V[3]) noexcept
@@ -557,6 +559,25 @@ std::vector<ParticleAnchorSample> SampleProceduralSurfaceAnchors(
     uint32_t                   SampleCount,
     uint32_t                   Seed)
 {
+    if (Origin.Preset == SurfacePresetCategory::ControlVehicleIntegrator)
+    {
+        auto Out = SampleControlVehicleAnchors(SampleCount, Seed, true, false);
+        for (auto& S : Out)
+        {
+            S.PositionMeters[0] *= Origin.ScaleMeters[0];
+            S.PositionMeters[1] *= Origin.ScaleMeters[1];
+            S.PositionMeters[2] *= Origin.ScaleMeters[2];
+            ApplyEulerDegrees(S.PositionMeters, Origin.EulerDegrees);
+            ApplyEulerDegrees(S.NormalUnit, Origin.EulerDegrees);
+            NormalizeVec3(S.NormalUnit);
+
+            S.PositionMeters[0] += Origin.CenterMeters[0];
+            S.PositionMeters[1] += Origin.CenterMeters[1];
+            S.PositionMeters[2] += Origin.CenterMeters[2];
+        }
+        return Out;
+    }
+
     std::vector<ParticleAnchorSample> Out;
     Out.reserve(SampleCount);
     DeterministicPcgRng Rng(Seed);

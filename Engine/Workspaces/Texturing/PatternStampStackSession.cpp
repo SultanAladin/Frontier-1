@@ -2396,4 +2396,17 @@ void PatternStampWorkspaceSession::RecomputeSummaryMetrics() noexcept
     }
 }
 
+ProceduralSpriteChannelSet PatternStampWorkspaceSession::SynthesizeParticleSpriteAtlas(
+    ProceduralSpriteArchetype Archetype,
+    uint32_t                  TileResolutionPx,
+    uint32_t                  AtlasColumns,
+    uint32_t                  Seed) const
+{
+    ProceduralSpriteSpec Spec = QueryDefaultProceduralSpriteSpec(Archetype);
+    Spec.TileResolution       = std::clamp<uint32_t>(TileResolutionPx, 32u, 512u);
+    Spec.AtlasColumns         = std::clamp<uint32_t>(AtlasColumns, 1u, 8u);
+    Spec.Seed                 = Seed;
+    return SynthesizeProceduralSpriteChannels(Spec);
+}
+
 } // namespace Frontier::Workspaces

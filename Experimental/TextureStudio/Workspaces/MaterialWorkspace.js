@@ -2142,19 +2142,85 @@ export function mountMaterialWorkspace(root, appBridge) {
   renderLeftOutliner();
   rebuildInspector();
 
+  const startPerfMs = performance.now();
+  let pausedForCapture = false;
   const tick = () => {
     if (disposed) return;
-    if (state.autoRotate && sampleMesh) sampleMesh.rotation.y += 0.008;
-    controls.update();
-    renderer.render(scene, camera);
+    if (!pausedForCapture) {
+      const elapsedSec = (performance.now() - startPerfMs) * 0.001;
+      if (activeMaterial?.userData?.shader?.uniforms?.uTime) {
+        activeMaterial.userData.shader.uniforms.uTime.value = elapsedSec;
+      }
+      if (state.autoRotate && sampleMesh) sampleMesh.rotation.y += 0.008;
+      controls.update();
+      renderer.render(scene, camera);
+    }
     rafId = requestAnimationFrame(tick);
   };
   rafId = requestAnimationFrame(tick);
 
-  return {
+  // Floating 1-click preview strip for the Proposed Procedural & Animated C++ Materials
+  const proposedItems = MATERIAL_CATALOG.filter((m) => m.category === "Animated & VFX");
+  const proposedBar = document.createElement("div");
+  proposedBar.style.cssText =
+    "position:absolute;left:18px;bottom:56px;z-index:12;display:flex;flex-wrap:wrap;align-items:center;gap:5px;max-width:calc(100% - 36px);padding:6px 10px;border-radius:16px;background:rgba(15,15,17,0.88);border:1px solid rgba(255,255,255,0.10);backdrop-filter:blur(8px);";
+  const barLabel = document.createElement("span");
+  barLabel.textContent = `PROPOSED C++ MATERIALS (${proposedItems.length}):`;
+  barLabel.style.cssText = "font-size:9.5px;letter-spacing:0.9px;color:#c9b49a;font-weight:500;margin-right:4px;";
+  proposedBar.appendChild(barLabel);
+  const chipBtns = [];
+  const syncProposedBar = () => {
+    chipBtns.forEach(({ id, btn }) => {
+      const on = state.params.id === id;
+      btn.style.background = on ? "#efefef" : "#1f1f22";
+      btn.style.color = on ? "#111" : "#c8c8cc";
+      btn.style.borderColor = on ? "#fff" : "rgba(255,255,255,0.09)";
+      btn.style.fontWeight = on ? "500" : "400";
+    });
+  };
+  proposedItems.forEach((mat) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = mat.name.replace(/\s*\([^)]*\)\s*/g, "");
+    btn.style.cssText =
+      "min-height:24px;padding:3px 10px;border-radius:14px;border:1px solid rgba(255,255,255,0.09);background:#1f1f22;color:#c8c8cc;font-size:10.5px;cursor:pointer;transition:0.12s;";
+    btn.onclick = () => {
+      applyAsset({ assetKind: "material", id: mat.id, raw: mat });
+      syncProposedBar();
+    };
+    chipBtns.push({ id: mat.id, btn });
+    proposedBar.appendChild(btn);
+  });
+  stage.appendChild(proposedBar);
+
+  // Start immediately on Derez Lattice Dissolve so the user sees the proposed animated materials right away!
+  if (proposedItems.length > 0 && !appBridge?.shared?.importedMesh) {
+    applyAsset({ assetKind: "material", id: proposedItems[0].id, raw: proposedItems[0] });
+    syncProposedBar();
+  }
+
+  const api = {
     name: "Material",
     applyAsset,
     applyImportedMesh,
+    setPaused(v) { pausedForCapture = !!v; },
+    renderAt(sec) {
+      if (activeMaterial?.userData?.shader?.uniforms?.uTime) {
+        activeMaterial.userData.shader.uniforms.uTime.value = sec;
+      }
+      renderer.render(scene, camera);
+      return renderer.domElement.toDataURL("image/png");
+    },
+    selectById(id) {
+      const hit = MATERIAL_CATALOG.find((m) => m.id === id);
+      if (!hit) return false;
+      const ok = applyAsset({ assetKind: "material", id: hit.id, raw: hit });
+      syncProposedBar();
+      return ok;
+    },
+    listCategory(cat) {
+      return MATERIAL_CATALOG.filter((m) => m.category === cat).map((m) => ({ id: m.id, name: m.name, type: m.type }));
+    },
     getParams: () => state.params,
     getSnapshot: () => ({
       id: state.params.id,
@@ -2192,6 +2258,9 @@ export function mountMaterialWorkspace(root, appBridge) {
       supportBall.material.dispose();
       renderer.dispose();
       root.innerHTML = "";
+      if (window.__TextureStudioMaterialApi === api) delete window.__TextureStudioMaterialApi;
     },
   };
+  window.__TextureStudioMaterialApi = api;
+  return api;
 }

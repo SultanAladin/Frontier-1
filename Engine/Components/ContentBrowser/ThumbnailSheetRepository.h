@@ -227,6 +227,7 @@ public:
     [[nodiscard]] std::span<const ContentRepositoryEntry> QueryAllEntries() const noexcept;
     [[nodiscard]] const ContentRepositoryEntry*           QueryEntryAt(std::size_t EntryIndex) const noexcept;
     [[nodiscard]] ThumbnailUvQuad                         QueryTileUv(std::size_t EntryIndex) const noexcept;
+    [[nodiscard]] bool                                    QueryTileRgbaPixels(std::size_t EntryIndex, std::vector<uint8_t>& OutTileRgba) const;
     [[nodiscard]] uint32_t                                PageCount() const noexcept;
 
 private:

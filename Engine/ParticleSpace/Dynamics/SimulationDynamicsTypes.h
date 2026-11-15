@@ -269,6 +269,35 @@ struct ShallowWaterSplashSpec
     float   TrackRadiusM    = 3.15f; // [m]   - Figure-8 loop radius
 };
 
+enum class EffectorPrimitiveShape : uint8_t
+{
+    HalftoneCircle          = 0u, // [-] - Surface-conforming halftone circle disc
+    UniformBox              = 1u, // [-] - Uniformly scaled 3D cube
+    HeightExtrudedCube      = 2u, // [-] - Fixed-footprint height-extruded 3D column
+    FlatSquareTile          = 3u, // [-] - Surface-conforming beveled square tile
+    TrianglePlate           = 4u, // [-] - Surface-conforming equilateral triangle plate
+    HexagonPlate            = 5u, // [-] - 3D beveled hexagonal prism plate (Kinetic Hex)
+    AutoHalftoneUpperTiles  = 6u  // [-] - Halftone circles on lower surface + extruded raised tiles on upper surface
+};
+
+enum class EffectorHostSurfaceKind : uint8_t
+{
+    FloorPlaneXZ            = 0u, // [-] - Horizontal XZ matrix (Effector Cube Matrix)
+    WallPlaneXY             = 1u, // [-] - Vertical XY wall matrix
+    ObsidianSphere          = 2u, // [-] - Sculpted obsidian sphere (Halftone Sphere)
+    TorusRing               = 4u, // [-] - Revolving obsidian torus (Kinetic Hex Torus Matrix)
+    CubicVolume             = 5u, // [-] - 3D voxel lattice
+    ControlVehicle          = 7u  // [-] - Frontier Controlled Integrator (ControlVehicle Body + 4 Rims + 4 Tyres)
+};
+
+enum class EffectorBackingFinish : uint8_t
+{
+    ObsidianGlossy          = 0u, // [-] - Photorealistic wet jet-black obsidian PBR studio finish
+    BrushedChrome           = 1u, // [-] - High-contrast brushed chrome finish
+    GhostWireframe          = 2u, // [-] - Subtle glowing technical wireframe silhouette
+    HiddenBacking           = 3u  // [-] - Show effector tiles only
+};
+
 struct EffectorVolumeDescriptor
 {
     EffectorVolumeShape Shape        = EffectorVolumeShape::Sphere;
@@ -278,11 +307,27 @@ struct EffectorVolumeDescriptor
 
 struct EffectorLatticeSpec
 {
-    EffectorDriverCategory   Driver          = EffectorDriverCategory::FluidSimplexWave;
-    EffectorVolumeDescriptor PrimaryVolume   {};
-    EffectorVolumeDescriptor SecondaryVolume { EffectorVolumeShape::Sphere, { 2.5f, 1.5f, 0.0f }, 0.0f };
-    float                    FalloffContrast = 1.85f; // [-] - Power falloff exponent
-    bool                     BlendPlaceable  = false; // [-] - True blends manual effectors over wave driver
+    EffectorDriverCategory   Driver              = EffectorDriverCategory::FluidSimplexWave;
+    EffectorHostSurfaceKind  HostSurface         = EffectorHostSurfaceKind::FloorPlaneXZ;
+    EffectorPrimitiveShape   PrimitiveShape      = EffectorPrimitiveShape::HeightExtrudedCube;
+    EffectorBackingFinish    BackingFinish       = EffectorBackingFinish::ObsidianGlossy;
+    EffectorVolumeDescriptor PrimaryVolume       {};
+    EffectorVolumeDescriptor SecondaryVolume     { EffectorVolumeShape::Sphere, { 2.5f, 1.5f, 0.0f }, 0.0f };
+    uint32_t                 GridColumns         = 24u;      // [cnt] - Columns / angular divisions
+    uint32_t                 GridRows            = 24u;      // [cnt] - Rows / minor divisions
+    float                    OriginExtentM[3]    = { 1.7f, 1.35f, 1.7f }; // [m] - Half-extent or radius scale
+    float                    WaveFrequencyPerM   = 1.25f;    // [1/m] - Spatial effector wave frequency (HTML curlFreq)
+    float                    WaveDriveSpeed      = 0.72f;    // [1/s] - Temporal effector wave speed (HTML curlAmp)
+    float                    FalloffContrast     = 1.85f;    // [-]   - Power falloff exponent (HTML gridContrast)
+    float                    MinScaleFraction    = 0.10f;    // [-]   - Idle scale fraction outside effector zone
+    float                    MaxExtrusionMeters  = 0.95f;    // [m]   - Peak extrusion / boost height
+    float                    BaseCellWidthMeters = 0.08f;    // [m]   - Nominal primitive lateral size
+    float                    VehicleYawDegrees   = 0.0f;     // [deg] - Studio yaw rotation of Controlled Integrator host
+    float                    IdleColorLinear[3]  = { 0.010f, 0.013f, 0.019f }; // [lin] - Dark obsidian rest colour (HTML colA)
+    float                    MidColorLinear[3]   = { 1.000f, 0.016f, 0.037f }; // [lin] - Transition colour (HTML colC)
+    float                    PeakColorLinear[3]  = { 1.000f, 0.246f, 0.058f }; // [lin] - Peak effector flare colour (HTML colB)
+    bool                     BlendPlaceable      = false;    // [-]   - True blends manual effectors over wave driver
+    bool                     IncludeVehicleWheels= true;     // [-]   - True places effector anchors on rims/tyres as well as body
 };
 
 struct FlockBoidsSpec

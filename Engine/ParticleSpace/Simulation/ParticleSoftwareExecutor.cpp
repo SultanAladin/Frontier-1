@@ -11,6 +11,7 @@
 
 #include "Engine/ParticleSpace/Dynamics/CurlManifoldDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/DynamicStrandSolver.h"
+#include "Engine/ParticleSpace/Dynamics/EffectorGridSolver.h"
 #include "Engine/ParticleSpace/Dynamics/FluidGranularDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/MolecularReactionDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/OrbitalElectromagneticDynamics.h"
@@ -183,6 +184,26 @@ uint32_t ExecuteParticleRigStepCpu(
             RigSlots,
             Context.ElapsedSeconds,
             DtSec);
+        uint32_t AliveCount = 0u;
+        for (const auto& Slot : RigSlots)
+        {
+            if (IsParticleSlotAlive(Slot)) ++AliveCount;
+        }
+        return AliveCount;
+    }
+
+    // Dedicated Motion & Grids Effector solver (Kinetic Hex Torus & Control Vehicle, Obsidian Halftone & Tiles, Height Cubes, Placeable 3D Effectors)
+    if (D.Effector.has_value())
+    {
+        StepEffectorGridEnsemble(
+            Rig,
+            *D.Effector,
+            OriginCenter,
+            Context.ForceAccumulator,
+            Context.Document.Collider,
+            {},
+            RigSlots,
+            Context.ElapsedSeconds);
         uint32_t AliveCount = 0u;
         for (const auto& Slot : RigSlots)
         {
