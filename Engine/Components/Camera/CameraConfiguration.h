@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          CAMERACONFIGURATION.H
+                                                            CAMERACONFIGURATION.H
 ============================================================================================================================================*/
 // 🧩 Physical sensor gate, thin-lens optics, kinematics, constraints, GPU visual effects, and non-Shipping diagnostics parameters
 
@@ -60,7 +60,7 @@ enum class CompositionGuideStyle : uint8_t
     None               = 0u, // [-] - No composition overlay
     RuleOfThirds       = 1u, // [-] - 3x3 Rule-of-Thirds grid
     BroadcastSafeGate  = 2u, // [-] - 90% Title Safe & 95% Outer Safe broadcast gates
-    CrosshairAndThirds = 3u, // [-] - Optical center reticle + Rule-of-Thirds grid
+    CrosshairThirds = 3u, // [-] - Optical center reticle + Rule-of-Thirds grid
 };
 
 //------------------------------------------------------------------------------------------------------------------------

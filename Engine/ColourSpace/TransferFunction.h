@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                            TRANSFERFUNCTION.H
+                                                              TRANSFERFUNCTION.H
 ============================================================================================================================================*/
-// 🎨 Electro-optical & opto-electronic transfer curves (Piecewise sRGB, Pure Gamma 2.2, ST 2084 PQ, HLG) & WCAG 2.1 contrast luminance
+// 🧩 Electro-optical & opto-electronic transfer curves (Piecewise sRGB, Pure Gamma 2.2, ST 2084 PQ, HLG) & WCAG 2.1 contrast luminance
 
 #pragma once
 

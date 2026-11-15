@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            WORKSPACEEXTENSION.H
+                                                             WORKSPACEEXTENSION.H
 ============================================================================================================================================*/
 // 🧩 Top-level workspace lifecycle coordinator unifying WorkspaceRegistry, 750 MiB RevisionExtension, WorkspaceExchange, & WorkspaceThread
 
@@ -53,7 +53,7 @@ public:
     void               Finalize() noexcept;
 
     [[nodiscard]] WorkspaceToken CreateWorkspaceDocument(
-        Codecs::SpaceExtensionCategory Category,
+        Codecs::SpaceSuffixCategory Category,
         std::string_view               Title,
         const std::filesystem::path&   InitialPath                 = {},
         std::size_t                    DocumentRevisionBudgetBytes = Constants::DefaultDocumentRevisionBudgetBytes);

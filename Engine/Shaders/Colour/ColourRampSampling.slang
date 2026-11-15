@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                        COLOURRAMPSAMPLING.SLANG
+                                                           COLOURRAMPSAMPLING.SLANG
 ============================================================================================================================================*/
-// 🎨 Shared pure .slang GPU colour ramp LUT sampling, wrap/curve math, Oklab/LinearSrgb conversions, Kelvin blackbody & 3D lattice noise
+// 🧩 Shared pure .slang GPU colour ramp LUT sampling, wrap/curve math, Oklab/LinearSrgb conversions, Kelvin blackbody & 3D lattice noise
 
 module ColourRampSampling;
 

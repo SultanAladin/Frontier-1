@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        TEXTURINGPANEAPPEARANCE.H
+                                                          TEXTURINGPANEAPPEARANCE.H
 ============================================================================================================================================*/
 // 🧩 Shared ControlCentre ThemeRepository theme colors, Studio UI rows, KPI trio, removable channel chips & icons for Texturing workspaces
 

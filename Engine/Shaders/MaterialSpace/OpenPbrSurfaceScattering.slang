@@ -1,12 +1,12 @@
-//==========================================================================================================================================
-//                                                    OPENPBRSURFACESCATTERING.SLANG
-//==========================================================================================================================================
-// Master 10-Lobe OpenPBR 1.1 + Constant-Time Glinty BSDF unpacking 128 B CompactMaterialEntry with wave-uniform lobe branching
+/*============================================================================================================================================
+                                                        OPENPBRSURFACESCATTERING.SLANG
+============================================================================================================================================*/
+// 🧩 Master 10-Lobe OpenPBR 1.1 + Constant-Time Glinty BSDF unpacking 128 B CompactMaterialEntry with wave-uniform lobe branching
 
 import ThinFilmInterference;
 import GlintMicroflakeScattering;
 import LinearlyTransformedSheen;
-import SubsurfaceAndTransmission;
+import SubsurfaceTransmission;
 import FiberScattering;
 
 static const uint LobeDiffuseEON             = 1u << 0u;
@@ -28,42 +28,42 @@ public struct GpuCompactMaterialEntry
     public uint  ActiveLobeMask;
     public uint  BaseColorRgHalf;
     public uint  BaseColorBAndWeightHalf;
-    public uint  DiffuseAndSpecRoughnessHalf;
+    public uint  DiffuseSpecRoughnessHalf;
 
-    public uint  MetalnessAndSpecWeightHalf;
-    public uint  AnisotropyAndRotationHalf;
-    public uint  DielectricIorAndEdgeTintRHalf;
+    public uint  MetalnessSpecWeightHalf;
+    public uint  AnisotropyRotationHalf;
+    public uint  DielectricIorEdgeTintRHalf;
     public uint  EdgeTintGbHalf;
 
-    public uint  CoatWeightAndRoughnessHalf;
-    public uint  CoatAnisoAndIorHalf;
+    public uint  CoatWeightRoughnessHalf;
+    public uint  CoatAnisoIorHalf;
     public uint  CoatTintRgHalf;
     public uint  CoatTintBAndThicknessHalf;
 
     public float ThinFilmThicknessNanometers;
-    public uint  ThinFilmWeightAndIorHalf;
-    public uint  FlakeCovAndRoughHalf;
-    public uint  FlakeSpreadAndLogDensityHalf;
+    public uint  ThinFilmWeightIorHalf;
+    public uint  FlakeCoverageRoughHalf;
+    public uint  FlakeSpreadLogDensityHalf;
 
     public uint  FlakePrimaryRgHalf;
     public uint  FlakePrimaryBAndBurialHalf;
     public uint  FlakeHorizonRgHalf;
     public uint  FlakeHorizonBAndTransWeightHalf;
 
-    public uint  AbbeAndVolumeAnisoHalf;
+    public uint  AbbeVolumeAnisoHalf;
     public uint  AttenuationRgHalf;
     public uint  AttenuationBAndDistHalf;
-    public uint  SubsurfaceWeightAndAnisoHalf;
+    public uint  SubsurfaceWeightAnisoHalf;
 
     public uint  SubsurfaceColorRgHalf;
     public uint  SubsurfaceColorBAndMfpXHalf;
     public uint  SubsurfaceMfpYzHalf;
-    public uint  SheenWeightRoughAndRgHalf;
+    public uint  SheenWeightRoughRgHalf;
 
     public uint  SheenBAndFiberParamsPacked;
-    public uint  FiberPigmentAndPorosityPacked;
-    public uint  PorosityAndKelvinHalf;
-    public uint  EmissionNitsHalfAndChannelMask;
+    public uint  FiberPigmentPorosityPacked;
+    public uint  PorosityKelvinHalf;
+    public uint  EmissionNitsChannelMask;
 };
 
 float2 UnpackHalf2(uint Word)
@@ -122,10 +122,10 @@ public float3 EvaluateCompactOpenPbrBsdf(
 
     float2 BaseRg   = UnpackHalf2(Entry.BaseColorRgHalf);
     float2 BaseBw   = UnpackHalf2(Entry.BaseColorBAndWeightHalf);
-    float2 RoughDs  = UnpackHalf2(Entry.DiffuseAndSpecRoughnessHalf);
-    float2 MetSpec  = UnpackHalf2(Entry.MetalnessAndSpecWeightHalf);
-    float2 AnisoRot = UnpackHalf2(Entry.AnisotropyAndRotationHalf);
-    float2 IorF82r  = UnpackHalf2(Entry.DielectricIorAndEdgeTintRHalf);
+    float2 RoughDs  = UnpackHalf2(Entry.DiffuseSpecRoughnessHalf);
+    float2 MetSpec  = UnpackHalf2(Entry.MetalnessSpecWeightHalf);
+    float2 AnisoRot = UnpackHalf2(Entry.AnisotropyRotationHalf);
+    float2 IorF82r  = UnpackHalf2(Entry.DielectricIorEdgeTintRHalf);
     float2 F82gb    = UnpackHalf2(Entry.EdgeTintGbHalf);
 
     float3 BaseColor     = float3(BaseRg.x, BaseRg.y, BaseBw.x);
@@ -143,7 +143,7 @@ public float3 EvaluateCompactOpenPbrBsdf(
         if ((Mask & LobeDielectricTransmission) != 0u)
         {
             float2 HorizonTr = UnpackHalf2(Entry.FlakeHorizonBAndTransWeightHalf);
-            float2 AbbeAniso = UnpackHalf2(Entry.AbbeAndVolumeAnisoHalf);
+            float2 AbbeAniso = UnpackHalf2(Entry.AbbeVolumeAnisoHalf);
             float2 AttRg     = UnpackHalf2(Entry.AttenuationRgHalf);
             float2 AttBd     = UnpackHalf2(Entry.AttenuationBAndDistHalf);
             bool   ThinSlab  = (Entry.ActiveLobeMask & FlagThinWalledSlab) != 0u;
@@ -158,8 +158,8 @@ public float3 EvaluateCompactOpenPbrBsdf(
     float  WorkingIOR    = DielectricIOR;
     if ((Mask & LobePorosityWetness) != 0u)
     {
-        float4 FiberPor = UnpackUnorm4(Entry.FiberPigmentAndPorosityPacked);
-        float2 PorKelv  = UnpackHalf2(Entry.PorosityAndKelvinHalf);
+        float4 FiberPor = UnpackUnorm4(Entry.FiberPigmentPorosityPacked);
+        float2 PorKelv  = UnpackHalf2(Entry.PorosityKelvinHalf);
         float  Sat      = saturate(PorKelv.x * FiberPor.w);
         float3 WetAlb   = (BaseColor * 0.522) / max(float3(1.0e-4), float3(1.0) - BaseColor * 0.478);
         WorkingAlbedo   = lerp(BaseColor, WetAlb, Sat);
@@ -172,8 +172,8 @@ public float3 EvaluateCompactOpenPbrBsdf(
     float  EffRough  = SpecRough;
     if ((Mask & LobeClearcoat) != 0u)
     {
-        float2 CoatWr    = UnpackHalf2(Entry.CoatWeightAndRoughnessHalf);
-        float2 CoatAi    = UnpackHalf2(Entry.CoatAnisoAndIorHalf);
+        float2 CoatWr    = UnpackHalf2(Entry.CoatWeightRoughnessHalf);
+        float2 CoatAi    = UnpackHalf2(Entry.CoatAnisoIorHalf);
         float2 CoatRg    = UnpackHalf2(Entry.CoatTintRgHalf);
         float2 CoatBt    = UnpackHalf2(Entry.CoatTintBAndThicknessHalf);
         float  CoatW     = CoatWr.x;
@@ -193,9 +193,9 @@ public float3 EvaluateCompactOpenPbrBsdf(
     float4 SheenOut = float4(0.0, 0.0, 0.0, 1.0);
     if ((Mask & LobeClothSheenLTC) != 0u)
     {
-        float4 SheenPack = UnpackUnorm4(Entry.SheenWeightRoughAndRgHalf);
+        float4 SheenPack = UnpackUnorm4(Entry.SheenWeightRoughRgHalf);
         float4 FiberPack = UnpackUnorm4(Entry.SheenBAndFiberParamsPacked);
-        SheenOut = EvaluateClothSheenAndSubstrateScale(
+        SheenOut = EvaluateClothSheenLobe(
             LocalWo, LocalWi, SheenPack.x, SheenPack.y, float3(SheenPack.z, SheenPack.w, FiberPack.x));
     }
 
@@ -205,7 +205,7 @@ public float3 EvaluateCompactOpenPbrBsdf(
     if ((Mask & LobeFiberBCSDF) != 0u)
     {
         float4 FiberPack = UnpackUnorm4(Entry.SheenBAndFiberParamsPacked);
-        float4 Pigment   = UnpackUnorm4(Entry.FiberPigmentAndPorosityPacked);
+        float4 Pigment   = UnpackUnorm4(Entry.FiberPigmentPorosityPacked);
         FiberBlend       = FiberPack.y;
         FiberBrdf        = EvaluateFiberStrandBcsdf(
             LocalWo, LocalWi, WorkingIOR, WorkingAlbedo, FiberBlend, FiberPack.z, FiberPack.w, Pigment.x * 0.70 - 0.35, Pigment.y, Pigment.z);
@@ -215,12 +215,12 @@ public float3 EvaluateCompactOpenPbrBsdf(
     float3 SubstrateBrdf = float3(0.0);
     if (FiberBlend < 0.999)
     {
-        float2 FlakeCr  = UnpackHalf2(Entry.FlakeCovAndRoughHalf);
+        float2 FlakeCr  = UnpackHalf2(Entry.FlakeCoverageRoughHalf);
         float  FlakeCov = ((Mask & LobeGlintMicroflakes) != 0u) ? FlakeCr.x : 0.0;
         float3 GlintVal = float3(0.0);
         if (FlakeCov > 1.0e-5)
         {
-            float2 FlakeSl = UnpackHalf2(Entry.FlakeSpreadAndLogDensityHalf);
+            float2 FlakeSl = UnpackHalf2(Entry.FlakeSpreadLogDensityHalf);
             float2 PrimRg  = UnpackHalf2(Entry.FlakePrimaryRgHalf);
             float2 PrimBb  = UnpackHalf2(Entry.FlakePrimaryBAndBurialHalf);
             float2 HorRg   = UnpackHalf2(Entry.FlakeHorizonRgHalf);
@@ -239,7 +239,7 @@ public float3 EvaluateCompactOpenPbrBsdf(
 
         if ((Mask & LobeThinFilmAiry) != 0u)
         {
-            float2 FilmWi = UnpackHalf2(Entry.ThinFilmWeightAndIorHalf);
+            float2 FilmWi = UnpackHalf2(Entry.ThinFilmWeightIorHalf);
             Fresnel = EvaluateSpectralThinFilmFresnel(
                 VoDotH, Entry.ThinFilmThicknessNanometers, FilmWi.y, 1.0, Fresnel, FilmWi.x, false);
         }
@@ -254,7 +254,7 @@ public float3 EvaluateCompactOpenPbrBsdf(
         float3 SpecVal = Fresnel * (NdfD * G2 / max(1.0e-6, 4.0 * LocalWo.z * LocalWi.z));
 
         float2 HorBt  = UnpackHalf2(Entry.FlakeHorizonBAndTransWeightHalf);
-        float2 SssWa  = UnpackHalf2(Entry.SubsurfaceWeightAndAnisoHalf);
+        float2 SssWa  = UnpackHalf2(Entry.SubsurfaceWeightAnisoHalf);
         float  SubWin = (1.0 - Metalness) * (1.0 - HorBt.y) * (1.0 - DielF0);
 
         float3 DiffVal = float3(0.0);

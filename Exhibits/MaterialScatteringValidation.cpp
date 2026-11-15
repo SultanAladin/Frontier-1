@@ -56,7 +56,7 @@ struct ValidationScoreboard
 
 struct SpecimenCardTelemetry
 {
-    MaterialSpace::MaterialPresetKind   Preset;
+    MaterialSpace::MaterialPresetCategory   Preset;
     const char*                         LobeBadge;
     const char*                         Title;
     const char*                         Subtitle;
@@ -103,16 +103,16 @@ int main()
     // 2. WHITE-FURNACE ENERGY CONSERVATION & HELMHOLTZ RECIPROCITY ACROSS ALL 10 PHYSICAL PRESETS
     //====================================================================================================================
     std::array<SpecimenCardTelemetry, 10u> Specimens {{
-        { MaterialSpace::MaterialPresetKind::RoughPorousConcrete,         "L1 EON",     "Porous Concrete",   "Portsmouth 2025 EON"      },
-        { MaterialSpace::MaterialPresetKind::BrushedGoldAlloy,            "L2 METAL",   "Brushed Gold",      "VNDF + F82 + Turquin MS"  },
-        { MaterialSpace::MaterialPresetKind::ClearcoatedCarbonLacquer,    "L3 COAT",    "Carbon Lacquer",    "Coat + TIR + Beer-Lambert"},
-        { MaterialSpace::MaterialPresetKind::HeatBluedTitaniumIridescent, "L4 AIRY",    "Blued Titanium",    "490 nm Thin-Film Airy"    },
-        { MaterialSpace::MaterialPresetKind::MetallicCarPaintGlinty,      "L5 GLINT",   "Glinty Carpaint",   "Kemppinen 2025 4D Glint"  },
-        { MaterialSpace::MaterialPresetKind::AbbeCrownGlassDispersion,    "L6 GLASS",   "Abbe Crown Glass",  "GGX BTDF + V_d Dispersion"},
-        { MaterialSpace::MaterialPresetKind::SubsurfaceJadeOrganic,       "L7 SSS",     "Imperial Jade",     "Burley Normalized SSS"    },
-        { MaterialSpace::MaterialPresetKind::AlcantaraVelvetSheen,        "L8 SHEEN",   "Crimson Velvet",    "Zeltner 2022 LTC Sheen"   },
-        { MaterialSpace::MaterialPresetKind::KeratinStrandFiber,          "L9 FIBER",   "Keratin Strand",    "Chiang R + TT + TRT"      },
-        { MaterialSpace::MaterialPresetKind::WetPorousGlowingBrakeRotor,  "L10 WET+BB", "Wet Glowing Rotor", "Rel-IOR + 1350 K Planck"  },
+        { MaterialSpace::MaterialPresetCategory::RoughPorousConcrete,         "L1 EON",     "Porous Concrete",   "Portsmouth 2025 EON"      },
+        { MaterialSpace::MaterialPresetCategory::BrushedGoldAlloy,            "L2 METAL",   "Brushed Gold",      "VNDF + F82 + Turquin MS"  },
+        { MaterialSpace::MaterialPresetCategory::ClearcoatedCarbonLacquer,    "L3 COAT",    "Carbon Lacquer",    "Coat + TIR + Beer-Lambert"},
+        { MaterialSpace::MaterialPresetCategory::HeatBluedTitaniumIridescent, "L4 AIRY",    "Blued Titanium",    "490 nm Thin-Film Airy"    },
+        { MaterialSpace::MaterialPresetCategory::MetallicCarPaintGlinty,      "L5 GLINT",   "Glinty Carpaint",   "Kemppinen 2025 4D Glint"  },
+        { MaterialSpace::MaterialPresetCategory::AbbeCrownGlassDispersion,    "L6 GLASS",   "Abbe Crown Glass",  "GGX BTDF + V_d Dispersion"},
+        { MaterialSpace::MaterialPresetCategory::SubsurfaceJadeOrganic,       "L7 SSS",     "Imperial Jade",     "Burley Normalized SSS"    },
+        { MaterialSpace::MaterialPresetCategory::AlcantaraVelvetSheen,        "L8 SHEEN",   "Crimson Velvet",    "Zeltner 2022 LTC Sheen"   },
+        { MaterialSpace::MaterialPresetCategory::KeratinStrandFiber,          "L9 FIBER",   "Keratin Strand",    "Chiang R + TT + TRT"      },
+        { MaterialSpace::MaterialPresetCategory::WetPorousGlowingBrakeRotor,  "L10 WET+BB", "Wet Glowing Rotor", "Rel-IOR + 1350 K Planck"  },
     }};
 
     MaterialSpace::CompactMaterialRegister GpuRegister {};
@@ -232,12 +232,12 @@ int main()
                  "CompactMaterialRegister::QueryCombinedWavefrontLobeMask unions active lobes across wavefront");
 
     MaterialSpace::MaterialSurfaceStack WeatheringStack {};
-    (void)WeatheringStack.AppendLayer({ MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::BrushedGoldAlloy),
-                                        MaterialSpace::MaterialLayerBlendKind::CoverageOver, 1.0f, 0.5f, 0.5f, true });
-    (void)WeatheringStack.AppendLayer({ MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::RoughPorousConcrete),
-                                        MaterialSpace::MaterialLayerBlendKind::HeightThresholdBlend, 0.45f, 0.7f, 0.8f, true });
-    (void)WeatheringStack.AppendLayer({ MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::ClearcoatedCarbonLacquer),
-                                        MaterialSpace::MaterialLayerBlendKind::OpticalClearcoatOver, 0.85f, 0.5f, 0.5f, true });
+    (void)WeatheringStack.AppendLayer({ MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::BrushedGoldAlloy),
+                                        MaterialSpace::MaterialLayerBlendCategory::CoverageOver, 1.0f, 0.5f, 0.5f, true });
+    (void)WeatheringStack.AppendLayer({ MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::RoughPorousConcrete),
+                                        MaterialSpace::MaterialLayerBlendCategory::HeightThresholdBlend, 0.45f, 0.7f, 0.8f, true });
+    (void)WeatheringStack.AppendLayer({ MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::ClearcoatedCarbonLacquer),
+                                        MaterialSpace::MaterialLayerBlendCategory::OpticalClearcoatOver, 0.85f, 0.5f, 0.5f, true });
     const auto FlattenedMat = MaterialSpace::FlattenMaterialSurfaceStack(WeatheringStack);
     const auto BounceSlab   = MaterialSpace::CompileBounceSlabEntry(FlattenedMat);
     const auto BounceRad    = MaterialSpace::EvaluateBounceSlabRadiance(
@@ -246,7 +246,7 @@ int main()
                  "MaterialSurfaceStack flattens multi-layer stack & compiles valid 32 B BounceSlabEntry");
 
     const auto BrushedPyramid = MaterialSpace::BakeProceduralChannelPyramid(
-        MaterialSpace::ProceduralPatternKind::BrushedAnisotropicGrooves, 64u, 0.12f, 1.2f, 42u);
+        MaterialSpace::ProceduralPatternCategory::BrushedAnisotropicGrooves, 64u, 0.12f, 1.2f, 42u);
     Score.Verify(BrushedPyramid.MipLevels.size() == 7u &&
                  BrushedPyramid.MipLevels.back().Texels.front().EffectiveRoughness >=
                      BrushedPyramid.MipLevels.front().Texels.front().EffectiveRoughness,
@@ -257,7 +257,7 @@ int main()
     MatDoc.MaterialTitle            = "CobaltGlintCarpaint";
     MatDoc.ShaderSourceTag          = "OpenPbrSurfaceScattering.slang";
     MatDoc.PhysicalMaterialIncluded = true;
-    MatDoc.AuthoredMaterial         = MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::MetallicCarPaintGlinty);
+    MatDoc.AuthoredMaterial         = MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::MetallicCarPaintGlinty);
     MatDoc.ParameterSlots.push_back({ "FlakeCoverage", 0.62, "" });
 
     Workspaces::RevisionTracker MatRev {};

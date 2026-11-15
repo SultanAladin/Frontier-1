@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            TIMELINETRANSFERREGISTER.H
+                                                          TIMELINETRANSFERREGISTER.H
 ============================================================================================================================================*/
 // 🧩 Reusable triple-buffered HOST_VISIBLE | HOST_CACHED GPU->CPU readback ring synchronized via Vulkan Timeline Semaphores
 
@@ -73,12 +73,12 @@ public:
     void BindTicketTimelineSignal(ReadbackTicket& Ticket, uint64_t TimelineSignal) noexcept;
 
     [[nodiscard]] bool QueryTicketReady(const ReadbackTicket& Ticket) const noexcept;
-    [[nodiscard]] bool AwaitAndCopyBytes(const ReadbackTicket& Ticket, std::span<uint8_t> DestinationBytes) const noexcept;
+    [[nodiscard]] bool AwaitReadbackBytes(const ReadbackTicket& Ticket, std::span<uint8_t> DestinationBytes) const noexcept;
 
     template <typename EntryScalar>
-    [[nodiscard]] bool AwaitAndCopyTyped(const ReadbackTicket& Ticket, std::span<EntryScalar> DestinationSpan) const noexcept
+    [[nodiscard]] bool AwaitReadbackTyped(const ReadbackTicket& Ticket, std::span<EntryScalar> DestinationSpan) const noexcept
     {
-        return AwaitAndCopyBytes(
+        return AwaitReadbackBytes(
             Ticket,
             std::span<uint8_t>(
                 reinterpret_cast<uint8_t*>(DestinationSpan.data()),

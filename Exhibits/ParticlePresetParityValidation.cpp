@@ -8,8 +8,8 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleExtension.h"
-#include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
+#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 #include "Engine/ParticleSpace/Simulation/ParticleMetricsCollector.h"
 #include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
 
@@ -277,7 +277,7 @@ void RenderPresetView(
     uint32_t AliveN = 0u;
     for (const auto& S : Slots)
     {
-        if (!IsParticleSlotAlive(S)) continue;
+        if (!QueryParticleSlotAlive(S)) continue;
         MeanX += S.PositionMeters[0];
         MeanY += S.PositionMeters[1];
         MeanZ += S.PositionMeters[2];
@@ -292,7 +292,7 @@ void RenderPresetView(
     float MaxR = 0.55f;
     for (const auto& S : Slots)
     {
-        if (!IsParticleSlotAlive(S)) continue;
+        if (!QueryParticleSlotAlive(S)) continue;
         const float Dx = S.PositionMeters[0] - MeanX;
         const float Dy = S.PositionMeters[1] - MeanY;
         const float Dz = S.PositionMeters[2] - MeanZ;
@@ -328,7 +328,7 @@ void RenderPresetView(
     for (std::size_t I = 0u; I < Slots.size(); ++I)
     {
         const auto& S = Slots[I];
-        if (!IsParticleSlotAlive(S)) continue;
+        if (!QueryParticleSlotAlive(S)) continue;
         const float X = S.PositionMeters[0] - MeanX;
         const float Y = S.PositionMeters[1] - MeanY;
         const float Z = S.PositionMeters[2] - MeanZ;
@@ -554,7 +554,7 @@ int main()
             Doc.Collider.BallCenterM[2] = 0.5f;
             Doc.Rigs[0].SlotCapacity    = std::min<uint32_t>(Doc.Rigs[0].SlotCapacity, 1200u);
 
-            ParticleExtension Ext {};
+            ParticleSimulationCoordinator Ext {};
             if (!Ext.Initialize(Doc))
             {
                 std::cerr << "[FAIL] Init failed for " << Meta.Identifier << "\n";

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           WORKSPACEDOCUMENT.CPP
+                                                            WORKSPACEDOCUMENT.CPP
 ============================================================================================================================================*/
 // 🧩 Live .Space WorkspaceDocument persistence and revision integration implementation
 
@@ -27,7 +27,7 @@ WorkspaceDocument::WorkspaceDocument(
     , ContainerPath(std::move(CanonicalPath))
     , Revision(DocumentRevisionBudgetBytes)
 {
-    Payload.ExtensionCategory  = AssignedToken.ExtensionCategory;
+    Payload.SuffixCategory  = AssignedToken.SuffixCategory;
     Payload.DocumentTitle      = std::move(Title);
     Payload.AuthoringWorkspace = "Frontier.WorkspaceSession";
     AssignCanonicalPath(ContainerPath);
@@ -41,7 +41,7 @@ void WorkspaceDocument::AssignCanonicalPath(std::filesystem::path NewPath)
         return;
     }
 
-    const std::string_view CanonicalExtension = Codecs::SpaceContainerEncoder::QueryCanonicalExtension(Payload.ExtensionCategory);
+    const std::string_view CanonicalExtension = Codecs::SpaceContainerEncoder::QueryCanonicalSuffix(Payload.SuffixCategory);
     NewPath.replace_extension(CanonicalExtension);
     ContainerPath = std::move(NewPath);
 }
@@ -86,7 +86,7 @@ bool WorkspaceDocument::LoadFromDisk(const std::filesystem::path& SourcePath, st
     }
 
     Payload                 = std::move(DecodedPayload);
-    Token.ExtensionCategory = Payload.ExtensionCategory;
+    Token.SuffixCategory = Payload.SuffixCategory;
     Revision                = std::move(DecodedRevision);
     AssignCanonicalPath(SourcePath);
     return true;

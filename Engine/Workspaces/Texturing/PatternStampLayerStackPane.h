@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                       PATTERNSTAMPLAYERSTACKPANE.H
-==========================================================================================================================================*/
-// 🗂️ Left-docked Layer Stack pane shared by Pattern Studio and Stamp Studio (filters, search, nested tree, mask sub-rows, footer metrics).
+/*============================================================================================================================================
+                                                         PATTERNSTAMPLAYERSTACKPANE.H
+============================================================================================================================================*/
+// 🧩 Left-docked Layer Stack pane shared by Pattern Studio and Stamp Studio (filters, search, nested tree, mask sub-rows, footer metrics).
 
 #pragma once
 

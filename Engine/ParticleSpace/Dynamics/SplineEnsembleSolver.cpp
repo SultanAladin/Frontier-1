@@ -1,9 +1,10 @@
 /*============================================================================================================================================
-                                                         SPLINEENSEMBLESOLVER.CPP
+                                                           SPLINEENSEMBLESOLVER.CPP
 ============================================================================================================================================*/
 // 🧩 Exact 1:1 C++20 implementation of HTML Particle Studio Curl/Bokeh Stream Ribbons, Spiderweb Catenary Splines, and Dielectric Arcs
 
 #include "Engine/ParticleSpace/Dynamics/SplineEnsembleSolver.h"
+#include "Engine/ParticleSpace/ParticleVectorMath.h"
 
 #include <algorithm>
 #include <array>
@@ -18,31 +19,7 @@ namespace
 constexpr float kPi    = 3.14159265358979323846f;
 constexpr float kTwoPi = 6.28318530717958647692f;
 
-struct Vec3
-{
-    float X = 0.0f;
-    float Y = 0.0f;
-    float Z = 0.0f;
-};
-
-inline Vec3 operator+(Vec3 A, Vec3 B) noexcept { return { A.X + B.X, A.Y + B.Y, A.Z + B.Z }; }
-inline Vec3 operator-(Vec3 A, Vec3 B) noexcept { return { A.X - B.X, A.Y - B.Y, A.Z - B.Z }; }
-inline Vec3 operator*(Vec3 A, float S) noexcept { return { A.X * S, A.Y * S, A.Z * S }; }
-inline float Dot3(Vec3 A, Vec3 B) noexcept { return A.X * B.X + A.Y * B.Y + A.Z * B.Z; }
-inline Vec3 Cross3(Vec3 A, Vec3 B) noexcept
-{
-    return { A.Y * B.Z - A.Z * B.Y, A.Z * B.X - A.X * B.Z, A.X * B.Y - A.Y * B.X };
-}
-inline float Len3(Vec3 V) noexcept { return std::sqrt(V.X * V.X + V.Y * V.Y + V.Z * V.Z); }
-inline Vec3 Norm3(Vec3 V) noexcept
-{
-    const float L = Len3(V);
-    return (L > 1e-6f) ? (V * (1.0f / L)) : Vec3 { 0.0f, 1.0f, 0.0f };
-}
-inline Vec3 Mix3(Vec3 A, Vec3 B, float T) noexcept
-{
-    return { A.X + (B.X - A.X) * T, A.Y + (B.Y - A.Y) * T, A.Z + (B.Z - A.Z) * T };
-}
+using Vec3 = Vector3f;
 
 inline float SmoothClamp(float A, float B, float X) noexcept
 {
@@ -887,7 +864,7 @@ void StepCurlStreamRibbonEnsemble(
     bool AnyAlive = false;
     for (uint32_t I = 0u; I < std::min<uint32_t>(Cap, 8u); ++I)
     {
-        if (IsParticleSlotAlive(Slots[I])) { AnyAlive = true; break; }
+        if (QueryParticleSlotAlive(Slots[I])) { AnyAlive = true; break; }
     }
     if (!AnyAlive)
     {
@@ -900,7 +877,7 @@ void StepCurlStreamRibbonEnsemble(
     for (uint32_t I = 0u; I < Cap; ++I)
     {
         ParticleSlot& Slot = Slots[I];
-        if (!IsParticleSlotAlive(Slot))
+        if (!QueryParticleSlotAlive(Slot))
         {
             SeedCurlParticle(I, static_cast<uint32_t>(Slot.SpinRadians) + 1u, false, Rig, Spec, Org, ElapsedSeconds, Slot, Strands, VertsPerStrand);
             continue;
@@ -1197,7 +1174,7 @@ void StepDielectricSparkEnsemble(
             MarkSlotAlive(Slot, false);
             continue;
         }
-        const bool NeedsSeed = !IsParticleSlotAlive(Slot) || (Slot.AgeSeconds + Dt >= Slot.LifespanSeconds);
+        const bool NeedsSeed = !QueryParticleSlotAlive(Slot) || (Slot.AgeSeconds + Dt >= Slot.LifespanSeconds);
         if (NeedsSeed)
         {
             const float Cycle = std::floor(ElapsedSeconds * 6.0f + static_cast<float>(I) * 0.37f);

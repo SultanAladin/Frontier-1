@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                             MATERIALCODEC.CPP
+                                                              MATERIALCODEC.CPP
 ============================================================================================================================================*/
 // 🧩 .MaterialSpace Two-Tier Hybrid container encoder & decoder (TOML manifest + 64B-aligned 128 B CompactMaterialEntry & 32 B BounceSlabEntry)
 
@@ -204,7 +204,7 @@ SpaceContainerPayload MaterialEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::MaterialSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::MaterialSpace;
     Payload.DocumentTitle      = Model.MaterialTitle;
     Payload.AuthoringWorkspace = "Frontier.MaterialWorkspace";
 
@@ -312,7 +312,7 @@ bool MaterialDecoder::ExtractModel(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::MaterialSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::MaterialSpace)
     {
         OutDiagnostic = "Expected .MaterialSpace container category.";
         return false;

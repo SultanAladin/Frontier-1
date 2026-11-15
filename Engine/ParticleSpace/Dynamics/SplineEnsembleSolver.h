@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          SPLINEENSEMBLESOLVER.H
+                                                            SPLINEENSEMBLESOLVER.H
 ============================================================================================================================================*/
 // 🧩 1:1 C++20 spline & filament solvers: Curl Stream Ribbons, Bokeh Object Pour, Catenary Spiderwebs, and Dielectric Lightning Arcs
 

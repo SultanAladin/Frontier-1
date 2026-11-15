@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           VECTORFIELDCODEC.CPP
+                                                             VECTORFIELDCODEC.CPP
 ============================================================================================================================================*/
 // 🧩 Option A Two-Tier Hybrid .VectorFieldSpace encoder & decoder + inline .SimulationSpace ForceSources serialization
 
@@ -260,7 +260,7 @@ SpaceContainerPayload VectorFieldEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::VectorFieldSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::VectorFieldSpace;
     Payload.DocumentTitle      = Document.DocumentTitle;
     Payload.AuthoringWorkspace = "Frontier.SimulationWorkspace";
 
@@ -374,7 +374,7 @@ bool VectorFieldDecoder::ExtractDocument(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::VectorFieldSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::VectorFieldSpace)
     {
         OutDiagnostic = "Expected .VectorFieldSpace container category.";
         return false;

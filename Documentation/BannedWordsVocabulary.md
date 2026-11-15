@@ -140,12 +140,14 @@ Use the following distinct visual nouns according to their exact structural role
 ### 3.1 Narrow Explicit Exemptions
 
 1. **`Extension` (Strictly Restricted)**:
-   Permitted **exclusively** for designated lifecycle coordinators (`RenderExtension`, `PhysicsExtension`, `InputExtension`, `AnnotationExtension`, `WorkspaceExtension`, `RevisionExtension`, `NetworkingExtension`, `AudioExtension`). Barred for general plugins, helpers, or feature add-ons.
-2. **`Traversal` (Single-File Exemption)**:
+   Permitted **exclusively** for designated lifecycle coordinators (`RenderExtension`, `PhysicsExtension`, `InputExtension`, `AnnotationExtension`, `WorkspaceExtension`, `RevisionExtension`, `NetworkingExtension`, `AudioExtension`). Barred for general plugins, helpers, feature add-ons, file suffixes (use `Suffix`), or UI callbacks.
+2. **`Model` (Force-Domain-Only Exemption)**:
+   Permitted **exclusively** for analytical force/turbulence/stream field models (`ForceModel`, `TurbulenceModel`, `StreamTransportModel`, `VectorFieldModel`, `ForceModelDescriptor`, `ForceModelOrdinal`). Barred everywhere outside Force/Turbulence fields. `Law` / `Laws` is **strictly banned everywhere**, including inside ForceFields.
+3. **`Traversal` (Single-File Exemption)**:
    Exempt **only** at `GeometrySpace/Selection/SelectionTraversal.{h,cpp}` per explicit user direction. Barred everywhere else.
-3. **`Record` (Composite-Only Exemption)**:
+4. **`Record` (Composite-Only Exemption)**:
    Bare `Record` is banned. Only `RecordEntry` and `RecordToken` are approved (`RecordStore` is barred).
-4. **Named Design Patterns (`Observer`, etc.)**:
+5. **Named Design Patterns (`Observer`, etc.)**:
    Human job-title nouns remain barred unless a strict, textbook named design pattern is genuinely implemented.
 
 ### 3.2 Discouraged Vocabulary (Not Banned — Avoid)
@@ -176,7 +178,8 @@ Use the following distinct visual nouns according to their exact structural role
   - Marked `substrate`, `atlas`, and `slice` as **discouraged (avoid)**.
 - **2026-11-14**: Barred the conjunction `And` inside any filename, class, struct, enum, function, variable, shader, or plan document name (`GpuTextureAndSdfBaker`, `BuildAndUploadStudy`, `CameraEyeAndMode`, `MasksAndIds`) — enforced in `CLAUDE.md` §2.7 and `SKILL-Naming.md` Gate ⑦.
 - **2026-11-14 (User Ruling)**: Barred `Law` / `Laws` across filenames, folders, and identifiers (use concrete physical/mechanical domain names such as `Dynamics/`, `BallisticMotion`, `StrandConstraint`, `ForceFieldCoupling`, `FlockBoids`). Also rejected `ParticleReadback`, `PlaybackTransportBar`, and `TimelineRulerScrubber` in favor of concrete mechanical names (`ParticleMetricsCollector`, `SimulationPlaybackControls`, `SimulationTimeRuler`).
-- **2026-11-15 (User Ruling)**: Barred `strata` / `stratum` across filenames, identifiers, UI terms, and plans (use `SurfaceLayer`, `FinishLayer`, `CoatingLayer`, or `MaterialLayerStack`).
+- **2026-11-15 (User Ruling)**: Barred `strata` / `stratum` and `morph` across filenames, identifiers, UI terms, and plans (use `SurfaceLayer`, `FinishLayer`, `CoatingLayer`, `MaterialLayerStack`, `Transition`, `Crossfade`).
+- **2026-11-15 (User Ruling)**: Re-affirmed `Law` / `Laws` strictly barred even inside ForceFields — use `Model` (`ForceModel`, `TurbulenceModel`, `StreamTransportModel`, `VectorFieldModel`) as the **sole** narrow domain exemption where `Model` is permitted.
 
 ---
 
@@ -195,7 +198,7 @@ Use this combined index to audit identifiers, filenames, directory names, and co
 - **I**: `Info`, `Inscription` / `inscription`, `interpolant`, `Item` / `item`
 - **K**: `Kernel`, `kin`, `Kind`, `Kronos`
 - **L**: `Law` / `Laws`, `lineage`, `Listener` / `listener`
-- **M**: `Maestro`, `Manager`, `map`, `Matrix`, `member`, `menu`, `Mesh` / `mesh`, `Module`, `morph`, `mutation`
+- **M**: `Maestro`, `Manager`, `map`, `Matrix`, `member`, `menu`, `Mesh` / `mesh`, `Model` *(restricted — Force/Turbulence models only, §3.1)*, `Module`, `morph`, `mutation`
 - **N**: `Nexus` / `nexus`, `Node`, `Nova`
 - **O**: `Object`, `Observer` *(restricted — §3.1)*, `occupant`, `Odyssey`, `Oracle`, `Orion`, `Orphan`
 - **P**: `palette`, `Parent`, `Pass` / `pass`, `pill`, `pipeline`, `pool`, `popover`, `popup` / `popups`, `predicate`, `probe`, `Processor`, `proof`, `Provider`

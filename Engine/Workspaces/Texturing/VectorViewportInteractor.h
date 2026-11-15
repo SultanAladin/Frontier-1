@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        VECTORVIEWPORTINTERACTOR.H
+                                                          VECTORVIEWPORTINTERACTOR.H
 ============================================================================================================================================*/
 // 🧩 Interactive 2D vector viewport interactor: GPU pixel/region picking, Planar2D TransformGizmo, Pen/Curve/EditPoints/PointGradient,
 //    Pan/Zoom, modal Grab/Rotate/Scale, and Pattern/Stamp keyboard shortcuts.
@@ -11,7 +11,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Panes/ViewportProjectionPane.h"
-#include "Engine/Editor/Viewports/TransformGizmo.h"
+#include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/GeometricRaster/Vector/VectorCanvasRasterizer.h"
 #include "Engine/Workspaces/Texturing/PatternStampStackSession.h"
 

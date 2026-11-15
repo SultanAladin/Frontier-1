@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                           COLOURRAMPEDITOR.H
+                                                              COLOURRAMPEDITOR.H
 ============================================================================================================================================*/
-// 🎨 Reusable multi-stop ColourRamp / LinearFill / SolidPigment / QuantizedRamp / BlackbodyThermal UI editor with ContentBrowser drop-slot support
+// 🧩 Reusable multi-stop ColourRamp / LinearFill / SolidPigment / QuantizedRamp / BlackbodyThermal UI editor with ContentBrowser drop-slot support
 
 #pragma once
 

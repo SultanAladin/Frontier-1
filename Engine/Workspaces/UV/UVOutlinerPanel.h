@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            UVOUTLINERPANEL.H
+                                                              UVOUTLINERPANEL.H
 ============================================================================================================================================*/
 // 🧩 UV Space Outliner pane matching Experimental/UVEditor pixel-for-pixel with ControlCentre ThemeRepository styling & 0px layer boxes
 

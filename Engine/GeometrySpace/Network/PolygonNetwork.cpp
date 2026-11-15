@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            POLYGONNETWORK.CPP
+                                                              POLYGONNETWORK.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of PolygonNetwork loop construction, O(E log E) opposite-edge linking, normal evaluation, and .UVSpace stream exchange
 

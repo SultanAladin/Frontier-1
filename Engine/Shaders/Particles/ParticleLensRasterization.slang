@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                     PARTICLELENSRASTERIZATION.SLANG
+                                                       PARTICLELENSRASTERIZATION.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 optical gravitational-lens Einstein ring & thermal heat-shimmer screen distortion carrier
 

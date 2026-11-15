@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          PARTICLEVIEWPORTHOST.H
+                                                            PARTICLEVIEWPORTHOST.H
 ============================================================================================================================================*/
 // 🧩 Floating 22px Center Viewport panel with Viewport Bar, live 3D particle/field preview, 5-tool rail, SimulationPlaybackControls, SimulationTimeRuler & LogStreamDrawer
 

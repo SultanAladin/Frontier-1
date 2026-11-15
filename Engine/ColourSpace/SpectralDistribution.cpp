@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                         SPECTRALDISTRIBUTION.CPP
+                                                           SPECTRALDISTRIBUTION.CPP
 ============================================================================================================================================*/
-// 🎨 Implementation of Wyman analytic CIE 1931 2-degree observer curves, spectral integration & Planckian Kelvin radiance
+// 🧩 Implementation of Wyman analytic CIE 1931 2-degree observer curves, spectral integration & Planckian Kelvin radiance
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES

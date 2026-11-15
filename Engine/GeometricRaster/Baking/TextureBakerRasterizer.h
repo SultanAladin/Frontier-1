@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        TEXTUREBAKERRASTERIZER.H
+                                                           TEXTUREBAKERRASTERIZER.H
 ============================================================================================================================================*/
 // 🧩 Interactive Vulkan 3D studio PBR + live baked target + High-Poly wire + Cage overlay rasterizer for Baking Studio viewports
 
@@ -9,7 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/GeometricRaster/Baking/GpuTextureAndSdfBaker.h"
+#include "Engine/GeometricRaster/Baking/GpuTextureBaker.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/Mathematics/AxisCoordinates.h"
 #include "Engine/Mathematics/CoordinateSpace.h"
@@ -62,7 +62,7 @@ public:
 
     [[nodiscard]] bool InitializeRasterizer(
         VulkanInterchange*           BoundDevice,
-        GpuTextureAndSdfBaker*       BoundBaker,
+        GpuTextureBaker*             BoundBaker,
         const std::filesystem::path& ShaderDirectory = {});
 
     void TeardownRasterizer() noexcept;
@@ -83,7 +83,7 @@ private:
     void               ReleaseRenderTargets() noexcept;
 
     VulkanInterchange*     DeviceOwner       = nullptr;
-    GpuTextureAndSdfBaker* BakerRef          = nullptr;
+    GpuTextureBaker*       BakerRef          = nullptr;
     bool                   Initialized       = false;
 
     VkDescriptorPool       DescriptorRegistry  = VK_NULL_HANDLE;

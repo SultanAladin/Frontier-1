@@ -148,7 +148,7 @@ constexpr uint32_t ParticleTraitPinnedBit  = (1u << 1u);
 constexpr uint32_t ParticleTraitStrandBit  = (1u << 2u);
 constexpr uint32_t ParticleTraitTornBit    = (1u << 3u);
 
-[[nodiscard]] constexpr bool IsParticleSlotAlive(const ParticleSlot& Slot) noexcept
+[[nodiscard]] constexpr bool QueryParticleSlotAlive(const ParticleSlot& Slot) noexcept
 {
     return (Slot.PackedTraits & ParticleTraitAliveBit) != 0u
         && Slot.LifespanSeconds > 0.0f

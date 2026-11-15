@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                             NONLINEARHISTORY.H
+                                                              NONLINEARHISTORY.H
 ============================================================================================================================================*/
 // 🧩 Directed branching revision tree using strict non-kinship index links (EnclosingIndex, FirstNestedIndex, NextPeerIndex)
 

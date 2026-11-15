@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         SWARMFLOCKINGDYNAMICS.H
+                                                           SWARMFLOCKINGDYNAMICS.H
 ============================================================================================================================================*/
 // 🧩 Modular Boids 3D flocking, multi-species asymmetric attraction/repulsion (SpeciesLife), & Physarum morphogenetic chemotaxis
 
@@ -36,8 +36,8 @@ void StepSpeciesLifeDynamics(
     float                   DeltaSeconds) noexcept;
 
 /// Steps Physarum / morphogenetic branching growth with sensing cones and chemoattractant turn steering.
-void StepMorphogeneticGrowthDynamics(
-    const MorphogeneticGrowthSpec& Spec,
+void StepOrganicGrowthDynamics(
+    const OrganicGrowthSpec& Spec,
     const float                    OriginCenter[3],
     std::span<ParticleSlot>        Slots,
     float                          ElapsedSeconds,

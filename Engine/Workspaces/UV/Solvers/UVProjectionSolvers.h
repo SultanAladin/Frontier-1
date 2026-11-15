@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          UVPROJECTIONSOLVERS.H
+                                                            UVPROJECTIONSOLVERS.H
 ============================================================================================================================================*/
 // 🧩 Angle-Based Flattening (ABF++), Smart UV Angle-Cluster Projection, Analytic Box/Cylinder/Sphere/View & Follow Active Quads solvers
 
@@ -9,7 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Editor/Viewports/ViewportProjection.h"
+#include "Engine/Components/Camera/ViewportProjection.h"
 #include "Engine/GeometrySpace/Network/PolygonNetwork.h"
 
 #include <cstdint>

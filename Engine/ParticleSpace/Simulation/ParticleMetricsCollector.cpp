@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                     PARTICLEMETRICSCOLLECTOR.CPP
+                                                         PARTICLEMETRICSCOLLECTOR.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ParticleMetricsCollector for CPU & Vulkan GPU reduction telemetry
 
@@ -36,7 +36,7 @@ ParticleSimulationMetrics ParticleMetricsCollector::CollectFromSlots(
 
     for (const auto& S : Slots)
     {
-        if (!IsParticleSlotAlive(S)) continue;
+        if (!QueryParticleSlotAlive(S)) continue;
 
         const bool Finite = std::isfinite(S.PositionMeters[0]) && std::isfinite(S.PositionMeters[1]) && std::isfinite(S.PositionMeters[2])
                          && std::isfinite(S.VelocityMps[0])    && std::isfinite(S.VelocityMps[1])    && std::isfinite(S.VelocityMps[2]);

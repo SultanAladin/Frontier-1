@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         COMPONENTSELECTIONMASK.H
+                                                           COMPONENTSELECTIONMASK.H
 ============================================================================================================================================*/
 // 🧩 Packed bitmask selection state across PolygonNetwork Vertices, DirectedEdges, and Faces with grow/shrink/invert operations
 

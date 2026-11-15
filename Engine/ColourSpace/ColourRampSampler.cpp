@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                          COLOURRAMPSAMPLER.CPP
+                                                            COLOURRAMPSAMPLER.CPP
 ============================================================================================================================================*/
-// 🎨 Implementation of modular colour source sampling, 3D lattice noise (HTML bit-parity), perceptual Oklab blending & 64/256-entry LUTs
+// 🧩 Implementation of modular colour source sampling, 3D lattice noise (HTML bit-parity), perceptual Oklab blending & 64/256-entry LUTs
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES

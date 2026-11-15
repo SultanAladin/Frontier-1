@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         UVWORKSPACERASTERIZER.H
+                                                           UVWORKSPACERASTERIZER.H
 ============================================================================================================================================*/
 // 🧩 Vulkan .slang 3D Surface/MatCap + 2D UDIM UVTile + 3D/2D TransformGizmo MRT rasterizer with GPU Selection & Stretch compute
 
@@ -9,7 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Editor/Viewports/TransformGizmo.h"
+#include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/GeometricRaster/Compute/TimelineTransferRegister.h"
 #include "Engine/GeometricRaster/Compute/ComputeDispatchEncoder.h"
@@ -39,14 +39,14 @@ enum class SurfaceDisplayMode : uint32_t
     StretchHeatmap     = 2u, // [-] - Isometric L2 stretch green->red diagnostic
     UDIMCheckerPreview = 3u, // [-] - 3D projected UDIM checker pattern
     MatCapPreview      = 4u, // [-] - Pure baked per-face engineering MatCap preview
-    MaterialAndMatCap  = 5u, // [-] - Surface material blended with the baked MatCap slot
+    MaterialMatCap  = 5u, // [-] - Surface material blended with the baked MatCap slot
 };
 
 enum class UVCanvasDisplayMode : uint32_t
 {
     PriorityLayerFill  = 0u, // [-] - Color-coded by PriorityAllocationLayer
     StretchHeatmap     = 1u, // [-] - Per-face L2 stretch diagnostic
-    WindingAndOverlap  = 2u, // [-] - Flipped-winding crimson & overlap amber validator
+    WindingOverlap  = 2u, // [-] - Flipped-winding crimson & overlap amber validator
 };
 
 enum class GPUSelectionOperation : uint32_t
@@ -226,7 +226,7 @@ private:
         const std::filesystem::path&      VertSpirv,
         const std::filesystem::path&      FragSpirv,
         std::span<const VkDescriptorType> SlotCategories,
-        bool                              DepthTestAndWrite,
+        bool                              DepthTestWrite,
         bool                              EnableColorAlphaBlend,
         GraphicsProgramBundle&            OutBundle);
 

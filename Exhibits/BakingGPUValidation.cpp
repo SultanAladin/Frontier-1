@@ -1,10 +1,11 @@
 /*==========================================================================================================================================
                                                         BAKINGGPUVALIDATION.CPP
 ==========================================================================================================================================*/
-// 🧪 Vulkan GPU Baking Engine Validation: GTX BVH4 + optional RTX RayQuery surface/SDF bake, OBJ/STL import, PNG/.fvol export & 3D preview.
+// 🧩 Vulkan GPU Baking Engine Validation: GTX BVH4 + optional RTX RayQuery surface/SDF bake, OBJ/STL import, PNG/.fvol export & 3D preview.
 
 #include "Engine/GeometricRaster/Baking/BakingAccelerationStructure.h"
-#include "Engine/GeometricRaster/Baking/GpuTextureAndSdfBaker.h"
+#include "Engine/GeometricRaster/Baking/GpuTextureBaker.h"
+#include "Engine/GeometricRaster/Baking/GpuSdfBaker.h"
 #include "Engine/GeometricRaster/Baking/StudyGeometryBuilder.h"
 #include "Engine/GeometricRaster/Baking/TextureBakerRasterizer.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
@@ -130,7 +131,7 @@ int main()
     // 2. Validate all 5 High/Low studio studies
     for (uint8_t S = 0u; S < 5u; ++S)
     {
-        const auto Study = StudyGeometryBuilder::ConstructStudioStudy(static_cast<StudyGeometryKind>(S));
+        const auto Study = StudyGeometryBuilder::ConstructStudioStudy(static_cast<StudyGeometryCategory>(S));
         if (!Verify(Study.LowTriangleCount > 0u && Study.HighTriangleCount > 0u, "Study has non-empty High & Low triangles") ||
             !Verify(Study.LowSurfaceVertices.size() == static_cast<std::size_t>(Study.LowTriangleCount) * 3u, "Study Low raster vertices aligned") ||
             !Verify(Study.UvIslandCount >= 1u, "Study UV island count >= 1") ||
@@ -181,8 +182,10 @@ int main()
         Device.QueryHardwareAccelerated() ? "YES" : "NO",
         Device.QueryHardwareRayQuerySupported() ? "YES" : "NO");
 
-    GpuTextureAndSdfBaker Baker {};
-    if (!Verify(Baker.InitializeBaker(&Device), "Initialize GpuTextureAndSdfBaker"))
+    GpuTextureBaker Baker {};
+    GpuSdfBaker     SdfBaker {};
+    if (!Verify(Baker.InitializeBaker(&Device), "Initialize GpuTextureBaker") ||
+        !Verify(SdfBaker.InitializeSdfBaker(&Device), "Initialize GpuSdfBaker"))
     {
         return 1;
     }
@@ -193,7 +196,7 @@ int main()
         return 1;
     }
 
-    const PreparedStudyPair Teapot = StudyGeometryBuilder::ConstructStudioStudy(StudyGeometryKind::UtahTeapot);
+    const PreparedStudyPair Teapot = StudyGeometryBuilder::ConstructStudioStudy(StudyGeometryCategory::UtahTeapot);
     if (!Verify(Baker.UploadStudyGeometry(Teapot), "Upload UtahTeapot to GPU baker"))
     {
         return 1;
@@ -261,13 +264,13 @@ int main()
     VolSpec.SectionSizePx          = 256u;
     VolSpec.PreferComputeBvh4      = true;
 
-    const BakeCompletionSummary VolRes = Baker.ExecuteVolumeSdfBake(VolSpec);
+    const BakeCompletionSummary VolRes = SdfBaker.ExecuteVolumeSdfBake(Baker.InspectAccel(), Baker.InspectActiveStudy(), VolSpec);
     if (!Verify(VolRes.VolumeSucceeded, VolRes.DiagnosticText.c_str()))
     {
         return 1;
     }
 
-    const auto& Voxels = Baker.InspectVolumeDistances();
+    const auto& Voxels = SdfBaker.InspectVolumeDistances();
     if (!Verify(Voxels.size() == 36u * 36u * 36u, "36^3 Volume SDF float count matches"))
     {
         return 1;
@@ -286,8 +289,8 @@ int main()
 
     for (uint32_t Axis = 0u; Axis < 3u; ++Axis)
     {
-        if (!Verify(Baker.UpdateSdfSectionPreview(Axis, 0.50f, true, 256u), "Extract 2D SDF section slice") ||
-            !Verify(HasNonTrivialColorVariance(Baker.InspectSdfSectionRgba8(), 256u, 256u), "2D SDF section pixels non-trivial"))
+        if (!Verify(SdfBaker.UpdateSdfSectionPreview(Axis, 0.50f, true, 256u), "Extract 2D SDF section slice") ||
+            !Verify(HasNonTrivialColorVariance(SdfBaker.InspectSdfSectionRgba8(), 256u, 256u), "2D SDF section pixels non-trivial"))
         {
             return 1;
         }
@@ -298,7 +301,7 @@ int main()
     const std::filesystem::path FvolPath = TempDir / "Baked_UtahTeapot.fvol";
     if (!Verify(Baker.ExportSurfaceChannelPng(5u, PngPath), "Export AO PNG") ||
         !Verify(std::filesystem::file_size(PngPath) > 512u, "PNG file non-trivial") ||
-        !Verify(Baker.ExportVolumeFvol(FvolPath), "Export .fvol SDF") ||
+        !Verify(SdfBaker.ExportVolumeFvol(FvolPath), "Export .fvol SDF") ||
         !Verify(std::filesystem::file_size(FvolPath) > 1024u, ".fvol file non-trivial"))
     {
         return 1;
@@ -333,6 +336,7 @@ int main()
     std::error_code CleanupEc;
     std::filesystem::remove_all(TempDir, CleanupEc);
     ViewportRasterizer.TeardownRasterizer();
+    SdfBaker.TeardownSdfBaker();
     Baker.TeardownBaker();
     Device.TeardownInterchange();
 

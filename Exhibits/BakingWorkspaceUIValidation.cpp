@@ -1,7 +1,7 @@
 /*==========================================================================================================================================
                                                    BAKINGWORKSPACEUIVALIDATION.CPP
 ==========================================================================================================================================*/
-// 🧪 Domain & ImGui UI exhibit for Baking Studio + ControlIcon 0..85 verification (3-column layout, 3D + 2D SDF split & Quick Menu).
+// 🧩 Domain & ImGui UI exhibit for Baking Studio + ControlIcon 0..85 verification (3-column layout, 3D + 2D SDF split & Quick Menu).
 
 #include "Engine/Components/Appearance/ThemeRepository.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"
@@ -207,18 +207,18 @@ int main()
         BakingHost.AccessSession().ExecuteBakeSimulation();
         BakingHost.AccessSession().ViewportLayout  = BakerViewportLayout::SplitView;
         BakingHost.AccessSession().InspectedTarget = BakerTargetId::VolumeSdf;
-        BakingHost.AccessTargetsPane().SetScrollOffsetY(120.0f);
-        BakingHost.AccessInspectorPane().SetScrollOffsetY(520.0f);
+        BakingHost.AccessTargetsPane().AssignScrollOffsetY(120.0f);
+        BakingHost.AccessInspectorPane().AssignScrollOffsetY(520.0f);
         if (!CaptureBakingWorkspacePng(Io, Dock, ControlCentre, ImageDir / "10-BakingWorkspaceSplitSdf.png"))
         {
             return 1;
         }
 
         // Exhibit 11: Baking Quick Menu overlay open (matches 06-HTML-baking-details.png)
-        BakingHost.AccessTargetsPane().SetScrollOffsetY(0.0f);
-        BakingHost.AccessInspectorPane().SetScrollOffsetY(0.0f);
+        BakingHost.AccessTargetsPane().AssignScrollOffsetY(0.0f);
+        BakingHost.AccessInspectorPane().AssignScrollOffsetY(0.0f);
         BakingHost.AccessSession().ViewportLayout = BakerViewportLayout::ThreeDOnly;
-        BakingHost.AccessViewportPane().SetQuickOverlayOpen(true);
+        BakingHost.AccessViewportPane().ConfigureQuickOverlayOpen(true);
         if (!CaptureBakingWorkspacePng(Io, Dock, ControlCentre, ImageDir / "11-BakingWorkspaceQuickMenu.png"))
         {
             return 1;

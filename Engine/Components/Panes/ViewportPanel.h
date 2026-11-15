@@ -46,18 +46,18 @@ enum class DiagnosticsTabCategory : uint8_t
 enum class ConstructCategoryRail : uint8_t
 {
     All          = 0, // [-] - All constructable templates and folders
-    ConstructSet = 1, // [-] - Generic constructable entries (generic construct slots)
+    ScenePrimitives = 1, // [-] - Generic constructable entries (generic construct slots)
     Organization = 2, // [-] - Organizational folders
 };
 
 enum class ForceConstructCategory : uint8_t
 {
     All             = 0, // [-] - All 19 ForceModel laws, presets, & scene entries
-    VectorLaws      = 1, // [-] - VectorField analytic spatial laws (Linear, Buoyancy, Radial, Attractor, Repulsor, Axis, Containment)
-    FlowLaws        = 2, // [-] - FlowField & transport laws (Rotation, Torque, Drag, Vorticity, Lorentz, Dipole, Stream, Spline, Adhesion)
-    TurbulenceLaws  = 3, // [-] - CurlNoise, AtmosphericGust, BrownianNoise
+    VectorFieldModels      = 1, // [-] - VectorField analytic spatial laws (Linear, Buoyancy, Radial, Attractor, Repulsor, Axis, Containment)
+    StreamTransportModels        = 2, // [-] - StreamTransport & transport laws (Rotation, Torque, Drag, Vorticity, Lorentz, Dipole, Stream, Spline, Adhesion)
+    TurbulenceModels  = 3, // [-] - CurlNoise, AtmosphericGust, BrownianNoise
     Presets         = 4, // [-] - Curated .ForceModel & Formula presets
-    SceneAndFolders = 5, // [-] - Static geometry, lights & folders
+    SceneFolders = 5, // [-] - Static geometry, lights & folders
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -68,9 +68,9 @@ struct ViewportConstructPresetEntry
 {
     std::string Title           {};          // [-] - Preset display title
     std::string Subtitle        {};          // [-] - Short parameter caption
-    uint32_t    ForceLawOrdinal = 0u;          // [id]- ForceModel ordinal [0..18]
+    uint32_t    ForceModelOrdinal = 0u;          // [id]- ForceModel ordinal [0..18]
     bool        FormulaOverride = false;       // [-] - Symbolic formula preset indicator
-    uint32_t    DomainOrdinal   = 0u;          // [id]- 0=VectorField, 1=FlowField, 2=TurbulenceField
+    uint32_t    DomainOrdinal   = 0u;          // [id]- 0=VectorField, 1=StreamTransport, 2=TurbulenceField
 };
 
 struct ViewportDisplaySettings

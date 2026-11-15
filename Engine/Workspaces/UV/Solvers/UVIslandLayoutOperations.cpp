@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      UVISLANDLAYOUTOPERATIONS.CPP
+                                                         UVISLANDLAYOUTOPERATIONS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of StackSimilarIslands, UnstackOverlappingIslands, and greedy non-overlapping ExpandIntoEmptyPockets
 

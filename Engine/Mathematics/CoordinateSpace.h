@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           COORDINATESPACE.H
+                                                              COORDINATESPACE.H
 ============================================================================================================================================*/
 // 🧩 Configurable Right-Handed World Basis (RightHandedZUp default / RightHandedYUp), det=+1 boundary conversion & isolated Vulkan NDC clip
 

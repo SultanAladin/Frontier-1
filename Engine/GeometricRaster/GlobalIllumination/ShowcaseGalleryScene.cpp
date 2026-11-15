@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                   SHOWCASEGALLERYSCENE.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                           SHOWCASEGALLERYSCENE.CPP
+============================================================================================================================================*/
 // 🧩 Canonical Architectural Cornell-Studio Gallery World Scene, EditorCamera, and OutlinerPanel bidirectional registration
 
 #include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
@@ -691,13 +691,13 @@ void RegisterShowcaseGalleryInOutliner(
     if (!PreserveConstructTemplates)
     {
         const std::array<OutlinerConstructTemplate, 7u> Templates = {{
-            { "Add Box Geometry",      "Box Specimen",      "Geometry", "Box · OpenPBR Surface",      ConstructSlotCategory::CategoryOne   },
-            { "Add Sphere Geometry",   "Sphere Specimen",   "Geometry", "Sphere · OpenPBR Surface",   ConstructSlotCategory::CategoryOne   },
-            { "Add Cylinder Geometry", "Cylinder Specimen", "Geometry", "Cylinder · OpenPBR Surface", ConstructSlotCategory::CategoryOne   },
-            { "Add Cone Geometry",     "Cone Specimen",     "Geometry", "Cone · OpenPBR Surface",     ConstructSlotCategory::CategoryOne   },
-            { "Add Torus Geometry",    "Torus Specimen",    "Geometry", "Torus · OpenPBR Surface",    ConstructSlotCategory::CategoryOne   },
-            { "Add Area Light",        "Area Quad Light",   "Lighting", "LTC Polygonal Quad Light",   ConstructSlotCategory::CategoryThree },
-            { "Add Scene Camera",      "Scene Camera",      "Camera",   "Perspective Optical Camera", ConstructSlotCategory::CategoryFour  },
+            { "Add Box Geometry",      "Box Specimen",      "Geometry", "Box · OpenPBR Surface",      ConstructSlotCategory::GeometryVolume   },
+            { "Add Sphere Geometry",   "Sphere Specimen",   "Geometry", "Sphere · OpenPBR Surface",   ConstructSlotCategory::GeometryVolume   },
+            { "Add Cylinder Geometry", "Cylinder Specimen", "Geometry", "Cylinder · OpenPBR Surface", ConstructSlotCategory::GeometryVolume   },
+            { "Add Cone Geometry",     "Cone Specimen",     "Geometry", "Cone · OpenPBR Surface",     ConstructSlotCategory::GeometryVolume   },
+            { "Add Torus Geometry",    "Torus Specimen",    "Geometry", "Torus · OpenPBR Surface",    ConstructSlotCategory::GeometryVolume   },
+            { "Add Area Light",        "Area Quad Light",   "Lighting", "LTC Polygonal Quad Light",   ConstructSlotCategory::PointLuminaire },
+            { "Add Scene Camera",      "Scene Camera",      "Camera",   "Perspective Optical Camera", ConstructSlotCategory::OpticsCamera  },
         }};
         TargetOutliner.ConfigureConstructTemplates(Templates);
         LightTemplateOrd  = 5u;
@@ -709,19 +709,19 @@ void RegisterShowcaseGalleryInOutliner(
         const auto Existing = TargetOutliner.QueryConstructTemplates();
         for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Existing.size()); ++Idx)
         {
-            if (Existing[Idx].Category == ConstructSlotCategory::CategoryOne && ContainsCaseInsensitive(Existing[Idx].DefaultTitle, "Box"))
+            if (Existing[Idx].Category == ConstructSlotCategory::GeometryVolume && ContainsCaseInsensitive(Existing[Idx].DefaultTitle, "Box"))
             {
                 BoxTemplateOrd = Idx;
             }
-            else if (Existing[Idx].Category == ConstructSlotCategory::CategoryOne && ContainsCaseInsensitive(Existing[Idx].DefaultTitle, "Sphere"))
+            else if (Existing[Idx].Category == ConstructSlotCategory::GeometryVolume && ContainsCaseInsensitive(Existing[Idx].DefaultTitle, "Sphere"))
             {
                 SphereTemplateOrd = Idx;
             }
-            else if (Existing[Idx].Category == ConstructSlotCategory::CategoryThree)
+            else if (Existing[Idx].Category == ConstructSlotCategory::PointLuminaire)
             {
                 LightTemplateOrd = Idx;
             }
-            else if (Existing[Idx].Category == ConstructSlotCategory::CategoryFour)
+            else if (Existing[Idx].Category == ConstructSlotCategory::OpticsCamera)
             {
                 CameraTemplateOrd = Idx;
             }
@@ -746,7 +746,7 @@ void RegisterShowcaseGalleryInOutliner(
 
         if (OutlinerRecordEntry* Entry = TargetOutliner.AccessEntry(Slot))
         {
-            Entry->Category          = ConstructSlotCategory::CategoryOne;
+            Entry->Category          = ConstructSlotCategory::GeometryVolume;
             Entry->Title             = Obj.Title;
             Entry->CategoryLabel     = "Geometry · " + Obj.MaterialTitle;
             Entry->Subtitle          = Obj.Subtitle;
@@ -774,7 +774,7 @@ void RegisterShowcaseGalleryInOutliner(
     InOutBundle.EditorCameraToken = TargetOutliner.ConstructFromTemplate(CameraTemplateOrd, InOutBundle.CamerasFolderToken);
     if (OutlinerRecordEntry* CamEntry = TargetOutliner.AccessEntry(InOutBundle.EditorCameraToken))
     {
-        CamEntry->Category          = ConstructSlotCategory::CategoryFour;
+        CamEntry->Category          = ConstructSlotCategory::OpticsCamera;
         CamEntry->Title             = "Editor Camera";
         CamEntry->CategoryLabel     = "Scene / Cameras";
         CamEntry->Subtitle          = "Editor · permanent · 43.0 deg FOV";
@@ -804,7 +804,7 @@ void RegisterShowcaseGalleryInOutliner(
     InOutBundle.SunEmitterToken = TargetOutliner.ConstructFromTemplate(LightTemplateOrd, InOutBundle.WorldFolderToken);
     if (OutlinerRecordEntry* SunEntry = TargetOutliner.AccessEntry(InOutBundle.SunEmitterToken))
     {
-        SunEntry->Category          = ConstructSlotCategory::CategoryTwo;
+        SunEntry->Category          = ConstructSlotCategory::LayerGroup;
         SunEntry->Title             = "Sun";
         SunEntry->CategoryLabel     = "World / Solar Light";
         SunEntry->Subtitle          = "Directional · 5.40, 5.10, 4.65 W/m2 · 1.03 deg";
@@ -830,7 +830,7 @@ void RegisterShowcaseGalleryInOutliner(
     if (OutlinerRecordEntry* LightEntry = TargetOutliner.AccessEntry(InOutBundle.CeilingSoftboxToken))
     {
         const auto& Softbox = InOutBundle.Scene.AreaLights.front();
-        LightEntry->Category          = ConstructSlotCategory::CategoryThree;
+        LightEntry->Category          = ConstructSlotCategory::PointLuminaire;
         LightEntry->Title             = "Ceiling Softbox";
         LightEntry->CategoryLabel     = "Lighting / LTC Area Quad";
         LightEntry->Subtitle          = "LTC Quad · 1.70 × 1.30 m · 7.5, 6.6, 5.4 nit";
@@ -1049,7 +1049,7 @@ bool SynchronizeShowcaseGallerySceneLive(
             continue;
         }
 
-        if (Entry.Category == ConstructSlotCategory::CategoryOne)
+        if (Entry.Category == ConstructSlotCategory::GeometryVolume)
         {
             const bool KnownObject = std::any_of(
                 InOutBundle.Objects.begin(),
@@ -1132,7 +1132,7 @@ bool SynchronizeShowcaseGallerySceneLive(
                 OutRequiresAccelerationRebuild = true;
             }
         }
-        else if (Entry.Category == ConstructSlotCategory::CategoryThree)
+        else if (Entry.Category == ConstructSlotCategory::PointLuminaire)
         {
             const bool KnownLight = std::any_of(
                 InOutBundle.AreaLightBindings.begin(),
@@ -1270,7 +1270,7 @@ OutlinerSlotToken ConstructShowcasePrimitiveInOutliner(
     const char* Label    = ShapeDisplayLabel(Shape);
     for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Templates.size()); ++Idx)
     {
-        if (Templates[Idx].Category == ConstructSlotCategory::CategoryOne &&
+        if (Templates[Idx].Category == ConstructSlotCategory::GeometryVolume &&
             ContainsCaseInsensitive(Templates[Idx].DefaultTitle, Label))
         {
             TemplateIdx = Idx;
@@ -1282,7 +1282,7 @@ OutlinerSlotToken ConstructShowcasePrimitiveInOutliner(
     const Mathematics::Scalar3D Dims = DefaultDimensionsForShape(Shape);
     if (OutlinerRecordEntry* Entry = InOutOutliner.AccessEntry(Slot))
     {
-        Entry->Category          = ConstructSlotCategory::CategoryOne;
+        Entry->Category          = ConstructSlotCategory::GeometryVolume;
         Entry->Title             = std::string(Label) + " Specimen";
         Entry->CategoryLabel     = "Geometry · ConstructedSpecimenSurface";
         Entry->PositionX         = WorldPosition.X;

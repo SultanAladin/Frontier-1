@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                      PATTERNSTAMPTOOLHEADERPANE.CPP
-==========================================================================================================================================*/
-// 🛠️ Central Pattern Studio & Stamp Studio UI chrome renderer (Band 1 doc/res bar, Band 2 circular tool dock + More tools overlay sheet,
+/*============================================================================================================================================
+                                                        PATTERNSTAMPTOOLHEADERPANE.CPP
+============================================================================================================================================*/
+// 🧩 Central Pattern Studio & Stamp Studio UI chrome renderer (Band 1 doc/res bar, Band 2 circular tool dock + More tools overlay sheet,
 //    View/Undo/Redo/Save/Bridge, crisp ruler chrome, deferred canvas backdrop, bottom shortcut hint & zoom controls).
 
 #include "Engine/Workspaces/Texturing/PatternStampToolHeaderPane.h"

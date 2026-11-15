@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                  SPECULARREFLECTIONSEQUENCE.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                         SPECULARREFLECTIONSEQUENCE.H
+============================================================================================================================================*/
 // 🧩 Tier 2 RTX Coherent VNDF WideBoundingTree Reflections & Abbe Glass Refraction + Tier 1 GTX Hi-Z Screen-Space Raymarch & SDF Fallback
 
 #pragma once
@@ -43,7 +43,7 @@ class SpecularReflectionSequence
 {
 public:
     // Evaluates Tier 2 RTX VNDF-jittered BVH4 reflections + solid Abbe glass refraction
-    [[nodiscard]] static SpecularReflectionBuffer EvaluateRtxReflectionsAndGlass(
+    [[nodiscard]] static SpecularReflectionBuffer EvaluateRtxSpecularRefraction(
         const PerspectiveCameraFrame&                   Camera,
         std::span<const RigidClusterInstance>           Instances,
         const VisibilityBufferTargets&                  VisibilityTargets,
@@ -56,7 +56,7 @@ public:
         Mathematics::LinearRGB                          SkyRadiance = { 0.16f, 0.22f, 0.34f });
 
     // Evaluates Tier 1 GTX DepthPyramid Hi-Z screen-space reflection march + direct lit buffer fallback + 2-layer glass peel
-    [[nodiscard]] static SpecularReflectionBuffer EvaluateGtxHiZReflectionsAndGlass(
+    [[nodiscard]] static SpecularReflectionBuffer EvaluateGtxHiZSpecularRefraction(
         const PerspectiveCameraFrame&                   Camera,
         std::span<const RigidClusterInstance>           Instances,
         const VisibilityBufferTargets&                  VisibilityTargets,

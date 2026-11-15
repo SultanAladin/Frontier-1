@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                      PATTERNSTAMPINSPECTORPANE.CPP
-==========================================================================================================================================*/
-// 🧬 Pattern Studio & Stamp Studio right inspector renderer: KPI summary tiles, Layer Properties, 22 PBR Surface Channels, Layer Mask,
+/*============================================================================================================================================
+                                                        PATTERNSTAMPINSPECTORPANE.CPP
+============================================================================================================================================*/
+// 🧩 Pattern Studio & Stamp Studio right inspector renderer: KPI summary tiles, Layer Properties, 22 PBR Surface Channels, Layer Mask,
 //    8 Non-Destructive Modifiers, Document Ground & Tile, fitted dropdown sheets, and 16-swatch colour picker.
 
 #include "Engine/Workspaces/Texturing/PatternStampInspectorPane.h"

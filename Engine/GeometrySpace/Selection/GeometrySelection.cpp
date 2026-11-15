@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           GEOMETRYSELECTION.CPP
+                                                            GEOMETRYSELECTION.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of Edge Loop, Edge Ring, Dijkstra Geodesic Shortest Edge Path, Linked Island, Boundary, Sharp & Coplanar selection
 

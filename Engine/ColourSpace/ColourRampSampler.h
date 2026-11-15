@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                           COLOURRAMPSAMPLER.H
+                                                             COLOURRAMPSAMPLER.H
 ============================================================================================================================================*/
-// 🎨 Arbitrary-stop colour ramp sampling (Linear/Smooth/Stepped, LinearSrgb/Oklab/ACEScg), 3D lattice noise & 64/256-entry GPU LUT packing
+// 🧩 Arbitrary-stop colour ramp sampling (Linear/Smooth/Stepped, LinearSrgb/Oklab/ACEScg), 3D lattice noise & 64/256-entry GPU LUT packing
 
 #pragma once
 

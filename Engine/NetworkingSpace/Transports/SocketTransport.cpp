@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                          SOCKETTRANSPORT.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                             SOCKETTRANSPORT.CPP
+============================================================================================================================================*/
 // 🧩 Non-blocking BSD/Winsock2 UDP socket, RFC 5389 STUN reflexive discovery, RFC 8439 ChaCha20-Poly1305 AEAD, and zero-key relay
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -882,13 +882,13 @@ bool SocketTransport::TransmitDatagram(
     AssociatedHeader[5] = static_cast<uint8_t>(Channel);
     std::memcpy(AssociatedHeader.data() + 6u, Nonce.data(), ChaCha20NonceByteCount);
 
-    std::vector<uint8_t> CipherAndTag;
-    EncryptChaCha20Poly1305(CipherKey, Nonce, AssociatedHeader, WireBytes, CipherAndTag);
+    std::vector<uint8_t> CipherTagBytes;
+    EncryptChaCha20Poly1305(CipherKey, Nonce, AssociatedHeader, WireBytes, CipherTagBytes);
 
     std::vector<uint8_t> EncryptedPacket;
-    EncryptedPacket.reserve(AssociatedHeader.size() + CipherAndTag.size());
+    EncryptedPacket.reserve(AssociatedHeader.size() + CipherTagBytes.size());
     EncryptedPacket.insert(EncryptedPacket.end(), AssociatedHeader.begin(), AssociatedHeader.end());
-    EncryptedPacket.insert(EncryptedPacket.end(), CipherAndTag.begin(), CipherAndTag.end());
+    EncryptedPacket.insert(EncryptedPacket.end(), CipherTagBytes.begin(), CipherTagBytes.end());
     return SendRawDatagramToAddress(*RouteAddr, EncryptedPacket);
 }
 
@@ -951,10 +951,10 @@ bool SocketTransport::ReceiveDatagram(PacketDatagram& OutDatagram)
 
     std::span<const uint8_t, ChaCha20NonceByteCount> NonceSlice(ActiveView.data() + 6u, ChaCha20NonceByteCount);
     std::span<const uint8_t> AssociatedHeader = ActiveView.subspan(0u, 18u);
-    std::span<const uint8_t> CipherAndTag     = ActiveView.subspan(18u);
+    std::span<const uint8_t> CipherTagBytes     = ActiveView.subspan(18u);
 
     std::vector<uint8_t> DecryptedBytes;
-    if (!DecryptChaCha20Poly1305(CipherKey, NonceSlice, AssociatedHeader, CipherAndTag, DecryptedBytes))
+    if (!DecryptChaCha20Poly1305(CipherKey, NonceSlice, AssociatedHeader, CipherTagBytes, DecryptedBytes))
     {
         return false;
     }

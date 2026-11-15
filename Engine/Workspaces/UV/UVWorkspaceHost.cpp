@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           UVWORKSPACEHOST.CPP
+                                                             UVWORKSPACEHOST.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of UVWorkspaceHost registering StandaloneWorkspace / FeatureSet docked tabs, external drops & ContentBrowser integration
 
@@ -60,7 +60,7 @@ void UVWorkspaceHost::AttachContentBrowserPanel(ContentBrowserPanel* TargetPanel
 
     // UV workspace locks the drawer down to Colours + Studio MatCap Materials
     TargetPanel->ConfigureWorkspaceDomain(WorkspaceCategory::UV);
-    TargetPanel->ConfigureColourAndMatCapLock(true);
+    TargetPanel->ConfigureColourMatCapLock(true);
     (void)TargetPanel->ActivateCategory(ContentCategory::Colours);
     TargetPanel->AssignContentActivationCallback(
         [this](const ContentRepositoryEntry& Entry)
@@ -100,7 +100,7 @@ void UVWorkspaceHost::AttachContentBrowserPanel(ContentBrowserPanel* TargetPanel
         "Active UV Priority Layer Tint",
         Rectangle2D{ 16.0f, 96.0f, 260.0f, 44.0f },
         nullptr,
-        [this](ColorRgba AssignedRgba, const ColourCodexEntry&)
+        [this](ColorRgba AssignedRgba, const ColourSwatchEntry&)
         {
             Session.AssignSelectedLayerTint(
                 {

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          UVWORKSPACESESSION.CPP
+                                                            UVWORKSPACESESSION.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of UVWorkspaceSession coordinating O(1) GPU selection, Interchange, parallel/GPU UV solvers, .UVSpace & 215 MiB revisions
 
@@ -133,7 +133,7 @@ template <typename T>
 
 UVWorkspaceSession::UVWorkspaceSession()
     : ActiveDocument(
-          WorkspaceToken{ 0u, 1u, Codecs::SpaceExtensionCategory::UVSpace },
+          WorkspaceToken{ 0u, 1u, Codecs::SpaceSuffixCategory::UVSpace },
           "UVWorkspaceSession",
           std::filesystem::path("UVWorkspaceSession.UVSpace")),
       RevisionHistory(ActiveDocument.AccessRevisionTracker())
@@ -142,7 +142,7 @@ UVWorkspaceSession::UVWorkspaceSession()
     WorkspaceConfig.AccessUVPreferences().SeamOverlayEnabled    = false;
 
     auto& Projection = ActiveDocument.AccessViewportProjection();
-    Projection.ConfigureSplitMode(Editor::ViewportSplitMode::SplitPlanarAndSpatial);
+    Projection.ConfigureSplitMode(Editor::ViewportSplitMode::SplitPlanarSpatial);
     Projection.ConfigureSplitRatio(WorkspaceConfig.InspectUVPreferences().SplitRatioNormalized);
 
     Gizmo3D.ConfigureDimensionMode(Editor::GizmoDimensionMode::Spatial3D);
@@ -586,9 +586,9 @@ void UVWorkspaceSession::ApplyMatCapToActiveSelection(uint8_t MatCapSlot, bool R
         }
     }
     if (RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MatCapPreview &&
-        RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap)
+        RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MaterialMatCap)
     {
-        RenderOptions3D.DisplayMode = GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap;
+        RenderOptions3D.DisplayMode = GeometricRaster::SurfaceDisplayMode::MaterialMatCap;
     }
     ++Asset.Network.ShadingRevision;
     if (RecordRevision)
@@ -627,7 +627,7 @@ void UVWorkspaceSession::ApplySurfaceAlbedoColour(Mathematics::Scalar3D SrgbColo
         }
     }
     if (RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::SurfaceMaterial &&
-        RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap)
+        RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MaterialMatCap)
     {
         RenderOptions3D.DisplayMode = GeometricRaster::SurfaceDisplayMode::SurfaceMaterial;
     }
@@ -668,9 +668,9 @@ void UVWorkspaceSession::ApplyMatCapTintColour(Mathematics::Scalar3D SrgbColour,
         }
     }
     if (RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MatCapPreview &&
-        RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap)
+        RenderOptions3D.DisplayMode != GeometricRaster::SurfaceDisplayMode::MaterialMatCap)
     {
-        RenderOptions3D.DisplayMode = GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap;
+        RenderOptions3D.DisplayMode = GeometricRaster::SurfaceDisplayMode::MaterialMatCap;
     }
     ++Asset.Network.ShadingRevision;
     if (RecordRevision)

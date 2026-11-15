@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          SIMULATIONTIMERULER.CPP
+                                                           SIMULATIONTIMERULER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of reusable SimulationTimeRuler (graduated ticks, shaded active track strip & scrubbable playhead needle)
 

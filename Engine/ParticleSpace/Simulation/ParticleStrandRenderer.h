@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          PARTICLESTRANDRENDERER.H
+                                                           PARTICLESTRANDRENDERER.H
 ============================================================================================================================================*/
 // 🧩 Perspective Z-buffered 3D software rasterizer for dynamic strands (cables/chains, leafy vines, woven flags/sails, glossy beaded curtains & props)
 

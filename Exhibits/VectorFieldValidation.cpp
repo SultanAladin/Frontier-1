@@ -12,7 +12,7 @@
 #include "Engine/Configuration/BuildConfiguration.h"
 #include "Engine/SimulationSpace/ForceFields/FieldFormulaCompiler.h"
 #include "Engine/SimulationSpace/ForceFields/FieldLatticeCascade.h"
-#include "Engine/SimulationSpace/ForceFields/FieldLatticeVulkanExecutor.h"
+#include "Engine/GeometricRaster/Compute/FieldLatticeVulkanExecutor.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldDescriptors.h"
 #include "Engine/SimulationSpace/ForceFields/ForceMotionPath.h"
@@ -90,7 +90,7 @@ using namespace Frontier::SimulationSpace::ForceFields;
 //                                            1. 19 FORCE MODELS & DIVERGENCE
 //------------------------------------------------------------------------------------------------------------------------
 
-bool ValidateAllForceModelsAndDivergence()
+bool ValidateAllForceModelsDivergence()
 {
     for (uint32_t ModelOrd = 0u; ModelOrd < static_cast<uint32_t>(ForceModel::Count); ++ModelOrd)
     {
@@ -186,7 +186,7 @@ bool ValidateAllForceModelsAndDivergence()
 //                                           2. MOTION PATHS & TEMPORAL LAWS
 //------------------------------------------------------------------------------------------------------------------------
 
-bool ValidateMotionPathsAndTemporalLaws()
+bool ValidateMotionPathsTemporalModels()
 {
     ForceSourceRecordEntry LineEntry{};
     LineEntry.UniqueToken                = 1u;
@@ -238,7 +238,7 @@ bool ValidateMotionPathsAndTemporalLaws()
 //                                       3. FORMULA COMPILER & GPU COMPUTE PARITY
 //------------------------------------------------------------------------------------------------------------------------
 
-bool ValidateFormulaCompilerAndSwiftShaderComputeParity()
+bool ValidateFormulaCompilerComputeParity()
 {
     const auto ValidOut = CompileFieldFormula("vec3(-p.y * 0.4 + 3.0, p.x * 0.4, 2.5 + 1.5 * sin(t))");
     if (!VerifyCondition(ValidOut.Compiled, ("Compile valid VectorFieldLang 3D expression: " + ValidOut.DiagnosticMessage).c_str()))
@@ -339,7 +339,7 @@ bool ValidateFormulaCompilerAndSwiftShaderComputeParity()
 //                                       4. OPTION A VECTORFIELD & FORCEMODEL CODECS
 //------------------------------------------------------------------------------------------------------------------------
 
-bool ValidateVectorFieldAndForceModelCodecs()
+bool ValidateVectorFieldCodecs()
 {
     const auto ScratchDir = std::filesystem::temp_directory_path() / "frontier_vf_codecs_test";
     std::filesystem::create_directories(ScratchDir);
@@ -427,7 +427,7 @@ bool ValidateVectorFieldAndForceModelCodecs()
 
 #if FRONTIER_EDITOR_ENABLED
 
-bool ValidateEditorVulkanOverlayAndCaptureExhibits()
+bool ValidateEditorVulkanOverlayExhibits()
 {
     using namespace Frontier;
     using namespace Frontier::Components;
@@ -465,7 +465,7 @@ bool ValidateEditorVulkanOverlayAndCaptureExhibits()
 
     std::string Diag;
     if (!VerifyCondition(
-            Coordinator.InitializeAndAttach(
+            Coordinator.AttachInitializedSession(
                 Outliner,
                 Viewport,
                 Inspector,
@@ -858,24 +858,24 @@ bool ValidateEditorVulkanOverlayAndCaptureExhibits()
 
 int main()
 {
-    if (!ValidateAllForceModelsAndDivergence())
+    if (!ValidateAllForceModelsDivergence())
     {
         return 1;
     }
-    if (!ValidateMotionPathsAndTemporalLaws())
+    if (!ValidateMotionPathsTemporalModels())
     {
         return 1;
     }
-    if (!ValidateFormulaCompilerAndSwiftShaderComputeParity())
+    if (!ValidateFormulaCompilerComputeParity())
     {
         return 1;
     }
-    if (!ValidateVectorFieldAndForceModelCodecs())
+    if (!ValidateVectorFieldCodecs())
     {
         return 1;
     }
 #if FRONTIER_EDITOR_ENABLED
-    if (!ValidateEditorVulkanOverlayAndCaptureExhibits())
+    if (!ValidateEditorVulkanOverlayExhibits())
     {
         return 1;
     }

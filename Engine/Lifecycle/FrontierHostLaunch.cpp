@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           FRONTIERHOSTLAUNCH.CPP
+                                                            FRONTIERHOSTLAUNCH.CPP
 ============================================================================================================================================*/
 // 🧩 Primary Frontier desktop launcher opening ProjectBrowser first, with seamless Open with Frontier & Open with UVWorkspace hand-off
 

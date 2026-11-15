@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                          SPECTRALDISTRIBUTION.H
+                                                            SPECTRALDISTRIBUTION.H
 ============================================================================================================================================*/
-// 🎨 Wavelength-domain spectral power distribution, CIE 1931 2-degree tristimulus integration & Planckian blackbody Kelvin radiance
+// 🧩 Wavelength-domain spectral power distribution, CIE 1931 2-degree tristimulus integration & Planckian blackbody Kelvin radiance
 
 #pragma once
 

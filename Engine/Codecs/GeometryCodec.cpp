@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                            GEOMETRYCODEC.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                              GEOMETRYCODEC.CPP
+============================================================================================================================================*/
 // 🧩 Implementation of .GeometrySpace Two-Tier Hybrid encoder & decoder (full n-gon PolygonNetwork + legacy VehiclePolygon support)
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -261,7 +261,7 @@ SpaceContainerPayload GeometryEncoder::ConstructPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload {};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::GeometrySpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::GeometrySpace;
     Payload.SchemaVersion      = 1u;
     Payload.DocumentTitle      = Document.Network.NetworkTitle.empty() ? "UntitledGeometry" : Document.Network.NetworkTitle;
     Payload.AuthoringWorkspace = "Frontier.Geometry";
@@ -360,9 +360,9 @@ bool GeometryDecoder::ExtractDocument(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::GeometrySpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::GeometrySpace)
     {
-        OutDiagnostic = "Container ExtensionCategory is not .GeometrySpace.";
+        OutDiagnostic = "Container SuffixCategory is not .GeometrySpace.";
         return false;
     }
 

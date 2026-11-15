@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      MOLECULARREACTIONDYNAMICS.CPP
+                                                        MOLECULARREACTIONDYNAMICS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of spatial-hashed Lennard-Jones 12-6 molecular kinetics, Langevin thermostat & A + B <-> C reaction kinetics
 
@@ -66,7 +66,7 @@ void StepMolecularReactionDynamics(
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
         ParticleSlot& S = Slots[I];
-        if (!IsParticleSlotAlive(S)) continue;
+        if (!QueryParticleSlotAlive(S)) continue;
         // Initialize uninitialized species deterministically as 50% A / 50% B on first visit
         if (S.AgeSeconds < 0.02f && QueryMolecularSpecies(S) == 0u && S.SeedScalar >= 0.5f)
         {
@@ -85,7 +85,7 @@ void StepMolecularReactionDynamics(
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
         ParticleSlot& A = Slots[I];
-        if (!IsParticleSlotAlive(A)) continue;
+        if (!QueryParticleSlotAlive(A)) continue;
 
         const int32_t Cx = CellCoord(A.PositionMeters[0], InvCell);
         const int32_t Cy = CellCoord(A.PositionMeters[1], InvCell);

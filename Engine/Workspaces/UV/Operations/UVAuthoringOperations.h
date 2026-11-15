@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         UVAUTHORINGOPERATIONS.H
+                                                           UVAUTHORINGOPERATIONS.H
 ============================================================================================================================================*/
 // 🧩 Direct UV authoring operations: Seam Mark/Clear/Brush, UV Pinning, Edge Stitch, Split Island, Mirror, Align & Rectify Quads
 

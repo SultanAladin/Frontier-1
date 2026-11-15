@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           PROJECTGENERATOR.CPP
+                                                             PROJECTGENERATOR.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ProjectGenerator producing standalone C++20 Frontier projects with 3 CMake targets and SessionOutput/
 
@@ -169,7 +169,7 @@ ProjectScaffoldOutcome ProjectGenerator::GenerateProject(const ProjectScaffoldSp
     const std::string  MacroPrefix = FormatUppercaseMacroPrefix(Proj);
 
     Outcome.ProjectRootDirectory = Specification.DestinationDirectory / Proj;
-    Outcome.ProjectSpaceFile     = Outcome.ProjectRootDirectory / (Proj + ProjectSpaceRepository::ContainerExtension);
+    Outcome.ProjectSpaceFile     = Outcome.ProjectRootDirectory / (Proj + ProjectSpaceRepository::ContainerSuffix);
     Outcome.CMakeListsFile       = Outcome.ProjectRootDirectory / "CMakeLists.txt";
     Outcome.MainWorldFile        = Outcome.ProjectRootDirectory / "Content" / "Worlds" / "MainWorld.WorldSpace";
     Outcome.MainUvFile           = Outcome.ProjectRootDirectory / "Content" / "UV" / "MainSurface.UVSpace";

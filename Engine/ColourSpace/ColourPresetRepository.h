@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                        COLOURPRESETREPOSITORY.H
+                                                           COLOURPRESETREPOSITORY.H
 ============================================================================================================================================*/
-// 🎨 Engine-wide built-in & project colour ramp presets (all 6 HTML Studio ramps verbatim + scientific/utility sets) & named swatch entries
+// 🧩 Engine-wide built-in & project colour ramp presets (all 6 HTML Studio ramps verbatim + scientific/utility sets) & named swatch entries
 
 #pragma once
 

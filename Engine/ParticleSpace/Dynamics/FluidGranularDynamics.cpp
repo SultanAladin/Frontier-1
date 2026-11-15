@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        FLUIDGRANULARDYNAMICS.CPP
+                                                          FLUIDGRANULARDYNAMICS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of SPH Fluid, DEM Granular collisions, Elastic PBD Strands, Thermal/Fireworks, Dielectric Arcs, Field Matrix & Flora
 
@@ -51,7 +51,7 @@ void StepFluidSphDynamics(
     Grid.reserve(Slots.size());
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
-        if (!IsParticleSlotAlive(Slots[I])) continue;
+        if (!QueryParticleSlotAlive(Slots[I])) continue;
         const int64_t Key = HashCell3D(
             CellCoord(Slots[I].PositionMeters[0], InvCell),
             CellCoord(Slots[I].PositionMeters[1], InvCell),
@@ -65,7 +65,7 @@ void StepFluidSphDynamics(
 
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
-        if (!IsParticleSlotAlive(Slots[I])) continue;
+        if (!QueryParticleSlotAlive(Slots[I])) continue;
         const int32_t Cx = CellCoord(Slots[I].PositionMeters[0], InvCell);
         const int32_t Cy = CellCoord(Slots[I].PositionMeters[1], InvCell);
         const int32_t Cz = CellCoord(Slots[I].PositionMeters[2], InvCell);
@@ -101,7 +101,7 @@ void StepFluidSphDynamics(
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
         ParticleSlot& Self = Slots[I];
-        if (!IsParticleSlotAlive(Self)) continue;
+        if (!QueryParticleSlotAlive(Self)) continue;
 
         const int32_t Cx = CellCoord(Self.PositionMeters[0], InvCell);
         const int32_t Cy = CellCoord(Self.PositionMeters[1], InvCell);
@@ -176,7 +176,7 @@ void StepGranularCollisionDynamics(
     Grid.reserve(Slots.size());
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
-        if (!IsParticleSlotAlive(Slots[I])) continue;
+        if (!QueryParticleSlotAlive(Slots[I])) continue;
         const int64_t Key = HashCell3D(
             CellCoord(Slots[I].PositionMeters[0], InvCell),
             CellCoord(Slots[I].PositionMeters[1], InvCell),
@@ -187,7 +187,7 @@ void StepGranularCollisionDynamics(
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
         ParticleSlot& A = Slots[I];
-        if (!IsParticleSlotAlive(A)) continue;
+        if (!QueryParticleSlotAlive(A)) continue;
 
         const int32_t Cx = CellCoord(A.PositionMeters[0], InvCell);
         const int32_t Cy = CellCoord(A.PositionMeters[1], InvCell);
@@ -269,7 +269,7 @@ void StepElasticStrandDynamics(
     for (std::size_t I = 0u; I < Slots.size(); ++I)
     {
         ParticleSlot& S = Slots[I];
-        if (!IsParticleSlotAlive(S)) continue;
+        if (!QueryParticleSlotAlive(S)) continue;
         const float Wave = std::sin(S.AgeSeconds * 3.4f + S.OriginAnchor[0] * 1.9f + S.OriginAnchor[1] * 1.1f) * 0.24f;
         const float Gust = std::cos(S.AgeSeconds * 2.1f + S.OriginAnchor[0] * 1.3f) * 0.14f;
         S.PositionMeters[0] += ((S.OriginAnchor[0] + Gust) - S.PositionMeters[0]) * SoftRestore;
@@ -284,7 +284,7 @@ void StepElasticStrandDynamics(
         {
             ParticleSlot& A = Slots[I];
             ParticleSlot& B = Slots[I + 1u];
-            if (!IsParticleSlotAlive(A) || !IsParticleSlotAlive(B)) continue;
+            if (!QueryParticleSlotAlive(A) || !QueryParticleSlotAlive(B)) continue;
 
             // Pin every 16th strand root node to its rest OriginAnchor
             const bool PinA = (I % 16u == 0u);
@@ -334,7 +334,7 @@ void StepThermalFireworkDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float NormAge = (Slot.LifespanSeconds > 1e-5f)
             ? std::clamp(Slot.AgeSeconds / Slot.LifespanSeconds, 0.0f, 1.0f)
@@ -375,7 +375,7 @@ void StepDielectricArcDynamics(
     for (std::size_t I = 0u; I < Slots.size(); ++I)
     {
         ParticleSlot& Slot = Slots[I];
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
         // Multi-strand midpoint-displaced plasma filaments between cathode & anode electrodes
         const uint32_t Branch = IsBeam ? 0u : static_cast<uint32_t>(I % BranchCount);
         const float SpanT  = static_cast<float>((I / (IsBeam ? 1u : BranchCount)) % 48u) / 47.0f;
@@ -409,7 +409,7 @@ void StepFieldMatrixDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
         const float Dx = Slot.OriginAnchor[0] - EffX;
         const float Dy = Slot.OriginAnchor[1] - EffY;
         const float Dz = Slot.OriginAnchor[2] - EffZ;
@@ -437,7 +437,7 @@ void StepBotanicalSwayDynamics(
     const float Freq = Spec.SwayFrequencyHz * 6.2831853f;
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
         const float HeightFrac = std::clamp(Slot.OriginAnchor[1] * 0.35f, 0.0f, 1.0f);
         const float Sway = std::sin(ElapsedSeconds * Freq + Slot.OriginAnchor[0] * 0.7f + Slot.OriginAnchor[2] * 0.5f)
                          * Spec.WindSensitivity * HeightFrac * HeightFrac * 0.32f;

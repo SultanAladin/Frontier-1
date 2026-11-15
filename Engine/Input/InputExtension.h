@@ -155,8 +155,11 @@ public:
     //                                                FUNCTION PROTOTYPES
     //--------------------------------------------------------------------------------------------------------------------
 
-    void Initialize() noexcept;
+    bool Initialize() noexcept;
     void BeginTick() noexcept;
+    void Tick(double Δt) noexcept;
+    void Suspend() noexcept;
+    void Resume() noexcept;
     void Finalize() noexcept;
 
     void                              ConfigureRoutingTarget(InputRoutingTarget Target) noexcept;
@@ -224,6 +227,7 @@ private:
     InputRoutingTarget                                       RoutingTarget   = InputRoutingTarget::BothExchanges;
     bool                                                     EditorEnabled   = (FRONTIER_PROFILE_SHIPPING == 0);
     bool                                                     LifecycleActive = false;
+    bool                                                     Suspended       = false;
 };
 
 //------------------------------------------------------------------------------------------------------------------------

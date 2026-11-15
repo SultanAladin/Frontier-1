@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       MOLECULARREACTIONDYNAMICS.H
+                                                         MOLECULARREACTIONDYNAMICS.H
 ============================================================================================================================================*/
 // 🧩 Modular Lennard-Jones 12-6 molecular dynamics, Langevin thermostat & reversible A + B <-> C chemical reaction kinetics
 

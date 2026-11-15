@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                            CLUSTERPYRAMID.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                              CLUSTERPYRAMID.CPP
+============================================================================================================================================*/
 // 🧩 Implementation of 128-triangle Morton cluster partitioning and seam/border-locked QEM hierarchical LOD simplification
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -93,7 +93,7 @@ struct SymmetricQuadric10
     }
 };
 
-void PopulateClusterBoundsAndNormalCone(
+void PopulateClusterBoundsNormalCone(
     ClusterHeaderEntry&                   Header,
     std::span<const Mathematics::Axis3D>  Positions,
     std::span<const ClusterTriangleEntry> ClusterTris) noexcept
@@ -565,7 +565,7 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         Header.CoarserThresholdErrorMeters = 1.0e30f;
         Header.ClusterOrdinal              = static_cast<uint32_t>(Clusters.size());
 
-        PopulateClusterBoundsAndNormalCone(
+        PopulateClusterBoundsNormalCone(
             Header,
             Positions,
             std::span<const ClusterTriangleEntry>(Triangles.data() + TriOffset, Count));
@@ -656,7 +656,7 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
                 Coarser.CoarserThresholdErrorMeters = 1.0e30f;
                 Coarser.ClusterOrdinal              = static_cast<uint32_t>(Clusters.size());
 
-                PopulateClusterBoundsAndNormalCone(
+                PopulateClusterBoundsNormalCone(
                     Coarser,
                     Positions,
                     std::span<const ClusterTriangleEntry>(Triangles.data() + TriOffset, ChunkCount));

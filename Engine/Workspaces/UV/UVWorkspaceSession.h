@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           UVWORKSPACESESSION.H
+                                                             UVWORKSPACESESSION.H
 ============================================================================================================================================*/
 // 🧩 Shared UV Workspace authoring state binding PolygonNetwork, SelectionMask, Interchange, GPU/Parallel Solvers, .UVSpace & Revisions
 
@@ -15,7 +15,7 @@
 #include "Engine/Components/Camera/VisualEffects/CameraOpticsEncoder.h"
 #include "Engine/Configuration/EngineConfiguration.h"
 #include "Engine/Configuration/WorkspaceConfiguration.h"
-#include "Engine/Editor/Viewports/TransformGizmo.h"
+#include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/GeometricRaster/UV/UVWorkspaceRasterizer.h"
 #include "Engine/GeometrySpace/Network/FacePartitionRegister.h"
 #include "Engine/GeometrySpace/Network/GeometryInstance.h"

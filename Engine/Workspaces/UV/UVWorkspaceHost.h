@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            UVWORKSPACEHOST.H
+                                                              UVWORKSPACEHOST.H
 ============================================================================================================================================*/
 // 🧩 Dual-deployment UV Workspace host mounting StandaloneWorkspace (FrontierUV) or FeatureSet docked panes + ContentBrowser integration
 

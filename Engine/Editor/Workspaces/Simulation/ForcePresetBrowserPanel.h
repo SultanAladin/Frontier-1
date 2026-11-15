@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            FORCEPRESETBROWSERPANEL.H
+                                                          FORCEPRESETBROWSERPANEL.H
 ============================================================================================================================================*/
 // 🧩 Project-Zero pull-up Content Browser drawer & trapezoidal bottom handle hosting .ForceModel presets, 19 ForceModel laws & formulas
 
@@ -42,7 +42,7 @@ enum class ContentAssetCategory : uint8_t
 {
     All            = 0, // [-] - All asset categories combined
     ForcePresets   = 1, // [-] - Curated ready-to-use physical Force presets
-    ForceLaws      = 2, // [-] - All 19 fundamental ForceModel analytical laws
+    ForceModels      = 2, // [-] - All 19 fundamental ForceModel analytical laws
     FormulaPresets = 3, // [-] - Symbolic VectorFieldLang GPU formula presets
 };
 

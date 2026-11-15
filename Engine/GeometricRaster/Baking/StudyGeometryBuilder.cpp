@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         STUDYGEOMETRYBUILDER.CPP
+                                                           STUDYGEOMETRYBUILDER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of High/Low procedural baking study pairs, Wavefront OBJ/STL import, UV-seam island flood & tangent smoothing.
 
@@ -130,7 +130,7 @@ void AppendSculptedBox(
     Axis3D          Center,
     Scalar3D        Half,
     uint32_t        SubDivPerSide,
-    bool            AddBevelAndDetails,
+    bool            AppendBevelDetails,
     uint16_t        PartBaseOrdinal)
 {
     // 6-island cube pack (3x2 cells inside [0.02..0.98]) so each face is an independent seam-bounded UV chart
@@ -178,7 +178,7 @@ void AppendSculptedBox(
                 // Smooth box edge rounding for bevel / sculpted detail
                 const float MaxC = std::max({ std::fabs(Lx), std::fabs(Ly) });
                 float Disp = 0.0f;
-                if (AddBevelAndDetails)
+                if (AppendBevelDetails)
                 {
                     // Soft chamfer taper near box perimeter + recessed central technical panel + 4 corner bolt bosses
                     const float EdgeBlend = std::clamp((MaxC - 0.80f) / 0.20f, 0.0f, 1.0f);
@@ -1056,7 +1056,7 @@ void ExtractNetworkTriangulation(
 //                                             PUBLIC BUILDER IMPLEMENTATION
 //------------------------------------------------------------------------------------------------------------------------
 
-PreparedStudyPair StudyGeometryBuilder::ConstructStudioStudy(StudyGeometryKind Kind)
+PreparedStudyPair StudyGeometryBuilder::ConstructStudioStudy(StudyGeometryCategory Kind)
 {
     PolygonNetwork LowNet {};
     PolygonNetwork HighNet {};
@@ -1064,31 +1064,31 @@ PreparedStudyPair StudyGeometryBuilder::ConstructStudioStudy(StudyGeometryKind K
 
     switch (Kind)
     {
-        case StudyGeometryKind::UtahTeapot:
+        case StudyGeometryCategory::UtahTeapot:
             Label = "Utah Teapot (High/Low)";
             AppendUtahTeapotStudy(LowNet, false);
             AppendUtahTeapotStudy(HighNet, true);
             break;
 
-        case StudyGeometryKind::ShaderBall:
+        case StudyGeometryCategory::ShaderBall:
             Label = "Shader Ball (High/Low)";
             AppendShaderBallStudy(LowNet, false);
             AppendShaderBallStudy(HighNet, true);
             break;
 
-        case StudyGeometryKind::ChamferBox:
+        case StudyGeometryCategory::ChamferBox:
             Label = "Chamfer Box (High/Low)";
             AppendSculptedBox(LowNet,  { 0.0f, 0.0f, 0.55f }, { 0.55f, 0.55f, 0.55f }, 4u, false, 0u);
             AppendSculptedBox(HighNet, { 0.0f, 0.0f, 0.55f }, { 0.55f, 0.55f, 0.55f }, 28u, true, 0u);
             break;
 
-        case StudyGeometryKind::UvSphere:
+        case StudyGeometryCategory::UvSphere:
             Label = "UV Sphere (High/Low)";
             AppendSculptedUvSphere(LowNet,  { 0.0f, 0.0f, 0.62f }, 0.62f, 32u, 20u, { { 0.02f, 0.02f }, { 0.98f, 0.98f } }, false, 0u);
             AppendSculptedUvSphere(HighNet, { 0.0f, 0.0f, 0.62f }, 0.62f, 72u, 48u, { { 0.02f, 0.02f }, { 0.98f, 0.98f } }, true,  0u);
             break;
 
-        case StudyGeometryKind::TorusKnot:
+        case StudyGeometryCategory::TorusKnot:
             Label = "Torus Knot Study";
             AppendTorusKnotStudy(LowNet, false);
             AppendTorusKnotStudy(HighNet, true);

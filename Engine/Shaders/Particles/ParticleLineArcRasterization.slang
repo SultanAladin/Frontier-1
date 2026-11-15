@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                    PARTICLELINEARCRASTERIZATION.SLANG
+                                                      PARTICLELINEARCRASTERIZATION.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 glowing dielectric lightning arcs, plasma beams, & silk spiderweb tension strands with radial core corona falloff
 

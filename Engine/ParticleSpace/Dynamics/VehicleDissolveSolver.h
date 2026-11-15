@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                        VEHICLEDISSOLVESOLVER.H
+                                                           VEHICLEDISSOLVESOLVER.H
 ============================================================================================================================================*/
-// 🚗 Controlled Integrator (ControlVehicle) 16^3 lattice Derez, Reverse-Rez, Dissolve-to-Nothing, and Dissolve-to-Butterfly solver + Z-buffered two-way GI renderer
+// 🧩 Controlled Integrator (ControlVehicle) 16^3 lattice Derez, Reverse-Rez, Dissolve-to-Nothing, and Dissolve-to-Butterfly solver + Z-buffered two-way GI renderer
 
 #pragma once
 
@@ -74,7 +74,7 @@ struct VehicleDissolveButterflyPiece
     float PitchTilt  = 0.0f;
     float WingSpan   = 0.14f;
     float FlapAngle  = 0.4f;  // [rad] - Instantaneous left/right dihedral hinge flap angle
-    float MorphoMix  = 0.8f;  // [0-1] - 1 = electric Morpho cyan, 0 = warm Monarch amber/gold
+    float BotanicalGrowthMix  = 0.8f;  // [0-1] - 1 = electric BotanicalGrowth cyan, 0 = warm Monarch amber/gold
     float Shimmer    = 0.8f;  // [0-1] - Iridescent wing glow
     float Opacity    = 1.0f;
 };

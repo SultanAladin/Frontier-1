@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                      MATERIALSURFACELAYER.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                            MATERIALSURFACELAYER.H
+============================================================================================================================================*/
 // 🧩 Ordered 8-layer physical surface stack (substrate, metallic flakes, pigment coat, dust/sheen, moisture film)
 
 #pragma once
@@ -29,7 +29,7 @@ inline constexpr std::size_t MaxMaterialSurfaceLayers = 8u; // [count] - Ordered
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class MaterialLayerBlendKind : uint8_t
+enum class MaterialLayerBlendCategory : uint8_t
 {
     CoverageOver          = 0, // [-] - Standard linear coverage mask alpha-over blend
     HeightThresholdBlend  = 1, // [-] - Micro-height relief cavity/crest blend (e.g. dust or moss in crevices)
@@ -44,7 +44,7 @@ enum class MaterialLayerBlendKind : uint8_t
 struct MaterialSurfaceLayer
 {
     SurfaceMaterial        LayerMaterial          {};                                      // [-] - Optical properties of this layer
-    MaterialLayerBlendKind BlendKind              = MaterialLayerBlendKind::CoverageOver;  // [-] - Physical vertical composition operator
+    MaterialLayerBlendCategory BlendKind              = MaterialLayerBlendCategory::CoverageOver;  // [-] - Physical vertical composition operator
     float                  CoverageOpacity        = 1.0f;                                  // [-] - Layer presence [0, 1]
     float                  HeightContrastSharpness= 0.50f;                                 // [-] - Relief transition sharpness [0.01, 1]
     float                  SampledMicroHeight     = 0.50f;                                 // [-] - Local surface height sample [0, 1]

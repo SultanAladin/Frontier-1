@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          UVINSPECTORPANEL.CPP
+                                                             UVINSPECTORPANEL.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of UVInspectorPanel matching Experimental/UVEditor across Pack, Unwrap, UDIM, Shading & Check tabs
 
@@ -1468,7 +1468,7 @@ float UVInspectorPanel::RenderShadingTab(
         const auto DisplayMode = Session->RenderOptions3D.DisplayMode;
         const char* ShaderName = "Surface Material";
         if (DisplayMode == GeometricRaster::SurfaceDisplayMode::MatCapPreview) ShaderName = "MatCap (Per-Face)";
-        else if (DisplayMode == GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap) ShaderName = "Material + MatCap";
+        else if (DisplayMode == GeometricRaster::SurfaceDisplayMode::MaterialMatCap) ShaderName = "Material + MatCap";
         WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Light,
             { Hero.X + 18.0f, Hero.Y + 36.0f }, Hero.Width - 36.0f, 25.0f, Theme.TextPrimary, ShaderName);
         char ChartTxt[48]{};
@@ -1578,7 +1578,7 @@ float UVInspectorPanel::RenderShadingTab(
         }};
         uint32_t ShaderIndex = 0u;
         if (Session->RenderOptions3D.DisplayMode == GeometricRaster::SurfaceDisplayMode::MatCapPreview) ShaderIndex = 1u;
-        else if (Session->RenderOptions3D.DisplayMode == GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap) ShaderIndex = 2u;
+        else if (Session->RenderOptions3D.DisplayMode == GeometricRaster::SurfaceDisplayMode::MaterialMatCap) ShaderIndex = 2u;
         Rectangle2D ShaderDropdownBounds{ SX + 58.0f, SY, SW - 58.0f, 31.0f };
         const ControlContact ShaderDropdown = DropdownSelector::ConstructButton(
             Surface, ShaderDropdownBounds, ShaderOptions[ShaderIndex], ShadingModeDropdownOpen,
@@ -1707,7 +1707,7 @@ float UVInspectorPanel::RenderShadingTab(
                 constexpr std::array<GeometricRaster::SurfaceDisplayMode, 3u> Modes {{
                     GeometricRaster::SurfaceDisplayMode::SurfaceMaterial,
                     GeometricRaster::SurfaceDisplayMode::MatCapPreview,
-                    GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap
+                    GeometricRaster::SurfaceDisplayMode::MaterialMatCap
                 }};
                 Session->RenderOptions3D.DisplayMode = Modes[ChosenShader];
                 Session->FramebuffersDirty = true;
@@ -2192,7 +2192,7 @@ void UVInspectorPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
                 "Surface Albedo Colour",
                 ToBrowserBounds(LastAlbedoButtonLogical),
                 nullptr,
-                [Sess = Session](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                [Sess = Session](ColorRgba AssignedRgba, const ColourSwatchEntry&)
                 {
                     if (Sess != nullptr)
                     {
@@ -2211,7 +2211,7 @@ void UVInspectorPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
                 "MatCap Tint Colour",
                 ToBrowserBounds(LastMatCapTintButtonLogical),
                 nullptr,
-                [Sess = Session](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                [Sess = Session](ColorRgba AssignedRgba, const ColourSwatchEntry&)
                 {
                     if (Sess != nullptr)
                     {

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           TIMELINETRANSFERREGISTER.CPP
+                                                         TIMELINETRANSFERREGISTER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of TimelineTransferRegister encoding zero-stall GPU buffer/image transfers into 64B-aligned host-cached staging slots
 
@@ -269,7 +269,7 @@ bool TimelineTransferRegister::QueryTicketReady(const ReadbackTicket& Ticket) co
     return DeviceInterchange != nullptr && Ticket.Valid() && DeviceInterchange->QueryTimelineReached(Ticket.TimelineSignal);
 }
 
-bool TimelineTransferRegister::AwaitAndCopyBytes(const ReadbackTicket& Ticket, std::span<uint8_t> DestinationBytes) const noexcept
+bool TimelineTransferRegister::AwaitReadbackBytes(const ReadbackTicket& Ticket, std::span<uint8_t> DestinationBytes) const noexcept
 {
     if (DeviceInterchange == nullptr || !Ticket.Valid() || DestinationBytes.size() < Ticket.ByteLength || Ticket.SlotIndex >= RingSlotCount)
     {

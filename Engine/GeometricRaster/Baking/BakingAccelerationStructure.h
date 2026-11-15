@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                    BAKINGACCELERATIONSTRUCTURE.H
+                                                        BAKINGACCELERATIONSTRUCTURE.H
 ============================================================================================================================================*/
 // 🧩 Dual GTX SAH-BVH4 + optional RTX VK_KHR_acceleration_structure (BLAS + TLAS) upload & synchronization for GPU baking
 
@@ -41,7 +41,7 @@ public:
     BakingAccelerationStructure(const BakingAccelerationStructure&)            = delete;
     BakingAccelerationStructure& operator=(const BakingAccelerationStructure&) = delete;
 
-    [[nodiscard]] bool BuildAndUploadStudy(
+    [[nodiscard]] bool UploadPreparedStudy(
         VulkanInterchange*       BoundDevice,
         const PreparedStudyPair& Study);
 

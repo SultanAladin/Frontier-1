@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         FORCEMODELPRESETCODEC.CPP
+                                                          FORCEMODELPRESETCODEC.CPP
 ============================================================================================================================================*/
 // 🧩 Option A .ForceModel single-force preset encoder & decoder for reusable ContentBrowser presets
 
@@ -22,7 +22,7 @@ SpaceContainerPayload ForceModelPresetEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::ForceModel;
+    Payload.SuffixCategory  = SpaceSuffixCategory::ForceModel;
     Payload.DocumentTitle      = Preset.PresetTitle;
     Payload.AuthoringWorkspace = "Frontier.ForcePresetLibrary";
 
@@ -58,7 +58,7 @@ bool ForceModelPresetDecoder::ExtractPreset(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::ForceModel)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::ForceModel)
     {
         OutDiagnostic = "Expected .ForceModel container category.";
         return false;

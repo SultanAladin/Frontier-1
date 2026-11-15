@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                  VULKANWORLDRENDERSEQUENCE.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                        VULKANWORLDRENDERSEQUENCE.CPP
+============================================================================================================================================*/
 // 🧩 Implementation of VulkanWorldRenderSequence executing WorldViewportRadiometricCompute.comp.spv on hardware Vulkan GPUs
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -24,32 +24,32 @@ namespace
 
 struct GpuAreaQuadLightStd140
 {
-    float CenterAndHalfW[4] {};
-    float RightAndHalfH[4]  {};
-    float UpAndTwoSided[4]  {};
-    float RadianceAndPad[4] {};
+    float CenterHalfWidth[4] {};
+    float RightHalfHeight[4]  {};
+    float UpTwoSided[4]  {};
+    float RadiancePacked[4] {};
 };
 
 struct GpuGlassSphereStd140
 {
-    float CenterAndRadius[4] {};
-    float OpticsAndSlot[4]   {};
+    float CenterRadiusPacked[4] {};
+    float OpticsSlotPacked[4]   {};
 };
 
 struct WorldViewportUniformBlockStd140
 {
-    float                  CameraOriginAndTanX[4]    {};
-    float                  CameraRightAndTanY[4]     {};
-    float                  CameraUpAndWidth[4]       {};
-    float                  CameraForwardAndHeight[4] {};
-    float                  SunDirAndConeTan[4]       {};
-    float                  SolarIrradianceAndTier[4] {};
-    float                  SkyRadianceAndBvhCount[4] {};
-    float                  SdfMinAndSpacing[4]       {};
-    uint32_t               SdfDimsAndLightCount[4]   {};
-    float                  LatticeMinAndGlassCnt[4]  {};
-    float                  LatticeMaxAndDebugMode[4] {};
-    uint32_t               LatticeDimsAndMatCount[4] {};
+    float                  CameraOriginTanX[4]    {};
+    float                  CameraRightTanY[4]     {};
+    float                  CameraUpWidth[4]       {};
+    float                  CameraForwardHeight[4] {};
+    float                  SunDirConeTan[4]       {};
+    float                  SolarIrradianceTier[4] {};
+    float                  SkyRadianceBvhCount[4] {};
+    float                  SdfMinSpacing[4]       {};
+    uint32_t               SdfDimsLightCount[4]   {};
+    float                  LatticeMinGlassCount[4]  {};
+    float                  LatticeMaxDebugMode[4] {};
+    uint32_t               LatticeDimsMaterialCount[4] {};
     GpuAreaQuadLightStd140 AreaLights[4]             {};
     GpuGlassSphereStd140   GlassSpheres[4]           {};
 };
@@ -70,10 +70,10 @@ static_assert(sizeof(GpuShadedTriangle96) == 96u, "GpuShadedTriangle96 must equa
 
 struct GpuWorldMaterial64
 {
-    float DiffuseAlbedoAndRough[4] {};
+    float DiffuseAlbedoRoughness[4] {};
     float SpecParams[4]            {};
-    float EdgeTintAndCoatWeight[4] {};
-    float CoatRoughAndOptics[4]    {};
+    float EdgeTintCoatWeight[4] {};
+    float CoatRoughnessOptics[4]    {};
 };
 
 static_assert(sizeof(GpuWorldMaterial64) == 64u, "GpuWorldMaterial64 must equal 64 bytes.");
@@ -394,22 +394,22 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
     {
         const auto& Src = Scene.MaterialRegister.InspectAuthoredMaterial(static_cast<uint16_t>(Slot));
         GpuWorldMaterial64 Dst {};
-        Dst.DiffuseAlbedoAndRough[0] = Src.Diffuse.BaseColor.R * Src.Diffuse.BaseWeight;
-        Dst.DiffuseAlbedoAndRough[1] = Src.Diffuse.BaseColor.G * Src.Diffuse.BaseWeight;
-        Dst.DiffuseAlbedoAndRough[2] = Src.Diffuse.BaseColor.B * Src.Diffuse.BaseWeight;
-        Dst.DiffuseAlbedoAndRough[3] = Src.Diffuse.DiffuseRoughness;
+        Dst.DiffuseAlbedoRoughness[0] = Src.Diffuse.BaseColor.R * Src.Diffuse.BaseWeight;
+        Dst.DiffuseAlbedoRoughness[1] = Src.Diffuse.BaseColor.G * Src.Diffuse.BaseWeight;
+        Dst.DiffuseAlbedoRoughness[2] = Src.Diffuse.BaseColor.B * Src.Diffuse.BaseWeight;
+        Dst.DiffuseAlbedoRoughness[3] = Src.Diffuse.DiffuseRoughness;
         Dst.SpecParams[0]            = Src.Specular.Roughness;
         Dst.SpecParams[1]            = Src.Specular.Metalness;
         Dst.SpecParams[2]            = Src.Specular.DielectricIOR;
         Dst.SpecParams[3]            = Src.Specular.Anisotropy;
-        Dst.EdgeTintAndCoatWeight[0] = Src.Specular.EdgeTintF82.R;
-        Dst.EdgeTintAndCoatWeight[1] = Src.Specular.EdgeTintF82.G;
-        Dst.EdgeTintAndCoatWeight[2] = Src.Specular.EdgeTintF82.B;
-        Dst.EdgeTintAndCoatWeight[3] = Src.Clearcoat.CoatWeight;
-        Dst.CoatRoughAndOptics[0]    = Src.Clearcoat.CoatRoughness;
-        Dst.CoatRoughAndOptics[1]    = Src.Transmission.TransmissionWeight;
-        Dst.CoatRoughAndOptics[2]    = Src.Transmission.AbbeDispersionNumber;
-        Dst.CoatRoughAndOptics[3]    = 0.0f;
+        Dst.EdgeTintCoatWeight[0] = Src.Specular.EdgeTintF82.R;
+        Dst.EdgeTintCoatWeight[1] = Src.Specular.EdgeTintF82.G;
+        Dst.EdgeTintCoatWeight[2] = Src.Specular.EdgeTintF82.B;
+        Dst.EdgeTintCoatWeight[3] = Src.Clearcoat.CoatWeight;
+        Dst.CoatRoughnessOptics[0]    = Src.Clearcoat.CoatRoughness;
+        Dst.CoatRoughnessOptics[1]    = Src.Transmission.TransmissionWeight;
+        Dst.CoatRoughnessOptics[2]    = Src.Transmission.AbbeDispersionNumber;
+        Dst.CoatRoughnessOptics[3]    = 0.0f;
         GpuMats[Slot]                = Dst;
     }
     const uint64_t MatBytes = GpuMats.size() * sizeof(GpuWorldMaterial64);
@@ -552,72 +552,72 @@ bool VulkanWorldRenderSequence::RenderWorldViewportRgba8(
     const OrthonormalCameraBasis Basis = ComputeCameraBasis(Camera);
 
     WorldViewportUniformBlockStd140 Uniforms {};
-    Uniforms.CameraOriginAndTanX[0]    = Camera.CameraOrigin.X;
-    Uniforms.CameraOriginAndTanX[1]    = Camera.CameraOrigin.Y;
-    Uniforms.CameraOriginAndTanX[2]    = Camera.CameraOrigin.Z;
-    Uniforms.CameraOriginAndTanX[3]    = Basis.TanHalfFovX;
+    Uniforms.CameraOriginTanX[0]    = Camera.CameraOrigin.X;
+    Uniforms.CameraOriginTanX[1]    = Camera.CameraOrigin.Y;
+    Uniforms.CameraOriginTanX[2]    = Camera.CameraOrigin.Z;
+    Uniforms.CameraOriginTanX[3]    = Basis.TanHalfFovX;
 
-    Uniforms.CameraRightAndTanY[0]     = Basis.RightAxis.X;
-    Uniforms.CameraRightAndTanY[1]     = Basis.RightAxis.Y;
-    Uniforms.CameraRightAndTanY[2]     = Basis.RightAxis.Z;
-    Uniforms.CameraRightAndTanY[3]     = Basis.TanHalfFovY;
+    Uniforms.CameraRightTanY[0]     = Basis.RightAxis.X;
+    Uniforms.CameraRightTanY[1]     = Basis.RightAxis.Y;
+    Uniforms.CameraRightTanY[2]     = Basis.RightAxis.Z;
+    Uniforms.CameraRightTanY[3]     = Basis.TanHalfFovY;
 
-    Uniforms.CameraUpAndWidth[0]       = Basis.UpAxis.X;
-    Uniforms.CameraUpAndWidth[1]       = Basis.UpAxis.Y;
-    Uniforms.CameraUpAndWidth[2]       = Basis.UpAxis.Z;
-    Uniforms.CameraUpAndWidth[3]       = static_cast<float>(WidthPx);
+    Uniforms.CameraUpWidth[0]       = Basis.UpAxis.X;
+    Uniforms.CameraUpWidth[1]       = Basis.UpAxis.Y;
+    Uniforms.CameraUpWidth[2]       = Basis.UpAxis.Z;
+    Uniforms.CameraUpWidth[3]       = static_cast<float>(WidthPx);
 
-    Uniforms.CameraForwardAndHeight[0] = Basis.ForwardAxis.X;
-    Uniforms.CameraForwardAndHeight[1] = Basis.ForwardAxis.Y;
-    Uniforms.CameraForwardAndHeight[2] = Basis.ForwardAxis.Z;
-    Uniforms.CameraForwardAndHeight[3] = static_cast<float>(HeightPx);
+    Uniforms.CameraForwardHeight[0] = Basis.ForwardAxis.X;
+    Uniforms.CameraForwardHeight[1] = Basis.ForwardAxis.Y;
+    Uniforms.CameraForwardHeight[2] = Basis.ForwardAxis.Z;
+    Uniforms.CameraForwardHeight[3] = static_cast<float>(HeightPx);
 
     const Mathematics::Axis3D SunDir   = Mathematics::NormalizeAxis(Scene.Sun.DirectionToSun, { 0.42f, -0.55f, 0.72f });
-    Uniforms.SunDirAndConeTan[0]       = SunDir.X;
-    Uniforms.SunDirAndConeTan[1]       = SunDir.Y;
-    Uniforms.SunDirAndConeTan[2]       = SunDir.Z;
-    Uniforms.SunDirAndConeTan[3]       = std::tan(std::max(0.004f, Scene.Sun.SunAngularRadiusRadians));
+    Uniforms.SunDirConeTan[0]       = SunDir.X;
+    Uniforms.SunDirConeTan[1]       = SunDir.Y;
+    Uniforms.SunDirConeTan[2]       = SunDir.Z;
+    Uniforms.SunDirConeTan[3]       = std::tan(std::max(0.004f, Scene.Sun.SunAngularRadiusRadians));
 
-    Uniforms.SolarIrradianceAndTier[0] = Scene.Sun.SolarIrradiance.R;
-    Uniforms.SolarIrradianceAndTier[1] = Scene.Sun.SolarIrradiance.G;
-    Uniforms.SolarIrradianceAndTier[2] = Scene.Sun.SolarIrradiance.B;
-    Uniforms.SolarIrradianceAndTier[3] = (Tier == WorldRenderTier::Tier2RtxDeterministic && CachedLatticeDimX >= 2u) ? 1.0f : 0.0f;
+    Uniforms.SolarIrradianceTier[0] = Scene.Sun.SolarIrradiance.R;
+    Uniforms.SolarIrradianceTier[1] = Scene.Sun.SolarIrradiance.G;
+    Uniforms.SolarIrradianceTier[2] = Scene.Sun.SolarIrradiance.B;
+    Uniforms.SolarIrradianceTier[3] = (Tier == WorldRenderTier::Tier2RtxDeterministic && CachedLatticeDimX >= 2u) ? 1.0f : 0.0f;
 
-    Uniforms.SkyRadianceAndBvhCount[0] = Scene.SkyRadiance.R;
-    Uniforms.SkyRadianceAndBvhCount[1] = Scene.SkyRadiance.G;
-    Uniforms.SkyRadianceAndBvhCount[2] = Scene.SkyRadiance.B;
-    Uniforms.SkyRadianceAndBvhCount[3] = static_cast<float>(UploadedBvhCount);
+    Uniforms.SkyRadianceBvhCount[0] = Scene.SkyRadiance.R;
+    Uniforms.SkyRadianceBvhCount[1] = Scene.SkyRadiance.G;
+    Uniforms.SkyRadianceBvhCount[2] = Scene.SkyRadiance.B;
+    Uniforms.SkyRadianceBvhCount[3] = static_cast<float>(UploadedBvhCount);
 
-    Uniforms.SdfMinAndSpacing[0]       = CachedSdfMinCorner.X;
-    Uniforms.SdfMinAndSpacing[1]       = CachedSdfMinCorner.Y;
-    Uniforms.SdfMinAndSpacing[2]       = CachedSdfMinCorner.Z;
-    Uniforms.SdfMinAndSpacing[3]       = CachedSdfSpacing;
+    Uniforms.SdfMinSpacing[0]       = CachedSdfMinCorner.X;
+    Uniforms.SdfMinSpacing[1]       = CachedSdfMinCorner.Y;
+    Uniforms.SdfMinSpacing[2]       = CachedSdfMinCorner.Z;
+    Uniforms.SdfMinSpacing[3]       = CachedSdfSpacing;
 
     const uint32_t LightCount = static_cast<uint32_t>(std::min<std::size_t>(4u, Scene.AreaLights.size()));
-    Uniforms.SdfDimsAndLightCount[0]   = CachedSdfDimX;
-    Uniforms.SdfDimsAndLightCount[1]   = CachedSdfDimY;
-    Uniforms.SdfDimsAndLightCount[2]   = CachedSdfDimZ;
-    Uniforms.SdfDimsAndLightCount[3]   = LightCount;
+    Uniforms.SdfDimsLightCount[0]   = CachedSdfDimX;
+    Uniforms.SdfDimsLightCount[1]   = CachedSdfDimY;
+    Uniforms.SdfDimsLightCount[2]   = CachedSdfDimZ;
+    Uniforms.SdfDimsLightCount[3]   = LightCount;
 
     for (uint32_t Idx = 0u; Idx < LightCount; ++Idx)
     {
         const auto& Src = Scene.AreaLights[Idx];
         auto&       Dst = Uniforms.AreaLights[Idx];
-        Dst.CenterAndHalfW[0] = Src.CenterWorld.X;
-        Dst.CenterAndHalfW[1] = Src.CenterWorld.Y;
-        Dst.CenterAndHalfW[2] = Src.CenterWorld.Z;
-        Dst.CenterAndHalfW[3] = Src.HalfWidthMeters;
-        Dst.RightAndHalfH[0]  = Src.RightTangent.X;
-        Dst.RightAndHalfH[1]  = Src.RightTangent.Y;
-        Dst.RightAndHalfH[2]  = Src.RightTangent.Z;
-        Dst.RightAndHalfH[3]  = Src.HalfHeightMeters;
-        Dst.UpAndTwoSided[0]  = Src.UpBitangent.X;
-        Dst.UpAndTwoSided[1]  = Src.UpBitangent.Y;
-        Dst.UpAndTwoSided[2]  = Src.UpBitangent.Z;
-        Dst.UpAndTwoSided[3]  = Src.TwoSidedEmission ? 1.0f : 0.0f;
-        Dst.RadianceAndPad[0] = Src.EmittedRadiance.R;
-        Dst.RadianceAndPad[1] = Src.EmittedRadiance.G;
-        Dst.RadianceAndPad[2] = Src.EmittedRadiance.B;
+        Dst.CenterHalfWidth[0] = Src.CenterWorld.X;
+        Dst.CenterHalfWidth[1] = Src.CenterWorld.Y;
+        Dst.CenterHalfWidth[2] = Src.CenterWorld.Z;
+        Dst.CenterHalfWidth[3] = Src.HalfWidthMeters;
+        Dst.RightHalfHeight[0]  = Src.RightTangent.X;
+        Dst.RightHalfHeight[1]  = Src.RightTangent.Y;
+        Dst.RightHalfHeight[2]  = Src.RightTangent.Z;
+        Dst.RightHalfHeight[3]  = Src.HalfHeightMeters;
+        Dst.UpTwoSided[0]  = Src.UpBitangent.X;
+        Dst.UpTwoSided[1]  = Src.UpBitangent.Y;
+        Dst.UpTwoSided[2]  = Src.UpBitangent.Z;
+        Dst.UpTwoSided[3]  = Src.TwoSidedEmission ? 1.0f : 0.0f;
+        Dst.RadiancePacked[0] = Src.EmittedRadiance.R;
+        Dst.RadiancePacked[1] = Src.EmittedRadiance.G;
+        Dst.RadiancePacked[2] = Src.EmittedRadiance.B;
     }
 
     uint32_t GlassCount = 0u;
@@ -630,30 +630,30 @@ bool VulkanWorldRenderSequence::RenderWorldViewportRgba8(
         const float LocalRadius = ComputePyramidLocalHalfExtent(Inst.PyramidAsset);
         const auto& GlassMat    = Scene.MaterialRegister.InspectAuthoredMaterial(Inst.MaterialSlot);
         auto&       Dst         = Uniforms.GlassSpheres[GlassCount++];
-        Dst.CenterAndRadius[0]  = Inst.WorldTranslation.X;
-        Dst.CenterAndRadius[1]  = Inst.WorldTranslation.Y;
-        Dst.CenterAndRadius[2]  = Inst.WorldTranslation.Z;
-        Dst.CenterAndRadius[3]  = std::max(0.04f, LocalRadius * Inst.UniformScale);
-        Dst.OpticsAndSlot[0]    = GlassMat.Specular.DielectricIOR;
-        Dst.OpticsAndSlot[1]    = GlassMat.Transmission.AbbeDispersionNumber;
-        Dst.OpticsAndSlot[2]    = static_cast<float>(Inst.MaterialSlot);
-        Dst.OpticsAndSlot[3]    = GlassMat.Specular.Roughness;
+        Dst.CenterRadiusPacked[0]  = Inst.WorldTranslation.X;
+        Dst.CenterRadiusPacked[1]  = Inst.WorldTranslation.Y;
+        Dst.CenterRadiusPacked[2]  = Inst.WorldTranslation.Z;
+        Dst.CenterRadiusPacked[3]  = std::max(0.04f, LocalRadius * Inst.UniformScale);
+        Dst.OpticsSlotPacked[0]    = GlassMat.Specular.DielectricIOR;
+        Dst.OpticsSlotPacked[1]    = GlassMat.Transmission.AbbeDispersionNumber;
+        Dst.OpticsSlotPacked[2]    = static_cast<float>(Inst.MaterialSlot);
+        Dst.OpticsSlotPacked[3]    = GlassMat.Specular.Roughness;
     }
 
-    Uniforms.LatticeMinAndGlassCnt[0]  = CachedLatticeMin.X;
-    Uniforms.LatticeMinAndGlassCnt[1]  = CachedLatticeMin.Y;
-    Uniforms.LatticeMinAndGlassCnt[2]  = CachedLatticeMin.Z;
-    Uniforms.LatticeMinAndGlassCnt[3]  = static_cast<float>(GlassCount);
+    Uniforms.LatticeMinGlassCount[0]  = CachedLatticeMin.X;
+    Uniforms.LatticeMinGlassCount[1]  = CachedLatticeMin.Y;
+    Uniforms.LatticeMinGlassCount[2]  = CachedLatticeMin.Z;
+    Uniforms.LatticeMinGlassCount[3]  = static_cast<float>(GlassCount);
 
-    Uniforms.LatticeMaxAndDebugMode[0] = CachedLatticeMax.X;
-    Uniforms.LatticeMaxAndDebugMode[1] = CachedLatticeMax.Y;
-    Uniforms.LatticeMaxAndDebugMode[2] = CachedLatticeMax.Z;
-    Uniforms.LatticeMaxAndDebugMode[3] = static_cast<float>(DebugChannel);
+    Uniforms.LatticeMaxDebugMode[0] = CachedLatticeMax.X;
+    Uniforms.LatticeMaxDebugMode[1] = CachedLatticeMax.Y;
+    Uniforms.LatticeMaxDebugMode[2] = CachedLatticeMax.Z;
+    Uniforms.LatticeMaxDebugMode[3] = static_cast<float>(DebugChannel);
 
-    Uniforms.LatticeDimsAndMatCount[0] = CachedLatticeDimX;
-    Uniforms.LatticeDimsAndMatCount[1] = CachedLatticeDimY;
-    Uniforms.LatticeDimsAndMatCount[2] = CachedLatticeDimZ;
-    Uniforms.LatticeDimsAndMatCount[3] = UploadedMaterialCount;
+    Uniforms.LatticeDimsMaterialCount[0] = CachedLatticeDimX;
+    Uniforms.LatticeDimsMaterialCount[1] = CachedLatticeDimY;
+    Uniforms.LatticeDimsMaterialCount[2] = CachedLatticeDimZ;
+    Uniforms.LatticeDimsMaterialCount[3] = UploadedMaterialCount;
 
     std::memcpy(UniformBuffer.HostAddress, &Uniforms, sizeof(Uniforms));
 

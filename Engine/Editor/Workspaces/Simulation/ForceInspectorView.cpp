@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         FORCEINSPECTORVIEW.CPP
+                                                            FORCEINSPECTORVIEW.CPP
 ============================================================================================================================================*/
 // 🧩 Complete 1:1 ForceFields Inspector implementation matching VectorFieldVisualizer across all 4 tabs and 19 ForceModel laws
 
@@ -155,7 +155,7 @@ struct ForceParameterDescriptor
     uint32_t        DecimalDigits;
 };
 
-struct ForceLawDescriptor
+struct ForceModelDescriptor
 {
     const char*                              DisplayTitle;
     const char*                              SystemCaption;
@@ -165,7 +165,7 @@ struct ForceLawDescriptor
     std::array<ForceParameterDescriptor, 6>  Params;
 };
 
-constexpr std::array<ForceLawDescriptor, 19> ForceLawRepository = {{
+constexpr std::array<ForceModelDescriptor, 19> ForceModelRepository = {{
     // 0: LinearWind
     {
         "Linear Wind", "VectorField", "Flow", "v = v0*(1 + s*z)*d_hat + Gust(x,t)", 5u,
@@ -360,7 +360,7 @@ constexpr std::array<ForceLawDescriptor, 19> ForceLawRepository = {{
     },
     // 16: FlowStream
     {
-        "Flow Stream", "FlowField", "Flow", "v = S*g(t)*A(r)*d_stream", 5u,
+        "Flow Stream", "StreamTransport", "Flow", "v = S*g(t)*A(r)*d_stream", 5u,
         {{
             { ForceScalarSlot::Strength,       "Stream Speed", 0.0f,   50.0f, "m/s", 1u },
             { ForceScalarSlot::AzimuthYaw,     "Flow Azimuth",-180.0f,180.0f, "deg", 0u },
@@ -372,7 +372,7 @@ constexpr std::array<ForceLawDescriptor, 19> ForceLawRepository = {{
     },
     // 17: SplineForce
     {
-        "Spline Conduit", "FlowField", "Flow", "a = S*T_hat(s*) - k_c*(p - C(s*))", 4u,
+        "Spline Conduit", "StreamTransport", "Flow", "a = S*T_hat(s*) - k_c*(p - C(s*))", 4u,
         {{
             { ForceScalarSlot::Strength,        "Guide Speed",  0.0f,   45.0f, "m/s", 1u },
             { ForceScalarSlot::EyeRadius,      "Tube Radius",  1.0f,   25.0f, "m",   1u },
@@ -384,7 +384,7 @@ constexpr std::array<ForceLawDescriptor, 19> ForceLawRepository = {{
     },
     // 18: BoundaryAdhesion
     {
-        "Boundary Adhesion", "FlowField", "Accelerate", "a = -S*tanh(dh/sigma)*z_hat + Glide*d_hat", 4u,
+        "Boundary Adhesion", "StreamTransport", "Accelerate", "a = -S*tanh(dh/sigma)*z_hat + Glide*d_hat", 4u,
         {{
             { ForceScalarSlot::Strength,        "Cling Pull",    0.0f,   45.0f, "m/s2", 1u },
             { ForceScalarSlot::EyeRadius,      "Layer Width",   1.0f,   25.0f, "m",    1u },
@@ -396,10 +396,10 @@ constexpr std::array<ForceLawDescriptor, 19> ForceLawRepository = {{
     },
 }};
 
-[[nodiscard]] const ForceLawDescriptor& QueryLawDescriptor(SimulationSpace::ForceFields::ForceModel Model) noexcept
+[[nodiscard]] const ForceModelDescriptor& QueryForceModelDescriptor(SimulationSpace::ForceFields::ForceModel Model) noexcept
 {
     const auto Ordinal = static_cast<std::size_t>(Model);
-    return (Ordinal < ForceLawRepository.size()) ? ForceLawRepository[Ordinal] : ForceLawRepository[0];
+    return (Ordinal < ForceModelRepository.size()) ? ForceModelRepository[Ordinal] : ForceModelRepository[0];
 }
 
 [[nodiscard]] float ReadScalarSlot(const SimulationSpace::ForceFields::ForceSourceRecordEntry& Src, ForceScalarSlot Slot) noexcept
@@ -1119,7 +1119,7 @@ void ForceInspectorView::ConfigureActiveTab(ForceInspectorTab Tab) noexcept
     {
         ActiveTab     = Tab;
         ScrollOffsetY = 0.0f;
-        OpenDropdown  = OpenDropdownKind::None;
+        OpenDropdown  = OpenDropdownCategory::None;
     }
 }
 
@@ -1170,7 +1170,7 @@ bool ForceInspectorView::Render(
     }
 
     const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    const bool    SheetActiveBefore = (OpenDropdown != OpenDropdownKind::None);
+    const bool    SheetActiveBefore = (OpenDropdown != OpenDropdownCategory::None);
 
     Surface.PushClip(Bounds);
     Surface.FillRectangle(Bounds, InspectorSurfaceColors::RootBg);
@@ -1190,8 +1190,8 @@ bool ForceInspectorView::Render(
         const uint32_t  LawOrd = static_cast<uint32_t>(Targets.ActiveForce->Model);
         const ColorRgba LawInk = Targets.ActiveForce->FormulaEnabled
             ? InspectorSurfaceColors::AmberAccent
-            : WorkspaceAppearance::QueryForceLawTint(LawOrd);
-        WorkspaceAppearance::ConstructForceLawIcon(
+            : WorkspaceAppearance::QueryForceModelTint(LawOrd);
+        WorkspaceAppearance::ConstructForceModelIcon(
             Surface,
             LawOrd,
             { IconStartX, HeaderBounds.Center().Y - 9.0f },
@@ -1332,60 +1332,60 @@ bool ForceInspectorView::Render(
         "SimulationSpace Ready");
 
     // 5. Render Any Open Dropdown Option Sheet Above Scroll Clip (Zero Clipping)
-    if (OpenDropdown != OpenDropdownKind::None)
+    if (OpenDropdown != OpenDropdownCategory::None)
     {
         std::vector<const char*> Options;
         uint32_t                 CurrentIdx = 0u;
 
-        if (OpenDropdown == OpenDropdownKind::ForceLawSelector && Targets.ActiveForce != nullptr)
+        if (OpenDropdown == OpenDropdownCategory::ForceModelSelector && Targets.ActiveForce != nullptr)
         {
-            for (const auto& Law : ForceLawRepository)
+            for (const auto& Law : ForceModelRepository)
             {
                 Options.push_back(Law.DisplayTitle);
             }
             CurrentIdx = static_cast<uint32_t>(Targets.ActiveForce->Model);
         }
-        else if (OpenDropdown == OpenDropdownKind::ReachShape && Targets.ActiveForce != nullptr)
+        else if (OpenDropdown == OpenDropdownCategory::ReachShape && Targets.ActiveForce != nullptr)
         {
             Options = { "Sphere", "Column", "OrientedBox", "PlanarBox" };
             CurrentIdx = static_cast<uint32_t>(Targets.ActiveForce->Envelope);
         }
-        else if (OpenDropdown == OpenDropdownKind::Attenuation && Targets.ActiveForce != nullptr)
+        else if (OpenDropdown == OpenDropdownCategory::Attenuation && Targets.ActiveForce != nullptr)
         {
             Options = { "SmoothStep", "Linear", "InverseSquare", "None" };
             CurrentIdx = static_cast<uint32_t>(Targets.ActiveForce->Attenuation);
         }
-        else if (OpenDropdown == OpenDropdownKind::DurationMode && Targets.ActiveForce != nullptr)
+        else if (OpenDropdown == OpenDropdownCategory::DurationMode && Targets.ActiveForce != nullptr)
         {
             Options = { "Continuous", "Modulated", "Impulse" };
             CurrentIdx = static_cast<uint32_t>(Targets.ActiveForce->DurationMode);
         }
-        else if (OpenDropdown == OpenDropdownKind::MotionTopology && Targets.ActiveForce != nullptr)
+        else if (OpenDropdown == OpenDropdownCategory::MotionTopology && Targets.ActiveForce != nullptr)
         {
             Options = { "Static (None)", "Linear A -> B", "3D Spline Curve", "Orbit Loop" };
             CurrentIdx = static_cast<uint32_t>(Targets.ActiveForce->Motion.Topology);
         }
-        else if (OpenDropdown == OpenDropdownKind::MotionCycle && Targets.ActiveForce != nullptr)
+        else if (OpenDropdown == OpenDropdownCategory::MotionCycle && Targets.ActiveForce != nullptr)
         {
             Options = { "PingPong", "Loop", "Once" };
             CurrentIdx = static_cast<uint32_t>(Targets.ActiveForce->Motion.CycleBehavior);
         }
-        else if (OpenDropdown == OpenDropdownKind::StreamProfile && Targets.ActiveForce != nullptr)
+        else if (OpenDropdown == OpenDropdownCategory::StreamProfile && Targets.ActiveForce != nullptr)
         {
             Options = { "Current", "ThermalUpdraft", "SlipstreamJet", "NavigationField", "VesselWake" };
             CurrentIdx = static_cast<uint32_t>(Targets.ActiveForce->StreamProfile);
         }
-        else if (OpenDropdown == OpenDropdownKind::HeatmapField && Targets.OverlaySettings != nullptr)
+        else if (OpenDropdown == OpenDropdownCategory::HeatmapField && Targets.OverlaySettings != nullptr)
         {
             Options = { "Speed", "Acceleration", "Curl", "Divergence", "Pressure" };
             CurrentIdx = static_cast<uint32_t>(Targets.OverlaySettings->HeatmapChannel);
         }
-        else if (OpenDropdown == OpenDropdownKind::ColorRamp && Targets.OverlaySettings != nullptr)
+        else if (OpenDropdown == OpenDropdownCategory::ColorRamp && Targets.OverlaySettings != nullptr)
         {
             Options = { "Engineering", "Turbo", "Plasma", "Diverging" };
             CurrentIdx = std::min(Targets.OverlaySettings->HeatmapColorSchemeOrdinal, 3u);
         }
-        else if (OpenDropdown == OpenDropdownKind::StreamColorMode && Targets.OverlaySettings != nullptr)
+        else if (OpenDropdown == OpenDropdownCategory::StreamColorMode && Targets.OverlaySettings != nullptr)
         {
             Options = { "Speed Color Ramp", "Single Color · Classic Cyan", "Single Color · Custom", "Altitude 3D Gradient" };
             CurrentIdx = static_cast<uint32_t>(Targets.OverlaySettings->StreamColorMode);
@@ -1412,51 +1412,51 @@ bool ForceInspectorView::Render(
                     Input.PrimaryPointer,
                     ChosenIdx).Clicked)
             {
-                if (OpenDropdown == OpenDropdownKind::ForceLawSelector && Targets.ActiveForce != nullptr)
+                if (OpenDropdown == OpenDropdownCategory::ForceModelSelector && Targets.ActiveForce != nullptr)
                 {
                     Targets.ActiveForce->Model  = static_cast<SimulationSpace::ForceFields::ForceModel>(ChosenIdx);
                     Targets.ActiveForce->Domain = SimulationSpace::ForceFields::QueryDomainForModel(Targets.ActiveForce->Model);
                     if (Targets.OutlinerEntry != nullptr)
                     {
-                        Targets.OutlinerEntry->ForceLawOrdinal = ChosenIdx;
-                        Targets.OutlinerEntry->CategoryLabel   = QueryLawDescriptor(Targets.ActiveForce->Model).DisplayTitle;
+                        Targets.OutlinerEntry->ForceModelOrdinal = ChosenIdx;
+                        Targets.OutlinerEntry->CategoryLabel   = QueryForceModelDescriptor(Targets.ActiveForce->Model).DisplayTitle;
                     }
                 }
-                else if (OpenDropdown == OpenDropdownKind::ReachShape && Targets.ActiveForce != nullptr)
+                else if (OpenDropdown == OpenDropdownCategory::ReachShape && Targets.ActiveForce != nullptr)
                 {
                     Targets.ActiveForce->Envelope = static_cast<SimulationSpace::ForceFields::ReachEnvelopeCategory>(ChosenIdx);
                 }
-                else if (OpenDropdown == OpenDropdownKind::Attenuation && Targets.ActiveForce != nullptr)
+                else if (OpenDropdown == OpenDropdownCategory::Attenuation && Targets.ActiveForce != nullptr)
                 {
                     Targets.ActiveForce->Attenuation = static_cast<SimulationSpace::ForceFields::ForceAttenuationMode>(ChosenIdx);
                 }
-                else if (OpenDropdown == OpenDropdownKind::DurationMode && Targets.ActiveForce != nullptr)
+                else if (OpenDropdown == OpenDropdownCategory::DurationMode && Targets.ActiveForce != nullptr)
                 {
                     Targets.ActiveForce->DurationMode = static_cast<SimulationSpace::ForceFields::ForceDurationMode>(ChosenIdx);
                 }
-                else if (OpenDropdown == OpenDropdownKind::MotionTopology && Targets.ActiveForce != nullptr)
+                else if (OpenDropdown == OpenDropdownCategory::MotionTopology && Targets.ActiveForce != nullptr)
                 {
                     SimulationSpace::ForceFields::AssignPresetMotionPath(
                         *Targets.ActiveForce,
                         static_cast<SimulationSpace::ForceFields::MotionPathTopology>(ChosenIdx));
                 }
-                else if (OpenDropdown == OpenDropdownKind::MotionCycle && Targets.ActiveForce != nullptr)
+                else if (OpenDropdown == OpenDropdownCategory::MotionCycle && Targets.ActiveForce != nullptr)
                 {
                     Targets.ActiveForce->Motion.CycleBehavior = static_cast<SimulationSpace::ForceFields::MotionCycleBehavior>(ChosenIdx);
                 }
-                else if (OpenDropdown == OpenDropdownKind::StreamProfile && Targets.ActiveForce != nullptr)
+                else if (OpenDropdown == OpenDropdownCategory::StreamProfile && Targets.ActiveForce != nullptr)
                 {
                     Targets.ActiveForce->StreamProfile = static_cast<SimulationSpace::ForceFields::FlowStreamProfile>(ChosenIdx);
                 }
-                else if (OpenDropdown == OpenDropdownKind::HeatmapField && Targets.OverlaySettings != nullptr)
+                else if (OpenDropdown == OpenDropdownCategory::HeatmapField && Targets.OverlaySettings != nullptr)
                 {
                     Targets.OverlaySettings->HeatmapChannel = static_cast<SimulationSpace::ForceFields::HeatmapChannelMode>(ChosenIdx);
                 }
-                else if (OpenDropdown == OpenDropdownKind::ColorRamp && Targets.OverlaySettings != nullptr)
+                else if (OpenDropdown == OpenDropdownCategory::ColorRamp && Targets.OverlaySettings != nullptr)
                 {
                     Targets.OverlaySettings->HeatmapColorSchemeOrdinal = ChosenIdx;
                 }
-                else if (OpenDropdown == OpenDropdownKind::StreamColorMode && Targets.OverlaySettings != nullptr)
+                else if (OpenDropdown == OpenDropdownCategory::StreamColorMode && Targets.OverlaySettings != nullptr)
                 {
                     Targets.OverlaySettings->StreamColorMode = static_cast<SimulationSpace::ForceFields::StreamlineColorMode>(ChosenIdx);
                     if (Targets.OverlaySettings->StreamColorMode == SimulationSpace::ForceFields::StreamlineColorMode::CyanSingle)
@@ -1464,11 +1464,11 @@ bool ForceInspectorView::Render(
                         Targets.OverlaySettings->CustomStreamColorRgba = 0x68DCFFFFu;
                     }
                 }
-                OpenDropdown = OpenDropdownKind::None;
+                OpenDropdown = OpenDropdownCategory::None;
             }
             else if (SheetActiveBefore && Input.PrimaryPointer.Pressed && !SheetBounds.Contains(Cursor) && !OpenTriggerRect.Contains(Cursor))
             {
-                OpenDropdown = OpenDropdownKind::None;
+                OpenDropdown = OpenDropdownCategory::None;
             }
         }
     }
@@ -1494,7 +1494,7 @@ float ForceInspectorView::RenderFieldTab(
     (void)OutOverlay;
     float CurY = TopY;
     const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    const bool    Interactive = (OpenDropdown == OpenDropdownKind::None) && ScrollViewport.Contains(Cursor);
+    const bool    Interactive = (OpenDropdown == OpenDropdownCategory::None) && ScrollViewport.Contains(Cursor);
 
     SimulationSpace::ForceFields::SpatialVector3 SamplePos{ 0.0f, 0.0f, 8.0f };
     if (Targets.OverlaySettings != nullptr)
@@ -1785,10 +1785,10 @@ float ForceInspectorView::RenderFieldTab(
     }
 
     auto& Src = *Targets.ActiveForce;
-    const ForceLawDescriptor& Law = QueryLawDescriptor(Src.Model);
+    const ForceModelDescriptor& Law = QueryForceModelDescriptor(Src.Model);
     const ColorRgba LawAccent = Src.FormulaEnabled
         ? InspectorSurfaceColors::AmberAccent
-        : WorkspaceAppearance::QueryForceLawTint(static_cast<uint32_t>(Src.Model));
+        : WorkspaceAppearance::QueryForceModelTint(static_cast<uint32_t>(Src.Model));
 
     const bool  StreamProfileActive = (Src.Model == SimulationSpace::ForceFields::ForceModel::FlowStream);
     const bool  MotionPathActive    = (Src.Motion.Topology != SimulationSpace::ForceFields::MotionPathTopology::Static);
@@ -1818,7 +1818,7 @@ float ForceInspectorView::RenderFieldTab(
     float           Y    = SelBox.Y + 14.0f;
 
     // Header row: ForceIcon + Model Switcher Title + System · Channel
-    WorkspaceAppearance::ConstructForceLawIcon(Surface, static_cast<uint32_t>(Src.Model), { ColX, Y + 1.0f }, 16.0f, LawAccent);
+    WorkspaceAppearance::ConstructForceModelIcon(Surface, static_cast<uint32_t>(Src.Model), { ColX, Y + 1.0f }, 16.0f, LawAccent);
     const Rectangle2D LawPickerBtn{ ColX + 22.0f, Y - 2.0f, std::min(168.0f, ColW * 0.56f), 22.0f };
     if (LawPickerBtn.Contains(Cursor) && Interactive)
     {
@@ -1831,7 +1831,7 @@ float ForceInspectorView::RenderFieldTab(
         VectorIconPlacement{ LawPickerBtn.Right() - 15.0f, Y + 3.0f, 11.0f, InspectorSurfaceColors::InkMuted, 1.5f });
     if (Interactive && LawPickerBtn.Contains(Cursor) && Input.PrimaryPointer.Pressed)
     {
-        OpenDropdown    = OpenDropdownKind::ForceLawSelector;
+        OpenDropdown    = OpenDropdownCategory::ForceModelSelector;
         OpenTriggerRect = LawPickerBtn;
     }
 
@@ -1904,14 +1904,14 @@ float ForceInspectorView::RenderFieldTab(
     Y += 15.0f;
     const Rectangle2D ReachBtn{ ColX, Y, HalfW, 30.0f };
     const Rectangle2D AttenBtn{ ColX + HalfW + HalfGap, Y, HalfW, 30.0f };
-    if (ConstructSelectTrigger(Surface, ReachBtn, ReachLabel(Src.Envelope), OpenDropdown == OpenDropdownKind::ReachShape, Interactive, Input.PrimaryPointer))
+    if (ConstructSelectTrigger(Surface, ReachBtn, ReachLabel(Src.Envelope), OpenDropdown == OpenDropdownCategory::ReachShape, Interactive, Input.PrimaryPointer))
     {
-        OpenDropdown    = OpenDropdownKind::ReachShape;
+        OpenDropdown    = OpenDropdownCategory::ReachShape;
         OpenTriggerRect = ReachBtn;
     }
-    if (ConstructSelectTrigger(Surface, AttenBtn, AttenuationLabel(Src.Attenuation), OpenDropdown == OpenDropdownKind::Attenuation, Interactive, Input.PrimaryPointer))
+    if (ConstructSelectTrigger(Surface, AttenBtn, AttenuationLabel(Src.Attenuation), OpenDropdown == OpenDropdownCategory::Attenuation, Interactive, Input.PrimaryPointer))
     {
-        OpenDropdown    = OpenDropdownKind::Attenuation;
+        OpenDropdown    = OpenDropdownCategory::Attenuation;
         OpenTriggerRect = AttenBtn;
     }
 
@@ -1921,9 +1921,9 @@ float ForceInspectorView::RenderFieldTab(
     Y += 15.0f;
     const Rectangle2D DurBtn{ ColX, Y, HalfW, 30.0f };
     const Rectangle2D RadBox{ ColX + HalfW + HalfGap, Y, HalfW, 28.0f };
-    if (ConstructSelectTrigger(Surface, DurBtn, DurationLabel(Src.DurationMode), OpenDropdown == OpenDropdownKind::DurationMode, Interactive, Input.PrimaryPointer))
+    if (ConstructSelectTrigger(Surface, DurBtn, DurationLabel(Src.DurationMode), OpenDropdown == OpenDropdownCategory::DurationMode, Interactive, Input.PrimaryPointer))
     {
-        OpenDropdown    = OpenDropdownKind::DurationMode;
+        OpenDropdown    = OpenDropdownCategory::DurationMode;
         OpenTriggerRect = DurBtn;
     }
     char RadBuf[24]{};
@@ -1936,9 +1936,9 @@ float ForceInspectorView::RenderFieldTab(
     {
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { ColX, Y }, 9.5f, InspectorSurfaceColors::InkMuted, "FlowStream Profile");
         const Rectangle2D ProfBtn{ ColX, Y + 15.0f, ColW, 30.0f };
-        if (ConstructSelectTrigger(Surface, ProfBtn, StreamProfileLabel(Src.StreamProfile), OpenDropdown == OpenDropdownKind::StreamProfile, Interactive, Input.PrimaryPointer))
+        if (ConstructSelectTrigger(Surface, ProfBtn, StreamProfileLabel(Src.StreamProfile), OpenDropdown == OpenDropdownCategory::StreamProfile, Interactive, Input.PrimaryPointer))
         {
-            OpenDropdown    = OpenDropdownKind::StreamProfile;
+            OpenDropdown    = OpenDropdownCategory::StreamProfile;
             OpenTriggerRect = ProfBtn;
         }
         Y += 50.0f;
@@ -2042,14 +2042,14 @@ float ForceInspectorView::RenderFieldTab(
     Y += 15.0f;
     const Rectangle2D PathModeBtn{ ColX, Y, HalfW, 30.0f };
     const Rectangle2D LoopModeBtn{ ColX + HalfW + HalfGap, Y, HalfW, 30.0f };
-    if (ConstructSelectTrigger(Surface, PathModeBtn, TopologyLabel(Src.Motion.Topology), OpenDropdown == OpenDropdownKind::MotionTopology, Interactive, Input.PrimaryPointer))
+    if (ConstructSelectTrigger(Surface, PathModeBtn, TopologyLabel(Src.Motion.Topology), OpenDropdown == OpenDropdownCategory::MotionTopology, Interactive, Input.PrimaryPointer))
     {
-        OpenDropdown    = OpenDropdownKind::MotionTopology;
+        OpenDropdown    = OpenDropdownCategory::MotionTopology;
         OpenTriggerRect = PathModeBtn;
     }
-    if (ConstructSelectTrigger(Surface, LoopModeBtn, CycleLabel(Src.Motion.CycleBehavior), OpenDropdown == OpenDropdownKind::MotionCycle, Interactive && MotionPathActive, Input.PrimaryPointer))
+    if (ConstructSelectTrigger(Surface, LoopModeBtn, CycleLabel(Src.Motion.CycleBehavior), OpenDropdown == OpenDropdownCategory::MotionCycle, Interactive && MotionPathActive, Input.PrimaryPointer))
     {
-        OpenDropdown    = OpenDropdownKind::MotionCycle;
+        OpenDropdown    = OpenDropdownCategory::MotionCycle;
         OpenTriggerRect = LoopModeBtn;
     }
     Y += 36.0f;
@@ -2327,7 +2327,7 @@ float ForceInspectorView::RenderLayersTab(
     (void)OutOverlay;
     float CurY = TopY;
     const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    const bool    Interactive = (OpenDropdown == OpenDropdownKind::None) && ScrollViewport.Contains(Cursor);
+    const bool    Interactive = (OpenDropdown == OpenDropdownCategory::None) && ScrollViewport.Contains(Cursor);
 
     if (Targets.OverlaySettings == nullptr)
     {
@@ -2357,14 +2357,14 @@ float ForceInspectorView::RenderLayersTab(
 
         const Rectangle2D FieldBtn{ ColX, Y, HalfW, 30.0f };
         const Rectangle2D RampBtn { ColX + HalfW + HalfGap, Y, HalfW, 30.0f };
-        if (ConstructSelectTrigger(Surface, FieldBtn, HeatmapFieldLabel(Viz.HeatmapChannel), OpenDropdown == OpenDropdownKind::HeatmapField, Interactive, Input.PrimaryPointer))
+        if (ConstructSelectTrigger(Surface, FieldBtn, HeatmapFieldLabel(Viz.HeatmapChannel), OpenDropdown == OpenDropdownCategory::HeatmapField, Interactive, Input.PrimaryPointer))
         {
-            OpenDropdown    = OpenDropdownKind::HeatmapField;
+            OpenDropdown    = OpenDropdownCategory::HeatmapField;
             OpenTriggerRect = FieldBtn;
         }
-        if (ConstructSelectTrigger(Surface, RampBtn, ColorRampLabel(Viz.HeatmapColorSchemeOrdinal), OpenDropdown == OpenDropdownKind::ColorRamp, Interactive, Input.PrimaryPointer))
+        if (ConstructSelectTrigger(Surface, RampBtn, ColorRampLabel(Viz.HeatmapColorSchemeOrdinal), OpenDropdown == OpenDropdownCategory::ColorRamp, Interactive, Input.PrimaryPointer))
         {
-            OpenDropdown    = OpenDropdownKind::ColorRamp;
+            OpenDropdown    = OpenDropdownCategory::ColorRamp;
             OpenTriggerRect = RampBtn;
         }
         Y += 40.0f;
@@ -2413,9 +2413,9 @@ float ForceInspectorView::RenderLayersTab(
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { ColX, Y }, 9.5f, InspectorSurfaceColors::InkMuted, "Color Visualization");
         Y += 15.0f;
         const Rectangle2D VisModeBtn{ ColX, Y, ColW, 30.0f };
-        if (ConstructSelectTrigger(Surface, VisModeBtn, StreamColorLabel(Viz.StreamColorMode), OpenDropdown == OpenDropdownKind::StreamColorMode, Interactive, Input.PrimaryPointer))
+        if (ConstructSelectTrigger(Surface, VisModeBtn, StreamColorLabel(Viz.StreamColorMode), OpenDropdown == OpenDropdownCategory::StreamColorMode, Interactive, Input.PrimaryPointer))
         {
-            OpenDropdown    = OpenDropdownKind::StreamColorMode;
+            OpenDropdown    = OpenDropdownCategory::StreamColorMode;
             OpenTriggerRect = VisModeBtn;
         }
         Y += 38.0f;

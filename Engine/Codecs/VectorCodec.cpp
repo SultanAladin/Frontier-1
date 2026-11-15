@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                              VECTORCODEC.CPP
+                                                               VECTORCODEC.CPP
 ============================================================================================================================================*/
 // 🧩 .VectorSpace encoder & decoder implementation
 
@@ -87,7 +87,7 @@ SpaceContainerPayload VectorEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::VectorSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::VectorSpace;
     Payload.DocumentTitle      = Model.DocumentTitle;
     Payload.AuthoringWorkspace = "Frontier.VectorWorkspace";
 
@@ -321,7 +321,7 @@ bool VectorDecoder::ExtractModel(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::VectorSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::VectorSpace)
     {
         OutDiagnostic = "Expected .VectorSpace container category.";
         return false;

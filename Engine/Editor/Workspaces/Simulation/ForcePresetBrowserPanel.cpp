@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           FORCEPRESETBROWSERPANEL.CPP
+                                                         FORCEPRESETBROWSERPANEL.CPP
 ============================================================================================================================================*/
 // 🧩 Project-Zero pull-up Content Browser drawer & trapezoidal bottom handle hosting .ForceModel presets, 19 ForceModel laws & formulas
 
@@ -104,7 +104,7 @@ inline constexpr ColorRgba TealFormula     { 169, 217, 200, 255 };
     switch (Domain)
     {
     case ForceDomainCategory::VectorField:     return "VectorField";
-    case ForceDomainCategory::FlowField:       return "FlowField";
+    case ForceDomainCategory::StreamTransport:       return "StreamTransport";
     case ForceDomainCategory::TurbulenceField: return "Turbulence";
     default:                                   return "ForceField";
     }
@@ -386,7 +386,7 @@ void ForcePresetBrowserPanel::PopulateDefaultForcePresets()
             QueryForceModelDisplayName(M),
             "Analytical C++20 / .slang ForceModel template ready for immediate scene construction.",
             std::move(S),
-            ContentAssetCategory::ForceLaws);
+            ContentAssetCategory::ForceModels);
     }
 
     if (!Assets.empty())
@@ -798,7 +798,7 @@ void ForcePresetBrowserPanel::Render(
     const std::array<std::pair<const char*, ContentAssetCategory>, 4> Categories = {{
         { "All Presets & Laws", ContentAssetCategory::All            },
         { "Force Presets",      ContentAssetCategory::ForcePresets   },
-        { "Force Laws (19)",    ContentAssetCategory::ForceLaws      },
+        { "Force Models (19)",    ContentAssetCategory::ForceModels      },
         { "Formulas",           ContentAssetCategory::FormulaPresets },
     }};
     for (std::size_t CIdx = 0u; CIdx < Categories.size(); ++CIdx)
@@ -859,7 +859,7 @@ void ForcePresetBrowserPanel::Render(
     switch (CategoryFilter)
     {
     case ContentAssetCategory::ForcePresets:   CategoryHeading = "Force Presets (.ForceModel)"; break;
-    case ContentAssetCategory::ForceLaws:      CategoryHeading = "All 19 ForceModel Laws"; break;
+    case ContentAssetCategory::ForceModels:      CategoryHeading = "All 19 Force Models"; break;
     case ContentAssetCategory::FormulaPresets: CategoryHeading = "VectorFieldLang Formulas"; break;
     default: break;
     }
@@ -911,13 +911,13 @@ void ForcePresetBrowserPanel::Render(
         const uint32_t LawOrd = static_cast<uint32_t>(Asset.PresetDocument.ForceSource.Model);
         const ColorRgba IconTint = Asset.FormulaOverride
             ? DrawerColors::AmberAccent
-            : WorkspaceAppearance::QueryForceLawTint(LawOrd);
+            : WorkspaceAppearance::QueryForceModelTint(LawOrd);
 
         if (ViewLayout == ContentBrowserViewLayout::Grid)
         {
             const Rectangle2D ThumbWell{ Tile.X + 7.0f, Tile.Y + 7.0f, Tile.Width - 14.0f, 76.0f };
             Surface.FillRectangle(ThumbWell, DrawerColors::TileThumbBg, 8.0f);
-            WorkspaceAppearance::ConstructForceLawIcon(
+            WorkspaceAppearance::ConstructForceModelIcon(
                 Surface,
                 LawOrd,
                 { ThumbWell.Center().X - 20.0f, ThumbWell.Center().Y - 20.0f },
@@ -953,7 +953,7 @@ void ForcePresetBrowserPanel::Render(
         }
         else
         {
-            WorkspaceAppearance::ConstructForceLawIcon(Surface, LawOrd, { Tile.X + 12.0f, Tile.Center().Y - 11.0f }, 22.0f, IconTint, 1.0f);
+            WorkspaceAppearance::ConstructForceModelIcon(Surface, LawOrd, { Tile.X + 12.0f, Tile.Center().Y - 11.0f }, 22.0f, IconTint, 1.0f);
             WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Medium, { Tile.X + 44.0f, Tile.Y + 8.0f }, Tile.Width * 0.48f, 10.5f, DrawerColors::InkPrimary, Asset.Title);
             WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { Tile.X + 44.0f, Tile.Y + 24.0f }, Tile.Width * 0.48f, 9.0f, ColorRgba{ 152, 154, 162, 255 }, Asset.CategoryCaption);
             WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Regular, { Tile.Right() - 12.0f, Tile.Y + 15.0f }, 9.5f, DrawerColors::InkSecondary, Asset.MetricSummary);
@@ -1003,12 +1003,12 @@ void ForcePresetBrowserPanel::Render(
 
         const auto& Src      = Sel->PresetDocument.ForceSource;
         const uint32_t Ord   = static_cast<uint32_t>(Src.Model);
-        const ColorRgba Tint = Sel->FormulaOverride ? DrawerColors::AmberAccent : WorkspaceAppearance::QueryForceLawTint(Ord);
+        const ColorRgba Tint = Sel->FormulaOverride ? DrawerColors::AmberAccent : WorkspaceAppearance::QueryForceModelTint(Ord);
 
         const Rectangle2D HeroWell{ DetailPane.X + Pad, DY, DW, 86.0f };
         Surface.FillRectangle(HeroWell, DrawerColors::TileThumbBg, 10.0f);
         Surface.StrokeRectangle(HeroWell, DrawerColors::HairlineBorder, 10.0f, 1.0f);
-        WorkspaceAppearance::ConstructForceLawIcon(Surface, Ord, { HeroWell.Center().X - 24.0f, HeroWell.Y + 11.0f }, 48.0f, Tint, 1.0f);
+        WorkspaceAppearance::ConstructForceModelIcon(Surface, Ord, { HeroWell.Center().X - 24.0f, HeroWell.Y + 11.0f }, 48.0f, Tint, 1.0f);
         const float CapW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.0f, Sel->CategoryCaption);
         WorkspaceAppearance::ConstructTruncatedText(
             Surface,

@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                       PATTERNSTAMPTOOLHEADERPANE.H
-==========================================================================================================================================*/
-// 🛠️ Central Pattern Studio / Stamp Studio viewport & chrome pane: Band 1 title/res, Band 2 circular tool dock + More tools overlay sheet,
+/*============================================================================================================================================
+                                                         PATTERNSTAMPTOOLHEADERPANE.H
+============================================================================================================================================*/
+// 🧩 Central Pattern Studio / Stamp Studio viewport & chrome pane: Band 1 title/res, Band 2 circular tool dock + More tools overlay sheet,
 //    View/Undo/Redo/Save/Bridge, crisp ruler chrome, GPU VectorCanvasRasterizer via ViewportProjectionPane (Planar2DOnly), and zoom controls.
 
 #pragma once
@@ -37,7 +37,7 @@ public:
 
     void AttachSession(PatternStampWorkspaceSession* TargetSession) noexcept;
     void AttachVulkanRasterizer(GeometricRaster::VectorCanvasRasterizer* TargetRasterizer) noexcept;
-    void SetBridgeCallback(std::function<void(std::string_view CommandTag)> Callback) noexcept
+    void AssignBridgeCallback(std::function<void(std::string_view CommandTag)> Callback) noexcept
     {
         BridgeCallback = std::move(Callback);
     }

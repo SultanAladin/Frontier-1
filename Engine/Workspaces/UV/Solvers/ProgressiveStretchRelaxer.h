@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        PROGRESSIVESTRETCHRELAXER.H
+                                                         PROGRESSIVESTRETCHRELAXER.H
 ============================================================================================================================================*/
 // 🧩 Vulkan .slang GPU Jacobi stretch-guided UV relaxation solver (StretchRelaxCompute.comp.spv) with zero-flip orientation guard
 

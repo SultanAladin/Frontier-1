@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                   PROCEDURALSPRITESYNTHESIZER.CPP
+                                                       PROCEDURALSPRITESYNTHESIZER.CPP
 ============================================================================================================================================*/
-// ❄️ Deterministic multi-channel procedural sprite, crystal, wing, and dissolve-mask synthesizer implementation
+// 🧩 Deterministic multi-channel procedural sprite, crystal, wing, and dissolve-mask synthesizer implementation
 
 #include "Engine/ParticleSpace/Sprites/ProceduralSpriteSynthesizer.h"
 
@@ -331,7 +331,7 @@ ProceduralSpriteFamily QueryProceduralSpriteFamily(ProceduralSpriteArchetype Arc
         case ProceduralSpriteArchetype::LiquidSoapBubble:
             return ProceduralSpriteFamily::LiquidDroplet;
 
-        case ProceduralSpriteArchetype::BotanicalMorphoButterfly:
+        case ProceduralSpriteArchetype::BotanicalAzureButterfly:
         case ProceduralSpriteArchetype::BotanicalSakuraPetal:
             return ProceduralSpriteFamily::BotanicalWing;
 
@@ -359,7 +359,7 @@ std::string_view QueryProceduralSpriteTitle(ProceduralSpriteArchetype Archetype)
         case ProceduralSpriteArchetype::PyroEmberSpark:           return "Pyro Ember Spark";
         case ProceduralSpriteArchetype::LiquidRainDrop:           return "Liquid Rain Drop";
         case ProceduralSpriteArchetype::LiquidSoapBubble:         return "Liquid Soap Bubble";
-        case ProceduralSpriteArchetype::BotanicalMorphoButterfly: return "Botanical Morpho Butterfly";
+        case ProceduralSpriteArchetype::BotanicalAzureButterfly: return "Botanical BotanicalGrowth Butterfly";
         case ProceduralSpriteArchetype::BotanicalSakuraPetal:     return "Botanical Sakura Petal";
         case ProceduralSpriteArchetype::TechHexEnergyShield:      return "Tech Hex Energy Shield";
         case ProceduralSpriteArchetype::TechVoronoiDissolveMask:  return "Tech Voronoi Dissolve Mask";
@@ -415,7 +415,7 @@ ProceduralSpriteSpec QueryDefaultProceduralSpriteSpec(ProceduralSpriteArchetype 
             Spec.SecondaryTintR = 0.98f; Spec.SecondaryTintG = 0.62f; Spec.SecondaryTintB = 0.92f;
             break;
 
-        case ProceduralSpriteArchetype::BotanicalMorphoButterfly:
+        case ProceduralSpriteArchetype::BotanicalAzureButterfly:
             Spec.PrimaryTintR = 0.14f; Spec.PrimaryTintG = 0.82f; Spec.PrimaryTintB = 1.00f;
             Spec.SecondaryTintR = 0.28f; Spec.SecondaryTintG = 0.36f; Spec.SecondaryTintB = 0.98f;
             break;
@@ -456,7 +456,7 @@ ProceduralSpriteSample SampleProceduralSpriteUnit(
             return SampleSnowCrystal(Spec, UnitX, UnitY, TileSeed, 6, false, true);
         case ProceduralSpriteArchetype::SnowTwelveFoldStar:
             return SampleSnowCrystal(Spec, UnitX, UnitY, TileSeed, 12, false, false);
-        case ProceduralSpriteArchetype::BotanicalMorphoButterfly:
+        case ProceduralSpriteArchetype::BotanicalAzureButterfly:
             return SampleButterflyWingPair(Spec, UnitX, UnitY, TileSeed);
         default:
             break;

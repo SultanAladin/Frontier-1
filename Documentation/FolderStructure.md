@@ -51,15 +51,15 @@ Frontier/
 │   │   ├── SKILL-Naming.md                        // Mechanism-first naming construction & 6-gate check
 │   │   └── SKILL-Formatting.md                    // File banners, section rulers, unit tags, Allman braces
 │   ├── Plans/                                     // Architectural & domain implementation plans + Markdown Studio
-│   │   ├── DocumentFormatsAndInstancePlan.md      // Two-Tier Hybrid .Space format registry & Instance concepts
-│   │   ├── DocumentSpacesAndRevisionPlan.md       // Confirmed .Space codecs, 215/750 MiB revision & workspace tree
+│   │   ├── DocumentFormatsInstancePlan.md      // Two-Tier Hybrid .Space format registry & Instance concepts
+│   │   ├── DocumentSpacesRevisionPlan.md       // Confirmed .Space codecs, 215/750 MiB revision & workspace tree
 │   │   ├── ThreadingArchitecturePlan.md           // Priority-budgeted ExecutionChannels, domain threads & DebugThread watchdog
 │   │   ├── ContentBrowserArchitecturePlan.md      // Pre-baked ThumbnailSheet, SSD/HDD streaming, quarantine import & UV masks
 │   │   ├── UVWorkspaceArchitecturePlan.md         // Native C++20 & .slang UV Workspace architecture & completion ledger
-│   │   ├── UVWorkspaceSyncAndViewportReport.md    // Single-concept naming & reusable ViewportProjectionPane report
+│   │   ├── UVWorkspaceSyncViewportReport.md       // Single-concept naming & reusable ViewportProjectionPane report
 │   │   ├── UVWorkspaceFullCompletionReport.md     // 6-pillar UV Workspace completion, desktop executables & verification report
-│   │   ├── RenderingAndRaytracingArchitecturePlan.md // Dual-tier GTX Hybrid & Deterministic RTX architecture plan
-│   │   ├── MaterialVisibilityAndRenderingBringupPlan.md // 10-lobe MaterialSpace, 64-bit VisBuffer & rendering bringup plan
+│   │   ├── RenderingRaytracingArchitecturePlan.md // Dual-tier GTX Hybrid & Deterministic RTX architecture plan
+│   │   ├── MaterialVisibilityRenderingBringupPlan.md // 10-lobe MaterialSpace, 64-bit VisBuffer & rendering bringup plan
 │   │   ├── SessionNotes.md                        // Live Markdown Studio workspace notepad
 │   │   └── MarkdownStudioViewer.html              // Standalone/live Frontier-styled Markdown Studio bundle
 │   ├── FolderStructure.md                         // Canonical repository folder and source layout
@@ -294,41 +294,57 @@ Frontier/
     │   ├── ParticleCodec.{h,cpp}                  // ParticleEncoder / ParticleDecoder (.ParticleSpace)
     │   └── NetworkCodec.{h,cpp}                   // NetworkEncoder / NetworkDecoder (.NetworkSpace)
     │
-    ├── Interchange/                               // External industry format import/export & OS clipboard exchange
+    ├── Interchange/                               // External industry format import/export (strictly non-runtime file/API boundaries)
+    │   ├── ColourInterchange.{h,cpp}              // CSS/Hex/Photoshop/HTML colour palette & ramp external interchange
     │   ├── GeometryInterchange.{h,cpp}            // OBJ, glTF 2.0, FBX & STEP external geometry import/export
+    │   ├── ParticleInterchange.{h,cpp}            // HTML Particle Studio JSON & OBJ/glTF surface anchor intake
     │   ├── UVInterchange.{h,cpp}                  // External UDIM layout & UVTile sheet import/export
     │   ├── ImageInterchange.{h,cpp}               // OpenEXR, PNG, Radiance HDR, WebP & KTX2 import/export
     │   ├── TextureInterchange.{h,cpp}             // BCn / ASTC compressed mipchain external interchange
     │   ├── MaterialInterchange.{h,cpp}            // MaterialX & physical shading parameter interchange
     │   ├── VectorInterchange.{h,cpp}              // SVG 1.1 & PDF Bézier contour interchange
-    │   ├── FontInterchange.{h,cpp}                // TrueType / OpenType sfnt outline & metric interchange
-    │   └── ClipboardExchange.{h,cpp}              // Bi-directional OS ↔ Workspace clipboard exchange
+    │   └── FontInterchange.{h,cpp}                // TrueType / OpenType sfnt outline & metric interchange
     │
-    ├── GeometricRaster/                           // Vulkan interchange, GPU rasterization units & command encoding
+    ├── GeometricRaster/                           // Sole owner of Vulkan interchange, GPU rasterization, compute & command encoding
+    │   ├── Baking/
+    │   │   ├── StudyGeometryBuilder.{h,cpp}       // Procedural & external High/Low baking geometry pair synthesis
+    │   │   ├── BakingAccelerationStructure.{h,cpp}// Dual GTX BVH4 & RTX VK_KHR_acceleration_structure builder
+    │   │   ├── GpuTextureBaker.{h,cpp}            // Pure-GPU 17-channel surface UV baking, gutter dilation & PNG export
+    │   │   ├── GpuSdfBaker.{h,cpp}                // Pure-GPU 3D Volume SDF baking, 2D slice section & .fvol export
+    │   │   └── TextureBakerRasterizer.{h,cpp}     // Interactive 3D studio PBR + baked target + cage viewport preview
     │   ├── Compute/
     │   │   ├── ComputeDispatchEncoder.{h,cpp}     // Generic .slang compute dispatch & storage-buffer encoder
-    │   │   └── TimelineTransferRegister.{h,cpp}   // Triple-buffered Vulkan timeline semaphore readback ring
+    │   │   ├── TimelineTransferRegister.{h,cpp}   // Triple-buffered Vulkan timeline semaphore readback ring
+    │   │   ├── FieldLatticeVulkanExecutor.{h,cpp} // Vulkan 1.3 ForceField lattice compute executor
+    │   │   └── ParticleVulkanExecutor.{h,cpp}     // Vulkan 1.3 21-shader particle compute/raster executor
+    │   ├── Gizmo/
+    │   │   ├── TransformGizmo.{h,cpp}             // 3D/2D translation, rotation & scale manipulator geometry/state
+    │   │   └── WorldGizmoOverlayRasterization.{h,cpp}// GPU .slang world gizmo overlay rasterizer
     │   ├── Picking/
     │   │   └── ViewportPickQuery.{h,cpp}          // R32G32B32A32_UINT 1x1 hover/click & GPU marquee/brush reduction
+    │   ├── Simulation/
+    │   │   └── VectorFieldOverlaySequence.{h,cpp} // Editor-only Vulkan 1.3 6-pipeline ForceField overlay rasterizer
     │   ├── UV/
     │   │   └── UVWorkspaceRasterizer.{h,cpp}      // 3D PBR/MatCap + 2D UDIM grid, backdrops, seams, pins & heatmaps
-    │   ├── Shaders/                               // Active Vulkan 1.2 SPIR-V .slang graphics & compute units
-    │   │   ├── SurfaceShading.slang               // 3D Cook-Torrance PBR + 16 procedural MatCaps + selection tint
-    │   │   ├── MatCapEvaluation.slang             // Procedural 16-sphere MatCap shading & ACES Filmic compression
-    │   │   ├── UVTileRasterization.slang          // 2D UDIM grid, procedural backdrops, coral seams & pin beacons
-    │   │   ├── GizmoRasterization.slang           // 3D/2D Slate TransformGizmo cones, cylinders, quads & arcs
-    │   │   ├── ImGuiOverlayRasterization.slang    // Premultiplied-alpha ImDrawData swapchain/offscreen rasterization
-    │   │   ├── SelectionMaskCompute.slang         // GPU face/edge selection bitmask updates
-    │   │   ├── ViewportPickReduction.slang        // GPU box-marquee & circle-brush pick reduction
-    │   │   ├── UVDistortionInspection.slang       // Parallel stretch, texel density, flip & UDIM overlap reduction
-    │   │   ├── StretchRelaxCompute.slang          // Area-preserving GPU spring relaxation (honours EnablePinLock)
-    │   │   └── ConcaveSkylineCompute.slang        // Multi-angle island upper/lower skyline evaluation
     │   ├── RenderExtension.{h,cpp}                // Render lifecycle coordinator and device attachment
     │   ├── RenderDeviceInterface.h                // GPU hardware device interface and capability limits
-    │   ├── VulkanInterchange.{h,cpp}              // Vulkan 1.2 timeline semaphore device, swapchain & SPIR-V interchange
+    │   ├── VulkanInterchange.{h,cpp}              // Vulkan 1.3 timeline semaphore device, swapchain & SPIR-V interchange
     │   ├── RenderScheduler.{h,cpp}                // Transient dependency-sorted GPU workload coordinator
     │   ├── IndirectCommandEncoder.{h,cpp}         // Instanced and indirect GPU command encoding
     │   ├── DescriptorSlotRegister.{h,cpp}         // Descriptor layout and push-constant slot register
+    │
+    ├── Shaders/                                   // Single unified root for ALL Frontier .slang GPU shaders
+    │   ├── Baking/                                // Surface transfer, channel resolve, dilation, Volume SDF & slice .slang
+    │   ├── Colour/                                // GPU colour ramp LUT sampling .slang
+    │   ├── Compute/                               // FieldLatticeCompute & shared ForceField .slang
+    │   ├── DirectLighting/                        // Solar shadow, contact clip, plane filter & WideTreeRayQuery .slang
+    │   ├── GeometricRaster/                       // SurfaceShading, MatCap, UVTile, Gizmo, ImGuiOverlay, Picking & Radiometric .slang
+    │   ├── GlobalIllumination/                    // OctahedralIrradianceLattice, SignedDistanceConeIllumination & SpecularGlassRaytrace .slang
+    │   ├── MaterialSpace/                         // 10-lobe OpenPBR, DynamicMaterialResolve, ProceduralFields & SubsurfaceTransmission .slang
+    │   ├── Particles/                             // 21 Vulkan 1.3 particle compute & raster .slang shaders
+    │   ├── Vector/                                // Vector modifier expand, stencil fill, cover, layer stack & PBR .slang
+    │   ├── VectorField/                           // 6 ForceField overlay .slang shaders (Editor profile)
+    │   └── Visibility/                            // Hi-Z depth pyramid, cluster cull, HW/SW visibility & analytic resolve .slang
     │   │
     │   ├── Rasterization/                         // Dedicated GPU rasterization & projection units
     │   │   ├── ImGuiOverlayRasterization.{h,cpp}  // Native .slang ImDrawData swapchain & offscreen RGBA rasterizer
@@ -506,7 +522,7 @@ Frontier/
     │   ├── Vector/                                // Headless VectorSpace authoring runtime & operations
     │   ├── Simulation/                            // Headless SimulationSpace authoring runtime & operations
     │   ├── Volumetric/                            // Headless VolumetricSpace authoring runtime & operations
-    │   └── Particle/                              // Headless ParticleSpace authoring runtime & operations
+    │   └── Particle/                              // ParticleSpace authoring runtime, ParticleExchange handoff & UI panes
     │
     ├── Editor/                                    // Tooling, Viewports & Modular UI ONLY (Excluded from Shipping)
     │   ├── Viewports/                             // Shared general-purpose 3D & 2D viewports
@@ -582,8 +598,8 @@ Frontier/
     │   │   └── ViewportProjectionPane.{h,cpp}     // Reusable single/split 2D+3D GPU viewport pane bound to WorkspaceDocument
     │   ├── ControlCentre/                         // Pull-down Control Centre & settings pages
     │   │   └── ControlCentrePanel.{h,cpp}         // Quick Controls, Appearance, Input, Notifications & Workspace
-    │   ├── ContentBrowser/                        // Pull-up ContentBrowser drawer & ColourCodex repository
-    │   │   ├── ColourCodex.{h,cpp}                // Named colour aliases, .ColourSwatch, Colour Filters & TOML persistence
+    │   ├── ContentBrowser/                        // Pull-up ContentBrowser drawer & thin swatch view over ColourAliasRepository
+    │   │   ├── ColourSwatchBrowserView.{h,cpp}    // UI swatch filter/sort projection backed by Engine/ColourSpace/ColourAliasRepository
     │   │   ├── ThumbnailSheetRepository.{h,cpp}   // Pre-baked 1024x1024 ThumbnailSheet, 64B index, quarantine & workspace masks
     │   │   └── ContentBrowserPanel.{h,cpp}        // Bottom-edge ContentBrowser, Grid/Vertical/Horizontal views & colour slots
     │   ├── Controls/                              // Reusable studio UI control primitives
@@ -645,7 +661,7 @@ Frontier/
 2. **Codecs vs. Interchange vs. Exchange**:
    - `Engine/Codecs/` (`*Codec` = `*Encoder` + `*Decoder`) reads and writes native Frontier `.Space` hybrid containers (Option 2A case-insensitive extension load, canonical PascalCase write).
    - `Engine/Interchange/` (`*Interchange`) and `VulkanInterchange` translate external file formats and GPU API boundaries.
-   - `*Exchange` (`InputExchange`, `ClipboardExchange`, `WorkspaceExchange`) performs live bi-directional runtime transfer across OS or open workspaces.
+   - `*Exchange` (`InputExchange`, `WorkspaceExchange`, `ParticleExchange`) performs live bi-directional runtime transfer across OS or open workspaces (never placed inside `Engine/Interchange/`).
 3. **100% GPU `.slang` Viewport Overlays**: Grids (`NavigationOverlay`), gizmos (`TransformGizmo`, `UVTransformGizmo`), UVTile overlays (`UVTileRasterization`), and debug shapes/lines (`Engine/Annotation/*`) render exclusively on the GPU via `.slang` shaders — never on CPU and never via ImGui lists.
 4. **Cross-Platform Portability**: All `Engine/` modules target **Windows**, **Linux (X11/Wayland)**, **Android (NDK)**, and **Headless (`PlatformWindowStub`)**.
 5. **Mandatory `Exhibits/Images/` Visual Snapshots**: Every `Exhibits/*Validation` target renders deterministic CPU `.png` visual snapshots into `Exhibits/Images/<Domain>/`.

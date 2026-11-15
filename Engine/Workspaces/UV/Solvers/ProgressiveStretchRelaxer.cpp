@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       PROGRESSIVESTRETCHRELAXER.CPP
+                                                        PROGRESSIVESTRETCHRELAXER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ProgressiveStretchRelaxer dispatching StretchRelaxCompute.comp.spv on Vulkan 1.2 Timeline Semaphores
 
@@ -257,7 +257,7 @@ StretchRelaxReport ProgressiveStretchRelaxer::RelaxStretch(
             (void)Encoder.EncodeComputeDispatch(Cmd, RelaxProgramHandle, Slots, (JunctionCount + 63u) / 64u);
             const uint64_t Signal = DeviceInterchange->DispatchCommandBufferAsync(Cmd);
             (void)DeviceInterchange->AwaitTimelineTick(Signal);
-            vkFreeCommandBuffers(DeviceInterchange->AccessDevice(), DeviceInterchange->AccessCommandAllocator(), 1u, &Cmd);
+            DeviceInterchange->FreeCommandBuffer(Cmd);
 
             const auto* OutPairs = static_cast<const float*>(OutputBuf.HostAddress);
             for (uint32_t Idx = 0u; Idx < JunctionCount; ++Idx)

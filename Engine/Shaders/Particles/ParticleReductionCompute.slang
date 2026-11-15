@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                     PARTICLEREDUCTIONCOMPUTE.SLANG
+                                                        PARTICLEREDUCTIONCOMPUTE.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 GPU telemetry reduction compute kernel aggregating live count, fixed-point AABB bounds & kinetic energy per rig
 

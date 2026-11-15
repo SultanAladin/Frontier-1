@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          STUDYGEOMETRYBUILDER.H
+                                                            STUDYGEOMETRYBUILDER.H
 ============================================================================================================================================*/
 // 🧩 High/Low baking study synthesis, .OBJ/.STL file import, UV-island flood extraction, and GPU triangle/vertex upload preparation
 
@@ -25,7 +25,7 @@ namespace Frontier::GeometricRaster::Baking
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class StudyGeometryKind : uint8_t
+enum class StudyGeometryCategory : uint8_t
 {
     UtahTeapot = 0u,
     ShaderBall = 1u,
@@ -115,12 +115,12 @@ static_assert(sizeof(GpuVolumeBakeConfig) == 64u, "GpuVolumeBakeConfig must matc
 struct alignas(16) GpuPreviewConfig
 {
     float ViewProjTransform[16]     {};
-    float CameraEyeAndMode[4]       {};
-    float OverlayAndFlags[4]        {};
-    float ViewportSizeAndTime[4]    {};
+    float CameraEyeMode[4]       {};
+    float OverlayFlagsPacked[4]        {};
+    float ViewportSizeTime[4]    {};
     float OverlayColor[4]           {};
-    float BoundsMinAndPad[4]        {};
-    float BoundsMaxAndPad[4]        {};
+    float BoundsMinPacked[4]        {};
+    float BoundsMaxPacked[4]        {};
 };
 static_assert(sizeof(GpuPreviewConfig) == 160u, "GpuPreviewConfig must match 160-byte HLSL/Slang constant buffer.");
 
@@ -154,7 +154,7 @@ struct PreparedStudyPair
 class StudyGeometryBuilder
 {
 public:
-    [[nodiscard]] static PreparedStudyPair ConstructStudioStudy(StudyGeometryKind Kind);
+    [[nodiscard]] static PreparedStudyPair ConstructStudioStudy(StudyGeometryCategory Kind);
 
     [[nodiscard]] static bool ImportPolygonNetworkFromFile(
         const std::filesystem::path&     FilePath,

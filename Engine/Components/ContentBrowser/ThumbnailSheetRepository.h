@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        THUMBNAILSHEETREPOSITORY.H
+                                                          THUMBNAILSHEETREPOSITORY.H
 ============================================================================================================================================*/
 // 🧩 Pre-baked ThumbnailSheet pages, flat 64-byte ContentIndex directory, workspace domain masks, and two-step quarantine import intake
 
@@ -154,9 +154,9 @@ public:
     [[nodiscard]] static bool                QueryCategoryPermitted(WorkspaceCategory Workspace, ContentCategory Category) noexcept;
     [[nodiscard]] static uint32_t            ComputeWorkspacesAllowingCategory(ContentCategory Category) noexcept;
     [[nodiscard]] static const char*         QueryCategoryTitle(ContentCategory Category) noexcept;
-    [[nodiscard]] static const char*         QueryCanonicalExtension(ContentCategory Category) noexcept;
+    [[nodiscard]] static const char*         QueryCanonicalSuffix(ContentCategory Category) noexcept;
     [[nodiscard]] static const char*         QueryWorkspaceTitle(WorkspaceCategory Workspace) noexcept;
-    [[nodiscard]] static ContentCategory     ClassifyExternalExtension(const std::filesystem::path& SourceFile) noexcept;
+    [[nodiscard]] static ContentCategory     ClassifyExternalSuffix(const std::filesystem::path& SourceFile) noexcept;
     static void                              BakeColourRampStripRgba32(
         const ColourSpace::ColourRampPresetEntry& Preset,
         uint32_t                                  WidthPx,
@@ -168,7 +168,7 @@ public:
     [[nodiscard]] std::filesystem::path            ResolveQuarantineDirectory() const;
     [[nodiscard]] std::filesystem::path            ResolveFinalImportDirectory(ContentCategory Category) const;
 
-    void PopulateDefaultEngineAndProjectEntries();
+    void PopulateDefaultWorkspaceEntries();
 
     std::size_t RegisterPrebakedEntry(
         std::string_view             DisplayTitle,
@@ -195,7 +195,7 @@ public:
         const std::filesystem::path& DiskPath,
         std::span<const uint8_t>     OptionalTileRgba128x128 = {});
 
-    [[nodiscard]] bool SaveBinaryIndexAndSheets(
+    [[nodiscard]] bool PersistBinarySheetIndex(
         const std::filesystem::path& IndexFilePath,
         const std::filesystem::path& SheetFilePath,
         std::string&                 OutDiagnostic) const;

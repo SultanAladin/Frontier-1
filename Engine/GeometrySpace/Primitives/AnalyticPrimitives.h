@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           ANALYTICPRIMITIVES.H
+                                                             ANALYTICPRIMITIVES.H
 ============================================================================================================================================*/
 // 🧩 Parametric solid builders and 5 multi-part studio sample PolygonNetwork constructors with clean UDIM UVs and FacePartitionRegister
 

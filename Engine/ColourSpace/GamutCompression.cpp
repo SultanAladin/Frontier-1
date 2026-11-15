@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                           GAMUTCOMPRESSION.CPP
+                                                             GAMUTCOMPRESSION.CPP
 ============================================================================================================================================*/
-// 🎨 Implementation of smooth hyperbolic gamut compression & perceptual Oklab chroma preservation
+// 🧩 Implementation of smooth hyperbolic gamut compression & perceptual Oklab chroma preservation
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES

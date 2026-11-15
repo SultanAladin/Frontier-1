@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                    PROCEDURALCHANNELBAKER.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                          PROCEDURALCHANNELBAKER.CPP
+============================================================================================================================================*/
 // 🧩 Implementation of tileable procedural height synthesis, central-difference normals, & Toksvig mip roughness filtering
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -59,18 +59,18 @@ namespace
     return NX0 * (1.0f - SmoothY) + NX1 * SmoothY;
 }
 
-[[nodiscard]] float EvaluatePatternHeight(ProceduralPatternKind Pattern, float U, float V, uint32_t Seed) noexcept
+[[nodiscard]] float EvaluatePatternHeight(ProceduralPatternCategory Pattern, float U, float V, uint32_t Seed) noexcept
 {
     switch (Pattern)
     {
-    case ProceduralPatternKind::BrushedAnisotropicGrooves:
+    case ProceduralPatternCategory::BrushedAnisotropicGrooves:
     {
         // Stretched horizontal grooves (high V frequency, low U frequency)
         const float Groove1 = SamplePeriodicValueNoise(U, V * 8.0f, 4, Seed);
         const float Groove2 = SamplePeriodicValueNoise(U * 2.0f, V * 24.0f, 4, Seed + 17u);
         return std::clamp(0.65f * Groove1 + 0.35f * Groove2, 0.0f, 1.0f);
     }
-    case ProceduralPatternKind::PorousMineralAggregate:
+    case ProceduralPatternCategory::PorousMineralAggregate:
     {
         float Fbm = 0.0f;
         float Amp = 0.55f;
@@ -85,7 +85,7 @@ namespace
         const float PoreCavity = std::max(0.0f, 0.36f - Fbm) * 1.4f;
         return std::clamp(Fbm - PoreCavity, 0.0f, 1.0f);
     }
-    case ProceduralPatternKind::WovenMicrofiberTwill:
+    case ProceduralPatternCategory::WovenMicrofiberTwill:
     {
         const float WarpPhase = Constants::TauFloat * (U * 12.0f);
         const float WeftPhase = Constants::TauFloat * (V * 12.0f);
@@ -105,7 +105,7 @@ namespace
 //------------------------------------------------------------------------------------------------------------------------
 
 BakedChannelPyramid BakeProceduralChannelPyramid(
-    ProceduralPatternKind Pattern,
+    ProceduralPatternCategory Pattern,
     uint32_t              BaseResolution,
     float                 BaseRoughness,
     float                 ReliefAmplitude,

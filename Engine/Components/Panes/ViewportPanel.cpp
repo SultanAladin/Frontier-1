@@ -908,7 +908,7 @@ void ViewportPanel::RenderConstructDialog(
 
         const std::array<std::pair<const char*, ConstructCategoryRail>, 3> Rails = {{
             { "All",          ConstructCategoryRail::All          },
-            { "Items",        ConstructCategoryRail::ConstructSet },
+            { "Items",        ConstructCategoryRail::ScenePrimitives },
             { "Organization", ConstructCategoryRail::Organization },
         }};
         for (std::size_t Idx = 0u; Idx < Rails.size(); ++Idx)
@@ -962,13 +962,13 @@ void ViewportPanel::RenderConstructDialog(
             }
             else
             {
-                Choices.push_back({ "Add Item 1", "Type 1", ConstructSlotCategory::CategoryOne, 0 });
-                Choices.push_back({ "Add Item 2", "Type 2", ConstructSlotCategory::CategoryTwo, 1 });
-                Choices.push_back({ "Add Item 3", "Type 3", ConstructSlotCategory::CategoryThree, 2 });
-                Choices.push_back({ "Add Item 4", "Type 4", ConstructSlotCategory::CategoryFour, 3 });
+                Choices.push_back({ "Add Item 1", "Type 1", ConstructSlotCategory::GeometryVolume, 0 });
+                Choices.push_back({ "Add Item 2", "Type 2", ConstructSlotCategory::LayerGroup, 1 });
+                Choices.push_back({ "Add Item 3", "Type 3", ConstructSlotCategory::PointLuminaire, 2 });
+                Choices.push_back({ "Add Item 4", "Type 4", ConstructSlotCategory::OpticsCamera, 3 });
             }
         }
-        if (ConstructRail != ConstructCategoryRail::ConstructSet)
+        if (ConstructRail != ConstructCategoryRail::ScenePrimitives)
         {
             Choices.push_back({ "+ Add Folder", "Collection", ConstructSlotCategory::Folder, -1 });
         }
@@ -1069,11 +1069,11 @@ void ViewportPanel::RenderConstructDialog(
 
     const std::array<std::pair<const char*, ForceConstructCategory>, 6> ForceRails = {{
         { "All",             ForceConstructCategory::All             },
-        { "VectorField",     ForceConstructCategory::VectorLaws      },
-        { "FlowField",       ForceConstructCategory::FlowLaws        },
-        { "Turbulence",      ForceConstructCategory::TurbulenceLaws  },
+        { "VectorField",     ForceConstructCategory::VectorFieldModels      },
+        { "StreamTransport",       ForceConstructCategory::StreamTransportModels        },
+        { "Turbulence",      ForceConstructCategory::TurbulenceModels  },
         { "Force Presets",   ForceConstructCategory::Presets         },
-        { "Scene & Folders", ForceConstructCategory::SceneAndFolders },
+        { "Scene Folders", ForceConstructCategory::SceneFolders },
     }};
     for (std::size_t Idx = 0u; Idx < ForceRails.size(); ++Idx)
     {
@@ -1097,7 +1097,7 @@ void ViewportPanel::RenderConstructDialog(
         }
     }
 
-    auto DomainForLaw = [](uint32_t Ord) noexcept -> uint32_t
+    auto DomainForForceModel = [](uint32_t Ord) noexcept -> uint32_t
     {
         if (Ord >= static_cast<uint32_t>(SimulationSpace::ForceFields::ForceModel::Count))
         {
@@ -1113,7 +1113,7 @@ void ViewportPanel::RenderConstructDialog(
         std::string_view      Label;
         std::string_view      Caption;
         ConstructSlotCategory Category;
-        uint32_t              ForceLawOrdinal;
+        uint32_t              ForceModelOrdinal;
         bool                  FormulaOverride;
         int32_t               TemplateIndex;
         int32_t               PresetIndex;
@@ -1123,17 +1123,17 @@ void ViewportPanel::RenderConstructDialog(
     // Curated presets in All, Presets, or matching Domain rails
     const bool ShowPresets = (ForceConstructTab == ForceConstructCategory::All) ||
                              (ForceConstructTab == ForceConstructCategory::Presets) ||
-                             (ForceConstructTab == ForceConstructCategory::VectorLaws) ||
-                             (ForceConstructTab == ForceConstructCategory::FlowLaws) ||
-                             (ForceConstructTab == ForceConstructCategory::TurbulenceLaws);
+                             (ForceConstructTab == ForceConstructCategory::VectorFieldModels) ||
+                             (ForceConstructTab == ForceConstructCategory::StreamTransportModels) ||
+                             (ForceConstructTab == ForceConstructCategory::TurbulenceModels);
     if (ShowPresets)
     {
         for (std::size_t P = 0u; P < ConstructPresets.size(); ++P)
         {
             const uint32_t PD = ConstructPresets[P].DomainOrdinal;
-            if ((ForceConstructTab == ForceConstructCategory::VectorLaws && PD != 0u) ||
-                (ForceConstructTab == ForceConstructCategory::FlowLaws && PD != 1u) ||
-                (ForceConstructTab == ForceConstructCategory::TurbulenceLaws && PD != 2u))
+            if ((ForceConstructTab == ForceConstructCategory::VectorFieldModels && PD != 0u) ||
+                (ForceConstructTab == ForceConstructCategory::StreamTransportModels && PD != 1u) ||
+                (ForceConstructTab == ForceConstructCategory::TurbulenceModels && PD != 2u))
             {
                 continue;
             }
@@ -1144,7 +1144,7 @@ void ViewportPanel::RenderConstructDialog(
                     ConstructPresets[P].Title,
                     ConstructPresets[P].Subtitle,
                     ConstructSlotCategory::ForceField,
-                    ConstructPresets[P].ForceLawOrdinal,
+                    ConstructPresets[P].ForceModelOrdinal,
                     ConstructPresets[P].FormulaOverride,
                     -1,
                     static_cast<int32_t>(P)
@@ -1166,19 +1166,19 @@ void ViewportPanel::RenderConstructDialog(
             {
                 continue;
             }
-            if (ForceConstructTab == ForceConstructCategory::VectorLaws && (!LawMatch || DomainForLaw(Templates[T].ForceLawOrdinal) != 0u))
+            if (ForceConstructTab == ForceConstructCategory::VectorFieldModels && (!LawMatch || DomainForForceModel(Templates[T].ForceModelOrdinal) != 0u))
             {
                 continue;
             }
-            if (ForceConstructTab == ForceConstructCategory::FlowLaws && (!LawMatch || DomainForLaw(Templates[T].ForceLawOrdinal) != 1u))
+            if (ForceConstructTab == ForceConstructCategory::StreamTransportModels && (!LawMatch || DomainForForceModel(Templates[T].ForceModelOrdinal) != 1u))
             {
                 continue;
             }
-            if (ForceConstructTab == ForceConstructCategory::TurbulenceLaws && (!LawMatch || DomainForLaw(Templates[T].ForceLawOrdinal) != 2u))
+            if (ForceConstructTab == ForceConstructCategory::TurbulenceModels && (!LawMatch || DomainForForceModel(Templates[T].ForceModelOrdinal) != 2u))
             {
                 continue;
             }
-            if (ForceConstructTab == ForceConstructCategory::SceneAndFolders && LawMatch)
+            if (ForceConstructTab == ForceConstructCategory::SceneFolders && LawMatch)
             {
                 continue;
             }
@@ -1186,7 +1186,7 @@ void ViewportPanel::RenderConstructDialog(
                 Templates[T].DefaultTitle.empty() ? std::string_view(Templates[T].DropdownLabel) : std::string_view(Templates[T].DefaultTitle),
                 Templates[T].CategoryTitle,
                 Templates[T].Category,
-                Templates[T].ForceLawOrdinal,
+                Templates[T].ForceModelOrdinal,
                 false,
                 static_cast<int32_t>(T),
                 -1
@@ -1194,7 +1194,7 @@ void ViewportPanel::RenderConstructDialog(
         }
     }
 
-    if (ForceConstructTab == ForceConstructCategory::All || ForceConstructTab == ForceConstructCategory::SceneAndFolders)
+    if (ForceConstructTab == ForceConstructCategory::All || ForceConstructTab == ForceConstructCategory::SceneFolders)
     {
         if (CaseInsensitiveMatch("Folder", SearchText))
         {
@@ -1239,12 +1239,12 @@ void ViewportPanel::RenderConstructDialog(
 
         const float IconSide = std::clamp(TileSide * 0.36f, 28.0f, 40.0f);
         const Point2D IconOrigin{ Cell.Center().X - IconSide * 0.5f, Cell.Y + TileSide * 0.16f };
-        if (Choices[Idx].Category == ConstructSlotCategory::ForceField && Choices[Idx].ForceLawOrdinal < 19u)
+        if (Choices[Idx].Category == ConstructSlotCategory::ForceField && Choices[Idx].ForceModelOrdinal < 19u)
         {
             const ColorRgba Tint = Choices[Idx].FormulaOverride
                 ? WorkspaceSurfaceColors::SelectionAmber
-                : WorkspaceAppearance::QueryForceLawTint(Choices[Idx].ForceLawOrdinal);
-            WorkspaceAppearance::ConstructForceLawIcon(Overlay, Choices[Idx].ForceLawOrdinal, IconOrigin, IconSide, Tint, 1.0f);
+                : WorkspaceAppearance::QueryForceModelTint(Choices[Idx].ForceModelOrdinal);
+            WorkspaceAppearance::ConstructForceModelIcon(Overlay, Choices[Idx].ForceModelOrdinal, IconOrigin, IconSide, Tint, 1.0f);
         }
         else
         {

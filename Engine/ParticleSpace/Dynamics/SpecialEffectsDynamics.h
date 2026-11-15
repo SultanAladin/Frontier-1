@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         SPECIALEFFECTSDYNAMICS.H
+                                                           SPECIALEFFECTSDYNAMICS.H
 ============================================================================================================================================*/
 // 🧩 Modular specialized physics solvers: Ferrofluid spikes, Ice/Seismic Fracture, Shallow-Water Splashes, Derez, Shield Barrier, Web & Effectors
 

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            UVVIEWPORTHOST.H
+                                                               UVVIEWPORTHOST.H
 ============================================================================================================================================*/
 // 🧩 UV Workspace center viewport canvas matching Experimental/UVEditor (2-row header, tool rail, UV transform readout & native browser shelf)
 
@@ -23,7 +23,7 @@ enum class UVViewportHostRole : uint8_t
     Dedicated3D  = 2u,
 };
 
-enum class ViewportDirectiveSheetKind : uint8_t
+enum class ViewportDirectiveSheetCategory : uint8_t
 {
     ContextComponent = 0u,
     UnwrapMenu       = 1u,
@@ -46,7 +46,7 @@ public:
     [[nodiscard]] const ViewportProjectionPane& InspectProjectionPane() const noexcept { return ProjectionPane; }
     [[nodiscard]] UVViewportInteractor&         AccessInteractor() noexcept { return Interactor; }
     [[nodiscard]] bool                          QueryDirectiveSheetOpen() const noexcept { return ViewportDirectiveSheetOpen; }
-    [[nodiscard]] ViewportDirectiveSheetKind    QueryDirectiveSheetKind() const noexcept { return ActiveDirectiveSheetKind; }
+    [[nodiscard]] ViewportDirectiveSheetCategory    QueryDirectiveSheetKind() const noexcept { return ActiveDirectiveSheetKind; }
 
     void Render(
         PixelSpace&             Surface,
@@ -70,7 +70,7 @@ private:
     bool                        CanvasDebugDropdownOpen = false;
     bool                        ProjectionDropdownOpen  = false;
     bool                        ViewportDirectiveSheetOpen = false;
-    ViewportDirectiveSheetKind  ActiveDirectiveSheetKind   = ViewportDirectiveSheetKind::ContextComponent;
+    ViewportDirectiveSheetCategory  ActiveDirectiveSheetKind   = ViewportDirectiveSheetCategory::ContextComponent;
     Point2D                     ViewportDirectiveAnchor    { 0.0f, 0.0f };
     bool                        ViewportDirectiveInPlanar  = true;
     uint32_t               ActiveRailSlot          = 0u;

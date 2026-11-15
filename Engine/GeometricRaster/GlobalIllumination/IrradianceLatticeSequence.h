@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                   IRRADIANCELATTICESEQUENCE.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                         IRRADIANCELATTICESEQUENCE.H
+============================================================================================================================================*/
 // 🧩 Tier 2 RTX 1/pi-Normalized Octahedral Irradiance Lattice (16x16 Chebyshev Depth) + Tier 1 GTX 6-Cone SignedDistanceVolume Diffuse GI
 
 #pragma once
@@ -59,7 +59,7 @@ class IrradianceLatticeSequence
 {
 public:
     // Updates the 3D OctahedralIrradianceCell lattice via 64-ray Spherical Fibonacci BVH4 raytracing + 32 B BounceSlabEntry multi-bounce!
-    void BuildAndPropagateRtxLattice(
+    void PropagateRtxIrradianceLattice(
         const IrradianceLatticeConfiguration&            Config,
         const SpatialAcceleration::WideBoundingTree&     SceneTree,
         std::span<const MaterialSpace::BounceSlabEntry>  BounceSummaries,

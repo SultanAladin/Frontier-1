@@ -22,7 +22,7 @@ using Frontier::Codecs::InputCodec;
 using Frontier::Codecs::InputPresetOrigin;
 using Frontier::Codecs::InputSpaceDocumentModel;
 using Frontier::Codecs::SpaceContainerDecoder;
-using Frontier::Codecs::SpaceExtensionCategory;
+using Frontier::Codecs::SpaceSuffixCategory;
 using Frontier::Components::RgbaColor8;
 using Frontier::Exhibits::LoadWorkspaceDmSansFont;
 using Frontier::Exhibits::ResolveRepositoryRootPath;
@@ -67,18 +67,18 @@ bool VerifyCondition(bool Condition, const char* Label) noexcept
     return true;
 }
 
-bool ValidateAndGenerateInputSpacePresets(const std::filesystem::path& RepositoryRoot)
+bool ValidateInputSpacePresets(const std::filesystem::path& RepositoryRoot)
 {
     const std::filesystem::path InputDir = RepositoryRoot / "EngineContent/Input";
     std::error_code             Ec{};
     std::filesystem::create_directories(InputDir, Ec);
 
-    SpaceExtensionCategory ResolvedCat{};
+    SpaceSuffixCategory ResolvedCat{};
     std::string            CanonicalExt{};
     std::string            Diag{};
     if (!VerifyCondition(
-            SpaceContainerDecoder::ResolveExtensionCaseInsensitive(".inputspace", ResolvedCat, CanonicalExt, Diag) &&
-                ResolvedCat == SpaceExtensionCategory::InputSpace &&
+            SpaceContainerDecoder::ResolveSuffixCaseInsensitive(".inputspace", ResolvedCat, CanonicalExt, Diag) &&
+                ResolvedCat == SpaceSuffixCategory::InputSpace &&
                 CanonicalExt == ".InputSpace",
             "Case-insensitive .InputSpace container extension resolution"))
     {
@@ -231,7 +231,7 @@ bool GenerateInputVisualSnapshot(
 int main()
 {
     const auto RepositoryRoot = ResolveRepositoryRootPath();
-    if (!ValidateAndGenerateInputSpacePresets(RepositoryRoot))
+    if (!ValidateInputSpacePresets(RepositoryRoot))
     {
         return 1;
     }

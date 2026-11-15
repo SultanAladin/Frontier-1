@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                         COLOURSWATCHPICKER.CPP
+                                                            COLOURSWATCHPICKER.CPP
 ============================================================================================================================================*/
-// 🎨 Implementation of reusable ColourSwatchPicker (2D S/L field, Hue spectrum strip, Alpha bar, Kelvin quick bar & WCAG readout)
+// 🧩 Implementation of reusable ColourSwatchPicker (2D S/L field, Hue spectrum strip, Alpha bar, Kelvin quick bar & WCAG readout)
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -259,7 +259,7 @@ void RegisterDropSlot(
     Reg.SlotIdentifier = std::string(SlotIdentifier);
     Reg.DisplayTitle   = std::string(DisplayTitle);
     Reg.ScreenBounds   = Session.LastPreviewBounds;
-    Reg.NotifyColourAssigned = [TargetLinearTint, NotifyAssigned = std::move(NotifyAssigned)](ColorRgba DroppedSrgb, const ColourCodexEntry&) {
+    Reg.NotifyColourAssigned = [TargetLinearTint, NotifyAssigned = std::move(NotifyAssigned)](ColorRgba DroppedSrgb, const ColourSwatchEntry&) {
         const ColourSpace::LinearRgba Linear = ColourSpace::ConvertSrgb8ToLinear(
             { DroppedSrgb.Red, DroppedSrgb.Green, DroppedSrgb.Blue, DroppedSrgb.Alpha },
             ColourSpace::TransferCurveCategory::PiecewiseSrgb);

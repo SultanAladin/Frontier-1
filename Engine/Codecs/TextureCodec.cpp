@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                             TEXTURECODEC.CPP
+                                                               TEXTURECODEC.CPP
 ============================================================================================================================================*/
 // 🧩 .TextureSpace encoder & decoder implementation
 
@@ -23,7 +23,7 @@ SpaceContainerPayload TextureEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::TextureSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::TextureSpace;
     Payload.DocumentTitle      = Model.DocumentTitle;
     Payload.AuthoringWorkspace = "Frontier.TextureWorkspace";
 
@@ -78,7 +78,7 @@ bool TextureDecoder::ExtractModel(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::TextureSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::TextureSpace)
     {
         OutDiagnostic = "Expected .TextureSpace container category.";
         return false;

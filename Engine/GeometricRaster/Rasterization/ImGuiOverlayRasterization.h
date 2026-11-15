@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        IMGUIOVERLAYRASTERIZATION.H
+                                                         IMGUIOVERLAYRASTERIZATION.H
 ============================================================================================================================================*/
 // 🧩 Native Vulkan 1.2+ swapchain & offscreen presenter executing ImGuiOverlayRasterization.slang over GLFW OS windows or headless targets
 

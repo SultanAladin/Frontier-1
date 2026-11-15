@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           DYNAMICSTRANDSOLVER.H
+                                                            DYNAMICSTRANDSOLVER.H
 ============================================================================================================================================*/
 // 🧩 Authentic 20-node catenary cables/chains, hanging leafy vines, woven flags/ship sails & beaded doorway curtain physics solver
 

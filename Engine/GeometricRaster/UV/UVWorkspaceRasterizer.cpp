@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        UVWORKSPACERASTERIZER.CPP
+                                                          UVWORKSPACERASTERIZER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of UVWorkspaceRasterizer driving Vulkan .slang MRT pipelines, O(1) GPU selection, and 3D/2D GPU picking
 
@@ -24,9 +24,9 @@ namespace
 
 struct alignas(16) GPUSurfaceVertex
 {
-    float    PosAndU[4];
-    float    NormalAndV[4];
-    float    AlbedoAndMetal[4];
+    float    PositionUPacked[4];
+    float    NormalVPacked[4];
+    float    AlbedoMetalPacked[4];
     float    ShadingParams[4];
     uint32_t NetworkPickIDs[4];
     float    Barycentric[4];
@@ -47,29 +47,29 @@ struct alignas(16) GPUUVCanvasVertex
 struct alignas(16) GPUViewport3DUniforms
 {
     float    ViewProjection[4][4];
-    float    CameraPosAndMode[4];
-    float    CameraRightAndWire[4];
-    float    CameraUpAndSeam[4];
-    float    CameraForwardAndLayer[4];
+    float    CameraPositionMode[4];
+    float    CameraRightWire[4];
+    float    CameraUpSeam[4];
+    float    CameraForwardLayer[4];
     uint32_t PickHighlightIDs[4];
     uint32_t ComponentHighlightIDs[4];
-    float    ViewportSizeAndPad[4];
+    float    ViewportSizePacked[4];
     float    LayerSwatches[16][4];
 };
 
 struct alignas(16) GPUCanvas2DUniforms
 {
     float    CanvasMinMaxUV[4];
-    uint32_t OverlayAndPick[4];
+    uint32_t OverlayPick[4];
     uint32_t ComponentHighlightIDs[4];
-    float    ViewportSizeAndPad[4];
+    float    ViewportSizePacked[4];
     float    LayerSwatches[16][4];
 };
 
 struct alignas(16) GPUGizmoUniforms
 {
     float    ViewProjection[4][4];
-    uint32_t HoverAndSpace[4];
+    uint32_t HoverSpacePacked[4];
     float    HeadlightDirection[4];
 };
 
@@ -524,7 +524,7 @@ bool UVWorkspaceRasterizer::ConstructGraphicsProgram(
     const std::filesystem::path&      VertSpirv,
     const std::filesystem::path&      FragSpirv,
     std::span<const VkDescriptorType> SlotCategories,
-    bool                              DepthTestAndWrite,
+    bool                              DepthTestWrite,
     bool                              EnableColorAlphaBlend,
     GraphicsProgramBundle&            OutBundle)
 {
@@ -598,8 +598,8 @@ bool UVWorkspaceRasterizer::ConstructGraphicsProgram(
 
     VkPipelineDepthStencilStateCreateInfo DepthStencil {};
     DepthStencil.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    DepthStencil.depthTestEnable  = DepthTestAndWrite ? VK_TRUE : VK_FALSE;
-    DepthStencil.depthWriteEnable = DepthTestAndWrite ? VK_TRUE : VK_FALSE;
+    DepthStencil.depthTestEnable  = DepthTestWrite ? VK_TRUE : VK_FALSE;
+    DepthStencil.depthWriteEnable = DepthTestWrite ? VK_TRUE : VK_FALSE;
     DepthStencil.depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL;
 
     std::array<VkPipelineColorBlendAttachmentState, 2u> BlendAtts {};
@@ -850,10 +850,10 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
     for (const Mathematics::Axis3D& GP : GridQuad)
     {
         GPUSurfaceVertex GV {};
-        GV.PosAndU[0]        = GP.X; GV.PosAndU[1] = GP.Y; GV.PosAndU[2] = GP.Z;
-        GV.NormalAndV[0]     = GridUp.X;
-        GV.NormalAndV[1]     = GridUp.Y;
-        GV.NormalAndV[2]     = GridUp.Z;
+        GV.PositionUPacked[0]        = GP.X; GV.PositionUPacked[1] = GP.Y; GV.PositionUPacked[2] = GP.Z;
+        GV.NormalVPacked[0]     = GridUp.X;
+        GV.NormalVPacked[1]     = GridUp.Y;
+        GV.NormalVPacked[2]     = GridUp.Z;
         GV.NetworkPickIDs[0] = 0u; // Ground Grid marker
         GV.NetworkPickIDs[1] = GeometrySpace::InvalidNetworkIndex;
         GV.MatCapTint[0]     = 1.0f;
@@ -1002,18 +1002,18 @@ bool UVWorkspaceRasterizer::UploadPolygonNetwork(
                 }
 
                 GPUSurfaceVertex SV {};
-                SV.PosAndU[0]        = VX.Axes.X;
-                SV.PosAndU[1]        = VX.Axes.Y;
-                SV.PosAndU[2]        = VX.Axes.Z;
-                SV.PosAndU[3]        = DE.ParameterUV.U;
-                SV.NormalAndV[0]     = SmoothNormal.X;
-                SV.NormalAndV[1]     = SmoothNormal.Y;
-                SV.NormalAndV[2]     = SmoothNormal.Z;
-                SV.NormalAndV[3]     = DE.ParameterUV.V;
-                SV.AlbedoAndMetal[0] = CurrentFace.Shading.AlbedoLinearRGB.X;
-                SV.AlbedoAndMetal[1] = CurrentFace.Shading.AlbedoLinearRGB.Y;
-                SV.AlbedoAndMetal[2] = CurrentFace.Shading.AlbedoLinearRGB.Z;
-                SV.AlbedoAndMetal[3] = CurrentFace.Shading.Metallic;
+                SV.PositionUPacked[0]        = VX.Axes.X;
+                SV.PositionUPacked[1]        = VX.Axes.Y;
+                SV.PositionUPacked[2]        = VX.Axes.Z;
+                SV.PositionUPacked[3]        = DE.ParameterUV.U;
+                SV.NormalVPacked[0]     = SmoothNormal.X;
+                SV.NormalVPacked[1]     = SmoothNormal.Y;
+                SV.NormalVPacked[2]     = SmoothNormal.Z;
+                SV.NormalVPacked[3]     = DE.ParameterUV.V;
+                SV.AlbedoMetalPacked[0] = CurrentFace.Shading.AlbedoLinearRGB.X;
+                SV.AlbedoMetalPacked[1] = CurrentFace.Shading.AlbedoLinearRGB.Y;
+                SV.AlbedoMetalPacked[2] = CurrentFace.Shading.AlbedoLinearRGB.Z;
+                SV.AlbedoMetalPacked[3] = CurrentFace.Shading.Metallic;
                 SV.ShadingParams[0]  = CurrentFace.Shading.Roughness;
                 SV.ShadingParams[1]  = CurrentFace.Shading.Specular;
                 SV.ShadingParams[2]  = CurrentFace.Shading.MatCapBlend;
@@ -1168,7 +1168,7 @@ std::vector<uint32_t> UVWorkspaceRasterizer::ReadbackSelectionBitmaskWords()
     ReadbackTicket  Ticket = TransferRegister.EncodeBufferReadback(Cmd, SelectionBitmaskBuffer.BufferHandle, 0ull, WordCount * sizeof(uint32_t));
     const uint64_t  Signal = DeviceInterchange->DispatchCommandBufferAsync(Cmd);
     TransferRegister.BindTicketTimelineSignal(Ticket, Signal);
-    (void)TransferRegister.AwaitAndCopyTyped<uint32_t>(Ticket, Output);
+    (void)TransferRegister.AwaitReadbackTyped<uint32_t>(Ticket, Output);
     vkFreeCommandBuffers(DeviceInterchange->AccessDevice(), DeviceInterchange->AccessCommandAllocator(), 1u, &Cmd);
     return Output;
 }
@@ -1258,8 +1258,8 @@ GPUUVDistortionSummary UVWorkspaceRasterizer::EvaluateUVDistortionInspection(
 
     std::array<uint32_t, 3u> RawCounts {{ 0u, 0u, 0u }};
     std::vector<GPUFaceMetricOutput> Outputs(FaceCount);
-    (void)TransferRegister.AwaitAndCopyTyped<uint32_t>(CountsTicket, RawCounts);
-    (void)TransferRegister.AwaitAndCopyTyped<GPUFaceMetricOutput>(OutputsTicket, Outputs);
+    (void)TransferRegister.AwaitReadbackTyped<uint32_t>(CountsTicket, RawCounts);
+    (void)TransferRegister.AwaitReadbackTyped<GPUFaceMetricOutput>(OutputsTicket, Outputs);
     vkFreeCommandBuffers(DeviceInterchange->AccessDevice(), DeviceInterchange->AccessCommandAllocator(), 1u, &Cmd);
 
     Summary.FlippedFaceCount = RawCounts[0u];
@@ -1297,22 +1297,22 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
 
     GPUViewport3DUniforms Uniforms {};
     BuildRowMajorViewProjection(Options.Camera, static_cast<float>(WidthPx) / static_cast<float>(HeightPx), Uniforms.ViewProjection);
-    Uniforms.CameraPosAndMode[0]      = Eye.X;
-    Uniforms.CameraPosAndMode[1]      = Eye.Y;
-    Uniforms.CameraPosAndMode[2]      = Eye.Z;
-    Uniforms.CameraPosAndMode[3]      = static_cast<float>(static_cast<uint32_t>(Options.DisplayMode));
-    Uniforms.CameraRightAndWire[0]    = Right.X;
-    Uniforms.CameraRightAndWire[1]    = Right.Y;
-    Uniforms.CameraRightAndWire[2]    = Right.Z;
-    Uniforms.CameraRightAndWire[3]    = Options.WireframeEnabled ? 1.0f : 0.0f;
-    Uniforms.CameraUpAndSeam[0]       = Up.X;
-    Uniforms.CameraUpAndSeam[1]       = Up.Y;
-    Uniforms.CameraUpAndSeam[2]       = Up.Z;
-    Uniforms.CameraUpAndSeam[3]       = Options.SeamOverlayEnabled ? 1.0f : 0.0f;
-    Uniforms.CameraForwardAndLayer[0] = Fwd.X;
-    Uniforms.CameraForwardAndLayer[1] = Fwd.Y;
-    Uniforms.CameraForwardAndLayer[2] = Fwd.Z;
-    Uniforms.CameraForwardAndLayer[3] = static_cast<float>(Options.ActiveLayerOrdinal);
+    Uniforms.CameraPositionMode[0]      = Eye.X;
+    Uniforms.CameraPositionMode[1]      = Eye.Y;
+    Uniforms.CameraPositionMode[2]      = Eye.Z;
+    Uniforms.CameraPositionMode[3]      = static_cast<float>(static_cast<uint32_t>(Options.DisplayMode));
+    Uniforms.CameraRightWire[0]    = Right.X;
+    Uniforms.CameraRightWire[1]    = Right.Y;
+    Uniforms.CameraRightWire[2]    = Right.Z;
+    Uniforms.CameraRightWire[3]    = Options.WireframeEnabled ? 1.0f : 0.0f;
+    Uniforms.CameraUpSeam[0]       = Up.X;
+    Uniforms.CameraUpSeam[1]       = Up.Y;
+    Uniforms.CameraUpSeam[2]       = Up.Z;
+    Uniforms.CameraUpSeam[3]       = Options.SeamOverlayEnabled ? 1.0f : 0.0f;
+    Uniforms.CameraForwardLayer[0] = Fwd.X;
+    Uniforms.CameraForwardLayer[1] = Fwd.Y;
+    Uniforms.CameraForwardLayer[2] = Fwd.Z;
+    Uniforms.CameraForwardLayer[3] = static_cast<float>(Options.ActiveLayerOrdinal);
     Uniforms.PickHighlightIDs[0]      = Options.HoveredFaceIndex;
     Uniforms.PickHighlightIDs[1]      = Options.HoveredEdgeIndex;
     Uniforms.PickHighlightIDs[2]      = Options.HoveredOppositeEdgeIdx;
@@ -1321,10 +1321,10 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
     Uniforms.ComponentHighlightIDs[1] = Options.SelectionModeOrdinal;
     Uniforms.ComponentHighlightIDs[2] = 0u;
     Uniforms.ComponentHighlightIDs[3] = 0u;
-    Uniforms.ViewportSizeAndPad[0]    = static_cast<float>(WidthPx);
-    Uniforms.ViewportSizeAndPad[1]    = static_cast<float>(HeightPx);
-    Uniforms.ViewportSizeAndPad[2]    = 0.0f;
-    Uniforms.ViewportSizeAndPad[3]    = 0.0f;
+    Uniforms.ViewportSizePacked[0]    = static_cast<float>(WidthPx);
+    Uniforms.ViewportSizePacked[1]    = static_cast<float>(HeightPx);
+    Uniforms.ViewportSizePacked[2]    = 0.0f;
+    Uniforms.ViewportSizePacked[3]    = 0.0f;
     std::memcpy(Uniforms.LayerSwatches, LayerSwatches.data(), sizeof(Uniforms.LayerSwatches));
 
     const std::array<GPUViewport3DUniforms, 1u> UniSpan {{ Uniforms }};
@@ -1347,9 +1347,9 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
 
             GPUGizmoUniforms GizUni {};
             std::memcpy(GizUni.ViewProjection, Uniforms.ViewProjection, sizeof(Uniforms.ViewProjection));
-            GizUni.HoverAndSpace[0] = static_cast<uint32_t>(OptionalGizmo3D->QueryHoveredHandle());
-            GizUni.HoverAndSpace[1] = static_cast<uint32_t>(OptionalGizmo3D->QueryActiveHandle());
-            GizUni.HoverAndSpace[2] = 0u;
+            GizUni.HoverSpacePacked[0] = static_cast<uint32_t>(OptionalGizmo3D->QueryHoveredHandle());
+            GizUni.HoverSpacePacked[1] = static_cast<uint32_t>(OptionalGizmo3D->QueryActiveHandle());
+            GizUni.HoverSpacePacked[2] = 0u;
             const Mathematics::Axis3D KeyLight = Mathematics::NormalizeAxis(
                 Right * 0.38f + Up * 0.45f - Fwd * 0.85f,
                 { 0.45f, 0.72f, 0.52f });
@@ -1504,7 +1504,7 @@ bool UVWorkspaceRasterizer::Rasterize3DViewport(
     {
         TransferRegister.BindTicketTimelineSignal(ColorTicket, Signal);
         OptionalOutRGBA->resize(static_cast<std::size_t>(WidthPx) * static_cast<std::size_t>(HeightPx) * 4u);
-        (void)TransferRegister.AwaitAndCopyBytes(ColorTicket, *OptionalOutRGBA);
+        (void)TransferRegister.AwaitReadbackBytes(ColorTicket, *OptionalOutRGBA);
     }
     else
     {
@@ -1540,18 +1540,18 @@ bool UVWorkspaceRasterizer::Rasterize2DUVCanvas(
         (Options.PinOverlayEnabled  ? (1u << 2u) : 0u) |
         (static_cast<uint32_t>(Options.BackdropPreset) << 8u);
 
-    Uniforms.OverlayAndPick[0] = static_cast<uint32_t>(Options.DisplayMode);
-    Uniforms.OverlayAndPick[1] = OverlayBits;
-    Uniforms.OverlayAndPick[2] = Options.ActiveLayerOrdinal;
-    Uniforms.OverlayAndPick[3] = Options.HoveredFaceIndex;
+    Uniforms.OverlayPick[0] = static_cast<uint32_t>(Options.DisplayMode);
+    Uniforms.OverlayPick[1] = OverlayBits;
+    Uniforms.OverlayPick[2] = Options.ActiveLayerOrdinal;
+    Uniforms.OverlayPick[3] = Options.HoveredFaceIndex;
     Uniforms.ComponentHighlightIDs[0] = Options.HoveredEdgeIndex;
     Uniforms.ComponentHighlightIDs[1] = Options.HoveredOppositeEdgeIdx;
     Uniforms.ComponentHighlightIDs[2] = Options.HoveredVertexIndex;
     Uniforms.ComponentHighlightIDs[3] = Options.SelectionModeOrdinal;
-    Uniforms.ViewportSizeAndPad[0]    = static_cast<float>(WidthPx);
-    Uniforms.ViewportSizeAndPad[1]    = static_cast<float>(HeightPx);
-    Uniforms.ViewportSizeAndPad[2]    = 0.0f;
-    Uniforms.ViewportSizeAndPad[3]    = 0.0f;
+    Uniforms.ViewportSizePacked[0]    = static_cast<float>(WidthPx);
+    Uniforms.ViewportSizePacked[1]    = static_cast<float>(HeightPx);
+    Uniforms.ViewportSizePacked[2]    = 0.0f;
+    Uniforms.ViewportSizePacked[3]    = 0.0f;
     std::memcpy(Uniforms.LayerSwatches, LayerSwatches.data(), sizeof(Uniforms.LayerSwatches));
 
     const std::array<GPUCanvas2DUniforms, 1u> UniSpan {{ Uniforms }};
@@ -1574,9 +1574,9 @@ bool UVWorkspaceRasterizer::Rasterize2DUVCanvas(
 
             GPUGizmoUniforms GizUni {};
             BuildRowMajorOrtho2D(Options.VisibleMinUV, Options.VisibleMaxUV, GizUni.ViewProjection);
-            GizUni.HoverAndSpace[0]      = static_cast<uint32_t>(OptionalGizmo2D->QueryHoveredHandle());
-            GizUni.HoverAndSpace[1]      = static_cast<uint32_t>(OptionalGizmo2D->QueryActiveHandle());
-            GizUni.HoverAndSpace[2]      = 0u;
+            GizUni.HoverSpacePacked[0]      = static_cast<uint32_t>(OptionalGizmo2D->QueryHoveredHandle());
+            GizUni.HoverSpacePacked[1]      = static_cast<uint32_t>(OptionalGizmo2D->QueryActiveHandle());
+            GizUni.HoverSpacePacked[2]      = 0u;
             GizUni.HeadlightDirection[0] = 0.35f;
             GizUni.HeadlightDirection[1] = 0.45f;
             GizUni.HeadlightDirection[2] = 0.82f;
@@ -1697,7 +1697,7 @@ bool UVWorkspaceRasterizer::Rasterize2DUVCanvas(
     {
         TransferRegister.BindTicketTimelineSignal(ColorTicket, Signal);
         OptionalOutRGBA->resize(static_cast<std::size_t>(WidthPx) * static_cast<std::size_t>(HeightPx) * 4u);
-        (void)TransferRegister.AwaitAndCopyBytes(ColorTicket, *OptionalOutRGBA);
+        (void)TransferRegister.AwaitReadbackBytes(ColorTicket, *OptionalOutRGBA);
     }
     else
     {

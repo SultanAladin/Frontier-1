@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            GEOMETRYINSTANCE.H
+                                                              GEOMETRYINSTANCE.H
 ============================================================================================================================================*/
 // 🧩 Generation-authenticated GeometryInstance and contiguous GeometryInstanceRegistry with non-kinship index tree connectivity
 

@@ -8,7 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Appearance/TypographyRepository.h"
-#include "Engine/Components/ContentBrowser/ColourCodex.h"
+#include "Engine/Components/ContentBrowser/ColourSwatchBrowserView.h"
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/ContentBrowser/ThumbnailSheetRepository.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
@@ -28,8 +28,8 @@ namespace
 {
 
 using Frontier::ColorRgba;
-using Frontier::ColourCodex;
-using Frontier::ColourCodexEntry;
+using Frontier::ColourSwatchBrowserView;
+using Frontier::ColourSwatchEntry;
 using Frontier::ColourFilterGroup;
 using Frontier::ColourRepositoryLayout;
 using Frontier::ColourSlotRegistration;
@@ -77,10 +77,10 @@ bool VerifyAssertion(bool Condition, const char* Description) noexcept
     return true;
 }
 
-bool ValidateColourCodexTomlAndSingularColourSwatch()
+bool ValidateColourSwatchTomlPersistence()
 {
-    ColourCodex Codex{};
-    if (!VerifyAssertion(Codex.QueryEntries().size() >= 38u, "Built-in ColourCodex contains >= 38 named colours"))
+    ColourSwatchBrowserView Codex{};
+    if (!VerifyAssertion(Codex.QueryEntries().size() >= 38u, "Built-in ColourSwatchBrowserView contains >= 38 named colours"))
     {
         return false;
     }
@@ -97,26 +97,26 @@ bool ValidateColourCodexTomlAndSingularColourSwatch()
         return false;
     }
 
-    const ColourCodexEntry* FigEntry = Codex.QueryEntryAt(FigIdx);
-    const ColourCodexEntry* PinEntry = Codex.QueryEntryAt(PinIdx);
-    const ColourCodexEntry* BlzEntry = Codex.QueryEntryAt(BlzIdx);
-    const ColourCodexEntry* TanEntry = Codex.QueryEntryAt(TanIdx);
-    const ColourCodexEntry* MarEntry = Codex.QueryEntryAt(MarIdx);
-    const ColourCodexEntry* LemEntry = Codex.QueryEntryAt(LemIdx);
+    const ColourSwatchEntry* FigEntry = Codex.QueryEntryAt(FigIdx);
+    const ColourSwatchEntry* PinEntry = Codex.QueryEntryAt(PinIdx);
+    const ColourSwatchEntry* BlzEntry = Codex.QueryEntryAt(BlzIdx);
+    const ColourSwatchEntry* TanEntry = Codex.QueryEntryAt(TanIdx);
+    const ColourSwatchEntry* MarEntry = Codex.QueryEntryAt(MarIdx);
+    const ColourSwatchEntry* LemEntry = Codex.QueryEntryAt(LemIdx);
 
-    if (!VerifyAssertion(FigEntry->HexUpper == "#3B1F3A" && !ColourCodex::QueryContrastInk(FigEntry->FillColour).DarkInk, "Fig Purple (#3B1F3A) selects white contrast ink") ||
-        !VerifyAssertion(PinEntry->HexUpper == "#F6B800" && ColourCodex::QueryContrastInk(PinEntry->FillColour).DarkInk, "Pineapple Yellow (#F6B800) selects black contrast ink") ||
+    if (!VerifyAssertion(FigEntry->HexUpper == "#3B1F3A" && !ColourSwatchBrowserView::QueryContrastInk(FigEntry->FillColour).DarkInk, "Fig Purple (#3B1F3A) selects white contrast ink") ||
+        !VerifyAssertion(PinEntry->HexUpper == "#F6B800" && ColourSwatchBrowserView::QueryContrastInk(PinEntry->FillColour).DarkInk, "Pineapple Yellow (#F6B800) selects black contrast ink") ||
         !VerifyAssertion(
-            BlzEntry != nullptr && BlzEntry->HexCompact == "FF7B00" && !ColourCodex::QueryContrastInk(BlzEntry->FillColour).DarkInk &&
-            TanEntry != nullptr && TanEntry->HexCompact == "FF8800" && !ColourCodex::QueryContrastInk(TanEntry->FillColour).DarkInk &&
-            MarEntry != nullptr && MarEntry->HexCompact == "FF9500" && ColourCodex::QueryContrastInk(MarEntry->FillColour).DarkInk &&
-            LemEntry != nullptr && LemEntry->HexCompact == "FFEA00" && ColourCodex::QueryContrastInk(LemEntry->FillColour).DarkInk,
+            BlzEntry != nullptr && BlzEntry->HexCompact == "FF7B00" && !ColourSwatchBrowserView::QueryContrastInk(BlzEntry->FillColour).DarkInk &&
+            TanEntry != nullptr && TanEntry->HexCompact == "FF8800" && !ColourSwatchBrowserView::QueryContrastInk(TanEntry->FillColour).DarkInk &&
+            MarEntry != nullptr && MarEntry->HexCompact == "FF9500" && ColourSwatchBrowserView::QueryContrastInk(MarEntry->FillColour).DarkInk &&
+            LemEntry != nullptr && LemEntry->HexCompact == "FFEA00" && ColourSwatchBrowserView::QueryContrastInk(LemEntry->FillColour).DarkInk,
             "August Beige & Brown spectrum matches white ink on FF7B00..FF8800 and black ink on FF9500..FFEA00"))
     {
         return false;
     }
 
-    const auto AugustIndices = Codex.QueryFilteredIndices(ColourFilterGroup::AugustBeigeAndBrown, ColourSortOrder::Spectrum);
+    const auto AugustIndices = Codex.QueryFilteredIndices(ColourFilterGroup::WarmAmberNeutrals, ColourSortOrder::Spectrum);
     if (!VerifyAssertion(AugustIndices.size() == 10u, "August Beige & Brown Colour Filter yields 10 spectrum bands"))
     {
         return false;
@@ -130,12 +130,12 @@ bool ValidateColourCodexTomlAndSingularColourSwatch()
 
     std::string Diagnostic{};
     if (!VerifyAssertion(Codex.SaveSingleSwatchFile(CustomIdx, TempSwatch, Diagnostic), "Save singular .ColourSwatch file") ||
-        !VerifyAssertion(ColourCodex::MatchesSwatchExtension("test.colourswatch"), "Case-insensitive .colourswatch extension match"))
+        !VerifyAssertion(ColourSwatchBrowserView::MatchesSwatchSuffix("test.colourswatch"), "Case-insensitive .colourswatch extension match"))
     {
         return false;
     }
 
-    ColourCodex SwatchReceiver{};
+    ColourSwatchBrowserView SwatchReceiver{};
     std::size_t LoadedSwatchIdx = 0u;
     if (!VerifyAssertion(SwatchReceiver.LoadSingleSwatchFile(TempSwatch, Diagnostic, &LoadedSwatchIdx), "Load singular .ColourSwatch file") ||
         !VerifyAssertion(SwatchReceiver.QueryEntryAt(LoadedSwatchIdx)->HexUpper == "#2454FF", "Singular .ColourSwatch round-trips #2454FF"))
@@ -147,13 +147,13 @@ bool ValidateColourCodexTomlAndSingularColourSwatch()
     // Multi-swatch .toml round-trip
     const std::filesystem::path TempToml = std::filesystem::temp_directory_path() / "FrontierColourCodexValidation.toml";
     std::filesystem::remove(TempToml, RemoveErr);
-    if (!VerifyAssertion(Codex.SaveToTomlFile(TempToml, Diagnostic), "Export ColourCodex .toml file"))
+    if (!VerifyAssertion(Codex.SaveToTomlFile(TempToml, Diagnostic), "Export ColourSwatchBrowserView .toml file"))
     {
         return false;
     }
 
-    ColourCodex ReloadedCodex{};
-    if (!VerifyAssertion(ReloadedCodex.LoadFromTomlFile(TempToml, Diagnostic), "Import ColourCodex .toml file") ||
+    ColourSwatchBrowserView ReloadedCodex{};
+    if (!VerifyAssertion(ReloadedCodex.LoadFromTomlFile(TempToml, Diagnostic), "Import ColourSwatchBrowserView .toml file") ||
         !VerifyAssertion(ReloadedCodex.FindEntryByName("Studio Ultramarine") < ReloadedCodex.QueryEntries().size(), "Reloaded .toml preserves Studio Ultramarine"))
     {
         return false;
@@ -162,7 +162,7 @@ bool ValidateColourCodexTomlAndSingularColourSwatch()
     return true;
 }
 
-bool ValidateDualPathStreamingQuarantineAndWorkspaceBlocking()
+bool ValidateDualPathStreamingIsolation()
 {
     if (!VerifyAssertion(sizeof(ContentIndexEntry64) == 64u, "ContentIndexEntry64 is exactly 64 bytes"))
     {
@@ -181,7 +181,7 @@ bool ValidateDualPathStreamingQuarantineAndWorkspaceBlocking()
     {
         ThumbnailSheetRepository SourceRepo{};
         std::string              Diagnostic{};
-        if (!VerifyAssertion(SourceRepo.SaveBinaryIndexAndSheets(IndexFile, SheetFile, Diagnostic), "Save ContentIndex.Space + ThumbnailSheet.ImageSpace"))
+        if (!VerifyAssertion(SourceRepo.PersistBinarySheetIndex(IndexFile, SheetFile, Diagnostic), "Save ContentIndex.Space + ThumbnailSheet.ImageSpace"))
         {
             return false;
         }
@@ -320,18 +320,18 @@ void RenderWorkspaceInspectorSlotOverlay(
     Canvas.FillRectangle(AlbedoSlotRect, ColorRgba{ 38u, 38u, 42u, 255u }, 9.0f);
     Canvas.StrokeRectangle(AlbedoSlotRect, ColorRgba{ 255u, 255u, 255u, 30u }, 9.0f, 1.0f);
     Canvas.FillRectangle({ AlbedoSlotRect.X + 8.0f, AlbedoSlotRect.Y + 6.0f, 36.0f, AlbedoSlotRect.Height - 12.0f }, AlbedoColour, 6.0f);
-    const std::string AlbedoText = "Surface Albedo · " + ColourCodex::FormatHexUpper(AlbedoColour);
+    const std::string AlbedoText = "Surface Albedo · " + ColourSwatchBrowserView::FormatHexUpper(AlbedoColour);
     Canvas.Text({ AlbedoSlotRect.X + 54.0f, AlbedoSlotRect.Y + 12.0f }, 11.0f, ColorRgba{ 228u, 228u, 230u, 255u }, AlbedoText.c_str());
 
     // Slot 2: Emission Tint
     Canvas.FillRectangle(EmissionSlotRect, ColorRgba{ 38u, 38u, 42u, 255u }, 9.0f);
     Canvas.StrokeRectangle(EmissionSlotRect, ColorRgba{ 255u, 255u, 255u, 30u }, 9.0f, 1.0f);
     Canvas.FillRectangle({ EmissionSlotRect.X + 8.0f, EmissionSlotRect.Y + 6.0f, 36.0f, EmissionSlotRect.Height - 12.0f }, EmissionColour, 6.0f);
-    const std::string EmissionText = "Emission Tint · " + ColourCodex::FormatHexUpper(EmissionColour);
+    const std::string EmissionText = "Emission Tint · " + ColourSwatchBrowserView::FormatHexUpper(EmissionColour);
     Canvas.Text({ EmissionSlotRect.X + 54.0f, EmissionSlotRect.Y + 12.0f }, 11.0f, ColorRgba{ 228u, 228u, 230u, 255u }, EmissionText.c_str());
 }
 
-bool ValidateAndRenderContentBrowserSnapshots()
+bool ValidateContentBrowserSnapshots()
 {
     IMGUI_CHECKVERSION();
     ImGuiContext* GuiSession = ImGui::CreateContext();
@@ -462,7 +462,7 @@ bool ValidateAndRenderContentBrowserSnapshots()
 
     // Snapshot 04: Colours -> VerticalStrips -> "August Beige & Brown" (FF7B00..FFEA00 rotated -90deg HEX labels)
     Browser.ConfigureColourLayout(ColourRepositoryLayout::VerticalStrips);
-    Browser.ConfigureColourFilter(ColourFilterGroup::AugustBeigeAndBrown);
+    Browser.ConfigureColourFilter(ColourFilterGroup::WarmAmberNeutrals);
     (void)Browser.SelectColourByName("August Amber");
     StepPresentation(IdleInput);
     if (!VerifyAssertion(Browser.InspectReading().VisibleEntryCount == 10u, "VerticalStrips renders 10 August Beige & Brown strips") ||
@@ -474,7 +474,7 @@ bool ValidateAndRenderContentBrowserSnapshots()
 
     // Snapshot 05: Colours -> HorizontalStrips -> Stacked spectrum bands
     Browser.ConfigureColourLayout(ColourRepositoryLayout::HorizontalStrips);
-    Browser.ConfigureColourFilter(ColourFilterGroup::AugustBeigeAndBrown);
+    Browser.ConfigureColourFilter(ColourFilterGroup::WarmAmberNeutrals);
     (void)Browser.SelectColourByName("August Gold");
     StepPresentation(IdleInput);
     if (!WriteCurrentSnapshot("05-ColoursHorizontalStrips.png"))
@@ -490,7 +490,7 @@ bool ValidateAndRenderContentBrowserSnapshots()
     Browser.FocusColourSlot("Material.SurfaceAlbedo");
     StepPresentation(IdleInput);
 
-    const std::size_t PinIndex = Browser.QueryColourCodex().FindEntryByName("Pineapple Yellow");
+    const std::size_t PinIndex = Browser.QueryColourSwatchBrowser().FindEntryByName("Pineapple Yellow");
     const Rectangle2D PinCell  = Browser.QueryRenderedColourCellBounds(PinIndex);
     {
         ContentBrowserPointerInput DblClick{};
@@ -509,10 +509,10 @@ bool ValidateAndRenderContentBrowserSnapshots()
     }
 
     Browser.ConfigureColourLayout(ColourRepositoryLayout::VerticalStrips);
-    Browser.ConfigureColourFilter(ColourFilterGroup::AugustBeigeAndBrown);
+    Browser.ConfigureColourFilter(ColourFilterGroup::WarmAmberNeutrals);
     StepPresentation(IdleInput);
 
-    const std::size_t BlazeIndex = Browser.QueryColourCodex().FindEntryByName("August Blaze");
+    const std::size_t BlazeIndex = Browser.QueryColourSwatchBrowser().FindEntryByName("August Blaze");
     const Rectangle2D BlazeStrip = Browser.QueryRenderedColourCellBounds(BlazeIndex);
     {
         ContentBrowserPointerInput Press{};
@@ -657,15 +657,15 @@ bool ValidateAndRenderContentBrowserSnapshots()
 
 int main()
 {
-    if (!ValidateColourCodexTomlAndSingularColourSwatch())
+    if (!ValidateColourSwatchTomlPersistence())
     {
         return 1;
     }
-    if (!ValidateDualPathStreamingQuarantineAndWorkspaceBlocking())
+    if (!ValidateDualPathStreamingIsolation())
     {
         return 1;
     }
-    if (!ValidateAndRenderContentBrowserSnapshots())
+    if (!ValidateContentBrowserSnapshots())
     {
         return 1;
     }

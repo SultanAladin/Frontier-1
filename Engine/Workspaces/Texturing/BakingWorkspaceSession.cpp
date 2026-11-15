@@ -1,11 +1,12 @@
-/*==========================================================================================================================================
-                                                       BAKINGWORKSPACESESSION.CPP
-==========================================================================================================================================*/
-// 🧪 Implementation of BakingWorkspaceSession: real Vulkan GPU GTX BVH4 + RTX RayQuery baking, study import & PNG/.fvol export.
+/*============================================================================================================================================
+                                                          BAKINGWORKSPACESESSION.CPP
+============================================================================================================================================*/
+// 🧩 Implementation of BakingWorkspaceSession: real Vulkan GPU GTX BVH4 + RTX RayQuery baking, study import & PNG/.fvol export.
 
 #include "Engine/Workspaces/Texturing/BakingWorkspaceSession.h"
 
-#include "Engine/GeometricRaster/Baking/GpuTextureAndSdfBaker.h"
+#include "Engine/GeometricRaster/Baking/GpuTextureBaker.h"
+#include "Engine/GeometricRaster/Baking/GpuSdfBaker.h"
 #include "Engine/GeometricRaster/Baking/StudyGeometryBuilder.h"
 #include "Engine/GeometricRaster/Baking/TextureBakerRasterizer.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
@@ -25,7 +26,8 @@ struct BakingGpuEngineStorage
     std::unique_ptr<VulkanInterchange> OwnedDevice {};
     VulkanInterchange*                 ActiveDevice = nullptr;
     std::filesystem::path              ShaderDirectory {};
-    GpuTextureAndSdfBaker              Baker {};
+    GpuTextureBaker                    Baker {};
+    GpuSdfBaker                        SdfBaker {};
     TextureBakerRasterizer             Rasterizer {};
     PreparedStudyPair                  StudyPair {};
     bool                               StudyUploadedToGpu = false;
@@ -37,6 +39,7 @@ struct BakingGpuEngineStorage
     ~BakingGpuEngineStorage()
     {
         Rasterizer.TeardownRasterizer();
+        SdfBaker.TeardownSdfBaker();
         Baker.TeardownBaker();
         if (OwnedDevice != nullptr)
         {
@@ -49,7 +52,7 @@ namespace
 {
 
 constexpr std::array<BakerTargetDescriptor, BakingWorkspaceSession::TargetCount> BakerTargetEntries {{
-    { BakerTargetId::VolumeSdf,          BakerTargetGroup::VolumeAndDistance, "Volume SDF",            "3D distance grid",     true  },
+    { BakerTargetId::VolumeSdf,          BakerTargetGroup::VolumeDistance, "Volume SDF",            "3D distance grid",     true  },
     { BakerTargetId::TangentNormal,      BakerTargetGroup::Normals,           "Tangent Normal",        "High-to-Low normal",   false },
     { BakerTargetId::WorldNormal,        BakerTargetGroup::Normals,           "World Normal",          "Scene XYZ vector",     false },
     { BakerTargetId::ModelSpaceNormal,   BakerTargetGroup::Normals,           "Object Normal",         "Local XYZ vector",     false },
@@ -62,11 +65,11 @@ constexpr std::array<BakerTargetDescriptor, BakingWorkspaceSession::TargetCount>
     { BakerTargetId::Concavity,          BakerTargetGroup::Surface,           "Concavity",             "Recessed grooves",     false },
     { BakerTargetId::Thickness,          BakerTargetGroup::Surface,           "Thickness",             "Interior ray depth",   false },
     { BakerTargetId::HeightDisplacement, BakerTargetGroup::Surface,           "Height / Displacement", "Cage ray offset",      false },
-    { BakerTargetId::TopDownDust,        BakerTargetGroup::MasksAndIds,       "Top-Down Dust",         "Directional overlay",  false },
-    { BakerTargetId::UvIslandId,         BakerTargetGroup::MasksAndIds,       "UV Island ID",          "Chart color index",    false },
-    { BakerTargetId::PartMaterialId,     BakerTargetGroup::MasksAndIds,       "Part / Material ID",    "Sub-surface ID color", false },
-    { BakerTargetId::WorldPosition,      BakerTargetGroup::MasksAndIds,       "World Position",        "Normalized XYZ bbox",  false },
-    { BakerTargetId::UvWireframe,        BakerTargetGroup::MasksAndIds,       "UV Wireframe",          "Edge triangle overlay",false },
+    { BakerTargetId::TopDownDust,        BakerTargetGroup::DiagnosticMasks,       "Top-Down Dust",         "Directional overlay",  false },
+    { BakerTargetId::UvIslandId,         BakerTargetGroup::DiagnosticMasks,       "UV Island ID",          "Chart color index",    false },
+    { BakerTargetId::PartMaterialId,     BakerTargetGroup::DiagnosticMasks,       "Part / Material ID",    "Sub-surface ID color", false },
+    { BakerTargetId::WorldPosition,      BakerTargetGroup::DiagnosticMasks,       "World Position",        "Normalized XYZ bbox",  false },
+    { BakerTargetId::UvWireframe,        BakerTargetGroup::DiagnosticMasks,       "UV Wireframe",          "Edge triangle overlay",false },
 }};
 
 constexpr std::array<BakerStudyDescriptor, 5u> BakerStudyEntries {{
@@ -86,16 +89,16 @@ constexpr std::array<BakerStudyDescriptor, 5u> BakerStudyEntries {{
 #endif
 }
 
-[[nodiscard]] StudyGeometryKind ToStudyKind(BakerStudyShape Shape) noexcept
+[[nodiscard]] StudyGeometryCategory ToStudyKind(BakerStudyShape Shape) noexcept
 {
     switch (Shape)
     {
-        case BakerStudyShape::UtahTeapot: return StudyGeometryKind::UtahTeapot;
-        case BakerStudyShape::ShaderBall: return StudyGeometryKind::ShaderBall;
-        case BakerStudyShape::ChamferBox: return StudyGeometryKind::ChamferBox;
-        case BakerStudyShape::UvSphere:   return StudyGeometryKind::UvSphere;
-        case BakerStudyShape::TorusKnot:  return StudyGeometryKind::TorusKnot;
-        default:                          return StudyGeometryKind::UtahTeapot;
+        case BakerStudyShape::UtahTeapot: return StudyGeometryCategory::UtahTeapot;
+        case BakerStudyShape::ShaderBall: return StudyGeometryCategory::ShaderBall;
+        case BakerStudyShape::ChamferBox: return StudyGeometryCategory::ChamferBox;
+        case BakerStudyShape::UvSphere:   return StudyGeometryCategory::UvSphere;
+        case BakerStudyShape::TorusKnot:  return StudyGeometryCategory::TorusKnot;
+        default:                          return StudyGeometryCategory::UtahTeapot;
     }
 }
 
@@ -143,6 +146,7 @@ void BakingWorkspaceSession::AttachExternalVulkanDevice(
         GpuStorage = std::make_unique<BakingGpuEngineStorage>();
     }
     GpuStorage->Rasterizer.TeardownRasterizer();
+    GpuStorage->SdfBaker.TeardownSdfBaker();
     GpuStorage->Baker.TeardownBaker();
     GpuStorage->OwnedDevice.reset();
     GpuStorage->ActiveDevice      = ExternalDevice;
@@ -172,7 +176,8 @@ bool BakingWorkspaceSession::EnsureGpuEngineReady()
 
     if (!GpuStorage->Baker.Ready())
     {
-        if (!GpuStorage->Baker.InitializeBaker(GpuStorage->ActiveDevice, GpuStorage->ShaderDirectory))
+        if (!GpuStorage->Baker.InitializeBaker(GpuStorage->ActiveDevice, GpuStorage->ShaderDirectory) ||
+            !GpuStorage->SdfBaker.InitializeSdfBaker(GpuStorage->ActiveDevice, GpuStorage->ShaderDirectory))
         {
             ProgressStatus      = "Shader compile/load failed";
             DeviceIndicatorText = "Baker Init Error";
@@ -481,7 +486,7 @@ void BakingWorkspaceSession::ExecuteBakeSimulation() noexcept
         VolSpec.SectionSizePx          = 512u;
         VolSpec.PreferComputeBvh4      = PreferCompute;
 
-        const BakeCompletionSummary VolRes = GpuStorage->Baker.ExecuteVolumeSdfBake(VolSpec);
+        const BakeCompletionSummary VolRes = GpuStorage->SdfBaker.ExecuteVolumeSdfBake(GpuStorage->Baker.InspectAccel(), GpuStorage->Baker.InspectActiveStudy(), VolSpec);
         if (!VolRes.VolumeSucceeded)
         {
             BakingActive   = false;
@@ -524,7 +529,7 @@ void BakingWorkspaceSession::RefreshSdfSectionOnGpu() noexcept
     {
         return;
     }
-    (void)GpuStorage->Baker.UpdateSdfSectionPreview(
+    (void)GpuStorage->SdfBaker.UpdateSdfSectionPreview(
         static_cast<uint32_t>(SectionAxis),
         SectionDepthNormalized,
         SignedInteriorDistance,
@@ -594,8 +599,8 @@ bool BakingWorkspaceSession::QueryInspectedPlanarRgba8(
     }
     if (InspectedTarget == BakerTargetId::VolumeSdf)
     {
-        const auto& Sec = GpuStorage->Baker.InspectSdfSectionRgba8();
-        const uint32_t DimPx = GpuStorage->Baker.QuerySdfSectionSizePx();
+        const auto& Sec = GpuStorage->SdfBaker.InspectSdfSectionRgba8();
+        const uint32_t DimPx = GpuStorage->SdfBaker.QuerySdfSectionSizePx();
         if (DimPx == 0u || Sec.size() < static_cast<std::size_t>(DimPx) * DimPx * 4u)
         {
             return false;
@@ -696,7 +701,7 @@ bool BakingWorkspaceSession::ExportInspectedTargetPng(const std::filesystem::pat
     bool Ok = false;
     if (InspectedTarget == BakerTargetId::VolumeSdf)
     {
-        Ok = GpuStorage->Baker.ExportSdfSectionPng(OutPath);
+        Ok = GpuStorage->SdfBaker.ExportSdfSectionPng(OutPath);
     }
     else
     {
@@ -727,7 +732,7 @@ bool BakingWorkspaceSession::ExportVolumeSdfFvol(const std::filesystem::path& Ex
     {
         OutPath = DiscoverRepoRoot() / "EngineExports/Baking/BakedVolumeSdf.fvol";
     }
-    if (GpuStorage->Baker.ExportVolumeFvol(OutPath))
+    if (GpuStorage->SdfBaker.ExportVolumeFvol(OutPath))
     {
         LastExportedPath = OutPath.string();
         ProgressStatus   = "Exported " + OutPath.filename().string();
@@ -807,10 +812,10 @@ const char* BakingWorkspaceSession::QueryGroupHeading(BakerTargetGroup Group) no
 {
     switch (Group)
     {
-        case BakerTargetGroup::VolumeAndDistance: return "3D Volume & Distance Field";
+        case BakerTargetGroup::VolumeDistance: return "3D Volume & Distance Field";
         case BakerTargetGroup::Normals:           return "Normals & Vectors";
         case BakerTargetGroup::Surface:           return "Surface, Occlusion & Curvature";
-        case BakerTargetGroup::MasksAndIds:       return "Masks, Height & UV Layout";
+        case BakerTargetGroup::DiagnosticMasks:       return "Masks, Height & UV Layout";
         default:                                  return "Bake Targets";
     }
 }

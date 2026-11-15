@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                     PROCEDURALCHANNELBAKER.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                           PROCEDURALCHANNELBAKER.H
+============================================================================================================================================*/
 // 🧩 Deterministic tileable procedural normal, Toksvig-filtered roughness, & albedo mip-pyramid baker
 
 #pragma once
@@ -22,7 +22,7 @@ namespace Frontier::MaterialSpace
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class ProceduralPatternKind : uint8_t
+enum class ProceduralPatternCategory : uint8_t
 {
     BrushedAnisotropicGrooves = 0, // [-] - Directional machined metal micro-scratches
     PorousMineralAggregate    = 1, // [-] - Multi-octave cellular mineral pores & aggregate
@@ -58,7 +58,7 @@ struct BakedChannelPyramid
 //------------------------------------------------------------------------------------------------------------------------
 
 [[nodiscard]] BakedChannelPyramid BakeProceduralChannelPyramid(
-    ProceduralPatternKind Pattern,
+    ProceduralPatternCategory Pattern,
     uint32_t              BaseResolution,
     float                 BaseRoughness,
     float                 ReliefAmplitude = 1.0f,

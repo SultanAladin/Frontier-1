@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          CONFORMALUNWRAPSOLVER.H
+                                                           CONFORMALUNWRAPSOLVER.H
 ============================================================================================================================================*/
 // 🧩 Parallel multi-lane Harmonic / Cotangent Conformal UV Flattener executing across Threading::ExecutionChannels
 

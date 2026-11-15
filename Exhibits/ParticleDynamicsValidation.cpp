@@ -10,8 +10,8 @@
 #include "Engine/ParticleSpace/Dynamics/MolecularReactionDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/SpecialEffectsDynamics.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleExtension.h"
-#include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
+#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 #include "Engine/ParticleSpace/Simulation/ParticleMetricsCollector.h"
 
 #include <algorithm>
@@ -105,7 +105,7 @@ void RenderRigIntoTile(const ParticleRig& Rig, const ParticleDocument& Doc,
     SimRig.SlotCapacity = std::min<uint32_t>(Rig.SlotCapacity, 1200u);
     SimDoc.Rigs.push_back(SimRig);
 
-    ParticleExtension Ext {};
+    ParticleSimulationCoordinator Ext {};
     (void)Ext.Initialize(SimDoc);
     Ext.TriggerBurst(0u, std::min<uint32_t>(SimRig.SlotCapacity, 480u));
     for (uint32_t F = 0u; F < 75u; ++F)
@@ -123,7 +123,7 @@ void RenderRigIntoTile(const ParticleRig& Rig, const ParticleDocument& Doc,
     uint32_t AliveN = 0u;
     for (const auto& S : Slots)
     {
-        if (!IsParticleSlotAlive(S)) continue;
+        if (!QueryParticleSlotAlive(S)) continue;
         CxSum += S.PositionMeters[0];
         CySum += S.PositionMeters[1];
         CzSum += S.PositionMeters[2];
@@ -135,7 +135,7 @@ void RenderRigIntoTile(const ParticleRig& Rig, const ParticleDocument& Doc,
     float MaxR = 0.65f;
     for (const auto& S : Slots)
     {
-        if (!IsParticleSlotAlive(S)) continue;
+        if (!QueryParticleSlotAlive(S)) continue;
         const float Dx = S.PositionMeters[0] - MeanX;
         const float Dy = S.PositionMeters[1] - MeanY;
         const float Dz = S.PositionMeters[2] - MeanZ;
@@ -145,7 +145,7 @@ void RenderRigIntoTile(const ParticleRig& Rig, const ParticleDocument& Doc,
 
     for (const auto& S : Slots)
     {
-        if (!IsParticleSlotAlive(S)) continue;
+        if (!QueryParticleSlotAlive(S)) continue;
         const float X = S.PositionMeters[0] - MeanX;
         const float Y = S.PositionMeters[1] - MeanY;
         const float Z = S.PositionMeters[2] - MeanZ;
@@ -192,7 +192,7 @@ int main()
         Rig.Dynamics.Molecular = Mol;
         Doc.Rigs.push_back(Rig);
 
-        ParticleExtension Ext {};
+        ParticleSimulationCoordinator Ext {};
         (void)Ext.Initialize(Doc);
         Ext.TriggerBurst(0u, 280u);
         for (uint32_t F = 0u; F < 45u; ++F)
@@ -228,7 +228,7 @@ int main()
         Doc.Collider.BallCenterM[2] = 0.4f;
         Doc.Rigs[0].SlotCapacity    = std::min<uint32_t>(Doc.Rigs[0].SlotCapacity, 800u);
 
-        ParticleExtension Ext {};
+        ParticleSimulationCoordinator Ext {};
         (void)Ext.Initialize(Doc);
         Ext.TriggerBurst(0u, 320u);
         for (uint32_t F = 0u; F < 30u; ++F)
@@ -246,7 +246,7 @@ int main()
     {
         ParticleDocument WebDoc = InstantiateDocumentFromPresetId("spiderweb-orb");
         WebDoc.Rigs[0].SlotCapacity = 400u;
-        ParticleExtension Ext {};
+        ParticleSimulationCoordinator Ext {};
         (void)Ext.Initialize(WebDoc);
         Ext.TriggerBurst(0u, 220u);
         for (uint32_t F = 0u; F < 24u; ++F)
@@ -264,7 +264,7 @@ int main()
         Doc.Rigs[0].SlotCapacity = 256u;
         Doc.Rigs[0].Dynamics.Effector->Driver = static_cast<EffectorDriverCategory>(Drv);
         Doc.Rigs[0].Dynamics.Effector->PrimaryVolume.Shape = static_cast<EffectorVolumeShape>(Drv % 5u);
-        ParticleExtension Ext {};
+        ParticleSimulationCoordinator Ext {};
         (void)Ext.Initialize(Doc);
         Ext.TriggerBurst(0u, 160u);
         Ext.Tick(1.0 / 60.0);

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                   WORLDGIZMOOVERLAYRASTERIZATION.CPP
+                                                      WORLDGIZMOOVERLAYRASTERIZATION.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of WorldGizmoOverlayRasterization executing GizmoRasterization.slang on Vulkan 1.2/1.3 over TieredWorldRenderSequence
 
@@ -26,7 +26,7 @@ namespace
 struct alignas(16) GPUWorldGizmoUniformBlock
 {
     float    ViewProjection[4][4] {};
-    uint32_t HoverAndSpace[4]     {};
+    uint32_t HoverSpacePacked[4]     {};
     float    HeadlightDirection[4]{};
 };
 
@@ -64,15 +64,15 @@ void DestroyProgramUnit(VkDevice DeviceHandle, auto& Unit) noexcept
         vkDestroyDescriptorSetLayout(DeviceHandle, Unit.SlotLayout, nullptr);
         Unit.SlotLayout = VK_NULL_HANDLE;
     }
-    if (Unit.VertModule != VK_NULL_HANDLE)
+    if (Unit.VertexSpirvBinary != VK_NULL_HANDLE)
     {
-        vkDestroyShaderModule(DeviceHandle, Unit.VertModule, nullptr);
-        Unit.VertModule = VK_NULL_HANDLE;
+        vkDestroyShaderModule(DeviceHandle, Unit.VertexSpirvBinary, nullptr);
+        Unit.VertexSpirvBinary = VK_NULL_HANDLE;
     }
-    if (Unit.FragModule != VK_NULL_HANDLE)
+    if (Unit.FragmentSpirvBinary != VK_NULL_HANDLE)
     {
-        vkDestroyShaderModule(DeviceHandle, Unit.FragModule, nullptr);
-        Unit.FragModule = VK_NULL_HANDLE;
+        vkDestroyShaderModule(DeviceHandle, Unit.FragmentSpirvBinary, nullptr);
+        Unit.FragmentSpirvBinary = VK_NULL_HANDLE;
     }
 }
 
@@ -338,13 +338,13 @@ bool WorldGizmoOverlayRasterization::EnsureRenderTargets(uint32_t WidthPx, uint3
 bool WorldGizmoOverlayRasterization::ConstructGizmoProgram(
     const std::filesystem::path& VertSpirv,
     const std::filesystem::path& FragSpirv,
-    bool                         DepthTestAndWrite,
+    bool                         DepthTestWrite,
     GraphicsProgramUnit&         OutUnit)
 {
     VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
-    OutUnit.VertModule    = DeviceInterchange->LoadShaderBinary(VertSpirv);
-    OutUnit.FragModule    = DeviceInterchange->LoadShaderBinary(FragSpirv);
-    if (OutUnit.VertModule == VK_NULL_HANDLE || OutUnit.FragModule == VK_NULL_HANDLE)
+    OutUnit.VertexSpirvBinary    = DeviceInterchange->LoadShaderBinary(VertSpirv);
+    OutUnit.FragmentSpirvBinary    = DeviceInterchange->LoadShaderBinary(FragSpirv);
+    if (OutUnit.VertexSpirvBinary == VK_NULL_HANDLE || OutUnit.FragmentSpirvBinary == VK_NULL_HANDLE)
     {
         return false;
     }
@@ -374,11 +374,11 @@ bool WorldGizmoOverlayRasterization::ConstructGizmoProgram(
     std::array<VkPipelineShaderStageCreateInfo, 2u> ShaderStages {};
     ShaderStages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     ShaderStages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
-    ShaderStages[0].module = OutUnit.VertModule;
+    ShaderStages[0].module = OutUnit.VertexSpirvBinary;
     ShaderStages[0].pName  = "VertexEntry";
     ShaderStages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     ShaderStages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
-    ShaderStages[1].module = OutUnit.FragModule;
+    ShaderStages[1].module = OutUnit.FragmentSpirvBinary;
     ShaderStages[1].pName  = "FragmentEntry";
 
     VkPipelineVertexInputStateCreateInfo   VertexInput { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, nullptr, 0u, 0u, nullptr, 0u, nullptr };
@@ -398,8 +398,8 @@ bool WorldGizmoOverlayRasterization::ConstructGizmoProgram(
 
     VkPipelineDepthStencilStateCreateInfo DepthStencil {};
     DepthStencil.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    DepthStencil.depthTestEnable  = DepthTestAndWrite ? VK_TRUE : VK_FALSE;
-    DepthStencil.depthWriteEnable = DepthTestAndWrite ? VK_TRUE : VK_FALSE;
+    DepthStencil.depthTestEnable  = DepthTestWrite ? VK_TRUE : VK_FALSE;
+    DepthStencil.depthWriteEnable = DepthTestWrite ? VK_TRUE : VK_FALSE;
     DepthStencil.depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL;
 
     std::array<VkPipelineColorBlendAttachmentState, 2u> BlendAtts {};
@@ -476,7 +476,7 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
     OrderedVertices.reserve(RawVertices.size());
     for (std::size_t Tri = 0u; Tri + 2u < RawVertices.size(); Tri += 3u)
     {
-        if (RawVertices[Tri].PositionAndAlpha.W >= 0.95f)
+        if (RawVertices[Tri].PositionAlpha.W >= 0.95f)
         {
             OrderedVertices.push_back(RawVertices[Tri]);
             OrderedVertices.push_back(RawVertices[Tri + 1u]);
@@ -486,7 +486,7 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
     const uint32_t OpaqueVertexCount = static_cast<uint32_t>(OrderedVertices.size());
     for (std::size_t Tri = 0u; Tri + 2u < RawVertices.size(); Tri += 3u)
     {
-        if (RawVertices[Tri].PositionAndAlpha.W < 0.95f)
+        if (RawVertices[Tri].PositionAlpha.W < 0.95f)
         {
             OrderedVertices.push_back(RawVertices[Tri]);
             OrderedVertices.push_back(RawVertices[Tri + 1u]);
@@ -528,9 +528,9 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
         std::max(0.05f, Camera.NearClipMeters),
         std::max(10.0f, Camera.FarClipMeters));
     std::memcpy(Uniforms.ViewProjection, Clip.Rows, sizeof(Clip.Rows));
-    Uniforms.HoverAndSpace[0] = static_cast<uint32_t>(Gizmo3D.QueryHoveredHandle());
-    Uniforms.HoverAndSpace[1] = static_cast<uint32_t>(Gizmo3D.QueryActiveHandle());
-    Uniforms.HoverAndSpace[2] = 0u;
+    Uniforms.HoverSpacePacked[0] = static_cast<uint32_t>(Gizmo3D.QueryHoveredHandle());
+    Uniforms.HoverSpacePacked[1] = static_cast<uint32_t>(Gizmo3D.QueryActiveHandle());
+    Uniforms.HoverSpacePacked[2] = 0u;
     const Mathematics::Axis3D KeyLight = Mathematics::NormalizeAxis(
         Right * 0.38f + Up * 0.45f - Fwd * 0.85f,
         { 0.45f, 0.72f, 0.52f });

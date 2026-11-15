@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           RELEASEORIGINTYPES.H
+                                                             RELEASEORIGINTYPES.H
 ============================================================================================================================================*/
 // 🧩 Modular typed particle release-origin geometry descriptors (analytic, structural, 17 surface anchors, 10 firework patterns)
 

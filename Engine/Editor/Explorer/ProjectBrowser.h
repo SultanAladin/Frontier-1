@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                              PROJECTBROWSER.H
+                                                               PROJECTBROWSER.H
 ============================================================================================================================================*/
 // 🧩 Native C++20 Project Browser built strictly on PixelSpace, Engine/Components/Controls, TieredWorldRenderSequence, & ProjectGenerator
 
@@ -80,7 +80,7 @@ struct BrowserCollectionEntry
 {
     std::string                   Identifier      {};
     std::string                   Title           {};
-    std::string                   Extension       {};
+    std::string                   Suffix       {};
     BrowserEntryCategory          Category        = BrowserEntryCategory::Project;
     std::string                   SummaryCaption  {};
     std::string                   Description     {};

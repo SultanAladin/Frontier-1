@@ -1,7 +1,7 @@
-//==========================================================================================================================================
-//                                                    DYNAMICMATERIALRESOLVE.SLANG
-//==========================================================================================================================================
-// GPU Direct Studio OpenPBR (No GI) compute shader resolving all 13 modular dynamic materials with 10-lobe physics & thin-film optics
+/*============================================================================================================================================
+                                                         DYNAMICMATERIALRESOLVE.SLANG
+============================================================================================================================================*/
+// 🧩 GPU Direct Studio OpenPBR (No GI) compute shader resolving all 13 modular dynamic materials with 10-lobe physics & thin-film optics
 
 import ThinFilmInterference;
 import ProceduralFieldGenerators;

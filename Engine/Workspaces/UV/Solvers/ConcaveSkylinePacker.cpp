@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         CONCAVESKYLINEPACKER.CPP
+                                                           CONCAVESKYLINEPACKER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ConcaveSkylinePacker using ConcaveSkylineCompute.comp.spv + ExecutionChannels parallel island profiles
 
@@ -514,7 +514,7 @@ ConcavePackReport ConcaveSkylinePacker::PackConcaveSkyline(
             (void)Encoder.EncodeComputeDispatch(Cmd, SkylineProgramHandle, Slots, (static_cast<uint32_t>(Queries.size()) + 63u) / 64u);
             const uint64_t Signal = DeviceInterchange->DispatchCommandBufferAsync(Cmd);
             (void)DeviceInterchange->AwaitTimelineTick(Signal);
-            vkFreeCommandBuffers(DeviceInterchange->AccessDevice(), DeviceInterchange->AccessCommandAllocator(), 1u, &Cmd);
+            DeviceInterchange->FreeCommandBuffer(Cmd);
 
             const auto* Scores = static_cast<const GPUSkylineScoreResult*>(ScoreBuf.HostAddress);
             for (std::size_t QIdx = 0u; QIdx < Queries.size(); ++QIdx)

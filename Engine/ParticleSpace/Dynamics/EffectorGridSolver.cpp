@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          EFFECTORGRIDSOLVER.CPP
+                                                            EFFECTORGRIDSOLVER.CPP
 ============================================================================================================================================*/
 // 🧩 Exact C++ MoGraph & Effector Grid solver (Kinetic Hex Torus Matrix, Obsidian Control Vehicle Halftone & Tiles, Height Cubes, Placeable 3D Effectors)
 
@@ -163,7 +163,7 @@ EvaluatedAnchorPoint EvaluateGridSurfaceAnchor(
 
     switch (Spec.HostSurface)
     {
-        case EffectorHostSurfaceKind::ObsidianSphere:
+        case EffectorHostSurfaceCategory::ObsidianSphere:
         {
             const float Nf  = static_cast<float>(std::max(1u, Capacity));
             const float K   = static_cast<float>(SlotIdx) + 0.5f;
@@ -183,7 +183,7 @@ EvaluatedAnchorPoint EvaluateGridSurfaceAnchor(
             Out.LocalElevY    = Ny;
             break;
         }
-        case EffectorHostSurfaceKind::TorusRing:
+        case EffectorHostSurfaceCategory::TorusRing:
         {
             // Staggered brick-offset hexagonal torus parameterization (exact HTML shaders.js surf == 4)
             const uint32_t UCols = std::max(8u, Cols);
@@ -215,7 +215,7 @@ EvaluatedAnchorPoint EvaluateGridSurfaceAnchor(
             Out.LocalElevY    = Ny;
             break;
         }
-        case EffectorHostSurfaceKind::ControlVehicle:
+        case EffectorHostSurfaceCategory::ControlVehicle:
         {
             const float Scale = std::max(0.20f, Spec.OriginExtentM[0]);
             const float Yaw   = Spec.VehicleYawDegrees * DegToRad;
@@ -242,7 +242,7 @@ EvaluatedAnchorPoint EvaluateGridSurfaceAnchor(
             }
             break;
         }
-        case EffectorHostSurfaceKind::CubicVolume:
+        case EffectorHostSurfaceCategory::CubicVolume:
         {
             const uint32_t Side = std::max(3u, static_cast<uint32_t>(std::round(std::cbrt(static_cast<float>(std::max(1u, Capacity))))));
             const uint32_t Gx   = SlotIdx % Side;
@@ -258,7 +258,7 @@ EvaluatedAnchorPoint EvaluateGridSurfaceAnchor(
             Out.LocalElevY    = Fv;
             break;
         }
-        case EffectorHostSurfaceKind::WallPlaneXY:
+        case EffectorHostSurfaceCategory::WallPlaneXY:
         {
             const uint32_t Ci = SlotIdx % Cols;
             const uint32_t Ri = (SlotIdx / Cols) % Rows;
@@ -271,7 +271,7 @@ EvaluatedAnchorPoint EvaluateGridSurfaceAnchor(
             Out.LocalElevY    = V01;
             break;
         }
-        case EffectorHostSurfaceKind::FloorPlaneXZ:
+        case EffectorHostSurfaceCategory::FloorPlaneXZ:
         default:
         {
             const uint32_t Ci = SlotIdx % Cols;
@@ -433,7 +433,7 @@ void StepEffectorGridEnsemble(
     // Cache deterministic Controlled Integrator surface anchors when HostSurface == ControlVehicle
     std::vector<ParticleAnchorSample> LocalVehicleAnchors;
     std::span<const ParticleAnchorSample> ActiveAnchors = OptionalRigAnchors;
-    if (Spec.HostSurface == EffectorHostSurfaceKind::ControlVehicle)
+    if (Spec.HostSurface == EffectorHostSurfaceCategory::ControlVehicle)
     {
         static uint32_t CachedCount = 0u;
         static bool     CachedWheels = true;
@@ -483,7 +483,7 @@ void StepEffectorGridEnsemble(
             case EffectorPrimitiveShape::AutoHalftoneUpperTiles:
             {
                 // Lower flanks & fenders = crisp halftone circles; upper hood / cabin / roof = raised bevel tiles!
-                const bool IsUpperTile = (Spec.HostSurface == EffectorHostSurfaceKind::ControlVehicle)
+                const bool IsUpperTile = (Spec.HostSurface == EffectorHostSurfaceCategory::ControlVehicle)
                     ? (Anchor.LocalElevY > 0.04f && Anchor.UnitNormal[1] > 0.36f)
                     : (Anchor.LocalElevY > 0.28f);
                 if (IsUpperTile)

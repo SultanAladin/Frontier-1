@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                LINEARCOSINELIGHTINTEGRATION.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                       LINEARCOSINELIGHTINTEGRATION.CPP
+============================================================================================================================================*/
 // 🧩 Visibility-Gated Clipped-Polygon Linearly Transformed Cosine (LTC) Quad Area Lights + 2-Scale (0.25 m / 2.2 m) Chassis & Specular AO
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -135,9 +135,9 @@ Mathematics::LinearRGB LinearCosineLightIntegration::EvaluateVisibilityGatedQuad
         AreaLight.CenterWorld - HalfU + HalfV,
     }};
 
-    // Visibility-gate the analytic LTC integral using 5 deterministic strata across the quad (center + 4 inset sub-quadrants)
+    // Visibility-gate the analytic LTC integral using 5 deterministic stratified cells across the quad (center + 4 inset sub-quadrants)
     // so polygonal area lights NEVER bleed through walls, plinths, or occluders!
-    const std::array<Mathematics::Axis2D, 5u> StrataUv {{
+    const std::array<Mathematics::Axis2D, 5u> StratifiedCellUv {{
         {  0.0f,  0.0f },
         { -0.6f, -0.6f },
         {  0.6f, -0.6f },
@@ -146,8 +146,8 @@ Mathematics::LinearRGB LinearCosineLightIntegration::EvaluateVisibilityGatedQuad
     }};
 
     const Mathematics::Axis3D RayOrigin = HitSample.WorldPosition + HitSample.TangentFrame.NormalZ * 2.0e-3f;
-    uint32_t UnoccludedStrata = 0u;
-    for (const auto& Uv : StrataUv)
+    uint32_t UnoccludedCellCount = 0u;
+    for (const auto& Uv : StratifiedCellUv)
     {
         const Mathematics::Axis3D TargetPt = AreaLight.CenterWorld + HalfU * Uv.X + HalfV * Uv.Y;
         const Mathematics::Axis3D ToLight  = TargetPt - RayOrigin;
@@ -163,15 +163,15 @@ Mathematics::LinearRGB LinearCosineLightIntegration::EvaluateVisibilityGatedQuad
         VisRay.MaximumDistance = std::max(2.0e-3f, Dist - 4.0e-3f);
         if (!SceneTree.QueryRayOccluded(VisRay))
         {
-            ++UnoccludedStrata;
+            ++UnoccludedCellCount;
         }
     }
 
-    if (UnoccludedStrata == 0u)
+    if (UnoccludedCellCount == 0u)
     {
         return { 0.0f, 0.0f, 0.0f };
     }
-    const float VisibilityGate = static_cast<float>(UnoccludedStrata) / static_cast<float>(StrataUv.size());
+    const float VisibilityGate = static_cast<float>(UnoccludedCellCount) / static_cast<float>(StratifiedCellUv.size());
 
     // Construct view-aligned orthonormal LTC shading frame (T1 in view-normal plane, T2 = N x T1, N = NormalZ)
     const Mathematics::Axis3D Nrm = HitSample.TangentFrame.NormalZ;

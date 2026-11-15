@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       IMGUIOVERLAYRASTERIZATION.CPP
+                                                        IMGUIOVERLAYRASTERIZATION.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ImGuiOverlayRasterization driving ImGuiOverlayRasterization.slang over OS VkSwapchainKHR or headless targets
 
@@ -361,12 +361,12 @@ bool ImGuiOverlayRasterization::ConstructRasterResources(VkFormat TargetFormat, 
         return false;
     }
 
-    const VkShaderModule VertMod = BoundDevice->LoadShaderBinary(ShaderDirectory / "ImGuiOverlayRasterization.vert.spv");
-    const VkShaderModule FragMod = BoundDevice->LoadShaderBinary(ShaderDirectory / "ImGuiOverlayRasterization.frag.spv");
-    if (VertMod == VK_NULL_HANDLE || FragMod == VK_NULL_HANDLE)
+    const VkShaderModule VertexSpirvBinary = BoundDevice->LoadShaderBinary(ShaderDirectory / "ImGuiOverlayRasterization.vert.spv");
+    const VkShaderModule FragmentSpirvBinary = BoundDevice->LoadShaderBinary(ShaderDirectory / "ImGuiOverlayRasterization.frag.spv");
+    if (VertexSpirvBinary == VK_NULL_HANDLE || FragmentSpirvBinary == VK_NULL_HANDLE)
     {
-        if (VertMod != VK_NULL_HANDLE) vkDestroyShaderModule(LogicalVk, VertMod, nullptr);
-        if (FragMod != VK_NULL_HANDLE) vkDestroyShaderModule(LogicalVk, FragMod, nullptr);
+        if (VertexSpirvBinary != VK_NULL_HANDLE) vkDestroyShaderModule(LogicalVk, VertexSpirvBinary, nullptr);
+        if (FragmentSpirvBinary != VK_NULL_HANDLE) vkDestroyShaderModule(LogicalVk, FragmentSpirvBinary, nullptr);
         if (OptionalDiagnostic != nullptr)
         {
             *OptionalDiagnostic = "Missing ImGuiOverlayRasterization.{vert,frag}.spv shader files.";
@@ -377,12 +377,12 @@ bool ImGuiOverlayRasterization::ConstructRasterResources(VkFormat TargetFormat, 
     VkPipelineShaderStageCreateInfo ShaderUnits[2]{};
     ShaderUnits[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     ShaderUnits[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
-    ShaderUnits[0].module = VertMod;
+    ShaderUnits[0].module = VertexSpirvBinary;
     ShaderUnits[0].pName  = "VertexEntry";
 
     ShaderUnits[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     ShaderUnits[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
-    ShaderUnits[1].module = FragMod;
+    ShaderUnits[1].module = FragmentSpirvBinary;
     ShaderUnits[1].pName  = "FragmentEntry";
 
     VkPipelineVertexInputStateCreateInfo   VertexInput {};
@@ -446,8 +446,8 @@ bool ImGuiOverlayRasterization::ConstructRasterResources(VkFormat TargetFormat, 
     UnitCreate.renderPass          = OverlayRenderUnit;
 
     const VkResult CreateStatus = vkCreateGraphicsPipelines(LogicalVk, VK_NULL_HANDLE, 1u, &UnitCreate, nullptr, &OverlayRasterUnit);
-    vkDestroyShaderModule(LogicalVk, VertMod, nullptr);
-    vkDestroyShaderModule(LogicalVk, FragMod, nullptr);
+    vkDestroyShaderModule(LogicalVk, VertexSpirvBinary, nullptr);
+    vkDestroyShaderModule(LogicalVk, FragmentSpirvBinary, nullptr);
     if (CreateStatus != VK_SUCCESS)
     {
         return false;

@@ -77,7 +77,7 @@ struct AuthoredSceneAsset
     float                                   ExposureGain)
 {
     std::vector<uint8_t> Out(static_cast<std::size_t>(Width) * Height * 4u, 255u);
-    const auto ToneAndSrgb = [](float V) noexcept -> uint8_t
+    const auto EncodeToneMappedSrgb = [](float V) noexcept -> uint8_t
     {
         const float X = std::max(0.0f, V);
         const float T = std::clamp((X * (2.51f * X + 0.03f)) / (X * (2.43f * X + 0.59f) + 0.14f), 0.0f, 1.0f);
@@ -86,9 +86,9 @@ struct AuthoredSceneAsset
     };
     for (std::size_t I = 0u; I < static_cast<std::size_t>(Width) * Height; ++I)
     {
-        Out[I * 4u + 0u] = ToneAndSrgb(HdrBuffer[I].R * ExposureGain);
-        Out[I * 4u + 1u] = ToneAndSrgb(HdrBuffer[I].G * ExposureGain);
-        Out[I * 4u + 2u] = ToneAndSrgb(HdrBuffer[I].B * ExposureGain);
+        Out[I * 4u + 0u] = EncodeToneMappedSrgb(HdrBuffer[I].R * ExposureGain);
+        Out[I * 4u + 1u] = EncodeToneMappedSrgb(HdrBuffer[I].G * ExposureGain);
+        Out[I * 4u + 2u] = EncodeToneMappedSrgb(HdrBuffer[I].B * ExposureGain);
         Out[I * 4u + 3u] = 255u;
     }
     return Out;
@@ -120,7 +120,7 @@ int main()
         WhiteCfg.BouncePasses      = 1u;
 
         GeometricRaster::IrradianceLatticeSequence WhiteLattice {};
-        WhiteLattice.BuildAndPropagateRtxLattice(
+        WhiteLattice.PropagateRtxIrradianceLattice(
             WhiteCfg, EmptyBvh, DummySlabs, OffSun, { 0.50f, 0.50f, 0.50f });
 
         const auto SampleUp   = WhiteLattice.SampleChebyshevIrradianceOverPi({ 0.0f, 0.0f, 0.0f }, { 0.0f,  0.0f, 1.0f }, { 0.0f, -1.0f, 0.0f });
@@ -166,7 +166,7 @@ int main()
         VaultCfg.BouncePasses      = 2u;
 
         GeometricRaster::IrradianceLatticeSequence VaultLattice {};
-        VaultLattice.BuildAndPropagateRtxLattice(
+        VaultLattice.PropagateRtxIrradianceLattice(
             VaultCfg, VaultBvh, VaultSlabs, BrightSun, { 2.0f, 2.0f, 2.0f });
 
         const auto InsideDark = VaultLattice.SampleChebyshevIrradianceOverPi(
@@ -345,9 +345,9 @@ int main()
     const auto GtxFrame = WorldRenderer.RenderWorldFrame(
         GeometricRaster::WorldRenderTier::Tier1GtxCalibrated, Camera, Camera, WorldScene);
 
-    Score.Verify(RtxFrame.SpecularAndGlass.RaytracedHitPixelCount > 1500u,
+    Score.Verify(RtxFrame.SpecularGlass.RaytracedHitPixelCount > 1500u,
                  "Tier 2 RTX VNDF Specular & Glass sequence traces > 1,500 secondary scene reflection hits");
-    Score.Verify(GtxFrame.SpecularAndGlass.ScreenSpaceHitCount > 40u,
+    Score.Verify(GtxFrame.SpecularGlass.ScreenSpaceHitCount > 40u,
                  "Tier 1 GTX Hi-Z Screen-Space Reflection raymarch resolves > 40 on-screen mirror hits");
 
     bool AllFinite = true;
@@ -375,14 +375,14 @@ int main()
     //====================================================================================================================
     const auto IsolatedGiRgba = ConvertHdrToDisplayRgba(ViewW, ViewH, RtxFrame.IndirectDiffuseHdr, 3.0f);
 
-    std::vector<Mathematics::LinearRGB> SpecAndGlassCombined(static_cast<std::size_t>(ViewW) * ViewH);
-    for (std::size_t I = 0u; I < SpecAndGlassCombined.size(); ++I)
+    std::vector<Mathematics::LinearRGB> SpecularGlassCombined(static_cast<std::size_t>(ViewW) * ViewH);
+    for (std::size_t I = 0u; I < SpecularGlassCombined.size(); ++I)
     {
-        const auto& G = RtxFrame.SpecularAndGlass.RefractedGlassHdr[I];
+        const auto& G = RtxFrame.SpecularGlass.RefractedGlassHdr[I];
         const bool GlassPx = (G.R > 0.0f || G.G > 0.0f || G.B > 0.0f);
-        SpecAndGlassCombined[I] = GlassPx ? G : RtxFrame.SpecularAndGlass.IndirectSpecularHdr[I];
+        SpecularGlassCombined[I] = GlassPx ? G : RtxFrame.SpecularGlass.IndirectSpecularHdr[I];
     }
-    const auto IsolatedSpecGlassRgba = ConvertHdrToDisplayRgba(ViewW, ViewH, SpecAndGlassCombined, 1.35f);
+    const auto IsolatedSpecGlassRgba = ConvertHdrToDisplayRgba(ViewW, ViewH, SpecularGlassCombined, 1.35f);
 
     //====================================================================================================================
     // 5. VERIFY LIVE VIEWPORTPROJECTIONPANE INTEGRATION + RASTERIZE 1440 x 900 4-PANEL SHOWCASE EXHIBIT
@@ -445,8 +445,8 @@ int main()
     char HeaderMetrics[256] {};
     std::snprintf(HeaderMetrics, sizeof(HeaderMetrics),
                   "168 Octahedral GI Cells (16x16 Chebyshev Depth) | Sealed Wall Leak: <0.3%% | RTX Reflection Hits: %u | GTX SSR Hits: %u | %u/%u Passed",
-                  RtxFrame.SpecularAndGlass.RaytracedHitPixelCount,
-                  GtxFrame.SpecularAndGlass.ScreenSpaceHitCount,
+                  RtxFrame.SpecularGlass.RaytracedHitPixelCount,
+                  GtxFrame.SpecularGlass.ScreenSpaceHitCount,
                   Score.Passed + 1u, Score.Passed + Score.Failed + 1u);
     Draw->AddText(ImVec2(36.0f, 48.0f), TextCol, HeaderMetrics);
 

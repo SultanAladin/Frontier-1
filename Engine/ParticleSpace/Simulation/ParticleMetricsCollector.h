@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      PARTICLEMETRICSCOLLECTOR.H
+                                                          PARTICLEMETRICSCOLLECTOR.H
 ============================================================================================================================================*/
 // 🧩 Real-time telemetry & physics health collector for ParticleSpace rigs (live count, speed, kinetic energy, AABB & species counters)
 

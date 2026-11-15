@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                         BAKINGINSPECTORPANE.H
-==========================================================================================================================================*/
-// 🎛️ Right-column inspector for Baking Studio: KPI trio, bake progress box, surface ray settings, 3D volume SDF & export bridge.
+/*============================================================================================================================================
+                                                            BAKINGINSPECTORPANE.H
+============================================================================================================================================*/
+// 🧩 Right-column inspector for Baking Studio: KPI trio, bake progress box, surface ray settings, 3D volume SDF & export bridge.
 
 #pragma once
 
@@ -24,7 +24,7 @@ public:
 
     void AttachSession(BakingWorkspaceSession* TargetSession) noexcept;
     void PresentInImGuiPane(double DeltaSeconds, float ScaleFactor);
-    void SetScrollOffsetY(float OffsetY) noexcept { ScrollOffsetY = OffsetY; }
+    void AssignScrollOffsetY(float OffsetY) noexcept { ScrollOffsetY = OffsetY; }
 
     void Render(
         PixelSpace&             Surface,

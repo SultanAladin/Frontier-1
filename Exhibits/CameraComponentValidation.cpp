@@ -196,7 +196,7 @@ int main()
 #if !FRONTIER_PROFILE_SHIPPING
     Cam.AccessConfiguration().Diagnostics.ShowFrustumOutline = true;
     Cam.AccessConfiguration().Diagnostics.ShowFocusPlane     = true;
-    Cam.AccessConfiguration().Diagnostics.CompositionGuide   = CompositionGuideStyle::CrosshairAndThirds;
+    Cam.AccessConfiguration().Diagnostics.CompositionGuide   = CompositionGuideStyle::CrosshairThirds;
     const auto FrustumDiag = Cam.ConstructFrustumDiagnostics(16.0f / 9.0f);
     const auto FocusDiag   = Cam.ConstructFocusPlaneDiagnostics(16.0f / 9.0f);
     const auto GuideSegs   = Cam.BuildCompositionDiagnostics();

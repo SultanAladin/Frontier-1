@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       PARTICLEFORCECOUPLING.SLANG
+                                                         PARTICLEFORCECOUPLING.SLANG
 ============================================================================================================================================*/
 // 🧩 Dedicated Vulkan 1.3 compute pass coupling ForceFieldEvaluationShared 19 ForceModel laws & ambient wind onto live ParticleSlots
 

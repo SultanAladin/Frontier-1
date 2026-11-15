@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                              HARDWAREVISIBILITYRASTERIZATION.SLANG
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                    HARDWAREVISIBILITYRASTERIZATION.SLANG
+============================================================================================================================================*/
 // 🧩 >=4 px Indirect Hardware Visibility Rasterizer emitting exact 32-bit VisibilityToken32 + Reversed-Z hardware depth
 
 module HardwareVisibilityRasterization;
@@ -33,7 +33,7 @@ struct GpuClusterTriangle
     uint   PackedNormal1;
     uint   PackedNormal2;
     uint   PackedTangent0;
-    uint   PackedMaterialAndTangentSign;
+    uint   PackedMaterialTangentSign;
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<VisibilityCameraConstants> CamConsts;

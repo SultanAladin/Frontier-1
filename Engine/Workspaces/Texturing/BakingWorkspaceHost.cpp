@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                         BAKINGWORKSPACEHOST.CPP
-==========================================================================================================================================*/
-// 🏗️ Implementation of BakingWorkspaceHost 3-column studio dock (Bake Targets | Baking Viewport | Baker Parameters).
+/*============================================================================================================================================
+                                                           BAKINGWORKSPACEHOST.CPP
+============================================================================================================================================*/
+// 🧩 Implementation of BakingWorkspaceHost 3-column studio dock (Bake Targets | Baking Viewport | Baker Parameters).
 
 #include "Engine/Workspaces/Texturing/BakingWorkspaceHost.h"
 

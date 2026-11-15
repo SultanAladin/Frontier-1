@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            WORKSPACEREGISTRY.H
+                                                             WORKSPACEREGISTRY.H
 ============================================================================================================================================*/
 // 🧩 Generation-checked open .Space document registry and Option 2A case-insensitive container router
 
@@ -34,7 +34,7 @@ public:
     WorkspaceRegistry() = default;
 
     [[nodiscard]] WorkspaceToken CreateDocument(
-        Codecs::SpaceExtensionCategory Category,
+        Codecs::SpaceSuffixCategory Category,
         std::string_view               Title,
         const std::filesystem::path&   InitialPath                 = {},
         std::size_t                    DocumentRevisionBudgetBytes = Constants::DefaultDocumentRevisionBudgetBytes);

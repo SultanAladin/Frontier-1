@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          WORKSPACECONFIGURATION.H
+                                                           WORKSPACECONFIGURATION.H
 ============================================================================================================================================*/
 // 🧩 Session layout, default UDIM tile resolution, default-off seam overlay policy, and 3D/2D TransformGizmo snap configuration
 

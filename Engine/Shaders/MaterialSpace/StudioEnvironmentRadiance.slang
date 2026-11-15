@@ -1,7 +1,7 @@
-//==========================================================================================================================================
-//                                                  STUDIOENVIRONMENTRADIANCE.SLANG
-//==========================================================================================================================================
-// Calibrated GI-free studio prefiltered IBL with rectangular softbox panels & ACES filmic sRGB8 encoding for Direct Studio OpenPBR preview
+/*============================================================================================================================================
+                                                       STUDIOENVIRONMENTRADIANCE.SLANG
+============================================================================================================================================*/
+// 🧩 Calibrated GI-free studio prefiltered IBL with rectangular softbox panels & ACES filmic sRGB8 encoding for Direct Studio OpenPBR preview
 
 module StudioEnvironmentRadiance;
 

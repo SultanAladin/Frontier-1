@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         FIELDLATTICECOMPUTE.SLANG
+                                                          FIELDLATTICECOMPUTE.SLANG
 ============================================================================================================================================*/
 // 🧩 Runtime & Editor Vulkan 1.3 Compute shader evaluating cascaded 3D velocity + curl lattice voxels from ForceSourceShaderEntry SSBO
 
@@ -15,7 +15,7 @@
 
 struct LatticePushConstants
 {
-    float4 FocusOriginAndHalfExtent; // xyz = FocusOrigin [m], w = WorldHalfExtent [m]
+    float4 FocusOriginHalfExtent; // xyz = FocusOrigin [m], w = WorldHalfExtent [m]
     uint   GridResolution;           // [count] - Voxels per axis (N x N x N)
     uint   SourceCount;              // [count] - Active ForceSource count
     float  TimeSeconds;              // [s]     - Elapsed simulation time
@@ -50,7 +50,7 @@ void ComputeFieldLatticeVoxel(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     float Div = float(max(1u, Res - 1u));
     float3 Normalized = (float3(DispatchThreadID) / Div) * 2.0 - 1.0;
-    float3 WorldPos   = Push.FocusOriginAndHalfExtent.xyz + Normalized * Push.FocusOriginAndHalfExtent.w;
+    float3 WorldPos   = Push.FocusOriginHalfExtent.xyz + Normalized * Push.FocusOriginHalfExtent.w;
 
     float3 Combined = VfEvaluateCombinedVelocity(SourceBuffer, WaypointBuffer, Push.SourceCount, WorldPos, float3(0.0, 0.0, 0.0));
 

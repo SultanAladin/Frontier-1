@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         GEOMETRYINTERCHANGE.CPP
+                                                           GEOMETRYINTERCHANGE.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of Wavefront .obj & glTF 2.0 .gltf multi-UDIM PolygonNetwork + FacePartitionRegister import and export
 

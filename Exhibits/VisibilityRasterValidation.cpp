@@ -152,14 +152,14 @@ int main()
     // 3. MULTI-MATERIAL CLUSTER PYRAMID SCENE: TWO-PHASE HI-Z CULL, HW/SW SPLIT, 2-LAYER GLASS PEEL, & ANALYTIC RESOLVE
     //====================================================================================================================
     MaterialSpace::CompactMaterialRegister MatReg {};
-    const uint16_t SlotConcrete = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::RoughPorousConcrete));
-    const uint16_t SlotCarpaint = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::MetallicCarPaintGlinty));
-    const uint16_t SlotGold     = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::BrushedGoldAlloy));
-    const uint16_t SlotTitanium = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::HeatBluedTitaniumIridescent));
-    const uint16_t SlotJade     = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::SubsurfaceJadeOrganic));
-    const uint16_t SlotVelvet   = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::AlcantaraVelvetSheen));
-    const uint16_t SlotRotor    = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::WetPorousGlowingBrakeRotor));
-    const uint16_t SlotGlass    = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::AbbeCrownGlassDispersion));
+    const uint16_t SlotConcrete = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::RoughPorousConcrete));
+    const uint16_t SlotCarpaint = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::MetallicCarPaintGlinty));
+    const uint16_t SlotGold     = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::BrushedGoldAlloy));
+    const uint16_t SlotTitanium = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::HeatBluedTitaniumIridescent));
+    const uint16_t SlotJade     = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::SubsurfaceJadeOrganic));
+    const uint16_t SlotVelvet   = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::AlcantaraVelvetSheen));
+    const uint16_t SlotRotor    = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::WetPorousGlowingBrakeRotor));
+    const uint16_t SlotGlass    = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::AbbeCrownGlassDispersion));
 
     const auto HeroSpherePyr = BuildSpherePyramidAsset(0.68f, 48u, 28u);
     const auto GlassDomePyr  = BuildSpherePyramidAsset(0.74f, 44u, 24u);
@@ -214,7 +214,7 @@ int main()
     }
     const auto Frame0Cull = GeometricRaster::ClusterCullEncoder::EncodePhaseOneVisibility(PrevCamera, Frame0Instances, nullptr);
     GeometricRaster::VisibilityBufferTargets Frame0Vis {};
-    Frame0Vis.AllocateAndClear(ViewW, ViewH);
+    Frame0Vis.AllocateClearedImage(ViewW, ViewH);
     GeometricRaster::VisibilityClusterRasterization::RasterizeOpaqueClusters(
         PrevCamera, Frame0Instances, Frame0Cull.HardwareClusterBatches, Frame0Cull.MicroSoftwareClusters, Frame0Vis);
 
@@ -239,7 +239,7 @@ int main()
                  "ClusterCullEncoder splits >=4 px HardwareClusterBatches and <4 px MicroSoftwareClusters");
 
     GeometricRaster::VisibilityBufferTargets CurVis {};
-    CurVis.AllocateAndClear(ViewW, ViewH);
+    CurVis.AllocateClearedImage(ViewW, ViewH);
     GeometricRaster::VisibilityClusterRasterization::RasterizeOpaqueClusters(
         CurCamera, SceneInstances, CurCull.HardwareClusterBatches, CurCull.MicroSoftwareClusters, CurVis);
 
@@ -252,7 +252,7 @@ int main()
                  "Two-Phase Hi-Z ResolvePhaseTwoDisocclusions rescues newly revealed clusters with zero frame-lag popping");
 
     // Re-rasterize with rescued clusters + execute 2-Layer Abbe Crown Glass Depth Peel!
-    CurVis.AllocateAndClear(ViewW, ViewH);
+    CurVis.AllocateClearedImage(ViewW, ViewH);
     GeometricRaster::VisibilityClusterRasterization::RasterizeOpaqueClusters(
         CurCamera, SceneInstances, CurCull.HardwareClusterBatches, CurCull.MicroSoftwareClusters, CurVis);
     GeometricRaster::VisibilityClusterRasterization::RasterizeTwoLayerGlassPeel(

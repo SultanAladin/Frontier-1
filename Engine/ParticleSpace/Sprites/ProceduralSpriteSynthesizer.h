@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                    PROCEDURALSPRITESYNTHESIZER.H
+                                                        PROCEDURALSPRITESYNTHESIZER.H
 ============================================================================================================================================*/
-// ❄️ Deterministic multi-channel procedural sprite, crystal, wing, and dissolve-mask synthesizer shared by ParticleSpace and Pattern Studio
+// 🧩 Deterministic multi-channel procedural sprite, crystal, wing, and dissolve-mask synthesizer shared by ParticleSpace and Pattern Studio
 
 #pragma once
 
@@ -44,7 +44,7 @@ enum class ProceduralSpriteArchetype : uint8_t
     PyroEmberSpark           = 9,
     LiquidRainDrop           = 10,
     LiquidSoapBubble         = 11,
-    BotanicalMorphoButterfly = 12,
+    BotanicalAzureButterfly = 12,
     BotanicalSakuraPetal     = 13,
     TechHexEnergyShield      = 14,
     TechVoronoiDissolveMask  = 15,

@@ -99,7 +99,7 @@ static_assert(
     Frontier::Lifecycle::SuspendableParticipant<RecordedParticipant>,
     "RecordedParticipant must satisfy the SuspendableParticipant C++20 concept.");
 
-[[nodiscard]] bool ValidateDeterministicSequenceAndRollback()
+[[nodiscard]] bool ValidateDeterministicSequenceRollback()
 {
     using Frontier::Lifecycle::LifecyclePhase;
     using Frontier::Lifecycle::LifecycleSequence;
@@ -341,7 +341,7 @@ static_assert(
 //------------------------------------------------------------------------------------------------------------------------
 
 #if FRONTIER_EDITOR_ENABLED
-[[nodiscard]] bool ValidateEditorLifecycleAndRenderExhibit(const std::filesystem::path& OutputDirectory)
+[[nodiscard]] bool ValidateEditorLifecycleExhibit(const std::filesystem::path& OutputDirectory)
 {
     using Frontier::Lifecycle::EditorLifecycle;
     using Frontier::Lifecycle::EditorStartupConfiguration;
@@ -448,7 +448,7 @@ static_assert(
 
 int main()
 {
-    if (!ValidateDeterministicSequenceAndRollback())
+    if (!ValidateDeterministicSequenceRollback())
     {
         return 1;
     }
@@ -463,7 +463,7 @@ int main()
 
 #if FRONTIER_EDITOR_ENABLED
     const auto OutputDir = Frontier::Exhibits::ResolveRepositoryRootPath() / "Exhibits/Images/Lifecycle";
-    if (!ValidateEditorLifecycleAndRenderExhibit(OutputDir))
+    if (!ValidateEditorLifecycleExhibit(OutputDir))
     {
         return 1;
     }

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          FRONTIEREDITORLAUNCH.CPP
+                                                           FRONTIEREDITORLAUNCH.CPP
 ============================================================================================================================================*/
 // 🧩 Multi-workspace FrontierEditor desktop executable launching EditorLifecycle, ControlCentre & ContentBrowser (standalone from FrontierUV)
 

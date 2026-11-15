@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           UVPANEAPPEARANCE.H
+                                                              UVPANEAPPEARANCE.H
 ============================================================================================================================================*/
 // 🧩 Shared ControlCentre ThemeRepository color set synchronization, typography controls & crisp vector vector icons for UVOutliner, UVViewport & UVInspector
 

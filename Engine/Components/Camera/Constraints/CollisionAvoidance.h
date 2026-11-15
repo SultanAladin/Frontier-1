@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          COLLISIONAVOIDANCE.H
+                                                             COLLISIONAVOIDANCE.H
 ============================================================================================================================================*/
 // 🧩 Analytic swept-sphere ray pullback from Pivot toward DesiredEye preventing camera occlusion inside scene obstacles
 

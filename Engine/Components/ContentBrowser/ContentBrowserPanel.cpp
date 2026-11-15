@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          CONTENTBROWSERPANEL.CPP
+                                                           CONTENTBROWSERPANEL.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ContentBrowser drawer, pre-baked ThumbnailSheet rendering, SSD/HDD streaming, workspace masks & ThemeRepository styling
 
@@ -25,12 +25,12 @@ namespace Frontier
 namespace
 {
 
-[[nodiscard]] float TargetRatioForExtent(ContentShelfExtent Extent, bool ColourAndMatCapLocked) noexcept
+[[nodiscard]] float TargetRatioForExtent(ContentShelfExtent Extent, bool ColourMatCapLocked) noexcept
 {
     switch (Extent)
     {
         case ContentShelfExtent::Closed:     return 0.0f;
-        case ContentShelfExtent::SplitHalf:  return ColourAndMatCapLocked ? 0.38f : 0.48f;
+        case ContentShelfExtent::SplitHalf:  return ColourMatCapLocked ? 0.38f : 0.48f;
         case ContentShelfExtent::FullHeight: return 0.94f;
     }
     return 0.0f;
@@ -344,7 +344,7 @@ ContentBrowserPanel::~ContentBrowserPanel() noexcept
 void ContentBrowserPanel::ConfigureShelfExtent(ContentShelfExtent RequestedExtent, bool Immediate) noexcept
 {
     TargetExtent       = RequestedExtent;
-    const double Ratio = static_cast<double>(TargetRatioForExtent(RequestedExtent, ColourAndMatCapLocked));
+    const double Ratio = static_cast<double>(TargetRatioForExtent(RequestedExtent, ColourMatCapLocked));
     if (Immediate)
     {
         ShelfSpring.Axis(ShelfAxis).ConfigurePosition(Ratio);
@@ -357,18 +357,18 @@ void ContentBrowserPanel::ConfigureShelfExtent(ContentShelfExtent RequestedExten
 
 bool ContentBrowserPanel::QueryCategoryAllowedInMode(ContentCategory Candidate) const noexcept
 {
-    if (ColourAndMatCapLocked)
+    if (ColourMatCapLocked)
     {
         return Candidate == ContentCategory::Colours || Candidate == ContentCategory::Materials;
     }
     return ThumbnailSheetRepository::QueryCategoryPermitted(ActiveWorkspace, Candidate);
 }
 
-void ContentBrowserPanel::ConfigureColourAndMatCapLock(bool Locked) noexcept
+void ContentBrowserPanel::ConfigureColourMatCapLock(bool Locked) noexcept
 {
-    ColourAndMatCapLocked = Locked;
+    ColourMatCapLocked = Locked;
     RepositoryScrollY     = 0.0f;
-    if (ColourAndMatCapLocked)
+    if (ColourMatCapLocked)
     {
         if (Category != ContentCategory::Colours && Category != ContentCategory::Materials)
         {
@@ -388,7 +388,7 @@ void ContentBrowserPanel::ConfigureColourAndMatCapLock(bool Locked) noexcept
     }
     if (TargetExtent != ContentShelfExtent::Closed)
     {
-        const double UpdatedRatio = static_cast<double>(TargetRatioForExtent(TargetExtent, ColourAndMatCapLocked));
+        const double UpdatedRatio = static_cast<double>(TargetRatioForExtent(TargetExtent, ColourMatCapLocked));
         if (std::abs(ShelfSpring.Axis(ShelfAxis).Target - UpdatedRatio) > 1.0e-4)
         {
             ShelfSpring.Axis(ShelfAxis).Depart(UpdatedRatio);
@@ -404,15 +404,15 @@ void ContentBrowserPanel::ConfigureWorkspaceDomain(WorkspaceCategory Workspace) 
     // 🔴 Snap active category if newly entered workspace blocks previous selection
     if (!QueryCategoryAllowedInMode(Category))
     {
-        Category = ColourAndMatCapLocked ? ContentCategory::Colours : ContentCategory::All;
+        Category = ColourMatCapLocked ? ContentCategory::Colours : ContentCategory::All;
     }
 
     const auto ValidEntries = ThumbnailRepository.QueryFilteredEntries(
         ActiveWorkspace,
-        ColourAndMatCapLocked ? ContentCategory::Materials : ContentCategory::All,
+        ColourMatCapLocked ? ContentCategory::Materials : ContentCategory::All,
         OriginScope,
         SearchBuffer,
-        ColourAndMatCapLocked);
+        ColourMatCapLocked);
     if (!ValidEntries.empty() && std::find(ValidEntries.begin(), ValidEntries.end(), SelectedContentIndex) == ValidEntries.end())
     {
         SelectedContentIndex = ValidEntries.front();
@@ -423,7 +423,7 @@ bool ContentBrowserPanel::ActivateCategory(ContentCategory NextCategory) noexcep
 {
     if (!QueryCategoryAllowedInMode(NextCategory))
     {
-        StatusMessage = ColourAndMatCapLocked
+        StatusMessage = ColourMatCapLocked
                             ? (std::string("UV Palette Drawer exposes Colours & MatCap Materials only (blocked: ") +
                                ThumbnailSheetRepository::QueryCategoryTitle(NextCategory) + ")")
                             : (std::string("Blocked in ") + ThumbnailSheetRepository::QueryWorkspaceTitle(ActiveWorkspace) +
@@ -437,7 +437,7 @@ bool ContentBrowserPanel::ActivateCategory(ContentCategory NextCategory) noexcep
         Category,
         OriginScope,
         SearchBuffer,
-        ColourAndMatCapLocked);
+        ColourMatCapLocked);
     if (!ValidEntries.empty())
     {
         SelectedContentIndex = ValidEntries.front();
@@ -535,7 +535,7 @@ ImportIntakeResult ContentBrowserPanel::IntakeExternalAssetDrop(const std::files
                 ColourScope       = ColourCollectionScope::Ramps;
             }
         }
-        else if (ColourCodex::MatchesSwatchExtension(DroppedSourceFile))
+        else if (ColourSwatchBrowserView::MatchesSwatchSuffix(DroppedSourceFile))
         {
             if (CodexLibrary.LoadSingleSwatchFile(DroppedSourceFile, Diagnostic, &AddedColourIdx))
             {
@@ -807,7 +807,7 @@ bool ContentBrowserPanel::ApplyColourIndexToSlot(
     std::string_view TargetSlotIdentifier,
     Point2D          DropLogicalPos)
 {
-    const ColourCodexEntry* Entry = CodexLibrary.QueryEntryAt(ColourIndex);
+    const ColourSwatchEntry* Entry = CodexLibrary.QueryEntryAt(ColourIndex);
     if (Entry == nullptr)
     {
         return false;
@@ -984,7 +984,7 @@ ContentBrowserReading ContentBrowserPanel::InspectReading() const noexcept
     Reading.DraggingColourActive     = DraggingColour;
     Reading.DraggingColourRampActive = DraggingColourRamp;
     Reading.DraggingMatCapActive     = DraggingMatCap;
-    if (const ColourCodexEntry* Selected = CodexLibrary.QueryEntryAt(SelectedColourIndex))
+    if (const ColourSwatchEntry* Selected = CodexLibrary.QueryEntryAt(SelectedColourIndex))
     {
         Reading.SelectedColourAlias = Selected->AliasName;
     }
@@ -1169,12 +1169,12 @@ Rectangle2D ContentBrowserPanel::QueryRenderedContentCellBounds(std::size_t Entr
     return {};
 }
 
-ColourCodex& ContentBrowserPanel::AccessColourCodex() noexcept
+ColourSwatchBrowserView& ContentBrowserPanel::AccessColourSwatchBrowser() noexcept
 {
     return CodexLibrary;
 }
 
-const ColourCodex& ContentBrowserPanel::QueryColourCodex() const noexcept
+const ColourSwatchBrowserView& ContentBrowserPanel::QueryColourSwatchBrowser() const noexcept
 {
     return CodexLibrary;
 }
@@ -1536,7 +1536,7 @@ void ContentBrowserPanel::RenderColoursRepository(
     const auto AllEntries = CodexLibrary.QueryEntries();
     for (const std::size_t Idx : CodexLibrary.QueryFilteredIndices(ColourFilter, ColourSort, SearchBuffer))
     {
-        const ColourCodexEntry& Entry = AllEntries[Idx];
+        const ColourSwatchEntry& Entry = AllEntries[Idx];
         if (OriginScope == ContentOriginFilter::Engine && !Entry.ReadOnlyEngineEntry)
         {
             continue;
@@ -1567,7 +1567,7 @@ void ContentBrowserPanel::RenderColoursRepository(
         for (std::size_t OrderIdx = 0u; OrderIdx < FilteredIndices.size(); ++OrderIdx)
         {
             const std::size_t       EntryIdx = FilteredIndices[OrderIdx];
-            const ColourCodexEntry& Entry    = AllEntries[EntryIdx];
+            const ColourSwatchEntry& Entry    = AllEntries[EntryIdx];
             const float             LeftX    = RepositoryArea.X + std::floor(static_cast<float>(OrderIdx) * StripW);
             const float             RightX   = (OrderIdx + 1u == FilteredIndices.size())
                                                    ? RepositoryArea.Right()
@@ -1575,7 +1575,7 @@ void ContentBrowserPanel::RenderColoursRepository(
             const Rectangle2D StripRect{ LeftX, RepositoryArea.Y, std::max(1.0f, RightX - LeftX), RepositoryArea.Height };
 
             Canvas.FillRectangle(StripRect, Entry.FillColour, 0.0f);
-            const ColourContrastInk Ink = ColourCodex::QueryContrastInk(Entry.FillColour);
+            const ColourContrastInk Ink = ColourSwatchBrowserView::QueryContrastInk(Entry.FillColour);
 
             if (EntryIdx == SelectedColourIndex)
             {
@@ -1608,9 +1608,9 @@ void ContentBrowserPanel::RenderColoursRepository(
             }
         }
 
-        const ColourContrastInk FirstInk = ColourCodex::QueryContrastInk(AllEntries[FilteredIndices.front()].FillColour);
+        const ColourContrastInk FirstInk = ColourSwatchBrowserView::QueryContrastInk(AllEntries[FilteredIndices.front()].FillColour);
         const char* BannerTitle =
-            (ColourFilter == ColourFilterGroup::All) ? "ColourCodex Spectrum" : ColourCodex::QueryFilterGroupTitle(ColourFilter);
+            (ColourFilter == ColourFilterGroup::All) ? "ColourSwatchBrowserView Spectrum" : ColourSwatchBrowserView::QueryFilterGroupTitle(ColourFilter);
         Canvas.Text({ RepositoryArea.X + 24.0f, RepositoryArea.Y + 22.0f }, 14.0f, FirstInk.PrimaryInk, BannerTitle);
 
         Canvas.PopClip();
@@ -1635,7 +1635,7 @@ void ContentBrowserPanel::RenderColoursRepository(
         for (std::size_t OrderIdx = 0u; OrderIdx < FilteredIndices.size(); ++OrderIdx)
         {
             const std::size_t       EntryIdx = FilteredIndices[OrderIdx];
-            const ColourCodexEntry& Entry    = AllEntries[EntryIdx];
+            const ColourSwatchEntry& Entry    = AllEntries[EntryIdx];
             const float             BandY    = RepositoryArea.Y + static_cast<float>(OrderIdx) * BandH - RepositoryScrollY;
             const Rectangle2D       BandRect{ RepositoryArea.X, BandY, RepositoryArea.Width, std::ceil(BandH) };
             if (BandRect.Bottom() < RepositoryArea.Y || BandRect.Y > RepositoryArea.Bottom())
@@ -1644,7 +1644,7 @@ void ContentBrowserPanel::RenderColoursRepository(
             }
 
             Canvas.FillRectangle(BandRect, Entry.FillColour, 0.0f);
-            const ColourContrastInk Ink = ColourCodex::QueryContrastInk(Entry.FillColour);
+            const ColourContrastInk Ink = ColourSwatchBrowserView::QueryContrastInk(Entry.FillColour);
 
             if (EntryIdx == SelectedColourIndex)
             {
@@ -1657,7 +1657,7 @@ void ContentBrowserPanel::RenderColoursRepository(
                 Ink.PrimaryInk,
                 Entry.AliasName.c_str());
 
-            const std::string RightSpec = Entry.HexCompact + "   RGB " + ColourCodex::FormatRgbTriplet(Entry.FillColour);
+            const std::string RightSpec = Entry.HexCompact + "   RGB " + ColourSwatchBrowserView::FormatRgbTriplet(Entry.FillColour);
             Canvas.TextRightAligned(
                 { BandRect.X, BandRect.Y, BandRect.Width - 20.0f, BandRect.Height },
                 12.5f,
@@ -1715,7 +1715,7 @@ void ContentBrowserPanel::RenderColoursRepository(
     for (std::size_t OrderIdx = 0u; OrderIdx < FilteredIndices.size(); ++OrderIdx)
     {
         const std::size_t       EntryIdx = FilteredIndices[OrderIdx];
-        const ColourCodexEntry& Entry    = AllEntries[EntryIdx];
+        const ColourSwatchEntry& Entry    = AllEntries[EntryIdx];
         const uint32_t          Col      = static_cast<uint32_t>(OrderIdx) % Columns;
         const uint32_t          Row      = static_cast<uint32_t>(OrderIdx) / Columns;
         const Rectangle2D       CellRect{
@@ -1773,7 +1773,7 @@ void ContentBrowserPanel::RenderNonColoursRepository(
     LastContentHitboxes.clear();
 
     const std::vector<std::size_t> Filtered =
-        ThumbnailRepository.QueryFilteredEntries(ActiveWorkspace, Category, OriginScope, SearchBuffer, ColourAndMatCapLocked);
+        ThumbnailRepository.QueryFilteredEntries(ActiveWorkspace, Category, OriginScope, SearchBuffer, ColourMatCapLocked);
     LastVisibleCount = static_cast<uint32_t>(Filtered.size());
 
     if (Filtered.empty())
@@ -2061,12 +2061,12 @@ void ContentBrowserPanel::RenderContentDetailsSidebar(
     }
     else if (Category == ContentCategory::Colours)
     {
-        if (const ColourCodexEntry* Entry = CodexLibrary.QueryEntryAt(SelectedColourIndex))
+        if (const ColourSwatchEntry* Entry = CodexLibrary.QueryEntryAt(SelectedColourIndex))
         {
             const float             TileH  = std::clamp(Inner.Height - 96.0f, 84.0f, 268.0f);
             const float             TileR  = std::min(20.0f, SectionRadius + 4.0f);
             const Rectangle2D       TileRect{ Inner.X, Inner.Y + 20.0f, Inner.Width, TileH };
-            const ColourContrastInk Ink = ColourCodex::QueryContrastInk(Entry->FillColour);
+            const ColourContrastInk Ink = ColourSwatchBrowserView::QueryContrastInk(Entry->FillColour);
 
             Canvas.FillRectangle(TileRect, Entry->FillColour, TileR);
             Canvas.StrokeRectangle(TileRect, Ink.BorderInk, TileR, 1.0f);
@@ -2080,8 +2080,8 @@ void ContentBrowserPanel::RenderContentDetailsSidebar(
             }
 
             const std::string HexLine  = "HEX: " + Entry->HexUpper;
-            const std::string RgbLine  = "RGB: " + ColourCodex::FormatRgbTriplet(Entry->FillColour);
-            const std::string CmykLine = "CMYK: " + ColourCodex::FormatCmykQuadruplet(Entry->CmykPercent);
+            const std::string RgbLine  = "RGB: " + ColourSwatchBrowserView::FormatRgbTriplet(Entry->FillColour);
+            const std::string CmykLine = "CMYK: " + ColourSwatchBrowserView::FormatCmykQuadruplet(Entry->CmykPercent);
 
             if (TileH >= 130.0f)
             {
@@ -2091,7 +2091,7 @@ void ContentBrowserPanel::RenderContentDetailsSidebar(
             }
             else
             {
-                const std::string CompactSpec = Entry->HexUpper + " · RGB " + ColourCodex::FormatRgbTriplet(Entry->FillColour);
+                const std::string CompactSpec = Entry->HexUpper + " · RGB " + ColourSwatchBrowserView::FormatRgbTriplet(Entry->FillColour);
                 Canvas.Text({ TileRect.X + 16.0f, TileRect.Bottom() - 26.0f }, 10.5f, Ink.PrimaryInk, CompactSpec.c_str());
             }
 
@@ -2430,7 +2430,7 @@ void ContentBrowserPanel::RenderWithInput(
     {
         ConfigureShelfExtent(
             TargetExtent == ContentShelfExtent::Closed
-                ? (ColourAndMatCapLocked ? ContentShelfExtent::SplitHalf : ContentShelfExtent::FullHeight)
+                ? (ColourMatCapLocked ? ContentShelfExtent::SplitHalf : ContentShelfExtent::FullHeight)
                 : ContentShelfExtent::Closed,
             false);
     }
@@ -2442,7 +2442,7 @@ void ContentBrowserPanel::RenderWithInput(
         LastSearchBounds = {};
         if (DraggingColour)
         {
-            if (const ColourCodexEntry* Dragged = CodexLibrary.QueryEntryAt(DraggedColourIndex))
+            if (const ColourSwatchEntry* Dragged = CodexLibrary.QueryEntryAt(DraggedColourIndex))
             {
                 Canvas.FillCircle(Cursor, 14.0f, Dragged->FillColour);
                 Canvas.StrokeCircle(Cursor, 14.0f, AppearanceColors.Text.ToRgba8(), 2.0f);
@@ -2505,14 +2505,14 @@ void ContentBrowserPanel::RenderWithInput(
     const ColorRgba EyebrowInk = BlendRgba(AppearanceColors.Accent, AppearanceColors.TextDim, 0.45f);
 
     // 1. Header Bar + Workspace Domain Switcher (or locked Colours & MatCap indicator) + SSD/HDD Tier, Import Destination, + Colour, Split, Close
-    const std::string Eyebrow = ColourAndMatCapLocked
+    const std::string Eyebrow = ColourMatCapLocked
                                     ? std::string("UV PALETTE  ·  COLOURS & MATCAP MATERIALS")
                                     : (std::string("CONTENT / LIBRARY  ·  ") +
                                        ThumbnailSheetRepository::QueryWorkspaceTitle(ActiveWorkspace) + " WORKSPACE");
     Canvas.Text({ DrawerRect.X + PadX, CurY }, 8.5f, EyebrowInk, Eyebrow.c_str());
     Canvas.Text({ DrawerRect.X + PadX, CurY + 12.0f }, 21.0f, AppearanceColors.Text.ToRgba8(), "ContentBrowser");
 
-    if (ColourAndMatCapLocked)
+    if (ColourMatCapLocked)
     {
         const Rectangle2D LockBadge{ DrawerRect.X + 240.0f, CurY + 6.0f, 168.0f, 25.0f };
         Canvas.FillRectangle(LockBadge, BlendRgba(AppearanceColors.Selected, AppearanceColors.Accent, 0.20f), 12.5f);
@@ -2888,8 +2888,8 @@ void ContentBrowserPanel::RenderWithInput(
         {
             constexpr std::array<ColourFilterGroup, 8> FilterOrder = {{
                 ColourFilterGroup::All,
-                ColourFilterGroup::AugustBeigeAndBrown,
-                ColourFilterGroup::RedsAndBerries,
+                ColourFilterGroup::WarmAmberNeutrals,
+                ColourFilterGroup::CrimsonBerries,
                 ColourFilterGroup::Yellows,
                 ColourFilterGroup::Greens,
                 ColourFilterGroup::Blues,
@@ -2899,7 +2899,7 @@ void ContentBrowserPanel::RenderWithInput(
 
             for (const ColourFilterGroup Group : FilterOrder)
             {
-                const char* Title = ColourCodex::QueryFilterGroupTitle(Group);
+                const char* Title = ColourSwatchBrowserView::QueryFilterGroupTitle(Group);
                 const float BtnW  = std::max(54.0f, Canvas.MeasureTextWidth(9.5f, Title) + 22.0f);
                 if (ChipX + BtnW > DrawerRect.Right() - PadX - 122.0f)
                 {
@@ -2912,7 +2912,7 @@ void ContentBrowserPanel::RenderWithInput(
                 ChipX += BtnW + 6.0f;
             }
 
-            const std::string SortCaption = std::string("Sort: ") + ColourCodex::QuerySortOrderTitle(ColourSort);
+            const std::string SortCaption = std::string("Sort: ") + ColourSwatchBrowserView::QuerySortOrderTitle(ColourSort);
             if (ConstructCapsuleControl(
                     Canvas,
                     { DrawerRect.Right() - PadX - 114.0f, CurY, 114.0f, 25.0f },
@@ -2980,7 +2980,7 @@ void ContentBrowserPanel::RenderWithInput(
             Canvas.FillRectangle({ CatBtn.X, CatBtn.Y, 3.0f, CatBtn.Height }, RailAccentBar, 0.0f);
         }
         const char* RailLabel =
-            (ColourAndMatCapLocked && CategoryOption == ContentCategory::Materials)
+            (ColourMatCapLocked && CategoryOption == ContentCategory::Materials)
                 ? "MatCap Materials"
                 : ThumbnailSheetRepository::QueryCategoryTitle(CategoryOption);
         Canvas.Text(
@@ -3025,7 +3025,7 @@ void ContentBrowserPanel::RenderWithInput(
             ? (ColourScope == ColourCollectionScope::Ramps
                    ? "Drag any .ColourRamp gradient card onto a Colour Ramp slot or double-click to apply"
                    : "Drag any .ColourSwatch circle/strip onto a colour slot or double-click to apply")
-            : (ColourAndMatCapLocked
+            : (ColourMatCapLocked
                    ? "Drag any Studio MatCap sphere onto Shading MatCap grid or 3D Viewport, or double-click to apply"
                    : "Pre-baked 1024x1024 ThumbnailSheet + 64B ContentIndex · Drop external files to quarantine & import");
     Canvas.Text(
@@ -3043,7 +3043,7 @@ void ContentBrowserPanel::RenderWithInput(
     // Cursor-tracked colour, colour ramp or Studio MatCap marker while dragging onto workspace targets
     if (DraggingColour)
     {
-        if (const ColourCodexEntry* Dragged = CodexLibrary.QueryEntryAt(DraggedColourIndex))
+        if (const ColourSwatchEntry* Dragged = CodexLibrary.QueryEntryAt(DraggedColourIndex))
         {
             Canvas.FillCircle(Cursor, 15.0f, Dragged->FillColour);
             Canvas.StrokeCircle(Cursor, 15.0f, AppearanceColors.Text.ToRgba8(), 2.0f);

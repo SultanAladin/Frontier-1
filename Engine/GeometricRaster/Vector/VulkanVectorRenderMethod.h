@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      VULKANVECTORRENDERMETHOD.H
+                                                          VULKANVECTORRENDERMETHOD.H
 ============================================================================================================================================*/
 // 🧩 Symbolic ThorVG 1.0.0 frontend (SVG DOM + TTF/OTF typography + cubic path flattening) implementing tvg::RenderMethod for Vulkan .slang GPU rasterization.
 

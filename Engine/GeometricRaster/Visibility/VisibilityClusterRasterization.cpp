@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                VISIBILITYCLUSTERRASTERIZATION.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                      VISIBILITYCLUSTERRASTERIZATION.CPP
+============================================================================================================================================*/
 // 🧩 Exact 64-Bit (8 B/px) Visibility Buffer (ReversedDepth32 | VisibilityToken32) + HW/SW Micro-Raster + 2-Layer Glass Depth Peel
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -62,7 +62,7 @@ UnpackedVisibilityHit UnpackVisibilityPayload64(uint64_t PackedWord) noexcept
     return Hit;
 }
 
-void VisibilityBufferTargets::AllocateAndClear(uint32_t ViewportWidth, uint32_t ViewportHeight)
+void VisibilityBufferTargets::AllocateClearedImage(uint32_t ViewportWidth, uint32_t ViewportHeight)
 {
     WidthPx  = std::max(1u, ViewportWidth);
     HeightPx = std::max(1u, ViewportHeight);

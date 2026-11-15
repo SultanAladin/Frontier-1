@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                     CONTROLVEHICLESURFACELOADER.CPP
+                                                       CONTROLVEHICLESURFACELOADER.CPP
 ============================================================================================================================================*/
 // 🧩 Decodes Frontier's Controlled Integrator (ControlVehicle) FCT1 binary surfaces (Body + 4 Rims + 4 Tyres) and samples blue-noise anchors
 
@@ -38,15 +38,15 @@ struct AxleMountSpec
 {
     float                  MountAuthored[3];
     bool                   MirrorLateral;
-    ControlVehiclePartKind RimKind;
-    ControlVehiclePartKind TyreKind;
+    ControlVehiclePartCategory RimCategory;
+    ControlVehiclePartCategory TyreCategory;
 };
 
 constexpr std::array<AxleMountSpec, 4u> VehicleAxleMounts = {{
-    { {  1.7274f,  1.0475f, 0.0914f }, false, ControlVehiclePartKind::RimFrontLeft,  ControlVehiclePartKind::TyreFrontLeft  },
-    { {  1.7274f, -1.0475f, 0.0914f }, true,  ControlVehiclePartKind::RimFrontRight, ControlVehiclePartKind::TyreFrontRight },
-    { { -1.6686f,  1.0475f, 0.0914f }, false, ControlVehiclePartKind::RimRearLeft,   ControlVehiclePartKind::TyreRearLeft   },
-    { { -1.6686f, -1.0475f, 0.0914f }, true,  ControlVehiclePartKind::RimRearRight,  ControlVehiclePartKind::TyreRearRight  },
+    { {  1.7274f,  1.0475f, 0.0914f }, false, ControlVehiclePartCategory::RimFrontLeft,  ControlVehiclePartCategory::TyreFrontLeft  },
+    { {  1.7274f, -1.0475f, 0.0914f }, true,  ControlVehiclePartCategory::RimFrontRight, ControlVehiclePartCategory::TyreFrontRight },
+    { { -1.6686f,  1.0475f, 0.0914f }, false, ControlVehiclePartCategory::RimRearLeft,   ControlVehiclePartCategory::TyreRearLeft   },
+    { { -1.6686f, -1.0475f, 0.0914f }, true,  ControlVehiclePartCategory::RimRearRight,  ControlVehiclePartCategory::TyreRearRight  },
 }};
 
 struct DecodedFct1Stream
@@ -257,7 +257,7 @@ void AppendStreamInstance(
     const float                          MountAuthored[3],
     bool                                 MirrorLateral,
     float                                Scale,
-    ControlVehiclePartKind               PartKind)
+    ControlVehiclePartCategory               PartCategory)
 {
     if (!Stream.Valid) return;
 
@@ -270,7 +270,7 @@ void AppendStreamInstance(
     {
         ControlVehicleTriangle Tri {};
         Tri.MaterialSlotCode = Stream.SlotCodes[F];
-        Tri.PartKind         = PartKind;
+        Tri.PartCategory         = PartCategory;
 
         float* OutPos[3]  = { Tri.PositionA, Tri.PositionB, Tri.PositionC };
         float* OutNorm[3] = { Tri.NormalA,   Tri.NormalB,   Tri.NormalC   };
@@ -338,25 +338,25 @@ ControlVehicleGeometrySet ConstructControlVehicleGeometrySet()
 {
     ControlVehicleGeometrySet Result {};
 
-    const auto BodyStream = DecodeFct1BinaryFile(LocateVehicleBinaryFile("ControlVehicleBody.facet"));
-    const auto RimStream  = DecodeFct1BinaryFile(LocateVehicleBinaryFile("ControlVehicleRim.facet"));
-    const auto TyreStream = DecodeFct1BinaryFile(LocateVehicleBinaryFile("ControlVehicleTyre.facet"));
+    const auto BodyStream = DecodeFct1BinaryFile(LocateVehicleBinaryFile("ControlVehicleBody.face"));
+    const auto RimStream  = DecodeFct1BinaryFile(LocateVehicleBinaryFile("ControlVehicleRim.face"));
+    const auto TyreStream = DecodeFct1BinaryFile(LocateVehicleBinaryFile("ControlVehicleTyre.face"));
 
     if (BodyStream.Valid)
     {
         constexpr float ZeroMount[3] = { 0.0f, 0.0f, 0.0f };
-        AppendStreamInstance(Result.Triangles, BodyStream, ZeroMount, false, 1.0f, ControlVehiclePartKind::BodyChassis);
+        AppendStreamInstance(Result.Triangles, BodyStream, ZeroMount, false, 1.0f, ControlVehiclePartCategory::BodyChassis);
         Result.BodyTriCount = static_cast<uint32_t>(Result.Triangles.size());
 
         for (const auto& Axle : VehicleAxleMounts)
         {
             if (RimStream.Valid)
             {
-                AppendStreamInstance(Result.Triangles, RimStream, Axle.MountAuthored, Axle.MirrorLateral, RimToHubScale, Axle.RimKind);
+                AppendStreamInstance(Result.Triangles, RimStream, Axle.MountAuthored, Axle.MirrorLateral, RimToHubScale, Axle.RimCategory);
             }
             if (TyreStream.Valid)
             {
-                AppendStreamInstance(Result.Triangles, TyreStream, Axle.MountAuthored, Axle.MirrorLateral, 1.0f, Axle.TyreKind);
+                AppendStreamInstance(Result.Triangles, TyreStream, Axle.MountAuthored, Axle.MirrorLateral, 1.0f, Axle.TyreCategory);
             }
         }
         Result.LoadedFromDisk = true;
@@ -455,9 +455,9 @@ std::vector<ParticleAnchorSample> SampleControlVehicleAnchors(
     for (uint32_t I = 0u; I < Vehicle.Triangles.size(); ++I)
     {
         const auto& T = Vehicle.Triangles[I];
-        if (!IncludeWheels && T.PartKind != ControlVehiclePartKind::BodyChassis) continue;
+        if (!IncludeWheels && T.PartCategory != ControlVehiclePartCategory::BodyChassis) continue;
         // Skip front grille/fascia, taillight bar, and license plates so those automotive details gleam cleanly!
-        if (T.PartKind == ControlVehiclePartKind::BodyChassis &&
+        if (T.PartCategory == ControlVehiclePartCategory::BodyChassis &&
             (T.MaterialSlotCode == 12u || T.MaterialSlotCode == 13u || T.MaterialSlotCode == 14u || T.MaterialSlotCode == 15u))
         {
             continue;
@@ -469,7 +469,7 @@ std::vector<ParticleAnchorSample> SampleControlVehicleAnchors(
         {
             continue; // Exclude flat underside floor pan so 100% of anchors sculpt visible exterior panels
         }
-        if (T.PartKind != ControlVehiclePartKind::BodyChassis)
+        if (T.PartCategory != ControlVehiclePartCategory::BodyChassis)
         {
             Weight *= 0.32f;
         }

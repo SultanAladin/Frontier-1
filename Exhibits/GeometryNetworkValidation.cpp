@@ -63,7 +63,7 @@ struct PhaseOneTelemetry
 //                               SUITE 1: CONFIGURATION & AXIS COORDINATE VERIFICATION
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] bool ValidateConfigurationAndCoordinates()
+[[nodiscard]] bool ValidateConfigurationCoordinates()
 {
     using namespace Frontier::Configuration;
     using namespace Frontier::Mathematics;
@@ -141,7 +141,7 @@ struct PhaseOneTelemetry
 //                      SUITE 2: POLYGONNETWORK, GEOMETRYINSTANCE, LAYERS & .UVSPACE ROUND-TRIP
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] bool ValidateGeometrySpaceAndPresets(
+[[nodiscard]] bool ValidateGeometrySpacePresets(
     Frontier::GeometrySpace::ConstructedSampleAsset& OutAeroAsset,
     PhaseOneTelemetry&                               OutTelemetry)
 {
@@ -547,14 +547,14 @@ struct PhaseOneTelemetry
 
 int main()
 {
-    if (!ValidateConfigurationAndCoordinates())
+    if (!ValidateConfigurationCoordinates())
     {
         return 1;
     }
 
     Frontier::GeometrySpace::ConstructedSampleAsset AeroAsset {};
     PhaseOneTelemetry                               Telemetry {};
-    if (!ValidateGeometrySpaceAndPresets(AeroAsset, Telemetry))
+    if (!ValidateGeometrySpacePresets(AeroAsset, Telemetry))
     {
         return 1;
     }

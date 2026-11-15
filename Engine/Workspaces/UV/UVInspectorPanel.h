@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           UVINSPECTORPANEL.H
+                                                              UVINSPECTORPANEL.H
 ============================================================================================================================================*/
 // 🧩 5-tab UV Inspector pane matching Experimental/UVEditor pixel-for-pixel (Pack, Unwrap, UDIM, Shading, Check) with ThemeRepository styling
 

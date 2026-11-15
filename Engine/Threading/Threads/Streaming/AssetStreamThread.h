@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            ASSETSTREAMTHREAD.H
+                                                             ASSETSTREAMTHREAD.H
 ============================================================================================================================================*/
 // 🧩 Dual-path SSD random-access and HDD elevator-coalesced sequential streaming thread for .Space and ThumbnailSheet pages
 

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        DESKTOPWORKSPACELAUNCH.CPP
+                                                          DESKTOPWORKSPACELAUNCH.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of DesktopWorkspaceLaunch orchestrating GLFW 3.4, ImGuiOverlayRasterization, UVWorkspaceRasterizer & EditorLifecycle
 
@@ -165,7 +165,7 @@ DesktopResourcePaths ResolveDesktopResourcePaths(
     const std::filesystem::path& FallbackShaderDirectory)
 {
     std::vector<std::filesystem::path> SearchRoots {};
-    auto AddPathAndAncestors = [&](std::filesystem::path Path)
+    auto RegisterPathHierarchy = [&](std::filesystem::path Path)
     {
         if (Path.empty())
         {
@@ -196,10 +196,10 @@ DesktopResourcePaths ResolveDesktopResourcePaths(
         }
     };
 
-    AddPathAndAncestors(ExecutablePath);
-    AddPathAndAncestors(std::filesystem::current_path());
-    AddPathAndAncestors(FallbackRepositoryRoot);
-    AddPathAndAncestors(FallbackShaderDirectory);
+    RegisterPathHierarchy(ExecutablePath);
+    RegisterPathHierarchy(std::filesystem::current_path());
+    RegisterPathHierarchy(FallbackRepositoryRoot);
+    RegisterPathHierarchy(FallbackShaderDirectory);
 
     DesktopResourcePaths Resolved { FallbackRepositoryRoot, FallbackShaderDirectory };
     bool RepoLocated   = false;

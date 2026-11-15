@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                    COMPACTMATERIALREGISTER.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                         COMPACTMATERIALREGISTER.CPP
+============================================================================================================================================*/
 // 🧩 Implementation of IEEE-754 FP16 packing, 128-byte CompactMaterialEntry compilation, and wave-uniform lobe queries
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -198,37 +198,37 @@ CompactMaterialEntry CompileCompactMaterialEntry(const SurfaceMaterial& RawMater
     Out.ActiveLobeMask              = DetermineActiveLobeMask(Mat);
     Out.BaseColorRgHalf             = PackHalf2x16(Mat.Diffuse.BaseColor.R, Mat.Diffuse.BaseColor.G);
     Out.BaseColorBAndWeightHalf     = PackHalf2x16(Mat.Diffuse.BaseColor.B, Mat.Diffuse.BaseWeight);
-    Out.DiffuseAndSpecRoughnessHalf = PackHalf2x16(Mat.Diffuse.DiffuseRoughness, Mat.Specular.Roughness);
+    Out.DiffuseSpecRoughnessHalf = PackHalf2x16(Mat.Diffuse.DiffuseRoughness, Mat.Specular.Roughness);
 
-    Out.MetalnessAndSpecWeightHalf    = PackHalf2x16(Mat.Specular.Metalness, Mat.Specular.SpecularWeight);
-    Out.AnisotropyAndRotationHalf     = PackHalf2x16(Mat.Specular.Anisotropy, Mat.Specular.RotationRadians);
-    Out.DielectricIorAndEdgeTintRHalf = PackHalf2x16(Mat.Specular.DielectricIOR, Mat.Specular.EdgeTintF82.R);
+    Out.MetalnessSpecWeightHalf    = PackHalf2x16(Mat.Specular.Metalness, Mat.Specular.SpecularWeight);
+    Out.AnisotropyRotationHalf     = PackHalf2x16(Mat.Specular.Anisotropy, Mat.Specular.RotationRadians);
+    Out.DielectricIorEdgeTintRHalf = PackHalf2x16(Mat.Specular.DielectricIOR, Mat.Specular.EdgeTintF82.R);
     Out.EdgeTintGbHalf                = PackHalf2x16(Mat.Specular.EdgeTintF82.G, Mat.Specular.EdgeTintF82.B);
 
-    Out.CoatWeightAndRoughnessHalf = PackHalf2x16(Mat.Clearcoat.CoatWeight, Mat.Clearcoat.CoatRoughness);
-    Out.CoatAnisoAndIorHalf        = PackHalf2x16(Mat.Clearcoat.CoatAnisotropy, Mat.Clearcoat.CoatIOR);
+    Out.CoatWeightRoughnessHalf = PackHalf2x16(Mat.Clearcoat.CoatWeight, Mat.Clearcoat.CoatRoughness);
+    Out.CoatAnisoIorHalf        = PackHalf2x16(Mat.Clearcoat.CoatAnisotropy, Mat.Clearcoat.CoatIOR);
     Out.CoatTintRgHalf             = PackHalf2x16(Mat.Clearcoat.CoatAbsorptionTint.R, Mat.Clearcoat.CoatAbsorptionTint.G);
     Out.CoatTintBAndThicknessHalf  = PackHalf2x16(Mat.Clearcoat.CoatAbsorptionTint.B, Mat.Clearcoat.CoatThicknessMillimeter);
 
     Out.ThinFilmThicknessNanometers  = Mat.ThinFilm.ThinFilmThicknessNanometers;
-    Out.ThinFilmWeightAndIorHalf     = PackHalf2x16(Mat.ThinFilm.ThinFilmWeight, Mat.ThinFilm.ThinFilmIOR);
-    Out.FlakeCovAndRoughHalf         = PackHalf2x16(Mat.GlintFlakes.FlakeCoverage, Mat.GlintFlakes.FlakeIntrinsicRoughness);
-    Out.FlakeSpreadAndLogDensityHalf = PackHalf2x16(Mat.GlintFlakes.FlakeOrientationSpread, Mat.GlintFlakes.FlakeLogDensityPerSqM);
+    Out.ThinFilmWeightIorHalf     = PackHalf2x16(Mat.ThinFilm.ThinFilmWeight, Mat.ThinFilm.ThinFilmIOR);
+    Out.FlakeCoverageRoughHalf         = PackHalf2x16(Mat.GlintFlakes.FlakeCoverage, Mat.GlintFlakes.FlakeIntrinsicRoughness);
+    Out.FlakeSpreadLogDensityHalf = PackHalf2x16(Mat.GlintFlakes.FlakeOrientationSpread, Mat.GlintFlakes.FlakeLogDensityPerSqM);
 
     Out.FlakePrimaryRgHalf              = PackHalf2x16(Mat.GlintFlakes.FlakePrimaryTint.R, Mat.GlintFlakes.FlakePrimaryTint.G);
     Out.FlakePrimaryBAndBurialHalf      = PackHalf2x16(Mat.GlintFlakes.FlakePrimaryTint.B, Mat.GlintFlakes.FlakeBurialDepth);
     Out.FlakeHorizonRgHalf              = PackHalf2x16(Mat.GlintFlakes.FlakeHorizonTint.R, Mat.GlintFlakes.FlakeHorizonTint.G);
     Out.FlakeHorizonBAndTransWeightHalf = PackHalf2x16(Mat.GlintFlakes.FlakeHorizonTint.B, Mat.Transmission.TransmissionWeight);
 
-    Out.AbbeAndVolumeAnisoHalf       = PackHalf2x16(Mat.Transmission.AbbeDispersionNumber, Mat.Transmission.VolumeAnisotropyG);
+    Out.AbbeVolumeAnisoHalf       = PackHalf2x16(Mat.Transmission.AbbeDispersionNumber, Mat.Transmission.VolumeAnisotropyG);
     Out.AttenuationRgHalf            = PackHalf2x16(Mat.Transmission.AttenuationColor.R, Mat.Transmission.AttenuationColor.G);
     Out.AttenuationBAndDistHalf      = PackHalf2x16(Mat.Transmission.AttenuationColor.B, Mat.Transmission.AttenuationDistanceMeter);
-    Out.SubsurfaceWeightAndAnisoHalf = PackHalf2x16(Mat.Subsurface.SubsurfaceWeight, Mat.Subsurface.PhaseAnisotropyG);
+    Out.SubsurfaceWeightAnisoHalf = PackHalf2x16(Mat.Subsurface.SubsurfaceWeight, Mat.Subsurface.PhaseAnisotropyG);
 
     Out.SubsurfaceColorRgHalf       = PackHalf2x16(Mat.Subsurface.SubsurfaceColor.R, Mat.Subsurface.SubsurfaceColor.G);
     Out.SubsurfaceColorBAndMfpXHalf = PackHalf2x16(Mat.Subsurface.SubsurfaceColor.B, Mat.Subsurface.MeanFreePathMillimeters.X);
     Out.SubsurfaceMfpYzHalf         = PackHalf2x16(Mat.Subsurface.MeanFreePathMillimeters.Y, Mat.Subsurface.MeanFreePathMillimeters.Z);
-    Out.SheenWeightRoughAndRgHalf   = PackUnorm4x8(
+    Out.SheenWeightRoughRgHalf   = PackUnorm4x8(
         Mat.Sheen.SheenWeight,
         Mat.Sheen.SheenRoughness,
         Mat.Sheen.SheenColor.R,
@@ -241,18 +241,18 @@ CompactMaterialEntry CompileCompactMaterialEntry(const SurfaceMaterial& RawMater
         Mat.Fiber.AzimuthalRoughness);
 
     const float NormalizedTilt = std::clamp((Mat.Fiber.CuticleTiltRadians + 0.35f) / 0.70f, 0.0f, 1.0f);
-    Out.FiberPigmentAndPorosityPacked = PackUnorm4x8(
+    Out.FiberPigmentPorosityPacked = PackUnorm4x8(
         NormalizedTilt,
         Mat.Fiber.MelaninConcentration,
         Mat.Fiber.PheomelaninRednessFraction,
         Mat.PorosityLight.SurfaceWetnessFraction);
 
-    Out.PorosityAndKelvinHalf = PackHalf2x16(
+    Out.PorosityKelvinHalf = PackHalf2x16(
         Mat.PorosityLight.PorosityFraction,
         Mat.PorosityLight.BlackbodyTemperatureKelvin);
 
     const uint32_t NitsHalf = ConvertFloat32ToHalf16(Mat.PorosityLight.EmissionLuminanceNits);
-    Out.EmissionNitsHalfAndChannelMask = NitsHalf | (static_cast<uint32_t>(Mat.Channels.BaseColorChannelOrdinal) << 16u);
+    Out.EmissionNitsChannelMask = NitsHalf | (static_cast<uint32_t>(Mat.Channels.BaseColorChannelOrdinal) << 16u);
 
     return Out;
 }
@@ -264,22 +264,22 @@ SurfaceMaterial UnpackCompactMaterialEntry(const CompactMaterialEntry& Entry)
 
     UnpackHalf2x16(Entry.BaseColorRgHalf, Mat.Diffuse.BaseColor.R, Mat.Diffuse.BaseColor.G);
     UnpackHalf2x16(Entry.BaseColorBAndWeightHalf, Mat.Diffuse.BaseColor.B, Mat.Diffuse.BaseWeight);
-    UnpackHalf2x16(Entry.DiffuseAndSpecRoughnessHalf, Mat.Diffuse.DiffuseRoughness, Mat.Specular.Roughness);
+    UnpackHalf2x16(Entry.DiffuseSpecRoughnessHalf, Mat.Diffuse.DiffuseRoughness, Mat.Specular.Roughness);
 
-    UnpackHalf2x16(Entry.MetalnessAndSpecWeightHalf, Mat.Specular.Metalness, Mat.Specular.SpecularWeight);
-    UnpackHalf2x16(Entry.AnisotropyAndRotationHalf, Mat.Specular.Anisotropy, Mat.Specular.RotationRadians);
-    UnpackHalf2x16(Entry.DielectricIorAndEdgeTintRHalf, Mat.Specular.DielectricIOR, Mat.Specular.EdgeTintF82.R);
+    UnpackHalf2x16(Entry.MetalnessSpecWeightHalf, Mat.Specular.Metalness, Mat.Specular.SpecularWeight);
+    UnpackHalf2x16(Entry.AnisotropyRotationHalf, Mat.Specular.Anisotropy, Mat.Specular.RotationRadians);
+    UnpackHalf2x16(Entry.DielectricIorEdgeTintRHalf, Mat.Specular.DielectricIOR, Mat.Specular.EdgeTintF82.R);
     UnpackHalf2x16(Entry.EdgeTintGbHalf, Mat.Specular.EdgeTintF82.G, Mat.Specular.EdgeTintF82.B);
 
-    UnpackHalf2x16(Entry.CoatWeightAndRoughnessHalf, Mat.Clearcoat.CoatWeight, Mat.Clearcoat.CoatRoughness);
-    UnpackHalf2x16(Entry.CoatAnisoAndIorHalf, Mat.Clearcoat.CoatAnisotropy, Mat.Clearcoat.CoatIOR);
+    UnpackHalf2x16(Entry.CoatWeightRoughnessHalf, Mat.Clearcoat.CoatWeight, Mat.Clearcoat.CoatRoughness);
+    UnpackHalf2x16(Entry.CoatAnisoIorHalf, Mat.Clearcoat.CoatAnisotropy, Mat.Clearcoat.CoatIOR);
     UnpackHalf2x16(Entry.CoatTintRgHalf, Mat.Clearcoat.CoatAbsorptionTint.R, Mat.Clearcoat.CoatAbsorptionTint.G);
     UnpackHalf2x16(Entry.CoatTintBAndThicknessHalf, Mat.Clearcoat.CoatAbsorptionTint.B, Mat.Clearcoat.CoatThicknessMillimeter);
 
     Mat.ThinFilm.ThinFilmThicknessNanometers = Entry.ThinFilmThicknessNanometers;
-    UnpackHalf2x16(Entry.ThinFilmWeightAndIorHalf, Mat.ThinFilm.ThinFilmWeight, Mat.ThinFilm.ThinFilmIOR);
-    UnpackHalf2x16(Entry.FlakeCovAndRoughHalf, Mat.GlintFlakes.FlakeCoverage, Mat.GlintFlakes.FlakeIntrinsicRoughness);
-    UnpackHalf2x16(Entry.FlakeSpreadAndLogDensityHalf, Mat.GlintFlakes.FlakeOrientationSpread, Mat.GlintFlakes.FlakeLogDensityPerSqM);
+    UnpackHalf2x16(Entry.ThinFilmWeightIorHalf, Mat.ThinFilm.ThinFilmWeight, Mat.ThinFilm.ThinFilmIOR);
+    UnpackHalf2x16(Entry.FlakeCoverageRoughHalf, Mat.GlintFlakes.FlakeCoverage, Mat.GlintFlakes.FlakeIntrinsicRoughness);
+    UnpackHalf2x16(Entry.FlakeSpreadLogDensityHalf, Mat.GlintFlakes.FlakeOrientationSpread, Mat.GlintFlakes.FlakeLogDensityPerSqM);
 
     UnpackHalf2x16(Entry.FlakePrimaryRgHalf, Mat.GlintFlakes.FlakePrimaryTint.R, Mat.GlintFlakes.FlakePrimaryTint.G);
     UnpackHalf2x16(Entry.FlakePrimaryBAndBurialHalf, Mat.GlintFlakes.FlakePrimaryTint.B, Mat.GlintFlakes.FlakeBurialDepth);
@@ -287,17 +287,17 @@ SurfaceMaterial UnpackCompactMaterialEntry(const CompactMaterialEntry& Entry)
     UnpackHalf2x16(Entry.FlakeHorizonBAndTransWeightHalf, Mat.GlintFlakes.FlakeHorizonTint.B, Mat.Transmission.TransmissionWeight);
     Mat.Transmission.ThinWalledSlab = (Entry.ActiveLobeMask & FlagThinWalledSlab) != 0u;
 
-    UnpackHalf2x16(Entry.AbbeAndVolumeAnisoHalf, Mat.Transmission.AbbeDispersionNumber, Mat.Transmission.VolumeAnisotropyG);
+    UnpackHalf2x16(Entry.AbbeVolumeAnisoHalf, Mat.Transmission.AbbeDispersionNumber, Mat.Transmission.VolumeAnisotropyG);
     UnpackHalf2x16(Entry.AttenuationRgHalf, Mat.Transmission.AttenuationColor.R, Mat.Transmission.AttenuationColor.G);
     UnpackHalf2x16(Entry.AttenuationBAndDistHalf, Mat.Transmission.AttenuationColor.B, Mat.Transmission.AttenuationDistanceMeter);
-    UnpackHalf2x16(Entry.SubsurfaceWeightAndAnisoHalf, Mat.Subsurface.SubsurfaceWeight, Mat.Subsurface.PhaseAnisotropyG);
+    UnpackHalf2x16(Entry.SubsurfaceWeightAnisoHalf, Mat.Subsurface.SubsurfaceWeight, Mat.Subsurface.PhaseAnisotropyG);
 
     UnpackHalf2x16(Entry.SubsurfaceColorRgHalf, Mat.Subsurface.SubsurfaceColor.R, Mat.Subsurface.SubsurfaceColor.G);
     UnpackHalf2x16(Entry.SubsurfaceColorBAndMfpXHalf, Mat.Subsurface.SubsurfaceColor.B, Mat.Subsurface.MeanFreePathMillimeters.X);
     UnpackHalf2x16(Entry.SubsurfaceMfpYzHalf, Mat.Subsurface.MeanFreePathMillimeters.Y, Mat.Subsurface.MeanFreePathMillimeters.Z);
 
     UnpackUnorm4x8(
-        Entry.SheenWeightRoughAndRgHalf,
+        Entry.SheenWeightRoughRgHalf,
         Mat.Sheen.SheenWeight,
         Mat.Sheen.SheenRoughness,
         Mat.Sheen.SheenColor.R,
@@ -312,7 +312,7 @@ SurfaceMaterial UnpackCompactMaterialEntry(const CompactMaterialEntry& Entry)
 
     float NormalizedTilt = 0.5f;
     UnpackUnorm4x8(
-        Entry.FiberPigmentAndPorosityPacked,
+        Entry.FiberPigmentPorosityPacked,
         NormalizedTilt,
         Mat.Fiber.MelaninConcentration,
         Mat.Fiber.PheomelaninRednessFraction,
@@ -320,12 +320,12 @@ SurfaceMaterial UnpackCompactMaterialEntry(const CompactMaterialEntry& Entry)
     Mat.Fiber.CuticleTiltRadians = NormalizedTilt * 0.70f - 0.35f;
 
     UnpackHalf2x16(
-        Entry.PorosityAndKelvinHalf,
+        Entry.PorosityKelvinHalf,
         Mat.PorosityLight.PorosityFraction,
         Mat.PorosityLight.BlackbodyTemperatureKelvin);
 
-    Mat.PorosityLight.EmissionLuminanceNits = ConvertHalf16ToFloat32(static_cast<uint16_t>(Entry.EmissionNitsHalfAndChannelMask & 0xFFFFu));
-    Mat.Channels.BaseColorChannelOrdinal    = static_cast<uint16_t>((Entry.EmissionNitsHalfAndChannelMask >> 16u) & 0xFFFFu);
+    Mat.PorosityLight.EmissionLuminanceNits = ConvertHalf16ToFloat32(static_cast<uint16_t>(Entry.EmissionNitsChannelMask & 0xFFFFu));
+    Mat.Channels.BaseColorChannelOrdinal    = static_cast<uint16_t>((Entry.EmissionNitsChannelMask >> 16u) & 0xFFFFu);
 
     SanitizeSurfaceMaterial(Mat);
     return Mat;

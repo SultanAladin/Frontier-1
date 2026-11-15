@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                      CONTACTCLIPSHADOW.SLANG
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                           CONTACTCLIPSHADOW.SLANG
+============================================================================================================================================*/
 // 🧩 GTX Tier 1 Calibrated 2-Cascade (3.9 mm / 15.6 mm) Orthographic Contact Clip + 3D Signed Distance Volume Cone Penumbra (Zero VSM!)
 
 module ContactClipShadow;
@@ -29,7 +29,7 @@ struct ContactClipUniforms
 [[vk::binding(3, 0)]] SamplerState                        LinearClampSampler;
 [[vk::binding(4, 0)]] Texture2D<float4>                   WorldPositionTex;
 [[vk::binding(5, 0)]] Texture2D<float4>                   WorldNormalTex;
-[[vk::binding(6, 0)]] RWTexture2D<float2>                 OutShadowAndBlocker;
+[[vk::binding(6, 0)]] RWTexture2D<float2>                 OutShadowBlocker;
 
 float TraceSdfConePenumbra(float3 Origin, float3 SunDir)
 {
@@ -63,7 +63,7 @@ void ContactClipComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float3 Nrm       = normalize(WorldNormalTex.Load(int3(DispatchThreadID.xy, 0)).xyz);
     if (PosSample.w <= 0.0)
     {
-        OutShadowAndBlocker[DispatchThreadID.xy] = float2(1.0, 0.0);
+        OutShadowBlocker[DispatchThreadID.xy] = float2(1.0, 0.0);
         return;
     }
 
@@ -71,7 +71,7 @@ void ContactClipComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float  NdotL  = dot(Nrm, SunDir);
     if (NdotL <= 1.0e-5)
     {
-        OutShadowAndBlocker[DispatchThreadID.xy] = float2(0.0, 0.0);
+        OutShadowBlocker[DispatchThreadID.xy] = float2(0.0, 0.0);
         return;
     }
 
@@ -84,7 +84,7 @@ void ContactClipComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float SdfVis = TraceSdfConePenumbra(PosSample.xyz + Nrm * ClipUniforms.SdfVoxelSpacing, SunDir);
     if (abs(LocalU) > ClipUniforms.HalfSpanMeters * 0.95 || abs(LocalV) > ClipUniforms.HalfSpanMeters * 0.95)
     {
-        OutShadowAndBlocker[DispatchThreadID.xy] = float2(SdfVis, (SdfVis < 0.95) ? 0.75 : 0.0);
+        OutShadowBlocker[DispatchThreadID.xy] = float2(SdfVis, (SdfVis < 0.95) ? 0.75 : 0.0);
         return;
     }
 
@@ -114,5 +114,5 @@ void ContactClipComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float BlockerD = (BlkCnt > 0u) ? (BlkSum / float(BlkCnt)) : 0.0;
     float FarW     = saturate((BlockerD - 0.12) / 0.45) * 0.72;
     float FinalVis = lerp(ClipVis, min(ClipVis + 0.35, SdfVis), FarW);
-    OutShadowAndBlocker[DispatchThreadID.xy] = float2(FinalVis, BlockerD);
+    OutShadowBlocker[DispatchThreadID.xy] = float2(FinalVis, BlockerD);
 }

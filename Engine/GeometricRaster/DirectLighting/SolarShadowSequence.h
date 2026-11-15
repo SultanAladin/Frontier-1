@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                        SOLARSHADOWSEQUENCE.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                            SOLARSHADOWSEQUENCE.H
+============================================================================================================================================*/
 // 🧩 Tiered Direct Solar Shadows (Zero VSM!): RTX Vogel Solar Frustum + Plane-Aware Filter & GTX 3.9 mm 2-Cascade Contact Clip + SDF Cone
 
 #pragma once
@@ -26,7 +26,7 @@ namespace Frontier::GeometricRaster
 
 enum class DirectShadowTier : uint8_t
 {
-    GtxContactClipAndSdfCone = 0u, // [-] - Tier 1: 2-Cascade 3.9 mm orthographic contact clip + SignedDistanceVolume cone penumbra
+    GtxContactClipSdfCone = 0u, // [-] - Tier 1: 2-Cascade 3.9 mm orthographic contact clip + SignedDistanceVolume cone penumbra
     RtxDeterministicSolarRay = 1u, // [-] - Tier 2: WideBoundingTree Vogel solar disc raytrace + plane-aware continuous-sigma filter
 };
 

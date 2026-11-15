@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        PARTICLESOFTWAREEXECUTOR.H
+                                                          PARTICLESOFTWAREEXECUTOR.H
 ============================================================================================================================================*/
 // 🧩 Modular CPU particle simulation executor dispatching all 16 dynamics specs, ForceFieldAccumulator coupling & 20-vertex strand ribbons
 

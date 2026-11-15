@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                  INFLUENCEENVELOPERASTERIZATION.SLANG
+                                                     INFLUENCEENVELOPERASTERIZATION.SLANG
 ============================================================================================================================================*/
 // 🧩 Editor-only shaded semi-transparent ForceModel reach envelopes & RadialBurst pulse shells (zero wireframes)
 
@@ -43,21 +43,21 @@ EnvelopeVaryings VertexMain(
     uint SrcIdx = DrawPush.ObjectIndex;
     ForceSourceShaderEntry Src = SourceBuffer[SrcIdx];
 
-    float3 Anchor   = Src.CentreAndRadius.xyz;
-    float  Radius   = max(0.25, Src.CentreAndRadius.w);
-    float3 Forward  = Src.DirectionAndStrength.xyz;
-    float3 Left     = Src.TangentLeftAndFalloff.xyz;
-    float3 Up       = Src.UpAndCoreRadius.xyz;
+    float3 Anchor   = Src.CentreRadiusPacked.xyz;
+    float  Radius   = max(0.25, Src.CentreRadiusPacked.w);
+    float3 Forward  = Src.DirectionStrength.xyz;
+    float3 Left     = Src.TangentLeftFalloff.xyz;
+    float3 Up       = Src.UpCoreRadius.xyz;
 
     float3 LocalScaled;
     uint   Env = Src.IdsPacked.w;
     if (Env == EnvelopeOrientedBox || Env == EnvelopePlanarBox)
     {
-        LocalScaled = UnitPos * Src.HalfExtentsAndTurbScale.xyz;
+        LocalScaled = UnitPos * Src.HalfExtentsTurbScale.xyz;
     }
     else if (Env == EnvelopeColumn)
     {
-        LocalScaled = float3(UnitPos.x * Radius, UnitPos.y * Radius, UnitPos.z * Src.HalfExtentsAndTurbScale.z);
+        LocalScaled = float3(UnitPos.x * Radius, UnitPos.y * Radius, UnitPos.z * Src.HalfExtentsTurbScale.z);
     }
     else
     {
@@ -82,7 +82,7 @@ OverlayFragmentOutput FragmentMain(EnvelopeVaryings In)
     OverlayFragmentOutput Out;
 
     float3 N = normalize(In.WorldNormal);
-    float3 V = normalize(Overlay.CameraPositionAndTime.xyz - In.WorldPos);
+    float3 V = normalize(Overlay.CameraPositionTime.xyz - In.WorldPos);
     float  Fresnel = pow(1.0 - saturate(abs(dot(N, V))), 2.2);
 
     float3 Tint = (In.SelectedFlag != 0u)

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                    PARTICLESPATIALGRIDCOMPUTE.SLANG
+                                                       PARTICLESPATIALGRIDCOMPUTE.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 GPU spatial hash grid builder for O(N) Boids, SPH Fluid, Granular DEM, & Molecular Lennard-Jones neighbor lookups
 

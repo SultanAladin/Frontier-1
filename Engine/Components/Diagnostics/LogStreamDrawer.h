@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            LOGSTREAMDRAWER.H
+                                                              LOGSTREAMDRAWER.H
 ============================================================================================================================================*/
 // 🧩 Reusable collapsible diagnostic log stream drawer with channel filter chips, timestamped semantic badges & scroll offset
 

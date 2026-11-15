@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           SIMULATIONTIMERULER.H
+                                                            SIMULATIONTIMERULER.H
 ============================================================================================================================================*/
 // 🧩 Reusable scrubbable simulation & animation time ruler with step readout, graduated ticks, active track strip & playhead needle
 

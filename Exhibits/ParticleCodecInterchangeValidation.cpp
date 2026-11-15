@@ -10,8 +10,9 @@
 #include "Engine/Codecs/ParticleCodec.h"
 #include "Engine/Codecs/SpaceContainerCodec.h"
 #include "Engine/Interchange/ParticleInterchange.h"
+#include "Engine/Workspaces/Particle/ParticleExchange.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
+#include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 
 #include <cmath>
 #include <filesystem>
@@ -118,8 +119,8 @@ int main()
         && std::fabs(RePt->CenterMeters[2] + 3.0f) < 1e-3f,
         "Round-trip Y-Up -> +Z Up -> Y-Up preserves origin exactness");
 
-    // 3. ParticleHandoffPacket TOML serialization + catalogue materialization
-    Interchange::ParticleHandoffPacket Packet {};
+    // 3. ParticleHandoffPacket TOML serialization + repository materialization via ParticleExchange
+    Workspaces::ParticleHandoffPacket Packet {};
     Packet.PresetId     = "energy-shield-hex";
     Packet.RigName      = "Workspace Handoff Hex Shield";
     Packet.SlotCapacity = 2400u;
@@ -127,12 +128,12 @@ int main()
     Packet.GravityScale = 0.0f;
     Packet.WindCoupling = 0.25f;
 
-    const std::string HandoffToml = Interchange::ParticleInterchange::EncodeHandoffPacketToml(Packet);
-    Interchange::ParticleHandoffPacket DecodedPacket {};
-    Expect(Interchange::ParticleInterchange::DecodeHandoffPacketToml(HandoffToml, DecodedPacket, Diag), "ParticleHandoffPacket TOML decode succeeds");
+    const std::string HandoffToml = Workspaces::ParticleExchange::EncodeHandoffPacketToml(Packet);
+    Workspaces::ParticleHandoffPacket DecodedPacket {};
+    Expect(Workspaces::ParticleExchange::DecodeHandoffPacketToml(HandoffToml, DecodedPacket, Diag), "ParticleHandoffPacket TOML decode succeeds");
     Expect(DecodedPacket.PresetId == "energy-shield-hex" && DecodedPacket.SlotCapacity == 2400u, "Handoff packet fields round-trip exactly");
 
-    const ParticleSpace::ParticleRig HandoffRig = Interchange::ParticleInterchange::MaterializeHandoffRig(DecodedPacket);
+    const ParticleSpace::ParticleRig HandoffRig = Workspaces::ParticleExchange::MaterializeHandoffRig(DecodedPacket);
     Expect(HandoffRig.DisplayName == "Workspace Handoff Hex Shield" && HandoffRig.Dynamics.Shield.has_value(), "Materialized handoff rig activates ShieldBarrierSpec");
 
     // 4. External Wavefront .obj geometry intake delegating to GeometryInterchange -> SampleTriangleSurfaceAnchors

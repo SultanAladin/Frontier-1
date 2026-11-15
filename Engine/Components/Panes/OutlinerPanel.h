@@ -42,12 +42,12 @@ enum class OutlinerCategoryFilter : uint8_t
 {
     All            = 0, // [-] - Show every slot category
     FoldersOnly    = 1, // [-] - Show only folder containers
-    FirstType      = 2, // [-] - Show ConstructableFirst entries
-    SecondType     = 3, // [-] - Show ConstructableSecond entries
-    ThirdType      = 4, // [-] - Show ConstructableThird entries
-    FourthType     = 5, // [-] - Show ConstructableFourth entries
-    WithNotes      = 6, // [-] - Show entries carrying authored notes
-    ForceFieldType = 7, // [-] - Show ConstructSlotCategory::ForceField entries
+    GeometryVolume = 2, // [-] - Show ConstructableFirst entries
+    LayerGroup     = 3, // [-] - Show ConstructableSecond entries
+    PointLuminaire = 4, // [-] - Show ConstructableThird entries
+    OpticsCamera   = 5, // [-] - Show ConstructableFourth entries
+    AnnotatedOnly      = 6, // [-] - Show entries carrying authored notes
+    ForceFieldOnly = 7, // [-] - Show ConstructSlotCategory::ForceField entries
 };
 
 enum class DropRelativePlacement : uint8_t
@@ -86,15 +86,15 @@ struct OutlinerConstructTemplate
     std::string          DefaultTitle  {};                                           // [-] - Initial name assigned to created entry
     std::string          CategoryTitle {};                                           // [-] - Inspector breadcrumb category label
     std::string          DefaultDetail {};                                           // [-] - Secondary row summary caption
-    ConstructSlotCategory Category      = ConstructSlotCategory::CategoryOne;   // [-] - Visual icon and filter category
-    uint32_t             ForceLawOrdinal = 0xFFFFFFFFu;                              // [id]- Optional ForceModel icon ordinal [0..18]
+    ConstructSlotCategory Category      = ConstructSlotCategory::GeometryVolume;   // [-] - Visual icon and filter category
+    uint32_t             ForceModelOrdinal = 0xFFFFFFFFu;                              // [id]- Optional ForceModel icon ordinal [0..18]
 };
 
 struct OutlinerRecordEntry
 {
     OutlinerSlotToken    Token             {};                                         // [id] - Unique slot token
     OutlinerSlotToken    EnclosingToken    {};                                         // [id] - Enclosing slot token (0 = root)
-    ConstructSlotCategory Category          = ConstructSlotCategory::CategoryOne; // [-]  - Slot visual category
+    ConstructSlotCategory Category          = ConstructSlotCategory::GeometryVolume; // [-]  - Slot visual category
     std::string          Title             {};                                         // [-]  - Display name in tree and inspector
     std::string          CategoryLabel     {};                                         // [-]  - Inspector domain category label
     std::string          Subtitle          {};                                         // [-]  - Secondary caption below title
@@ -114,7 +114,7 @@ struct OutlinerRecordEntry
     bool                 Locked            = false;                                    // [-]  - Transform edit lock switch
     bool                 DynamicMotion     = false;                                    // [-]  - Dynamic simulation switch
     bool                 CastShadows       = true;                                     // [-]  - Shadow caster capability switch
-    uint32_t             ForceLawOrdinal   = 0xFFFFFFFFu;                              // [id] - Bespoke ForceIcons SVG index [0..18]
+    uint32_t             ForceModelOrdinal   = 0xFFFFFFFFu;                              // [id] - Bespoke ForceIcons SVG index [0..18]
     bool                 ForceFormulaOverride = false;                                 // [-]  - Formula override tint/tag switch
     std::string          MotionTagText     {};                                         // [-]  - Optional compact motion indicator
 };

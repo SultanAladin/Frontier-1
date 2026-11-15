@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        SIMULATIONPLAYBACKCONTROLS.H
+                                                         SIMULATIONPLAYBACKCONTROLS.H
 ============================================================================================================================================*/
 // 🧩 Reusable 52px simulation playback transport strip (Reset, Play/Pause, SingleStep, Timecode, TimeScale, Live indicator & Burst trigger)
 

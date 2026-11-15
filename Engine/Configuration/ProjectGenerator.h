@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            PROJECTGENERATOR.H
+                                                              PROJECTGENERATOR.H
 ============================================================================================================================================*/
 // 🧩 Scaffolder for standalone C++20 Frontier projects (<ProjectName>, <ProjectName>Editor, <ProjectName>Shipping) with .projectspace
 

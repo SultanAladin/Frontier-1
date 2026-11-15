@@ -196,7 +196,7 @@ void PanelExpansionTab::IntegratePointer(float CursorX, float CursorY, bool Pres
     }
 }
 
-void PanelExpansionTab::Construct(PixelSpace &Surface, const char *Caption, ColorRgba TabFill, ColorRgba LabelAndGripInk,
+void PanelExpansionTab::Construct(PixelSpace &Surface, const char *Caption, ColorRgba TabFill, ColorRgba LabelGripInk,
                              Point2D ViewportOrigin) const noexcept
 {
     auto Contour = QueryTrapezoidContour();
@@ -212,9 +212,9 @@ void PanelExpansionTab::Construct(PixelSpace &Surface, const char *Caption, Colo
                 Phys.Height / Density};
     };
 
-    Surface.TextCentered(ToLogical(QueryTabBounds()), 12.0f, LabelAndGripInk, Caption);
+    Surface.TextCentered(ToLogical(QueryTabBounds()), 12.0f, LabelGripInk, Caption);
     if (QueryHeight() > 36.0f * Density)
-        Surface.FillRectangle(ToLogical(QueryGripBounds()), LabelAndGripInk, 3.0f);
+        Surface.FillRectangle(ToLogical(QueryGripBounds()), LabelGripInk, 3.0f);
 }
 
 } // namespace Frontier

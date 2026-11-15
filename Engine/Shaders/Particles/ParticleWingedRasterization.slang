@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                    PARTICLEWINGEDRASTERIZATION.SLANG
+                                                      PARTICLEWINGEDRASTERIZATION.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 articulated dual-wing flapping carrier for birds, starlings, butterflies, and sinuous swimming fish schools
 

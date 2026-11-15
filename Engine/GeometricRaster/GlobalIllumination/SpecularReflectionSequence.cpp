@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                 SPECULARREFLECTIONSEQUENCE.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                        SPECULARREFLECTIONSEQUENCE.CPP
+============================================================================================================================================*/
 // 🧩 Tier 2 RTX Coherent VNDF WideBoundingTree Reflections & Abbe Glass Refraction + Tier 1 GTX Hi-Z Screen-Space Raymarch & SDF Fallback
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -154,7 +154,7 @@ namespace
 //                                            SPECULAR REFLECTION SEQUENCE
 //------------------------------------------------------------------------------------------------------------------------
 
-SpecularReflectionBuffer SpecularReflectionSequence::EvaluateRtxReflectionsAndGlass(
+SpecularReflectionBuffer SpecularReflectionSequence::EvaluateRtxSpecularRefraction(
     const PerspectiveCameraFrame&                   Camera,
     std::span<const RigidClusterInstance>           Instances,
     const VisibilityBufferTargets&                  VisibilityTargets,
@@ -288,7 +288,7 @@ SpecularReflectionBuffer SpecularReflectionSequence::EvaluateRtxReflectionsAndGl
     return Out;
 }
 
-SpecularReflectionBuffer SpecularReflectionSequence::EvaluateGtxHiZReflectionsAndGlass(
+SpecularReflectionBuffer SpecularReflectionSequence::EvaluateGtxHiZSpecularRefraction(
     const PerspectiveCameraFrame&                  Camera,
     std::span<const RigidClusterInstance>          Instances,
     const VisibilityBufferTargets&                 VisibilityTargets,
@@ -309,7 +309,7 @@ SpecularReflectionBuffer SpecularReflectionSequence::EvaluateGtxHiZReflectionsAn
     const uint32_t MatCount = MaterialRegister.QuerySlotCount();
     const auto& Mip0 = DepthPyramid.InspectMipLevel(0u);
 
-    const auto ProjectToScreenAndRevZ = [&](Mathematics::Axis3D WorldPos, float& OutSX, float& OutSY, float& OutRevZ) noexcept -> bool
+    const auto ProjectScreenReverseZ = [&](Mathematics::Axis3D WorldPos, float& OutSX, float& OutSY, float& OutRevZ) noexcept -> bool
     {
         const Mathematics::Axis3D Rel = WorldPos - Basis.CameraOrigin;
         const float ViewZ = Mathematics::EvaluateDot(Rel, Basis.ForwardAxis);
@@ -348,7 +348,7 @@ SpecularReflectionBuffer SpecularReflectionSequence::EvaluateGtxHiZReflectionsAn
                     {
                         const float MarchDist = 0.06f * static_cast<float>(Step) * (1.0f + 0.12f * static_cast<float>(Step));
                         float SX = 0.0f, SY = 0.0f, RayRevZ = 0.0f;
-                        if (!ProjectToScreenAndRevZ(Hit.WorldPosition + ReflDir * MarchDist, SX, SY, RayRevZ))
+                        if (!ProjectScreenReverseZ(Hit.WorldPosition + ReflDir * MarchDist, SX, SY, RayRevZ))
                         {
                             break;
                         }

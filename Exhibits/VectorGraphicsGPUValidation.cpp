@@ -5,7 +5,7 @@
 
 #include "Engine/Codecs/VectorCodec.h"
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
-#include "Engine/Editor/Viewports/TransformGizmo.h"
+#include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/GeometricRaster/Vector/VectorCanvasRasterizer.h"
 #include "Engine/GeometricRaster/Vector/VulkanVectorRenderMethod.h"
@@ -372,7 +372,7 @@ int main()
         Host.AttachVulkanRasterizer(&Rasterizer);
 
         ContentBrowserPanel BrowserPanel {};
-        BrowserPanel.AccessThumbnailRepository().PopulateDefaultEngineAndProjectEntries();
+        BrowserPanel.AccessThumbnailRepository().PopulateDefaultWorkspaceEntries();
         Host.AttachContentBrowserPanel(&BrowserPanel);
 
         const auto BrowserReading = BrowserPanel.InspectReading();

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          ANALYTICPRIMITIVES.CPP
+                                                            ANALYTICPRIMITIVES.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of parametric box, cylinder/frustum, torus ring, and 5 non-overlapping UDIM studio sample PolygonNetwork builders
 

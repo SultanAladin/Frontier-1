@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      TEXELDENSITYEQUALIZER.CPP
+                                                          TEXELDENSITYEQUALIZER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of physical texel density equalization across seam-bounded PolygonNetwork UV islands
 

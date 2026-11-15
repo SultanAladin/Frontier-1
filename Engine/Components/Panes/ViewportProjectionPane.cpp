@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       VIEWPORTPROJECTIONPANE.CPP
+                                                          VIEWPORTPROJECTIONPANE.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of reusable ViewportProjectionPane presenting WorkspaceDocument 2D/3D GPU views via PixelSpace::FillTexturedRectangle
 
@@ -197,7 +197,7 @@ void ViewportProjectionPane::Render(
     {
         switch (QueryEffectiveSplitMode())
         {
-            case Editor::ViewportSplitMode::SplitPlanarAndSpatial:
+            case Editor::ViewportSplitMode::SplitPlanarSpatial:
             {
                 const float LeftW = std::floor((ContentW - 8.0f) * Projection.QuerySplitRatio());
                 Rect2D = { ContentX, ContentTop, LeftW, ContentH };
@@ -216,7 +216,7 @@ void ViewportProjectionPane::Render(
     };
     RecomputeSplitRects();
 
-    if (QueryEffectiveSplitMode() == Editor::ViewportSplitMode::SplitPlanarAndSpatial)
+    if (QueryEffectiveSplitMode() == Editor::ViewportSplitMode::SplitPlanarSpatial)
     {
         const Rectangle2D SplitterZone { Rect2D.Right(), ContentTop, 8.0f, ContentH };
         SplitterHovered = !ToolbarCaught && SplitterZone.Contains(Cursor);
@@ -321,7 +321,7 @@ void ViewportProjectionPane::RenderViewportCanvas(
     {
         switch (QueryEffectiveSplitMode())
         {
-            case Editor::ViewportSplitMode::SplitPlanarAndSpatial:
+            case Editor::ViewportSplitMode::SplitPlanarSpatial:
             {
                 const float Gap   = 4.0f;
                 const float LeftW = std::floor((CanvasBounds.Width - Gap) * Projection.QuerySplitRatio());
@@ -341,7 +341,7 @@ void ViewportProjectionPane::RenderViewportCanvas(
     };
     RecomputeCanvasSplitRects();
 
-    if (QueryEffectiveSplitMode() == Editor::ViewportSplitMode::SplitPlanarAndSpatial)
+    if (QueryEffectiveSplitMode() == Editor::ViewportSplitMode::SplitPlanarSpatial)
     {
         const Rectangle2D SplitterZone { Rect2D.Right() - 2.0f, CanvasBounds.Y, 8.0f, CanvasBounds.Height };
         SplitterHovered = AllowInteraction && SplitterZone.Contains(Cursor);
@@ -400,7 +400,7 @@ void ViewportProjectionPane::RenderViewportCanvas(
             static_cast<uint32_t>(std::max(0.0f, Rect2D.Height)));
     }
 
-    const bool SplitActive = (QueryEffectiveSplitMode() == Editor::ViewportSplitMode::SplitPlanarAndSpatial);
+    const bool SplitActive = (QueryEffectiveSplitMode() == Editor::ViewportSplitMode::SplitPlanarSpatial);
 
     if (Rect2D.Width >= 16.0f && Rect2D.Height >= 16.0f && Slices.Planar2D.RgbaPixels != nullptr)
     {

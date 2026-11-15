@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                  TIEREDWORLDRENDERSEQUENCE.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                        TIEREDWORLDRENDERSEQUENCE.CPP
+============================================================================================================================================*/
 // 🧩 Complete Ordered GTX Tier 1 + RTX Tier 2 World Render Sequence bound to ViewportProjectionPane (Visibility -> Direct -> GI -> Specular)
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -57,7 +57,7 @@ void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOut
         InOutScene.Sun, FocusCenter, InOutScene.SceneTree, FineContactClip, CoarseContactClip);
 
     // 3. Build & Propagate Multi-Bounce Tier 2 RTX 1/pi Octahedral Irradiance Lattice (with 16x16 Chebyshev Depth!)
-    RtxLattice.BuildAndPropagateRtxLattice(
+    RtxLattice.PropagateRtxIrradianceLattice(
         InOutScene.LatticeConfig,
         InOutScene.SceneTree,
         InOutScene.BounceSummaries,
@@ -95,7 +95,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrame(
         CurrentCamera, PreparedScene.ClusterInstances, PrevHiZPtr, &PreviousCamera);
 
     VisibilityBufferTargets VisTargets {};
-    VisTargets.AllocateAndClear(Result.WidthPx, Result.HeightPx);
+    VisTargets.AllocateClearedImage(Result.WidthPx, Result.HeightPx);
     VisibilityClusterRasterization::RasterizeOpaqueClusters(
         CurrentCamera, PreparedScene.ClusterInstances,
         Result.VisibilityCull.HardwareClusterBatches,
@@ -109,7 +109,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrame(
     {
         ClusterCullEncoder::ResolvePhaseTwoDisocclusions(
             CurrentCamera, PreparedScene.ClusterInstances, CurrentHiZ, Result.VisibilityCull);
-        VisTargets.AllocateAndClear(Result.WidthPx, Result.HeightPx);
+        VisTargets.AllocateClearedImage(Result.WidthPx, Result.HeightPx);
         VisibilityClusterRasterization::RasterizeOpaqueClusters(
             CurrentCamera, PreparedScene.ClusterInstances,
             Result.VisibilityCull.HardwareClusterBatches,
@@ -140,7 +140,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrame(
 
     const DirectShadowTier ShadowTier = (Tier == WorldRenderTier::Tier2RtxDeterministic)
         ? DirectShadowTier::RtxDeterministicSolarRay
-        : DirectShadowTier::GtxContactClipAndSdfCone;
+        : DirectShadowTier::GtxContactClipSdfCone;
 
     Result.DirectLighting = LinearCosineLightIntegration::EvaluateDirectLightingFrame(
         ShadowTier,
@@ -160,14 +160,14 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrame(
     //====================================================================================================================
     if (Tier == WorldRenderTier::Tier2RtxDeterministic)
     {
-        Result.SpecularAndGlass = SpecularReflectionSequence::EvaluateRtxReflectionsAndGlass(
+        Result.SpecularGlass = SpecularReflectionSequence::EvaluateRtxSpecularRefraction(
             CurrentCamera, PreparedScene.ClusterInstances, VisTargets, PrimarySamples,
             PreparedScene.MaterialRegister, PreparedScene.BounceSummaries,
             PreparedScene.SceneTree, RtxLattice, PreparedScene.Sun, PreparedScene.SkyRadiance);
     }
     else
     {
-        Result.SpecularAndGlass = SpecularReflectionSequence::EvaluateGtxHiZReflectionsAndGlass(
+        Result.SpecularGlass = SpecularReflectionSequence::EvaluateGtxHiZSpecularRefraction(
             CurrentCamera, PreparedScene.ClusterInstances, VisTargets, CurrentHiZ, PrimarySamples,
             Result.DirectLighting.DirectHdrRadiance, PreparedScene.MaterialRegister, PreparedScene.SkyRadiance);
     }
@@ -211,13 +211,13 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrame(
             };
             Result.IndirectDiffuseHdr[Off] = DiffuseGi;
 
-            FinalHdr = FinalHdr + DiffuseGi + Result.SpecularAndGlass.IndirectSpecularHdr[Off] * SpecAo;
+            FinalHdr = FinalHdr + DiffuseGi + Result.SpecularGlass.IndirectSpecularHdr[Off] * SpecAo;
         }
 
         // Composite 2-Layer Abbe Crown Glass Refraction & Fresnel over pixel if peeled glass shell present!
         if (VisTargets.GlassPeelFront64[Off] != 0ull)
         {
-            FinalHdr = Result.SpecularAndGlass.RefractedGlassHdr[Off];
+            FinalHdr = Result.SpecularGlass.RefractedGlassHdr[Off];
         }
 
         Result.CompositeLinearHdr[Off] = FinalHdr;

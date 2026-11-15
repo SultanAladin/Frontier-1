@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         PARTICLEVIEWPORTHOST.CPP
+                                                           PARTICLEVIEWPORTHOST.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ParticleViewportHost (Viewport Bar, 3D particle/ribbon/force-ring preview, 5-tool rail, Axis Gizmo, Playback, Ruler & Log Drawer)
 
@@ -258,13 +258,13 @@ void ParticleViewportHost::RenderViewportPreview3D(
         }
     }
 
-    // 3b. Project live simulated C++ ParticleExtension slots directly into the 3D viewport stage
-    const auto LiveSlots = Session.SimulationExtension.InspectParticleSlots();
+    // 3b. Project live simulated C++ ParticleSimulationCoordinator slots directly into the 3D viewport stage
+    const auto LiveSlots = Session.SimulationCoordinator.InspectParticleSlots();
     uint32_t DrawnLive = 0u;
     for (std::size_t S = 0u; S < LiveSlots.size() && DrawnLive < 480u; ++S)
     {
         const auto& Slot = LiveSlots[S];
-        if (!ParticleSpace::IsParticleSlotAlive(Slot)) continue;
+        if (!ParticleSpace::QueryParticleSlotAlive(Slot)) continue;
         Point2D Pt {};
         float   Dp = 10.0f;
         if (!Project3D(Slot.PositionMeters[0], Slot.PositionMeters[1], Slot.PositionMeters[2], Pt, Dp)) continue;
@@ -325,7 +325,7 @@ void ParticleViewportHost::Render(
     float BarX = TopBar.X + 4.0f;
     const float BarCY = TopBar.Center().Y;
 
-    DrawSparkleGlyph(Surface, { BarX + 7.0f, BarCY }, 5.5f, C.TextSoft);
+    RasterizeSparkleGlyph(Surface, { BarX + 7.0f, BarCY }, 5.5f, C.TextSoft);
     Surface.Text({ BarX + 18.0f, BarCY - 10.0f }, 11.2f, C.TextPrimary, "Scene");
     Surface.Text({ BarX + 18.0f, BarCY + 2.0f },  10.8f, C.TextPrimary, "view");
     BarX += 66.0f;
@@ -386,7 +386,7 @@ void ParticleViewportHost::Render(
 
     // Vector arrows icon
     if (DrawBarIcon(Session.ShowFieldArrows, [&](Point2D Pt, ColorRgba Ink) {
-        DrawWindLinesGlyph(Surface, Pt, 4.6f, Ink);
+        RasterizeWindLinesGlyph(Surface, Pt, 4.6f, Ink);
     })) { Session.ShowFieldArrows = !Session.ShowFieldArrows; }
 
     // Field · V pill

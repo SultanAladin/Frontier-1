@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          FIELDFORMULACOMPILER.H
+                                                            FIELDFORMULACOMPILER.H
 ============================================================================================================================================*/
 // 🧩 VectorFieldLang lexer, AST parser, type validator, CPU bytecode generator, and .slang GPU shader expression emitter
 

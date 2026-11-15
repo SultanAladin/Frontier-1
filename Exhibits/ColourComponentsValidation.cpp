@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                       COLOURCOMPONENTSVALIDATION.CPP
 ============================================================================================================================================*/
-// 🎨 End-to-end UI validation & visual proof for ContentBrowser Colour Ramps drag-drop + reusable ColourRampEditor & ColourSwatchPicker
+// 🧩 End-to-end UI validation & visual proof for ContentBrowser Colour Ramps drag-drop + reusable ColourRampEditor & ColourSwatchPicker
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -173,7 +173,7 @@ int main()
     ContentBrowserPointerInput Idle {};
     for (int W = 0; W < 3; ++W) RenderStep(Idle);
 
-    const std::size_t AuroraIdx = Browser.QueryColourCodex().FindRampPresetIndex("aurora");
+    const std::size_t AuroraIdx = Browser.QueryColourSwatchBrowser().FindRampPresetIndex("aurora");
     const Rectangle2D AuroraCell = Browser.QueryRenderedRampCellBounds(AuroraIdx);
     if (!VerifyCheck(AuroraCell.Width > 50.0f && AuroraCell.Height > 30.0f, "Aurora ramp tile rendered with valid hitbox"))
     {
@@ -225,7 +225,7 @@ int main()
     // Verify Swatch drop-slot on ColourSwatchPicker as well
     Browser.ConfigureColourCollectionScope(ColourCollectionScope::Swatches);
     RenderStep(Idle);
-    const std::size_t FigIdx = Browser.QueryColourCodex().FindEntryByName("Fig Purple");
+    const std::size_t FigIdx = Browser.QueryColourSwatchBrowser().FindEntryByName("Fig Purple");
     if (!VerifyCheck(Browser.ApplyColourIndexToSlot(FigIdx, "Particle.StopSwatch") && SwatchCallbackFired,
                      "Assigning Fig Purple swatch updates ColourSwatchPicker target"))
     {

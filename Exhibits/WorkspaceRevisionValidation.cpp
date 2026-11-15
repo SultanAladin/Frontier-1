@@ -71,7 +71,7 @@ namespace
 //                              SUITE 1: TWO-TIER HYBRID .SPACE CODECS & 64-BYTE ALIGNMENT
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] bool ValidateSpaceContainerAndDomainCodecs(const std::filesystem::path& ScratchDir)
+[[nodiscard]] bool ValidateSpaceContainerCodecs(const std::filesystem::path& ScratchDir)
 {
     using namespace Frontier::Codecs;
     using namespace Frontier::Constants;
@@ -89,16 +89,16 @@ namespace
     }
 
     // 2. Verify Option 2A rejection of .toml, .UVChart, and .Surface.
-    SpaceExtensionCategory RejectedCat{};
+    SpaceSuffixCategory RejectedCat{};
     std::string            CanonicalOut;
     if (!VerifyCondition(
-            !SpaceContainerDecoder::ResolveExtensionCaseInsensitive(".toml", RejectedCat, CanonicalOut, Diagnostic),
+            !SpaceContainerDecoder::ResolveSuffixCaseInsensitive(".toml", RejectedCat, CanonicalOut, Diagnostic),
             "Rejects raw .toml extension") ||
         !VerifyCondition(
-            !SpaceContainerDecoder::ResolveExtensionCaseInsensitive(".UVChart", RejectedCat, CanonicalOut, Diagnostic),
+            !SpaceContainerDecoder::ResolveSuffixCaseInsensitive(".UVChart", RejectedCat, CanonicalOut, Diagnostic),
             "Rejects prohibited .UVChart extension") ||
         !VerifyCondition(
-            !SpaceContainerDecoder::ResolveExtensionCaseInsensitive(".Surface", RejectedCat, CanonicalOut, Diagnostic),
+            !SpaceContainerDecoder::ResolveSuffixCaseInsensitive(".Surface", RejectedCat, CanonicalOut, Diagnostic),
             "Rejects prohibited .Surface extension") ||
         !VerifyCondition(
             !SpaceContainerEncoder::NormalizeSubFormatTag(".uvchart", CanonicalOut, Diagnostic),
@@ -111,15 +111,15 @@ namespace
     }
 
     // 3. Verify Option 1A + Option 2A case-insensitive recognition & canonical PascalCase normalization.
-    SpaceExtensionCategory ResolvedUV{};
-    SpaceExtensionCategory ResolvedPigment{};
+    SpaceSuffixCategory ResolvedUV{};
+    SpaceSuffixCategory ResolvedPigment{};
     if (!VerifyCondition(
-            SpaceContainerDecoder::ResolveExtensionCaseInsensitive(".uvspace", ResolvedUV, CanonicalOut, Diagnostic) &&
-                ResolvedUV == SpaceExtensionCategory::UVSpace && CanonicalOut == ".UVSpace",
+            SpaceContainerDecoder::ResolveSuffixCaseInsensitive(".uvspace", ResolvedUV, CanonicalOut, Diagnostic) &&
+                ResolvedUV == SpaceSuffixCategory::UVSpace && CanonicalOut == ".UVSpace",
             "Resolves lowercase .uvspace -> canonical .UVSpace") ||
         !VerifyCondition(
-            SpaceContainerDecoder::ResolveExtensionCaseInsensitive(".PIGMENT", ResolvedPigment, CanonicalOut, Diagnostic) &&
-                ResolvedPigment == SpaceExtensionCategory::Pigment && CanonicalOut == ".Pigment",
+            SpaceContainerDecoder::ResolveSuffixCaseInsensitive(".PIGMENT", ResolvedPigment, CanonicalOut, Diagnostic) &&
+                ResolvedPigment == SpaceSuffixCategory::Pigment && CanonicalOut == ".Pigment",
             "Resolves uppercase .PIGMENT -> Option 1A canonical .Pigment") ||
         !VerifyCondition(
             SpaceContainerEncoder::NormalizeSubFormatTag(".uvtile", CanonicalOut, Diagnostic) && CanonicalOut == ".UVTile",
@@ -275,7 +275,7 @@ namespace
 //                     SUITE 2: 215 MiB / 750 MiB PARAMETRIC REVISION, BRANCHING, & MULTI-RES REPLAY
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] bool ValidateParametricRevisionAndCompaction()
+[[nodiscard]] bool ValidateParametricRevisionCompaction()
 {
     using namespace Frontier::Workspaces;
 
@@ -433,7 +433,7 @@ namespace
 //             SUITE 3: PRIORITY-BUDGETED TASKSCHEDULER, ANTI-HANG EXECUTIONCHANNELS, & WORKSPACETHREAD
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] bool ValidatePriorityThreadingAndWorkspaceThread(
+[[nodiscard]] bool ValidatePriorityWorkspaceThreading(
     const std::filesystem::path&              ScratchDir,
     Frontier::Threading::BudgetWindowReport&  OutWindowReport,
     Frontier::Threading::ChannelsTelemetrySnapshot& OutClusterTelemetry,
@@ -560,7 +560,7 @@ namespace
 
     const std::filesystem::path AsyncUVPath = ScratchDir / "AsyncWing.UVSpace";
     const WorkspaceToken        UVToken     = Workspaces.CreateWorkspaceDocument(
-        Frontier::Codecs::SpaceExtensionCategory::UVSpace,
+        Frontier::Codecs::SpaceSuffixCategory::UVSpace,
         "AsyncWingParameterization",
         AsyncUVPath);
 
@@ -845,12 +845,12 @@ int main()
     std::error_code CleanupError;
     std::filesystem::remove_all(ScratchDir, CleanupError);
 
-    if (!ValidateSpaceContainerAndDomainCodecs(ScratchDir))
+    if (!ValidateSpaceContainerCodecs(ScratchDir))
     {
         return 1;
     }
 
-    if (!ValidateParametricRevisionAndCompaction())
+    if (!ValidateParametricRevisionCompaction())
     {
         return 1;
     }
@@ -858,7 +858,7 @@ int main()
     Frontier::Threading::BudgetWindowReport         WindowReport{};
     Frontier::Threading::ChannelsTelemetrySnapshot   ClusterTelemetry{};
     Frontier::Threading::PublishedWorkspaceSnapshot WorkspaceSnapshot{};
-    if (!ValidatePriorityThreadingAndWorkspaceThread(ScratchDir, WindowReport, ClusterTelemetry, WorkspaceSnapshot))
+    if (!ValidatePriorityWorkspaceThreading(ScratchDir, WindowReport, ClusterTelemetry, WorkspaceSnapshot))
     {
         return 1;
     }

@@ -42,7 +42,7 @@ struct VectorPotentialSample
     SpatialVector3 AnalyticalCurl {};
 };
 
-[[nodiscard]] VectorPotentialSample EvaluateSmoothPotentialAndCurl(
+[[nodiscard]] VectorPotentialSample EvaluateSmoothPotentialCurl(
     const SpatialVector3& P,
     float                 ScaleMeters,
     uint32_t              OctaveCount,
@@ -144,10 +144,10 @@ SpatialVector3 EvaluateDivergenceFreeCurlPotential(
     uint32_t              Seed,
     double                TimeSeconds) noexcept
 {
-    return EvaluateSmoothPotentialAndCurl(LocalMeters, ScaleMeters, OctaveCount, Seed, TimeSeconds).AnalyticalCurl;
+    return EvaluateSmoothPotentialCurl(LocalMeters, ScaleMeters, OctaveCount, Seed, TimeSeconds).AnalyticalCurl;
 }
 
-SpatialForceSample EvaluateTurbulenceFieldLaw(
+SpatialForceSample EvaluateTurbulenceModel(
     const ForceSourceRecordEntry& Entry,
     const SpatialVector3&         WorldPoint,
     const SpatialVector3&         BodyVelocity,
@@ -189,7 +189,7 @@ SpatialForceSample EvaluateTurbulenceFieldLaw(
         const float ScaleGrad = (2.0f * dWdU2) / (SafeR * SafeR);
         const SpatialVector3 GradW = Delta * ScaleGrad;
 
-        const VectorPotentialSample Pot = EvaluateSmoothPotentialAndCurl(
+        const VectorPotentialSample Pot = EvaluateSmoothPotentialCurl(
             Delta,
             Entry.TurbulenceScaleMeters,
             Entry.OctaveCount,
@@ -231,7 +231,7 @@ SpatialForceSample EvaluateTurbulenceFieldLaw(
 
         case ForceModel::VorticityConfinement:
         {
-            const VectorPotentialSample Pot = EvaluateSmoothPotentialAndCurl(
+            const VectorPotentialSample Pot = EvaluateSmoothPotentialCurl(
                 Delta,
                 Entry.TurbulenceScaleMeters,
                 Entry.OctaveCount,

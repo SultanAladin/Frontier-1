@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         PARTICLEOUTLINERPANEL.H
+                                                           PARTICLEOUTLINERPANEL.H
 ============================================================================================================================================*/
 // 🧩 Floating 22px charcoal Particle Outliner panel with Visible/Hidden census tiles, 18 filter chips & Environment/Particle hierarchy
 

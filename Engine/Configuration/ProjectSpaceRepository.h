@@ -48,7 +48,7 @@ struct ProjectSpaceDocument
 class ProjectSpaceRepository
 {
 public:
-    static constexpr const char* ContainerExtension      = ".projectspace";        // [-] - Sole permitted project container extension
+    static constexpr const char* ContainerSuffix      = ".projectspace";        // [-] - Sole permitted project container extension
     static constexpr const char* VisualAppearanceSection = ".visualappearance";    // [-] - Visual appearance section key
     static constexpr const char* FontSpaceSection        = ".FontSpace";           // [-] - Typography section key
     static constexpr const char* WorkspaceLayoutSection  = ".workspacelayout";     // [-] - Workspace docking section key

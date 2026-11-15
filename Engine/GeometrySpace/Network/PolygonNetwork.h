@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                             POLYGONNETWORK.H
+                                                               POLYGONNETWORK.H
 ============================================================================================================================================*/
 // 🧩 Half-edge PolygonNetwork storing contiguous Vertices, DirectedEdges, Faces, per-corner UVAxes, and per-face Material/MatCap assignments
 

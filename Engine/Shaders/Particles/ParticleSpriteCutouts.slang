@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       PARTICLESPRITECUTOUTS.SLANG
+                                                         PARTICLESPRITECUTOUTS.SLANG
 ============================================================================================================================================*/
 // 🧩 Pure .slang library implementing all 20 procedural SpriteCutoutCategory SDF cutouts (0..19) & BokehApertureCategory optics
 

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      TEXTUREBAKERRASTERIZER.CPP
+                                                          TEXTUREBAKERRASTERIZER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of interactive Vulkan 3D studio PBR + live baked texture + High-Poly wire + Cage overlay rasterizer
 
@@ -75,7 +75,7 @@ void TextureBakerRasterizer::AlignCameraToStudy(const PreparedStudyPair& Study, 
 
 bool TextureBakerRasterizer::InitializeRasterizer(
     VulkanInterchange*           BoundDevice,
-    GpuTextureAndSdfBaker*       BoundBaker,
+    GpuTextureBaker*             BoundBaker,
     const std::filesystem::path& ShaderDirectory)
 {
     TeardownRasterizer();
@@ -513,22 +513,22 @@ bool TextureBakerRasterizer::RenderSpatialViewport(const BakeViewportRenderSpec&
             SolidCfg.ViewProjTransform[R * 4 + C] = Clip.Rows[R][C];
         }
     }
-    SolidCfg.CameraEyeAndMode[0] = Eye.X;
-    SolidCfg.CameraEyeAndMode[1] = Eye.Y;
-    SolidCfg.CameraEyeAndMode[2] = Eye.Z;
-    SolidCfg.CameraEyeAndMode[3] = static_cast<float>(Spec.InspectedTargetId);
-    SolidCfg.OverlayAndFlags[0]  = Spec.SurfaceBaked ? 1.0f : 0.0f;
-    SolidCfg.OverlayAndFlags[2]  = Spec.FrontCageMeters;
-    SolidCfg.ViewportSizeAndTime[0] = static_cast<float>(W);
-    SolidCfg.ViewportSizeAndTime[1] = static_cast<float>(H);
+    SolidCfg.CameraEyeMode[0] = Eye.X;
+    SolidCfg.CameraEyeMode[1] = Eye.Y;
+    SolidCfg.CameraEyeMode[2] = Eye.Z;
+    SolidCfg.CameraEyeMode[3] = static_cast<float>(Spec.InspectedTargetId);
+    SolidCfg.OverlayFlagsPacked[0]  = Spec.SurfaceBaked ? 1.0f : 0.0f;
+    SolidCfg.OverlayFlagsPacked[2]  = Spec.FrontCageMeters;
+    SolidCfg.ViewportSizeTime[0] = static_cast<float>(W);
+    SolidCfg.ViewportSizeTime[1] = static_cast<float>(H);
 
     // Slot 0: Lit Solid Low-Poly surface
-    SolidCfg.ViewportSizeAndTime[3] = 0.0f;
+    SolidCfg.ViewportSizeTime[3] = 0.0f;
     std::memcpy(static_cast<uint8_t*>(UniformRingBuffer.HostAddress) + 0ull, &SolidCfg, sizeof(SolidCfg));
 
     // Slot 1: High-Poly wireframe overlay
     GpuPreviewConfig HighWireCfg = SolidCfg;
-    HighWireCfg.ViewportSizeAndTime[3] = 1.0f;
+    HighWireCfg.ViewportSizeTime[3] = 1.0f;
     HighWireCfg.OverlayColor[0] = 0.937f;
     HighWireCfg.OverlayColor[1] = 0.957f;
     HighWireCfg.OverlayColor[2] = 0.812f;
@@ -537,7 +537,7 @@ bool TextureBakerRasterizer::RenderSpatialViewport(const BakeViewportRenderSpec&
 
     // Slot 2: Translucent expanded Front Cage shell wireframe
     GpuPreviewConfig CageCfg = SolidCfg;
-    CageCfg.ViewportSizeAndTime[3] = 2.0f;
+    CageCfg.ViewportSizeTime[3] = 2.0f;
     CageCfg.OverlayColor[0] = 0.25f;
     CageCfg.OverlayColor[1] = 0.72f;
     CageCfg.OverlayColor[2] = 0.96f;

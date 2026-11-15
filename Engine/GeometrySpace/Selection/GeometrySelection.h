@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            GEOMETRYSELECTION.H
+                                                             GEOMETRYSELECTION.H
 ============================================================================================================================================*/
 // 🧩 Connectivity traversal selectors: Edge Loop, Edge Ring, Dijkstra Geodesic Shortest Path, Linked Island, Boundary, Sharp & Coplanar
 

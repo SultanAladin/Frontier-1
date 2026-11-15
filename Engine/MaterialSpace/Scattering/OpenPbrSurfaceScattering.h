@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                    OPENPBRSURFACESCATTERING.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                          OPENPBRSURFACESCATTERING.H
+============================================================================================================================================*/
 // 🧩 Master 10-Lobe OpenPBR 1.1 + Constant-Time Glinty BSDF evaluation, VNDF/Cosine mixture PDF, & White-Furnace hemisphere integrator
 
 #pragma once
@@ -19,7 +19,8 @@
 #include "Engine/MaterialSpace/Scattering/GlintMicroflakeScattering.h"
 #include "Engine/MaterialSpace/Scattering/LinearlyTransformedSheen.h"
 #include "Engine/MaterialSpace/Scattering/MetallicFresnelTint.h"
-#include "Engine/MaterialSpace/Scattering/PorosityAndBlackbody.h"
+#include "Engine/MaterialSpace/Scattering/PorosityScattering.h"
+#include "Engine/MaterialSpace/Scattering/BlackbodyEmission.h"
 #include "Engine/MaterialSpace/Scattering/SubsurfaceDiffusion.h"
 #include "Engine/MaterialSpace/Scattering/ThinFilmInterference.h"
 
@@ -228,7 +229,7 @@ struct WhiteFurnaceAuditReport
                 FresnelOverride = &CustomIridescentFresnel;
             }
 
-            SpecBrdf = EvaluateMetallicAndDielectricSpecular(
+            SpecBrdf = EvaluateConductorDielectricSpecular(
                 LocalWo,
                 LocalWi,
                 WetAdj.DarkenedDiffuseAlbedo,
@@ -422,8 +423,8 @@ struct WhiteFurnaceAuditReport
 [[nodiscard]] inline WhiteFurnaceAuditReport IntegrateDirectionalHemisphereAlbedo(
     const SurfaceMaterial& Mat,
     float                  CosThetaOut,
-    uint32_t               ZenithStrata  = 32u,
-    uint32_t               AzimuthStrata = 64u) noexcept
+    uint32_t               ZenithRings  = 32u,
+    uint32_t               AzimuthSlices = 64u) noexcept
 {
     WhiteFurnaceAuditReport Report {};
     const float MuO  = std::clamp(CosThetaOut, 0.02f, 1.0f);
@@ -436,7 +437,7 @@ struct WhiteFurnaceAuditReport
     MacroFootprint.DerivativeDuDx = { 0.05f, 0.0f };
     MacroFootprint.DerivativeDuDy = { 0.0f, 0.05f };
 
-    const uint32_t SampleCount = std::max(256u, ZenithStrata * AzimuthStrata);
+    const uint32_t SampleCount = std::max(256u, ZenithRings * AzimuthSlices);
     const auto     SpecAlpha   = ComputeAnisotropicAlpha(Mat.Specular.Roughness, Mat.Specular.Anisotropy);
     const float    EtaT        = std::max(1.01f, Mat.Specular.DielectricIOR);
     const float    InvEtaT     = 1.0f / EtaT;

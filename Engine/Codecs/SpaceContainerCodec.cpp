@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          SPACECONTAINERCODEC.CPP
+                                                           SPACECONTAINERCODEC.CPP
 ============================================================================================================================================*/
 // 🧩 Two-Tier Hybrid .Space container encoder & decoder implementation (Option 1A + Option 2A, 64B alignment, FNV-1a)
 
@@ -24,38 +24,38 @@ namespace
 
 constexpr std::string_view BinaryBoundaryMarker = "\n# === FRONTIER_BINARY_BOUNDARY ===\n";
 
-struct ExtensionMappingEntry
+struct SpaceSuffixMappingEntry
 {
-    SpaceExtensionCategory Category;
+    SpaceSuffixCategory Category;
     std::string_view       CanonicalExtension;
     std::string_view       LowercaseExtension;
 };
 
-constexpr std::array<ExtensionMappingEntry, 24u> ExtensionRegistry = {{
-    { SpaceExtensionCategory::ProjectSpace,     ".ProjectSpace",     ".projectspace"     },
-    { SpaceExtensionCategory::ColourSpace,      ".ColourSpace",      ".colourspace"      },
-    { SpaceExtensionCategory::GeometrySpace,    ".GeometrySpace",    ".geometryspace"    },
-    { SpaceExtensionCategory::FontSpace,        ".FontSpace",        ".fontspace"        },
-    { SpaceExtensionCategory::TextureSpace,     ".TextureSpace",     ".texturespace"     },
-    { SpaceExtensionCategory::MaterialSpace,    ".MaterialSpace",    ".materialspace"    },
-    { SpaceExtensionCategory::ImageSpace,       ".ImageSpace",       ".imagespace"       },
-    { SpaceExtensionCategory::VectorSpace,      ".VectorSpace",      ".vectorspace"      },
-    { SpaceExtensionCategory::SimulationSpace,  ".SimulationSpace",  ".simulationspace"  },
-    { SpaceExtensionCategory::VolumetricSpace,  ".VolumetricSpace",  ".volumetricspace"  },
-    { SpaceExtensionCategory::ParticleSpace,    ".ParticleSpace",    ".particlespace"    },
-    { SpaceExtensionCategory::UVSpace,          ".UVSpace",          ".uvspace"          },
-    { SpaceExtensionCategory::Pigment,          ".Pigment",          ".pigment"          },
-    { SpaceExtensionCategory::Sketch,           ".Sketch",           ".sketch"           },
-    { SpaceExtensionCategory::Assembly,         ".Assembly",         ".assembly"         },
-    { SpaceExtensionCategory::Motion,           ".Motion",           ".motion"           },
-    { SpaceExtensionCategory::Render,           ".Render",           ".render"           },
-    { SpaceExtensionCategory::Photometry,       ".Photometry",       ".photometry"       },
-    { SpaceExtensionCategory::Terrain,          ".Terrain",          ".terrain"          },
-    { SpaceExtensionCategory::Acoustic,         ".Acoustic",         ".acoustic"         },
-    { SpaceExtensionCategory::NetworkSpace,     ".NetworkSpace",     ".networkspace"     },
-    { SpaceExtensionCategory::VectorFieldSpace, ".VectorFieldSpace", ".vectorfieldspace" },
-    { SpaceExtensionCategory::ForceModel,       ".ForceModel",       ".forcemodel"       },
-    { SpaceExtensionCategory::InputSpace,       ".InputSpace",       ".inputspace"       },
+constexpr std::array<SpaceSuffixMappingEntry, 24u> SpaceSuffixRegistry = {{
+    { SpaceSuffixCategory::ProjectSpace,     ".ProjectSpace",     ".projectspace"     },
+    { SpaceSuffixCategory::ColourSpace,      ".ColourSpace",      ".colourspace"      },
+    { SpaceSuffixCategory::GeometrySpace,    ".GeometrySpace",    ".geometryspace"    },
+    { SpaceSuffixCategory::FontSpace,        ".FontSpace",        ".fontspace"        },
+    { SpaceSuffixCategory::TextureSpace,     ".TextureSpace",     ".texturespace"     },
+    { SpaceSuffixCategory::MaterialSpace,    ".MaterialSpace",    ".materialspace"    },
+    { SpaceSuffixCategory::ImageSpace,       ".ImageSpace",       ".imagespace"       },
+    { SpaceSuffixCategory::VectorSpace,      ".VectorSpace",      ".vectorspace"      },
+    { SpaceSuffixCategory::SimulationSpace,  ".SimulationSpace",  ".simulationspace"  },
+    { SpaceSuffixCategory::VolumetricSpace,  ".VolumetricSpace",  ".volumetricspace"  },
+    { SpaceSuffixCategory::ParticleSpace,    ".ParticleSpace",    ".particlespace"    },
+    { SpaceSuffixCategory::UVSpace,          ".UVSpace",          ".uvspace"          },
+    { SpaceSuffixCategory::Pigment,          ".Pigment",          ".pigment"          },
+    { SpaceSuffixCategory::Sketch,           ".Sketch",           ".sketch"           },
+    { SpaceSuffixCategory::Assembly,         ".Assembly",         ".assembly"         },
+    { SpaceSuffixCategory::Motion,           ".Motion",           ".motion"           },
+    { SpaceSuffixCategory::Render,           ".Render",           ".render"           },
+    { SpaceSuffixCategory::Photometry,       ".Photometry",       ".photometry"       },
+    { SpaceSuffixCategory::Terrain,          ".Terrain",          ".terrain"          },
+    { SpaceSuffixCategory::Acoustic,         ".Acoustic",         ".acoustic"         },
+    { SpaceSuffixCategory::NetworkSpace,     ".NetworkSpace",     ".networkspace"     },
+    { SpaceSuffixCategory::VectorFieldSpace, ".VectorFieldSpace", ".vectorfieldspace" },
+    { SpaceSuffixCategory::ForceModel,       ".ForceModel",       ".forcemodel"       },
+    { SpaceSuffixCategory::InputSpace,       ".InputSpace",       ".inputspace"       },
 }};
 
 struct SubFormatMappingEntry
@@ -251,9 +251,9 @@ uint64_t SpaceContainerEncoder::ComputeFnv1aChecksum64(std::span<const std::byte
     return Digest;
 }
 
-std::string_view SpaceContainerEncoder::QueryCanonicalExtension(SpaceExtensionCategory Category) noexcept
+std::string_view SpaceContainerEncoder::QueryCanonicalSuffix(SpaceSuffixCategory Category) noexcept
 {
-    for (const ExtensionMappingEntry& Mapping : ExtensionRegistry)
+    for (const SpaceSuffixMappingEntry& Mapping : SpaceSuffixRegistry)
     {
         if (Mapping.Category == Category)
         {
@@ -314,7 +314,7 @@ bool SpaceContainerEncoder::EncodeToBytes(
     }
 
     toml::table HeaderSection;
-    HeaderSection.insert_or_assign("ContainerExtension", std::string(QueryCanonicalExtension(Payload.ExtensionCategory)));
+    HeaderSection.insert_or_assign("ContainerExtension", std::string(QueryCanonicalSuffix(Payload.SuffixCategory)));
     HeaderSection.insert_or_assign("SchemaVersion", static_cast<int64_t>(Payload.SchemaVersion));
     HeaderSection.insert_or_assign("DocumentTitle", Payload.DocumentTitle);
     HeaderSection.insert_or_assign("AuthoringWorkspace", Payload.AuthoringWorkspace);
@@ -390,9 +390,9 @@ bool SpaceContainerEncoder::EncodeToFile(
     const SpaceContainerPayload& Payload,
     std::string&                 OutDiagnostic)
 {
-    SpaceExtensionCategory PathCategory{};
+    SpaceSuffixCategory PathCategory{};
     std::string            CanonicalExt;
-    if (!SpaceContainerDecoder::ResolveExtensionCaseInsensitive(
+    if (!SpaceContainerDecoder::ResolveSuffixCaseInsensitive(
             TargetPath.extension().string(),
             PathCategory,
             CanonicalExt,
@@ -401,10 +401,10 @@ bool SpaceContainerEncoder::EncodeToFile(
         return false;
     }
 
-    if (PathCategory != Payload.ExtensionCategory)
+    if (PathCategory != Payload.SuffixCategory)
     {
         OutDiagnostic = "Target file extension (" + CanonicalExt + ") does not match payload category (" +
-                        std::string(QueryCanonicalExtension(Payload.ExtensionCategory)) + ").";
+                        std::string(QueryCanonicalSuffix(Payload.SuffixCategory)) + ").";
         return false;
     }
 
@@ -445,9 +445,9 @@ bool SpaceContainerEncoder::EncodeToFile(
 //                                                  DECODER OPERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-bool SpaceContainerDecoder::ResolveExtensionCaseInsensitive(
+bool SpaceContainerDecoder::ResolveSuffixCaseInsensitive(
     std::string_view        RawExtension,
-    SpaceExtensionCategory& OutCategory,
+    SpaceSuffixCategory& OutCategory,
     std::string&            OutCanonicalExtension,
     std::string&            OutDiagnostic)
 {
@@ -463,7 +463,7 @@ bool SpaceContainerDecoder::ResolveExtensionCaseInsensitive(
         return false;
     }
 
-    for (const ExtensionMappingEntry& Mapping : ExtensionRegistry)
+    for (const SpaceSuffixMappingEntry& Mapping : SpaceSuffixRegistry)
     {
         if (Lowered == Mapping.LowercaseExtension)
         {
@@ -525,7 +525,7 @@ bool SpaceContainerDecoder::DecodeFromBytes(
 
     const std::string RawContainerExt = (*Header)["ContainerExtension"].value_or(std::string{});
     std::string       CanonicalExt;
-    if (!ResolveExtensionCaseInsensitive(RawContainerExt, OutPayload.ExtensionCategory, CanonicalExt, OutDiagnostic))
+    if (!ResolveSuffixCaseInsensitive(RawContainerExt, OutPayload.SuffixCategory, CanonicalExt, OutDiagnostic))
     {
         return false;
     }
@@ -618,9 +618,9 @@ bool SpaceContainerDecoder::DecodeFromFile(
     SpaceContainerPayload&       OutPayload,
     std::string&                 OutDiagnostic)
 {
-    SpaceExtensionCategory PathCategory{};
+    SpaceSuffixCategory PathCategory{};
     std::string            CanonicalExt;
-    if (!ResolveExtensionCaseInsensitive(SourcePath.extension().string(), PathCategory, CanonicalExt, OutDiagnostic))
+    if (!ResolveSuffixCaseInsensitive(SourcePath.extension().string(), PathCategory, CanonicalExt, OutDiagnostic))
     {
         return false;
     }
@@ -653,7 +653,7 @@ bool SpaceContainerDecoder::DecodeFromFile(
         return false;
     }
 
-    if (OutPayload.ExtensionCategory != PathCategory)
+    if (OutPayload.SuffixCategory != PathCategory)
     {
         OutDiagnostic = "Container manifest extension does not match file path extension (" + CanonicalExt + ").";
         return false;

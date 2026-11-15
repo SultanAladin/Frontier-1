@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                          WHITEPOINTADAPTATION.H
+                                                            WHITEPOINTADAPTATION.H
 ============================================================================================================================================*/
-// 🎨 Bradford & CAT02 chromatic adaptation transforms between CIE standard illuminants (D65, D60, D50)
+// 🧩 Bradford & CAT02 chromatic adaptation transforms between CIE standard illuminants (D65, D60, D50)
 
 #pragma once
 

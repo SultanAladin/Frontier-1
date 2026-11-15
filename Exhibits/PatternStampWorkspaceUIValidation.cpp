@@ -1,7 +1,7 @@
 /*==========================================================================================================================================
                                                  PATTERNSTAMPWORKSPACEUIVALIDATION.CPP
 ==========================================================================================================================================*/
-// 🧪 Domain & ImGui UI exhibit for Step 2 (Pattern Studio) + Step 3 (Stamp Studio) + ControlIcon 0..77 contour verification (live GPU Vulkan + ThorVG 2D/PBR viewport).
+// 🧩 Domain & ImGui UI exhibit for Step 2 (Pattern Studio) + Step 3 (Stamp Studio) + ControlIcon 0..77 contour verification (live GPU Vulkan + ThorVG 2D/PBR viewport).
 
 #include "Engine/Components/Appearance/ThemeRepository.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"

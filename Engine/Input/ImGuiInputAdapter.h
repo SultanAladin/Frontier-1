@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            IMGUIINPUTADAPTER.H
+                                                             IMGUIINPUTADAPTER.H
 ============================================================================================================================================*/
 // 🧩 Downstream one-way EditorInputExchange -> Dear ImGui IO signal forwarder (never polled upstream by Engine or Editor classes)
 

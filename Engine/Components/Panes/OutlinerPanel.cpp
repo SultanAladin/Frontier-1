@@ -70,10 +70,10 @@ namespace
 OutlinerPanel::OutlinerPanel() noexcept
 {
     ConstructTemplates = {
-        { "Add Item 1", "Item 1", "Type 1", "Position 0, 0, 0 m", ConstructSlotCategory::CategoryOne  },
-        { "Add Item 2", "Item 2", "Type 2", "Position 0, 0, 0 m", ConstructSlotCategory::CategoryTwo },
-        { "Add Item 3", "Item 3", "Type 3", "Position 0, 0, 0 m", ConstructSlotCategory::CategoryThree },
-        { "Add Item 4", "Item 4", "Type 4", "Position 0, 0, 0 m", ConstructSlotCategory::CategoryFour },
+        { "Add Item 1", "Item 1", "Type 1", "Position 0, 0, 0 m", ConstructSlotCategory::GeometryVolume  },
+        { "Add Item 2", "Item 2", "Type 2", "Position 0, 0, 0 m", ConstructSlotCategory::LayerGroup },
+        { "Add Item 3", "Item 3", "Type 3", "Position 0, 0, 0 m", ConstructSlotCategory::PointLuminaire },
+        { "Add Item 4", "Item 4", "Type 4", "Position 0, 0, 0 m", ConstructSlotCategory::OpticsCamera },
     };
 }
 
@@ -168,7 +168,7 @@ OutlinerSlotToken OutlinerPanel::ConstructFromTemplate(uint32_t TemplateIndex, O
     Created.Subtitle          = Preset.DefaultDetail;
     Created.VisibilityEnabled = true;
     Created.Expanded          = true;
-    Created.ForceLawOrdinal   = Preset.ForceLawOrdinal;
+    Created.ForceModelOrdinal   = Preset.ForceModelOrdinal;
 
     if (OutlinerRecordEntry* EnclosureEntry = AccessEntry(Created.EnclosingToken))
     {
@@ -721,12 +721,12 @@ bool OutlinerPanel::MatchesActiveFilters(const OutlinerRecordEntry& Entry) const
     {
         case OutlinerCategoryFilter::All:            break;
         case OutlinerCategoryFilter::FoldersOnly:    if (Entry.Category != ConstructSlotCategory::Folder) return false; break;
-        case OutlinerCategoryFilter::FirstType:      if (Entry.Category != ConstructSlotCategory::CategoryOne) return false; break;
-        case OutlinerCategoryFilter::SecondType:     if (Entry.Category != ConstructSlotCategory::CategoryTwo) return false; break;
-        case OutlinerCategoryFilter::ThirdType:      if (Entry.Category != ConstructSlotCategory::CategoryThree) return false; break;
-        case OutlinerCategoryFilter::FourthType:     if (Entry.Category != ConstructSlotCategory::CategoryFour) return false; break;
-        case OutlinerCategoryFilter::WithNotes:      if (Entry.AuthorNotes.empty()) return false; break;
-        case OutlinerCategoryFilter::ForceFieldType: if (Entry.Category != ConstructSlotCategory::ForceField) return false; break;
+        case OutlinerCategoryFilter::GeometryVolume:      if (Entry.Category != ConstructSlotCategory::GeometryVolume) return false; break;
+        case OutlinerCategoryFilter::LayerGroup:     if (Entry.Category != ConstructSlotCategory::LayerGroup) return false; break;
+        case OutlinerCategoryFilter::PointLuminaire:      if (Entry.Category != ConstructSlotCategory::PointLuminaire) return false; break;
+        case OutlinerCategoryFilter::OpticsCamera:     if (Entry.Category != ConstructSlotCategory::OpticsCamera) return false; break;
+        case OutlinerCategoryFilter::AnnotatedOnly:      if (Entry.AuthorNotes.empty()) return false; break;
+        case OutlinerCategoryFilter::ForceFieldOnly: if (Entry.Category != ConstructSlotCategory::ForceField) return false; break;
     }
 
     const std::string_view Query(SearchEditor.Text, SearchEditor.Length);
@@ -1159,12 +1159,12 @@ void OutlinerPanel::Render(
         constexpr std::array<FilterChipEntry, 8> AllChips = {{
             { "All",     OutlinerCategoryFilter::All            },
             { "Folders", OutlinerCategoryFilter::FoldersOnly    },
-            { "Forces",  OutlinerCategoryFilter::ForceFieldType },
-            { "Type 1",  OutlinerCategoryFilter::FirstType      },
-            { "Type 2",  OutlinerCategoryFilter::SecondType     },
-            { "Type 3",  OutlinerCategoryFilter::ThirdType      },
-            { "Type 4",  OutlinerCategoryFilter::FourthType     },
-            { "Notes",   OutlinerCategoryFilter::WithNotes      },
+            { "Forces",  OutlinerCategoryFilter::ForceFieldOnly },
+            { "Type 1",  OutlinerCategoryFilter::GeometryVolume      },
+            { "Type 2",  OutlinerCategoryFilter::LayerGroup     },
+            { "Type 3",  OutlinerCategoryFilter::PointLuminaire      },
+            { "Type 4",  OutlinerCategoryFilter::OpticsCamera     },
+            { "Notes",   OutlinerCategoryFilter::AnnotatedOnly      },
         }};
 
         bool ForceSlotsPresent = false;
@@ -1192,7 +1192,7 @@ void OutlinerPanel::Render(
         Chips.reserve(AllChips.size());
         for (const auto& Candidate : AllChips)
         {
-            if (Candidate.Filter == OutlinerCategoryFilter::ForceFieldType && !ForceSlotsPresent)
+            if (Candidate.Filter == OutlinerCategoryFilter::ForceFieldOnly && !ForceSlotsPresent)
             {
                 continue;
             }
@@ -1365,16 +1365,16 @@ void OutlinerPanel::Render(
                 }
             }
 
-            // 24px Showcase folder or category icon (exact 19 bespoke ForceModel icons when ForceLawOrdinal < 19)
+            // 24px Showcase folder or category icon (exact 19 bespoke ForceModel icons when ForceModelOrdinal < 19)
             const Point2D IconOrigin{ DisclosureRect.Right() + 4.0f, RowRect.Y + 7.5f };
-            if (Entry->Category == ConstructSlotCategory::ForceField && Entry->ForceLawOrdinal < 19u)
+            if (Entry->Category == ConstructSlotCategory::ForceField && Entry->ForceModelOrdinal < 19u)
             {
                 const ColorRgba LawInk = Entry->ForceFormulaOverride
                     ? WorkspaceSurfaceColors::SelectionAmber
-                    : WorkspaceAppearance::QueryForceLawTint(Entry->ForceLawOrdinal);
-                WorkspaceAppearance::ConstructForceLawIcon(
+                    : WorkspaceAppearance::QueryForceModelTint(Entry->ForceModelOrdinal);
+                WorkspaceAppearance::ConstructForceModelIcon(
                     Surface,
-                    Entry->ForceLawOrdinal,
+                    Entry->ForceModelOrdinal,
                     { IconOrigin.X + 2.0f, IconOrigin.Y + 2.0f },
                     20.0f,
                     LawInk,

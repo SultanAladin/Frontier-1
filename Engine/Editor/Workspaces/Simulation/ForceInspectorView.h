@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          FORCEINSPECTORVIEW.H
+                                                             FORCEINSPECTORVIEW.H
 ============================================================================================================================================*/
 // 🧩 Full 1:1 ForceFields Inspector renderer: 4 tabs (Field / Formula / Layers / Cache), 19 ForceModel law schemas,
 //    Beaufort Anemometer telemetry plot, radial envelope f(r), motion path waypoints, VectorFieldLang compiler & GPU layers
@@ -75,10 +75,10 @@ public:
         double                            Δt);
 
 private:
-    enum class OpenDropdownKind : uint8_t
+    enum class OpenDropdownCategory : uint8_t
     {
         None             = 0u,
-        ForceLawSelector = 1u,
+        ForceModelSelector = 1u,
         ReachShape       = 2u,
         Attenuation      = 3u,
         DurationMode     = 4u,
@@ -92,7 +92,7 @@ private:
 
     struct DeferredSheetOverlay
     {
-        OpenDropdownKind Kind          = OpenDropdownKind::None;
+        OpenDropdownCategory Kind          = OpenDropdownCategory::None;
         Rectangle2D      TriggerBounds {};
         float            FixedWidth    = 0.0f;
     };
@@ -142,7 +142,7 @@ private:
     int32_t           ActiveAxisDragId = -1;                       // [id] - Active dragging XYZ axis box tag
     float             AxisDragStartX   = 0.0f;                     // [px] - Cursor X at axis drag start
     float             AxisDragOrigin   = 0.0f;                     // [m]  - Initial coordinate at axis drag start
-    OpenDropdownKind  OpenDropdown     = OpenDropdownKind::None;   // [-]  - Currently open selector sheet
+    OpenDropdownCategory  OpenDropdown     = OpenDropdownCategory::None;   // [-]  - Currently open selector sheet
     Rectangle2D       OpenTriggerRect  {};                         // [px] - Screen bounds of open trigger button
     bool              FormulaCopiedAck = false;                    // [-]  - Temporary copy confirmation marker
     double            CopyAckTimerSec  = 0.0;                      // [s]  - Remaining feedback seconds

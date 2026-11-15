@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                              WORKSPACETOKEN.H
+                                                               WORKSPACETOKEN.H
 ============================================================================================================================================*/
 // 🧩 Generation-checked workspace document token preventing stale-slot access across open .Space sessions
 
@@ -24,7 +24,7 @@ struct WorkspaceToken
 {
     uint32_t                      SlotIndex         = 0u;                                        // [idx] - 0-based WorkspaceRegistry slot
     uint32_t                      Generation        = 0u;                                        // [gen] - Monotonic slot generation (0 = invalid)
-    Codecs::SpaceExtensionCategory ExtensionCategory = Codecs::SpaceExtensionCategory::ProjectSpace; // [-] - Bound .Space domain category
+    Codecs::SpaceSuffixCategory SuffixCategory = Codecs::SpaceSuffixCategory::ProjectSpace; // [-] - Bound .Space domain category
 
     [[nodiscard]] constexpr bool VerifyValid() const noexcept
     {

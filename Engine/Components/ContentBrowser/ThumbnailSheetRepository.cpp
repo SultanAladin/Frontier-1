@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       THUMBNAILSHEETREPOSITORY.CPP
+                                                         THUMBNAILSHEETREPOSITORY.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of pre-baked ThumbnailSheet pages, flat 64-byte ContentIndex directory, workspace masks, and quarantine import intake
 
@@ -185,13 +185,13 @@ void SynthesizeParticlePreviewTileRgba(
     else if (LowerTitle.find("butterfly") != std::string::npos)
     {
         AddGlowStamp(-0.12f, 0.14f, 0.95f, 0.12f, 0.45f, 0.85f, 0.52f);
-        ProceduralSpriteSpec Morpho  = QueryDefaultProceduralSpriteSpec(ProceduralSpriteArchetype::BotanicalMorphoButterfly);
-        ProceduralSpriteSpec Monarch = Morpho;
+        ProceduralSpriteSpec BotanicalGrowth  = QueryDefaultProceduralSpriteSpec(ProceduralSpriteArchetype::BotanicalAzureButterfly);
+        ProceduralSpriteSpec Monarch = BotanicalGrowth;
         Monarch.PrimaryTintR = 1.0f; Monarch.PrimaryTintG = 0.65f; Monarch.PrimaryTintB = 0.12f;
         Monarch.SecondaryTintR = 0.95f; Monarch.SecondaryTintG = 0.26f; Monarch.SecondaryTintB = 0.05f;
         CompositeSpriteStamp(Monarch, -0.44f,  0.34f, 0.34f, TitleSeed + 7u,  0.88f, false);
-        CompositeSpriteStamp(Morpho,   0.46f, -0.36f, 0.32f, TitleSeed + 19u, 0.92f, false);
-        CompositeSpriteStamp(Morpho,   0.00f, -0.02f, 0.56f, TitleSeed + 31u, 1.00f, false);
+        CompositeSpriteStamp(BotanicalGrowth,   0.46f, -0.36f, 0.32f, TitleSeed + 19u, 0.92f, false);
+        CompositeSpriteStamp(BotanicalGrowth,   0.00f, -0.02f, 0.56f, TitleSeed + 31u, 1.00f, false);
     }
     else if (LowerTitle.find("shield") != std::string::npos || LowerTitle.find("hex") != std::string::npos)
     {
@@ -577,7 +577,7 @@ ThumbnailSheetRepository::ThumbnailSheetRepository()
 {
     ImportPolicy.EngineContentRoot  = "EngineContent";
     ImportPolicy.ScratchSessionRoot = std::filesystem::temp_directory_path() / "FrontierProjects/_Scratch";
-    PopulateDefaultEngineAndProjectEntries();
+    PopulateDefaultWorkspaceEntries();
 }
 
 ThumbnailSheetRepository::~ThumbnailSheetRepository() noexcept = default;
@@ -734,7 +734,7 @@ const char* ThumbnailSheetRepository::QueryCategoryTitle(ContentCategory Categor
     return "All";
 }
 
-const char* ThumbnailSheetRepository::QueryCanonicalExtension(ContentCategory Category) noexcept
+const char* ThumbnailSheetRepository::QueryCanonicalSuffix(ContentCategory Category) noexcept
 {
     switch (Category)
     {
@@ -776,7 +776,7 @@ const char* ThumbnailSheetRepository::QueryWorkspaceTitle(WorkspaceCategory Work
     return "Scene";
 }
 
-ContentCategory ThumbnailSheetRepository::ClassifyExternalExtension(const std::filesystem::path& SourceFile) noexcept
+ContentCategory ThumbnailSheetRepository::ClassifyExternalSuffix(const std::filesystem::path& SourceFile) noexcept
 {
     const std::string Ext = LowercaseAscii(SourceFile.extension().string());
     if (Ext == ".colourswatch" || Ext == ".colourramp" || Ext == ".colourspace" || Ext == ".toml"
@@ -974,7 +974,7 @@ std::size_t ThumbnailSheetRepository::RegisterPrebakedEntry(
 
     ContentRepositoryEntry Entry{};
     Entry.DisplayTitle    = std::string(DisplayTitle);
-    Entry.ContainerFormat = QueryCanonicalExtension(Category);
+    Entry.ContainerFormat = QueryCanonicalSuffix(Category);
     Entry.DiskPath        = DiskPath.empty()
                                 ? (ImportPolicy.EngineContentRoot / QueryCategoryTitle(Category) / (Entry.DisplayTitle + Entry.ContainerFormat))
                                 : DiskPath;
@@ -1150,7 +1150,7 @@ std::size_t ThumbnailSheetRepository::RegisterStudioMatCapEntry(
     return SlotOrdinal;
 }
 
-void ThumbnailSheetRepository::PopulateDefaultEngineAndProjectEntries()
+void ThumbnailSheetRepository::PopulateDefaultWorkspaceEntries()
 {
     Entries.clear();
     SheetPages.clear();
@@ -1224,7 +1224,7 @@ void ThumbnailSheetRepository::PopulateDefaultEngineAndProjectEntries()
         ContentCategory     Category;
         ContentOriginFilter Origin;
         ColorRgba           Tint;
-        const char*         CustomExtension = nullptr;
+        const char*         CustomSuffix = nullptr;
         const char*         RelativePath    = nullptr;
     };
 
@@ -1287,7 +1287,7 @@ void ThumbnailSheetRepository::PopulateDefaultEngineAndProjectEntries()
 
     for (const SeedEntry& Seed : StockEntries)
     {
-        const char* Ext = Seed.CustomExtension != nullptr ? Seed.CustomExtension : QueryCanonicalExtension(Seed.Category);
+        const char* Ext = Seed.CustomSuffix != nullptr ? Seed.CustomSuffix : QueryCanonicalSuffix(Seed.Category);
         const std::filesystem::path RootDir =
             (Seed.Origin == ContentOriginFilter::Engine)
                 ? ImportPolicy.EngineContentRoot
@@ -1296,14 +1296,14 @@ void ThumbnailSheetRepository::PopulateDefaultEngineAndProjectEntries()
             ? (RootDir / Seed.RelativePath)
             : (RootDir / QueryCategoryTitle(Seed.Category) / (std::string(Seed.Title) + Ext));
         const std::size_t Idx = RegisterPrebakedEntry(Seed.Title, Seed.Category, Seed.Origin, Seed.Tint, EntryPath, true);
-        if (Seed.CustomExtension != nullptr && Idx < Entries.size())
+        if (Seed.CustomSuffix != nullptr && Idx < Entries.size())
         {
-            Entries[Idx].ContainerFormat = Seed.CustomExtension;
+            Entries[Idx].ContainerFormat = Seed.CustomSuffix;
         }
     }
 }
 
-bool ThumbnailSheetRepository::SaveBinaryIndexAndSheets(
+bool ThumbnailSheetRepository::PersistBinarySheetIndex(
     const std::filesystem::path& IndexFilePath,
     const std::filesystem::path& SheetFilePath,
     std::string&                 OutDiagnostic) const
@@ -1439,7 +1439,7 @@ bool ThumbnailSheetRepository::LoadBinaryIndexHeaderOnly(
         ContentRepositoryEntry Entry{};
         Entry.IndexHeader     = Header;
         const auto Category   = static_cast<ContentCategory>(Header.CategoryCode);
-        Entry.ContainerFormat = QueryCanonicalExtension(Category);
+        Entry.ContainerFormat = QueryCanonicalSuffix(Category);
         if (Header.TitleStringOffset < StringBlob.size())
         {
             Entry.DisplayTitle = std::string(StringBlob.c_str() + Header.TitleStringOffset);
@@ -1513,7 +1513,7 @@ ImportIntakeResult ThumbnailSheetRepository::IntakeExternalAssetDrop(
         return Result;
     }
 
-    const ContentCategory Detected = ClassifyExternalExtension(DroppedSourceFile);
+    const ContentCategory Detected = ClassifyExternalSuffix(DroppedSourceFile);
     Result.DetectedCategory            = Detected;
 
     // 🔴 Enforce hard workspace domain blocking before quarantine or import conversion
@@ -1548,7 +1548,7 @@ ImportIntakeResult ThumbnailSheetRepository::IntakeExternalAssetDrop(
     std::filesystem::create_directories(FinalDir, IoErr);
 
     const std::string Stem        = DroppedSourceFile.stem().string().empty() ? "ImportedAsset" : DroppedSourceFile.stem().string();
-    const char*       CanonicalEx = QueryCanonicalExtension(Detected);
+    const char*       CanonicalEx = QueryCanonicalSuffix(Detected);
     Result.FinalSpacePath         = FinalDir / (Stem + CanonicalEx);
 
     {

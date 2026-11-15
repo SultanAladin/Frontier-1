@@ -25,7 +25,7 @@ namespace Frontier::SimulationSpace::ForceFields
     uint32_t              Seed,
     double                TimeSeconds) noexcept;
 
-[[nodiscard]] SpatialForceSample EvaluateTurbulenceFieldLaw(
+[[nodiscard]] SpatialForceSample EvaluateTurbulenceModel(
     const ForceSourceRecordEntry& Entry,
     const SpatialVector3&         WorldPoint,
     const SpatialVector3&         BodyVelocity,

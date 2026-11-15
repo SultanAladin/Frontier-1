@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        VIEWPORTPROJECTIONPANE.H
+                                                           VIEWPORTPROJECTIONPANE.H
 ============================================================================================================================================*/
 // 🧩 Reusable PixelSpace single/split 2D+3D GPU viewport pane bound to WorkspaceDocument & blitted via PixelSpace::FillTexturedRectangle
 
@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
-#include "Engine/Editor/Viewports/ViewportProjection.h"
+#include "Engine/Components/Camera/ViewportProjection.h"
 #include "Engine/Workspaces/WorkspaceDocument.h"
 
 #include <imgui.h>

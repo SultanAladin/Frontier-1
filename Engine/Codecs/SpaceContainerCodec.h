@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           SPACECONTAINERCODEC.H
+                                                            SPACECONTAINERCODEC.H
 ============================================================================================================================================*/
 // 🧩 Universal Two-Tier Hybrid .Space container encoder & decoder (PascalCase TOML manifest + 64B-aligned binary sections)
 
@@ -27,7 +27,7 @@ namespace Frontier::Codecs
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class SpaceExtensionCategory : uint8_t
+enum class SpaceSuffixCategory : uint8_t
 {
     ProjectSpace    = 0,  // [-] - .ProjectSpace root project configuration & dependency locks
     ColourSpace     = 1,  // [-] - .ColourSpace radiometric swatches, ramps, & spectral curves
@@ -70,7 +70,7 @@ struct BinarySectionBlock
 
 struct SpaceContainerPayload
 {
-    SpaceExtensionCategory          ExtensionCategory  = SpaceExtensionCategory::ProjectSpace; // [-] - Canonical .Space domain
+    SpaceSuffixCategory          SuffixCategory  = SpaceSuffixCategory::ProjectSpace; // [-] - Canonical .Space domain
     uint32_t                        SchemaVersion      = 1u;                                   // [ver] - Format schema version
     std::string                     DocumentTitle      { "Untitled" };                         // [-]   - Human-readable document title
     std::string                     AuthoringWorkspace { "Frontier.Workspace" };               // [-]   - Originating workspace identifier
@@ -83,7 +83,7 @@ class SpaceContainerEncoder
 {
 public:
     [[nodiscard]] static uint64_t ComputeFnv1aChecksum64(std::span<const std::byte> Bytes) noexcept;
-    [[nodiscard]] static std::string_view QueryCanonicalExtension(SpaceExtensionCategory Category) noexcept;
+    [[nodiscard]] static std::string_view QueryCanonicalSuffix(SpaceSuffixCategory Category) noexcept;
 
     [[nodiscard]] static bool NormalizeSubFormatTag(
         std::string_view RawTag,
@@ -104,9 +104,9 @@ public:
 class SpaceContainerDecoder
 {
 public:
-    [[nodiscard]] static bool ResolveExtensionCaseInsensitive(
+    [[nodiscard]] static bool ResolveSuffixCaseInsensitive(
         std::string_view        RawExtension,
-        SpaceExtensionCategory& OutCategory,
+        SpaceSuffixCategory& OutCategory,
         std::string&            OutCanonicalExtension,
         std::string&            OutDiagnostic);
 

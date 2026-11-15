@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                       SESSIONLIFECYCLEPOLICY.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                          SESSIONLIFECYCLEPOLICY.CPP
+============================================================================================================================================*/
 // 🧩 Strict Lobby vs. Match-Session separation, synthetic participant filtering, and reverse-order teardown transitions
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -56,7 +56,7 @@ std::vector<uint32_t> FilterBackendRegistrablePeers(
     uint32_t SyntheticCount = 0u;
     for (const SessionParticipantCandidate& Candidate : Candidates)
     {
-        // 🛡️ Synthetic readiness fillers never cross into backend RegisterPlayers / UnregisterPlayers calls
+        // 📝 Synthetic readiness fillers never cross into backend RegisterPlayers / UnregisterPlayers calls
         if (Candidate.Origin == SessionParticipantOrigin::SyntheticReadinessFiller)
         {
             ++SyntheticCount;

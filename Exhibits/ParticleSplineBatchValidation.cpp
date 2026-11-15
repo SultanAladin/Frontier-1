@@ -9,8 +9,8 @@
 
 #include "Engine/ParticleSpace/Dynamics/SplineEnsembleSolver.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleExtension.h"
-#include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
+#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 #include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
 
 #include <algorithm>
@@ -291,7 +291,7 @@ int main()
         }
         AttachShowcaseForceFields(Doc);
 
-        ParticleExtension Ext {};
+        ParticleSimulationCoordinator Ext {};
         if (!Ext.Initialize(Doc))
         {
             std::cerr << "  [FAIL] Initialize failed for " << Entry.PresetId << "\n";
@@ -312,7 +312,7 @@ int main()
         uint32_t BokehPin   = 0u;
         for (const auto& Sl : Slots)
         {
-            if (!IsParticleSlotAlive(Sl)) continue;
+            if (!QueryParticleSlotAlive(Sl)) continue;
             ++AliveCount;
             if (Sl.OriginAnchor[0] > 0.62f) ++BokehLarge;
             else                            ++BokehPin;
@@ -388,7 +388,7 @@ int main()
             if (!Sub.Rigs.empty()) Doc.Rigs.push_back(Sub.Rigs[0]);
         }
         AttachShowcaseForceFields(Doc);
-        ParticleExtension Ext {};
+        ParticleSimulationCoordinator Ext {};
         if (!Ext.Initialize(Doc)) return 1;
         for (int S = 0; S < 110; ++S) Ext.Tick(1.0 / 60.0);
 
@@ -433,7 +433,7 @@ int main()
             ParticleDocument Sub = InstantiateDocumentFromPresetId(Id);
             if (!Sub.Rigs.empty()) Doc.Rigs.push_back(Sub.Rigs[0]);
         }
-        ParticleExtension Ext {};
+        ParticleSimulationCoordinator Ext {};
         if (!Ext.Initialize(Doc)) return 1;
         for (int S = 0; S < 72; ++S) Ext.Tick(1.0 / 60.0);
 

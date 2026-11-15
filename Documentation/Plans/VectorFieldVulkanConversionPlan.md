@@ -180,7 +180,7 @@ All 19 `ForceModel` laws, `VectorFieldLang` unit vectors (`x̂`, `ŷ`, `ẑ`, `r
 
 ## 7. Locked File Format Architecture (**Option A** — `.VectorFieldSpace` + `.ForceModel` + Inline/Referenced `ForceSourceRecord`)
 
-Per `Documentation/Plans/DocumentFormatsAndInstancePlan.md` and `Engine/Codecs/SpaceContainerCodec.{h,cpp}`, Frontier uses **Two-Tier Hybrid `.Space` Containers** (readable TOML manifest + optional 64B-aligned binary sections).
+Per `Documentation/Plans/DocumentFormatsInstancePlan.md` and `Engine/Codecs/SpaceContainerCodec.{h,cpp}`, Frontier uses **Two-Tier Hybrid `.Space` Containers** (readable TOML manifest + optional 64B-aligned binary sections).
 
 ### Locked Option A Structure (Explicit User Confirmation)
 

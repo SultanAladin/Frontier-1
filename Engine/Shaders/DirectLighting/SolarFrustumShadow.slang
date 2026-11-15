@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                     SOLARFRUSTUMSHADOW.SLANG
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                           SOLARFRUSTUMSHADOW.SLANG
+============================================================================================================================================*/
 // 🧩 Deterministic Vogel Solar Disc Raytracer + 2-Scale (0.25 m / 2.2 m) Physical Chassis Ambient Occlusion over 4-Wide BVH4
 
 module SolarFrustumShadow;
@@ -26,7 +26,7 @@ struct SolarTraceUniforms
 [[vk::binding(2, 0)]] StructuredBuffer<GpuRayTrianglePrimitive48> ScenePrimitives;
 [[vk::binding(3, 0)]] Texture2D<float4>                           WorldPositionTex;
 [[vk::binding(4, 0)]] Texture2D<float4>                           WorldNormalTex;
-[[vk::binding(5, 0)]] RWTexture2D<float4>                         OutShadowBlockerAndAo; // R=RawVis, G=BlockerDist, B=DiffAO, A=1
+[[vk::binding(5, 0)]] RWTexture2D<float4>                         OutShadowBlockerAo; // R=RawVis, G=BlockerDist, B=DiffAO, A=1
 
 uint HashPixel(uint2 Coord)
 {
@@ -49,7 +49,7 @@ void SolarShadowComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float3 Nrm       = normalize(WorldNormalTex.Load(int3(DispatchThreadID.xy, 0)).xyz);
     if (PosSample.w <= 0.0)
     {
-        OutShadowBlockerAndAo[DispatchThreadID.xy] = float4(1.0, 0.0, 1.0, 1.0);
+        OutShadowBlockerAo[DispatchThreadID.xy] = float4(1.0, 0.0, 1.0, 1.0);
         return;
     }
 
@@ -114,5 +114,5 @@ void SolarShadowComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     float CombinedAo = saturate((ContactAo * 0.25) * (0.25 + 0.75 * (ChassisAo * 0.25)));
-    OutShadowBlockerAndAo[DispatchThreadID.xy] = float4(RawVis, BlockerDist, CombinedAo, 1.0);
+    OutShadowBlockerAo[DispatchThreadID.xy] = float4(RawVis, BlockerDist, CombinedAo, 1.0);
 }

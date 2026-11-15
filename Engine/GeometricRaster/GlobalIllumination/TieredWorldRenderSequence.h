@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                   TIEREDWORLDRENDERSEQUENCE.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                         TIEREDWORLDRENDERSEQUENCE.H
+============================================================================================================================================*/
 // 🧩 Complete Ordered GTX Tier 1 + RTX Tier 2 World Render Sequence bound to ViewportProjectionPane (Visibility -> Direct -> GI -> Specular)
 
 #pragma once
@@ -62,7 +62,7 @@ struct WorldRenderFrameResult
     std::vector<uint8_t>                DisplayRgba8        {};     // [rgba8] - ACES filmic + sRGB8 viewport output (ready for ImGui/Pane!)
     TwoPhaseCullReport                  VisibilityCull      {};     // [-]     - Cluster culling telemetry
     DirectLightingFrameOutput           DirectLighting      {};     // [-]     - Solar shadow, LTC, & chassis AO telemetry
-    SpecularReflectionBuffer            SpecularAndGlass    {};     // [-]     - Reflection & glass refraction telemetry
+    SpecularReflectionBuffer            SpecularGlass    {};     // [-]     - Reflection & glass refraction telemetry
 };
 
 //------------------------------------------------------------------------------------------------------------------------

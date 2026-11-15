@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          UVVIEWPORTINTERACTOR.H
+                                                            UVVIEWPORTINTERACTOR.H
 ============================================================================================================================================*/
 // 🧩 Interactive 2D/3D UV viewport interactor driving camera orbit/pan/zoom, GPU hover/click/marquee/brush picking, gizmo drag & G/R/S
 
@@ -83,9 +83,9 @@ public:
     [[nodiscard]] float                QueryBrushRadiusPixels() const noexcept { return BrushRadiusPixels; }
 
 private:
-    void HandleKeyboardShortcuts(const ViewportInteractionReading& Reading, bool InsidePlanar, bool InsideSpatial);
-    void HandleModalTransformStep(const ViewportInteractionReading& Reading, bool InsidePlanar);
-    void HandleGizmoOrSurfaceInteraction(const ViewportInteractionReading& Reading, bool InsidePlanar, bool InsideSpatial);
+    void ProcessKeyboardShortcuts(const ViewportInteractionReading& Reading, bool InsidePlanar, bool InsideSpatial);
+    void ProcessModalTransformStep(const ViewportInteractionReading& Reading, bool InsidePlanar);
+    void ProcessGizmoSurfaceInteraction(const ViewportInteractionReading& Reading, bool InsidePlanar, bool InsideSpatial);
     void ApplySurfaceHitSelection(
         const GeometricRaster::ViewportPickHit& Hit,
         const PaneInputReading&                 Input,

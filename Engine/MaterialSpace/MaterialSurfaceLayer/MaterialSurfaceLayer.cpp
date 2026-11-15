@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                     MATERIALSURFACELAYER.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                           MATERIALSURFACELAYER.CPP
+============================================================================================================================================*/
 // 🧩 Implementation of vertical optical layer composition (coverage, relief height blend, dielectric coat over, moisture film)
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -37,7 +37,7 @@ namespace
 [[nodiscard]] float ComputeEffectiveBlendFactor(const MaterialSurfaceLayer& Layer) noexcept
 {
     const float Opacity = std::clamp(Layer.CoverageOpacity, 0.0f, 1.0f);
-    if (Layer.BlendKind != MaterialLayerBlendKind::HeightThresholdBlend)
+    if (Layer.BlendKind != MaterialLayerBlendCategory::HeightThresholdBlend)
     {
         return Opacity;
     }
@@ -92,7 +92,7 @@ SurfaceMaterial FlattenMaterialSurfaceStack(std::span<const MaterialSurfaceLayer
 
         const SurfaceMaterial& Top = Entry.LayerMaterial;
 
-        if (Entry.BlendKind == MaterialLayerBlendKind::OpticalClearcoatOver)
+        if (Entry.BlendKind == MaterialLayerBlendCategory::OpticalClearcoatOver)
         {
             // 📝 Layering a dielectric varnish/lacquer coat over existing substrate widens underlying roughness (OpenPBR Eq. 44)
             Composite.Clearcoat.CoatWeight              = std::clamp(Composite.Clearcoat.CoatWeight + Alpha * Top.Clearcoat.CoatWeight, 0.0f, 1.0f);
@@ -101,7 +101,7 @@ SurfaceMaterial FlattenMaterialSurfaceStack(std::span<const MaterialSurfaceLayer
             Composite.Clearcoat.CoatAbsorptionTint      = LerpColor(Composite.Clearcoat.CoatAbsorptionTint, Top.Clearcoat.CoatAbsorptionTint, Alpha);
             Composite.Clearcoat.CoatThicknessMillimeter += Alpha * Top.Clearcoat.CoatThicknessMillimeter;
         }
-        else if (Entry.BlendKind == MaterialLayerBlendKind::MoisturePorosityFilm)
+        else if (Entry.BlendKind == MaterialLayerBlendCategory::MoisturePorosityFilm)
         {
             Composite.PorosityLight.SurfaceWetnessFraction = std::clamp(
                 Composite.PorosityLight.SurfaceWetnessFraction + Alpha * std::max(0.25f, Top.PorosityLight.SurfaceWetnessFraction),

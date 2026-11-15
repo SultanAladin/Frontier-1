@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       PARTICLERIBBONRASTER.SLANG
+                                                          PARTICLERIBBONRASTER.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 continuous camera-facing ribbon/strand vertex & fragment shaders consuming StrandVertexGpu history chains
 

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         CONFORMALUNWRAPSOLVER.CPP
+                                                          CONFORMALUNWRAPSOLVER.CPP
 ============================================================================================================================================*/
 // 🧩 Parallel island-by-island cotangent harmonic + PCA planar conformal UV parameterization with positive CCW orientation guarantee
 

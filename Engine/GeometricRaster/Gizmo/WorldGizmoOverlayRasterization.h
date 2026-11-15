@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                    WORLDGIZMOOVERLAYRASTERIZATION.H
+                                                       WORLDGIZMOOVERLAYRASTERIZATION.H
 ============================================================================================================================================*/
 // 🧩 Vulkan GPU .slang GizmoRasterization unit overlaying 3D Slate TransformGizmo onto TieredWorldRenderSequence RGBA8 buffers + GPU PickID
 
@@ -9,7 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Editor/Viewports/TransformGizmo.h"
+#include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 
@@ -54,8 +54,8 @@ public:
 private:
     struct GraphicsProgramUnit
     {
-        VkShaderModule        VertModule    = VK_NULL_HANDLE;
-        VkShaderModule        FragModule    = VK_NULL_HANDLE;
+        VkShaderModule        VertexSpirvBinary    = VK_NULL_HANDLE;
+        VkShaderModule        FragmentSpirvBinary    = VK_NULL_HANDLE;
         VkDescriptorSetLayout SlotLayout    = VK_NULL_HANDLE;
         VkPipelineLayout      ProgramLayout = VK_NULL_HANDLE;
         VkPipeline            ProgramHandle = VK_NULL_HANDLE;
@@ -66,7 +66,7 @@ private:
     [[nodiscard]] bool ConstructGizmoProgram(
         const std::filesystem::path& VertSpirv,
         const std::filesystem::path& FragSpirv,
-        bool                         DepthTestAndWrite,
+        bool                         DepthTestWrite,
         GraphicsProgramUnit&         OutUnit);
 
     VulkanInterchange*    DeviceInterchange           = nullptr;

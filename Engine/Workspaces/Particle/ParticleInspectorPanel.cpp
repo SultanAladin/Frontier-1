@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       PARTICLEINSPECTORPANEL.CPP
+                                                          PARTICLEINSPECTORPANEL.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ParticleInspectorPanel (Overview KPI trio & Bokeh selector, Source + ScalarCurveEditor, Motion & FX + ColourRampEditor, Metrics & Forces)
 
@@ -134,25 +134,25 @@ void ParticleInspectorPanel::Render(
         EntityTitle = Rig->DisplayName.c_str();
         EntitySub   = Rig->BadgeTypeLine.c_str();
         TogglePtr   = &Rig->Visible;
-        DrawSparkleGlyph(Surface, IconTile.Center(), 7.5f, C.TealTint);
+        RasterizeSparkleGlyph(Surface, IconTile.Center(), 7.5f, C.TealTint);
     }
     else if (auto* Force = Session.AccessSelectedForce())
     {
         EntityTitle = Force->Label.c_str();
         EntitySub   = "VECTOR FIELD FORCE · BOUNDED";
         TogglePtr   = &Force->Enabled;
-        DrawWindLinesGlyph(Surface, IconTile.Center(), 7.5f, C.TealTint);
+        RasterizeWindLinesGlyph(Surface, IconTile.Center(), 7.5f, C.TealTint);
     }
     else if (Session.SelectionKind == ParticleSelectionCategory::AmbientWind)
     {
         EntityTitle = "Ambient Wind";
         EntitySub   = "GLOBAL ATMOSPHERIC FIELD";
         TogglePtr   = &Session.AmbientWind.Enabled;
-        DrawWindLinesGlyph(Surface, IconTile.Center(), 7.5f, C.LiveGreen);
+        RasterizeWindLinesGlyph(Surface, IconTile.Center(), 7.5f, C.LiveGreen);
     }
     else
     {
-        DrawPlusGlyph(Surface, IconTile.Center(), 6.5f, C.WarmAccent);
+        RasterizePlusGlyph(Surface, IconTile.Center(), 6.5f, C.WarmAccent);
     }
 
     const Rectangle2D SwitchRect { EntityCard.Right() - 52.0f, EntityCard.Center().Y - 11.0f, 38.0f, 22.0f };
@@ -175,7 +175,7 @@ void ParticleInspectorPanel::Render(
         Surface.FillRectangle(TabBar, C.WellBg, 15.0f);
         Surface.StrokeRectangle(TabBar, C.Hairline, 15.0f, 0.9f);
 
-        static constexpr std::array<const char*, 4> TabLabels = { "Overview", "Source", "Motion & FX", "Metrics & Record" };
+        static constexpr std::array<const char*, 4> TabLabels = { "Overview", "Source", "Motion & FX", "Metrics & Codec" };
         static constexpr std::array<float, 4>       TabWeights= { 0.22f, 0.19f, 0.26f, 0.33f };
         float TabX = TabBar.X + 3.0f;
         const float AvailW = TabBar.Width - 6.0f;
@@ -213,7 +213,7 @@ void ParticleInspectorPanel::Render(
         case ParticleInspectorTab::Overview:      RenderOverviewTab(Surface, BodyArea, *Rig, Session, Pointer, Opacity); break;
         case ParticleInspectorTab::Source:        RenderSourceTab(Surface, BodyArea, *Rig, Session, Pointer, Opacity); break;
         case ParticleInspectorTab::MotionFx:      RenderMotionFxTab(Surface, BodyArea, *Rig, Session, Pointer, AttachedBrowser, Opacity); break;
-        case ParticleInspectorTab::MetricsRecord: RenderMetricsTab(Surface, BodyArea, *Rig, Session, Pointer, Opacity); break;
+        case ParticleInspectorTab::MetricsCodec: RenderMetricsTab(Surface, BodyArea, *Rig, Session, Pointer, Opacity); break;
         }
     }
     else
@@ -253,7 +253,7 @@ void ParticleInspectorPanel::RenderOverviewTab(
     Surface.FillRectangle(HeroCard, C.CardBg, 18.0f);
     Surface.StrokeRectangle(HeroCard, C.Hairline, 18.0f, 1.0f);
 
-    DrawCheckBadgeGlyph(Surface, { HeroCard.X + 22.0f, HeroCard.Y + 22.0f }, 8.5f, C.EmeraldSoft, C.LiveGreen);
+    RasterizeCheckBadgeGlyph(Surface, { HeroCard.X + 22.0f, HeroCard.Y + 22.0f }, 8.5f, C.EmeraldSoft, C.LiveGreen);
     Surface.Text({ HeroCard.X + 36.0f, HeroCard.Y + 17.0f }, 10.2f, C.TextSoft, "Within capacity");
     Surface.TextRightAligned({ HeroCard.X, HeroCard.Y + 17.0f, HeroCard.Width - 14.0f, 14.0f }, 8.8f, C.TextFaint, "01 / LIVE SOLVER");
 
@@ -351,9 +351,9 @@ void ParticleInspectorPanel::RenderOverviewTab(
 
         const Point2D IconC { Tile.Center().X, Tile.Y + 23.0f };
         Surface.FillRectangle({ IconC.X - 11.0f, IconC.Y - 11.0f, 22.0f, 22.0f }, Active ? C.EmeraldSoft : ColorRgba { 32u, 32u, 34u, 255u }, 7.0f);
-        if (I == 0)      DrawEyeGlyph(Surface, IconC, 5.2f, Active ? C.LiveGreen : C.TextFaint, !Active);
-        else if (I == 1) DrawWindLinesGlyph(Surface, IconC, 4.8f, Active ? C.LiveGreen : C.TextFaint);
-        else if (I == 2) DrawSparkleGlyph(Surface, IconC, 4.8f, Active ? C.LiveGreen : C.TextFaint);
+        if (I == 0)      RasterizeEyeGlyph(Surface, IconC, 5.2f, Active ? C.LiveGreen : C.TextFaint, !Active);
+        else if (I == 1) RasterizeWindLinesGlyph(Surface, IconC, 4.8f, Active ? C.LiveGreen : C.TextFaint);
+        else if (I == 2) RasterizeSparkleGlyph(Surface, IconC, 4.8f, Active ? C.LiveGreen : C.TextFaint);
         else             Surface.StrokeLine({ IconC.X - 5.0f, IconC.Y + 2.0f }, { IconC.X + 5.0f, IconC.Y + 2.0f }, C.TextFaint, 1.2f);
 
         Surface.TextCentered({ Tile.X + 2.0f, Tile.Bottom() - 30.0f, Tile.Width - 4.0f, 12.0f }, 8.6f, Active ? C.TextPrimary : C.TextMuted, Tiles[I].Title);
@@ -419,11 +419,11 @@ void ParticleInspectorPanel::RenderSourceTab(
     }
     CY += 52.0f;
 
-    DrawTripletPillsRow(Surface, { CX, CY, CW, 44.0f }, "3D object centre", "m",
+    RasterizeTripletPillsRow(Surface, { CX, CY, CW, 44.0f }, "3D object centre", "m",
         Rig.OriginCentreMeters[0], Rig.OriginCentreMeters[1], Rig.OriginCentreMeters[2]);
     CY += 52.0f;
 
-    DrawTripletPillsRow(Surface, { CX, CY, CW, 44.0f }, "Object half extents (X = sphere radius)", "m",
+    RasterizeTripletPillsRow(Surface, { CX, CY, CW, 44.0f }, "Object half extents (X = sphere radius)", "m",
         Rig.OriginHalfExtentsM[0], Rig.OriginHalfExtentsM[1], Rig.OriginHalfExtentsM[2]);
 
     Y += SrcCard.Height + 12.0f;
@@ -719,7 +719,7 @@ void ParticleInspectorPanel::RenderForceFieldInspector(
             Session.RecordParameterEdit("Force swirl");
         }
         Y += 54.0f;
-        DrawTripletPillsRow(Surface, { CX, Y, CW, 44.0f }, "Source centre", "m",
+        RasterizeTripletPillsRow(Surface, { CX, Y, CW, 44.0f }, "Source centre", "m",
             Force->CentreMeters.X, Force->CentreMeters.Y, Force->CentreMeters.Z);
     }
     else

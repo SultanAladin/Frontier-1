@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                          BAKINGTARGETSPANE.H
-==========================================================================================================================================*/
-// 🎯 Left-column pane for Baking Studio: 4 target-set presets + 18 surface & volume SDF target swatches with check selection.
+/*============================================================================================================================================
+                                                             BAKINGTARGETSPANE.H
+============================================================================================================================================*/
+// 🧩 Left-column pane for Baking Studio: 4 target-set presets + 18 surface & volume SDF target swatches with check selection.
 
 #pragma once
 
@@ -26,7 +26,7 @@ public:
 
     void AttachSession(BakingWorkspaceSession* TargetSession) noexcept;
     void PresentInImGuiPane(double DeltaSeconds, float ScaleFactor);
-    void SetScrollOffsetY(float OffsetY) noexcept { ScrollOffsetY = OffsetY; }
+    void AssignScrollOffsetY(float OffsetY) noexcept { ScrollOffsetY = OffsetY; }
 
     void Render(
         PixelSpace&             Surface,

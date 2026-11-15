@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                               COLOURTYPES.H
+                                                                COLOURTYPES.H
 ============================================================================================================================================*/
-// 🎨 First-class radiometric & perceptual colour types shared across every Frontier workspace (LinearRgba, SrgbRgba8, Oklab, HSL, CMYK, LUTs)
+// 🧩 First-class radiometric & perceptual colour types shared across every Frontier workspace (LinearRgba, SrgbRgba8, Oklab, HSL, CMYK, LUTs)
 
 #pragma once
 

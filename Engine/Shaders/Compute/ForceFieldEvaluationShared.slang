@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                    FORCEFIELDEVALUATIONSHARED.SLANG
+                                                       FORCEFIELDEVALUATIONSHARED.SLANG
 ============================================================================================================================================*/
 // 🧩 Shared +Z Up Slang GPU analytical evaluation of 19 ForceModel laws, reach bounds, CurlNoise, FlowStream, and spline curves
 
@@ -59,15 +59,15 @@ static const uint DurationImpulse                = 2u;
 // Matches C++ ForceSourceShaderEntry (exact 144-byte / 9x float4 layout)
 struct ForceSourceShaderEntry
 {
-    float4 CentreAndRadius;        // xyz = EvaluatedCentre [m], w = Radius [m]
-    float4 DirectionAndStrength;   // xyz = Forward basis, w = EffectiveStrength [m/s]
-    float4 TangentLeftAndFalloff;  // xyz = Left basis, w = FalloffExponent
-    float4 UpAndCoreRadius;        // xyz = Up basis, w = CoreRadius [m]
-    float4 HalfExtentsAndTurbScale;// xyz = HalfExtents [m], w = TurbulenceScale [m]
+    float4 CentreRadiusPacked;        // xyz = EvaluatedCentre [m], w = Radius [m]
+    float4 DirectionStrength;   // xyz = Forward basis, w = EffectiveStrength [m/s]
+    float4 TangentLeftFalloff;  // xyz = Left basis, w = FalloffExponent
+    float4 UpCoreRadius;        // xyz = Up basis, w = CoreRadius [m]
+    float4 HalfExtentsTurbScale;// xyz = HalfExtents [m], w = TurbulenceScale [m]
     float4 FreqSwirlBuoyDrag;      // x = FreqHz, y = SwirlRatio, z = BuoyancyRatio, w = DragCoeff
     uint4  IdsPacked;              // x = ModelId, y = StreamProfileId, z = AttenuationId, w = EnvelopeId
     uint4  FlagsPacked;            // x = DurationId, y = OctaveCount, z = Seed, w = FlagMask
-    float2 ImpulseAndTime;         // x = ImpulsePhase01, y = TimeSeconds
+    float2 ImpulseTimePacked;         // x = ImpulsePhase01, y = TimeSeconds
     uint2  WaypointSpan;           // x = WaypointStartIdx, y = WaypointCount
 };
 
@@ -106,23 +106,23 @@ float VfHashFloat01(uint Key)
 
 float VfEvaluateReachNormalized(ForceSourceShaderEntry Src, float3 WorldPoint)
 {
-    float3 Anchor = Src.CentreAndRadius.xyz;
+    float3 Anchor = Src.CentreRadiusPacked.xyz;
     float3 Delta  = WorldPoint - Anchor;
-    float  SafeR  = max(0.25, Src.CentreAndRadius.w);
+    float  SafeR  = max(0.25, Src.CentreRadiusPacked.w);
     uint   Env    = Src.IdsPacked.w;
 
     if (Env == EnvelopeColumn)
     {
-        float3 Up    = Src.UpAndCoreRadius.xyz;
+        float3 Up    = Src.UpCoreRadius.xyz;
         float  Axial = abs(dot(Delta, Up));
         float3 Rad   = Delta - Up * Axial;
-        return max(length(Rad) / SafeR, Axial / max(0.25, Src.HalfExtentsAndTurbScale.z));
+        return max(length(Rad) / SafeR, Axial / max(0.25, Src.HalfExtentsTurbScale.z));
     }
     if (Env == EnvelopeOrientedBox || Env == EnvelopePlanarBox)
     {
-        float Lx = abs(dot(Delta, Src.DirectionAndStrength.xyz)) / max(0.25, Src.HalfExtentsAndTurbScale.x);
-        float Ly = abs(dot(Delta, Src.TangentLeftAndFalloff.xyz)) / max(0.25, Src.HalfExtentsAndTurbScale.y);
-        float Lz = abs(dot(Delta, Src.UpAndCoreRadius.xyz))        / max(0.25, Src.HalfExtentsAndTurbScale.z);
+        float Lx = abs(dot(Delta, Src.DirectionStrength.xyz)) / max(0.25, Src.HalfExtentsTurbScale.x);
+        float Ly = abs(dot(Delta, Src.TangentLeftFalloff.xyz)) / max(0.25, Src.HalfExtentsTurbScale.y);
+        float Lz = abs(dot(Delta, Src.UpCoreRadius.xyz))        / max(0.25, Src.HalfExtentsTurbScale.z);
         return max(Lx, max(Ly, Lz));
     }
     return length(Delta) / SafeR;
@@ -137,7 +137,7 @@ float VfEvaluateSpatialAttenuation(ForceSourceShaderEntry Src, float3 WorldPoint
     }
 
     float Taper = saturate(1.0 - U);
-    float Power = max(0.1, Src.TangentLeftAndFalloff.w);
+    float Power = max(0.1, Src.TangentLeftFalloff.w);
     uint  Atten = Src.IdsPacked.z;
 
     if (Atten == AttenNone)
@@ -150,8 +150,8 @@ float VfEvaluateSpatialAttenuation(ForceSourceShaderEntry Src, float3 WorldPoint
     }
     if (Atten == AttenInverseSquare)
     {
-        float Dist     = U * max(0.25, Src.CentreAndRadius.w);
-        float Core     = max(0.1, Src.UpAndCoreRadius.w);
+        float Dist     = U * max(0.25, Src.CentreRadiusPacked.w);
+        float Core     = max(0.1, Src.UpCoreRadius.w);
         float RatioSq  = (Dist / Core) * (Dist / Core);
         float EdgeFade = saturate(1.0 - U * U * U * U);
         return EdgeFade / (1.0 + RatioSq);
@@ -161,7 +161,7 @@ float VfEvaluateSpatialAttenuation(ForceSourceShaderEntry Src, float3 WorldPoint
     return pow(Hermite, 0.25 + 0.75 * Power);
 }
 
-void VfEvaluatePotentialAndCurl(
+void VfEvaluatePotentialCurl(
     float3 P,
     float  ScaleMeters,
     uint   OctaveCount,
@@ -253,15 +253,15 @@ ForceSampleOutput VfEvaluateSingleSource(
         return Output;
     }
 
-    float3 Anchor   = Src.CentreAndRadius.xyz;
+    float3 Anchor   = Src.CentreRadiusPacked.xyz;
     float3 Delta    = WorldPoint - Anchor;
-    float  SafeR    = max(0.25, Src.CentreAndRadius.w);
-    float  CoreR    = max(0.1, Src.UpAndCoreRadius.w);
-    float3 Forward  = Src.DirectionAndStrength.xyz;
-    float3 Left     = Src.TangentLeftAndFalloff.xyz;
-    float3 Up       = Src.UpAndCoreRadius.xyz;
-    float  Strength = Src.DirectionAndStrength.w;
-    float  TimeSec  = Src.ImpulseAndTime.y;
+    float  SafeR    = max(0.25, Src.CentreRadiusPacked.w);
+    float  CoreR    = max(0.1, Src.UpCoreRadius.w);
+    float3 Forward  = Src.DirectionStrength.xyz;
+    float3 Left     = Src.TangentLeftFalloff.xyz;
+    float3 Up       = Src.UpCoreRadius.xyz;
+    float  Strength = Src.DirectionStrength.w;
+    float  TimeSec  = Src.ImpulseTimePacked.y;
     uint   ModelId  = Src.IdsPacked.x;
 
     if (ModelId == ForceModelCurlNoise)
@@ -276,9 +276,9 @@ ForceSampleOutput VfEvaluateSingleSource(
         float3 GradW     = Delta * ((2.0 * dWdU2) / (SafeR * SafeR));
         float3 Pot       = float3(0.0, 0.0, 0.0);
         float3 RawCurl   = float3(0.0, 0.0, 0.0);
-        VfEvaluatePotentialAndCurl(Delta, Src.HalfExtentsAndTurbScale.w, Src.FlagsPacked.y, Src.FlagsPacked.z, TimeSec, Pot, RawCurl);
+        VfEvaluatePotentialCurl(Delta, Src.HalfExtentsTurbScale.w, Src.FlagsPacked.y, Src.FlagsPacked.z, TimeSec, Pot, RawCurl);
         float3 DivFree   = RawCurl * W + cross(GradW, Pot);
-        float  NormScale = Strength * max(0.5, Src.HalfExtentsAndTurbScale.w * 0.14);
+        float  NormScale = Strength * max(0.5, Src.HalfExtentsTurbScale.w * 0.14);
         Output.AdvectionVelocity = DivFree * NormScale;
         return Output;
     }
@@ -306,9 +306,9 @@ ForceSampleOutput VfEvaluateSingleSource(
         float  Dist     = length(Delta);
         float3 Radial   = (Dist > 1.0e-4) ? (Delta / Dist) : Up;
         float  ShellMod = 1.0;
-        if (Src.FlagsPacked.x == DurationImpulse && Src.ImpulseAndTime.x > 0.0)
+        if (Src.FlagsPacked.x == DurationImpulse && Src.ImpulseTimePacked.x > 0.0)
         {
-            float FrontDist = Src.ImpulseAndTime.x * SafeR;
+            float FrontDist = Src.ImpulseTimePacked.x * SafeR;
             float Sigma     = max(1.5, SafeR * 0.22);
             float Diff      = Dist - FrontDist;
             ShellMod        = exp(-(Diff * Diff) / (2.0 * Sigma * Sigma));
@@ -390,14 +390,14 @@ ForceSampleOutput VfEvaluateSingleSource(
         float Gust   = 0.45 + 0.55 * max(0.0, 0.6 * Wave1 + 0.4 * Wave2);
         float3 Pot   = float3(0.0, 0.0, 0.0);
         float3 Swirl = float3(0.0, 0.0, 0.0);
-        VfEvaluatePotentialAndCurl(Delta, Src.HalfExtentsAndTurbScale.w, min(Src.FlagsPacked.y, 3u), Src.FlagsPacked.z, TimeSec, Pot, Swirl);
+        VfEvaluatePotentialCurl(Delta, Src.HalfExtentsTurbScale.w, min(Src.FlagsPacked.y, 3u), Src.FlagsPacked.z, TimeSec, Pot, Swirl);
         Output.AdvectionVelocity = Forward * (Scale * Gust) + Swirl * (Scale * 0.25);
     }
     else if (ModelId == ForceModelVorticityConfinement)
     {
         float3 Pot  = float3(0.0, 0.0, 0.0);
         float3 Curl = float3(0.0, 0.0, 0.0);
-        VfEvaluatePotentialAndCurl(Delta, Src.HalfExtentsAndTurbScale.w, Src.FlagsPacked.y, Src.FlagsPacked.z, TimeSec, Pot, Curl);
+        VfEvaluatePotentialCurl(Delta, Src.HalfExtentsTurbScale.w, Src.FlagsPacked.y, Src.FlagsPacked.z, TimeSec, Pot, Curl);
         float3 Axis = VfNormalizeSafe(Curl, Up);
         Output.AdvectionVelocity  = Curl * (Scale * 0.35);
         Output.LinearAcceleration = cross(Axis, VfNormalizeSafe(Delta, Forward)) * (Scale * 0.6);
@@ -473,7 +473,7 @@ ForceSampleOutput VfEvaluateSingleSource(
         }
         else
         {
-            float  Meander = 0.28 * sin(dot(Delta, Forward) / max(1.0, Src.HalfExtentsAndTurbScale.w) + TimeSec * Src.FreqSwirlBuoyDrag.x);
+            float  Meander = 0.28 * sin(dot(Delta, Forward) / max(1.0, Src.HalfExtentsTurbScale.w) + TimeSec * Src.FreqSwirlBuoyDrag.x);
             Output.AdvectionVelocity = VfNormalizeSafe(Forward + Left * Meander, Forward) * Scale;
         }
     }

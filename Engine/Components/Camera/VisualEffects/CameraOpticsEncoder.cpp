@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         CAMERAOPTICSENCODER.CPP
+                                                           CAMERAOPTICSENCODER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of GPU .slang CameraOpticsEncoder executing CameraVisualEffects.comp.spv
 
@@ -158,30 +158,30 @@ bool CameraOpticsEncoder::ExecuteGPUOptics(
     }
 
     GPUCameraOpticsUniforms Uni {};
-    Uni.ResolutionAndMask[0] = WidthPx;
-    Uni.ResolutionAndMask[1] = HeightPx;
-    Uni.ResolutionAndMask[2] = EffectMask;
-    Uni.ResolutionAndMask[3] = PackGhostAndStarburstWord(Config.LensFlare);
+    Uni.ResolutionMaskPacked[0] = WidthPx;
+    Uni.ResolutionMaskPacked[1] = HeightPx;
+    Uni.ResolutionMaskPacked[2] = EffectMask;
+    Uni.ResolutionMaskPacked[3] = PackGhostStarburstWord(Config.LensFlare);
 
-    Uni.LensAndFocus[0] = Config.Optics.FocalLengthMillimeters;
-    Uni.LensAndFocus[1] = Config.Optics.ApertureFStop;
-    Uni.LensAndFocus[2] = Config.Optics.FocusDistanceMeters;
-    Uni.LensAndFocus[3] = Config.Optics.SensorHeightMillimeters;
+    Uni.LensFocusPacked[0] = Config.Optics.FocalLengthMillimeters;
+    Uni.LensFocusPacked[1] = Config.Optics.ApertureFStop;
+    Uni.LensFocusPacked[2] = Config.Optics.FocusDistanceMeters;
+    Uni.LensFocusPacked[3] = Config.Optics.SensorHeightMillimeters;
 
-    Uni.FlarePositionAndGain[0] = Config.LensFlare.SourceNormalizedU;
-    Uni.FlarePositionAndGain[1] = Config.LensFlare.SourceNormalizedV;
-    Uni.FlarePositionAndGain[2] = Config.LensFlare.FlareIntensity;
-    Uni.FlarePositionAndGain[3] = Config.LensFlare.FlareSpread;
+    Uni.FlarePositionGain[0] = Config.LensFlare.SourceNormalizedU;
+    Uni.FlarePositionGain[1] = Config.LensFlare.SourceNormalizedV;
+    Uni.FlarePositionGain[2] = Config.LensFlare.FlareIntensity;
+    Uni.FlarePositionGain[3] = Config.LensFlare.FlareSpread;
 
-    Uni.GhostAndAberration[0] = Config.LensFlare.GhostIntensity;
-    Uni.GhostAndAberration[1] = Config.LensFlare.GhostSpacing;
-    Uni.GhostAndAberration[2] = Config.LensFlare.StarburstRotationRad;
-    Uni.GhostAndAberration[3] = ResolveChromaticDispersionStrength(Config.ChromaticAberration);
+    Uni.GhostAberrationPacked[0] = Config.LensFlare.GhostIntensity;
+    Uni.GhostAberrationPacked[1] = Config.LensFlare.GhostSpacing;
+    Uni.GhostAberrationPacked[2] = Config.LensFlare.StarburstRotationRad;
+    Uni.GhostAberrationPacked[3] = ResolveChromaticDispersionStrength(Config.ChromaticAberration);
 
-    Uni.VignetteAndBlur[0] = ResolveVignetteIntensity(Config.Vignette);
-    Uni.VignetteAndBlur[1] = std::clamp(Config.Vignette.Roundness, 0.0f, 1.0f);
-    Uni.VignetteAndBlur[2] = std::max(1.0f, Config.DepthOfField.MaxBokehRadiusPx);
-    Uni.VignetteAndBlur[3] = static_cast<float>(GuideStyle);
+    Uni.VignetteBlurPacked[0] = ResolveVignetteIntensity(Config.Vignette);
+    Uni.VignetteBlurPacked[1] = std::clamp(Config.Vignette.Roundness, 0.0f, 1.0f);
+    Uni.VignetteBlurPacked[2] = std::max(1.0f, Config.DepthOfField.MaxBokehRadiusPx);
+    Uni.VignetteBlurPacked[3] = static_cast<float>(GuideStyle);
 
     const std::array<GPUCameraOpticsUniforms, 1u> UniSpan {{ Uni }};
     ComputeEncoder.UploadSpanToBuffer<GPUCameraOpticsUniforms>(UniformBuffer, UniSpan);
@@ -198,7 +198,7 @@ bool CameraOpticsEncoder::ExecuteGPUOptics(
     const uint32_t GroupsY = (HeightPx + 7u) / 8u;
     if (!ComputeEncoder.EncodeComputeDispatch(Cmd, OpticsProgram, Slots, GroupsX, GroupsY, 1u))
     {
-        vkFreeCommandBuffers(DeviceInterchange->AccessDevice(), DeviceInterchange->AccessCommandAllocator(), 1u, &Cmd);
+        DeviceInterchange->FreeCommandBuffer(Cmd);
         return false;
     }
 
@@ -207,8 +207,8 @@ bool CameraOpticsEncoder::ExecuteGPUOptics(
     TransferRegister.BindTicketTimelineSignal(Ticket, Signal);
 
     std::span<uint8_t> OutBytes(InOutRGBA8.data(), static_cast<std::size_t>(PixelBytes));
-    const bool Ok = TransferRegister.AwaitAndCopyTyped<uint8_t>(Ticket, OutBytes);
-    vkFreeCommandBuffers(DeviceInterchange->AccessDevice(), DeviceInterchange->AccessCommandAllocator(), 1u, &Cmd);
+    const bool Ok = TransferRegister.AwaitReadbackTyped<uint8_t>(Ticket, OutBytes);
+    DeviceInterchange->FreeCommandBuffer(Cmd);
     return Ok;
 }
 

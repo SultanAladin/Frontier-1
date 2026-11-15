@@ -1,7 +1,7 @@
-//==========================================================================================================================================
-//                                                  LINEARLYTRANSFORMEDSHEEN.SLANG
-//==========================================================================================================================================
-// Lobe 8: Zeltner, Burley & Chiang (SIGGRAPH 2022) Linearly Transformed Cosine (LTC) multiple-scattering cloth/velvet sheen
+/*============================================================================================================================================
+                                                        LINEARLYTRANSFORMEDSHEEN.SLANG
+============================================================================================================================================*/
+// 🧩 Lobe 8: Zeltner, Burley & Chiang (SIGGRAPH 2022) Linearly Transformed Cosine (LTC) multiple-scattering cloth/velvet sheen
 
 module LinearlyTransformedSheen;
 
@@ -47,7 +47,7 @@ float EvaluateDirectedSheenLtc(float3 LocalWo, float3 LocalWi, float SheenRoughn
     return Coeffs.z * (DetInvM / (LenSq * LenSq * 3.14159265359));
 }
 
-public float4 EvaluateClothSheenAndSubstrateScale(
+public float4 EvaluateClothSheenLobe(
     float3 LocalWo,
     float3 LocalWi,
     float  SheenWeight,

@@ -56,7 +56,7 @@ public:
         PixelSpace& Surface,
         const char* Caption,
         ColorRgba   TabFill,
-        ColorRgba   LabelAndGripInk,
+        ColorRgba   LabelGripInk,
         Point2D     ViewportOrigin = {}) const noexcept;
 
 private:

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                          CHROMATICITYSPACE.CPP
+                                                            CHROMATICITYSPACE.CPP
 ============================================================================================================================================*/
-// 🎨 Implementation of CIE XYZ, Linear sRGB/Rec.709, ACEScg, Rec.2020, Display P3, Oklab/Oklch, HSL, CMYK & Hex conversions
+// 🧩 Implementation of CIE XYZ, Linear sRGB/Rec.709, ACEScg, Rec.2020, Display P3, Oklab/Oklch, HSL, CMYK & Hex conversions
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES

@@ -1,7 +1,7 @@
-//==========================================================================================================================================
-//                                                 OCTAHEDRALIRRADIANCELATTICE.SLANG
-//==========================================================================================================================================
-// Tier 2 RTX 1/pi-Normalized 8x8 Octahedral Irradiance + 16x16 Chebyshev Radial Depth Lattice Update via 64 Spherical Fibonacci Rays
+/*============================================================================================================================================
+                                                      OCTAHEDRALIRRADIANCELATTICE.SLANG
+============================================================================================================================================*/
+// 🧩 Tier 2 RTX 1/pi-Normalized 8x8 Octahedral Irradiance + 16x16 Chebyshev Radial Depth Lattice Update via 64 Spherical Fibonacci Rays
 
 module OctahedralIrradianceLattice;
 

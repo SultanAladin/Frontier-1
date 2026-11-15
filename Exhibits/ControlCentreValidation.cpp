@@ -102,7 +102,7 @@ bool VerifyAssertion(bool Condition, const char* Description) noexcept
     return true;
 }
 
-bool ValidateProjectSpaceContainerAndPascalCaseSchema()
+bool ValidateProjectSpaceSchema()
 {
     std::string Diagnostic{};
 
@@ -958,7 +958,7 @@ bool RenderSnapshotSuite(const std::filesystem::path& OutputDirectory)
 
 int main()
 {
-    if (!ValidateProjectSpaceContainerAndPascalCaseSchema())
+    if (!ValidateProjectSpaceSchema())
     {
         return 1;
     }

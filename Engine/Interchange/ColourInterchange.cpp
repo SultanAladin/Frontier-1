@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          COLOURINTERCHANGE.CPP
+                                                            COLOURINTERCHANGE.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of external colour & gradient interchange (HTML Studio JSON, CSS, SVG, GIMP .gpl/.ggr, Adobe .ase/.aco, .cube 1D LUT)
 

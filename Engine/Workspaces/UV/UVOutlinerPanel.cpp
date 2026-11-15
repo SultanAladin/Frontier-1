@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           UVOUTLINERPANEL.CPP
+                                                             UVOUTLINERPANEL.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of UVOutlinerPanel matching Experimental/UVEditor (KPI trio, stat row, 0px layer boxes & UDIM Space Budget spectrum)
 
@@ -1128,7 +1128,7 @@ void UVOutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
                     "Priority Layer Row",
                     Rectangle2D{},
                     nullptr,
-                    [Sess = Session, PrevOrd](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                    [Sess = Session, PrevOrd](ColorRgba AssignedRgba, const ColourSwatchEntry&)
                     {
                         if (Sess != nullptr)
                         {
@@ -1174,7 +1174,7 @@ void UVOutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
                     Title,
                     MappedBounds,
                     nullptr,
-                    [Sess = Session, Ord](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                    [Sess = Session, Ord](ColorRgba AssignedRgba, const ColourSwatchEntry&)
                     {
                         if (Sess != nullptr)
                         {
@@ -1198,7 +1198,7 @@ void UVOutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
                 "Active UV Priority Layer Tint",
                 Rectangle2D{},
                 nullptr,
-                [Sess = Session](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                [Sess = Session](ColorRgba AssignedRgba, const ColourSwatchEntry&)
                 {
                     if (Sess != nullptr)
                     {

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                        PARTICLEPANEAPPEARANCE.H
+                                                           PARTICLEPANEAPPEARANCE.H
 ============================================================================================================================================*/
-// 🎨 Sun Inspector + Fluid Editor obsidian theme palette, SliderPill controls, switches & crisp vector glyphs for Engine/Workspaces/Particle
+// 🧩 Sun Inspector + Fluid Editor obsidian theme palette, SliderPill controls, switches & crisp vector glyphs for Engine/Workspaces/Particle
 
 #pragma once
 
@@ -161,7 +161,7 @@ struct ParticleStudioColors
     return Changed;
 }
 
-inline void DrawTripletPillsRow(
+inline void RasterizeTripletPillsRow(
     PixelSpace& Surface,
     Rectangle2D RowBounds,
     const char* Label,
@@ -225,7 +225,7 @@ inline void DrawTripletPillsRow(
 //                                              CRISP TWO-TONE VECTOR GLYPHS
 //------------------------------------------------------------------------------------------------------------------------
 
-inline void DrawSparkleGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink) noexcept
+inline void RasterizeSparkleGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink) noexcept
 {
     Surface.StrokeLine({ C.X, C.Y - R }, { C.X, C.Y + R }, Ink, 1.35f);
     Surface.StrokeLine({ C.X - R, C.Y }, { C.X + R, C.Y }, Ink, 1.35f);
@@ -233,14 +233,14 @@ inline void DrawSparkleGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba 
     Surface.FillCircle({ C.X + R * 0.65f, C.Y - R * 0.65f }, R * 0.16f, Ink);
 }
 
-inline void DrawCheckBadgeGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Bg, ColorRgba Ink) noexcept
+inline void RasterizeCheckBadgeGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Bg, ColorRgba Ink) noexcept
 {
     Surface.FillCircle(C, R, Bg);
     Surface.StrokeLine({ C.X - R * 0.38f, C.Y + R * 0.04f }, { C.X - R * 0.06f, C.Y + R * 0.36f }, Ink, 1.6f);
     Surface.StrokeLine({ C.X - R * 0.06f, C.Y + R * 0.36f }, { C.X + R * 0.44f, C.Y - R * 0.30f }, Ink, 1.6f);
 }
 
-inline void DrawEyeGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink, bool Slashed) noexcept
+inline void RasterizeEyeGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink, bool Slashed) noexcept
 {
     const std::array<Point2D, 5> TopArc = {{
         { C.X - R, C.Y },
@@ -265,20 +265,20 @@ inline void DrawEyeGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink,
     }
 }
 
-inline void DrawWindLinesGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink) noexcept
+inline void RasterizeWindLinesGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink) noexcept
 {
     Surface.StrokeLine({ C.X - R, C.Y - R * 0.45f }, { C.X + R * 0.65f, C.Y - R * 0.45f }, Ink, 1.35f);
     Surface.StrokeLine({ C.X - R * 0.7f, C.Y }, { C.X + R, C.Y }, Ink, 1.35f);
     Surface.StrokeLine({ C.X - R * 0.9f, C.Y + R * 0.45f }, { C.X + R * 0.45f, C.Y + R * 0.45f }, Ink, 1.35f);
 }
 
-inline void DrawMagnifierGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink) noexcept
+inline void RasterizeMagnifierGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink) noexcept
 {
     Surface.StrokeCircle({ C.X - R * 0.18f, C.Y - R * 0.18f }, R * 0.62f, Ink, 1.35f);
     Surface.StrokeLine({ C.X + R * 0.28f, C.Y + R * 0.28f }, { C.X + R * 0.88f, C.Y + R * 0.88f }, Ink, 1.5f);
 }
 
-inline void DrawPlusGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink) noexcept
+inline void RasterizePlusGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink) noexcept
 {
     Surface.StrokeLine({ C.X - R, C.Y }, { C.X + R, C.Y }, Ink, 1.45f);
     Surface.StrokeLine({ C.X, C.Y - R }, { C.X, C.Y + R }, Ink, 1.45f);

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                              VECTORFIELD.CPP
+                                                               VECTORFIELD.CPP
 ============================================================================================================================================*/
 // 🧩 Shared spatial reach envelope attenuation helpers and analytical VectorField ForceModel laws (Right-Hand +Z Up)
 
@@ -135,7 +135,7 @@ float EvaluateTemporalModulation(
 //                                           ANALYTICAL VECTOR FIELD LAWS
 //------------------------------------------------------------------------------------------------------------------------
 
-SpatialForceSample EvaluateVectorFieldLaw(
+SpatialForceSample EvaluateVectorFieldModel(
     const ForceSourceRecordEntry& Entry,
     const SpatialVector3&         WorldPoint,
     const SpatialVector3&         BodyVelocity,

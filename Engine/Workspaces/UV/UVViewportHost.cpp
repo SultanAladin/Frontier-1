@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           UVVIEWPORTHOST.CPP
+                                                              UVVIEWPORTHOST.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of UVViewportHost matching Experimental/UVEditor viewport canvas header, command strip, tool rail & status bar
 
@@ -37,7 +37,7 @@ namespace
         case GeometricRaster::SurfaceDisplayMode::StretchHeatmap:     return "Stretch Heat";
         case GeometricRaster::SurfaceDisplayMode::UDIMCheckerPreview: return "UDIM Checker";
         case GeometricRaster::SurfaceDisplayMode::MatCapPreview:      return "MatCap Preview";
-        case GeometricRaster::SurfaceDisplayMode::MaterialAndMatCap:  return "Material + MatCap";
+        case GeometricRaster::SurfaceDisplayMode::MaterialMatCap:  return "Material + MatCap";
     }
     return "Surface Material";
 }
@@ -48,7 +48,7 @@ namespace
     {
         case GeometricRaster::UVCanvasDisplayMode::PriorityLayerFill: return "Debug: Priority";
         case GeometricRaster::UVCanvasDisplayMode::StretchHeatmap:    return "Debug: Stretch";
-        case GeometricRaster::UVCanvasDisplayMode::WindingAndOverlap: return "Debug: Overlaps";
+        case GeometricRaster::UVCanvasDisplayMode::WindingOverlap: return "Debug: Overlaps";
     }
     return "Debug: Priority";
 }
@@ -326,7 +326,7 @@ void UVViewportHost::Render(
                 const bool Hovered = Seg.Contains(Cursor);
                 if (Hovered)
                 {
-                    const char* Tip = Mode == Editor::ViewportSplitMode::SplitPlanarAndSpatial
+                    const char* Tip = Mode == Editor::ViewportSplitMode::SplitPlanarSpatial
                         ? "Show the UV tile canvas and 3D surface side by side."
                         : (Mode == Editor::ViewportSplitMode::Planar2DOnly
                             ? "Expand the UV tile canvas to fill the viewport."
@@ -364,7 +364,7 @@ void UVViewportHost::Render(
             const Rectangle2D Seg0{ TrackRect.X + 3.0f, TrackRect.Y + 3.0f, SplitW, 25.0f };
             const Rectangle2D Seg1{ Seg0.Right() + 2.0f, TrackRect.Y + 3.0f, TwoDW, 25.0f };
             const Rectangle2D Seg2{ Seg1.Right() + 2.0f, TrackRect.Y + 3.0f, ThreeW, 25.0f };
-            ConstructModeSegment(Seg0, "Split",      Editor::ViewportSplitMode::SplitPlanarAndSpatial);
+            ConstructModeSegment(Seg0, "Split",      Editor::ViewportSplitMode::SplitPlanarSpatial);
             ConstructModeSegment(Seg1, "2D UV",      Editor::ViewportSplitMode::Planar2DOnly);
             ConstructModeSegment(Seg2, "3D Surface", Editor::ViewportSplitMode::Spatial3DOnly);
         }
@@ -377,7 +377,7 @@ void UVViewportHost::Render(
     Surface.StrokeLine({ LeftX, SepY }, { RightX, SepY }, Theme.BorderSubtle, 1.0f);
     const float StripY = SepY + 7.0f;
     const float StripW = RightX - LeftX;
-    const bool  ShowWireAndSeamsInline =
+    const bool  ShowWireSeamsInline =
         (HostRole == UVViewportHostRole::DualCombined && StripW >= 720.0f) ||
         (HostRole == UVViewportHostRole::Dedicated2D  && StripW >= 580.0f) ||
         (HostRole == UVViewportHostRole::Dedicated3D  && StripW >= 630.0f);
@@ -512,7 +512,7 @@ void UVViewportHost::Render(
         float RightEdgeX = MoreBtn.X - 6.0f;
 
         auto& Prefs = Session->WorkspaceConfig.AccessUVPreferences();
-        if (ShowWireAndSeamsInline)
+        if (ShowWireSeamsInline)
         {
             const Rectangle2D SeamBtn { MoreBtn.X - 6.0f - 54.0f, StripY, 54.0f, 31.0f };
             const Rectangle2D WireBtn { SeamBtn.X - 6.0f - 48.0f, StripY, 48.0f, 31.0f };
@@ -644,7 +644,7 @@ void UVViewportHost::Render(
         const float OpY = ShelfRect.Y + 4.0f;
         auto& Prefs = Session->WorkspaceConfig.AccessUVPreferences();
 
-        if (!ShowWireAndSeamsInline)
+        if (!ShowWireSeamsInline)
         {
             if (HostRole != UVViewportHostRole::Dedicated2D &&
                 ConstructCapsuleButton(
@@ -815,7 +815,7 @@ void UVViewportHost::Render(
         auto& Projection = ProjectionPane.AccessProjection();
         switch (ProjectionPane.QueryEffectiveSplitMode())
         {
-            case Editor::ViewportSplitMode::SplitPlanarAndSpatial:
+            case Editor::ViewportSplitMode::SplitPlanarSpatial:
             {
                 const float Gap   = 4.0f;
                 const float LeftW = std::floor((CanvasBounds.Width - Gap) * Projection.QuerySplitRatio());
@@ -863,7 +863,7 @@ void UVViewportHost::Render(
             DirectiveOps.push_back(UVCommandDirective::None);
         };
 
-        if (ActiveDirectiveSheetKind == ViewportDirectiveSheetKind::UnwrapMenu)
+        if (ActiveDirectiveSheetKind == ViewportDirectiveSheetCategory::UnwrapMenu)
         {
             PushCaption("UNWRAP DIRECTIVES");
             PushRow("Unwrap Conformal (LSCM)", "Ctrl+U", ControlIcon::LayoutGrid,           UVCommandDirective::UnwrapConformal);
@@ -942,7 +942,7 @@ void UVViewportHost::Render(
     if (TriggerUnwrapMenuFromButton)
     {
         ViewportDirectiveSheetOpen = true;
-        ActiveDirectiveSheetKind   = ViewportDirectiveSheetKind::UnwrapMenu;
+        ActiveDirectiveSheetKind   = ViewportDirectiveSheetCategory::UnwrapMenu;
         ViewportDirectiveAnchor    = { UnwrapBtnBounds.X, UnwrapBtnBounds.Bottom() + 4.0f };
         ViewportDirectiveInPlanar  = (HostRole != UVViewportHostRole::Dedicated3D);
         SurfaceDropdownOpen        = false;
@@ -955,7 +955,7 @@ void UVViewportHost::Render(
         RebuildDirectiveSheet();
         if (Input.SecondaryPressed && CanvasBounds.Contains(Cursor) && !DirectiveSheetBounds.Contains(Cursor))
         {
-            ActiveDirectiveSheetKind  = ViewportDirectiveSheetKind::ContextComponent;
+            ActiveDirectiveSheetKind  = ViewportDirectiveSheetCategory::ContextComponent;
             ViewportDirectiveAnchor   = Cursor;
             ViewportDirectiveInPlanar = ExpectedPlanarRect.Contains(Cursor);
             RebuildDirectiveSheet();
@@ -991,7 +991,7 @@ void UVViewportHost::Render(
         if (Interactor.ConsumeUnwrapSheetRequest(ReqAnchor, ReqPlanar))
         {
             ViewportDirectiveSheetOpen = true;
-            ActiveDirectiveSheetKind   = ViewportDirectiveSheetKind::UnwrapMenu;
+            ActiveDirectiveSheetKind   = ViewportDirectiveSheetCategory::UnwrapMenu;
             ViewportDirectiveAnchor    = ReqAnchor;
             ViewportDirectiveInPlanar  = ReqPlanar;
             SurfaceDropdownOpen        = false;
@@ -1002,7 +1002,7 @@ void UVViewportHost::Render(
         else if (Interactor.ConsumeSecondarySheetRequest(ReqAnchor, ReqPlanar))
         {
             ViewportDirectiveSheetOpen = true;
-            ActiveDirectiveSheetKind   = ViewportDirectiveSheetKind::ContextComponent;
+            ActiveDirectiveSheetKind   = ViewportDirectiveSheetCategory::ContextComponent;
             ViewportDirectiveAnchor    = ReqAnchor;
             ViewportDirectiveInPlanar  = ReqPlanar;
             SurfaceDropdownOpen        = false;
@@ -1040,7 +1040,7 @@ void UVViewportHost::Render(
             else if (PressedPlainU)
             {
                 ViewportDirectiveSheetOpen = true;
-                ActiveDirectiveSheetKind   = ViewportDirectiveSheetKind::UnwrapMenu;
+                ActiveDirectiveSheetKind   = ViewportDirectiveSheetCategory::UnwrapMenu;
                 ViewportDirectiveAnchor    = Bounds.Contains(Cursor)
                     ? Cursor
                     : Point2D{ CanvasBounds.X + CanvasBounds.Width * 0.5f, CanvasBounds.Y + 48.0f };
@@ -1657,7 +1657,7 @@ void UVViewportHost::PresentInImGuiPane(double Δt, float ScaleFactor)
                 "3D Surface Albedo Colour",
                 BrowserSpatialBounds,
                 nullptr,
-                [Sess = Session](ColorRgba AssignedRgba, const ColourCodexEntry&)
+                [Sess = Session](ColorRgba AssignedRgba, const ColourSwatchEntry&)
                 {
                     if (Sess != nullptr)
                     {

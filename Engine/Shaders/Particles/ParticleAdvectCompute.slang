@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       PARTICLEADVECTCOMPUTE.SLANG
+                                                         PARTICLEADVECTCOMPUTE.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 particle advection compute kernel importing ColourRampSampling & ForceFieldEvaluationShared (zero duplicated physics/colour)
 

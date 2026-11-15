@@ -75,7 +75,7 @@ bool VerifyAssertion(bool Condition, const char* Description) noexcept
     return true;
 }
 
-bool ValidateOutlinerInspectorAndViewportSemantics()
+bool ValidateWorkspacePaneSemantics()
 {
     OutlinerPanel  Outliner{};
     InspectorPanel Inspector{};
@@ -719,7 +719,7 @@ bool GenerateWorkspacePaneExhibits(const std::filesystem::path& OutputDirectory)
 
 int main()
 {
-    if (!ValidateOutlinerInspectorAndViewportSemantics())
+    if (!ValidateWorkspacePaneSemantics())
     {
         return 1;
     }

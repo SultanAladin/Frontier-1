@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           GEOMETRYINSTANCE.CPP
+                                                             GEOMETRYINSTANCE.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of GeometryInstanceRegistry recycling indexed slots and maintaining non-kinship Enclosing/FirstNested/NextPeer links
 

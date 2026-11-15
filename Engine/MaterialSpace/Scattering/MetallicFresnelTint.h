@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                      METALLICFRESNELTINT.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                            METALLICFRESNELTINT.H
+============================================================================================================================================*/
 // 🧩 Lobe 2: Anisotropic Spherical-Cap VNDF GGX, exact dielectric Fresnel, OpenPBR F0/F82 edge-tint metal, & Turquin multi-scattering
 
 #pragma once
@@ -162,7 +162,7 @@ struct AnisotropicAlphaPair
 }
 
 // 📝 Complete Lobe 2 evaluation (Single-Scatter Anisotropic GGX + Turquin 4 KB Multi-Scatter Energy Compensation)
-[[nodiscard]] inline Mathematics::LinearRGB EvaluateMetallicAndDielectricSpecular(
+[[nodiscard]] inline Mathematics::LinearRGB EvaluateConductorDielectricSpecular(
     Mathematics::Axis3D           LocalWo,
     Mathematics::Axis3D           LocalWi,
     Mathematics::LinearRGB        BaseColor,

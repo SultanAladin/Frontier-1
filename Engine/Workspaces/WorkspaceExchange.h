@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            WORKSPACEEXCHANGE.H
+                                                             WORKSPACEEXCHANGE.H
 ============================================================================================================================================*/
 // 🧩 Lock-free generation-stamped cross-workspace asset publication bus (e.g. .UVSpace UVTile -> .TextureSpace / .MaterialSpace)
 
@@ -29,7 +29,7 @@ struct CrossWorkspacePublication
 {
     uint64_t                       PublicationGeneration  = 0ull;  // [gen]  - Monotonic publication sequence
     WorkspaceToken                 SourceDocument         {};      // [-]    - Originating .Space document token
-    Codecs::SpaceExtensionCategory SourceCategory         = Codecs::SpaceExtensionCategory::UVSpace; // [-] - Domain tag
+    Codecs::SpaceSuffixCategory SourceCategory         = Codecs::SpaceSuffixCategory::UVSpace; // [-] - Domain tag
     uint32_t                       AffectedUDIMNumber     = 1001u; // [code] - Updated UDIM UVTile code (when applicable)
     double                         TexelDensityPxPerMeter = 512.0; // [px/m] - Published texel density or scalar metric
     char                           PublicationNote[64]    {};      // [-]    - Compact UTF-8 publication summary

@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                          LOOPBACKTRANSPORT.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                             LOOPBACKTRANSPORT.H
+============================================================================================================================================*/
 // 🧩 Deterministic intra-application packet switch with SplitMix64 latency, jitter, reordering, and loss simulation for offline/CI runs
 
 #pragma once
@@ -65,7 +65,7 @@ private:
         std::vector<uint8_t> WireBytes                {};
     };
 
-    [[nodiscard]] uint64_t DrawDeterministicRandom64() noexcept;
+    [[nodiscard]] uint64_t SampleDeterministicRandom64() noexcept;
 
     LoopbackImpairmentProfile       Impairment           {};
     uint64_t                        RandomGeneratorCursor= 0x9E3779B97F4A7C15ull;

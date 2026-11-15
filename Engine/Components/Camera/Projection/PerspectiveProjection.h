@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         PERSPECTIVEPROJECTION.H
+                                                           PERSPECTIVEPROJECTION.H
 ============================================================================================================================================*/
 // 🧩 Physical thin-lens perspective optics: sensor gate + focal length -> FOV, entrance pupil, hyperfocal & Vulkan perspective clip
 

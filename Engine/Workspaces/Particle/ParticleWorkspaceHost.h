@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          PARTICLEWORKSPACEHOST.H
+                                                           PARTICLEWORKSPACEHOST.H
 ============================================================================================================================================*/
 // 🧩 Top-level Frontier Particle Studio host mounting 56px Studio Header, 3 floating 22px panels, modal 93-Preset Assets Browser & ContentBrowser ramp drag-drop
 

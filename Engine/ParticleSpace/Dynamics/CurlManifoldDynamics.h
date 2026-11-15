@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          CURLMANIFOLDDYNAMICS.H
+                                                            CURLMANIFOLDDYNAMICS.H
 ============================================================================================================================================*/
 // 🧩 Modular divergence-free 3D curl noise & constrained manifold dynamics (free 3D, radial, sphere shell, torus, vortex funnel)
 

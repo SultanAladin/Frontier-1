@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            CAMERACOMPONENT.H
+                                                              CAMERACOMPONENT.H
 ============================================================================================================================================*/
 // 🧩 Unified 6-mode physical thin-lens CameraComponent with exponential smoothing, constraints, and non-Shipping diagnostics
 
@@ -12,7 +12,7 @@
 #include "Engine/Components/Camera/CameraConfiguration.h"
 #include "Engine/Components/Camera/CameraPosture.h"
 #include "Engine/Components/Camera/Projection/ViewTransform.h"
-#include "Engine/Editor/Viewports/ViewportProjection.h"
+#include "Engine/Components/Camera/ViewportProjection.h"
 
 #if !FRONTIER_PROFILE_SHIPPING
 #include "Engine/Components/Camera/Diagnostics/CompositionOverlay.h"

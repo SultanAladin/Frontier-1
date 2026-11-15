@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         COMPUTEDISPATCHENCODER.H
+                                                           COMPUTEDISPATCHENCODER.H
 ============================================================================================================================================*/
 // 🧩 Modular Vulkan .slang compute pipeline registry and descriptor encoder shared across UV, Geometry, Texture, Material & Simulation
 

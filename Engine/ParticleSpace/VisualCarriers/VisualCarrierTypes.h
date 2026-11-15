@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           VISUALCARRIERTYPES.H
+                                                             VISUALCARRIERTYPES.H
 ============================================================================================================================================*/
 // 🧩 Modular visual render-geometry carrier types (all 7 carriers + all 20 procedural sprite cutouts + ColourSpace OpticalBlendEquation)
 

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        WORKSPACEAPPEARANCE.CPP
+                                                           WORKSPACEAPPEARANCE.CPP
 ============================================================================================================================================*/
 // 🧩 Shared surface color tokens, VisualToken, VectorGraphic, Workspace icons, indicators, signs, and symbols
 
@@ -582,13 +582,13 @@ ColorRgba QueryCategoryAccent(ConstructSlotCategory Category, ColorRgba FolderTi
     {
         case ConstructSlotCategory::Folder:
             return FolderTint;
-        case ConstructSlotCategory::CategoryOne:
+        case ConstructSlotCategory::GeometryVolume:
             return { 56, 156, 255, 255 };  // #389CFF (editor-cube)
-        case ConstructSlotCategory::CategoryTwo:
+        case ConstructSlotCategory::LayerGroup:
             return { 192, 174, 212, 255 }; // #C0AED4 (collection-stacked-layers)
-        case ConstructSlotCategory::CategoryThree:
+        case ConstructSlotCategory::PointLuminaire:
             return { 255, 205, 56, 255 };  // #FFCD38 (editor-point-light)
-        case ConstructSlotCategory::CategoryFour:
+        case ConstructSlotCategory::OpticsCamera:
             return { 160, 164, 182, 255 }; // #A0A4B6 (camera)
         case ConstructSlotCategory::ForceField:
             return { 104, 220, 255, 255 }; // #68DCFF (aerodynamic cyan streamline)
@@ -611,13 +611,13 @@ const char* QueryCategoryDefaultLabel(ConstructSlotCategory Category) noexcept
     {
         case ConstructSlotCategory::Folder:
             return "Collection";
-        case ConstructSlotCategory::CategoryOne:
+        case ConstructSlotCategory::GeometryVolume:
             return "Type 1";
-        case ConstructSlotCategory::CategoryTwo:
+        case ConstructSlotCategory::LayerGroup:
             return "Type 2";
-        case ConstructSlotCategory::CategoryThree:
+        case ConstructSlotCategory::PointLuminaire:
             return "Type 3";
-        case ConstructSlotCategory::CategoryFour:
+        case ConstructSlotCategory::OpticsCamera:
             return "Type 4";
         case ConstructSlotCategory::ForceField:
             return "Force Field";
@@ -918,7 +918,7 @@ void ConstructSlotCategoryIcon(
             ConstructShowcaseFolderIcon(Surface, TopLeft, Extent, FolderTint, Opacity);
             break;
 
-        case ConstructSlotCategory::CategoryOne:
+        case ConstructSlotCategory::GeometryVolume:
         {
             // Workspace editor-cube: #174B88 filled hexagon + #389CFF bold isometric edges
             const std::array<Point2D, 6> Hex = {{
@@ -948,7 +948,7 @@ void ConstructSlotCategoryIcon(
             break;
         }
 
-        case ConstructSlotCategory::CategoryTwo:
+        case ConstructSlotCategory::LayerGroup:
         {
             // Workspace collection-stacked-layers (scale 5.3333 in 256x256 space)
             const auto Slab = [&](float CenterY, ColorRgba Fill, ColorRgba Edge)
@@ -969,7 +969,7 @@ void ConstructSlotCategoryIcon(
             break;
         }
 
-        case ConstructSlotCategory::CategoryThree:
+        case ConstructSlotCategory::PointLuminaire:
         {
             // Workspace editor-point-light: #F0AD22 filled core + #FFCD38 stroke & 8 rays
             const Point2D   Center{ ProjectX(128.0f), ProjectY(128.0f) };
@@ -995,7 +995,7 @@ void ConstructSlotCategoryIcon(
             break;
         }
 
-        case ConstructSlotCategory::CategoryFour:
+        case ConstructSlotCategory::OpticsCamera:
             ConstructCameraIcon(Surface, TopLeft, Extent, Opacity);
             break;
 
@@ -1547,7 +1547,7 @@ void ConstructResetSymbol(
     Surface.StrokePolyline(Head, Ink, Thickness, false);
 }
 
-ColorRgba QueryForceLawTint(uint32_t LawOrdinal) noexcept
+ColorRgba QueryForceModelTint(uint32_t LawOrdinal) noexcept
 {
     static constexpr std::array<ColorRgba, 19> LawTints = {{
         { 137, 224, 196, 255 }, // 0 LinearWind
@@ -1573,7 +1573,7 @@ ColorRgba QueryForceLawTint(uint32_t LawOrdinal) noexcept
     return (LawOrdinal < LawTints.size()) ? LawTints[LawOrdinal] : LawTints[0];
 }
 
-void ConstructForceLawIcon(
+void ConstructForceModelIcon(
     PixelSpace& Surface,
     uint32_t    LawOrdinal,
     Point2D     TopLeft,

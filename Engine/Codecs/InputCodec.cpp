@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                               INPUTCODEC.CPP
+                                                                INPUTCODEC.CPP
 ============================================================================================================================================*/
 // 🧩 Two-Tier Hybrid .InputSpace encoder & decoder implementation (.DeviceProfile + .AxisCalibration + .ChordRegister + 64B binary index)
 
@@ -322,7 +322,7 @@ SpaceContainerPayload InputEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::InputSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::InputSpace;
     Payload.DocumentTitle      = Model.ProfileTitle.empty() ? "FrontierStudio" : Model.ProfileTitle;
     Payload.AuthoringWorkspace = "Frontier.InputWorkspace";
 
@@ -442,7 +442,7 @@ bool InputDecoder::ExtractModel(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::InputSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::InputSpace)
     {
         OutDiagnostic = "Expected .InputSpace container category.";
         return false;

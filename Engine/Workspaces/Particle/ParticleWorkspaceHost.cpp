@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         PARTICLEWORKSPACEHOST.CPP
+                                                          PARTICLEWORKSPACEHOST.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ParticleWorkspaceHost (56px Fluid+Sun Header, 3 floating panels, modal 93-Preset Assets overlay, Status Bar & ContentBrowser sync)
 
@@ -119,7 +119,7 @@ void ParticleWorkspaceHost::RenderStudioHeader(
     const Rectangle2D PlusTabBtn { X + 10.0f, CY - 11.0f, 22.0f, 22.0f };
     const bool PlusHov = ControlAppearance::QueryPointerOver(PlusTabBtn, Pointer);
     Surface.FillCircle(PlusTabBtn.Center(), 11.0f, PlusHov ? C.CardElevated : C.CardBg);
-    DrawPlusGlyph(Surface, PlusTabBtn.Center(), 4.2f, PlusHov ? C.TextPrimary : C.TextMuted);
+    RasterizePlusGlyph(Surface, PlusTabBtn.Center(), 4.2f, PlusHov ? C.TextPrimary : C.TextMuted);
 
     // Center Workspace | Assets 93 | Log Stream N Pill Capsule
     const float NavW = 304.0f;
@@ -255,7 +255,7 @@ void ParticleWorkspaceHost::RenderAssetsBrowserOverlay(
     const Rectangle2D SearchPill { CloseBtn.X - 266.0f, Y, 250.0f, 32.0f };
     Surface.FillRectangle(SearchPill, C.WellBg, 16.0f);
     Surface.StrokeRectangle(SearchPill, C.Hairline, 16.0f, 1.0f);
-    DrawMagnifierGlyph(Surface, { SearchPill.X + 16.0f, SearchPill.Center().Y }, 4.8f, C.TextMuted);
+    RasterizeMagnifierGlyph(Surface, { SearchPill.X + 16.0f, SearchPill.Center().Y }, 4.8f, C.TextMuted);
     Surface.Text({ SearchPill.X + 29.0f, SearchPill.Center().Y - 5.5f }, 9.8f, C.TextMuted, "Search 93 active presets (9 in Quarantine)...");
 
     Y += 46.0f;
@@ -320,7 +320,7 @@ void ParticleWorkspaceHost::RenderAssetsBrowserOverlay(
         // Icon badge
         const Rectangle2D IconR { CardR.X + 14.0f, CardR.Y + 14.0f, 30.0f, 30.0f };
         Surface.FillRectangle(IconR, C.WarmAccent.ScaledAlpha(0.14f), 9.0f);
-        DrawSparkleGlyph(Surface, IconR.Center(), 5.5f, C.WarmAccent);
+        RasterizeSparkleGlyph(Surface, IconR.Center(), 5.5f, C.WarmAccent);
 
         // Title + MetaTags
         Surface.Text({ IconR.Right() + 10.0f, CardR.Y + 15.0f }, 12.0f, C.TextPrimary, Card.Title.c_str());

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          ENGINECONFIGURATION.CPP
+                                                           ENGINECONFIGURATION.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of EngineConfiguration resolving FeatureSet, StandaloneWorkspace, HeadlessBatch, and ExecutionChannels lane budgets
 

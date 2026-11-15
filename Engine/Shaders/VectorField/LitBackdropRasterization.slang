@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      LITBACKDROPRASTERIZATION.SLANG
+                                                        LITBACKDROPRASTERIZATION.SLANG
 ============================================================================================================================================*/
 // 🧩 Editor Lit PBR architectural blockout & terrain surface rasterizer demonstrating Force Viz clarity over Lit shading
 
@@ -56,7 +56,7 @@ OverlayFragmentOutput FragmentMain(LitVaryings In)
 
     float3 N = normalize(In.WorldNormal);
     float3 L = normalize(float3(0.58, -0.42, 0.70)); // +Z Up directional sun
-    float3 V = normalize(Overlay.CameraPositionAndTime.xyz - In.WorldPos);
+    float3 V = normalize(Overlay.CameraPositionTime.xyz - In.WorldPos);
     float3 H = normalize(L + V);
 
     float NdotL = max(dot(N, L), 0.0);
@@ -78,7 +78,7 @@ OverlayFragmentOutput FragmentMain(LitVaryings In)
     float3 Shaded     = BaseRgb * (SkyAmbient + SunDirect);
 
     // Distance atmospheric horizon blending
-    float CamDist = length(Overlay.CameraPositionAndTime.xyz - In.WorldPos);
+    float CamDist = length(Overlay.CameraPositionTime.xyz - In.WorldPos);
     float FogAmt  = smoothstep(110.0, 260.0, CamDist);
     float3 FinalRgb = lerp(Shaded, float3(0.075, 0.086, 0.105), FogAmt);
 

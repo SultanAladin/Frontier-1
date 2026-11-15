@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        PARTICLEOUTLINERPANEL.CPP
+                                                          PARTICLEOUTLINERPANEL.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ParticleOutlinerPanel (census tiles, search bar, 18 filter chips, Vector Field Forces & Particle Rigs hierarchy)
 
@@ -61,7 +61,7 @@ void DrawForceBadgeIcon(PixelSpace& Surface, Rectangle2D Box, ForceModel Model) 
     const Point2D C = Box.Center();
     if (Model == ForceModel::LinearWind || Model == ForceModel::FlowStream)
     {
-        DrawWindLinesGlyph(Surface, C, 5.2f, Accent);
+        RasterizeWindLinesGlyph(Surface, C, 5.2f, Accent);
     }
     else if (Model == ForceModel::RotationalColumn)
     {
@@ -77,7 +77,7 @@ void DrawForceBadgeIcon(PixelSpace& Surface, Rectangle2D Box, ForceModel Model) 
     }
     else
     {
-        DrawPlusGlyph(Surface, C, 4.4f, Accent);
+        RasterizePlusGlyph(Surface, C, 4.4f, Accent);
     }
 }
 
@@ -140,7 +140,7 @@ void ParticleOutlinerPanel::Render(
 
     Surface.FillCircle(AddBtn.Center(), 14.0f, AddHover ? C.CardElevated : C.CardBg);
     Surface.StrokeCircle(AddBtn.Center(), 14.0f, AddHover ? C.WarmAccent : C.Hairline, 1.0f);
-    DrawPlusGlyph(Surface, AddBtn.Center(), 4.5f, AddHover ? C.WarmAccent : C.TextPrimary);
+    RasterizePlusGlyph(Surface, AddBtn.Center(), 4.5f, AddHover ? C.WarmAccent : C.TextPrimary);
     if (AddHover && Pointer.Pressed)
     {
         Session.ActiveNavView = ParticleNavView::Assets;
@@ -157,7 +157,7 @@ void ParticleOutlinerPanel::Render(
 
     Surface.FillRectangle(VisTile, C.CardBg, 14.0f);
     Surface.StrokeRectangle(VisTile, C.Hairline, 14.0f, 1.0f);
-    DrawCheckBadgeGlyph(Surface, { VisTile.X + 21.0f, VisTile.Y + 21.0f }, 10.0f, C.LiveGreen, { 12u, 18u, 14u, 255u });
+    RasterizeCheckBadgeGlyph(Surface, { VisTile.X + 21.0f, VisTile.Y + 21.0f }, 10.0f, C.LiveGreen, { 12u, 18u, 14u, 255u });
     Surface.Text({ VisTile.X + 12.0f, VisTile.Bottom() - 20.0f }, 10.0f, C.TextMuted, "Visible");
     char VisBuf[16];
     std::snprintf(VisBuf, sizeof(VisBuf), "%u", Session.CountVisibleEntities());
@@ -166,7 +166,7 @@ void ParticleOutlinerPanel::Render(
     Surface.FillRectangle(HidTile, C.CardBg, 14.0f);
     Surface.StrokeRectangle(HidTile, C.Hairline, 14.0f, 1.0f);
     Surface.FillCircle({ HidTile.X + 21.0f, HidTile.Y + 21.0f }, 10.0f, ColorRgba { 38u, 38u, 40u, 255u });
-    DrawEyeGlyph(Surface, { HidTile.X + 21.0f, HidTile.Y + 21.0f }, 5.0f, C.TextMuted, true);
+    RasterizeEyeGlyph(Surface, { HidTile.X + 21.0f, HidTile.Y + 21.0f }, 5.0f, C.TextMuted, true);
     Surface.Text({ HidTile.X + 12.0f, HidTile.Bottom() - 20.0f }, 10.0f, C.TextMuted, "Hidden");
     char HidBuf[16];
     std::snprintf(HidBuf, sizeof(HidBuf), "%u", Session.CountHiddenEntities());
@@ -178,7 +178,7 @@ void ParticleOutlinerPanel::Render(
     const Rectangle2D SearchRect { Bounds.X + PadX, Y, InnerW, 32.0f };
     Surface.FillRectangle(SearchRect, C.WellBg, 16.0f);
     Surface.StrokeRectangle(SearchRect, C.Hairline, 16.0f, 1.0f);
-    DrawMagnifierGlyph(Surface, { SearchRect.X + 17.0f, SearchRect.Center().Y }, 5.0f, C.TextMuted);
+    RasterizeMagnifierGlyph(Surface, { SearchRect.X + 17.0f, SearchRect.Center().Y }, 5.0f, C.TextMuted);
     Surface.Text({ SearchRect.X + 30.0f, SearchRect.Center().Y - 5.5f }, 10.5f,
         Session.OutlinerSearch.empty() ? C.TextMuted : C.TextPrimary,
         Session.OutlinerSearch.empty() ? "Search scene..." : Session.OutlinerSearch.c_str());
@@ -248,12 +248,12 @@ void ParticleOutlinerPanel::Render(
             Surface.FillRectangle(RootRow, RootSel ? C.CardElevated : ColorRgba { 24u, 24u, 26u, 255u }, 10.0f);
         }
         Surface.StrokeCircle({ RowX + 12.0f, RowY + 18.0f }, 6.5f, C.TextFaint, 1.1f);
-        DrawPlusGlyph(Surface, { RowX + 12.0f, RowY + 18.0f }, 3.4f, C.TextFaint);
+        RasterizePlusGlyph(Surface, { RowX + 12.0f, RowY + 18.0f }, 3.4f, C.TextFaint);
         Surface.Text({ RowX + 30.0f, RowY + 6.0f }, 10.8f, C.TextMuted, "Force Field");
         char RootSub[48];
         std::snprintf(RootSub, sizeof(RootSub), "%zu bounded forces · overlay %s", Session.ForceSources.size(), Session.ShowFieldOverlay ? "on" : "off");
         Surface.Text({ RowX + 30.0f, RowY + 20.0f }, 8.8f, C.TextFaint, RootSub);
-        DrawEyeGlyph(Surface, { RowX + RowW - 10.0f, RowY + 18.0f }, 5.0f, Session.ShowFieldOverlay ? C.LiveGreen : C.DangerRed.ScaledAlpha(0.75f), !Session.ShowFieldOverlay);
+        RasterizeEyeGlyph(Surface, { RowX + RowW - 10.0f, RowY + 18.0f }, 5.0f, Session.ShowFieldOverlay ? C.LiveGreen : C.DangerRed.ScaledAlpha(0.75f), !Session.ShowFieldOverlay);
         if (RootHov && Pointer.Pressed)
         {
             Session.SelectForceFieldRoot();
@@ -365,7 +365,7 @@ void ParticleOutlinerPanel::Render(
             }
             const Rectangle2D IconBox { RowX + 8.0f, RowY + 7.0f, 22.0f, 22.0f };
             Surface.FillRectangle(IconBox, C.WarmAccent.ScaledAlpha(0.14f), 7.0f);
-            DrawSparkleGlyph(Surface, IconBox.Center(), 4.8f, C.WarmAccent);
+            RasterizeSparkleGlyph(Surface, IconBox.Center(), 4.8f, C.WarmAccent);
             Surface.Text({ RowX + 38.0f, RowY + 6.0f }, 10.8f, C.TextPrimary, Rig.DisplayName.c_str());
 
             char RigSub[64];

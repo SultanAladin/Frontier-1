@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        COMPONENTSELECTIONMASK.CPP
+                                                          COMPONENTSELECTIONMASK.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ComponentSelectionMask bitset storage and neighbor expansion/contraction
 

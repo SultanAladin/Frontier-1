@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                               COLOURCODEC.H
+                                                                COLOURCODEC.H
 ============================================================================================================================================*/
 // 🧩 .ColourSpace, .ColourRamp & .ColourSwatch encoder/decoder persisting radiometric swatches, modular ramps, spectra & 64B-aligned LUTs
 
@@ -55,8 +55,8 @@ struct ColourSpaceDocumentModel
 class ColourEncoder
 {
 public:
-    static constexpr std::string_view CanonicalRampExtension   = ".ColourRamp";
-    static constexpr std::string_view CanonicalSwatchExtension = ".ColourSwatch";
+    static constexpr std::string_view CanonicalRampSuffix   = ".ColourRamp";
+    static constexpr std::string_view CanonicalSwatchSuffix = ".ColourSwatch";
 
     [[nodiscard]] static toml::table SerializeSourceToManifest(const ColourSpace::ColourSourceProfile& Profile);
 
@@ -88,7 +88,7 @@ class ColourDecoder
 {
 public:
     [[nodiscard]] static bool MatchesRampExtension(const std::filesystem::path& FilePath) noexcept;
-    [[nodiscard]] static bool MatchesSwatchExtension(const std::filesystem::path& FilePath) noexcept;
+    [[nodiscard]] static bool MatchesSwatchSuffix(const std::filesystem::path& FilePath) noexcept;
 
     [[nodiscard]] static bool ExtractSourceFromManifest(
         const toml::table&                 SourceManifest,

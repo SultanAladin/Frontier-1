@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                         LOOPBACKTRANSPORT.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                            LOOPBACKTRANSPORT.CPP
+============================================================================================================================================*/
 // 🧩 Deterministic SplitMix64 intra-application packet switch and zero-socket LoopbackTransport implementation
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -43,7 +43,7 @@ void LoopbackPacketSwitch::ResetSwitch() noexcept
                                 : 0x9E3779B97F4A7C15ull;
 }
 
-uint64_t LoopbackPacketSwitch::DrawDeterministicRandom64() noexcept
+uint64_t LoopbackPacketSwitch::SampleDeterministicRandom64() noexcept
 {
     RandomGeneratorCursor += 0x9E3779B97F4A7C15ull;
     uint64_t Mixed         = RandomGeneratorCursor;
@@ -66,7 +66,7 @@ bool LoopbackPacketSwitch::EnqueueFlightDatagram(
     // Apply deterministic loss only to UnreliableSequenced datagrams; reliable channels simulate retransmission completion
     if (Channel == DeliveryChannel::UnreliableSequenced && Impairment.LossPermille > 0u)
     {
-        const uint64_t RollPermille = DrawDeterministicRandom64() % 1000ull;
+        const uint64_t RollPermille = SampleDeterministicRandom64() % 1000ull;
         if (RollPermille < static_cast<uint64_t>(Impairment.LossPermille))
         {
             ++DroppedDatagramCount;
@@ -77,7 +77,7 @@ bool LoopbackPacketSwitch::EnqueueFlightDatagram(
     double JitterOffsetSeconds = 0.0;
     if (Impairment.MaxJitterSeconds > 0.0)
     {
-        const double UnitFraction = static_cast<double>(DrawDeterministicRandom64() & 0xFFFFFFull) / static_cast<double>(0x1000000ull);
+        const double UnitFraction = static_cast<double>(SampleDeterministicRandom64() & 0xFFFFFFull) / static_cast<double>(0x1000000ull);
         JitterOffsetSeconds       = UnitFraction * Impairment.MaxJitterSeconds;
     }
 

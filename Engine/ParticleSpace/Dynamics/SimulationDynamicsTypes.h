@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        SIMULATIONDYNAMICSTYPES.H
+                                                          SIMULATIONDYNAMICSTYPES.H
 ============================================================================================================================================*/
 // 🧩 Composable typed particle physics & simulation dynamics specifications (zero monolithic switches, directly reuses ForceFields)
 
@@ -169,7 +169,7 @@ struct SpeciesLifeSpec
     float    FrictionDecay      = 0.92f; // [0-1]   - Per-step velocity damping factor
 };
 
-struct MorphogeneticGrowthSpec
+struct OrganicGrowthSpec
 {
     float SensorDistanceM   = 0.45f; // [m]     - Physarum chemoattractant probe reach
     float SensorAngleRad    = 0.52f; // [rad]   - Left/right sensor spread angle
@@ -280,7 +280,7 @@ enum class EffectorPrimitiveShape : uint8_t
     AutoHalftoneUpperTiles  = 6u  // [-] - Halftone circles on lower surface + extruded raised tiles on upper surface
 };
 
-enum class EffectorHostSurfaceKind : uint8_t
+enum class EffectorHostSurfaceCategory : uint8_t
 {
     FloorPlaneXZ            = 0u, // [-] - Horizontal XZ matrix (Effector Cube Matrix)
     WallPlaneXY             = 1u, // [-] - Vertical XY wall matrix
@@ -308,7 +308,7 @@ struct EffectorVolumeDescriptor
 struct EffectorLatticeSpec
 {
     EffectorDriverCategory   Driver              = EffectorDriverCategory::FluidSimplexWave;
-    EffectorHostSurfaceKind  HostSurface         = EffectorHostSurfaceKind::FloorPlaneXZ;
+    EffectorHostSurfaceCategory  HostSurface         = EffectorHostSurfaceCategory::FloorPlaneXZ;
     EffectorPrimitiveShape   PrimitiveShape      = EffectorPrimitiveShape::HeightExtrudedCube;
     EffectorBackingFinish    BackingFinish       = EffectorBackingFinish::ObsidianGlossy;
     EffectorVolumeDescriptor PrimaryVolume       {};
@@ -405,7 +405,7 @@ struct SimulationDynamicsEnsemble
     std::optional<AttractorDynamicsSpec>   Attractor     {};
     std::optional<SwarmFlockingSpec>       Swarm         {};
     std::optional<SpeciesLifeSpec>         SpeciesLife   {};
-    std::optional<MorphogeneticGrowthSpec> Morpho        {};
+    std::optional<OrganicGrowthSpec> BotanicalGrowth        {};
     std::optional<FluidSphSpec>            FluidSph      {};
     std::optional<GranularCollisionSpec>   Granular      {};
     std::optional<ElasticStrandSpec>       ElasticStrand {};
@@ -435,7 +435,7 @@ struct SimulationDynamicsEnsemble
         if (Attractor.has_value())     Bits |= (1u << 16u);
         if (Swarm.has_value())         Bits |= (1u << 17u);
         if (SpeciesLife.has_value())   Bits |= (1u << 18u);
-        if (Morpho.has_value())        Bits |= (1u << 19u);
+        if (BotanicalGrowth.has_value())        Bits |= (1u << 19u);
         if (FluidSph.has_value())      Bits |= (1u << 20u);
         if (Granular.has_value())      Bits |= (1u << 21u);
         if (ElasticStrand.has_value()) Bits |= (1u << 22u);

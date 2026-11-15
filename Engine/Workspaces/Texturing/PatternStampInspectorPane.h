@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                       PATTERNSTAMPINSPECTORPANE.H
-==========================================================================================================================================*/
-// 🧬 Right-docked Inspector pane shared by Pattern Studio and Stamp Studio: KPI trio, Layer Properties, 22 PBR Surface Channels,
+/*============================================================================================================================================
+                                                         PATTERNSTAMPINSPECTORPANE.H
+============================================================================================================================================*/
+// 🧩 Right-docked Inspector pane shared by Pattern Studio and Stamp Studio: KPI trio, Layer Properties, 22 PBR Surface Channels,
 //    Layer Mask, 8 Non-Destructive Modifiers, Document Ground & Tile, fitted dropdown sheets, and 16-swatch colour picker.
 
 #pragma once

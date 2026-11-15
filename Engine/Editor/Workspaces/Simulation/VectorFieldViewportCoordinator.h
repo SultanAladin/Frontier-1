@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                   VECTORFIELDVIEWPORTCOORDINATOR.H
+                                                       VECTORFIELDVIEWPORTCOORDINATOR.H
 ============================================================================================================================================*/
 // 🧩 Editor coordinator binding ForceFieldAccumulator, FieldLatticeVulkanExecutor, VectorFieldOverlaySequence & 3-dock UI panes
 
@@ -14,9 +14,9 @@
 #include "Engine/Components/Panes/OutlinerPanel.h"
 #include "Engine/Components/Panes/ViewportPanel.h"
 #include "Engine/Editor/Workspaces/Simulation/ForceInspectorView.h"
-#include "Engine/Editor/Workspaces/Simulation/VectorFieldOverlaySequence.h"
+#include "Engine/GeometricRaster/Simulation/VectorFieldOverlaySequence.h"
 #include "Engine/SimulationSpace/ForceFields/FieldLatticeCascade.h"
-#include "Engine/SimulationSpace/ForceFields/FieldLatticeVulkanExecutor.h"
+#include "Engine/GeometricRaster/Compute/FieldLatticeVulkanExecutor.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.h"
 
 #include <array>
@@ -38,7 +38,7 @@ public:
     VectorFieldViewportCoordinator() noexcept = default;
     ~VectorFieldViewportCoordinator() noexcept = default;
 
-    [[nodiscard]] bool InitializeAndAttach(
+    [[nodiscard]] bool AttachInitializedSession(
         OutlinerPanel&               Outliner,
         ViewportPanel&               Viewport,
         InspectorPanel&              Inspector,
@@ -67,7 +67,7 @@ public:
     [[nodiscard]] double   QuerySimulationTimeSeconds() const noexcept;
 
 private:
-    void  SynchronizeOutlinerAndAccumulator();
+    void  SynchronizeForceAccumulator();
     void  RecordAnemometerSample(double SampleTimeSec) noexcept;
     bool  RenderFullForceInspector(
         PixelSpace&             Surface,
@@ -76,8 +76,8 @@ private:
         OutlinerRecordEntry*    PrimaryEntry,
         const PaneInputReading& Input,
         double                  Δt);
-    ViewportRasterSurface HandleViewportRaster(const ViewportPaneSurfaceSpecification& Spec);
-    void                  HandleViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
+    ViewportRasterSurface DispatchViewportRaster(const ViewportPaneSurfaceSpecification& Spec);
+    void                  ProcessViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
 
     OutlinerPanel*  BoundOutliner  = nullptr;
     ViewportPanel*  BoundViewport  = nullptr;

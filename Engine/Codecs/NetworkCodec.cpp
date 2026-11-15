@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                            NETWORKCODEC.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                               NETWORKCODEC.CPP
+============================================================================================================================================*/
 // 🧩 .NetworkSpace Two-Tier Hybrid container encoder/decoder (TOML .SessionRouting tier + 64B-aligned .ReplicationPolicy binary tier)
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -25,7 +25,7 @@ SpaceContainerPayload NetworkEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::NetworkSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::NetworkSpace;
     Payload.DocumentTitle      = Configuration.SessionProfileName;
     Payload.AuthoringWorkspace = "Frontier.NetworkingSpace";
 
@@ -97,7 +97,7 @@ bool NetworkDecoder::ExtractConfiguration(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::NetworkSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::NetworkSpace)
     {
         OutDiagnostic = "Expected .NetworkSpace container category.";
         return false;

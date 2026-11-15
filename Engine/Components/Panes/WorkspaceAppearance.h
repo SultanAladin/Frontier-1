@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         WORKSPACEAPPEARANCE.H
+                                                            WORKSPACEAPPEARANCE.H
 ============================================================================================================================================*/
 // 🧩 Shared surface color tokens, VisualToken, VectorGraphic, Workspace icons, indicators, signs, and symbols
 
@@ -30,10 +30,10 @@ namespace Frontier
 enum class ConstructSlotCategory : uint8_t
 {
     Folder        = 0, // [-] - Organizational Showcase folder container
-    CategoryOne   = 1, // [-] - Generic constructible slot category 1 (Cube icon)
-    CategoryTwo   = 2, // [-] - Generic constructible slot category 2 (Stacked layers icon)
-    CategoryThree = 3, // [-] - Generic constructible slot category 3 (Point light icon)
-    CategoryFour  = 4, // [-] - Generic constructible slot category 4 (Camera icon)
+    GeometryVolume = 1, // [-] - Generic constructible slot category 1 (Cube icon)
+    LayerGroup     = 2, // [-] - Generic constructible slot category 2 (Stacked layers icon)
+    PointLuminaire = 3, // [-] - Generic constructible slot category 3 (Point light icon)
+    OpticsCamera   = 4, // [-] - Generic constructible slot category 4 (Camera icon)
     ForceField    = 5, // [-] - Volumetric/Vector ForceField slot category (Wind stream icon)
 };
 
@@ -271,9 +271,9 @@ void ConstructSlotCategoryIcon(
     ColorRgba             FolderTint = WorkspaceSurfaceColors::SageCollection,
     float                 Opacity    = 1.0f) noexcept;
 
-[[nodiscard]] ColorRgba QueryForceLawTint(uint32_t LawOrdinal) noexcept;
+[[nodiscard]] ColorRgba QueryForceModelTint(uint32_t LawOrdinal) noexcept;
 
-void ConstructForceLawIcon(
+void ConstructForceModelIcon(
     PixelSpace& Surface,
     uint32_t    LawOrdinal,
     Point2D     TopLeft,

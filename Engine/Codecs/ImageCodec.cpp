@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                              IMAGECODEC.CPP
+                                                                IMAGECODEC.CPP
 ============================================================================================================================================*/
 // 🧩 .ImageSpace encoder & decoder implementation
 
@@ -23,7 +23,7 @@ SpaceContainerPayload ImageEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::ImageSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::ImageSpace;
     Payload.DocumentTitle      = Model.DocumentTitle;
     Payload.AuthoringWorkspace = "Frontier.ImageWorkspace";
 
@@ -80,7 +80,7 @@ bool ImageDecoder::ExtractModel(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::ImageSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::ImageSpace)
     {
         OutDiagnostic = "Expected .ImageSpace container category.";
         return false;

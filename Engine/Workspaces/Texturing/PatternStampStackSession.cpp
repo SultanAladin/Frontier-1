@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                       PATTERNSTAMPSTACKSESSION.CPP
-==========================================================================================================================================*/
-// 📊 Pattern Studio and Stamp Studio shared document, layer-stack tree, 22-channel PBR bindings, 8 modifiers, and undo/redo history.
+/*============================================================================================================================================
+                                                         PATTERNSTAMPSTACKSESSION.CPP
+============================================================================================================================================*/
+// 🧩 Pattern Studio and Stamp Studio shared document, layer-stack tree, 22-channel PBR bindings, 8 modifiers, and undo/redo history.
 
 #include "Engine/Workspaces/Texturing/PatternStampStackSession.h"
 

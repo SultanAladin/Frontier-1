@@ -46,7 +46,7 @@ ImportIntakeResult ContentBrowser::IntakeExternalAssetDrop(const std::filesystem
 bool ContentBrowser::ExportColourCodexToml(const std::filesystem::path& DestinationFile, std::string* FailureReason) const
 {
     std::string Diagnostic{};
-    const bool  Succeeded = Panel.QueryColourCodex().SaveToTomlFile(DestinationFile, Diagnostic);
+    const bool  Succeeded = Panel.QueryColourSwatchBrowser().SaveToTomlFile(DestinationFile, Diagnostic);
     if (!Succeeded && FailureReason != nullptr)
     {
         *FailureReason = Diagnostic;
@@ -57,7 +57,7 @@ bool ContentBrowser::ExportColourCodexToml(const std::filesystem::path& Destinat
 bool ContentBrowser::ImportColourCodexToml(const std::filesystem::path& SourceFile, std::string* FailureReason)
 {
     std::string Diagnostic{};
-    const bool  Succeeded = Panel.AccessColourCodex().LoadFromTomlFile(SourceFile, Diagnostic);
+    const bool  Succeeded = Panel.AccessColourSwatchBrowser().LoadFromTomlFile(SourceFile, Diagnostic);
     if (!Succeeded && FailureReason != nullptr)
     {
         *FailureReason = Diagnostic;
@@ -71,7 +71,7 @@ bool ContentBrowser::ExportSingleColourSwatch(
     std::string*                 FailureReason) const
 {
     std::string Diagnostic{};
-    const bool  Succeeded = Panel.QueryColourCodex().SaveSingleSwatchFile(EntryIndex, DestinationFile, Diagnostic);
+    const bool  Succeeded = Panel.QueryColourSwatchBrowser().SaveSingleSwatchFile(EntryIndex, DestinationFile, Diagnostic);
     if (!Succeeded && FailureReason != nullptr)
     {
         *FailureReason = Diagnostic;
@@ -82,7 +82,7 @@ bool ContentBrowser::ExportSingleColourSwatch(
 bool ContentBrowser::ImportSingleColourSwatch(const std::filesystem::path& SourceFile, std::string* FailureReason)
 {
     std::string Diagnostic{};
-    const bool  Succeeded = Panel.AccessColourCodex().LoadSingleSwatchFile(SourceFile, Diagnostic);
+    const bool  Succeeded = Panel.AccessColourSwatchBrowser().LoadSingleSwatchFile(SourceFile, Diagnostic);
     if (!Succeeded && FailureReason != nullptr)
     {
         *FailureReason = Diagnostic;

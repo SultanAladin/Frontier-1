@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                    PARTICLESOLIDRASTERIZATION.SLANG
+                                                       PARTICLESOLIDRASTERIZATION.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 PBR-shaded instanced 3D solid particle carrier (coins, cubes, glass shards, snowflakes, crystal beads, Voronoi ice/basalt)
 

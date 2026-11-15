@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           SCALARCURVEEDITOR.CPP
+                                                            SCALARCURVEEDITOR.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of reusable ScalarCurveEditor (0..1 Hermite-smoothed spline, draggable handles & quick preset curve chips)
 

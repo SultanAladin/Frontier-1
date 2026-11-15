@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                               FONTCODEC.CPP
+                                                                FONTCODEC.CPP
 ============================================================================================================================================*/
 // 🧩 .FontSpace encoder & decoder implementation
 
@@ -23,7 +23,7 @@ SpaceContainerPayload FontEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::FontSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::FontSpace;
     Payload.DocumentTitle      = Model.TypefaceTitle;
     Payload.AuthoringWorkspace = "Frontier.TypographyWorkspace";
 
@@ -81,7 +81,7 @@ bool FontDecoder::ExtractModel(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::FontSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::FontSpace)
     {
         OutDiagnostic = "Expected .FontSpace container category.";
         return false;

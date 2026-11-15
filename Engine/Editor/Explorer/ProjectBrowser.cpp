@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                             PROJECTBROWSER.CPP
+                                                              PROJECTBROWSER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ProjectBrowser matching Experimental/ProjectBrowser 1:1 using PixelSpace, Studio Controls, & TieredWorldRenderSequence
 
@@ -603,7 +603,7 @@ void ProjectBrowser::InitializeDefaultCollection(
         BrowserCollectionEntry Entry {};
         Entry.Identifier      = std::move(Id);
         Entry.Title           = std::move(Title);
-        Entry.Extension       = std::move(Ext);
+        Entry.Suffix       = std::move(Ext);
         Entry.Category        = Cat;
         Entry.SummaryCaption  = std::move(Summary);
         Entry.Description     = std::move(Desc);
@@ -768,7 +768,7 @@ bool ProjectBrowser::RegisterDiskPathInCollection(const std::filesystem::path& D
     std::error_code Ec {};
     if (std::filesystem::is_directory(DiskPath, Ec))
     {
-        const std::filesystem::path CandidateSpace = DiskPath / (DiskPath.filename().string() + ProjectSpaceRepository::ContainerExtension);
+        const std::filesystem::path CandidateSpace = DiskPath / (DiskPath.filename().string() + ProjectSpaceRepository::ContainerSuffix);
         if (std::filesystem::exists(CandidateSpace, Ec))
         {
             return RegisterDiskPathInCollection(CandidateSpace, ActivateInReader);
@@ -809,7 +809,7 @@ bool ProjectBrowser::RegisterDiskPathInCollection(const std::filesystem::path& D
     BrowserCollectionEntry Entry {};
     Entry.Identifier      = "disk_" + std::to_string(Collection.size() + 1u);
     Entry.Title           = Title.empty() ? "LocalEntry" : Title;
-    Entry.Extension       = DiskPath.extension().empty() ? ".projectspace" : DiskPath.extension().string();
+    Entry.Suffix       = DiskPath.extension().empty() ? ".projectspace" : DiskPath.extension().string();
     Entry.Category        = Cat;
     Entry.SummaryCaption  = (Cat == BrowserEntryCategory::Geometry)
                                 ? "Local Geometry · UVWorkspace & Frontier"
@@ -1161,7 +1161,7 @@ void ProjectBrowser::RenderLibraryMode(
         const auto& E = Collection[Idx];
         if (!QueryLower.empty())
         {
-            const std::string Haystack = LowercaseString(E.Title + " " + E.Extension + " " + QueryCategoryCaption(E.Category));
+            const std::string Haystack = LowercaseString(E.Title + " " + E.Suffix + " " + QueryCategoryCaption(E.Category));
             if (Haystack.find(QueryLower) == std::string::npos)
             {
                 continue;
@@ -1326,7 +1326,7 @@ void ProjectBrowser::RenderLibraryMode(
             const float TextY = TileRect.Y + PreviewH + 13.0f;
             Surface.Text({ TileRect.X + 15.0f, TextY }, 13.0f, P.Ink, Entry.Title.c_str());
             const float TitleW = Surface.MeasureTextWidth(13.0f, Entry.Title.c_str());
-            Surface.Text({ TileRect.X + 15.0f + TitleW + 8.0f, TextY + 3.0f }, 9.5f, P.Faint, Entry.Extension.c_str());
+            Surface.Text({ TileRect.X + 15.0f + TitleW + 8.0f, TextY + 3.0f }, 9.5f, P.Faint, Entry.Suffix.c_str());
             Surface.Text({ TileRect.X + 15.0f, TextY + 21.0f }, 10.0f, P.Muted, Entry.SummaryCaption.c_str());
 
             const float MetaLineY = TileRect.Y + TileRect.Height - 28.0f;
@@ -1506,7 +1506,7 @@ void ProjectBrowser::RenderReaderMode(
         return;
     }
 
-    const std::string FullName = Entry.Title + Entry.Extension;
+    const std::string FullName = Entry.Title + Entry.Suffix;
     Surface.Text({ MainX + 62.0f, 24.0f }, 12.5f, P.Ink, FullName.c_str());
 
     const auto PermittedCaps = CapabilityRegister.QueryPermittedForPath(Entry.FilePath);
@@ -1703,7 +1703,7 @@ void ProjectBrowser::RenderReaderMode(
                 Surface.TextRightAligned({ InspX, InspY, InspW, 15.0f }, 9.5f, P.Ink, Val);
                 InspY += 22.0f;
             };
-            ConstructDetailPair("Format", Entry.Extension.c_str());
+            ConstructDetailPair("Format", Entry.Suffix.c_str());
             ConstructDetailPair("Category", QueryCategoryCaption(Entry.Category));
             ConstructDetailPair("Last opened", Entry.LastOpenedText.c_str());
 

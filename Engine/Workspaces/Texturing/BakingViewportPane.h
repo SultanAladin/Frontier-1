@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                         BAKINGVIEWPORTPANE.H
-==========================================================================================================================================*/
-// 🧊 Center pane for Baking Studio: toolbar controls, real GPU 3D / 2D SDF & map viewports & right-click / Q Quick Overlay.
+/*============================================================================================================================================
+                                                             BAKINGVIEWPORTPANE.H
+============================================================================================================================================*/
+// 🧩 Center pane for Baking Studio: toolbar controls, real GPU 3D / 2D SDF & map viewports & right-click / Q Quick Overlay.
 
 #pragma once
 
@@ -62,7 +62,7 @@ public:
         Rectangle2D             WorkspaceBounds,
         const PaneInputReading& Input) noexcept;
 
-    void SetQuickOverlayOpen(bool Open) noexcept;
+    void ConfigureQuickOverlayOpen(bool Open) noexcept;
     [[nodiscard]] bool QueryQuickOverlayOpen() const noexcept;
     [[nodiscard]] bool QueryAnyOverlayOpen() const noexcept;
     void CloseAllOverlays() noexcept;

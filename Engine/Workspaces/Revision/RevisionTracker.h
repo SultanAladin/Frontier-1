@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                             REVISIONTRACKER.H
+                                                              REVISIONTRACKER.H
 ============================================================================================================================================*/
 // 🧩 Per-document 215 MiB parametric revision tracker coordinating NonLinearHistory, OperationRecorder, and CursorResolution
 

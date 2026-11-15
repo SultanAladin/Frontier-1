@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                                UVCODEC.CPP
+                                                                 UVCODEC.CPP
 ============================================================================================================================================*/
 // 🧩 .UVSpace (.UDIM + .UVTile) encoder & decoder implementation
 
@@ -23,7 +23,7 @@ SpaceContainerPayload UVEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::UVSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::UVSpace;
     Payload.DocumentTitle      = Model.DocumentTitle;
     Payload.AuthoringWorkspace = "Frontier.UVSpaceWorkspace";
 
@@ -83,7 +83,7 @@ bool UVDecoder::ExtractModel(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::UVSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::UVSpace)
     {
         OutDiagnostic = "Expected .UVSpace container category.";
         return false;

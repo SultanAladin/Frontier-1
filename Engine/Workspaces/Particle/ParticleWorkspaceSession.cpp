@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       PARTICLEWORKSPACESESSION.CPP
+                                                         PARTICLEWORKSPACESESSION.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ParticleWorkspaceSession (Studio Default scene, Vector Field Forces coupling, 93-preset Asset Browser metadata & playback)
 
@@ -11,7 +11,7 @@
 
 #include "Engine/ColourSpace/ChromaticitySpace.h"
 #include "Engine/ColourSpace/ColourPresetRepository.h"
-#include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
+#include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 
 #include <algorithm>
 #include <cmath>
@@ -31,7 +31,7 @@ using SimulationSpace::ForceFields::ForceModel;
 using SimulationSpace::ForceFields::ForceSourceRecordEntry;
 using SimulationSpace::ForceFields::ReachEnvelopeCategory;
 
-[[nodiscard]] ForceSourceRecordEntry MakeForce(
+[[nodiscard]] ForceSourceRecordEntry ConstructForceSource(
     uint32_t              Token,
     const char*           Label,
     ForceModel            Model,
@@ -107,12 +107,12 @@ void ParticleWorkspaceSession::ResetStudioDefaultScene()
 
     // 6 bounded ForceField sources reusing Frontier::SimulationSpace::ForceFields verbatim
     ForceSources = {
-        MakeForce(1u, "Wind Generator East", ForceModel::LinearWind,       ForceDomainCategory::FlowField,   8.5f,  4.2f, -3.2f, 1.8f, 0.0f),
-        MakeForce(2u, "Swirl Column",        ForceModel::RotationalColumn, ForceDomainCategory::VectorField, 14.5f, 3.6f,  2.6f, 2.0f, -1.4f),
-        MakeForce(3u, "Jet Corridor",        ForceModel::FlowStream,       ForceDomainCategory::FlowField,   11.5f, 2.2f, -1.5f, 2.4f,  2.8f),
-        MakeForce(4u, "Impulse Shell",       ForceModel::RadialBurst,      ForceDomainCategory::VectorField, 18.0f, 3.4f,  0.0f, 1.5f,  0.0f, ForceDurationMode::Impulse),
-        MakeForce(5u, "Attractor",           ForceModel::Attractor,        ForceDomainCategory::VectorField,  9.5f, 2.8f,  2.8f, 1.6f,  2.1f),
-        MakeForce(6u, "Repulsor",            ForceModel::Repulsor,         ForceDomainCategory::VectorField, 11.5f, 2.2f, -2.6f, 1.4f, -2.2f),
+        ConstructForceSource(1u, "Wind Generator East", ForceModel::LinearWind,       ForceDomainCategory::StreamTransport,   8.5f,  4.2f, -3.2f, 1.8f, 0.0f),
+        ConstructForceSource(2u, "Swirl Column",        ForceModel::RotationalColumn, ForceDomainCategory::VectorField, 14.5f, 3.6f,  2.6f, 2.0f, -1.4f),
+        ConstructForceSource(3u, "Jet Corridor",        ForceModel::FlowStream,       ForceDomainCategory::StreamTransport,   11.5f, 2.2f, -1.5f, 2.4f,  2.8f),
+        ConstructForceSource(4u, "Impulse Shell",       ForceModel::RadialBurst,      ForceDomainCategory::VectorField, 18.0f, 3.4f,  0.0f, 1.5f,  0.0f, ForceDurationMode::Impulse),
+        ConstructForceSource(5u, "Attractor",           ForceModel::Attractor,        ForceDomainCategory::VectorField,  9.5f, 2.8f,  2.8f, 1.6f,  2.1f),
+        ConstructForceSource(6u, "Repulsor",            ForceModel::Repulsor,         ForceDomainCategory::VectorField, 11.5f, 2.2f, -2.6f, 1.4f, -2.2f),
     };
     ForceSources[2].StreamProfile = FlowStreamProfile::SlipstreamJet;
 
@@ -246,14 +246,14 @@ void ParticleWorkspaceSession::ResetStudioDefaultScene()
         });
     }
 
-    // Initialize live C++ ParticleSpace::ParticleExtension + verify compiled Vulkan 1.3 SPIR-V shaders
+    // Initialize live C++ ParticleSpace::ParticleSimulationCoordinator + verify compiled Vulkan 1.3 SPIR-V shaders
     ParticleSpace::ParticleDocument LiveDoc = ParticleSpace::ConstructStudioDefaultDocument();
     LiveDoc.ForceSources = ForceSources;
-    (void)SimulationExtension.Initialize(LiveDoc);
-    SimulationExtension.TriggerBurst(0u, 320u);
+    (void)SimulationCoordinator.Initialize(LiveDoc);
+    SimulationCoordinator.TriggerBurst(0u, 320u);
     for (int Warm = 0; Warm < 24; ++Warm)
     {
-        SimulationExtension.Tick(1.0 / 60.0);
+        SimulationCoordinator.Tick(1.0 / 60.0);
     }
 
     std::string VkDiag;
@@ -284,9 +284,9 @@ void ParticleWorkspaceSession::StepSimulationClock(double DeltaSeconds) noexcept
     {
         ElapsedSeconds = std::fmod(ElapsedSeconds, LoopDurationSec);
     }
-    SimulationExtension.AccessDocument().ForceSources = ForceSources;
-    SimulationExtension.Tick(DeltaSeconds);
-    const auto& Tel = SimulationExtension.InspectTelemetry();
+    SimulationCoordinator.AccessDocument().ForceSources = ForceSources;
+    SimulationCoordinator.Tick(DeltaSeconds);
+    const auto& Tel = SimulationCoordinator.InspectTelemetry();
     if (Tel.LastStepMillis > 0.0)
     {
         ComputeTimeMs = static_cast<float>(Tel.LastStepMillis);
@@ -298,9 +298,9 @@ void ParticleWorkspaceSession::StepSimulationClock(double DeltaSeconds) noexcept
 void ParticleWorkspaceSession::TriggerBurst() noexcept
 {
     ++BurstCount;
-    for (std::size_t I = 0u; I < SimulationExtension.InspectDocument().Rigs.size(); ++I)
+    for (std::size_t I = 0u; I < SimulationCoordinator.InspectDocument().Rigs.size(); ++I)
     {
-        SimulationExtension.TriggerBurst(I, 180u);
+        SimulationCoordinator.TriggerBurst(I, 180u);
     }
     for (AuthoredParticleRigUi& Rig : ParticleRigs)
     {
@@ -316,8 +316,8 @@ void ParticleWorkspaceSession::ResetPlayback() noexcept
 {
     ElapsedSeconds = 0.0;
     StepCounter    = 0u;
-    SimulationExtension.ResetSimulation();
-    SimulationExtension.TriggerBurst(0u, 240u);
+    SimulationCoordinator.ResetSimulation();
+    SimulationCoordinator.TriggerBurst(0u, 240u);
     AppendLog(LogChannelCategory::Particles, "Simulation clock reset & particle slots re-seeded");
 }
 
@@ -471,9 +471,9 @@ void ParticleWorkspaceSession::AddPresetToScene(std::size_t AssetIndex)
         ParticleSpace::ParticleRig LiveRig = ParticleSpace::InstantiateRigFromPreset(*Meta);
         Added.CapacityCount = LiveRig.SlotCapacity;
         Added.ColourProfile = LiveRig.ColourProfile;
-        SimulationExtension.AccessDocument().Rigs.push_back(std::move(LiveRig));
-        SimulationExtension.ResetSimulation();
-        SimulationExtension.TriggerBurst(SimulationExtension.InspectDocument().Rigs.size() - 1u, 220u);
+        SimulationCoordinator.AccessDocument().Rigs.push_back(std::move(LiveRig));
+        SimulationCoordinator.ResetSimulation();
+        SimulationCoordinator.TriggerBurst(SimulationCoordinator.InspectDocument().Rigs.size() - 1u, 220u);
     }
     else if (const auto* Preset = ColourSpace::FindBuiltInColourRampPreset(Card.RampPresetId))
     {

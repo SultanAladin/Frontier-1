@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         FORCEFIELDDESCRIPTORS.H
+                                                           FORCEFIELDDESCRIPTORS.H
 ============================================================================================================================================*/
 // 🧩 Shared C++20 descriptors, 19 ForceModel laws, Right-Hand +Z Up math primitives, motion paths, and 16B-aligned GPU layouts
 
@@ -85,7 +85,7 @@ enum class ForceAttenuationMode : uint32_t
 enum class ForceDomainCategory : uint32_t
 {
     VectorField     = 0u, // [-] - Analytical vector laws & electromagnetic fields
-    FlowField       = 1u, // [-] - Directed fluid streams, splines, & surface traction
+    StreamTransport = 1u, // [-] - Directed fluid streams, splines, & surface traction
     TurbulenceField = 2u, // [-] - Divergence-free curl, gusts, vorticity, & stochastic noise
 };
 
@@ -482,7 +482,7 @@ constexpr ForceDomainCategory QueryDomainForModel(ForceModel Model) noexcept
         case ForceModel::FlowStream:
         case ForceModel::SplineForce:
         case ForceModel::BoundaryAdhesion:
-            return ForceDomainCategory::FlowField;
+            return ForceDomainCategory::StreamTransport;
 
         default:
             return ForceDomainCategory::VectorField;

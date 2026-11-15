@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                 VISIBILITYCLUSTERRASTERIZATION.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                       VISIBILITYCLUSTERRASTERIZATION.H
+============================================================================================================================================*/
 // 🧩 Exact 64-Bit (8 B/px) Visibility Buffer (ReversedDepth32 | VisibilityToken32) + HW/SW Micro-Raster + 2-Layer Glass Depth Peel
 
 #pragma once
@@ -59,7 +59,7 @@ struct VisibilityBufferTargets
     uint32_t              MicroComputeTris    = 0u;   // [count] - Triangles rasterized via <4 px SW atomicMax64 path
     uint32_t              GlassPeeledTris     = 0u;   // [count] - Transparent triangles rasterized into 2-layer peel
 
-    void AllocateAndClear(uint32_t ViewportWidth, uint32_t ViewportHeight);
+    void AllocateClearedImage(uint32_t ViewportWidth, uint32_t ViewportHeight);
 };
 
 //------------------------------------------------------------------------------------------------------------------------

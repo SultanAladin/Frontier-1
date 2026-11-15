@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       SIMULATIONPLAYBACKCONTROLS.CPP
+                                                        SIMULATIONPLAYBACKCONTROLS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of reusable SimulationPlaybackControls (circular Play/Pause, Reset, SingleStep, Timecode, TimeScale & Burst trigger)
 

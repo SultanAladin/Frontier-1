@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            EDITORLIFECYCLE.CPP
+                                                             EDITORLIFECYCLE.CPP
 ============================================================================================================================================*/
 // 🧩 Editor-only authoring loop implementation
 
@@ -29,14 +29,14 @@ namespace
     switch (Domain)
     {
     case ForceDomainCategory::VectorField:     return "VectorField";
-    case ForceDomainCategory::FlowField:       return "FlowField";
+    case ForceDomainCategory::StreamTransport:       return "StreamTransport";
     case ForceDomainCategory::TurbulenceField: return "Turbulence";
     default:                                   return "ForceField";
     }
 }
 
 [[nodiscard]] SimulationSpace::ForceFields::ForceSourceRecordEntry BuildEditorForcePreset(
-    uint32_t         ForceLawOrdinal,
+    uint32_t         ForceModelOrdinal,
     std::string_view Title)
 {
     using namespace SimulationSpace::ForceFields;
@@ -48,9 +48,9 @@ namespace
     Desc.EvaluatedCentreMeters = Desc.CentreMeters;
     Desc.Label                 = std::string(Title);
 
-    if (ForceLawOrdinal < static_cast<uint32_t>(ForceModel::Count))
+    if (ForceModelOrdinal < static_cast<uint32_t>(ForceModel::Count))
     {
-        Desc.Model = static_cast<ForceModel>(ForceLawOrdinal);
+        Desc.Model = static_cast<ForceModel>(ForceModelOrdinal);
     }
     else if (Title.find("Thermal") != std::string_view::npos || Title.find("Updraft") != std::string_view::npos)
     {
@@ -274,13 +274,13 @@ void EditorLifecycle::AttachForceFieldAuthoringToActivePanes()
 
     std::vector<OutlinerConstructTemplate> Templates;
     Templates.reserve(28u);
-    Templates.push_back({ "Add Box Geometry",      "Box Specimen",      "Geometry", "Box · OpenPBR Surface",      ConstructSlotCategory::CategoryOne,   0xFFFFFFFFu });
-    Templates.push_back({ "Add Sphere Geometry",   "Sphere Specimen",   "Geometry", "Sphere · OpenPBR Surface",   ConstructSlotCategory::CategoryOne,   0xFFFFFFFFu });
-    Templates.push_back({ "Add Cylinder Geometry", "Cylinder Specimen", "Geometry", "Cylinder · OpenPBR Surface", ConstructSlotCategory::CategoryOne,   0xFFFFFFFFu });
-    Templates.push_back({ "Add Cone Geometry",     "Cone Specimen",     "Geometry", "Cone · OpenPBR Surface",     ConstructSlotCategory::CategoryOne,   0xFFFFFFFFu });
-    Templates.push_back({ "Add Torus Geometry",    "Torus Specimen",    "Geometry", "Torus · OpenPBR Surface",    ConstructSlotCategory::CategoryOne,   0xFFFFFFFFu });
-    Templates.push_back({ "Add Area Light",        "Area Quad Light",   "Lighting", "LTC Polygonal Quad Light",   ConstructSlotCategory::CategoryThree, 0xFFFFFFFFu });
-    Templates.push_back({ "Add Scene Camera",      "Scene Camera",      "Camera",   "Perspective Optical Camera", ConstructSlotCategory::CategoryFour,  0xFFFFFFFFu });
+    Templates.push_back({ "Add Box Geometry",      "Box Specimen",      "Geometry", "Box · OpenPBR Surface",      ConstructSlotCategory::GeometryVolume,   0xFFFFFFFFu });
+    Templates.push_back({ "Add Sphere Geometry",   "Sphere Specimen",   "Geometry", "Sphere · OpenPBR Surface",   ConstructSlotCategory::GeometryVolume,   0xFFFFFFFFu });
+    Templates.push_back({ "Add Cylinder Geometry", "Cylinder Specimen", "Geometry", "Cylinder · OpenPBR Surface", ConstructSlotCategory::GeometryVolume,   0xFFFFFFFFu });
+    Templates.push_back({ "Add Cone Geometry",     "Cone Specimen",     "Geometry", "Cone · OpenPBR Surface",     ConstructSlotCategory::GeometryVolume,   0xFFFFFFFFu });
+    Templates.push_back({ "Add Torus Geometry",    "Torus Specimen",    "Geometry", "Torus · OpenPBR Surface",    ConstructSlotCategory::GeometryVolume,   0xFFFFFFFFu });
+    Templates.push_back({ "Add Area Light",        "Area Quad Light",   "Lighting", "LTC Polygonal Quad Light",   ConstructSlotCategory::PointLuminaire, 0xFFFFFFFFu });
+    Templates.push_back({ "Add Scene Camera",      "Scene Camera",      "Camera",   "Perspective Optical Camera", ConstructSlotCategory::OpticsCamera,  0xFFFFFFFFu });
     for (uint32_t Ord = 0u; Ord < static_cast<uint32_t>(SimulationSpace::ForceFields::ForceModel::Count); ++Ord)
     {
         const auto  Model   = static_cast<SimulationSpace::ForceFields::ForceModel>(Ord);
@@ -365,7 +365,7 @@ void EditorLifecycle::AttachForceFieldAuthoringToActivePanes()
             {
                 MappedEditorForceSource Synthesized{};
                 Synthesized.OutlinerSlot       = PrimaryEntry->Token;
-                Synthesized.Source             = BuildEditorForcePreset(PrimaryEntry->ForceLawOrdinal, PrimaryEntry->Title);
+                Synthesized.Source             = BuildEditorForcePreset(PrimaryEntry->ForceModelOrdinal, PrimaryEntry->Title);
                 Synthesized.Source.UniqueToken = NextForceToken++;
                 AuthoredForces.push_back(std::move(Synthesized));
                 ActiveForce = &AuthoredForces.back().Source;
@@ -385,7 +385,7 @@ void EditorLifecycle::AttachForceFieldAuthoringToActivePanes()
             const bool Changed = ForceInspector.Render(Surface, Bounds, Targets, Input, Δt);
             if (Changed)
             {
-                PrimaryEntry->ForceLawOrdinal      = static_cast<uint32_t>(ActiveForce->Model);
+                PrimaryEntry->ForceModelOrdinal      = static_cast<uint32_t>(ActiveForce->Model);
                 PrimaryEntry->ForceFormulaOverride = ActiveForce->FormulaEnabled;
                 PrimaryEntry->CategoryLabel        = SimulationSpace::ForceFields::QueryForceModelDisplayName(ActiveForce->Model);
                 char SubBuf[96]{};
@@ -487,7 +487,7 @@ OutlinerSlotToken EditorLifecycle::SpawnForceFieldEntry(
         Record->Category             = ConstructSlotCategory::ForceField;
         Record->Title                = Instance.Label;
         Record->CategoryLabel        = SimulationSpace::ForceFields::QueryForceModelDisplayName(Instance.Model);
-        Record->ForceLawOrdinal      = static_cast<uint32_t>(Instance.Model);
+        Record->ForceModelOrdinal      = static_cast<uint32_t>(Instance.Model);
         Record->ForceFormulaOverride = Instance.FormulaEnabled;
         char SubBuf[96]{};
         std::snprintf(SubBuf, sizeof(SubBuf), "r %.0f m  |  %.1f m/s", Instance.RadiusMeters, Instance.Strength);
@@ -539,7 +539,7 @@ void EditorLifecycle::SynchronizeForceFieldsWithOutliner(double Δt)
         {
             MappedEditorForceSource NewItem{};
             NewItem.OutlinerSlot           = Entry.Token;
-            NewItem.Source                 = BuildEditorForcePreset(Entry.ForceLawOrdinal, Entry.Title);
+            NewItem.Source                 = BuildEditorForcePreset(Entry.ForceModelOrdinal, Entry.Title);
             NewItem.Source.UniqueToken     = NextForceToken++;
             NewItem.Source.OutlinerTokenId = Entry.Token.Identifier;
             AuthoredForces.push_back(std::move(NewItem));
@@ -676,12 +676,12 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
     Panes->Viewport.ConfigureInteractionCallback(
         [this](uint32_t PaneIdx, Rectangle2D PaneBounds, const PaneInputReading& Input)
         {
-            HandleShowcaseViewportInteraction(PaneIdx, PaneBounds, Input);
+            ProcessShowcaseViewportInteraction(PaneIdx, PaneBounds, Input);
         });
     Panes->Viewport.AssignNavigationCallback(
         [this](ViewportNavigationDirective Directive)
         {
-            HandleShowcaseNavigationDirective(Directive);
+            ProcessShowcaseNavigationDirective(Directive);
         });
 
     SynchronizeShowcaseGizmoAnchor();
@@ -758,7 +758,7 @@ void EditorLifecycle::FrameShowcaseCameraSelection() noexcept
     RefreshShowcaseViewportRaster();
 }
 
-void EditorLifecycle::HandleShowcaseNavigationDirective(ViewportNavigationDirective Directive)
+void EditorLifecycle::ProcessShowcaseNavigationDirective(ViewportNavigationDirective Directive)
 {
     if (ShowcaseBundle == nullptr)
     {
@@ -792,7 +792,7 @@ void EditorLifecycle::HandleShowcaseNavigationDirective(ViewportNavigationDirect
     RefreshShowcaseViewportRaster();
 }
 
-void EditorLifecycle::HandleShowcaseViewportInteraction(
+void EditorLifecycle::ProcessShowcaseViewportInteraction(
     uint32_t                PaneIndex,
     Rectangle2D             PaneBounds,
     const PaneInputReading& Input)
@@ -1075,7 +1075,7 @@ void EditorLifecycle::SynchronizeContentBrowserColourTargets()
     WorldSlot.SlotIdentifier = "ActiveWorldSurfaceColour";
     WorldSlot.DisplayTitle   = TargetLabel;
     WorldSlot.ScreenBounds   = BrowserPanel.MapPhysicalToLogicalBounds(Panes->Viewport.QueryLastCanvasPaneBounds());
-    WorldSlot.NotifyColourAssigned = [this](ColorRgba AssignedColor, const ColourCodexEntry& SwatchEntry)
+    WorldSlot.NotifyColourAssigned = [this](ColorRgba AssignedColor, const ColourSwatchEntry& SwatchEntry)
     {
         WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
         if (ActivePanes == nullptr || ShowcaseBundle == nullptr)

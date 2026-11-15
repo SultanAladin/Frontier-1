@@ -1,16 +1,16 @@
 /*============================================================================================================================================
                                                           COLOURSPACEVALIDATION.CPP
 ============================================================================================================================================*/
-// 🎨 Comprehensive validation & visual proof sheet for Engine/ColourSpace (colorimetry, transfer curves, Kelvin, gamut, 7 sources, HTML parity, LUTs, ColourExtension)
+// 🧩 Comprehensive validation & visual proof sheet for Engine/ColourSpace (colorimetry, transfer curves, Kelvin, gamut, 7 sources, HTML parity, LUTs, ColourAssetCoordinator)
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/ColourSpace/ChromaticitySpace.h"
-#include "Engine/ColourSpace/ColourCodex.h"
+#include "Engine/ColourSpace/ColourAliasRepository.h"
 #include "Engine/ColourSpace/ColourDocument.h"
-#include "Engine/ColourSpace/ColourExtension.h"
+#include "Engine/ColourSpace/ColourAssetCoordinator.h"
 #include "Engine/ColourSpace/ColourPresetRepository.h"
 #include "Engine/ColourSpace/ColourRampSampler.h"
 #include "Engine/ColourSpace/GamutCompression.h"
@@ -259,15 +259,15 @@ bool ValidateModularSources()
         return false;
     }
 
-    // Verify ColourExtension lifecycle + WorkspaceExchange publication
+    // Verify ColourAssetCoordinator lifecycle + WorkspaceExchange publication
     Frontier::Workspaces::WorkspaceExchange ExchangeBus {};
-    ColourExtension Extension {};
-    if (!VerifyCheck(Extension.Initialize(&ExchangeBus), "ColourExtension::Initialize"))
+    ColourAssetCoordinator Extension {};
+    if (!VerifyCheck(Extension.Initialize(&ExchangeBus), "ColourAssetCoordinator::Initialize"))
     {
         return false;
     }
-    const ColourExtensionMetrics InitialMetrics = Extension.InspectMetrics();
-    if (!VerifyCheck(InitialMetrics.Initialized && InitialMetrics.BakedLutCount >= 9u, "ColourExtension pre-baked >= 9 LUT rows"))
+    const ColourAssetCoordinatorMetrics InitialMetrics = Extension.InspectMetrics();
+    if (!VerifyCheck(InitialMetrics.Initialized && InitialMetrics.BakedLutCount >= 9u, "ColourAssetCoordinator pre-baked >= 9 LUT rows"))
     {
         return false;
     }
@@ -283,8 +283,8 @@ bool ValidateModularSources()
     };
     Extension.RegisterOrUpdateRamp(CustomRamp);
     if (!VerifyCheck(Extension.QueryBakedLutByIdentifier("frontier_cobalt_gold") != nullptr, "Custom ramp LUT cached")
-        || !VerifyCheck(Extension.QueryCodex().FindAlias("frontier_cobalt_gold") != nullptr, "ColourExtension synced custom ramp into ColourSpace::ColourCodex")
-        || !VerifyCheck(ExchangeBus.QueryLatestGeneration() == 1ull, "ColourExtension publishes update to WorkspaceExchange"))
+        || !VerifyCheck(Extension.QueryAliasRepository().FindAlias("frontier_cobalt_gold") != nullptr, "ColourAssetCoordinator synced custom ramp into ColourSpace::ColourAliasRepository")
+        || !VerifyCheck(ExchangeBus.QueryLatestGeneration() == 1ull, "ColourAssetCoordinator publishes update to WorkspaceExchange"))
     {
         return false;
     }
@@ -292,13 +292,13 @@ bool ValidateModularSources()
     Extension.Suspend();
     Extension.Resume();
     Extension.Finalize();
-    return VerifyCheck(!Extension.InspectMetrics().Initialized, "ColourExtension::Finalize");
+    return VerifyCheck(!Extension.InspectMetrics().Initialized, "ColourAssetCoordinator::Finalize");
 }
 
 bool ValidateColourCodexMultiFormat()
 {
-    ColourCodex Codex {};
-    if (!VerifyCheck(Codex.QueryAliases().size() >= 60u, "ColourSpace::ColourCodex ships >= 60 unified aliases (solids + ramps + illuminants)"))
+    ColourAliasRepository Codex {};
+    if (!VerifyCheck(Codex.QueryAliases().size() >= 60u, "ColourSpace::ColourAliasRepository ships >= 60 unified aliases (solids + ramps + illuminants)"))
     {
         return false;
     }
@@ -310,7 +310,7 @@ bool ValidateColourCodexMultiFormat()
     OklabTriplet BlueLab {};
     if (!VerifyCheck(Codex.ResolveAliasToSrgb8("Blue", BlueRgb)
                   && BlueRgb.Red == 0x24u && BlueRgb.Green == 0x54u && BlueRgb.Blue == 0xFFu,
-                     "ColourCodex resolves 'Blue' -> #2454FF (Royal Blue)"))
+                     "ColourAliasRepository resolves 'Blue' -> #2454FF (Royal Blue)"))
     {
         return false;
     }
@@ -318,7 +318,7 @@ bool ValidateColourCodexMultiFormat()
                   && Codex.ResolveAliasInPrimaries("BLUE", ChromaticityPrimaries::AcesCg, BlueAces)
                   && Codex.ResolveAliasToOklab("Blue", BlueLab)
                   && BlueLin.Blue > 0.9f && BlueAces.Blue > 0.5f && BlueLab.AxisB < -0.1f,
-                     "ColourCodex case/underscore-insensitive multi-space resolution (Linear, ACEScg, Oklab)"))
+                     "ColourAliasRepository case/underscore-insensitive multi-space resolution (Linear, ACEScg, Oklab)"))
     {
         return false;
     }
@@ -327,7 +327,7 @@ bool ValidateColourCodexMultiFormat()
     SrgbRgba8 PureBlue {};
     if (!VerifyCheck(Codex.ResolveAliasToSrgb8("Pure Blue", PureBlue)
                   && PureBlue.Red == 0u && PureBlue.Green == 0u && PureBlue.Blue == 255u,
-                     "ColourCodex resolves 'Pure Blue' -> #0000FF"))
+                     "ColourAliasRepository resolves 'Pure Blue' -> #0000FF"))
     {
         return false;
     }
@@ -339,7 +339,7 @@ bool ValidateColourCodexMultiFormat()
                   && QueryColourSourceCategory(AuroraProfile.Source) == ColourSourceCategory::MultiStopGradient
                   && Codex.ResolveAliasToProfile("Fire", FireProfile)
                   && QueryColourSourceCategory(FireProfile.Source) == ColourSourceCategory::MultiStopGradient,
-                     "ColourCodex resolves gradient aliases ('Aurora', 'Fire') as MultiStopGradientSource"))
+                     "ColourAliasRepository resolves gradient aliases ('Aurora', 'Fire') as MultiStopGradientSource"))
     {
         return false;
     }
@@ -347,7 +347,7 @@ bool ValidateColourCodexMultiFormat()
     if (!VerifyCheck(Codex.ResolveAliasToLinear("Fire", FireStart, 0.0f)
                   && Codex.ResolveAliasToLinear("Fire", FireEnd, 1.0f)
                   && FireEnd.Blue > FireStart.Blue,
-                     "ColourCodex samples gradient alias at arbitrary normalized t"))
+                     "ColourAliasRepository samples gradient alias at arbitrary normalized t"))
     {
         return false;
     }
@@ -362,7 +362,7 @@ bool ValidateColourCodexMultiFormat()
                   && TungstenSpectrum.RadiantPower.size() == 81u
                   && Codex.ResolveAliasToLinear("4500K", Kelvin4500)
                   && Kelvin4500.Red > Kelvin4500.Blue,
-                     "ColourCodex resolves named & dynamic Kelvin blackbody aliases + 81-bin spectrum"))
+                     "ColourAliasRepository resolves named & dynamic Kelvin blackbody aliases + 81-bin spectrum"))
     {
         return false;
     }
@@ -370,7 +370,7 @@ bool ValidateColourCodexMultiFormat()
     // 4. Direct hex literal & custom modular LinearFill / QuantizedRamp / DiscreteTintSet registration
     SrgbRgba8 HexLit {};
     if (!VerifyCheck(Codex.ResolveAliasToSrgb8("#FF8800", HexLit) && HexLit.Red == 255u && HexLit.Green == 136u && HexLit.Blue == 0u,
-                     "ColourCodex resolves direct #RRGGBB literal"))
+                     "ColourAliasRepository resolves direct #RRGGBB literal"))
     {
         return false;
     }
@@ -381,7 +381,7 @@ bool ValidateColourCodexMultiFormat()
     ColourSourceProfile ResolvedFill {};
     if (!VerifyCheck(Codex.ResolveAliasToProfile("Frostfire", ResolvedFill)
                   && QueryColourSourceCategory(ResolvedFill.Source) == ColourSourceCategory::LinearFill,
-                     "ColourCodex registers & resolves custom modular LinearFillSource alias"))
+                     "ColourAliasRepository registers & resolves custom modular LinearFillSource alias"))
     {
         return false;
     }
@@ -497,6 +497,6 @@ int main()
     {
         return 1;
     }
-    std::printf("[ColourSpaceValidation] ALL CHECKS PASSED (colorimetry, 7 modular sources, HTML parity, LUT64/256, ColourExtension, PNG sheet).\n");
+    std::printf("[ColourSpaceValidation] ALL CHECKS PASSED (colorimetry, 7 modular sources, HTML parity, LUT64/256, ColourAssetCoordinator, PNG sheet).\n");
     return 0;
 }

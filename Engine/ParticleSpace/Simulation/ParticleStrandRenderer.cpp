@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         PARTICLESTRANDRENDERER.CPP
+                                                          PARTICLESTRANDRENDERER.CPP
 ============================================================================================================================================*/
 // 🧩 Perspective Z-buffered 3D rasterizer for dynamic strands (hollow chain links, slender leafy vines, seamless quad-mesh flags/sails & beads)
 
@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
+#include "Engine/ParticleSpace/ParticleVectorMath.h"
 
 #include "Engine/ParticleSpace/Dynamics/DynamicStrandSolver.h"
 #include "Engine/ParticleSpace/Dynamics/EffectorGridSolver.h"
@@ -27,23 +28,8 @@ namespace
 constexpr float kPi    = 3.14159265358979323846f;
 constexpr float kTwoPi = 6.28318530717958647692f;
 
-struct Vec3
-{
-    float X = 0.0f, Y = 0.0f, Z = 0.0f;
-};
+using Vec3 = Vector3f;
 
-inline Vec3 operator+(Vec3 A, Vec3 B) noexcept { return { A.X + B.X, A.Y + B.Y, A.Z + B.Z }; }
-inline Vec3 operator-(Vec3 A, Vec3 B) noexcept { return { A.X - B.X, A.Y - B.Y, A.Z - B.Z }; }
-inline Vec3 operator*(Vec3 A, float S) noexcept { return { A.X * S, A.Y * S, A.Z * S }; }
-inline float Dot3(Vec3 A, Vec3 B) noexcept { return A.X * B.X + A.Y * B.Y + A.Z * B.Z; }
-inline Vec3 Cross3(Vec3 A, Vec3 B) noexcept { return { A.Y * B.Z - A.Z * B.Y, A.Z * B.X - A.X * B.Z, A.X * B.Y - A.Y * B.X }; }
-inline float Len3(Vec3 A) noexcept { return std::sqrt(Dot3(A, A)); }
-inline Vec3 Norm3(Vec3 A) noexcept
-{
-    const float L = Len3(A);
-    return (L > 1e-6f) ? (A * (1.0f / L)) : Vec3 { 0.0f, 1.0f, 0.0f };
-}
-inline Vec3 Mix3(Vec3 A, Vec3 B, float T) noexcept { return A + (B - A) * T; }
 
 inline float SmoothStepInv(float Edge0, float Edge1, float X) noexcept
 {
@@ -796,7 +782,7 @@ void RenderCurlStreamRigIntoCanvas(
         Order.reserve(Slots.size());
         for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
         {
-            if (!IsParticleSlotAlive(Slots[I])) continue;
+            if (!QueryParticleSlotAlive(Slots[I])) continue;
             float Sx, Sy, Sz;
             const Vec3 P { Slots[I].PositionMeters[0], Slots[I].PositionMeters[1], Slots[I].PositionMeters[2] };
             if (Cam.Project(P, Sx, Sy, Sz)) Order.push_back({ I, Sz });
@@ -883,7 +869,7 @@ void RenderCurlStreamRigIntoCanvas(
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
         const ParticleSlot& Slot = Slots[I];
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
         const std::size_t Off = static_cast<std::size_t>(I) * VertsPerStrand;
         if (Off + 3u > StrandVertices.size()) continue;
 
@@ -953,7 +939,7 @@ void RenderSpiderwebRigIntoCanvas(
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
         const ParticleSlot& Slot = Slots[I];
-        if (!IsParticleSlotAlive(Slot) || Slot.AuxScalar < 0.5f) continue;
+        if (!QueryParticleSlotAlive(Slot) || Slot.AuxScalar < 0.5f) continue;
 
         const std::size_t Off = static_cast<std::size_t>(I) * VertsPerStrand;
         if (Off + VertsPerStrand > StrandVertices.size()) continue;
@@ -1145,7 +1131,7 @@ void RenderDielectricArcRigIntoCanvas(
     ExtractGradientStops(Rig, ColA, ColC, ColB);
     for (const auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
         const Vec3 P { Slot.PositionMeters[0], Slot.PositionMeters[1], Slot.PositionMeters[2] };
         float Sx, Sy, Sz;
         if (!Cam.Project(P, Sx, Sy, Sz)) continue;
@@ -1187,7 +1173,7 @@ void RenderRigIntoPixelCanvas(
         std::vector<uint32_t> ActiveRows {};
         for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
         {
-            if (IsParticleSlotAlive(Slots[I]) && (Slots[I].PackedTraits & kParticleTraitStrandValidBit) != 0u)
+            if (QueryParticleSlotAlive(Slots[I]) && (Slots[I].PackedTraits & kParticleTraitStrandValidBit) != 0u)
             {
                 ActiveRows.push_back(I);
             }
@@ -1253,7 +1239,7 @@ void RenderRigIntoPixelCanvas(
         for (std::size_t I = 0u; I < Slots.size(); ++I)
         {
             const ParticleSlot& Slot = Slots[I];
-            if (!IsParticleSlotAlive(Slot) || (Slot.PackedTraits & kParticleTraitStrandValidBit) == 0u) continue;
+            if (!QueryParticleSlotAlive(Slot) || (Slot.PackedTraits & kParticleTraitStrandValidBit) == 0u) continue;
             const std::size_t Off = I * kDynamicStrandVertexCount;
             if (Off + kDynamicStrandVertexCount > StrandVertices.size()) continue;
 
@@ -1301,7 +1287,7 @@ void RenderRigIntoPixelCanvas(
     for (std::size_t I = 0u; I < Slots.size(); ++I)
     {
         const ParticleSlot& Slot = Slots[I];
-        if (!IsParticleSlotAlive(Slot) || (Slot.PackedTraits & kParticleTraitStrandValidBit) == 0u) continue;
+        if (!QueryParticleSlotAlive(Slot) || (Slot.PackedTraits & kParticleTraitStrandValidBit) == 0u) continue;
 
         if ((Slot.PackedTraits & kParticleTraitStrandLeafBit) != 0u)
         {
@@ -1841,7 +1827,7 @@ void RenderEffectorGridRigIntoCanvas(
     // 1. Rasterize the sculpted 3D obsidian host geometry into the shared Z-buffer first for exact occlusion!
     if (Spec.BackingFinish != EffectorBackingFinish::HiddenBacking)
     {
-        if (Spec.HostSurface == EffectorHostSurfaceKind::ControlVehicle)
+        if (Spec.HostSurface == EffectorHostSurfaceCategory::ControlVehicle)
         {
             const auto& Vehicle = QueryControlVehicleGeometrySet();
             const float Scale   = std::max(0.20f, Spec.OriginExtentM[0]);
@@ -1893,7 +1879,7 @@ void RenderEffectorGridRigIntoCanvas(
                     AccentMid, AccentPeak, Tri.MaterialSlotCode, Spec.BackingFinish);
             }
         }
-        else if (Spec.HostSurface == EffectorHostSurfaceKind::TorusRing)
+        else if (Spec.HostSurface == EffectorHostSurfaceCategory::TorusRing)
         {
             // Smooth analytic Wet-Obsidian 3D Torus matching Kinetic Hex Torus Matrix
             constexpr int SegU = 64;
@@ -1924,7 +1910,7 @@ void RenderEffectorGridRigIntoCanvas(
                 }
             }
         }
-        else if (Spec.HostSurface == EffectorHostSurfaceKind::ObsidianSphere)
+        else if (Spec.HostSurface == EffectorHostSurfaceCategory::ObsidianSphere)
         {
             constexpr int Rings = 28;
             constexpr int Sectors = 48;
@@ -1954,14 +1940,14 @@ void RenderEffectorGridRigIntoCanvas(
     // 2. Rasterize every depth-tested surface-conforming Effector primitive (3D Hex Plates, Extruded Cubes, Raised Tiles, Halftone Dots)
     for (const auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
         if (Slot.SizeMeters <= 0.001f || Slot.ColourLinear[3] <= 0.01f) continue;
 
         const Vec3 Pos { Slot.PositionMeters[0], Slot.PositionMeters[1], Slot.PositionMeters[2] };
         const Vec3 N   = Norm3({ Slot.VelocityMps[0], Slot.VelocityMps[1], Slot.VelocityMps[2] });
         // Align primitive tangent frame smoothly along longitudinal car +X axis (or world Y on Torus/Sphere) for sleek panel alignment
         Vec3 Ref {};
-        if (Spec.HostSurface == EffectorHostSurfaceKind::ControlVehicle)
+        if (Spec.HostSurface == EffectorHostSurfaceCategory::ControlVehicle)
         {
             Ref = (std::fabs(N.X) > 0.88f) ? Vec3{ 0.0f, 0.0f, 1.0f } : Vec3{ 1.0f, 0.0f, 0.0f };
         }

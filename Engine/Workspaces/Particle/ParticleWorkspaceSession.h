@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        PARTICLEWORKSPACESESSION.H
+                                                          PARTICLEWORKSPACESESSION.H
 ============================================================================================================================================*/
 // 🧩 Authoritative Particle Physics Workspace UI session holding scene tabs, authored particle rigs, Vector Field Forces, presets & telemetry
 
@@ -9,15 +9,15 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/ColourSpace/ColourExtension.h"
+#include "Engine/ColourSpace/ColourAssetCoordinator.h"
 #include "Engine/ColourSpace/ColourSourceTypes.h"
 #include "Engine/Components/Controls/ColourRampEditor.h"
 #include "Engine/Components/Controls/ColourSwatchPicker.h"
 #include "Engine/Components/Controls/ScalarCurveEditor.h"
 #include "Engine/Components/Controls/SimulationTimeRuler.h"
 #include "Engine/Components/Diagnostics/LogStreamDrawer.h"
-#include "Engine/ParticleSpace/ParticleExtension.h"
-#include "Engine/ParticleSpace/Simulation/ParticleVulkanExecutor.h"
+#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/GeometricRaster/Compute/ParticleVulkanExecutor.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldDescriptors.h"
 #include "Engine/Workspaces/Revision/RevisionTracker.h"
 
@@ -47,7 +47,7 @@ enum class ParticleInspectorTab : uint8_t
     Overview      = 0u, // [-] - Capacity metric, Bokeh/Schematic infographic, 3-KPI highlight trio, 4 Quick Controls
     Source        = 1u, // [-] - Release origin, capacity, rate, 3D centre/extents, kinematics & ScalarCurveEditor
     MotionFx      = 2u, // [-] - Visual carrier shape, optical blend, birth/death sizes, ColourRampEditor & ColourSwatchPicker
-    MetricsRecord = 3u, // [-] - Async GPU reduction telemetry & .ParticleSpace TOML record preview
+    MetricsCodec = 3u, // [-] - Async GPU reduction telemetry & .ParticleSpace TOML record preview
 };
 
 enum class ParticleSelectionCategory : uint8_t
@@ -241,8 +241,8 @@ public:
     uint32_t                           ParameterRevision= 0u;
 
     // Shared sub-component sessions & live C++ ParticleSpace runtime
-    ColourSpace::ColourExtension          ColourCoordinator   {};
-    ParticleSpace::ParticleExtension      SimulationExtension {};
+    ColourSpace::ColourAssetCoordinator          ColourCoordinator   {};
+    ParticleSpace::ParticleSimulationCoordinator      SimulationCoordinator {};
     ParticleSpace::ParticleVulkanExecutor VulkanExecutor      {};
     ColourRampEditorSession               RampEditorSession   {};
     ColourSwatchPickerSession          SwatchSession     {};

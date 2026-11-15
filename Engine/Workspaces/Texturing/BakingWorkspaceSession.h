@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                        BAKINGWORKSPACESESSION.H
-==========================================================================================================================================*/
-// 🧪 Authoring session for Frontier Baking Studio: 18 PBR surface & 3D volume SDF targets, High/Low studies & Vulkan GPU baker bridge.
+/*============================================================================================================================================
+                                                           BAKINGWORKSPACESESSION.H
+============================================================================================================================================*/
+// 🧩 Authoring session for Frontier Baking Studio: 18 PBR surface & 3D volume SDF targets, High/Low studies & Vulkan GPU baker bridge.
 
 #pragma once
 
@@ -55,10 +55,10 @@ enum class BakerTargetId : uint8_t
 
 enum class BakerTargetGroup : uint8_t
 {
-    VolumeAndDistance = 0,
+    VolumeDistance = 0,
     Normals           = 1,
     Surface           = 2,
-    MasksAndIds       = 3,
+    DiagnosticMasks       = 3,
     Count             = 4,
 };
 

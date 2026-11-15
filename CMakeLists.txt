@@ -87,9 +87,9 @@ endif()
 #                                     PATCHED IMGUI (EXCLUDED FROM SHIPPING RUNTIME)
 #------------------------------------------------------------------------------------------------------------------------
 
-if(NOT FRONTIER_PROFILE STREQUAL "Shipping" OR BUILD_TESTING)
+if(FRONTIER_PROFILE STREQUAL "Editor" OR BUILD_TESTING)
     set(IMGUI_ROOT "${CMAKE_SOURCE_DIR}/ExternalPackages/imgui")
-    if(FRONTIER_PROFILE STREQUAL "Shipping")
+    if(NOT FRONTIER_PROFILE STREQUAL "Editor")
         add_library(FrontierImGui STATIC EXCLUDE_FROM_ALL
             "${IMGUI_ROOT}/imgui.cpp"
             "${IMGUI_ROOT}/imgui_draw.cpp"
@@ -186,7 +186,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Panes/ViewportPanel.cpp
     Engine/Components/Panes/ViewportProjectionPane.cpp
     Engine/Components/ControlCentre/ControlCentrePanel.cpp
-    Engine/Components/ContentBrowser/ColourCodex.cpp
+    Engine/Components/ContentBrowser/ColourSwatchBrowserView.cpp
     Engine/Components/ContentBrowser/ThumbnailSheetRepository.cpp
     Engine/Components/ContentBrowser/ContentBrowserPanel.cpp
     Engine/Workspaces/UV/UVOutlinerPanel.cpp
@@ -194,6 +194,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/UV/UVViewportInteractor.cpp
     Engine/Workspaces/UV/UVViewportHost.cpp
     Engine/Workspaces/UV/UVWorkspaceHost.cpp
+    Engine/Workspaces/Particle/ParticleExchange.cpp
     Engine/Workspaces/Particle/ParticleWorkspaceSession.cpp
     Engine/Workspaces/Particle/ParticleOutlinerPanel.cpp
     Engine/Workspaces/Particle/ParticleViewportHost.cpp
@@ -244,7 +245,7 @@ endif()
 
 set(FRONTIER_COMPILED_SHADER_DIR "${CMAKE_BINARY_DIR}/CompiledShaders")
 file(MAKE_DIRECTORY "${FRONTIER_COMPILED_SHADER_DIR}")
-set(FRONTIER_SHADER_SRC_DIR "${CMAKE_SOURCE_DIR}/Engine/GeometricRaster/Shaders")
+set(FRONTIER_SHADER_SRC_DIR "${CMAKE_SOURCE_DIR}/Engine/Shaders/GeometricRaster")
 set(FRONTIER_SPV_OUTPUTS "")
 
 function(frontier_compile_slang_shader SLANG_FILE ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
@@ -367,9 +368,9 @@ frontier_compile_modular_slang_shader(DirectLighting/ContactClipShadow.slang    
 frontier_compile_modular_slang_shader(DirectLighting/PlaneAwareShadowFilter.slang                PlaneFilterComputeEntry         compute  PlaneAwareShadowFilter.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/OctahedralIrradianceLattice.slang       IrradianceLatticeComputeEntry   compute  OctahedralIrradianceLattice.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/SignedDistanceConeIllumination.slang    SdfConeGiComputeEntry           compute  SignedDistanceConeIllumination.comp.spv)
-frontier_compile_modular_slang_shader(GlobalIllumination/SpecularAndGlassRaytrace.slang          SpecularRaytraceComputeEntry    compute  SpecularAndGlassRaytrace.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/SpecularGlassRaytrace.slang          SpecularRaytraceComputeEntry    compute  SpecularGlassRaytrace.comp.spv)
 
-function(frontier_compile_vectorfield_slang_stage SLANG_REL_PATH ENTRY_NAME STAGE_KIND OUT_SPV_NAME)
+function(frontier_compile_slang_shader_unit SLANG_REL_PATH ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
     set(IN_SLANG "${CMAKE_SOURCE_DIR}/${SLANG_REL_PATH}")
     set(OUT_SPV "${FRONTIER_COMPILED_SHADER_DIR}/${OUT_SPV_NAME}")
     add_custom_command(
@@ -381,34 +382,34 @@ function(frontier_compile_vectorfield_slang_stage SLANG_REL_PATH ENTRY_NAME STAG
             -O0
             -I "${CMAKE_SOURCE_DIR}"
             -entry "${ENTRY_NAME}"
-            -stage "${STAGE_KIND}"
+            -stage "${SHADER_UNIT}"
             "${IN_SLANG}"
             -o "${OUT_SPV}"
         DEPENDS
             "${IN_SLANG}"
             "${CMAKE_SOURCE_DIR}/Engine/Shaders/Compute/ForceFieldEvaluationShared.slang"
             "${CMAKE_SOURCE_DIR}/Engine/Shaders/VectorField/VectorFieldRenderingShared.slang"
-        COMMENT "[Slang] Compiling ${SLANG_REL_PATH} (${STAGE_KIND}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
+        COMMENT "[Slang] Compiling ${SLANG_REL_PATH} (${SHADER_UNIT}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
         VERBATIM
     )
     set(FRONTIER_SPV_OUTPUTS ${FRONTIER_SPV_OUTPUTS} "${OUT_SPV}" PARENT_SCOPE)
 endfunction()
 
-frontier_compile_vectorfield_slang_stage(
+frontier_compile_slang_shader_unit(
     "Engine/Shaders/Compute/FieldLatticeCompute.slang"
     "ComputeFieldLatticeVoxel"
     "compute"
     "FieldLatticeCompute.spv"
 )
 
-function(frontier_compile_vector_slang_shader SLANG_REL_PATH ENTRY_NAME STAGE_KIND OUT_SPV_NAME)
-    set(IN_SLANG "${FRONTIER_SHADER_SRC_DIR}/Vector/${SLANG_REL_PATH}")
+function(frontier_compile_vector_slang_shader SLANG_REL_PATH ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
+    set(IN_SLANG "${CMAKE_SOURCE_DIR}/Engine/Shaders/Vector/${SLANG_REL_PATH}")
     set(OUT_SPV "${FRONTIER_COMPILED_SHADER_DIR}/${OUT_SPV_NAME}")
     add_custom_command(
         OUTPUT "${OUT_SPV}"
         COMMAND "${FRONTIER_SLANGC_BIN}"
             "${IN_SLANG}"
-            -I "${FRONTIER_SHADER_SRC_DIR}/Vector"
+            -I "${CMAKE_SOURCE_DIR}/Engine/Shaders/Vector"
             -I "${FRONTIER_SHADER_SRC_DIR}"
             -target spirv
             -profile spirv_1_3
@@ -417,12 +418,12 @@ function(frontier_compile_vector_slang_shader SLANG_REL_PATH ENTRY_NAME STAGE_KI
             -matrix-layout-row-major
             -O0
             -entry "${ENTRY_NAME}"
-            -stage "${STAGE_KIND}"
+            -stage "${SHADER_UNIT}"
             -o "${OUT_SPV}"
         DEPENDS
             "${IN_SLANG}"
-            "${FRONTIER_SHADER_SRC_DIR}/Vector/VectorSharedLayouts.slang"
-        COMMENT "[Slang] Compiling Vector/${SLANG_REL_PATH} (${STAGE_KIND}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Vector/VectorSharedLayouts.slang"
+        COMMENT "[Slang] Compiling Vector/${SLANG_REL_PATH} (${SHADER_UNIT}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
         VERBATIM
     )
     set(FRONTIER_SPV_OUTPUTS ${FRONTIER_SPV_OUTPUTS} "${OUT_SPV}" PARENT_SCOPE)
@@ -440,8 +441,8 @@ frontier_compile_vector_slang_shader(VectorPbrSurfaceCompute.slang ComputeEntry 
 frontier_compile_vector_slang_shader(VectorGuideOverlay.slang      VertexEntry   vertex   VectorGuideOverlay.vert.spv)
 frontier_compile_vector_slang_shader(VectorGuideOverlay.slang      FragmentEntry fragment VectorGuideOverlay.frag.spv)
 
-function(frontier_compile_baking_slang_shader SLANG_REL_PATH ENTRY_NAME STAGE_KIND OUT_SPV_NAME USE_HW_RAYQUERY)
-    set(IN_SLANG "${FRONTIER_SHADER_SRC_DIR}/Baking/${SLANG_REL_PATH}")
+function(frontier_compile_baking_slang_shader SLANG_REL_PATH ENTRY_NAME SHADER_UNIT OUT_SPV_NAME USE_HW_RAYQUERY)
+    set(IN_SLANG "${CMAKE_SOURCE_DIR}/Engine/Shaders/Baking/${SLANG_REL_PATH}")
     set(OUT_SPV "${FRONTIER_COMPILED_SHADER_DIR}/${OUT_SPV_NAME}")
     if(USE_HW_RAYQUERY)
         set(BAKE_SLANG_FLAGS
@@ -467,19 +468,19 @@ function(frontier_compile_baking_slang_shader SLANG_REL_PATH ENTRY_NAME STAGE_KI
         OUTPUT "${OUT_SPV}"
         COMMAND "${FRONTIER_SLANGC_BIN}"
             "${IN_SLANG}"
-            -I "${FRONTIER_SHADER_SRC_DIR}/Baking"
+            -I "${CMAKE_SOURCE_DIR}/Engine/Shaders/Baking"
             -I "${FRONTIER_SHADER_SRC_DIR}"
             -I "${CMAKE_SOURCE_DIR}/Engine/Shaders/DirectLighting"
             -I "${CMAKE_SOURCE_DIR}/Engine/Shaders"
             ${BAKE_SLANG_FLAGS}
             -entry "${ENTRY_NAME}"
-            -stage "${STAGE_KIND}"
+            -stage "${SHADER_UNIT}"
             -o "${OUT_SPV}"
         DEPENDS
             "${IN_SLANG}"
-            "${FRONTIER_SHADER_SRC_DIR}/Baking/BakeShaderLayouts.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Baking/BakeShaderLayouts.slang"
             "${CMAKE_SOURCE_DIR}/Engine/Shaders/DirectLighting/WideTreeRayQuery.slang"
-        COMMENT "[Slang] Compiling Baking/${SLANG_REL_PATH} (${STAGE_KIND}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
+        COMMENT "[Slang] Compiling Baking/${SLANG_REL_PATH} (${SHADER_UNIT}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
         VERBATIM
     )
     set(FRONTIER_SPV_OUTPUTS ${FRONTIER_SPV_OUTPUTS} "${OUT_SPV}" PARENT_SCOPE)
@@ -504,14 +505,14 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         InfluenceEnvelopeRasterization
         VectorArrowRasterization
         StreamlineRasterization
-        ForcePathAndBeaconRasterization)
-        frontier_compile_vectorfield_slang_stage(
+        ForcePathBeaconRasterization)
+        frontier_compile_slang_shader_unit(
             "Engine/Shaders/VectorField/${VF_SHADER_STEM}.slang"
             "VertexMain"
             "vertex"
             "${VF_SHADER_STEM}.vert.spv"
         )
-        frontier_compile_vectorfield_slang_stage(
+        frontier_compile_slang_shader_unit(
             "Engine/Shaders/VectorField/${VF_SHADER_STEM}.slang"
             "FragmentMain"
             "fragment"
@@ -571,14 +572,14 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ColourSpace/GamutCompression.cpp
     Engine/ColourSpace/ColourRampSampler.cpp
     Engine/ColourSpace/ColourPresetRepository.cpp
-    Engine/ColourSpace/ColourCodex.cpp
+    Engine/ColourSpace/ColourAliasRepository.cpp
     Engine/ColourSpace/ColourDocument.cpp
-    Engine/ColourSpace/ColourExtension.cpp
+    Engine/ColourSpace/ColourAssetCoordinator.cpp
     Engine/Interchange/ColourInterchange.cpp
     Engine/Interchange/GeometryInterchange.cpp
     Engine/Interchange/ParticleInterchange.cpp
-    Engine/Editor/Viewports/TransformGizmo.cpp
-    Engine/Editor/Viewports/ViewportProjection.cpp
+    Engine/GeometricRaster/Gizmo/TransformGizmo.cpp
+    Engine/Components/Camera/ViewportProjection.cpp
     Engine/GeometricRaster/VulkanInterchange.cpp
     Engine/GeometricRaster/Compute/TimelineTransferRegister.cpp
     Engine/GeometricRaster/Compute/ComputeDispatchEncoder.cpp
@@ -588,7 +589,8 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Vector/VectorCanvasRasterizer.cpp
     Engine/GeometricRaster/Baking/StudyGeometryBuilder.cpp
     Engine/GeometricRaster/Baking/BakingAccelerationStructure.cpp
-    Engine/GeometricRaster/Baking/GpuTextureAndSdfBaker.cpp
+    Engine/GeometricRaster/Baking/GpuTextureBaker.cpp
+    Engine/GeometricRaster/Baking/GpuSdfBaker.cpp
     Engine/GeometricRaster/Baking/TextureBakerRasterizer.cpp
     Engine/Workspaces/Texturing/PatternStampStackSession.cpp
     Engine/Workspaces/Texturing/BakingWorkspaceSession.cpp
@@ -639,19 +641,19 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ParticleSpace/Simulation/ParticleMetricsCollector.cpp
     Engine/ParticleSpace/Simulation/ParticleStrandRenderer.cpp
     Engine/ParticleSpace/Simulation/ParticleSoftwareExecutor.cpp
-    Engine/ParticleSpace/Simulation/ParticleVulkanExecutor.cpp
-    Engine/ParticleSpace/Presets/ParticlePresetCatalogue.cpp
+    Engine/GeometricRaster/Compute/ParticleVulkanExecutor.cpp
+    Engine/ParticleSpace/Presets/ParticlePresetRepository.cpp
     Engine/ParticleSpace/ParticleRig.cpp
     Engine/ParticleSpace/ParticleDocument.cpp
-    Engine/ParticleSpace/ParticleExtension.cpp
+    Engine/ParticleSpace/ParticleSimulationCoordinator.cpp
     Engine/SimulationSpace/ForceFields/ForceMotionPath.cpp
     Engine/SimulationSpace/ForceFields/VectorField.cpp
-    Engine/SimulationSpace/ForceFields/FlowField.cpp
+    Engine/SimulationSpace/ForceFields/StreamTransportField.cpp
     Engine/SimulationSpace/ForceFields/TurbulenceField.cpp
     Engine/SimulationSpace/ForceFields/FieldFormulaCompiler.cpp
     Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.cpp
     Engine/SimulationSpace/ForceFields/FieldLatticeCascade.cpp
-    Engine/SimulationSpace/ForceFields/FieldLatticeVulkanExecutor.cpp
+    Engine/GeometricRaster/Compute/FieldLatticeVulkanExecutor.cpp
     Engine/NetworkingSpace/PacketSerializer.cpp
     Engine/NetworkingSpace/NetworkEndpointRegister.cpp
     Engine/NetworkingSpace/DifferentialWorldEncoder.cpp
@@ -702,12 +704,12 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         Engine/Editor/Explorer/ProjectBrowser.cpp
         Engine/Editor/Workspaces/Simulation/ForcePresetBrowserPanel.cpp
         Engine/Editor/Workspaces/Simulation/ForceInspectorView.cpp
-        Engine/Editor/Workspaces/Simulation/VectorFieldOverlaySequence.cpp
+        Engine/GeometricRaster/Simulation/VectorFieldOverlaySequence.cpp
         Engine/Editor/Workspaces/Simulation/VectorFieldViewportCoordinator.cpp
         Engine/Lifecycle/EditorLifecycle.cpp
     )
 endif()
-if(NOT FRONTIER_PROFILE STREQUAL "Shipping")
+if(FRONTIER_PROFILE STREQUAL "Editor")
     list(APPEND FRONTIER_ENGINE_SOURCES ${FRONTIER_UI_COMPONENT_SOURCES})
 endif()
 
@@ -734,7 +736,7 @@ target_link_libraries(FrontierEngine PUBLIC FrontierCompileSettings thorvg_stati
 if(WIN32)
     target_link_libraries(FrontierEngine PUBLIC ws2_32)
 endif()
-if(NOT FRONTIER_PROFILE STREQUAL "Shipping")
+if(FRONTIER_PROFILE STREQUAL "Editor")
     target_link_libraries(FrontierEngine PUBLIC FrontierImGui)
 endif()
 if(NOT ANDROID)
@@ -763,7 +765,7 @@ if(UNIX AND NOT APPLE)
     target_link_options(FrontierEngineRuntimeDll PRIVATE "-Wl,--exclude-libs,ALL")
 endif()
 
-if(NOT ANDROID AND NOT FRONTIER_PROFILE STREQUAL "Shipping")
+if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
     add_library(FrontierWorkspaceUiDll SHARED Engine/Lifecycle/ProjectExecutionRunner.cpp)
     set_target_properties(FrontierWorkspaceUiDll PROPERTIES
         OUTPUT_NAME                "FrontierWorkspaceUi"
@@ -803,7 +805,7 @@ endforeach()
 #                              DESKTOP APPLICATION EXECUTABLES (FRONTIER, FRONTIERUV & FRONTIEREDITOR)
 #------------------------------------------------------------------------------------------------------------------------
 
-if(NOT ANDROID AND NOT FRONTIER_PROFILE STREQUAL "Shipping")
+if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
     add_executable(Frontier Engine/Lifecycle/FrontierHostLaunch.cpp)
     target_compile_definitions(Frontier PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
     target_link_libraries(Frontier PRIVATE FrontierEngine FrontierImGui)
@@ -822,7 +824,7 @@ endif()
 #------------------------------------------------------------------------------------------------------------------------
 
 if(BUILD_TESTING)
-    if(FRONTIER_PROFILE STREQUAL "Shipping")
+    if(NOT FRONTIER_PROFILE STREQUAL "Editor")
         add_library(FrontierShippingExhibitUi STATIC EXCLUDE_FROM_ALL ${FRONTIER_UI_COMPONENT_SOURCES})
         target_include_directories(FrontierShippingExhibitUi PUBLIC "${CMAKE_SOURCE_DIR}")
         target_link_libraries(FrontierShippingExhibitUi PUBLIC FrontierEngine FrontierImGui)
@@ -835,10 +837,10 @@ if(BUILD_TESTING)
         add_executable(${EXHIBIT_NAME} ${EXHIBIT_SOURCE} ${ARGN})
         target_include_directories(${EXHIBIT_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/ExternalPackages/stb")
         target_compile_definitions(${EXHIBIT_NAME} PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
-        if(FRONTIER_PROFILE STREQUAL "Shipping")
-            target_link_libraries(${EXHIBIT_NAME} PRIVATE FrontierShippingExhibitUi FrontierEngine FrontierImGui)
-        else()
+        if(FRONTIER_PROFILE STREQUAL "Editor")
             target_link_libraries(${EXHIBIT_NAME} PRIVATE FrontierEngine FrontierImGui)
+        else()
+            target_link_libraries(${EXHIBIT_NAME} PRIVATE FrontierShippingExhibitUi FrontierEngine FrontierImGui)
         endif()
         add_test(NAME ${EXHIBIT_NAME} COMMAND ${EXHIBIT_NAME})
     endfunction()
@@ -849,13 +851,21 @@ if(BUILD_TESTING)
     frontier_register_exhibit(DockingValidation           Exhibits/DockingValidation.cpp)
     frontier_register_exhibit(ControlCentreValidation     Exhibits/ControlCentreValidation.cpp)
     frontier_register_exhibit(WorkspacePanesValidation    Exhibits/WorkspacePanesValidation.cpp)
-    frontier_register_exhibit(LifecycleValidation            Exhibits/LifecycleValidation.cpp)
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(LifecycleValidation            Exhibits/LifecycleValidation.cpp)
+    endif()
     frontier_register_exhibit(WorkspaceRevisionValidation    Exhibits/WorkspaceRevisionValidation.cpp)
-    frontier_register_exhibit(ContentBrowserValidation       Exhibits/ContentBrowserValidation.cpp)
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(ContentBrowserValidation       Exhibits/ContentBrowserValidation.cpp)
+    endif()
     frontier_register_exhibit(ColourSpaceValidation          Exhibits/ColourSpaceValidation.cpp)
     frontier_register_exhibit(ColourCodecInterchangeValidation Exhibits/ColourCodecInterchangeValidation.cpp)
-    frontier_register_exhibit(ColourComponentsValidation     Exhibits/ColourComponentsValidation.cpp)
-    frontier_register_exhibit(ParticleWorkspaceUIValidation       Exhibits/ParticleWorkspaceUIValidation.cpp)
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(ColourComponentsValidation     Exhibits/ColourComponentsValidation.cpp)
+    endif()
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(ParticleWorkspaceUIValidation       Exhibits/ParticleWorkspaceUIValidation.cpp)
+    endif()
     frontier_register_exhibit(ParticleFoundationValidation        Exhibits/ParticleFoundationValidation.cpp)
     frontier_register_exhibit(ParticleCodecInterchangeValidation  Exhibits/ParticleCodecInterchangeValidation.cpp)
     frontier_register_exhibit(ParticleDynamicsValidation          Exhibits/ParticleDynamicsValidation.cpp)
@@ -870,25 +880,37 @@ if(BUILD_TESTING)
     frontier_register_exhibit(MaterialScatteringValidation   Exhibits/MaterialScatteringValidation.cpp)
     frontier_register_exhibit(DynamicMaterialRecipeValidation Exhibits/DynamicMaterialRecipeValidation.cpp)
     frontier_register_exhibit(DynamicMaterialVulkanValidation Exhibits/DynamicMaterialVulkanValidation.cpp)
-    frontier_register_exhibit(MaterialWorkspaceUIValidation   Exhibits/MaterialWorkspaceUIValidation.cpp)
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(MaterialWorkspaceUIValidation   Exhibits/MaterialWorkspaceUIValidation.cpp)
+    endif()
     frontier_register_exhibit(VisibilityRasterValidation     Exhibits/VisibilityRasterValidation.cpp)
     frontier_register_exhibit(SolarShadowValidation          Exhibits/SolarShadowValidation.cpp)
     frontier_register_exhibit(TieredWorldRenderValidation    Exhibits/TieredWorldRenderValidation.cpp)
     frontier_register_exhibit(UVRasterPickingGizmoValidation    Exhibits/UVRasterPickingGizmoValidation.cpp)
-    frontier_register_exhibit(UVWorkspaceUIValidation           Exhibits/UVWorkspaceUIValidation.cpp)
-    frontier_register_exhibit(PatternStampWorkspaceUIValidation Exhibits/PatternStampWorkspaceUIValidation.cpp)
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(UVWorkspaceUIValidation           Exhibits/UVWorkspaceUIValidation.cpp)
+    endif()
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(PatternStampWorkspaceUIValidation Exhibits/PatternStampWorkspaceUIValidation.cpp)
+    endif()
     frontier_register_exhibit(UVParameterizationValidation      Exhibits/UVParameterizationValidation.cpp)
     frontier_register_exhibit(UVInteractiveAuthoringValidation  Exhibits/UVInteractiveAuthoringValidation.cpp)
     frontier_register_exhibit(UVBoundaryValidation              Exhibits/UVBoundaryValidation.cpp)
     frontier_register_exhibit(UVAuthoringChaosValidation        Exhibits/UVAuthoringChaosValidation.cpp)
     frontier_register_exhibit(NetworkingSpaceValidation         Exhibits/NetworkingSpaceValidation.cpp)
-    frontier_register_exhibit(VectorFieldValidation             Exhibits/VectorFieldValidation.cpp)
-    frontier_register_exhibit(ProjectBrowserValidation          Exhibits/ProjectBrowserValidation.cpp)
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(VectorFieldValidation             Exhibits/VectorFieldValidation.cpp)
+    endif()
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(ProjectBrowserValidation          Exhibits/ProjectBrowserValidation.cpp)
+    endif()
     frontier_register_exhibit(VectorGraphicsGPUValidation       Exhibits/VectorGraphicsGPUValidation.cpp)
     frontier_register_exhibit(BakingGPUValidation               Exhibits/BakingGPUValidation.cpp)
-    frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)
+    endif()
 
-    if(NOT ANDROID AND NOT FRONTIER_PROFILE STREQUAL "Shipping")
+    if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
         add_test(
             NAME FrontierUVExecutableSmoke
             COMMAND FrontierUV --frames=3 "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/UV/FrontierUV_DesktopExecutable.png"

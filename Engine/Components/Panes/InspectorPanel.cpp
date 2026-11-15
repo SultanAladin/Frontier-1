@@ -126,9 +126,9 @@ InspectorPanel::~InspectorPanel() noexcept
     WorkspaceAppearance::ReleasePanePointerOwnership(this);
 }
 
-void InspectorPanel::ConfigureExtensionSectionCallback(InspectorExtensionRenderCallback Callback)
+void InspectorPanel::ConfigureCustomSectionCallback(InspectorSectionRenderCallback Callback)
 {
-    ExtensionSectionCallback = std::move(Callback);
+    CustomSectionCallback = std::move(Callback);
 }
 
 void InspectorPanel::ConfigureFullOverrideCallback(InspectorFullOverrideCallback Callback)
@@ -1560,9 +1560,9 @@ float InspectorPanel::RenderStandardEntryInspector(
         CurY += TransformCard.Height + 18.0f;
     }
 
-    if (ExtensionSectionCallback)
+    if (CustomSectionCallback)
     {
-        CurY += ExtensionSectionCallback(Surface, ScrollViewport, LeftX, CurY, InnerW, Entry, Input);
+        CurY += CustomSectionCallback(Surface, ScrollViewport, LeftX, CurY, InnerW, Entry, Input);
     }
     else
     {

@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                        BAKINGVIEWPORTPANE.CPP
-==========================================================================================================================================*/
-// 🧊 Implementation of BakingViewportPane: live Vulkan 3D PBR + High-wire + Cage view, GPU 2D maps & SDF sections, Quick Bake Menu.
+/*============================================================================================================================================
+                                                            BAKINGVIEWPORTPANE.CPP
+============================================================================================================================================*/
+// 🧩 Implementation of BakingViewportPane: live Vulkan 3D PBR + High-wire + Cage view, GPU 2D maps & SDF sections, Quick Bake Menu.
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -168,7 +168,7 @@ void BakingViewportPane::PresentInImGuiPane(double DeltaSeconds, float ScaleFact
     WorkspaceAppearance::UpdatePanePointerOwnership(this, ScreenBounds, SafeScale, Input, OrbitDragActive || PanDragActive);
 }
 
-void BakingViewportPane::SetQuickOverlayOpen(bool Open) noexcept
+void BakingViewportPane::ConfigureQuickOverlayOpen(bool Open) noexcept
 {
     QuickOverlayOpen = Open;
     if (Open)
@@ -695,12 +695,12 @@ void BakingViewportPane::Render(
         if (Input.SecondaryPressed)
         {
             QuickOverlayAnchor = Cursor;
-            SetQuickOverlayOpen(true);
+            ConfigureQuickOverlayOpen(true);
         }
         else if (ImGui::GetCurrentContext() != nullptr && ImGui::IsKeyPressed(ImGuiKey_Q, false))
         {
             QuickOverlayAnchor = Cursor;
-            SetQuickOverlayOpen(!QuickOverlayOpen);
+            ConfigureQuickOverlayOpen(!QuickOverlayOpen);
         }
     }
     if (QuickOverlayOpen && Input.EscapePressed)

@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                          SURFACEMATERIAL.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                              SURFACEMATERIAL.H
+============================================================================================================================================*/
 // 🧩 Universal 10-lobe physical material specification unifying OpenPBR Surface 1.1 and constant-time multiscale glinty microflakes
 
 #pragma once
@@ -22,7 +22,7 @@ namespace Frontier::MaterialSpace
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class MaterialPresetKind : uint8_t
+enum class MaterialPresetCategory : uint8_t
 {
     RoughPorousConcrete          = 0, // [-] - L1: Portsmouth 2025 Energy-Preserving Oren-Nayar rough mineral diffuse
     BrushedGoldAlloy             = 1, // [-] - L2: Anisotropic VNDF GGX + F0/F82 edge tint + Turquin multi-scatter
@@ -121,7 +121,7 @@ struct FiberStrandParameters
     float PheomelaninRednessFraction = 0.20f;  // [-]   - Red/gold pheomelanin vs brown/black eumelanin [0, 1]
 };
 
-struct PorosityAndEmissionParameters
+struct PorosityEmissionParameters
 {
     float                  PorosityFraction           = 0.0f;                  // [-]     - Open micro-pore volume fraction [0, 1]
     float                  SurfaceWetnessFraction     = 0.0f;                  // [-]     - Adsorbed water saturation [0, 1]
@@ -150,7 +150,7 @@ struct SurfaceMaterial
     SubsurfaceDiffusionParameters    Subsurface    {};                           // [-] - L7: Burley diffusion & volumetric walk
     ClothSheenParameters             Sheen         {};                           // [-] - L8: Zeltner LTC multiple-scatter sheen
     FiberStrandParameters            Fiber         {};                           // [-] - L9: Chiang/Marschner R+TT+TRT fiber BCSDF
-    PorosityAndEmissionParameters    PorosityLight {};                           // [-] - L10: Relative-IOR wetness & Planckian light
+    PorosityEmissionParameters    PorosityLight {};                           // [-] - L10: Relative-IOR wetness & Planckian light
     BindlessChannelBindings          Channels      {};                           // [-] - Optional bindless texture ordinals
 };
 
@@ -165,6 +165,6 @@ void SanitizeSurfaceMaterial(SurfaceMaterial& InOutMaterial) noexcept;
 [[nodiscard]] bool VerifySurfaceMaterialPhysicalBounds(const SurfaceMaterial& Material) noexcept;
 
 // 📝 Construct any of the 10 canonical physical reference materials (one exercising each optical family L1..L10)
-[[nodiscard]] SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset);
+[[nodiscard]] SurfaceMaterial ConstructMaterialPreset(MaterialPresetCategory Preset);
 
 } // namespace Frontier::MaterialSpace

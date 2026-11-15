@@ -129,7 +129,7 @@ int main()
     }
 
     // 4. Inspector -> Metrics & Record tab + Log Stream Drawer open (matches Html_Inspector_Modules_LogDrawer.png)
-    Studio.AccessSession().InspectorTab  = ParticleInspectorTab::MetricsRecord;
+    Studio.AccessSession().InspectorTab  = ParticleInspectorTab::MetricsCodec;
     Studio.AccessSession().ShowLogDrawer = true;
     RenderStep(Idle);
     if (!SavePng("Cpp_Inspector_Metrics_LogDrawer.png"))
@@ -184,7 +184,7 @@ int main()
     RenderStep(Idle);
     RenderStep(Idle);
 
-    const std::size_t AuroraIdx = Browser.QueryColourCodex().FindRampPresetIndex("aurora");
+    const std::size_t AuroraIdx = Browser.QueryColourSwatchBrowser().FindRampPresetIndex("aurora");
     const Rectangle2D AuroraCell = Browser.QueryRenderedRampCellBounds(AuroraIdx);
     const Rectangle2D RampDropTarget = Studio.AccessInspector().QueryColourRampStripBounds(Studio.InspectSession());
     if (!VerifyCheck(AuroraCell.Width > 40.0f && RampDropTarget.Width > 120.0f, "Aurora card & Particle Inspector ColourRamp drop slot both rendered"))

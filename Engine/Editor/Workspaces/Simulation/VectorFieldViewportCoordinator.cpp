@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                  VECTORFIELDVIEWPORTCOORDINATOR.CPP
+                                                      VECTORFIELDVIEWPORTCOORDINATOR.CPP
 ============================================================================================================================================*/
 // 🧩 Editor coordinator binding ForceFieldAccumulator, FieldLatticeVulkanExecutor, VectorFieldOverlaySequence & 3-dock UI panes
 
@@ -24,7 +24,7 @@ namespace
 {
 
 [[nodiscard]] SimulationSpace::ForceFields::ForceSourceRecordEntry BuildPresetForTemplateEntry(
-    uint32_t         ForceLawOrdinal,
+    uint32_t         ForceModelOrdinal,
     std::string_view Title)
 {
     using namespace SimulationSpace::ForceFields;
@@ -36,9 +36,9 @@ namespace
     Desc.EvaluatedCentreMeters = Desc.CentreMeters;
     Desc.Label             = std::string(Title);
 
-    if (ForceLawOrdinal < static_cast<uint32_t>(ForceModel::Count))
+    if (ForceModelOrdinal < static_cast<uint32_t>(ForceModel::Count))
     {
-        Desc.Model = static_cast<ForceModel>(ForceLawOrdinal);
+        Desc.Model = static_cast<ForceModel>(ForceModelOrdinal);
     }
     else if (Title.find("Radial") != std::string_view::npos || Title.find("Burst") != std::string_view::npos)
     {
@@ -172,7 +172,7 @@ namespace
     switch (Domain)
     {
     case ForceDomainCategory::VectorField:     return "VectorField";
-    case ForceDomainCategory::FlowField:       return "FlowField";
+    case ForceDomainCategory::StreamTransport:       return "StreamTransport";
     case ForceDomainCategory::TurbulenceField: return "Turbulence";
     default:                                   return "ForceField";
     }
@@ -184,7 +184,7 @@ namespace
 //                                                INITIALIZATION & BINDING
 //------------------------------------------------------------------------------------------------------------------------
 
-bool VectorFieldViewportCoordinator::InitializeAndAttach(
+bool VectorFieldViewportCoordinator::AttachInitializedSession(
     OutlinerPanel&               Outliner,
     ViewportPanel&               Viewport,
     InspectorPanel&              Inspector,
@@ -232,8 +232,8 @@ bool VectorFieldViewportCoordinator::InitializeAndAttach(
         });
     }
     ForceTemplates.push_back({ "Add Custom Formula", "Custom Formula", "VectorFieldLang", "Symbolic GPU formula", ConstructSlotCategory::ForceField, static_cast<uint32_t>(SimulationSpace::ForceFields::ForceModel::FlowStream) });
-    ForceTemplates.push_back({ "Add Cube Mesh",      "Cube",           "Static Mesh",     "Position 0, 0, 0 m",   ConstructSlotCategory::CategoryOne,  0xFFFFFFFFu });
-    ForceTemplates.push_back({ "Add Point Light",    "Point Light",    "Light",           "Position 0, 0, 0 m",   ConstructSlotCategory::CategoryThree,0xFFFFFFFFu });
+    ForceTemplates.push_back({ "Add Cube Mesh",      "Cube",           "Static Mesh",     "Position 0, 0, 0 m",   ConstructSlotCategory::GeometryVolume,  0xFFFFFFFFu });
+    ForceTemplates.push_back({ "Add Point Light",    "Point Light",    "Light",           "Position 0, 0, 0 m",   ConstructSlotCategory::PointLuminaire,0xFFFFFFFFu });
     Outliner.ConfigureConstructTemplates(std::move(ForceTemplates));
 
     ContentBrowser.PopulateDefaultForcePresets();
@@ -314,9 +314,9 @@ bool VectorFieldViewportCoordinator::InitializeAndAttach(
     Viewport.ConfigureForceOverlayToolsVisible(true);
     Viewport.ConfigureSimulationTimeSeconds(SimulationTimeSec);
     Viewport.ConfigureRasterCallback([this](const ViewportPaneSurfaceSpecification& Spec)
-                                     { return HandleViewportRaster(Spec); });
+                                     { return DispatchViewportRaster(Spec); });
     Viewport.ConfigureInteractionCallback([this](uint32_t PaneIdx, Rectangle2D Bounds, const PaneInputReading& Input)
-                                          { HandleViewportInteraction(PaneIdx, Bounds, Input); });
+                                          { ProcessViewportInteraction(PaneIdx, Bounds, Input); });
     Inspector.ConfigureFullOverrideCallback(
         [this](PixelSpace& Surface, Rectangle2D Bounds, OutlinerPanel* OutlinerPtr, OutlinerRecordEntry* PrimaryEntry, const PaneInputReading& Input, double Δt)
         { return RenderFullForceInspector(Surface, Bounds, OutlinerPtr, PrimaryEntry, Input, Δt); });
@@ -358,7 +358,7 @@ void VectorFieldViewportCoordinator::StepSimulation(double ΔtSeconds) noexcept
         SimulationTimeSec += ΔtSeconds;
     }
 
-    SynchronizeOutlinerAndAccumulator();
+    SynchronizeForceAccumulator();
     Accumulator.StepAnimation(SimulationTimeSec, Advance);
     RecordAnemometerSample(SimulationTimeSec);
 
@@ -391,7 +391,7 @@ OutlinerSlotToken VectorFieldViewportCoordinator::AddForceSourceEntry(
         Created->Category             = ConstructSlotCategory::ForceField;
         Created->Title                = Descriptor.Label;
         Created->CategoryLabel        = SimulationSpace::ForceFields::QueryForceModelDisplayName(Descriptor.Model);
-        Created->ForceLawOrdinal      = static_cast<uint32_t>(Descriptor.Model);
+        Created->ForceModelOrdinal      = static_cast<uint32_t>(Descriptor.Model);
         Created->ForceFormulaOverride = Descriptor.FormulaEnabled;
         char SubBuf[96]{};
         std::snprintf(SubBuf, sizeof(SubBuf), "r %.0f m  |  %.1f m/s", Descriptor.RadiusMeters, Descriptor.Strength);
@@ -414,7 +414,7 @@ OutlinerSlotToken VectorFieldViewportCoordinator::AddForceSourceEntry(
 //                                           OUTLINER <-> ACCUMULATOR SYNC
 //------------------------------------------------------------------------------------------------------------------------
 
-void VectorFieldViewportCoordinator::SynchronizeOutlinerAndAccumulator()
+void VectorFieldViewportCoordinator::SynchronizeForceAccumulator()
 {
     if (BoundOutliner == nullptr)
     {
@@ -442,7 +442,7 @@ void VectorFieldViewportCoordinator::SynchronizeOutlinerAndAccumulator()
 
         if (It == AuthoredSources.end())
         {
-            auto Desc            = BuildPresetForTemplateEntry(Entry.ForceLawOrdinal, Entry.Title);
+            auto Desc            = BuildPresetForTemplateEntry(Entry.ForceModelOrdinal, Entry.Title);
             Desc.UniqueToken     = NextForceToken++;
             Desc.OutlinerTokenId = Entry.Token.Identifier;
             Desc.CentreMeters    = { Entry.PositionX, Entry.PositionY, Entry.PositionZ };
@@ -452,7 +452,7 @@ void VectorFieldViewportCoordinator::SynchronizeOutlinerAndAccumulator()
             if (OutlinerRecordEntry* Mut = BoundOutliner->AccessEntry(Entry.Token))
             {
                 Mut->CategoryLabel        = SimulationSpace::ForceFields::QueryForceModelDisplayName(Desc.Model);
-                Mut->ForceLawOrdinal      = static_cast<uint32_t>(Desc.Model);
+                Mut->ForceModelOrdinal      = static_cast<uint32_t>(Desc.Model);
                 Mut->ForceFormulaOverride = Desc.FormulaEnabled;
                 char SubBuf[96]{};
                 std::snprintf(SubBuf, sizeof(SubBuf), "r %.0f m  |  %.1f m/s", Desc.RadiusMeters, Desc.Strength);
@@ -475,7 +475,7 @@ void VectorFieldViewportCoordinator::SynchronizeOutlinerAndAccumulator()
                 Mut->PositionX            = It->EvaluatedCentreMeters.X;
                 Mut->PositionY            = It->EvaluatedCentreMeters.Y;
                 Mut->PositionZ            = It->EvaluatedCentreMeters.Z;
-                Mut->ForceLawOrdinal      = static_cast<uint32_t>(It->Model);
+                Mut->ForceModelOrdinal      = static_cast<uint32_t>(It->Model);
                 Mut->ForceFormulaOverride = It->FormulaEnabled;
             }
         }
@@ -512,9 +512,9 @@ void VectorFieldViewportCoordinator::SynchronizeOutlinerAndAccumulator()
 //                                        VIEWPORT RASTER & PICKING HANDLERS
 //------------------------------------------------------------------------------------------------------------------------
 
-ViewportRasterSurface VectorFieldViewportCoordinator::HandleViewportRaster(const ViewportPaneSurfaceSpecification& Spec)
+ViewportRasterSurface VectorFieldViewportCoordinator::DispatchViewportRaster(const ViewportPaneSurfaceSpecification& Spec)
 {
-    SynchronizeOutlinerAndAccumulator();
+    SynchronizeForceAccumulator();
 
     std::vector<SimulationSpace::ForceFields::ForceSourceShaderEntry> PackedSources;
     std::vector<SimulationSpace::ForceFields::SpatialVector3>         PackedWaypoints;
@@ -600,7 +600,7 @@ ViewportRasterSurface VectorFieldViewportCoordinator::HandleViewportRaster(const
     return Surface;
 }
 
-void VectorFieldViewportCoordinator::HandleViewportInteraction(
+void VectorFieldViewportCoordinator::ProcessViewportInteraction(
     uint32_t                PaneIndex,
     Rectangle2D             PaneBounds,
     const PaneInputReading& Input)
@@ -717,7 +717,7 @@ bool VectorFieldViewportCoordinator::RenderFullForceInspector(
 
     if (ActiveSource != nullptr && PrimaryEntry != nullptr)
     {
-        PrimaryEntry->ForceLawOrdinal      = static_cast<uint32_t>(ActiveSource->Model);
+        PrimaryEntry->ForceModelOrdinal      = static_cast<uint32_t>(ActiveSource->Model);
         PrimaryEntry->ForceFormulaOverride = ActiveSource->FormulaEnabled;
         char SubBuf[96]{};
         std::snprintf(SubBuf, sizeof(SubBuf), "r %.0f m  |  %.1f m/s", ActiveSource->RadiusMeters, ActiveSource->Strength);

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            AXISCOORDINATES.H
+                                                              AXISCOORDINATES.H
 ============================================================================================================================================*/
 // 🧩 Axis3D, Axis2D, zero-overhead Scalar3D/Scalar2D aliases, dedicated UVAxes, SpatialTransform, and 16B-aligned .slang GPU layout structs
 

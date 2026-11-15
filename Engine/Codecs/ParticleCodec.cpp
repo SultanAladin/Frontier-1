@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                             PARTICLECODEC.CPP
+                                                              PARTICLECODEC.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of Two-Tier Hybrid .ParticleSpace persistence (PascalCase TOML + 64B-aligned .ColourLut & .SurfaceAnchor sections)
 
@@ -51,7 +51,7 @@ SpaceContainerPayload ParticleEncoder::BuildPayload(
     const Workspaces::RevisionTracker*     OptionalRevision)
 {
     SpaceContainerPayload Payload {};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::ParticleSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::ParticleSpace;
     Payload.SchemaVersion      = 1u;
     Payload.DocumentTitle      = Document.DocumentTitle;
     Payload.AuthoringWorkspace = "Frontier.ParticleWorkspace";
@@ -248,9 +248,9 @@ bool ParticleDecoder::ExtractDocument(
     std::string&                     OutDiagnostic,
     Workspaces::RevisionTracker*     OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::ParticleSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::ParticleSpace)
     {
-        OutDiagnostic = "ParticleDecoder rejected container whose ExtensionCategory is not ParticleSpace.";
+        OutDiagnostic = "ParticleDecoder rejected container whose SuffixCategory is not ParticleSpace.";
         return false;
     }
 

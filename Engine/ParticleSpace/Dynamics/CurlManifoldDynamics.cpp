@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         CURLMANIFOLDDYNAMICS.CPP
+                                                           CURLMANIFOLDDYNAMICS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of divergence-free 3D curl noise & manifold projection solvers (modes 1..5)
 
@@ -65,7 +65,7 @@ void StepCurlManifoldDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         float CurlV[3] {};
         EvaluateDivergenceFreeCurl(

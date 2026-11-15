@@ -458,7 +458,7 @@ int main()
         ThemeRepository Themes {};
         Browser.AttachThemeRepository(&Themes);
         Browser.ConfigureWorkspaceDomain(WorkspaceCategory::UV);
-        Browser.ConfigureColourAndMatCapLock(true);
+        Browser.ConfigureColourMatCapLock(true);
         Browser.ConfigureShelfExtent(ContentShelfExtent::SplitHalf, true);
 
         // Simulate a rendered canvas for drawer occlusion checks
@@ -770,7 +770,7 @@ int main()
         if (!VerifyInvariant(
                 BeforeU.Matches(CaptureDigest(Session), DigestDiff) &&
                     Host2D.QueryDirectiveSheetOpen() &&
-                    Host2D.QueryDirectiveSheetKind() == ViewportDirectiveSheetKind::UnwrapMenu,
+                    Host2D.QueryDirectiveSheetKind() == ViewportDirectiveSheetCategory::UnwrapMenu,
                 "Plain [U] opens the UnwrapMenu sheet without modifying UVs"))
         {
             ImGui::DestroyContext(GuiCtx);

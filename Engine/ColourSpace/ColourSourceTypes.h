@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                          COLOURSOURCETYPES.H
+                                                             COLOURSOURCETYPES.H
 ============================================================================================================================================*/
-// 🎨 Modular reusable colour sources (SolidPigment, LinearFill, MultiStopGradient, QuantizedRamp, BlackbodyThermal, DiscreteTintSet, SpatialNoiseFill)
+// 🧩 Modular reusable colour sources (SolidPigment, LinearFill, MultiStopGradient, QuantizedRamp, BlackbodyThermal, DiscreteTintSet, SpatialNoiseFill)
 
 #pragma once
 

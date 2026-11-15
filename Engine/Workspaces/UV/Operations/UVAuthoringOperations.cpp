@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        UVAUTHORINGOPERATIONS.CPP
+                                                          UVAUTHORINGOPERATIONS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of Seam Brush, UV Pinning, Island Stitch, Split Island, 2D UV Transforms, Align & Quad Rectification
 

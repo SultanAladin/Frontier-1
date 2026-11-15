@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                             COLOURDOCUMENT.CPP
+                                                              COLOURDOCUMENT.CPP
 ============================================================================================================================================*/
-// 🎨 Implementation of ColourDocument ramp/swatch indexing and deterministic LUT baking
+// 🧩 Implementation of ColourDocument ramp/swatch indexing and deterministic LUT baking
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES

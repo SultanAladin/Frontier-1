@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                PARTICLESURFACEBACKINGRASTERIZATION.SLANG
+                                                  PARTICLESURFACEBACKINGRASTERIZATION.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 glossy obsidian / brushed metallic 3D substrate shader for MoGraph Effector Halftone & Ferrofluid liquid basins
 

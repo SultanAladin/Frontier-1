@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         DESKTOPWORKSPACELAUNCH.H
+                                                           DESKTOPWORKSPACELAUNCH.H
 ============================================================================================================================================*/
 // 🧩 Desktop host runner mounting FrontierUV (StandaloneWorkspace) or FrontierEditor (FeatureSet + ContentBrowser) on GLFW + Vulkan
 

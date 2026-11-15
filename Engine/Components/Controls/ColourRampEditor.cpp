@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                          COLOURRAMPEDITOR.CPP
+                                                             COLOURRAMPEDITOR.CPP
 ============================================================================================================================================*/
-// 🎨 Implementation of reusable ColourRampEditor with smooth multi-stop strip, draggable stop handles, mode/wrap/curve/space toggles & preset bar
+// 🧩 Implementation of reusable ColourRampEditor with smooth multi-stop strip, draggable stop handles, mode/wrap/curve/space toggles & preset bar
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES

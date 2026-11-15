@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                              COLOURCODEC.CPP
+                                                               COLOURCODEC.CPP
 ============================================================================================================================================*/
 // 🧩 .ColourSpace, .ColourRamp & .ColourSwatch encoder/decoder implementation with inline manifest helpers for sibling codecs
 
@@ -350,7 +350,7 @@ SpaceContainerPayload ColourEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload {};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::ColourSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::ColourSpace;
     Payload.DocumentTitle      = Model.DocumentTitle;
     Payload.AuthoringWorkspace = "Frontier.ColourWorkspace";
 
@@ -467,11 +467,11 @@ bool ColourEncoder::EncodeStandaloneRampToFile(
     std::filesystem::path CanonicalPath = TargetPath;
     if (!ColourDecoder::MatchesRampExtension(CanonicalPath))
     {
-        CanonicalPath.replace_extension(CanonicalRampExtension);
+        CanonicalPath.replace_extension(CanonicalRampSuffix);
     }
     else
     {
-        CanonicalPath.replace_extension(CanonicalRampExtension);
+        CanonicalPath.replace_extension(CanonicalRampSuffix);
     }
 
     std::error_code FsError;
@@ -501,7 +501,7 @@ bool ColourDecoder::MatchesRampExtension(const std::filesystem::path& FilePath) 
     return LowercaseAscii(FilePath.extension().string()) == ".colourramp";
 }
 
-bool ColourDecoder::MatchesSwatchExtension(const std::filesystem::path& FilePath) noexcept
+bool ColourDecoder::MatchesSwatchSuffix(const std::filesystem::path& FilePath) noexcept
 {
     return LowercaseAscii(FilePath.extension().string()) == ".colourswatch";
 }
@@ -512,7 +512,7 @@ bool ColourDecoder::ExtractModel(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::ColourSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::ColourSpace)
     {
         OutDiagnostic = "Expected .ColourSpace container category.";
         return false;

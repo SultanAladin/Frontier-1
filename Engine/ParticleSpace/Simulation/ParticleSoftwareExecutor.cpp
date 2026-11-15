@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       PARTICLESOFTWAREEXECUTOR.CPP
+                                                         PARTICLESOFTWAREEXECUTOR.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of modular CPU particle executor dispatching active dynamics bitmask, ForceFieldAccumulator & ColourSpace tinting
 
@@ -72,7 +72,7 @@ uint32_t ExecuteParticleRigStepCpu(
     // 1. Pre-age & expire dead particles
     for (auto& Slot : RigSlots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
         Slot.AgeSeconds += DtSec;
         if (Slot.AgeSeconds >= Slot.LifespanSeconds)
         {
@@ -90,7 +90,7 @@ uint32_t ExecuteParticleRigStepCpu(
     if (D.Attractor.has_value())   StepStrangeAttractorDynamics(*D.Attractor, OriginCenter, RigSlots, DtSec);
     if (D.Swarm.has_value())       StepSwarmFlockingDynamics(*D.Swarm, OriginCenter, RigSlots, DtSec);
     if (D.SpeciesLife.has_value()) StepSpeciesLifeDynamics(*D.SpeciesLife, OriginCenter, RigSlots, DtSec);
-    if (D.Morpho.has_value())      StepMorphogeneticGrowthDynamics(*D.Morpho, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
+    if (D.BotanicalGrowth.has_value())      StepOrganicGrowthDynamics(*D.BotanicalGrowth, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
     if (D.FluidSph.has_value())    StepFluidSphDynamics(*D.FluidSph, OriginCenter, RigSlots, DtSec);
     if (D.Thermal.has_value())     StepThermalFireworkDynamics(*D.Thermal, RigSlots, Context.ElapsedSeconds, DtSec);
     if (D.Molecular.has_value())   StepMolecularReactionDynamics(*D.Molecular, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
@@ -124,7 +124,7 @@ uint32_t ExecuteParticleRigStepCpu(
         uint32_t AliveStrands = 0u;
         for (const auto& Slot : RigSlots)
         {
-            if (IsParticleSlotAlive(Slot)) ++AliveStrands;
+            if (QueryParticleSlotAlive(Slot)) ++AliveStrands;
         }
         return AliveStrands;
     }
@@ -145,7 +145,7 @@ uint32_t ExecuteParticleRigStepCpu(
         uint32_t AliveCount = 0u;
         for (const auto& Slot : RigSlots)
         {
-            if (IsParticleSlotAlive(Slot)) ++AliveCount;
+            if (QueryParticleSlotAlive(Slot)) ++AliveCount;
         }
         return AliveCount;
     }
@@ -167,7 +167,7 @@ uint32_t ExecuteParticleRigStepCpu(
         uint32_t AliveCount = 0u;
         for (const auto& Slot : RigSlots)
         {
-            if (IsParticleSlotAlive(Slot)) ++AliveCount;
+            if (QueryParticleSlotAlive(Slot)) ++AliveCount;
         }
         return AliveCount;
     }
@@ -187,7 +187,7 @@ uint32_t ExecuteParticleRigStepCpu(
         uint32_t AliveCount = 0u;
         for (const auto& Slot : RigSlots)
         {
-            if (IsParticleSlotAlive(Slot)) ++AliveCount;
+            if (QueryParticleSlotAlive(Slot)) ++AliveCount;
         }
         return AliveCount;
     }
@@ -207,7 +207,7 @@ uint32_t ExecuteParticleRigStepCpu(
         uint32_t AliveCount = 0u;
         for (const auto& Slot : RigSlots)
         {
-            if (IsParticleSlotAlive(Slot)) ++AliveCount;
+            if (QueryParticleSlotAlive(Slot)) ++AliveCount;
         }
         return AliveCount;
     }
@@ -227,7 +227,7 @@ uint32_t ExecuteParticleRigStepCpu(
 
     for (auto& Slot : RigSlots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         if (!OverrideKinematicPos)
         {
@@ -293,7 +293,7 @@ uint32_t ExecuteParticleRigStepCpu(
     for (std::size_t I = 0u; I < RigSlots.size(); ++I)
     {
         ParticleSlot& Slot = RigSlots[I];
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         // Floor bounce
         if (D.Ballistic.FloorRestitution > 0.0f && Slot.PositionMeters[1] < D.Ballistic.FloorElevation)

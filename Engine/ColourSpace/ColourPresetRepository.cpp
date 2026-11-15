@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                       COLOURPRESETREPOSITORY.CPP
+                                                          COLOURPRESETREPOSITORY.CPP
 ============================================================================================================================================*/
-// 🎨 Implementation of built-in Studio/Scientific/Utility ramp presets & runtime ColourPresetRepository
+// 🧩 Implementation of built-in Studio/Scientific/Utility ramp presets & runtime ColourPresetRepository
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES

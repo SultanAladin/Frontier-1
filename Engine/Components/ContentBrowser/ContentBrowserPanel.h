@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                           CONTENTBROWSERPANEL.H
+                                                            CONTENTBROWSERPANEL.H
 ============================================================================================================================================*/
-// 🧩 Bottom-edge ContentBrowser drawer with pre-baked ThumbnailSheet, dual-path SSD/HDD streaming, strict workspace masks & ColourCodex
+// 🧩 Bottom-edge ContentBrowser drawer with pre-baked ThumbnailSheet, dual-path SSD/HDD streaming, strict workspace masks & ColourSwatchBrowserView
 
 #pragma once
 
@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Appearance/ThemeRepository.h"
-#include "Engine/Components/ContentBrowser/ColourCodex.h"
+#include "Engine/Components/ContentBrowser/ColourSwatchBrowserView.h"
 #include "Engine/Components/ContentBrowser/ThumbnailSheetRepository.h"
 #include "Engine/Components/Controls/ControlAppearance.h"
 #include "Engine/Components/Controls/TextInputField.h"
@@ -58,8 +58,8 @@ struct ColourSlotRegistration
     std::string                                                       DisplayTitle           {};        // [-]  - Human-readable slot label
     Rectangle2D                                                       ScreenBounds           {};        // [px] - Logical drop-target rectangle
     ColorRgba*                                                        TargetColour           = nullptr; // [-]  - Optional direct ColorRgba destination
-    std::function<void(ColorRgba, const ColourCodexEntry&)>           NotifyColourAssigned   {};        // [-]  - Optional assignment callback
-    std::function<void(ColorRgba, const ColourCodexEntry&, Point2D)>  NotifyColourAssignedAt {};        // [-]  - Optional coordinate-aware drop callback
+    std::function<void(ColorRgba, const ColourSwatchEntry&)>           NotifyColourAssigned   {};        // [-]  - Optional assignment callback
+    std::function<void(ColorRgba, const ColourSwatchEntry&, Point2D)>  NotifyColourAssignedAt {};        // [-]  - Optional coordinate-aware drop callback
 };
 
 struct ColourRampSlotRegistration
@@ -117,10 +117,10 @@ struct ContentBrowserReading
     uint32_t                       PermittedCategoryCount = 0u;                                             // [count] - Categories visible in active workspace
     uint32_t                       VisibleEntryCount      = 0u;                                             // [count] - Filtered visible entries
     bool                           ColourFiltersVisible   = false;                                          // [-]     - True only when Colours is active
-    bool                           DraggingColourActive   = false;                                          // [-]     - True while dragging a ColourCodex swatch
+    bool                           DraggingColourActive   = false;                                          // [-]     - True while dragging a ColourSwatchBrowserView swatch
     bool                           DraggingColourRampActive = false;                                        // [-]     - True while dragging a ColourSpace ramp preset
     bool                           DraggingMatCapActive   = false;                                          // [-]     - True while dragging a Studio MatCap sphere
-    std::string                    SelectedColourAlias    {};                                               // [-]     - Selected ColourCodex alias name
+    std::string                    SelectedColourAlias    {};                                               // [-]     - Selected ColourSwatchBrowserView alias name
     std::string                    SelectedRampIdentifier {};                                               // [-]     - Selected ColourRamp preset identifier
     std::string                    LastStatusMessage      {};                                               // [-]     - Latest footer status feedback
 };
@@ -140,8 +140,8 @@ public:
 
     void ConfigureShelfExtent(ContentShelfExtent RequestedExtent, bool Immediate = false) noexcept;
     void ConfigureWorkspaceDomain(WorkspaceCategory Workspace) noexcept;
-    void ConfigureColourAndMatCapLock(bool Locked) noexcept;
-    [[nodiscard]] bool QueryColourAndMatCapLocked() const noexcept { return ColourAndMatCapLocked; }
+    void ConfigureColourMatCapLock(bool Locked) noexcept;
+    [[nodiscard]] bool QueryColourMatCapLocked() const noexcept { return ColourMatCapLocked; }
     bool ActivateCategory(ContentCategory NextCategory) noexcept;
     void ConfigureOriginFilter(ContentOriginFilter Origin) noexcept;
     void ConfigureStandardLayout(StandardRepositoryLayout Layout) noexcept;
@@ -204,8 +204,8 @@ public:
     [[nodiscard]] Rectangle2D                         QueryRenderedColourCellBounds(std::size_t ColourIndex) const noexcept;
     [[nodiscard]] Rectangle2D                         QueryRenderedRampCellBounds(std::size_t RampIndex) const noexcept;
     [[nodiscard]] Rectangle2D                         QueryRenderedContentCellBounds(std::size_t EntryIndex) const noexcept;
-    [[nodiscard]] ColourCodex&                        AccessColourCodex() noexcept;
-    [[nodiscard]] const ColourCodex&                  QueryColourCodex() const noexcept;
+    [[nodiscard]] ColourSwatchBrowserView&                        AccessColourSwatchBrowser() noexcept;
+    [[nodiscard]] const ColourSwatchBrowserView&                  QueryColourSwatchBrowser() const noexcept;
     [[nodiscard]] ThumbnailSheetRepository&           AccessThumbnailRepository() noexcept;
     [[nodiscard]] const ThumbnailSheetRepository&     QueryThumbnailRepository() const noexcept;
     [[nodiscard]] Threading::AssetStreamThread&       AccessStreamThread() noexcept;
@@ -214,7 +214,7 @@ public:
 private:
     struct RecordedCellHitbox
     {
-        std::size_t EntryIndex = 0u; // [idx] - Index inside ColourCodex
+        std::size_t EntryIndex = 0u; // [idx] - Index inside ColourSwatchBrowserView
         Rectangle2D Bounds     {};   // [px]  - Last rendered logical cell or strip rectangle
     };
 
@@ -252,7 +252,7 @@ private:
         const ControlColorSet&            AppearanceColors,
         float                             SectionRadius);
 
-    ColourCodex                         CodexLibrary          {};                                       // [-]   - Built-in + custom ColourCodex (.ColourSwatch)
+    ColourSwatchBrowserView                         CodexLibrary          {};                                       // [-]   - Built-in + custom ColourSwatchBrowserView (.ColourSwatch)
     ThumbnailSheetRepository            ThumbnailRepository   {};                                       // [-]   - Pre-baked 1024x1024 ThumbnailSheet + 64B index
     Threading::AssetStreamThread        StreamChannelThread   {};                                       // [-]   - Dual-path SSD/HDD streaming thread
     SpringIntegrator                    ShelfSpring           {};                                       // [-]   - Smooth bottom-drawer spring
@@ -269,7 +269,7 @@ private:
     std::string                         SearchBuffer          {};                                       // [-]   - Active search filter text
     TextEditBuffer                      SearchEditor          {};                                       // [-]   - Interactive UTF-8 search edit buffer
     Rectangle2D                         LastSearchBounds      {};                                       // [px]  - Last rendered search input bounds
-    std::size_t                         SelectedColourIndex   = 0u;                                     // [idx] - Selected ColourCodex index
+    std::size_t                         SelectedColourIndex   = 0u;                                     // [idx] - Selected ColourSwatchBrowserView index
     std::size_t                         SelectedRampIndex     = 0u;                                     // [idx] - Selected ColourRamp preset index
     std::size_t                         SelectedContentIndex  = 0u;                                     // [idx] - Selected ThumbnailSheetRepository index
     float                               RepositoryScrollY     = 0.0f;                                   // [px]  - Vertical scroll offset
@@ -288,11 +288,11 @@ private:
     std::vector<RecordedCellHitbox>     LastColourHitboxes    {};                                       // [-]   - Hitboxes for testing & drag
     std::vector<RecordedCellHitbox>     LastRampHitboxes      {};                                       // [-]   - Ramp tile hitboxes for testing & drag
     std::vector<RecordedCellHitbox>     LastContentHitboxes   {};                                       // [-]   - Content tile hitboxes for testing & drag
-    bool                                ColourAndMatCapLocked = false;                                  // [-]   - Restrict browser to Colours + MatCap Materials
+    bool                                ColourMatCapLocked = false;                                  // [-]   - Restrict browser to Colours + MatCap Materials
 
     bool                                PotentialColourDrag   = false;                                  // [-]   - Pointer pressed on colour swatch
     bool                                DraggingColour        = false;                                  // [-]   - Active drag threshold crossed
-    std::size_t                         DraggedColourIndex    = 0u;                                     // [idx] - ColourCodex entry being dragged
+    std::size_t                         DraggedColourIndex    = 0u;                                     // [idx] - ColourSwatchBrowserView entry being dragged
     bool                                PotentialRampDrag     = false;                                  // [-]   - Pointer pressed on colour ramp tile
     bool                                DraggingColourRamp    = false;                                  // [-]   - Active colour ramp drag threshold crossed
     std::size_t                         DraggedRampIndex      = 0u;                                     // [idx] - ColourRamp preset index being dragged

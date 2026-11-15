@@ -1,9 +1,10 @@
 /*============================================================================================================================================
-                                                       VEHICLEDISSOLVESOLVER.CPP
+                                                          VEHICLEDISSOLVESOLVER.CPP
 ============================================================================================================================================*/
-// 🚗 Controlled Integrator (ControlVehicle) 16^3 lattice Derez, Reverse-Rez, Dissolve-to-Nothing, and Dissolve-to-Butterfly implementation
+// 🧩 Controlled Integrator (ControlVehicle) 16^3 lattice Derez, Reverse-Rez, Dissolve-to-Nothing, and Dissolve-to-Butterfly implementation
 
 #include "Engine/ParticleSpace/Dynamics/VehicleDissolveSolver.h"
+#include "Engine/ParticleSpace/ParticleVectorMath.h"
 #include "Engine/ParticleSpace/Sprites/ProceduralSpriteSynthesizer.h"
 
 #include <algorithm>
@@ -22,32 +23,9 @@ namespace
 constexpr float kPi    = 3.14159265358979323846f;
 constexpr float kTwoPi = 6.28318530717958647692f;
 
-struct Vec3f
-{
-    float X = 0.0f;
-    float Y = 0.0f;
-    float Z = 0.0f;
-};
+using Vec3f = Vector3f;
+[[nodiscard]] inline Vec3f operator*(Vec3f A, Vec3f B) noexcept { return MultiplyComponents(A, B); }
 
-[[nodiscard]] inline Vec3f operator+(Vec3f A, Vec3f B) noexcept { return { A.X + B.X, A.Y + B.Y, A.Z + B.Z }; }
-[[nodiscard]] inline Vec3f operator-(Vec3f A, Vec3f B) noexcept { return { A.X - B.X, A.Y - B.Y, A.Z - B.Z }; }
-[[nodiscard]] inline Vec3f operator*(Vec3f A, float S) noexcept { return { A.X * S, A.Y * S, A.Z * S }; }
-[[nodiscard]] inline Vec3f operator*(Vec3f A, Vec3f B) noexcept { return { A.X * B.X, A.Y * B.Y, A.Z * B.Z }; }
-[[nodiscard]] inline float Dot3(Vec3f A, Vec3f B) noexcept { return A.X * B.X + A.Y * B.Y + A.Z * B.Z; }
-[[nodiscard]] inline Vec3f Cross3(Vec3f A, Vec3f B) noexcept
-{
-    return {
-        A.Y * B.Z - A.Z * B.Y,
-        A.Z * B.X - A.X * B.Z,
-        A.X * B.Y - A.Y * B.X,
-    };
-}
-[[nodiscard]] inline float Length3(Vec3f V) noexcept { return std::sqrt(Dot3(V, V)); }
-[[nodiscard]] inline Vec3f Normalize3(Vec3f V) noexcept
-{
-    const float L = Length3(V);
-    return (L > 1e-7f) ? (V * (1.0f / L)) : Vec3f{ 0.0f, 1.0f, 0.0f };
-}
 
 [[nodiscard]] inline float Saturate(float V) noexcept { return std::clamp(V, 0.0f, 1.0f); }
 [[nodiscard]] inline float LerpF(float A, float B, float T) noexcept { return A + (B - A) * T; }
@@ -322,7 +300,7 @@ struct CameraBasis
     }
     if (Mode == VehicleDissolveMode::DissolveToButterfly)
     {
-        // Electric Morpho cyan -> iridescent gold-white liberation rim
+        // Electric BotanicalGrowth cyan -> iridescent gold-white liberation rim
         const Vec3f Outer{ 0.20f, 0.58f, 1.55f };
         const Vec3f Mid{ 0.42f, 1.65f, 2.25f };
         const Vec3f Peak{ 2.60f, 2.45f, 2.95f };
@@ -544,7 +522,7 @@ void Rasterize3DCubePiece(
 
 void RasterizeArticulatedButterfly(
     const VehicleDissolveButterflyPiece& B,
-    const ProceduralSpriteSpec&          MorphoSpec,
+    const ProceduralSpriteSpec&          BotanicalGrowthSpec,
     const ProceduralSpriteSpec&          MonarchSpec,
     const CameraBasis&                   Cam,
     uint32_t                             Width,
@@ -607,7 +585,7 @@ void RasterizeArticulatedButterfly(
             const int32_t MinY = std::max<int32_t>(0, static_cast<int32_t>(std::floor(std::min({ Sy0, Sy1, Sy2 }))));
             const int32_t MaxY = std::min<int32_t>(static_cast<int32_t>(Height) - 1, static_cast<int32_t>(std::ceil(std::max({ Sy0, Sy1, Sy2 }))));
 
-            const ProceduralSpriteSpec& ActiveSpec = (B.MorphoMix >= 0.5f) ? MorphoSpec : MonarchSpec;
+            const ProceduralSpriteSpec& ActiveSpec = (B.BotanicalGrowthMix >= 0.5f) ? BotanicalGrowthSpec : MonarchSpec;
             for (int32_t Py = MinY; Py <= MaxY; ++Py)
             {
                 const float CyP = static_cast<float>(Py) + 0.5f;
@@ -1021,7 +999,7 @@ VehicleDissolveSnapshot BuildVehicleDissolveSnapshot(
             B.PitchTilt  = 0.24f + 0.18f * std::sin(AgeSec * 4.0f + R3 * kTwoPi);
             B.WingSpan   = LerpF(0.16f, 0.28f, R4) * SmoothStep(0.0f, 0.14f, AgeSec);
             B.FlapAngle  = 0.18f + 0.92f * std::sin(AgeSec * FlapFreq + R4 * kTwoPi);
-            B.MorphoMix  = (R3 < 0.72f) ? 1.0f : 0.0f; // 72% Electric Morpho Cyan, 28% Golden Monarch
+            B.BotanicalGrowthMix  = (R3 < 0.72f) ? 1.0f : 0.0f; // 72% Electric BotanicalGrowth Cyan, 28% Golden Monarch
             B.Shimmer    = Saturate(0.75f + 0.45f * std::exp(-AgeSec * 0.55f));
             B.Opacity    = 1.0f;
             Snap.Butterflies.push_back(B);
@@ -1080,7 +1058,7 @@ void RenderVehicleDissolveStudioRgba8(
         for (std::size_t I = 0u; I < Snapshot.Butterflies.size(); I += ButterStride)
         {
             const VehicleDissolveButterflyPiece& B = Snapshot.Butterflies[I];
-            const Vec3f BCol = (B.MorphoMix >= 0.5f)
+            const Vec3f BCol = (B.BotanicalGrowthMix >= 0.5f)
                 ? Vec3f{ 0.16f, 0.85f, 1.35f }
                 : Vec3f{ 1.25f, 0.72f, 0.16f };
             BounceLights.push_back({ { B.PosX, B.PosY, B.PosZ }, BCol * 0.32f, 2.2f });
@@ -1169,17 +1147,17 @@ void RenderVehicleDissolveStudioRgba8(
         Rasterize3DCubePiece(Cube, Params.Mode, BounceLights, Cam, Width, Height, DepthBuf, ColorBuf);
     }
 
-    // 5. Rasterize articulated 3D flapping Morpho & Monarch butterflies into the SAME Z-buffer
+    // 5. Rasterize articulated 3D flapping BotanicalGrowth & Monarch butterflies into the SAME Z-buffer
     if (!Snapshot.Butterflies.empty())
     {
-        ProceduralSpriteSpec MorphoSpec  = QueryDefaultProceduralSpriteSpec(ProceduralSpriteArchetype::BotanicalMorphoButterfly);
-        ProceduralSpriteSpec MonarchSpec = MorphoSpec;
+        ProceduralSpriteSpec BotanicalGrowthSpec  = QueryDefaultProceduralSpriteSpec(ProceduralSpriteArchetype::BotanicalAzureButterfly);
+        ProceduralSpriteSpec MonarchSpec = BotanicalGrowthSpec;
         MonarchSpec.PrimaryTintR   = 1.00f; MonarchSpec.PrimaryTintG   = 0.62f; MonarchSpec.PrimaryTintB   = 0.10f;
         MonarchSpec.SecondaryTintR = 0.96f; MonarchSpec.SecondaryTintG = 0.24f; MonarchSpec.SecondaryTintB = 0.04f;
 
         for (const VehicleDissolveButterflyPiece& B : Snapshot.Butterflies)
         {
-            RasterizeArticulatedButterfly(B, MorphoSpec, MonarchSpec, Cam, Width, Height, DepthBuf, ColorBuf);
+            RasterizeArticulatedButterfly(B, BotanicalGrowthSpec, MonarchSpec, Cam, Width, Height, DepthBuf, ColorBuf);
         }
     }
 

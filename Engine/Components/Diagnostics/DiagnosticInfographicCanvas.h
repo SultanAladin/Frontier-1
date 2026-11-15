@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      DIAGNOSTICINFOGRAPHICCANVAS.H
+                                                        DIAGNOSTICINFOGRAPHICCANVAS.H
 ============================================================================================================================================*/
 // 🧩 Reusable tactile schematic infographic canvas (Optical Bokeh Aperture selector, Wind Rose compass, Force Field reach & Release Cone diagrams)
 

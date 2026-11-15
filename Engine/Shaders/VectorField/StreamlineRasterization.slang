@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      STREAMLINERASTERIZATION.SLANG
+                                                        STREAMLINERASTERIZATION.SLANG
 ============================================================================================================================================*/
 // 🧩 Editor-only volumetric 3D GPU RK4 streamline ribbons with Cyan/Speed/Custom/Altitude modes, emissive boost & phase pulses
 
@@ -49,7 +49,7 @@ float3 ComputeVolumetricStreamlineSeed(uint LineIndex, uint TotalLines, uint Sou
     uint Local  = LineIndex / SourceCount;
     ForceSourceShaderEntry Src = SourceBuffer[SrcIdx];
 
-    float R  = max(1.0, Src.CentreAndRadius.w * 0.88);
+    float R  = max(1.0, Src.CentreRadiusPacked.w * 0.88);
     float H1 = VfHashFloat01(Local * 747796405u + 2891336453u + SrcIdx * 97u);
     float H2 = VfHashFloat01(Local * 277803737u + 1597334677u + SrcIdx * 53u);
     float H3 = VfHashFloat01(Local * 982451653u + 53129771u   + SrcIdx * 31u);
@@ -62,7 +62,7 @@ float3 ComputeVolumetricStreamlineSeed(uint LineIndex, uint TotalLines, uint Sou
     float3 Offset = float3(Rad * SinPhi * cos(Theta), Rad * SinPhi * sin(Theta), Rad * CosPhi);
     // Concentrate slightly around slice plane while filling full 3D volume
     Offset.z *= 0.82;
-    return Src.CentreAndRadius.xyz + Offset;
+    return Src.CentreRadiusPacked.xyz + Offset;
 }
 
 float3 EvaluateFieldVelocityAt(float3 Pos)
@@ -126,13 +126,13 @@ StreamlineVaryings VertexMain(
     float3 Vel       = EvaluateFieldVelocityAt(Pos);
     float  CurSpeed  = length(Vel);
     float3 Tangent   = (CurSpeed > 0.15) ? (Vel / CurSpeed) : float3(1.0, 0.0, 0.0);
-    float3 ViewDir   = normalize(Overlay.CameraPositionAndTime.xyz - Pos);
-    float3 SideAxis  = VfNormalizeSafe(cross(ViewDir, Tangent), Overlay.CameraRightAndThickness.xyz);
+    float3 ViewDir   = normalize(Overlay.CameraPositionTime.xyz - Pos);
+    float3 SideAxis  = VfNormalizeSafe(cross(ViewDir, Tangent), Overlay.CameraRightThickness.xyz);
 
     float  U         = float(SegIdx) / float(Segments);
     float  Taper     = sin(U * VfPi);
     float  HalfWidth = (0.14 + 0.10 * saturate(CurSpeed / 24.0)) *
-                       max(0.15, Overlay.CameraRightAndThickness.w) *
+                       max(0.15, Overlay.CameraRightThickness.w) *
                        (0.35 + 0.65 * Taper);
 
     if (CurSpeed < 0.20)
@@ -183,10 +183,10 @@ OverlayFragmentOutput FragmentMain(StreamlineVaryings In)
     float EndFade   = smoothstep(0.0, 0.12, In.NormalizedT) * smoothstep(1.0, 0.88, In.NormalizedT);
 
     // Animated traveling phase pulse spark (saturated hue — zero white washout)
-    float Phase     = frac(In.NormalizedT * 1.8 - Overlay.CameraPositionAndTime.w * (0.45 + 0.02 * In.LocalSpeed));
+    float Phase     = frac(In.NormalizedT * 1.8 - Overlay.CameraPositionTime.w * (0.45 + 0.02 * In.LocalSpeed));
     float PulseGlow = exp(-pow((Phase - 0.5) / 0.11, 2.0)) * 0.55;
 
-    float Emissive  = max(0.35, Overlay.CameraUpAndEmissive.w);
+    float Emissive  = max(0.35, Overlay.CameraUpEmissive.w);
     float3 ShadeRgb = In.ColorRgb * Emissive * (0.88 + PulseGlow);
 
     float Alpha     = clamp(Overlay.StreamVisualParams.y, 0.05, 1.0) * CrossFade * EndFade * (0.78 + 0.22 * PulseGlow);

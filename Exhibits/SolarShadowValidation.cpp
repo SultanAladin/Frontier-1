@@ -116,11 +116,11 @@ int main()
     // 2. CONSTRUCT UNIFIED ARCHITECTURAL GNOMON, CHASSIS ARCH & OCCLUDER SCENE (CLUSTER PYRAMIDS + BVH4 + 3D SDF)
     //====================================================================================================================
     MaterialSpace::CompactMaterialRegister MatReg {};
-    const uint16_t SlotStage    = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::RoughPorousConcrete));
-    const uint16_t SlotGold     = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::BrushedGoldAlloy));
-    const uint16_t SlotCarpaint = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::MetallicCarPaintGlinty));
-    const uint16_t SlotLacquer  = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::ClearcoatedCarbonLacquer));
-    const uint16_t SlotJade     = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetKind::SubsurfaceJadeOrganic));
+    const uint16_t SlotStage    = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::RoughPorousConcrete));
+    const uint16_t SlotGold     = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::BrushedGoldAlloy));
+    const uint16_t SlotCarpaint = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::MetallicCarPaintGlinty));
+    const uint16_t SlotLacquer  = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::ClearcoatedCarbonLacquer));
+    const uint16_t SlotJade     = MatReg.RegisterMaterial(MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::SubsurfaceJadeOrganic));
 
     // Build unified world PolygonNetwork so WideBoundingTree & SignedDistanceVolume cover the exact same world coordinates as ClusterPyramids!
     ShadowAssetBundle FloorAsset {};
@@ -231,7 +231,7 @@ int main()
 
     const auto CullReport = GeometricRaster::ClusterCullEncoder::EncodePhaseOneVisibility(Camera, Instances, nullptr);
     GeometricRaster::VisibilityBufferTargets VisTargets {};
-    VisTargets.AllocateAndClear(ViewW, ViewH);
+    VisTargets.AllocateClearedImage(ViewW, ViewH);
     GeometricRaster::VisibilityClusterRasterization::RasterizeOpaqueClusters(
         Camera, Instances, CullReport.HardwareClusterBatches, CullReport.MicroSoftwareClusters, VisTargets);
 
@@ -258,7 +258,7 @@ int main()
         &WorldSdf, &FineCascade, &CoarseCascade, AoCfg);
 
     const auto GtxFrame = GeometricRaster::LinearCosineLightIntegration::EvaluateDirectLightingFrame(
-        GeometricRaster::DirectShadowTier::GtxContactClipAndSdfCone,
+        GeometricRaster::DirectShadowTier::GtxContactClipSdfCone,
         Camera, Instances, VisTargets, MatReg, WorldBvh4, Sun, StudioLights,
         &WorldSdf, &FineCascade, &CoarseCascade, AoCfg);
 
@@ -296,7 +296,7 @@ int main()
     // Quadrant 3: Left = RTX Plane-Aware Filtered Solar Visibility; Right = Blocker Distance Penumbra Width Heatmap!
     std::vector<uint8_t> ShadowBlockerRgba(static_cast<std::size_t>(ViewW) * DiagH * 4u, 255u);
     // Quadrant 4: Left = 2-Scale Combined Diffuse Chassis AO; Right = Lagarde Roughness-Aware specAO!
-    std::vector<uint8_t> AoAndSpecAoRgba(static_cast<std::size_t>(ViewW) * DiagH * 4u, 255u);
+    std::vector<uint8_t> OcclusionSpecularRgba(static_cast<std::size_t>(ViewW) * DiagH * 4u, 255u);
 
     for (uint32_t PY = 0u; PY < DiagH; ++PY)
     {
@@ -310,9 +310,9 @@ int main()
                 ShadowBlockerRgba[DstOff * 4u + 0u] = 58u;
                 ShadowBlockerRgba[DstOff * 4u + 1u] = 72u;
                 ShadowBlockerRgba[DstOff * 4u + 2u] = 95u;
-                AoAndSpecAoRgba[DstOff * 4u + 0u]   = 58u;
-                AoAndSpecAoRgba[DstOff * 4u + 1u]   = 72u;
-                AoAndSpecAoRgba[DstOff * 4u + 2u]   = 95u;
+                OcclusionSpecularRgba[DstOff * 4u + 0u]   = 58u;
+                OcclusionSpecularRgba[DstOff * 4u + 1u]   = 72u;
+                OcclusionSpecularRgba[DstOff * 4u + 2u]   = 95u;
                 continue;
             }
 
@@ -341,9 +341,9 @@ int main()
             // Quadrant 4
             const float AoVal = RightSide ? RtxFrame.LagardeSpecularAo[SrcOff] : RtxFrame.CombinedDiffuseAo[SrcOff];
             const uint8_t G   = static_cast<uint8_t>(std::round(std::clamp(AoVal, 0.0f, 1.0f) * 240.0f + 12.0f));
-            AoAndSpecAoRgba[DstOff * 4u + 0u] = RightSide ? static_cast<uint8_t>((G * 225u) / 255u) : G;
-            AoAndSpecAoRgba[DstOff * 4u + 1u] = G;
-            AoAndSpecAoRgba[DstOff * 4u + 2u] = RightSide ? static_cast<uint8_t>(std::min(255u, G + 15u)) : G;
+            OcclusionSpecularRgba[DstOff * 4u + 0u] = RightSide ? static_cast<uint8_t>((G * 225u) / 255u) : G;
+            OcclusionSpecularRgba[DstOff * 4u + 1u] = G;
+            OcclusionSpecularRgba[DstOff * 4u + 2u] = RightSide ? static_cast<uint8_t>(std::min(255u, G + 15u)) : G;
         }
     }
 
@@ -414,7 +414,7 @@ int main()
     Raster.BlitRgbaRegion( 40u, 144u, ViewW, ViewH, RtxFrame.ToneMappedSrgb8.data());
     Raster.BlitRgbaRegion(748u, 144u, ViewW, ViewH, GtxFrame.ToneMappedSrgb8.data());
     Raster.BlitRgbaRegion( 40u, 528u, ViewW, DiagH, ShadowBlockerRgba.data());
-    Raster.BlitRgbaRegion(748u, 528u, ViewW, DiagH, AoAndSpecAoRgba.data());
+    Raster.BlitRgbaRegion(748u, 528u, ViewW, DiagH, OcclusionSpecularRgba.data());
 
     const std::filesystem::path OutputDir = std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "Exhibits/Images/DirectLighting";
     std::filesystem::create_directories(OutputDir);

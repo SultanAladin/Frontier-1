@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                  IRRADIANCELATTICESEQUENCE.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                        IRRADIANCELATTICESEQUENCE.CPP
+============================================================================================================================================*/
 // 🧩 Tier 2 RTX 1/pi-Normalized Octahedral Irradiance Lattice (16x16 Chebyshev Depth) + Tier 1 GTX 6-Cone SignedDistanceVolume Diffuse GI
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -122,7 +122,7 @@ template <typename ElemType, std::size_t GridW>
 //                                              IRRADIANCE LATTICE SEQUENCE
 //------------------------------------------------------------------------------------------------------------------------
 
-void IrradianceLatticeSequence::BuildAndPropagateRtxLattice(
+void IrradianceLatticeSequence::PropagateRtxIrradianceLattice(
     const IrradianceLatticeConfiguration&           Config,
     const SpatialAcceleration::WideBoundingTree&    SceneTree,
     std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,

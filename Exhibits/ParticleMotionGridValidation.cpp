@@ -10,8 +10,8 @@
 #include "Engine/ParticleSpace/Dynamics/EffectorGridSolver.h"
 #include "Engine/ParticleSpace/Origins/ControlVehicleSurfaceLoader.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleExtension.h"
-#include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
+#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 #include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
 
 #include <algorithm>
@@ -189,7 +189,7 @@ void VerifySlotsHealthy(std::span<const ParticleSlot> Slots, const char* Label)
     float MinW = 10.0f, MaxW = -10.0f;
     for (const auto& S : Slots)
     {
-        if (!IsParticleSlotAlive(S)) continue;
+        if (!QueryParticleSlotAlive(S)) continue;
         ++Alive;
         for (int K = 0; K < 3; ++K)
         {
@@ -230,7 +230,7 @@ int main()
     constexpr int RenderH = 540;
     std::vector<RenderedPanel> Panels;
 
-    auto RunAndCapture = [&](const char* PresetId,
+    auto ExecuteFrameCapture = [&](const char* PresetId,
                              const char* Slug,
                              const char* Caption,
                              const StrandCameraSpec& Cam,
@@ -240,7 +240,7 @@ int main()
         ParticleDocument Doc = InstantiateDocumentFromPresetId(PresetId);
         MutateDoc(Doc);
 
-        ParticleExtension Ext {};
+        ParticleSimulationCoordinator Ext {};
         (void)Ext.Initialize(Doc);
 
         constexpr float Dt = 1.0f / 60.0f;
@@ -277,7 +277,7 @@ int main()
         Cam.PitchRadians   = 0.28f;
         Cam.DistanceMeters = 7.45f;
         Cam.FocalMm        = 34.0f;
-        RunAndCapture(
+        ExecuteFrameCapture(
             "effector-hand-halftone",
             "01_ControlVehicle_ObsidianHalftoneTiles_Front",
             "01 OBSIDIAN CONTROL VEHICLE : HALFTONE & TILES (FRONT 3/4)",
@@ -293,7 +293,7 @@ int main()
         Cam.PitchRadians   = 0.34f;
         Cam.DistanceMeters = 7.60f;
         Cam.FocalMm        = 34.0f;
-        RunAndCapture(
+        ExecuteFrameCapture(
             "effector-hand-halftone",
             "02_ControlVehicle_ObsidianHalftoneTiles_Rear",
             "02 OBSIDIAN CONTROL VEHICLE : HALFTONE & TILES (REAR 3/4)",
@@ -309,7 +309,7 @@ int main()
         Cam.PitchRadians   = 0.30f;
         Cam.DistanceMeters = 7.45f;
         Cam.FocalMm        = 34.0f;
-        RunAndCapture(
+        ExecuteFrameCapture(
             "effector-torus-hex",
             "03_ControlVehicle_KineticHexMatrix",
             "03 KINETIC HEX MATRIX : CONTROL VEHICLE (GOLD/CYAN)",
@@ -325,7 +325,7 @@ int main()
         Cam.PitchRadians   = 0.44f;
         Cam.DistanceMeters = 6.20f;
         Cam.FocalMm        = 32.0f;
-        RunAndCapture(
+        ExecuteFrameCapture(
             "effector-torus-hex",
             "04_KineticHexTorusMatrix",
             "04 KINETIC HEX TORUS MATRIX (REVOLVING TORUS)",
@@ -334,7 +334,7 @@ int main()
                 auto& Rig = Doc.Rigs[0];
                 Rig.SlotCapacity = 760u;
                 auto& Eff = *Rig.Dynamics.Effector;
-                Eff.HostSurface         = EffectorHostSurfaceKind::TorusRing;
+                Eff.HostSurface         = EffectorHostSurfaceCategory::TorusRing;
                 Eff.PrimitiveShape      = EffectorPrimitiveShape::HexagonPlate;
                 Eff.Driver              = EffectorDriverCategory::ExpandingPulseRing;
                 Eff.GridColumns         = 38u;
@@ -364,7 +364,7 @@ int main()
         Cam.PitchRadians   = 0.30f;
         Cam.DistanceMeters = 7.75f;
         Cam.FocalMm        = 34.0f;
-        RunAndCapture(
+        ExecuteFrameCapture(
             "effector-object-placer",
             "05_ControlVehicle_PlaceableEffectors",
             "05 CONTROL VEHICLE : PLACEABLE 3D EFFECTORS A & B",
@@ -380,7 +380,7 @@ int main()
         Cam.PitchRadians   = 0.48f;
         Cam.DistanceMeters = 6.90f;
         Cam.FocalMm        = 32.0f;
-        RunAndCapture(
+        ExecuteFrameCapture(
             "effector-grid-cubes",
             "06_EffectorCubeMatrix_HeightUpDown",
             "06 EFFECTOR CUBE MATRIX : HEIGHT UP/DOWN (24X24)",

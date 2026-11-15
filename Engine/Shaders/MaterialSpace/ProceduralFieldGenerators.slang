@@ -1,7 +1,7 @@
-//==========================================================================================================================================
-//                                                  PROCEDURALFIELDGENERATORS.SLANG
-//==========================================================================================================================================
-// Modular GPU procedural field generators matching DynamicSurfaceResolver.cpp (Voronoi faults, Hex lattice, Gerstner ocean, rain beads)
+/*============================================================================================================================================
+                                                       PROCEDURALFIELDGENERATORS.SLANG
+============================================================================================================================================*/
+// 🧩 Modular GPU procedural field generators matching DynamicSurfaceResolver.cpp (Voronoi faults, Hex lattice, Gerstner ocean, rain beads)
 
 module ProceduralFieldGenerators;
 

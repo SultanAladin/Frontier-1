@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            FRONTIERUVLAUNCH.CPP
+                                                             FRONTIERUVLAUNCH.CPP
 ============================================================================================================================================*/
 // 🧩 Standalone FrontierUV desktop executable (--standalone=uv) launching UV Space Outliner, Dual GPU Viewports & 5-Tab UV Inspector
 

@@ -294,12 +294,12 @@ int main()
     //                              PHASE 1: .NETWORKSPACE HYBRID CONTAINER CODEC
     //--------------------------------------------------------------------------------------------------------------------
     {
-        Codecs::SpaceExtensionCategory ResolvedCategory{};
+        Codecs::SpaceSuffixCategory ResolvedCategory{};
         std::string                    CanonicalExt{};
         std::string                    CodecDiagnostic{};
         Board.Verify(
-            Codecs::SpaceContainerDecoder::ResolveExtensionCaseInsensitive(".networkspace", ResolvedCategory, CanonicalExt, CodecDiagnostic) &&
-            ResolvedCategory == Codecs::SpaceExtensionCategory::NetworkSpace &&
+            Codecs::SpaceContainerDecoder::ResolveSuffixCaseInsensitive(".networkspace", ResolvedCategory, CanonicalExt, CodecDiagnostic) &&
+            ResolvedCategory == Codecs::SpaceSuffixCategory::NetworkSpace &&
             CanonicalExt == ".NetworkSpace",
             ".networkspace resolves case-insensitively to canonical .NetworkSpace");
 

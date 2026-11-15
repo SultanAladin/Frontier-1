@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                        PATTERNSTAMPWORKSPACEHOST.H
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                         PATTERNSTAMPWORKSPACEHOST.H
+============================================================================================================================================*/
 // 🧩 Shared 3-column Workspace host mounting Layers (Left), Pattern/Stamp GPU Canvas & Tool Chrome (Center), Inspector (Right),
 //    live Vulkan VectorCanvasRasterizer, ContentBrowser drag-drop & thumbnail sync, .VectorSpace save/load, and external file drop intake.
 
@@ -87,8 +87,8 @@ private:
     void ExecuteCanvasCommandBridge(std::string_view CommandTag);
     void ActivateBrowserEntry(const ContentRepositoryEntry& Entry);
     void ApplyBrowserContentDrop(const ContentRepositoryEntry& Entry, Point2D DropLogicalPos);
-    void AssignBrowserColourDrop(ColorRgba AssignedRgba, const ColourCodexEntry& Entry, Point2D DropLogicalPos);
-    void ResolveCanvasDropDocumentAndPick(Point2D DropLogicalPos, float& OutDocX, float& OutDocY, uint32_t& OutPickedLayerId) const;
+    void AssignBrowserColourDrop(ColorRgba AssignedRgba, const ColourSwatchEntry& Entry, Point2D DropLogicalPos);
+    void ResolveCanvasDropPick(Point2D DropLogicalPos, float& OutDocX, float& OutDocY, uint32_t& OutPickedLayerId) const;
     void PopulateBrowserStarterPresets();
     [[nodiscard]] std::filesystem::path ResolveWorkspaceVectorDirectory() const;
     [[nodiscard]] std::string           BuildSanitizedDocumentStem() const;

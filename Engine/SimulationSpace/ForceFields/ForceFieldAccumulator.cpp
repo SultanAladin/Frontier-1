@@ -9,7 +9,7 @@
 
 #include "Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.h"
 #include "Engine/Constants/PhysicsConstants.h"
-#include "Engine/SimulationSpace/ForceFields/FlowField.h"
+#include "Engine/SimulationSpace/ForceFields/StreamTransportField.h"
 #include "Engine/SimulationSpace/ForceFields/ForceMotionPath.h"
 #include "Engine/SimulationSpace/ForceFields/TurbulenceField.h"
 #include "Engine/SimulationSpace/ForceFields/VectorField.h"
@@ -174,15 +174,15 @@ SpatialForceSample ForceFieldAccumulator::QueryForceFieldSample(
         SpatialForceSample Partial{};
         switch (QueryDomainForModel(Entry.Model))
         {
-            case ForceDomainCategory::FlowField:
-                Partial = EvaluateFlowFieldLaw(Entry, WorldPoint, BodyVelocity, TimeSeconds);
+            case ForceDomainCategory::StreamTransport:
+                Partial = EvaluateStreamTransportModel(Entry, WorldPoint, BodyVelocity, TimeSeconds);
                 break;
             case ForceDomainCategory::TurbulenceField:
-                Partial = EvaluateTurbulenceFieldLaw(Entry, WorldPoint, BodyVelocity, TimeSeconds);
+                Partial = EvaluateTurbulenceModel(Entry, WorldPoint, BodyVelocity, TimeSeconds);
                 break;
             case ForceDomainCategory::VectorField:
             default:
-                Partial = EvaluateVectorFieldLaw(Entry, WorldPoint, BodyVelocity, TimeSeconds);
+                Partial = EvaluateVectorFieldModel(Entry, WorldPoint, BodyVelocity, TimeSeconds);
                 break;
         }
 

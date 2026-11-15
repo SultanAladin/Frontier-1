@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      VECTORARROWRASTERIZATION.SLANG
+                                                        VECTORARROWRASTERIZATION.SLANG
 ============================================================================================================================================*/
 // 🧩 Editor-only GPU instanced 3D directional arrows colored by speed LUT & culled smoothly beneath quiet threshold
 
@@ -77,7 +77,7 @@ ArrowVaryings VertexMain(
     Out.ClipPosition = VfProjectWorldToClip(Overlay, WorldPos);
     Out.WorldNormal  = normalize(Fwd * ArrowUnitNormal.x + Left * ArrowUnitNormal.y + Up * ArrowUnitNormal.z);
     float3 RampColor = VfRampSpeedColor(saturate(Speed / 26.0));
-    Out.ArrowColor   = float4(RampColor * (0.9 + 0.35 * Overlay.CameraUpAndEmissive.w), 0.94);
+    Out.ArrowColor   = float4(RampColor * (0.9 + 0.35 * Overlay.CameraUpEmissive.w), 0.94);
     return Out;
 }
 

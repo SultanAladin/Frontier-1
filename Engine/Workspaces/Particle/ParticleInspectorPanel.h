@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        PARTICLEINSPECTORPANEL.H
+                                                           PARTICLEINSPECTORPANEL.H
 ============================================================================================================================================*/
 // 🧩 Floating 22px Sun+Fluid Particle Inspector panel (Overview, Source + ScalarCurveEditor, Motion & FX + ColourRampEditor, Metrics & Force Fields)
 

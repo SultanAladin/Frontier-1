@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                         SURFACEMATERIAL.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                             SURFACEMATERIAL.CPP
+============================================================================================================================================*/
 // 🧩 Implementation of physical domain sanitization, invariant validation, and 10-lobe reference material presets
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -138,13 +138,13 @@ bool VerifySurfaceMaterialPhysicalBounds(const SurfaceMaterial& Material) noexce
 //                                           10-LOBE CANONICAL MATERIAL PRESETS
 //------------------------------------------------------------------------------------------------------------------------
 
-SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset)
+SurfaceMaterial ConstructMaterialPreset(MaterialPresetCategory Preset)
 {
     SurfaceMaterial Mat {};
 
     switch (Preset)
     {
-    case MaterialPresetKind::RoughPorousConcrete:
+    case MaterialPresetCategory::RoughPorousConcrete:
         Mat.MaterialName             = "RoughPorousConcrete";
         Mat.Diffuse.BaseColor        = { 0.46f, 0.45f, 0.43f };
         Mat.Diffuse.BaseWeight       = 1.0f;
@@ -155,7 +155,7 @@ SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset)
         Mat.PorosityLight.PorosityFraction = 0.42f;
         break;
 
-    case MaterialPresetKind::BrushedGoldAlloy:
+    case MaterialPresetCategory::BrushedGoldAlloy:
         Mat.MaterialName             = "BrushedGoldAlloy";
         Mat.Diffuse.BaseColor        = { 1.00f, 0.766f, 0.336f };
         Mat.Specular.Metalness       = 1.0f;
@@ -164,7 +164,7 @@ SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset)
         Mat.Specular.EdgeTintF82     = { 0.99f, 0.92f, 0.68f };
         break;
 
-    case MaterialPresetKind::ClearcoatedCarbonLacquer:
+    case MaterialPresetCategory::ClearcoatedCarbonLacquer:
         Mat.MaterialName                      = "ClearcoatedCarbonLacquer";
         Mat.Diffuse.BaseColor                 = { 0.045f, 0.048f, 0.055f };
         Mat.Specular.Metalness                = 0.25f;
@@ -177,7 +177,7 @@ SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset)
         Mat.Clearcoat.CoatThicknessMillimeter = 0.12f;
         break;
 
-    case MaterialPresetKind::HeatBluedTitaniumIridescent:
+    case MaterialPresetCategory::HeatBluedTitaniumIridescent:
         Mat.MaterialName                        = "HeatBluedTitaniumIridescent";
         Mat.Diffuse.BaseColor                   = { 0.62f, 0.59f, 0.55f };
         Mat.Specular.Metalness                  = 1.0f;
@@ -188,7 +188,7 @@ SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset)
         Mat.ThinFilm.ThinFilmIOR                = 2.35f;
         break;
 
-    case MaterialPresetKind::MetallicCarPaintGlinty:
+    case MaterialPresetCategory::MetallicCarPaintGlinty:
         Mat.MaterialName                           = "MetallicCarPaintGlinty";
         Mat.Diffuse.BaseColor                      = { 0.035f, 0.14f, 0.42f };
         Mat.Diffuse.DiffuseRoughness               = 0.20f;
@@ -207,7 +207,7 @@ SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset)
         Mat.Clearcoat.CoatThicknessMillimeter      = 0.08f;
         break;
 
-    case MaterialPresetKind::AbbeCrownGlassDispersion:
+    case MaterialPresetCategory::AbbeCrownGlassDispersion:
         Mat.MaterialName                          = "AbbeCrownGlassDispersion";
         Mat.Diffuse.BaseColor                     = { 0.98f, 0.99f, 1.00f };
         Mat.Diffuse.BaseWeight                    = 0.0f;
@@ -220,7 +220,7 @@ SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset)
         Mat.Transmission.AttenuationDistanceMeter = 0.18f;
         break;
 
-    case MaterialPresetKind::SubsurfaceJadeOrganic:
+    case MaterialPresetCategory::SubsurfaceJadeOrganic:
         Mat.MaterialName                          = "SubsurfaceJadeOrganic";
         Mat.Diffuse.BaseColor                     = { 0.18f, 0.58f, 0.38f };
         Mat.Specular.Roughness                    = 0.16f;
@@ -231,7 +231,7 @@ SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset)
         Mat.Subsurface.PhaseAnisotropyG           = 0.25f;
         break;
 
-    case MaterialPresetKind::AlcantaraVelvetSheen:
+    case MaterialPresetCategory::AlcantaraVelvetSheen:
         Mat.MaterialName             = "AlcantaraVelvetSheen";
         Mat.Diffuse.BaseColor        = { 0.26f, 0.07f, 0.12f };
         Mat.Diffuse.DiffuseRoughness = 0.72f;
@@ -242,7 +242,7 @@ SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset)
         Mat.Sheen.SheenColor         = { 0.86f, 0.44f, 0.56f };
         break;
 
-    case MaterialPresetKind::KeratinStrandFiber:
+    case MaterialPresetCategory::KeratinStrandFiber:
         Mat.MaterialName                     = "KeratinStrandFiber";
         Mat.Diffuse.BaseColor                = { 0.96f, 0.86f, 0.72f };
         Mat.Specular.DielectricIOR           = 1.55f;
@@ -254,7 +254,7 @@ SurfaceMaterial ConstructMaterialPreset(MaterialPresetKind Preset)
         Mat.Fiber.PheomelaninRednessFraction = 0.58f;
         break;
 
-    case MaterialPresetKind::WetPorousGlowingBrakeRotor:
+    case MaterialPresetCategory::WetPorousGlowingBrakeRotor:
         Mat.MaterialName                               = "WetPorousGlowingBrakeRotor";
         Mat.Diffuse.BaseColor                          = { 0.22f, 0.20f, 0.19f };
         Mat.Diffuse.DiffuseRoughness                   = 0.65f;

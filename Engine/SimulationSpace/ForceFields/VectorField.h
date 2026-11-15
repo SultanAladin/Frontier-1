@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                               VECTORFIELD.H
+                                                                VECTORFIELD.H
 ============================================================================================================================================*/
 // 🧩 Shared spatial reach envelope attenuation helpers and analytical VectorField ForceModel laws (Right-Hand +Z Up)
 
@@ -33,7 +33,7 @@ namespace Frontier::SimulationSpace::ForceFields
     double                        TimeSeconds,
     float&                        OutImpulseWaveRadiusFactor) noexcept;
 
-[[nodiscard]] SpatialForceSample EvaluateVectorFieldLaw(
+[[nodiscard]] SpatialForceSample EvaluateVectorFieldModel(
     const ForceSourceRecordEntry& Entry,
     const SpatialVector3&         WorldPoint,
     const SpatialVector3&         BodyVelocity,

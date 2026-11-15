@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                          COLOURSWATCHPICKER.H
+                                                             COLOURSWATCHPICKER.H
 ============================================================================================================================================*/
-// 🎨 Reusable Linear/sRGB/HSL/Kelvin colour swatch picker with WCAG contrast readout & ContentBrowser .ColourSwatch drop-slot support
+// 🧩 Reusable Linear/sRGB/HSL/Kelvin colour swatch picker with WCAG contrast readout & ContentBrowser .ColourSwatch drop-slot support
 
 #pragma once
 

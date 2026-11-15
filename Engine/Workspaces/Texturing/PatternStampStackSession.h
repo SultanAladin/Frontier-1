@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                        PATTERNSTAMPSTACKSESSION.H
-==========================================================================================================================================*/
-// 📊 Unified non-destructive vector layer-stack and modifier-stack document session shared by Pattern Studio and Stamp Studio.
+/*============================================================================================================================================
+                                                          PATTERNSTAMPSTACKSESSION.H
+============================================================================================================================================*/
+// 🧩 Unified non-destructive vector layer-stack and modifier-stack document session shared by Pattern Studio and Stamp Studio.
 
 #pragma once
 

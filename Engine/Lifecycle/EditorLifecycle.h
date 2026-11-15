@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                             EDITORLIFECYCLE.H
+                                                              EDITORLIFECYCLE.H
 ============================================================================================================================================*/
 // 🧩 Editor-only authoring loop orchestrating WorkspaceDockContainer, ControlCentrePanel, WorkspaceLifecycle, and GPU .slang overlay hooks
 
@@ -17,7 +17,7 @@
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/Editor/Explorer/ContentBrowser.h"
-#include "Engine/Editor/Viewports/TransformGizmo.h"
+#include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/Editor/Workspaces/Simulation/ForceInspectorView.h"
 #include "Engine/Editor/Workspaces/Simulation/ForcePresetBrowserPanel.h"
 #include "Engine/GeometricRaster/Gizmo/WorldGizmoOverlayRasterization.h"
@@ -136,8 +136,8 @@ private:
     void SynchronizeForceFieldsWithOutliner(double Δt);
     void SynchronizeShowcaseGizmoAnchor() noexcept;
     void RefreshGizmoOverlayFromCachedWorld();
-    void HandleShowcaseViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
-    void HandleShowcaseNavigationDirective(ViewportNavigationDirective Directive);
+    void ProcessShowcaseViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
+    void ProcessShowcaseNavigationDirective(ViewportNavigationDirective Directive);
     void SynchronizeContentBrowserColourTargets();
 
     EditorStartupConfiguration                 StartupConfig          {};     // [-]     - Applied editor startup settings

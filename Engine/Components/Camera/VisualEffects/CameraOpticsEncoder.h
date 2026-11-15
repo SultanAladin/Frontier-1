@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          CAMERAOPTICSENCODER.H
+                                                            CAMERAOPTICSENCODER.H
 ============================================================================================================================================*/
 // 🧩 Vulkan .slang GPU compute encoder executing CameraVisualEffects.comp.spv (DoF, ChromaticAberration, LensFlare, Vignette & Guides)
 
@@ -28,11 +28,11 @@ namespace Frontier::Components::VisualEffects
 
 struct alignas(16) GPUCameraOpticsUniforms
 {
-    uint32_t ResolutionAndMask[4]    { 0u, 0u, 0u, 0u };
-    float    LensAndFocus[4]         { 50.0f, 2.8f, 4.6f, 24.0f };
-    float    FlarePositionAndGain[4] { 0.28f, 0.34f, 0.65f, 0.55f };
-    float    GhostAndAberration[4]   { 0.45f, 0.65f, 0.22f, 0.42f };
-    float    VignetteAndBlur[4]      { 0.48f, 0.75f, 10.0f, 0.0f };
+    uint32_t ResolutionMaskPacked[4]    { 0u, 0u, 0u, 0u };
+    float    LensFocusPacked[4]         { 50.0f, 2.8f, 4.6f, 24.0f };
+    float    FlarePositionGain[4] { 0.28f, 0.34f, 0.65f, 0.55f };
+    float    GhostAberrationPacked[4]   { 0.45f, 0.65f, 0.22f, 0.42f };
+    float    VignetteBlurPacked[4]      { 0.48f, 0.75f, 10.0f, 0.0f };
 };
 
 class CameraOpticsEncoder

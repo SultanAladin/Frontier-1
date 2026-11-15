@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                   ORBITALELECTROMAGNETICDYNAMICS.CPP
+                                                      ORBITALELECTROMAGNETICDYNAMICS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of Keplerian gravity, Boris electromagnetic pusher, Chladni standing waves & 9 RK4 chaotic attractors
 
@@ -112,7 +112,7 @@ void StepOrbitalGravityDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float Rx    = Slot.PositionMeters[0] - OriginCenter[0];
         const float Ry    = Slot.PositionMeters[1] - OriginCenter[1];
@@ -144,10 +144,10 @@ void StepOrbitalGravityDynamics(
         const float PairMu = Mu * 0.015f * DeltaSeconds;
         for (std::size_t I = 0u; I < MaxBodies; ++I)
         {
-            if (!IsParticleSlotAlive(Slots[I])) continue;
+            if (!QueryParticleSlotAlive(Slots[I])) continue;
             for (std::size_t J = I + 1u; J < MaxBodies; ++J)
             {
-                if (!IsParticleSlotAlive(Slots[J])) continue;
+                if (!QueryParticleSlotAlive(Slots[J])) continue;
                 const float Dx = Slots[J].PositionMeters[0] - Slots[I].PositionMeters[0];
                 const float Dy = Slots[J].PositionMeters[1] - Slots[I].PositionMeters[1];
                 const float Dz = Slots[J].PositionMeters[2] - Slots[I].PositionMeters[2];
@@ -176,7 +176,7 @@ void StepElectromagneticDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         // Alternate charge polarity by SeedScalar when plasma has mixed electrons/ions
         const float Sign = (Slot.SeedScalar < 0.5f) ? 1.0f : -1.0f;
@@ -246,7 +246,7 @@ void StepHarmonicWaveDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float U = ((Slot.PositionMeters[0] - OriginCenter[0]) / Plate) * Pi;
         const float V = ((Slot.PositionMeters[2] - OriginCenter[2]) / Plate) * Pi;
@@ -281,7 +281,7 @@ void StepStrangeAttractorDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float X0 = (Slot.PositionMeters[0] - OriginCenter[0]) * InvScale;
         const float Y0 = (Slot.PositionMeters[1] - OriginCenter[1]) * InvScale;

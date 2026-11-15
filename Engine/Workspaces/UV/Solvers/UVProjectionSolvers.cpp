@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         UVPROJECTIONSOLVERS.CPP
+                                                           UVPROJECTIONSOLVERS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ABF++, Smart UV Project, Box/Cylinder/Sphere/View projections, and Follow Active Quads strip solver
 

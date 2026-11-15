@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      PARTICLERELEASECOMPUTE.SLANG
+                                                         PARTICLERELEASECOMPUTE.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 GPU deterministic PCG particle release compute kernel sampling analytic origins or pre-baked ParticleAnchorSampleGpu buffers
 

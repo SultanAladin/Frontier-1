@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           COLOURINTERCHANGE.H
+                                                             COLOURINTERCHANGE.H
 ============================================================================================================================================*/
 // 🧩 External colour & gradient interchange: HTML Studio JSON/TOML colour blocks, CSS linear-gradient, SVG <linearGradient>, GIMP .gpl/.ggr, Adobe .ase/.aco & .cube 1D LUT
 

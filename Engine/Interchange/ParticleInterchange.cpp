@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         PARTICLEINTERCHANGE.CPP
+                                                           PARTICLEINTERCHANGE.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ParticleInterchange delegating colour to ColourInterchange and 3D surfaces to GeometryInterchange
 
@@ -13,7 +13,7 @@
 #include "Engine/Interchange/ColourInterchange.h"
 #include "Engine/Interchange/GeometryInterchange.h"
 #include "Engine/ParticleSpace/ParticleTintDriver.h"
-#include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
+#include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 
 #include <toml++/toml.hpp>
 
@@ -104,11 +104,10 @@ bool ExtractJsonVec3(std::string_view Json, std::string_view Key, float OutVec[3
 
 ExternalParticleFormat ParticleInterchange::DetectFormatFromPath(const std::filesystem::path& FilePath) noexcept
 {
-    const std::string Ext = LowerAscii(FilePath.extension().string());
-    if (Ext == ".json") return ExternalParticleFormat::HtmlStudioJson;
-    if (Ext == ".toml" || Ext == ".handoff") return ExternalParticleFormat::HandoffPacketToml;
-    if (Ext == ".obj")  return ExternalParticleFormat::WavefrontSurface;
-    if (Ext == ".gltf") return ExternalParticleFormat::GltfSurface;
+    const std::string Suffix = LowerAscii(FilePath.extension().string());
+    if (Suffix == ".json") return ExternalParticleFormat::HtmlStudioJson;
+    if (Suffix == ".obj")  return ExternalParticleFormat::WavefrontSurface;
+    if (Suffix == ".gltf") return ExternalParticleFormat::GltfSurface;
     return ExternalParticleFormat::Unknown;
 }
 
@@ -308,86 +307,6 @@ std::string ParticleInterchange::ExportHtmlStudioRigJson(
     }
     Out << "}\n";
     return Out.str();
-}
-
-std::string ParticleInterchange::EncodeHandoffPacketToml(const ParticleHandoffPacket& Packet)
-{
-    toml::table Root {};
-    toml::table H {};
-    H.insert("PresetId",        Packet.PresetId);
-    H.insert("RigName",         Packet.RigName);
-    H.insert("SourceWorkspace", Packet.SourceWorkspace);
-    if (Packet.SlotCapacity.has_value()) H.insert("SlotCapacity", static_cast<int64_t>(*Packet.SlotCapacity));
-    if (Packet.ReleaseRate.has_value())  H.insert("ReleaseRate",  static_cast<double>(*Packet.ReleaseRate));
-    if (Packet.GravityScale.has_value()) H.insert("GravityScale", static_cast<double>(*Packet.GravityScale));
-    if (Packet.WindCoupling.has_value()) H.insert("WindCoupling", static_cast<double>(*Packet.WindCoupling));
-    Root.insert("ParticleHandoff", std::move(H));
-
-    if (Packet.ColourOverride.has_value())
-    {
-        Root.insert("ColourOverride", Codecs::ColourEncoder::SerializeSourceToManifest(*Packet.ColourOverride));
-    }
-
-    std::ostringstream Oss;
-    Oss << Root << "\n";
-    return Oss.str();
-}
-
-bool ParticleInterchange::DecodeHandoffPacketToml(
-    std::string_view       TomlText,
-    ParticleHandoffPacket& OutPacket,
-    std::string&           OutDiagnostic)
-{
-    try
-    {
-        const toml::table Parsed = toml::parse(TomlText);
-        const auto* H = Parsed["ParticleHandoff"].as_table();
-        if (!H)
-        {
-            OutDiagnostic = "Missing [ParticleHandoff] section in handoff packet.";
-            return false;
-        }
-        OutPacket = {};
-        if (const auto V = (*H)["PresetId"].value<std::string>())        OutPacket.PresetId        = *V;
-        if (const auto V = (*H)["RigName"].value<std::string>())         OutPacket.RigName         = *V;
-        if (const auto V = (*H)["SourceWorkspace"].value<std::string>()) OutPacket.SourceWorkspace = *V;
-        if (const auto V = (*H)["SlotCapacity"].value<int64_t>())        OutPacket.SlotCapacity    = static_cast<uint32_t>(*V);
-        if (const auto V = (*H)["ReleaseRate"].value<double>())          OutPacket.ReleaseRate     = static_cast<float>(*V);
-        if (const auto V = (*H)["GravityScale"].value<double>())         OutPacket.GravityScale    = static_cast<float>(*V);
-        if (const auto V = (*H)["WindCoupling"].value<double>())         OutPacket.WindCoupling    = static_cast<float>(*V);
-
-        if (const auto* ColTbl = Parsed["ColourOverride"].as_table())
-        {
-            ColourSpace::ColourSourceProfile Prof {};
-            std::string ColDiag;
-            if (Codecs::ColourDecoder::ExtractSourceFromManifest(*ColTbl, Prof, ColDiag))
-            {
-                OutPacket.ColourOverride = std::move(Prof);
-            }
-        }
-        return true;
-    }
-    catch (const toml::parse_error& Err)
-    {
-        OutDiagnostic = std::string("Handoff TOML parse failed: ") + Err.what();
-        return false;
-    }
-}
-
-ParticleSpace::ParticleRig ParticleInterchange::MaterializeHandoffRig(const ParticleHandoffPacket& Packet)
-{
-    ParticleSpace::ParticleRig Rig = ParticleSpace::ConstructDefaultStudioRig();
-    if (const auto* Preset = ParticleSpace::FindParticlePresetById(Packet.PresetId))
-    {
-        Rig = ParticleSpace::InstantiateRigFromPreset(*Preset);
-    }
-    if (!Packet.RigName.empty())         Rig.DisplayName = Packet.RigName;
-    if (Packet.SlotCapacity.has_value()) Rig.SlotCapacity = *Packet.SlotCapacity;
-    if (Packet.ReleaseRate.has_value())  Rig.ReleaseRatePerSec = *Packet.ReleaseRate;
-    if (Packet.GravityScale.has_value()) Rig.Dynamics.Ballistic.GravityScale = *Packet.GravityScale;
-    if (Packet.WindCoupling.has_value()) Rig.Dynamics.ForceCouple.WindCouplingRate = *Packet.WindCoupling;
-    if (Packet.ColourOverride.has_value()) Rig.ColourProfile = *Packet.ColourOverride;
-    return Rig;
 }
 
 std::vector<ParticleSpace::ParticleAnchorSample> ParticleInterchange::SampleAnchorsFromPolygonNetwork(

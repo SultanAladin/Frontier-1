@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                              PROJECTCODEC.CPP
+                                                               PROJECTCODEC.CPP
 ============================================================================================================================================*/
 // 🧩 .ProjectSpace encoder & decoder implementation
 
@@ -21,7 +21,7 @@ SpaceContainerPayload ProjectEncoder::BuildPayload(
     const Workspaces::RevisionTracker* OptionalRevision)
 {
     SpaceContainerPayload Payload{};
-    Payload.ExtensionCategory  = SpaceExtensionCategory::ProjectSpace;
+    Payload.SuffixCategory  = SpaceSuffixCategory::ProjectSpace;
     Payload.DocumentTitle      = Model.ProjectTitle;
     Payload.AuthoringWorkspace = "Frontier.ProjectWorkspace";
 
@@ -67,7 +67,7 @@ bool ProjectDecoder::ExtractModel(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.ExtensionCategory != SpaceExtensionCategory::ProjectSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::ProjectSpace)
     {
         OutDiagnostic = "Expected .ProjectSpace container category.";
         return false;

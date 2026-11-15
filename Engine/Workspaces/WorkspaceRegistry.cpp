@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           WORKSPACEREGISTRY.CPP
+                                                            WORKSPACEREGISTRY.CPP
 ============================================================================================================================================*/
 // 🧩 Generation-checked WorkspaceRegistry implementation
 
@@ -17,7 +17,7 @@ namespace Frontier::Workspaces
 //------------------------------------------------------------------------------------------------------------------------
 
 WorkspaceToken WorkspaceRegistry::CreateDocument(
-    Codecs::SpaceExtensionCategory Category,
+    Codecs::SpaceSuffixCategory Category,
     std::string_view               Title,
     const std::filesystem::path&   InitialPath,
     std::size_t                    DocumentRevisionBudgetBytes)
@@ -47,7 +47,7 @@ WorkspaceToken WorkspaceRegistry::CreateDocument(
     WorkspaceToken Token{};
     Token.SlotIndex         = TargetIndex;
     Token.Generation        = Slot.Generation;
-    Token.ExtensionCategory = Category;
+    Token.SuffixCategory = Category;
 
     Slot.Document = std::make_unique<WorkspaceDocument>(
         Token,
@@ -63,9 +63,9 @@ WorkspaceToken WorkspaceRegistry::OpenDocumentFromFile(
     std::string&                 OutDiagnostic,
     std::size_t                  DocumentRevisionBudgetBytes)
 {
-    Codecs::SpaceExtensionCategory Category{};
+    Codecs::SpaceSuffixCategory Category{};
     std::string                    CanonicalExtension;
-    if (!Codecs::SpaceContainerDecoder::ResolveExtensionCaseInsensitive(
+    if (!Codecs::SpaceContainerDecoder::ResolveSuffixCaseInsensitive(
             SourcePath.extension().string(),
             Category,
             CanonicalExtension,

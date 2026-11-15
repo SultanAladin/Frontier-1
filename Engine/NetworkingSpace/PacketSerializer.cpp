@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                          PACKETSERIALIZER.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                             PACKETSERIALIZER.CPP
+============================================================================================================================================*/
 // 🧩 Castagnoli CRC32C checksum, 'FP1' + 24B envelope wire framing, and bounded 64-slot 'FCNK' chunk fragmentation/reassembly
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -378,7 +378,7 @@ bool ChunkReassemblyRegister::IngestChunkPayload(
     }
     else
     {
-        // 🛡️ Reject inconsistent metadata spoofing mid-transfer
+        // 📝 Reject inconsistent metadata spoofing mid-transfer
         if (TargetSlot->Header.TotalChunkCount != Header.TotalChunkCount ||
             TargetSlot->Header.FullTransferBytes != Header.FullTransferBytes ||
             TargetSlot->Header.FullTransferCrc32c != Header.FullTransferCrc32c)

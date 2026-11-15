@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        SWARMFLOCKINGDYNAMICS.CPP
+                                                          SWARMFLOCKINGDYNAMICS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of spatial-hashed Reynolds Boids, multi-species Particle Life, & Physarum chemotaxis dynamics
 
@@ -55,7 +55,7 @@ void StepSwarmFlockingDynamics(
 
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
-        if (!IsParticleSlotAlive(Slots[I])) continue;
+        if (!QueryParticleSlotAlive(Slots[I])) continue;
         const int64_t Key = HashCell3D(
             CellCoord(Slots[I].PositionMeters[0], InvCell),
             CellCoord(Slots[I].PositionMeters[1], InvCell),
@@ -69,7 +69,7 @@ void StepSwarmFlockingDynamics(
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
         ParticleSlot& Self = Slots[I];
-        if (!IsParticleSlotAlive(Self)) continue;
+        if (!QueryParticleSlotAlive(Self)) continue;
 
         const int32_t Cx = CellCoord(Self.PositionMeters[0], InvCell);
         const int32_t Cy = CellCoord(Self.PositionMeters[1], InvCell);
@@ -192,7 +192,7 @@ void StepSpeciesLifeDynamics(
     Grid.reserve(Slots.size());
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
-        if (!IsParticleSlotAlive(Slots[I])) continue;
+        if (!QueryParticleSlotAlive(Slots[I])) continue;
         const int64_t Key = HashCell3D(
             CellCoord(Slots[I].PositionMeters[0], InvCell),
             CellCoord(Slots[I].PositionMeters[1], InvCell),
@@ -205,7 +205,7 @@ void StepSpeciesLifeDynamics(
     for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
     {
         ParticleSlot& Self = Slots[I];
-        if (!IsParticleSlotAlive(Self)) continue;
+        if (!QueryParticleSlotAlive(Self)) continue;
 
         const uint32_t SpA = static_cast<uint32_t>(Self.SeedScalar * static_cast<float>(SpeciesN)) % SpeciesN;
         Self.AuxScalar     = static_cast<float>(SpA) / static_cast<float>(SpeciesN - 1u);
@@ -275,8 +275,8 @@ void StepSpeciesLifeDynamics(
     }
 }
 
-void StepMorphogeneticGrowthDynamics(
-    const MorphogeneticGrowthSpec& Spec,
+void StepOrganicGrowthDynamics(
+    const OrganicGrowthSpec& Spec,
     const float                    OriginCenter[3],
     std::span<ParticleSlot>        Slots,
     float                          ElapsedSeconds,
@@ -301,7 +301,7 @@ void StepMorphogeneticGrowthDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float Heading = Slot.SpinRadians;
         const float ProbeC  = SampleScent(Slot.PositionMeters[0] + std::cos(Heading) * SenseDist, Slot.PositionMeters[1], Slot.PositionMeters[2] + std::sin(Heading) * SenseDist);

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                      CONTROLVEHICLESURFACELOADER.H
+                                                        CONTROLVEHICLESURFACELOADER.H
 ============================================================================================================================================*/
 // 🧩 Decodes Frontier's Controlled Integrator (ControlVehicle) FCT1 binary surfaces (Body + 4 Rims + 4 Tyres) and samples blue-noise anchors
 
@@ -22,7 +22,7 @@ namespace Frontier::ParticleSpace
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class ControlVehiclePartKind : uint8_t
+enum class ControlVehiclePartCategory : uint8_t
 {
     BodyChassis  = 0u,
     RimFrontLeft = 1u,
@@ -50,7 +50,7 @@ struct ControlVehicleTriangle
     float                  NormalC[3]       = { 0.0f, 1.0f, 0.0f }; // [-]   - Creased unit normal at C
     float                  TriangleAreaM2   = 0.0f;                 // [m^2] - Surface area for uniform CDF sampling
     uint32_t               MaterialSlotCode = 6u;                   // [idx] - 6 BodyCoat, 7 Glass, 8 Plastic, 9 Tyre, 10 Hub, 11 Brake, 12 Trim, 13 Headlight, 14 Taillight
-    ControlVehiclePartKind PartKind         = ControlVehiclePartKind::BodyChassis;
+    ControlVehiclePartCategory PartCategory         = ControlVehiclePartCategory::BodyChassis;
 };
 
 /// Cached full Controlled Integrator vehicle triangle collection (Body + 4 Rims + 4 Tyres).

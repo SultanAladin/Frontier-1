@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                    ORBITALELECTROMAGNETICDYNAMICS.H
+                                                       ORBITALELECTROMAGNETICDYNAMICS.H
 ============================================================================================================================================*/
 // 🧩 Modular orbital gravity, exact Boris Lorentz/dipole electromagnetism, Chladni standing waves & 9 chaotic RK4 strange attractors
 

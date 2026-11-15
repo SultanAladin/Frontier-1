@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                           CHROMATICITYSPACE.H
+                                                             CHROMATICITYSPACE.H
 ============================================================================================================================================*/
-// 🎨 Colorimetric transforms between CIE XYZ, Linear Rec.709/sRGB, ACEScg, Rec.2020, Display P3, Oklab/Oklch, HSL, CMYK & Hex strings
+// 🧩 Colorimetric transforms between CIE XYZ, Linear Rec.709/sRGB, ACEScg, Rec.2020, Display P3, Oklab/Oklch, HSL, CMYK & Hex strings
 
 #pragma once
 

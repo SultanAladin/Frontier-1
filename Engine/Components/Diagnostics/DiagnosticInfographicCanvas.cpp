@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                     DIAGNOSTICINFOGRAPHICCANVAS.CPP
+                                                       DIAGNOSTICINFOGRAPHICCANVAS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of reusable DiagnosticInfographicCanvas (Optical Bokeh Aperture 4-card selector, Wind Rose, Force Field Reach & Release Cone)
 

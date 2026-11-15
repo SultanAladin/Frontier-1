@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       VECTORVIEWPORTINTERACTOR.CPP
+                                                         VECTORVIEWPORTINTERACTOR.CPP
 ============================================================================================================================================*/
 // 🧩 Interactive 2D vector viewport interactor driving GPU picking, Planar2D TransformGizmo, Pen/Curve/EditPoints/PointGradient,
 //    cursor-anchored zoom/pan, modal Grab/Rotate/Scale, and Pattern/Stamp keyboard shortcuts.

@@ -1,7 +1,7 @@
-/*==========================================================================================================================================
-                                                      PATTERNSTAMPLAYERSTACKPANE.CPP
-==========================================================================================================================================*/
-// 🗂️ Left-docked Pattern/Stamp Layer Stack renderer: Add Layer overlay sheet, stat filters, search, tree rows, masks, toolbar & footer.
+/*============================================================================================================================================
+                                                        PATTERNSTAMPLAYERSTACKPANE.CPP
+============================================================================================================================================*/
+// 🧩 Left-docked Pattern/Stamp Layer Stack renderer: Add Layer overlay sheet, stat filters, search, tree rows, masks, toolbar & footer.
 
 #include "Engine/Workspaces/Texturing/PatternStampLayerStackPane.h"
 

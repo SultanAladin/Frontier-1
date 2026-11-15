@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       PARTICLESPRITERASTER.SLANG
+                                                          PARTICLESPRITERASTER.SLANG
 ============================================================================================================================================*/
 // 🧩 Vulkan 1.3 instanced camera-aligned billboard vertex & fragment shaders importing ParticleBuffers & ParticleSpriteCutouts
 

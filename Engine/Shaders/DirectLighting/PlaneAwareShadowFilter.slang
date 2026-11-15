@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                   PLANEAWARESHADOWFILTER.SLANG
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                         PLANEAWARESHADOWFILTER.SLANG
+============================================================================================================================================*/
 // 🧩 Coplanar Blocker-Dilated Continuous-Sigma Plane-Aware A-Trous Shadow Denoiser preserving razor-sharp 0 px contact edges
 
 module PlaneAwareShadowFilter;
@@ -14,10 +14,10 @@ struct PlaneFilterUniforms
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<PlaneFilterUniforms> FilterUniforms;
-[[vk::binding(1, 0)]] Texture2D<float2>                   InputVisAndBlocker;
+[[vk::binding(1, 0)]] Texture2D<float2>                   InputVisBlocker;
 [[vk::binding(2, 0)]] Texture2D<float4>                   WorldPositionTex;
 [[vk::binding(3, 0)]] Texture2D<float4>                   WorldNormalTex;
-[[vk::binding(4, 0)]] RWTexture2D<float2>                 OutputVisAndBlocker;
+[[vk::binding(4, 0)]] RWTexture2D<float2>                 OutputVisBlocker;
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
@@ -29,11 +29,11 @@ void PlaneFilterComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     int2   CenterPx  = int2(DispatchThreadID.xy);
-    float2 CenterVal = InputVisAndBlocker.Load(int3(CenterPx, 0));
+    float2 CenterVal = InputVisBlocker.Load(int3(CenterPx, 0));
     float4 CenterPos = WorldPositionTex.Load(int3(CenterPx, 0));
     if (CenterPos.w <= 0.0)
     {
-        OutputVisAndBlocker[DispatchThreadID.xy] = CenterVal;
+        OutputVisBlocker[DispatchThreadID.xy] = CenterVal;
         return;
     }
 
@@ -60,7 +60,7 @@ void PlaneFilterComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             if (NeighPos.w <= 0.0) continue;
 
             float3 NeighNrm = normalize(WorldNormalTex.Load(int3(SamplePx, 0)).xyz);
-            float2 NeighVal = InputVisAndBlocker.Load(int3(SamplePx, 0));
+            float2 NeighVal = InputVisBlocker.Load(int3(SamplePx, 0));
 
             float DistSq    = float((KX * FilterUniforms.StepStridePx) * (KX * FilterUniforms.StepStridePx) +
                                     (KY * FilterUniforms.StepStridePx) * (KY * FilterUniforms.StepStridePx));
@@ -77,5 +77,5 @@ void PlaneFilterComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     float Filtered = (SumWeight > 1.0e-6) ? (SumVis / SumWeight) : CenterVal.x;
-    OutputVisAndBlocker[DispatchThreadID.xy] = float2(Filtered, MaxBlock);
+    OutputVisBlocker[DispatchThreadID.xy] = float2(Filtered, MaxBlock);
 }

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         WORKSPACECONFIGURATION.CPP
+                                                          WORKSPACECONFIGURATION.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of WorkspaceConfiguration clamping UV workspace layout ratios, tile resolutions, and TransformGizmo snap increments
 

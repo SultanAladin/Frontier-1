@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                       PARTICLEFOUNDATIONVALIDATION.CPP
 ============================================================================================================================================*/
-// 🧪 Validation suite for Phase 1B/2 Engine/ParticleSpace foundation, ForceField coupling, Two-Tier .ParticleSpace Codec & 3D origin visual proof
+// 🧩 Validation suite for Phase 1B/2 Engine/ParticleSpace foundation, ForceField coupling, Two-Tier .ParticleSpace Codec & 3D origin visual proof
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -9,18 +9,18 @@
 
 #include "Engine/Codecs/ParticleCodec.h"
 #include "Engine/ColourSpace/ChromaticitySpace.h"
-#include "Engine/ColourSpace/ColourCodex.h"
+#include "Engine/ColourSpace/ColourAliasRepository.h"
 #include "Engine/ColourSpace/ColourRampSampler.h"
 #include "Engine/ParticleSpace/Origins/AnalyticOrigins.h"
 #include "Engine/ParticleSpace/Origins/FireworkPatternSampler.h"
 #include "Engine/ParticleSpace/Origins/SurfaceAnchorSampler.h"
 #include "Engine/ParticleSpace/ParticleBuffers.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleExtension.h"
+#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
 #include "Engine/ParticleSpace/ParticleRig.h"
 #include "Engine/ParticleSpace/ParticleTintDriver.h"
-#include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
-#include "Engine/ParticleSpace/Simulation/ParticleVulkanExecutor.h"
+#include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
+#include "Engine/GeometricRaster/Compute/ParticleVulkanExecutor.h"
 
 #include <algorithm>
 #include <array>
@@ -306,7 +306,7 @@ void RenderOriginsContactSheet()
     Canvas.FillRect(0, 45, 1440, 1, Rgba8 { 44, 52, 72, 255 });
     Canvas.DrawText(22, 16, "FRONTIER C++ PARTICLESPACE  //  PROCEDURAL 3D SURFACE & FIREWORK ORIGIN SAMPLERS (17 SURFACES + 10 FIREWORKS)", Rgba8 { 232, 238, 250, 255 }, 1);
 
-    ColourSpace::ColourCodex Codex {};
+    ColourSpace::ColourAliasRepository Codex {};
     const auto GradientIndices = Codex.QueryIndicesByCategory(ColourSpace::ColourSourceCategory::MultiStopGradient);
     auto PickPalette = [&](std::size_t Idx) -> ColourSpace::ColourSourceProfile {
         if (!GradientIndices.empty())
@@ -432,7 +432,7 @@ void RenderDynamicsShowcaseSheet()
         Doc.AmbientWind.Enabled = false;
         Doc.Rigs.push_back(Tiles[I].Rig);
 
-        ParticleExtension Ext {};
+        ParticleSimulationCoordinator Ext {};
         (void)Ext.Initialize(Doc);
         Ext.TriggerBurst(0u, Tiles[I].Rig.SlotCapacity);
         for (int Step = 0; Step < Tiles[I].Steps; ++Step)
@@ -445,7 +445,7 @@ void RenderDynamicsShowcaseSheet()
         VisualPts.reserve(Slots.size());
         for (const auto& S : Slots)
         {
-            if (!IsParticleSlotAlive(S)) continue;
+            if (!QueryParticleSlotAlive(S)) continue;
             ParticleAnchorSample A {};
             for (int K = 0; K < 3; ++K) A.PositionMeters[K] = S.PositionMeters[K];
             A.CurvatureWeight = std::clamp(S.AuxScalar > 0.0f ? S.AuxScalar : S.SeedScalar, 0.0f, 1.0f);
@@ -494,7 +494,7 @@ int main()
         ParticleTintEvaluationContext Ctx {};
         Ctx.ElapsedSeconds = 4.2f;
 
-        ColourSpace::ColourCodex TestCodex {};
+        ColourSpace::ColourAliasRepository TestCodex {};
         ColourSpace::ColourSourceProfile Prof {};
         (void)TestCodex.ResolveAliasToProfile("Aurora", Prof);
 
@@ -574,11 +574,11 @@ int main()
         Expect(All10FireworksValid, "All 10 FireworkPatternSampler shapes (including SkyText bitmap) generate finite anchors");
     }
 
-    // 5. ParticleExtension lifecycle + direct ForceFieldAccumulator stepping
+    // 5. ParticleSimulationCoordinator lifecycle + direct ForceFieldAccumulator stepping
     {
         const ParticleDocument Doc = ConstructStudioDefaultDocument();
-        ParticleExtension Ext {};
-        Expect(Ext.Initialize(Doc), "ParticleExtension::Initialize succeeds with Studio Default document");
+        ParticleSimulationCoordinator Ext {};
+        Expect(Ext.Initialize(Doc), "ParticleSimulationCoordinator::Initialize succeeds with Studio Default document");
         Expect(Ext.InspectForceAccumulator().QueryActiveSourceCount() == 6u, "ForceFieldAccumulator binds all 6 Studio Default ForceSources");
         Expect(Ext.InspectRigAnchors(0u).size() == 1024u, "SurfaceAnchor cache pre-populated with 1024 deterministic anchors");
 
@@ -589,18 +589,18 @@ int main()
         }
 
         const auto& Tel = Ext.InspectTelemetry();
-        Expect(Tel.StepCounter == 60u && Tel.TotalAliveParticles > 400u, "ParticleExtension executes 60 coupled ForceField steps with live particles");
+        Expect(Tel.StepCounter == 60u && Tel.TotalAliveParticles > 400u, "ParticleSimulationCoordinator executes 60 coupled ForceField steps with live particles");
         Expect(Tel.BoundsMaxMeters[0] > Tel.BoundsMinMeters[0] && Tel.BoundsMaxMeters[1] > Tel.BoundsMinMeters[1], "Advected live particle cloud expands cleanly across 3D space");
 
         Ext.Suspend();
         const uint32_t FrozenStep = Ext.InspectTelemetry().StepCounter;
         Ext.Tick(1.0 / 60.0);
-        Expect(Ext.InspectTelemetry().StepCounter == FrozenStep, "ParticleExtension::Suspend freezes stepping cleanly");
+        Expect(Ext.InspectTelemetry().StepCounter == FrozenStep, "ParticleSimulationCoordinator::Suspend freezes stepping cleanly");
         Ext.Resume();
         Ext.Tick(1.0 / 60.0);
-        Expect(Ext.InspectTelemetry().StepCounter == FrozenStep + 1u, "ParticleExtension::Resume restores stepping cleanly");
+        Expect(Ext.InspectTelemetry().StepCounter == FrozenStep + 1u, "ParticleSimulationCoordinator::Resume restores stepping cleanly");
         Ext.Finalize();
-        Expect(!Ext.IsInitialized(), "ParticleExtension::Finalize releases runtime cleanly");
+        Expect(!Ext.QueryInitialized(), "ParticleSimulationCoordinator::Finalize releases runtime cleanly");
     }
 
     // 6. Two-Tier Hybrid .ParticleSpace Codec bit-exact round-trip (delegating ColourCodec + VectorFieldCodec)
@@ -661,7 +661,7 @@ int main()
 
             ParticleDocument Doc = InstantiateDocumentFromPresetId(Meta.Identifier);
             Doc.Rigs[0].SlotCapacity = std::min(Doc.Rigs[0].SlotCapacity, 128u);
-            ParticleExtension Ext {};
+            ParticleSimulationCoordinator Ext {};
             if (!Ext.Initialize(Doc)) { All102Finite = false; break; }
             Ext.TriggerBurst(0u, 48u);
             for (int Step = 0; Step < 8; ++Step)
@@ -670,7 +670,7 @@ int main()
             }
             for (const auto& S : Ext.InspectParticleSlots())
             {
-                if (!IsParticleSlotAlive(S)) continue;
+                if (!QueryParticleSlotAlive(S)) continue;
                 if (!std::isfinite(S.PositionMeters[0]) || !std::isfinite(S.PositionMeters[1]) || !std::isfinite(S.PositionMeters[2])
                  || !std::isfinite(S.VelocityMps[0])    || !std::isfinite(S.VelocityMps[1])    || !std::isfinite(S.VelocityMps[2]))
                 {
@@ -679,7 +679,7 @@ int main()
             }
         }
         Expect(AllPresets.size() == 102u && ActiveCount == 93u && QuarantinedCount == 9u,
-               "ParticlePresetCatalogue holds all 102 presets (93 active + 9 quarantined)");
+               "ParticlePresetRepository holds all 102 presets (93 active + 9 quarantined)");
         Expect(All102Finite, "All 102 presets instantiate and simulate cleanly across 8 live physics steps with 0 NaNs");
     }
 

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                       VECTORCANVASRASTERIZER.CPP
+                                                          VECTORCANVASRASTERIZER.CPP
 ============================================================================================================================================*/
 // 🧩 Pure Vulkan 1.3 + .slang VectorGraphics GPU rasterizer (Modifier Compute -> 2x SSAA Stencil-Cover -> OpenPBR Stack -> Guide + Planar2D Gizmo MRT).
 
@@ -34,7 +34,7 @@ constexpr uint64_t AlignUpBytes(uint64_t ByteCount, uint64_t Alignment) noexcept
 
 struct alignas(16) GPUVectorShapeVertex
 {
-    float    PositionAndLocalUV[4];
+    float    PositionLocalUV[4];
     uint32_t Attributes[4];
 };
 static_assert(sizeof(GPUVectorShapeVertex) == 32u);
@@ -52,7 +52,7 @@ struct alignas(16) GPUVectorLayerUniforms
     float    PinCoords[12][4];
     float    PinColors[12][4];
     float    MaskParams[4];
-    float    MaskSeedAndOptions[4];
+    float    MaskSeedOptions[4];
     float    PbrScalars0[4];
     float    PbrScalars1[4];
     float    PbrScalars2[4];
@@ -78,9 +78,9 @@ static_assert(sizeof(GPUVectorModifierEntry) == 80u);
 
 struct alignas(16) GPUVectorModifierDispatchParams
 {
-    uint32_t CountsAndDims[4];
+    uint32_t CountsDimensionsPacked[4];
     float    CanvasMetrics[4];
-    float    LayerExtentAndRot[4];
+    float    LayerExtentRotation[4];
 };
 static_assert(sizeof(GPUVectorModifierDispatchParams) == 48u);
 
@@ -88,7 +88,7 @@ struct alignas(16) GPUVectorInstanceEntry
 {
     float    TransformRow0[4];
     float    TransformRow1[4];
-    float    ColorAndOpacity[4];
+    float    ColorOpacityPacked[4];
     float    ModParams[4];
     uint32_t PickMeta[4];
 };
@@ -112,12 +112,12 @@ static_assert(sizeof(GPUVectorSurfaceEvalParams) == 32u);
 
 struct alignas(16) GPUVectorOverlayUniforms
 {
-    float    ViewportAndCanvas[4];
+    float    ViewportCanvasPacked[4];
     float    TileRectPx[4];
     float    SelectedBoundsPx[4];
-    float    SelectedRotAndSnap[4];
+    float    SelectedRotationSnap[4];
     uint32_t OverlayOptionBits[4];
-    uint32_t CountsAndActive[4];
+    uint32_t CountsActivePacked[4];
     float    MarqueeRectPx[4];
     float    KnotPositions[64][4];
     float    KnotInHandles[64][4];
@@ -129,7 +129,7 @@ static_assert(sizeof(GPUVectorOverlayUniforms) == 2544u);
 struct alignas(16) GPUGizmoUniforms
 {
     float    ViewProjection[4][4];
-    uint32_t HoverAndSpace[4];
+    uint32_t HoverSpacePacked[4];
     float    HeadlightDirection[4];
 };
 static_assert(sizeof(GPUGizmoUniforms) == 96u);
@@ -352,7 +352,7 @@ void FillLayerUniformStruct(
     OutUniforms.MaskParams[1]       = Layer.Mask.Frequency;
     OutUniforms.MaskParams[2]       = Layer.Mask.Threshold;
     OutUniforms.MaskParams[3]       = Layer.Mask.Softness;
-    OutUniforms.MaskSeedAndOptions[0] = static_cast<float>(Layer.Mask.Seed);
+    OutUniforms.MaskSeedOptions[0] = static_cast<float>(Layer.Mask.Seed);
 
     float BevelWearAmount = 0.0f;
     for (const auto& Mod : Layer.Modifiers)
@@ -362,8 +362,8 @@ void FillLayerUniformStruct(
             BevelWearAmount = std::max(BevelWearAmount, Mod.ChipWearAmount);
         }
     }
-    OutUniforms.MaskSeedAndOptions[1] = BevelWearAmount;
-    OutUniforms.MaskSeedAndOptions[2] = (Layer.Identity == Doc.SelectedLayerId) ? 1.0f : 0.0f;
+    OutUniforms.MaskSeedOptions[1] = BevelWearAmount;
+    OutUniforms.MaskSeedOptions[2] = (Layer.Identity == Doc.SelectedLayerId) ? 1.0f : 0.0f;
 
     // Default OpenPBR channels before scanning Layer.Channels
     float Roughness   = 0.55f;
@@ -1399,10 +1399,10 @@ void VectorCanvasRasterizer::RefreshLayerGeometryCache(const Workspaces::Pattern
             for (const auto& V : Src.FillFanTriangles)
             {
                 GPUVectorShapeVertex GpuV {};
-                GpuV.PositionAndLocalUV[0] = V.X;
-                GpuV.PositionAndLocalUV[1] = V.Y;
-                GpuV.PositionAndLocalUV[2] = V.X * InvW;
-                GpuV.PositionAndLocalUV[3] = V.Y * InvH;
+                GpuV.PositionLocalUV[0] = V.X;
+                GpuV.PositionLocalUV[1] = V.Y;
+                GpuV.PositionLocalUV[2] = V.X * InvW;
+                GpuV.PositionLocalUV[3] = V.Y * InvH;
                 GpuV.Attributes[0]         = 0u;
                 GpuV.Attributes[1]         = static_cast<uint32_t>(SIdx);
                 GpuV.Attributes[2]         = VertsAreLayerLocal ? 1u : 0u;
@@ -1416,10 +1416,10 @@ void VectorCanvasRasterizer::RefreshLayerGeometryCache(const Workspaces::Pattern
             for (const auto& V : Src.StrokeTriangles)
             {
                 GPUVectorShapeVertex GpuV {};
-                GpuV.PositionAndLocalUV[0] = V.X;
-                GpuV.PositionAndLocalUV[1] = V.Y;
-                GpuV.PositionAndLocalUV[2] = V.X * InvW;
-                GpuV.PositionAndLocalUV[3] = V.Y * InvH;
+                GpuV.PositionLocalUV[0] = V.X;
+                GpuV.PositionLocalUV[1] = V.Y;
+                GpuV.PositionLocalUV[2] = V.X * InvW;
+                GpuV.PositionLocalUV[3] = V.Y * InvH;
                 GpuV.Attributes[0]         = 1u;
                 GpuV.Attributes[1]         = static_cast<uint32_t>(SIdx);
                 GpuV.Attributes[2]         = VertsAreLayerLocal ? 1u : 0u;
@@ -1535,7 +1535,7 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
     uint32_t                                        WidthPx,
     uint32_t                                        HeightPx,
     uint32_t                                        ScratchExtentPx,
-    bool                                            IncludeGuidesAndGizmo,
+    bool                                            IncludeGuidesGizmo,
     const Workspaces::PatternStampWorkspaceSession& Session,
     const Editor::TransformGizmo*                   OptionalGizmo2D,
     std::vector<uint8_t>*                           OutRGBA)
@@ -1686,18 +1686,18 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
             sizeof(ModArray));
 
         GPUVectorModifierDispatchParams DispParams {};
-        DispParams.CountsAndDims[0]     = ModCount;
-        DispParams.CountsAndDims[1]     = Plan.Layer->Identity;
-        DispParams.CountsAndDims[2]     = Plan.SlotIndex;
-        DispParams.CountsAndDims[3]     = Plan.ExpectedInstances;
+        DispParams.CountsDimensionsPacked[0]     = ModCount;
+        DispParams.CountsDimensionsPacked[1]     = Plan.Layer->Identity;
+        DispParams.CountsDimensionsPacked[2]     = Plan.SlotIndex;
+        DispParams.CountsDimensionsPacked[3]     = Plan.ExpectedInstances;
         DispParams.CanvasMetrics[0]     = CanonicalDocExtentPx;
         DispParams.CanvasMetrics[1]     = PatternModeActive ? 1.0f : 0.0f;
         DispParams.CanvasMetrics[2]     = Plan.Layer->CenterX;
         DispParams.CanvasMetrics[3]     = Plan.Layer->CenterY;
-        DispParams.LayerExtentAndRot[0] = Plan.Layer->WidthPx;
-        DispParams.LayerExtentAndRot[1] = Plan.Layer->HeightPx;
-        DispParams.LayerExtentAndRot[2] = Plan.Layer->RotationDeg * Constants::DegToRadFloat;
-        DispParams.LayerExtentAndRot[3] = static_cast<float>(Plan.SlotIndex * MaxInstancesPerLayer);
+        DispParams.LayerExtentRotation[0] = Plan.Layer->WidthPx;
+        DispParams.LayerExtentRotation[1] = Plan.Layer->HeightPx;
+        DispParams.LayerExtentRotation[2] = Plan.Layer->RotationDeg * Constants::DegToRadFloat;
+        DispParams.LayerExtentRotation[3] = static_cast<float>(Plan.SlotIndex * MaxInstancesPerLayer);
         std::memcpy(
             static_cast<uint8_t*>(ModifierParamsBuffer.HostAddress) + Plan.SlotIndex * ModifierParamsSlotBytes,
             &DispParams,
@@ -1712,7 +1712,7 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
 
     // Surface evaluation & overlay uniforms
     VectorCanvasLayoutMetrics TileLayout = ComputeTileLayoutMetrics(WidthPx, HeightPx, Session);
-    if (!IncludeGuidesAndGizmo)
+    if (!IncludeGuidesGizmo)
     {
         // Thumbnail occupies full output rectangle cleanly
         TileLayout.TileMinX   = 0.0f;
@@ -1722,9 +1722,9 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
 
     {
         GPUVectorSurfaceEvalParams EvalP {};
-        EvalP.ViewOptions[0] = IncludeGuidesAndGizmo ? static_cast<uint32_t>(Session.ViewChannel) : 0u;
+        EvalP.ViewOptions[0] = IncludeGuidesGizmo ? static_cast<uint32_t>(Session.ViewChannel) : 0u;
         EvalP.ViewOptions[1] = (Session.Mode == Workspaces::PatternStampWorkspaceMode::Stamp) ? 1u : 0u;
-        EvalP.ViewOptions[2] = (IncludeGuidesAndGizmo && Session.Document.ShowGhostTileBorders) ? 1u : 0u;
+        EvalP.ViewOptions[2] = (IncludeGuidesGizmo && Session.Document.ShowGhostTileBorders) ? 1u : 0u;
         EvalP.ViewOptions[3] = Session.Document.GroundEnabled ? 1u : 0u;
         EvalP.CanvasMeta[0]  = CanonicalDocExtentPx;
         EvalP.CanvasMeta[1]  = 1.0f;
@@ -1735,17 +1735,17 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
     {
         GPUVectorOverlayUniforms OvUni {};
         std::memset(&OvUni, 0, sizeof(OvUni));
-        OvUni.ViewportAndCanvas[0] = static_cast<float>(WidthPx);
-        OvUni.ViewportAndCanvas[1] = static_cast<float>(HeightPx);
-        OvUni.ViewportAndCanvas[2] = Session.PanOffsetU;
-        OvUni.ViewportAndCanvas[3] = Session.PanOffsetV;
+        OvUni.ViewportCanvasPacked[0] = static_cast<float>(WidthPx);
+        OvUni.ViewportCanvasPacked[1] = static_cast<float>(HeightPx);
+        OvUni.ViewportCanvasPacked[2] = Session.PanOffsetU;
+        OvUni.ViewportCanvasPacked[3] = Session.PanOffsetV;
 
         OvUni.TileRectPx[0] = TileLayout.TileMinX;
         OvUni.TileRectPx[1] = TileLayout.TileMinY;
         OvUni.TileRectPx[2] = TileLayout.TileSpanPx;
         OvUni.TileRectPx[3] = TileLayout.DocExtentPx;
 
-        if (IncludeGuidesAndGizmo)
+        if (IncludeGuidesGizmo)
         {
             const uint32_t OvOptionBits =
                 (Session.ShowGrid ? 1u : 0u) |
@@ -1758,8 +1758,8 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
             OvUni.OverlayOptionBits[2] = static_cast<uint32_t>(Session.ActiveTool);
             OvUni.OverlayOptionBits[3] = Session.HoveredLayerId;
 
-            OvUni.SelectedRotAndSnap[1] = static_cast<float>(Session.SnapStepPx);
-            OvUni.SelectedRotAndSnap[2] = Session.ZoomFraction;
+            OvUni.SelectedRotationSnap[1] = static_cast<float>(Session.SnapStepPx);
+            OvUni.SelectedRotationSnap[2] = Session.ZoomFraction;
 
             if (const auto* Sel = Session.InspectSelectedLayer())
             {
@@ -1770,7 +1770,7 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
                 OvUni.SelectedBoundsPx[1]   = Sel->CenterY;
                 OvUni.SelectedBoundsPx[2]   = Sel->WidthPx;
                 OvUni.SelectedBoundsPx[3]   = Sel->HeightPx;
-                OvUni.SelectedRotAndSnap[0] = RotRad;
+                OvUni.SelectedRotationSnap[0] = RotRad;
 
                 // Bezier knots rotated into document space for EditPoints / Curve / Pen modes
                 uint32_t KnotIdx = 0u;
@@ -1789,14 +1789,14 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
                         ++KnotIdx;
                     }
                 }
-                OvUni.CountsAndActive[0] = KnotIdx;
-                OvUni.CountsAndActive[2] = (Session.ActiveKnotIndex >= 0) ? static_cast<uint32_t>(Session.ActiveKnotIndex) : 0xFFFFFFFFu;
+                OvUni.CountsActivePacked[0] = KnotIdx;
+                OvUni.CountsActivePacked[2] = (Session.ActiveKnotIndex >= 0) ? static_cast<uint32_t>(Session.ActiveKnotIndex) : 0xFFFFFFFFu;
 
                 if (Sel->FillSource == Workspaces::PatternStampFillSourceMode::PointField ||
                     Session.ActiveTool == Workspaces::PatternStampToolCategory::PointGradient)
                 {
-                    OvUni.CountsAndActive[1] = 12u;
-                    OvUni.CountsAndActive[3] = (Session.ActivePointPinIndex >= 0) ? static_cast<uint32_t>(Session.ActivePointPinIndex) : 0xFFFFFFFFu;
+                    OvUni.CountsActivePacked[1] = 12u;
+                    OvUni.CountsActivePacked[3] = (Session.ActivePointPinIndex >= 0) ? static_cast<uint32_t>(Session.ActivePointPinIndex) : 0xFFFFFFFFu;
                     for (uint32_t P = 0u; P < 12u; ++P)
                     {
                         const auto& Pin = Sel->PointFieldPins[P];
@@ -1826,7 +1826,7 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
     }
 
     uint32_t GizmoVertCount = 0u;
-    if (IncludeGuidesAndGizmo && OptionalGizmo2D != nullptr)
+    if (IncludeGuidesGizmo && OptionalGizmo2D != nullptr)
     {
         const std::vector<Editor::GizmoGPUVertex> GizmoVerts = OptionalGizmo2D->BuildTriangleStream();
         GizmoVertCount = static_cast<uint32_t>(GizmoVerts.size());
@@ -1842,9 +1842,9 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
 
             GPUGizmoUniforms GizUni {};
             BuildRowMajorTopDownOrtho2D(TileLayout, WidthPx, HeightPx, GizUni.ViewProjection);
-            GizUni.HoverAndSpace[0]      = static_cast<uint32_t>(OptionalGizmo2D->QueryHoveredHandle());
-            GizUni.HoverAndSpace[1]      = static_cast<uint32_t>(OptionalGizmo2D->QueryActiveHandle());
-            GizUni.HoverAndSpace[2]      = 0u;
+            GizUni.HoverSpacePacked[0]      = static_cast<uint32_t>(OptionalGizmo2D->QueryHoveredHandle());
+            GizUni.HoverSpacePacked[1]      = static_cast<uint32_t>(OptionalGizmo2D->QueryActiveHandle());
+            GizUni.HoverSpacePacked[2]      = 0u;
             GizUni.HeadlightDirection[0] = 0.35f;
             GizUni.HeadlightDirection[1] = 0.45f;
             GizUni.HeadlightDirection[2] = 0.82f;
@@ -2246,7 +2246,7 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
     {
         TransferRegister.BindTicketTimelineSignal(ColorTicket, Signal);
         OutRGBA->resize(static_cast<std::size_t>(WidthPx) * static_cast<std::size_t>(HeightPx) * 4u);
-        if (!TransferRegister.AwaitAndCopyBytes(ColorTicket, *OutRGBA))
+        if (!TransferRegister.AwaitReadbackBytes(ColorTicket, *OutRGBA))
         {
             vkFreeCommandBuffers(DeviceHandle, DeviceInterchange->AccessCommandAllocator(), 1u, &Cmd);
             return false;
@@ -2259,7 +2259,7 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
     }
 
     GPUVectorSummaryMetrics MetricsRead {};
-    if (TransferRegister.AwaitAndCopyTyped<GPUVectorSummaryMetrics>(SummaryTicket, std::span<GPUVectorSummaryMetrics>(&MetricsRead, 1u)))
+    if (TransferRegister.AwaitReadbackTyped<GPUVectorSummaryMetrics>(SummaryTicket, std::span<GPUVectorSummaryMetrics>(&MetricsRead, 1u)))
     {
         LastMetrics.TotalInstancesEvaluated = MetricsRead.InstanceCount;
         LastMetrics.MinNoiseScale           = (MetricsRead.MinScaleFixed <= MetricsRead.MaxScaleFixed)

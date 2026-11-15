@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        SPECIALEFFECTSDYNAMICS.CPP
+                                                          SPECIALEFFECTSDYNAMICS.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of Ferrofluid, Fracture, Shallow-Water Splashes, Transition Derez, Shield Barrier, Spiderweb & MoGraph Effectors
 
@@ -87,7 +87,7 @@ void StepFerrofluidMeniscusDynamics(
     const float Spring = std::clamp(11.0f * DeltaSeconds, 0.0f, 1.0f);
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float Dx = MagPos[0] - Slot.OriginAnchor[0];
         const float Dy = MagPos[1] - Slot.OriginAnchor[1];
@@ -134,7 +134,7 @@ void StepFractureFissureDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float Rx = Slot.OriginAnchor[0] - OriginCenter[0];
         const float Rz = Slot.OriginAnchor[2] - OriginCenter[2];
@@ -175,7 +175,7 @@ void StepShallowWaterSplashDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         if (Spec.SplashVariant == 2u)
         {
@@ -219,7 +219,7 @@ void StepTransitionDerezDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float DeltaY = Slot.OriginAnchor[1] - SweepY;
         const bool  Triggered = (Spec.TransitionVariant == 4u) ? (DeltaY > 0.0f) : (DeltaY < 0.0f);
@@ -294,7 +294,7 @@ void StepShieldBarrierDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float Ax = Slot.OriginAnchor[0] - OriginCenter[0];
         const float Ay = Slot.OriginAnchor[1] - OriginCenter[1];
@@ -348,7 +348,7 @@ void StepSpiderwebWeaveDynamics(
     for (std::size_t I = 0u; I < Slots.size(); ++I)
     {
         ParticleSlot& Slot = Slots[I];
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float StrandFrac = static_cast<float>(I) / static_cast<float>(std::max<std::size_t>(1u, Slots.size() - 1u));
         const float Reveal     = std::clamp((ExtrudeProgress - StrandFrac * 0.7f) * 3.0f, 0.0f, 1.0f);
@@ -379,7 +379,7 @@ void StepEffectorLatticeDynamics(
 
     for (auto& Slot : Slots)
     {
-        if (!IsParticleSlotAlive(Slot)) continue;
+        if (!QueryParticleSlotAlive(Slot)) continue;
 
         const float Ax = Slot.OriginAnchor[0];
         const float Ay = Slot.OriginAnchor[1];

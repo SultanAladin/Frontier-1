@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                  BAKINGACCELERATIONSTRUCTURE.CPP
+                                                       BAKINGACCELERATIONSTRUCTURE.CPP
 ============================================================================================================================================*/
 // 🧩 Dual GTX BVH4 + hardware RTX VK_KHR_acceleration_structure BLAS/TLAS builder and upload manager implementation
 
@@ -96,7 +96,7 @@ void BakingAccelerationStructure::ReleaseResources() noexcept
     HardwareAccelReady  = false;
 }
 
-bool BakingAccelerationStructure::BuildAndUploadStudy(
+bool BakingAccelerationStructure::UploadPreparedStudy(
     VulkanInterchange*       BoundDevice,
     const PreparedStudyPair& Study)
 {

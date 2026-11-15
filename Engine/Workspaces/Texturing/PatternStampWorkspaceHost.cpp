@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                       PATTERNSTAMPWORKSPACEHOST.CPP
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                        PATTERNSTAMPWORKSPACEHOST.CPP
+============================================================================================================================================*/
 // 🧩 Implementation of shared 3-column Pattern Studio & Stamp Studio workspace host + Vulkan VectorCanvasRasterizer + ContentBrowser bridge.
 
 #include "Engine/Workspaces/Texturing/PatternStampWorkspaceHost.h"
@@ -155,7 +155,7 @@ PatternStampWorkspaceHost::PatternStampWorkspaceHost(PatternStampWorkspaceMode I
 
 void PatternStampWorkspaceHost::BindPaneCallbacks()
 {
-    ToolHeaderPane.SetBridgeCallback(
+    ToolHeaderPane.AssignBridgeCallback(
         [this](std::string_view CommandTag)
         {
             ExecuteCanvasCommandBridge(CommandTag);
@@ -267,14 +267,14 @@ void PatternStampWorkspaceHost::AttachContentBrowserPanel(ContentBrowserPanel* T
         SlotTitle,
         InitialCanvasBounds,
         nullptr,
-        [this](ColorRgba AssignedRgba, const ColourCodexEntry&)
+        [this](ColorRgba AssignedRgba, const ColourSwatchEntry&)
         {
             if (Session.ApplyColourDrop(AssignedRgba, 0u, Session.ActivePointPinIndex, false))
             {
                 Session.StatusNotice = "Applied colour swatch";
             }
         },
-        [this](ColorRgba AssignedRgba, const ColourCodexEntry& Entry, Point2D DropLogicalPos)
+        [this](ColorRgba AssignedRgba, const ColourSwatchEntry& Entry, Point2D DropLogicalPos)
         {
             AssignBrowserColourDrop(AssignedRgba, Entry, DropLogicalPos);
         },
@@ -324,7 +324,7 @@ void PatternStampWorkspaceHost::SynchronizeDropTargetBounds(Rectangle2D CanvasWi
     BoundBrowserPanel->UpdateContentDropZoneBounds(DropZoneId, CanvasWindowLogicalBounds);
 }
 
-void PatternStampWorkspaceHost::ResolveCanvasDropDocumentAndPick(
+void PatternStampWorkspaceHost::ResolveCanvasDropPick(
     Point2D   DropLogicalPos,
     float&    OutDocX,
     float&    OutDocY,
@@ -359,7 +359,7 @@ void PatternStampWorkspaceHost::ResolveCanvasDropDocumentAndPick(
 
 void PatternStampWorkspaceHost::AssignBrowserColourDrop(
     ColorRgba              AssignedRgba,
-    const ColourCodexEntry& Entry,
+    const ColourSwatchEntry& Entry,
     Point2D                DropLogicalPos)
 {
     const auto& Snapshot     = Input::InputExtension::InspectActiveEditorSnapshot();
@@ -371,7 +371,7 @@ void PatternStampWorkspaceHost::AssignBrowserColourDrop(
     {
         float DocX = 256.0f;
         float DocY = 256.0f;
-        ResolveCanvasDropDocumentAndPick(DropLogicalPos, DocX, DocY, TargetLayerId);
+        ResolveCanvasDropPick(DropLogicalPos, DocX, DocY, TargetLayerId);
         if (TargetLayerId == 0u)
         {
             // Dropped on empty canvas background: assign ground fill tint
@@ -398,7 +398,7 @@ void PatternStampWorkspaceHost::ApplyBrowserContentDrop(
     float    DocX          = 256.0f;
     float    DocY          = 256.0f;
     uint32_t PickedLayerId = 0u;
-    ResolveCanvasDropDocumentAndPick(DropLogicalPos, DocX, DocY, PickedLayerId);
+    ResolveCanvasDropPick(DropLogicalPos, DocX, DocY, PickedLayerId);
 
     const auto Cat = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
     if (Cat == ContentCategory::Fonts)

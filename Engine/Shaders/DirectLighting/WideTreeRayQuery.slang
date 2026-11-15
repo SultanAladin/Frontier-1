@@ -1,6 +1,6 @@
-/*==========================================================================================================================================
-                                                       WIDETREERAYQUERY.SLANG
-==========================================================================================================================================*/
+/*============================================================================================================================================
+                                                            WIDETREERAYQUERY.SLANG
+============================================================================================================================================*/
 // 🧩 Shared 128-byte 4-Wide BVH4 ray-box & Moller-Trumbore intersection routines for GTX compute & RTX software/hybrid fallback
 
 module WideTreeRayQuery;
@@ -22,7 +22,7 @@ public struct GpuRayTrianglePrimitive48
     public float3 Corner0;
     public uint   SourceFaceIndex;
     public float3 Edge01;
-    public uint   PackedMaterialAndOpaque;
+    public uint   PackedMaterialOpaque;
     public float3 Edge02;
     public uint   PrimitiveOrdinal;
 };
@@ -133,7 +133,7 @@ public GpuRayHitSummary TraceWideBoundingTreeClosest(
                 for (uint PIdx = 0u; PIdx < Count; ++PIdx)
                 {
                     GpuRayTrianglePrimitive48 Prim = Primitives[Start + PIdx];
-                    if ((Prim.PackedMaterialAndOpaque >> 16u) == 0u) continue;
+                    if ((Prim.PackedMaterialOpaque >> 16u) == 0u) continue;
                     float2 HitUV;
                     float HitT = IntersectTriangleMollerTrumbore(Origin, UnitDir, MinT, Result.HitDistanceMeters, Prim, HitUV);
                     if (HitT > 0.0)
@@ -144,7 +144,7 @@ public GpuRayHitSummary TraceWideBoundingTreeClosest(
                         Result.HitConfirmed      = true;
                         Result.HitDistanceMeters = HitT;
                         Result.BarycentricsUV    = HitUV;
-                        Result.MaterialOrdinal   = Prim.PackedMaterialAndOpaque & 0xFFFFu;
+                        Result.MaterialOrdinal   = Prim.PackedMaterialOpaque & 0xFFFFu;
                         Result.GeometricNormal   = GeomN;
                         Result.SourceFaceIndex   = Prim.SourceFaceIndex;
                         Result.HitFrontFace      = (dot(UnitDir, GeomN) < 0.0);
@@ -198,7 +198,7 @@ public bool TraceWideBoundingTreeAnyHit(
                 for (uint PIdx = 0u; PIdx < Count; ++PIdx)
                 {
                     GpuRayTrianglePrimitive48 Prim = Primitives[Start + PIdx];
-                    if ((Prim.PackedMaterialAndOpaque >> 16u) == 0u) continue;
+                    if ((Prim.PackedMaterialOpaque >> 16u) == 0u) continue;
                     float2 HitUV;
                     float HitT = IntersectTriangleMollerTrumbore(Origin, UnitDir, MinT, MaxT, Prim, HitUV);
                     if (HitT > 0.0)

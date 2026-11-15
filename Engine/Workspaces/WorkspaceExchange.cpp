@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           WORKSPACEEXCHANGE.CPP
+                                                            WORKSPACEEXCHANGE.CPP
 ============================================================================================================================================*/
 // 🧩 Lock-free cross-workspace publication exchange implementation
 
@@ -37,7 +37,7 @@ uint64_t WorkspaceExchange::PublishUpdate(
     CrossWorkspacePublication& Target = RingPublications[WriteSlot];
     Target.PublicationGeneration      = NewGeneration;
     Target.SourceDocument             = SourceDocument;
-    Target.SourceCategory             = SourceDocument.ExtensionCategory;
+    Target.SourceCategory             = SourceDocument.SuffixCategory;
     Target.AffectedUDIMNumber         = AffectedUDIMNumber;
     Target.TexelDensityPxPerMeter     = TexelDensityPxPerMeter;
     std::memset(Target.PublicationNote, 0, sizeof(Target.PublicationNote));

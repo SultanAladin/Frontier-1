@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          DYNAMICSTRANDSOLVER.CPP
+                                                           DYNAMICSTRANDSOLVER.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of exact 20-node HTML Particle Studio strand solvers (cables/chains, vines+leaves, flags, ship sails, beaded curtains)
 
@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/ParticleSpace/Dynamics/DynamicStrandSolver.h"
+#include "Engine/ParticleSpace/ParticleVectorMath.h"
 
 #include "Engine/ParticleSpace/ParticleTintDriver.h"
 
@@ -24,25 +25,8 @@ namespace
 constexpr float kPi    = 3.14159265358979323846f;
 constexpr float kTwoPi = 6.28318530717958647692f;
 
-struct Vec3
-{
-    float X = 0.0f;
-    float Y = 0.0f;
-    float Z = 0.0f;
-};
+using Vec3 = Vector3f;
 
-inline Vec3 operator+(Vec3 A, Vec3 B) noexcept { return { A.X + B.X, A.Y + B.Y, A.Z + B.Z }; }
-inline Vec3 operator-(Vec3 A, Vec3 B) noexcept { return { A.X - B.X, A.Y - B.Y, A.Z - B.Z }; }
-inline Vec3 operator*(Vec3 A, float S) noexcept { return { A.X * S, A.Y * S, A.Z * S }; }
-inline Vec3 Mix3(Vec3 A, Vec3 B, float T) noexcept { return A + (B - A) * T; }
-inline float Dot3(Vec3 A, Vec3 B) noexcept { return A.X * B.X + A.Y * B.Y + A.Z * B.Z; }
-inline Vec3 Cross3(Vec3 A, Vec3 B) noexcept { return { A.Y * B.Z - A.Z * B.Y, A.Z * B.X - A.X * B.Z, A.X * B.Y - A.Y * B.X }; }
-inline float Len3(Vec3 A) noexcept { return std::sqrt(Dot3(A, A)); }
-inline Vec3 Norm3(Vec3 A) noexcept
-{
-    const float L = Len3(A);
-    return (L > 1e-6f) ? (A * (1.0f / L)) : Vec3 { 0.0f, 1.0f, 0.0f };
-}
 
 // Exact WGSL hash / hashF / randSphere / simVNoise / simCurl parity from Experimental/ParticleEditor Final/Engine/shaders.js
 uint32_t Hash32(uint32_t X) noexcept
@@ -347,7 +331,7 @@ void StepDynamicStrandEnsemble(
                 }
                 continue;
             }
-            if (!IsParticleSlotAlive(Slot))
+            if (!QueryParticleSlotAlive(Slot))
             {
                 Slot.AgeSeconds      = 0.0f;
                 Slot.LifespanSeconds = 9999.0f;
@@ -472,7 +456,7 @@ void StepDynamicStrandEnsemble(
             }
             continue;
         }
-        if (!IsParticleSlotAlive(Slot))
+        if (!QueryParticleSlotAlive(Slot))
         {
             Slot.AgeSeconds      = 0.0f;
             Slot.LifespanSeconds = 9999.0f;
@@ -664,7 +648,7 @@ void StepDynamicStrandEnsemble(
         for (uint32_t I = NRows; I < Cap; ++I)
         {
             ParticleSlot& Slot = Slots[I];
-            if (!IsParticleSlotAlive(Slot))
+            if (!QueryParticleSlotAlive(Slot))
             {
                 Slot.AgeSeconds      = 0.0f;
                 Slot.LifespanSeconds = 9999.0f;

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          COMPOSITIONOVERLAY.H
+                                                             COMPOSITIONOVERLAY.H
 ============================================================================================================================================*/
 // 🧩 Non-Shipping normalized 2D viewport composition overlay segments (Rule of Thirds, Broadcast Safe Gate, Optical Reticle)
 
@@ -27,7 +27,7 @@ using NormalizedLineSegment = std::pair<Mathematics::Axis2D, Mathematics::Axis2D
         return Segments;
     }
 
-    if (Style == CompositionGuideStyle::RuleOfThirds || Style == CompositionGuideStyle::CrosshairAndThirds)
+    if (Style == CompositionGuideStyle::RuleOfThirds || Style == CompositionGuideStyle::CrosshairThirds)
     {
         Segments.push_back({ { 1.0f / 3.0f, 0.0f }, { 1.0f / 3.0f, 1.0f } });
         Segments.push_back({ { 2.0f / 3.0f, 0.0f }, { 2.0f / 3.0f, 1.0f } });
@@ -48,7 +48,7 @@ using NormalizedLineSegment = std::pair<Mathematics::Axis2D, Mathematics::Axis2D
         }
     }
 
-    if (Style == CompositionGuideStyle::CrosshairAndThirds)
+    if (Style == CompositionGuideStyle::CrosshairThirds)
     {
         Segments.push_back({ { 0.465f, 0.50f }, { 0.535f, 0.50f } });
         Segments.push_back({ { 0.50f, 0.465f }, { 0.50f, 0.535f } });

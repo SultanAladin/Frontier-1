@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                    PARTICLEVEHICLEDISSOLVEVALIDATION.CPP
 ============================================================================================================================================*/
-// 🚗 Comprehensive C++20 validation + studio visual proof suite for:
+// 🧩 Comprehensive C++20 validation + studio visual proof suite for:
 //    1. ProceduralSpriteSynthesizer (16 archetypes, 4 channels, 2x2 atlas) + PatternStampStackSession integration
 //    2. VehicleDissolveSolver (ControlVehicle 25,068-tri 16^3 lattice Derez + 8-way shatter, Reverse-Rez, Dissolve-to-Nothing, Dissolve-to-Butterfly, Two-Way GI)
 //    3. ContentBrowser ThumbnailSheetRepository real rendered particle thumbnails (replacing 12-spoke starburst placeholder)
@@ -332,7 +332,7 @@ bool ValidateContentBrowserParticleThumbnails(const std::filesystem::path& OutDi
 {
     using namespace Frontier;
     ThumbnailSheetRepository Repo{};
-    Repo.PopulateDefaultEngineAndProjectEntries();
+    Repo.PopulateDefaultWorkspaceEntries();
 
     const auto ParticleIndices = Repo.QueryFilteredEntries(
         WorkspaceCategory::SceneWorld,

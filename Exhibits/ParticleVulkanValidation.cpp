@@ -8,10 +8,10 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleExtension.h"
-#include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
+#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 #include "Engine/ParticleSpace/Simulation/ParticleMetricsCollector.h"
-#include "Engine/ParticleSpace/Simulation/ParticleVulkanExecutor.h"
+#include "Engine/GeometricRaster/Compute/ParticleVulkanExecutor.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.h"
 
 #include <cmath>
@@ -57,7 +57,7 @@ int main()
     Expect(GpuReady, "Initialized real Vulkan 1.3 compute device (Hardware or SwiftShader)");
     Expect(Executor.InspectTelemetry().HardwareDeviceActive, "Vulkan 1.3 Advect + Reduction compute pipelines compiled cleanly");
 
-    // Prepare 512 live particles via ParticleExtension + active Vector Field vortex force
+    // Prepare 512 live particles via ParticleSimulationCoordinator + active Vector Field vortex force
     ParticleSpace::ParticleDocument Doc = ParticleSpace::InstantiateDocumentFromPresetId("curl-fur-field");
     Doc.Rigs[0].SlotCapacity = 512u;
     const ParticleSpace::ParticleRig& Rig = Doc.Rigs[0];
@@ -73,7 +73,7 @@ int main()
     Vortex.EvaluatedCentreMeters = Vortex.CentreMeters;
     ForceAcc.AssignSources({ &Vortex, 1u });
 
-    ParticleSpace::ParticleExtension SeedExt {};
+    ParticleSpace::ParticleSimulationCoordinator SeedExt {};
     (void)SeedExt.Initialize(Doc);
     SeedExt.TriggerBurst(0u, 360u);
     for (uint32_t F = 0u; F < 20u; ++F)
@@ -99,7 +99,7 @@ int main()
     uint32_t MovedCount = 0u;
     for (std::size_t I = 0u; I < GpuSlots.size(); ++I)
     {
-        if (ParticleSpace::IsParticleSlotAlive(GpuSlots[I]) && ParticleSpace::IsParticleSlotAlive(CpuSlots[I]))
+        if (ParticleSpace::QueryParticleSlotAlive(GpuSlots[I]) && ParticleSpace::QueryParticleSlotAlive(CpuSlots[I]))
         {
             const float Dx = GpuSlots[I].PositionMeters[0] - CpuSlots[I].PositionMeters[0];
             const float Dy = GpuSlots[I].PositionMeters[1] - CpuSlots[I].PositionMeters[1];

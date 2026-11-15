@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            WORKSPACEDOCUMENT.H
+                                                             WORKSPACEDOCUMENT.H
 ============================================================================================================================================*/
 // 🧩 Live open .Space document coupling container payload, canonical disk path, and 215 MiB parametric RevisionTracker
 
@@ -12,7 +12,7 @@
 #include "Engine/Codecs/RevisionCodec.h"
 #include "Engine/Codecs/SpaceContainerCodec.h"
 #include "Engine/Constants/EngineConstants.h"
-#include "Engine/Editor/Viewports/ViewportProjection.h"
+#include "Engine/Components/Camera/ViewportProjection.h"
 #include "Engine/Workspaces/Revision/RevisionTracker.h"
 #include "Engine/Workspaces/WorkspaceToken.h"
 
@@ -50,7 +50,7 @@ public:
     [[nodiscard]] uint32_t                            QueryDocumentIdentifier() const noexcept { return Token.SlotIndex + 1u; }
     [[nodiscard]] const std::string&                  QueryTitle() const noexcept { return Payload.DocumentTitle; }
     [[nodiscard]] const std::filesystem::path&        QueryCanonicalPath() const noexcept { return ContainerPath; }
-    [[nodiscard]] Codecs::SpaceExtensionCategory      QueryCategory() const noexcept { return Payload.ExtensionCategory; }
+    [[nodiscard]] Codecs::SpaceSuffixCategory      QueryCategory() const noexcept { return Payload.SuffixCategory; }
     [[nodiscard]] bool                                QueryModifiedSinceSave() const noexcept { return Revision.QueryModifiedSinceSave(); }
     [[nodiscard]] RevisionTracker&                    AccessRevisionTracker() noexcept { return Revision; }
     [[nodiscard]] const RevisionTracker&              InspectRevisionTracker() const noexcept { return Revision; }

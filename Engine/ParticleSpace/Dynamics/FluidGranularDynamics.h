@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         FLUIDGRANULARDYNAMICS.H
+                                                           FLUIDGRANULARDYNAMICS.H
 ============================================================================================================================================*/
 // 🧩 Modular SPH Fluid, DEM Granular collisions, Elastic PBD Strands/Cloth, Thermal Pyrotechnics, Dielectric Arcs, Field Matrix & Flora
 

@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                         UVVIEWPORTINTERACTOR.CPP
+                                                           UVVIEWPORTINTERACTOR.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of UVViewportInteractor driving 2D/3D camera navigation, synchronized GPU picking, TransformGizmo drag & modal G/R/S
 
@@ -627,7 +627,7 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
     //--------------------------------------------------------------------------------------------------------------------
     if (ModalMode != ModalUVTransformMode::Inactive)
     {
-        HandleModalTransformStep(Interaction, InsidePlanar);
+        ProcessModalTransformStep(Interaction, InsidePlanar);
         return;
     }
 
@@ -648,16 +648,16 @@ void UVViewportInteractor::ProcessViewportInput(const ViewportInteractionReading
     //--------------------------------------------------------------------------------------------------------------------
     if (InsidePlanar || InsideSpatial)
     {
-        HandleKeyboardShortcuts(Interaction, InsidePlanar, InsideSpatial);
+        ProcessKeyboardShortcuts(Interaction, InsidePlanar, InsideSpatial);
     }
 
     //--------------------------------------------------------------------------------------------------------------------
     // 4. GPU Hover, Click, Marquee/Brush & TransformGizmo Drag
     //--------------------------------------------------------------------------------------------------------------------
-    HandleGizmoOrSurfaceInteraction(Interaction, InsidePlanar, InsideSpatial);
+    ProcessGizmoSurfaceInteraction(Interaction, InsidePlanar, InsideSpatial);
 }
 
-void UVViewportInteractor::HandleKeyboardShortcuts(
+void UVViewportInteractor::ProcessKeyboardShortcuts(
     const ViewportInteractionReading& Interaction,
     bool                            InsidePlanar,
     bool                            InsideSpatial)
@@ -828,7 +828,7 @@ void UVViewportInteractor::HandleKeyboardShortcuts(
     }
 }
 
-void UVViewportInteractor::HandleModalTransformStep(
+void UVViewportInteractor::ProcessModalTransformStep(
     const ViewportInteractionReading& Interaction,
     bool                            InsidePlanar)
 {
@@ -975,7 +975,7 @@ void UVViewportInteractor::HandleModalTransformStep(
     }
 }
 
-void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
+void UVViewportInteractor::ProcessGizmoSurfaceInteraction(
     const ViewportInteractionReading& Interaction,
     bool                            InsidePlanar,
     bool                            InsideSpatial)
@@ -1133,7 +1133,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
             return static_cast<uint32_t>(std::clamp(Local * ScaleY, 0.0f, static_cast<float>(FbH - 1u)));
         };
 
-        enum class ActiveRegionShapeKind : uint8_t
+        enum class ActiveRegionShapeCategory : uint8_t
         {
             Circle = 0u,
             Box    = 1u,
@@ -1142,7 +1142,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
 
         auto ApplyRegionWordsToSession = [&](
             const std::vector<uint32_t>& HitFaceWords,
-            ActiveRegionShapeKind        ShapeKind,
+            ActiveRegionShapeCategory        ShapeKind,
             float                        LogicalMinX,
             float                        LogicalMinY,
             float                        LogicalMaxX,
@@ -1163,7 +1163,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 const ScreenProjectionParameters ProjParams = BuildScreenProjectionParameters(
                     Proj, Session->RenderOptions3D.Camera, Bounds, UsePlanar);
                 uint32_t AddedCount = 0u;
-                auto TestAndAddFaceVertices = [&](uint32_t FIdx)
+                auto CollectFaceVertices = [&](uint32_t FIdx)
                 {
                     if (FIdx >= Net.Faces.size()) return;
                     const auto& F = Net.Faces[FIdx];
@@ -1174,11 +1174,11 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                         if (ProjectEdgeCornerToLogicalScreen(ProjParams, Net, E, Pt))
                         {
                             bool HitVert = false;
-                            if (ShapeKind == ActiveRegionShapeKind::Box)
+                            if (ShapeKind == ActiveRegionShapeCategory::Box)
                             {
                                 HitVert = (Pt.X >= LogicalMinX && Pt.X <= LogicalMaxX && Pt.Y >= LogicalMinY && Pt.Y <= LogicalMaxY);
                             }
-                            else if (ShapeKind == ActiveRegionShapeKind::Lasso)
+                            else if (ShapeKind == ActiveRegionShapeCategory::Lasso)
                             {
                                 HitVert = PointInPolygon2D(Pt, LassoPointsLogical);
                             }
@@ -1204,15 +1204,15 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                     {
                         const uint32_t Bit  = static_cast<uint32_t>(std::countr_zero(W));
                         const uint32_t FIdx = (WordIdx << 5u) | Bit;
-                        TestAndAddFaceVertices(FIdx);
+                        CollectFaceVertices(FIdx);
                         W &= (W - 1u);
                     }
                 }
-                if (ShapeKind != ActiveRegionShapeKind::Circle && AddedCount == 0u)
+                if (ShapeKind != ActiveRegionShapeCategory::Circle && AddedCount == 0u)
                 {
                     for (uint32_t FIdx = 0u; FIdx < static_cast<uint32_t>(Net.Faces.size()); ++FIdx)
                     {
-                        TestAndAddFaceVertices(FIdx);
+                        CollectFaceVertices(FIdx);
                     }
                 }
                 Session->RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
@@ -1242,7 +1242,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                     const Point2D Mid{ 0.5f * (A.X + B.X), 0.5f * (A.Y + B.Y) };
                     return Mid.X >= LogicalMinX && Mid.X <= LogicalMaxX && Mid.Y >= LogicalMinY && Mid.Y <= LogicalMaxY;
                 };
-                auto TestAndAddFaceEdges = [&](uint32_t FIdx)
+                auto CollectFaceEdges = [&](uint32_t FIdx)
                 {
                     if (FIdx >= Net.Faces.size()) return;
                     const auto& F = Net.Faces[FIdx];
@@ -1255,11 +1255,11 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                             ProjectEdgeCornerToLogicalScreen(ProjParams, Net, ENext, P1))
                         {
                             bool HitEdge = false;
-                            if (ShapeKind == ActiveRegionShapeKind::Box)
+                            if (ShapeKind == ActiveRegionShapeCategory::Box)
                             {
                                 HitEdge = SegmentHitsBox(P0, P1);
                             }
-                            else if (ShapeKind == ActiveRegionShapeKind::Lasso)
+                            else if (ShapeKind == ActiveRegionShapeCategory::Lasso)
                             {
                                 HitEdge = SegmentHitsPolygon2D(P0, P1, LassoPointsLogical);
                             }
@@ -1286,15 +1286,15 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                     {
                         const uint32_t Bit  = static_cast<uint32_t>(std::countr_zero(W));
                         const uint32_t FIdx = (WordIdx << 5u) | Bit;
-                        TestAndAddFaceEdges(FIdx);
+                        CollectFaceEdges(FIdx);
                         W &= (W - 1u);
                     }
                 }
-                if (ShapeKind != ActiveRegionShapeKind::Circle && AddedCount == 0u)
+                if (ShapeKind != ActiveRegionShapeCategory::Circle && AddedCount == 0u)
                 {
                     for (uint32_t FIdx = 0u; FIdx < static_cast<uint32_t>(Net.Faces.size()); ++FIdx)
                     {
-                        TestAndAddFaceEdges(FIdx);
+                        CollectFaceEdges(FIdx);
                     }
                 }
                 Session->RenderOptions3D.ActiveLayerOrdinal = UINT16_MAX;
@@ -1306,7 +1306,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
             }
 
             std::vector<uint32_t> EffectiveFaceWords = HitFaceWords;
-            if (ShapeKind == ActiveRegionShapeKind::Lasso)
+            if (ShapeKind == ActiveRegionShapeCategory::Lasso)
             {
                 const ScreenProjectionParameters ProjParams = BuildScreenProjectionParameters(
                     Proj, Session->RenderOptions3D.Camera, Bounds, UsePlanar);
@@ -1467,7 +1467,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 {
                     const bool ClearOnFirstPress = Input.PrimaryPointer.Pressed && !Input.ShiftHeld;
                     (void)ApplyRegionWordsToSession(
-                        HitWords, ActiveRegionShapeKind::Circle, 0.0f, 0.0f, 0.0f, 0.0f, ClearOnFirstPress);
+                        HitWords, ActiveRegionShapeCategory::Circle, 0.0f, 0.0f, 0.0f, 0.0f, ClearOnFirstPress);
                 }
                 else
                 {
@@ -1553,7 +1553,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                     Session->SelectionMask.LoadPackedFaceWords(SavedFaceWords);
 
                     const bool Applied = ApplyRegionWordsToSession(
-                        HitWords, ActiveRegionShapeKind::Lasso, LogicalMinX, LogicalMinY, LogicalMaxX, LogicalMaxY, !Input.ShiftHeld);
+                        HitWords, ActiveRegionShapeCategory::Lasso, LogicalMinX, LogicalMinY, LogicalMaxX, LogicalMaxY, !Input.ShiftHeld);
                     if (!Applied && !Input.ShiftHeld)
                     {
                         Session->ClearViewportSelection();
@@ -1612,7 +1612,7 @@ void UVViewportInteractor::HandleGizmoOrSurfaceInteraction(
                 Session->SelectionMask.LoadPackedFaceWords(SavedFaceWords);
 
                 const bool Applied = ApplyRegionWordsToSession(
-                    HitWords, ActiveRegionShapeKind::Box, LogicalMinX, LogicalMinY, LogicalMaxX, LogicalMaxY, !Input.ShiftHeld);
+                    HitWords, ActiveRegionShapeCategory::Box, LogicalMinX, LogicalMinY, LogicalMaxX, LogicalMaxY, !Input.ShiftHeld);
                 if (!Applied && Summary.HitPixelCount == 0u && !Input.ShiftHeld)
                 {
                     Session->ClearViewportSelection();

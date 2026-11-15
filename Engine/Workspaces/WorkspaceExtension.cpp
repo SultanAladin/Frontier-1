@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           WORKSPACEEXTENSION.CPP
+                                                            WORKSPACEEXTENSION.CPP
 ============================================================================================================================================*/
 // 🧩 Top-level asynchronous WorkspaceExtension coordinator implementation
 
@@ -106,7 +106,7 @@ void WorkspaceExtension::Finalize() noexcept
 }
 
 WorkspaceToken WorkspaceExtension::CreateWorkspaceDocument(
-    Codecs::SpaceExtensionCategory Category,
+    Codecs::SpaceSuffixCategory Category,
     std::string_view               Title,
     const std::filesystem::path&   InitialPath,
     std::size_t                    DocumentRevisionBudgetBytes)

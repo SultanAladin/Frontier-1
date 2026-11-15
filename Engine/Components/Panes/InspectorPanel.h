@@ -18,7 +18,7 @@
 namespace Frontier
 {
 
-using InspectorExtensionRenderCallback = std::function<float(
+using InspectorSectionRenderCallback = std::function<float(
     PixelSpace&             Surface,
     Rectangle2D             ScrollViewport,
     float                   LeftX,
@@ -62,7 +62,7 @@ public:
     ~InspectorPanel() noexcept;
 
     void AttachOutliner(OutlinerPanel* SourceOutliner) noexcept;
-    void ConfigureExtensionSectionCallback(InspectorExtensionRenderCallback Callback);
+    void ConfigureCustomSectionCallback(InspectorSectionRenderCallback Callback);
     void ConfigureFullOverrideCallback(InspectorFullOverrideCallback Callback);
     void ConfigureNotesBoxOpen(bool Open) noexcept;
     void AssignActiveNotes(std::string_view NotesText);
@@ -127,7 +127,7 @@ private:
     TextEditBuffer           TransformCellEditor    {};                                      // [-]  - Numeric text input for focused cell
     float                          ScrollOffsetY            = 0.0f;                                  // [px] - Vertical inspector scroll offset
     float                          LastContentHeight        = 0.0f;                                  // [px] - Measured scroll document height
-    InspectorExtensionRenderCallback ExtensionSectionCallback {};                                  // [-]  - Optional domain extension cards
+    InspectorSectionRenderCallback CustomSectionCallback {};                                  // [-]  - Optional domain extension cards
     InspectorFullOverrideCallback    FullOverrideCallback     {};                                  // [-]  - Complete domain inspector replacement
 };
 

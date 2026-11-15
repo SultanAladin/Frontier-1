@@ -29,7 +29,7 @@ Colour is a cross-cutting radiometric & artistic primitive shared by every visua
 
 ## 2. Canonical Folder & File Structure (Banned-Word Audited)
 
-Extends the reserved `Engine/ColourSpace/` slot already defined in `Documentation/Plans/DocumentSpacesAndRevisionPlan.md` §3:
+Extends the reserved `Engine/ColourSpace/` slot already defined in `Documentation/Plans/DocumentSpacesRevisionPlan.md` §3:
 
 ```text
 Engine/

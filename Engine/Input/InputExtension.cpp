@@ -4,6 +4,10 @@
 // 🧩 Implementation of InputExtension dual RuntimeInputExchange & EditorInputExchange routing and snapshot consolidation
 
 #include "Engine/Input/InputExtension.h"
+#include "Engine/Lifecycle/LifecycleSequence.h"
+
+static_assert(Frontier::Lifecycle::SuspendableParticipant<Frontier::Input::InputExtension>,
+              "InputExtension must satisfy Frontier::Lifecycle::SuspendableParticipant.");
 
 namespace Frontier::Input
 {
@@ -84,7 +88,7 @@ InputExtension::~InputExtension() noexcept
     }
 }
 
-void InputExtension::Initialize() noexcept
+bool InputExtension::Initialize() noexcept
 {
     HardwareIntakeExchange.Initialize();
     RuntimeExchange.Initialize();
@@ -98,8 +102,30 @@ void InputExtension::Initialize() noexcept
     RoutingTarget   = InputRoutingTarget::BothExchanges;
     EditorEnabled   = (FRONTIER_PROFILE_SHIPPING == 0);
     LifecycleActive = true;
+    Suspended       = false;
 
     ActiveCoordinatorInstance = this;
+    return true;
+}
+
+void InputExtension::Tick(double /*Δt*/) noexcept
+{
+    if (!LifecycleActive || Suspended)
+    {
+        return;
+    }
+    BeginTick();
+    (void)TickExchange();
+}
+
+void InputExtension::Suspend() noexcept
+{
+    Suspended = true;
+}
+
+void InputExtension::Resume() noexcept
+{
+    Suspended = false;
 }
 
 void InputExtension::BeginTick() noexcept

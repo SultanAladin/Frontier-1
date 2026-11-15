@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                            GAMUTCOMPRESSION.H
+                                                              GAMUTCOMPRESSION.H
 ============================================================================================================================================*/
-// 🎨 ACES-inspired smooth distance gamut compression & perceptual Oklab chroma clipping for HDR / wide-gamut linear tristimulus colours
+// 🧩 ACES-inspired smooth distance gamut compression & perceptual Oklab chroma clipping for HDR / wide-gamut linear tristimulus colours
 
 #pragma once
 

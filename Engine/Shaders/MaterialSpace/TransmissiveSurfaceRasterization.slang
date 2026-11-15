@@ -1,7 +1,7 @@
-//==========================================================================================================================================
-//                                              TRANSMISSIVESURFACERASTERIZATION.SLANG
-//==========================================================================================================================================
-// Forward refractive & luminous surface overlay (Ocean Water refraction + Beer-Lambert depth, Hexagonal Energy Barrier, Smoked Rain Glass)
+/*============================================================================================================================================
+                                                    TRANSMISSIVESURFACERASTERIZATION.SLANG
+============================================================================================================================================*/
+// 🧩 Forward refractive & luminous surface overlay (Ocean Water refraction + Beer-Lambert depth, Hexagonal Energy Barrier, Smoked Rain Glass)
 
 module TransmissiveSurfaceRasterization;
 

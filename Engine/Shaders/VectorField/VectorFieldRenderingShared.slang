@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                    VECTORFIELDRENDERINGSHARED.SLANG
+                                                       VECTORFIELDRENDERINGSHARED.SLANG
 ============================================================================================================================================*/
 // 🧩 Shared Editor-only uniforms, Reverse-Z +Z Up projections, and PickID constants for VectorField .slang rasterization
 
@@ -31,14 +31,14 @@ struct ViewportOverlayUniforms
     float4   ViewProjRow1;               // [-]   - Row 1 of World -> Clip
     float4   ViewProjRow2;               // [-]   - Row 2 of World -> Clip
     float4   ViewProjRow3;               // [-]   - Row 3 of World -> Clip
-    float4   CameraPositionAndTime;      // xyz = CameraWorld [m], w = TimeSeconds [s]
-    float4   CameraRightAndThickness;    // xyz = CameraRight, w = StreamRibbonThickness
-    float4   CameraUpAndEmissive;        // xyz = CameraUp, w = StreamEmissiveBoost
+    float4   CameraPositionTime;      // xyz = CameraWorld [m], w = TimeSeconds [s]
+    float4   CameraRightThickness;    // xyz = CameraRight, w = StreamRibbonThickness
+    float4   CameraUpEmissive;        // xyz = CameraUp, w = StreamEmissiveBoost
     float4   CustomStreamColor;          // rgba = Custom stream tint [0..1]
     float4   CrossSectionPlaneParams;    // x = Axis(0=XY,1=XZ,2=YZ), y = OffsetM, z = HalfSpanM, w = HeatmapChannel
     float4   StreamVisualParams;         // x = ColorMode, y = Opacity, z = Resolution, w = LineCount
     uint4    ActiveSourceCounts;         // x = SourceCount, y = SelectedForceToken, z = SelectedWaypointIdx, w = LitShadingEnabled
-    float4   AnemometerWorldAndActive;   // xyz = Anemometer [m], w = Active(0/1)
+    float4   AnemometerWorldActive;   // xyz = Anemometer [m], w = Active(0/1)
 };
 
 struct DrawObjectPushConstants

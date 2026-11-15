@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                          GEOMETRYINTERCHANGE.H
+                                                            GEOMETRYINTERCHANGE.H
 ============================================================================================================================================*/
 // 🧩 External Wavefront .obj and glTF 2.0 .gltf geometry interchange importing/exporting multi-UDIM PolygonNetworks & FacePartitionRegisters
 

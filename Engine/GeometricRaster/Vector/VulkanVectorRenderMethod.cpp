@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                     VULKANVECTORRENDERMETHOD.CPP
+                                                         VULKANVECTORRENDERMETHOD.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ThorVG 1.0.0 symbolic SVG + TTF RenderMethod frontend producing GPU stencil-cover fans & stroke triangles for Vulkan .slang.
 

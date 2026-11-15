@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                            LENSFLAREEFFECT.H
+                                                              LENSFLAREEFFECT.H
 ============================================================================================================================================*/
 // 🧩 Multi-layer physical lens flare & coated polygonal aperture ghost uniform packing for CameraVisualEffects.slang
 
@@ -35,7 +35,7 @@ namespace Frontier::Components::VisualEffects
     return Mask;
 }
 
-[[nodiscard]] constexpr uint32_t PackGhostAndStarburstWord(const LensFlareParameters& Params) noexcept
+[[nodiscard]] constexpr uint32_t PackGhostStarburstWord(const LensFlareParameters& Params) noexcept
 {
     const uint32_t Count    = std::min<uint32_t>(Params.GhostReflectionCount, 24u) & 0xFFu;
     const uint32_t Sides    = static_cast<uint32_t>(Params.GhostShape) & 0xFFu;

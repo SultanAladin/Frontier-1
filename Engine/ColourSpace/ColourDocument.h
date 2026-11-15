@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                              COLOURDOCUMENT.H
+                                                               COLOURDOCUMENT.H
 ============================================================================================================================================*/
-// 🎨 Authoritative in-memory .ColourSpace document holding primaries, white point, swatches, modular colour ramps, spectra & baked LUTs
+// 🧩 Authoritative in-memory .ColourSpace document holding primaries, white point, swatches, modular colour ramps, spectra & baked LUTs
 
 #pragma once
 

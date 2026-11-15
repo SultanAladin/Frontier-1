@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                        VECTORCANVASRASTERIZER.H
+                                                           VECTORCANVASRASTERIZER.H
 ============================================================================================================================================*/
 // 🧩 Pure Vulkan 1.3 + .slang VectorGraphics GPU rasterizer driven by ThorVG symbolic DOM/typography paths + Planar2D TransformGizmo + R32G32B32A32_UINT picking.
 
@@ -9,7 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Editor/Viewports/TransformGizmo.h"
+#include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/GeometricRaster/Compute/TimelineTransferRegister.h"
 #include "Engine/GeometricRaster/Compute/ComputeDispatchEncoder.h"
@@ -174,7 +174,7 @@ private:
         uint32_t                                        WidthPx,
         uint32_t                                        HeightPx,
         uint32_t                                        ScratchExtentPx,
-        bool                                            IncludeGuidesAndGizmo,
+        bool                                            IncludeGuidesGizmo,
         const Workspaces::PatternStampWorkspaceSession& Session,
         const Editor::TransformGizmo*                   OptionalGizmo2D,
         std::vector<uint8_t>*                           OutRGBA);

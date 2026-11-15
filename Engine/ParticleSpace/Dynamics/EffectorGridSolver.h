@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           EFFECTORGRIDSOLVER.H
+                                                             EFFECTORGRIDSOLVER.H
 ============================================================================================================================================*/
 // 🧩 Exact C++ MoGraph & Effector Grid solver (Kinetic Hex Torus Matrix, Obsidian Control Vehicle Halftone & Tiles, Height Cubes, Placeable 3D Effectors)
 

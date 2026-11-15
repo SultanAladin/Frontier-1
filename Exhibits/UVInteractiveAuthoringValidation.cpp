@@ -377,7 +377,7 @@ int main()
             uint32_t Count = 0u;
             for (const auto& V : Verts)
             {
-                if ((V.NormalAndHandle.W == 1.0f || V.NormalAndHandle.W == 2.0f || V.NormalAndHandle.W == 3.0f) &&
+                if ((V.NormalHandlePacked.W == 1.0f || V.NormalHandlePacked.W == 2.0f || V.NormalHandlePacked.W == 3.0f) &&
                     V.ColorRGBAndShaded.W == 0.0f &&
                     V.ColorRGBAndShaded.X > 0.99f &&
                     V.ColorRGBAndShaded.Y > 0.99f &&

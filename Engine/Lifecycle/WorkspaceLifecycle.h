@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           WORKSPACELIFECYCLE.H
+                                                             WORKSPACELIFECYCLE.H
 ============================================================================================================================================*/
 // 🧩 Multi-document workspace session loop driving active workspace tabs, document revisions, and shared Components/Panes
 

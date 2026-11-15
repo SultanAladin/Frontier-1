@@ -1,5 +1,5 @@
 /*============================================================================================================================================
-                                                           VIEWPORTPICKQUERY.CPP
+                                                            VIEWPORTPICKQUERY.CPP
 ============================================================================================================================================*/
 // 🧩 Implementation of ViewportPickQuery executing 1x1 GPU pixel readbacks and parallel ViewportPickReduction.slang region scans
 
@@ -130,7 +130,7 @@ ViewportPickHit ViewportPickQuery::QuerySinglePixel(
     TransferRegister->BindTicketTimelineSignal(Ticket, Signal);
 
     std::array<uint32_t, 4u> RawChannels {{ 0u, GeometrySpace::InvalidNetworkIndex, GeometrySpace::InvalidNetworkIndex, 0u }};
-    if (TransferRegister->AwaitAndCopyTyped<uint32_t>(Ticket, RawChannels))
+    if (TransferRegister->AwaitReadbackTyped<uint32_t>(Ticket, RawChannels))
     {
         Result.InstanceSlot       = RawChannels[0u];
         Result.FaceIndex          = RawChannels[1u];
@@ -251,7 +251,7 @@ RegionPickSummary ViewportPickQuery::ExecuteRegionReduction(
     TransferRegister->BindTicketTimelineSignal(Ticket, Signal);
 
     std::array<uint32_t, 3u> OutCounts {{ 0u, 0u, 0u }};
-    if (TransferRegister->AwaitAndCopyTyped<uint32_t>(Ticket, OutCounts))
+    if (TransferRegister->AwaitReadbackTyped<uint32_t>(Ticket, OutCounts))
     {
         Summary.HitPixelCount     = OutCounts[0u];
         Summary.FirstInstanceSlot = OutCounts[1u];
