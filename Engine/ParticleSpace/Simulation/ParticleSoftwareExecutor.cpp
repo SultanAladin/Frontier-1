@@ -10,6 +10,7 @@
 #include "Engine/ParticleSpace/Simulation/ParticleSoftwareExecutor.h"
 
 #include "Engine/ParticleSpace/Dynamics/CurlManifoldDynamics.h"
+#include "Engine/ParticleSpace/Dynamics/DynamicStrandSolver.h"
 #include "Engine/ParticleSpace/Dynamics/FluidGranularDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/MolecularReactionDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/OrbitalElectromagneticDynamics.h"
@@ -87,7 +88,7 @@ uint32_t ExecuteParticleRigStepCpu(
     if (D.Splash.has_value())      StepShallowWaterSplashDynamics(*D.Splash, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
     if (D.Transition.has_value())  StepTransitionDerezDynamics(*D.Transition, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
 
-    // 3. Ambient wind + ForceFieldAccumulator coupling + ballistic integration + colliders
+    // 3. Ambient wind vector
     float AmbientV[3] = { 0.0f, 0.0f, 0.0f };
     if (Context.Document.AmbientWind.Enabled)
     {
@@ -95,6 +96,28 @@ uint32_t ExecuteParticleRigStepCpu(
         const float Gust = 1.0f + Context.Document.AmbientWind.GustAmplitude * std::sin(Context.ElapsedSeconds * 1.7f);
         AmbientV[0] = std::cos(Az) * Context.Document.AmbientWind.SpeedMps * Gust;
         AmbientV[2] = std::sin(Az) * Context.Document.AmbientWind.SpeedMps * Gust;
+    }
+
+    // Dedicated 20-node dynamic strand pipeline (Cables/Chains, Leafy Vines, Flags, Ship Sails, Beaded Curtains)
+    if (D.Strand.has_value())
+    {
+        StepDynamicStrandEnsemble(
+            Rig,
+            *D.Strand,
+            OriginCenter,
+            AmbientV,
+            Context.ForceAccumulator,
+            Context.Document.Collider,
+            RigSlots,
+            OptionalStrandHistory,
+            Context.ElapsedSeconds,
+            DtSec);
+        uint32_t AliveStrands = 0u;
+        for (const auto& Slot : RigSlots)
+        {
+            if (IsParticleSlotAlive(Slot)) ++AliveStrands;
+        }
+        return AliveStrands;
     }
 
     const float GravityY = -9.81f * D.Ballistic.GravityScale + D.Ballistic.BuoyancyMps2;

@@ -11,6 +11,7 @@
 #include "Engine/ParticleSpace/ParticleExtension.h"
 #include "Engine/ParticleSpace/Presets/ParticlePresetCatalogue.h"
 #include "Engine/ParticleSpace/Simulation/ParticleMetricsCollector.h"
+#include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -234,9 +235,40 @@ void RenderPresetView(
     const ParticleRig&            Rig,
     bool                          Additive,
     std::span<const ParticleSlot> Slots,
+    std::span<const StrandVertex> StrandVertices,
     std::vector<uint8_t>&         Img,
     int W, int H, int X0, int Y0, int CW, int CH, int TopPad)
 {
+    if (Rig.Dynamics.Strand.has_value() && !StrandVertices.empty())
+    {
+        const int ViewW = std::max(1, CW - 2);
+        const int ViewH = std::max(1, CH - TopPad - 1);
+        StrandCameraSpec Cam {};
+        if (const auto* Pt = std::get_if<AnalyticPointOrigin>(&Rig.Origin))
+        {
+            Cam.FocusMeters[0] = Pt->CenterMeters[0];
+            Cam.FocusMeters[1] = 1.85f;
+            Cam.FocusMeters[2] = Pt->CenterMeters[2];
+        }
+        Cam.YawRadians     = 0.45f;
+        Cam.PitchRadians   = 0.24f;
+        Cam.DistanceMeters = 7.4f;
+        std::vector<uint8_t> FrameRgba {};
+        RenderDynamicStrandRigRgba8(Rig, Slots, StrandVertices, Cam, ViewW, ViewH, FrameRgba);
+        for (int Y = 0; Y < ViewH; ++Y)
+        {
+            for (int X = 0; X < ViewW; ++X)
+            {
+                const std::size_t Si = static_cast<std::size_t>((Y * ViewW + X) * 4);
+                const std::size_t Di = static_cast<std::size_t>(((Y0 + TopPad + Y) * W + (X0 + 1 + X)) * 4);
+                Img[Di + 0] = FrameRgba[Si + 0];
+                Img[Di + 1] = FrameRgba[Si + 1];
+                Img[Di + 2] = FrameRgba[Si + 2];
+                Img[Di + 3] = 255u;
+            }
+        }
+        return;
+    }
     const float Yaw = 0.46f, Pitch = 0.30f;
     const float Cy = std::cos(Yaw), Sy = std::sin(Yaw);
     const float Cp = std::cos(Pitch), Sp = std::sin(Pitch);
@@ -565,8 +597,9 @@ int main()
                 }
             }
 
-            const auto Slots = Ext.InspectParticleSlots();
-            const auto M     = ParticleMetricsCollector::CollectFromSlots(Slots);
+            const auto Slots   = Ext.InspectParticleSlots();
+            const auto Strands = Ext.InspectStrandVertices();
+            const auto M       = ParticleMetricsCollector::CollectFromSlots(Slots);
             if (M.NaNOrInfCount == 0u && M.LiveCount > 0u) ++CleanPresets;
             else
             {
@@ -583,11 +616,11 @@ int main()
             const int Cx0 = (Local % CppCols) * CppCW;
             const int Cy0 = (Local / CppCols) * CppCH;
             FillPanelBg(CppSheet, CppSheetW, CppSheetH, Cx0, Cy0, CppCW, CppCH, 18, ShortLabel);
-            RenderPresetView(Doc.Rigs[0], Meta.AdditiveBlend, Slots, CppSheet, CppSheetW, CppSheetH, Cx0, Cy0, CppCW, CppCH, 18);
+            RenderPresetView(Doc.Rigs[0], Meta.AdditiveBlend, Slots, Strands, CppSheet, CppSheetW, CppSheetH, Cx0, Cy0, CppCW, CppCH, 18);
 
             std::vector<uint8_t> SingleTile(static_cast<std::size_t>(CppCW * CppCH * 4), 255u);
             FillPanelBg(SingleTile, CppCW, CppCH, 0, 0, CppCW, CppCH, 18, ShortLabel);
-            RenderPresetView(Doc.Rigs[0], Meta.AdditiveBlend, Slots, SingleTile, CppCW, CppCH, 0, 0, CppCW, CppCH, 18);
+            RenderPresetView(Doc.Rigs[0], Meta.AdditiveBlend, Slots, Strands, SingleTile, CppCW, CppCH, 0, 0, CppCW, CppCH, 18);
             stbi_write_png((CppDir / (std::string(Meta.Identifier) + ".png")).string().c_str(), CppCW, CppCH, 4, SingleTile.data(), CppCW * 4);
 
             // 2. Render into Side-by-Side HTML vs C++ Parity Sheet
@@ -603,7 +636,7 @@ int main()
                 ++MatchedHtml;
             }
             // Right half: C++ ParticleSpace live simulation render
-            RenderPresetView(Doc.Rigs[0], Meta.AdditiveBlend, Slots, ParitySheet, SheetW, SheetH, Px0 + HalfW, Py0 + BarH, HalfW, HalfH, 0);
+            RenderPresetView(Doc.Rigs[0], Meta.AdditiveBlend, Slots, Strands, ParitySheet, SheetW, SheetH, Px0 + HalfW, Py0 + BarH, HalfW, HalfH, 0);
 
             // Crisp vertical divider & subtle HTML / C++ corner badges
             for (int Y = Py0 + BarH; Y < Py0 + CellH - 1; ++Y)

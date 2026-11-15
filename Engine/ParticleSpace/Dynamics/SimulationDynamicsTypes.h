@@ -84,11 +84,20 @@ struct CurlManifoldSpec
 
 struct StrandConstraintSpec
 {
-    uint8_t StrandVariant   = 1u;    // [-]   - 1 Cable/Chain, 2 Vine/Rope, 3 Flag/Sail, 4 Beads/Chimes/Drape
-    float   StiffnessRate   = 1.25f; // [1/s] - XPBD elastic recovery rate
-    float   TearThreshold   = 0.0f;  // [m/s] - Impact speed threshold for tearing (0 = unbreakable)
-    float   CatenarySagM    = 0.35f; // [m]   - Gravity droop amplitude
-    float   WaveSpeedHz     = 2.2f;  // [Hz]  - Travelling flutter wave speed
+    uint8_t  StrandVariant    = 1u;                     // [-]   - 1 Cable/Chain, 2 Vine/Rope, 3 Flag/Sail, 4 Beads/Chimes/Drape
+    uint8_t  SubMode          = 0u;                     // [-]   - Variant sub-mode (Cable:1=Chain; Flag:0=Flag,1=Sail; Beads:1=Bead,2=Chime,3=Drape)
+    uint32_t RowCount         = 18u;                    // [cnt] - Primary strand / row count (HTML dynRows)
+    float    HeightMeters     = 3.1f;                   // [m]   - Suspension / mast elevation (HTML dynHeight)
+    float    StiffnessRate    = 1.25f;                  // [1/s] - XPBD elastic recovery rate (HTML dynStiff)
+    float    TearThreshold    = 0.0f;                   // [m/s] - Impact speed threshold for tearing (HTML dynTearThresh)
+    float    CatenarySagM     = 0.35f;                  // [m]   - Gravity droop or belly sag (HTML dynSag)
+    float    WaveSpeedHz      = 2.2f;                   // [Hz]  - Travelling flutter wave speed (HTML dynWaveSpeed)
+    float    CurlFreqPerM     = 0.9f;                   // [1/m] - Spatial wind-curl frequency (HTML curlFreq)
+    float    CurlAmpMps       = 0.65f;                  // [m/s] - Wind-curl gust amplitude (HTML curlAmp)
+    float    BoxHalfMeters[3] = { 2.0f, 1.5f, 1.0f };   // [m]   - Span half-extents (HTML boxHalf)
+    float    SpanDirection[3] = { 1.0f, 0.0f, 0.0f };   // [-]   - Primary horizontal fly direction (HTML dir)
+    float    WidthScale       = 1.0f;                   // [x]   - Ribbon thinness multiplier (HTML streakThin)
+    bool     ShowHardwareProp = true;                   // [-]   - Render pylons / flagpole / ship mast / doorway lintel
 };
 
 struct BotanicalSwaySpec

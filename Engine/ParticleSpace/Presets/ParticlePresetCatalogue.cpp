@@ -1870,28 +1870,83 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         Orb.CentralMassParam = 8.5f;
         Rig.Dynamics.Orbital = Orb;
     }
-    else if (Pid == "cables-chains" || Pid == "vines-ropes" || Pid == "flag-banner" || Pid == "ship-sail"
-          || Pid == "velvet-theater-drapes" || Pid == "beaded-door-curtain" || Pid == "bamboo-wind-chimes")
+    else if (Pid == "cables-chains" || Pid == "vines-ropes" || Pid == "flag-banner"
+          || Pid == "ship-sail" || Pid == "beaded-door-curtain")
+    {
+        // Authentic 1:1 HTML Particle Studio 20-node dynamic strand setup (exact parameters from Engine/presets.js)
+        Rig.Dynamics.ElasticStrand.reset();
+        Rig.Dynamics.Botanical.reset();
+        AnalyticPointOrigin Orig {};
+        for (int K = 0; K < 3; ++K) Orig.CenterMeters[K] = P.OriginCenter[K];
+        Rig.Origin = Orig;
+
+        RibbonStrandCarrier Rib {};
+        Rib.VerticesPerStrand = 20u;
+        Rig.Carrier = Rib;
+
+        StrandConstraintSpec S {};
+        for (int K = 0; K < 3; ++K)
+        {
+            S.BoxHalfMeters[K] = P.OriginHalf[K];
+            S.SpanDirection[K] = P.LaunchDir[K];
+        }
+        S.CurlFreqPerM     = P.CurlFreq;
+        S.CurlAmpMps       = P.CurlAmp;
+        S.ShowHardwareProp = true;
+
+        if (Pid == "cables-chains")
+        {
+            S.StrandVariant = 1u; S.SubMode = 1u; S.RowCount = 18u;
+            S.HeightMeters  = 3.1f; S.CatenarySagM = 0.54f; S.StiffnessRate = 1.75f;
+            S.TearThreshold = 11.2f; S.WaveSpeedHz = 1.8f; S.WidthScale = 1.0f;
+            Rig.SlotCapacity = 64u;
+        }
+        else if (Pid == "vines-ropes")
+        {
+            S.StrandVariant = 2u; S.SubMode = 0u; S.RowCount = 28u;
+            S.HeightMeters  = 3.7f; S.CatenarySagM = 2.35f; S.StiffnessRate = 1.10f;
+            S.TearThreshold = 8.6f; S.WaveSpeedHz = 1.9f; S.WidthScale = 0.9f;
+            Rig.SlotCapacity = 96u;
+        }
+        else if (Pid == "flag-banner")
+        {
+            S.StrandVariant = 3u; S.SubMode = 0u; S.RowCount = 30u;
+            S.HeightMeters  = 3.65f; S.CatenarySagM = 0.22f; S.StiffnessRate = 1.45f;
+            S.TearThreshold = 9.0f; S.WaveSpeedHz = 2.9f; S.WidthScale = 1.0f;
+            Rig.SlotCapacity = 64u;
+        }
+        else if (Pid == "ship-sail")
+        {
+            S.StrandVariant = 3u; S.SubMode = 1u; S.RowCount = 30u;
+            S.HeightMeters  = 3.9f; S.CatenarySagM = 0.55f; S.StiffnessRate = 1.30f;
+            S.TearThreshold = 9.8f; S.WaveSpeedHz = 2.1f; S.WidthScale = 1.0f;
+            Rig.SlotCapacity = 64u;
+        }
+        else // beaded-door-curtain
+        {
+            S.StrandVariant = 4u; S.SubMode = 1u; S.RowCount = 24u;
+            S.HeightMeters  = 3.15f; S.CatenarySagM = 0.04f; S.StiffnessRate = 1.25f;
+            S.TearThreshold = 14.0f; S.WaveSpeedHz = 1.75f; S.WidthScale = 1.0f;
+            Rig.SlotCapacity = 280u;
+        }
+        Rig.Dynamics.Strand = S;
+        Rig.TintDriver.Channel = ParticleScalarChannel::ModeDefault;
+    }
+    else if (Pid == "velvet-theater-drapes" || Pid == "bamboo-wind-chimes")
     {
         ClothGridOrigin Cloth {};
         for (int K = 0; K < 3; ++K) Cloth.OriginMeters[K] = P.OriginCenter[K];
         Cloth.OriginMeters[1] = std::max(2.4f, P.OriginCenter[1]);
-        Cloth.Strands        = (Pid == "cables-chains" || Pid == "vines-ropes") ? 14u : 28u;
+        Cloth.Strands        = 28u;
         Cloth.SegmentsPerRow = 16u;
         Cloth.SpanMeters = (Pid == "bamboo-wind-chimes") ? 1.35f : 3.4f;
-        Cloth.DropMeters = (Pid == "flag-banner") ? 1.75f : ((Pid == "cables-chains" || Pid == "vines-ropes") ? 1.95f : 2.35f);
+        Cloth.DropMeters = 2.35f;
         Rig.Origin = Cloth;
         Rig.SlotCapacity = std::max<uint32_t>(Rig.SlotCapacity, Cloth.Strands * Cloth.SegmentsPerRow);
         if (!Rig.Dynamics.ElasticStrand.has_value()) Rig.Dynamics.ElasticStrand = ElasticStrandSpec {};
-        Rig.TintDriver.Channel = (Pid == "flag-banner" || Pid == "ship-sail")
-            ? ParticleScalarChannel::DistanceFromOrigin
-            : ParticleScalarChannel::WorldElevation;
-        Rig.ColourProfile.Range.RangeMin = (Pid == "flag-banner" || Pid == "ship-sail")
-            ? 0.0f
-            : (Cloth.OriginMeters[1] - Cloth.DropMeters);
-        Rig.ColourProfile.Range.RangeMax = (Pid == "flag-banner" || Pid == "ship-sail")
-            ? (Cloth.SpanMeters * 0.65f)
-            : Cloth.OriginMeters[1];
+        Rig.TintDriver.Channel = ParticleScalarChannel::WorldElevation;
+        Rig.ColourProfile.Range.RangeMin = Cloth.OriginMeters[1] - Cloth.DropMeters;
+        Rig.ColourProfile.Range.RangeMax = Cloth.OriginMeters[1];
     }
     else if (Pid == "interactive-tree" || Pid == "grass-wheat-field" || Pid == "tall-reeds"
           || Pid == "interactive-fern" || Pid == "kelp-forest" || Pid == "sea-anemone"

@@ -615,12 +615,14 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ParticleSpace/Origins/SurfaceAnchorSampler.cpp
     Engine/ParticleSpace/Origins/FireworkPatternSampler.cpp
     Engine/ParticleSpace/Dynamics/CurlManifoldDynamics.cpp
+    Engine/ParticleSpace/Dynamics/DynamicStrandSolver.cpp
     Engine/ParticleSpace/Dynamics/OrbitalElectromagneticDynamics.cpp
     Engine/ParticleSpace/Dynamics/SwarmFlockingDynamics.cpp
     Engine/ParticleSpace/Dynamics/FluidGranularDynamics.cpp
     Engine/ParticleSpace/Dynamics/MolecularReactionDynamics.cpp
     Engine/ParticleSpace/Dynamics/SpecialEffectsDynamics.cpp
     Engine/ParticleSpace/Simulation/ParticleMetricsCollector.cpp
+    Engine/ParticleSpace/Simulation/ParticleStrandRenderer.cpp
     Engine/ParticleSpace/Simulation/ParticleSoftwareExecutor.cpp
     Engine/ParticleSpace/Simulation/ParticleVulkanExecutor.cpp
     Engine/ParticleSpace/Presets/ParticlePresetCatalogue.cpp
@@ -844,6 +846,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(ParticleDynamicsValidation          Exhibits/ParticleDynamicsValidation.cpp)
     frontier_register_exhibit(ParticleVulkanValidation            Exhibits/ParticleVulkanValidation.cpp)
     frontier_register_exhibit(ParticlePresetParityValidation      Exhibits/ParticlePresetParityValidation.cpp)
+    frontier_register_exhibit(ParticleFirstFiveParityValidation   Exhibits/ParticleFirstFiveParityValidation.cpp)
     frontier_register_exhibit(GeometryNetworkValidation      Exhibits/GeometryNetworkValidation.cpp)
     frontier_register_exhibit(GeometryCompletionValidation   Exhibits/GeometryCompletionValidation.cpp)
     frontier_register_exhibit(MaterialScatteringValidation   Exhibits/MaterialScatteringValidation.cpp)

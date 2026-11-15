@@ -218,6 +218,7 @@ void ParticleExtension::SpawnSingleSlot(std::size_t RigIdx, RigRuntimeSlice& Sli
 void ParticleExtension::TriggerBurst(std::size_t RigIndex, uint32_t Count)
 {
     if (!Initialized || RigIndex >= Document.Rigs.size() || RigIndex >= RigSlices.size()) return;
+    if (Document.Rigs[RigIndex].Dynamics.Strand.has_value()) return;
     RigRuntimeSlice& Slice = RigSlices[RigIndex];
     const uint32_t N = std::min(Count, Slice.SlotCapacity);
     for (uint32_t I = 0u; I < N; ++I)
@@ -231,12 +232,15 @@ void ParticleExtension::StepSingleRig(std::size_t RigIdx, RigRuntimeSlice& Slice
     const ParticleRig& Rig = Document.Rigs[RigIdx];
     if (!Rig.Visible || Slice.SlotCapacity == 0u) return;
 
-    Slice.SpawnAccumulator += Rig.ReleaseRatePerSec * DtSec;
-    const uint32_t SpawnBudget = std::min<uint32_t>(static_cast<uint32_t>(Slice.SpawnAccumulator), Slice.SlotCapacity);
-    Slice.SpawnAccumulator -= static_cast<float>(SpawnBudget);
-    for (uint32_t S = 0u; S < SpawnBudget; ++S)
+    if (!Rig.Dynamics.Strand.has_value())
     {
-        SpawnSingleSlot(RigIdx, Slice);
+        Slice.SpawnAccumulator += Rig.ReleaseRatePerSec * DtSec;
+        const uint32_t SpawnBudget = std::min<uint32_t>(static_cast<uint32_t>(Slice.SpawnAccumulator), Slice.SlotCapacity);
+        Slice.SpawnAccumulator -= static_cast<float>(SpawnBudget);
+        for (uint32_t S = 0u; S < SpawnBudget; ++S)
+        {
+            SpawnSingleSlot(RigIdx, Slice);
+        }
     }
 
     const ParticleStepContext StepCtx {
