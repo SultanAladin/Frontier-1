@@ -59,6 +59,10 @@ add_subdirectory("${JOLT_ROOT}/Build" "${CMAKE_BINARY_DIR}/jolt_build" EXCLUDE_F
 
 if(TARGET Jolt)
     set_target_properties(Jolt PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(FRONTIER_PROFILE STREQUAL "Shipping")
+        # Keep JoltPhysics ABI identical to FrontierCompileSettings (which adds -DNDEBUG / /DNDEBUG in Shipping even when CMAKE_BUILD_TYPE is unset).
+        target_compile_definitions(Jolt PUBLIC NDEBUG)
+    endif()
     if(NOT MSVC)
         target_compile_options(Jolt PRIVATE -w)
     endif()
