@@ -34,12 +34,42 @@ jobs:
             libxcursor-dev libxi-dev libwayland-dev wayland-protocols \
             libxkbcommon-dev libgl1-mesa-dev
 
+      - name: Set up pinned Python and Node toolchains
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Recover pinned dependencies, fonts and shader tools
         run: |
-          python3 -m pip install --requirement Automation/FontRequirements.txt
-          python3 Automation/PrepareDependencies.py
-          python3 Automation/PrepareFonts.py
-          python3 Automation/PrepareShaderToolchain.py
+          set -o pipefail
+          retry() {
+            local n=1
+            while [ $n -le 3 ]; do
+              "$@" && return 0
+              echo "Attempt $n failed; retrying in 5s..." >&2
+              n=$((n + 1))
+              sleep 5
+            done
+            return 1
+          }
+          run_step() {
+            local out
+            if ! out=$("$@" 2>&1); then
+              echo "$out"
+              local tail
+              tail=$(printf '%s' "$out" | tail -n 20 | tr '\n' ' ')
+              echo "::error title=Setup failure ($*)::${tail}"
+              return 1
+            fi
+            echo "$out"
+          }
+          run_step retry python3 -m pip install --requirement Automation/FontRequirements.txt
+          run_step retry python3 Automation/PrepareDependencies.py
+          run_step retry python3 Automation/PrepareFonts.py
+          run_step retry python3 Automation/PrepareShaderToolchain.py
 
       - name: Build and run all checks across supported profiles
         env:

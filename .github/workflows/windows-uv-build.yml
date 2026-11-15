@@ -84,8 +84,14 @@ jobs:
       - name: Run Windows hostile-input, UV chart, and Project Browser checks
         shell: pwsh
         run: |
-          ctest --test-dir Build/Windows -C Release --output-on-failure -R '^(UVBoundaryValidation|ProjectBrowserValidation)$'
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $Output = & ctest --test-dir Build/Windows -C Release --output-on-failure -R '^(UVBoundaryValidation|ProjectBrowserValidation)$' 2>&1
+          $Result = $LASTEXITCODE
+          $Output | ForEach-Object { Write-Output "$_" }
+          if ($Result -ne 0) {
+            $Details = ($Output | Select-Object -Last 25 | ForEach-Object { "$_" }) -join ' | '
+            Write-Output "::error title=Windows CTest diagnostics::$Details"
+            exit $Result
+          }
 
       - name: Assemble portable folder
         shell: pwsh
