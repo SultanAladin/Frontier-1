@@ -30,7 +30,7 @@ then run the 7-gate rejection check.
    - ① Appears in `Documentation/BannedWordsVocabulary.md` or is a direct synonym (`adjacency`, `arena`, `binding`, `bloom`, `context`, `coverage`, `hub`, `interpolant`, `mesh`, `pass`, `pool`, `predicate`, `reclamation`, `reservoir`, `stage`, `store`, `submission`, `vacancy`, …).
    - ② Sci-fi / center-of-universe / mythology (`Apex`, `Nexus`, `Core`, `Matrix`, `Vortex`, `Horizon`, `Sentinel`, …).
    - ③ Framework / web jargon (`SceneGraph`, `ECS`, `Backend`, `Actor`, `Shell`, `Popover`, `Widget`, `Kit`).
-   - ④ Generic OO / AI trope (`Manager`, `Service`, `Controller`, `Handler`, `Dispatcher`, `Processor`, `Helper`, `Utility`).
+   - ④ Generic OO / AI trope (`Manager`, `Service`, `Controller`, `Coordinator`, `Handler`, `Dispatcher`, `Processor`, `Helper`, `Utility`).
    - ⑤ Human job title or kinship term (`Worker`, `Provider`, `Listener` / `Parent`, `Child`, `Sibling`, `Orphan`).
    - ⑥ Empty placeholder (`Data`, `Info`, `Object`, `Item`, `Element`, `Thing`, `Common`, `Base`, `flag`, `state`, `value`).
    - ⑦ **Conjunction `And` in filenames or identifiers** (`GpuTextureAndSdfBaker`, `BuildAndUploadStudy`, `CameraEyeAndMode`, `MasksAndIds`) — **STRICTLY FORBIDDEN**. Split into single-responsibility types/files (`TextureBaker` + `SdfBaker`) or name the single concrete mechanism cleanly.
@@ -46,7 +46,7 @@ then run the 7-gate rejection check.
 - **Hard-Banned Highlights:** `action`, `adjacency`, `affinity`, `arena`, `Assembly`, `backend`, `badge`, `Base`,
   `binding`, `bloom` (→ `VeilingGlareFilter` / `LuminanceGlareDownsample`), `Cache`, `card`, `carousel`,
   `classification`, `Commit` (→ `Finalize`/`Enforce`/`Align`/`Resolve`), `Common`, `Complex`, `Compose`/`Composite`
-  (→ `Stack`/`Order`), `concurrency`/`concurrent`, `context`, `continuum`, `contract`, `Core`,
+  (→ `Stack`/`Order`), `concurrency`/`concurrent`, `context`, `continuum`, `contract`, `Coordinator`, `Core`,
   `coverage`, `Data`, `Designation` (→ `…Token`), `dev`, `Element`, `Emission`/`Emit`/`emitter`,
   `Entity`, `evaluator`, `Facet`/`Facets` (→ `Face`/`Faces`), `fence`, `flag`, `floating`, `flow`, `Frame`, `glyph`, `Graph`,
   `harness`/`Trial` (→ `…Validation`), `Hierarchy`, `hook`, `Hub`, `Info`, `Inscription`
@@ -59,7 +59,7 @@ then run the 7-gate rejection check.
   `vacancy`, `value`, `Widget`.
 - **Discouraged (Avoid):** `atlas`, `slice`, `substrate`.
 - **Restricted Lifecycle Suffix (`Extension`):** Permitted **solely** on designated domain lifecycle
-  coordinators: `RenderExtension`, `PhysicsExtension`, `InputExtension`, `AnnotationExtension`,
+  participants: `RenderExtension`, `PhysicsExtension`, `InputExtension`, `AnnotationExtension`,
   `WorkspaceExtension`, `RevisionExtension`, `NetworkingExtension`, `AudioExtension`.
 
 ---

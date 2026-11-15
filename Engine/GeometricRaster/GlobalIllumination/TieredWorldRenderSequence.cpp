@@ -40,9 +40,8 @@ namespace
 //                                            TIERED WORLD RENDER SEQUENCE
 //------------------------------------------------------------------------------------------------------------------------
 
-void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOutScene)
+void TieredWorldRenderSequence::CompileBounceSummaries(WorldSceneSpecification& InOutScene)
 {
-    // 1. Compile 32 B BounceSlabEntries for every registered material slot!
     const uint32_t SlotCount = InOutScene.MaterialRegister.QuerySlotCount();
     InOutScene.BounceSummaries.resize(SlotCount);
     for (uint32_t Slot = 0u; Slot < SlotCount; ++Slot)
@@ -50,6 +49,12 @@ void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOut
         InOutScene.BounceSummaries[Slot] = MaterialSpace::CompileBounceSlabEntry(
             InOutScene.MaterialRegister.InspectAuthoredMaterial(static_cast<uint16_t>(Slot)));
     }
+}
+
+void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOutScene)
+{
+    // 1. Compile 32 B BounceSlabEntries for every registered material slot!
+    CompileBounceSummaries(InOutScene);
 
     // 2. Build Tier 1 GTX 2-Cascade 3.9 mm Orthographic Contact Shadow Clips
     const Mathematics::Axis3D FocusCenter = (InOutScene.SceneTree.RootBoundsMin + InOutScene.SceneTree.RootBoundsMax) * 0.5f;
@@ -57,6 +62,17 @@ void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOut
         InOutScene.Sun, FocusCenter, InOutScene.SceneTree, FineContactClip, CoarseContactClip);
 
     // 3. Build & Propagate Multi-Bounce Tier 2 RTX 1/pi Octahedral Irradiance Lattice (with 16x16 Chebyshev Depth!)
+    RtxLattice.PropagateRtxIrradianceLattice(
+        InOutScene.LatticeConfig,
+        InOutScene.SceneTree,
+        InOutScene.BounceSummaries,
+        InOutScene.Sun,
+        InOutScene.SkyRadiance);
+}
+
+void TieredWorldRenderSequence::PrepareRtxIrradianceLatticeOnly(WorldSceneSpecification& InOutScene)
+{
+    CompileBounceSummaries(InOutScene);
     RtxLattice.PropagateRtxIrradianceLattice(
         InOutScene.LatticeConfig,
         InOutScene.SceneTree,

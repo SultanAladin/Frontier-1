@@ -343,7 +343,10 @@ ContentBrowserPanel::~ContentBrowserPanel() noexcept
 
 void ContentBrowserPanel::ConfigureShelfExtent(ContentShelfExtent RequestedExtent, bool Immediate) noexcept
 {
-    TargetExtent       = RequestedExtent;
+    TargetExtent              = RequestedExtent;
+    ShelfDragContact          = false;
+    ShelfDragFromNotch        = false;
+    ShelfDragExceededDeadzone = false;
     const double Ratio = static_cast<double>(TargetRatioForExtent(RequestedExtent, ColourMatCapLocked));
     if (Immediate)
     {
@@ -1019,6 +1022,10 @@ void ContentBrowserPanel::SynchronizeHostBounds(Rectangle2D HostBoundsPhysical, 
 
 Rectangle2D ContentBrowserPanel::QueryDrawerPhysicalBounds() const noexcept
 {
+    if (ShelfDragContact)
+    {
+        return LastHostBoundsPhysical;
+    }
     const float SafeScale      = std::max(0.25f, LastSafeScale);
     const float LogicalHeight  = LastHostBoundsPhysical.Height / SafeScale;
     const float Progress       = QueryVisibleDrawerHeightRatio();
@@ -1080,6 +1087,10 @@ Rectangle2D ContentBrowserPanel::MapPhysicalToLogicalBounds(Rectangle2D Physical
 
 bool ContentBrowserPanel::QueryBlocksPointerAt(Point2D PhysicalCursor) const noexcept
 {
+    if (ShelfDragContact)
+    {
+        return true;
+    }
     const float SafeScale = std::max(0.25f, LastSafeScale);
     const Rectangle2D LogicalViewport{
         0.0f,
@@ -2258,7 +2269,10 @@ void ContentBrowserPanel::RenderWithInput(
     double                            DeltaSeconds)
 {
     const double SafeDt = DeltaSeconds > 0.0 ? DeltaSeconds : (1.0 / 60.0);
-    (void)ShelfSpring.Integrate(SafeDt);
+    if (!ShelfDragContact)
+    {
+        (void)ShelfSpring.Integrate(SafeDt);
+    }
     if (SearchEditor.Active)
     {
         SearchEditor.BlinkPhase = std::fmod(SearchEditor.BlinkPhase + static_cast<float>(SafeDt), ControlMetrics::CaretBlinkSeconds);
@@ -2267,6 +2281,129 @@ void ContentBrowserPanel::RenderWithInput(
     const ControlColorSet AppearanceColors = ResolveActiveColorSet();
     const float           SectionRadius    = ResolveCornerRadius();
     const Point2D         Cursor{ PointerInput.CursorX, PointerInput.CursorY };
+
+    // Unified 3-detent touch-like mouse drag from bottom notch + empty top header drag strip (6px deadzone, 1:1 elastic follow, flick settle)
+    const bool DraggingAssetNow = DraggingColour || DraggingColourRamp || DraggingMatCap || DraggingContentEntry;
+    if (!ShelfDragContact && PointerInput.Pressed && !DraggingAssetNow)
+    {
+        const float PreProgress = std::clamp(static_cast<float>(ShelfSpring.Axis(ShelfAxis).Current), 0.0f, 1.0f);
+        const float PreDrawerH  = std::round(ViewportLogicalBounds.Height * PreProgress);
+        const Rectangle2D PreNotchBounds = QueryNotchTabBounds(ViewportLogicalBounds);
+        const bool OverPreNotch = PreNotchBounds.Contains(Cursor);
+
+        bool OverEmptyHeaderStrip = false;
+        if (!OverPreNotch && PreDrawerH > 24.0f)
+        {
+            const Rectangle2D HeaderStrip {
+                ViewportLogicalBounds.X,
+                ViewportLogicalBounds.Bottom() - PreDrawerH,
+                ViewportLogicalBounds.Width,
+                std::min(PreDrawerH, 54.0f),
+            };
+            if (HeaderStrip.Contains(Cursor))
+            {
+                bool OverInteractiveHeader = false;
+                for (uint32_t Idx = 0u; Idx < LastHeaderInteractiveCount; ++Idx)
+                {
+                    if (LastHeaderInteractiveBounds[Idx].Contains(Cursor))
+                    {
+                        OverInteractiveHeader = true;
+                        break;
+                    }
+                }
+                OverEmptyHeaderStrip = !OverInteractiveHeader;
+            }
+        }
+
+        if (OverPreNotch || OverEmptyHeaderStrip)
+        {
+            ShelfDragContact          = true;
+            ShelfDragFromNotch        = OverPreNotch;
+            ShelfDragExceededDeadzone = false;
+            ShelfDragStartCursorY     = Cursor.Y;
+            ShelfDragPreviousCursorY  = Cursor.Y;
+            ShelfDragStartRatio       = PreProgress;
+            ShelfDragStartExtent      = TargetExtent;
+            ShelfDragDuration         = 0.0;
+            ShelfDragRatePxPerSec     = 0.0;
+            ShelfSpring.Axis(ShelfAxis).ConfigurePosition(static_cast<double>(PreProgress));
+        }
+    }
+
+    if (ShelfDragContact)
+    {
+        ShelfDragDuration += SafeDt;
+        if (SafeDt > 1.0e-5)
+        {
+            // Positive rate = dragging UP (opening the bottom drawer)
+            ShelfDragRatePxPerSec = 0.60 * ShelfDragRatePxPerSec +
+                                    0.40 * (static_cast<double>(ShelfDragPreviousCursorY - Cursor.Y) / SafeDt);
+        }
+
+        const float DragDeltaY = ShelfDragStartCursorY - Cursor.Y;
+        ShelfDragExceededDeadzone = ShelfDragExceededDeadzone || (std::fabs(DragDeltaY) > 6.0f);
+
+        if (ShelfDragExceededDeadzone)
+        {
+            const double FullRatio = static_cast<double>(TargetRatioForExtent(ContentShelfExtent::FullHeight, ColourMatCapLocked));
+            const double RawRatio  = static_cast<double>(ShelfDragStartRatio) +
+                                     static_cast<double>(DragDeltaY) / std::max(1.0, static_cast<double>(ViewportLogicalBounds.Height));
+            const double Clamped   = std::clamp(EvaluateElasticClamp(RawRatio, 0.0, FullRatio, 0.05), 0.0, 0.99);
+            ShelfSpring.Axis(ShelfAxis).ConfigurePosition(Clamped);
+        }
+
+        ShelfDragPreviousCursorY = Cursor.Y;
+
+        if (PointerInput.Released || !PointerInput.HeldDown)
+        {
+            const bool IsShortTap = !ShelfDragExceededDeadzone && ShelfDragDuration <= 0.350;
+            if (IsShortTap)
+            {
+                if (ShelfDragFromNotch)
+                {
+                    ConfigureShelfExtent(
+                        ShelfDragStartExtent == ContentShelfExtent::Closed
+                            ? (ColourMatCapLocked ? ContentShelfExtent::SplitHalf : ContentShelfExtent::FullHeight)
+                            : ContentShelfExtent::Closed,
+                        false);
+                }
+                else
+                {
+                    ConfigureShelfExtent(ShelfDragStartExtent, false);
+                }
+            }
+            else
+            {
+                const float FullRatio = TargetRatioForExtent(ContentShelfExtent::FullHeight, ColourMatCapLocked);
+                const float CurrentR  = std::clamp(static_cast<float>(ShelfSpring.Axis(ShelfAxis).Current), 0.0f, 1.0f);
+                const float NormProg  = std::clamp(CurrentR / std::max(0.01f, FullRatio), 0.0f, 1.0f);
+                const DrawerDetentStop StartStop =
+                    (ShelfDragStartExtent == ContentShelfExtent::FullHeight)
+                        ? DrawerDetentStop::Full
+                        : ((ShelfDragStartExtent == ContentShelfExtent::SplitHalf)
+                               ? DrawerDetentStop::Half
+                               : DrawerDetentStop::Closed);
+                const DrawerDetentStop ResolvedStop =
+                    ResolveDrawerDetentOnRelease(NormProg, ShelfDragRatePxPerSec, 1.0f, StartStop);
+                const ContentShelfExtent NextExtent =
+                    (ResolvedStop == DrawerDetentStop::Full)
+                        ? ContentShelfExtent::FullHeight
+                        : ((ResolvedStop == DrawerDetentStop::Half)
+                               ? ContentShelfExtent::SplitHalf
+                               : ContentShelfExtent::Closed);
+                ConfigureShelfExtent(NextExtent, false);
+            }
+        }
+    }
+
+    ContentBrowserPointerInput DrawerPointerInput = PointerInput;
+    if (ShelfDragContact && ShelfDragExceededDeadzone)
+    {
+        DrawerPointerInput.Pressed       = false;
+        DrawerPointerInput.HeldDown      = false;
+        DrawerPointerInput.Released      = false;
+        DrawerPointerInput.DoubleClicked = false;
+    }
 
     const float Progress       = std::clamp(static_cast<float>(ShelfSpring.Axis(ShelfAxis).Current), 0.0f, 1.0f);
     const float DrawerH        = std::round(ViewportLogicalBounds.Height * Progress);
@@ -2424,22 +2561,14 @@ void ContentBrowserPanel::RenderWithInput(
     RenderContentDropZoneHighlights(Canvas, Cursor, VisibleBottomY, AppearanceColors);
 
     const Rectangle2D NotchBounds = QueryNotchTabBounds(ViewportLogicalBounds);
-    const bool        NotchHover  = NotchBounds.Contains(Cursor);
-
-    if (NotchHover && PointerInput.Pressed)
-    {
-        ConfigureShelfExtent(
-            TargetExtent == ContentShelfExtent::Closed
-                ? (ColourMatCapLocked ? ContentShelfExtent::SplitHalf : ContentShelfExtent::FullHeight)
-                : ContentShelfExtent::Closed,
-            false);
-    }
+    const bool        NotchHover  = NotchBounds.Contains(Cursor) || ShelfDragContact;
 
     RenderBottomNotchHandle(Canvas, NotchBounds, NotchHover, AppearanceColors);
 
     if (DrawerH <= 2.0f)
     {
-        LastSearchBounds = {};
+        LastSearchBounds           = {};
+        LastHeaderInteractiveCount = 0u;
         if (DraggingColour)
         {
             if (const ColourSwatchEntry* Dragged = CodexLibrary.QueryEntryAt(DraggedColourIndex))
@@ -2538,27 +2667,35 @@ void ContentBrowserPanel::RenderWithInput(
             }
         }
         const Rectangle2D WsTrack{ DrawerRect.X + 240.0f, CurY + 4.0f, WsTotalW, 29.0f };
+        LastHeaderInteractiveCount = 0u;
+        LastHeaderInteractiveBounds[LastHeaderInteractiveCount++] = WsTrack;
         ConstructSegmentedTrack(Canvas, WsTrack, AppearanceColors);
         float WsX = WsTrack.X + 3.0f;
         for (const auto& [WsKind, WsLabel] : QuickWorkspaces)
         {
             const float SegmentW = std::max(50.0f, Canvas.MeasureTextWidth(9.2f, WsLabel) + 18.0f);
-            if (ConstructSegmentedOption(Canvas, { WsX, WsTrack.Y + 3.0f, SegmentW, 23.0f }, WsLabel, ActiveWorkspace == WsKind, PointerInput, AppearanceColors, 9.2f))
+            if (ConstructSegmentedOption(Canvas, { WsX, WsTrack.Y + 3.0f, SegmentW, 23.0f }, WsLabel, ActiveWorkspace == WsKind, DrawerPointerInput, AppearanceColors, 9.2f))
             {
                 ConfigureWorkspaceDomain(WsKind);
             }
             WsX += SegmentW + 3.0f;
         }
     }
+    if (ColourMatCapLocked)
+    {
+        LastHeaderInteractiveCount = 0u;
+    }
 
     float RightBtnX = DrawerRect.Right() - PadX;
     RightBtnX -= 30.0f;
+    const Rectangle2D CloseBtnRect { RightBtnX, CurY + 4.0f, 30.0f, 28.0f };
+    LastHeaderInteractiveBounds[LastHeaderInteractiveCount++] = CloseBtnRect;
     if (ConstructCapsuleControl(
             Canvas,
-            { RightBtnX, CurY + 4.0f, 30.0f, 28.0f },
+            CloseBtnRect,
             "",
             false,
-            PointerInput,
+            DrawerPointerInput,
             AppearanceColors,
             10.0f,
             false,
@@ -2568,13 +2705,15 @@ void ContentBrowserPanel::RenderWithInput(
     }
 
     RightBtnX -= 78.0f;
+    const Rectangle2D SplitBtnRect { RightBtnX, CurY + 4.0f, 72.0f, 28.0f };
+    LastHeaderInteractiveBounds[LastHeaderInteractiveCount++] = SplitBtnRect;
     const bool InSplit = (TargetExtent == ContentShelfExtent::SplitHalf);
     if (ConstructCapsuleControl(
             Canvas,
-            { RightBtnX, CurY + 4.0f, 72.0f, 28.0f },
+            SplitBtnRect,
             InSplit ? "Full" : "Split",
             InSplit,
-            PointerInput,
+            DrawerPointerInput,
             AppearanceColors,
             9.5f,
             false,
@@ -2584,12 +2723,14 @@ void ContentBrowserPanel::RenderWithInput(
     }
 
     RightBtnX -= 94.0f;
+    const Rectangle2D AddColourBtnRect { RightBtnX, CurY + 4.0f, 88.0f, 28.0f };
+    LastHeaderInteractiveBounds[LastHeaderInteractiveCount++] = AddColourBtnRect;
     if (ConstructCapsuleControl(
             Canvas,
-            { RightBtnX, CurY + 4.0f, 88.0f, 28.0f },
+            AddColourBtnRect,
             "Colour",
             false,
-            PointerInput,
+            DrawerPointerInput,
             AppearanceColors,
             9.5f,
             false,
@@ -2606,13 +2747,15 @@ void ContentBrowserPanel::RenderWithInput(
     }
 
     RightBtnX -= 106.0f;
+    const Rectangle2D ImportBtnRect { RightBtnX, CurY + 4.0f, 100.0f, 28.0f };
+    LastHeaderInteractiveBounds[LastHeaderInteractiveCount++] = ImportBtnRect;
     const bool ScratchMode = (ThumbnailRepository.QueryImportPolicy().Mode == ImportDestinationMode::ScratchTempFolder);
     if (ConstructCapsuleControl(
             Canvas,
-            { RightBtnX, CurY + 4.0f, 100.0f, 28.0f },
+            ImportBtnRect,
             ScratchMode ? "Import: Temp" : "Import: Project",
             ScratchMode,
-            PointerInput,
+            DrawerPointerInput,
             AppearanceColors,
             9.0f))
     {
@@ -2625,13 +2768,15 @@ void ContentBrowserPanel::RenderWithInput(
     }
 
     RightBtnX -= 84.0f;
+    const Rectangle2D StorageBtnRect { RightBtnX, CurY + 4.0f, 78.0f, 28.0f };
+    LastHeaderInteractiveBounds[LastHeaderInteractiveCount++] = StorageBtnRect;
     const bool RotationalActive = (StreamChannelThread.QueryResolvedTier() == Threading::StorageHardwareTier::RotationalSequentialIo);
     if (ConstructCapsuleControl(
             Canvas,
-            { RightBtnX, CurY + 4.0f, 78.0f, 28.0f },
+            StorageBtnRect,
             RotationalActive ? "I/O: HDD" : "I/O: SSD",
             RotationalActive,
-            PointerInput,
+            DrawerPointerInput,
             AppearanceColors,
             9.0f))
     {
@@ -2989,7 +3134,7 @@ void ContentBrowserPanel::RenderWithInput(
             ActiveCat ? RailActiveInk : (Hovered ? RailActiveInk : RailIdleInk),
             RailLabel);
 
-        if (Hovered && PointerInput.Pressed)
+        if (Hovered && DrawerPointerInput.Pressed)
         {
             (void)ActivateCategory(CategoryOption);
         }
@@ -3002,19 +3147,19 @@ void ContentBrowserPanel::RenderWithInput(
     {
         if (ColourScope == ColourCollectionScope::Ramps)
         {
-            RenderColourRampsRepository(Canvas, CentreArea, PointerInput, AppearanceColors, SectionRadius);
+            RenderColourRampsRepository(Canvas, CentreArea, DrawerPointerInput, AppearanceColors, SectionRadius);
         }
         else
         {
-            RenderColoursRepository(Canvas, CentreArea, PointerInput, AppearanceColors, SectionRadius);
+            RenderColoursRepository(Canvas, CentreArea, DrawerPointerInput, AppearanceColors, SectionRadius);
         }
     }
     else
     {
-        RenderNonColoursRepository(Canvas, CentreArea, PointerInput, AppearanceColors, SectionRadius);
+        RenderNonColoursRepository(Canvas, CentreArea, DrawerPointerInput, AppearanceColors, SectionRadius);
     }
 
-    RenderContentDetailsSidebar(Canvas, DetailsArea, PointerInput, AppearanceColors, SectionRadius);
+    RenderContentDetailsSidebar(Canvas, DetailsArea, DrawerPointerInput, AppearanceColors, SectionRadius);
 
     // 5. Footer Status Bar
     const Rectangle2D FooterRect{ DrawerRect.X + PadX, DrawerRect.Bottom() - FooterH, DrawerRect.Width - PadX * 2.0f, FooterH };

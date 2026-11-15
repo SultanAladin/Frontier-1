@@ -18,6 +18,7 @@
 #include "Engine/ParticleSpace/Dynamics/SpecialEffectsDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/SplineEnsembleSolver.h"
 #include "Engine/ParticleSpace/Dynamics/SwarmFlockingDynamics.h"
+#include "Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.h"
 
 #include <algorithm>
 #include <cmath>
@@ -333,6 +334,29 @@ uint32_t ExecuteParticleRigStepCpu(
                     Slot.VelocityMps[1] += Ny * Imp;
                     Slot.VelocityMps[2] += Nz * Imp;
                 }
+            }
+        }
+
+        // PhysicsSpace rigid-body collision proxies (Sphere, Oriented Box, Oriented +Z Capsule + two-way dynamic impulse feedback)
+        if (!Context.RigidColliders.empty())
+        {
+            const auto Feedback = SimulationSpace::PhysicsSpace::BroadphaseSolver::ResolveParticleAgainstProxies(
+                Context.RigidColliders,
+                Slot.SizeMeters,
+                Context.ParticleMassKg,
+                Slot.PositionMeters,
+                Slot.VelocityMps);
+            if (Feedback.Collided && Feedback.DynamicResponse != 0u && Context.PhysicsRuntime != nullptr)
+            {
+                const Mathematics::Axis3D ReactionImpulse {
+                    -Feedback.ParticleImpulseNs.X,
+                    -Feedback.ParticleImpulseNs.Y,
+                    -Feedback.ParticleImpulseNs.Z
+                };
+                Context.PhysicsRuntime->ApplyParticleImpactImpulse(
+                    Feedback.BodySlotIndex,
+                    Feedback.ContactPoint,
+                    ReactionImpulse);
             }
         }
 

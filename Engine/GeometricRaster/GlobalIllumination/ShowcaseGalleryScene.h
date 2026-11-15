@@ -46,6 +46,16 @@ struct ShowcaseGeometryAsset
     SpatialAcceleration::ClusterPyramid Pyramid {}; // [-] - Built 3-level cluster hierarchy
 };
 
+struct CachedLocalSmoothTriangle
+{
+    Mathematics::Axis3D Corner0 {};                     // [m] - Local-space triangle vertex 0 (centered at object origin)
+    Mathematics::Axis3D Corner1 {};                     // [m] - Local-space triangle vertex 1
+    Mathematics::Axis3D Corner2 {};                     // [m] - Local-space triangle vertex 2
+    Mathematics::Axis3D Normal0 { 0.0f, 0.0f, 1.0f };   // [-] - Precomputed 49-deg smooth normal at Corner0
+    Mathematics::Axis3D Normal1 { 0.0f, 0.0f, 1.0f };   // [-] - Precomputed 49-deg smooth normal at Corner1
+    Mathematics::Axis3D Normal2 { 0.0f, 0.0f, 1.0f };   // [-] - Precomputed 49-deg smooth normal at Corner2
+};
+
 struct ShowcaseWorldObjectEntry
 {
     std::string            Title                {};                          // [-]   - Outliner & HTML mirror entry title
@@ -56,6 +66,7 @@ struct ShowcaseWorldObjectEntry
     Mathematics::Axis3D    CenterWorld          {};                          // [m]   - World-space center coordinate
     Mathematics::Scalar3D  DimensionsMeters     {};                          // [m]   - Full X/Y/Z extent in meters
     Mathematics::Scalar3D  AuthoredDimensions   {};                          // [m]   - Base unscaled X/Y/Z extent in meters
+    float                  RotationZDegrees     = 0.0f;                      // [deg] - Rigid yaw rotation around +Z axis
     uint16_t               MaterialSlot         = 0u;                        // [idx] - CompactMaterialRegister slot
     uint32_t               ClusterInstanceIndex = 0u;                        // [idx] - Index in Scene.ClusterInstances
     bool                   GlassShell           = false;                     // [-]   - True for 2-layer Abbe glass peel
@@ -63,6 +74,7 @@ struct ShowcaseWorldObjectEntry
     bool                   DedicatedMaterial    = false;                     // [-]   - True once given an isolated material slot
     ShowcasePrimitiveShape PrimitiveShape       = ShowcasePrimitiveShape::Box; // [-] - Underlying analytical primitive shape
     OutlinerSlotToken      SlotToken            {};                          // [id]  - Registered OutlinerPanel slot token
+    std::vector<CachedLocalSmoothTriangle> LocalSmoothTriangles {};          // [-]   - Cached local triangles & 49-deg smooth normals
 };
 
 struct ShowcaseAreaLightBinding
@@ -98,7 +110,8 @@ struct ShowcaseWorldSceneBundle
 void BuildShowcaseGalleryScene(
     ShowcaseWorldSceneBundle& OutBundle,
     uint32_t                  ViewportWidthPx  = 640u,
-    uint32_t                  ViewportHeightPx = 336u);
+    uint32_t                  ViewportHeightPx = 336u,
+    bool                      BuildCpuSdf      = true);
 
 // Registers all Showcase Gallery folders, 10 geometry entries, EditorCamera, Sun, and Ceiling Softbox in OutlinerPanel
 void RegisterShowcaseGalleryInOutliner(
@@ -109,7 +122,8 @@ void RegisterShowcaseGalleryInOutliner(
 // Synchronizes OutlinerPanel visibility, shadow-caster switches, and transforms back into ShowcaseWorldSceneBundle
 bool SynchronizeShowcaseGalleryFromOutliner(
     const OutlinerPanel&      SourceOutliner,
-    ShowcaseWorldSceneBundle& InOutBundle);
+    ShowcaseWorldSceneBundle& InOutBundle,
+    bool                      RebuildSdfVolume = true);
 
 // Live bidirectional sync: adopts newly constructed Outliner entries, prunes deleted entries, and reports SDF/BVH rebuild need
 bool SynchronizeShowcaseGallerySceneLive(
@@ -128,7 +142,8 @@ OutlinerSlotToken ConstructShowcasePrimitiveInOutliner(
     OutlinerPanel&            InOutOutliner,
     ShowcaseWorldSceneBundle& InOutBundle,
     ShowcasePrimitiveShape    Shape,
-    Mathematics::Axis3D       WorldPosition);
+    Mathematics::Axis3D       WorldPosition,
+    bool                      BuildCpuSdf = true);
 
 // Assigns an sRGB ColourCodex swatch to the target entry's OpenPBR BaseColor (or FolderTint on folders)
 bool AssignShowcaseEntryBaseColor(

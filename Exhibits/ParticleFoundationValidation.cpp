@@ -16,7 +16,7 @@
 #include "Engine/ParticleSpace/Origins/SurfaceAnchorSampler.h"
 #include "Engine/ParticleSpace/ParticleBuffers.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/ParticleSimulationSession.h"
 #include "Engine/ParticleSpace/ParticleRig.h"
 #include "Engine/ParticleSpace/ParticleTintDriver.h"
 #include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
@@ -432,7 +432,7 @@ void RenderDynamicsShowcaseSheet()
         Doc.AmbientWind.Enabled = false;
         Doc.Rigs.push_back(Tiles[I].Rig);
 
-        ParticleSimulationCoordinator Ext {};
+        ParticleSimulationSession Ext {};
         (void)Ext.Initialize(Doc);
         Ext.TriggerBurst(0u, Tiles[I].Rig.SlotCapacity);
         for (int Step = 0; Step < Tiles[I].Steps; ++Step)
@@ -574,11 +574,11 @@ int main()
         Expect(All10FireworksValid, "All 10 FireworkPatternSampler shapes (including SkyText bitmap) generate finite anchors");
     }
 
-    // 5. ParticleSimulationCoordinator lifecycle + direct ForceFieldAccumulator stepping
+    // 5. ParticleSimulationSession lifecycle + direct ForceFieldAccumulator stepping
     {
         const ParticleDocument Doc = ConstructStudioDefaultDocument();
-        ParticleSimulationCoordinator Ext {};
-        Expect(Ext.Initialize(Doc), "ParticleSimulationCoordinator::Initialize succeeds with Studio Default document");
+        ParticleSimulationSession Ext {};
+        Expect(Ext.Initialize(Doc), "ParticleSimulationSession::Initialize succeeds with Studio Default document");
         Expect(Ext.InspectForceAccumulator().QueryActiveSourceCount() == 6u, "ForceFieldAccumulator binds all 6 Studio Default ForceSources");
         Expect(Ext.InspectRigAnchors(0u).size() == 1024u, "SurfaceAnchor cache pre-populated with 1024 deterministic anchors");
 
@@ -589,18 +589,18 @@ int main()
         }
 
         const auto& Tel = Ext.InspectTelemetry();
-        Expect(Tel.StepCounter == 60u && Tel.TotalAliveParticles > 400u, "ParticleSimulationCoordinator executes 60 coupled ForceField steps with live particles");
+        Expect(Tel.StepCounter == 60u && Tel.TotalAliveParticles > 400u, "ParticleSimulationSession executes 60 coupled ForceField steps with live particles");
         Expect(Tel.BoundsMaxMeters[0] > Tel.BoundsMinMeters[0] && Tel.BoundsMaxMeters[1] > Tel.BoundsMinMeters[1], "Advected live particle cloud expands cleanly across 3D space");
 
         Ext.Suspend();
         const uint32_t FrozenStep = Ext.InspectTelemetry().StepCounter;
         Ext.Tick(1.0 / 60.0);
-        Expect(Ext.InspectTelemetry().StepCounter == FrozenStep, "ParticleSimulationCoordinator::Suspend freezes stepping cleanly");
+        Expect(Ext.InspectTelemetry().StepCounter == FrozenStep, "ParticleSimulationSession::Suspend freezes stepping cleanly");
         Ext.Resume();
         Ext.Tick(1.0 / 60.0);
-        Expect(Ext.InspectTelemetry().StepCounter == FrozenStep + 1u, "ParticleSimulationCoordinator::Resume restores stepping cleanly");
+        Expect(Ext.InspectTelemetry().StepCounter == FrozenStep + 1u, "ParticleSimulationSession::Resume restores stepping cleanly");
         Ext.Finalize();
-        Expect(!Ext.QueryInitialized(), "ParticleSimulationCoordinator::Finalize releases runtime cleanly");
+        Expect(!Ext.QueryInitialized(), "ParticleSimulationSession::Finalize releases runtime cleanly");
     }
 
     // 6. Two-Tier Hybrid .ParticleSpace Codec bit-exact round-trip (delegating ColourCodec + VectorFieldCodec)
@@ -661,7 +661,7 @@ int main()
 
             ParticleDocument Doc = InstantiateDocumentFromPresetId(Meta.Identifier);
             Doc.Rigs[0].SlotCapacity = std::min(Doc.Rigs[0].SlotCapacity, 128u);
-            ParticleSimulationCoordinator Ext {};
+            ParticleSimulationSession Ext {};
             if (!Ext.Initialize(Doc)) { All102Finite = false; break; }
             Ext.TriggerBurst(0u, 48u);
             for (int Step = 0; Step < 8; ++Step)

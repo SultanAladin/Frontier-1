@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           COLOURSPACEVALIDATION.CPP
 ============================================================================================================================================*/
-// 🧩 Comprehensive validation & visual proof sheet for Engine/ColourSpace (colorimetry, transfer curves, Kelvin, gamut, 7 sources, HTML parity, LUTs, ColourAssetCoordinator)
+// 🧩 Comprehensive validation & visual proof sheet for Engine/ColourSpace (colorimetry, transfer curves, Kelvin, gamut, 7 sources, HTML parity, LUTs, ColourAssetRegister)
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -10,7 +10,7 @@
 #include "Engine/ColourSpace/ChromaticitySpace.h"
 #include "Engine/ColourSpace/ColourAliasRepository.h"
 #include "Engine/ColourSpace/ColourDocument.h"
-#include "Engine/ColourSpace/ColourAssetCoordinator.h"
+#include "Engine/ColourSpace/ColourAssetRegister.h"
 #include "Engine/ColourSpace/ColourPresetRepository.h"
 #include "Engine/ColourSpace/ColourRampSampler.h"
 #include "Engine/ColourSpace/GamutCompression.h"
@@ -259,15 +259,15 @@ bool ValidateModularSources()
         return false;
     }
 
-    // Verify ColourAssetCoordinator lifecycle + WorkspaceExchange publication
+    // Verify ColourAssetRegister lifecycle + WorkspaceExchange publication
     Frontier::Workspaces::WorkspaceExchange ExchangeBus {};
-    ColourAssetCoordinator Extension {};
-    if (!VerifyCheck(Extension.Initialize(&ExchangeBus), "ColourAssetCoordinator::Initialize"))
+    ColourAssetRegister Extension {};
+    if (!VerifyCheck(Extension.Initialize(&ExchangeBus), "ColourAssetRegister::Initialize"))
     {
         return false;
     }
-    const ColourAssetCoordinatorMetrics InitialMetrics = Extension.InspectMetrics();
-    if (!VerifyCheck(InitialMetrics.Initialized && InitialMetrics.BakedLutCount >= 9u, "ColourAssetCoordinator pre-baked >= 9 LUT rows"))
+    const ColourAssetRegisterMetrics InitialMetrics = Extension.InspectMetrics();
+    if (!VerifyCheck(InitialMetrics.Initialized && InitialMetrics.BakedLutCount >= 9u, "ColourAssetRegister pre-baked >= 9 LUT rows"))
     {
         return false;
     }
@@ -283,8 +283,8 @@ bool ValidateModularSources()
     };
     Extension.RegisterOrUpdateRamp(CustomRamp);
     if (!VerifyCheck(Extension.QueryBakedLutByIdentifier("frontier_cobalt_gold") != nullptr, "Custom ramp LUT cached")
-        || !VerifyCheck(Extension.QueryAliasRepository().FindAlias("frontier_cobalt_gold") != nullptr, "ColourAssetCoordinator synced custom ramp into ColourSpace::ColourAliasRepository")
-        || !VerifyCheck(ExchangeBus.QueryLatestGeneration() == 1ull, "ColourAssetCoordinator publishes update to WorkspaceExchange"))
+        || !VerifyCheck(Extension.QueryAliasRepository().FindAlias("frontier_cobalt_gold") != nullptr, "ColourAssetRegister synced custom ramp into ColourSpace::ColourAliasRepository")
+        || !VerifyCheck(ExchangeBus.QueryLatestGeneration() == 1ull, "ColourAssetRegister publishes update to WorkspaceExchange"))
     {
         return false;
     }
@@ -292,7 +292,7 @@ bool ValidateModularSources()
     Extension.Suspend();
     Extension.Resume();
     Extension.Finalize();
-    return VerifyCheck(!Extension.InspectMetrics().Initialized, "ColourAssetCoordinator::Finalize");
+    return VerifyCheck(!Extension.InspectMetrics().Initialized, "ColourAssetRegister::Finalize");
 }
 
 bool ValidateColourCodexMultiFormat()
@@ -497,6 +497,6 @@ int main()
     {
         return 1;
     }
-    std::printf("[ColourSpaceValidation] ALL CHECKS PASSED (colorimetry, 7 modular sources, HTML parity, LUT64/256, ColourAssetCoordinator, PNG sheet).\n");
+    std::printf("[ColourSpaceValidation] ALL CHECKS PASSED (colorimetry, 7 modular sources, HTML parity, LUT64/256, ColourAssetRegister, PNG sheet).\n");
     return 0;
 }

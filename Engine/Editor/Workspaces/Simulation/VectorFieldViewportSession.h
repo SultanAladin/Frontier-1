@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                       VECTORFIELDVIEWPORTCOORDINATOR.H
+                                                         VECTORFIELDVIEWPORTSESSION.H
 ============================================================================================================================================*/
-// 🧩 Editor coordinator binding ForceFieldAccumulator, FieldLatticeVulkanExecutor, VectorFieldOverlaySequence & 3-dock UI panes
+// 🧩 Editor session binding ForceFieldAccumulator, FieldLatticeVulkanExecutor, VectorFieldOverlaySequence & 3-dock UI panes
 
 #pragma once
 
@@ -29,14 +29,14 @@ namespace Frontier::Editor::Simulation
 {
 
 //------------------------------------------------------------------------------------------------------------------------
-//                                             VECTORFIELDVIEWPORTCOORDINATOR
+//                                              VECTORFIELDVIEWPORTSESSION
 //------------------------------------------------------------------------------------------------------------------------
 
-class VectorFieldViewportCoordinator
+class VectorFieldViewportSession
 {
 public:
-    VectorFieldViewportCoordinator() noexcept = default;
-    ~VectorFieldViewportCoordinator() noexcept = default;
+    VectorFieldViewportSession() noexcept = default;
+    ~VectorFieldViewportSession() noexcept = default;
 
     [[nodiscard]] bool AttachInitializedSession(
         OutlinerPanel&               Outliner,

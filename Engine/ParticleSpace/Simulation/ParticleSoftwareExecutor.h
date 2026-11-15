@@ -12,9 +12,15 @@
 #include "Engine/ParticleSpace/ParticleBuffers.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.h"
+#include "Engine/SimulationSpace/PhysicsSpace/BroadphaseSolver.h"
 
 #include <cstdint>
 #include <span>
+
+namespace Frontier::SimulationSpace::PhysicsSpace
+{
+class PhysicsExtension;
+}
 
 namespace Frontier::ParticleSpace
 {
@@ -25,10 +31,13 @@ namespace Frontier::ParticleSpace
 
 struct ParticleStepContext
 {
-    const ParticleDocument&                                   Document;
-    const SimulationSpace::ForceFields::ForceFieldAccumulator& ForceAccumulator;
-    float                                                     DeltaSeconds      = 1.0f / 60.0f;
-    float                                                     ElapsedSeconds    = 0.0f;
+    const ParticleDocument&                                            Document;
+    const SimulationSpace::ForceFields::ForceFieldAccumulator&         ForceAccumulator;
+    float                                                              DeltaSeconds      = 1.0f / 60.0f;
+    float                                                              ElapsedSeconds    = 0.0f;
+    std::span<const SimulationSpace::PhysicsSpace::RigidColliderProxy> RigidColliders    {};
+    SimulationSpace::PhysicsSpace::PhysicsExtension*                   PhysicsRuntime    = nullptr;
+    float                                                              ParticleMassKg    = 0.025f;
 };
 
 //------------------------------------------------------------------------------------------------------------------------

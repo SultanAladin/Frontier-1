@@ -73,9 +73,11 @@ public:
         std::function<void(bool)> OnDetachedWindowsChanged,
         std::function<void()>     OnResetLayoutRequested) noexcept;
 
+    void ConfigureDetent(DrawerDetentStop RequestedDetent, bool Immediate = false) noexcept;
     void ConfigureOpen(bool OpenRequested, bool Immediate = false) noexcept;
     void ActivatePage(ControlCentrePage Page, bool Immediate = false) noexcept;
     void ActivateAppearanceTab(AppearanceSectionTab Tab) noexcept;
+    void SynchronizeHostBounds(Rectangle2D HostBoundsPhysical, float ScaleFactor) noexcept;
 
     void ApplyDraftAppearanceImmediate() noexcept;
     void ApplyDraftInputImmediate() noexcept;
@@ -86,6 +88,11 @@ public:
     void Render(Rectangle2D HostBoundsPhysical, double Δt, float RefreshRateHertz = 60.0f);
 
     [[nodiscard]] bool                           QueryOpen() const noexcept;
+    [[nodiscard]] DrawerDetentStop               QueryDetent() const noexcept;
+    [[nodiscard]] bool                           QueryActiveContact() const noexcept;
+    [[nodiscard]] bool                           QueryFullScreenBlocking() const noexcept;
+    [[nodiscard]] Rectangle2D                    QueryShadePhysicalBounds() const noexcept;
+    [[nodiscard]] Rectangle2D                    QueryTabPhysicalBounds() const noexcept;
     [[nodiscard]] float                          QueryShadeProgress() const noexcept;
     [[nodiscard]] ControlCentrePage              QueryActivePage() const noexcept;
     [[nodiscard]] AppearanceSectionTab           QueryAppearanceTab() const noexcept;
@@ -231,6 +238,11 @@ private:
     ControlCentrePage         DiscardTargetPage         = ControlCentrePage::Settings;    // [-]   - Target page after discard confirmation
     std::function<void(bool)> DetachedWindowsCallback   {};                               // [-]   - Host detached-window callback
     std::function<void()>     ResetLayoutCallback       {};                               // [-]   - Host layout-reset callback
+    Rectangle2D               LastHostBoundsPhysical    {};                               // [px]  - Most recent physical host viewport rect
+    float                     LastScaleFactor           = 1.0f;                           // [-]   - Most recent interface scale factor
+    Rectangle2D               LastSheetLogicalBounds    {};                               // [px]  - Most recent active sheet logical bounds
+    std::array<Rectangle2D, 8u> LastInteractiveBounds   {};                               // [px]  - Interactive QuickControls hitboxes
+    uint32_t                  LastInteractiveCount      = 0u;                             // [cnt] - Recorded interactive hitbox count
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -251,6 +263,16 @@ inline void ControlCentrePanel::ActivateAppearanceTab(AppearanceSectionTab Tab) 
 inline bool ControlCentrePanel::QueryOpen() const noexcept
 {
     return Notch.QueryOpen();
+}
+
+inline DrawerDetentStop ControlCentrePanel::QueryDetent() const noexcept
+{
+    return Notch.QueryDetent();
+}
+
+inline bool ControlCentrePanel::QueryActiveContact() const noexcept
+{
+    return Notch.QueryActiveContact();
 }
 
 inline float ControlCentrePanel::QueryShadeProgress() const noexcept

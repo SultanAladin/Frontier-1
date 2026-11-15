@@ -1,13 +1,13 @@
 /*============================================================================================================================================
-                                                      VECTORFIELDVIEWPORTCOORDINATOR.CPP
+                                                        VECTORFIELDVIEWPORTSESSION.CPP
 ============================================================================================================================================*/
-// 🧩 Editor coordinator binding ForceFieldAccumulator, FieldLatticeVulkanExecutor, VectorFieldOverlaySequence & 3-dock UI panes
+// 🧩 Editor session binding ForceFieldAccumulator, FieldLatticeVulkanExecutor, VectorFieldOverlaySequence & 3-dock UI panes
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Editor/Workspaces/Simulation/VectorFieldViewportCoordinator.h"
+#include "Engine/Editor/Workspaces/Simulation/VectorFieldViewportSession.h"
 #include "Engine/Codecs/ForceModelPresetCodec.h"
 #include "Engine/SimulationSpace/ForceFields/FieldFormulaCompiler.h"
 #include "Engine/SimulationSpace/ForceFields/ForceMotionPath.h"
@@ -184,7 +184,7 @@ namespace
 //                                                INITIALIZATION & BINDING
 //------------------------------------------------------------------------------------------------------------------------
 
-bool VectorFieldViewportCoordinator::AttachInitializedSession(
+bool VectorFieldViewportSession::AttachInitializedSession(
     OutlinerPanel&               Outliner,
     ViewportPanel&               Viewport,
     InspectorPanel&              Inspector,
@@ -325,7 +325,7 @@ bool VectorFieldViewportCoordinator::AttachInitializedSession(
     return true;
 }
 
-void VectorFieldViewportCoordinator::RecordAnemometerSample(double SampleTimeSec) noexcept
+void VectorFieldViewportSession::RecordAnemometerSample(double SampleTimeSec) noexcept
 {
     const auto ProbePos = (BoundViewport != nullptr)
                               ? BoundViewport->QueryForceOverlaySettings().AnemometerWorldMeters
@@ -342,7 +342,7 @@ void VectorFieldViewportCoordinator::RecordAnemometerSample(double SampleTimeSec
     }
 }
 
-void VectorFieldViewportCoordinator::StepSimulation(double ΔtSeconds) noexcept
+void VectorFieldViewportSession::StepSimulation(double ΔtSeconds) noexcept
 {
     if (BoundViewport != nullptr && BoundViewport->ConsumeRewindRequested())
     {
@@ -368,7 +368,7 @@ void VectorFieldViewportCoordinator::StepSimulation(double ΔtSeconds) noexcept
     }
 }
 
-OutlinerSlotToken VectorFieldViewportCoordinator::AddForceSourceEntry(
+OutlinerSlotToken VectorFieldViewportSession::AddForceSourceEntry(
     SimulationSpace::ForceFields::ForceSourceRecordEntry Descriptor,
     OutlinerSlotToken                                    EnclosingFolder)
 {
@@ -414,7 +414,7 @@ OutlinerSlotToken VectorFieldViewportCoordinator::AddForceSourceEntry(
 //                                           OUTLINER <-> ACCUMULATOR SYNC
 //------------------------------------------------------------------------------------------------------------------------
 
-void VectorFieldViewportCoordinator::SynchronizeForceAccumulator()
+void VectorFieldViewportSession::SynchronizeForceAccumulator()
 {
     if (BoundOutliner == nullptr)
     {
@@ -512,7 +512,7 @@ void VectorFieldViewportCoordinator::SynchronizeForceAccumulator()
 //                                        VIEWPORT RASTER & PICKING HANDLERS
 //------------------------------------------------------------------------------------------------------------------------
 
-ViewportRasterSurface VectorFieldViewportCoordinator::DispatchViewportRaster(const ViewportPaneSurfaceSpecification& Spec)
+ViewportRasterSurface VectorFieldViewportSession::DispatchViewportRaster(const ViewportPaneSurfaceSpecification& Spec)
 {
     SynchronizeForceAccumulator();
 
@@ -600,7 +600,7 @@ ViewportRasterSurface VectorFieldViewportCoordinator::DispatchViewportRaster(con
     return Surface;
 }
 
-void VectorFieldViewportCoordinator::ProcessViewportInteraction(
+void VectorFieldViewportSession::ProcessViewportInteraction(
     uint32_t                PaneIndex,
     Rectangle2D             PaneBounds,
     const PaneInputReading& Input)
@@ -670,7 +670,7 @@ void VectorFieldViewportCoordinator::ProcessViewportInteraction(
 //                                           1:1 FORCE INSPECTOR DELEGATION
 //------------------------------------------------------------------------------------------------------------------------
 
-bool VectorFieldViewportCoordinator::RenderFullForceInspector(
+bool VectorFieldViewportSession::RenderFullForceInspector(
     PixelSpace&             Surface,
     Rectangle2D             Bounds,
     OutlinerPanel*          Outliner,
@@ -730,17 +730,17 @@ bool VectorFieldViewportCoordinator::RenderFullForceInspector(
 //                                                    ACCESSORS
 //------------------------------------------------------------------------------------------------------------------------
 
-SimulationSpace::ForceFields::ForceFieldAccumulator& VectorFieldViewportCoordinator::AccessAccumulator() noexcept { return Accumulator; }
-const SimulationSpace::ForceFields::ForceFieldAccumulator& VectorFieldViewportCoordinator::QueryAccumulator() const noexcept { return Accumulator; }
-SimulationSpace::ForceFields::FieldLatticeCascade& VectorFieldViewportCoordinator::AccessLatticeCascade() noexcept { return LatticeCascade; }
-SimulationSpace::ForceFields::FieldLatticeVulkanExecutor& VectorFieldViewportCoordinator::AccessVulkanExecutor() noexcept { return VulkanExecutor; }
-VectorFieldOverlaySequence& VectorFieldViewportCoordinator::AccessOverlaySequence() noexcept { return OverlaySequence; }
-ForceInspectorView& VectorFieldViewportCoordinator::AccessForceInspectorView() noexcept { return InspectorView; }
-ForcePresetBrowserPanel& VectorFieldViewportCoordinator::AccessContentBrowser() noexcept { return ContentBrowser; }
-OverlayCameraState& VectorFieldViewportCoordinator::AccessCamera(uint32_t PaneIndex) noexcept { return Cameras[PaneIndex < 2u ? PaneIndex : 0u]; }
-int32_t VectorFieldViewportCoordinator::QuerySelectedWaypointIndex() const noexcept { return SelectedWaypointIdx; }
-void VectorFieldViewportCoordinator::ConfigureSelectedWaypointIndex(int32_t WaypointIdx) noexcept { SelectedWaypointIdx = WaypointIdx; }
-uint32_t VectorFieldViewportCoordinator::QueryMappedForceToken(OutlinerSlotToken OutlinerToken) const noexcept
+SimulationSpace::ForceFields::ForceFieldAccumulator& VectorFieldViewportSession::AccessAccumulator() noexcept { return Accumulator; }
+const SimulationSpace::ForceFields::ForceFieldAccumulator& VectorFieldViewportSession::QueryAccumulator() const noexcept { return Accumulator; }
+SimulationSpace::ForceFields::FieldLatticeCascade& VectorFieldViewportSession::AccessLatticeCascade() noexcept { return LatticeCascade; }
+SimulationSpace::ForceFields::FieldLatticeVulkanExecutor& VectorFieldViewportSession::AccessVulkanExecutor() noexcept { return VulkanExecutor; }
+VectorFieldOverlaySequence& VectorFieldViewportSession::AccessOverlaySequence() noexcept { return OverlaySequence; }
+ForceInspectorView& VectorFieldViewportSession::AccessForceInspectorView() noexcept { return InspectorView; }
+ForcePresetBrowserPanel& VectorFieldViewportSession::AccessContentBrowser() noexcept { return ContentBrowser; }
+OverlayCameraState& VectorFieldViewportSession::AccessCamera(uint32_t PaneIndex) noexcept { return Cameras[PaneIndex < 2u ? PaneIndex : 0u]; }
+int32_t VectorFieldViewportSession::QuerySelectedWaypointIndex() const noexcept { return SelectedWaypointIdx; }
+void VectorFieldViewportSession::ConfigureSelectedWaypointIndex(int32_t WaypointIdx) noexcept { SelectedWaypointIdx = WaypointIdx; }
+uint32_t VectorFieldViewportSession::QueryMappedForceToken(OutlinerSlotToken OutlinerToken) const noexcept
 {
     for (const auto& Src : AuthoredSources)
     {
@@ -751,6 +751,6 @@ uint32_t VectorFieldViewportCoordinator::QueryMappedForceToken(OutlinerSlotToken
     }
     return 0u;
 }
-double VectorFieldViewportCoordinator::QuerySimulationTimeSeconds() const noexcept { return SimulationTimeSec; }
+double VectorFieldViewportSession::QuerySimulationTimeSeconds() const noexcept { return SimulationTimeSec; }
 
 } // namespace Frontier::Editor::Simulation

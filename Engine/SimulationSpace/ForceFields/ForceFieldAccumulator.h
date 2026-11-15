@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            FORCEFIELDACCUMULATOR.H
 ============================================================================================================================================*/
-// 🧩 Fixed-step ForceFieldAccumulator evaluating active ForceSources & curl/divergence telemetry (no rigid-body physics coupling yet)
+// 🧩 Fixed-step ForceFieldAccumulator evaluating active ForceSources, curl/divergence telemetry & PhysicsSpace rigid-body coupling
 
 #pragma once
 

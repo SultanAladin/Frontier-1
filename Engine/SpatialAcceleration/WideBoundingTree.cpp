@@ -82,9 +82,10 @@ struct BinaryBuildSlot
 
 struct BuildPrimitiveEntry
 {
-    RayTrianglePrimitive Primitive {};
-    AxisAlignedBox       Bounds    {};
-    Mathematics::Axis3D  Centroid  {};
+    RayTrianglePrimitive Primitive        {};
+    AxisAlignedBox       Bounds           {};
+    Mathematics::Axis3D  Centroid         {};
+    uint32_t             SourceInputIndex = 0u;
 };
 
 [[nodiscard]] float ExtractAxisCoordinate(Mathematics::Axis3D Vec, uint32_t Axis) noexcept
@@ -441,6 +442,7 @@ void WideBoundingTree::Reset() noexcept
 {
     WideEntries.clear();
     Primitives.clear();
+    PrimitiveNormals.clear();
     RootBoundsMin = {};
     RootBoundsMax = {};
     MaxTreeDepth  = 0u;
@@ -531,23 +533,34 @@ bool WideBoundingTree::BuildFromPolygonNetwork(const GeometrySpace::PolygonNetwo
 
 bool WideBoundingTree::BuildFromTrianglePrimitives(std::span<const RayTrianglePrimitive> InputPrimitives)
 {
+    return BuildFromTrianglePrimitivesWithNormals(InputPrimitives, {});
+}
+
+bool WideBoundingTree::BuildFromTrianglePrimitivesWithNormals(
+    std::span<const RayTrianglePrimitive>  InputPrimitives,
+    std::span<const TriangleSmoothNormals> InputNormals)
+{
     Reset();
     if (InputPrimitives.empty())
     {
         return false;
     }
 
+    const bool HasNormals = (InputNormals.size() == InputPrimitives.size());
+
     std::vector<BuildPrimitiveEntry> WorkPrimitives;
     WorkPrimitives.reserve(InputPrimitives.size());
 
-    for (const RayTrianglePrimitive& Src : InputPrimitives)
+    for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(InputPrimitives.size()); ++Idx)
     {
+        const RayTrianglePrimitive& Src = InputPrimitives[Idx];
         const Mathematics::Axis3D P0 = Src.Corner0;
         const Mathematics::Axis3D P1 = P0 + Src.Edge01;
         const Mathematics::Axis3D P2 = P0 + Src.Edge02;
 
         BuildPrimitiveEntry Rec {};
-        Rec.Primitive = Src;
+        Rec.Primitive        = Src;
+        Rec.SourceInputIndex = Idx;
         Rec.Bounds.ExpandPoint(P0);
         Rec.Bounds.ExpandPoint(P1);
         Rec.Bounds.ExpandPoint(P2);
@@ -569,9 +582,17 @@ bool WideBoundingTree::BuildFromTrianglePrimitives(std::span<const RayTrianglePr
     RootBoundsMax = BinarySlots[BinaryRoot].Bounds.Max;
 
     Primitives.resize(WorkPrimitives.size());
+    if (HasNormals)
+    {
+        PrimitiveNormals.resize(WorkPrimitives.size());
+    }
     for (std::size_t Idx = 0u; Idx < WorkPrimitives.size(); ++Idx)
     {
         Primitives[Idx] = WorkPrimitives[Idx].Primitive;
+        if (HasNormals)
+        {
+            PrimitiveNormals[Idx] = InputNormals[WorkPrimitives[Idx].SourceInputIndex];
+        }
     }
 
     WideEntries.reserve(BinarySlots.size() / 2u + 4u);

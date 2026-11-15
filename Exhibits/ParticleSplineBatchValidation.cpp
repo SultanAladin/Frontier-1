@@ -9,7 +9,7 @@
 
 #include "Engine/ParticleSpace/Dynamics/SplineEnsembleSolver.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/ParticleSimulationSession.h"
 #include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 #include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
 
@@ -291,7 +291,7 @@ int main()
         }
         AttachShowcaseForceFields(Doc);
 
-        ParticleSimulationCoordinator Ext {};
+        ParticleSimulationSession Ext {};
         if (!Ext.Initialize(Doc))
         {
             std::cerr << "  [FAIL] Initialize failed for " << Entry.PresetId << "\n";
@@ -388,7 +388,7 @@ int main()
             if (!Sub.Rigs.empty()) Doc.Rigs.push_back(Sub.Rigs[0]);
         }
         AttachShowcaseForceFields(Doc);
-        ParticleSimulationCoordinator Ext {};
+        ParticleSimulationSession Ext {};
         if (!Ext.Initialize(Doc)) return 1;
         for (int S = 0; S < 110; ++S) Ext.Tick(1.0 / 60.0);
 
@@ -433,7 +433,7 @@ int main()
             ParticleDocument Sub = InstantiateDocumentFromPresetId(Id);
             if (!Sub.Rigs.empty()) Doc.Rigs.push_back(Sub.Rigs[0]);
         }
-        ParticleSimulationCoordinator Ext {};
+        ParticleSimulationSession Ext {};
         if (!Ext.Initialize(Doc)) return 1;
         for (int S = 0; S < 72; ++S) Ext.Tick(1.0 / 60.0);
 

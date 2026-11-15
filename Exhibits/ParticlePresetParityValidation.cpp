@@ -8,7 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/ParticleSimulationSession.h"
 #include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 #include "Engine/ParticleSpace/Simulation/ParticleMetricsCollector.h"
 #include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
@@ -554,7 +554,7 @@ int main()
             Doc.Collider.BallCenterM[2] = 0.5f;
             Doc.Rigs[0].SlotCapacity    = std::min<uint32_t>(Doc.Rigs[0].SlotCapacity, 1200u);
 
-            ParticleSimulationCoordinator Ext {};
+            ParticleSimulationSession Ext {};
             if (!Ext.Initialize(Doc))
             {
                 std::cerr << "[FAIL] Init failed for " << Meta.Identifier << "\n";

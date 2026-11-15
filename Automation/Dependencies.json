@@ -70,6 +70,16 @@
       "verified": true,
       "purpose": "PNG/JPEG image decoding and readback capture writing",
       "witness": "stb_image.h"
+    },
+    {
+      "name": "JoltPhysics",
+      "repository": "jrouwe/JoltPhysics",
+      "revision": "v5.6.0",
+      "url": "https://codeload.github.com/jrouwe/JoltPhysics/tar.gz/refs/tags/v5.6.0",
+      "sha256": "6e069ee0172478cc78182047aac87e5310ba14a67a53348ae14cc37801fd3f8e",
+      "verified": true,
+      "purpose": "Deterministic cross-platform rigid body physics, constraints, broadphase, and fracture collision runtime",
+      "witness": "Jolt/Jolt.h"
     }
   ]
 }

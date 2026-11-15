@@ -111,30 +111,72 @@ void BuildShapeGeometryAsset(
     (void)OutAsset.Pyramid.BuildFromPolygonNetwork(OutAsset.Network, 3u);
 }
 
-void AppendEntryToUnifiedNetwork(
-    GeometrySpace::PolygonNetwork&  TargetNetwork,
-    const ShowcaseWorldObjectEntry& Obj,
-    float                           EffectiveUniformScale)
+struct LocalQuantizedKey
 {
-    if (Obj.GlassShell || EffectiveUniformScale <= 1.0e-4f)
+    int32_t QX = 0;
+    int32_t QY = 0;
+    int32_t QZ = 0;
+
+    [[nodiscard]] bool operator==(const LocalQuantizedKey& Rhs) const noexcept
+    {
+        return QX == Rhs.QX && QY == Rhs.QY && QZ == Rhs.QZ;
+    }
+
+    [[nodiscard]] bool operator<(const LocalQuantizedKey& Rhs) const noexcept
+    {
+        if (QX != Rhs.QX) return QX < Rhs.QX;
+        if (QY != Rhs.QY) return QY < Rhs.QY;
+        return QZ < Rhs.QZ;
+    }
+};
+
+struct LocalCornerTriEntry
+{
+    LocalQuantizedKey Key      {};
+    uint32_t          TriIndex = 0u;
+
+    [[nodiscard]] bool operator<(const LocalCornerTriEntry& Rhs) const noexcept
+    {
+        if (Key == Rhs.Key)
+        {
+            return TriIndex < Rhs.TriIndex;
+        }
+        return Key < Rhs.Key;
+    }
+};
+
+[[nodiscard]] LocalQuantizedKey QuantizeLocalCorner(Mathematics::Axis3D Pos) noexcept
+{
+    return {
+        static_cast<int32_t>(std::lround(Pos.X * 2048.0f)),
+        static_cast<int32_t>(std::lround(Pos.Y * 2048.0f)),
+        static_cast<int32_t>(std::lround(Pos.Z * 2048.0f)),
+    };
+}
+
+void EnsureObjectLocalSmoothTriangles(ShowcaseWorldObjectEntry& Obj)
+{
+    if (Obj.GlassShell || !Obj.LocalSmoothTriangles.empty())
     {
         return;
     }
-    const float HalfX = std::max(0.04f, Obj.DimensionsMeters.X * 0.5f * EffectiveUniformScale);
-    const float HalfY = std::max(0.04f, Obj.DimensionsMeters.Y * 0.5f * EffectiveUniformScale);
-    const float HalfZ = std::max(0.04f, Obj.DimensionsMeters.Z * 0.5f * EffectiveUniformScale);
-    const auto  C     = Obj.CenterWorld;
+
+    GeometrySpace::PolygonNetwork LocalNet {};
+    const float HalfX = std::max(0.04f, Obj.DimensionsMeters.X * 0.5f);
+    const float HalfY = std::max(0.04f, Obj.DimensionsMeters.Y * 0.5f);
+    const float HalfZ = std::max(0.04f, Obj.DimensionsMeters.Z * 0.5f);
+    const Mathematics::Axis3D Origin { 0.0f, 0.0f, 0.0f };
 
     switch (Obj.PrimitiveShape)
     {
         case ShowcasePrimitiveShape::Sphere:
-            GeometrySpace::AppendSpherePrimitive(TargetNetwork, C, std::max({ HalfX, HalfY, HalfZ }), 28u, 18u, {}, {}, 0u, Obj.MaterialSlot);
+            GeometrySpace::AppendSpherePrimitive(LocalNet, Origin, std::max({ HalfX, HalfY, HalfZ }), 28u, 18u, {}, {}, 0u, Obj.MaterialSlot);
             break;
         case ShowcasePrimitiveShape::Cylinder:
             GeometrySpace::AppendCylinderFrustumPrimitive(
-                TargetNetwork,
-                { C.X, C.Y, C.Z - HalfZ },
-                { C.X, C.Y, C.Z + HalfZ },
+                LocalNet,
+                { 0.0f, 0.0f, -HalfZ },
+                { 0.0f, 0.0f,  HalfZ },
                 0.5f * (HalfX + HalfY),
                 0.5f * (HalfX + HalfY),
                 24u,
@@ -145,9 +187,9 @@ void AppendEntryToUnifiedNetwork(
             break;
         case ShowcasePrimitiveShape::Cone:
             GeometrySpace::AppendCylinderFrustumPrimitive(
-                TargetNetwork,
-                { C.X, C.Y, C.Z - HalfZ },
-                { C.X, C.Y, C.Z + HalfZ },
+                LocalNet,
+                { 0.0f, 0.0f, -HalfZ },
+                { 0.0f, 0.0f,  HalfZ },
                 0.5f * (HalfX + HalfY),
                 0.015f,
                 24u,
@@ -161,14 +203,129 @@ void AppendEntryToUnifiedNetwork(
             const float OuterR = std::max(0.10f, 0.5f * (HalfX + HalfY));
             const float MinorR = std::clamp(HalfZ, 0.04f, OuterR * 0.45f);
             const float MajorR = std::max(MinorR + 0.03f, OuterR - MinorR);
-            GeometrySpace::AppendTorusRingPrimitive(TargetNetwork, C, MajorR, MinorR, 28u, 16u, {}, {}, 0u, Obj.MaterialSlot);
+            GeometrySpace::AppendTorusRingPrimitive(LocalNet, Origin, MajorR, MinorR, 28u, 16u, {}, {}, 0u, Obj.MaterialSlot);
             break;
         }
         case ShowcasePrimitiveShape::Box:
         default:
-            GeometrySpace::AppendBoxPrimitive(TargetNetwork, C, { HalfX, HalfY, HalfZ }, {}, {}, 0u, Obj.MaterialSlot);
+            GeometrySpace::AppendBoxPrimitive(LocalNet, Origin, { HalfX, HalfY, HalfZ }, {}, {}, 0u, Obj.MaterialSlot);
             break;
     }
+
+    struct RawTri
+    {
+        Mathematics::Axis3D P0 {};
+        Mathematics::Axis3D P1 {};
+        Mathematics::Axis3D P2 {};
+        Mathematics::Axis3D AreaNormal {};
+    };
+    std::vector<RawTri> RawTris;
+    RawTris.reserve(LocalNet.Faces.size() * 2u);
+
+    for (const GeometrySpace::Face& CurrentFace : LocalNet.Faces)
+    {
+        if (CurrentFace.BoundaryLoopEdgeIndex == GeometrySpace::InvalidNetworkIndex || CurrentFace.CornerCount < 3u)
+        {
+            continue;
+        }
+        std::vector<uint32_t> LoopVerts;
+        LoopVerts.reserve(CurrentFace.CornerCount);
+        uint32_t EdgeIdx = CurrentFace.BoundaryLoopEdgeIndex;
+        for (uint16_t Step = 0u; Step < CurrentFace.CornerCount && EdgeIdx != GeometrySpace::InvalidNetworkIndex; ++Step)
+        {
+            const auto& Edge = LocalNet.Edges[EdgeIdx];
+            LoopVerts.push_back(Edge.OriginVertexIndex);
+            EdgeIdx = Edge.NextEdgeIndex;
+            if (EdgeIdx == CurrentFace.BoundaryLoopEdgeIndex)
+            {
+                break;
+            }
+        }
+        if (LoopVerts.size() < 3u)
+        {
+            continue;
+        }
+        const Mathematics::Axis3D P0 = LocalNet.Vertices[LoopVerts[0u]].Axes;
+        for (std::size_t FanIdx = 1u; FanIdx + 1u < LoopVerts.size(); ++FanIdx)
+        {
+            const Mathematics::Axis3D P1 = LocalNet.Vertices[LoopVerts[FanIdx]].Axes;
+            const Mathematics::Axis3D P2 = LocalNet.Vertices[LoopVerts[FanIdx + 1u]].Axes;
+            const Mathematics::Axis3D AreaN = Mathematics::EvaluateCross(P1 - P0, P2 - P0);
+            if (Mathematics::EvaluateLengthSquared(AreaN) <= 1.0e-12f)
+            {
+                continue;
+            }
+            RawTris.push_back({ P0, P1, P2, AreaN });
+        }
+    }
+
+    if (RawTris.empty())
+    {
+        return;
+    }
+
+    // Precompute 49-degree crease-angle smooth Phong vertex normals ONCE in local object space
+    std::vector<LocalCornerTriEntry> CornerEntries;
+    CornerEntries.reserve(RawTris.size() * 3u);
+    for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(RawTris.size()); ++Idx)
+    {
+        CornerEntries.push_back({ QuantizeLocalCorner(RawTris[Idx].P0), Idx });
+        CornerEntries.push_back({ QuantizeLocalCorner(RawTris[Idx].P1), Idx });
+        CornerEntries.push_back({ QuantizeLocalCorner(RawTris[Idx].P2), Idx });
+    }
+    std::sort(CornerEntries.begin(), CornerEntries.end());
+
+    Obj.LocalSmoothTriangles.resize(RawTris.size());
+    for (std::size_t Idx = 0u; Idx < RawTris.size(); ++Idx)
+    {
+        const RawTri& Tri = RawTris[Idx];
+        const Mathematics::Axis3D UnitFaceN = Mathematics::NormalizeAxis(Tri.AreaNormal, { 0.0f, 0.0f, 1.0f });
+        const std::array<Mathematics::Axis3D, 3u> Corners {{ Tri.P0, Tri.P1, Tri.P2 }};
+        std::array<Mathematics::Axis3D, 3u> SmoothN {};
+
+        for (std::size_t CornerIdx = 0u; CornerIdx < 3u; ++CornerIdx)
+        {
+            Mathematics::Axis3D SumN { 0.0f, 0.0f, 0.0f };
+            const LocalCornerTriEntry Search { QuantizeLocalCorner(Corners[CornerIdx]), 0u };
+            auto Iter = std::lower_bound(
+                CornerEntries.begin(),
+                CornerEntries.end(),
+                Search,
+                [](const LocalCornerTriEntry& Lhs, const LocalCornerTriEntry& Rhs) noexcept
+                {
+                    return Lhs.Key < Rhs.Key;
+                });
+            while (Iter != CornerEntries.end() && Iter->Key == Search.Key)
+            {
+                const Mathematics::Axis3D PeerAreaN = RawTris[Iter->TriIndex].AreaNormal;
+                const Mathematics::Axis3D PeerUnitN = Mathematics::NormalizeAxis(PeerAreaN, UnitFaceN);
+                if (Mathematics::EvaluateDot(UnitFaceN, PeerUnitN) > 0.65f)
+                {
+                    SumN = SumN + PeerAreaN;
+                }
+                ++Iter;
+            }
+            SmoothN[CornerIdx] = Mathematics::NormalizeAxis(SumN, UnitFaceN);
+        }
+
+        Obj.LocalSmoothTriangles[Idx] = {
+            Tri.P0,
+            Tri.P1,
+            Tri.P2,
+            SmoothN[0u],
+            SmoothN[1u],
+            SmoothN[2u],
+        };
+    }
+}
+
+[[nodiscard]] Mathematics::Axis3D RotateAroundZ(Mathematics::Axis3D Vec, float CosZ, float SinZ) noexcept
+{
+    return {
+        Vec.X * CosZ - Vec.Y * SinZ,
+        Vec.X * SinZ + Vec.Y * CosZ,
+        Vec.Z,
+    };
 }
 
 [[nodiscard]] bool NearlyEqualFloat(float Left, float Right) noexcept
@@ -359,7 +516,8 @@ void BuildCameraRay(
 void BuildShowcaseGalleryScene(
     ShowcaseWorldSceneBundle& OutBundle,
     uint32_t                  ViewportWidthPx,
-    uint32_t                  ViewportHeightPx)
+    uint32_t                  ViewportHeightPx,
+    bool                      BuildCpuSdf)
 {
     OutBundle = {};
 
@@ -429,8 +587,6 @@ void BuildShowcaseGalleryScene(
     BuildSphereGeometryAsset(OutBundle.GeometryAssets[6u], 0.44f, 32u, 20u);
     BuildSphereGeometryAsset(OutBundle.GeometryAssets[7u], 0.40f, 32u, 20u);
 
-    GeometrySpace::PolygonNetwork UnifiedWorldNetwork {};
-
     const auto AppendBoxEntry = [&](
         std::size_t           AssetOrdinal,
         const char*           Title,
@@ -446,10 +602,6 @@ void BuildShowcaseGalleryScene(
         const uint32_t InstanceIdx = static_cast<uint32_t>(OutBundle.Scene.ClusterInstances.size());
         OutBundle.Scene.ClusterInstances.push_back(
             { &OutBundle.GeometryAssets[AssetOrdinal].Pyramid, Center, Center, 1.0f, Slot, GlassShell });
-        if (!GlassShell)
-        {
-            GeometrySpace::AppendBoxPrimitive(UnifiedWorldNetwork, Center, HalfExtents, {}, {}, 0u, Slot);
-        }
 
         ShowcaseWorldObjectEntry Record {};
         Record.Title                = Title;
@@ -477,18 +629,14 @@ void BuildShowcaseGalleryScene(
         const char*         Notes,
         Mathematics::Axis3D Center,
         float               Radius,
-        uint32_t            Sectors,
-        uint32_t            Rings,
+        uint32_t            /*Sectors*/,
+        uint32_t            /*Rings*/,
         uint16_t            Slot,
         bool                GlassShell)
     {
         const uint32_t InstanceIdx = static_cast<uint32_t>(OutBundle.Scene.ClusterInstances.size());
         OutBundle.Scene.ClusterInstances.push_back(
             { &OutBundle.GeometryAssets[AssetOrdinal].Pyramid, Center, Center, 1.0f, Slot, GlassShell });
-        if (!GlassShell)
-        {
-            GeometrySpace::AppendSpherePrimitive(UnifiedWorldNetwork, Center, Radius, Sectors, Rings, {}, {}, 0u, Slot);
-        }
 
         const float Diameter = Radius * 2.0f;
         ShowcaseWorldObjectEntry Record {};
@@ -636,8 +784,7 @@ void BuildShowcaseGalleryScene(
         SlotGlass,
         true);
 
-    (void)OutBundle.Scene.SceneTree.BuildFromPolygonNetwork(UnifiedWorldNetwork);
-    (void)OutBundle.Scene.SceneSdf.BuildFromWideBoundingTree(OutBundle.Scene.SceneTree, 0.09f, 0.45f);
+    RebuildShowcaseSceneAcceleration(OutBundle, BuildCpuSdf);
 
     OutBundle.Scene.Sun.DirectionToSun          = Mathematics::NormalizeAxis({ 0.42f, -0.55f, 0.72f });
     OutBundle.Scene.Sun.SunAngularRadiusRadians = 0.018f;
@@ -877,8 +1024,8 @@ void RebuildShowcaseSceneAcceleration(
     ShowcaseWorldSceneBundle& InOutBundle,
     bool                      RebuildSdfVolume)
 {
-    GeometrySpace::PolygonNetwork UnifiedWorldNetwork {};
-    for (const ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+    std::size_t TotalTriangleCount = 0u;
+    for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
     {
         if (Obj.ClusterInstanceIndex >= InOutBundle.Scene.ClusterInstances.size())
         {
@@ -889,14 +1036,77 @@ void RebuildShowcaseSceneAcceleration(
         {
             continue;
         }
-        AppendEntryToUnifiedNetwork(UnifiedWorldNetwork, Obj, Inst.UniformScale);
+        EnsureObjectLocalSmoothTriangles(Obj);
+        TotalTriangleCount += Obj.LocalSmoothTriangles.size();
     }
 
-    if (UnifiedWorldNetwork.Faces.empty())
+    std::vector<SpatialAcceleration::RayTrianglePrimitive>  WorldPrims;
+    std::vector<SpatialAcceleration::TriangleSmoothNormals> WorldNormals;
+    WorldPrims.reserve(std::max<std::size_t>(12u, TotalTriangleCount));
+    WorldNormals.reserve(std::max<std::size_t>(12u, TotalTriangleCount));
+
+    uint32_t PrimCounter = 0u;
+    for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
     {
-        GeometrySpace::AppendBoxPrimitive(UnifiedWorldNetwork, { 0.0f, 0.20f, -50.0f }, { 0.05f, 0.05f, 0.05f }, {}, {});
+        if (Obj.ClusterInstanceIndex >= InOutBundle.Scene.ClusterInstances.size())
+        {
+            continue;
+        }
+        const auto& Inst = InOutBundle.Scene.ClusterInstances[Obj.ClusterInstanceIndex];
+        if (Inst.UniformScale <= 1.0e-4f || Obj.GlassShell || Obj.LocalSmoothTriangles.empty())
+        {
+            continue;
+        }
+
+        const float Scale   = Inst.UniformScale;
+        const float YawRad  = Obj.RotationZDegrees * 0.01745329252f;
+        const bool  HasYaw  = std::fabs(YawRad) > 1.0e-5f;
+        const float CosZ    = HasYaw ? std::cos(YawRad) : 1.0f;
+        const float SinZ    = HasYaw ? std::sin(YawRad) : 0.0f;
+        const auto  Center  = Obj.CenterWorld;
+        const uint16_t Mat  = Obj.MaterialSlot;
+
+        for (const CachedLocalSmoothTriangle& LocalTri : Obj.LocalSmoothTriangles)
+        {
+            const Mathematics::Axis3D L0 = LocalTri.Corner0 * Scale;
+            const Mathematics::Axis3D L1 = LocalTri.Corner1 * Scale;
+            const Mathematics::Axis3D L2 = LocalTri.Corner2 * Scale;
+
+            const Mathematics::Axis3D W0 = Center + (HasYaw ? RotateAroundZ(L0, CosZ, SinZ) : L0);
+            const Mathematics::Axis3D W1 = Center + (HasYaw ? RotateAroundZ(L1, CosZ, SinZ) : L1);
+            const Mathematics::Axis3D W2 = Center + (HasYaw ? RotateAroundZ(L2, CosZ, SinZ) : L2);
+
+            SpatialAcceleration::RayTrianglePrimitive Prim {};
+            Prim.Corner0          = W0;
+            Prim.Edge01           = W1 - W0;
+            Prim.Edge02           = W2 - W0;
+            Prim.SourceFaceIndex  = PrimCounter;
+            Prim.MaterialOrdinal  = Mat;
+            Prim.OpaqueMask       = 1u;
+            Prim.PrimitiveOrdinal = PrimCounter;
+            WorldPrims.push_back(Prim);
+
+            SpatialAcceleration::TriangleSmoothNormals Smooth {};
+            Smooth.Normal0 = HasYaw ? RotateAroundZ(LocalTri.Normal0, CosZ, SinZ) : LocalTri.Normal0;
+            Smooth.Normal1 = HasYaw ? RotateAroundZ(LocalTri.Normal1, CosZ, SinZ) : LocalTri.Normal1;
+            Smooth.Normal2 = HasYaw ? RotateAroundZ(LocalTri.Normal2, CosZ, SinZ) : LocalTri.Normal2;
+            WorldNormals.push_back(Smooth);
+
+            ++PrimCounter;
+        }
     }
-    (void)InOutBundle.Scene.SceneTree.BuildFromPolygonNetwork(UnifiedWorldNetwork);
+
+    if (WorldPrims.empty())
+    {
+        GeometrySpace::PolygonNetwork FallbackNet {};
+        GeometrySpace::AppendBoxPrimitive(FallbackNet, { 0.0f, 0.20f, -50.0f }, { 0.05f, 0.05f, 0.05f }, {}, {});
+        (void)InOutBundle.Scene.SceneTree.BuildFromPolygonNetwork(FallbackNet);
+    }
+    else
+    {
+        (void)InOutBundle.Scene.SceneTree.BuildFromTrianglePrimitivesWithNormals(WorldPrims, WorldNormals);
+    }
+
     if (RebuildSdfVolume)
     {
         (void)InOutBundle.Scene.SceneSdf.BuildFromWideBoundingTree(InOutBundle.Scene.SceneTree, 0.09f, 0.45f);
@@ -905,7 +1115,8 @@ void RebuildShowcaseSceneAcceleration(
 
 bool SynchronizeShowcaseGalleryFromOutliner(
     const OutlinerPanel&      SourceOutliner,
-    ShowcaseWorldSceneBundle& InOutBundle)
+    ShowcaseWorldSceneBundle& InOutBundle,
+    bool                      RebuildSdfVolume)
 {
     bool Changed         = false;
     bool AccelInvalidated = false;
@@ -1022,7 +1233,7 @@ bool SynchronizeShowcaseGalleryFromOutliner(
 
     if (AccelInvalidated)
     {
-        RebuildShowcaseSceneAcceleration(InOutBundle, true);
+        RebuildShowcaseSceneAcceleration(InOutBundle, RebuildSdfVolume);
     }
 
     return Changed;
@@ -1237,16 +1448,22 @@ bool SynchronizeShowcaseGallerySceneLive(
                 Changed                  = true;
                 AccelInvalidated         = true;
             }
+            if (!NearlyEqualFloat(Obj.RotationZDegrees, Entry->RotationZ))
+            {
+                Obj.RotationZDegrees = Entry->RotationZ;
+                Changed              = true;
+                AccelInvalidated     = true;
+            }
         }
     }
 
-    if (AccelInvalidated)
+    if (AccelInvalidated || OutRequiresAccelerationRebuild)
     {
         RebuildShowcaseSceneAcceleration(InOutBundle, RebuildSdfVolume);
         OutRequiresAccelerationRebuild = true;
     }
 
-    if (SynchronizeShowcaseGalleryFromOutliner(InOutOutliner, InOutBundle))
+    if (SynchronizeShowcaseGalleryFromOutliner(InOutOutliner, InOutBundle, RebuildSdfVolume))
     {
         Changed                        = true;
         OutRequiresAccelerationRebuild = true;
@@ -1259,7 +1476,8 @@ OutlinerSlotToken ConstructShowcasePrimitiveInOutliner(
     OutlinerPanel&            InOutOutliner,
     ShowcaseWorldSceneBundle& InOutBundle,
     ShowcasePrimitiveShape    Shape,
-    Mathematics::Axis3D       WorldPosition)
+    Mathematics::Axis3D       WorldPosition,
+    bool                      BuildCpuSdf)
 {
     const OutlinerSlotToken ParentFolder = InOutBundle.ShowcaseFolderToken.Valid()
         ? InOutBundle.ShowcaseFolderToken
@@ -1299,11 +1517,7 @@ OutlinerSlotToken ConstructShowcasePrimitiveInOutliner(
     }
 
     bool NeedsRebuild = false;
-    (void)SynchronizeShowcaseGallerySceneLive(InOutOutliner, InOutBundle, NeedsRebuild);
-    if (NeedsRebuild)
-    {
-        RebuildShowcaseSceneAcceleration(InOutBundle);
-    }
+    (void)SynchronizeShowcaseGallerySceneLive(InOutOutliner, InOutBundle, NeedsRebuild, BuildCpuSdf);
     InOutOutliner.SelectSingle(Slot);
     return Slot;
 }

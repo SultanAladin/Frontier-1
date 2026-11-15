@@ -1,17 +1,18 @@
 /*============================================================================================================================================
-                                                      PARTICLESIMULATIONCOORDINATOR.CPP
+                                                        PARTICLESIMULATIONSESSION.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of ParticleSimulationCoordinator delegating simulation to modular ParticleSoftwareExecutor + ForceFieldAccumulator + ColourAssetCoordinator
+// 🧩 Implementation of ParticleSimulationSession delegating simulation to modular ParticleSoftwareExecutor + ForceFieldAccumulator + ColourAssetRegister
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/ParticleSimulationSession.h"
 
 #include "Engine/ParticleSpace/Origins/FireworkPatternSampler.h"
 #include "Engine/ParticleSpace/Origins/SurfaceAnchorSampler.h"
 #include "Engine/ParticleSpace/Simulation/ParticleSoftwareExecutor.h"
+#include "Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.h"
 
 #include <algorithm>
 #include <chrono>
@@ -20,9 +21,9 @@
 namespace Frontier::ParticleSpace
 {
 
-bool ParticleSimulationCoordinator::Initialize(const ParticleDocument& InitialDocument)
+bool ParticleSimulationSession::Initialize(const ParticleDocument& InitialDocument)
 {
-    (void)ColourCoordinator.Initialize();
+    (void)ColourRegister.Initialize();
     Document    = InitialDocument;
     Initialized = true;
     Suspended   = false;
@@ -30,28 +31,36 @@ bool ParticleSimulationCoordinator::Initialize(const ParticleDocument& InitialDo
     return true;
 }
 
-void ParticleSimulationCoordinator::Suspend() noexcept
+void ParticleSimulationSession::Suspend() noexcept
 {
     Suspended = true;
 }
 
-void ParticleSimulationCoordinator::Resume() noexcept
+void ParticleSimulationSession::Resume() noexcept
 {
     Suspended = false;
 }
 
-void ParticleSimulationCoordinator::Finalize() noexcept
+void ParticleSimulationSession::Finalize() noexcept
 {
     ParticleSlots.clear();
     StrandVertices.clear();
     AnchorBuffer.clear();
+    RigidColliderCache.clear();
     RigSlices.clear();
-    ColourCoordinator.Finalize();
+    AttachedPhysics = nullptr;
+    ColourRegister.Finalize();
     Initialized = false;
     Suspended   = false;
 }
 
-void ParticleSimulationCoordinator::LoadDocument(const ParticleDocument& NextDocument)
+void ParticleSimulationSession::AttachPhysicsExtension(SimulationSpace::PhysicsSpace::PhysicsExtension* Extension) noexcept
+{
+    AttachedPhysics = Extension;
+    RigidColliderCache.clear();
+}
+
+void ParticleSimulationSession::LoadDocument(const ParticleDocument& NextDocument)
 {
     Document = NextDocument;
     if (!Initialized)
@@ -62,7 +71,7 @@ void ParticleSimulationCoordinator::LoadDocument(const ParticleDocument& NextDoc
     ResetSimulation();
 }
 
-void ParticleSimulationCoordinator::ResetSimulation()
+void ParticleSimulationSession::ResetSimulation()
 {
     Rng = DeterministicPcgRng(Document.Seed);
     Document.Clock.ElapsedSeconds = 0.0;
@@ -71,7 +80,7 @@ void ParticleSimulationCoordinator::ResetSimulation()
     RebuildRuntimeAllocations();
 }
 
-void ParticleSimulationCoordinator::RebuildRuntimeAllocations()
+void ParticleSimulationSession::RebuildRuntimeAllocations()
 {
     RigSlices.clear();
     AnchorBuffer.clear();
@@ -134,7 +143,7 @@ void ParticleSimulationCoordinator::RebuildRuntimeAllocations()
     Telemetry.ActiveForceCount  = ForceAccumulator.QueryActiveSourceCount();
 }
 
-void ParticleSimulationCoordinator::SpawnSingleSlot(std::size_t RigIdx, RigRuntimeSlice& Slice)
+void ParticleSimulationSession::SpawnSingleSlot(std::size_t RigIdx, RigRuntimeSlice& Slice)
 {
     if (Slice.SlotCapacity == 0u) return;
     const ParticleRig& Rig = Document.Rigs[RigIdx];
@@ -215,7 +224,7 @@ void ParticleSimulationCoordinator::SpawnSingleSlot(std::size_t RigIdx, RigRunti
     Slot.ColourLinear[3] = Tint.Alpha;
 }
 
-void ParticleSimulationCoordinator::TriggerBurst(std::size_t RigIndex, uint32_t Count)
+void ParticleSimulationSession::TriggerBurst(std::size_t RigIndex, uint32_t Count)
 {
     if (!Initialized || RigIndex >= Document.Rigs.size() || RigIndex >= RigSlices.size()) return;
     if (Document.Rigs[RigIndex].Dynamics.Strand.has_value()) return;
@@ -227,7 +236,7 @@ void ParticleSimulationCoordinator::TriggerBurst(std::size_t RigIndex, uint32_t 
     }
 }
 
-void ParticleSimulationCoordinator::StepSingleRig(std::size_t RigIdx, RigRuntimeSlice& Slice, float DtSec)
+void ParticleSimulationSession::StepSingleRig(std::size_t RigIdx, RigRuntimeSlice& Slice, float DtSec)
 {
     const ParticleRig& Rig = Document.Rigs[RigIdx];
     if (!Rig.Visible || Slice.SlotCapacity == 0u) return;
@@ -247,7 +256,10 @@ void ParticleSimulationCoordinator::StepSingleRig(std::size_t RigIdx, RigRuntime
         Document,
         ForceAccumulator,
         DtSec,
-        static_cast<float>(Document.Clock.ElapsedSeconds)
+        static_cast<float>(Document.Clock.ElapsedSeconds),
+        RigidColliderCache,
+        AttachedPhysics,
+        0.025f
     };
     const std::span<ParticleSlot> RigSlots(ParticleSlots.data() + Slice.SlotOffset, Slice.SlotCapacity);
     const std::span<StrandVertex> RigStrands = (Slice.StrandVertexCount > 0u)
@@ -257,7 +269,7 @@ void ParticleSimulationCoordinator::StepSingleRig(std::size_t RigIdx, RigRuntime
     Slice.AliveCount = ExecuteParticleRigStepCpu(Rig, StepCtx, RigSlots, RigStrands);
 }
 
-void ParticleSimulationCoordinator::Tick(double DeltaSeconds)
+void ParticleSimulationSession::Tick(double DeltaSeconds)
 {
     if (!Initialized || Suspended) return;
 
@@ -268,6 +280,14 @@ void ParticleSimulationCoordinator::Tick(double DeltaSeconds)
     Document.Clock.ElapsedSeconds += static_cast<double>(ScaledDt);
     ForceAccumulator.AssignSources(Document.ForceSources);
     ForceAccumulator.StepAnimation(Document.Clock.ElapsedSeconds, true);
+    if (AttachedPhysics != nullptr && AttachedPhysics->QueryInitialized())
+    {
+        AttachedPhysics->ExportRigidColliderProxies(RigidColliderCache);
+    }
+    else
+    {
+        RigidColliderCache.clear();
+    }
 
     uint32_t TotalAlive = 0u;
     for (std::size_t I = 0u; I < Document.Rigs.size() && I < RigSlices.size(); ++I)
@@ -311,14 +331,14 @@ void ParticleSimulationCoordinator::Tick(double DeltaSeconds)
     }
 }
 
-const ParticleDocument& ParticleSimulationCoordinator::InspectDocument() const noexcept { return Document; }
-ParticleDocument& ParticleSimulationCoordinator::AccessDocument() noexcept { return Document; }
-const SimulationSpace::ForceFields::ForceFieldAccumulator& ParticleSimulationCoordinator::InspectForceAccumulator() const noexcept { return ForceAccumulator; }
-const ColourSpace::ColourAssetCoordinator& ParticleSimulationCoordinator::InspectColourCoordinator() const noexcept { return ColourCoordinator; }
-std::span<const ParticleSlot> ParticleSimulationCoordinator::InspectParticleSlots() const noexcept { return ParticleSlots; }
-std::span<const StrandVertex> ParticleSimulationCoordinator::InspectStrandVertices() const noexcept { return StrandVertices; }
+const ParticleDocument& ParticleSimulationSession::InspectDocument() const noexcept { return Document; }
+ParticleDocument& ParticleSimulationSession::AccessDocument() noexcept { return Document; }
+const SimulationSpace::ForceFields::ForceFieldAccumulator& ParticleSimulationSession::InspectForceAccumulator() const noexcept { return ForceAccumulator; }
+const ColourSpace::ColourAssetRegister& ParticleSimulationSession::InspectColourRegister() const noexcept { return ColourRegister; }
+std::span<const ParticleSlot> ParticleSimulationSession::InspectParticleSlots() const noexcept { return ParticleSlots; }
+std::span<const StrandVertex> ParticleSimulationSession::InspectStrandVertices() const noexcept { return StrandVertices; }
 
-std::span<const ParticleAnchorSample> ParticleSimulationCoordinator::InspectRigAnchors(std::size_t RigIndex) const noexcept
+std::span<const ParticleAnchorSample> ParticleSimulationSession::InspectRigAnchors(std::size_t RigIndex) const noexcept
 {
     if (RigIndex >= RigSlices.size()) return {};
     const RigRuntimeSlice& Slice = RigSlices[RigIndex];
@@ -326,8 +346,13 @@ std::span<const ParticleAnchorSample> ParticleSimulationCoordinator::InspectRigA
     return std::span<const ParticleAnchorSample>(AnchorBuffer.data() + Slice.AnchorOffset, Slice.AnchorCount);
 }
 
-const ParticleTelemetrySnapshot& ParticleSimulationCoordinator::InspectTelemetry() const noexcept { return Telemetry; }
-bool ParticleSimulationCoordinator::QueryInitialized() const noexcept { return Initialized; }
-bool ParticleSimulationCoordinator::QuerySuspended() const noexcept { return Suspended; }
+std::span<const SimulationSpace::PhysicsSpace::RigidColliderProxy> ParticleSimulationSession::InspectRigidColliders() const noexcept
+{
+    return RigidColliderCache;
+}
+
+const ParticleTelemetrySnapshot& ParticleSimulationSession::InspectTelemetry() const noexcept { return Telemetry; }
+bool ParticleSimulationSession::QueryInitialized() const noexcept { return Initialized; }
+bool ParticleSimulationSession::QuerySuspended() const noexcept { return Suspended; }
 
 } // namespace Frontier::ParticleSpace

@@ -81,19 +81,30 @@ struct RayIntersectionResult
     uint32_t            TestedPrimitives   = 0u;     // [cnt] - Diagnostic ray-triangle tests executed
 };
 
+struct TriangleSmoothNormals
+{
+    Mathematics::Axis3D Normal0 { 0.0f, 0.0f, 1.0f }; // [-] - Precomputed smooth vertex normal at Corner0
+    Mathematics::Axis3D Normal1 { 0.0f, 0.0f, 1.0f }; // [-] - Precomputed smooth vertex normal at Corner1
+    Mathematics::Axis3D Normal2 { 0.0f, 0.0f, 1.0f }; // [-] - Precomputed smooth vertex normal at Corner2
+};
+
 class WideBoundingTree
 {
 public:
-    std::vector<WideTreeEntry>        WideEntries   {}; // [-] - Contiguous 128 B 4-wide internal entries (root = 0)
-    std::vector<RayTrianglePrimitive> Primitives    {}; // [-] - Reordered contiguous leaf triangle stream
-    Mathematics::Axis3D               RootBoundsMin {}; // [m] - Scene AABB minimum
-    Mathematics::Axis3D               RootBoundsMax {}; // [m] - Scene AABB maximum
-    uint32_t                          MaxTreeDepth  = 0u; // [cnt] - Maximum 4-wide tree depth
+    std::vector<WideTreeEntry>         WideEntries      {}; // [-] - Contiguous 128 B 4-wide internal entries (root = 0)
+    std::vector<RayTrianglePrimitive>  Primitives       {}; // [-] - Reordered contiguous leaf triangle stream
+    std::vector<TriangleSmoothNormals> PrimitiveNormals {}; // [-] - Optional precomputed smooth normals aligned 1:1 with Primitives
+    Mathematics::Axis3D                RootBoundsMin    {}; // [m] - Scene AABB minimum
+    Mathematics::Axis3D                RootBoundsMax    {}; // [m] - Scene AABB maximum
+    uint32_t                           MaxTreeDepth     = 0u; // [cnt] - Maximum 4-wide tree depth
 
     void Reset() noexcept;
 
     bool BuildFromPolygonNetwork(const GeometrySpace::PolygonNetwork& Network);
     bool BuildFromTrianglePrimitives(std::span<const RayTrianglePrimitive> InputPrimitives);
+    bool BuildFromTrianglePrimitivesWithNormals(
+        std::span<const RayTrianglePrimitive>  InputPrimitives,
+        std::span<const TriangleSmoothNormals> InputNormals);
 
     // Deterministic front-to-back ordered 4-wide closest-hit query.
     [[nodiscard]] RayIntersectionResult TraceClosestRay(

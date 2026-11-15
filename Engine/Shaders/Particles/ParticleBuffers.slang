@@ -146,3 +146,23 @@ public struct ParticleRigUniformGpu
     public uint   AnchorBufferOffset;
     public uint   AnchorBufferCount;
 };
+
+/// 80-byte rigid-body collider proxy matching C++ PhysicsSpace::RigidColliderProxy byte-for-byte.
+public struct RigidColliderProxyGpu
+{
+    public float3 CenterMeters;
+    public uint   ShapeCode;
+
+    public float3 VelocityMps;
+    public float  RadiusMeters;
+
+    public float3 HalfExtentsMeters;
+    public float  Restitution;
+
+    public float4 OrientationQuat;
+
+    public float  Friction;
+    public uint   BodySlotIndex;
+    public uint   ChannelMask;
+    public uint   DynamicResponseBit;
+};

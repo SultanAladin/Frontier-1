@@ -12,7 +12,7 @@ rules before marking work complete.
 /*============================================================================================================================================
                                                         INPUTEXTENSION.H
 ============================================================================================================================================*/
-// 🧩 Input lifecycle coordinator: hardware intake polling and command routing across desktop and mobile surfaces
+// 🧩 Input lifecycle participant: hardware intake polling and command routing across desktop and mobile surfaces
 ```
 
 - Top and bottom `=` rulers span **140 columns** (`/*===...===*/` in C++ and `.slang`, `#===...===` in Python/CMake).

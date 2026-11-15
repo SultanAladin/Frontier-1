@@ -72,8 +72,17 @@ struct WorldRenderFrameResult
 class TieredWorldRenderSequence
 {
 public:
+    // Compiles compact 32 B BounceSlabEntries for every registered OpenPBR material slot
+    static void CompileBounceSummaries(WorldSceneSpecification& InOutScene);
+
     // Precomputes static/cached scene structures (BounceSlabEntries, 2-Cascade Contact Clips, & RTX Octahedral Irradiance Lattice)
     void PrepareWorldScene(WorldSceneSpecification& InOutScene);
+
+    // Compiles BounceSlabEntries and propagates only the Tier 2 RTX Irradiance Lattice (skips CPU 2-cascade shadow clips for GPU path)
+    void PrepareRtxIrradianceLatticeOnly(WorldSceneSpecification& InOutScene);
+
+    // Adopts an externally baked Tier 2 RTX Irradiance Lattice (e.g. from background propagation)
+    void AssignIrradianceLattice(IrradianceLatticeSequence&& BakedLattice) noexcept { RtxLattice = std::move(BakedLattice); }
 
     // Executes the complete ordered world render frame for either Tier 1 GTX or Tier 2 RTX
     [[nodiscard]] WorldRenderFrameResult RenderWorldFrame(

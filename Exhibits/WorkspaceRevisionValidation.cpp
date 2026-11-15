@@ -378,33 +378,33 @@ namespace
     }
 
     // 4. Verify RevisionExtension cross-tab Global Sequence Undo/Redo & global budget enforcement.
-    RevisionExtension GlobalCoordinator(1024u);
-    if (!VerifyCondition(GlobalCoordinator.Initialize(), "RevisionExtension Initialize"))
+    RevisionExtension GlobalRevisions(1024u);
+    if (!VerifyCondition(GlobalRevisions.Initialize(), "RevisionExtension Initialize"))
     {
         return false;
     }
 
     RevisionTracker TabA(1024u);
     RevisionTracker TabB(1024u);
-    (void)GlobalCoordinator.RegisterDocumentTracker(1u, &TabA);
-    (void)GlobalCoordinator.RegisterDocumentTracker(2u, &TabB);
+    (void)GlobalRevisions.RegisterDocumentTracker(1u, &TabA);
+    (void)GlobalRevisions.RegisterDocumentTracker(2u, &TabB);
 
-    (void)GlobalCoordinator.RecordGlobalOperation(
+    (void)GlobalRevisions.RecordGlobalOperation(
         1u,
         OperationRecorder::ConstructNormalizedBrush(0.1, 0.1, 0.2, 0.2, 0.01, 1.0, 0.0, 0.0, "TabA_Edit1"));
-    (void)GlobalCoordinator.RecordGlobalOperation(
+    (void)GlobalRevisions.RecordGlobalOperation(
         2u,
         OperationRecorder::ConstructUVTileTransform(0, 0, 0.2, 0.0, 1.0, 0.0, 1024.0, "TabB_Edit2"));
 
     if (!VerifyCondition(TabB.QueryUndoAvailable() && TabA.QueryUndoAvailable(), "Both tabs recorded edits") ||
-        !VerifyCondition(GlobalCoordinator.UndoGlobalLatest() && !TabB.QueryUndoAvailable() && TabA.QueryUndoAvailable(),
+        !VerifyCondition(GlobalRevisions.UndoGlobalLatest() && !TabB.QueryUndoAvailable() && TabA.QueryUndoAvailable(),
                          "UndoGlobalLatest undoes TabB first in reverse global sequence") ||
-        !VerifyCondition(GlobalCoordinator.UndoGlobalLatest() && !TabA.QueryUndoAvailable(),
+        !VerifyCondition(GlobalRevisions.UndoGlobalLatest() && !TabA.QueryUndoAvailable(),
                          "Second UndoGlobalLatest undoes TabA") ||
-        !VerifyCondition(GlobalCoordinator.RedoGlobalNext() && TabA.QueryUndoAvailable(),
+        !VerifyCondition(GlobalRevisions.RedoGlobalNext() && TabA.QueryUndoAvailable(),
                          "RedoGlobalNext restores TabA first"))
     {
-        GlobalCoordinator.Finalize();
+        GlobalRevisions.Finalize();
         return false;
     }
 
@@ -412,20 +412,20 @@ namespace
     for (uint32_t Iter = 0u; Iter < 8u; ++Iter)
     {
         if (!VerifyCondition(
-                GlobalCoordinator.RecordGlobalOperation(
+                GlobalRevisions.RecordGlobalOperation(
                     2u,
                     OperationRecorder::ConstructUVTileTransform(0, 0, 0.01, 0.01, 1.0, 0.0, 1024.0, "TabB_Pressure")),
-                "GlobalCoordinator compacts LRU background document under ceiling pressure") ||
+                "GlobalRevisions compacts LRU background document under ceiling pressure") ||
             !VerifyCondition(
-                GlobalCoordinator.QueryGlobalBytesUsed() <= GlobalCoordinator.QueryGlobalBudgetBytes(),
-                "Aggregate global bytes never exceed GlobalCoordinator ceiling"))
+                GlobalRevisions.QueryGlobalBytesUsed() <= GlobalRevisions.QueryGlobalBudgetBytes(),
+                "Aggregate global bytes never exceed GlobalRevisions ceiling"))
         {
-            GlobalCoordinator.Finalize();
+            GlobalRevisions.Finalize();
             return false;
         }
     }
 
-    GlobalCoordinator.Finalize();
+    GlobalRevisions.Finalize();
     return true;
 }
 
@@ -751,7 +751,7 @@ namespace
         CanvasList->AddText(ImVec2(912.0f, 556.0f), AccentBlue, "Active Cursor");
 
         CanvasList->AddRectFilled(ImVec2(612.0f, 642.0f), ImVec2(1108.0f, 798.0f), IM_COL32(30, 32, 38, 255), 6.0f);
-        CanvasList->AddText(ImVec2(628.0f, 660.0f), CrispText, "Global Coordinator: RevisionExtension");
+        CanvasList->AddText(ImVec2(628.0f, 660.0f), CrispText, "Global RevisionExtension: RevisionExtension");
         CanvasList->AddText(ImVec2(628.0f, 690.0f), EmeraldOk, "- Per-Tab & Global Sequence Undo/Redo: VERIFIED");
         CanvasList->AddText(ImVec2(628.0f, 718.0f), EmeraldOk, "- LRU Background Compaction: VERIFIED");
         CanvasList->AddText(ImVec2(628.0f, 746.0f), EmeraldOk, "- Lossless Multi-Resolution Replay: VERIFIED");

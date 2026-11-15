@@ -176,6 +176,7 @@ struct ParticleVulkanExecutor::VulkanDeviceState
     HostMappedBuffer      ForceBuf            {};
     HostMappedBuffer      WaypointBuf         {};
     HostMappedBuffer      ColourLutBuf        {};
+    HostMappedBuffer      RigidColliderBuf    {};
     HostMappedBuffer      MetricsBuf          {};
 
 #if defined(__linux__)
@@ -254,7 +255,9 @@ struct ParticleVulkanExecutor::VulkanDeviceState
         if (Device != VK_NULL_HANDLE)
         {
             vkDeviceWaitIdle(Device);
-            HostMappedBuffer* Bufs[7] = { &SlotsBuf, &GlobalUbo, &RigUbo, &ForceBuf, &WaypointBuf, &ColourLutBuf, &MetricsBuf };
+            HostMappedBuffer* Bufs[8] = {
+                &SlotsBuf, &GlobalUbo, &RigUbo, &ForceBuf, &WaypointBuf, &ColourLutBuf, &RigidColliderBuf, &MetricsBuf
+            };
             for (HostMappedBuffer* B : Bufs)
             {
                 if (B->Buffer != VK_NULL_HANDLE)
@@ -515,18 +518,19 @@ bool ParticleVulkanExecutor::InitializeGpuComputeDevice(const std::filesystem::p
         return false;
     }
 
-    // Advect compute bindings on set 1: 0=SSBO(Slots), 1=UBO(Global), 2=UBO(Rig), 3=SSBO(Forces), 4=SSBO(Waypoints), 5=SSBO(ColourLut)
-    const VkDescriptorSetLayoutBinding AdvectBindings[6] = {
+    // Advect compute bindings on set 1: 0=SSBO(Slots), 1=UBO(Global), 2=UBO(Rig), 3=SSBO(Forces), 4=SSBO(Waypoints), 5=SSBO(ColourLut), 6=SSBO(RigidColliders)
+    const VkDescriptorSetLayoutBinding AdvectBindings[7] = {
         { 0u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
         { 1u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
         { 2u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
         { 3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
         { 4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
         { 5u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
+        { 6u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
     };
     VkDescriptorSetLayoutCreateInfo AdvLci {};
     AdvLci.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    AdvLci.bindingCount = 6u;
+    AdvLci.bindingCount = 7u;
     AdvLci.pBindings    = AdvectBindings;
     if (vkCreateDescriptorSetLayout(DeviceState->Device, &AdvLci, nullptr, &DeviceState->AdvectSet1Layout) != VK_SUCCESS)
     {
@@ -722,7 +726,8 @@ bool ParticleVulkanExecutor::DispatchAdvectComputeGpu(
     Global.ColliderBallCenterM[1] = Context.Document.Collider.BallCenterM[1];
     Global.ColliderBallCenterM[2] = Context.Document.Collider.BallCenterM[2];
     Global.ColliderBallRadiusM    = Context.Document.Collider.BallRadiusMeters;
-    Global.ColliderFlags          = Context.Document.Collider.BallActive ? 1u : 0u;
+    const uint32_t RigidColliderCount = static_cast<uint32_t>(std::min<std::size_t>(Context.RigidColliders.size(), 0xFFFFu));
+    Global.ColliderFlags              = (Context.Document.Collider.BallActive ? 1u : 0u) | (RigidColliderCount << 16u);
 
     GpuRigUniformBlock RigU {};
     RigU.SlotOffset        = 0u;
@@ -767,41 +772,51 @@ bool ParticleVulkanExecutor::DispatchAdvectComputeGpu(
     if (Waypoints.empty())    Waypoints.push_back(std::array<float, 4> { 0.0f, 0.0f, 0.0f, 0.0f });
 
     const ColourSpace::ColourRampLut64 Lut = ColourSpace::PackColourRampLut64(Rig.ColourProfile);
+    const SimulationSpace::PhysicsSpace::RigidColliderProxy DummyProxy {};
+    const void* RigidProxyPtr = Context.RigidColliders.empty()
+        ? static_cast<const void*>(&DummyProxy)
+        : static_cast<const void*>(Context.RigidColliders.data());
+    const VkDeviceSize RigidProxyBytes = std::max<std::size_t>(Context.RigidColliders.size(), 1u)
+        * sizeof(SimulationSpace::PhysicsSpace::RigidColliderProxy);
 
     const bool OkAlloc =
-        DeviceState->EnsureBuffer(DeviceState->SlotsBuf,     SlotsBytes,                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
-     && DeviceState->EnsureBuffer(DeviceState->GlobalUbo,    sizeof(Global),                                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
-     && DeviceState->EnsureBuffer(DeviceState->RigUbo,       sizeof(RigU),                                  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
-     && DeviceState->EnsureBuffer(DeviceState->ForceBuf,     ShaderForces.size() * sizeof(ShaderForces[0]), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
-     && DeviceState->EnsureBuffer(DeviceState->WaypointBuf,  Waypoints.size() * sizeof(Waypoints[0]),       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
-     && DeviceState->EnsureBuffer(DeviceState->ColourLutBuf, sizeof(Lut),                                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        DeviceState->EnsureBuffer(DeviceState->SlotsBuf,         SlotsBytes,                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+     && DeviceState->EnsureBuffer(DeviceState->GlobalUbo,        sizeof(Global),                                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+     && DeviceState->EnsureBuffer(DeviceState->RigUbo,           sizeof(RigU),                                  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+     && DeviceState->EnsureBuffer(DeviceState->ForceBuf,         ShaderForces.size() * sizeof(ShaderForces[0]), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+     && DeviceState->EnsureBuffer(DeviceState->WaypointBuf,      Waypoints.size() * sizeof(Waypoints[0]),       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+     && DeviceState->EnsureBuffer(DeviceState->ColourLutBuf,     sizeof(Lut),                                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+     && DeviceState->EnsureBuffer(DeviceState->RigidColliderBuf, RigidProxyBytes,                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     if (!OkAlloc)
     {
         OutDiagnostic = "Failed to allocate Vulkan compute buffers.";
         return false;
     }
 
-    DeviceState->Upload(DeviceState->SlotsBuf,     RigSlots.data(),     SlotsBytes);
-    DeviceState->Upload(DeviceState->GlobalUbo,    &Global,             sizeof(Global));
-    DeviceState->Upload(DeviceState->RigUbo,       &RigU,               sizeof(RigU));
-    DeviceState->Upload(DeviceState->ForceBuf,     ShaderForces.data(), ShaderForces.size() * sizeof(ShaderForces[0]));
-    DeviceState->Upload(DeviceState->WaypointBuf,  Waypoints.data(),    Waypoints.size() * sizeof(Waypoints[0]));
-    DeviceState->Upload(DeviceState->ColourLutBuf, &Lut,                sizeof(Lut));
+    DeviceState->Upload(DeviceState->SlotsBuf,         RigSlots.data(),     SlotsBytes);
+    DeviceState->Upload(DeviceState->GlobalUbo,        &Global,             sizeof(Global));
+    DeviceState->Upload(DeviceState->RigUbo,           &RigU,               sizeof(RigU));
+    DeviceState->Upload(DeviceState->ForceBuf,         ShaderForces.data(), ShaderForces.size() * sizeof(ShaderForces[0]));
+    DeviceState->Upload(DeviceState->WaypointBuf,      Waypoints.data(),    Waypoints.size() * sizeof(Waypoints[0]));
+    DeviceState->Upload(DeviceState->ColourLutBuf,     &Lut,                sizeof(Lut));
+    DeviceState->Upload(DeviceState->RigidColliderBuf, RigidProxyPtr,       RigidProxyBytes);
 
-    const VkDescriptorBufferInfo BInfos[6] = {
-        { DeviceState->SlotsBuf.Buffer,     0u, SlotsBytes },
-        { DeviceState->GlobalUbo.Buffer,    0u, sizeof(Global) },
-        { DeviceState->RigUbo.Buffer,       0u, sizeof(RigU) },
-        { DeviceState->ForceBuf.Buffer,     0u, ShaderForces.size() * sizeof(ShaderForces[0]) },
-        { DeviceState->WaypointBuf.Buffer,  0u, Waypoints.size() * sizeof(Waypoints[0]) },
-        { DeviceState->ColourLutBuf.Buffer, 0u, sizeof(Lut) },
+    const VkDescriptorBufferInfo BInfos[7] = {
+        { DeviceState->SlotsBuf.Buffer,         0u, SlotsBytes },
+        { DeviceState->GlobalUbo.Buffer,        0u, sizeof(Global) },
+        { DeviceState->RigUbo.Buffer,           0u, sizeof(RigU) },
+        { DeviceState->ForceBuf.Buffer,         0u, ShaderForces.size() * sizeof(ShaderForces[0]) },
+        { DeviceState->WaypointBuf.Buffer,      0u, Waypoints.size() * sizeof(Waypoints[0]) },
+        { DeviceState->ColourLutBuf.Buffer,     0u, sizeof(Lut) },
+        { DeviceState->RigidColliderBuf.Buffer, 0u, RigidProxyBytes },
     };
-    const VkDescriptorType BTypes[6] = {
+    const VkDescriptorType BTypes[7] = {
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
     };
-    VkWriteDescriptorSet Writes[6] {};
-    for (uint32_t I = 0u; I < 6u; ++I)
+    VkWriteDescriptorSet Writes[7] {};
+    for (uint32_t I = 0u; I < 7u; ++I)
     {
         Writes[I].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         Writes[I].dstSet          = DeviceState->AdvectDescSet;
@@ -810,7 +825,7 @@ bool ParticleVulkanExecutor::DispatchAdvectComputeGpu(
         Writes[I].descriptorType  = BTypes[I];
         Writes[I].pBufferInfo     = &BInfos[I];
     }
-    vkUpdateDescriptorSets(DeviceState->Device, 6u, Writes, 0u, nullptr);
+    vkUpdateDescriptorSets(DeviceState->Device, 7u, Writes, 0u, nullptr);
 
     vkResetCommandBuffer(DeviceState->CmdBuf, 0u);
     VkCommandBufferBeginInfo Begin {};

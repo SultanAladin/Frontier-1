@@ -109,33 +109,30 @@ void ConstructHierarchySubIcon(
 
 struct PointerOwnershipRegister
 {
-    const void* ActiveOwnerPane         = nullptr;
-    bool        ExternalDragSuppression = false;
-    uint32_t    OwnerStaleEnforceTicks  = 0u;
-    Rectangle2D PrimaryOverlayShield    {};
-    Rectangle2D SecondaryOverlayShield  {};
+    const void*                    ActiveOwnerPane         = nullptr;
+    bool                           ExternalDragSuppression = false;
+    uint32_t                       OwnerStaleEnforceTicks  = 0u;
+    std::array<Rectangle2D, 6u>    OverlayShields          {};
+    uint32_t                       OverlayShieldCount      = 0u;
 };
 
 [[nodiscard]] PointerOwnershipRegister& AccessPointerOwnershipRegister() noexcept
 {
-    static PointerOwnershipRegister CoordinatorRegister{};
-    return CoordinatorRegister;
+    static PointerOwnershipRegister OwnershipRegister{};
+    return OwnershipRegister;
 }
 
 [[nodiscard]] bool QueryOverlayShieldContains(Point2D PhysicalCursor) noexcept
 {
     const auto& Reg = AccessPointerOwnershipRegister();
-    if (Reg.PrimaryOverlayShield.Width > 0.5f &&
-        Reg.PrimaryOverlayShield.Height > 0.5f &&
-        Reg.PrimaryOverlayShield.Contains(PhysicalCursor))
+    const uint32_t Count = std::min<uint32_t>(Reg.OverlayShieldCount, static_cast<uint32_t>(Reg.OverlayShields.size()));
+    for (uint32_t Idx = 0u; Idx < Count; ++Idx)
     {
-        return true;
-    }
-    if (Reg.SecondaryOverlayShield.Width > 0.5f &&
-        Reg.SecondaryOverlayShield.Height > 0.5f &&
-        Reg.SecondaryOverlayShield.Contains(PhysicalCursor))
-    {
-        return true;
+        const Rectangle2D& Shield = Reg.OverlayShields[Idx];
+        if (Shield.Width > 0.5f && Shield.Height > 0.5f && Shield.Contains(PhysicalCursor))
+        {
+            return true;
+        }
     }
     return false;
 }
@@ -266,16 +263,38 @@ void AssignExternalDragSuppression(bool ExternalDragActive) noexcept
 
 void AssignOverlayPointerShield(Rectangle2D PrimaryPhysicalBounds, Rectangle2D SecondaryPhysicalBounds) noexcept
 {
-    auto& Reg                  = AccessPointerOwnershipRegister();
-    Reg.PrimaryOverlayShield   = PrimaryPhysicalBounds;
-    Reg.SecondaryOverlayShield = SecondaryPhysicalBounds;
+    auto& Reg              = AccessPointerOwnershipRegister();
+    Reg.OverlayShieldCount = 0u;
+    if (PrimaryPhysicalBounds.Width > 0.5f && PrimaryPhysicalBounds.Height > 0.5f)
+    {
+        Reg.OverlayShields[Reg.OverlayShieldCount++] = PrimaryPhysicalBounds;
+    }
+    if (SecondaryPhysicalBounds.Width > 0.5f && SecondaryPhysicalBounds.Height > 0.5f)
+    {
+        Reg.OverlayShields[Reg.OverlayShieldCount++] = SecondaryPhysicalBounds;
+    }
+}
+
+void AppendOverlayPointerShield(Rectangle2D AdditionalPhysicalBounds) noexcept
+{
+    auto& Reg = AccessPointerOwnershipRegister();
+    if (AdditionalPhysicalBounds.Width > 0.5f &&
+        AdditionalPhysicalBounds.Height > 0.5f &&
+        Reg.OverlayShieldCount < static_cast<uint32_t>(Reg.OverlayShields.size()))
+    {
+        Reg.OverlayShields[Reg.OverlayShieldCount++] = AdditionalPhysicalBounds;
+    }
 }
 
 void ClearOverlayPointerShield() noexcept
 {
-    auto& Reg                  = AccessPointerOwnershipRegister();
-    Reg.PrimaryOverlayShield   = {};
-    Reg.SecondaryOverlayShield = {};
+    auto& Reg              = AccessPointerOwnershipRegister();
+    Reg.OverlayShieldCount = 0u;
+}
+
+bool QueryOverlayPointerBlockedAt(Point2D PhysicalCursor) noexcept
+{
+    return QueryOverlayShieldContains(PhysicalCursor);
 }
 
 void EnforcePanePointerOwnership(const void* PaneIdentity, PaneInputReading& InOutInput) noexcept

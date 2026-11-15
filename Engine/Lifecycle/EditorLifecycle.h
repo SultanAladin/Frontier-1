@@ -31,8 +31,11 @@
 #include "Engine/Windowing/PlatformWindow.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <mutex>
+#include <thread>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -139,6 +142,10 @@ private:
     void ProcessShowcaseViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
     void ProcessShowcaseNavigationDirective(ViewportNavigationDirective Directive);
     void SynchronizeContentBrowserColourTargets();
+    void InvalidateRtxLattice() noexcept;
+    void BeginAsyncRtxLatticeBake();
+    [[nodiscard]] bool ConsumeCompletedRtxLatticeBake();
+    void JoinRtxLatticeThread() noexcept;
 
     EditorStartupConfiguration                 StartupConfig          {};     // [-]     - Applied editor startup settings
     Components::HeadlessWorkspaceDockContainer DockContainer          {};     // [-]     - Intra-app trapezoidal docking container
@@ -146,7 +153,7 @@ private:
     ControlCentrePanel                         ControlCentre          {};     // [-]     - Pull-down Control Centre & settings shade
     Editor::Explorer::ContentBrowser           ContentBrowserDrawer   {};     // [-]     - Pull-up ContentBrowser & ColourCodex drawer
     WorkspaceLifecycle                         Workspaces             {};     // [-]     - Multi-document workspace session loop
-    Input::InputExtension                      InputCoordinator       {};     // [-]     - Hardware input & OS feedback coordinator
+    Input::InputExtension                      InputParticipant       {};     // [-]     - Hardware input & OS feedback participant
     LifecycleSequence                          EditorSequence         {};     // [-]     - Registered GPU .slang overlay & editor hooks
     std::unique_ptr<GeometricRaster::ShowcaseWorldSceneBundle>       ShowcaseBundle       {}; // [-] - Mounted Cornell-Studio Gallery scene & Outliner tokens
     std::unique_ptr<GeometricRaster::TieredWorldRenderSequence>      ShowcaseRenderer     {}; // [-] - Calibrated Tier 1 GTX / Tier 2 RTX world renderer
@@ -161,6 +168,13 @@ private:
     uint32_t                                                         LastViewportDebug    = UINT32_MAX;
     int32_t                                                          LastRenderScalePct   = 100;
     bool                                                             RtxLatticePrepared   = false;
+    std::thread                                                      RtxLatticeThread     {};
+    std::mutex                                                       RtxLatticeMutex      {};
+    GeometricRaster::IrradianceLatticeSequence                       PendingRtxLattice    {};
+    std::atomic<bool>                                                RtxLatticeReady      { false };
+    std::atomic<bool>                                                RtxLatticeInFlight   { false };
+    uint64_t                                                         RtxLatticeGeneration = 0ull;
+    uint64_t                                                         PendingRtxLatticeGen = 0ull;
     Editor::TransformGizmo                                           WorldTransformGizmo  {}; // [-] - 13-handle 3D Slate GizmoPRO manipulator
     Mathematics::SpatialTransform                                    GizmoActiveTransform {}; // [-] - Working SpatialTransform during active drag
     OutlinerSlotToken                                                LastGizmoSlot        {}; // [id]- Slot currently anchored by WorldTransformGizmo
@@ -219,7 +233,7 @@ inline WorkspaceLifecycle& EditorLifecycle::AccessWorkspaces() noexcept
 
 inline Input::InputExtension& EditorLifecycle::AccessInput() noexcept
 {
-    return InputCoordinator;
+    return InputParticipant;
 }
 
 inline TypographyRepository& EditorLifecycle::AccessTypography() noexcept

@@ -41,13 +41,18 @@ public:
 
     [[nodiscard]] bool             QueryReady() const noexcept;
     [[nodiscard]] bool             QueryHardwareGpuActive() const noexcept;
+    [[nodiscard]] bool             QueryGpuSdfComputeReady() const noexcept { return SignedDistanceProgramHandle != UINT32_MAX; }
+    [[nodiscard]] bool             QueryIrradianceLatticeUploaded() const noexcept { return CachedLatticeDimX > 0u && CachedLatticeDimY > 0u && CachedLatticeDimZ > 0u; }
+    [[nodiscard]] uint32_t         QueryCachedSdfVoxelCount() const noexcept { return CachedSdfDimX * CachedSdfDimY * CachedSdfDimZ; }
     [[nodiscard]] std::string_view QueryAdapterTitle() const noexcept;
     [[nodiscard]] float            QueryLastDispatchMilliseconds() const noexcept { return LastDispatchMilliseconds; }
 
     void SynchronizeSceneResources(
         const WorldSceneSpecification&   Scene,
         const IrradianceLatticeSequence* OptionalRtxLattice,
-        bool                             RebuildVolumeGrids = true);
+        bool                             RebuildSdfGrid = true);
+
+    void UploadIrradianceLattice(const IrradianceLatticeSequence& RtxLattice);
 
     [[nodiscard]] bool RenderWorldViewportRgba8(
         WorldRenderTier                Tier,
@@ -62,17 +67,21 @@ private:
         uint64_t              MinimumBytes,
         VkBufferUsageFlags    UsageMask);
 
-    VulkanInterchange*     BoundDevice              = nullptr;
-    ComputeDispatchEncoder DispatchEncoder          {};
-    uint32_t               RadiometricProgramHandle = UINT32_MAX;
+    [[nodiscard]] bool DispatchGpuSignedDistanceGrid(const WorldSceneSpecification& Scene);
 
-    DeviceBufferResource   UniformBuffer            {};
-    DeviceBufferResource   BvhEntryBuffer           {};
-    DeviceBufferResource   ShadedTriangleBuffer     {};
-    DeviceBufferResource   MaterialEntryBuffer      {};
-    DeviceBufferResource   SignedDistanceBuffer     {};
-    DeviceBufferResource   IrradianceLatticeBuffer  {};
-    DeviceBufferResource   OutputPixelBuffer        {};
+    VulkanInterchange*     BoundDevice                 = nullptr;
+    ComputeDispatchEncoder DispatchEncoder             {};
+    uint32_t               RadiometricProgramHandle    = UINT32_MAX;
+    uint32_t               SignedDistanceProgramHandle = UINT32_MAX;
+
+    DeviceBufferResource   UniformBuffer               {};
+    DeviceBufferResource   SdfUniformBuffer            {};
+    DeviceBufferResource   BvhEntryBuffer              {};
+    DeviceBufferResource   ShadedTriangleBuffer        {};
+    DeviceBufferResource   MaterialEntryBuffer         {};
+    DeviceBufferResource   SignedDistanceBuffer        {};
+    DeviceBufferResource   IrradianceLatticeBuffer     {};
+    DeviceBufferResource   OutputPixelBuffer           {};
 
     Mathematics::Axis3D    CachedSdfMinCorner       { -3.5f, -3.5f, -1.2f };
     float                  CachedSdfSpacing         = 0.14f;

@@ -193,7 +193,7 @@ public:
         return true;
     }
 
-    void PollOperatingWindows(Input::InputExtension &InputCoordinator) noexcept
+    void PollOperatingWindows(Input::InputExtension &InputParticipant) noexcept
     {
         if (!ContainerActive)
             return;
@@ -203,7 +203,7 @@ public:
             auto &Slot = HostWindows[SlotIdx];
             if (!Slot || !Slot->Active)
                 continue;
-            Slot->Surface.PollOperatingEvents(InputCoordinator);
+            Slot->Surface.PollOperatingEvents(InputParticipant);
             if (!Slot->Primary && Slot->Surface.CloseRequested())
                 CloseDetachedOperatingWindow(Slot->Token);
         }

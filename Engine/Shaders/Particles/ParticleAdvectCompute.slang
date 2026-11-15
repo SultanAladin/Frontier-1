@@ -17,10 +17,22 @@ import ColourRampSampling;
 [[vk::binding(3, 1)]] StructuredBuffer<ForceSourceShaderEntry>   ForceSources;
 [[vk::binding(4, 1)]] StructuredBuffer<float4>                   ForceWaypoints;
 [[vk::binding(5, 1)]] StructuredBuffer<float4>                   ColourLutBuffer;
+[[vk::binding(6, 1)]] StructuredBuffer<RigidColliderProxyGpu>    RigidColliders;
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                       HELPER FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
+
+float3 RotateByQuatGpu(float4 Quat, float3 Vector)
+{
+    float3 T = 2.0 * cross(Quat.xyz, Vector);
+    return Vector + Quat.w * T + cross(Quat.xyz, T);
+}
+
+float3 RotateByConjugateQuatGpu(float4 Quat, float3 Vector)
+{
+    return RotateByQuatGpu(float4(-Quat.xyz, Quat.w), Vector);
+}
 
 float3 EvaluateAnalyticCurlVelocity(float3 P, float Freq, float Phase)
 {
@@ -163,6 +175,106 @@ void ParticleAdvectComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
             if (RelVn < 0.0)
             {
                 Slot.VelocityMps += Nrm * (-1.75 * RelVn);
+            }
+        }
+    }
+
+    // 8b. PhysicsSpace rigid-body collision proxies (Sphere, Oriented Box, Oriented +Z Capsule)
+    uint RigidColliderCount = (GlobalParams.ColliderFlags >> 16u) & 0xFFFFu;
+    for (uint CIdx = 0u; CIdx < RigidColliderCount; ++CIdx)
+    {
+        RigidColliderProxyGpu Proxy = RigidColliders[CIdx];
+        float  SafeParticleR = max(Slot.SizeMeters, 1e-4);
+        float3 RelLocal      = RotateByConjugateQuatGpu(Proxy.OrientationQuat, Slot.PositionMeters - Proxy.CenterMeters);
+        float3 LocalNormal   = float3(0.0, 0.0, 1.0);
+        float  Penetration   = 0.0;
+        bool   Hit           = false;
+
+        if (Proxy.ShapeCode == 0u)
+        {
+            float MinDist = max(Proxy.RadiusMeters, 1e-4) + SafeParticleR;
+            float DistSq  = dot(RelLocal, RelLocal);
+            if (DistSq < MinDist * MinDist)
+            {
+                float Dist = sqrt(max(DistSq, 1e-12));
+                LocalNormal = (Dist > 1e-5) ? (RelLocal / Dist) : float3(0.0, 0.0, 1.0);
+                Penetration = MinDist - Dist;
+                Hit = true;
+            }
+        }
+        else if (Proxy.ShapeCode == 1u)
+        {
+            float3 HalfE   = max(Proxy.HalfExtentsMeters, float3(1e-4, 1e-4, 1e-4));
+            float3 Closest = clamp(RelLocal, -HalfE, HalfE);
+            float3 Diff    = RelLocal - Closest;
+            float  DistSq  = dot(Diff, Diff);
+            if (DistSq > 1e-10)
+            {
+                if (DistSq < SafeParticleR * SafeParticleR)
+                {
+                    float Dist = sqrt(DistSq);
+                    LocalNormal = Diff / Dist;
+                    Penetration = SafeParticleR - Dist;
+                    Hit = true;
+                }
+            }
+            else
+            {
+                float Dx = HalfE.x - abs(RelLocal.x);
+                float Dy = HalfE.y - abs(RelLocal.y);
+                float Dz = HalfE.z - abs(RelLocal.z);
+                if (Dx <= Dy && Dx <= Dz)
+                {
+                    LocalNormal = float3(RelLocal.x >= 0.0 ? 1.0 : -1.0, 0.0, 0.0);
+                    Penetration = Dx + SafeParticleR;
+                }
+                else if (Dy <= Dz)
+                {
+                    LocalNormal = float3(0.0, RelLocal.y >= 0.0 ? 1.0 : -1.0, 0.0);
+                    Penetration = Dy + SafeParticleR;
+                }
+                else
+                {
+                    LocalNormal = float3(0.0, 0.0, RelLocal.z >= 0.0 ? 1.0 : -1.0);
+                    Penetration = Dz + SafeParticleR;
+                }
+                Hit = true;
+            }
+        }
+        else
+        {
+            float  HalfH    = max(Proxy.HalfExtentsMeters.z, 0.0);
+            float  MinDist  = max(Proxy.RadiusMeters, 1e-4) + SafeParticleR;
+            float3 SegPt    = float3(0.0, 0.0, clamp(RelLocal.z, -HalfH, HalfH));
+            float3 Diff     = RelLocal - SegPt;
+            float  DistSq   = dot(Diff, Diff);
+            if (DistSq < MinDist * MinDist)
+            {
+                float Dist = sqrt(max(DistSq, 1e-12));
+                LocalNormal = (Dist > 1e-5) ? (Diff / Dist) : float3(0.0, 0.0, 1.0);
+                Penetration = MinDist - Dist;
+                Hit = true;
+            }
+        }
+
+        if (Hit)
+        {
+            float3 WorldNrm = RotateByQuatGpu(Proxy.OrientationQuat, LocalNormal);
+            Slot.PositionMeters += WorldNrm * Penetration;
+            float3 RelV  = Slot.VelocityMps - Proxy.VelocityMps;
+            float  RelVn = dot(RelV, WorldNrm);
+            if (RelVn < 0.0)
+            {
+                float  NormalDelta = -(1.0 + clamp(Proxy.Restitution, 0.0, 1.0)) * RelVn;
+                float3 TanV        = RelV - RelVn * WorldNrm;
+                float  TanLenSq    = dot(TanV, TanV);
+                Slot.VelocityMps  += WorldNrm * NormalDelta;
+                if (TanLenSq > 1e-10 && Proxy.Friction > 0.0)
+                {
+                    float TanLen  = sqrt(TanLenSq);
+                    float MaxFric = min(TanLen, clamp(Proxy.Friction, 0.0, 2.0) * NormalDelta);
+                    Slot.VelocityMps -= TanV * (MaxFric / TanLen);
+                }
             }
         }
     }

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                                CONTENTBROWSER.H
 ============================================================================================================================================*/
-// 🧩 Editor-tier ContentBrowser coordinator connecting ColourCodex (.ColourSwatch), ThumbnailSheet streaming, and workspace domain masks
+// 🧩 Editor-tier ContentBrowser orchestrator connecting ColourCodex (.ColourSwatch), ThumbnailSheet streaming, and workspace domain masks
 
 #pragma once
 

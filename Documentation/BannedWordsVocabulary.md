@@ -40,7 +40,7 @@ Related governance documents: [FolderStructure.md](FolderStructure.md) · [Codin
 - `emblem` *(barred: use `Icon`, `Symbol`, `VectorGraphic`, `VisualToken`, `Indicator`, or `Sign` — see §2.1)*
 - `emitter`
 - `evaluator`
-- `extension` *(strictly restricted: permitted **only** for designated lifecycle coordinators)*
+- `extension` *(strictly restricted: permitted **only** for designated lifecycle participants)*
 - `facet` / `facets` *(barred: use `Face` / `Faces`)*
 - `fence`
 - `floating`
@@ -87,8 +87,8 @@ Related governance documents: [FolderStructure.md](FolderStructure.md) · [Codin
 | **Sci-fi / Power-trip** | `Apex`, `Sentinel`, `Vanguard`, `Oracle`, `Titan`, `Goliath` | Grandiose metaphors obscure concrete mechanical behavior. |
 | **Center-of-universe** | `Nexus`, `Hub`, `Maestro`, `Core`, `Matrix`, `Catalyst`, `Conductor` | Encourages god-objects and vague central bottlenecks. |
 | **Pseudo-space / Mythology** | `Vortex`, `Aether`, `Zenith`, `Nova`, `Horizon`, `Genesis`, `Odyssey`, `Helios`, `Orion`, `Kronos` | Mythological and cosmic labels convey zero architectural meaning. |
-| **Generic-programmer / AI tropes** | `Manager`, `Handler`, `Dispatcher`, `Processor`, `Controller`, `Service`, `Utility`, `Helper`, `Representation`, `Traversal`\*, `Kernel`, `Graph`, `Record`†, `Frame`, `Node`, `Module`, `Data`, `Info`, `Object`, `Stuff`, `Thing`, `Item`, `Common`, `Base` | Default placeholder nouns that hide ownership, memory layout, and exact transformation. |
-| **Human job titles** | `Manager`, `Worker`, `Provider`, `Dispatcher`, `Conductor`, `Listener`, `Observer` | Barred unless a strict, canonical named design pattern is genuinely in use. |
+| **Generic-programmer / AI tropes** | `Manager`, `Handler`, `Dispatcher`, `Processor`, `Controller`, `Coordinator`, `Service`, `Utility`, `Helper`, `Representation`, `Traversal`\*, `Kernel`, `Graph`, `Record`†, `Frame`, `Node`, `Module`, `Data`, `Info`, `Object`, `Stuff`, `Thing`, `Item`, `Common`, `Base` | Default placeholder nouns that hide ownership, memory layout, and exact transformation. |
+| **Human job titles** | `Manager`, `Coordinator`, `Worker`, `Provider`, `Dispatcher`, `Conductor`, `Listener`, `Observer` | Barred unless a strict, canonical named design pattern is genuinely in use. |
 | **Kinship / Family** *(whole category barred)* | `Parent`, `Child`, `Children`, `Sibling`, `Ancestor`, `Descendant`, `lineage`, `family`, `kin`, `Orphan` | **Entire category barred.** Name tree/graph links by concrete memory/index direction (`EnclosingIndex`, `FirstNestedIndex`, `NextPeerIndex`, `DepthLevel`). |
 | **State-change & factory verbs** | `Commit`, `Compose` *(verb AND noun)*, `Make`, `Accept` | `Commit` → `Finalize` / `Enforce` / `Align` / `Resolve`.<br>`Compose` (verb and noun) → `Stack` / `Order`.<br>`Make` → `Construct` (`ConstructSplashWindow`, `ConstructApplicationWindow`).<br>`Accept` → `Intake` / `Enable` (`IntakeSignalPacket`, `EnableExternalDrop`). |
 | **Boolean & bitmask prefixes** | `Is*`, `Has*`, `Was*`, `Can*`, `Should*`, `On*`, `*On*` *(e.g. `CenteredOnMonitor`, `FocusOnShow`)* | Name bitmask options with imperative directives **`Enable*`**, **`Toggle*`**, or **`Assign*`** (`EnableBorderDecoration`, `AssignMonitorCenter`, `AssignInitialFocus`, `TogglePanelVisibility`). Name booleans directly (`VisibilityEnabled`, `Minimized`, `Maximized`). |
@@ -117,7 +117,7 @@ When replacing or avoiding a banned concept, name the **concrete layout, index l
 | `stage`, `Pass`, `Emission`, `Emit`, `submission` | Mechanism-specific GPU render-unit suffix (`…Rasterization`, `…Sequence`, `…Encoder`) |
 | `Inscription` (composite-onto-target GPU unit) | `…Rasterization` (rasterizes geometry/decals/overlays into the target) |
 | `bloom` | Physical optical glare / luminance scatter terminology (`VeilingGlareFilter`, `LuminanceGlareDownsample`) |
-| `Hub` | Designated `…Extension` when acting as a domain lifecycle coordinator (e.g., `AnnotationExtension`) |
+| `Hub` | Designated `…Extension` when acting as a domain lifecycle participant (e.g., `AnnotationExtension`) |
 | Bare `Record` | Composite `RecordEntry` or `RecordToken`, or concrete `Register` / `Layout` |
 
 ### 2.1 Approved Visual, Iconography & Token Vocabulary
@@ -140,7 +140,7 @@ Use the following distinct visual nouns according to their exact structural role
 ### 3.1 Narrow Explicit Exemptions
 
 1. **`Extension` (Strictly Restricted)**:
-   Permitted **exclusively** for designated lifecycle coordinators (`RenderExtension`, `PhysicsExtension`, `InputExtension`, `AnnotationExtension`, `WorkspaceExtension`, `RevisionExtension`, `NetworkingExtension`, `AudioExtension`). Barred for general plugins, helpers, feature add-ons, file suffixes (use `Suffix`), or UI callbacks.
+   Permitted **exclusively** for designated lifecycle participants (`RenderExtension`, `PhysicsExtension`, `InputExtension`, `AnnotationExtension`, `WorkspaceExtension`, `RevisionExtension`, `NetworkingExtension`, `AudioExtension`). Barred for general plugins, helpers, feature add-ons, file suffixes (use `Suffix`), or UI callbacks.
 2. **`Model` (Force-Domain-Only Exemption)**:
    Permitted **exclusively** for analytical force/turbulence/stream field models (`ForceModel`, `TurbulenceModel`, `StreamTransportModel`, `VectorFieldModel`, `ForceModelDescriptor`, `ForceModelOrdinal`). Barred everywhere outside Force/Turbulence fields. `Law` / `Laws` is **strictly banned everywhere**, including inside ForceFields.
 3. **`Traversal` (Single-File Exemption)**:
@@ -180,6 +180,7 @@ Use the following distinct visual nouns according to their exact structural role
 - **2026-11-14 (User Ruling)**: Barred `Law` / `Laws` across filenames, folders, and identifiers (use concrete physical/mechanical domain names such as `Dynamics/`, `BallisticMotion`, `StrandConstraint`, `ForceFieldCoupling`, `FlockBoids`). Also rejected `ParticleReadback`, `PlaybackTransportBar`, and `TimelineRulerScrubber` in favor of concrete mechanical names (`ParticleMetricsCollector`, `SimulationPlaybackControls`, `SimulationTimeRuler`).
 - **2026-11-15 (User Ruling)**: Barred `strata` / `stratum` and `morph` across filenames, identifiers, UI terms, and plans (use `SurfaceLayer`, `FinishLayer`, `CoatingLayer`, `MaterialLayerStack`, `Transition`, `Crossfade`).
 - **2026-11-15 (User Ruling)**: Re-affirmed `Law` / `Laws` strictly barred even inside ForceFields — use `Model` (`ForceModel`, `TurbulenceModel`, `StreamTransportModel`, `VectorFieldModel`) as the **sole** narrow domain exemption where `Model` is permitted.
+- **2026-11-15 (User Ruling)**: Barred `Coordinator` across filenames, types, identifiers, and prose — replace with concrete mechanical/lifecycle nouns (e.g., `…Extension` for designated lifecycle participants, `…Session`, `…Register`, or `…Executor`).
 
 ---
 
@@ -189,7 +190,7 @@ Use this combined index to audit identifiers, filenames, directory names, and co
 
 - **A**: `action`, `adjacency`, `Aether`, `affinity`, `Ancestor`, `And` *(conjunction in filenames/identifiers)*, `Apex`, `archive` / `archives`, `arena`, `artwork`, `Assembly` / `assembly` *(avoid: `atlas`)*
 - **B**: `backend`, `badge`, `Base`, `binding`, `bloom`, `BooleanSwitch` *(renamed to `ExclusiveSelector`)*
-- **C**: `cadence`, `card`, `carousel`, `catalog` / `catalogue`, `Catalyst`, `Child`, `Children`, `classification`, `Commit`, `Common`, `Complex` / `complex`, `Compose` / `compose`, `concurrence` / `concurrency` / `concurrent`, `Conductor`, `context`, `continuum`, `contract`, `Controller`, `Core`, `coverage`
+- **C**: `cadence`, `card`, `carousel`, `catalog` / `catalogue`, `Catalyst`, `Child`, `Children`, `classification`, `Commit`, `Common`, `Complex` / `complex`, `Compose` / `compose`, `concurrence` / `concurrency` / `concurrent`, `Conductor`, `context`, `continuum`, `contract`, `Controller`, `Coordinator`, `Core`, `coverage`
 - **D**: `Data`, `Descendant`, `Designation`, `dev`, `Dispatcher`, `Draw` / `draw`
 - **E**: `Element` / `element`, `emblem` / `Emblem`, `Emission` / `Emit` / `emitter`, `Entity`, `evaluator`, `extension` *(restricted — §3.1)*
 - **F**: `Facet` / `facet` / `Facets` / `facets`, `family`, `fence`, `flag`, `floating`, `flow`, `Frame` / `frame`

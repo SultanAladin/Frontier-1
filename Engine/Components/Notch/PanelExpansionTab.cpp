@@ -22,8 +22,12 @@ void PanelExpansionTab::ConfigureExtent(float Width, float Height, float Scale) 
     DisplayWidth  = std::max(Width, 1.0f);
     DisplayHeight = std::max(Height, 1.0f);
     Density       = std::clamp(Scale, 0.75f, 1.5f);
-    if (!Contact && Opening && Motion.Axis(VerticalAxis).Target != static_cast<double>(QueryTravelLimit()))
-        Motion.Axis(VerticalAxis).Depart(QueryTravelLimit());
+    const double DesiredH = static_cast<double>(QueryDetentHeight(TargetDetent));
+    if (!Contact && TargetDetent != DrawerDetentStop::Closed &&
+        std::fabs(Motion.Axis(VerticalAxis).Target - DesiredH) > 0.25)
+    {
+        Motion.Axis(VerticalAxis).Depart(DesiredH);
+    }
 
     const double Limit   = std::max(0.0f, (DisplayWidth - QueryTabBounds().Width) * 0.5f);
     SpringAxis  &Lateral = Motion.Axis(HorizontalAxis);
@@ -34,13 +38,32 @@ void PanelExpansionTab::ConfigureExtent(float Width, float Height, float Scale) 
 void PanelExpansionTab::ConfigureTravelLimit(float Height) noexcept
 {
     MaximumHeight = std::isfinite(Height) ? std::max(0.0f, Height) : 0.0f;
-    if (Opening && !Contact && Motion.Axis(VerticalAxis).Target != static_cast<double>(QueryTravelLimit()))
-        Motion.Axis(VerticalAxis).Depart(QueryTravelLimit());
+    const double DesiredH = static_cast<double>(QueryDetentHeight(TargetDetent));
+    if (TargetDetent != DrawerDetentStop::Closed && !Contact &&
+        std::fabs(Motion.Axis(VerticalAxis).Target - DesiredH) > 0.25)
+    {
+        Motion.Axis(VerticalAxis).Depart(DesiredH);
+    }
 }
 
 float PanelExpansionTab::QueryTravelLimit() const noexcept
 {
     return MaximumHeight > 0.0f ? std::min(MaximumHeight, DisplayHeight) : DisplayHeight;
+}
+
+float PanelExpansionTab::QueryDetentHeight(DrawerDetentStop Stop) const noexcept
+{
+    const float Limit = QueryTravelLimit();
+    switch (Stop)
+    {
+        case DrawerDetentStop::Half:
+            return std::min(Limit, std::max(Limit * 0.50f, std::min(Limit, 310.0f * Density)));
+        case DrawerDetentStop::Full:
+            return Limit;
+        case DrawerDetentStop::Closed:
+        default:
+            return 0.0f;
+    }
 }
 
 float PanelExpansionTab::QueryHeight() const noexcept
@@ -75,24 +98,37 @@ std::array<Point2D, 4> PanelExpansionTab::QueryTrapezoidContour() const noexcept
              {Bounds.X + Inset, Bounds.Bottom()}}};
 }
 
+void PanelExpansionTab::ConfigureDetent(DrawerDetentStop RequestedDetent) noexcept
+{
+    TargetDetent = RequestedDetent;
+    Contact      = false;
+    Motion.Axis(VerticalAxis).Depart(static_cast<double>(QueryDetentHeight(TargetDetent)));
+}
+
+void PanelExpansionTab::SnapDetent(DrawerDetentStop RequestedDetent) noexcept
+{
+    TargetDetent = RequestedDetent;
+    Contact      = false;
+    Motion.Axis(VerticalAxis).ConfigurePosition(static_cast<double>(QueryDetentHeight(TargetDetent)));
+    Motion.Axis(HorizontalAxis).ConfigurePosition(0.0);
+}
+
 void PanelExpansionTab::ConfigureOpen(bool OpenRequested) noexcept
 {
-    Opening = OpenRequested;
-    Contact = false;
-    Motion.Axis(VerticalAxis).Depart(Opening ? QueryTravelLimit() : 0.0);
+    ConfigureDetent(OpenRequested ? DrawerDetentStop::Full : DrawerDetentStop::Closed);
 }
 
 void PanelExpansionTab::SnapOpen(bool OpenRequested) noexcept
 {
-    Opening = OpenRequested;
-    Contact = false;
-    Motion.Axis(VerticalAxis).ConfigurePosition(Opening ? QueryTravelLimit() : 0.0);
-    Motion.Axis(HorizontalAxis).ConfigurePosition(0.0);
+    SnapDetent(OpenRequested ? DrawerDetentStop::Full : DrawerDetentStop::Closed);
 }
 
 void PanelExpansionTab::Integrate(double DeltaSeconds) noexcept
 {
-    (void)Motion.Integrate(DeltaSeconds);
+    if (!Contact)
+    {
+        (void)Motion.Integrate(DeltaSeconds);
+    }
 }
 
 void PanelExpansionTab::IntegratePointer(float CursorX, float CursorY, bool Pressed, bool Down, bool Released,
@@ -101,7 +137,10 @@ void PanelExpansionTab::IntegratePointer(float CursorX, float CursorY, bool Pres
     if (!std::isfinite(CursorX) || !std::isfinite(CursorY) || CursorX < -1.0e8f || CursorY < -1.0e8f)
     {
         if (Contact)
-            ConfigureOpen(OpenBeforeContact);
+        {
+            Motion.Axis(HorizontalAxis).Depart(0.0);
+            ConfigureDetent(DetentBeforeContact);
+        }
         return;
     }
 
@@ -110,25 +149,32 @@ void PanelExpansionTab::IntegratePointer(float CursorX, float CursorY, bool Pres
     const float       Inset      = TabBounds.Width * 0.08f * std::clamp(LocalY, 0.0f, 1.0f);
     const bool        OverTab    = TabBounds.Contains({CursorX, CursorY}) && CursorX >= TabBounds.X + Inset &&
                          CursorX <= TabBounds.Right() - Inset;
-    const bool        OverGrip   = QueryGripBounds().Contains({CursorX, CursorY}) && QueryHeight() > 50.0f * Density;
+    const Rectangle2D GripHit    = {
+        QueryGripBounds().X - 24.0f * Density,
+        QueryGripBounds().Y - 12.0f * Density,
+        QueryGripBounds().Width + 48.0f * Density,
+        QueryGripBounds().Height + 24.0f * Density,
+    };
+    const bool        OverGrip   = GripHit.Contains({CursorX, CursorY}) && QueryHeight() > 50.0f * Density;
+    const bool        ShadeOpen  = TargetDetent != DrawerDetentStop::Closed || QueryHeight() > 2.0f;
 
-    if (Pressed && (OverTab || OverGrip || (Opening && SurfaceContact)))
+    if (Pressed && (OverTab || OverGrip || (ShadeOpen && SurfaceContact)))
     {
-        Contact           = true;
-        TabContact        = OverTab;
-        GripContact       = OverGrip;
-        ContactX          = CursorX;
-        PreviousX         = CursorX;
-        ContactY          = CursorY;
-        PreviousY         = CursorY;
-        ContactHeight     = Motion.Axis(VerticalAxis).Current;
-        ContactLateral    = Motion.Axis(HorizontalAxis).Current;
-        ContactDuration   = 0.0;
-        RateY             = 0.0;
-        AxisResolved      = OverGrip;
-        VerticalDominant  = OverGrip;
-        TravelExceeded    = false;
-        OpenBeforeContact = Opening;
+        Contact             = true;
+        TabContact          = OverTab;
+        GripContact         = OverGrip;
+        ContactX            = CursorX;
+        PreviousX           = CursorX;
+        ContactY            = CursorY;
+        PreviousY           = CursorY;
+        ContactHeight       = Motion.Axis(VerticalAxis).Current;
+        ContactLateral      = Motion.Axis(HorizontalAxis).Current;
+        ContactDuration     = 0.0;
+        RateY               = 0.0;
+        AxisResolved        = OverGrip || (!OverTab && SurfaceContact);
+        VerticalDominant    = AxisResolved;
+        TravelExceeded      = false;
+        DetentBeforeContact = TargetDetent;
         Motion.Axis(VerticalAxis).ConfigurePosition(ContactHeight);
         Motion.Axis(HorizontalAxis).ConfigurePosition(ContactLateral);
     }
@@ -137,8 +183,10 @@ void PanelExpansionTab::IntegratePointer(float CursorX, float CursorY, bool Pres
         return;
 
     ContactDuration += std::max(0.0, DeltaSeconds);
-    if (DeltaSeconds > 0.0)
+    if (DeltaSeconds > 1.0e-5)
+    {
         RateY = 0.60 * RateY + 0.40 * (static_cast<double>(CursorY - PreviousY) / DeltaSeconds);
+    }
 
     const float TravelX = CursorX - ContactX;
     const float TravelY = CursorY - ContactY;
@@ -149,24 +197,16 @@ void PanelExpansionTab::IntegratePointer(float CursorX, float CursorY, bool Pres
         VerticalDominant = std::fabs(TravelY) > std::fabs(TravelX);
     }
 
-    auto ElasticClamp = [](double Position, double Minimum, double Maximum) noexcept -> double {
-        if (Position < Minimum)
-            return Minimum - (Minimum - Position) * 0.05;
-        if (Position > Maximum)
-            return Maximum + (Position - Maximum) * 0.05;
-        return Position;
-    };
-
-    if (AxisResolved && VerticalDominant)
+    if (AxisResolved && VerticalDominant && TravelExceeded)
     {
         Motion.Axis(VerticalAxis).ConfigurePosition(
-            ElasticClamp(ContactHeight + static_cast<double>(TravelY), 0.0, QueryTravelLimit()));
+            EvaluateElasticClamp(ContactHeight + static_cast<double>(TravelY), 0.0, static_cast<double>(QueryTravelLimit())));
     }
-    else if (AxisResolved && TabContact)
+    else if (AxisResolved && TabContact && TravelExceeded)
     {
         const double Limit = std::max(0.0f, (DisplayWidth - TabBounds.Width) * 0.5f);
         Motion.Axis(HorizontalAxis).ConfigurePosition(
-            ElasticClamp(ContactLateral + static_cast<double>(TravelX), -Limit, Limit));
+            EvaluateElasticClamp(ContactLateral + static_cast<double>(TravelX), -Limit, Limit));
     }
 
     PreviousX = CursorX;
@@ -174,25 +214,28 @@ void PanelExpansionTab::IntegratePointer(float CursorX, float CursorY, bool Pres
 
     if (Released || !Down)
     {
-        const bool Tap         = !TravelExceeded && ContactDuration <= 0.350;
-        bool       Destination = OpenBeforeContact;
+        const bool       Tap         = !TravelExceeded && ContactDuration <= 0.350;
+        DrawerDetentStop Destination = DetentBeforeContact;
         if (Tap && TabContact)
         {
-            Destination = !OpenBeforeContact;
+            Destination = (DetentBeforeContact == DrawerDetentStop::Closed)
+                              ? DrawerDetentStop::Full
+                              : DrawerDetentStop::Closed;
         }
         else if (Tap && GripContact)
         {
-            Destination = false;
+            Destination = DrawerDetentStop::Closed;
         }
-        else if (AxisResolved && VerticalDominant)
+        else if (AxisResolved && VerticalDominant && TravelExceeded)
         {
-            const double Displacement = static_cast<double>(QueryHeight()) - ContactHeight;
-            Destination               = QueryHeight() > QueryTravelLimit() * 0.5f
-                              ? !(RateY < -20.0 * Density || Displacement < -50.0 * Density)
-                              : (RateY > 20.0 * Density || Displacement > 50.0 * Density);
+            const float CurrentProgress = std::clamp(
+                QueryHeight() / std::max(QueryTravelLimit(), 1.0f),
+                0.0f,
+                1.0f);
+            Destination = ResolveDrawerDetentOnRelease(CurrentProgress, RateY, Density, DetentBeforeContact);
         }
         Motion.Axis(HorizontalAxis).Depart(0.0);
-        ConfigureOpen(Destination);
+        ConfigureDetent(Destination);
     }
 }
 

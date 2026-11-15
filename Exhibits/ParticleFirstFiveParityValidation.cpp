@@ -9,7 +9,7 @@
 
 #include "Engine/ParticleSpace/Dynamics/DynamicStrandSolver.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/ParticleSimulationSession.h"
 #include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 #include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
 
@@ -210,10 +210,10 @@ bool ValidateSinglePreset(const PresetHeroEntry& Entry, const std::filesystem::p
     }
     const ParticleRig& Rig = Doc.Rigs[0];
 
-    ParticleSimulationCoordinator Ext {};
+    ParticleSimulationSession Ext {};
     if (!Ext.Initialize(Doc))
     {
-        std::cerr << "[FAIL] " << Entry.PresetId << " ParticleSimulationCoordinator::Initialize failed!\n";
+        std::cerr << "[FAIL] " << Entry.PresetId << " ParticleSimulationSession::Initialize failed!\n";
         return false;
     }
     constexpr int Steps = 144; // 2.40 seconds @ 60 Hz
@@ -280,7 +280,7 @@ bool ValidateSinglePreset(const PresetHeroEntry& Entry, const std::filesystem::p
     ImpactDoc.Collider.BallCenterM[1]   = 1.9f;
     ImpactDoc.Collider.BallCenterM[2]   = Entry.OriginMeters[2];
     ImpactDoc.Collider.BallRadiusMeters = 0.72f;
-    ParticleSimulationCoordinator ImpactExt {};
+    ParticleSimulationSession ImpactExt {};
     if (!ImpactExt.Initialize(ImpactDoc)) return false;
     for (int F = 0; F < 30; ++F) ImpactExt.Tick(1.0 / 60.0);
     for (const auto& V : ImpactExt.InspectStrandVertices())
@@ -342,7 +342,7 @@ int main()
             if (!Single.Rigs.empty()) CombinedDoc.Rigs.push_back(Single.Rigs[0]);
         }
 
-        ParticleSimulationCoordinator CombinedExt {};
+        ParticleSimulationSession CombinedExt {};
         if (!CombinedExt.Initialize(CombinedDoc)) return 1;
         for (int F = 0; F < 144; ++F) CombinedExt.Tick(1.0 / 60.0);
 

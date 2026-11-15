@@ -231,22 +231,74 @@ void ControlCentrePanel::ConfigureWorkspaceCallbacks(
     ResetLayoutCallback     = std::move(OnResetLayoutRequested);
 }
 
-void ControlCentrePanel::ConfigureOpen(bool OpenRequested, bool Immediate) noexcept
+void ControlCentrePanel::ConfigureDetent(DrawerDetentStop RequestedDetent, bool Immediate) noexcept
 {
     if (Immediate)
     {
-        Notch.SnapOpen(OpenRequested);
+        Notch.SnapDetent(RequestedDetent);
     }
     else
     {
-        Notch.ConfigureOpen(OpenRequested);
+        Notch.ConfigureDetent(RequestedDetent);
     }
-    if (!OpenRequested)
+    if (RequestedDetent == DrawerDetentStop::Closed)
     {
         InputProfileSelectorOpen = false;
         CaptureShortcutSlot      = -1;
         ActiveSliderOrdinal      = -1;
     }
+}
+
+void ControlCentrePanel::ConfigureOpen(bool OpenRequested, bool Immediate) noexcept
+{
+    ConfigureDetent(OpenRequested ? DrawerDetentStop::Full : DrawerDetentStop::Closed, Immediate);
+}
+
+void ControlCentrePanel::SynchronizeHostBounds(Rectangle2D HostBoundsPhysical, float ScaleFactor) noexcept
+{
+    LastHostBoundsPhysical = HostBoundsPhysical;
+    LastScaleFactor        = std::clamp(ScaleFactor, 0.75f, 1.50f);
+    if (HostBoundsPhysical.Width > 1.0f && HostBoundsPhysical.Height > 1.0f)
+    {
+        Notch.ConfigureExtent(HostBoundsPhysical.Width, HostBoundsPhysical.Height, LastScaleFactor);
+    }
+}
+
+bool ControlCentrePanel::QueryFullScreenBlocking() const noexcept
+{
+    return Dialogue.QueryOpen() ||
+           Notch.QueryActiveContact() ||
+           (Notch.QueryDetent() == DrawerDetentStop::Full && Notch.QueryProgress() > 0.58f);
+}
+
+Rectangle2D ControlCentrePanel::QueryShadePhysicalBounds() const noexcept
+{
+    const float ShadeH = Notch.QueryHeight();
+    if (ShadeH <= 1.0f || LastHostBoundsPhysical.Width <= 1.0f)
+    {
+        return {};
+    }
+    return {
+        LastHostBoundsPhysical.X,
+        LastHostBoundsPhysical.Y,
+        LastHostBoundsPhysical.Width,
+        std::min(ShadeH, LastHostBoundsPhysical.Height),
+    };
+}
+
+Rectangle2D ControlCentrePanel::QueryTabPhysicalBounds() const noexcept
+{
+    if (LastHostBoundsPhysical.Width <= 1.0f)
+    {
+        return {};
+    }
+    const Rectangle2D LocalTab = Notch.QueryTabBounds();
+    return {
+        LastHostBoundsPhysical.X + LocalTab.X,
+        LastHostBoundsPhysical.Y + LocalTab.Y,
+        LocalTab.Width,
+        LocalTab.Height,
+    };
 }
 
 void ControlCentrePanel::ActivatePage(ControlCentrePage Page, bool Immediate) noexcept
@@ -258,9 +310,9 @@ void ControlCentrePanel::ActivatePage(ControlCentrePage Page, bool Immediate) no
     CaptureShortcutSlot      = -1;
     StatusDiagnostic.clear();
 
-    if (!Notch.QueryOpen())
+    if (!Notch.QueryOpen() || (Page != ControlCentrePage::QuickControls && Notch.QueryDetent() != DrawerDetentStop::Full))
     {
-        ConfigureOpen(true, Immediate);
+        ConfigureDetent(DrawerDetentStop::Full, Immediate);
     }
     if (Immediate)
     {
@@ -544,9 +596,46 @@ void ControlCentrePanel::Render(Rectangle2D HostBoundsPhysical, double Δt, floa
         }
     }
 
+    LastHostBoundsPhysical = HostBoundsPhysical;
+    LastScaleFactor        = Scale;
     Notch.ConfigureExtent(HostBoundsPhysical.Width, HostBoundsPhysical.Height, Scale);
-    const float LocalMouseX = EditorSnapshot.PositionX - HostBoundsPhysical.X;
-    const float LocalMouseY = EditorSnapshot.PositionY - HostBoundsPhysical.Y;
+    const float LocalMouseX        = EditorSnapshot.PositionX - HostBoundsPhysical.X;
+    const float LocalMouseY        = EditorSnapshot.PositionY - HostBoundsPhysical.Y;
+    const float LogicalMouseX      = LocalMouseX / Scale;
+    const float LogicalMouseY      = LocalMouseY / Scale;
+    const float PreShadeLogicalH   = Notch.QueryHeight() / Scale;
+    const Point2D LogicalCursorPt  { LogicalMouseX, LogicalMouseY };
+
+    bool OverInteractiveControl = false;
+    if (PreShadeLogicalH > 2.0f && LogicalMouseY >= 0.0f && LogicalMouseY <= PreShadeLogicalH)
+    {
+        if (ActivePage == ControlCentrePage::QuickControls)
+        {
+            for (uint32_t Idx = 0u; Idx < LastInteractiveCount; ++Idx)
+            {
+                if (LastInteractiveBounds[Idx].Contains(LogicalCursorPt))
+                {
+                    OverInteractiveControl = true;
+                    break;
+                }
+            }
+        }
+        else if (LastSheetLogicalBounds.Width > 1.0f && LastSheetLogicalBounds.Height > 1.0f &&
+                 LogicalMouseY < PreShadeLogicalH - 36.0f &&
+                 LastSheetLogicalBounds.Contains(LogicalCursorPt))
+        {
+            OverInteractiveControl = true;
+        }
+    }
+
+    const bool SurfaceContact =
+        (PreShadeLogicalH > 2.0f) &&
+        (LogicalMouseY >= 0.0f) &&
+        (LogicalMouseY <= PreShadeLogicalH) &&
+        !OverInteractiveControl &&
+        (ActiveSliderOrdinal < 0) &&
+        !InputProfileSelectorOpen;
+
     if (!ModalBlocking)
     {
         Notch.IntegratePointer(
@@ -556,7 +645,7 @@ void ControlCentrePanel::Render(Rectangle2D HostBoundsPhysical, double Δt, floa
             EditorSnapshot.QueryButtonDown(0u),
             EditorSnapshot.QueryButtonReleased(0u),
             Δt,
-            false);
+            SurfaceContact);
     }
     Notch.Integrate(Δt);
 
@@ -618,31 +707,67 @@ void ControlCentrePanel::Render(Rectangle2D HostBoundsPhysical, double Δt, floa
 
     const float Progress    = Notch.QueryProgress();
     const float ShadeHeight = Notch.QueryHeight() / Scale;
+    LastInteractiveCount    = 0u;
+    LastSheetLogicalBounds  = {};
 
     if (Progress > 0.002f)
     {
-        Foreground.FillRectangle(
-            { 0.0f, 0.0f, LogicalWidth, LogicalHeight },
-            ColorQuad{ 0.0f, 0.0f, 0.0f, 0.40f * Progress }.ToRgba8(),
-            0.0f);
+        const float FullScrimWeight = std::clamp((Progress - 0.52f) / 0.40f, 0.0f, 1.0f);
+        if (FullScrimWeight > 0.004f)
+        {
+            Foreground.FillRectangle(
+                { 0.0f, 0.0f, LogicalWidth, LogicalHeight },
+                ColorQuad{ 0.0f, 0.0f, 0.0f, 0.40f * FullScrimWeight }.ToRgba8(),
+                0.0f);
+        }
         Foreground.FillRectangle(
             { 0.0f, 0.0f, LogicalWidth, ShadeHeight },
             Colors.Field.ToRgba8(),
             0.0f);
-
-        Foreground.PushClip({ 0.0f, 0.0f, LogicalWidth, ShadeHeight });
-        const float SheetWidth  = static_cast<float>(SheetSprings.Axis(WidthSpringAxis).Current);
-        const float SheetHeight = static_cast<float>(SheetSprings.Axis(HeightSpringAxis).Current);
-        const float SheetX      = (LogicalWidth - SheetWidth) * 0.5f;
-        const float SheetY      = SubPageActive ? 24.0f : std::max(24.0f, (LogicalHeight - SheetHeight) * 0.5f - 12.0f);
-
-        ControlPointer ClippedPointer = Pointer;
-        if (Pointer.Y > ShadeHeight)
+        if (ShadeHeight < LogicalHeight - 1.5f)
         {
-            ClippedPointer.Enabled = false;
+            Foreground.StrokeLine(
+                { 0.0f, ShadeHeight },
+                { LogicalWidth, ShadeHeight },
+                Colors.StrokeStrong.Faded(std::clamp(Progress * 1.4f, 0.0f, 1.0f)).ToRgba8(),
+                1.0f);
+            Foreground.FillRectangle(
+                { 0.0f, ShadeHeight + 1.0f, LogicalWidth, 8.0f },
+                ColorQuad{ 0.0f, 0.0f, 0.0f, 0.14f * std::clamp(Progress * 1.6f, 0.0f, 1.0f) }.ToRgba8(),
+                0.0f);
         }
 
-        ConstructPageContents(Foreground, ActivePage, { SheetX, SheetY, SheetWidth, SheetHeight }, ClippedPointer, Progress);
+        Foreground.PushClip({ 0.0f, 0.0f, LogicalWidth, ShadeHeight });
+        const float SheetWidth      = static_cast<float>(SheetSprings.Axis(WidthSpringAxis).Current);
+        const float FullSheetHeight = static_cast<float>(SheetSprings.Axis(HeightSpringAxis).Current);
+        float       SheetHeight     = FullSheetHeight;
+        float       SheetY          = SubPageActive ? 24.0f : std::max(24.0f, (LogicalHeight - FullSheetHeight) * 0.5f - 12.0f);
+
+        if (ActivePage == ControlCentrePage::QuickControls)
+        {
+            const float HalfBlend = std::clamp((ShadeHeight - LogicalHeight * 0.52f) / std::max(LogicalHeight * 0.36f, 1.0f), 0.0f, 1.0f);
+            const float HalfCapH  = std::max(210.0f, std::max(ShadeHeight, LogicalHeight * 0.50f) - 52.0f);
+            const float HalfSheetH = std::min(FullSheetHeight, HalfCapH);
+            const float HalfSheetY = std::max(14.0f, (std::max(ShadeHeight, LogicalHeight * 0.50f) - HalfSheetH) * 0.5f - 10.0f);
+            const float FullSheetY = std::max(24.0f, (LogicalHeight - FullSheetHeight) * 0.5f - 12.0f);
+
+            SheetHeight = HalfSheetH + (FullSheetHeight - HalfSheetH) * HalfBlend;
+            SheetY      = HalfSheetY + (FullSheetY - HalfSheetY) * HalfBlend;
+        }
+
+        const float SheetX     = (LogicalWidth - SheetWidth) * 0.5f;
+        LastSheetLogicalBounds = { SheetX, SheetY, SheetWidth, SheetHeight };
+
+        ControlPointer ClippedPointer = Pointer;
+        if (Pointer.Y > ShadeHeight || Notch.QueryVerticalDragging())
+        {
+            ClippedPointer.Enabled  = false;
+            ClippedPointer.Pressed  = false;
+            ClippedPointer.Down     = false;
+            ClippedPointer.Released = false;
+        }
+
+        ConstructPageContents(Foreground, ActivePage, LastSheetLogicalBounds, ClippedPointer, Progress);
         Foreground.PopClip();
     }
 
@@ -744,14 +869,16 @@ void ControlCentrePanel::ConstructQuickControlsPage(
         return;
     }
 
-    const float TopY            = ContainerBounds.Y + 52.0f;
+    const bool  CompactHalf     = ContainerBounds.Height < 340.0f;
+    const float TopY            = ContainerBounds.Y + (CompactHalf ? 36.0f : 52.0f);
     const bool  NarrowStack     = ContainerBounds.Width < 560.0f;
     const float LeftColumnWidth = NarrowStack ? ContainerBounds.Width : 244.0f;
     const float DiscDiameter    = 64.0f;
     const float ColumnGap       = 48.0f;
     const float GridLeft        = ContainerBounds.X + (NarrowStack ? (LeftColumnWidth - (DiscDiameter * 2.0f + ColumnGap)) * 0.5f : 18.0f);
+    const float DiscOffsetY     = CompactHalf ? 6.0f : 12.0f;
 
-    const Rectangle2D RateDisc{ GridLeft, TopY + 12.0f, DiscDiameter, DiscDiameter };
+    const Rectangle2D RateDisc{ GridLeft, TopY + DiscOffsetY, DiscDiameter, DiscDiameter };
     if (CapsuleButton::ConstructQuickCircleTile(
             Surface,
             RateDisc,
@@ -768,7 +895,7 @@ void ControlCentrePanel::ConstructQuickControlsPage(
     }
 
     const bool        AlertsActive = AppliedNotifications.AppliedAlertsEnabled || AppliedNotifications.ErrorAlertsEnabled;
-    const Rectangle2D BellDisc{ GridLeft + DiscDiameter + ColumnGap, TopY + 12.0f, DiscDiameter, DiscDiameter };
+    const Rectangle2D BellDisc{ GridLeft + DiscDiameter + ColumnGap, TopY + DiscOffsetY, DiscDiameter, DiscDiameter };
     if (CapsuleButton::ConstructQuickCircleTile(
             Surface,
             BellDisc,
@@ -791,25 +918,33 @@ void ControlCentrePanel::ConstructQuickControlsPage(
     {
         StreamRegion = {
             ContainerBounds.X,
-            TopY + 132.0f,
+            TopY + (CompactHalf ? 104.0f : 132.0f),
             ContainerBounds.Width,
-            std::max(120.0f, ContainerBounds.Bottom() - (TopY + 132.0f)),
+            std::max(84.0f, ContainerBounds.Bottom() - (TopY + (CompactHalf ? 104.0f : 132.0f))),
         };
     }
     else
     {
         const float DividerX = ContainerBounds.X + LeftColumnWidth + 12.0f;
+        const float BodyH    = std::max(80.0f, ContainerBounds.Bottom() - TopY);
         Surface.FillRectangle(
-            { DividerX, TopY, 1.0f, ContainerBounds.Height - 52.0f },
+            { DividerX, TopY, 1.0f, BodyH },
             Colors.Divider.Faded(Opacity).ToRgba8(),
             0.0f);
         StreamRegion = {
             DividerX + 20.0f,
             TopY,
             ContainerBounds.Right() - (DividerX + 20.0f),
-            ContainerBounds.Height - 52.0f,
+            BodyH,
         };
     }
+
+    // Record interactive QuickControls regions so empty shade chrome remains draggable via SurfaceContact
+    LastInteractiveCount = 0u;
+    LastInteractiveBounds[LastInteractiveCount++] = GearHit;
+    LastInteractiveBounds[LastInteractiveCount++] = { RateDisc.X - 10.0f, RateDisc.Y, RateDisc.Width + 20.0f, RateDisc.Height + 28.0f };
+    LastInteractiveBounds[LastInteractiveCount++] = { BellDisc.X - 10.0f, BellDisc.Y, BellDisc.Width + 20.0f, BellDisc.Height + 28.0f };
+    LastInteractiveBounds[LastInteractiveCount++] = StreamRegion;
 
     const auto& History = Notifications.QueryHistory();
     char        StreamTitle[64]{};

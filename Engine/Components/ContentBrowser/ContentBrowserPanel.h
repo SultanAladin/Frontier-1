@@ -14,11 +14,13 @@
 #include "Engine/Components/ContentBrowser/ThumbnailSheetRepository.h"
 #include "Engine/Components/Controls/ControlAppearance.h"
 #include "Engine/Components/Controls/TextInputField.h"
+#include "Engine/Components/Motion/DrawerDetentGesture.h"
 #include "Engine/Components/Motion/SpringIntegrator.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
 #include "Engine/Components/PixelSpace.h"
 #include "Engine/Threading/Threads/Streaming/AssetStreamThread.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -191,6 +193,7 @@ public:
 
     [[nodiscard]] ContentBrowserReading               InspectReading() const noexcept;
     [[nodiscard]] bool                                QueryOpen() const noexcept;
+    [[nodiscard]] bool                                QueryShelfDragging() const noexcept { return ShelfDragContact; }
     [[nodiscard]] bool                                QueryBlocksUnderlyingWorkspace() const noexcept;
     void SynchronizeHostBounds(Rectangle2D HostBoundsPhysical, float ScaleFactor) noexcept;
     [[nodiscard]] bool                                QueryBlocksPointerAt(Point2D PhysicalCursor) const noexcept;
@@ -303,6 +306,17 @@ private:
     bool                                DraggingContentEntry  = false;                                  // [-]   - Active non-MatCap content drag crossed threshold
     std::size_t                         DraggedContentIndex   = 0u;                                     // [idx] - ThumbnailSheetRepository entry index being dragged
     Point2D                             DragPressOrigin       {};                                       // [px]  - Press coordinate for deadzone
+    bool                                ShelfDragContact      = false;                                  // [-]   - Active touch-like shelf drag session
+    bool                                ShelfDragFromNotch    = false;                                  // [-]   - Drag initiated on bottom notch handle
+    bool                                ShelfDragExceededDeadzone = false;                              // [-]   - 6px tap-vs-drag deadzone crossed
+    float                               ShelfDragStartCursorY = 0.0f;                                   // [px]  - Initial logical pointer Y at drag start
+    float                               ShelfDragPreviousCursorY = 0.0f;                                // [px]  - Previous tick logical pointer Y
+    float                               ShelfDragStartRatio   = 0.0f;                                   // [0-1] - Normalized drawer height at drag start
+    ContentShelfExtent                  ShelfDragStartExtent  = ContentShelfExtent::Closed;             // [-]   - Detent stop prior to drag start
+    double                              ShelfDragDuration     = 0.0;                                    // [s]   - Elapsed drag duration
+    double                              ShelfDragRatePxPerSec = 0.0;                                    // [px/s]- Smoothed opening velocity (+ = up)
+    std::array<Rectangle2D, 8u>         LastHeaderInteractiveBounds {};                                 // [px]  - Header interactive control hitboxes
+    uint32_t                            LastHeaderInteractiveCount  = 0u;                               // [cnt] - Recorded header hitbox count
     Rectangle2D                         LastHostBoundsPhysical{ 0.0f, 0.0f, 1840.0f, 980.0f };          // [px]  - Last host viewport physical bounds
     float                               LastSafeScale         = 1.0f;                                   // [-]   - Last rendered DPI safe scale
 };

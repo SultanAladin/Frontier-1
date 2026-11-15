@@ -10,7 +10,7 @@
 #include "Engine/ParticleSpace/Dynamics/EffectorGridSolver.h"
 #include "Engine/ParticleSpace/Origins/ControlVehicleSurfaceLoader.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/ParticleSimulationSession.h"
 #include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 #include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
 
@@ -240,7 +240,7 @@ int main()
         ParticleDocument Doc = InstantiateDocumentFromPresetId(PresetId);
         MutateDoc(Doc);
 
-        ParticleSimulationCoordinator Ext {};
+        ParticleSimulationSession Ext {};
         (void)Ext.Initialize(Doc);
 
         constexpr float Dt = 1.0f / 60.0f;

@@ -25,7 +25,7 @@
     #include "Engine/Components/Panes/InspectorPanel.h"
     #include "Engine/Components/Panes/OutlinerPanel.h"
     #include "Engine/Components/Panes/ViewportPanel.h"
-    #include "Engine/Editor/Workspaces/Simulation/VectorFieldViewportCoordinator.h"
+    #include "Engine/Editor/Workspaces/Simulation/VectorFieldViewportSession.h"
     #include "Exhibits/SoftwareCanvasRasterizer.h"
     #include <imgui.h>
     #include <imgui_internal.h>
@@ -461,18 +461,18 @@ bool ValidateEditorVulkanOverlayExhibits()
     OutlinerPanel  Outliner{};
     ViewportPanel  Viewport{};
     InspectorPanel Inspector{};
-    VectorFieldViewportCoordinator Coordinator{};
+    VectorFieldViewportSession ViewportSession{};
 
     std::string Diag;
     if (!VerifyCondition(
-            Coordinator.AttachInitializedSession(
+            ViewportSession.AttachInitializedSession(
                 Outliner,
                 Viewport,
                 Inspector,
                 ResolveShaderDir(),
                 ResolveSwiftShaderDir(),
                 Diag),
-            ("VectorFieldViewportCoordinator::InitializeAndAttach failed: " + Diag).c_str()))
+            ("VectorFieldViewportSession::InitializeAndAttach failed: " + Diag).c_str()))
     {
         TypographyRepository::AssignCurrent(nullptr);
         ImGui::DestroyContext(GuiSession);
@@ -497,7 +497,7 @@ bool ValidateEditorVulkanOverlayExhibits()
     VortexDesc.Motion.Waypoints[0]    = { -14.0f, -6.0f, 4.5f };
     VortexDesc.Motion.Waypoints[1]    = { -3.0f, 10.0f, 8.0f };
     VortexDesc.Motion.Waypoints[2]    = { 12.0f, -4.0f, 6.0f };
-    const OutlinerSlotToken VortexToken = Coordinator.AddForceSourceEntry(VortexDesc, WindFolder);
+    const OutlinerSlotToken VortexToken = ViewportSession.AddForceSourceEntry(VortexDesc, WindFolder);
 
     ForceSourceRecordEntry JetDesc{};
     JetDesc.Label        = "Cantilever Jet Plume";
@@ -507,7 +507,7 @@ bool ValidateEditorVulkanOverlayExhibits()
     JetDesc.EulerDegrees = { 0.0f, -12.0f, -145.0f };
     JetDesc.RadiusMeters = 17.0f;
     JetDesc.Strength     = 26.0f;
-    (void)Coordinator.AddForceSourceEntry(JetDesc, WindFolder);
+    (void)ViewportSession.AddForceSourceEntry(JetDesc, WindFolder);
 
     ForceSourceRecordEntry BurstDesc{};
     BurstDesc.Label                        = "Orbital Radial Burst";
@@ -524,11 +524,11 @@ bool ValidateEditorVulkanOverlayExhibits()
     BurstDesc.Motion.WaypointCount         = 2u;
     BurstDesc.Motion.Waypoints[0]          = { -12.0f, 15.0f, 6.0f };
     BurstDesc.Motion.Waypoints[1]          = { -4.0f, 15.0f, 6.0f };
-    (void)Coordinator.AddForceSourceEntry(BurstDesc, WindFolder);
+    (void)ViewportSession.AddForceSourceEntry(BurstDesc, WindFolder);
 
     Outliner.SelectSingle(VortexToken);
     Outliner.ConfigureFilterStripOpen(true);
-    Coordinator.ConfigureSelectedWaypointIndex(1);
+    ViewportSession.ConfigureSelectedWaypointIndex(1);
 
     Viewport.ConfigureExecutionMode(ViewportExecutionMode::Simulate, false);
     auto& Ov = Viewport.AccessForceOverlaySettings();
@@ -549,7 +549,7 @@ bool ValidateEditorVulkanOverlayExhibits()
     // Step simulation 1.8s so moving curves & phase counters advance visibly
     for (int S = 0; S < 108; ++S)
     {
-        Coordinator.StepSimulation(1.0 / 60.0);
+        ViewportSession.StepSimulation(1.0 / 60.0);
     }
 
     const auto OutDir = RepoRoot / "Exhibits" / "Images" / "VectorField";
@@ -600,7 +600,7 @@ bool ValidateEditorVulkanOverlayExhibits()
             ImGui::NewFrame();
             Container.PresentWindowImGuiPanes(HostWindowToken{ 0u });
             ControlCentre.Render({ 0.0f, 0.0f, 1600.0f, 980.0f }, 1.0 / 60.0, 60.0f);
-            Coordinator.AccessContentBrowser().PresentInImGuiHost(1.0 / 60.0, 1.0f);
+            ViewportSession.AccessContentBrowser().PresentInImGuiHost(1.0 / 60.0, 1.0f);
             ImGui::Render();
         }
 
@@ -620,8 +620,8 @@ bool ValidateEditorVulkanOverlayExhibits()
     }
 
     // Verify Direct High-Res Vulkan 1.3 Canvas & MRT PickID readback
-    const auto W = Coordinator.AccessOverlaySequence().QueryPaneWidth(0u);
-    const auto H = Coordinator.AccessOverlaySequence().QueryPaneHeight(0u);
+    const auto W = ViewportSession.AccessOverlaySequence().QueryPaneWidth(0u);
+    const auto H = ViewportSession.AccessOverlaySequence().QueryPaneHeight(0u);
     if (!VerifyCondition(W > 300u && H > 300u, "Vulkan 1.3 offscreen MRT color/pick buffers populated"))
     {
         return false;
@@ -629,15 +629,15 @@ bool ValidateEditorVulkanOverlayExhibits()
     {
         std::vector<ForceSourceShaderEntry> PackedSrcs;
         std::vector<SpatialVector3>         PackedWps;
-        Coordinator.AccessLatticeCascade().PackGpuSourceBuffers(
-            Coordinator.QueryAccumulator(),
-            Coordinator.QuerySimulationTimeSeconds(),
+        ViewportSession.AccessLatticeCascade().PackGpuSourceBuffers(
+            ViewportSession.QueryAccumulator(),
+            ViewportSession.QuerySimulationTimeSeconds(),
             PackedSrcs,
             PackedWps);
         std::vector<uint32_t> Tokens(PackedSrcs.size(), 0u);
         std::vector<uint32_t> WpOff(PackedSrcs.size(), 0u), WpCnt(PackedSrcs.size(), 0u);
         std::vector<uint8_t>  IsOrb(PackedSrcs.size(), 0u);
-        const auto LiveSrcs = Coordinator.QueryAccumulator().QuerySources();
+        const auto LiveSrcs = ViewportSession.QueryAccumulator().QuerySources();
         for (std::size_t I = 0u; I < PackedSrcs.size(); ++I)
         {
             Tokens[I] = (I < LiveSrcs.size()) ? LiveSrcs[I].OutlinerTokenId : static_cast<uint32_t>(I + 1u);
@@ -650,7 +650,7 @@ bool ValidateEditorVulkanOverlayExhibits()
         DirectReq.PaneIndex             = 0u;
         DirectReq.WidthPx               = 1280u;
         DirectReq.HeightPx              = 720u;
-        DirectReq.Camera                = Coordinator.AccessCamera(0u);
+        DirectReq.Camera                = ViewportSession.AccessCamera(0u);
         DirectReq.OverlaySettings       = Ov;
         DirectReq.TimeSeconds           = Viewport.QuerySimulationTimeSeconds();
         DirectReq.SelectedForceToken    = VortexToken.Identifier;
@@ -664,13 +664,13 @@ bool ValidateEditorVulkanOverlayExhibits()
         DirectReq.SourceWaypointCounts  = WpCnt;
         DirectReq.SourcePathIsOrbit     = IsOrb;
 
-        const auto DirectOut = Coordinator.AccessOverlaySequence().RenderPane(DirectReq, Diag);
+        const auto DirectOut = ViewportSession.AccessOverlaySequence().RenderPane(DirectReq, Diag);
         if (!VerifyCondition(DirectOut.RenderedOnVulkan, ("Direct Vulkan render failed: " + Diag).c_str()))
         {
             return false;
         }
         if (!VerifyCondition(
-                Coordinator.AccessOverlaySequence().SavePanePng(0u, OutDir / "03-ForceFieldVulkanCanvasDirect.png"),
+                ViewportSession.AccessOverlaySequence().SavePanePng(0u, OutDir / "03-ForceFieldVulkanCanvasDirect.png"),
                 "Save 03-ForceFieldVulkanCanvasDirect.png"))
         {
             return false;
@@ -683,7 +683,7 @@ bool ValidateEditorVulkanOverlayExhibits()
         {
             for (uint32_t X = 0u; X < 1280u; X += 8u)
             {
-                const auto Pick = Coordinator.AccessOverlaySequence().QueryPickAtNormalizedUv(
+                const auto Pick = ViewportSession.AccessOverlaySequence().QueryPickAtNormalizedUv(
                     0u,
                     static_cast<float>(X) / 1280.0f,
                     static_cast<float>(Y) / 720.0f);
@@ -702,8 +702,8 @@ bool ValidateEditorVulkanOverlayExhibits()
     Viewport.ConfigurePrimaryProjection(ViewportProjectionPreset::Perspective);
     Viewport.ConfigureSecondaryProjection(ViewportProjectionPreset::Top);
     Viewport.ConfigureDiagnosticsVisible(true);
-    Coordinator.AccessForceInspectorView().ConfigureActiveTab(ForceInspectorTab::Field);
-    Coordinator.AccessForceInspectorView().ConfigureScrollOffset(830.0f);
+    ViewportSession.AccessForceInspectorView().ConfigureActiveTab(ForceInspectorTab::Field);
+    ViewportSession.AccessForceInspectorView().ConfigureScrollOffset(830.0f);
     Ov.StreamColorMode  = StreamlineColorMode::CyanSingle;
     Ov.CrossSectionAxis = CrossSectionPlaneAxis::AllThreeAxes;
 
@@ -717,8 +717,8 @@ bool ValidateEditorVulkanOverlayExhibits()
     // Exhibits 4..6: Verify Formula, Layers, and Cache Inspector tabs 1:1
     Viewport.ConfigureSplitViewport(false);
     Viewport.ConfigureDiagnosticsVisible(false);
-    Coordinator.AccessForceInspectorView().ConfigureActiveTab(ForceInspectorTab::Formula);
-    Coordinator.AccessForceInspectorView().ConfigureScrollOffset(0.0f);
+    ViewportSession.AccessForceInspectorView().ConfigureActiveTab(ForceInspectorTab::Formula);
+    ViewportSession.AccessForceInspectorView().ConfigureScrollOffset(0.0f);
     if (!CaptureFullWorkspacePng("04-ForceFieldInspectorFormulaTab.png"))
     {
         TypographyRepository::AssignCurrent(nullptr);
@@ -726,8 +726,8 @@ bool ValidateEditorVulkanOverlayExhibits()
         return false;
     }
 
-    Coordinator.AccessForceInspectorView().ConfigureActiveTab(ForceInspectorTab::Layers);
-    Coordinator.AccessForceInspectorView().ConfigureScrollOffset(0.0f);
+    ViewportSession.AccessForceInspectorView().ConfigureActiveTab(ForceInspectorTab::Layers);
+    ViewportSession.AccessForceInspectorView().ConfigureScrollOffset(0.0f);
     if (!CaptureFullWorkspacePng("05-ForceFieldInspectorLayersTab.png"))
     {
         TypographyRepository::AssignCurrent(nullptr);
@@ -735,8 +735,8 @@ bool ValidateEditorVulkanOverlayExhibits()
         return false;
     }
 
-    Coordinator.AccessForceInspectorView().ConfigureActiveTab(ForceInspectorTab::Cache);
-    Coordinator.AccessForceInspectorView().ConfigureScrollOffset(0.0f);
+    ViewportSession.AccessForceInspectorView().ConfigureActiveTab(ForceInspectorTab::Cache);
+    ViewportSession.AccessForceInspectorView().ConfigureScrollOffset(0.0f);
     if (!CaptureFullWorkspacePng("06-ForceFieldInspectorCacheTab.png"))
     {
         TypographyRepository::AssignCurrent(nullptr);
@@ -745,11 +745,11 @@ bool ValidateEditorVulkanOverlayExhibits()
     }
 
     // Restore default Field tab scroll offset 0
-    Coordinator.AccessForceInspectorView().ConfigureActiveTab(ForceInspectorTab::Field);
-    Coordinator.AccessForceInspectorView().ConfigureScrollOffset(0.0f);
+    ViewportSession.AccessForceInspectorView().ConfigureActiveTab(ForceInspectorTab::Field);
+    ViewportSession.AccessForceInspectorView().ConfigureScrollOffset(0.0f);
 
     // Exhibit 7: Bottom pull-up Content Browser drawer with Force presets, 19 ForceModel laws & VectorFieldLang formulas
-    auto& Browser = Coordinator.AccessContentBrowser();
+    auto& Browser = ViewportSession.AccessContentBrowser();
     if (!VerifyCondition(Browser.QueryAllAssets().size() >= 36u, "ContentBrowser populated with >= 36 presets/laws/formulas"))
     {
         TypographyRepository::AssignCurrent(nullptr);
@@ -768,15 +768,15 @@ bool ValidateEditorVulkanOverlayExhibits()
     }
 
     // Functional check 1: Construct a Force preset directly from the Content Browser
-    const std::size_t BeforeBrowserAddCount = Coordinator.QueryAccumulator().QuerySources().size();
+    const std::size_t BeforeBrowserAddCount = ViewportSession.QueryAccumulator().QuerySources().size();
     if (!VerifyCondition(Browser.ConstructSelectedPreset(), "ConstructSelectedPreset() returned true"))
     {
         TypographyRepository::AssignCurrent(nullptr);
         ImGui::DestroyContext(GuiSession);
         return false;
     }
-    Coordinator.StepSimulation(1.0 / 60.0);
-    const auto AfterBrowserSrcs = Coordinator.QueryAccumulator().QuerySources();
+    ViewportSession.StepSimulation(1.0 / 60.0);
+    const auto AfterBrowserSrcs = ViewportSession.QueryAccumulator().QuerySources();
     if (!VerifyCondition(
             AfterBrowserSrcs.size() == BeforeBrowserAddCount + 1u &&
             AfterBrowserSrcs.back().Model == ForceModel::RotationalColumn,
@@ -823,12 +823,12 @@ bool ValidateEditorVulkanOverlayExhibits()
     }
 
     // Functional check 3: Construct via Viewport/Outliner template (ForceModel::VorticityConfinement)
-    const std::size_t BeforeConstructCount = Coordinator.QueryAccumulator().QuerySources().size();
+    const std::size_t BeforeConstructCount = ViewportSession.QueryAccumulator().QuerySources().size();
     const OutlinerSlotToken NewLawToken = Outliner.ConstructFromTemplate(
         static_cast<uint32_t>(ForceModel::VorticityConfinement),
         WindFolder);
-    Coordinator.StepSimulation(1.0 / 60.0);
-    const auto AfterConstructSrcs = Coordinator.QueryAccumulator().QuerySources();
+    ViewportSession.StepSimulation(1.0 / 60.0);
+    const auto AfterConstructSrcs = ViewportSession.QueryAccumulator().QuerySources();
     if (!VerifyCondition(
             NewLawToken.Valid() &&
             AfterConstructSrcs.size() == BeforeConstructCount + 1u &&

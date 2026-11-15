@@ -294,6 +294,7 @@ frontier_compile_slang_shader(StretchRelaxCompute.slang               ComputeEnt
 frontier_compile_slang_shader(ConcaveSkylineCompute.slang             ComputeEntry  compute  ConcaveSkylineCompute.comp.spv)
 frontier_compile_slang_shader(CameraVisualEffects.slang               ComputeEntry  compute  CameraVisualEffects.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ComputeEntry  compute  WorldViewportRadiometricCompute.comp.spv)
+frontier_compile_slang_shader(SignedDistanceGridCompute.slang         ComputeEntry  compute  SignedDistanceGridCompute.comp.spv)
 
 set(FRONTIER_MODULAR_SHADER_DIR "${CMAKE_SOURCE_DIR}/Engine/Shaders")
 
@@ -580,7 +581,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ColourSpace/ColourPresetRepository.cpp
     Engine/ColourSpace/ColourAliasRepository.cpp
     Engine/ColourSpace/ColourDocument.cpp
-    Engine/ColourSpace/ColourAssetCoordinator.cpp
+    Engine/ColourSpace/ColourAssetRegister.cpp
     Engine/Interchange/ColourInterchange.cpp
     Engine/Interchange/GeometryInterchange.cpp
     Engine/Interchange/ParticleInterchange.cpp
@@ -651,7 +652,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ParticleSpace/Presets/ParticlePresetRepository.cpp
     Engine/ParticleSpace/ParticleRig.cpp
     Engine/ParticleSpace/ParticleDocument.cpp
-    Engine/ParticleSpace/ParticleSimulationCoordinator.cpp
+    Engine/ParticleSpace/ParticleSimulationSession.cpp
     Engine/SimulationSpace/ForceFields/ForceMotionPath.cpp
     Engine/SimulationSpace/ForceFields/VectorField.cpp
     Engine/SimulationSpace/ForceFields/StreamTransportField.cpp
@@ -659,6 +660,11 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/SimulationSpace/ForceFields/FieldFormulaCompiler.cpp
     Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.cpp
     Engine/SimulationSpace/ForceFields/FieldLatticeCascade.cpp
+    Engine/SimulationSpace/PhysicsSpace/RigidBodyDynamics.cpp
+    Engine/SimulationSpace/PhysicsSpace/BroadphaseSolver.cpp
+    Engine/SimulationSpace/PhysicsSpace/CollisionDetection.cpp
+    Engine/SimulationSpace/PhysicsSpace/ConstraintSolver.cpp
+    Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.cpp
     Engine/GeometricRaster/Compute/FieldLatticeVulkanExecutor.cpp
     Engine/NetworkingSpace/PacketSerializer.cpp
     Engine/NetworkingSpace/NetworkEndpointRegister.cpp
@@ -711,7 +717,7 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         Engine/Editor/Workspaces/Simulation/ForcePresetBrowserPanel.cpp
         Engine/Editor/Workspaces/Simulation/ForceInspectorView.cpp
         Engine/GeometricRaster/Simulation/VectorFieldOverlaySequence.cpp
-        Engine/Editor/Workspaces/Simulation/VectorFieldViewportCoordinator.cpp
+        Engine/Editor/Workspaces/Simulation/VectorFieldViewportSession.cpp
         Engine/Lifecycle/EditorLifecycle.cpp
     )
 endif()
@@ -720,12 +726,13 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
 endif()
 
 include(Automation/ThorVGVector.cmake)
+include(Automation/JoltPhysics.cmake)
 
 set_source_files_properties(Engine/GeometricRaster/Vector/VulkanVectorRenderMethod.cpp
     PROPERTIES INCLUDE_DIRECTORIES "${THORVG_VECTOR_SPI_INCLUDES}")
 
 add_library(FrontierEngine STATIC ${FRONTIER_ENGINE_SOURCES})
-add_dependencies(FrontierEngine FrontierShaders thorvg_static)
+add_dependencies(FrontierEngine FrontierShaders thorvg_static Jolt)
 
 target_include_directories(FrontierEngine PUBLIC
     "${CMAKE_SOURCE_DIR}"
@@ -739,6 +746,7 @@ target_compile_definitions(FrontierEngine PUBLIC
     "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\""
 )
 target_link_libraries(FrontierEngine PUBLIC FrontierCompileSettings thorvg_static Threads::Threads ${CMAKE_DL_LIBS})
+target_link_libraries(FrontierEngine PRIVATE Jolt)
 if(WIN32)
     target_link_libraries(FrontierEngine PUBLIC ws2_32)
 endif()
@@ -885,6 +893,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(ParticleSplineBatchValidation       Exhibits/ParticleSplineBatchValidation.cpp)
     frontier_register_exhibit(ParticleMotionGridValidation        Exhibits/ParticleMotionGridValidation.cpp)
     frontier_register_exhibit(ParticleVehicleDissolveValidation   Exhibits/ParticleVehicleDissolveValidation.cpp)
+    frontier_register_exhibit(PhysicsSpaceValidation              Exhibits/PhysicsSpaceValidation.cpp)
     frontier_register_exhibit(GeometryNetworkValidation      Exhibits/GeometryNetworkValidation.cpp)
     frontier_register_exhibit(GeometryCompletionValidation   Exhibits/GeometryCompletionValidation.cpp)
     frontier_register_exhibit(MaterialScatteringValidation   Exhibits/MaterialScatteringValidation.cpp)
@@ -896,6 +905,9 @@ if(BUILD_TESTING)
     frontier_register_exhibit(VisibilityRasterValidation     Exhibits/VisibilityRasterValidation.cpp)
     frontier_register_exhibit(SolarShadowValidation          Exhibits/SolarShadowValidation.cpp)
     frontier_register_exhibit(TieredWorldRenderValidation    Exhibits/TieredWorldRenderValidation.cpp)
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(DrawerGestureWorldValidation   Exhibits/DrawerGestureWorldValidation.cpp)
+    endif()
     frontier_register_exhibit(UVRasterPickingGizmoValidation    Exhibits/UVRasterPickingGizmoValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(UVWorkspaceUIValidation           Exhibits/UVWorkspaceUIValidation.cpp)

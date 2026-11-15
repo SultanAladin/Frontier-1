@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                           COLOURASSETCOORDINATOR.H
+                                                            COLOURASSETREGISTER.H
 ============================================================================================================================================*/
-// 🧩 Designated ColourSpace lifecycle coordinator managing engine-wide ramp/swatch repository, GPU LUT sheet & WorkspaceExchange publication
+// 🧩 Designated ColourSpace lifecycle participant managing engine-wide ramp/swatch repository, GPU LUT sheet & WorkspaceExchange publication
 
 #pragma once
 
@@ -27,7 +27,7 @@ namespace Frontier::ColourSpace
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct ColourAssetCoordinatorMetrics
+struct ColourAssetRegisterMetrics
 {
     uint32_t RegisteredRampCount   = 0u;   // [count] - Total built-in + custom ramps in repository
     uint32_t RegisteredSwatchCount = 0u;   // [count] - Total custom swatches in repository
@@ -38,10 +38,10 @@ struct ColourAssetCoordinatorMetrics
     bool     Suspended             = false;// [-]     - True while paused
 };
 
-class ColourAssetCoordinator
+class ColourAssetRegister
 {
 public:
-    ColourAssetCoordinator() = default;
+    ColourAssetRegister() = default;
 
     bool Initialize(Workspaces::WorkspaceExchange* ExchangeBus = nullptr, Workspaces::WorkspaceToken OwnerToken = {}) noexcept;
     void Tick(double DeltaSeconds) noexcept;
@@ -60,7 +60,7 @@ public:
 
     [[nodiscard]] const ColourRampLut64*           QueryBakedLutByIdentifier(std::string_view Identifier) const noexcept;
     [[nodiscard]] std::span<const ColourRampLut64> QueryBakedLutSheet() const noexcept { return BakedLutSheet; }
-    [[nodiscard]] ColourAssetCoordinatorMetrics    InspectMetrics() const noexcept;
+    [[nodiscard]] ColourAssetRegisterMetrics    InspectMetrics() const noexcept;
 
 private:
     void PublishChangeNotice(std::string_view Summary) noexcept;

@@ -84,7 +84,8 @@ Frontier/
 │   ├── UVRasterPickingGizmoValidation.cpp         // Vulkan 1.2 .slang 3D/2D UV rasterizer, GPU pick & TransformGizmo
 │   ├── UVWorkspaceUIValidation.cpp                // UVOutlinerPanel, 5-tab UVInspectorPanel, ControlCentre & docking
 │   ├── UVParameterizationValidation.cpp           // SeamCut, LSCM, GPU StretchRelax, ConcaveSkyline, .UVSpace & Revision
-│   └── UVInteractiveAuthoringValidation.cpp       // Interactive 2D/3D authoring, ABF++/Projections, OBJ/glTF & Vulkan swapchain
+│   ├── UVInteractiveAuthoringValidation.cpp       // Interactive 2D/3D authoring, ABF++/Projections, OBJ/glTF & Vulkan swapchain
+│   └── PhysicsSpaceValidation.cpp                 // JoltPhysics v5.6.0 rigid dynamics, constraints, ForceFields & CPU/GPU particle collisions
 │
 ├── Experimental/                                  // HTML/JS reference UIs & studios for C++20 conversion
 │   ├── FrontierEditor/                            // Initial HTML/Vite scene inspector, CAD & icon lab UI
@@ -326,10 +327,10 @@ Frontier/
     │   │   └── VectorFieldOverlaySequence.{h,cpp} // Editor-only Vulkan 1.3 6-pipeline ForceField overlay rasterizer
     │   ├── UV/
     │   │   └── UVWorkspaceRasterizer.{h,cpp}      // 3D PBR/MatCap + 2D UDIM grid, backdrops, seams, pins & heatmaps
-    │   ├── RenderExtension.{h,cpp}                // Render lifecycle coordinator and device attachment
+    │   ├── RenderExtension.{h,cpp}                // Render lifecycle participant and device attachment
     │   ├── RenderDeviceInterface.h                // GPU hardware device interface and capability limits
     │   ├── VulkanInterchange.{h,cpp}              // Vulkan 1.3 timeline semaphore device, swapchain & SPIR-V interchange
-    │   ├── RenderScheduler.{h,cpp}                // Transient dependency-sorted GPU workload coordinator
+    │   ├── RenderScheduler.{h,cpp}                // Transient dependency-sorted GPU workload scheduler
     │   ├── IndirectCommandEncoder.{h,cpp}         // Instanced and indirect GPU command encoding
     │   ├── DescriptorSlotRegister.{h,cpp}         // Descriptor layout and push-constant slot register
     │
@@ -426,12 +427,12 @@ Frontier/
     │       └── LuminanceGlareDownsample.slang
     │
     ├── SimulationSpace/                           // Physics, dynamics, particles, fluids & motion
-    │   ├── PhysicsSpace/                          // Rigid mechanics and constraints
-    │   │   ├── PhysicsExtension.{h,cpp}           // Simulation loop coordinator and broad-phase attachment
-    │   │   ├── RigidBodyDynamics.{h,cpp}          // Velocity Verlet integration and inertia tensors
-    │   │   ├── ConstraintSolver.{h,cpp}           // Projected Gauss-Seidel iterative velocity solver
-    │   │   ├── BroadphaseSolver.{h,cpp}           // Sweep-and-prune dynamic bounding query
-    │   │   └── CollisionDetection.{h,cpp}         // GJK narrow-phase & EPA contact extraction
+    │   ├── PhysicsSpace/                          // JoltPhysics v5.6.0 rigid mechanics, constraints & ForceFields/Particle coupling
+    │   │   ├── PhysicsExtension.{h,cpp}           // JoltPhysics v5.6.0 lifecycle participant, ForceFields & particle coupling
+    │   │   ├── RigidBodyDynamics.{h,cpp}          // Body descriptors, inertia/damping & linear/angular velocity reading
+    │   │   ├── ConstraintSolver.{h,cpp}           // 6 joint categories (Fixed, Hinge, Slider, Distance, Point, Cone) & BreakableBond
+    │   │   ├── BroadphaseSolver.{h,cpp}           // 80B RigidColliderProxy export & Sphere/OBB/Capsule particle collision solver
+    │   │   └── CollisionDetection.{h,cpp}         // Raycast, sweep & overlap spatial queries and contact impulse snapshots
     │   ├── ParticleSimulation/                    // High-density particulate dynamics
     │   │   ├── ParticleSpawner.{h,cpp}            // Point, volume, and boundary particle spawning
     │   │   ├── ParticleField.{h,cpp}              // Curl noise, rotational, and gravitational vector fields
@@ -463,7 +464,7 @@ Frontier/
     │           └── TimelineAnimator.{h,cpp}
     │
     ├── Input/                                     // Bi-directional peripheral, touch, and OS feedback exchange
-    │   ├── InputExtension.{h,cpp}                 // Input lifecycle coordinator and snapshot consolidation
+    │   ├── InputExtension.{h,cpp}                 // Input lifecycle participant and snapshot consolidation
     │   └── InputExchange.{h,cpp}                  // OS->Engine signal intake & Engine->OS cursor/haptic exchange
     │
     ├── Windowing/                                 // Native cross-platform window presentation
@@ -476,21 +477,21 @@ Frontier/
     │   └── PlatformWindowStub.cpp                 // Headless validation presentation
     │
     ├── Annotation/                                // GPU-rasterized visual annotations, callouts, and debug lines
-    │   ├── AnnotationExtension.{h,cpp}            // Annotation lifecycle coordinator and GPU command queueing
+    │   ├── AnnotationExtension.{h,cpp}            // Annotation lifecycle participant and GPU command queueing
     │   ├── VectorAnnotation.{h,cpp}               // GPU 2D/3D vector line, arrow, Bézier, and curve markers
     │   ├── TextAnnotation.{h,cpp}                 // GPU billboarded world-space and screen-space callouts
     │   ├── SpatialAnnotation.{h,cpp}              // GPU 3D debug bounding volumes, coordinate axes, and shapes
     │   └── DiagnosticPrimitives.{h,cpp}           // GPU wireframe boxes, spheres, rays, and cages (never CPU/ImGui)
     │
     ├── Workspaces/                                // Headless multi-document session, revision & domain runtimes
-    │   ├── WorkspaceExtension.{h,cpp}             // Workspace lifecycle coordinator & open tab control
+    │   ├── WorkspaceExtension.{h,cpp}             // Workspace lifecycle participant & open tab control
     │   ├── WorkspaceDocument.{h,cpp}              // Live editable document identity & codec dispatch
     │   ├── WorkspaceRegistry.{h,cpp}              // Active workspace tracker & extension router
     │   ├── WorkspaceToken.h                       // Stale-detecting token with embedded workspace tag
     │   ├── WorkspaceExchange.{h,cpp}              // Live in-memory cross-workspace sync (Geometry ↔ UV ↔ Texture)
     │   │
     │   ├── Revision/                              // Parametric per-document & global revision engine
-    │   │   ├── RevisionExtension.{h,cpp}          // Revision lifecycle coordinator & 750 MiB global ceiling
+    │   │   ├── RevisionExtension.{h,cpp}          // Revision lifecycle participant & 750 MiB global ceiling
     │   │   ├── ContentRegion.{h,cpp}              // Monotonic 215 MiB per-document 64B-aligned memory block
     │   │   ├── OperationRecorder.{h,cpp}          // Parametric operation recording & Redo-Purge / Prefix-Fold
     │   │   ├── CursorResolution.{h,cpp}           // Active revision cursor & arbitrary-resolution reconstruction
@@ -623,7 +624,7 @@ Frontier/
     │       └── CommandLauncher.{h,cpp}            // Fuzzy-search directive runner
     │
     ├── NetworkingSpace/                           // Distributed simulation, differential encoding & networking policies
-    │   ├── NetworkingExtension.{h,cpp}            // SuspendableParticipant coordinator: routing, framing & teardown
+    │   ├── NetworkingExtension.{h,cpp}            // SuspendableParticipant runtime: routing, framing & teardown
     │   ├── PacketSerializer.{h,cpp}               // 'FP1' + 24B CRC32C wire framing & 'FCNK' 64-slot chunk reassembly
     │   ├── DifferentialWorldEncoder.{h,cpp}       // Sector-16 + Local-24 sub-mm delta codec, smallest-three quat & slerp
     │   ├── RemoteDirectiveRouter.{h,cpp}          // 5-byte 3-tick loss-healing input stream & reliable ordered directives
@@ -643,7 +644,7 @@ Frontier/
     │       └── PhotonStubTransport.cpp            // Open-source zero-SDK Photon JWT hygiene & failover stub
     │
     └── AudioSpace/                                // Spatial acoustics, waveform decoding, and bus accumulation
-        ├── AudioExtension.{h,cpp}                 // Lifecycle coordinator: device output, bus ticks, and voice budgets
+        ├── AudioExtension.{h,cpp}                 // Lifecycle participant: device output, bus ticks, and voice budgets
         ├── AudioHardwareOutput.{h,cpp}            // Native OS audio endpoint intake and lock-free ring buffers
         ├── WaveformDecoder.{h,cpp}                // PCM, WAV, Ogg Vorbis, and FLAC sample stream decoding
         ├── AudioBusAccumulator.{h,cpp}            // Multi-voice bus summing, gain envelopes, biquad filtering & resampling

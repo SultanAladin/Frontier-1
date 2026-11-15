@@ -173,7 +173,9 @@ void SuppressPanePointerInput(PaneInputReading& InOutInput) noexcept;
 [[nodiscard]] bool        QueryPointerBlockedForPane(const void* PaneIdentity) noexcept;
 void AssignExternalDragSuppression(bool ExternalDragActive) noexcept;
 void AssignOverlayPointerShield(Rectangle2D PrimaryPhysicalBounds, Rectangle2D SecondaryPhysicalBounds = {}) noexcept;
+void AppendOverlayPointerShield(Rectangle2D AdditionalPhysicalBounds) noexcept;
 void ClearOverlayPointerShield() noexcept;
+[[nodiscard]] bool QueryOverlayPointerBlockedAt(Point2D PhysicalCursor) noexcept;
 void EnforcePanePointerOwnership(const void* PaneIdentity, PaneInputReading& InOutInput) noexcept;
 void UpdatePanePointerOwnership(
     const void*             PaneIdentity,

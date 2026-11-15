@@ -56,14 +56,23 @@ struct WorldViewportUniformBlockStd140
 
 static_assert(sizeof(WorldViewportUniformBlockStd140) == 576u, "WorldViewportUniformBlockStd140 must equal 576 bytes.");
 
+struct SignedDistanceGridUniformStd140
+{
+    float    GridMinSpacing[4]   {};
+    uint32_t GridDimsBvhCount[4] {};
+    float    CutoffConfig[4]     {};
+};
+
+static_assert(sizeof(SignedDistanceGridUniformStd140) == 48u, "SignedDistanceGridUniformStd140 must equal 48 bytes.");
+
 struct GpuShadedTriangle96
 {
-    float Corner0AndPad[4] {};
-    float Edge01AndPad[4]  {};
-    float Edge02AndPad[4]  {};
-    float Normal0AndPad[4] {};
-    float Normal1AndPad[4] {};
-    float Normal2AndSlot[4]{};
+    float Corner0Pad[4]  {};
+    float Edge01Pad[4]   {};
+    float Edge02Pad[4]   {};
+    float Normal0Pad[4]  {};
+    float Normal1Pad[4]  {};
+    float Normal2Slot[4] {};
 };
 
 static_assert(sizeof(GpuShadedTriangle96) == 96u, "GpuShadedTriangle96 must equal 96 bytes.");
@@ -193,15 +202,29 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
+    constexpr std::array<VkDescriptorType, 4u> SdfSlotTypes {{
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+    }};
+    const std::filesystem::path SdfShaderPath = CompiledShaderDirectory / "SignedDistanceGridCompute.comp.spv";
+    SignedDistanceProgramHandle = DispatchEncoder.RegisterProgram(
+        SdfShaderPath,
+        SdfSlotTypes,
+        "ComputeEntry");
+
     EnsureBufferCapacity(UniformBuffer, sizeof(WorldViewportUniformBlockStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    EnsureBufferCapacity(SdfUniformBuffer, sizeof(SignedDistanceGridUniformStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     if (UniformBuffer.BufferHandle != VK_NULL_HANDLE)
     {
         std::fprintf(
             stdout,
-            "[FrontierWorld] VulkanWorldRenderSequence active on %.*s (Hardware GPU: %s)\n",
+            "[FrontierWorld] VulkanWorldRenderSequence active on %.*s (Hardware GPU: %s, GPU SDF Compute: %s)\n",
             static_cast<int>(TargetDevice.QueryAdapterName().size()),
             TargetDevice.QueryAdapterName().data(),
-            TargetDevice.QueryHardwareAccelerated() ? "YES" : "NO (Software ICD)");
+            TargetDevice.QueryHardwareAccelerated() ? "YES" : "NO (Software ICD)",
+            SignedDistanceProgramHandle != UINT32_MAX ? "YES" : "NO");
         std::fflush(stdout);
         return true;
     }
@@ -214,6 +237,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     {
         vkDeviceWaitIdle(BoundDevice->AccessDevice());
         BoundDevice->ReleaseBuffer(UniformBuffer);
+        BoundDevice->ReleaseBuffer(SdfUniformBuffer);
         BoundDevice->ReleaseBuffer(BvhEntryBuffer);
         BoundDevice->ReleaseBuffer(ShadedTriangleBuffer);
         BoundDevice->ReleaseBuffer(MaterialEntryBuffer);
@@ -222,11 +246,18 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(OutputPixelBuffer);
     }
     DispatchEncoder.TeardownEncoder();
-    RadiometricProgramHandle = UINT32_MAX;
-    BoundDevice              = nullptr;
-    SceneUploadedOnce        = false;
-    UploadedBvhCount         = 0u;
-    UploadedMaterialCount    = 0u;
+    RadiometricProgramHandle    = UINT32_MAX;
+    SignedDistanceProgramHandle = UINT32_MAX;
+    BoundDevice                 = nullptr;
+    SceneUploadedOnce           = false;
+    UploadedBvhCount            = 0u;
+    UploadedMaterialCount       = 0u;
+    CachedSdfDimX               = 0u;
+    CachedSdfDimY               = 0u;
+    CachedSdfDimZ               = 0u;
+    CachedLatticeDimX           = 0u;
+    CachedLatticeDimY           = 0u;
+    CachedLatticeDimZ           = 0u;
 }
 
 bool VulkanWorldRenderSequence::QueryReady() const noexcept
@@ -267,10 +298,151 @@ void VulkanWorldRenderSequence::EnsureBufferCapacity(
 //                                               SCENE BUFFER UPLOAD
 //------------------------------------------------------------------------------------------------------------------------
 
+void VulkanWorldRenderSequence::UploadIrradianceLattice(const IrradianceLatticeSequence& RtxLattice)
+{
+    if (!QueryReady())
+    {
+        return;
+    }
+
+    const auto Cells = RtxLattice.InspectCells();
+    if (Cells.empty())
+    {
+        CachedLatticeDimX = CachedLatticeDimY = CachedLatticeDimZ = 0u;
+        const float ZeroVec[4]{ 0.0f, 0.0f, 0.0f, 0.0f };
+        EnsureBufferCapacity(IrradianceLatticeBuffer, sizeof(ZeroVec), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        if (IrradianceLatticeBuffer.HostAddress != nullptr)
+        {
+            std::memcpy(IrradianceLatticeBuffer.HostAddress, ZeroVec, sizeof(ZeroVec));
+        }
+        return;
+    }
+
+    const auto& Cfg   = RtxLattice.InspectConfig();
+    CachedLatticeMin  = Cfg.GridMinimumWorld;
+    CachedLatticeMax  = Cfg.GridMaximumWorld;
+    CachedLatticeDimX = Cfg.CountX;
+    CachedLatticeDimY = Cfg.CountY;
+    CachedLatticeDimZ = Cfg.CountZ;
+
+    std::vector<float> PackedTexels(Cells.size() * 64u * 4u, 0.0f);
+    for (std::size_t CellIdx = 0u; CellIdx < Cells.size(); ++CellIdx)
+    {
+        for (std::size_t Tex = 0u; Tex < 64u; ++Tex)
+        {
+            const std::size_t TexelOffset  = (CellIdx * 64u + Tex) * 4u;
+            const auto        Irr          = Cells[CellIdx].IrradianceOverPi[Tex];
+            PackedTexels[TexelOffset + 0u] = Irr.R;
+            PackedTexels[TexelOffset + 1u] = Irr.G;
+            PackedTexels[TexelOffset + 2u] = Irr.B;
+            PackedTexels[TexelOffset + 3u] = 1.0f;
+        }
+    }
+    const uint64_t LatBytes = PackedTexels.size() * sizeof(float);
+    EnsureBufferCapacity(IrradianceLatticeBuffer, LatBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    if (IrradianceLatticeBuffer.HostAddress != nullptr)
+    {
+        std::memcpy(IrradianceLatticeBuffer.HostAddress, PackedTexels.data(), LatBytes);
+    }
+}
+
+bool VulkanWorldRenderSequence::DispatchGpuSignedDistanceGrid(const WorldSceneSpecification& Scene)
+{
+    if (!QueryReady() || SignedDistanceProgramHandle == UINT32_MAX || UploadedBvhCount == 0u ||
+        SdfUniformBuffer.HostAddress == nullptr)
+    {
+        return false;
+    }
+
+    constexpr float PaddingMeters = 0.45f;
+    const Mathematics::Axis3D PadVec { PaddingMeters, PaddingMeters, PaddingMeters };
+    const Mathematics::Axis3D BoundsMin = Scene.SceneTree.RootBoundsMin - PadVec;
+    const Mathematics::Axis3D BoundsMax = Scene.SceneTree.RootBoundsMax + PadVec;
+    const Mathematics::Axis3D Span      = BoundsMax - BoundsMin;
+    if (Span.X <= 1.0e-4f || Span.Y <= 1.0e-4f || Span.Z <= 1.0e-4f)
+    {
+        return false;
+    }
+
+    constexpr uint32_t TargetX = 44u;
+    constexpr uint32_t TargetY = 40u;
+    constexpr uint32_t TargetZ = 24u;
+    const float StepX = Span.X / static_cast<float>(TargetX - 1u);
+    const float StepY = Span.Y / static_cast<float>(TargetY - 1u);
+    const float StepZ = Span.Z / static_cast<float>(TargetZ - 1u);
+
+    CachedSdfSpacing   = std::max({ StepX, StepY, StepZ, 0.05f });
+    CachedSdfMinCorner = BoundsMin;
+    CachedSdfDimX      = static_cast<uint32_t>(std::max(2.0f, std::floor(Span.X / CachedSdfSpacing) + 1.0f));
+    CachedSdfDimY      = static_cast<uint32_t>(std::max(2.0f, std::floor(Span.Y / CachedSdfSpacing) + 1.0f));
+    CachedSdfDimZ      = static_cast<uint32_t>(std::max(2.0f, std::floor(Span.Z / CachedSdfSpacing) + 1.0f));
+
+    const uint64_t TotalVoxels = static_cast<uint64_t>(CachedSdfDimX) * CachedSdfDimY * CachedSdfDimZ;
+    const uint64_t SdfBytes    = TotalVoxels * sizeof(float);
+    EnsureBufferCapacity(SignedDistanceBuffer, SdfBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    if (SignedDistanceBuffer.BufferHandle == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    SignedDistanceGridUniformStd140 Uniforms {};
+    Uniforms.GridMinSpacing[0]   = CachedSdfMinCorner.X;
+    Uniforms.GridMinSpacing[1]   = CachedSdfMinCorner.Y;
+    Uniforms.GridMinSpacing[2]   = CachedSdfMinCorner.Z;
+    Uniforms.GridMinSpacing[3]   = CachedSdfSpacing;
+    Uniforms.GridDimsBvhCount[0] = CachedSdfDimX;
+    Uniforms.GridDimsBvhCount[1] = CachedSdfDimY;
+    Uniforms.GridDimsBvhCount[2] = CachedSdfDimZ;
+    Uniforms.GridDimsBvhCount[3] = UploadedBvhCount;
+    Uniforms.CutoffConfig[0]     = 1.80f;
+    std::memcpy(SdfUniformBuffer.HostAddress, &Uniforms, sizeof(Uniforms));
+
+    DispatchEncoder.ResetTransientDescriptors();
+    VkCommandBuffer Cmd = BoundDevice->BeginSingleTimeCommands();
+    if (Cmd == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    const std::array<ComputeSlotDescriptor, 4u> Slots {{
+        { 0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, SdfUniformBuffer.BufferHandle,     sizeof(SignedDistanceGridUniformStd140) },
+        { 1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,       VK_WHOLE_SIZE },
+        { 2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle, VK_WHOLE_SIZE },
+        { 3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SignedDistanceBuffer.BufferHandle, SdfBytes      },
+    }};
+
+    const uint32_t GroupsX = (CachedSdfDimX + 3u) / 4u;
+    const uint32_t GroupsY = (CachedSdfDimY + 3u) / 4u;
+    const uint32_t GroupsZ = (CachedSdfDimZ + 3u) / 4u;
+    if (!DispatchEncoder.EncodeComputeDispatch(Cmd, SignedDistanceProgramHandle, Slots, GroupsX, GroupsY, GroupsZ))
+    {
+        return false;
+    }
+
+    VkMemoryBarrier ComputeBarrier {};
+    ComputeBarrier.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    ComputeBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    ComputeBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    vkCmdPipelineBarrier(
+        Cmd,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0u,
+        1u,
+        &ComputeBarrier,
+        0u,
+        nullptr,
+        0u,
+        nullptr);
+
+    const uint64_t SyncPoint = BoundDevice->DispatchCommandBufferAsync(Cmd);
+    return BoundDevice->AwaitTimelineTick(SyncPoint);
+}
+
 void VulkanWorldRenderSequence::SynchronizeSceneResources(
     const WorldSceneSpecification&   Scene,
     const IrradianceLatticeSequence* OptionalRtxLattice,
-    bool                             RebuildVolumeGrids)
+    bool                             RebuildSdfGrid)
 {
     if (!QueryReady())
     {
@@ -299,85 +471,119 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
         UploadedBvhCount = 0u;
     }
 
-    // 2. Build 49-degree crease-angle smooth Phong vertex normals & upload 96-byte shaded triangles
-    const auto& SrcPrims = Scene.SceneTree.Primitives;
+    // 2. Upload 96-byte shaded triangles — O(N) fast path when precomputed per-object smooth normals are present!
+    const auto& SrcPrims   = Scene.SceneTree.Primitives;
+    const auto& SrcNormals = Scene.SceneTree.PrimitiveNormals;
     std::vector<GpuShadedTriangle96> ShadedTris(std::max<std::size_t>(1u, SrcPrims.size()));
     if (!SrcPrims.empty())
     {
-        std::vector<Mathematics::Axis3D>          AreaWeightedNormals(SrcPrims.size());
-        std::vector<QuantizedCornerTriangleEntry> SharedCornerEntries;
-        SharedCornerEntries.reserve(SrcPrims.size() * 3u);
-
-        for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(SrcPrims.size()); ++Idx)
+        if (SrcNormals.size() == SrcPrims.size())
         {
-            const auto& Prim            = SrcPrims[Idx];
-            AreaWeightedNormals[Idx]    = Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02);
-            const Mathematics::Axis3D C0 = Prim.Corner0;
-            const Mathematics::Axis3D C1 = Prim.Corner0 + Prim.Edge01;
-            const Mathematics::Axis3D C2 = Prim.Corner0 + Prim.Edge02;
-            SharedCornerEntries.push_back({ QuantizeVertexPosition(C0, Prim.MaterialOrdinal), Idx });
-            SharedCornerEntries.push_back({ QuantizeVertexPosition(C1, Prim.MaterialOrdinal), Idx });
-            SharedCornerEntries.push_back({ QuantizeVertexPosition(C2, Prim.MaterialOrdinal), Idx });
-        }
-        std::sort(SharedCornerEntries.begin(), SharedCornerEntries.end());
-
-        for (std::size_t Idx = 0u; Idx < SrcPrims.size(); ++Idx)
-        {
-            const auto& Prim = SrcPrims[Idx];
-            const Mathematics::Axis3D UnitFaceN = Mathematics::NormalizeAxis(AreaWeightedNormals[Idx], { 0.0f, 0.0f, 1.0f });
-            const std::array<Mathematics::Axis3D, 3u> Corners {{
-                Prim.Corner0,
-                Prim.Corner0 + Prim.Edge01,
-                Prim.Corner0 + Prim.Edge02,
-            }};
-
-            std::array<Mathematics::Axis3D, 3u> SmoothCorners {};
-            for (std::size_t CornerIdx = 0u; CornerIdx < 3u; ++CornerIdx)
+            for (std::size_t Idx = 0u; Idx < SrcPrims.size(); ++Idx)
             {
-                Mathematics::Axis3D SumNormal { 0.0f, 0.0f, 0.0f };
-                const QuantizedCornerTriangleEntry SearchCorner { QuantizeVertexPosition(Corners[CornerIdx], Prim.MaterialOrdinal), 0u };
-                auto Iter = std::lower_bound(
-                    SharedCornerEntries.begin(),
-                    SharedCornerEntries.end(),
-                    SearchCorner,
-                    [](const QuantizedCornerTriangleEntry& Lhs, const QuantizedCornerTriangleEntry& Rhs) noexcept
-                    {
-                        return Lhs.Key < Rhs.Key;
-                    });
-                while (Iter != SharedCornerEntries.end() && Iter->Key == SearchCorner.Key)
-                {
-                    const uint32_t PeerTriIdx = Iter->TriIndex;
-                    const Mathematics::Axis3D PeerUnit = Mathematics::NormalizeAxis(AreaWeightedNormals[PeerTriIdx], UnitFaceN);
-                    if (Mathematics::EvaluateDot(UnitFaceN, PeerUnit) > 0.65f)
-                    {
-                        SumNormal = SumNormal + AreaWeightedNormals[PeerTriIdx];
-                    }
-                    ++Iter;
-                }
-                SmoothCorners[CornerIdx] = Mathematics::NormalizeAxis(SumNormal, UnitFaceN);
-            }
+                const auto& Prim   = SrcPrims[Idx];
+                const auto& Smooth = SrcNormals[Idx];
 
-            GpuShadedTriangle96 OutTri {};
-            OutTri.Corner0AndPad[0]  = Prim.Corner0.X;
-            OutTri.Corner0AndPad[1]  = Prim.Corner0.Y;
-            OutTri.Corner0AndPad[2]  = Prim.Corner0.Z;
-            OutTri.Edge01AndPad[0]   = Prim.Edge01.X;
-            OutTri.Edge01AndPad[1]   = Prim.Edge01.Y;
-            OutTri.Edge01AndPad[2]   = Prim.Edge01.Z;
-            OutTri.Edge02AndPad[0]   = Prim.Edge02.X;
-            OutTri.Edge02AndPad[1]   = Prim.Edge02.Y;
-            OutTri.Edge02AndPad[2]   = Prim.Edge02.Z;
-            OutTri.Normal0AndPad[0]  = SmoothCorners[0u].X;
-            OutTri.Normal0AndPad[1]  = SmoothCorners[0u].Y;
-            OutTri.Normal0AndPad[2]  = SmoothCorners[0u].Z;
-            OutTri.Normal1AndPad[0]  = SmoothCorners[1u].X;
-            OutTri.Normal1AndPad[1]  = SmoothCorners[1u].Y;
-            OutTri.Normal1AndPad[2]  = SmoothCorners[1u].Z;
-            OutTri.Normal2AndSlot[0] = SmoothCorners[2u].X;
-            OutTri.Normal2AndSlot[1] = SmoothCorners[2u].Y;
-            OutTri.Normal2AndSlot[2] = SmoothCorners[2u].Z;
-            OutTri.Normal2AndSlot[3] = static_cast<float>(Prim.MaterialOrdinal);
-            ShadedTris[Idx]          = OutTri;
+                GpuShadedTriangle96 OutTri {};
+                OutTri.Corner0Pad[0]  = Prim.Corner0.X;
+                OutTri.Corner0Pad[1]  = Prim.Corner0.Y;
+                OutTri.Corner0Pad[2]  = Prim.Corner0.Z;
+                OutTri.Edge01Pad[0]   = Prim.Edge01.X;
+                OutTri.Edge01Pad[1]   = Prim.Edge01.Y;
+                OutTri.Edge01Pad[2]   = Prim.Edge01.Z;
+                OutTri.Edge02Pad[0]   = Prim.Edge02.X;
+                OutTri.Edge02Pad[1]   = Prim.Edge02.Y;
+                OutTri.Edge02Pad[2]   = Prim.Edge02.Z;
+                OutTri.Normal0Pad[0]  = Smooth.Normal0.X;
+                OutTri.Normal0Pad[1]  = Smooth.Normal0.Y;
+                OutTri.Normal0Pad[2]  = Smooth.Normal0.Z;
+                OutTri.Normal1Pad[0]  = Smooth.Normal1.X;
+                OutTri.Normal1Pad[1]  = Smooth.Normal1.Y;
+                OutTri.Normal1Pad[2]  = Smooth.Normal1.Z;
+                OutTri.Normal2Slot[0] = Smooth.Normal2.X;
+                OutTri.Normal2Slot[1] = Smooth.Normal2.Y;
+                OutTri.Normal2Slot[2] = Smooth.Normal2.Z;
+                OutTri.Normal2Slot[3] = static_cast<float>(Prim.MaterialOrdinal);
+                ShadedTris[Idx]       = OutTri;
+            }
+        }
+        else
+        {
+            std::vector<Mathematics::Axis3D>          AreaWeightedNormals(SrcPrims.size());
+            std::vector<QuantizedCornerTriangleEntry> SharedCornerEntries;
+            SharedCornerEntries.reserve(SrcPrims.size() * 3u);
+
+            for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(SrcPrims.size()); ++Idx)
+            {
+                const auto& Prim            = SrcPrims[Idx];
+                AreaWeightedNormals[Idx]    = Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02);
+                const Mathematics::Axis3D C0 = Prim.Corner0;
+                const Mathematics::Axis3D C1 = Prim.Corner0 + Prim.Edge01;
+                const Mathematics::Axis3D C2 = Prim.Corner0 + Prim.Edge02;
+                SharedCornerEntries.push_back({ QuantizeVertexPosition(C0, Prim.MaterialOrdinal), Idx });
+                SharedCornerEntries.push_back({ QuantizeVertexPosition(C1, Prim.MaterialOrdinal), Idx });
+                SharedCornerEntries.push_back({ QuantizeVertexPosition(C2, Prim.MaterialOrdinal), Idx });
+            }
+            std::sort(SharedCornerEntries.begin(), SharedCornerEntries.end());
+
+            for (std::size_t Idx = 0u; Idx < SrcPrims.size(); ++Idx)
+            {
+                const auto& Prim = SrcPrims[Idx];
+                const Mathematics::Axis3D UnitFaceN = Mathematics::NormalizeAxis(AreaWeightedNormals[Idx], { 0.0f, 0.0f, 1.0f });
+                const std::array<Mathematics::Axis3D, 3u> Corners {{
+                    Prim.Corner0,
+                    Prim.Corner0 + Prim.Edge01,
+                    Prim.Corner0 + Prim.Edge02,
+                }};
+
+                std::array<Mathematics::Axis3D, 3u> SmoothCorners {};
+                for (std::size_t CornerIdx = 0u; CornerIdx < 3u; ++CornerIdx)
+                {
+                    Mathematics::Axis3D SumNormal { 0.0f, 0.0f, 0.0f };
+                    const QuantizedCornerTriangleEntry SearchCorner { QuantizeVertexPosition(Corners[CornerIdx], Prim.MaterialOrdinal), 0u };
+                    auto Iter = std::lower_bound(
+                        SharedCornerEntries.begin(),
+                        SharedCornerEntries.end(),
+                        SearchCorner,
+                        [](const QuantizedCornerTriangleEntry& Lhs, const QuantizedCornerTriangleEntry& Rhs) noexcept
+                        {
+                            return Lhs.Key < Rhs.Key;
+                        });
+                    while (Iter != SharedCornerEntries.end() && Iter->Key == SearchCorner.Key)
+                    {
+                        const uint32_t PeerTriIdx = Iter->TriIndex;
+                        const Mathematics::Axis3D PeerUnit = Mathematics::NormalizeAxis(AreaWeightedNormals[PeerTriIdx], UnitFaceN);
+                        if (Mathematics::EvaluateDot(UnitFaceN, PeerUnit) > 0.65f)
+                        {
+                            SumNormal = SumNormal + AreaWeightedNormals[PeerTriIdx];
+                        }
+                        ++Iter;
+                    }
+                    SmoothCorners[CornerIdx] = Mathematics::NormalizeAxis(SumNormal, UnitFaceN);
+                }
+
+                GpuShadedTriangle96 OutTri {};
+                OutTri.Corner0Pad[0]  = Prim.Corner0.X;
+                OutTri.Corner0Pad[1]  = Prim.Corner0.Y;
+                OutTri.Corner0Pad[2]  = Prim.Corner0.Z;
+                OutTri.Edge01Pad[0]   = Prim.Edge01.X;
+                OutTri.Edge01Pad[1]   = Prim.Edge01.Y;
+                OutTri.Edge01Pad[2]   = Prim.Edge01.Z;
+                OutTri.Edge02Pad[0]   = Prim.Edge02.X;
+                OutTri.Edge02Pad[1]   = Prim.Edge02.Y;
+                OutTri.Edge02Pad[2]   = Prim.Edge02.Z;
+                OutTri.Normal0Pad[0]  = SmoothCorners[0u].X;
+                OutTri.Normal0Pad[1]  = SmoothCorners[0u].Y;
+                OutTri.Normal0Pad[2]  = SmoothCorners[0u].Z;
+                OutTri.Normal1Pad[0]  = SmoothCorners[1u].X;
+                OutTri.Normal1Pad[1]  = SmoothCorners[1u].Y;
+                OutTri.Normal1Pad[2]  = SmoothCorners[1u].Z;
+                OutTri.Normal2Slot[0] = SmoothCorners[2u].X;
+                OutTri.Normal2Slot[1] = SmoothCorners[2u].Y;
+                OutTri.Normal2Slot[2] = SmoothCorners[2u].Z;
+                OutTri.Normal2Slot[3] = static_cast<float>(Prim.MaterialOrdinal);
+                ShadedTris[Idx]       = OutTri;
+            }
         }
     }
     const uint64_t TriBytes = ShadedTris.size() * sizeof(GpuShadedTriangle96);
@@ -420,97 +626,76 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
     }
     UploadedMaterialCount = MatCount;
 
-    // 4. Upload dense 3D SDF float grid & Tier 2 RTX Irradiance Lattice when requested or on first upload
-    if (RebuildVolumeGrids || !SceneUploadedOnce)
+    // 4. Generate dense 3D SDF float grid on GPU compute shader (falling back to CPU SceneSdf only if compute shader unavailable)
+    if (RebuildSdfGrid || !SceneUploadedOnce || CachedSdfDimX == 0u)
     {
-        if (Scene.SceneSdf.BrickCountX > 0u && Scene.SceneSdf.BrickCountY > 0u && Scene.SceneSdf.BrickCountZ > 0u)
+        const bool BuiltOnGpu = DispatchGpuSignedDistanceGrid(Scene);
+        if (!BuiltOnGpu)
         {
-            const Mathematics::Axis3D Span = Scene.SceneSdf.VolumeBoundsMax - Scene.SceneSdf.VolumeBoundsMin;
-            constexpr uint32_t TargetX = 44u;
-            constexpr uint32_t TargetY = 40u;
-            constexpr uint32_t TargetZ = 24u;
-            const float StepX = Span.X / static_cast<float>(TargetX - 1u);
-            const float StepY = Span.Y / static_cast<float>(TargetY - 1u);
-            const float StepZ = Span.Z / static_cast<float>(TargetZ - 1u);
-            CachedSdfSpacing   = std::max({ StepX, StepY, StepZ, 0.05f });
-            CachedSdfMinCorner = Scene.SceneSdf.VolumeBoundsMin;
-            CachedSdfDimX      = static_cast<uint32_t>(std::max(2.0f, std::floor(Span.X / CachedSdfSpacing) + 1.0f));
-            CachedSdfDimY      = static_cast<uint32_t>(std::max(2.0f, std::floor(Span.Y / CachedSdfSpacing) + 1.0f));
-            CachedSdfDimZ      = static_cast<uint32_t>(std::max(2.0f, std::floor(Span.Z / CachedSdfSpacing) + 1.0f));
-
-            const std::size_t TotalVoxels = static_cast<std::size_t>(CachedSdfDimX) * CachedSdfDimY * CachedSdfDimZ;
-            std::vector<float> DenseSdf(TotalVoxels, 2.5f);
-            for (uint32_t IZ = 0u; IZ < CachedSdfDimZ; ++IZ)
+            if (Scene.SceneSdf.BrickCountX > 0u && Scene.SceneSdf.BrickCountY > 0u && Scene.SceneSdf.BrickCountZ > 0u)
             {
-                const float WZ = CachedSdfMinCorner.Z + static_cast<float>(IZ) * CachedSdfSpacing;
-                for (uint32_t IY = 0u; IY < CachedSdfDimY; ++IY)
+                const Mathematics::Axis3D Span = Scene.SceneSdf.VolumeBoundsMax - Scene.SceneSdf.VolumeBoundsMin;
+                constexpr uint32_t TargetX = 44u;
+                constexpr uint32_t TargetY = 40u;
+                constexpr uint32_t TargetZ = 24u;
+                const float StepX = Span.X / static_cast<float>(TargetX - 1u);
+                const float StepY = Span.Y / static_cast<float>(TargetY - 1u);
+                const float StepZ = Span.Z / static_cast<float>(TargetZ - 1u);
+                CachedSdfSpacing   = std::max({ StepX, StepY, StepZ, 0.05f });
+                CachedSdfMinCorner = Scene.SceneSdf.VolumeBoundsMin;
+                CachedSdfDimX      = static_cast<uint32_t>(std::max(2.0f, std::floor(Span.X / CachedSdfSpacing) + 1.0f));
+                CachedSdfDimY      = static_cast<uint32_t>(std::max(2.0f, std::floor(Span.Y / CachedSdfSpacing) + 1.0f));
+                CachedSdfDimZ      = static_cast<uint32_t>(std::max(2.0f, std::floor(Span.Z / CachedSdfSpacing) + 1.0f));
+
+                const std::size_t TotalVoxels = static_cast<std::size_t>(CachedSdfDimX) * CachedSdfDimY * CachedSdfDimZ;
+                std::vector<float> DenseSdf(TotalVoxels, 2.5f);
+                for (uint32_t IZ = 0u; IZ < CachedSdfDimZ; ++IZ)
                 {
-                    const float WY = CachedSdfMinCorner.Y + static_cast<float>(IY) * CachedSdfSpacing;
-                    const std::size_t RowOffset = (static_cast<std::size_t>(IZ) * CachedSdfDimY + IY) * CachedSdfDimX;
-                    for (uint32_t IX = 0u; IX < CachedSdfDimX; ++IX)
+                    const float WZ = CachedSdfMinCorner.Z + static_cast<float>(IZ) * CachedSdfSpacing;
+                    for (uint32_t IY = 0u; IY < CachedSdfDimY; ++IY)
                     {
-                        const float WX = CachedSdfMinCorner.X + static_cast<float>(IX) * CachedSdfSpacing;
-                        DenseSdf[RowOffset + IX] = Scene.SceneSdf.SampleSignedDistance({ WX, WY, WZ });
+                        const float WY = CachedSdfMinCorner.Y + static_cast<float>(IY) * CachedSdfSpacing;
+                        const std::size_t RowOffset = (static_cast<std::size_t>(IZ) * CachedSdfDimY + IY) * CachedSdfDimX;
+                        for (uint32_t IX = 0u; IX < CachedSdfDimX; ++IX)
+                        {
+                            const float WX = CachedSdfMinCorner.X + static_cast<float>(IX) * CachedSdfSpacing;
+                            DenseSdf[RowOffset + IX] = Scene.SceneSdf.SampleSignedDistance({ WX, WY, WZ });
+                        }
                     }
                 }
-            }
-            const uint64_t SdfBytes = DenseSdf.size() * sizeof(float);
-            EnsureBufferCapacity(SignedDistanceBuffer, SdfBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-            if (SignedDistanceBuffer.HostAddress != nullptr)
-            {
-                std::memcpy(SignedDistanceBuffer.HostAddress, DenseSdf.data(), SdfBytes);
-            }
-        }
-        else
-        {
-            CachedSdfDimX = CachedSdfDimY = CachedSdfDimZ = 0u;
-            const float FallbackDist = 4.0f;
-            EnsureBufferCapacity(SignedDistanceBuffer, sizeof(float) * 4u, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-            if (SignedDistanceBuffer.HostAddress != nullptr)
-            {
-                std::memcpy(SignedDistanceBuffer.HostAddress, &FallbackDist, sizeof(float));
-            }
-        }
-
-        if (OptionalRtxLattice != nullptr && !OptionalRtxLattice->InspectCells().empty())
-        {
-            const auto& Cfg   = OptionalRtxLattice->InspectConfig();
-            const auto  Cells = OptionalRtxLattice->InspectCells();
-            CachedLatticeMin  = Cfg.GridMinimumWorld;
-            CachedLatticeMax  = Cfg.GridMaximumWorld;
-            CachedLatticeDimX = Cfg.CountX;
-            CachedLatticeDimY = Cfg.CountY;
-            CachedLatticeDimZ = Cfg.CountZ;
-
-            std::vector<float> PackedTexels(Cells.size() * 64u * 4u, 0.0f);
-            for (std::size_t CellIdx = 0u; CellIdx < Cells.size(); ++CellIdx)
-            {
-                for (std::size_t Tex = 0u; Tex < 64u; ++Tex)
+                const uint64_t SdfBytes = DenseSdf.size() * sizeof(float);
+                EnsureBufferCapacity(SignedDistanceBuffer, SdfBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+                if (SignedDistanceBuffer.HostAddress != nullptr)
                 {
-                    const std::size_t TexelOffset       = (CellIdx * 64u + Tex) * 4u;
-                    const auto        Irr               = Cells[CellIdx].IrradianceOverPi[Tex];
-                    PackedTexels[TexelOffset + 0u]      = Irr.R;
-                    PackedTexels[TexelOffset + 1u]      = Irr.G;
-                    PackedTexels[TexelOffset + 2u]      = Irr.B;
-                    PackedTexels[TexelOffset + 3u]      = 1.0f;
+                    std::memcpy(SignedDistanceBuffer.HostAddress, DenseSdf.data(), SdfBytes);
                 }
             }
-            const uint64_t LatBytes = PackedTexels.size() * sizeof(float);
-            EnsureBufferCapacity(IrradianceLatticeBuffer, LatBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-            if (IrradianceLatticeBuffer.HostAddress != nullptr)
+            else
             {
-                std::memcpy(IrradianceLatticeBuffer.HostAddress, PackedTexels.data(), LatBytes);
+                CachedSdfDimX = CachedSdfDimY = CachedSdfDimZ = 0u;
+                const float FallbackDist = 4.0f;
+                EnsureBufferCapacity(SignedDistanceBuffer, sizeof(float) * 4u, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+                if (SignedDistanceBuffer.HostAddress != nullptr)
+                {
+                    std::memcpy(SignedDistanceBuffer.HostAddress, &FallbackDist, sizeof(float));
+                }
             }
         }
-        else
+    }
+
+    // 5. Upload Tier 2 RTX Irradiance Lattice independently of RebuildSdfGrid (never skipped when baked lattice arrives!)
+    if (OptionalRtxLattice != nullptr && !OptionalRtxLattice->InspectCells().empty())
+    {
+        UploadIrradianceLattice(*OptionalRtxLattice);
+    }
+    else if (IrradianceLatticeBuffer.BufferHandle == VK_NULL_HANDLE)
+    {
+        CachedLatticeDimX = CachedLatticeDimY = CachedLatticeDimZ = 0u;
+        const float ZeroVec[4]{ 0.0f, 0.0f, 0.0f, 0.0f };
+        EnsureBufferCapacity(IrradianceLatticeBuffer, sizeof(ZeroVec), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        if (IrradianceLatticeBuffer.HostAddress != nullptr)
         {
-            CachedLatticeDimX = CachedLatticeDimY = CachedLatticeDimZ = 0u;
-            const float ZeroVec[4]{ 0.0f, 0.0f, 0.0f, 0.0f };
-            EnsureBufferCapacity(IrradianceLatticeBuffer, sizeof(ZeroVec), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-            if (IrradianceLatticeBuffer.HostAddress != nullptr)
-            {
-                std::memcpy(IrradianceLatticeBuffer.HostAddress, ZeroVec, sizeof(ZeroVec));
-            }
+            std::memcpy(IrradianceLatticeBuffer.HostAddress, ZeroVec, sizeof(ZeroVec));
         }
     }
 

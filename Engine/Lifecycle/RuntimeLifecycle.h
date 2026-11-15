@@ -87,7 +87,7 @@ private:
 #if !defined(__ANDROID__)
     Windowing::DesktopPlatformWindow  DesktopSurface        {};     // [-]     - Native GLFW desktop window when headless is false
 #endif
-    Input::InputExtension             InputCoordinator      {};     // [-]     - Bi-directional hardware input & feedback coordinator
+    Input::InputExtension             InputParticipant      {};     // [-]     - Bi-directional hardware input & feedback participant
     LifecycleSequence                 DomainSequence        {};     // [-]     - Registered Simulation/Audio/Raster participants
     uint64_t                          PolledTicksCounter    = 0u;   // [count] - Total OS poll iterations
     uint64_t                          DrainedSignalsCounter = 0u;   // [count] - Cumulative drained input packets
@@ -114,12 +114,12 @@ inline LifecyclePhase RuntimeLifecycle::QueryPhase() const noexcept
 
 inline Input::InputExtension& RuntimeLifecycle::AccessInput() noexcept
 {
-    return InputCoordinator;
+    return InputParticipant;
 }
 
 inline const Input::InputExtension& RuntimeLifecycle::InspectInput() const noexcept
 {
-    return InputCoordinator;
+    return InputParticipant;
 }
 
 inline Windowing::HeadlessPlatformWindow* RuntimeLifecycle::AccessHeadlessWindow() noexcept

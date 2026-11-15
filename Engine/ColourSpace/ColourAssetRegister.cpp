@@ -1,13 +1,13 @@
 /*============================================================================================================================================
-                                                          COLOURASSETCOORDINATOR.CPP
+                                                           COLOURASSETREGISTER.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of ColourAssetCoordinator lifecycle coordinator, contiguous GPU LUT cache & WorkspaceExchange live publication
+// 🧩 Implementation of ColourAssetRegister lifecycle participant, contiguous GPU LUT cache & WorkspaceExchange live publication
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/ColourSpace/ColourAssetCoordinator.h"
+#include "Engine/ColourSpace/ColourAssetRegister.h"
 
 #include "Engine/ColourSpace/ColourRampSampler.h"
 
@@ -18,7 +18,7 @@ namespace Frontier::ColourSpace
 //                                                 LIFECYCLE OPERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-bool ColourAssetCoordinator::Initialize(Workspaces::WorkspaceExchange* ExchangeBus, Workspaces::WorkspaceToken OwnerToken) noexcept
+bool ColourAssetRegister::Initialize(Workspaces::WorkspaceExchange* ExchangeBus, Workspaces::WorkspaceToken OwnerToken) noexcept
 {
     Exchange             = ExchangeBus;
     DocumentToken        = OwnerToken;
@@ -35,7 +35,7 @@ bool ColourAssetCoordinator::Initialize(Workspaces::WorkspaceExchange* ExchangeB
     return true;
 }
 
-void ColourAssetCoordinator::Tick(double /*DeltaSeconds*/) noexcept
+void ColourAssetRegister::Tick(double /*DeltaSeconds*/) noexcept
 {
     if (!InitializationActive || SuspensionActive)
     {
@@ -47,17 +47,17 @@ void ColourAssetCoordinator::Tick(double /*DeltaSeconds*/) noexcept
     }
 }
 
-void ColourAssetCoordinator::Suspend() noexcept
+void ColourAssetRegister::Suspend() noexcept
 {
     SuspensionActive = true;
 }
 
-void ColourAssetCoordinator::Resume() noexcept
+void ColourAssetRegister::Resume() noexcept
 {
     SuspensionActive = false;
 }
 
-void ColourAssetCoordinator::Finalize() noexcept
+void ColourAssetRegister::Finalize() noexcept
 {
     BakedLutSheet.clear();
     Exchange             = nullptr;
@@ -70,7 +70,7 @@ void ColourAssetCoordinator::Finalize() noexcept
 //                                             RAMP REGISTRATION & LUT CACHE
 //------------------------------------------------------------------------------------------------------------------------
 
-std::size_t ColourAssetCoordinator::RegisterOrUpdateRamp(ColourRampPresetEntry PresetEntry)
+std::size_t ColourAssetRegister::RegisterOrUpdateRamp(ColourRampPresetEntry PresetEntry)
 {
     const std::string NoticeId = PresetEntry.Identifier;
     (void)DomainAliasRepository.SyncRampPreset(PresetEntry);
@@ -81,7 +81,7 @@ std::size_t ColourAssetCoordinator::RegisterOrUpdateRamp(ColourRampPresetEntry P
     return Index;
 }
 
-bool ColourAssetCoordinator::RemoveCustomRamp(std::string_view Identifier)
+bool ColourAssetRegister::RemoveCustomRamp(std::string_view Identifier)
 {
     if (!Repository.RemoveCustomRamp(Identifier))
     {
@@ -94,7 +94,7 @@ bool ColourAssetCoordinator::RemoveCustomRamp(std::string_view Identifier)
     return true;
 }
 
-void ColourAssetCoordinator::RebuildLutSheet()
+void ColourAssetRegister::RebuildLutSheet()
 {
     const auto Ramps = Repository.QueryRampPresets();
     BakedLutSheet.clear();
@@ -107,7 +107,7 @@ void ColourAssetCoordinator::RebuildLutSheet()
     LutRebuildPending = false;
 }
 
-const ColourRampLut64* ColourAssetCoordinator::QueryBakedLutByIdentifier(std::string_view Identifier) const noexcept
+const ColourRampLut64* ColourAssetRegister::QueryBakedLutByIdentifier(std::string_view Identifier) const noexcept
 {
     const auto Ramps = Repository.QueryRampPresets();
     const std::size_t Limit = (Ramps.size() < BakedLutSheet.size()) ? Ramps.size() : BakedLutSheet.size();
@@ -121,7 +121,7 @@ const ColourRampLut64* ColourAssetCoordinator::QueryBakedLutByIdentifier(std::st
     return nullptr;
 }
 
-ColourAssetCoordinatorMetrics ColourAssetCoordinator::InspectMetrics() const noexcept
+ColourAssetRegisterMetrics ColourAssetRegister::InspectMetrics() const noexcept
 {
     return {
         static_cast<uint32_t>(Repository.QueryRampPresets().size()),
@@ -134,7 +134,7 @@ ColourAssetCoordinatorMetrics ColourAssetCoordinator::InspectMetrics() const noe
     };
 }
 
-void ColourAssetCoordinator::PublishChangeNotice(std::string_view Summary) noexcept
+void ColourAssetRegister::PublishChangeNotice(std::string_view Summary) noexcept
 {
     if (Exchange != nullptr && InitializationActive)
     {

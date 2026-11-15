@@ -92,26 +92,26 @@ bool HeadlessPlatformWindow::Initialize(const WindowConfigurationDescriptor& Des
         Descriptor.TargetRefreshRateHz);
 }
 
-void HeadlessPlatformWindow::PollOperatingEvents(Input::InputExtension& InputCoordinator) noexcept
+void HeadlessPlatformWindow::PollOperatingEvents(Input::InputExtension& InputParticipant) noexcept
 {
     if (!SurfaceInitialized)
     {
         return;
     }
 
-    struct ForwardToCoordinatorSink
+    struct ForwardToInputSink
     {
-        Input::InputExtension* Coordinator;
+        Input::InputExtension* InputParticipant;
 
         void IntakeSignalPacket(const Input::InputSignalPacket& Packet) noexcept
         {
-            (void)Coordinator->IntakeHardwareSignal(Packet);
+            (void)InputParticipant->IntakeHardwareSignal(Packet);
         }
     };
 
-    ForwardToCoordinatorSink Forwarder{ &InputCoordinator };
+    ForwardToInputSink Forwarder{ &InputParticipant };
     (void)PendingSyntheticExchange.DrainSignals(Forwarder);
-    (void)InputCoordinator.FlushOutboundDirectives(*this);
+    (void)InputParticipant.FlushOutboundDirectives(*this);
 }
 
 void HeadlessPlatformWindow::Finalize() noexcept

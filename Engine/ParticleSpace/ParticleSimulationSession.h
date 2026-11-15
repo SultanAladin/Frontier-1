@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                       PARTICLESIMULATIONCOORDINATOR.H
+                                                         PARTICLESIMULATIONSESSION.H
 ============================================================================================================================================*/
-// 🧩 Designated ParticleSpace lifecycle coordinator coupling ForceFieldAccumulator, ColourAssetCoordinator, anchor caches & deterministic stepping
+// 🧩 Designated ParticleSpace lifecycle participant coupling ForceFieldAccumulator, ColourAssetRegister, anchor caches & deterministic stepping
 
 #pragma once
 
@@ -9,15 +9,21 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/ColourSpace/ColourAssetCoordinator.h"
+#include "Engine/ColourSpace/ColourAssetRegister.h"
 #include "Engine/ParticleSpace/Origins/AnalyticOrigins.h"
 #include "Engine/ParticleSpace/ParticleBuffers.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.h"
+#include "Engine/SimulationSpace/PhysicsSpace/BroadphaseSolver.h"
 
 #include <cstdint>
 #include <span>
 #include <vector>
+
+namespace Frontier::SimulationSpace::PhysicsSpace
+{
+class PhysicsExtension;
+}
 
 namespace Frontier::ParticleSpace
 {
@@ -38,11 +44,11 @@ struct ParticleTelemetrySnapshot
     float    BoundsMaxMeters[3]  = { 0.0f, 0.0f, 0.0f };
 };
 
-/// Lifecycle coordinator owning deterministic particle simulation coupled directly to ForceFields and ColourSpace.
-class ParticleSimulationCoordinator
+/// lifecycle participant owning deterministic particle simulation coupled directly to ForceFields and ColourSpace.
+class ParticleSimulationSession
 {
 public:
-    ParticleSimulationCoordinator() = default;
+    ParticleSimulationSession() = default;
 
     [[nodiscard]] bool Initialize(const ParticleDocument& InitialDocument);
     void               Tick(double DeltaSeconds);
@@ -51,16 +57,18 @@ public:
     void               Finalize() noexcept;
 
     void LoadDocument(const ParticleDocument& NextDocument);
+    void AttachPhysicsExtension(SimulationSpace::PhysicsSpace::PhysicsExtension* Extension) noexcept;
     void TriggerBurst(std::size_t RigIndex, uint32_t Count = 120u);
     void ResetSimulation();
 
     [[nodiscard]] const ParticleDocument&                              InspectDocument() const noexcept;
     [[nodiscard]] ParticleDocument&                                    AccessDocument() noexcept;
     [[nodiscard]] const SimulationSpace::ForceFields::ForceFieldAccumulator& InspectForceAccumulator() const noexcept;
-    [[nodiscard]] const ColourSpace::ColourAssetCoordinator&                  InspectColourCoordinator() const noexcept;
+    [[nodiscard]] const ColourSpace::ColourAssetRegister&                  InspectColourRegister() const noexcept;
     [[nodiscard]] std::span<const ParticleSlot>                        InspectParticleSlots() const noexcept;
     [[nodiscard]] std::span<const StrandVertex>                        InspectStrandVertices() const noexcept;
     [[nodiscard]] std::span<const ParticleAnchorSample>                InspectRigAnchors(std::size_t RigIndex) const noexcept;
+    [[nodiscard]] std::span<const SimulationSpace::PhysicsSpace::RigidColliderProxy> InspectRigidColliders() const noexcept;
     [[nodiscard]] const ParticleTelemetrySnapshot&                     InspectTelemetry() const noexcept;
     [[nodiscard]] bool                                                 QueryInitialized() const noexcept;
     [[nodiscard]] bool                                                 QuerySuspended() const noexcept;
@@ -87,14 +95,16 @@ private:
     bool                                               Suspended         = false;
     ParticleDocument                                   Document          {};
     SimulationSpace::ForceFields::ForceFieldAccumulator ForceAccumulator {};
-    ColourSpace::ColourAssetCoordinator                       ColourCoordinator {};
+    ColourSpace::ColourAssetRegister                       ColourRegister {};
+    SimulationSpace::PhysicsSpace::PhysicsExtension*   AttachedPhysics   = nullptr;
     DeterministicPcgRng                                Rng               { 1337u };
 
-    std::vector<RigRuntimeSlice>      RigSlices         {};
-    std::vector<ParticleSlot>         ParticleSlots     {};
-    std::vector<StrandVertex>         StrandVertices    {};
-    std::vector<ParticleAnchorSample> AnchorBuffer      {};
-    ParticleTelemetrySnapshot         Telemetry         {};
+    std::vector<RigRuntimeSlice>                               RigSlices          {};
+    std::vector<ParticleSlot>                                  ParticleSlots      {};
+    std::vector<StrandVertex>                                  StrandVertices     {};
+    std::vector<ParticleAnchorSample>                          AnchorBuffer       {};
+    std::vector<SimulationSpace::PhysicsSpace::RigidColliderProxy> RigidColliderCache {};
+    ParticleTelemetrySnapshot                                  Telemetry          {};
 };
 
 } // namespace Frontier::ParticleSpace

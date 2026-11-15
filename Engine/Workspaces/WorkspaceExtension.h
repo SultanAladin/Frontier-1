@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                              WORKSPACEEXTENSION.H
 ============================================================================================================================================*/
-// 🧩 Top-level workspace lifecycle coordinator unifying WorkspaceRegistry, 750 MiB RevisionExtension, WorkspaceExchange, & WorkspaceThread
+// 🧩 Top-level workspace lifecycle participant unifying WorkspaceRegistry, 750 MiB RevisionExtension, WorkspaceExchange, & WorkspaceThread
 
 #pragma once
 
@@ -111,7 +111,7 @@ private:
     Threading::ExecutionChannels     Cluster               {};      // [-]     - Cooperative parallel execution cluster
     Threading::WorkspaceThread      DedicatedThread       {};      // [-]     - Asynchronous WorkspaceThread domain loop
     WorkspaceRegistry               Registry              {};      // [-]     - Open .Space document slot registry
-    RevisionExtension               GlobalRevisions       ;        // [-]     - Application-wide 750 MiB revision coordinator
+    RevisionExtension               GlobalRevisions       ;        // [-]     - Application-wide 750 MiB revision extension
     WorkspaceExchange               Exchange              {};      // [-]     - Cross-workspace live publication bus
 };
 

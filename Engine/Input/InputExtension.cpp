@@ -15,7 +15,7 @@ namespace Frontier::Input
 namespace
 {
 
-InputExtension* ActiveCoordinatorInstance = nullptr;
+InputExtension* ActiveInputExtensionInstance = nullptr;
 
 void AppendCodepointAsUtf8(uint32_t Codepoint, EditorInputSnapshot& Snapshot) noexcept
 {
@@ -82,9 +82,9 @@ InputExtension::~InputExtension() noexcept
     {
         Finalize();
     }
-    else if (ActiveCoordinatorInstance == this)
+    else if (ActiveInputExtensionInstance == this)
     {
-        ActiveCoordinatorInstance = nullptr;
+        ActiveInputExtensionInstance = nullptr;
     }
 }
 
@@ -104,7 +104,7 @@ bool InputExtension::Initialize() noexcept
     LifecycleActive = true;
     Suspended       = false;
 
-    ActiveCoordinatorInstance = this;
+    ActiveInputExtensionInstance = this;
     return true;
 }
 
@@ -157,9 +157,9 @@ void InputExtension::Finalize() noexcept
     PendingDroppedPaths.clear();
     LifecycleActive = false;
 
-    if (ActiveCoordinatorInstance == this)
+    if (ActiveInputExtensionInstance == this)
     {
-        ActiveCoordinatorInstance = nullptr;
+        ActiveInputExtensionInstance = nullptr;
     }
 }
 
@@ -606,27 +606,27 @@ InputExchange& InputExtension::AccessEditorExchange() noexcept
     return EditorExchange;
 }
 
-bool InputExtension::CoordinatorActive() const noexcept
+bool InputExtension::ExtensionActive() const noexcept
 {
     return LifecycleActive;
 }
 
-void InputExtension::AssignActiveCoordinator(InputExtension* Coordinator) noexcept
+void InputExtension::AssignActiveExtension(InputExtension* InputParticipant) noexcept
 {
-    ActiveCoordinatorInstance = Coordinator;
+    ActiveInputExtensionInstance = InputParticipant;
 }
 
-InputExtension* InputExtension::QueryActiveCoordinator() noexcept
+InputExtension* InputExtension::QueryActiveExtension() noexcept
 {
-    return ActiveCoordinatorInstance;
+    return ActiveInputExtensionInstance;
 }
 
 const EditorInputSnapshot& InputExtension::InspectActiveEditorSnapshot() noexcept
 {
     static const EditorInputSnapshot InertSnapshot{};
-    if (ActiveCoordinatorInstance != nullptr && ActiveCoordinatorInstance->LifecycleActive)
+    if (ActiveInputExtensionInstance != nullptr && ActiveInputExtensionInstance->LifecycleActive)
     {
-        return ActiveCoordinatorInstance->EditorSnapshot;
+        return ActiveInputExtensionInstance->EditorSnapshot;
     }
     return InertSnapshot;
 }
