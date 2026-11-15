@@ -258,8 +258,8 @@ void ParticleViewportHost::RenderViewportPreview3D(
         }
     }
 
-    // 3b. Project live simulated C++ ParticleSimulationCoordinator slots directly into the 3D viewport stage
-    const auto LiveSlots = Session.SimulationCoordinator.InspectParticleSlots();
+    // 3b. Project live simulated C++ ParticleSimulationSession slots directly into the 3D viewport stage
+    const auto LiveSlots = Session.SimulationSession.InspectParticleSlots();
     uint32_t DrawnLive = 0u;
     for (std::size_t S = 0u; S < LiveSlots.size() && DrawnLive < 480u; ++S)
     {

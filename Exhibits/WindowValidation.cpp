@@ -102,8 +102,8 @@ template <PlatformWindowSurface SurfaceType>
 bool ValidateGameDynamicModeTransitions(const char* SurfaceName) noexcept
 {
     SurfaceType    GameWindow{};
-    InputExtension InputCoordinator{};
-    InputCoordinator.Initialize();
+    InputExtension InputParticipant{};
+    InputParticipant.Initialize();
 
     const auto GameDesc = WindowConfigurationDescriptor::ConstructGameWindow(
         "Frontier Runtime",
@@ -114,7 +114,7 @@ bool ValidateGameDynamicModeTransitions(const char* SurfaceName) noexcept
 
     if (!VerifyAssertion(GameWindow.Initialize(GameDesc), SurfaceName))
     {
-        InputCoordinator.Finalize();
+        InputParticipant.Finalize();
         return false;
     }
 
@@ -145,14 +145,14 @@ bool ValidateGameDynamicModeTransitions(const char* SurfaceName) noexcept
         VerifyAssertion(GameWindow.InspectExtent().PixelWidth == 1280 && GameWindow.InspectExtent().PixelHeight == 720,
                         "Windowed restores exact 1280x720 client dimensions");
 
-    InputCoordinator.RequestCursorConfinement(CursorConfinementMode::LockedRelativeHidden);
-    (void)InputCoordinator.RequestHapticFeedback(HapticFeedbackDirective{
+    InputParticipant.RequestCursorConfinement(CursorConfinementMode::LockedRelativeHidden);
+    (void)InputParticipant.RequestHapticFeedback(HapticFeedbackDirective{
         .DeviceIdentifier       = 0,
         .LowFrequencyAmplitude  = 0.7f,
         .HighFrequencyAmplitude = 0.4f,
         .DurationMilliseconds   = 20u,
     });
-    GameWindow.PollOperatingEvents(InputCoordinator);
+    GameWindow.PollOperatingEvents(InputParticipant);
 
     Passed = Passed &&
         VerifyAssertion(GameWindow.AppliedCursorMode() == CursorConfinementMode::LockedRelativeHidden,
@@ -161,7 +161,7 @@ bool ValidateGameDynamicModeTransitions(const char* SurfaceName) noexcept
                         "Haptic directive propagated through window poll");
 
     GameWindow.Finalize();
-    InputCoordinator.Finalize();
+    InputParticipant.Finalize();
     return Passed;
 }
 
@@ -297,8 +297,8 @@ int main()
     }
 
     HeadlessPlatformWindow SyntheticWindow{};
-    InputExtension         Coordinator{};
-    Coordinator.Initialize();
+    InputExtension         InputParticipant{};
+    InputParticipant.Initialize();
     if (!VerifyAssertion(
             SyntheticWindow.Initialize(WindowConfigurationDescriptor::ConstructApplicationWindow("SyntheticCheck", 1280, 720)),
             "Initialize synthetic headless window"))
@@ -314,14 +314,14 @@ int main()
     KeyPacket.Transition           = ButtonTransitionCategory::Pressed;
     (void)SyntheticWindow.QueueSyntheticSignal(KeyPacket);
 
-    SyntheticWindow.PollOperatingEvents(Coordinator);
-    (void)Coordinator.TickExchange();
-    if (!VerifyAssertion(Coordinator.QueryScanCodeHeld(42), "Synthetic OS key signal forwarded to InputExtension"))
+    SyntheticWindow.PollOperatingEvents(InputParticipant);
+    (void)InputParticipant.TickExchange();
+    if (!VerifyAssertion(InputParticipant.QueryScanCodeHeld(42), "Synthetic OS key signal forwarded to InputExtension"))
     {
         return 1;
     }
     SyntheticWindow.Finalize();
-    Coordinator.Finalize();
+    InputParticipant.Finalize();
 
 #if !defined(__ANDROID__)
     if (!ValidateSplashPreset<Frontier::Windowing::DesktopPlatformWindow>("DesktopGlfwSplash") ||

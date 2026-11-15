@@ -116,6 +116,7 @@ void MaterialViewportHost::UploadPreviewTexture(
     if (NeedsCreate)
     {
         PreviewTexture.DestroyPixels();
+        PreviewTexture.SetStatus(ImTextureStatus_Destroyed);
         PreviewTexture.Create(ImTextureFormat_RGBA32, static_cast<int>(WidthPx), static_cast<int>(HeightPx));
     }
 

@@ -580,7 +580,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ColourSpace/ColourPresetRepository.cpp
     Engine/ColourSpace/ColourAliasRepository.cpp
     Engine/ColourSpace/ColourDocument.cpp
-    Engine/ColourSpace/ColourAssetCoordinator.cpp
+    Engine/ColourSpace/ColourAssetRegister.cpp
     Engine/Interchange/ColourInterchange.cpp
     Engine/Interchange/GeometryInterchange.cpp
     Engine/Interchange/ParticleInterchange.cpp
@@ -651,7 +651,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ParticleSpace/Presets/ParticlePresetRepository.cpp
     Engine/ParticleSpace/ParticleRig.cpp
     Engine/ParticleSpace/ParticleDocument.cpp
-    Engine/ParticleSpace/ParticleSimulationCoordinator.cpp
+    Engine/ParticleSpace/ParticleSimulationSession.cpp
     Engine/SimulationSpace/ForceFields/ForceMotionPath.cpp
     Engine/SimulationSpace/ForceFields/VectorField.cpp
     Engine/SimulationSpace/ForceFields/StreamTransportField.cpp
@@ -716,7 +716,7 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         Engine/Editor/Workspaces/Simulation/ForcePresetBrowserPanel.cpp
         Engine/Editor/Workspaces/Simulation/ForceInspectorView.cpp
         Engine/GeometricRaster/Simulation/VectorFieldOverlaySequence.cpp
-        Engine/Editor/Workspaces/Simulation/VectorFieldViewportCoordinator.cpp
+        Engine/Editor/Workspaces/Simulation/VectorFieldViewportSession.cpp
         Engine/Lifecycle/EditorLifecycle.cpp
     )
 endif()

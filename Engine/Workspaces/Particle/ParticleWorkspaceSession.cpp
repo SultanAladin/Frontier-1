@@ -80,7 +80,7 @@ using SimulationSpace::ForceFields::ReachEnvelopeCategory;
 
 ParticleWorkspaceSession::ParticleWorkspaceSession()
 {
-    (void)ColourCoordinator.Initialize();
+    (void)ColourRegister.Initialize();
     ResetStudioDefaultScene();
 }
 
@@ -246,14 +246,14 @@ void ParticleWorkspaceSession::ResetStudioDefaultScene()
         });
     }
 
-    // Initialize live C++ ParticleSpace::ParticleSimulationCoordinator + verify compiled Vulkan 1.3 SPIR-V shaders
+    // Initialize live C++ ParticleSpace::ParticleSimulationSession + verify compiled Vulkan 1.3 SPIR-V shaders
     ParticleSpace::ParticleDocument LiveDoc = ParticleSpace::ConstructStudioDefaultDocument();
     LiveDoc.ForceSources = ForceSources;
-    (void)SimulationCoordinator.Initialize(LiveDoc);
-    SimulationCoordinator.TriggerBurst(0u, 320u);
+    (void)SimulationSession.Initialize(LiveDoc);
+    SimulationSession.TriggerBurst(0u, 320u);
     for (int Warm = 0; Warm < 24; ++Warm)
     {
-        SimulationCoordinator.Tick(1.0 / 60.0);
+        SimulationSession.Tick(1.0 / 60.0);
     }
 
     std::string VkDiag;
@@ -284,9 +284,9 @@ void ParticleWorkspaceSession::StepSimulationClock(double DeltaSeconds) noexcept
     {
         ElapsedSeconds = std::fmod(ElapsedSeconds, LoopDurationSec);
     }
-    SimulationCoordinator.AccessDocument().ForceSources = ForceSources;
-    SimulationCoordinator.Tick(DeltaSeconds);
-    const auto& Tel = SimulationCoordinator.InspectTelemetry();
+    SimulationSession.AccessDocument().ForceSources = ForceSources;
+    SimulationSession.Tick(DeltaSeconds);
+    const auto& Tel = SimulationSession.InspectTelemetry();
     if (Tel.LastStepMillis > 0.0)
     {
         ComputeTimeMs = static_cast<float>(Tel.LastStepMillis);
@@ -298,9 +298,9 @@ void ParticleWorkspaceSession::StepSimulationClock(double DeltaSeconds) noexcept
 void ParticleWorkspaceSession::TriggerBurst() noexcept
 {
     ++BurstCount;
-    for (std::size_t I = 0u; I < SimulationCoordinator.InspectDocument().Rigs.size(); ++I)
+    for (std::size_t I = 0u; I < SimulationSession.InspectDocument().Rigs.size(); ++I)
     {
-        SimulationCoordinator.TriggerBurst(I, 180u);
+        SimulationSession.TriggerBurst(I, 180u);
     }
     for (AuthoredParticleRigUi& Rig : ParticleRigs)
     {
@@ -316,8 +316,8 @@ void ParticleWorkspaceSession::ResetPlayback() noexcept
 {
     ElapsedSeconds = 0.0;
     StepCounter    = 0u;
-    SimulationCoordinator.ResetSimulation();
-    SimulationCoordinator.TriggerBurst(0u, 240u);
+    SimulationSession.ResetSimulation();
+    SimulationSession.TriggerBurst(0u, 240u);
     AppendLog(LogChannelCategory::Particles, "Simulation clock reset & particle slots re-seeded");
 }
 
@@ -471,9 +471,9 @@ void ParticleWorkspaceSession::AddPresetToScene(std::size_t AssetIndex)
         ParticleSpace::ParticleRig LiveRig = ParticleSpace::InstantiateRigFromPreset(*Meta);
         Added.CapacityCount = LiveRig.SlotCapacity;
         Added.ColourProfile = LiveRig.ColourProfile;
-        SimulationCoordinator.AccessDocument().Rigs.push_back(std::move(LiveRig));
-        SimulationCoordinator.ResetSimulation();
-        SimulationCoordinator.TriggerBurst(SimulationCoordinator.InspectDocument().Rigs.size() - 1u, 220u);
+        SimulationSession.AccessDocument().Rigs.push_back(std::move(LiveRig));
+        SimulationSession.ResetSimulation();
+        SimulationSession.TriggerBurst(SimulationSession.InspectDocument().Rigs.size() - 1u, 220u);
     }
     else if (const auto* Preset = ColourSpace::FindBuiltInColourRampPreset(Card.RampPresetId))
     {

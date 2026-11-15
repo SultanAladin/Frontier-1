@@ -11,7 +11,7 @@
 #include "Engine/GeometricRaster/Compute/ParticleVulkanExecutor.h"
 #include "Engine/Lifecycle/LifecycleSequence.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/ParticleSimulationSession.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldDescriptors.h"
 #include "Engine/SimulationSpace/PhysicsSpace/BroadphaseSolver.h"
@@ -378,9 +378,9 @@ int main()
     Rig.Kinematics.LifeMinSeconds  = 4.0f;
     Rig.Kinematics.LifeMaxSeconds  = 4.0f;
 
-    ParticleSpace::ParticleSimulationCoordinator ParticleCoord;
-    FRONTIER_REQUIRE(ParticleCoord.Initialize(ParticleDoc));
-    ParticleCoord.AttachPhysicsExtension(&Physics);
+    ParticleSpace::ParticleSimulationSession ParticleSession;
+    FRONTIER_REQUIRE(ParticleSession.Initialize(ParticleDoc));
+    ParticleSession.AttachPhysicsExtension(&Physics);
 
     // Build direct CPU test batch firing half into angled OBB shield and half into lightweight dynamic target sphere
     std::vector<ParticleSpace::ParticleSlot> CpuTestSlots(64u);
@@ -442,9 +442,9 @@ int main()
     FRONTIER_REQUIRE(TargetAfterParticles.LinearVelocity.X > 0.5f);
     FRONTIER_REQUIRE(TargetAfterParticles.PositionMeters.X > 10.52f);
 
-    // Also verify ParticleSimulationCoordinator Tick exports proxies cleanly
-    ParticleCoord.Tick(1.0 / 60.0);
-    FRONTIER_REQUIRE(ParticleCoord.InspectRigidColliders().size() == Proxies.size());
+    // Also verify ParticleSimulationSession Tick exports proxies cleanly
+    ParticleSession.Tick(1.0 / 60.0);
+    FRONTIER_REQUIRE(ParticleSession.InspectRigidColliders().size() == Proxies.size());
 
     // 7. GPU Vulkan 1.3 / SwiftShader ParticleAdvectCompute with PhysicsSpace RigidColliders
     bool GpuCollisionVerified = false;
@@ -586,7 +586,7 @@ int main()
     FRONTIER_REQUIRE(WriteOk != 0);
 
     // 9. Clean Finalize
-    ParticleCoord.Finalize();
+    ParticleSession.Finalize();
     Sequence.Finalize();
     FRONTIER_REQUIRE(!Physics.QueryInitialized());
 

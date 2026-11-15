@@ -37,7 +37,7 @@
 #include "Engine/Components/Panes/ViewportPanel.h"
 #include "Engine/Editor/Explorer/ContentBrowser.h"
 #include "Engine/Editor/Explorer/ProjectBrowser.h"
-#include "Engine/Editor/Workspaces/Simulation/VectorFieldViewportCoordinator.h"
+#include "Engine/Editor/Workspaces/Simulation/VectorFieldViewportSession.h"
 #include "Engine/Lifecycle/EditorLifecycle.h"
 #endif
 
@@ -585,8 +585,8 @@ int LaunchDesktopWorkspace(
     Components::HeadlessWorkspaceDockContainer StampDock {};
     Components::HeadlessWorkspaceDockContainer BakingDock {};
     ControlCentrePanel                         StandaloneControlCentre {};
-    Input::InputExtension                      InputCoordinator {};
-    InputCoordinator.Initialize();
+    Input::InputExtension                      InputParticipant {};
+    InputParticipant.Initialize();
 
 #if FRONTIER_EDITOR_ENABLED
     Workspaces::MaterialWorkspaceHost                  MaterialHost {};
@@ -604,7 +604,7 @@ int LaunchDesktopWorkspace(
     OutlinerPanel                                      ForceOutliner {};
     ViewportPanel                                      ForceViewport {};
     InspectorPanel                                     ForceInspector {};
-    Editor::Simulation::VectorFieldViewportCoordinator ForceCoordinator {};
+    Editor::Simulation::VectorFieldViewportSession ForceSession {};
     double                                             LastFrameDtSeconds        = 1.0 / 60.0;
     float                                              LastHostUiScale           = 1.0f;
     bool                                               EditorStackReady          = false;
@@ -907,7 +907,7 @@ int LaunchDesktopWorkspace(
         {
             std::string ForceDiag {};
             const std::filesystem::path SwiftShaderDir = RepositoryRootPath / "ExternalPackages/VulkanCompute/SwiftShader";
-            if (!ForceCoordinator.AttachInitializedSession(
+            if (!ForceSession.AttachInitializedSession(
                     ForceOutliner,
                     ForceViewport,
                     ForceInspector,
@@ -915,7 +915,7 @@ int LaunchDesktopWorkspace(
                     SwiftShaderDir,
                     ForceDiag))
             {
-                std::fprintf(stderr, "[FrontierHost] VectorFieldViewportCoordinator initialization failed: %s\n", ForceDiag.c_str());
+                std::fprintf(stderr, "[FrontierHost] VectorFieldViewportSession initialization failed: %s\n", ForceDiag.c_str());
                 return false;
             }
 
@@ -938,7 +938,7 @@ int LaunchDesktopWorkspace(
             VortexDesc.Motion.Waypoints[0]          = { -14.0f, -6.0f, 4.5f };
             VortexDesc.Motion.Waypoints[1]          = { -3.0f, 10.0f, 8.0f };
             VortexDesc.Motion.Waypoints[2]          = { 12.0f, -4.0f, 6.0f };
-            const OutlinerSlotToken VortexToken = ForceCoordinator.AddForceSourceEntry(VortexDesc, WindFolder);
+            const OutlinerSlotToken VortexToken = ForceSession.AddForceSourceEntry(VortexDesc, WindFolder);
 
             ForceSourceRecordEntry JetDesc {};
             JetDesc.Label         = "Cantilever Jet Plume";
@@ -948,7 +948,7 @@ int LaunchDesktopWorkspace(
             JetDesc.EulerDegrees  = { 0.0f, -12.0f, -145.0f };
             JetDesc.RadiusMeters  = 17.0f;
             JetDesc.Strength      = 26.0f;
-            (void)ForceCoordinator.AddForceSourceEntry(JetDesc, WindFolder);
+            (void)ForceSession.AddForceSourceEntry(JetDesc, WindFolder);
 
             ForceSourceRecordEntry BurstDesc {};
             BurstDesc.Label                        = "Orbital Radial Burst";
@@ -965,11 +965,11 @@ int LaunchDesktopWorkspace(
             BurstDesc.Motion.WaypointCount         = 2u;
             BurstDesc.Motion.Waypoints[0]          = { -12.0f, 15.0f, 6.0f };
             BurstDesc.Motion.Waypoints[1]          = { -4.0f, 15.0f, 6.0f };
-            (void)ForceCoordinator.AddForceSourceEntry(BurstDesc, WindFolder);
+            (void)ForceSession.AddForceSourceEntry(BurstDesc, WindFolder);
 
             ForceOutliner.SelectSingle(VortexToken);
             ForceOutliner.ConfigureFilterStripOpen(true);
-            ForceCoordinator.ConfigureSelectedWaypointIndex(1);
+            ForceSession.ConfigureSelectedWaypointIndex(1);
 
             ForceViewport.ConfigureExecutionMode(ViewportExecutionMode::Simulate, false);
             auto& Ov = ForceViewport.AccessForceOverlaySettings();
@@ -1237,10 +1237,10 @@ int LaunchDesktopWorkspace(
         uint32_t SurfaceH = InitialOptions.InitialHeightPx;
 
 #if !defined(__ANDROID__)
-        InputCoordinator.BeginTick();
-        DesktopWindow.PollOperatingEvents(InputCoordinator);
-        (void)InputCoordinator.TickExchange();
-        Input::InputExtension::AssignActiveCoordinator(&InputCoordinator);
+        InputParticipant.BeginTick();
+        DesktopWindow.PollOperatingEvents(InputParticipant);
+        (void)InputParticipant.TickExchange();
+        Input::InputExtension::AssignActiveExtension(&InputParticipant);
 
         const auto Extent = DesktopWindow.InspectExtent();
         if (Extent.SurfacePixelWidth == 0u || Extent.SurfacePixelHeight == 0u)
@@ -1307,9 +1307,9 @@ int LaunchDesktopWorkspace(
         }
 #endif
 
-        (void)Input::ImGuiInputAdapter::ForwardEditorExchangeToImGui(InputCoordinator, Io);
+        (void)Input::ImGuiInputAdapter::ForwardEditorExchangeToImGui(InputParticipant, Io);
 
-        const auto DroppedPaths = InputCoordinator.ConsumeDroppedFilePaths();
+        const auto DroppedPaths = InputParticipant.ConsumeDroppedFilePaths();
 #if FRONTIER_EDITOR_ENABLED
         if (CurrentSurface == ActiveHostSurface::ProjectBrowserSurface)
         {
@@ -1385,7 +1385,7 @@ int LaunchDesktopWorkspace(
         else if (CurrentSurface == ActiveHostSurface::WorldEditorSurface)
         {
             (void)EditorLoop.ExecuteExternalDesktopTick(Dt);
-            Input::InputExtension::AssignActiveCoordinator(&InputCoordinator);
+            Input::InputExtension::AssignActiveExtension(&InputParticipant);
             EditorLoop.PresentPrimaryEditorImGui(Dt);
         }
         else if (CurrentSurface == ActiveHostSurface::ParticleWorkspaceSurface)
@@ -1420,7 +1420,7 @@ int LaunchDesktopWorkspace(
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
             LastFrameDtSeconds = Dt;
             LastHostUiScale    = HostUiScale;
-            ForceCoordinator.StepSimulation(Dt);
+            ForceSession.StepSimulation(Dt);
             Components::ConfigureImGuiWorkspaceTheme(
                 ForceFieldDock.ActiveTabMetrics(),
                 StandaloneControlCentre.QueryThemeRepository());
@@ -1434,7 +1434,7 @@ int LaunchDesktopWorkspace(
             }
             ForceFieldDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
             WorkspaceAppearance::ClearOverlayPointerShield();
-            ForceCoordinator.AccessContentBrowser().PresentInImGuiHost(Dt, HostUiScale);
+            ForceSession.AccessContentBrowser().PresentInImGuiHost(Dt, HostUiScale);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
         else
@@ -1637,7 +1637,7 @@ int LaunchDesktopWorkspace(
     {
         VectorRasterizer.TeardownRasterizer();
     }
-    InputCoordinator.Finalize();
+    InputParticipant.Finalize();
 #if !defined(__ANDROID__)
     DesktopWindow.Finalize();
 #endif

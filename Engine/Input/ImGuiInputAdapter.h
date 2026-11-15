@@ -23,7 +23,7 @@ public:
 
     void IntakeSignalPacket(const InputSignalPacket& Packet) noexcept;
 
-    static std::size_t ForwardEditorExchangeToImGui(InputExtension& Coordinator, ImGuiIO& TargetIo) noexcept;
+    static std::size_t ForwardEditorExchangeToImGui(InputExtension& InputParticipant, ImGuiIO& TargetIo) noexcept;
 
 private:
     ImGuiIO* DestinationIo = nullptr; // [-] - Target Dear ImGui IO destination

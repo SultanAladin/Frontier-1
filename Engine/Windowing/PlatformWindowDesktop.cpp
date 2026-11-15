@@ -436,7 +436,7 @@ bool DesktopPlatformWindow::Initialize(const WindowConfigurationDescriptor& Desc
     return true;
 }
 
-void DesktopPlatformWindow::PollOperatingEvents(Input::InputExtension& InputCoordinator) noexcept
+void DesktopPlatformWindow::PollOperatingEvents(Input::InputExtension& InputParticipant) noexcept
 {
     if (GlfwWindowHandle == nullptr)
     {
@@ -446,26 +446,26 @@ void DesktopPlatformWindow::PollOperatingEvents(Input::InputExtension& InputCoor
     glfwPollEvents();
     RefreshCachedExtent();
 
-    struct ForwardToCoordinatorSink
+    struct ForwardToInputSink
     {
-        Input::InputExtension* Coordinator;
+        Input::InputExtension* InputParticipant;
 
         void IntakeSignalPacket(const Input::InputSignalPacket& Packet) noexcept
         {
-            (void)Coordinator->IntakeHardwareSignal(Packet);
+            (void)InputParticipant->IntakeHardwareSignal(Packet);
         }
     };
 
-    ForwardToCoordinatorSink Forwarder{ &InputCoordinator };
+    ForwardToInputSink Forwarder{ &InputParticipant };
     (void)CallbackExchange.DrainSignals(Forwarder);
 
     for (const std::string& PathEntry : PendingDroppedPaths)
     {
-        InputCoordinator.IntakeExternalDroppedPath(PathEntry);
+        InputParticipant.IntakeExternalDroppedPath(PathEntry);
     }
     PendingDroppedPaths.clear();
 
-    (void)InputCoordinator.FlushOutboundDirectives(*this);
+    (void)InputParticipant.FlushOutboundDirectives(*this);
 }
 
 void DesktopPlatformWindow::WaitOperatingEventsTimeout(double TimeoutSeconds) noexcept

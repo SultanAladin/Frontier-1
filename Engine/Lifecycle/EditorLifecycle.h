@@ -146,7 +146,7 @@ private:
     ControlCentrePanel                         ControlCentre          {};     // [-]     - Pull-down Control Centre & settings shade
     Editor::Explorer::ContentBrowser           ContentBrowserDrawer   {};     // [-]     - Pull-up ContentBrowser & ColourCodex drawer
     WorkspaceLifecycle                         Workspaces             {};     // [-]     - Multi-document workspace session loop
-    Input::InputExtension                      InputCoordinator       {};     // [-]     - Hardware input & OS feedback coordinator
+    Input::InputExtension                      InputParticipant       {};     // [-]     - Hardware input & OS feedback participant
     LifecycleSequence                          EditorSequence         {};     // [-]     - Registered GPU .slang overlay & editor hooks
     std::unique_ptr<GeometricRaster::ShowcaseWorldSceneBundle>       ShowcaseBundle       {}; // [-] - Mounted Cornell-Studio Gallery scene & Outliner tokens
     std::unique_ptr<GeometricRaster::TieredWorldRenderSequence>      ShowcaseRenderer     {}; // [-] - Calibrated Tier 1 GTX / Tier 2 RTX world renderer
@@ -219,7 +219,7 @@ inline WorkspaceLifecycle& EditorLifecycle::AccessWorkspaces() noexcept
 
 inline Input::InputExtension& EditorLifecycle::AccessInput() noexcept
 {
-    return InputCoordinator;
+    return InputParticipant;
 }
 
 inline TypographyRepository& EditorLifecycle::AccessTypography() noexcept

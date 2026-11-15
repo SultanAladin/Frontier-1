@@ -246,12 +246,12 @@ template <typename SurfaceType>
 concept PlatformWindowSurface = requires(
     SurfaceType&                         Surface,
     const WindowConfigurationDescriptor& Descriptor,
-    Input::InputExtension&               InputCoordinator,
+    Input::InputExtension&               InputParticipant,
     WindowPresentationMode               Mode,
     WindowAttributeMask                  Attributes)
 {
     { Surface.Initialize(Descriptor) }                        noexcept -> std::same_as<bool>;
-    { Surface.PollOperatingEvents(InputCoordinator) }         noexcept -> std::same_as<void>;
+    { Surface.PollOperatingEvents(InputParticipant) }         noexcept -> std::same_as<void>;
     { Surface.ApplyPresentationMode(Mode, 0u, 0u, 0u) }       noexcept -> std::same_as<bool>;
     { Surface.ApplyAttributeMask(Attributes) }                noexcept -> std::same_as<bool>;
     { Surface.Finalize() }                                    noexcept -> std::same_as<void>;
@@ -275,7 +275,7 @@ public:
     //--------------------------------------------------------------------------------------------------------------------
 
     [[nodiscard]] bool Initialize(const WindowConfigurationDescriptor& Descriptor) noexcept;
-    void               PollOperatingEvents(Input::InputExtension& InputCoordinator) noexcept;
+    void               PollOperatingEvents(Input::InputExtension& InputParticipant) noexcept;
     void               Finalize() noexcept;
 
     [[nodiscard]] bool ApplyPresentationMode(
@@ -353,7 +353,7 @@ public:
     //--------------------------------------------------------------------------------------------------------------------
 
     [[nodiscard]] bool Initialize(const WindowConfigurationDescriptor& Descriptor) noexcept;
-    void               PollOperatingEvents(Input::InputExtension& InputCoordinator) noexcept;
+    void               PollOperatingEvents(Input::InputExtension& InputParticipant) noexcept;
     void               WaitOperatingEventsTimeout(double TimeoutSeconds) noexcept;
     void               Finalize() noexcept;
 

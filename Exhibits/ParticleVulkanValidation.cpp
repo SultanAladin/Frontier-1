@@ -8,7 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/ParticleSpace/ParticleDocument.h"
-#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/ParticleSimulationSession.h"
 #include "Engine/ParticleSpace/Presets/ParticlePresetRepository.h"
 #include "Engine/ParticleSpace/Simulation/ParticleMetricsCollector.h"
 #include "Engine/GeometricRaster/Compute/ParticleVulkanExecutor.h"
@@ -65,7 +65,7 @@ int main()
     Expect(GpuReady, "Initialized real Vulkan 1.3 compute device (Hardware or SwiftShader)");
     Expect(Executor.InspectTelemetry().HardwareDeviceActive, "Vulkan 1.3 Advect + Reduction compute pipelines compiled cleanly");
 
-    // Prepare 512 live particles via ParticleSimulationCoordinator + active Vector Field vortex force
+    // Prepare 512 live particles via ParticleSimulationSession + active Vector Field vortex force
     ParticleSpace::ParticleDocument Doc = ParticleSpace::InstantiateDocumentFromPresetId("curl-fur-field");
     Doc.Rigs[0].SlotCapacity = 512u;
     const ParticleSpace::ParticleRig& Rig = Doc.Rigs[0];
@@ -81,7 +81,7 @@ int main()
     Vortex.EvaluatedCentreMeters = Vortex.CentreMeters;
     ForceAcc.AssignSources({ &Vortex, 1u });
 
-    ParticleSpace::ParticleSimulationCoordinator SeedExt {};
+    ParticleSpace::ParticleSimulationSession SeedExt {};
     (void)SeedExt.Initialize(Doc);
     SeedExt.TriggerBurst(0u, 360u);
     for (uint32_t F = 0u; F < 20u; ++F)

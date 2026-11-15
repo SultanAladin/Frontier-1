@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                               CONTENTBROWSER.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of Editor-tier ContentBrowser coordinator
+// 🧩 Implementation of Editor-tier ContentBrowser orchestrator
 
 #include "Engine/Editor/Explorer/ContentBrowser.h"
 

@@ -118,8 +118,8 @@ struct PointerOwnershipRegister
 
 [[nodiscard]] PointerOwnershipRegister& AccessPointerOwnershipRegister() noexcept
 {
-    static PointerOwnershipRegister CoordinatorRegister{};
-    return CoordinatorRegister;
+    static PointerOwnershipRegister OwnershipRegister{};
+    return OwnershipRegister;
 }
 
 [[nodiscard]] bool QueryOverlayShieldContains(Point2D PhysicalCursor) noexcept

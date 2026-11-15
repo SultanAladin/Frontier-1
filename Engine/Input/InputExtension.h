@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                                INPUTEXTENSION.H
 ============================================================================================================================================*/
-// 🧩 Input lifecycle coordinator: hardware signal intake, split RuntimeInputExchange & EditorInputExchange routing, and OS feedback
+// 🧩 Input lifecycle participant: hardware signal intake, split RuntimeInputExchange & EditorInputExchange routing, and OS feedback
 
 #pragma once
 
@@ -142,7 +142,7 @@ struct EditorInputSnapshot
 };
 
 //------------------------------------------------------------------------------------------------------------------------
-//                                                 LIFECYCLE COORDINATOR
+//                                                 LIFECYCLE PARTICIPANT
 //------------------------------------------------------------------------------------------------------------------------
 
 class InputExtension
@@ -195,10 +195,10 @@ public:
     [[nodiscard]] const InputExchange&       InspectEditorExchange()              const noexcept;
     [[nodiscard]] InputExchange&             AccessRuntimeExchange()              noexcept;
     [[nodiscard]] InputExchange&             AccessEditorExchange()               noexcept;
-    [[nodiscard]] bool                       CoordinatorActive()                  const noexcept;
+    [[nodiscard]] bool                       ExtensionActive()                  const noexcept;
 
-    static void                              AssignActiveCoordinator(InputExtension* Coordinator) noexcept;
-    [[nodiscard]] static InputExtension*     QueryActiveCoordinator() noexcept;
+    static void                              AssignActiveExtension(InputExtension* InputParticipant) noexcept;
+    [[nodiscard]] static InputExtension*     QueryActiveExtension() noexcept;
     [[nodiscard]] static const EditorInputSnapshot& InspectActiveEditorSnapshot() noexcept;
 
 private:
@@ -215,7 +215,7 @@ private:
         bool     Seeded               = false;
     };
 
-    InputExchange                                            HardwareIntakeExchange{}; // [-]   - Raw OS->Coordinator intake ring
+    InputExchange                                            HardwareIntakeExchange{}; // [-]   - Raw OS->InputExtension intake ring
     InputExchange                                            RuntimeExchange{};        // [-]   - Runtime game/simulation/camera stream
     InputExchange                                            EditorExchange{};         // [-]   - Editor UI/authoring/ImGui stream
     std::array<bool, MaximumScanCodeCount>                   HeldScanCodes{};          // [-]   - Runtime scancode residency array

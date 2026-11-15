@@ -236,11 +236,11 @@ int main()
         return 1;
     }
 
-    InputExtension         Coordinator{};
+    InputExtension         InputParticipant{};
     HeadlessPlatformWindow Window{};
 
-    Coordinator.Initialize();
-    Coordinator.ConfigureEditorChannelEnabled(true);
+    InputParticipant.Initialize();
+    InputParticipant.ConfigureEditorChannelEnabled(true);
     if (!VerifyCondition(
             Window.Initialize(WindowConfigurationDescriptor::ConstructApplicationWindow("Frontier Validation", 1920, 1080)),
             "Window initialization"))
@@ -305,25 +305,25 @@ int main()
         (void)Window.QueueSyntheticSignal(Packet);
     }
 
-    Coordinator.RequestCursorConfinement(CursorConfinementMode::LockedRelativeHidden);
-    (void)Coordinator.RequestHapticFeedback(HapticFeedbackDirective{
+    InputParticipant.RequestCursorConfinement(CursorConfinementMode::LockedRelativeHidden);
+    (void)InputParticipant.RequestHapticFeedback(HapticFeedbackDirective{
         .DeviceIdentifier       = 0,
         .LowFrequencyAmplitude  = 0.80f,
         .HighFrequencyAmplitude = 0.35f,
         .DurationMilliseconds   = 16u,
     });
 
-    Window.PollOperatingEvents(Coordinator);
+    Window.PollOperatingEvents(InputParticipant);
 
     CountingSignalSink Downstream{};
-    const std::size_t  Drained = Coordinator.TickExchangeWithSink(Downstream);
+    const std::size_t  Drained = InputParticipant.TickExchangeWithSink(Downstream);
 
-    const auto& Pointer        = Coordinator.InspectPointerSnapshot();
-    const auto& EditorSnapshot = Coordinator.InspectEditorSnapshot();
+    const auto& Pointer        = InputParticipant.InspectPointerSnapshot();
+    const auto& EditorSnapshot = InputParticipant.InspectEditorSnapshot();
     if (!VerifyCondition(Drained == 6, "Drained all 6 hardware packets") ||
         !VerifyCondition(Downstream.ReceivedPackets == 6 && Downstream.LastKeyCode == 17, "Downstream runtime sink received packets") ||
-        !VerifyCondition(Coordinator.InspectEditorExchange().PendingSignalCount() == 6, "EditorExchange queued all 6 packets independently") ||
-        !VerifyCondition(Coordinator.QueryScanCodeHeld(17), "Key 17 consolidated down in Runtime") ||
+        !VerifyCondition(InputParticipant.InspectEditorExchange().PendingSignalCount() == 6, "EditorExchange queued all 6 packets independently") ||
+        !VerifyCondition(InputParticipant.QueryScanCodeHeld(17), "Key 17 consolidated down in Runtime") ||
         !VerifyCondition(EditorSnapshot.QueryKeyPressed(InputLogicalKey::W, false) && EditorSnapshot.ControlHeld, "EditorSnapshot key + Ctrl") ||
         !VerifyCondition(EditorSnapshot.QueryTypedUtf8() == "U", "EditorSnapshot UTF-8 codepoint consolidated") ||
         !VerifyCondition((Pointer.HeldButtonsMask & 1u) != 0u, "Pointer button 0 consolidated down") ||
@@ -331,7 +331,7 @@ int main()
         !VerifyCondition(std::fabs(Pointer.PositionX - 420.5f) < 1e-4f, "Pointer X position") ||
         !VerifyCondition(std::fabs(Pointer.TickDeltaX - 14.0f) < 1e-4f, "Pointer delta X") ||
         !VerifyCondition(std::fabs(Pointer.ScrollDeltaY - 3.0f) < 1e-4f, "Scroll vertical delta") ||
-        !VerifyCondition(Coordinator.ActiveTouchContactCount() == 1u, "Multi-touch contact slot 0 active") ||
+        !VerifyCondition(InputParticipant.ActiveTouchContactCount() == 1u, "Multi-touch contact slot 0 active") ||
         !VerifyCondition(Window.AppliedCursorMode() == CursorConfinementMode::LockedRelativeHidden, "Outbound cursor confinement") ||
         !VerifyCondition(Window.AppliedHapticPulseCount() == 1, "Outbound haptic pulse delivered"))
     {
@@ -344,9 +344,9 @@ int main()
         ImGui::SetCurrentContext(AdapterCtx);
         ImGuiIO& AdapterIo = ImGui::GetIO();
         AdapterIo.IniFilename = nullptr;
-        const std::size_t ForwardedCount = ImGuiInputAdapter::ForwardEditorExchangeToImGui(Coordinator, AdapterIo);
+        const std::size_t ForwardedCount = ImGuiInputAdapter::ForwardEditorExchangeToImGui(InputParticipant, AdapterIo);
         ImGui::DestroyContext(AdapterCtx);
-        if (!VerifyCondition(ForwardedCount == 6 && Coordinator.InspectEditorExchange().PendingSignalCount() == 0,
+        if (!VerifyCondition(ForwardedCount == 6 && InputParticipant.InspectEditorExchange().PendingSignalCount() == 0,
                              "ImGuiInputAdapter drained EditorExchange cleanly"))
         {
             return 1;
@@ -354,8 +354,8 @@ int main()
     }
 
     // Verify InputRoutingTarget::RuntimeExchangeOnly isolates EditorExchange
-    Coordinator.BeginTick();
-    Coordinator.ConfigureRoutingTarget(InputRoutingTarget::RuntimeExchangeOnly);
+    InputParticipant.BeginTick();
+    InputParticipant.ConfigureRoutingTarget(InputRoutingTarget::RuntimeExchangeOnly);
     {
         InputSignalPacket ExclusivePacket{};
         ExclusivePacket.TimestampNanoseconds = 200'000ULL;
@@ -363,25 +363,25 @@ int main()
         ExclusivePacket.LogicalKey           = InputLogicalKey::A;
         ExclusivePacket.Category             = InputSignalCategory::KeyboardKey;
         ExclusivePacket.Transition           = ButtonTransitionCategory::Pressed;
-        (void)Coordinator.IntakeHardwareSignal(ExclusivePacket);
+        (void)InputParticipant.IntakeHardwareSignal(ExclusivePacket);
     }
-    (void)Coordinator.TickExchange();
-    if (!VerifyCondition(Coordinator.QueryScanCodeHeld(30) &&
-                             !Coordinator.InspectEditorSnapshot().QueryKeyPressed(InputLogicalKey::A, false) &&
-                             Coordinator.InspectEditorExchange().PendingSignalCount() == 0,
+    (void)InputParticipant.TickExchange();
+    if (!VerifyCondition(InputParticipant.QueryScanCodeHeld(30) &&
+                             !InputParticipant.InspectEditorSnapshot().QueryKeyPressed(InputLogicalKey::A, false) &&
+                             InputParticipant.InspectEditorExchange().PendingSignalCount() == 0,
                          "RuntimeExchangeOnly isolates EditorExchange"))
     {
         return 1;
     }
 
-    const uint64_t TotalDrained = Coordinator.InspectRuntimeExchange().ExchangedSignalTotal();
+    const uint64_t TotalDrained = InputParticipant.InspectRuntimeExchange().ExchangedSignalTotal();
     const float    FinalCursorX = Pointer.PositionX;
     const float    FinalCursorY = Pointer.PositionY;
     const float    FinalScroll  = Pointer.ScrollDeltaY;
     const uint32_t FinalHaptics = Window.AppliedHapticPulseCount();
 
-    Coordinator.BeginTick();
-    if (!VerifyCondition(std::fabs(Coordinator.InspectPointerSnapshot().TickDeltaX) < 1e-6f, "Per-tick deltas reset cleanly"))
+    InputParticipant.BeginTick();
+    if (!VerifyCondition(std::fabs(InputParticipant.InspectPointerSnapshot().TickDeltaX) < 1e-6f, "Per-tick deltas reset cleanly"))
     {
         return 1;
     }
@@ -404,7 +404,7 @@ int main()
     RingStress.Finalize();
 
     Window.Finalize();
-    Coordinator.Finalize();
+    InputParticipant.Finalize();
 
     if (!GenerateInputVisualSnapshot(TotalDrained, FinalCursorX, FinalCursorY, FinalScroll, FinalHaptics))
     {

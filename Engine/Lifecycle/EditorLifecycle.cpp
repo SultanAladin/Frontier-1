@@ -126,11 +126,11 @@ bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration
         return false;
     }
 
-    InputCoordinator.Initialize();
+    InputParticipant.Initialize();
 
     if (!Workspaces.Initialize(false))
     {
-        InputCoordinator.Finalize();
+        InputParticipant.Finalize();
         DockContainer.Finalize();
         return false;
     }
@@ -142,7 +142,7 @@ bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration
     if (!Workspaces.OpenSession(DefaultDocument).Valid())
     {
         Workspaces.Finalize();
-        InputCoordinator.Finalize();
+        InputParticipant.Finalize();
         DockContainer.Finalize();
         return false;
     }
@@ -234,7 +234,7 @@ bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration
     if (!EditorSequence.Initialize())
     {
         Workspaces.Finalize();
-        InputCoordinator.Finalize();
+        InputParticipant.Finalize();
         DockContainer.Finalize();
         return false;
     }
@@ -1369,9 +1369,9 @@ bool EditorLifecycle::ExecuteAuthoringTick(double Δt)
     const double SafeStep = (std::isfinite(Δt) && Δt > 0.0) ? std::min(Δt, MaxStep) : 0.0;
     CurrentStepSeconds    = SafeStep;
 
-    InputCoordinator.BeginTick();
-    DockContainer.PollOperatingWindows(InputCoordinator);
-    (void)InputCoordinator.TickExchange();
+    InputParticipant.BeginTick();
+    DockContainer.PollOperatingWindows(InputParticipant);
+    (void)InputParticipant.TickExchange();
 
     if (Windowing::HeadlessPlatformWindow* Primary = DockContainer.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
     {
@@ -1381,7 +1381,7 @@ bool EditorLifecycle::ExecuteAuthoringTick(double Δt)
         }
         else
         {
-            (void)InputCoordinator.FlushOutboundDirectives(*Primary);
+            (void)InputParticipant.FlushOutboundDirectives(*Primary);
         }
     }
 
@@ -1533,7 +1533,7 @@ void EditorLifecycle::Finalize() noexcept
         TypographyRepository::AssignCurrent(nullptr);
     }
 
-    InputCoordinator.Finalize();
+    InputParticipant.Finalize();
     DockContainer.Finalize();
 
     OutlinerPaneToken    = {};

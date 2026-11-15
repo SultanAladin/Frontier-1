@@ -53,11 +53,11 @@ bool RuntimeLifecycle::Initialize(const RuntimeLoopConfiguration& Configuration)
         return false;
     }
 
-    InputCoordinator.Initialize();
+    InputParticipant.Initialize();
 
     if (!DomainSequence.Initialize())
     {
-        InputCoordinator.Finalize();
+        InputParticipant.Finalize();
 #if !defined(__ANDROID__)
         if (DesktopSurfaceBound)
         {
@@ -83,7 +83,7 @@ bool RuntimeLifecycle::ExecuteSingleTick(double Δt) noexcept
         return false;
     }
 
-    InputCoordinator.BeginTick();
+    InputParticipant.BeginTick();
 
     Windowing::WindowExtentReading Extent{};
     bool                           WindowClosing = false;
@@ -91,20 +91,20 @@ bool RuntimeLifecycle::ExecuteSingleTick(double Δt) noexcept
 #if !defined(__ANDROID__)
     if (DesktopSurfaceBound)
     {
-        DesktopSurface.PollOperatingEvents(InputCoordinator);
+        DesktopSurface.PollOperatingEvents(InputParticipant);
         WindowClosing = DesktopSurface.CloseRequested();
         Extent        = DesktopSurface.InspectExtent();
     }
     else
 #endif
     {
-        HeadlessSurface.PollOperatingEvents(InputCoordinator);
+        HeadlessSurface.PollOperatingEvents(InputParticipant);
         WindowClosing = HeadlessSurface.CloseRequested();
         Extent        = HeadlessSurface.InspectExtent();
     }
 
     ++PolledTicksCounter;
-    DrainedSignalsCounter += InputCoordinator.TickExchange();
+    DrainedSignalsCounter += InputParticipant.TickExchange();
 
     if (WindowClosing)
     {
@@ -136,12 +136,12 @@ bool RuntimeLifecycle::ExecuteSingleTick(double Δt) noexcept
 #if !defined(__ANDROID__)
     if (DesktopSurfaceBound)
     {
-        FlushedFeedbackCount += InputCoordinator.FlushOutboundDirectives(DesktopSurface);
+        FlushedFeedbackCount += InputParticipant.FlushOutboundDirectives(DesktopSurface);
     }
     else
 #endif
     {
-        FlushedFeedbackCount += InputCoordinator.FlushOutboundDirectives(HeadlessSurface);
+        FlushedFeedbackCount += InputParticipant.FlushOutboundDirectives(HeadlessSurface);
     }
 
     return !TerminationRequested;
@@ -199,7 +199,7 @@ void RuntimeLifecycle::Finalize() noexcept
 
     // 🔴 CRITICAL: Tear down domain participants first, then input exchange, then OS window surface.
     DomainSequence.Finalize();
-    InputCoordinator.Finalize();
+    InputParticipant.Finalize();
 
 #if !defined(__ANDROID__)
     if (DesktopSurfaceBound)

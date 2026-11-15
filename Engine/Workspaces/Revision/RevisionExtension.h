@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                              REVISIONEXTENSION.H
 ============================================================================================================================================*/
-// 🧩 Application-wide 750 MiB revision coordinator providing global sequence Undo/Redo and cross-tab LRU compaction
+// 🧩 Application-wide 750 MiB revision extension providing global sequence Undo/Redo and cross-tab LRU compaction
 
 #pragma once
 

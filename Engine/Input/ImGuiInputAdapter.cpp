@@ -165,13 +165,13 @@ void ImGuiInputAdapter::IntakeSignalPacket(const InputSignalPacket& Packet) noex
     }
 }
 
-std::size_t ImGuiInputAdapter::ForwardEditorExchangeToImGui(InputExtension& Coordinator, ImGuiIO& TargetIo) noexcept
+std::size_t ImGuiInputAdapter::ForwardEditorExchangeToImGui(InputExtension& InputParticipant, ImGuiIO& TargetIo) noexcept
 {
     ImGuiInputAdapter Adapter(TargetIo);
-    const std::size_t Drained = Coordinator.DrainEditorExchange(Adapter);
+    const std::size_t Drained = InputParticipant.DrainEditorExchange(Adapter);
 
     // Keep modifier readings synchronized with consolidated EditorSnapshot even on quiet steps.
-    const EditorInputSnapshot& Snapshot = Coordinator.InspectEditorSnapshot();
+    const EditorInputSnapshot& Snapshot = InputParticipant.InspectEditorSnapshot();
     TargetIo.AddKeyEvent(ImGuiMod_Shift, Snapshot.ShiftHeld);
     TargetIo.AddKeyEvent(ImGuiMod_Ctrl, Snapshot.ControlHeld);
     TargetIo.AddKeyEvent(ImGuiMod_Alt, Snapshot.AltHeld);

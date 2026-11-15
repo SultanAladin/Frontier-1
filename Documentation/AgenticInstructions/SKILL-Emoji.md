@@ -61,7 +61,7 @@ Each marker carries a fixed technical meaning — use it for its meaning, never 
 /*============================================================================================================================================
                                                         INPUTEXTENSION.H
 ============================================================================================================================================*/
-// 🧩 Input lifecycle coordinator: hardware intake polling and command routing across desktop and mobile surfaces
+// 🧩 Input lifecycle participant: hardware intake polling and command routing across desktop and mobile surfaces
 ```
 
 ### 1.2 Comment Usage

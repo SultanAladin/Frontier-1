@@ -9,14 +9,14 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/ColourSpace/ColourAssetCoordinator.h"
+#include "Engine/ColourSpace/ColourAssetRegister.h"
 #include "Engine/ColourSpace/ColourSourceTypes.h"
 #include "Engine/Components/Controls/ColourRampEditor.h"
 #include "Engine/Components/Controls/ColourSwatchPicker.h"
 #include "Engine/Components/Controls/ScalarCurveEditor.h"
 #include "Engine/Components/Controls/SimulationTimeRuler.h"
 #include "Engine/Components/Diagnostics/LogStreamDrawer.h"
-#include "Engine/ParticleSpace/ParticleSimulationCoordinator.h"
+#include "Engine/ParticleSpace/ParticleSimulationSession.h"
 #include "Engine/GeometricRaster/Compute/ParticleVulkanExecutor.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldDescriptors.h"
 #include "Engine/Workspaces/Revision/RevisionTracker.h"
@@ -241,8 +241,8 @@ public:
     uint32_t                           ParameterRevision= 0u;
 
     // Shared sub-component sessions & live C++ ParticleSpace runtime
-    ColourSpace::ColourAssetCoordinator          ColourCoordinator   {};
-    ParticleSpace::ParticleSimulationCoordinator      SimulationCoordinator {};
+    ColourSpace::ColourAssetRegister          ColourRegister   {};
+    ParticleSpace::ParticleSimulationSession      SimulationSession {};
     ParticleSpace::ParticleVulkanExecutor VulkanExecutor      {};
     ColourRampEditorSession               RampEditorSession   {};
     ColourSwatchPickerSession          SwatchSession     {};
