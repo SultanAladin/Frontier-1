@@ -38,15 +38,18 @@ struct StrandCameraSpec
 //                                                  FUNCTION PROTOTYPES
 //------------------------------------------------------------------------------------------------------------------------
 
-/// Single-rig bundle for multi-rig Z-buffered strand scene rendering.
+/// Single-rig bundle for multi-rig Z-buffered strand & spline scene rendering.
 struct DynamicStrandRigView
 {
-    const ParticleRig*            Rig            = nullptr;
-    std::span<const ParticleSlot> Slots          {};
-    std::span<const StrandVertex> StrandVertices {};
+    const ParticleRig*            Rig                   = nullptr;
+    std::span<const ParticleSlot> Slots                 {};
+    std::span<const StrandVertex> StrandVertices        {};
+    float                         ElapsedSeconds        = 0.0f;
+    bool                          ForcePeakArcDischarge = false;
+    InteractiveColliderSpec       Collider              {};
 };
 
-/// Renders a live dynamic-strand ParticleRig (20-node StrandVertices + leaves + hardware props + floor grid) into RGBA8 sRGB.
+/// Renders a live dynamic-strand or spline ParticleRig into RGBA8 sRGB.
 void RenderDynamicStrandRigRgba8(
     const ParticleRig&            Rig,
     std::span<const ParticleSlot> Slots,
@@ -54,7 +57,9 @@ void RenderDynamicStrandRigRgba8(
     const StrandCameraSpec&       Camera,
     int                           Width,
     int                           Height,
-    std::vector<uint8_t>&         OutRgba8);
+    std::vector<uint8_t>&         OutRgba8,
+    float                         ElapsedSeconds        = 0.0f,
+    bool                          ForcePeakArcDischarge = false);
 
 /// Renders multiple dynamic-strand ParticleRigs together into a shared Z-buffered RGBA8 sRGB frame.
 void RenderDynamicStrandSceneRgba8(

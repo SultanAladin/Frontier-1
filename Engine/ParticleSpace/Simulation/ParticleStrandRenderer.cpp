@@ -10,6 +10,7 @@
 #include "Engine/ParticleSpace/Simulation/ParticleStrandRenderer.h"
 
 #include "Engine/ParticleSpace/Dynamics/DynamicStrandSolver.h"
+#include "Engine/ParticleSpace/Dynamics/SplineEnsembleSolver.h"
 
 #include <algorithm>
 #include <array>
@@ -142,6 +143,18 @@ struct PixelCanvas
         if (WriteDepth && A > 0.45f) Depth[PIdx] = std::min(Depth[PIdx], ViewZ);
     }
 
+    void AddPixel(int X, int Y, float ViewZ, Vec3 ColLin, float Alpha, bool DepthTest = true) noexcept
+    {
+        if (X < 0 || X >= Width || Y < 0 || Y >= Height || Alpha <= 0.002f) return;
+        const std::size_t PIdx = static_cast<std::size_t>(Y * Width + X);
+        if (DepthTest && ViewZ > Depth[PIdx] + 0.015f) return;
+        const float A = std::max(0.0f, Alpha);
+        const std::size_t CIdx = PIdx * 3u;
+        RgbLin[CIdx + 0] += ColLin.X * A;
+        RgbLin[CIdx + 1] += ColLin.Y * A;
+        RgbLin[CIdx + 2] += ColLin.Z * A;
+    }
+
     void ExportSrgbRgba8(std::vector<uint8_t>& OutRgba8) const
     {
         OutRgba8.resize(static_cast<std::size_t>(Width * Height * 4));
@@ -240,6 +253,224 @@ void RasterizeScreenSegment(
     }
 }
 
+void RasterizeAdditiveSegment(
+    PixelCanvas& Fb,
+    float X0, float Y0, float Z0,
+    float X1, float Y1, float Z1,
+    float HalfWidthPx,
+    Vec3 ColLin,
+    float Alpha,
+    bool DepthTest = true) noexcept
+{
+    if (Alpha <= 0.002f) return;
+    const float Feather = std::max(0.9f, HalfWidthPx * 0.45f);
+    const float Pad     = HalfWidthPx + Feather + 0.6f;
+    const int Ix0 = std::clamp(static_cast<int>(std::floor(std::min(X0, X1) - Pad)), 0, Fb.Width - 1);
+    const int Ix1 = std::clamp(static_cast<int>(std::ceil(std::max(X0, X1) + Pad)), 0, Fb.Width - 1);
+    const int Iy0 = std::clamp(static_cast<int>(std::floor(std::min(Y0, Y1) - Pad)), 0, Fb.Height - 1);
+    const int Iy1 = std::clamp(static_cast<int>(std::ceil(std::max(Y0, Y1) + Pad)), 0, Fb.Height - 1);
+    if (Ix0 > Ix1 || Iy0 > Iy1) return;
+
+    const float Dx = X1 - X0;
+    const float Dy = Y1 - Y0;
+    const float Len2 = std::max(1e-5f, Dx * Dx + Dy * Dy);
+    const float InvZ0 = 1.0f / std::max(0.08f, Z0);
+    const float InvZ1 = 1.0f / std::max(0.08f, Z1);
+
+    for (int Y = Iy0; Y <= Iy1; ++Y)
+    {
+        const float Py = static_cast<float>(Y) + 0.5f;
+        for (int X = Ix0; X <= Ix1; ++X)
+        {
+            const float Px = static_cast<float>(X) + 0.5f;
+            const float T  = std::clamp(((Px - X0) * Dx + (Py - Y0) * Dy) / Len2, 0.0f, 1.0f);
+            const float Cx = X0 + Dx * T;
+            const float Cy = Y0 + Dy * T;
+            const float D  = std::hypot(Px - Cx, Py - Cy);
+            if (D > HalfWidthPx + Feather) continue;
+            const float Cov = SmoothStepInv(HalfWidthPx + Feather, std::max(0.0f, HalfWidthPx - 0.35f), D);
+            const float Iz  = InvZ0 * (1.0f - T) + InvZ1 * T;
+            Fb.AddPixel(X, Y, 1.0f / std::max(1e-6f, Iz), ColLin, Alpha * Cov, DepthTest);
+        }
+    }
+}
+
+/// Depth-of-field bokeh aperture disc or glowing pinpoint star core (1:1 SoftwarePreviewEngine.js lines 5366-5408).
+void RasterizeBokehDisc(
+    PixelCanvas& Fb,
+    float Cx, float Cy, float ViewZ,
+    float RadiusPx,
+    Vec3 ColMid,
+    Vec3 ColBright,
+    float Alpha,
+    bool IsLargeApertureBokeh) noexcept
+{
+    if (Alpha <= 0.004f || RadiusPx <= 0.15f) return;
+    const float MaxR = IsLargeApertureBokeh ? (RadiusPx + 1.5f) : (RadiusPx * 2.5f + 1.5f);
+    const int Ix0 = std::clamp(static_cast<int>(std::floor(Cx - MaxR)), 0, Fb.Width - 1);
+    const int Ix1 = std::clamp(static_cast<int>(std::ceil(Cx + MaxR)), 0, Fb.Width - 1);
+    const int Iy0 = std::clamp(static_cast<int>(std::floor(Cy - MaxR)), 0, Fb.Height - 1);
+    const int Iy1 = std::clamp(static_cast<int>(std::ceil(Cy + MaxR)), 0, Fb.Height - 1);
+    if (Ix0 > Ix1 || Iy0 > Iy1) return;
+
+    const Vec3 White { 1.0f, 1.0f, 1.0f };
+    for (int Y = Iy0; Y <= Iy1; ++Y)
+    {
+        const float Dy = static_cast<float>(Y) + 0.5f - Cy;
+        for (int X = Ix0; X <= Ix1; ++X)
+        {
+            const float Dx = static_cast<float>(X) + 0.5f - Cx;
+            const float Dist = std::hypot(Dx, Dy);
+            if (IsLargeApertureBokeh)
+            {
+                if (Dist > RadiusPx + 0.9f) continue;
+                const float U = Dist / std::max(0.5f, RadiusPx);
+                // Calibrated linear-space translucent lens bokeh (matches Canvas 2D sRGB alpha 0.36..0.44 -> linear ~0.07..0.13)
+                float Weight = 0.0f;
+                Vec3  Tint   = ColBright;
+                if (U < 0.72f)
+                {
+                    const float K = U / 0.72f;
+                    Weight = 0.095f * (1.0f - K) + 0.055f * K;
+                    Tint   = Mix3(ColBright, ColMid, K * 0.55f);
+                }
+                else if (U < 0.93f)
+                {
+                    const float K = (U - 0.72f) / 0.21f;
+                    Weight = 0.055f + 0.068f * std::sin(K * kPi);
+                    Tint   = Mix3(ColMid, ColBright, 0.85f);
+                }
+                else
+                {
+                    const float K = std::clamp((U - 0.93f) / 0.10f, 0.0f, 1.0f);
+                    Weight = 0.065f * (1.0f - K);
+                    Tint   = ColBright;
+                }
+                Fb.AddPixel(X, Y, ViewZ, Tint, Alpha * Weight, true);
+            }
+            else
+            {
+                const float HaloR = RadiusPx * 2.45f;
+                if (Dist > HaloR) continue;
+                const float U = Dist / std::max(0.4f, HaloR);
+                const float HaloW = (1.0f - U) * (1.0f - U) * 0.22f;
+                const float CoreR = std::max(0.95f, RadiusPx * 0.62f);
+                const float CoreW = SmoothStepInv(CoreR + 0.65f, std::max(0.0f, CoreR - 0.30f), Dist) * 0.94f;
+                const Vec3  Col   = ColMid * HaloW + Mix3(ColBright, White, 0.78f) * CoreW;
+                Fb.AddPixel(X, Y, ViewZ, Col, Alpha, true);
+            }
+        }
+    }
+}
+
+/// Additive radial flash (white-hot centre -> colored halo) for dielectric arc contacts & plasma cores.
+void RasterizeRadialFlash(
+    PixelCanvas& Fb,
+    float Cx, float Cy, float ViewZ,
+    float RadiusPx,
+    Vec3 ColHalo,
+    float Intensity,
+    bool DepthTest = false) noexcept
+{
+    if (Intensity <= 0.005f || RadiusPx <= 0.5f) return;
+    const int Ix0 = std::clamp(static_cast<int>(std::floor(Cx - RadiusPx - 1.0f)), 0, Fb.Width - 1);
+    const int Ix1 = std::clamp(static_cast<int>(std::ceil(Cx + RadiusPx + 1.0f)), 0, Fb.Width - 1);
+    const int Iy0 = std::clamp(static_cast<int>(std::floor(Cy - RadiusPx - 1.0f)), 0, Fb.Height - 1);
+    const int Iy1 = std::clamp(static_cast<int>(std::ceil(Cy + RadiusPx + 1.0f)), 0, Fb.Height - 1);
+    if (Ix0 > Ix1 || Iy0 > Iy1) return;
+
+    const Vec3 White { 1.0f, 1.0f, 1.0f };
+    for (int Y = Iy0; Y <= Iy1; ++Y)
+    {
+        const float Dy = static_cast<float>(Y) + 0.5f - Cy;
+        for (int X = Ix0; X <= Ix1; ++X)
+        {
+            const float Dx = static_cast<float>(X) + 0.5f - Cx;
+            const float U  = std::hypot(Dx, Dy) / std::max(0.5f, RadiusPx);
+            if (U >= 1.0f) continue;
+            const float Inv = 1.0f - U;
+            const float CoreW = std::pow(Inv, 4.2f) * 0.95f;
+            const float HaloW = std::pow(Inv, 1.85f) * 0.55f;
+            const Vec3  Rgb   = White * CoreW + ColHalo * HaloW;
+            Fb.AddPixel(X, Y, ViewZ, Rgb, Intensity, DepthTest);
+        }
+    }
+}
+
+/// Forward declaration for solid sphere shading helper defined below.
+void RasterizeLitSphere(PixelCanvas& Fb, const ResolvedCamera& Cam, const HardwareSphereAccent& Sph) noexcept;
+
+/// Renders a 3D dark translucent core sphere (occluder) + glowing horizontal rings (bokeh-object-pulse & electrodes).
+void RasterizeDarkCoreSphereWithRings(
+    PixelCanvas& Fb,
+    const ResolvedCamera& Cam,
+    Vec3 Centre,
+    float Radius,
+    Vec3 BaseLin,
+    Vec3 RingCol,
+    bool IncludeCrownRing) noexcept
+{
+    // Dark obsidian translucent sphere writing depth so back-side ribbons occlude cleanly (no warm highlight)
+    float Cx, Cy, Cz;
+    if (Cam.Project(Centre, Cx, Cy, Cz))
+    {
+        const float RadPx = (Radius * Cam.FocalPx) / std::max(0.25f, Cz);
+        const int Ix0 = std::clamp(static_cast<int>(std::floor(Cx - RadPx - 1.0f)), 0, Fb.Width - 1);
+        const int Ix1 = std::clamp(static_cast<int>(std::ceil(Cx + RadPx + 1.0f)), 0, Fb.Width - 1);
+        const int Iy0 = std::clamp(static_cast<int>(std::floor(Cy - RadPx - 1.0f)), 0, Fb.Height - 1);
+        const int Iy1 = std::clamp(static_cast<int>(std::ceil(Cy + RadPx + 1.0f)), 0, Fb.Height - 1);
+        for (int Y = Iy0; Y <= Iy1; ++Y)
+        {
+            const float Dy = (static_cast<float>(Y) + 0.5f - Cy) / std::max(1.0f, RadPx);
+            for (int X = Ix0; X <= Ix1; ++X)
+            {
+                const float Dx = (static_cast<float>(X) + 0.5f - Cx) / std::max(1.0f, RadPx);
+                const float R2 = Dx * Dx + Dy * Dy;
+                if (R2 > 1.0f) continue;
+                const float Nz   = std::sqrt(std::max(0.0f, 1.0f - R2));
+                const float Rim  = std::pow(1.0f - Nz, 2.8f);
+                const Vec3  Col  = BaseLin * (0.65f + 0.35f * Nz) + RingCol * (Rim * 0.085f);
+                const float DepthZ = Cz - Nz * Radius;
+                Fb.BlendPixel(X, Y, DepthZ, Col, 0.86f, true);
+            }
+        }
+    }
+
+    // Subtle glowing rim ring on equator
+    constexpr int Segs = 40;
+    const float EqR = Radius * 1.015f;
+    for (int S = 0; S < Segs; ++S)
+    {
+        const float A0 = (static_cast<float>(S) / static_cast<float>(Segs)) * kTwoPi;
+        const float A1 = (static_cast<float>(S + 1) / static_cast<float>(Segs)) * kTwoPi;
+        const Vec3 P0 { Centre.X + std::cos(A0) * EqR, Centre.Y, Centre.Z + std::sin(A0) * EqR };
+        const Vec3 P1 { Centre.X + std::cos(A1) * EqR, Centre.Y, Centre.Z + std::sin(A1) * EqR };
+        float X0, Y0, Z0, X1, Y1, Z1;
+        if (Cam.Project(P0, X0, Y0, Z0) && Cam.Project(P1, X1, Y1, Z1))
+        {
+            RasterizeAdditiveSegment(Fb, X0, Y0, Z0 - 0.04f, X1, Y1, Z1 - 0.04f, 0.65f, RingCol, 0.16f, true);
+        }
+    }
+
+    if (IncludeCrownRing)
+    {
+        const float CrownR = Radius * 0.42f;
+        const float CrownY = Centre.Y + Radius * 0.92f;
+        for (int S = 0; S < 28; ++S)
+        {
+            const float A0 = (static_cast<float>(S) / 28.0f) * kTwoPi;
+            const float A1 = (static_cast<float>(S + 1) / 28.0f) * kTwoPi;
+            const Vec3 P0 { Centre.X + std::cos(A0) * CrownR, CrownY, Centre.Z + std::sin(A0) * CrownR };
+            const Vec3 P1 { Centre.X + std::cos(A1) * CrownR, CrownY, Centre.Z + std::sin(A1) * CrownR };
+            float X0, Y0, Z0, X1, Y1, Z1;
+            if (Cam.Project(P0, X0, Y0, Z0) && Cam.Project(P1, X1, Y1, Z1))
+            {
+                RasterizeAdditiveSegment(Fb, X0, Y0, Z0 - 0.04f, X1, Y1, Z1 - 0.04f, 0.78f, RingCol, 0.28f, true);
+            }
+        }
+    }
+}
+
 void RasterizeWorldLine(PixelCanvas& Fb, const ResolvedCamera& Cam, Vec3 P0, Vec3 P1, Vec3 ColLin, float Alpha) noexcept
 {
     float X0, Y0, Z0, X1, Y1, Z1;
@@ -251,8 +482,8 @@ void FloorGridEnabled(PixelCanvas& Fb, const ResolvedCamera& Cam, float CentreX,
 {
     const float SnapX = std::floor(CentreX);
     const float SnapZ = std::floor(CentreZ);
-    const Vec3 MinorCol { 0.022f, 0.028f, 0.038f };
-    const Vec3 MajorCol { 0.044f, 0.056f, 0.072f };
+    const Vec3 MinorCol { 0.011f, 0.014f, 0.020f };
+    const Vec3 MajorCol { 0.021f, 0.027f, 0.036f };
 
     for (int I = -6; I <= 6; ++I)
     {
@@ -508,10 +739,419 @@ void ExtractOriginMeters(const ReleaseOriginSpec& Origin, float Out[3]) noexcept
     Out[0] = 0.0f; Out[1] = 0.0f; Out[2] = 0.0f;
     if (const auto* Pt = std::get_if<AnalyticPointOrigin>(&Origin))
         for (int K = 0; K < 3; ++K) Out[K] = Pt->CenterMeters[K];
+    else if (const auto* Sph = std::get_if<AnalyticSphereOrigin>(&Origin))
+        for (int K = 0; K < 3; ++K) Out[K] = Sph->CenterMeters[K];
     else if (const auto* Box = std::get_if<AnalyticBoxOrigin>(&Origin))
         for (int K = 0; K < 3; ++K) Out[K] = Box->CenterMeters[K];
     else if (const auto* Cloth = std::get_if<ClothGridOrigin>(&Origin))
         for (int K = 0; K < 3; ++K) Out[K] = Cloth->OriginMeters[K];
+    else if (const auto* Web = std::get_if<SpiderwebOrigin>(&Origin))
+        for (int K = 0; K < 3; ++K) Out[K] = Web->CenterMeters[K];
+    else if (const auto* Elec = std::get_if<DualElectrodeOrigin>(&Origin))
+        for (int K = 0; K < 3; ++K) Out[K] = Elec->CathodeMeters[K];
+}
+
+/// Renders Curl Wave Field (mode 1), Spherical Curl Plasma (mode 2), Bokeh Stream Ribbons & Object Surface Pour Ribbons (mode 3).
+void RenderCurlStreamRigIntoCanvas(
+    PixelCanvas&                  Fb,
+    const ResolvedCamera&         Cam,
+    const ParticleRig&            Rig,
+    std::span<const ParticleSlot> Slots,
+    std::span<const StrandVertex> StrandVertices)
+{
+    if (!Rig.Dynamics.Curl.has_value()) return;
+    const CurlManifoldSpec& Spec = *Rig.Dynamics.Curl;
+
+    float OriginMeters[3] {};
+    ExtractOriginMeters(Rig.Origin, OriginMeters);
+    const Vec3 Org { OriginMeters[0], OriginMeters[1], OriginMeters[2] };
+
+    Vec3 ColA {}, ColC {}, ColB {};
+    ExtractGradientStops(Rig, ColA, ColC, ColB);
+
+    uint32_t VertsPerStrand = 3u;
+    if (const auto* Rib = std::get_if<RibbonStrandCarrier>(&Rig.Carrier))
+        VertsPerStrand = std::max<uint32_t>(3u, Rib->VerticesPerStrand);
+
+    const float ScaleRatio = static_cast<float>(Fb.Height) / 480.0f;
+
+    // 1. Optional dark translucent sphere core + equatorial & crown rings (bokeh-object-pulse, exact SoftwarePreviewEngine.js lines 5306-5325)
+    if (Spec.ManifoldMode == 3u && Spec.PulseMode > 0u && Spec.ShowObjectCore && Spec.ObjectShape == 1u)
+    {
+        const float RCore = std::max(0.35f, Spec.BoxHalfMeters[0]) * 0.96f;
+        const Vec3  CoreBase { 0.0055f, 0.0085f, 0.0135f };
+        const Vec3  CyanRing { 0.18f, 0.72f, 0.92f };
+        RasterizeDarkCoreSphereWithRings(Fb, Cam, Org, RCore, CoreBase, CyanRing, true);
+    }
+
+    // 2. Render curved micro-filaments (modes 1 & 2) OR 18-vertex tapered stream ribbons + bokeh discs (mode 3)
+    const Vec3 White { 1.0f, 1.0f, 1.0f };
+    if (Spec.ManifoldMode == 3u && VertsPerStrand >= 6u)
+    {
+        // Depth-order heads back-to-front so large translucent bokeh discs compose harmoniously
+        struct StreamItem { uint32_t Idx; float DepthZ; };
+        std::vector<StreamItem> Order {};
+        Order.reserve(Slots.size());
+        for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
+        {
+            if (!IsParticleSlotAlive(Slots[I])) continue;
+            float Sx, Sy, Sz;
+            const Vec3 P { Slots[I].PositionMeters[0], Slots[I].PositionMeters[1], Slots[I].PositionMeters[2] };
+            if (Cam.Project(P, Sx, Sy, Sz)) Order.push_back({ I, Sz });
+        }
+        std::sort(Order.begin(), Order.end(), [](const StreamItem& A, const StreamItem& B) { return A.DepthZ > B.DepthZ; });
+
+        struct ProjPt { float X, Y, Z; };
+        std::vector<ProjPt> RibbonPts {};
+        RibbonPts.reserve(VertsPerStrand);
+
+        for (const auto& Entry : Order)
+        {
+            const uint32_t I = Entry.Idx;
+            const ParticleSlot& Slot = Slots[I];
+            const std::size_t Off = static_cast<std::size_t>(I) * VertsPerStrand;
+            if (Off + VertsPerStrand > StrandVertices.size()) continue;
+
+            const float LifeFrac = std::clamp(Slot.AgeSeconds / std::max(0.1f, Slot.LifespanSeconds), 0.0f, 1.0f);
+            const float Env = std::min(1.0f, LifeFrac / 0.14f) * std::min(1.0f, (1.0f - LifeFrac) / 0.22f);
+            if (Env <= 0.01f) continue;
+
+            const float Dof   = std::clamp(Slot.OriginAnchor[0], 0.0f, 1.0f);
+            const float Pulse = std::max(0.0f, Slot.OriginAnchor[1]);
+            const float Wake  = std::clamp(Slot.OriginAnchor[2], 0.05f, 1.0f);
+            const float Crest = std::clamp(Slot.AuxScalar, 0.0f, 1.0f);
+
+            RibbonPts.clear();
+            // StrandVertices[Off + 0] is head; [Off + VertsPerStrand - 1] is oldest tail
+            for (int K = static_cast<int>(VertsPerStrand) - 1; K >= 0; --K)
+            {
+                const auto& V = StrandVertices[Off + static_cast<std::size_t>(K)];
+                float Sx, Sy, Sz;
+                if (Cam.Project({ V.PositionMeters[0], V.PositionMeters[1], V.PositionMeters[2] }, Sx, Sy, Sz))
+                    RibbonPts.push_back({ Sx, Sy, Sz });
+            }
+            if (RibbonPts.size() < 2u) continue;
+
+            const auto& Head = RibbonPts.back();
+            // Exact SoftwarePreviewEngine.js lines 5287-5289 (never square Wake!) + linear-calibrated alpha
+            const float PulseScale = (Spec.PulseMode > 0u) ? std::min(1.18f, 0.22f + 0.92f * Wake) : 1.0f;
+            const float HeadScale  = (Spec.PulseMode > 0u) ? (0.58f + 0.72f * Pulse) : 1.0f;
+            const float RibAlpha   = std::min(1.0f, (0.55f + 0.45f * Crest) * Env * PulseScale);
+            const float BaseW      = std::clamp((Slot.SizeMeters * Spec.StreakThin * 155.0f) / std::max(1.8f, Head.Z) * ScaleRatio, 0.45f, 1.35f * ScaleRatio);
+
+            // Smooth fading hair-thin luminous stream ribbons from tail (U=0) -> head (U=1)
+            const std::size_t SegCount = RibbonPts.size() - 1u;
+            for (std::size_t S = 0u; S < SegCount; ++S)
+            {
+                const float U0 = static_cast<float>(S) / static_cast<float>(SegCount);
+                const float U1 = static_cast<float>(S + 1u) / static_cast<float>(SegCount);
+                const float Um = 0.5f * (U0 + U1);
+                const float Fade = std::pow(Um, 1.25f);
+                const float W    = std::max(0.35f, BaseW * (0.45f + 0.55f * Um));
+                const Vec3  Col  = (Um < 0.52f)
+                    ? Mix3(ColA, ColC, Um / 0.52f)
+                    : Mix3(ColC, ColB, (Um - 0.52f) / 0.48f);
+                RasterizeAdditiveSegment(Fb, RibbonPts[S].X, RibbonPts[S].Y, RibbonPts[S].Z,
+                                             RibbonPts[S + 1u].X, RibbonPts[S + 1u].Y, RibbonPts[S + 1u].Z,
+                                             W * 0.48f, Col, RibAlpha * Fade * 0.24f, true);
+
+                // Crisp white-cyan leading thread over front 44% of stream ribbon
+                if (Um > 0.56f)
+                {
+                    const float LeadU = (Um - 0.56f) / 0.44f;
+                    RasterizeAdditiveSegment(Fb, RibbonPts[S].X, RibbonPts[S].Y, RibbonPts[S].Z,
+                                                 RibbonPts[S + 1u].X, RibbonPts[S + 1u].Y, RibbonPts[S + 1u].Z,
+                                                 std::max(0.28f, W * 0.24f), Mix3(ColB, White, 0.55f),
+                                                 RibAlpha * LeadU * 0.34f, true);
+                }
+            }
+
+            // Depth-of-field Bokeh Disc (Dof > 0.62) OR Glowing Pinpoint Star Head (Dof <= 0.62)
+            const float RawR  = (Dof > 0.62f)
+                ? (3.2f + (Dof - 0.62f) * 16.5f) * (7.5f / std::max(2.4f, Head.Z)) * ScaleRatio
+                : (1.0f + Dof * 1.75f) * (7.5f / std::max(2.4f, Head.Z)) * ScaleRatio;
+            const float HeadR = std::clamp(RawR * HeadScale, 0.9f, 15.0f * ScaleRatio);
+            const float BAlpha = std::min(1.0f, Env * PulseScale * 0.88f);
+            RasterizeBokehDisc(Fb, Head.X, Head.Y, Head.Z - 0.01f, HeadR, ColC, ColB, BAlpha, Dof > 0.62f);
+        }
+        return;
+    }
+
+    // Modes 1 & 2: Curl Wave Field & Spherical Curl Plasma — luminous curved 3-vertex micro-filaments
+    for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
+    {
+        const ParticleSlot& Slot = Slots[I];
+        if (!IsParticleSlotAlive(Slot)) continue;
+        const std::size_t Off = static_cast<std::size_t>(I) * VertsPerStrand;
+        if (Off + 3u > StrandVertices.size()) continue;
+
+        const float LifeFrac = std::clamp(Slot.AgeSeconds / std::max(0.1f, Slot.LifespanSeconds), 0.0f, 1.0f);
+        const float Env = std::min(1.0f, LifeFrac / 0.14f) * std::min(1.0f, (1.0f - LifeFrac) / 0.22f);
+        if (Env <= 0.01f) continue;
+
+        const Vec3 H3 { StrandVertices[Off + 0u].PositionMeters[0], StrandVertices[Off + 0u].PositionMeters[1], StrandVertices[Off + 0u].PositionMeters[2] };
+        const Vec3 M3 { StrandVertices[Off + 1u].PositionMeters[0], StrandVertices[Off + 1u].PositionMeters[1], StrandVertices[Off + 1u].PositionMeters[2] };
+        const Vec3 T3 { StrandVertices[Off + 2u].PositionMeters[0], StrandVertices[Off + 2u].PositionMeters[1], StrandVertices[Off + 2u].PositionMeters[2] };
+
+        float Hx, Hy, Hz, Mx, My, Mz, Tx, Ty, Tz;
+        if (!Cam.Project(H3, Hx, Hy, Hz) || !Cam.Project(M3, Mx, My, Mz) || !Cam.Project(T3, Tx, Ty, Tz)) continue;
+
+        const float Crest = std::clamp(Slot.AuxScalar, 0.0f, 1.0f);
+        float Alpha = (0.12f + 0.42f * Crest) * Env;
+
+        // Spherical Curl Plasma: attenuate back-hemisphere filaments for crisp 3D depth volume
+        if (Spec.ManifoldMode == 2u)
+        {
+            const Vec3 ShellN = Norm3(H3 - Org);
+            const Vec3 ToCam  = Norm3(Cam.Eye - H3);
+            if (Dot3(ShellN, ToCam) < -0.06f) Alpha *= 0.26f;
+            else                              Alpha *= (0.78f + 0.55f * Crest);
+        }
+
+        const Vec3 Col = (Crest < 0.52f)
+            ? Mix3(ColA, ColC, Crest / 0.52f)
+            : Mix3(ColC, ColB, (Crest - 0.52f) / 0.48f);
+
+        const float W = std::clamp((Slot.SizeMeters * Spec.StreakThin * 165.0f) / std::max(1.8f, Hz) * ScaleRatio, 0.45f, 1.45f * ScaleRatio);
+        RasterizeAdditiveSegment(Fb, Tx, Ty, Tz, Mx, My, Mz, W * 0.42f, Mix3(ColA, Col, 0.65f), Alpha * 0.45f, false);
+        RasterizeAdditiveSegment(Fb, Mx, My, Mz, Hx, Hy, Hz, W * 0.52f, Col, Alpha * 0.72f, false);
+
+        if (Crest > 0.58f)
+        {
+            RasterizeAdditiveSegment(Fb, Mx, My, Mz, Hx, Hy, Hz, std::max(0.28f, W * 0.22f), Mix3(ColB, White, 0.55f), Alpha * 0.48f, false);
+        }
+    }
+}
+
+/// Renders Orb-Weave Spiderweb & Messy Attic Cobwebs (20-vertex catenary silk + spinneret tip + morning dew beads).
+void RenderSpiderwebRigIntoCanvas(
+    PixelCanvas&                  Fb,
+    const ResolvedCamera&         Cam,
+    const ParticleRig&            Rig,
+    std::span<const ParticleSlot> Slots,
+    std::span<const StrandVertex> StrandVertices)
+{
+    if (!Rig.Dynamics.Spiderweb.has_value()) return;
+    const SpiderwebWeaveSpec& Spec = *Rig.Dynamics.Spiderweb;
+
+    Vec3 ColA {}, ColC {}, ColB {};
+    ExtractGradientStops(Rig, ColA, ColC, ColB);
+
+    uint32_t VertsPerStrand = kWebSplineVertexCount;
+    if (const auto* Rib = std::get_if<RibbonStrandCarrier>(&Rig.Carrier))
+        VertsPerStrand = std::max<uint32_t>(4u, Rib->VerticesPerStrand);
+
+    const float ScaleRatio = static_cast<float>(Fb.Height) / 480.0f;
+    const Vec3  White { 1.0f, 1.0f, 1.0f };
+
+    struct ProjPt { float X, Y, Z; };
+    std::vector<ProjPt> Pts {};
+    Pts.reserve(VertsPerStrand);
+
+    for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
+    {
+        const ParticleSlot& Slot = Slots[I];
+        if (!IsParticleSlotAlive(Slot) || Slot.AuxScalar < 0.5f) continue;
+
+        const std::size_t Off = static_cast<std::size_t>(I) * VertsPerStrand;
+        if (Off + VertsPerStrand > StrandVertices.size()) continue;
+
+        Pts.clear();
+        for (uint32_t K = 0u; K < VertsPerStrand; ++K)
+        {
+            const auto& V = StrandVertices[Off + K];
+            float Sx, Sy, Sz;
+            if (Cam.Project({ V.PositionMeters[0], V.PositionMeters[1], V.PositionMeters[2] }, Sx, Sy, Sz))
+                Pts.push_back({ Sx, Sy, Sz });
+        }
+        if (Pts.size() < 2u) continue;
+
+        const float Role = std::clamp(Slot.OriginAnchor[0], 0.0f, 1.0f);
+        const float Grow = std::clamp(Slot.OriginAnchor[1], 0.0f, 1.0f);
+        const float Bead = std::clamp(Slot.OriginAnchor[2], 0.0f, 1.0f);
+
+        const auto& Mid = Pts[Pts.size() / 2u];
+        // Ultra-fine translucent gossamer spider silk matching HTML silver-blue sheen
+        const float SilkPx = std::clamp((Spec.SilkWidthMeters * Spec.StreakThin * 155.0f) / std::max(1.8f, Mid.Z) * ScaleRatio, 0.28f, 0.68f * ScaleRatio);
+        const float BaseA  = Spec.MessyAtticCobweb ? 0.22f : 0.34f;
+        const float Alpha  = (Role < 0.18f) ? (BaseA * 1.18f) : ((Role < 0.45f) ? (BaseA * 0.96f) : (BaseA * 0.78f));
+
+        const Vec3 SilkCol = (Role < 0.45f)
+            ? Mix3(ColA, ColC, 0.35f + (Role / 0.45f) * 0.65f)
+            : Mix3(ColC, ColB, (Role - 0.45f) / 0.55f);
+
+        // Gossamer translucent catenary polyline (non-depth-blocking so overlapping attic cobweb drapes layer softly)
+        for (std::size_t K = 0u; K + 1u < Pts.size(); ++K)
+        {
+            RasterizeScreenSegment(Fb, Pts[K].X, Pts[K].Y, Pts[K].Z,
+                                       Pts[K + 1u].X, Pts[K + 1u].Y, Pts[K + 1u].Z,
+                                       SilkPx * 0.52f, SilkCol * 0.72f, Alpha, false);
+        }
+
+        // Active extruded silk spinneret tip glow while spinning in
+        if (Grow > 0.02f && Grow < 0.99f)
+        {
+            const auto& Tip = Pts.back();
+            RasterizeRadialFlash(Fb, Tip.X, Tip.Y, Tip.Z - 0.01f, std::max(2.2f, SilkPx * 3.8f), White, 0.55f, false);
+        }
+
+        // Delicate morning dew droplets clinging along catenary midpoint
+        if (Bead > 0.08f && Spec.DewHighlight > 0.05f)
+        {
+            const float DewR = std::clamp(SilkPx * (1.2f + Bead * 1.1f), 0.85f, 2.0f * ScaleRatio);
+            const Vec3  DewCol = Mix3(ColC, White, 0.55f);
+            RasterizeGlossyBeadDisc(Fb, Mid.X, Mid.Y, Mid.Z - 0.01f, DewR, DewCol, 0.55f * Spec.DewHighlight);
+        }
+    }
+}
+
+/// Renders Dielectric Lightning, Static Shock, Plasma Cage & Storm Lightning Grid (electrodes, cage, 3-layer arcs, contact flashes & sparks).
+void RenderDielectricArcRigIntoCanvas(
+    PixelCanvas&                  Fb,
+    const ResolvedCamera&         Cam,
+    const ParticleRig&            Rig,
+    std::span<const ParticleSlot> Slots,
+    const InteractiveColliderSpec& Collider,
+    float                         ElapsedSeconds,
+    bool                          ForcePeakDischarge)
+{
+    if (!Rig.Dynamics.DielectricArc.has_value()) return;
+    const DielectricArcSpec& Spec = *Rig.Dynamics.DielectricArc;
+
+    float Cathode[3] { 0.0f, 2.0f, 0.0f };
+    float Anode[3]   { 3.0f, 2.0f, 0.0f };
+    if (const auto* Elec = std::get_if<DualElectrodeOrigin>(&Rig.Origin))
+    {
+        for (int K = 0; K < 3; ++K)
+        {
+            Cathode[K] = Elec->CathodeMeters[K];
+            Anode[K]   = Elec->AnodeMeters[K];
+        }
+    }
+    else
+    {
+        ExtractOriginMeters(Rig.Origin, Cathode);
+        Anode[0] = Cathode[0] + 3.2f; Anode[1] = Cathode[1]; Anode[2] = Cathode[2];
+    }
+
+    const DielectricArcGeometry Data = BuildDielectricArcGeometry(
+        Rig, Spec, Cathode, Anode, Collider, ElapsedSeconds, ForcePeakDischarge);
+
+    const float ScaleRatio = static_cast<float>(Fb.Height) / 480.0f;
+    const Vec3  White { 1.0f, 1.0f, 1.0f };
+
+    // 1. Structural cage perimeter conductor wires & bracing (Plasma Cage)
+    for (const auto& Strut : Data.Conductors)
+    {
+        const Vec3 A { Strut.StartMeters[0], Strut.StartMeters[1], Strut.StartMeters[2] };
+        const Vec3 B { Strut.EndMeters[0],   Strut.EndMeters[1],   Strut.EndMeters[2]   };
+        const Vec3 C { Strut.LinearRgb[0],   Strut.LinearRgb[1],   Strut.LinearRgb[2]   };
+        float X0, Y0, Z0, X1, Y1, Z1;
+        if (Cam.Project(A, X0, Y0, Z0) && Cam.Project(B, X1, Y1, Z1))
+        {
+            const float HalfW = 1.1f * ScaleRatio;
+            RasterizeScreenSegment(Fb, X0, Y0, Z0, X1, Y1, Z1, HalfW, C, Strut.Opacity, true);
+        }
+    }
+
+    // 2. Shaded metallic electrode spheres + vertical collector posts + glowing equatorial & floor rings
+    for (const auto& El : Data.Electrodes)
+    {
+        const Vec3 C { El.CentreMeters[0], El.CentreMeters[1], El.CentreMeters[2] };
+        const Vec3 Base { El.ShellLinearRgb[0], El.ShellLinearRgb[1], El.ShellLinearRgb[2] };
+        const Vec3 Ring { El.RingLinearRgb[0],  El.RingLinearRgb[1],  El.RingLinearRgb[2]  };
+
+        if (El.VerticalPost && C.Y > 0.08f)
+        {
+            HardwareCylinderSegment Post {};
+            Post.StartMeters[0]  = C.X; Post.StartMeters[1] = 0.0f; Post.StartMeters[2] = C.Z;
+            Post.EndMeters[0]    = C.X; Post.EndMeters[1]   = C.Y;  Post.EndMeters[2]   = C.Z;
+            Post.RadiusMeters    = std::max(0.035f, El.RadiusMeters * 0.24f);
+            Post.ColourLinear[0] = 0.14f; Post.ColourLinear[1] = 0.17f; Post.ColourLinear[2] = 0.24f; Post.ColourLinear[3] = 1.0f;
+            RasterizeLitCylinder(Fb, Cam, Post);
+        }
+
+        HardwareSphereAccent Sph {};
+        Sph.CentreMeters[0] = C.X; Sph.CentreMeters[1] = C.Y; Sph.CentreMeters[2] = C.Z;
+        Sph.RadiusMeters    = El.RadiusMeters;
+        Sph.ColourLinear[0] = Base.X; Sph.ColourLinear[1] = Base.Y; Sph.ColourLinear[2] = Base.Z; Sph.ColourLinear[3] = 1.0f;
+        RasterizeLitSphere(Fb, Cam, Sph);
+
+        // Glowing equatorial corona ring around every electrode sphere
+        constexpr int Segs = 32;
+        const float EqR = El.RadiusMeters * 1.05f;
+        for (int S = 0; S < Segs; ++S)
+        {
+            const float A0 = (static_cast<float>(S) / static_cast<float>(Segs)) * kTwoPi;
+            const float A1 = (static_cast<float>(S + 1) / static_cast<float>(Segs)) * kTwoPi;
+            const Vec3 P0 { C.X + std::cos(A0) * EqR, C.Y, C.Z + std::sin(A0) * EqR };
+            const Vec3 P1 { C.X + std::cos(A1) * EqR, C.Y, C.Z + std::sin(A1) * EqR };
+            float X0, Y0, Z0, X1, Y1, Z1;
+            if (Cam.Project(P0, X0, Y0, Z0) && Cam.Project(P1, X1, Y1, Z1))
+            {
+                RasterizeAdditiveSegment(Fb, X0, Y0, Z0 - 0.03f, X1, Y1, Z1 - 0.03f, 0.9f * ScaleRatio, Ring, 0.58f, true);
+            }
+        }
+
+        if (El.FloorRingEnabled)
+        {
+            HardwareRingAccent FlRing {};
+            FlRing.CentreMeters[0] = C.X; FlRing.CentreMeters[1] = 0.02f; FlRing.CentreMeters[2] = C.Z;
+            FlRing.RadiusMeters    = std::max(0.14f, El.RadiusMeters * 0.68f);
+            FlRing.Segments        = 24u;
+            FlRing.ColourLinear[0] = Ring.X; FlRing.ColourLinear[1] = Ring.Y; FlRing.ColourLinear[2] = Ring.Z; FlRing.ColourLinear[3] = 0.22f;
+            RasterizeRing(Fb, Cam, FlRing);
+        }
+    }
+
+    // 3. Three-layer razor-crisp additive lightning strokes (calibrated linear UV halo -> electric sheath -> white-hot filament core)
+    for (const auto& Seg : Data.Segments)
+    {
+        const Vec3 A { Seg.StartMeters[0], Seg.StartMeters[1], Seg.StartMeters[2] };
+        const Vec3 B { Seg.EndMeters[0],   Seg.EndMeters[1],   Seg.EndMeters[2]   };
+        float X0, Y0, Z0, X1, Y1, Z1;
+        if (!Cam.Project(A, X0, Y0, Z0) || !Cam.Project(B, X1, Y1, Z1)) continue;
+
+        const float MidZ   = std::max(1.2f, 0.5f * (Z0 + Z1));
+        const float AvgW   = 0.5f * (Seg.StartWidthM + Seg.EndWidthM);
+        const float BasePx = std::clamp((AvgW * 340.0f) / MidZ * ScaleRatio, 0.55f, 2.2f * ScaleRatio);
+        const Vec3  Sheath { Seg.LinearRgb[0], Seg.LinearRgb[1], Seg.LinearRgb[2] };
+        const Vec3  Outer  { Sheath.X * 0.42f, Sheath.Y * 0.52f, std::min(1.0f, Sheath.Z * 1.15f) };
+        const float Int    = std::clamp(Seg.Intensity, 0.05f, 2.0f);
+
+        // Layer 1: Soft outer UV ionization halo
+        RasterizeAdditiveSegment(Fb, X0, Y0, Z0 - 0.02f, X1, Y1, Z1 - 0.02f, BasePx * 1.95f, Outer, 0.048f * Int, false);
+        // Layer 2: Electric cyan/violet plasma sheath
+        RasterizeAdditiveSegment(Fb, X0, Y0, Z0 - 0.02f, X1, Y1, Z1 - 0.02f, BasePx * 0.82f, Sheath, 0.24f * Int, false);
+        // Layer 3: Razor-sharp white-hot plasma core
+        RasterizeAdditiveSegment(Fb, X0, Y0, Z0 - 0.02f, X1, Y1, Z1 - 0.02f, std::max(0.32f, BasePx * 0.26f), White, 0.90f * std::min(1.1f, Int), false);
+    }
+
+    // 4. Radial contact flashes & plasma orb corona (calibrated linear intensity)
+    for (const auto& Fl : Data.Flashes)
+    {
+        const Vec3 P { Fl.CentreMeters[0], Fl.CentreMeters[1], Fl.CentreMeters[2] };
+        float Sx, Sy, Sz;
+        if (!Cam.Project(P, Sx, Sy, Sz)) continue;
+        const float RadPx = std::clamp((Fl.RadiusMeters * 420.0f) / std::max(1.4f, Sz) * ScaleRatio, 5.0f, 44.0f * ScaleRatio);
+        const Vec3  Col { Fl.LinearRgb[0], Fl.LinearRgb[1], Fl.LinearRgb[2] };
+        RasterizeRadialFlash(Fb, Sx, Sy, Sz - 0.03f, RadPx, Col, Fl.Intensity * 0.42f, false);
+    }
+
+    // 5. Ionization spark motes dancing around live discharge channels
+    Vec3 ColA {}, ColC {}, ColB {};
+    ExtractGradientStops(Rig, ColA, ColC, ColB);
+    for (const auto& Slot : Slots)
+    {
+        if (!IsParticleSlotAlive(Slot)) continue;
+        const Vec3 P { Slot.PositionMeters[0], Slot.PositionMeters[1], Slot.PositionMeters[2] };
+        float Sx, Sy, Sz;
+        if (!Cam.Project(P, Sx, Sy, Sz)) continue;
+        const float LifeFrac = std::clamp(Slot.AgeSeconds / std::max(0.05f, Slot.LifespanSeconds), 0.0f, 1.0f);
+        const float Env      = (1.0f - LifeFrac);
+        const float RadPx    = std::clamp(Slot.SizeMeters * 165.0f / std::max(1.6f, Sz) * ScaleRatio, 1.0f, 3.6f * ScaleRatio);
+        RasterizeBokehDisc(Fb, Sx, Sy, Sz - 0.01f, RadPx, ColC, ColB, 0.65f * Env, false);
+    }
 }
 
 void RenderRigIntoPixelCanvas(
@@ -729,9 +1369,11 @@ void RenderDynamicStrandRigRgba8(
     const StrandCameraSpec&       Camera,
     int                           Width,
     int                           Height,
-    std::vector<uint8_t>&         OutRgba8)
+    std::vector<uint8_t>&         OutRgba8,
+    float                         ElapsedSeconds,
+    bool                          ForcePeakArcDischarge)
 {
-    const DynamicStrandRigView View { &Rig, Slots, StrandVertices };
+    const DynamicStrandRigView View { &Rig, Slots, StrandVertices, ElapsedSeconds, ForcePeakArcDischarge, {} };
     RenderDynamicStrandSceneRgba8(std::span<const DynamicStrandRigView>(&View, 1u), Camera, Width, Height, OutRgba8);
 }
 
@@ -748,9 +1390,23 @@ void RenderDynamicStrandSceneRgba8(
 
     for (const auto& Entry : Rigs)
     {
-        if (Entry.Rig != nullptr && Entry.Rig->Visible)
+        if (Entry.Rig == nullptr || !Entry.Rig->Visible) continue;
+        const auto& D = Entry.Rig->Dynamics;
+        if (D.Strand.has_value())
         {
             RenderRigIntoPixelCanvas(Fb, Cam, *Entry.Rig, Entry.Slots, Entry.StrandVertices);
+        }
+        else if (D.Curl.has_value())
+        {
+            RenderCurlStreamRigIntoCanvas(Fb, Cam, *Entry.Rig, Entry.Slots, Entry.StrandVertices);
+        }
+        else if (D.Spiderweb.has_value())
+        {
+            RenderSpiderwebRigIntoCanvas(Fb, Cam, *Entry.Rig, Entry.Slots, Entry.StrandVertices);
+        }
+        else if (D.DielectricArc.has_value())
+        {
+            RenderDielectricArcRigIntoCanvas(Fb, Cam, *Entry.Rig, Entry.Slots, Entry.Collider, Entry.ElapsedSeconds, Entry.ForcePeakArcDischarge);
         }
     }
 

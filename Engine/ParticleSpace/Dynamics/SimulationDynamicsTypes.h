@@ -74,12 +74,21 @@ struct ForceFieldCouplingSpec
 
 struct CurlManifoldSpec
 {
-    uint8_t ManifoldMode    = 1u;    // [-]   - 1 Free 3D curl, 2 Radial tether, 3 Sphere shell, 4 Toroidal, 5 Vortex funnel
-    float   FrequencyPerM   = 0.85f; // [1/m] - Spatial curl frequency
-    float   DriveSpeedMps   = 2.2f;  // [m/s] - Tangential curl velocity drive
-    float   EvolutionRateHz = 0.24f; // [1/s] - Temporal phase rate
-    float   ShellRadiusM    = 1.75f; // [m]   - Target spherical or major torus radius
-    float   TubeRadiusM     = 0.55f; // [m]   - Minor tube radius for toroidal manifold mode
+    uint8_t ManifoldMode      = 1u;                      // [-]   - 1 Planar curl field, 2 Spherical curl plasma, 3 Bokeh stream / surface pour ribbons
+    uint8_t PulseMode         = 0u;                      // [-]   - 0 Free swirling curl stream ribbons, 2 Object surface pour pulse
+    uint8_t ObjectShape       = 0u;                      // [-]   - 0 Box, 1 Sphere, 2 Cylinder (when PulseMode > 0)
+    uint8_t PulseAxis         = 1u;                      // [-]   - Pour direction axis (0 +X, 1 -Y top-to-bottom, 2 +Z)
+    uint8_t HeadStyle         = 0u;                      // [-]   - 0 Mixed DoF bokeh + star cores, 1 Pinpoint, 2 Soft bokeh, 3 Aperture ring
+    float   FrequencyPerM     = 0.85f;                   // [1/m] - Spatial curl frequency (HTML curlFreq)
+    float   DriveSpeedMps     = 2.2f;                    // [m/s] - Tangential curl velocity drive (HTML curlAmp)
+    float   EvolutionRateHz   = 0.24f;                   // [1/s] - Temporal phase rate (HTML curlRate)
+    float   ShellRadiusM      = 1.75f;                   // [m]   - Target spherical or major torus radius
+    float   TubeRadiusM       = 0.55f;                   // [m]   - Minor tube radius for toroidal manifold mode
+    float   PulseSpeedHz      = 0.36f;                   // [Hz]  - Travelling pour wave speed (HTML pulseSpeed)
+    float   PulseWidth        = 0.24f;                   // [-]   - Travelling pour wave width (HTML pulseWidth)
+    float   StreakThin        = 0.34f;                   // [x]   - Ribbon thinness multiplier (HTML streakThin)
+    float   BoxHalfMeters[3]  = { 1.9f, 0.24f, 1.9f };   // [m]   - Domain half-extents (HTML boxHalf)
+    bool    ShowObjectCore    = true;                    // [-]   - Render translucent 3D core sphere & pour rings when PulseMode > 0
 };
 
 struct StrandConstraintSpec
@@ -199,8 +208,19 @@ struct ThermalFireworkSpec
 
 struct DielectricArcSpec
 {
-    float JitterAmplitudeM = 0.38f; // [m]  - Midpoint lightning displacement amplitude
-    float RefreshRateHz    = 14.0f; // [Hz] - Arc filament snap cadence
+    uint8_t  ArcVariant         = 0u;                      // [-]   - 0 Tesla Dual-Sphere, 1 Static Shock Loop, 2 Plasma Cage Collector, 3 Lightning Storm Web
+    uint32_t ArcCount           = 1u;                      // [cnt] - Simultaneous main discharge arcs
+    float    JitterAmplitudeM   = 0.62f;                   // [m]   - Midpoint lightning displacement jitter (HTML arcJitter)
+    float    RefreshRateHz      = 14.0f;                   // [Hz]  - Arc filament snap cadence
+    float    ArcBow             = 0.14f;                   // [m]   - Upward thermal arc bow lift (HTML arcBow)
+    float    ArcHoldSeconds     = 0.30f;                   // [s]   - Active discharge glow hold window (HTML arcHold)
+    float    ArcIntervalSeconds = 1.40f;                   // [s]   - Discharge repetition cadence (HTML arcInterval)
+    float    CathodeRadiusMeters= 0.46f;                   // [m]   - Sphere A electrode radius (HTML radius)
+    float    AnodeRadiusMeters  = 0.46f;                   // [m]   - Sphere B electrode radius (HTML targetRadius)
+    float    CageRadiusMeters   = 1.75f;                   // [m]   - Plasma cage conductor ring radius
+    float    BoxHalfMeters[3]   = { 2.1f, 1.5f, 2.1f };    // [m]   - Storm grid 3D volume half-extents
+    bool     ArcLoopEnabled     = true;                    // [-]   - Continuous looping strike cadence
+    bool     ShowElectrodes     = true;                    // [-]   - Render 3D metallic electrode spheres / cage pylons / storm terminals
 };
 
 struct FieldMatrixSpec
@@ -211,10 +231,20 @@ struct FieldMatrixSpec
 
 struct SpiderwebWeaveSpec
 {
-    bool  MessyAtticCobweb = false; // [-] - False = Orb-Weave radial/spiral, True = Attic Cobweb
-    float SpinRateScale    = 1.0f;  // [x] - Live silk extrusion rate
-    float SilkSagMeters    = 0.16f; // [m] - Catenary silk gravity droop
-    float DewHighlight     = 0.85f; // [x] - Dew drop / dust specular sheen
+    bool     MessyAtticCobweb = false;                     // [-]   - False = Orb-Weave radial/spiral, True = Attic Cobweb
+    uint32_t SpokeCount       = 18u;                       // [cnt] - Orb-weave radial spokes (HTML webSpokes)
+    uint32_t RingCount        = 14u;                       // [cnt] - Orb-weave spiral capture rings (HTML webRings)
+    float    SpinRateScale    = 1.0f;                      // [x]   - Live silk extrusion rate (HTML webSpinRate)
+    float    SilkSagMeters    = 0.16f;                     // [m]   - Catenary silk gravity droop (HTML webSag)
+    float    DewHighlight     = 0.85f;                     // [x]   - Dew drop / dust specular sheen (HTML webDew)
+    float    WebRadiusMeters  = 2.0f;                      // [m]   - Orb-weave outer anchor frame radius
+    float    BoxHalfMeters[3] = { 2.25f, 1.55f, 1.55f };   // [m]   - Attic cobweb pocket half-extents
+    float    FacingDir[3]     = { 0.18f, 0.18f, 0.97f };   // [-]   - Web plane facing normal (HTML dir)
+    float    CurlFreqPerM     = 1.1f;                      // [1/m] - Spatial wind-curl frequency
+    float    CurlAmpMps       = 0.34f;                     // [m/s] - Wind-curl gust amplitude
+    float    WindCoupling     = 1.15f;                     // [x]   - ForceField wind sway coupling
+    float    SilkWidthMeters  = 0.015f;                    // [m]   - Base gossamer silk strand diameter
+    float    StreakThin       = 0.44f;                     // [x]   - Silk screen-space thinness scale
 };
 
 struct FerrofluidMeniscusSpec

@@ -1555,6 +1555,10 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         {
             Elec.AnodeMeters[0] = 2.45f; Elec.AnodeMeters[1] = 1.35f; Elec.AnodeMeters[2] = 0.25f;
         }
+        else if (Pid == "tesla-sphere-lightning")
+        {
+            Elec.AnodeMeters[0] = 2.15f; Elec.AnodeMeters[1] = 2.65f; Elec.AnodeMeters[2] = 0.45f;
+        }
         else if (Pid == "static-sphere-shock")
         {
             Elec.AnodeMeters[0] = 1.75f; Elec.AnodeMeters[1] = 1.75f; Elec.AnodeMeters[2] = -0.75f;
@@ -1567,11 +1571,74 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         }
         Rig.Origin = Elec;
         Rig.SlotCapacity = std::max<uint32_t>(Rig.SlotCapacity, 320u);
-        Rig.Kinematics.LifeMinSeconds = std::max(Rig.Kinematics.LifeMinSeconds, 4.0f);
-        Rig.Kinematics.LifeMaxSeconds = std::max(Rig.Kinematics.LifeMaxSeconds, 6.0f);
+
         DielectricArcSpec Arc {};
-        Arc.JitterAmplitudeM = (Pid == "plasma-laser-beam") ? 0.03f : 0.34f;
-        Arc.RefreshRateHz    = (Pid == "plasma-laser-beam") ? 2.0f : 14.0f;
+        if (Pid == "tesla-sphere-lightning")
+        {
+            Arc.ArcVariant          = 0u;
+            Arc.ArcCount            = 1u;
+            Arc.JitterAmplitudeM    = 0.62f;
+            Arc.RefreshRateHz       = 14.0f;
+            Arc.ArcBow              = 0.14f;
+            Arc.ArcHoldSeconds      = 0.30f;
+            Arc.ArcIntervalSeconds  = 1.40f;
+            Arc.CathodeRadiusMeters = 0.46f;
+            Arc.AnodeRadiusMeters   = 0.46f;
+            Arc.ArcLoopEnabled      = true;
+            Arc.ShowElectrodes      = true;
+        }
+        else if (Pid == "static-sphere-shock")
+        {
+            Arc.ArcVariant          = 1u;
+            Arc.ArcCount            = 3u;
+            Arc.JitterAmplitudeM    = 0.42f;
+            Arc.RefreshRateHz       = 28.0f;
+            Arc.ArcBow              = 0.32f;
+            Arc.ArcHoldSeconds      = 0.24f;
+            Arc.ArcIntervalSeconds  = 0.55f;
+            Arc.CathodeRadiusMeters = 0.40f;
+            Arc.AnodeRadiusMeters   = 0.40f;
+            Arc.ArcLoopEnabled      = true;
+            Arc.ShowElectrodes      = true;
+        }
+        else if (Pid == "plasma-cage-arcs")
+        {
+            Arc.ArcVariant          = 2u;
+            Arc.ArcCount            = 6u;
+            Arc.JitterAmplitudeM    = 0.62f;
+            Arc.RefreshRateHz       = 14.0f;
+            Arc.ArcBow              = 0.22f;
+            Arc.ArcHoldSeconds      = 0.34f;
+            Arc.ArcIntervalSeconds  = 0.55f;
+            Arc.CageRadiusMeters    = 1.75f;
+            Arc.BoxHalfMeters[0]    = 1.75f;
+            Arc.BoxHalfMeters[1]    = 1.45f;
+            Arc.BoxHalfMeters[2]    = 1.75f;
+            Arc.ArcLoopEnabled      = true;
+            Arc.ShowElectrodes      = true;
+        }
+        else if (Pid == "lightning-web-mesh")
+        {
+            Arc.ArcVariant          = 3u;
+            Arc.ArcCount            = 8u;
+            Arc.JitterAmplitudeM    = 0.72f;
+            Arc.RefreshRateHz       = 14.0f;
+            Arc.ArcBow              = 0.26f;
+            Arc.ArcHoldSeconds      = 0.30f;
+            Arc.ArcIntervalSeconds  = 0.42f;
+            Arc.CageRadiusMeters    = 2.05f;
+            Arc.BoxHalfMeters[0]    = 2.10f;
+            Arc.BoxHalfMeters[1]    = 1.50f;
+            Arc.BoxHalfMeters[2]    = 2.10f;
+            Arc.ArcLoopEnabled      = true;
+            Arc.ShowElectrodes      = true;
+        }
+        else
+        {
+            Arc.ArcVariant       = 0u;
+            Arc.JitterAmplitudeM = 0.03f;
+            Arc.RefreshRateHz    = 2.0f;
+        }
         Rig.Dynamics.DielectricArc = Arc;
         Rig.TintDriver.Channel = ParticleScalarChannel::PerParticleRandomSeed;
     }
@@ -1641,29 +1708,87 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
     }
     else if (Pid == "curl-fur-field" || Pid == "curl-sphere-plasma" || Pid == "bokeh-stream-ribbons" || Pid == "bokeh-object-pulse")
     {
-        if (Pid == "curl-sphere-plasma" || Pid == "bokeh-object-pulse")
+        CurlManifoldSpec Curl {};
+        Curl.FrequencyPerM   = P.CurlFreq;
+        Curl.DriveSpeedMps   = P.CurlAmp;
+        Curl.EvolutionRateHz = P.CurlRate;
+        Curl.ShellRadiusM    = P.ShellRadius;
+        for (int K = 0; K < 3; ++K) Curl.BoxHalfMeters[K] = std::max(0.24f, P.OriginHalf[K]);
+
+        if (Pid == "curl-fur-field")
         {
-            SurfaceAnchorOrigin Sph {};
-            Sph.Preset = SurfacePresetCategory::ObsidianSphere;
-            for (int K = 0; K < 3; ++K) { Sph.CenterMeters[K] = P.OriginCenter[K]; Sph.ScaleMeters[K] = 1.65f; }
-            Rig.Origin = Sph;
-        }
-        else
-        {
+            Curl.ManifoldMode   = 1u;
+            Curl.StreakThin     = 0.26f;
+            Rig.SlotCapacity    = 1400u;
+            RibbonStrandCarrier Rib {};
+            Rib.VerticesPerStrand = 3u;
+            Rig.Carrier = Rib;
             AnalyticBoxOrigin Box {};
             for (int K = 0; K < 3; ++K)
             {
                 Box.CenterMeters[K]      = P.OriginCenter[K];
-                Box.HalfExtentsMeters[K] = std::max(0.25f, P.OriginHalf[K]);
+                Box.HalfExtentsMeters[K] = std::max(0.24f, P.OriginHalf[K]);
             }
             Rig.Origin = Box;
         }
-        if (Pid == "bokeh-stream-ribbons" || Pid == "bokeh-object-pulse")
+        else if (Pid == "curl-sphere-plasma")
         {
+            Curl.ManifoldMode   = 2u;
+            Curl.ShellRadiusM   = 1.65f;
+            Curl.StreakThin     = 0.24f;
+            Rig.SlotCapacity    = 1400u;
             RibbonStrandCarrier Rib {};
-            Rib.VerticesPerStrand = 16u;
+            Rib.VerticesPerStrand = 3u;
             Rig.Carrier = Rib;
+            AnalyticSphereOrigin Sph {};
+            for (int K = 0; K < 3; ++K) Sph.CenterMeters[K] = P.OriginCenter[K];
+            Sph.RadiusMeters = 1.65f;
+            Rig.Origin = Sph;
         }
+        else if (Pid == "bokeh-stream-ribbons")
+        {
+            Curl.ManifoldMode     = 3u;
+            Curl.PulseMode        = 0u;
+            Curl.HeadStyle        = 0u;
+            Curl.StreakThin       = 0.34f;
+            Curl.ShowObjectCore   = false;
+            Rig.SlotCapacity      = 540u;
+            RibbonStrandCarrier Rib {};
+            Rib.VerticesPerStrand = 18u;
+            Rig.Carrier = Rib;
+            AnalyticBoxOrigin Box {};
+            for (int K = 0; K < 3; ++K)
+            {
+                Box.CenterMeters[K]      = P.OriginCenter[K];
+                Box.HalfExtentsMeters[K] = std::max(0.45f, P.OriginHalf[K]);
+            }
+            Rig.Origin = Box;
+        }
+        else
+        {
+            // bokeh-object-pulse (Object Surface Pour Ribbons)
+            Curl.ManifoldMode     = 3u;
+            Curl.PulseMode        = 2u;
+            Curl.ObjectShape      = 1u;
+            Curl.PulseAxis        = 1u;
+            Curl.PulseSpeedHz     = 0.36f;
+            Curl.PulseWidth       = 0.24f;
+            Curl.HeadStyle        = 0u;
+            Curl.StreakThin       = 0.34f;
+            Curl.ShowObjectCore   = true;
+            Curl.BoxHalfMeters[0] = 1.65f;
+            Curl.BoxHalfMeters[1] = 1.65f;
+            Curl.BoxHalfMeters[2] = 1.65f;
+            Rig.SlotCapacity      = 540u;
+            RibbonStrandCarrier Rib {};
+            Rib.VerticesPerStrand = 18u;
+            Rig.Carrier = Rib;
+            AnalyticSphereOrigin Sph {};
+            for (int K = 0; K < 3; ++K) Sph.CenterMeters[K] = P.OriginCenter[K];
+            Sph.RadiusMeters = 1.65f;
+            Rig.Origin = Sph;
+        }
+        Rig.Dynamics.Curl = Curl;
     }
     else if (Pid == "projectile-trails" || Pid == "viscous-dripping")
     {
@@ -1791,13 +1916,37 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
     }
     else if (Pid == "spiderweb-orb" || Pid == "spiderweb-cobweb")
     {
+        const bool IsCobweb = (Pid == "spiderweb-cobweb");
         SpiderwebWeaveSpec Web {};
-        Web.MessyAtticCobweb = (Pid == "spiderweb-cobweb");
+        Web.MessyAtticCobweb = IsCobweb;
+        Web.SpokeCount       = IsCobweb ? 16u : 18u;
+        Web.RingCount        = IsCobweb ? 12u : 14u;
+        Web.SpinRateScale    = 1.0f;
+        Web.SilkSagMeters    = IsCobweb ? 0.44f : 0.13f;
+        Web.DewHighlight     = IsCobweb ? 0.65f : 0.85f;
+        Web.WebRadiusMeters  = 2.0f;
+        Web.BoxHalfMeters[0] = 2.25f;
+        Web.BoxHalfMeters[1] = 1.55f;
+        Web.BoxHalfMeters[2] = 1.55f;
+        Web.FacingDir[0]     = P.LaunchDir[0];
+        Web.FacingDir[1]     = P.LaunchDir[1];
+        Web.FacingDir[2]     = P.LaunchDir[2];
+        Web.CurlFreqPerM     = P.CurlFreq;
+        Web.CurlAmpMps       = P.CurlAmp;
+        Web.WindCoupling     = P.WindCoupling;
+        Web.SilkWidthMeters  = P.SizeBirth;
+        Web.StreakThin       = IsCobweb ? 0.46f : 0.44f;
         Rig.Dynamics.Spiderweb = Web;
+
         SpiderwebOrigin WebOrig {};
         for (int K = 0; K < 3; ++K) WebOrig.CenterMeters[K] = P.OriginCenter[K];
-        WebOrig.MessyCobweb = Web.MessyAtticCobweb;
+        WebOrig.MessyCobweb = IsCobweb;
         Rig.Origin = WebOrig;
+
+        Rig.SlotCapacity = IsCobweb ? 300u : 320u;
+        RibbonStrandCarrier Rib {};
+        Rib.VerticesPerStrand = 20u;
+        Rig.Carrier = Rib;
         Rig.TintDriver.Channel = ParticleScalarChannel::DistanceFromOrigin;
         Rig.ColourProfile.Range.RangeMin = 0.0f;
         Rig.ColourProfile.Range.RangeMax = 2.6f;

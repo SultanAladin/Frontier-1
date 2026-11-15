@@ -15,6 +15,7 @@
 #include "Engine/ParticleSpace/Dynamics/MolecularReactionDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/OrbitalElectromagneticDynamics.h"
 #include "Engine/ParticleSpace/Dynamics/SpecialEffectsDynamics.h"
+#include "Engine/ParticleSpace/Dynamics/SplineEnsembleSolver.h"
 #include "Engine/ParticleSpace/Dynamics/SwarmFlockingDynamics.h"
 
 #include <algorithm>
@@ -45,6 +46,12 @@ void ExtractOriginCenter(const ReleaseOriginSpec& Origin, float OutCenter[3]) no
         for (int K = 0; K < 3; ++K) OutCenter[K] = Fw->ShellOrigin[K];
     else if (const auto* Lat = std::get_if<SurfaceLatticeOrigin>(&Origin))
         for (int K = 0; K < 3; ++K) OutCenter[K] = Lat->CenterMeters[K];
+    else if (const auto* Web = std::get_if<SpiderwebOrigin>(&Origin))
+        for (int K = 0; K < 3; ++K) OutCenter[K] = Web->CenterMeters[K];
+    else if (const auto* Cloth = std::get_if<ClothGridOrigin>(&Origin))
+        for (int K = 0; K < 3; ++K) OutCenter[K] = Cloth->OriginMeters[K];
+    else if (const auto* Elec = std::get_if<DualElectrodeOrigin>(&Origin))
+        for (int K = 0; K < 3; ++K) OutCenter[K] = Elec->CathodeMeters[K];
 }
 
 } // namespace
@@ -74,7 +81,8 @@ uint32_t ExecuteParticleRigStepCpu(
 
     // 2. Dispatch ONLY the active modular dynamics subsystems composed into Rig.Dynamics!
     const auto& D = Rig.Dynamics;
-    if (D.Curl.has_value())        StepCurlManifoldDynamics(*D.Curl, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
+    if (D.Curl.has_value() && !std::holds_alternative<RibbonStrandCarrier>(Rig.Carrier))
+        StepCurlManifoldDynamics(*D.Curl, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
     if (D.Orbital.has_value())     StepOrbitalGravityDynamics(*D.Orbital, OriginCenter, RigSlots, DtSec);
     if (D.Electro.has_value())     StepElectromagneticDynamics(*D.Electro, OriginCenter, RigSlots, DtSec);
     if (D.Harmonic.has_value())    StepHarmonicWaveDynamics(*D.Harmonic, OriginCenter, RigSlots, Context.ElapsedSeconds, DtSec);
@@ -98,7 +106,7 @@ uint32_t ExecuteParticleRigStepCpu(
         AmbientV[2] = std::sin(Az) * Context.Document.AmbientWind.SpeedMps * Gust;
     }
 
-    // Dedicated 20-node dynamic strand pipeline (Cables/Chains, Leafy Vines, Flags, Ship Sails, Beaded Curtains)
+    // Dedicated 20-vertex dynamic strand solver (Cables/Chains, Leafy Vines, Flags, Ship Sails, Beaded Curtains)
     if (D.Strand.has_value())
     {
         StepDynamicStrandEnsemble(
@@ -118,6 +126,69 @@ uint32_t ExecuteParticleRigStepCpu(
             if (IsParticleSlotAlive(Slot)) ++AliveStrands;
         }
         return AliveStrands;
+    }
+
+    // Dedicated Curl Stream Ribbon & Bokeh Object Surface Pour solver (curlMode 1, 2, 3 with RibbonStrandCarrier)
+    if (D.Curl.has_value() && std::holds_alternative<RibbonStrandCarrier>(Rig.Carrier) && !OptionalStrandHistory.empty())
+    {
+        StepCurlStreamRibbonEnsemble(
+            Rig,
+            *D.Curl,
+            OriginCenter,
+            AmbientV,
+            Context.ForceAccumulator,
+            RigSlots,
+            OptionalStrandHistory,
+            Context.ElapsedSeconds,
+            DtSec);
+        uint32_t AliveCount = 0u;
+        for (const auto& Slot : RigSlots)
+        {
+            if (IsParticleSlotAlive(Slot)) ++AliveCount;
+        }
+        return AliveCount;
+    }
+
+    // Dedicated 20-vertex Spiderweb Catenary Spline solver (Orb-Weave & Messy Attic Cobwebs)
+    if (D.Spiderweb.has_value() && std::holds_alternative<RibbonStrandCarrier>(Rig.Carrier) && !OptionalStrandHistory.empty())
+    {
+        StepSpiderwebSplineEnsemble(
+            Rig,
+            *D.Spiderweb,
+            OriginCenter,
+            AmbientV,
+            Context.ForceAccumulator,
+            Context.Document.Collider,
+            RigSlots,
+            OptionalStrandHistory,
+            Context.ElapsedSeconds,
+            DtSec);
+        uint32_t AliveCount = 0u;
+        for (const auto& Slot : RigSlots)
+        {
+            if (IsParticleSlotAlive(Slot)) ++AliveCount;
+        }
+        return AliveCount;
+    }
+
+    // Dedicated Dielectric Lightning / Plasma Cage / Storm Web ionization spark solver
+    if (D.DielectricArc.has_value() && std::holds_alternative<DualElectrodeOrigin>(Rig.Origin))
+    {
+        const auto& Elec = std::get<DualElectrodeOrigin>(Rig.Origin);
+        StepDielectricSparkEnsemble(
+            Rig,
+            *D.DielectricArc,
+            Elec.CathodeMeters,
+            Elec.AnodeMeters,
+            RigSlots,
+            Context.ElapsedSeconds,
+            DtSec);
+        uint32_t AliveCount = 0u;
+        for (const auto& Slot : RigSlots)
+        {
+            if (IsParticleSlotAlive(Slot)) ++AliveCount;
+        }
+        return AliveCount;
     }
 
     const float GravityY = -9.81f * D.Ballistic.GravityScale + D.Ballistic.BuoyancyMps2;
