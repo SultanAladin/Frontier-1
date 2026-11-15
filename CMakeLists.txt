@@ -68,6 +68,12 @@ target_compile_definitions(FrontierCompileSettings INTERFACE
 )
 
 if(MSVC)
+    target_compile_definitions(FrontierCompileSettings INTERFACE
+        _ENABLE_EXTENDED_ALIGNED_STORAGE
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        _CRT_SECURE_NO_WARNINGS
+    )
     target_compile_options(FrontierCompileSettings INTERFACE /utf-8 /W4 /permissive-)
     if(FRONTIER_PROFILE STREQUAL "Shipping")
         target_compile_options(FrontierCompileSettings INTERFACE $<$<NOT:$<CONFIG:Debug>>:/O2> /DNDEBUG)
@@ -802,21 +808,25 @@ foreach(CFG_TYPE DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
 endforeach()
 
 #------------------------------------------------------------------------------------------------------------------------
-#                              DESKTOP APPLICATION EXECUTABLES (FRONTIER, FRONTIERUV & FRONTIEREDITOR)
+#                         DESKTOP APPLICATION EXECUTABLES (STANDALONE INDIVIDUAL WORKSPACES)
 #------------------------------------------------------------------------------------------------------------------------
 
 if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
-    add_executable(Frontier Engine/Lifecycle/FrontierHostLaunch.cpp)
-    target_compile_definitions(Frontier PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
-    target_link_libraries(Frontier PRIVATE FrontierEngine FrontierImGui)
+    function(frontier_register_desktop_app APP_NAME LAUNCH_SOURCE)
+        add_executable(${APP_NAME} ${LAUNCH_SOURCE})
+        target_compile_definitions(${APP_NAME} PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
+        target_link_libraries(${APP_NAME} PRIVATE FrontierEngine FrontierImGui)
+    endfunction()
 
-    add_executable(FrontierUV Engine/Lifecycle/FrontierUVLaunch.cpp)
-    target_compile_definitions(FrontierUV PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
-    target_link_libraries(FrontierUV PRIVATE FrontierEngine FrontierImGui)
-
-    add_executable(FrontierEditor Engine/Lifecycle/FrontierEditorLaunch.cpp)
-    target_compile_definitions(FrontierEditor PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
-    target_link_libraries(FrontierEditor PRIVATE FrontierEngine FrontierImGui)
+    frontier_register_desktop_app(Frontier           Engine/Lifecycle/FrontierHostLaunch.cpp)
+    frontier_register_desktop_app(FrontierEditor     Engine/Lifecycle/FrontierEditorLaunch.cpp)
+    frontier_register_desktop_app(FrontierUV         Engine/Lifecycle/FrontierUVLaunch.cpp)
+    frontier_register_desktop_app(FrontierBaking     Engine/Lifecycle/FrontierBakingLaunch.cpp)
+    frontier_register_desktop_app(FrontierPattern    Engine/Lifecycle/FrontierPatternLaunch.cpp)
+    frontier_register_desktop_app(FrontierStamp      Engine/Lifecycle/FrontierStampLaunch.cpp)
+    frontier_register_desktop_app(FrontierMaterial   Engine/Lifecycle/FrontierMaterialLaunch.cpp)
+    frontier_register_desktop_app(FrontierParticle   Engine/Lifecycle/FrontierParticleLaunch.cpp)
+    frontier_register_desktop_app(FrontierForceField Engine/Lifecycle/FrontierForceFieldLaunch.cpp)
 endif()
 
 #------------------------------------------------------------------------------------------------------------------------
@@ -915,23 +925,33 @@ if(BUILD_TESTING)
             NAME FrontierUVExecutableSmoke
             COMMAND FrontierUV --frames=3 "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/UV/FrontierUV_DesktopExecutable.png"
         )
-        if(FRONTIER_PROFILE STREQUAL "Editor")
-            add_test(
-                NAME FrontierEditorExecutableSmoke
-                COMMAND FrontierEditor --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/UV/FrontierEditor_DesktopExecutable.png"
-            )
-            add_test(
-                NAME FrontierPatternExecutableSmoke
-                COMMAND FrontierEditor --workspace=pattern --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/Texturing/FrontierPattern_DesktopExecutable.png"
-            )
-            add_test(
-                NAME FrontierStampExecutableSmoke
-                COMMAND FrontierEditor --workspace=stamp --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/Texturing/FrontierStamp_DesktopExecutable.png"
-            )
-            add_test(
-                NAME FrontierBakingExecutableSmoke
-                COMMAND FrontierEditor --workspace=baking --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/Texturing/FrontierBaking_DesktopExecutable.png"
-            )
-        endif()
+        add_test(
+            NAME FrontierEditorExecutableSmoke
+            COMMAND FrontierEditor --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/UV/FrontierEditor_DesktopExecutable.png"
+        )
+        add_test(
+            NAME FrontierPatternExecutableSmoke
+            COMMAND FrontierPattern --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/Texturing/FrontierPattern_DesktopExecutable.png"
+        )
+        add_test(
+            NAME FrontierStampExecutableSmoke
+            COMMAND FrontierStamp --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/Texturing/FrontierStamp_DesktopExecutable.png"
+        )
+        add_test(
+            NAME FrontierBakingExecutableSmoke
+            COMMAND FrontierBaking --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/Texturing/FrontierBaking_DesktopExecutable.png"
+        )
+        add_test(
+            NAME FrontierMaterialExecutableSmoke
+            COMMAND FrontierMaterial --frames=3
+        )
+        add_test(
+            NAME FrontierParticleExecutableSmoke
+            COMMAND FrontierParticle --frames=3
+        )
+        add_test(
+            NAME FrontierForceFieldExecutableSmoke
+            COMMAND FrontierForceField --frames=1
+        )
     endif()
 endif()

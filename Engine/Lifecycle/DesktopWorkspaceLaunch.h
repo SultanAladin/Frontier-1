@@ -36,19 +36,22 @@ struct DesktopResourcePaths
 
 struct DesktopLaunchOptions
 {
-    Configuration::HostLaunchMode DefaultLaunchMode       = Configuration::HostLaunchMode::StandaloneWorkspace;
-    std::string_view              WindowTitle             = "Frontier UV";
-    uint32_t                      InitialWidthPx          = 1840u;
-    uint32_t                      InitialHeightPx         = 980u;
-    uint32_t                      BoundedStepLimit        = 0u; // 0 = run until user closes window (auto-bounds on GlfwNull)
-    std::filesystem::path         StartupImportPath       {};
-    std::filesystem::path         StartupProjectSpacePath {};
-    std::filesystem::path         CapturePngOutputPath    {};
-    bool                          OpenContentBrowser      = true;
-    bool                          OpenWorldEditor         = false;
-    bool                          OpenProjectBrowser      = false;
-    bool                          PreviewReaderOnStart    = false;
-    bool                          OpenNewProjectModal     = false;
+    Configuration::HostLaunchMode DefaultLaunchMode          = Configuration::HostLaunchMode::StandaloneWorkspace;
+    WorkspaceCategory             InitialWorkspace           = WorkspaceCategory::UV;
+    bool                          InitialStampMode           = false;
+    bool                          IsolateStandaloneWorkspace = false;
+    std::string_view              WindowTitle                = "Frontier UV";
+    uint32_t                      InitialWidthPx             = 1840u;
+    uint32_t                      InitialHeightPx            = 980u;
+    uint32_t                      BoundedStepLimit           = 0u; // 0 = run until user closes window (auto-bounds on GlfwNull)
+    std::filesystem::path         StartupImportPath          {};
+    std::filesystem::path         StartupProjectSpacePath    {};
+    std::filesystem::path         CapturePngOutputPath       {};
+    bool                          OpenContentBrowser         = true;
+    bool                          OpenWorldEditor            = false;
+    bool                          OpenProjectBrowser         = false;
+    bool                          PreviewReaderOnStart       = false;
+    bool                          OpenNewProjectModal        = false;
 };
 
 [[nodiscard]] int LaunchDesktopWorkspace(

@@ -23,14 +23,21 @@
 #include "Engine/Input/ImGuiInputAdapter.h"
 #include "Engine/Input/InputExtension.h"
 #include "Engine/Windowing/PlatformWindow.h"
+#include "Engine/Workspaces/Material/MaterialWorkspaceHost.h"
+#include "Engine/Workspaces/Particle/ParticleWorkspaceHost.h"
 #include "Engine/Workspaces/Texturing/BakingWorkspaceHost.h"
 #include "Engine/Workspaces/Texturing/PatternStampWorkspaceHost.h"
 #include "Engine/Workspaces/UV/UVWorkspaceHost.h"
 
 #if FRONTIER_EDITOR_ENABLED
 #include "Engine/Components/Controls/CapsuleButton.h"
+#include "Engine/Components/Controls/ControlAppearance.h"
+#include "Engine/Components/Panes/InspectorPanel.h"
+#include "Engine/Components/Panes/OutlinerPanel.h"
+#include "Engine/Components/Panes/ViewportPanel.h"
 #include "Engine/Editor/Explorer/ContentBrowser.h"
 #include "Engine/Editor/Explorer/ProjectBrowser.h"
+#include "Engine/Editor/Workspaces/Simulation/VectorFieldViewportCoordinator.h"
 #include "Engine/Lifecycle/EditorLifecycle.h"
 #endif
 
@@ -249,10 +256,16 @@ int LaunchDesktopWorkspace(
     const std::filesystem::path&  RepositoryRootPath,
     const std::filesystem::path&  CompiledShaderDir)
 {
-    Configuration::EngineConfiguration EngineConfig(
+    Configuration::EngineConfigurationDescriptor BaseDesc =
         InitialOptions.DefaultLaunchMode == Configuration::HostLaunchMode::StandaloneWorkspace
             ? Configuration::EngineConfiguration::ConstructStandaloneUVDefault()
-            : Configuration::EngineConfiguration::ConstructFeatureSetDefault());
+            : Configuration::EngineConfiguration::ConstructFeatureSetDefault();
+    if (InitialOptions.DefaultLaunchMode == Configuration::HostLaunchMode::StandaloneWorkspace)
+    {
+        BaseDesc.ActiveWorkspace  = InitialOptions.InitialWorkspace;
+        BaseDesc.ApplicationTitle = std::string(InitialOptions.WindowTitle);
+    }
+    Configuration::EngineConfiguration EngineConfig(std::move(BaseDesc));
 
     std::vector<std::string_view> ArgViews {};
     ArgViews.reserve(CommandLineArgs.size());
@@ -265,7 +278,9 @@ int LaunchDesktopWorkspace(
     }
     EngineConfig.ConfigureFromCommandLine(ArgViews);
 
-    Workspaces::PatternStampWorkspaceMode RequestedVectorMode = Workspaces::PatternStampWorkspaceMode::Pattern;
+    Workspaces::PatternStampWorkspaceMode RequestedVectorMode = InitialOptions.InitialStampMode
+        ? Workspaces::PatternStampWorkspaceMode::Stamp
+        : Workspaces::PatternStampWorkspaceMode::Pattern;
 
     for (const char* RawArg : CommandLineArgs)
     {
@@ -334,6 +349,24 @@ int LaunchDesktopWorkspace(
             InitialOptions.OpenProjectBrowser = false;
             InitialOptions.WindowTitle        = "Frontier Baking";
         }
+        else if (Arg == "--standalone-material" || Arg == "--standalone=material" || Arg == "--workspace=material" || Arg == "--material")
+        {
+            InitialOptions.OpenWorldEditor    = false;
+            InitialOptions.OpenProjectBrowser = false;
+            InitialOptions.WindowTitle        = "Frontier Material";
+        }
+        else if (Arg == "--standalone-particle" || Arg == "--standalone=particle" || Arg == "--workspace=particle" || Arg == "--particle")
+        {
+            InitialOptions.OpenWorldEditor    = false;
+            InitialOptions.OpenProjectBrowser = false;
+            InitialOptions.WindowTitle        = "Frontier Particle";
+        }
+        else if (Arg == "--standalone-forcefield" || Arg == "--standalone=forcefield" || Arg == "--workspace=forcefield" || Arg == "--workspace=simulation" || Arg == "--forcefield")
+        {
+            InitialOptions.OpenWorldEditor    = false;
+            InitialOptions.OpenProjectBrowser = false;
+            InitialOptions.WindowTitle        = "Frontier ForceField";
+        }
         else if (Arg == "--project-browser")
         {
             InitialOptions.OpenProjectBrowser = true;
@@ -374,12 +407,15 @@ int LaunchDesktopWorkspace(
 #if FRONTIER_EDITOR_ENABLED
     enum class ActiveHostSurface : uint8_t
     {
-        ProjectBrowserSurface   = 0u,
-        WorldEditorSurface      = 1u,
-        UvWorkspaceSurface      = 2u,
-        PatternWorkspaceSurface = 3u,
-        StampWorkspaceSurface   = 4u,
-        BakingWorkspaceSurface  = 5u,
+        ProjectBrowserSurface      = 0u,
+        WorldEditorSurface         = 1u,
+        UvWorkspaceSurface         = 2u,
+        PatternWorkspaceSurface    = 3u,
+        StampWorkspaceSurface      = 4u,
+        BakingWorkspaceSurface     = 5u,
+        MaterialWorkspaceSurface   = 6u,
+        ParticleWorkspaceSurface   = 7u,
+        ForceFieldWorkspaceSurface = 8u,
     };
 
     const bool StandaloneVectorLaunch =
@@ -388,6 +424,18 @@ int LaunchDesktopWorkspace(
         !InitialOptions.OpenProjectBrowser;
     const bool StandaloneBakingLaunch =
         (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::Baking) &&
+        !InitialOptions.OpenWorldEditor &&
+        !InitialOptions.OpenProjectBrowser;
+    const bool StandaloneMaterialLaunch =
+        (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::Material) &&
+        !InitialOptions.OpenWorldEditor &&
+        !InitialOptions.OpenProjectBrowser;
+    const bool StandaloneParticleLaunch =
+        (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::Particle) &&
+        !InitialOptions.OpenWorldEditor &&
+        !InitialOptions.OpenProjectBrowser;
+    const bool StandaloneForceFieldLaunch =
+        (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::Simulation) &&
         !InitialOptions.OpenWorldEditor &&
         !InitialOptions.OpenProjectBrowser;
     const bool StandaloneUVLaunch =
@@ -400,6 +448,18 @@ int LaunchDesktopWorkspace(
     if (InitialOptions.OpenProjectBrowser)
     {
         CurrentSurface = ActiveHostSurface::ProjectBrowserSurface;
+    }
+    else if (StandaloneMaterialLaunch)
+    {
+        CurrentSurface = ActiveHostSurface::MaterialWorkspaceSurface;
+    }
+    else if (StandaloneParticleLaunch)
+    {
+        CurrentSurface = ActiveHostSurface::ParticleWorkspaceSurface;
+    }
+    else if (StandaloneForceFieldLaunch)
+    {
+        CurrentSurface = ActiveHostSurface::ForceFieldWorkspaceSurface;
     }
     else if (StandaloneBakingLaunch)
     {
@@ -529,19 +589,34 @@ int LaunchDesktopWorkspace(
     InputCoordinator.Initialize();
 
 #if FRONTIER_EDITOR_ENABLED
-    Lifecycle::EditorLifecycle       EditorLoop {};
-    Editor::Explorer::ContentBrowser StandaloneBrowser {};
-    Editor::Explorer::ContentBrowser PatternBrowser {};
-    Editor::Explorer::ContentBrowser StampBrowser {};
-    Editor::Explorer::ContentBrowser BakingBrowser {};
-    Editor::Explorer::ProjectBrowser HostProjectBrowser {};
-    bool                             EditorStackReady = false;
-    bool                             UvHostReady      = false;
-    bool                             PatternHostReady = false;
-    bool                             StampHostReady   = false;
-    bool                             BakingHostReady  = false;
-    bool                             ProjectBrowserInitialized = false;
-    bool                             SharedThemeInitialized    = false;
+    Workspaces::MaterialWorkspaceHost                  MaterialHost {};
+    Workspaces::ParticleWorkspaceHost                  ParticleHost {};
+    Components::HeadlessWorkspaceDockContainer         MaterialDock {};
+    Components::HeadlessWorkspaceDockContainer         ForceFieldDock {};
+    Lifecycle::EditorLifecycle                         EditorLoop {};
+    Editor::Explorer::ContentBrowser                   StandaloneBrowser {};
+    Editor::Explorer::ContentBrowser                   PatternBrowser {};
+    Editor::Explorer::ContentBrowser                   StampBrowser {};
+    Editor::Explorer::ContentBrowser                   BakingBrowser {};
+    Editor::Explorer::ContentBrowser                   MaterialBrowser {};
+    Editor::Explorer::ContentBrowser                   ParticleBrowser {};
+    Editor::Explorer::ProjectBrowser                   HostProjectBrowser {};
+    OutlinerPanel                                      ForceOutliner {};
+    ViewportPanel                                      ForceViewport {};
+    InspectorPanel                                     ForceInspector {};
+    Editor::Simulation::VectorFieldViewportCoordinator ForceCoordinator {};
+    double                                             LastFrameDtSeconds        = 1.0 / 60.0;
+    float                                              LastHostUiScale           = 1.0f;
+    bool                                               EditorStackReady          = false;
+    bool                                               UvHostReady               = false;
+    bool                                               PatternHostReady          = false;
+    bool                                               StampHostReady            = false;
+    bool                                               BakingHostReady           = false;
+    bool                                               MaterialHostReady         = false;
+    bool                                               ParticleHostReady         = false;
+    bool                                               ForceFieldHostReady       = false;
+    bool                                               ProjectBrowserInitialized = false;
+    bool                                               SharedThemeInitialized    = false;
 
     auto EnsureSharedControlCentreReady = [&]()
     {
@@ -778,6 +853,171 @@ int LaunchDesktopWorkspace(
         return true;
     };
 
+    auto EnsureMaterialHostReady = [&]() -> bool
+    {
+        EnsureSharedControlCentreReady();
+        if (!MaterialHostReady)
+        {
+            MaterialHost.ConfigureLaunchPolicy(EngineConfig);
+            (void)MaterialHost.AttachVulkanDevice(&DeviceInterchange, CompiledShaderDir);
+
+            ThemeRepository ThemeRepo {};
+            (void)MaterialDock.Initialize(
+                Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow(
+                    "Frontier Material", InitialOptions.InitialWidthPx, InitialOptions.InitialHeightPx));
+            Components::ConfigureImGuiWorkspaceStyle(MaterialDock.ActiveTabMetrics());
+            Components::ConfigureImGuiWorkspaceTheme(MaterialDock.ActiveTabMetrics(), ThemeRepo);
+
+            MaterialBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            MaterialBrowser.AccessPanel().ConfigureOriginFilter(ContentOriginFilter::Project);
+            MaterialHost.AttachContentBrowser(&MaterialBrowser);
+            MaterialBrowser.AccessPanel().ConfigureShelfExtent(
+                InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
+                true);
+            MaterialHost.RegisterDockPanes(MaterialDock);
+            MaterialHostReady = true;
+        }
+        return true;
+    };
+
+    auto EnsureParticleHostReady = [&]() -> bool
+    {
+        EnsureSharedControlCentreReady();
+        if (!ParticleHostReady)
+        {
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            ParticleBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            ParticleBrowser.AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::Particle);
+            ParticleBrowser.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
+            (void)ParticleBrowser.AccessPanel().ActivateCategory(ContentCategory::Colours);
+            ParticleBrowser.AccessPanel().ConfigureColourCollectionScope(ColourCollectionScope::Ramps);
+            ParticleHost.AttachContentBrowserPanel(&ParticleBrowser.AccessPanel());
+
+            std::string ParticleVkDiag {};
+            (void)ParticleHost.AccessSession().VulkanExecutor.Initialize(CompiledShaderDir, ParticleVkDiag);
+            ParticleHostReady = true;
+        }
+        return true;
+    };
+
+    auto EnsureForceFieldHostReady = [&]() -> bool
+    {
+        EnsureSharedControlCentreReady();
+        if (!ForceFieldHostReady)
+        {
+            std::string ForceDiag {};
+            const std::filesystem::path SwiftShaderDir = RepositoryRootPath / "ExternalPackages/VulkanCompute/SwiftShader";
+            if (!ForceCoordinator.AttachInitializedSession(
+                    ForceOutliner,
+                    ForceViewport,
+                    ForceInspector,
+                    CompiledShaderDir,
+                    SwiftShaderDir,
+                    ForceDiag))
+            {
+                std::fprintf(stderr, "[FrontierHost] VectorFieldViewportCoordinator initialization failed: %s\n", ForceDiag.c_str());
+                return false;
+            }
+
+            // Populate canonical Wind Tunnel demo forces so standalone ForceField Studio opens with live 3D simulation
+            using namespace SimulationSpace::ForceFields;
+            const OutlinerSlotToken WindFolder = ForceOutliner.ConstructFolder("Wind Tunnel Forces");
+
+            ForceSourceRecordEntry VortexDesc {};
+            VortexDesc.Label                        = "Helical Vortex Path";
+            VortexDesc.Model                        = ForceModel::RotationalColumn;
+            VortexDesc.CentreMeters                 = { -6.0f, -2.0f, 5.0f };
+            VortexDesc.RadiusMeters                 = 20.0f;
+            VortexDesc.Strength                     = 22.0f;
+            VortexDesc.SwirlRatio                   = 1.15f;
+            VortexDesc.DynamicMotion                = true;
+            VortexDesc.Motion.Topology              = MotionPathTopology::CatmullSpline;
+            VortexDesc.Motion.CycleBehavior         = MotionCycleBehavior::PingPong;
+            VortexDesc.Motion.SpeedMetresPerSecond  = 5.5f;
+            VortexDesc.Motion.WaypointCount         = 3u;
+            VortexDesc.Motion.Waypoints[0]          = { -14.0f, -6.0f, 4.5f };
+            VortexDesc.Motion.Waypoints[1]          = { -3.0f, 10.0f, 8.0f };
+            VortexDesc.Motion.Waypoints[2]          = { 12.0f, -4.0f, 6.0f };
+            const OutlinerSlotToken VortexToken = ForceCoordinator.AddForceSourceEntry(VortexDesc, WindFolder);
+
+            ForceSourceRecordEntry JetDesc {};
+            JetDesc.Label         = "Cantilever Jet Plume";
+            JetDesc.Model         = ForceModel::FlowStream;
+            JetDesc.StreamProfile = FlowStreamProfile::SlipstreamJet;
+            JetDesc.CentreMeters  = { 14.0f, 8.0f, 7.0f };
+            JetDesc.EulerDegrees  = { 0.0f, -12.0f, -145.0f };
+            JetDesc.RadiusMeters  = 17.0f;
+            JetDesc.Strength      = 26.0f;
+            (void)ForceCoordinator.AddForceSourceEntry(JetDesc, WindFolder);
+
+            ForceSourceRecordEntry BurstDesc {};
+            BurstDesc.Label                        = "Orbital Radial Burst";
+            BurstDesc.Model                        = ForceModel::RadialBurst;
+            BurstDesc.CentreMeters                 = { -12.0f, 15.0f, 6.0f };
+            BurstDesc.RadiusMeters                 = 14.0f;
+            BurstDesc.Strength                     = 20.0f;
+            BurstDesc.DurationMode                 = ForceDurationMode::Modulated;
+            BurstDesc.FrequencyHertz               = 0.4f;
+            BurstDesc.DynamicMotion                = true;
+            BurstDesc.Motion.Topology              = MotionPathTopology::HelicalOrbit;
+            BurstDesc.Motion.SpeedMetresPerSecond  = 6.0f;
+            BurstDesc.Motion.OrbitRadiusMeters     = 8.0f;
+            BurstDesc.Motion.WaypointCount         = 2u;
+            BurstDesc.Motion.Waypoints[0]          = { -12.0f, 15.0f, 6.0f };
+            BurstDesc.Motion.Waypoints[1]          = { -4.0f, 15.0f, 6.0f };
+            (void)ForceCoordinator.AddForceSourceEntry(BurstDesc, WindFolder);
+
+            ForceOutliner.SelectSingle(VortexToken);
+            ForceOutliner.ConfigureFilterStripOpen(true);
+            ForceCoordinator.ConfigureSelectedWaypointIndex(1);
+
+            ForceViewport.ConfigureExecutionMode(ViewportExecutionMode::Simulate, false);
+            auto& Ov = ForceViewport.AccessForceOverlaySettings();
+            Ov.Enabled                      = true;
+            Ov.ShowHeatmap                  = true;
+            Ov.ShowVectors                  = true;
+            Ov.ShowStreamlines              = true;
+            Ov.ShowBounds                   = true;
+            Ov.ShowMotionCurves             = true;
+            Ov.CrossSectionAnemometerActive = true;
+            Ov.CrossSectionAxis             = CrossSectionPlaneAxis::XYHorizontal;
+            Ov.CrossSectionOffsetMeters     = 5.0f;
+            Ov.StreamColorMode              = StreamlineColorMode::SpeedRamp;
+            Ov.StreamRibbonThickness        = 0.72f;
+            Ov.StreamLineCount              = 128u;
+            Ov.AnemometerWorldMeters        = { 1.5f, 2.0f, 5.5f };
+
+            ThemeRepository ThemeRepo {};
+            (void)ForceFieldDock.Initialize(
+                Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow(
+                    "Frontier ForceField", InitialOptions.InitialWidthPx, InitialOptions.InitialHeightPx));
+            Components::ConfigureImGuiWorkspaceStyle(ForceFieldDock.ActiveTabMetrics());
+            Components::ConfigureImGuiWorkspaceTheme(ForceFieldDock.ActiveTabMetrics(), ThemeRepo);
+
+            (void)ForceFieldDock.RegisterPane(Components::WorkspaceDockPaneDescriptor{
+                "Outliner",
+                Components::DockPlacementDirection::SplitLeft,
+                0.21f,
+                Components::PaneDirectiveMask::StandardPaneDirectives,
+                [&]() { ForceOutliner.PresentInImGuiPane(LastFrameDtSeconds, LastHostUiScale); } });
+            (void)ForceFieldDock.RegisterPane(Components::WorkspaceDockPaneDescriptor{
+                "Viewport",
+                Components::DockPlacementDirection::CenterTabGroup,
+                0.53f,
+                Components::PaneDirectiveMask::CentralViewportDirectives,
+                [&]() { ForceViewport.PresentInImGuiPane(LastFrameDtSeconds, LastHostUiScale); } });
+            (void)ForceFieldDock.RegisterPane(Components::WorkspaceDockPaneDescriptor{
+                "Inspector",
+                Components::DockPlacementDirection::SplitRight,
+                0.26f,
+                Components::PaneDirectiveMask::StandardPaneDirectives,
+                [&]() { ForceInspector.PresentInImGuiPane(LastFrameDtSeconds, LastHostUiScale); } });
+
+            ForceFieldHostReady = true;
+        }
+        return true;
+    };
+
     HostProjectBrowser.AssignLaunchWorkspaceCallback(
         [&](const Editor::Explorer::BrowserWorkspaceLaunchDirective& Directive)
         {
@@ -833,6 +1073,30 @@ int LaunchDesktopWorkspace(
     else if (CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface)
     {
         if (!EnsureBakingHostReady(InitialOptions.StartupImportPath))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+    }
+    else if (CurrentSurface == ActiveHostSurface::MaterialWorkspaceSurface)
+    {
+        if (!EnsureMaterialHostReady())
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+    }
+    else if (CurrentSurface == ActiveHostSurface::ParticleWorkspaceSurface)
+    {
+        if (!EnsureParticleHostReady())
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+    }
+    else if (CurrentSurface == ActiveHostSurface::ForceFieldWorkspaceSurface)
+    {
+        if (!EnsureForceFieldHostReady())
         {
             ImGui::DestroyContext(GuiCtx);
             return 1;
@@ -1022,6 +1286,20 @@ int LaunchDesktopWorkspace(
                 HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
             }
         }
+        if (MaterialHostReady)
+        {
+            if (auto* HostSurface = MaterialDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+            {
+                HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
+            }
+        }
+        if (ForceFieldHostReady)
+        {
+            if (auto* HostSurface = ForceFieldDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+            {
+                HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
+            }
+        }
 #else
         if (auto* HostSurface = StandaloneDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
         {
@@ -1110,16 +1388,67 @@ int LaunchDesktopWorkspace(
             Input::InputExtension::AssignActiveCoordinator(&InputCoordinator);
             EditorLoop.PresentPrimaryEditorImGui(Dt);
         }
+        else if (CurrentSurface == ActiveHostSurface::ParticleWorkspaceSurface)
+        {
+            const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            ParticleHost.AccessSession().StepSimulationClock(Dt);
+            PixelSpace StudioSurface(ImGui::GetForegroundDrawList(), Point2D{ 0.0f, 0.0f }, HostUiScale);
+            const Point2D MouseLogical = StudioSurface.QueryMousePosition();
+            ContentBrowserPointerInput PtrInput {};
+            if (!StandaloneControlCentre.QueryOpen())
+            {
+                PtrInput.CursorX       = MouseLogical.X;
+                PtrInput.CursorY       = MouseLogical.Y;
+                PtrInput.Pressed       = StudioSurface.QueryMouseClicked(0);
+                PtrInput.HeldDown      = StudioSurface.QueryMouseDown(0);
+                PtrInput.Released      = StudioSurface.QueryMouseReleased(0);
+                PtrInput.DoubleClicked = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+                PtrInput.WheelDeltaY   = Io.MouseWheel;
+            }
+            const Rectangle2D LogicalBounds {
+                0.0f,
+                0.0f,
+                FullBounds.Width / HostUiScale,
+                FullBounds.Height / HostUiScale,
+            };
+            ParticleHost.RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
+            StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
+        }
+        else if (CurrentSurface == ActiveHostSurface::ForceFieldWorkspaceSurface)
+        {
+            const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
+            LastFrameDtSeconds = Dt;
+            LastHostUiScale    = HostUiScale;
+            ForceCoordinator.StepSimulation(Dt);
+            Components::ConfigureImGuiWorkspaceTheme(
+                ForceFieldDock.ActiveTabMetrics(),
+                StandaloneControlCentre.QueryThemeRepository());
+            if (StandaloneControlCentre.QueryOpen())
+            {
+                WorkspaceAppearance::AssignOverlayPointerShield(FullBounds);
+            }
+            else
+            {
+                WorkspaceAppearance::ClearOverlayPointerShield();
+            }
+            ForceFieldDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+            WorkspaceAppearance::ClearOverlayPointerShield();
+            ForceCoordinator.AccessContentBrowser().PresentInImGuiHost(Dt, HostUiScale);
+            StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
+        }
         else
         {
             Components::HeadlessWorkspaceDockContainer& ActiveDock =
-                (CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface) ? BakingDock :
+                (CurrentSurface == ActiveHostSurface::MaterialWorkspaceSurface) ? MaterialDock :
+                ((CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface) ? BakingDock :
                 ((CurrentSurface == ActiveHostSurface::PatternWorkspaceSurface) ? PatternDock :
-                ((CurrentSurface == ActiveHostSurface::StampWorkspaceSurface) ? StampDock : StandaloneDock));
+                ((CurrentSurface == ActiveHostSurface::StampWorkspaceSurface) ? StampDock : StandaloneDock)));
             Editor::Explorer::ContentBrowser& ActiveBrowser =
-                (CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface) ? BakingBrowser :
+                (CurrentSurface == ActiveHostSurface::MaterialWorkspaceSurface) ? MaterialBrowser :
+                ((CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface) ? BakingBrowser :
                 ((CurrentSurface == ActiveHostSurface::PatternWorkspaceSurface) ? PatternBrowser :
-                ((CurrentSurface == ActiveHostSurface::StampWorkspaceSurface) ? StampBrowser : StandaloneBrowser));
+                ((CurrentSurface == ActiveHostSurface::StampWorkspaceSurface) ? StampBrowser : StandaloneBrowser)));
 
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
             Components::ConfigureImGuiWorkspaceTheme(
@@ -1127,6 +1456,10 @@ int LaunchDesktopWorkspace(
                 StandaloneControlCentre.QueryThemeRepository());
             auto& ActiveBrowserPanel = ActiveBrowser.AccessPanel();
             ActiveBrowserPanel.SynchronizeHostBounds(FullBounds, HostUiScale);
+            if (CurrentSurface == ActiveHostSurface::MaterialWorkspaceSurface)
+            {
+                MaterialHost.SynchronizeContentBrowserOcclusion(HostUiScale);
+            }
             if (StandaloneControlCentre.QueryOpen())
             {
                 WorkspaceAppearance::AssignOverlayPointerShield(FullBounds);
@@ -1142,7 +1475,7 @@ int LaunchDesktopWorkspace(
             ActiveBrowser.Render(FullBounds, Dt, HostUiScale);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
 
-            if (!StandaloneControlCentre.QueryOpen())
+            if (!StandaloneControlCentre.QueryOpen() && !InitialOptions.IsolateStandaloneWorkspace)
             {
                 PixelSpace TopOverlay(ImGui::GetForegroundDrawList(), Point2D{ 0.0f, 0.0f }, HostUiScale);
                 const Point2D MouseLogical = TopOverlay.QueryMousePosition();
@@ -1275,6 +1608,15 @@ int LaunchDesktopWorkspace(
     {
         BakingDock.Finalize();
         BakingHost.AttachVulkanDevice(nullptr);
+    }
+    if (MaterialHostReady)
+    {
+        MaterialDock.Finalize();
+        MaterialHost.AccessPreviewRenderer().TeardownVulkanPreview();
+    }
+    if (ForceFieldHostReady)
+    {
+        ForceFieldDock.Finalize();
     }
 #else
     StandaloneDock.Finalize();

@@ -398,8 +398,13 @@ bool ValidateContentBrowserParticleThumbnails(const std::filesystem::path& OutDi
 
 int main()
 {
-    const std::filesystem::path SpriteOutDir  = "Exhibits/Images/Particles/TextureStudio";
-    const std::filesystem::path VehicleOutDir = "Exhibits/Images/Particles/VehicleDissolve";
+#ifdef FRONTIER_REPO_ROOT_DIR
+    const std::filesystem::path RepoRoot(FRONTIER_REPO_ROOT_DIR);
+#else
+    const std::filesystem::path RepoRoot(".");
+#endif
+    const std::filesystem::path SpriteOutDir  = RepoRoot / "Exhibits/Images/Particles/TextureStudio";
+    const std::filesystem::path VehicleOutDir = RepoRoot / "Exhibits/Images/Particles/VehicleDissolve";
 
     ValidateProceduralSpritesPatternStudio(SpriteOutDir);
     ValidateControlVehicleDissolveModes(VehicleOutDir);

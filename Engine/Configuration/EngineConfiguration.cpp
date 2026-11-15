@@ -94,6 +94,24 @@ void EngineConfiguration::ConfigureFromCommandLine(std::span<const std::string_v
             Modified.ActiveWorkspace  = WorkspaceCategory::Baking;
             Modified.ApplicationTitle = "Frontier Baking";
         }
+        else if (Argument == "--standalone-material" || Argument == "--standalone=material" || Argument == "--workspace=material" || Argument == "--material")
+        {
+            Modified.LaunchMode       = HostLaunchMode::StandaloneWorkspace;
+            Modified.ActiveWorkspace  = WorkspaceCategory::Material;
+            Modified.ApplicationTitle = "Frontier Material";
+        }
+        else if (Argument == "--standalone-particle" || Argument == "--standalone=particle" || Argument == "--workspace=particle" || Argument == "--particle")
+        {
+            Modified.LaunchMode       = HostLaunchMode::StandaloneWorkspace;
+            Modified.ActiveWorkspace  = WorkspaceCategory::Particle;
+            Modified.ApplicationTitle = "Frontier Particle";
+        }
+        else if (Argument == "--standalone-forcefield" || Argument == "--standalone=forcefield" || Argument == "--workspace=forcefield" || Argument == "--workspace=simulation" || Argument == "--forcefield")
+        {
+            Modified.LaunchMode       = HostLaunchMode::StandaloneWorkspace;
+            Modified.ActiveWorkspace  = WorkspaceCategory::Simulation;
+            Modified.ApplicationTitle = "Frontier ForceField";
+        }
         else if (Argument == "--feature-set" || Argument == "--workspace=all")
         {
             Modified.LaunchMode       = HostLaunchMode::FeatureSet;

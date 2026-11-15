@@ -43,14 +43,22 @@ int main()
     ParticleSpace::ParticleVulkanExecutor Executor {};
     std::string Diag;
 
+#ifdef FRONTIER_COMPILED_SHADER_DIR
+    const std::filesystem::path ShaderDir = std::filesystem::path(FRONTIER_COMPILED_SHADER_DIR);
+#else
     const std::filesystem::path ShaderDir = "build/CompiledShaders";
+#endif
     Expect(Executor.Initialize(ShaderDir, Diag), "Verify all 21 compiled ParticleSpace SPIR-V 1.3 modules");
     std::cout << "  " << Diag << "\n";
     Expect(Executor.InspectTelemetry().CompiledShaderCount == 21u, "Exactly 21 SPIR-V binaries validated");
     Expect(Executor.InspectArtifacts().AllShadersPresentOnDisk(),  "All 21 artifact paths exist on disk");
 
     // Locate repo pinned SwiftShader Vulkan 1.3 ICD
+#ifdef FRONTIER_REPO_ROOT_DIR
+    const std::filesystem::path SwiftShaderDir = std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "ExternalPackages/VulkanCompute/SwiftShader";
+#else
     const std::filesystem::path SwiftShaderDir = "ExternalPackages/VulkanCompute/SwiftShader";
+#endif
 
     const bool GpuReady = Executor.InitializeGpuComputeDevice(SwiftShaderDir, Diag);
     std::cout << "  GPU Device Init: " << Diag << "\n";

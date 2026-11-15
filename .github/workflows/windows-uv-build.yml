@@ -66,7 +66,11 @@ jobs:
       - name: Build Windows x64 applications and boundary checks
         shell: pwsh
         run: |
-          $Output = & cmake --build Build/Windows --config Release --parallel 4 --target Frontier FrontierUV FrontierEditor FrontierEngineRuntimeDll FrontierWorkspaceUiDll UVBoundaryValidation ProjectBrowserValidation 2>&1
+          $Output = & cmake --build Build/Windows --config Release --parallel 4 --target `
+            Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp `
+            FrontierMaterial FrontierParticle FrontierForceField `
+            FrontierEngineRuntimeDll FrontierWorkspaceUiDll `
+            UVBoundaryValidation ProjectBrowserValidation 2>&1
           $Result = $LASTEXITCODE
           $Output | ForEach-Object { Write-Output "$_" }
           if ($Result -ne 0) {
@@ -86,28 +90,48 @@ jobs:
       - name: Assemble portable folder
         shell: pwsh
         run: |
-          $Payload = Join-Path $env:RUNNER_TEMP 'Frontier-UV-Windows-x64'
+          $Payload = Join-Path $env:RUNNER_TEMP 'Frontier-Workspaces-Windows-x64'
           New-Item -ItemType Directory -Force "$Payload/CompiledShaders", "$Payload/EngineContent", "$Payload/Binaries/Win64" | Out-Null
-          Copy-Item 'Build/Windows/Release/Frontier.exe' "$Payload/"
-          Copy-Item 'Build/Windows/Release/FrontierUV.exe' "$Payload/"
-          Copy-Item 'Build/Windows/Release/FrontierEditor.exe' "$Payload/"
+          $Apps = @(
+            'Frontier.exe',
+            'FrontierEditor.exe',
+            'FrontierUV.exe',
+            'FrontierBaking.exe',
+            'FrontierPattern.exe',
+            'FrontierStamp.exe',
+            'FrontierMaterial.exe',
+            'FrontierParticle.exe',
+            'FrontierForceField.exe'
+          )
+          foreach ($App in $Apps) {
+            Copy-Item "Build/Windows/Release/$App" "$Payload/"
+          }
           Copy-Item 'Build/Windows/Binaries/Win64/*' "$Payload/Binaries/Win64/" -Recurse -Force
           Copy-Item 'Build/Windows/CompiledShaders/*' "$Payload/CompiledShaders/" -Recurse -Force
           Copy-Item 'EngineContent/*' "$Payload/EngineContent/" -Recurse -Force
           @'
-          Frontier Workspace Suite for Windows x64
+          Frontier Standalone Workspaces Suite for Windows x64
 
-          Run Frontier.exe for the Project Browser (with Open with Frontier and Open with UVWorkspace),
-          FrontierEditor.exe for direct World Editor launch, or FrontierUV.exe for standalone UV authoring.
+          Each workspace is compiled as its own independent executable (no cross-workspace bridge yet):
+            - Frontier.exe            : Project Browser (primary launcher)
+            - FrontierEditor.exe      : 3D World Editor
+            - FrontierUV.exe          : UV Unwrap & UDIM Packing Studio
+            - FrontierBaking.exe      : GPU Surface Texture & 3D Volume SDF Baking Studio
+            - FrontierPattern.exe     : Seamless Vector & PBR Pattern Studio
+            - FrontierStamp.exe       : Alpha Cutout Decal Stamp Studio
+            - FrontierMaterial.exe    : Dynamic OpenPBR Material Studio
+            - FrontierParticle.exe    : 93-Preset Particle & ForceField Studio
+            - FrontierForceField.exe  : 3D Vector Field & Force Simulation Studio
+
           Keep CompiledShaders, EngineContent, and Binaries/Win64 beside the executables.
-          A Windows Vulkan 1.2 graphics driver is required.
+          A Windows Vulkan 1.2+ graphics driver is required.
           '@ | Set-Content "$Payload/README.txt" -Encoding utf8
-          Compress-Archive -Path "$Payload/*" -DestinationPath 'Build/Frontier-UV-Windows-x64.zip' -CompressionLevel Optimal
+          Compress-Archive -Path "$Payload/*" -DestinationPath 'Build/Frontier-Workspaces-Windows-x64.zip' -CompressionLevel Optimal
 
       - name: Upload Windows x64 package
         uses: actions/upload-artifact@v4
         with:
-          name: Frontier-UV-Windows-x64
-          path: Build/Frontier-UV-Windows-x64.zip
+          name: Frontier-Workspaces-Windows-x64
+          path: Build/Frontier-Workspaces-Windows-x64.zip
           if-no-files-found: error
           retention-days: 14

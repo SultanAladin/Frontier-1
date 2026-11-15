@@ -72,6 +72,26 @@ jobs:
             fi
           done
 
+      - name: Assemble portable Linux x64 standalone workspaces package
+        run: |
+          payload="${RUNNER_TEMP}/Frontier-Workspaces-Linux-x64"
+          mkdir -p "$payload/CompiledShaders" "$payload/EngineContent" "$payload/Binaries/Win64"
+          for app in Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp FrontierMaterial FrontierParticle FrontierForceField; do
+            cp "Build/CI/Editor/${app}" "$payload/"
+          done
+          cp -r Build/CI/Editor/Binaries/Win64/* "$payload/Binaries/Win64/"
+          cp -r Build/CI/Editor/CompiledShaders/* "$payload/CompiledShaders/"
+          cp -r EngineContent/* "$payload/EngineContent/"
+          tar -czf Build/Frontier-Workspaces-Linux-x64.tar.gz -C "$payload" .
+
+      - name: Upload Linux x64 standalone workspaces package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Frontier-Workspaces-Linux-x64
+          path: Build/Frontier-Workspaces-Linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload CTest diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4

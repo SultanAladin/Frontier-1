@@ -76,14 +76,20 @@ float ReadFloat32LE(const uint8_t* Ptr) noexcept
 
 [[nodiscard]] std::filesystem::path LocateVehicleBinaryFile(const char* FileName)
 {
-    const std::array<std::filesystem::path, 6u> SearchRoots = {{
+    const std::vector<std::filesystem::path> SearchRoots = {
         std::filesystem::path("EngineContent/EnvironmentArchives/ControlVehicle"),
+        std::filesystem::path("../EngineContent/EnvironmentArchives/ControlVehicle"),
+        std::filesystem::path("../../EngineContent/EnvironmentArchives/ControlVehicle"),
+        std::filesystem::path("../../../EngineContent/EnvironmentArchives/ControlVehicle"),
+#ifdef FRONTIER_REPO_ROOT_DIR
+        std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "EngineContent/EnvironmentArchives/ControlVehicle",
+        std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "Experimental/DeterministicPathTracer/Assets",
+        std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "Experimental/VehicleProvingGrounds/Archive",
+#endif
         std::filesystem::path("Experimental/DeterministicPathTracer/Assets"),
         std::filesystem::path("Experimental/VehicleProvingGrounds/Archive"),
-        std::filesystem::path("../EngineContent/EnvironmentArchives/ControlVehicle"),
         std::filesystem::path("../Experimental/DeterministicPathTracer/Assets"),
-        std::filesystem::path("/home/user/Frontier/EngineContent/EnvironmentArchives/ControlVehicle"),
-    }};
+    };
     for (const auto& Root : SearchRoots)
     {
         const auto Candidate = Root / FileName;

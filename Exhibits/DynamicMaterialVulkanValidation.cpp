@@ -49,7 +49,11 @@ int main()
     std::printf("=== DynamicMaterialVulkanValidation ===\n");
 
     const std::filesystem::path RepoRoot  = ResolveRepositoryRootPath();
+#ifdef FRONTIER_COMPILED_SHADER_DIR
+    const std::filesystem::path ShaderDir = std::filesystem::path(FRONTIER_COMPILED_SHADER_DIR);
+#else
     const std::filesystem::path ShaderDir = RepoRoot / "build/CompiledShaders";
+#endif
     const std::filesystem::path SpvPath   = ShaderDir / "DynamicMaterialResolve.comp.spv";
 
     VerifyCheck(std::filesystem::exists(SpvPath), "Compiled DynamicMaterialResolve.comp.spv exists", Passed, Failed);

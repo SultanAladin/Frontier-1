@@ -112,7 +112,11 @@ int main()
     GeometricRaster::VulkanInterchange VulkanDevice {};
     std::string VulkanDiag {};
     const bool VulkanReady = VulkanDevice.InitializeInterchange(RepoRoot, &VulkanDiag);
+#ifdef FRONTIER_COMPILED_SHADER_DIR
+    const std::filesystem::path ShaderDir = std::filesystem::path(FRONTIER_COMPILED_SHADER_DIR);
+#else
     const std::filesystem::path ShaderDir = RepoRoot / "build/CompiledShaders";
+#endif
     const std::filesystem::path SpvPath   = ShaderDir / "DynamicMaterialResolve.comp.spv";
 
     // 3. Mount Material Workspace (Viewport-only + ContentBrowser; Inspector & Layer Stack intentionally deferred)
