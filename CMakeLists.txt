@@ -199,6 +199,12 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/Particle/ParticleViewportHost.cpp
     Engine/Workspaces/Particle/ParticleInspectorPanel.cpp
     Engine/Workspaces/Particle/ParticleWorkspaceHost.cpp
+    Engine/Workspaces/Material/MaterialPreviewRenderer.cpp
+    Engine/Workspaces/Material/MaterialWorkspaceSession.cpp
+    Engine/Workspaces/Material/MaterialLayerStackPane.cpp
+    Engine/Workspaces/Material/MaterialViewportHost.cpp
+    Engine/Workspaces/Material/MaterialInspectorPane.cpp
+    Engine/Workspaces/Material/MaterialWorkspaceHost.cpp
     Engine/Workspaces/Texturing/PatternStampLayerStackPane.cpp
     Engine/Workspaces/Texturing/PatternStampToolHeaderPane.cpp
     Engine/Workspaces/Texturing/PatternStampInspectorPane.cpp
@@ -351,6 +357,7 @@ frontier_compile_modular_slang_shader(Particles/ParticleSurfaceBackingRasterizat
 frontier_compile_modular_slang_shader(Particles/ParticleOverlayRasterization.slang               ParticleOverlayVertexEntry          vertex   ParticleOverlayRasterization.vert.spv)
 frontier_compile_modular_slang_shader(Particles/ParticleOverlayRasterization.slang               ParticleOverlayFragmentEntry        fragment ParticleOverlayRasterization.frag.spv)
 frontier_compile_modular_slang_shader(MaterialSpace/OpenPbrSurfaceScattering.slang               ComputeEntry                    compute  OpenPbrSurfaceScattering.comp.spv)
+frontier_compile_modular_slang_shader(MaterialSpace/DynamicMaterialResolve.slang                 DynamicStudioPreviewCompute     compute  DynamicMaterialResolve.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/DepthPyramidDownsample.slang                    DepthPyramidComputeEntry        compute  DepthPyramidDownsample.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/ClusterVisibilityCull.slang                     ClusterCullComputeEntry         compute  ClusterVisibilityCull.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/HardwareVisibilityRasterization.slang           VisibilityVertexEntry           vertex   HardwareVisibilityRasterization.vert.spv)
@@ -528,6 +535,11 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/MaterialSpace/EnergyCompensation/SheenCosineIntegral.cpp
     Engine/MaterialSpace/Baking/ProceduralChannelBaker.cpp
     Engine/MaterialSpace/Baking/MaterialSpecimenRasterizer.cpp
+    Engine/MaterialSpace/Dynamic/DynamicParameterBlock.cpp
+    Engine/MaterialSpace/Dynamic/DynamicMaterialRecipe.cpp
+    Engine/MaterialSpace/Dynamic/DynamicMaterialCompiler.cpp
+    Engine/MaterialSpace/Dynamic/DynamicMaterialRepository.cpp
+    Engine/MaterialSpace/Dynamic/DynamicSurfaceResolver.cpp
     Engine/GeometricRaster/Visibility/DepthPyramidSequence.cpp
     Engine/GeometricRaster/Visibility/ClusterCullEncoder.cpp
     Engine/GeometricRaster/Visibility/VisibilityClusterRasterization.cpp
@@ -858,6 +870,9 @@ if(BUILD_TESTING)
     frontier_register_exhibit(GeometryNetworkValidation      Exhibits/GeometryNetworkValidation.cpp)
     frontier_register_exhibit(GeometryCompletionValidation   Exhibits/GeometryCompletionValidation.cpp)
     frontier_register_exhibit(MaterialScatteringValidation   Exhibits/MaterialScatteringValidation.cpp)
+    frontier_register_exhibit(DynamicMaterialRecipeValidation Exhibits/DynamicMaterialRecipeValidation.cpp)
+    frontier_register_exhibit(DynamicMaterialVulkanValidation Exhibits/DynamicMaterialVulkanValidation.cpp)
+    frontier_register_exhibit(MaterialWorkspaceUIValidation   Exhibits/MaterialWorkspaceUIValidation.cpp)
     frontier_register_exhibit(VisibilityRasterValidation     Exhibits/VisibilityRasterValidation.cpp)
     frontier_register_exhibit(SolarShadowValidation          Exhibits/SolarShadowValidation.cpp)
     frontier_register_exhibit(TieredWorldRenderValidation    Exhibits/TieredWorldRenderValidation.cpp)

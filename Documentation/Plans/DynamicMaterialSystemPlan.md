@@ -1,139 +1,175 @@
-# Frontier Dynamic & Procedural Material System Plan (Layer-Stack First — No Node Editor Required)
+# Frontier Dynamic & Procedural Material Plan (Layer-Stack First — No Node Editor Required)
 
-> **Status**: Architecture & Planning Document (zero C++ changes committed until approved).  
-> **Live HTML Material Previews**: All 13 proposed procedural & animated OpenPBR shaders are live-previewable right now in `Experimental/TextureStudio/` (`http://<preview>:8098/Experimental/TextureStudio/`, category **"Animated & VFX"**).  
+> **Status**: Refined Architecture & Planning Document (zero C++ code changes made — awaiting approval).  
+> **Vocabulary Compliance**: Strictly audited against `Documentation/BannedWordsVocabulary.md` (including the 2026-11-15 `strata` / `stratum` and `morph` bans, plus `And`, `Core`, `Kind`, `Evaluator`, `Pass`, `Stage`, `Emission`/`Emit`, `Substrate`, etc.).  
+> **Modularity Guarantee**: Every dynamic material, transition, scan, and dissolve recipe is **100% asset-agnostic and modular** — attachable to *any* static or animated 3D asset (props, architecture, characters, vehicles, terrain, or studio specimens).  
+> **Live HTML Material Previews**: All 13 proposed procedural & animated OpenPBR shaders are live in `Experimental/TextureStudio/` (`:8098`, category **"Animated & VFX"**).  
 > **Visual Proofs**:
 > - `Exhibits/Images/Particles/TextureStudio/ProposedMaterials_Hero6_Upgraded.png`
 > - `Exhibits/Images/Particles/TextureStudio/ProposedMaterials_13_Showcase.png`
 
 ---
 
-## 1. Truthful Audit: Where Frontier's Material System & Material Workspace Stand Today
+## 1. Truthful Audit: Where Frontier's Material Engine & Material Workspace Stand Today
 
-Your intuition was **100% accurate** — we have **not** started the C++ **Material Workspace** yet because the underlying **Dynamic & Procedural Material System** has not been built on top of the static OpenPBR engine.
-
-| Layer | Current Status in Frontier | Exact Location |
+| Component | Current Status in Frontier | Exact Location |
 | :--- | :--- | :--- |
-| **10-Lobe Static OpenPBR 1.1 Physics (`L1..L10`)** | **COMPLETE** (C++20 + Slang `.slang`) — Oren-Nayar diffuse, anisotropic GGX + F82 metal, tinted clearcoat, Belcour-Barla thin-film iridescence, Kemppinen 4D glinty microflakes, Abbe glass transmission, Burley SSS, Zeltner LTC sheen, Chiang hair/fiber, porosity + Planckian blackbody | `Engine/MaterialSpace/SurfaceMaterial.{h,cpp}`, `Engine/MaterialSpace/Scattering/*.h`, `Engine/Shaders/MaterialSpace/*.slang` |
-| **Compact GPU Material Packing & GI Bounce Summary** | **COMPLETE** — Compact register, surface-layer packing, directional albedo & sheen integrals | `Engine/MaterialSpace/CompactMaterialRegister.{h,cpp}`, `MaterialSurfaceLayer/`, `EnergyCompensation/` |
-| **Offline Static Specimen Rasterizer & Channel Baker** | **COMPLETE** (static textures only) | `Engine/MaterialSpace/Baking/MaterialSpecimenRasterizer.{h,cpp}`, `ProceduralChannelBaker.{h,cpp}` |
-| **Material Workspace HTML Reference UI** | **COMPLETE** — Project Zero Editor styling, strata inspector, channel slots, PMREM shaderball stage, 13 live animated shaders | `Experimental/TextureStudio/Workspaces/MaterialWorkspace.js`, `Experimental/ProjectZeroEditor/MaterialPanel.css` |
-| **Dynamic / Procedural / Animated Material System** | **NOT STARTED IN C++** (HTML prototype only) — no runtime time/event parameters, no non-destructive layer stack, no live procedural fields, no material-to-material morph, no holographic scan, no animated water surface | **Designed in this document** |
-| **C++ Material Workspace UI (`Engine/Workspaces/Material/`)** | **NOT STARTED** — `Engine/Workspaces/` currently contains `UV/`, `Texturing/` (Pattern/Stamp/Baking), `Particle/`, and `Revision/` | **Scheduled directly after the Dynamic Material Core** |
+| **10-Lobe Static OpenPBR 1.1 Physics (`L1..L10`)** | **COMPLETE** (C++20 + Slang `.slang`) — Portsmouth Oren-Nayar diffuse, anisotropic GGX + F82 conductor, tinted clearcoat, Belcour-Barla thin-film iridescence, Kemppinen 4D glinty microflakes, Abbe glass transmission, Burley SSS, Zeltner LTC sheen, Chiang fiber, porosity & Planckian blackbody | `Engine/MaterialSpace/SurfaceMaterial.{h,cpp}`, `Engine/MaterialSpace/Scattering/*.h`, `Engine/Shaders/MaterialSpace/*.slang` |
+| **Compact GPU Packing & Energy Compensation** | **COMPLETE** — Compact register, surface-layer packing, bounce summary, directional albedo & sheen integrals | `Engine/MaterialSpace/CompactMaterialRegister.{h,cpp}`, `MaterialSurfaceLayer/`, `EnergyCompensation/` |
+| **Static Specimen Rasterizer & Offline Channel Baker** | **COMPLETE** (CPU static thumbnails & offline textures only) | `Engine/MaterialSpace/Baking/MaterialSpecimenRasterizer.{h,cpp}`, `ProceduralChannelBaker.{h,cpp}` |
+| **Material Workspace HTML Reference UI** | **COMPLETE** — Project Zero Editor layout, layer stack inspector, channel slots, PMREM shaderball turntable, 13 live animated shaders | `Experimental/TextureStudio/Workspaces/MaterialWorkspace.js`, `Experimental/ProjectZeroEditor/MaterialPanel.css` |
+| **Dynamic / Procedural / Animated Material Architecture** | **NOT STARTED IN C++** (HTML prototype only) — no runtime time/event parameters, no non-destructive `MaterialLayerStack`, no live procedural fields, no generic material-to-material transition, no holographic scan, no animated water surface | **Designed in this document** |
+| **C++ Material Workspace (`Engine/Workspaces/Material/`)** | **NOT STARTED** — `Engine/Workspaces/` currently contains `UV/`, `Texturing/` (Pattern/Stamp/Baking), `Particle/`, and `Revision/` | **Scheduled directly after the Dynamic Material Foundation & Preview Renderer** |
 
 ---
 
-## 2. Core Design Philosophy: Unreal/Blender Power **Without** a Node Editor
+## 2. Design Philosophy: Unreal/Blender Power **Without** a Node Editor
 
-Artists love what Unreal Material Instances and Blender procedural shaders **do** (live animated sliders, procedural noise/Voronoi/waves, physical layering, real-time transitions, zero-cost parameter tweaking), while many artists and engineers strongly dislike untangling node spaghetti.
+Artists want the capabilities of Unreal Material Instances and Blender procedural shaders (live animated sliders, procedural noise/Voronoi/waves, physical layering, real-time asset transitions, zero-recompile tweaking) **without** having to untangle visual node spaghetti.
 
-Frontier solves this with a **Strata Layer-Stack + Parametric Field + Live Driver** architecture (closer to **Substance Painter + Cinema 4D + Unreal Material Instances**, backed by a clean compiled **Slang `.slang` shader recipe**):
+Frontier achieves this with a **Vertical `MaterialLayerStack` + Parametric Field + Live Driver** architecture (familiar from Substance Painter / Photoshop / Cinema 4D, backed by compiled **Slang `.slang` → SPIR-V** shaders):
 
-1. **Everything is a Vertical Layer Stack (`MaterialStratumStack`)**, NOT a spiderweb of wires:
-   - **Bottom → Top reading order**, identical to Photoshop / Substance / Texture Studio's existing **Strata** inspector.
-   - Every layer is one of four crystal-clear types:
-     1. **Physical Substrate Layer** — An OpenPBR 1.1 material (`Liquid Obsidian`, `Brushed Aerospace Titanium`, `Volcanic Basalt`, `Submerged Limestone`, `Deep Ocean Water`, `Hoarfrost Snow`).
-     2. **Procedural Field Generator** — Evaluates analytical math in Object, World, Triplanar, or UV space (`DomainWarpedFbm`, `DualScaleVoronoi`, `HexLatticeGrid`, `GerstnerWaveSum`, `RainBeadStreak`, `AnisotropicBrush`, `CubicVoxelLattice`, `OrthographicContourGrid`) directly targeting **any subset of OpenPBR channels** (Albedo, Roughness, Metalness, Relief Height, Clearcoat, Thin-Film Thickness, Emission, Opacity/Cutout).
-     3. **Spatial & Animated Mask Modifier** — Controls *where* and *when* a layer appears (`SweepWaveMask`, `FresnelGrazingMask`, `GeodesicImpactRippleMask`, `RecessedCreviceMask`, `ElevationBandMask`, `PuddleFloodMask`, `VoxelClockCutoutMask`) with optional **Leading-Edge Plasma / Thermal Seam** emission!
-     4. **Material Transition / Blend Stratum** — Blends **Material A → Material B** cleanly across any animated Mask Modifier (e.g., Vehicle HMI **Brushed Titanium → Liquid Obsidian** with an ionized hex seam, or **Dry Asphalt → Mirror Rain Puddles** with concentric ripples).
-2. **Zero Shader Recompilation on Slider Drag (`DynamicParameterRegister`)**:
-   - Just like **Unreal Material Instances (`UMaterialInstanceDynamic`)**, every stack compiles once into a cached **Slang → SPIR-V variant** keyed strictly by its structural signature (layer count + generator enum IDs).
-   - Every numeric slider, color swatch, sweep progress (`0..1`), elapsed clock (`ClockSeconds`), wind speed, wetness, crack temperature, and 3D world impact coordinate (`ImpactOriginXYZ`, `ImpactAgeSec`) lives inside a tight **256-byte GPU Uniform / Push-Constant Block (`DynamicMaterialUniformBlock`)** updated at 120 Hz with **zero pipeline stalls**.
-3. **Future-Proof Internal Separation (Optional Node View Later, Zero Forced Nodes Now)**:
-   - Under the hood, `MaterialStratumCompiler` lowers the linear layer stack into a tiny, flat, immutable **Typed Expression Sequence (`MaterialEvalInstruction[]`)** before emitting `.slang` code.
-   - You author 100% through clean **Project Zero Editor** strata cards, sliders, swatches, and live animation timeline curves — and if an optional node-graph viewport is ever desired years later, it compiles to the exact same `MaterialEvalInstruction[]` without rewriting a single shader or file format.
+1. **Vertical `MaterialLayerStack` (`SurfaceLayer` / `FinishLayer` / `CoatingLayer`)**:
+   - Reads cleanly **Bottom → Top** (matching `Engine/MaterialSpace/MaterialSurfaceLayer/` and `PatternStampLayerStackPane`).
+   - Every `MaterialLayerEntry` is one of four focused, modular layer types:
+     1. **`FinishLayer` (Physical OpenPBR Foundation)** — Any complete 10-lobe OpenPBR 1.1 material (`Liquid Obsidian`, `Brushed Aerospace Titanium`, `Volcanic Basalt`, `Submerged Limestone`, `Deep Ocean Water`, `Hoarfrost Snow`, or any user-authored material asset).
+     2. **`ProceduralFieldLayer` (Analytical Surface Generator)** — Evaluates analytical math in Local, World, Triplanar, or UV coordinates (`DomainWarpedFbm`, `DualScaleVoronoi`, `HexLatticeGrid`, `GerstnerWaveSum`, `RainBeadStreak`, `AnisotropicBrush`, `CubicVoxelLattice`, `OrthographicContourGrid`) targeting any combination of OpenPBR channels (Albedo, Roughness, Metalness, Relief Height, Clearcoat, Thin-Film Thickness, Incandescent Radiance, Opacity Cutout).
+     3. **`MaskModifierLayer` (Spatial & Animated Mask)** — Modulates *where* and *when* any layer appears (`SweepWaveMask`, `FresnelGrazingMask`, `GeodesicImpactRippleMask`, `RecessedCreviceMask`, `ElevationBandMask`, `PuddleFloodMask`, `VoxelClockCutoutMask`) with optional **Leading-Edge Plasma / Thermal Seam** radiance.
+     4. **`SurfaceTransitionLayer` (Modular Material A ↔ Material B Transition)** — Blends *any* `FinishLayer A` into *any* `FinishLayer B` on *any* 3D asset across any animated `MaskModifierLayer` (e.g., Brushed Titanium ↔ Liquid Obsidian, Clean Armor ↔ Weathered Rust, Dry Asphalt ↔ Flooded Mirror Puddles, Stone ↔ Ice).
+2. **Zero Shader Recompilation on Slider Drag (`DynamicParameterBlock`)**:
+   - Each structural `MaterialLayerStack` compiles once into a cached **Slang → SPIR-V** variant keyed only by its layer-type signature.
+   - Every slider, color swatch, transition progress (`0..1`), simulation clock (`ClockSeconds`), wind velocity, wetness, crack heat, and 3D world impact coordinate (`ImpactOriginXYZ`, `ImpactAgeSec`) updates at 120 Hz inside a tight **256-byte GPU Uniform Block (`DynamicParameterBlock`)** with zero stalls.
+3. **100% Modular & Asset-Agnostic**:
+   - **Never tie a dynamic material or dissolve solver to one specific asset class** (no `VehicleDissolver`, no `VehicleHmiTransition`).
+   - Every shader reads normalized local-space bounds (`AssetLocalBoundsMin/Max`), world position, world normal, and optional `AssetSurfaceAnchor` tracks — so dragging `LatticeVoxelDissolve`, `SurfaceMaterialTransition`, or `HolographicTelemetryScan` onto a statue, building, prop, character, shaderball, OR `ControlVehicle` works automatically with zero per-asset shader edits.
+4. **Optional Future Visual Wiring (Never Forced)**:
+   - Internally, `DynamicMaterialCompiler` lowers `MaterialLayerStack` to a flat, immutable `MaterialInstructionSequence` before emitting `.slang` source. Artists work 100% in clean Project Zero Editor layer rows, sliders, swatches, and drivers — while preserving a clean internal boundary if an optional graph editor is ever wanted later.
 
 ---
 
-## 3. Complete C++ Architecture Blueprint (`Engine/MaterialSpace/Dynamic/`)
+## 3. Complete C++ & Slang Blueprint (100% Banned-Word Clean)
 
-> All proposed C++ identifiers strictly obey `Documentation/BannedWordsVocabulary.md` (zero banned words such as `Graph`, `Node`, `Core`, `Base`, `Map`, `Pass`, `Stage`, `Frame`, `Data`, `Info`, `Object`, `Manager`, `Helper`, `And`, etc.).
-
-### 3.1 New C++ Module Layout
+### 3.1 Proposed Module Layout
 
 ```text
 Engine/MaterialSpace/
 ├── Dynamic/
-│   ├── DynamicMaterialTypes.h             // Enums: ProceduralFieldKind, MaskModifierKind, BlendChannelMask, ParameterDriverKind
-│   ├── DynamicMaterialRecipe.h/.cpp       // Authorable non-destructive strata stack + named live parameter slots
-│   ├── DynamicParameterBlock.h/.cpp       // 256-byte GPU-aligned live uniform block + curve/clock/event driver evaluator
-│   ├── DynamicMaterialCompiler.h/.cpp     // Lowers MaterialStratumStack -> flat MaterialEvalSequence + Slang shader source
-│   ├── DynamicMaterialLibrary.h/.cpp      // Curated built-in dynamic presets (all approved proposals from :8098!)
-│   └── DynamicSurfaceEvaluator.h/.cpp     // CPU reference evaluator (1:1 bit-exact math with Slang for tests & baking)
+│   ├── DynamicMaterialDefinitions.h       // Enums: ProceduralFieldPattern, MaskModifierMode, BlendChannelBitmask, ParameterDriverMode
+│   ├── DynamicMaterialRecipe.h/.cpp       // Authorable MaterialLayerStack, MaterialLayerEntry, NamedParameterSlot (asset-agnostic)
+│   ├── DynamicParameterBlock.h/.cpp       // 256-byte GPU-aligned live uniform block + ResolveDynamicParameters(...)
+│   ├── DynamicMaterialCompiler.h/.cpp     // Lowers MaterialLayerStack -> flat MaterialInstructionSequence + Slang source
+│   ├── DynamicMaterialRepository.h/.cpp   // Built-in generic dynamic presets (all approved HTML proposals from :8098)
+│   └── DynamicSurfaceResolver.h/.cpp      // CPU reference surface resolver (bit-exact with Slang for validations & baking)
 ├── Baking/
-│   └── DynamicChannelSnapshotter.h/.cpp   // Optional bake-to-static-texture export at any timestamp T for LODs/exporters
+│   └── DynamicChannelSnapshotter.h/.cpp   // Optional static texture bake at any timestamp T for LODs & external export
+
 Engine/Shaders/MaterialSpace/
-├── ProceduralFields.slang                 // Fast GPU library: Triplanar, DomainWarpedFbm, DualVoronoi, HexGrid, Gerstner, RainBeads, ThinFilm
-├── DynamicMasksAndSeams.slang             // SweepWave, FresnelGrazing, GeodesicImpactRipple, VoxelCutout, LidarScanBeam, PuddleRipples
-└── DynamicMaterialResolve.slang           // Evaluates active DynamicMaterialRecipe into full 10-lobe OpenPBR SurfaceMaterial + Emissive + AlphaCutout
-Engine/Workspaces/Material/                // Phase M4: Native C++ Material Workspace (matching Project Zero Editor + Texture Studio UI)
-├── MaterialWorkspaceSession.h/.cpp        // Active recipe, strata selection, undo/redo, live clock playback, preset switching
-├── MaterialViewportHost.h/.cpp            // Vulkan PMREM 3-point studio viewport (Shaderball, Draped Cloth, Rounded Box, ControlVehicle)
-├── MaterialStrataOutlinerPane.h/.cpp      // Left pane: Material Library + Strata Layer Stack reorder/visibility/mask cards
-├── MaterialInspectorPane.h/.cpp           // Right pane: Project Zero Editor sliders, live Parameter Drivers, OpenPBR lobe readouts
+├── ProceduralFieldGenerators.slang        // Triplanar, DomainWarpedFbm, DualScaleVoronoi, HexLatticeGrid, GerstnerWaveSum, RainBeads
+├── DynamicMaskSeam.slang                  // SweepWaveMask, FresnelGrazingMask, GeodesicImpactRipple, VoxelCutout, LidarScanBeam, PuddleRipples
+├── DynamicMaterialResolve.slang           // Resolves DynamicMaterialRecipe -> full 10-lobe OpenPBR SurfaceMaterial + IncandescentRadiance + Opacity
+├── StudioEnvironmentRadiance.slang        // Calibrated studio prefiltered IBL / octahedral radiance lookup (for GI-free PBR preview)
+└── TransmissiveSurfaceRasterization.slang // Forward refractive & luminous overlay (Ocean Water, Hex Barrier, Holographic Scan, Rain Glass)
+
+Engine/Workspaces/Material/
+├── MaterialWorkspaceSession.h/.cpp        // Active recipe, layer stack selection, undo/redo, live clock playback, specimen switching
+├── MaterialPreviewRenderer.h/.cpp         // Lightweight Direct Studio OpenPBR viewport renderer (reuses existing raster/lighting stack; NO GI)
+├── MaterialViewportHost.h/.cpp            // Interactive orbit camera, specimen selector, click-to-impact ripple testing, render mode switch
+├── MaterialLayerStackPane.h/.cpp          // Left pane: Material Repository + Finish/Field/Mask/Transition Layer Stack reorder & visibility
+├── MaterialInspectorPane.h/.cpp           // Right pane: Project Zero Editor sliders, Parameter Drivers, OpenPBR 10-lobe readouts
 └── MaterialWorkspaceHost.h/.cpp           // Docked workspace host + Content Browser drag-drop & live hot-reload into SceneWorld
 ```
 
-### 3.2 Live Parameter & Animation Drivers (`ParameterDriverKind`)
+### 3.2 Live Parameter Drivers (`ParameterDriverMode`)
 
-Every scalar or vector parameter on any stratum can either stay static OR bind to a live runtime driver (zero scripting required):
+Any scalar or color parameter on any layer can stay static or link to a live runtime driver without scripting:
 
-| Driver Kind | What Drives It | Example Use Case |
+| Driver Mode | Input Signal | Example Modular Usage on Any Asset |
 | :--- | :--- | :--- |
-| `ConstantScalar` | Static artist slider | Base roughness `0.08`, basalt crack depth |
-| `PlaybackClock` | Monotonic simulation clock `t * Speed` | Flowing ocean waves, drifting rain streaks, convective magma pulse |
-| `PingPongWave` | Smooth sinusoidal / triangle oscillation | Showroom demo loop of Derez or Material Transition |
-| `ExternalTimeline` | Sequencer / Vehicle HMI state controller (`0..1`) | Car HMI button triggers `TransitionProgress: 0 -> 1` or `ScanHeight: -1 -> +1` |
-| `WorldImpactEvent` | Up to 4 live 3D hit coordinates + timestamps `(xyz, t0)` | Projectile hits Energy Shield -> spawns real geodesic shockwave ripple at exact impact point |
-| `WeatherEnvironment` | Global scene Rain Intensity, Wind Vector, Snow Depth | Automatically transforms dry asphalt into rippled puddles & coats car glass with streaks |
-| `ParticleCoupling` | Shared `16³` lattice clock + emissive bounce buffer | Keeps `ControlVehicle` Derez shader cutout **100% locked** to detached 3D cubes in `ParticleSpace` |
+| `ConstantScalar` | Artist slider | Roughness `0.08`, basalt fissure depth, clearcoat thickness |
+| `PlaybackClock` | Monotonic simulation clock `t * Speed` | Flowing ocean swells, running glass rain streaks, convective magma pulse |
+| `PingPongOscillation` | Smooth sinusoidal / triangle wave | Turntable demo preview of dissolve, transition, or scan |
+| `ExternalTimeline` | Sequencer / gameplay / HMI channel (`0..1`) | Drive `TransitionProgress: 0 -> 1`, `DissolveProgress: 0 -> 1`, or `ScanElevation: -1 -> +1` on *any* actor |
+| `WorldImpactPulse` | Up to 4 live 3D hit coordinates + timestamps `(xyz, t0)` | Click or hit any shield asset -> expanding geodesic shockwave ripple from exact impact point |
+| `WeatherClimate` | Scene Rain Intensity, Wind Vector, Snow Accumulation | Globally darkens porous asphalt into rippled puddles & adds rain streaks to all exterior glass |
+| `ParticleLatticeLink` | Shared `16³` voxel dissolve clock + radiance feedback | Synchronizes `LatticeVoxelDissolve` surface cutout with detached 3D fragments in `ParticleSpace` on *any* asset |
 
-### 3.3 The 13 Dynamic Material Presets (Currently Live in HTML `:8098` for Your Review)
+### 3.3 Modular Generic Material Repository (The 13 Proposals Live in `:8098`)
 
-Every one of these maps cleanly to a small 2–4 stratum `DynamicMaterialRecipe` (zero hard-coded monolithic uber-shaders once compiled!):
+All 13 presets are strictly **generic and reusable on any asset** — `ControlVehicle` is merely one selectable preview specimen, never baked into the material names:
 
-1. **Derez Lattice Dissolve (`ControlVehicle`)** — `Liquid Obsidian` substrate + `CubicVoxelLattice` cutout mask (`ExternalTimeline` / `ParticleCoupling`) + white-hot → cyan leading-edge seam.
-2. **Molten Magma Crust (Pahoehoe Basalt)** — `Volcanic Basalt` substrate (`DomainWarpedFbm` ropy relief + rough ash `0.88`) + `DualScaleVoronoi` tectonic fault mask + recessed `BlackbodyEmission` (`1900 K`) convective core.
-3. **Energy Shield Hex Barrier (1:1 HTML Parity)** — Translucent dark sapphire dielectric + `FresnelGrazingMask` (`pow(1 - NdotV, 2.55)`) + spherical `HexLatticeGrid` wireframe + `GeodesicImpactRippleMask` (`WorldImpactEvent` / auto-demo impacts).
-4. **Material Transition (`Vehicle HMI`)** — **Blend Stratum**: `Anisotropic Brushed Aerospace Titanium` (`Stratum A`) → `Liquid Obsidian Clearcoat` (`Stratum B`) across an organic hex-jittered `SweepWaveMask` with blazing ionized cyan-white seam.
-5. **Holographic Scan (`Vehicle HMI`)** — `Carbon-Obsidian` substrate + `LidarScanBeam` (`ExternalTimeline`) + trailing `OrthographicContourGrid` wake + grazing Fresnel holographic outline.
-6. **Physical Ocean Water (Animated)** — `DielectricTransmission` water substrate (`IOR 1.333`) + 4-swell `GerstnerWaveSum` + dual capillary FBM normal layers + Schlick Fresnel sky reflection + backlit crest SSS + steep-crest micro-foam stratum.
-7. **Liquid Obsidian Clearcoat (`ControlVehicle`)** — Deep piano-obsidian diffuse + `GlintMicroflakeScattering` pearlescent depth + `ClearcoatLacquer` (`roughness 0.04`).
-8. **Rain-Streaked Smoked Glass** — Smoked glass substrate + `RainBeadStreak` generator modulating normal bump & roughness (`0.28` mist → `0.02` wet tracks) driven by `WeatherEnvironment`.
-9. **Wet Asphalt & Rain Puddles** — `CrushedAggregateAsphalt` substrate (`roughness 0.88`) + `PuddleFloodMask` (`WeatherEnvironment`) transitioning through damp darkened pores (`0.36`) to mirror puddles (`0.02`) + concentric `RainRippleRing` normals.
-10. **Hoarfrost & Sparkle Snow** — Wind-sculpted `SastrugiDrift` snow + cool blue `SubsurfaceDiffusion` + view-dependent `GlintMicroflakeScattering` diamond ice crystal glints.
-11. **Submerged Limestone Caustics** — Wet riverbed limestone (`Voronoi` pebbles + FBM grit) + dual-layer chromatically dispersed `RefractiveCausticField` projection.
-12. **Liquid Chrome Mercury** — Mirror conductor (`metalness 0.98`, `roughness 0.05`) + intersecting harmonic `CapillaryWaveField` surface displacement.
-13. **Anodized Thin-Film Iridescence** — Brushed gunmetal titanium + `ThinFilmWaveParameters` (Belcour-Barla wave-optics interference modulated by subtle organic film-thickness drift).
+1. **`LatticeVoxelDissolve`** — Any OpenPBR `FinishLayer` + `CubicVoxelLattice` cutout (`ExternalTimeline` / `ParticleLatticeLink`) + white-hot → cyan leading-edge seam.
+2. **`VolcanicPahoehoeMagma`** — Rough ropy basalt `FinishLayer` + `DualScaleVoronoi` tectonic fissure mask + recessed `1900 K` blackbody incandescence.
+3. **`HexagonalEnergyBarrier`** — Translucent sapphire dielectric + `FresnelGrazingMask` + spherical `HexLatticeGrid` wireframe + `GeodesicImpactRippleMask` (`WorldImpactPulse`).
+4. **`SurfaceMaterialTransition`** — Modular `SurfaceTransitionLayer` blending *any* `FinishLayer A` ↔ `FinishLayer B` (default demo: Brushed Titanium ↔ Liquid Obsidian) across an ionized hex-jittered sweep seam.
+5. **`HolographicTelemetryScan`** — Any dark `FinishLayer` + sweeping `LidarScanBeamMask` + trailing `OrthographicContourGrid` wake + grazing Fresnel contour.
+6. **`PhysicalOceanWater`** — Dielectric water (`IOR 1.333`) + 4-swell `GerstnerWaveSum` + dual capillary FBM normal layers + Schlick Fresnel + backlit crest SSS + micro-foam.
+7. **`LiquidObsidianClearcoat`** — Deep obsidian finish + Kemppinen `GlintMicroflakeScattering` + mirror `ClearcoatLacquer` (`roughness 0.04`).
+8. **`RainStreakedSmokedGlass`** — Smoked glass + `RainBeadStreak` normal/roughness modulation (`0.28` mist → `0.02` wet tracks) driven by `WeatherClimate`.
+9. **`WetAsphaltRainPuddles`** — Crushed aggregate tarmac + `PuddleFloodMask` (`WeatherClimate`) transitioning dry (`0.88`) → damp (`0.36`) → mirror puddles (`0.02`) + concentric rain ripples.
+10. **`HoarfrostSparkleSnow`** — Wind-sculpted snow + cool subsurface scattering + view-dependent `GlintMicroflakeScattering` ice glints.
+11. **`SubmergedLimestoneCaustics`** — Wet riverbed limestone + dual-layer chromatically dispersed refractive caustic projection.
+12. **`LiquidChromeMercury`** — Mirror conductor (`metalness 0.98`) + intersecting harmonic capillary wave displacement.
+13. **`AnodizedThinFilmIridescence`** — Brushed gunmetal + Belcour-Barla wave-optics `ThinFilmInterference` modulated by gentle organic film-thickness drift.
 
 ---
 
-## 4. What's Next — Phased Execution Roadmap
+## 4. Material Workspace Preview Renderer: Reuse Existing Code vs. New Code?
 
-Once you review the 13 live HTML material previews on `:8098` (and tell us which ones to approve/tweak), here is the exact execution order:
+You asked a critical architectural question:
+> *"For the Material Workspace preview we need an ordinary PBR renderer (with our full material system, without Global Illumination) — does it require writing a new renderer, more rendering code, or just reusing existing code?"*
 
-### **Phase M1 — Dynamic Material Core (`Engine/MaterialSpace/Dynamic/`)**
-- Implement `DynamicMaterialTypes.h`, `DynamicMaterialRecipe.{h,cpp}`, `DynamicParameterBlock.{h,cpp}`, and CPU reference `DynamicSurfaceEvaluator.{h,cpp}`.
-- Add `DynamicMaterialRecipe` serialization into Frontier's existing `.MaterialSpace` TOML/binary codec (100% backward-compatible with existing static OpenPBR materials).
-- Validation exhibit: `DynamicMaterialCoreValidation` (determinism, zero NaNs, energy conservation, zero banned words, CPU specimen renders of approved dynamic presets).
+### Short Answer: **DO NOT write a new renderer — reuse ~85–90% of Frontier's existing rendering code, and add ~10–15% targeted shared glue.**
 
-### **Phase M2 — Slang GPU Shaders & Vulkan Pipeline (`Engine/Shaders/MaterialSpace/`)**
-- Author `ProceduralFields.slang`, `DynamicMasksAndSeams.slang`, and `DynamicMaterialResolve.slang` feeding straight into Frontier's existing `OpenPbrSurfaceScattering.slang` + `BounceLayerSummary.slang`.
-- Compile to SPIR-V 1.3 via CMake `FrontierShaders` and verify on headless Vulkan 1.3 SwiftShader (`DynamicMaterialVulkanValidation`).
-- Wire `VehicleDissolveSolver` / `ParticleSpace` to share the exact `DynamicParameterBlock` clock & leading-edge emission with `ControlVehicle`'s `Derez` and `Material Transition` shaders + two-way GI emissive bounce!
+### Exact Codebase Breakdown
 
-### **Phase M3 — Water Transmission, Refraction & Transparent Shield Pass (`Engine/GeometricRaster/`)**
-- Extend `VisibilityMaterialResolve` / `TieredWorldRenderSequence` with a dedicated **Forward Transmissive & Additive Energy Pass** (reading the opaque scene color + depth buffer) so **Physical Ocean Water** refracts real underwater geometry with Beer-Lambert depth absorption AND **Energy Shield Hex Barrier** / **Holographic Scan** render true translucent depth-occluded overlays with scene-intersection edge highlights!
+| Rendering Piece | Status in Frontier Today | Reuse or New? |
+| :--- | :--- | :--- |
+| **Full 10-Lobe OpenPBR 1.1 Shading (`L1..L10`)** | Already implemented in `Engine/Shaders/MaterialSpace/OpenPbrSurfaceScattering.slang`, `GlintMicroflakeScattering.slang`, `ThinFilmInterference.slang`, `LinearlyTransformedSheen.slang`, `FiberScattering.slang`, `SubsurfaceAndTransmission.slang` | **100% REUSED** |
+| **Geometry Rasterization & UV Differentials** | Already implemented in `Engine/GeometricRaster/Visibility/` (`VisibilityClusterRasterization`, `VisibilityMaterialResolve`, `HardwareVisibilityRasterization.slang`, `AnalyticBarycentricResolve.slang`) | **100% REUSED** |
+| **Studio Area Softbox Lights (Key / Fill / Rim)** | Already implemented in `Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.{h,cpp}` (exact Heitz 2016 clipped-quad LTC area lights + Lagarde specular AO) | **100% REUSED** |
+| **Vulkan Device, Compute Dispatch & ImGui Viewport** | Already implemented in `Engine/GeometricRaster/VulkanInterchange`, `ComputeDispatchEncoder`, `ImGuiOverlayRasterization`, `ViewportProjectionPane` | **100% REUSED** |
+| **ACES Filmic Tone Mapping & Color Space** | Already implemented in `Engine/ColourSpace/` & `Engine/Shaders/Colour/` | **100% REUSED** |
+| **GI-Free Direct Studio OpenPBR Preview Sequence (`MaterialPreviewRenderer`)** | Existing `TieredWorldRenderSequence` / `VulkanWorldRenderSequence` always builds & runs SDF + Octahedral Irradiance Lattice GI | **NEW (~350 lines C++ + small `.slang` entry)**: Executes **Visibility → DynamicMaterialResolve → Direct LTC Studio Softboxes + Studio IBL → ACES** while **skipping ALL GI** (zero SDF rebuild, zero Irradiance Lattice bake, instant 120 Hz real-time slider feedback!) |
+| **Calibrated Studio IBL Lookup (`StudioEnvironmentRadiance.slang`)** | Without GI, metals, clearcoat, mercury, thin-film, and ocean water still need smooth studio reflections | **NEW (~120 lines `.slang`)**: Prefiltered octahedral/cubemap split-sum studio environment radiance sampled by GGX roughness — also reusable as fallback sky lighting in SceneWorld! |
+| **Forward Transmissive & Luminous Overlay (`TransmissiveSurfaceRasterization.slang`)** | Current opaque visibility resolver handles 2-layer glass peel, but not animated refractive Ocean Water depth absorption or depth-occluded translucent Energy Shields / Holographic Scans | **NEW (~250 lines `.slang` + thin encoder)**: Shared by **BOTH** Material Workspace preview AND SceneWorld! |
+
+### Clean Multi-Renderer Support in the Material Workspace (Zero Duplicated Material Shaders)
+
+Because every renderer consumes the **exact same `DynamicMaterialResolve.slang` → 10-lobe `SurfaceMaterial`**, the Material Workspace viewport exposes a clean **Render Mode Selector** in its toolbar:
+
+1. **Direct Studio OpenPBR *(Built First — Default)***: Full 10-lobe OpenPBR + Dynamic Layers + LTC Studio Softboxes + Prefiltered Studio IBL + Forward Transmissive Overlay — **zero GI overhead, 120 Hz live animation & instant slider response**.
+2. **Real-Time GI Preview *(Plug-in Toggle — Reuses `VulkanWorldRenderSequence`)***: One toggle switches the preview turntable to Frontier's existing Tier 1 GTX / Tier 2 RTX GI sequence whenever you want to inspect real multi-bounce incandescent lighting (e.g., glowing magma or dissolve edges illuminating the studio floor).
+3. **Deterministic Path Tracer *(Plug-in Toggle — Reuses Existing `PathTracer`)***: Progressive ground-truth reference verification with zero changes to the material recipe.
+
+---
+
+## 5. Phased Execution Roadmap ("What's Next")
+
+Once you approve this plan and the 13 live HTML material previews on `:8098`:
+
+### **Phase M1 — Dynamic Material Foundation (`Engine/MaterialSpace/Dynamic/`)**
+- Implement `DynamicMaterialDefinitions.h`, `DynamicMaterialRecipe.{h,cpp}`, `DynamicParameterBlock.{h,cpp}`, `DynamicMaterialRepository.{h,cpp}`, and CPU reference `DynamicSurfaceResolver.{h,cpp}`.
+- Add backward-compatible serialization for `MaterialLayerStack` recipes alongside static OpenPBR materials.
+- Validation exhibit: **`DynamicMaterialRecipeValidation`** (determinism, zero NaNs, energy conservation, zero banned words, CPU specimen snapshot proofs).
+
+### **Phase M2 — Slang GPU Shaders & Vulkan Validation (`Engine/Shaders/MaterialSpace/`)**
+- Author `ProceduralFieldGenerators.slang`, `DynamicMaskSeam.slang`, `DynamicMaterialResolve.slang`, and `StudioEnvironmentRadiance.slang`, compiling cleanly into SPIR-V 1.3 via CMake `FrontierShaders`.
+- Verify on headless Vulkan 1.3 SwiftShader via **`DynamicMaterialVulkanValidation`** (rendering GPU specimens of all approved dynamic materials and inspecting them visually).
+- Generalize particle dissolve coupling into an asset-agnostic **`SurfaceDissolveSolver`** (wrapping/refactoring `ControlVehicle` into a generic showcase asset plugged into `LatticeVoxelDissolve` + `SurfaceMaterialTransition`).
+
+### **Phase M3 — Direct Studio OpenPBR Preview & Forward Transmissive Rasterization (`Engine/GeometricRaster/`)**
+- Build `MaterialPreviewRenderer` (reusing `VisibilityClusterRasterization`, `VisibilityMaterialResolve`, `LinearCosineLightIntegration`, and `OpenPbrSurfaceScattering.slang` with **zero GI** + `StudioEnvironmentRadiance.slang`).
+- Build shared `TransmissiveSurfaceRasterization.slang` so **Physical Ocean Water**, **Hexagonal Energy Barrier**, **Holographic Telemetry Scan**, and **Rain-Streaked Smoked Glass** render with true refraction, Beer-Lambert depth absorption, and depth-occluded transparency in **both** the Material Workspace and SceneWorld.
 
 ### **Phase M4 — Native C++ Material Workspace (`Engine/Workspaces/Material/`)**
-- Build the complete Project Zero Editor-styled C++ Material Workspace matching `Experimental/TextureStudio/Workspaces/MaterialWorkspace.js` & `Experimental/ProjectZeroEditor/MaterialPanel.css`:
-  - **Left Pane**: Material Library + Non-Destructive Strata Layer Stack (add substrate / procedural field / mask / material transition blend, drag-reorder, solo/mute, preset thumbnails).
-  - **Center Stage**: Live Vulkan PMREM 3-point viewport with 1-click specimen switcher (**Shaderball · Draped Cloth · Rounded Box · ControlVehicle**), live animation play/pause/scrub bar, and interactive impact-click testing (click anywhere on the Energy Shield to trigger a live shockwave ripple!).
-  - **Right Inspector**: Strata parameters, OpenPBR 10-lobe summary, live Parameter Driver bindings (`Clock`, `Timeline`, `Weather`, `Impact`), and 1-click **Bake Static Textures** / **Assign to Content Browser**.
-- Validation exhibit: `MaterialWorkspaceUIValidation` with headless visual snapshot proof sheets inspected via `read_file`.
+- Build the complete Project Zero Editor-styled C++ Material Workspace:
+  - **Left Pane (`MaterialLayerStackPane`)**: Modular Material Repository + Bottom-to-Top `FinishLayer` / `ProceduralFieldLayer` / `MaskModifierLayer` / `SurfaceTransitionLayer` stack with reorder, solo/mute, and thumbnails.
+  - **Center Viewport (`MaterialViewportHost`)**: Live Vulkan **Direct Studio OpenPBR** viewport (120 Hz, no GI) with specimen switcher (**Shaderball · Draped Cloth · Rounded Box · Any Imported Asset / ControlVehicle**), live clock play/pause/scrub bar, click-to-impact ripple trigger, and Render Mode selector (`Direct Studio OpenPBR` / `Real-Time GI` / `Path Tracer`).
+  - **Right Pane (`MaterialInspectorPane`)**: Live `DynamicParameterBlock` sliders, `ParameterDriverMode` links, OpenPBR 10-lobe summary, and 1-click **Snapshot Static Textures** / **Assign to Content Browser**.
+- Validation exhibit: **`MaterialWorkspaceUIValidation`** with headless visual captures verified via `read_file`.
 
-### **Phase M5 — SceneWorld & Vehicle HMI Integration**
-- Expose `ControlVehicle` HMI triggers in SceneWorld / Particle Workspace: **Derez**, **Reverse-Rez**, **Dissolve to Nothing**, **Dissolve to Butterfly**, **Material Morph (Titanium ↔ Obsidian)**, and **Holographic Telemetry Scan** — all sharing one unified depth buffer, one unified `DynamicParameterBlock`, and full two-way GI bounce illumination.
+### **Phase M5 — Modular SceneWorld & Multi-Asset Demo Integration**
+- Attach `LatticeVoxelDissolve`, `SurfaceMaterialTransition`, `HolographicTelemetryScan`, `HexagonalEnergyBarrier`, and `PhysicalOceanWater` to multiple diverse assets in SceneWorld (props, architecture, water plane, and `ControlVehicle`) sharing one depth buffer, one `DynamicParameterBlock`, and optional Tier 1/2 GI radiance bounce.
 
-### **Phase M6 — Optional Visual Graph View (Deferred / Strictly Opt-In)**
-- Only if ever desired later: add an optional read/write visual wiring overlay on top of the exact same `MaterialEvalSequence` IR, keeping the **Strata Layer-Stack** as Frontier's primary first-class authoring workflow.
+### **Phase M6 — Optional Visual Graph Overlay (Strictly Deferred / Opt-In)**
+- Only if ever requested in the future: layer an optional visual wiring view onto the exact same `MaterialInstructionSequence` IR while keeping **`MaterialLayerStack`** as Frontier's primary authoring workflow.

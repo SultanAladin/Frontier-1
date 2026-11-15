@@ -74,6 +74,7 @@ Related governance documents: [FolderStructure.md](FolderStructure.md) · [Codin
 - `reservoir`
 - `stage`
 - `store`
+- `strata` / `stratum` *(use `SurfaceLayer`, `FinishLayer`, `CoatingLayer`, or `MaterialLayerStack`)*
 - `submission`
 - `table`
 - `topology`
@@ -175,6 +176,7 @@ Use the following distinct visual nouns according to their exact structural role
   - Marked `substrate`, `atlas`, and `slice` as **discouraged (avoid)**.
 - **2026-11-14**: Barred the conjunction `And` inside any filename, class, struct, enum, function, variable, shader, or plan document name (`GpuTextureAndSdfBaker`, `BuildAndUploadStudy`, `CameraEyeAndMode`, `MasksAndIds`) — enforced in `CLAUDE.md` §2.7 and `SKILL-Naming.md` Gate ⑦.
 - **2026-11-14 (User Ruling)**: Barred `Law` / `Laws` across filenames, folders, and identifiers (use concrete physical/mechanical domain names such as `Dynamics/`, `BallisticMotion`, `StrandConstraint`, `ForceFieldCoupling`, `FlockBoids`). Also rejected `ParticleReadback`, `PlaybackTransportBar`, and `TimelineRulerScrubber` in favor of concrete mechanical names (`ParticleMetricsCollector`, `SimulationPlaybackControls`, `SimulationTimeRuler`).
+- **2026-11-15 (User Ruling)**: Barred `strata` / `stratum` across filenames, identifiers, UI terms, and plans (use `SurfaceLayer`, `FinishLayer`, `CoatingLayer`, or `MaterialLayerStack`).
 
 ---
 
@@ -193,12 +195,12 @@ Use this combined index to audit identifiers, filenames, directory names, and co
 - **I**: `Info`, `Inscription` / `inscription`, `interpolant`, `Item` / `item`
 - **K**: `Kernel`, `kin`, `Kind`, `Kronos`
 - **L**: `Law` / `Laws`, `lineage`, `Listener` / `listener`
-- **M**: `Maestro`, `Manager`, `map`, `Matrix`, `member`, `menu`, `Mesh` / `mesh`, `Module`, `mutation`
+- **M**: `Maestro`, `Manager`, `map`, `Matrix`, `member`, `menu`, `Mesh` / `mesh`, `Module`, `morph`, `mutation`
 - **N**: `Nexus` / `nexus`, `Node`, `Nova`
 - **O**: `Object`, `Observer` *(restricted — §3.1)*, `occupant`, `Odyssey`, `Oracle`, `Orion`, `Orphan`
 - **P**: `palette`, `Parent`, `Pass` / `pass`, `pill`, `pipeline`, `pool`, `popover`, `popup` / `popups`, `predicate`, `probe`, `Processor`, `proof`, `Provider`
 - **R**: `reclamation`, `Record` *(bare & `RecordStore` barred — §3.1)*, `Representation`, `reservoir`, `Role`
-- **S**: `Sentinel`, `Service`, `shell`, `Sibling`, `stage`, `state`, `store`, `Stuff`, `submission`, `Subsystem`, `system` *(avoid: `slice`, `substrate`)*
+- **S**: `Sentinel`, `Service`, `shell`, `Sibling`, `stage`, `state`, `store`, `strata` / `stratum`, `Stuff`, `submission`, `Subsystem`, `system` *(avoid: `slice`, `substrate`)*
 - **T**: `table`, `Thing`, `Titan`, `Topology` / `topology`, `Traversal` *(exempt only at `SelectionTraversal` — §3.1)*, `Trial` / `Trials`, `Tween`
 - **U**: `Utility`
 - **V**: `vacancy`, `value`, `Vanguard`, `Vortex`
