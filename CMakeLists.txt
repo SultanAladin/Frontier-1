@@ -201,9 +201,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/Particle/ParticleWorkspaceHost.cpp
     Engine/Workspaces/Material/MaterialPreviewRenderer.cpp
     Engine/Workspaces/Material/MaterialWorkspaceSession.cpp
-    Engine/Workspaces/Material/MaterialLayerStackPane.cpp
     Engine/Workspaces/Material/MaterialViewportHost.cpp
-    Engine/Workspaces/Material/MaterialInspectorPane.cpp
     Engine/Workspaces/Material/MaterialWorkspaceHost.cpp
     Engine/Workspaces/Texturing/PatternStampLayerStackPane.cpp
     Engine/Workspaces/Texturing/PatternStampToolHeaderPane.cpp

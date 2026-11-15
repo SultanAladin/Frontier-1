@@ -1,127 +1,233 @@
 /*==========================================================================================================================================
-                                                   MATERIALWORKSPACEHOST.CPP
+                                                    MATERIALWORKSPACEHOST.CPP
 ==========================================================================================================================================*/
-// 🧩 Implementation of MaterialWorkspaceHost (56px Project Zero Studio Header, 3 floating panels, Direct Studio OpenPBR & Status Bar)
+// 🧩 Implementation of MaterialWorkspaceHost: docked Material Viewport + ContentBrowser dynamic preset thumbnail sync & drop assignment
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Workspaces/Material/MaterialWorkspaceHost.h"
-#include "Engine/Workspaces/Particle/ParticlePaneAppearance.h"
 
-#include <cstdio>
+#include <algorithm>
+#include <cmath>
+#include <string>
+#include <string_view>
 
 namespace Frontier::Workspaces
 {
 
-void MaterialWorkspaceHost::AttachContentBrowserPanel(ContentBrowserPanel* TargetPanel) noexcept
+namespace
 {
-    BoundBrowser = TargetPanel;
+
+[[nodiscard]] uint8_t ChannelByte(float LinearChannel) noexcept
+{
+    const float Clamped = std::clamp(LinearChannel, 0.0f, 1.0f);
+    const float Srgb    = std::pow(Clamped, 1.0f / 2.2f);
+    return static_cast<uint8_t>(std::clamp(std::lround(Srgb * 255.0f), 0l, 255l));
 }
 
-void MaterialWorkspaceHost::RenderStudioHeader(
-    PixelSpace&           Surface,
-    Rectangle2D           HeaderRect,
-    const ControlPointer& Pointer) noexcept
+[[nodiscard]] ColorRgba BuildRecipeSwatchRgba(const MaterialSpace::Dynamic::DynamicMaterialRecipe& Recipe) noexcept
 {
-    const auto C = ParticleAppearance::QueryStudioColors();
-    Surface.FillRectangle(HeaderRect, C.CanvasBg, 0.0f);
+    const auto& Col = Recipe.Parameters.PrimaryColorRgba;
+    return { ChannelByte(Col[0]), ChannelByte(Col[1]), ChannelByte(Col[2]), 255u };
+}
 
-    const float CY = HeaderRect.Center().Y;
-    float X = HeaderRect.X + 18.0f;
+} // namespace
 
-    Surface.Text({ X, CY - 10.5f }, 19.0f, C.TextPrimary, "frontier");
-    const float FrontierW = Surface.MeasureTextWidth(19.0f, "frontier");
-    Surface.FillCircle({ X + FrontierW + 3.0f, CY + 4.5f }, 2.2f, C.WarmAccent);
-    X += FrontierW + 16.0f;
+MaterialWorkspaceHost::MaterialWorkspaceHost()
+{
+    ViewportHost.AttachSession(&Session);
+    ViewportHost.AttachRenderer(&PreviewRenderer);
+}
 
-    const Rectangle2D TagRect { X, CY - 10.5f, 108.0f, 21.0f };
-    Surface.StrokeRectangle(TagRect, C.HairlineStrong, 10.5f, 1.0f);
-    Surface.TextCentered(TagRect, 8.2f, C.TextMuted, "MATERIAL STUDIO");
-    X = TagRect.Right() + 22.0f;
+void MaterialWorkspaceHost::ConfigureLaunchPolicy(const Configuration::EngineConfiguration& Config) noexcept
+{
+    ActiveEngineConfig = Config;
+}
 
-    // Open Modular Material Document Tabs
-    for (std::size_t I = 0u; I < Session.DocumentTabs.size(); ++I)
+bool MaterialWorkspaceHost::AttachVulkanDevice(
+    GeometricRaster::VulkanInterchange* ExternalDevice,
+    const std::filesystem::path&        CompiledShaderDir)
+{
+    if (ExternalDevice == nullptr)
     {
-        const bool Active = (I == Session.ActiveTabIndex);
-        const Rectangle2D TabRect { X, CY - 13.0f, 148.0f, 26.0f };
-        const bool Hov = ControlAppearance::QueryPointerOver(TabRect, Pointer);
-        Surface.FillRectangle(TabRect, Active ? C.CardElevated : (Hov ? C.CardBg : ColorRgba { 16u, 16u, 17u, 255u }), 10.0f);
-        Surface.StrokeRectangle(TabRect, Active ? C.WarmAccent : C.Hairline, 10.0f, 1.0f);
-        Surface.TextCentered(TabRect, 9.2f, Active ? C.TextPrimary : C.TextMuted, Session.DocumentTabs[I].TabTitle.c_str());
-        if (Hov && Pointer.Pressed)
-        {
-            Session.ActiveTabIndex        = I;
-            Session.DirtyPreviewRequested = true;
-        }
-        X += 156.0f;
+        return false;
     }
 
-    // Right status indicator: Asset-Agnostic Layer Stack + OpenPBR 1.1
-    const Rectangle2D StatusStripRect { HeaderRect.Right() - 252.0f, CY - 11.0f, 236.0f, 22.0f };
-    Surface.FillRectangle(StatusStripRect, C.CardBg, 11.0f);
-    Surface.StrokeRectangle(StatusStripRect, C.Hairline, 11.0f, 1.0f);
-    Surface.TextCentered(StatusStripRect, 8.5f, C.WarmAccent, "OPENPBR 1.1  |  LAYER STACK  |  NO GI");
+    std::filesystem::path ShaderDir = CompiledShaderDir;
+    if (ShaderDir.empty())
+    {
+#ifdef FRONTIER_COMPILED_SHADER_DIR
+        ShaderDir = std::filesystem::path(FRONTIER_COMPILED_SHADER_DIR);
+#else
+        ShaderDir = std::filesystem::path("build/CompiledShaders");
+#endif
+    }
+
+    const bool Attached = PreviewRenderer.InitializeVulkanPreview(*ExternalDevice, ShaderDir);
+    ViewportHost.InvalidatePreviewCache();
+    if (Attached && BoundBrowserPanel != nullptr)
+    {
+        PopulateDynamicMaterialThumbnails();
+    }
+    return Attached;
 }
 
-void MaterialWorkspaceHost::RenderStatusBar(PixelSpace& Surface, Rectangle2D StatusRect) const noexcept
+void MaterialWorkspaceHost::PopulateDynamicMaterialThumbnails()
 {
-    const auto C = ParticleAppearance::QueryStudioColors();
-    Surface.FillRectangle(StatusRect, C.CanvasBg, 0.0f);
-    Surface.FillRectangle({ StatusRect.X, StatusRect.Y, StatusRect.Width, 1.0f }, C.Hairline, 0.0f);
+    if (BoundBrowserPanel == nullptr)
+    {
+        return;
+    }
 
-    Surface.Text({ StatusRect.X + 18.0f, StatusRect.Y + 6.0f }, 8.8f, C.TextMuted, Session.StatusMessage.c_str());
+    PopulatedThumbnailCount = 0u;
+    PreviewCameraSetup ThumbCam {};
+    ThumbCam.OrbitYawRadians   = 0.42f;
+    ThumbCam.OrbitPitchRadians = 0.14f;
+    ThumbCam.OrbitDistanceM    = 2.48f;
 
-    char RightBuf[128];
-    std::snprintf(RightBuf, sizeof(RightBuf), "Preset: %s  |  %ux%u  |  Zero-Recompile 256B Uniform Block",
-        Session.InspectActiveRecipe().RecipeId.c_str(),
-        Session.LastRenderWidthPx,
-        Session.LastRenderHeightPx);
-    Surface.TextRightAligned({ StatusRect.X, StatusRect.Y + 6.0f, StatusRect.Width - 18.0f, 14.0f }, 8.8f, C.TextSoft, RightBuf);
+    for (const auto& Recipe : Session.PresetRepository)
+    {
+        auto EvalRecipe = Recipe;
+        MaterialSpace::Dynamic::SynchronizeRecipeParameters(EvalRecipe);
+        EvalRecipe.Parameters.ClockSeconds = 1.45f;
+
+        PreviewRenderResult Thumb = PreviewRenderer.RenderPreview(
+            EvalRecipe,
+            EvalRecipe.Parameters,
+            PreviewSpecimenGeometry::ShaderballPedestal,
+            PreviewRenderMode::DirectStudioOpenPbr,
+            ThumbCam,
+            128u,
+            128u);
+
+        const std::filesystem::path VirtualPath =
+            std::filesystem::path("preset://material") / EvalRecipe.RecipeId;
+
+        (void)BoundBrowserPanel->AccessThumbnailRepository().RegisterOrUpdateProjectEntry(
+            EvalRecipe.DisplayTitle,
+            ContentCategory::Materials,
+            BuildRecipeSwatchRgba(EvalRecipe),
+            VirtualPath,
+            !Thumb.DisplayRgba8.empty() ? std::span<const uint8_t>(Thumb.DisplayRgba8) : std::span<const uint8_t>{});
+        ++PopulatedThumbnailCount;
+    }
 }
 
-void MaterialWorkspaceHost::RenderStudio(
-    PixelSpace&                       Surface,
-    Rectangle2D                       WindowBounds,
-    const ContentBrowserPointerInput& PointerInput,
-    double                            DeltaSeconds) noexcept
+bool MaterialWorkspaceHost::ApplyContentBrowserEntry(const ContentRepositoryEntry& Entry)
 {
-    const auto C = ParticleAppearance::QueryStudioColors();
-    Surface.FillRectangle(WindowBounds, C.CanvasBg, 0.0f);
+    const std::string NormalizedPath = Entry.DiskPath.generic_string();
+    constexpr std::string_view Prefix = "preset://material/";
+    if (NormalizedPath.starts_with(Prefix))
+    {
+        const std::string_view RecipeKey = std::string_view(NormalizedPath).substr(Prefix.size());
+        if (Session.SelectPresetIdentifier(RecipeKey))
+        {
+            ViewportHost.InvalidatePreviewCache();
+            return true;
+        }
+    }
 
-    ControlPointer Pointer {};
-    Pointer.X        = PointerInput.CursorX;
-    Pointer.Y        = PointerInput.CursorY;
-    Pointer.Down     = PointerInput.HeldDown;
-    Pointer.Pressed  = PointerInput.Pressed;
-    Pointer.Released = PointerInput.Released;
+    for (const auto& Recipe : Session.PresetRepository)
+    {
+        if (Recipe.DisplayTitle == Entry.DisplayTitle)
+        {
+            Session.SelectPresetIdentity(Recipe.PresetIdentity);
+            ViewportHost.InvalidatePreviewCache();
+            return true;
+        }
+    }
+    return false;
+}
 
-    Session.AdvanceSimulationClock(DeltaSeconds);
+void MaterialWorkspaceHost::AttachContentBrowserPanel(ContentBrowserPanel* TargetPanel)
+{
+    BoundBrowserPanel = TargetPanel;
+    if (TargetPanel == nullptr)
+    {
+        return;
+    }
 
-    constexpr float HeaderH = 56.0f;
-    constexpr float StatusH = 26.0f;
-    constexpr float Margin  = 12.0f;
+    TargetPanel->ConfigureWorkspaceDomain(WorkspaceCategory::Material);
+    (void)TargetPanel->ActivateCategory(ContentCategory::Materials);
+    PopulateDynamicMaterialThumbnails();
 
-    const Rectangle2D HeaderRect { WindowBounds.X, WindowBounds.Y, WindowBounds.Width, HeaderH };
-    const Rectangle2D StatusRect { WindowBounds.X, WindowBounds.Bottom() - StatusH, WindowBounds.Width, StatusH };
-    const float BodyY = HeaderRect.Bottom() + 4.0f;
-    const float BodyH = std::max(240.0f, StatusRect.Y - BodyY - Margin);
+    TargetPanel->ClearContentDropZones();
+    TargetPanel->RegisterContentDropZone(ContentDropZoneRegistration{
+        "material.viewport",
+        "Material Viewport",
+        ViewportHost.QueryCanvasLogicalBounds(),
+        ContentCategory::Materials,
+        [this](const ContentRepositoryEntry& Entry, Point2D)
+        {
+            (void)ApplyContentBrowserEntry(Entry);
+        },
+    });
 
-    const float LeftW  = MaterialLayerStackPane::RecommendedWidthPx;
-    const float RightW = MaterialInspectorPane::RecommendedWidthPx;
-    const float MidX   = WindowBounds.X + Margin + LeftW + Margin;
-    const float MidW   = std::max(260.0f, WindowBounds.Width - LeftW - RightW - Margin * 4.0f);
+    TargetPanel->AssignContentActivationCallback([this](const ContentRepositoryEntry& Entry)
+    {
+        (void)ApplyContentBrowserEntry(Entry);
+    });
+}
 
-    const Rectangle2D LeftRect  { WindowBounds.X + Margin, BodyY, LeftW, BodyH };
-    const Rectangle2D MidRect   { MidX, BodyY, MidW, BodyH };
-    const Rectangle2D RightRect { MidRect.Right() + Margin, BodyY, RightW, BodyH };
+#if FRONTIER_EDITOR_ENABLED
+void MaterialWorkspaceHost::AttachContentBrowser(Editor::Explorer::ContentBrowser* TargetBrowser)
+{
+    BoundBrowser = TargetBrowser;
+    AttachContentBrowserPanel(TargetBrowser != nullptr ? &TargetBrowser->AccessPanel() : nullptr);
+}
+#endif
 
-    RenderStudioHeader(Surface, HeaderRect, Pointer);
-    LayerPane.Render(Surface, LeftRect, Session, Pointer);
-    Viewport.Render(Surface, MidRect, Session, Pointer);
-    Inspector.Render(Surface, RightRect, Session, Pointer);
-    RenderStatusBar(Surface, StatusRect);
+void MaterialWorkspaceHost::SynchronizeContentBrowserOcclusion(float ViewportScaleFactor) noexcept
+{
+    const float SafeScale = std::max(0.25f, ViewportScaleFactor);
+    if (BoundBrowserPanel == nullptr)
+    {
+        ViewportHost.AssignBottomOcclusionHeight(0.0f);
+        return;
+    }
+
+    const Rectangle2D DrawerPhys = BoundBrowserPanel->QueryDrawerPhysicalBounds();
+    const float Ratio            = BoundBrowserPanel->QueryVisibleDrawerHeightRatio();
+    const float OcclusionLogical = (Ratio > 0.02f && DrawerPhys.Height > 1.0f) ? (DrawerPhys.Height / SafeScale) : 0.0f;
+    ViewportHost.AssignBottomOcclusionHeight(OcclusionLogical);
+
+    const Rectangle2D ViewportScreen = ViewportHost.QueryScreenBounds();
+    if (ViewportScreen.Width > 8.0f && ViewportScreen.Height > 8.0f)
+    {
+        const Rectangle2D CanvasLocal = ViewportHost.QueryCanvasLogicalBounds();
+        const Rectangle2D DropBounds {
+            ViewportScreen.X / SafeScale + CanvasLocal.X,
+            ViewportScreen.Y / SafeScale + CanvasLocal.Y,
+            CanvasLocal.Width,
+            CanvasLocal.Height,
+        };
+        BoundBrowserPanel->UpdateContentDropZoneBounds("material.viewport", DropBounds);
+    }
+}
+
+void MaterialWorkspaceHost::RegisterDockPanes(Components::HeadlessWorkspaceDockContainer& DockContainer)
+{
+    using Components::DockPlacementDirection;
+    using Components::PaneDirectiveMask;
+    using Components::WorkspaceDockPaneDescriptor;
+
+    RegisteredTabCount = 0u;
+
+    // Viewport-only Material Workspace dock (Inspector & Layer Stack intentionally deferred pending redesign)
+    (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
+        "Material",
+        DockPlacementDirection::CenterTabGroup,
+        1.0f,
+        PaneDirectiveMask::CentralViewportDirectives,
+        [this]()
+        {
+            SynchronizeContentBrowserOcclusion(1.0f);
+            ViewportHost.PresentImGuiPane(1.0 / 60.0, 1.0f);
+        },
+    });
+    ++RegisteredTabCount;
 }
 
 } // namespace Frontier::Workspaces

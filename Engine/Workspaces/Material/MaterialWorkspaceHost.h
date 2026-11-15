@@ -1,7 +1,7 @@
 /*==========================================================================================================================================
-                                                    MATERIALWORKSPACEHOST.H
+                                                     MATERIALWORKSPACEHOST.H
 ==========================================================================================================================================*/
-// 🧩 Top-level Frontier Material Workspace host mounting 56px Studio Header, 3 floating Project Zero panels & GI-free Direct Studio OpenPBR
+// 🧩 Native Frontier Material Workspace host: Material Viewport pane + ContentBrowser integration (Inspector & Layer Stack deferred)
 
 #pragma once
 
@@ -10,44 +10,71 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
-#include "Engine/Components/Controls/ControlAppearance.h"
-#include "Engine/Components/PixelSpace.h"
-#include "Engine/Workspaces/Material/MaterialInspectorPane.h"
-#include "Engine/Workspaces/Material/MaterialLayerStackPane.h"
+#include "Engine/Components/Docking/WorkspaceDockContainer.h"
+#include "Engine/Configuration/EngineConfiguration.h"
+#include "Engine/GeometricRaster/VulkanInterchange.h"
+#include "Engine/Workspaces/Material/MaterialPreviewRenderer.h"
 #include "Engine/Workspaces/Material/MaterialViewportHost.h"
 #include "Engine/Workspaces/Material/MaterialWorkspaceSession.h"
+
+#if FRONTIER_EDITOR_ENABLED
+#include "Engine/Editor/Explorer/ContentBrowser.h"
+#endif
+
+#include <cstdint>
+#include <filesystem>
 
 namespace Frontier::Workspaces
 {
 
+//------------------------------------------------------------------------------------------------------------------------
+//                                                          TYPES
+//------------------------------------------------------------------------------------------------------------------------
+
 class MaterialWorkspaceHost
 {
 public:
-    MaterialWorkspaceHost() = default;
+    MaterialWorkspaceHost();
+    ~MaterialWorkspaceHost() noexcept = default;
 
-    void AttachContentBrowserPanel(ContentBrowserPanel* TargetPanel) noexcept;
+    MaterialWorkspaceHost(const MaterialWorkspaceHost&)            = delete;
+    MaterialWorkspaceHost& operator=(const MaterialWorkspaceHost&) = delete;
 
-    void RenderStudio(
-        PixelSpace&                       Surface,
-        Rectangle2D                       WindowBounds,
-        const ContentBrowserPointerInput& PointerInput,
-        double                            DeltaSeconds = 1.0 / 60.0) noexcept;
+    void ConfigureLaunchPolicy(const Configuration::EngineConfiguration& Config) noexcept;
+    bool AttachVulkanDevice(
+        GeometricRaster::VulkanInterchange* ExternalDevice,
+        const std::filesystem::path&        CompiledShaderPath = {});
 
-    [[nodiscard]] MaterialWorkspaceSession&       AccessSession() noexcept        { return Session; }
+    void AttachContentBrowserPanel(ContentBrowserPanel* TargetPanel);
+#if FRONTIER_EDITOR_ENABLED
+    void AttachContentBrowser(Editor::Explorer::ContentBrowser* TargetBrowser);
+#endif
+
+    void RegisterDockPanes(Components::HeadlessWorkspaceDockContainer& DockContainer);
+
+    void SynchronizeContentBrowserOcclusion(float ViewportScaleFactor = 1.0f) noexcept;
+    void PopulateDynamicMaterialThumbnails();
+
+    [[nodiscard]] MaterialWorkspaceSession&       AccessSession() noexcept { return Session; }
     [[nodiscard]] const MaterialWorkspaceSession& InspectSession() const noexcept { return Session; }
-    [[nodiscard]] MaterialLayerStackPane&         AccessLayerPane() noexcept      { return LayerPane; }
-    [[nodiscard]] MaterialViewportHost&           AccessViewport() noexcept       { return Viewport; }
-    [[nodiscard]] MaterialInspectorPane&          AccessInspector() noexcept      { return Inspector; }
+    [[nodiscard]] MaterialPreviewRenderer&        AccessPreviewRenderer() noexcept { return PreviewRenderer; }
+    [[nodiscard]] MaterialViewportHost&           AccessViewportHost() noexcept { return ViewportHost; }
+    [[nodiscard]] uint32_t                        QueryRegisteredTabCount() const noexcept { return RegisteredTabCount; }
+    [[nodiscard]] std::size_t                     QueryPopulatedThumbnailCount() const noexcept { return PopulatedThumbnailCount; }
 
 private:
-    void RenderStudioHeader(PixelSpace& Surface, Rectangle2D HeaderRect, const ControlPointer& Pointer) noexcept;
-    void RenderStatusBar(PixelSpace& Surface, Rectangle2D StatusRect) const noexcept;
+    bool ApplyContentBrowserEntry(const ContentRepositoryEntry& Entry);
 
-    MaterialWorkspaceSession Session      {};
-    MaterialLayerStackPane   LayerPane    {};
-    MaterialViewportHost     Viewport     {};
-    MaterialInspectorPane    Inspector    {};
-    ContentBrowserPanel*     BoundBrowser = nullptr;
+    Configuration::EngineConfiguration ActiveEngineConfig      {};
+    MaterialWorkspaceSession           Session                 {};
+    MaterialPreviewRenderer            PreviewRenderer         {};
+    MaterialViewportHost               ViewportHost            {};
+    ContentBrowserPanel*               BoundBrowserPanel       = nullptr;
+#if FRONTIER_EDITOR_ENABLED
+    Editor::Explorer::ContentBrowser*  BoundBrowser            = nullptr;
+#endif
+    uint32_t                           RegisteredTabCount      = 0u;
+    std::size_t                        PopulatedThumbnailCount = 0u;
 };
 
 } // namespace Frontier::Workspaces
