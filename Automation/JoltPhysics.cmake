@@ -1,0 +1,59 @@
+#============================================================================================================================================
+#                                                          JOLTPHYSICS.CMAKE
+#============================================================================================================================================
+# 🧩 Deterministic cross-platform JoltPhysics v5.6.0 static library configuration for Windows (x64/ARM64), Linux, and Android.
+
+if(NOT DEFINED FRONTIER_ROOT)
+    set(FRONTIER_ROOT "${CMAKE_SOURCE_DIR}")
+endif()
+
+set(JOLT_ROOT "${FRONTIER_ROOT}/ExternalPackages/JoltPhysics")
+if(NOT EXISTS "${JOLT_ROOT}/Build/CMakeLists.txt")
+    message(FATAL_ERROR "JoltPhysics v5.6.0 missing at ${JOLT_ROOT}; run python3 Automation/PrepareDependencies.py")
+endif()
+
+# Enforce deterministic cross-platform simulation, zero RTTI/exceptions, and portable SSE4.2 / ARM64 NEON execution.
+set(CROSS_PLATFORM_DETERMINISTIC ON  CACHE BOOL "" FORCE)
+set(OVERRIDE_CXX_FLAGS           OFF CACHE BOOL "" FORCE)
+set(ENABLE_ALL_WARNINGS          OFF CACHE BOOL "" FORCE)
+set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+set(CPP_RTTI_ENABLED             OFF CACHE BOOL "" FORCE)
+set(CPP_EXCEPTIONS_ENABLED       OFF CACHE BOOL "" FORCE)
+set(OBJECT_LAYER_BITS            16  CACHE STRING "" FORCE)
+set(USE_SSE4_1                   ON  CACHE BOOL "" FORCE)
+set(USE_SSE4_2                   ON  CACHE BOOL "" FORCE)
+set(USE_AVX                      OFF CACHE BOOL "" FORCE)
+set(USE_AVX2                     OFF CACHE BOOL "" FORCE)
+set(USE_AVX512                   OFF CACHE BOOL "" FORCE)
+set(USE_LZCNT                    OFF CACHE BOOL "" FORCE)
+set(USE_TZCNT                    OFF CACHE BOOL "" FORCE)
+set(USE_F16C                     OFF CACHE BOOL "" FORCE)
+set(USE_FMADD                    OFF CACHE BOOL "" FORCE)
+set(JPH_USE_DX12                 OFF CACHE BOOL "" FORCE)
+set(JPH_USE_VK                   OFF CACHE BOOL "" FORCE)
+set(JPH_USE_MTL                  OFF CACHE BOOL "" FORCE)
+set(JPH_USE_CPU_COMPUTE          OFF CACHE BOOL "" FORCE)
+set(DEBUG_RENDERER_IN_DEBUG_AND_RELEASE OFF CACHE BOOL "" FORCE)
+set(DEBUG_RENDERER_IN_DISTRIBUTION      OFF CACHE BOOL "" FORCE)
+set(PROFILER_IN_DEBUG_AND_RELEASE       OFF CACHE BOOL "" FORCE)
+set(PROFILER_IN_DISTRIBUTION            OFF CACHE BOOL "" FORCE)
+set(ENABLE_OBJECT_STREAM         OFF CACHE BOOL "" FORCE)
+set(ENABLE_INSTALL               OFF CACHE BOOL "" FORCE)
+set(TARGET_UNIT_TESTS            OFF CACHE BOOL "" FORCE)
+set(TARGET_HELLO_WORLD           OFF CACHE BOOL "" FORCE)
+set(TARGET_PERFORMANCE_TEST      OFF CACHE BOOL "" FORCE)
+set(TARGET_SAMPLES               OFF CACHE BOOL "" FORCE)
+set(TARGET_VIEWER                OFF CACHE BOOL "" FORCE)
+
+if(MSVC)
+    set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
+endif()
+
+add_subdirectory("${JOLT_ROOT}/Build" "${CMAKE_BINARY_DIR}/jolt_build" EXCLUDE_FROM_ALL)
+
+if(TARGET Jolt)
+    set_target_properties(Jolt PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(NOT MSVC)
+        target_compile_options(Jolt PRIVATE -w)
+    endif()
+endif()

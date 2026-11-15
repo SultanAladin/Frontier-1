@@ -1,0 +1,497 @@
+{
+  "Summary": {
+    "Width": 160,
+    "Height": 90,
+    "ReferenceSamples": 256,
+    "StillAt1": {
+      "Exact": {
+        "RelativeRms": 0.34666,
+        "MeanAbsoluteLevels": 6.288,
+        "PixelsOffBy8": 0.17
+      },
+      "Denoised": {
+        "RelativeRms": 0.22207,
+        "MeanAbsoluteLevels": 5.031,
+        "PixelsOffBy8": 0.1582
+      },
+      "BlueNoiseDenoised": {
+        "RelativeRms": 0.2343,
+        "MeanAbsoluteLevels": 4.062,
+        "PixelsOffBy8": 0.1183
+      }
+    },
+    "StillAt4": {
+      "Exact": {
+        "RelativeRms": 0.08235,
+        "MeanAbsoluteLevels": 3.176,
+        "PixelsOffBy8": 0.0875
+      },
+      "Denoised": {
+        "RelativeRms": 0.08089,
+        "MeanAbsoluteLevels": 3.075,
+        "PixelsOffBy8": 0.0855
+      },
+      "BlueNoiseDenoised": {
+        "RelativeRms": 0.07427,
+        "MeanAbsoluteLevels": 2.542,
+        "PixelsOffBy8": 0.0752
+      }
+    },
+    "Determinism": {
+      "DigestBatch1": "c153d6c4",
+      "DigestBatch4": "c153d6c4",
+      "BitIdentical": true
+    },
+    "Cost": {
+      "ReconstructionMilliseconds": 57.8,
+      "SampleMilliseconds": 385.8,
+      "RelativeToOneSample": 0.15
+    }
+  },
+  "Still": {
+    "shared": [
+      {
+        "Samples": 1,
+        "Strength": 1,
+        "Exact": {
+          "RelativeRms": 0.34666,
+          "MeanAbsoluteLevels": 6.288,
+          "PixelsOffBy8": 0.17
+        },
+        "Denoised": {
+          "RelativeRms": 0.22207,
+          "MeanAbsoluteLevels": 5.031,
+          "PixelsOffBy8": 0.1582
+        }
+      },
+      {
+        "Samples": 2,
+        "Strength": 1,
+        "Exact": {
+          "RelativeRms": 0.15863,
+          "MeanAbsoluteLevels": 5.04,
+          "PixelsOffBy8": 0.131
+        },
+        "Denoised": {
+          "RelativeRms": 0.12463,
+          "MeanAbsoluteLevels": 4.444,
+          "PixelsOffBy8": 0.1192
+        }
+      },
+      {
+        "Samples": 4,
+        "Strength": 1,
+        "Exact": {
+          "RelativeRms": 0.08235,
+          "MeanAbsoluteLevels": 3.176,
+          "PixelsOffBy8": 0.0875
+        },
+        "Denoised": {
+          "RelativeRms": 0.08089,
+          "MeanAbsoluteLevels": 3.075,
+          "PixelsOffBy8": 0.0855
+        }
+      },
+      {
+        "Samples": 8,
+        "Strength": 0.844,
+        "Exact": {
+          "RelativeRms": 0.05559,
+          "MeanAbsoluteLevels": 2.115,
+          "PixelsOffBy8": 0.0639
+        },
+        "Denoised": {
+          "RelativeRms": 0.05511,
+          "MeanAbsoluteLevels": 2.098,
+          "PixelsOffBy8": 0.0638
+        }
+      },
+      {
+        "Samples": 16,
+        "Strength": 0.5,
+        "Exact": {
+          "RelativeRms": 0.03586,
+          "MeanAbsoluteLevels": 1.671,
+          "PixelsOffBy8": 0.0524
+        },
+        "Denoised": {
+          "RelativeRms": 0.03585,
+          "MeanAbsoluteLevels": 1.679,
+          "PixelsOffBy8": 0.052
+        }
+      },
+      {
+        "Samples": 64,
+        "Strength": 0,
+        "Exact": {
+          "RelativeRms": 0.0144,
+          "MeanAbsoluteLevels": 0.714,
+          "PixelsOffBy8": 0.0186
+        },
+        "Denoised": {
+          "RelativeRms": 0.0144,
+          "MeanAbsoluteLevels": 0.714,
+          "PixelsOffBy8": 0.0186
+        }
+      }
+    ],
+    "bluenoise": [
+      {
+        "Samples": 1,
+        "Strength": 1,
+        "Exact": {
+          "RelativeRms": 0.35946,
+          "MeanAbsoluteLevels": 7.059,
+          "PixelsOffBy8": 0.2115
+        },
+        "Denoised": {
+          "RelativeRms": 0.2343,
+          "MeanAbsoluteLevels": 4.062,
+          "PixelsOffBy8": 0.1183
+        }
+      },
+      {
+        "Samples": 2,
+        "Strength": 1,
+        "Exact": {
+          "RelativeRms": 0.15955,
+          "MeanAbsoluteLevels": 4.519,
+          "PixelsOffBy8": 0.1295
+        },
+        "Denoised": {
+          "RelativeRms": 0.11241,
+          "MeanAbsoluteLevels": 2.843,
+          "PixelsOffBy8": 0.0907
+        }
+      },
+      {
+        "Samples": 4,
+        "Strength": 1,
+        "Exact": {
+          "RelativeRms": 0.07935,
+          "MeanAbsoluteLevels": 3.229,
+          "PixelsOffBy8": 0.0912
+        },
+        "Denoised": {
+          "RelativeRms": 0.07427,
+          "MeanAbsoluteLevels": 2.542,
+          "PixelsOffBy8": 0.0752
+        }
+      },
+      {
+        "Samples": 8,
+        "Strength": 0.844,
+        "Exact": {
+          "RelativeRms": 0.05812,
+          "MeanAbsoluteLevels": 2.33,
+          "PixelsOffBy8": 0.0706
+        },
+        "Denoised": {
+          "RelativeRms": 0.05674,
+          "MeanAbsoluteLevels": 2.156,
+          "PixelsOffBy8": 0.0649
+        }
+      },
+      {
+        "Samples": 16,
+        "Strength": 0.5,
+        "Exact": {
+          "RelativeRms": 0.03726,
+          "MeanAbsoluteLevels": 1.702,
+          "PixelsOffBy8": 0.0553
+        },
+        "Denoised": {
+          "RelativeRms": 0.03712,
+          "MeanAbsoluteLevels": 1.687,
+          "PixelsOffBy8": 0.0546
+        }
+      },
+      {
+        "Samples": 64,
+        "Strength": 0,
+        "Exact": {
+          "RelativeRms": 0.0154,
+          "MeanAbsoluteLevels": 0.834,
+          "PixelsOffBy8": 0.0213
+        },
+        "Denoised": {
+          "RelativeRms": 0.0154,
+          "MeanAbsoluteLevels": 0.834,
+          "PixelsOffBy8": 0.0213
+        }
+      }
+    ]
+  },
+  "Orbit": {
+    "Step": 0.05,
+    "PriorSamples": 32,
+    "Variants": {
+      "Restart": {
+        "ReprojectionEnabled": false,
+        "DenoiseEnabled": false
+      },
+      "HistorySpan16": {
+        "ReprojectionEnabled": true,
+        "DenoiseEnabled": false,
+        "HistoryClamp": 0,
+        "HistorySpan": 16
+      },
+      "HistorySpan8": {
+        "ReprojectionEnabled": true,
+        "DenoiseEnabled": false,
+        "HistoryClamp": 0,
+        "HistorySpan": 8
+      },
+      "HistorySpan8Clamped": {
+        "ReprojectionEnabled": true,
+        "DenoiseEnabled": false,
+        "HistoryClamp": 1.5,
+        "HistorySpan": 8
+      },
+      "RestartDenoised": {
+        "ReprojectionEnabled": false,
+        "DenoiseEnabled": true
+      },
+      "HistoryDenoised": {
+        "ReprojectionEnabled": true,
+        "DenoiseEnabled": true,
+        "HistoryClamp": 0,
+        "HistorySpan": 8
+      },
+      "HistoryDenoisedBlueNoise": {
+        "ReprojectionEnabled": true,
+        "DenoiseEnabled": true,
+        "HistoryClamp": 0,
+        "HistorySpan": 8,
+        "PointPattern": "bluenoise"
+      }
+    },
+    "Curves": {
+      "Restart": [
+        {
+          "Samples": 1,
+          "RelativeRms": 0.3577,
+          "MeanAbsoluteLevels": 6.591,
+          "PixelsOffBy8": 0.1791
+        },
+        {
+          "Samples": 2,
+          "RelativeRms": 0.15705,
+          "MeanAbsoluteLevels": 5.308,
+          "PixelsOffBy8": 0.1416
+        },
+        {
+          "Samples": 4,
+          "RelativeRms": 0.0803,
+          "MeanAbsoluteLevels": 3.327,
+          "PixelsOffBy8": 0.0916
+        },
+        {
+          "Samples": 8,
+          "RelativeRms": 0.05437,
+          "MeanAbsoluteLevels": 2.178,
+          "PixelsOffBy8": 0.0684
+        },
+        {
+          "Samples": 16,
+          "RelativeRms": 0.03021,
+          "MeanAbsoluteLevels": 1.711,
+          "PixelsOffBy8": 0.0563
+        }
+      ],
+      "HistorySpan16": [
+        {
+          "Samples": 1,
+          "RelativeRms": 0.23463,
+          "MeanAbsoluteLevels": 4.749,
+          "PixelsOffBy8": 0.1254
+        },
+        {
+          "Samples": 2,
+          "RelativeRms": 0.13843,
+          "MeanAbsoluteLevels": 3.981,
+          "PixelsOffBy8": 0.1073
+        },
+        {
+          "Samples": 4,
+          "RelativeRms": 0.0941,
+          "MeanAbsoluteLevels": 3.124,
+          "PixelsOffBy8": 0.0903
+        },
+        {
+          "Samples": 8,
+          "RelativeRms": 0.05944,
+          "MeanAbsoluteLevels": 2.193,
+          "PixelsOffBy8": 0.0688
+        },
+        {
+          "Samples": 16,
+          "RelativeRms": 0.03021,
+          "MeanAbsoluteLevels": 1.711,
+          "PixelsOffBy8": 0.0563
+        }
+      ],
+      "HistorySpan8": [
+        {
+          "Samples": 1,
+          "RelativeRms": 0.23531,
+          "MeanAbsoluteLevels": 4.735,
+          "PixelsOffBy8": 0.1257
+        },
+        {
+          "Samples": 2,
+          "RelativeRms": 0.13656,
+          "MeanAbsoluteLevels": 3.959,
+          "PixelsOffBy8": 0.1073
+        },
+        {
+          "Samples": 4,
+          "RelativeRms": 0.08404,
+          "MeanAbsoluteLevels": 3.02,
+          "PixelsOffBy8": 0.086
+        },
+        {
+          "Samples": 8,
+          "RelativeRms": 0.05437,
+          "MeanAbsoluteLevels": 2.178,
+          "PixelsOffBy8": 0.0684
+        },
+        {
+          "Samples": 16,
+          "RelativeRms": 0.03021,
+          "MeanAbsoluteLevels": 1.711,
+          "PixelsOffBy8": 0.0563
+        }
+      ],
+      "HistorySpan8Clamped": [
+        {
+          "Samples": 1,
+          "RelativeRms": 0.23309,
+          "MeanAbsoluteLevels": 4.925,
+          "PixelsOffBy8": 0.1338
+        },
+        {
+          "Samples": 2,
+          "RelativeRms": 0.1355,
+          "MeanAbsoluteLevels": 4.27,
+          "PixelsOffBy8": 0.1133
+        },
+        {
+          "Samples": 4,
+          "RelativeRms": 0.08211,
+          "MeanAbsoluteLevels": 2.895,
+          "PixelsOffBy8": 0.083
+        },
+        {
+          "Samples": 8,
+          "RelativeRms": 0.05437,
+          "MeanAbsoluteLevels": 2.178,
+          "PixelsOffBy8": 0.0684
+        },
+        {
+          "Samples": 16,
+          "RelativeRms": 0.03021,
+          "MeanAbsoluteLevels": 1.711,
+          "PixelsOffBy8": 0.0563
+        }
+      ],
+      "RestartDenoised": [
+        {
+          "Samples": 1,
+          "RelativeRms": 0.24091,
+          "MeanAbsoluteLevels": 5.185,
+          "PixelsOffBy8": 0.1655
+        },
+        {
+          "Samples": 2,
+          "RelativeRms": 0.13448,
+          "MeanAbsoluteLevels": 4.644,
+          "PixelsOffBy8": 0.1249
+        },
+        {
+          "Samples": 4,
+          "RelativeRms": 0.08323,
+          "MeanAbsoluteLevels": 3.232,
+          "PixelsOffBy8": 0.0903
+        },
+        {
+          "Samples": 8,
+          "RelativeRms": 0.05413,
+          "MeanAbsoluteLevels": 2.158,
+          "PixelsOffBy8": 0.0677
+        },
+        {
+          "Samples": 16,
+          "RelativeRms": 0.03023,
+          "MeanAbsoluteLevels": 1.722,
+          "PixelsOffBy8": 0.0562
+        }
+      ],
+      "HistoryDenoised": [
+        {
+          "Samples": 1,
+          "RelativeRms": 0.20839,
+          "MeanAbsoluteLevels": 3.999,
+          "PixelsOffBy8": 0.1176
+        },
+        {
+          "Samples": 2,
+          "RelativeRms": 0.13289,
+          "MeanAbsoluteLevels": 3.724,
+          "PixelsOffBy8": 0.0998
+        },
+        {
+          "Samples": 4,
+          "RelativeRms": 0.09034,
+          "MeanAbsoluteLevels": 3.03,
+          "PixelsOffBy8": 0.0862
+        },
+        {
+          "Samples": 8,
+          "RelativeRms": 0.05413,
+          "MeanAbsoluteLevels": 2.158,
+          "PixelsOffBy8": 0.0677
+        },
+        {
+          "Samples": 16,
+          "RelativeRms": 0.03023,
+          "MeanAbsoluteLevels": 1.722,
+          "PixelsOffBy8": 0.0562
+        }
+      ],
+      "HistoryDenoisedBlueNoise": [
+        {
+          "Samples": 1,
+          "RelativeRms": 0.21501,
+          "MeanAbsoluteLevels": 3.818,
+          "PixelsOffBy8": 0.1072
+        },
+        {
+          "Samples": 2,
+          "RelativeRms": 0.12591,
+          "MeanAbsoluteLevels": 3.088,
+          "PixelsOffBy8": 0.0925
+        },
+        {
+          "Samples": 4,
+          "RelativeRms": 0.0856,
+          "MeanAbsoluteLevels": 2.548,
+          "PixelsOffBy8": 0.0747
+        },
+        {
+          "Samples": 8,
+          "RelativeRms": 0.05602,
+          "MeanAbsoluteLevels": 2.219,
+          "PixelsOffBy8": 0.0692
+        },
+        {
+          "Samples": 16,
+          "RelativeRms": 0.03145,
+          "MeanAbsoluteLevels": 1.706,
+          "PixelsOffBy8": 0.0542
+        }
+      ]
+    }
+  },
+  "Note": "Hero view, SwiftShader. Errors against the exact 256 spp image (still) or at the moved view (orbit). Display levels: ACES + sRGB, exposure 1."
+}

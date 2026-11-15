@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Force Field &amp; Wind Studio — Frontier</title>
+    <link rel="stylesheet" href="./ForceFieldEditor.css" />
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./Vendor/three.esm.min.js"
+        }
+    }
+    </script>
+    <script src="../ForceFieldVisualization/ForceFieldVisualization.js"></script>
+</head>
+<body>
+    <div class="studio-shell">
+        <header class="doc-tab-bar">
+            <div class="brand-cluster">
+                <span class="brand-mark">frontier<span class="brand-dot">.</span></span>
+                <span class="studio-badge">FORCE FIELD + WIND</span>
+            </div>
+            <div class="doc-tab-strip" id="ScenarioTabs">
+                <button class="doc-tab is-active" data-scenario="lab" type="button">Wind + Vortex Lab</button>
+                <button class="doc-tab" data-scenario="corridor" type="button">Dual Wind Corridor</button>
+                <button class="doc-tab" data-scenario="storm" type="button">Storm System · 100 km</button>
+                <button class="doc-tab" data-scenario="blank" type="button">Calm Pad · Build</button>
+            </div>
+            <nav class="suite-links">
+                <a class="suite-link" href="../ParticleEditor/">Particles</a>
+                <a class="suite-link" href="../FractureEditor/">Fracture</a>
+                <a class="suite-link" href="../PhotometricEditor/">Photometric</a>
+                <a class="suite-link is-current" href="./">Force Field</a>
+            </nav>
+        </header>
+
+        <div class="studio-workspace">
+            <aside class="studio-panel outliner-panel">
+                <div class="panel-header">
+                    <span class="panel-title">Outliner</span>
+                    <div class="panel-actions">
+                        <button class="icon-btn accent-btn" id="BtnOpenLibrary" type="button" title="Browse forcefield types in the Asset Browser">+</button>
+                    </div>
+                </div>
+                <div class="panel-scroll" id="OutlinerScroll">
+                    <div class="panel-content" id="OutlinerContent"></div>
+                </div>
+                <div class="panel-footer" id="OutlinerStatus"></div>
+            </aside>
+
+            <main class="center-column">
+                <section class="studio-panel viewport-panel">
+                    <div class="viewport-toolbar" id="ViewportBar">
+                        <div class="tool-group place-group" id="QuickPlaceGroup">
+                            <span class="group-kicker">PLACE</span>
+                            <button class="tool-pill" data-place-type="WindGenerator" type="button">+ Wind Gen</button>
+                            <button class="tool-pill" data-place-type="Tornado" type="button">+ Vortex</button>
+                            <button class="tool-pill" data-place-type="Jet" type="button">+ Jet</button>
+                            <button class="tool-pill" data-place-type="Attractor" type="button">+ Attractor</button>
+                            <button class="tool-pill" data-place-type="Repulsor" type="button">+ Repulsor</button>
+                            <button class="tool-pill" data-place-type="Drag" type="button">+ Drag</button>
+                            <button class="tool-pill" id="BtnMoreTypes" type="button" title="Browse all 17 types in the Asset Browser">Browse types…</button>
+                        </div>
+                        <div class="tool-group">
+                            <button class="hud-pill is-active" id="BtnModeMap" data-mode="Map" type="button">Map 2D</button>
+                            <button class="hud-pill" id="BtnMode3D" data-mode="Stage3D" type="button">3D Stage</button>
+                        </div>
+                        <div class="tool-group" id="SpanPresetGroup">
+                            <button class="hud-pill" data-span="250" type="button">250 m</button>
+                            <button class="hud-pill is-active" data-span="1400" type="button">1.4 km</button>
+                            <button class="hud-pill" data-span="6000" type="button">6 km</button>
+                            <button class="hud-pill" data-span="100000" type="button">100 km</button>
+                        </div>
+                    </div>
+
+                    <div class="viewport-surface" id="ViewportSurface">
+                        <canvas id="ViewportCanvas"></canvas>
+                        <div class="stage3d-mount" id="Stage3DMount" hidden></div>
+
+                        <div class="viewport-hud-top">
+                            <div class="hud-pill-group">
+                                <button class="hud-pill is-active" id="ToggleVectors" type="button">Vectors</button>
+                                <button class="hud-pill is-active" id="ToggleFlowLines" type="button">Flow Lines</button>
+                                <button class="hud-pill is-active" id="ToggleInfluence" type="button">Influence</button>
+                                <button class="hud-pill" id="ToggleHeatmap" type="button">Heatmap</button>
+                                <button class="hud-pill" id="ToggleMinimal" type="button">Minimal</button>
+                            </div>
+                            <div class="place-banner" id="PlaceBanner" hidden>
+                                <span id="PlaceBannerText">Click in viewport to place</span>
+                                <button class="banner-cancel" id="BtnCancelPlace" type="button">Esc · Cancel</button>
+                            </div>
+                        </div>
+
+                        <div class="viewport-readout" id="ViewportReadout"></div>
+                        <div class="heatmap-legend" id="HeatmapLegend" hidden><span>FIELD MAGNITUDE</span><i></i><small>LOW</small><small>HIGH</small></div>
+
+                        <div class="viewport-inset minimap-inset shown" id="MinimapInset">
+                            <canvas id="MinimapCanvas"></canvas>
+                            <div class="inset-label" id="MinimapLabel">Extent</div>
+                        </div>
+                    </div>
+
+                    <div class="timeline-strip" id="TimelineStrip"></div>
+                    <div class="viewport-footer">
+                        <span class="footer-note" id="ViewportStatus">Finite bounded forcefields · RK2 streamlines + vector field</span>
+                        <button class="hud-pill" id="BtnToggleLog" type="button">Log Stream</button>
+                    </div>
+                </section>
+
+                <section class="studio-panel log-drawer" id="LogDrawer" hidden>
+                    <div class="panel-header">
+                        <span class="panel-title">Log Stream <span class="live-dot">LIVE</span></span>
+                        <div class="panel-actions" id="LogHead"></div>
+                    </div>
+                    <div class="panel-scroll" id="LogScroll">
+                        <div class="panel-content" id="LogContent"></div>
+                    </div>
+                </section>
+            </main>
+
+            <aside class="studio-panel inspector-panel">
+                <div class="panel-header">
+                    <span class="panel-title">Inspector</span>
+                    <span class="inspector-tag" id="InspectorRevision">Bounded · Ready</span>
+                </div>
+                <div class="panel-scroll" id="InspectorScroll">
+                    <div class="panel-content" id="InspectorContent"></div>
+                </div>
+                <div class="panel-footer" id="InspectorStatus"></div>
+            </aside>
+        </div>
+    </div>
+
+    <div class="library-veil" id="LibraryVeil" hidden>
+        <div class="library-sheet" id="LibrarySheet"></div>
+    </div>
+
+    <script type="module" src="./ForceFieldEditor.js"></script>
+</body>
+</html>

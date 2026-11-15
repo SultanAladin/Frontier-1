@@ -1,0 +1,355 @@
+<!doctype html>
+<!--==========================================================================================================================================
+                                                               INDEX.HTML
+===========================================================================================================================================-->
+<!-- 🧩 Frontier · Fracture Studio: Engineering FEM, Boussinesq Flat-BSP, Griffith, LEFM, Voronoi & Celestial Suite
+        redesigned in the unified Sun Inspector + Fluid Editor UI system. -->
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0b0b" />
+    <title>Fracture Studio — Frontier Experimental Remastered</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23161616'/%3E%3Cpath d='M7 7h18v18H7z' fill='none' stroke='%23e8c27a' stroke-width='2'/%3E%3Cpath d='M7 13l9 3-3 9M16 16l9-4.5M16 16l5.5 9' stroke='%23e8c27a' stroke-width='2'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./FractureEditor.css" />
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./Vendor/three.esm.min.js",
+            "three/examples/jsm/controls/OrbitControls.js": "./Vendor/orbit-controls.esm.min.js"
+        }
+    }
+    </script>
+    <script type="module" src="./FractureEditor.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Top Header: Frontier Logomark, Slanted Construct Dock Tabs, Pill Workspace Nav, Backend Status -->
+        <header class="app-header">
+            <div class="brand">
+                <span class="brand-mark">frontier<span class="brand-dot">.</span></span>
+                <span class="experimental">FRACTURE STUDIO</span>
+            </div>
+
+            <div class="document-dock">
+                <div id="construct-tabs" class="document-tabs" role="tablist" aria-label="Destructible constructs"></div>
+                <button id="spawn-tab-btn" class="icon-button" title="Spawn new destructible solid" aria-label="Spawn solid">+</button>
+            </div>
+
+            <nav class="top-nav" aria-label="Workspace views">
+                <button class="nav-button active" id="nav-workspace" type="button">Workspace</button>
+                <button class="nav-button" id="nav-solvers" type="button">Solvers <small>6</small></button>
+                <button class="nav-button" id="nav-log" type="button">Log Stream <small id="nav-log-count">0</small></button>
+            </nav>
+
+            <div class="header-end">
+                <span class="live-engine-tag" id="engine-pill"><i></i><span id="engine-pill-text">WEBGL2 · LIVE</span></span>
+                <button id="help-button" class="icon-button" title="Shortcuts &amp; solver notes" aria-label="Help"></button>
+                <button id="export-button" class="button export-button" type="button">Export TOML</button>
+            </div>
+        </header>
+
+        <!-- Three Floating 22px Fluid + Sun Workspace Panels -->
+        <main class="workspace" id="studio-workspace">
+            <!-- LEFT: Project Zero / Fluid Outliner + Embedded Construct Material Library -->
+            <aside class="left-panel" id="left-panel">
+                <div class="outliner-heading">
+                    <div>
+                        <h1>Outliner</h1>
+                        <span class="outliner-subtitle" id="outliner-subtitle">SceneDirectory · 0 records</span>
+                    </div>
+                    <div class="outliner-heading-actions">
+                        <button id="compact-outliner" class="icon-button" title="Compact outliner" aria-pressed="false"></button>
+                        <button id="add-button" class="icon-button" title="Spawn solid or switch solver" aria-expanded="false"></button>
+                    </div>
+                </div>
+
+                <!-- Project Zero / Sun Census Tiles -->
+                <div class="scene-statistics">
+                    <div class="scene-stat">
+                        <span class="stat-symbol enabled-symbol" id="stat-shards-icon"></span>
+                        <span class="stat-label">Shards</span>
+                        <strong id="shards-count">0</strong>
+                    </div>
+                    <div class="scene-stat">
+                        <span class="stat-symbol warm-symbol" id="stat-baked-icon"></span>
+                        <span class="stat-label">Baked</span>
+                        <strong id="baked-count">0</strong>
+                    </div>
+                </div>
+
+                <label class="search scene-search">
+                    <span id="search-icon-slot"></span>
+                    <input type="search" id="scene-search" placeholder="Search directory…" aria-label="Search scene directory" />
+                    <kbd>Ctrl F</kbd>
+                </label>
+
+                <div class="scene-filters" id="scene-filters" aria-label="Outliner category filters">
+                    <button data-filter="all" class="active" type="button">All</button>
+                    <button data-filter="constructs" type="button">Solids</button>
+                    <button data-filter="celestial" type="button">Sky</button>
+                    <button data-filter="baked" type="button">Baked</button>
+                </div>
+
+                <div class="panel-scroll outliner-scroll" id="OutlinerScroll">
+                    <div class="panel-content" id="OutlinerContent"></div>
+                </div>
+
+                <!-- Embedded Fluid-style Construct & Material Preset Drawer -->
+                <div class="library" id="quick-library">
+                    <div class="panel-heading">
+                        <span>Solid &amp; solver assets</span>
+                        <span class="count" id="quick-preset-count">27</span>
+                        <button class="text-pill-btn" id="open-solvers-btn" type="button">Matrix ↗</button>
+                    </div>
+                    <label class="search quick-preset-search">
+                        <span id="preset-search-icon-slot"></span>
+                        <input type="search" id="quick-preset-search" placeholder="Spawn solid / recipe…" aria-label="Search solid presets" />
+                        <kbd>/</kbd>
+                    </label>
+                    <div class="filter-row" id="quick-preset-filters"></div>
+                    <div class="preset-list" id="quick-presets-list"></div>
+                </div>
+
+                <div class="left-footer">
+                    <span class="footer-dot"></span>
+                    <span id="left-footer-label">FEM Navier–Cauchy · Boussinesq Flat-BSP</span>
+                </div>
+            </aside>
+
+            <!-- CENTER: Rounded 3D Viewport + Tool Rail + Reticle + 52px Fluid Transport + Live Phase Ruler -->
+            <section class="center-panel" id="center-panel">
+                <div class="viewport-bar">
+                    <span id="viewport-title-icon"></span>
+                    <strong>Scene view</strong>
+                    <span class="bar-divider"></span>
+                    <select id="camera-view-select" aria-label="Camera projection view">
+                        <option value="orbit">Perspective orbit</option>
+                        <option value="top">Top elevation</option>
+                        <option value="front">Front face</option>
+                        <option value="side">Side profile</option>
+                    </select>
+                    <select id="pipeline-select" aria-label="Fracture execution pipeline">
+                        <option value="realtime">Pipeline · Realtime (&lt;1 ms)</option>
+                        <option value="baked" selected>Pipeline · Engineering Bake + SDF</option>
+                        <option value="hybrid">Pipeline · Hybrid Strain Bonds</option>
+                    </select>
+                    <select id="lens-select" aria-label="Viewport diagnostic lens">
+                        <option value="pbr">Lens · PBR Surface</option>
+                        <option value="xray">Lens · X-Ray Core</option>
+                        <option value="telemetry">Lens · Telemetry Scan</option>
+                        <option value="plexus">Lens · Bond Plexus</option>
+                        <option value="sdf">Lens · SDF Slice</option>
+                    </select>
+                    <div class="viewport-bar-end">
+                        <button id="toggle-matrix-btn" class="button pill-btn" type="button" title="Compare 6 Fracture Solvers (M)">Matrix · M</button>
+                        <button id="toggle-log-btn" class="icon-button" type="button" title="Toggle Log Stream drawer"></button>
+                        <button id="focus-btn" class="icon-button" type="button" title="Reset camera focus"></button>
+                        <button id="maximize-btn" class="icon-button" type="button" title="Maximize viewport"></button>
+                    </div>
+                </div>
+
+                <div class="viewport" id="ViewportSurface">
+                    <div class="viewport-canvas-mount" id="viewportCanvasMount"></div>
+
+                    <div class="viewport-caption">
+                        <span class="live-pill" id="live-pill"><i></i><span id="live-pill-label">LIVE</span></span>
+                        <span id="viewport-object">Monolith Pillar</span>
+                        <small id="viewport-subtitle">Engineering FEM · Navier–Cauchy Fractography</small>
+                    </div>
+
+                    <div class="viewport-tools" id="ViewportTools" aria-label="Viewport tools">
+                        <button class="active icon-button" data-tool="strike" type="button" title="Click mesh to strike &amp; shatter"></button>
+                        <button class="icon-button" data-tool="orbit" type="button" title="Inspect &amp; select individual shard"></button>
+                        <button class="icon-button" data-tool="gizmo" type="button" title="Place impact locus without strike"></button>
+                        <button class="icon-button" id="reassemble-quick-btn" type="button" title="Reassemble intact solid (R)"></button>
+                    </div>
+
+                    <div class="viewport-right-hud" id="ViewportHud"></div>
+
+                    <!-- Screen-Projected Impact Reticle Overlay -->
+                    <div class="reticle-hud" id="impactReticleHud">
+                        <div class="reticle-corner tl"></div>
+                        <div class="reticle-corner tr"></div>
+                        <div class="reticle-corner bl"></div>
+                        <div class="reticle-corner br"></div>
+                        <div class="reticle-callout-pill" id="reticleCalloutText"></div>
+                        <button class="reticle-center-action" id="reticleStrikeBtn" type="button">Strike Locus</button>
+                    </div>
+
+                    <!-- Bottom-Left Dual Manifold / Energy Rings -->
+                    <div class="viewport-integrity-cluster" id="viewportIntegrityCluster"></div>
+
+                    <!-- Bottom-Right Hover / Selected Fragment Badge -->
+                    <div class="hover-fragment-badge" id="hoverFragmentBadge"></div>
+
+                    <div class="axis-gizmo" aria-label="World axes">
+                        <svg viewBox="0 0 76 76">
+                            <path d="M38 39V10M38 39L11 55M38 39L65 55" />
+                            <circle cx="38" cy="39" r="3" />
+                            <text x="34" y="9" class="axis-y">Y</text>
+                            <text x="3" y="64" class="axis-x">X</text>
+                            <text x="64" y="64" class="axis-z">Z</text>
+                        </svg>
+                    </div>
+
+                    <div class="viewport-help">
+                        <span>Click mesh strike</span><i>·</i><span>Drag orbit</span><i>·</i><span>Scroll zoom</span><i>·</i><span>Space play</span><i>·</i><span>L strike</span><i>·</i><span>M matrix</span>
+                    </div>
+                </div>
+
+                <!-- Fluid Editor 52px Transport Bar -->
+                <div class="transport">
+                    <div class="transport-buttons">
+                        <button class="icon-button" id="reset-button" type="button" title="Reassemble to t = 0.00s (R)"></button>
+                        <button class="play-button" id="play-button" type="button" title="Play / Pause Fracture Timeline (Space)"></button>
+                        <button class="icon-button" id="step-button" type="button" title="Step 16 ms (S)"></button>
+                    </div>
+                    <span class="timecode tabular" id="timecode">00:00.280</span>
+                    <span class="transport-divider"></span>
+                    <select id="speed-select" aria-label="Bullet-time playback speed">
+                        <option value="0.1">0.10×</option>
+                        <option value="0.25">0.25×</option>
+                        <option value="0.5">0.50×</option>
+                        <option value="1" selected>1.0×</option>
+                    </select>
+                    <label class="transport-explode">
+                        <span>Explode</span>
+                        <input type="range" class="pill-range compact-range" id="explodeRangeInput" min="0" max="1" step="0.01" value="0.08" />
+                        <span class="tabular" id="explodeValueText">0.08</span>
+                    </label>
+                    <div class="transport-actions">
+                        <button class="button burst-button accent" id="strike-button" type="button">Strike <span class="key-hint">L</span></button>
+                        <button class="button burst-button" id="bake-button" type="button">Bake <span class="key-hint">B</span></button>
+                    </div>
+                </div>
+
+                <!-- Live 4s Fracture Phase Ruler -->
+                <div class="timeline" aria-label="Fracture ballistic timeline ruler">
+                    <div class="timeline-label">
+                        <span>FRACTURE</span>
+                        <span id="frame-counter" class="tabular">0.28s / 4.00s</span>
+                    </div>
+                    <div class="ruler" id="timelineScrubberTrack">
+                        <div class="ruler-numbers">
+                            <span>0.0s</span><span>0.8s</span><span>1.6s</span><span>2.4s</span><span>3.2s</span><span>4.0s</span>
+                        </div>
+                        <div class="phase-tracks">
+                            <span class="phase-chip" style="flex:0.8">① Nucleate</span>
+                            <span class="phase-chip" style="flex:1.1">② Crack Wavefront</span>
+                            <span class="phase-chip" style="flex:1.6">③ Ballistic Eject</span>
+                            <span class="phase-chip" style="flex:2.2">④ Contact Settle</span>
+                        </div>
+                        <div class="playhead" id="playhead"></div>
+                    </div>
+                </div>
+
+                <!-- Collapsible Log Stream Drawer -->
+                <section class="log-drawer" id="log-drawer" hidden>
+                    <div class="log-head" id="LogHead"></div>
+                    <div class="panel-scroll log-scroll" id="LogScroll">
+                        <div class="panel-content" id="LogContent"></div>
+                    </div>
+                </section>
+            </section>
+
+            <!-- RIGHT: Sun Inspector + Fluid Inspector Hybrid -->
+            <aside class="inspector-panel" id="inspector-panel">
+                <div class="panel-heading inspector-top-heading">
+                    <span class="inspector-crumb" id="inspector-crumb">Inspector / Fracture / Solids</span>
+                    <button id="reset-selection-btn" class="reset-pill" type="button" title="Reset construct recipe">Reset ↗</button>
+                </div>
+
+                <div class="object-heading" id="object-heading">
+                    <div class="object-symbol" id="object-symbol"></div>
+                    <div class="object-heading-copy">
+                        <input id="object-name" value="Monolith Pillar" maxlength="64" aria-label="Selected node name" />
+                        <span id="object-type">CONCRETE · ENGINEERING FEM · WATER-TIGHT</span>
+                    </div>
+                    <label class="switch" title="Baked / active state">
+                        <input type="checkbox" id="object-enabled" checked aria-label="Toggle active or baked state" />
+                        <span></span>
+                    </label>
+                </div>
+
+                <div class="inspector-tabs" id="inspector-tabs" role="tablist" aria-label="Inspector sections"></div>
+
+                <div class="panel-scroll inspector-scroll" id="InspectorScroll">
+                    <div class="panel-content" id="InspectorContent"></div>
+                </div>
+
+                <div class="inspector-footer">
+                    <span id="inspector-revision">Parameters · Revision 0</span>
+                    <span>Changes apply live ↗</span>
+                </div>
+            </aside>
+        </main>
+
+        <!-- Crisp Bottom Status Bar -->
+        <footer class="status-bar">
+            <span class="status-ready" id="status-ready"><i></i>Manifold ready</span>
+            <span class="status-divider"></span>
+            <span id="status-shards">0 shards · 0 bonds</span>
+            <span class="status-divider"></span>
+            <span id="status-drift">ΣV drift 0.0e+0</span>
+            <span class="status-right">
+                <span class="gpu-dot" id="gpu-dot"></span>
+                <span id="status-adapter">WebGL2 ACES + 3D Fallback</span>
+                <span class="status-divider"></span>
+                FRONTIER / FRACTURE <span class="version">2.0</span>
+            </span>
+        </footer>
+    </div>
+
+    <!-- Quick Add / Spawn Popover Menu -->
+    <div id="add-menu" class="popover add-menu" hidden role="menu">
+        <div class="popover-label">SPAWN DESTRUCTIBLE SOLID</div>
+        <button data-spawn-solid="monolith|concrete|Calibration Monolith" type="button">Calibration Monolith <small>Engineering FEM · Concrete pillar</small></button>
+        <button data-spawn-solid="curtain_pane|tempered|Tempered Curtain Lite" type="button">Tempered Curtain Lite <small>Fast Boussinesq · Diced glass</small></button>
+        <button data-spawn-solid="boulder|granite|Bedded Basalt Boulder" type="button">Bedded Basalt Boulder <small>Engineering FEM · Anisotropic rock</small></button>
+        <button data-spawn-solid="timber_beam|wood|Orthotropic Spruce Joist" type="button">Orthotropic Spruce Joist <small>Fast Runtime · Fibrous splinter grain</small></button>
+        <button data-spawn-solid="cone|glass|Annealed Obsidian Spire" type="button">Annealed Obsidian Spire <small>LEFM Wavefront · Radial spokes</small></button>
+        <div class="menu-divider"></div>
+        <button data-action="open-solvers" type="button">Compare All 6 Fracture Solvers… <small>Navier–Cauchy, Boussinesq, Griffith, LEFM, Voronoi, Dendritic</small></button>
+    </div>
+
+    <!-- Solver Comparison Matrix Modal Sheet -->
+    <div class="library-veil" id="SolverVeil">
+        <div class="library-sheet" id="SolverSheet"></div>
+    </div>
+
+    <!-- Export TOML Dialog -->
+    <dialog id="export-dialog">
+        <div class="dialog-heading">
+            <h2>Export Fracture Scene</h2>
+            <button class="icon-button" id="close-export" aria-label="Close"></button>
+        </div>
+        <p class="dialog-sub">Complete `.fracture.toml` specification including constitutive parameters, SDF voxel configuration, and Euler manifold geometry receipt.</p>
+        <pre id="export-preview" class="export-code"></pre>
+        <div class="dialog-actions">
+            <button id="copy-export-btn" class="button export-button" type="button">Copy TOML</button>
+            <button id="download-export-btn" class="button" type="button">Download .fracture.toml</button>
+        </div>
+    </dialog>
+
+    <!-- Help Dialog -->
+    <dialog id="help-dialog">
+        <div class="dialog-heading">
+            <h2>Frontier Fracture Studio</h2>
+            <button class="icon-button" id="close-help" aria-label="Close"></button>
+        </div>
+        <p class="dialog-sub">Six fracture engines (3D Navier–Cauchy Engineering Fractography, Fast Runtime Boussinesq Flat-BSP, Griffith Stress-Budgeted, LEFM Wavefront, Clustered Voronoi, and Dendritic Spall) paired with full Sun, Atmosphere, and Clouds inspectors inside the Sun + Fluid UI system.</p>
+        <div class="shortcut-list">
+            <span>Strike mesh<kbd>Click solid / L</kbd></span>
+            <span>Play / pause timeline<kbd>Space</kbd></span>
+            <span>Bake resident cache<kbd>B</kbd></span>
+            <span>Reassemble intact solid<kbd>R</kbd></span>
+            <span>Single step<kbd>S</kbd></span>
+            <span>Solver comparison matrix<kbd>M</kbd></span>
+            <span>Search presets<kbd>/</kbd></span>
+            <span>Close modal<kbd>Esc</kbd></span>
+        </div>
+        <p class="dialog-foot">Tip: Scrub any black numeric pill left or right to tune values smoothly (hold Shift for fine precision, Alt for coarse). Drag directly on the Polar Anisotropy radar or Solar Diurnal Arc canvases for interactive editing.</p>
+    </dialog>
+</body>
+</html>
