@@ -85,16 +85,27 @@ jobs:
             echo "===== Build ${profile} ====="
             cmake --build "$build_dir" --parallel 4
             echo "===== CTest ${profile} ====="
-            if ! xvfb-run -a ctest --test-dir "$build_dir" --output-on-failure; then
+            if ! xvfb-run -a -s "-screen 0 1920x1080x24" ctest --test-dir "$build_dir" --output-on-failure; then
               python3 - "$build_dir/Testing/Temporary/LastTest.log" "$profile" <<'PY'
           from pathlib import Path
+          import re
           import sys
 
           log_path = Path(sys.argv[1])
           profile = sys.argv[2]
           text = log_path.read_text(errors='replace') if log_path.exists() else 'CTest log was not produced.'
-          fail_lines = [ln for ln in text.splitlines() if 'FAILED' in ln or 'Test Failed' in ln or 'error' in ln.lower()]
-          summary = '\n'.join(fail_lines[-30:]) if fail_lines else text[-3000:]
+          blocks = re.split(r'\n(?=\d+/\d+ Testing: )', text)
+          failed_blocks = [b for b in blocks if 'Test Failed.' in b or '***Failed' in b or '***Timeout' in b or '***Exception' in b]
+          if failed_blocks:
+              parts = []
+              for b in failed_blocks:
+                  lines = b.splitlines()
+                  header = lines[0] if lines else 'Unknown test'
+                  body = '\n'.join(lines[-20:])
+                  parts.append(f'[{header}]\n{body}')
+              summary = '\n---\n'.join(parts)
+          else:
+              summary = text[-3000:]
           tail = summary[-3500:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           print(f'::error title=CTest-{profile}::{tail}')
           PY
