@@ -301,6 +301,7 @@ void FractureViewportHost::Render(
     }};
     const uint32_t ShadingIdx = static_cast<uint32_t>(Session.RenderOptions.RenderMode) % 4u;
     Rectangle2D ShadingDropRect {};
+    Rectangle2D DebugDropRect {};
     {
         float Ax = Bounds.X + 12.0f;
 
@@ -354,21 +355,42 @@ void FractureViewportHost::Render(
         Ax += 9.0f;
 
         // Shading dropdown [Sphere  Energy  v]
-        ShadingDropRect = { Ax, Row2Y, 128.0f, 31.0f };
+        ShadingDropRect = { Ax, Row2Y, 114.0f, 31.0f };
         const bool ShadeHov = ControlAppearance::QueryPointerOver(ShadingDropRect, Pointer);
         Surface.FillRectangle(ShadingDropRect, ShadeHov ? ColorRgba { 32u, 32u, 33u, 255u } : ColorRgba { 26u, 26u, 26u, 255u }, 9.0f);
         Surface.StrokeRectangle(ShadingDropRect, ColorRgba { 255u, 255u, 255u, 18u }, 9.0f, 0.9f);
         FractureIcons::DrawSphereWireGlyph(Surface, { ShadingDropRect.X + 9.0f, ShadingDropRect.Center().Y - 7.0f, 14.0f, 14.0f }, ColorRgba { 145u, 145u, 143u, 255u });
-        Surface.Text({ ShadingDropRect.X + 28.0f, ShadingDropRect.Y + 9.5f }, 10.6f, ColorRgba { 196u, 196u, 194u, 255u }, ShadingLabels[ShadingIdx]);
-        FractureIcons::DrawChevronDownGlyph(Surface, { ShadingDropRect.Right() - 20.0f, ShadingDropRect.Center().Y - 6.0f, 12.0f, 12.0f }, ColorRgba { 138u, 138u, 136u, 255u });
+        Surface.Text({ ShadingDropRect.X + 27.0f, ShadingDropRect.Y + 9.5f }, 10.4f, ColorRgba { 196u, 196u, 194u, 255u }, ShadingLabels[ShadingIdx]);
+        FractureIcons::DrawChevronDownGlyph(Surface, { ShadingDropRect.Right() - 18.0f, ShadingDropRect.Center().Y - 6.0f, 12.0f, 12.0f }, ColorRgba { 138u, 138u, 136u, 255u });
         if (ShadeHov && Pointer.Pressed)
         {
             Session.ShadingDropdownOpen = !Session.ShadingDropdownOpen;
+            Session.DebugDropdownOpen   = false;
         }
-        Ax = ShadingDropRect.Right() + 8.0f;
+        Ax = ShadingDropRect.Right() + 7.0f;
+
+        // Debug dropdown [Wire  Debug  v] (Collision shapes, Mesh wireframe, Bonds, Wavefronts, Grid, Diagnostics)
+        DebugDropRect = { Ax, Row2Y, 96.0f, 31.0f };
+        const bool DebugHov    = ControlAppearance::QueryPointerOver(DebugDropRect, Pointer);
+        const bool DebugActive = Session.RenderOptions.ShowCollisionShapes || Session.DebugDropdownOpen;
+        Surface.FillRectangle(DebugDropRect,
+            DebugActive ? ColorRgba { 52u, 199u, 89u, 24u } : (DebugHov ? ColorRgba { 32u, 32u, 33u, 255u } : ColorRgba { 26u, 26u, 26u, 255u }), 9.0f);
+        Surface.StrokeRectangle(DebugDropRect,
+            DebugActive ? ColorRgba { 72u, 214u, 128u, 96u } : ColorRgba { 255u, 255u, 255u, 18u }, 9.0f, 0.95f);
+        FractureIcons::DrawWireCubeGlyph(Surface, { DebugDropRect.X + 9.0f, DebugDropRect.Center().Y - 7.0f, 14.0f, 14.0f },
+            Session.RenderOptions.ShowCollisionShapes ? ColorRgba { 91u, 219u, 135u, 255u } : ColorRgba { 145u, 145u, 143u, 255u });
+        Surface.Text({ DebugDropRect.X + 27.0f, DebugDropRect.Y + 9.5f }, 10.4f,
+            Session.RenderOptions.ShowCollisionShapes ? ColorRgba { 224u, 246u, 232u, 255u } : ColorRgba { 196u, 196u, 194u, 255u }, "Debug");
+        FractureIcons::DrawChevronDownGlyph(Surface, { DebugDropRect.Right() - 18.0f, DebugDropRect.Center().Y - 6.0f, 12.0f, 12.0f }, ColorRgba { 138u, 138u, 136u, 255u });
+        if (DebugHov && Pointer.Pressed)
+        {
+            Session.DebugDropdownOpen   = !Session.DebugDropdownOpen;
+            Session.ShadingDropdownOpen = false;
+        }
+        Ax = DebugDropRect.Right() + 8.0f;
 
         // Explode pill using Frontier native C++ ScalarSlider capsule component
-        const float ExpW = std::min(212.0f, Bounds.Right() - Ax - 156.0f);
+        const float ExpW = std::min(196.0f, Bounds.Right() - Ax - 156.0f);
         if (ExpW > 130.0f)
         {
             Surface.Text({ Ax + 2.0f, Row2Y + 9.0f }, 10.6f, ColorRgba { 154u, 154u, 152u, 255u }, "Explode");
@@ -429,6 +451,7 @@ void FractureViewportHost::Render(
     const Rectangle2D WellRect     { Bounds.X + 12.0f, Row2Y + 42.0f, Bounds.Width - 24.0f, std::max(140.0f, PlaybackRect.Y - (Row2Y + 42.0f) - 9.0f) };
 
     // 3. Render 3D Viewport Frame via ImTextureData
+    Session.RenderOptions.CollisionDebugMode = Session.CollisionShapeMode;
     const uint32_t RenderW = static_cast<uint32_t>(std::clamp(std::lround(WellRect.Width * 0.90f), 240l, 1280l));
     const uint32_t RenderH = static_cast<uint32_t>(std::clamp(std::lround(WellRect.Height * 0.90f), 160l, 900l));
     const uint64_t Sig     = Session.ComputeViewportRenderSignature();
@@ -507,6 +530,26 @@ void FractureViewportHost::Render(
             std::snprintf(RelBuf, sizeof(RelBuf), "Released  %u of %zu",
                 Session.CountReleasedFragments(), Session.PartitionResult.Fragments.size());
             DrawChip(RelBuf, true);
+        }
+
+        if (Session.RenderOptions.ShowCollisionShapes)
+        {
+            const bool ExactShape = (Session.CollisionShapeMode == SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh);
+            size_t TotalHulls = 0u;
+            for (const auto& F : Session.PartitionResult.Fragments)
+            {
+                TotalHulls += std::max<size_t>(1u, F.SubConvexHulls.size());
+            }
+            char ColDbgBuf[72] {};
+            if (ExactShape)
+            {
+                std::snprintf(ColDbgBuf, sizeof(ColDbgBuf), "Collision debug · Exact shape (%zu sub-hulls)", TotalHulls);
+            }
+            else
+            {
+                std::snprintf(ColDbgBuf, sizeof(ColDbgBuf), "Collision debug · Convex hull (%zu hulls)", Session.PartitionResult.Fragments.size());
+            }
+            DrawChip(ColDbgBuf, true);
         }
     }
 
@@ -612,7 +655,11 @@ void FractureViewportHost::Render(
     }
 
     // 8. Pointer Orbit, Zoom & Surface Pick
-    if (ControlAppearance::QueryPointerOver(WellRect, Pointer) && !OverlayInteracted && !ExplodeSliderDrag && !Session.ShadingDropdownOpen)
+    if (ControlAppearance::QueryPointerOver(WellRect, Pointer) &&
+        !OverlayInteracted &&
+        !ExplodeSliderDrag &&
+        !Session.ShadingDropdownOpen &&
+        !Session.DebugDropdownOpen)
     {
         if (std::abs(WheelDeltaY) > 0.001f)
         {
@@ -669,6 +716,8 @@ void FractureViewportHost::Render(
         OrbitDragging = false;
     }
 
+    Surface.PopClip();
+
     if (Session.ShadingDropdownOpen)
     {
         uint32_t Chosen = ShadingIdx;
@@ -681,7 +730,92 @@ void FractureViewportHost::Render(
         }
     }
 
-    Surface.PopClip();
+    if (Session.DebugDropdownOpen)
+    {
+        struct DebugOptionItem
+        {
+            const char* Label;
+            bool*       Flag;
+            const char* Badge;
+        };
+        const bool ExactColMode =
+            Session.CollisionShapeMode == SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh;
+        std::array<DebugOptionItem, 6> DebugItems {{
+            { "Collision shapes",   &Session.RenderOptions.ShowCollisionShapes, ExactColMode ? "Exact" : "Convex" },
+            { "Mesh wireframe",     &Session.RenderOptions.ShowWireframe,       nullptr },
+            { "Breakable bonds",    &Session.RenderOptions.ShowBonds,           nullptr },
+            { "Wavefronts & seeds", &Session.RenderOptions.ShowWavefronts,      nullptr },
+            { "Studio ground grid", &Session.RenderOptions.ShowGroundGrid,      nullptr },
+            { "Diagnostics (F3)",   &Session.DiagnosticsSession.Visible,        nullptr }
+        }};
+
+        constexpr float RowH = 29.0f;
+        const float MenuW    = 236.0f;
+        const float MenuH    = 14.0f + static_cast<float>(DebugItems.size()) * RowH;
+        const Rectangle2D MenuRect {
+            std::min(DebugDropRect.X, Bounds.Right() - MenuW - 8.0f),
+            DebugDropRect.Bottom() + 5.0f,
+            MenuW,
+            MenuH
+        };
+
+        Surface.FillRectangle(MenuRect, ColorRgba { 22u, 22u, 24u, 246u }, 12.0f);
+        Surface.StrokeRectangle(MenuRect, ColorRgba { 255u, 255u, 255u, 32u }, 12.0f, 1.0f);
+
+        for (size_t Idx = 0u; Idx < DebugItems.size(); ++Idx)
+        {
+            const auto& Item = DebugItems[Idx];
+            const Rectangle2D RowRect {
+                MenuRect.X + 6.0f,
+                MenuRect.Y + 7.0f + static_cast<float>(Idx) * RowH,
+                MenuRect.Width - 12.0f,
+                RowH - 2.0f
+            };
+            const bool RowHov = ControlAppearance::QueryPointerOver(RowRect, Pointer);
+            const bool Active = (Item.Flag != nullptr) && (*Item.Flag);
+            if (RowHov)
+            {
+                Surface.FillRectangle(RowRect, ColorRgba { 255u, 255u, 255u, 16u }, 7.0f);
+            }
+            else if (Active && Idx == 0u)
+            {
+                Surface.FillRectangle(RowRect, ColorRgba { 52u, 199u, 89u, 18u }, 7.0f);
+            }
+
+            const Rectangle2D BoxRect { RowRect.X + 8.0f, RowRect.Center().Y - 7.0f, 14.0f, 14.0f };
+            Surface.FillRectangle(BoxRect, Active ? ColorRgba { 56u, 206u, 108u, 255u } : ColorRgba { 34u, 34u, 36u, 255u }, 4.0f);
+            Surface.StrokeRectangle(BoxRect, Active ? ColorRgba { 88u, 232u, 136u, 255u } : ColorRgba { 255u, 255u, 255u, 34u }, 4.0f, 0.9f);
+            if (Active)
+            {
+                FractureIcons::DrawCheckGlyph(Surface, { BoxRect.X + 2.5f, BoxRect.Y + 2.5f, 9.0f, 9.0f }, ColorRgba { 11u, 34u, 18u, 255u }, 2.2f);
+            }
+
+            Surface.Text({ BoxRect.Right() + 9.0f, RowRect.Y + 7.0f }, 10.2f,
+                Active ? ColorRgba { 236u, 238u, 236u, 255u } : ColorRgba { 166u, 166u, 164u, 255u }, Item.Label);
+
+            if (Item.Badge != nullptr)
+            {
+                const float Bw = Surface.MeasureTextWidth(8.0f, Item.Badge) + 12.0f;
+                const Rectangle2D BadgeRect { RowRect.Right() - Bw - 6.0f, RowRect.Center().Y - 8.5f, Bw, 17.0f };
+                Surface.FillRectangle(BadgeRect,
+                    ExactColMode ? ColorRgba { 56u, 206u, 108u, 26u } : ColorRgba { 64u, 200u, 255u, 26u }, 6.0f);
+                Surface.TextCentered(BadgeRect, 8.0f,
+                    ExactColMode ? ColorRgba { 98u, 232u, 142u, 255u } : ColorRgba { 116u, 220u, 255u, 255u }, Item.Badge);
+            }
+
+            if (RowHov && Pointer.Pressed && Item.Flag != nullptr)
+            {
+                *Item.Flag = !(*Item.Flag);
+            }
+        }
+
+        if (Pointer.Pressed &&
+            !ControlAppearance::QueryPointerOver(MenuRect, Pointer) &&
+            !ControlAppearance::QueryPointerOver(DebugDropRect, Pointer))
+        {
+            Session.DebugDropdownOpen = false;
+        }
+    }
 
     // 10. 60px Playback Footer
     const auto SimTelemetry = Session.SimRunner.InspectTelemetry();

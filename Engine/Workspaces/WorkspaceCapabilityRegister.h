@@ -30,7 +30,7 @@ enum class HostWorkspaceTarget : uint8_t
     PatternWorkspace = 2u, // [-] - Open with Pattern Studio (PatternStampWorkspaceHost seamless 2D vector & OpenPBR tile)
     StampWorkspace    = 3u, // [-] - Open with Stamp Studio (PatternStampWorkspaceHost alpha cutout vector stamp)
     BakingWorkspace   = 4u, // [-] - Open with Baking Studio (BakingWorkspaceHost pure-GPU GTX BVH4 + RTX RayQuery baker)
-    FractureWorkspace = 5u, // [-] - Open with Fracture Studio (FractureWorkspaceHost 6-solver fracture & JoltPhysics)
+    FractureWorkspace = 5u, // [-] - Open with FractureWorkspace (FractureWorkspaceHost 6-solver fracture & JoltPhysics)
 };
 
 //------------------------------------------------------------------------------------------------------------------------

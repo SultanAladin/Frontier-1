@@ -22,7 +22,7 @@ int main(int Argc, char** Argv)
     Options.DefaultLaunchMode          = Frontier::Configuration::HostLaunchMode::StandaloneWorkspace;
     Options.InitialWorkspace           = Frontier::WorkspaceCategory::Fracture;
     Options.IsolateStandaloneWorkspace = true;
-    Options.WindowTitle                = "Frontier Fracture";
+    Options.WindowTitle                = "FractureWorkspace";
     Options.InitialWidthPx             = 1600u;
     Options.InitialHeightPx            = 980u;
     Options.OpenContentBrowser         = false;

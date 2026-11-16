@@ -2007,6 +2007,8 @@ uint64_t FractureWorkspaceSession::ComputeViewportRenderSignature() const noexce
     Mix(RenderOptions.ShowBonds ? 1ull : 0ull);
     Mix(RenderOptions.ShowWavefronts ? 1ull : 0ull);
     Mix(RenderOptions.ShowGroundGrid ? 1ull : 0ull);
+    Mix(RenderOptions.ShowCollisionShapes ? 1ull : 0ull);
+    Mix(static_cast<uint64_t>(CollisionShapeMode));
     Mix(static_cast<uint64_t>(RenderOptions.SelectedFragmentIndex + 100));
     Mix(static_cast<uint64_t>(std::lround(RenderOptions.ExplodeFactor * 1000.0f)));
     Mix(static_cast<uint64_t>(std::lround(Camera.YawRadians * 1000.0f)));
@@ -2019,7 +2021,7 @@ uint64_t FractureWorkspaceSession::ComputeViewportRenderSignature() const noexce
     return H;
 }
 
-std::string FractureWorkspaceSession::BuildStudioReportMarkdown() const
+std::string FractureWorkspaceSession::BuildWorkspaceReportMarkdown() const
 {
     const auto& Mat = ActiveMaterialSpec();
     const auto& Rec = PartitionResult.Receipt;

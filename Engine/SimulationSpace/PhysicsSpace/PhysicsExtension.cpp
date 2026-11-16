@@ -11,6 +11,7 @@
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Core/Factory.h>
+#include <Jolt/Geometry/ConvexHullBuilder.h>
 #include <Jolt/Core/JobSystemSingleThreaded.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Core/TempAllocator.h>
@@ -1531,6 +1532,66 @@ uint64_t PhysicsExtension::QueryCompletedStepCount() const noexcept
 double PhysicsExtension::QuerySimulatedSeconds() const noexcept
 {
     return Runtime ? Runtime->SimulatedSeconds : 0.0;
+}
+
+std::vector<std::pair<uint32_t, uint32_t>> PhysicsExtension::BuildOuterConvexHullEdges(
+    const std::vector<Mathematics::Axis3D>& Vertices)
+{
+    std::vector<std::pair<uint32_t, uint32_t>> OutEdges;
+    if (Vertices.size() < 4u)
+    {
+        return OutEdges;
+    }
+    if (JPH::Allocate == nullptr)
+    {
+        JPH::RegisterDefaultAllocator();
+    }
+
+    JPH::ConvexHullBuilder::Positions Positions;
+    Positions.reserve(Vertices.size());
+    for (const auto& V : Vertices)
+    {
+        Positions.push_back(JPH::Vec3(V.X, V.Y, V.Z));
+    }
+
+    JPH::ConvexHullBuilder Builder(Positions);
+    const char* HullErr = nullptr;
+    const auto HullRes  = Builder.Initialize(std::numeric_limits<int>::max(), 1.0e-3f, HullErr);
+    if (HullRes != JPH::ConvexHullBuilder::EResult::Success &&
+        HullRes != JPH::ConvexHullBuilder::EResult::MaxVerticesReached)
+    {
+        return OutEdges;
+    }
+
+    std::vector<uint64_t> SeenKeys;
+    SeenKeys.reserve(Builder.GetFaces().size() * 4u);
+    OutEdges.reserve(Builder.GetFaces().size() * 3u);
+    for (const auto* Face : Builder.GetFaces())
+    {
+        if (Face == nullptr || Face->mRemoved || Face->mFirstEdge == nullptr) continue;
+        const auto* Edge = Face->mFirstEdge;
+        do
+        {
+            const int StartIdx = Edge->mStartIdx;
+            const int EndIdx   = Edge->mNextEdge->mStartIdx;
+            if (StartIdx >= 0 && EndIdx >= 0 && StartIdx != EndIdx &&
+                static_cast<size_t>(StartIdx) < Vertices.size() &&
+                static_cast<size_t>(EndIdx) < Vertices.size())
+            {
+                const uint32_t Lo = static_cast<uint32_t>(std::min(StartIdx, EndIdx));
+                const uint32_t Hi = static_cast<uint32_t>(std::max(StartIdx, EndIdx));
+                const uint64_t Key = (static_cast<uint64_t>(Lo) << 32u) | static_cast<uint64_t>(Hi);
+                if (std::find(SeenKeys.begin(), SeenKeys.end(), Key) == SeenKeys.end())
+                {
+                    SeenKeys.push_back(Key);
+                    OutEdges.emplace_back(Lo, Hi);
+                }
+            }
+            Edge = Edge->mNextEdge;
+        }
+        while (Edge != nullptr && Edge != Face->mFirstEdge);
+    }
+    return OutEdges;
 }
 
 } // namespace Frontier::SimulationSpace::PhysicsSpace

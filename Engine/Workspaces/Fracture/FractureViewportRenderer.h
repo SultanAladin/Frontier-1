@@ -56,6 +56,9 @@ struct FractureRenderOptions
     bool                   ShowWavefronts        = true;                 // [-]   - Draws LEFM/dendritic wavefront polylines
     bool                   ShowImpactMarker      = true;                 // [-]   - Draws impact point & normal arrow
     bool                   ShowGroundGrid        = true;                 // [-]   - Draws Z=0 reference studio floor grid
+    bool                   ShowCollisionShapes   = false;                // [-]   - Draws 3D Jolt collision hulls/meshes wireframe overlay
+    SimulationSpace::PhysicsSpace::FractureCollisionShapeMode CollisionDebugMode =
+        SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::ConvexHull; // [-] - Active Jolt collider mode to visualize
     bool                   UseNonPlanarFractography = true;              // [-]   - Uses EngineeringSurface relief triangles when present
     int32_t                   SelectedFragmentIndex = -1;                   // [idx] - Highlighted fragment (-1 = none)
     const std::vector<bool>*  FragmentVisibleFlags  = nullptr;              // [-]   - Optional per-fragment visibility mask

@@ -149,7 +149,7 @@ public:
     [[nodiscard]] float                                                QueryFragmentReleaseShareJ(uint32_t Index) const noexcept;
     [[nodiscard]] bool                                                 QueryFragmentReleased(uint32_t Index) const noexcept;
     [[nodiscard]] uint64_t                                             ComputeViewportRenderSignature() const noexcept;
-    [[nodiscard]] std::string                                          BuildStudioReportMarkdown() const;
+    [[nodiscard]] std::string                                          BuildWorkspaceReportMarkdown() const;
 
     // Active primitive & dimensions
     FractureIcons::PrimitiveShapeId                ActiveShape         = FractureIcons::PrimitiveShapeId::Torus;
@@ -229,6 +229,7 @@ public:
     bool                                           ShowAllFragments    = false;
     bool                                           FilterDropdownOpen  = false;
     bool                                           ShadingDropdownOpen = false;
+    bool                                           DebugDropdownOpen   = false;
     bool                                           MaterialOutsideOpen = false;
     bool                                           MaterialInsideOpen  = false;
 

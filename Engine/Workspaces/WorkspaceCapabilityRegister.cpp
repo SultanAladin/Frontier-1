@@ -74,8 +74,8 @@ WorkspaceCapabilityRegister::WorkspaceCapabilityRegister()
     RegisteredEntries.push_back({
         HostWorkspaceTarget::FractureWorkspace,
         "FractureWorkspace",
-        "Open with Fracture Studio",
-        "Fracture Studio · 6-solver brittle/ductile partitioning, fractography & JoltPhysics v5.6.0",
+        "Open with FractureWorkspace",
+        "FractureWorkspace · 6-solver brittle/ductile partitioning, fractography & JoltPhysics v5.6.0",
         true,
     });
 }

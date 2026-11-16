@@ -61,7 +61,7 @@ int main()
         AllCaps[4].Identifier != "BakingWorkspace" ||
         AllCaps[4].ActionTitle != "Open with Baking Studio" ||
         AllCaps[5].Identifier != "FractureWorkspace" ||
-        AllCaps[5].ActionTitle != "Open with Fracture Studio")
+        AllCaps[5].ActionTitle != "Open with FractureWorkspace")
     {
         std::fprintf(stderr, "[FAIL] WorkspaceCapabilityRegister expected Frontier + UVWorkspace + PatternWorkspace + StampWorkspace + BakingWorkspace + FractureWorkspace capabilities.\n");
         return 1;

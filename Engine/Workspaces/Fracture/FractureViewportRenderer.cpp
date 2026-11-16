@@ -6,6 +6,7 @@
 #include "Engine/Workspaces/Fracture/FractureViewportRenderer.h"
 #include "Engine/GeometrySpace/Fracture/ConvexPartitioning.h"
 #include "Engine/MaterialSpace/Scattering/OpenPbrSurfaceScattering.h"
+#include "Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.h"
 #include "Engine/SimulationSpace/PhysicsSpace/RigidBodyDynamics.h"
 
 #include <algorithm>
@@ -14,6 +15,7 @@
 #include <cmath>
 #include <fstream>
 #include <limits>
+#include <utility>
 
 namespace Frontier::Workspaces::Fracture
 {
@@ -271,6 +273,80 @@ Mathematics::Axis3D TransformLocalToWorld(
     const auto Rel     = LocalPoint - FragCentroidLocal;
     const auto Rotated = SimulationSpace::PhysicsSpace::RigidBodyDynamics::RotateByQuaternion(Quat, Rel);
     return WorldOrigin + Rotated + ExplodeOffset;
+}
+
+void DrawPolyhedronEdges3D(
+    const CameraBasis&                                        Cam,
+    std::vector<uint8_t>&                                     Rgba,
+    std::vector<float>&                                       DepthBuf,
+    uint32_t                                                  W,
+    uint32_t                                                  H,
+    const GeometrySpace::Fracture::ConvexPolyhedron&          Poly,
+    Mathematics::Axis3D                                       FragCentroidLocal,
+    Mathematics::Axis3D                                       WorldOrigin,
+    SimulationSpace::PhysicsSpace::RigidOrientationQuaternion Quat,
+    Mathematics::Axis3D                                       ExplodeOffset,
+    uint8_t                                                   R,
+    uint8_t                                                   G,
+    uint8_t                                                   B,
+    float                                                     Alpha,
+    bool                                                      IgnoreSeamFaces)
+{
+    std::vector<uint64_t> SeenEdges;
+    SeenEdges.reserve(Poly.Faces.size() * 4u);
+
+    for (const auto& Face : Poly.Faces)
+    {
+        if (IgnoreSeamFaces && Face.Seam) continue;
+        if (Face.Indices.size() < 2u) continue;
+
+        for (size_t K = 0u; K < Face.Indices.size(); ++K)
+        {
+            const uint32_t Ia = Face.Indices[K];
+            const uint32_t Ib = Face.Indices[(K + 1u) % Face.Indices.size()];
+            if (Ia >= Poly.Vertices.size() || Ib >= Poly.Vertices.size() || Ia == Ib) continue;
+
+            const uint32_t Lo = std::min(Ia, Ib);
+            const uint32_t Hi = std::max(Ia, Ib);
+            const uint64_t Key = (static_cast<uint64_t>(Lo) << 32u) | static_cast<uint64_t>(Hi);
+            if (std::find(SeenEdges.begin(), SeenEdges.end(), Key) != SeenEdges.end()) continue;
+            SeenEdges.push_back(Key);
+
+            const auto WaRaw = TransformLocalToWorld(Poly.Vertices[Lo], FragCentroidLocal, WorldOrigin, Quat, ExplodeOffset);
+            const auto WbRaw = TransformLocalToWorld(Poly.Vertices[Hi], FragCentroidLocal, WorldOrigin, Quat, ExplodeOffset);
+            const auto Wa    = WaRaw + Mathematics::NormalizeAxis(Cam.Eye - WaRaw) * 0.006f;
+            const auto Wb    = WbRaw + Mathematics::NormalizeAxis(Cam.Eye - WbRaw) * 0.006f;
+            DrawLine3D(Cam, Rgba, DepthBuf, W, H, Wa, Wb, R, G, B, Alpha, false);
+        }
+    }
+}
+
+void DrawOuterConvexHullEdges3D(
+    const CameraBasis&                                        Cam,
+    std::vector<uint8_t>&                                     Rgba,
+    std::vector<float>&                                       DepthBuf,
+    uint32_t                                                  W,
+    uint32_t                                                  H,
+    const std::vector<Mathematics::Axis3D>&                   RawVerts,
+    Mathematics::Axis3D                                       FragCentroidLocal,
+    Mathematics::Axis3D                                       WorldOrigin,
+    SimulationSpace::PhysicsSpace::RigidOrientationQuaternion Quat,
+    Mathematics::Axis3D                                       ExplodeOffset,
+    uint8_t                                                   R,
+    uint8_t                                                   G,
+    uint8_t                                                   B,
+    float                                                     Alpha)
+{
+    const auto Edges = SimulationSpace::PhysicsSpace::PhysicsExtension::BuildOuterConvexHullEdges(RawVerts);
+    for (const auto& [Lo, Hi] : Edges)
+    {
+        if (Lo >= RawVerts.size() || Hi >= RawVerts.size()) continue;
+        const auto WaRaw = TransformLocalToWorld(RawVerts[Lo], FragCentroidLocal, WorldOrigin, Quat, ExplodeOffset);
+        const auto WbRaw = TransformLocalToWorld(RawVerts[Hi], FragCentroidLocal, WorldOrigin, Quat, ExplodeOffset);
+        const auto Wa    = WaRaw + Mathematics::NormalizeAxis(Cam.Eye - WaRaw) * 0.006f;
+        const auto Wb    = WbRaw + Mathematics::NormalizeAxis(Cam.Eye - WbRaw) * 0.006f;
+        DrawLine3D(Cam, Rgba, DepthBuf, W, H, Wa, Wb, R, G, B, Alpha, false);
+    }
 }
 
 } // namespace
@@ -665,6 +741,103 @@ FractureRenderOutput FractureViewportRenderer::RenderFrame(
             DrawLine3D(Cam, Output.DisplayRgba8, DepthBuffer, W, H, Tri.P0, Tri.P1, 210u, 224u, 240u, 0.45f);
             DrawLine3D(Cam, Output.DisplayRgba8, DepthBuffer, W, H, Tri.P1, Tri.P2, 210u, 224u, 240u, 0.45f);
             DrawLine3D(Cam, Output.DisplayRgba8, DepthBuffer, W, H, Tri.P2, Tri.P0, 210u, 224u, 240u, 0.45f);
+        }
+    }
+
+    // 3b. Optional JoltPhysics collision-shape debug wireframe overlay (ConvexHull cyan cage vs CollisionMesh green sub-hulls)
+    if (Options.ShowCollisionShapes)
+    {
+        const bool ExactShapeMode =
+            Options.CollisionDebugMode == SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh;
+
+        // Ground collision plane wireframe slab at Z = 0
+        const float GroundHalf = 3.2f;
+        const std::array<Mathematics::Axis3D, 4> GroundCorners {{
+            { -GroundHalf, -GroundHalf, 0.003f },
+            {  GroundHalf, -GroundHalf, 0.003f },
+            {  GroundHalf,  GroundHalf, 0.003f },
+            { -GroundHalf,  GroundHalf, 0.003f }
+        }};
+        for (size_t K = 0u; K < 4u; ++K)
+        {
+            DrawLine3D(
+                Cam, Output.DisplayRgba8, DepthBuffer, W, H,
+                GroundCorners[K], GroundCorners[(K + 1u) % 4u],
+                64u, 200u, 176u, 0.45f, false);
+        }
+
+        if (Partition != nullptr && !Partition->Fragments.empty())
+        {
+            const auto GroupCentroid = Partition->SourceMetrics.Centroid;
+            for (const auto& Frag : Partition->Fragments)
+            {
+                if (!Frag.VisibilityEnabled) continue;
+                if (Options.FragmentVisibleFlags != nullptr &&
+                    Frag.Index < Options.FragmentVisibleFlags->size() &&
+                    !(*Options.FragmentVisibleFlags)[Frag.Index])
+                {
+                    continue;
+                }
+
+                Mathematics::Axis3D FragOrigin {};
+                SimulationSpace::PhysicsSpace::RigidOrientationQuaternion Quat {};
+                Mathematics::Axis3D ExplodeOffset {};
+                ComputeFragmentWorldTransform(Frag, GroupCentroid, SimRunner, Options, FragOrigin, Quat, ExplodeOffset);
+
+                const bool IsSel = (static_cast<int32_t>(Frag.Index) == Options.SelectedFragmentIndex);
+                const uint8_t WireR = IsSel ? 255u : (ExactShapeMode ? 56u  : 64u);
+                const uint8_t WireG = IsSel ? 204u : (ExactShapeMode ? 232u : 212u);
+                const uint8_t WireB = IsSel ? 76u  : (ExactShapeMode ? 128u : 255u);
+                const float   Alpha = IsSel ? 0.98f : 0.88f;
+
+                if (ExactShapeMode)
+                {
+                    if (!Frag.SubConvexHulls.empty())
+                    {
+                        for (const auto& SubHull : Frag.SubConvexHulls)
+                        {
+                            DrawPolyhedronEdges3D(
+                                Cam, Output.DisplayRgba8, DepthBuffer, W, H,
+                                SubHull, Frag.Centroid, FragOrigin, Quat, ExplodeOffset,
+                                WireR, WireG, WireB, Alpha, false);
+                        }
+                    }
+                    else
+                    {
+                        DrawPolyhedronEdges3D(
+                            Cam, Output.DisplayRgba8, DepthBuffer, W, H,
+                            Frag.Polyhedron, Frag.Centroid, FragOrigin, Quat, ExplodeOffset,
+                            WireR, WireG, WireB, Alpha, true);
+                    }
+                }
+                else
+                {
+                    if (Frag.SubConvexHulls.size() >= 2u)
+                    {
+                        DrawOuterConvexHullEdges3D(
+                            Cam, Output.DisplayRgba8, DepthBuffer, W, H,
+                            Frag.Polyhedron.Vertices, Frag.Centroid, FragOrigin, Quat, ExplodeOffset,
+                            WireR, WireG, WireB, Alpha);
+                    }
+                    else
+                    {
+                        DrawPolyhedronEdges3D(
+                            Cam, Output.DisplayRgba8, DepthBuffer, W, H,
+                            Frag.Polyhedron, Frag.Centroid, FragOrigin, Quat, ExplodeOffset,
+                            WireR, WireG, WireB, Alpha, true);
+                    }
+                }
+            }
+        }
+        else if (IntactFallbackSolid != nullptr)
+        {
+            const SimulationSpace::PhysicsSpace::RigidOrientationQuaternion IdentityQuat {};
+            const Mathematics::Axis3D ZeroCentroid {};
+            const Mathematics::Axis3D ZeroOffset {};
+            DrawPolyhedronEdges3D(
+                Cam, Output.DisplayRgba8, DepthBuffer, W, H,
+                *IntactFallbackSolid, ZeroCentroid, Options.SolidWorldOffsetM, IdentityQuat, ZeroOffset,
+                ExactShapeMode ? 56u : 64u, ExactShapeMode ? 232u : 212u, ExactShapeMode ? 128u : 255u, 0.88f, false);
         }
     }
 

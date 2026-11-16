@@ -76,8 +76,8 @@ int main()
     Browser.ConfigureWorkspaceDomain(WorkspaceCategory::Fracture);
     Browser.ConfigureShelfExtent(ContentShelfExtent::Closed, true);
 
-    FractureWorkspaceHost Studio {};
-    Studio.AttachContentBrowserPanel(&Browser);
+    FractureWorkspaceHost Workspace {};
+    Workspace.AttachContentBrowserPanel(&Browser);
 
     const Rectangle2D WindowBounds { 0.0f, 0.0f, static_cast<float>(CanvasW), static_cast<float>(CanvasH) };
     const std::filesystem::path OutDir = RepoRoot / "Exhibits/Images/Fracture/CppUI";
@@ -88,7 +88,7 @@ int main()
         Io.DeltaTime   = 1.0f / 60.0f;
         ImGui::NewFrame();
         PixelSpace Canvas(ImGui::GetForegroundDrawList(), { 0.0f, 0.0f }, 1.0f);
-        Studio.RenderStudio(Canvas, WindowBounds, Input, 1.0 / 60.0);
+        Workspace.RenderStudio(Canvas, WindowBounds, Input, 1.0 / 60.0);
         ImGui::Render();
     };
 
@@ -102,60 +102,60 @@ int main()
 
     // 1. Default Port-8091 Edit Torus (Material shading, 3-dock Project Zero layout)
     for (int W = 0; W < 3; ++W) RenderStep(Idle);
-    if (!VerifyCheck(Studio.InspectSession().HasFractured, "Default primitive fractured"))
+    if (!VerifyCheck(Workspace.InspectSession().HasFractured, "Default primitive fractured"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
-    if (!VerifyCheck(Studio.InspectSession().LastDrawnTriangles > 40u, "Viewport rendered 3D shards"))
+    if (!VerifyCheck(Workspace.InspectSession().LastDrawnTriangles > 40u, "Viewport rendered 3D shards"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
-    if (!SavePng("FractureStudio_EditTorus.png"))
+    if (!SavePng("FractureWorkspace_EditTorus.png"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
 
     // 2. Energy Heatmap + Energy LOG Legend + Diagnostics 4-Channel Overlay
-    Studio.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::Energy;
-    Studio.AccessSession().DiagnosticsSession.Visible  = true;
-    Studio.AccessSession().RenderOptions.ExplodeFactor = 0.25f;
+    Workspace.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::Energy;
+    Workspace.AccessSession().DiagnosticsSession.Visible  = true;
+    Workspace.AccessSession().RenderOptions.ExplodeFactor = 0.25f;
     RenderStep(Idle);
-    if (!SavePng("FractureStudio_EnergyDiag.png"))
+    if (!SavePng("FractureWorkspace_EnergyDiag.png"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
 
     // 3. Material OpenPBR Shading + Explode + Granite Interior Dual-Material
-    Studio.AccessSession().DiagnosticsSession.Visible  = false;
-    Studio.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::StudioOpenPBR;
-    Studio.AccessSession().RenderOptions.ExplodeFactor = 0.18f;
-    Studio.AccessSession().MaterialId                  = "granite";
-    Studio.AccessSession().RebuildFracturePartition();
+    Workspace.AccessSession().DiagnosticsSession.Visible  = false;
+    Workspace.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::StudioOpenPBR;
+    Workspace.AccessSession().RenderOptions.ExplodeFactor = 0.18f;
+    Workspace.AccessSession().MaterialId                  = "granite";
+    Workspace.AccessSession().RebuildFracturePartition();
     RenderStep(Idle);
-    if (!SavePng("FractureStudio_MaterialOpenPBR.png"))
+    if (!SavePng("FractureWorkspace_MaterialOpenPBR.png"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
 
     // 4. JoltPhysics Simulate Mode (CollisionMesh exact compound shards) + Cells Mode + 60px Timeline + Kinetic Hero Curve
-    Studio.AccessSession().MaterialId                  = "concrete";
-    Studio.AccessSession().CollisionShapeMode          = Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh;
-    Studio.AccessSession().RenderOptions.ExplodeFactor = 0.0f;
-    Studio.AccessSession().RebuildFracturePartition();
-    Studio.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::Cells;
-    Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Simulate);
+    Workspace.AccessSession().MaterialId                  = "concrete";
+    Workspace.AccessSession().CollisionShapeMode          = Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh;
+    Workspace.AccessSession().RenderOptions.ExplodeFactor = 0.0f;
+    Workspace.AccessSession().RebuildFracturePartition();
+    Workspace.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::Cells;
+    Workspace.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Simulate);
     for (int F = 0; F < 28; ++F) RenderStep(Idle);
-    if (!VerifyCheck(Studio.InspectSession().HasSimulatedData, "JoltPhysics simulation active"))
+    if (!VerifyCheck(Workspace.InspectSession().HasSimulatedData, "JoltPhysics simulation active"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
-    const auto SimTel = Studio.InspectSession().SimRunner.InspectTelemetry();
+    const auto SimTel = Workspace.InspectSession().SimRunner.InspectTelemetry();
     if (!VerifyCheck(SimTel.CompletedSteps > 0ull, "Jolt stepped frames") ||
         !VerifyCheck(SimTel.CollisionMode == Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh, "CollisionMesh mode active") ||
         !VerifyCheck(SimTel.TotalSubShapes > SimTel.FragmentCount, "Torus shards rejoined across seams into compound sub-shapes"))
@@ -163,31 +163,44 @@ int main()
         ImGui::DestroyContext(Gui);
         return 1;
     }
-    if (!SavePng("FractureStudio_SimTorus.png"))
+    if (!SavePng("FractureWorkspace_SimTorus.png"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
 
-    // Verify ConvexHull collision mode also loads & steps cleanly
-    Studio.AccessSession().CollisionShapeMode = Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::ConvexHull;
-    Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Edit);
-    Studio.AccessSession().RebuildFracturePartition();
-    Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Simulate);
+    // 5. Debug Dropdown + 3D Collision Shape Debug Overlay (Exact CollisionMesh sub-hulls + Ground collider)
+    Workspace.AccessSession().RenderOptions.RenderMode          = FractureRenderViewMode::StudioOpenPBR;
+    Workspace.AccessSession().RenderOptions.ShowCollisionShapes = true;
+    Workspace.AccessSession().DebugDropdownOpen                 = true;
     RenderStep(Idle);
-    if (!VerifyCheck(Studio.InspectSession().SimRunner.InspectTelemetry().CollisionMode == Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::ConvexHull, "ConvexHull mode active"))
+    if (!SavePng("FractureWorkspace_CollisionDebug.png"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
+    Workspace.AccessSession().DebugDropdownOpen                 = false;
+
+    // Verify ConvexHull collision mode + debug overlay also loads & steps cleanly
+    Workspace.AccessSession().CollisionShapeMode = Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::ConvexHull;
+    Workspace.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Edit);
+    Workspace.AccessSession().RebuildFracturePartition();
+    Workspace.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Simulate);
+    RenderStep(Idle);
+    if (!VerifyCheck(Workspace.InspectSession().SimRunner.InspectTelemetry().CollisionMode == Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::ConvexHull, "ConvexHull mode active"))
+    {
+        ImGui::DestroyContext(Gui);
+        return 1;
+    }
+    Workspace.AccessSession().RenderOptions.ShowCollisionShapes = false;
 
     // Verify all 6 fracture solvers on Torus produce watertight organic fragments
-    Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Edit);
+    Workspace.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Edit);
     for (uint32_t S = 0u; S < 6u; ++S)
     {
-        Studio.AccessSession().ApplySolverMethod(static_cast<Frontier::GeometrySpace::Fracture::FractureSolverMethod>(S));
-        if (!VerifyCheck(Studio.InspectSession().PartitionResult.Fragments.size() >= 4u, "Torus solver produced fragments") ||
-            !VerifyCheck(Studio.InspectSession().PartitionResult.Receipt.WatertightManifold, "Torus solver watertight conservation"))
+        Workspace.AccessSession().ApplySolverMethod(static_cast<Frontier::GeometrySpace::Fracture::FractureSolverMethod>(S));
+        if (!VerifyCheck(Workspace.InspectSession().PartitionResult.Fragments.size() >= 4u, "Torus solver produced fragments") ||
+            !VerifyCheck(Workspace.InspectSession().PartitionResult.Receipt.WatertightManifold, "Torus solver watertight conservation"))
         {
             ImGui::DestroyContext(Gui);
             return 1;
@@ -195,16 +208,16 @@ int main()
     }
 
     // Verify all 9 analytical primitives switch cleanly with watertight conservation
-    Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Edit);
+    Workspace.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Edit);
     for (uint32_t P = 0u; P < FractureWorkspaceSession::PrimitiveCount; ++P)
     {
-        Studio.AccessSession().ApplyPrimitiveShape(static_cast<FractureIcons::PrimitiveShapeId>(P));
-        if (!VerifyCheck(Studio.InspectSession().PartitionResult.Receipt.WatertightManifold, "Primitive watertight conservation"))
+        Workspace.AccessSession().ApplyPrimitiveShape(static_cast<FractureIcons::PrimitiveShapeId>(P));
+        if (!VerifyCheck(Workspace.InspectSession().PartitionResult.Receipt.WatertightManifold, "Primitive watertight conservation"))
         {
             ImGui::DestroyContext(Gui);
             return 1;
         }
-        if (!VerifyCheck(Studio.InspectSession().PartitionResult.Fragments.size() >= 4u, "Primitive produced fragments"))
+        if (!VerifyCheck(Workspace.InspectSession().PartitionResult.Fragments.size() >= 4u, "Primitive produced fragments"))
         {
             ImGui::DestroyContext(Gui);
             return 1;
@@ -212,6 +225,6 @@ int main()
     }
 
     ImGui::DestroyContext(Gui);
-    std::printf("[FractureWorkspaceUIValidation] ALL CHECKS PASSED (4 PNG snapshots saved + 9 primitives verified).\n");
+    std::printf("[FractureWorkspaceUIValidation] ALL CHECKS PASSED (5 PNG snapshots saved + 9 primitives verified).\n");
     return 0;
 }

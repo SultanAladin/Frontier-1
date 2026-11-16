@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace Frontier::SimulationSpace::PhysicsSpace
@@ -117,6 +118,9 @@ public:
     [[nodiscard]] uint32_t QueryIntactBondCount() const noexcept;
     [[nodiscard]] uint64_t QueryCompletedStepCount() const noexcept;
     [[nodiscard]] double   QuerySimulatedSeconds() const noexcept;
+
+    [[nodiscard]] static std::vector<std::pair<uint32_t, uint32_t>> BuildOuterConvexHullEdges(
+        const std::vector<Mathematics::Axis3D>& Vertices);
 
 private:
     struct JoltSimulationRuntime;
