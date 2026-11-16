@@ -19,9 +19,11 @@ function checkShaderSyntaxAndUniforms() {
     progGiSdf:       Shaders.FULLSCREEN_VERT + "\n" + Shaders.GI_SDF_FRAG,
     progGiBvh:       Shaders.FULLSCREEN_VERT + "\n" + Shaders.GI_BVH_FRAG,
     progGiBilateral: Shaders.FULLSCREEN_VERT + "\n" + Shaders.GI_BILATERAL_FRAG,
-    progReflSdf:     Shaders.FULLSCREEN_VERT + "\n" + Shaders.REFLECTION_SDF_FRAG,
-    progReflBvh:     Shaders.FULLSCREEN_VERT + "\n" + Shaders.REFLECTION_BVH_FRAG,
-    progComposite:   Shaders.FULLSCREEN_VERT + "\n" + Shaders.COMPOSITE_FRAG,
+    progReflSdf:       Shaders.FULLSCREEN_VERT + "\n" + Shaders.REFLECTION_SDF_FRAG,
+    progReflBvh:       Shaders.FULLSCREEN_VERT + "\n" + Shaders.REFLECTION_BVH_FRAG,
+    progEmissiveMapSh: Shaders.FULLSCREEN_VERT + "\n" + Shaders.EMISSIVE_MAP_SHADOW_FRAG,
+    progEmissiveBvhSh: Shaders.FULLSCREEN_VERT + "\n" + Shaders.EMISSIVE_BVH_SHADOW_FRAG,
+    progComposite:     Shaders.FULLSCREEN_VERT + "\n" + Shaders.COMPOSITE_FRAG,
     pcf:             Shaders.FULLSCREEN_VERT + "\n" + Shaders.SHADOW_PCF_FRAG,
     pcss:            Shaders.FULLSCREEN_VERT + "\n" + Shaders.SHADOW_PCSS_FRAG,
     contact_pcss:    Shaders.FULLSCREEN_VERT + "\n" + Shaders.SHADOW_CONTACT_PCSS_FRAG,
@@ -102,10 +104,13 @@ function checkHtmlAndAssets() {
     "viewport-canvas", "select-algo-a", "select-algo-b", "select-gi-a", "select-gi-b",
     "select-refl-a", "select-refl-b", "slider-light-size", "slider-azimuth",
     "slider-elevation", "slider-light-dist", "slider-fill-boost", "slider-gi-int",
+    "btn-emissive-on", "slider-emissive-int",
     "stat-shadow-ms", "stat-girefl-ms", "stat-total-ms", "stat-rebakes",
   ]) {
     assert(html.includes(`id="${id}"`), `Missing DOM element #${id}`);
   }
+  assert(html.includes('data-emissive-shadow="shadowed"'), "Missing shadowed emissive mode button");
+  assert(html.includes('data-emissive-shadow="unshadowed"'), "Missing unshadowed emissive mode button");
   for (const algo of ["pcf", "pcss", "contact_pcss", "smrt", "sdf", "hybrid", "bvh"]) {
     assert(html.includes(`value="${algo}"`), `Missing algorithm option '${algo}' in HTML`);
   }

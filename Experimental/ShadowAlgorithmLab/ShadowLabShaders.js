@@ -129,6 +129,13 @@ SurfaceMat evalMaterial(int matId, vec3 worldPos, vec3 paintColor) {
     m.metalness = 0.72;
     m.coat = 0.28;
     m.coatRough = 0.09;
+  } else if (matId == 22) {
+    m.albedo = vec3(0.75, 0.96, 1.00);
+    m.roughness = 0.10;
+    m.emissive = vec3(5.2, 8.8, 12.4);
+    m.metalness = 0.0;
+    m.coat = 0.50;
+    m.coatRough = 0.04;
   }
   return m;
 }
@@ -181,6 +188,108 @@ void buildOrthonormalBasis(vec3 n, out vec3 t, out vec3 b) {
 
 vec2 r2Sequence(vec2 px) {
   return fract(px.x * vec2(0.7548776662, 0.5698402910) + px.y * vec2(0.5698402910, 0.3247179572));
+}
+
+// Clipped-Polygon Linearly Transformed Cosine (LTC) Emissive Area Panel Evaluator (matching Frontier LinearCosineLightIntegration.cpp)
+float integrateSphericalEdgeZ(vec3 v1, vec3 v2) {
+  float x = clamp(dot(v1, v2), -0.99999, 0.99999);
+  float absX = abs(x);
+  float a = 5.42031 + (3.12829 + 0.0902326 * absX) * absX;
+  float b = 3.45068 + (4.18814 + absX) * absX;
+  float thetaOverSin = a / b;
+  if (x < 0.0) {
+    float sinTheta = sqrt(max(1e-8, 1.0 - x * x));
+    thetaOverSin = 3.14159265 / sinTheta - thetaOverSin;
+  }
+  return (v1.x * v2.y - v1.y * v2.x) * thetaOverSin;
+}
+
+float integrateClippedQuadFormFactor(vec3 localQ[4]) {
+  vec3 clipped[8];
+  int clipCount = 0;
+  for (int i = 0; i < 4; i++) {
+    vec3 cur = localQ[i];
+    vec3 next = localQ[(i + 1) & 3];
+    bool curA = (cur.z >= 0.0);
+    bool nxtA = (next.z >= 0.0);
+    if (curA) clipped[clipCount++] = cur;
+    if (curA != nxtA) {
+      float alpha = cur.z / (cur.z - next.z);
+      vec3 hit = cur + (next - cur) * alpha;
+      hit.z = 0.0;
+      clipped[clipCount++] = hit;
+    }
+  }
+  if (clipCount < 3) return 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= clipCount) break;
+    clipped[i] = normalize(clipped[i]);
+  }
+  float contourSum = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= clipCount) break;
+    int nxt = (i + 1 >= clipCount) ? 0 : (i + 1);
+    contourSum += integrateSphericalEdgeZ(clipped[i], clipped[nxt]);
+  }
+  return clamp(abs(contourSum) / 6.2831853, 0.0, 1.0);
+}
+
+vec3 evalEmissivePanelLtc(
+  vec3 pos, vec3 nrm, vec3 viewDir, SurfaceMat m,
+  vec3 eCenter, vec3 eRight, vec3 eUp, vec3 eNormal,
+  float eHalfW, float eHalfH, float eIntensity, float vis
+) {
+  if (vis <= 1e-4 || eIntensity <= 1e-4) return vec3(0.0);
+  if (dot(pos - eCenter, eNormal) <= 0.02) return vec3(0.0);
+
+  float noV = clamp(dot(nrm, viewDir), 1e-4, 1.0);
+  vec3 t1 = viewDir - nrm * noV;
+  float t1Len = dot(t1, t1);
+  if (t1Len <= 1e-6) {
+    vec3 fb;
+    buildOrthonormalBasis(nrm, t1, fb);
+  } else {
+    t1 *= inversesqrt(t1Len);
+  }
+  vec3 t2 = normalize(cross(nrm, t1));
+
+  vec3 halfU = eRight * eHalfW;
+  vec3 halfV = eUp * eHalfH;
+  vec3 wc[4];
+  wc[0] = eCenter - halfU - halfV;
+  wc[1] = eCenter + halfU - halfV;
+  wc[2] = eCenter + halfU + halfV;
+  wc[3] = eCenter - halfU + halfV;
+
+  vec3 diffLocal[4];
+  for (int i = 0; i < 4; i++) {
+    vec3 rel = wc[i] - pos;
+    diffLocal[i] = vec3(dot(rel, t1), dot(rel, t2), dot(rel, nrm));
+  }
+  float diffFF = integrateClippedQuadFormFactor(diffLocal);
+
+  float r = max(m.coat > 0.0 ? mix(m.roughness, m.coatRough, m.coat * 0.65) : m.roughness, 0.035);
+  float alpha = clamp(r * r, 0.004, 1.0);
+  float sinV = sqrt(max(0.0, 1.0 - noV * noV));
+  float invScaleX = 1.0 / max(0.04, alpha * (0.85 + 0.15 * noV));
+  float invScaleY = 1.0 / max(0.04, alpha);
+  float shearXZ = -sinV / max(0.08, noV + alpha);
+
+  vec3 specLocal[4];
+  for (int i = 0; i < 4; i++) {
+    vec3 d = diffLocal[i];
+    float mx = -d.x * noV + d.z * sinV;
+    float mz =  d.x * sinV + d.z * noV;
+    specLocal[i] = vec3((mx + shearXZ * mz * alpha) * invScaleX, d.y * invScaleY, mz);
+  }
+  float specFF = integrateClippedQuadFormFactor(specLocal);
+
+  vec3 diffAlb = m.albedo * (1.0 - m.metalness);
+  vec3 f0 = mix(vec3(0.04), m.albedo, m.metalness);
+  float schlick = pow(max(1.0 - noV, 1e-4), 5.0);
+  vec3 specAlb = f0 + (vec3(1.0) - f0) * (schlick * clamp(1.0 - r * 0.65, 0.0, 1.0));
+  vec3 rad = vec3(11.0, 26.0, 42.0) * eIntensity;
+  return rad * (diffAlb * diffFF + specAlb * specFF) * vis;
 }
 `;
 
@@ -250,6 +359,7 @@ in vec3 vWorldNorm;
 flat in int vMatId;
 
 uniform vec3 uPaintColor;
+uniform float uEmissiveIntensity;
 ${COMMON_MATERIAL_GLSL}
 ${MULTI_LIGHT_BOUNCE_GLSL}
 
@@ -260,6 +370,7 @@ layout(location = 2) out vec4 outDirect;
 void main() {
   vec3 n = normalize(vWorldNorm);
   SurfaceMat m = evalMaterial(vMatId, vWorldPos, uPaintColor);
+  if (vMatId == 22) m.emissive *= uEmissiveIntensity;
   float effRough = (m.coat > 0.0) ? mix(m.roughness, m.coatRough, m.coat * 0.78) : m.roughness;
   vec3 directBounce = evalMultiLightBounceRadiance(vWorldPos, n, vMatId, m, 1.0, true);
   outPosRough = vec4(vWorldPos, effRough);
@@ -1338,6 +1449,276 @@ void main() {
 `;
 
 //======================================================================================================================
+// EMISSIVE AREA PANEL SHADOWS A: NON-BVH MODES (Rect-Light PCF / PCSS / Contact+PCSS / SMRT / SDF / Hybrid)
+//======================================================================================================================
+export const EMISSIVE_MAP_SHADOW_FRAG = `#version 300 es
+precision highp float;
+precision highp sampler3D;
+
+in vec2 vUv;
+uniform sampler2D uGPosRough;
+uniform sampler2D uGNormMat;
+uniform sampler2D uEmissiveDepthMap;
+
+uniform int uEmissiveAlgo; // 0=pcf, 1=pcss, 2=contact_pcss, 3=smrt, 4=sdf, 5=hybrid
+uniform mat4 uEmissiveViewProj;
+uniform vec3 uEmissiveDepthOrigin;
+uniform vec3 uEmissiveCenter;
+uniform vec3 uEmissiveNormal;
+uniform float uEmissiveHalfW;
+uniform float uEmissiveHalfH;
+uniform float uEmissiveDepthRes;
+uniform float uEmissivePerspTan;
+uniform mat4 uCamViewProj;
+uniform vec3 uCamPos;
+uniform int uPcssTaps;
+uniform int uSmrtRays;
+
+${COMMON_MATERIAL_GLSL}
+${GLOBAL_SDF_HELPERS_GLSL}
+
+layout(location = 0) out vec4 outEmissiveShadow;
+
+bool projectToEmissiveMap(vec3 worldPos, out vec2 uv, out float recDist) {
+  vec4 clip = uEmissiveViewProj * vec4(worldPos, 1.0);
+  if (clip.w <= 1e-4) { uv = vec2(-1.0); recDist = 1e6; return false; }
+  vec3 ndc = clip.xyz / clip.w;
+  uv = ndc.xy * 0.5 + 0.5;
+  recDist = length(worldPos - uEmissiveDepthOrigin);
+  return all(greaterThanEqual(uv, vec2(0.002))) && all(lessThanEqual(uv, vec2(0.998))) && ndc.z >= -1.0 && ndc.z <= 1.0;
+}
+
+float traceEmissiveScreenContact(vec3 pos, vec3 nrm, vec3 toPanel) {
+  float contactVis = 1.0;
+  vec3 startP = pos + nrm * 0.004;
+  float maxTrace = 0.24;
+  for (int i = 1; i <= 8; i++) {
+    float t = maxTrace * (float(i) / 8.0);
+    vec3 sp = startP + toPanel * t;
+    vec4 clip = uCamViewProj * vec4(sp, 1.0);
+    if (clip.w <= 1e-4) continue;
+    vec2 suv = (clip.xy / clip.w) * 0.5 + 0.5;
+    if (any(lessThan(suv, vec2(0.002))) || any(greaterThan(suv, vec2(0.998)))) continue;
+    if (texture(uGNormMat, suv).w < 0.5) continue;
+    vec3 gPos = texture(uGPosRough, suv).xyz;
+    float dz = length(sp - uCamPos) - length(gPos - uCamPos);
+    if (dz > 0.004 && dz < 0.14) {
+      contactVis = min(contactVis, smoothstep(0.16, maxTrace, t));
+      if (contactVis <= 0.02) return 0.0;
+    }
+  }
+  return contactVis;
+}
+
+float evalEmissivePcf(vec3 pos, vec3 nrm, float ndl, out float outBlk) {
+  outBlk = 0.0;
+  vec2 uvEst; float dEst;
+  if (!projectToEmissiveMap(pos, uvEst, dEst)) return 1.0;
+  float worldSpan = 2.0 * max(dEst, 0.25) * uEmissivePerspTan;
+  float texelWorld = worldSpan / uEmissiveDepthRes;
+  float slope = clamp(sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.04), 0.0, 4.0);
+  float biasM = texelWorld * (0.55 + 0.50 * slope);
+  vec2 uv; float recD;
+  if (!projectToEmissiveMap(pos + nrm * (texelWorld * 1.35), uv, recD)) return 1.0;
+
+  ivec2 baseTc = ivec2(uv * uEmissiveDepthRes);
+  int maxI = int(uEmissiveDepthRes) - 1;
+  float lit = 0.0, blkSum = 0.0; int blkCnt = 0;
+  for (int dy = -1; dy <= 1; dy++) {
+    for (int dx = -1; dx <= 1; dx++) {
+      float d = texelFetch(uEmissiveDepthMap, clamp(baseTc + ivec2(dx, dy), ivec2(0), ivec2(maxI)), 0).r;
+      if (d < recD - biasM) { blkSum += max(0.0, recD - d); blkCnt++; } else { lit += 1.0; }
+    }
+  }
+  outBlk = (blkCnt > 0) ? (blkSum / float(blkCnt)) : 0.0;
+  return lit * (1.0 / 9.0);
+}
+
+float evalEmissivePcss(vec3 pos, vec3 nrm, float ndl, vec2 r2, out float outBlk) {
+  outBlk = 0.0;
+  vec2 uvEst; float dEst;
+  if (!projectToEmissiveMap(pos, uvEst, dEst)) return 1.0;
+  float worldSpan = 2.0 * max(dEst, 0.25) * uEmissivePerspTan;
+  float texelWorld = worldSpan / uEmissiveDepthRes;
+  float slope = clamp(sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.04), 0.0, 4.0);
+  float biasM = texelWorld * (0.48 + 0.45 * slope);
+  vec2 uv; float recD;
+  if (!projectToEmissiveMap(pos + nrm * (texelWorld * 1.4), uv, recD)) return 1.0;
+
+  float panelEffRad = mix(uEmissiveHalfH, uEmissiveHalfW, 0.55);
+  float searchUv = clamp((panelEffRad * 0.65) / worldSpan, 2.0 / uEmissiveDepthRes, 0.09);
+  int searchCnt = clamp(uPcssTaps / 2, 6, 16);
+  float phi0 = r2.x * 6.2831853;
+  float blkSum = 0.0; int blkCnt = 0;
+  int maxI = int(uEmissiveDepthRes) - 1;
+  for (int i = 0; i < 16; i++) {
+    if (i >= searchCnt) break;
+    float r = sqrt((float(i) + 0.5) / float(searchCnt)) * searchUv;
+    float ang = phi0 + float(i) * 2.39996323;
+    vec2 qUv = clamp(uv + vec2(cos(ang), sin(ang)) * r, vec2(0.0005), vec2(0.9995));
+    float d = texelFetch(uEmissiveDepthMap, ivec2(qUv * uEmissiveDepthRes), 0).r;
+    if (d < recD - biasM) { blkSum += d; blkCnt++; }
+  }
+  if (blkCnt == 0) return 1.0;
+
+  float avgBlk = blkSum / float(blkCnt);
+  outBlk = max(0.0, recD - avgBlk);
+  float penWorld = panelEffRad * (outBlk / max(avgBlk, 0.12));
+  float penUv = clamp(penWorld / worldSpan, 0.70 / uEmissiveDepthRes, 0.12);
+  int pcfCnt = clamp(uPcssTaps, 8, 32);
+  float invPcf = 1.0 / float(pcfCnt);
+  float litSum = 0.0;
+  float phiPcf = fract(r2.y + 0.381966) * 6.2831853;
+  float pcfBias = biasM + penUv * worldSpan * slope * 0.16;
+  for (int i = 0; i < 32; i++) {
+    if (i >= pcfCnt) break;
+    float r = sqrt((float(i) + 0.5) * invPcf) * penUv;
+    float ang = phiPcf + float(i) * 2.39996323;
+    vec2 qUv = clamp(uv + vec2(cos(ang), sin(ang)) * r, vec2(0.0005), vec2(0.9995));
+    float d = texelFetch(uEmissiveDepthMap, clamp(ivec2(qUv * uEmissiveDepthRes), ivec2(0), ivec2(maxI)), 0).r;
+    if (d >= recD - pcfBias) litSum += invPcf;
+  }
+  return litSum;
+}
+
+float evalEmissiveSmrt(vec3 pos, vec3 nrm, float ndl, vec2 r2, out float outBlk) {
+  outBlk = 0.0;
+  vec2 uvCheck; float dCheck;
+  if (!projectToEmissiveMap(pos, uvCheck, dCheck)) return 1.0;
+  float worldSpan = 2.0 * max(dCheck, 0.25) * uEmissivePerspTan;
+  float texelWorld = worldSpan / uEmissiveDepthRes;
+  vec3 startPos = pos + nrm * (texelWorld * (0.85 + 0.9 * (1.0 - ndl)));
+  vec3 toPanel = normalize(uEmissiveCenter - pos);
+  vec3 lTan, lBit;
+  buildOrthonormalBasis(toPanel, lTan, lBit);
+
+  int rayCount = clamp(uSmrtRays, 1, 8);
+  float invRays = 1.0 / float(rayCount);
+  float panelEffRad = mix(uEmissiveHalfH, uEmissiveHalfW, 0.55);
+  float phi0 = r2.x * 6.2831853;
+  float visAcc = 0.0, harmInv = 0.0; int blkCount = 0;
+  int maxI = int(uEmissiveDepthRes) - 1;
+
+  for (int ray = 0; ray < 8; ray++) {
+    if (ray >= rayCount) break;
+    float rFrac = sqrt((float(ray) + fract(r2.y + float(ray) * 0.618034) * 0.75 + 0.125) * invRays);
+    float ang = phi0 + float(ray) * 2.39996323;
+    vec3 targetPt = uEmissiveCenter + (lTan * cos(ang) + lBit * sin(ang)) * (rFrac * panelEffRad);
+    float maxLen = max(0.25, length(targetPt - startPos) - 0.12);
+    vec3 rayDir = (targetPt - startPos) / max(maxLen + 0.12, 1e-4);
+
+    float hitBlk = -1.0;
+    for (int s = 14; s >= 1; s--) {
+      float u = float(s) / 14.0;
+      float t = min(maxLen, 18.0) * (u * u);
+      vec3 sp = startPos + rayDir * t;
+      vec2 suv; float sRecD;
+      if (!projectToEmissiveMap(sp, suv, sRecD)) continue;
+      float mapD = texelFetch(uEmissiveDepthMap, clamp(ivec2(suv * uEmissiveDepthRes), ivec2(0), ivec2(maxI)), 0).r;
+      float delta = sRecD - mapD;
+      float bias = texelWorld * 1.15 + 0.008 * t;
+      float thick = max(texelWorld * 3.0, 0.24 + 0.12 * t);
+      if (delta > bias && delta < thick) hitBlk = t;
+    }
+    if (hitBlk < 0.0) visAcc += invRays;
+    else { harmInv += 1.0 / max(0.01, hitBlk); blkCount++; }
+  }
+  outBlk = (blkCount > 0) ? (float(blkCount) / harmInv) : 0.0;
+  return visAcc;
+}
+
+void main() {
+  vec4 normMat = texture(uGNormMat, vUv);
+  if (normMat.w < 0.5 || int(normMat.w + 0.5) == 22) { outEmissiveShadow = vec4(1.0, 1.0, 1.0, 0.0); return; }
+  vec3 pos = texture(uGPosRough, vUv).xyz;
+  if (dot(pos - uEmissiveCenter, uEmissiveNormal) <= 0.02) { outEmissiveShadow = vec4(0.0); return; }
+  vec3 nrm = normalize(normMat.xyz);
+  vec3 toPanel = normalize(uEmissiveCenter - pos);
+  float ndl = dot(nrm, toPanel);
+  if (ndl <= 0.002) { outEmissiveShadow = vec4(0.0); return; }
+
+  vec2 r2 = r2Sequence(gl_FragCoord.xy);
+  float blk = 0.0;
+  float vis = 1.0;
+  if (uEmissiveAlgo == 0) {
+    vis = evalEmissivePcf(pos, nrm, ndl, blk);
+  } else if (uEmissiveAlgo == 1) {
+    vis = evalEmissivePcss(pos, nrm, ndl, r2, blk);
+  } else if (uEmissiveAlgo == 2) {
+    vis = evalEmissivePcss(pos, nrm, ndl, r2, blk);
+    vis = min(vis, traceEmissiveScreenContact(pos, nrm, toPanel));
+  } else if (uEmissiveAlgo == 3) {
+    vis = evalEmissiveSmrt(pos, nrm, ndl, r2, blk);
+  } else if (uEmissiveAlgo == 4) {
+    float maxD = max(0.15, length(uEmissiveCenter - pos) - 0.16);
+    vis = traceSdfConeShadow(pos, nrm, toPanel, maxD, 1, mix(uEmissiveHalfH, uEmissiveHalfW, 0.55), blk);
+  } else {
+    float pcssV = evalEmissivePcss(pos, nrm, ndl, r2, blk);
+    float maxD = max(0.15, length(uEmissiveCenter - pos) - 0.16);
+    float sdfV = traceSdfConeShadow(pos, nrm, toPanel, maxD, 1, mix(uEmissiveHalfH, uEmissiveHalfW, 0.55), blk);
+    vis = mix(pcssV, min(pcssV, sdfV), 0.45);
+  }
+  outEmissiveShadow = vec4(vis, vis, vis, blk);
+}
+`;
+
+//======================================================================================================================
+// EMISSIVE AREA PANEL SHADOWS B: BVH 2D RECTANGULAR MONTE CARLO VISIBILITY (True Area Light Soft Shadows)
+//======================================================================================================================
+export const EMISSIVE_BVH_SHADOW_FRAG = `#version 300 es
+precision highp float;
+precision highp int;
+
+in vec2 vUv;
+uniform sampler2D uGPosRough;
+uniform sampler2D uGNormMat;
+uniform vec3 uEmissiveCenter;
+uniform vec3 uEmissiveRight;
+uniform vec3 uEmissiveUp;
+uniform vec3 uEmissiveNormal;
+uniform float uEmissiveHalfW;
+uniform float uEmissiveHalfH;
+uniform int uBvhRays;
+
+${COMMON_MATERIAL_GLSL}
+${BVH_HELPERS_GLSL}
+
+layout(location = 0) out vec4 outEmissiveShadow;
+
+void main() {
+  vec4 normMat = texture(uGNormMat, vUv);
+  if (normMat.w < 0.5 || int(normMat.w + 0.5) == 22) { outEmissiveShadow = vec4(1.0, 1.0, 1.0, 0.0); return; }
+  vec3 pos = texture(uGPosRough, vUv).xyz;
+  if (dot(pos - uEmissiveCenter, uEmissiveNormal) <= 0.02) { outEmissiveShadow = vec4(0.0); return; }
+  vec3 nrm = normalize(normMat.xyz);
+
+  vec3 origin = pos + nrm * 0.005;
+  vec2 r2 = r2Sequence(gl_FragCoord.xy);
+  int rayCount = clamp(uBvhRays, 2, 16);
+  float invRays = 1.0 / float(rayCount);
+  float visAcc = 0.0, harmInv = 0.0; int blkCount = 0;
+
+  for (int s = 0; s < 16; s++) {
+    if (s >= rayCount) break;
+    float sx = (fract(r2.x + float(s) * 0.75487766) * 2.0 - 1.0) * 0.94;
+    float sy = (fract(r2.y + float(s) * 0.56984029) * 2.0 - 1.0) * 0.94;
+    vec3 targetPt = uEmissiveCenter + uEmissiveRight * (sx * uEmissiveHalfW) + uEmissiveUp * (sy * uEmissiveHalfH);
+    vec3 delta = targetPt - origin;
+    float dist = length(delta);
+    vec3 rayDir = delta / max(dist, 1e-4);
+    if (dot(nrm, rayDir) <= 0.002) continue;
+
+    float maxT = max(0.04, dist - 0.14);
+    float blk = traceSceneShadowBlockerBvh(origin, rayDir, 0.003, maxT);
+    if (blk < 0.0) visAcc += invRays;
+    else { harmInv += 1.0 / max(0.005, blk); blkCount++; }
+  }
+  float blkDist = (blkCount > 0) ? (float(blkCount) / harmInv) : 0.0;
+  outEmissiveShadow = vec4(visAcc, visAcc, visAcc, blkDist);
+}
+`;
+
+//======================================================================================================================
 // COPLANAR BLOCKER-DILATED PLANE-AWARE SHADOW FILTER (Filters all 3 lights simultaneously)
 //======================================================================================================================
 export const PLANE_FILTER_FRAG = `#version 300 es
@@ -1817,7 +2198,7 @@ void main() {
       }
       bool isLast = (b == 2);
       pathRad += throughput * evalMultiLightBounceRadiance(gh.pos, gh.nrm, gh.matId, gm, gsv, isLast);
-      if (isLast || gh.matId == 5) break;
+      if (isLast || gh.matId == 5 || gh.matId == 22) break;
       vec3 bounceTint = (gh.matId == 6) ? mix(gm.albedo * (1.0 - gm.metalness), gm.albedo * 0.68, 0.65) : gm.albedo * (1.0 - gm.metalness);
       throughput *= bounceTint * 0.88;
       if (max(throughput.r, max(throughput.g, throughput.b)) < 0.025) break;
@@ -2115,10 +2496,22 @@ uniform sampler2D uGiA;
 uniform sampler2D uGiB;
 uniform sampler2D uReflA;
 uniform sampler2D uReflB;
+uniform sampler2D uEmissiveVisA;
+uniform sampler2D uEmissiveVisB;
 
 uniform mat4 uInvViewProj;
 uniform vec3 uCamPos;
 uniform vec3 uPaintColor;
+
+uniform int uEmissiveOn;
+uniform int uEmissiveShadowMode; // 0=Unshadowed (LTC only), 1=Shadowed
+uniform vec3 uEmissiveCenter;
+uniform vec3 uEmissiveRight;
+uniform vec3 uEmissiveUp;
+uniform vec3 uEmissiveNormal;
+uniform float uEmissiveHalfW;
+uniform float uEmissiveHalfH;
+uniform float uEmissiveIntensity;
 
 uniform int uLightCount;
 uniform int uLightType[3];
@@ -2207,9 +2600,10 @@ vec3 heatmapPalette(float t) {
   return mix(c2, c3, (t - 0.66) / 0.34);
 }
 
-vec3 shadeSide(vec3 pos, vec3 nrm, int matId, vec3 visRgb, vec3 giRgb, vec3 tracedRefl, int giMode, int reflMode, vec3 viewDir, bool clayMode) {
+vec3 shadeSide(vec3 pos, vec3 nrm, int matId, vec3 visRgb, float emissiveVis, vec3 giRgb, vec3 tracedRefl, int giMode, int reflMode, vec3 viewDir, bool clayMode) {
   SurfaceMat m = evalMaterial(matId, pos, uPaintColor);
-  if (clayMode && matId != 5 && matId != 18 && matId != 19) {
+  if (matId == 22) m.emissive *= uEmissiveIntensity;
+  if (clayMode && matId != 5 && matId != 18 && matId != 19 && matId != 22) {
     m.albedo = vec3(0.84, 0.85, 0.87);
     m.metalness = 0.0; m.coat = 0.0; m.roughness = 0.88; m.emissive = vec3(0.0);
   }
@@ -2254,7 +2648,11 @@ vec3 shadeSide(vec3 pos, vec3 nrm, int matId, vec3 visRgb, vec3 giRgb, vec3 trac
     ? (fallbackAmb * uFillBoost)
     : (giRgb * uGiIntensity * ao + fallbackAmb * max(uFillBoost - 1.0, 0.0) * 0.65);
 
-  vec3 lit = m.emissive + diffAlbedo * ((totalDirectIrr + portalIrr * uFillBoost) * (1.0 / 3.14159265) + giIrr) + totalSpec;
+  vec3 emissiveDirect = (uEmissiveOn == 1 && matId != 22)
+    ? evalEmissivePanelLtc(pos, nrm, viewDir, m, uEmissiveCenter, uEmissiveRight, uEmissiveUp, uEmissiveNormal, uEmissiveHalfW, uEmissiveHalfH, uEmissiveIntensity, emissiveVis)
+    : vec3(0.0);
+
+  vec3 lit = m.emissive + diffAlbedo * ((totalDirectIrr + portalIrr * uFillBoost) * (1.0 / 3.14159265) + giIrr) + totalSpec + emissiveDirect;
   if (clayMode) return lit * 0.80;
 
   float noV = max(dot(nrm, viewDir), 0.02);
@@ -2317,14 +2715,16 @@ void main() {
   vec3 viewDir = normalize(uCamPos - pos);
   vec4 sA = texture(uShadowA, vUv);
   vec4 sB = texture(uShadowB, vUv);
+  vec4 eSA = (uEmissiveOn == 1 && uEmissiveShadowMode == 1) ? texture(uEmissiveVisA, vUv) : vec4(1.0, 1.0, 1.0, 0.0);
+  vec4 eSB = (uEmissiveOn == 1 && uEmissiveShadowMode == 1) ? texture(uEmissiveVisB, vUv) : vec4(1.0, 1.0, 1.0, 0.0);
 
   if (uViewLayout == 2) {
     vec3 giA = (uGiModeA > 0) ? sampleJointBilateralRgb(uGiA, vUv, pos, nrm) : vec3(0.0);
     vec3 giB = (uGiModeB > 0) ? sampleJointBilateralRgb(uGiB, vUv, pos, nrm) : vec3(0.0);
     vec3 rA  = (uReflModeA > 0) ? texture(uReflA, vUv).rgb : vec3(0.0);
     vec3 rB  = (uReflModeB > 0) ? texture(uReflB, vUv).rgb : vec3(0.0);
-    vec3 cA  = acesFilm(shadeSide(pos, nrm, matId, sA.rgb, giA, rA, uGiModeA, uReflModeA, viewDir, false));
-    vec3 cB  = acesFilm(shadeSide(pos, nrm, matId, sB.rgb, giB, rB, uGiModeB, uReflModeB, viewDir, false));
+    vec3 cA  = acesFilm(shadeSide(pos, nrm, matId, sA.rgb, eSA.r, giA, rA, uGiModeA, uReflModeA, viewDir, false));
+    vec3 cB  = acesFilm(shadeSide(pos, nrm, matId, sB.rgb, eSB.r, giB, rB, uGiModeB, uReflModeB, viewDir, false));
     vec3 diff = abs(cA - cB) * 4.0;
     float baseGeo = 0.05 + 0.08 * max(nrm.z, 0.0);
     outColor = vec4(pow(clamp(max(diff, vec3(baseGeo)), 0.0, 1.0), vec3(1.0 / 2.2)), 1.0);
@@ -2333,17 +2733,24 @@ void main() {
 
   bool useLeft = (uViewLayout == 1) || (vUv.x < uSplitX);
   vec4 s = useLeft ? sA : sB;
+  vec4 eS = useLeft ? eSA : eSB;
 
   if (uSurfaceMode == 2) {
-    float avgVis = (uLightCount == 1) ? s.r : ((uLightCount == 2) ? 0.5 * (s.r + s.g) : (s.r + s.g + s.b) / 3.0);
-    outColor = vec4(vec3(avgVis), 1.0);
+    float sumVis = s.r + ((uLightCount >= 2) ? s.g : 0.0) + ((uLightCount >= 3) ? s.b : 0.0);
+    float den = float(uLightCount);
+    if (uEmissiveOn == 1 && uEmissiveShadowMode == 1) {
+      sumVis += eS.r;
+      den += 1.0;
+    }
+    outColor = vec4(vec3(sumVis / den), 1.0);
     return;
   }
   if (uSurfaceMode == 3) {
     float shade = 0.28 + 0.72 * max(dot(nrm, normalize(vec3(0.4, 0.4, 0.8))), 0.0);
-    float normBlk = clamp(s.a * 0.35, 0.0, 1.0);
+    float blkVal = (uEmissiveOn == 1 && uEmissiveShadowMode == 1) ? max(s.a, eS.a) : s.a;
+    float normBlk = clamp(blkVal * 0.35, 0.0, 1.0);
     vec3 hm = heatmapPalette(normBlk) * shade;
-    if (s.a <= 0.001 && s.r > 0.99) hm = vec3(0.14, 0.16, 0.20) * shade;
+    if (blkVal <= 0.001 && s.r > 0.99 && eS.r > 0.99) hm = vec3(0.14, 0.16, 0.20) * shade;
     outColor = vec4(hm, 1.0);
     return;
   }
@@ -2353,7 +2760,7 @@ void main() {
   vec3 giRgb = (giM == 0) ? vec3(0.0) : (useLeft ? sampleJointBilateralRgb(uGiA, vUv, pos, nrm) : sampleJointBilateralRgb(uGiB, vUv, pos, nrm));
   vec3 reflRgb = (reflM == 0) ? vec3(0.0) : (useLeft ? texture(uReflA, vUv).rgb : texture(uReflB, vUv).rgb);
 
-  vec3 hdr = shadeSide(pos, nrm, matId, s.rgb, giRgb, reflRgb, giM, reflM, viewDir, (uSurfaceMode == 1));
+  vec3 hdr = shadeSide(pos, nrm, matId, s.rgb, eS.r, giRgb, reflRgb, giM, reflM, viewDir, (uSurfaceMode == 1));
   outColor = vec4(pow(max(acesFilm(hdr), vec3(1e-5)), vec3(1.0 / 2.2)), 1.0);
 }
 `;

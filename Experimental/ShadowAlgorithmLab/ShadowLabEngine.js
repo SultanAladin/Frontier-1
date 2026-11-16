@@ -11,6 +11,8 @@ import {
   SHADOW_SDF_FRAG,
   SHADOW_HYBRID_FRAG,
   SHADOW_BVH_FRAG,
+  EMISSIVE_MAP_SHADOW_FRAG,
+  EMISSIVE_BVH_SHADOW_FRAG,
   PLANE_FILTER_FRAG,
   SDF_STATIC_SHADE_FRAG,
   SDF_RADIOSITY_BOUNCE_FRAG,
@@ -245,6 +247,86 @@ function createCalibrationLouversGeometry() {
     }
   }
   return { boxes, tris };
+}
+
+function createEmissivePanelGeometry() {
+  const center = [-0.25, -3.45, 1.32];
+  const aimAt  = [ 0.00,  1.10, 0.45];
+  let nx = aimAt[0] - center[0], ny = aimAt[1] - center[1], nz = aimAt[2] - center[2];
+  const nl = Math.hypot(nx, ny, nz) || 1;
+  nx /= nl; ny /= nl; nz /= nl;
+  const normal = [nx, ny, nz];
+
+  // right = normalize(cross(normal, [0, 0, 1])), up = cross(right, normal)
+  let rx = ny * 1 - nz * 0, ry = nz * 0 - nx * 1, rz = nx * 0 - ny * 0;
+  const rl = Math.hypot(rx, ry, rz) || 1;
+  rx /= rl; ry /= rl; rz /= rl;
+  const right = [rx, ry, rz];
+  const up = [ry * nz - rz * ny, rz * nx - rx * nz, rx * ny - ry * nx];
+
+  const halfW = 1.25, halfH = 0.30;
+  const tris = [];
+  const pushQuad = (a, b, c, d, n, matId) => {
+    tris.push({ p0: a, p1: b, p2: c, n, matId });
+    tris.push({ p0: a, p1: c, p2: d, n, matId });
+  };
+
+  // Glowing front face (matId = 22)
+  const pt = (u, v, w) => [
+    center[0] + right[0]*u + up[0]*v + normal[0]*w,
+    center[1] + right[1]*u + up[1]*v + normal[1]*w,
+    center[2] + right[2]*u + up[2]*v + normal[2]*w,
+  ];
+  pushQuad(pt(-halfW, -halfH, 0.03), pt(halfW, -halfH, 0.03), pt(halfW, halfH, 0.03), pt(-halfW, halfH, 0.03), normal, 22);
+
+  // Dark anodized backing bezel & housing behind glowing surface (matId = 4)
+  const hw = halfW + 0.07, hh = halfH + 0.07;
+  const zF = 0.025, zB = -0.09;
+  const negN = [-normal[0], -normal[1], -normal[2]];
+  const negR = [-right[0], -right[1], -right[2]];
+  const negU = [-up[0], -up[1], -up[2]];
+  pushQuad(pt(hw, -hh, zB), pt(-hw, -hh, zB), pt(-hw, hh, zB), pt(hw, hh, zB), negN, 4);
+  pushQuad(pt(-hw, hh, zB), pt(-hw, hh, zF), pt(hw, hh, zF), pt(hw, hh, zB), up, 4);
+  pushQuad(pt(-hw, -hh, zF), pt(-hw, -hh, zB), pt(hw, -hh, zB), pt(hw, -hh, zF), negU, 4);
+  pushQuad(pt(hw, -hh, zB), pt(hw, hh, zB), pt(hw, hh, zF), pt(hw, -hh, zF), right, 4);
+  pushQuad(pt(-hw, hh, zB), pt(-hw, -hh, zB), pt(-hw, -hh, zF), pt(-hw, hh, zF), negR, 4);
+
+  // Twin vertical steel stanchion legs down to ground z = 0
+  const faceDefs = [
+    [[ 1,-1,-1],[ 1, 1,-1],[ 1, 1, 1],[ 1,-1, 1],[ 1, 0, 0]],
+    [[-1, 1,-1],[-1,-1,-1],[-1,-1, 1],[-1, 1, 1],[-1, 0, 0]],
+    [[-1, 1, 1],[ 1, 1, 1],[ 1, 1,-1],[-1, 1,-1],[ 0, 1, 0]],
+    [[-1,-1,-1],[ 1,-1,-1],[ 1,-1, 1],[-1,-1, 1],[ 0,-1, 0]],
+    [[-1,-1, 1],[ 1,-1, 1],[ 1, 1, 1],[-1, 1, 1],[ 0, 0, 1]],
+    [[-1, 1,-1],[ 1, 1,-1],[ 1,-1,-1],[-1,-1,-1],[ 0, 0,-1]],
+  ];
+  for (const sx of [-0.95, 0.95]) {
+    const cx = center[0] + right[0] * sx - normal[0] * 0.06;
+    const cy = center[1] + right[1] * sx - normal[1] * 0.06;
+    const topZ = center[2] - 0.15;
+    for (const [q0, q1, q2, q3, fn] of faceDefs) {
+      const xf = (p) => [cx + p[0] * 0.045, cy + p[1] * 0.045, (p[2] > 0 ? topZ : 0.0)];
+      pushQuad(xf(q0), xf(q1), xf(q2), xf(q3), fn, 4);
+    }
+  }
+
+  // Perspective virtual shadow camera slightly behind glowing bar so whole 2.5m panel frustum projects cleanly
+  const shadowOrigin = [center[0] - normal[0] * 0.72, center[1] - normal[1] * 0.72, Math.max(0.25, center[2] - normal[2] * 0.72)];
+  const fovRad = (104.0 * Math.PI) / 180.0;
+  const view = mat4LookAtRH(shadowOrigin, aimAt, [0, 0, 1]);
+  const proj = mat4PerspectiveRH(fovRad, 1.0, 0.45, 42.0);
+  const viewProj = mat4Multiply(proj, view);
+  return {
+    tris,
+    rig: {
+      center, right, up, normal, halfW, halfH,
+      shadowOrigin,
+      shadowForward: normal,
+      viewProj,
+      perspTan: Math.tan(fovRad * 0.5),
+      res: 1024,
+    },
+  };
 }
 
 function buildTriangleBlas(tris, triGlobalOffset) {
@@ -525,15 +607,27 @@ async function startShadowLab() {
   const louversBlas = buildTriangleBlas(louversGeo.tris, fileTris);
   const louversSdfVol = bakeLouversLocalSdfOnce(louversGeo.boxes);
 
+  const emissiveGeo = createEmissivePanelGeometry();
+  const emissiveNodeOffset = fileBlasNodes + louversBlas.nodes.length;
+  const emissiveTriOffset = fileTris + louversBlas.reorderedTris.length;
+  const emissiveBlas = buildTriangleBlas(emissiveGeo.tris, emissiveTriOffset);
+  const EMISSIVE_RIG = emissiveGeo.rig;
+
   meshMeta.push({
     nodeOffset: fileBlasNodes,
     nodeCount: louversBlas.nodes.length,
     triOffset: fileTris,
     triCount: louversBlas.reorderedTris.length,
   });
+  meshMeta.push({
+    nodeOffset: emissiveNodeOffset,
+    nodeCount: emissiveBlas.nodes.length,
+    triOffset: emissiveTriOffset,
+    triCount: emissiveBlas.reorderedTris.length,
+  });
 
-  const totalBlasNodes = fileBlasNodes + louversBlas.nodes.length;
-  const totalTris = fileTris + louversBlas.reorderedTris.length;
+  const totalBlasNodes = fileBlasNodes + louversBlas.nodes.length + emissiveBlas.nodes.length;
+  const totalTris = fileTris + louversBlas.reorderedTris.length + emissiveBlas.reorderedTris.length;
   const totalCombinedNodes = TLAS_RESERVED_NODES + totalBlasNodes;
 
   const nodeTexWidth = 2048;
@@ -572,20 +666,36 @@ async function startShadowLab() {
     }
   }
 
+  for (let n = 0; n < emissiveBlas.nodes.length; n++) {
+    const nd = emissiveBlas.nodes[n];
+    const lof = (nd.count === 0) ? (TLAS_RESERVED_NODES + emissiveNodeOffset + nd.leftOrFirst) : nd.leftOrFirst;
+    const dst = (TLAS_RESERVED_NODES + emissiveNodeOffset + n) * 2;
+    nodeTexData[dst * 4 + 0] = nd.min[0]; nodeTexData[dst * 4 + 1] = nd.min[1]; nodeTexData[dst * 4 + 2] = nd.min[2]; nodeTexData[dst * 4 + 3] = lof;
+    nodeTexData[(dst + 1) * 4 + 0] = nd.max[0]; nodeTexData[(dst + 1) * 4 + 1] = nd.max[1]; nodeTexData[(dst + 1) * 4 + 2] = nd.max[2]; nodeTexData[(dst + 1) * 4 + 3] = nd.count;
+    if (n === 0) {
+      meshLocalBounds[fileMeshCount + 1].min = nd.min;
+      meshLocalBounds[fileMeshCount + 1].max = nd.max;
+    }
+  }
+
   const triTexWidth = 2048;
   const triTexHeight = Math.ceil((totalTris * 4) / triTexWidth);
   const triTexData = new Float32Array(triTexWidth * triTexHeight * 4);
   new Uint8Array(triTexData.buffer, 0, fileTris * 64).set(new Uint8Array(arrayBuf, triFileByteStart, fileTris * 64));
 
-  for (let t = 0; t < louversBlas.reorderedTris.length; t++) {
-    const tr = louversBlas.reorderedTris[t];
-    const fBase = (fileTris + t) * 16;
-    const oct = packOctahedralJs(tr.n[0], tr.n[1], tr.n[2]);
-    triTexData[fBase + 0] = tr.p0[0]; triTexData[fBase + 1] = tr.p0[1]; triTexData[fBase + 2] = tr.p0[2]; triTexData[fBase + 3] = tr.matId;
-    triTexData[fBase + 4] = tr.p1[0] - tr.p0[0]; triTexData[fBase + 5] = tr.p1[1] - tr.p0[1]; triTexData[fBase + 6] = tr.p1[2] - tr.p0[2]; triTexData[fBase + 7] = oct;
-    triTexData[fBase + 8] = tr.p2[0] - tr.p0[0]; triTexData[fBase + 9] = tr.p2[1] - tr.p0[1]; triTexData[fBase + 10] = tr.p2[2] - tr.p0[2]; triTexData[fBase + 11] = oct;
-    triTexData[fBase + 15] = oct;
-  }
+  const appendBlasTris = (reordered, startTri) => {
+    for (let t = 0; t < reordered.length; t++) {
+      const tr = reordered[t];
+      const fBase = (startTri + t) * 16;
+      const oct = packOctahedralJs(tr.n[0], tr.n[1], tr.n[2]);
+      triTexData[fBase + 0] = tr.p0[0]; triTexData[fBase + 1] = tr.p0[1]; triTexData[fBase + 2] = tr.p0[2]; triTexData[fBase + 3] = tr.matId;
+      triTexData[fBase + 4] = tr.p1[0] - tr.p0[0]; triTexData[fBase + 5] = tr.p1[1] - tr.p0[1]; triTexData[fBase + 6] = tr.p1[2] - tr.p0[2]; triTexData[fBase + 7] = oct;
+      triTexData[fBase + 8] = tr.p2[0] - tr.p0[0]; triTexData[fBase + 9] = tr.p2[1] - tr.p0[1]; triTexData[fBase + 10] = tr.p2[2] - tr.p0[2]; triTexData[fBase + 11] = oct;
+      triTexData[fBase + 15] = oct;
+    }
+  };
+  appendBlasTris(louversBlas.reorderedTris, fileTris);
+  appendBlasTris(emissiveBlas.reorderedTris, emissiveTriOffset);
 
   const meshVaos = [];
   for (let m = 0; m < meshMeta.length; m++) {
@@ -731,6 +841,8 @@ async function startShadowLab() {
   const progGiBilateral   = compileProgram(gl, FULLSCREEN_VERT, GI_BILATERAL_FRAG, "GiBilateral");
   const progReflSdf       = compileProgram(gl, FULLSCREEN_VERT, REFLECTION_SDF_FRAG, "ReflSdf");
   const progReflBvh       = compileProgram(gl, FULLSCREEN_VERT, REFLECTION_BVH_FRAG, "ReflBvh");
+  const progEmissiveMapSh = compileProgram(gl, FULLSCREEN_VERT, EMISSIVE_MAP_SHADOW_FRAG, "EmissiveMapShadow");
+  const progEmissiveBvhSh = compileProgram(gl, FULLSCREEN_VERT, EMISSIVE_BVH_SHADOW_FRAG, "EmissiveBvhShadow");
   const progComposite     = compileProgram(gl, FULLSCREEN_VERT, COMPOSITE_FRAG, "Composite");
 
   const shadowProgs = {
@@ -754,12 +866,15 @@ async function startShadowLab() {
   let gBufferFbo = null, gPosTex = null, gNormTex = null, gDirectTex = null, gDepthRb = null;
   const shadowMaps = [null, null, null];
   let contactMap = null;
+  let emissiveDepthMap = null;
 
   let shadowRawFbo = null, shadowRawTex = null;
   let shadowPingAFbo = null, shadowPingATex = null;
   let shadowPingBFbo = null, shadowPingBTex = null;
   let shadowFinalAFbo = null, shadowFinalATex = null;
   let shadowFinalBFbo = null, shadowFinalBTex = null;
+  let emissiveFinalAFbo = null, emissiveFinalATex = null;
+  let emissiveFinalBFbo = null, emissiveFinalBTex = null;
 
   let giRawFbo = null, giRawTex = null;
   let giPingAFbo = null, giPingATex = null;
@@ -810,6 +925,7 @@ async function startShadowLab() {
     if (!shadowMaps[1]) shadowMaps[1] = makeDepthRasterFbo(secShadowRes);
     if (!shadowMaps[2]) shadowMaps[2] = makeDepthRasterFbo(secShadowRes);
     if (!contactMap) contactMap = makeDepthRasterFbo(contactRes);
+    if (!emissiveDepthMap) emissiveDepthMap = makeDepthRasterFbo(EMISSIVE_RIG.res);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
@@ -844,6 +960,9 @@ async function startShadowLab() {
     sdfMode: "local",
     halfRes: false,
     showLouvers: true,
+    emissiveOn: true,
+    emissiveShadowMode: "shadowed",
+    emissiveIntensity: 1.35,
 
     driveMode: "auto",
     camPreset: "hero",
@@ -888,8 +1007,10 @@ async function startShadowLab() {
 
     if (gBufferFbo) {
       [gBufferFbo, shadowRawFbo, shadowPingAFbo, shadowPingBFbo, shadowFinalAFbo, shadowFinalBFbo,
+       emissiveFinalAFbo, emissiveFinalBFbo,
        giRawFbo, giPingAFbo, giPingBFbo, giSdfFinalFbo, giBvhFinalFbo, reflSdfFbo, reflBvhFbo].forEach((f) => gl.deleteFramebuffer(f));
       [gPosTex, gNormTex, gDirectTex, shadowRawTex, shadowPingATex, shadowPingBTex, shadowFinalATex, shadowFinalBTex,
+       emissiveFinalATex, emissiveFinalBTex,
        giRawTex, giPingATex, giPingBTex, giSdfFinalTex, giBvhFinalTex, reflSdfTex, reflBvhTex].forEach((t) => gl.deleteTexture(t));
       gl.deleteRenderbuffer(gDepthRb);
     }
@@ -918,6 +1039,10 @@ async function startShadowLab() {
     shadowFinalAFbo = makeSingleFbo(shadowFinalATex);
     shadowFinalBTex = makeTex2D(shadowTraceW, shadowTraceH, gl.RGBA16F, gl.RGBA, gl.FLOAT, gl.LINEAR);
     shadowFinalBFbo = makeSingleFbo(shadowFinalBTex);
+    emissiveFinalATex = makeTex2D(shadowTraceW, shadowTraceH, gl.RGBA16F, gl.RGBA, gl.FLOAT, gl.LINEAR);
+    emissiveFinalAFbo = makeSingleFbo(emissiveFinalATex);
+    emissiveFinalBTex = makeTex2D(shadowTraceW, shadowTraceH, gl.RGBA16F, gl.RGBA, gl.FLOAT, gl.LINEAR);
+    emissiveFinalBFbo = makeSingleFbo(emissiveFinalBTex);
 
     giRawTex      = makeTex2D(giTraceW, giTraceH, gl.RGBA16F, gl.RGBA, gl.FLOAT, gl.NEAREST);
     giRawFbo      = makeSingleFbo(giRawTex);
@@ -1046,6 +1171,7 @@ async function startShadowLab() {
       { meshIdx: 3, l2w: idM, w2l: idM, matOverride: -1 },
     ];
     if (state.showLouvers) activeInstances.push({ meshIdx: 4, l2w: idM, w2l: idM, matOverride: 21 });
+    if (state.emissiveOn) activeInstances.push({ meshIdx: 5, l2w: idM, w2l: idM, matOverride: -1 });
 
     for (let i = 0; i < activeInstances.length; i++) {
       const base = i * 9 * 4;
@@ -1387,8 +1513,9 @@ async function startShadowLab() {
   //======================================================================================================================
   // RENDER PASSES
   //======================================================================================================================
-  function drawSceneGeometry(prog, modelLoc, overLoc) {
+  function drawSceneGeometry(prog, modelLoc, overLoc, skipEmissivePanel = false) {
     for (const inst of activeInstances) {
+      if (skipEmissivePanel && inst.meshIdx === 5) continue;
       const m = meshVaos[inst.meshIdx];
       gl.bindVertexArray(m.vao);
       gl.uniformMatrix4fv(modelLoc, false, inst.l2w);
@@ -1407,12 +1534,13 @@ async function startShadowLab() {
     gl.useProgram(progGBuffer);
     gl.uniformMatrix4fv(gl.getUniformLocation(progGBuffer, "uViewProj"), false, viewProj);
     gl.uniform3fv(gl.getUniformLocation(progGBuffer, "uPaintColor"), PAINT_PALETTE[state.paintIdx]);
+    gl.uniform1f(gl.getUniformLocation(progGBuffer, "uEmissiveIntensity"), state.emissiveOn ? state.emissiveIntensity : 0.0);
     bindMultiLightArrays(progGBuffer, false);
     drawSceneGeometry(progGBuffer, gl.getUniformLocation(progGBuffer, "uModel"), gl.getUniformLocation(progGBuffer, "uMatOverride"));
   }
 
   const CLEAR_DEPTH_FLOAT = new Float32Array([1e5, 0, 0, 1]);
-  function runLightDepthPass(target, viewProj, origin, forward, typeInt) {
+  function runLightDepthPass(target, viewProj, origin, forward, typeInt, skipEmissivePanel = false) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
     gl.viewport(0, 0, target.res, target.res);
     gl.enable(gl.DEPTH_TEST);
@@ -1424,7 +1552,7 @@ async function startShadowLab() {
     gl.uniform1i(gl.getUniformLocation(progLightDepth, "uLightType"), typeInt);
     gl.uniform3fv(gl.getUniformLocation(progLightDepth, "uLightOrigin"), origin);
     gl.uniform3fv(gl.getUniformLocation(progLightDepth, "uLightForward"), forward);
-    drawSceneGeometry(progLightDepth, gl.getUniformLocation(progLightDepth, "uModel"), gl.getUniformLocation(progLightDepth, "uMatOverride"));
+    drawSceneGeometry(progLightDepth, gl.getUniformLocation(progLightDepth, "uModel"), gl.getUniformLocation(progLightDepth, "uMatOverride"), skipEmissivePanel);
   }
 
   function bindGlobalSdfUniforms(prog, startUnit) {
@@ -1578,6 +1706,98 @@ async function startShadowLab() {
     if (scissorRect) gl.disable(gl.SCISSOR_TEST);
   }
 
+  function runEmissiveShadowPass(algo, outFbo, viewProj, bodyInv, wheelInvs, camPos, scissorRect) {
+    const q = QUALITY_PRESETS[state.qualityIdx];
+    const shouldFilter = state.planeFilter && (algo !== "pcf" && algo !== "sdf");
+    const algoMap = { pcf: 0, pcss: 1, contact_pcss: 2, smrt: 3, sdf: 4, hybrid: 5 };
+
+    gl.disable(gl.DEPTH_TEST);
+    if (scissorRect) {
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
+    }
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, shouldFilter ? shadowRawFbo : outFbo);
+    gl.viewport(0, 0, shadowTraceW, shadowTraceH);
+    gl.bindVertexArray(emptyVao);
+
+    if (algo === "bvh") {
+      const prog = progEmissiveBvhSh;
+      gl.useProgram(prog);
+      const loc = (n) => gl.getUniformLocation(prog, n);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, gPosTex);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, gNormTex);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, bvhNodesTex);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bvhTrisTex);
+      gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, instancesTex);
+      gl.uniform1i(loc("uGPosRough"), 0);
+      gl.uniform1i(loc("uGNormMat"), 1);
+      gl.uniform1i(loc("uBvhNodes"), 2);
+      gl.uniform1i(loc("uBvhTris"), 3);
+      gl.uniform1i(loc("uInstances"), 4);
+      gl.uniform1i(loc("uMaxBvhInstances"), activeInstances.length);
+      gl.uniform3fv(loc("uEmissiveCenter"), EMISSIVE_RIG.center);
+      gl.uniform3fv(loc("uEmissiveRight"), EMISSIVE_RIG.right);
+      gl.uniform3fv(loc("uEmissiveUp"), EMISSIVE_RIG.up);
+      gl.uniform3fv(loc("uEmissiveNormal"), EMISSIVE_RIG.normal);
+      gl.uniform1f(loc("uEmissiveHalfW"), EMISSIVE_RIG.halfW);
+      gl.uniform1f(loc("uEmissiveHalfH"), EMISSIVE_RIG.halfH);
+      gl.uniform1i(loc("uBvhRays"), Math.max(2, q.bvhRays));
+    } else {
+      const prog = progEmissiveMapSh;
+      gl.useProgram(prog);
+      const loc = (n) => gl.getUniformLocation(prog, n);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, gPosTex);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, gNormTex);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, emissiveDepthMap.tex);
+      gl.uniform1i(loc("uGPosRough"), 0);
+      gl.uniform1i(loc("uGNormMat"), 1);
+      gl.uniform1i(loc("uEmissiveDepthMap"), 2);
+      bindShadowSdfUniforms(prog, 3, bodyInv, wheelInvs);
+      gl.uniform1i(loc("uEmissiveAlgo"), algoMap[algo] ?? 2);
+      gl.uniformMatrix4fv(loc("uEmissiveViewProj"), false, EMISSIVE_RIG.viewProj);
+      gl.uniform3fv(loc("uEmissiveDepthOrigin"), EMISSIVE_RIG.shadowOrigin);
+      gl.uniform3fv(loc("uEmissiveCenter"), EMISSIVE_RIG.center);
+      gl.uniform3fv(loc("uEmissiveNormal"), EMISSIVE_RIG.normal);
+      gl.uniform1f(loc("uEmissiveHalfW"), EMISSIVE_RIG.halfW);
+      gl.uniform1f(loc("uEmissiveHalfH"), EMISSIVE_RIG.halfH);
+      gl.uniform1f(loc("uEmissiveDepthRes"), EMISSIVE_RIG.res);
+      gl.uniform1f(loc("uEmissivePerspTan"), EMISSIVE_RIG.perspTan);
+      gl.uniformMatrix4fv(loc("uCamViewProj"), false, viewProj);
+      gl.uniform3fv(loc("uCamPos"), camPos);
+      gl.uniform1i(loc("uPcssTaps"), q.pcssTaps);
+      gl.uniform1i(loc("uSmrtRays"), q.smrtRays);
+    }
+
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    if (shouldFilter) {
+      gl.useProgram(progPlaneFilter);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, gPosTex);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, gNormTex);
+      gl.uniform1i(gl.getUniformLocation(progPlaneFilter, "uShadowIn"), 0);
+      gl.uniform1i(gl.getUniformLocation(progPlaneFilter, "uGPosRough"), 1);
+      gl.uniform1i(gl.getUniformLocation(progPlaneFilter, "uGNormMat"), 2);
+      gl.uniform2f(gl.getUniformLocation(progPlaneFilter, "uTexelSize"), 1.0 / shadowTraceW, 1.0 / shadowTraceH);
+      gl.uniform1i(gl.getUniformLocation(progPlaneFilter, "uLightType0"), 1);
+      gl.uniform3fv(gl.getUniformLocation(progPlaneFilter, "uLightOrigin0"), EMISSIVE_RIG.center);
+      gl.uniform3fv(gl.getUniformLocation(progPlaneFilter, "uCamPos"), camPos);
+      gl.uniform1f(gl.getUniformLocation(progPlaneFilter, "uLightRadius0"), EMISSIVE_RIG.halfW * 0.6);
+      gl.uniform1f(gl.getUniformLocation(progPlaneFilter, "uViewportHeight"), shadowTraceH);
+      const stepLoc = gl.getUniformLocation(progPlaneFilter, "uStepPx");
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, shadowPingAFbo);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shadowRawTex);
+      gl.uniform1i(stepLoc, 1); gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, outFbo);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shadowPingATex);
+      gl.uniform1i(stepLoc, 2); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    if (scissorRect) gl.disable(gl.SCISSOR_TEST);
+  }
+
   function runGiPass(mode, outFbo) {
     const q = QUALITY_PRESETS[state.qualityIdx];
     gl.disable(gl.DEPTH_TEST);
@@ -1692,8 +1912,8 @@ async function startShadowLab() {
     const rTexA  = state.reflA === "sdf" ? reflSdfTex : reflBvhTex;
     const rTexB  = state.reflB === "sdf" ? reflSdfTex : reflBvhTex;
 
-    const texs = [gPosTex, gNormTex, shadowFinalATex, shadowFinalBTex, giTexA, giTexB, rTexA, rTexB];
-    const names = ["uGPosRough", "uGNormMat", "uShadowA", "uShadowB", "uGiA", "uGiB", "uReflA", "uReflB"];
+    const texs = [gPosTex, gNormTex, shadowFinalATex, shadowFinalBTex, giTexA, giTexB, rTexA, rTexB, emissiveFinalATex, emissiveFinalBTex];
+    const names = ["uGPosRough", "uGNormMat", "uShadowA", "uShadowB", "uGiA", "uGiB", "uReflA", "uReflB", "uEmissiveVisA", "uEmissiveVisB"];
     for (let i = 0; i < texs.length; i++) {
       gl.activeTexture(gl.TEXTURE0 + i);
       gl.bindTexture(gl.TEXTURE_2D, texs[i]);
@@ -1707,6 +1927,16 @@ async function startShadowLab() {
     bindMultiLightArrays(progComposite, false);
     gl.uniform1f(loc("uFillBoost"), state.fillBoost);
     gl.uniform1f(loc("uGiIntensity"), state.giIntensity);
+
+    gl.uniform1i(loc("uEmissiveOn"), state.emissiveOn ? 1 : 0);
+    gl.uniform1i(loc("uEmissiveShadowMode"), state.emissiveShadowMode === "shadowed" ? 1 : 0);
+    gl.uniform3fv(loc("uEmissiveCenter"), EMISSIVE_RIG.center);
+    gl.uniform3fv(loc("uEmissiveRight"), EMISSIVE_RIG.right);
+    gl.uniform3fv(loc("uEmissiveUp"), EMISSIVE_RIG.up);
+    gl.uniform3fv(loc("uEmissiveNormal"), EMISSIVE_RIG.normal);
+    gl.uniform1f(loc("uEmissiveHalfW"), EMISSIVE_RIG.halfW);
+    gl.uniform1f(loc("uEmissiveHalfH"), EMISSIVE_RIG.halfH);
+    gl.uniform1f(loc("uEmissiveIntensity"), state.emissiveOn ? state.emissiveIntensity : 0.0);
 
     const giInt = (m) => (m === "off" ? 0 : (m === "sdf" ? 1 : 2));
     const reflInt = (m) => (m === "env" ? 0 : (m === "sdf" ? 1 : 2));
@@ -1779,6 +2009,7 @@ async function startShadowLab() {
     document.getElementById("val-light-int").textContent = state.lightIntensity.toFixed(2) + "×";
     document.getElementById("val-fill-boost").textContent = state.fillBoost.toFixed(2) + "×";
     document.getElementById("val-gi-int").textContent = state.giIntensity.toFixed(2) + "×";
+    document.getElementById("val-emissive-int").textContent = state.emissiveIntensity.toFixed(2) + "×";
   }
 
   function syncDriveButtons() {
@@ -1845,6 +2076,15 @@ async function startShadowLab() {
   document.getElementById("slider-light-int").addEventListener("input", (e) => { state.lightIntensity = parseFloat(e.target.value); syncLightUi(); });
   document.getElementById("slider-fill-boost").addEventListener("input", (e) => { state.fillBoost = parseFloat(e.target.value); syncLightUi(); });
   document.getElementById("slider-gi-int").addEventListener("input", (e) => { state.giIntensity = parseFloat(e.target.value); syncLightUi(); });
+  document.getElementById("btn-emissive-on").addEventListener("click", (e) => {
+    state.emissiveOn = !state.emissiveOn;
+    e.currentTarget.setAttribute("aria-pressed", state.emissiveOn ? "true" : "false");
+  });
+  document.querySelectorAll("[data-emissive-shadow]").forEach((btn) => btn.addEventListener("click", () => {
+    state.emissiveShadowMode = btn.dataset.emissiveShadow;
+    document.querySelectorAll("[data-emissive-shadow]").forEach((b) => b.setAttribute("aria-pressed", b === btn ? "true" : "false"));
+  }));
+  document.getElementById("slider-emissive-int").addEventListener("input", (e) => { state.emissiveIntensity = parseFloat(e.target.value); syncLightUi(); });
 
   document.querySelectorAll("[data-kelvin]").forEach((btn) => btn.addEventListener("click", () => {
     state.lightKelvin = btn.dataset.kelvin;
@@ -1888,6 +2128,7 @@ async function startShadowLab() {
     document.querySelectorAll("[data-cam]").forEach((b) => b.setAttribute("aria-pressed", b === btn ? "true" : "false"));
     if (state.camPreset === "hero")     { state.camYaw = -1.92; state.camPitch = 0.28; state.camDist = 7.60; }
     if (state.camPreset === "tyre")     { state.camYaw = -2.35; state.camPitch = 0.14; state.camDist = 3.70; }
+    if (state.camPreset === "emissive") { state.camYaw = -1.02; state.camPitch = 0.25; state.camDist = 8.40; }
     if (state.camPreset === "penumbra") { state.camYaw = -1.55; state.camPitch = 0.62; state.camDist = 11.4; }
   }));
   document.querySelectorAll(".paint-swatch").forEach((btn) => btn.addEventListener("click", () => {
@@ -1982,10 +2223,12 @@ async function startShadowLab() {
     const needsContact = (a) => (a === "contact_pcss" || a === "hybrid");
     const runMapsAny = activeShadows.some(needsMap);
     const runContactAny = activeShadows.some(needsContact);
+    const runEmissiveSh = state.emissiveOn && state.emissiveShadowMode === "shadowed";
+    const runEmissiveMapAny = runEmissiveSh && activeShadows.some((a) => a !== "bvh");
     const runUnionAny = activeGi.includes("sdf") || activeRefl.includes("sdf") ||
       (state.sdfMode === "clip" && activeShadows.some((a) => a === "sdf" || a === "hybrid"));
 
-    if (runMapsAny || runContactAny) {
+    if (runMapsAny || runContactAny || runEmissiveMapAny) {
       const tDepth = beginTimer("depthPrep");
       if (runMapsAny) {
         for (let i = 0; i < state.lightCount; i++) {
@@ -1996,6 +2239,9 @@ async function startShadowLab() {
       if (runContactAny) {
         const C = lightRig.contactRig;
         runLightDepthPass(contactMap, C.viewProj, C.origin, C.forward, lightRig.lights[0].typeInt);
+      }
+      if (runEmissiveMapAny) {
+        runLightDepthPass(emissiveDepthMap, EMISSIVE_RIG.viewProj, EMISSIVE_RIG.shadowOrigin, EMISSIVE_RIG.shadowForward, 1, true);
       }
       endTimer(tDepth);
     } else {
@@ -2021,22 +2267,27 @@ async function startShadowLab() {
 
       const tA = beginTimer("shA");
       runShadowAlgorithm(state.algoA, shadowFinalAFbo, lightRig, viewProj, bodyInv, wheelInvs, camPos, [0, 0, wA, shadowTraceH]);
+      if (runEmissiveSh) runEmissiveShadowPass(state.algoA, emissiveFinalAFbo, viewProj, bodyInv, wheelInvs, camPos, [0, 0, wA, shadowTraceH]);
       endTimer(tA);
 
       const tB = beginTimer("shB");
       runShadowAlgorithm(state.algoB, shadowFinalBFbo, lightRig, viewProj, bodyInv, wheelInvs, camPos, [xB, 0, wB, shadowTraceH]);
+      if (runEmissiveSh) runEmissiveShadowPass(state.algoB, emissiveFinalBFbo, viewProj, bodyInv, wheelInvs, camPos, [xB, 0, wB, shadowTraceH]);
       endTimer(tB);
     } else if (single) {
       const tA = beginTimer("shA");
       runShadowAlgorithm(state.algoA, shadowFinalAFbo, lightRig, viewProj, bodyInv, wheelInvs, camPos, null);
+      if (runEmissiveSh) runEmissiveShadowPass(state.algoA, emissiveFinalAFbo, viewProj, bodyInv, wheelInvs, camPos, null);
       endTimer(tA);
       state.timings.shB = 0;
     } else {
       const tA = beginTimer("shA");
       runShadowAlgorithm(state.algoA, shadowFinalAFbo, lightRig, viewProj, bodyInv, wheelInvs, camPos, null);
+      if (runEmissiveSh) runEmissiveShadowPass(state.algoA, emissiveFinalAFbo, viewProj, bodyInv, wheelInvs, camPos, null);
       endTimer(tA);
       const tB = beginTimer("shB");
       runShadowAlgorithm(state.algoB, shadowFinalBFbo, lightRig, viewProj, bodyInv, wheelInvs, camPos, null);
+      if (runEmissiveSh) runEmissiveShadowPass(state.algoB, emissiveFinalBFbo, viewProj, bodyInv, wheelInvs, camPos, null);
       endTimer(tB);
     }
 
@@ -2069,8 +2320,8 @@ async function startShadowLab() {
       const T = state.timings;
       const giCostOf = (m) => (m === "off" ? 0 : (m === "sdf" ? T.giSdf : T.giBvh));
       const reflCostOf = (m) => (m === "env" ? 0 : (m === "sdf" ? T.reflSdf : T.reflBvh));
-      const shPrepA = (needsMap(state.algoA) || needsContact(state.algoA)) ? T.depthPrep : 0;
-      const shPrepB = (needsMap(state.algoB) || needsContact(state.algoB)) ? T.depthPrep : 0;
+      const shPrepA = (needsMap(state.algoA) || needsContact(state.algoA) || (runEmissiveSh && state.algoA !== "bvh")) ? T.depthPrep : 0;
+      const shPrepB = (needsMap(state.algoB) || needsContact(state.algoB) || (runEmissiveSh && state.algoB !== "bvh")) ? T.depthPrep : 0;
       const unA = (state.giA === "sdf" || state.reflA === "sdf" || (state.sdfMode === "clip" && (state.algoA === "sdf" || state.algoA === "hybrid"))) ? T.union : 0;
       const unB = (state.giB === "sdf" || state.reflB === "sdf" || (state.sdfMode === "clip" && (state.algoB === "sdf" || state.algoB === "hybrid"))) ? T.union : 0;
 

@@ -203,6 +203,22 @@
         </label>
         <input id="slider-gi-int" type="range" min="0.00" max="2.50" step="0.05" value="1.25" />
       </div>
+
+      <div class="control-cluster">
+        <button id="btn-emissive-on" class="chip-btn" aria-pressed="true" title="Toggle 3D Emissive LED Panel + Emissive Shadows">Emissive Panel</button>
+        <div class="segmented-track" role="group" aria-label="Emissive Shadow Mode">
+          <button data-emissive-shadow="shadowed" aria-pressed="true" title="Apply selected shadow algorithm to Emissive Panel">Shadowed</button>
+          <button data-emissive-shadow="unshadowed" aria-pressed="false" title="Raw unshadowed LTC emissive light (leaks through car!)">Unshadowed</button>
+        </div>
+      </div>
+
+      <div class="slider-wrap">
+        <label for="slider-emissive-int">
+          <span class="cluster-label">Emissive Int</span>
+          <span id="val-emissive-int" class="slider-val">1.35×</span>
+        </label>
+        <input id="slider-emissive-int" type="range" min="0.00" max="3.00" step="0.05" value="1.35" />
+      </div>
     </div>
 
     <div class="dock-divider"></div>
@@ -269,6 +285,7 @@
         <div class="segmented-track" role="group" aria-label="Camera View">
           <button data-cam="hero" aria-pressed="true">Hero 3/4</button>
           <button data-cam="tyre" aria-pressed="false">Tyre Contact</button>
+          <button data-cam="emissive" aria-pressed="false">Emissive Sh</button>
           <button data-cam="penumbra" aria-pressed="false">Long Penumbra</button>
           <button data-cam="chase" aria-pressed="false">Chase</button>
         </div>
