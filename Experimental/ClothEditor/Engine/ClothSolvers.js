@@ -394,6 +394,8 @@ export class OrthotropicClothSolver
         this.pcgAp = new Float64Array(nPts * 3);
         this.lsTrialPos = new Float32Array(nPts * 3);
         this._preColPos = new Float32Array(nPts * 3);
+        this._metricWeights = new Float32Array(nPts);
+        this._metricFoldHist = new Int32Array(721);
 
         // Interactive grab handle
         this.grabVertex = -1;
@@ -602,11 +604,10 @@ export class OrthotropicClothSolver
         for (let s = 0; s < net.seamCount; ++s)
         {
             const a3 = seams[s * 2] * 3, b3 = seams[s * 2 + 1] * 3;
-            this.seamInitialGap[s] = Math.hypot(
-                this.positions[a3] - this.positions[b3],
-                this.positions[a3 + 1] - this.positions[b3 + 1],
-                this.positions[a3 + 2] - this.positions[b3 + 2]
-            );
+            const dx = this.positions[a3] - this.positions[b3];
+            const dy = this.positions[a3 + 1] - this.positions[b3 + 1];
+            const dz = this.positions[a3 + 2] - this.positions[b3 + 2];
+            this.seamInitialGap[s] = Math.sqrt(dx * dx + dy * dy + dz * dz);
         }
 
         // Push initial garment geometry cleanly outside mannequin skin
@@ -626,6 +627,7 @@ export class OrthotropicClothSolver
         const t0 = performance.now();
         const nSub = Math.max(1, Math.min(12, Math.round(this.substeps)));
         const h = Math.max(1e-4, dtFrame / nSub);
+        const needBodyContacts = this.solverMode !== 'xpbd';
 
         for (let sub = 0; sub < nSub; ++sub)
         {
@@ -633,8 +635,13 @@ export class OrthotropicClothSolver
             const zipAlpha = clamp((this.substepCountTotal - 1) / 22.0, 0.20, 1.0);
             this._substepPrologue(h, zipAlpha);
 
-            if (this.selfCollisionEnabled)
-                this._refreshContactManifold(h);
+            if ((sub & 1) === 0)
+            {
+                if (this.selfCollisionEnabled)
+                    this._refreshSelfCollisionOnly();
+                if (needBodyContacts)
+                    this._refreshBodyContacts();
+            }
 
             if (this.solverMode === 'avbd')
                 this._solveAVBD(h, zipAlpha);
@@ -704,7 +711,7 @@ export class OrthotropicClothSolver
                 let nx = e1y * e2z - e1z * e2y;
                 let ny = e1z * e2x - e1x * e2z;
                 let nz = e1x * e2y - e1y * e2x;
-                const dArea = Math.hypot(nx, ny, nz);
+                const dArea = Math.sqrt(nx * nx + ny * ny + nz * nz);
                 if (dArea < 1e-9) continue;
                 const area = 0.5 * dArea;
                 const invA = 1.0 / dArea;
@@ -716,13 +723,13 @@ export class OrthotropicClothSolver
 
                 const rvx = wx - vx, rvy = -vy, rvz = wz - vz;
                 const vn = rvx * nx + rvy * ny + rvz * nz;
-                const speed = Math.hypot(rvx, rvy, rvz);
+                const speed = Math.sqrt(rvx * rvx + rvy * rvy + rvz * rvz);
 
                 // Relative tangential slip in wind direction (positive sign pushes cloth WITH wind!)
                 const tx = rvx - vn * nx;
                 const ty = rvy - vn * ny;
                 const tz = rvz - vn * nz;
-                const tLen = Math.hypot(tx, ty, tz);
+                const tLen = Math.sqrt(tx * tx + ty * ty + tz * tz);
 
                 const coeff = rhoAir * area * (1.0 / 3.0);
                 const fnScale = coeff * cNormal * Math.abs(vn) * vn;
@@ -770,7 +777,8 @@ export class OrthotropicClothSolver
                 const gx = this.positions[this.grabVertex * 3];
                 const gy = this.positions[this.grabVertex * 3 + 1];
                 const gz = this.positions[this.grabVertex * 3 + 2];
-                const d = Math.hypot(pos[i3] - gx, pos[i3 + 1] - gy, pos[i3 + 2] - gz);
+                const dxG = pos[i3] - gx, dyG = pos[i3 + 1] - gy, dzG = pos[i3 + 2] - gz;
+                const d = Math.sqrt(dxG * dxG + dyG * dyG + dzG * dzG);
                 if (d < this.grabRadius)
                 {
                     const falloff = Math.cos((d / this.grabRadius) * Math.PI * 0.5);
@@ -788,7 +796,7 @@ export class OrthotropicClothSolver
 
             // Clamp predicted step for initial safe descent outside mannequin
             let stepX = vx * h, stepY = vy * h, stepZ = vz * h;
-            const sLen = Math.hypot(stepX, stepY, stepZ);
+            const sLen = Math.sqrt(stepX * stepX + stepY * stepY + stepZ * stepZ);
             if (this.mannequin.sampleSignedDistance(pos[i3], pos[i3 + 1], pos[i3 + 2], halfThick, this._sdfScratch))
             {
                 const maxBound = clamp(0.60 * Math.max(0.0, this._sdfScratch.phi) + 0.0045, 0.0045, 0.020);
@@ -804,7 +812,7 @@ export class OrthotropicClothSolver
         }
     }
 
-    _refreshContactManifold(h)
+    _refreshSelfCollisionOnly()
     {
         const net = this.network;
         const nPts = net.pointCount;
@@ -873,7 +881,7 @@ export class OrthotropicClothSolver
                                     else
                                     {
                                         nx = this.normals[i3]; ny = this.normals[i3 + 1]; nz = this.normals[i3 + 2];
-                                        const nl = Math.hypot(nx, ny, nz) || 1.0;
+                                        const nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1.0;
                                         nx /= nl; ny /= nl; nz /= nl;
                                     }
                                     this.contactPairA[pairCount] = i;
@@ -894,8 +902,16 @@ export class OrthotropicClothSolver
         }
         this.contactPairCount = pairCount;
         this.metrics.selfContactCount = pairCount;
+    }
 
-        // Also cache close mannequin surface contacts for unified contact-coupled solvers (FPB / AVBD)
+    _refreshBodyContacts()
+    {
+        const net = this.network;
+        const nPts = net.pointCount;
+        const pos = this.positions;
+        const layers = net.layerOrders;
+        const clearance = Math.max(0.0012, this.selfContactClearanceMm * 0.001);
+        const layerStep = Math.max(clearance, 0.0022);
         this.contactRefPos.set(pos);
         const baseThick = Math.max(0.0014, (this.textile.thicknessMm || 0.34) * 0.0015 + 0.0011);
         for (let i = 0; i < nPts; ++i)
@@ -908,7 +924,7 @@ export class OrthotropicClothSolver
             const i3 = i * 3;
             const offset = baseThick + layers[i] * layerStep;
             const sdfHit = this.mannequin.sampleSignedDistance(pos[i3], pos[i3 + 1], pos[i3 + 2], offset, this._sdfScratch);
-            if (sdfHit && this._sdfScratch.phi < 0.003)
+            if (sdfHit && this._sdfScratch.phi < 0.001)
             {
                 const exact = this.mannequin.queryClosestSurface(pos[i3], pos[i3 + 1], pos[i3 + 2], offset, 0.025, this._sdfScratch);
                 if (exact && this._sdfScratch.phi < 0.0015)
@@ -925,6 +941,12 @@ export class OrthotropicClothSolver
         }
     }
 
+    _refreshContactManifold(h)
+    {
+        this._refreshSelfCollisionOnly();
+        this._refreshBodyContacts();
+    }
+
     _resolveSelfCollisionProjection()
     {
         if (!this.selfCollisionEnabled || this.contactPairCount === 0) return;
@@ -939,13 +961,13 @@ export class OrthotropicClothSolver
             const rx = pos[a3] - pos[b3];
             const ry = pos[a3 + 1] - pos[b3 + 1];
             const rz = pos[a3 + 2] - pos[b3 + 2];
-            const d = Math.hypot(rx, ry, rz);
+            const d = Math.sqrt(rx * rx + ry * ry + rz * rz);
             const target = this.contactPairTarget[c];
             if (d < target)
             {
                 const push = (target - d) * 0.55;
                 let nx, ny, nz;
-                if (d > 1e-6) { nx = rx / d; ny = ry / d; nz = rz / d; }
+                if (d > 1e-6) { const invD = 1.0 / d; nx = rx * invD; ny = ry * invD; nz = rz * invD; }
                 else { nx = this.contactPairNx[c]; ny = this.contactPairNy[c]; nz = this.contactPairNz[c]; }
                 const sa = push * (wa / wSum), sb = push * (wb / wSum);
                 pos[a3]     += nx * sa; pos[a3 + 1] += ny * sa; pos[a3 + 2] += nz * sa;
@@ -954,7 +976,7 @@ export class OrthotropicClothSolver
         }
     }
 
-    _resolveMannequinCollisions(h)
+    _resolveMannequinCollisions(h, maxSdfCheck = 0.002)
     {
         const net = this.network;
         const nPts = net.pointCount;
@@ -984,11 +1006,11 @@ export class OrthotropicClothSolver
             let nx = 0, ny = 1, nz = 0;
             let collided = false;
 
-            if (hitSdf && this._sdfScratch.phi < 0.012)
+            if (hitSdf && this._sdfScratch.phi < maxSdfCheck)
             {
                 const sdfPhi = this._sdfScratch.phi;
                 const sdfNx = this._sdfScratch.nx, sdfNy = this._sdfScratch.ny, sdfNz = this._sdfScratch.nz;
-                const exact = this.mannequin.queryClosestSurface(pos[i3], pos[i3 + 1], pos[i3 + 2], offset, 0.032, this._sdfScratch);
+                const exact = this.mannequin.queryClosestSurface(pos[i3], pos[i3 + 1], pos[i3 + 2], offset, 0.026, this._sdfScratch);
                 if (exact)
                 {
                     phi = this._sdfScratch.phi;
@@ -1016,7 +1038,7 @@ export class OrthotropicClothSolver
                 const dz = pos[i3 + 2] - prv[i3 + 2];
                 const dn = dx * nx + dy * ny + dz * nz;
                 const tx = dx - dn * nx, ty = dy - dn * ny, tz = dz - dn * nz;
-                const tLen = Math.hypot(tx, ty, tz);
+                const tLen = Math.sqrt(tx * tx + ty * ty + tz * tz);
                 if (tLen > 1e-7)
                 {
                     if (tLen <= muS * pen)
@@ -1075,7 +1097,7 @@ export class OrthotropicClothSolver
             const dxC = pos[i3] - preCol[i3];
             const dyC = pos[i3 + 1] - preCol[i3 + 1];
             const dzC = pos[i3 + 2] - preCol[i3 + 2];
-            const cLen = Math.hypot(dxC, dyC, dzC);
+            const cLen = Math.sqrt(dxC * dxC + dyC * dyC + dzC * dzC);
 
             let vx = (pos[i3] - prv[i3]) * invH;
             let vy = (pos[i3 + 1] - prv[i3 + 1]) * invH;
@@ -1083,7 +1105,8 @@ export class OrthotropicClothSolver
             // Inelastic contact restitution (e = 0): strip outward collision projection snap so cloth drapes smoothly rather than bouncing
             if (cLen > 1e-6)
             {
-                const nx = dxC / cLen, ny = dyC / cLen, nz = dzC / cLen;
+                const invC = 1.0 / cLen;
+                const nx = dxC * invC, ny = dyC * invC, nz = dzC * invC;
                 const vn = vx * nx + vy * ny + vz * nz;
                 const snapV = Math.min(vn, cLen * invH);
                 if (snapV > 0.0)
@@ -1093,7 +1116,7 @@ export class OrthotropicClothSolver
                     vz -= nz * snapV;
                 }
             }
-            const s = Math.hypot(vx, vy, vz);
+            const s = Math.sqrt(vx * vx + vy * vy + vz * vz);
             if (s > maxSpeed)
             {
                 const sc = maxSpeed / s;
@@ -1166,8 +1189,8 @@ export class OrthotropicClothSolver
             const e2x = s0[c] - s0[a], e2y = s0[c + 1] - s0[a + 1], e2z = s0[c + 2] - s0[a + 2];
             const fuX = e1x * q00 + e2x * q10, fuY = e1y * q00 + e2y * q10, fuZ = e1z * q00 + e2z * q10;
             const fvX = e1x * q01 + e2x * q11, fvY = e1y * q01 + e2y * q11, fvZ = e1z * q01 + e2z * q11;
-            const lu = Math.hypot(fuX, fuY, fuZ) || 1.0;
-            const lv = Math.hypot(fvX, fvY, fvZ) || 1.0;
+            const lu = Math.sqrt(fuX * fuX + fuY * fuY + fuZ * fuZ) || 1.0;
+            const lv = Math.sqrt(fvX * fvX + fvY * fvY + fvZ * fvZ) || 1.0;
             startLU[f] = lu;
             startLV[f] = lv;
             const sc = (fuX * fvX + fuY * fvY + fuZ * fvZ) / (lu * lv);
@@ -1184,7 +1207,8 @@ export class OrthotropicClothSolver
         for (let s = 0; s < net.seamCount; ++s)
         {
             const va3 = sIds[s * 2] * 3, vb3 = sIds[s * 2 + 1] * 3;
-            const dNow = Math.hypot(s0[va3] - s0[vb3], s0[va3 + 1] - s0[vb3 + 1], s0[va3 + 2] - s0[vb3 + 2]);
+            const dxS = s0[va3] - s0[vb3], dyS = s0[va3 + 1] - s0[vb3 + 1], dzS = s0[va3 + 2] - s0[vb3 + 2];
+            const dNow = Math.sqrt(dxS * dxS + dyS * dyS + dzS * dzS);
             const localReady = zipAlpha >= 0.99 && dNow < 0.012;
             const kBaseSeam = Math.max(150.0, 720.0 * zipAlpha);
             this.avbdSeamPenalty[s] = localReady ? Math.max(kBaseSeam, gamma * this.avbdSeamPenalty[s]) : kBaseSeam;
@@ -1196,6 +1220,12 @@ export class OrthotropicClothSolver
         const incHOff = net.incidentHinges.offsets, incHId = net.incidentHinges.itemIds, incHSlot = net.incidentHinges.localSlots;
         const incSOff = net.incidentSeams.offsets, incSId = net.incidentSeams.itemIds, incSSlot = net.incidentSeams.localSlots;
         const pOrder = net.pointBatches.orderedPoints, pOffsets = net.pointBatches.offsets;
+        const fPen = this.avbdFacePenalty, fLam = this.avbdFaceLambda, fCPrev = this.avbdFaceCPrev;
+        const hPen = this.avbdHingePenalty;
+        const sPen = this.avbdSeamPenalty, sLam = this.avbdSeamLambda, sInitGap = this.seamInitialGap;
+        const invM = this.invMass;
+        const bMask = this.bodyContactMask, bNx = this.bodyContactNx, bNy = this.bodyContactNy, bNz = this.bodyContactNz, bPen = this.bodyContactPen;
+        const cRef = this.contactRefPos;
 
         const dxOut = [0, 0, 0];
         const iters = Math.max(8, Math.round(this.iterations));
@@ -1210,7 +1240,7 @@ export class OrthotropicClothSolver
                 for (let idx = bStart; idx < bEnd; ++idx)
                 {
                     const i = pOrder[idx];
-                    const w = this.invMass[i];
+                    const w = invM[i];
                     if (w <= 0) continue;
 
                     const i3 = i * 3;
@@ -1244,8 +1274,8 @@ export class OrthotropicClothSolver
                         const area = fArea[f];
 
                         // Warp C_u = ||F_u|| - 1
-                        const lu = Math.hypot(fuX, fuY, fuZ);
-                        if (lu > 1e-6 && Math.abs(cu) > 1e-8)
+                        const lu = Math.sqrt(fuX * fuX + fuY * fuY + fuZ * fuZ);
+                        if (lu > 1e-6 && (cu > 1e-8 || cu < -1e-8))
                         {
                             const invLu = 1.0 / lu;
                             const nx = fuX * invLu, ny = fuY * invLu, nz = fuZ * invLu;
@@ -1254,9 +1284,10 @@ export class OrthotropicClothSolver
                             const kSoft = kWarpBase * area;
                             let fMag = epsU < 0.0 ? (kSoft * compRatio * epsU) : (kSoft * epsU);
                             let kEff = epsU < 0.0 ? (kSoft * compRatio) : kSoft;
-                            const cLock = (epsU - crimpU) - alphaReg * Math.max(0.0, this.avbdFaceCPrev[f3] - crimpU);
-                            const kPen = this.avbdFacePenalty[f3];
-                            const alForce = this.avbdFaceLambda[f3] + kPen * cLock;
+                            const prevOver = fCPrev[f3] - crimpU;
+                            const cLock = (epsU - crimpU) - alphaReg * (prevOver > 0.0 ? prevOver : 0.0);
+                            const kPen = fPen[f3];
+                            const alForce = fLam[f3] + kPen * cLock;
                             if (alForce > 0.0)
                             {
                                 fMag += alForce;
@@ -1268,15 +1299,16 @@ export class OrthotropicClothSolver
 
                             rx -= fMag * gx; ry -= fMag * gy; rz -= fMag * gz;
                             const kk = kEff * cu * cu;
-                            const gGeom = Math.abs(fMag) * cu * cu / Math.max(0.25, lu);
+                            const absF = fMag < 0.0 ? -fMag : fMag;
+                            const gGeom = absF * cu * cu / (lu > 0.25 ? lu : 0.25);
                             h00 += kk * nx * nx + gGeom; h01 += kk * nx * ny; h02 += kk * nx * nz;
                             h11 += kk * ny * ny + gGeom; h12 += kk * ny * nz;
                             h22 += kk * nz * nz + gGeom;
                         }
 
                         // Weft C_v = ||F_v|| - 1
-                        const lv = Math.hypot(fvX, fvY, fvZ);
-                        if (lv > 1e-6 && Math.abs(cv) > 1e-8)
+                        const lv = Math.sqrt(fvX * fvX + fvY * fvY + fvZ * fvZ);
+                        if (lv > 1e-6 && (cv > 1e-8 || cv < -1e-8))
                         {
                             const invLv = 1.0 / lv;
                             const nx = fvX * invLv, ny = fvY * invLv, nz = fvZ * invLv;
@@ -1285,9 +1317,10 @@ export class OrthotropicClothSolver
                             const kSoft = kWeftBase * area;
                             let fMag = epsV < 0.0 ? (kSoft * compRatio * epsV) : (kSoft * epsV);
                             let kEff = epsV < 0.0 ? (kSoft * compRatio) : kSoft;
-                            const cLock = (epsV - crimpV) - alphaReg * Math.max(0.0, this.avbdFaceCPrev[f3 + 1] - crimpV);
-                            const kPen = this.avbdFacePenalty[f3 + 1];
-                            const alForce = this.avbdFaceLambda[f3 + 1] + kPen * cLock;
+                            const prevOver = fCPrev[f3 + 1] - crimpV;
+                            const cLock = (epsV - crimpV) - alphaReg * (prevOver > 0.0 ? prevOver : 0.0);
+                            const kPen = fPen[f3 + 1];
+                            const alForce = fLam[f3 + 1] + kPen * cLock;
                             if (alForce > 0.0)
                             {
                                 fMag += alForce;
@@ -1299,7 +1332,8 @@ export class OrthotropicClothSolver
 
                             rx -= fMag * gx; ry -= fMag * gy; rz -= fMag * gz;
                             const kk = kEff * cv * cv;
-                            const gGeom = Math.abs(fMag) * cv * cv / Math.max(0.25, lv);
+                            const absF = fMag < 0.0 ? -fMag : fMag;
+                            const gGeom = absF * cv * cv / (lv > 0.25 ? lv : 0.25);
                             h00 += kk * nx * nx + gGeom; h01 += kk * nx * ny; h02 += kk * nx * nz;
                             h11 += kk * ny * ny + gGeom; h12 += kk * ny * nz;
                             h22 += kk * nz * nz + gGeom;
@@ -1313,15 +1347,16 @@ export class OrthotropicClothSolver
                             const gsy = (cu * fvY + cv * fuY) * invNorm;
                             const gsz = (cu * fvZ + cv * fuZ) * invNorm;
                             const csVal = (fuX * fvX + fuY * fvY + fuZ * fvZ) * invNorm;
-                            const absCs = Math.abs(csVal);
+                            const absCs = csVal < 0.0 ? -csVal : csVal;
                             let kPenS = kShearBase * area;
                             let fMagS = kPenS * csVal;
                             if (absCs > maxShearS)
                             {
                                 const overS = absCs - maxShearS;
-                                const sgn = Math.sign(csVal);
-                                const kWallS = this.avbdFacePenalty[f3 + 2] + kWallMod * area * 0.08;
-                                fMagS += sgn * (Math.abs(this.avbdFaceLambda[f3 + 2]) + kWallS * overS);
+                                const sgn = csVal >= 0.0 ? 1.0 : -1.0;
+                                const kWallS = fPen[f3 + 2] + kWallMod * area * 0.08;
+                                const absLamS = fLam[f3 + 2] < 0.0 ? -fLam[f3 + 2] : fLam[f3 + 2];
+                                fMagS += sgn * (absLamS + kWallS * overS);
                                 kPenS += kWallS;
                             }
                             rx -= fMagS * gsx; ry -= fMagS * gsy; rz -= fMagS * gsz;
@@ -1343,7 +1378,7 @@ export class OrthotropicClothSolver
                         const bx = w0 * pos[p0] + w1 * pos[p1] + w2 * pos[p2] + w3 * pos[p3];
                         const by = w0 * pos[p0 + 1] + w1 * pos[p1 + 1] + w2 * pos[p2 + 1] + w3 * pos[p3 + 1];
                         const bz = w0 * pos[p0 + 2] + w1 * pos[p1 + 2] + w2 * pos[p2 + 2] + w3 * pos[p3 + 2];
-                        const kB = this.avbdHingePenalty[hIdx];
+                        const kB = hPen[hIdx];
                         const fScale = kB * wi;
                         rx -= fScale * bx; ry -= fScale * by; rz -= fScale * bz;
                         const diagB = kB * wi * wi;
@@ -1357,16 +1392,18 @@ export class OrthotropicClothSolver
                         const sIdx = incSId[sk], slot = incSSlot[sk];
                         const other = (slot === 0 ? sIds[sIdx * 2 + 1] : sIds[sIdx * 2]) * 3;
                         const dx = xi - pos[other], dy = yi - pos[other + 1], dz = zi - pos[other + 2];
-                        const d = Math.hypot(dx, dy, dz);
+                        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
                         if (d > 1e-8)
                         {
-                            const nx = dx / d, ny = dy / d, nz = dz / d;
-                            const targetGap = (1.0 - zipAlpha) * Math.min(this.seamInitialGap[sIdx], d);
+                            const invD = 1.0 / d;
+                            const nx = dx * invD, ny = dy * invD, nz = dz * invD;
+                            const sg = sInitGap[sIdx];
+                            const targetGap = (1.0 - zipAlpha) * (sg < d ? sg : d);
                             const C = d - targetGap;
-                            const kS = this.avbdSeamPenalty[sIdx];
-                            const fS = this.avbdSeamLambda[sIdx] + kS * C;
+                            const kS = sPen[sIdx];
+                            const fS = sLam[sIdx] + kS * C;
                             rx -= fS * nx; ry -= fS * ny; rz -= fS * nz;
-                            const gS = Math.abs(fS) / d;
+                            const gS = (fS < 0.0 ? -fS : fS) * invD;
                             h00 += kS * nx * nx + gS; h01 += kS * nx * ny; h02 += kS * nx * nz;
                             h11 += kS * ny * ny + gS; h12 += kS * ny * nz;
                             h22 += kS * nz * nz + gS;
@@ -1374,16 +1411,16 @@ export class OrthotropicClothSolver
                     }
 
                     // D. Active Mannequin Contact Barrier on vertex i (linearized gap phiNow = phi0 + n.(x - contactRefPos))
-                    if (this.bodyContactMask[i])
+                    if (bMask[i])
                     {
-                        const nx = this.bodyContactNx[i], ny = this.bodyContactNy[i], nz = this.bodyContactNz[i];
-                        const phiNow = this.bodyContactPen[i]
-                            + nx * (xi - this.contactRefPos[i3])
-                            + ny * (yi - this.contactRefPos[i3 + 1])
-                            + nz * (zi - this.contactRefPos[i3 + 2]);
+                        const nx = bNx[i], ny = bNy[i], nz = bNz[i];
+                        const phiNow = bPen[i]
+                            + nx * (xi - cRef[i3])
+                            + ny * (yi - cRef[i3 + 1])
+                            + nz * (zi - cRef[i3 + 2]);
                         if (phiNow < 0.0)
                         {
-                            const kC = Math.max(2400.0, mOverH2 * 1.4);
+                            const kC = 2400.0 > mOverH2 * 1.4 ? 2400.0 : mOverH2 * 1.4;
                             const pen = -phiNow;
                             rx += kC * pen * nx; ry += kC * pen * ny; rz += kC * pen * nz;
                             h00 += kC * nx * nx; h01 += kC * nx * ny; h02 += kC * nx * nz;
@@ -1393,9 +1430,10 @@ export class OrthotropicClothSolver
                     }
 
                     solve3x3LDLT(h00, h01, h02, h11, h12, h22, rx, ry, rz, dxOut, 0);
-                    pos[i3]     += clamp(0.86 * dxOut[0], -0.020, 0.020);
-                    pos[i3 + 1] += clamp(0.86 * dxOut[1], -0.020, 0.020);
-                    pos[i3 + 2] += clamp(0.86 * dxOut[2], -0.020, 0.020);
+                    const ux = 0.86 * dxOut[0], uy = 0.86 * dxOut[1], uz = 0.86 * dxOut[2];
+                    pos[i3]     += ux < -0.020 ? -0.020 : (ux > 0.020 ? 0.020 : ux);
+                    pos[i3 + 1] += uy < -0.020 ? -0.020 : (uy > 0.020 ? 0.020 : uy);
+                    pos[i3 + 2] += uz < -0.020 ? -0.020 : (uz > 0.020 ? 0.020 : uz);
                 }
             }
 
@@ -1411,15 +1449,17 @@ export class OrthotropicClothSolver
                     {
                         const s = sOrd[k];
                         const a = sIds[s * 2], b = sIds[s * 2 + 1];
-                        const wa = this.invMass[a], wb = this.invMass[b];
+                        const wa = invM[a], wb = invM[b];
                         const wSum = wa + wb;
                         if (wSum <= 0) continue;
                         const a3 = a * 3, b3 = b * 3;
                         const dx = pos[a3] - pos[b3], dy = pos[a3 + 1] - pos[b3 + 1], dz = pos[a3 + 2] - pos[b3 + 2];
-                        const d = Math.hypot(dx, dy, dz);
-                        const target = (1.0 - zipAlpha) * Math.min(this.seamInitialGap[s], d);
+                        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        const sg = sInitGap[s];
+                        const target = (1.0 - zipAlpha) * (sg < d ? sg : d);
                         if (d < 0.009 || d - target <= 0.002) continue;
-                        const corr = clamp(0.32 * (d - target) / (wSum + sAlpha), -0.004 / Math.max(wa, wb, 1.0), 0.004 / Math.max(wa, wb, 1.0));
+                        const maxC = 0.004 / Math.max(wa, wb, 1.0);
+                        const corr = clamp(0.32 * (d - target) / (wSum + sAlpha), -maxC, maxC);
                         const invD = 1.0 / d;
                         const nx = dx * invD, ny = dy * invD, nz = dz * invD;
                         pos[a3] -= wa * corr * nx; pos[a3 + 1] -= wa * corr * ny; pos[a3 + 2] -= wa * corr * nz;
@@ -1439,8 +1479,8 @@ export class OrthotropicClothSolver
                 const e2x = pos[c] - pos[a], e2y = pos[c + 1] - pos[a + 1], e2z = pos[c + 2] - pos[a + 2];
                 const fuX = e1x * q00 + e2x * q10, fuY = e1y * q00 + e2y * q10, fuZ = e1z * q00 + e2z * q10;
                 const fvX = e1x * q01 + e2x * q11, fvY = e1y * q01 + e2y * q11, fvZ = e1z * q01 + e2z * q11;
-                const lu = Math.hypot(fuX, fuY, fuZ) || 1.0;
-                const lv = Math.hypot(fvX, fvY, fvZ) || 1.0;
+                const lu = Math.sqrt(fuX * fuX + fuY * fuY + fuZ * fuZ) || 1.0;
+                const lv = Math.sqrt(fvX * fvX + fvY * fvY + fvZ * fvZ) || 1.0;
 
                 const cuOver = (lu - 1.0) - crimpU;
                 const cvOver = (lv - 1.0) - crimpV;
@@ -1452,15 +1492,15 @@ export class OrthotropicClothSolver
                 const fPenCapU = Math.max(4.0, kWallMod * area * 1.8);
                 const fPenCapV = Math.max(4.0, kWallMod * area * 1.8);
 
-                this.avbdFaceLambda[f3]     = clamp(this.avbdFaceLambda[f3]     + this.avbdFacePenalty[f3]     * cuOver, 0.0, fLamCapU);
-                this.avbdFaceLambda[f3 + 1] = clamp(this.avbdFaceLambda[f3 + 1] + this.avbdFacePenalty[f3 + 1] * cvOver, 0.0, fLamCapV);
-                this.avbdFaceLambda[f3 + 2] = csOver > 0
-                    ? clamp(this.avbdFaceLambda[f3 + 2] + this.avbdFacePenalty[f3 + 2] * csOver, 0.0, fLamCapU * 0.35)
-                    : Math.max(0.0, this.avbdFaceLambda[f3 + 2] * 0.5);
+                fLam[f3]     = clamp(fLam[f3]     + fPen[f3]     * cuOver, 0.0, fLamCapU);
+                fLam[f3 + 1] = clamp(fLam[f3 + 1] + fPen[f3 + 1] * cvOver, 0.0, fLamCapV);
+                fLam[f3 + 2] = csOver > 0
+                    ? clamp(fLam[f3 + 2] + fPen[f3 + 2] * csOver, 0.0, fLamCapU * 0.35)
+                    : Math.max(0.0, fLam[f3 + 2] * 0.5);
 
-                this.avbdFacePenalty[f3]     = Math.min(fPenCapU, this.avbdFacePenalty[f3]     + betaScale * kWarpBase * area * Math.max(0.0, cuOver));
-                this.avbdFacePenalty[f3 + 1] = Math.min(fPenCapV, this.avbdFacePenalty[f3 + 1] + betaScale * kWeftBase * area * Math.max(0.0, cvOver));
-                this.avbdFacePenalty[f3 + 2] = Math.min(fPenCapU * 0.35, this.avbdFacePenalty[f3 + 2] + betaScale * kWarpBase * area * 0.3 * Math.max(0.0, csOver));
+                fPen[f3]     = Math.min(fPenCapU, fPen[f3]     + betaScale * kWarpBase * area * Math.max(0.0, cuOver));
+                fPen[f3 + 1] = Math.min(fPenCapV, fPen[f3 + 1] + betaScale * kWeftBase * area * Math.max(0.0, cvOver));
+                fPen[f3 + 2] = Math.min(fPenCapU * 0.35, fPen[f3 + 2] + betaScale * kWarpBase * area * 0.3 * Math.max(0.0, csOver));
             }
 
             if (seamReady)
@@ -1468,15 +1508,16 @@ export class OrthotropicClothSolver
                 for (let s = 0; s < net.seamCount; ++s)
                 {
                     const va3 = sIds[s * 2] * 3, vb3 = sIds[s * 2 + 1] * 3;
-                    const d = Math.hypot(pos[va3] - pos[vb3], pos[va3 + 1] - pos[vb3 + 1], pos[va3 + 2] - pos[vb3 + 2]);
+                    const dxS = pos[va3] - pos[vb3], dyS = pos[va3 + 1] - pos[vb3 + 1], dzS = pos[va3 + 2] - pos[vb3 + 2];
+                    const d = Math.sqrt(dxS * dxS + dyS * dyS + dzS * dzS);
                     if (d < 0.012)
                     {
-                        this.avbdSeamLambda[s] = clamp(this.avbdSeamLambda[s] + this.avbdSeamPenalty[s] * d, 0.0, 4.5);
-                        this.avbdSeamPenalty[s] = Math.min(1800.0, this.avbdSeamPenalty[s] + betaScale * 110.0 * d);
+                        sLam[s] = clamp(sLam[s] + sPen[s] * d, 0.0, 4.5);
+                        sPen[s] = Math.min(1800.0, sPen[s] + betaScale * 110.0 * d);
                     }
                     else
                     {
-                        this.avbdSeamLambda[s] *= 0.5;
+                        sLam[s] *= 0.5;
                     }
                 }
             }
@@ -1540,7 +1581,7 @@ export class OrthotropicClothSolver
 
                     const a3 = a * 3, b3 = b * 3;
                     const dx = pos[a3] - pos[b3], dy = pos[a3 + 1] - pos[b3 + 1], dz = pos[a3 + 2] - pos[b3 + 2];
-                    const d = Math.hypot(dx, dy, dz);
+                    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
                     if (d < 1e-8) continue;
 
                     const target = (1.0 - zipAlpha) * Math.min(this.seamInitialGap[s], d);
@@ -1577,7 +1618,7 @@ export class OrthotropicClothSolver
                         const e1x = pos[b3] - pos[a3], e1y = pos[b3 + 1] - pos[a3 + 1], e1z = pos[b3 + 2] - pos[a3 + 2];
                         const e2x = pos[c3] - pos[a3], e2y = pos[c3 + 1] - pos[a3 + 1], e2z = pos[c3 + 2] - pos[a3 + 2];
                         const fuX = e1x * q00 + e2x * q10, fuY = e1y * q00 + e2y * q10, fuZ = e1z * q00 + e2z * q10;
-                        const lu = Math.hypot(fuX, fuY, fuZ);
+                        const lu = Math.sqrt(fuX * fuX + fuY * fuY + fuZ * fuZ);
                         if (lu > 1e-6)
                         {
                             const wGrad2 = wa * cuA * cuA + wb * cuB * cuB + wc * cuC * cuC;
@@ -1601,7 +1642,7 @@ export class OrthotropicClothSolver
                         const e1x = pos[b3] - pos[a3], e1y = pos[b3 + 1] - pos[a3 + 1], e1z = pos[b3 + 2] - pos[a3 + 2];
                         const e2x = pos[c3] - pos[a3], e2y = pos[c3 + 1] - pos[a3 + 1], e2z = pos[c3 + 2] - pos[a3 + 2];
                         const fvX = e1x * q01 + e2x * q11, fvY = e1y * q01 + e2y * q11, fvZ = e1z * q01 + e2z * q11;
-                        const lv = Math.hypot(fvX, fvY, fvZ);
+                        const lv = Math.sqrt(fvX * fvX + fvY * fvY + fvZ * fvZ);
                         if (lv > 1e-6)
                         {
                             const wGrad2 = wa * cvA * cvA + wb * cvB * cvB + wc * cvC * cvC;
@@ -1626,8 +1667,8 @@ export class OrthotropicClothSolver
                         const e2x = pos[c3] - pos[a3], e2y = pos[c3 + 1] - pos[a3 + 1], e2z = pos[c3 + 2] - pos[a3 + 2];
                         const fuX = e1x * q00 + e2x * q10, fuY = e1y * q00 + e2y * q10, fuZ = e1z * q00 + e2z * q10;
                         const fvX = e1x * q01 + e2x * q11, fvY = e1y * q01 + e2y * q11, fvZ = e1z * q01 + e2z * q11;
-                        const lu = Math.hypot(fuX, fuY, fuZ);
-                        const lv = Math.hypot(fvX, fvY, fvZ);
+                        const lu = Math.sqrt(fuX * fuX + fuY * fuY + fuZ * fuZ);
+                        const lv = Math.sqrt(fvX * fvX + fvY * fvY + fvZ * fvZ);
                         if (lu > 1e-6 && lv > 1e-6)
                         {
                             const invNorm = 1.0 / (lu * lv);
@@ -1677,7 +1718,7 @@ export class OrthotropicClothSolver
                     const bx = c0 * pos[p0]     + c1 * pos[p1]     + c2 * pos[p2]     + c3 * pos[p3];
                     const by = c0 * pos[p0 + 1] + c1 * pos[p1 + 1] + c2 * pos[p2 + 1] + c3 * pos[p3 + 1];
                     const bz = c0 * pos[p0 + 2] + c1 * pos[p1 + 2] + c2 * pos[p2 + 2] + c3 * pos[p3 + 2];
-                    const bLen = Math.hypot(bx, by, bz);
+                    const bLen = Math.sqrt(bx * bx + by * by + bz * bz);
                     if (bLen < 1e-9) continue;
 
                     const aTilde = 1.0 / (kBend * hArea[hi] * h * h);
@@ -1771,8 +1812,8 @@ export class OrthotropicClothSolver
             const fuX = e1x * q00 + e2x * q10, fuY = e1y * q00 + e2y * q10, fuZ = e1z * q00 + e2z * q10;
             const fvX = e1x * q01 + e2x * q11, fvY = e1y * q01 + e2y * q11, fvZ = e1z * q01 + e2z * q11;
 
-            const lu = Math.hypot(fuX, fuY, fuZ);
-            const lv = Math.hypot(fvX, fvY, fvZ);
+            const lu = Math.sqrt(fuX * fuX + fuY * fuY + fuZ * fuZ);
+            const lv = Math.sqrt(fvX * fvX + fvY * fvY + fvZ * fvZ);
 
             const cu = [-(q00 + q10), q00, q10];
             const cv = [-(q01 + q11), q01, q11];
@@ -1916,7 +1957,7 @@ export class OrthotropicClothSolver
             const a = sIds[s * 2], b = sIds[s * 2 + 1];
             const a3 = a * 3, b3 = b * 3;
             const dx = pos[a3] - pos[b3], dy = pos[a3 + 1] - pos[b3 + 1], dz = pos[a3 + 2] - pos[b3 + 2];
-            const d = Math.hypot(dx, dy, dz);
+            const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
             const targetGap = (1.0 - zipAlpha) * Math.min(this.seamInitialGap[s], d);
             const scale = d > 1e-8 ? Math.max(0, (d - targetGap) / d) : 0.0;
             if (invM[a] > 0)
@@ -2364,7 +2405,8 @@ export class OrthotropicClothSolver
             {
                 if (invM[i] <= 0) continue;
                 const i3 = i * 3;
-                const d = Math.hypot(dx[i3], dx[i3 + 1], dx[i3 + 2]);
+                const vx = dx[i3], vy = dx[i3 + 1], vz = dx[i3 + 2];
+                const d = Math.sqrt(vx * vx + vy * vy + vz * vz);
                 if (d > maxDisp) maxDisp = d;
             }
             if (maxDisp > 0.022)
@@ -2470,7 +2512,8 @@ export class OrthotropicClothSolver
             {
                 if (invM[i] <= 0) continue;
                 const i3 = i * 3;
-                const d = Math.hypot(dx[i3], dx[i3 + 1], dx[i3 + 2]);
+                const vx = dx[i3], vy = dx[i3 + 1], vz = dx[i3 + 2];
+                const d = Math.sqrt(vx * vx + vy * vy + vz * vz);
                 if (d > maxDisp) maxDisp = d;
             }
             if (maxDisp > 0.024)
@@ -2482,7 +2525,7 @@ export class OrthotropicClothSolver
                 const a3 = a * 3, b3 = b * 3;
                 const rx = pos[a3] - pos[b3], ry = pos[a3 + 1] - pos[b3 + 1], rz = pos[a3 + 2] - pos[b3 + 2];
                 const dvx = dx[a3] - dx[b3], dvy = dx[a3 + 1] - dx[b3 + 1], dvz = dx[a3 + 2] - dx[b3 + 2];
-                const d = Math.hypot(rx, ry, rz);
+                const d = Math.sqrt(rx * rx + ry * ry + rz * rz);
                 const approach = d > 1e-8 ? -(rx * dvx + ry * dvy + rz * dvz) / d : 0;
                 if (approach > 1e-7 && d > 0.0006)
                 {
@@ -2557,7 +2600,7 @@ export class OrthotropicClothSolver
             const e2x = posArr[c3] - posArr[a3], e2y = posArr[c3 + 1] - posArr[a3 + 1], e2z = posArr[c3 + 2] - posArr[a3 + 2];
             const fuX = e1x * q00 + e2x * q10, fuY = e1y * q00 + e2y * q10, fuZ = e1z * q00 + e2z * q10;
             const fvX = e1x * q01 + e2x * q11, fvY = e1y * q01 + e2y * q11, fvZ = e1z * q01 + e2z * q11;
-            const lu = Math.hypot(fuX, fuY, fuZ), lv = Math.hypot(fvX, fvY, fvZ);
+            const lu = Math.sqrt(fuX * fuX + fuY * fuY + fuZ * fuZ), lv = Math.sqrt(fvX * fvX + fvY * fvY + fvZ * fvZ);
 
             const eu = lu - 1.0;
             if (eu < 0.0) E += 0.5 * kWarpBase * compRatio * area * eu * eu;
@@ -2594,7 +2637,8 @@ export class OrthotropicClothSolver
         for (let s = 0; s < net.seamCount; ++s)
         {
             const a3 = sIds[s * 2] * 3, b3 = sIds[s * 2 + 1] * 3;
-            const d = Math.hypot(posArr[a3] - posArr[b3], posArr[a3 + 1] - posArr[b3 + 1], posArr[a3 + 2] - posArr[b3 + 2]);
+            const dx = posArr[a3] - posArr[b3], dy = posArr[a3 + 1] - posArr[b3 + 1], dz = posArr[a3 + 2] - posArr[b3 + 2];
+            const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
             const target = (1.0 - zipAlpha) * Math.min(this.seamInitialGap[s], d);
             const gap = d - target;
             E += 0.5 * kSeam * gap * gap;
@@ -2605,7 +2649,8 @@ export class OrthotropicClothSolver
             for (let c = 0; c < this.contactPairCount; ++c)
             {
                 const a3 = this.contactPairA[c] * 3, b3 = this.contactPairB[c] * 3;
-                const d = Math.hypot(posArr[a3] - posArr[b3], posArr[a3 + 1] - posArr[b3 + 1], posArr[a3 + 2] - posArr[b3 + 2]);
+                const dx = posArr[a3] - posArr[b3], dy = posArr[a3 + 1] - posArr[b3 + 1], dz = posArr[a3 + 2] - posArr[b3 + 2];
+                const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
                 if (d < this.contactPairTarget[c])
                 {
                     const pen = this.contactPairTarget[c] - d;
@@ -2641,7 +2686,8 @@ export class OrthotropicClothSolver
         this.pointWarpStretch.fill(0);
         this.pointWeftStretch.fill(0);
         this.pointShearDeg.fill(0);
-        const weights = new Float32Array(nPts);
+        const weights = this._metricWeights;
+        weights.fill(0);
 
         let maxStretch = 1.0;
         let strainAcc = 0, areaAcc = 0, strainEnergy = 0;
@@ -2672,8 +2718,8 @@ export class OrthotropicClothSolver
             const q00 = dmInv[f * 4], q01 = dmInv[f * 4 + 1], q10 = dmInv[f * 4 + 2], q11 = dmInv[f * 4 + 3];
             const fuX = e1x * q00 + e2x * q10, fuY = e1y * q00 + e2y * q10, fuZ = e1z * q00 + e2z * q10;
             const fvX = e1x * q01 + e2x * q11, fvY = e1y * q01 + e2y * q11, fvZ = e1z * q01 + e2z * q11;
-            const lu = Math.hypot(fuX, fuY, fuZ);
-            const lv = Math.hypot(fvX, fvY, fvZ);
+            const lu = Math.sqrt(fuX * fuX + fuY * fuY + fuZ * fuZ);
+            const lv = Math.sqrt(fvX * fvX + fvY * fvY + fvZ * fvZ);
 
             const shearRad = (lu > 1e-6 && lv > 1e-6) ? Math.asin(clamp(Math.abs(fuX * fvX + fuY * fvY + fuZ * fvZ) / (lu * lv), 0, 1)) : 0;
             const shearDeg = (shearRad * 180.0) / Math.PI;
@@ -2697,7 +2743,8 @@ export class OrthotropicClothSolver
         for (let i = 0; i < nPts; ++i)
         {
             const i3 = i * 3;
-            const nl = Math.hypot(vn[i3], vn[i3 + 1], vn[i3 + 2]);
+            const vxN = vn[i3], vyN = vn[i3 + 1], vzN = vn[i3 + 2];
+            const nl = Math.sqrt(vxN * vxN + vyN * vyN + vzN * vzN);
             if (nl > 1e-10)
             {
                 const invN = 1.0 / nl;
@@ -2706,7 +2753,7 @@ export class OrthotropicClothSolver
             else
             {
                 const rx = pos[i3], rz = pos[i3 + 2] - 0.042;
-                const rl = Math.hypot(rx, rz);
+                const rl = Math.sqrt(rx * rx + rz * rz);
                 if (rl > 1e-6) { vn[i3] = rx / rl; vn[i3 + 1] = 0; vn[i3 + 2] = rz / rl; }
                 else { vn[i3] = 0; vn[i3 + 1] = 0; vn[i3 + 2] = 1; }
             }
@@ -2743,7 +2790,7 @@ export class OrthotropicClothSolver
             const dot = vn[a3] * vn[b3] + vn[a3 + 1] * vn[b3 + 1] + vn[a3 + 2] * vn[b3 + 2];
             if (dot < -0.15) continue;
             const sx = vn[a3] + vn[b3], sy = vn[a3 + 1] + vn[b3 + 1], sz = vn[a3 + 2] + vn[b3 + 2];
-            const sl = Math.hypot(sx, sy, sz);
+            const sl = Math.sqrt(sx * sx + sy * sy + sz * sz);
             if (sl > 1e-6)
             {
                 const invS = 1.0 / sl;
@@ -2763,11 +2810,13 @@ export class OrthotropicClothSolver
         }
         this.metrics.seamGapMm = net.seamCount > 0 ? Math.sqrt(seamSq / net.seamCount) * 1000.0 : 0.0;
 
-        // Dihedral fold angle statistics
+        // Dihedral fold angle statistics (O(N) 0.25-deg histogram, zero allocation / sort)
         const hIds = net.hingeIndices;
         const nHinges = net.hingeCount;
-        const foldDegs = new Float32Array(nHinges);
+        const foldHist = this._metricFoldHist;
+        foldHist.fill(0);
         let foldAcc = 0.0;
+        const radToDeg = 180.0 / Math.PI;
         for (let hi = 0; hi < nHinges; ++hi)
         {
             const p0 = hIds[hi * 4] * 3, p1 = hIds[hi * 4 + 1] * 3, p2 = hIds[hi * 4 + 2] * 3, p3 = hIds[hi * 4 + 3] * 3;
@@ -2776,21 +2825,33 @@ export class OrthotropicClothSolver
             const bx = pos[p3] - pos[p0], by = pos[p3 + 1] - pos[p0 + 1], bz = pos[p3 + 2] - pos[p0 + 2];
 
             // Note opposite winding across interior edge (p2-p0) x e vs e x (p3-p0)
-            let n1x = ay * ez - az * ey, n1y = az * ex - ax * ez, n1z = ax * ey - ay * ex;
-            let n2x = ey * bz - ez * by, n2y = ez * bx - ex * bz, n2z = ex * by - ey * bx;
-            const l1 = Math.hypot(n1x, n1y, n1z), l2 = Math.hypot(n2x, n2y, n2z);
+            const n1x = ay * ez - az * ey, n1y = az * ex - ax * ez, n1z = ax * ey - ay * ex;
+            const n2x = ey * bz - ez * by, n2y = ez * bx - ex * bz, n2z = ex * by - ey * bx;
+            const l1 = Math.sqrt(n1x * n1x + n1y * n1y + n1z * n1z);
+            const l2 = Math.sqrt(n2x * n2x + n2y * n2y + n2z * n2z);
             let deg = 0;
             if (l1 > 1e-10 && l2 > 1e-10)
             {
                 const dot = clamp((n1x * n2x + n1y * n2y + n1z * n2z) / (l1 * l2), -1, 1);
-                deg = (Math.acos(dot) * 180.0) / Math.PI;
+                deg = Math.acos(dot) * radToDeg;
             }
-            foldDegs[hi] = deg;
+            const bin = Math.min(720, (deg * 4.0) | 0);
+            foldHist[bin]++;
             foldAcc += deg;
         }
-        foldDegs.sort();
+        let p90Deg = 0.0;
+        if (nHinges > 0)
+        {
+            const target = Math.floor(nHinges * 0.9);
+            let cum = 0;
+            for (let b = 0; b <= 720; ++b)
+            {
+                cum += foldHist[b];
+                if (cum >= target) { p90Deg = b * 0.25; break; }
+            }
+        }
 
-        // End-of-frame mannequin penetration check (vertices inside skin beyond -1.2 mm tolerance)
+        // End-of-frame mannequin penetration check (vertices inside skin beyond -1.5 mm tolerance)
         let penCount = 0;
         let pinCount = 0;
         const baseThick = Math.max(0.0014, (this.textile.thicknessMm || 0.34) * 0.0015 + 0.0011);
@@ -2805,7 +2866,7 @@ export class OrthotropicClothSolver
 
         this.metrics.meanFoldDeg = nHinges > 0 ? foldAcc / nHinges : 0.0;
         this.metrics.meanFoldAngleDeg = this.metrics.meanFoldDeg;
-        this.metrics.p90FoldDeg = nHinges > 0 ? foldDegs[Math.min(nHinges - 1, Math.floor(nHinges * 0.9))] : 0.0;
+        this.metrics.p90FoldDeg = p90Deg;
         this.metrics.fitDriftPct = areaAcc > 1e-8 ? (strainAcc / areaAcc) * 100.0 : 0.0;
         this.metrics.enclosedVolM3 = Math.abs(enclosedVol);
         this.metrics.rmsVelMm = activeCount > 0 ? Math.sqrt(vSqAcc / activeCount) * 1000.0 : 0.0;

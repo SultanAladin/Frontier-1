@@ -98,8 +98,22 @@ export class PatternCanvas2D
         this._isPanning = false;
         this._lastMouse = [0, 0];
         this._rgbScratch = [0, 0, 0];
+        this.dirty = true;
 
         this._bindEvents();
+    }
+
+    markDirty()
+    {
+        this.dirty = true;
+    }
+
+    needsResize()
+    {
+        const dpr = Math.min(2, (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1);
+        const w = this.canvas.clientWidth || 500;
+        const h = this.canvas.clientHeight || 500;
+        return this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr);
     }
 
     bindSimulation(network, solver)
@@ -112,13 +126,44 @@ export class PatternCanvas2D
         this._precomputePieceContours();
         if (firstBind)
             this.fitToView();
+        this.dirty = true;
     }
 
     _precomputePieceContours()
     {
         if (!this.network) return;
-        const uv = this.network.patternUV;
-        this._pieceRenderCache = this.network.pieces.map((piece) =>
+        const net = this.network;
+        const uv = net.patternUV;
+        const faces = net.faceIndices;
+        const pIds = net.pieceIds;
+        const nPieces = net.pieces.length;
+
+        const pieceFaces = Array.from({ length: nPieces }, () => []);
+        const pieceEdgeSets = Array.from({ length: nPieces }, () => new Set());
+        const pieceEdges = Array.from({ length: nPieces }, () => []);
+        for (let f = 0; f < net.faceCount; ++f)
+        {
+            const ia = faces[f * 3], ib = faces[f * 3 + 1], ic = faces[f * 3 + 2];
+            const p = pIds[ia];
+            if (p < 0 || p >= nPieces) continue;
+            pieceFaces[p].push(ia, ib, ic);
+            const es = pieceEdgeSets[p];
+            const pe = pieceEdges[p];
+            for (let k = 0; k < 3; ++k)
+            {
+                const u = k === 0 ? ia : (k === 1 ? ib : ic);
+                const v = k === 0 ? ib : (k === 1 ? ic : ia);
+                const a = u < v ? u : v, b = u < v ? v : u;
+                const key = a * 65536 + b;
+                if (!es.has(key))
+                {
+                    es.add(key);
+                    pe.push(a, b);
+                }
+            }
+        }
+
+        this._pieceRenderCache = net.pieces.map((piece, pIdx) =>
         {
             const sewMm = piece.contourIndices.map((vid) => [uv[vid * 2] * 1000.0, uv[vid * 2 + 1] * 1000.0]);
             const cutMm = computeSeamAllowancePolygonMm(sewMm, piece.seamAllowanceMm || 12);
@@ -137,6 +182,8 @@ export class PatternCanvas2D
                 centerM: [cx * 0.001, cy * 0.001],
                 widthMm: maxX - minX,
                 heightMm: maxY - minY,
+                faceVerts: new Int32Array(pieceFaces[pIdx]),
+                wireEdges: new Int32Array(pieceEdges[pIdx]),
             };
         });
     }
@@ -161,6 +208,7 @@ export class PatternCanvas2D
         this.pixelsPerMeter = Math.min((w - 56) / spanX, (h - 64) / spanY);
         this.panX = -0.5 * (minX + maxX) * this.pixelsPerMeter;
         this.panY = 0.5 * (minY + maxY) * this.pixelsPerMeter + 8;
+        this.dirty = true;
     }
 
     _worldToScreen(mx, my, w, h)
@@ -191,6 +239,7 @@ export class PatternCanvas2D
             this.pixelsPerMeter = Math.max(110.0, Math.min(2200.0, this.pixelsPerMeter * factor));
             this.panX = sx - 0.5 * rect.width - wx * this.pixelsPerMeter;
             this.panY = sy - 0.5 * rect.height + wy * this.pixelsPerMeter;
+            this.dirty = true;
         }, { passive: false });
 
         this.canvas.addEventListener('pointerdown', (e) =>
@@ -222,6 +271,7 @@ export class PatternCanvas2D
                 if (hitIdx >= 0)
                 {
                     this.selectedPieceIndex = hitIdx;
+                    this.dirty = true;
                     if (this.onSelectPiece) this.onSelectPiece(hitIdx, this.network.pieces[hitIdx]);
                 }
                 else
@@ -238,6 +288,7 @@ export class PatternCanvas2D
             this.panX += e.clientX - this._lastMouse[0];
             this.panY += e.clientY - this._lastMouse[1];
             this._lastMouse = [e.clientX, e.clientY];
+            this.dirty = true;
         });
 
         this.canvas.addEventListener('pointerup', (e) =>
@@ -321,13 +372,15 @@ export class PatternCanvas2D
         if (!this.network || !this._pieceRenderCache)
         {
             ctx.restore();
+            this.dirty = false;
             return;
         }
 
         const net = this.network;
         const uv = net.patternUV;
-        const faces = net.faceIndices;
-        const pIds = net.pieceIds;
+        const ox = 0.5 * w + this.panX;
+        const oy = 0.5 * h + this.panY;
+        const scale = this.pixelsPerMeter;
 
         // Draw piece bodies & synchronized live heatmaps
         for (let p = 0; p < net.pieces.length; ++p)
@@ -340,12 +393,14 @@ export class PatternCanvas2D
             if (this.showSeamAllowance)
             {
                 ctx.beginPath();
-                cache.cutMm.forEach(([xMm, yMm], idx) =>
+                for (let idx = 0; idx < cache.cutMm.length; ++idx)
                 {
-                    const [sx, sy] = this._worldToScreen(xMm * 0.001, yMm * 0.001, w, h);
+                    const xMm = cache.cutMm[idx][0], yMm = cache.cutMm[idx][1];
+                    const sx = ox + (xMm * 0.001) * scale;
+                    const sy = oy - (yMm * 0.001) * scale;
                     if (idx === 0) ctx.moveTo(sx, sy);
                     else ctx.lineTo(sx, sy);
-                });
+                }
                 ctx.closePath();
                 ctx.fillStyle = isSel ? 'rgba(255, 180, 84, 0.08)' : 'rgba(255, 255, 255, 0.025)';
                 ctx.fill();
@@ -356,48 +411,69 @@ export class PatternCanvas2D
                 ctx.setLineDash([]);
             }
 
-            // Fill interior triangles (textile swatch tint OR live strain/shear/pressure/batch heatmap)
-            for (let f = 0; f < net.faceCount; ++f)
+            // Fill interior: single panel polygon in static textile mode; triangle heatmap when inspecting live fields
+            if (this.heatmapMode === 'textile' || !this.solver)
             {
-                const ia = faces[f * 3], ib = faces[f * 3 + 1], ic = faces[f * 3 + 2];
-                if (pIds[ia] !== p) continue;
-                const [ax, ay] = this._worldToScreen(uv[ia * 2], uv[ia * 2 + 1], w, h);
-                const [bx, by] = this._worldToScreen(uv[ib * 2], uv[ib * 2 + 1], w, h);
-                const [cx, cy] = this._worldToScreen(uv[ic * 2], uv[ic * 2 + 1], w, h);
-
-                if (this.heatmapMode === 'textile' || !this.solver)
-                {
-                    ctx.fillStyle = isSel ? `${this.fabricHex}55` : `${this.fabricHex}30`;
-                }
-                else
-                {
-                    evaluateHeatmapColorRGB(this.heatmapMode, this.solver, ia, this._rgbScratch);
-                    const r = Math.round(this._rgbScratch[0] * 255);
-                    const g = Math.round(this._rgbScratch[1] * 255);
-                    const b = Math.round(this._rgbScratch[2] * 255);
-                    ctx.fillStyle = `rgba(${r},${g},${b},0.65)`;
-                }
                 ctx.beginPath();
-                ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy);
-                ctx.closePath();
-                ctx.fill();
-
-                if (this.showMeshWire)
+                for (let idx = 0; idx < cache.sewMm.length; ++idx)
                 {
-                    ctx.strokeStyle = isSel ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.045)';
-                    ctx.lineWidth = 0.6;
-                    ctx.stroke();
+                    const xMm = cache.sewMm[idx][0], yMm = cache.sewMm[idx][1];
+                    const sx = ox + (xMm * 0.001) * scale;
+                    const sy = oy - (yMm * 0.001) * scale;
+                    if (idx === 0) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
                 }
+                ctx.closePath();
+                ctx.fillStyle = isSel ? `${this.fabricHex}55` : `${this.fabricHex}30`;
+                ctx.fill();
+            }
+            else
+            {
+                const fVerts = cache.faceVerts;
+                for (let t = 0; t < fVerts.length; t += 3)
+                {
+                    const ia = fVerts[t], ib = fVerts[t + 1], ic = fVerts[t + 2];
+                    const ax = ox + uv[ia * 2] * scale, ay = oy - uv[ia * 2 + 1] * scale;
+                    const bx = ox + uv[ib * 2] * scale, by = oy - uv[ib * 2 + 1] * scale;
+                    const cx = ox + uv[ic * 2] * scale, cy = oy - uv[ic * 2 + 1] * scale;
+                    evaluateHeatmapColorRGB(this.heatmapMode, this.solver, ia, this._rgbScratch);
+                    const r = (this._rgbScratch[0] * 255) | 0;
+                    const g = (this._rgbScratch[1] * 255) | 0;
+                    const b = (this._rgbScratch[2] * 255) | 0;
+                    ctx.fillStyle = `rgba(${r},${g},${b},0.65)`;
+                    ctx.beginPath();
+                    ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx, cy);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+
+            // Single-batch unique-edge mesh wireframe per panel (replaces 8,400+ individual Canvas2D draws)
+            if (this.showMeshWire && cache.wireEdges && cache.wireEdges.length > 0)
+            {
+                const edges = cache.wireEdges;
+                ctx.beginPath();
+                for (let e = 0; e < edges.length; e += 2)
+                {
+                    const a = edges[e] * 2, b = edges[e + 1] * 2;
+                    ctx.moveTo(ox + uv[a] * scale, oy - uv[a + 1] * scale);
+                    ctx.lineTo(ox + uv[b] * scale, oy - uv[b + 1] * scale);
+                }
+                ctx.strokeStyle = isSel ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.045)';
+                ctx.lineWidth = 0.6;
+                ctx.stroke();
             }
 
             // Sew contour outline
             ctx.beginPath();
-            cache.sewMm.forEach(([xMm, yMm], idx) =>
+            for (let idx = 0; idx < cache.sewMm.length; ++idx)
             {
-                const [sx, sy] = this._worldToScreen(xMm * 0.001, yMm * 0.001, w, h);
+                const xMm = cache.sewMm[idx][0], yMm = cache.sewMm[idx][1];
+                const sx = ox + (xMm * 0.001) * scale;
+                const sy = oy - (yMm * 0.001) * scale;
                 if (idx === 0) ctx.moveTo(sx, sy);
                 else ctx.lineTo(sx, sy);
-            });
+            }
             ctx.closePath();
             ctx.lineWidth = isSel ? 2.0 : 1.2;
             ctx.strokeStyle = isSel ? '#ffb454' : '#a8b0be';
@@ -467,5 +543,6 @@ export class PatternCanvas2D
         ctx.fillText('100 mm (10 cm)', 16, h - 26);
 
         ctx.restore();
+        this.dirty = false;
     }
 }

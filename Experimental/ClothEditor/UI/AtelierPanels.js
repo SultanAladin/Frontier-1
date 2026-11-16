@@ -74,7 +74,7 @@ export function mountAtelierUI({ app, refs })
         ).join('');
 
         refs.notch.innerHTML = `
-            <div class="notch-brand">
+            <div class="notch-brand" title="${snap.gpuStatusReason || ''}">
                 <span class="notch-dot ${snap.gpuActive ? '' : 'cpu'}"></span>
                 <span class="notch-title">Project-Zero</span>
                 <span class="notch-sub">Cloth Atelier · ${snap.gpuActive ? 'WebGPU' : 'CPU'}</span>
@@ -246,6 +246,7 @@ export function mountAtelierUI({ app, refs })
                 const idx = parseInt(row.dataset.pieceIdx, 10);
                 app.selectedPieceIndex = idx;
                 app.pattern2d.selectedPieceIndex = idx;
+                app.pattern2d.markDirty();
                 renderLeftDock(app.getSnapshot());
             };
         });
@@ -302,6 +303,7 @@ export function mountAtelierUI({ app, refs })
                         <span class="toggle-label">WebGPU Hardware Path (AVBD / XPBD)</span>
                         <button class="pz-switch ${snap.useWebGpu ? 'on' : ''}" id="sw-webgpu" ${snap.gpuAvailable ? '' : 'disabled'}></button>
                     </div>
+                    <div class="pz-sub-caption" style="margin-top:4px">${snap.gpuStatusReason || ''}</div>
                 </div>
 
                 <div class="pz-card">
@@ -447,7 +449,7 @@ export function mountAtelierUI({ app, refs })
         bindFlag('v-rings', () => { app.viewport3d.showMeasureRings = !app.viewport3d.showMeasureRings; app.viewport3d.refreshClothGeometry(); });
         bindFlag('v-wire', () => { app.viewport3d.showWireframe = !app.viewport3d.showWireframe; app.viewport3d.refreshClothGeometry(); });
         bindFlag('v-seam3', () => { app.viewport3d.showSeams3D = !app.viewport3d.showSeams3D; app.viewport3d.refreshClothGeometry(); });
-        bindFlag('v-sa2', () => { app.pattern2d.showSeamAllowance = !app.pattern2d.showSeamAllowance; });
+        bindFlag('v-sa2', () => { app.pattern2d.showSeamAllowance = !app.pattern2d.showSeamAllowance; app.pattern2d.markDirty(); });
 
         const expSvg = refs.rightDock.querySelector('#exp-svg');
         if (expSvg) expSvg.onclick = () => app.exportFile('svg');

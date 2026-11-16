@@ -346,7 +346,7 @@ export class MannequinAvatar
             const nx = aby * acz - abz * acy;
             const ny = abz * acx - abx * acz;
             const nz = abx * acy - aby * acx;
-            const len = Math.hypot(nx, ny, nz);
+            const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
             if (len > 1e-10)
             {
                 const inv = 1 / len;
@@ -364,7 +364,8 @@ export class MannequinAvatar
         for (let i = 0; i < this.pointCount; ++i)
         {
             const i3 = i * 3;
-            const len = Math.hypot(vn[i3], vn[i3 + 1], vn[i3 + 2]);
+            const x = vn[i3], y = vn[i3 + 1], z = vn[i3 + 2];
+            const len = Math.sqrt(x * x + y * y + z * z);
             if (len > 1e-10)
             {
                 const inv = 1 / len;
@@ -518,7 +519,8 @@ export class MannequinAvatar
                 }
                 if (cnt === 2)
                 {
-                    sl.circ += Math.hypot(p1x - p0x, p1z - p0z);
+                    const dx = p1x - p0x, dz = p1z - p0z;
+                    sl.circ += Math.sqrt(dx * dx + dz * dz);
                     if (p0x < sl.minX) sl.minX = p0x; if (p0x > sl.maxXHit) sl.maxXHit = p0x;
                     if (p1x < sl.minX) sl.minX = p1x; if (p1x > sl.maxXHit) sl.maxXHit = p1x;
                     if (sIdx >= 2) sl.segs.push([p0x, ym, p0z, p1x, ym, p1z]);
@@ -662,13 +664,13 @@ export class MannequinAvatar
         if (this.sdfGeneration !== this.geometryGeneration)
             this.ensureSignedDistanceVolume();
 
-        const [nx, ny, nz] = this.sdfDim;
-        const [ox, oy, oz] = this.sdfOrigin;
-        const [sx, sy, sz] = this.sdfStep;
+        const sd = this.sdfDim, so = this.sdfOrigin, ss = this.sdfStep;
+        const nx = sd[0], ny = sd[1], nz = sd[2];
+        const sx = ss[0], sy = ss[1], sz = ss[2];
 
-        const fx = (px - ox) / sx;
-        const fy = (py - oy) / sy;
-        const fz = (pz - oz) / sz;
+        const fx = (px - so[0]) / sx;
+        const fy = (py - so[1]) / sy;
+        const fz = (pz - so[2]) / sz;
         if (fx < 1.0 || fx >= nx - 2.0 || fy < 1.0 || fy >= ny - 2.0 || fz < 1.0 || fz >= nz - 2.0)
             return false;
 
@@ -715,13 +717,13 @@ export class MannequinAvatar
 
     queryClosestSurface(px, py, pz, offsetRadius, maxCaptureDist, out)
     {
-        const [dx, dy, dz] = this.gridDim;
-        const [ox, oy, oz] = this.gridOrigin;
+        const gd = this.gridDim, go = this.gridOrigin;
+        const dx = gd[0], dy = gd[1], dz = gd[2];
         const invCs = 1 / this.cellSize;
 
-        const fx = (px - ox) * invCs;
-        const fy = (py - oy) * invCs;
-        const fz = (pz - oz) * invCs;
+        const fx = (px - go[0]) * invCs;
+        const fy = (py - go[1]) * invCs;
+        const fz = (pz - go[2]) * invCs;
         if (fx < -1 || fx > dx || fy < -1 || fy > dy || fz < -1 || fz > dz)
             return false;
 

@@ -105,6 +105,18 @@ export class ClothStudioApp
     getSnapshot()
     {
         const pie = estimateClothResolutionPIE(this.textile);
+        const gpuSupported = !!(this.gpuAccelerator && this.gpuAccelerator.supportsSolver(this.solverKey));
+        const gpuActive = !!(this.useWebGpu && gpuSupported);
+        let gpuStatusReason;
+        if (gpuActive)
+            gpuStatusReason = `WebGPU (${this.gpuAccelerator.adapterName})`;
+        else if (!this.gpuAccelerator)
+            gpuStatusReason = WebGpuClothAccelerator.lastStatusReason || 'CPU Fallback';
+        else if (!this.useWebGpu)
+            gpuStatusReason = 'WebGPU paused by user (CPU)';
+        else
+            gpuStatusReason = `${this.solverKey.toUpperCase()} runs on CPU Precise`;
+
         return {
             garmentKey: this.garmentKey,
             textileKey: this.textileKey,
@@ -122,7 +134,8 @@ export class ClothStudioApp
             selectedPieceIndex: this.selectedPieceIndex,
             patternOverrides: { ...this.patternOverrides },
             gpuAvailable: !!this.gpuAccelerator,
-            gpuActive: !!(this.useWebGpu && this.gpuAccelerator && this.gpuAccelerator.supportsSolver(this.solverKey)),
+            gpuActive,
+            gpuStatusReason,
             useWebGpu: this.useWebGpu,
             gpuName: this.gpuAccelerator?.adapterName || 'CPU Fallback (All 4 Solvers)',
             bodyPresetKey: this.bodyPresetKey,
@@ -256,6 +269,7 @@ export class ClothStudioApp
         this.solver.simTimeSec = kf.timeSec;
         this.solver.computeNormalsAndMetrics();
         this.viewport3d.refreshClothGeometry();
+        this.pattern2d.markDirty();
         this.onMetrics(this.solver.metrics);
     }
 
@@ -377,6 +391,7 @@ export class ClothStudioApp
             this.solver.setTextile(this.textile);
             this.viewport3d.setTextileVisuals(this.textile, this.fabricColor);
             this.pattern2d.fabricHex = this.fabricColor;
+            this.pattern2d.markDirty();
         }
         this.onStateChange(this.getSnapshot());
     }
@@ -386,6 +401,7 @@ export class ClothStudioApp
         this.fabricColor = hex;
         this.viewport3d.setTextileVisuals(this.textile, hex);
         this.pattern2d.fabricHex = hex;
+        this.pattern2d.markDirty();
         this.onStateChange(this.getSnapshot());
     }
 
@@ -446,6 +462,7 @@ export class ClothStudioApp
         this.heatmapMode = mode;
         this.viewport3d.heatmapMode = mode;
         this.pattern2d.heatmapMode = mode;
+        this.pattern2d.markDirty();
         this.onStateChange(this.getSnapshot());
     }
 
@@ -460,7 +477,11 @@ export class ClothStudioApp
     {
         this.viewSplitMode = mode;
         this.onStateChange(this.getSnapshot());
-        requestAnimationFrame(() => this.pattern2d.fitToView());
+        requestAnimationFrame(() =>
+        {
+            this.pattern2d.fitToView();
+            this.pattern2d.markDirty();
+        });
     }
 
     stepOnce()
@@ -583,7 +604,7 @@ export class ClothStudioApp
                                     await Promise.race([
                                         this.gpuAccelerator.stepFrame(this.solver, 1 / 60),
                                         new Promise((_, rej) => {
-                                            timerId = setTimeout(() => rej(new Error('WebGPU frame timeout')), 2500);
+                                            timerId = setTimeout(() => rej(new Error('WebGPU frame timeout')), 5000);
                                         }),
                                     ]);
                                     clearTimeout(timerId);
@@ -596,6 +617,7 @@ export class ClothStudioApp
                             catch (gpuErr)
                             {
                                 clearTimeout(timerId);
+                                WebGpuClothAccelerator.lastStatusReason = `WebGPU fallback: ${gpuErr?.message || gpuErr}`;
                                 console.warn('WebGPU simulation step failed; switching permanently to CPU solver:', gpuErr);
                                 this.useWebGpu = false;
                                 this.gpuAccelerator = null;
@@ -623,7 +645,8 @@ export class ClothStudioApp
                     }
                 }
                 this.viewport3d.render();
-                this.pattern2d.render();
+                if (this.pattern2d.dirty || this.heatmapMode !== 'textile' || this.pattern2d.needsResize())
+                    this.pattern2d.render();
             }
             catch (loopErr)
             {

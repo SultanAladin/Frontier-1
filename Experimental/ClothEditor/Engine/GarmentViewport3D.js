@@ -109,7 +109,7 @@ export class GarmentViewport3D
         const keyLight = new THREE.DirectionalLight(0xfff7ed, 2.05);
         keyLight.position.set(1.65, 2.65, 2.25);
         keyLight.castShadow = true;
-        keyLight.shadow.mapSize.set(2048, 2048);
+        keyLight.shadow.mapSize.set(1024, 1024);
         keyLight.shadow.camera.near = 0.5;
         keyLight.shadow.camera.far = 7.0;
         keyLight.shadow.camera.left = -1.1;
@@ -296,6 +296,7 @@ export class GarmentViewport3D
         this._clothMesh = new THREE.Mesh(geo, clothMat);
         this._clothMesh.castShadow = true;
         this._clothMesh.receiveShadow = true;
+        this._clothMesh.frustumCulled = false;
         this.scene.add(this._clothMesh);
 
         const wireMat = new THREE.MeshBasicMaterial({
@@ -307,6 +308,7 @@ export class GarmentViewport3D
         });
         this._wireMesh = new THREE.Mesh(geo, wireMat);
         this._wireMesh.visible = this.showWireframe;
+        this._wireMesh.frustumCulled = false;
         this.scene.add(this._wireMesh);
 
         if (net.seamCount > 0)
@@ -316,9 +318,11 @@ export class GarmentViewport3D
             const sMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 });
             this._seamLines = new THREE.LineSegments(sGeo, sMat);
             this._seamLines.visible = this.showSeams3D;
+            this._seamLines.frustumCulled = false;
             this.scene.add(this._seamLines);
         }
 
+        this._lastColorKey = '';
         this.refreshClothGeometry();
         this.refreshPins();
     }
@@ -349,29 +353,33 @@ export class GarmentViewport3D
         geo.attributes.position.needsUpdate = true;
         geo.attributes.normal.needsUpdate = true;
 
-        const col = geo.attributes.color.array;
-        const baseColor = new THREE.Color(this.fabricHex);
-        const rgb = this._rgbScratch;
-        for (let i = 0; i < net.pointCount; ++i)
+        const colorKey = this.heatmapMode === 'textile' ? `textile:${this.fabricHex}` : '';
+        if (colorKey === '' || colorKey !== this._lastColorKey)
         {
-            const i3 = i * 3;
-            if (this.heatmapMode === 'textile')
+            const col = geo.attributes.color.array;
+            const baseColor = (this._baseColor || (this._baseColor = new THREE.Color())).set(this.fabricHex);
+            const rgb = this._rgbScratch;
+            for (let i = 0; i < net.pointCount; ++i)
             {
-                const layerTint = net.layerOrders[i] === 0 ? 1.0 : (net.layerOrders[i] === 1 ? 0.90 : 1.08);
-                col[i3]     = clampVal(baseColor.r * layerTint, 0, 1);
-                col[i3 + 1] = clampVal(baseColor.g * layerTint, 0, 1);
-                col[i3 + 2] = clampVal(baseColor.b * layerTint, 0, 1);
+                const i3 = i * 3;
+                if (this.heatmapMode === 'textile')
+                {
+                    const layerTint = net.layerOrders[i] === 0 ? 1.0 : (net.layerOrders[i] === 1 ? 0.90 : 1.08);
+                    col[i3]     = clampVal(baseColor.r * layerTint, 0, 1);
+                    col[i3 + 1] = clampVal(baseColor.g * layerTint, 0, 1);
+                    col[i3 + 2] = clampVal(baseColor.b * layerTint, 0, 1);
+                }
+                else
+                {
+                    evaluateHeatmapColorRGB(this.heatmapMode, solver, i, rgb);
+                    col[i3] = rgb[0]; col[i3 + 1] = rgb[1]; col[i3 + 2] = rgb[2];
+                }
             }
-            else
-            {
-                evaluateHeatmapColorRGB(this.heatmapMode, solver, i, rgb);
-                col[i3] = rgb[0]; col[i3 + 1] = rgb[1]; col[i3 + 2] = rgb[2];
-            }
+            geo.attributes.color.needsUpdate = true;
+            this._lastColorKey = colorKey;
         }
-        geo.attributes.color.needsUpdate = true;
-        geo.computeBoundingSphere();
 
-        if (this._seamLines && net.seamCount > 0)
+        if (this.showSeams3D && this._seamLines && net.seamCount > 0)
         {
             const arr = this._seamLines.geometry.attributes.position.array;
             const sIds = net.seamIndices;
@@ -390,6 +398,7 @@ export class GarmentViewport3D
         if (this._mannequinMesh) this._mannequinMesh.visible = this.showMannequin;
         if (this._measureLines) this._measureLines.visible = this.showMannequin && this.showMeasureRings;
         if (this._wireMesh) this._wireMesh.visible = this.showWireframe;
+        if (this._seamLines) this._seamLines.visible = this.showSeams3D;
     }
 
     refreshPins()

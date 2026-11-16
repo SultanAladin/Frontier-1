@@ -653,16 +653,31 @@ fn finalizeSubstep(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 export class WebGpuClothAccelerator
 {
+    static lastStatusReason = 'Initializing WebGPU...';
+
     static async create()
     {
-        if (typeof navigator === 'undefined' || !navigator.gpu) return null;
+        if (typeof navigator === 'undefined' || !navigator.gpu)
+        {
+            WebGpuClothAccelerator.lastStatusReason = 'Browser lacks navigator.gpu (using CPU)';
+            return null;
+        }
         try
         {
-            const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-            if (!adapter) return null;
+            let adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+            if (!adapter)
+                adapter = await navigator.gpu.requestAdapter();
+            if (!adapter)
+            {
+                WebGpuClothAccelerator.lastStatusReason = 'No WebGPU adapter granted (using CPU)';
+                return null;
+            }
             const device = await adapter.requestDevice();
             if ((device.limits?.maxStorageBuffersPerShaderStage ?? 8) < 8)
+            {
+                WebGpuClothAccelerator.lastStatusReason = 'Adapter < 8 storage buffers/stage (using CPU)';
                 return null;
+            }
 
             const module = device.createShaderModule({ code: CLOTH_COMPUTE_WGSL });
             if (typeof module.getCompilationInfo === 'function')
@@ -670,6 +685,7 @@ export class WebGpuClothAccelerator
                 const info = await module.getCompilationInfo();
                 if (info.messages?.some((m) => m.type === 'error'))
                 {
+                    WebGpuClothAccelerator.lastStatusReason = 'WGSL compilation failed (using CPU)';
                     console.warn('WebGPU WGSL compilation error; falling back to CPU:', info.messages);
                     return null;
                 }
@@ -707,23 +723,29 @@ export class WebGpuClothAccelerator
             const pipeErr = await device.popErrorScope?.();
             if (pipeErr)
             {
+                WebGpuClothAccelerator.lastStatusReason = `WebGPU pipeline error: ${pipeErr.message}`;
                 console.warn('WebGPU pipeline validation error; falling back to CPU:', pipeErr.message);
                 return null;
             }
 
-            const accel = new WebGpuClothAccelerator(device, adapter.info?.description || 'WebGPU Hardware Compute', {
+            const aInfo = adapter.info || {};
+            const adapterLabel = aInfo.description || aInfo.device || aInfo.architecture || aInfo.vendor || 'WebGPU Hardware Compute';
+            const accel = new WebGpuClothAccelerator(device, adapterLabel, {
                 module, bgl, pPredict, pResetDuals, pXpbdSeam, pXpbdFace, pXpbdHinge, pAvbd, pFinalize,
             });
             const probeOk = await accel._runComputeSelfTest();
             if (!probeOk)
             {
+                WebGpuClothAccelerator.lastStatusReason = 'WebGPU compute self-test failed (using CPU)';
                 console.warn('WebGPU compute self-test failed; falling back to CPU.');
                 return null;
             }
+            WebGpuClothAccelerator.lastStatusReason = `Active (${adapterLabel})`;
             return accel;
         }
         catch (err)
         {
+            WebGpuClothAccelerator.lastStatusReason = `WebGPU init error: ${err?.message || err}`;
             console.warn('WebGPU init failed; falling back to CPU:', err);
             return null;
         }
@@ -959,6 +981,7 @@ export class WebGpuClothAccelerator
         });
 
         this.buffers = { nPts, nDual, posBuf, prvBuf, velBuf, inrBuf, dualBuf, topoBuf, restBuf, sdfBuf, uniBuf, readPos, readVel, bg };
+        this._inrPack = new Float32Array(nPts * 4);
         this.uploadedNetwork = net;
         this.sdfGeneration = solver.mannequin.sdfGeneration;
         this.firstStepValidated = false;
@@ -984,13 +1007,16 @@ export class WebGpuClothAccelerator
         const validateScope = checkMotionOnFirstFrame && typeof this.device.pushErrorScope === 'function';
         if (validateScope) this.device.pushErrorScope('validation');
 
-        const inrPack = new Float32Array(net.pointCount * 4);
+        const inrPack = this._inrPack;
+        const sPos = solver.positions;
+        const sInvM = solver.invMass;
         for (let i = 0; i < net.pointCount; ++i)
         {
-            inrPack[i * 4]     = solver.positions[i * 3];
-            inrPack[i * 4 + 1] = solver.positions[i * 3 + 1];
-            inrPack[i * 4 + 2] = solver.positions[i * 3 + 2];
-            inrPack[i * 4 + 3] = solver.invMass[i];
+            const i3 = i * 3, i4 = i * 4;
+            inrPack[i4]     = sPos[i3];
+            inrPack[i4 + 1] = sPos[i3 + 1];
+            inrPack[i4 + 2] = sPos[i3 + 2];
+            inrPack[i4 + 3] = sInvM[i];
         }
         this.device.queue.writeBuffer(b.posBuf, 0, solver.positions);
         this.device.queue.writeBuffer(b.velBuf, 0, solver.velocities);
@@ -1091,10 +1117,15 @@ export class WebGpuClothAccelerator
         this.device.queue.writeBuffer(b.uniBuf, 0, this.uniRingBytes, 0, slotIdx * this.uniAlign);
         const enc = this.device.createCommandEncoder();
         const pass = enc.beginComputePass();
+        let lastPipeline = null;
         for (let k = 0; k < dispatches.length; ++k)
         {
             const d = dispatches[k];
-            pass.setPipeline(d.pipeline);
+            if (d.pipeline !== lastPipeline)
+            {
+                pass.setPipeline(d.pipeline);
+                lastPipeline = d.pipeline;
+            }
             pass.setBindGroup(0, b.bg, [d.dynOff]);
             pass.dispatchWorkgroups(d.wg);
         }
@@ -1110,11 +1141,12 @@ export class WebGpuClothAccelerator
                 throw new Error(`WebGPU validation error: ${stepErr.message}`);
         }
 
-        await b.readPos.mapAsync(GPUMapMode.READ);
+        await Promise.all([
+            b.readPos.mapAsync(GPUMapMode.READ),
+            b.readVel.mapAsync(GPUMapMode.READ),
+        ]);
         solver.positions.set(new Float32Array(b.readPos.getMappedRange()));
         b.readPos.unmap();
-
-        await b.readVel.mapAsync(GPUMapMode.READ);
         solver.velocities.set(new Float32Array(b.readVel.getMappedRange()));
         b.readVel.unmap();
 
@@ -1137,11 +1169,12 @@ export class WebGpuClothAccelerator
             this.firstStepValidated = true;
         }
 
+        // Fast cloth-cloth self-collision + lightweight SDF-only penetration polish (GPU finalizeSubstep already resolves SDF collisions)
         if (solver.selfCollisionEnabled)
         {
-            solver._refreshContactManifold(h);
+            solver._refreshSelfCollisionOnly();
             solver._resolveSelfCollisionProjection();
-            solver._resolveMannequinCollisions(h);
+            solver._resolveMannequinCollisions(h, 0.0);
         }
 
         solver.simTimeSec += dtFrame;
