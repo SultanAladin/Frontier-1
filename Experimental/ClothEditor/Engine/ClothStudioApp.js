@@ -75,6 +75,7 @@ export class ClothStudioApp
         this.solver = null;
         this._stepInFlight = false;
         this._rafId = 0;
+        this._disposed = false;
     }
 
     async init()
@@ -293,6 +294,21 @@ export class ClothStudioApp
         this.onStateChange(this.getSnapshot());
     }
 
+    toggleLivePlay()
+    {
+        if (this.isPlaying || this.isPlayback)
+        {
+            this.isPlaying = false;
+            this.isPlayback = false;
+        }
+        else
+        {
+            this.isPlayback = false;
+            this.isPlaying = true;
+        }
+        this.onStateChange(this.getSnapshot());
+    }
+
     playLive()
     {
         this.isPlayback = false;
@@ -418,6 +434,13 @@ export class ClothStudioApp
         this.rebuildGarment({ resetPatternOverrides: false });
     }
 
+    toggleComputeBackend()
+    {
+        if (!this.gpuAccelerator) return;
+        this.useWebGpu = !this.useWebGpu;
+        this.onStateChange(this.getSnapshot());
+    }
+
     setHeatmapMode(mode)
     {
         this.heatmapMode = mode;
@@ -450,6 +473,8 @@ export class ClothStudioApp
         this.solver.stepFrame(1 / 60);
         this.recordTimelineFrame(true);
         this.viewport3d.refreshClothGeometry();
+        this.viewport3d.render();
+        this.pattern2d.render();
         this.onMetrics(this.solver.metrics);
         this.onTimeline(this.getTimelineState());
     }
@@ -511,68 +536,108 @@ export class ClothStudioApp
     {
         const tick = async () =>
         {
-            if (this.isPlayback && this.timelineFrames.length > 0)
+            try
             {
-                this._playbackFrac += this.playbackSpeed;
-                if (this._playbackFrac >= 1.0)
+                if (this.isPlayback && this.timelineFrames.length > 0)
                 {
-                    const adv = Math.floor(this._playbackFrac);
-                    this._playbackFrac -= adv;
-                    let nextIdx = this.timelineCursor + adv;
-                    if (nextIdx >= this.timelineFrames.length)
+                    this._playbackFrac += this.playbackSpeed;
+                    if (this._playbackFrac >= 1.0)
                     {
-                        if (this.timelineLoop)
+                        const adv = Math.floor(this._playbackFrac);
+                        this._playbackFrac -= adv;
+                        let nextIdx = this.timelineCursor + adv;
+                        if (nextIdx >= this.timelineFrames.length)
                         {
-                            nextIdx = 0;
+                            if (this.timelineLoop)
+                            {
+                                nextIdx = 0;
+                            }
+                            else
+                            {
+                                nextIdx = this.timelineFrames.length - 1;
+                                this.isPlayback = false;
+                                this._applyTimelineFrame(nextIdx);
+                                this.onStateChange(this.getSnapshot());
+                            }
+                        }
+                        if (this.isPlayback)
+                        {
+                            this._applyTimelineFrame(nextIdx);
+                            this.onTimeline(this.getTimelineState());
+                        }
+                    }
+                }
+                else if (this.isPlaying && this.solver && !this._stepInFlight)
+                {
+                    this._stepInFlight = true;
+                    try
+                    {
+                        const canUseGpu = this.useWebGpu && this.gpuAccelerator && this.gpuAccelerator.supportsSolver(this.solver.solverMode);
+                        if (canUseGpu)
+                        {
+                            let timerId = 0;
+                            try
+                            {
+                                if (!this.gpuAccelerator.firstStepValidated)
+                                {
+                                    await Promise.race([
+                                        this.gpuAccelerator.stepFrame(this.solver, 1 / 60),
+                                        new Promise((_, rej) => {
+                                            timerId = setTimeout(() => rej(new Error('WebGPU frame timeout')), 2500);
+                                        }),
+                                    ]);
+                                    clearTimeout(timerId);
+                                }
+                                else
+                                {
+                                    await this.gpuAccelerator.stepFrame(this.solver, 1 / 60);
+                                }
+                            }
+                            catch (gpuErr)
+                            {
+                                clearTimeout(timerId);
+                                console.warn('WebGPU simulation step failed; switching permanently to CPU solver:', gpuErr);
+                                this.useWebGpu = false;
+                                this.gpuAccelerator = null;
+                                this.solver.stepFrame(1 / 60);
+                                this.onStateChange(this.getSnapshot());
+                            }
                         }
                         else
                         {
-                            nextIdx = this.timelineFrames.length - 1;
-                            this.isPlayback = false;
-                            this._applyTimelineFrame(nextIdx);
-                            this.onStateChange(this.getSnapshot());
+                            this.solver.stepFrame(1 / 60);
                         }
-                    }
-                    if (this.isPlayback)
-                    {
-                        this._applyTimelineFrame(nextIdx);
+                        if (this.isRecording)
+                            this.recordTimelineFrame();
+                        this.viewport3d.refreshClothGeometry();
+                        this.onMetrics(this.solver.metrics);
                         this.onTimeline(this.getTimelineState());
                     }
+                    catch (stepErr)
+                    {
+                        console.error('Cloth simulation frame error:', stepErr);
+                    }
+                    finally
+                    {
+                        this._stepInFlight = false;
+                    }
                 }
+                this.viewport3d.render();
+                this.pattern2d.render();
             }
-            else if (this.isPlaying && this.solver && !this._stepInFlight)
+            catch (loopErr)
             {
-                this._stepInFlight = true;
-                try
-                {
-                    if (this.useWebGpu && this.gpuAccelerator && this.gpuAccelerator.supportsSolver(this.solver.solverMode))
-                    {
-                        await this.gpuAccelerator.stepFrame(this.solver, 1 / 60);
-                    }
-                    else
-                    {
-                        this.solver.stepFrame(1 / 60);
-                    }
-                    if (this.isRecording)
-                        this.recordTimelineFrame();
-                    this.viewport3d.refreshClothGeometry();
-                    this.onMetrics(this.solver.metrics);
-                    this.onTimeline(this.getTimelineState());
-                }
-                finally
-                {
-                    this._stepInFlight = false;
-                }
+                console.error('Atelier render loop error:', loopErr);
             }
-            this.viewport3d.render();
-            this.pattern2d.render();
-            this._rafId = requestAnimationFrame(tick);
+            if (!this._disposed)
+                this._rafId = requestAnimationFrame(tick);
         };
         this._rafId = requestAnimationFrame(tick);
     }
 
     dispose()
     {
+        this._disposed = true;
         if (this._rafId) cancelAnimationFrame(this._rafId);
     }
 }

@@ -635,54 +635,243 @@ export class WebGpuClothAccelerator
             const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
             if (!adapter) return null;
             const device = await adapter.requestDevice();
-            return new WebGpuClothAccelerator(device, adapter.info?.description || 'WebGPU Hardware Compute');
+            if ((device.limits?.maxStorageBuffersPerShaderStage ?? 8) < 8)
+                return null;
+
+            const module = device.createShaderModule({ code: CLOTH_COMPUTE_WGSL });
+            if (typeof module.getCompilationInfo === 'function')
+            {
+                const info = await module.getCompilationInfo();
+                if (info.messages?.some((m) => m.type === 'error'))
+                {
+                    console.warn('WebGPU WGSL compilation error; falling back to CPU:', info.messages);
+                    return null;
+                }
+            }
+
+            const bgl = device.createBindGroupLayout({
+                entries: [
+                    { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 160 } },
+                    { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                    { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                    { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                    { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                    { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                    { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                    { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                    { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                ],
+            });
+            const layout = device.createPipelineLayout({ bindGroupLayouts: [bgl] });
+            const mk = async (entryPoint) =>
+            {
+                if (typeof device.createComputePipelineAsync === 'function')
+                    return await device.createComputePipelineAsync({ layout, compute: { module, entryPoint } });
+                return device.createComputePipeline({ layout, compute: { module, entryPoint } });
+            };
+
+            device.pushErrorScope?.('validation');
+            const pPredict    = await mk('predictInertia');
+            const pResetDuals = await mk('resetXpbdDuals');
+            const pXpbdSeam   = await mk('solveXpbdSeamBatch');
+            const pXpbdFace   = await mk('solveXpbdFaceBatch');
+            const pXpbdHinge  = await mk('solveXpbdHingeBatch');
+            const pAvbd       = await mk('solveAvbdColorBatch');
+            const pFinalize   = await mk('finalizeSubstep');
+            const pipeErr = await device.popErrorScope?.();
+            if (pipeErr)
+            {
+                console.warn('WebGPU pipeline validation error; falling back to CPU:', pipeErr.message);
+                return null;
+            }
+
+            const accel = new WebGpuClothAccelerator(device, adapter.info?.description || 'WebGPU Hardware Compute', {
+                module, bgl, pPredict, pResetDuals, pXpbdSeam, pXpbdFace, pXpbdHinge, pAvbd, pFinalize,
+            });
+            const probeOk = await accel._runComputeSelfTest();
+            if (!probeOk)
+            {
+                console.warn('WebGPU compute self-test failed; falling back to CPU.');
+                return null;
+            }
+            return accel;
         }
-        catch
+        catch (err)
         {
+            console.warn('WebGPU init failed; falling back to CPU:', err);
             return null;
         }
     }
 
-    constructor(device, adapterName)
+    constructor(device, adapterName, prebuilt = null)
     {
         this.device = device;
         this.adapterName = adapterName;
-        this.module = device.createShaderModule({ code: CLOTH_COMPUTE_WGSL });
-        this.bgl = device.createBindGroupLayout({
-            entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-                { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-                { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-                { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-            ],
-        });
-        const layout = device.createPipelineLayout({ bindGroupLayouts: [this.bgl] });
-        const mk = (entryPoint) => device.createComputePipeline({ layout, compute: { module: this.module, entryPoint } });
-        this.pPredict = mk('predictInertia');
-        this.pResetDuals = mk('resetXpbdDuals');
-        this.pXpbdSeam = mk('solveXpbdSeamBatch');
-        this.pXpbdFace = mk('solveXpbdFaceBatch');
-        this.pXpbdHinge = mk('solveXpbdHingeBatch');
-        this.pAvbd = mk('solveAvbdColorBatch');
-        this.pFinalize = mk('finalizeSubstep');
+        this.deviceLost = false;
+        if (device.lost && typeof device.lost.then === 'function')
+            device.lost.then(() => { this.deviceLost = true; }).catch(() => { this.deviceLost = true; });
 
-        this.networkKey = null;
+        if (prebuilt)
+        {
+            this.module = prebuilt.module;
+            this.bgl = prebuilt.bgl;
+            this.pPredict = prebuilt.pPredict;
+            this.pResetDuals = prebuilt.pResetDuals;
+            this.pXpbdSeam = prebuilt.pXpbdSeam;
+            this.pXpbdFace = prebuilt.pXpbdFace;
+            this.pXpbdHinge = prebuilt.pXpbdHinge;
+            this.pAvbd = prebuilt.pAvbd;
+            this.pFinalize = prebuilt.pFinalize;
+        }
+        else
+        {
+            this.module = device.createShaderModule({ code: CLOTH_COMPUTE_WGSL });
+            this.bgl = device.createBindGroupLayout({
+                entries: [
+                    { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 160 } },
+                    { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                    { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                    { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                    { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                    { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                    { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                    { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                    { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                ],
+            });
+            const layout = device.createPipelineLayout({ bindGroupLayouts: [this.bgl] });
+            const mk = (entryPoint) => device.createComputePipeline({ layout, compute: { module: this.module, entryPoint } });
+            this.pPredict = mk('predictInertia');
+            this.pResetDuals = mk('resetXpbdDuals');
+            this.pXpbdSeam = mk('solveXpbdSeamBatch');
+            this.pXpbdFace = mk('solveXpbdFaceBatch');
+            this.pXpbdHinge = mk('solveXpbdHingeBatch');
+            this.pAvbd = mk('solveAvbdColorBatch');
+            this.pFinalize = mk('finalizeSubstep');
+        }
+
+        this.uniAlign = Math.max(256, device.limits?.minUniformBufferOffsetAlignment || 256);
+        this.maxUniSlots = 2048;
+        this.uploadedNetwork = null;
         this.sdfGeneration = -1;
+        this.firstStepValidated = false;
         this.buffers = null;
-        this.uniformArray = new ArrayBuffer(128);
-        this.uF32 = new Float32Array(this.uniformArray);
-        this.uU32 = new Uint32Array(this.uniformArray);
-        this.uI32 = new Int32Array(this.uniformArray);
+        this.uniRingBytes = new ArrayBuffer(this.maxUniSlots * this.uniAlign);
+        this.uF32 = new Float32Array(this.uniRingBytes);
+        this.uU32 = new Uint32Array(this.uniRingBytes);
+        this.uI32 = new Int32Array(this.uniRingBytes);
+    }
+
+    _ensureUniCapacity(neededSlots)
+    {
+        if (neededSlots <= this.maxUniSlots) return;
+        let next = this.maxUniSlots;
+        while (next < neededSlots) next *= 2;
+        this.maxUniSlots = next;
+        this.uniRingBytes = new ArrayBuffer(this.maxUniSlots * this.uniAlign);
+        this.uF32 = new Float32Array(this.uniRingBytes);
+        this.uU32 = new Uint32Array(this.uniRingBytes);
+        this.uI32 = new Int32Array(this.uniRingBytes);
+        if (this.buffers)
+        {
+            const b = this.buffers;
+            b.uniBuf?.destroy?.();
+            b.uniBuf = this.device.createBuffer({
+                size: this.maxUniSlots * this.uniAlign,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            });
+            b.bg = this.device.createBindGroup({
+                layout: this.bgl,
+                entries: [
+                    { binding: 0, resource: { buffer: b.uniBuf, offset: 0, size: 160 } },
+                    { binding: 1, resource: { buffer: b.posBuf } },
+                    { binding: 2, resource: { buffer: b.prvBuf } },
+                    { binding: 3, resource: { buffer: b.velBuf } },
+                    { binding: 4, resource: { buffer: b.inrBuf } },
+                    { binding: 5, resource: { buffer: b.dualBuf } },
+                    { binding: 6, resource: { buffer: b.topoBuf } },
+                    { binding: 7, resource: { buffer: b.restBuf } },
+                    { binding: 8, resource: { buffer: b.sdfBuf } },
+                ],
+            });
+        }
+    }
+
+    async _runComputeSelfTest()
+    {
+        const mk = (size, usage) => this.device.createBuffer({ size, usage });
+        const posBuf  = mk(16, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC);
+        const prvBuf  = mk(16, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
+        const velBuf  = mk(16, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
+        const inrBuf  = mk(16, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
+        const dualBuf = mk(16, GPUBufferUsage.STORAGE);
+        const topoBuf = mk(16, GPUBufferUsage.STORAGE);
+        const restBuf = mk(16, GPUBufferUsage.STORAGE);
+        const sdfBuf  = mk(16, GPUBufferUsage.STORAGE);
+        const uniBuf  = mk(256, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
+        const readBuf = mk(16, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
+
+        try
+        {
+            this.device.pushErrorScope?.('validation');
+            this.device.queue.writeBuffer(posBuf, 0, new Float32Array([0, 1.0, 0, 0]));
+            this.device.queue.writeBuffer(velBuf, 0, new Float32Array([0, 0, 0, 0]));
+            this.device.queue.writeBuffer(inrBuf, 0, new Float32Array([0, 1.0, 0, 100.0]));
+
+            const uArr = new ArrayBuffer(160);
+            const f = new Float32Array(uArr), u = new Uint32Array(uArr), ii = new Int32Array(uArr);
+            f[0] = 0.016; f[1] = 62.5; f[2] = 3906.25; f[3] = 1.0;
+            f[4] = -9.81; f[5] = 0.99;
+            u[16] = 1; u[17] = 0; u[18] = 1; ii[19] = -1;
+            f[24] = -1; f[25] = -1; f[26] = -1;
+            f[28] = 1; f[29] = 1; f[30] = 1;
+            u[32] = 2; u[33] = 2; u[34] = 2; u[35] = 0;
+            this.device.queue.writeBuffer(uniBuf, 0, uArr);
+
+            const bg = this.device.createBindGroup({
+                layout: this.bgl,
+                entries: [
+                    { binding: 0, resource: { buffer: uniBuf, offset: 0, size: 160 } },
+                    { binding: 1, resource: { buffer: posBuf } },
+                    { binding: 2, resource: { buffer: prvBuf } },
+                    { binding: 3, resource: { buffer: velBuf } },
+                    { binding: 4, resource: { buffer: inrBuf } },
+                    { binding: 5, resource: { buffer: dualBuf } },
+                    { binding: 6, resource: { buffer: topoBuf } },
+                    { binding: 7, resource: { buffer: restBuf } },
+                    { binding: 8, resource: { buffer: sdfBuf } },
+                ],
+            });
+            const enc = this.device.createCommandEncoder();
+            const pass = enc.beginComputePass();
+            pass.setPipeline(this.pPredict);
+            pass.setBindGroup(0, bg, [0]);
+            pass.dispatchWorkgroups(1);
+            pass.end();
+            enc.copyBufferToBuffer(posBuf, 0, readBuf, 0, 16);
+            this.device.queue.submit([enc.finish()]);
+
+            const err = await this.device.popErrorScope?.();
+            if (err) return false;
+            await readBuf.mapAsync(GPUMapMode.READ);
+            const out = new Float32Array(readBuf.getMappedRange()).slice();
+            readBuf.unmap();
+            return Number.isFinite(out[1]) && out[1] < 0.9999;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            for (const b of [posBuf, prvBuf, velBuf, inrBuf, dualBuf, topoBuf, restBuf, sdfBuf, uniBuf, readBuf])
+                b.destroy?.();
+        }
     }
 
     supportsSolver(mode)
     {
-        return mode === 'avbd' || mode === 'xpbd';
+        return !this.deviceLost && (mode === 'avbd' || mode === 'xpbd');
     }
 
     ensureUploaded(solver)
@@ -691,7 +880,7 @@ export class WebGpuClothAccelerator
         const nPts = net.pointCount;
         const nDual = Math.max(16, net.faceCount * 3 + net.hingeCount + net.seamCount);
 
-        if (this.networkKey === net.key && this.buffers && this.buffers.nPts === nPts && this.buffers.nDual === nDual)
+        if (this.uploadedNetwork === net && this.buffers && this.buffers.nPts === nPts && this.buffers.nDual === nDual)
         {
             if (this.sdfGeneration !== solver.mannequin.sdfGeneration)
             {
@@ -700,6 +889,12 @@ export class WebGpuClothAccelerator
                 this.sdfGeneration = solver.mannequin.sdfGeneration;
             }
             return;
+        }
+
+        if (this.buffers)
+        {
+            for (const k of ['posBuf', 'prvBuf', 'velBuf', 'inrBuf', 'dualBuf', 'topoBuf', 'restBuf', 'sdfBuf', 'uniBuf', 'readPos', 'readVel'])
+                this.buffers[k]?.destroy?.();
         }
 
         const { u32Topo, f32Rest } = packGpuNetworkTables(solver);
@@ -714,7 +909,7 @@ export class WebGpuClothAccelerator
         const topoBuf = mkBuf(u32Topo.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
         const restBuf = mkBuf(f32Rest.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
         const sdfBuf  = mkBuf(solver.mannequin.sdfValues.byteLength, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
-        const uniBuf  = mkBuf(128, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
+        const uniBuf  = mkBuf(this.maxUniSlots * this.uniAlign, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
         const readPos = mkBuf(nPts * 12, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
         const readVel = mkBuf(nPts * 12, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
 
@@ -725,7 +920,7 @@ export class WebGpuClothAccelerator
         const bg = this.device.createBindGroup({
             layout: this.bgl,
             entries: [
-                { binding: 0, resource: { buffer: uniBuf } },
+                { binding: 0, resource: { buffer: uniBuf, offset: 0, size: 160 } },
                 { binding: 1, resource: { buffer: posBuf } },
                 { binding: 2, resource: { buffer: prvBuf } },
                 { binding: 3, resource: { buffer: velBuf } },
@@ -738,8 +933,9 @@ export class WebGpuClothAccelerator
         });
 
         this.buffers = { nPts, nDual, posBuf, prvBuf, velBuf, inrBuf, dualBuf, topoBuf, restBuf, sdfBuf, uniBuf, readPos, readVel, bg };
-        this.networkKey = net.key;
+        this.uploadedNetwork = net;
         this.sdfGeneration = solver.mannequin.sdfGeneration;
+        this.firstStepValidated = false;
     }
 
     async stepFrame(solver, dtFrame = 1 / 60)
@@ -754,7 +950,14 @@ export class WebGpuClothAccelerator
         const tex = solver.textile;
         const man = solver.mannequin;
 
-        // Upload positions, velocities & packed (xTilde.xyz, invMass)
+        if (b.readPos.mapState && b.readPos.mapState !== 'unmapped') b.readPos.unmap();
+        if (b.readVel.mapState && b.readVel.mapState !== 'unmapped') b.readVel.unmap();
+
+        const checkMotionOnFirstFrame = !this.firstStepValidated;
+        const prevFramePos = checkMotionOnFirstFrame ? new Float32Array(solver.positions) : null;
+        const validateScope = checkMotionOnFirstFrame && typeof this.device.pushErrorScope === 'function';
+        if (validateScope) this.device.pushErrorScope('validation');
+
         const inrPack = new Float32Array(net.pointCount * 4);
         for (let i = 0; i < net.pointCount; ++i)
         {
@@ -771,109 +974,56 @@ export class WebGpuClothAccelerator
         const h = Math.max(1e-4, dtFrame / nSub);
         const iters = Math.max(4, Math.round(solver.iterations));
 
-        const writeUni = (bStart, bEnd, zipAlpha) =>
+        const perIterColors = solver.solverMode === 'avbd'
+            ? net.pointBatches.colorCount
+            : (net.seamBatches.colorCount + net.faceBatches.colorCount + net.hingeBatches.colorCount);
+        const maxNeededSlots = nSub * (3 + iters * perIterColors);
+        this._ensureUniCapacity(maxNeededSlots);
+
+        const strideDwords = this.uniAlign >> 2;
+        const dispatches = [];
+        let slotIdx = 0;
+
+        const queueDispatch = (pipeline, count, bStart, bEnd, zipAlpha) =>
         {
+            if (slotIdx >= this.maxUniSlots)
+                throw new Error('WebGPU uniform ring overflow');
+            const base = slotIdx * strideDwords;
             const f = this.uF32, u = this.uU32, ii = this.uI32;
             const drag = Math.exp(-h * (0.45 + 18.0 * (tex.damping || 0.014)) * solver.dampingScale);
             const wRad = (solver.windAngleDeg * Math.PI) / 180.0;
             const lockRad = ((tex.lockingAngleDeg ?? 16.0) * Math.PI) / 180.0;
 
-            f[0] = h; f[1] = 1.0 / h; f[2] = 1.0 / (h * h); f[3] = zipAlpha;
-            f[4] = -9.81; f[5] = drag;
-            f[6] = tex.warpModulus || 1500; f[7] = tex.weftModulus || 1300;
-            f[8] = tex.shearModulus || 250; f[9] = tex.wallModulus || 14000;
-            f[10] = (tex.warpCrimpPct || 2.0) * 0.01; f[11] = (tex.weftCrimpPct || 2.5) * 0.01;
-            f[12] = tex.compressionRatio ?? 0.05; f[13] = Math.max(0.04, (tex.bendRigidity || 0.35) * 0.32);
-            f[14] = Math.max(0.0014, (tex.thicknessMm || 0.34) * 0.0015 + 0.0011);
-            f[15] = tex.frictionKinetic ?? 0.34;
-            u[16] = net.pointCount; u[17] = bStart; u[18] = bEnd; ii[19] = solver.grabVertex;
-            f[20] = solver.grabTarget[0]; f[21] = solver.grabTarget[1]; f[22] = solver.grabTarget[2];
-            f[23] = Math.max(0.08, Math.sin(lockRad));
-            f[24] = man.sdfOrigin[0]; f[25] = man.sdfOrigin[1]; f[26] = man.sdfOrigin[2];
-            f[27] = solver.windEnabled ? Math.sin(wRad) * solver.windSpeed : 0.0;
-            f[28] = man.sdfStep[0];   f[29] = man.sdfStep[1];   f[30] = man.sdfStep[2];
-            f[31] = solver.windEnabled ? Math.cos(wRad) * solver.windSpeed : 0.0;
-            // Wait: 32 floats = 128 bytes — keep offsets via uU32 tail!
-        };
+            f[base + 0] = h; f[base + 1] = 1.0 / h; f[base + 2] = 1.0 / (h * h); f[base + 3] = zipAlpha;
+            f[base + 4] = -9.81; f[base + 5] = drag;
+            f[base + 6] = tex.warpModulus || 1500; f[base + 7] = tex.weftModulus || 1300;
+            f[base + 8] = tex.shearModulus || 250; f[base + 9] = tex.wallModulus || 14000;
+            f[base + 10] = (tex.warpCrimpPct || 2.0) * 0.01; f[base + 11] = (tex.weftCrimpPct || 2.5) * 0.01;
+            f[base + 12] = tex.compressionRatio ?? 0.05; f[base + 13] = Math.max(0.04, (tex.bendRigidity || 0.35) * 0.32);
+            f[base + 14] = Math.max(0.0014, (tex.thicknessMm || 0.34) * 0.0015 + 0.0011);
+            f[base + 15] = tex.frictionKinetic ?? 0.34;
+            u[base + 16] = net.pointCount; u[base + 17] = bStart; u[base + 18] = bEnd; ii[base + 19] = solver.grabVertex;
+            f[base + 20] = solver.grabTarget[0]; f[base + 21] = solver.grabTarget[1]; f[base + 22] = solver.grabTarget[2];
+            f[base + 23] = Math.max(0.08, Math.sin(lockRad));
+            f[base + 24] = man.sdfOrigin[0]; f[base + 25] = man.sdfOrigin[1]; f[base + 26] = man.sdfOrigin[2];
+            f[base + 27] = solver.windEnabled ? Math.sin(wRad) * solver.windSpeed : 0.0;
+            f[base + 28] = man.sdfStep[0];   f[base + 29] = man.sdfStep[1];   f[base + 30] = man.sdfStep[2];
+            f[base + 31] = solver.windEnabled ? Math.cos(wRad) * solver.windSpeed : 0.0;
+            u[base + 32] = man.sdfDim[0]; u[base + 33] = man.sdfDim[1]; u[base + 34] = man.sdfDim[2]; u[base + 35] = solver.windEnabled ? 1 : 0;
+            u[base + 36] = 0;
+            u[base + 37] = net.faceCount * 3 + net.hingeCount;
+            u[base + 38] = net.faceCount;
+            u[base + 39] = net.seamCount;
 
-        // Expand uniform to 144 bytes (36 dwords) for sdfDim + dualOffsets
-        if (this.uniformArray.byteLength < 144)
-        {
-            this.uniformArray = new ArrayBuffer(144);
-            this.uF32 = new Float32Array(this.uniformArray);
-            this.uU32 = new Uint32Array(this.uniformArray);
-            this.uI32 = new Int32Array(this.uniformArray);
-            this.buffers.uniBuf = this.device.createBuffer({ size: 144, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-            this.buffers.bg = this.device.createBindGroup({
-                layout: this.bgl,
-                entries: [
-                    { binding: 0, resource: { buffer: this.buffers.uniBuf } },
-                    { binding: 1, resource: { buffer: b.posBuf } },
-                    { binding: 2, resource: { buffer: b.prvBuf } },
-                    { binding: 3, resource: { buffer: b.velBuf } },
-                    { binding: 4, resource: { buffer: b.inrBuf } },
-                    { binding: 5, resource: { buffer: b.dualBuf } },
-                    { binding: 6, resource: { buffer: b.topoBuf } },
-                    { binding: 7, resource: { buffer: b.restBuf } },
-                    { binding: 8, resource: { buffer: b.sdfBuf } },
-                ],
-            });
-        }
-
-        const fillUni = (bStart, bEnd, zipAlpha) =>
-        {
-            writeUni(bStart, bEnd, zipAlpha);
-            const u = this.uU32;
-            u[32] = man.sdfDim[0]; u[33] = man.sdfDim[1]; u[34] = man.sdfDim[2]; u[35] = solver.windEnabled ? 1 : 0;
-            // Pack dualOffsets at unused words if needed — note WGSL SimParams size: 160 bytes!
-        };
-
-        // Ensure 160-byte uniform alignment
-        if (this.uniformArray.byteLength < 160)
-        {
-            this.uniformArray = new ArrayBuffer(160);
-            this.uF32 = new Float32Array(this.uniformArray);
-            this.uU32 = new Uint32Array(this.uniformArray);
-            this.uI32 = new Int32Array(this.uniformArray);
-            this.buffers.uniBuf = this.device.createBuffer({ size: 160, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-            this.buffers.bg = this.device.createBindGroup({
-                layout: this.bgl,
-                entries: [
-                    { binding: 0, resource: { buffer: this.buffers.uniBuf } },
-                    { binding: 1, resource: { buffer: b.posBuf } },
-                    { binding: 2, resource: { buffer: b.prvBuf } },
-                    { binding: 3, resource: { buffer: b.velBuf } },
-                    { binding: 4, resource: { buffer: b.inrBuf } },
-                    { binding: 5, resource: { buffer: b.dualBuf } },
-                    { binding: 6, resource: { buffer: b.topoBuf } },
-                    { binding: 7, resource: { buffer: b.restBuf } },
-                    { binding: 8, resource: { buffer: b.sdfBuf } },
-                ],
-            });
-        }
-
-        const dispatch = (pipeline, count, bStart, bEnd, zipAlpha) =>
-        {
-            fillUni(bStart, bEnd, zipAlpha);
-            this.uU32[36] = 0;
-            this.uU32[37] = net.faceCount * 3 + net.hingeCount;
-            this.uU32[38] = net.faceCount;
-            this.uU32[39] = net.seamCount;
-            this.device.queue.writeBuffer(this.buffers.uniBuf, 0, this.uniformArray);
-            const enc = this.device.createCommandEncoder();
-            const pass = enc.beginComputePass();
-            pass.setPipeline(pipeline);
-            pass.setBindGroup(0, this.buffers.bg);
-            pass.dispatchWorkgroups(Math.max(1, Math.ceil(count / 64)));
-            pass.end();
-            this.device.queue.submit([enc.finish()]);
+            dispatches.push({ pipeline, wg: Math.max(1, Math.ceil(count / 64)), dynOff: slotIdx * this.uniAlign });
+            slotIdx++;
         };
 
         for (let sub = 0; sub < nSub; ++sub)
         {
             solver.substepCountTotal++;
             const zipAlpha = Math.max(0.14, Math.min(1.0, (solver.substepCountTotal - 2) / 28.0));
-            dispatch(this.pPredict, net.pointCount, 0, net.pointCount, zipAlpha);
+            queueDispatch(this.pPredict, net.pointCount, 0, net.pointCount, zipAlpha);
 
             if (solver.solverMode === 'avbd')
             {
@@ -882,39 +1032,57 @@ export class WebGpuClothAccelerator
                     for (let c = 0; c < net.pointBatches.colorCount; ++c)
                     {
                         const s0 = net.pointBatches.offsets[c], s1 = net.pointBatches.offsets[c + 1];
-                        if (s1 > s0) dispatch(this.pAvbd, s1 - s0, s0, s1, zipAlpha);
+                        if (s1 > s0) queueDispatch(this.pAvbd, s1 - s0, s0, s1, zipAlpha);
                     }
                 }
             }
             else
             {
-                dispatch(this.pResetDuals, b.nDual, 0, b.nDual, zipAlpha);
+                queueDispatch(this.pResetDuals, b.nDual, 0, b.nDual, zipAlpha);
                 for (let it = 0; it < iters; ++it)
                 {
                     for (let c = 0; c < net.seamBatches.colorCount; ++c)
                     {
                         const s0 = net.seamBatches.offsets[c], s1 = net.seamBatches.offsets[c + 1];
-                        if (s1 > s0) dispatch(this.pXpbdSeam, s1 - s0, s0, s1, zipAlpha);
+                        if (s1 > s0) queueDispatch(this.pXpbdSeam, s1 - s0, s0, s1, zipAlpha);
                     }
                     for (let c = 0; c < net.faceBatches.colorCount; ++c)
                     {
                         const s0 = net.faceBatches.offsets[c], s1 = net.faceBatches.offsets[c + 1];
-                        if (s1 > s0) dispatch(this.pXpbdFace, s1 - s0, s0, s1, zipAlpha);
+                        if (s1 > s0) queueDispatch(this.pXpbdFace, s1 - s0, s0, s1, zipAlpha);
                     }
                     for (let c = 0; c < net.hingeBatches.colorCount; ++c)
                     {
                         const s0 = net.hingeBatches.offsets[c], s1 = net.hingeBatches.offsets[c + 1];
-                        if (s1 > s0) dispatch(this.pXpbdHinge, s1 - s0, s0, s1, zipAlpha);
+                        if (s1 > s0) queueDispatch(this.pXpbdHinge, s1 - s0, s0, s1, zipAlpha);
                     }
                 }
             }
-            dispatch(this.pFinalize, net.pointCount, 0, net.pointCount, zipAlpha);
+            queueDispatch(this.pFinalize, net.pointCount, 0, net.pointCount, zipAlpha);
         }
 
-        const copyEnc = this.device.createCommandEncoder();
-        copyEnc.copyBufferToBuffer(b.posBuf, 0, b.readPos, 0, net.pointCount * 12);
-        copyEnc.copyBufferToBuffer(b.velBuf, 0, b.readVel, 0, net.pointCount * 12);
-        this.device.queue.submit([copyEnc.finish()]);
+        // Single bulk uniform ring upload + single GPUCommandEncoder submission for the whole frame
+        this.device.queue.writeBuffer(b.uniBuf, 0, this.uniRingBytes, 0, slotIdx * this.uniAlign);
+        const enc = this.device.createCommandEncoder();
+        const pass = enc.beginComputePass();
+        for (let k = 0; k < dispatches.length; ++k)
+        {
+            const d = dispatches[k];
+            pass.setPipeline(d.pipeline);
+            pass.setBindGroup(0, b.bg, [d.dynOff]);
+            pass.dispatchWorkgroups(d.wg);
+        }
+        pass.end();
+        enc.copyBufferToBuffer(b.posBuf, 0, b.readPos, 0, net.pointCount * 12);
+        enc.copyBufferToBuffer(b.velBuf, 0, b.readVel, 0, net.pointCount * 12);
+        this.device.queue.submit([enc.finish()]);
+
+        if (validateScope)
+        {
+            const stepErr = await this.device.popErrorScope();
+            if (stepErr)
+                throw new Error(`WebGPU validation error: ${stepErr.message}`);
+        }
 
         await b.readPos.mapAsync(GPUMapMode.READ);
         solver.positions.set(new Float32Array(b.readPos.getMappedRange()));
@@ -923,6 +1091,25 @@ export class WebGpuClothAccelerator
         await b.readVel.mapAsync(GPUMapMode.READ);
         solver.velocities.set(new Float32Array(b.readVel.getMappedRange()));
         b.readVel.unmap();
+
+        if (checkMotionOnFirstFrame)
+        {
+            let maxDisp = 0.0;
+            for (let i = 0; i < net.pointCount; ++i)
+            {
+                const p0 = solver.positions[i * 3], p1 = solver.positions[i * 3 + 1], p2 = solver.positions[i * 3 + 2];
+                if (!Number.isFinite(p0) || !Number.isFinite(p1) || !Number.isFinite(p2))
+                    throw new Error('WebGPU compute produced non-finite position');
+                if (solver.invMass[i] > 0)
+                {
+                    const d = Math.abs(p0 - prevFramePos[i * 3]) + Math.abs(p1 - prevFramePos[i * 3 + 1]) + Math.abs(p2 - prevFramePos[i * 3 + 2]);
+                    if (d > maxDisp) maxDisp = d;
+                }
+            }
+            if (solver.frameCount === 0 && maxDisp < 1e-7)
+                throw new Error('WebGPU compute produced zero vertex displacement on initial drape frame');
+            this.firstStepValidated = true;
+        }
 
         if (solver.selfCollisionEnabled)
         {

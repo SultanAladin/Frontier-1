@@ -93,7 +93,7 @@ export function mountAtelierUI({ app, refs })
 
         refs.notch.querySelector('#notch-garment').onchange = (e) => app.selectGarment(e.target.value);
         refs.notch.querySelector('#notch-solver').onchange = (e) => app.selectSolver(e.target.value);
-        refs.notch.querySelector('#notch-play').onclick = () => app.toggleTimelinePlay();
+        refs.notch.querySelector('#notch-play').onclick = () => app.toggleLivePlay();
         refs.notch.querySelector('#notch-step').onclick = () =>
         {
             app.stepOnce();
