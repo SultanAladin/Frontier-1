@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frontier · VectorFieldVisualizer (Project Zero GPU)</title>
+  <link rel="stylesheet" href="./ProjectZero.css" />
+</head>
+<body>
+  <div id="Editor">
+    <!-- Trapezoidal Project Zero Document Tab Strip -->
+    <header class="tab-strip" id="TabStrip">
+      <div id="ScenarioTabs" style="display:flex; align-items:end; overflow:hidden;"></div>
+      <button type="button" class="tab-add" id="BtnTabAdd" title="Construct Force (Ctrl+A)">+</button>
+      <div class="tab-strip-right">
+        <button type="button" class="tab-chip-btn" id="BtnToggleNotch" title="Toggle Command Notch">Controls</button>
+        <button type="button" class="tab-chip-btn" id="BtnTriggerImpulse" title="Trigger Impulse Wavefronts">Impulse</button>
+        <button type="button" class="tab-chip-btn" id="BtnResetCamera" title="Reset Camera & Probe">Reset View</button>
+      </div>
+    </header>
+
+    <!-- Collapsible Project Zero Control Notch -->
+    <section class="control-dashboard hidden" id="ControlNotch">
+      <div class="notch-group">
+        <span class="notch-label">Quick Construct</span>
+        <button type="button" class="tab-chip-btn" id="BtnQuickFormula" style="border-color:#ffb45455; color:#ffd79a;">+ Formula Eq</button>
+        <button type="button" class="tab-chip-btn" data-quick-add="LinearWind">+ Wind</button>
+        <button type="button" class="tab-chip-btn" data-quick-add="Vortex">+ Vortex</button>
+        <button type="button" class="tab-chip-btn" data-quick-add="RadialBurst">+ Shockwave</button>
+        <button type="button" class="tab-chip-btn" data-quick-add="CurlNoise">+ Curl ∇×ψ</button>
+        <button type="button" class="tab-chip-btn" data-quick-add="MagneticDipole">+ Dipole</button>
+        <button type="button" class="tab-chip-btn" data-quick-add="Drag">+ Drag Baffle</button>
+      </div>
+      <div class="notch-group">
+        <span class="notch-label">Scene Actions</span>
+        <button type="button" class="tab-chip-btn" id="BtnFocusSelected">Focus Selected</button>
+        <button type="button" class="tab-chip-btn" id="BtnResetProbe">Center Probe</button>
+        <button type="button" class="tab-chip-btn" id="BtnClearSolo">Clear Solo</button>
+      </div>
+    </section>
+
+    <!-- Three-Dock Project Zero Workspace -->
+    <main class="workspace">
+      <!-- LEFT DOCK: OUTLINER -->
+      <aside class="dock left">
+        <div class="outliner-heading">
+          <h1>OUTLINER</h1>
+          <small id="OutlinerSubtitle">19 ForceModels</small>
+          <button type="button" class="icon-round" id="BtnOutlinerNotch" title="Quick Actions">⚙</button>
+        </div>
+
+        <div class="stats">
+          <button type="button" id="BtnStatActive" class="active-filter" title="Show Active Forces">
+            <span class="status-disc">✓</span>
+            <small>ACTIVE</small>
+            <strong id="StatActiveCount">0</strong>
+          </button>
+          <button type="button" id="BtnStatMuted" title="Filter Muted Forces">
+            <span class="muted-disc">⊘</span>
+            <small>MUTED</small>
+            <strong id="StatMutedCount">0</strong>
+          </button>
+        </div>
+
+        <div class="outliner-search">
+          <label>
+            <span>⌕</span>
+            <input type="search" id="OutlinerSearchInput" placeholder="Search 19 force laws..." />
+          </label>
+          <button type="button" id="BtnOutlinerMuteFilter">All</button>
+        </div>
+
+        <div class="filter-chips" id="SystemFilterChips">
+          <button type="button" class="active" data-sys="All">All</button>
+          <button type="button" data-sys="VectorField">Vector</button>
+          <button type="button" data-sys="FlowField">Flow</button>
+          <button type="button" data-sys="TurbulenceField">Turbulence</button>
+        </div>
+
+        <div class="outliner-rows" id="OutlinerRows"></div>
+
+        <footer class="outliner-footer">
+          <span><small>RENDERER</small><b id="FooterFps">REALTIME · 60 FPS</b></span>
+          <span><small>STREAMLINES</small><b id="FooterStreamMode">BOKEH RIBBONS</b></span>
+          <span><small>CASCADES</small><b id="FooterBudget">4 × 4.0 MB</b></span>
+        </footer>
+      </aside>
+
+      <!-- CENTER DOCK: VIEWPORT -->
+      <section class="dock center">
+        <div class="viewport-toolbar">
+          <div class="viewport-heading-row">
+            <div class="viewport-identity">
+              <h2 id="ViewportScenarioTitle">Wind &amp; Vortex Lab</h2>
+              <span class="viewport-preview-badge" id="ViewportGpuBadge">GPU WebGL2 · 19 Laws</span>
+            </div>
+            <div class="viewport-modes" id="ViewportModes">
+              <button type="button" data-mode="edit">EDIT</button>
+              <button type="button" class="active" data-mode="sim">SIM</button>
+              <button type="button" data-mode="play">PLAY</button>
+              <button type="button" class="vp-transport-btn" id="BtnPlayPause" title="Pause / Resume Simulation (Space)">⏸</button>
+              <button type="button" class="vp-transport-btn" id="BtnResetTime" title="Rewind to t = 0.0 s">⏮</button>
+              <span class="vp-time-pill" id="ViewportTimeBadge">t 1.8s</span>
+            </div>
+          </div>
+
+          <div class="viewport-action-row">
+            <button type="button" class="viewport-construct" id="BtnConstructOpen">
+              <span>+ Construct</span>
+              <kbd>Ctrl+A</kbd>
+            </button>
+
+            <select class="viewport-projection" id="SelectViewProjection" aria-label="Viewport Mode">
+              <option value="3d">3D Perspective</option>
+              <option value="split">Split 3D | 2D</option>
+              <option value="2d">2D Slice Ortho</option>
+            </select>
+
+            <div class="viewport-chip-group" id="SliceAxisButtons">
+              <button type="button" class="active" data-axis="XZ" title="Toggle XZ horizontal slice">XZ</button>
+              <button type="button" data-axis="XY" title="Toggle XY front vertical slice">XY</button>
+              <button type="button" data-axis="YZ" title="Toggle YZ side vertical slice">YZ</button>
+              <button type="button" data-axis="ALL" title="Toggle all 3 orthogonal slices (XZ + XY + YZ)">All 3</button>
+            </div>
+
+            <div class="viewport-chip-group" id="VizLayerToggles">
+              <button type="button" class="active" data-layer="Heatmap">Heatmap</button>
+              <button type="button" class="active" data-layer="Vectors">Vectors</button>
+              <button type="button" class="active" data-layer="BokehRibbons" title="Toggle Bokeh Stream Ribbons Debug Visualizer">Bokeh</button>
+              <button type="button" data-layer="Streamlines" title="Toggle Static Bidirectional RK4 Streamlines">Streams</button>
+              <button type="button" class="active" data-layer="Bounds">Bounds</button>
+            </div>
+
+            <div class="stream-pop-wrap" id="StreamVisWrap">
+              <select class="viewport-projection" id="SelectStreamVis" aria-label="Streamline Visualization Mode">
+                <option value="FieldPalette">Streams: Speed Color</option>
+                <option value="CyanSingle">Streams: Single Cyan</option>
+                <option value="CustomSingle">Streams: Custom Color</option>
+                <option value="Elevation">Streams: Altitude</option>
+              </select>
+              <button type="button" class="viewport-projection stream-pop-btn" id="BtnStreamOptions" title="Streamline Color, Thickness, Emissive, Resolution &amp; Line Count">Style ▾</button>
+              <div class="stream-popover hidden" id="StreamOptionsPopover"></div>
+            </div>
+
+            <span class="viewport-spacer"></span>
+          </div>
+        </div>
+
+        <div class="scene-image" id="SceneImageFrame">
+          <div class="gpu-mount" id="GpuViewportMount"></div>
+          <div class="compile-hud" id="ShaderCompileOverlay">
+            <div class="compile-hud-head">
+              <span id="ShaderProgressTitle">Initializing WebGL2 GPU Pipeline...</span>
+              <span id="ShaderProgressPct">0%</span>
+            </div>
+            <div class="compile-hud-track"><div class="compile-hud-fill" id="ShaderProgressFill"></div></div>
+            <div class="compile-hud-stages" id="ShaderStageList"></div>
+            <div class="compile-hud-err hidden" id="ShaderCompileError"></div>
+          </div>
+          <div class="split-divider"></div>
+          <span class="pane-badge left" id="LeftPaneBadge">3D GPU Field · Perspective</span>
+          <span class="pane-badge right" id="RightPaneBadge">2D Cross-Section · Ortho GPU</span>
+
+          <div class="zoom-hud" id="ZoomHud">
+            <button type="button" id="BtnZoomOut" title="Zoom Out (-)">−</button>
+            <span id="ZoomPctLabel">100%</span>
+            <button type="button" id="BtnZoomIn" title="Zoom In (+)">+</button>
+            <button type="button" id="BtnZoomFit" title="Fit Field (0)">Fit</button>
+          </div>
+
+          <div class="colorbar-hud">
+            <span id="ColorbarLabel">Speed</span>
+            <span>0</span>
+            <div class="colorbar-ramp" id="ColorbarRamp"></div>
+            <span id="ColorbarMax">34 m/s</span>
+          </div>
+
+          <svg class="view-axis" viewBox="0 0 80 80" aria-hidden="true">
+            <line x1="40" y1="42" x2="68" y2="42" stroke="#e27470" stroke-width="1.6"/>
+            <text x="71" y="45" fill="#e27470">X</text>
+            <line x1="40" y1="42" x2="40" y2="14" stroke="#67c485" stroke-width="1.6"/>
+            <text x="37" y="10" fill="#67c485">Y</text>
+            <line x1="40" y1="42" x2="21" y2="61" stroke="#6ea7e5" stroke-width="1.6"/>
+            <text x="12" y="68" fill="#6ea7e5">Z</text>
+            <circle cx="40" cy="42" r="2.5" fill="#eaeaea"/>
+          </svg>
+        </div>
+
+        <footer class="viewport-footer">
+          <span>
+            PROBE <b id="FooterProbePos">[-95, 16, 42] m</b> ·
+            |F| <b class="ok" id="FooterProbeMag">0.0 m/s</b> ·
+            |∇×F| <b id="FooterProbeCurl">0.000 /s</b> ·
+            ∇·F <b id="FooterProbeDiv">+0.000 /s</b>
+          </span>
+          <span>Drag Circle / Gizmo or Waypoints (A/B) · Wheel Zoom · Right-Drag Pan · Shift+Click Probe · Space Play/Pause</span>
+        </footer>
+      </section>
+
+      <!-- RIGHT DOCK: INSPECTOR + WIND ANEMOMETER -->
+      <aside class="dock right">
+        <div class="inspector-header">
+          <h2 id="InspectorTitle">Prevailing Linear Wind</h2>
+          <button type="button" class="tab-chip-btn" id="BtnDeleteSelected" title="Remove Selected Source">Delete</button>
+        </div>
+
+        <div class="inspector-tabs" id="InspectorTabs">
+          <button type="button" class="active" data-tab="field">Field</button>
+          <button type="button" data-tab="formula">Formula</button>
+          <button type="button" data-tab="layers">Layers</button>
+          <button type="button" data-tab="cache">Cache</button>
+        </div>
+
+        <div class="inspector-scroll" id="InspectorScroll">
+          <!-- TAB 1: FIELD & PROBE -->
+          <div id="TabPaneField" style="display:flex; flex-direction:column; gap:10px;">
+            <!-- Retained Project Zero Wind Anemometer -->
+            <section class="pcard wf-trace">
+              <div class="mp-hd">
+                <span class="mp-k">Anemometer · Probe Wind</span>
+                <span class="mp-badge" id="AnemBeaufortBadge">Bft 6 · Strong breeze</span>
+              </div>
+              <div class="mp-num-row">
+                <div class="mp-num" id="AnemSpeedDisplay">14<span class="mp-dec">.5</span><span class="mp-unit">m/s</span></div>
+                <span class="mp-dir-pill" id="AnemDirPill">SW · 228°</span>
+              </div>
+              <canvas id="AnemometerCanvas"></canvas>
+              <div class="mp-axis">
+                <span>-60 s</span>
+                <span>-30 s</span>
+                <span>now</span>
+              </div>
+              <p class="mp-spec" id="AnemDescText" style="margin:0;">
+                <strong>Beaufort 6</strong> — large branches move; composite flow at probe.
+              </p>
+              <div class="mp-rail">
+                <div class="mp-rail-cell"><small>Knots</small><b id="AnemKnots">28.2 kt</b></div>
+                <div class="mp-rail-cell"><small>km/h</small><b id="AnemKmh">52.2</b></div>
+                <div class="mp-rail-cell"><small>Dyn q</small><b id="AnemDynQ">129 Pa</b></div>
+                <div class="mp-rail-cell"><small>Altitude</small><b id="AnemAlt">16 m</b></div>
+              </div>
+              <div class="mp-duo">
+                <div class="mp-duo-box"><small>Gusting to (60s peak)</small><b id="AnemPeak">0.0 m/s</b></div>
+                <div class="mp-duo-box"><small>Lulling to (60s min)</small><b id="AnemLull">0.0 m/s</b></div>
+              </div>
+              <div class="wf-scale-bar"><span class="wf-scale-pin" id="BeaufortPin" style="left:38%;"></span></div>
+              <div class="wf-scale-ticks"><span>0 Calm</span><span>5 Fresh</span><span>8 Gale</span><span>12 Hurricane</span></div>
+            </section>
+
+            <!-- Probe Vector & Differential Tensor -->
+            <section class="property-card">
+              <div class="property-card-head">
+                <h3>Probe Sample</h3>
+                <small id="ProbeChannelCount">3 Channels</small>
+              </div>
+              <div class="axes">
+                <label class="axis-box x"><b>X</b><input type="number" id="ProbeInputX" step="5" /></label>
+                <label class="axis-box y"><b>Y</b><input type="number" id="ProbeInputY" step="2" /></label>
+                <label class="axis-box z"><b>Z</b><input type="number" id="ProbeInputZ" step="5" /></label>
+              </div>
+              <div class="metric-grid">
+                <div class="metric-cell"><small>Flow Velocity</small><b id="ProbeFlowVal">0.0 m/s</b></div>
+                <div class="metric-cell"><small>Acceleration</small><b id="ProbeAccelVal">0.0 m/s²</b></div>
+                <div class="metric-cell"><small>Vorticity |∇×F|</small><b id="ProbeCurlVal">0.000 /s</b></div>
+                <div class="metric-cell"><small>Divergence ∇·F</small><b id="ProbeDivVal">+0.000 /s</b></div>
+              </div>
+            </section>
+
+            <!-- Dynamic Selected Force Editor -->
+            <section class="property-card" id="SelectedForceCard"></section>
+          </div>
+
+          <!-- TAB 2: SYMBOLIC VECTOR FIELD LANGUAGE & GPU COMPILER -->
+          <div id="TabPaneFormula" style="display:none; flex-direction:column; gap:10px;">
+            <section class="property-card" id="FormulaCompilerCard"></section>
+          </div>
+
+          <!-- TAB 3: GPU VISUALIZATION LAYERS -->
+          <div id="TabPaneLayers" style="display:none; flex-direction:column; gap:10px;">
+            <section class="property-card" id="GpuLayersCard"></section>
+            <section class="property-card" id="StreamlineLayersCard"></section>
+          </div>
+
+          <!-- TAB 3: CASCADE CLIPMAP & TOML -->
+          <div id="TabPaneCache" style="display:none; flex-direction:column; gap:10px;">
+            <section class="property-card" id="SpatialCacheCard"></section>
+          </div>
+        </div>
+
+        <footer class="inspector-footer">
+          <span id="InspectorFooterLeft">EvalCompositeGPU · 20 slots</span>
+          <span id="InspectorFooterRight">SimulationSpace Ready</span>
+        </footer>
+      </aside>
+    </main>
+  </div>
+
+  <!-- PROJECT ZERO .CONSTRUCT-DIALOG (19-LAW FORCE MODEL PALETTE) -->
+  <div class="construct-backdrop hidden" id="ConstructBackdrop">
+    <div class="construct-dialog" role="dialog" aria-label="Construct Force Model">
+      <div class="construct-head">
+        <div>
+          <h2>Construct Force Model</h2>
+          <small>Choose from all 19 ForceModel physical laws across Vector, Flow &amp; Turbulence</small>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <input type="search" id="ConstructSearchInput" placeholder="Filter 19 laws..." />
+          <button type="button" id="BtnConstructClose">Close</button>
+        </div>
+      </div>
+      <div class="construct-body" id="ConstructGridContainer"></div>
+    </div>
+  </div>
+
+  <script type="module" src="./VectorFieldVisualizer.js"></script>
+</body>
+</html>

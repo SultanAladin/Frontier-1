@@ -1,0 +1,2002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Project-Zero · Particle Texture Studio</title>
+<style>
+  @font-face {
+    font-family: "DM Sans";
+    src: url("./Fonts/dm-sans-latin-300-normal.woff2") format("woff2");
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "DM Sans";
+    src: url("./Fonts/dm-sans-latin-400-normal.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "DM Sans";
+    src: url("./Fonts/dm-sans-latin-500-normal.woff2") format("woff2");
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  :root {
+    --ws-bg: #090909;
+    --ws-strip: #0a0a0a;
+    --ws-dock: #121212;
+    --ws-panel: #151515;
+    --ws-card: #191919;
+    --ws-card-hi: #222222;
+    --ws-tab: #222226;
+    --ws-tab-hover: #2d2d33;
+    --ws-border: #ffffff0d;
+    --ws-border-mid: #2c2c2c;
+    --ws-text: #f0f0f0;
+    --ws-text-2: #b8b8b8;
+    --ws-muted: #7a7a7a;
+    --ws-dim: #555555;
+    --ws-accent: #c9b49a;
+    --ws-green: #34c759;
+    --ws-font: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --ws-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--ws-bg); color: var(--ws-text);
+    font-family: var(--ws-font); font-size: 13px; font-weight: 300;
+    user-select: none; -webkit-font-smoothing: antialiased;
+  }
+
+  button, input, select { font: inherit; color: inherit; }
+  button {
+    cursor: pointer; border: 1px solid var(--ws-border);
+    background: #222; border-radius: 16px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 28px; padding: 5px 12px; transition: background 0.14s ease, border-color 0.14s ease;
+  }
+  button:hover { background: #2e2e2e; }
+  button:active { background: #383838; }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 1px solid var(--ws-accent); outline-offset: 2px;
+  }
+
+  select {
+    min-width: 0; height: 30px; border-radius: 16px;
+    background: #191919; border: 1px solid var(--ws-border-mid);
+    padding: 4px 12px; font-size: 11px; color: #d6d6d6; outline: none; cursor: pointer;
+  }
+  option { background: #1a1a1a; color: #f0f0f0; }
+
+  /* Exact Project Zero tactile pill range slider */
+  input[type="range"] {
+    appearance: none; -webkit-appearance: none;
+    width: 100%; height: 24px; border: 0; border-radius: 30px;
+    background: linear-gradient(90deg, #484848 0 var(--fill, 50%), #242424 var(--fill, 50%) 100%);
+    cursor: ew-resize; margin: 0; outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    appearance: none; width: 22px; height: 22px; border-radius: 50%;
+    background: #e4e4e4; box-shadow: 0 1px 3px rgba(0,0,0,0.65);
+    border: 1px solid #ffffff30;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 22px; height: 22px; border: 0; border-radius: 50%;
+    background: #e4e4e4; box-shadow: 0 1px 3px rgba(0,0,0,0.65);
+  }
+
+  /* 3-Pane Project Zero Editor Shell */
+  .pz-shell {
+    display: grid;
+    grid-template-columns: 294px 1fr 336px;
+    gap: 4px;
+    width: 100vw; height: 100vh;
+    background: var(--ws-bg);
+  }
+  .pz-dock {
+    display: flex; flex-direction: column;
+    min-width: 0; min-height: 0;
+    background: var(--ws-dock);
+    overflow: hidden;
+  }
+  .pz-dock.left { border-radius: 0 0 0 8px; }
+  .pz-dock.right { border-radius: 0 0 8px 0; }
+
+  /* Trapezoidal Project Zero Tab Strip */
+  .tab-strip {
+    height: 30px; flex: none;
+    display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 4px 6px 0 0;
+    background: var(--ws-strip);
+    position: relative;
+  }
+  .tab-group { display: flex; align-items: flex-end; }
+  .document-tab {
+    height: 26px; min-width: 112px; padding: 0 16px 0 22px;
+    background: var(--ws-tab);
+    clip-path: polygon(12px 0, calc(100% - 12px) 0, 100% 100%, 0 100%);
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 11px; font-weight: 400; color: #9a9a9a;
+    margin-left: -10px;
+  }
+  .document-tab:first-child { margin-left: 0; }
+  .document-tab.active { background: var(--ws-dock); color: var(--ws-text); z-index: 2; }
+  .document-tab .tab-close { font-size: 11px; color: #666; line-height: 1; }
+  .tab-add {
+    width: 22px; height: 22px; min-height: 22px; border-radius: 50%;
+    padding: 0; margin: 0 0 3px 10px;
+    background: #232327; border: 1px solid #ffffff0d; color: #c8c8cc;
+    font-size: 14px; line-height: 1;
+  }
+  .pz-title-trapezoid {
+    position: absolute; left: 50%; top: 0; transform: translateX(-50%);
+    height: 26px; padding: 0 32px;
+    background: #222226; color: #b8b8be;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 14px 100%);
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 400; letter-spacing: 0.4px;
+    pointer-events: none;
+  }
+
+  /* Left Outliner Dock */
+  .outliner-heading {
+    padding: 14px 18px 10px; display: flex; align-items: baseline; gap: 8px; flex: none;
+  }
+  .outliner-heading h1 { font-size: 20px; font-weight: 300; letter-spacing: 0.3px; }
+  .outliner-heading small { font-size: 10px; color: #666; font-weight: 400; }
+  .outliner-heading .icon-btn {
+    margin-left: auto; width: 28px; height: 28px; min-height: 28px;
+    border-radius: 50%; padding: 0; background: #191919; color: #9a9a9a;
+  }
+
+  .pz-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 14px 10px; flex: none; }
+  .pz-stat-card {
+    height: 62px; border-radius: 18px;
+    background: var(--ws-card); border: 1px solid var(--ws-border-mid);
+    padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between;
+    position: relative;
+  }
+  .pz-stat-card .st-top { display: flex; align-items: center; justify-content: space-between; }
+  .pz-stat-card .st-dot {
+    width: 16px; height: 16px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 9px; font-weight: 500;
+  }
+  .pz-stat-card .st-dot.green { background: #1e3b27; color: var(--ws-green); border: 1px solid #34c75955; }
+  .pz-stat-card .st-dot.sand  { background: #2d2720; color: var(--ws-accent); border: 1px solid #c9b49a44; }
+  .pz-stat-card .st-val { font-size: 22px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; color: #f2f2f2; }
+  .pz-stat-card .st-lbl { font-size: 10px; color: #7c7c7c; }
+
+  .pz-search-row { padding: 0 14px 8px; display: flex; gap: 6px; flex: none; }
+  .pz-search {
+    flex: 1; height: 32px; border-radius: 18px;
+    background: #0d0d0d; border: 1px solid #262626;
+    padding: 0 12px; font-size: 11px; color: #e2e2e2; outline: none;
+  }
+  .pz-search::placeholder { color: #5c5c5c; }
+  .pz-search:focus { border-color: #4a4a4a; }
+
+  .cat-bar {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    padding: 2px 14px 10px; flex: none;
+    border-bottom: 1px solid #ffffff08;
+  }
+  .cat-chip {
+    min-height: 23px; padding: 2px 9px; border-radius: 14px;
+    background: #181818; border: 1px solid #292929;
+    color: #919191; font-size: 10px; font-weight: 400;
+  }
+  .cat-chip:hover { color: #e8e8e8; background: #222; }
+  .cat-chip.active {
+    background: #ececec; color: #111; border-color: #ececec; font-weight: 500;
+  }
+
+  /* Project Zero Outliner Tree Rows */
+  .preset-list {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    padding: 8px 10px 12px; display: flex; flex-direction: column; gap: 3px;
+  }
+  .preset-card {
+    display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 10px;
+    padding: 6px 10px 6px 7px; border-radius: 12px;
+    background: transparent; border: 1px solid transparent;
+    cursor: pointer; transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .preset-card:hover { background: #191919; }
+  .preset-card.active {
+    background: #1c1b19; border-color: #c9b49a58;
+    box-shadow: inset 2px 0 0 var(--ws-accent);
+  }
+  .preset-thumb {
+    width: 32px; height: 32px; border-radius: 8px; overflow: hidden;
+    background: #0a0a0a; border: 1px solid #272727;
+    display: grid; place-items: center; flex: none;
+  }
+  .preset-thumb canvas { width: 100%; height: 100%; display: block; }
+  .preset-meta { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .preset-name {
+    font-size: 12px; font-weight: 400; color: #ececec;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .preset-cat {
+    font-size: 9.5px; color: #6e6e6e; text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .preset-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #272727; border: 1px solid #3c3c3c; flex: none;
+  }
+  .preset-card.active .preset-dot {
+    background: var(--ws-green); border-color: #34c759;
+    box-shadow: 0 0 8px #34c75966;
+  }
+
+  /* Center Viewport Dock */
+  .vp-head {
+    height: 48px; flex: none; padding: 0 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    border-bottom: 1px solid #ffffff08;
+  }
+  .vp-title-group { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .vp-title-group h2 { font-size: 14px; font-weight: 400; color: #f0f0f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vp-badge {
+    font-size: 9px; letter-spacing: 0.9px; text-transform: uppercase; font-weight: 500;
+    color: var(--ws-accent); background: #26221c; border: 1px solid #c9b49a38;
+    padding: 3px 8px; border-radius: 8px; flex: none;
+  }
+  .seg {
+    display: inline-flex; align-items: center;
+    background: #0d0d0d; border: 1px solid #262626;
+    border-radius: 18px; padding: 2px; gap: 2px;
+  }
+  .seg button {
+    min-height: 24px; padding: 3px 10px; border-radius: 14px;
+    background: transparent; border: 1px solid transparent;
+    color: #888; font-size: 11px; font-weight: 400; white-space: nowrap;
+  }
+  .seg button:hover { color: #e6e6e6; background: #1d1d1d; }
+  .seg button.active {
+    background: #272727; color: #f5f5f5; border-color: #3c3c3c; font-weight: 500;
+  }
+
+  .vp-toolbar {
+    height: 46px; flex: none; padding: 0 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .vp-toolbar-left, .vp-toolbar-right { display: flex; align-items: center; gap: 8px; }
+  .pz-cta-white {
+    background: #efefef; color: #111; border: 1px solid #ffffff;
+    border-radius: 18px; height: 32px; padding: 0 14px;
+    font-size: 11.5px; font-weight: 500;
+  }
+  .pz-cta-white:hover { background: #ffffff; }
+  .pz-cta-white .kbd {
+    font-size: 9.5px; color: #666; margin-left: 4px; font-weight: 400;
+  }
+
+  /* Project Zero Dark Checkerboard Viewport Stage */
+  .canvas-stage {
+    flex: 1; min-height: 0; margin: 0 14px;
+    border-radius: 14px; border: 1px solid #ffffff0b;
+    background-color: #101010;
+    background-image:
+      linear-gradient(45deg, #161616 25%, transparent 25%),
+      linear-gradient(-45deg, #161616 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #161616 75%),
+      linear-gradient(-45deg, transparent 75%, #161616 75%);
+    background-size: 28px 28px;
+    background-position: 0 0, 0 14px, 14px -14px, -14px 0;
+    position: relative; display: grid; place-items: center;
+    overflow: hidden; cursor: grab;
+  }
+  .canvas-stage:active { cursor: grabbing; }
+  #mainCanvas {
+    max-width: calc(100% - 36px); max-height: calc(100% - 36px);
+    border-radius: 12px; border: 1px solid #2b2b2b;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.75);
+  }
+  .stage-corner-tag {
+    position: absolute; left: 12px; bottom: 10px;
+    font-size: 9.5px; letter-spacing: 0.8px; text-transform: uppercase;
+    color: #5e5e5e; pointer-events: none;
+  }
+  .stage-hint-pill {
+    position: absolute; right: 12px; bottom: 10px;
+    font-size: 10px; color: #9a9a9a;
+    background: #141414cc; border: 1px solid #2a2a2a;
+    padding: 3px 10px; border-radius: 12px; pointer-events: none;
+  }
+
+  .vp-footer {
+    height: 44px; flex: none; padding: 0 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 10px; color: #666; position: relative;
+  }
+  .vp-footer b { color: #cfcfcf; font-weight: 400; }
+  .vp-footer .ok-b { color: var(--ws-green); font-weight: 500; }
+  .bottom-trapezoid {
+    position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+    height: 26px; padding: 0 26px;
+    background: #222226; color: #b8b8be;
+    clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 10.5px; text-decoration: none; border: 0;
+  }
+  .bottom-trapezoid:hover { background: #2f2f35; color: #f0f0f0; }
+
+  /* Right Inspector Dock */
+  .insp-scroll {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    padding: 12px 16px 18px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .insp-scroll > * { flex-shrink: 0; }
+  .insp-crumb {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 10px; color: #6b6b6b;
+  }
+  .insp-hero-title { display: flex; flex-direction: column; gap: 2px; }
+  .insp-hero-title h2 { font-size: 22px; font-weight: 300; color: #f2f2f2; line-height: 1.15; }
+  .insp-hero-title span { font-size: 11px; color: #7e7e7e; }
+
+  /* Project Zero Inspector Hero Card (matching Sun preview banner card) */
+  .insp-preview-card {
+    min-height: 106px; border-radius: 16px;
+    background: radial-gradient(circle at 26% 50%, #242320 0%, #111112 72%);
+    border: 1px solid #2b2b2b;
+    padding: 12px 14px; display: flex; align-items: center; gap: 14px;
+    position: relative; overflow: hidden;
+  }
+  .insp-preview-card canvas {
+    width: 82px; height: 82px; border-radius: 12px;
+    background: #090909; border: 1px solid #2f2f2f; flex: none;
+  }
+  .insp-preview-info { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .insp-preview-info .fam-tag {
+    font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--ws-accent); font-weight: 500;
+  }
+  .insp-preview-info .blurb {
+    font-size: 11px; color: #9c9c9c; line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  /* Project Zero 2x2 Metric Grid */
+  .pz-metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pz-metric {
+    background: var(--ws-card); border: 1px solid #262626;
+    border-radius: 14px; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .pz-metric .mv {
+    font-size: 16px; font-weight: 400; font-variant-numeric: tabular-nums; color: #ededed;
+  }
+  .pz-metric .ml {
+    font-size: 9px; letter-spacing: 0.9px; text-transform: uppercase; color: #6c6c6c;
+  }
+
+  .pz-sec-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding-top: 4px;
+  }
+  .pz-sec-head h4 {
+    font-size: 10px; font-weight: 400; letter-spacing: 1.3px;
+    text-transform: uppercase; color: #848484;
+  }
+  .pz-sec-head span { font-size: 10px; color: #5c5c5c; }
+
+  .pz-card {
+    background: var(--ws-card); border: 1px solid #262626;
+    border-radius: 16px; padding: 12px;
+    display: flex; flex-direction: column; gap: 11px;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 5px; }
+  .ctrl-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .ctrl label { font-size: 11.5px; color: #c8c8c8; font-weight: 300; }
+  .ctrl .val {
+    font-size: 11px; font-variant-numeric: tabular-nums; color: #e2e2e2;
+    font-family: var(--ws-mono);
+  }
+
+  .color-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .color-box {
+    display: flex; align-items: center; gap: 8px;
+    background: #121212; border: 1px solid #2a2a2a;
+    border-radius: 12px; padding: 6px 9px;
+  }
+  .color-box input[type="color"] {
+    width: 24px; height: 22px; border: 1px solid #3a3a3a; border-radius: 6px;
+    background: transparent; cursor: pointer; padding: 0;
+  }
+  .color-box span { font-size: 11px; color: #bdbdbd; }
+
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .btn {
+    background: #222; border: 1px solid #2f2f2f;
+    color: #e2e2e2; border-radius: 16px; padding: 6px 10px;
+    font-size: 11px; font-weight: 400; min-height: 30px;
+  }
+  .btn:hover { background: #2e2e2e; border-color: #444; }
+  .btn.primary { background: #efefef; border-color: #ffffff; color: #111; font-weight: 500; }
+  .btn.primary:hover { background: #ffffff; }
+  .btn.sand { background: #26221c; border-color: #c9b49a55; color: var(--ws-accent); }
+  .btn.sand:hover { background: #312b22; }
+  .btn.full { grid-column: 1 / -1; }
+
+  .dock-footer {
+    height: 44px; flex: none; padding: 0 14px;
+    border-top: 1px solid #ffffff08; background: #141414;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 10px; color: #666;
+  }
+
+  ::-webkit-scrollbar { width: 7px; height: 7px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3d3d3d; }
+</style>
+</head>
+<body>
+<div class="pz-shell">
+  <!-- LEFT DOCK: OUTLINER / PROCEDURAL SPRITE LIBRARY -->
+  <aside class="pz-dock left">
+    <div class="tab-strip">
+      <div class="tab-group">
+        <div class="document-tab active"><span>Outliner</span><span class="tab-close">×</span></div>
+        <button class="tab-add" id="btnRandomSeedTop" title="Generate new deterministic seed">+</button>
+      </div>
+    </div>
+
+    <div class="outliner-heading">
+      <h1>Outliner</h1>
+      <small id="presetCount">29 sprites</small>
+      <button class="icon-btn" id="btnRandomSeed" title="Randomize Seed">↻</button>
+    </div>
+
+    <div class="pz-stats">
+      <div class="pz-stat-card">
+        <div class="st-top"><span class="st-dot green">✓</span><span class="st-val" id="statVisibleCount">29</span></div>
+        <div class="st-lbl">Visible Presets</div>
+      </div>
+      <div class="pz-stat-card">
+        <div class="st-top"><span class="st-dot sand">⊞</span><span class="st-val" id="statAtlasMode">1×1</span></div>
+        <div class="st-lbl">Atlas Grid</div>
+      </div>
+    </div>
+
+    <div class="pz-search-row">
+      <input class="pz-search" id="searchInput" type="search" placeholder="Search sprites (Ctrl+F)…" />
+    </div>
+    <div class="cat-bar" id="catBar"></div>
+    <div class="preset-list" id="presetList"></div>
+
+    <div class="dock-footer">
+      <span>PROCEDURAL SPRITE</span>
+      <span id="leftFooterMeta">6 families · Stage 1</span>
+    </div>
+  </aside>
+
+  <!-- CENTER DOCK: VIEWPORT -->
+  <main class="pz-dock center">
+    <div class="tab-strip">
+      <div class="tab-group">
+        <div class="document-tab active"><span>Viewport</span><span class="tab-close">×</span></div>
+      </div>
+      <div class="pz-title-trapezoid">Project-Zero</div>
+    </div>
+
+    <div class="vp-head">
+      <div class="vp-title-group">
+        <h2 id="vpTitle">Stellar Dendrite</h2>
+        <span class="vp-badge">PROCEDURAL</span>
+      </div>
+      <div class="seg" id="viewModeSeg" title="Inspect sprite channels or interactive 3D lit preview">
+        <button data-mode="rgba" class="active">RGBA</button>
+        <button data-mode="quad">4-Up</button>
+        <button data-mode="alpha">Alpha</button>
+        <button data-mode="height">Height</button>
+        <button data-mode="normal">Normal</button>
+        <button data-mode="sparkle">SDF</button>
+        <button data-mode="lit3d">3D Lit</button>
+      </div>
+    </div>
+
+    <div class="vp-toolbar">
+      <div class="vp-toolbar-left">
+        <button class="pz-cta-white" id="btnQuickExport">+ Export PNG <span class="kbd">RGBA</span></button>
+        <div class="seg" id="atlasSeg" title="Multi-variant deterministic atlas packing">
+          <button data-atlas="1" class="active">1×1</button>
+          <button data-atlas="2">2×2</button>
+          <button data-atlas="4">4×4</button>
+          <button data-atlas="8">8×8</button>
+        </div>
+      </div>
+      <div class="vp-toolbar-right">
+        <select id="resSelect" title="Output resolution">
+          <option value="256">256 px</option>
+          <option value="512" selected>512 px</option>
+          <option value="1024">1024 px</option>
+        </select>
+        <select id="bgSelect" title="Viewport backdrop">
+          <option value="studio" selected>Studio Dark</option>
+          <option value="checker">Checkerboard</option>
+          <option value="black">Additive Black</option>
+          <option value="sky">Daylight Sky</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="canvas-stage" id="canvasStage">
+      <canvas id="mainCanvas" width="512" height="512"></canvas>
+      <div class="stage-corner-tag">PROCEDURAL PREVIEW · RGBA · HEIGHT · NORMAL · SDF</div>
+      <div class="stage-hint-pill" id="hudHint">RGBA + Height + Tangent Normal + Sparkle/SDF</div>
+    </div>
+
+    <div class="vp-footer">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0;max-width:38%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">
+        <span class="ok-b">LIVE</span>
+        <span id="hudPreset"><b>Stellar Dendrite</b></span>
+      </div>
+      <div class="bottom-trapezoid" title="Texture Studio Material Workspace live on port 8098">Sprite Atlas · Pattern Studio</div>
+      <div style="display:flex;align-items:center;gap:8px;white-space:nowrap;">
+        <span id="hudRes">512×512</span> ·
+        <span id="hudTime">0.0 ms</span> ·
+        <span id="hudCov">0%</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT DOCK: INSPECTOR -->
+  <aside class="pz-dock right">
+    <div class="tab-strip">
+      <div class="tab-group">
+        <div class="document-tab active"><span>Inspector</span><span class="tab-close">×</span></div>
+      </div>
+    </div>
+
+    <div class="insp-scroll">
+      <div class="insp-crumb">
+        <span>Inspector / Procedural Sprite</span>
+        <button id="btnResetPreset" style="min-height:24px;padding:2px 10px;font-size:10px;background:#191919;">↺ Reset</button>
+      </div>
+
+      <div class="insp-hero-title">
+        <h2 id="inspTitle">Stellar Dendrite</h2>
+        <span id="inspSubtitle">Snow Crystals · Procedural Billboard</span>
+      </div>
+
+      <div class="insp-preview-card">
+        <canvas id="inspThumbCanvas" width="96" height="96"></canvas>
+        <div class="insp-preview-info">
+          <span class="fam-tag" id="activeFamilyTag">SNOW</span>
+          <div class="blurb" id="presetBlurb"></div>
+        </div>
+      </div>
+
+      <div class="pz-metric-grid">
+        <div class="pz-metric"><span class="mv" id="mRes">512 px</span><span class="ml">Resolution</span></div>
+        <div class="pz-metric"><span class="mv" id="mCov">0.0%</span><span class="ml">Alpha Fill</span></div>
+        <div class="pz-metric"><span class="mv" id="mMs">0.0 ms</span><span class="ml">Synth Time</span></div>
+        <div class="pz-metric"><span class="mv" id="mSeed">1337</span><span class="ml">Seed</span></div>
+      </div>
+
+      <div class="pz-sec-head">
+        <h4>Properties</h4>
+        <span>Morphology &amp; structure</span>
+      </div>
+      <div class="pz-card" id="dynamicControls"></div>
+
+      <div class="pz-sec-head">
+        <h4>Optical &amp; Relief</h4>
+        <span>Tint, normal &amp; alpha</span>
+      </div>
+      <div class="pz-card">
+        <div class="color-row">
+          <div class="color-box">
+            <input type="color" id="colPrimary" value="#e8f6ff" />
+            <span>Core Albedo</span>
+          </div>
+          <div class="color-box">
+            <input type="color" id="colSecondary" value="#7dd3fc" />
+            <span>Rim Edge</span>
+          </div>
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-row"><label>Normal Relief Strength</label><span class="val" id="valNormalStr">2.4</span></div>
+          <input type="range" id="slNormalStr" min="0.2" max="6.0" step="0.1" value="2.4" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-row"><label>Edge Softness / Anti-Alias</label><span class="val" id="valSoftness">0.018</span></div>
+          <input type="range" id="slSoftness" min="0.002" max="0.12" step="0.002" value="0.018" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-row"><label>Alpha Opacity Gamma</label><span class="val" id="valAlphaGamma">1.00</span></div>
+          <input type="range" id="slAlphaGamma" min="0.4" max="2.4" step="0.05" value="1.0" />
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-row"><label>Deterministic Seed</label><span class="val" id="valSeed">1337</span></div>
+          <input type="range" id="slSeed" min="1" max="9999" step="1" value="1337" />
+        </div>
+      </div>
+
+      <div class="pz-sec-head">
+        <h4>Export</h4>
+        <span>PNG channels &amp; JSON recipe</span>
+      </div>
+      <div class="pz-card">
+        <div class="btn-row">
+          <button class="btn primary full" id="btnExportRgba">Export Composite RGBA PNG</button>
+          <button class="btn" id="btnExportNormal">Normal Map</button>
+          <button class="btn" id="btnExportHeight">Height Map</button>
+          <button class="btn" id="btnExportSparkle">Sparkle / SDF</button>
+          <button class="btn" id="btnExportQuad">4-Up Sheet</button>
+          <button class="btn sand full" id="btnExportRecipe">Export Pattern Studio Recipe (.json)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dock-footer">
+      <span>Procedural Sprite</span>
+      <span>Project-Zero UI</span>
+    </div>
+  </aside>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ============================================================================================================
+  // 1. DETERMINISTIC MATH, HASHING, 2D VALUE NOISE, FBM, WORLEY CELLULAR & SIGNED DISTANCE PRIMITIVES
+  // ============================================================================================================
+  const TAU = Math.PI * 2;
+  const PI  = Math.PI;
+
+  const clamp  = (x, a, b) => x < a ? a : (x > b ? b : x);
+  const mix    = (a, b, t) => a + (b - a) * t;
+  const smoothstep = (e0, e1, x) => {
+    const t = clamp((x - e0) / (e1 - e0 || 1e-6), 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+
+  function hash21(ix, iy, seed) {
+    let h = Math.imul(ix | 0, 374761393) + Math.imul(iy | 0, 668265263) + Math.imul(seed | 0, 2147483647);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+
+  function hash11(n, seed) {
+    let h = Math.imul((n | 0) ^ (seed | 0), 747796405) + 2891336453;
+    h = Math.imul(((h >>> ((h >>> 28) + 4)) ^ h), 277803737);
+    return ((h ^ (h >>> 22)) >>> 0) / 4294967296;
+  }
+
+  function vnoise2(x, y, seed) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    const fx = x - ix, fy = y - iy;
+    const ux = fx * fx * (3 - 2 * fx);
+    const uy = fy * fy * (3 - 2 * fy);
+    const a = hash21(ix,     iy,     seed);
+    const b = hash21(ix + 1, iy,     seed);
+    const c = hash21(ix,     iy + 1, seed);
+    const d = hash21(ix + 1, iy + 1, seed);
+    return mix(mix(a, b, ux), mix(c, d, ux), uy);
+  }
+
+  function fbm2(x, y, octaves, seed) {
+    let sum = 0, amp = 0.5, freq = 1.0, norm = 0;
+    for (let i = 0; i < octaves; i++) {
+      sum += amp * vnoise2(x * freq, y * freq, seed + i * 1013);
+      norm += amp;
+      amp *= 0.5;
+      freq *= 2.03;
+    }
+    return sum / (norm || 1);
+  }
+
+  function worley2(x, y, seed) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    let d1 = 99, d2 = 99;
+    for (let oy = -1; oy <= 1; oy++) {
+      for (let ox = -1; ox <= 1; ox++) {
+        const cx = ix + ox, cy = iy + oy;
+        const px = cx + hash21(cx, cy, seed);
+        const py = cy + hash21(cx, cy, seed + 4919);
+        const dx = px - x, dy = py - y;
+        const d = Math.hypot(dx, dy);
+        if (d < d1) { d2 = d1; d1 = d; }
+        else if (d < d2) { d2 = d; }
+      }
+    }
+    return [d1, d2];
+  }
+
+  function sdSegment(px, py, ax, ay, bx, by) {
+    const pax = px - ax, pay = py - ay;
+    const bax = bx - ax, bay = by - ay;
+    const h = clamp((pax * bax + pay * bay) / (bax * bax + bay * bay + 1e-9), 0, 1);
+    return Math.hypot(pax - bax * h, pay - bay * h);
+  }
+
+  function sdHexagon(px, py, r) {
+    const ax = Math.abs(px), ay = Math.abs(py);
+    const k = -0.866025404 * ax + 0.5 * ay;
+    let x = ax, y = ay;
+    if (k < 0) {
+      x -= 2 * k * (-0.866025404);
+      y -= 2 * k * 0.5;
+    }
+    const cx = clamp(x, -0.57735027 * r, 0.57735027 * r);
+    return Math.hypot(x - cx, y - r) * Math.sign(y - r);
+  }
+
+  function sdPolygon(px, py, r, sides) {
+    const a = Math.atan2(py, px) + PI;
+    const seg = TAU / sides;
+    const d = Math.cos(Math.floor(0.5 + a / seg) * seg - a) * Math.hypot(px, py);
+    return d - r;
+  }
+
+  function hexToRgb01(hex) {
+    const s = hex.replace('#', '');
+    return [
+      parseInt(s.slice(0, 2), 16) / 255,
+      parseInt(s.slice(2, 4), 16) / 255,
+      parseInt(s.slice(4, 6), 16) / 255
+    ];
+  }
+
+  // ============================================================================================================
+  // 2. PRESET DEFINITIONS — SNOW CRYSTALS + OPTICAL + SMOKE + WATER + BOTANICAL/WINGS + TECH/DISSOLVE
+  // ============================================================================================================
+  const CATEGORIES = [
+    { id: 'all',       label: 'All' },
+    { id: 'snow',      label: 'Snow Crystals' },
+    { id: 'optical',   label: 'Optical & Bokeh' },
+    { id: 'smoke',     label: 'Smoke & Dust' },
+    { id: 'water',     label: 'Water & Rain' },
+    { id: 'botanical', label: 'Botanical & Wings' },
+    { id: 'tech',      label: 'Tech & Dissolve' }
+  ];
+
+  const PARAM_DEFS = {
+    // Snowflake family
+    symmetry:     { label: 'Crystal Symmetry (D6 / D12)', min: 6, max: 12, step: 6 },
+    corePlate:    { label: 'Core Plate Radius',           min: 0.04, max: 0.58, step: 0.01 },
+    armLength:    { label: 'Primary Arm Reach',           min: 0.35, max: 0.94, step: 0.01 },
+    armWidth:     { label: 'Primary Arm Spine Width',     min: 0.012, max: 0.14, step: 0.002 },
+    branchCount:  { label: 'Secondary 60° Branches',      min: 0, max: 7, step: 1 },
+    branchSpan:   { label: 'Secondary Branch Length',     min: 0.04, max: 0.44, step: 0.01 },
+    twigDensity:  { label: 'Tertiary Fern Twigs',         min: 0, max: 1, step: 0.02 },
+    ridgeDepth:   { label: 'Facet Ridge & Ice Ribs',      min: 0, max: 1, step: 0.02 },
+    frostRiming:  { label: 'Riming Frost Clumps',         min: 0, max: 1, step: 0.02 },
+    asymmetry:    { label: 'Natural Growth Asymmetry',    min: 0, max: 0.22, step: 0.01 },
+    // General sprites
+    blades:       { label: 'Aperture Blades / Rays',      min: 3, max: 12, step: 1 },
+    rimRing:      { label: 'Optical Edge Ring / Rim',     min: 0, max: 1, step: 0.02 },
+    chromatic:    { label: 'Chromatic / Iridescent Shift',min: 0, max: 1, step: 0.02 },
+    noiseScale:   { label: 'Noise / Cell Frequency',      min: 1.5, max: 14, step: 0.25 },
+    octaves:      { label: 'Detail Octaves',              min: 1, max: 6, step: 1 },
+    warpAmp:      { label: 'Curl / Domain Warp',          min: 0, max: 1.2, step: 0.02 },
+    falloff:      { label: 'Radial Edge Falloff',         min: 0.4, max: 4.0, step: 0.05 },
+    veinDepth:    { label: 'Vein / Crack Relief',         min: 0, max: 1, step: 0.02 },
+    aspectStretch:{ label: 'Elongation / Aspect',         min: 0.2, max: 1.0, step: 0.02 },
+    density:      { label: 'Fill / Cluster Density',      min: 0.15, max: 1.0, step: 0.02 },
+    contrast:     { label: 'Mask Contrast',               min: 0.5, max: 3.0, step: 0.05 }
+  };
+
+  const PRESETS = [
+    // --- SNOW CRYSTALS (8 Nakaya / Libbrecht morphologies) ---
+    {
+      id: 'snow-stellar-dendrite', name: 'Stellar Dendrite', cat: 'snow', kind: 'snow',
+      blurb: 'Classic 6-fold Nakaya stellar dendrite with 60° side branches, faceted central ice plate, and twinkling specular crystal ridges.',
+      col1: '#eff8ff', col2: '#7dd3fc', normalStr: 2.8, softness: 0.014,
+      p: { snowStyle: 0, symmetry: 6, corePlate: 0.18, armLength: 0.88, armWidth: 0.032, branchCount: 4, branchSpan: 0.29, twigDensity: 0.45, ridgeDepth: 0.72, frostRiming: 0.08, asymmetry: 0.04 }
+    },
+    {
+      id: 'snow-fernlike', name: 'Fernlike Dendrite', cat: 'snow', kind: 'snow',
+      blurb: 'Intricate fern-branched snow crystal with dense secondary and tertiary 60° crystalline needles ideal for close-up tumbling snowflakes.',
+      col1: '#f4fbff', col2: '#93c5fd', normalStr: 3.1, softness: 0.012,
+      p: { snowStyle: 1, symmetry: 6, corePlate: 0.13, armLength: 0.91, armWidth: 0.024, branchCount: 6, branchSpan: 0.34, twigDensity: 0.92, ridgeDepth: 0.85, frostRiming: 0.05, asymmetry: 0.05 }
+    },
+    {
+      id: 'snow-sectored-plate', name: 'Sectored Ice Plate', cat: 'snow', kind: 'snow',
+      blurb: 'Broad translucent hexagonal prism divided by sculpted raised ice ribs and diamond tips—catches crisp planar sunlight glints.',
+      col1: '#e6f5ff', col2: '#60a5fa', normalStr: 3.4, softness: 0.015,
+      p: { snowStyle: 2, symmetry: 6, corePlate: 0.50, armLength: 0.84, armWidth: 0.075, branchCount: 2, branchSpan: 0.22, twigDensity: 0.0, ridgeDepth: 0.95, frostRiming: 0.04, asymmetry: 0.03 }
+    },
+    {
+      id: 'snow-simple-hex', name: 'Simple Hex Plate', cat: 'snow', kind: 'snow',
+      blurb: 'Minimalist high-altitude hexagonal crystal plate with nested concentric bevel rings and clean translucent ice thickness.',
+      col1: '#e9f7ff', col2: '#bae6fd', normalStr: 2.5, softness: 0.016,
+      p: { snowStyle: 3, symmetry: 6, corePlate: 0.56, armLength: 0.68, armWidth: 0.06, branchCount: 0, branchSpan: 0.06, twigDensity: 0.0, ridgeDepth: 0.88, frostRiming: 0.02, asymmetry: 0.02 }
+    },
+    {
+      id: 'snow-stellar-plate', name: 'Stellar Diamond Plate', cat: 'snow', kind: 'snow',
+      blurb: 'Broad spade-tipped arms bridging hexagonal plates and stellar dendrites, with sharp beveled facets for shimmering snow storms.',
+      col1: '#f0f9ff', col2: '#38bdf8', normalStr: 3.0, softness: 0.014,
+      p: { snowStyle: 4, symmetry: 6, corePlate: 0.32, armLength: 0.86, armWidth: 0.058, branchCount: 3, branchSpan: 0.24, twigDensity: 0.18, ridgeDepth: 0.82, frostRiming: 0.06, asymmetry: 0.04 }
+    },
+    {
+      id: 'snow-rosette', name: 'Bullet Rosette', cat: 'snow', kind: 'snow',
+      blurb: 'Elongated crystalline column clusters radiating from a frozen nucleation core—distinctive sharp silhouette for icy sleet & cirrus.',
+      col1: '#edf8ff', col2: '#a5f3fc', normalStr: 3.2, softness: 0.014,
+      p: { snowStyle: 5, symmetry: 6, corePlate: 0.16, armLength: 0.88, armWidth: 0.052, branchCount: 1, branchSpan: 0.16, twigDensity: 0.0, ridgeDepth: 0.90, frostRiming: 0.12, asymmetry: 0.08 }
+    },
+    {
+      id: 'snow-graupel', name: 'Rimed Graupel / Hail', cat: 'snow', kind: 'snow',
+      blurb: 'Heavily rimed snow pellet encrusted with supercooled frost droplets—ideal for dense blizzards, sleet, and soft hail billboards.',
+      col1: '#f1f5f9', col2: '#cbd5e1', normalStr: 2.6, softness: 0.036,
+      p: { snowStyle: 6, symmetry: 6, corePlate: 0.38, armLength: 0.72, armWidth: 0.09, branchCount: 3, branchSpan: 0.22, twigDensity: 0.25, ridgeDepth: 0.55, frostRiming: 0.92, asymmetry: 0.15 }
+    },
+    {
+      id: 'snow-twinned-12', name: '12-Arm Twinned Star', cat: 'snow', kind: 'snow',
+      blurb: 'Rare 12-branched D12 capped double crystal created when two hexagonal nuclei fuse at 30° offset.',
+      col1: '#f5fbff', col2: '#818cf8', normalStr: 2.9, softness: 0.013,
+      p: { snowStyle: 0, symmetry: 12, corePlate: 0.22, armLength: 0.90, armWidth: 0.022, branchCount: 4, branchSpan: 0.22, twigDensity: 0.42, ridgeDepth: 0.78, frostRiming: 0.06, asymmetry: 0.03 }
+    },
+
+    // --- OPTICAL & BOKEH ---
+    {
+      id: 'opt-soft-glow', name: 'Soft Gaussian Glow', cat: 'optical', kind: 'glow',
+      blurb: 'Universal smooth additive particle glow for sparks, embers, fireflies, distant dust motes, and volumetric halos.',
+      col1: '#fffbeb', col2: '#f59e0b', normalStr: 1.0, softness: 0.04,
+      p: { falloff: 2.1, rimRing: 0.0, chromatic: 0.15, noiseScale: 3.0, warpAmp: 0.0 }
+    },
+    {
+      id: 'opt-bokeh-iris', name: 'Aperture Lens Bokeh', cat: 'optical', kind: 'bokeh',
+      blurb: 'Cinematic polygonal camera-iris bokeh disc with bright spherical-aberration rim ring and subtle edge chromatic fringe.',
+      col1: '#e0f2fe', col2: '#38bdf8', normalStr: 1.6, softness: 0.024,
+      p: { blades: 7, rimRing: 0.78, chromatic: 0.65, falloff: 1.15, noiseScale: 4.5, warpAmp: 0.14 }
+    },
+    {
+      id: 'opt-starburst', name: 'Anamorphic Flare', cat: 'optical', kind: 'flare',
+      blurb: 'Incandescent point core with diffraction rays and horizontal anamorphic lens streak for flares, welding sparks, and pyro stars.',
+      col1: '#fff7ed', col2: '#fb923c', normalStr: 1.2, softness: 0.02,
+      p: { blades: 6, rimRing: 0.68, chromatic: 0.50, falloff: 2.2, aspectStretch: 0.85 }
+    },
+    {
+      id: 'opt-plasma-core', name: 'Electric Plasma Orb', cat: 'optical', kind: 'plasma',
+      blurb: 'Crackling high-voltage radial filaments surrounding a hot dielectric core for Tesla sparks, energy orbs, and ionized bursts.',
+      col1: '#e0f7ff', col2: '#3b82f6', normalStr: 2.0, softness: 0.018,
+      p: { blades: 8, noiseScale: 6.5, octaves: 4, warpAmp: 0.65, falloff: 1.9, rimRing: 0.45 }
+    },
+
+    // --- SMOKE, CLOUDS & DUST ---
+    {
+      id: 'smoke-billow', name: 'Volumetric Smoke Puff', cat: 'smoke', kind: 'smoke',
+      blurb: 'Multi-octave Worley + fBm cloud billow paired with an analytical 3D dome normal map so Frontier GI lights smoke from all angles.',
+      col1: '#e2e8f0', col2: '#64748b', normalStr: 3.4, softness: 0.045,
+      p: { noiseScale: 4.2, octaves: 5, warpAmp: 0.48, falloff: 1.45, density: 0.78, contrast: 1.35 }
+    },
+    {
+      id: 'smoke-steam-curl', name: 'Wispy Steam Curl', cat: 'smoke', kind: 'steam',
+      blurb: 'Domain-warped swirling mist and soft steam plume with feathered edges for breath vapor, waterfalls, and heat vents.',
+      col1: '#f1f5f9', col2: '#94a3b8', normalStr: 2.2, softness: 0.06,
+      p: { noiseScale: 3.2, octaves: 5, warpAmp: 0.92, falloff: 1.75, density: 0.62, contrast: 1.1 }
+    },
+    {
+      id: 'smoke-dust-ash', name: 'Ash & Dust Cluster', cat: 'smoke', kind: 'ash',
+      blurb: 'Irregular mineral grains and drifting char flakes for dissolve-to-nothing ash, sandstorms, pollen, and debris clouds.',
+      col1: '#cbd5e1', col2: '#475569', normalStr: 2.9, softness: 0.018,
+      p: { noiseScale: 7.5, octaves: 4, warpAmp: 0.35, density: 0.56, falloff: 1.5, contrast: 1.85 }
+    },
+
+    // --- WATER, RAIN & BUBBLES ---
+    {
+      id: 'water-rain', name: 'Velocity Rain Streak', cat: 'water', kind: 'rain',
+      blurb: 'Aerodynamic tapered water streak with bright head bead and translucent motion trail for rainstorms and waterfall spray.',
+      col1: '#e0f2fe', col2: '#7dd3fc', normalStr: 2.0, softness: 0.014,
+      p: { aspectStretch: 0.24, falloff: 1.6, rimRing: 0.45, noiseScale: 3.0, warpAmp: 0.08 }
+    },
+    {
+      id: 'water-splash', name: 'Liquid Splash Blob', cat: 'water', kind: 'splash',
+      blurb: 'Surface-tension sculpted water/mud splash silhouette with organic ligaments and wet specular bulge normals.',
+      col1: '#dbeafe', col2: '#38bdf8', normalStr: 3.6, softness: 0.016,
+      p: { noiseScale: 4.5, octaves: 3, warpAmp: 0.52, density: 0.72, falloff: 1.4, rimRing: 0.55 }
+    },
+    {
+      id: 'water-bubble', name: 'Iridescent Soap Bubble', cat: 'water', kind: 'bubble',
+      blurb: 'Thin-film Fresnel soap sphere with rainbow rim interference and twin crisp studio softbox reflections.',
+      col1: '#e0f7ff', col2: '#c084fc', normalStr: 3.2, softness: 0.014,
+      p: { rimRing: 0.88, chromatic: 0.90, falloff: 1.0, noiseScale: 3.5, warpAmp: 0.35 }
+    },
+    {
+      id: 'water-foam', name: 'Voronoi Foam Cluster', cat: 'water', kind: 'foam',
+      blurb: 'Cellular micro-bubble foam cluster for ocean surf, car puddle wakes, and splashing water.',
+      col1: '#f8fafc', col2: '#bae6fd', normalStr: 3.0, softness: 0.02,
+      p: { noiseScale: 7.0, octaves: 3, density: 0.72, falloff: 1.5, contrast: 1.55, rimRing: 0.6 }
+    },
+
+    // --- BOTANICAL & WINGS ---
+    {
+      id: 'bio-maple-leaf', name: 'Serrated Autumn Leaf', cat: 'botanical', kind: 'leaf',
+      blurb: 'Crisp multi-lobed botanical leaf cutout with raised midrib and branching vascular vein normal relief.',
+      col1: '#f97316', col2: '#b91c1c', normalStr: 3.2, softness: 0.014,
+      p: { blades: 5, veinDepth: 0.85, aspectStretch: 0.82, noiseScale: 5.0, warpAmp: 0.14 }
+    },
+    {
+      id: 'bio-petal', name: 'Cherry Blossom Petal', cat: 'botanical', kind: 'petal',
+      blurb: 'Delicate notched sakura blossom petal with subtle radial translucency and satin curve normals.',
+      col1: '#fbcfe8', col2: '#f472b6', normalStr: 2.2, softness: 0.016,
+      p: { aspectStretch: 0.76, veinDepth: 0.55, falloff: 1.1, warpAmp: 0.12 }
+    },
+    {
+      id: 'bio-dandelion', name: 'Dandelion Pappus Seed', cat: 'botanical', kind: 'dandelion',
+      blurb: 'Radial gossamer silk parachute spokes anchored to a slender wind-borne achene seed.',
+      col1: '#fefce8', col2: '#fde68a', normalStr: 2.0, softness: 0.012,
+      p: { blades: 12, rimRing: 0.7, falloff: 1.2, aspectStretch: 0.9 }
+    },
+    {
+      id: 'bio-feather', name: 'Plume Feather', cat: 'botanical', kind: 'feather',
+      blurb: 'Structured avian feather with central rachis shaft and angled separated barb vanes.',
+      col1: '#f8fafc', col2: '#94a3b8', normalStr: 2.8, softness: 0.014,
+      p: { aspectStretch: 0.42, veinDepth: 0.88, noiseScale: 10.0, warpAmp: 0.16 }
+    },
+    {
+      id: 'bio-butterfly', name: 'Butterfly Wing Mask', cat: 'botanical', kind: 'butterfly',
+      blurb: 'Symmetrical forewing & hindwing cutout with sculpted chitin venation and iridescent scale mask—built for Dissolve-to-Butterfly!',
+      col1: '#38bdf8', col2: '#1d4ed8', normalStr: 2.6, softness: 0.012,
+      p: { veinDepth: 0.85, chromatic: 0.82, rimRing: 0.72, aspectStretch: 0.92, noiseScale: 6.0 }
+    },
+
+    // --- TECH, FRACTURE & DISSOLVE ---
+    {
+      id: 'tech-hex-cell', name: 'Hexagonal Shield Tile', cat: 'tech', kind: 'hexcell',
+      blurb: 'Beveled sci-fi hexagonal tile with glowing inner rim and tech circuit micro-ribs for Energy Shields & Kinetic Hex Matrices.',
+      col1: '#38bdf8', col2: '#f59e0b', normalStr: 3.4, softness: 0.012,
+      p: { rimRing: 0.76, veinDepth: 0.65, falloff: 1.0, contrast: 1.6 }
+    },
+    {
+      id: 'tech-diamond-dissolve', name: 'Diamond Dissolve Mask', cat: 'tech', kind: 'diamondDissolve',
+      blurb: 'Seamless geometric diamond threshold field designed to drive Vehicle Derez, Dissolve-to-Nothing, and Pattern Studio MoGraph masks.',
+      col1: '#f8fafc', col2: '#22d3ee', normalStr: 2.8, softness: 0.012,
+      p: { noiseScale: 5.0, contrast: 1.4, warpAmp: 0.18, density: 0.75, rimRing: 0.4 }
+    },
+    {
+      id: 'tech-voronoi-crack', name: 'Voronoi Fracture Mask', cat: 'tech', kind: 'voronoiCrack',
+      blurb: 'Sharp cellular ice/basalt crack height field and glowing fracture seams for cracked sheets, shards, and shatter dissolve waves.',
+      col1: '#e0f2fe', col2: '#0284c7', normalStr: 4.0, softness: 0.012,
+      p: { noiseScale: 5.5, veinDepth: 0.9, warpAmp: 0.22, contrast: 1.8, falloff: 1.2 }
+    },
+    {
+      id: 'tech-halftone-field', name: 'Radial Halftone Mask', cat: 'tech', kind: 'halftoneMask',
+      blurb: 'Architectural circular halftone grid pattern for PatternStudioFieldEffector and Obsidian Halftone surface masking.',
+      col1: '#ff3b5c', col2: '#fbbf24', normalStr: 2.5, softness: 0.014,
+      p: { noiseScale: 7.0, density: 0.72, contrast: 1.6, falloff: 1.1 }
+    },
+    {
+      id: 'tech-glitch-strip', name: 'Glitch Data Strip', cat: 'tech', kind: 'glitchStrip',
+      blurb: 'Segmented horizontal holographic scanline bars and chromatic digital blocks for Glitch Dissolve & Hologram emitters.',
+      col1: '#22d3ee', col2: '#f43f5e', normalStr: 2.2, softness: 0.01,
+      p: { noiseScale: 8.5, density: 0.64, chromatic: 0.85, contrast: 2.0 }
+    }
+  ];
+
+  // ============================================================================================================
+  // 3. PROCEDURAL PIXEL EVALUATION KERNELS (RETURNS { alpha, height, tintMix, sparkle, sdf })
+  // ============================================================================================================
+  function evalSnowflake(x, y, p, seed, softness) {
+    const sym = p.symmetry >= 10 ? 12 : 6;
+    const r = Math.hypot(x, y);
+    let ang = Math.atan2(y, x);
+    if (ang < 0) ang += TAU;
+
+    // Slight natural per-sector crystal asymmetry (keeps D6/D12 authentic yet alive!)
+    const sectorAngle = TAU / sym;
+    const sectorIdx = Math.floor(ang / sectorAngle);
+    const asym = p.asymmetry || 0;
+    const armJitter = 1.0 + (hash11(sectorIdx * 17 + 3, seed) - 0.5) * 2.0 * asym;
+    const widthJitter = 1.0 + (hash11(sectorIdx * 31 + 7, seed) - 0.5) * 1.4 * asym;
+
+    // Dihedral fold into [0, sectorAngle / 2]
+    let localAng = ang - sectorIdx * sectorAngle;
+    if (localAng > sectorAngle * 0.5) localAng = sectorAngle - localAng;
+
+    // Coordinates aligned along the primary arm (+u along arm, +v perpendicular)
+    const u = r * Math.cos(localAng);
+    const v = r * Math.sin(localAng);
+
+    const armLen = p.armLength * armJitter;
+    const spineW = p.armWidth * widthJitter;
+    const plateR = p.corePlate;
+    const style  = p.snowStyle || 0;
+
+    // 1) Central hexagonal plate prism (exact D6/D12 polygon)
+    const dHex = sdPolygon(x, y, plateR, sym);
+    let dMin = dHex;
+    let height = 0;
+
+    // Beveled plate thickness + internal concentric steps
+    if (dHex < softness * 3) {
+      const inner = clamp(-dHex / Math.max(plateR, 0.05), 0, 1);
+      const stepWave = 0.5 + 0.5 * Math.cos(inner * PI * 4.0);
+      height = Math.max(height, (0.38 + 0.35 * Math.pow(inner, 0.55) + p.ridgeDepth * 0.18 * stepWave) * smoothstep(softness, -softness * 1.4, dHex));
+    }
+
+    // 2) Primary crystal arm with taper + beveled tip
+    const tArm = clamp(u / Math.max(armLen, 0.05), 0, 1);
+    let localSpineW = spineW * mix(1.05, style === 4 ? 1.55 : (style === 5 ? 1.25 : 0.42), tArm);
+    if (style === 4 && tArm > 0.62) {
+      // Stellar plate spade/diamond tip expansion
+      const tipT = (tArm - 0.62) / 0.38;
+      localSpineW += spineW * 2.4 * Math.sin(tipT * PI);
+    }
+    if (style === 5 && tArm > 0.78) {
+      // Bullet rosette sharp crystal prism point
+      const tipT = (tArm - 0.78) / 0.22;
+      localSpineW *= (1.0 - tipT * 0.85);
+    }
+    const dSpine = sdSegment(u, v, 0, 0, armLen, 0) - localSpineW;
+    dMin = Math.min(dMin, dSpine);
+    if (dSpine < softness * 3) {
+      const ridge = clamp(1.0 - Math.abs(v) / Math.max(localSpineW, 0.005), 0, 1);
+      const ribH = (0.55 + 0.45 * Math.pow(ridge, 0.7)) * (1.0 - 0.22 * tArm) * smoothstep(softness, -softness * 1.2, dSpine);
+      height = Math.max(height, ribH);
+    }
+
+    // 3) Secondary crystallographic 60-degree branches (cos60 = 0.5, sin60 = 0.8660254)
+    const nBr = Math.round(p.branchCount || 0);
+    const cos60 = 0.5, sin60 = 0.8660254;
+    if (nBr > 0) {
+      const startFrac = Math.max(0.24, plateR / Math.max(armLen, 0.1) * 0.85);
+      for (let b = 0; b < nBr; b++) {
+        const bf = nBr === 1 ? 0.58 : mix(startFrac, 0.86, b / (nBr - 1));
+        const bx0 = bf * armLen;
+        // Classic natural bell-shaped envelope along the arm + slight deterministic crystal variation
+        const env = Math.sin(clamp((bf - startFrac * 0.4) / (1.02 - startFrac * 0.4), 0.08, 0.96) * PI);
+        const bVar = 0.78 + 0.44 * hash11(b * 23 + 11, seed);
+        const bLen = p.branchSpan * (0.45 + 0.75 * env) * bVar * armJitter;
+        const bW = spineW * mix(0.76, 0.42, bf) * (style === 2 ? 1.45 : 1.0);
+        const bx1 = bx0 + bLen * cos60;
+        const by1 = bLen * sin60;
+
+        // Distance to branch segment with tapered width
+        const pax = u - bx0, pay = v;
+        const bax = bx1 - bx0, bay = by1;
+        const hProj = clamp((pax * bax + pay * bay) / (bax * bax + bay * bay + 1e-8), 0, 1);
+        const distSeg = Math.hypot(pax - bax * hProj, pay - bay * hProj);
+        const wAt = bW * mix(1.0, style === 4 ? 1.3 : 0.38, hProj);
+        const dBr = distSeg - wAt;
+        dMin = Math.min(dMin, dBr);
+        if (dBr < softness * 3) {
+          const ridge = clamp(1.0 - distSeg / Math.max(wAt, 0.004), 0, 1);
+          height = Math.max(height, (0.46 + 0.42 * ridge) * (1.0 - 0.25 * hProj) * smoothstep(softness, -softness * 1.2, dBr));
+        }
+
+        // 4) Tertiary fernlike twigs sprouting off secondary branches at +/- 60 deg!
+        if (p.twigDensity > 0.05 && bLen > 0.09) {
+          const nTw = Math.max(1, Math.round(p.twigDensity * 3));
+          for (let tw = 0; tw < nTw; tw++) {
+            const tf = mix(0.32, 0.78, (tw + 0.5) / nTw);
+            const tx0 = mix(bx0, bx1, tf);
+            const ty0 = mix(0, by1, tf);
+            const twLen = bLen * (0.36 * p.twigDensity) * (1.0 - 0.35 * tf);
+            const twW = bW * 0.52;
+            // Forward-pointing tertiary twig parallel to primary arm (+u)
+            const dTw1 = sdSegment(u, v, tx0, ty0, tx0 + twLen, ty0) - twW;
+            // Outward 120-deg twig (-0.5, +0.866)
+            const dTw2 = sdSegment(u, v, tx0, ty0, tx0 - twLen * 0.5, ty0 + twLen * 0.866) - twW * 0.9;
+            const dTw = Math.min(dTw1, dTw2);
+            dMin = Math.min(dMin, dTw);
+            if (dTw < softness * 2) {
+              height = Math.max(height, 0.52 * smoothstep(softness, -softness, dTw));
+            }
+          }
+        }
+      }
+    }
+
+    // 5) Sectored plate webs between arms (styles 2 & 3)
+    if (style === 2 || style === 3) {
+      const webR = style === 2 ? armLen * 0.76 : plateR * 1.15;
+      const dWeb = sdPolygon(x, y, webR, sym);
+      // Carve subtle triangular cutouts near the outer perimeter on sectored plates
+      const notch = style === 2 ? Math.max(dWeb, -(sdSegment(u, v, webR * 0.55, webR * 0.28, webR * 1.05, webR * 0.44) - 0.045)) : dWeb;
+      dMin = Math.min(dMin, notch);
+      if (notch < softness * 3) {
+        // Interior translucent plate + raised rib lines along sector centerline & bisector
+        const ribLine = Math.exp(-Math.pow(v / 0.028, 2)) * 0.45 + Math.exp(-Math.pow((localAng - sectorAngle * 0.5) * r / 0.022, 2)) * 0.32;
+        const plateH = (0.28 + p.ridgeDepth * ribLine) * smoothstep(softness, -softness * 1.2, notch);
+        height = Math.max(height, plateH);
+      }
+    }
+
+    // 6) Riming frost droplets / Graupel supercooled aggregation
+    let frostBoost = 0;
+    if (p.frostRiming > 0.02) {
+      const nF = fbm2(x * 11.5 + 3.1, y * 11.5 - 2.4, 4, seed + 77);
+      const [w1] = worley2(x * 9.0, y * 9.0, seed + 313);
+      const frostField = (1.0 - smoothstep(0.15, 0.55, w1)) * p.frostRiming;
+      const rimeExpand = p.frostRiming * (style === 6 ? 0.24 : 0.075) * (0.45 + 0.55 * nF);
+      dMin -= rimeExpand;
+      frostBoost = frostField * smoothstep(0.12, -0.05, dMin);
+      height = Math.max(height, frostBoost * 0.85 * smoothstep(softness * 2, -softness * 2, dMin));
+    }
+
+    // Edge AA alpha + translucent thin ice plates
+    const mask = smoothstep(softness, -softness * 1.15, dMin);
+    const translucent = style === 2 || style === 3 ? mix(0.62, 1.0, clamp(height * 1.25, 0, 1)) : 1.0;
+    const alpha = clamp(mask * translucent, 0, 1);
+
+    // Internal micro-facet crystal sparkle (sharp diamond glints along beveled ridges)
+    const ridgeMask = p.ridgeDepth * Math.pow(clamp(height, 0, 1), 1.4);
+    const glintNoise = hash21(Math.floor(u * 48), Math.floor(v * 48), seed + 909);
+    const sparkle = clamp(alpha * (ridgeMask * 0.65 + (glintNoise > 0.86 ? 0.75 : 0.0) * (1.0 - frostBoost * 0.7)), 0, 1);
+    const tintMix = clamp(1.0 - height * 0.82 + frostBoost * 0.35, 0, 1);
+
+    return { alpha, height: height * alpha, tintMix, sparkle, sdf: dMin };
+  }
+
+  function evalSpritePixel(preset, x, y, seed, softness) {
+    const p = preset.p;
+    const r = Math.hypot(x, y);
+    const ang = Math.atan2(y, x);
+
+    switch (preset.kind) {
+      case 'snow':
+        return evalSnowflake(x, y, p, seed, softness);
+
+      case 'glow': {
+        const g = Math.exp(-Math.pow(r * (1.15 + p.falloff * 0.9), 2));
+        const halo = Math.pow(clamp(1.0 - r, 0, 1), p.falloff + 0.6) * 0.55;
+        const a = clamp(g * 0.92 + halo, 0, 1);
+        return { alpha: a, height: a, tintMix: clamp(r * 1.15, 0, 1), sparkle: Math.pow(g, 2.2), sdf: r - 0.5 };
+      }
+
+      case 'bokeh': {
+        const blades = Math.round(p.blades || 7);
+        const warp = (fbm2(x * p.noiseScale, y * p.noiseScale, 3, seed) - 0.5) * p.warpAmp * 0.14;
+        const d = sdPolygon(x, y, 0.78, blades) + warp;
+        const mask = smoothstep(softness * 1.8, -softness * 1.4, d);
+        const edgeBand = Math.exp(-Math.pow((d + 0.055) / 0.055, 2)) * p.rimRing;
+        const fill = mix(0.36, 0.62, clamp(1.0 - r * 0.8, 0, 1));
+        const a = clamp(mask * (fill + edgeBand * 0.78), 0, 1);
+        const height = clamp(mask * (0.4 + 0.6 * edgeBand), 0, 1);
+        const tintMix = clamp(0.15 + edgeBand * 0.85 + p.chromatic * smoothstep(0.45, 0.82, r) * 0.45, 0, 1);
+        return { alpha: a, height, tintMix, sparkle: clamp(edgeBand * mask, 0, 1), sdf: d };
+      }
+
+      case 'flare': {
+        const rays = Math.pow(Math.abs(Math.cos(ang * (p.blades || 6) * 0.5)), 12) * Math.exp(-r * 2.8);
+        const streak = Math.exp(-Math.abs(y) * (16 / Math.max(0.2, p.aspectStretch)) - r * 1.9) * p.rimRing;
+        const core = Math.exp(-r * r * (10 + p.falloff * 6));
+        const halo = Math.exp(-r * 3.0) * 0.45;
+        const inten = core * 1.4 + rays * 0.85 + streak * 0.92 + halo;
+        const a = clamp(inten * (1.0 - smoothstep(0.86, 1.0, r)), 0, 1);
+        return { alpha: a, height: clamp(core + rays * 0.5 + streak * 0.5, 0, 1), tintMix: clamp(1.0 - core * 1.15, 0, 1), sparkle: clamp(core + rays, 0, 1), sdf: r - 0.35 };
+      }
+
+      case 'plasma': {
+        const oct = Math.round(p.octaves || 4);
+        const n = fbm2(x * p.noiseScale + Math.cos(ang) * 1.5, y * p.noiseScale + Math.sin(ang) * 1.5, oct, seed);
+        const spokes = Math.pow(Math.abs(Math.sin(ang * (p.blades || 8) * 0.5 + n * p.warpAmp * 6.0)), 6);
+        const core = Math.exp(-r * r * 12.0);
+        const filaments = spokes * Math.exp(-r * (1.4 + p.falloff * 0.8)) * 0.92;
+        const ring = Math.exp(-Math.pow((r - 0.52) * 8.0, 2)) * p.rimRing * (0.4 + 0.6 * n);
+        const a = clamp((core * 1.2 + filaments + ring) * (1.0 - smoothstep(0.82, 1.0, r)), 0, 1);
+        return { alpha: a, height: clamp(core + filaments * 0.7, 0, 1), tintMix: clamp(1.0 - core * 1.2 + filaments * 0.4, 0, 1), sparkle: clamp(core + filaments, 0, 1), sdf: r - 0.45 };
+      }
+
+      case 'smoke':
+      case 'steam': {
+        const oct = Math.round(p.octaves || 5);
+        const wx = (fbm2(x * 2.2 + 5.1, y * 2.2 - 3.7, 3, seed + 19) - 0.5) * p.warpAmp;
+        const wy = (fbm2(x * 2.2 - 4.3, y * 2.2 + 6.2, 3, seed + 83) - 0.5) * p.warpAmp;
+        const px = x + wx, py = y + wy;
+        const baseN = fbm2(px * p.noiseScale + 7, py * p.noiseScale + 7, oct, seed);
+        const [w1] = worley2(px * (p.noiseScale * 0.65) + 4, py * (p.noiseScale * 0.65) + 4, seed + 211);
+        const billow = preset.kind === 'smoke'
+          ? clamp((1.0 - w1 * 0.85) * 0.55 + baseN * 0.55, 0, 1)
+          : clamp(baseN * 0.85 + (1.0 - w1) * 0.2, 0, 1);
+        const radial = clamp(1.0 - Math.pow(r / 0.94, p.falloff), 0, 1);
+        const raw = radial * (billow * 1.25 + p.density * 0.35 - 0.28);
+        const a = clamp(Math.pow(clamp(raw, 0, 1), 1.0 / Math.max(0.3, p.contrast)), 0, 1);
+        // Analytical spherical puff dome blended with Worley billows -> gorgeous 3D GI normal map!
+        const dome = Math.sqrt(Math.max(0, 1.0 - Math.min(1, r * r * 1.15)));
+        const height = clamp((dome * 0.58 + billow * 0.42) * smoothstep(0.02, 0.38, a), 0, 1);
+        return { alpha: a, height, tintMix: clamp(1.0 - height * 0.9, 0, 1), sparkle: 0.05 * a, sdf: r - 0.72 + (0.5 - billow) * 0.35 };
+      }
+
+      case 'ash': {
+        const [w1, w2] = worley2(x * p.noiseScale + 2, y * p.noiseScale + 2, seed);
+        const n = fbm2(x * p.noiseScale * 1.3, y * p.noiseScale * 1.3, Math.round(p.octaves || 4), seed + 51);
+        const radial = smoothstep(0.92, 0.25, r);
+        const cellMask = smoothstep(p.density * 0.58, p.density * 0.18, w1 + (n - 0.5) * p.warpAmp * 0.4);
+        const a = clamp(Math.pow(cellMask * radial, p.contrast * 0.6), 0, 1);
+        const height = clamp((w2 - w1) * 1.8 * a + n * 0.35 * a, 0, 1);
+        return { alpha: a, height, tintMix: clamp(n, 0, 1), sparkle: a * (n > 0.65 ? 0.45 : 0.05), sdf: w1 - 0.25 };
+      }
+
+      case 'rain': {
+        // Tapered aerodynamic streak oriented vertically (+y bottom head, -y trailing tail)
+        const sx = x / Math.max(0.06, p.aspectStretch * 0.28);
+        const sy = (y - 0.15) * 1.15;
+        const taper = mix(0.28, 1.0, smoothstep(-0.85, 0.58, y));
+        const dX = Math.abs(sx) / Math.max(0.15, taper);
+        const body = smoothstep(1.0, 0.15, dX) * smoothstep(-0.95, 0.45, y) * smoothstep(0.88, 0.56, y);
+        const head = Math.exp(-(sx * sx * 1.4 + Math.pow((y - 0.56) * 5.2, 2)));
+        const a = clamp(body * 0.75 + head * 0.95, 0, 1);
+        const height = clamp(Math.sqrt(Math.max(0, 1.0 - Math.min(1, dX * dX))) * a, 0, 1);
+        return { alpha: a, height, tintMix: clamp(1.0 - head * 0.85, 0, 1), sparkle: clamp(head * 0.9 + body * p.rimRing * 0.4, 0, 1), sdf: dX - 1.0 };
+      }
+
+      case 'splash': {
+        const n1 = fbm2(x * p.noiseScale + 3, y * p.noiseScale - 2, Math.round(p.octaves || 3), seed);
+        const lobes = Math.sin(ang * 5 + n1 * 4.5) * 0.18 + Math.cos(ang * 3 - 1.2) * 0.12;
+        const d = r - (0.58 * p.density + 0.15 + lobes * p.warpAmp * 1.6);
+        const a = smoothstep(softness * 1.4, -softness, d);
+        const rim = Math.exp(-Math.pow((d + 0.06) / 0.06, 2)) * p.rimRing;
+        const h = clamp((smoothstep(0.05, -0.35, d) * 0.78 + rim * 0.32) * a, 0, 1);
+        return { alpha: a, height: h, tintMix: clamp(0.25 + rim * 0.75, 0, 1), sparkle: clamp((rim + Math.pow(h, 2.5) * 0.5) * a, 0, 1), sdf: d };
+      }
+
+      case 'bubble': {
+        const d = r - 0.84;
+        const mask = smoothstep(softness * 1.4, -softness, d);
+        const z = Math.sqrt(Math.max(0, 1.0 - Math.min(1, (r / 0.84) * (r / 0.84))));
+        const fres = Math.pow(1.0 - z, 2.3) * p.rimRing;
+        const spec1 = Math.exp(-((x + 0.30) ** 2 + (y + 0.32) ** 2) * 34) * 1.15;
+        const spec2 = Math.exp(-((x - 0.36) ** 2 + (y - 0.34) ** 2) * 58) * 0.48;
+        const filmN = fbm2(x * p.noiseScale + 2, y * p.noiseScale + 2, 3, seed);
+        const a = clamp(mask * (0.10 + fres * 0.88 + spec1 + spec2), 0, 1);
+        const tintMix = clamp(0.5 + 0.5 * Math.sin((filmN * 4.0 + z * 3.0) * PI * p.chromatic), 0, 1);
+        return { alpha: a, height: z * mask, tintMix, sparkle: clamp(spec1 + spec2 + fres * 0.35, 0, 1), sdf: d };
+      }
+
+      case 'foam': {
+        const [w1, w2] = worley2(x * p.noiseScale + 5, y * p.noiseScale + 5, seed);
+        const env = smoothstep(0.92, 0.32, r);
+        const bubbleMask = smoothstep(0.42 * p.density + 0.12, 0.14, w1);
+        const rim = smoothstep(0.08, 0.0, Math.abs(w2 - w1 - 0.08)) * p.rimRing;
+        const a = clamp(Math.pow(bubbleMask * env, 1.0 / p.contrast) + rim * env * 0.35, 0, 1);
+        const h = clamp(Math.sqrt(Math.max(0, 1.0 - Math.min(1, w1 * 2.1))) * a, 0, 1);
+        return { alpha: a, height: h, tintMix: clamp(1.0 - h, 0, 1), sparkle: clamp(Math.pow(h, 3) * 0.7, 0, 1), sdf: w1 - 0.3 };
+      }
+
+      case 'leaf': {
+        // Multi-lobed botanical leaf with stem (+y down) & vascular vein relief
+        const lx = x / Math.max(0.35, p.aspectStretch);
+        const ly = y + 0.06;
+        const lr = Math.hypot(lx, ly);
+        const la = Math.atan2(ly, lx);
+        const lobes = Math.round(p.blades || 5);
+        const serrate = 0.045 * Math.sin(la * lobes * 4.0);
+        const fan = 0.52 + 0.24 * Math.cos((la + PI * 0.5) * lobes) * smoothstep(0.7, -0.4, ly) + serrate;
+        const dBlade = lr - fan * smoothstep(0.75, 0.12, ly);
+        const dStem = sdSegment(x, y, 0, 0.22, 0, 0.88) - 0.022;
+        const d = Math.min(dBlade, dStem);
+        const a = smoothstep(softness, -softness, d);
+        const midrib = Math.exp(-Math.pow(x / 0.025, 2)) * smoothstep(-0.72, 0.35, y);
+        const sideVeins = Math.pow(0.5 + 0.5 * Math.sin((Math.abs(x) * 14 - y * 10) * 1.4), 6) * 0.55;
+        const height = clamp((0.35 + p.veinDepth * (midrib * 0.55 + sideVeins * 0.35)) * a, 0, 1);
+        return { alpha: a, height, tintMix: clamp(lr * 0.95 + midrib * 0.25, 0, 1), sparkle: midrib * 0.25 * a, sdf: d };
+      }
+
+      case 'petal': {
+        // Notched heart-shaped cherry blossom petal
+        const px = x / Math.max(0.3, p.aspectStretch);
+        const py = y;
+        const notch = Math.exp(-Math.pow(px / 0.16, 2)) * 0.24 * smoothstep(0.0, -0.75, py);
+        const widthEnv = mix(0.16, 0.68, Math.sin(clamp((py + 0.82) / 1.64, 0, 1) * PI));
+        const d = Math.hypot(px / Math.max(0.12, widthEnv), (py + notch) / 0.82) - 1.0;
+        const a = smoothstep(softness * 2.2, -softness * 1.5, d);
+        const veins = Math.pow(0.5 + 0.5 * Math.cos(Math.atan2(py + 0.8, px) * 18), 4) * p.veinDepth * 0.28;
+        const h = clamp((0.42 + 0.38 * smoothstep(0, -0.5, d) + veins) * a, 0, 1);
+        return { alpha: a, height: h, tintMix: clamp(smoothstep(-0.7, 0.75, py), 0, 1), sparkle: veins * a * 0.5, sdf: d };
+      }
+
+      case 'dandelion': {
+        const spokes = Math.round(p.blades || 12);
+        const cy = y + 0.18;
+        const cr = Math.hypot(x, cy);
+        const ca = Math.atan2(cy, x);
+        const rayDist = Math.abs(Math.sin(ca * spokes * 0.5)) * cr;
+        const crown = smoothstep(0.025, 0.006, rayDist) * smoothstep(0.76, 0.58, cr) * smoothstep(0.05, 0.18, cr);
+        const fluff = Math.exp(-Math.pow((cr - 0.58) * 6.0, 2)) * p.rimRing * 0.55;
+        const stem = smoothstep(0.024, 0.008, sdSegment(x, y, 0, -0.18, 0, 0.72));
+        const seedPod = smoothstep(0.09, 0.03, Math.hypot(x * 2.1, y - 0.66));
+        const a = clamp(crown + fluff + stem + seedPod, 0, 1);
+        return { alpha: a, height: clamp(seedPod * 0.9 + stem * 0.6 + crown * 0.5, 0, 1), tintMix: clamp(seedPod * 0.9 + stem * 0.5, 0, 1), sparkle: crown * 0.6, sdf: cr - 0.6 };
+      }
+
+      case 'feather': {
+        const fx = x / Math.max(0.18, p.aspectStretch);
+        const quill = smoothstep(0.03, 0.008, Math.abs(x)) * smoothstep(-0.88, -0.78, y) * smoothstep(0.92, 0.82, y);
+        const env = Math.sin(clamp((y + 0.85) / 1.55, 0, 1) * PI);
+        const barbs = 0.5 + 0.5 * Math.sin((Math.abs(fx) * 18 - y * 24) * (p.noiseScale * 0.18));
+        const splits = hash11(Math.floor((y + 1.0) * 14), seed) > 0.78 ? 0.25 : 1.0;
+        const vane = smoothstep(env * 0.95, env * 0.72, Math.abs(fx)) * smoothstep(-0.85, -0.65, y) * smoothstep(0.70, 0.45, y) * mix(0.55, 1.0, barbs * splits);
+        const a = clamp(Math.max(quill, vane), 0, 1);
+        const h = clamp(quill * 0.95 + vane * (0.35 + p.veinDepth * barbs * 0.4), 0, 1);
+        return { alpha: a, height: h, tintMix: clamp(Math.abs(fx) * 0.85, 0, 1), sparkle: quill * 0.4, sdf: Math.abs(fx) - env };
+      }
+
+      case 'butterfly': {
+        // Mirror symmetry left/right for articulated 2-wing texture!
+        const ax = Math.abs(x);
+        // Upper forewing lobe
+        const fx = (ax - 0.42) / 0.48, fy = (y + 0.22) / 0.46;
+        const dFore = Math.hypot(fx, fy + fx * 0.22) - (0.94 + 0.06 * Math.sin(Math.atan2(fy, fx) * 6));
+        // Lower hindwing lobe + swallowtail extension
+        const hx = (ax - 0.30) / 0.34, hy = (y - 0.30) / 0.42;
+        const dHind = Math.hypot(hx, hy) - (0.92 + 0.08 * Math.cos(Math.atan2(hy, hx) * 5));
+        const dBody = Math.hypot(ax / 0.065, (y - 0.02) / 0.48) - 1.0;
+        const dWing = Math.min(dFore, dHind);
+        const dAll = Math.min(dWing, dBody);
+        const a = smoothstep(softness * 1.4, -softness, dAll);
+        // Dark chitin veins radiating from thorax + iridescent inner wing cells
+        const va = Math.atan2(y + 0.06, ax + 0.02);
+        const vr = Math.hypot(ax, y + 0.06);
+        const veins = Math.pow(Math.abs(Math.sin(va * 9.0 + vr * 2.2)), 14) * p.veinDepth;
+        const outerRim = smoothstep(-0.18, -0.02, dWing) * p.rimRing;
+        const bodyMask = smoothstep(softness, -softness, dBody);
+        const iridescence = clamp((1.0 - veins * 0.85) * (1.0 - outerRim * 0.75) * (1.0 - bodyMask), 0, 1);
+        const h = clamp((0.35 + veins * 0.45 + bodyMask * 0.65) * a, 0, 1);
+        const tintMix = clamp(outerRim * 0.9 + veins * 0.7 + bodyMask * 0.95 + (1.0 - iridescence) * 0.2, 0, 1);
+        return { alpha: a, height: h, tintMix, sparkle: clamp(iridescence * p.chromatic * 0.8 * a, 0, 1), sdf: dAll };
+      }
+
+      case 'hexcell': {
+        const d = sdHexagon(x, y, 0.82);
+        const a = smoothstep(softness, -softness, d);
+        const rim = Math.exp(-Math.pow((d + 0.08) / 0.055, 2)) * p.rimRing;
+        const innerHex = Math.exp(-Math.pow((sdHexagon(x, y, 0.52)) / 0.032, 2)) * p.veinDepth;
+        const h = clamp((0.45 + 0.45 * smoothstep(0, -0.25, d) + rim * 0.35 - innerHex * 0.25) * a, 0, 1);
+        return { alpha: a, height: h, tintMix: clamp(rim * 0.9 + innerHex * 0.7, 0, 1), sparkle: clamp((rim + innerHex) * a, 0, 1), sdf: d };
+      }
+
+      case 'diamondDissolve': {
+        const sx = x * p.noiseScale, sy = y * p.noiseScale;
+        const warp = (fbm2(sx * 0.4, sy * 0.4, 2, seed) - 0.5) * p.warpAmp * 1.4;
+        const fx = ((sx + warp) % 1 + 1) % 1 - 0.5;
+        const fy = ((sy - warp) % 1 + 1) % 1 - 0.5;
+        const manhattan = (Math.abs(fx) + Math.abs(fy)) * 2.0; // 0..2 diamond gradient!
+        const cellRand = hash21(Math.floor(sx + warp), Math.floor(sy - warp), seed);
+        const val = clamp(mix(1.0 - manhattan * 0.75, cellRand, 0.38), 0, 1);
+        const shaped = clamp(Math.pow(val, 1.0 / p.contrast), 0, 1);
+        const edge = Math.exp(-Math.pow((shaped - (1.0 - p.density)) * 9.0, 2)) * p.rimRing;
+        return { alpha: clamp(smoothstep(1.0 - p.density - 0.08, 1.0 - p.density + 0.08, shaped) + 0.15, 0, 1), height: shaped, tintMix: clamp(edge * 1.2 + (1.0 - shaped) * 0.4, 0, 1), sparkle: edge, sdf: manhattan - 1.0 };
+      }
+
+      case 'voronoiCrack': {
+        const wx = (fbm2(x * 3.0, y * 3.0, 2, seed + 13) - 0.5) * p.warpAmp;
+        const wy = (fbm2(x * 3.0 + 7, y * 3.0 - 5, 2, seed + 47) - 0.5) * p.warpAmp;
+        const [w1, w2] = worley2((x + wx) * p.noiseScale, (y + wy) * p.noiseScale, seed);
+        const edgeDist = w2 - w1;
+        const crack = smoothstep(0.14 * p.veinDepth + 0.01, 0.01, edgeDist);
+        const slab = clamp(Math.pow(smoothstep(0.02, 0.45, edgeDist), 1.0 / p.contrast), 0, 1);
+        const radial = smoothstep(1.02, 0.65, r);
+        const a = clamp(Math.max(slab * 0.75, crack) * radial, 0, 1);
+        return { alpha: a, height: slab * radial, tintMix: crack, sparkle: crack * radial, sdf: edgeDist - 0.08 };
+      }
+
+      case 'halftoneMask': {
+        const gx = x * p.noiseScale, gy = y * p.noiseScale;
+        const fx = (gx - Math.floor(gx)) - 0.5;
+        const fy = (gy - Math.floor(gy)) - 0.5;
+        const dotR = Math.hypot(fx, fy);
+        const mod = clamp(1.0 - r * 0.85, 0.08, 1.0);
+        const targetR = 0.46 * p.density * Math.pow(mod, 1.0 / p.contrast);
+        const d = dotR - targetR;
+        const a = smoothstep(softness * 2.5, -softness * 1.5, d) * smoothstep(0.98, 0.72, r);
+        const h = clamp(Math.sqrt(Math.max(0, 1.0 - Math.min(1, (dotR / Math.max(0.05, targetR)) ** 2))) * a, 0, 1);
+        return { alpha: a, height: h, tintMix: clamp(r * 1.05, 0, 1), sparkle: h * 0.4, sdf: d };
+      }
+
+      case 'glitchStrip': {
+        const row = Math.floor((y + 1.0) * p.noiseScale * 2.2);
+        const col = Math.floor((x + 1.0 + hash11(row, seed) * 0.6) * p.noiseScale * 1.1);
+        const onRow = hash11(row * 17, seed + 5) < p.density;
+        const onBlk = hash21(col, row, seed + 29) < p.density * 1.05;
+        const stripMask = (onRow && onBlk) ? 1.0 : 0.0;
+        const scan = 0.78 + 0.22 * Math.sin(y * 120);
+        const a = clamp(stripMask * scan * smoothstep(0.96, 0.78, Math.max(Math.abs(x), Math.abs(y))), 0, 1);
+        const tintMix = clamp(hash21(col, row, seed + 91) * p.chromatic + (x > 0.1 ? 0.25 : 0), 0, 1);
+        return { alpha: a, height: a * (0.5 + 0.5 * hash11(row, seed + 17)), tintMix, sparkle: a * (tintMix > 0.6 ? 0.8 : 0.2), sdf: 0.5 - a };
+      }
+
+      default:
+        return { alpha: 0, height: 0, tintMix: 0, sparkle: 0, sdf: 1 };
+    }
+  }
+
+  // ============================================================================================================
+  // 4. MULTI-CHANNEL BUFFER SYNTHESIS (RGBA + HEIGHT + TANGENT NORMAL + SPARKLE/SDF + ATLAS PACKING)
+  // ============================================================================================================
+  const state = {
+    activeCat: 'all',
+    presetIndex: 0,
+    params: {},
+    col1: '#eff8ff',
+    col2: '#7dd3fc',
+    normalStr: 2.8,
+    softness: 0.014,
+    alphaGamma: 1.0,
+    seed: 1337,
+    viewMode: 'rgba',   // rgba | quad | alpha | height | normal | sparkle | lit3d
+    atlasGrid: 1,       // 1 | 2 | 4 | 8
+    resolution: 512,
+    backdrop: 'studio', // studio | checker | black | sky
+    lightYaw: 0.55,
+    lightPitch: 0.52,
+    tumbleAngle: 0.0,
+    dragging: false,
+    lastMouse: [0, 0]
+  };
+
+  let buffers = null; // { size, rgba, alpha, height, normal, sparkle, coveragePct, genMs }
+
+  function synthesizeChannels(preset, params, size, atlasGrid, seed, opts) {
+    const t0 = performance.now();
+    const total = size * size;
+    const rgba    = new Uint8ClampedArray(total * 4);
+    const alphaB  = new Uint8ClampedArray(total * 4);
+    const heightF = new Float32Array(total);
+    const heightB = new Uint8ClampedArray(total * 4);
+    const normalB = new Uint8ClampedArray(total * 4);
+    const sparkB  = new Uint8ClampedArray(total * 4);
+
+    const c1 = hexToRgb01(opts.col1);
+    const c2 = hexToRgb01(opts.col2);
+    const tilePx = size / atlasGrid;
+    const invGamma = opts.alphaGamma || 1.0;
+
+    let alphaSum = 0;
+    const evalPreset = { ...preset, p: params };
+
+    for (let ty = 0; ty < atlasGrid; ty++) {
+      for (let tx = 0; tx < atlasGrid; tx++) {
+        const tileSeed = (seed + (ty * atlasGrid + tx) * 9781) | 0;
+        const x0 = Math.floor(tx * tilePx), x1 = Math.floor((tx + 1) * tilePx);
+        const y0 = Math.floor(ty * tilePx), y1 = Math.floor((ty + 1) * tilePx);
+        const tw = Math.max(1, x1 - x0), th = Math.max(1, y1 - y0);
+
+        // Deterministic slight rotation/scale variation per tile in atlas mode (keeps crystals naturally diverse!)
+        const tileRot = atlasGrid > 1 ? hash11(ty * 37 + tx, tileSeed + 7) * (PI / 3) : 0;
+        const cosR = Math.cos(tileRot), sinR = Math.sin(tileRot);
+
+        for (let py = y0; py < y1; py++) {
+          const ny = ((py - y0 + 0.5) / th) * 2.0 - 1.0;
+          for (let px = x0; px < x1; px++) {
+            const nx = ((px - x0 + 0.5) / tw) * 2.0 - 1.0;
+            const rx = nx * cosR - ny * sinR;
+            const ry = nx * sinR + ny * cosR;
+
+            const s = evalSpritePixel(evalPreset, rx, ry, tileSeed, opts.softness);
+            const a = clamp(Math.pow(clamp(s.alpha, 0, 1), invGamma), 0, 1);
+            const h = clamp(s.height, 0, 1);
+            const idx = py * size + px;
+            const o = idx * 4;
+
+            heightF[idx] = h;
+            alphaSum += a;
+
+            // Color composition
+            const rCol = mix(c1[0], c2[0], s.tintMix);
+            const gCol = mix(c1[1], c2[1], s.tintMix);
+            const bCol = mix(c1[2], c2[2], s.tintMix);
+            rgba[o]     = Math.round(clamp(rCol, 0, 1) * 255);
+            rgba[o + 1] = Math.round(clamp(gCol, 0, 1) * 255);
+            rgba[o + 2] = Math.round(clamp(bCol, 0, 1) * 255);
+            rgba[o + 3] = Math.round(a * 255);
+
+            const a8 = Math.round(a * 255);
+            alphaB[o] = alphaB[o + 1] = alphaB[o + 2] = a8; alphaB[o + 3] = 255;
+
+            const h8 = Math.round(h * 255);
+            heightB[o] = heightB[o + 1] = heightB[o + 2] = h8; heightB[o + 3] = 255;
+
+            // Sparkle (R+G) + Normalized SDF (B)
+            const sp8 = Math.round(clamp(s.sparkle, 0, 1) * 255);
+            const sdfVis = clamp(0.5 - s.sdf * 0.9, 0, 1);
+            sparkB[o]     = Math.round(clamp(s.sparkle * 1.15 + sdfVis * 0.15, 0, 1) * 255);
+            sparkB[o + 1] = Math.round(clamp(s.sparkle * 0.92 + sdfVis * 0.35, 0, 1) * 255);
+            sparkB[o + 2] = Math.round(clamp(sdfVis * 0.95 + s.sparkle * 0.35, 0, 1) * 255);
+            sparkB[o + 3] = 255;
+          }
+        }
+      }
+    }
+
+    // Sobel Tangent-Space Normal Map derived from synthesized Height/Thickness field!
+    const nStr = opts.normalStr * (size / 256);
+    for (let y = 0; y < size; y++) {
+      const ym = Math.max(0, y - 1), yp = Math.min(size - 1, y + 1);
+      for (let x = 0; x < size; x++) {
+        const xm = Math.max(0, x - 1), xp = Math.min(size - 1, x + 1);
+        const tl = heightF[ym * size + xm], tc = heightF[ym * size + x], tr = heightF[ym * size + xp];
+        const ml = heightF[y  * size + xm],                              mr = heightF[y  * size + xp];
+        const bl = heightF[yp * size + xm], bc = heightF[yp * size + x], br = heightF[yp * size + xp];
+        const dx = ((tr + 2 * mr + br) - (tl + 2 * ml + bl)) * nStr;
+        const dy = ((bl + 2 * bc + br) - (tl + 2 * tc + tr)) * nStr;
+        let nx = -dx, ny = -dy, nz = 1.0;
+        const inv = 1.0 / Math.hypot(nx, ny, nz);
+        nx *= inv; ny *= inv; nz *= inv;
+        const o = (y * size + x) * 4;
+        normalB[o]     = Math.round((nx * 0.5 + 0.5) * 255);
+        normalB[o + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+        normalB[o + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+        normalB[o + 3] = 255;
+      }
+    }
+
+    return {
+      size, rgba, alpha: alphaB, height: heightB, normal: normalB, sparkle: sparkB,
+      coveragePct: (alphaSum / total) * 100,
+      genMs: performance.now() - t0
+    };
+  }
+
+  // ============================================================================================================
+  // 5. VIEWPORT PRESENTATION (RGBA, 4-UP QUAD, CHANNELS, & INTERACTIVE 3D LIT GLINT PREVIEW)
+  // ============================================================================================================
+  const mainCanvas = document.getElementById('mainCanvas');
+  const ctx = mainCanvas.getContext('2d');
+
+  function drawBackdrop(targetCtx, w, h, kind) {
+    if (kind === 'black') {
+      targetCtx.fillStyle = '#04060a';
+      targetCtx.fillRect(0, 0, w, h);
+    } else if (kind === 'sky') {
+      const g = targetCtx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#1d4ed8');
+      g.addColorStop(0.65, '#60a5fa');
+      g.addColorStop(1, '#dbeafe');
+      targetCtx.fillStyle = g;
+      targetCtx.fillRect(0, 0, w, h);
+    } else if (kind === 'checker') {
+      const step = 16;
+      for (let y = 0; y < h; y += step) {
+        for (let x = 0; x < w; x += step) {
+          targetCtx.fillStyle = (((x / step) + (y / step)) & 1) ? '#1a2230' : '#263144';
+          targetCtx.fillRect(x, y, step, step);
+        }
+      }
+    } else {
+      const g = targetCtx.createRadialGradient(w * 0.5, h * 0.45, w * 0.05, w * 0.5, h * 0.5, w * 0.72);
+      g.addColorStop(0, '#1a2333');
+      g.addColorStop(1, '#090d14');
+      targetCtx.fillStyle = g;
+      targetCtx.fillRect(0, 0, w, h);
+    }
+  }
+
+  function makeOffscreen(arr, size) {
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    c.getContext('2d').putImageData(new ImageData(arr, size, size), 0, 0);
+    return c;
+  }
+
+  function drawAtlasGridLines(targetCtx, size, grid) {
+    if (grid <= 1) return;
+    targetCtx.save();
+    targetCtx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+    targetCtx.lineWidth = 1;
+    const step = size / grid;
+    for (let i = 1; i < grid; i++) {
+      const p = Math.round(i * step) + 0.5;
+      targetCtx.beginPath(); targetCtx.moveTo(p, 0); targetCtx.lineTo(p, size); targetCtx.stroke();
+      targetCtx.beginPath(); targetCtx.moveTo(0, p); targetCtx.lineTo(size, p); targetCtx.stroke();
+    }
+    targetCtx.restore();
+  }
+
+  function renderLit3DPreview() {
+    if (!buffers) return;
+    const sz = buffers.size;
+    mainCanvas.width = sz; mainCanvas.height = sz;
+    drawBackdrop(ctx, sz, sz, state.backdrop);
+
+    // Interactive directional sunlight + cool sky GI + warm floor bounce + crisp specular glints!
+    const lx = Math.cos(state.lightPitch) * Math.sin(state.lightYaw);
+    const ly = -Math.sin(state.lightPitch);
+    const lz = Math.cos(state.lightPitch) * Math.cos(state.lightYaw);
+    const invL = 1 / Math.hypot(lx, ly, lz);
+    const Lx = lx * invL, Ly = ly * invL, Lz = lz * invL;
+    const Vx = 0, Vy = 0, Vz = 1;
+    let Hx = Lx + Vx, Hy = Ly + Vy, Hz = Lz + Vz;
+    const invH = 1 / Math.hypot(Hx, Hy, Hz);
+    Hx *= invH; Hy *= invH; Hz *= invH;
+
+    const litArr = new Uint8ClampedArray(sz * sz * 4);
+    const { rgba, normal, height, sparkle } = buffers;
+    for (let i = 0; i < sz * sz; i++) {
+      const o = i * 4;
+      const a = rgba[o + 3] / 255;
+      if (a < 0.004) continue;
+      const nx = (normal[o] / 255) * 2 - 1;
+      const ny = (normal[o + 1] / 255) * 2 - 1;
+      const nz = (normal[o + 2] / 255) * 2 - 1;
+      const ndl = Math.max(0, nx * Lx + ny * Ly + nz * Lz);
+      const ndh = Math.max(0, nx * Hx + ny * Hy + nz * Hz);
+      const spec = Math.pow(ndh, 38) * (0.55 + 1.45 * (sparkle[o] / 255));
+      // Hemisphere GI bounce (cool zenith blue + subtle warm ground bounce)
+      const skyMix = clamp(0.5 - ny * 0.5, 0, 1);
+      const giR = mix(0.28, 0.22, skyMix), giG = mix(0.24, 0.34, skyMix), giB = mix(0.22, 0.52, skyMix);
+      // Subsurface wrap transmission through thin ice/petals/smoke
+      const wrap = Math.max(0, (nx * Lx + ny * Ly + nz * Lz + 0.45) / 1.45) * (1.0 - (height[o] / 255) * 0.45);
+      const ar = rgba[o] / 255, ag = rgba[o + 1] / 255, ab = rgba[o + 2] / 255;
+      const lr = ar * (giR + ndl * 0.95 + wrap * 0.32) + spec * 1.15;
+      const lg = ag * (giG + ndl * 0.92 + wrap * 0.30) + spec * 1.18;
+      const lb = ab * (giB + ndl * 0.88 + wrap * 0.34) + spec * 1.25;
+      // ACES-like smooth highlight rolloff
+      litArr[o]     = Math.round(clamp((lr * (2.51 * lr + 0.03)) / (lr * (2.43 * lr + 0.59) + 0.14), 0, 1) * 255);
+      litArr[o + 1] = Math.round(clamp((lg * (2.51 * lg + 0.03)) / (lg * (2.43 * lg + 0.59) + 0.14), 0, 1) * 255);
+      litArr[o + 2] = Math.round(clamp((lb * (2.51 * lb + 0.03)) / (lb * (2.43 * lb + 0.59) + 0.14), 0, 1) * 255);
+      litArr[o + 3] = rgba[o + 3];
+    }
+
+    const off = makeOffscreen(litArr, sz);
+    ctx.drawImage(off, 0, 0);
+
+    // Light direction reticle badge (Project Zero neutral glass pill on full-size viewport >= 384px)
+    if (sz >= 384) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(18,18,18,0.84)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.beginPath(); ctx.roundRect(12, 12, 250, 26, 13); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#e4e4e4'; ctx.font = '400 11px "DM Sans", sans-serif';
+      ctx.fillText('Drag viewport to orbit key light & GI', 24, 29);
+      ctx.restore();
+    }
+  }
+
+  function presentViewport() {
+    if (!buffers) return;
+    const sz = buffers.size;
+    if (state.viewMode === 'lit3d') {
+      renderLit3DPreview();
+      return;
+    }
+    if (state.viewMode === 'quad') {
+      mainCanvas.width = sz; mainCanvas.height = sz;
+      const half = sz / 2;
+      const tiles = [
+        { label: 'RGBA COMPOSITE', buf: buffers.rgba,    bg: true },
+        { label: 'HEIGHT / THICKNESS', buf: buffers.height,  bg: false },
+        { label: 'TANGENT NORMAL', buf: buffers.normal,  bg: false },
+        { label: 'SPARKLE & SDF',  buf: buffers.sparkle, bg: false }
+      ];
+      tiles.forEach((t, i) => {
+        const dx = (i % 2) * half, dy = Math.floor(i / 2) * half;
+        if (t.bg) {
+          ctx.save(); ctx.beginPath(); ctx.rect(dx, dy, half, half); ctx.clip();
+          drawBackdrop(ctx, sz, sz, state.backdrop);
+          ctx.restore();
+        }
+        ctx.drawImage(makeOffscreen(t.buf, sz), dx, dy, half, half);
+        ctx.fillStyle = 'rgba(14,14,14,0.82)';
+        ctx.fillRect(dx + 8, dy + 8, 134, 21);
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(dx + 8, dy + 8, 134, 21);
+        ctx.fillStyle = '#e5e5e5';
+        ctx.font = '500 10px "DM Sans", sans-serif';
+        ctx.fillText(t.label, dx + 15, dy + 22);
+      });
+      ctx.strokeStyle = '#2d2d2d'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(half, 0); ctx.lineTo(half, sz); ctx.moveTo(0, half); ctx.lineTo(sz, half); ctx.stroke();
+      return;
+    }
+
+    mainCanvas.width = sz; mainCanvas.height = sz;
+    if (state.viewMode === 'rgba') {
+      drawBackdrop(ctx, sz, sz, state.backdrop);
+      ctx.drawImage(makeOffscreen(buffers.rgba, sz), 0, 0);
+      drawAtlasGridLines(ctx, sz, state.atlasGrid);
+    } else {
+      const map = { alpha: buffers.alpha, height: buffers.height, normal: buffers.normal, sparkle: buffers.sparkle };
+      ctx.drawImage(makeOffscreen(map[state.viewMode] || buffers.rgba, sz), 0, 0);
+      drawAtlasGridLines(ctx, sz, state.atlasGrid);
+    }
+  }
+
+  function syncRangeFill(el) {
+    if (!el) return;
+    const min = parseFloat(el.min || '0'), max = parseFloat(el.max || '1'), val = parseFloat(el.value || '0');
+    const pct = max > min ? clamp(((val - min) / (max - min)) * 100, 0, 100) : 0;
+    el.style.setProperty('--fill', `${pct.toFixed(1)}%`);
+  }
+
+  function syncAllRangeFills() {
+    document.querySelectorAll('input[type="range"]').forEach(syncRangeFill);
+  }
+
+  function rebuildAndRender() {
+    const preset = PRESETS[state.presetIndex];
+    buffers = synthesizeChannels(preset, state.params, state.resolution, state.atlasGrid, state.seed, {
+      col1: state.col1, col2: state.col2, normalStr: state.normalStr,
+      softness: state.softness, alphaGamma: state.alphaGamma
+    });
+    presentViewport();
+
+    const catLabel = CATEGORIES.find(c => c.id === preset.cat)?.label || preset.cat;
+    document.getElementById('hudPreset').innerHTML = `<b>${preset.name}</b> · ${catLabel}`;
+    document.getElementById('hudRes').textContent = `${state.resolution}×${state.resolution}${state.atlasGrid > 1 ? ` (${state.atlasGrid}×${state.atlasGrid} atlas)` : ''}`;
+    document.getElementById('hudTime').textContent = `${buffers.genMs.toFixed(1)} ms`;
+    document.getElementById('hudCov').textContent = `Coverage ${buffers.coveragePct.toFixed(1)}%`;
+
+    document.getElementById('vpTitle').textContent = preset.name;
+    document.getElementById('inspTitle').textContent = preset.name;
+    document.getElementById('inspSubtitle').textContent = `${catLabel} · Procedural Sprite`;
+    document.getElementById('mRes').textContent = `${state.resolution} px`;
+    document.getElementById('mCov').textContent = `${buffers.coveragePct.toFixed(1)}%`;
+    document.getElementById('mMs').textContent = `${buffers.genMs.toFixed(1)} ms`;
+    document.getElementById('mSeed').textContent = String(state.seed);
+    document.getElementById('statAtlasMode').textContent = `${state.atlasGrid}×${state.atlasGrid}`;
+
+    const inspThumb = document.getElementById('inspThumbCanvas');
+    if (inspThumb) {
+      const itx = inspThumb.getContext('2d');
+      itx.clearRect(0, 0, inspThumb.width, inspThumb.height);
+      itx.fillStyle = '#090909';
+      itx.fillRect(0, 0, inspThumb.width, inspThumb.height);
+      itx.drawImage(makeOffscreen(buffers.rgba, buffers.size), 0, 0, inspThumb.width, inspThumb.height);
+    }
+    syncAllRangeFills();
+  }
+
+  // ============================================================================================================
+  // 6. UI WIRING, PRESET THUMBNAILS & EXPORTERS
+  // ============================================================================================================
+  const catBar = document.getElementById('catBar');
+  const presetList = document.getElementById('presetList');
+  const dynamicControls = document.getElementById('dynamicControls');
+  const searchInput = document.getElementById('searchInput');
+  let searchQuery = '';
+
+  function buildCategories() {
+    catBar.innerHTML = '';
+    CATEGORIES.forEach(c => {
+      const btn = document.createElement('button');
+      btn.className = 'cat-chip' + (state.activeCat === c.id ? ' active' : '');
+      btn.textContent = c.label;
+      btn.onclick = () => { state.activeCat = c.id; buildCategories(); buildPresetCards(); };
+      catBar.appendChild(btn);
+    });
+  }
+
+  const thumbCache = new Map();
+  function getPresetThumbCanvas(preset) {
+    if (thumbCache.has(preset.id)) return thumbCache.get(preset.id);
+    const sz = 64;
+    const b = synthesizeChannels(preset, preset.p, sz, 1, 1337, {
+      col1: preset.col1, col2: preset.col2, normalStr: preset.normalStr,
+      softness: preset.softness, alphaGamma: 1.0
+    });
+    const c = makeOffscreen(b.rgba, sz);
+    thumbCache.set(preset.id, c);
+    return c;
+  }
+
+  function buildPresetCards() {
+    presetList.innerHTML = '';
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = PRESETS.map((p, idx) => ({ p, idx })).filter(({ p }) => {
+      if (state.activeCat !== 'all' && p.cat !== state.activeCat) return false;
+      if (q && !p.name.toLowerCase().includes(q) && !p.cat.toLowerCase().includes(q) && !p.blurb.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    document.getElementById('presetCount').textContent = `${filtered.length} sprites`;
+    document.getElementById('statVisibleCount').textContent = String(filtered.length);
+    filtered.forEach(({ p, idx }) => {
+      const card = document.createElement('div');
+      card.className = 'preset-card' + (idx === state.presetIndex ? ' active' : '');
+      const thumbWrap = document.createElement('div');
+      thumbWrap.className = 'preset-thumb';
+      const clone = document.createElement('canvas');
+      clone.width = 64; clone.height = 64;
+      clone.getContext('2d').drawImage(getPresetThumbCanvas(p), 0, 0);
+      thumbWrap.appendChild(clone);
+      const meta = document.createElement('div'); meta.className = 'preset-meta';
+      const name = document.createElement('div'); name.className = 'preset-name'; name.textContent = p.name;
+      const cat = document.createElement('div'); cat.className = 'preset-cat'; cat.textContent = `${p.cat} · ${p.kind}`;
+      meta.append(name, cat);
+      const dot = document.createElement('span'); dot.className = 'preset-dot';
+      card.append(thumbWrap, meta, dot);
+      card.onclick = () => selectPreset(idx);
+      presetList.appendChild(card);
+    });
+  }
+
+  function buildInspectorControls() {
+    const preset = PRESETS[state.presetIndex];
+    document.getElementById('activeFamilyTag').textContent = preset.cat.toUpperCase();
+    document.getElementById('presetBlurb').textContent = preset.blurb;
+    document.getElementById('colPrimary').value = state.col1;
+    document.getElementById('colSecondary').value = state.col2;
+    document.getElementById('slNormalStr').value = state.normalStr;
+    document.getElementById('valNormalStr').textContent = state.normalStr.toFixed(1);
+    document.getElementById('slSoftness').value = state.softness;
+    document.getElementById('valSoftness').textContent = state.softness.toFixed(3);
+    document.getElementById('slAlphaGamma').value = state.alphaGamma;
+    document.getElementById('valAlphaGamma').textContent = state.alphaGamma.toFixed(2);
+    document.getElementById('slSeed').value = state.seed;
+    document.getElementById('valSeed').textContent = String(state.seed);
+
+    dynamicControls.innerHTML = '';
+    Object.keys(state.params).forEach(key => {
+      const def = PARAM_DEFS[key];
+      if (!def) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'ctrl';
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      const lbl = document.createElement('label'); lbl.textContent = def.label;
+      const val = document.createElement('span'); val.className = 'val';
+      const fmt = v => def.step >= 1 ? String(Math.round(v)) : (def.step < 0.01 ? v.toFixed(3) : v.toFixed(2));
+      val.textContent = fmt(state.params[key]);
+      row.append(lbl, val);
+
+      const input = document.createElement('input');
+      input.type = 'range'; input.min = def.min; input.max = def.max; input.step = def.step;
+      input.value = state.params[key];
+      syncRangeFill(input);
+      input.oninput = () => {
+        state.params[key] = parseFloat(input.value);
+        val.textContent = fmt(state.params[key]);
+        syncRangeFill(input);
+        rebuildAndRender();
+      };
+      wrap.append(row, input);
+      dynamicControls.appendChild(wrap);
+    });
+    syncAllRangeFills();
+  }
+
+  searchInput.addEventListener('input', () => { searchQuery = searchInput.value; buildPresetCards(); });
+  window.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+      e.preventDefault(); searchInput.focus(); searchInput.select();
+    }
+  });
+  document.getElementById('btnQuickExport').onclick = () => exportChannel('rgba', 'RGBA');
+  document.getElementById('btnRandomSeedTop').onclick = () => document.getElementById('btnRandomSeed').click();
+  document.getElementById('btnResetPreset').onclick = () => {
+    state.alphaGamma = 1.0;
+    state.seed = 1337;
+    selectPreset(state.presetIndex);
+  };
+
+  function selectPreset(index) {
+    state.presetIndex = index;
+    const p = PRESETS[index];
+    state.params = { ...p.p };
+    state.col1 = p.col1;
+    state.col2 = p.col2;
+    state.normalStr = p.normalStr;
+    state.softness = p.softness;
+    buildPresetCards();
+    buildInspectorControls();
+    rebuildAndRender();
+  }
+
+  // Segmented controls
+  document.getElementById('viewModeSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#viewModeSeg button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    state.viewMode = b.dataset.mode;
+    presentViewport();
+  });
+  document.getElementById('atlasSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#atlasSeg button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    state.atlasGrid = parseInt(b.dataset.atlas, 10);
+    rebuildAndRender();
+  });
+  document.getElementById('resSelect').onchange = e => { state.resolution = parseInt(e.target.value, 10); rebuildAndRender(); };
+  document.getElementById('bgSelect').onchange = e => { state.backdrop = e.target.value; presentViewport(); };
+
+  // Optical inspector controls
+  document.getElementById('colPrimary').oninput = e => { state.col1 = e.target.value; rebuildAndRender(); };
+  document.getElementById('colSecondary').oninput = e => { state.col2 = e.target.value; rebuildAndRender(); };
+  document.getElementById('slNormalStr').oninput = e => { state.normalStr = parseFloat(e.target.value); document.getElementById('valNormalStr').textContent = state.normalStr.toFixed(1); rebuildAndRender(); };
+  document.getElementById('slSoftness').oninput = e => { state.softness = parseFloat(e.target.value); document.getElementById('valSoftness').textContent = state.softness.toFixed(3); rebuildAndRender(); };
+  document.getElementById('slAlphaGamma').oninput = e => { state.alphaGamma = parseFloat(e.target.value); document.getElementById('valAlphaGamma').textContent = state.alphaGamma.toFixed(2); rebuildAndRender(); };
+  document.getElementById('slSeed').oninput = e => { state.seed = parseInt(e.target.value, 10); document.getElementById('valSeed').textContent = String(state.seed); rebuildAndRender(); };
+  document.getElementById('btnRandomSeed').onclick = () => {
+    state.seed = 1 + Math.floor(Math.random() * 9998);
+    document.getElementById('slSeed').value = state.seed;
+    document.getElementById('valSeed').textContent = String(state.seed);
+    rebuildAndRender();
+  };
+
+  // Light dragging in 3D Lit Preview mode
+  const stage = document.getElementById('canvasStage');
+  stage.addEventListener('pointerdown', e => { state.dragging = true; state.lastMouse = [e.clientX, e.clientY]; });
+  window.addEventListener('pointerup', () => { state.dragging = false; });
+  window.addEventListener('pointermove', e => {
+    if (!state.dragging || state.viewMode !== 'lit3d') return;
+    const dx = e.clientX - state.lastMouse[0], dy = e.clientY - state.lastMouse[1];
+    state.lastMouse = [e.clientX, e.clientY];
+    state.lightYaw += dx * 0.012;
+    state.lightPitch = clamp(state.lightPitch - dy * 0.012, -1.1, 1.3);
+    renderLit3DPreview();
+  });
+
+  // Exporters
+  function downloadCanvas(canvas, filename) {
+    const a = document.createElement('a');
+    a.download = filename;
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  }
+  function exportChannel(bufKey, suffix) {
+    if (!buffers) return;
+    const p = PRESETS[state.presetIndex];
+    const tag = `${p.id}_${state.atlasGrid}x${state.atlasGrid}_${state.resolution}_${suffix}.png`;
+    downloadCanvas(makeOffscreen(buffers[bufKey], buffers.size), tag);
+  }
+  document.getElementById('btnExportRgba').onclick = () => exportChannel('rgba', 'RGBA');
+  document.getElementById('btnExportNormal').onclick = () => exportChannel('normal', 'Normal');
+  document.getElementById('btnExportHeight').onclick = () => exportChannel('height', 'Height');
+  document.getElementById('btnExportSparkle').onclick = () => exportChannel('sparkle', 'SparkleSDF');
+  document.getElementById('btnExportQuad').onclick = () => {
+    const prev = state.viewMode;
+    state.viewMode = 'quad'; presentViewport();
+    const p = PRESETS[state.presetIndex];
+    downloadCanvas(mainCanvas, `${p.id}_4UpQuad_${state.resolution}.png`);
+    state.viewMode = prev; presentViewport();
+  };
+  document.getElementById('btnExportRecipe').onclick = () => {
+    const p = PRESETS[state.presetIndex];
+    const recipe = {
+      schema: 'Frontier.ParticleSpriteRecipe.v1',
+      presetId: p.id,
+      displayName: p.name,
+      category: p.cat,
+      generatorKind: p.kind,
+      seed: state.seed,
+      atlasGrid: state.atlasGrid,
+      resolution: state.resolution,
+      optical: { primaryHex: state.col1, secondaryHex: state.col2, normalReliefStrength: state.normalStr, edgeSoftness: state.softness, alphaGamma: state.alphaGamma },
+      parameters: { ...state.params }
+    };
+    const blob = new Blob([JSON.stringify(recipe, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.download = `${p.id}.ParticleSpriteRecipe.json`;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+  };
+
+  // Expose tiny test hook for automated visual proof sheets
+  window.FrontierSpriteStudio = {
+    PRESETS,
+    selectById(id) {
+      const idx = PRESETS.findIndex(x => x.id === id);
+      if (idx >= 0) selectPreset(idx);
+    },
+    setView(mode) {
+      state.viewMode = mode;
+      document.querySelectorAll('#viewModeSeg button').forEach(x => x.classList.toggle('active', x.dataset.mode === mode));
+      presentViewport();
+    },
+    setAtlas(grid) {
+      state.atlasGrid = grid;
+      document.querySelectorAll('#atlasSeg button').forEach(x => x.classList.toggle('active', parseInt(x.dataset.atlas, 10) === grid));
+      rebuildAndRender();
+    },
+    setResolution(res) {
+      state.resolution = res;
+      document.getElementById('resSelect').value = String(res);
+      rebuildAndRender();
+    }
+  };
+
+  // Boot!
+  buildCategories();
+  selectPreset(0);
+})();
+</script>
+</body>
+</html>

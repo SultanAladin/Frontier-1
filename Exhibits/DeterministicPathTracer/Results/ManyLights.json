@@ -1,0 +1,300 @@
+{
+  "Summary": {
+    "Tree": {
+      "1": "30.175 / 27.03",
+      "4": "19.247 / 17.656",
+      "16": "11.84 / 11.565",
+      "64": "6.165 / 6.165",
+      "256": "2.788 / 2.788"
+    },
+    "Split8": {
+      "1": "15.058 / 13.829",
+      "4": "6.903 / 6.591",
+      "16": "4.016 / 4.043",
+      "64": "2.257 / 2.257",
+      "256": "0.871 / 0.871"
+    },
+    "Split8FrameMilliseconds": 648.6,
+    "All": {
+      "1": "9.573 / 9.338",
+      "4": "3.991 / 4.235",
+      "16": "2.651 / 2.688",
+      "64": "1.371 / 1.371"
+    },
+    "TreeFrameMilliseconds": 259.4,
+    "AllFrameMilliseconds": 2980.7,
+    "Scaling": [
+      "0: 664.1 / 664.1 / 664.1 ms",
+      "4: 706 / 798.5 / 806.7 ms",
+      "60: 1205.4 / 2232.3 / 7756.2 ms",
+      "228: 1398.4 / 2851.3 / 28000.7 ms"
+    ],
+    "Determinism": {
+      "Split8Digests": [
+        "eb29805c",
+        "eb29805c"
+      ],
+      "BitIdentical": true,
+      "LampsOffHeroDigest4": "af302d24"
+    }
+  },
+  "Width": 96,
+  "Height": 54,
+  "ReferenceSamples": 256,
+  "Scene": {
+    "VehicleCount": 8,
+    "PracticalMode": "carpark",
+    "NightMode": true,
+    "DenoiseEnabled": false
+  },
+  "Rules": {
+    "tree": {
+      "FrameMilliseconds": 259.4,
+      "Curve": [
+        {
+          "Frames": 1,
+          "Exact": {
+            "RelativeRms": 1.09721,
+            "MeanAbsoluteLevels": 30.175,
+            "PixelsOffBy8": 0.521
+          },
+          "Denoised": {
+            "RelativeRms": 0.75839,
+            "MeanAbsoluteLevels": 27.03,
+            "PixelsOffBy8": 0.5145
+          }
+        },
+        {
+          "Frames": 4,
+          "Exact": {
+            "RelativeRms": 3.87088,
+            "MeanAbsoluteLevels": 19.247,
+            "PixelsOffBy8": 0.484
+          },
+          "Denoised": {
+            "RelativeRms": 1.78984,
+            "MeanAbsoluteLevels": 17.656,
+            "PixelsOffBy8": 0.4738
+          }
+        },
+        {
+          "Frames": 16,
+          "Exact": {
+            "RelativeRms": 0.95701,
+            "MeanAbsoluteLevels": 11.84,
+            "PixelsOffBy8": 0.3681
+          },
+          "Denoised": {
+            "RelativeRms": 0.92856,
+            "MeanAbsoluteLevels": 11.565,
+            "PixelsOffBy8": 0.3652
+          }
+        },
+        {
+          "Frames": 64,
+          "Exact": {
+            "RelativeRms": 0.29003,
+            "MeanAbsoluteLevels": 6.165,
+            "PixelsOffBy8": 0.2014
+          },
+          "Denoised": {
+            "RelativeRms": 0.29003,
+            "MeanAbsoluteLevels": 6.165,
+            "PixelsOffBy8": 0.2014
+          }
+        },
+        {
+          "Frames": 256,
+          "Exact": {
+            "RelativeRms": 0.78362,
+            "MeanAbsoluteLevels": 2.788,
+            "PixelsOffBy8": 0.0932
+          },
+          "Denoised": {
+            "RelativeRms": 0.78362,
+            "MeanAbsoluteLevels": 2.788,
+            "PixelsOffBy8": 0.0932
+          }
+        }
+      ]
+    },
+    "split8": {
+      "FrameMilliseconds": 648.6,
+      "Curve": [
+        {
+          "Frames": 1,
+          "Exact": {
+            "RelativeRms": 1.53243,
+            "MeanAbsoluteLevels": 15.058,
+            "PixelsOffBy8": 0.3748
+          },
+          "Denoised": {
+            "RelativeRms": 0.70762,
+            "MeanAbsoluteLevels": 13.829,
+            "PixelsOffBy8": 0.3769
+          }
+        },
+        {
+          "Frames": 4,
+          "Exact": {
+            "RelativeRms": 0.39119,
+            "MeanAbsoluteLevels": 6.903,
+            "PixelsOffBy8": 0.2261
+          },
+          "Denoised": {
+            "RelativeRms": 0.2975,
+            "MeanAbsoluteLevels": 6.591,
+            "PixelsOffBy8": 0.2257
+          }
+        },
+        {
+          "Frames": 16,
+          "Exact": {
+            "RelativeRms": 0.22639,
+            "MeanAbsoluteLevels": 4.016,
+            "PixelsOffBy8": 0.1541
+          },
+          "Denoised": {
+            "RelativeRms": 0.2257,
+            "MeanAbsoluteLevels": 4.043,
+            "PixelsOffBy8": 0.1534
+          }
+        },
+        {
+          "Frames": 64,
+          "Exact": {
+            "RelativeRms": 0.20402,
+            "MeanAbsoluteLevels": 2.257,
+            "PixelsOffBy8": 0.0799
+          },
+          "Denoised": {
+            "RelativeRms": 0.20402,
+            "MeanAbsoluteLevels": 2.257,
+            "PixelsOffBy8": 0.0799
+          }
+        },
+        {
+          "Frames": 256,
+          "Exact": {
+            "RelativeRms": 0.15045,
+            "MeanAbsoluteLevels": 0.871,
+            "PixelsOffBy8": 0.0251
+          },
+          "Denoised": {
+            "RelativeRms": 0.15045,
+            "MeanAbsoluteLevels": 0.871,
+            "PixelsOffBy8": 0.0251
+          }
+        }
+      ]
+    },
+    "all": {
+      "FrameMilliseconds": 2980.7,
+      "Curve": [
+        {
+          "Frames": 1,
+          "Exact": {
+            "RelativeRms": 0.54961,
+            "MeanAbsoluteLevels": 9.573,
+            "PixelsOffBy8": 0.2683
+          },
+          "Denoised": {
+            "RelativeRms": 0.40803,
+            "MeanAbsoluteLevels": 9.338,
+            "PixelsOffBy8": 0.2859
+          }
+        },
+        {
+          "Frames": 4,
+          "Exact": {
+            "RelativeRms": 0.20309,
+            "MeanAbsoluteLevels": 3.991,
+            "PixelsOffBy8": 0.1339
+          },
+          "Denoised": {
+            "RelativeRms": 0.20515,
+            "MeanAbsoluteLevels": 4.235,
+            "PixelsOffBy8": 0.1545
+          }
+        },
+        {
+          "Frames": 16,
+          "Exact": {
+            "RelativeRms": 0.09145,
+            "MeanAbsoluteLevels": 2.651,
+            "PixelsOffBy8": 0.1057
+          },
+          "Denoised": {
+            "RelativeRms": 0.09139,
+            "MeanAbsoluteLevels": 2.688,
+            "PixelsOffBy8": 0.1073
+          }
+        },
+        {
+          "Frames": 64,
+          "Exact": {
+            "RelativeRms": 0.037,
+            "MeanAbsoluteLevels": 1.371,
+            "PixelsOffBy8": 0.049
+          },
+          "Denoised": {
+            "RelativeRms": 0.037,
+            "MeanAbsoluteLevels": 1.371,
+            "PixelsOffBy8": 0.049
+          }
+        }
+      ]
+    }
+  },
+  "Scaling": [
+    {
+      "Label": "Studio, no lamps",
+      "Lamps": 0,
+      "TreeNodes": 0,
+      "TreeDepth": 0,
+      "BuildMilliseconds": 0.9,
+      "TreeFrameMilliseconds": 664.1,
+      "Split8FrameMilliseconds": 664.1,
+      "AllLampsFrameMilliseconds": 664.1
+    },
+    {
+      "Label": "1 car, 4 lamps",
+      "Lamps": 4,
+      "TreeNodes": 7,
+      "TreeDepth": 3,
+      "BuildMilliseconds": 1,
+      "TreeFrameMilliseconds": 706,
+      "Split8FrameMilliseconds": 798.5,
+      "AllLampsFrameMilliseconds": 806.7
+    },
+    {
+      "Label": "8 cars + downlights, 60 lamps",
+      "Lamps": 60,
+      "TreeNodes": 119,
+      "TreeDepth": 7,
+      "BuildMilliseconds": 1.3,
+      "TreeFrameMilliseconds": 1205.4,
+      "Split8FrameMilliseconds": 2232.3,
+      "AllLampsFrameMilliseconds": 7756.2
+    },
+    {
+      "Label": "50 cars + downlights, 228 lamps",
+      "Lamps": 228,
+      "TreeNodes": 455,
+      "TreeDepth": 9,
+      "BuildMilliseconds": 5,
+      "TreeFrameMilliseconds": 1398.4,
+      "Split8FrameMilliseconds": 2851.3,
+      "AllLampsFrameMilliseconds": 28000.7
+    }
+  ],
+  "Determinism": {
+    "Split8Digests": [
+      "eb29805c",
+      "eb29805c"
+    ],
+    "BitIdentical": true,
+    "LampsOffHeroDigest4": "af302d24"
+  },
+  "Note": "Night, Hero camera, 8 cars + 28 downlights (60 IES lamps). Errors are mean |Δ| in 8-bit levels (exact / denoised) vs the every-lamp 256-spp reference. Scaling: studio rig on, 160 × 90. SwiftShader timings."
+}

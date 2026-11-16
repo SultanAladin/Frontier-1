@@ -1,0 +1,431 @@
+<!doctype html>
+<!--==========================================================================================================================================
+                                                               INDEX.HTML
+===========================================================================================================================================-->
+<!-- 🧩 Frontier · Particle Studio: eos WebGPU particle & force-field engine redesigned in the Sun Inspector + Fluid Editor UI system. -->
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0b0b" />
+    <title>Particle Studio — Frontier Experimental</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23161616'/%3E%3Cpath d='M16 5l2.8 7.5L26 15.5l-7.2 3L16 26l-2.8-7.5L6 15.5l7.2-3z' fill='%23e8c27a'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./ParticleEditor.css" />
+    <script src="../ForceFieldVisualization/ForceFieldVisualization.js" defer></script>
+    <script type="module" src="./ParticleEditor.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Fluid-style top header: Frontier logomark, slanted scene tabs, pill workspace nav, live engine pill -->
+        <header class="app-header">
+            <div class="brand">
+                <span class="brand-mark">frontier<span class="brand-dot">.</span></span>
+                <span class="experimental">PARTICLE STUDIO</span>
+            </div>
+
+            <div class="document-dock">
+                <div id="scene-tabs" class="document-tabs" role="tablist" aria-label="Particle scenes"></div>
+                <button id="new-scene-btn" class="icon-button" title="New blank particle scene" aria-label="New scene">+</button>
+            </div>
+
+            <nav class="top-nav" aria-label="Workspace views">
+                <button class="nav-button active" id="nav-workspace" type="button">Workspace</button>
+                <button class="nav-button" id="nav-library" type="button">Assets <small id="nav-preset-total">92</small></button>
+                <button class="nav-button" id="nav-log" type="button">Log Stream <small id="nav-log-count">0</small></button>
+            </nav>
+
+            <div class="header-end">
+                <span class="live-engine-tag" id="engine-pill"><i></i><span id="engine-pill-text">INITIALIZING</span></span>
+                <button id="help-button" class="icon-button" title="Shortcuts &amp; engine notes" aria-label="Help"></button>
+                <button id="export-button" class="button export-button" type="button">Export TOML</button>
+            </div>
+        </header>
+
+        <!-- Three floating 22px Fluid + Sun workspace panels -->
+        <main class="workspace" id="studio-workspace">
+            <!-- LEFT: Project Zero / Fluid Outliner + Embedded Preset Library -->
+            <aside class="left-panel" id="left-panel">
+                <div class="outliner-heading">
+                    <div>
+                        <h1>Outliner</h1>
+                        <span class="outliner-subtitle" id="outliner-subtitle">Particle scene · 0 records</span>
+                    </div>
+                    <div class="outliner-heading-actions">
+                        <button id="compact-outliner" class="icon-button" title="Compact outliner" aria-pressed="false"></button>
+                        <button id="add-button" class="icon-button accent" title="Add force field, formula, layer or preset" aria-expanded="false"></button>
+                    </div>
+                </div>
+
+                <!-- Project Zero / Sun census tiles -->
+                <div class="scene-statistics">
+                    <div class="scene-stat">
+                        <span class="stat-symbol enabled-symbol" id="stat-visible-icon"></span>
+                        <span class="stat-label">Visible</span>
+                        <strong id="visible-count">0</strong>
+                    </div>
+                    <div class="scene-stat">
+                        <span class="stat-symbol disabled-symbol" id="stat-hidden-icon"></span>
+                        <span class="stat-label">Hidden</span>
+                        <strong id="hidden-count">0</strong>
+                    </div>
+                </div>
+
+                <label class="search scene-search">
+                    <span id="search-icon-slot"></span>
+                    <input type="search" id="scene-search" placeholder="Search scene…" aria-label="Search scene" />
+                    <kbd>Ctrl F</kbd>
+                </label>
+
+                <div class="scene-filters" id="scene-filters" aria-label="Outliner category filters">
+                    <button data-filter="all" class="active" type="button">All</button>
+                    <button data-filter="effects" type="button">Effects</button>
+                    <button data-filter="vfx:Motion &amp; Grids" type="button">MoGraph</button>
+                    <button data-filter="vfx:Cloth &amp; Rigging" type="button">Cloth</button>
+                    <button data-filter="vfx:Foliage &amp; Flora" type="button">Flora</button>
+                    <button data-filter="vfx:Ferrofluid &amp; Fields" type="button">Ferro</button>
+                    <button data-filter="vfx:Fracture &amp; Cracks" type="button">Fracture</button>
+                    <button data-filter="vfx:Silk &amp; Curl" type="button">Curl</button>
+                    <button data-filter="vfx:Ballistics &amp; Sparks" type="button">Sparks</button>
+                    <button data-filter="vfx:Pyro &amp; Water" type="button">Pyro</button>
+                    <button data-filter="vfx:Transitions" type="button">Derez</button>
+                    <button data-filter="vfx:Space &amp; Distortion" type="button">Lens</button>
+                    <button data-filter="vfx:Shields &amp; Tech" type="button">Shield</button>
+                    <button data-filter="vfx:Atmosphere &amp; Sky" type="button">Sky</button>
+                    <button data-filter="vfx:Wind-Blown" type="button">Wind</button>
+                    <button data-filter="vfx:Storms &amp; Weather" type="button">Weather</button>
+                    <button data-filter="vfx:Quarantine" type="button">Quarantine</button>
+                    <button data-filter="forces" type="button">Forces</button>
+                </div>
+
+                <div class="panel-scroll outliner-scroll" id="OutlinerScroll">
+                    <div class="panel-content" id="OutlinerContent"></div>
+                </div>
+
+                <div class="left-footer">
+                    <span class="footer-dot"></span>
+                    <span id="left-footer-label">eos WebGPU · ForceFieldVisualization Solver</span>
+                </div>
+            </aside>
+
+            <!-- CENTER: Rounded Viewport + Left Tool Rail + Fluid 52px Transport + Collapsible Log -->
+            <section class="center-panel" id="center-panel">
+                <div class="viewport-bar">
+                    <span id="viewport-title-icon"></span>
+                    <strong>Scene view</strong>
+                    <span class="bar-divider"></span>
+                    <select id="camera-view-select" aria-label="Camera projection view">
+                        <option value="orbit">Perspective orbit</option>
+                        <option value="top">Top lattice</option>
+                        <option value="front">Front axis</option>
+                        <option value="side">Side elevation</option>
+                    </select>
+                    <select id="overlay-channel-select" aria-label="Field overlay layer">
+                        <option value="Flow">Field · Flow (m/s)</option>
+                        <option value="Accelerate">Field · Accelerate (m/s²)</option>
+                        <option value="Damp">Field · Damp (1/s)</option>
+                        <option value="off" selected>Clean viewport (no overlay)</option>
+                    </select>
+                    <div class="viewport-bar-end">
+                        <button id="throw-ball-btn" class="button pill-btn" type="button" title="Toggle Throw Ball Tool (T) or throw sphere at selection (Alt+Click)">Throw Ball · T</button>
+                        <button id="toggle-overlay-btn" class="button pill-btn" type="button" title="Toggle field overlay (V)">Field · V</button>
+                        <button id="toggle-arrows-btn" class="icon-button" type="button" title="Toggle 3D vector field arrows"></button>
+                        <button id="toggle-minimap-btn" class="icon-button" type="button" title="Toggle lattice minimap"></button>
+                        <button id="toggle-log-btn" class="icon-button" type="button" title="Toggle Log Stream drawer"></button>
+                        <button id="focus-btn" class="icon-button" type="button" title="Reset camera focus"></button>
+                        <button id="maximize-btn" class="icon-button" type="button" title="Maximize viewport"></button>
+                    </div>
+                </div>
+
+                <div class="viewport" id="ViewportSurface">
+                    <canvas id="ViewportCanvas" aria-label="Interactive 3D particle simulation viewport"></canvas>
+                    <canvas id="OverlayCanvas"></canvas>
+
+                    <div class="viewport-caption">
+                        <span class="live-pill" id="live-pill"><i></i><span id="live-pill-label">LIVE</span></span>
+                        <span id="viewport-object">Force Field</span>
+                        <small id="viewport-subtitle">Eulerian wind lattice · eos WebGPU</small>
+                    </div>
+
+                    <div class="viewport-tools" id="ViewportTools" aria-label="Viewport tools">
+                        <button class="active icon-button" data-vtool="orbit" type="button" title="Orbit camera (Drag)"></button>
+                        <button class="icon-button" data-vtool="handles" type="button" title="Show/hide movable 3D handles for objects, effectors, forces &amp; magnets (G)"></button>
+                        <button class="icon-button" data-vtool="ball" type="button" title="Throw Interactive 3D Ball at Cloth, Webs, Grass &amp; Trees (T / Alt+Click)"></button>
+                        <button class="icon-button" data-vtool="probe" type="button" title="Place or move Wind Anemometer in viewport (P)"></button>
+                        <button class="icon-button" data-vtool="turntable" type="button" title="Auto turntable camera"></button>
+                    </div>
+
+                    <div class="viewport-place-banner" id="ViewportPlaceBanner"><i></i><span id="ViewportPlaceText">Click anywhere in the viewport to place the Anemometer · Drag pin to move · Shift+drag altitude · Esc cancel</span></div>
+
+                    <div class="viewport-right-hud" id="ViewportHud"></div>
+                    <div class="viewport-readout" id="ViewportReadout"></div>
+
+                    <div class="viewport-inset minimap-inset" id="MinimapInset">
+                        <canvas id="MinimapCanvas"></canvas>
+                        <div class="inset-label" id="MinimapLabel"><span>Lattice domain</span><span>12 × 12 m</span></div>
+                    </div>
+
+                    <div class="axis-gizmo" aria-label="World axes">
+                        <svg viewBox="0 0 76 76">
+                            <path d="M38 39V10M38 39L11 55M38 39L65 55" />
+                            <circle cx="38" cy="39" r="3" />
+                            <text x="34" y="9" class="axis-y">Y</text>
+                            <text x="3" y="64" class="axis-x">X</text>
+                            <text x="64" y="64" class="axis-z">Z</text>
+                        </svg>
+                    </div>
+
+                    <div class="viewport-help">
+                        <span>Drag handles (Shift: Y)</span><i>·</i><span>G handles</span><i>·</i><span>Drop OBJ/STL</span><i>·</i><span>T throw ball</span><i>·</i><span>Space pause</span><i>·</i><span>V field</span>
+                    </div>
+                </div>
+
+                <!-- Fluid Editor 52px Transport Bar -->
+                <div class="transport">
+                    <div class="transport-buttons">
+                        <button class="icon-button" id="reset-button" type="button" title="Reset &amp; re-seed all (R)"></button>
+                        <button class="play-button" id="play-button" type="button" title="Play / Pause (Space)"></button>
+                        <button class="icon-button" id="step-button" type="button" title="Single frame step (S)"></button>
+                    </div>
+                    <span class="timecode tabular" id="timecode">00:00.000</span>
+                    <span class="transport-divider"></span>
+                    <select id="speed-select" aria-label="Simulation speed">
+                        <option value="0.25">0.25×</option>
+                        <option value="0.5">0.5×</option>
+                        <option value="1" selected>1.0×</option>
+                        <option value="2">2.0×</option>
+                    </select>
+                    <span class="transport-live"><i></i>Live / uncached</span>
+                    <div class="transport-actions">
+                        <button class="button burst-button accent" id="burst-button" type="button">Burst <span class="key-hint">B</span></button>
+                    </div>
+                </div>
+
+                <!-- Live Simulation Telemetry Ruler -->
+                <div class="timeline" aria-label="Live simulation loop ruler">
+                    <div class="timeline-label">
+                        <span>SIMULATION</span>
+                        <span id="frame-counter" class="tabular">FRAME 0000</span>
+                    </div>
+                    <div class="ruler">
+                        <div class="ruler-numbers">
+                            <span>0s</span><span>5s</span><span>10s</span><span>15s</span><span>20s</span><span>25s</span><span>30s</span>
+                        </div>
+                        <div class="source-track"><span id="source-track-label">Active emission &amp; force field</span><i></i></div>
+                        <div class="playhead" id="playhead"><span></span></div>
+                    </div>
+                </div>
+
+                <!-- Toggleable Collapsible Log Stream Drawer -->
+                <section class="log-drawer" id="log-drawer" hidden>
+                    <div class="log-head" id="LogHead"></div>
+                    <div class="panel-scroll log-scroll" id="LogScroll">
+                        <div class="panel-content" id="LogContent"></div>
+                    </div>
+                </section>
+            </section>
+
+            <!-- RIGHT: Sun Inspector + Fluid Inspector Hybrid -->
+            <aside class="inspector-panel" id="inspector-panel">
+                <div class="panel-heading inspector-top-heading">
+                    <span class="inspector-crumb" id="inspector-crumb">Inspector / Environment</span>
+                    <button id="reset-selection-btn" class="reset-pill" type="button" title="Reset selection">Reset ↗</button>
+                </div>
+
+                <div class="object-heading" id="object-heading">
+                    <div class="object-symbol" id="object-symbol"></div>
+                    <div class="object-heading-copy">
+                        <input id="object-name" value="Force Field" maxlength="64" aria-label="Selected node name" />
+                        <span id="object-type">EULERIAN FIELD · GPU LATTICE</span>
+                    </div>
+                    <label class="switch" title="Enable / show selected entity">
+                        <input type="checkbox" id="object-enabled" checked aria-label="Toggle enabled" />
+                        <span></span>
+                    </label>
+                </div>
+
+                <div class="inspector-tabs" id="inspector-tabs" role="tablist" aria-label="Inspector sections"></div>
+
+                <div class="panel-scroll inspector-scroll" id="InspectorScroll">
+                    <div class="panel-content" id="InspectorContent"></div>
+                </div>
+
+                <div class="inspector-footer">
+                    <span id="inspector-revision">Parameters · Revision 0</span>
+                    <span>Changes apply live ↗</span>
+                </div>
+            </aside>
+        </main>
+
+        <!-- Crisp Bottom Status Bar -->
+        <footer class="status-bar">
+            <span class="status-ready" id="status-ready"><i></i>WebGPU ready</span>
+            <span class="status-divider"></span>
+            <span id="status-effects">0 effects · 0 forces</span>
+            <span class="status-divider"></span>
+            <span id="status-readback">Lattice readback —</span>
+            <span class="status-right">
+                <span class="gpu-dot" id="gpu-dot"></span>
+                <span id="status-adapter">—</span>
+                <span class="status-divider"></span>
+                FRONTIER / PARTICLES <span class="version">2.0</span>
+            </span>
+        </footer>
+    </div>
+
+    <!-- Add Popover Menu (Outliner + button: Particle Assets, 17 bounded force types, Custom Formula fx, visualization layers) -->
+    <div id="add-menu" class="popover add-menu" hidden role="menu">
+        <div class="popover-label">ADD PARTICLE ASSET</div>
+        <label class="search add-menu-search">
+            <span id="preset-search-icon-slot"></span>
+            <input type="search" id="add-menu-preset-search" placeholder="Filter particle assets…" aria-label="Filter particle assets" />
+            <kbd>/</kbd>
+        </label>
+        <div class="add-menu-assets" id="add-menu-assets"></div>
+        <button data-action="open-library" type="button">Browse Full Asset Gallery… <small>Visual cards by category (Curl Silk, Ballistics, Pyro, Wind, Weather)</small></button>
+        <div class="menu-divider"></div>
+        <div class="popover-label">MOTION GRAPHICS &amp; EFFECTOR GRIDS</div>
+        <button data-add-effect="effector-grid-cubes" type="button">Effector Cube Matrix · Height Up/Down <small>Fixed-footprint 3D cube lattice rising &amp; lowering on effector waves</small></button>
+        <button data-add-effect="effector-sphere-dots" type="button">Halftone Effector Sphere · Circles <small>Dark obsidian 3D sphere wrapped in effector-driven halftone dots</small></button>
+        <button data-add-effect="effector-hand-halftone" type="button">Obsidian Hand · Halftone &amp; Tiles <small>Sculpted hand + chrome orb with circles on palm &amp; height tiles up arm</small></button>
+        <button data-add-effect="effector-torus-hex" type="button">Kinetic Hex Torus Matrix <small>Revolving torus ring tiled with radial effector-modulated hexagons</small></button>
+        <div class="popover-label">CLOTH, CABLES, VINES &amp; BALL-INTERACTIVE RIGGING</div>
+        <button data-add-effect="flag-banner" type="button">Cloth Flag &amp; Banner <small>Seamless woven flag strips · deflects &amp; tears under projectile ball</small></button>
+        <button data-add-effect="ship-sail" type="button">Bilged Ship Sail <small>Pinned canvas ship sail billowing in wind &amp; tearing on hard impact</small></button>
+        <button data-add-effect="cables-chains" type="button">Hanging Cables &amp; Chains <small>Double-pinned heavy cables &amp; iron chain spans · snap on overload</small></button>
+        <button data-add-effect="vines-ropes" type="button">Suspended Vines &amp; Ivy <small>Swaying forest vines with foliage leaves that detach on impact</small></button>
+        <button data-add-effect="beaded-door-curtain" type="button">Crystal Bead Door Curtain <small>Faceted glass bead strands parting elastically around passing balls</small></button>
+        <button data-add-effect="bamboo-wind-chimes" type="button">Bamboo &amp; Brass Wind Chimes <small>Tuned organ chime tubes &amp; central striker ring swaying &amp; glowing</small></button>
+        <button data-add-effect="velvet-theater-drapes" type="button">Velvet Theatre Drape Strips <small>Pleated doorway curtains billowing softly &amp; parting on collision</small></button>
+        <div class="popover-label">3D OBJECT PLACER &amp; MOGRAPH EFFECTORS</div>
+        <button data-add-effect="effector-object-placer" type="button">Placeable 3D Object · MoGraph &amp; Effectors <small>Swap to any 3D object or drop OBJ/STL mesh + draggable Effectors A &amp; B</small></button>
+        <button data-add-effect="effector-hand-halftone" type="button">Obsidian Hand · Halftone &amp; Tiles <small>Sculpted hand (or any 3D object) wrapped in effector-driven dots &amp; tiles</small></button>
+        <button data-add-effect="effector-grid-cubes" type="button">Effector Cube Matrix · Height Up/Down <small>3D column heightfield driven by waves, placeable effectors &amp; Force Fields</small></button>
+        <button data-add-effect="effector-sphere-dots" type="button">Halftone Effector Sphere · Circles <small>Obsidian sphere wrapped in orbiting effector halftone discs</small></button>
+        <button data-add-effect="effector-torus-hex" type="button">Kinetic Hex Torus Matrix <small>Hexagonal effector plates rippling around a 3D torus ring</small></button>
+        <div class="popover-label">INTERACTIVE FOLIAGE, GRASS, FERNS &amp; TREE</div>
+        <button data-add-effect="grass-wheat-field" type="button">Grass &amp; Golden Wheat <small>Plumed grass/wheat meadow parting dynamically around the ball</small></button>
+        <button data-add-effect="tall-reeds" type="button">Tall Reeds &amp; Cattails <small>Marsh reed stalks crowned with velvet cattails swaying in gusts</small></button>
+        <button data-add-effect="interactive-fern" type="button">Broad Pinnate Ferns <small>Compound arched fern fronds parting cleanly around ball wakes</small></button>
+        <button data-add-effect="interactive-tree" type="button">Swaying Canopy Tree <small>Trunk + limbs + leaf canopy that flexes &amp; sheds leaves when struck</small></button>
+        <button data-add-effect="kelp-forest" type="button">Giant Kelp Forest &amp; Bladders <small>Buoyant underwater kelp stipes with amber gas bladders swaying in current</small></button>
+        <button data-add-effect="sea-anemone" type="button">Sea Anemone Bioluminescent Reef <small>Radial curling reef tentacles with glowing bioluminescent tip polyps</small></button>
+        <button data-add-effect="dandelion-puff" type="button">Dandelion Puff &amp; Wish Seeds <small>Radial pappus parachute seeds detaching into wind/ball bursts</small></button>
+        <div class="popover-label">FERROFLUID &amp; MAGNETIC FIELDS</div>
+        <button data-add-effect="ferrofluid-spikes" type="button">Ferrofluid Rosensweig Spikes <small>Chrome-black liquid cones tracking an orbiting Neodymium magnet</small></button>
+        <button data-add-effect="ferrofluid-orb" type="button">Magnetic Ferrofluid Orb <small>Floating spiky chrome-black sphere pulsing around magnetic poles</small></button>
+        <div class="popover-label">FRACTURE &amp; GROUND CRACKS</div>
+        <button data-add-effect="cracked-ice-sheet" type="button">Cracked Glacial Ice Sheet <small>Voronoi ice crust slabs heaving over deep sapphire abyss on impact</small></button>
+        <button data-add-effect="ground-crack-quake" type="button">Tectonic Ground Quake Fracture <small>Dark basalt slabs buckling over glowing molten fissures &amp; flying embers</small></button>
+        <div class="popover-label">ELECTRIC DISCHARGE, PLASMA CAGE &amp; WEBS</div>
+        <button data-add-effect="plasma-cage-arcs" type="button">Plasma Cage Electric Web <small>Octagonal glowing plasma cage arcing wildly &amp; capturing thrown 3D balls</small></button>
+        <button data-add-effect="lightning-web-mesh" type="button">Dynamic Lightning Web Mesh <small>Volumetric storm node mesh snapping jagged dielectric arcs across 3D nodes</small></button>
+        <button data-add-effect="tesla-sphere-lightning" type="button">Tesla Sphere Lightning <small>Instantaneous dielectric spark arc &amp; forked leaders between 2 spheres</small></button>
+        <button data-add-effect="static-sphere-shock" type="button">Static Shock Arcs <small>Delicate high-voltage corona filaments crackling between 2 spheres</small></button>
+        <div class="popover-label">OBJECT PULSE &amp; STREAM RIBBONS</div>
+        <button data-add-effect="bokeh-object-pulse" type="button">Object Surface Pour Ribbons <small>Glowing bokeh particles pouring over a sphere surface from top to bottom</small></button>
+        <button data-add-effect="bokeh-stream-ribbons" type="button">Bokeh Stream Ribbons <small>Glowing bokeh particles with smooth tapered faded ribbons</small></button>
+        <div class="popover-label">SHOCKWAVES, RADAR &amp; EXPANDING RINGS</div>
+        <button data-add-effect="shockwave-ring" type="button">Blast &amp; Sonic Shockwave <small>Expanding supersonic Mach pressure rings</small></button>
+        <button data-add-effect="emp-pulse-dome" type="button">EMP Energy Pulse Dome <small>Electromagnetic hemisphere pulse shell &amp; interference</small></button>
+        <button data-add-effect="radar-sweep" type="button">Tactical Radar Sweep &amp; Blips <small>Rotating 3D phosphor sweep beam, range rings &amp; pinging contact blips</small></button>
+        <button data-add-effect="sonar-ping" type="button">Acoustic Sonar Pulse Ping <small>Expanding concentric cyan-emerald sonar pulse waves &amp; crosshairs</small></button>
+        <div class="popover-label">BEAMS, TRACERS &amp; WELDING</div>
+        <button data-add-effect="plasma-laser-beam" type="button">Plasma &amp; Laser Beam <small>Continuous beam between draggable muzzle &amp; target + sparks</small></button>
+        <button data-add-effect="plasma-tracers" type="button">Bullet &amp; Plasma Tracers <small>Supersonic glowing tracer streaks with floor ricochets</small></button>
+        <button data-add-effect="projectile-trails" type="button">Glowing Projectile Trails <small>Arcing plasma bolts leaving curved tapered 3D ribbon trails</small></button>
+        <button data-add-effect="welding-grinder-sparks" type="button">Welding &amp; Grinder Arc Spray <small>Heavy floor-bouncing incandescent angle-grinder sparks</small></button>
+        <div class="popover-label">HOLOGRAM, BOIDS &amp; VISCOUS DROPS</div>
+        <button data-add-effect="hologram-data-glitch" type="button">Hologram &amp; Data Glitch <small>Rising procedural matrix glyphs &amp; flickering scanline slices</small></button>
+        <button data-add-effect="boids-flock" type="button">Boids Flock (Birds / Bats / Fish) <small>Cohesion, alignment &amp; separation flocking with wing animation</small></button>
+        <button data-add-effect="boids-butterflies" type="button">Butterfly &amp; Wisp Swarm <small>Flocking luminous dual-wing butterflies &amp; wisps</small></button>
+        <button data-add-effect="boids-fish-school" type="button">Bioluminescent Fish School <small>Iridescent cyan &amp; coral reef fish swimming &amp; scattering around thrown balls</small></button>
+        <button data-add-effect="starling-murmuration" type="button">Starling Murmuration &amp; Predator Scatter <small>520-boid dusk flock performing flash-split evasion around thrown balls</small></button>
+        <button data-add-effect="viscous-dripping" type="button">Viscous Dripping &amp; Trails <small>Pure-particle surface-tension droplets &amp; drip ribbons</small></button>
+        <button data-add-effect="glass" type="button">3D Glass Shards <small>Real 3D faceted glass shard meshes tumbling, bouncing &amp; catching glints</small></button>
+        <div class="popover-label">MESH DEREZ, COINS &amp; TRANSITIONS</div>
+        <button data-add-effect="derez-cube" type="button">Cube Derez Shatter <small>Corner-wave cube lattice breaking into 8 child sub-cubes on impact</small></button>
+        <button data-add-effect="cube-coins" type="button">Cube → Coins Burst <small>Solid voxel lattice derezzing into bouncing gold coins</small></button>
+        <button data-add-effect="coin-stack" type="button">Scripted Coin Stack <small>Falling coins landing and bouncing cleanly into a tidy column</small></button>
+        <button data-add-effect="dissolve-butterflies" type="button">Dissolve → Butterflies <small>Patchy melt wave morphing cube facets into fluttering butterflies</small></button>
+        <button data-add-effect="reverse-derez" type="button">Reverse Derez Rebuild <small>Scattered shell fragments converging back into a crisp cube</small></button>
+        <button data-add-effect="glitch-dissolve" type="button">Glitch Block Dissolve <small>Stepped blocky digital noise wave jittering voxel chunks apart</small></button>
+        <div class="popover-label">DISTORTION, SHIELDS &amp; AURORA</div>
+        <button data-add-effect="black-hole" type="button">Black Hole &amp; Einstein Ring <small>Inward accretion spiral + relativistic screen-space lensing warp</small></button>
+        <button data-add-effect="heat-shimmer" type="button">Heat Shimmer Distortion <small>Rising thermal refraction waves warping particles &amp; floor grid</small></button>
+        <button data-add-effect="energy-shield-hex" type="button">Energy Shield &amp; Multi-Shape Barrier <small>Spherical / directional force-field with stackable hex, circle, triangle &amp; diamond layers</small></button>
+        <button data-add-effect="energy-shield-prism" type="button">Multi-Shape Prism Barrier <small>Layered Triangles + Circles + Diamonds + Voronoi crack shield pane</small></button>
+        <button data-add-effect="aurora-borealis" type="button">Aurora Borealis Curtains <small>Undulating vertical geomagnetic curtains &amp; emerald-violet rays</small></button>
+        <button data-add-effect="strikeSparks" type="button">Arc Strike Sparks <small>Strike-coupled ground spark bursts firing at electrode impact points</small></button>
+        <div class="menu-divider"></div>
+        <div class="popover-label">ADD SYMBOLIC FORMULA FIELD</div>
+        <button data-add-force="__Formula__" type="button">Custom Formula Field (fx) <small>Symbolic equation compiled live to CPU/GPU</small></button>
+        <div class="menu-divider"></div>
+        <div class="popover-label">ADD FLOW / WIND GENERATOR</div>
+        <button data-add-force="WindGenerator" type="button">Wind Generator <small>Bounded directional blower + eddies</small></button>
+        <button data-add-force="Tornado" type="button">Tornado / Vortex <small>Burgers-Rott swirl + updraft funnel</small></button>
+        <button data-add-force="Jet" type="button">Jet Corridor <small>Focused Venturi stream tunnel</small></button>
+        <button data-add-force="GustFront" type="button">Gust Front <small>Advancing convective surge crest</small></button>
+        <button data-add-force="Microburst" type="button">Microburst <small>Descending shaft + ground ring</small></button>
+        <button data-add-force="Thermal" type="button">Thermal Plume <small>Buoyant rising chimney column</small></button>
+        <button data-add-force="Puff" type="button">Wind Puff <small>Compact drifting ellipsoid gust</small></button>
+        <button data-add-force="Blast" type="button">Blast Outflow <small>Expanding spherical pressure wave</small></button>
+        <button data-add-force="Wake" type="button">Wake Stream <small>Trailing tip-vortex slipstream</small></button>
+        <button data-add-force="Current" type="button">Current Volume <small>Bounded steady laminar box stream</small></button>
+        <div class="menu-divider"></div>
+        <div class="popover-label">ADD ACCELERATE &amp; DAMP ZONE</div>
+        <button data-add-force="Attractor" type="button">Attractor <small>Bounded radial pull + swirl</small></button>
+        <button data-add-force="Repulsor" type="button">Repulsor <small>Bounded radial exclusion dome</small></button>
+        <button data-add-force="Orbit" type="button">Orbit Spin <small>Azimuthal tangential ring drive</small></button>
+        <button data-add-force="Lift" type="button">Lift Column <small>Bounded vertical buoyancy</small></button>
+        <button data-add-force="Magnetic" type="button">Magnetic Dipole <small>Toroidal dipole flux guide</small></button>
+        <button data-add-force="Gravity" type="button">Gravity Well <small>Localized downward gravity zone</small></button>
+        <button data-add-force="Drag" type="button">Drag Volume <small>Viscous braking box exp(−σ·dt)</small></button>
+        <div class="menu-divider"></div>
+        <div class="popover-label">DEBUG VISUALIZATION LAYERS</div>
+        <button data-add-viz="FlowLines" type="button">3D Flow Lines (RK4) <small>Toggle volumetric 3D streamline ribbons</small></button>
+        <button data-add-viz="Arrows" type="button">3D Vector Field <small>Toggle 3D lattice vector field arrows</small></button>
+        <button data-add-viz="ShowInfluence" type="button">Finite Influence Bounds <small>Reach footprints &amp; source bearings</small></button>
+        <button data-add-viz="Heatmap" type="button">Turbo Scalar Heatmap <small>Speed, Vertical, Curl ω, Div ∇·v</small></button>
+    </div>
+
+    <!-- Full Particle Asset Gallery Sheet -->
+    <div class="library-veil" id="LibraryVeil">
+        <div class="library-sheet" id="LibrarySheet"></div>
+    </div>
+
+    <!-- Export TOML / Levelspace Record Dialog -->
+    <dialog id="export-dialog">
+        <div class="dialog-heading">
+            <h2>Export Particle Scene</h2>
+            <button class="icon-button" id="close-export" aria-label="Close"></button>
+        </div>
+        <p class="dialog-sub">Complete `.levelspace` TOML representation of active particle effects, wind lattice and force fields.</p>
+        <pre id="export-preview" class="export-code"></pre>
+        <div class="dialog-actions">
+            <button id="copy-export-btn" class="button export-button" type="button">Copy TOML</button>
+            <button id="download-export-btn" class="button" type="button">Download .levelspace</button>
+        </div>
+    </dialog>
+
+    <!-- Help Dialog -->
+    <dialog id="help-dialog">
+        <div class="dialog-heading">
+            <h2>Frontier Particle Studio</h2>
+            <button class="icon-button" id="close-help" aria-label="Close"></button>
+        </div>
+        <p class="dialog-sub">eos WebGPU compute particles &amp; 3D force fields wrapped in the Sun Inspector + Fluid Editor UI.</p>
+        <div class="shortcut-list">
+            <span>Play / pause<kbd>Space</kbd></span>
+            <span>Throw ball tool<kbd>T</kbd></span>
+            <span>Place anemometer<kbd>P</kbd></span>
+            <span>Toggle field overlay<kbd>V</kbd></span>
+            <span>Reset simulation<kbd>R</kbd></span>
+            <span>Single step<kbd>S</kbd></span>
+            <span>Burst selected<kbd>B</kbd></span>
+            <span>Search presets<kbd>/</kbd></span>
+            <span>Close overlay<kbd>Esc</kbd></span>
+        </div>
+        <p class="dialog-foot">Tip: Scrub any black numeric pill left/right to smoothly tune values (hold Shift for fine precision, Alt for coarse). Works natively in WebGPU browsers or software 3D fallback.</p>
+    </dialog>
+</body>
+</html>

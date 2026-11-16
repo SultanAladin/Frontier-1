@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frontier — 100% Deterministic WebGPU Full Raytracer (Zero Monte Carlo)</title>
+  <link rel="stylesheet" href="./DeterministicRtStyle.css" />
+</head>
+<body>
+  <canvas id="viewportCanvas"></canvas>
+
+  <!-- Top Telemetry Bar -->
+  <header class="hud-topbar">
+    <div class="brand-block">
+      <span class="badge-det">ZERO MONTE CARLO · ZERO RUSSIAN ROULETTE</span>
+      <div>
+        <div class="brand-title">Frontier 100% Deterministic WebGPU Raytracer</div>
+        <div class="brand-sub" id="gpuAdapterLabel">Initializing WebGPU @compute 4-Wide BVH4 Pipeline…</div>
+      </div>
+    </div>
+    <div class="metrics-strip">
+      <div class="metric-pill emerald">FPS: <strong id="hudFps">--</strong></div>
+      <div class="metric-pill">Frame: <strong id="hudFrameMs">-- ms</strong></div>
+      <div class="metric-pill">BVH4: <strong id="hudBvhNodes">1,444 nodes</strong> (4.1× vs Binary)</div>
+      <div class="metric-pill">RNG Calls: <strong>0</strong></div>
+    </div>
+  </header>
+
+  <!-- Bottom Split Labels -->
+  <div class="split-banner" id="splitBanner">
+    <div class="split-tag">LEFT: <span>Full Deterministic RT (4-Wide BVH4 + Glass IOR + Multi-Bounce + SpecAO)</span></div>
+    <div class="split-tag">RIGHT: <span>Calibrated 1/π Clay GI + SolarDisc Penumbra + 2.3 m Chassis AO</span> (Alt+Drag Split)</div>
+  </div>
+
+  <!-- Right Interactive Control Dock -->
+  <aside class="control-dock">
+    <div class="dock-section">
+      <div class="section-header">
+        <span>View Mode</span>
+        <span id="activeModeTag">Split Compare</span>
+      </div>
+      <div class="btn-grid">
+        <button class="ui-btn active" data-view="0">Split RT | Clay</button>
+        <button class="ui-btn" data-view="1">Full Det. RT</button>
+        <button class="ui-btn" data-view="2">Clay GI + Shadow</button>
+        <button class="ui-btn" data-view="3">3D DDGI Probes</button>
+        <button class="ui-btn" data-view="4">Spec + Glass Only</button>
+        <button class="ui-btn" data-view="5">BVH4 Heatmap</button>
+      </div>
+    </div>
+
+    <div class="dock-section">
+      <div class="section-header">
+        <span>Camera Presets (Right-Hand +Z Up)</span>
+      </div>
+      <div class="btn-grid">
+        <button class="ui-btn" data-cam="hero">3/4 Hero Glass</button>
+        <button class="ui-btn" data-cam="cockpit">Cabin Glass IOR</button>
+        <button class="ui-btn" data-cam="mirror">44 m Mirror Wall</button>
+        <button class="ui-btn" data-cam="bleed">Color-Bleed Bay</button>
+      </div>
+    </div>
+
+    <div class="dock-section">
+      <div class="section-header">
+        <span>Deterministic DDGI Multi-Bounce</span>
+        <span id="ddgiBounceLabel">∞ Feedback</span>
+      </div>
+      <div class="btn-grid cols-4">
+        <button class="ui-btn" data-ddgi-bounces="1">1B</button>
+        <button class="ui-btn" data-ddgi-bounces="2">2B</button>
+        <button class="ui-btn" data-ddgi-bounces="3">3B</button>
+        <button class="ui-btn active" data-ddgi-bounces="99">∞ Live</button>
+      </div>
+      <div class="btn-grid">
+        <button class="ui-btn active" data-probe-slice="-1">Full 1,920 Probes/f</button>
+        <button class="ui-btn" data-probe-slice="1">4× Slice (480/f)</button>
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Fibonacci Rays / Probe</span><span id="valProbeRays">64</span></div>
+        <input type="range" id="slProbeRays" min="16" max="64" step="16" value="64" />
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>DDGI Irradiance Gain</span><span id="valDdgiGain">0.95</span></div>
+        <input type="range" id="slDdgiGain" min="0.0" max="3.0" step="0.05" value="0.95" />
+      </div>
+    </div>
+
+    <div class="dock-section">
+      <div class="section-header">
+        <span>Cone-Footprint Specular &amp; Glass</span>
+      </div>
+      <div class="btn-grid cols-4">
+        <button class="ui-btn" data-spec-bounces="1">1 Bounce</button>
+        <button class="ui-btn" data-spec-bounces="2">2 Bounce</button>
+        <button class="ui-btn active" data-spec-bounces="3">3 Bounce</button>
+        <button class="ui-btn" data-spec-bounces="4">4 Bounce</button>
+      </div>
+      <div class="btn-grid cols-3">
+        <button class="ui-btn active" data-paint="pearl">Pearl White</button>
+        <button class="ui-btn" data-paint="cobalt">Cobalt Blue</button>
+        <button class="ui-btn" data-paint="crimson">Rosso Corsa</button>
+      </div>
+    </div>
+
+    <div class="dock-section">
+      <div class="section-header">
+        <span>Analytic LTC &amp; Solar Frustum</span>
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Solar Stencil Rays (Vogel)</span><span id="valShadowRays">8</span></div>
+        <input type="range" id="slShadowRays" min="1" max="12" step="1" value="8" />
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Sun Area Radius</span><span id="valSunRadius">0.65</span></div>
+        <input type="range" id="slSunRadius" min="0.10" max="3.50" step="0.05" value="0.65" />
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Sun Azimuth (°)</span><span id="valSunAz">72°</span></div>
+        <input type="range" id="slSunAz" min="-180" max="180" step="1" value="72" />
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>LTC Overhead Portals</span><span id="valLtcGain">0.78</span></div>
+        <input type="range" id="slLtcGain" min="0.0" max="2.5" step="0.02" value="0.78" />
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Internal Render Scale</span><span id="valResScale">1.00×</span></div>
+        <input type="range" id="slResScale" min="0.50" max="1.00" step="0.05" value="1.00" />
+      </div>
+    </div>
+
+    <div class="dock-section">
+      <div class="section-header">
+        <span>Deterministic Subsystems (A/B)</span>
+      </div>
+      <div class="toggle-grid">
+        <label class="chk-pill"><input type="checkbox" id="chkDdgi" checked /> DDGI Probes</label>
+        <label class="chk-pill"><input type="checkbox" id="chkLtc" checked /> Analytic LTC</label>
+        <label class="chk-pill"><input type="checkbox" id="chkSoftShadow" checked /> Soft Frustum</label>
+        <label class="chk-pill"><input type="checkbox" id="chkContactAo" checked /> BVH4 Contact AO</label>
+        <label class="chk-pill"><input type="checkbox" id="chkGlassIor" checked /> Glass IOR 1.46</label>
+        <label class="chk-pill"><input type="checkbox" id="chkShowProbes" /> 3D Probe Spheres</label>
+      </div>
+    </div>
+
+    <div class="dock-section">
+      <div class="section-header">
+        <span>Vehicle Pose &amp; Pass Telemetry</span>
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Vehicle X Position (m)</span><span id="valCarX">-0.55 m</span></div>
+        <input type="range" id="slCarX" min="-8.0" max="8.0" step="0.05" value="-0.55" />
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Front Wheel Steer (°)</span><span id="valSteer">13°</span></div>
+        <input type="range" id="slSteer" min="-32" max="32" step="1" value="13" />
+      </div>
+      <div class="pass-table" id="passTimingTable">
+        <span>1. DDGI Fibonacci 64-Ray</span><span class="val" id="tmDdgi">--</span>
+        <span>2. Primary + Solar + AO</span><span class="val" id="tmPrimary">--</span>
+        <span>3. Plane-Aware Penumbra</span><span class="val" id="tmFilter">--</span>
+        <span>4. Cone Specular + Glass</span><span class="val" id="tmSpec">--</span>
+        <span>5. LTC + DDGI Composite</span><span class="val" id="tmComp">--</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Diagnostic Overlay if WebGPU is unavailable -->
+  <div id="statusOverlay" class="hidden">
+    <div class="status-card">
+      <h2 id="statusTitle">WebGPU Adapter Required</h2>
+      <p id="statusMessage"></p>
+      <img src="/Exhibits/Images/ReflectionBenchmark/03-ControlVehicleDeterministicFullRaytrace.png?v=2" alt="Deterministic Full Raytrace Verification" />
+    </div>
+  </div>
+
+  <script type="module" src="./DeterministicRtApp.js?v=2"></script>
+</body>
+</html>
