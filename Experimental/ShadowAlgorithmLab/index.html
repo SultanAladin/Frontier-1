@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frontier — Shadow, GI &amp; Reflection Algorithm Lab</title>
+  <link rel="stylesheet" href="./ShadowLabStyle.css" />
+</head>
+<body>
+  <canvas id="viewport-canvas"></canvas>
+
+  <div id="split-divider" class="split-divider" style="left: 50%; display: block;">
+    <span id="badge-left" class="split-badge left">A · CONTACT+PCSS · SDF GI · SDF REFL</span>
+    <span id="badge-right" class="split-badge right">B · BVH SHADOW · BVH GI · BVH REFL</span>
+  </div>
+
+  <header class="top-bar">
+    <div class="brand-panel">
+      <div>
+        <div class="brand-kicker">Frontier Lighting Lab · ControlVehicle Triangle Mesh</div>
+        <div class="brand-title">Multi-Light Shadows + Selectable GI &amp; Reflections (SDF for GI/Refl Only)</div>
+      </div>
+      <span id="hud-fps-pill" class="pill-badge pill-fps">— FPS</span>
+      <span id="hud-rebake-pill" class="pill-badge pill-sdf">0 Geometry SDF Re-Bakes</span>
+    </div>
+
+    <div class="top-actions">
+      <div class="segmented-track" role="group" aria-label="View Layout">
+        <button data-layout="split" aria-pressed="true">Split A | B</button>
+        <button data-layout="single" aria-pressed="false">Single (A)</button>
+        <button data-layout="diff" aria-pressed="false">|A − B| ×4</button>
+      </div>
+
+      <div class="segmented-track" role="group" aria-label="Surface Shading">
+        <button data-surface="pbr" aria-pressed="true">PBR Vehicle</button>
+        <button data-surface="clay" aria-pressed="false">Clay GI + Sh</button>
+        <button data-surface="mask" aria-pressed="false">Shadow Mask</button>
+        <button data-surface="penumbra" aria-pressed="false">Blocker Map</button>
+      </div>
+
+      <button id="btn-toggle-hud" class="chip-btn" aria-pressed="false">Hide HUD</button>
+    </div>
+  </header>
+
+  <aside id="compare-panel" class="compare-panel" aria-label="Per-Side Pipeline Selector and Telemetry">
+    <div class="panel-head">
+      <h2>Left A vs Right B Pipelines</h2>
+      <button id="btn-swap-algos" class="swap-btn" title="Swap Left A and Right B pipelines">A ⇄ B</button>
+    </div>
+
+    <div class="algo-select-grid">
+      <div class="algo-slot left">
+        <div class="slot-tag"><span>Left · A</span><strong id="ms-left">— ms</strong></div>
+        <label class="sub-lbl" for="select-algo-a">Shadows</label>
+        <select id="select-algo-a" aria-label="Left Shadow Algorithm">
+          <option value="contact_pcss" selected>Contact + PCSS (No SDF)</option>
+          <option value="pcss">Shadow Map · PCSS + Filter</option>
+          <option value="smrt">SMRT · Depth Ray Trace</option>
+          <option value="hybrid">Legacy Hybrid · Contact + SDF</option>
+          <option value="sdf">Baked Mesh SDF (Artifact Demo)</option>
+          <option value="pcf">Shadow Map · 3×3 PCF</option>
+          <option value="bvh">BVH Raytraced</option>
+        </select>
+        <label class="sub-lbl" for="select-gi-a">Global Illumination</label>
+        <select id="select-gi-a" aria-label="Left GI Mode">
+          <option value="sdf" selected>SDF Cone GI (No Re-Bake)</option>
+          <option value="bvh">BVH Raytraced GI</option>
+          <option value="off">Off (Ambient Fill)</option>
+        </select>
+        <label class="sub-lbl" for="select-refl-a">Reflections</label>
+        <select id="select-refl-a" aria-label="Left Reflection Mode">
+          <option value="sdf" selected>SDF + SSR Reflections</option>
+          <option value="bvh">BVH Raytraced Refl</option>
+          <option value="env">Sky / Env Only</option>
+        </select>
+      </div>
+
+      <div class="algo-slot right">
+        <div class="slot-tag"><span>Right · B</span><strong id="ms-right">— ms</strong></div>
+        <label class="sub-lbl" for="select-algo-b">Shadows</label>
+        <select id="select-algo-b" aria-label="Right Shadow Algorithm">
+          <option value="contact_pcss">Contact + PCSS (No SDF)</option>
+          <option value="pcss">Shadow Map · PCSS + Filter</option>
+          <option value="smrt">SMRT · Depth Ray Trace</option>
+          <option value="hybrid">Legacy Hybrid · Contact + SDF</option>
+          <option value="sdf">Baked Mesh SDF (Artifact Demo)</option>
+          <option value="pcf">Shadow Map · 3×3 PCF</option>
+          <option value="bvh" selected>BVH Raytraced</option>
+        </select>
+        <label class="sub-lbl" for="select-gi-b">Global Illumination</label>
+        <select id="select-gi-b" aria-label="Right GI Mode">
+          <option value="sdf">SDF Cone GI (No Re-Bake)</option>
+          <option value="bvh" selected>BVH Raytraced GI</option>
+          <option value="off">Off (Ambient Fill)</option>
+        </select>
+        <label class="sub-lbl" for="select-refl-b">Reflections</label>
+        <select id="select-refl-b" aria-label="Right Reflection Mode">
+          <option value="sdf">SDF + SSR Reflections</option>
+          <option value="bvh" selected>BVH Raytraced Refl</option>
+          <option value="env">Sky / Env Only</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="algo-note" class="algo-note"></div>
+
+    <div class="telemetry-grid">
+      <div class="stat-box">
+        <div class="stat-k">Shadows (A | B)</div>
+        <div id="stat-shadow-ms" class="stat-v good">— | — ms</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-k">GI + Refl (A | B)</div>
+        <div id="stat-girefl-ms" class="stat-v">— | — ms</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-k">Total Frame Cost</div>
+        <div id="stat-total-ms" class="stat-v good">— | — ms</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-k">Runtime SDF Re-Bakes</div>
+        <div id="stat-rebakes" class="stat-v good">0 (Once-Baked)</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-k">Active Lights / Penumbra</div>
+        <div id="stat-light" class="stat-v">2 Lights · 2.40°</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-k">GPU Adapter</div>
+        <div id="stat-gpu" class="stat-v">Detecting…</div>
+      </div>
+    </div>
+  </aside>
+
+  <footer id="controls-dock" class="controls-dock">
+    <div class="dock-row">
+      <div class="control-cluster">
+        <span class="cluster-label">Shadow Lights</span>
+        <div class="segmented-track" role="group" aria-label="Shadow Casting Light Count">
+          <button data-light-count="1" aria-pressed="false" title="Key Light Only">1 Light</button>
+          <button data-light-count="2" aria-pressed="true" title="Key Sun/Area + Overhead Bay Spotlight">2 Lights</button>
+          <button data-light-count="3" aria-pressed="false" title="Key + Overhead Bay Spot + Opposite Cool Rim Spot">3 Lights</button>
+        </div>
+        <div class="segmented-track" role="group" aria-label="Key Light Type">
+          <button data-light-type="sun" aria-pressed="true">Key Sun</button>
+          <button data-light-type="area" aria-pressed="false">Key 3D Area</button>
+        </div>
+        <button id="btn-light-sweep" class="chip-btn accent-amber" aria-pressed="false">Orbit Lights</button>
+      </div>
+
+      <div class="slider-wrap">
+        <label for="slider-light-size">
+          <span id="lbl-light-size" class="cluster-label">Sun Radius</span>
+          <span id="val-light-size" class="slider-val">2.40°</span>
+        </label>
+        <input id="slider-light-size" type="range" min="0.00" max="8.00" step="0.05" value="2.40" />
+      </div>
+
+      <div class="slider-wrap">
+        <label for="slider-azimuth">
+          <span class="cluster-label">Azimuth</span>
+          <span id="val-azimuth" class="slider-val">46°</span>
+        </label>
+        <input id="slider-azimuth" type="range" min="-180" max="180" step="1" value="46" />
+      </div>
+
+      <div class="slider-wrap">
+        <label for="slider-elevation">
+          <span class="cluster-label">Elevation</span>
+          <span id="val-elevation" class="slider-val">34°</span>
+        </label>
+        <input id="slider-elevation" type="range" min="6" max="85" step="1" value="34" />
+      </div>
+
+      <div class="slider-wrap" id="wrap-light-dist">
+        <label for="slider-light-dist">
+          <span class="cluster-label">Area Dist</span>
+          <span id="val-light-dist" class="slider-val">7.5 m</span>
+        </label>
+        <input id="slider-light-dist" type="range" min="3.2" max="18.0" step="0.1" value="7.5" />
+      </div>
+
+      <div class="slider-wrap">
+        <label for="slider-light-int">
+          <span class="cluster-label">Key Int</span>
+          <span id="val-light-int" class="slider-val">1.25×</span>
+        </label>
+        <input id="slider-light-int" type="range" min="0.40" max="2.50" step="0.05" value="1.25" />
+      </div>
+
+      <div class="slider-wrap">
+        <label for="slider-fill-boost">
+          <span class="cluster-label">Fill Light</span>
+          <span id="val-fill-boost" class="slider-val">1.15×</span>
+        </label>
+        <input id="slider-fill-boost" type="range" min="0.20" max="2.50" step="0.05" value="1.15" />
+      </div>
+
+      <div class="slider-wrap">
+        <label for="slider-gi-int">
+          <span class="cluster-label">GI Bounce</span>
+          <span id="val-gi-int" class="slider-val">1.25×</span>
+        </label>
+        <input id="slider-gi-int" type="range" min="0.00" max="2.50" step="0.05" value="1.25" />
+      </div>
+    </div>
+
+    <div class="dock-divider"></div>
+
+    <div class="dock-row">
+      <div class="control-cluster">
+        <span class="cluster-label">Rays / Taps</span>
+        <div class="segmented-track" role="group" aria-label="Quality Preset">
+          <button data-quality="0" aria-pressed="false">1 / 8</button>
+          <button data-quality="1" aria-pressed="true">2 / 16 (GTX)</button>
+          <button data-quality="2" aria-pressed="false">4 / 24</button>
+          <button data-quality="3" aria-pressed="false">8 / 32</button>
+          <button data-quality="4" aria-pressed="false">16 / 48</button>
+        </div>
+      </div>
+
+      <div class="control-cluster">
+        <span class="cluster-label">Refl Bounces</span>
+        <div class="segmented-track" role="group" aria-label="Reflection Bounces">
+          <button data-refl-bounces="1" aria-pressed="false">1</button>
+          <button data-refl-bounces="2" aria-pressed="true">2</button>
+          <button data-refl-bounces="3" aria-pressed="false">3</button>
+        </div>
+      </div>
+
+      <div class="control-cluster">
+        <span class="cluster-label">Kelvin</span>
+        <div class="segmented-track" role="group" aria-label="Key Light Color">
+          <button data-kelvin="warm" aria-pressed="false">3200K</button>
+          <button data-kelvin="day" aria-pressed="true">5500K</button>
+          <button data-kelvin="cool" aria-pressed="false">7500K</button>
+        </div>
+      </div>
+
+      <div class="control-cluster">
+        <button id="btn-plane-filter" class="chip-btn" aria-pressed="true">Plane Filter</button>
+        <div class="segmented-track" role="group" aria-label="Key Shadow Map Res">
+          <button data-smap-res="1024" aria-pressed="false">1024²</button>
+          <button data-smap-res="2048" aria-pressed="true">2048²</button>
+        </div>
+        <button id="btn-half-res" class="chip-btn" aria-pressed="false">Half-Res Sh</button>
+        <div class="segmented-track" role="group" aria-label="SDF Shadow Mode">
+          <button data-sdf-mode="local" aria-pressed="true">SDF: Local</button>
+          <button data-sdf-mode="clip" aria-pressed="false">SDF: Clip0</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dock-divider"></div>
+
+    <div class="dock-row">
+      <div class="control-cluster">
+        <span class="cluster-label">Vehicle</span>
+        <div class="segmented-track" role="group" aria-label="Vehicle Drive Mode">
+          <button data-drive="auto" aria-pressed="true">Proving Cruise</button>
+          <button data-drive="pose" aria-pressed="false">Static Pose</button>
+          <button data-drive="manual" aria-pressed="false">WASD Drive</button>
+        </div>
+        <button id="btn-louvers" class="chip-btn" aria-pressed="true">Shadow Louvers</button>
+      </div>
+
+      <div class="control-cluster">
+        <span class="cluster-label">Camera</span>
+        <div class="segmented-track" role="group" aria-label="Camera View">
+          <button data-cam="hero" aria-pressed="true">Hero 3/4</button>
+          <button data-cam="tyre" aria-pressed="false">Tyre Contact</button>
+          <button data-cam="penumbra" aria-pressed="false">Long Penumbra</button>
+          <button data-cam="chase" aria-pressed="false">Chase</button>
+        </div>
+      </div>
+
+      <div class="control-cluster">
+        <span class="cluster-label">Paint</span>
+        <div class="swatch-row">
+          <button class="paint-swatch" data-paint="0" aria-pressed="true" style="background:#ebeffa;" title="Pearl White"></button>
+          <button class="paint-swatch" data-paint="1" aria-pressed="false" style="background:#155eef;" title="Sapphire"></button>
+          <button class="paint-swatch" data-paint="2" aria-pressed="false" style="background:#dc2626;" title="Crimson"></button>
+          <button class="paint-swatch" data-paint="3" aria-pressed="false" style="background:#eab308;" title="Solar Gold"></button>
+          <button class="paint-swatch" data-paint="4" aria-pressed="false" style="background:#18191e;" title="Obsidian"></button>
+        </div>
+        <span class="drive-hint">Drag Split · Orbit · Wheel · WASD · [H] HUD</span>
+      </div>
+    </div>
+  </footer>
+
+  <div id="loading-banner" class="loading-banner">
+    Loading ControlVehicle Meshes, SAH BVH, Pre-Baked SDFs &amp; Radiosity Cache…
+  </div>
+
+  <script type="module" src="./ShadowLabEngine.js"></script>
+</body>
+</html>
