@@ -136,10 +136,10 @@ void FractureOutlinerPanel::Render(
                 FractureIcons::DrawTriangleGlyph(Surface, { BadgeC.X - 6.0f, BadgeC.Y - 6.0f, 12.0f, 12.0f }, ColorRgba { 98u, 98u, 96u, 255u });
             }
 
-            Surface.Text({ Card.X + 14.0f, Card.Bottom() - 25.0f }, 10.6f, ColorRgba { 169u, 169u, 167u, 255u }, Label);
+            Surface.Text({ Card.X + 14.0f, Card.Bottom() - 25.0f }, 11.2f, ColorRgba { 176u, 176u, 174u, 255u }, Label);
             char NumStr[16] {};
             std::snprintf(NumStr, sizeof(NumStr), "%u", Count);
-            Surface.TextRightAligned({ Card.X, Card.Bottom() - 40.0f, Card.Width - 15.0f, 32.0f }, 28.0f, ColorRgba { 232u, 232u, 230u, 255u }, NumStr);
+            Surface.TextRightAligned({ Card.X, Card.Bottom() - 40.0f, Card.Width - 15.0f, 32.0f }, 28.0f, ColorRgba { 238u, 238u, 236u, 255u }, NumStr);
 
             if (Hov && Pointer.Pressed)
             {
@@ -242,8 +242,8 @@ void FractureOutlinerPanel::Render(
             FractureIcons::DrawCollectionIcon(Surface, IconBox);
         }
 
-        Surface.Text({ Row.X + 58.0f, Row.Y + 8.0f }, 11.4f, ColorRgba { 220u, 220u, 218u, 255u }, Title);
-        Surface.Text({ Row.X + 58.0f, Row.Y + 24.0f }, 8.4f, ColorRgba { 108u, 108u, 106u, 255u }, Sub);
+        Surface.Text({ Row.X + 58.0f, Row.Y + 7.0f }, 12.2f, ColorRgba { 228u, 228u, 226u, 255u }, Title);
+        Surface.Text({ Row.X + 58.0f, Row.Y + 23.0f }, 9.8f, ColorRgba { 132u, 132u, 130u, 255u }, Sub);
 
         if (Hov && Pointer.Pressed && !Session.FilterDropdownOpen)
         {
@@ -278,9 +278,9 @@ void FractureOutlinerPanel::Render(
             }
 
             FractureIcons::DrawPrimitiveIcon(Surface, { Row.X + 31.0f, Row.Center().Y - 10.0f, 20.0f, 20.0f }, Prim.Shape, SelectedShape ? 1.0f : 0.72f);
-            Surface.Text({ Row.X + 60.0f, Row.Y + 6.5f }, 11.0f, ColorRgba { 216u, 216u, 214u, 255u }, Prim.Title);
+            Surface.Text({ Row.X + 60.0f, Row.Y + 5.5f }, 11.6f, ColorRgba { 226u, 226u, 224u, 255u }, Prim.Title);
             const std::string Desc = SelectedShape ? Session.FormatPrimitiveSubtitle() : PrimitiveShortDescription(Prim.Shape);
-            Surface.Text({ Row.X + 60.0f, Row.Y + 21.5f }, 8.2f, ColorRgba { 108u, 108u, 106u, 255u }, Desc.c_str());
+            Surface.Text({ Row.X + 60.0f, Row.Y + 21.0f }, 9.6f, ColorRgba { 132u, 132u, 130u, 255u }, Desc.c_str());
 
             if (SelectedShape)
             {
@@ -362,15 +362,15 @@ void FractureOutlinerPanel::Render(
                 Surface.FillRectangle(SwBox, { SwR, SwG, SwB, static_cast<uint8_t>(Visible ? 255u : 90u) }, 5.0f);
                 Surface.StrokeRectangle(SwBox, ColorRgba { 255u, 255u, 255u, 32u }, 5.0f, 0.8f);
 
-                Surface.Text({ Row.X + 58.0f, Row.Y + 6.5f }, 10.8f, ColorRgba { 216u, 216u, 214u, static_cast<uint8_t>(Visible ? 255u : 110u) }, Frag.Token.c_str());
+                Surface.Text({ Row.X + 58.0f, Row.Y + 5.5f }, 11.6f, ColorRgba { 226u, 226u, 224u, static_cast<uint8_t>(Visible ? 255u : 110u) }, Frag.Token.c_str());
                 char Meta[48] {};
                 std::snprintf(Meta, sizeof(Meta), "%.1f kg · %.0f cm",
                     Frag.MassKg, static_cast<double>(std::max({ Frag.Span.X, Frag.Span.Y, Frag.Span.Z })) * 100.0);
-                Surface.Text({ Row.X + 58.0f, Row.Y + 21.5f }, 8.2f, ColorRgba { 108u, 108u, 106u, 255u }, Meta);
+                Surface.Text({ Row.X + 58.0f, Row.Y + 21.0f }, 9.6f, ColorRgba { 132u, 132u, 130u, 255u }, Meta);
 
                 char EnergyTxt[24] {};
                 std::snprintf(EnergyTxt, sizeof(EnergyTxt), "%.0f J", Session.QueryFragmentReleaseShareJ(Frag.Index));
-                Surface.TextRightAligned({ Row.X, Row.Center().Y - 5.0f, Row.Width - 58.0f, 12.0f }, 8.6f, ColorRgba { 125u, 125u, 123u, 255u }, EnergyTxt);
+                Surface.TextRightAligned({ Row.X, Row.Center().Y - 5.5f, Row.Width - 58.0f, 13.0f }, 10.2f, ColorRgba { 154u, 154u, 152u, 255u }, EnergyTxt);
 
                 const Rectangle2D EyeBtn { Row.Right() - 50.0f, Row.Center().Y - 10.0f, 20.0f, 20.0f };
                 const bool EyeHov = ControlAppearance::QueryPointerOver(EyeBtn, Pointer);
@@ -436,8 +436,8 @@ void FractureOutlinerPanel::Render(
     auto DrawFootCell = [&](uint32_t Col, const char* K, const char* V)
     {
         const float Fx = FooterRect.X + 16.0f + static_cast<float>(Col) * ColW;
-        Surface.Text({ Fx, FooterRect.Y + 8.0f }, 7.6f, ColorRgba { 124u, 124u, 122u, 255u }, K);
-        Surface.Text({ Fx, FooterRect.Y + 23.0f }, 10.8f, ColorRgba { 218u, 218u, 216u, 255u }, V);
+        Surface.Text({ Fx, FooterRect.Y + 7.0f }, 9.4f, ColorRgba { 136u, 136u, 134u, 255u }, K);
+        Surface.Text({ Fx, FooterRect.Y + 22.0f }, 11.8f, ColorRgba { 226u, 226u, 224u, 255u }, V);
     };
     DrawFootCell(0u, "REALTIME", FpsBuf);
     DrawFootCell(1u, "BAKE", BakeBuf);

@@ -129,20 +129,23 @@ int main()
         return 1;
     }
 
-    // 3. Primitive Library 9-tile Glass Modal
+    // 3. Material OpenPBR Shading + Explode + Granite Interior Dual-Material
     Studio.AccessSession().DiagnosticsSession.Visible  = false;
     Studio.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::StudioOpenPBR;
-    Studio.AccessSession().RenderOptions.ExplodeFactor = 0.0f;
-    Studio.AccessSession().PrimitiveLibraryOpen        = true;
+    Studio.AccessSession().RenderOptions.ExplodeFactor = 0.18f;
+    Studio.AccessSession().MaterialId                  = "granite";
+    Studio.AccessSession().RebuildFracturePartition();
     RenderStep(Idle);
-    if (!SavePng("FractureStudio_Library.png"))
+    if (!SavePng("FractureStudio_MaterialOpenPBR.png"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
 
     // 4. JoltPhysics Simulate Mode + Cells Mode + 60px Timeline + Kinetic Hero Curve
-    Studio.AccessSession().PrimitiveLibraryOpen        = false;
+    Studio.AccessSession().MaterialId                  = "concrete";
+    Studio.AccessSession().RenderOptions.ExplodeFactor = 0.0f;
+    Studio.AccessSession().RebuildFracturePartition();
     Studio.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::Cells;
     Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Simulate);
     for (int F = 0; F < 28; ++F) RenderStep(Idle);

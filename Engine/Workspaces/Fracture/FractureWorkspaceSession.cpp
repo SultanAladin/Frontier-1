@@ -704,13 +704,18 @@ void FractureWorkspaceSession::ExecuteFracturePartitionOnly()
         PartitionResult.Bonds = ConvexPartitioning::ConstructSharedCutBonds(
             PartitionResult.Fragments, PartitionResult.MaterialSpec, ImpactPointLocal, DimPrimaryA + DimPrimaryB, BondStrengthScale);
 
+        double SeamCutArea = 0.0;
+        for (const auto& B : PartitionResult.Bonds)
+        {
+            SeamCutArea += B.SharedAreaM2;
+        }
         const double ExactV = QueryExactVolumeM3();
         PartitionResult.Receipt.FragmentCount      = static_cast<uint32_t>(PartitionResult.Fragments.size());
         PartitionResult.Receipt.BondCount          = static_cast<uint32_t>(PartitionResult.Bonds.size());
         PartitionResult.Receipt.SourceVolumeM3     = ExactV;
         PartitionResult.Receipt.FragmentVolumeSumM3 = SumVol;
         PartitionResult.Receipt.VolumeDriftRatio   = std::abs(SumVol - ExactV) / std::max(1.0e-9, ExactV);
-        PartitionResult.Receipt.TotalCrackAreaM2   = std::max(0.45, TotalCrackArea);
+        PartitionResult.Receipt.TotalCrackAreaM2   = std::max(0.45, TotalCrackArea + SeamCutArea);
         PartitionResult.Receipt.SpentSurfaceEnergyJ = PartitionResult.Receipt.TotalCrackAreaM2 * PartitionResult.MaterialSpec.FractureToughnessGc;
         PartitionResult.Receipt.ComputeDurationMs  = std::max(12.0, TotalComputeMs);
         PartitionResult.Receipt.RayleighSpeedMps   = 3120.0;

@@ -170,99 +170,6 @@ void PopulateDiagnosticsChannels(
     }
 }
 
-void DrawPrimitiveLibraryModal(
-    PixelSpace&               Surface,
-    Rectangle2D               WellRect,
-    FractureWorkspaceSession& Session,
-    const ControlPointer&     Pointer,
-    bool&                     OutInteracted) noexcept
-{
-    const float ModalW = std::min(760.0f, WellRect.Width - 28.0f);
-    const float ModalH = 342.0f;
-    const Rectangle2D Modal {
-        WellRect.X + (WellRect.Width - ModalW) * 0.5f,
-        WellRect.Bottom() - ModalH - 14.0f,
-        ModalW,
-        ModalH
-    };
-
-    Surface.FillRectangle(Modal, ColorRgba { 20u, 20u, 21u, 242u }, 22.0f);
-    Surface.StrokeRectangle(Modal, ColorRgba { 255u, 255u, 255u, 30u }, 22.0f, 1.0f);
-
-    Surface.Text({ Modal.X + 20.0f, Modal.Y + 18.0f }, 17.5f, ColorRgba { 232u, 232u, 230u, 255u }, "Primitive library");
-    Surface.Text({ Modal.X + 20.0f, Modal.Y + 40.0f }, 9.5f, ColorRgba { 142u, 142u, 140u, 255u },
-        "Analytical shapes · exact distance fields · closed-form volume");
-
-    const Rectangle2D CloseBtn { Modal.Right() - 46.0f, Modal.Y + 16.0f, 30.0f, 30.0f };
-    const bool CloseHov = ControlAppearance::QueryPointerOver(CloseBtn, Pointer);
-    Surface.FillCircle(CloseBtn.Center(), 15.0f, CloseHov ? ColorRgba { 42u, 42u, 44u, 255u } : ColorRgba { 28u, 28u, 30u, 255u });
-    Surface.StrokeCircle(CloseBtn.Center(), 15.0f, ColorRgba { 255u, 255u, 255u, 20u }, 0.9f);
-    FractureIcons::DrawSvgStroke24(Surface, { CloseBtn.Center().X - 6.0f, CloseBtn.Center().Y - 6.0f, 12.0f, 12.0f },
-        "M6 6 L18 18 M18 6 L6 18", ColorRgba { 200u, 200u, 198u, 255u }, 1.7f);
-    if (CloseHov && Pointer.Pressed)
-    {
-        Session.PrimitiveLibraryOpen = false;
-        OutInteracted = true;
-    }
-
-    const auto& Prims = FractureWorkspaceSession::InspectPrimitives();
-    const float GridX = Modal.X + 16.0f;
-    const float GridY = Modal.Y + 64.0f;
-    const float Gap   = 8.0f;
-    const uint32_t Cols = 5u;
-    const float TileW = (Modal.Width - 32.0f - Gap * (Cols - 1u)) / static_cast<float>(Cols);
-    const float TileH = 124.0f;
-
-    static constexpr std::array<const char*, 9> DefaultDimLabels {{
-        "1.00 × 1.00 × 1.00 m",
-        "Ø 1.00 m",
-        "Ø 0.80 × 1.20 m",
-        "Ø 1.00 × 1.10 m",
-        "Ø 0.60 × 1.30 m",
-        "R 0.50 · r 0.19 m",
-        "Ø 0.96 / 0.68 × 0.80 m",
-        "1.70 × 1.15 m · 14 mm",
-        "0.56 AF × 1.20 m"
-    }};
-
-    for (uint32_t I = 0u; I < FractureWorkspaceSession::PrimitiveCount; ++I)
-    {
-        const uint32_t Col = I % Cols;
-        const uint32_t Row = I / Cols;
-        const Rectangle2D Tile {
-            GridX + static_cast<float>(Col) * (TileW + Gap),
-            GridY + static_cast<float>(Row) * (TileH + Gap),
-            TileW,
-            TileH
-        };
-        const bool Active = (Session.ActiveShape == Prims[I].Shape);
-        const bool Hov    = ControlAppearance::QueryPointerOver(Tile, Pointer);
-
-        Surface.FillRectangle(Tile, Active ? ColorRgba { 31u, 29u, 25u, 255u } : (Hov ? ColorRgba { 30u, 30u, 32u, 255u } : ColorRgba { 24u, 24u, 25u, 255u }), 16.0f);
-        Surface.StrokeRectangle(Tile, Active ? ColorRgba { 242u, 169u, 59u, 125u } : ColorRgba { 255u, 255u, 255u, 20u }, 16.0f, Active ? 1.25f : 0.9f);
-
-        FractureIcons::DrawPrimitiveIcon(Surface, { Tile.X + 12.0f, Tile.Y + 12.0f, 38.0f, 38.0f }, Prims[I].Shape, 1.0f);
-        FractureIcons::DrawArrowNeGlyph(Surface, { Tile.Right() - 24.0f, Tile.Y + 12.0f, 14.0f, 14.0f }, ColorRgba { 112u, 112u, 110u, 255u });
-
-        Surface.Text({ Tile.X + 12.0f, Tile.Bottom() - 50.0f }, 12.0f, ColorRgba { 232u, 232u, 230u, 255u }, Prims[I].Title);
-        Surface.Text({ Tile.X + 12.0f, Tile.Bottom() - 34.0f }, 8.4f, ColorRgba { 126u, 126u, 124u, 255u }, DefaultDimLabels[I]);
-        Surface.Text({ Tile.X + 12.0f, Tile.Bottom() - 18.0f }, 7.6f, Active ? ColorRgba { 222u, 193u, 147u, 255u } : ColorRgba { 106u, 106u, 104u, 255u },
-            Prims[I].Segmented ? "SEGMENTED" : "CONVEX");
-
-        if (Hov && Pointer.Pressed)
-        {
-            Session.ApplyPrimitiveShape(Prims[I].Shape);
-            Session.PrimitiveLibraryOpen = false;
-            OutInteracted = true;
-        }
-    }
-
-    if (ControlAppearance::QueryPointerOver(Modal, Pointer))
-    {
-        OutInteracted = true;
-    }
-}
-
 } // namespace
 
 FractureViewportHost::~FractureViewportHost() noexcept
@@ -460,17 +367,18 @@ void FractureViewportHost::Render(
         }
         Ax = ShadingDropRect.Right() + 8.0f;
 
-        // Explode pill
-        const float ExpW = std::min(196.0f, Bounds.Right() - Ax - 156.0f);
-        if (ExpW > 120.0f)
+        // Explode pill using Frontier native C++ ScalarSlider capsule component
+        const float ExpW = std::min(212.0f, Bounds.Right() - Ax - 156.0f);
+        if (ExpW > 130.0f)
         {
-            const Rectangle2D ExplodePanel { Ax, Row2Y, ExpW, 31.0f };
-            Surface.FillRectangle(ExplodePanel, ColorRgba { 26u, 26u, 26u, 255u }, 9.0f);
-            Surface.Text({ ExplodePanel.X + 10.0f, ExplodePanel.Y + 9.5f }, 9.6f, ColorRgba { 138u, 138u, 136u, 255u }, "Explode");
+            Surface.Text({ Ax + 2.0f, Row2Y + 9.0f }, 10.6f, ColorRgba { 154u, 154u, 152u, 255u }, "Explode");
             float UpdatedExplode = Session.RenderOptions.ExplodeFactor * 100.0f;
-            const Rectangle2D SliderRect { ExplodePanel.X + 56.0f, ExplodePanel.Y + 7.5f, std::max(36.0f, ExpW - 102.0f), 16.0f };
+            const float SliderLeft = Ax + 52.0f;
+            const float ReadoutW   = 44.0f;
+            const Rectangle2D SliderRect { SliderLeft, Row2Y + 4.0f, std::max(44.0f, ExpW - 52.0f - ReadoutW - 6.0f), 23.0f };
             const ControlContact SlContact = ScalarSlider::Construct(
-                Surface, SliderRect, 0.0f, 100.0f, UpdatedExplode, ExplodeSliderDrag, Pointer, UpdatedExplode, 1.0f, 4.0f, 12.0f);
+                Surface, SliderRect, 0.0f, 100.0f, UpdatedExplode, ExplodeSliderDrag, Pointer, UpdatedExplode,
+                1.0f, ControlMetrics::SliderHeight * 0.78f, ControlMetrics::SliderThumbDiameter * 0.76f);
             if (Pointer.Pressed && SlContact.Hovered) ExplodeSliderDrag = true;
             if (!Pointer.Down) ExplodeSliderDrag = false;
             if (ExplodeSliderDrag || std::abs(UpdatedExplode - Session.RenderOptions.ExplodeFactor * 100.0f) > 0.05f)
@@ -479,7 +387,10 @@ void FractureViewportHost::Render(
             }
             char ExpPct[16] {};
             std::snprintf(ExpPct, sizeof(ExpPct), "%d %%", static_cast<int>(std::lround(Session.RenderOptions.ExplodeFactor * 100.0f)));
-            Surface.TextRightAligned({ ExplodePanel.X, ExplodePanel.Y + 9.5f, ExplodePanel.Width - 10.0f, 14.0f }, 9.6f, ColorRgba { 207u, 207u, 205u, 255u }, ExpPct);
+            const Rectangle2D ReadPill { SliderRect.Right() + 6.0f, Row2Y + 4.0f, ReadoutW, 23.0f };
+            Surface.FillRectangle(ReadPill, ColorRgba { 24u, 24u, 26u, 255u }, 11.5f);
+            Surface.StrokeRectangle(ReadPill, ColorRgba { 255u, 255u, 255u, 22u }, 11.5f, 1.0f);
+            Surface.TextCentered(ReadPill, 10.2f, ColorRgba { 214u, 214u, 212u, 255u }, ExpPct);
         }
 
         // Right 4 Circular Icon Buttons: [Diag pulse] [Wire] [Seeds] [Grid #]
@@ -700,13 +611,7 @@ void FractureViewportHost::Render(
         OverlayInteracted = DiagRes.Interacted;
     }
 
-    // 8. Floating Primitive Library Glass Drawer (opened via bottom "Primitive Library" notch)
-    if (Session.PrimitiveLibraryOpen)
-    {
-        DrawPrimitiveLibraryModal(Surface, WellRect, Session, Pointer, OverlayInteracted);
-    }
-
-    // 9. Pointer Orbit, Zoom & Surface Pick
+    // 8. Pointer Orbit, Zoom & Surface Pick
     if (ControlAppearance::QueryPointerOver(WellRect, Pointer) && !OverlayInteracted && !ExplodeSliderDrag && !Session.ShadingDropdownOpen)
     {
         if (std::abs(WheelDeltaY) > 0.001f)

@@ -46,25 +46,25 @@ void DrawHeroChart(
     int32_t                         SelectedFragment) noexcept
 {
     Surface.FillRectangle(Card, ColorRgba { 24u, 26u, 30u, 255u }, 22.0f);
-    Surface.StrokeRectangle(Card, ColorRgba { 255u, 255u, 255u, 20u }, 22.0f, 1.0f);
+    Surface.StrokeRectangle(Card, ColorRgba { 255u, 255u, 255u, 22u }, 22.0f, 1.0f);
 
     const bool IsSim = (Session.ExecutionPhase != ExecutionStripPhase::Edit) && !Session.KineticCurveSamples.empty();
-    Surface.Text({ Card.X + 14.0f, Card.Y + 12.0f }, 8.0f, ColorRgba { 166u, 182u, 204u, 255u },
+    Surface.Text({ Card.X + 16.0f, Card.Y + 13.0f }, 10.2f, ColorRgba { 166u, 182u, 204u, 255u },
         IsSim ? (SelectedFragment >= 0 ? "KINETIC · FRAGMENT" : "KINETIC ENERGY") : "ENERGY SHARE");
 
     // Legend top-right
-    float Lx = Card.Right() - 12.0f;
+    float Lx = Card.Right() - 14.0f;
     if (!IsSim)
     {
-        Lx -= 46.0f;
-        Surface.StrokeLine({ Lx, Card.Y + 16.0f }, { Lx + 9.0f, Card.Y + 16.0f }, ColorRgba { 255u, 255u, 255u, 180u }, 1.1f);
-        Surface.Text({ Lx + 12.0f, Card.Y + 12.0f }, 7.8f, ColorRgba { 154u, 163u, 173u, 255u }, "Threshold");
-        Lx -= 34.0f;
-        Surface.StrokeCircle({ Lx + 3.0f, Card.Y + 16.0f }, 3.2f, ColorRgba { 79u, 143u, 217u, 255u }, 1.2f);
-        Surface.Text({ Lx + 9.0f, Card.Y + 12.0f }, 7.8f, ColorRgba { 154u, 163u, 173u, 255u }, "Held");
-        Lx -= 52.0f;
-        Surface.FillCircle({ Lx + 3.0f, Card.Y + 16.0f }, 3.2f, ColorRgba { 255u, 138u, 61u, 255u });
-        Surface.Text({ Lx + 9.0f, Card.Y + 12.0f }, 7.8f, ColorRgba { 154u, 163u, 173u, 255u }, "Released");
+        Lx -= 54.0f;
+        Surface.StrokeLine({ Lx, Card.Y + 18.0f }, { Lx + 10.0f, Card.Y + 18.0f }, ColorRgba { 255u, 255u, 255u, 185u }, 1.2f);
+        Surface.Text({ Lx + 13.0f, Card.Y + 13.0f }, 9.8f, ColorRgba { 166u, 174u, 184u, 255u }, "Threshold");
+        Lx -= 38.0f;
+        Surface.StrokeCircle({ Lx + 3.0f, Card.Y + 18.0f }, 3.4f, ColorRgba { 79u, 143u, 217u, 255u }, 1.3f);
+        Surface.Text({ Lx + 9.0f, Card.Y + 13.0f }, 9.8f, ColorRgba { 166u, 174u, 184u, 255u }, "Held");
+        Lx -= 56.0f;
+        Surface.FillCircle({ Lx + 3.0f, Card.Y + 18.0f }, 3.4f, ColorRgba { 255u, 138u, 61u, 255u });
+        Surface.Text({ Lx + 9.0f, Card.Y + 13.0f }, 9.8f, ColorRgba { 166u, 174u, 184u, 255u }, "Released");
     }
 
     // Big metric + subtitle
@@ -80,20 +80,20 @@ void DrawHeroChart(
     {
         std::snprintf(BigBuf, sizeof(BigBuf), "%zu fragments", Session.PartitionResult.Fragments.size());
         const double KineticJ = std::max(0.0, (Session.ImpactEnergyJ - Session.PartitionResult.Receipt.SpentSurfaceEnergyJ) * Session.TransferRatio);
-        std::snprintf(SubLeft, sizeof(SubLeft), "%.2f KJ IMPACT · %.0f J KINETIC", Session.ImpactEnergyJ / 1000.0, KineticJ);
+        std::snprintf(SubLeft, sizeof(SubLeft), "%.2f kJ IMPACT · %.0f J KINETIC", Session.ImpactEnergyJ / 1000.0, KineticJ);
         std::snprintf(SubRight, sizeof(SubRight), "%u RELEASED", Session.CountReleasedFragments());
     }
-    Surface.Text({ Card.X + 14.0f, Card.Y + 30.0f }, 22.0f, ColorRgba { 244u, 244u, 242u, 255u }, BigBuf);
-    Surface.Text({ Card.X + 14.0f, Card.Y + 60.0f }, 7.8f, ColorRgba { 143u, 150u, 158u, 255u }, SubLeft);
-    Surface.TextRightAligned({ Card.X, Card.Y + 60.0f, Card.Width - 14.0f, 12.0f }, 7.8f, ColorRgba { 165u, 165u, 163u, 255u }, SubRight);
+    Surface.Text({ Card.X + 16.0f, Card.Y + 32.0f }, 24.0f, ColorRgba { 244u, 244u, 242u, 255u }, BigBuf);
+    Surface.Text({ Card.X + 16.0f, Card.Y + 64.0f }, 9.8f, ColorRgba { 150u, 158u, 168u, 255u }, SubLeft);
+    Surface.TextRightAligned({ Card.X, Card.Y + 64.0f, Card.Width - 16.0f, 14.0f }, 9.8f, ColorRgba { 184u, 184u, 182u, 255u }, SubRight);
 
     // Plot area inside card
-    const Rectangle2D Plot { Card.X + 16.0f, Card.Y + 92.0f, Card.Width - 58.0f, Card.Height - 118.0f };
+    const Rectangle2D Plot { Card.X + 16.0f, Card.Y + 94.0f, Card.Width - 62.0f, Card.Height - 124.0f };
     for (int G = 0; G <= 3; ++G)
     {
         const float Gy = Plot.Y + (Plot.Height * static_cast<float>(G)) / 3.0f;
         Surface.StrokeLine({ Plot.X, Gy }, { Plot.Right(), Gy },
-            (G == 3) ? ColorRgba { 255u, 255u, 255u, 36u } : ColorRgba { 255u, 255u, 255u, 16u }, 1.0f);
+            (G == 3) ? ColorRgba { 255u, 255u, 255u, 42u } : ColorRgba { 255u, 255u, 255u, 18u }, 1.0f);
     }
 
     if (!IsSim)
@@ -116,20 +116,40 @@ void DrawHeroChart(
                 return Plot.Bottom() - Norm * Plot.Height;
             };
 
+            const uint32_t DrawCount = static_cast<uint32_t>(std::min<size_t>(N, 48u));
+
+            // Gradient area fill under the ranked energy curve
+            for (uint32_t K = 1u; K < DrawCount; ++K)
+            {
+                const float U0 = static_cast<float>(K - 1u) / static_cast<float>(DrawCount - 1u);
+                const float U1 = static_cast<float>(K)      / static_cast<float>(DrawCount - 1u);
+                const float X0 = Plot.X + 4.0f + U0 * (Plot.Width - 8.0f);
+                const float X1 = Plot.X + 4.0f + U1 * (Plot.Width - 8.0f);
+                const float Y0 = MapY(Energies[K - 1u]);
+                const float Y1 = MapY(Energies[K]);
+                uint8_t R = 0u, G = 0u, B = 0u;
+                FractureViewportRenderer::SampleEnergySwatchSrgb(1.0f - (U0 + U1) * 0.5f, R, G, B);
+                const std::array<Point2D, 4> Quad {{
+                    { X0, Y0 }, { X1, Y1 }, { X1, Plot.Bottom() }, { X0, Plot.Bottom() }
+                }};
+                Surface.FillPolygon(Quad, ColorRgba { R, G, B, 46u });
+            }
+
             // Release threshold dashed line + pill
-            const float RelY = std::clamp(MapY(static_cast<float>(Session.ReleaseThresholdJ)), Plot.Y + 8.0f, Plot.Bottom() - 8.0f);
+            const float RelY = std::clamp(MapY(static_cast<float>(Session.ReleaseThresholdJ)), Plot.Y + 10.0f, Plot.Bottom() - 10.0f);
             for (float Dx = Plot.X; Dx < Plot.Right(); Dx += 9.0f)
             {
-                Surface.StrokeLine({ Dx, RelY }, { std::min(Plot.Right(), Dx + 5.0f), RelY }, ColorRgba { 255u, 255u, 255u, 175u }, 1.0f);
+                Surface.StrokeLine({ Dx, RelY }, { std::min(Plot.Right(), Dx + 5.0f), RelY }, ColorRgba { 255u, 255u, 255u, 185u }, 1.1f);
             }
             char RelTag[28] {};
             std::snprintf(RelTag, sizeof(RelTag), "release %.1f J", Session.ReleaseThresholdJ);
-            const Rectangle2D RelPill { Plot.X + 4.0f, RelY - 8.0f, Surface.MeasureTextWidth(7.6f, RelTag) + 12.0f, 16.0f };
-            Surface.FillRectangle(RelPill, ColorRgba { 17u, 18u, 20u, 232u }, 8.0f);
-            Surface.StrokeRectangle(RelPill, ColorRgba { 255u, 255u, 255u, 38u }, 8.0f, 0.8f);
-            Surface.TextCentered(RelPill, 7.6f, ColorRgba { 242u, 242u, 240u, 255u }, RelTag);
+            const float PillW = Surface.MeasureTextWidth(9.6f, RelTag) + 14.0f;
+            const Rectangle2D RelPill { Plot.X + 4.0f, RelY - 9.0f, PillW, 18.0f };
+            Surface.FillRectangle(RelPill, ColorRgba { 16u, 18u, 21u, 240u }, 9.0f);
+            Surface.StrokeRectangle(RelPill, ColorRgba { 255u, 255u, 255u, 44u }, 9.0f, 0.9f);
+            Surface.TextCentered(RelPill, 9.6f, ColorRgba { 242u, 242u, 240u, 255u }, RelTag);
 
-            const uint32_t DrawCount = static_cast<uint32_t>(std::min<size_t>(N, 48u));
+            // Curve line + colored nodes
             Point2D Prev {};
             for (uint32_t K = 0u; K < DrawCount; ++K)
             {
@@ -138,30 +158,30 @@ void DrawHeroChart(
                 const float Py = MapY(Energies[K]);
                 if (K > 0u)
                 {
-                    Surface.StrokeLine(Prev, { Px, Py }, ColorRgba { 255u, 255u, 255u, 115u }, 1.1f);
+                    Surface.StrokeLine(Prev, { Px, Py }, ColorRgba { 255u, 255u, 255u, 145u }, 1.25f);
                 }
                 uint8_t R = 0u, G = 0u, B = 0u;
                 FractureViewportRenderer::SampleEnergySwatchSrgb(1.0f - U, R, G, B);
                 const bool Rel = (Energies[K] >= static_cast<float>(Session.ReleaseThresholdJ));
                 if (Rel)
                 {
-                    Surface.FillCircle({ Px, Py }, 2.6f, { R, G, B, 255u });
+                    Surface.FillCircle({ Px, Py }, 2.8f, { R, G, B, 255u });
                 }
                 else
                 {
-                    Surface.FillCircle({ Px, Py }, 2.6f, ColorRgba { 20u, 21u, 24u, 255u });
-                    Surface.StrokeCircle({ Px, Py }, 2.6f, { R, G, B, 255u }, 1.2f);
+                    Surface.FillCircle({ Px, Py }, 2.8f, ColorRgba { 20u, 21u, 24u, 255u });
+                    Surface.StrokeCircle({ Px, Py }, 2.8f, { R, G, B, 255u }, 1.3f);
                 }
                 Prev = { Px, Py };
             }
         }
-        Surface.Text({ Plot.Right() + 6.0f, Plot.Y + 4.0f }, 7.6f, ColorRgba { 125u, 132u, 141u, 255u }, "10 J");
-        Surface.Text({ Plot.Right() + 6.0f, Plot.Y + Plot.Height * 0.5f }, 7.6f, ColorRgba { 125u, 132u, 141u, 255u }, "1 J");
-        Surface.Text({ Plot.X, Card.Bottom() - 16.0f }, 7.8f, ColorRgba { 111u, 117u, 125u, 255u }, "highest share");
+        Surface.Text({ Plot.Right() + 7.0f, Plot.Y + 2.0f }, 9.6f, ColorRgba { 140u, 148u, 158u, 255u }, "10 J");
+        Surface.Text({ Plot.Right() + 7.0f, Plot.Y + Plot.Height * 0.52f }, 9.6f, ColorRgba { 140u, 148u, 158u, 255u }, "1 J");
+        Surface.Text({ Plot.X, Card.Bottom() - 20.0f }, 9.6f, ColorRgba { 132u, 138u, 146u, 255u }, "highest share");
         char MidLbl[32] {};
         std::snprintf(MidLbl, sizeof(MidLbl), "%zu fragments ranked", N);
-        Surface.TextCentered({ Plot.X, Card.Bottom() - 16.0f, Plot.Width, 10.0f }, 7.8f, ColorRgba { 111u, 117u, 125u, 255u }, MidLbl);
-        Surface.TextRightAligned({ Plot.X, Card.Bottom() - 16.0f, Plot.Width, 10.0f }, 7.8f, ColorRgba { 111u, 117u, 125u, 255u }, "lowest");
+        Surface.TextCentered({ Plot.X, Card.Bottom() - 20.0f, Plot.Width, 12.0f }, 9.6f, ColorRgba { 132u, 138u, 146u, 255u }, MidLbl);
+        Surface.TextRightAligned({ Plot.X, Card.Bottom() - 20.0f, Plot.Width, 12.0f }, 9.6f, ColorRgba { 132u, 138u, 146u, 255u }, "lowest");
     }
     else
     {
@@ -174,13 +194,18 @@ void DrawHeroChart(
             const float U = (Samples.size() > 1u) ? (static_cast<float>(K) / static_cast<float>(Samples.size() - 1u)) : 1.0f;
             const float Px = Plot.X + U * Plot.Width;
             const float Py = Plot.Bottom() - std::clamp(Samples[K] / (Peak * 1.08f), 0.0f, 1.0f) * Plot.Height;
-            if (K > 0u) Surface.StrokeLine(Prev, { Px, Py }, ColorRgba { 244u, 244u, 242u, 235u }, 1.5f);
+            if (K > 0u)
+            {
+                const std::array<Point2D, 4> Quad {{ Prev, { Px, Py }, { Px, Plot.Bottom() }, { Prev.X, Plot.Bottom() } }};
+                Surface.FillPolygon(Quad, ColorRgba { 255u, 140u, 64u, 38u });
+                Surface.StrokeLine(Prev, { Px, Py }, ColorRgba { 244u, 244u, 242u, 235u }, 1.6f);
+            }
             Prev = { Px, Py };
         }
-        Surface.FillCircle(Prev, 3.8f, ColorRgba { 255u, 255u, 255u, 255u });
-        Surface.StrokeCircle(Prev, 3.8f, ColorRgba { 20u, 21u, 24u, 255u }, 1.6f);
-        Surface.Text({ Plot.X, Card.Bottom() - 16.0f }, 7.8f, ColorRgba { 111u, 117u, 125u, 255u }, "0 s");
-        Surface.TextRightAligned({ Plot.X, Card.Bottom() - 16.0f, Plot.Width, 10.0f }, 7.8f, ColorRgba { 111u, 117u, 125u, 255u }, "4.0 s");
+        Surface.FillCircle(Prev, 4.0f, ColorRgba { 255u, 255u, 255u, 255u });
+        Surface.StrokeCircle(Prev, 4.0f, ColorRgba { 20u, 21u, 24u, 255u }, 1.6f);
+        Surface.Text({ Plot.X, Card.Bottom() - 20.0f }, 9.6f, ColorRgba { 132u, 138u, 146u, 255u }, "0 s");
+        Surface.TextRightAligned({ Plot.X, Card.Bottom() - 20.0f, Plot.Width, 12.0f }, 9.6f, ColorRgba { 132u, 138u, 146u, 255u }, "4.0 s");
     }
 }
 
@@ -194,30 +219,30 @@ void DrawKpiGrid(
 {
     const float Gap = 8.0f;
     const float W   = (Width - Gap) * 0.5f;
-    const float H   = 66.0f;
+    const float H   = 74.0f;
     const auto& Rec = Session.PartitionResult.Receipt;
 
     auto DrawTile = [&](uint32_t Col, uint32_t Row, const char* Big, const char* DimPart, const char* Unit, const char* Label)
     {
         const Rectangle2D Tile { X + static_cast<float>(Col) * (W + Gap), Y + static_cast<float>(Row) * (H + Gap), W, H };
         Surface.FillRectangle(Tile, ColorRgba { 23u, 23u, 24u, 255u }, 17.0f);
-        Surface.StrokeRectangle(Tile, ColorRgba { 255u, 255u, 255u, 16u }, 17.0f, 1.0f);
-        FractureIcons::DrawArrowNeGlyph(Surface, { Tile.Right() - 22.0f, Tile.Y + 10.0f, 13.0f, 13.0f }, ColorRgba { 95u, 95u, 93u, 255u });
+        Surface.StrokeRectangle(Tile, ColorRgba { 255u, 255u, 255u, 20u }, 17.0f, 1.0f);
+        FractureIcons::DrawArrowNeGlyph(Surface, { Tile.Right() - 22.0f, Tile.Y + 10.0f, 13.0f, 13.0f }, ColorRgba { 118u, 118u, 116u, 255u });
 
-        float Nx = Tile.X + 12.0f;
+        float Nx = Tile.X + 14.0f;
         const float Ny = Tile.Y + 13.0f;
-        Surface.Text({ Nx, Ny }, 20.0f, ColorRgba { 239u, 239u, 237u, 255u }, Big);
-        Nx += Surface.MeasureTextWidth(20.0f, Big);
+        Surface.Text({ Nx, Ny }, 24.0f, ColorRgba { 242u, 242u, 240u, 255u }, Big);
+        Nx += Surface.MeasureTextWidth(24.0f, Big);
         if (DimPart[0] != '\0')
         {
-            Surface.Text({ Nx, Ny + 2.0f }, 17.0f, ColorRgba { 111u, 111u, 109u, 255u }, DimPart);
-            Nx += Surface.MeasureTextWidth(17.0f, DimPart);
+            Surface.Text({ Nx, Ny + 4.0f }, 19.0f, ColorRgba { 126u, 126u, 124u, 255u }, DimPart);
+            Nx += Surface.MeasureTextWidth(19.0f, DimPart);
         }
         if (Unit[0] != '\0')
         {
-            Surface.Text({ Nx + 2.0f, Ny + 8.0f }, 9.5f, ColorRgba { 139u, 139u, 137u, 255u }, Unit);
+            Surface.Text({ Nx + 3.0f, Ny + 10.0f }, 11.5f, ColorRgba { 154u, 154u, 152u, 255u }, Unit);
         }
-        Surface.Text({ Tile.X + 12.0f, Tile.Bottom() - 18.0f }, 7.8f, ColorRgba { 110u, 110u, 108u, 255u }, Label);
+        Surface.Text({ Tile.X + 14.0f, Tile.Bottom() - 20.0f }, 9.8f, ColorRgba { 134u, 134u, 132u, 255u }, Label);
     };
 
     if (SelectedFragment >= 0 && static_cast<size_t>(SelectedFragment) < Session.PartitionResult.Fragments.size())
@@ -302,19 +327,19 @@ void FractureInspectorPanel::Render(
         {
             std::snprintf(Crumb, sizeof(Crumb), "Inspector / Fracture / %s", Prim.Title);
         }
-        Surface.Text({ X, Cy + 6.0f }, 8.2f, ColorRgba { 145u, 145u, 145u, 255u }, Crumb);
+        Surface.Text({ X, Cy + 6.0f }, 9.8f, ColorRgba { 156u, 156u, 154u, 255u }, Crumb);
 
         const char* TopBtnLabel = (SelFrag >= 0) ? "Back to Solid" : "Reroll seed";
-        const float BtnW = 94.0f;
+        const float BtnW = 102.0f;
         const Rectangle2D TopBtn { X + InnerW - BtnW, Cy, BtnW, 28.0f };
         const bool Hov = ControlAppearance::QueryPointerOver(TopBtn, Pointer);
-        Surface.StrokeRectangle(TopBtn, Hov ? ColorRgba { 90u, 90u, 90u, 255u } : ColorRgba { 66u, 66u, 66u, 255u }, 14.0f, 1.0f);
+        Surface.StrokeRectangle(TopBtn, Hov ? ColorRgba { 98u, 98u, 98u, 255u } : ColorRgba { 72u, 72u, 72u, 255u }, 14.0f, 1.0f);
         if (SelFrag < 0)
         {
-            FractureIcons::DrawDiceGlyph(Surface, { TopBtn.X + 10.0f, TopBtn.Center().Y - 6.0f, 12.0f, 12.0f }, ColorRgba { 154u, 154u, 152u, 255u });
+            FractureIcons::DrawDiceGlyph(Surface, { TopBtn.X + 10.0f, TopBtn.Center().Y - 6.5f, 13.0f, 13.0f }, ColorRgba { 176u, 176u, 174u, 255u });
         }
-        Surface.Text({ TopBtn.X + (SelFrag >= 0 ? 14.0f : 26.0f), TopBtn.Y + 8.5f }, 9.0f,
-            Hov ? ColorRgba { 230u, 230u, 228u, 255u } : ColorRgba { 154u, 154u, 152u, 255u }, TopBtnLabel);
+        Surface.Text({ TopBtn.X + (SelFrag >= 0 ? 14.0f : 27.0f), TopBtn.Y + 8.0f }, 10.2f,
+            Hov ? ColorRgba { 236u, 236u, 234u, 255u } : ColorRgba { 176u, 176u, 174u, 255u }, TopBtnLabel);
         if (Hov && Pointer.Pressed)
         {
             if (SelFrag >= 0)
@@ -351,16 +376,16 @@ void FractureInspectorPanel::Render(
     DrawHeroChart(Surface, { X, Cy, InnerW, 228.0f }, Session, SelFrag);
     Cy += 238.0f;
 
-    // 3. 2x2 KPI Grid (140px)
+    // 3. 2x2 KPI Grid (156px)
     DrawKpiGrid(Surface, X, Cy, InnerW, Session, SelFrag);
-    Cy += 156.0f;
+    Cy += 170.0f;
 
     auto DrawSectionHeader = [&](uint32_t SecIdx, const char* Title, const char* Note) -> bool
     {
         const Rectangle2D Head { X, Cy, InnerW, 22.0f };
         const bool Hov = ControlAppearance::QueryPointerOver(Head, Pointer) && ScrollRect.Contains({ Pointer.X, Pointer.Y });
-        Surface.Text({ Head.X, Head.Y + 5.0f }, 9.4f, ColorRgba { 156u, 156u, 154u, 255u }, Title);
-        Surface.TextRightAligned({ Head.X, Head.Y + 5.0f, Head.Width - 18.0f, 12.0f }, 8.6f, ColorRgba { 111u, 111u, 109u, 255u }, Note);
+        Surface.Text({ Head.X, Head.Y + 4.0f }, 10.4f, ColorRgba { 174u, 174u, 172u, 255u }, Title);
+        Surface.TextRightAligned({ Head.X, Head.Y + 4.0f, Head.Width - 18.0f, 14.0f }, 9.8f, ColorRgba { 132u, 132u, 130u, 255u }, Note);
         if (Session.SectionExpanded[SecIdx])
         {
             FractureIcons::DrawChevronDownGlyph(Surface, { Head.Right() - 13.0f, Head.Y + 4.0f, 13.0f, 13.0f }, ColorRgba { 95u, 95u, 93u, 255u });
@@ -456,40 +481,41 @@ void FractureInspectorPanel::Render(
                                       const char* K4, const char* V4)
             {
                 const bool Active = (Session.MethodMode == Mode);
-                const Rectangle2D Card { X, Cy, InnerW, 118.0f };
+                const Rectangle2D Card { X, Cy, InnerW, 128.0f };
                 const bool Hov = ControlAppearance::QueryPointerOver(Card, Pointer);
                 Surface.FillRectangle(Card, Active ? ColorRgba { 28u, 33u, 30u, 255u } : (Hov ? ColorRgba { 32u, 32u, 33u, 255u } : ColorRgba { 26u, 26u, 27u, 255u }), 20.0f);
-                Surface.StrokeRectangle(Card, Active ? ColorRgba { 52u, 199u, 89u, 120u } : ColorRgba { 44u, 44u, 44u, 255u }, 20.0f, Active ? 1.25f : 1.0f);
+                Surface.StrokeRectangle(Card, Active ? ColorRgba { 52u, 199u, 89u, 130u } : ColorRgba { 48u, 48u, 48u, 255u }, 20.0f, Active ? 1.25f : 1.0f);
 
+                const Rectangle2D IconSeat { Card.X + 14.0f, Card.Y + 13.0f, 28.0f, 28.0f };
                 if (Mode == FractureMethodMode::Baked)
                 {
-                    FractureIcons::DrawBakeIcon(Surface, { Card.X + 14.0f, Card.Y + 14.0f, 24.0f, 24.0f });
+                    FractureIcons::DrawBakeIcon(Surface, IconSeat);
                 }
                 else
                 {
-                    FractureIcons::DrawLightningIcon(Surface, { Card.X + 14.0f, Card.Y + 14.0f, 24.0f, 24.0f });
+                    FractureIcons::DrawLightningIcon(Surface, IconSeat, ColorRgba { 246u, 197u, 94u, 255u });
                 }
 
-                Surface.Text({ Card.X + 46.0f, Card.Y + 13.0f }, 12.6f, ColorRgba { 236u, 236u, 234u, 255u }, Title);
-                Surface.Text({ Card.X + 46.0f, Card.Y + 29.0f }, 8.6f, ColorRgba { 136u, 136u, 134u, 255u }, Lead);
+                Surface.Text({ Card.X + 50.0f, Card.Y + 12.0f }, 13.5f, ColorRgba { 240u, 240u, 238u, 255u }, Title);
+                Surface.Text({ Card.X + 50.0f, Card.Y + 29.0f }, 10.2f, ColorRgba { 146u, 146u, 144u, 255u }, Lead);
 
                 if (Active)
                 {
-                    const Point2D CheckC { Card.Right() - 22.0f, Card.Y + 24.0f };
-                    Surface.FillCircle(CheckC, 9.0f, ColorRgba { 52u, 199u, 89u, 255u });
-                    FractureIcons::DrawCheckGlyph(Surface, { CheckC.X - 5.0f, CheckC.Y - 5.0f, 10.0f, 10.0f }, ColorRgba { 11u, 36u, 18u, 255u }, 2.6f);
+                    const Point2D CheckC { Card.Right() - 22.0f, Card.Y + 25.0f };
+                    Surface.FillCircle(CheckC, 9.5f, ColorRgba { 52u, 199u, 89u, 255u });
+                    FractureIcons::DrawCheckGlyph(Surface, { CheckC.X - 5.5f, CheckC.Y - 5.5f, 11.0f, 11.0f }, ColorRgba { 11u, 36u, 18u, 255u }, 2.2f);
                 }
 
                 const float Cw = (Card.Width - 28.0f) * 0.5f;
                 auto DrawFact = [&](float Fx, float Fy, const char* K, const char* V, ColorRgba VCol)
                 {
-                    Surface.Text({ Fx, Fy }, 7.4f, ColorRgba { 104u, 104u, 102u, 255u }, K);
-                    Surface.Text({ Fx, Fy + 11.0f }, 9.4f, VCol, V);
+                    Surface.Text({ Fx, Fy }, 9.2f, ColorRgba { 122u, 122u, 120u, 255u }, K);
+                    Surface.Text({ Fx, Fy + 13.0f }, 10.8f, VCol, V);
                 };
-                DrawFact(Card.X + 14.0f,      Card.Y + 50.0f, K1, V1, ColorRgba { 214u, 214u, 212u, 255u });
-                DrawFact(Card.X + 14.0f + Cw, Card.Y + 50.0f, K2, V2, V2Good ? ColorRgba { 91u, 219u, 135u, 255u } : ColorRgba { 214u, 214u, 212u, 255u });
-                DrawFact(Card.X + 14.0f,      Card.Y + 82.0f, K3, V3, ColorRgba { 214u, 214u, 212u, 255u });
-                DrawFact(Card.X + 14.0f + Cw, Card.Y + 82.0f, K4, V4, ColorRgba { 214u, 214u, 212u, 255u });
+                DrawFact(Card.X + 14.0f,      Card.Y + 52.0f, K1, V1, ColorRgba { 222u, 222u, 220u, 255u });
+                DrawFact(Card.X + 14.0f + Cw, Card.Y + 52.0f, K2, V2, V2Good ? ColorRgba { 91u, 219u, 135u, 255u } : ColorRgba { 222u, 222u, 220u, 255u });
+                DrawFact(Card.X + 14.0f,      Card.Y + 86.0f, K3, V3, ColorRgba { 222u, 222u, 220u, 255u });
+                DrawFact(Card.X + 14.0f + Cw, Card.Y + 86.0f, K4, V4, ColorRgba { 222u, 222u, 220u, 255u });
 
                 if (Hov && Pointer.Pressed && !Session.MaterialOutsideOpen && !Session.MaterialInsideOpen)
                 {
@@ -505,7 +531,7 @@ void FractureInspectorPanel::Render(
                         Session.RebuildFracturePartition();
                     }
                 }
-                Cy += 126.0f;
+                Cy += 136.0f;
             };
 
             char StoredBuf[40] {}, BakeBuf[40] {};
@@ -523,9 +549,9 @@ void FractureInspectorPanel::Render(
                 "STORED", "Shape only", "PIECES", PiecesBuf);
 
             // 6-Algorithm Grid
-            Surface.Text({ X, Cy + 2.0f }, 8.6f, ColorRgba { 138u, 138u, 136u, 255u }, "Algorithm");
-            Surface.TextRightAligned({ X, Cy + 2.0f, InnerW, 12.0f }, 8.2f, ColorRgba { 106u, 106u, 104u, 255u }, "6 solvers");
-            Cy += 20.0f;
+            Surface.Text({ X, Cy + 2.0f }, 10.4f, ColorRgba { 160u, 160u, 158u, 255u }, "Algorithm");
+            Surface.TextRightAligned({ X, Cy + 2.0f, InnerW, 14.0f }, 9.8f, ColorRgba { 126u, 126u, 124u, 255u }, "6 solvers");
+            Cy += 22.0f;
 
             struct AlgItem { FractureSolverMethod M; uint32_t GlyphIdx; const char* Name; const char* Sub; };
             static constexpr std::array<AlgItem, 6> Algs {{
@@ -538,7 +564,7 @@ void FractureInspectorPanel::Render(
             }};
             const float Gap = 6.0f;
             const float Aw  = (InnerW - Gap) * 0.5f;
-            const float Ah  = 54.0f;
+            const float Ah  = 56.0f;
             for (size_t I = 0u; I < Algs.size(); ++I)
             {
                 const uint32_t Col = static_cast<uint32_t>(I % 2u);
@@ -547,11 +573,11 @@ void FractureInspectorPanel::Render(
                 const bool Active = (Session.SolverMethod == Algs[I].M);
                 const bool Hov    = ControlAppearance::QueryPointerOver(Tile, Pointer);
                 Surface.FillRectangle(Tile, Active ? ColorRgba { 32u, 30u, 26u, 255u } : (Hov ? ColorRgba { 30u, 30u, 31u, 255u } : ColorRgba { 24u, 24u, 25u, 255u }), 14.0f);
-                Surface.StrokeRectangle(Tile, Active ? ColorRgba { 242u, 169u, 59u, 120u } : ColorRgba { 255u, 255u, 255u, 16u }, 14.0f, Active ? 1.15f : 0.9f);
-                FractureIcons::DrawAlgorithmGlyph(Surface, { Tile.X + 10.0f, Tile.Y + 12.0f, 20.0f, 20.0f }, Algs[I].GlyphIdx,
-                    Active ? ColorRgba { 222u, 193u, 147u, 255u } : ColorRgba { 150u, 150u, 148u, 255u });
-                Surface.Text({ Tile.X + 36.0f, Tile.Y + 11.0f }, 9.6f, ColorRgba { 224u, 224u, 222u, 255u }, Algs[I].Name);
-                Surface.Text({ Tile.X + 36.0f, Tile.Y + 27.0f }, 7.8f, ColorRgba { 112u, 112u, 110u, 255u }, Algs[I].Sub);
+                Surface.StrokeRectangle(Tile, Active ? ColorRgba { 242u, 169u, 59u, 125u } : ColorRgba { 255u, 255u, 255u, 20u }, 14.0f, Active ? 1.2f : 1.0f);
+                FractureIcons::DrawAlgorithmGlyph(Surface, { Tile.X + 10.0f, Tile.Y + 13.0f, 22.0f, 22.0f }, Algs[I].GlyphIdx,
+                    Active ? ColorRgba { 228u, 198u, 150u, 255u } : ColorRgba { 164u, 164u, 162u, 255u });
+                Surface.Text({ Tile.X + 38.0f, Tile.Y + 10.0f }, 10.6f, ColorRgba { 232u, 232u, 230u, 255u }, Algs[I].Name);
+                Surface.Text({ Tile.X + 38.0f, Tile.Y + 28.0f }, 9.2f, ColorRgba { 132u, 132u, 130u, 255u }, Algs[I].Sub);
                 if (Hov && Pointer.Pressed)
                 {
                     Session.ApplySolverMethod(Algs[I].M);

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           FRACTUREWORKSPACEHOST.H
 ============================================================================================================================================*/
-// 🧩 Top-level Port-8091 Project Zero 3-dock host: WorkspaceTabStrip docks (Outliner / Viewport / Inspector), Expansion Notches & Report Shade
+// 🧩 Top-level Port-8091 Project Zero 3-dock host: WorkspaceTabStrip docks (Outliner / Viewport / Inspector)
 
 #pragma once
 
@@ -12,7 +12,6 @@
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/Controls/ControlAppearance.h"
 #include "Engine/Components/Docking/WorkspaceTabStrip.h"
-#include "Engine/Components/Notch/PanelExpansionTab.h"
 #include "Engine/Components/PixelSpace.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/Workspaces/Fracture/FractureInspectorPanel.h"
@@ -64,19 +63,12 @@ private:
         bool&                 CloseClicked,
         const ControlPointer& Pointer) const noexcept;
 
-    void RenderEdgeNotches(
-        PixelSpace&           Surface,
-        Rectangle2D           ViewportDockRect,
-        const ControlPointer& Pointer,
-        double                DeltaSeconds) noexcept;
-
-    FractureWorkspaceSession Session       {};
-    FractureViewportRenderer Renderer      {};
-    FractureOutlinerPanel    Outliner      {};
-    FractureViewportHost     Viewport      {};
-    FractureInspectorPanel   Inspector     {};
-    PanelExpansionTab        TopNotch      {};
-    ContentBrowserPanel*     BoundBrowser  = nullptr;
+    FractureWorkspaceSession Session      {};
+    FractureViewportRenderer Renderer     {};
+    FractureOutlinerPanel    Outliner     {};
+    FractureViewportHost     Viewport     {};
+    FractureInspectorPanel   Inspector    {};
+    ContentBrowserPanel*     BoundBrowser = nullptr;
 };
 
 } // namespace Frontier::Workspaces::Fracture

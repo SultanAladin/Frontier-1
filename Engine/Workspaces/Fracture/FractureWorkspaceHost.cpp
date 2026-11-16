@@ -1,15 +1,12 @@
 /*============================================================================================================================================
                                                          FRACTUREWORKSPACEHOST.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of FractureWorkspaceHost: Project Zero 3-column dock shell (#090909 / #121212, 3px gap, WorkspaceTabStrip & Notches)
+// 🧩 Implementation of FractureWorkspaceHost: Project Zero 3-column dock shell (#090909 / #121212, 3px gap, WorkspaceTabStrip)
 
 #include "Engine/Workspaces/Fracture/FractureWorkspaceHost.h"
 
-#include "Engine/Workspaces/Fracture/FractureIcons.h"
-
 #include <algorithm>
 #include <array>
-#include <cstdio>
 
 namespace Frontier::Workspaces::Fracture
 {
@@ -17,7 +14,6 @@ namespace Frontier::Workspaces::Fracture
 FractureWorkspaceHost::FractureWorkspaceHost()
 {
     Viewport.AttachRenderer(&Renderer);
-    TopNotch.SnapDetent(DrawerDetentStop::Closed);
 }
 
 void FractureWorkspaceHost::AttachVulkanDevice(
@@ -105,94 +101,6 @@ void FractureWorkspaceHost::RenderDockTabBar(
     }
 }
 
-void FractureWorkspaceHost::RenderEdgeNotches(
-    PixelSpace&           Surface,
-    Rectangle2D           ViewportDockRect,
-    const ControlPointer& Pointer,
-    double                DeltaSeconds) noexcept
-{
-    TopNotch.ConfigureExtent(ViewportDockRect.Width, ViewportDockRect.Height, 1.0f);
-    TopNotch.ConfigureTravelLimit(std::min(220.0f, ViewportDockRect.Height * 0.45f));
-    TopNotch.Integrate(DeltaSeconds);
-
-    const bool TopOver = ControlAppearance::QueryPointerOver(
-        { ViewportDockRect.Center().X - 104.0f, ViewportDockRect.Y + 26.0f, 208.0f, 22.0f }, Pointer);
-
-    // Top Center Notch ("Fracture Editor") sitting flush under the Viewport tab strip
-    const float TopW  = 186.0f;
-    const float TopH  = 18.0f;
-    const float TopCx = ViewportDockRect.Center().X;
-    const float TopY  = ViewportDockRect.Y + 30.0f;
-    const std::array<Point2D, 4> TopPoly {{
-        { TopCx - TopW * 0.5f,          TopY },
-        { TopCx + TopW * 0.5f,          TopY },
-        { TopCx + TopW * 0.5f - 10.0f,  TopY + TopH },
-        { TopCx - TopW * 0.5f + 10.0f,  TopY + TopH },
-    }};
-    Surface.FillPolygon(TopPoly, TopOver ? ColorRgba { 36u, 36u, 38u, 255u } : ColorRgba { 24u, 24u, 25u, 255u });
-    Surface.StrokeLine(TopPoly[3], TopPoly[2], ColorRgba { 52u, 52u, 54u, 255u }, 0.9f);
-    Surface.TextCentered({ TopCx - TopW * 0.5f, TopY + 1.0f, TopW, TopH }, 8.8f,
-        TopOver ? ColorRgba { 236u, 236u, 234u, 255u } : ColorRgba { 166u, 166u, 164u, 255u }, "Fracture Editor");
-
-    if (TopOver && Pointer.Pressed)
-    {
-        Session.ShowReportShade = !Session.ShowReportShade;
-        TopNotch.ConfigureOpen(Session.ShowReportShade);
-    }
-
-    // Optional expandable Fracture Report Shade when user pulls/clicks "Fracture Editor"
-    if (Session.ShowReportShade)
-    {
-        const Rectangle2D Shade { TopCx - 210.0f, TopY + TopH + 4.0f, 420.0f, 118.0f };
-        Surface.FillRectangle(Shade, ColorRgba { 20u, 21u, 24u, 244u }, 16.0f);
-        Surface.StrokeRectangle(Shade, ColorRgba { 255u, 255u, 255u, 28u }, 16.0f, 1.0f);
-        Surface.Text({ Shade.X + 16.0f, Shade.Y + 12.0f }, 10.8f, ColorRgba { 236u, 236u, 234u, 255u }, "Fracture Editor · Analytical Summary");
-        char Line1[96] {}, Line2[96] {};
-        std::snprintf(Line1, sizeof(Line1), "Shape: %s  |  Material: %s  |  Fragments: %zu",
-            FractureWorkspaceSession::InspectPrimitives()[static_cast<uint32_t>(Session.ActiveShape)].Title,
-            Session.ActiveMaterialSpec().ShortLabel,
-            Session.PartitionResult.Fragments.size());
-        std::snprintf(Line2, sizeof(Line2), "Volume drift: %.2e  |  Crack area: %.2f m2  |  Bake: %.1f ms",
-            Session.PartitionResult.Receipt.VolumeDriftRatio,
-            Session.PartitionResult.Receipt.TotalCrackAreaM2,
-            Session.LastTimings.TotalMs);
-        Surface.Text({ Shade.X + 16.0f, Shade.Y + 38.0f }, 9.2f, ColorRgba { 184u, 184u, 182u, 255u }, Line1);
-        Surface.Text({ Shade.X + 16.0f, Shade.Y + 58.0f }, 9.2f, ColorRgba { 154u, 154u, 152u, 255u }, Line2);
-
-        const Rectangle2D CloseBtn { Shade.Right() - 90.0f, Shade.Bottom() - 32.0f, 74.0f, 22.0f };
-        const bool Chov = ControlAppearance::QueryPointerOver(CloseBtn, Pointer);
-        Surface.FillRectangle(CloseBtn, Chov ? ColorRgba { 48u, 48u, 52u, 255u } : ColorRgba { 32u, 32u, 36u, 255u }, 11.0f);
-        Surface.TextCentered(CloseBtn, 8.6f, ColorRgba { 226u, 226u, 224u, 255u }, "Close");
-        if (Chov && Pointer.Pressed)
-        {
-            Session.ShowReportShade = false;
-            TopNotch.ConfigureOpen(false);
-        }
-    }
-
-    // Bottom Center Notch ("Primitive Library") anchored at the bottom of the Viewport dock
-    const float BotW  = 196.0f;
-    const float BotH  = 18.0f;
-    const float BotY  = ViewportDockRect.Bottom() - BotH;
-    const bool BotOver = ControlAppearance::QueryPointerOver(
-        { TopCx - BotW * 0.5f, BotY - 2.0f, BotW, BotH + 4.0f }, Pointer);
-    const std::array<Point2D, 4> BotPoly {{
-        { TopCx - BotW * 0.5f + 10.0f, BotY },
-        { TopCx + BotW * 0.5f - 10.0f, BotY },
-        { TopCx + BotW * 0.5f,         BotY + BotH },
-        { TopCx - BotW * 0.5f,         BotY + BotH },
-    }};
-    Surface.FillPolygon(BotPoly, (BotOver || Session.PrimitiveLibraryOpen) ? ColorRgba { 38u, 38u, 40u, 255u } : ColorRgba { 24u, 24u, 25u, 255u });
-    Surface.StrokeLine(BotPoly[0], BotPoly[1], ColorRgba { 52u, 52u, 54u, 255u }, 0.9f);
-    Surface.TextCentered({ TopCx - BotW * 0.5f, BotY + 1.0f, BotW, BotH }, 8.8f,
-        (BotOver || Session.PrimitiveLibraryOpen) ? ColorRgba { 238u, 238u, 236u, 255u } : ColorRgba { 166u, 166u, 164u, 255u }, "Primitive Library");
-
-    if (BotOver && Pointer.Pressed)
-    {
-        Session.PrimitiveLibraryOpen = !Session.PrimitiveLibraryOpen;
-    }
-}
-
 void FractureWorkspaceHost::RenderStudio(
     PixelSpace&                       Surface,
     Rectangle2D                       WindowBounds,
@@ -230,7 +138,8 @@ void FractureWorkspaceHost::RenderStudio(
         RenderDockTabBar(Surface, { DockRect.X, DockRect.Y, DockRect.Width, TabH }, "Outliner", true, PlusClicked, CloseClicked, Pointer);
         if (PlusClicked)
         {
-            Session.PrimitiveLibraryOpen = !Session.PrimitiveLibraryOpen;
+            const uint32_t Next = (static_cast<uint32_t>(Session.ActiveShape) + 1u) % FractureWorkspaceSession::PrimitiveCount;
+            Session.ApplyPrimitiveShape(static_cast<FractureIcons::PrimitiveShapeId>(Next));
         }
         if (CloseClicked)
         {
@@ -239,7 +148,7 @@ void FractureWorkspaceHost::RenderStudio(
         Outliner.Render(Surface, { DockRect.X, DockRect.Y + TabH, DockRect.Width, DockRect.Height - TabH }, Session, Pointer, PointerInput.WheelDeltaY);
     }
 
-    // 2. Viewport Dock
+    // 2. Viewport Dock (no top or bottom trapezoidal notches)
     const float CenterX = Session.ViewportMaximized ? WindowBounds.X : (WindowBounds.X + LeftW + Gap);
     const Rectangle2D ViewportDock { CenterX, WindowBounds.Y, CenterW, WindowBounds.Height };
     {
@@ -258,7 +167,6 @@ void FractureWorkspaceHost::RenderStudio(
             std::max(160.0f, ViewportDock.Height - TabH)
         };
         Viewport.Render(Surface, ViewportBody, Session, Pointer, PointerInput.WheelDeltaY);
-        RenderEdgeNotches(Surface, ViewportDock, Pointer, DeltaSeconds);
     }
 
     // 3. Inspector Dock
