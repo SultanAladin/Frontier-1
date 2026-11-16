@@ -166,6 +166,14 @@ private:
     uint32_t                                                         LastCanvasPaneHeight = 0u;
     uint32_t                                                         LastViewportTier     = UINT32_MAX;
     uint32_t                                                         LastViewportDebug    = UINT32_MAX;
+    uint32_t                                                         LastRenderEngine     = UINT32_MAX;
+    uint32_t                                                         LastShadowAlgorithm  = UINT32_MAX;
+    uint32_t                                                         LastReflectionSource = UINT32_MAX;
+    bool                                                             LastGiEnabled        = true;
+    bool                                                             LastReflectionsEnabled = true;
+    uint32_t                                                         PathTraceAccumIndex  = 0u;
+    Mathematics::Axis3D                                              LastPtCameraOrigin   {};
+    Mathematics::Axis3D                                              LastPtCameraTarget   {};
     int32_t                                                          LastRenderScalePct   = 100;
     bool                                                             RtxLatticePrepared   = false;
     std::thread                                                      RtxLatticeThread     {};

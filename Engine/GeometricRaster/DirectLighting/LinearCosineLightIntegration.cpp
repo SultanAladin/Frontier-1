@@ -277,6 +277,37 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
     const OrthographicShadowCascade*                OptionalCoarseClip,
     const AmbientOcclusionSettings&                 AoSettings)
 {
+    (void)OptionalSdfVolume;
+    const SolarShadowAlgorithm MappedAlg = (Tier == DirectShadowTier::RtxDeterministicSolarRay)
+        ? SolarShadowAlgorithm::WideTreeRayQuery
+        : SolarShadowAlgorithm::ContactPcss;
+    return EvaluateDirectLightingFrameWithAlgorithm(
+        MappedAlg,
+        Camera,
+        Instances,
+        VisibilityTargets,
+        MaterialRegister,
+        SceneTree,
+        Sun,
+        AreaLights,
+        OptionalFineClip,
+        OptionalCoarseClip,
+        AoSettings);
+}
+
+DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWithAlgorithm(
+    SolarShadowAlgorithm                          Algorithm,
+    const PerspectiveCameraFrame&                 Camera,
+    std::span<const RigidClusterInstance>         Instances,
+    const VisibilityBufferTargets&                VisibilityTargets,
+    const MaterialSpace::CompactMaterialRegister& MaterialRegister,
+    const SpatialAcceleration::WideBoundingTree&  SceneTree,
+    const SolarDirectionalEmitter&                Sun,
+    std::span<const PolygonalAreaQuadLight>       AreaLights,
+    const OrthographicShadowCascade*              OptionalFineClip,
+    const OrthographicShadowCascade*              OptionalCoarseClip,
+    const AmbientOcclusionSettings&               AoSettings)
+{
     DirectLightingFrameOutput Out {};
     Out.WidthPx  = VisibilityTargets.WidthPx;
     Out.HeightPx = VisibilityTargets.HeightPx;
@@ -299,10 +330,10 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
         }
     }
 
-    // 1. Evaluate Tiered Solar Shadows + Plane-Aware Penumbra Filter!
-    Out.SolarShadows = SolarShadowSequence::EvaluateSolarShadowField(
-        Tier, Sun, Out.WidthPx, Out.HeightPx, PrimarySamples, SceneTree,
-        OptionalSdfVolume, OptionalFineClip, OptionalCoarseClip);
+    // 1. Evaluate Shadow Lab Solar Shadows + Plane-Aware Penumbra Filter (Zero SDF Shadows!)
+    Out.SolarShadows = SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorithm(
+        Algorithm, Sun, Out.WidthPx, Out.HeightPx, PrimarySamples, SceneTree,
+        OptionalFineClip, OptionalCoarseClip);
 
     const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis(Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
     const uint32_t MatCount = MaterialRegister.QuerySlotCount();

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                             SOLARSHADOWSEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Tiered Direct Solar Shadows (Zero VSM!): RTX Vogel Solar Frustum + Plane-Aware Filter & GTX 3.9 mm 2-Cascade Contact Clip + SDF Cone
+// 🧩 Direct Solar Shadows (Zero SDF Shadows!): Shadow Lab Modes (ContactPCSS, PCSS+PlaneAware, SMRT, PCF, BVH4 Ray Query)
 
 #pragma once
 
@@ -26,8 +26,17 @@ namespace Frontier::GeometricRaster
 
 enum class DirectShadowTier : uint8_t
 {
-    GtxContactClipSdfCone = 0u, // [-] - Tier 1: 2-Cascade 3.9 mm orthographic contact clip + SignedDistanceVolume cone penumbra
-    RtxDeterministicSolarRay = 1u, // [-] - Tier 2: WideBoundingTree Vogel solar disc raytrace + plane-aware continuous-sigma filter
+    GtxContactClipSdfCone    = 0u, // [-] - Legacy alias mapped to ContactPcss (Zero SDF Shadows)
+    RtxDeterministicSolarRay = 1u, // [-] - Legacy alias mapped to WideTreeRayQuery
+};
+
+enum class SolarShadowAlgorithm : uint8_t
+{
+    ContactPcss      = 0u, // [-] - 2-Cascade PCSS + 0.24 m BVH4 Contact Gate + Plane-Aware Filter
+    PcssPlaneAware   = 1u, // [-] - 2-Cascade Vogel Blocker Search + Continuous Penumbra + Plane-Aware Filter
+    ShadowRayMarch   = 2u, // [-] - EEVEE-Next Quadratic Shadow Depth Raymarch (SMRT)
+    PcfBilinear      = 3u, // [-] - Fast 3x3 Tent-Weighted Orthographic PCF
+    WideTreeRayQuery = 4u, // [-] - Deterministic Vogel Solar Disc BVH4 Raytrace + Plane-Aware Filter
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -79,7 +88,18 @@ public:
         OrthographicShadowCascade&                   OutFineCascade,
         OrthographicShadowCascade&                   OutCoarseCascade);
 
-    // Evaluates Tier 1 (GTX Contact Clip + SDF Cone) or Tier 2 (RTX Vogel Solar Disc + Plane-Aware Filter) across primary hits
+    // Evaluates Shadow Lab algorithm directly across primary surface samples (Zero SDF Shadows!)
+    [[nodiscard]] static SolarShadowFieldResult EvaluateSolarShadowFieldWithAlgorithm(
+        SolarShadowAlgorithm                           Algorithm,
+        const SolarDirectionalEmitter&                 Sun,
+        uint32_t                                       ViewportWidth,
+        uint32_t                                       ViewportHeight,
+        std::span<const AnalyticResolvedSurfaceSample> PrimarySamples,
+        const SpatialAcceleration::WideBoundingTree&   SceneTree,
+        const OrthographicShadowCascade*               OptionalFineClip   = nullptr,
+        const OrthographicShadowCascade*               OptionalCoarseClip = nullptr);
+
+    // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm (ignores OptionalSdfVolume; Zero SDF Shadows!)
     [[nodiscard]] static SolarShadowFieldResult EvaluateSolarShadowField(
         DirectShadowTier                                    Tier,
         const SolarDirectionalEmitter&                      Sun,

@@ -51,6 +51,36 @@ struct IrradianceLatticeConfiguration
     uint32_t            BouncePasses      = 2u;                           // [cnt] - Multi-bounce propagation iterations
 };
 
+struct SignedDistanceRadiosityVolume
+{
+    Mathematics::Axis3D                BoundsMin         {};     // [m]   - World-space lower bound matching SignedDistanceVolume
+    Mathematics::Axis3D                BoundsMax         {};     // [m]   - World-space upper bound matching SignedDistanceVolume
+    float                              VoxelSpacingM     = 0.14f;// [m]   - Level 0 radiosity voxel spacing
+    uint32_t                           Level0DimX        = 0u;   // [cnt] - Level 0 X resolution
+    uint32_t                           Level0DimY        = 0u;   // [cnt] - Level 0 Y resolution
+    uint32_t                           Level0DimZ        = 0u;   // [cnt] - Level 0 Z resolution
+    uint32_t                           Level1DimX        = 0u;   // [cnt] - Level 1 (2x2x2) X resolution
+    uint32_t                           Level1DimY        = 0u;   // [cnt] - Level 1 (2x2x2) Y resolution
+    uint32_t                           Level1DimZ        = 0u;   // [cnt] - Level 1 (2x2x2) Z resolution
+    uint32_t                           Level2DimX        = 0u;   // [cnt] - Level 2 (4x4x4) X resolution
+    uint32_t                           Level2DimY        = 0u;   // [cnt] - Level 2 (4x4x4) Y resolution
+    uint32_t                           Level2DimZ        = 0u;   // [cnt] - Level 2 (4x4x4) Z resolution
+    std::vector<Mathematics::LinearRGB> RadiosityLevel0  {};     // [cd/m2] - Direct + emissive surface exitance / pi
+    std::vector<Mathematics::LinearRGB> RadiosityLevel1  {};     // [cd/m2] - 2x2x2 mip-filtered radiosity
+    std::vector<Mathematics::LinearRGB> RadiosityLevel2  {};     // [cd/m2] - 4x4x4 mip-filtered radiosity
+
+    void BuildRadiosityLevels(
+        const DistanceFieldSpace::SignedDistanceVolume& SdfVolume,
+        const SpatialAcceleration::WideBoundingTree&    SceneTree,
+        std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
+        const SolarDirectionalEmitter&                  Sun,
+        Mathematics::LinearRGB                          SkyRadiance = { 0.16f, 0.22f, 0.34f });
+
+    [[nodiscard]] Mathematics::LinearRGB SampleRadiosityTrilinear(
+        Mathematics::Axis3D WorldPosition,
+        float               ConeRadiusMeters) const noexcept;
+};
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                              IRRADIANCE LATTICE SEQUENCE
 //------------------------------------------------------------------------------------------------------------------------
@@ -71,6 +101,16 @@ public:
         Mathematics::Axis3D WorldPosition,
         Mathematics::Axis3D SurfaceNormal,
         Mathematics::Axis3D ViewDirection) const noexcept;
+
+    // Evaluates SdfGlobalIllumination 16-Cone IGN Sphere-March + 3D Radiosity SDF Mip-Volume (Strictly GI Only!)
+    [[nodiscard]] Mathematics::LinearRGB EvaluateSdfRadiosityConeGi(
+        Mathematics::Axis3D                              WorldPosition,
+        Mathematics::Axis3D                              SurfaceNormal,
+        uint32_t                                         PixelX,
+        uint32_t                                         PixelY,
+        const DistanceFieldSpace::SignedDistanceVolume&  SdfVolume,
+        const SignedDistanceRadiosityVolume&             RadiosityVolume,
+        Mathematics::LinearRGB                           SkyRadiance = { 0.16f, 0.22f, 0.34f }) const noexcept;
 
     // Evaluates Tier 1 GTX 6-Cone Directional SignedDistanceVolume Diffuse GI + Surface Bounce Color Bleed without hardware RT
     [[nodiscard]] Mathematics::LinearRGB EvaluateGtxSignedDistanceConeGi(

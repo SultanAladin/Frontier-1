@@ -77,13 +77,16 @@ struct ViewportConstructPresetEntry
 
 struct ViewportDisplaySettings
 {
-    uint32_t QualityTier         = 2u;     // [idx] - 0=Low, 1=Medium, 2=Standard, 3=High, 4=Ultra
-    uint32_t DebugChannelIndex   = 0u;     // [idx] - 0=Off, 1=Depth, 2=Albedo, 3=Normal, 4=Roughness
-    float    RenderScalePercent  = 100.0f; // [%]   - Internal resolution percentage [50..200]
-    bool     GlobalIllumination  = true;   // [-]   - Indirect lighting toggle
-    bool     ReflectionsEnabled  = true;   // [-]   - Specular reflections toggle
-    bool     AntiAliasingEnabled = true;   // [-]   - Temporal anti-aliasing toggle
-    bool     RaytracingEnabled   = true;   // [-]   - Hardware raytracing toggle
+    uint32_t QualityTier           = 2u;     // [idx] - 0=Low, 1=Medium, 2=Standard, 3=High, 4=Ultra
+    uint32_t DebugChannelIndex     = 0u;     // [idx] - 0=Off, 1=Depth, 2=Albedo, 3=Normal, 4=Roughness
+    uint32_t RenderEngineIndex     = 3u;     // [idx] - 0=MatCap, 1=OpenPbrDirect, 2=DdgiRaytracing, 3=SdfGlobalIllumination, 4=DeterministicPathTrace
+    uint32_t ShadowAlgorithmIndex  = 0u;     // [idx] - 0=ContactPcss, 1=PcssPlaneAware, 2=ShadowRayMarch, 3=PcfBilinear, 4=WideTreeRayQuery
+    uint32_t ReflectionSourceIndex = 0u;     // [idx] - 0=WideTreeRaytrace, 1=SkyEnvironment
+    float    RenderScalePercent    = 100.0f; // [%]   - Internal resolution percentage [50..200]
+    bool     GlobalIllumination    = true;   // [-]   - Indirect lighting toggle
+    bool     ReflectionsEnabled    = true;   // [-]   - Specular reflections toggle
+    bool     AntiAliasingEnabled   = true;   // [-]   - Temporal anti-aliasing toggle
+    bool     RaytracingEnabled     = true;   // [-]   - Hardware raytracing toggle
 };
 
 struct ViewportPaneSurfaceSpecification
@@ -222,7 +225,11 @@ private:
     bool                       ConstructSheetOpen      = false;                                   // [-]   - Construct dialog open
     bool                       ProjectionDropdownOpen  = false;                                   // [-]   - Projection selector open
     bool                       DebugDropdownOpen       = false;                                   // [-]   - Debug View DropdownSelector open
+    bool                       EngineDropdownOpen      = false;                                   // [-]   - Render Engine DropdownSelector open
+    bool                       ShadowDropdownOpen      = false;                                   // [-]   - Shadow Algorithm DropdownSelector open
     Rectangle2D                DebugButtonBounds       {};                                        // [px]  - Last Debug View button bounds
+    Rectangle2D                EngineButtonBounds      {};                                        // [px]  - Last Engine selector button bounds
+    Rectangle2D                ShadowButtonBounds      {};                                        // [px]  - Last Shadow selector button bounds
     ViewportProjectionPreset   PrimaryProjection       = ViewportProjectionPreset::Perspective;   // [-]   - Primary pane projection
     ViewportProjectionPreset   SecondaryProjection     = ViewportProjectionPreset::Top;           // [-]   - Split secondary pane projection
     uint32_t                   ActivePaneIndex         = 0u;                                      // [idx] - Focused pane in split mode (0/1)

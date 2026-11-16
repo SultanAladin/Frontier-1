@@ -119,59 +119,218 @@ struct CascadeSampleOutcome
     float BlockerDistanceM  = 0.0f;
 };
 
-[[nodiscard]] CascadeSampleOutcome SampleCascadeWithVogelPcf(
+[[nodiscard]] bool ProjectIntoCascade(
     const OrthographicShadowCascade& Cascade,
     Mathematics::Axis3D              BiasedWorldPos,
-    float                            FilterRadiusTexels,
-    float                            ReceiverSlopeBiasM,
-    uint32_t                         RotationSeed) noexcept
+    float&                           OutCenterTX,
+    float&                           OutCenterTY,
+    float&                           OutReceiverD,
+    float&                           OutTexelSizeM) noexcept
 {
-    CascadeSampleOutcome Out {};
-    if (Cascade.ClosestLightDepth.empty())
+    if (Cascade.ClosestLightDepth.empty() || Cascade.ResolutionTexels == 0u)
     {
-        return Out;
+        return false;
     }
-
     const Mathematics::Axis3D Rel = BiasedWorldPos - Cascade.CenterWorld;
     const float LocalU = Mathematics::EvaluateDot(Rel, Cascade.LightRightAxis);
     const float LocalV = Mathematics::EvaluateDot(Rel, Cascade.LightUpAxis);
     const float LocalZ = Mathematics::EvaluateDot(Rel, Cascade.LightForwardAxis);
-
     const float Margin = Cascade.HalfSpanMeters * 0.94f;
     if (std::fabs(LocalU) > Margin || std::fabs(LocalV) > Margin)
     {
+        return false;
+    }
+
+    const float ResF     = static_cast<float>(Cascade.ResolutionTexels);
+    const float InvSpan2 = 1.0f / (2.0f * Cascade.HalfSpanMeters);
+    OutCenterTX          = ((LocalU + Cascade.HalfSpanMeters) * InvSpan2) * ResF;
+    OutCenterTY          = ((Cascade.HalfSpanMeters - LocalV) * InvSpan2) * ResF;
+    OutReceiverD         = LocalZ - (-Cascade.DepthExtentMeters);
+    OutTexelSizeM        = (2.0f * Cascade.HalfSpanMeters) / ResF;
+    return true;
+}
+
+[[nodiscard]] CascadeSampleOutcome SampleCascadePcf3x3(
+    const OrthographicShadowCascade& Cascade,
+    Mathematics::Axis3D              BiasedWorldPos,
+    float                            SlopeScale) noexcept
+{
+    CascadeSampleOutcome Out {};
+    float CX = 0.0f, CY = 0.0f, RecD = 0.0f, TexelM = 0.0f;
+    if (!ProjectIntoCascade(Cascade, BiasedWorldPos, CX, CY, RecD, TexelM))
+    {
+        return Out;
+    }
+    Out.InsideCascade  = true;
+    const float Bias   = TexelM * (1.25f + 0.95f * SlopeScale);
+    const int BaseX    = static_cast<int>(std::floor(CX));
+    const int BaseY    = static_cast<int>(std::floor(CY));
+    const int MaxIdx   = static_cast<int>(Cascade.ResolutionTexels) - 1;
+
+    constexpr float KernelW[3] { 0.25f, 0.50f, 0.25f };
+    float VisSum = 0.0f;
+    float BlkSum = 0.0f;
+    float BlkW   = 0.0f;
+
+    for (int DY = -1; DY <= 1; ++DY)
+    {
+        const int TY = std::clamp(BaseY + DY, 0, MaxIdx);
+        for (int DX = -1; DX <= 1; ++DX)
+        {
+            const int TX = std::clamp(BaseX + DX, 0, MaxIdx);
+            const float W = KernelW[DY + 1] * KernelW[DX + 1];
+            const float ClosestD = Cascade.ClosestLightDepth[static_cast<std::size_t>(TY) * Cascade.ResolutionTexels + static_cast<uint32_t>(TX)];
+            const float Diff     = RecD - ClosestD;
+            if (Diff > Bias)
+            {
+                BlkSum += Diff * W;
+                BlkW   += W;
+            }
+            else
+            {
+                VisSum += W;
+            }
+        }
+    }
+    Out.Visibility       = VisSum;
+    Out.BlockerDistanceM = (BlkW > 0.0f) ? (BlkSum / BlkW) : 0.0f;
+    return Out;
+}
+
+[[nodiscard]] CascadeSampleOutcome SampleCascadePcss(
+    const OrthographicShadowCascade& Cascade,
+    Mathematics::Axis3D              BiasedWorldPos,
+    float                            SlopeScale,
+    float                            TanSunRadius,
+    uint32_t                         RotationSeed) noexcept
+{
+    CascadeSampleOutcome Out {};
+    float CX = 0.0f, CY = 0.0f, RecD = 0.0f, TexelM = 0.0f;
+    if (!ProjectIntoCascade(Cascade, BiasedWorldPos, CX, CY, RecD, TexelM))
+    {
+        return Out;
+    }
+    Out.InsideCascade  = true;
+    const float Bias   = TexelM * (1.2f + 0.9f * SlopeScale);
+    const int MaxIdx   = static_cast<int>(Cascade.ResolutionTexels) - 1;
+    const float RotPhi = static_cast<float>(RotationSeed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
+    constexpr float GoldenAngle = 2.39996323f;
+
+    // 1. Vogel Blocker Search over light frustum cone
+    constexpr uint32_t SearchTaps = 12u;
+    const float SearchRadiusPx    = std::clamp((TanSunRadius * 3.5f) / TexelM, 2.0f, 18.0f);
+    float BlockerSum = 0.0f;
+    uint32_t Blockers = 0u;
+    for (uint32_t Tap = 0u; Tap < SearchTaps; ++Tap)
+    {
+        const float R   = std::sqrt((static_cast<float>(Tap) + 0.5f) / static_cast<float>(SearchTaps)) * SearchRadiusPx;
+        const float Ang = static_cast<float>(Tap) * GoldenAngle + RotPhi;
+        const int TX    = std::clamp(static_cast<int>(std::floor(CX + R * std::cos(Ang))), 0, MaxIdx);
+        const int TY    = std::clamp(static_cast<int>(std::floor(CY + R * std::sin(Ang))), 0, MaxIdx);
+        const float D   = Cascade.ClosestLightDepth[static_cast<std::size_t>(TY) * Cascade.ResolutionTexels + static_cast<uint32_t>(TX)];
+        const float Diff = RecD - D;
+        if (Diff > Bias)
+        {
+            BlockerSum += Diff;
+            ++Blockers;
+        }
+    }
+
+    if (Blockers == 0u)
+    {
+        Out.Visibility       = 1.0f;
+        Out.BlockerDistanceM = 0.0f;
         return Out;
     }
 
-    Out.InsideCascade      = true;
-    const float ResF       = static_cast<float>(Cascade.ResolutionTexels);
-    const float InvSpan2   = 1.0f / (2.0f * Cascade.HalfSpanMeters);
-    const float CenterTX   = ((LocalU + Cascade.HalfSpanMeters) * InvSpan2) * ResF;
-    const float CenterTY   = ((Cascade.HalfSpanMeters - LocalV) * InvSpan2) * ResF;
-    const float ReceiverD  = LocalZ - (-Cascade.DepthExtentMeters);
-    const float BaseRot    = static_cast<float>(RotationSeed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
+    const float MeanBlockerD  = BlockerSum / static_cast<float>(Blockers);
+    Out.BlockerDistanceM      = MeanBlockerD;
 
-    // 8-tap Vogel disk blocker search + PCF
-    constexpr uint32_t TapCount   = 8u;
-    constexpr float    GoldenAng  = 2.39996323f;
-    float LitSum       = 0.0f;
-    float BlockerDistS = 0.0f;
-    uint32_t Blockers  = 0u;
+    // 2. Physical Penumbra Width in Cascade Texels
+    const float PenumbraM     = MeanBlockerD * TanSunRadius * 2.15f;
+    const float FilterRadiusPx = std::clamp(PenumbraM / TexelM, 1.15f, 22.0f);
 
-    for (uint32_t Tap = 0u; Tap < TapCount; ++Tap)
+    // 3. 16-Tap Vogel PCF with Receiver-Plane Bias Scaling
+    constexpr uint32_t PcfTaps = 16u;
+    float LitSum = 0.0f;
+    for (uint32_t Tap = 0u; Tap < PcfTaps; ++Tap)
     {
-        const float R     = std::sqrt((static_cast<float>(Tap) + 0.5f) / static_cast<float>(TapCount)) * FilterRadiusTexels;
-        const float Theta = static_cast<float>(Tap) * GoldenAng + BaseRot;
-        const int TX      = std::clamp(static_cast<int>(std::floor(CenterTX + R * std::cos(Theta))),
-                                       0, static_cast<int>(Cascade.ResolutionTexels) - 1);
-        const int TY      = std::clamp(static_cast<int>(std::floor(CenterTY + R * std::sin(Theta))),
-                                       0, static_cast<int>(Cascade.ResolutionTexels) - 1);
-        const float ClosestD = Cascade.ClosestLightDepth[static_cast<std::size_t>(TY) * Cascade.ResolutionTexels + static_cast<uint32_t>(TX)];
-        const float Diff     = ReceiverD - ClosestD;
-        if (Diff > ReceiverSlopeBiasM)
+        const float R   = std::sqrt((static_cast<float>(Tap) + 0.5f) / static_cast<float>(PcfTaps)) * FilterRadiusPx;
+        const float Ang = static_cast<float>(Tap) * GoldenAngle + RotPhi + 0.71f;
+        const int TX    = std::clamp(static_cast<int>(std::floor(CX + R * std::cos(Ang))), 0, MaxIdx);
+        const int TY    = std::clamp(static_cast<int>(std::floor(CY + R * std::sin(Ang))), 0, MaxIdx);
+        const float D   = Cascade.ClosestLightDepth[static_cast<std::size_t>(TY) * Cascade.ResolutionTexels + static_cast<uint32_t>(TX)];
+        const float AdaptiveBias = Bias + TexelM * 0.16f * R;
+        if ((RecD - D) <= AdaptiveBias)
         {
-            BlockerDistS += Diff;
-            ++Blockers;
+            LitSum += 1.0f;
+        }
+    }
+    Out.Visibility = LitSum / static_cast<float>(PcfTaps);
+    return Out;
+}
+
+[[nodiscard]] CascadeSampleOutcome SampleCascadeShadowRayMarch(
+    const OrthographicShadowCascade& Cascade,
+    Mathematics::Axis3D              BiasedWorldPos,
+    float                            SlopeScale,
+    float                            TanSunRadius,
+    uint32_t                         RotationSeed) noexcept
+{
+    CascadeSampleOutcome Out {};
+    float CX = 0.0f, CY = 0.0f, RecD = 0.0f, TexelM = 0.0f;
+    if (!ProjectIntoCascade(Cascade, BiasedWorldPos, CX, CY, RecD, TexelM))
+    {
+        return Out;
+    }
+    Out.InsideCascade  = true;
+    const int MaxIdx   = static_cast<int>(Cascade.ResolutionTexels) - 1;
+    const float Bias   = TexelM * (1.25f + 0.85f * SlopeScale);
+    const float RotPhi = static_cast<float>(RotationSeed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
+    constexpr float GoldenAngle = 2.39996323f;
+
+    // EEVEE-Next Quadratic Shadow Map Ray March (SMRT): 4 rays x 14 quadratic steps with occlusion slope tracking
+    constexpr uint32_t SmrtRays  = 4u;
+    constexpr uint32_t SmrtSteps = 14u;
+    const float MaxMarchWorldM   = 2.60f;
+    const float MaxStepTexels    = std::clamp((MaxMarchWorldM * TanSunRadius) / TexelM, 2.0f, 36.0f);
+    const float StepZWorld       = MaxMarchWorldM / static_cast<float>(SmrtSteps * SmrtSteps);
+    const float ThicknessM       = std::max(0.08f, TexelM * 26.0f);
+
+    float LitSum     = 0.0f;
+    float BlkDistSum = 0.0f;
+    uint32_t BlkHits = 0u;
+
+    for (uint32_t RIdx = 0u; RIdx < SmrtRays; ++RIdx)
+    {
+        const float Radial  = std::sqrt((static_cast<float>(RIdx) + 0.5f) / static_cast<float>(SmrtRays));
+        const float Angle   = static_cast<float>(RIdx) * GoldenAngle + RotPhi;
+        const float DirTX   = Radial * std::cos(Angle) * MaxStepTexels;
+        const float DirTY   = Radial * std::sin(Angle) * MaxStepTexels;
+        bool Occluded       = false;
+        float BestHitDist   = 0.0f;
+
+        for (uint32_t Step = 1u; Step <= SmrtSteps; ++Step)
+        {
+            const float TNorm = static_cast<float>(Step) / static_cast<float>(SmrtSteps);
+            const float TQuad = TNorm * TNorm;
+            const int TX      = std::clamp(static_cast<int>(std::floor(CX + DirTX * TQuad)), 0, MaxIdx);
+            const int TY      = std::clamp(static_cast<int>(std::floor(CY + DirTY * TQuad)), 0, MaxIdx);
+            const float RayD      = RecD - StepZWorld * static_cast<float>(Step * Step);
+            const float CascadeD  = Cascade.ClosestLightDepth[static_cast<std::size_t>(TY) * Cascade.ResolutionTexels + static_cast<uint32_t>(TX)];
+            const float Diff      = RayD - CascadeD;
+
+            if (Diff > Bias && Diff < ThicknessM)
+            {
+                Occluded    = true;
+                BestHitDist = std::max(0.02f, RecD - CascadeD);
+                break;
+            }
+        }
+        if (Occluded)
+        {
+            BlkDistSum += BestHitDist;
+            ++BlkHits;
         }
         else
         {
@@ -179,8 +338,8 @@ struct CascadeSampleOutcome
         }
     }
 
-    Out.Visibility       = LitSum / static_cast<float>(TapCount);
-    Out.BlockerDistanceM = (Blockers > 0u) ? (BlockerDistS / static_cast<float>(Blockers)) : 0.0f;
+    Out.Visibility       = LitSum / static_cast<float>(SmrtRays);
+    Out.BlockerDistanceM = (BlkHits > 0u) ? (BlkDistSum / static_cast<float>(BlkHits)) : 0.0f;
     return Out;
 }
 
@@ -227,16 +386,15 @@ void SolarShadowSequence::BuildTwoCascadeContactClips(
     ConfigureCascade(OutCoarseCascade, 8.0f);
 }
 
-SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowField(
-    DirectShadowTier                                Tier,
-    const SolarDirectionalEmitter&                  Sun,
-    uint32_t                                        ViewportWidth,
-    uint32_t                                        ViewportHeight,
-    std::span<const AnalyticResolvedSurfaceSample>  PrimarySamples,
-    const SpatialAcceleration::WideBoundingTree&    SceneTree,
-    const DistanceFieldSpace::SignedDistanceVolume* OptionalSdfVolume,
-    const OrthographicShadowCascade*                OptionalFineClip,
-    const OrthographicShadowCascade*                OptionalCoarseClip)
+SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorithm(
+    SolarShadowAlgorithm                           Algorithm,
+    const SolarDirectionalEmitter&                 Sun,
+    uint32_t                                       ViewportWidth,
+    uint32_t                                       ViewportHeight,
+    std::span<const AnalyticResolvedSurfaceSample> PrimarySamples,
+    const SpatialAcceleration::WideBoundingTree&   SceneTree,
+    const OrthographicShadowCascade*               OptionalFineClip,
+    const OrthographicShadowCascade*               OptionalCoarseClip)
 {
     SolarShadowFieldResult Result {};
     Result.WidthPx  = ViewportWidth;
@@ -276,11 +434,13 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowField(
                 continue;
             }
 
-            const uint32_t Seed = HashPixelSeed(PX, PY);
+            const uint32_t Seed      = HashPixelSeed(PX, PY);
+            const float SlopeScale   = std::sqrt(std::max(0.0f, 1.0f - NdotL * NdotL)) / std::max(0.15f, NdotL);
+            const Mathematics::Axis3D BiasedOrigin = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 3.5e-3f;
 
-            if (Tier == DirectShadowTier::RtxDeterministicSolarRay)
+            if (Algorithm == SolarShadowAlgorithm::WideTreeRayQuery)
             {
-                // Tier 2 RTX: Deterministic Vogel Solar Disc Raytrace against 4-Wide WideBoundingTree!
+                // Deterministic Vogel Solar Disc Raytrace against 4-Wide WideBoundingTree!
                 const uint32_t RayCount = std::clamp(Sun.RtxSamplesPerPixel, 1u, 32u);
                 const float    RotPhi   = static_cast<float>(Seed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
                 constexpr float GoldenAngle = 2.39996323f;
@@ -322,52 +482,76 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowField(
                     Result.BlockerDistanceMeters[Off] = static_cast<float>(OccludedHits) / HarmonicInvDistS;
                 }
             }
-            else
+            else if (Algorithm == SolarShadowAlgorithm::PcfBilinear)
             {
-                // Tier 1 GTX: 2-Cascade 3.9 mm Orthographic Contact Clip + SignedDistanceVolume Soft Penumbra Cone!
-                const float SlopeScale = std::sqrt(std::max(0.0f, 1.0f - NdotL * NdotL)) / std::max(0.15f, NdotL);
-                const Mathematics::Axis3D BiasedOrigin = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 3.5e-3f;
-
                 CascadeSampleOutcome ClipSample {};
                 if (OptionalFineClip != nullptr)
                 {
-                    const float TexelM = (2.0f * OptionalFineClip->HalfSpanMeters) / static_cast<float>(OptionalFineClip->ResolutionTexels);
-                    ClipSample = SampleCascadeWithVogelPcf(*OptionalFineClip, BiasedOrigin, 1.35f, TexelM * (1.2f + 0.9f * SlopeScale), Seed);
+                    ClipSample = SampleCascadePcf3x3(*OptionalFineClip, BiasedOrigin, SlopeScale);
                 }
                 if (!ClipSample.InsideCascade && OptionalCoarseClip != nullptr)
                 {
-                    const float TexelM = (2.0f * OptionalCoarseClip->HalfSpanMeters) / static_cast<float>(OptionalCoarseClip->ResolutionTexels);
-                    ClipSample = SampleCascadeWithVogelPcf(*OptionalCoarseClip, BiasedOrigin, 1.35f, TexelM * (1.3f + 1.0f * SlopeScale), Seed);
+                    ClipSample = SampleCascadePcf3x3(*OptionalCoarseClip, BiasedOrigin, SlopeScale);
+                }
+                Result.RawVisibility[Off]         = ClipSample.InsideCascade ? ClipSample.Visibility : 1.0f;
+                Result.BlockerDistanceMeters[Off] = ClipSample.BlockerDistanceM;
+            }
+            else if (Algorithm == SolarShadowAlgorithm::ShadowRayMarch)
+            {
+                CascadeSampleOutcome ClipSample {};
+                if (OptionalFineClip != nullptr)
+                {
+                    ClipSample = SampleCascadeShadowRayMarch(*OptionalFineClip, BiasedOrigin, SlopeScale, TanSunRadius, Seed);
+                }
+                if (!ClipSample.InsideCascade && OptionalCoarseClip != nullptr)
+                {
+                    ClipSample = SampleCascadeShadowRayMarch(*OptionalCoarseClip, BiasedOrigin, SlopeScale, TanSunRadius, Seed);
+                }
+                Result.RawVisibility[Off]         = ClipSample.InsideCascade ? ClipSample.Visibility : 1.0f;
+                Result.BlockerDistanceMeters[Off] = ClipSample.BlockerDistanceM;
+            }
+            else
+            {
+                // PcssPlaneAware OR ContactPcss (Zero SDF Shadows!)
+                CascadeSampleOutcome ClipSample {};
+                if (OptionalFineClip != nullptr)
+                {
+                    ClipSample = SampleCascadePcss(*OptionalFineClip, BiasedOrigin, SlopeScale, TanSunRadius, Seed);
+                }
+                if (!ClipSample.InsideCascade && OptionalCoarseClip != nullptr)
+                {
+                    ClipSample = SampleCascadePcss(*OptionalCoarseClip, BiasedOrigin, SlopeScale, TanSunRadius, Seed);
                 }
 
-                float FinalVis = ClipSample.Visibility;
+                float FinalVis = ClipSample.InsideCascade ? ClipSample.Visibility : 1.0f;
                 float BlockerD = ClipSample.BlockerDistanceM;
 
-                // Blend tight contact clip (< 0.14 m) seamlessly into SDF volumetric cone penumbra (> 0.14 m)!
-                if (OptionalSdfVolume != nullptr)
+                if (Algorithm == SolarShadowAlgorithm::ContactPcss)
                 {
-                    const Mathematics::Axis3D SdfOrigin = Hit.WorldPosition + Hit.TangentFrame.NormalZ * (OptionalSdfVolume->VoxelSpacingMeters * 0.85f);
-                    const float SdfConeVis = OptionalSdfVolume->TraceConeVisibility(
-                        SdfOrigin, SunDir, 24.0f, std::max(0.025f, TanSunRadius * 1.15f), 48u);
-
-                    if (ClipSample.InsideCascade)
+                    // Short 0.24 m BVH4 Contact Gate eliminates shadow detachment at plinth/tire contacts!
+                    SpatialAcceleration::RaySegmentQuery ContactRay {};
+                    ContactRay.Origin          = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 1.5e-3f;
+                    ContactRay.UnitDirection   = SunDir;
+                    ContactRay.MinimumDistance = 1.0e-3f;
+                    ContactRay.MaximumDistance = 0.24f;
+                    const auto ContactHit      = SceneTree.TraceClosestRay(ContactRay, false);
+                    if (ContactHit.HitConfirmed)
                     {
-                        // Near contact (BlockerD < 0.18 m), trust exact 3.9 mm Cascade 0; far from contact, blend SDF soft penumbra!
-                        const float FarWeight = (BlockerD > 0.0f)
-                            ? std::clamp((BlockerD - 0.12f) / 0.45f, 0.0f, 0.72f)
-                            : 0.35f;
-                        FinalVis = ClipSample.Visibility * (1.0f - FarWeight) + std::min(ClipSample.Visibility + 0.35f, SdfConeVis) * FarWeight;
-                        if (BlockerD <= 0.0f && SdfConeVis < 0.92f)
-                        {
-                            BlockerD = 0.65f;
-                            FinalVis = std::min(FinalVis, SdfConeVis);
-                        }
+                        const float ContactFade = std::clamp(ContactHit.HitDistanceMeters / 0.24f, 0.0f, 1.0f);
+                        const float ContactVis  = ContactFade * 0.25f;
+                        FinalVis                = std::min(FinalVis, ContactVis);
+                        BlockerD                = (BlockerD > 0.0f) ? std::min(BlockerD, ContactHit.HitDistanceMeters) : ContactHit.HitDistanceMeters;
                     }
-                    else
-                    {
-                        FinalVis = SdfConeVis;
-                        BlockerD = (SdfConeVis < 0.95f) ? 0.85f : 0.0f;
-                    }
+                }
+                else if (!ClipSample.InsideCascade)
+                {
+                    // Outside cascade bounds, fall back cleanly to 1-ray BVH4 query (never SDF)
+                    SpatialAcceleration::RaySegmentQuery FallbackRay {};
+                    FallbackRay.Origin          = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 2.0e-3f;
+                    FallbackRay.UnitDirection   = SunDir;
+                    FallbackRay.MinimumDistance = 1.0e-3f;
+                    FallbackRay.MaximumDistance = 150.0f;
+                    FinalVis = SceneTree.QueryRayOccluded(FallbackRay) ? 0.0f : 1.0f;
                 }
 
                 Result.RawVisibility[Off]         = std::clamp(FinalVis, 0.0f, 1.0f);
@@ -376,8 +560,41 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowField(
         }
     }
 
-    ApplyPlaneAwarePenumbraFilter(ViewportWidth, ViewportHeight, TanSunRadius, PrimarySamples, Result);
+    if (Algorithm == SolarShadowAlgorithm::PcfBilinear)
+    {
+        Result.FilteredVisibility = Result.RawVisibility;
+    }
+    else
+    {
+        ApplyPlaneAwarePenumbraFilter(ViewportWidth, ViewportHeight, TanSunRadius, PrimarySamples, Result);
+    }
     return Result;
+}
+
+SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowField(
+    DirectShadowTier                                Tier,
+    const SolarDirectionalEmitter&                  Sun,
+    uint32_t                                        ViewportWidth,
+    uint32_t                                        ViewportHeight,
+    std::span<const AnalyticResolvedSurfaceSample>  PrimarySamples,
+    const SpatialAcceleration::WideBoundingTree&    SceneTree,
+    const DistanceFieldSpace::SignedDistanceVolume* OptionalSdfVolume,
+    const OrthographicShadowCascade*                OptionalFineClip,
+    const OrthographicShadowCascade*                OptionalCoarseClip)
+{
+    (void)OptionalSdfVolume;
+    const SolarShadowAlgorithm MappedAlg = (Tier == DirectShadowTier::RtxDeterministicSolarRay)
+        ? SolarShadowAlgorithm::WideTreeRayQuery
+        : SolarShadowAlgorithm::ContactPcss;
+    return EvaluateSolarShadowFieldWithAlgorithm(
+        MappedAlg,
+        Sun,
+        ViewportWidth,
+        ViewportHeight,
+        PrimarySamples,
+        SceneTree,
+        OptionalFineClip,
+        OptionalCoarseClip);
 }
 
 void SolarShadowSequence::ApplyPlaneAwarePenumbraFilter(

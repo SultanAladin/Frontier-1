@@ -79,6 +79,18 @@ namespace
     return Names[std::min<std::size_t>(Channel, Names.size() - 1u)];
 }
 
+[[nodiscard]] const char* QueryRenderEngineName(uint32_t EngineIdx) noexcept
+{
+    constexpr std::array<const char*, 5> Names = {{ "MatCap", "OpenPBR Direct", "DDGI Raytracing", "SDF GI", "Path Tracer" }};
+    return Names[std::min<std::size_t>(EngineIdx, Names.size() - 1u)];
+}
+
+[[nodiscard]] const char* QueryShadowAlgorithmName(uint32_t AlgIdx) noexcept
+{
+    constexpr std::array<const char*, 5> Names = {{ "Contact PCSS", "PCSS + Filter", "SMRT", "PCF 3x3", "BVH4 Ray" }};
+    return Names[std::min<std::size_t>(AlgIdx, Names.size() - 1u)];
+}
+
 } // namespace
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -1234,7 +1246,7 @@ void ViewportPanel::RenderSettingsSheet(
     const PaneInputReading& Input)
 {
     const float SheetW = 286.0f;
-    const float SheetH = 314.0f;
+    const float SheetH = 426.0f;
     const float SheetX = std::clamp(GearButtonRightBottom.X - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
     const float SheetY = GearButtonRightBottom.Y + 6.0f;
     const Rectangle2D Sheet{ SheetX, SheetY, SheetW, SheetH };
@@ -1273,10 +1285,22 @@ void ViewportPanel::RenderSettingsSheet(
             if (Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
             {
                 DisplaySettings.QualityTier = Tier;
+                if (Tier >= 4u)
+                {
+                    DisplaySettings.RenderEngineIndex    = 2u; // DDGI Raytracing
+                    DisplaySettings.ShadowAlgorithmIndex = 4u; // WideTreeRayQuery
+                }
+                else
+                {
+                    DisplaySettings.RenderEngineIndex    = 3u; // SDF GI
+                    DisplaySettings.ShadowAlgorithmIndex = 0u; // ContactPcss
+                }
             }
         }
         RowY += 36.0f;
     }
+
+    const bool AnyDropdownOpen = (EngineDropdownOpen || ShadowDropdownOpen || DebugDropdownOpen);
 
     // ExclusiveSelector rows for Global Illumination, Reflections, Anti-Aliasing, Raytracing
     auto ConstructToggleRow = [&](const char* Label, bool& ToggleRef)
@@ -1289,17 +1313,39 @@ void ViewportPanel::RenderSettingsSheet(
             WorkspaceSurfaceColors::SecondaryInk,
             Label);
         const Rectangle2D SwitchRect{ Sheet.Right() - 16.0f - 44.0f, RowY + 1.0f, 44.0f, 22.0f };
-        if (ExclusiveSelector::ConstructCompact(Overlay, SwitchRect, ToggleRef, Input.PrimaryPointer, 1.0f).Clicked)
+        ControlPointer Ptr = Input.PrimaryPointer;
+        if (AnyDropdownOpen) Ptr.Enabled = false;
+        if (ExclusiveSelector::ConstructCompact(Overlay, SwitchRect, ToggleRef, Ptr, 1.0f).Clicked)
         {
             ToggleRef = !ToggleRef;
         }
-        RowY += 34.0f;
+        RowY += 32.0f;
     };
 
     ConstructToggleRow("Global Illumination", DisplaySettings.GlobalIllumination);
     ConstructToggleRow("Reflections",         DisplaySettings.ReflectionsEnabled);
     ConstructToggleRow("Anti-aliasing",       DisplaySettings.AntiAliasingEnabled);
     ConstructToggleRow("Raytracing",          DisplaySettings.RaytracingEnabled);
+
+    // BVH4 Reflection Raytrace vs Sky Environment toggle
+    {
+        bool BvhRefl = (DisplaySettings.ReflectionSourceIndex == 0u);
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay,
+            FontWeightClass::Regular,
+            { Sheet.X + 16.0f, RowY + 5.0f },
+            11.5f,
+            WorkspaceSurfaceColors::SecondaryInk,
+            "BVH4 Specular Trace");
+        const Rectangle2D SwitchRect{ Sheet.Right() - 16.0f - 44.0f, RowY + 1.0f, 44.0f, 22.0f };
+        ControlPointer Ptr = Input.PrimaryPointer;
+        if (AnyDropdownOpen) Ptr.Enabled = false;
+        if (ExclusiveSelector::ConstructCompact(Overlay, SwitchRect, BvhRefl, Ptr, 1.0f).Clicked)
+        {
+            DisplaySettings.ReflectionSourceIndex = BvhRefl ? 1u : 0u;
+        }
+        RowY += 32.0f;
+    }
 
     // Render Scale slider (50% .. 200%)
     RowY += 4.0f;
@@ -1314,31 +1360,113 @@ void ViewportPanel::RenderSettingsSheet(
     Overlay.FillRectangle(ScaleTrack, ColorRgba{ 38, 38, 38, 255 }, 7.0f);
     Overlay.FillRectangle({ ScaleTrack.X, ScaleTrack.Y, std::max(10.0f, ScaleTrack.Width * NormScale), ScaleTrack.Height }, ColorRgba{ 82, 82, 82, 255 }, 7.0f);
     Overlay.FillCircle({ ScaleTrack.X + 7.0f + (ScaleTrack.Width - 14.0f) * NormScale, ScaleTrack.Center().Y }, 6.5f, WorkspaceSurfaceColors::PrimaryInk);
-    if (ScaleTrack.Contains(Cursor) && Input.PrimaryPointer.Down)
+    if (!AnyDropdownOpen && ScaleTrack.Contains(Cursor) && Input.PrimaryPointer.Down)
     {
         const float NextT                  = std::clamp((Cursor.X - ScaleTrack.X) / ScaleTrack.Width, 0.0f, 1.0f);
         DisplaySettings.RenderScalePercent = std::round((50.0f + NextT * 150.0f) / 5.0f) * 5.0f;
     }
-    RowY += 48.0f;
+    RowY += 46.0f;
 
-    // Debug View selector row (Reusable Studio Controls DropdownSelector style)
-    const Rectangle2D DebugBtn{ Sheet.X + 16.0f, RowY - 2.0f, Sheet.Width - 32.0f, 30.0f };
+    // 1. Render Engine Dropdown Button
+    const Rectangle2D EngineBtn{ Sheet.X + 16.0f, RowY - 2.0f, Sheet.Width - 32.0f, 28.0f };
+    EngineButtonBounds      = EngineBtn;
+    std::string EngineLabel = "Engine: ";
+    EngineLabel += QueryRenderEngineName(DisplaySettings.RenderEngineIndex);
+    {
+        ControlPointer Ptr = Input.PrimaryPointer;
+        if (AnyDropdownOpen) Ptr.Enabled = EngineBtn.Contains(Cursor);
+        if (DropdownSelector::ConstructButton(Overlay, EngineBtn, EngineLabel.c_str(), EngineDropdownOpen, Ptr).Pressed)
+        {
+            EngineDropdownOpen = !EngineDropdownOpen;
+            ShadowDropdownOpen = false;
+            DebugDropdownOpen  = false;
+        }
+    }
+    RowY += 34.0f;
+
+    // 2. Shadow Algorithm Dropdown Button
+    const Rectangle2D ShadowBtn{ Sheet.X + 16.0f, RowY - 2.0f, Sheet.Width - 32.0f, 28.0f };
+    ShadowButtonBounds      = ShadowBtn;
+    std::string ShadowLabel = "Shadow: ";
+    ShadowLabel += QueryShadowAlgorithmName(DisplaySettings.ShadowAlgorithmIndex);
+    {
+        ControlPointer Ptr = Input.PrimaryPointer;
+        if (AnyDropdownOpen) Ptr.Enabled = ShadowBtn.Contains(Cursor);
+        if (DropdownSelector::ConstructButton(Overlay, ShadowBtn, ShadowLabel.c_str(), ShadowDropdownOpen, Ptr).Pressed)
+        {
+            ShadowDropdownOpen = !ShadowDropdownOpen;
+            EngineDropdownOpen = false;
+            DebugDropdownOpen  = false;
+        }
+    }
+    RowY += 34.0f;
+
+    // 3. Debug View Dropdown Button
+    const Rectangle2D DebugBtn{ Sheet.X + 16.0f, RowY - 2.0f, Sheet.Width - 32.0f, 28.0f };
     DebugButtonBounds      = DebugBtn;
     std::string DebugLabel = "Debug View: ";
     DebugLabel += QueryDebugChannelName(DisplaySettings.DebugChannelIndex);
-
-    ControlPointer DebugPointer = Input.PrimaryPointer;
-    if (DebugDropdownOpen)
     {
-        DebugPointer.Enabled = DebugBtn.Contains(Cursor);
-    }
-    const ControlContact DebugHit = DropdownSelector::ConstructButton(Overlay, DebugBtn, DebugLabel.c_str(), DebugDropdownOpen, DebugPointer);
-    if (DebugHit.Pressed)
-    {
-        DebugDropdownOpen = !DebugDropdownOpen;
+        ControlPointer Ptr = Input.PrimaryPointer;
+        if (AnyDropdownOpen) Ptr.Enabled = DebugBtn.Contains(Cursor);
+        if (DropdownSelector::ConstructButton(Overlay, DebugBtn, DebugLabel.c_str(), DebugDropdownOpen, Ptr).Pressed)
+        {
+            DebugDropdownOpen  = !DebugDropdownOpen;
+            EngineDropdownOpen = false;
+            ShadowDropdownOpen = false;
+        }
     }
 
-    if (DebugDropdownOpen)
+    // Active Option Sheet rendered last for clean z-ordering
+    if (EngineDropdownOpen)
+    {
+        constexpr std::array<const char*, 5> EngineOptions = {{
+            "Engine: MatCap",
+            "Engine: OpenPBR Direct",
+            "Engine: DDGI Raytracing",
+            "Engine: SDF GI",
+            "Engine: Path Tracer",
+        }};
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(EngineBtn, static_cast<uint32_t>(EngineOptions.size()));
+        const uint32_t    CurIdx     = DisplaySettings.RenderEngineIndex % 5u;
+        uint32_t          ChosenIdx  = CurIdx;
+        if (DropdownSelector::ConstructOptionSheet(
+                Overlay, EngineBtn, EngineOptions.data(), static_cast<uint32_t>(EngineOptions.size()),
+                CurIdx, Input.PrimaryPointer, ChosenIdx).Clicked)
+        {
+            DisplaySettings.RenderEngineIndex = ChosenIdx;
+            EngineDropdownOpen                = false;
+        }
+        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !EngineBtn.Contains(Cursor))
+        {
+            EngineDropdownOpen = false;
+        }
+    }
+    else if (ShadowDropdownOpen)
+    {
+        constexpr std::array<const char*, 5> ShadowOptions = {{
+            "Shadow: Contact PCSS",
+            "Shadow: PCSS + Filter",
+            "Shadow: SMRT",
+            "Shadow: PCF 3x3",
+            "Shadow: BVH4 Ray",
+        }};
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(ShadowBtn, static_cast<uint32_t>(ShadowOptions.size()));
+        const uint32_t    CurIdx     = DisplaySettings.ShadowAlgorithmIndex % 5u;
+        uint32_t          ChosenIdx  = CurIdx;
+        if (DropdownSelector::ConstructOptionSheet(
+                Overlay, ShadowBtn, ShadowOptions.data(), static_cast<uint32_t>(ShadowOptions.size()),
+                CurIdx, Input.PrimaryPointer, ChosenIdx).Clicked)
+        {
+            DisplaySettings.ShadowAlgorithmIndex = ChosenIdx;
+            ShadowDropdownOpen                   = false;
+        }
+        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !ShadowBtn.Contains(Cursor))
+        {
+            ShadowDropdownOpen = false;
+        }
+    }
+    else if (DebugDropdownOpen)
     {
         constexpr std::array<const char*, 5> DebugOptions = {{
             "Debug View: Off",
@@ -1991,14 +2119,22 @@ void ViewportPanel::Render(
         if (OverlayOpenBefore && Input.PrimaryPointer.Pressed && !SettingsBtn.Contains(Cursor))
         {
             const float SheetW = 286.0f;
-            const float SheetH = 314.0f;
+            const float SheetH = 426.0f;
             const float SheetX = std::clamp(SettingsBtn.Right() - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
             const Rectangle2D SheetRect{ SheetX, SettingsBtn.Bottom() + 6.0f, SheetW, SheetH };
-            const Rectangle2D DebugSheetRect = DropdownSelector::QuerySheetBounds(DebugButtonBounds, 5u);
-            if (!SheetRect.Contains(Cursor) && (!DebugDropdownOpen || !DebugSheetRect.Contains(Cursor)))
+            const Rectangle2D EngineSheetRect = DropdownSelector::QuerySheetBounds(EngineButtonBounds, 5u);
+            const Rectangle2D ShadowSheetRect = DropdownSelector::QuerySheetBounds(ShadowButtonBounds, 5u);
+            const Rectangle2D DebugSheetRect  = DropdownSelector::QuerySheetBounds(DebugButtonBounds, 5u);
+            const bool InDropdown =
+                (EngineDropdownOpen && EngineSheetRect.Contains(Cursor)) ||
+                (ShadowDropdownOpen && ShadowSheetRect.Contains(Cursor)) ||
+                (DebugDropdownOpen  && DebugSheetRect.Contains(Cursor));
+            if (!SheetRect.Contains(Cursor) && !InDropdown)
             {
-                SettingsSheetOpen = false;
-                DebugDropdownOpen = false;
+                SettingsSheetOpen  = false;
+                EngineDropdownOpen = false;
+                ShadowDropdownOpen = false;
+                DebugDropdownOpen  = false;
             }
         }
     }

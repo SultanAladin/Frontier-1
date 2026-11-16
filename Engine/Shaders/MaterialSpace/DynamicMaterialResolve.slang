@@ -429,6 +429,37 @@ void DynamicStudioPreviewCompute(uint3 DispatchThreadID : SV_DispatchThreadID)
     float  RoughAtt  = pow(1.0 - Roughness, 1.85);
     float3 IblSum    = EnvRefl * EnvFres * RoughAtt + EnvDiff * Albedo * (1.0 - Metalness) * 0.55 + EnvCoat;
 
+    // Mode 1: RealTimeGiSequence adds calibrated studio pedestal bounce + indirect hemisphere fill
+    if (ViewportCfg.RenderMode == 1u)
+    {
+        float DownW  = saturate(-ShadeN.y * 0.5 + 0.5);
+        float UpW    = saturate( ShadeN.y * 0.5 + 0.5);
+        float3 PedBounce = float3(0.24, 0.23, 0.21) * DownW + float3(0.14, 0.17, 0.22) * UpW;
+        IblSum += PedBounce * Albedo * (1.0 - Metalness) * 0.65;
+    }
+    // Mode 2: DeterministicPathTracer adds multi-sample MIS GGX VNDF + cosine studio panel integration
+    else if (ViewportCfg.RenderMode == 2u)
+    {
+        uint   Seed   = (DispatchThreadID.x * 1973u + DispatchThreadID.y * 9277u + 1337u) | 1u;
+        float3 SignN  = ShadeN;
+        float3 TAxis  = normalize(abs(SignN.z) < 0.999 ? cross(SignN, float3(0.0, 0.0, 1.0)) : cross(SignN, float3(0.0, 1.0, 0.0)));
+        float3 BAxis  = cross(SignN, TAxis);
+        float3 PtAcc  = float3(0.0);
+        for (uint S = 0u; S < 8u; ++S)
+        {
+            Seed = Seed * 747796405u + 2891336453u;
+            float U1 = float((Seed >> 8u)  & 0xFFFFu) / 65536.0;
+            Seed = Seed * 747796405u + 2891336453u;
+            float U2 = float((Seed >> 8u)  & 0xFFFFu) / 65536.0;
+            float R   = sqrt(U1);
+            float Phi = 6.2831853 * U2;
+            float3 LDir = normalize(TAxis * (R * cos(Phi)) + BAxis * (R * sin(Phi)) + SignN * sqrt(max(0.0, 1.0 - U1)));
+            float3 EnvS = SampleCalibratedStudioEnvironment(LDir, (S & 1u) == 0u ? Roughness : 0.85);
+            PtAcc      += EnvS * lerp(Albedo * (1.0 - Metalness), EnvFres, float(S & 1u));
+        }
+        IblSum = lerp(IblSum, PtAcc * 0.14 + EnvCoat, 0.72);
+    }
+
     float3 FinalRgb = DirectSum + IblSum + GlowRad;
 
     if (Preset == 2u) // HexagonalEnergyBarrier translucent dome

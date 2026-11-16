@@ -10,6 +10,8 @@
 #include "Engine/Components/Panes/ViewportProjectionPane.h"
 #include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
+#include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/GeometrySpace/Primitives/AnalyticPrimitives.h"
 #include "Exhibits/SoftwareCanvasRasterizer.h"
 
@@ -347,8 +349,8 @@ int main()
 
     Score.Verify(RtxFrame.SpecularGlass.RaytracedHitPixelCount > 1500u,
                  "Tier 2 RTX VNDF Specular & Glass sequence traces > 1,500 secondary scene reflection hits");
-    Score.Verify(GtxFrame.SpecularGlass.ScreenSpaceHitCount > 40u,
-                 "Tier 1 GTX Hi-Z Screen-Space Reflection raymarch resolves > 40 on-screen mirror hits");
+    Score.Verify(GtxFrame.SpecularGlass.RaytracedHitPixelCount > 1500u,
+                 "Tier 1 GTX BVH4 Specular & Glass sequence traces > 1,500 secondary scene reflection hits (Zero SDF Reflections)");
 
     bool AllFinite = true;
     double LumDiffSum = 0.0;
@@ -569,6 +571,179 @@ int main()
         const std::filesystem::path EditorExhibitPath = OutputDir / "02-CppWorldEditorOutlinerAndGtxViewport.png";
         Score.Verify(EditorCanvas.WritePngFile(EditorExhibitPath) && std::filesystem::exists(EditorExhibitPath),
                      "Exported 3-pane C++ World Editor exhibit 02-CppWorldEditorOutlinerAndGtxViewport.png");
+
+        //================================================================================================================
+        // 7. UNIFIED 5-ENGINE & SHADOW LAB VALIDATION (CPU REFERENCE + SWIFTSHADER GPU COMPUTE)
+        //================================================================================================================
+        const std::filesystem::path EnginesDir =
+            std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "Exhibits" / "Images" / "WorldRenderEngines";
+        std::filesystem::create_directories(EnginesDir);
+
+        constexpr uint32_t TileW = 360u;
+        constexpr uint32_t TileH = 220u;
+        GeometricRaster::PerspectiveCameraFrame EvalCam = Camera;
+        EvalCam.ViewportWidthPx  = TileW;
+        EvalCam.ViewportHeightPx = TileH;
+
+        struct EngineSpec
+        {
+            GeometricRaster::WorldRenderEngine Engine;
+            const char*                        Title;
+        };
+        const std::array<EngineSpec, 5u> Engines {{
+            { GeometricRaster::WorldRenderEngine::MatCap,                 "01 // MATCAP" },
+            { GeometricRaster::WorldRenderEngine::OpenPbrDirect,          "02 // OPENPBR DIRECT (NO GI)" },
+            { GeometricRaster::WorldRenderEngine::DdgiRaytracing,         "03 // DDGI CHEBYSHEV" },
+            { GeometricRaster::WorldRenderEngine::SdfGlobalIllumination,  "04 // SDF RADIOSITY GI" },
+            { GeometricRaster::WorldRenderEngine::DeterministicPathTrace, "05 // PATH TRACER (MIS/VNDF)" },
+        }};
+
+        std::vector<std::vector<uint8_t>> CpuEngineTiles(5u);
+        for (std::size_t E = 0u; E < 5u; ++E)
+        {
+            GeometricRaster::WorldRenderConfiguration Cfg {};
+            Cfg.Engine              = Engines[E].Engine;
+            Cfg.ShadowAlgorithm     = (E == 2u) ? GeometricRaster::SolarShadowAlgorithm::WideTreeRayQuery
+                                                : GeometricRaster::SolarShadowAlgorithm::ContactPcss;
+            Cfg.ReflectionSource    = GeometricRaster::SpecularReflectionSource::WideTreeRaytrace;
+            Cfg.PathTraceSamples    = 8u;
+            Cfg.PathTraceMaxBounces = 4u;
+            const auto Frame = WorldRenderer.RenderWorldFrameWithEngine(Cfg, EvalCam, EvalCam, WorldScene);
+            Score.Verify(Frame.DisplayRgba8.size() == TileW * TileH * 4u, Engines[E].Title);
+            CpuEngineTiles[E] = Frame.DisplayRgba8;
+        }
+
+        // Verify GPU Compute .slang across all 5 engines via SwiftShader/Vulkan if available
+        std::vector<std::vector<uint8_t>> GpuEngineTiles(5u);
+        bool GpuEnginesValid = false;
+        {
+            GeometricRaster::VulkanInterchange GpuDevice {};
+            if (GpuDevice.InitializeInterchange(std::filesystem::path(FRONTIER_REPO_ROOT_DIR)))
+            {
+                GeometricRaster::VulkanWorldRenderSequence GpuSeq {};
+                const std::filesystem::path ShaderDir = std::filesystem::path(FRONTIER_COMPILED_SHADER_DIR);
+                if (GpuSeq.InitializeSequence(GpuDevice, ShaderDir))
+                {
+                    GpuSeq.SynchronizeSceneResources(WorldScene, &WorldRenderer.InspectIrradianceLattice(), true);
+                    GpuEnginesValid = true;
+                    for (std::size_t E = 0u; E < 5u; ++E)
+                    {
+                        GeometricRaster::WorldRenderConfiguration Cfg {};
+                        Cfg.Engine              = Engines[E].Engine;
+                        Cfg.ShadowAlgorithm     = (E == 2u) ? GeometricRaster::SolarShadowAlgorithm::WideTreeRayQuery
+                                                            : GeometricRaster::SolarShadowAlgorithm::ContactPcss;
+                        Cfg.ReflectionSource    = GeometricRaster::SpecularReflectionSource::WideTreeRaytrace;
+                        Cfg.PathTraceMaxBounces = 4u;
+                        const uint32_t SampleCount = (E == 4u) ? 4u : 1u;
+                        bool Ok = true;
+                        for (uint32_t S = 0u; S < SampleCount; ++S)
+                        {
+                            Ok = Ok && GpuSeq.RenderWorldViewportWithEngine(Cfg, S, EvalCam, WorldScene, GpuEngineTiles[E]);
+                        }
+                        GpuEnginesValid = GpuEnginesValid && Ok && (GpuEngineTiles[E].size() == TileW * TileH * 4u);
+                    }
+                }
+            }
+        }
+        Score.Verify(GpuEnginesValid, "Vulkan .slang compute renders all 5 unified WorldRenderEngines cleanly");
+
+        // Verify engine differentiation (MatCap vs OpenPBR vs DDGI vs SDF GI vs PathTracer)
+        const auto MeasureMeanLumaDiff = [](const std::vector<uint8_t>& A, const std::vector<uint8_t>& B) -> double
+        {
+            if (A.size() != B.size() || A.empty()) return 0.0;
+            double Sum = 0.0;
+            const std::size_t PxCount = A.size() / 4u;
+            for (std::size_t P = 0u; P < PxCount; ++P)
+            {
+                const double LA = 0.2126 * A[P * 4u + 0u] + 0.7152 * A[P * 4u + 1u] + 0.0722 * A[P * 4u + 2u];
+                const double LB = 0.2126 * B[P * 4u + 0u] + 0.7152 * B[P * 4u + 1u] + 0.0722 * B[P * 4u + 2u];
+                Sum += std::fabs(LA - LB);
+            }
+            return Sum / static_cast<double>(PxCount);
+        };
+        Score.Verify(MeasureMeanLumaDiff(CpuEngineTiles[0], CpuEngineTiles[1]) > 8.0, "MatCap differs meaningfully from OpenPbrDirect");
+        Score.Verify(MeasureMeanLumaDiff(CpuEngineTiles[1], CpuEngineTiles[2]) > 2.5, "OpenPbrDirect differs meaningfully from DdgiRaytracing");
+        Score.Verify(MeasureMeanLumaDiff(CpuEngineTiles[1], CpuEngineTiles[3]) > 2.5, "OpenPbrDirect differs meaningfully from SdfGlobalIllumination");
+
+        // Render Sheet 1: 5 Unified Engines (Row 1 = CPU Reference, Row 2 = GPU .slang Compute)
+        constexpr uint32_t SheetW = 1920u;
+        constexpr uint32_t SheetH = 580u;
+        Io.DisplaySize = ImVec2(float(SheetW), float(SheetH));
+        ImGui::NewFrame();
+        ImDrawList* EngDraw = ImGui::GetBackgroundDrawList();
+        EngDraw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(float(SheetW), float(SheetH)), BgCol);
+        EngDraw->AddText(ImVec2(24.0f, 16.0f), AccentCol,
+                         "FRONTIER UNIFIED WORLD RENDER ENGINES  //  TOP: CPU REFERENCE  |  BOTTOM: VULKAN .SLANG COMPUTE (ZERO SDF SHADOWS & ZERO SDF REFLECTIONS)");
+        for (std::size_t E = 0u; E < 5u; ++E)
+        {
+            const float X = 20.0f + static_cast<float>(E) * 378.0f;
+            EngDraw->AddRectFilled(ImVec2(X, 46.0f), ImVec2(X + 368.0f, 300.0f), CardBg, 6.0f);
+            EngDraw->AddText(ImVec2(X + 8.0f, 52.0f), GoldCol, Engines[E].Title);
+            EngDraw->AddRectFilled(ImVec2(X, 312.0f), ImVec2(X + 368.0f, 566.0f), CardBg, 6.0f);
+            EngDraw->AddText(ImVec2(X + 8.0f, 318.0f), AccentCol, "GPU .SLANG");
+        }
+        ImGui::Render();
+        Exhibits::SoftwareRasterCanvas EngineSheet(SheetW, SheetH, { 11u, 14u, 20u, 255u });
+        EngineSheet.RasterizeImGuiBatches(ImGui::GetDrawData());
+        for (std::size_t E = 0u; E < 5u; ++E)
+        {
+            const uint32_t BX = 24u + static_cast<uint32_t>(E) * 378u;
+            EngineSheet.BlitRgbaRegion(BX,  72u, TileW, TileH, CpuEngineTiles[E].data());
+            if (!GpuEngineTiles[E].empty())
+            {
+                EngineSheet.BlitRgbaRegion(BX, 338u, TileW, TileH, GpuEngineTiles[E].data());
+            }
+        }
+        const std::filesystem::path EnginesSheetPath = EnginesDir / "01-FiveUnifiedEnginesCpuAndGpu.png";
+        Score.Verify(EngineSheet.WritePngFile(EnginesSheetPath) && std::filesystem::exists(EnginesSheetPath),
+                     "Exported 01-FiveUnifiedEnginesCpuAndGpu.png");
+
+        // Render Sheet 2: Shadow Lab 5 Algorithms (Zero SDF Shadows!)
+        struct ShadowSpec
+        {
+            GeometricRaster::SolarShadowAlgorithm Alg;
+            const char*                           Title;
+        };
+        const std::array<ShadowSpec, 5u> ShadowSpecs {{
+            { GeometricRaster::SolarShadowAlgorithm::ContactPcss,      "01 // CONTACT PCSS" },
+            { GeometricRaster::SolarShadowAlgorithm::PcssPlaneAware,   "02 // PCSS + PLANE FILTER" },
+            { GeometricRaster::SolarShadowAlgorithm::ShadowRayMarch,   "03 // SMRT RAYMARCH" },
+            { GeometricRaster::SolarShadowAlgorithm::PcfBilinear,      "04 // PCF 3X3" },
+            { GeometricRaster::SolarShadowAlgorithm::WideTreeRayQuery, "05 // BVH4 RAY QUERY" },
+        }};
+        std::vector<std::vector<uint8_t>> ShadowTiles(5u);
+        for (std::size_t S = 0u; S < 5u; ++S)
+        {
+            GeometricRaster::WorldRenderConfiguration Cfg {};
+            Cfg.Engine           = GeometricRaster::WorldRenderEngine::OpenPbrDirect;
+            Cfg.ShadowAlgorithm  = ShadowSpecs[S].Alg;
+            Cfg.ReflectionSource = GeometricRaster::SpecularReflectionSource::WideTreeRaytrace;
+            const auto Frame     = WorldRenderer.RenderWorldFrameWithEngine(Cfg, EvalCam, EvalCam, WorldScene);
+            ShadowTiles[S]       = Frame.DisplayRgba8;
+        }
+        constexpr uint32_t SSheetH = 310u;
+        Io.DisplaySize = ImVec2(float(SheetW), float(SSheetH));
+        ImGui::NewFrame();
+        ImDrawList* ShDraw = ImGui::GetBackgroundDrawList();
+        ShDraw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(float(SheetW), float(SSheetH)), BgCol);
+        ShDraw->AddText(ImVec2(24.0f, 16.0f), AccentCol,
+                        "FRONTIER SHADOW LAB  //  5 DIRECT SHADOW ALGORITHMS (ZERO SDF SHADOWS)");
+        for (std::size_t S = 0u; S < 5u; ++S)
+        {
+            const float X = 20.0f + static_cast<float>(S) * 378.0f;
+            ShDraw->AddRectFilled(ImVec2(X, 46.0f), ImVec2(X + 368.0f, 300.0f), CardBg, 6.0f);
+            ShDraw->AddText(ImVec2(X + 8.0f, 52.0f), GoldCol, ShadowSpecs[S].Title);
+        }
+        ImGui::Render();
+        Exhibits::SoftwareRasterCanvas ShadowSheet(SheetW, SSheetH, { 11u, 14u, 20u, 255u });
+        ShadowSheet.RasterizeImGuiBatches(ImGui::GetDrawData());
+        for (std::size_t S = 0u; S < 5u; ++S)
+        {
+            ShadowSheet.BlitRgbaRegion(24u + static_cast<uint32_t>(S) * 378u, 72u, TileW, TileH, ShadowTiles[S].data());
+        }
+        const std::filesystem::path ShadowSheetPath = EnginesDir / "02-ShadowLabFiveAlgorithms.png";
+        Score.Verify(ShadowSheet.WritePngFile(ShadowSheetPath) && std::filesystem::exists(ShadowSheetPath),
+                     "Exported 02-ShadowLabFiveAlgorithms.png");
 
         TypographyRepository::AssignCurrent(nullptr);
     }

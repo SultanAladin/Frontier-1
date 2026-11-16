@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                          SPECULARREFLECTIONSEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Tier 2 RTX Coherent VNDF WideBoundingTree Reflections & Abbe Glass Refraction + Tier 1 GTX Hi-Z Screen-Space Raymarch & SDF Fallback
+// 🧩 Specular & Abbe Glass Refraction: BVH4 WideBoundingTree Raytrace or Analytical Sky Environment (Zero SDF Reflections!)
 
 #pragma once
 
@@ -20,6 +20,16 @@
 
 namespace Frontier::GeometricRaster
 {
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                      ENUMERATIONS
+//------------------------------------------------------------------------------------------------------------------------
+
+enum class SpecularReflectionSource : uint8_t
+{
+    WideTreeRaytrace = 0u, // [-] - Trace secondary BVH4 rays + Abbe dispersed glass refraction
+    SkyEnvironment   = 1u, // [-] - Evaluate analytical sky hemisphere gradient (zero geometry bounce, zero SDF)
+};
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                       STRUCTURES
@@ -42,6 +52,20 @@ struct SpecularReflectionBuffer
 class SpecularReflectionSequence
 {
 public:
+    // Evaluates specular & Abbe glass refraction strictly through SpecularReflectionSource (Zero SDF Reflections!)
+    [[nodiscard]] static SpecularReflectionBuffer EvaluateSpecularRefractionWithSource(
+        SpecularReflectionSource                        Source,
+        const PerspectiveCameraFrame&                   Camera,
+        std::span<const RigidClusterInstance>           Instances,
+        const VisibilityBufferTargets&                  VisibilityTargets,
+        std::span<const AnalyticResolvedSurfaceSample>  PrimarySamples,
+        const MaterialSpace::CompactMaterialRegister&   MaterialRegister,
+        std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
+        const SpatialAcceleration::WideBoundingTree&    SceneTree,
+        const IrradianceLatticeSequence&                GiLattice,
+        const SolarDirectionalEmitter&                  Sun,
+        Mathematics::LinearRGB                          SkyRadiance = { 0.16f, 0.22f, 0.34f });
+
     // Evaluates Tier 2 RTX VNDF-jittered BVH4 reflections + solid Abbe glass refraction
     [[nodiscard]] static SpecularReflectionBuffer EvaluateRtxSpecularRefraction(
         const PerspectiveCameraFrame&                   Camera,

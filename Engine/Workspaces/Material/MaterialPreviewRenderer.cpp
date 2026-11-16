@@ -419,7 +419,8 @@ PreviewRenderResult MaterialPreviewRenderer::RenderPreviewCpuReference(
     PreviewSpecimenGeometry                              Specimen,
     const PreviewCameraSetup&                            Camera,
     uint32_t                                             WidthPx,
-    uint32_t                                             HeightPx)
+    uint32_t                                             HeightPx,
+    PreviewRenderMode                                    RenderMode)
 {
     const auto StartTime = std::chrono::steady_clock::now();
 
@@ -595,6 +596,39 @@ PreviewRenderResult MaterialPreviewRenderer::RenderPreviewCpuReference(
                 DirectSum.G + EnvRefl.G * EnvFres.G * SpecAtt + EnvDiff.G * Sample.Material.Diffuse.BaseColor.G * (1.0f - Metal) * 0.55f + EnvCoat.G + Sample.IncandescentRadiance.G,
                 DirectSum.B + EnvRefl.B * EnvFres.B * SpecAtt + EnvDiff.B * Sample.Material.Diffuse.BaseColor.B * (1.0f - Metal) * 0.55f + EnvCoat.B + Sample.IncandescentRadiance.B
             };
+            if (RenderMode == PreviewRenderMode::RealTimeGiSequence)
+            {
+                const float DownW = std::clamp(-ShadeN.Y * 0.5f + 0.5f, 0.0f, 1.0f);
+                const float UpW   = std::clamp( ShadeN.Y * 0.5f + 0.5f, 0.0f, 1.0f);
+                const float DiffW = 0.65f * (1.0f - Metal);
+                FinalRgb.R += (0.24f * DownW + 0.14f * UpW) * Sample.Material.Diffuse.BaseColor.R * DiffW;
+                FinalRgb.G += (0.23f * DownW + 0.17f * UpW) * Sample.Material.Diffuse.BaseColor.G * DiffW;
+                FinalRgb.B += (0.21f * DownW + 0.22f * UpW) * Sample.Material.Diffuse.BaseColor.B * DiffW;
+            }
+            else if (RenderMode == PreviewRenderMode::DeterministicPathTracer)
+            {
+                uint32_t Seed = (PX * 1973u + PY * 9277u + 1337u) | 1u;
+                Mathematics::LinearRGB PtAccum {};
+                for (uint32_t S = 0u; S < 4u; ++S)
+                {
+                    Seed = Seed * 747796405u + 2891336453u;
+                    const float U1 = static_cast<float>((Seed >> 8u) & 0xFFFFu) / 65536.0f;
+                    Seed = Seed * 747796405u + 2891336453u;
+                    const float U2 = static_cast<float>((Seed >> 8u) & 0xFFFFu) / 65536.0f;
+                    const float R  = std::sqrt(U1);
+                    const float Ph = 6.2831853f * U2;
+                    const Mathematics::Axis3D LDir = Mathematics::NormalizeAxis(
+                        TangentX * (R * std::cos(Ph)) + BitangentY * (R * std::sin(Ph)) + ShadeN * std::sqrt(std::max(0.0f, 1.0f - U1)));
+                    const auto EnvS = SampleCalibratedStudioEnv(LDir, ((S & 1u) == 0u) ? Sample.Material.Specular.Roughness : 0.85f);
+                    const float MixM = static_cast<float>(S & 1u);
+                    PtAccum.R += EnvS.R * (Sample.Material.Diffuse.BaseColor.R * (1.0f - Metal) * (1.0f - MixM) + EnvFres.R * MixM);
+                    PtAccum.G += EnvS.G * (Sample.Material.Diffuse.BaseColor.G * (1.0f - Metal) * (1.0f - MixM) + EnvFres.G * MixM);
+                    PtAccum.B += EnvS.B * (Sample.Material.Diffuse.BaseColor.B * (1.0f - Metal) * (1.0f - MixM) + EnvFres.B * MixM);
+                }
+                FinalRgb.R = DirectSum.R + PtAccum.R * 0.25f + EnvCoat.R + Sample.IncandescentRadiance.R;
+                FinalRgb.G = DirectSum.G + PtAccum.G * 0.25f + EnvCoat.G + Sample.IncandescentRadiance.G;
+                FinalRgb.B = DirectSum.B + PtAccum.B * 0.25f + EnvCoat.B + Sample.IncandescentRadiance.B;
+            }
 
             const auto BehindRgb = HitPedestal ? PedestalRgb : Backdrop;
             if (Recipe.PresetIdentity == MaterialSpace::Dynamic::DynamicPresetIdentity::HexagonalEnergyBarrier)
@@ -660,7 +694,7 @@ PreviewRenderResult MaterialPreviewRenderer::RenderPreview(
         Result.ActiveLobeMask = MaterialSpace::DetermineActiveLobeMask(Recipe.PrimaryFinish);
         return Result;
     }
-    return RenderPreviewCpuReference(Recipe, Parameters, Specimen, Camera, WidthPx, HeightPx);
+    return RenderPreviewCpuReference(Recipe, Parameters, Specimen, Camera, WidthPx, HeightPx, RenderMode);
 }
 
 bool MaterialPreviewRenderer::QuerySpecimenHitDirection(

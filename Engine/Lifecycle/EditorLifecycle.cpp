@@ -1283,18 +1283,29 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         ShowcaseBundle->EditorCamera.ViewportHeightPx = 190u;
     }
 
-    const auto ActiveTier = (DisplayCfg.QualityTier >= 4u)
-                                ? GeometricRaster::WorldRenderTier::Tier2RtxDeterministic
-                                : GeometricRaster::WorldRenderTier::Tier1GtxCalibrated;
+    GeometricRaster::WorldRenderConfiguration RenderConfig {};
+    RenderConfig.Engine = static_cast<GeometricRaster::WorldRenderEngine>(std::min(4u, DisplayCfg.RenderEngineIndex));
+    if (!DisplayCfg.GlobalIllumination &&
+        (RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DdgiRaytracing ||
+         RenderConfig.Engine == GeometricRaster::WorldRenderEngine::SdfGlobalIllumination))
+    {
+        RenderConfig.Engine = GeometricRaster::WorldRenderEngine::OpenPbrDirect;
+    }
+    RenderConfig.ShadowAlgorithm  = static_cast<GeometricRaster::SolarShadowAlgorithm>(std::min(4u, DisplayCfg.ShadowAlgorithmIndex));
+    RenderConfig.ReflectionSource = (DisplayCfg.ReflectionsEnabled && DisplayCfg.ReflectionSourceIndex == 0u)
+        ? GeometricRaster::SpecularReflectionSource::WideTreeRaytrace
+        : GeometricRaster::SpecularReflectionSource::SkyEnvironment;
+    RenderConfig.DebugChannel     = DisplayCfg.DebugChannelIndex;
+    RenderConfig.PathTraceSamples = CameraInteractiveDrag ? 1u : 8u;
 
-    if (ActiveTier == GeometricRaster::WorldRenderTier::Tier2RtxDeterministic)
+    if (RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DdgiRaytracing)
     {
         (void)ConsumeCompletedRtxLatticeBake();
         if (!RtxLatticePrepared)
         {
             if (GpuReady)
             {
-                // Propagate Tier 2 RTX multi-bounce lattice off the UI thread (skips CPU 2-cascade shadow clips)
+                // Propagate multi-bounce DDGI lattice off the UI thread
                 BeginAsyncRtxLatticeBake();
             }
             else
@@ -1305,6 +1316,25 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         }
     }
 
+    const float CamDelta =
+        Mathematics::EvaluateLength(ShowcaseBundle->EditorCamera.CameraOrigin - LastPtCameraOrigin) +
+        Mathematics::EvaluateLength(ShowcaseBundle->EditorCamera.TargetPoint  - LastPtCameraTarget);
+    const bool ResetPathAccum =
+        CamDelta > 1.0e-4f ||
+        CameraInteractiveDrag ||
+        DisplayCfg.RenderEngineIndex != LastRenderEngine ||
+        DisplayCfg.ShadowAlgorithmIndex != LastShadowAlgorithm ||
+        DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
+        DisplayCfg.DebugChannelIndex != LastViewportDebug ||
+        DisplayCfg.GlobalIllumination != LastGiEnabled ||
+        DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled;
+    if (ResetPathAccum)
+    {
+        PathTraceAccumIndex = 0u;
+    }
+    LastPtCameraOrigin = ShowcaseBundle->EditorCamera.CameraOrigin;
+    LastPtCameraTarget = ShowcaseBundle->EditorCamera.TargetPoint;
+
     std::vector<uint8_t> CleanWorldRgba {};
     uint32_t             OutWidthPx     = ShowcaseBundle->EditorCamera.ViewportWidthPx;
     uint32_t             OutHeightPx    = ShowcaseBundle->EditorCamera.ViewportHeightPx;
@@ -1312,18 +1342,22 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
 
     if (GpuReady)
     {
-        RenderedOnGpu = GpuWorldRenderer->RenderWorldViewportRgba8(
-            ActiveTier,
+        RenderedOnGpu = GpuWorldRenderer->RenderWorldViewportWithEngine(
+            RenderConfig,
+            PathTraceAccumIndex,
             ShowcaseBundle->EditorCamera,
             ShowcaseBundle->Scene,
-            DisplayCfg.DebugChannelIndex,
             CleanWorldRgba);
+        if (RenderedOnGpu && RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DeterministicPathTrace && !CameraInteractiveDrag)
+        {
+            ++PathTraceAccumIndex;
+        }
     }
 
     if (!RenderedOnGpu)
     {
-        auto CpuOutput = ShowcaseRenderer->RenderWorldFrame(
-            ActiveTier,
+        auto CpuOutput = ShowcaseRenderer->RenderWorldFrameWithEngine(
+            RenderConfig,
             ShowcaseBundle->EditorCamera,
             ShowcaseBundle->EditorCamera,
             ShowcaseBundle->Scene);
@@ -1360,6 +1394,15 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     }
 
     OutlinerFooterReadings Footer {};
+    const char* EngineShortTag = "SDF GI";
+    switch (RenderConfig.Engine)
+    {
+    case GeometricRaster::WorldRenderEngine::MatCap:                 EngineShortTag = "MatCap"; break;
+    case GeometricRaster::WorldRenderEngine::OpenPbrDirect:          EngineShortTag = "OpenPBR"; break;
+    case GeometricRaster::WorldRenderEngine::DdgiRaytracing:         EngineShortTag = "DDGI RT"; break;
+    case GeometricRaster::WorldRenderEngine::SdfGlobalIllumination:  EngineShortTag = "SDF GI"; break;
+    case GeometricRaster::WorldRenderEngine::DeterministicPathTrace: EngineShortTag = "PathTrace"; break;
+    }
     if (RenderedOnGpu)
     {
         const float GpuMs  = std::max(0.2f, GpuWorldRenderer->QueryLastDispatchMilliseconds());
@@ -1367,14 +1410,12 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         char FpsBuf[32]{};
         std::snprintf(FpsBuf, sizeof(FpsBuf), "%d fps", EstFps);
         Footer.RealtimeText = FpsBuf;
-        Footer.QualityText  = (ActiveTier == GeometricRaster::WorldRenderTier::Tier2RtxDeterministic)
-                                  ? (HwGpu ? "GPU RTX Tier 2" : "VK RTX Tier 2")
-                                  : (HwGpu ? "GPU GTX Tier 1" : "VK GTX Tier 1");
+        Footer.QualityText  = std::string(HwGpu ? "GPU " : "VK ") + EngineShortTag;
     }
     else
     {
         Footer.RealtimeText = "CPU GI";
-        Footer.QualityText  = (ActiveTier == GeometricRaster::WorldRenderTier::Tier2RtxDeterministic) ? "RTX Tier 2" : "GTX Tier 1";
+        Footer.QualityText  = std::string("CPU ") + EngineShortTag;
     }
     char SunBuf[32]{};
     std::snprintf(SunBuf, sizeof(SunBuf), "Sun %.0f°", std::max(0.0f, SunElevDeg));
@@ -1423,6 +1464,11 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                   std::abs(static_cast<int>(CurCanvasH) - static_cast<int>(LastCanvasPaneHeight)) > 8)) ||
                 DisplayCfg.QualityTier != LastViewportTier ||
                 DisplayCfg.DebugChannelIndex != LastViewportDebug ||
+                DisplayCfg.RenderEngineIndex != LastRenderEngine ||
+                DisplayCfg.ShadowAlgorithmIndex != LastShadowAlgorithm ||
+                DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
+                DisplayCfg.GlobalIllumination != LastGiEnabled ||
+                DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
                 CurScale != LastRenderScalePct;
 
             if (CurCanvasW >= 120u && CurCanvasH >= 90u)
@@ -1430,9 +1476,14 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 LastCanvasPaneWidth  = CurCanvasW;
                 LastCanvasPaneHeight = CurCanvasH;
             }
-            LastViewportTier   = DisplayCfg.QualityTier;
-            LastViewportDebug  = DisplayCfg.DebugChannelIndex;
-            LastRenderScalePct = CurScale;
+            LastViewportTier       = DisplayCfg.QualityTier;
+            LastViewportDebug      = DisplayCfg.DebugChannelIndex;
+            LastRenderEngine       = DisplayCfg.RenderEngineIndex;
+            LastShadowAlgorithm    = DisplayCfg.ShadowAlgorithmIndex;
+            LastReflectionSource   = DisplayCfg.ReflectionSourceIndex;
+            LastGiEnabled          = DisplayCfg.GlobalIllumination;
+            LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
+            LastRenderScalePct     = CurScale;
 
             const bool GpuReady  = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
             const bool LatticeUpdated = ConsumeCompletedRtxLatticeBake();
@@ -1444,6 +1495,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 !GpuReady && !WorldTransformGizmo.QueryDragging());
             if (NeedsPrep)
             {
+                PathTraceAccumIndex = 0u;
                 InvalidateRtxLattice();
                 if (GpuReady)
                 {
@@ -1458,7 +1510,9 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                     RtxLatticePrepared = true;
                 }
             }
-            if (SceneMutated || DisplayChanged || LatticeUpdated)
+            const bool ProgressivePathTraceTick =
+                GpuReady && DisplayCfg.RenderEngineIndex == 4u && PathTraceAccumIndex < 64u && !CameraInteractiveDrag;
+            if (SceneMutated || DisplayChanged || LatticeUpdated || ProgressivePathTraceTick)
             {
                 RefreshShowcaseViewportRaster();
             }

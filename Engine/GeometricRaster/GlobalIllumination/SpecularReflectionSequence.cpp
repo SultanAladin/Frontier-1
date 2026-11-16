@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         SPECULARREFLECTIONSEQUENCE.CPP
 ============================================================================================================================================*/
-// 🧩 Tier 2 RTX Coherent VNDF WideBoundingTree Reflections & Abbe Glass Refraction + Tier 1 GTX Hi-Z Screen-Space Raymarch & SDF Fallback
+// 🧩 Specular & Abbe Glass Refraction: BVH4 WideBoundingTree Raytrace or Analytical Sky Environment (Zero SDF Reflections!)
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -114,8 +114,10 @@ namespace
         OutRad = UnpackBounceEmissive(Slab);
     }
 
-    const auto IndirectOverPi = GiLattice.SampleChebyshevIrradianceOverPi(HitPos, HitNrm, RayDirection * -1.0f);
-    const auto DiffAlb        = UnpackBounceDiffuse(Slab);
+    const auto DiffAlb = UnpackBounceDiffuse(Slab);
+    const auto IndirectOverPi = !GiLattice.InspectCells().empty()
+        ? GiLattice.SampleChebyshevIrradianceOverPi(HitPos, HitNrm, RayDirection * -1.0f)
+        : (SkyRadiance * 0.45f);
     OutRad.R += IndirectOverPi.R * DiffAlb.R;
     OutRad.G += IndirectOverPi.G * DiffAlb.G;
     OutRad.B += IndirectOverPi.B * DiffAlb.B;
@@ -153,6 +155,96 @@ namespace
 //------------------------------------------------------------------------------------------------------------------------
 //                                            SPECULAR REFLECTION SEQUENCE
 //------------------------------------------------------------------------------------------------------------------------
+
+SpecularReflectionBuffer SpecularReflectionSequence::EvaluateSpecularRefractionWithSource(
+    SpecularReflectionSource                        Source,
+    const PerspectiveCameraFrame&                   Camera,
+    std::span<const RigidClusterInstance>           Instances,
+    const VisibilityBufferTargets&                  VisibilityTargets,
+    std::span<const AnalyticResolvedSurfaceSample>  PrimarySamples,
+    const MaterialSpace::CompactMaterialRegister&   MaterialRegister,
+    std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
+    const SpatialAcceleration::WideBoundingTree&    SceneTree,
+    const IrradianceLatticeSequence&                GiLattice,
+    const SolarDirectionalEmitter&                  Sun,
+    Mathematics::LinearRGB                          SkyRadiance)
+{
+    if (Source == SpecularReflectionSource::WideTreeRaytrace)
+    {
+        return EvaluateRtxSpecularRefraction(
+            Camera,
+            Instances,
+            VisibilityTargets,
+            PrimarySamples,
+            MaterialRegister,
+            BounceSummaries,
+            SceneTree,
+            GiLattice,
+            Sun,
+            SkyRadiance);
+    }
+
+    // SkyEnvironment: Analytical Sky Dome gradient + Fresnel directional albedo weight (Zero SDF Reflections!)
+    SpecularReflectionBuffer Out {};
+    Out.WidthPx  = VisibilityTargets.WidthPx;
+    Out.HeightPx = VisibilityTargets.HeightPx;
+    const std::size_t TotalPixels = static_cast<std::size_t>(Out.WidthPx) * Out.HeightPx;
+    Out.IndirectSpecularHdr.assign(TotalPixels, { 0.0f, 0.0f, 0.0f });
+    Out.RefractedGlassHdr.assign(TotalPixels, { 0.0f, 0.0f, 0.0f });
+
+    const OrthonormalCameraBasis Basis = ComputeCameraBasis(Camera);
+    const uint32_t MatCount            = MaterialRegister.QuerySlotCount();
+    const auto EvaluateSkyEnv = [&](Mathematics::Axis3D Dir) noexcept -> Mathematics::LinearRGB
+    {
+        const float Up = std::clamp(Dir.Z * 0.5f + 0.5f, 0.0f, 1.0f);
+        return SkyRadiance * (0.65f + 0.70f * Up);
+    };
+
+    for (uint32_t PY = 0u; PY < Out.HeightPx; ++PY)
+    {
+        for (uint32_t PX = 0u; PX < Out.WidthPx; ++PX)
+        {
+            const std::size_t Off = static_cast<std::size_t>(PY) * Out.WidthPx + PX;
+            const auto& Hit       = PrimarySamples[Off];
+
+            if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+            {
+                const auto& Mat  = MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+                const float NdotV = std::clamp(Mathematics::EvaluateDot(Hit.TangentFrame.NormalZ, Hit.WorldViewDirection), 0.01f, 1.0f);
+                const Mathematics::Axis3D ReflDir = Hit.TangentFrame.NormalZ * (2.0f * NdotV) - Hit.WorldViewDirection;
+                const Mathematics::LinearRGB EnvRad = EvaluateSkyEnv(ReflDir);
+                const auto SpecW = EvaluateSpecularDirectionalWeight(Mat, NdotV);
+                Out.IndirectSpecularHdr[Off] = {
+                    EnvRad.R * SpecW.R,
+                    EnvRad.G * SpecW.G,
+                    EnvRad.B * SpecW.B,
+                };
+            }
+
+            const uint64_t PeelFront = VisibilityTargets.GlassPeelFront64[Off];
+            if (PeelFront != 0ull)
+            {
+                const auto GlassHit = VisibilityMaterialResolve::ReconstructAnalyticPixelHit(
+                    PX, PY, PeelFront, Basis, Basis, Instances);
+                if (GlassHit.ValidHit && GlassHit.MaterialSlot < MatCount)
+                {
+                    const auto& GlassMat = MaterialRegister.InspectAuthoredMaterial(GlassHit.MaterialSlot);
+                    const float CosI     = std::clamp(Mathematics::EvaluateDot(GlassHit.TangentFrame.NormalZ, GlassHit.WorldViewDirection), 0.0f, 1.0f);
+                    const float FresR    = MaterialSpace::Scattering::EvaluateExactDielectricFresnel(CosI, GlassMat.Specular.DielectricIOR);
+                    const Mathematics::Axis3D Inc = GlassHit.WorldViewDirection * -1.0f;
+                    const Mathematics::Axis3D ReflDir = Inc + GlassHit.TangentFrame.NormalZ * (2.0f * CosI);
+                    const auto EnvRefl = EvaluateSkyEnv(ReflDir);
+                    Out.RefractedGlassHdr[Off] = {
+                        SkyRadiance.R * (1.0f - FresR) * GlassMat.Transmission.AttenuationColor.R + EnvRefl.R * FresR,
+                        SkyRadiance.G * (1.0f - FresR) * GlassMat.Transmission.AttenuationColor.G + EnvRefl.G * FresR,
+                        SkyRadiance.B * (1.0f - FresR) * GlassMat.Transmission.AttenuationColor.B + EnvRefl.B * FresR,
+                    };
+                }
+            }
+        }
+    }
+    return Out;
+}
 
 SpecularReflectionBuffer SpecularReflectionSequence::EvaluateRtxSpecularRefraction(
     const PerspectiveCameraFrame&                   Camera,

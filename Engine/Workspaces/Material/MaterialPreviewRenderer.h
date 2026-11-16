@@ -111,7 +111,8 @@ public:
         PreviewSpecimenGeometry                              Specimen,
         const PreviewCameraSetup&                            Camera,
         uint32_t                                             WidthPx,
-        uint32_t                                             HeightPx);
+        uint32_t                                             HeightPx,
+        PreviewRenderMode                                    RenderMode = PreviewRenderMode::DirectStudioOpenPbr);
 
     // 📝 Raycast a normalized viewport click [0..1]^2 against the active specimen sphere to obtain a local impact direction
     [[nodiscard]] static bool QuerySpecimenHitDirection(

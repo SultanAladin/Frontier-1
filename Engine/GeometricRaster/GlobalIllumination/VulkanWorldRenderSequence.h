@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                          VULKANWORLDRENDERSEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Hardware Vulkan .slang compute sequence executing Tier 1 GTX & Tier 2 RTX World Viewport rendering on the GPU
+// 🧩 Hardware Vulkan .slang compute sequence executing all 5 unified World Render Engines on the GPU
 
 #pragma once
 
@@ -54,6 +54,13 @@ public:
 
     void UploadIrradianceLattice(const IrradianceLatticeSequence& RtxLattice);
 
+    [[nodiscard]] bool RenderWorldViewportWithEngine(
+        const WorldRenderConfiguration& Config,
+        uint32_t                        PathTraceSampleIndex,
+        const PerspectiveCameraFrame&   Camera,
+        const WorldSceneSpecification&  Scene,
+        std::vector<uint8_t>&           OutDisplayRgba8);
+
     [[nodiscard]] bool RenderWorldViewportRgba8(
         WorldRenderTier                Tier,
         const PerspectiveCameraFrame&  Camera,
@@ -68,6 +75,7 @@ private:
         VkBufferUsageFlags    UsageMask);
 
     [[nodiscard]] bool DispatchGpuSignedDistanceGrid(const WorldSceneSpecification& Scene);
+    void UploadSolarCascadeRadiosity(const WorldSceneSpecification& Scene);
 
     VulkanInterchange*     BoundDevice                 = nullptr;
     ComputeDispatchEncoder DispatchEncoder             {};
@@ -82,6 +90,10 @@ private:
     DeviceBufferResource   SignedDistanceBuffer        {};
     DeviceBufferResource   IrradianceLatticeBuffer     {};
     DeviceBufferResource   OutputPixelBuffer           {};
+    DeviceBufferResource   SolarShadowDepthBuffer      {};
+    DeviceBufferResource   IrradianceChebyshevBuffer   {};
+    DeviceBufferResource   SdfRadiosityVoxelBuffer     {};
+    DeviceBufferResource   AccumulationHdrBuffer       {};
 
     Mathematics::Axis3D    CachedSdfMinCorner       { -3.5f, -3.5f, -1.2f };
     float                  CachedSdfSpacing         = 0.14f;
@@ -95,6 +107,7 @@ private:
     uint32_t               CachedLatticeDimY        = 0u;
     uint32_t               CachedLatticeDimZ        = 0u;
 
+    OrthographicShadowCascade CachedSunCascade      {};
     uint32_t               UploadedBvhCount         = 0u;
     uint32_t               UploadedMaterialCount    = 0u;
     bool                   SceneUploadedOnce        = false;

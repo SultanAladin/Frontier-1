@@ -78,7 +78,21 @@ public:
         float DiffuseAmbientOcclusion,
         float PerceptualRoughness) noexcept;
 
-    // Evaluates full Direct Lighting Frame (Tiered Solar Shadows + Visibility-Gated LTC Quad Lights + 2-Scale Chassis AO + specAO)
+    // Evaluates full Direct Lighting Frame with explicit Shadow Lab algorithm (Zero SDF Shadows!)
+    [[nodiscard]] static DirectLightingFrameOutput EvaluateDirectLightingFrameWithAlgorithm(
+        SolarShadowAlgorithm                           Algorithm,
+        const PerspectiveCameraFrame&                  Camera,
+        std::span<const RigidClusterInstance>          Instances,
+        const VisibilityBufferTargets&                 VisibilityTargets,
+        const MaterialSpace::CompactMaterialRegister&  MaterialRegister,
+        const SpatialAcceleration::WideBoundingTree&   SceneTree,
+        const SolarDirectionalEmitter&                 Sun,
+        std::span<const PolygonalAreaQuadLight>        AreaLights,
+        const OrthographicShadowCascade*               OptionalFineClip   = nullptr,
+        const OrthographicShadowCascade*               OptionalCoarseClip = nullptr,
+        const AmbientOcclusionSettings&                AoSettings         = {});
+
+    // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm (ignores OptionalSdfVolume)
     [[nodiscard]] static DirectLightingFrameOutput EvaluateDirectLightingFrame(
         DirectShadowTier                                Tier,
         const PerspectiveCameraFrame&                   Camera,
