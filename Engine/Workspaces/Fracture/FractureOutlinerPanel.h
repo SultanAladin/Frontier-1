@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           FRACTUREOUTLINERPANEL.H
 ============================================================================================================================================*/
-// 🧩 Left Fracture Studio Outliner panel: Census tiles (Released/Held), search bar, filter chips & Primitives/Recipe/Fragments tree
+// 🧩 Project Zero Fracture Outliner: Released/Held census cards, Search/Filter bar, 9 analytical primitives, Recipe, Fragments & 4-slot footer
 
 #pragma once
 
@@ -9,8 +9,8 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Components/Controls/ControlAppearance.h"
 #include "Engine/Components/PixelSpace.h"
+#include "Engine/Components/Controls/ControlAppearance.h"
 #include "Engine/Workspaces/Fracture/FractureWorkspaceSession.h"
 
 namespace Frontier::Workspaces::Fracture

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                     FRACTUREWORKSPACEUIVALIDATION.CPP
 ============================================================================================================================================*/
-// 🧩 End-to-end UI validation & 1440x900 visual snapshot suite for Engine/Workspaces/Fracture (OpenPBR, Energy, Cells, Engineering Baked & Sim)
+// 🧩 End-to-end UI validation & 1440x900 visual snapshot suite for Port-8091 Project Zero Fracture Editor
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -93,16 +93,16 @@ int main()
     };
 
     auto SavePng = [&](const char* FileName) -> bool {
-        SoftwareRasterCanvas Raster(CanvasW, CanvasH, RgbaColor8 { 11u, 11u, 11u, 255u });
+        SoftwareRasterCanvas Raster(CanvasW, CanvasH, RgbaColor8 { 9u, 9u, 9u, 255u });
         Raster.RasterizeImGuiBatches(ImGui::GetDrawData());
         return VerifyCheck(Raster.WritePngFile(OutDir / FileName), FileName);
     };
 
     ContentBrowserPointerInput Idle {};
 
-    // 1. Default OpenPBR Direct Studio + Concrete Column
+    // 1. Default Port-8091 Edit Torus (Material shading, 3-dock Project Zero layout)
     for (int W = 0; W < 3; ++W) RenderStep(Idle);
-    if (!VerifyCheck(Studio.InspectSession().HasFractured, "Default preset fractured"))
+    if (!VerifyCheck(Studio.InspectSession().HasFractured, "Default primitive fractured"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
@@ -112,18 +112,16 @@ int main()
         ImGui::DestroyContext(Gui);
         return 1;
     }
-    if (!SavePng("FractureStudio_OpenPBR.png"))
+    if (!SavePng("FractureStudio_EditTorus.png"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
 
-    // 2. Tempered Curtain + Energy Heatmap + Diagnostics Overlay + Material Tab
-    Studio.AccessSession().ApplyPreset(2u); // Tempered Curtain
-    Studio.AccessSession().RenderOptions.RenderMode         = FractureRenderViewMode::Energy;
-    Studio.AccessSession().DiagnosticsSession.Visible       = true;
-    Studio.AccessSession().ActiveInspectorTab               = 1u;
-    Studio.AccessSession().RenderOptions.ExplodeFactor      = 0.25f;
+    // 2. Energy Heatmap + Energy LOG Legend + Diagnostics 4-Channel Overlay
+    Studio.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::Energy;
+    Studio.AccessSession().DiagnosticsSession.Visible  = true;
+    Studio.AccessSession().RenderOptions.ExplodeFactor = 0.25f;
     RenderStep(Idle);
     if (!SavePng("FractureStudio_EnergyDiag.png"))
     {
@@ -131,12 +129,21 @@ int main()
         return 1;
     }
 
-    // 3. JoltPhysics Simulation Active + Cells Mode + Solver Tab
-    Studio.AccessSession().ApplyPreset(0u); // Concrete Column
-    Studio.AccessSession().DiagnosticsSession.Visible       = false;
-    Studio.AccessSession().RenderOptions.RenderMode         = FractureRenderViewMode::Cells;
-    Studio.AccessSession().RenderOptions.ExplodeFactor      = 0.0f;
-    Studio.AccessSession().ActiveInspectorTab               = 2u;
+    // 3. Primitive Library 9-tile Glass Modal
+    Studio.AccessSession().DiagnosticsSession.Visible  = false;
+    Studio.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::StudioOpenPBR;
+    Studio.AccessSession().RenderOptions.ExplodeFactor = 0.0f;
+    Studio.AccessSession().PrimitiveLibraryOpen        = true;
+    RenderStep(Idle);
+    if (!SavePng("FractureStudio_Library.png"))
+    {
+        ImGui::DestroyContext(Gui);
+        return 1;
+    }
+
+    // 4. JoltPhysics Simulate Mode + Cells Mode + 60px Timeline + Kinetic Hero Curve
+    Studio.AccessSession().PrimitiveLibraryOpen        = false;
+    Studio.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::Cells;
     Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Simulate);
     for (int F = 0; F < 28; ++F) RenderStep(Idle);
     if (!VerifyCheck(Studio.InspectSession().HasSimulatedData, "JoltPhysics simulation active"))
@@ -149,34 +156,23 @@ int main()
         ImGui::DestroyContext(Gui);
         return 1;
     }
-    if (!SavePng("FractureStudio_CellsSim.png"))
+    if (!SavePng("FractureStudio_SimTorus.png"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
     }
 
-    // 4. Engineering Baked Fractography + Receipt Tab
+    // Verify all 9 analytical primitives switch cleanly with watertight conservation
     Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Edit);
-    Studio.AccessSession().ApplyPreset(1u); // Baked Fractography
-    Studio.AccessSession().RenderOptions.RenderMode = FractureRenderViewMode::StudioOpenPBR;
-    Studio.AccessSession().ActiveInspectorTab       = 3u;
-    RenderStep(Idle);
-    if (!VerifyCheck(Studio.InspectSession().PartitionResult.HasEngineering, "Engineering fractography metrics active"))
+    for (uint32_t P = 0u; P < FractureWorkspaceSession::PrimitiveCount; ++P)
     {
-        ImGui::DestroyContext(Gui);
-        return 1;
-    }
-    if (!SavePng("FractureStudio_BakedFractography.png"))
-    {
-        ImGui::DestroyContext(Gui);
-        return 1;
-    }
-
-    // Verify all 6 presets cleanly switch without crash or volume conservation failure
-    for (uint32_t P = 0u; P < FractureWorkspaceSession::PresetCount; ++P)
-    {
-        Studio.AccessSession().ApplyPreset(P);
-        if (!VerifyCheck(Studio.InspectSession().PartitionResult.Receipt.WatertightManifold, "Preset watertight conservation"))
+        Studio.AccessSession().ApplyPrimitiveShape(static_cast<FractureIcons::PrimitiveShapeId>(P));
+        if (!VerifyCheck(Studio.InspectSession().PartitionResult.Receipt.WatertightManifold, "Primitive watertight conservation"))
+        {
+            ImGui::DestroyContext(Gui);
+            return 1;
+        }
+        if (!VerifyCheck(Studio.InspectSession().PartitionResult.Fragments.size() >= 4u, "Primitive produced fragments"))
         {
             ImGui::DestroyContext(Gui);
             return 1;
@@ -184,6 +180,6 @@ int main()
     }
 
     ImGui::DestroyContext(Gui);
-    std::printf("[FractureWorkspaceUIValidation] ALL CHECKS PASSED (4 PNG snapshots saved).\n");
+    std::printf("[FractureWorkspaceUIValidation] ALL CHECKS PASSED (4 PNG snapshots saved + 9 primitives verified).\n");
     return 0;
 }

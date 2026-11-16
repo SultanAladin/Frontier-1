@@ -1,12 +1,11 @@
 /*============================================================================================================================================
                                                          FRACTUREWORKSPACEHOST.CPP
 ============================================================================================================================================*/
-// 🧩 FractureWorkspaceHost implementation: 1:1 HTML 56px Studio Header, slanted construct tabs, 3-panel shell, Solver Matrix & Status Bar
+// 🧩 Implementation of FractureWorkspaceHost: Project Zero 3-column dock shell (#090909 / #121212, 3px gap, WorkspaceTabStrip & Notches)
 
 #include "Engine/Workspaces/Fracture/FractureWorkspaceHost.h"
 
-#include "Engine/Components/Controls/CapsuleButton.h"
-#include "Engine/Workspaces/Particle/ParticlePaneAppearance.h"
+#include "Engine/Workspaces/Fracture/FractureIcons.h"
 
 #include <algorithm>
 #include <array>
@@ -15,17 +14,10 @@
 namespace Frontier::Workspaces::Fracture
 {
 
-namespace
-{
-
-using namespace ParticleAppearance;
-using GeometrySpace::Fracture::FractureSolverMethod;
-
-} // namespace
-
 FractureWorkspaceHost::FractureWorkspaceHost()
 {
     Viewport.AttachRenderer(&Renderer);
+    TopNotch.SnapDetent(DrawerDetentStop::Closed);
 }
 
 void FractureWorkspaceHost::AttachVulkanDevice(
@@ -44,263 +36,161 @@ void FractureWorkspaceHost::AttachContentBrowserPanel(ContentBrowserPanel* Targe
     }
 }
 
-void FractureWorkspaceHost::RenderStudioHeader(
+void FractureWorkspaceHost::RenderDockTabBar(
     PixelSpace&           Surface,
-    Rectangle2D           HeaderRect,
-    const ControlPointer& Pointer) noexcept
+    Rectangle2D           BarRect,
+    const char*           TabTitle,
+    bool                  ShowPlusButton,
+    bool&                 PlusClicked,
+    bool&                 CloseClicked,
+    const ControlPointer& Pointer) const noexcept
 {
-    const auto C = QueryStudioColors();
-    Surface.FillRectangle(HeaderRect, C.CanvasBg, 0.0f);
+    PlusClicked  = false;
+    CloseClicked = false;
 
-    const float CY = HeaderRect.Center().Y;
-    float X = HeaderRect.X + 18.0f;
+    Surface.FillRectangle(BarRect, ColorRgba { 11u, 11u, 11u, 255u }, 0.0f);
 
-    // 1. Brand mark: "frontier." + FRACTURE STUDIO badge
-    Surface.Text({ X, CY - 10.5f }, 19.0f, C.TextPrimary, "frontier");
-    const float FrontierW = Surface.MeasureTextWidth(19.0f, "frontier");
-    Surface.FillCircle({ X + FrontierW + 3.0f, CY + 4.5f }, 2.2f, C.WarmAccent);
-    X += FrontierW + 16.0f;
+    const Components::WorkspaceTabMetrics Metrics = Components::ConstructWorkspaceTabMetrics(1.0f);
+    const float TabW = std::max(114.0f, Surface.MeasureTextWidth(11.0f, TabTitle) + 64.0f);
+    const float TabY = BarRect.Y + 4.0f;
+    const float TabH = BarRect.Height - 4.0f;
+    const Components::WorkspaceTabContour Contour = Components::ConstructWorkspaceTabContour(
+        BarRect.X + 4.0f, TabY, TabW, TabH, Metrics, false);
 
-    const Rectangle2D BadgePill { X, CY - 10.5f, 108.0f, 21.0f };
-    Surface.StrokeRectangle(BadgePill, C.HairlineStrong, 10.5f, 1.0f);
-    Surface.TextCentered(BadgePill, 8.2f, C.TextMuted, "FRACTURE STUDIO");
-    X = BadgePill.Right() + 18.0f;
-
-    // 2. Slanted Trapezoid Construct Dock Tabs + "+" spawn button
-    const auto& Presets = FractureWorkspaceSession::InspectPresets();
-    static constexpr std::array<const char*, 6> ShortDockNames {{
-        "Concrete Column",
-        "Baked Fractography",
-        "Tempered Curtain",
-        "Spruce Timber",
-        "Polymer Cone",
-        "Dendritic Boulder",
-    }};
-
-    const float MaxDockRight = HeaderRect.Right() - 470.0f;
-    for (uint32_t I = 0u; I < FractureWorkspaceSession::PresetCount; ++I)
+    if (Contour.VertexCount == 4u)
     {
-        const bool Active = (Session.ActivePresetIndex == I);
-        const float TabW = std::max(84.0f, Surface.MeasureTextWidth(9.2f, ShortDockNames[I]) + 32.0f);
-        if (X + TabW > MaxDockRight)
-        {
-            break;
-        }
-        const Rectangle2D TabRect { X, HeaderRect.Bottom() - 34.0f, TabW, 33.0f };
-        const bool Hov = ControlAppearance::QueryPointerOver(TabRect, Pointer);
-
-        const std::array<Point2D, 4> Trap {{
-            { TabRect.X + 9.0f,       TabRect.Y },
-            { TabRect.Right() - 9.0f, TabRect.Y },
-            { TabRect.Right(),        TabRect.Bottom() },
-            { TabRect.X,              TabRect.Bottom() },
+        const std::array<Point2D, 4> Pts {{
+            { Contour.Vertices[0].X, Contour.Vertices[0].Y },
+            { Contour.Vertices[1].X, Contour.Vertices[1].Y },
+            { Contour.Vertices[2].X, Contour.Vertices[2].Y },
+            { Contour.Vertices[3].X, Contour.Vertices[3].Y },
         }};
-        Surface.FillPolygon(Trap, Active ? ColorRgba { 26u, 26u, 29u, 255u } : (Hov ? ColorRgba { 20u, 20u, 22u, 255u } : ColorRgba { 16u, 16u, 18u, 255u }));
-        if (Active)
-        {
-            Surface.StrokeLine({ TabRect.X + 10.0f, TabRect.Bottom() }, { TabRect.Right() - 10.0f, TabRect.Bottom() }, C.WarmAccent, 1.6f);
-        }
-        Surface.PushClip({ TabRect.X + 10.0f, TabRect.Y, TabRect.Width - 20.0f, TabRect.Height });
-        Surface.TextCentered(TabRect, 9.2f, Active ? C.TextPrimary : C.TextMuted, ShortDockNames[I]);
-        Surface.PopClip();
-
-        if (Hov && Pointer.Pressed)
-        {
-            Session.ApplyPreset(I);
-        }
-        X += TabW - 4.0f;
-    }
-    (void)Presets;
-
-    const Rectangle2D SpawnBtn { X + 8.0f, CY - 11.0f, 22.0f, 22.0f };
-    const bool SpawnHov = ControlAppearance::QueryPointerOver(SpawnBtn, Pointer);
-    Surface.FillCircle(SpawnBtn.Center(), 11.0f, SpawnHov ? C.CardElevated : C.CardBg);
-    Surface.StrokeCircle(SpawnBtn.Center(), 11.0f, C.Hairline, 0.9f);
-    RasterizePlusGlyph(Surface, SpawnBtn.Center(), 3.8f, SpawnHov ? C.TextPrimary : C.TextMuted);
-    if (SpawnHov && Pointer.Pressed)
-    {
-        Session.ApplyPreset((Session.ActivePresetIndex + 1u) % FractureWorkspaceSession::PresetCount);
+        Surface.FillPolygon(Pts, ColorRgba { 18u, 18u, 18u, 255u });
+        Surface.StrokeLine(Pts[0], Pts[1], ColorRgba { 38u, 38u, 38u, 255u }, 0.9f);
+        Surface.StrokeLine(Pts[1], Pts[2], ColorRgba { 38u, 38u, 38u, 255u }, 0.9f);
+        Surface.StrokeLine(Pts[3], Pts[0], ColorRgba { 38u, 38u, 38u, 255u }, 0.9f);
     }
 
-    // 3. Right-End Live Engine Tag + Export TOML
-    float RightEdge = HeaderRect.Right() - 18.0f;
-    const Rectangle2D ExportBtn { RightEdge - 92.0f, CY - 14.0f, 92.0f, 28.0f };
-    const ButtonDescriptor ExportDesc {
-        .Label    = "Export TOML",
-        .Tone     = ButtonTone::Secondary,
-        .FontSize = 9.4f,
-        .PaddingX = 12.0f,
-    };
-    if (CapsuleButton::Construct(Surface, ExportBtn, ExportDesc, Pointer).Pressed)
-    {
-        Session.AppendLog("EXPORT", "Encoded .fracture.toml",
-            std::to_string(Session.PartitionResult.Fragments.size()) + " shards", false);
-    }
-    RightEdge = ExportBtn.X - 10.0f;
+    const Rectangle2D TextRect { BarRect.X + 20.0f, TabY, TabW - 44.0f, TabH };
+    Surface.Text({ TextRect.X, TabY + 7.5f }, 10.8f, ColorRgba { 235u, 235u, 235u, 255u }, TabTitle);
 
-    const char* EngineLabel = Session.VulkanSpirvReady ? "VULKAN · LIVE" : "OPENPBR · LIVE";
-    const float TagW = Surface.MeasureTextWidth(8.4f, EngineLabel) + 26.0f;
-    const Rectangle2D EngineTag { RightEdge - TagW, CY - 13.0f, TagW, 26.0f };
-    Surface.FillRectangle(EngineTag, Session.VulkanSpirvReady ? ColorRgba { 20u, 27u, 23u, 255u } : ColorRgba { 28u, 25u, 18u, 255u }, 13.0f);
-    Surface.StrokeRectangle(EngineTag, Session.VulkanSpirvReady ? C.LiveGreen.ScaledAlpha(0.35f) : C.WarmAccent.ScaledAlpha(0.35f), 13.0f, 0.9f);
-    Surface.FillCircle({ EngineTag.X + 11.0f, EngineTag.Center().Y }, 2.8f, Session.VulkanSpirvReady ? C.LiveGreen : C.WarmAccent);
-    Surface.Text({ EngineTag.X + 19.0f, EngineTag.Y + 8.0f }, 8.2f, Session.VulkanSpirvReady ? ColorRgba { 155u, 227u, 181u, 255u } : ColorRgba { 239u, 208u, 151u, 255u }, EngineLabel);
-    RightEdge = EngineTag.X - 12.0f;
-
-    // 4. Pill Workspace Navigation (Workspace | Solvers 6 | Log Stream N)
-    const float NavW = 248.0f;
-    const Rectangle2D NavPill { std::max(SpawnBtn.Right() + 12.0f, RightEdge - NavW), CY - 15.0f, NavW, 30.0f };
-    Surface.FillRectangle(NavPill, ColorRgba { 17u, 17u, 19u, 255u }, 15.0f);
-    Surface.StrokeRectangle(NavPill, C.Hairline, 15.0f, 0.9f);
-
-    char LogLbl[32];
-    std::snprintf(LogLbl, sizeof(LogLbl), "Logs %zu", Session.LogEntries.size());
-    const std::array<std::pair<FractureNavView, const char*>, 3> NavItems {{
-        { FractureNavView::Workspace, "Workspace" },
-        { FractureNavView::Solvers,   "Solvers 6" },
-        { FractureNavView::LogStream, LogLbl },
-    }};
-
-    const float SegW = (NavPill.Width - 6.0f) / 3.0f;
-    for (size_t I = 0u; I < 3u; ++I)
-    {
-        const Rectangle2D SegRect { NavPill.X + 3.0f + static_cast<float>(I) * SegW, NavPill.Y + 3.0f, SegW, NavPill.Height - 6.0f };
-        const bool Active = (Session.NavView == NavItems[I].first);
-        const bool Hov    = ControlAppearance::QueryPointerOver(SegRect, Pointer);
-        if (Active || Hov)
-        {
-            Surface.FillRectangle(SegRect, Active ? ColorRgba { 36u, 36u, 38u, 255u } : ColorRgba { 26u, 26u, 28u, 255u }, 12.0f);
-            if (Active) Surface.StrokeRectangle(SegRect, C.HairlineStrong, 12.0f, 0.8f);
-        }
-        Surface.TextCentered(SegRect, 9.0f, Active ? C.TextPrimary : C.TextMuted, NavItems[I].second);
-        if (Hov && Pointer.Pressed)
-        {
-            Session.NavView = NavItems[I].first;
-            if (Session.NavView == FractureNavView::Solvers)
-            {
-                Session.ShowSolverMatrix = !Session.ShowSolverMatrix;
-                if (!Session.ShowSolverMatrix) Session.NavView = FractureNavView::Workspace;
-            }
-            else if (Session.NavView == FractureNavView::LogStream)
-            {
-                Session.ShowLogDrawer = !Session.ShowLogDrawer;
-                Session.ShowSolverMatrix = false;
-                if (!Session.ShowLogDrawer) Session.NavView = FractureNavView::Workspace;
-            }
-            else
-            {
-                Session.ShowSolverMatrix = false;
-                Session.ShowLogDrawer    = false;
-            }
-        }
-    }
-}
-
-void FractureWorkspaceHost::RenderSolverMatrixModal(
-    PixelSpace&           Surface,
-    Rectangle2D           Area,
-    const ControlPointer& Pointer) noexcept
-{
-    const auto C = QueryStudioColors();
-    Surface.FillRectangle(Area, ColorRgba { 8u, 8u, 10u, 178u }, 0.0f);
-
-    const float ModalW = std::min(760.0f, Area.Width - 48.0f);
-    const float ModalH = std::min(410.0f, Area.Height - 48.0f);
-    const Rectangle2D Sheet { Area.Center().X - ModalW * 0.5f, Area.Center().Y - ModalH * 0.5f, ModalW, ModalH };
-    Surface.FillRectangle(Sheet, ColorRgba { 20u, 20u, 22u, 252u }, 22.0f);
-    Surface.StrokeRectangle(Sheet, C.HairlineStrong, 22.0f, 1.2f);
-
-    Surface.Text({ Sheet.X + 22.0f, Sheet.Y + 18.0f }, 16.0f, C.TextPrimary, "Fracture Solver Comparison Matrix");
-    Surface.Text({ Sheet.X + 22.0f, Sheet.Y + 40.0f }, 9.4f, C.TextMuted,
-        "Click any solver card to switch the active solid partitioning engine");
-
-    const Rectangle2D CloseBtn { Sheet.Right() - 40.0f, Sheet.Y + 16.0f, 26.0f, 26.0f };
+    const Rectangle2D CloseBtn { BarRect.X + TabW - 28.0f, TabY + (TabH - 16.0f) * 0.5f, 16.0f, 16.0f };
     const bool CloseHov = ControlAppearance::QueryPointerOver(CloseBtn, Pointer);
-    Surface.FillCircle(CloseBtn.Center(), 13.0f, CloseHov ? C.CardElevated : C.CardBg);
-    Surface.TextCentered(CloseBtn, 10.0f, C.TextSoft, "X");
+    if (CloseHov)
+    {
+        Surface.FillCircle(CloseBtn.Center(), 8.0f, ColorRgba { 255u, 255u, 255u, 20u });
+    }
+    const Point2D Cc = CloseBtn.Center();
+    const ColorRgba XInk = CloseHov ? ColorRgba { 235u, 235u, 235u, 255u } : ColorRgba { 120u, 120u, 120u, 255u };
+    Surface.StrokeLine({ Cc.X - 3.0f, Cc.Y - 3.0f }, { Cc.X + 3.0f, Cc.Y + 3.0f }, XInk, 1.2f);
+    Surface.StrokeLine({ Cc.X + 3.0f, Cc.Y - 3.0f }, { Cc.X - 3.0f, Cc.Y + 3.0f }, XInk, 1.2f);
     if (CloseHov && Pointer.Pressed)
     {
-        Session.ShowSolverMatrix = false;
-        Session.NavView = FractureNavView::Workspace;
+        CloseClicked = true;
     }
 
-    struct MatrixEntry { FractureSolverMethod Method; const char* Name; const char* Budget; const char* Desc; };
-    static constexpr std::array<MatrixEntry, 6> Entries {{
-        { FractureSolverMethod::FastRuntimeBoussinesq, "Boussinesq Fast",     "< 1 ms · Realtime",   "Closed-form Hertzian cone + CutToken strain bonds" },
-        { FractureSolverMethod::EngineeringBakedSolid, "Navier-Cauchy Baked", "4-12 ms · 3D FEM",    "Elastostatic principal stress + Bouchaud relief" },
-        { FractureSolverMethod::GriffithStressBudget,  "Griffith Energy",     "1-3 ms · Energetic",  "Strain energy budget release G_c surface quota" },
-        { FractureSolverMethod::LefmWavefront,         "LEFM Wavefront",      "1-4 ms · Dynamic",    "Radial spoke + Wallner ripple rings for glass" },
-        { FractureSolverMethod::ClusteredVoronoi,      "Clustered Voronoi",   "1-2 ms · Cellular",   "Multi-tier Voronoi polyhedral fragmentation" },
-        { FractureSolverMethod::DendriticSpallHull,    "Dendritic Spall",     "2-5 ms · Spall",      "Hopkinson rear spall shell + branching trunk" },
-    }};
-
-    const float Pad = 22.0f;
-    const float Gap = 12.0f;
-    const float CardW = (Sheet.Width - Pad * 2.0f - Gap * 2.0f) / 3.0f;
-    const float CardH = 140.0f;
-    const float StartY = Sheet.Y + 72.0f;
-
-    for (size_t I = 0u; I < Entries.size(); ++I)
+    if (ShowPlusButton)
     {
-        const size_t Col = I % 3u;
-        const size_t Row = I / 3u;
-        const Rectangle2D Card {
-            Sheet.X + Pad + static_cast<float>(Col) * (CardW + Gap),
-            StartY + static_cast<float>(Row) * (CardH + Gap),
-            CardW,
-            CardH
-        };
-        const bool Active = (Session.SolverMethod == Entries[I].Method);
-        const bool Hov    = ControlAppearance::QueryPointerOver(Card, Pointer);
-        Surface.FillRectangle(Card, Active ? ColorRgba { 32u, 30u, 24u, 255u } : (Hov ? C.CardElevated : C.CardBg), 16.0f);
-        Surface.StrokeRectangle(Card, Active ? C.WarmAccent : C.Hairline, 16.0f, Active ? 1.4f : 1.0f);
-
-        Surface.Text({ Card.X + 14.0f, Card.Y + 14.0f }, 12.0f, Active ? C.WarmAccent : C.TextPrimary, Entries[I].Name);
-        Surface.Text({ Card.X + 14.0f, Card.Y + 34.0f }, 8.6f, C.LiveGreen, Entries[I].Budget);
-        Surface.Text({ Card.X + 14.0f, Card.Y + 58.0f }, 8.8f, C.TextSoft, Entries[I].Desc);
-        if (Active)
+        const Rectangle2D PlusBtn { BarRect.Right() - 28.0f, TabY + (TabH - 20.0f) * 0.5f, 20.0f, 20.0f };
+        const bool PlusHov = ControlAppearance::QueryPointerOver(PlusBtn, Pointer);
+        Surface.FillCircle(PlusBtn.Center(), 10.0f, PlusHov ? ColorRgba { 32u, 32u, 34u, 255u } : ColorRgba { 21u, 21u, 22u, 255u });
+        const Point2D Pc = PlusBtn.Center();
+        const ColorRgba PInk = PlusHov ? ColorRgba { 235u, 235u, 235u, 255u } : ColorRgba { 145u, 145u, 145u, 255u };
+        Surface.StrokeLine({ Pc.X - 4.0f, Pc.Y }, { Pc.X + 4.0f, Pc.Y }, PInk, 1.25f);
+        Surface.StrokeLine({ Pc.X, Pc.Y - 4.0f }, { Pc.X, Pc.Y + 4.0f }, PInk, 1.25f);
+        if (PlusHov && Pointer.Pressed)
         {
-            Surface.Text({ Card.X + 14.0f, Card.Bottom() - 22.0f }, 8.4f, C.WarmAccent, "ACTIVE SOLVER");
-        }
-        if (Hov && Pointer.Pressed)
-        {
-            Session.SolverMethod     = Entries[I].Method;
-            Session.ShowSolverMatrix = false;
-            Session.NavView          = FractureNavView::Workspace;
-            Session.RebuildFracturePartition();
+            PlusClicked = true;
         }
     }
 }
 
-void FractureWorkspaceHost::RenderStatusBar(PixelSpace& Surface, Rectangle2D StatusRect) const noexcept
+void FractureWorkspaceHost::RenderEdgeNotches(
+    PixelSpace&           Surface,
+    Rectangle2D           ViewportDockRect,
+    const ControlPointer& Pointer,
+    double                DeltaSeconds) noexcept
 {
-    const auto C = QueryStudioColors();
-    Surface.FillRectangle(StatusRect, ColorRgba { 11u, 11u, 12u, 255u }, 0.0f);
-    Surface.StrokeLine({ StatusRect.X, StatusRect.Y }, { StatusRect.Right(), StatusRect.Y }, C.Hairline, 1.0f);
+    TopNotch.ConfigureExtent(ViewportDockRect.Width, ViewportDockRect.Height, 1.0f);
+    TopNotch.ConfigureTravelLimit(std::min(220.0f, ViewportDockRect.Height * 0.45f));
+    TopNotch.Integrate(DeltaSeconds);
 
-    const float CY = StatusRect.Center().Y;
-    Surface.FillCircle({ StatusRect.X + 16.0f, CY }, 3.0f, C.LiveGreen);
+    const bool TopOver = ControlAppearance::QueryPointerOver(
+        { ViewportDockRect.Center().X - 104.0f, ViewportDockRect.Y + 26.0f, 208.0f, 22.0f }, Pointer);
 
-    const auto& Rec = Session.PartitionResult.Receipt;
-    const auto& SimTelemetry = Session.SimRunner.InspectTelemetry();
-    const uint32_t IntactBonds = Session.HasSimulatedData
-        ? SimTelemetry.IntactBondCount
-        : static_cast<uint32_t>(Session.PartitionResult.Bonds.size());
+    // Top Center Notch ("Fracture Editor") sitting flush under the Viewport tab strip
+    const float TopW  = 186.0f;
+    const float TopH  = 18.0f;
+    const float TopCx = ViewportDockRect.Center().X;
+    const float TopY  = ViewportDockRect.Y + 30.0f;
+    const std::array<Point2D, 4> TopPoly {{
+        { TopCx - TopW * 0.5f,          TopY },
+        { TopCx + TopW * 0.5f,          TopY },
+        { TopCx + TopW * 0.5f - 10.0f,  TopY + TopH },
+        { TopCx - TopW * 0.5f + 10.0f,  TopY + TopH },
+    }};
+    Surface.FillPolygon(TopPoly, TopOver ? ColorRgba { 36u, 36u, 38u, 255u } : ColorRgba { 24u, 24u, 25u, 255u });
+    Surface.StrokeLine(TopPoly[3], TopPoly[2], ColorRgba { 52u, 52u, 54u, 255u }, 0.9f);
+    Surface.TextCentered({ TopCx - TopW * 0.5f, TopY + 1.0f, TopW, TopH }, 8.8f,
+        TopOver ? ColorRgba { 236u, 236u, 234u, 255u } : ColorRgba { 166u, 166u, 164u, 255u }, "Fracture Editor");
 
-    char LeftBuf[160];
-    std::snprintf(LeftBuf, sizeof(LeftBuf),
-        "Manifold ready  |  %zu shards · %u/%zu bonds  |  SigmaV drift %.2e  |  %.2f ms  |  JoltPhysics v5.6.0",
-        Session.PartitionResult.Fragments.size(),
-        IntactBonds,
-        Session.PartitionResult.Bonds.size(),
-        Rec.VolumeDriftRatio,
-        Rec.ComputeDurationMs);
-    Surface.Text({ StatusRect.X + 26.0f, CY - 5.0f }, 8.8f, C.TextMuted, LeftBuf);
+    if (TopOver && Pointer.Pressed)
+    {
+        Session.ShowReportShade = !Session.ShowReportShade;
+        TopNotch.ConfigureOpen(Session.ShowReportShade);
+    }
 
-    const char* RightText = Session.VulkanSpirvReady
-        ? "Vulkan 1.3 SPIR-V  |  FRONTIER / FRACTURE 2.0"
-        : "CPU OpenPBR Direct Studio  |  FRONTIER / FRACTURE 2.0";
-    Surface.TextRightAligned({ StatusRect.X, CY - 5.0f, StatusRect.Width - 16.0f, 12.0f }, 8.8f, C.TextMuted, RightText);
+    // Optional expandable Fracture Report Shade when user pulls/clicks "Fracture Editor"
+    if (Session.ShowReportShade)
+    {
+        const Rectangle2D Shade { TopCx - 210.0f, TopY + TopH + 4.0f, 420.0f, 118.0f };
+        Surface.FillRectangle(Shade, ColorRgba { 20u, 21u, 24u, 244u }, 16.0f);
+        Surface.StrokeRectangle(Shade, ColorRgba { 255u, 255u, 255u, 28u }, 16.0f, 1.0f);
+        Surface.Text({ Shade.X + 16.0f, Shade.Y + 12.0f }, 10.8f, ColorRgba { 236u, 236u, 234u, 255u }, "Fracture Editor · Analytical Summary");
+        char Line1[96] {}, Line2[96] {};
+        std::snprintf(Line1, sizeof(Line1), "Shape: %s  |  Material: %s  |  Fragments: %zu",
+            FractureWorkspaceSession::InspectPrimitives()[static_cast<uint32_t>(Session.ActiveShape)].Title,
+            Session.ActiveMaterialSpec().ShortLabel,
+            Session.PartitionResult.Fragments.size());
+        std::snprintf(Line2, sizeof(Line2), "Volume drift: %.2e  |  Crack area: %.2f m2  |  Bake: %.1f ms",
+            Session.PartitionResult.Receipt.VolumeDriftRatio,
+            Session.PartitionResult.Receipt.TotalCrackAreaM2,
+            Session.LastTimings.TotalMs);
+        Surface.Text({ Shade.X + 16.0f, Shade.Y + 38.0f }, 9.2f, ColorRgba { 184u, 184u, 182u, 255u }, Line1);
+        Surface.Text({ Shade.X + 16.0f, Shade.Y + 58.0f }, 9.2f, ColorRgba { 154u, 154u, 152u, 255u }, Line2);
+
+        const Rectangle2D CloseBtn { Shade.Right() - 90.0f, Shade.Bottom() - 32.0f, 74.0f, 22.0f };
+        const bool Chov = ControlAppearance::QueryPointerOver(CloseBtn, Pointer);
+        Surface.FillRectangle(CloseBtn, Chov ? ColorRgba { 48u, 48u, 52u, 255u } : ColorRgba { 32u, 32u, 36u, 255u }, 11.0f);
+        Surface.TextCentered(CloseBtn, 8.6f, ColorRgba { 226u, 226u, 224u, 255u }, "Close");
+        if (Chov && Pointer.Pressed)
+        {
+            Session.ShowReportShade = false;
+            TopNotch.ConfigureOpen(false);
+        }
+    }
+
+    // Bottom Center Notch ("Primitive Library") anchored at the bottom of the Viewport dock
+    const float BotW  = 196.0f;
+    const float BotH  = 18.0f;
+    const float BotY  = ViewportDockRect.Bottom() - BotH;
+    const bool BotOver = ControlAppearance::QueryPointerOver(
+        { TopCx - BotW * 0.5f, BotY - 2.0f, BotW, BotH + 4.0f }, Pointer);
+    const std::array<Point2D, 4> BotPoly {{
+        { TopCx - BotW * 0.5f + 10.0f, BotY },
+        { TopCx + BotW * 0.5f - 10.0f, BotY },
+        { TopCx + BotW * 0.5f,         BotY + BotH },
+        { TopCx - BotW * 0.5f,         BotY + BotH },
+    }};
+    Surface.FillPolygon(BotPoly, (BotOver || Session.PrimitiveLibraryOpen) ? ColorRgba { 38u, 38u, 40u, 255u } : ColorRgba { 24u, 24u, 25u, 255u });
+    Surface.StrokeLine(BotPoly[0], BotPoly[1], ColorRgba { 52u, 52u, 54u, 255u }, 0.9f);
+    Surface.TextCentered({ TopCx - BotW * 0.5f, BotY + 1.0f, BotW, BotH }, 8.8f,
+        (BotOver || Session.PrimitiveLibraryOpen) ? ColorRgba { 238u, 238u, 236u, 255u } : ColorRgba { 166u, 166u, 164u, 255u }, "Primitive Library");
+
+    if (BotOver && Pointer.Pressed)
+    {
+        Session.PrimitiveLibraryOpen = !Session.PrimitiveLibraryOpen;
+    }
 }
 
 void FractureWorkspaceHost::RenderStudio(
@@ -309,10 +199,10 @@ void FractureWorkspaceHost::RenderStudio(
     const ContentBrowserPointerInput& PointerInput,
     double                            DeltaSeconds) noexcept
 {
-    const auto C = QueryStudioColors();
-    Surface.FillRectangle(WindowBounds, C.CanvasBg, 0.0f);
+    // Project Zero root backdrop (#090909)
+    Surface.FillRectangle(WindowBounds, ColorRgba { 9u, 9u, 9u, 255u }, 0.0f);
 
-    Session.AdvanceFrame(DeltaSeconds);
+    Session.Tick(DeltaSeconds);
 
     ControlPointer Pointer {};
     Pointer.X        = PointerInput.CursorX;
@@ -322,46 +212,68 @@ void FractureWorkspaceHost::RenderStudio(
     Pointer.Released = PointerInput.Released;
     Pointer.Enabled  = true;
 
-    constexpr float HeaderH = 56.0f;
-    constexpr float StatusH = 28.0f;
-    constexpr float Pad     = 10.0f;
-    constexpr float Gap     = 10.0f;
+    constexpr float Gap  = 3.0f;
+    constexpr float TabH = 31.0f;
 
-    const Rectangle2D HeaderRect { WindowBounds.X, WindowBounds.Y, WindowBounds.Width, HeaderH };
-    RenderStudioHeader(Surface, HeaderRect, Pointer);
+    const float LeftW   = Session.ViewportMaximized ? 0.0f : std::clamp(WindowBounds.Width * 0.216f, 264.0f, 312.0f);
+    const float RightW  = Session.ViewportMaximized ? 0.0f : std::clamp(WindowBounds.Width * 0.239f, 300.0f, 344.0f);
+    const float Gaps    = Session.ViewportMaximized ? 0.0f : (Gap * 2.0f);
+    const float CenterW = std::max(360.0f, WindowBounds.Width - LeftW - RightW - Gaps);
 
-    const Rectangle2D StatusRect { WindowBounds.X, WindowBounds.Bottom() - StatusH, WindowBounds.Width, StatusH };
-    RenderStatusBar(Surface, StatusRect);
-
-    const Rectangle2D WorkArea {
-        WindowBounds.X + Pad,
-        HeaderRect.Bottom() + 2.0f,
-        WindowBounds.Width - Pad * 2.0f,
-        std::max(260.0f, StatusRect.Y - HeaderRect.Bottom() - Pad - 2.0f)
-    };
-
-    if (Session.ViewportMaximized)
+    // 1. Outliner Dock
+    if (!Session.ViewportMaximized)
     {
-        Viewport.Render(Surface, WorkArea, Session, Pointer, PointerInput.WheelDeltaY);
-    }
-    else
-    {
-        const float LeftW  = std::clamp(WorkArea.Width * 0.21f, 260.0f, 312.0f);
-        const float RightW = std::clamp(WorkArea.Width * 0.25f, 310.0f, 376.0f);
-        const float CenterW = std::max(320.0f, WorkArea.Width - LeftW - RightW - Gap * 2.0f);
+        const Rectangle2D DockRect { WindowBounds.X, WindowBounds.Y, LeftW, WindowBounds.Height };
+        Surface.FillRectangle(DockRect, ColorRgba { 18u, 18u, 18u, 255u }, 0.0f);
 
-        const Rectangle2D OutlinerRect  { WorkArea.X, WorkArea.Y, LeftW, WorkArea.Height };
-        const Rectangle2D ViewportRect  { OutlinerRect.Right() + Gap, WorkArea.Y, CenterW, WorkArea.Height };
-        const Rectangle2D InspectorRect { ViewportRect.Right() + Gap, WorkArea.Y, RightW, WorkArea.Height };
-
-        Outliner.Render(Surface, OutlinerRect, Session, Pointer, PointerInput.WheelDeltaY);
-        Viewport.Render(Surface, ViewportRect, Session, Pointer, PointerInput.WheelDeltaY);
-        Inspector.Render(Surface, InspectorRect, Session, Pointer, PointerInput.WheelDeltaY);
+        bool PlusClicked = false, CloseClicked = false;
+        RenderDockTabBar(Surface, { DockRect.X, DockRect.Y, DockRect.Width, TabH }, "Outliner", true, PlusClicked, CloseClicked, Pointer);
+        if (PlusClicked)
+        {
+            Session.PrimitiveLibraryOpen = !Session.PrimitiveLibraryOpen;
+        }
+        if (CloseClicked)
+        {
+            Session.ViewportMaximized = true;
+        }
+        Outliner.Render(Surface, { DockRect.X, DockRect.Y + TabH, DockRect.Width, DockRect.Height - TabH }, Session, Pointer, PointerInput.WheelDeltaY);
     }
 
-    if (Session.ShowSolverMatrix)
+    // 2. Viewport Dock
+    const float CenterX = Session.ViewportMaximized ? WindowBounds.X : (WindowBounds.X + LeftW + Gap);
+    const Rectangle2D ViewportDock { CenterX, WindowBounds.Y, CenterW, WindowBounds.Height };
     {
-        RenderSolverMatrixModal(Surface, WorkArea, Pointer);
+        Surface.FillRectangle(ViewportDock, ColorRgba { 18u, 18u, 18u, 255u }, 0.0f);
+        bool PlusClicked = false, CloseClicked = false;
+        RenderDockTabBar(Surface, { ViewportDock.X, ViewportDock.Y, ViewportDock.Width, TabH }, "Viewport", false, PlusClicked, CloseClicked, Pointer);
+        if (CloseClicked)
+        {
+            Session.ViewportMaximized = !Session.ViewportMaximized;
+        }
+
+        const Rectangle2D ViewportBody {
+            ViewportDock.X,
+            ViewportDock.Y + TabH,
+            ViewportDock.Width,
+            std::max(160.0f, ViewportDock.Height - TabH)
+        };
+        Viewport.Render(Surface, ViewportBody, Session, Pointer, PointerInput.WheelDeltaY);
+        RenderEdgeNotches(Surface, ViewportDock, Pointer, DeltaSeconds);
+    }
+
+    // 3. Inspector Dock
+    if (!Session.ViewportMaximized)
+    {
+        const Rectangle2D DockRect { ViewportDock.Right() + Gap, WindowBounds.Y, RightW, WindowBounds.Height };
+        Surface.FillRectangle(DockRect, ColorRgba { 18u, 18u, 18u, 255u }, 0.0f);
+
+        bool PlusClicked = false, CloseClicked = false;
+        RenderDockTabBar(Surface, { DockRect.X, DockRect.Y, DockRect.Width, TabH }, "Inspector", false, PlusClicked, CloseClicked, Pointer);
+        if (CloseClicked)
+        {
+            Session.ViewportMaximized = true;
+        }
+        Inspector.Render(Surface, { DockRect.X, DockRect.Y + TabH, DockRect.Width, DockRect.Height - TabH }, Session, Pointer, PointerInput.WheelDeltaY);
     }
 }
 

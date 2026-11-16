@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                          FRACTUREINSPECTORPANEL.H
 ============================================================================================================================================*/
-// 🧩 Right Fracture Studio Inspector panel: Overview (Energy Share + KPI Trio + ScalarSliders), Material, Solver & Receipt
+// 🧩 Port-8091 Project Zero Inspector: Hero chart, 2x2 KPI cards, Baked vs Realtime cards, 6-Algorithm grid, Shape, Material, Quality & Fragment view
 
 #pragma once
 

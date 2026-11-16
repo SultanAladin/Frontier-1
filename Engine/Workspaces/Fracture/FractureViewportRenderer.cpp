@@ -132,21 +132,21 @@ Mathematics::LinearRGB EvaluateStudioEnvironmentRhrZUp(Mathematics::Axis3D World
 Mathematics::LinearRGB EvaluateEnergyHeatmapLinear(float NormalizedStress) noexcept
 {
     const float T = std::clamp(NormalizedStress, 0.0f, 1.0f);
-    const std::array<std::array<float, 3>, 5> Stops {{
-        { 0.08f, 0.24f, 0.92f },
-        { 0.06f, 0.78f, 0.86f },
-        { 0.18f, 0.86f, 0.34f },
-        { 0.98f, 0.84f, 0.12f },
-        { 0.96f, 0.14f, 0.10f }
+    const std::array<std::array<float, 4>, 5> Stops {{
+        { 0.00f, 0.188f, 0.420f, 0.949f }, // #306bf2
+        { 0.30f, 0.184f, 0.647f, 0.541f }, // #2fa58a
+        { 0.55f, 0.839f, 0.941f, 0.416f }, // #d6f06a
+        { 0.78f, 1.000f, 0.541f, 0.239f }, // #ff8a3d
+        { 1.00f, 0.941f, 0.302f, 0.239f }  // #f04d3d
     }};
-    const float Scaled = T * 4.0f;
-    const size_t I0    = std::min<size_t>(3u, static_cast<size_t>(std::floor(Scaled)));
-    const float  Frac  = Scaled - static_cast<float>(I0);
-    const auto&  A     = Stops[I0];
-    const auto&  B     = Stops[I0 + 1u];
-    const float  R     = A[0] + (B[0] - A[0]) * Frac;
-    const float  G     = A[1] + (B[1] - A[1]) * Frac;
-    const float  Bl    = A[2] + (B[2] - A[2]) * Frac;
+    size_t I0 = 0u;
+    while (I0 + 1u < Stops.size() && T > Stops[I0 + 1u][0]) ++I0;
+    const size_t I1   = std::min(Stops.size() - 1u, I0 + 1u);
+    const float  Span = std::max(1.0e-5f, Stops[I1][0] - Stops[I0][0]);
+    const float  Frac = std::clamp((T - Stops[I0][0]) / Span, 0.0f, 1.0f);
+    const float  R    = Stops[I0][1] + (Stops[I1][1] - Stops[I0][1]) * Frac;
+    const float  G    = Stops[I0][2] + (Stops[I1][2] - Stops[I0][2]) * Frac;
+    const float  Bl   = Stops[I0][3] + (Stops[I1][3] - Stops[I0][3]) * Frac;
     return { std::pow(R, 2.2f), std::pow(G, 2.2f), std::pow(Bl, 2.2f) };
 }
 
@@ -523,8 +523,14 @@ FractureRenderOutput FractureViewportRenderer::RenderFrame(
 
     MaterialSpace::SurfaceMaterial ExtMat {}, IntMat {};
     BuildOpenPbrPairForFractureMaterial(Material, ExtMat, IntMat);
+    if (Options.SurfaceMaterial != nullptr)
+    {
+        MaterialSpace::SurfaceMaterial IgnoredInt {};
+        BuildOpenPbrPairForFractureMaterial(*Options.SurfaceMaterial, ExtMat, IgnoredInt);
+    }
+    const auto& ExtRef = (Options.SurfaceMaterial != nullptr) ? *Options.SurfaceMaterial : Material;
     const uint32_t ExtMask = MaterialSpace::LobeDiffuseEON | MaterialSpace::LobeSpecularMetalGGX
-                           | (Material.Transmission > 0.05f ? MaterialSpace::LobeDielectricTransmission : 0u);
+                           | (ExtRef.Transmission > 0.05f ? MaterialSpace::LobeDielectricTransmission : 0u);
     const auto KeyDir  = Mathematics::NormalizeAxis({ 0.46f, -0.52f, 0.72f });
     const auto FillDir = Mathematics::NormalizeAxis({ -0.76f, -0.58f, 0.26f });
     const auto RimDir  = Mathematics::NormalizeAxis({ -0.18f, 0.69f, 0.70f });

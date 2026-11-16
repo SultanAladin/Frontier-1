@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           FRACTUREVIEWPORTHOST.H
 ============================================================================================================================================*/
-// 🧩 Central Fracture Studio viewport host: 42px viewport bar, OpenPBR/Energy/Cells/Normals 3D canvas, Reticle, ExecutionModeStrip & Timeline
+// 🧩 Port-8091 Viewport Host: 2-row vp-bar, 3D OpenPBR/Energy/Cells/Normals well, leader callout, Diagnostics, Primitive Library & Timeline
 
 #pragma once
 

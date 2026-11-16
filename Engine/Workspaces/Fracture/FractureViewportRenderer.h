@@ -59,6 +59,7 @@ struct FractureRenderOptions
     bool                   UseNonPlanarFractography = true;              // [-]   - Uses EngineeringSurface relief triangles when present
     int32_t                   SelectedFragmentIndex = -1;                   // [idx] - Highlighted fragment (-1 = none)
     const std::vector<bool>*  FragmentVisibleFlags  = nullptr;              // [-]   - Optional per-fragment visibility mask
+    const GeometrySpace::Fracture::FractureMaterialSpec* SurfaceMaterial = nullptr; // [-] - Optional separate exterior finish material
     Mathematics::Axis3D       SolidWorldOffsetM     { 0.0f, 0.0f, 0.95f };  // [m]   - Placement offset for unsimulated display
 };
 

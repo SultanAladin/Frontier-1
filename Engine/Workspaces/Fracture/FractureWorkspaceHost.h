@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           FRACTUREWORKSPACEHOST.H
 ============================================================================================================================================*/
-// 🧩 Top-level Frontier Fracture Studio host: 56px Studio Header with slanted tabs, 3 floating 22px panels, Solver Matrix & Status Bar
+// 🧩 Top-level Port-8091 Project Zero 3-dock host: WorkspaceTabStrip docks (Outliner / Viewport / Inspector), Expansion Notches & Report Shade
 
 #pragma once
 
@@ -11,6 +11,8 @@
 
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/Controls/ControlAppearance.h"
+#include "Engine/Components/Docking/WorkspaceTabStrip.h"
+#include "Engine/Components/Notch/PanelExpansionTab.h"
 #include "Engine/Components/PixelSpace.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/Workspaces/Fracture/FractureInspectorPanel.h"
@@ -53,16 +55,28 @@ public:
     [[nodiscard]] FractureViewportRenderer&       AccessRenderer() noexcept      { return Renderer; }
 
 private:
-    void RenderStudioHeader(PixelSpace& Surface, Rectangle2D HeaderRect, const ControlPointer& Pointer) noexcept;
-    void RenderStatusBar(PixelSpace& Surface, Rectangle2D StatusRect) const noexcept;
-    void RenderSolverMatrixModal(PixelSpace& Surface, Rectangle2D Area, const ControlPointer& Pointer) noexcept;
+    void RenderDockTabBar(
+        PixelSpace&           Surface,
+        Rectangle2D           BarRect,
+        const char*           TabTitle,
+        bool                  ShowPlusButton,
+        bool&                 PlusClicked,
+        bool&                 CloseClicked,
+        const ControlPointer& Pointer) const noexcept;
 
-    FractureWorkspaceSession Session      {};
-    FractureViewportRenderer Renderer     {};
-    FractureOutlinerPanel    Outliner     {};
-    FractureViewportHost     Viewport     {};
-    FractureInspectorPanel   Inspector    {};
-    ContentBrowserPanel*     BoundBrowser = nullptr;
+    void RenderEdgeNotches(
+        PixelSpace&           Surface,
+        Rectangle2D           ViewportDockRect,
+        const ControlPointer& Pointer,
+        double                DeltaSeconds) noexcept;
+
+    FractureWorkspaceSession Session       {};
+    FractureViewportRenderer Renderer      {};
+    FractureOutlinerPanel    Outliner      {};
+    FractureViewportHost     Viewport      {};
+    FractureInspectorPanel   Inspector     {};
+    PanelExpansionTab        TopNotch      {};
+    ContentBrowserPanel*     BoundBrowser  = nullptr;
 };
 
 } // namespace Frontier::Workspaces::Fracture
