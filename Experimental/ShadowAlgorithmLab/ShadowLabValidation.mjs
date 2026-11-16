@@ -60,6 +60,30 @@ function checkShaderSyntaxAndUniforms() {
     }
     const samplers = [...src.matchAll(/\buniform\s+sampler(?:2D|3D)\s+\w+\s*;/g)].length;
     assert(samplers <= 16, `Too many samplers (${samplers} > 16) in ${key}`);
+
+    // Verify all user-defined functions invoked in GLSL are declared in the shader
+    const clean = src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    const fnDefs = new Set();
+    for (const m of clean.matchAll(/^[ \t]*[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{/gm)) {
+      fnDefs.add(m[1]);
+    }
+    const builtins = new Set([
+      "main", "if", "for", "while", "switch", "return", "layout",
+      "vec2", "vec3", "vec4", "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4",
+      "bvec2", "bvec3", "bvec4", "mat2", "mat3", "mat4", "float", "int", "uint", "bool",
+      "texture", "texelFetch", "textureSize", "normalize", "length", "dot", "cross",
+      "clamp", "mix", "smoothstep", "step", "min", "max", "abs", "sign", "floor", "ceil",
+      "fract", "mod", "pow", "exp", "exp2", "log", "log2", "sqrt", "inversesqrt",
+      "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "round",
+      "all", "any", "greaterThan", "greaterThanEqual", "lessThan", "lessThanEqual",
+      "equal", "notEqual", "isnan", "isinf", "floatBitsToUint", "uintBitsToFloat",
+      "intBitsToFloat", "floatBitsToInt", "dFdx", "dFdy", "fwidth", "reflect", "refract",
+      "determinant", "inverse", "transpose",
+    ]);
+    for (const m of clean.matchAll(/\b([A-Za-z_]\w*)\s*\(/g)) {
+      const fn = m[1];
+      assert(builtins.has(fn) || fnDefs.has(fn), `Undeclared GLSL function '${fn}' in ${key}`);
+    }
   }
 
   for (const [progName, glsl] of Object.entries(shaderMap)) {

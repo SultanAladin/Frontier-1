@@ -1475,7 +1475,7 @@ uniform int uPcssTaps;
 uniform int uSmrtRays;
 
 ${COMMON_MATERIAL_GLSL}
-${GLOBAL_SDF_HELPERS_GLSL}
+${SHADOW_SDF_SHARED_GLSL}
 
 layout(location = 0) out vec4 outEmissiveShadow;
 
