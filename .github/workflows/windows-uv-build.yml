@@ -68,7 +68,7 @@ jobs:
         run: |
           $Output = & cmake --build Build/Windows --config Release --parallel 4 --target `
             Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp `
-            FrontierMaterial FrontierParticle FrontierForceField `
+            FrontierMaterial FrontierParticle FrontierFracture FrontierForceField `
             FrontierEngineRuntimeDll FrontierWorkspaceUiDll `
             UVBoundaryValidation ProjectBrowserValidation 2>&1
           $Result = $LASTEXITCODE
@@ -107,6 +107,7 @@ jobs:
             'FrontierStamp.exe',
             'FrontierMaterial.exe',
             'FrontierParticle.exe',
+            'FrontierFracture.exe',
             'FrontierForceField.exe'
           )
           foreach ($App in $Apps) {
@@ -127,6 +128,7 @@ jobs:
             - FrontierStamp.exe       : Alpha Cutout Decal Stamp Studio
             - FrontierMaterial.exe    : Dynamic OpenPBR Material Studio
             - FrontierParticle.exe    : 93-Preset Particle & ForceField Studio
+            - FrontierFracture.exe    : 6-Solver Fracture & JoltPhysics Simulation Studio
             - FrontierForceField.exe  : 3D Vector Field & Force Simulation Studio
 
           Keep CompiledShaders, EngineContent, and Binaries/Win64 beside the executables.
