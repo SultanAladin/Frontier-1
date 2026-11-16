@@ -463,7 +463,7 @@ fn solveAvbdColorBatch(@builtin(global_invocation_id) gid: vec3<u32>) {
     let xPrev = vec3<f32>(prv[i3], prv[i3 + 1u], prv[i3 + 2u]);
     let xTilde = vec3<f32>(inrInvM[i4], inrInvM[i4 + 1u], inrInvM[i4 + 2u]);
     let mOverH2 = params.invDt2 / w;
-    let kVisc = 0.045 * mOverH2;
+    let kVisc = 0.025 * mOverH2;
 
     var h00 = mOverH2 + kVisc; var h01 = 0.0; var h02 = 0.0;
     var h11 = mOverH2 + kVisc; var h12 = 0.0; var h22 = mOverH2 + kVisc;
@@ -483,27 +483,40 @@ fn solveAvbdColorBatch(@builtin(global_invocation_id) gid: vec3<u32>) {
         let pA = vec3<f32>(pos[ia], pos[ia + 1u], pos[ia + 2u]);
         let pB = vec3<f32>(pos[ib], pos[ib + 1u], pos[ib + 2u]);
         let pC = vec3<f32>(pos[ic], pos[ic + 1u], pos[ic + 2u]);
+        let pA0 = vec3<f32>(prv[ia], prv[ia + 1u], prv[ia + 2u]);
+        let pB0 = vec3<f32>(prv[ib], prv[ib + 1u], prv[ib + 2u]);
+        let pC0 = vec3<f32>(prv[ic], prv[ic + 1u], prv[ic + 2u]);
         let fu = (pB - pA) * q00 + (pC - pA) * q10;
         let fv = (pB - pA) * q01 + (pC - pA) * q11;
+        let fu0 = (pB0 - pA0) * q00 + (pC0 - pA0) * q10;
+        let fv0 = (pB0 - pA0) * q01 + (pC0 - pA0) * q11;
+        let lu0 = length(fu0);
+        let lv0 = length(fv0);
         let cu = select(select(q10, q00, slot == 1u), -(q00 + q10), slot == 0u);
         let cv = select(select(q11, q01, slot == 1u), -(q01 + q11), slot == 0u);
         let area = rest[offFAre + f];
+        let crimpU = params.warpCrimp * 0.85;
+        let crimpV = params.weftCrimp * 0.85;
 
         let lu = length(fu);
         if (lu > 1e-6 && abs(cu) > 1e-8) {
             let n = fu / lu;
             let epsU = lu - 1.0;
-            var kPen = params.warpModulus * area;
+            var kPen = params.warpModulus * 1.4 * area;
             var dPsi = kPen * epsU;
             if (epsU < 0.0) { kPen = kPen * params.compRatio; dPsi = kPen * epsU; }
-            else if (epsU > params.warpCrimp) {
-                let ov = epsU - params.warpCrimp;
-                dPsi = dPsi + params.wallModulus * area * ov * ov * ov;
-                kPen = kPen + 3.0 * params.wallModulus * area * ov * ov;
+            else if (epsU > crimpU) {
+                let ov = epsU - crimpU;
+                let kWall = params.wallModulus * 1.1 * area;
+                dPsi = dPsi + kWall * (ov + 4.0 * ov * ov * ov);
+                kPen = kPen + kWall * (1.0 + 12.0 * ov * ov);
             }
+            let kD = 0.28 * kPen;
+            dPsi = dPsi + kD * (lu - max(0.2, lu0));
+            kPen = kPen + kD;
             rhs = rhs - (dPsi * cu) * n;
             let kk = kPen * cu * cu;
-            let gg = abs(dPsi * cu) * abs(cu) / lu;
+            let gg = abs(dPsi * cu) * abs(cu) / max(0.25, lu);
             h00 = h00 + kk * n.x * n.x + gg; h01 = h01 + kk * n.x * n.y; h02 = h02 + kk * n.x * n.z;
             h11 = h11 + kk * n.y * n.y + gg; h12 = h12 + kk * n.y * n.z;
             h22 = h22 + kk * n.z * n.z + gg;
@@ -512,17 +525,21 @@ fn solveAvbdColorBatch(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (lv > 1e-6 && abs(cv) > 1e-8) {
             let n = fv / lv;
             let epsV = lv - 1.0;
-            var kPen = params.weftModulus * area;
+            var kPen = params.weftModulus * 1.4 * area;
             var dPsi = kPen * epsV;
             if (epsV < 0.0) { kPen = kPen * params.compRatio; dPsi = kPen * epsV; }
-            else if (epsV > params.weftCrimp) {
-                let ov = epsV - params.weftCrimp;
-                dPsi = dPsi + params.wallModulus * area * ov * ov * ov;
-                kPen = kPen + 3.0 * params.wallModulus * area * ov * ov;
+            else if (epsV > crimpV) {
+                let ov = epsV - crimpV;
+                let kWall = params.wallModulus * 1.1 * area;
+                dPsi = dPsi + kWall * (ov + 4.0 * ov * ov * ov);
+                kPen = kPen + kWall * (1.0 + 12.0 * ov * ov);
             }
+            let kD = 0.28 * kPen;
+            dPsi = dPsi + kD * (lv - max(0.2, lv0));
+            kPen = kPen + kD;
             rhs = rhs - (dPsi * cv) * n;
             let kk = kPen * cv * cv;
-            let gg = abs(dPsi * cv) * abs(cv) / lv;
+            let gg = abs(dPsi * cv) * abs(cv) / max(0.25, lv);
             h00 = h00 + kk * n.x * n.x + gg; h01 = h01 + kk * n.x * n.y; h02 = h02 + kk * n.x * n.z;
             h11 = h11 + kk * n.y * n.y + gg; h12 = h12 + kk * n.y * n.z;
             h22 = h22 + kk * n.z * n.z + gg;
@@ -534,7 +551,7 @@ fn solveAvbdColorBatch(@builtin(global_invocation_id) gid: vec3<u32>) {
             var kS = params.shearModulus * area;
             if (abs(cs) > params.maxShearS) {
                 let ov = abs(cs) - params.maxShearS;
-                kS = kS + params.wallModulus * area * 0.25 * (1.0 + 18.0 * ov * ov);
+                kS = kS + params.wallModulus * 1.1 * area * 0.08 * (1.0 + 4.0 * ov * ov);
             }
             rhs = rhs - (kS * cs) * gs;
             h00 = h00 + kS * gs.x * gs.x; h01 = h01 + kS * gs.x * gs.y; h02 = h02 + kS * gs.x * gs.z;
@@ -575,7 +592,7 @@ fn solveAvbdColorBatch(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (d > 1e-8) {
             let n = diff / d;
             let C = d - (1.0 - params.zipAlpha) * min(rest[offSGap0 + si], d);
-            let kS = 280.0 * params.zipAlpha + 80.0;
+            let kS = 520.0 * params.zipAlpha + 120.0;
             rhs = rhs - (kS * C) * n;
             h00 = h00 + kS * n.x * n.x; h01 = h01 + kS * n.x * n.y; h02 = h02 + kS * n.x * n.z;
             h11 = h11 + kS * n.y * n.y; h12 = h12 + kS * n.y * n.z;
@@ -583,7 +600,7 @@ fn solveAvbdColorBatch(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
 
-    let dx = clamp(0.85 * ldlt3x3(h00, h01, h02, h11, h12, h22, rhs), vec3<f32>(-0.025), vec3<f32>(0.025));
+    let dx = clamp(0.86 * ldlt3x3(h00, h01, h02, h11, h12, h22, rhs), vec3<f32>(-0.020), vec3<f32>(0.020));
     let nextX = xi + dx;
     pos[i3] = nextX.x; pos[i3 + 1u] = nextX.y; pos[i3 + 2u] = nextX.z;
 }
@@ -594,7 +611,8 @@ fn finalizeSubstep(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (i >= params.pointCount) { return; }
     let i3 = i * 3u;
     let w = inrInvM[i * 4u + 3u];
-    var p = vec3<f32>(pos[i3], pos[i3 + 1u], pos[i3 + 2u]);
+    let pPre = vec3<f32>(pos[i3], pos[i3 + 1u], pos[i3 + 2u]);
+    var p = pPre;
     if (p.y < 0.002) { p.y = 0.002; }
     if (w <= 0.0) {
         pos[i3] = p.x; pos[i3 + 1u] = p.y; pos[i3 + 2u] = p.z;
@@ -619,6 +637,14 @@ fn finalizeSubstep(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     let xPrev = vec3<f32>(prv[i3], prv[i3 + 1u], prv[i3 + 2u]);
     var v = (p - xPrev) * params.invDt;
+    let colDelta = p - pPre;
+    let cLen = length(colDelta);
+    if (cLen > 1e-6) {
+        let cn = colDelta / cLen;
+        let vn = dot(v, cn);
+        let sv = min(vn, cLen * params.invDt);
+        if (sv > 0.0) { v = v - cn * sv; }
+    }
     let spd = length(v);
     if (spd > 6.0) { v = v * (6.0 / spd); }
     vel[i3] = v.x; vel[i3 + 1u] = v.y; vel[i3 + 2u] = v.z;
@@ -856,7 +882,7 @@ export class WebGpuClothAccelerator
             await readBuf.mapAsync(GPUMapMode.READ);
             const out = new Float32Array(readBuf.getMappedRange()).slice();
             readBuf.unmap();
-            return Number.isFinite(out[1]) && out[1] < 0.9999;
+            return Number.isFinite(out[1]) && out[1] > 0.990 && out[1] < 0.9995;
         }
         catch
         {

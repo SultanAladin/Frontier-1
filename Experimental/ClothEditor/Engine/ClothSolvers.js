@@ -20,9 +20,9 @@ export const SOLVER_CATALOG = {
         citation: 'Giles, Diaz & Yuksel (SIGGRAPH 2025)',
         badge: 'SIGGRAPH 2025',
         accent: '#34c759',
-        defaultSubsteps: 4,
-        defaultIterations: 14,
-        summary: 'Warm-started primal-dual 3x3 vertex-block descent with adaptive penalty ramp and SPD LDL^T factorization.',
+        defaultSubsteps: 5,
+        defaultIterations: 16,
+        summary: 'Warm-started primal-dual 3x3 vertex-block descent with Rockafellar-Wets AL, Rayleigh strain damping, and SPD LDL^T factorization.',
     },
     xpbd: {
         key: 'xpbd',
@@ -329,6 +329,8 @@ export class OrthotropicClothSolver
         this.avbdFaceLambda = new Float32Array(nFaces * 3);
         this.avbdFacePenalty = new Float32Array(nFaces * 3);
         this.avbdFaceCPrev = new Float32Array(nFaces * 3);
+        this.avbdStartLenU = new Float32Array(nFaces);
+        this.avbdStartLenV = new Float32Array(nFaces);
         this.avbdHingeLambda = new Float32Array(nHinges);
         this.avbdHingePenalty = new Float32Array(nHinges);
         this.avbdSeamLambda = new Float32Array(nSeams);
@@ -391,6 +393,7 @@ export class OrthotropicClothSolver
         this.pcgP = new Float64Array(nPts * 3);
         this.pcgAp = new Float64Array(nPts * 3);
         this.lsTrialPos = new Float32Array(nPts * 3);
+        this._preColPos = new Float32Array(nPts * 3);
 
         // Interactive grab handle
         this.grabVertex = -1;
@@ -549,10 +552,10 @@ export class OrthotropicClothSolver
     _seedAvbdPenalties()
     {
         const net = this.network;
-        const kWarpBase = Math.max(80, this.textile.warpModulus || 1500);
-        const kWeftBase = Math.max(80, this.textile.weftModulus || 1300);
+        const kWarpBase = Math.max(120, (this.textile.warpModulus || 1500) * 1.4);
+        const kWeftBase = Math.max(120, (this.textile.weftModulus || 1300) * 1.4);
         const kShearBase = Math.max(20, this.textile.shearModulus || 250);
-        const kBendBase = Math.max(0.04, (this.textile.bendRigidity || 0.35) * 0.28);
+        const kBendBase = Math.max(0.04, (this.textile.bendRigidity || 0.35) * 0.32);
 
         for (let f = 0; f < net.faceCount; ++f)
         {
@@ -564,7 +567,7 @@ export class OrthotropicClothSolver
         for (let h = 0; h < net.hingeCount; ++h)
             this.avbdHingePenalty[h] = kBendBase * net.hingeArea[h];
         for (let s = 0; s < net.seamCount; ++s)
-            this.avbdSeamPenalty[s] = 180.0;
+            this.avbdSeamPenalty[s] = 160.0;
 
         this.avbdFaceLambda.fill(0);
         this.avbdFaceCPrev.fill(0);
@@ -1047,14 +1050,17 @@ export class OrthotropicClothSolver
 
     _substepEpilogue(h)
     {
-        this._resolveSelfCollisionProjection();
-        this._resolveMannequinCollisions(h);
-
         const net = this.network;
         const nPts = net.pointCount;
         const pos = this.positions;
         const prv = this.prevPositions;
         const vel = this.velocities;
+        const preCol = this._preColPos;
+        preCol.set(pos);
+
+        this._resolveSelfCollisionProjection();
+        this._resolveMannequinCollisions(h);
+
         const invH = 1.0 / h;
         const maxSpeed = 6.0;
 
@@ -1066,9 +1072,27 @@ export class OrthotropicClothSolver
                 vel[i3] = 0; vel[i3 + 1] = 0; vel[i3 + 2] = 0;
                 continue;
             }
+            const dxC = pos[i3] - preCol[i3];
+            const dyC = pos[i3 + 1] - preCol[i3 + 1];
+            const dzC = pos[i3 + 2] - preCol[i3 + 2];
+            const cLen = Math.hypot(dxC, dyC, dzC);
+
             let vx = (pos[i3] - prv[i3]) * invH;
             let vy = (pos[i3 + 1] - prv[i3 + 1]) * invH;
             let vz = (pos[i3 + 2] - prv[i3 + 2]) * invH;
+            // Inelastic contact restitution (e = 0): strip outward collision projection snap so cloth drapes smoothly rather than bouncing
+            if (cLen > 1e-6)
+            {
+                const nx = dxC / cLen, ny = dyC / cLen, nz = dzC / cLen;
+                const vn = vx * nx + vy * ny + vz * nz;
+                const snapV = Math.min(vn, cLen * invH);
+                if (snapV > 0.0)
+                {
+                    vx -= nx * snapV;
+                    vy -= ny * snapV;
+                    vz -= nz * snapV;
+                }
+            }
             const s = Math.hypot(vx, vy, vz);
             if (s > maxSpeed)
             {
@@ -1083,8 +1107,8 @@ export class OrthotropicClothSolver
       1. FAITHFUL AVBD — Giles, Diaz & Yuksel (SIGGRAPH 2025) "Augmented Vertex Block Descent"
          - Warm start k^(0) = max(gamma * k^t, k_start), lambda^(0) = alpha * gamma * lambda^t
          - Taylor regularization C(x) = C*(x) - alpha * C*(x^t) on locked membrane walls & tight seams (Eq. 18)
-         - Exact 3x3 vertex block LDL^T with SPD diagonalized geometric stiffness + dual penalty coupling
-         - Per-iteration dual update lambda_j <- clamp(k_j * C_j + lambda_j) & adaptive penalty k_j <- min(k_max, k_j + beta * |C_j|)
+         - Exact 3x3 vertex block LDL^T with SPD diagonalized geometric stiffness + Kelvin-Voigt Rayleigh strain damping
+         - Rockafellar-Wets C^1 unilateral Augmented Lagrangian dual updates with kBase-scaled adaptive penalty ramp
     ========================================================================================================================================*/
     _solveAVBD(h, zipAlpha)
     {
@@ -1096,21 +1120,22 @@ export class OrthotropicClothSolver
         const invDt2 = 1.0 / (h * h);
 
         const tex = this.textile;
-        const crimpU = (tex.warpCrimpPct || 2.0) * 0.01;
-        const crimpV = (tex.weftCrimpPct || 2.5) * 0.01;
+        const crimpU = (tex.warpCrimpPct || 2.0) * 0.01 * 0.85;
+        const crimpV = (tex.weftCrimpPct || 2.5) * 0.01 * 0.85;
         const compRatio = tex.compressionRatio ?? 0.05;
         const lockRad = ((tex.lockingAngleDeg ?? 16.0) * Math.PI) / 180.0;
         const maxShearS = Math.max(0.08, Math.sin(lockRad));
 
-        const kWarpBase = Math.max(80, tex.warpModulus || 1500);
-        const kWeftBase = Math.max(80, tex.weftModulus || 1300);
+        const kWarpBase = Math.max(120, (tex.warpModulus || 1500) * 1.4);
+        const kWeftBase = Math.max(120, (tex.weftModulus || 1300) * 1.4);
         const kShearBase = Math.max(20, tex.shearModulus || 250);
-        const kWallMod = tex.wallModulus || 14000;
+        const kWallMod = (tex.wallModulus || 14000) * 1.1;
         const kBendBase = Math.max(0.05, (tex.bendRigidity || 0.35) * 0.35);
 
         const gamma = this.avbdWarmGamma;
-        const alphaReg = this.avbdRegAlpha;
-        const beta = this.avbdBeta;
+        const alphaReg = 0.92;
+        const betaScale = 3.5;
+        const rayMem = 0.28;
         const seamReady = zipAlpha >= 0.99;
 
         const faceIds = net.faceIndices;
@@ -1120,8 +1145,10 @@ export class OrthotropicClothSolver
         const hW = net.hingeWeights;
         const hArea = net.hingeArea;
         const sIds = net.seamIndices;
+        const startLU = this.avbdStartLenU;
+        const startLV = this.avbdStartLenV;
 
-        // Warm-start adaptive penalties & duals, plus capture Taylor shift reference C*(x^t) (Eq. 18)
+        // Warm-start adaptive penalties & duals, plus capture Taylor shift reference C*(x^t) (Eq. 18) & initial strain for Rayleigh damping
         for (let f = 0; f < net.faceCount; ++f)
         {
             const f3 = f * 3;
@@ -1141,6 +1168,8 @@ export class OrthotropicClothSolver
             const fvX = e1x * q01 + e2x * q11, fvY = e1y * q01 + e2y * q11, fvZ = e1z * q01 + e2z * q11;
             const lu = Math.hypot(fuX, fuY, fuZ) || 1.0;
             const lv = Math.hypot(fvX, fvY, fvZ) || 1.0;
+            startLU[f] = lu;
+            startLV[f] = lv;
             const sc = (fuX * fvX + fuY * fvY + fuZ * fvZ) / (lu * lv);
             this.avbdFaceCPrev[f3]     = lu - 1.0;
             this.avbdFaceCPrev[f3 + 1] = lv - 1.0;
@@ -1157,7 +1186,7 @@ export class OrthotropicClothSolver
             const va3 = sIds[s * 2] * 3, vb3 = sIds[s * 2 + 1] * 3;
             const dNow = Math.hypot(s0[va3] - s0[vb3], s0[va3 + 1] - s0[vb3 + 1], s0[va3 + 2] - s0[vb3 + 2]);
             const localReady = zipAlpha >= 0.99 && dNow < 0.012;
-            const kBaseSeam = Math.max(140.0, 820.0 * zipAlpha);
+            const kBaseSeam = Math.max(150.0, 720.0 * zipAlpha);
             this.avbdSeamPenalty[s] = localReady ? Math.max(kBaseSeam, gamma * this.avbdSeamPenalty[s]) : kBaseSeam;
             this.avbdSeamLambda[s] = localReady ? (this.avbdSeamLambda[s] * alphaReg * gamma) : 0.0;
             this.avbdSeamCPrev[s] = dNow;
@@ -1169,44 +1198,11 @@ export class OrthotropicClothSolver
         const pOrder = net.pointBatches.orderedPoints, pOffsets = net.pointBatches.offsets;
 
         const dxOut = [0, 0, 0];
-        const iters = Math.max(6, Math.round(this.iterations));
-        const omega = 0.72;
-
-        // Symmetric seam-zip assist for large open seams (> 8 mm) so Gauss-Seidel VBD doesn't lag one endpoint behind
-        if (net.seamCount > 0)
-        {
-            const sOrd = net.seamBatches.orderedItems, sOff = net.seamBatches.offsets;
-            for (let pass = 0; pass < 2; ++pass)
-            {
-                for (let c = 0; c < net.seamBatches.colorCount; ++c)
-                {
-                    const b0 = sOff[c], b1 = sOff[c + 1];
-                    for (let k = b0; k < b1; ++k)
-                    {
-                        const s = sOrd[k];
-                        const a = sIds[s * 2], b = sIds[s * 2 + 1];
-                        const wa = this.invMass[a], wb = this.invMass[b];
-                        const wSum = wa + wb;
-                        if (wSum <= 0) continue;
-                        const a3 = a * 3, b3 = b * 3;
-                        const dx = pos[a3] - pos[b3], dy = pos[a3 + 1] - pos[b3 + 1], dz = pos[a3 + 2] - pos[b3 + 2];
-                        const d = Math.hypot(dx, dy, dz);
-                        if (d < 1e-6) continue;
-                        const target = (1.0 - zipAlpha) * Math.min(this.seamInitialGap[s], d);
-                        const pull = Math.min(0.018, Math.max(0.0, (d - target) * 0.45));
-                        if (pull <= 0) continue;
-                        const invD = 1.0 / d;
-                        const nx = dx * invD, ny = dy * invD, nz = dz * invD;
-                        const sa = pull * (wa / wSum), sb = pull * (wb / wSum);
-                        pos[a3] -= nx * sa; pos[a3 + 1] -= ny * sa; pos[a3 + 2] -= nz * sa;
-                        pos[b3] += nx * sb; pos[b3 + 1] += ny * sb; pos[b3 + 2] += nz * sb;
-                    }
-                }
-            }
-        }
+        const iters = Math.max(8, Math.round(this.iterations));
 
         for (let it = 0; it < iters; ++it)
         {
+
             // Primal pass: conflict-free point color batches
             for (let c = 0; c < net.pointBatches.colorCount; ++c)
             {
@@ -1220,7 +1216,7 @@ export class OrthotropicClothSolver
                     const i3 = i * 3;
                     const xi = pos[i3], yi = pos[i3 + 1], zi = pos[i3 + 2];
                     const mOverH2 = invDt2 / w;
-                    const kVisc = 0.055 * mOverH2;
+                    const kVisc = 0.025 * mOverH2;
 
                     let h00 = mOverH2 + kVisc, h01 = 0, h02 = 0;
                     let h11 = mOverH2 + kVisc, h12 = 0, h22 = mOverH2 + kVisc;
@@ -1228,7 +1224,7 @@ export class OrthotropicClothSolver
                     let ry = -mOverH2 * (yi - inr[i3 + 1]) - kVisc * (yi - s0[i3 + 1]);
                     let rz = -mOverH2 * (zi - inr[i3 + 2]) - kVisc * (zi - s0[i3 + 2]);
 
-                    // A. Membrane warp/weft/shear incident faces (exact elastic + unilateral AVBD yarn lock!)
+                    // A. Membrane warp/weft/shear incident faces (exact elastic + C^1 unilateral AL + Kelvin-Voigt Rayleigh damping)
                     const fs0 = incFOff[i], fs1 = incFOff[i + 1];
                     for (let fk = fs0; fk < fs1; ++fk)
                     {
@@ -1247,7 +1243,7 @@ export class OrthotropicClothSolver
                         const cv = slot === 0 ? -(q01 + q11) : (slot === 1 ? q01 : q11);
                         const area = fArea[f];
 
-                        // Warp C_u = ||F_u|| - 1 (Clean Giles 2025 quadratic AL without cubic condition explosion)
+                        // Warp C_u = ||F_u|| - 1
                         const lu = Math.hypot(fuX, fuY, fuZ);
                         if (lu > 1e-6 && Math.abs(cu) > 1e-8)
                         {
@@ -1258,14 +1254,17 @@ export class OrthotropicClothSolver
                             const kSoft = kWarpBase * area;
                             let fMag = epsU < 0.0 ? (kSoft * compRatio * epsU) : (kSoft * epsU);
                             let kEff = epsU < 0.0 ? (kSoft * compRatio) : kSoft;
-                            if (epsU > crimpU)
+                            const cLock = (epsU - crimpU) - alphaReg * Math.max(0.0, this.avbdFaceCPrev[f3] - crimpU);
+                            const kPen = this.avbdFacePenalty[f3];
+                            const alForce = this.avbdFaceLambda[f3] + kPen * cLock;
+                            if (alForce > 0.0)
                             {
-                                const cLock = (epsU - crimpU) - alphaReg * Math.max(0.0, this.avbdFaceCPrev[f3] - crimpU);
-                                const kPen = this.avbdFacePenalty[f3];
-                                const lamU = Math.max(0.0, this.avbdFaceLambda[f3]);
-                                fMag += lamU + kPen * Math.max(0.0, cLock);
+                                fMag += alForce;
                                 kEff += kPen;
                             }
+                            const kD = rayMem * kEff;
+                            fMag += kD * (lu - startLU[f]);
+                            kEff += kD;
 
                             rx -= fMag * gx; ry -= fMag * gy; rz -= fMag * gz;
                             const kk = kEff * cu * cu;
@@ -1286,14 +1285,17 @@ export class OrthotropicClothSolver
                             const kSoft = kWeftBase * area;
                             let fMag = epsV < 0.0 ? (kSoft * compRatio * epsV) : (kSoft * epsV);
                             let kEff = epsV < 0.0 ? (kSoft * compRatio) : kSoft;
-                            if (epsV > crimpV)
+                            const cLock = (epsV - crimpV) - alphaReg * Math.max(0.0, this.avbdFaceCPrev[f3 + 1] - crimpV);
+                            const kPen = this.avbdFacePenalty[f3 + 1];
+                            const alForce = this.avbdFaceLambda[f3 + 1] + kPen * cLock;
+                            if (alForce > 0.0)
                             {
-                                const cLock = (epsV - crimpV) - alphaReg * Math.max(0.0, this.avbdFaceCPrev[f3 + 1] - crimpV);
-                                const kPen = this.avbdFacePenalty[f3 + 1];
-                                const lamV = Math.max(0.0, this.avbdFaceLambda[f3 + 1]);
-                                fMag += lamV + kPen * Math.max(0.0, cLock);
+                                fMag += alForce;
                                 kEff += kPen;
                             }
+                            const kD = rayMem * kEff;
+                            fMag += kD * (lv - startLV[f]);
+                            kEff += kD;
 
                             rx -= fMag * gx; ry -= fMag * gy; rz -= fMag * gz;
                             const kk = kEff * cv * cv;
@@ -1318,7 +1320,7 @@ export class OrthotropicClothSolver
                             {
                                 const overS = absCs - maxShearS;
                                 const sgn = Math.sign(csVal);
-                                const kWallS = this.avbdFacePenalty[f3 + 2] + kWallMod * area * 0.25;
+                                const kWallS = this.avbdFacePenalty[f3 + 2] + kWallMod * area * 0.08;
                                 fMagS += sgn * (Math.abs(this.avbdFaceLambda[f3 + 2]) + kWallS * overS);
                                 kPenS += kWallS;
                             }
@@ -1391,20 +1393,17 @@ export class OrthotropicClothSolver
                     }
 
                     solve3x3LDLT(h00, h01, h02, h11, h12, h22, rx, ry, rz, dxOut, 0);
-                    const stepX = clamp(omega * dxOut[0], -0.025, 0.025);
-                    const stepY = clamp(omega * dxOut[1], -0.025, 0.025);
-                    const stepZ = clamp(omega * dxOut[2], -0.025, 0.025);
-                    pos[i3]     += stepX;
-                    pos[i3 + 1] += stepY;
-                    pos[i3 + 2] += stepZ;
+                    pos[i3]     += clamp(0.86 * dxOut[0], -0.020, 0.020);
+                    pos[i3 + 1] += clamp(0.86 * dxOut[1], -0.020, 0.020);
+                    pos[i3 + 2] += clamp(0.86 * dxOut[2], -0.020, 0.020);
                 }
             }
 
-            // Symmetric two-endpoint seam assist ONLY for still-open gaps (> 10 mm) so M:N gather seams stay smooth
+            // Symmetric two-endpoint seam assist for open gaps (> 9 mm) so M:N gather seams close evenly without crushing sleeve ease
             if (net.seamCount > 0 && (it & 1) === 0)
             {
                 const sOrd = net.seamBatches.orderedItems, sOff = net.seamBatches.offsets;
-                const sAlpha = invDt2 / 1400.0;
+                const sAlpha = invDt2 / 2400.0;
                 for (let c = 0; c < net.seamBatches.colorCount; ++c)
                 {
                     const b0 = sOff[c], b1 = sOff[c + 1];
@@ -1419,8 +1418,8 @@ export class OrthotropicClothSolver
                         const dx = pos[a3] - pos[b3], dy = pos[a3 + 1] - pos[b3 + 1], dz = pos[a3 + 2] - pos[b3 + 2];
                         const d = Math.hypot(dx, dy, dz);
                         const target = (1.0 - zipAlpha) * Math.min(this.seamInitialGap[s], d);
-                        if (d < 0.010 || d - target <= 0.002) continue;
-                        const corr = clamp(0.45 * (d - target) / (wSum + sAlpha), -0.010 / Math.max(wa, wb, 1.0), 0.010 / Math.max(wa, wb, 1.0));
+                        if (d < 0.009 || d - target <= 0.002) continue;
+                        const corr = clamp(0.32 * (d - target) / (wSum + sAlpha), -0.004 / Math.max(wa, wb, 1.0), 0.004 / Math.max(wa, wb, 1.0));
                         const invD = 1.0 / d;
                         const nx = dx * invD, ny = dy * invD, nz = dz * invD;
                         pos[a3] -= wa * corr * nx; pos[a3 + 1] -= wa * corr * ny; pos[a3 + 2] -= wa * corr * nz;
@@ -1429,7 +1428,7 @@ export class OrthotropicClothSolver
                 }
             }
 
-            // Unilateral Augmented Lagrangian dual & adaptive penalty updates (Giles 2025)
+            // Rockafellar-Wets C^1 Unilateral Augmented Lagrangian dual & kBase-scaled penalty updates (Giles 2025)
             for (let f = 0; f < net.faceCount; ++f)
             {
                 const f3 = f * 3;
@@ -1448,19 +1447,20 @@ export class OrthotropicClothSolver
                 const csVal = (fuX * fvX + fuY * fvY + fuZ * fvZ) / (lu * lv);
                 const csOver = Math.abs(csVal) - maxShearS;
 
-                const fLamCapU = Math.max(0.08, kWallMod * area * 0.20);
-                const fLamCapV = Math.max(0.08, kWallMod * area * 0.20);
-                const fPenCapU = Math.max(1.0,  kWallMod * area * 1.40);
-                const fPenCapV = Math.max(1.0,  kWallMod * area * 1.40);
-                const fBeta = beta * area * 2.5;
+                const fLamCapU = Math.max(0.4, kWallMod * area * 0.25);
+                const fLamCapV = Math.max(0.4, kWallMod * area * 0.25);
+                const fPenCapU = Math.max(4.0, kWallMod * area * 1.8);
+                const fPenCapV = Math.max(4.0, kWallMod * area * 1.8);
 
-                this.avbdFaceLambda[f3]     = cuOver > 0 ? clamp(this.avbdFacePenalty[f3]     * cuOver + this.avbdFaceLambda[f3],     0.0, fLamCapU) : 0.0;
-                this.avbdFaceLambda[f3 + 1] = cvOver > 0 ? clamp(this.avbdFacePenalty[f3 + 1] * cvOver + this.avbdFaceLambda[f3 + 1], 0.0, fLamCapV) : 0.0;
-                this.avbdFaceLambda[f3 + 2] = csOver > 0 ? clamp(this.avbdFacePenalty[f3 + 2] * csOver + this.avbdFaceLambda[f3 + 2], 0.0, fLamCapU * 0.35) : 0.0;
+                this.avbdFaceLambda[f3]     = clamp(this.avbdFaceLambda[f3]     + this.avbdFacePenalty[f3]     * cuOver, 0.0, fLamCapU);
+                this.avbdFaceLambda[f3 + 1] = clamp(this.avbdFaceLambda[f3 + 1] + this.avbdFacePenalty[f3 + 1] * cvOver, 0.0, fLamCapV);
+                this.avbdFaceLambda[f3 + 2] = csOver > 0
+                    ? clamp(this.avbdFaceLambda[f3 + 2] + this.avbdFacePenalty[f3 + 2] * csOver, 0.0, fLamCapU * 0.35)
+                    : Math.max(0.0, this.avbdFaceLambda[f3 + 2] * 0.5);
 
-                this.avbdFacePenalty[f3]     = Math.min(fPenCapU, this.avbdFacePenalty[f3]     + fBeta * Math.max(0.0, cuOver));
-                this.avbdFacePenalty[f3 + 1] = Math.min(fPenCapV, this.avbdFacePenalty[f3 + 1] + fBeta * Math.max(0.0, cvOver));
-                this.avbdFacePenalty[f3 + 2] = Math.min(fPenCapU * 0.35, this.avbdFacePenalty[f3 + 2] + fBeta * Math.max(0.0, csOver));
+                this.avbdFacePenalty[f3]     = Math.min(fPenCapU, this.avbdFacePenalty[f3]     + betaScale * kWarpBase * area * Math.max(0.0, cuOver));
+                this.avbdFacePenalty[f3 + 1] = Math.min(fPenCapV, this.avbdFacePenalty[f3 + 1] + betaScale * kWeftBase * area * Math.max(0.0, cvOver));
+                this.avbdFacePenalty[f3 + 2] = Math.min(fPenCapU * 0.35, this.avbdFacePenalty[f3 + 2] + betaScale * kWarpBase * area * 0.3 * Math.max(0.0, csOver));
             }
 
             if (seamReady)
@@ -1471,8 +1471,8 @@ export class OrthotropicClothSolver
                     const d = Math.hypot(pos[va3] - pos[vb3], pos[va3 + 1] - pos[vb3 + 1], pos[va3 + 2] - pos[vb3 + 2]);
                     if (d < 0.012)
                     {
-                        this.avbdSeamLambda[s] = clamp(this.avbdSeamPenalty[s] * d + this.avbdSeamLambda[s], 0.0, 4.5);
-                        this.avbdSeamPenalty[s] = Math.min(1600.0, this.avbdSeamPenalty[s] + beta * 6.0 * d);
+                        this.avbdSeamLambda[s] = clamp(this.avbdSeamLambda[s] + this.avbdSeamPenalty[s] * d, 0.0, 4.5);
+                        this.avbdSeamPenalty[s] = Math.min(1800.0, this.avbdSeamPenalty[s] + betaScale * 110.0 * d);
                     }
                     else
                     {
