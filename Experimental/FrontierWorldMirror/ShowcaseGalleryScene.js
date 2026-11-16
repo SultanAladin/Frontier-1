@@ -22,6 +22,15 @@ import {
   IsFanProp,
   TransformVec3ByMat3,
 } from "./WorldPropLibrary.js";
+import {
+  GetCachedVehicleBvhAssets,
+  TraceVehicleBvhCpu,
+} from "./VehicleBvhAssets.js";
+import {
+  ComputeSolarTransmittance,
+  MOON_PRESET_TINTS,
+} from "./AtmosphereSky.js";
+import { Solar } from "./Solar.mjs";
 
 export const ConstructForceTemplates = FORCE_MODELS.map((Law) => ({
   Id: `template-force-${Law.Id.toLowerCase()}`,
@@ -80,6 +89,99 @@ export const CanonicalEditorCamera = {
   ApertureFStop: 4.0,
   SubjectDistanceM: 4.11,
 };
+
+// Algorithms mirrored from ShadowAlgorithmLab (no SDF shadows, no SDF reflections)
+export const SHADOW_ALGORITHMS = [
+  { id: "contact_pcss", label: "Contact + PCSS (No SDF)", desc: "ShadowAlgorithmLab Contact + PCSS: screen/tight contact + Vogel-disk PCSS (zero SDF)" },
+  { id: "pcss", label: "Shadow Map · PCSS + Filter", desc: "ShadowAlgorithmLab PCSS: Vogel blocker search + geometric penumbra + plane filter" },
+  { id: "smrt", label: "SMRT · Depth Ray Trace", desc: "ShadowAlgorithmLab SMRT: EEVEE-Next quadratic depth-map ray marching" },
+  { id: "pcf", label: "Shadow Map · 3×3 PCF", desc: "ShadowAlgorithmLab PCF: bilinear-weighted 3×3 percentage-closer filtering" },
+  { id: "bvh", label: "BVH Raytraced", desc: "ShadowAlgorithmLab BVH: stochastic Vogel-disk + rectangular area BVH visibility" },
+];
+
+export const GI_ALGORITHMS = [
+  { id: "sdf", label: "SDF Cone GI", desc: "ShadowAlgorithmLab Cone GI: multi-bounce radiosity + solid-angle diffuse GI" },
+  { id: "bvh", label: "BVH Raytraced GI", desc: "ShadowAlgorithmLab BVH GI: 2-bounce cosine-hemisphere multi-light path tracing" },
+  { id: "off", label: "Off (Ambient Fill)", desc: "Direct lighting + calibrated sky/moon/star ambient fill only" },
+];
+
+export const REFLECTION_ALGORITHMS = [
+  { id: "bvh", label: "BVH Raytraced Refl", desc: "ShadowAlgorithmLab BVH Reflections: multi-bounce Fresnel raytraced reflections" },
+  { id: "env", label: "Sky / Env Only", desc: "Physical sky, clouds, moon & stars environment reflection only" },
+];
+
+export const QUALITY_PRESETS = [
+  { id: 0, label: "Low", bvhRays: 1, smrtRays: 2, pcssTaps: 8, giSamples: 4, giCones: 4, reflRays: 1 },
+  { id: 1, label: "Medium (GTX)", bvhRays: 2, smrtRays: 4, pcssTaps: 16, giSamples: 6, giCones: 6, reflRays: 2 },
+  { id: 2, label: "High", bvhRays: 4, smrtRays: 6, pcssTaps: 24, giSamples: 10, giCones: 8, reflRays: 4 },
+  { id: 3, label: "Ultra", bvhRays: 8, smrtRays: 8, pcssTaps: 32, giSamples: 14, giCones: 10, reflRays: 6 },
+  { id: 4, label: "Reference", bvhRays: 16, smrtRays: 12, pcssTaps: 48, giSamples: 20, giCones: 14, reflRays: 8 },
+];
+
+export const CanonicalRenderSettings = {
+  ShadowAlgorithm: "contact_pcss",
+  ShadowQuality: 1,
+  ShadowRays: 2,
+  PcssTaps: 16,
+  SmrtRays: 4,
+  ShadowMapRes: 2048,
+  PlaneFilter: true,
+  HalfResShadows: false,
+  ShadowSoftness: 1.0,
+  EmissiveShadowMode: "shadowed",
+
+  GiAlgorithm: "sdf",
+  GiQuality: 1,
+  GiSamples: 6,
+  GiCones: 6,
+  GiIntensity: 1.25,
+  FillBoost: 1.15,
+
+  ReflectionAlgorithm: "bvh",
+  ReflectionQuality: 1,
+  ReflectionRays: 2,
+  ReflectionBounces: 2,
+
+  ExposureGain: CanonicalEditorCamera.ExposureGain,
+  RenderScale: 100,
+  AntiAliasing: true,
+};
+
+export function ResolveRenderSettings(Values = {}) {
+  const RowRec = Values?.["render-settings"] || {};
+  const Merged = { ...CanonicalRenderSettings, ...RowRec };
+  // Guarantee SDF shadow is never accepted even from stale cached state
+  if (!SHADOW_ALGORITHMS.some((A) => A.id === Merged.ShadowAlgorithm)) {
+    Merged.ShadowAlgorithm = CanonicalRenderSettings.ShadowAlgorithm;
+  }
+  if (!GI_ALGORITHMS.some((A) => A.id === Merged.GiAlgorithm)) {
+    Merged.GiAlgorithm = CanonicalRenderSettings.GiAlgorithm;
+  }
+  if (!REFLECTION_ALGORITHMS.some((A) => A.id === Merged.ReflectionAlgorithm)) {
+    Merged.ReflectionAlgorithm = CanonicalRenderSettings.ReflectionAlgorithm;
+  }
+  Merged.ShadowQuality = Math.max(0, Math.min(4, Math.round(Number(Merged.ShadowQuality) || 0)));
+  Merged.GiQuality = Math.max(0, Math.min(4, Math.round(Number(Merged.GiQuality) || 0)));
+  Merged.ReflectionQuality = Math.max(0, Math.min(4, Math.round(Number(Merged.ReflectionQuality) || 0)));
+  Merged.ShadowRays = Math.max(1, Math.min(16, Math.round(Number(Merged.ShadowRays) || 2)));
+  Merged.PcssTaps = Math.max(8, Math.min(48, Math.round(Number(Merged.PcssTaps) || 16)));
+  Merged.SmrtRays = Math.max(2, Math.min(12, Math.round(Number(Merged.SmrtRays) || 4)));
+  Merged.ShadowMapRes = Number(Merged.ShadowMapRes) === 1024 ? 1024 : 2048;
+  Merged.PlaneFilter = Merged.PlaneFilter !== false;
+  Merged.HalfResShadows = Boolean(Merged.HalfResShadows);
+  Merged.ShadowSoftness = Math.max(0.25, Math.min(2.5, Number(Merged.ShadowSoftness) || 1.0));
+  Merged.EmissiveShadowMode = Merged.EmissiveShadowMode === "unshadowed" ? "unshadowed" : "shadowed";
+  Merged.GiSamples = Math.max(2, Math.min(20, Math.round(Number(Merged.GiSamples) || 6)));
+  Merged.GiCones = Math.max(4, Math.min(14, Math.round(Number(Merged.GiCones) || 6)));
+  Merged.GiIntensity = Math.max(0, Math.min(2.5, Number(Merged.GiIntensity) ?? 1.25));
+  Merged.FillBoost = Math.max(0.2, Math.min(2.5, Number(Merged.FillBoost) ?? 1.15));
+  Merged.ReflectionRays = Math.max(1, Math.min(8, Math.round(Number(Merged.ReflectionRays) || 2)));
+  Merged.ReflectionBounces = Math.max(1, Math.min(3, Math.round(Number(Merged.ReflectionBounces) || 2)));
+  Merged.ExposureGain = Math.max(0.2, Math.min(3.5, Number(Merged.ExposureGain) || CanonicalEditorCamera.ExposureGain));
+  Merged.RenderScale = [50, 75, 100, 125].includes(Number(Merged.RenderScale)) ? Number(Merged.RenderScale) : 100;
+  Merged.AntiAliasing = Merged.AntiAliasing !== false;
+  return Merged;
+}
 
 export function BuildMaterialRecord({
   Type = "Standard",
@@ -232,6 +334,16 @@ export const ShowcaseInitialRows = [
     Description: "Sphere · r = 0.40 m · AbbeCrownGlassOrb (IOR 1.52, Abbe 26)",
   },
   {
+    Id: "control-vehicle",
+    Name: "ControlVehicle",
+    Panel: "geometry",
+    Icon: "vehicle",
+    Parent: "showcase",
+    Preview: true,
+    PrimitiveShape: "vehicle",
+    Description: "ControlVehicle BVH Mesh · Body + 4 Wheels/Rims · Clearcoat",
+  },
+  {
     Id: "cameras",
     Name: "Cameras",
     Panel: "group",
@@ -248,6 +360,14 @@ export const ShowcaseInitialRows = [
     Description: "Permanent editor navigation camera · 43.0° vertical FOV",
   },
   {
+    Id: "render-settings",
+    Name: "Render Settings",
+    Panel: "render-settings",
+    Icon: "render-settings",
+    Parent: "camera",
+    Description: "Shadows, GI & Reflections · Per-pipeline quality",
+  },
+  {
     Id: "world",
     Name: "World",
     Panel: "group",
@@ -262,7 +382,39 @@ export const ShowcaseInitialRows = [
     Icon: "sun",
     Parent: "world",
     Preview: true,
-    Description: "Directional · 5.40, 5.10, 4.65 W/m² · 3.91 mm Contact-Clip",
+    Description: "Directional · Physical Sun + Solar Ephemeris",
+  },
+  {
+    Id: "atmosphere",
+    Name: "Atmosphere",
+    Panel: "atmosphere",
+    Icon: "atmosphere",
+    Parent: "world",
+    Description: "Rayleigh · Mie · Ozone physical sky",
+  },
+  {
+    Id: "clouds",
+    Name: "Volumetric Clouds",
+    Panel: "clouds",
+    Icon: "cloud",
+    Parent: "world",
+    Description: "3D raymarched cumulus & stratus slab",
+  },
+  {
+    Id: "moon",
+    Name: "Moon",
+    Panel: "moon",
+    Icon: "moon",
+    Parent: "world",
+    Description: "Synodic phase · lunar disc & glow",
+  },
+  {
+    Id: "stars",
+    Name: "Stars",
+    Panel: "stars",
+    Icon: "stars",
+    Parent: "world",
+    Description: "Deterministic celestial starfield",
   },
   {
     Id: "lighting",
@@ -298,26 +450,26 @@ export const ShowcaseInitialValues = {
   "gallery-floor": {
     Position: [0.0, 0.2, -0.72],
     Rotation: [0, 0, 0],
-    Scale: [5.6, 4.8, 0.16],
+    Scale: [7.4, 6.2, 0.16],
     "Cast shadows": true,
     GI: true,
     Notes:
-      "Architectural floor slab receiving 3.91 mm contact-clip shadows, LTC softbox illumination, and Crimson/Emerald bounce.",
+      "Architectural floor slab receiving Contact+PCSS shadows, LTC softbox illumination, and Crimson/Emerald bounce.",
     ...PlasterMat(),
   },
   "gallery-back-wall": {
-    Position: [0.0, 2.35, 0.7],
+    Position: [0.0, 2.55, 0.78],
     Rotation: [0, 0, 0],
-    Scale: [5.6, 0.16, 2.9],
+    Scale: [7.4, 0.16, 3.0],
     "Cast shadows": true,
     GI: true,
     Notes: "North neutral plaster backdrop closing the Cornell-Studio chamber.",
     ...PlasterMat(),
   },
   "crimson-left-wall": {
-    Position: [-2.15, 0.25, 0.7],
+    Position: [-2.85, 0.25, 0.78],
     Rotation: [0, 0, 0],
-    Scale: [0.16, 4.4, 2.9],
+    Scale: [0.16, 5.8, 3.0],
     "Cast shadows": true,
     GI: true,
     Notes: "West sunlit Crimson wall driving warm diffuse color bleed into the gallery.",
@@ -329,9 +481,9 @@ export const ShowcaseInitialValues = {
     }),
   },
   "emerald-right-wall": {
-    Position: [2.15, 0.25, 0.7],
+    Position: [2.85, 0.25, 0.78],
     Rotation: [0, 0, 0],
-    Scale: [0.16, 4.4, 2.9],
+    Scale: [0.16, 5.8, 3.0],
     "Cast shadows": true,
     GI: true,
     Notes:
@@ -430,6 +582,23 @@ export const ShowcaseInitialValues = {
       AttenuationLinear: [0.95, 0.98, 1.0],
     }),
   },
+  "control-vehicle": {
+    Position: [-1.42, -0.82, -0.80],
+    Rotation: [0, 0, 28],
+    Scale: [0.46, 0.46, 0.46],
+    "Cast shadows": true,
+    GI: true,
+    Notes:
+      "ControlVehicle BVH triangle mesh (Body + 4 Rims + 4 Tyres) seated on the gallery floor.",
+    ...BuildMaterialRecord({
+      Type: "Clear coat",
+      BaseLinear: [0.88, 0.91, 0.97],
+      Metallic: 0.22,
+      Roughness: 0.14,
+      Coat: 1.0,
+      CoatRoughness: 0.03,
+    }),
+  },
   camera: {
     Position: [...CanonicalEditorCamera.Position],
     Target: [...CanonicalEditorCamera.Target],
@@ -440,6 +609,11 @@ export const ShowcaseInitialValues = {
     Notes:
       "Synchronized 1:1 with C++ ShowcaseWorldSceneBundle::EditorCamera · Origin (0.00, -3.55, 0.42) -> Target (0.00, 0.55, 0.15).",
   },
+  "render-settings": {
+    ...CanonicalRenderSettings,
+    Notes:
+      "Camera Render Settings component: Shadow, GI, and Reflection algorithms + independent per-pipeline quality (zero SDF shadows).",
+  },
   sun: {
     Direction: [0.42, -0.55, 0.72],
     SolarIrradiance: [5.4, 5.1, 4.65],
@@ -447,9 +621,82 @@ export const ShowcaseInitialValues = {
     Intensity: 5.4,
     "Angular Diameter": 2.06,
     Temperature: 5650,
+    "Colour source": 0,
+    "Sun Tint": "#ffffff",
     "Local Hours": 13.4,
+    "Day of Month": 4,
+    Month: 10,
+    Latitude: -26.19,
+    Longitude: 28.32,
+    Animate: false,
+    Speed: 1,
     Notes:
-      "Calibrated Tier 1 GTX Solar Directional Emitter (3.91 mm/tx Contact-Clip + SDF Cone Penumbra, zero VSM).",
+      "Solar Directional Emitter (Physical Atmosphere + Contact+PCSS / PCSS / SMRT / PCF / BVH shadows).",
+  },
+  atmosphere: {
+    Rayleigh: 1.0,
+    Mie: 1.0,
+    "Mie Anisotropy": 0.78,
+    Ozone: 1.2,
+    "Rayleigh Scale H": 8000,
+    "Mie Scale H": 1200,
+    Atmosphere: 60000,
+    "Horizon Glow": 1.0,
+    "White Line": 1.0,
+    "Line at civil only": true,
+    "Sky Tint": "#ffffff",
+    "Sky Brightness": 1.0,
+    "Ground Albedo": "#796e60",
+    Notes: "Bruneton/Hillaire physical Rayleigh, Mie, and Ozone sky atmosphere.",
+  },
+  clouds: {
+    Enabled: true,
+    Type: 0,
+    Coverage: 0.42,
+    Density: 2.2,
+    "Feature Scale": 0.4,
+    Base: 1400,
+    Thickness: 1100,
+    Ceiling: 14000,
+    "Follow Wind": true,
+    Anvil: 0.5,
+    Anisotropy: 0.48,
+    "Shadow Enabled": true,
+    Notes: "Real-time 3D volumetric raymarched clouds with Beer-Lambert self-shadowing.",
+  },
+  moon: {
+    Visible: true,
+    "Follow Sky": false,
+    Phase: 0.62,
+    Bright: 1.6,
+    Glow: 0.8,
+    Size: 1.35,
+    Azimuth: 300,
+    Elevation: 28,
+    Roll: 0,
+    Pitch: 0,
+    Preset: 0,
+    "moon0:Preset": 0,
+    "moon0:Visible": true,
+    "moon0:Follow Sky": false,
+    "moon0:Phase": 0.62,
+    "moon0:Bright": 1.6,
+    "moon0:Glow": 0.8,
+    "moon0:Size": 1.35,
+    "moon0:Azimuth": 300,
+    "moon0:Elevation": 28,
+    Notes: "Synodic lunar disc with procedural phase lighting and glow.",
+  },
+  stars: {
+    "Star field": true,
+    Brightness: 1.0,
+    "Point Size": 1.0,
+    "Limiting magnitude": 5.5,
+    Twinkle: true,
+    "Twinkle depth": 30,
+    "Twinkle rate": 1.2,
+    "Celestial rotation": 0,
+    Notes: "Procedural deterministic celestial starfield with atmospheric scintillation.",
   },
   "ceiling-softbox": {
     Position: [0.55, 0.35, 1.82],
@@ -457,7 +704,7 @@ export const ShowcaseInitialValues = {
     Scale: [1.7, 1.3, 1.0],
     Intensity: 7.5,
     EmittedRadiance: [7.5, 6.6, 5.4],
-    "Cast shadows": false,
+    "Cast shadows": true,
     GI: true,
     ReferenceInspector: {
       Type: "LuminousSurface",
@@ -555,29 +802,169 @@ export function CompileLiveGtxScene(
     OrthoHalfHeight = 1.95;
   }
 
-  // Sun emitter (supports both Visibility Eye and Outliner Power Toggle)
+  // Atmosphere, Volumetric Clouds, Moon & Stars under World
+  const AtmoRow = Rows.find((Row) => Row.Panel === "atmosphere");
+  const AtmoRec = (AtmoRow && Values?.[AtmoRow.Id]) || Values?.atmosphere || {};
+  const AtmoEnabled = AtmoRow ? RowEffectivelyVisible(AtmoRow, Rows, Hidden) : true;
+  const Atmosphere = {
+    enabled: AtmoEnabled,
+    rayleigh: Math.max(0, Number(AtmoRec.Rayleigh ?? 1.0)),
+    mie: Math.max(0, Number(AtmoRec.Mie ?? 1.0)),
+    mieG: Math.max(0, Math.min(0.94, Number(AtmoRec["Mie Anisotropy"] ?? 0.78))),
+    ozone: Math.max(0, Number(AtmoRec.Ozone ?? 1.2)),
+    rayleighH: Math.max(500, Number(AtmoRec["Rayleigh Scale H"] ?? 8000)),
+    mieH: Math.max(200, Number(AtmoRec["Mie Scale H"] ?? 1200)),
+    atmoTop: Math.max(20000, Number(AtmoRec.Atmosphere ?? 60000)),
+    horizonGlow: Math.max(0, Number(AtmoRec["Horizon Glow"] ?? 1.0)),
+    skyTint: typeof AtmoRec["Sky Tint"] === "string" ? HexToLinearRgb(AtmoRec["Sky Tint"], [1, 1, 1]) : [1, 1, 1],
+    skyBrightness: Math.max(0, Number(AtmoRec["Sky Brightness"] ?? 1.0)),
+    groundAlbedo: typeof AtmoRec["Ground Albedo"] === "string"
+      ? HexToLinearRgb(AtmoRec["Ground Albedo"], [0.22, 0.19, 0.15])
+      : [0.22, 0.19, 0.15],
+  };
+
+  const CloudRow = Rows.find((Row) => Row.Panel === "clouds");
+  const CloudRec = (CloudRow && Values?.[CloudRow.Id]) || Values?.clouds || {};
+  const CloudVisible = CloudRow ? RowEffectivelyVisible(CloudRow, Rows, Hidden) : true;
+  const WindRow = Rows.find((Row) => Row.Panel === "wind");
+  const WindRec = (WindRow && Values?.[WindRow.Id]) || Values?.wind || {};
+  const WindSpeed = Number(WindRec.Speed ?? 6.5);
+  const WindBearingRad = ((Number(WindRec.Bearing ?? 25) || 0) * Math.PI) / 180;
+  const FollowWind = CloudRec["Follow Wind"] !== false;
+  const Clouds = {
+    enabled: CloudVisible && CloudRec.Enabled !== false,
+    type: Math.max(0, Math.min(3, Math.round(Number(CloudRec.Type ?? 0)))),
+    coverage: Math.max(0, Math.min(1, Number(CloudRec.Coverage ?? 0.42))),
+    density: Math.max(0, Number(CloudRec.Density ?? 2.2)),
+    featureScale: Math.max(0.05, Number(CloudRec["Feature Scale"] ?? 0.4)),
+    baseM: Math.max(200, Number(CloudRec.Base ?? 1400)),
+    thicknessM: Math.max(150, Number(CloudRec.Thickness ?? 1100)),
+    anvil: Math.max(0, Math.min(1, Number(CloudRec.Anvil ?? 0.5))),
+    anisotropy: Math.max(-0.5, Math.min(0.92, Number(CloudRec.Anisotropy ?? 0.48))),
+    shadowEnabled: CloudRec["Shadow Enabled"] !== false,
+    windX: FollowWind ? Math.sin(WindBearingRad) * WindSpeed : 0,
+    windY: FollowWind ? Math.cos(WindBearingRad) * WindSpeed : 0,
+  };
+
+  // Sun emitter (supports Visibility Eye, Outliner Power Toggle, & physical Solar Transmittance)
   const SunRow = Rows.find((Row) => Row.Panel === "sun");
   const SunRec = (SunRow && Values?.[SunRow.Id]) || Values?.sun || {};
   const SunVisible =
     (SunRow ? RowEffectivelyVisible(SunRow, Rows, Hidden) : true) &&
     SunRec.Powered !== false;
-  const SunDir = NormalizeVec3(
-    Array.isArray(SunRec.Direction) ? SunRec.Direction : [0.42, -0.55, 0.72],
-    [0.42, -0.55, 0.72],
-  );
+  let RawSunDir = Array.isArray(SunRec.Direction) ? SunRec.Direction : null;
+  if (!RawSunDir) {
+    const Ephem = Solar({
+      LocalHours: Number(SunRec["Local Hours"] ?? 13.4),
+      Month: Number(SunRec.Month ?? 10),
+      Day: Number(SunRec["Day of Month"] ?? 4),
+      Latitude: Number(SunRec.Latitude ?? -26.19),
+      Longitude: Number(SunRec.Longitude ?? 28.32),
+      UtcOffset: Number(SunRec.UtcOffset ?? 2),
+    });
+    const ElR = (Ephem.Elevation * Math.PI) / 180;
+    const AzR = (Ephem.Azimuth * Math.PI) / 180;
+    RawSunDir = [
+      Math.cos(ElR) * Math.sin(AzR),
+      Math.cos(ElR) * Math.cos(AzR),
+      Math.sin(ElR),
+    ];
+  }
+  const SunDir = NormalizeVec3(RawSunDir, [0.42, -0.55, 0.72]);
   const SunIntensity = Math.max(0, Number(SunRec.Intensity ?? 5.4));
   const GainScale = SunIntensity / 5.4;
   const BaseSunIrr = Array.isArray(SunRec.SolarIrradiance)
     ? SunRec.SolarIrradiance
     : [5.4, 5.1, 4.65];
+  const SunTintRgb =
+    SunRec["Colour source"] === 1
+      ? (() => {
+          const K = Math.max(1800, Math.min(12000, Number(SunRec.Temperature ?? 6500))) / 100;
+          const r = K <= 66 ? 1 : Math.max(0, Math.min(1, 1.2929 * Math.pow(K - 60, -0.1332)));
+          const g = K <= 66
+            ? Math.max(0, Math.min(1, 0.39008 * Math.log(K) - 0.6318))
+            : Math.max(0, Math.min(1, 1.12989 * Math.pow(K - 60, -0.0755)));
+          const b = K >= 66 ? 1 : K <= 19 ? 0 : Math.max(0, Math.min(1, 0.5432 * Math.log(K - 10) - 1.1962));
+          return [Math.pow(r, 2.2), Math.pow(g, 2.2), Math.pow(b, 2.2)];
+        })()
+      : typeof SunRec["Sun Tint"] === "string"
+        ? HexToLinearRgb(SunRec["Sun Tint"], [1, 1, 1])
+        : [1, 1, 1];
+  const SunElevDeg = (Math.asin(Math.max(-1, Math.min(1, SunDir[2]))) * 180) / Math.PI;
+  const SunHorizonFade = Math.max(0, Math.min(1, (SunElevDeg + 1.5) / 4.5));
+  const SunTrans = Atmosphere.enabled ? ComputeSolarTransmittance(SunDir, Atmosphere) : [1, 1, 1];
+  const RefNoonTrans = [0.82, 0.87, 0.92];
   const SunIrradiance = SunVisible
-    ? BaseSunIrr.map((C) => C * GainScale)
+    ? [
+        BaseSunIrr[0] * GainScale * SunTintRgb[0] * (SunTrans[0] / RefNoonTrans[0]) * SunHorizonFade,
+        BaseSunIrr[1] * GainScale * SunTintRgb[1] * (SunTrans[1] / RefNoonTrans[1]) * SunHorizonFade,
+        BaseSunIrr[2] * GainScale * SunTintRgb[2] * (SunTrans[2] / RefNoonTrans[2]) * SunHorizonFade,
+      ]
     : [0, 0, 0];
   const AngularDiamDeg = Math.max(0.1, Number(SunRec["Angular Diameter"] ?? 2.06));
   const SunAngularRadiusRad = Math.max(0.002, (AngularDiamDeg * 0.5 * Math.PI) / 180);
-  const SkyRadiance = Array.isArray(SunRec.SkyRadiance)
+  const SkyDayVis = Math.max(0, Math.min(1, (SunElevDeg + 6.0) / 14.0));
+  const BaseSkyRad = Array.isArray(SunRec.SkyRadiance)
     ? SunRec.SkyRadiance
     : [0.16, 0.23, 0.36];
+  const SkyScale = 0.008 + 0.992 * SkyDayVis * SkyDayVis;
+  const SkyRadiance = [
+    BaseSkyRad[0] * SkyScale,
+    BaseSkyRad[1] * SkyScale,
+    BaseSkyRad[2] * SkyScale,
+  ];
+
+  const MoonRow = Rows.find((Row) => Row.Panel === "moon");
+  const MoonRec = (MoonRow && Values?.[MoonRow.Id]) || Values?.moon || {};
+  const MoonVis =
+    (MoonRow ? RowEffectivelyVisible(MoonRow, Rows, Hidden) : true) &&
+    (MoonRec["moon0:Visible"] ?? MoonRec.Visible) !== false;
+  const MoonFollowSky = Boolean(MoonRec["moon0:Follow Sky"] ?? MoonRec["Follow Sky"]);
+  const MoonAzDeg = Number(MoonRec["moon0:Azimuth"] ?? MoonRec.Azimuth ?? 300);
+  const MoonElDeg = Number(MoonRec["moon0:Elevation"] ?? MoonRec.Elevation ?? 28);
+  const MoonAzRad = (MoonAzDeg * Math.PI) / 180;
+  const MoonElRad = (MoonElDeg * Math.PI) / 180;
+  const MoonDir = MoonFollowSky
+    ? NormalizeVec3([-SunDir[0], -SunDir[1], Math.max(0.18, -SunDir[2] * 0.65 + 0.35)], [0, 0, 1])
+    : NormalizeVec3(
+        [
+          Math.cos(MoonElRad) * Math.sin(MoonAzRad),
+          Math.cos(MoonElRad) * Math.cos(MoonAzRad),
+          Math.sin(MoonElRad),
+        ],
+        [-0.5, 0.4, 0.45],
+      );
+  const MoonPreset = Math.max(0, Math.min(5, Math.round(Number(MoonRec["moon0:Preset"] ?? MoonRec.Preset ?? 0))));
+  const Moon = {
+    visible: MoonVis,
+    followSky: MoonFollowSky,
+    dir: MoonDir,
+    preset: MoonPreset,
+    phase: Math.max(0, Math.min(1, Number(MoonRec["moon0:Phase"] ?? MoonRec.Phase ?? 0.62))),
+    bright: Math.max(0, Number(MoonRec["moon0:Bright"] ?? MoonRec.Bright ?? 1.6)),
+    glow: Math.max(0, Number(MoonRec["moon0:Glow"] ?? MoonRec.Glow ?? 0.8)),
+    sizeRad: Math.max(0.002, ((Number(MoonRec["moon0:Size"] ?? MoonRec.Size ?? 1.35) * 0.5) * Math.PI) / 180),
+    tint: MOON_PRESET_TINTS[MoonPreset] || MOON_PRESET_TINTS[0],
+  };
+
+  const StarsRow = Rows.find((Row) => Row.Panel === "stars");
+  const StarsRec = (StarsRow && Values?.[StarsRow.Id]) || Values?.stars || {};
+  const StarsVis =
+    (StarsRow ? RowEffectivelyVisible(StarsRow, Rows, Hidden) : true) &&
+    StarsRec["Star field"] !== false;
+  const Stars = {
+    enabled: StarsVis,
+    brightness: Math.max(0, Number(StarsRec.Brightness ?? 1.0)),
+    pointSize: Math.max(0.3, Number(StarsRec["Point Size"] ?? 1.0)),
+    limMag: Math.max(0.5, Number(StarsRec["Limiting magnitude"] ?? 5.5)),
+    twinkle: StarsRec.Twinkle !== false,
+    twinkleDepth: Math.max(0, Number(StarsRec["Twinkle depth"] ?? 30)),
+    twinkleRate: Math.max(0.1, Number(StarsRec["Twinkle rate"] ?? 1.2)),
+    rotationRad: ((Number(StarsRec["Celestial rotation"] ?? 0) || 0) * Math.PI) / 180,
+  };
+
+  // Render Settings component under Editor Camera
+  const RenderSettings = ResolveRenderSettings(Values);
 
   // Post-process EV
   const PostRow = Rows.find((Row) => Row.Panel === "post");
@@ -585,7 +972,7 @@ export function CompileLiveGtxScene(
   const EvComp = PostEnabled
     ? Number(Values?.[PostRow?.Id]?.["EV Compensation"] ?? 0)
     : 0;
-  const ExposureGain = CanonicalEditorCamera.ExposureGain * Math.pow(2, EvComp);
+  const ExposureGain = RenderSettings.ExposureGain * Math.pow(2, EvComp);
 
   // LTC Area Quad Lights (up to 12, including directional Studio Light rigs!)
   const AreaLights = [];
@@ -685,8 +1072,9 @@ export function CompileLiveGtxScene(
     if (AreaLights.length >= 12) break;
   }
 
-  // Geometry, Multi-Part Props, Placed Camera Rigs, Fans & Studio Light Rigs (up to 384 primitives)
+  // Geometry, Multi-Part Props, Placed Camera Rigs, Fans, Studio Light Rigs & ControlVehicle BVH meshes
   const Primitives = [];
+  const Vehicles = [];
   let NextActorPickCode = 1;
   let HasSpinningFans = false;
   const FanSpinDeg = Number(ExtraOptions?.FanSpinDeg || 0);
@@ -697,6 +1085,39 @@ export function CompileLiveGtxScene(
       Boolean(PropId) && ["geometry", "camera", "light"].includes(Row.Panel) && Row.Id !== "camera";
     if (Row.Panel !== "geometry" && !IsRenderableProp) continue;
     if (!RowEffectivelyVisible(Row, Rows, Hidden)) continue;
+
+    if (Row.Panel === "geometry" && Row.PrimitiveShape === "vehicle") {
+      const Pos = Array.isArray(Rec.Position) ? Rec.Position : [-1.42, -0.82, -0.64];
+      const Rot = Array.isArray(Rec.Rotation) ? Rec.Rotation : [0, 0, 28];
+      const Scale = Array.isArray(Rec.Scale) ? Rec.Scale : [0.46, 0.46, 0.46];
+      const Mat = ResolveMaterial(Rec);
+      const Ch = Mat.Channels;
+      const BaseColor = HexToLinearRgb(Ch.colour?.Fill, [0.88, 0.91, 0.97]);
+      const Metallic = Math.max(0, Math.min(1, Number(Ch.metallic?.Fill ?? 0.22)));
+      const Roughness = Math.max(0.02, Math.min(1, Number(Ch.roughness?.Fill ?? 0.14)));
+      const CoatWeight = Math.max(0, Math.min(1, Number(Ch.coat?.Fill ?? 1.0)));
+      const PickCode = 500 + Vehicles.length;
+      Vehicles.push({
+        Id: Row.Id,
+        OwnerId: Row.Id,
+        Name: Row.Name,
+        PickCode,
+        Position: [Number(Pos[0]) || 0, Number(Pos[1]) || 0, Number(Pos[2]) || 0],
+        Rotation: [Number(Rot[0]) || 0, Number(Rot[1]) || 0, Number(Rot[2]) || 0],
+        Scale: [
+          Math.max(0.05, Math.abs(Number(Scale[0]) || 1)),
+          Math.max(0.05, Math.abs(Number(Scale[1]) || 1)),
+          Math.max(0.05, Math.abs(Number(Scale[2]) || 1)),
+        ],
+        BaseColor,
+        Metallic,
+        Roughness,
+        Coat: CoatWeight,
+        CastShadows: Rec["Cast shadows"] !== false,
+        GiContributor: Rec.GI !== false,
+      });
+      continue;
+    }
 
     if (IsRenderableProp && GetWorldPropById(PropId)) {
       const SharedPickCode =
@@ -863,12 +1284,19 @@ export function CompileLiveGtxScene(
     VerticalFovRad,
     OrthoHalfHeight,
     ExposureGain,
+    RenderSettings,
     SunDir,
     SunIrradiance,
     SunAngularRadiusRad,
     SkyRadiance,
+    Atmosphere,
+    Clouds,
+    Moon,
+    Stars,
+    HasAnimatedSky: Boolean(SunRec.Animate || Clouds.enabled || (Stars.enabled && Stars.twinkle)),
     AreaLights,
     Primitives,
+    Vehicles,
     ForceNodes: EffectiveForceNodes,
     ForceOverlay,
     ForceSignature,
@@ -1103,6 +1531,19 @@ export function PickSceneEntityAtUv(CompiledScene, U, V, Aspect) {
     if (Hit && Hit.T < BestT) {
       BestT = Hit.T;
       BestId = Prim.OwnerId || Prim.Id;
+    }
+  }
+
+  // Test ControlVehicle BVH meshes
+  if (CompiledScene.Vehicles && CompiledScene.Vehicles.length > 0) {
+    const vehAssets = GetCachedVehicleBvhAssets();
+    if (vehAssets) {
+      const vehHit = TraceVehicleBvhCpu(RayOrigin, RayDir, BestT, CompiledScene.Vehicles, vehAssets);
+      if (vehHit && vehHit.t < BestT) {
+        BestT = vehHit.t;
+        const matchedVeh = CompiledScene.Vehicles.find((v) => v.PickCode === vehHit.pickCode);
+        if (matchedVeh) BestId = matchedVeh.OwnerId || matchedVeh.Id;
+      }
     }
   }
 

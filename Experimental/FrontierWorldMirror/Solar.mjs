@@ -62,7 +62,7 @@ export function Solar({
         1.25 * Eccentricity * Eccentricity * Math.sin(2 * Mr),
     );
   const TrueSolarMinutes =
-      (UtcHours * 60 + EquationOfTime + 4 * Longitude) % 1440,
+      (((UtcHours * 60 + EquationOfTime + 4 * Longitude) % 1440) + 1440) % 1440,
     HourAngle = TrueSolarMinutes / 4 - 180,
     LatR = Radians(Latitude),
     DecR = Radians(Declination),

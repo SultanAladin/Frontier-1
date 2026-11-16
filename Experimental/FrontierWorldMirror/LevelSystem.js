@@ -6,6 +6,8 @@
 import {
   BuildMaterialRecord,
   CanonicalEditorCamera,
+  CanonicalRenderSettings,
+  ResolveRenderSettings,
   ShowcaseInitialRows,
   ShowcaseInitialValues,
 } from "./ShowcaseGalleryScene.js";
@@ -15,9 +17,60 @@ import {
   BuildTrafficConeMaterial,
 } from "./WorldDragDrop.js";
 
-export const LEVEL_STORAGE_KEY = "Frontier.WorldMirrorLevels.v3";
+export const LEVEL_STORAGE_KEY = "Frontier.WorldMirrorLevels.v6";
 
 const Clone = (Value) => JSON.parse(JSON.stringify(Value));
+
+export function EnsureRenderSettingsInLevel(Lvl) {
+  if (!Lvl || !Array.isArray(Lvl.Rows)) return Lvl;
+  let Rows = Lvl.Rows;
+  const HasRenderSettings = Rows.some((R) => R.Id === "render-settings");
+  if (!HasRenderSettings) {
+    const CamIdx = Rows.findIndex((R) => R.Id === "camera");
+    const RenderRow = {
+      Id: "render-settings",
+      Name: "Render Settings",
+      Panel: "render-settings",
+      Icon: "render-settings",
+      Parent: "camera",
+      Description: "Shadows, GI & Reflections · Per-pipeline quality",
+    };
+    Rows = [...Rows];
+    if (CamIdx >= 0) Rows.splice(CamIdx + 1, 0, RenderRow);
+    else Rows.push(RenderRow);
+  }
+  let Values = {
+    ...(Lvl.Values || {}),
+    "render-settings": ResolveRenderSettings(Lvl.Values),
+  };
+  if (Lvl.Id === "level-showcase-gallery" && !Rows.some((R) => R.Id === "control-vehicle")) {
+    const VehicleRow = ShowcaseInitialRows.find((R) => R.Id === "control-vehicle");
+    if (VehicleRow) {
+      Rows = [...Rows];
+      const SphereIdx = Rows.findIndex((R) => R.Id === "abbe-sphere");
+      if (SphereIdx >= 0) Rows.splice(SphereIdx + 1, 0, Clone(VehicleRow));
+      else Rows.push(Clone(VehicleRow));
+      if (!Values["control-vehicle"] && ShowcaseInitialValues["control-vehicle"]) {
+        Values["control-vehicle"] = Clone(ShowcaseInitialValues["control-vehicle"]);
+      }
+    }
+  }
+  for (const EnvId of ["atmosphere", "clouds", "moon", "stars"]) {
+    if (!Rows.some((R) => R.Panel === EnvId)) {
+      const EnvRow = ShowcaseInitialRows.find((R) => R.Id === EnvId);
+      if (EnvRow) {
+        Rows = [...Rows];
+        const SunIdx = Rows.findIndex((R) => R.Panel === "sun" || R.Id === "world");
+        if (SunIdx >= 0) Rows.splice(SunIdx + 1, 0, Clone(EnvRow));
+        else Rows.push(Clone(EnvRow));
+      }
+    }
+    if (!Values[EnvId] && ShowcaseInitialValues[EnvId]) {
+      Values[EnvId] = Clone(ShowcaseInitialValues[EnvId]);
+    }
+  }
+  return { ...Lvl, Rows, Values };
+}
 
 function BuildLookDevStudioLevel() {
   const Rows = [
@@ -295,18 +348,18 @@ function BuildEmptyProvingGroundLevel(Id = "level-proving-ground", Name = "Empty
 
 export function BuildDefaultLevels() {
   return [
-    {
+    EnsureRenderSettingsInLevel({
       Id: "level-showcase-gallery",
       Name: "Cornell-Studio Gallery",
-      Notes: "Canonical C++ <-> HTML Architectural Cornell-Studio Gallery.",
+      Notes: "Canonical C++ <-> HTML Architectural Cornell-Studio Gallery with ControlVehicle.",
       Rows: Clone(ShowcaseInitialRows),
       Values: Clone(ShowcaseInitialValues),
       Hidden: {},
       Collapsed: {},
       Selected: "chrome-sphere",
-    },
-    BuildLookDevStudioLevel(),
-    BuildEmptyProvingGroundLevel(),
+    }),
+    EnsureRenderSettingsInLevel(BuildLookDevStudioLevel()),
+    EnsureRenderSettingsInLevel(BuildEmptyProvingGroundLevel()),
   ];
 }
 
@@ -325,7 +378,17 @@ function BuildAutomotiveConeSlalomLevel(
       Icon: "editor-cube",
       Parent: "scene",
       Preview: true,
-      Description: "Dark tarmac proving pad · 8.40 × 8.40 m",
+      Description: "Dark tarmac proving pad · 14.00 × 14.00 m",
+    },
+    {
+      Id: "control-vehicle",
+      Name: "ControlVehicle",
+      PrimitiveShape: "vehicle",
+      Panel: "geometry",
+      Icon: "vehicle",
+      Parent: "scene",
+      Preview: true,
+      Description: "ControlVehicle BVH Mesh · Full-Scale 1:1 Proving Ground Car",
     },
     {
       Id: "traffic-cone-1",
@@ -408,10 +471,25 @@ function BuildAutomotiveConeSlalomLevel(
     "asphalt-pad": {
       Position: [0, 0.5, -0.68],
       Rotation: [0, 0, 0],
-      Scale: [8.4, 8.4, 0.16],
+      Scale: [14.0, 14.0, 0.16],
       "Cast shadows": true,
       GI: true,
       ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.09, 0.095, 0.105], Roughness: 0.68 }),
+    },
+    "control-vehicle": {
+      Position: [0.0, 0.65, -0.60],
+      Rotation: [0, 0, -24],
+      Scale: [0.78, 0.78, 0.78],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({
+        Type: "Clear coat",
+        BaseLinear: [0.88, 0.91, 0.97],
+        Metallic: 0.22,
+        Roughness: 0.14,
+        Coat: 1.0,
+        CoatRoughness: 0.03,
+      }),
     },
     "traffic-cone-1": {
       Position: [-0.95, -0.85, -0.21],
@@ -604,11 +682,11 @@ export function CreateNewLevelRecord({ Name, TemplateId, Notes = "", CurrentLeve
     Copy.Name = CleanName;
     Copy.Notes = Notes || `Duplicated from ${CurrentLevel.Name}`;
     if (Copy.Rows?.[0]?.Id === "scene") Copy.Rows[0].Name = CleanName;
-    return Copy;
+    return EnsureRenderSettingsInLevel(Copy);
   }
 
   if (TemplateId === "gallery") {
-    return {
+    return EnsureRenderSettingsInLevel({
       Id: NewId,
       Name: CleanName,
       Notes: Notes || "Cornell-Studio Gallery level instance.",
@@ -617,15 +695,15 @@ export function CreateNewLevelRecord({ Name, TemplateId, Notes = "", CurrentLeve
       Hidden: {},
       Collapsed: {},
       Selected: "chrome-sphere",
-    };
+    });
   }
 
   if (TemplateId === "force-lab") {
-    return BuildForceFieldLabLevel(NewId, CleanName, Notes);
+    return EnsureRenderSettingsInLevel(BuildForceFieldLabLevel(NewId, CleanName, Notes));
   }
 
   if (TemplateId === "slalom") {
-    return BuildAutomotiveConeSlalomLevel(NewId, CleanName, Notes);
+    return EnsureRenderSettingsInLevel(BuildAutomotiveConeSlalomLevel(NewId, CleanName, Notes));
   }
 
   if (TemplateId === "lookdev") {
@@ -634,10 +712,10 @@ export function CreateNewLevelRecord({ Name, TemplateId, Notes = "", CurrentLeve
     Base.Name = CleanName;
     if (Notes) Base.Notes = Notes;
     Base.Rows[0].Name = CleanName;
-    return Base;
+    return EnsureRenderSettingsInLevel(Base);
   }
 
-  return BuildEmptyProvingGroundLevel(NewId, CleanName, Notes);
+  return EnsureRenderSettingsInLevel(BuildEmptyProvingGroundLevel(NewId, CleanName, Notes));
 }
 
 export function LoadSavedLevelsState() {
@@ -648,16 +726,19 @@ export function LoadSavedLevelsState() {
   try {
     window.localStorage.removeItem("Frontier.WorldMirrorLevels.v1");
     window.localStorage.removeItem("Frontier.WorldMirrorLevels.v2");
+    window.localStorage.removeItem("Frontier.WorldMirrorLevels.v3");
+    window.localStorage.removeItem("Frontier.WorldMirrorLevels.v4");
     const Raw = window.localStorage.getItem(LEVEL_STORAGE_KEY);
     if (!Raw) return { ActiveLevelId: Defaults[0].Id, Levels: Defaults };
     const Parsed = JSON.parse(Raw);
     if (!Array.isArray(Parsed?.Levels) || Parsed.Levels.length === 0) {
       return { ActiveLevelId: Defaults[0].Id, Levels: Defaults };
     }
-    const Active = Parsed.Levels.some((L) => L.Id === Parsed.ActiveLevelId)
+    const NormalizedLevels = Parsed.Levels.map((L) => EnsureRenderSettingsInLevel(L));
+    const Active = NormalizedLevels.some((L) => L.Id === Parsed.ActiveLevelId)
       ? Parsed.ActiveLevelId
-      : Parsed.Levels[0].Id;
-    return { ActiveLevelId: Active, Levels: Parsed.Levels };
+      : NormalizedLevels[0].Id;
+    return { ActiveLevelId: Active, Levels: NormalizedLevels };
   } catch {
     return { ActiveLevelId: Defaults[0].Id, Levels: Defaults };
   }

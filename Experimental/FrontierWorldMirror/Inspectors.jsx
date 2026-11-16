@@ -15,7 +15,15 @@ import {
 } from "./LiveGraph.jsx";
 import FogShapePanel from "./FogShapePanel.jsx";
 import { IsEditorCamera } from "./ScenePolicy.js";
-import { CanonicalEditorCamera } from "./ShowcaseGalleryScene.js";
+import {
+  CanonicalEditorCamera,
+  CanonicalRenderSettings,
+  GI_ALGORITHMS,
+  QUALITY_PRESETS,
+  REFLECTION_ALGORITHMS,
+  ResolveRenderSettings,
+  SHADOW_ALGORITHMS,
+} from "./ShowcaseGalleryScene.js";
 import { WindInspector, WindBinding } from "./WindPanel.jsx";
 import TransformPanel from "./TransformPanel.jsx";
 import MaterialPanel from "./MaterialPanel.jsx";
@@ -181,6 +189,36 @@ export function Icon({ Name, Size = 24 }) {
         style={{ color: "#91b7cd", display: "inline-flex" }}
       >
         <ActionIcon Name="rain" Size={Size} />
+      </span>
+    );
+  if (Name === "render-settings")
+    return (
+      <span
+        className="native-icon render-settings-symbol"
+        data-native-icon={Name}
+        style={{
+          color: "#d4e6ff",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActionIcon Name="render-settings" Size={Math.max(15, Math.min(Size, 19))} />
+      </span>
+    );
+  if (Name === "vehicle")
+    return (
+      <span
+        className="native-icon vehicle-symbol"
+        data-native-icon={Name}
+        style={{
+          color: "#a7d5f2",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActionIcon Name="vehicle" Size={Math.max(15, Math.min(Size, 19))} />
       </span>
     );
   const Source = window.NativeAssets?.Icons[Name];
@@ -514,6 +552,7 @@ export function Inspector({
   OnChangeForceOverlay = null,
   OnSaveForcePreset = null,
   OnDeleteSubject = null,
+  OnSelectSubject = null,
 }) {
   const Sheet = Panels[Subject.Panel] || Panels.geometry;
   const [MoonSlot, SelectMoon] = useState(0);
@@ -541,6 +580,26 @@ export function Inspector({
       return;
     }
     Change(Prefix + Name, Next);
+    if (
+      Subject.Panel === "sun" &&
+      ["Local Hours", "Month", "Day of Month", "Latitude", "Longitude"].includes(Name)
+    ) {
+      const Params = {
+        LocalHours: Name === "Local Hours" ? Next : V("Local Hours"),
+        Month: Name === "Month" ? Next : V("Month"),
+        Day: Name === "Day of Month" ? Next : V("Day of Month"),
+        Latitude: Name === "Latitude" ? Next : V("Latitude"),
+        Longitude: Name === "Longitude" ? Next : V("Longitude"),
+      };
+      const Solved = Solar(Params);
+      const El = (Solved.Elevation * Math.PI) / 180;
+      const Az = (Solved.Azimuth * Math.PI) / 180;
+      Change("Direction", [
+        Number((Math.cos(El) * Math.sin(Az)).toFixed(4)),
+        Number((Math.cos(El) * Math.cos(Az)).toFixed(4)),
+        Number(Math.sin(El).toFixed(4)),
+      ]);
+    }
     if (Subject.Panel === "moon" && Name === "Preset")
       Change(Prefix + "Size", [0.52, 1.6, 1.2, 1.1, 2.4, 0.6][Next]);
     if (Subject.Panel === "sun" && Name === "Speed" && Next < 4)
@@ -556,10 +615,22 @@ export function Inspector({
       const Now = performance.now(),
         Hours = Latest.current["Local Hours"] ?? 12,
         Duration = Latest.current["Day duration"] ?? 3;
-      Change(
-        "Local Hours",
-        (Hours + (((Now - Before) / 1000) * 24) / Duration / 3600) % 24,
-      );
+      const NextHours = (Hours + (((Now - Before) / 1000) * 24) / Duration / 60) % 24;
+      Change("Local Hours", NextHours);
+      const Solved = Solar({
+        LocalHours: NextHours,
+        Month: Latest.current.Month ?? 10,
+        Day: Latest.current["Day of Month"] ?? 4,
+        Latitude: Latest.current.Latitude ?? -26.19,
+        Longitude: Latest.current.Longitude ?? 28.32,
+      });
+      const El = (Solved.Elevation * Math.PI) / 180;
+      const Az = (Solved.Azimuth * Math.PI) / 180;
+      Change("Direction", [
+        Number((Math.cos(El) * Math.sin(Az)).toFixed(4)),
+        Number((Math.cos(El) * Math.cos(Az)).toFixed(4)),
+        Number(Math.sin(El).toFixed(4)),
+      ]);
       Before = Now;
     }, 100);
     return () => clearInterval(Timer);
@@ -870,7 +941,16 @@ export function Inspector({
       Latitude: V("Latitude"),
       Longitude: V("Longitude"),
     });
-    const { Elevation, Azimuth } = Solved;
+    const Dir = Array.isArray(Values.Direction) ? Values.Direction : null;
+    const DLen = Dir ? Math.hypot(Dir[0] || 0, Dir[1] || 0, Dir[2] || 0) : 0;
+    const Elevation =
+      DLen > 1e-4
+        ? (Math.asin(Math.max(-1, Math.min(1, Dir[2] / DLen))) * 180) / Math.PI
+        : Solved.Elevation;
+    const Azimuth =
+      DLen > 1e-4
+        ? ((((Math.atan2(Dir[0], Dir[1]) * 180) / Math.PI) % 360) + 360) % 360
+        : Solved.Azimuth;
     Content = (
       <>
         {Header("Environment")}
@@ -927,12 +1007,39 @@ export function Inspector({
             />
             <div
               className="graphic tall solved-gizmo"
-              title="Solved direction. Edit Local Hours to change it."
+              title="Drag horizontally for azimuth, vertically for elevation (full 24h day & night). Edit Local Hours for exact solar time."
             >
               <SunGizmo
                 azimuth={Azimuth}
                 elevation={Elevation}
-                onChange={() => {}}
+                onChange={(NextAz, NextEl) => {
+                  const ElRad = (NextEl * Math.PI) / 180;
+                  const AzRad = (NextAz * Math.PI) / 180;
+                  Change("Direction", [
+                    Number((Math.cos(ElRad) * Math.sin(AzRad)).toFixed(4)),
+                    Number((Math.cos(ElRad) * Math.cos(AzRad)).toFixed(4)),
+                    Number(Math.sin(ElRad).toFixed(4)),
+                  ]);
+                  let BestH = Time;
+                  let BestErr = 1e9;
+                  for (let H = 0; H < 24; H += 0.25) {
+                    const S = Solar({
+                      LocalHours: H,
+                      Month: V("Month"),
+                      Day: V("Day of Month"),
+                      Latitude: V("Latitude"),
+                      Longitude: V("Longitude"),
+                    });
+                    const dEl = S.Elevation - NextEl;
+                    const dAz = ((S.Azimuth - NextAz + 540) % 360) - 180;
+                    const Err = dEl * dEl + dAz * dAz * 0.25;
+                    if (Err < BestErr) {
+                      BestErr = Err;
+                      BestH = H;
+                    }
+                  }
+                  Change("Local Hours", BestH);
+                }}
               />
             </div>
             {F("Local Hours")}
@@ -1089,25 +1196,39 @@ export function Inspector({
           <TransformPanel Values={Values} Change={Change} />
         )}
         {IsEditorCamera(Subject) && (
-          <button
-            type="button"
-            className="generic-card"
-            style={{
-              width: "100%",
-              padding: "9px 12px",
-              marginBottom: 10,
-              cursor: "pointer",
-              color: "#eff4cf",
-              textAlign: "center",
-            }}
-            onClick={() => {
-              Change("Position", [...CanonicalEditorCamera.Position]);
-              Change("Target", [...CanonicalEditorCamera.Target]);
-              Change("Focal Length", CanonicalEditorCamera.FocalLengthMm);
-            }}
-          >
-            Reset EditorCamera to C++ Canonical Pose (0.00, -3.55, 0.42)
-          </button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+            <button
+              type="button"
+              className="generic-card"
+              style={{
+                padding: "9px 10px",
+                cursor: "pointer",
+                color: "#eff4cf",
+                textAlign: "center",
+              }}
+              onClick={() => {
+                Change("Position", [...CanonicalEditorCamera.Position]);
+                Change("Target", [...CanonicalEditorCamera.Target]);
+                Change("Focal Length", CanonicalEditorCamera.FocalLengthMm);
+              }}
+            >
+              Reset Canonical Pose
+            </button>
+            <button
+              type="button"
+              className="generic-card"
+              style={{
+                padding: "9px 10px",
+                cursor: "pointer",
+                color: "#b8dcff",
+                textAlign: "center",
+                borderColor: "rgba(128,184,255,0.35)",
+              }}
+              onClick={() => OnSelectSubject && OnSelectSubject("render-settings")}
+            >
+              Render Settings →
+            </button>
+          </div>
         )}
         <Card Title="Lens + field of view" Height={440}>
           <Metric Value={Focal.toFixed(1)} Unit="mm" />
@@ -1171,6 +1292,290 @@ export function Inspector({
             Aspect {Aspect.toFixed(3)} · hyperfocal{" "}
             {Optics.hyperfocal.toFixed(1)} m · pinhole renderer
           </p>
+        </Card>
+      </>
+    );
+  } else if (Subject.Panel === "render-settings") {
+    const Rs = ResolveRenderSettings({ "render-settings": Values });
+    const ActiveShadow = SHADOW_ALGORITHMS.find((A) => A.id === Rs.ShadowAlgorithm) || SHADOW_ALGORITHMS[0];
+    const ActiveGi = GI_ALGORITHMS.find((A) => A.id === Rs.GiAlgorithm) || GI_ALGORITHMS[0];
+    const ActiveRefl = REFLECTION_ALGORITHMS.find((A) => A.id === Rs.ReflectionAlgorithm) || REFLECTION_ALGORITHMS[0];
+
+    const ApplyShadowQuality = (QIdx) => {
+      const Preset = QUALITY_PRESETS[QIdx] || QUALITY_PRESETS[1];
+      Change("ShadowQuality", Preset.id);
+      Change("ShadowRays", Preset.bvhRays);
+      Change("PcssTaps", Preset.pcssTaps);
+      Change("SmrtRays", Preset.smrtRays);
+      Change("ShadowMapRes", Preset.id === 0 ? 1024 : 2048);
+    };
+    const ApplyGiQuality = (QIdx) => {
+      const Preset = QUALITY_PRESETS[QIdx] || QUALITY_PRESETS[1];
+      Change("GiQuality", Preset.id);
+      Change("GiSamples", Preset.giSamples);
+      Change("GiCones", Preset.giCones);
+    };
+    const ApplyReflQuality = (QIdx) => {
+      const Preset = QUALITY_PRESETS[QIdx] || QUALITY_PRESETS[1];
+      Change("ReflectionQuality", Preset.id);
+      Change("ReflectionRays", Preset.reflRays);
+      Change("ReflectionBounces", Preset.id >= 2 ? 3 : Preset.id >= 1 ? 2 : 1);
+    };
+    const ApplyMasterQuality = (QIdx) => {
+      ApplyShadowQuality(QIdx);
+      ApplyGiQuality(QIdx);
+      ApplyReflQuality(QIdx);
+    };
+
+    const RsSelect = (LabelText, Options, Current, OnPick, Note = "") => (
+      <label className="field">
+        <span>{LabelText}</span>
+        <select
+          aria-label={LabelText}
+          value={String(Current)}
+          onChange={(Ev) => {
+            const Raw = Ev.target.value;
+            const Match = Options.find((O) => String(O.id) === Raw);
+            if (Match) OnPick(Match.id);
+          }}
+        >
+          {Options.map((Opt) => (
+            <option key={String(Opt.id)} value={String(Opt.id)}>
+              {Opt.label}
+            </option>
+          ))}
+        </select>
+        {Note ? (
+          <p className="rs-desc-banner" style={{ marginTop: 8, marginBottom: 0 }}>
+            {Note}
+          </p>
+        ) : null}
+      </label>
+    );
+
+    const RsFieldSlider = (LabelText, Key, Val, Min, Max, Step, Unit = "", Decimals = 0) => {
+      const Safe = Number.isFinite(+Val) ? +Val : Min;
+      const Pct = Math.max(0, Math.min(100, (100 * (Safe - Min)) / Math.max(1e-6, Max - Min)));
+      return (
+        <label className="field compact" data-native-property={LabelText}>
+          <span>{LabelText}</span>
+          <div className="slider-pill">
+            <div className="split-value">
+              <input
+                aria-label={`${LabelText} value`}
+                type="number"
+                min={Min}
+                max={Max}
+                step={Step}
+                value={Number(Safe.toFixed(Decimals))}
+                onChange={(Ev) => {
+                  const N = +Ev.target.value;
+                  if (Number.isFinite(N)) Change(Key, Math.min(Max, Math.max(Min, N)));
+                }}
+              />
+              <small>{Unit}</small>
+            </div>
+            <input
+              aria-label={LabelText}
+              type="range"
+              min={Min}
+              max={Max}
+              step={Step}
+              value={Safe}
+              style={{ "--fill": `${Pct}%` }}
+              onChange={(Ev) => Change(Key, +Ev.target.value)}
+            />
+          </div>
+        </label>
+      );
+    };
+
+    const RsSwitch = (LabelText, Key, Val) => (
+      <label className="switch-row">
+        <span>{LabelText}</span>
+        <button
+          type="button"
+          className={`toggle ${Val ? "on" : ""}`}
+          role="switch"
+          aria-checked={!!Val}
+          aria-label={LabelText}
+          onClick={() => Change(Key, !Val)}
+        >
+          <i />
+        </button>
+      </label>
+    );
+
+    const UsesShadowMap = Rs.ShadowAlgorithm !== "bvh";
+    const UsesPcss = Rs.ShadowAlgorithm === "contact_pcss" || Rs.ShadowAlgorithm === "pcss";
+    const UsesSmrt = Rs.ShadowAlgorithm === "smrt";
+    const UsesRayCount = Rs.ShadowAlgorithm === "contact_pcss" || Rs.ShadowAlgorithm === "bvh";
+    const MasterQuality =
+      Rs.ShadowQuality === Rs.GiQuality && Rs.GiQuality === Rs.ReflectionQuality
+        ? Rs.ShadowQuality
+        : -1;
+
+    Content = (
+      <>
+        {Header("Cameras / Editor Camera / Component", "Render Settings")}
+
+        <div className="rs-summary-bar">
+          <div className="rs-summary-chips">
+            <span className="rs-chip">
+              <i style={{ background: "#7ab8ff" }} />
+              {ActiveShadow.label}
+              {UsesShadowMap ? ` · ${Rs.ShadowMapRes}²` : ""}
+            </span>
+            <span className="rs-chip">
+              <i style={{ background: "#7be0ad" }} />
+              {ActiveGi.label}
+            </span>
+            <span className="rs-chip">
+              <i style={{ background: "#c5a3ff" }} />
+              {ActiveRefl.label}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="rs-reset-btn"
+            onClick={() => {
+              for (const [K, VVal] of Object.entries(CanonicalRenderSettings)) {
+                Change(K, VVal);
+              }
+            }}
+          >
+            ↺ Reset
+          </button>
+        </div>
+
+        <Card Title="Pipeline Preset" Accent="#b9c8d8" GraphHandled>
+          <div className="rs-sliders">
+            {RsSelect(
+              "Global Quality Tier",
+              [
+                ...(MasterQuality < 0 ? [{ id: -1, label: "Custom (Per-Pass)" }] : []),
+                ...QUALITY_PRESETS.map((Q) => ({ id: Q.id, label: Q.label })),
+              ],
+              MasterQuality,
+              (Id) => {
+                if (Id >= 0) ApplyMasterQuality(Id);
+              },
+            )}
+          </div>
+        </Card>
+
+        <Card Title="Shadows" Accent="#7ab8ff" GraphHandled>
+          <div className="rs-sliders">
+            {RsSelect(
+              "Shadow Algorithm",
+              SHADOW_ALGORITHMS,
+              Rs.ShadowAlgorithm,
+              (Id) => Change("ShadowAlgorithm", Id),
+              ActiveShadow.desc,
+            )}
+            {RsSelect(
+              "Shadow Quality",
+              QUALITY_PRESETS,
+              Rs.ShadowQuality,
+              ApplyShadowQuality,
+            )}
+            {UsesShadowMap &&
+              RsSelect(
+                "Shadow Map Resolution",
+                [
+                  { id: 1024, label: "1024 × 1024 (Fast)" },
+                  { id: 2048, label: "2048 × 2048 (Sharp)" },
+                ],
+                Rs.ShadowMapRes,
+                (V) => Change("ShadowMapRes", V),
+              )}
+            {RsSelect(
+              "Area Emitters",
+              [
+                { id: "shadowed", label: "Shadowed Area Lights" },
+                { id: "unshadowed", label: "Unshadowed Area Lights" },
+              ],
+              Rs.EmissiveShadowMode,
+              (V) => Change("EmissiveShadowMode", V),
+            )}
+            <div className="rs-divider" />
+            {RsFieldSlider("Penumbra Softness", "ShadowSoftness", Rs.ShadowSoftness, 0.25, 2.5, 0.05, "×", 2)}
+            {UsesPcss && RsFieldSlider("PCSS Filter Taps", "PcssTaps", Rs.PcssTaps, 8, 48, 2, "taps", 0)}
+            {UsesSmrt && RsFieldSlider("SMRT Depth Rays", "SmrtRays", Rs.SmrtRays, 2, 12, 1, "rays", 0)}
+            {UsesRayCount &&
+              RsFieldSlider(
+                Rs.ShadowAlgorithm === "bvh" ? "BVH Shadow Rays" : "Contact Trace Rays",
+                "ShadowRays",
+                Rs.ShadowRays,
+                1,
+                16,
+                1,
+                "rays",
+                0,
+              )}
+            {UsesPcss && RsSwitch("Plane Filter (Slope Bias Smoothing)", "PlaneFilter", Rs.PlaneFilter)}
+            {UsesShadowMap && RsSwitch("Half-Resolution Shadow Pass", "HalfResShadows", Rs.HalfResShadows)}
+          </div>
+        </Card>
+
+        <Card Title="Global Illumination" Accent="#7be0ad" GraphHandled>
+          <div className="rs-sliders">
+            {RsSelect(
+              "GI Algorithm",
+              GI_ALGORITHMS,
+              Rs.GiAlgorithm,
+              (Id) => Change("GiAlgorithm", Id),
+              ActiveGi.desc,
+            )}
+            {Rs.GiAlgorithm !== "off" && (
+              <>
+                {RsSelect("GI Quality", QUALITY_PRESETS, Rs.GiQuality, ApplyGiQuality)}
+                {Rs.GiAlgorithm === "sdf" &&
+                  RsFieldSlider("Cone GI Directions", "GiCones", Rs.GiCones, 4, 14, 1, "dirs", 0)}
+                {Rs.GiAlgorithm === "bvh" &&
+                  RsFieldSlider("BVH GI Samples / Pixel", "GiSamples", Rs.GiSamples, 2, 20, 1, "spp", 0)}
+                {RsFieldSlider("Bounce Intensity", "GiIntensity", Rs.GiIntensity, 0, 2.5, 0.05, "×", 2)}
+              </>
+            )}
+            {RsFieldSlider("Sky & Ambient Fill", "FillBoost", Rs.FillBoost, 0.2, 2.5, 0.05, "×", 2)}
+          </div>
+        </Card>
+
+        <Card Title="Reflections" Accent="#c5a3ff" GraphHandled>
+          <div className="rs-sliders">
+            {RsSelect(
+              "Reflection Mode",
+              REFLECTION_ALGORITHMS,
+              Rs.ReflectionAlgorithm,
+              (Id) => Change("ReflectionAlgorithm", Id),
+              ActiveRefl.desc,
+            )}
+            {Rs.ReflectionAlgorithm !== "env" && (
+              <>
+                {RsSelect("Reflection Quality", QUALITY_PRESETS, Rs.ReflectionQuality, ApplyReflQuality)}
+                {RsFieldSlider("Reflection Rays / Pixel", "ReflectionRays", Rs.ReflectionRays, 1, 8, 1, "rays", 0)}
+                {RsFieldSlider("Max Reflection Bounces", "ReflectionBounces", Rs.ReflectionBounces, 1, 3, 1, "bnc", 0)}
+              </>
+            )}
+          </div>
+        </Card>
+
+        <Card Title="Camera & Output" Accent="#e3d598" GraphHandled>
+          <div className="rs-sliders">
+            {RsFieldSlider("Camera Exposure Gain", "ExposureGain", Rs.ExposureGain, 0.2, 3.5, 0.05, "×", 2)}
+            {RsSelect(
+              "Render Resolution Scale",
+              [
+                { id: 50, label: "50% (Performance)" },
+                { id: 75, label: "75% (Balanced)" },
+                { id: 100, label: "100% (Native)" },
+                { id: 125, label: "125% (Supersampled)" },
+              ],
+              Rs.RenderScale,
+              (V) => Change("RenderScale", V),
+            )}
+            {RsSwitch("Edge Anti-Aliasing", "AntiAliasing", Rs.AntiAliasing)}
+          </div>
         </Card>
       </>
     );

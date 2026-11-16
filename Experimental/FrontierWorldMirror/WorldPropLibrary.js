@@ -4,7 +4,7 @@
 //          Proving-Ground Barriers & Kerbs in Frontier Z-Up meters (+X Right, +Y Forward, +Z Up), using clean flat OpenPBR materials.
 //==========================================================================================================================================
 
-import { ResolveMaterial } from "./MaterialSpecification.js";
+import { ResolveMaterial, Rgb } from "./MaterialSpecification.js";
 
 export const FACE_KEYS = ["-X", "+X", "-Y", "+Y", "-Z", "+Z"];
 export const FACE_LABELS = {
@@ -1412,7 +1412,24 @@ export function ExpandPropPrimitives(Row, Rec = {}, PickCode = 1) {
     const UseFaceAtlas = HasActiveFaceColors(FaceColors);
     const Metallic = Math.max(0, Math.min(1, Number(Ch.metallic?.Fill ?? 0)));
     const Roughness = Math.max(0.02, Math.min(1, Number(Ch.roughness?.Fill ?? 0.38)));
-    const Emission = Math.max(0, Number(Ch.emission?.Fill ?? 0));
+    let Emission = Math.max(0, Number(Ch.emission?.Fill ?? 0));
+    let BaseColor = Rgb(Ch.colour?.Fill || "#a6a6a6").map((C) => Math.pow(Math.max(0, C), 2.2));
+    if (UseFaceAtlas && Emission <= 0.01) {
+      let MaxFaceEmit = 0;
+      let BestHex = null;
+      for (const Key of FACE_KEYS) {
+        const Entry = FaceColors?.[Key];
+        const Fe = typeof Entry === "object" && Entry ? Number(Entry.Emission || 0) : 0;
+        if (Fe > MaxFaceEmit) {
+          MaxFaceEmit = Fe;
+          BestHex = Entry.Fill || null;
+        }
+      }
+      if (MaxFaceEmit > 0.05) {
+        Emission = MaxFaceEmit * 0.45;
+        if (BestHex) BaseColor = Rgb(BestHex).map((C) => Math.pow(Math.max(0, C), 2.2));
+      }
+    }
 
     Out.push({
       Id: `${Row.Id}__part_${I}`,
@@ -1430,7 +1447,7 @@ export function ExpandPropPrimitives(Row, Rec = {}, PickCode = 1) {
       FaceColors: UseFaceAtlas ? FaceColors : null,
       ResolvedMaterial: ResolvedMat,
       MaterialType: ResolvedMat.Type,
-      BaseColor: [0.65, 0.65, 0.65],
+      BaseColor,
       Metallic,
       Roughness,
       DiffuseRoughness: Roughness * 0.85,

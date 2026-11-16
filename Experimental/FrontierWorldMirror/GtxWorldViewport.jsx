@@ -32,6 +32,19 @@ import {
 } from "./WorldDragDrop.js";
 import { HasColourDragData, ReadColourDragData } from "./ColourCodex.js";
 import {
+  BuildSkyViewLut,
+  GetSkyViewCacheKey,
+  PackSkyViewRgba16f,
+  SKY_VIEW_HEIGHT,
+  SKY_VIEW_WIDTH,
+} from "./AtmosphereSky.js";
+import {
+  GetMoonAtlasSnapshot,
+  LoadMoonAtlas,
+  MOON_ATLAS_H,
+  MOON_ATLAS_W,
+} from "./MoonAtlasLoader.js";
+import {
   ATLAS_COLS,
   ATLAS_HEIGHT,
   ATLAS_TILE_SIZE,
@@ -64,6 +77,19 @@ import {
   DeriveUnrealCameraState,
   StepUnrealWasdCamera,
 } from "./UnrealViewportCamera.js";
+import {
+  BuildVehicleTlasAndInstances,
+  ExpandVehicleInstances,
+  GetCachedVehicleBvhAssets,
+  LoadVehicleBvhAssets,
+} from "./VehicleBvhAssets.js";
+import {
+  BuildAreaShadowMatrix,
+  BuildPrimModelMatrix,
+  BuildSunShadowMatrix,
+  BuildUnitShadowGeometries,
+  EncodeRenderSettingsUniforms,
+} from "./ShadowPipeline.js";
 
 export { RowEffectivelyVisible as PreviewVisible };
 
@@ -94,10 +120,24 @@ void main() {
 }
 `;
 
+export const SHADOW_MAP_VERTEX_SHADER = `#version 300 es
+precision highp float;
+layout(location = 0) in vec3 aPos;
+uniform mat4 uShadowVP;
+uniform mat4 uModelMat;
+void main() {
+  gl_Position = uShadowVP * uModelMat * vec4(aPos, 1.0);
+}
+`;
+
+export const SHADOW_MAP_FRAGMENT_SHADER = `#version 300 es
+precision highp float;
+void main() {}
+`;
+
 //==========================================================================================================================================
 // PASS 1: HARDWARE-LOOP, ZERO-UNIFORM-ARRAY TIER 1 GTX WORLD FRAGMENT SHADER (< 18ms D3D11 FXC COMPILE, LOCKED 120 FPS!)
-//   All primitive & area-light records live in an 8x16 RGBA32F data texture (uSceneData) read via texelFetch (SM5 ld_indexable),
-//   and every loop uses dynamic uniform bounds with zero early-return/continue so ANGLE FXC emits native GPU loops without unrolling!
+//   Shadow Mapping (Contact+PCSS, PCSS, SMRT, PCF, BVH) + ControlVehicle BVH TLAS/BLAS + Multi-Mode GI & Reflections (Zero SDF Shadows)
 //==========================================================================================================================================
 export const GTX_FRAGMENT_SHADER = `#version 300 es
 precision highp float;
@@ -121,11 +161,58 @@ uniform vec3  uSunDir;
 uniform vec3  uSunIrradiance;
 uniform float uSunAngularRadius;
 uniform vec3  uSkyRadiance;
+uniform sampler2D uSkyViewTex;
+uniform sampler2D uMoonAtlasTex;
+uniform vec4  uAtmoCfg0;
+uniform vec4  uAtmoCfg1;
+uniform vec4  uCloudCfg0;
+uniform vec4  uCloudCfg1;
+uniform vec4  uCloudCfg2;
+uniform vec4  uMoonCfg0;
+uniform vec4  uMoonCfg1;
+uniform vec4  uMoonTint;
+uniform vec4  uStarCfg0;
+uniform vec4  uStarCfg1;
 
 uniform int       uLightCount;
 uniform int       uPrimCount;
 uniform sampler2D uMaterialAtlas;
 uniform sampler2D uSceneData;
+
+// RenderSettings & Shadow Map uniforms (zero SDF shadows)
+uniform int       uShadowAlg;
+uniform int       uGiAlg;
+uniform int       uReflAlg;
+uniform int       uPcssTaps;
+uniform int       uSmrtRays;
+uniform int       uShadowRays;
+uniform float     uShadowSoftness;
+uniform int       uPlaneFilter;
+uniform int       uEmissiveShadowed;
+uniform int       uGiSamples;
+uniform int       uGiCones;
+uniform float     uGiIntensity;
+uniform float     uFillBoost;
+uniform int       uReflRays;
+uniform int       uReflBounces;
+
+uniform sampler2D uSunShadowMap;
+uniform mat4      uSunShadowVP;
+uniform float     uSunShadowRes;
+uniform sampler2D uAreaShadowMap;
+uniform mat4      uAreaShadowVP;
+uniform float     uAreaShadowRes;
+uniform int       uHasAreaShadow;
+uniform vec4      uSunShadowCfg;
+uniform vec4      uAreaShadowCfg;
+uniform vec4      uShadowDepthRng;
+uniform vec4      uAreaShadowFwd;
+
+// ControlVehicle BVH TLAS/BLAS textures
+uniform int       uVehicleInstCount;
+uniform sampler2D uBvhNodes;
+uniform sampler2D uBvhTris;
+uniform sampler2D uBvhInsts;
 
 const float PI = 3.14159265359;
 const float ATLAS_W = ${ATLAS_WIDTH}.0;
@@ -175,6 +262,12 @@ struct HitInfo {
   vec3  tangent;
   vec2  uv;
   int   primIdx;
+  bool  isVehicle;
+  int   vehMatId;
+  vec3  vehPaint;
+  float vehRough;
+  float vehCoat;
+  int   vehPickCode;
 };
 
 struct SampledMaterial {
@@ -243,12 +336,7 @@ SampledMaterial fetchMaterial(int primIdx, vec2 uv) {
   return m;
 }
 
-float sdBox(vec3 p, vec3 b) {
-  vec3 q = abs(p) - b;
-  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
-}
-
-float sdTorusZ(vec3 p, float majorR, float minorR) {
+float torusImplicitDist(vec3 p, float majorR, float minorR) {
   vec2 q = vec2(length(p.xy) - majorR, p.z);
   return length(q) - minorR;
 }
@@ -300,7 +388,7 @@ float intersectTorusT(vec3 lo, vec3 ld, vec3 h, float bestT) {
   float hitT = bestT;
   int steps = clamp(uPrimCount + 10, 8, 12);
   for (int s = 0; s < steps; ++s) {
-    float d = sdTorusZ(lo + ld * t, majorR, minorR);
+    float d = torusImplicitDist(lo + ld * t, majorR, minorR);
     if (d < 0.0018) {
       hitT = t;
       break;
@@ -522,6 +610,275 @@ HitInfo finalizeHit(vec3 ro, vec3 rd, int idx, float t, bool backface) {
   return info;
 }
 
+//==========================================================================================================================================
+// CONTROLVEHICLE BVH TLAS + BLAS RAYTRACING (2048-WIDE RGBA32F NODE/TRI TEXTURES + 10x128 INSTANCE TEXTURE)
+//==========================================================================================================================================
+vec4 fetchBvhNode(int slot) {
+  return texelFetch(uBvhNodes, ivec2(slot & 2047, slot >> 11), 0);
+}
+
+vec4 fetchBvhTri(int slot) {
+  return texelFetch(uBvhTris, ivec2(slot & 2047, slot >> 11), 0);
+}
+
+vec4 fetchBvhInst(int instIdx, int texel) {
+  return texelFetch(uBvhInsts, ivec2(texel, instIdx), 0);
+}
+
+float intersectAabbRay(vec3 ro, vec3 invD, vec3 bmin, vec3 bmax, float maxT) {
+  vec3 t0 = (bmin - ro) * invD;
+  vec3 t1 = (bmax - ro) * invD;
+  vec3 tminV = min(t0, t1);
+  vec3 tmaxV = max(t0, t1);
+  float tmin = max(0.0, max(tminV.x, max(tminV.y, tminV.z)));
+  float tmax = min(maxT, min(tmaxV.x, min(tmaxV.y, tmaxV.z)));
+  return tmin <= tmax ? tmin : 1e30;
+}
+
+bool intersectTriMoller(vec3 ro, vec3 rd, vec3 v0, vec3 v1, vec3 v2, out float tOut, out float uOut, out float vOut) {
+  vec3 e1 = v1 - v0;
+  vec3 e2 = v2 - v0;
+  vec3 p = cross(rd, e2);
+  float det = dot(e1, p);
+  if (abs(det) < 1e-8) return false;
+  float invDet = 1.0 / det;
+  vec3 s = ro - v0;
+  float u = dot(s, p) * invDet;
+  if (u < 0.0 || u > 1.0) return false;
+  vec3 q = cross(s, e1);
+  float v = dot(rd, q) * invDet;
+  if (v < 0.0 || u + v > 1.0) return false;
+  float t = dot(e2, q) * invDet;
+  if (t > 0.002) {
+    tOut = t;
+    uOut = u;
+    vOut = v;
+    return true;
+  }
+  return false;
+}
+
+vec3 unpackOctahedral(float packedFloat) {
+  int p = int(round(packedFloat));
+  float u = float(p & 1023) / 1023.0 * 2.0 - 1.0;
+  float v = float((p >> 10) & 1023) / 1023.0 * 2.0 - 1.0;
+  float x = u;
+  float y = v;
+  float z = 1.0 - abs(u) - abs(v);
+  if (z < 0.0) {
+    float ox = x;
+    float oy = y;
+    x = (1.0 - abs(oy)) * (ox >= 0.0 ? 1.0 : -1.0);
+    y = (1.0 - abs(ox)) * (oy >= 0.0 ? 1.0 : -1.0);
+  }
+  return normalize(vec3(x, y, z));
+}
+
+HitInfo traceVehicleBvh(vec3 ro, vec3 rd, float tMax, bool anyHitOnly) {
+  HitInfo hit;
+  hit.hit = false;
+  hit.t = tMax;
+  hit.primIdx = -1;
+  hit.isVehicle = false;
+  hit.vehMatId = 15;
+  hit.vehPaint = vec3(0.88, 0.91, 0.97);
+  hit.vehRough = 0.14;
+  hit.vehCoat = 1.0;
+  hit.vehPickCode = 500;
+  hit.uv = vec2(0.5);
+  hit.tangent = vec3(1.0, 0.0, 0.0);
+
+  if (uVehicleInstCount <= 0) return hit;
+
+  vec3 safeSign = step(vec3(0.0), rd) * 2.0 - 1.0;
+  vec3 invWorldD = 1.0 / (safeSign * max(abs(rd), vec3(1e-7)));
+
+  int tlasStack[32];
+  int tlasPtr = 0;
+  tlasStack[tlasPtr++] = 0;
+
+  int blasStack[32];
+
+  while (tlasPtr > 0) {
+    int nodeIdx = tlasStack[--tlasPtr];
+    vec4 n0 = fetchBvhNode(nodeIdx * 2);
+    vec4 n1 = fetchBvhNode(nodeIdx * 2 + 1);
+    if (intersectAabbRay(ro, invWorldD, n0.xyz, n1.xyz, hit.t) > hit.t) continue;
+
+    int count = int(round(n1.w));
+    if (count < 0) {
+      int instIdx = (-count) - 1;
+      int blasRoot = int(round(n0.w));
+      if (instIdx >= 0 && instIdx < uVehicleInstCount) {
+        vec4 meta = fetchBvhInst(instIdx, 8);
+        if (anyHitOnly && meta.z < 0.5) continue;
+        // Load W2L (columns at texels 4..7)
+        vec4 w0 = fetchBvhInst(instIdx, 4);
+        vec4 w1 = fetchBvhInst(instIdx, 5);
+        vec4 w2 = fetchBvhInst(instIdx, 6);
+        vec4 w3 = fetchBvhInst(instIdx, 7);
+        mat4 w2l = mat4(w0, w1, w2, w3);
+        vec3 lro = (w2l * vec4(ro, 1.0)).xyz;
+        vec3 lrd = (w2l * vec4(rd, 0.0)).xyz;
+        vec3 lSign = step(vec3(0.0), lrd) * 2.0 - 1.0;
+        vec3 invLocalD = 1.0 / (lSign * max(abs(lrd), vec3(1e-7)));
+
+        int blasPtr = 0;
+        blasStack[blasPtr++] = blasRoot;
+        while (blasPtr > 0) {
+          int bIdx = blasStack[--blasPtr];
+          vec4 bn0 = fetchBvhNode(bIdx * 2);
+          vec4 bn1 = fetchBvhNode(bIdx * 2 + 1);
+          if (intersectAabbRay(lro, invLocalD, bn0.xyz, bn1.xyz, hit.t) > hit.t) continue;
+
+          int bCount = int(round(bn1.w));
+          int bFirst = int(round(bn0.w));
+          if (bCount > 0) {
+            for (int ti = 0; ti < bCount; ++ti) {
+              int tBase = (bFirst + ti) * 4;
+              vec4 td0 = fetchBvhTri(tBase);
+              vec4 td1 = fetchBvhTri(tBase + 1);
+              vec4 td2 = fetchBvhTri(tBase + 2);
+              vec4 td3 = fetchBvhTri(tBase + 3);
+              float tt, uu, vv;
+              if (intersectTriMoller(lro, lrd, td0.xyz, td1.xyz, td2.xyz, tt, uu, vv) && tt < hit.t && (!anyHitOnly || tt > 0.004)) {
+                hit.hit = true;
+                hit.t = tt;
+                hit.isVehicle = true;
+                if (anyHitOnly) return hit;
+
+                vec3 n0 = unpackOctahedral(td1.w);
+                vec3 n1 = unpackOctahedral(td2.w);
+                vec3 n2 = unpackOctahedral(td3.w);
+                float bw = max(0.0, 1.0 - uu - vv);
+                vec3 ln = normalize(n0 * bw + n1 * uu + n2 * vv);
+                vec3 gCross = cross(td1.xyz - td0.xyz, td2.xyz - td0.xyz);
+                if (dot(gCross, gCross) > 1e-12) {
+                  vec3 fn = normalize(gCross);
+                  if (dot(ln, fn) < 0.0) ln = -ln;
+                }
+                // World normal = transpose(upper3x3(w2l)) * ln
+                vec3 wn = normalize(vec3(
+                  dot(vec3(w0.x, w1.x, w2.x), ln),
+                  dot(vec3(w0.y, w1.y, w2.y), ln),
+                  dot(vec3(w0.z, w1.z, w2.z), ln)
+                ));
+                float rdDot = dot(wn, rd);
+                if (rdDot > -0.02) wn = normalize(wn - rd * (rdDot + 0.02));
+                hit.pos = ro + rd * tt;
+                hit.normal = wn;
+
+                vec4 meta = fetchBvhInst(instIdx, 8);
+                vec4 paint = fetchBvhInst(instIdx, 9);
+                int ovr = int(round(meta.x)) - 1;
+                int rawMat = int(round(td0.w)) & 255;
+                hit.vehMatId = ovr >= 0 ? ovr : rawMat;
+                hit.vehPickCode = int(round(meta.y));
+                hit.vehCoat = meta.w;
+                hit.vehPaint = paint.rgb;
+                hit.vehRough = paint.w;
+              }
+            }
+          } else if (blasPtr + 2 <= 32) {
+            blasStack[blasPtr++] = bFirst;
+            blasStack[blasPtr++] = bFirst + 1;
+          }
+        }
+      }
+    } else if (tlasPtr + 2 <= 32) {
+      int leftChild = int(round(n0.w));
+      tlasStack[tlasPtr++] = leftChild;
+      tlasStack[tlasPtr++] = leftChild + 1;
+    }
+  }
+  return hit;
+}
+
+SampledMaterial buildVehicleMaterial(HitInfo hit) {
+  SampledMaterial m;
+  m.opacity = 1.0;
+  m.ior = 1.5;
+  m.ao = 1.0;
+  m.normalTs = vec3(0.0, 0.0, 1.0);
+  m.anisotropy = 0.0;
+  m.anisoRotation = 0.0;
+  m.coat = 0.0;
+  m.coatRoughness = 0.05;
+  m.coatNormalTs = vec3(0.0, 0.0, 1.0);
+  m.sheenColor = vec3(0.0);
+  m.sheenRoughness = 0.35;
+  m.subsurfaceColor = vec3(0.0);
+  m.thickness = 0.0;
+  m.transmission = 0.0;
+  m.emission = 0.0;
+  m.unlit = false;
+  m.diffuseRoughness = 0.35;
+
+  int id = hit.vehMatId;
+  if (id == 6) {
+    // Clearcoat GT Body Paint
+    m.baseColor = hit.vehPaint;
+    m.metallic = 0.24;
+    m.roughness = max(0.04, hit.vehRough);
+    m.coat = max(0.5, hit.vehCoat);
+    m.coatRoughness = 0.03;
+  } else if (id == 7) {
+    // Tinted Cabin Glass
+    m.baseColor = vec3(0.04, 0.055, 0.075);
+    m.metallic = 0.05;
+    m.roughness = 0.04;
+    m.ior = 1.52;
+    m.coat = 0.9;
+    m.coatRoughness = 0.02;
+  } else if (id == 8) {
+    // Carbon / Aero Trim
+    m.baseColor = vec3(0.06, 0.065, 0.072);
+    m.metallic = 0.15;
+    m.roughness = 0.26;
+    m.coat = 0.35;
+  } else if (id == 9) {
+    // Canopy Gloss (Roof / Pillars)
+    m.baseColor = vec3(0.045, 0.048, 0.055);
+    m.metallic = 0.06;
+    m.roughness = 0.12;
+    m.coat = 0.85;
+    m.coatRoughness = 0.04;
+  } else if (id == 10) {
+    // Brushed Alloy Wheel Rim
+    m.baseColor = vec3(0.76, 0.79, 0.84);
+    m.metallic = 0.92;
+    m.roughness = 0.15;
+    m.coat = 0.45;
+  } else if (id == 11) {
+    // Tyre Rubber
+    m.baseColor = vec3(0.055, 0.058, 0.065);
+    m.metallic = 0.02;
+    m.roughness = 0.66;
+  } else if (id == 12) {
+    // Chrome / Metallic Trim
+    m.baseColor = vec3(0.84, 0.86, 0.90);
+    m.metallic = 0.96;
+    m.roughness = 0.08;
+  } else if (id == 13) {
+    // Headlight DRL
+    m.baseColor = vec3(1.0, 0.97, 0.90);
+    m.metallic = 0.0;
+    m.roughness = 0.1;
+    m.emission = 4.5;
+  } else if (id == 14) {
+    // Taillight LED
+    m.baseColor = vec3(1.0, 0.08, 0.06);
+    m.metallic = 0.0;
+    m.roughness = 0.12;
+    m.emission = 3.8;
+  } else {
+    m.baseColor = vec3(0.10, 0.11, 0.12);
+    m.metallic = 0.2;
+    m.roughness = 0.45;
+  }
+  return m;
+}
+
 HitInfo tracePrimaryScene(vec3 ro, vec3 rd, float tMax) {
   float bestT = tMax;
   int bestIdx = -1;
@@ -548,14 +905,24 @@ HitInfo tracePrimaryScene(vec3 ro, vec3 rd, float tMax) {
     }
   }
 
-  if (bestIdx >= 0) return finalizeHit(ro, rd, bestIdx, bestT, false);
-  HitInfo miss;
-  miss.hit = false;
-  miss.t = tMax;
-  miss.primIdx = -1;
-  miss.uv = vec2(0.5);
-  miss.tangent = vec3(1.0, 0.0, 0.0);
-  return miss;
+  HitInfo primHit;
+  if (bestIdx >= 0) {
+    primHit = finalizeHit(ro, rd, bestIdx, bestT, false);
+    primHit.isVehicle = false;
+  } else {
+    primHit.hit = false;
+    primHit.t = tMax;
+    primHit.primIdx = -1;
+    primHit.isVehicle = false;
+    primHit.uv = vec2(0.5);
+    primHit.tangent = vec3(1.0, 0.0, 0.0);
+  }
+
+  if (uVehicleInstCount > 0) {
+    HitInfo vehHit = traceVehicleBvh(ro, rd, primHit.t, false);
+    if (vehHit.hit && vehHit.t < primHit.t) return vehHit;
+  }
+  return primHit;
 }
 
 HitInfo traceOpaqueSceneIgnoring(vec3 ro, vec3 rd, float tMax, int ignoreIdx) {
@@ -587,14 +954,23 @@ HitInfo traceOpaqueSceneIgnoring(vec3 ro, vec3 rd, float tMax, int ignoreIdx) {
       }
     }
   }
-  if (bestIdx >= 0) return finalizeHit(ro, rd, bestIdx, bestT, false);
-  HitInfo miss;
-  miss.hit = false;
-  miss.t = tMax;
-  miss.primIdx = -1;
-  miss.uv = vec2(0.5);
-  miss.tangent = vec3(1.0, 0.0, 0.0);
-  return miss;
+  HitInfo primHit;
+  if (bestIdx >= 0) {
+    primHit = finalizeHit(ro, rd, bestIdx, bestT, false);
+    primHit.isVehicle = false;
+  } else {
+    primHit.hit = false;
+    primHit.t = tMax;
+    primHit.primIdx = -1;
+    primHit.isVehicle = false;
+    primHit.uv = vec2(0.5);
+    primHit.tangent = vec3(1.0, 0.0, 0.0);
+  }
+  if (uVehicleInstCount > 0) {
+    HitInfo vehHit = traceVehicleBvh(ro, rd, primHit.t, false);
+    if (vehHit.hit && vehHit.t < primHit.t) return vehHit;
+  }
+  return primHit;
 }
 
 float traceLightQuad(vec3 ro, vec3 rd, float tMax, out vec3 emitOut, out int hitLightIdx) {
@@ -629,190 +1005,696 @@ float traceLightQuad(vec3 ro, vec3 rd, float tMax, out vec3 emitOut, out int hit
   return best;
 }
 
+vec2 projectSkyViewUV(vec3 dir) {
+  float az = atan(dir.y, dir.x);
+  float el = asin(clamp(dir.z, -1.0, 1.0));
+  float u = az * (0.5 / 3.14159265359) + 0.5;
+  float v = 0.5 - 0.5 * sign(el) * sqrt(abs(el) / (3.14159265359 * 0.5));
+  return vec2(u, clamp(v, 0.0, 1.0));
+}
+
+float hash31(vec3 p) {
+  vec3 q = fract(p * 0.1031);
+  q += dot(q, q.yzx + 33.33);
+  return fract((q.x + q.y) * q.z);
+}
+
+vec3 hash33(vec3 p) {
+  vec3 q = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  q += dot(q, q.yxz + 33.33);
+  return fract((q.xxy + q.yxx) * q.zyx);
+}
+
+float noise3D(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  vec3 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(
+      mix(hash31(i + vec3(0.0, 0.0, 0.0)), hash31(i + vec3(1.0, 0.0, 0.0)), u.x),
+      mix(hash31(i + vec3(0.0, 1.0, 0.0)), hash31(i + vec3(1.0, 1.0, 0.0)), u.x),
+      u.y
+    ),
+    mix(
+      mix(hash31(i + vec3(0.0, 0.0, 1.0)), hash31(i + vec3(1.0, 0.0, 1.0)), u.x),
+      mix(hash31(i + vec3(0.0, 1.0, 1.0)), hash31(i + vec3(1.0, 1.0, 1.0)), u.x),
+      u.y
+    ),
+    u.z
+  );
+}
+
+float cloudFbm(vec3 p) {
+  float sum = 0.0;
+  float amp = 0.52;
+  vec3 q = p;
+  for (int i = 0; i < 4; ++i) {
+    sum += amp * noise3D(q);
+    q = q * 2.07 + vec3(13.1, 7.7, 5.3);
+    amp *= 0.48;
+  }
+  return sum;
+}
+
+float intersectEarthShell(float origZ, float dirZ, float radius) {
+  float b = origZ * dirZ;
+  float c = origZ * origZ - radius * radius;
+  float disc = b * b - c;
+  if (disc < 0.0) return -1.0;
+  return -b + sqrt(disc);
+}
+
+float sampleCloudDensity(vec3 pos, float baseM, float thickM, float cov, float densMul, float fScale, float anvil, int cType, vec2 wind) {
+  float earthR = 6360000.0;
+  float alt = length(pos) - earthR;
+  float h = clamp((alt - baseM) / thickM, 0.0, 1.0);
+  float bot = smoothstep(0.0, 0.16, h);
+  float top = smoothstep(1.0, 0.72 + 0.18 * anvil, h);
+  if (cType == 1) {
+    bot = smoothstep(0.0, 0.25, h);
+    top = smoothstep(1.0, 0.55, h);
+  } else if (cType == 2) {
+    bot = smoothstep(0.15, 0.45, h);
+    top = smoothstep(0.95, 0.55, h);
+  }
+  float profile = bot * top;
+  if (profile <= 0.001) return 0.0;
+  float shapeCov = clamp(cov + anvil * h * h * 0.25, 0.0, 1.0);
+  float stretch = (cType == 2) ? 2.2 : 1.0;
+  vec3 wp = vec3((pos.x + wind.x) * fScale * stretch, (pos.y + wind.y) * fScale * stretch, (alt - baseM) * fScale * 1.45);
+  float n = cloudFbm(wp);
+  float nNorm = clamp((n - 0.28) / 0.44, 0.0, 1.0);
+  float thr = 1.0 - shapeCov;
+  return max(0.0, (nNorm - thr) / max(0.18, shapeCov)) * profile * densMul;
+}
+
+vec4 evalVolumetricClouds(vec3 dir, vec3 skyCol, float jitter, int steps) {
+  if (uCloudCfg0.x < 0.5 || dir.z <= 0.006 || uCloudCfg0.y <= 0.01 || uCloudCfg0.z <= 0.01) {
+    return vec4(0.0, 0.0, 0.0, 1.0);
+  }
+  float earthR = 6360000.0;
+  float baseM = max(200.0, uCloudCfg1.x);
+  float thickM = max(150.0, uCloudCfg1.y);
+  float origZ = earthR + 100.0;
+  float tEnter = intersectEarthShell(origZ, dir.z, earthR + baseM);
+  float tExit = intersectEarthShell(origZ, dir.z, earthR + baseM + thickM);
+  float maxDist = min(tExit, 48000.0);
+  if (tEnter < 0.0 || maxDist <= tEnter) return vec4(0.0, 0.0, 0.0, 1.0);
+
+  float dt = (maxDist - tEnter) / float(steps);
+  float cov = clamp(uCloudCfg0.y, 0.0, 1.0);
+  float densMul = max(0.0, uCloudCfg0.z) * 0.008;
+  float fScale = 0.00065 / max(0.08, uCloudCfg0.w);
+  float anvil = clamp(uCloudCfg1.z, 0.0, 1.0);
+  float g = clamp(uCloudCfg1.w, -0.5, 0.9);
+  int cType = int(round(uCloudCfg2.x));
+  bool shadOn = uCloudCfg2.y > 0.5;
+  float timeSec = uAtmoCfg0.w;
+  vec2 wind = uCloudCfg2.zw * timeSec;
+
+  float cosT = dot(dir, uSunDir);
+  float g2 = g * g;
+  float hgFwd = (1.0 - g2) / (4.0 * 3.14159265 * pow(max(1e-3, 1.0 + g2 - 2.0 * g * cosT), 1.5));
+  float hgBack = (1.0 - 0.0625) / (4.0 * 3.14159265 * pow(max(1e-3, 1.0 + 0.0625 + 0.5 * cosT), 1.5));
+  float phase = 0.78 * hgFwd + 0.22 * hgBack;
+
+  float trans = 1.0;
+  vec3 accum = vec3(0.0);
+  float sStep = (thickM * 0.55) / 3.0;
+  for (int i = 0; i < 24; ++i) {
+    if (i >= steps) break;
+    float t = tEnter + (float(i) + 0.15 + 0.7 * jitter) * dt;
+    vec3 p = vec3(dir.x * t, dir.y * t, origZ + dir.z * t);
+    float d = sampleCloudDensity(p, baseM, thickM, cov, densMul, fScale, anvil, cType, wind);
+    if (d > 1e-6) {
+      float sunTau = 0.0;
+      if (shadOn) {
+        for (int s = 1; s <= 3; ++s) {
+          vec3 sp = p + uSunDir * (float(s) * sStep);
+          sunTau += sampleCloudDensity(sp, baseM, thickM, cov, densMul, fScale, anvil, cType, wind) * sStep;
+        }
+      }
+      float sunAtt = exp(-sunTau * 1.15) * (0.35 + 0.65 * (1.0 - exp(-sunTau * 2.2 + 0.25)));
+      float segT = exp(-d * dt);
+      float alt = length(p) - earthR;
+      float h = clamp((alt - baseM) / thickM, 0.0, 1.0);
+      float amb = 0.28 + 0.52 * h;
+      vec3 lit = uSunIrradiance * sunAtt * phase * 2.4 + skyCol * amb * 0.55;
+      accum += trans * lit * (1.0 - segT);
+      trans *= segT;
+      if (trans < 0.015) break;
+    }
+  }
+  float haze = 1.0 - exp(-tEnter * 0.00004);
+  accum = mix(accum, skyCol * (1.0 - trans), haze);
+  return vec4(accum, trans);
+}
+
+vec3 evalMoonAndStars(vec3 dir) {
+  vec3 outC = vec3(0.0);
+  if (uMoonCfg1.w > 0.5 && dir.z > -0.05) {
+    vec3 mDir = uMoonCfg0.xyz;
+    float angR = max(0.002, uMoonCfg0.w);
+    float cosM = dot(dir, mDir);
+    vec3 mTint = uMoonTint.xyz;
+    float mBright = uMoonCfg1.y;
+    float mGlow = uMoonCfg1.z;
+    outC += mTint * pow(max(0.0, cosM), 420.0) * mGlow * 0.28 * mBright;
+    if (cosM > cos(angR)) {
+      vec3 upRef = abs(mDir.z) < 0.98 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+      vec3 mRight = normalize(cross(upRef, mDir));
+      vec3 mUp = cross(mDir, mRight);
+      float px = dot(dir, mRight) / angR;
+      float py = dot(dir, mUp) / angR;
+      float r2 = px * px + py * py;
+      if (r2 < 1.0) {
+        float pz = sqrt(max(0.0, 1.0 - r2));
+        float phAng = (uMoonCfg1.x - 0.5) * 6.2831853;
+        vec3 lDir = normalize(vec3(sin(phAng), 0.18, cos(phAng)));
+        float ndl = max(0.0, dot(vec3(px, py, pz), lDir));
+        vec3 albedo = vec3(0.68 + 0.32 * noise3D(vec3(px * 3.8 + 4.1, py * 3.8 - 2.3, pz * 3.8)));
+        if (uAtmoCfg1.w > 0.5) {
+          float uMoon = atan(px, pz) * (0.5 / 3.14159265359) + 0.5;
+          float vMoon = 0.5 - asin(clamp(py, -1.0, 1.0)) / 3.14159265359;
+          float tileV = (clamp(uMoonTint.w, 0.0, 5.0) + clamp(vMoon, 0.015, 0.985)) / 6.0;
+          vec3 texSample = textureLod(uMoonAtlasTex, vec2(uMoon, tileV), 0.0).rgb;
+          albedo = pow(max(vec3(0.0), texSample), vec3(2.2)) * 1.45;
+        }
+        float edgeAA = clamp((1.0 - sqrt(r2)) * 14.0, 0.0, 1.0);
+        outC += mTint * albedo * (0.014 + ndl * 1.55) * mBright * edgeAA;
+      }
+    }
+  }
+  if (uStarCfg0.x > 0.5 && dir.z > 0.005) {
+    float dayFade = clamp(1.0 - (uSunDir.z + 0.08) * 5.0, 0.0, 1.0);
+    if (dayFade > 0.01) {
+      float rot = uStarCfg1.w;
+      float cr = cos(rot);
+      float sr = sin(rot);
+      vec3 rDir = vec3(dir.x * cr - dir.y * sr, dir.x * sr + dir.y * cr, dir.z);
+      vec3 grid = rDir * 175.0;
+      vec3 cell = floor(grid);
+      vec3 h = hash33(cell);
+      float magThresh = clamp(uStarCfg0.z / 8.5, 0.05, 0.98);
+      if (h.x > 1.0 - 0.18 * magThresh) {
+        vec3 starCenter = cell + 0.2 + 0.6 * vec3(h.y, h.z, fract(h.x * 7.13));
+        vec3 dv = grid - starCenter;
+        float d2 = dot(dv, dv);
+        float rad = 0.08 * clamp(uStarCfg0.w, 0.4, 3.0);
+        if (d2 < rad * rad) {
+          float falloff = exp(-d2 / (rad * rad * 0.35));
+          float twRate = uStarCfg1.z;
+          float twDepth = uStarCfg1.y * 0.008;
+          float twMod = 1.0 - twDepth * (0.5 + 0.5 * sin(uAtmoCfg0.w * twRate * 5.0 + h.y * 40.0));
+          float tw = (uStarCfg1.x > 0.5) ? twMod : 1.0;
+          float intensity = (0.45 + 1.55 * h.z * h.z) * uStarCfg0.y * dayFade * tw * falloff * clamp(dir.z * 4.0, 0.0, 1.0);
+          vec3 starCol = vec3(0.78 + 0.42 * h.y, 0.88 + 0.12 * h.y, 1.20 - 0.35 * h.y);
+          outC += starCol * intensity;
+        }
+      }
+    }
+  }
+  return outC;
+}
+
+vec3 evalStarlightAmbient(vec3 N) {
+  if (uStarCfg0.x < 0.5) return vec3(0.0);
+  float magGain = clamp(uStarCfg0.z / 5.5, 0.35, 1.85);
+  float starFade = clamp(1.0 - (uSunDir.z + 0.04) * 5.0, 0.12, 1.0);
+  float hemi = 0.35 + 0.65 * clamp(N.z * 0.5 + 0.5, 0.0, 1.0);
+  return vec3(0.00048, 0.00062, 0.00105) * max(0.0, uStarCfg0.y) * magGain * starFade * hemi;
+}
+
+vec3 evalMoonIrradiance() {
+  if (uMoonCfg1.w < 0.5 || uMoonCfg0.z <= 0.01) return vec3(0.0);
+  float mPhaseGain = 0.25 + 0.75 * sin(clamp(uMoonCfg1.x, 0.0, 1.0) * 3.14159265359);
+  float mFade = clamp(1.0 - (uSunDir.z + 0.05) * 4.5, 0.08, 1.0);
+  return uMoonTint.xyz * max(0.0, uMoonCfg1.y) * 0.085 * mPhaseGain * mFade;
+}
+
 vec3 evalSky(vec3 dir) {
-  float zUp = clamp(dir.z * 0.5 + 0.5, 0.0, 1.0);
-  vec3 horizon = uSkyRadiance * vec3(1.18, 1.12, 1.06) + vec3(0.03, 0.035, 0.045);
-  vec3 zenith  = uSkyRadiance * vec3(0.65, 0.85, 1.28);
-  vec3 ground  = vec3(0.045, 0.043, 0.042);
-  vec3 sky = dir.z >= 0.0 ? mix(horizon, zenith, pow(zUp, 1.35)) : mix(ground, horizon, clamp(1.0 + dir.z * 3.0, 0.0, 1.0));
+  vec3 skyCol = textureLod(uSkyViewTex, projectSkyViewUV(dir), 0.0).rgb;
+  vec3 cel = evalMoonAndStars(dir);
+  vec4 cl = evalVolumetricClouds(dir, skyCol, 0.5, 5);
+  return (skyCol + cel) * cl.w + cl.rgb;
+}
+
+vec3 evalSkyPrimary(vec3 dir, vec2 fragPx) {
+  vec3 skyCol = textureLod(uSkyViewTex, projectSkyViewUV(dir), 0.0).rgb;
+  vec3 cel = evalMoonAndStars(dir);
+  float sunAng = max(0.002, uSunAngularRadius);
   float cosSun = dot(dir, uSunDir);
-  float sunDisc = smoothstep(cos(uSunAngularRadius * 1.45), cos(uSunAngularRadius * 0.55), cosSun);
-  float sunGlow = pow(max(0.0, cosSun), 128.0) * 0.35;
-  return sky + uSunIrradiance * (sunDisc * 3.0 + sunGlow);
+  float sunEdge = smoothstep(cos(sunAng * 1.25), cos(sunAng * 0.65), cosSun);
+  float muDisc = clamp((cosSun - cos(sunAng)) / max(1e-5, 1.0 - cos(sunAng)), 0.0, 1.0);
+  float limb = 0.65 + 0.35 * pow(muDisc, 0.45);
+  float sunAureole = pow(max(0.0, cosSun), 160.0) * 0.25;
+  vec3 sunVisual = uSunIrradiance * (sunEdge * limb * 4.2 + sunAureole) * (dir.z > -0.02 ? 1.0 : 0.0);
+  float jitter = fract(sin(dot(fragPx, vec2(12.9898, 78.233)) + uAtmoCfg0.w * 7.1) * 43758.5453);
+  vec4 cl = evalVolumetricClouds(dir, skyCol, jitter, 18);
+  return (skyCol + cel + sunVisual) * cl.w + cl.rgb;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
-// ZERO-LOOP, RING-FREE ANALYTICAL CONTACT-HARDENING SOLAR SHADOWS (SKIPPING RECEIVER selfPrimIdx)
+// NON-SDF SHADOW ALGORITHMS (ShadowAlgorithmLab Parity: Contact+PCSS, PCSS+Filter, SMRT, 3x3 PCF, BVH Raytraced)
 //------------------------------------------------------------------------------------------------------------------------------------------
-float evalLocalPrimSdf(vec3 lp, int shape, vec3 h) {
-  if (shape == 4) {
-    float majorR = max(h.x, h.y) * 0.68;
-    float minorR = max(0.04, h.z * 0.55);
-    return sdTorusZ(lp, majorR, minorR);
-  }
-  if (shape == 3) {
-    float rad = max(h.x, h.y);
-    float zBase = -0.78 * h.z;
-    float dPlinth = sdBox(lp - vec3(0.0, 0.0, 0.5 * (-h.z + zBase)), vec3(rad, rad, 0.5 * (zBase + h.z)));
-    float tAlpha = clamp((lp.z - zBase) / max(1e-4, h.z - zBase), 0.0, 1.0);
-    float rAtZ = mix(0.72 * rad, 0.13 * rad, tAlpha);
-    vec2 dc = vec2(length(lp.xy) - rAtZ, abs(lp.z - 0.5 * (zBase + h.z)) - 0.5 * (h.z - zBase));
-    float dCone = min(max(dc.x, dc.y), 0.0) + length(max(dc, vec2(0.0)));
-    return min(dPlinth, dCone);
-  }
-  if (shape == 5) {
-    float rad = max(h.x, h.y);
-    float zBase = -0.84 * h.z;
-    vec2 db = vec2(length(lp.xy) - 0.97 * rad, abs(lp.z - 0.5 * (-h.z + zBase)) - 0.5 * (zBase + h.z));
-    float dBot = min(max(db.x, db.y), 0.0) + length(max(db, vec2(0.0)));
-    float tAlpha = clamp((lp.z - zBase) / max(1e-4, h.z - zBase), 0.0, 1.0);
-    float rAtZ = mix(0.50 * rad, 0.37 * rad, tAlpha);
-    vec2 dt = vec2(length(lp.xy) - rAtZ, abs(lp.z - 0.5 * (zBase + h.z)) - 0.5 * (h.z - zBase));
-    float dTop = min(max(dt.x, dt.y), 0.0) + length(max(dt, vec2(0.0)));
-    return min(dBot, dTop);
-  }
-  if (shape >= 2) {
-    vec2 dc = abs(vec2(length(lp.xy), lp.z)) - vec2(max(h.x, h.y), h.z);
-    return min(max(dc.x, dc.y), 0.0) + length(max(dc, vec2(0.0)));
-  }
-  return sdBox(lp, h);
+float ignHash(vec2 p) {
+  return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
 }
 
-float closestRayPrimitiveSoftVis(vec3 origin, vec3 dir, int idx, vec4 ps, vec3 h, float tanSun) {
-  int shape = int(ps.w + 0.5);
-  vec3 c0, c1, c2;
-  loadPrimRot(idx, c0, c1, c2);
-  vec3 lo = invRotateCols(origin - ps.xyz, c0, c1, c2);
-  vec3 ld = invRotateCols(dir, c0, c1, c2);
-
-  float boundR = length(h) * 1.35;
-  float tCenter = -dot(lo, ld);
-  if (tCenter < -boundR) return 1.0;
-  float maxPenumbra = 0.004 + max(0.04, tCenter) * tanSun;
-  vec3 perp = lo + ld * max(0.0, tCenter);
-  if (length(perp) > boundR + maxPenumbra) return 1.0;
-
-  if (shape == 1) {
-    vec3 o = lo / h;
-    vec3 d = ld / h;
-    float dLen = max(length(d), 1e-5);
-    vec3 dn = d / dLen;
-    float tUnit = -dot(o, dn);
-    if (tUnit <= 0.0) return 1.0;
-    float rMean = (h.x + h.y + h.z) * 0.3333333;
-    float worldT = tUnit / dLen;
-    float signedClearance = (length(o + dn * tUnit) - 1.0) * rMean;
-    float coneR = 0.0025 + worldT * tanSun;
-    return smoothstep(-coneR * 0.45, coneR, signedClearance);
-  }
-
-  vec3 hPen = h + vec3(maxPenumbra);
-  vec3 safeSign = step(vec3(0.0), ld) * 2.0 - 1.0;
-  vec3 invD = 1.0 / (safeSign * max(abs(ld), vec3(1e-6)));
-  vec3 t0 = (-hPen - lo) * invD;
-  vec3 t1 = ( hPen - lo) * invD;
-  float tNearPen = max(0.003, max(max(min(t0.x, t1.x), min(t0.y, t1.y)), min(t0.z, t1.z)));
-  float tFarPen  = min(24.0,  min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z)));
-  if (tNearPen > tFarPen) return 1.0;
-
-  float bestVis = 1.0;
-  if (shape == 0) {
-    vec3 tb0 = (-h - lo) * invD;
-    vec3 tb1 = ( h - lo) * invD;
-    float tbNear = max(max(min(tb0.x, tb1.x), min(tb0.y, tb1.y)), min(tb0.z, tb1.z));
-    float tbFar  = min(min(max(tb0.x, tb1.x), max(tb0.y, tb1.y)), max(tb0.z, tb1.z));
-    if (tbNear <= tbFar && tbFar > 0.003) {
-      float tSeed = clamp(0.5 * (max(0.003, tbNear) + tbFar), tNearPen, tFarPen);
-      float dSeed = sdBox(lo + ld * tSeed, h);
-      float cSeed = 0.002 + tSeed * tanSun;
-      bestVis = min(bestVis, smoothstep(-cSeed, cSeed, dSeed));
-    }
-  } else if (shape == 4) {
-    float majorR = max(h.x, h.y) * 0.68;
-    float minorR = max(0.04, h.z * 0.55);
-    float aRing = dot(ld.xy, ld.xy);
-    if (aRing > 1e-6) {
-      float bRing = dot(lo.xy, ld.xy);
-      float cRing = dot(lo.xy, lo.xy) - majorR * majorR;
-      float discR = bRing * bRing - aRing * cRing;
-      if (discR >= 0.0) {
-        float sqR = sqrt(discR);
-        float tr0 = clamp((-bRing - sqR) / aRing, tNearPen, tFarPen);
-        float tr1 = clamp((-bRing + sqR) / aRing, tNearPen, tFarPen);
-        float c0R = 0.002 + tr0 * tanSun;
-        float c1R = 0.002 + tr1 * tanSun;
-        bestVis = min(bestVis, smoothstep(-c0R, c0R, sdTorusZ(lo + ld * tr0, majorR, minorR)));
-        bestVis = min(bestVis, smoothstep(-c1R, c1R, sdTorusZ(lo + ld * tr1, majorR, minorR)));
-      } else {
-        float tCl = clamp(-bRing / aRing, tNearPen, tFarPen);
-        float cCl = 0.002 + tCl * tanSun;
-        bestVis = min(bestVis, smoothstep(-cCl, cCl, sdTorusZ(lo + ld * tCl, majorR, minorR)));
-      }
-    }
-    if (abs(ld.z) > 1e-5) {
-      float tz0 = clamp(-lo.z / ld.z, tNearPen, tFarPen);
-      float cz0 = 0.002 + tz0 * tanSun;
-      bestVis = min(bestVis, smoothstep(-cz0, cz0, sdTorusZ(lo + ld * tz0, majorR, minorR)));
-    }
-  } else {
-    float xyLen2 = dot(ld.xy, ld.xy);
-    if (xyLen2 > 1e-6) {
-      float tAxis = clamp(-dot(lo.xy, ld.xy) / xyLen2, tNearPen, tFarPen);
-      float dAxis = evalLocalPrimSdf(lo + ld * tAxis, shape, h);
-      float cAxis = 0.002 + tAxis * tanSun;
-      bestVis = min(bestVis, smoothstep(-cAxis, cAxis, dAxis));
-    }
-  }
-
-  float span = max(0.004, tFarPen - tNearPen);
-  float stepU = span / 16.0;
-  int maxSteps = min(17, uPrimCount + 17);
-  for (int s = 0; s < maxSteps; ++s) {
-    float t = tNearPen + stepU * float(s);
-    vec3 lp = lo + ld * t;
-    float d = evalLocalPrimSdf(lp, shape, h);
-    float coneR = 0.002 + t * tanSun;
-    bestVis = min(bestVis, smoothstep(-coneR, coneR, d));
-    if (bestVis <= 0.002) break;
-  }
-  return bestVis;
-}
-
-float evaluateSoftConeVis(vec3 origin, vec3 dir, float maxDist, float tanAngle, float minVis, int selfPrimIdx, int skipPickCode) {
-  float vis = 1.0;
-  for (int i = 0; i < uPrimCount; ++i) {
-    vec4 hf = sdFetch(1, i);
-    int flags = int(hf.w + 0.5);
-    int pCode = int(sdFetch(3, i).w + 0.5);
-    if (i != selfPrimIdx && (skipPickCode < 0 || pCode != skipPickCode) && PrimFlagShadow(flags) && !PrimFlagGlass(flags)) {
-      vec4 ps = sdFetch(0, i);
-      float tProj = dot(ps.xyz - origin, dir);
-      if (tProj > -0.5 && tProj < maxDist) {
-        vis = min(vis, mix(minVis, 1.0, closestRayPrimitiveSoftVis(origin, dir, i, ps, hf.xyz, tanAngle)));
-      }
-    }
-    if (vis <= minVis + 0.002) break;
-  }
-  return vis;
-}
-
-float evaluateGtxSolarShadow(vec3 pos, vec3 N, int selfPrimIdx) {
-  if (dot(N, uSunDir) <= 0.0) return 0.0;
-  return evaluateSoftConeVis(pos + N * 0.005, uSunDir, 28.0, tan(uSunAngularRadius * 1.15), 0.0, selfPrimIdx, -1);
-}
-
-float evaluateAreaLightSoftVis(vec3 pos, vec3 N, vec3 lc, float hw, float hh, int selfPrimIdx, int lightPickCode) {
-  vec3 toL = lc - pos;
-  float distL = length(toL);
-  if (distL < 0.05) return 1.0;
-  float tanArea = clamp(length(vec2(hw, hh)) * 0.48 / max(distL, 0.35), 0.10, 0.38);
-  return evaluateSoftConeVis(pos + N * 0.007, toL / distL, distL - 0.05, tanArea, 0.18, selfPrimIdx, lightPickCode);
+vec2 vogelDiskSample(int idx, int count, float phi) {
+  float r = sqrt((float(idx) + 0.5) / float(max(count, 1)));
+  float theta = float(idx) * 2.39996323 + phi;
+  return vec2(cos(theta), sin(theta)) * r;
 }
 
 void buildBasis(vec3 N, out vec3 T, out vec3 B) {
   vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
   T = normalize(cross(up, N));
   B = cross(N, T);
+}
+
+bool traceShadowOccluderAnyHit(vec3 ro, vec3 rd, float maxDist, int selfPrimIdx, int skipPickCode) {
+  for (int i = 0; i < uPrimCount; ++i) {
+    vec4 hf = sdFetch(1, i);
+    int flags = int(hf.w + 0.5);
+    int pCode = int(sdFetch(3, i).w + 0.5);
+    if (i != selfPrimIdx && (skipPickCode < 0 || pCode != skipPickCode) && PrimFlagShadow(flags) && !PrimFlagGlass(flags)) {
+      vec4 ps = sdFetch(0, i);
+      vec3 oc = ps.xyz - ro;
+      float proj = dot(oc, rd);
+      float perp2 = dot(oc, oc) - proj * proj;
+      float boundR = max(hf.x, max(hf.y, hf.z)) * 1.8;
+      if (proj + boundR > 0.0 && perp2 <= dot(hf.xyz, hf.xyz) * 1.65) {
+        vec3 c0, c1, c2;
+        loadPrimRot(i, c0, c1, c2);
+        float tHit = intersectPrimT(
+          invRotateCols(-oc, c0, c1, c2),
+          invRotateCols(rd, c0, c1, c2),
+          hf.xyz,
+          int(ps.w + 0.5),
+          maxDist,
+          0.0
+        );
+        if (tHit > 0.003 && tHit < maxDist) return true;
+      }
+    }
+  }
+  if (uVehicleInstCount > 0) {
+    HitInfo vHit = traceVehicleBvh(ro, rd, maxDist, true);
+    if (vHit.hit && vHit.t < maxDist) return true;
+  }
+  return false;
+}
+
+float fetchShadowDepth(bool isArea, vec2 uv, float res) {
+  ivec2 px = clamp(ivec2(uv * res), ivec2(0), ivec2(int(res) - 1));
+  return isArea ? texelFetch(uAreaShadowMap, px, 0).r : texelFetch(uSunShadowMap, px, 0).r;
+}
+
+float decodeShadowLinearDepth(bool isArea, float d01) {
+  if (d01 >= 0.99995) return 1e5;
+  if (!isArea) {
+    return uShadowDepthRng.x + d01 * (uShadowDepthRng.y - uShadowDepthRng.x);
+  }
+  float n = uShadowDepthRng.z;
+  float f = uShadowDepthRng.w;
+  float zNdc = d01 * 2.0 - 1.0;
+  return (2.0 * n * f) / max(1e-4, f + n - zNdc * (f - n));
+}
+
+bool projectWorldToShadowMap(bool isArea, vec3 worldPos, out vec2 uv, out float recD) {
+  mat4 vp = isArea ? uAreaShadowVP : uSunShadowVP;
+  vec4 clip = vp * vec4(worldPos, 1.0);
+  if (clip.w <= 1e-4) { uv = vec2(-1.0); recD = 1e6; return false; }
+  vec3 ndc = clip.xyz / clip.w;
+  uv = ndc.xy * 0.5 + 0.5;
+  recD = isArea
+    ? dot(worldPos - uAreaShadowCfg.xyz, uAreaShadowFwd.xyz)
+    : dot(worldPos - uSunShadowCfg.xyz, -uSunDir);
+  return all(greaterThanEqual(uv, vec2(0.002))) && all(lessThanEqual(uv, vec2(0.998))) && ndc.z >= -1.0 && ndc.z <= 1.0;
+}
+
+float shadowWorldSpan(bool isArea, float dEst) {
+  return isArea ? (2.0 * max(dEst, 0.25) * uAreaShadowCfg.w) : (2.0 * uSunShadowCfg.w);
+}
+
+// SHADOW_PCF_FRAG (ShadowAlgorithmLab)
+float evalShadowMapPCF(bool isArea, float res, vec3 pos, vec3 N, vec3 toLight, float lRad) {
+  float ndl = dot(N, toLight);
+  if (ndl <= 0.002) return 0.0;
+  vec2 uvEst; float dEst;
+  if (!projectWorldToShadowMap(isArea, pos, uvEst, dEst)) return 1.0;
+  float worldSpan = shadowWorldSpan(isArea, dEst);
+  float texelWorld = worldSpan / max(256.0, res);
+  float slope = clamp(sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.04), 0.0, 4.0);
+  float biasM = texelWorld * (0.55 + 0.55 * slope);
+  vec2 uv; float recD;
+  if (!projectWorldToShadowMap(isArea, pos + N * (texelWorld * 1.65), uv, recD)) return 1.0;
+
+  vec2 texCoord = uv * res - 0.5;
+  vec2 baseCoord = floor(texCoord);
+  vec2 f = texCoord - baseCoord;
+  float stride = 1.0 + clamp(lRad * 14.0, 0.0, 1.25);
+
+  float sumVis = 0.0, sumW = 0.0;
+  for (int dy = -1; dy <= 1; ++dy) {
+    for (int dx = -1; dx <= 1; ++dx) {
+      float wx = (dx == 0) ? 1.0 : ((dx < 0) ? (1.0 - f.x * 0.5) : (0.5 + f.x * 0.5));
+      float wy = (dy == 0) ? 1.0 : ((dy < 0) ? (1.0 - f.y * 0.5) : (0.5 + f.y * 0.5));
+      float w = wx * wy;
+      vec2 qUv = clamp((baseCoord + vec2(float(dx), float(dy)) * stride + 0.5) / res, vec2(0.0), vec2(0.9999));
+      float stored = decodeShadowLinearDepth(isArea, fetchShadowDepth(isArea, qUv, res));
+      if (stored >= recD - biasM) sumVis += w;
+      sumW += w;
+    }
+  }
+  return sumVis / max(sumW, 1e-4);
+}
+
+// SHADOW_PCSS_FRAG (ShadowAlgorithmLab)
+float evalShadowMapPCSS(bool isArea, float res, vec3 pos, vec3 N, vec3 toLight, float lRad, out float outBlk) {
+  outBlk = 0.0;
+  float ndl = dot(N, toLight);
+  if (ndl <= 0.002) return 0.0;
+  vec2 uvEst; float dEst;
+  if (!projectWorldToShadowMap(isArea, pos, uvEst, dEst)) return 1.0;
+  float worldSpan = shadowWorldSpan(isArea, dEst);
+  float texelWorld = worldSpan / max(256.0, res);
+  float texelUv = 1.0 / max(256.0, res);
+  float slope = clamp(sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.04), 0.0, 4.0);
+  float biasM = texelWorld * (0.48 + 0.45 * slope);
+  vec2 uv; float recD;
+  if (!projectWorldToShadowMap(isArea, pos + N * (texelWorld * 1.40), uv, recD)) return 1.0;
+
+  float phi0 = ignHash(gl_FragCoord.xy) * 6.2831853;
+  float searchWorld = isArea ? clamp(lRad * 0.75, texelWorld * 2.5, 1.65) : clamp(lRad * 9.0, texelWorld * 2.5, 1.85);
+  float searchUv = clamp(searchWorld / worldSpan, texelUv * 2.0, 0.085);
+
+  int searchCount = clamp(uPcssTaps / 2, 6, 24);
+  float invSearch = 1.0 / float(searchCount);
+  float blkDepthSum = 0.0;
+  int blkCount = 0;
+
+  for (int i = 0; i < 24; ++i) {
+    if (i >= searchCount) break;
+    float r = sqrt((float(i) + 0.5) * invSearch) * searchUv;
+    float a = phi0 + float(i) * 2.39996323;
+    vec2 qUv = clamp(uv + vec2(cos(a), sin(a)) * r, vec2(0.0005), vec2(0.9995));
+    float stored = decodeShadowLinearDepth(isArea, fetchShadowDepth(isArea, qUv, res));
+    if (stored < recD - biasM) { blkDepthSum += stored; blkCount++; }
+  }
+  if (blkCount == 0) return 1.0;
+
+  float avgBlkD = blkDepthSum / float(blkCount);
+  float blkDist = max(0.0, recD - avgBlkD);
+  outBlk = blkDist;
+  float penumbraWorld = isArea ? (lRad * blkDist / max(avgBlkD, 0.12)) : (blkDist * lRad);
+  float penumbraUv = clamp(penumbraWorld / worldSpan, texelUv * 0.65, 0.11);
+
+  int pcfCount = clamp(uPcssTaps, 8, 48);
+  float invPcf = 1.0 / float(pcfCount);
+  float litSum = 0.0;
+  float phiPcf = fract(ignHash(gl_FragCoord.xy + vec2(17.3, 9.1)) + 0.381966) * 6.2831853;
+  float filterBias = biasM + penumbraUv * worldSpan * slope * (uPlaneFilter != 0 ? 0.24 : 0.18);
+
+  for (int i = 0; i < 48; ++i) {
+    if (i >= pcfCount) break;
+    float r = sqrt((float(i) + 0.5) * invPcf) * penumbraUv;
+    float a = phiPcf + float(i) * 2.39996323;
+    vec2 qUv = clamp(uv + vec2(cos(a), sin(a)) * r, vec2(0.0005), vec2(0.9995));
+    float stored = decodeShadowLinearDepth(isArea, fetchShadowDepth(isArea, qUv, res));
+    if (stored >= recD - filterBias) litSum += invPcf;
+  }
+  return litSum;
+}
+
+// SHADOW_SMRT_FRAG (EEVEE-Next SunShadowTrace.glsl from ShadowAlgorithmLab)
+float evalShadowMapSMRT(bool isArea, float res, vec3 pos, vec3 N, vec3 toLight, float lRad) {
+  float ndl = dot(N, toLight);
+  if (ndl <= 0.002) return 0.0;
+  vec2 uvEst; float dEst;
+  if (!projectWorldToShadowMap(isArea, pos, uvEst, dEst)) return 1.0;
+  float worldSpan = shadowWorldSpan(isArea, dEst);
+  float texelWorld = worldSpan / max(256.0, res);
+  float slope = clamp(sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.04), 0.0, 4.0);
+  float biasM = texelWorld * (0.45 + 0.42 * slope);
+
+  vec3 softOrigin = pos + N * (texelWorld * 1.5);
+  float distToLight = isArea ? max(length(uAreaShadowCfg.xyz - softOrigin), 0.25) : 28.0;
+  float tanHalf = isArea ? (lRad / distToLight) : lRad;
+  float cosMax = cos(atan(clamp(tanHalf, 0.0, 0.45)));
+  float rayLen = isArea ? min(9.5, distToLight * 0.85) : clamp(3.0 + tanHalf * 42.0, 2.5, 11.0);
+
+  vec3 lTan, lBit;
+  buildBasis(toLight, lTan, lBit);
+  float phi0 = ignHash(gl_FragCoord.xy) * 6.2831853;
+  int rMax = clamp(uSmrtRays, 1, 12);
+  float invRays = 1.0 / float(rMax);
+  float hitCount = 0.0;
+
+  for (int rIdx = 0; rIdx < 12; ++rIdx) {
+    if (rIdx >= rMax) break;
+    float uCos = (float(rIdx) + fract(ignHash(gl_FragCoord.xy + vec2(3.7, float(rIdx) * 5.3)) + float(rIdx) * 0.618034) * 0.8 + 0.1) * invRays;
+    float cosTheta = mix(cosMax, 1.0, clamp(uCos, 0.002, 0.998));
+    float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+    float phi = phi0 + float(rIdx) * 2.39996323;
+    vec3 rayDir = normalize(lTan * (sinTheta * cos(phi)) + lBit * (sinTheta * sin(phi)) + toLight * cosTheta);
+    vec3 rayEnd = softOrigin + rayDir * rayLen;
+
+    float rayTime = 1.0, prevRayTime = 1.0;
+    float occHistory = -1000.0, occSlope = -1000.0;
+    bool hit = false;
+
+    for (int st = 0; st <= 14; ++st) {
+      float lin = 1.0 - float(st) / 14.0;
+      prevRayTime = rayTime;
+      rayTime = lin * lin;
+      vec3 samplePos = mix(softOrigin, rayEnd, rayTime);
+      vec2 sUv; float sRayDepth;
+      if (!projectWorldToShadowMap(isArea, samplePos, sUv, sRayDepth)) continue;
+      float stored = decodeShadowLinearDepth(isArea, fetchShadowDepth(isArea, sUv, res));
+      if (stored > 5e4) { occHistory = 2.0; continue; }
+
+      float delta = stored - (sRayDepth - biasM);
+      if (delta < 0.0) {
+        bool historyValid = (occHistory > -500.0);
+        bool finalStep = (st == 14);
+        float dt = max(abs(rayTime - prevRayTime), 1e-4);
+        float maxThick = 0.45 + ((occSlope > 0.0) ? occSlope * dt * rayLen * 0.25 : 0.0);
+        if (finalStep || (historyValid && delta > -maxThick)) {
+          hit = true;
+          break;
+        }
+      } else {
+        if (occHistory > -500.0) {
+          float dt = max(abs(rayTime - prevRayTime), 1e-6);
+          float curSlope = (delta - occHistory) / dt;
+          occSlope = (occSlope > -500.0) ? max(occSlope, curSlope) : curSlope;
+        }
+        occHistory = delta;
+      }
+    }
+    if (hit) hitCount += 1.0;
+  }
+  return clamp(1.0 - hitCount * invRays, 0.0, 1.0);
+}
+
+float evalBvhRayShadow(vec3 pos, vec3 N, vec3 L, float maxDist, float spreadRad, int numRays, int selfPrimIdx, int skipPickCode) {
+  vec3 T, B;
+  buildBasis(L, T, B);
+  int rays = clamp(numRays, 1, 16);
+  float phi = ignHash(gl_FragCoord.xy) * 6.2831853;
+  float invRays = 1.0 / float(rays);
+  float vis = 0.0;
+  vec3 origin = pos + N * 0.008;
+  for (int r = 0; r < 16; ++r) {
+    if (r >= rays) break;
+    float uDisk = (float(r) + fract(ignHash(gl_FragCoord.xy + vec2(11.3, float(r) * 7.1)) + float(r) * 0.618034) * 0.8 + 0.1) * invRays;
+    float rFrac = (rays > 1) ? sqrt(clamp(uDisk, 0.005, 0.995)) : 0.0;
+    float ang = phi + float(r) * 2.39996323;
+    vec3 dir = normalize(L + (T * cos(ang) + B * sin(ang)) * (rFrac * spreadRad));
+    if (!traceShadowOccluderAnyHit(origin, dir, maxDist, selfPrimIdx, skipPickCode)) {
+      vis += invRays;
+    }
+  }
+  return vis;
+}
+
+float evalContactVis(vec3 pos, vec3 N, vec3 toLight, float maxDist, int selfPrimIdx, int skipPickCode) {
+  float maxT = min(0.24, maxDist);
+  if (maxT <= 0.03) return 1.0;
+  vec3 origin = pos + N * 0.006;
+  if (!traceShadowOccluderAnyHit(origin, toLight, maxT, selfPrimIdx, skipPickCode)) return 1.0;
+  bool nearHit = traceShadowOccluderAnyHit(origin, toLight, maxT * 0.55, selfPrimIdx, skipPickCode);
+  return nearHit ? 0.08 : 0.55;
+}
+
+float evaluateGtxSolarShadow(vec3 pos, vec3 N, int selfPrimIdx) {
+  if (dot(N, uSunDir) <= 0.002) return 0.0;
+  float lRad = max(0.004, tan(uSunAngularRadius) * 1.15) * uShadowSoftness;
+  if (uShadowAlg == 4) {
+    return evalBvhRayShadow(pos, N, uSunDir, 48.0, lRad, uShadowRays, selfPrimIdx, -1);
+  }
+  if (uShadowAlg == 3) {
+    return evalShadowMapPCF(false, uSunShadowRes, pos, N, uSunDir, lRad);
+  }
+  if (uShadowAlg == 2) {
+    return evalShadowMapSMRT(false, uSunShadowRes, pos, N, uSunDir, lRad);
+  }
+  float blk = 0.0;
+  float pcssVis = evalShadowMapPCSS(false, uSunShadowRes, pos, N, uSunDir, lRad, blk);
+  if (uShadowAlg == 0) {
+    float contactVis = evalContactVis(pos, N, uSunDir, 0.24, selfPrimIdx, -1);
+    float contactBlend = clamp((blk - 0.06) / 0.25, 0.0, 1.0);
+    return mix(min(contactVis, pcssVis), pcssVis, contactBlend);
+  }
+  return pcssVis;
+}
+
+float evaluateAreaLightSoftVis(vec3 pos, vec3 N, vec3 lc, vec3 lRight, vec3 lUp, float hw, float hh, int selfPrimIdx, int lightPickCode, int lightIdx) {
+  if (uEmissiveShadowed == 0) return 1.0;
+  vec3 toL = lc - pos;
+  float distL = length(toL);
+  if (distL < 0.05) return 1.0;
+  vec3 L = toL / distL;
+  if (lightIdx == 0 && uHasAreaShadow != 0 && uShadowAlg != 4) {
+    float panelRad = mix(hh, hw, 0.55) * uShadowSoftness;
+    if (uShadowAlg == 3) {
+      return mix(0.03, 1.0, evalShadowMapPCF(true, uAreaShadowRes, pos, N, L, panelRad));
+    }
+    if (uShadowAlg == 2) {
+      return mix(0.03, 1.0, evalShadowMapSMRT(true, uAreaShadowRes, pos, N, L, panelRad));
+    }
+    float blk = 0.0;
+    float pcssVis = evalShadowMapPCSS(true, uAreaShadowRes, pos, N, L, panelRad, blk);
+    if (uShadowAlg == 0) {
+      float cVis = evalContactVis(pos, N, L, min(0.24, distL - 0.05), selfPrimIdx, lightPickCode);
+      float cBlend = clamp((blk - 0.06) / 0.25, 0.0, 1.0);
+      return mix(0.03, 1.0, mix(min(cVis, pcssVis), pcssVis, cBlend));
+    }
+    return mix(0.03, 1.0, pcssVis);
+  }
+  int rayCount = clamp(uShadowRays, 2, 12);
+  float invRays = 1.0 / float(rayCount);
+  float r2x = ignHash(gl_FragCoord.xy);
+  float r2y = ignHash(gl_FragCoord.xy + vec2(37.1, 13.7));
+  vec3 origin = pos + N * 0.008;
+  float visAcc = 0.0;
+  for (int s = 0; s < 12; ++s) {
+    if (s >= rayCount) break;
+    float sx = (fract(r2x + float(s) * 0.75487766) * 2.0 - 1.0) * 0.94;
+    float sy = (fract(r2y + float(s) * 0.56984029) * 2.0 - 1.0) * 0.94;
+    vec3 targetPt = lc + lRight * (sx * hw * uShadowSoftness) + lUp * (sy * hh * uShadowSoftness);
+    vec3 delta = targetPt - origin;
+    float dist = length(delta);
+    vec3 rDir = delta / max(dist, 1e-4);
+    if (dot(N, rDir) <= 0.002) continue;
+    if (!traceShadowOccluderAnyHit(origin, rDir, max(0.04, dist - 0.14), selfPrimIdx, lightPickCode)) {
+      visAcc += invRays;
+    }
+  }
+  return mix(0.03, 1.0, visAcc);
+}
+
+// Clipped-Polygon Linearly Transformed Cosine (LTC) Emissive Area Panel Evaluator (ShadowAlgorithmLab)
+float integrateSphericalEdgeZ(vec3 v1, vec3 v2) {
+  float x = clamp(dot(v1, v2), -0.99999, 0.99999);
+  float absX = abs(x);
+  float a = 5.42031 + (3.12829 + 0.0902326 * absX) * absX;
+  float b = 3.45068 + (4.18814 + absX) * absX;
+  float thetaOverSin = a / b;
+  if (x < 0.0) {
+    float sinTheta = sqrt(max(1e-8, 1.0 - x * x));
+    thetaOverSin = 3.14159265 / sinTheta - thetaOverSin;
+  }
+  return (v1.x * v2.y - v1.y * v2.x) * thetaOverSin;
+}
+
+float integrateClippedQuadFormFactor(vec3 localQ[4]) {
+  vec3 clipped[8];
+  int clipCount = 0;
+  for (int i = 0; i < 4; i++) {
+    vec3 cur = localQ[i];
+    vec3 next = localQ[(i + 1) & 3];
+    bool curA = (cur.z >= 0.0);
+    bool nxtA = (next.z >= 0.0);
+    if (curA) clipped[clipCount++] = cur;
+    if (curA != nxtA) {
+      float alpha = cur.z / (cur.z - next.z);
+      vec3 hit = cur + (next - cur) * alpha;
+      hit.z = 0.0;
+      clipped[clipCount++] = hit;
+    }
+  }
+  if (clipCount < 3) return 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= clipCount) break;
+    clipped[i] = normalize(clipped[i]);
+  }
+  float contourSum = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= clipCount) break;
+    int nxt = (i + 1 >= clipCount) ? 0 : (i + 1);
+    contourSum += integrateSphericalEdgeZ(clipped[i], clipped[nxt]);
+  }
+  return clamp(abs(contourSum) / 6.2831853, 0.0, 1.0);
+}
+
+vec3 evalEmissivePanelLtc(
+  vec3 pos, vec3 N, vec3 V, SampledMaterial mat, vec3 edgeTint,
+  vec3 eCenter, vec3 eRight, vec3 eUp, vec3 eNormal, bool isOmni,
+  float eHw, float eHh, vec3 emit, float vis
+) {
+  if (vis <= 1e-4) return vec3(0.0);
+  if (!isOmni && dot(pos - eCenter, eNormal) <= 0.02) return vec3(0.0);
+
+  float noV = clamp(dot(N, V), 1e-4, 1.0);
+  vec3 t1 = V - N * noV;
+  float t1Len = dot(t1, t1);
+  if (t1Len <= 1e-6) {
+    vec3 fb;
+    buildBasis(N, t1, fb);
+  } else {
+    t1 *= inversesqrt(t1Len);
+  }
+  vec3 t2 = normalize(cross(N, t1));
+
+  vec3 halfU = eRight * eHw;
+  vec3 halfV = eUp * eHh;
+  vec3 wc[4];
+  wc[0] = eCenter - halfU - halfV - pos;
+  wc[1] = eCenter + halfU - halfV - pos;
+  wc[2] = eCenter + halfU + halfV - pos;
+  wc[3] = eCenter - halfU + halfV - pos;
+
+  vec3 diffLocal[4];
+  for (int i = 0; i < 4; i++) {
+    diffLocal[i] = vec3(dot(wc[i], t1), dot(wc[i], t2), dot(wc[i], N));
+  }
+  float diffFF = integrateClippedQuadFormFactor(diffLocal);
+
+  float r = max(mat.coat > 0.0 ? mix(mat.roughness, mat.coatRoughness, mat.coat * 0.65) : mat.roughness, 0.035);
+  float alpha = clamp(r * r, 0.004, 1.0);
+  float sinV = sqrt(max(0.0, 1.0 - noV * noV));
+  float invScaleX = 1.0 / max(0.04, alpha * (0.85 + 0.15 * noV));
+  float invScaleY = 1.0 / max(0.04, alpha);
+  float shearXZ = -sinV / max(0.08, noV + alpha);
+
+  vec3 specLocal[4];
+  for (int i = 0; i < 4; i++) {
+    vec3 d = diffLocal[i];
+    float mx = -d.x * noV + d.z * sinV;
+    float mz =  d.x * sinV + d.z * noV;
+    specLocal[i] = vec3((mx + shearXZ * mz * alpha) * invScaleX, d.y * invScaleY, mz);
+  }
+  float specFF = integrateClippedQuadFormFactor(specLocal);
+
+  vec3 diffAlb = mat.baseColor * (1.0 - mat.metallic) * (1.0 - mat.transmission);
+  vec3 f0 = mix(vec3(0.04), mat.baseColor, mat.metallic);
+  vec3 f82 = mix(f0, edgeTint, mat.metallic);
+  float schlick = pow(max(1.0 - noV, 1e-4), 5.0);
+  vec3 specAlb = f0 + (f82 - f0) * (schlick * clamp(1.0 - r * 0.65, 0.0, 1.0));
+  return emit * (isOmni ? 1.35 : 1.0) * (diffAlb * diffFF + specAlb * specFF) * vis;
 }
 
 vec3 evaluateAreaQuadDiffuse(vec3 P, vec3 N, vec3 lCenter, vec3 lRight, vec3 lUp, vec3 lNormal, bool isOmni, float hw, float hh, vec3 emit) {
@@ -950,18 +1832,20 @@ vec3 evaluateOpenPbrDirect(
 //------------------------------------------------------------------------------------------------------------------------------------------
 void evaluateGtxConeGiAndAo(vec3 pos, vec3 N, int selfPrimIdx, out vec3 indirectIrradiance, out float aoOut) {
   float skyWeight = clamp(N.z * 0.5 + 0.5, 0.0, 1.0);
-  vec3 skyAmb = mix(vec3(0.055, 0.053, 0.052), evalSky(vec3(N.xy * 0.35, max(0.25, N.z))), skyWeight) * 0.78;
+  float dayFactor = clamp(uSunDir.z * 4.0 + 0.25, 0.0, 1.0);
+  vec3 groundAmb = mix(vec3(0.0012, 0.0015, 0.0024), vec3(0.055, 0.053, 0.052), dayFactor);
+  vec3 skyAmb = mix(groundAmb, evalSky(vec3(N.xy * 0.35, max(0.25, N.z))), skyWeight) * mix(0.18, 0.78, dayFactor);
 
   vec3 bounceAccum = vec3(0.0);
   float aoOcc = 0.0;
 
-  vec4 l0_0 = uLightCount > 0 ? sdFetch(0, ${LIGHT_ROW_BASE}) : vec4(0.0);
-  vec4 l1_0 = uLightCount > 0 ? sdFetch(1, ${LIGHT_ROW_BASE}) : vec4(0.0);
-
   for (int i = 0; i < uPrimCount; ++i) {
     vec4 hf = sdFetch(1, i);
     int flags = int(hf.w + 0.5);
-    if (i != selfPrimIdx && !PrimFlagGlass(flags)) {
+    vec4 gb = sdFetch(6, i);
+    vec3 bAlbedo = gb.rgb;
+    float bEmit  = gb.w;
+    if (i != selfPrimIdx && (!PrimFlagGlass(flags) || bEmit > 0.05)) {
       vec4 ps = sdFetch(0, i);
       vec3 center = ps.xyz;
       int  shape  = int(ps.w + 0.5);
@@ -970,6 +1854,7 @@ void evaluateGtxConeGiAndAo(vec3 pos, vec3 N, int selfPrimIdx, out vec3 indirect
       float occContribution = 0.0;
       float giFormFactor    = 0.0;
       vec3  emitterNormal   = -N;
+      vec3  targetPoint     = center;
 
       if (shape == 1) {
         vec3 toSphere = center - pos;
@@ -982,9 +1867,10 @@ void evaluateGtxConeGiAndAo(vec3 pos, vec3 N, int selfPrimIdx, out vec3 indirect
         float horizon = smoothstep(-sinH, sinH * 0.85 + 0.25, cosN);
         float solidRatio = (rEff * rEff) / max(dist2, rEff * rEff * 1.05);
         float nearFade = exp(-max(0.0, dist - rEff) / 0.55);
-        occContribution = horizon * solidRatio * nearFade * 0.75;
-        giFormFactor    = horizon * solidRatio * 0.35;
+        occContribution = !PrimFlagGlass(flags) ? (horizon * solidRatio * nearFade * 0.75) : 0.0;
+        giFormFactor    = horizon * solidRatio * 0.85;
         emitterNormal   = -dir;
+        targetPoint     = center - dir * rEff;
       } else {
         vec3 c0, c1, c2;
         loadPrimRot(i, c0, c1, c2);
@@ -998,6 +1884,7 @@ void evaluateGtxConeGiAndAo(vec3 pos, vec3 N, int selfPrimIdx, out vec3 indirect
           vec3 diffLocal = closestLocal - lp;
           float dist2 = dot(diffLocal, diffLocal);
           float dist  = sqrt(max(1e-5, dist2));
+          targetPoint = center + fwdRotateCols(closestLocal, c0, c1, c2);
 
           vec3 relNorm = lp / max(h, vec3(0.02));
           vec3 absR = abs(relNorm);
@@ -1022,7 +1909,7 @@ void evaluateGtxConeGiAndAo(vec3 pos, vec3 N, int selfPrimIdx, out vec3 indirect
 
           float contact = exp(-dist / 0.38) * horizonFade * receiverCos;
           float solidOmega = faceArea / (faceArea + PI * (dist2 + 0.28));
-          occContribution = contact * 0.38 + solidOmega * exp(-dist / 1.1) * horizonFade * 0.12;
+          occContribution = !PrimFlagGlass(flags) ? (contact * 0.38 + solidOmega * exp(-dist / 1.1) * horizonFade * 0.12) : 0.0;
 
           float emitterCos = max(0.0, dot(boxFaceLocal, -invDistDiff));
           giFormFactor = solidOmega * horizonFade * (0.35 + 0.65 * receiverCos) * (0.35 + 0.65 * emitterCos);
@@ -1031,32 +1918,69 @@ void evaluateGtxConeGiAndAo(vec3 pos, vec3 N, int selfPrimIdx, out vec3 indirect
 
       aoOcc += occContribution;
 
-      if (giFormFactor > 1e-4 && PrimFlagGi(flags)) {
-        vec4 gb = sdFetch(6, i);
-        vec3 bAlbedo = gb.rgb;
-        float bEmit  = gb.w;
-        vec3 patchRad = bAlbedo * bEmit;
+      if (giFormFactor > 1e-4 && (PrimFlagGi(flags) || bEmit > 0.05)) {
+        vec3 patchRad = vec3(0.0);
+        if (bEmit > 0.05) {
+          float emitVis = 1.0;
+          if (uEmissiveShadowed != 0) {
+            vec3 toT = targetPoint - pos;
+            float distT = length(toT);
+            if (distT > 0.04) {
+              int ePick = int(sdFetch(3, i).w + 0.5);
+              bool blk = traceShadowOccluderAnyHit(pos + N * 0.014, toT / distT, max(0.02, distT - 0.04), selfPrimIdx, ePick);
+              emitVis = blk ? 0.05 : 1.0;
+            }
+          }
+          patchRad = bAlbedo * bEmit * 2.4 * emitVis;
+        }
+        if (PrimFlagGi(flags) && !PrimFlagGlass(flags)) {
+          float sunNdotL = max(0.0, dot(emitterNormal, uSunDir));
+          patchRad += (bAlbedo / PI) * uSunIrradiance * (sunNdotL * 0.62 + 0.10);
+          vec3 moonIrr = evalMoonIrradiance();
+          if (dot(moonIrr, vec3(1.0)) > 1e-5) {
+            float mNdotL = max(0.0, dot(emitterNormal, uMoonCfg0.xyz));
+            patchRad += (bAlbedo / PI) * moonIrr * (mNdotL * 0.72 + 0.08);
+          }
+          patchRad += (bAlbedo / PI) * evalStarlightAmbient(emitterNormal);
 
-        float sunNdotL = max(0.0, dot(emitterNormal, uSunDir));
-        patchRad += (bAlbedo / PI) * uSunIrradiance * (sunNdotL * 0.62 + 0.10);
+          for (int li = 0; li < uLightCount; ++li) {
+            if (li >= 6) break;
+            vec4 l0 = sdFetch(0, ${LIGHT_ROW_BASE} + li);
+            vec4 l1 = sdFetch(1, ${LIGHT_ROW_BASE} + li);
+            vec4 l2 = sdFetch(2, ${LIGHT_ROW_BASE} + li);
+            vec3 lNorm = sdFetch(5, ${LIGHT_ROW_BASE} + li).xyz;
+            vec3 toL = l0.xyz - center;
+            float d2 = max(0.5, dot(toL, toL));
+            vec3 lDir = toL * inversesqrt(d2);
+            float area = 4.0 * l0.w * l1.x;
+            float cEmit = (l2.z > 0.5) ? 0.65 : max(0.08, -dot(lDir, lNorm));
+            patchRad += (bAlbedo / PI) * l1.yzw
+                      * (max(0.15, dot(emitterNormal, lDir)) * cEmit * area / (PI * d2));
+          }
 
-        if (uLightCount > 0) {
-          vec3 lc = l0_0.xyz;
-          vec3 toL = lc - center;
-          float d2 = max(0.6, dot(toL, toL));
-          vec3 lDir = toL * inversesqrt(d2);
-          float area = 4.0 * l0_0.w * l1_0.x;
-          patchRad += (bAlbedo / PI) * l1_0.yzw
-                    * (max(0.15, dot(emitterNormal, lDir)) * max(0.1, -lDir.z) * area / (PI * d2));
+          for (int ei = 0; ei < uPrimCount; ++ei) {
+            if (ei == i) continue;
+            vec4 eGb = sdFetch(6, ei);
+            if (eGb.w > 0.05) {
+              vec4 ePs = sdFetch(0, ei);
+              vec4 eHf = sdFetch(1, ei);
+              vec3 toE = ePs.xyz - center;
+              float d2e = max(0.35, dot(toE, toE));
+              vec3 eDir = toE * inversesqrt(d2e);
+              float rE = max(0.08, (eHf.x + eHf.y + eHf.z) * 0.3333333);
+              float eOmega = min(1.5, (rE * rE) / max(0.12, d2e - rE * rE * 0.35));
+              patchRad += (bAlbedo / PI) * eGb.rgb * eGb.w * eOmega * max(0.12, dot(emitterNormal, eDir)) * 1.35;
+            }
+          }
         }
 
-        bounceAccum += patchRad * giFormFactor * 1.35;
+        bounceAccum += patchRad * giFormFactor * 1.55;
       }
     }
   }
 
   aoOut = clamp(1.0 - aoOcc, 0.26, 1.0);
-  indirectIrradiance = skyAmb * mix(0.45, 1.0, aoOut) + bounceAccum;
+  indirectIrradiance = (skyAmb + evalStarlightAmbient(N)) * mix(0.45, 1.0, aoOut) + bounceAccum;
 }
 
 void buildShadingFrame(HitInfo hit, SampledMaterial mat, out vec3 Nshade, out vec3 Ncoat, out vec3 Tshade, out vec3 Bshade) {
@@ -1084,19 +2008,31 @@ void buildShadingFrame(HitInfo hit, SampledMaterial mat, out vec3 Nshade, out ve
   Bshade = -sa * Tbase + ca * Bbase;
 }
 
-// Compact 3-fetch secondary bounce evaluator + single unified secondary ray trace (cuts secondary IR by 65%!)
+// Compact 3-fetch secondary bounce evaluator + single unified secondary ray trace (handles both primitives & ControlVehicle BVH)
 vec3 shadeSecondaryBounceHit(HitInfo hit, vec3 V) {
-  int idx = hit.primIdx;
-  vec4 s0 = sampleAtlasSlot(idx, 0, hit.uv);
-  vec4 s1 = sampleAtlasSlot(idx, 1, hit.uv);
-  vec4 s7 = sampleAtlasSlot(idx, 7, hit.uv);
-
-  vec3 baseColor = s0.rgb;
-  float metallic = s1.r;
-  float roughness = max(0.025, s1.g);
-  float ao = s1.a;
-  float emission = s7.r * 20.0;
-  if (s7.g > 0.5) return baseColor * (1.0 + emission);
+  vec3 baseColor;
+  float metallic;
+  float roughness;
+  float ao = 1.0;
+  float emission = 0.0;
+  if (hit.isVehicle) {
+    SampledMaterial vm = buildVehicleMaterial(hit);
+    baseColor = vm.baseColor;
+    metallic = vm.metallic;
+    roughness = vm.roughness;
+    emission = vm.emission;
+  } else {
+    int idx = hit.primIdx;
+    vec4 s0 = sampleAtlasSlot(idx, 0, hit.uv);
+    vec4 s1 = sampleAtlasSlot(idx, 1, hit.uv);
+    vec4 s7 = sampleAtlasSlot(idx, 7, hit.uv);
+    baseColor = s0.rgb;
+    metallic = s1.r;
+    roughness = max(0.025, s1.g);
+    ao = s1.a;
+    emission = s7.r * 20.0;
+    if (s7.g > 0.5) return baseColor * (1.0 + emission);
+  }
 
   vec3 N = hit.normal;
   vec3 Lo = baseColor * emission;
@@ -1110,11 +2046,11 @@ vec3 shadeSecondaryBounceHit(HitInfo hit, vec3 V) {
     Lo += ((1.0 - metallic) * (baseColor / PI) * nSun + F * spec * 0.45) * uSunIrradiance * (0.45 + 0.55 * roomOpen);
   }
 
-  if (uLightCount > 0) {
-    vec4 l0 = sdFetch(0, ${LIGHT_ROW_BASE});
-    vec4 l1 = sdFetch(1, ${LIGHT_ROW_BASE});
-    vec4 l2 = sdFetch(2, ${LIGHT_ROW_BASE});
-    vec3 lNormal = sdFetch(5, ${LIGHT_ROW_BASE}).xyz;
+  for (int li = 0; li < uLightCount; ++li) {
+    vec4 l0 = sdFetch(0, ${LIGHT_ROW_BASE} + li);
+    vec4 l1 = sdFetch(1, ${LIGHT_ROW_BASE} + li);
+    vec4 l2 = sdFetch(2, ${LIGHT_ROW_BASE} + li);
+    vec3 lNormal = sdFetch(5, ${LIGHT_ROW_BASE} + li).xyz;
     vec3 toL = l0.xyz - hit.pos;
     float d2 = max(0.25, dot(toL, toL));
     vec3 lDir = toL * inversesqrt(d2);
@@ -1124,9 +2060,37 @@ vec3 shadeSecondaryBounceHit(HitInfo hit, vec3 V) {
     Lo += (1.0 - metallic) * (baseColor / PI) * l1.yzw * (cSurf * cEmit * area / d2);
   }
 
+  int secIdx = hit.isVehicle ? -1 : hit.primIdx;
+  for (int ei = 0; ei < uPrimCount; ++ei) {
+    if (ei == secIdx) continue;
+    vec4 eGb = sdFetch(6, ei);
+    if (eGb.w > 0.05) {
+      vec4 ePs = sdFetch(0, ei);
+      vec4 eHf = sdFetch(1, ei);
+      vec3 toE = ePs.xyz - hit.pos;
+      float d2e = max(0.08, dot(toE, toE));
+      vec3 eDir = toE * inversesqrt(d2e);
+      float nE = max(0.0, dot(N, eDir));
+      if (nE > 0.0) {
+        float rE = max(0.08, (eHf.x + eHf.y + eHf.z) * 0.3333333);
+        float eOmega = min(1.6, (rE * rE) / max(0.05, d2e - rE * rE * 0.4));
+        Lo += (1.0 - metallic) * (baseColor / PI) * eGb.rgb * eGb.w * eOmega * nE * 1.45;
+      }
+    }
+  }
+
+  float dayFactor = clamp(uSunDir.z * 4.0 + 0.25, 0.0, 1.0);
+  vec3 moonIrr = evalMoonIrradiance();
+  if (dot(moonIrr, vec3(1.0)) > 1e-5) {
+    float mN = max(0.0, dot(N, uMoonCfg0.xyz));
+    if (mN > 0.0) {
+      Lo += (1.0 - metallic) * (baseColor / PI) * moonIrr * mN;
+    }
+  }
   vec3 amb = evalSky(N) * 0.50
-           + vec3(0.15, 0.015, 0.012) * max(-N.x, 0.0)
-           + vec3(0.015, 0.14, 0.025) * max(N.x, 0.0);
+           + evalStarlightAmbient(N)
+           + (vec3(0.15, 0.015, 0.012) * max(-N.x, 0.0)
+           +  vec3(0.015, 0.14, 0.025) * max(N.x, 0.0)) * mix(0.03, 1.0, dayFactor);
   Lo += baseColor * (1.0 - metallic) * amb * ao;
   return Lo;
 }
@@ -1141,9 +2105,137 @@ vec3 sampleSecondaryRay(vec3 ro, vec3 rd, float maxDist, int ignoreIdx) {
   return evalSky(rd);
 }
 
+// Multi-bounce BVH Reflections (REFLECTION_BVH_FRAG from ShadowAlgorithmLab — NO SDF reflections)
+vec3 traceBvhReflection(vec3 startOrigin, vec3 startNormal, vec3 startDir, int maxBounces, int ignoreIdx) {
+  vec3 currOrigin = startOrigin;
+  vec3 currNormal = startNormal;
+  vec3 rayDir = startDir;
+  int currIgnore = ignoreIdx;
+  vec3 totalRad = vec3(0.0);
+  vec3 throughput = vec3(1.0);
+
+  for (int bounce = 1; bounce <= 3; ++bounce) {
+    if (bounce > maxBounces) break;
+    HitInfo hit = traceOpaqueSceneIgnoring(currOrigin + currNormal * 0.006, rayDir, 60.0, currIgnore);
+    vec3 qEmit;
+    int qIdx;
+    float tQ = traceLightQuad(currOrigin + currNormal * 0.006, rayDir, hit.t, qEmit, qIdx);
+    if (tQ < hit.t) {
+      totalRad += throughput * qEmit;
+      break;
+    }
+    if (!hit.hit) {
+      totalRad += throughput * evalSky(rayDir);
+      break;
+    }
+    vec3 hitRad = shadeSecondaryBounceHit(hit, -rayDir);
+    float mRefl = 0.0;
+    if (hit.isVehicle) {
+      SampledMaterial vm = buildVehicleMaterial(hit);
+      mRefl = clamp((vm.metallic * 0.75 + vm.coat * 0.45) * (1.0 - vm.roughness), 0.0, 0.95);
+    } else {
+      vec4 s1 = sampleAtlasSlot(hit.primIdx, 1, hit.uv);
+      vec4 s3 = sampleAtlasSlot(hit.primIdx, 3, hit.uv);
+      mRefl = clamp((s1.r * 0.75 + s3.r * 0.45) * (1.0 - s1.g), 0.0, 0.95);
+    }
+    if (bounce == maxBounces || mRefl < 0.04) {
+      totalRad += throughput * hitRad;
+      break;
+    }
+    float noV = max(dot(hit.normal, -rayDir), 0.02);
+    float fresnel = clamp(mRefl + (1.0 - mRefl) * pow(max(1.0 - noV, 1e-4), 5.0) * 0.45, 0.0, 0.92);
+    totalRad += throughput * hitRad * (1.0 - fresnel * 0.55);
+    throughput *= fresnel;
+    if (max(throughput.r, max(throughput.g, throughput.b)) < 0.025) break;
+    currOrigin = hit.pos;
+    currNormal = hit.normal;
+    currIgnore = hit.isVehicle ? -1 : hit.primIdx;
+    rayDir = reflect(rayDir, hit.normal);
+  }
+  return min(totalRad, vec3(60.0));
+}
+
+void evaluateMultiModeGi(vec3 pos, vec3 N, int selfPrimIdx, out vec3 giIrr, out float sceneAo) {
+  if (uGiAlg == 2) {
+    float skyW = clamp(N.z * 0.5 + 0.5, 0.0, 1.0);
+    float dayF = clamp(uSunDir.z * 4.0 + 0.25, 0.0, 1.0);
+    vec3 gAmb = mix(vec3(0.0012, 0.0015, 0.0024), vec3(0.055, 0.053, 0.052), dayF);
+    giIrr = (mix(gAmb, evalSky(vec3(N.xy * 0.35, max(0.25, N.z))), skyW) * mix(0.18, 0.78, dayF) + evalStarlightAmbient(N)) * uFillBoost;
+    sceneAo = 1.0;
+    return;
+  }
+  if (uGiAlg == 1) {
+    // GI_BVH_FRAG (ShadowAlgorithmLab): 2-bounce cosine-hemisphere BVH path tracing
+    int samples = clamp(uGiSamples, 2, 20);
+    float invGi = 1.0 / float(samples);
+    float phi = ignHash(gl_FragCoord.xy) * 6.2831853;
+    vec3 accum = vec3(0.0);
+    float occ = 0.0;
+    for (int s = 0; s < 20; ++s) {
+      if (s >= samples) break;
+      vec3 currPos = pos;
+      vec3 currN = N;
+      int currIgnore = selfPrimIdx;
+      vec3 throughput = vec3(1.0);
+      vec3 pathRad = vec3(0.0);
+      for (int b = 1; b <= 2; ++b) {
+        vec3 T, B;
+        buildBasis(currN, T, B);
+        float u1 = (float(s) + fract(ignHash(gl_FragCoord.xy + vec2(float(b) * 19.1, float(s) * 7.3)) + float(b - 1) * 0.381966 + float(s) * 0.61803399) * 0.85 + 0.075) * invGi;
+        float r = sqrt(clamp(u1, 0.01, 0.99));
+        float ang = phi + float(s) * 2.39996323 + float(b - 1) * 1.919862;
+        vec3 rd = normalize(T * (cos(ang) * r) + B * (sin(ang) * r) + currN * sqrt(max(0.0, 1.0 - r * r)));
+        HitInfo giHit = traceOpaqueSceneIgnoring(currPos + currN * 0.012, rd, (b == 1) ? 24.0 : 16.0, currIgnore);
+        vec3 qEmit;
+        int qIdx;
+        float tQ = traceLightQuad(currPos + currN * 0.012, rd, giHit.t, qEmit, qIdx);
+        if (tQ < giHit.t) {
+          pathRad += throughput * qEmit;
+          break;
+        }
+        if (!giHit.hit) {
+          pathRad += throughput * (evalSky(rd) * 0.65 * uFillBoost + evalStarlightAmbient(currN));
+          break;
+        }
+        if (b == 1) occ += exp(-giHit.t * 0.85);
+        pathRad += throughput * shadeSecondaryBounceHit(giHit, -rd);
+        if (b == 2) break;
+        vec3 diffTint = vec3(0.5);
+        if (giHit.isVehicle) {
+          SampledMaterial vm = buildVehicleMaterial(giHit);
+          diffTint = vm.baseColor * (1.0 - vm.metallic);
+        } else {
+          vec4 s0 = sampleAtlasSlot(giHit.primIdx, 0, giHit.uv);
+          vec4 s1 = sampleAtlasSlot(giHit.primIdx, 1, giHit.uv);
+          vec4 s7 = sampleAtlasSlot(giHit.primIdx, 7, giHit.uv);
+          if (s7.g > 0.5 || s7.r > 0.005) break;
+          diffTint = s0.rgb * (1.0 - s1.r);
+        }
+        throughput *= diffTint * 0.88;
+        if (max(throughput.r, max(throughput.g, throughput.b)) < 0.025) break;
+        currN = (dot(giHit.normal, -rd) >= 0.0) ? giHit.normal : -giHit.normal;
+        currPos = giHit.pos;
+        currIgnore = giHit.isVehicle ? -1 : giHit.primIdx;
+      }
+      accum += pathRad * invGi;
+    }
+    sceneAo = clamp(1.0 - (occ * invGi) * 0.72, 0.25, 1.0);
+    giIrr = min(accum, vec3(16.0)) * uGiIntensity;
+    return;
+  }
+  evaluateGtxConeGiAndAo(pos, N, selfPrimIdx, giIrr, sceneAo);
+  float coneGain = clamp(float(uGiCones) / 6.0, 0.75, 1.25);
+  giIrr *= uGiIntensity * mix(0.85, 1.0, coneGain) * (0.35 + 0.65 * uFillBoost);
+}
+
 vec3 shadePrimaryOpaqueHit(HitInfo hit, vec3 V) {
-  int idx = hit.primIdx;
-  SampledMaterial origMat = fetchMaterial(idx, hit.uv);
+  int idx = hit.isVehicle ? -1 : hit.primIdx;
+  SampledMaterial origMat;
+  if (hit.isVehicle) {
+    origMat = buildVehicleMaterial(hit);
+  } else {
+    origMat = fetchMaterial(idx, hit.uv);
+  }
 
   if (uViewMode == 2) {
     vec3 N, Nc, T, B;
@@ -1169,16 +2261,63 @@ vec3 shadePrimaryOpaqueHit(HitInfo hit, vec3 V) {
 
   vec3 N, Nc, T, B;
   buildShadingFrame(hit, mat, N, Nc, T, B);
-  vec3 edgeTint = sdFetch(5, idx).rgb;
+  vec3 edgeTint = hit.isVehicle ? vec3(1.0) : sdFetch(5, idx).rgb;
   vec3 Lo = mat.baseColor * mat.emission;
 
-  // 1. Solar direct + ring-free analytical penumbra
+  // 1. Solar direct + non-SDF shadow algorithm (Contact+PCSS / PCSS / SMRT / PCF / BVH)
   float sunVis = evaluateGtxSolarShadow(hit.pos, N, idx);
   if (sunVis > 0.0) {
     Lo += evaluateOpenPbrDirect(N, Nc, T, B, V, uSunDir, mat, edgeTint) * uSunIrradiance * sunVis;
   }
 
-  // 2. Clipped quad area lights + directed studio light soft shadows
+  // 1B. Physical moonlight direct illumination & soft shadow (night, twilight & visible daytime moon)
+  vec3 mIrr = evalMoonIrradiance();
+  if (dot(mIrr, vec3(1.0)) > 1e-5) {
+    vec3 mDir = normalize(uMoonCfg0.xyz);
+    if (dot(N, mDir) > 0.002) {
+      float mVis = evalBvhRayShadow(hit.pos, N, mDir, 28.0, max(0.01, uMoonCfg0.w), 2, idx, -1);
+      Lo += evaluateOpenPbrDirect(N, Nc, T, B, V, mDir, mat, edgeTint) * mIrr * mix(0.04, 1.0, mVis);
+    }
+  }
+
+  // 1C. Direct shadowed lighting from emissive primitives (closest-point + soft penumbra + specular GGX)
+  for (int ei = 0; ei < uPrimCount; ++ei) {
+    if (ei == idx) continue;
+    vec4 gb = sdFetch(6, ei);
+    float bEmit = gb.w;
+    if (bEmit > 0.05) {
+      vec4 ps = sdFetch(0, ei);
+      vec4 hf = sdFetch(1, ei);
+      int eShape = int(ps.w + 0.5);
+      vec3 targetP = ps.xyz;
+      if (eShape != 1) {
+        vec3 e0, e1, e2;
+        loadPrimRot(ei, e0, e1, e2);
+        vec3 lp = invRotateCols(hit.pos - ps.xyz, e0, e1, e2);
+        targetP = ps.xyz + fwdRotateCols(clamp(lp, -hf.xyz, hf.xyz), e0, e1, e2);
+      }
+      vec3 toE = targetP - hit.pos;
+      float d2 = max(0.04, dot(toE, toE));
+      float dist = sqrt(d2);
+      vec3 eDir = toE / dist;
+      float NdotE = max(0.0, dot(N, eDir));
+      if (NdotE > 0.0) {
+        float rEff = max(0.08, (hf.x + hf.y + hf.z) * 0.3333333);
+        float solidOmega = min(2.0, (rEff * rEff) / max(0.04, d2));
+        float eVis = 1.0;
+        if (uEmissiveShadowed != 0) {
+          int ePick = int(sdFetch(3, ei).w + 0.5);
+          float coneSin = clamp(rEff / max(dist, 0.35), 0.04, 0.24) * uShadowSoftness;
+          float rawV = evalBvhRayShadow(hit.pos, N, eDir, max(0.02, dist - 0.03), coneSin, 2, idx, ePick);
+          eVis = mix(0.03, 1.0, rawV);
+        }
+        vec3 eIrr = gb.rgb * bEmit * solidOmega * 1.45 * eVis;
+        Lo += evaluateOpenPbrDirect(N, Nc, T, B, V, eDir, mat, edgeTint) * eIrr;
+      }
+    }
+  }
+
+  // 2. Clipped-polygon LTC area lights + ShadowAlgorithmLab emissive shadow visibility
   for (int li = 0; li < uLightCount; ++li) {
     vec4 l0 = sdFetch(0, ${LIGHT_ROW_BASE} + li);
     vec4 l1 = sdFetch(1, ${LIGHT_ROW_BASE} + li);
@@ -1192,38 +2331,14 @@ vec3 shadePrimaryOpaqueHit(HitInfo hit, vec3 V) {
     vec3 emit = l1.yzw;
     int lightPickCode = int(l2.y + 0.5);
     bool isOmni = l2.z > 0.5;
-
-    vec3 diffLight = evaluateAreaQuadDiffuse(hit.pos, N, lc, lRight, lUp, lNormal, isOmni, hw, hh, emit);
-    if (dot(diffLight, vec3(1.0)) > 1e-5) {
-      float areaVis = evaluateAreaLightSoftVis(hit.pos, N, lc, hw, hh, idx, lightPickCode);
-
-      vec3 kD = (1.0 - mat.metallic) * (1.0 - mat.transmission) * mat.baseColor;
-      Lo += kD * diffLight * areaVis;
-
-      vec3 R = reflect(-V, N);
-      float rDenom = dot(R, lNormal);
-      if (abs(rDenom) > 1e-4) {
-        float tPlane = dot(lc - hit.pos, lNormal) / rDenom;
-        if (tPlane > 0.01 && (isOmni || rDenom < 0.0)) {
-          vec3 relPlane = (hit.pos + R * tPlane) - lc;
-          float uClamp = clamp(dot(relPlane, lRight), -hw, hw);
-          float vClamp = clamp(dot(relPlane, lUp), -hh, hh);
-          vec3 clamped = lc + lRight * uClamp + lUp * vClamp;
-          vec3 Lspec = normalize(clamped - hit.pos);
-          float specSpread = max(0.04, mat.roughness * mat.roughness);
-          float solid = clamp((hw * hh) / max(0.15, tPlane * tPlane * specSpread * 6.0), 0.0, 1.2);
-          float VdotH = max(0.0, dot(V, normalize(V + Lspec)));
-          vec3 F = mix(vec3(fresnelDielectric(VdotH, mat.ior)), fresnelConductorF82(VdotH, mat.baseColor, edgeTint), mat.metallic);
-          Lo += F * emit * solid * max(0.0, dot(N, Lspec)) * areaVis * 0.55;
-        }
-      }
-    }
+    float areaVis = evaluateAreaLightSoftVis(hit.pos, N, lc, lRight, lUp, hw, hh, idx, lightPickCode, li);
+    Lo += evalEmissivePanelLtc(hit.pos, N, V, mat, edgeTint, lc, lRight, lUp, lNormal, isOmni, hw, hh, emit, areaVis);
   }
 
-  // 3. Smooth analytical solid-angle GI + AO
+  // 3. Multi-mode GI + AO (Cone GI / BVH Raytraced GI / Off)
   vec3 giIrr;
   float sceneAo;
-  evaluateGtxConeGiAndAo(hit.pos, N, idx, giIrr, sceneAo);
+  evaluateMultiModeGi(hit.pos, N, idx, giIrr, sceneAo);
   float totalAo = sceneAo * mat.ao;
   float VdotN = max(0.0, dot(V, N));
   vec3 Fenv = mix(vec3(fresnelDielectric(VdotN, mat.ior)), fresnelConductorF82(VdotN, mat.baseColor, edgeTint), mat.metallic);
@@ -1234,8 +2349,9 @@ vec3 shadePrimaryOpaqueHit(HitInfo hit, vec3 V) {
     Lo += mat.sheenColor * giIrr * pow(1.0 - VdotN, 3.0) * 0.45 * totalAo;
   }
 
-  // 4. Roughness-filtered specular reflection
-  vec3 R = reflect(-V, mat.coat > 0.35 ? Nc : N);
+  // 4. Non-SDF Reflections: BVH Raytraced Multi-Bounce Reflections (REFLECTION_BVH_FRAG) or Sky/Env Only
+  vec3 Nrefl = mat.coat > 0.35 ? Nc : N;
+  vec3 R = reflect(-V, Nrefl);
   float baseMirror = smoothstep(0.28, 0.04, mat.roughness) * mix(0.35, 1.0, mat.metallic);
   float coatMirror = mat.coat * smoothstep(0.26, 0.02, mat.coatRoughness);
   float raySharpness = max(baseMirror, coatMirror);
@@ -1243,9 +2359,23 @@ vec3 shadePrimaryOpaqueHit(HitInfo hit, vec3 V) {
   vec3 roughEnv = mix(giIrr, evalSky(R), 0.55);
   vec3 specEnvRad = roughEnv;
 
-  if (uViewMode == 0 && raySharpness > 0.02) {
-    vec3 sharpRad = sampleSecondaryRay(hit.pos + N * 0.012, R, 22.0, idx);
-    specEnvRad = mix(roughEnv, sharpRad, raySharpness);
+  if (uViewMode == 0 && uReflAlg == 2) {
+    specEnvRad = evalSky(R);
+  } else if (uViewMode == 0 && (raySharpness > 0.02 || mat.metallic > 0.2 || mat.coat > 0.15)) {
+    vec3 RT, RB;
+    buildBasis(R, RT, RB);
+    int rRays = clamp(uReflRays, 1, 8);
+    int rBounces = clamp(uReflBounces, 1, 3);
+    float phi = ignHash(gl_FragCoord.xy + vec2(17.0, 31.0)) * 6.2831853;
+    float coneR = mix(0.003, 0.18, mat.coat > 0.35 ? mat.coatRoughness : mat.roughness);
+    vec3 rSum = vec3(0.0);
+    for (int ri = 0; ri < 8; ++ri) {
+      if (ri >= rRays) break;
+      vec2 dj = rRays > 1 ? vogelDiskSample(ri, rRays, phi) * coneR : vec2(0.0);
+      vec3 rDir = normalize(R + RT * dj.x + RB * dj.y);
+      rSum += traceBvhReflection(hit.pos, N, rDir, rBounces, idx);
+    }
+    specEnvRad = mix(roughEnv, rSum / float(rRays), max(raySharpness, 0.45));
   }
 
   float envEnergy = (1.0 - mat.roughness * 0.78);
@@ -1373,16 +2503,21 @@ void main() {
   if (uViewMode >= 10) {
     int dbg = uViewMode - 10;
     if (fullHit.hit) {
-      int pPick = int(sdFetch(3, fullHit.primIdx).w + 0.5);
+      int pPick = fullHit.isVehicle ? fullHit.vehPickCode : int(sdFetch(3, fullHit.primIdx).w + 0.5);
       entityCode = pPick > 0 ? pPick : (1 + fullHit.primIdx);
       hitDist = fullHit.t;
-      SampledMaterial dm = fetchMaterial(fullHit.primIdx, fullHit.uv);
+      SampledMaterial dm;
+      if (fullHit.isVehicle) {
+        dm = buildVehicleMaterial(fullHit);
+      } else {
+        dm = fetchMaterial(fullHit.primIdx, fullHit.uv);
+      }
       vec3 N, Nc, T, B;
       buildShadingFrame(fullHit, dm, N, Nc, T, B);
       if (dbg == 1)       linearColor = vec3(1.0 - clamp(fullHit.t / 12.0, 0.0, 1.0));
       else if (dbg == 2)  linearColor = fract(vec3(float(entityCode) * 0.37, float(entityCode) * 0.61, float(entityCode) * 0.83));
       else if (dbg == 3)  linearColor = vec3(0.5 + 0.5 * rd.x, 0.5 + 0.5 * rd.y, 0.5);
-      else if (dbg == 4)  linearColor = fract(vec3(float(fullHit.primIdx + 1) * 0.29, float(fullHit.primIdx + 1) * 0.53, float(fullHit.primIdx + 1) * 0.79));
+      else if (dbg == 4)  linearColor = fract(vec3(float((fullHit.isVehicle ? fullHit.vehMatId + 20 : fullHit.primIdx + 1)) * 0.29, float((fullHit.isVehicle ? fullHit.vehMatId + 20 : fullHit.primIdx + 1)) * 0.53, float((fullHit.isVehicle ? fullHit.vehMatId + 20 : fullHit.primIdx + 1)) * 0.79));
       else if (dbg == 5)  linearColor = vec3(floor((1.0 - clamp(fullHit.t / 14.0, 0.0, 1.0)) * 8.0) / 8.0);
       else if (dbg == 6)  linearColor = pow(clamp(dm.baseColor, 0.0, 1.0), vec3(1.0 / 2.2));
       else if (dbg == 7)  linearColor = fullHit.normal * 0.5 + 0.5;
@@ -1413,17 +2548,17 @@ void main() {
     entityCode = 112 + hitLightIdx;
     hitDist = tQuad;
   } else if (fullHit.hit) {
-    int pPick = int(sdFetch(3, fullHit.primIdx).w + 0.5);
+    int pPick = fullHit.isVehicle ? fullHit.vehPickCode : int(sdFetch(3, fullHit.primIdx).w + 0.5);
     entityCode = pPick > 0 ? pPick : (1 + fullHit.primIdx);
     hitDist = fullHit.t;
-    int hitFlags = int(sdFetch(1, fullHit.primIdx).w + 0.5);
-    if (PrimFlagGlass(hitFlags) && uViewMode == 0) {
+    int hitFlags = fullHit.isVehicle ? 0 : int(sdFetch(1, fullHit.primIdx).w + 0.5);
+    if (!fullHit.isVehicle && PrimFlagGlass(hitFlags) && uViewMode == 0) {
       linearColor = shadeTwoLayerGlass(fullHit, rd);
     } else {
       linearColor = shadePrimaryOpaqueHit(fullHit, -rd);
     }
   } else {
-    linearColor = evalSky(rd);
+    linearColor = evalSkyPrimary(rd, gl_FragCoord.xy);
     if (uShowGrid != 0 && abs(rd.z) > 1e-4) {
       float tFloor = (-0.80 - ro.z) / rd.z;
       if (tFloor > 0.0 && tFloor < 36.0) {
@@ -1540,7 +2675,14 @@ function FinalizeLinkedProgram(Gl, Handle) {
     Gl.deleteShader(Vs);
     Gl.deleteShader(Fs);
     Gl.deleteProgram(Prog);
-    throw new Error(ProgLog || FsLog || VsLog || "Program link error");
+    const Detail = [
+      ProgLog ? `Link: ${ProgLog}` : "",
+      FsLog ? `Fragment: ${FsLog}` : "",
+      VsLog ? `Vertex: ${VsLog}` : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    throw new Error(Detail || "Program link error");
   }
   Gl.deleteShader(Vs);
   Gl.deleteShader(Fs);
@@ -1600,7 +2742,7 @@ function PackSceneDataBuffer(ActiveScene, PCount, LCount, Out) {
     Out[Base + 22] = P.EdgeTintF82[2];
     Out[Base + 23] = P.Transmission;
 
-    const DiffWeight = 1.0 - P.Metallic * 0.75;
+    const DiffWeight = P.Emission > 0.01 ? 1.0 : 1.0 - P.Metallic * 0.75;
     Out[Base + 24] = P.BaseColor[0] * DiffWeight;
     Out[Base + 25] = P.BaseColor[1] * DiffWeight;
     Out[Base + 26] = P.BaseColor[2] * DiffWeight;
@@ -1647,10 +2789,16 @@ function PackSceneDataBuffer(ActiveScene, PCount, LCount, Out) {
 
 function ComputeNonCameraSceneSignature(Scene) {
   let Parts = `${Scene.OrthoHalfHeight.toFixed(3)}|${Scene.VerticalFovRad.toFixed(3)}|${Scene.ExposureGain.toFixed(3)}|`;
-  Parts += `${Scene.SunDir.map((V) => V.toFixed(3)).join(",")}|${Scene.SunIrradiance.map((V) => V.toFixed(2)).join(",")}|${Scene.SkyRadiance.map((V) => V.toFixed(3)).join(",")}|`;
+  Parts += `${Scene.SunDir.map((V) => V.toFixed(3)).join(",")}|${Scene.SunIrradiance.map((V) => V.toFixed(2)).join(",")}|${(Scene.SunAngularRadiusRad || 0.018).toFixed(4)}|${Scene.SkyRadiance.map((V) => V.toFixed(3)).join(",")}|`;
+  Parts += `SKY:${JSON.stringify(Scene.Atmosphere || {})}|CL:${JSON.stringify(Scene.Clouds || {})}|MN:${JSON.stringify(Scene.Moon || {})}|ST:${JSON.stringify(Scene.Stars || {})}|`;
+  Parts += `RS:${JSON.stringify(Scene.RenderSettings || {})}|`;
   for (let I = 0; I < Scene.Primitives.length; ++I) {
     const P = Scene.Primitives[I];
     Parts += `${P.Id}:${P.PickCode || 0}:${P.Shape}:${P.Center.join(",")}:${P.HalfExtents.join(",")}:${P.RotationRad.join(",")}:${P.BaseColor.join(",")}:${P.Metallic}:${P.Roughness}:${P.Ior}:${P.Coat}:${P.Transmission}:${P.Opacity}:${P.Emission}:${P.CastShadows ? 1 : 0}:${P.GiContributor ? 1 : 0}:${P.GlassShell ? 1 : 0}:${P.FaceAtlas ? JSON.stringify(P.FaceColors) : ""}:${P.TextureUrls?.BaseColor || ""}:${P.TextureUrls?.Roughness || ""}:${P.TextureUrls?.Normal || ""}|`;
+  }
+  for (let Vi = 0; Vi < (Scene.Vehicles?.length || 0); ++Vi) {
+    const V = Scene.Vehicles[Vi];
+    Parts += `V${V.Id}:${V.PickCode || 0}:${V.Position.join(",")}:${V.Rotation.join(",")}:${V.Scale.join(",")}:${V.BaseColor.join(",")}:${V.Metallic}:${V.Roughness}:${V.Coat}:${V.CastShadows ? 1 : 0}|`;
   }
   for (let Li = 0; Li < Scene.AreaLights.length; ++Li) {
     const L = Scene.AreaLights[Li];
@@ -1684,6 +2832,20 @@ function ResolveEntityTransformForGizmo(SelectedId, Rows, Values, CompiledScene)
   }
 
   const Rec = Values?.[SelectedId] || {};
+  if (Row.Panel === "geometry" && Row.PrimitiveShape === "vehicle") {
+    const Veh = (CompiledScene.Vehicles || []).find(
+      (Item) => (Item.OwnerId || Item.Id) === SelectedId,
+    );
+    if (!Veh) return null;
+    return {
+      Id: SelectedId,
+      Kind: "geometry",
+      Locked: !!Rec.LOCKED,
+      Position: Array.isArray(Rec.Position) ? [...Rec.Position] : [...Veh.Position],
+      Rotation: Array.isArray(Rec.Rotation) ? [...Rec.Rotation] : [...Veh.Rotation],
+      Scale: Array.isArray(Rec.Scale) ? [...Rec.Scale] : [...Veh.Scale],
+    };
+  }
   if (Row.Panel === "geometry" || Row.Panel === "camera") {
     const Prim = CompiledScene.Primitives.find(
       (Item) => (Item.OwnerId || Item.Id) === SelectedId,
@@ -1822,7 +2984,30 @@ export default function GtxWorldViewport({
   const [GizmoReadout, SetGizmoReadout] = useState("");
   const [CameraSpeedHud, SetCameraSpeedHud] = useState("");
   const [TextureEpoch, SetTextureEpoch] = useState(0);
+  const [VehicleBvhEpoch, SetVehicleBvhEpoch] = useState(0);
+  const VehicleBvhRef = useRef(GetCachedVehicleBvhAssets());
+  const VehicleBvhDirtyRef = useRef(true);
   const [LiveDragPreview, SetLiveDragPreview] = useState(null);
+
+  useEffect(() => {
+    let Cancelled = false;
+    LoadVehicleBvhAssets()
+      .then((Assets) => {
+        if (Cancelled) return;
+        VehicleBvhRef.current = Assets;
+        VehicleBvhDirtyRef.current = true;
+        SceneDataDirtyRef.current = true;
+        SceneDirtyRef.current = true;
+        SetVehicleBvhEpoch((N) => N + 1);
+        RequestRedrawRef.current?.(true);
+      })
+      .catch((Err) => {
+        console.warn("[Frontier GTX] ControlVehicle BVH load skipped:", Err?.message || Err);
+      });
+    return () => {
+      Cancelled = true;
+    };
+  }, []);
 
   if (!AtlasSyncRef.current) {
     AtlasSyncRef.current = new MaterialAtlasSynchronizer();
@@ -1972,6 +3157,23 @@ export default function GtxWorldViewport({
   ]);
 
   useEffect(() => {
+    if (!CompiledScene.HasAnimatedSky || RenderBackend === "cpu-gtx") return undefined;
+    let RafId = 0;
+    let LastMs = typeof performance !== "undefined" ? performance.now() : 0;
+    const Tick = (NowMs) => {
+      if (NowMs - LastMs >= 45) {
+        const Dt = Math.min(0.1, Math.max(0.001, (NowMs - LastMs) * 0.001));
+        LastMs = NowMs;
+        ForceTimeRef.current += Dt;
+        RequestRedrawRef.current?.(true);
+      }
+      RafId = requestAnimationFrame(Tick);
+    };
+    RafId = requestAnimationFrame(Tick);
+    return () => cancelAnimationFrame(RafId);
+  }, [CompiledScene.HasAnimatedSky, RenderBackend]);
+
+  useEffect(() => {
     if (!CompiledScene.HasSpinningFans || RenderBackend === "cpu-gtx") return undefined;
     let RafId = 0;
     let LastMs = typeof performance !== "undefined" ? performance.now() : 0;
@@ -1986,6 +3188,17 @@ export default function GtxWorldViewport({
     RafId = requestAnimationFrame(Tick);
     return () => cancelAnimationFrame(RafId);
   }, [CompiledScene.HasSpinningFans, RenderBackend]);
+
+  useEffect(() => {
+    let Cancelled = false;
+    LoadMoonAtlas(() => {
+      if (!Cancelled) {
+        SceneDirtyRef.current = true;
+        RequestRedrawRef.current?.(true);
+      }
+    });
+    return () => { Cancelled = true; };
+  }, []);
 
   const NonCameraSceneSignature = useMemo(
     () => ComputeNonCameraSceneSignature(CompiledScene),
@@ -2181,6 +3394,7 @@ export default function GtxWorldViewport({
   // Mark scene data texture + Pass 1 dirty ONLY when non-camera scene content changes (NEVER on camera echo!)
   useEffect(() => {
     SceneDataDirtyRef.current = true;
+    VehicleBvhDirtyRef.current = true;
     SceneDirtyRef.current = true;
     EnsureMaterialTexturesDecoded(CompiledSceneRef.current.Primitives, () => {
       AtlasSyncRef.current?.InvalidateAll();
@@ -2196,7 +3410,7 @@ export default function GtxWorldViewport({
   useEffect(() => {
     SceneDirtyRef.current = true;
     RequestRedrawRef.current?.(true);
-  }, [EffectiveSelected, ViewMode, Debug, EffectiveGrid, TextureEpoch, GlEpoch, WgpuEpoch, RenderBackend]);
+  }, [EffectiveSelected, ViewMode, Debug, EffectiveGrid, TextureEpoch, VehicleBvhEpoch, GlEpoch, WgpuEpoch, RenderBackend]);
 
   // Redraw Pass 2/3 gizmo & ForceOverlay ONLY (keeping Pass 1 cached!) when gizmo or ForceOverlay changes
   useEffect(() => {
@@ -2278,9 +3492,10 @@ export default function GtxWorldViewport({
           : BaseScene;
 
       const Rect = Canvas.getBoundingClientRect();
-      const Dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-      const Width = Math.max(320, Math.min(1440, Math.round((Rect.width || 900) * Dpr)));
-      const Height = Math.max(200, Math.min(900, Math.round((Rect.height || 520) * Dpr)));
+      const RsScale = (ActiveScene.RenderSettings?.RenderScale || 100) / 100;
+      const Dpr = Math.min(window.devicePixelRatio || 1, 1.5) * RsScale;
+      const Width = Math.max(240, Math.min(1600, Math.round((Rect.width || 900) * Dpr)));
+      const Height = Math.max(160, Math.min(1000, Math.round((Rect.height || 520) * Dpr)));
       if (Canvas.width !== Width || Canvas.height !== Height) {
         Canvas.width = Width;
         Canvas.height = Height;
@@ -2305,6 +3520,18 @@ export default function GtxWorldViewport({
         SceneDirtyRef.current = true;
       }
 
+      let VehicleInstCount = 0;
+      const VehAssets = VehicleBvhRef.current;
+      if (VehAssets && typeof Gpu.UploadVehicleBvh === "function") {
+        if (VehicleBvhDirtyRef.current) {
+          VehicleBvhDirtyRef.current = false;
+          const BuiltVeh = BuildVehicleTlasAndInstances(ActiveScene.Vehicles || [], VehAssets);
+          Gpu.UploadVehicleBvh(VehAssets, BuiltVeh);
+          SceneDirtyRef.current = true;
+        }
+        VehicleInstCount = Gpu.VehicleInstCount || 0;
+      }
+
       const { CameraOrigin, CameraTarget, WorldUp } = ActiveScene;
       const Fwd = NormalizeVec3([
         CameraTarget[0] - CameraOrigin[0],
@@ -2325,6 +3552,15 @@ export default function GtxWorldViewport({
         if ((P.OwnerId || P.Id) === Props.Selected) {
           SelectedCode = P.PickCode || 1 + I;
           break;
+        }
+      }
+      if (SelectedCode === 0 && ActiveScene.Vehicles?.length) {
+        for (let Vi = 0; Vi < ActiveScene.Vehicles.length; ++Vi) {
+          const V = ActiveScene.Vehicles[Vi];
+          if ((V.OwnerId || V.Id) === Props.Selected) {
+            SelectedCode = V.PickCode || 500 + Vi;
+            break;
+          }
         }
       }
       if (SelectedCode === 0) {
@@ -2389,10 +3625,12 @@ export default function GtxWorldViewport({
         SelectedCode,
         PrimCount: PCount,
         LightCount: LCount,
+        VehicleInstCount,
         BuiltGizmo,
         ForceOverlay: ActiveScene.ForceOverlay || null,
         ViewProjZeroToOne,
         HighlightedHandle: Highlighted,
+        TimeSec: ForceTimeRef.current,
       });
 
       SampleViewportFps();
@@ -2462,6 +3700,7 @@ export default function GtxWorldViewport({
     const SceneHandle = StartProgramLink(Gl, FULLSCREEN_VERTEX_SHADER, GTX_FRAGMENT_SHADER);
     const OutlineHandle = StartProgramLink(Gl, FULLSCREEN_VERTEX_SHADER, OUTLINE_FRAGMENT_SHADER);
     const GizmoHandleProg = StartProgramLink(Gl, GIZMO_VERTEX_SHADER, GIZMO_FRAGMENT_SHADER);
+    const ShadowHandle = StartProgramLink(Gl, SHADOW_MAP_VERTEX_SHADER, SHADOW_MAP_FRAGMENT_SHADER);
 
     const EmptyVao = Gl.createVertexArray();
 
@@ -2531,8 +3770,93 @@ export default function GtxWorldViewport({
     Gl.vertexAttribPointer(3, 2, Gl.FLOAT, false, Stride, 40);
     Gl.bindVertexArray(null);
 
+    // Shadow-map depth FBOs (Sun + Area Light) + static unit primitive caster meshes
+    const MakeDepthTarget = (Res) => {
+      const Fbo = Gl.createFramebuffer();
+      const Tex = Gl.createTexture();
+      Gl.bindTexture(Gl.TEXTURE_2D, Tex);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_BASE_LEVEL, 0);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAX_LEVEL, 0);
+      Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.DEPTH_COMPONENT32F, Res, Res, 0, Gl.DEPTH_COMPONENT, Gl.FLOAT, null);
+      Gl.bindFramebuffer(Gl.FRAMEBUFFER, Fbo);
+      Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, Tex, 0);
+      Gl.drawBuffers([Gl.NONE]);
+      Gl.readBuffer(Gl.NONE);
+      Gl.bindFramebuffer(Gl.FRAMEBUFFER, null);
+      return { Fbo, Tex, Res };
+    };
+    const SunShadow = MakeDepthTarget(2048);
+    const AreaShadow = MakeDepthTarget(1024);
+
+    const UnitGeoms = BuildUnitShadowGeometries();
+    const UnitCasters = {};
+    for (const [ShapeKey, Verts] of Object.entries(UnitGeoms)) {
+      const Vao = Gl.createVertexArray();
+      const Vbo = Gl.createBuffer();
+      Gl.bindVertexArray(Vao);
+      Gl.bindBuffer(Gl.ARRAY_BUFFER, Vbo);
+      Gl.bufferData(Gl.ARRAY_BUFFER, Verts, Gl.STATIC_DRAW);
+      Gl.enableVertexAttribArray(0);
+      Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
+      UnitCasters[ShapeKey] = { Vao, Vbo, Count: Verts.length / 3 };
+    }
+    Gl.bindVertexArray(null);
+
+    const VehicleShadowVao = Gl.createVertexArray();
+    const VehicleShadowVbo = Gl.createBuffer();
+    Gl.bindVertexArray(VehicleShadowVao);
+    Gl.bindBuffer(Gl.ARRAY_BUFFER, VehicleShadowVbo);
+    Gl.enableVertexAttribArray(0);
+    Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
+    Gl.bindVertexArray(null);
+
+    const MakeRgba32fNearest = () => {
+      const Tex = Gl.createTexture();
+      Gl.bindTexture(Gl.TEXTURE_2D, Tex);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_BASE_LEVEL, 0);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAX_LEVEL, 0);
+      Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA32F, 1, 1, 0, Gl.RGBA, Gl.FLOAT, new Float32Array(4));
+      return Tex;
+    };
+    const BvhNodeTex = MakeRgba32fNearest();
+    const BvhTriTex = MakeRgba32fNearest();
+    const BvhInstTex = MakeRgba32fNearest();
+    const BvhInstBuf = new Float32Array(128 * 10 * 4);
+    Gl.bindTexture(Gl.TEXTURE_2D, BvhInstTex);
+    Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA32F, 10, 128, 0, Gl.RGBA, Gl.FLOAT, BvhInstBuf);
+
+    const SkyViewTex = Gl.createTexture();
+    Gl.bindTexture(Gl.TEXTURE_2D, SkyViewTex);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.REPEAT);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+    const SkyLutFloat = new Float32Array(SKY_VIEW_WIDTH * SKY_VIEW_HEIGHT * 4);
+    const SkyLutHalf = new Uint16Array(SKY_VIEW_WIDTH * SKY_VIEW_HEIGHT * 4);
+    BuildSkyViewLut([0.42, -0.55, 0.72], {}, SkyLutFloat);
+    PackSkyViewRgba16f(SkyLutFloat, SkyLutHalf);
+    Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA16F, SKY_VIEW_WIDTH, SKY_VIEW_HEIGHT, 0, Gl.RGBA, Gl.HALF_FLOAT, SkyLutHalf);
+
+    const MoonAtlasTex = Gl.createTexture();
+    Gl.bindTexture(Gl.TEXTURE_2D, MoonAtlasTex);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.REPEAT);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+    const InitMoon = GetMoonAtlasSnapshot();
+    Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA8, MOON_ATLAS_W, MOON_ATLAS_H, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, InitMoon.pixels);
+
     AtlasSyncRef.current?.InvalidateAll();
     SceneDataDirtyRef.current = true;
+    VehicleBvhDirtyRef.current = true;
     SceneDirtyRef.current = true;
 
     return {
@@ -2544,9 +3868,11 @@ export default function GtxWorldViewport({
       SceneHandle,
       OutlineHandle,
       GizmoHandleProg,
+      ShadowHandle,
       SceneProg: null,
       OutlineProg: null,
       GizmoProg: null,
+      ShadowProg: null,
       EmptyVao,
       AtlasTex,
       SceneDataTex,
@@ -2559,9 +3885,32 @@ export default function GtxWorldViewport({
       FboHeight: 0,
       GizmoVao,
       GizmoVbo,
+      SunShadow,
+      AreaShadow,
+      UnitCasters,
+      VehicleShadowVao,
+      VehicleShadowVbo,
+      VehicleTriUploaded: false,
+      BvhNodeTex,
+      BvhTriTex,
+      BvhInstTex,
+      BvhInstBuf,
+      SkyViewTex,
+      SkyLutFloat,
+      SkyLutHalf,
+      LastSkyLutKey: "",
+      LastSkyW: SKY_VIEW_WIDTH,
+      MoonAtlasTex,
+      SyncedMoonVersion: InitMoon.version,
+      VehicleInstCount: 0,
+      SunShadowVP: new Float32Array(16),
+      AreaShadowVP: new Float32Array(16),
+      HasAreaShadow: 0,
+      ShadowDirty: true,
       SceneUniforms: null,
       OutlineUniforms: null,
       GizmoUniforms: null,
+      ShadowUniforms: null,
     };
   }, []);
 
@@ -2634,6 +3983,21 @@ export default function GtxWorldViewport({
       if (State && !State.Gl.isContextLost()) {
         State.Gl.deleteBuffer(State.GizmoVbo);
         State.Gl.deleteVertexArray(State.GizmoVao);
+        State.Gl.deleteBuffer(State.VehicleShadowVbo);
+        State.Gl.deleteVertexArray(State.VehicleShadowVao);
+        for (const Uc of Object.values(State.UnitCasters || {})) {
+          State.Gl.deleteBuffer(Uc.Vbo);
+          State.Gl.deleteVertexArray(Uc.Vao);
+        }
+        State.Gl.deleteTexture(State.SunShadow.Tex);
+        State.Gl.deleteFramebuffer(State.SunShadow.Fbo);
+        State.Gl.deleteTexture(State.AreaShadow.Tex);
+        State.Gl.deleteFramebuffer(State.AreaShadow.Fbo);
+        State.Gl.deleteTexture(State.BvhNodeTex);
+        State.Gl.deleteTexture(State.BvhTriTex);
+        State.Gl.deleteTexture(State.BvhInstTex);
+        State.Gl.deleteTexture(State.SkyViewTex);
+        State.Gl.deleteTexture(State.MoonAtlasTex);
         State.Gl.deleteVertexArray(State.EmptyVao);
         State.Gl.deleteTexture(State.AtlasTex);
         State.Gl.deleteTexture(State.SceneDataTex);
@@ -2645,6 +4009,8 @@ export default function GtxWorldViewport({
         else if (State.OutlineHandle) State.Gl.deleteProgram(State.OutlineHandle.Prog);
         if (State.GizmoProg) State.Gl.deleteProgram(State.GizmoProg);
         else if (State.GizmoHandleProg) State.Gl.deleteProgram(State.GizmoHandleProg.Prog);
+        if (State.ShadowProg) State.Gl.deleteProgram(State.ShadowProg);
+        else if (State.ShadowHandle) State.Gl.deleteProgram(State.ShadowHandle.Prog);
       }
       GlStateRef.current = null;
     };
@@ -2678,7 +4044,8 @@ export default function GtxWorldViewport({
             const Done1 = Gl.getProgramParameter(CurState.SceneHandle.Prog, CurState.ParallelExt.COMPLETION_STATUS_KHR);
             const Done2 = Gl.getProgramParameter(CurState.OutlineHandle.Prog, CurState.ParallelExt.COMPLETION_STATUS_KHR);
             const Done3 = Gl.getProgramParameter(CurState.GizmoHandleProg.Prog, CurState.ParallelExt.COMPLETION_STATUS_KHR);
-            if (!Done1 || !Done2 || !Done3) {
+            const Done4 = Gl.getProgramParameter(CurState.ShadowHandle.Prog, CurState.ParallelExt.COMPLETION_STATUS_KHR);
+            if (!Done1 || !Done2 || !Done3 || !Done4) {
               ScheduleDraw(false);
               return;
             }
@@ -2687,12 +4054,15 @@ export default function GtxWorldViewport({
             const SceneProg = FinalizeLinkedProgram(Gl, CurState.SceneHandle);
             const OutlineProg = FinalizeLinkedProgram(Gl, CurState.OutlineHandle);
             const GizmoProg = FinalizeLinkedProgram(Gl, CurState.GizmoHandleProg);
+            const ShadowProg = FinalizeLinkedProgram(Gl, CurState.ShadowHandle);
             CurState.SceneHandle = null;
             CurState.OutlineHandle = null;
             CurState.GizmoHandleProg = null;
+            CurState.ShadowHandle = null;
             CurState.SceneProg = SceneProg;
             CurState.OutlineProg = OutlineProg;
             CurState.GizmoProg = GizmoProg;
+            CurState.ShadowProg = ShadowProg;
             const Loc = (Name) => Gl.getUniformLocation(SceneProg, Name);
             CurState.SceneUniforms = {
               uResolution: Loc("uResolution"),
@@ -2710,10 +4080,52 @@ export default function GtxWorldViewport({
               uSunIrradiance: Loc("uSunIrradiance"),
               uSunAngularRadius: Loc("uSunAngularRadius"),
               uSkyRadiance: Loc("uSkyRadiance"),
+              uSkyViewTex: Loc("uSkyViewTex"),
+              uMoonAtlasTex: Loc("uMoonAtlasTex"),
+              uAtmoCfg0: Loc("uAtmoCfg0"),
+              uAtmoCfg1: Loc("uAtmoCfg1"),
+              uCloudCfg0: Loc("uCloudCfg0"),
+              uCloudCfg1: Loc("uCloudCfg1"),
+              uCloudCfg2: Loc("uCloudCfg2"),
+              uMoonCfg0: Loc("uMoonCfg0"),
+              uMoonCfg1: Loc("uMoonCfg1"),
+              uMoonTint: Loc("uMoonTint"),
+              uStarCfg0: Loc("uStarCfg0"),
+              uStarCfg1: Loc("uStarCfg1"),
               uLightCount: Loc("uLightCount"),
               uPrimCount: Loc("uPrimCount"),
               uMaterialAtlas: Loc("uMaterialAtlas"),
               uSceneData: Loc("uSceneData"),
+              uShadowAlg: Loc("uShadowAlg"),
+              uGiAlg: Loc("uGiAlg"),
+              uReflAlg: Loc("uReflAlg"),
+              uPcssTaps: Loc("uPcssTaps"),
+              uSmrtRays: Loc("uSmrtRays"),
+              uShadowRays: Loc("uShadowRays"),
+              uShadowSoftness: Loc("uShadowSoftness"),
+              uPlaneFilter: Loc("uPlaneFilter"),
+              uEmissiveShadowed: Loc("uEmissiveShadowed"),
+              uGiSamples: Loc("uGiSamples"),
+              uGiCones: Loc("uGiCones"),
+              uGiIntensity: Loc("uGiIntensity"),
+              uFillBoost: Loc("uFillBoost"),
+              uReflRays: Loc("uReflRays"),
+              uReflBounces: Loc("uReflBounces"),
+              uSunShadowMap: Loc("uSunShadowMap"),
+              uSunShadowVP: Loc("uSunShadowVP"),
+              uSunShadowRes: Loc("uSunShadowRes"),
+              uAreaShadowMap: Loc("uAreaShadowMap"),
+              uAreaShadowVP: Loc("uAreaShadowVP"),
+              uAreaShadowRes: Loc("uAreaShadowRes"),
+              uHasAreaShadow: Loc("uHasAreaShadow"),
+              uSunShadowCfg: Loc("uSunShadowCfg"),
+              uAreaShadowCfg: Loc("uAreaShadowCfg"),
+              uShadowDepthRng: Loc("uShadowDepthRng"),
+              uAreaShadowFwd: Loc("uAreaShadowFwd"),
+              uVehicleInstCount: Loc("uVehicleInstCount"),
+              uBvhNodes: Loc("uBvhNodes"),
+              uBvhTris: Loc("uBvhTris"),
+              uBvhInsts: Loc("uBvhInsts"),
             };
             CurState.OutlineUniforms = {
               uSceneTex: Gl.getUniformLocation(OutlineProg, "uSceneTex"),
@@ -2723,9 +4135,15 @@ export default function GtxWorldViewport({
               uViewProj: Gl.getUniformLocation(GizmoProg, "uViewProj"),
               uHighlightedHandle: Gl.getUniformLocation(GizmoProg, "uHighlightedHandle"),
             };
+            CurState.ShadowUniforms = {
+              uShadowVP: Gl.getUniformLocation(ShadowProg, "uShadowVP"),
+              uModelMat: Gl.getUniformLocation(ShadowProg, "uModelMat"),
+            };
             CurState.Linked = true;
             FastCrashCountRef.current = 0;
             SceneDataDirtyRef.current = true;
+            VehicleBvhDirtyRef.current = true;
+            CurState.ShadowDirty = true;
             SceneDirtyRef.current = true;
             const LinkMs = Math.round(performance.now() - CurState.LinkStartMs);
             SendViewportDiag({
@@ -2755,14 +4173,15 @@ export default function GtxWorldViewport({
               }
             : BaseScene;
 
+        const RsU = EncodeRenderSettingsUniforms(ActiveScene.RenderSettings);
         const U = CurState.SceneUniforms;
         const Rect = CurCanvas.getBoundingClientRect();
-        const Dpr = Math.min(window.devicePixelRatio || 1, 1.25);
-        const RawW = Math.max(320, Math.round((Rect.width || 900) * Dpr));
-        const RawH = Math.max(200, Math.round((Rect.height || 520) * Dpr));
-        const ScaleCap = Math.min(1, 1280 / RawW, 760 / RawH);
-        const Width = Math.max(320, Math.round(RawW * ScaleCap));
-        const Height = Math.max(200, Math.round(RawH * ScaleCap));
+        const Dpr = Math.min(window.devicePixelRatio || 1, 1.25) * (RsU.renderScale / 100);
+        const RawW = Math.max(240, Math.round((Rect.width || 900) * Dpr));
+        const RawH = Math.max(160, Math.round((Rect.height || 520) * Dpr));
+        const ScaleCap = Math.min(1, 1440 / RawW, 900 / RawH);
+        const Width = Math.max(240, Math.round(RawW * ScaleCap));
+        const Height = Math.max(160, Math.round(RawH * ScaleCap));
 
         if (CurCanvas.width !== Width || CurCanvas.height !== Height) {
           CurCanvas.width = Width;
@@ -2839,7 +4258,149 @@ export default function GtxWorldViewport({
           );
           CurState.LastPrimCount = PCount;
           CurState.LastLightCount = LCount;
+          CurState.ShadowDirty = true;
           SceneDirtyRef.current = true;
+        }
+
+        const VehAssets = VehicleBvhRef.current;
+        if (VehAssets && VehicleBvhDirtyRef.current) {
+          VehicleBvhDirtyRef.current = false;
+          if (!CurState.VehicleTriUploaded) {
+            CurState.VehicleTriUploaded = true;
+            Gl.bindBuffer(Gl.ARRAY_BUFFER, CurState.VehicleShadowVbo);
+            Gl.bufferData(Gl.ARRAY_BUFFER, VehAssets.shadowVertPositions, Gl.STATIC_DRAW);
+            Gl.bindTexture(Gl.TEXTURE_2D, CurState.BvhTriTex);
+            Gl.texImage2D(
+              Gl.TEXTURE_2D,
+              0,
+              Gl.RGBA32F,
+              VehAssets.triTexWidth,
+              VehAssets.triTexHeight,
+              0,
+              Gl.RGBA,
+              Gl.FLOAT,
+              VehAssets.triTexData,
+            );
+          }
+          const BuiltVeh = BuildVehicleTlasAndInstances(
+            ActiveScene.Vehicles || [],
+            VehAssets,
+            CurState.BvhInstBuf,
+          );
+          CurState.VehicleInstCount = BuiltVeh.instanceCount;
+          Gl.bindTexture(Gl.TEXTURE_2D, CurState.BvhNodeTex);
+          Gl.texImage2D(
+            Gl.TEXTURE_2D,
+            0,
+            Gl.RGBA32F,
+            VehAssets.nodeTexWidth,
+            VehAssets.nodeTexHeight,
+            0,
+            Gl.RGBA,
+            Gl.FLOAT,
+            VehAssets.nodeTexData,
+          );
+          Gl.bindTexture(Gl.TEXTURE_2D, CurState.BvhInstTex);
+          Gl.texSubImage2D(
+            Gl.TEXTURE_2D,
+            0,
+            0,
+            0,
+            10,
+            128,
+            Gl.RGBA,
+            Gl.FLOAT,
+            CurState.BvhInstBuf,
+          );
+          CurState.ShadowDirty = true;
+          SceneDirtyRef.current = true;
+        }
+
+        if (CurState.SunShadow.Res !== RsU.shadowMapRes) {
+          CurState.SunShadow.Res = RsU.shadowMapRes;
+          Gl.bindTexture(Gl.TEXTURE_2D, CurState.SunShadow.Tex);
+          Gl.texImage2D(
+            Gl.TEXTURE_2D,
+            0,
+            Gl.DEPTH_COMPONENT32F,
+            RsU.shadowMapRes,
+            RsU.shadowMapRes,
+            0,
+            Gl.DEPTH_COMPONENT,
+            Gl.FLOAT,
+            null,
+          );
+          CurState.ShadowDirty = true;
+          SceneDirtyRef.current = true;
+        }
+
+        // ---------------- PASS 0: NON-SDF LIGHT DEPTH SHADOW MAPS (SUN + PRIMARY AREA LIGHT) ----------------
+        if (CurState.ShadowDirty) {
+          CurState.ShadowDirty = false;
+          // Unbind shadow textures from sampler slots before writing to prevent feedback warnings
+          Gl.activeTexture(Gl.TEXTURE2);
+          Gl.bindTexture(Gl.TEXTURE_2D, null);
+          Gl.activeTexture(Gl.TEXTURE3);
+          Gl.bindTexture(Gl.TEXTURE_2D, null);
+
+          const RenderDepthMap = (TargetFbo, Res, VpMat) => {
+            Gl.bindFramebuffer(Gl.FRAMEBUFFER, TargetFbo);
+            Gl.viewport(0, 0, Res, Res);
+            Gl.colorMask(false, false, false, false);
+            Gl.enable(Gl.DEPTH_TEST);
+            Gl.depthFunc(Gl.LESS);
+            Gl.depthMask(true);
+            Gl.disable(Gl.BLEND);
+            Gl.disable(Gl.CULL_FACE);
+            Gl.clearDepth(1.0);
+            Gl.clear(Gl.DEPTH_BUFFER_BIT);
+
+            Gl.useProgram(CurState.ShadowProg);
+            Gl.uniformMatrix4fv(CurState.ShadowUniforms.uShadowVP, false, VpMat);
+
+            for (let I = 0; I < PCount; ++I) {
+              const P = ActiveScene.Primitives[I];
+              if (!P.CastShadows || P.GlassShell) continue;
+              const Caster = CurState.UnitCasters[P.Shape] || CurState.UnitCasters[0];
+              Gl.uniformMatrix4fv(CurState.ShadowUniforms.uModelMat, false, BuildPrimModelMatrix(P));
+              Gl.bindVertexArray(Caster.Vao);
+              Gl.drawArrays(Gl.TRIANGLES, 0, Caster.Count);
+            }
+
+            if (VehAssets && CurState.VehicleInstCount > 0) {
+              const VehInstances = ExpandVehicleInstances(ActiveScene.Vehicles || [], VehAssets);
+              Gl.bindVertexArray(CurState.VehicleShadowVao);
+              for (const Inst of VehInstances) {
+                if (!Inst.castShadows) continue;
+                const Meta = VehAssets.meshMeta[Inst.meshIdx];
+                if (!Meta || Meta.triCount <= 0) continue;
+                Gl.uniformMatrix4fv(CurState.ShadowUniforms.uModelMat, false, Inst.l2w);
+                Gl.drawArrays(Gl.TRIANGLES, Meta.triOffset * 3, Meta.triCount * 3);
+              }
+            }
+            Gl.bindVertexArray(null);
+            Gl.colorMask(true, true, true, true);
+          };
+
+          const SunShadowInfo = BuildSunShadowMatrix(ActiveScene);
+          CurState.SunShadowVP.set(SunShadowInfo.vp);
+          CurState.SunShadowInfo = SunShadowInfo;
+          RenderDepthMap(CurState.SunShadow.Fbo, CurState.SunShadow.Res, CurState.SunShadowVP);
+
+          if (LCount > 0 && RsU.emissiveShadowed) {
+            const AreaInfo = BuildAreaShadowMatrix(ActiveScene.AreaLights[0]);
+            if (AreaInfo) {
+              CurState.AreaShadowVP.set(AreaInfo.vp);
+              CurState.AreaShadowInfo = AreaInfo;
+              CurState.HasAreaShadow = 1;
+              RenderDepthMap(CurState.AreaShadow.Fbo, CurState.AreaShadow.Res, CurState.AreaShadowVP);
+            } else {
+              CurState.HasAreaShadow = 0;
+            }
+          } else {
+            CurState.HasAreaShadow = 0;
+          }
+          Gl.bindFramebuffer(Gl.FRAMEBUFFER, null);
         }
 
         const { CameraOrigin, CameraTarget, WorldUp } = ActiveScene;
@@ -2862,6 +4423,15 @@ export default function GtxWorldViewport({
           if ((P.OwnerId || P.Id) === Props.Selected) {
             SelectedCode = P.PickCode || 1 + I;
             break;
+          }
+        }
+        if (SelectedCode === 0 && ActiveScene.Vehicles?.length) {
+          for (let Vi = 0; Vi < ActiveScene.Vehicles.length; ++Vi) {
+            const V = ActiveScene.Vehicles[Vi];
+            if ((V.OwnerId || V.Id) === Props.Selected) {
+              SelectedCode = V.PickCode || 500 + Vi;
+              break;
+            }
           }
         }
         if (SelectedCode === 0) {
@@ -2889,6 +4459,122 @@ export default function GtxWorldViewport({
           Gl.activeTexture(Gl.TEXTURE1);
           Gl.bindTexture(Gl.TEXTURE_2D, CurState.SceneDataTex);
           Gl.uniform1i(U.uSceneData, 1);
+
+          Gl.activeTexture(Gl.TEXTURE2);
+          Gl.bindTexture(Gl.TEXTURE_2D, CurState.SunShadow.Tex);
+          Gl.uniform1i(U.uSunShadowMap, 2);
+
+          Gl.activeTexture(Gl.TEXTURE3);
+          Gl.bindTexture(Gl.TEXTURE_2D, CurState.AreaShadow.Tex);
+          Gl.uniform1i(U.uAreaShadowMap, 3);
+
+          Gl.activeTexture(Gl.TEXTURE4);
+          Gl.bindTexture(Gl.TEXTURE_2D, CurState.BvhNodeTex);
+          Gl.uniform1i(U.uBvhNodes, 4);
+
+          Gl.activeTexture(Gl.TEXTURE5);
+          Gl.bindTexture(Gl.TEXTURE_2D, CurState.BvhTriTex);
+          Gl.uniform1i(U.uBvhTris, 5);
+
+          Gl.activeTexture(Gl.TEXTURE6);
+          Gl.bindTexture(Gl.TEXTURE_2D, CurState.BvhInstTex);
+          Gl.uniform1i(U.uBvhInsts, 6);
+
+          const Atmo = ActiveScene.Atmosphere || {};
+          const Cl = ActiveScene.Clouds || {};
+          const Mn = ActiveScene.Moon || {};
+          const St = ActiveScene.Stars || {};
+          const SkyKey = GetSkyViewCacheKey(ActiveScene.SunDir, Atmo);
+          if (SkyKey !== CurState.LastSkyLutKey) {
+            CurState.LastSkyLutKey = SkyKey;
+            BuildSkyViewLut(ActiveScene.SunDir, Atmo, CurState.SkyLutFloat);
+            PackSkyViewRgba16f(CurState.SkyLutFloat, CurState.SkyLutHalf);
+            Gl.activeTexture(Gl.TEXTURE7);
+            Gl.bindTexture(Gl.TEXTURE_2D, CurState.SkyViewTex);
+            Gl.texSubImage2D(
+              Gl.TEXTURE_2D,
+              0,
+              0,
+              0,
+              SKY_VIEW_WIDTH,
+              SKY_VIEW_HEIGHT,
+              Gl.RGBA,
+              Gl.HALF_FLOAT,
+              CurState.SkyLutHalf,
+            );
+          } else {
+            Gl.activeTexture(Gl.TEXTURE7);
+            Gl.bindTexture(Gl.TEXTURE_2D, CurState.SkyViewTex);
+          }
+          Gl.uniform1i(U.uSkyViewTex, 7);
+          const MoonSnap = GetMoonAtlasSnapshot();
+          Gl.activeTexture(Gl.TEXTURE8);
+          Gl.bindTexture(Gl.TEXTURE_2D, CurState.MoonAtlasTex);
+          if (MoonSnap.version !== CurState.SyncedMoonVersion) {
+            CurState.SyncedMoonVersion = MoonSnap.version;
+            Gl.texSubImage2D(Gl.TEXTURE_2D, 0, 0, 0, MOON_ATLAS_W, MOON_ATLAS_H, Gl.RGBA, Gl.UNSIGNED_BYTE, MoonSnap.pixels);
+          }
+          Gl.uniform1i(U.uMoonAtlasTex, 8);
+          const SkyTint = Atmo.skyTint || [1, 1, 1];
+          Gl.uniform4f(U.uAtmoCfg0, Atmo.skyBrightness ?? 1.0, Atmo.mieG ?? 0.78, Atmo.horizonGlow ?? 1.0, ForceTimeRef.current);
+          Gl.uniform4f(U.uAtmoCfg1, SkyTint[0], SkyTint[1], SkyTint[2], MoonSnap.ready ? 1.0 : 0.0);
+          Gl.uniform4f(U.uCloudCfg0, Cl.enabled ? 1.0 : 0.0, Cl.coverage ?? 0.42, Cl.density ?? 2.2, Cl.featureScale ?? 0.4);
+          Gl.uniform4f(U.uCloudCfg1, Cl.baseM ?? 1400.0, Cl.thicknessM ?? 1100.0, Cl.anvil ?? 0.5, Cl.anisotropy ?? 0.48);
+          Gl.uniform4f(U.uCloudCfg2, Cl.type ?? 0, Cl.shadowEnabled !== false ? 1.0 : 0.0, Cl.windX ?? 6.0, Cl.windY ?? 2.0);
+          const MDir = Mn.dir || [-0.5, 0.4, 0.45];
+          const MTint = Mn.tint || [0.94, 0.93, 0.90];
+          Gl.uniform4f(U.uMoonCfg0, MDir[0], MDir[1], MDir[2], Mn.sizeRad ?? 0.012);
+          Gl.uniform4f(U.uMoonCfg1, Mn.phase ?? 0.62, Mn.bright ?? 1.6, Mn.glow ?? 0.8, Mn.visible ? 1.0 : 0.0);
+          Gl.uniform4f(U.uMoonTint, MTint[0], MTint[1], MTint[2], Mn.preset ?? 0);
+          Gl.uniform4f(U.uStarCfg0, St.enabled ? 1.0 : 0.0, St.brightness ?? 1.0, St.limMag ?? 5.5, St.pointSize ?? 1.0);
+          Gl.uniform4f(U.uStarCfg1, St.twinkle !== false ? 1.0 : 0.0, St.twinkleDepth ?? 30, St.twinkleRate ?? 1.2, St.rotationRad ?? 0.0);
+
+          Gl.uniform1i(U.uShadowAlg, RsU.shadowAlg);
+          Gl.uniform1i(U.uGiAlg, RsU.giAlg);
+          Gl.uniform1i(U.uReflAlg, RsU.reflAlg);
+          Gl.uniform1i(U.uPcssTaps, RsU.pcssTaps);
+          Gl.uniform1i(U.uSmrtRays, RsU.smrtRays);
+          Gl.uniform1i(U.uShadowRays, RsU.shadowRays);
+          Gl.uniform1f(U.uShadowSoftness, RsU.shadowSoftness);
+          Gl.uniform1i(U.uPlaneFilter, RsU.planeFilter);
+          Gl.uniform1i(U.uEmissiveShadowed, RsU.emissiveShadowed);
+          Gl.uniform1i(U.uGiSamples, RsU.giSamples);
+          Gl.uniform1i(U.uGiCones, RsU.giCones);
+          Gl.uniform1f(U.uGiIntensity, RsU.giIntensity);
+          Gl.uniform1f(U.uFillBoost, RsU.fillBoost);
+          Gl.uniform1i(U.uReflRays, RsU.reflRays);
+          Gl.uniform1i(U.uReflBounces, RsU.reflBounces);
+
+          Gl.uniformMatrix4fv(U.uSunShadowVP, false, CurState.SunShadowVP);
+          Gl.uniform1f(U.uSunShadowRes, CurState.SunShadow.Res);
+          Gl.uniformMatrix4fv(U.uAreaShadowVP, false, CurState.AreaShadowVP);
+          Gl.uniform1f(U.uAreaShadowRes, CurState.AreaShadow.Res);
+          Gl.uniform1i(U.uHasAreaShadow, CurState.HasAreaShadow);
+          const SInfo = CurState.SunShadowInfo || BuildSunShadowMatrix(ActiveScene);
+          const AInfo = CurState.AreaShadowInfo;
+          Gl.uniform4f(U.uSunShadowCfg, SInfo.eye[0], SInfo.eye[1], SInfo.eye[2], SInfo.orthoHalfSpan);
+          Gl.uniform4f(
+            U.uAreaShadowCfg,
+            AInfo ? AInfo.lightPos[0] : 0.0,
+            AInfo ? AInfo.lightPos[1] : 0.0,
+            AInfo ? AInfo.lightPos[2] : 0.0,
+            AInfo ? AInfo.perspTan : 1.0,
+          );
+          Gl.uniform4f(
+            U.uShadowDepthRng,
+            SInfo.near,
+            SInfo.far,
+            AInfo ? AInfo.near : 0.2,
+            AInfo ? AInfo.far : 14.0,
+          );
+          Gl.uniform4f(
+            U.uAreaShadowFwd,
+            AInfo ? AInfo.forward[0] : 0.0,
+            AInfo ? AInfo.forward[1] : 0.0,
+            AInfo ? AInfo.forward[2] : -1.0,
+            0.0,
+          );
+          Gl.uniform1i(U.uVehicleInstCount, CurState.VehicleInstCount);
 
           Gl.uniform2f(U.uResolution, Width, Height);
           Gl.uniform3fv(U.uCamOrigin, CameraOrigin);
@@ -3107,11 +4793,18 @@ export default function GtxWorldViewport({
       if (PrimIdx >= 0) {
         SelectedCode = ActiveScene.Primitives[PrimIdx].PickCode || 1 + PrimIdx;
       } else {
-        const LightIdx = ActiveScene.AreaLights
-          .slice(0, MAX_LIGHTS)
-          .findIndex((L) => L.Id === Props.Selected);
-        if (LightIdx >= 0) {
-          SelectedCode = ActiveScene.AreaLights[LightIdx].PickCode || 112 + LightIdx;
+        const VehIdx = (ActiveScene.Vehicles || []).findIndex(
+          (V) => (V.OwnerId || V.Id) === Props.Selected,
+        );
+        if (VehIdx >= 0) {
+          SelectedCode = ActiveScene.Vehicles[VehIdx].PickCode || 500 + VehIdx;
+        } else {
+          const LightIdx = ActiveScene.AreaLights
+            .slice(0, MAX_LIGHTS)
+            .findIndex((L) => L.Id === Props.Selected);
+          if (LightIdx >= 0) {
+            SelectedCode = ActiveScene.AreaLights[LightIdx].PickCode || 112 + LightIdx;
+          }
         }
       }
 
@@ -3144,10 +4837,13 @@ export default function GtxWorldViewport({
             CompiledScene: ActiveScene,
             AtlasPixels: AtlasSync.Pixels,
             AtlasVersion: AtlasVersionRef.current,
+            MoonAtlas: GetMoonAtlasSnapshot(),
+            VehicleBvhAssets: VehicleBvhRef.current,
             Width: TargetRayW,
             Height: TargetRayH,
             ViewModeCode: EffectiveViewMode,
             ShowGrid: Props.EffectiveGrid ? 1 : 0,
+            TimeSec: ForceTimeRef.current,
           },
           () => {
             if (!Disposed) StepDraw(false);

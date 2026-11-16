@@ -16,18 +16,47 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CanonicalEditorCamera,
+  CanonicalRenderSettings,
   CompileLiveGtxScene,
   PickSceneEntityAtUv,
   RaycastWorldPlacementAtUv,
+  ResolveRenderSettings,
   ShowcaseInitialRows,
   ShowcaseInitialValues,
 } from "./ShowcaseGalleryScene.js";
 import {
+  BuildVehicleTlasAndInstances,
+  ParseVehicleFvb1Buffer,
+  TraceVehicleBvhCpu,
+} from "./VehicleBvhAssets.js";
+import {
+  BuildAreaShadowMatrix,
+  BuildSunShadowMatrix,
+  BuildUnitShadowGeometries,
+  EncodeRenderSettingsUniforms,
+} from "./ShadowPipeline.js";
+import {
+  BuildSkyViewLut,
+  EvalMoonAndStarsCpu,
+  EvalVolumetricCloudsCpu,
+  PackSkyViewRgba16f,
+  SKY_VIEW_HEIGHT,
+  SKY_VIEW_WIDTH,
+  SampleSkyViewLutCpu,
+} from "./AtmosphereSky.js";
+import {
   BuildActorPayloadFromModelSpec,
   WORLD_PLACEABLE_MODELS,
 } from "./WorldDragDrop.js";
+import { Solar } from "./Solar.mjs";
+import {
+  MOON_ATLAS_H,
+  MOON_ATLAS_W,
+  MOON_PRESET_NAMES,
+  MOON_TILE_COUNT,
+} from "./MoonAtlasLoader.js";
 import { RenderAnalyticalThumbnailRgba } from "./ModelThumbnailRenderer.js";
-import { WORLD_PROP_CATALOG } from "./WorldPropLibrary.js";
+import { ExpandPropPrimitives, WORLD_PROP_CATALOG } from "./WorldPropLibrary.js";
 import { ResolveMaterial } from "./MaterialSpecification.js";
 import {
   ATLAS_COLS,
@@ -77,16 +106,16 @@ import {
 
 const Folder = path.dirname(fileURLToPath(import.meta.url));
 
-// 1. Verify exact 17-entry Cornell-Studio Gallery Outliner matching C++ ShowcaseGalleryScene
+// 1. Verify exact 23-entry Cornell-Studio Gallery Outliner matching C++ ShowcaseGalleryScene (+ RenderSettings + ControlVehicle + Physical Environment)
 assert.equal(
   ShowcaseInitialRows.length,
-  17,
-  "Expected 17 Outliner entries (4 folders + 10 geometry + Editor Camera + Sun + Ceiling Softbox)",
+  23,
+  "Expected 23 Outliner entries (4 folders + 10 geometry + ControlVehicle + Editor Camera + Render Settings + Sun + Atmosphere + Clouds + Moon + Starfield + Ceiling Softbox)",
 );
 const ShowcaseChildren = ShowcaseInitialRows.filter(
   (Row) => Row.Parent === "showcase",
 );
-assert.equal(ShowcaseChildren.length, 10, "Expected 10 geometry specimens under Showcase");
+assert.equal(ShowcaseChildren.length, 11, "Expected 10 geometry specimens + ControlVehicle under Showcase");
 
 // 2. Verify compiled Tier 1 GTX scene & EditorCamera 43.0 deg vertical FOV parity
 const Compiled = CompileLiveGtxScene(
@@ -96,6 +125,7 @@ const Compiled = CompileLiveGtxScene(
   "PERSP",
 );
 assert.equal(Compiled.Primitives.length, 10, "All 10 gallery primitives compiled");
+assert.equal(Compiled.Vehicles.length, 1, "Showcase ControlVehicle compiled");
 assert.equal(Compiled.AreaLights.length, 1, "Ceiling Softbox LTC area light compiled");
 assert.deepEqual(
   Compiled.AreaLights[0].Center,
@@ -253,23 +283,40 @@ const Duplicated = CreateNewLevelRecord({
   TemplateId: "duplicate",
   CurrentLevel: DefaultLevels[0],
 });
-assert.equal(Duplicated.Rows.length, 17, "Duplicate Current Level clones all 17 Showcase rows");
+assert.equal(Duplicated.Rows.length, 23, "Duplicate Current Level clones all 23 Showcase rows");
 
-// 7. Verify standalone index.html bundle integrity & ring-free shader / UI presence
+// 7. Verify standalone index.html bundle integrity & non-SDF shadow map / BVH shader presence
 const ViewportSrc = fs.readFileSync(path.join(Folder, "GtxWorldViewport.jsx"), "utf8");
+const WebgpuSrc = fs.readFileSync(path.join(Folder, "WebgpuGtxRenderer.js"), "utf8");
+const CpuSrc = fs.readFileSync(path.join(Folder, "CpuGtxFallbackRenderer.js"), "utf8");
+for (const ForbiddenSdfFn of [
+  "evalSceneSdfOpaque",
+  "evalLocalPrimSdf",
+  "closestRayPrimitiveSoftVis",
+  "evaluateSoftConeVis",
+  "EvalLocalPrimSdf",
+  "ClosestRayPrimSoftVis",
+  "EvaluateSoftConeVis",
+]) {
+  assert.ok(!ViewportSrc.includes(ForbiddenSdfFn), `GtxWorldViewport has zero ${ForbiddenSdfFn}`);
+  assert.ok(!WebgpuSrc.includes(ForbiddenSdfFn), `WebgpuGtxRenderer has zero ${ForbiddenSdfFn}`);
+  assert.ok(!CpuSrc.includes(ForbiddenSdfFn), `CpuGtxFallbackRenderer has zero ${ForbiddenSdfFn}`);
+}
 assert.ok(
-  !ViewportSrc.includes("evalSceneSdfOpaque") &&
-    !ViewportSrc.includes("localDirs[6]") &&
+  !ViewportSrc.includes("localDirs[6]") &&
     !ViewportSrc.includes("fwidth(") &&
     !ViewportSrc.includes("uMetaTex"),
-  "Zero SDF rings, zero discrete GI ghost rays, zero divergent fwidth derivatives, and zero MRT overhead",
+  "Zero discrete GI ghost rays, zero divergent fwidth derivatives, and zero MRT overhead",
 );
 assert.ok(
-  ViewportSrc.includes("closestRayPrimitiveSoftVis") &&
-    ViewportSrc.includes("evaluateAreaLightSoftVis") &&
+  ViewportSrc.includes("evalShadowMapPCSS") &&
+    ViewportSrc.includes("evalShadowMapSMRT") &&
+    ViewportSrc.includes("evalShadowMapPCF") &&
+    ViewportSrc.includes("evalBvhRayShadow") &&
+    ViewportSrc.includes("traceVehicleBvh") &&
     ViewportSrc.includes("encodeSelectionDepthAlpha") &&
     ViewportSrc.includes("OUTLINE_FRAGMENT_SHADER"),
-  "Smooth analytical GI/AO, softbox penumbra, and single-texture depth-aware 2px outer silhouette outline shaders present",
+  "Non-SDF PCSS/SMRT/PCF/BVH shadow pipeline, ControlVehicle BVH, and 2px silhouette outline present",
 );
 
 // 8. Verify Zero-WebGL CpuGtxRenderer + KHR_parallel_shader_compile Dual-Backend Self-Healing Parity
@@ -417,9 +464,9 @@ assert.ok(fs.existsSync(HtmlPath), "Bundled index.html exists");
 const HtmlText = fs.readFileSync(HtmlPath, "utf8");
 assert.ok(
   HtmlText.includes("Frontier World Mirror — Tier 1 GTX") &&
-    HtmlText.includes("closestRayPrimitiveSoftVis") &&
+    HtmlText.includes("evalShadowMapPCSS") &&
     HtmlText.includes("KHR_parallel_shader_compile") &&
-    HtmlText.includes("RequestAtomicFrame") || HtmlText.includes("bandDone"),
+    (HtmlText.includes("RequestAtomicFrame") || HtmlText.includes("bandDone")),
   "Bundled index.html embeds Multi-Worker Atomic Double-Buffered GTX pipeline",
 );
 assert.ok(
@@ -629,7 +676,10 @@ assert.ok(
     }),
     true,
   );
-  assert.equal(ExecutedDraws.length, 6, "All 6 WebGPU passes (Scene, Outline, ForceOpaque, ForceTrans, GizmoOpaque, GizmoTrans) executed cleanly");
+  const ShadowDraws = ExecutedDraws.filter((D) => D.pipeline === "GtxShadowPipeline");
+  const MainDraws = ExecutedDraws.filter((D) => D.pipeline !== "GtxShadowPipeline");
+  assert.ok(ShadowDraws.length >= 9, `WebGPU Pass 0 rendered ${ShadowDraws.length} shadow-map caster draws`);
+  assert.equal(MainDraws.length, 6, "All 6 WebGPU main/overlay passes (Scene, Outline, ForceOpaque, ForceTrans, GizmoOpaque, GizmoTrans) executed cleanly");
 }
 
 // 12. Verify Automotive Traffic Cone (cone-like) & Cylinder Cone (cylinder-like), Unreal-Style Surface Raycast Placement, and Cone Slalom Level
@@ -1058,6 +1108,580 @@ assert.ok(
   );
 }
 
+// 15. RenderSettings Inspector + Non-SDF Shadow Map / BVH Pipeline + ControlVehicle FVB1 Asset Loading
+{
+  const RsRow = ShowcaseInitialRows.find((R) => R.Id === "render-settings");
+  assert.ok(RsRow && RsRow.Parent === "camera" && RsRow.Panel === "render-settings", "Render Settings lives under Editor Camera");
+  const RsDefault = ResolveRenderSettings(ShowcaseInitialValues);
+  assert.equal(RsDefault.ShadowAlgorithm, CanonicalRenderSettings.ShadowAlgorithm);
+  assert.equal(RsDefault.ShadowMapRes, 2048);
+
+  const RsUniforms = EncodeRenderSettingsUniforms({
+    ShadowAlgorithm: "smrt",
+    GiAlgorithm: "bvh",
+    ReflectionAlgorithm: "bvh",
+    ShadowMapRes: 1024,
+    SmrtRays: 8,
+    RenderScale: 75,
+  });
+  assert.equal(RsUniforms.shadowAlg, 2);
+  assert.equal(RsUniforms.giAlg, 1);
+  assert.equal(RsUniforms.reflAlg, 1);
+  assert.equal(RsUniforms.shadowMapRes, 1024);
+  assert.equal(RsUniforms.smrtRays, 8);
+  assert.equal(RsUniforms.renderScale, 75);
+
+  const UnitGeoms = BuildUnitShadowGeometries();
+  for (const ShapeId of [0, 1, 2, 3, 4, 5]) {
+    assert.ok(UnitGeoms[ShapeId]?.length >= 18, `Unit shadow geometry built for shape ${ShapeId}`);
+  }
+  const SunMat = BuildSunShadowMatrix(Compiled);
+  assert.equal(SunMat.vp.length, 16, "Sun shadow VP matrix built");
+
+  const FvbPath = path.join(Folder, "..", "ShadowAlgorithmLab", "Assets", "VehicleBenchmarkAssets.bin");
+  assert.ok(fs.existsSync(FvbPath), "VehicleBenchmarkAssets.bin FVB1 bundle present");
+  const RawBuf = fs.readFileSync(FvbPath);
+  const Ab = RawBuf.buffer.slice(RawBuf.byteOffset, RawBuf.byteOffset + RawBuf.byteLength);
+  const VehAssets = ParseVehicleFvb1Buffer(Ab);
+  assert.equal(VehAssets.meshMeta.length, 3, "FVB1 parses 3 ControlVehicle meshes (Body, Rim, Tyre)");
+
+  const BuiltVeh = BuildVehicleTlasAndInstances(Compiled.Vehicles, VehAssets);
+  assert.equal(BuiltVeh.instanceCount, 9, "Single ControlVehicle expands to 9 BVH instances (body + 4 tyres + 4 rims)");
+
+  // Ray aimed straight at Showcase ControlVehicle center [-1.42, -0.82, -0.50]
+  const VehHit = TraceVehicleBvhCpu([-1.42, -3.0, -0.50], [0, 1, 0], 10.0, Compiled.Vehicles, VehAssets);
+  assert.ok(VehHit && VehHit.pickCode >= 500, "TraceVehicleBvhCpu intersects ControlVehicle BVH cleanly");
+
+  // Verify CpuGtxRenderer renders ControlVehicle pixels cleanly into EntityBuf (pickCode >= 500)
+  const CpuVehProbe = new CpuGtxRenderer();
+  const ProbeAtlas = new Uint8Array(2048 * 2048 * 4);
+  ProbeAtlas.fill(190);
+  CpuVehProbe.RenderFullFrame({
+    CompiledScene: Compiled,
+    AtlasPixels: ProbeAtlas,
+    VehicleBvhAssets: VehAssets,
+    Width: 120,
+    Height: 90,
+    ViewModeCode: 0,
+    ShowGrid: true,
+  });
+  let CpuVehPixels = 0;
+  for (let i = 0; i < CpuVehProbe.EntityBuf.length; i++) {
+    if (CpuVehProbe.EntityBuf[i] >= 500) CpuVehPixels++;
+  }
+  assert.ok(CpuVehPixels > 100, `CpuGtxRenderer rendered ${CpuVehPixels} ControlVehicle BVH pixels cleanly`);
+
+  const SlalomLevel = CreateNewLevelRecord({
+    Name: "Automotive Cone Slalom",
+    TemplateId: "slalom",
+  });
+  assert.ok(
+    SlalomLevel.Rows.some((R) => R.Id === "control-vehicle") &&
+      SlalomLevel.Rows.some((R) => R.Id === "render-settings"),
+    "Cone Slalom template includes ControlVehicle & Render Settings",
+  );
+  assert.ok(
+    DefaultLevels.every((L) => L.Rows.some((R) => R.Id === "render-settings")),
+    "Every default level includes Render Settings under Editor Camera",
+  );
+}
+
+// 16. Smooth ControlVehicle BVH Vertex Normals + Shadow Matrix Precision + Physical Sky/Atmosphere/Volumetric Clouds/Moon/Stars
+{
+  const FvbPath = path.join(Folder, "..", "ShadowAlgorithmLab", "Assets", "VehicleBenchmarkAssets.bin");
+  const RawBuf = fs.readFileSync(FvbPath);
+  const Ab = RawBuf.buffer.slice(RawBuf.byteOffset, RawBuf.byteOffset + RawBuf.byteLength);
+  const VehAssets = ParseVehicleFvb1Buffer(Ab);
+  // Check individual vertex octahedral normals + matId packing in triTexData
+  let SmoothSpreadCount = 0;
+  for (let t = 0; t < VehAssets.totalTriangles; t++) {
+    const b = t * 16;
+    const o0 = VehAssets.triTexData[b + 7];
+    const o1 = VehAssets.triTexData[b + 11];
+    const o2 = VehAssets.triTexData[b + 15];
+    if (o0 !== o1 || o1 !== o2) SmoothSpreadCount++;
+  }
+  assert.ok(SmoothSpreadCount > 1000, `Smooth octahedral vertex normals preserved across ${SmoothSpreadCount} triangles`);
+
+  const AreaMat = BuildAreaShadowMatrix(Compiled.AreaLights[0]);
+  assert.ok(AreaMat && AreaMat.vp.length === 16, "Area shadow VP matrix built with tightened Near=0.32/Far=14.0");
+
+  // Physical Sky-View LUT + rgba16float packing
+  const Lut = BuildSkyViewLut(Compiled.SunDir, Compiled.Atmosphere);
+  assert.equal(Lut.length, SKY_VIEW_WIDTH * SKY_VIEW_HEIGHT * 4, "Sky-View LUT dimensions match 96x48x4");
+  const Half = PackSkyViewRgba16f(Lut);
+  assert.equal(Half.length, Lut.length, "PackSkyViewRgba16f packs all RGBA16F channels");
+  const Zenith = SampleSkyViewLutCpu(Lut, 0, 0, 1);
+  const Horizon = SampleSkyViewLutCpu(Lut, 1, 0, 0.03);
+  assert.ok(Zenith.every(Number.isFinite) && Horizon.every(Number.isFinite), "Sky-View LUT samples finite RGB");
+  assert.ok(Horizon[0] + Horizon[1] + Horizon[2] > Zenith[0] + Zenith[1] + Zenith[2], "Horizon luminance exceeds zenith");
+
+  // Volumetric 3D Clouds raymarching (non-zero extinction + scattering)
+  let CloudHits = 0;
+  for (let i = 0; i < 16; i++) {
+    const az = (i / 16) * Math.PI * 2;
+    const dx = Math.cos(az) * 0.85, dy = Math.sin(az) * 0.85, dz = 0.52;
+    const cl = EvalVolumetricCloudsCpu(dx, dy, dz, Compiled.SunDir, Compiled.SunIrradiance, Horizon, Compiled.Clouds, 1.5);
+    if (cl.trans < 0.995) CloudHits++;
+  }
+  assert.ok(CloudHits >= 2, `Volumetric 3D cloud raymarch intersected cloud cells (${CloudHits}/16 rays)`);
+
+  // Phased Moon + Night Starfield
+  const NightMoonDir = Compiled.Moon.dir;
+  const MoonEval = EvalMoonAndStarsCpu(
+    NightMoonDir[0],
+    NightMoonDir[1],
+    NightMoonDir[2],
+    [0.2, 0.4, -0.5],
+    { ...Compiled.Moon, visible: true },
+    { ...Compiled.Stars, enabled: true },
+    1.0,
+  );
+  assert.ok(MoonEval[0] + MoonEval[1] + MoonEval[2] > 0.1, "Phased moon disc renders non-zero luminance");
+
+  // Outliner defaults & CompileLiveGtxScene environment fields
+  assert.ok(Compiled.Atmosphere && Compiled.Clouds && Compiled.Moon && Compiled.Stars, "Compiled scene carries all 4 physical environment blocks");
+  assert.equal(Compiled.HasAnimatedSky, true, "Enabled clouds/twinkle flag HasAnimatedSky");
+}
+
+// 17. Full 24h Night Sun, Dark Night Scene, Emissive/Area Shadows at Night, & Moon Texture Atlas
+{
+  // 24-hour ephemeris reaches full night across midnight and negative Local Hours wrap cleanly
+  const Sol0 = Solar({ LocalHours: 0, Month: 10, Day: 4, Latitude: -26.19, Longitude: 28.32, UtcOffset: 2 });
+  const Sol2 = Solar({ LocalHours: 2, Month: 10, Day: 4, Latitude: -26.19, Longitude: 28.32, UtcOffset: 2 });
+  const Sol12 = Solar({ LocalHours: 12, Month: 10, Day: 4, Latitude: -26.19, Longitude: 28.32, UtcOffset: 2 });
+  const Sol22 = Solar({ LocalHours: 22, Month: 10, Day: 4, Latitude: -26.19, Longitude: 28.32, UtcOffset: 2 });
+  const Sol24 = Solar({ LocalHours: 24, Month: 10, Day: 4, Latitude: -26.19, Longitude: 28.32, UtcOffset: 2 });
+  assert.ok(Sol0.Elevation < -45 && Sol2.Elevation < -35 && Sol22.Elevation < -35 && Sol24.Elevation < -45, "Solar ephemeris reaches full negative night elevation at 0h, 2h, 22h, 24h");
+  assert.ok(Sol12.Elevation > 60, "Solar ephemeris reaches daytime zenith around 12h");
+
+  // Compile showcase at Local Hours = 0 (midnight)
+  const NightValues = {
+    ...ShowcaseInitialValues,
+    sun: { ...ShowcaseInitialValues.sun, "Local Hours": 0.0, Direction: undefined },
+  };
+  const NightScene = CompileLiveGtxScene(ShowcaseInitialRows, NightValues, {}, "PERSP");
+  assert.ok(NightScene.SunDir[2] < -0.5, `Midnight SunDir.z is deeply below horizon (${NightScene.SunDir[2].toFixed(3)})`);
+  assert.ok(
+    NightScene.SkyRadiance[0] < 0.02 && NightScene.SkyRadiance[1] < 0.02 && NightScene.SkyRadiance[2] < 0.03,
+    `Night SkyRadiance is truly dark (${NightScene.SkyRadiance.map((v) => v.toFixed(4)).join(",")})`,
+  );
+  const NightLut = BuildSkyViewLut(NightScene.SunDir, NightScene.Atmosphere);
+  const NightZenith = SampleSkyViewLutCpu(NightLut, 0, 0, 1);
+  assert.ok(
+    NightZenith[0] + NightZenith[1] + NightZenith[2] < 0.015,
+    `Night Sky-View zenith luminance is dark (${(NightZenith[0] + NightZenith[1] + NightZenith[2]).toFixed(5)})`,
+  );
+
+  // Emissive/Area shadow matrix clears clearcoat-roof-baffle (Z=1.99)
+  assert.equal(ShowcaseInitialValues["ceiling-softbox"]["Cast shadows"], true, "ceiling-softbox Cast shadows defaults to true");
+  const NightAreaMat = BuildAreaShadowMatrix(NightScene.AreaLights[0]);
+  assert.ok(NightAreaMat && NightAreaMat.lightPos[2] < 1.85, "Area shadow lightPos clears roof baffle");
+
+  // CPU night render with area/emissive light vs dark lights-off render + shadow contrast
+  const CpuNight = new CpuGtxRenderer();
+  const NightAtlas = new MaterialAtlasSynchronizer();
+  NightAtlas.UpdatePrimitives(NightScene.Primitives);
+  const FvbPath = path.join(Folder, "..", "ShadowAlgorithmLab", "Assets", "VehicleBenchmarkAssets.bin");
+  const RawBuf = fs.readFileSync(FvbPath);
+  const VehAssets = ParseVehicleFvb1Buffer(RawBuf.buffer.slice(RawBuf.byteOffset, RawBuf.byteOffset + RawBuf.byteLength));
+  const MockMoonAtlas = {
+    width: MOON_ATLAS_W,
+    height: MOON_ATLAS_H,
+    ready: true,
+    version: 1,
+    pixels: new Uint8Array(MOON_ATLAS_W * MOON_ATLAS_H * 4).fill(200),
+  };
+  CpuNight.RenderFullFrame({
+    CompiledScene: NightScene,
+    AtlasPixels: NightAtlas.Pixels,
+    MoonAtlas: MockMoonAtlas,
+    VehicleBvhAssets: VehAssets,
+    Width: 120,
+    Height: 80,
+    ViewModeCode: 0,
+    ShowGrid: false,
+  });
+  // Sample floor under vehicle shadow vs lit floor nearby
+  const SamplePix = (x, y) => {
+    const o = (y * 120 + x) * 4;
+    return (CpuNight.OffscreenImg.data[o] + CpuNight.OffscreenImg.data[o + 1] + CpuNight.OffscreenImg.data[o + 2]) / (3 * 255);
+  };
+  let MinFloor = 1, MaxFloor = 0;
+  for (let y = 52; y < 74; y++) {
+    for (let x = 25; x < 95; x++) {
+      const v = SamplePix(x, y);
+      if (v < MinFloor) MinFloor = v;
+      if (v > MaxFloor) MaxFloor = v;
+    }
+  }
+  assert.ok(MaxFloor > 0.12 && MinFloor < MaxFloor * 0.65, `Night emissive/area light produces lit floor (${MaxFloor.toFixed(3)}) and crisp shadow (${MinFloor.toFixed(3)})`);
+
+  // Turn off all lights & emissives at night -> scene must become genuinely dark
+  const NightHidden = {};
+  for (const Row of ShowcaseInitialRows) {
+    if (Row.Panel === "light" || Row.Id === "moon" || Row.Id.includes("emissive") || Row.Id.includes("neon")) {
+      NightHidden[Row.Id] = true;
+    }
+  }
+  const PitchBlackScene = CompileLiveGtxScene(ShowcaseInitialRows, NightValues, NightHidden, "PERSP");
+  NightAtlas.InvalidateAll();
+  NightAtlas.UpdatePrimitives(PitchBlackScene.Primitives);
+  CpuNight.RenderFullFrame({
+    CompiledScene: PitchBlackScene,
+    AtlasPixels: NightAtlas.Pixels,
+    MoonAtlas: MockMoonAtlas,
+    VehicleBvhAssets: VehAssets,
+    Width: 120,
+    Height: 80,
+    ViewModeCode: 0,
+    ShowGrid: false,
+  });
+  let SumDark = 0;
+  for (let i = 0; i < CpuNight.OffscreenImg.data.length; i += 4) {
+    SumDark += (CpuNight.OffscreenImg.data[i] + CpuNight.OffscreenImg.data[i + 1] + CpuNight.OffscreenImg.data[i + 2]) / (3 * 255);
+  }
+  const AvgDark = SumDark / (120 * 80);
+  assert.ok(AvgDark < 0.03, `Unlit night scene average brightness is genuinely dark (${AvgDark.toFixed(4)})`);
+
+  // Add an emissive primitive at night with an occluder between it and the floor -> verifies direct emissive GI + shadow
+  const EmissiveRows = [
+    ...ShowcaseInitialRows,
+    { Id: "night-emissive-orb", Name: "Night Emissive Orb", Panel: "geometry", PrimitiveShape: "sphere", Parent: "showcase", Preview: true },
+  ];
+  const EmissiveValues = {
+    ...NightValues,
+    "night-emissive-orb": {
+      Position: [1.1, -0.82, 0.55],
+      Rotation: [0, 0, 0],
+      Scale: [0.38, 0.38, 0.38],
+      "Cast shadows": true,
+      GI: true,
+      Material: {
+        Type: "Standard",
+        Channels: {
+          colour: { Source: "Fill", Fill: "#ff9b42" },
+          emission: { Source: "Fill", Fill: 8.0 },
+        },
+      },
+    },
+  };
+  const EmissiveHidden = { ...NightHidden };
+  delete EmissiveHidden["night-emissive-orb"];
+  const EmissiveNightScene = CompileLiveGtxScene(EmissiveRows, EmissiveValues, EmissiveHidden, "PERSP");
+  NightAtlas.InvalidateAll();
+  NightAtlas.UpdatePrimitives(EmissiveNightScene.Primitives);
+  CpuNight.RenderFullFrame({
+    CompiledScene: EmissiveNightScene,
+    AtlasPixels: NightAtlas.Pixels,
+    MoonAtlas: MockMoonAtlas,
+    VehicleBvhAssets: VehAssets,
+    Width: 120,
+    Height: 80,
+    ViewModeCode: 0,
+    ShowGrid: false,
+  });
+  let EmissivePeak = 0;
+  for (let i = 0; i < CpuNight.OffscreenImg.data.length; i += 4) {
+    const L = (CpuNight.OffscreenImg.data[i] + CpuNight.OffscreenImg.data[i + 1] + CpuNight.OffscreenImg.data[i + 2]) / (3 * 255);
+    if (L > EmissivePeak) EmissivePeak = L;
+  }
+  assert.ok(EmissivePeak > 0.35, `Emissive primitive lights up the pitch-dark night scene (peak=${EmissivePeak.toFixed(3)})`);
+
+  // Moon Atlas constants & built Assets.Moons verification
+  assert.equal(MOON_ATLAS_W, 512);
+  assert.equal(MOON_ATLAS_H, 1536);
+  assert.equal(MOON_TILE_COUNT, 6);
+  assert.deepEqual(MOON_PRESET_NAMES, ["luna", "ember", "glacier", "sulfur", "shroud", "shard"]);
+  const HtmlPath = path.join(Folder, "index.html");
+  if (fs.existsSync(HtmlPath)) {
+    const HtmlText = fs.readFileSync(HtmlPath, "utf8");
+    const Marker = "<script>window.NativeAssets=";
+    const JsonStart = HtmlText.indexOf(Marker) + Marker.length;
+    const JsonEnd = HtmlText.indexOf(";</script><script>", JsonStart);
+    const Embedded = JSON.parse(HtmlText.slice(JsonStart, JsonEnd));
+    assert.ok(Array.isArray(Embedded.Moons) && Embedded.Moons.length === 6, "Built index.html embeds 6 moon textures");
+    assert.ok(Embedded.Moons.every((m) => typeof m === "string" && m.startsWith("data:image/jpeg;base64,")), "All 6 moon textures are base64 JPEG data URLs");
+  }
+}
+
+// 18. Dedicated Emissive GI Bounce, Emissive Occlusion/Shadows, BVH Raytraced GI Area-Light Parity, & Emissive WorldProps
+{
+  const NightBase = {
+    ...ShowcaseInitialValues,
+    sun: { ...ShowcaseInitialValues.sun, "Local Hours": 0.0, Direction: undefined },
+  };
+  const AllLightsOffHidden = {};
+  for (const Row of ShowcaseInitialRows) {
+    if (Row.Panel === "light" || Row.Id === "moon" || Row.Id.includes("emissive") || Row.Id.includes("neon")) {
+      AllLightsOffHidden[Row.Id] = true;
+    }
+  }
+
+  // Test 18A: Emissive GI Bounce at Night (Sky dark, Area lights OFF)
+  // Place a white emissive sphere near Crimson Left Wall (-1.85, 0.25, 0.15) AND a solid wall occluder (-0.85, 0.25, 0.25)
+  // blocking direct line-of-sight to plaster-east & the right floor, proving indirect GI itself bounces Crimson wall radiance!
+  const GiRows = [
+    ...ShowcaseInitialRows,
+    { Id: "gi-emissive-orb", Name: "GI Emissive Orb", Panel: "geometry", PrimitiveShape: "sphere", Parent: "showcase", Preview: true },
+    { Id: "gi-blocker-wall", Name: "GI Blocker Wall", Panel: "geometry", PrimitiveShape: "box", Parent: "showcase", Preview: true },
+  ];
+  const GiOrbVals = {
+    Position: [-1.85, 0.25, 0.15],
+    Rotation: [0, 0, 0],
+    Scale: [0.55, 0.55, 0.55],
+    "Cast shadows": false,
+    GI: true,
+    Material: {
+      Type: "Emissive",
+      Channels: {
+        colour: { Source: "Fill", Fill: "#ffffff" },
+        metallic: { Source: "Fill", Fill: 1.0 },
+        emission: { Source: "Fill", Fill: 14.0 },
+      },
+    },
+  };
+  const GiBlockerVals = {
+    Position: [-0.85, 0.25, 0.25],
+    Rotation: [0, 0, 0],
+    Scale: [0.18, 6.2, 2.2],
+    "Cast shadows": true,
+    GI: true,
+    Material: {
+      Type: "Standard",
+      Channels: {
+        colour: { Source: "Fill", Fill: "#c8c8c8" },
+      },
+    },
+  };
+
+  const RunNightFrame = (GiAlgorithm, GiIntensity, EmissiveShadowMode = "shadowed", KeepSoftbox = false) => {
+    const Vals = {
+      ...NightBase,
+      "render-settings": {
+        ...CanonicalRenderSettings,
+        GiAlgorithm,
+        GiIntensity,
+        FillBoost: 1.0,
+        GiSamples: 10,
+        EmissiveShadowMode,
+      },
+      "gi-emissive-orb": GiOrbVals,
+      "gi-blocker-wall": GiBlockerVals,
+    };
+    const Hid = { ...AllLightsOffHidden };
+    if (KeepSoftbox) delete Hid["ceiling-softbox"];
+    const Sc = CompileLiveGtxScene(GiRows, Vals, Hid, "PERSP");
+    const Atl = new MaterialAtlasSynchronizer();
+    Atl.UpdatePrimitives(Sc.Primitives);
+    const Cpu = new CpuGtxRenderer();
+    Cpu.RenderFullFrame({
+      CompiledScene: Sc,
+      AtlasPixels: Atl.Pixels,
+      Width: 120,
+      Height: 80,
+      ViewModeCode: 0,
+      ShowGrid: false,
+    });
+    return { Cpu, Sc };
+  };
+
+  const SampleEntity = ({ Cpu, Sc }, PickId) => {
+    const Code = Sc.Primitives.find((P) => P.Id === PickId)?.PickCode;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < Cpu.EntityBuf.length; i++) {
+      if (Cpu.EntityBuf[i] === Code) {
+        const o = i * 4;
+        r += Cpu.OffscreenImg.data[o] / 255;
+        g += Cpu.OffscreenImg.data[o + 1] / 255;
+        b += Cpu.OffscreenImg.data[o + 2] / 255;
+        n++;
+      }
+    }
+    return n > 0 ? [r / n, g / n, b / n, (r + g + b) / (3 * n)] : [0, 0, 0, 0];
+  };
+
+  // Cone GI ON vs GI OFF on shielded plaster-east and gallery-floor
+  const ConeOn = RunNightFrame("sdf", 1.6, "shadowed", false);
+  const ConeOff = RunNightFrame("off", 0.0, "shadowed", false);
+  const OnEast = SampleEntity(ConeOn, "plaster-east");
+  const OffEast = SampleEntity(ConeOff, "plaster-east");
+  const OnFloor = SampleEntity(ConeOn, "gallery-floor");
+  const OffFloor = SampleEntity(ConeOff, "gallery-floor");
+  assert.ok(OffEast[3] < 0.025 && OffFloor[3] < 0.032, `GI Off shielded surfaces at night remain dark under starlight (east=${OffEast[3].toFixed(4)}, floor=${OffFloor[3].toFixed(4)})`);
+  assert.ok(
+    OnEast[3] > 0.25 && OnFloor[0] > OnFloor[2] * 1.2,
+    `Cone GI produces strong indirect GI + warm crimson bounce (east=${OnEast[3].toFixed(3)}, floor=${OnFloor.map((v) => v.toFixed(3)).join(",")})`,
+  );
+
+  // Test 18B: Emissive shadow contrast (Shadowed vs Unshadowed on gallery-floor behind blocker wall)
+  const Unshad = RunNightFrame("sdf", 0.0, "unshadowed", false);
+  const ShadOnly = RunNightFrame("sdf", 0.0, "shadowed", false);
+  const UnshadFloor = SampleEntity(Unshad, "gallery-floor");
+  const ShadFloor = SampleEntity(ShadOnly, "gallery-floor");
+  assert.ok(
+    UnshadFloor[3] > ShadFloor[3] * 4.0,
+    `Emissive blocker wall casts crisp shadow when shadowed (${ShadFloor[3].toFixed(4)}) vs unshadowed (${UnshadFloor[3].toFixed(4)})`,
+  );
+
+  // Test 18C: BVH Raytraced GI hits Ceiling Softbox + Emissive Primitives at night
+  const BvhOn = RunNightFrame("bvh", 1.5, "shadowed", true);
+  const BvhFloor = SampleEntity(BvhOn, "gallery-floor");
+  assert.ok(
+    BvhFloor[3] > 0.20,
+    `BVH Raytraced GI (giAlg=1) captures Area Light + Emissive GI bounce cleanly (${BvhFloor[3].toFixed(3)})`,
+  );
+
+  // Test 18D: WorldPropLibrary emissive prop colors & face emission extraction
+  const NeonProp = WORLD_PROP_CATALOG.find((P) => P.Id === "prop_neon_tube");
+  const SoftboxProp = WORLD_PROP_CATALOG.find((P) => P.Id === "prop_studio_softbox");
+  if (NeonProp) {
+    const Prims = ExpandPropPrimitives({ Id: "n1", Name: "Neon", PropId: NeonProp.Id }, {}, 900);
+    assert.ok(Prims.some((P) => P.Emission > 1.0 && (P.BaseColor[0] + P.BaseColor[1] + P.BaseColor[2]) > 0.2), "Neon tube prop exports emissive radiance and non-hardcoded linear color");
+  }
+  if (SoftboxProp) {
+    const Prims = ExpandPropPrimitives({ Id: "s1", Name: "Softbox", PropId: SoftboxProp.Id }, {}, 901);
+    assert.ok(Prims.some((P) => P.Emission > 1.0), "Studio Softbox prop promotes emissive diffuser face into GI emission");
+  }
+
+  // Verify shader source parity across WebGPU & WebGL2 for 2-bounce BVH GI quad trace & emissive bounce
+  const WgslSrc = fs.readFileSync(path.join(Folder, "WebgpuGtxRenderer.js"), "utf8");
+  const GlslSrc = fs.readFileSync(path.join(Folder, "GtxWorldViewport.jsx"), "utf8");
+  assert.ok(WgslSrc.includes("let qHit = traceLightQuad(currPos + currN * 0.012, d, gHit.t);"), "WGSL 2-bounce BVH GI traces Area Light quads");
+  assert.ok(GlslSrc.includes("float tQ = traceLightQuad(currPos + currN * 0.012, rd, giHit.t, qEmit, qIdx);"), "GLSL 2-bounce BVH GI traces Area Light quads");
+  assert.ok(WgslSrc.includes("for (var ei : i32 = 0; ei < primCount; ei = ei + 1)") && GlslSrc.includes("for (int ei = 0; ei < uPrimCount; ++ei)"), "Both WGSL and GLSL bounce emissive primitives off walls");
+}
+
+// ============================================================================
+// Suite 19: ShadowAlgorithmLab Parity (No SDF Shadows/Reflections) & Sun+Moon+Star Illumination
+// ============================================================================
+{
+  const { BuildSunShadowMatrix, BuildAreaShadowMatrix } = await import("./ShadowPipeline.js");
+  const { SHADOW_ALGORITHMS, GI_ALGORITHMS, REFLECTION_ALGORITHMS, ResolveRenderSettings } = await import("./ShowcaseGalleryScene.js");
+
+  // 1. Algorithm menus exclude SDF shadows and SDF reflections
+  assert.deepStrictEqual(
+    SHADOW_ALGORITHMS.map((a) => a.id),
+    ["contact_pcss", "pcss", "smrt", "pcf", "bvh"],
+    "Shadows expose exact non-SDF ShadowAlgorithmLab modes",
+  );
+  assert.deepStrictEqual(
+    GI_ALGORITHMS.map((a) => a.id),
+    ["sdf", "bvh", "off"],
+    "GI exposes Cone GI, BVH Raytraced GI, and Off",
+  );
+  assert.deepStrictEqual(
+    REFLECTION_ALGORITHMS.map((a) => a.id),
+    ["bvh", "env"],
+    "Reflections exclude SDF reflections and expose BVH + Env",
+  );
+  assert.strictEqual(
+    ResolveRenderSettings({ "render-settings": { ReflectionAlgorithm: "sdf" } }).ReflectionAlgorithm,
+    "bvh",
+    "Saved scenes with legacy 'sdf' reflection normalize to 'bvh'",
+  );
+
+  // 2. Shadow matrix metadata for linear-depth PCF/PCSS/SMRT
+  const DayScene = CompileLiveGtxScene(ShowcaseInitialRows, ShowcaseInitialValues, {}, "PERSP");
+  const SunInfo = BuildSunShadowMatrix(DayScene);
+  assert.ok(Array.isArray(SunInfo.eye) && SunInfo.orthoHalfSpan > 0 && SunInfo.far > SunInfo.near, "Sun shadow matrix exports linear-depth metadata");
+  const AreaInfo = BuildAreaShadowMatrix(DayScene.AreaLights[0]);
+  assert.ok(AreaInfo && Array.isArray(AreaInfo.forward) && AreaInfo.perspTan > 0 && AreaInfo.far > AreaInfo.near, "Area shadow matrix exports linear-depth perspective metadata");
+
+  // 3. WGSL + GLSL carry ShadowAlgorithmLab LTC, PCF, PCSS, SMRT, BVH reflections, and Sun+Moon+Starlight
+  const WgslSrc = fs.readFileSync(path.join(Folder, "WebgpuGtxRenderer.js"), "utf8");
+  const GlslSrc = fs.readFileSync(path.join(Folder, "GtxWorldViewport.jsx"), "utf8");
+  for (const [WgslFn, GlslFn] of [
+    ["evalWgslShadowMapPCF", "evalShadowMapPCF"],
+    ["evalWgslShadowMapPCSS", "evalShadowMapPCSS"],
+    ["evalWgslShadowMapSMRT", "evalShadowMapSMRT"],
+    ["evalWgslBvhRayShadow", "evalBvhRayShadow"],
+    ["evalEmissivePanelLtc", "evalEmissivePanelLtc"],
+    ["traceBvhReflection", "traceBvhReflection"],
+    ["evalMoonIrradiance", "evalMoonIrradiance"],
+    ["evalStarlightAmbient", "evalStarlightAmbient"],
+  ]) {
+    assert.ok(WgslSrc.includes(WgslFn), `WebgpuGtxRenderer.js implements ${WgslFn}`);
+    assert.ok(GlslSrc.includes(GlslFn), `GtxWorldViewport.jsx implements ${GlslFn}`);
+  }
+  assert.ok(!WgslSrc.includes("REFLECTION_SDF") && !GlslSrc.includes("REFLECTION_SDF"), "Neither renderer uses SDF reflections");
+  assert.ok(!WgslSrc.includes("SHADOW_SDF") && !GlslSrc.includes("SHADOW_SDF"), "Neither renderer uses SDF shadows");
+  assert.ok(!/select\([^;]*(ShadowVP|mat4x4f)/.test(WgslSrc), "WGSL never calls select() on mat4x4f");
+
+  // 4. Sun + Moon + Starlight illumination deltas in CPU renderer
+  const NoLightsHidden = {};
+  for (const Row of ShowcaseInitialRows) {
+    if (Row.Panel === "light" || Row.Id.includes("emissive") || Row.Id.includes("neon")) {
+      NoLightsHidden[Row.Id] = true;
+    }
+  }
+  const RenderCelestialFrame = (SunHours, MoonOn, StarsOn) => {
+    const Hid = { ...NoLightsHidden };
+    if (!MoonOn) Hid.moon = true;
+    if (!StarsOn) Hid.stars = true;
+    const Vals = {
+      ...ShowcaseInitialValues,
+      sun: {
+        ...ShowcaseInitialValues.sun,
+        "Local Hours": SunHours,
+        Direction: undefined,
+      },
+      moon: {
+        ...ShowcaseInitialValues.moon,
+        "Moon visible": MoonOn,
+        Elevation: 52,
+        Azimuth: 225,
+        Brightness: 2.2,
+        Phase: 0.55,
+      },
+      stars: {
+        ...ShowcaseInitialValues.stars,
+        "Star field": StarsOn,
+        Brightness: 1.5,
+      },
+      "render-settings": {
+        ...CanonicalRenderSettings,
+        GiAlgorithm: "sdf",
+        GiIntensity: 1.0,
+      },
+    };
+    const Sc = CompileLiveGtxScene(ShowcaseInitialRows, Vals, Hid, "PERSP");
+    const Atl = new MaterialAtlasSynchronizer();
+    Atl.UpdatePrimitives(Sc.Primitives);
+    const Cpu = new CpuGtxRenderer();
+    Cpu.RenderFullFrame({
+      CompiledScene: Sc,
+      AtlasPixels: Atl.Pixels,
+      Width: 120,
+      Height: 80,
+      ViewModeCode: 0,
+      ShowGrid: false,
+    });
+    const FloorCode = Sc.Primitives.find((P) => P.Id === "gallery-floor")?.PickCode;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < Cpu.EntityBuf.length; i++) {
+      if (Cpu.EntityBuf[i] === FloorCode) {
+        const o = i * 4;
+        r += Cpu.OffscreenImg.data[o] / 255;
+        g += Cpu.OffscreenImg.data[o + 1] / 255;
+        b += Cpu.OffscreenImg.data[o + 2] / 255;
+        n++;
+      }
+    }
+    return n > 0 ? [r / n, g / n, b / n, (r + g + b) / (3 * n)] : [0, 0, 0, 0];
+  };
+
+  const FNone = RenderCelestialFrame(0, false, false);
+  const FStar = RenderCelestialFrame(0, false, true);
+  const FMoon = RenderCelestialFrame(0, true, true);
+  const FSun = RenderCelestialFrame(12, false, false);
+
+  assert.ok(FNone[3] < 0.015, `Midnight with moon/stars/lights off is pitch dark (${FNone[3].toFixed(4)})`);
+  assert.ok(FStar[3] > FNone[3] * 1.4 && FStar[2] > FStar[0], `Starlight visibly adds cool illumination at night (star=${FStar[3].toFixed(4)} vs off=${FNone[3].toFixed(4)})`);
+  assert.ok(FMoon[3] > FStar[3] * 2.2, `Moonlight visibly illuminates the night scene above starlight (moon=${FMoon[3].toFixed(4)} vs star=${FStar[3].toFixed(4)})`);
+  assert.ok(FSun[3] > FMoon[3] * 2.0, `Daytime sunlight strongly illuminates the scene above moonlight (sun=${FSun[3].toFixed(4)} vs moon=${FMoon[3].toFixed(4)})`);
+}
+
 console.log(
-  "[WorldMirrorValidation] ALL 14 SUITES PASSED: 24 Studio Cameras/Lights/Props, VectorField Studio 4-Tab Inspector + Streamlines/Heatmap/Bokeh Debug Views, 3D Thumbnails, Per-Face Colours, 19 Debug Views, and ProjectBrowser verified!",
+  "[WorldMirrorValidation] ALL 19 SUITES PASSED: ShadowAlgorithmLab Parity (PCF/PCSS/SMRT/BVH, LTC Area Lights, Cone & 2-Bounce BVH GI, BVH Reflections, No SDF Shadows/Reflections), Sun+Moon+Starlight Illumination, Moon Atlas, Physical Sky/Clouds, RenderSettings, ControlVehicle BVH, and ProjectBrowser verified!",
 );

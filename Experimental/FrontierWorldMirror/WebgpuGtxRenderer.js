@@ -13,10 +13,45 @@ import {
   ATLAS_TILE_SIZE,
   TILES_PER_PRIM,
 } from "./MaterialAtlasCompiler.js";
+import {
+  BuildAreaShadowMatrix,
+  BuildPrimModelMatrix,
+  BuildSunShadowMatrix,
+  BuildUnitShadowGeometries,
+  EncodeRenderSettingsUniforms,
+} from "./ShadowPipeline.js";
+import { ExpandVehicleInstances } from "./VehicleBvhAssets.js";
+import {
+  BuildSkyViewLut,
+  GetSkyViewCacheKey,
+  PackSkyViewRgba16f,
+  SKY_VIEW_HEIGHT,
+  SKY_VIEW_WIDTH,
+} from "./AtmosphereSky.js";
+import {
+  GetMoonAtlasSnapshot,
+  MOON_ATLAS_H,
+  MOON_ATLAS_W,
+} from "./MoonAtlasLoader.js";
 
 const SCENE_DATA_FLOATS = 8 * 396 * 4; // 12672 floats = 50688 bytes (384 primitives + 12 area lights)
 const LIGHT_ROW_BASE = 384;
 const GIZMO_STRIDE_BYTES = 12 * 4; // 48 bytes per vertex
+
+export const GTX_WGSL_SHADOW_SHADER = /* wgsl */ `
+struct ShadowUniforms {
+  uShadowVP : mat4x4f,
+  uModelMat : mat4x4f,
+};
+@group(0) @binding(0) var<uniform> S : ShadowUniforms;
+
+@vertex
+fn vsMain(@location(0) aPos : vec3f) -> @builtin(position) vec4f {
+  var clip = S.uShadowVP * S.uModelMat * vec4f(aPos, 1.0);
+  clip.z = clip.z * 0.5 + 0.5 * clip.w;
+  return clip;
+}
+`;
 
 export const GTX_WGSL_SCENE_SHADER = /* wgsl */ `
 struct SceneUniforms {
@@ -29,13 +64,41 @@ struct SceneUniforms {
   uSunIrradiance   : vec4f, // xyz=sunIrradiance
   uSkyRadiance     : vec4f, // xyz=skyRadiance
   uCountsAndModes  : vec4i, // x=primCount, y=lightCount, z=viewMode, w=showGrid
-  uSelection       : vec4i, // x=selectedCode
+  uSelection       : vec4i, // x=selectedCode, y=shadowAlg, z=giAlg, w=reflAlg
+  uRenderCfg0      : vec4i, // x=pcssTaps, y=smrtRays, z=shadowRays, w=planeFilter
+  uRenderCfg1      : vec4f, // x=shadowSoftness, y=giIntensity, z=fillBoost, w=sunShadowRes
+  uRenderCfg2      : vec4i, // x=emissiveShadowed, y=giSamples, z=giCones, w=reflRays
+  uRenderCfg3      : vec4i, // x=vehicleInstCount, y=hasAreaShadow, z=areaShadowRes, w=reflBounces
+  uSunShadowVP     : mat4x4f,
+  uAreaShadowVP    : mat4x4f,
+  uAtmoCfg0        : vec4f, // x=skyBrightness, y=mieG, z=horizonGlow, w=timeSec
+  uAtmoCfg1        : vec4f, // xyz=skyTint, w=sunDiscScale
+  uCloudCfg0       : vec4f, // x=enabled, y=coverage, z=density, w=featureScale
+  uCloudCfg1       : vec4f, // x=baseM, y=thicknessM, z=anvil, w=anisotropy
+  uCloudCfg2       : vec4f, // x=cloudType, y=shadowEnabled, z=windX, w=windY
+  uMoonCfg0        : vec4f, // xyz=moonDir, w=moonSizeRad
+  uMoonCfg1        : vec4f, // x=phase, y=bright, z=glow, w=visible
+  uMoonTint        : vec4f, // xyz=moonTint, w=nightFloor
+  uStarCfg0        : vec4f, // x=enabled, y=brightness, z=limMag, w=pointSize
+  uStarCfg1        : vec4f, // x=twinkle, y=twinkleDepth, z=twinkleRate, w=rotRad
+  uSunShadowCfg    : vec4f, // xyz=sunEye, w=sunHalfSpan
+  uAreaShadowCfg   : vec4f, // xyz=areaEye, w=areaPerspTan
+  uShadowDepthRng  : vec4f, // x=sunNear, y=sunFar, z=areaNear, w=areaFar
+  uAreaShadowFwd   : vec4f, // xyz=areaForward, w=0
 };
 
 @group(0) @binding(0) var<uniform> U : SceneUniforms;
 @group(0) @binding(1) var<storage, read> uSceneData : array<vec4f, 3168>;
 @group(0) @binding(2) var uMaterialAtlas : texture_2d<f32>;
 @group(0) @binding(3) var uAtlasSampler  : sampler;
+@group(0) @binding(4) var<storage, read> uBvhNodes : array<vec4f>;
+@group(0) @binding(5) var<storage, read> uBvhTris  : array<vec4f>;
+@group(0) @binding(6) var<storage, read> uBvhInsts : array<vec4f>;
+@group(0) @binding(7) var uSunShadowMap  : texture_depth_2d;
+@group(0) @binding(8) var uAreaShadowMap : texture_depth_2d;
+@group(0) @binding(9) var uSkyViewTex    : texture_2d<f32>;
+@group(0) @binding(10) var uSkySampler   : sampler;
+@group(0) @binding(11) var uMoonAtlasTex : texture_2d<f32>;
 
 const PI : f32 = 3.14159265359;
 const ATLAS_W : f32 = ${ATLAS_WIDTH}.0;
@@ -87,13 +150,19 @@ fn fwdRotateCols(v : vec3f, r : RotBasis) -> vec3f {
 }
 
 struct HitInfo {
-  hit     : bool,
-  t       : f32,
-  pos     : vec3f,
-  normal  : vec3f,
-  tangent : vec3f,
-  uv      : vec2f,
-  primIdx : i32,
+  hit         : bool,
+  t           : f32,
+  pos         : vec3f,
+  normal      : vec3f,
+  tangent     : vec3f,
+  uv          : vec2f,
+  primIdx     : i32,
+  isVehicle   : bool,
+  vehMatId    : i32,
+  vehPaint    : vec3f,
+  vehRough    : f32,
+  vehCoat     : f32,
+  vehPickCode : i32,
 };
 
 struct SampledMaterial {
@@ -163,12 +232,7 @@ fn fetchMaterial(primIdx : i32, uv : vec2f) -> SampledMaterial {
   return m;
 }
 
-fn sdBox(p : vec3f, b : vec3f) -> f32 {
-  let q = abs(p) - b;
-  return length(max(q, vec3f(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
-}
-
-fn sdTorusZ(p : vec3f, majorR : f32, minorR : f32) -> f32 {
+fn torusImplicitDist(p : vec3f, majorR : f32, minorR : f32) -> f32 {
   let q = vec2f(length(p.xy) - majorR, p.z);
   return length(q) - minorR;
 }
@@ -229,7 +293,7 @@ fn intersectTorusT(lo : vec3f, ld : vec3f, h : vec3f, bestT : f32) -> f32 {
   var hitT = bestT;
   let steps = clamp(U.uCountsAndModes.x + 10, 8, 12);
   for (var s : i32 = 0; s < steps; s = s + 1) {
-    let d = sdTorusZ(lo + ld * t, majorR, minorR);
+    let d = torusImplicitDist(lo + ld * t, majorR, minorR);
     if (d < 0.0018) {
       hitT = t;
       break;
@@ -453,6 +517,286 @@ fn finalizeHit(ro : vec3f, rd : vec3f, idx : i32, t : f32, backface : bool) -> H
   return info;
 }
 
+fn intersectAabbBvh(ro : vec3f, invD : vec3f, bmin : vec3f, bmax : vec3f, tMax : f32) -> f32 {
+  let t0 = (bmin - ro) * invD;
+  let t1 = (bmax - ro) * invD;
+  let tmin = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), min(t0.z, t1.z));
+  let tmax = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
+  if (tmax >= max(tmin, 0.0) && tmin < tMax) { return max(tmin, 0.0); }
+  return 1e20;
+}
+
+fn transformPointMat3x4(r0 : vec4f, r1 : vec4f, r2 : vec4f, p : vec3f) -> vec3f {
+  return vec3f(dot(r0.xyz, p) + r0.w, dot(r1.xyz, p) + r1.w, dot(r2.xyz, p) + r2.w);
+}
+
+fn transformDirMat3x4(r0 : vec4f, r1 : vec4f, r2 : vec4f, d : vec3f) -> vec3f {
+  return vec3f(dot(r0.xyz, d), dot(r1.xyz, d), dot(r2.xyz, d));
+}
+
+fn transformNormalInvT3x4(i0 : vec4f, i1 : vec4f, i2 : vec4f, n : vec3f) -> vec3f {
+  return normalize(vec3f(
+    i0.x * n.x + i1.x * n.y + i2.x * n.z,
+    i0.y * n.x + i1.y * n.y + i2.y * n.z,
+    i0.z * n.x + i1.z * n.y + i2.z * n.z
+  ));
+}
+
+struct VehBvhHit {
+  hit      : bool,
+  t        : f32,
+  normal   : vec3f,
+  matId    : i32,
+  paint    : vec3f,
+  rough    : f32,
+  coat     : f32,
+  pickCode : i32,
+};
+
+fn unpackOctahedral(packedFloat : f32) -> vec3f {
+  let p = i32(round(packedFloat));
+  let u = f32(p & 1023) / 1023.0 * 2.0 - 1.0;
+  let v = f32((p >> 10) & 1023) / 1023.0 * 2.0 - 1.0;
+  var x = u;
+  var y = v;
+  let z = 1.0 - abs(u) - abs(v);
+  if (z < 0.0) {
+    let ox = x;
+    let oy = y;
+    x = (1.0 - abs(oy)) * select(-1.0, 1.0, ox >= 0.0);
+    y = (1.0 - abs(ox)) * select(-1.0, 1.0, oy >= 0.0);
+  }
+  return normalize(vec3f(x, y, z));
+}
+
+fn traceVehicleBvh(ro : vec3f, rd : vec3f, tMax : f32, shadowOnly : bool) -> VehBvhHit {
+  var res : VehBvhHit;
+  res.hit = false;
+  res.t = tMax;
+  res.normal = vec3f(0.0, 0.0, 1.0);
+  res.matId = 6;
+  res.paint = vec3f(0.65, 0.06, 0.08);
+  res.rough = 0.22;
+  res.coat = 1.0;
+  res.pickCode = 0;
+
+  let instCount = U.uRenderCfg3.x;
+  if (instCount <= 0) { return res; }
+
+  let safeD = select(rd, vec3f(1e-7), abs(rd) < vec3f(1e-7));
+  let invWorldD = 1.0 / safeD;
+
+  var tlasStack : array<i32, 32>;
+  var tlasTop : i32 = 0;
+  tlasStack[0] = 0;
+  tlasTop = 1;
+
+  var blasStack : array<i32, 32>;
+  var bestT = tMax;
+  var bestTri : i32 = -1;
+  var bestInst : i32 = -1;
+  var bestU : f32 = 0.0;
+  var bestV : f32 = 0.0;
+  let minHitT = select(0.0005, 0.004, shadowOnly);
+
+  while (tlasTop > 0) {
+    tlasTop = tlasTop - 1;
+    let nodeIdx = tlasStack[tlasTop];
+    let n0 = uBvhNodes[nodeIdx * 2];
+    let n1 = uBvhNodes[nodeIdx * 2 + 1];
+    if (intersectAabbBvh(ro, invWorldD, n0.xyz, n1.xyz, bestT) >= bestT) { continue; }
+    let leftFirst = i32(round(n0.w));
+    let count = i32(round(n1.w));
+    if (count < 0) {
+      let instIdx = (-count) - 1;
+      let blasRoot = leftFirst;
+      if (instIdx >= 0 && instIdx < instCount) {
+        let ib = instIdx * 10;
+        let w0 = uBvhInsts[ib + 4];
+        let w1 = uBvhInsts[ib + 5];
+        let w2 = uBvhInsts[ib + 6];
+        let w3 = uBvhInsts[ib + 7];
+        let iMeta = uBvhInsts[ib + 8];
+        let castShad = iMeta.z > 0.5;
+        if (!shadowOnly || castShad) {
+          let w2l = mat4x4f(w0, w1, w2, w3);
+          let lro = (w2l * vec4f(ro, 1.0)).xyz;
+          let lrd = (w2l * vec4f(rd, 0.0)).xyz;
+          let lSafe = select(lrd, vec3f(1e-7), abs(lrd) < vec3f(1e-7));
+          let lInvD = 1.0 / lSafe;
+
+          var blasTop : i32 = 1;
+          blasStack[0] = blasRoot;
+          while (blasTop > 0) {
+            blasTop = blasTop - 1;
+            let bIdx = blasStack[blasTop];
+            let b0 = uBvhNodes[bIdx * 2];
+            let b1 = uBvhNodes[bIdx * 2 + 1];
+            if (intersectAabbBvh(lro, lInvD, b0.xyz, b1.xyz, bestT) >= bestT) { continue; }
+            let bLeft = i32(round(b0.w));
+            let bCnt = i32(round(b1.w));
+            if (bCnt > 0) {
+              for (var ti : i32 = 0; ti < bCnt; ti = ti + 1) {
+                let triIdx = bLeft + ti;
+                let tb = triIdx * 4;
+                let tv0 = uBvhTris[tb];
+                let tv1 = uBvhTris[tb + 1];
+                let tv2 = uBvhTris[tb + 2];
+                let e1 = tv1.xyz - tv0.xyz;
+                let e2 = tv2.xyz - tv0.xyz;
+                let pvec = cross(lrd, e2);
+                let det = dot(e1, pvec);
+                if (abs(det) < 1e-8) { continue; }
+                let invDet = 1.0 / det;
+                let tvec = lro - tv0.xyz;
+                let u = dot(tvec, pvec) * invDet;
+                if (u < 0.0 || u > 1.0) { continue; }
+                let qvec = cross(tvec, e1);
+                let v = dot(lrd, qvec) * invDet;
+                if (v < 0.0 || u + v > 1.0) { continue; }
+                let tHit = dot(e2, qvec) * invDet;
+                if (tHit > minHitT && tHit < bestT) {
+                  bestT = tHit;
+                  bestTri = triIdx;
+                  bestInst = instIdx;
+                  bestU = u;
+                  bestV = v;
+                  if (shadowOnly) {
+                    res.hit = true;
+                    res.t = bestT;
+                    return res;
+                  }
+                }
+              }
+            } else {
+              let bRight = bLeft + 1;
+              let cL0 = uBvhNodes[bLeft * 2];
+              let cL1 = uBvhNodes[bLeft * 2 + 1];
+              let cR0 = uBvhNodes[bRight * 2];
+              let cR1 = uBvhNodes[bRight * 2 + 1];
+              let dL = intersectAabbBvh(lro, lInvD, cL0.xyz, cL1.xyz, bestT);
+              let dR = intersectAabbBvh(lro, lInvD, cR0.xyz, cR1.xyz, bestT);
+              if (dL < dR) {
+                if (dR < bestT && blasTop < 31) { blasStack[blasTop] = bRight; blasTop = blasTop + 1; }
+                if (dL < bestT && blasTop < 31) { blasStack[blasTop] = bLeft; blasTop = blasTop + 1; }
+              } else {
+                if (dL < bestT && blasTop < 31) { blasStack[blasTop] = bLeft; blasTop = blasTop + 1; }
+                if (dR < bestT && blasTop < 31) { blasStack[blasTop] = bRight; blasTop = blasTop + 1; }
+              }
+            }
+          }
+        }
+      }
+    } else {
+      let rChild = leftFirst + 1;
+      let cL0 = uBvhNodes[leftFirst * 2];
+      let cL1 = uBvhNodes[leftFirst * 2 + 1];
+      let cR0 = uBvhNodes[rChild * 2];
+      let cR1 = uBvhNodes[rChild * 2 + 1];
+      let dL = intersectAabbBvh(ro, invWorldD, cL0.xyz, cL1.xyz, bestT);
+      let dR = intersectAabbBvh(ro, invWorldD, cR0.xyz, cR1.xyz, bestT);
+      if (dL < dR) {
+        if (dR < bestT && tlasTop < 31) { tlasStack[tlasTop] = rChild; tlasTop = tlasTop + 1; }
+        if (dL < bestT && tlasTop < 31) { tlasStack[tlasTop] = leftFirst; tlasTop = tlasTop + 1; }
+      } else {
+        if (dL < bestT && tlasTop < 31) { tlasStack[tlasTop] = leftFirst; tlasTop = tlasTop + 1; }
+        if (dR < bestT && tlasTop < 31) { tlasStack[tlasTop] = rChild; tlasTop = tlasTop + 1; }
+      }
+    }
+  }
+
+  if (bestTri >= 0 && bestInst >= 0) {
+    let ib = bestInst * 10;
+    let w0 = uBvhInsts[ib + 4];
+    let w1 = uBvhInsts[ib + 5];
+    let w2 = uBvhInsts[ib + 6];
+    let iMeta = uBvhInsts[ib + 8];
+    let iPaint = uBvhInsts[ib + 9];
+    let tb = bestTri * 4;
+    let tv0 = uBvhTris[tb];
+    let tv1 = uBvhTris[tb + 1];
+    let tv2 = uBvhTris[tb + 2];
+    let tv3 = uBvhTris[tb + 3];
+    let n0 = unpackOctahedral(tv1.w);
+    let n1 = unpackOctahedral(tv2.w);
+    let n2 = unpackOctahedral(tv3.w);
+    let bw = max(0.0, 1.0 - bestU - bestV);
+    var nLocal = normalize(n0 * bw + n1 * bestU + n2 * bestV);
+    let gCross = cross(tv1.xyz - tv0.xyz, tv2.xyz - tv0.xyz);
+    let gLen2 = dot(gCross, gCross);
+    if (gLen2 > 1e-12) {
+      let nGeom = gCross * inverseSqrt(gLen2);
+      if (dot(nLocal, nGeom) < 0.0) { nLocal = -nLocal; }
+    }
+    var nWorld = normalize(vec3f(
+      dot(vec3f(w0.x, w1.x, w2.x), nLocal),
+      dot(vec3f(w0.y, w1.y, w2.y), nLocal),
+      dot(vec3f(w0.z, w1.z, w2.z), nLocal)
+    ));
+    let rdDot = dot(nWorld, rd);
+    if (rdDot > -0.02) {
+      nWorld = normalize(nWorld - rd * (rdDot + 0.02));
+    }
+    res.hit = true;
+    res.t = bestT;
+    res.normal = nWorld;
+    res.matId = i32(round(tv0.w));
+    let overrideMat = i32(round(iMeta.x)) - 1;
+    if (overrideMat >= 0) { res.matId = overrideMat; }
+    res.paint = iPaint.xyz;
+    res.rough = iPaint.w;
+    res.coat = iMeta.w;
+    res.pickCode = i32(round(iMeta.y));
+  }
+  return res;
+}
+
+fn buildVehicleMaterial(hit : HitInfo) -> SampledMaterial {
+  var m : SampledMaterial;
+  m.baseColor = hit.vehPaint;
+  m.opacity = 1.0;
+  m.metallic = 0.0;
+  m.roughness = max(0.04, hit.vehRough);
+  m.diffuseRoughness = 0.35;
+  m.ior = 1.5;
+  m.ao = 1.0;
+  m.normalTs = vec3f(0.0, 0.0, 1.0);
+  m.anisotropy = 0.0;
+  m.anisoRotation = 0.0;
+  m.coat = 0.0;
+  m.coatRoughness = 0.06;
+  m.coatNormalTs = vec3f(0.0, 0.0, 1.0);
+  m.sheenColor = vec3f(0.0);
+  m.sheenRoughness = 0.5;
+  m.subsurfaceColor = vec3f(0.0);
+  m.thickness = 0.0;
+  m.transmission = 0.0;
+  m.emission = 0.0;
+  m.unlit = false;
+
+  let id = hit.vehMatId;
+  if (id == 6) {
+    m.metallic = 0.25; m.roughness = max(0.06, hit.vehRough); m.coat = hit.vehCoat; m.coatRoughness = 0.045;
+  } else if (id == 7) {
+    m.baseColor = vec3f(0.045, 0.052, 0.070); m.metallic = 0.08; m.roughness = 0.035; m.coat = 1.0; m.coatRoughness = 0.025; m.ior = 1.54;
+  } else if (id == 8 || id == 15 || id == 16) {
+    m.baseColor = vec3f(0.075, 0.08, 0.09); m.metallic = 0.15; m.roughness = 0.28; m.coat = 0.32;
+  } else if (id == 9) {
+    m.baseColor = vec3f(0.045, 0.048, 0.055); m.metallic = 0.06; m.roughness = 0.12; m.coat = 0.85; m.coatRoughness = 0.04;
+  } else if (id == 10) {
+    m.baseColor = vec3f(0.76, 0.79, 0.84); m.metallic = 0.92; m.roughness = 0.15; m.coat = 0.45;
+  } else if (id == 11) {
+    m.baseColor = vec3f(0.055, 0.058, 0.065); m.metallic = 0.02; m.roughness = 0.66;
+  } else if (id == 12) {
+    m.baseColor = vec3f(0.84, 0.86, 0.90); m.metallic = 0.95; m.roughness = 0.10;
+  } else if (id == 13) {
+    m.baseColor = vec3f(1.0, 0.97, 0.90); m.roughness = 0.08; m.emission = 5.0;
+  } else if (id == 14) {
+    m.baseColor = vec3f(1.0, 0.08, 0.06); m.roughness = 0.10; m.emission = 3.8;
+  }
+  return m;
+}
+
 fn tracePrimaryScene(ro : vec3f, rd : vec3f, tMax : f32) -> HitInfo {
   var bestT = tMax;
   var bestIdx : i32 = -1;
@@ -482,11 +826,35 @@ fn tracePrimaryScene(ro : vec3f, rd : vec3f, tMax : f32) -> HitInfo {
     }
   }
 
-  if (bestIdx >= 0) { return finalizeHit(ro, rd, bestIdx, bestT, false); }
+  let vHit = traceVehicleBvh(ro, rd, bestT, false);
+  if (vHit.hit && vHit.t < bestT) {
+    var info : HitInfo;
+    info.hit = true;
+    info.t = vHit.t;
+    info.pos = ro + rd * vHit.t;
+    info.normal = vHit.normal;
+    info.tangent = vec3f(1.0, 0.0, 0.0);
+    info.uv = vec2f(0.5);
+    info.primIdx = -1;
+    info.isVehicle = true;
+    info.vehMatId = vHit.matId;
+    info.vehPaint = vHit.paint;
+    info.vehRough = vHit.rough;
+    info.vehCoat = vHit.coat;
+    info.vehPickCode = vHit.pickCode;
+    return info;
+  }
+
+  if (bestIdx >= 0) {
+    var info = finalizeHit(ro, rd, bestIdx, bestT, false);
+    info.isVehicle = false;
+    return info;
+  }
   var miss : HitInfo;
   miss.hit = false;
   miss.t = tMax;
   miss.primIdx = -1;
+  miss.isVehicle = false;
   miss.uv = vec2f(0.5);
   miss.tangent = vec3f(1.0, 0.0, 0.0);
   return miss;
@@ -505,15 +873,16 @@ fn traceOpaqueSceneIgnoring(ro : vec3f, rd : vec3f, tMax : f32, ignoreIdx : i32)
       let proj = dot(oc, rd);
       let perp2 = dot(oc, oc) - proj * proj;
       if (perp2 <= dot(hf.xyz, hf.xyz) * 1.65) {
+        let shape = i32(ps.w + 0.5);
         let rot = loadPrimRot(i);
-        let tCand = intersectPrimT(
-          invRotateCols(-oc, rot),
-          invRotateCols(rd, rot),
-          hf.xyz,
-          i32(ps.w + 0.5),
-          bestT,
-          0.0
-        );
+        let lo = invRotateCols(-oc, rot);
+        let ld = invRotateCols(rd, rot);
+        var tCand = bestT;
+        if (shape == 4) {
+          tCand = intersectTorusT(lo, ld, hf.xyz, bestT);
+        } else {
+          tCand = intersectPrimT(lo, ld, hf.xyz, shape, bestT, 0.0);
+        }
         if (tCand < bestT) {
           bestT = tCand;
           bestIdx = i;
@@ -521,11 +890,34 @@ fn traceOpaqueSceneIgnoring(ro : vec3f, rd : vec3f, tMax : f32, ignoreIdx : i32)
       }
     }
   }
-  if (bestIdx >= 0) { return finalizeHit(ro, rd, bestIdx, bestT, false); }
+  let vHit = traceVehicleBvh(ro, rd, bestT, false);
+  if (vHit.hit && vHit.t < bestT) {
+    var info : HitInfo;
+    info.hit = true;
+    info.t = vHit.t;
+    info.pos = ro + rd * vHit.t;
+    info.normal = vHit.normal;
+    info.tangent = vec3f(1.0, 0.0, 0.0);
+    info.uv = vec2f(0.5);
+    info.primIdx = -1;
+    info.isVehicle = true;
+    info.vehMatId = vHit.matId;
+    info.vehPaint = vHit.paint;
+    info.vehRough = vHit.rough;
+    info.vehCoat = vHit.coat;
+    info.vehPickCode = vHit.pickCode;
+    return info;
+  }
+  if (bestIdx >= 0) {
+    var info = finalizeHit(ro, rd, bestIdx, bestT, false);
+    info.isVehicle = false;
+    return info;
+  }
   var miss : HitInfo;
   miss.hit = false;
   miss.t = tMax;
   miss.primIdx = -1;
+  miss.isVehicle = false;
   miss.uv = vec2f(0.5);
   miss.tangent = vec3f(1.0, 0.0, 0.0);
   return miss;
@@ -571,191 +963,748 @@ fn traceLightQuad(ro : vec3f, rd : vec3f, tMax : f32) -> LightHit {
   return res;
 }
 
-fn evalSky(dir : vec3f) -> vec3f {
-  let zUp = clamp(dir.z * 0.5 + 0.5, 0.0, 1.0);
-  let skyRad = U.uSkyRadiance.xyz;
+fn projectSkyViewUV(dir : vec3f) -> vec2f {
+  let az = atan2(dir.y, dir.x);
+  let el = asin(clamp(dir.z, -1.0, 1.0));
+  let u = az * (0.5 / PI) + 0.5;
+  let v = 0.5 - 0.5 * sign(el) * sqrt(abs(el) / (PI * 0.5));
+  return vec2f(u, clamp(v, 0.0, 1.0));
+}
+
+fn hash31(p : vec3f) -> f32 {
+  var q = fract(p * 0.1031);
+  q = q + vec3f(dot(q, q.yzx + 33.33));
+  return fract((q.x + q.y) * q.z);
+}
+
+fn hash33(p : vec3f) -> vec3f {
+  var q = fract(p * vec3f(0.1031, 0.1030, 0.0973));
+  q = q + vec3f(dot(q, q.yxz + 33.33));
+  return fract((q.xxy + q.yxx) * q.zyx);
+}
+
+fn noise3D(p : vec3f) -> f32 {
+  let i = floor(p);
+  let f = fract(p);
+  let u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(
+      mix(hash31(i + vec3f(0.0, 0.0, 0.0)), hash31(i + vec3f(1.0, 0.0, 0.0)), u.x),
+      mix(hash31(i + vec3f(0.0, 1.0, 0.0)), hash31(i + vec3f(1.0, 1.0, 0.0)), u.x),
+      u.y
+    ),
+    mix(
+      mix(hash31(i + vec3f(0.0, 0.0, 1.0)), hash31(i + vec3f(1.0, 0.0, 1.0)), u.x),
+      mix(hash31(i + vec3f(0.0, 1.0, 1.0)), hash31(i + vec3f(1.0, 1.0, 1.0)), u.x),
+      u.y
+    ),
+    u.z
+  );
+}
+
+fn cloudFbm(p : vec3f) -> f32 {
+  var sum = 0.0;
+  var amp = 0.52;
+  var q = p;
+  for (var i : i32 = 0; i < 4; i = i + 1) {
+    sum = sum + amp * noise3D(q);
+    q = q * 2.07 + vec3f(13.1, 7.7, 5.3);
+    amp = amp * 0.48;
+  }
+  return sum;
+}
+
+fn intersectEarthShell(origZ : f32, dirZ : f32, radius : f32) -> f32 {
+  let b = origZ * dirZ;
+  let c = origZ * origZ - radius * radius;
+  let disc = b * b - c;
+  if (disc < 0.0) { return -1.0; }
+  return -b + sqrt(disc);
+}
+
+fn sampleCloudDensity(pos : vec3f, baseM : f32, thickM : f32, cov : f32, densMul : f32, fScale : f32, anvil : f32, cType : i32, wind : vec2f) -> f32 {
+  let earthR = 6360000.0;
+  let alt = length(pos) - earthR;
+  let h = clamp((alt - baseM) / thickM, 0.0, 1.0);
+  var bot = smoothstep(0.0, 0.16, h);
+  var top = smoothstep(1.0, 0.72 + 0.18 * anvil, h);
+  if (cType == 1) {
+    bot = smoothstep(0.0, 0.25, h);
+    top = smoothstep(1.0, 0.55, h);
+  } else if (cType == 2) {
+    bot = smoothstep(0.15, 0.45, h);
+    top = smoothstep(0.95, 0.55, h);
+  }
+  let profile = bot * top;
+  if (profile <= 0.001) { return 0.0; }
+  let shapeCov = clamp(cov + anvil * h * h * 0.25, 0.0, 1.0);
+  let stretch = select(1.0, 2.2, cType == 2);
+  let wp = vec3f((pos.x + wind.x) * fScale * stretch, (pos.y + wind.y) * fScale * stretch, (alt - baseM) * fScale * 1.45);
+  let n = cloudFbm(wp);
+  let nNorm = clamp((n - 0.28) / 0.44, 0.0, 1.0);
+  let thr = 1.0 - shapeCov;
+  return max(0.0, (nNorm - thr) / max(0.18, shapeCov)) * profile * densMul;
+}
+
+fn evalVolumetricClouds(dir : vec3f, skyCol : vec3f, jitter : f32, steps : i32) -> vec4f {
+  if (U.uCloudCfg0.x < 0.5 || dir.z <= 0.006 || U.uCloudCfg0.y <= 0.01 || U.uCloudCfg0.z <= 0.01) {
+    return vec4f(0.0, 0.0, 0.0, 1.0);
+  }
+  let earthR = 6360000.0;
+  let baseM = max(200.0, U.uCloudCfg1.x);
+  let thickM = max(150.0, U.uCloudCfg1.y);
+  let origZ = earthR + 100.0;
+  let tEnter = intersectEarthShell(origZ, dir.z, earthR + baseM);
+  let tExit = intersectEarthShell(origZ, dir.z, earthR + baseM + thickM);
+  let maxDist = min(tExit, 48000.0);
+  if (tEnter < 0.0 || maxDist <= tEnter) {
+    return vec4f(0.0, 0.0, 0.0, 1.0);
+  }
+
+  let dt = (maxDist - tEnter) / f32(steps);
+  let cov = clamp(U.uCloudCfg0.y, 0.0, 1.0);
+  let densMul = max(0.0, U.uCloudCfg0.z) * 0.008;
+  let fScale = 0.00065 / max(0.08, U.uCloudCfg0.w);
+  let anvil = clamp(U.uCloudCfg1.z, 0.0, 1.0);
+  let g = clamp(U.uCloudCfg1.w, -0.5, 0.9);
+  let cType = i32(round(U.uCloudCfg2.x));
+  let shadOn = U.uCloudCfg2.y > 0.5;
+  let timeSec = U.uAtmoCfg0.w;
+  let wind = U.uCloudCfg2.zw * timeSec;
+
   let sunDir = U.uSunDir.xyz;
   let sunIrr = U.uSunIrradiance.xyz;
-  let sunAng = U.uCamForward.w;
-  let horizon = skyRad * vec3f(1.18, 1.12, 1.06) + vec3f(0.03, 0.035, 0.045);
-  let zenith  = skyRad * vec3f(0.65, 0.85, 1.28);
-  let ground  = vec3f(0.045, 0.043, 0.042);
-  let sky = select(
-    mix(ground, horizon, clamp(1.0 + dir.z * 3.0, 0.0, 1.0)),
-    mix(horizon, zenith, pow(zUp, 1.35)),
-    dir.z >= 0.0
-  );
-  let cosSun = dot(dir, sunDir);
-  let sunDisc = smoothstep(cos(sunAng * 1.45), cos(sunAng * 0.55), cosSun);
-  let sunGlow = pow(max(0.0, cosSun), 128.0) * 0.35;
-  return sky + sunIrr * (sunDisc * 3.0 + sunGlow);
-}
+  let cosT = dot(dir, sunDir);
+  let g2 = g * g;
+  let hgFwd = (1.0 - g2) / (4.0 * PI * pow(max(1e-3, 1.0 + g2 - 2.0 * g * cosT), 1.5));
+  let hgBack = (1.0 - 0.0625) / (4.0 * PI * pow(max(1e-3, 1.0 + 0.0625 + 0.5 * cosT), 1.5));
+  let phase = 0.78 * hgFwd + 0.22 * hgBack;
 
-fn evalLocalPrimSdf(lp : vec3f, shape : i32, h : vec3f) -> f32 {
-  if (shape == 4) {
-    let majorR = max(h.x, h.y) * 0.68;
-    let minorR = max(0.04, h.z * 0.55);
-    return sdTorusZ(lp, majorR, minorR);
-  }
-  if (shape == 3) {
-    let rad = max(h.x, h.y);
-    let zBase = -0.78 * h.z;
-    let dPlinth = sdBox(lp - vec3f(0.0, 0.0, 0.5 * (-h.z + zBase)), vec3f(rad, rad, 0.5 * (zBase + h.z)));
-    let tAlpha = clamp((lp.z - zBase) / max(1e-4, h.z - zBase), 0.0, 1.0);
-    let rAtZ = mix(0.72 * rad, 0.13 * rad, tAlpha);
-    let dc = vec2f(length(lp.xy) - rAtZ, abs(lp.z - 0.5 * (zBase + h.z)) - 0.5 * (h.z - zBase));
-    let dCone = min(max(dc.x, dc.y), 0.0) + length(max(dc, vec2f(0.0)));
-    return min(dPlinth, dCone);
-  }
-  if (shape == 5) {
-    let rad = max(h.x, h.y);
-    let zBase = -0.84 * h.z;
-    let db = vec2f(length(lp.xy) - 0.97 * rad, abs(lp.z - 0.5 * (-h.z + zBase)) - 0.5 * (zBase + h.z));
-    let dBot = min(max(db.x, db.y), 0.0) + length(max(db, vec2f(0.0)));
-    let tAlpha = clamp((lp.z - zBase) / max(1e-4, h.z - zBase), 0.0, 1.0);
-    let rAtZ = mix(0.50 * rad, 0.37 * rad, tAlpha);
-    let dt = vec2f(length(lp.xy) - rAtZ, abs(lp.z - 0.5 * (zBase + h.z)) - 0.5 * (h.z - zBase));
-    let dTop = min(max(dt.x, dt.y), 0.0) + length(max(dt, vec2f(0.0)));
-    return min(dBot, dTop);
-  }
-  if (shape >= 2) {
-    let dc = abs(vec2f(length(lp.xy), lp.z)) - vec2f(max(h.x, h.y), h.z);
-    return min(max(dc.x, dc.y), 0.0) + length(max(dc, vec2f(0.0)));
-  }
-  return sdBox(lp, h);
-}
-
-fn closestRayPrimitiveSoftVis(origin : vec3f, dir : vec3f, idx : i32, ps : vec4f, h : vec3f, tanSun : f32) -> f32 {
-  let shape = i32(ps.w + 0.5);
-  let rot = loadPrimRot(idx);
-  let lo = invRotateCols(origin - ps.xyz, rot);
-  let ld = invRotateCols(dir, rot);
-
-  let boundR = length(h) * 1.35;
-  let tCenter = -dot(lo, ld);
-  if (tCenter < -boundR) { return 1.0; }
-  let maxPenumbra = 0.004 + max(0.04, tCenter) * tanSun;
-  let perp = lo + ld * max(0.0, tCenter);
-  if (length(perp) > boundR + maxPenumbra) { return 1.0; }
-
-  if (shape == 1) {
-    let o = lo / h;
-    let d = ld / h;
-    let dLen = max(length(d), 1e-5);
-    let dn = d / dLen;
-    let tUnit = -dot(o, dn);
-    if (tUnit <= 0.0) { return 1.0; }
-    let rMean = (h.x + h.y + h.z) * 0.3333333;
-    let worldT = tUnit / dLen;
-    let signedClearance = (length(o + dn * tUnit) - 1.0) * rMean;
-    let coneR = 0.0025 + worldT * tanSun;
-    return smoothstep(-coneR * 0.45, coneR, signedClearance);
-  }
-
-  let hPen = h + vec3f(maxPenumbra);
-  let safeSign = step(vec3f(0.0), ld) * 2.0 - 1.0;
-  let invD = 1.0 / (safeSign * max(abs(ld), vec3f(1e-6)));
-  let t0 = (-hPen - lo) * invD;
-  let t1 = ( hPen - lo) * invD;
-  let tNearPen = max(0.003, max(max(min(t0.x, t1.x), min(t0.y, t1.y)), min(t0.z, t1.z)));
-  let tFarPen  = min(24.0,  min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z)));
-  if (tNearPen > tFarPen) { return 1.0; }
-
-  var bestVis = 1.0;
-  // Analytical exact closest-chord / axis seed so razor-thin barn doors & 12mm tripod legs NEVER miss or bead!
-  if (shape == 0) {
-    let tb0 = (-h - lo) * invD;
-    let tb1 = ( h - lo) * invD;
-    let tbNear = max(max(min(tb0.x, tb1.x), min(tb0.y, tb1.y)), min(tb0.z, tb1.z));
-    let tbFar  = min(min(max(tb0.x, tb1.x), max(tb0.y, tb1.y)), max(tb0.z, tb1.z));
-    if (tbNear <= tbFar && tbFar > 0.003) {
-      let tSeed = clamp(0.5 * (max(0.003, tbNear) + tbFar), tNearPen, tFarPen);
-      let dSeed = sdBox(lo + ld * tSeed, h);
-      let cSeed = 0.002 + tSeed * tanSun;
-      bestVis = min(bestVis, smoothstep(-cSeed, cSeed, dSeed));
+  var trans = 1.0;
+  var accum = vec3f(0.0);
+  let sStep = (thickM * 0.55) / 3.0;
+  for (var i : i32 = 0; i < 24; i = i + 1) {
+    if (i >= steps) { break; }
+    let t = tEnter + (f32(i) + 0.15 + 0.7 * jitter) * dt;
+    let p = vec3f(dir.x * t, dir.y * t, origZ + dir.z * t);
+    let d = sampleCloudDensity(p, baseM, thickM, cov, densMul, fScale, anvil, cType, wind);
+    if (d > 1e-6) {
+      var sunTau = 0.0;
+      if (shadOn) {
+        for (var s : i32 = 1; s <= 3; s = s + 1) {
+          let sp = p + sunDir * (f32(s) * sStep);
+          sunTau = sunTau + sampleCloudDensity(sp, baseM, thickM, cov, densMul, fScale, anvil, cType, wind) * sStep;
+        }
+      }
+      let sunAtt = exp(-sunTau * 1.15) * (0.35 + 0.65 * (1.0 - exp(-sunTau * 2.2 + 0.25)));
+      let segT = exp(-d * dt);
+      let alt = length(p) - earthR;
+      let h = clamp((alt - baseM) / thickM, 0.0, 1.0);
+      let amb = 0.28 + 0.52 * h;
+      let lit = sunIrr * sunAtt * phase * 2.4 + skyCol * amb * 0.55;
+      accum = accum + trans * lit * (1.0 - segT);
+      trans = trans * segT;
+      if (trans < 0.015) { break; }
     }
-  } else if (shape == 4) {
-    let majorR = max(h.x, h.y) * 0.68;
-    let minorR = max(0.04, h.z * 0.55);
-    let aRing = dot(ld.xy, ld.xy);
-    if (aRing > 1e-6) {
-      let bRing = dot(lo.xy, ld.xy);
-      let cRing = dot(lo.xy, lo.xy) - majorR * majorR;
-      let discR = bRing * bRing - aRing * cRing;
-      if (discR >= 0.0) {
-        let sqR = sqrt(discR);
-        let tr0 = clamp((-bRing - sqR) / aRing, tNearPen, tFarPen);
-        let tr1 = clamp((-bRing + sqR) / aRing, tNearPen, tFarPen);
-        let c0R = 0.002 + tr0 * tanSun;
-        let c1R = 0.002 + tr1 * tanSun;
-        bestVis = min(bestVis, smoothstep(-c0R, c0R, sdTorusZ(lo + ld * tr0, majorR, minorR)));
-        bestVis = min(bestVis, smoothstep(-c1R, c1R, sdTorusZ(lo + ld * tr1, majorR, minorR)));
-      } else {
-        let tCl = clamp(-bRing / aRing, tNearPen, tFarPen);
-        let cCl = 0.002 + tCl * tanSun;
-        bestVis = min(bestVis, smoothstep(-cCl, cCl, sdTorusZ(lo + ld * tCl, majorR, minorR)));
+  }
+  let haze = 1.0 - exp(-tEnter * 0.00004);
+  accum = mix(accum, skyCol * (1.0 - trans), haze);
+  return vec4f(accum, trans);
+}
+
+fn evalMoonAndStars(dir : vec3f) -> vec3f {
+  var out = vec3f(0.0);
+  // Lunar disc with 3D spherical phase terminator + mare detail
+  if (U.uMoonCfg1.w > 0.5 && dir.z > -0.05) {
+    let mDir = U.uMoonCfg0.xyz;
+    let angR = max(0.002, U.uMoonCfg0.w);
+    let cosM = dot(dir, mDir);
+    let mTint = U.uMoonTint.xyz;
+    let mBright = U.uMoonCfg1.y;
+    let mGlow = U.uMoonCfg1.z;
+    out = out + mTint * pow(max(0.0, cosM), 420.0) * mGlow * 0.28 * mBright;
+    let cosEdge = cos(angR);
+    if (cosM > cosEdge) {
+      let upRef = select(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 0.0, 1.0), abs(mDir.z) < 0.98);
+      let mRight = normalize(cross(upRef, mDir));
+      let mUp = cross(mDir, mRight);
+      let px = dot(dir, mRight) / angR;
+      let py = dot(dir, mUp) / angR;
+      let r2 = px * px + py * py;
+      if (r2 < 1.0) {
+        let pz = sqrt(max(0.0, 1.0 - r2));
+        let phAng = (U.uMoonCfg1.x - 0.5) * 6.2831853;
+        let lDir = normalize(vec3f(sin(phAng), 0.18, cos(phAng)));
+        let ndl = max(0.0, dot(vec3f(px, py, pz), lDir));
+        var albedo = vec3f(0.68 + 0.32 * noise3D(vec3f(px * 3.8 + 4.1, py * 3.8 - 2.3, pz * 3.8)));
+        if (U.uAtmoCfg1.w > 0.5) {
+          let uMoon = atan2(px, pz) * (0.5 / PI) + 0.5;
+          let vMoon = 0.5 - asin(clamp(py, -1.0, 1.0)) / PI;
+          let tileV = (clamp(U.uMoonTint.w, 0.0, 5.0) + clamp(vMoon, 0.015, 0.985)) / 6.0;
+          let texSample = textureSampleLevel(uMoonAtlasTex, uAtlasSampler, vec2f(uMoon, tileV), 0.0).rgb;
+          albedo = pow(max(vec3f(0.0), texSample), vec3f(2.2)) * 1.45;
+        }
+        let edgeAA = clamp((1.0 - sqrt(r2)) * 14.0, 0.0, 1.0);
+        let lum = (0.014 + ndl * 1.55) * mBright * edgeAA;
+        out = out + mTint * albedo * lum;
       }
     }
-    if (abs(ld.z) > 1e-5) {
-      let tz0 = clamp(-lo.z / ld.z, tNearPen, tFarPen);
-      let cz0 = 0.002 + tz0 * tanSun;
-      bestVis = min(bestVis, smoothstep(-cz0, cz0, sdTorusZ(lo + ld * tz0, majorR, minorR)));
-    }
-  } else {
-    let xyLen2 = dot(ld.xy, ld.xy);
-    if (xyLen2 > 1e-6) {
-      let tAxis = clamp(-dot(lo.xy, ld.xy) / xyLen2, tNearPen, tFarPen);
-      let dAxis = evalLocalPrimSdf(lo + ld * tAxis, shape, h);
-      let cAxis = 0.002 + tAxis * tanSun;
-      bestVis = min(bestVis, smoothstep(-cAxis, cAxis, dAxis));
+  }
+  // Procedural deterministic starfield
+  if (U.uStarCfg0.x > 0.5 && dir.z > 0.005) {
+    let dayFade = clamp(1.0 - (U.uSunDir.z + 0.08) * 5.0, 0.0, 1.0);
+    if (dayFade > 0.01) {
+      let rot = U.uStarCfg1.w;
+      let cr = cos(rot);
+      let sr = sin(rot);
+      let rDir = vec3f(dir.x * cr - dir.y * sr, dir.x * sr + dir.y * cr, dir.z);
+      let grid = rDir * 175.0;
+      let cell = floor(grid);
+      let h = hash33(cell);
+      let magThresh = clamp(U.uStarCfg0.z / 8.5, 0.05, 0.98);
+      if (h.x > 1.0 - 0.18 * magThresh) {
+        let starCenter = cell + 0.2 + 0.6 * vec3f(h.y, h.z, fract(h.x * 7.13));
+        let d2 = dot(grid - starCenter, grid - starCenter);
+        let rad = 0.08 * clamp(U.uStarCfg0.w, 0.4, 3.0);
+        if (d2 < rad * rad) {
+          let falloff = exp(-d2 / (rad * rad * 0.35));
+          let twRate = U.uStarCfg1.z;
+          let twDepth = U.uStarCfg1.y * 0.008;
+          let twMod = 1.0 - twDepth * (0.5 + 0.5 * sin(U.uAtmoCfg0.w * twRate * 5.0 + h.y * 40.0));
+          let tw = select(1.0, twMod, U.uStarCfg1.x > 0.5);
+          let intensity = (0.45 + 1.55 * h.z * h.z) * U.uStarCfg0.y * dayFade * tw * falloff * clamp(dir.z * 4.0, 0.0, 1.0);
+          let starCol = vec3f(0.78 + 0.42 * h.y, 0.88 + 0.12 * h.y, 1.20 - 0.35 * h.y);
+          out = out + starCol * intensity;
+        }
+      }
     }
   }
-
-  // 16-step uniform+adaptive SDF soft-shadow sweep across [tNearPen, tFarPen]
-  let span = max(0.004, tFarPen - tNearPen);
-  let stepU = span / 16.0;
-  for (var s : i32 = 0; s <= 16; s = s + 1) {
-    let t = tNearPen + stepU * f32(s);
-    let lp = lo + ld * t;
-    let d = evalLocalPrimSdf(lp, shape, h);
-    let coneR = 0.002 + t * tanSun;
-    bestVis = min(bestVis, smoothstep(-coneR, coneR, d));
-    if (bestVis <= 0.002) { return 0.0; }
-  }
-  return bestVis;
+  return out;
 }
 
-fn evaluateSoftConeVis(origin : vec3f, dir : vec3f, maxDist : f32, tanAngle : f32, minVis : f32, selfPrimIdx : i32, skipPickCode : i32) -> f32 {
-  var vis = 1.0;
+fn evalStarlightAmbient(N : vec3f) -> vec3f {
+  if (U.uStarCfg0.x < 0.5) { return vec3f(0.0); }
+  let magGain = clamp(U.uStarCfg0.z / 5.5, 0.35, 1.85);
+  let starFade = clamp(1.0 - (U.uSunDir.z + 0.04) * 5.0, 0.12, 1.0);
+  let hemi = 0.35 + 0.65 * clamp(N.z * 0.5 + 0.5, 0.0, 1.0);
+  return vec3f(0.00048, 0.00062, 0.00105) * max(0.0, U.uStarCfg0.y) * magGain * starFade * hemi;
+}
+
+fn evalMoonIrradiance() -> vec3f {
+  if (U.uMoonCfg1.w < 0.5 || U.uMoonCfg0.z <= 0.01) { return vec3f(0.0); }
+  let mPhaseGain = 0.25 + 0.75 * sin(clamp(U.uMoonCfg1.x, 0.0, 1.0) * PI);
+  let mFade = clamp(1.0 - (U.uSunDir.z + 0.05) * 4.5, 0.08, 1.0);
+  return U.uMoonTint.xyz * max(0.0, U.uMoonCfg1.y) * 0.085 * mPhaseGain * mFade;
+}
+
+fn evalSky(dir : vec3f) -> vec3f {
+  let skyCol = textureSampleLevel(uSkyViewTex, uSkySampler, projectSkyViewUV(dir), 0.0).rgb;
+  let cel = evalMoonAndStars(dir);
+  let cl = evalVolumetricClouds(dir, skyCol, 0.5, 5);
+  return (skyCol + cel) * cl.w + cl.rgb;
+}
+
+fn evalSkyPrimary(dir : vec3f, fragPx : vec2f) -> vec3f {
+  let skyCol = textureSampleLevel(uSkyViewTex, uSkySampler, projectSkyViewUV(dir), 0.0).rgb;
+  let cel = evalMoonAndStars(dir);
+  let sunDir = U.uSunDir.xyz;
+  let sunIrr = U.uSunIrradiance.xyz;
+  let sunAng = max(0.002, U.uCamForward.w);
+  let cosSun = dot(dir, sunDir);
+  let sunEdge = smoothstep(cos(sunAng * 1.25), cos(sunAng * 0.65), cosSun);
+  let muDisc = clamp((cosSun - cos(sunAng)) / max(1e-5, 1.0 - cos(sunAng)), 0.0, 1.0);
+  let limb = 0.65 + 0.35 * pow(muDisc, 0.45);
+  let sunAureole = pow(max(0.0, cosSun), 160.0) * 0.25;
+  let sunVisual = sunIrr * (sunEdge * limb * 4.2 + sunAureole) * select(0.0, 1.0, dir.z > -0.02);
+
+  let jitter = hash12(fragPx * 0.73 + vec2f(U.uAtmoCfg0.w * 11.3));
+  let cl = evalVolumetricClouds(dir, skyCol, jitter, 18);
+  return (skyCol + cel + sunVisual) * cl.w + cl.rgb;
+}
+
+fn hash12(p : vec2f) -> f32 {
+  var p3 = fract(vec3f(p.x, p.y, p.x) * 0.1031);
+  p3 = p3 + vec3f(dot(p3, p3.yzx + 33.33));
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+fn vogelDiskSample(idx : i32, numSamples : i32, phi : f32) -> vec2f {
+  let r = sqrt((f32(idx) + 0.5) / max(1.0, f32(numSamples)));
+  let theta = f32(idx) * 2.3999632 + phi;
+  return vec2f(cos(theta), sin(theta)) * r;
+}
+
+fn traceShadowRayAny(ro : vec3f, rd : vec3f, maxDist : f32, ignoreIdx : i32, skipPickCode : i32) -> bool {
   let primCount = U.uCountsAndModes.x;
   for (var i : i32 = 0; i < primCount; i = i + 1) {
     let hf = sdFetch(1, i);
     let flags = i32(hf.w + 0.5);
     let pCode = i32(sdFetch(3, i).w + 0.5);
-    if (i != selfPrimIdx && (skipPickCode < 0 || pCode != skipPickCode) && PrimFlagShadow(flags) && !PrimFlagGlass(flags)) {
+    if (i != ignoreIdx && (skipPickCode < 0 || pCode != skipPickCode) && PrimFlagShadow(flags) && !PrimFlagGlass(flags)) {
       let ps = sdFetch(0, i);
-      let tProj = dot(ps.xyz - origin, dir);
-      if (tProj > -0.5 && tProj < maxDist) {
-        vis = min(vis, mix(minVis, 1.0, closestRayPrimitiveSoftVis(origin, dir, i, ps, hf.xyz, tanAngle)));
+      let oc = ps.xyz - ro;
+      let proj = dot(oc, rd);
+      let perp2 = dot(oc, oc) - proj * proj;
+      if (perp2 <= dot(hf.xyz, hf.xyz) * 1.65) {
+        let shape = i32(ps.w + 0.5);
+        let rot = loadPrimRot(i);
+        let lo = invRotateCols(-oc, rot);
+        let ld = invRotateCols(rd, rot);
+        var tCand = maxDist;
+        if (shape == 4) { tCand = intersectTorusT(lo, ld, hf.xyz, maxDist); }
+        else { tCand = intersectPrimT(lo, ld, hf.xyz, shape, maxDist, 0.0); }
+        if (tCand < maxDist) { return true; }
       }
     }
-    if (vis <= minVis + 0.002) { break; }
+  }
+  let vHit = traceVehicleBvh(ro, rd, maxDist, true);
+  return vHit.hit;
+}
+
+fn fetchShadowDepth(useArea : bool, uv : vec2f, res : f32) -> f32 {
+  let maxI = i32(res) - 1;
+  let tc = clamp(vec2i(uv * res), vec2i(0), vec2i(maxI));
+  if (useArea) { return textureLoad(uAreaShadowMap, tc, 0); }
+  return textureLoad(uSunShadowMap, tc, 0);
+}
+
+fn decodeShadowLinearDepth(useArea : bool, d01 : f32) -> f32 {
+  if (d01 >= 0.99995) { return 1e5; }
+  if (!useArea) {
+    return U.uShadowDepthRng.x + d01 * (U.uShadowDepthRng.y - U.uShadowDepthRng.x);
+  }
+  let n = U.uShadowDepthRng.z;
+  let f = U.uShadowDepthRng.w;
+  let zNdc = d01 * 2.0 - 1.0;
+  return (2.0 * n * f) / max(1e-4, f + n - zNdc * (f - n));
+}
+
+fn projectWorldToShadowMap(useArea : bool, worldPos : vec3f) -> vec3f {
+  var vp : mat4x4f;
+  if (useArea) { vp = U.uAreaShadowVP; } else { vp = U.uSunShadowVP; }
+  let clip = vp * vec4f(worldPos, 1.0);
+  if (clip.w <= 1e-4) { return vec3f(-1.0, -1.0, -1.0); }
+  let ndc = clip.xyz / clip.w;
+  // WebGPU texture Y=0 at top while clip.y=+1 is top
+  let uv = vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+  if (uv.x < 0.002 || uv.x > 0.998 || uv.y < 0.002 || uv.y > 0.998 || ndc.z < -1.0 || ndc.z > 1.0) {
+    return vec3f(-1.0, -1.0, -1.0);
+  }
+  let recD = select(
+    dot(worldPos - U.uSunShadowCfg.xyz, -U.uSunDir.xyz),
+    dot(worldPos - U.uAreaShadowCfg.xyz, U.uAreaShadowFwd.xyz),
+    useArea
+  );
+  return vec3f(uv, recD);
+}
+
+fn shadowWorldSpan(useArea : bool, dEst : f32) -> f32 {
+  if (!useArea) { return 2.0 * U.uSunShadowCfg.w; }
+  return 2.0 * max(dEst, 0.25) * U.uAreaShadowCfg.w;
+}
+
+struct ShadowEvalOut {
+  vis : f32,
+  blk : f32,
+};
+
+// SHADOW_PCF_FRAG (ShadowAlgorithmLab)
+fn evalWgslShadowMapPCF(pos : vec3f, N : vec3f, toLight : vec3f, useArea : bool, res : f32, lRad : f32) -> ShadowEvalOut {
+  var out : ShadowEvalOut;
+  out.vis = 1.0;
+  out.blk = 0.0;
+  let ndl = dot(N, toLight);
+  if (ndl <= 0.002) { out.vis = 0.0; return out; }
+
+  let projEst = projectWorldToShadowMap(useArea, pos);
+  if (projEst.z < 0.0) { return out; }
+  let worldSpan = shadowWorldSpan(useArea, projEst.z);
+  let texelWorld = worldSpan / max(256.0, res);
+  let slope = clamp(sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.04), 0.0, 4.0);
+  let biasM = texelWorld * (0.55 + 0.55 * slope);
+  let biasedPos = pos + N * (texelWorld * 1.65);
+
+  let proj = projectWorldToShadowMap(useArea, biasedPos);
+  if (proj.z < 0.0) { return out; }
+  let uv = proj.xy;
+  let recD = proj.z;
+
+  let texCoord = uv * res - 0.5;
+  let baseCoord = floor(texCoord);
+  let f = texCoord - baseCoord;
+  let stride = 1.0 + clamp(lRad * 14.0, 0.0, 1.25);
+
+  var sumVis = 0.0;
+  var sumW = 0.0;
+  var blkSum = 0.0;
+  var blkCnt = 0.0;
+  for (var dy : i32 = -1; dy <= 1; dy = dy + 1) {
+    for (var dx : i32 = -1; dx <= 1; dx = dx + 1) {
+      let wx = select(select(0.5 + f.x * 0.5, 1.0 - f.x * 0.5, dx < 0), 1.0, dx == 0);
+      let wy = select(select(0.5 + f.y * 0.5, 1.0 - f.y * 0.5, dy < 0), 1.0, dy == 0);
+      let w = wx * wy;
+      let qUv = clamp((baseCoord + vec2f(f32(dx), f32(dy)) * stride + 0.5) / res, vec2f(0.0), vec2f(0.9999));
+      let stored = decodeShadowLinearDepth(useArea, fetchShadowDepth(useArea, qUv, res));
+      if (stored < recD - biasM) { blkSum = blkSum + (recD - stored); blkCnt = blkCnt + 1.0; }
+      else { sumVis = sumVis + w; }
+      sumW = sumW + w;
+    }
+  }
+  out.blk = select(0.0, blkSum / max(blkCnt, 1.0), blkCnt > 0.0);
+  out.vis = sumVis / max(sumW, 1e-4);
+  return out;
+}
+
+// SHADOW_PCSS_FRAG (ShadowAlgorithmLab)
+fn evalWgslShadowMapPCSS(pos : vec3f, N : vec3f, toLight : vec3f, useArea : bool, res : f32, taps : i32, lRad : f32) -> ShadowEvalOut {
+  var out : ShadowEvalOut;
+  out.vis = 1.0;
+  out.blk = 0.0;
+  let ndl = dot(N, toLight);
+  if (ndl <= 0.002) { out.vis = 0.0; return out; }
+
+  let projEst = projectWorldToShadowMap(useArea, pos);
+  if (projEst.z < 0.0) { return out; }
+  let worldSpan = shadowWorldSpan(useArea, projEst.z);
+  let texelWorld = worldSpan / max(256.0, res);
+  let texelUv = 1.0 / max(256.0, res);
+  let slope = clamp(sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.04), 0.0, 4.0);
+  let biasM = texelWorld * (0.48 + 0.45 * slope);
+  let biasedPos = pos + N * (texelWorld * 1.40);
+
+  let proj = projectWorldToShadowMap(useArea, biasedPos);
+  if (proj.z < 0.0) { return out; }
+  let uv = proj.xy;
+  let recD = proj.z;
+
+  let phi0 = hash12(pos.xy * 97.1 + pos.z * 53.3) * 6.2831853;
+  let searchWorld = select(clamp(lRad * 9.0, texelWorld * 2.5, 1.85), clamp(lRad * 0.75, texelWorld * 2.5, 1.65), useArea);
+  let searchUv = clamp(searchWorld / worldSpan, texelUv * 2.0, 0.085);
+
+  let searchCount = clamp(taps / 2, 6, 24);
+  let invSearch = 1.0 / f32(searchCount);
+  var blkDepthSum = 0.0;
+  var blkCount : i32 = 0;
+
+  for (var i : i32 = 0; i < 24; i = i + 1) {
+    if (i >= searchCount) { break; }
+    let r = sqrt((f32(i) + 0.5) * invSearch) * searchUv;
+    let a = phi0 + f32(i) * 2.39996323;
+    let qUv = clamp(uv + vec2f(cos(a), sin(a)) * r, vec2f(0.0005), vec2f(0.9995));
+    let stored = decodeShadowLinearDepth(useArea, fetchShadowDepth(useArea, qUv, res));
+    if (stored < recD - biasM) { blkDepthSum = blkDepthSum + stored; blkCount = blkCount + 1; }
+  }
+  if (blkCount == 0) { return out; }
+
+  let avgBlkD = blkDepthSum / f32(blkCount);
+  let blkDist = max(0.0, recD - avgBlkD);
+  out.blk = blkDist;
+  let penumbraWorld = select(blkDist * lRad, lRad * blkDist / max(avgBlkD, 0.12), useArea);
+  let penumbraUv = clamp(penumbraWorld / worldSpan, texelUv * 0.65, 0.11);
+
+  let pcfCount = clamp(taps, 8, 48);
+  let invPcf = 1.0 / f32(pcfCount);
+  var litSum = 0.0;
+  let phiPcf = fract(hash12(pos.xy * 41.7 + pos.z * 17.9) + 0.381966) * 6.2831853;
+  let planeMult = select(0.18, 0.24, U.uRenderCfg0.w != 0);
+  let filterBias = biasM + penumbraUv * worldSpan * slope * planeMult;
+
+  for (var i : i32 = 0; i < 48; i = i + 1) {
+    if (i >= pcfCount) { break; }
+    let r = sqrt((f32(i) + 0.5) * invPcf) * penumbraUv;
+    let a = phiPcf + f32(i) * 2.39996323;
+    let qUv = clamp(uv + vec2f(cos(a), sin(a)) * r, vec2f(0.0005), vec2f(0.9995));
+    let stored = decodeShadowLinearDepth(useArea, fetchShadowDepth(useArea, qUv, res));
+    if (stored >= recD - filterBias) { litSum = litSum + invPcf; }
+  }
+  out.vis = litSum;
+  return out;
+}
+
+// SHADOW_SMRT_FRAG (EEVEE-Next SunShadowTrace.glsl from ShadowAlgorithmLab)
+fn evalWgslShadowMapSMRT(pos : vec3f, N : vec3f, toLight : vec3f, useArea : bool, res : f32, smrtRays : i32, lRad : f32) -> f32 {
+  let ndl = dot(N, toLight);
+  if (ndl <= 0.002) { return 0.0; }
+
+  let projEst = projectWorldToShadowMap(useArea, pos);
+  if (projEst.z < 0.0) { return 1.0; }
+  let worldSpan = shadowWorldSpan(useArea, projEst.z);
+  let texelWorld = worldSpan / max(256.0, res);
+  let slope = clamp(sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.04), 0.0, 4.0);
+  let biasM = texelWorld * (0.45 + 0.42 * slope);
+
+  let softOrigin = pos + N * (texelWorld * 1.5);
+  let distToLight = select(28.0, max(length(U.uAreaShadowCfg.xyz - softOrigin), 0.25), useArea);
+  let tanHalf = select(lRad, lRad / distToLight, useArea);
+  let cosMax = cos(atan(clamp(tanHalf, 0.0, 0.45)));
+  let rayLen = select(clamp(3.0 + tanHalf * 42.0, 2.5, 11.0), min(9.5, distToLight * 0.85), useArea);
+
+  let basis = buildBasis(toLight);
+  let phi0 = hash12(pos.xy * 131.9 + pos.z * 19.3) * 6.2831853;
+  let rMax = clamp(smrtRays, 1, 12);
+  let invRays = 1.0 / f32(rMax);
+  var hitCount = 0.0;
+
+  for (var rIdx : i32 = 0; rIdx < 12; rIdx = rIdx + 1) {
+    if (rIdx >= rMax) { break; }
+    let uCos = (f32(rIdx) + fract(hash12(pos.yz * 57.1 + f32(rIdx) * 3.1) + f32(rIdx) * 0.618034) * 0.8 + 0.1) * invRays;
+    let cosTheta = mix(cosMax, 1.0, clamp(uCos, 0.002, 0.998));
+    let sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+    let phi = phi0 + f32(rIdx) * 2.39996323;
+    let rayDir = normalize(basis.T * (sinTheta * cos(phi)) + basis.B * (sinTheta * sin(phi)) + toLight * cosTheta);
+    let rayEnd = softOrigin + rayDir * rayLen;
+
+    var rayTime = 1.0;
+    var prevRayTime = 1.0;
+    var occHistory = -1000.0;
+    var occSlope = -1000.0;
+    var hit = false;
+
+    for (var st : i32 = 0; st <= 14; st = st + 1) {
+      let lin = 1.0 - f32(st) / 14.0;
+      prevRayTime = rayTime;
+      rayTime = lin * lin;
+      let samplePos = mix(softOrigin, rayEnd, rayTime);
+      let sp = projectWorldToShadowMap(useArea, samplePos);
+      if (sp.z < 0.0) { continue; }
+      let stored = decodeShadowLinearDepth(useArea, fetchShadowDepth(useArea, sp.xy, res));
+      if (stored > 5e4) { occHistory = 2.0; continue; }
+
+      let delta = stored - (sp.z - biasM);
+      if (delta < 0.0) {
+        let historyValid = (occHistory > -500.0);
+        let finalStep = (st == 14);
+        let dt = max(abs(rayTime - prevRayTime), 1e-4);
+        let maxThick = 0.45 + select(0.0, occSlope * dt * rayLen * 0.25, occSlope > 0.0);
+        if (finalStep || (historyValid && delta > -maxThick)) {
+          hit = true;
+          break;
+        }
+      } else {
+        if (occHistory > -500.0) {
+          let dt = max(abs(rayTime - prevRayTime), 1e-6);
+          let curSlope = (delta - occHistory) / dt;
+          occSlope = select(curSlope, max(occSlope, curSlope), occSlope > -500.0);
+        }
+        occHistory = delta;
+      }
+    }
+    if (hit) { hitCount = hitCount + 1.0; }
+  }
+  return clamp(1.0 - hitCount * invRays, 0.0, 1.0);
+}
+
+fn evalWgslBvhRayShadow(origin : vec3f, dir : vec3f, maxDist : f32, coneSin : f32, rayCnt : i32, selfIdx : i32, skipPick : i32) -> f32 {
+  let cnt = clamp(rayCnt, 1, 16);
+  if (cnt <= 1 || coneSin <= 1e-4) {
+    return select(1.0, 0.0, traceShadowRayAny(origin, dir, maxDist, selfIdx, skipPick));
+  }
+  let basis = buildBasis(dir);
+  let phi = hash12(origin.xy * 173.1 + origin.z * 59.7) * 6.2831853;
+  var vis : f32 = 0.0;
+  let invRays = 1.0 / f32(cnt);
+  for (var i : i32 = 0; i < 16; i = i + 1) {
+    if (i >= cnt) { break; }
+    let uDisk = (f32(i) + fract(hash12(origin.yz * 37.3) + f32(i) * 0.618034) * 0.8 + 0.1) * invRays;
+    let rFrac = sqrt(clamp(uDisk, 0.005, 0.995));
+    let ang = phi + f32(i) * 2.39996323;
+    let sDir = normalize(dir + (basis.T * cos(ang) + basis.B * sin(ang)) * (rFrac * coneSin));
+    if (!traceShadowRayAny(origin, sDir, maxDist, selfIdx, skipPick)) {
+      vis = vis + invRays;
+    }
   }
   return vis;
 }
 
-fn evaluateGtxSolarShadow(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> f32 {
-  let sunDir = U.uSunDir.xyz;
-  if (dot(N, sunDir) <= 0.0) { return 0.0; }
-  return evaluateSoftConeVis(pos + N * 0.005, sunDir, 28.0, tan(U.uCamForward.w * 1.15), 0.0, selfPrimIdx, -1);
+// Smooth short-range contact trace matching SHADOW_CONTACT_PCSS_FRAG (zero hard binary cutoffs!)
+fn evalWgslContactVis(pos : vec3f, N : vec3f, toLight : vec3f, maxDist : f32, selfIdx : i32, skipPick : i32) -> f32 {
+  let maxT = min(0.24, maxDist);
+  if (maxT <= 0.03) { return 1.0; }
+  let hit = traceShadowRayAny(pos + N * 0.006, toLight, maxT, selfIdx, skipPick);
+  if (!hit) { return 1.0; }
+  // Check near vs far contact attenuation
+  let nearHit = traceShadowRayAny(pos + N * 0.006, toLight, maxT * 0.55, selfIdx, skipPick);
+  return select(0.55, 0.08, nearHit);
 }
 
-fn evaluateAreaLightSoftVis(pos : vec3f, N : vec3f, lc : vec3f, hw : f32, hh : f32, selfPrimIdx : i32, lightPickCode : i32) -> f32 {
+fn evaluateGtxSolarShadow(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> f32 {
+  let sunDir = U.uSunDir.xyz;
+  if (dot(N, sunDir) <= 0.002) { return 0.0; }
+  let alg = U.uSelection.y;
+  let soft = U.uRenderCfg1.x;
+  let taps = U.uRenderCfg0.x;
+  let smrtR = U.uRenderCfg0.y;
+  let rRays = U.uRenderCfg0.z;
+  let res = U.uRenderCfg1.w;
+  let lRad = max(0.004, tan(U.uCamForward.w) * 1.15) * soft;
+  if (alg == 4) {
+    return evalWgslBvhRayShadow(pos + N * 0.005, sunDir, 48.0, lRad, rRays, selfPrimIdx, -1);
+  }
+  if (alg == 3) {
+    return evalWgslShadowMapPCF(pos, N, sunDir, false, res, lRad).vis;
+  }
+  if (alg == 2) {
+    return evalWgslShadowMapSMRT(pos, N, sunDir, false, res, smrtR, lRad);
+  }
+  let pcss = evalWgslShadowMapPCSS(pos, N, sunDir, false, res, taps, lRad);
+  if (alg == 0) {
+    let contactVis = evalWgslContactVis(pos, N, sunDir, 0.24, selfPrimIdx, -1);
+    let contactBlend = clamp((pcss.blk - 0.06) / 0.25, 0.0, 1.0);
+    return mix(min(contactVis, pcss.vis), pcss.vis, contactBlend);
+  }
+  return pcss.vis;
+}
+
+// EMISSIVE_BVH_SHADOW_FRAG + EMISSIVE_MAP_SHADOW_FRAG (ShadowAlgorithmLab)
+fn evaluateAreaLightSoftVis(pos : vec3f, N : vec3f, lc : vec3f, lRight : vec3f, lUp : vec3f, hw : f32, hh : f32, selfPrimIdx : i32, lightPickCode : i32, li : i32) -> f32 {
+  if (U.uRenderCfg2.x == 0) { return 1.0; }
   let toL = lc - pos;
   let distL = length(toL);
   if (distL < 0.05) { return 1.0; }
-  let tanArea = clamp(length(vec2f(hw, hh)) * 0.48 / max(distL, 0.35), 0.10, 0.38);
-  return evaluateSoftConeVis(pos + N * 0.007, toL / distL, distL - 0.05, tanArea, 0.18, selfPrimIdx, lightPickCode);
+  let lDir = toL / distL;
+  let alg = U.uSelection.y;
+  let soft = U.uRenderCfg1.x;
+  if (li == 0 && U.uRenderCfg3.y != 0 && alg != 4) {
+    let areaRes = f32(U.uRenderCfg3.z);
+    let panelRad = mix(hh, hw, 0.55) * soft;
+    if (alg == 3) {
+      return mix(0.03, 1.0, evalWgslShadowMapPCF(pos, N, lDir, true, areaRes, panelRad).vis);
+    }
+    if (alg == 2) {
+      return mix(0.03, 1.0, evalWgslShadowMapSMRT(pos, N, lDir, true, areaRes, U.uRenderCfg0.y, panelRad));
+    }
+    let pcss = evalWgslShadowMapPCSS(pos, N, lDir, true, areaRes, U.uRenderCfg0.x, panelRad);
+    if (alg == 0) {
+      let cVis = evalWgslContactVis(pos, N, lDir, min(0.24, distL - 0.05), selfPrimIdx, lightPickCode);
+      let cBlend = clamp((pcss.blk - 0.06) / 0.25, 0.0, 1.0);
+      return mix(0.03, 1.0, mix(min(cVis, pcss.vis), pcss.vis, cBlend));
+    }
+    return mix(0.03, 1.0, pcss.vis);
+  }
+  // True 2D rectangular Monte Carlo BVH visibility (EMISSIVE_BVH_SHADOW_FRAG)
+  let rayCount = clamp(U.uRenderCfg0.z, 2, 12);
+  let invRays = 1.0 / f32(rayCount);
+  let r2x = hash12(pos.xy * 71.3 + pos.z * 19.7);
+  let r2y = hash12(pos.yz * 43.1 + pos.x * 29.3);
+  let origin = pos + N * 0.008;
+  var visAcc = 0.0;
+  for (var s : i32 = 0; s < 12; s = s + 1) {
+    if (s >= rayCount) { break; }
+    let sx = (fract(r2x + f32(s) * 0.75487766) * 2.0 - 1.0) * 0.94;
+    let sy = (fract(r2y + f32(s) * 0.56984029) * 2.0 - 1.0) * 0.94;
+    let targetPt = lc + lRight * (sx * hw * soft) + lUp * (sy * hh * soft);
+    let delta = targetPt - origin;
+    let dist = length(delta);
+    let rDir = delta / max(dist, 1e-4);
+    if (dot(N, rDir) <= 0.002) { continue; }
+    if (!traceShadowRayAny(origin, rDir, max(0.04, dist - 0.14), selfPrimIdx, lightPickCode)) {
+      visAcc = visAcc + invRays;
+    }
+  }
+  return mix(0.03, 1.0, visAcc);
+}
+
+// Clipped-Polygon Linearly Transformed Cosine (LTC) Emissive Area Panel Evaluator (ShadowAlgorithmLab)
+fn integrateSphericalEdgeZ(v1 : vec3f, v2 : vec3f) -> f32 {
+  let x = clamp(dot(v1, v2), -0.99999, 0.99999);
+  let absX = abs(x);
+  let a = 5.42031 + (3.12829 + 0.0902326 * absX) * absX;
+  let b = 3.45068 + (4.18814 + absX) * absX;
+  var thetaOverSin = a / b;
+  if (x < 0.0) {
+    let sinTheta = sqrt(max(1e-8, 1.0 - x * x));
+    thetaOverSin = PI / sinTheta - thetaOverSin;
+  }
+  return (v1.x * v2.y - v1.y * v2.x) * thetaOverSin;
+}
+
+fn integrateClippedQuadFormFactor(q0 : vec3f, q1 : vec3f, q2 : vec3f, q3 : vec3f) -> f32 {
+  var localQ = array<vec3f, 4>(q0, q1, q2, q3);
+  var clipped = array<vec3f, 8>();
+  var clipCount : i32 = 0;
+  for (var i : i32 = 0; i < 4; i = i + 1) {
+    let cur = localQ[i];
+    let next = localQ[(i + 1) & 3];
+    let curA = (cur.z >= 0.0);
+    let nxtA = (next.z >= 0.0);
+    if (curA) {
+      clipped[clipCount] = cur;
+      clipCount = clipCount + 1;
+    }
+    if (curA != nxtA) {
+      let alpha = cur.z / (cur.z - next.z);
+      var hit = cur + (next - cur) * alpha;
+      hit.z = 0.0;
+      clipped[clipCount] = hit;
+      clipCount = clipCount + 1;
+    }
+  }
+  if (clipCount < 3) { return 0.0; }
+  for (var i : i32 = 0; i < 8; i = i + 1) {
+    if (i >= clipCount) { break; }
+    clipped[i] = normalize(clipped[i]);
+  }
+  var contourSum = 0.0;
+  for (var i : i32 = 0; i < 8; i = i + 1) {
+    if (i >= clipCount) { break; }
+    let nxt = select(i + 1, 0, i + 1 >= clipCount);
+    contourSum = contourSum + integrateSphericalEdgeZ(clipped[i], clipped[nxt]);
+  }
+  return clamp(abs(contourSum) / (2.0 * PI), 0.0, 1.0);
+}
+
+fn evalEmissivePanelLtc(
+  pos : vec3f, N : vec3f, V : vec3f, mat : SampledMaterial, edgeTint : vec3f,
+  eCenter : vec3f, eRight : vec3f, eUp : vec3f, eNormal : vec3f, isOmni : bool,
+  eHw : f32, eHh : f32, emit : vec3f, vis : f32
+) -> vec3f {
+  if (vis <= 1e-4) { return vec3f(0.0); }
+  if (!isOmni && dot(pos - eCenter, eNormal) <= 0.02) { return vec3f(0.0); }
+
+  let noV = clamp(dot(N, V), 1e-4, 1.0);
+  var t1 = V - N * noV;
+  let t1Len = dot(t1, t1);
+  if (t1Len <= 1e-6) {
+    let fb = buildBasis(N);
+    t1 = fb.T;
+  } else {
+    t1 = t1 * inverseSqrt(t1Len);
+  }
+  let t2 = normalize(cross(N, t1));
+
+  let halfU = eRight * eHw;
+  let halfV = eUp * eHh;
+  let wc0 = eCenter - halfU - halfV - pos;
+  let wc1 = eCenter + halfU - halfV - pos;
+  let wc2 = eCenter + halfU + halfV - pos;
+  let wc3 = eCenter - halfU + halfV - pos;
+
+  let d0 = vec3f(dot(wc0, t1), dot(wc0, t2), dot(wc0, N));
+  let d1 = vec3f(dot(wc1, t1), dot(wc1, t2), dot(wc1, N));
+  let d2 = vec3f(dot(wc2, t1), dot(wc2, t2), dot(wc2, N));
+  let d3 = vec3f(dot(wc3, t1), dot(wc3, t2), dot(wc3, N));
+  let diffFF = integrateClippedQuadFormFactor(d0, d1, d2, d3);
+
+  let r = max(select(mat.roughness, mix(mat.roughness, mat.coatRoughness, mat.coat * 0.65), mat.coat > 0.0), 0.035);
+  let alpha = clamp(r * r, 0.004, 1.0);
+  let sinV = sqrt(max(0.0, 1.0 - noV * noV));
+  let invScaleX = 1.0 / max(0.04, alpha * (0.85 + 0.15 * noV));
+  let invScaleY = 1.0 / max(0.04, alpha);
+  let shearXZ = -sinV / max(0.08, noV + alpha);
+
+  let s0 = vec3f(((-d0.x * noV + d0.z * sinV) + shearXZ * (d0.x * sinV + d0.z * noV) * alpha) * invScaleX, d0.y * invScaleY, d0.x * sinV + d0.z * noV);
+  let s1 = vec3f(((-d1.x * noV + d1.z * sinV) + shearXZ * (d1.x * sinV + d1.z * noV) * alpha) * invScaleX, d1.y * invScaleY, d1.x * sinV + d1.z * noV);
+  let s2 = vec3f(((-d2.x * noV + d2.z * sinV) + shearXZ * (d2.x * sinV + d2.z * noV) * alpha) * invScaleX, d2.y * invScaleY, d2.x * sinV + d2.z * noV);
+  let s3 = vec3f(((-d3.x * noV + d3.z * sinV) + shearXZ * (d3.x * sinV + d3.z * noV) * alpha) * invScaleX, d3.y * invScaleY, d3.x * sinV + d3.z * noV);
+  let specFF = integrateClippedQuadFormFactor(s0, s1, s2, s3);
+
+  let diffAlb = mat.baseColor * (1.0 - mat.metallic) * (1.0 - mat.transmission);
+  let f0 = mix(vec3f(0.04), mat.baseColor, mat.metallic);
+  let f82 = mix(f0, edgeTint, mat.metallic);
+  let schlick = pow(max(1.0 - noV, 1e-4), 5.0);
+  let specAlb = f0 + (f82 - f0) * (schlick * clamp(1.0 - r * 0.65, 0.0, 1.0));
+  let omniGain = select(1.0, 1.35, isOmni);
+  return emit * omniGain * (diffAlb * diffFF + specAlb * specFF) * vis;
 }
 
 struct TangentPair {
@@ -904,7 +1853,9 @@ struct GiAoOut {
 
 fn evaluateGtxConeGiAndAo(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> GiAoOut {
   let skyWeight = clamp(N.z * 0.5 + 0.5, 0.0, 1.0);
-  let skyAmb = mix(vec3f(0.055, 0.053, 0.052), evalSky(vec3f(N.xy * 0.35, max(0.25, N.z))), skyWeight) * 0.78;
+  let dayFactor = clamp(U.uSunDir.z * 4.0 + 0.25, 0.0, 1.0);
+  let groundAmb = mix(vec3f(0.0012, 0.0015, 0.0024), vec3f(0.055, 0.053, 0.052), dayFactor);
+  let skyAmb = mix(groundAmb, evalSky(vec3f(N.xy * 0.35, max(0.25, N.z))), skyWeight) * mix(0.18, 0.78, dayFactor);
 
   var bounceAccum = vec3f(0.0);
   var aoOcc = 0.0;
@@ -912,14 +1863,15 @@ fn evaluateGtxConeGiAndAo(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> GiAoOut 
   let lightCount = U.uCountsAndModes.y;
   let sunDir = U.uSunDir.xyz;
   let sunIrr = U.uSunIrradiance.xyz;
-
-  let l0_0 = select(vec4f(0.0), sdFetch(0, ${LIGHT_ROW_BASE}), lightCount > 0);
-  let l1_0 = select(vec4f(0.0), sdFetch(1, ${LIGHT_ROW_BASE}), lightCount > 0);
+  let emitShad = U.uRenderCfg2.x != 0;
 
   for (var i : i32 = 0; i < primCount; i = i + 1) {
     let hf = sdFetch(1, i);
     let flags = i32(hf.w + 0.5);
-    if (i != selfPrimIdx && !PrimFlagGlass(flags)) {
+    let gb = sdFetch(6, i);
+    let bAlbedo = gb.rgb;
+    let bEmit   = gb.w;
+    if (i != selfPrimIdx && (!PrimFlagGlass(flags) || bEmit > 0.05)) {
       let ps = sdFetch(0, i);
       let center = ps.xyz;
       let shape  = i32(ps.w + 0.5);
@@ -928,6 +1880,7 @@ fn evaluateGtxConeGiAndAo(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> GiAoOut 
       var occContribution = 0.0;
       var giFormFactor    = 0.0;
       var emitterNormal   = -N;
+      var targetPoint     = center;
 
       if (shape == 1) {
         let toSphere = center - pos;
@@ -940,9 +1893,10 @@ fn evaluateGtxConeGiAndAo(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> GiAoOut 
         let horizon = smoothstep(-sinH, sinH * 0.85 + 0.25, cosN);
         let solidRatio = (rEff * rEff) / max(dist2, rEff * rEff * 1.05);
         let nearFade = exp(-max(0.0, dist - rEff) / 0.55);
-        occContribution = horizon * solidRatio * nearFade * 0.75;
-        giFormFactor    = horizon * solidRatio * 0.35;
+        occContribution = select(0.0, horizon * solidRatio * nearFade * 0.75, !PrimFlagGlass(flags));
+        giFormFactor    = horizon * solidRatio * 0.85;
         emitterNormal   = -dir;
+        targetPoint     = center - dir * rEff;
       } else {
         let rot = loadPrimRot(i);
         let lp = invRotateCols(pos - center, rot);
@@ -955,6 +1909,7 @@ fn evaluateGtxConeGiAndAo(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> GiAoOut 
           let diffLocal = closestLocal - lp;
           let dist2 = dot(diffLocal, diffLocal);
           let dist  = sqrt(max(1e-5, dist2));
+          targetPoint = center + fwdRotateCols(closestLocal, rot);
 
           let relNorm = lp / max(h, vec3f(0.02));
           let absR = abs(relNorm);
@@ -979,7 +1934,7 @@ fn evaluateGtxConeGiAndAo(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> GiAoOut 
 
           let contact = exp(-dist / 0.38) * horizonFade * receiverCos;
           let solidOmega = faceArea / (faceArea + PI * (dist2 + 0.28));
-          occContribution = contact * 0.38 + solidOmega * exp(-dist / 1.1) * horizonFade * 0.12;
+          occContribution = select(0.0, contact * 0.38 + solidOmega * exp(-dist / 1.1) * horizonFade * 0.12, !PrimFlagGlass(flags));
 
           let emitterCos = max(0.0, dot(boxFaceLocal, -invDistDiff));
           giFormFactor = solidOmega * horizonFade * (0.35 + 0.65 * receiverCos) * (0.35 + 0.65 * emitterCos);
@@ -988,33 +1943,71 @@ fn evaluateGtxConeGiAndAo(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> GiAoOut 
 
       aoOcc = aoOcc + occContribution;
 
-      if (giFormFactor > 1e-4 && PrimFlagGi(flags)) {
-        let gb = sdFetch(6, i);
-        let bAlbedo = gb.rgb;
-        let bEmit   = gb.w;
-        var patchRad = bAlbedo * bEmit;
+      if (giFormFactor > 1e-4 && (PrimFlagGi(flags) || bEmit > 0.05)) {
+        var patchRad = vec3f(0.0);
+        if (bEmit > 0.05) {
+          var emitVis = 1.0;
+          if (emitShad) {
+            let toT = targetPoint - pos;
+            let distT = length(toT);
+            if (distT > 0.04) {
+              let ePick = i32(sdFetch(3, i).w + 0.5);
+              let blk = traceShadowRayAny(pos + N * 0.014, toT / distT, max(0.02, distT - 0.04), selfPrimIdx, ePick);
+              emitVis = select(1.0, 0.05, blk);
+            }
+          }
+          patchRad = bAlbedo * bEmit * 2.4 * emitVis;
+        }
+        if (PrimFlagGi(flags) && !PrimFlagGlass(flags)) {
+          let sunNdotL = max(0.0, dot(emitterNormal, sunDir));
+          patchRad = patchRad + (bAlbedo / PI) * sunIrr * (sunNdotL * 0.62 + 0.10);
+          let moonIrr = evalMoonIrradiance();
+          if (dot(moonIrr, vec3f(1.0)) > 1e-5) {
+            let mNdotL = max(0.0, dot(emitterNormal, U.uMoonCfg0.xyz));
+            patchRad = patchRad + (bAlbedo / PI) * moonIrr * (mNdotL * 0.72 + 0.08);
+          }
+          patchRad = patchRad + (bAlbedo / PI) * evalStarlightAmbient(emitterNormal);
 
-        let sunNdotL = max(0.0, dot(emitterNormal, sunDir));
-        patchRad = patchRad + (bAlbedo / PI) * sunIrr * (sunNdotL * 0.62 + 0.10);
+          for (var li : i32 = 0; li < lightCount; li = li + 1) {
+            if (li >= 6) { break; }
+            let l0 = sdFetch(0, ${LIGHT_ROW_BASE} + li);
+            let l1 = sdFetch(1, ${LIGHT_ROW_BASE} + li);
+            let l2 = sdFetch(2, ${LIGHT_ROW_BASE} + li);
+            let lNorm = sdFetch(5, ${LIGHT_ROW_BASE} + li).xyz;
+            let toL = l0.xyz - center;
+            let d2 = max(0.5, dot(toL, toL));
+            let lDir = toL * inverseSqrt(d2);
+            let area = 4.0 * l0.w * l1.x;
+            let cEmit = select(max(0.08, -dot(lDir, lNorm)), 0.65, l2.z > 0.5);
+            patchRad = patchRad + (bAlbedo / PI) * l1.yzw
+                      * (max(0.15, dot(emitterNormal, lDir)) * cEmit * area / (PI * d2));
+          }
 
-        if (lightCount > 0) {
-          let lc = l0_0.xyz;
-          let toL = lc - center;
-          let d2 = max(0.6, dot(toL, toL));
-          let lDir = toL * inverseSqrt(d2);
-          let area = 4.0 * l0_0.w * l1_0.x;
-          patchRad = patchRad + (bAlbedo / PI) * l1_0.yzw
-                    * (max(0.15, dot(emitterNormal, lDir)) * max(0.1, -lDir.z) * area / (PI * d2));
+          // Emissive primitives illuminating diffuse walls/objects for true multi-bounce emissive GI
+          for (var ei : i32 = 0; ei < primCount; ei = ei + 1) {
+            if (ei == i) { continue; }
+            let eGb = sdFetch(6, ei);
+            if (eGb.w > 0.05) {
+              let ePs = sdFetch(0, ei);
+              let eHf = sdFetch(1, ei);
+              let toE = ePs.xyz - center;
+              let d2e = max(0.35, dot(toE, toE));
+              let eDir = toE * inverseSqrt(d2e);
+              let rE = max(0.08, (eHf.x + eHf.y + eHf.z) * 0.3333333);
+              let eOmega = min(1.5, (rE * rE) / max(0.12, d2e - rE * rE * 0.35));
+              patchRad = patchRad + (bAlbedo / PI) * eGb.rgb * eGb.w * eOmega * max(0.12, dot(emitterNormal, eDir)) * 1.35;
+            }
+          }
         }
 
-        bounceAccum = bounceAccum + patchRad * giFormFactor * 1.35;
+        bounceAccum = bounceAccum + patchRad * giFormFactor * 1.55;
       }
     }
   }
 
   var res : GiAoOut;
   res.ao = clamp(1.0 - aoOcc, 0.26, 1.0);
-  res.irr = skyAmb * mix(0.45, 1.0, res.ao) + bounceAccum;
+  res.irr = (skyAmb + evalStarlightAmbient(N)) * mix(0.45, 1.0, res.ao) + bounceAccum;
   return res;
 }
 
@@ -1054,17 +2047,30 @@ fn buildShadingFrame(hit : HitInfo, mat : SampledMaterial) -> ShadingFrame {
 }
 
 fn shadeSecondaryBounceHit(hit : HitInfo, V : vec3f) -> vec3f {
-  let idx = hit.primIdx;
-  let s0 = sampleAtlasSlot(idx, 0, hit.uv);
-  let s1 = sampleAtlasSlot(idx, 1, hit.uv);
-  let s7 = sampleAtlasSlot(idx, 7, hit.uv);
-
-  let baseColor = s0.rgb;
-  let metallic = s1.r;
-  let roughness = max(0.025, s1.g);
-  let ao = s1.a;
-  let emission = s7.r * 20.0;
-  if (s7.g > 0.5) { return baseColor * (1.0 + emission); }
+  var baseColor = vec3f(0.5);
+  var metallic : f32 = 0.0;
+  var roughness : f32 = 0.5;
+  var ao : f32 = 1.0;
+  var emission : f32 = 0.0;
+  if (hit.isVehicle) {
+    let vm = buildVehicleMaterial(hit);
+    baseColor = vm.baseColor;
+    metallic = vm.metallic;
+    roughness = vm.roughness;
+    ao = vm.ao;
+    emission = vm.emission;
+  } else {
+    let idx = hit.primIdx;
+    let s0 = sampleAtlasSlot(idx, 0, hit.uv);
+    let s1 = sampleAtlasSlot(idx, 1, hit.uv);
+    let s7 = sampleAtlasSlot(idx, 7, hit.uv);
+    baseColor = s0.rgb;
+    metallic = s1.r;
+    roughness = max(0.025, s1.g);
+    ao = s1.a;
+    emission = s7.r * 20.0;
+    if (s7.g > 0.5) { return baseColor * (1.0 + emission); }
+  }
 
   let N = hit.normal;
   var Lo = baseColor * emission;
@@ -1080,11 +2086,12 @@ fn shadeSecondaryBounceHit(hit : HitInfo, V : vec3f) -> vec3f {
     Lo = Lo + ((1.0 - metallic) * (baseColor / PI) * nSun + F * spec * 0.45) * sunIrr * (0.45 + 0.55 * roomOpen);
   }
 
-  if (U.uCountsAndModes.y > 0) {
-    let l0 = sdFetch(0, ${LIGHT_ROW_BASE});
-    let l1 = sdFetch(1, ${LIGHT_ROW_BASE});
-    let l2 = sdFetch(2, ${LIGHT_ROW_BASE});
-    let lNormal = sdFetch(5, ${LIGHT_ROW_BASE}).xyz;
+  let lightCount = U.uCountsAndModes.y;
+  for (var li : i32 = 0; li < lightCount; li = li + 1) {
+    let l0 = sdFetch(0, ${LIGHT_ROW_BASE} + li);
+    let l1 = sdFetch(1, ${LIGHT_ROW_BASE} + li);
+    let l2 = sdFetch(2, ${LIGHT_ROW_BASE} + li);
+    let lNormal = sdFetch(5, ${LIGHT_ROW_BASE} + li).xyz;
     let toL = l0.xyz - hit.pos;
     let d2 = max(0.25, dot(toL, toL));
     let lDir = toL * inverseSqrt(d2);
@@ -1094,9 +2101,38 @@ fn shadeSecondaryBounceHit(hit : HitInfo, V : vec3f) -> vec3f {
     Lo = Lo + (1.0 - metallic) * (baseColor / PI) * l1.yzw * (cSurf * cEmit * area / d2);
   }
 
+  let primCount = U.uCountsAndModes.x;
+  let secIdx = select(hit.primIdx, -1, hit.isVehicle);
+  for (var ei : i32 = 0; ei < primCount; ei = ei + 1) {
+    if (ei == secIdx) { continue; }
+    let eGb = sdFetch(6, ei);
+    if (eGb.w > 0.05) {
+      let ePs = sdFetch(0, ei);
+      let eHf = sdFetch(1, ei);
+      let toE = ePs.xyz - hit.pos;
+      let d2e = max(0.08, dot(toE, toE));
+      let eDir = toE * inverseSqrt(d2e);
+      let nE = max(0.0, dot(N, eDir));
+      if (nE > 0.0) {
+        let rE = max(0.08, (eHf.x + eHf.y + eHf.z) * 0.3333333);
+        let eOmega = min(1.6, (rE * rE) / max(0.05, d2e - rE * rE * 0.4));
+        Lo = Lo + (1.0 - metallic) * (baseColor / PI) * eGb.rgb * eGb.w * eOmega * nE * 1.45;
+      }
+    }
+  }
+
+  let dayFactor = clamp(U.uSunDir.z * 4.0 + 0.25, 0.0, 1.0);
+  let moonIrr = evalMoonIrradiance();
+  if (dot(moonIrr, vec3f(1.0)) > 1e-5) {
+    let mN = max(0.0, dot(N, U.uMoonCfg0.xyz));
+    if (mN > 0.0) {
+      Lo = Lo + (1.0 - metallic) * (baseColor / PI) * moonIrr * mN;
+    }
+  }
   let amb = evalSky(N) * 0.50
-          + vec3f(0.15, 0.015, 0.012) * max(-N.x, 0.0)
-          + vec3f(0.015, 0.14, 0.025) * max(N.x, 0.0);
+          + evalStarlightAmbient(N)
+          + (vec3f(0.15, 0.015, 0.012) * max(-N.x, 0.0)
+          +  vec3f(0.015, 0.14, 0.025) * max(N.x, 0.0)) * mix(0.03, 1.0, dayFactor);
   Lo = Lo + baseColor * (1.0 - metallic) * amb * ao;
   return Lo;
 }
@@ -1109,9 +2145,138 @@ fn sampleSecondaryRay(ro : vec3f, rd : vec3f, maxDist : f32, ignoreIdx : i32) ->
   return evalSky(rd);
 }
 
+// Multi-bounce BVH Reflections (REFLECTION_BVH_FRAG from ShadowAlgorithmLab — NO SDF reflections)
+fn traceBvhReflection(startOrigin : vec3f, startNormal : vec3f, startDir : vec3f, maxBounces : i32, ignoreIdx : i32) -> vec3f {
+  var currOrigin = startOrigin;
+  var currNormal = startNormal;
+  var rayDir = startDir;
+  var currIgnore = ignoreIdx;
+  var totalRad = vec3f(0.0);
+  var throughput = vec3f(1.0);
+
+  for (var bounce : i32 = 1; bounce <= 3; bounce = bounce + 1) {
+    if (bounce > maxBounces) { break; }
+    let hit = traceOpaqueSceneIgnoring(currOrigin + currNormal * 0.006, rayDir, 60.0, currIgnore);
+    let qHit = traceLightQuad(currOrigin + currNormal * 0.006, rayDir, hit.t);
+    if (qHit.t < hit.t) {
+      totalRad = totalRad + throughput * qHit.emit;
+      break;
+    }
+    if (!hit.hit) {
+      totalRad = totalRad + throughput * evalSky(rayDir);
+      break;
+    }
+    let hitRad = shadeSecondaryBounceHit(hit, -rayDir);
+    var mRefl = 0.0;
+    if (hit.isVehicle) {
+      let vm = buildVehicleMaterial(hit);
+      mRefl = clamp((vm.metallic * 0.75 + vm.coat * 0.45) * (1.0 - vm.roughness), 0.0, 0.95);
+    } else {
+      let s1 = sampleAtlasSlot(hit.primIdx, 1, hit.uv);
+      let s3 = sampleAtlasSlot(hit.primIdx, 3, hit.uv);
+      mRefl = clamp((s1.r * 0.75 + s3.r * 0.45) * (1.0 - s1.g), 0.0, 0.95);
+    }
+    if (bounce == maxBounces || mRefl < 0.04) {
+      totalRad = totalRad + throughput * hitRad;
+      break;
+    }
+    let noV = max(dot(hit.normal, -rayDir), 0.02);
+    let fresnel = clamp(mRefl + (1.0 - mRefl) * pow(max(1.0 - noV, 1e-4), 5.0) * 0.45, 0.0, 0.92);
+    totalRad = totalRad + throughput * hitRad * (1.0 - fresnel * 0.55);
+    throughput = throughput * fresnel;
+    if (max(throughput.x, max(throughput.y, throughput.z)) < 0.025) { break; }
+    currOrigin = hit.pos;
+    currNormal = hit.normal;
+    currIgnore = select(hit.primIdx, -1, hit.isVehicle);
+    rayDir = reflect(rayDir, hit.normal);
+  }
+  return min(totalRad, vec3f(60.0));
+}
+
+fn evaluateMultiModeGi(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> GiAoOut {
+  let giAlg = U.uSelection.z;
+  let giInt = U.uRenderCfg1.y;
+  let fillB = U.uRenderCfg1.z;
+  if (giAlg == 2) {
+    let skyW = clamp(N.z * 0.5 + 0.5, 0.0, 1.0);
+    let dayF = clamp(U.uSunDir.z * 4.0 + 0.25, 0.0, 1.0);
+    let gAmb = mix(vec3f(0.0012, 0.0015, 0.0024), vec3f(0.055, 0.053, 0.052), dayF);
+    var out : GiAoOut;
+    out.ao = 1.0;
+    out.irr = (mix(gAmb, evalSky(vec3f(N.xy * 0.35, max(0.25, N.z))), skyW) * mix(0.18, 0.78, dayF) + evalStarlightAmbient(N)) * fillB;
+    return out;
+  }
+  if (giAlg == 1) {
+    // GI_BVH_FRAG (ShadowAlgorithmLab): 2-bounce cosine-hemisphere BVH path tracing
+    let cnt = clamp(U.uRenderCfg2.y, 2, 20);
+    let invGi = 1.0 / f32(cnt);
+    let phi = hash12(pos.xy * 149.3 + pos.z * 67.1) * 6.2831853;
+    var irr = vec3f(0.0);
+    var aoAcc : f32 = 0.0;
+    for (var s : i32 = 0; s < 20; s = s + 1) {
+      if (s >= cnt) { break; }
+      var currPos = pos;
+      var currN = N;
+      var currIgnore = selfPrimIdx;
+      var throughput = vec3f(1.0);
+      var pathRad = vec3f(0.0);
+      for (var b : i32 = 1; b <= 2; b = b + 1) {
+        let basis = buildBasis(currN);
+        let u1 = (f32(s) + fract(hash12(currPos.yz * 31.7 + f32(b) * 19.1) + f32(b - 1) * 0.381966 + f32(s) * 0.61803399) * 0.85 + 0.075) * invGi;
+        let r = sqrt(clamp(u1, 0.01, 0.99));
+        let theta = phi + f32(s) * 2.39996323 + f32(b - 1) * 1.919862;
+        let d = normalize(basis.T * (cos(theta) * r) + basis.B * (sin(theta) * r) + currN * sqrt(max(0.0, 1.0 - r * r)));
+        let maxD = select(16.0, 24.0, b == 1);
+        let gHit = traceOpaqueSceneIgnoring(currPos + currN * 0.012, d, maxD, currIgnore);
+        let qHit = traceLightQuad(currPos + currN * 0.012, d, gHit.t);
+        if (qHit.t < gHit.t) {
+          pathRad = pathRad + throughput * qHit.emit;
+          break;
+        }
+        if (!gHit.hit) {
+          pathRad = pathRad + throughput * (evalSky(d) * 0.65 * fillB + evalStarlightAmbient(currN));
+          break;
+        }
+        if (b == 1) { aoAcc = aoAcc + exp(-gHit.t * 0.85); }
+        pathRad = pathRad + throughput * shadeSecondaryBounceHit(gHit, -d);
+        if (b == 2) { break; }
+        var diffTint = vec3f(0.5);
+        if (gHit.isVehicle) {
+          let vm = buildVehicleMaterial(gHit);
+          diffTint = vm.baseColor * (1.0 - vm.metallic);
+        } else {
+          let s0 = sampleAtlasSlot(gHit.primIdx, 0, gHit.uv);
+          let s1 = sampleAtlasSlot(gHit.primIdx, 1, gHit.uv);
+          let s7 = sampleAtlasSlot(gHit.primIdx, 7, gHit.uv);
+          if (s7.g > 0.5 || s7.r > 0.005) { break; }
+          diffTint = s0.rgb * (1.0 - s1.r);
+        }
+        throughput = throughput * diffTint * 0.88;
+        if (max(throughput.x, max(throughput.y, throughput.z)) < 0.025) { break; }
+        currN = select(-gHit.normal, gHit.normal, dot(gHit.normal, -d) >= 0.0);
+        currPos = gHit.pos;
+        currIgnore = select(gHit.primIdx, -1, gHit.isVehicle);
+      }
+      irr = irr + pathRad * invGi;
+    }
+    var out : GiAoOut;
+    out.ao = clamp(1.0 - (aoAcc * invGi) * 0.72, 0.24, 1.0);
+    out.irr = min(irr, vec3f(16.0)) * giInt;
+    return out;
+  }
+  var baseGi = evaluateGtxConeGiAndAo(pos, N, selfPrimIdx);
+  baseGi.irr = baseGi.irr * giInt * fillB;
+  return baseGi;
+}
+
 fn shadePrimaryOpaqueHit(hit : HitInfo, V : vec3f) -> vec3f {
   let idx = hit.primIdx;
-  let origMat = fetchMaterial(idx, hit.uv);
+  var origMat : SampledMaterial;
+  if (hit.isVehicle) {
+    origMat = buildVehicleMaterial(hit);
+  } else {
+    origMat = fetchMaterial(idx, hit.uv);
+  }
   let viewMode = U.uCountsAndModes.z;
 
   if (viewMode == 2) {
@@ -1140,12 +2305,60 @@ fn shadePrimaryOpaqueHit(hit : HitInfo, V : vec3f) -> vec3f {
   let Nc = sf.Nc;
   let T = sf.T;
   let B = sf.B;
-  let edgeTint = sdFetch(5, idx).rgb;
+  let edgeTint = select(sdFetch(5, idx).rgb, mat.baseColor, hit.isVehicle);
   var Lo = mat.baseColor * mat.emission;
 
   let sunVis = evaluateGtxSolarShadow(hit.pos, N, idx);
   if (sunVis > 0.0) {
     Lo = Lo + evaluateOpenPbrDirect(N, Nc, T, B, V, U.uSunDir.xyz, mat, edgeTint) * U.uSunIrradiance.xyz * sunVis;
+  }
+
+  // Physical moonlight direct illumination & soft shadow (affects night/twilight & visible daytime moon)
+  let mIrr = evalMoonIrradiance();
+  if (dot(mIrr, vec3f(1.0)) > 1e-5) {
+    let mDir = normalize(U.uMoonCfg0.xyz);
+    if (dot(N, mDir) > 0.002) {
+      let mVis = evalWgslBvhRayShadow(hit.pos + N * 0.008, mDir, 28.0, max(0.01, U.uMoonCfg0.w), 2, idx, -1);
+      Lo = Lo + evaluateOpenPbrDirect(N, Nc, T, B, V, mDir, mat, edgeTint) * mIrr * mix(0.04, 1.0, mVis);
+    }
+  }
+
+  // Direct shadowed lighting from emissive primitives (closest-point + soft penumbra + specular GGX)
+  let primCount = U.uCountsAndModes.x;
+  let emitShad = U.uRenderCfg2.x != 0;
+  for (var ei : i32 = 0; ei < primCount; ei = ei + 1) {
+    if (ei == idx) { continue; }
+    let gb = sdFetch(6, ei);
+    let bEmit = gb.w;
+    if (bEmit > 0.05) {
+      let ps = sdFetch(0, ei);
+      let hf = sdFetch(1, ei);
+      let eShape = i32(ps.w + 0.5);
+      var targetP = ps.xyz;
+      if (eShape != 1) {
+        let eRot = loadPrimRot(ei);
+        let lp = invRotateCols(hit.pos - ps.xyz, eRot);
+        targetP = ps.xyz + fwdRotateCols(clamp(lp, -hf.xyz, hf.xyz), eRot);
+      }
+      let toE = targetP - hit.pos;
+      let d2 = max(0.04, dot(toE, toE));
+      let dist = sqrt(d2);
+      let eDir = toE / dist;
+      let NdotE = max(0.0, dot(N, eDir));
+      if (NdotE > 0.0) {
+        let rEff = max(0.08, (hf.x + hf.y + hf.z) * 0.3333333);
+        let solidOmega = min(2.0, (rEff * rEff) / max(0.04, d2));
+        var eVis = 1.0;
+        if (emitShad) {
+          let ePick = i32(sdFetch(3, ei).w + 0.5);
+          let coneSin = clamp(rEff / max(dist, 0.35), 0.04, 0.24) * U.uRenderCfg1.x;
+          let rawV = evalWgslBvhRayShadow(hit.pos + N * 0.012, eDir, max(0.02, dist - 0.03), coneSin, 2, idx, ePick);
+          eVis = mix(0.03, 1.0, rawV);
+        }
+        let eIrr = gb.rgb * bEmit * solidOmega * 1.45 * eVis;
+        Lo = Lo + evaluateOpenPbrDirect(N, Nc, T, B, V, eDir, mat, edgeTint) * eIrr;
+      }
+    }
   }
 
   let lightCount = U.uCountsAndModes.y;
@@ -1162,34 +2375,11 @@ fn shadePrimaryOpaqueHit(hit : HitInfo, V : vec3f) -> vec3f {
     let emit = l1.yzw;
     let lightPickCode = i32(l2.y + 0.5);
     let isOmni = l2.z > 0.5;
-
-    let diffLight = evaluateAreaQuadDiffuse(hit.pos, N, lc, lRight, lUp, lNormal, isOmni, hw, hh, emit);
-    if (dot(diffLight, vec3f(1.0)) > 1e-5) {
-      let areaVis = evaluateAreaLightSoftVis(hit.pos, N, lc, hw, hh, idx, lightPickCode);
-      let kD = (1.0 - mat.metallic) * (1.0 - mat.transmission) * mat.baseColor;
-      Lo = Lo + kD * diffLight * areaVis;
-
-      let R = reflect(-V, N);
-      let rDenom = dot(R, lNormal);
-      if (abs(rDenom) > 1e-4) {
-        let tPlane = dot(lc - hit.pos, lNormal) / rDenom;
-        if (tPlane > 0.01 && (isOmni || rDenom < 0.0)) {
-          let relPlane = (hit.pos + R * tPlane) - lc;
-          let uClamp = clamp(dot(relPlane, lRight), -hw, hw);
-          let vClamp = clamp(dot(relPlane, lUp), -hh, hh);
-          let clamped = lc + lRight * uClamp + lUp * vClamp;
-          let Lspec = normalize(clamped - hit.pos);
-          let specSpread = max(0.04, mat.roughness * mat.roughness);
-          let solid = clamp((hw * hh) / max(0.15, tPlane * tPlane * specSpread * 6.0), 0.0, 1.2);
-          let VdotH = max(0.0, dot(V, normalize(V + Lspec)));
-          let F = mix(vec3f(fresnelDielectric(VdotH, mat.ior)), fresnelConductorF82(VdotH, mat.baseColor, edgeTint), mat.metallic);
-          Lo = Lo + F * emit * solid * max(0.0, dot(N, Lspec)) * areaVis * 0.55;
-        }
-      }
-    }
+    let areaVis = evaluateAreaLightSoftVis(hit.pos, N, lc, lRight, lUp, hw, hh, idx, lightPickCode, li);
+    Lo = Lo + evalEmissivePanelLtc(hit.pos, N, V, mat, edgeTint, lc, lRight, lUp, lNormal, isOmni, hw, hh, emit, areaVis);
   }
 
-  let giao = evaluateGtxConeGiAndAo(hit.pos, N, idx);
+  let giao = evaluateMultiModeGi(hit.pos, N, idx);
   let giIrr = giao.irr;
   let totalAo = giao.ao * mat.ao;
   let VdotN = max(0.0, dot(V, N));
@@ -1209,9 +2399,22 @@ fn shadePrimaryOpaqueHit(hit : HitInfo, V : vec3f) -> vec3f {
   let roughEnv = mix(giIrr, evalSky(R), 0.55);
   var specEnvRad = roughEnv;
 
-  if (viewMode == 0 && raySharpness > 0.02) {
-    let sharpRad = sampleSecondaryRay(hit.pos + N * 0.012, R, 22.0, idx);
-    specEnvRad = mix(roughEnv, sharpRad, raySharpness);
+  // Non-SDF Reflections: BVH Raytraced Reflections (REFLECTION_BVH_FRAG) or Sky/Env Only
+  let reflAlg = U.uSelection.w;
+  if (viewMode == 0 && reflAlg != 2 && raySharpness > 0.02) {
+    let rCnt = clamp(U.uRenderCfg2.w, 1, 4);
+    let rBounces = clamp(U.uRenderCfg3.w, 1, 3);
+    let rBasis = buildBasis(R);
+    let cone = max(0.003, mat.roughness * mat.roughness * 0.22);
+    let phi = hash12(hit.pos.xy * 83.7 + hit.pos.z * 27.1) * 6.2831853;
+    var acc = vec3f(0.0);
+    for (var ri : i32 = 0; ri < 4; ri = ri + 1) {
+      if (ri >= rCnt) { break; }
+      let d2 = select(vec2f(0.0), vogelDiskSample(ri, rCnt, phi) * cone, rCnt > 1);
+      let rDir = normalize(R + rBasis.T * d2.x + rBasis.B * d2.y);
+      acc = acc + traceBvhReflection(hit.pos, N, rDir, rBounces, idx);
+    }
+    specEnvRad = mix(roughEnv, acc / f32(rCnt), raySharpness);
   }
 
   let envEnergy = (1.0 - mat.roughness * 0.78);
@@ -1349,10 +2552,15 @@ fn fsMain(@builtin(position) fragPos : vec4f) -> @location(0) vec4f {
   if (viewMode >= 10) {
     let dbg = viewMode - 10;
     if (fullHit.hit) {
-      let pPick = i32(sdFetch(3, fullHit.primIdx).w + 0.5);
+      let pPick = select(i32(sdFetch(3, fullHit.primIdx).w + 0.5), fullHit.vehPickCode, fullHit.isVehicle);
       entityCode = select(1 + fullHit.primIdx, pPick, pPick > 0);
       hitDist = fullHit.t;
-      let dm = fetchMaterial(fullHit.primIdx, fullHit.uv);
+      var dm : SampledMaterial;
+      if (fullHit.isVehicle) {
+        dm = buildVehicleMaterial(fullHit);
+      } else {
+        dm = fetchMaterial(fullHit.primIdx, fullHit.uv);
+      }
       let sf = buildShadingFrame(fullHit, dm);
       if (dbg == 1)       { linearColor = vec3f(1.0 - clamp(fullHit.t / 12.0, 0.0, 1.0)); }
       else if (dbg == 2)  { linearColor = fract(vec3f(f32(entityCode) * 0.37, f32(entityCode) * 0.61, f32(entityCode) * 0.83)); }
@@ -1387,17 +2595,23 @@ fn fsMain(@builtin(position) fragPos : vec4f) -> @location(0) vec4f {
     entityCode = 112 + lHit.idx;
     hitDist = lHit.t;
   } else if (fullHit.hit) {
-    let pPick = i32(sdFetch(3, fullHit.primIdx).w + 0.5);
-    entityCode = select(1 + fullHit.primIdx, pPick, pPick > 0);
-    hitDist = fullHit.t;
-    let hitFlags = i32(sdFetch(1, fullHit.primIdx).w + 0.5);
-    if (PrimFlagGlass(hitFlags) && viewMode == 0) {
-      linearColor = shadeTwoLayerGlass(fullHit, rd);
-    } else {
+    if (fullHit.isVehicle) {
+      entityCode = fullHit.vehPickCode;
+      hitDist = fullHit.t;
       linearColor = shadePrimaryOpaqueHit(fullHit, -rd);
+    } else {
+      let pPick = i32(sdFetch(3, fullHit.primIdx).w + 0.5);
+      entityCode = select(1 + fullHit.primIdx, pPick, pPick > 0);
+      hitDist = fullHit.t;
+      let hitFlags = i32(sdFetch(1, fullHit.primIdx).w + 0.5);
+      if (PrimFlagGlass(hitFlags) && viewMode == 0) {
+        linearColor = shadeTwoLayerGlass(fullHit, rd);
+      } else {
+        linearColor = shadePrimaryOpaqueHit(fullHit, -rd);
+      }
     }
   } else {
-    linearColor = evalSky(rd);
+    linearColor = evalSkyPrimary(rd, fragPos.xy);
     if (U.uCountsAndModes.w != 0 && abs(rd.z) > 1e-4) {
       let tFloor = (-0.80 - ro.z) / rd.z;
       if (tFloor > 0.0 && tFloor < 36.0) {
@@ -1585,18 +2799,20 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
     }
   });
 
-  // Compile all 3 WGSL shader modules and verify zero compilation errors before touching any canvas!
+  // Compile all 4 WGSL shader modules and verify zero compilation errors before touching any canvas!
+  const ShadowMod = Device.createShaderModule({ code: GTX_WGSL_SHADOW_SHADER });
   const SceneMod = Device.createShaderModule({ code: GTX_WGSL_SCENE_SHADER });
   const OutlineMod = Device.createShaderModule({ code: GTX_WGSL_OUTLINE_SHADER });
   const GizmoMod = Device.createShaderModule({ code: GTX_WGSL_GIZMO_SHADER });
 
   if (typeof SceneMod.getCompilationInfo === "function") {
-    const [SInfo, OInfo, GInfo] = await Promise.all([
+    const [ShInfo, SInfo, OInfo, GInfo] = await Promise.all([
+      ShadowMod.getCompilationInfo(),
       SceneMod.getCompilationInfo(),
       OutlineMod.getCompilationInfo(),
       GizmoMod.getCompilationInfo(),
     ]);
-    const Errors = [...SInfo.messages, ...OInfo.messages, ...GInfo.messages].filter(
+    const Errors = [...ShInfo.messages, ...SInfo.messages, ...OInfo.messages, ...GInfo.messages].filter(
       (M) => M.type === "error",
     );
     if (Errors.length > 0) {
@@ -1607,6 +2823,17 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
   }
 
   // Explicit BindGroupLayouts & PipelineLayouts so shared BindGroups across Opaque + Translucent passes are 100% WebGPU-valid
+  const ShadowBindGroupLayout = Device.createBindGroupLayout({
+    label: "GtxShadowBGL",
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform", hasDynamicOffset: true } },
+    ],
+  });
+  const ShadowPipelineLayout = Device.createPipelineLayout({
+    label: "GtxShadowPL",
+    bindGroupLayouts: [ShadowBindGroupLayout],
+  });
+
   const SceneBindGroupLayout = Device.createBindGroupLayout({
     label: "GtxSceneBGL",
     entries: [
@@ -1614,6 +2841,14 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
       { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
       { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
       { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+      { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+      { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+      { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+      { binding: 7, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
+      { binding: 8, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
+      { binding: 9, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+      { binding: 10, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+      { binding: 11, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
     ],
   });
   const ScenePipelineLayout = Device.createPipelineLayout({
@@ -1726,14 +2961,88 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
     },
   });
 
+  const ShadowPipeline = Device.createRenderPipeline({
+    label: "GtxShadowPipeline",
+    layout: ShadowPipelineLayout,
+    vertex: {
+      module: ShadowMod,
+      entryPoint: "vsMain",
+      buffers: [
+        {
+          arrayStride: 12,
+          attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }],
+        },
+      ],
+    },
+    primitive: { topology: "triangle-list", cullMode: "none" },
+    depthStencil: {
+      format: "depth32float",
+      depthWriteEnabled: true,
+      depthCompare: "less",
+    },
+  });
+
   const SceneUniformBuf = Device.createBuffer({
-    size: 160,
+    size: 576,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const SceneDataStorageBuf = Device.createBuffer({
     size: SCENE_DATA_FLOATS * 4,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
+  const SHADOW_MAX_DRAWS = 1024;
+  const SHADOW_SLOT_BYTES = 256;
+  const ShadowDrawUniformBuf = Device.createBuffer({
+    size: SHADOW_MAX_DRAWS * SHADOW_SLOT_BYTES,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  const ShadowDrawScratch = new Float32Array(SHADOW_MAX_DRAWS * 64);
+
+  let BvhNodesBuf = Device.createBuffer({
+    size: 256,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  let BvhTrisBuf = Device.createBuffer({
+    size: 256,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const BvhInstsBuf = Device.createBuffer({
+    size: 128 * 10 * 16,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const BvhInstScratch = new Float32Array(128 * 10 * 4);
+
+  const UnitGeoms = BuildUnitShadowGeometries();
+  const UnitVertexBuffers = {};
+  for (const [ShapeId, Arr] of Object.entries(UnitGeoms)) {
+    const Vb = Device.createBuffer({
+      size: Math.max(64, Arr.byteLength),
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    Device.queue.writeBuffer(Vb, 0, Arr.buffer, Arr.byteOffset, Arr.byteLength);
+    UnitVertexBuffers[ShapeId] = { Buf: Vb, Count: Arr.length / 3 };
+  }
+  let VehicleShadowVb = null;
+  let VehicleTriUploaded = false;
+  let CachedVehAssets = null;
+  let VehicleInstCount = 0;
+
+  let SunShadowRes = 2048;
+  let SunShadowTex = Device.createTexture({
+    size: [SunShadowRes, SunShadowRes, 1],
+    format: "depth32float",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  let SunShadowView = SunShadowTex.createView();
+
+  const AreaShadowRes = 1024;
+  const AreaShadowTex = Device.createTexture({
+    size: [AreaShadowRes, AreaShadowRes, 1],
+    format: "depth32float",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const AreaShadowView = AreaShadowTex.createView();
+
   const OutlineUniformBuf = Device.createBuffer({
     size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -1759,16 +3068,74 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
     addressModeV: "clamp-to-edge",
   });
 
-  const SceneBindGroup = Device.createBindGroup({
-    label: "GtxSceneBG",
-    layout: SceneBindGroupLayout,
+  const SkyViewTex = Device.createTexture({
+    size: [SKY_VIEW_WIDTH, SKY_VIEW_HEIGHT, 1],
+    format: "rgba16float",
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+  });
+  const SkySampler = Device.createSampler({
+    magFilter: "linear",
+    minFilter: "linear",
+    addressModeU: "repeat",
+    addressModeV: "clamp-to-edge",
+  });
+  let LastSkyLutKey = "";
+  const SkyLutFloat = new Float32Array(SKY_VIEW_WIDTH * SKY_VIEW_HEIGHT * 4);
+  const SkyLutHalf = new Uint16Array(SKY_VIEW_WIDTH * SKY_VIEW_HEIGHT * 4);
+  BuildSkyViewLut([0.42, -0.55, 0.72], {}, SkyLutFloat);
+  PackSkyViewRgba16f(SkyLutFloat, SkyLutHalf);
+  Device.queue.writeTexture(
+    { texture: SkyViewTex },
+    SkyLutHalf,
+    { bytesPerRow: SKY_VIEW_WIDTH * 8, rowsPerImage: SKY_VIEW_HEIGHT },
+    [SKY_VIEW_WIDTH, SKY_VIEW_HEIGHT, 1],
+  );
+
+  const MoonAtlasTex = Device.createTexture({
+    size: [MOON_ATLAS_W, MOON_ATLAS_H, 1],
+    format: "rgba8unorm",
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+  });
+  let SyncedMoonVersion = -1;
+  const InitMoonSnap = GetMoonAtlasSnapshot();
+  Device.queue.writeTexture(
+    { texture: MoonAtlasTex },
+    InitMoonSnap.pixels,
+    { bytesPerRow: MOON_ATLAS_W * 4, rowsPerImage: MOON_ATLAS_H },
+    [MOON_ATLAS_W, MOON_ATLAS_H, 1],
+  );
+  SyncedMoonVersion = InitMoonSnap.version;
+
+  const ShadowBindGroup = Device.createBindGroup({
+    label: "GtxShadowBG",
+    layout: ShadowBindGroupLayout,
     entries: [
-      { binding: 0, resource: { buffer: SceneUniformBuf } },
-      { binding: 1, resource: { buffer: SceneDataStorageBuf } },
-      { binding: 2, resource: AtlasTex.createView() },
-      { binding: 3, resource: AtlasSampler },
+      { binding: 0, resource: { buffer: ShadowDrawUniformBuf, offset: 0, size: 128 } },
     ],
   });
+
+  let SceneBindGroup = null;
+  const RebuildSceneBindGroup = () => {
+    SceneBindGroup = Device.createBindGroup({
+      label: "GtxSceneBG",
+      layout: SceneBindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: SceneUniformBuf } },
+        { binding: 1, resource: { buffer: SceneDataStorageBuf } },
+        { binding: 2, resource: AtlasTex.createView() },
+        { binding: 3, resource: AtlasSampler },
+        { binding: 4, resource: { buffer: BvhNodesBuf } },
+        { binding: 5, resource: { buffer: BvhTrisBuf } },
+        { binding: 6, resource: { buffer: BvhInstsBuf } },
+        { binding: 7, resource: SunShadowView },
+        { binding: 8, resource: AreaShadowView },
+        { binding: 9, resource: SkyViewTex.createView() },
+        { binding: 10, resource: SkySampler },
+        { binding: 11, resource: MoonAtlasTex.createView() },
+      ],
+    });
+  };
+  RebuildSceneBindGroup();
 
   const GizmoBindGroup = Device.createBindGroup({
     label: "GtxGizmoBG",
@@ -1800,13 +3167,15 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
   let ForceTransBuf = null;
   let ForceTransCap = 0;
 
-  const SceneUniformScratch = new ArrayBuffer(160);
+  const SceneUniformScratch = new ArrayBuffer(576);
   const SceneUniformF32 = new Float32Array(SceneUniformScratch);
   const SceneUniformI32 = new Int32Array(SceneUniformScratch);
   const OutlineUniformI32 = new Int32Array(4);
   const GizmoUniformF32 = new Float32Array(20);
   const ForceUniformF32 = new Float32Array(20);
   const SceneDataCpuBuf = new Float32Array(SCENE_DATA_FLOATS);
+  const SunShadowVP = new Float32Array(16);
+  const AreaShadowVP = new Float32Array(16);
 
   const EnsureVertexBuffer = (Existing, CurCap, ByteLen) => {
     const Needed = Math.max(256, ((ByteLen + 255) & ~255));
@@ -1854,6 +3223,74 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
       Device.queue.writeBuffer(SceneDataStorageBuf, 0, FloatBuf.buffer, FloatBuf.byteOffset, FloatBuf.byteLength);
     },
 
+    UploadVehicleBvh(Assets, BuiltVeh) {
+      if (!Assets) return;
+      CachedVehAssets = Assets;
+      VehicleInstCount = BuiltVeh?.instanceCount || 0;
+      let NeedRebind = false;
+      if (!VehicleTriUploaded) {
+        VehicleTriUploaded = true;
+        if (VehicleShadowVb) { try { VehicleShadowVb.destroy(); } catch {} }
+        VehicleShadowVb = Device.createBuffer({
+          size: Math.max(64, Assets.shadowVertPositions.byteLength),
+          usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        Device.queue.writeBuffer(
+          VehicleShadowVb,
+          0,
+          Assets.shadowVertPositions.buffer,
+          Assets.shadowVertPositions.byteOffset,
+          Assets.shadowVertPositions.byteLength,
+        );
+
+        const TriBytes = Math.max(256, Assets.triTexData.byteLength);
+        if (BvhTrisBuf.size < TriBytes) {
+          try { BvhTrisBuf.destroy(); } catch {}
+          BvhTrisBuf = Device.createBuffer({
+            size: TriBytes,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+          });
+          NeedRebind = true;
+        }
+        Device.queue.writeBuffer(
+          BvhTrisBuf,
+          0,
+          Assets.triTexData.buffer,
+          Assets.triTexData.byteOffset,
+          Assets.triTexData.byteLength,
+        );
+      }
+
+      const NodeBytes = Math.max(256, Assets.nodeTexData.byteLength);
+      if (BvhNodesBuf.size < NodeBytes) {
+        try { BvhNodesBuf.destroy(); } catch {}
+        BvhNodesBuf = Device.createBuffer({
+          size: NodeBytes,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        NeedRebind = true;
+      }
+      Device.queue.writeBuffer(
+        BvhNodesBuf,
+        0,
+        Assets.nodeTexData.buffer,
+        Assets.nodeTexData.byteOffset,
+        Assets.nodeTexData.byteLength,
+      );
+      const InstSrc = BuiltVeh?.instData || BuiltVeh?.instanceBuffer;
+      if (InstSrc && InstSrc.length > 0) {
+        const CopyLen = Math.min(InstSrc.length, BvhInstScratch.length);
+        BvhInstScratch.fill(0);
+        BvhInstScratch.set(InstSrc.subarray(0, CopyLen));
+        Device.queue.writeBuffer(BvhInstsBuf, 0, BvhInstScratch.buffer, 0, BvhInstScratch.byteLength);
+      }
+      if (NeedRebind) RebuildSceneBindGroup();
+    },
+
+    get VehicleInstCount() {
+      return VehicleInstCount;
+    },
+
     RenderFrame({
       Width,
       Height,
@@ -1872,8 +3309,23 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
       ForceOverlay,
       ViewProjZeroToOne,
       HighlightedHandle,
+      TimeSec = 0,
     }) {
       if (!CanvasCtx) return false;
+
+      const RsU = EncodeRenderSettingsUniforms(ActiveScene.RenderSettings);
+      if (RsU.shadowMapRes !== SunShadowRes) {
+        SunShadowRes = RsU.shadowMapRes;
+        try { SunShadowTex.destroy(); } catch {}
+        SunShadowTex = Device.createTexture({
+          size: [SunShadowRes, SunShadowRes, 1],
+          format: "depth32float",
+          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        SunShadowView = SunShadowTex.createView();
+        RebuildSceneBindGroup();
+        NeedScenePass = true;
+      }
 
       if (Width !== CurW || Height !== CurH || !OffscreenSceneTex || !DepthTex) {
         if (OffscreenSceneTex) { try { OffscreenSceneTex.destroy(); } catch {} }
@@ -1910,6 +3362,86 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
       const Encoder = Device.createCommandEncoder();
 
       if (NeedScenePass) {
+        // ---------------- PASS 0: WEBGPU HARDWARE SHADOW DEPTH PASSES ----------------
+        const SunInfo = BuildSunShadowMatrix(ActiveScene);
+        SunShadowVP.set(SunInfo.vp);
+        const HasAreaShadow = LightCount > 0 && RsU.emissiveShadowed ? 1 : 0;
+        const AreaInfo = HasAreaShadow ? BuildAreaShadowMatrix(ActiveScene.AreaLights[0]) : null;
+        if (AreaInfo) AreaShadowVP.set(AreaInfo.vp);
+
+        const VehInstances =
+          CachedVehAssets && VehicleInstCount > 0
+            ? ExpandVehicleInstances(ActiveScene.Vehicles || [], CachedVehAssets)
+            : [];
+
+        let DrawSlot = 0;
+        const QueueShadowPass = (TargetView, VpMat) => {
+          const StartSlot = DrawSlot;
+          const Items = [];
+          for (let I = 0; I < PrimCount && DrawSlot < SHADOW_MAX_DRAWS; ++I) {
+            const P = ActiveScene.Primitives[I];
+            if (!P.CastShadows || P.GlassShell) continue;
+            const Caster = UnitVertexBuffers[P.Shape] || UnitVertexBuffers[0];
+            const Base = DrawSlot * 64;
+            ShadowDrawScratch.set(VpMat, Base);
+            ShadowDrawScratch.set(BuildPrimModelMatrix(P), Base + 16);
+            Items.push({ Slot: DrawSlot, Buf: Caster.Buf, First: 0, Count: Caster.Count });
+            DrawSlot += 1;
+          }
+          if (VehicleShadowVb && CachedVehAssets) {
+            for (const Inst of VehInstances) {
+              if (DrawSlot >= SHADOW_MAX_DRAWS) break;
+              if (!Inst.castShadows) continue;
+              const Meta = CachedVehAssets.meshMeta[Inst.meshIdx];
+              if (!Meta || Meta.triCount <= 0) continue;
+              const Base = DrawSlot * 64;
+              ShadowDrawScratch.set(VpMat, Base);
+              ShadowDrawScratch.set(Inst.l2w, Base + 16);
+              Items.push({
+                Slot: DrawSlot,
+                Buf: VehicleShadowVb,
+                First: Meta.triOffset * 3,
+                Count: Meta.triCount * 3,
+              });
+              DrawSlot += 1;
+            }
+          }
+          return { TargetView, StartSlot, Items };
+        };
+
+        const SunPlan = QueueShadowPass(SunShadowView, SunShadowVP);
+        const AreaPlan = HasAreaShadow ? QueueShadowPass(AreaShadowView, AreaShadowVP) : null;
+        if (DrawSlot > 0) {
+          Device.queue.writeBuffer(
+            ShadowDrawUniformBuf,
+            0,
+            ShadowDrawScratch.buffer,
+            0,
+            DrawSlot * SHADOW_SLOT_BYTES,
+          );
+        }
+        const RunShadowPlan = (Plan) => {
+          if (!Plan) return;
+          const Sp = Encoder.beginRenderPass({
+            colorAttachments: [],
+            depthStencilAttachment: {
+              view: Plan.TargetView,
+              depthClearValue: 1.0,
+              depthLoadOp: "clear",
+              depthStoreOp: "store",
+            },
+          });
+          Sp.setPipeline(ShadowPipeline);
+          for (const It of Plan.Items) {
+            Sp.setBindGroup(0, ShadowBindGroup, [It.Slot * SHADOW_SLOT_BYTES]);
+            Sp.setVertexBuffer(0, It.Buf);
+            Sp.draw(It.Count, 1, It.First, 0);
+          }
+          Sp.end();
+        };
+        RunShadowPlan(SunPlan);
+        RunShadowPlan(AreaPlan);
+
         SceneUniformF32[0] = Width;
         SceneUniformF32[1] = Height;
         SceneUniformF32[2] = Math.tan(ActiveScene.VerticalFovRad * 0.5);
@@ -1956,9 +3488,127 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
         SceneUniformI32[35] = ShowGrid ? 1 : 0;
 
         SceneUniformI32[36] = SelectedCode;
-        SceneUniformI32[37] = 0;
-        SceneUniformI32[38] = 0;
-        SceneUniformI32[39] = 0;
+        SceneUniformI32[37] = RsU.shadowAlg;
+        SceneUniformI32[38] = RsU.giAlg;
+        SceneUniformI32[39] = RsU.reflAlg;
+
+        SceneUniformI32[40] = RsU.pcssTaps;
+        SceneUniformI32[41] = RsU.smrtRays;
+        SceneUniformI32[42] = RsU.shadowRays;
+        SceneUniformI32[43] = RsU.planeFilter;
+
+        SceneUniformF32[44] = RsU.shadowSoftness;
+        SceneUniformF32[45] = RsU.giIntensity;
+        SceneUniformF32[46] = RsU.fillBoost;
+        SceneUniformF32[47] = SunShadowRes;
+
+        SceneUniformI32[48] = RsU.emissiveShadowed;
+        SceneUniformI32[49] = RsU.giSamples;
+        SceneUniformI32[50] = RsU.giCones;
+        SceneUniformI32[51] = RsU.reflRays;
+
+        SceneUniformI32[52] = VehicleInstCount;
+        SceneUniformI32[53] = HasAreaShadow;
+        SceneUniformI32[54] = AreaShadowRes;
+        SceneUniformI32[55] = RsU.reflBounces;
+
+        SceneUniformF32.set(SunShadowVP, 56);
+        SceneUniformF32.set(AreaShadowVP, 72);
+
+        const Atmo = ActiveScene.Atmosphere || {};
+        const Cl = ActiveScene.Clouds || {};
+        const Mn = ActiveScene.Moon || {};
+        const St = ActiveScene.Stars || {};
+        const SkyKey = GetSkyViewCacheKey(ActiveScene.SunDir, Atmo);
+        if (SkyKey !== LastSkyLutKey) {
+          LastSkyLutKey = SkyKey;
+          BuildSkyViewLut(ActiveScene.SunDir, Atmo, SkyLutFloat);
+          PackSkyViewRgba16f(SkyLutFloat, SkyLutHalf);
+          Device.queue.writeTexture(
+            { texture: SkyViewTex },
+            SkyLutHalf,
+            { bytesPerRow: SKY_VIEW_WIDTH * 8, rowsPerImage: SKY_VIEW_HEIGHT },
+            [SKY_VIEW_WIDTH, SKY_VIEW_HEIGHT, 1],
+          );
+        }
+
+        // uAtmoCfg0 (floats 88..91), uAtmoCfg1 (92..95)
+        const MoonSnap = GetMoonAtlasSnapshot();
+        if (MoonSnap.version !== SyncedMoonVersion) {
+          SyncedMoonVersion = MoonSnap.version;
+          Device.queue.writeTexture(
+            { texture: MoonAtlasTex },
+            MoonSnap.pixels,
+            { bytesPerRow: MOON_ATLAS_W * 4, rowsPerImage: MOON_ATLAS_H },
+            [MOON_ATLAS_W, MOON_ATLAS_H, 1],
+          );
+        }
+        SceneUniformF32[88] = Atmo.skyBrightness ?? 1.0;
+        SceneUniformF32[89] = Atmo.mieG ?? 0.78;
+        SceneUniformF32[90] = Atmo.horizonGlow ?? 1.0;
+        SceneUniformF32[91] = TimeSec;
+        SceneUniformF32[92] = (Atmo.skyTint || [1, 1, 1])[0];
+        SceneUniformF32[93] = (Atmo.skyTint || [1, 1, 1])[1];
+        SceneUniformF32[94] = (Atmo.skyTint || [1, 1, 1])[2];
+        SceneUniformF32[95] = MoonSnap.ready ? 1.0 : 0.0;
+
+        // uCloudCfg0 (96..99), uCloudCfg1 (100..103), uCloudCfg2 (104..107)
+        SceneUniformF32[96] = Cl.enabled ? 1.0 : 0.0;
+        SceneUniformF32[97] = Cl.coverage ?? 0.42;
+        SceneUniformF32[98] = Cl.density ?? 2.2;
+        SceneUniformF32[99] = Cl.featureScale ?? 0.4;
+        SceneUniformF32[100] = Cl.baseM ?? 1400.0;
+        SceneUniformF32[101] = Cl.thicknessM ?? 1100.0;
+        SceneUniformF32[102] = Cl.anvil ?? 0.5;
+        SceneUniformF32[103] = Cl.anisotropy ?? 0.48;
+        SceneUniformF32[104] = Cl.type ?? 0;
+        SceneUniformF32[105] = Cl.shadowEnabled !== false ? 1.0 : 0.0;
+        SceneUniformF32[106] = Cl.windX ?? 6.0;
+        SceneUniformF32[107] = Cl.windY ?? 2.0;
+
+        // uMoonCfg0 (108..111), uMoonCfg1 (112..115), uMoonTint (116..119)
+        const MDir = Mn.dir || [-0.5, 0.4, 0.45];
+        SceneUniformF32[108] = MDir[0];
+        SceneUniformF32[109] = MDir[1];
+        SceneUniformF32[110] = MDir[2];
+        SceneUniformF32[111] = Mn.sizeRad ?? 0.012;
+        SceneUniformF32[112] = Mn.phase ?? 0.62;
+        SceneUniformF32[113] = Mn.bright ?? 1.6;
+        SceneUniformF32[114] = Mn.glow ?? 0.8;
+        SceneUniformF32[115] = Mn.visible ? 1.0 : 0.0;
+        const MTint = Mn.tint || [0.94, 0.93, 0.90];
+        SceneUniformF32[116] = MTint[0];
+        SceneUniformF32[117] = MTint[1];
+        SceneUniformF32[118] = MTint[2];
+        SceneUniformF32[119] = Mn.preset ?? 0;
+
+        // uStarCfg0 (120..123), uStarCfg1 (124..127)
+        SceneUniformF32[120] = St.enabled ? 1.0 : 0.0;
+        SceneUniformF32[121] = St.brightness ?? 1.0;
+        SceneUniformF32[122] = St.limMag ?? 5.5;
+        SceneUniformF32[123] = St.pointSize ?? 1.0;
+        SceneUniformF32[124] = St.twinkle !== false ? 1.0 : 0.0;
+        SceneUniformF32[125] = St.twinkleDepth ?? 30;
+        SceneUniformF32[126] = St.twinkleRate ?? 1.2;
+        SceneUniformF32[127] = St.rotationRad ?? 0.0;
+
+        // uSunShadowCfg (128..131), uAreaShadowCfg (132..135), uShadowDepthRng (136..139), uAreaShadowFwd (140..143)
+        SceneUniformF32[128] = SunInfo.eye[0];
+        SceneUniformF32[129] = SunInfo.eye[1];
+        SceneUniformF32[130] = SunInfo.eye[2];
+        SceneUniformF32[131] = SunInfo.orthoHalfSpan;
+        SceneUniformF32[132] = AreaInfo ? AreaInfo.lightPos[0] : 0.0;
+        SceneUniformF32[133] = AreaInfo ? AreaInfo.lightPos[1] : 0.0;
+        SceneUniformF32[134] = AreaInfo ? AreaInfo.lightPos[2] : 0.0;
+        SceneUniformF32[135] = AreaInfo ? AreaInfo.perspTan : 1.0;
+        SceneUniformF32[136] = SunInfo.near;
+        SceneUniformF32[137] = SunInfo.far;
+        SceneUniformF32[138] = AreaInfo ? AreaInfo.near : 0.2;
+        SceneUniformF32[139] = AreaInfo ? AreaInfo.far : 14.0;
+        SceneUniformF32[140] = AreaInfo ? AreaInfo.forward[0] : 0.0;
+        SceneUniformF32[141] = AreaInfo ? AreaInfo.forward[1] : 0.0;
+        SceneUniformF32[142] = AreaInfo ? AreaInfo.forward[2] : -1.0;
+        SceneUniformF32[143] = 0.0;
 
         Device.queue.writeBuffer(SceneUniformBuf, 0, SceneUniformScratch);
 
@@ -2098,9 +3748,21 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
     Destroy() {
       try { OffscreenSceneTex?.destroy(); } catch {}
       try { DepthTex?.destroy(); } catch {}
+      try { SunShadowTex?.destroy(); } catch {}
+      try { AreaShadowTex?.destroy(); } catch {}
       try { AtlasTex?.destroy(); } catch {}
+      try { SkyViewTex?.destroy(); } catch {}
+      try { MoonAtlasTex?.destroy(); } catch {}
       try { SceneUniformBuf?.destroy(); } catch {}
       try { SceneDataStorageBuf?.destroy(); } catch {}
+      try { ShadowDrawUniformBuf?.destroy(); } catch {}
+      try { BvhNodesBuf?.destroy(); } catch {}
+      try { BvhTrisBuf?.destroy(); } catch {}
+      try { BvhInstsBuf?.destroy(); } catch {}
+      try { VehicleShadowVb?.destroy(); } catch {}
+      for (const Uv of Object.values(UnitVertexBuffers)) {
+        try { Uv?.Buf?.destroy(); } catch {}
+      }
       try { OutlineUniformBuf?.destroy(); } catch {}
       try { GizmoUniformBuf?.destroy(); } catch {}
       try { ForceUniformBuf?.destroy(); } catch {}

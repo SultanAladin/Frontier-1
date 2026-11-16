@@ -6,7 +6,16 @@ export const EditorCamera = {
   Parent: "cameras",
   Description: "Permanent editor navigation camera · not a scene render camera",
 };
+export const EditorRenderSettings = {
+  Id: "render-settings",
+  Name: "Render Settings",
+  Panel: "render-settings",
+  Icon: "render-settings",
+  Parent: "camera",
+  Description: "Shadows, GI & Reflections · Per-pipeline quality",
+};
 export const IsEditorCamera = (Row) => Row?.Id === EditorCamera.Id;
+export const IsRenderSettings = (Row) => Row?.Id === EditorRenderSettings.Id;
 // Normalize every scene load and structural edit, not just the remove menu.
 // The original reserved camera ID keeps existing optics/property drafts.
 export function EnsureEditorCamera(Rows = []) {
@@ -14,8 +23,9 @@ export function EnsureEditorCamera(Rows = []) {
     (Row) => Row && typeof Row === "object",
   );
   const Group = Source.find((Row) => Row.Id === "cameras");
+  const ExistingRs = Source.find((Row) => Row.Id === "render-settings");
   const Result = Source.filter(
-    (Row) => Row.Id !== "camera" && Row.Id !== "cameras",
+    (Row) => Row.Id !== "camera" && Row.Id !== "cameras" && Row.Id !== "render-settings",
   );
   const First = Result.findIndex((Row) => Row.Panel === "camera"),
     Previous = Source.findIndex((Row) => Row.Id === "cameras");
@@ -36,6 +46,13 @@ export function EnsureEditorCamera(Rows = []) {
       Description: "Editor and scene cameras",
     },
     { ...EditorCamera },
+    {
+      ...EditorRenderSettings,
+      ...(ExistingRs ? { Name: ExistingRs.Name || EditorRenderSettings.Name } : {}),
+      Parent: "camera",
+      Panel: "render-settings",
+      Icon: "render-settings",
+    },
   );
   return Result;
 }

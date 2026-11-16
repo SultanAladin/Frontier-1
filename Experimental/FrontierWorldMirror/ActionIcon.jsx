@@ -317,6 +317,25 @@ export default function ActionIcon({ Name, Size = 24 }) {
         />
       );
       break;
+    case "render-settings":
+      Drawing = (
+        <>
+          <rect x="2" y="4" width="20" height="16" rx="3" opacity=".24" />
+          <path d="M5 8h5v2H5zm9 0h5v2h-5zm-9 7h8v2H5zm12 0h2v2h-2z" />
+          <circle cx="12" cy="9" r="2.2" />
+          <circle cx="15" cy="16" r="2.2" />
+        </>
+      );
+      break;
+    case "vehicle":
+      Drawing = (
+        <>
+          <path d="M3 13l2.2-4.6A2.5 2.5 0 0 1 7.5 7h8.2a2.5 2.5 0 0 1 2.2 1.4L20.5 13H22v3h-2.1a2.6 2.6 0 0 1-5 0H9.1a2.6 2.6 0 0 1-5 0H2v-3h1Z" />
+          <circle cx="6.6" cy="16.2" r="1.7" />
+          <circle cx="17.4" cy="16.2" r="1.7" />
+        </>
+      );
+      break;
     default:
       Drawing = <path d="M3 3h18v18H3z" />;
   }
