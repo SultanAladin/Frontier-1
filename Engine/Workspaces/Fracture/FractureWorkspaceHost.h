@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           FRACTUREWORKSPACEHOST.H
 ============================================================================================================================================*/
-// 🧩 Top-level Frontier Fracture Studio host mounting 56px Studio Header, floating 22px Outliner & Inspector panels, OpenPBR 3D Viewport & Status Bar
+// 🧩 Top-level Frontier Fracture Studio host: 56px Studio Header with slanted tabs, 3 floating 22px panels, Solver Matrix & Status Bar
 
 #pragma once
 
@@ -55,6 +55,7 @@ public:
 private:
     void RenderStudioHeader(PixelSpace& Surface, Rectangle2D HeaderRect, const ControlPointer& Pointer) noexcept;
     void RenderStatusBar(PixelSpace& Surface, Rectangle2D StatusRect) const noexcept;
+    void RenderSolverMatrixModal(PixelSpace& Surface, Rectangle2D Area, const ControlPointer& Pointer) noexcept;
 
     FractureWorkspaceSession Session      {};
     FractureViewportRenderer Renderer     {};

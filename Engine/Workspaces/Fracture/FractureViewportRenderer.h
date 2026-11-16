@@ -57,8 +57,9 @@ struct FractureRenderOptions
     bool                   ShowImpactMarker      = true;                 // [-]   - Draws impact point & normal arrow
     bool                   ShowGroundGrid        = true;                 // [-]   - Draws Z=0 reference studio floor grid
     bool                   UseNonPlanarFractography = true;              // [-]   - Uses EngineeringSurface relief triangles when present
-    int32_t                SelectedFragmentIndex = -1;                   // [idx] - Highlighted fragment (-1 = none)
-    Mathematics::Axis3D    SolidWorldOffsetM     { 0.0f, 0.0f, 0.95f };  // [m]   - Placement offset for unsimulated display
+    int32_t                   SelectedFragmentIndex = -1;                   // [idx] - Highlighted fragment (-1 = none)
+    const std::vector<bool>*  FragmentVisibleFlags  = nullptr;              // [-]   - Optional per-fragment visibility mask
+    Mathematics::Axis3D       SolidWorldOffsetM     { 0.0f, 0.0f, 0.95f };  // [m]   - Placement offset for unsimulated display
 };
 
 struct FractureRenderOutput
@@ -130,6 +131,18 @@ public:
         MaterialSpace::SurfaceMaterial&                      OutInterior) noexcept;
 
     [[nodiscard]] static Mathematics::Axis3D ComputeCameraPosition(const FractureViewportCamera& Camera) noexcept;
+
+    [[nodiscard]] static bool ProjectWorldToViewport(
+        const FractureViewportCamera& Camera,
+        Mathematics::Axis3D           WorldPoint,
+        uint32_t                      ViewportWidthPx,
+        uint32_t                      ViewportHeightPx,
+        float&                        OutScreenX,
+        float&                        OutScreenY,
+        float&                        OutViewDepth) noexcept;
+
+    static void SampleEnergySwatchSrgb(float NormalizedStress, uint8_t& OutR, uint8_t& OutG, uint8_t& OutB) noexcept;
+    static void SampleCellSwatchSrgb(uint32_t CellIndex, uint8_t& OutR, uint8_t& OutG, uint8_t& OutB) noexcept;
 
 private:
     bool                 SpirvVerified     = false;

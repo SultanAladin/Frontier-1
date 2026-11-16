@@ -69,7 +69,7 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
         };
     }
 
-    if (Spec.AllowMoveAndResize)
+    if (Spec.AllowDragResize)
     {
         if (Session.DraggingMove && Pointer.Down)
         {
@@ -155,7 +155,7 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
     }
 
     Rectangle2D ResetBtn{};
-    if (Spec.AllowMoveAndResize)
+    if (Spec.AllowDragResize)
     {
         ResetBtn = Rectangle2D{ RightCursor - 24.0f, Panel.Y + 15.0f, 22.0f, 22.0f };
         const bool ResetHover = ResetBtn.Contains(Cursor);
@@ -174,8 +174,8 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
         }
     }
 
-    const Rectangle2D DragBar{ CloseBtn.Right() + 4.0f, Panel.Y + 8.0f, std::max(20.0f, (Spec.AllowMoveAndResize ? ResetBtn.X : RightCursor) - CloseBtn.Right() - 8.0f), 34.0f };
-    if (Spec.AllowMoveAndResize && Pointer.Pressed && DragBar.Contains(Cursor))
+    const Rectangle2D DragBar{ CloseBtn.Right() + 4.0f, Panel.Y + 8.0f, std::max(20.0f, (Spec.AllowDragResize ? ResetBtn.X : RightCursor) - CloseBtn.Right() - 8.0f), 34.0f };
+    if (Spec.AllowDragResize && Pointer.Pressed && DragBar.Contains(Cursor))
     {
         Session.DraggingMove    = true;
         Session.DragStartCursor = Cursor;
@@ -228,10 +228,10 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
     }
 
     // Optional View & History Span pills
-    if (Spec.ShowViewAndSpanControls)
+    if (Spec.ShowViewSpanControls)
     {
         const std::array<std::pair<const char*, DiagnosticsViewMode>, 3> ViewTabs = {{
-            { "Plot+Stats", DiagnosticsViewMode::PlotAndStats },
+            { "Plot+Stats", DiagnosticsViewMode::CombinedPlotStats },
             { "Plot",       DiagnosticsViewMode::PlotOnly     },
             { "Stats",      DiagnosticsViewMode::StatsOnly    },
         }};
@@ -463,7 +463,7 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
 
     const char* SampleCaption = Spec.FooterSampleLabel != nullptr ? Spec.FooterSampleLabel : "120 samples";
     const float SampleW       = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.5f, SampleCaption);
-    const float SampleRight   = Spec.AllowMoveAndResize ? (Panel.Right() - 28.0f) : (Panel.Right() - 21.0f);
+    const float SampleRight   = Spec.AllowDragResize ? (Panel.Right() - 28.0f) : (Panel.Right() - 21.0f);
     WorkspaceAppearance::ConstructWeightedText(
         Surface,
         FontWeightClass::Regular,
@@ -472,7 +472,7 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
         ScaleAlpha(ColorRgba{ 120, 133, 108, 255 }, Opacity),
         SampleCaption);
 
-    if (Spec.AllowMoveAndResize)
+    if (Spec.AllowDragResize)
     {
         const Rectangle2D ResizeGrip{ Panel.Right() - 22.0f, Panel.Bottom() - 22.0f, 18.0f, 18.0f };
         const ColorRgba   GripInk = ScaleAlpha(

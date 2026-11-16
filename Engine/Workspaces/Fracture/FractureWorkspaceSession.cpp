@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                        FRACTUREWORKSPACESESSION.CPP
 ============================================================================================================================================*/
-// 🧩 FractureWorkspaceSession implementation: 6 calibrated presets, instant partition, Jolt simulation lifecycle & diagnostics sampling
+// 🧩 FractureWorkspaceSession implementation: 6 calibrated presets, instant partition, Jolt simulation lifecycle & telemetry
 
 #include "Engine/Workspaces/Fracture/FractureWorkspaceSession.h"
 
@@ -89,6 +89,21 @@ const std::array<FracturePresetEntry, FractureWorkspaceSession::PresetCount>& Fr
     return BuiltInPresets;
 }
 
+void FractureWorkspaceSession::AppendLog(const char* Channel, std::string Message, std::string Detail, bool WarmTone)
+{
+    FractureLogEntry Entry {};
+    Entry.TimeSec    = ElapsedSeconds;
+    Entry.Channel    = (Channel != nullptr) ? Channel : "FRACTURE";
+    Entry.Message    = std::move(Message);
+    Entry.Detail     = std::move(Detail);
+    Entry.IsWarmTone = WarmTone;
+    LogEntries.push_back(std::move(Entry));
+    if (LogEntries.size() > 64u)
+    {
+        LogEntries.erase(LogEntries.begin());
+    }
+}
+
 void FractureWorkspaceSession::ApplyPreset(uint32_t PresetIndex) noexcept
 {
     ActivePresetIndex = PresetIndex % PresetCount;
@@ -101,10 +116,15 @@ void FractureWorkspaceSession::ApplyPreset(uint32_t PresetIndex) noexcept
     ImpactPointLocal  = P.ImpactPoint;
     ImpactNormalLocal = P.ImpactNormal;
     RenderOptions.SelectedFragmentIndex = -1;
-    RebuildSolidAndPartition();
+    RebuildFracturePartition();
+
+    char DetBuf[64];
+    std::snprintf(DetBuf, sizeof(DetBuf), "%zu shards · %.2f ms",
+        PartitionResult.Fragments.size(), PartitionResult.Receipt.ComputeDurationMs);
+    AppendLog("PRESET", std::string("Loaded ") + P.Title, DetBuf, false);
 }
 
-void FractureWorkspaceSession::RebuildSolidAndPartition() noexcept
+void FractureWorkspaceSession::RebuildFracturePartition() noexcept
 {
     SourceSolid = GeometrySpace::Fracture::ConvexPartitioning::ConstructSolidPolyhedron(
         SolidCategory, { 1.0f, 1.0f, 1.0f }, Seed);
@@ -134,7 +154,9 @@ void FractureWorkspaceSession::ExecuteFracturePartitionOnly() noexcept
     Spec.ImpactNormal      = ImpactNormalLocal;
 
     PartitionResult = GeometrySpace::Fracture::ConvexPartitioning::ExecuteFracturePartition(SourceSolid, Spec);
-    HasFractured    = true;
+    FragmentVisible.assign(PartitionResult.Fragments.size(), true);
+    RenderOptions.FragmentVisibleFlags = &FragmentVisible;
+    HasFractured = true;
     ++RevisionCounter;
 }
 
@@ -162,6 +184,8 @@ void FractureWorkspaceSession::StartOrResetSimulation(bool AutoPlay) noexcept
     TimelineMarkers.clear();
     TimelineMarkers.push_back({ 0.02f, { 255u, 152u, 72u, 255u }, "Impact" });
     AppendSample(KineticCurveSamples, static_cast<float>(SimRunner.InspectTelemetry().TotalKineticJ), 240u);
+    AppendLog("PHYSICS", "JoltPhysics v5.6.0 initialized",
+        std::to_string(PartitionResult.Fragments.size()) + " convex hulls", true);
     ++RevisionCounter;
 }
 
@@ -185,7 +209,6 @@ void FractureWorkspaceSession::TransitionExecutionPhase(ExecutionStripPhase Next
         return;
     }
 
-    // Play / Pause toggle
     if (ExecutionPhase == ExecutionStripPhase::Edit || !HasSimulatedData)
     {
         ExecutionPhase = ExecutionStripPhase::Play;
@@ -305,6 +328,41 @@ void FractureWorkspaceSession::AdvanceFrame(double DeltaSeconds) noexcept
     }
 }
 
+void FractureWorkspaceSession::RerollSeed() noexcept
+{
+    Seed = (Seed * 1664525u + 1013904223u) % 9999u + 1u;
+    RebuildFracturePartition();
+    AppendLog("SEED", "Re-seeded partition", "#" + std::to_string(Seed), false);
+}
+
+void FractureWorkspaceSession::ApplyCameraView(uint32_t CameraViewIdx) noexcept
+{
+    CameraViewIndex = CameraViewIdx % 4u;
+    switch (CameraViewIndex)
+    {
+    case 0u: // Perspective orbit
+        Camera.YawRadians   = 0.58f;
+        Camera.PitchRadians = 0.34f;
+        Camera.DistanceM    = 3.45f;
+        break;
+    case 1u: // Top elevation
+        Camera.YawRadians   = 0.0f;
+        Camera.PitchRadians = 1.48f;
+        Camera.DistanceM    = 3.85f;
+        break;
+    case 2u: // Front face
+        Camera.YawRadians   = 0.0f;
+        Camera.PitchRadians = 0.08f;
+        Camera.DistanceM    = 3.45f;
+        break;
+    case 3u: // Side profile
+        Camera.YawRadians   = 1.5708f;
+        Camera.PitchRadians = 0.12f;
+        Camera.DistanceM    = 3.45f;
+        break;
+    }
+}
+
 void FractureWorkspaceSession::TriggerViewportImpact(
     Mathematics::Axis3D WorldHitPoint,
     Mathematics::Axis3D WorldHitNormal,
@@ -317,11 +375,15 @@ void FractureWorkspaceSession::TriggerViewportImpact(
     if (ExecutionPhase == ExecutionStripPhase::Edit)
     {
         ExecuteFracturePartitionOnly();
+        AppendLog("STRIKE", "Re-partitioned at impact locus",
+            std::to_string(PartitionResult.Fragments.size()) + " shards", true);
     }
     else if (SimRunner.QueryLoaded())
     {
         const auto Impulse = ImpactNormalLocal * static_cast<float>(-std::sqrt(ImpactEnergyJ) * 3.8);
         SimRunner.TriggerImpactImpulse(WorldHitPoint, Impulse, 0.65f);
+        AppendLog("IMPULSE", "Applied Jolt impact impulse",
+            std::to_string(static_cast<int>(ImpactEnergyJ)) + " J", true);
         ++RevisionCounter;
     }
 }
@@ -337,6 +399,36 @@ GeometrySpace::Fracture::SdfVolumeFootprint FractureWorkspaceSession::QuerySdfFo
         static_cast<uint32_t>(PartitionResult.Fragments.size()),
         SdfResolution,
         SdfEnabled);
+}
+
+double FractureWorkspaceSession::QueryFragmentEnergyJ(std::size_t FragIndex) const noexcept
+{
+    if (FragIndex >= PartitionResult.Fragments.size()) return 0.0;
+    const auto& Frag = PartitionResult.Fragments[FragIndex];
+    const double KineticShare = ImpactEnergyJ * static_cast<double>(Frag.StressRatio) * 0.09;
+    return std::max(0.05, KineticShare);
+}
+
+bool FractureWorkspaceSession::QueryFragmentReleased(std::size_t FragIndex) const noexcept
+{
+    return QueryFragmentEnergyJ(FragIndex) >= ReleaseThresholdJ;
+}
+
+uint32_t FractureWorkspaceSession::CountReleasedFragments() const noexcept
+{
+    uint32_t Count = 0u;
+    for (std::size_t I = 0u; I < PartitionResult.Fragments.size(); ++I)
+    {
+        if (QueryFragmentReleased(I)) ++Count;
+    }
+    return Count;
+}
+
+uint32_t FractureWorkspaceSession::CountHeldFragments() const noexcept
+{
+    const uint32_t Total    = static_cast<uint32_t>(PartitionResult.Fragments.size());
+    const uint32_t Released = CountReleasedFragments();
+    return (Total >= Released) ? (Total - Released) : 0u;
 }
 
 uint64_t FractureWorkspaceSession::ComputeViewportRenderSignature() const noexcept
@@ -363,6 +455,10 @@ uint64_t FractureWorkspaceSession::ComputeViewportRenderSignature() const noexce
     Mix(RenderOptions.ShowGroundGrid ? 1ull : 0ull);
     Mix(RenderOptions.UseNonPlanarFractography ? 1ull : 0ull);
     Mix(static_cast<uint64_t>(RenderOptions.SelectedFragmentIndex + 10));
+    for (bool V : FragmentVisible)
+    {
+        Mix(V ? 1ull : 0ull);
+    }
     MixFloat(Camera.YawRadians);
     MixFloat(Camera.PitchRadians);
     MixFloat(Camera.DistanceM);

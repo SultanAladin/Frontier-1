@@ -454,6 +454,12 @@ FractureRenderOutput FractureViewportRenderer::RenderFrame(
         for (const auto& Frag : Partition->Fragments)
         {
             if (!Frag.VisibilityEnabled) continue;
+            if (Options.FragmentVisibleFlags != nullptr &&
+                Frag.Index < Options.FragmentVisibleFlags->size() &&
+                !(*Options.FragmentVisibleFlags)[Frag.Index])
+            {
+                continue;
+            }
 
             Mathematics::Axis3D FragWorldOrigin {};
             SimulationSpace::PhysicsSpace::RigidOrientationQuaternion Quat {};
@@ -818,6 +824,43 @@ FractureRayHitResult FractureViewportRenderer::PickViewportSurface(
     }
 
     return Best;
+}
+
+bool FractureViewportRenderer::ProjectWorldToViewport(
+    const FractureViewportCamera& Camera,
+    Mathematics::Axis3D           WorldPoint,
+    uint32_t                      ViewportWidthPx,
+    uint32_t                      ViewportHeightPx,
+    float&                        OutScreenX,
+    float&                        OutScreenY,
+    float&                        OutViewDepth) noexcept
+{
+    const CameraBasis Cam = BuildCameraBasis(Camera, ViewportWidthPx, ViewportHeightPx);
+    return ProjectWorldPoint(Cam, WorldPoint, ViewportWidthPx, ViewportHeightPx, OutScreenX, OutScreenY, OutViewDepth);
+}
+
+void FractureViewportRenderer::SampleEnergySwatchSrgb(
+    float    NormalizedStress,
+    uint8_t& OutR,
+    uint8_t& OutG,
+    uint8_t& OutB) noexcept
+{
+    const auto Lin = EvaluateEnergyHeatmapLinear(NormalizedStress);
+    OutR = LinearToSrgb8(Lin.R);
+    OutG = LinearToSrgb8(Lin.G);
+    OutB = LinearToSrgb8(Lin.B);
+}
+
+void FractureViewportRenderer::SampleCellSwatchSrgb(
+    uint32_t CellIndex,
+    uint8_t& OutR,
+    uint8_t& OutG,
+    uint8_t& OutB) noexcept
+{
+    const auto Lin = EvaluateGoldenCellLinear(CellIndex);
+    OutR = LinearToSrgb8(Lin.R);
+    OutG = LinearToSrgb8(Lin.G);
+    OutB = LinearToSrgb8(Lin.B);
 }
 
 } // namespace Frontier::Workspaces::Fracture

@@ -712,8 +712,8 @@ void ViewportPanel::RenderDiagnosticsPanel(
     Spec.Title                   = "Diagnostics";
     Spec.ShortcutBadge           = "F3";
     Spec.FooterSampleLabel       = "120 samples";
-    Spec.AllowMoveAndResize      = false;
-    Spec.ShowViewAndSpanControls = false;
+    Spec.AllowDragResize         = false;
+    Spec.ShowViewSpanControls    = false;
     Spec.DefaultWidthPx          = 324.0f;
     Spec.DefaultHeightPx         = 432.0f;
     Spec.Channels                = Channels;

@@ -118,7 +118,8 @@ int main()
         return 1;
     }
 
-    // 2. Energy Heatmap + Diagnostics Overlay + Solver Tab
+    // 2. Tempered Curtain + Energy Heatmap + Diagnostics Overlay + Material Tab
+    Studio.AccessSession().ApplyPreset(2u); // Tempered Curtain
     Studio.AccessSession().RenderOptions.RenderMode         = FractureRenderViewMode::Energy;
     Studio.AccessSession().DiagnosticsSession.Visible       = true;
     Studio.AccessSession().ActiveInspectorTab               = 1u;
@@ -130,7 +131,8 @@ int main()
         return 1;
     }
 
-    // 3. JoltPhysics Simulation Active + Cells Mode + Receipt Tab
+    // 3. JoltPhysics Simulation Active + Cells Mode + Solver Tab
+    Studio.AccessSession().ApplyPreset(0u); // Concrete Column
     Studio.AccessSession().DiagnosticsSession.Visible       = false;
     Studio.AccessSession().RenderOptions.RenderMode         = FractureRenderViewMode::Cells;
     Studio.AccessSession().RenderOptions.ExplodeFactor      = 0.0f;
@@ -153,11 +155,11 @@ int main()
         return 1;
     }
 
-    // 4. Engineering Baked Fractography + Tempered Curtain Preset
+    // 4. Engineering Baked Fractography + Receipt Tab
     Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Edit);
     Studio.AccessSession().ApplyPreset(1u); // Baked Fractography
     Studio.AccessSession().RenderOptions.RenderMode = FractureRenderViewMode::StudioOpenPBR;
-    Studio.AccessSession().ActiveInspectorTab       = 2u;
+    Studio.AccessSession().ActiveInspectorTab       = 3u;
     RenderStep(Idle);
     if (!VerifyCheck(Studio.InspectSession().PartitionResult.HasEngineering, "Engineering fractography metrics active"))
     {

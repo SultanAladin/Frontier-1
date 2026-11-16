@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           FRACTUREOUTLINERPANEL.H
 ============================================================================================================================================*/
-// 🧩 Floating 22px left Fracture Outliner panel: solid selector, 6 presets, search filter, and fragment shard visibility/selection tree
+// 🧩 Left Fracture Studio Outliner panel: Census tiles (Released/Held), search bar, filter chips & Primitives/Recipe/Fragments tree
 
 #pragma once
 
@@ -28,11 +28,7 @@ public:
         Rectangle2D               Bounds,
         FractureWorkspaceSession& Session,
         const ControlPointer&     Pointer,
-        float                     WheelDeltaY = 0.0f,
-        float                     Opacity     = 1.0f) noexcept;
-
-private:
-    float ScrollOffsetPx = 0.0f;
+        float                     WheelDeltaY = 0.0f) noexcept;
 };
 
 } // namespace Frontier::Workspaces::Fracture

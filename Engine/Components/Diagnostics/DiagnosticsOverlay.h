@@ -26,9 +26,9 @@ namespace Frontier
 
 enum class DiagnosticsViewMode : uint8_t
 {
-    PlotAndStats = 0u, // [-] - Display sparkline plot and key-value stats grid
-    PlotOnly     = 1u, // [-] - Display sparkline plot only
-    StatsOnly    = 2u, // [-] - Display stats grid only
+    CombinedPlotStats = 0u, // [-] - Display sparkline plot and key-value stats grid
+    PlotOnly          = 1u, // [-] - Display sparkline plot only
+    StatsOnly         = 2u, // [-] - Display stats grid only
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -64,7 +64,7 @@ struct DiagnosticsOverlaySession
     bool                Visible             = false;                         // [-]  - True when overlay is displayed
     bool                Paused              = false;                         // [-]  - Freeze live sampling when true
     uint32_t            ActiveChannelIndex  = 0u;                            // [idx]- Active metric channel index
-    DiagnosticsViewMode ViewMode            = DiagnosticsViewMode::PlotAndStats; // [-] - Plot/Stats visibility mode
+    DiagnosticsViewMode ViewMode            = DiagnosticsViewMode::CombinedPlotStats; // [-] - Plot/Stats visibility mode
     uint32_t            HistorySeconds      = 30u;                           // [s]  - Displayed history span (15/30/60)
     bool                CustomLayoutPlaced  = false;                         // [-]  - True after user moved or resized panel
     Rectangle2D         PanelBounds         {};                              // [px] - Current overlay bounds in host coordinates
@@ -79,8 +79,8 @@ struct DiagnosticsOverlaySpec
     const char*                               Title                    = "Diagnostics"; // [-] - Header title
     const char*                               ShortcutBadge            = "F3";          // [-] - Header shortcut tag
     const char*                               FooterSampleLabel        = "120 samples"; // [-] - Footer right label
-    bool                                      AllowMoveAndResize       = true;          // [-] - Enable header drag & corner resize
-    bool                                      ShowViewAndSpanControls  = false;         // [-] - Show Plot/Stats & 15/30/60s toggles
+    bool                                      AllowDragResize          = true;          // [-] - Enable header drag & corner resize
+    bool                                      ShowViewSpanControls     = false;         // [-] - Show Plot/Stats & 15/30/60s toggles
     float                                     DefaultWidthPx           = 324.0f;        // [px]- Initial panel width
     float                                     DefaultHeightPx          = 432.0f;        // [px]- Initial panel height
     std::span<const DiagnosticsMetricChannel> Channels                 {};              // [-] - Available metric channels
