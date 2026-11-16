@@ -732,6 +732,55 @@ void FractureInspectorPanel::Render(
             Cy += 2.0f * (Th + Gap) + 8.0f;
         }
 
+        // 8. COLLISION (Convex hull vs exact Collision shape)
+        if (DrawSectionHeader(6u, "COLLISION",
+                Session.CollisionShapeMode == SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh
+                    ? "Exact fragment mesh" : "Convex hull"))
+        {
+            const Rectangle2D Card { X, Cy, InnerW, 92.0f };
+            Surface.FillRectangle(Card, ColorRgba { 25u, 25u, 27u, 255u }, 18.0f);
+            Surface.StrokeRectangle(Card, ColorRgba { 48u, 48u, 48u, 255u }, 18.0f, 1.0f);
+
+            Surface.Text({ Card.X + 14.0f, Card.Y + 12.0f }, 10.4f, ColorRgba { 216u, 216u, 214u, 255u }, "Fragment collision shape");
+            const Rectangle2D Track { Card.X + 12.0f, Card.Y + 32.0f, Card.Width - 24.0f, 30.0f };
+            Surface.FillRectangle(Track, ColorRgba { 16u, 16u, 18u, 255u }, 15.0f);
+            Surface.StrokeRectangle(Track, ColorRgba { 255u, 255u, 255u, 18u }, 15.0f, 0.9f);
+            static constexpr std::array<const char*, 2> ColliderLabels {{ "Convex hull", "Collision shape" }};
+            const float HalfW = (Track.Width - 4.0f) * 0.5f;
+            for (uint32_t Opt = 0u; Opt < 2u; ++Opt)
+            {
+                const bool Active = (Opt == 0u)
+                    ? (Session.CollisionShapeMode == SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::ConvexHull)
+                    : (Session.CollisionShapeMode == SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh);
+                const Rectangle2D Pill { Track.X + 2.0f + static_cast<float>(Opt) * HalfW, Track.Y + 2.0f, HalfW, Track.Height - 4.0f };
+                const bool Hov = ControlAppearance::QueryPointerOver(Pill, Pointer);
+                if (Active)
+                {
+                    Surface.FillRectangle(Pill, ColorRgba { 48u, 52u, 60u, 255u }, 13.0f);
+                    Surface.StrokeRectangle(Pill, ColorRgba { 91u, 219u, 135u, 120u }, 13.0f, 1.0f);
+                }
+                else if (Hov)
+                {
+                    Surface.FillRectangle(Pill, ColorRgba { 255u, 255u, 255u, 10u }, 13.0f);
+                }
+                Surface.TextCentered(Pill, 10.0f, Active ? ColorRgba { 244u, 244u, 242u, 255u } : ColorRgba { 150u, 150u, 148u, 255u }, ColliderLabels[Opt]);
+                if (Hov && Pointer.Pressed && !Active)
+                {
+                    Session.CollisionShapeMode = (Opt == 1u)
+                        ? SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh
+                        : SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::ConvexHull;
+                    Session.RebuildFracturePartition();
+                }
+            }
+
+            const auto Tel = Session.SimRunner.InspectTelemetry();
+            char ColNote[72] {};
+            std::snprintf(ColNote, sizeof(ColNote), "JoltPhysics · %u bodies · %u sub-shapes",
+                Tel.FragmentCount, std::max(Tel.FragmentCount, Tel.TotalSubShapes));
+            Surface.Text({ Card.X + 14.0f, Card.Bottom() - 21.0f }, 9.4f, ColorRgba { 142u, 142u, 140u, 255u }, ColNote);
+            Cy += 100.0f;
+        }
+
         // Floating Material Picker Popover List (if opened)
         if (Session.MaterialOutsideOpen || Session.MaterialInsideOpen)
         {

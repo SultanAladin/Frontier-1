@@ -29,6 +29,8 @@ struct ConvexFace
     bool                  Interior    = false;
     uint32_t              CutToken    = 0u;
     Mathematics::Axis3D   CrackNormal { 0.0f, 0.0f, 1.0f };
+    bool                  Seam        = false;
+    uint32_t              SeamId      = 0u;
 };
 
 struct ConvexPolyhedron
@@ -100,10 +102,11 @@ struct EngineeringSolverMetrics
 
 struct FracturePieceEntry
 {
-    uint32_t            Index             = 0u;
-    std::string         Token             {};
-    ConvexPolyhedron    Polyhedron        {};
-    EngineeringSurface  DetailedSurface   {};
+    uint32_t                      Index             = 0u;
+    std::string                   Token             {};
+    ConvexPolyhedron              Polyhedron        {};
+    std::vector<ConvexPolyhedron> SubConvexHulls    {};
+    EngineeringSurface            DetailedSurface   {};
     bool                HasDetailedSurf   = false;
     double              VolumeM3          = 0.0;
     double              ConvexVolumeM3    = 0.0;

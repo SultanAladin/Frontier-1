@@ -491,7 +491,7 @@ FractureRenderOutput FractureViewportRenderer::RenderFrame(
                 const auto& Poly = Frag.Polyhedron;
                 for (const auto& Face : Poly.Faces)
                 {
-                    if (Face.Indices.size() < 3u) continue;
+                    if (Face.Seam || Face.Indices.size() < 3u) continue;
                     const auto LocalN = GeometrySpace::Fracture::ConvexPartitioning::ComputeFaceNormal(Poly, Face);
                     const auto WorldN = SimulationSpace::PhysicsSpace::RigidBodyDynamics::RotateByQuaternion(Quat, LocalN);
                     const auto P0 = TransformLocalToWorld(Poly.Vertices[Face.Indices[0]], Frag.Centroid, FragWorldOrigin, Quat, ExplodeOffset);

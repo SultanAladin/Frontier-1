@@ -710,7 +710,7 @@ PolyhedronMetrics ConvexPartitioning::ComputePolyhedronMetrics(const ConvexPolyh
 
     for (const auto& Face : Polyhedron.Faces)
     {
-        if (Face.Interior) CrackArea += ComputeFaceAreaM2(Polyhedron, Face);
+        if (Face.Interior && !Face.Seam) CrackArea += ComputeFaceAreaM2(Polyhedron, Face);
         for (size_t I = 1u; I + 1u < Face.Indices.size(); ++I)
         {
             const auto& P1 = Polyhedron.Vertices[Face.Indices[0]];
@@ -1057,8 +1057,8 @@ PolyhedronClipOutput ConvexPartitioning::ClipConvexPolyhedron(
 
         const auto CleanFp = DeduplicateCycle(Fp);
         const auto CleanBp = DeduplicateCycle(Bp);
-        if (CleanFp.size() >= 3u) FrontFaces.push_back({ CleanFp, Face.Interior, Face.CutToken, Face.CrackNormal });
-        if (CleanBp.size() >= 3u) BackFaces.push_back({ CleanBp, Face.Interior, Face.CutToken, Face.CrackNormal });
+        if (CleanFp.size() >= 3u) FrontFaces.push_back({ CleanFp, Face.Interior, Face.CutToken, Face.CrackNormal, Face.Seam, Face.SeamId });
+        if (CleanBp.size() >= 3u) BackFaces.push_back({ CleanBp, Face.Interior, Face.CutToken, Face.CrackNormal, Face.Seam, Face.SeamId });
     }
 
     double CutArea = 0.0;
@@ -1422,17 +1422,38 @@ PieceSdfSectionOutput ConvexPartitioning::ComputePieceSdfSection(
     for (const auto& Frag : Fragments)
     {
         if (!Frag.VisibilityEnabled) continue;
-        PiecePlanes Item {};
-        Item.Centroid = Frag.Centroid;
-        Item.RadiusM  = Frag.RadiusM;
-        for (const auto& Face : Frag.Polyhedron.Faces)
+        if (!Frag.SubConvexHulls.empty())
         {
-            if (Face.Indices.empty()) continue;
-            const auto N  = ComputeFaceNormal(Frag.Polyhedron, Face);
-            const auto V0 = Frag.Polyhedron.Vertices[Face.Indices[0]];
-            Item.Planes.push_back({ N, Mathematics::EvaluateDot(N, V0) });
+            for (const auto& Sub : Frag.SubConvexHulls)
+            {
+                const auto Sm = ComputePolyhedronMetrics(Sub);
+                PiecePlanes Item {};
+                Item.Centroid = Sm.Centroid;
+                Item.RadiusM  = Sm.RadiusM;
+                for (const auto& Face : Sub.Faces)
+                {
+                    if (Face.Indices.empty()) continue;
+                    const auto N  = ComputeFaceNormal(Sub, Face);
+                    const auto V0 = Sub.Vertices[Face.Indices[0]];
+                    Item.Planes.push_back({ N, Mathematics::EvaluateDot(N, V0) });
+                }
+                Precomputed.push_back(std::move(Item));
+            }
         }
-        Precomputed.push_back(std::move(Item));
+        else
+        {
+            PiecePlanes Item {};
+            Item.Centroid = Frag.Centroid;
+            Item.RadiusM  = Frag.RadiusM;
+            for (const auto& Face : Frag.Polyhedron.Faces)
+            {
+                if (Face.Indices.empty()) continue;
+                const auto N  = ComputeFaceNormal(Frag.Polyhedron, Face);
+                const auto V0 = Frag.Polyhedron.Vertices[Face.Indices[0]];
+                Item.Planes.push_back({ N, Mathematics::EvaluateDot(N, V0) });
+            }
+            Precomputed.push_back(std::move(Item));
+        }
     }
 
     PieceSdfSectionOutput Output {};

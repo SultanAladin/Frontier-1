@@ -28,8 +28,10 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/ShapeCast.h>
 #include <Jolt/Physics/Constraints/DistanceConstraint.h>
 #include <Jolt/Physics/Constraints/FixedConstraint.h>
@@ -799,6 +801,101 @@ RigidBodyToken PhysicsExtension::IssueRigidBody(const RigidBodyDescriptor& Descr
             auto Result = Settings.Create();
             if (Result.HasError()) return {};
             ShapeRef = Result.Get();
+            break;
+        }
+        case CollisionShapeCategory::CompoundHull:
+        {
+            if (Descriptor.Shape.ConvexVertices.size() < 4u || Descriptor.Shape.CompoundHullVertexCounts.empty())
+            {
+                return {};
+            }
+            Mathematics::Axis3D MinC = Descriptor.Shape.ConvexVertices.front();
+            Mathematics::Axis3D MaxC = Descriptor.Shape.ConvexVertices.front();
+            for (const Mathematics::Axis3D& V : Descriptor.Shape.ConvexVertices)
+            {
+                MinC.X = std::min(MinC.X, V.X); MinC.Y = std::min(MinC.Y, V.Y); MinC.Z = std::min(MinC.Z, V.Z);
+                MaxC.X = std::max(MaxC.X, V.X); MaxC.Y = std::max(MaxC.Y, V.Y); MaxC.Z = std::max(MaxC.Z, V.Z);
+            }
+            ProxyExtents = {
+                std::max((MaxC.X - MinC.X) * 0.5f, 1.0e-3f),
+                std::max((MaxC.Y - MinC.Y) * 0.5f, 1.0e-3f),
+                std::max((MaxC.Z - MinC.Z) * 0.5f, 1.0e-3f)
+            };
+            ProxyCode = 1u;
+
+            JPH::StaticCompoundShapeSettings CompoundCfg {};
+            uint32_t Offset = 0u;
+            uint32_t AddedHulls = 0u;
+            JPH::ShapeRefC SingleSubShape {};
+            for (uint32_t Count : Descriptor.Shape.CompoundHullVertexCounts)
+            {
+                if (Offset + Count > Descriptor.Shape.ConvexVertices.size()) break;
+                if (Count >= 4u)
+                {
+                    JPH::Array<JPH::Vec3> Pts;
+                    Pts.reserve(Count);
+                    for (uint32_t K = 0u; K < Count; ++K)
+                    {
+                        Pts.push_back(ToJoltVec3(Descriptor.Shape.ConvexVertices[Offset + K]));
+                    }
+                    JPH::ConvexHullShapeSettings HullCfg(Pts, std::max(Descriptor.Shape.ConvexRadiusMeters, 0.001f));
+                    HullCfg.SetDensity(std::max(Descriptor.Shape.DensityKgPerM3, 1.0f));
+                    auto HullRes = HullCfg.Create();
+                    if (!HullRes.HasError())
+                    {
+                        SingleSubShape = HullRes.Get();
+                        CompoundCfg.AddShape(JPH::Vec3::sZero(), JPH::Quat::sIdentity(), SingleSubShape);
+                        ++AddedHulls;
+                    }
+                }
+                Offset += Count;
+            }
+            if (AddedHulls == 0u) return {};
+            if (AddedHulls == 1u)
+            {
+                ShapeRef = SingleSubShape;
+            }
+            else
+            {
+                auto CompRes = CompoundCfg.Create();
+                if (CompRes.HasError()) return {};
+                ShapeRef = CompRes.Get();
+            }
+            break;
+        }
+        case CollisionShapeCategory::TriangleMesh:
+        {
+            if (Descriptor.Shape.MeshTriangles.size() < 3u || (Descriptor.Shape.MeshTriangles.size() % 3u) != 0u)
+            {
+                return {};
+            }
+            JPH::TriangleList Tris;
+            Tris.reserve(Descriptor.Shape.MeshTriangles.size() / 3u);
+            Mathematics::Axis3D MinC = Descriptor.Shape.MeshTriangles.front();
+            Mathematics::Axis3D MaxC = Descriptor.Shape.MeshTriangles.front();
+            for (size_t I = 0u; I < Descriptor.Shape.MeshTriangles.size(); I += 3u)
+            {
+                const auto& A = Descriptor.Shape.MeshTriangles[I + 0u];
+                const auto& B = Descriptor.Shape.MeshTriangles[I + 1u];
+                const auto& C = Descriptor.Shape.MeshTriangles[I + 2u];
+                Tris.emplace_back(ToJoltVec3(A), ToJoltVec3(B), ToJoltVec3(C));
+                for (const auto& V : { A, B, C })
+                {
+                    MinC.X = std::min(MinC.X, V.X); MinC.Y = std::min(MinC.Y, V.Y); MinC.Z = std::min(MinC.Z, V.Z);
+                    MaxC.X = std::max(MaxC.X, V.X); MaxC.Y = std::max(MaxC.Y, V.Y); MaxC.Z = std::max(MaxC.Z, V.Z);
+                }
+            }
+            ProxyExtents = {
+                std::max((MaxC.X - MinC.X) * 0.5f, 1.0e-3f),
+                std::max((MaxC.Y - MinC.Y) * 0.5f, 1.0e-3f),
+                std::max((MaxC.Z - MinC.Z) * 0.5f, 1.0e-3f)
+            };
+            ProxyCode = 1u;
+
+            JPH::MeshShapeSettings MeshCfg(Tris);
+            auto MeshRes = MeshCfg.Create();
+            if (MeshRes.HasError()) return {};
+            ShapeRef = MeshRes.Get();
             break;
         }
     }

@@ -22,17 +22,24 @@ namespace Frontier::SimulationSpace::PhysicsSpace
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
+enum class FractureCollisionShapeMode : uint8_t
+{
+    ConvexHull    = 0u, // [-] - Single outer ConvexHull wrapping each fragment
+    CollisionMesh = 1u, // [-] - Exact fragment shape (StaticCompound decomposition on concave shards / tight exact hull)
+};
+
 struct FractureSimulationParameters
 {
-    Mathematics::Axis3D SolidWorldOffsetM { 0.0f, 0.0f, 0.0f }; // [m]   - World placement offset applied to source fragments
-    float               GroundPlaneZ      = 0.0f;               // [m]   - RHR +Z Up ground collision plane height
-    float               Friction          = 0.65f;              // [-]   - Coulomb friction between shards and ground
-    float               Restitution       = 0.14f;              // [0-1] - Coefficient of restitution
-    float               LinearDamping     = 0.04f;              // [1/s] - Air drag damping
-    float               AngularDamping    = 0.08f;              // [1/s] - Rotational damping
-    float               FixedStepHz       = 120.0f;             // [Hz]  - Deterministic Jolt solver frequency
-    bool                EnableBonds       = true;               // [-]   - Registers BreakableBond constraints for intact edges
-    bool                ApplyImpactImpulse = true;              // [-]   - Applies initial fragment velocities / impact impulse
+    Mathematics::Axis3D        SolidWorldOffsetM { 0.0f, 0.0f, 0.0f }; // [m]   - World placement offset applied to source fragments
+    float                      GroundPlaneZ      = 0.0f;               // [m]   - RHR +Z Up ground collision plane height
+    float                      Friction          = 0.65f;              // [-]   - Coulomb friction between shards and ground
+    float                      Restitution       = 0.14f;              // [0-1] - Coefficient of restitution
+    float                      LinearDamping     = 0.04f;              // [1/s] - Air drag damping
+    float                      AngularDamping    = 0.08f;              // [1/s] - Rotational damping
+    float                      FixedStepHz       = 120.0f;             // [Hz]  - Deterministic Jolt solver frequency
+    bool                       EnableBonds       = true;               // [-]   - Registers BreakableBond constraints for intact edges
+    bool                       ApplyImpactImpulse = true;              // [-]   - Applies initial fragment velocities / impact impulse
+    FractureCollisionShapeMode CollisionMode     = FractureCollisionShapeMode::ConvexHull; // [-] - Fragment collision geometry mode
 };
 
 struct FractureBodyTransformState
@@ -47,6 +54,8 @@ struct FractureBodyTransformState
     float                      PeakImpulseNs  = 0.0f;
     bool                       Awake          = false;
     bool                       UsingBoxFallback = false;
+    CollisionShapeCategory     ActiveCollisionShape = CollisionShapeCategory::ConvexHull;
+    uint32_t                   CollisionSubShapeCount = 1u;
 };
 
 struct FractureBondState
@@ -62,16 +71,18 @@ struct FractureBondState
 
 struct FractureSimulationTelemetry
 {
-    double   SimulatedSeconds   = 0.0;
-    uint64_t CompletedSteps     = 0ull;
-    uint32_t FragmentCount      = 0u;
-    uint32_t AwakeFragmentCount = 0u;
-    uint32_t TotalBondCount     = 0u;
-    uint32_t IntactBondCount    = 0u;
-    uint32_t BrokenBondCount    = 0u;
-    uint32_t ContactCount       = 0u;
-    double   TotalKineticJ      = 0.0;
-    float    MaxSpeedMps        = 0.0f;
+    double                     SimulatedSeconds   = 0.0;
+    uint64_t                   CompletedSteps     = 0ull;
+    uint32_t                   FragmentCount      = 0u;
+    uint32_t                   AwakeFragmentCount = 0u;
+    uint32_t                   TotalBondCount     = 0u;
+    uint32_t                   IntactBondCount    = 0u;
+    uint32_t                   BrokenBondCount    = 0u;
+    uint32_t                   ContactCount       = 0u;
+    uint32_t                   TotalSubShapes     = 0u;
+    FractureCollisionShapeMode CollisionMode      = FractureCollisionShapeMode::ConvexHull;
+    double                     TotalKineticJ      = 0.0;
+    float                      MaxSpeedMps        = 0.0f;
 };
 
 //------------------------------------------------------------------------------------------------------------------------

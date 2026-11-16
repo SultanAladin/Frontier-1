@@ -31,10 +31,12 @@ enum class RigidMotionCategory : uint8_t
 
 enum class CollisionShapeCategory : uint8_t
 {
-    Box        = 0u, // [-] - Oriented box defined by HalfExtentsMeters
-    Sphere     = 1u, // [-] - Analytical sphere defined by RadiusMeters
-    Capsule    = 2u, // [-] - +Z-aligned capsule defined by HalfHeightMeters + RadiusMeters
-    ConvexHull = 3u, // [-] - Convex polyhedron built from ConvexVertices
+    Box          = 0u, // [-] - Oriented box defined by HalfExtentsMeters
+    Sphere       = 1u, // [-] - Analytical sphere defined by RadiusMeters
+    Capsule      = 2u, // [-] - +Z-aligned capsule defined by HalfHeightMeters + RadiusMeters
+    ConvexHull   = 3u, // [-] - Convex polyhedron built from ConvexVertices
+    CompoundHull = 4u, // [-] - Multi-hull StaticCompound built from CompoundHullVertexCounts slices inside ConvexVertices
+    TriangleMesh = 5u, // [-] - Exact static triangle mesh built from MeshTriangles (3 vertices per triangle)
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -71,7 +73,9 @@ struct RigidShapeDescriptor
     float                                RadiusMeters       = 0.5f;                        // [m]      - Radius for Sphere or Capsule
     float                                HalfHeightMeters   = 0.5f;                        // [m]      - Cylinder half-height along +Z for Capsule
     float                                ConvexRadiusMeters = 0.01f;                       // [m]      - Convex margin bevel radius
-    std::span<const Mathematics::Axis3D> ConvexVertices     {};                            // [m]      - Non-owning hull vertex span for ConvexHull
+    std::span<const Mathematics::Axis3D> ConvexVertices     {};                            // [m]      - Non-owning hull vertex span for ConvexHull / CompoundHull
+    std::span<const uint32_t>            CompoundHullVertexCounts {};                      // [count]  - Vertex counts per sub-hull inside ConvexVertices
+    std::span<const Mathematics::Axis3D> MeshTriangles      {};                            // [m]      - Non-owning triangle triplets (3*N) for TriangleMesh
     float                                DensityKgPerM3     = 2350.0f;                     // [kg/m^3] - Material bulk density
     float                                Friction           = 0.65f;                       // [-]      - Coulomb contact friction coefficient
     float                                Restitution        = 0.15f;                       // [0-1]    - Coefficient of restitution

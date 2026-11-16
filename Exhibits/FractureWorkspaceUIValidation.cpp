@@ -142,8 +142,9 @@ int main()
         return 1;
     }
 
-    // 4. JoltPhysics Simulate Mode + Cells Mode + 60px Timeline + Kinetic Hero Curve
+    // 4. JoltPhysics Simulate Mode (CollisionMesh exact compound shards) + Cells Mode + 60px Timeline + Kinetic Hero Curve
     Studio.AccessSession().MaterialId                  = "concrete";
+    Studio.AccessSession().CollisionShapeMode          = Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh;
     Studio.AccessSession().RenderOptions.ExplodeFactor = 0.0f;
     Studio.AccessSession().RebuildFracturePartition();
     Studio.AccessSession().RenderOptions.RenderMode    = FractureRenderViewMode::Cells;
@@ -154,7 +155,10 @@ int main()
         ImGui::DestroyContext(Gui);
         return 1;
     }
-    if (!VerifyCheck(Studio.InspectSession().SimRunner.InspectTelemetry().CompletedSteps > 0ull, "Jolt stepped frames"))
+    const auto SimTel = Studio.InspectSession().SimRunner.InspectTelemetry();
+    if (!VerifyCheck(SimTel.CompletedSteps > 0ull, "Jolt stepped frames") ||
+        !VerifyCheck(SimTel.CollisionMode == Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh, "CollisionMesh mode active") ||
+        !VerifyCheck(SimTel.TotalSubShapes > SimTel.FragmentCount, "Torus shards rejoined across seams into compound sub-shapes"))
     {
         ImGui::DestroyContext(Gui);
         return 1;
@@ -163,6 +167,31 @@ int main()
     {
         ImGui::DestroyContext(Gui);
         return 1;
+    }
+
+    // Verify ConvexHull collision mode also loads & steps cleanly
+    Studio.AccessSession().CollisionShapeMode = Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::ConvexHull;
+    Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Edit);
+    Studio.AccessSession().RebuildFracturePartition();
+    Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Simulate);
+    RenderStep(Idle);
+    if (!VerifyCheck(Studio.InspectSession().SimRunner.InspectTelemetry().CollisionMode == Frontier::SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::ConvexHull, "ConvexHull mode active"))
+    {
+        ImGui::DestroyContext(Gui);
+        return 1;
+    }
+
+    // Verify all 6 fracture solvers on Torus produce watertight organic fragments
+    Studio.AccessSession().TransitionExecutionPhase(ExecutionStripPhase::Edit);
+    for (uint32_t S = 0u; S < 6u; ++S)
+    {
+        Studio.AccessSession().ApplySolverMethod(static_cast<Frontier::GeometrySpace::Fracture::FractureSolverMethod>(S));
+        if (!VerifyCheck(Studio.InspectSession().PartitionResult.Fragments.size() >= 4u, "Torus solver produced fragments") ||
+            !VerifyCheck(Studio.InspectSession().PartitionResult.Receipt.WatertightManifold, "Torus solver watertight conservation"))
+        {
+            ImGui::DestroyContext(Gui);
+            return 1;
+        }
     }
 
     // Verify all 9 analytical primitives switch cleanly with watertight conservation

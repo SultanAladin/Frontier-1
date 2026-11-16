@@ -45,14 +45,17 @@ float RigidBodyDynamics::EstimateShapeVolumeM3(const RigidShapeDescriptor& Shape
             return Cylinder + Caps;
         }
         case CollisionShapeCategory::ConvexHull:
+        case CollisionShapeCategory::CompoundHull:
+        case CollisionShapeCategory::TriangleMesh:
         {
-            if (Shape.ConvexVertices.empty())
+            const auto& Verts = !Shape.ConvexVertices.empty() ? Shape.ConvexVertices : Shape.MeshTriangles;
+            if (Verts.empty())
             {
                 return 0.001f;
             }
-            Mathematics::Axis3D MinCorner = Shape.ConvexVertices.front();
-            Mathematics::Axis3D MaxCorner = Shape.ConvexVertices.front();
-            for (const Mathematics::Axis3D& Vertex : Shape.ConvexVertices)
+            Mathematics::Axis3D MinCorner = Verts.front();
+            Mathematics::Axis3D MaxCorner = Verts.front();
+            for (const Mathematics::Axis3D& Vertex : Verts)
             {
                 MinCorner.X = std::min(MinCorner.X, Vertex.X);
                 MinCorner.Y = std::min(MinCorner.Y, Vertex.Y);

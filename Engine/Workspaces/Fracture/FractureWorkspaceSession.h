@@ -195,6 +195,7 @@ public:
     double                                         Restitution         = 0.14;
     double                                         Friction            = 0.78;
     bool                                           CollisionsEnabled   = true;
+    SimulationSpace::PhysicsSpace::FractureCollisionShapeMode CollisionShapeMode = SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::ConvexHull;
 
     Mathematics::Axis3D                            ImpactPointLocal    { 0.46f, 0.50f, 0.06f };
     Mathematics::Axis3D                            ImpactNormalLocal   { 0.65f, 0.72f, 0.24f };
@@ -232,7 +233,7 @@ public:
     bool                                           MaterialInsideOpen  = false;
 
     // Inspector UI state
-    std::array<bool, 9>                            SectionExpanded     { true, true, true, false, false, false, false, false, false };
+    std::array<bool, 10>                           SectionExpanded     { true, true, true, false, false, false, true, false, false, false };
     int32_t                                        ActiveSliderId      = -1;
     float                                          OutlinerScrollY     = 0.0f;
     float                                          InspectorScrollY    = 0.0f;
