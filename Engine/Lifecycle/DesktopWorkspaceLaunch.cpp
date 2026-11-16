@@ -23,6 +23,7 @@
 #include "Engine/Input/ImGuiInputAdapter.h"
 #include "Engine/Input/InputExtension.h"
 #include "Engine/Windowing/PlatformWindow.h"
+#include "Engine/Workspaces/Fracture/FractureWorkspaceHost.h"
 #include "Engine/Workspaces/Material/MaterialWorkspaceHost.h"
 #include "Engine/Workspaces/Particle/ParticleWorkspaceHost.h"
 #include "Engine/Workspaces/Texturing/BakingWorkspaceHost.h"
@@ -416,6 +417,7 @@ int LaunchDesktopWorkspace(
         MaterialWorkspaceSurface   = 6u,
         ParticleWorkspaceSurface   = 7u,
         ForceFieldWorkspaceSurface = 8u,
+        FractureWorkspaceSurface   = 9u,
     };
 
     const bool StandaloneVectorLaunch =
@@ -436,6 +438,10 @@ int LaunchDesktopWorkspace(
         !InitialOptions.OpenProjectBrowser;
     const bool StandaloneForceFieldLaunch =
         (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::Simulation) &&
+        !InitialOptions.OpenWorldEditor &&
+        !InitialOptions.OpenProjectBrowser;
+    const bool StandaloneFractureLaunch =
+        (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::Fracture) &&
         !InitialOptions.OpenWorldEditor &&
         !InitialOptions.OpenProjectBrowser;
     const bool StandaloneUVLaunch =
@@ -460,6 +466,10 @@ int LaunchDesktopWorkspace(
     else if (StandaloneForceFieldLaunch)
     {
         CurrentSurface = ActiveHostSurface::ForceFieldWorkspaceSurface;
+    }
+    else if (StandaloneFractureLaunch)
+    {
+        CurrentSurface = ActiveHostSurface::FractureWorkspaceSurface;
     }
     else if (StandaloneBakingLaunch)
     {
@@ -591,6 +601,7 @@ int LaunchDesktopWorkspace(
 #if FRONTIER_EDITOR_ENABLED
     Workspaces::MaterialWorkspaceHost                  MaterialHost {};
     Workspaces::ParticleWorkspaceHost                  ParticleHost {};
+    Workspaces::Fracture::FractureWorkspaceHost        FractureHost {};
     Components::HeadlessWorkspaceDockContainer         MaterialDock {};
     Components::HeadlessWorkspaceDockContainer         ForceFieldDock {};
     Lifecycle::EditorLifecycle                         EditorLoop {};
@@ -600,6 +611,7 @@ int LaunchDesktopWorkspace(
     Editor::Explorer::ContentBrowser                   BakingBrowser {};
     Editor::Explorer::ContentBrowser                   MaterialBrowser {};
     Editor::Explorer::ContentBrowser                   ParticleBrowser {};
+    Editor::Explorer::ContentBrowser                   FractureBrowser {};
     Editor::Explorer::ProjectBrowser                   HostProjectBrowser {};
     OutlinerPanel                                      ForceOutliner {};
     ViewportPanel                                      ForceViewport {};
@@ -615,6 +627,7 @@ int LaunchDesktopWorkspace(
     bool                                               MaterialHostReady         = false;
     bool                                               ParticleHostReady         = false;
     bool                                               ForceFieldHostReady       = false;
+    bool                                               FractureHostReady         = false;
     bool                                               ProjectBrowserInitialized = false;
     bool                                               SharedThemeInitialized    = false;
 
@@ -900,6 +913,22 @@ int LaunchDesktopWorkspace(
         return true;
     };
 
+    auto EnsureFractureHostReady = [&]() -> bool
+    {
+        EnsureSharedControlCentreReady();
+        if (!FractureHostReady)
+        {
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            FractureBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            FractureBrowser.AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::Fracture);
+            FractureBrowser.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
+            FractureHost.AttachContentBrowserPanel(&FractureBrowser.AccessPanel());
+            FractureHost.AttachVulkanDevice(DeviceInterchange, CompiledShaderDir);
+            FractureHostReady = true;
+        }
+        return true;
+    };
+
     auto EnsureForceFieldHostReady = [&]() -> bool
     {
         EnsureSharedControlCentreReady();
@@ -1049,6 +1078,13 @@ int LaunchDesktopWorkspace(
                     CurrentSurface = ActiveHostSurface::UvWorkspaceSurface;
                 }
             }
+            else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::FractureWorkspace)
+            {
+                if (EnsureFractureHostReady())
+                {
+                    CurrentSurface = ActiveHostSurface::FractureWorkspaceSurface;
+                }
+            }
             else
             {
                 if (EnsureEditorLifecycleReady(Directive.SelectedFilePath, Directive.ProjectTitle))
@@ -1097,6 +1133,14 @@ int LaunchDesktopWorkspace(
     else if (CurrentSurface == ActiveHostSurface::ForceFieldWorkspaceSurface)
     {
         if (!EnsureForceFieldHostReady())
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+    }
+    else if (CurrentSurface == ActiveHostSurface::FractureWorkspaceSurface)
+    {
+        if (!EnsureFractureHostReady())
         {
             ImGui::DestroyContext(GuiCtx);
             return 1;
@@ -1415,6 +1459,32 @@ int LaunchDesktopWorkspace(
             ParticleHost.RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
+        else if (CurrentSurface == ActiveHostSurface::FractureWorkspaceSurface)
+        {
+            const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            PixelSpace StudioSurface(ImGui::GetForegroundDrawList(), Point2D{ 0.0f, 0.0f }, HostUiScale);
+            const Point2D MouseLogical = StudioSurface.QueryMousePosition();
+            ContentBrowserPointerInput PtrInput {};
+            if (!StandaloneControlCentre.QueryOpen())
+            {
+                PtrInput.CursorX       = MouseLogical.X;
+                PtrInput.CursorY       = MouseLogical.Y;
+                PtrInput.Pressed       = StudioSurface.QueryMouseClicked(0);
+                PtrInput.HeldDown      = StudioSurface.QueryMouseDown(0);
+                PtrInput.Released      = StudioSurface.QueryMouseReleased(0);
+                PtrInput.DoubleClicked = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+                PtrInput.WheelDeltaY   = Io.MouseWheel;
+            }
+            const Rectangle2D LogicalBounds {
+                0.0f,
+                0.0f,
+                FullBounds.Width / HostUiScale,
+                FullBounds.Height / HostUiScale,
+            };
+            FractureHost.RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
+            StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
+        }
         else if (CurrentSurface == ActiveHostSurface::ForceFieldWorkspaceSurface)
         {
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
@@ -1532,6 +1602,17 @@ int LaunchDesktopWorkspace(
                     }
                 }
                 PillX += 52.0f;
+
+                const ButtonTone FracTone = (CurrentSurface == ActiveHostSurface::FractureWorkspaceSurface) ? ButtonTone::Primary : ButtonTone::Secondary;
+                if (CapsuleButton::Construct(TopOverlay, { PillX, 3.0f, 70.0f, 23.0f }, ButtonDescriptor{ "Fracture", FracTone, 10.2f, 11.5f }, Ptr).Pressed &&
+                    CurrentSurface != ActiveHostSurface::FractureWorkspaceSurface)
+                {
+                    if (EnsureFractureHostReady())
+                    {
+                        CurrentSurface = ActiveHostSurface::FractureWorkspaceSurface;
+                    }
+                }
+                PillX += 76.0f;
 
                 if (CapsuleButton::Construct(TopOverlay, { PillX, 3.0f, 76.0f, 23.0f }, ButtonDescriptor{ "Projects", ButtonTone::Secondary, 10.2f, 11.5f }, Ptr).Pressed)
                 {

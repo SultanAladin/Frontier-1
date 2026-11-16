@@ -10,6 +10,8 @@
 #include "Engine/Components/Panes/ViewportPanel.h"
 #include "Engine/Components/Controls/DropdownSelector.h"
 #include "Engine/Components/Controls/ExclusiveSelector.h"
+#include "Engine/Components/Controls/ExecutionModeStrip.h"
+#include "Engine/Components/Diagnostics/DiagnosticsOverlay.h"
 #include "Engine/Components/VectorIcons/VectorIconRepository.h"
 
 #include <imgui.h>
@@ -610,210 +612,123 @@ void ViewportPanel::RenderDiagnosticsPanel(
     uint32_t                VisibleCount,
     const PaneInputReading& Input)
 {
-    const float PanelW = std::min(324.0f, std::max(220.0f, CanvasBounds.Width - 28.0f));
-    const float PanelH = std::min(432.0f, std::max(260.0f, CanvasBounds.Height - 28.0f));
-    const Rectangle2D Panel{
-        CanvasBounds.Right() - PanelW - 14.0f,
-        CanvasBounds.Y + 14.0f,
-        PanelW,
-        PanelH
+    std::vector<float> Sorted(IntervalHistoryMs.begin(), IntervalHistoryMs.end());
+    std::sort(Sorted.begin(), Sorted.end());
+    const float MinMs = Sorted.front();
+    const float MaxMs = Sorted.back();
+    const float AvgMs = std::accumulate(Sorted.begin(), Sorted.end(), 0.0f) / static_cast<float>(Sorted.size());
+    const float P95Ms = Sorted[static_cast<std::size_t>(Sorted.size() * 95u / 100u)];
+    const float CurMs = IntervalHistoryMs[(HistoryWriteCursor + IntervalHistoryMs.size() - 1u) % IntervalHistoryMs.size()];
+
+    auto FormatMs = [](float V) -> std::string
+    {
+        char Buf[24]{};
+        std::snprintf(Buf, sizeof(Buf), "%.2f ms", V);
+        return std::string(Buf);
     };
 
-    const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    Surface.FillRectangle(Panel, ColorRgba{ 32, 32, 32, 246 }, 24.0f);
-    Surface.StrokeRectangle(Panel, ColorRgba{ 255, 255, 255, 28 }, 24.0f, 1.0f);
+    char WholeMs[16]{};
+    char FracMs[16]{};
+    const int WholeInt = static_cast<int>(CurMs);
+    const int Tenths   = std::clamp(static_cast<int>(std::round((CurMs - static_cast<float>(WholeInt)) * 10.0f)), 0, 9);
+    std::snprintf(WholeMs, sizeof(WholeMs), "%d", WholeInt);
+    std::snprintf(FracMs, sizeof(FracMs), ".%d", Tenths);
 
-    Surface.PushClip(Panel);
-
-    // Header (diagnostics header)
-    const Rectangle2D CloseBtn{ Panel.X + 14.0f, Panel.Y + 13.0f, 28.0f, 28.0f };
-    const bool        CloseHover = CloseBtn.Contains(Cursor);
-    Surface.FillCircle(CloseBtn.Center(), 14.0f, CloseHover ? ColorRgba{ 54, 58, 49, 255 } : ColorRgba{ 43, 45, 40, 255 });
-    VectorIconRepository::ConstructControl(
-        Surface,
-        ControlIcon::CloseCross,
-        VectorIconPlacement{ CloseBtn.X + 7.5f, CloseBtn.Y + 7.5f, 13.0f, ColorRgba{ 192, 197, 184, 255 }, 1.85f });
-    if (CloseHover && Input.PrimaryPointer.Pressed)
+    std::vector<float> OrderedSamples(60u);
+    for (std::size_t Step = 0u; Step < OrderedSamples.size(); ++Step)
     {
-        DiagnosticsVisible = false;
+        OrderedSamples[Step] = IntervalHistoryMs[(HistoryWriteCursor + Step * 2u) % IntervalHistoryMs.size()];
     }
 
-    WorkspaceAppearance::ConstructDiagnosticsIcon(Surface, { CloseBtn.Right() + 10.0f, Panel.Y + 19.0f }, 15.0f, ColorRgba{ 166, 185, 151, 255 });
-    WorkspaceAppearance::ConstructWeightedText(
-        Surface,
-        FontWeightClass::Regular,
-        { CloseBtn.Right() + 31.0f, Panel.Y + 19.5f },
-        12.0f,
-        ColorRgba{ 214, 216, 209, 255 },
-        "Diagnostics");
-    WorkspaceAppearance::ConstructWeightedText(
-        Surface,
-        FontWeightClass::Medium,
-        { Panel.Right() - 32.0f, Panel.Y + 22.0f },
-        8.0f,
-        ColorRgba{ 129, 142, 119, 255 },
-        "F3");
+    char BigCnt[24]{};
+    std::snprintf(BigCnt, sizeof(BigCnt), "%u", ConstructedCount);
+    char VisSummary[64]{};
+    std::snprintf(VisSummary, sizeof(VisSummary), "Visible: %u   Hidden: %u", VisibleCount, ConstructedCount - VisibleCount);
 
-    // Category capsules: Timing / Scene / Render
-    float TabY = Panel.Y + 50.0f;
-    {
-        const float TabW = (Panel.Width - 42.0f - 12.0f) / 3.0f;
-        const std::array<std::pair<const char*, DiagnosticsTabCategory>, 3> Tabs = {{
-            { "Timing", DiagnosticsTabCategory::Timing },
-            { "Scene",  DiagnosticsTabCategory::Scene  },
-            { "Render", DiagnosticsTabCategory::Render },
-        }};
-        for (std::size_t Idx = 0u; Idx < Tabs.size(); ++Idx)
-        {
-            const Rectangle2D TabRect{ Panel.X + 21.0f + static_cast<float>(Idx) * (TabW + 6.0f), TabY, TabW, 25.0f };
-            const bool        Selected = (DiagnosticsCategory == Tabs[Idx].second);
-            Surface.FillRectangle(TabRect, Selected ? ColorRgba{ 62, 68, 56, 255 } : ColorRgba{ 43, 45, 40, 255 }, 12.5f);
-            Surface.StrokeRectangle(TabRect, Selected ? ColorRgba{ 166, 185, 151, 115 } : ColorRgba{ 255, 255, 255, 14 }, 12.5f, 1.0f);
-            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.0f, Tabs[Idx].first);
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface,
-                FontWeightClass::Regular,
-                { TabRect.Center().X - TW * 0.5f, TabRect.Y + 6.5f },
-                10.0f,
-                Selected ? ColorRgba{ 226, 232, 218, 255 } : ColorRgba{ 182, 188, 174, 255 },
-                Tabs[Idx].first);
-            if (TabRect.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+    char ScaleText[48]{};
+    std::snprintf(ScaleText, sizeof(ScaleText), "%.0f", DisplaySettings.RenderScalePercent);
+
+    const std::array<DiagnosticsMetricChannel, 3> Channels = {{
+        DiagnosticsMetricChannel{
+            "Frame time",
+            "Timing",
+            WholeMs,
+            FracMs,
+            "ms  (60.0 fps)",
+            "",
+            "",
+            OrderedSamples,
+            std::min(12.0f, MinMs - 1.0f),
+            std::max(22.0f, MaxMs + 1.0f),
+            16.67f,
+            false,
+            ColorRgba{ 142, 198, 152, 240 },
             {
-                DiagnosticsCategory = Tabs[Idx].second;
+                { "Average",  FormatMs(AvgMs) },
+                { "Minimum",  FormatMs(MinMs) },
+                { "95th pct", FormatMs(P95Ms) },
+                { "Maximum",  FormatMs(MaxMs) },
             }
-        }
-    }
+        },
+        DiagnosticsMetricChannel{
+            "Scene inventory",
+            "Scene",
+            BigCnt,
+            "",
+            "slots",
+            VisSummary,
+            "",
+            {},
+            0.0f,
+            1.0f,
+            0.0f,
+            false,
+            ColorRgba{ 142, 198, 152, 240 },
+            {}
+        },
+        DiagnosticsMetricChannel{
+            "Render configuration",
+            "Render",
+            ScaleText,
+            "",
+            "%",
+            QueryQualityTierName(DisplaySettings.QualityTier),
+            "",
+            {},
+            0.0f,
+            1.0f,
+            0.0f,
+            false,
+            ColorRgba{ 142, 198, 152, 240 },
+            {}
+        },
+    }};
 
-    float BodyY = TabY + 38.0f;
-    if (DiagnosticsCategory == DiagnosticsTabCategory::Timing)
-    {
-        std::vector<float> Sorted(IntervalHistoryMs.begin(), IntervalHistoryMs.end());
-        std::sort(Sorted.begin(), Sorted.end());
-        const float MinMs = Sorted.front();
-        const float MaxMs = Sorted.back();
-        const float AvgMs = std::accumulate(Sorted.begin(), Sorted.end(), 0.0f) / static_cast<float>(Sorted.size());
-        const float P95Ms = Sorted[static_cast<std::size_t>(Sorted.size() * 95u / 100u)];
-        const float CurMs = IntervalHistoryMs[(HistoryWriteCursor + IntervalHistoryMs.size() - 1u) % IntervalHistoryMs.size()];
+    DiagnosticsSession.Visible            = DiagnosticsVisible;
+    DiagnosticsSession.Paused             = DiagnosticsPaused;
+    DiagnosticsSession.ActiveChannelIndex = static_cast<uint32_t>(DiagnosticsCategory);
 
-        Surface.FillRectangle({ Panel.X + 21.0f, BodyY + 2.0f, 3.0f, 14.0f }, ColorRgba{ 88, 153, 121, 255 }, 1.5f);
-        WorkspaceAppearance::ConstructWeightedText(
-            Surface,
-            FontWeightClass::Regular,
-            { Panel.X + 31.0f, BodyY },
-            12.5f,
-            ColorRgba{ 214, 216, 209, 255 },
-            "Frame time");
+    DiagnosticsOverlaySpec Spec {};
+    Spec.Title                   = "Diagnostics";
+    Spec.ShortcutBadge           = "F3";
+    Spec.FooterSampleLabel       = "120 samples";
+    Spec.AllowMoveAndResize      = false;
+    Spec.ShowViewAndSpanControls = false;
+    Spec.DefaultWidthPx          = 324.0f;
+    Spec.DefaultHeightPx         = 432.0f;
+    Spec.Channels                = Channels;
 
-        char BigMs[24]{};
-        std::snprintf(BigMs, sizeof(BigMs), "%.1f", CurMs);
-        WorkspaceAppearance::ConstructWeightedText(
-            Surface,
-            FontWeightClass::Light,
-            { Panel.X + 21.0f, BodyY + 22.0f },
-            44.0f,
-            ColorRgba{ 214, 216, 209, 255 },
-            BigMs);
-        const float BigW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Light, 44.0f, BigMs);
-        WorkspaceAppearance::ConstructWeightedText(
-            Surface,
-            FontWeightClass::Light,
-            { Panel.X + 28.0f + BigW, BodyY + 48.0f },
-            14.0f,
-            ColorRgba{ 138, 145, 130, 255 },
-            "ms  (60.0 fps)");
+    ControlPointer Pointer {};
+    Pointer.X        = Input.PrimaryPointer.X;
+    Pointer.Y        = Input.PrimaryPointer.Y;
+    Pointer.Down     = Input.PrimaryPointer.Down;
+    Pointer.Pressed  = Input.PrimaryPointer.Pressed;
+    Pointer.Released = Input.PrimaryPointer.Released;
 
-        // Sparkline plot
-        const Rectangle2D Plot{ Panel.X + 21.0f, BodyY + 78.0f, Panel.Width - 42.0f, 92.0f };
-        Surface.FillRectangle(Plot, ColorRgba{ 22, 24, 21, 255 }, 10.0f);
-        Surface.StrokeLine({ Plot.X, Plot.Center().Y }, { Plot.Right(), Plot.Center().Y }, ColorRgba{ 255, 255, 255, 16 }, 1.0f);
-
-        std::array<Point2D, 60> Poly{};
-        const float             Lo = std::min(12.0f, MinMs - 1.0f);
-        const float             Hi = std::max(22.0f, MaxMs + 1.0f);
-        for (std::size_t Step = 0u; Step < Poly.size(); ++Step)
-        {
-            const std::size_t SampleIdx = (HistoryWriteCursor + Step * 2u) % IntervalHistoryMs.size();
-            const float       NormX     = static_cast<float>(Step) / static_cast<float>(Poly.size() - 1u);
-            const float       NormY     = std::clamp((IntervalHistoryMs[SampleIdx] - Lo) / std::max(0.5f, Hi - Lo), 0.0f, 1.0f);
-            Poly[Step]                  = { Plot.X + 6.0f + NormX * (Plot.Width - 12.0f), Plot.Bottom() - 10.0f - NormY * (Plot.Height - 20.0f) };
-        }
-        Surface.StrokePolyline(Poly, ColorRgba{ 142, 198, 152, 240 }, 1.6f, false);
-
-        float StatY = Plot.Bottom() + 12.0f;
-        const std::array<std::pair<const char*, float>, 4> Rows = {{
-            { "Average",    AvgMs },
-            { "Minimum",    MinMs },
-            { "95th pct",   P95Ms },
-            { "Maximum",    MaxMs },
-        }};
-        for (const auto& [Name, Val] : Rows)
-        {
-            if (StatY + 20.0f > Panel.Bottom() - 40.0f)
-            {
-                break;
-            }
-            Surface.StrokeLine({ Panel.X + 21.0f, StatY }, { Panel.Right() - 21.0f, StatY }, ColorRgba{ 255, 255, 255, 15 }, 1.0f);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Panel.X + 21.0f, StatY + 5.0f }, 10.0f, ColorRgba{ 144, 153, 134, 255 }, Name);
-            char ValStr[24]{};
-            std::snprintf(ValStr, sizeof(ValStr), "%.2f ms", Val);
-            const float VW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.0f, ValStr);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Panel.Right() - 21.0f - VW, StatY + 5.0f }, 10.0f, ColorRgba{ 193, 202, 180, 255 }, ValStr);
-            StatY += 22.0f;
-        }
-    }
-    else if (DiagnosticsCategory == DiagnosticsTabCategory::Scene)
-    {
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Panel.X + 21.0f, BodyY }, 12.5f, ColorRgba{ 214, 216, 209, 255 }, "Scene inventory");
-        char BigCnt[24]{};
-        std::snprintf(BigCnt, sizeof(BigCnt), "%u", ConstructedCount);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Light, { Panel.X + 21.0f, BodyY + 24.0f }, 44.0f, ColorRgba{ 214, 216, 209, 255 }, BigCnt);
-
-        char VisSummary[64]{};
-        std::snprintf(VisSummary, sizeof(VisSummary), "Visible: %u   Hidden: %u", VisibleCount, ConstructedCount - VisibleCount);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Panel.X + 21.0f, BodyY + 80.0f }, 11.0f, ColorRgba{ 158, 168, 148, 255 }, VisSummary);
-    }
-    else
-    {
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Panel.X + 21.0f, BodyY }, 12.5f, ColorRgba{ 214, 216, 209, 255 }, "Render configuration");
-        char ScaleText[48]{};
-        std::snprintf(ScaleText, sizeof(ScaleText), "%.0f%%", DisplaySettings.RenderScalePercent);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Light, { Panel.X + 21.0f, BodyY + 24.0f }, 44.0f, ColorRgba{ 214, 216, 209, 255 }, ScaleText);
-        WorkspaceAppearance::ConstructWeightedText(
-            Surface,
-            FontWeightClass::Regular,
-            { Panel.X + 21.0f, BodyY + 80.0f },
-            11.0f,
-            ColorRgba{ 158, 168, 148, 255 },
-            QueryQualityTierName(DisplaySettings.QualityTier));
-    }
-
-    // Footer controls (.debug-controls: Pause / 120 f / Clear)
-    const float FooterY = Panel.Bottom() - 36.0f;
-    Surface.StrokeLine({ Panel.X + 16.0f, FooterY - 4.0f }, { Panel.Right() - 16.0f, FooterY - 4.0f }, ColorRgba{ 255, 255, 255, 15 }, 1.0f);
-
-    const Rectangle2D PauseBtn{ Panel.X + 21.0f, FooterY, 58.0f, 24.0f };
-    Surface.FillRectangle(PauseBtn, ColorRgba{ 43, 45, 40, 255 }, 12.0f);
-    WorkspaceAppearance::ConstructWeightedText(
-        Surface,
-        FontWeightClass::Regular,
-        { PauseBtn.X + 13.0f, PauseBtn.Y + 6.0f },
-        9.5f,
-        ColorRgba{ 192, 197, 184, 255 },
-        DiagnosticsPaused ? "Resume" : "Pause");
-    if (PauseBtn.Contains(Cursor) && Input.PrimaryPointer.Pressed)
-    {
-        DiagnosticsPaused = !DiagnosticsPaused;
-    }
-
-    WorkspaceAppearance::ConstructWeightedText(
-        Surface,
-        FontWeightClass::Regular,
-        { Panel.Right() - 84.0f, FooterY + 7.0f },
-        8.5f,
-        ColorRgba{ 120, 133, 108, 255 },
-        "120 samples");
-
-    Surface.PopClip();
+    const DiagnosticsOverlayResult OverlayOut = DiagnosticsOverlay::Construct(Surface, CanvasBounds, Spec, DiagnosticsSession, Pointer);
+    DiagnosticsVisible  = DiagnosticsSession.Visible;
+    DiagnosticsPaused   = DiagnosticsSession.Paused;
+    DiagnosticsCategory = static_cast<DiagnosticsTabCategory>(OverlayOut.SelectedChannel);
 }
 
 bool ViewportPanel::QueryForceConstructAvailable() const noexcept
@@ -1678,107 +1593,52 @@ void ViewportPanel::Render(
             "PREVIEW");
     }
 
-    // 1b. Right Execution Mode Capsule Strip (.viewport-modes: Edit / Simulate / Play-Pause)
+    // 1b. Right Execution Mode Capsule Strip (Reusable ExecutionModeStrip: Edit / Simulate / Play-Pause + optional Rewind)
     {
-        const bool        ShowingPause = (ExecutionMode == ViewportExecutionMode::Play) && !PlayPaused;
-        const char*       PlayLabel    = ShowingPause ? "Pause" : "Play";
-        constexpr float   EditBtnW     = 58.0f;
-        constexpr float   SimBtnW      = 72.0f;
-        constexpr float   PlayBtnW     = 64.0f;
-        const float       StripW       = 6.0f + EditBtnW + 2.0f + SimBtnW + 2.0f + PlayBtnW;
-        const Rectangle2D ModeStrip{ ToolbarRight - StripW, HeadingY + 10.0f, StripW, 31.0f };
+        const float PillW      = ExecutionModeStrip::PreferredStripWidth(false);
+        const bool  ShowRewind = ForceOverlayToolsVisible && ((ToolbarRight - PillW - TagX) > 124.0f);
+        const float TotalW     = ExecutionModeStrip::PreferredStripWidth(ShowRewind);
+        const Rectangle2D StripBounds{ ToolbarRight - TotalW, HeadingY + 10.0f, TotalW, ExecutionModeStrip::RecommendedHeightPx };
 
-        Surface.FillRectangle(ModeStrip, ColorRgba{ 9, 9, 9, 255 }, 15.5f);
-        Surface.StrokeRectangle(ModeStrip, ColorRgba{ 255, 255, 255, 18 }, 15.5f, 1.0f);
+        ExecutionModeStripReading StripReading {};
+        StripReading.ActivePhase          = static_cast<ExecutionStripPhase>(ExecutionMode);
+        StripReading.PlayPaused           = PlayPaused;
+        StripReading.ShowPauseWhenPlaying = true;
+        StripReading.ShowRewindButton     = ShowRewind;
+        StripReading.OverlayBlockingInput = OverlayOpenBefore;
 
-        auto ConstructModeCapsule = [&](Rectangle2D Capsule, const char* Label, bool Active, int IconSelector)
-        {
-            const bool Hovered = !OverlayOpenBefore && Capsule.Contains(Cursor);
-            if (Active)
-            {
-                Surface.FillRectangle(Capsule, ColorRgba{ 44, 44, 44, 255 }, 12.5f);
-                Surface.StrokeRectangle(Capsule, ColorRgba{ 255, 255, 255, 20 }, 12.5f, 1.0f);
-            }
-            else if (Hovered)
-            {
-                Surface.FillRectangle(Capsule, ColorRgba{ 30, 30, 30, 255 }, 12.5f);
-            }
+        ControlPointer Pointer {};
+        Pointer.X        = Input.PrimaryPointer.X;
+        Pointer.Y        = Input.PrimaryPointer.Y;
+        Pointer.Down     = Input.PrimaryPointer.Down;
+        Pointer.Pressed  = Input.PrimaryPointer.Pressed;
+        Pointer.Released = Input.PrimaryPointer.Released;
 
-            const ColorRgba CapsuleBg = Active ? ColorRgba{ 44, 44, 44, 255 }
-                                               : (Hovered ? ColorRgba{ 30, 30, 30, 255 } : WorkspaceSurfaceColors::ModeStripRecess);
-            const ColorRgba Ink = Active ? ColorRgba{ 236, 236, 236, 255 }
-                                         : (Hovered ? ColorRgba{ 176, 176, 176, 255 } : ColorRgba{ 122, 122, 122, 255 });
-            const Point2D   IconPos{ Capsule.X + 9.0f, Capsule.Y + 6.5f };
-            if (IconSelector == 0)
-            {
-                WorkspaceAppearance::ConstructEditIcon(Surface, IconPos, 12.0f, Ink);
-            }
-            else if (IconSelector == 1)
-            {
-                WorkspaceAppearance::ConstructSimulateIcon(Surface, IconPos, 12.0f, Ink, CapsuleBg);
-            }
-            else if (IconSelector == 2)
-            {
-                WorkspaceAppearance::ConstructPlayIcon(Surface, IconPos, 12.0f, Ink);
-            }
-            else
-            {
-                WorkspaceAppearance::ConstructPauseIcon(Surface, IconPos, 12.0f, WorkspaceSurfaceColors::SelectionAmber);
-            }
-
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface,
-                FontWeightClass::Regular,
-                { Capsule.X + 25.0f, Capsule.Y + 7.0f },
-                10.0f,
-                Ink,
-                Label);
-
-            return Hovered && Input.PrimaryPointer.Pressed;
-        };
-
-        const Rectangle2D EditCapsule{ ModeStrip.X + 3.0f, ModeStrip.Y + 3.0f, EditBtnW, 25.0f };
-        const Rectangle2D SimCapsule{ EditCapsule.Right() + 2.0f, ModeStrip.Y + 3.0f, SimBtnW, 25.0f };
-        const Rectangle2D PlayCapsule{ SimCapsule.Right() + 2.0f, ModeStrip.Y + 3.0f, PlayBtnW, 25.0f };
-
-        if (ConstructModeCapsule(EditCapsule, "Edit", ExecutionMode == ViewportExecutionMode::Edit, 0))
-        {
-            ConfigureExecutionMode(ViewportExecutionMode::Edit, false);
-        }
-        if (ConstructModeCapsule(SimCapsule, "Simulate", ExecutionMode == ViewportExecutionMode::Simulate, 1))
-        {
-            ConfigureExecutionMode(ViewportExecutionMode::Simulate, false);
-        }
-        if (ConstructModeCapsule(PlayCapsule, PlayLabel, ExecutionMode == ViewportExecutionMode::Play, ShowingPause ? 3 : 2))
+        const ExecutionModeStripResult StripResult = ExecutionModeStrip::Construct(Surface, StripBounds, StripReading, Pointer);
+        if (StripResult.PlayToggleRequested)
         {
             TogglePlayPause();
         }
-
-        if (ForceOverlayToolsVisible && ModeStrip.X - TagX > 124.0f)
+        else if (StripResult.PhaseChanged)
         {
-            const Rectangle2D RewindBtn{ ModeStrip.X - 42.0f, HeadingY + 10.0f, 34.0f, 31.0f };
-            const bool        RewindHover = !OverlayOpenBefore && RewindBtn.Contains(Cursor);
-            Surface.FillRectangle(RewindBtn, RewindHover ? ColorRgba{ 44, 44, 44, 255 } : ColorRgba{ 26, 26, 26, 255 }, 15.5f);
-            Surface.StrokeRectangle(RewindBtn, ColorRgba{ 255, 255, 255, 20 }, 15.5f, 1.0f);
-            const ColorRgba RewInk = RewindHover ? ColorRgba{ 236, 236, 236, 255 } : ColorRgba{ 165, 165, 170, 255 };
-            Surface.StrokeLine({ RewindBtn.X + 10.0f, RewindBtn.Y + 10.0f }, { RewindBtn.X + 10.0f, RewindBtn.Bottom() - 10.0f }, RewInk, 1.6f);
-            const std::array<Point2D, 3> Tri1 = {{ { RewindBtn.X + 11.5f, RewindBtn.Center().Y }, { RewindBtn.X + 18.0f, RewindBtn.Y + 10.0f }, { RewindBtn.X + 18.0f, RewindBtn.Bottom() - 10.0f } }};
-            const std::array<Point2D, 3> Tri2 = {{ { RewindBtn.X + 18.0f, RewindBtn.Center().Y }, { RewindBtn.X + 24.5f, RewindBtn.Y + 10.0f }, { RewindBtn.X + 24.5f, RewindBtn.Bottom() - 10.0f } }};
-            Surface.FillPolygon(Tri1, RewInk);
-            Surface.FillPolygon(Tri2, RewInk);
-            if (RewindHover && Input.PrimaryPointer.Pressed)
-            {
-                RewindRequested       = true;
-                SimulationTimeSeconds = 0.0;
-            }
+            ConfigureExecutionMode(static_cast<ViewportExecutionMode>(StripResult.SelectedPhase), false);
+        }
 
+        if (StripResult.RewindPressed)
+        {
+            RewindRequested       = true;
+            SimulationTimeSeconds = 0.0;
+        }
+
+        if (ShowRewind)
+        {
             char ClockText[24]{};
             std::snprintf(ClockText, sizeof(ClockText), "t %.1fs", SimulationTimeSeconds);
             const float ClockW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.0f, ClockText);
             WorkspaceAppearance::ConstructWeightedText(
                 Surface,
                 FontWeightClass::Regular,
-                { RewindBtn.X - ClockW - 10.0f, HeadingY + 19.0f },
+                { StripBounds.X - ClockW - 10.0f, HeadingY + 19.0f },
                 10.0f,
                 ColorRgba{ 168, 174, 182, 255 },
                 ClockText);

@@ -174,8 +174,11 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Controls/ColourSwatchPicker.cpp
     Engine/Components/Controls/SimulationPlaybackControls.cpp
     Engine/Components/Controls/SimulationTimeRuler.cpp
+    Engine/Components/Controls/SimulationTimelineFooter.cpp
+    Engine/Components/Controls/ExecutionModeStrip.cpp
     Engine/Components/Controls/ScalarCurveEditor.cpp
     Engine/Components/Diagnostics/DiagnosticInfographicCanvas.cpp
+    Engine/Components/Diagnostics/DiagnosticsOverlay.cpp
     Engine/Components/Diagnostics/LogStreamDrawer.cpp
     Engine/Components/Controls/ExclusiveSelector.cpp
     Engine/Components/Controls/CapsuleButton.cpp
@@ -210,6 +213,12 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/Material/MaterialWorkspaceSession.cpp
     Engine/Workspaces/Material/MaterialViewportHost.cpp
     Engine/Workspaces/Material/MaterialWorkspaceHost.cpp
+    Engine/Workspaces/Fracture/FractureViewportRenderer.cpp
+    Engine/Workspaces/Fracture/FractureWorkspaceSession.cpp
+    Engine/Workspaces/Fracture/FractureOutlinerPanel.cpp
+    Engine/Workspaces/Fracture/FractureViewportHost.cpp
+    Engine/Workspaces/Fracture/FractureInspectorPanel.cpp
+    Engine/Workspaces/Fracture/FractureWorkspaceHost.cpp
     Engine/Workspaces/Texturing/PatternStampLayerStackPane.cpp
     Engine/Workspaces/Texturing/PatternStampToolHeaderPane.cpp
     Engine/Workspaces/Texturing/PatternStampInspectorPane.cpp
@@ -364,6 +373,8 @@ frontier_compile_modular_slang_shader(Particles/ParticleOverlayRasterization.sla
 frontier_compile_modular_slang_shader(Particles/ParticleOverlayRasterization.slang               ParticleOverlayFragmentEntry        fragment ParticleOverlayRasterization.frag.spv)
 frontier_compile_modular_slang_shader(MaterialSpace/OpenPbrSurfaceScattering.slang               ComputeEntry                    compute  OpenPbrSurfaceScattering.comp.spv)
 frontier_compile_modular_slang_shader(MaterialSpace/DynamicMaterialResolve.slang                 DynamicStudioPreviewCompute     compute  DynamicMaterialResolve.comp.spv)
+frontier_compile_modular_slang_shader(GeometricRaster/FractureSurfaceResolve.slang               FractureVertexEntry             vertex   FractureSurfaceResolve.vert.spv)
+frontier_compile_modular_slang_shader(GeometricRaster/FractureSurfaceResolve.slang               FractureFragmentEntry           fragment FractureSurfaceResolve.frag.spv)
 frontier_compile_modular_slang_shader(Visibility/DepthPyramidDownsample.slang                    DepthPyramidComputeEntry        compute  DepthPyramidDownsample.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/ClusterVisibilityCull.slang                     ClusterCullComputeEntry         compute  ClusterVisibilityCull.comp.spv)
 frontier_compile_modular_slang_shader(Visibility/HardwareVisibilityRasterization.slang           VisibilityVertexEntry           vertex   HardwareVisibilityRasterization.vert.spv)
@@ -569,6 +580,10 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometrySpace/Selection/ComponentSelectionMask.cpp
     Engine/GeometrySpace/Selection/GeometrySelection.cpp
     Engine/GeometrySpace/Selection/IslandFloodSelection.cpp
+    Engine/GeometrySpace/Fracture/FractureMaterialRepository.cpp
+    Engine/GeometrySpace/Fracture/FastRuntimeFracture.cpp
+    Engine/GeometrySpace/Fracture/EngineeringBakedFracture.cpp
+    Engine/GeometrySpace/Fracture/ConvexPartitioning.cpp
     Engine/SpatialAcceleration/ClusterPyramid.cpp
     Engine/SpatialAcceleration/WideBoundingTree.cpp
     Engine/DistanceFieldSpace/SignedDistanceVolume.cpp
@@ -665,6 +680,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/SimulationSpace/PhysicsSpace/CollisionDetection.cpp
     Engine/SimulationSpace/PhysicsSpace/ConstraintSolver.cpp
     Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.cpp
+    Engine/SimulationSpace/PhysicsSpace/FractureSimulationRunner.cpp
     Engine/GeometricRaster/Compute/FieldLatticeVulkanExecutor.cpp
     Engine/NetworkingSpace/PacketSerializer.cpp
     Engine/NetworkingSpace/NetworkEndpointRegister.cpp
@@ -834,6 +850,7 @@ if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
     frontier_register_desktop_app(FrontierStamp      Engine/Lifecycle/FrontierStampLaunch.cpp)
     frontier_register_desktop_app(FrontierMaterial   Engine/Lifecycle/FrontierMaterialLaunch.cpp)
     frontier_register_desktop_app(FrontierParticle   Engine/Lifecycle/FrontierParticleLaunch.cpp)
+    frontier_register_desktop_app(FrontierFracture   Engine/Lifecycle/FrontierFractureLaunch.cpp)
     frontier_register_desktop_app(FrontierForceField Engine/Lifecycle/FrontierForceFieldLaunch.cpp)
 endif()
 
@@ -894,6 +911,10 @@ if(BUILD_TESTING)
     frontier_register_exhibit(ParticleMotionGridValidation        Exhibits/ParticleMotionGridValidation.cpp)
     frontier_register_exhibit(ParticleVehicleDissolveValidation   Exhibits/ParticleVehicleDissolveValidation.cpp)
     frontier_register_exhibit(PhysicsSpaceValidation              Exhibits/PhysicsSpaceValidation.cpp)
+    frontier_register_exhibit(FractureGeometryValidation          Exhibits/FractureGeometryValidation.cpp)
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(FractureWorkspaceUIValidation Exhibits/FractureWorkspaceUIValidation.cpp)
+    endif()
     frontier_register_exhibit(GeometryNetworkValidation      Exhibits/GeometryNetworkValidation.cpp)
     frontier_register_exhibit(GeometryCompletionValidation   Exhibits/GeometryCompletionValidation.cpp)
     frontier_register_exhibit(MaterialScatteringValidation   Exhibits/MaterialScatteringValidation.cpp)
@@ -960,6 +981,10 @@ if(BUILD_TESTING)
         add_test(
             NAME FrontierParticleExecutableSmoke
             COMMAND FrontierParticle --frames=3
+        )
+        add_test(
+            NAME FrontierFractureExecutableSmoke
+            COMMAND FrontierFracture --frames=3
         )
         add_test(
             NAME FrontierForceFieldExecutableSmoke

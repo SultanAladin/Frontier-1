@@ -161,6 +161,76 @@ export function SectionCard(Parent, { Id, Title, Glyph, Status, Badge, Hint, Ope
     return { Card: Details, Inner: Content };
 }
 
+export function BindPillSlider(Element, { Minimum = 0, Maximum = 1, Step = 0.01, Digits = 2, OnInput = null })
+{
+    let Current = Minimum;
+    let Disabled = false;
+    const Snap = Raw =>
+    {
+        const Clamped = Math.min(Maximum, Math.max(Minimum, Raw));
+        const Stepped = Step > 0 ? Math.round((Clamped - Minimum) / Step) * Step + Minimum : Clamped;
+        const Precision = Math.pow(10, Digits + 2);
+        return Math.min(Maximum, Math.max(Minimum, Math.round(Stepped * Precision) / Precision));
+    };
+    const Render = Value =>
+    {
+        Current = Snap(Value);
+        const Span = (Maximum - Minimum) || 1;
+        const Frac = Math.max(0, Math.min(1, (Current - Minimum) / Span));
+        Element.style.setProperty('--fraction', Frac.toFixed(4));
+        Element.setAttribute('aria-valuenow', String(Current));
+        Element.dataset.value = String(Current);
+    };
+    const SetFromClientX = ClientX =>
+    {
+        const Rect = Element.getBoundingClientRect();
+        const Pad = 13;
+        const Usable = Math.max(1, Rect.width - Pad * 2);
+        const Frac = Math.max(0, Math.min(1, (ClientX - Rect.left - Pad) / Usable));
+        const Next = Snap(Minimum + Frac * (Maximum - Minimum));
+        Render(Next);
+        if (OnInput) OnInput(Current);
+    };
+    let Dragging = false;
+    Element.addEventListener('pointerdown', Event =>
+    {
+        if (Disabled || Event.button !== 0) return;
+        Event.preventDefault();
+        Element.focus({ preventScroll: true });
+        Dragging = true;
+        Element.classList.add('dragging');
+        Element.setPointerCapture(Event.pointerId);
+        SetFromClientX(Event.clientX);
+    });
+    Element.addEventListener('pointermove', Event => { if (Dragging) SetFromClientX(Event.clientX); });
+    const EndDrag = () => { if (Dragging) { Dragging = false; Element.classList.remove('dragging'); } };
+    Element.addEventListener('pointerup', EndDrag);
+    Element.addEventListener('pointercancel', EndDrag);
+    Element.addEventListener('keydown', Event =>
+    {
+        if (Disabled) return;
+        const Span = (Maximum - Minimum) || 1;
+        const Inc = Step > 0 ? Step : Span / 100;
+        let Next = null;
+        if (Event.key === 'ArrowRight' || Event.key === 'ArrowUp') Next = Current + Inc;
+        else if (Event.key === 'ArrowLeft' || Event.key === 'ArrowDown') Next = Current - Inc;
+        else if (Event.key === 'PageUp') Next = Current + Span * 0.1;
+        else if (Event.key === 'PageDown') Next = Current - Span * 0.1;
+        else if (Event.key === 'Home') Next = Minimum;
+        else if (Event.key === 'End') Next = Maximum;
+        if (Next !== null)
+        {
+            Event.preventDefault();
+            Render(Next);
+            if (OnInput) OnInput(Current);
+        }
+    });
+    return {
+        SetValue: Render,
+        SetDisabled: Flag => { Disabled = !!Flag; Element.classList.toggle('is-disabled', Disabled); Element.tabIndex = Disabled ? -1 : 0; }
+    };
+}
+
 // 📝 ControlPanel::SliderPill (Fluid Editor): 92px black value-pill [57px scrubbable input | 34px unit cell] + 26px pill slider with 24px spherical thumb.
 export function SliderRow(Parent, Binding)
 {
@@ -175,12 +245,13 @@ export function SliderRow(Parent, Binding)
     const UnitCell = Construct('span', 'unit-cell', Binding.Unit || '—');
     const ValuePill = Construct('div', 'value-pill', [NumberInput, UnitCell]);
 
-    const Range = Construct('input', 'pill-range');
-    Range.type = 'range';
-    Range.min = String(Binding.Minimum);
-    Range.max = String(Binding.Maximum);
-    Range.step = String(Step);
+    const Thumb = Construct('span', 'pill-thumb');
+    const Range = Construct('div', 'pill-range', [Thumb]);
+    Range.setAttribute('role', 'slider');
+    Range.setAttribute('tabindex', '0');
     Range.setAttribute('aria-label', Binding.Label);
+    Range.setAttribute('aria-valuemin', String(Binding.Minimum));
+    Range.setAttribute('aria-valuemax', String(Binding.Maximum));
 
     const Control = Construct('div', 'slider-control', [ValuePill, Range]);
     const Row = Construct('div', 'property-row slider-row', [Label, Control]);
@@ -192,23 +263,23 @@ export function SliderRow(Parent, Binding)
         const Precision = Math.pow(10, Digits + 2);
         return Math.round(Clamped * Precision) / Precision;
     };
-    const SyncFraction = Value =>
-    {
-        const Span = (Binding.Maximum - Binding.Minimum) || 1;
-        const Frac = Math.max(0, Math.min(1, (Value - Binding.Minimum) / Span));
-        Range.style.setProperty('--fraction', Frac.toFixed(4));
-    };
 
     const Commit = Raw =>
     {
         if (!Number.isFinite(Raw)) return;
         const Value = Snap(Raw);
         Binding.Write(Value);
-        SyncFraction(Value);
+        SliderApi.SetValue(Value);
         Broadcast();
     };
 
-    Range.addEventListener('input', () => Commit(Number(Range.value)));
+    const SliderApi = BindPillSlider(Range, {
+        Minimum: Binding.Minimum,
+        Maximum: Binding.Maximum,
+        Step,
+        Digits,
+        OnInput: Value => Commit(Value)
+    });
     NumberInput.addEventListener('change', () => Commit(Number(NumberInput.value)));
 
     // Fluid horizontal drag-scrubbing inside the black numeric value pill
@@ -244,10 +315,10 @@ export function SliderRow(Parent, Binding)
     Register(() =>
     {
         const Value = Number(Binding.Read());
-        Range.value = String(Value);
+        const Clean = Number.isFinite(Value) ? Value : Binding.Minimum;
         if (document.activeElement !== NumberInput) NumberInput.value = Number.isFinite(Value) ? Value.toFixed(Digits) : '0';
-        SyncFraction(Number.isFinite(Value) ? Value : Binding.Minimum);
-        ApplyAvailability(Row, Binding, State => { Range.disabled = NumberInput.disabled = !State.Enabled; });
+        SliderApi.SetValue(Clean);
+        ApplyAvailability(Row, Binding, State => { SliderApi.SetDisabled(!State.Enabled); NumberInput.disabled = !State.Enabled; });
     });
     return Row;
 }
@@ -384,20 +455,25 @@ export function ColourRow(Parent, Binding)
     const Top = Construct('div', 'colour-top', [Construct('span', 'property-label', Binding.Label), Right]);
     const Row = Construct('div', 'property-row colour-row', [Top]);
 
-    let AlphaSlider = null;
+    let AlphaSliderApi = null;
     if (Binding.Alpha)
     {
-        AlphaSlider = Construct('input', 'pill-range alpha-range');
-        AlphaSlider.type = 'range';
-        AlphaSlider.min = '0';
-        AlphaSlider.max = '1';
-        AlphaSlider.step = '0.01';
-        AlphaSlider.addEventListener('input', () =>
-        {
-            const Linear = Binding.Read().slice();
-            Linear[3] = Number(AlphaSlider.value);
-            Binding.Write(Linear);
-            Broadcast();
+        const Thumb = Construct('span', 'pill-thumb');
+        const AlphaSlider = Construct('div', 'pill-range alpha-range', [Thumb]);
+        AlphaSlider.setAttribute('role', 'slider');
+        AlphaSlider.setAttribute('tabindex', '0');
+        AlphaSlider.setAttribute('aria-label', `${Binding.Label} alpha`);
+        AlphaSlider.setAttribute('aria-valuemin', '0');
+        AlphaSlider.setAttribute('aria-valuemax', '1');
+        AlphaSliderApi = BindPillSlider(AlphaSlider, {
+            Minimum: 0, Maximum: 1, Step: 0.01, Digits: 2,
+            OnInput: Value =>
+            {
+                const Linear = Binding.Read().slice();
+                Linear[3] = Value;
+                Binding.Write(Linear);
+                Broadcast();
+            }
         });
         Row.append(AlphaSlider);
     }
@@ -421,11 +497,10 @@ export function ColourRow(Parent, Binding)
         const Hex = `#${ToByte(Lin[0])}${ToByte(Lin[1])}${ToByte(Lin[2])}`;
         HexInput.value = Hex;
         Code.textContent = Hex.toLowerCase();
-        if (AlphaSlider)
+        if (AlphaSliderApi)
         {
             const A = Number(Lin[3] ?? 1);
-            AlphaSlider.value = String(A);
-            AlphaSlider.style.setProperty('--fraction', A.toFixed(3));
+            AlphaSliderApi.SetValue(A);
             Alpha.textContent = `${Math.round(A * 100)}%`;
         }
     });

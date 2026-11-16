@@ -266,10 +266,17 @@ Frontier/
     │   │   ├── CurvatureAnalysis.{h,cpp}          // Meyer discrete mean/Gaussian curvature & Mikkelsen/Duff corner tangents
     │   │   └── StretchMeasurement.{h,cpp}         // Exact 2x2 UV-Jacobian SVD, Sander stretch & Symmetric Dirichlet metrics
     │   │
-    │   └── Selection/
-    │       ├── GeometrySelection.{h,cpp}          // Edge loop, edge ring, Dijkstra shortest path, boundary, seam & sharp
-    │       ├── ComponentSelectionMask.{h,cpp}     // Bitmask filters for multi-component picking & paint masks
-    │       └── IslandFloodSelection.{h,cpp}       // Seam-bounded UV island flood segmentation & UDIM tile reassignment
+    │   ├── Selection/
+    │   │   ├── GeometrySelection.{h,cpp}          // Edge loop, edge ring, Dijkstra shortest path, boundary, seam & sharp
+    │   │   ├── ComponentSelectionMask.{h,cpp}     // Bitmask filters for multi-component picking & paint masks
+    │   │   └── IslandFloodSelection.{h,cpp}       // Seam-bounded UV island flood segmentation & UDIM tile reassignment
+    │   │
+    │   └── Fracture/                              // Convex partitioning, 6-solver brittle/ductile/fibrous fracture & fractography
+    │       ├── FractureMaterialRepository.{h,cpp} // 9 engineering materials (E, Gc, Weibull m, Hertz cone, fractography)
+    │       ├── FracturePartitionTypes.h           // ConvexPolyhedron, FlatConvexCell, EngineeringSurface & Receipt types
+    │       ├── FastRuntimeFracture.{h,cpp}        // Boussinesq/Hertz stress field & flat-array half-space runtime solver
+    │       ├── EngineeringBakedFracture.{h,cpp}   // 3D Navier-Cauchy lattice, Smith 3x3 eigen & interlocking fractography
+    │       └── ConvexPartitioning.{h,cpp}         // Exact clipping, PolygonNetwork bridge, 6-solver dispatch & SDF section
     │
     ├── SpatialAcceleration/                       // Unified 128-triangle cluster LOD pyramid & 128 B 4-wide ray acceleration
     │   ├── ClusterPyramid.{h,cpp}                 // 128-triangle Morton LOD pyramid with seam/border-locked QEM collapse
@@ -432,7 +439,8 @@ Frontier/
     │   │   ├── RigidBodyDynamics.{h,cpp}          // Body descriptors, inertia/damping & linear/angular velocity reading
     │   │   ├── ConstraintSolver.{h,cpp}           // 6 joint categories (Fixed, Hinge, Slider, Distance, Point, Cone) & BreakableBond
     │   │   ├── BroadphaseSolver.{h,cpp}           // 80B RigidColliderProxy export & Sphere/OBB/Capsule particle collision solver
-    │   │   └── CollisionDetection.{h,cpp}         // Raycast, sweep & overlap spatial queries and contact impulse snapshots
+    │   │   ├── CollisionDetection.{h,cpp}         // Raycast, sweep & overlap spatial queries and contact impulse snapshots
+    │   │   └── FractureSimulationRunner.{h,cpp}   // ConvexHull shards, BreakableBond strain rupture & RHR +Z Up ground contacts
     │   ├── ParticleSimulation/                    // High-density particulate dynamics
     │   │   ├── ParticleSpawner.{h,cpp}            // Point, volume, and boundary particle spawning
     │   │   ├── ParticleField.{h,cpp}              // Curl noise, rotational, and gravitational vector fields
@@ -523,7 +531,8 @@ Frontier/
     │   ├── Vector/                                // Headless VectorSpace authoring runtime & operations
     │   ├── Simulation/                            // Headless SimulationSpace authoring runtime & operations
     │   ├── Volumetric/                            // Headless VolumetricSpace authoring runtime & operations
-    │   └── Particle/                              // ParticleSpace authoring runtime, ParticleExchange handoff & UI panes
+    │   ├── Particle/                              // ParticleSpace authoring runtime, ParticleExchange handoff & UI panes
+    │   └── Fracture/                              // Fracture Studio UI (Session, Outliner, OpenPBR Viewport, Inspector, Host)
     │
     ├── Editor/                                    // Tooling, Viewports & Modular UI ONLY (Excluded from Shipping)
     │   ├── Viewports/                             // Shared general-purpose 3D & 2D viewports
@@ -577,6 +586,7 @@ Frontier/
     │   ├── EditorLifecycle.{h,cpp}                // Authoring loop & GPU overlay entry (FRONTIER_PROFILE_EDITOR only)
     │   ├── DesktopWorkspaceLaunch.{h,cpp}         // GLFW + Vulkan 1.2 swapchain/offscreen launch & CLI smoke capture
     │   ├── FrontierUVLaunch.cpp                   // Standalone FrontierUV desktop application entry
+    │   ├── FrontierFractureLaunch.cpp             // Standalone FrontierFracture desktop application entry
     │   └── FrontierEditorLaunch.cpp               // Full FeatureSet FrontierEditor desktop application entry
     │
     ├── Components/                                // Reusable UI controls, themes, typography, motion & panels

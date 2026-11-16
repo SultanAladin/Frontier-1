@@ -253,6 +253,14 @@ function RefreshLogDrawer()
     }
 }
 
+let ExplodeSlider = null;
+function SetExplodeReadout(Value)
+{
+    Studio.Timeline.ExplodeAmount = Value;
+    if (ExplodeSlider) ExplodeSlider.SetValue(Value);
+    document.getElementById('explodeValueText').textContent = Value.toFixed(2);
+}
+
 function RecomputePartition(AutoPlay = false, Note = null)
 {
     const Construct = ActiveConstruct();
@@ -262,9 +270,7 @@ function RecomputePartition(AutoPlay = false, Note = null)
     Studio.Timeline.BuildSimulation(Studio.Partition, Construct.Pipeline, 0, Studio.Viewport.ObjectLiftY);
     if (AutoPlay)
     {
-        Studio.Timeline.ExplodeAmount = 0;
-        document.getElementById('explodeRangeInput').value = '0';
-        document.getElementById('explodeValueText').textContent = '0.00';
+        SetExplodeReadout(0);
         Studio.Timeline.ActiveTime = 0.02;
         Studio.Timeline.Playing = true;
         UpdatePlayIcon();
@@ -305,9 +311,7 @@ function UpdatePlayIcon()
 
 function TriggerStrike()
 {
-    Studio.Timeline.ExplodeAmount = 0;
-    document.getElementById('explodeRangeInput').value = '0';
-    document.getElementById('explodeValueText').textContent = '0.00';
+    SetExplodeReadout(0);
     Studio.Timeline.ActiveTime = 0.02;
     Studio.Timeline.Playing = true;
     UpdatePlayIcon();
@@ -326,9 +330,7 @@ function SelectDirectoryItem(Id, ResetTab = true)
             RecomputePartition(false);
             Studio.Timeline.Playing = false;
             Studio.Timeline.ActiveTime = Cst.Pipeline === 'baked' ? 0.0 : 0.24;
-            Studio.Timeline.ExplodeAmount = Cst.Pipeline === 'baked' ? 0.18 : 0.06;
-            document.getElementById('explodeRangeInput').value = String(Studio.Timeline.ExplodeAmount);
-            document.getElementById('explodeValueText').textContent = Studio.Timeline.ExplodeAmount.toFixed(2);
+            SetExplodeReadout(Cst.Pipeline === 'baked' ? 0.18 : 0.06);
             SyncTimelineFrame();
         }
     }
@@ -1290,9 +1292,7 @@ function WireStaticControls()
     ReasmBtn.append(C.ConstructGlyph('Reset'));
     ReasmBtn.addEventListener('click', () =>
     {
-        Studio.Timeline.Playing = false; Studio.Timeline.ActiveTime = 0; Studio.Timeline.ExplodeAmount = 0;
-        document.getElementById('explodeRangeInput').value = '0';
-        document.getElementById('explodeValueText').textContent = '0.00';
+        Studio.Timeline.Playing = false; Studio.Timeline.ActiveTime = 0; SetExplodeReadout(0);
         Studio.Viewport.ResetCamera();
         SyncTimelineFrame(); UpdatePlayIcon();
     });
@@ -1320,11 +1320,9 @@ function WireStaticControls()
         C.Toast(`Baked ${Cst.Title}`);
     });
     document.getElementById('speed-select').addEventListener('change', Ev => { Studio.Timeline.PlaybackRate = Number(Ev.target.value); });
-    document.getElementById('explodeRangeInput').addEventListener('input', Ev =>
-    {
-        Studio.Timeline.ExplodeAmount = Number(Ev.target.value);
-        document.getElementById('explodeValueText').textContent = Studio.Timeline.ExplodeAmount.toFixed(2);
-        SyncTimelineFrame();
+    ExplodeSlider = C.BindPillSlider(document.getElementById('explodeRangeInput'), {
+        Minimum: 0, Maximum: 1, Step: 0.01, Digits: 2,
+        OnInput: Value => { SetExplodeReadout(Value); SyncTimelineFrame(); }
     });
 
     // Ruler scrub
@@ -1459,9 +1457,7 @@ function Boot()
 
     RecomputePartition(false);
     Studio.Timeline.ActiveTime = 0.28;
-    Studio.Timeline.ExplodeAmount = 0.08;
-    document.getElementById('explodeRangeInput').value = '0.08';
-    document.getElementById('explodeValueText').textContent = '0.08';
+    SetExplodeReadout(0.08);
     SyncTimelineFrame();
 
     ConstructDockTabs();

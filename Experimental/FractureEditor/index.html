@@ -213,11 +213,11 @@
                         <option value="0.5">0.50×</option>
                         <option value="1" selected>1.0×</option>
                     </select>
-                    <label class="transport-explode">
+                    <div class="transport-explode">
                         <span>Explode</span>
-                        <input type="range" class="pill-range compact-range" id="explodeRangeInput" min="0" max="1" step="0.01" value="0.08" />
+                        <div class="pill-range compact-range" id="explodeRangeInput" role="slider" tabindex="0" aria-label="Explode" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.08" style="--fraction:0.08"><span class="pill-thumb"></span></div>
                         <span class="tabular" id="explodeValueText">0.08</span>
-                    </label>
+                    </div>
                     <div class="transport-actions">
                         <button class="button burst-button accent" id="strike-button" type="button">Strike <span class="key-hint">L</span></button>
                         <button class="button burst-button" id="bake-button" type="button">Bake <span class="key-hint">B</span></button>

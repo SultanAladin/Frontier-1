@@ -71,6 +71,13 @@ WorkspaceCapabilityRegister::WorkspaceCapabilityRegister()
         "Baking Studio · Pure-GPU GTX BVH4 & RTX RayQuery 18-target PBR & 3D Volume SDF baker",
         true,
     });
+    RegisteredEntries.push_back({
+        HostWorkspaceTarget::FractureWorkspace,
+        "FractureWorkspace",
+        "Open with Fracture Studio",
+        "Fracture Studio · 6-solver brittle/ductile partitioning, fractography & JoltPhysics v5.6.0",
+        true,
+    });
 }
 
 std::span<const WorkspaceCapabilityEntry> WorkspaceCapabilityRegister::QueryAllCapabilities() const noexcept
@@ -82,6 +89,19 @@ std::vector<WorkspaceCapabilityEntry> WorkspaceCapabilityRegister::QueryPermitte
 {
     const std::string Ext = LowercaseAscii(FilePath.extension().string());
     std::vector<WorkspaceCapabilityEntry> Permitted {};
+
+    if (Ext == ".fracturespace" || Ext == ".fracture")
+    {
+        if (const auto* Frac = FindByTarget(HostWorkspaceTarget::FractureWorkspace))
+        {
+            Permitted.push_back(*Frac);
+        }
+        if (const auto* World = FindByTarget(HostWorkspaceTarget::FrontierWorld))
+        {
+            Permitted.push_back(*World);
+        }
+        return Permitted;
+    }
 
     if (Ext == ".stl")
     {

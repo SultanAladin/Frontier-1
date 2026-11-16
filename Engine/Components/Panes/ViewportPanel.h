@@ -10,6 +10,8 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Controls/CapsuleButton.h"
+#include "Engine/Components/Controls/ExecutionModeStrip.h"
+#include "Engine/Components/Diagnostics/DiagnosticsOverlay.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldDescriptors.h"
 
@@ -227,6 +229,7 @@ private:
     ViewportDisplaySettings    DisplaySettings         {};                                        // [-]   - Quality, AA, GI, RT & scale
     DiagnosticsTabCategory     DiagnosticsCategory     = DiagnosticsTabCategory::Timing;          // [-]   - Active diagnostics view tab
     bool                       DiagnosticsPaused       = false;                                   // [-]   - Freeze sparkline sampling
+    DiagnosticsOverlaySession  DiagnosticsSession      {};                                        // [-]   - Reusable DiagnosticsOverlay session
     std::array<float, 120>     IntervalHistoryMs      {};                                        // [ms]  - Rolling 120-step timing samples
     uint32_t                   HistoryWriteCursor      = 0u;                                      // [idx] - Ring buffer write cursor
     ConstructCategoryRail      ConstructRail           = ConstructCategoryRail::All;              // [-]   - Active Construct category rail
