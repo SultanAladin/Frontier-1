@@ -86,6 +86,11 @@ float FluidValueNoise3(float3 P)
         U.z);
 }
 
+float FluidFbm2Noise3(float3 P)
+{
+    return 0.65 * FluidValueNoise3(P) + 0.35 * FluidValueNoise3(P * 2.13 + float3(7.3, -4.1, 5.7));
+}
+
 float3 FluidCurlNoise3(float3 P)
 {
     float Eps = 0.25;
@@ -93,6 +98,11 @@ float3 FluidCurlNoise3(float3 P)
     float N2 = FluidValueNoise3(P + float3(0.0, 0.0, Eps)) - FluidValueNoise3(P - float3(0.0, 0.0, Eps));
     float N3 = FluidValueNoise3(P + float3(Eps, 0.0, 0.0)) - FluidValueNoise3(P - float3(Eps, 0.0, 0.0));
     return float3(N1 - N2, N2 - N3, N3 - N1) / (2.0 * Eps);
+}
+
+float3 FluidCurlFbm2(float3 P)
+{
+    return FluidCurlNoise3(P) + 0.55 * FluidCurlNoise3(P * 2.25 + float3(11.4, 3.2, -6.8));
 }
 
 float FluidHgPhase(float CosTheta, float G)
@@ -129,53 +139,53 @@ bool FluidIntersectBox(float3 Ro, float3 Rd, float3 BMin, float3 BMax, out float
 
 float3 EvaluateFluidBlackbodyPaletteGpu(float Temperature, float TemperatureScale, int PaletteIndex)
 {
-    float T = clamp(Temperature * TemperatureScale * 0.16, 0.0, 1.35);
+    float T = clamp(Temperature * TemperatureScale * 0.155, 0.0, 1.30);
     if (T <= 0.01) return float3(0.0, 0.0, 0.0);
 
     float3 Col = float3(0.0, 0.0, 0.0);
     if (PaletteIndex == 1) // CinemaNapalm
     {
-        Col = lerp(float3(0.0, 0.0, 0.0), float3(0.72, 0.04, 0.004), smoothstep(0.0, 0.24, T));
-        Col = lerp(Col, float3(1.00, 0.18, 0.01), smoothstep(0.20, 0.56, T));
-        Col = lerp(Col, float3(1.00, 0.56, 0.08), smoothstep(0.50, 0.94, T));
-        Col = lerp(Col, float3(1.00, 0.88, 0.45), smoothstep(0.88, 1.35, T));
+        Col = lerp(float3(0.0, 0.0, 0.0), float3(0.68, 0.03, 0.003), smoothstep(0.0, 0.26, T));
+        Col = lerp(Col, float3(1.00, 0.16, 0.008), smoothstep(0.22, 0.60, T));
+        Col = lerp(Col, float3(1.00, 0.52, 0.06), smoothstep(0.54, 0.98, T));
+        Col = lerp(Col, float3(1.00, 0.84, 0.36), smoothstep(0.92, 1.30, T));
     }
     else if (PaletteIndex == 2) // ThermobaricWhiteHot
     {
-        Col = lerp(float3(0.0, 0.0, 0.0), float3(0.75, 0.16, 0.02), smoothstep(0.0, 0.18, T));
-        Col = lerp(Col, float3(1.00, 0.54, 0.14), smoothstep(0.16, 0.44, T));
-        Col = lerp(Col, float3(1.00, 0.92, 0.68), smoothstep(0.40, 0.75, T));
-        Col = lerp(Col, float3(1.15, 1.15, 1.25), smoothstep(0.72, 1.25, T));
+        Col = lerp(float3(0.0, 0.0, 0.0), float3(0.72, 0.12, 0.01), smoothstep(0.0, 0.20, T));
+        Col = lerp(Col, float3(1.00, 0.44, 0.08), smoothstep(0.18, 0.48, T));
+        Col = lerp(Col, float3(1.00, 0.86, 0.48), smoothstep(0.44, 0.82, T));
+        Col = lerp(Col, float3(1.12, 1.10, 1.18), smoothstep(0.78, 1.25, T));
     }
     else if (PaletteIndex == 3) // WildfireCopperEmerald
     {
         Col = lerp(float3(0.0, 0.0, 0.0), float3(0.04, 0.35, 0.14), smoothstep(0.0, 0.24, T));
         Col = lerp(Col, float3(0.12, 0.92, 0.36), smoothstep(0.20, 0.55, T));
         Col = lerp(Col, float3(0.62, 1.00, 0.54), smoothstep(0.50, 0.92, T));
-        Col = lerp(Col, float3(0.95, 1.00, 0.92), smoothstep(0.88, 1.35, T));
+        Col = lerp(Col, float3(0.95, 1.00, 0.92), smoothstep(0.88, 1.30, T));
     }
     else if (PaletteIndex == 4) // CherenkovBluePlasma
     {
         Col = lerp(float3(0.0, 0.0, 0.0), float3(0.05, 0.12, 0.62), smoothstep(0.0, 0.22, T));
         Col = lerp(Col, float3(0.14, 0.56, 1.00), smoothstep(0.18, 0.52, T));
         Col = lerp(Col, float3(0.58, 0.88, 1.00), smoothstep(0.48, 0.90, T));
-        Col = lerp(Col, float3(0.94, 0.98, 1.05), smoothstep(0.85, 1.35, T));
+        Col = lerp(Col, float3(0.94, 0.98, 1.05), smoothstep(0.85, 1.30, T));
     }
     else if (PaletteIndex == 5) // ArcaneVoidMagenta
     {
         Col = lerp(float3(0.0, 0.0, 0.0), float3(0.38, 0.03, 0.48), smoothstep(0.0, 0.22, T));
         Col = lerp(Col, float3(0.88, 0.16, 0.96), smoothstep(0.18, 0.54, T));
         Col = lerp(Col, float3(1.00, 0.54, 0.98), smoothstep(0.50, 0.92, T));
-        Col = lerp(Col, float3(1.00, 0.92, 1.00), smoothstep(0.86, 1.35, T));
+        Col = lerp(Col, float3(1.00, 0.92, 1.00), smoothstep(0.86, 1.30, T));
     }
     else // PlanckianBlackbody (0)
     {
-        Col = lerp(float3(0.0, 0.0, 0.0), float3(0.55, 0.03, 0.005), smoothstep(0.0, 0.22, T));
-        Col = lerp(Col, float3(1.00, 0.24, 0.01), smoothstep(0.18, 0.52, T));
-        Col = lerp(Col, float3(1.00, 0.68, 0.10), smoothstep(0.48, 0.88, T));
-        Col = lerp(Col, float3(1.00, 0.96, 0.78), smoothstep(0.82, 1.35, T));
+        Col = lerp(float3(0.0, 0.0, 0.0), float3(0.58, 0.025, 0.003), smoothstep(0.0, 0.25, T));
+        Col = lerp(Col, float3(1.00, 0.20, 0.008), smoothstep(0.20, 0.58, T));
+        Col = lerp(Col, float3(1.00, 0.60, 0.07), smoothstep(0.52, 0.94, T));
+        Col = lerp(Col, float3(1.00, 0.90, 0.58), smoothstep(0.88, 1.30, T));
     }
 
-    float Gain = pow(T, 1.35) * 0.85;
+    float Gain = pow(T, 1.45) * 0.78;
     return Col * Gain;
 }

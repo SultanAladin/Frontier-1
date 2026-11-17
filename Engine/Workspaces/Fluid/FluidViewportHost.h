@@ -9,12 +9,20 @@
 #include "Engine/Components/PixelSpace.h"
 #include "Engine/Workspaces/Fluid/FluidWorkspaceSession.h"
 
+#include <imgui.h>
+
 namespace Frontier::Workspaces
 {
 
 class FluidViewportHost
 {
 public:
+    FluidViewportHost() = default;
+    ~FluidViewportHost() noexcept;
+
+    FluidViewportHost(const FluidViewportHost&)            = delete;
+    FluidViewportHost& operator=(const FluidViewportHost&) = delete;
+
     void Render(
         PixelSpace&            Surface,
         Rectangle2D            Bounds,
@@ -28,7 +36,10 @@ public:
     [[nodiscard]] Rectangle2D QueryLastBoundsBtnBounds() const noexcept   { return LastBoundsBtnBounds; }
 
 private:
-    Rectangle2D LastSurfaceBounds    {};
+    void UploadPreviewTexture(const std::vector<uint8_t>& RgbaPixels, uint32_t WidthPx, uint32_t HeightPx);
+
+    ImTextureData PreviewTexture     {};
+    Rectangle2D   LastSurfaceBounds  {};
     Rectangle2D LastBakeButtonBounds {};
     Rectangle2D LastDiagButtonBounds {};
     Rectangle2D LastBoundsBtnBounds  {};

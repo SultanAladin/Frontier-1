@@ -15,11 +15,13 @@ namespace Frontier::SimulationSpace::FluidSpace
 namespace
 {
 
-constexpr std::array<FluidPresetEntry, 10> BuiltInPresets {{
+constexpr std::array<FluidPresetEntry, 12> BuiltInPresets {{
     { "ue5_pyro_default",    "Pyro plume",          "fire",   "Rolling flame · dark soot" },
     { "oil_well_inferno",    "Oil well inferno",    "fire",   "Pressurised fuel column" },
     { "shrapnel_airburst",   "Shrapnel airburst",   "blast",  "Ballistic smoke streamers" },
     { "megaton_open_bounds", "Wide-bounds blast",   "blast",  "Large expanding fireball (uncapped headroom)" },
+    { "wildfire_tornado",    "Fire tornado",        "fire",   "High-swirl flame vortex + debris" },
+    { "dust_tornado",        "Dust tornado",        "dust",   "Swirling dust funnel + flying debris" },
     { "camp_fire_steady",    "Camp fire steady",    "fire",   "Warm flickering hearth plume" },
     { "cold_dust_fall",      "Cold dust fall",      "dust",   "Heavy settling mineral dust cloud" },
     { "deflector_obstacle",  "Deflector obstacle",  "smoke",  "Flow wrapping around solid obstacle" },
@@ -175,11 +177,74 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
     {
         Doc.SceneName                       = "Cherenkov plasma";
         Doc.Shading.ColorPalette            = FluidColorPalette::CherenkovBluePlasma;
-        Doc.Shading.FireIntensity           = 7.2f;
-        Doc.Emitter.Temperature             = 5.8f;
-        Doc.Emitter.Smoke                   = 0.4f;
-        Doc.Combustion.SootGeneration       = 0.35f;
+        Doc.Shading.FireIntensity           = 6.4f;
+        Doc.Emitter.Temperature             = 5.2f;
+        Doc.Emitter.Smoke                   = 0.45f;
+        Doc.Combustion.SootGeneration       = 0.40f;
         Doc.Combustion.VorticityConfinement = 10.5f;
+    }
+    else if (PresetKey == "wildfire_tornado")
+    {
+        Doc.SceneName                       = "Fire tornado";
+        Doc.Domain.BoundsWidthMeters        = 2.2f;
+        Doc.Domain.BoundsHeightMeters       = 3.1f;
+        Doc.Domain.DynamicBounds            = false;
+        Doc.Emitter.RadiusMeters            = 0.18f;
+        Doc.Emitter.HeightMeters            = 0.08f;
+        Doc.Emitter.UpwardVelocityMps       = 4.9f;
+        Doc.Emitter.Swirl                   = 6.2f;
+        Doc.Emitter.Temperature             = 4.5f;
+        Doc.Emitter.Fuel                    = 3.6f;
+        Doc.Emitter.Smoke                   = 1.1f;
+        Doc.Combustion.VorticityConfinement = 10.2f;
+        Doc.Combustion.Buoyancy             = 6.4f;
+        Doc.Combustion.SmokeWeight          = 0.35f;
+        Doc.Combustion.TurbulenceStrength   = 3.6f;
+        Doc.Combustion.SootGeneration       = 1.15f;
+        Doc.Combustion.CoolingRate          = 1.10f;
+        Doc.Combustion.WindVelocityXY       = { 0.06f, 0.0f };
+        Doc.Shading.ColorPalette            = FluidColorPalette::CinemaNapalm;
+        Doc.Shading.FireIntensity           = 6.2f;
+        Doc.Shading.DensityExtinction       = 17.5f;
+        Doc.Particles.EmberCount            = 420u;
+        Doc.Particles.EmberLifetime         = 1.8f;
+        Doc.Particles.EmberAshiness         = 0.25f;
+    }
+    else if (PresetKey == "dust_tornado")
+    {
+        Doc.SceneName                       = "Dust tornado";
+        Doc.Domain.BoundsWidthMeters        = 2.3f;
+        Doc.Domain.BoundsHeightMeters       = 3.4f;
+        Doc.Domain.DynamicBounds            = false;
+        Doc.Emitter.RadiusMeters            = 0.21f;
+        Doc.Emitter.HeightMeters            = 0.08f;
+        Doc.Emitter.UpwardVelocityMps       = 5.2f;
+        Doc.Emitter.Swirl                   = 6.8f;
+        Doc.Emitter.Temperature             = 0.20f;
+        Doc.Emitter.Fuel                    = 0.0f;
+        Doc.Emitter.Smoke                   = 3.4f;
+        Doc.Combustion.VorticityConfinement = 11.2f;
+        Doc.Combustion.Buoyancy             = 2.2f;
+        Doc.Combustion.SmokeWeight          = 0.18f;
+        Doc.Combustion.BurnRate             = 0.1f;
+        Doc.Combustion.CombustionExpansion  = 0.0f;
+        Doc.Combustion.CoolingRate          = 3.2f;
+        Doc.Combustion.SmokeDissipation     = 0.06f;
+        Doc.Combustion.VelocityDamping      = 0.04f;
+        Doc.Combustion.TurbulenceStrength   = 2.6f;
+        Doc.Combustion.TurbulenceScale      = 3.0f;
+        Doc.Combustion.WindVelocityXY       = { 0.08f, 0.02f };
+        Doc.Shading.DensityExtinction       = 14.5f;
+        Doc.Shading.SmokeAlbedo             = 0.68f;
+        Doc.Shading.ShadowDensity           = 7.0f;
+        Doc.Shading.FireIntensity           = 0.20f;
+        Doc.Shading.InternalScattering      = 0.5f;
+        Doc.Particles.ShowEmbers            = true;
+        Doc.Particles.EmberCount            = 420u;
+        Doc.Particles.EmberSize             = 0.95f;
+        Doc.Particles.EmberIntensity        = 0.25f;
+        Doc.Particles.EmberLifetime         = 2.2f;
+        Doc.Particles.EmberAshiness         = 1.0f;
     }
     else
     {
@@ -195,7 +260,7 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
     float             TemperatureScale,
     FluidColorPalette Palette) noexcept
 {
-    const float T = std::clamp(RawTemperature * TemperatureScale * 0.16f, 0.0f, 1.35f);
+    const float T = std::clamp(RawTemperature * TemperatureScale * 0.155f, 0.0f, 1.30f);
     if (T <= 0.01f)
     {
         return {};
@@ -206,18 +271,18 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
     {
         case FluidColorPalette::CinemaNapalm:
         {
-            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.72f, 0.04f, 0.004f }, SmoothStepF(0.0f, 0.24f, T));
-            Col = MixRgb(Col, { 1.00f, 0.18f, 0.01f }, SmoothStepF(0.20f, 0.56f, T));
-            Col = MixRgb(Col, { 1.00f, 0.56f, 0.08f }, SmoothStepF(0.50f, 0.94f, T));
-            Col = MixRgb(Col, { 1.00f, 0.88f, 0.45f }, SmoothStepF(0.88f, 1.35f, T));
+            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.68f, 0.03f, 0.003f }, SmoothStepF(0.0f, 0.26f, T));
+            Col = MixRgb(Col, { 1.00f, 0.16f, 0.008f }, SmoothStepF(0.22f, 0.60f, T));
+            Col = MixRgb(Col, { 1.00f, 0.52f, 0.06f }, SmoothStepF(0.54f, 0.98f, T));
+            Col = MixRgb(Col, { 1.00f, 0.84f, 0.36f }, SmoothStepF(0.92f, 1.30f, T));
             break;
         }
         case FluidColorPalette::ThermobaricWhiteHot:
         {
-            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.75f, 0.16f, 0.02f }, SmoothStepF(0.0f, 0.18f, T));
-            Col = MixRgb(Col, { 1.00f, 0.54f, 0.14f }, SmoothStepF(0.16f, 0.44f, T));
-            Col = MixRgb(Col, { 1.00f, 0.92f, 0.68f }, SmoothStepF(0.40f, 0.75f, T));
-            Col = MixRgb(Col, { 1.15f, 1.15f, 1.25f }, SmoothStepF(0.72f, 1.25f, T));
+            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.72f, 0.12f, 0.01f }, SmoothStepF(0.0f, 0.20f, T));
+            Col = MixRgb(Col, { 1.00f, 0.44f, 0.08f }, SmoothStepF(0.18f, 0.48f, T));
+            Col = MixRgb(Col, { 1.00f, 0.86f, 0.48f }, SmoothStepF(0.44f, 0.82f, T));
+            Col = MixRgb(Col, { 1.12f, 1.10f, 1.18f }, SmoothStepF(0.78f, 1.25f, T));
             break;
         }
         case FluidColorPalette::WildfireCopperEmerald:
@@ -225,7 +290,7 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
             Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.04f, 0.35f, 0.14f }, SmoothStepF(0.0f, 0.24f, T));
             Col = MixRgb(Col, { 0.12f, 0.92f, 0.36f }, SmoothStepF(0.20f, 0.55f, T));
             Col = MixRgb(Col, { 0.62f, 1.00f, 0.54f }, SmoothStepF(0.50f, 0.92f, T));
-            Col = MixRgb(Col, { 0.95f, 1.00f, 0.92f }, SmoothStepF(0.88f, 1.35f, T));
+            Col = MixRgb(Col, { 0.95f, 1.00f, 0.92f }, SmoothStepF(0.88f, 1.30f, T));
             break;
         }
         case FluidColorPalette::CherenkovBluePlasma:
@@ -233,7 +298,7 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
             Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.05f, 0.12f, 0.62f }, SmoothStepF(0.0f, 0.22f, T));
             Col = MixRgb(Col, { 0.14f, 0.56f, 1.00f }, SmoothStepF(0.18f, 0.52f, T));
             Col = MixRgb(Col, { 0.58f, 0.88f, 1.00f }, SmoothStepF(0.48f, 0.90f, T));
-            Col = MixRgb(Col, { 0.94f, 0.98f, 1.05f }, SmoothStepF(0.85f, 1.35f, T));
+            Col = MixRgb(Col, { 0.94f, 0.98f, 1.05f }, SmoothStepF(0.85f, 1.30f, T));
             break;
         }
         case FluidColorPalette::ArcaneVoidMagenta:
@@ -241,21 +306,21 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
             Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.38f, 0.03f, 0.48f }, SmoothStepF(0.0f, 0.22f, T));
             Col = MixRgb(Col, { 0.88f, 0.16f, 0.96f }, SmoothStepF(0.18f, 0.54f, T));
             Col = MixRgb(Col, { 1.00f, 0.54f, 0.98f }, SmoothStepF(0.50f, 0.92f, T));
-            Col = MixRgb(Col, { 1.00f, 0.92f, 1.00f }, SmoothStepF(0.86f, 1.35f, T));
+            Col = MixRgb(Col, { 1.00f, 0.92f, 1.00f }, SmoothStepF(0.86f, 1.30f, T));
             break;
         }
         case FluidColorPalette::PlanckianBlackbody:
         default:
         {
-            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.55f, 0.03f, 0.005f }, SmoothStepF(0.0f, 0.22f, T));
-            Col = MixRgb(Col, { 1.00f, 0.24f, 0.01f }, SmoothStepF(0.18f, 0.52f, T));
-            Col = MixRgb(Col, { 1.00f, 0.68f, 0.10f }, SmoothStepF(0.48f, 0.88f, T));
-            Col = MixRgb(Col, { 1.00f, 0.96f, 0.78f }, SmoothStepF(0.82f, 1.35f, T));
+            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.58f, 0.025f, 0.003f }, SmoothStepF(0.0f, 0.25f, T));
+            Col = MixRgb(Col, { 1.00f, 0.20f, 0.008f }, SmoothStepF(0.20f, 0.58f, T));
+            Col = MixRgb(Col, { 1.00f, 0.60f, 0.07f }, SmoothStepF(0.52f, 0.94f, T));
+            Col = MixRgb(Col, { 1.00f, 0.90f, 0.58f }, SmoothStepF(0.88f, 1.30f, T));
             break;
         }
     }
 
-    const float Gain = std::pow(T, 1.35f) * 0.85f;
+    const float Gain = std::pow(T, 1.45f) * 0.78f;
     return { Col.R * Gain, Col.G * Gain, Col.B * Gain };
 }
 

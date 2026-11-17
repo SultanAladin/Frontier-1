@@ -52,21 +52,33 @@ void FluidSplatObstacleEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     {
         float3 EmitCenter = float3(FluidCfg.EmitterPosRate.xy, BoxMin.z + FluidCfg.EmitterThermo.w);
         float3 D = WorldPos - EmitCenter;
-        float Dist = length(float3(D.x, D.y, D.z * 1.45));
-        float EmitR = max(0.04, FluidCfg.EmitterParams.x);
-        if (Dist < EmitR * 1.35)
+        bool IsTornado = (FluidCfg.EmitterParams.z >= 3.0);
+        float HeightAbove = max(0.0, D.z);
+        float FunnelH = IsTornado ? min(1.0, HeightAbove / max(0.5, (BoxMax.z - BoxMin.z) * 0.65)) : 0.0;
+        float DZ = IsTornado ? ((D.z < 0.0) ? -D.z * 2.0 : HeightAbove * 0.28) : (D.z * 1.45);
+        float RawDist = IsTornado ? length(float3(D.x, D.y, DZ * 0.59)) : length(float3(D.x, D.y, DZ));
+        float EmitR = max(0.04, FluidCfg.EmitterParams.x) * (IsTornado ? (1.0 + FunnelH * 0.75) : 1.0);
+        float Fbm = FluidFbm2Noise3(WorldPos * float3(8.5, 8.5, 7.5) + float3(TimeSec * 1.6, -TimeSec * 1.3, -TimeSec * 4.8));
+        float WarpedDist = RawDist * (1.0 + 0.28 * Fbm);
+        if (WarpedDist < EmitR * 1.55)
         {
-            float Flicker = 0.82 + 0.28 * FluidValueNoise3(
-                WorldPos * float3(3.8, 3.8, 3.2) + float3(TimeSec * 1.5, -TimeSec * 1.2, -TimeSec * 3.8));
-            float Falloff = exp(-(Dist * Dist) / (EmitR * EmitR * 0.45)) * FluidCfg.EmitterPosRate.w * max(0.1, Flicker);
+            float HeightFade = IsTornado ? (1.0 - 0.62 * FunnelH) : 1.0;
+            float Flicker = max(0.15, 0.85 + 0.52 * Fbm);
+            float Falloff = exp(-(WarpedDist * WarpedDist) / (EmitR * EmitR * 0.42)) * FluidCfg.EmitterPosRate.w * Flicker * HeightFade;
             float XYDist = max(1.0e-4, length(D.xy));
             float2 TanXY = float2(-D.y, D.x) / XYDist;
+            float2 RadXY = D.xy / XYDist;
 
-            Vel.xy += (TanXY * FluidCfg.EmitterParams.z + (D.xy / XYDist) * 0.45) * Falloff * Dt * 4.5;
-            Vel.z  += FluidCfg.EmitterParams.y * Falloff * Dt * 6.0;
-            Th.x = min(12.0, Th.x + FluidCfg.EmitterThermo.z * Falloff * Dt * 5.0);
-            Th.y = min(12.0, Th.y + FluidCfg.EmitterThermo.x * Falloff * Dt * 5.5);
-            Th.z = min(12.0, Th.z + FluidCfg.EmitterThermo.y * Falloff * Dt * 5.5);
+            float RadialBias = IsTornado ? -0.85 : 0.35;
+            float2 TargetXY = TanXY * FluidCfg.EmitterParams.z + RadXY * RadialBias + float2(Fbm * 0.9, -Fbm * 0.8);
+            float  TargetZ  = FluidCfg.EmitterParams.y * (IsTornado ? 1.25 : 1.0) * (0.82 + 0.42 * max(0.0, Fbm));
+            float  Blend    = clamp(Falloff * Dt * 11.0, 0.0, 0.85);
+
+            Vel.xy += (TargetXY - Vel.xy) * Blend;
+            Vel.z  += (TargetZ  - Vel.z)  * Blend;
+            Th.x = max(Th.x, FluidCfg.EmitterThermo.z * Falloff * (0.6 + 0.4 * max(0.0, Fbm)));
+            Th.y = max(Th.y, FluidCfg.EmitterThermo.x * Falloff);
+            Th.z = max(Th.z, FluidCfg.EmitterThermo.y * Falloff);
         }
     }
 
@@ -75,15 +87,17 @@ void FluidSplatObstacleEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     {
         float3 D = WorldPos - FluidCfg.BlastCenterRad.xyz;
         float Dist = length(D);
-        float RMax = max(0.06, FluidCfg.BlastCenterRad.w) * 2.2;
+        float RMax = max(0.06, FluidCfg.BlastCenterRad.w) * 2.45;
         if (Dist < RMax)
         {
             float Theta = atan2(D.y, D.x);
             float Phi = acos(clamp(D.z / max(1.0e-4, Dist), -1.0, 1.0));
             float Lobes = FluidCfg.BlastLobesActive.x;
-            float Lobe = 1.0 + 0.34 * sin(Theta * Lobes + FluidCfg.BlastLobesActive.y) * cos(Phi * Lobes * 0.7);
-            float W = exp(-(Dist * Dist) / (FluidCfg.BlastCenterRad.w * FluidCfg.BlastCenterRad.w * 0.75)) * max(0.25, Lobe);
-            Vel.xyz += (D / max(1.0e-4, Dist)) * FluidCfg.BlastStrength.x * W;
+            float Seed = FluidCfg.BlastLobesActive.y;
+            float NoiseWarp = FluidFbm2Noise3(WorldPos * 10.5 + float3(Seed, -Seed, 0.0));
+            float Lobe = 1.0 + 0.38 * sin(Theta * Lobes + Seed + NoiseWarp * 1.4) * cos(Phi * Lobes * 0.7) + 0.22 * NoiseWarp;
+            float W = exp(-(Dist * Dist) / (FluidCfg.BlastCenterRad.w * FluidCfg.BlastCenterRad.w * 0.72)) * max(0.18, Lobe);
+            Vel.xyz += ((D / max(1.0e-4, Dist)) * FluidCfg.BlastStrength.x + float3(NoiseWarp * 2.2, -NoiseWarp * 2.2, 0.0)) * W;
             Th.x = min(14.0, Th.x + FluidCfg.BlastStrength.w * W);
             Th.y = min(14.0, Th.y + FluidCfg.BlastStrength.y * W);
             Th.z = min(14.0, Th.z + FluidCfg.BlastStrength.z * W);

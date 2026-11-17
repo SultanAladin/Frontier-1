@@ -104,13 +104,13 @@ struct FluidEmitterSettings
 {
     bool  Enabled           = true;  // [-]    - Continuous plume emission toggle
     float Rate              = 1.0f;  // [x]    - Emission intensity multiplier
-    float RadiusMeters      = 0.22f; // [m]    - Source nozzle radius
-    float HeightMeters      = 0.14f; // [m]    - Source Z height above domain floor
+    float RadiusMeters      = 0.15f; // [m]    - Source nozzle radius
+    float HeightMeters      = 0.08f; // [m]    - Source Z height above domain floor
     float UpwardVelocityMps = 4.2f;  // [m/s]  - +Z jet velocity
-    float Swirl             = 1.4f;  // [rad/s]- Azimuthal XY swirl around +Z
+    float Swirl             = 1.65f; // [rad/s]- Azimuthal XY swirl around +Z
     float Temperature       = 4.2f;  // [K*]   - Normalized flame temperature injection
     float Fuel              = 3.4f;  // [-]    - Unburned hydrocarbon fuel injection
-    float Smoke             = 1.6f;  // [-]    - Direct soot/smoke injection
+    float Smoke             = 1.15f; // [-]    - Direct soot/smoke injection
 };
 
 struct FluidBlastSpecification
@@ -129,19 +129,19 @@ struct FluidBlastSpecification
 
 struct FluidCombustionSettings
 {
-    float                 VorticityConfinement = 7.8f;  // [-]     - Small-scale vortex re-injection
-    float                 Buoyancy             = 5.8f;  // [m/s^2] - Thermal +Z lift per unit temperature
-    float                 SmokeWeight          = 1.15f; // [m/s^2] - Cool soot downward settling
-    float                 TurbulenceStrength   = 2.6f;  // [m/s^2] - Curl-noise sub-grid stirring
-    float                 TurbulenceScale      = 5.5f;  // [1/m]   - Curl-noise spatial frequency
+    float                 VorticityConfinement = 8.8f;  // [-]     - Small-scale vortex re-injection
+    float                 Buoyancy             = 6.0f;  // [m/s^2] - Thermal +Z lift per unit temperature
+    float                 SmokeWeight          = 0.85f; // [m/s^2] - Cool soot downward settling
+    float                 TurbulenceStrength   = 4.4f;  // [m/s^2] - Curl-noise sub-grid stirring
+    float                 TurbulenceScale      = 3.8f;  // [1/m]   - Curl-noise spatial frequency
     float                 BurnRate             = 1.85f; // [1/s]   - Arrhenius fuel consumption rate
-    float                 BurnHeat             = 2.6f;  // [-]     - Heat released per unit fuel burned
-    float                 SootGeneration       = 1.55f; // [-]     - Smoke produced per unit fuel burned
-    float                 CombustionExpansion  = 4.4f;  // [-]     - Thermal gas expansion divergence source
-    float                 CoolingRate          = 1.45f; // [1/s]   - Radiative + convective cooling
-    float                 SmokeDissipation     = 0.22f; // [1/s]   - Exponential smoke decay
-    float                 VelocityDamping      = 0.12f; // [1/s]   - Linear drag damping
-    Mathematics::Scalar2D WindVelocityXY       { 0.0f, 0.0f }; // [m/s] - Baseline ambient wind (when no ForceFields override)
+    float                 BurnHeat             = 2.75f; // [-]     - Heat released per unit fuel burned
+    float                 SootGeneration       = 1.35f; // [-]     - Smoke produced per unit fuel burned
+    float                 CombustionExpansion  = 3.8f;  // [-]     - Thermal gas expansion divergence source
+    float                 CoolingRate          = 1.20f; // [1/s]   - Radiative + convective cooling
+    float                 SmokeDissipation     = 0.16f; // [1/s]   - Exponential smoke decay
+    float                 VelocityDamping      = 0.07f; // [1/s]   - Linear drag damping
+    Mathematics::Scalar2D WindVelocityXY       { 0.18f, 0.04f }; // [m/s] - Baseline ambient wind (when no ForceFields override)
     bool                  CoupleForceFields    = true;  // [-]     - Sample SimulationSpace::ForceFields into fluid velocity
 };
 
@@ -162,21 +162,21 @@ struct FluidShadingSettings
     uint32_t               RaymarchSteps      = 72u;
     uint32_t               ShadowSteps        = 6u;
     float                  RenderScale        = 1.0f;
-    float                  FireIntensity      = 5.2f;
+    float                  FireIntensity      = 4.6f;
     float                  BloomIntensity     = 0.48f;
     float                  GodRaysIntensity   = 0.35f;
     float                  ShockwaveStrength  = 0.65f;
     float                  TemperatureScale   = 1.0f;
-    float                  InternalScattering = 2.6f;
-    float                  DensityExtinction  = 16.0f;
-    float                  SmokeAlbedo        = 0.26f;
-    float                  ShadowDensity      = 10.0f;
+    float                  InternalScattering = 2.4f;
+    float                  DensityExtinction  = 18.5f;
+    float                  SmokeAlbedo        = 0.24f;
+    float                  ShadowDensity      = 11.5f;
     float                  PhaseAnisotropy    = 0.38f;
     float                  SunElevationDegrees = 35.0f;
     float                  SunAzimuthDegrees   = 225.0f;
     float                  SunIntensity       = 2.6f;
     float                  AmbientIntensity   = 0.42f;
-    float                  Exposure           = 1.18f;
+    float                  Exposure           = 1.15f;
     uint32_t               SliceAxis          = 2u;    // 0=X, 1=Y, 2=Z
     float                  SlicePosition      = 0.5f;  // [0..1]
 };
@@ -184,11 +184,11 @@ struct FluidShadingSettings
 struct FluidParticleCouplingSettings
 {
     bool     ShowEmbers         = true;  // [-]    - Enable Fluid -> ParticleSpace ember/ash advection
-    uint32_t EmberCount         = 450u;  // [cnt]  - Active ember/ash particles
-    float    EmberSize          = 1.0f;  // [x]    - Particle scale multiplier
-    float    EmberIntensity     = 1.35f; // [x]    - Blackbody ember glow intensity
+    uint32_t EmberCount         = 360u;  // [cnt]  - Active ember/ash particles
+    float    EmberSize          = 0.9f;  // [x]    - Particle scale multiplier
+    float    EmberIntensity     = 1.05f; // [x]    - Blackbody ember glow intensity
     float    EmberLifetime      = 1.15f; // [s]    - Mean ember lifetime
-    float    EmberAshiness      = 0.18f; // [0..1] - Dark cooled ash blend
+    float    EmberAshiness      = 0.32f; // [0..1] - Dark cooled ash blend
     bool     ShrapnelEnabled    = true;  // [-]    - Enable ParticleSpace -> Fluid ballistic fuel/smoke streamers
     float    AdvectionCoupling  = 1.0f;  // [x]    - Fluid velocity drag weight on particles
     float    BuoyancyCoupling   = 0.75f; // [x]    - Thermal updraft lift weight on particles

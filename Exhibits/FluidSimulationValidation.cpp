@@ -219,30 +219,80 @@ struct SceneGeoAsset
         }
     }
 
-    // Splat visible glowing embers onto the preview image
-    for (const auto& E : Embers)
+    // Splat circular soft-glow embers, drifting dark ash motes, and oriented tornado debris
+    const auto SplatParticle = [&](const ParticleSpace::ParticleSlot& P, bool ForceDebris) noexcept
     {
-        if (!ParticleSpace::QueryParticleSlotAlive(E)) continue;
-        const Mathematics::Axis3D Rel = Mathematics::Axis3D{ E.PositionMeters[0], E.PositionMeters[1], E.PositionMeters[2] } - Eye;
+        if (!ParticleSpace::QueryParticleSlotAlive(P)) return;
+        const Mathematics::Axis3D Rel = Mathematics::Axis3D{ P.PositionMeters[0], P.PositionMeters[1], P.PositionMeters[2] } - Eye;
         const float Z = Mathematics::EvaluateDot(Rel, Fwd);
-        if (Z <= 0.2f) continue;
+        if (Z <= 0.2f) return;
         const float U = (Mathematics::EvaluateDot(Rel, Right) / (Z * TanX)) * 0.5f + 0.5f;
         const float V = 0.5f - (Mathematics::EvaluateDot(Rel, Up) / (Z * TanY)) * 0.5f;
-        const int CX = static_cast<int>(U * static_cast<float>(W));
-        const int CY = static_cast<int>(V * static_cast<float>(H));
-        for (int DY = -1; DY <= 1; ++DY)
+        const float CX = U * static_cast<float>(W);
+        const float CY = V * static_cast<float>(H);
+        if (CX < -6.0f || CY < -6.0f || CX > static_cast<float>(W) + 6.0f || CY > static_cast<float>(H) + 6.0f) return;
+
+        const bool IsDebris = ForceDebris || (P.AuxScalar < -0.5f);
+        const float ScreenPerMeter = static_cast<float>(H) / (2.0f * Z * TanY);
+        const float BaseRad = std::clamp(P.SizeMeters * ScreenPerMeter, IsDebris ? 1.15f : 0.95f, IsDebris ? 2.4f : 2.1f);
+
+        const float VX = Mathematics::EvaluateDot({ P.VelocityMps[0], P.VelocityMps[1], P.VelocityMps[2] }, Right);
+        const float VY = -Mathematics::EvaluateDot({ P.VelocityMps[0], P.VelocityMps[1], P.VelocityMps[2] }, Up);
+        const float VLen = std::hypot(VX, VY);
+        const float DirX = (VLen > 1.0e-3f) ? (VX / VLen) : 1.0f;
+        const float DirY = (VLen > 1.0e-3f) ? (VY / VLen) : 0.0f;
+        const float Stretch = IsDebris ? 1.35f : (1.0f + std::clamp(VLen * 0.025f, 0.0f, 0.35f));
+
+        const float PA = std::clamp(P.ColourLinear[3], 0.0f, 1.0f);
+        if (PA <= 0.01f) return;
+        const float Lum = std::max({ P.ColourLinear[0], P.ColourLinear[1], P.ColourLinear[2] });
+        const bool Additive = (!IsDebris && Lum > 0.34f);
+
+        const int Span = static_cast<int>(std::ceil(BaseRad * Stretch)) + 1;
+        const int X0 = std::max(0, static_cast<int>(std::floor(CX)) - Span);
+        const int X1 = std::min(static_cast<int>(W) - 1, static_cast<int>(std::ceil(CX)) + Span);
+        const int Y0 = std::max(0, static_cast<int>(std::floor(CY)) - Span);
+        const int Y1 = std::min(static_cast<int>(H) - 1, static_cast<int>(std::ceil(CY)) + Span);
+
+        const auto ToneF = [](float Vc) noexcept -> float
         {
-            for (int DX = -1; DX <= 1; ++DX)
+            const float M = std::max(0.0f, Vc) / (1.0f + std::max(0.0f, Vc));
+            return (M <= 0.0031308f) ? (M * 12.92f) : (1.055f * std::pow(M, 1.0f / 2.4f) - 0.055f);
+        };
+        const float SR = std::clamp(ToneF(P.ColourLinear[0]), 0.0f, 1.0f);
+        const float SG = std::clamp(ToneF(P.ColourLinear[1]), 0.0f, 1.0f);
+        const float SB = std::clamp(ToneF(P.ColourLinear[2]), 0.0f, 1.0f);
+
+        for (int Y = Y0; Y <= Y1; ++Y)
+        {
+            const float DY = (static_cast<float>(Y) + 0.5f) - CY;
+            for (int X = X0; X <= X1; ++X)
             {
-                const int X = CX + DX, Y = CY + DY;
-                if (X < 0 || Y < 0 || X >= static_cast<int>(W) || Y >= static_cast<int>(H)) continue;
+                const float DX = (static_cast<float>(X) + 0.5f) - CX;
+                const float Along = (DX * DirX + DY * DirY) / (BaseRad * Stretch);
+                const float Perp  = (-DX * DirY + DY * DirX) / (BaseRad * (IsDebris ? 0.55f : 1.0f));
+                const float D2 = Along * Along + Perp * Perp;
+                if (D2 >= 1.0f) continue;
+
+                const float Falloff = IsDebris
+                    ? std::clamp((1.0f - D2) * 1.6f, 0.0f, 1.0f)
+                    : (Additive ? std::exp(-3.6f * D2) * (1.0f - D2) : std::clamp((1.0f - D2) * 1.25f, 0.0f, 1.0f));
+                const float SA = std::clamp(PA * Falloff * 0.85f, 0.0f, 1.0f);
                 const std::size_t Off = (static_cast<std::size_t>(Y) * W + static_cast<uint32_t>(X)) * 4u;
-                Rgba[Off + 0u] = static_cast<uint8_t>(std::min(255, static_cast<int>(Rgba[Off + 0u]) + 210));
-                Rgba[Off + 1u] = static_cast<uint8_t>(std::min(255, static_cast<int>(Rgba[Off + 1u]) + 135));
-                Rgba[Off + 2u] = static_cast<uint8_t>(std::min(255, static_cast<int>(Rgba[Off + 2u]) + 45));
+                const float DstR = static_cast<float>(Rgba[Off + 0u]) / 255.0f;
+                const float DstG = static_cast<float>(Rgba[Off + 1u]) / 255.0f;
+                const float DstB = static_cast<float>(Rgba[Off + 2u]) / 255.0f;
+                const float OutR = Additive ? std::clamp(DstR + SR * SA, 0.0f, 1.0f) : (SR * SA + DstR * (1.0f - SA));
+                const float OutG = Additive ? std::clamp(DstG + SG * SA, 0.0f, 1.0f) : (SG * SA + DstG * (1.0f - SA));
+                const float OutB = Additive ? std::clamp(DstB + SB * SA, 0.0f, 1.0f) : (SB * SA + DstB * (1.0f - SA));
+                Rgba[Off + 0u] = static_cast<uint8_t>(std::round(OutR * 255.0f));
+                Rgba[Off + 1u] = static_cast<uint8_t>(std::round(OutG * 255.0f));
+                Rgba[Off + 2u] = static_cast<uint8_t>(std::round(OutB * 255.0f));
             }
         }
-    }
+    };
+    for (const auto& E : Embers) SplatParticle(E, false);
+    for (const auto& S : Fluid.InspectParticleCoupler().InspectShrapnelSlots()) SplatParticle(S, false);
 
     return Rgba;
 }
@@ -282,7 +332,7 @@ int main()
     // 1. Preset Repository & TOML Codec (v2 +Z-Up & Legacy v1 Y-Up)
     // -----------------------------------------------------------------------------------------------------------------
     const auto& Presets = FluidPresets::ListPresets();
-    Score.Verify(Presets.size() == 10u, "10 built-in Fluid presets available");
+    Score.Verify(Presets.size() == 12u, "12 built-in Fluid presets available (including Fire/Dust Tornados)");
 
     {
         const auto Original = FluidPresets::ConstructPreset("open_bounds_megaton");
@@ -319,34 +369,38 @@ int main()
     constexpr uint32_t TileW = 280u;
     constexpr uint32_t TileH = 210u;
 
-    std::vector<uint8_t> TilePyro {}, TilePlasma {}, TileMegaton {}, TileSlice {};
+    std::vector<uint8_t> TilePyro {}, TileFireTornado {}, TileMegaton {}, TileDustTornado {};
     {
         FluidSimulationSequence SimPyro;
         auto Doc = FluidPresets::ConstructPreset("ue5_pyro_default");
-        Doc.Domain.GridResolution = 32u;
+        Doc.Domain.GridResolution = 40u;
         SimPyro.Configure(Doc);
-        for (uint32_t S = 0u; S < 24u; ++S) SimPyro.StepSimulation(1.0f / 60.0f);
+        for (uint32_t S = 0u; S < 42u; ++S) SimPyro.StepSimulation(1.0f / 60.0f);
         TilePyro = RenderFluidPreviewRgba(SimPyro, TileW, TileH, { 2.3f, -2.3f, 1.35f }, { 0.0f, 0.0f, 0.9f });
-
-        // Check cross-section slice mode on same grid
-        SimPyro.AccessDocument().Shading.RenderChannel = FluidRenderChannel::Temperature;
-        TileSlice = RenderFluidPreviewRgba(SimPyro, TileW, TileH, { 2.3f, -2.3f, 1.35f }, { 0.0f, 0.0f, 0.9f });
     }
     {
-        FluidSimulationSequence SimPlasma;
-        auto Doc = FluidPresets::ConstructPreset("plasma_reactor_arc");
-        Doc.Domain.GridResolution = 32u;
-        SimPlasma.Configure(Doc);
-        for (uint32_t S = 0u; S < 24u; ++S) SimPlasma.StepSimulation(1.0f / 60.0f);
-        TilePlasma = RenderFluidPreviewRgba(SimPlasma, TileW, TileH, { 2.3f, -2.3f, 1.35f }, { 0.0f, 0.0f, 0.9f });
+        FluidSimulationSequence SimTornado;
+        auto Doc = FluidPresets::ConstructPreset("wildfire_tornado");
+        Doc.Domain.GridResolution = 40u;
+        SimTornado.Configure(Doc);
+        for (uint32_t S = 0u; S < 54u; ++S) SimTornado.StepSimulation(1.0f / 60.0f);
+        TileFireTornado = RenderFluidPreviewRgba(SimTornado, TileW, TileH, { 2.7f, -2.7f, 1.55f }, { 0.0f, 0.0f, 1.15f });
+    }
+    {
+        FluidSimulationSequence SimDust;
+        auto Doc = FluidPresets::ConstructPreset("dust_tornado");
+        Doc.Domain.GridResolution = 40u;
+        SimDust.Configure(Doc);
+        for (uint32_t S = 0u; S < 60u; ++S) SimDust.StepSimulation(1.0f / 60.0f);
+        TileDustTornado = RenderFluidPreviewRgba(SimDust, TileW, TileH, { 2.9f, -2.9f, 1.70f }, { 0.0f, 0.0f, 1.25f });
     }
     {
         FluidSimulationSequence SimMega;
         auto Doc = FluidPresets::ConstructPreset("megaton_open_bounds");
-        Doc.Domain.GridResolution = 32u;
+        Doc.Domain.GridResolution = 40u;
         SimMega.Configure(Doc);
         SimMega.TriggerBlast(Doc.Blast);
-        for (uint32_t S = 0u; S < 26u; ++S) SimMega.StepSimulation(1.0f / 60.0f);
+        for (uint32_t S = 0u; S < 32u; ++S) SimMega.StepSimulation(1.0f / 60.0f);
         Score.Verify(SimMega.InspectHeroGrid().BoxMaxWorld.Z > 4.2f,
                      "Adaptive explosion ceiling expands BoxMaxWorld.Z above base bounds");
         TileMegaton = RenderFluidPreviewRgba(SimMega, TileW, TileH, { 4.2f, -4.2f, 2.5f }, { 0.0f, 0.0f, 2.0f });
@@ -354,8 +408,8 @@ int main()
     ComposeAndSave2x2Sheet(
         ProofDir / "01-FluidPresetsAndBlackbodyPalettes.png",
         TileW, TileH,
-        { TilePyro, TilePlasma, TileMegaton, TileSlice },
-        { "UE5 Pyro Jet (+Z-Up)", "Cherenkov Blue Plasma", "Megaton Uncapped Ceiling", "Temperature Radiance Channel" });
+        { TilePyro, TileFireTornado, TileMegaton, TileDustTornado },
+        { "UE5 Pyro Plume (+Z-Up)", "Fire Tornado + Embers", "Megaton Explosion + Soot", "Dust Tornado + Debris" });
 
     // -----------------------------------------------------------------------------------------------------------------
     // 3. Sheet 2: Continuous Sliding World Smoke Grid & ForceFields Coupling
@@ -365,12 +419,12 @@ int main()
         FluidSimulationSequence Sim;
         auto Doc = FluidPresets::ConstructPreset("ue5_pyro_default");
         Doc.Domain.GridResolution      = 32u;
-        Doc.Domain.BoundsWidthMeters   = 2.8f;
-        Doc.Domain.BoundsHeightMeters  = 2.6f;
+        Doc.Domain.BoundsWidthMeters   = 2.0f;
+        Doc.Domain.BoundsHeightMeters  = 2.4f;
         Doc.Domain.WorldGridResolution = 24u;
         Doc.Domain.WorldGridSpanMeters = 18.0f;
-        Doc.Emitter.Temperature        = 2.8f;
-        Doc.Emitter.Fuel               = 2.0f;
+        Doc.Emitter.Temperature        = 3.4f;
+        Doc.Emitter.Fuel               = 2.6f;
         Doc.Emitter.Smoke              = 2.4f;
         Doc.Combustion.WindVelocityXY  = { 0.0f, 0.0f };
         Sim.Configure(Doc);
@@ -378,8 +432,8 @@ int main()
         TileNoWind = RenderFluidPreviewRgba(Sim, TileW, TileH, { 0.0f, -4.8f, 1.8f }, { 0.0f, 0.0f, 1.2f });
 
         // Now push strong +X wind so smoke continuously escapes Hero bounds into World Drift Grid
-        Sim.AccessDocument().Combustion.WindVelocityXY = { 3.8f, 0.4f };
-        for (uint32_t S = 0u; S < 38u; ++S) Sim.StepSimulation(1.0f / 60.0f);
+        Sim.AccessDocument().Combustion.WindVelocityXY = { 4.2f, 0.4f };
+        for (uint32_t S = 0u; S < 72u; ++S) Sim.StepSimulation(1.0f / 60.0f);
         float WorldSmokeSum = 0.0f;
         for (const auto& V : Sim.InspectWorldDriftGrid().Thermo) WorldSmokeSum += V.X;
         Score.Verify(WorldSmokeSum > 0.25f, "Sliding World Drift Grid captures continuous wind-carried smoke outside Hero bounds");

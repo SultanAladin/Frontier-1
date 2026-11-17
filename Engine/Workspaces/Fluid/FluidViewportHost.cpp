@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 namespace Frontier::Workspaces
 {
@@ -91,6 +92,40 @@ void DrawToolIcon(PixelSpace& Surface, Point2D C, uint32_t Index, ColorRgba Ink)
 }
 
 } // namespace
+
+FluidViewportHost::~FluidViewportHost() noexcept
+{
+    PreviewTexture.DestroyPixels();
+}
+
+void FluidViewportHost::UploadPreviewTexture(
+    const std::vector<uint8_t>& RgbaPixels,
+    uint32_t                    WidthPx,
+    uint32_t                    HeightPx)
+{
+    if (WidthPx == 0u || HeightPx == 0u || RgbaPixels.size() < static_cast<size_t>(WidthPx) * HeightPx * 4u)
+    {
+        return;
+    }
+
+    const bool NeedsCreate =
+        PreviewTexture.Width != static_cast<int>(WidthPx) ||
+        PreviewTexture.Height != static_cast<int>(HeightPx) ||
+        PreviewTexture.Pixels == nullptr;
+
+    if (NeedsCreate)
+    {
+        PreviewTexture.DestroyPixels();
+        PreviewTexture.SetStatus(ImTextureStatus_Destroyed);
+        PreviewTexture.Create(ImTextureFormat_RGBA32, static_cast<int>(WidthPx), static_cast<int>(HeightPx));
+    }
+
+    if (PreviewTexture.Pixels != nullptr)
+    {
+        std::memcpy(PreviewTexture.GetPixels(), RgbaPixels.data(), static_cast<size_t>(WidthPx) * HeightPx * 4u);
+        PreviewTexture.SetStatus(NeedsCreate ? ImTextureStatus_WantCreate : ImTextureStatus_WantUpdates);
+    }
+}
 
 void FluidViewportHost::Render(
     PixelSpace&            Surface,
@@ -337,48 +372,12 @@ void FluidViewportHost::Render(
         }
     }
 
-    // Volumetric Fire/Smoke Raymarching composited cleanly over floor grid
-    Session.RenderPreviewFramebuffer(192u, 144u);
-    if (Session.PreviewWidthPx > 0u && Session.PreviewHeightPx > 0u &&
-        Session.PreviewRgba8.size() >= static_cast<std::size_t>(Session.PreviewWidthPx) * Session.PreviewHeightPx * 4u)
+    // Volumetric Fire/Smoke + Soft-Glow Circular Embers/Ash/Debris composited cleanly via bilinear ImTextureData
+    Session.RenderPreviewFramebuffer(280u, 210u);
+    UploadPreviewTexture(Session.PreviewRgba8, Session.PreviewWidthPx, Session.PreviewHeightPx);
+    if (PreviewTexture.Pixels != nullptr)
     {
-        const float CellW = LastSurfaceBounds.Width / static_cast<float>(Session.PreviewWidthPx);
-        const float CellH = LastSurfaceBounds.Height / static_cast<float>(Session.PreviewHeightPx);
-        for (uint32_t PY = 0u; PY < Session.PreviewHeightPx; ++PY)
-        {
-            for (uint32_t PX = 0u; PX < Session.PreviewWidthPx; ++PX)
-            {
-                const std::size_t Off = (static_cast<std::size_t>(PY) * Session.PreviewWidthPx + PX) * 4u;
-                const uint8_t A = Session.PreviewRgba8[Off + 3u];
-                if (A <= 3u) continue;
-                const ColorRgba PxColor {
-                    Session.PreviewRgba8[Off + 0u],
-                    Session.PreviewRgba8[Off + 1u],
-                    Session.PreviewRgba8[Off + 2u],
-                    A,
-                };
-                Surface.FillRectangle(
-                    {
-                        LastSurfaceBounds.X + static_cast<float>(PX) * CellW,
-                        LastSurfaceBounds.Y + static_cast<float>(PY) * CellH,
-                        CellW,
-                        CellH,
-                    },
-                    PxColor,
-                    0.0f);
-            }
-        }
-    }
-
-    // Advected glowing embers overlay
-    for (const auto& Ember : Session.InspectSimulation().InspectParticleCoupler().InspectEmberSlots())
-    {
-        if (Ember.AgeSeconds < 0.0f) continue;
-        Point2D Ep {};
-        if (ProjectPoint(Mathematics::Axis3D{ Ember.PositionMeters[0], Ember.PositionMeters[1], Ember.PositionMeters[2] }, Ep))
-        {
-            Surface.FillCircle(Ep, 2.0f, { 255u, 198u, 110u, 220u });
-        }
+        Surface.FillTexturedRectangle(LastSurfaceBounds, &PreviewTexture, { 0.0f, 0.0f }, { 1.0f, 1.0f }, 0.0f);
     }
 
     //--------------------------------------------------------------------------------------------------------------------

@@ -89,6 +89,44 @@ void FluidParticleCoupler::SpawnBlastShrapnel(
     {
         ShrapnelSlots.erase(ShrapnelSlots.begin(), ShrapnelSlots.begin() + static_cast<std::ptrdiff_t>(ShrapnelSlots.size() - 192u));
     }
+
+    // Also spawn radial hot blast sparks + cooling ash into EmberSlots so pure blast presets sparkle realistically
+    if (Settings.ShowEmbers && Settings.EmberCount > 0u)
+    {
+        const uint32_t TargetCount = std::min(Settings.EmberCount, 4096u);
+        if (EmberSlots.size() < TargetCount)
+        {
+            EmberSlots.resize(TargetCount);
+        }
+        const uint32_t BurstSparks = std::min(TargetCount, 180u);
+        for (uint32_t I = 0u; I < BurstSparks; ++I)
+        {
+            const uint32_t SlotIdx = (I * 7u + static_cast<uint32_t>(ElapsedSeconds * 60.0f)) % TargetCount;
+            auto& E = EmberSlots[SlotIdx];
+            const float Az = NextRand01(RngState) * 2.0f * Constants::PiFloat;
+            const float El = 0.08f + 0.92f * NextRand01(RngState);
+            const float Er = std::sqrt(std::max(0.0f, 1.0f - El * El));
+            const float Spd = Blast.StrengthMps * (0.28f + 0.58f * NextRand01(RngState));
+            const float Rad = Blast.RadiusMeters * (0.3f + 0.9f * NextRand01(RngState));
+
+            E.PositionMeters[0] = Blast.CenterWorld.X + std::cos(Az) * Er * Rad;
+            E.PositionMeters[1] = Blast.CenterWorld.Y + std::sin(Az) * Er * Rad;
+            E.PositionMeters[2] = std::max(0.03f, Blast.CenterWorld.Z + El * Rad);
+            E.VelocityMps[0]    = std::cos(Az) * Er * Spd + Blast.DirectionalVelocity.X;
+            E.VelocityMps[1]    = std::sin(Az) * Er * Spd + Blast.DirectionalVelocity.Y;
+            E.VelocityMps[2]    = El * Spd + Blast.DirectionalVelocity.Z;
+            E.AgeSeconds        = NextRand01(RngState) * 0.08f;
+            E.LifespanSeconds   = std::max(0.35f, Settings.EmberLifetime * (0.65f + 0.85f * NextRand01(RngState)));
+            E.SizeMeters        = 0.012f * std::max(0.2f, Settings.EmberSize) * (0.7f + 0.7f * NextRand01(RngState));
+            E.SeedScalar        = NextRand01(RngState);
+            E.AuxScalar         = std::max(1.5f, Blast.Temperature * 0.75f);
+            E.PackedTraits      = ParticleSpace::ParticleTraitAliveBit;
+            E.ColourLinear[0]   = 1.0f;
+            E.ColourLinear[1]   = 0.55f;
+            E.ColourLinear[2]   = 0.14f;
+            E.ColourLinear[3]   = 1.0f;
+        }
+    }
 }
 
 void FluidParticleCoupler::AdvectExternalParticleSlots(
@@ -153,25 +191,49 @@ void FluidParticleCoupler::StepCoupledParticles(
         }
 
         const float FloorZ = HeroGrid.BoxMinWorld.Z + Emitter.HeightMeters;
-        for (auto& E : EmberSlots)
+        const float SpanZ  = std::max(0.5f, HeroGrid.BoxMaxWorld.Z - HeroGrid.BoxMinWorld.Z);
+        const bool  IsTornado = (Emitter.Swirl >= 3.0f);
+
+        for (uint32_t Idx = 0u; Idx < EmberSlots.size(); ++Idx)
         {
+            auto& E = EmberSlots[Idx];
             E.AgeSeconds += Dt;
             const bool NeedRespawn = !ParticleSpace::QueryParticleSlotAlive(E);
             if (NeedRespawn && Emitter.Enabled)
             {
+                const bool IsDebris = IsTornado && ((Idx % 10u) < 4u);
                 const float Ang = NextRand01(RngState) * 2.0f * Constants::PiFloat;
-                const float Rad = Emitter.RadiusMeters * std::sqrt(NextRand01(RngState));
+                const float SpawnH = IsTornado
+                    ? (HeroGrid.BoxMinWorld.Z + 0.04f + NextRand01(RngState) * SpanZ * 0.72f)
+                    : (FloorZ + NextRand01(RngState) * 0.28f);
+                const float H01 = std::clamp((SpawnH - HeroGrid.BoxMinWorld.Z) / SpanZ, 0.0f, 1.0f);
+                const float Rad = IsTornado
+                    ? ((0.08f + 0.22f * H01) * (0.65f + 0.55f * NextRand01(RngState)))
+                    : (Emitter.RadiusMeters * (0.25f + 0.95f * std::sqrt(NextRand01(RngState))));
+
                 E.PositionMeters[0] = Domain.OriginMeters.X + std::cos(Ang) * Rad;
                 E.PositionMeters[1] = Domain.OriginMeters.Y + std::sin(Ang) * Rad;
-                E.PositionMeters[2] = FloorZ + NextRand01(RngState) * 0.12f;
-                E.VelocityMps[0]    = (NextRand01(RngState) - 0.5f) * 0.7f;
-                E.VelocityMps[1]    = (NextRand01(RngState) - 0.5f) * 0.7f;
-                E.VelocityMps[2]    = Emitter.UpwardVelocityMps * (0.45f + 0.55f * NextRand01(RngState));
-                E.AgeSeconds        = NextRand01(RngState) * 0.12f;
-                E.LifespanSeconds   = std::max(0.25f, Settings.EmberLifetime * (0.65f + 0.7f * NextRand01(RngState)));
-                E.SizeMeters        = 0.014f * std::max(0.2f, Settings.EmberSize);
-                E.AuxScalar         = std::max(1.2f, Emitter.Temperature * 0.75f);
-                E.PackedTraits      = ParticleSpace::ParticleTraitAliveBit;
+                E.PositionMeters[2] = SpawnH;
+
+                const float TanX = -std::sin(Ang), TanY = std::cos(Ang);
+                const float SwirlSpd = IsTornado ? (Emitter.Swirl * (0.55f + 0.35f * NextRand01(RngState))) : (Emitter.Swirl * 0.45f);
+                E.VelocityMps[0]    = TanX * SwirlSpd + (NextRand01(RngState) - 0.5f) * 1.1f;
+                E.VelocityMps[1]    = TanY * SwirlSpd + (NextRand01(RngState) - 0.5f) * 1.1f;
+                E.VelocityMps[2]    = Emitter.UpwardVelocityMps * (0.25f + 0.75f * NextRand01(RngState));
+                E.AgeSeconds        = NextRand01(RngState) * 0.15f;
+                E.LifespanSeconds   = std::max(0.30f, Settings.EmberLifetime * (0.55f + 0.85f * NextRand01(RngState)));
+                E.SeedScalar        = NextRand01(RngState);
+                if (IsDebris)
+                {
+                    E.SizeMeters = 0.026f * std::max(0.4f, Settings.EmberSize) * (0.75f + 0.85f * NextRand01(RngState));
+                    E.AuxScalar  = -1.0f; // Sentinel for oriented tornado debris chunk
+                }
+                else
+                {
+                    E.SizeMeters = 0.011f * std::max(0.25f, Settings.EmberSize) * (0.65f + 0.85f * NextRand01(RngState));
+                    E.AuxScalar  = (Emitter.Temperature > 0.4f) ? (Emitter.Temperature * (0.55f + 0.6f * NextRand01(RngState))) : 0.0f;
+                }
+                E.PackedTraits = ParticleSpace::ParticleTraitAliveBit;
             }
             else if (!NeedRespawn)
             {
@@ -179,23 +241,101 @@ void FluidParticleCoupler::StepCoupledParticles(
                 FluidVoxelSample4 FV {}, FT {};
                 SampleCombinedFluid(HeroGrid, WorldGrid, Pos, FV, FT);
 
-                const float Couple = std::clamp(Settings.AdvectionCoupling * Dt * 4.5f, 0.0f, 1.0f);
-                E.VelocityMps[0] += (FV.X - E.VelocityMps[0]) * Couple + (std::sin(ElapsedSeconds * 5.0f + E.SeedScalar * 31.0f) * 0.45f) * Dt;
-                E.VelocityMps[1] += (FV.Y - E.VelocityMps[1]) * Couple + (std::cos(ElapsedSeconds * 4.3f + E.SeedScalar * 19.0f) * 0.45f) * Dt;
-                E.VelocityMps[2] += (FV.Z - E.VelocityMps[2]) * Couple + (FT.Y * Settings.BuoyancyCoupling * 2.0f - 0.45f * Settings.EmberAshiness) * Dt;
+                const bool IsDebris = (E.AuxScalar < -0.5f);
+                const float Ph = E.SeedScalar * 43.7f;
+                const float Jx = std::sin(ElapsedSeconds * 6.5f + Ph) * 0.95f + std::cos(ElapsedSeconds * 11.3f - Ph * 1.7f) * 0.55f;
+                const float Jy = std::cos(ElapsedSeconds * 5.9f + Ph * 1.3f) * 0.95f - std::sin(ElapsedSeconds * 10.7f + Ph) * 0.55f;
+                const float Jz = std::sin(ElapsedSeconds * 4.8f - Ph * 0.9f) * 0.45f;
+
+                const float Drag = IsDebris ? 0.42f : 1.0f;
+                const float Couple = std::clamp(Settings.AdvectionCoupling * Drag * Dt * 4.2f, 0.0f, 1.0f);
+                E.VelocityMps[0] += (FV.X - E.VelocityMps[0]) * Couple + Jx * Dt;
+                E.VelocityMps[1] += (FV.Y - E.VelocityMps[1]) * Couple + Jy * Dt;
+
+                // Tornado vortex orbit stabilization for debris & funnel particles
+                if (IsTornado)
+                {
+                    const float RDX = E.PositionMeters[0] - Domain.OriginMeters.X;
+                    const float RDY = E.PositionMeters[1] - Domain.OriginMeters.Y;
+                    const float RXY = std::max(0.03f, std::hypot(RDX, RDY));
+                    const float H01 = std::clamp((E.PositionMeters[2] - HeroGrid.BoxMinWorld.Z) / SpanZ, 0.0f, 1.0f);
+                    const float TargetR = (IsDebris ? 0.14f : 0.09f) + H01 * 0.24f;
+                    const float TanX = -RDY / RXY, TanY = RDX / RXY;
+                    const float RadX =  RDX / RXY, RadY = RDY / RXY;
+                    const float RadialSpring = (TargetR - RXY) * 12.5f;
+                    const float OrbitBoost   = Emitter.Swirl * (IsDebris ? 0.65f : 0.55f);
+                    E.VelocityMps[0] += (TanX * OrbitBoost + RadX * RadialSpring) * Dt;
+                    E.VelocityMps[1] += (TanY * OrbitBoost + RadY * RadialSpring) * Dt;
+                }
+
+                // Hot particles float up with thermal lift; cooling ash & debris settle naturally instead of pooling at top
+                const float AshFrac = IsDebris ? 1.0f : std::clamp(Settings.EmberAshiness, 0.0f, 1.0f);
+                const float GravZ = IsDebris ? -2.2f : (-1.15f * (0.25f + 0.95f * AshFrac));
+                const float LiftZ = IsDebris ? (FT.X * 0.35f) : (FT.Y * Settings.BuoyancyCoupling * 1.45f);
+                E.VelocityMps[2] += (FV.Z - E.VelocityMps[2]) * Couple + (LiftZ + GravZ + Jz) * Dt;
+
                 E.PositionMeters[0] += E.VelocityMps[0] * Dt;
                 E.PositionMeters[1] += E.VelocityMps[1] * Dt;
                 E.PositionMeters[2] += E.VelocityMps[2] * Dt;
+                if (E.PositionMeters[2] < HeroGrid.BoxMinWorld.Z + 0.02f)
+                {
+                    E.PositionMeters[2] = HeroGrid.BoxMinWorld.Z + 0.02f;
+                    E.VelocityMps[2]    = std::abs(E.VelocityMps[2]) * 0.25f;
+                }
+
+                // Prevent pancake pooling near ceiling or outside active plume
+                if (E.PositionMeters[2] > HeroGrid.BoxMinWorld.Z + SpanZ * 0.88f ||
+                    (FT.X < 0.025f && FT.Y < 0.025f && E.AgeSeconds > E.LifespanSeconds * 0.35f))
+                {
+                    E.AgeSeconds += Dt * 1.65f;
+                    if (E.AuxScalar > 0.0f) E.AuxScalar *= std::exp(-3.0f * Dt);
+                }
 
                 const float Life01 = std::clamp(E.AgeSeconds / std::max(0.05f, E.LifespanSeconds), 0.0f, 1.0f);
-                const float TempNow = std::max(FT.Y * 0.7f, E.AuxScalar * (1.0f - Life01));
-                const auto Glow = FluidPresets::EvaluateBlackbodyPalette(TempNow, Shading.TemperatureScale, Shading.ColorPalette);
-                const float Ash  = std::clamp(Settings.EmberAshiness * Life01, 0.0f, 1.0f);
-                const float Gain = Settings.EmberIntensity * (1.0f - Ash);
-                E.ColourLinear[0] = Glow.R * Gain + 0.14f * Ash;
-                E.ColourLinear[1] = Glow.G * Gain + 0.13f * Ash;
-                E.ColourLinear[2] = Glow.B * Gain + 0.12f * Ash;
-                E.ColourLinear[3] = 1.0f - Life01;
+                const float Fade = std::sin(Life01 * Constants::PiFloat);
+                if (IsDebris)
+                {
+                    const bool CharredHot = (Emitter.Temperature > 1.2f) && ((Idx % 3u) == 0u) && (Life01 < 0.55f);
+                    if (CharredHot)
+                    {
+                        const auto Glow = FluidPresets::EvaluateBlackbodyPalette(3.6f * (1.0f - Life01), Shading.TemperatureScale, Shading.ColorPalette);
+                        E.ColourLinear[0] = 0.22f + Glow.R * 1.35f;
+                        E.ColourLinear[1] = 0.14f + Glow.G * 1.15f;
+                        E.ColourLinear[2] = 0.08f + Glow.B * 0.85f;
+                    }
+                    else
+                    {
+                        const float Tone = 0.24f + 0.18f * E.SeedScalar;
+                        E.ColourLinear[0] = Tone * 1.08f;
+                        E.ColourLinear[1] = Tone * 0.96f;
+                        E.ColourLinear[2] = Tone * 0.82f;
+                    }
+                    E.ColourLinear[3] = std::clamp(Fade * 1.15f, 0.0f, 0.82f);
+                }
+                else
+                {
+                    E.AuxScalar = std::max(0.0f, E.AuxScalar * std::exp(-0.55f * Dt));
+                    const float TempNow = std::max(FT.Y * 0.65f, E.AuxScalar * (1.0f - Life01 * 0.72f));
+                    const bool IsAshMote = (Emitter.Temperature < 0.4f) || (E.SeedScalar < Settings.EmberAshiness * 0.75f);
+                    if (IsAshMote)
+                    {
+                        const float AshShade = 0.20f + 0.16f * E.SeedScalar;
+                        E.ColourLinear[0] = AshShade;
+                        E.ColourLinear[1] = AshShade * 0.96f;
+                        E.ColourLinear[2] = AshShade * 0.92f;
+                        E.ColourLinear[3] = std::clamp(Fade * 0.68f, 0.0f, 0.65f);
+                    }
+                    else
+                    {
+                        // Boosted warm blackbody color so embers stay vivid glowing orange/amber sparks, never dark black dots
+                        const auto Glow = FluidPresets::EvaluateBlackbodyPalette(std::max(1.8f, TempNow * 1.35f), Shading.TemperatureScale, Shading.ColorPalette);
+                        const float Gain = Settings.EmberIntensity * (1.45f + 0.85f * E.SeedScalar);
+                        E.ColourLinear[0] = std::max(0.35f, Glow.R * Gain);
+                        E.ColourLinear[1] = std::max(0.10f, Glow.G * Gain);
+                        E.ColourLinear[2] = Glow.B * Gain;
+                        E.ColourLinear[3] = std::clamp(Fade * 1.35f, 0.0f, 1.0f);
+                    }
+                }
             }
         }
     }

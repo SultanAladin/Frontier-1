@@ -52,6 +52,7 @@ void FluidVorticityForcesEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     float Dt = FluidCfg.HeroBoxMinDt.w;
     float TimeSec = FluidCfg.HeroBoxMaxTime.w;
     float3 UVW = (float3(C) + 0.5) / float(Res);
+    float3 WorldPos = lerp(FluidCfg.HeroBoxMinDt.xyz, FluidCfg.HeroBoxMaxTime.xyz, UVW);
     float4 Th = ThermoTex.Load(int4(C, 0));
 
     float CL = CurlTex[int3(max(0, C.x - 1), C.y, C.z)].w;
@@ -67,7 +68,7 @@ void FluidVorticityForcesEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     if (GL > 1.0e-5)
     {
         float3 N = Grad / GL;
-        Vort = cross(N, CurlTex[C].xyz) * FluidCfg.CombustionA.z;
+        Vort = clamp(cross(N, CurlTex[C].xyz) * FluidCfg.CombustionA.z, float3(-48.0, -48.0, -48.0), float3(48.0, 48.0, 48.0));
     }
 
     float BuoyZ = FluidCfg.CombustionA.x * Th.y - FluidCfg.CombustionA.y * Th.x * 0.45;
@@ -77,12 +78,30 @@ void FluidVorticityForcesEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     float TF = ThermoTex.Load(int4(C.x, min(M, C.y + 1), C.z, 0)).y;
     float2 BaroXY = float2(TR - TL, TF - TB) * (0.35 * FluidCfg.CombustionA.x);
 
-    float Activity = clamp(Th.x * 0.6 + Th.y * 0.8 + Th.z * 0.5, 0.0, 1.5);
-    float3 Turb = FluidCurlNoise3(UVW * FluidCfg.CombustionC.y + float3(TimeSec * 0.65, TimeSec * 0.45, -TimeSec * 1.35));
+    float Activity = clamp(Th.x * 0.65 + Th.y * 0.85 + Th.z * 0.55, 0.0, 1.5);
+    float3 Turb = FluidCurlFbm2(WorldPos * (FluidCfg.CombustionC.y * 0.95) + float3(TimeSec * 0.75, TimeSec * 0.55, -TimeSec * 1.65));
     float WindGain = Activity * smoothstep(0.03, 0.55, UVW.z);
 
-    Vel.xy += (Vort.xy + BaroXY + Turb.xy * FluidCfg.CombustionC.x * Activity + FluidCfg.WindAndForce.xy * WindGain) * Dt;
-    Vel.z  += (Vort.z + BuoyZ + Turb.z * FluidCfg.CombustionC.x * Activity) * Dt;
+    float3 Funnel = float3(0.0, 0.0, 0.0);
+    if (FluidCfg.EmitterParams.z >= 3.0 && Activity > 1.0e-3)
+    {
+        float2 RD = WorldPos.xy - FluidCfg.EmitterPosRate.xy;
+        float RXY = length(RD);
+        float CoreR = 0.14 + UVW.z * 0.28;
+        if (RXY > 1.0e-4 && RXY < CoreR * 3.8)
+        {
+            float2 TanXY = float2(-RD.y, RD.x) / RXY;
+            float2 RadXY = RD / RXY;
+            float Profile = (RXY * CoreR) / (RXY * RXY + CoreR * CoreR);
+            float SwirlGain = FluidCfg.EmitterParams.z * 3.4 * Profile * (1.15 - 0.35 * UVW.z);
+            float PullGain  = (RXY > CoreR * 0.65) ? (-2.35 * FluidCfg.EmitterParams.z * 0.28 * Profile) : 0.35;
+            Funnel.xy = TanXY * SwirlGain + RadXY * PullGain;
+            Funnel.z  = 14.0 * Profile * (1.10 - 0.35 * UVW.z);
+        }
+    }
+
+    Vel.xy += (Vort.xy + BaroXY + Funnel.xy + Turb.xy * FluidCfg.CombustionC.x * Activity + FluidCfg.WindAndForce.xy * WindGain) * Dt;
+    Vel.z  += (Vort.z  + BuoyZ  + Funnel.z  + Turb.z  * FluidCfg.CombustionC.x * Activity) * Dt;
 
     float Spd = length(Vel.xyz);
     if (Spd > 24.0) Vel.xyz *= (24.0 / Spd);

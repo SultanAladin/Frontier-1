@@ -132,7 +132,11 @@ void EvaluateFluidSegmentGpu(
         float TExit  = min(MaxDistanceMeters, TFar);
         if (TExit > TEnter)
         {
+            float3 BoxSpan = Cfg.HeroBoxMaxRes.xyz - Cfg.HeroBoxMinFade.xyz;
+            float BoxDiag = length(BoxSpan);
+            float OpticalScale = 1.75 / max(1.0, BoxDiag);
             float Dt = (TExit - TEnter) / float(Steps);
+            float EffStep = Dt * OpticalScale;
             for (uint S = 0u; S < Steps; ++S)
             {
                 float T = TEnter + (float(S) + Jitter) * Dt;
@@ -159,25 +163,33 @@ void EvaluateFluidSegmentGpu(
                     continue;
                 }
 
-                if (Smoke <= 0.005 && Temp <= 0.01) continue;
+                if (Smoke <= 0.004 && Temp <= 0.01) continue;
+
+                float Erode = FluidFbm2Noise3(P * 5.8 + float3(Cfg.SkyRadiance.w * 0.4, -Cfg.SkyRadiance.w * 0.3, -Cfg.SkyRadiance.w * 1.9));
+                Smoke = max(0.0, Smoke * (0.76 + 0.48 * Erode) - 0.045 * max(0.0, 0.35 - Erode));
+                Temp  = max(0.0, Temp  * (0.72 + 0.56 * Erode) - 0.06  * max(0.0, 0.25 - Erode));
+                if (Smoke <= 0.004 && Temp <= 0.008) continue;
 
                 float SunT = EvaluateFluidShadowTransmittanceGpu(
                     Cfg, HeroThermoTex, WorldThermoTex, LinearClampSampler, P, SunDir, 24.0);
-                float3 InternalGlow = EvaluateFluidBlackbodyPaletteGpu(max(0.7, Irr * 1.3), Cfg.ShadingCore.w, PaletteIdx);
-                float Ig = Irr * Cfg.ShadingScatter.w * 0.55;
+                float Powder = 1.0 - 0.45 * exp(-Smoke * Cfg.ShadingCore.x * 2.2);
+                float HeightAo = 0.55 + 0.60 * saturate((P.z - Cfg.HeroBoxMinFade.z) / max(0.2, BoxSpan.z));
+                float3 InternalGlow = EvaluateFluidBlackbodyPaletteGpu(max(0.65, Irr * 1.25), Cfg.ShadingCore.w, PaletteIdx);
+                float Ig = Irr * Cfg.ShadingScatter.w * (0.45 + 0.55 * exp(-Smoke * 0.9));
 
-                float3 SmokeScat = Cfg.ShadingCore.y * (Cfg.SolarIrradiance.rgb * SunT * Phase * 2.1 + Cfg.SkyRadiance.rgb * Cfg.ShadingScatter.x)
+                float3 SmokeScat = Cfg.ShadingCore.y * (Cfg.SolarIrradiance.rgb * SunT * Phase * Powder * 2.2 + (Cfg.SkyRadiance.rgb + 0.16) * Cfg.ShadingScatter.x * HeightAo * 1.6)
                                  + InternalGlow * Ig;
                 float3 FireEmit  = EvaluateFluidBlackbodyPaletteGpu(Temp, Cfg.ShadingCore.w, PaletteIdx);
 
-                float Ext = max(0.01, Smoke * Cfg.ShadingCore.x * 0.14 + Temp * 0.22);
-                float StepT = exp(-Ext * Dt);
-                float W = 1.0 - StepT;
-                float FireGain = Cfg.ShadingCore.z * 0.16;
+                float SmokeExt = Smoke * Cfg.ShadingCore.x * 0.48;
+                float Ext = max(0.002, SmokeExt + Temp * 0.55);
+                float StepT = exp(-Ext * EffStep);
+                float IntW = (1.0 - StepT) / Ext;
+                float FireGain = Cfg.ShadingCore.z * 2.25;
 
-                OutRadianceHdr += OutTransmittance * (SmokeScat * saturate(Smoke * 2.0) + FireEmit * FireGain) * W;
+                OutRadianceHdr += OutTransmittance * (SmokeScat * SmokeExt + FireEmit * FireGain) * IntW;
                 OutTransmittance *= StepT;
-                if (OutTransmittance < 0.01) break;
+                if (OutTransmittance < 0.008) break;
             }
         }
     }

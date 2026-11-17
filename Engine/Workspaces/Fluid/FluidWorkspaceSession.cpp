@@ -50,7 +50,7 @@ void FluidWorkspaceSession::LoadPreset(std::string_view PresetId)
     {
         TriggerBlastNow();
     }
-    for (int I = 0; I < 36; ++I)
+    for (int I = 0; I < 72; ++I)
     {
         StepSimulation(1.0 / 60.0);
     }
@@ -140,8 +140,8 @@ void FluidWorkspaceSession::StepSimulation(double DeltaSeconds)
 
 void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t HeightPx)
 {
-    PreviewWidthPx  = std::clamp(WidthPx, 32u, 320u);
-    PreviewHeightPx = std::clamp(HeightPx, 24u, 240u);
+    PreviewWidthPx  = std::clamp(WidthPx, 32u, 480u);
+    PreviewHeightPx = std::clamp(HeightPx, 24u, 360u);
     PreviewRgba8.resize(static_cast<std::size_t>(PreviewWidthPx) * PreviewHeightPx * 4u);
 
     const float CosP = std::cos(Camera.PitchRadians);
@@ -161,7 +161,7 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
     const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis({ -0.55f, 0.45f, 0.70f });
     const Mathematics::LinearRGB SunIrr { 3.2f, 2.95f, 2.65f };
     const Mathematics::LinearRGB SkyRad { 0.14f, 0.18f, 0.25f };
-    const float Exposure = std::max(0.25f, Simulation.InspectDocument().Shading.Exposure) * 0.045f;
+    const float Exposure = std::max(0.25f, Simulation.InspectDocument().Shading.Exposure) * 0.24f;
 
     for (uint32_t PY = 0u; PY < PreviewHeightPx; ++PY)
     {
@@ -187,8 +187,8 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
                 static_cast<float>((PX * 73u + PY * 179u) & 31u) / 31.0f);
 
             const float SmokeOpacity = std::clamp(1.0f - Res.Transmittance, 0.0f, 1.0f);
-            const float FireLum      = std::max({ Res.RadianceHdr.R, Res.RadianceHdr.G, Res.RadianceHdr.B }) * 0.42f;
-            const float Alpha        = std::clamp(std::max(SmokeOpacity * 0.85f, 1.0f - std::exp(-FireLum * 1.15f)), 0.0f, 0.96f);
+            const float FireLum      = std::max({ Res.RadianceHdr.R, Res.RadianceHdr.G, Res.RadianceHdr.B }) * Exposure;
+            const float Alpha        = std::clamp(std::max(SmokeOpacity * 0.92f, 1.0f - std::exp(-FireLum * 1.45f)), 0.0f, 0.98f);
 
             const Mathematics::LinearRGB FinalHdr {
                 Res.RadianceHdr.R * Exposure,
@@ -197,11 +197,120 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
             };
 
             const std::size_t Off = (static_cast<std::size_t>(PY) * PreviewWidthPx + PX) * 4u;
-            PreviewRgba8[Off + 0u] = LinearToSrgb8(ToneMapAcesApprox(FinalHdr.R));
-            PreviewRgba8[Off + 1u] = LinearToSrgb8(ToneMapAcesApprox(FinalHdr.G));
-            PreviewRgba8[Off + 2u] = LinearToSrgb8(ToneMapAcesApprox(FinalHdr.B));
+            // Straight-alpha RGB divided softly by Alpha for dark soot edges without darkening flame cores
+            const float NormGain = (Alpha > 0.02f) ? std::min(1.65f, 1.0f / std::max(0.28f, Alpha)) : 1.0f;
+            PreviewRgba8[Off + 0u] = LinearToSrgb8(ToneMapAcesApprox(FinalHdr.R * NormGain));
+            PreviewRgba8[Off + 1u] = LinearToSrgb8(ToneMapAcesApprox(FinalHdr.G * NormGain));
+            PreviewRgba8[Off + 2u] = LinearToSrgb8(ToneMapAcesApprox(FinalHdr.B * NormGain));
             PreviewRgba8[Off + 3u] = static_cast<uint8_t>(std::round(Alpha * 255.0f));
         }
+    }
+
+    // Composite circular soft-glow embers, drifting dark ash motes & oriented tornado debris directly into PreviewRgba8
+    const auto CompositeParticle = [&](const ParticleSpace::ParticleSlot& P, bool ForceDebris) noexcept
+    {
+        if (!ParticleSpace::QueryParticleSlotAlive(P)) return;
+        const Mathematics::Axis3D WorldPos { P.PositionMeters[0], P.PositionMeters[1], P.PositionMeters[2] };
+        const Mathematics::Axis3D Rel = WorldPos - Eye;
+        const float Z = Mathematics::EvaluateDot(Rel, Forward);
+        if (Z <= 0.25f) return;
+
+        const float U = (Mathematics::EvaluateDot(Rel, Right) / (Z * TanX)) * 0.5f + 0.5f;
+        const float V = 0.5f - (Mathematics::EvaluateDot(Rel, Up) / (Z * TanY)) * 0.5f;
+        const float CX = U * static_cast<float>(PreviewWidthPx);
+        const float CY = V * static_cast<float>(PreviewHeightPx);
+        if (CX < -8.0f || CY < -8.0f || CX > static_cast<float>(PreviewWidthPx) + 8.0f || CY > static_cast<float>(PreviewHeightPx) + 8.0f)
+        {
+            return;
+        }
+
+        const bool IsDebris = ForceDebris || (P.AuxScalar < -0.5f);
+        const float ScreenPerMeter = static_cast<float>(PreviewHeightPx) / (2.0f * Z * TanY);
+        const float BaseRad = std::clamp(P.SizeMeters * ScreenPerMeter, IsDebris ? 1.15f : 0.95f, IsDebris ? 2.5f : 2.15f);
+
+        const float VX = Mathematics::EvaluateDot({ P.VelocityMps[0], P.VelocityMps[1], P.VelocityMps[2] }, Right);
+        const float VY = -Mathematics::EvaluateDot({ P.VelocityMps[0], P.VelocityMps[1], P.VelocityMps[2] }, Up);
+        const float VLen = std::hypot(VX, VY);
+        const float DirX = (VLen > 1.0e-3f) ? (VX / VLen) : 1.0f;
+        const float DirY = (VLen > 1.0e-3f) ? (VY / VLen) : 0.0f;
+        const float Stretch = IsDebris ? 1.35f : (1.0f + std::clamp(VLen * 0.025f, 0.0f, 0.35f));
+
+        const float R = P.ColourLinear[0];
+        const float G = P.ColourLinear[1];
+        const float B = P.ColourLinear[2];
+        const float PA = std::clamp(P.ColourLinear[3], 0.0f, 1.0f);
+        if (PA <= 0.01f) return;
+
+        const float Lum = std::max({ R, G, B });
+        const bool  AdditiveGlow = (!IsDebris && Lum > 0.34f);
+
+        const int Span = static_cast<int>(std::ceil(BaseRad * Stretch)) + 1;
+        const int X0 = std::max(0, static_cast<int>(std::floor(CX)) - Span);
+        const int X1 = std::min(static_cast<int>(PreviewWidthPx) - 1, static_cast<int>(std::ceil(CX)) + Span);
+        const int Y0 = std::max(0, static_cast<int>(std::floor(CY)) - Span);
+        const int Y1 = std::min(static_cast<int>(PreviewHeightPx) - 1, static_cast<int>(std::ceil(CY)) + Span);
+
+        for (int Y = Y0; Y <= Y1; ++Y)
+        {
+            const float DY = (static_cast<float>(Y) + 0.5f) - CY;
+            for (int X = X0; X <= X1; ++X)
+            {
+                const float DX = (static_cast<float>(X) + 0.5f) - CX;
+                const float Along = (DX * DirX + DY * DirY) / (BaseRad * Stretch);
+                const float Perp  = (-DX * DirY + DY * DirX) / (BaseRad * (IsDebris ? 0.58f : 1.0f));
+                const float D2 = Along * Along + Perp * Perp;
+                if (D2 >= 1.0f) continue;
+
+                const float Falloff = IsDebris
+                    ? std::clamp((1.0f - D2) * 1.6f, 0.0f, 1.0f)
+                    : (AdditiveGlow ? std::exp(-3.6f * D2) * (1.0f - D2) : std::clamp((1.0f - D2) * 1.25f, 0.0f, 1.0f));
+                const float SA = std::clamp(PA * Falloff * (AdditiveGlow ? 0.85f : 0.88f), 0.0f, 1.0f);
+                if (SA <= 0.004f) continue;
+
+                const std::size_t Off = (static_cast<std::size_t>(Y) * PreviewWidthPx + static_cast<uint32_t>(X)) * 4u;
+                const float OldR = static_cast<float>(PreviewRgba8[Off + 0u]) / 255.0f;
+                const float OldG = static_cast<float>(PreviewRgba8[Off + 1u]) / 255.0f;
+                const float OldB = static_cast<float>(PreviewRgba8[Off + 2u]) / 255.0f;
+                const float OldA = static_cast<float>(PreviewRgba8[Off + 3u]) / 255.0f;
+
+                const float SrcR = std::clamp(ToneMapAcesApprox(R * (AdditiveGlow ? 1.15f : 0.9f)), 0.0f, 1.0f);
+                const float SrcG = std::clamp(ToneMapAcesApprox(G * (AdditiveGlow ? 1.15f : 0.9f)), 0.0f, 1.0f);
+                const float SrcB = std::clamp(ToneMapAcesApprox(B * (AdditiveGlow ? 1.15f : 0.9f)), 0.0f, 1.0f);
+
+                float NewA = 0.0f, PreR = 0.0f, PreG = 0.0f, PreB = 0.0f;
+                if (AdditiveGlow)
+                {
+                    NewA = std::clamp(OldA + SA, 0.0f, 1.0f);
+                    PreR = OldR * OldA + SrcR * SA;
+                    PreG = OldG * OldA + SrcG * SA;
+                    PreB = OldB * OldA + SrcB * SA;
+                }
+                else
+                {
+                    NewA = std::clamp(SA + OldA * (1.0f - SA), 0.0f, 1.0f);
+                    PreR = SrcR * SA + OldR * OldA * (1.0f - SA);
+                    PreG = SrcG * SA + OldG * OldA * (1.0f - SA);
+                    PreB = SrcB * SA + OldB * OldA * (1.0f - SA);
+                }
+
+                if (NewA > 1.0e-4f)
+                {
+                    PreviewRgba8[Off + 0u] = static_cast<uint8_t>(std::round(std::clamp(PreR / NewA, 0.0f, 1.0f) * 255.0f));
+                    PreviewRgba8[Off + 1u] = static_cast<uint8_t>(std::round(std::clamp(PreG / NewA, 0.0f, 1.0f) * 255.0f));
+                    PreviewRgba8[Off + 2u] = static_cast<uint8_t>(std::round(std::clamp(PreB / NewA, 0.0f, 1.0f) * 255.0f));
+                    PreviewRgba8[Off + 3u] = static_cast<uint8_t>(std::round(NewA * 255.0f));
+                }
+            }
+        }
+    };
+
+    for (const auto& E : Simulation.InspectParticleCoupler().InspectEmberSlots())
+    {
+        CompositeParticle(E, false);
+    }
+    for (const auto& S : Simulation.InspectParticleCoupler().InspectShrapnelSlots())
+    {
+        CompositeParticle(S, false);
     }
 }
 
