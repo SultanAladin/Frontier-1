@@ -1,15 +1,19 @@
 /*============================================================================================================================================
                                                           CAMERAVISUALEFFECTS.SLANG
 ============================================================================================================================================*/
-// 🧩 GPU compute optics unit evaluating Thin-Lens Depth of Field, Chromatic Aberration, Multi-Layer Lens Flare, Vignette & Composition Guides
+// 🧩 GPU compute optics unit evaluating Thin-Lens Depth of Field, Chromatic Aberration, Baked 3-Archetype Lens Flare, Vignette & Guides
+
+#define FRONTIER_ATMOSPHERE_EMBEDDED 1
+#include "../Atmosphere/LensFlareCompute.slang"
 
 struct CameraOpticsUniforms
 {
-    uint4  ResolutionMaskPacked;      // x = WidthPx, y = HeightPx, z = EffectMask, w = GhostCountShapePacked (low8=Count, mid8=Sides, high8=RayPairs)
+    uint4  ResolutionMaskPacked;      // x = WidthPx, y = HeightPx, z = EffectMask, w = GhostCountShapePacked (low8=Count, mid8=Sides, high8=RayPairs, bits24..27=Archetype)
     float4 LensFocusPacked;           // x = FocalLengthMm, y = ApertureFStop, z = FocusDistanceM, w = SensorHeightMm
     float4 FlarePositionGain;   // x = FlareU, y = FlareV, z = FlareIntensity, w = FlareSpread
     float4 GhostAberrationPacked;     // x = GhostIntensity, y = GhostSpacing, z = StarburstRotationRad, w = ChromaticStrength
     float4 VignetteBlurPacked;        // x = VignetteIntensity, y = VignetteRoundness, z = MaxBokehRadiusPx, w = GuideStyleOrdinal
+    float4 HaloTintPacked;            // x = HaloIntensity, yzw = SolarTintRGB
 };
 
 // EffectMask bits (ResolutionMaskPacked.z):
@@ -26,6 +30,7 @@ struct CameraOpticsUniforms
 [[vk::binding(1, 0)]] StructuredBuffer<uint>               SourcePixelsRGBA8;
 [[vk::binding(2, 0)]] StructuredBuffer<float>              LinearDepthMeters;
 [[vk::binding(3, 0)]] RWStructuredBuffer<uint>             OutputPixelsRGBA8;
+[[vk::binding(4, 0)]] StructuredBuffer<uint>               BakedLensFlareAtlasTexels;
 
 float4 UnpackRGBA8Linear(uint Packed)
 {
@@ -220,7 +225,31 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     if ((EffectMask & 4u) != 0u)
     {
-        ColorLin += EvaluateProceduralLensFlare(UV, Aspect, EffectMask);
+        uint StyleIdx = (Optics.ResolutionMaskPacked.w >> 24u) & 0x0Fu;
+        if (StyleIdx > 2u)
+        {
+            StyleIdx = ((EffectMask & 8u) != 0u) ? 0u : (((EffectMask & 16u) != 0u) ? 1u : 2u);
+        }
+        LensFlareUniformBlock LF;
+        LF.SourceScreenGain = float4(
+            Optics.FlarePositionGain.x,
+            Optics.FlarePositionGain.y,
+            max(Optics.FlarePositionGain.z, 0.0),
+            max(0.25, Optics.FlarePositionGain.w));
+        LF.OpticsStyleHalo = float4(
+            float(StyleIdx),
+            max(Optics.HaloTintPacked.x, 0.0),
+            ((EffectMask & 32u) != 0u) ? max(Optics.GhostAberrationPacked.x, 0.0) : 0.0,
+            max(0.2, Optics.GhostAberrationPacked.y));
+        LF.GhostRotationTint = float4(
+            ((EffectMask & 32u) != 0u) ? float(Optics.ResolutionMaskPacked.w & 0xFFu) : 0.0,
+            Optics.GhostAberrationPacked.z,
+            float((Optics.ResolutionMaskPacked.w >> 8u) & 0xFFu),
+            1.0);
+        LF.SourceTintAspect = float4(
+            Optics.HaloTintPacked.yzw,
+            Aspect);
+        ColorLin += EvaluateBakedLensFlareGpu(LF, BakedLensFlareAtlasTexels, UV);
     }
 
     if ((EffectMask & 64u) != 0u)

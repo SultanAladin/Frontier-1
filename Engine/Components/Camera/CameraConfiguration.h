@@ -55,6 +55,13 @@ enum class ApertureGhostShape : uint8_t
     Octagon = 8u, // [-] - 8-blade iris octagonal internal reflection
 };
 
+enum class LensFlareArchetype : uint8_t
+{
+    Anamorphic = 0u, // [-] - Horizontal cinema anamorphic flare with lateral wings & halos
+    Streaks    = 1u, // [-] - Multi-blade iris starburst diffraction streaks with spectral spokes & halos
+    Halos      = 2u, // [-] - Concentric spectral rainbow diffraction halos, aureole & coated ghosts
+};
+
 enum class CompositionGuideStyle : uint8_t
 {
     None               = 0u, // [-] - No composition overlay
@@ -118,20 +125,22 @@ struct CollisionAvoidanceParameters
 
 struct LensFlareParameters
 {
-    bool               Enabled                = false;                        // [-]   - Master GPU lens-flare toggle
-    bool               AnamorphicStreak       = true;                         // [-]   - Cool horizontal cinema streak
-    bool               StarburstDiffraction   = true;                         // [-]   - Polygonal iris diffraction spikes
-    bool               ApertureGhosts         = true;                         // [-]   - Multi-coated internal reflections
-    ApertureGhostShape GhostShape             = ApertureGhostShape::Hexagon;  // [-]   - Iris blade geometry
-    uint32_t           GhostReflectionCount   = 7u;                           // [cnt] - Number of internal ghost reflections (0..24)
-    uint32_t           StarburstRayPairs      = 6u;                           // [cnt] - Diffraction spike pairs (2..12)
-    float              SourceNormalizedU      = 0.28f;                        // [uv]  - Normalized horizontal light-source coordinate
-    float              SourceNormalizedV      = 0.34f;                        // [uv]  - Normalized vertical light-source coordinate
-    float              FlareIntensity         = 0.65f;                        // [-]   - Primary flare radiometric gain (0..2)
-    float              FlareSpread            = 0.55f;                        // [-]   - Corona & streak spread factor (0..1.5)
-    float              GhostIntensity         = 0.45f;                        // [-]   - Coated ghost reflection gain (0..2)
-    float              GhostSpacing           = 0.65f;                        // [-]   - Axial spacing along optical center line
-    float              StarburstRotationRad   = 0.22f;                        // [rad] - Diffraction spike rotation angle
+    bool               Enabled                = false;                          // [-]   - Master GPU lens-flare toggle
+    LensFlareArchetype Archetype              = LensFlareArchetype::Anamorphic; // [-]   - Baked optical flare archetype (Anamorphic / Streaks / Halos)
+    bool               AnamorphicStreak       = true;                           // [-]   - Cool horizontal cinema streak
+    bool               StarburstDiffraction   = true;                           // [-]   - Polygonal iris diffraction spikes
+    bool               ApertureGhosts         = true;                           // [-]   - Multi-coated internal reflections
+    ApertureGhostShape GhostShape             = ApertureGhostShape::Hexagon;    // [-]   - Iris blade geometry
+    uint32_t           GhostReflectionCount   = 7u;                             // [cnt] - Number of internal ghost reflections (0..24)
+    uint32_t           StarburstRayPairs      = 6u;                             // [cnt] - Diffraction spike pairs (2..12)
+    float              SourceNormalizedU      = 0.28f;                          // [uv]  - Normalized horizontal light-source coordinate
+    float              SourceNormalizedV      = 0.34f;                          // [uv]  - Normalized vertical light-source coordinate
+    float              FlareIntensity         = 0.65f;                          // [-]   - Primary flare radiometric gain (0..2)
+    float              FlareSpread            = 0.55f;                          // [-]   - Corona & streak spread factor (0..1.5)
+    float              HaloIntensity          = 0.65f;                          // [-]   - Concentric spectral halo gain (0..2.5)
+    float              GhostIntensity         = 0.45f;                          // [-]   - Coated ghost reflection gain (0..2)
+    float              GhostSpacing           = 0.65f;                          // [-]   - Axial spacing along optical center line
+    float              StarburstRotationRad   = 0.22f;                          // [rad] - Diffraction spike rotation angle
 };
 
 struct ChromaticAberrationParameters

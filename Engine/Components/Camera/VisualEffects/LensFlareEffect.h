@@ -37,10 +37,11 @@ namespace Frontier::Components::VisualEffects
 
 [[nodiscard]] constexpr uint32_t PackGhostStarburstWord(const LensFlareParameters& Params) noexcept
 {
-    const uint32_t Count    = std::min<uint32_t>(Params.GhostReflectionCount, 24u) & 0xFFu;
-    const uint32_t Sides    = static_cast<uint32_t>(Params.GhostShape) & 0xFFu;
-    const uint32_t RayPairs = std::clamp<uint32_t>(Params.StarburstRayPairs, 2u, 12u) & 0xFFu;
-    return Count | (Sides << 8u) | (RayPairs << 16u);
+    const uint32_t Count     = std::min<uint32_t>(Params.GhostReflectionCount, 24u) & 0xFFu;
+    const uint32_t Sides     = static_cast<uint32_t>(Params.GhostShape) & 0xFFu;
+    const uint32_t RayPairs  = std::clamp<uint32_t>(Params.StarburstRayPairs, 2u, 12u) & 0xFFu;
+    const uint32_t Archetype = static_cast<uint32_t>(Params.Archetype) & 0x0Fu;
+    return Count | (Sides << 8u) | (RayPairs << 16u) | (Archetype << 24u);
 }
 
 } // namespace Frontier::Components::VisualEffects

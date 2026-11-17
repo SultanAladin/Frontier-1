@@ -9,6 +9,7 @@
 #include "../Atmosphere/SkyViewTransmittanceCompute.slang"
 #include "../Atmosphere/VolumetricCloudCompute.slang"
 #include "../Atmosphere/CelestialDiscStarCompute.slang"
+#include "../Atmosphere/LensFlareCompute.slang"
 
 struct GpuAreaQuadLight
 {
@@ -48,6 +49,7 @@ struct WorldViewportUniformBlock
     uint4                       AtmosphereMaskPad; // x = AtmosphereEnabled (0/1), y = SkyViewW, z = SkyViewH, w = Pad
     VolumetricCloudUniformBlock CloudParams;
     CelestialFieldUniformBlock  CelestialParams;
+    LensFlareUniformBlock       LensFlareParams;
 };
 
 struct GpuWideTreeEntry128
@@ -93,6 +95,7 @@ struct GpuWorldMaterial64
 [[vk::binding(10, 0)]] RWStructuredBuffer<float4>                AccumulationHdrBuffer;
 [[vk::binding(11, 0)]] StructuredBuffer<float4>                  AtmosphericSkyViewLut;
 [[vk::binding(12, 0)]] StructuredBuffer<uint>                    LunarSurfaceAtlasTexels;
+[[vk::binding(13, 0)]] StructuredBuffer<uint>                    BakedLensFlareAtlasTexels;
 
 static const float PiConst    = 3.14159265359;
 static const float TauConst   = 6.28318530718;
@@ -1330,7 +1333,13 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         float  NewCount  = PrevAcc.w + 1.0;
         float3 MeanHdr   = lerp(PrevAcc.xyz, SampleHdr, 1.0 / NewCount);
         AccumulationHdrBuffer[PixelIdx] = float4(MeanHdr, NewCount);
-        OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(ApplyAcesFilmicGpu(MeanHdr));
+        float3 FlareHdr  = MeanHdr;
+        if (WorldUniforms.AtmosphereMaskPad.x != 0u && WorldUniforms.LensFlareParams.GhostRotationTint.w > 0.5)
+        {
+            float2 ScreenUv = (float2(DispatchThreadID.xy) + float2(0.5, 0.5)) / float2(float(Width), float(Height));
+            FlareHdr += EvaluateBakedLensFlareGpu(WorldUniforms.LensFlareParams, BakedLensFlareAtlasTexels, ScreenUv);
+        }
+        OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(ApplyAcesFilmicGpu(FlareHdr));
         return;
     }
 
@@ -1400,6 +1409,12 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     else
     {
         FinalHdr = (DebugMode != 0u) ? float3(0.0) : EvaluateBackgroundSkyCloudsGpu(RayDir, float2(DispatchThreadID.xy));
+    }
+
+    if (DebugMode == 0u && WorldUniforms.AtmosphereMaskPad.x != 0u && WorldUniforms.LensFlareParams.GhostRotationTint.w > 0.5)
+    {
+        float2 ScreenUv = (float2(DispatchThreadID.xy) + float2(0.5, 0.5)) / float2(float(Width), float(Height));
+        FinalHdr += EvaluateBakedLensFlareGpu(WorldUniforms.LensFlareParams, BakedLensFlareAtlasTexels, ScreenUv);
     }
 
     float3 DisplayLinear = (DebugMode != 0u) ? FinalHdr : ApplyAcesFilmicGpu(FinalHdr);

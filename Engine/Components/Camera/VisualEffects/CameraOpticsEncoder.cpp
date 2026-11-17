@@ -13,6 +13,7 @@
 #include "Engine/Components/Camera/VisualEffects/DepthOfField.h"
 #include "Engine/Components/Camera/VisualEffects/LensFlareEffect.h"
 #include "Engine/Components/Camera/VisualEffects/VignetteEffect.h"
+#include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
 
 #include <algorithm>
 #include <array>
@@ -48,8 +49,9 @@ bool CameraOpticsEncoder::InitializeOpticsEncoder(
         return false;
     }
 
-    const std::array<VkDescriptorType, 4u> SlotCategories {{
+    const std::array<VkDescriptorType, 5u> SlotCategories {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -66,7 +68,20 @@ bool CameraOpticsEncoder::InitializeOpticsEncoder(
     UniformBuffer = ComputeEncoder.AllocateHostWritableBuffer(
         sizeof(GPUCameraOpticsUniforms),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-    return UniformBuffer.BufferHandle != VK_NULL_HANDLE;
+    std::vector<uint8_t> FlareAtlasRgba {};
+    if (!GeometricRaster::LensFlareSequence::BakeOpticalAtlasOnGpu(*DeviceInterchange, CompiledShaderDirectory, FlareAtlasRgba))
+    {
+        FlareAtlasRgba = GeometricRaster::LensFlareSequence::QueryBakedLensFlareAtlasRgba8();
+    }
+    const uint64_t FlareAtlasBytes = std::max<uint64_t>(4ull, static_cast<uint64_t>(FlareAtlasRgba.size()));
+    BakedFlareAtlasBuffer = ComputeEncoder.AllocateHostWritableBuffer(
+        FlareAtlasBytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    if (BakedFlareAtlasBuffer.HostAddress != nullptr && !FlareAtlasRgba.empty())
+    {
+        std::memcpy(BakedFlareAtlasBuffer.HostAddress, FlareAtlasRgba.data(), FlareAtlasRgba.size());
+    }
+    return UniformBuffer.BufferHandle != VK_NULL_HANDLE && BakedFlareAtlasBuffer.BufferHandle != VK_NULL_HANDLE;
 }
 
 void CameraOpticsEncoder::TeardownOpticsEncoder() noexcept
@@ -77,6 +92,7 @@ void CameraOpticsEncoder::TeardownOpticsEncoder() noexcept
         DeviceInterchange->ReleaseBuffer(SourceBuffer);
         DeviceInterchange->ReleaseBuffer(DepthBuffer);
         DeviceInterchange->ReleaseBuffer(OutputBuffer);
+        DeviceInterchange->ReleaseBuffer(BakedFlareAtlasBuffer);
     }
     TransferRegister.TeardownRegister();
     ComputeEncoder.TeardownEncoder();
@@ -183,16 +199,22 @@ bool CameraOpticsEncoder::ExecuteGPUOptics(
     Uni.VignetteBlurPacked[2] = std::max(1.0f, Config.DepthOfField.MaxBokehRadiusPx);
     Uni.VignetteBlurPacked[3] = static_cast<float>(GuideStyle);
 
+    Uni.HaloTintPacked[0] = std::clamp(Config.LensFlare.HaloIntensity, 0.0f, 2.5f);
+    Uni.HaloTintPacked[1] = 1.00f;
+    Uni.HaloTintPacked[2] = 0.96f;
+    Uni.HaloTintPacked[3] = 0.90f;
+
     const std::array<GPUCameraOpticsUniforms, 1u> UniSpan {{ Uni }};
     ComputeEncoder.UploadSpanToBuffer<GPUCameraOpticsUniforms>(UniformBuffer, UniSpan);
 
     ComputeEncoder.ResetTransientDescriptors();
     VkCommandBuffer Cmd = DeviceInterchange->BeginSingleTimeCommands();
-    const std::array<GeometricRaster::ComputeSlotDescriptor, 4u> Slots {{
-        { 0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle, sizeof(GPUCameraOpticsUniforms) },
-        { 1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SourceBuffer.BufferHandle,  PixelBytes },
-        { 2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DepthBuffer.BufferHandle,   DepthBytes },
-        { 3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutputBuffer.BufferHandle,  PixelBytes },
+    const std::array<GeometricRaster::ComputeSlotDescriptor, 5u> Slots {{
+        { 0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,        sizeof(GPUCameraOpticsUniforms) },
+        { 1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SourceBuffer.BufferHandle,         PixelBytes },
+        { 2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DepthBuffer.BufferHandle,          DepthBytes },
+        { 3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutputBuffer.BufferHandle,         PixelBytes },
+        { 4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BakedFlareAtlasBuffer.BufferHandle,VK_WHOLE_SIZE },
     }};
     const uint32_t GroupsX = (WidthPx + 7u) / 8u;
     const uint32_t GroupsY = (HeightPx + 7u) / 8u;

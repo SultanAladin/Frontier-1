@@ -33,6 +33,7 @@ struct alignas(16) GPUCameraOpticsUniforms
     float    FlarePositionGain[4] { 0.28f, 0.34f, 0.65f, 0.55f };
     float    GhostAberrationPacked[4]   { 0.45f, 0.65f, 0.22f, 0.42f };
     float    VignetteBlurPacked[4]      { 0.48f, 0.75f, 10.0f, 0.0f };
+    float    HaloTintPacked[4]          { 0.65f, 1.00f, 0.96f, 0.90f };
 };
 
 class CameraOpticsEncoder
@@ -66,9 +67,10 @@ private:
     GeometricRaster::TimelineTransferRegister TransferRegister  {};
     uint32_t                                  OpticsProgram     = UINT32_MAX;
     GeometricRaster::DeviceBufferResource     UniformBuffer     {};
-    GeometricRaster::DeviceBufferResource     SourceBuffer      {};
-    GeometricRaster::DeviceBufferResource     DepthBuffer       {};
-    GeometricRaster::DeviceBufferResource     OutputBuffer      {};
+    GeometricRaster::DeviceBufferResource     SourceBuffer        {};
+    GeometricRaster::DeviceBufferResource     DepthBuffer         {};
+    GeometricRaster::DeviceBufferResource     OutputBuffer        {};
+    GeometricRaster::DeviceBufferResource     BakedFlareAtlasBuffer {};
 };
 
 } // namespace Frontier::Components::VisualEffects

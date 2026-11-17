@@ -9,6 +9,7 @@
 
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 #include "Engine/Constants/MathConstants.h"
+#include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
 #include "Engine/GeometrySpace/Analysis/CurvatureAnalysis.h"
 
 #include <algorithm>
@@ -757,6 +758,13 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     }
 
     const uint32_t MatCount = PreparedScene.MaterialRegister.QuerySlotCount();
+    const float AspectRatio = static_cast<float>(Result.WidthPx) / static_cast<float>(std::max(1u, Result.HeightPx));
+    const ProjectedLensFlareFrame FlareProj =
+        (Config.DebugChannel == 0u && PreparedScene.Atmosphere.Medium.AtmosphereEnabled && PreparedScene.Atmosphere.LensFlare.Enabled)
+            ? LensFlareSequence::ResolveSolarFlareProjection(
+                  CurBasis.CameraOrigin, CurBasis.ForwardAxis, CurBasis.RightAxis, CurBasis.UpAxis,
+                  CurBasis.TanHalfFovX, CurBasis.TanHalfFovY, PreparedScene.Atmosphere, &PreparedScene.SceneTree)
+            : ProjectedLensFlareFrame{};
 
     //====================================================================================================================
     // ENGINE 0: MATCAP (Zero GI, Zero Shadow Maps, Zero Reflections)
@@ -785,6 +793,13 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                         CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
                     OutHdr = EvaluateBackgroundSkyRadiance(
                         PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY));
+                }
+                if (FlareProj.EffectiveGain > 1.0e-4f && Config.DebugChannel == 0u)
+                {
+                    const float FU = (static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx);
+                    const float FV = (static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx);
+                    OutHdr = OutHdr + LensFlareSequence::EvaluateBakedLensFlare(
+                        PreparedScene.Atmosphere.LensFlare, FlareProj, FU, FV, AspectRatio);
                 }
                 Result.CompositeLinearHdr[Off] = OutHdr;
                 const auto Tone = (Config.DebugChannel != 0u) ? OutHdr : ApplyAcesFilmic(OutHdr);
@@ -842,15 +857,27 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 PreparedScene.MaterialRegister, Result.CompositeLinearHdr);
         }
 
-        for (std::size_t Off = 0u; Off < TotalPixels; ++Off)
+        for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
         {
-            const auto Tone = (Config.DebugChannel != 0u)
-                ? Result.CompositeLinearHdr[Off]
-                : ApplyAcesFilmic(Result.CompositeLinearHdr[Off]);
-            Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
-            Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
-            Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
-            Result.DisplayRgba8[Off * 4u + 3u] = 255u;
+            for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
+            {
+                const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
+                if (FlareProj.EffectiveGain > 1.0e-4f && Config.DebugChannel == 0u)
+                {
+                    const float FU = (static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx);
+                    const float FV = (static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx);
+                    Result.CompositeLinearHdr[Off] = Result.CompositeLinearHdr[Off] +
+                        LensFlareSequence::EvaluateBakedLensFlare(
+                            PreparedScene.Atmosphere.LensFlare, FlareProj, FU, FV, AspectRatio);
+                }
+                const auto Tone = (Config.DebugChannel != 0u)
+                    ? Result.CompositeLinearHdr[Off]
+                    : ApplyAcesFilmic(Result.CompositeLinearHdr[Off]);
+                Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
+                Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
+                Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
+                Result.DisplayRgba8[Off * 4u + 3u] = 255u;
+            }
         }
         PreviousHiZ = std::move(CurrentHiZ);
         return Result;
@@ -999,6 +1026,14 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             if (VisTargets.GlassPeelFront64[Off] != 0ull)
             {
                 FinalHdr = Result.SpecularGlass.RefractedGlassHdr[Off];
+            }
+
+            if (FlareProj.EffectiveGain > 1.0e-4f)
+            {
+                const float FU = (static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx);
+                const float FV = (static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx);
+                FinalHdr = FinalHdr + LensFlareSequence::EvaluateBakedLensFlare(
+                    PreparedScene.Atmosphere.LensFlare, FlareProj, FU, FV, AspectRatio);
             }
 
             Result.CompositeLinearHdr[Off] = FinalHdr;

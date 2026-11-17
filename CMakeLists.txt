@@ -285,6 +285,7 @@ function(frontier_compile_slang_shader SLANG_FILE ENTRY_NAME SHADER_UNIT OUT_SPV
             "${CMAKE_SOURCE_DIR}/Engine/Shaders/Atmosphere/SkyViewTransmittanceCompute.slang"
             "${CMAKE_SOURCE_DIR}/Engine/Shaders/Atmosphere/VolumetricCloudCompute.slang"
             "${CMAKE_SOURCE_DIR}/Engine/Shaders/Atmosphere/CelestialDiscStarCompute.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Atmosphere/LensFlareCompute.slang"
         COMMENT "[Slang] Compiling ${SLANG_FILE} (${SHADER_UNIT}) -> ${OUT_SPV_NAME}"
         VERBATIM
     )
@@ -395,6 +396,8 @@ frontier_compile_modular_slang_shader(GlobalIllumination/SpecularGlassRaytrace.s
 frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              ComputeEntry                    compute  SkyViewTransmittanceCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/VolumetricCloudCompute.slang                   ComputeEntry                    compute  VolumetricCloudCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/CelestialDiscStarCompute.slang                 ComputeEntry                    compute  CelestialDiscStarCompute.comp.spv)
+frontier_compile_modular_slang_shader(Atmosphere/LensFlareBakeCompute.slang                     ComputeEntry                    compute  LensFlareBakeCompute.comp.spv)
+frontier_compile_modular_slang_shader(Atmosphere/LensFlareCompute.slang                         ComputeEntry                    compute  LensFlareCompute.comp.spv)
 
 function(frontier_compile_slang_shader_unit SLANG_REL_PATH ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
     set(IN_SLANG "${CMAKE_SOURCE_DIR}/${SLANG_REL_PATH}")
@@ -579,6 +582,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Atmosphere/AtmosphericSkySequence.cpp
     Engine/GeometricRaster/Atmosphere/LunarStarfieldSequence.cpp
     Engine/GeometricRaster/Atmosphere/VolumetricCloudSequence.cpp
+    Engine/GeometricRaster/Atmosphere/LensFlareSequence.cpp
     Engine/Components/Camera/CameraComponent.cpp
     Engine/Components/Camera/VisualEffects/CameraOpticsEncoder.cpp
     Engine/GeometrySpace/Network/PolygonNetwork.cpp
@@ -939,6 +943,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(SolarShadowValidation          Exhibits/SolarShadowValidation.cpp)
     frontier_register_exhibit(TieredWorldRenderValidation    Exhibits/TieredWorldRenderValidation.cpp)
     frontier_register_exhibit(CelestialCloudsValidation      Exhibits/CelestialCloudsValidation.cpp)
+    frontier_register_exhibit(LensFlareValidation            Exhibits/LensFlareValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(DrawerGestureWorldValidation   Exhibits/DrawerGestureWorldValidation.cpp)
     endif()

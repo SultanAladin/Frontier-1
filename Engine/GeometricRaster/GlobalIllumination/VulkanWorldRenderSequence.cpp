@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
+#include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
 
 #include <algorithm>
 #include <array>
@@ -73,6 +74,16 @@ struct CelestialFieldUniformStd140
 
 static_assert(sizeof(CelestialFieldUniformStd140) == 336u, "CelestialFieldUniformStd140 must equal 336 bytes.");
 
+struct LensFlareUniformStd140
+{
+    float SourceScreenGain[4]  {}; // x = ScreenU, y = ScreenV, z = EffectiveGain, w = FlareSpread
+    float OpticsStyleHalo[4]   {}; // x = StyleIndex (0..2), y = HaloIntensity, z = GhostIntensity, w = GhostSpacing
+    float GhostRotationTint[4] {}; // x = GhostCount, y = RotationRad, z = GhostSides, w = Enabled (0/1)
+    float SourceTintAspect[4]  {}; // xyz = SourceLinearTint, w = AspectRatio
+};
+
+static_assert(sizeof(LensFlareUniformStd140) == 64u, "LensFlareUniformStd140 must equal 64 bytes.");
+
 struct AtmosphericSkyUniformStd140
 {
     float    SunDirectionIntensity[4] {};
@@ -109,9 +120,10 @@ struct WorldViewportUniformBlockStd140
     uint32_t                    AtmosphereMaskPad[4]       {};
     VolumetricCloudUniformStd140 CloudParams                {};
     CelestialFieldUniformStd140  CelestialParams            {};
+    LensFlareUniformStd140       LensFlareParams            {};
 };
 
-static_assert(sizeof(WorldViewportUniformBlockStd140) == 1184u, "WorldViewportUniformBlockStd140 must equal 1184 bytes.");
+static_assert(sizeof(WorldViewportUniformBlockStd140) == 1248u, "WorldViewportUniformBlockStd140 must equal 1248 bytes.");
 
 struct SignedDistanceGridUniformStd140
 {
@@ -233,8 +245,9 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
-    constexpr std::array<VkDescriptorType, 13u> SlotTypes {{
+    constexpr std::array<VkDescriptorType, 14u> SlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -306,6 +319,19 @@ bool VulkanWorldRenderSequence::InitializeSequence(
             std::memcpy(LunarSurfaceAtlasBuffer.HostAddress, MoonAtlasRgba.data(), MoonAtlasRgba.size());
         }
     }
+    {
+        std::vector<uint8_t> FlareAtlasRgba {};
+        if (!LensFlareSequence::BakeOpticalAtlasOnGpu(TargetDevice, CompiledShaderDirectory, FlareAtlasRgba))
+        {
+            FlareAtlasRgba = LensFlareSequence::QueryBakedLensFlareAtlasRgba8();
+        }
+        const uint64_t FlareAtlasBytes = std::max<uint64_t>(4ull, static_cast<uint64_t>(FlareAtlasRgba.size()));
+        EnsureBufferCapacity(BakedLensFlareAtlasBuffer, FlareAtlasBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        if (BakedLensFlareAtlasBuffer.HostAddress != nullptr && !FlareAtlasRgba.empty())
+        {
+            std::memcpy(BakedLensFlareAtlasBuffer.HostAddress, FlareAtlasRgba.data(), FlareAtlasRgba.size());
+        }
+    }
     if (UniformBuffer.BufferHandle != VK_NULL_HANDLE)
     {
         std::fprintf(
@@ -341,6 +367,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(AccumulationHdrBuffer);
         BoundDevice->ReleaseBuffer(AtmosphericSkyViewLutBuffer);
         BoundDevice->ReleaseBuffer(LunarSurfaceAtlasBuffer);
+        BoundDevice->ReleaseBuffer(BakedLensFlareAtlasBuffer);
     }
     DispatchEncoder.TeardownEncoder();
     RadiometricProgramHandle    = UINT32_MAX;
@@ -1359,6 +1386,37 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
             DstM.MetaMask[2]          = static_cast<float>(static_cast<uint32_t>(SrcM.SurfacePreset));
             DstM.MetaMask[3]          = 0.0f;
         }
+
+        const auto& LF = Atmo.LensFlare;
+        auto&       LFU = Uniforms.LensFlareParams;
+        if (AtmoActive && LF.Enabled && Config.DebugChannel == 0u)
+        {
+            const ProjectedLensFlareFrame FlareProj = LensFlareSequence::ResolveSolarFlareProjection(
+                Basis.CameraOrigin,
+                Basis.ForwardAxis,
+                Basis.RightAxis,
+                Basis.UpAxis,
+                Basis.TanHalfFovX,
+                Basis.TanHalfFovY,
+                Atmo,
+                &Scene.SceneTree);
+            LFU.SourceScreenGain[0]  = FlareProj.ScreenU;
+            LFU.SourceScreenGain[1]  = FlareProj.ScreenV;
+            LFU.SourceScreenGain[2]  = FlareProj.EffectiveGain * std::clamp(LF.FlareIntensity, 0.0f, 3.0f);
+            LFU.SourceScreenGain[3]  = std::clamp(LF.FlareSpread, 0.2f, 2.2f);
+            LFU.OpticsStyleHalo[0]   = static_cast<float>(static_cast<uint32_t>(LF.Style));
+            LFU.OpticsStyleHalo[1]   = std::clamp(LF.HaloIntensity, 0.0f, 2.5f);
+            LFU.OpticsStyleHalo[2]   = std::clamp(LF.GhostIntensity, 0.0f, 2.5f);
+            LFU.OpticsStyleHalo[3]   = std::clamp(LF.GhostSpacing, 0.2f, 2.0f);
+            LFU.GhostRotationTint[0] = static_cast<float>(std::min(16u, LF.GhostCount));
+            LFU.GhostRotationTint[1] = LF.StreakRotationDegrees * Constants::DegToRadFloat;
+            LFU.GhostRotationTint[2] = static_cast<float>(std::min(16u, LF.GhostSides));
+            LFU.GhostRotationTint[3] = (FlareProj.EffectiveGain > 1.0e-4f) ? 1.0f : 0.0f;
+            LFU.SourceTintAspect[0]  = FlareProj.SourceTint.R;
+            LFU.SourceTintAspect[1]  = FlareProj.SourceTint.G;
+            LFU.SourceTintAspect[2]  = FlareProj.SourceTint.B;
+            LFU.SourceTintAspect[3]  = static_cast<float>(WidthPx) / static_cast<float>(std::max(1u, HeightPx));
+        }
     }
 
     std::memcpy(UniformBuffer.HostAddress, &Uniforms, sizeof(Uniforms));
@@ -1375,7 +1433,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
         DispatchGpuSkyViewLut(Cmd, Scene);
     }
 
-    const std::array<ComputeSlotDescriptor, 13u> Slots {{
+    const std::array<ComputeSlotDescriptor, 14u> Slots {{
         {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,              sizeof(WorldViewportUniformBlockStd140) },
         {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
         {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,       VK_WHOLE_SIZE },
@@ -1389,6 +1447,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
         { 10u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AccumulationHdrBuffer.BufferHandle,      AccBytes      },
         { 11u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AtmosphericSkyViewLutBuffer.BufferHandle,VK_WHOLE_SIZE },
         { 12u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LunarSurfaceAtlasBuffer.BufferHandle,    VK_WHOLE_SIZE },
+        { 13u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BakedLensFlareAtlasBuffer.BufferHandle,  VK_WHOLE_SIZE },
     }};
 
     const uint32_t GroupsX = (WidthPx  + 7u) / 8u;

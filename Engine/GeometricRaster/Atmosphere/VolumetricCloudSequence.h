@@ -38,6 +38,13 @@ enum class CloudCategoryType : uint8_t
     Pyrocumulus     = 11u, // [-] - Towering convective plume with warm ember under-glow
 };
 
+enum class LensFlareStyle : uint8_t
+{
+    Anamorphic = 0u, // [-] - Horizontal cinema anamorphic blue-cyan flare with lateral wings & halos
+    Streaks    = 1u, // [-] - Multi-blade iris starburst diffraction streaks with spectral spokes & halos
+    Halos      = 2u, // [-] - Concentric spectral rainbow diffraction halos, aureole & coated aperture ghosts
+};
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
@@ -85,6 +92,20 @@ struct BoundedCloudVolume
     float                 ForwardScatterAnisotropy = 0.45f;
 };
 
+struct LensFlareConfiguration
+{
+    bool           Enabled               = false;                      // [-]   - Master physical lens flare toggle
+    LensFlareStyle Style                 = LensFlareStyle::Anamorphic; // [-]   - Active baked optical archetype (0..2)
+    float          FlareIntensity        = 0.85f;                      // [x]   - Primary baked optical flare gain [0..3]
+    float          FlareSpread           = 0.85f;                      // [x]   - Kernel angular footprint scale [0.2..2.0]
+    float          HaloIntensity         = 0.65f;                      // [x]   - Concentric spectral halo gain [0..2.5]
+    float          GhostIntensity        = 0.50f;                      // [x]   - Multi-coated polygonal aperture ghost gain [0..2.5]
+    float          GhostSpacing          = 0.72f;                      // [x]   - Axial ghost reflection spread [0.2..1.8]
+    uint32_t       GhostCount            = 7u;                         // [cnt] - Coated aperture ghost count [0..16]
+    uint32_t       GhostSides            = 6u;                         // [cnt] - Polygonal aperture blade count (0=round, 6=hex, 8=oct)
+    float          StreakRotationDegrees = 10.0f;                      // [deg] - Diffraction streak rotation [0..360)
+};
+
 struct WorldAtmosphereConfiguration
 {
     AtmosphericMediumConfiguration Medium             {};
@@ -98,6 +119,7 @@ struct WorldAtmosphereConfiguration
     StarfieldConfiguration         Stars              {};
     CloudDeckConfiguration         Clouds             {};
     BoundedCloudVolume             LocalCloud         {};
+    LensFlareConfiguration         LensFlare          {};
     float                          SimulationSeconds  = 0.0f;
 };
 
