@@ -11,7 +11,7 @@
 #include "Engine/GeometrySpace/Parametric/Feature/FeatureCatalogue.h"
 #include "Engine/GeometrySpace/Parametric/Feature/FeatureTree.h"
 #include "Engine/GeometrySpace/Parametric/Measurement/MassProperties.h"
-#include "Engine/GeometrySpace/Parametric/ParametricPolygonBridge.h"
+#include "Engine/Interchange/GeometryInterchange.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchCorner.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchSolver.h"
 
@@ -104,16 +104,22 @@ int main()
             return 1;
         }
 
-        // Convert to Frontier::GeometrySpace::PolygonNetwork
-        PolygonNetwork Network {};
-        std::string BridgeRefusal {};
-        if (!VerifyCheck(TessellateBodyToPolygonNetwork(Partition, Diff.Body, TessellationSettings {}, "ParametricCutBox", Network, &BridgeRefusal),
-                         "TessellateBodyToPolygonNetwork produces valid PolygonNetwork"))
+        // Convert to Frontier::GeometrySpace::ConstructedSampleAsset via Frontier Interchange
+        ConstructedSampleAsset InterchangeAsset {};
+        std::string InterchangeDiag {};
+        if (!VerifyCheck(Frontier::Interchange::GeometryInterchange::ImportParametricBody(
+                             Partition, Diff.Body, TessellationSettings {}, "ParametricCutBox", InterchangeAsset, InterchangeDiag),
+                         "GeometryInterchange::ImportParametricBody produces valid ConstructedSampleAsset"))
         {
-            std::fprintf(stderr, "Bridge refusal: %s\n", BridgeRefusal.c_str());
+            std::fprintf(stderr, "Interchange diagnostic: %s\n", InterchangeDiag.c_str());
             return 1;
         }
-        if (!VerifyCheck(!Network.Faces.empty() && !Network.Vertices.empty(), "PolygonNetwork non-empty"))
+        if (!VerifyCheck(!InterchangeAsset.Network.Faces.empty() && !InterchangeAsset.Network.Vertices.empty(), "PolygonNetwork non-empty"))
+        {
+            return 1;
+        }
+        const std::string ObjText = Frontier::Interchange::GeometryInterchange::ExportWavefrontObjText(InterchangeAsset.Network, &InterchangeAsset.Layers);
+        if (!VerifyCheck(ObjText.find("v ") != std::string::npos && ObjText.find("f ") != std::string::npos, "GeometryInterchange Wavefront OBJ export non-empty"))
         {
             return 1;
         }

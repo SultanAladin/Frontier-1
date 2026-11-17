@@ -45,7 +45,8 @@ public:
     void RegisterDockPanes(Components::HeadlessWorkspaceDockContainer& DockContainer);
 
     void BeginFrame(double DeltaSeconds);
-    void EndFrame(double DeltaSeconds, bool DrawFloatingOverlays = true);
+    void EndFrame(double DeltaSeconds, bool DrawFloatingOverlays = true, bool HostedOverlayMode = true);
+    bool IntakeExternalFileDrop(const std::string& FilePath, std::string* OutDiagnostic = nullptr);
 
     [[nodiscard]] Sketcher::SketcherWorkspaceState&       AccessState() noexcept        { return State; }
     [[nodiscard]] const Sketcher::SketcherWorkspaceState& InspectState() const noexcept { return State; }

@@ -14,7 +14,9 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Frontier::Workspaces::Sketcher
@@ -59,8 +61,21 @@ struct SketcherPicture
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-// PNG / JPEG / BMP / GIF (first frame) via stb_image; a missing or unreadable file is a refusal, never a throw.
+// PNG / JPEG / BMP / GIF (first frame) via stb_image OR Frontier .ImageSpace via ImageCodec; missing/unreadable is a refusal.
 [[nodiscard]] SketcherPicture DecodeSketcherPicture(const std::string& Path);
+
+// Encode a decoded SketcherPicture into a Frontier .ImageSpace container (linear-light RGBA preview + .CanvasLayer metadata).
+[[nodiscard]] bool ExportSketcherPictureAsImageSpace(
+    const SketcherPicture&       Picture,
+    const std::filesystem::path& TargetPath,
+    std::string&                 OutDiagnostic,
+    std::string_view             DocumentTitle = {});
+
+// Decode any supported picture (PNG/JPEG/BMP/GIF/.ImageSpace) and persist it as a Frontier .ImageSpace asset.
+[[nodiscard]] bool ConvertPictureFileToImageSpace(
+    const std::filesystem::path& SourcePath,
+    const std::filesystem::path& TargetPath,
+    std::string&                 OutDiagnostic);
 
 // Relative paths: as given when that file exists (repository-root runs), otherwise next to the file that named it.
 [[nodiscard]] std::string ResolveSketcherImagePath(const std::string& Path, const std::string& NamingFile);

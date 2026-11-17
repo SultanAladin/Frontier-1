@@ -11,6 +11,7 @@
 
 #include "Engine/GeometrySpace/Network/FacePartitionRegister.h"
 #include "Engine/GeometrySpace/Network/PolygonNetwork.h"
+#include "Engine/GeometrySpace/Parametric/Tessellation/BodyTessellation.h"
 #include "Engine/GeometrySpace/Primitives/AnalyticPrimitives.h"
 
 #include <filesystem>
@@ -50,6 +51,28 @@ public:
         const GeometrySpace::PolygonNetwork&         Network,
         const GeometrySpace::FacePartitionRegister*  OptionalPartitions,
         std::string&                                 OutDiagnostic);
+
+    [[nodiscard]] static bool ImportParametricComplex(
+        const GeometrySpace::Parametric::PolygonComplex& Complex,
+        std::string_view                                 DefaultTitle,
+        GeometrySpace::ConstructedSampleAsset&           OutAsset,
+        std::string&                                     OutDiagnostic);
+
+    [[nodiscard]] static bool ImportParametricBody(
+        const GeometrySpace::Parametric::ModelPartition&       Partition,
+        GeometrySpace::Parametric::BodyToken                   Body,
+        const GeometrySpace::Parametric::TessellationSettings& Settings,
+        std::string_view                                       DefaultTitle,
+        GeometrySpace::ConstructedSampleAsset&                 OutAsset,
+        std::string&                                           OutDiagnostic);
+
+    [[nodiscard]] static bool ExportParametricBodyToFile(
+        const std::filesystem::path&                           TargetPath,
+        const GeometrySpace::Parametric::ModelPartition&       Partition,
+        GeometrySpace::Parametric::BodyToken                   Body,
+        const GeometrySpace::Parametric::TessellationSettings& Settings,
+        std::string_view                                       DefaultTitle,
+        std::string&                                           OutDiagnostic);
 
     [[nodiscard]] static bool ImportWavefrontObjText(
         std::string_view                       ObjText,

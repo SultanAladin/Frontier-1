@@ -176,10 +176,15 @@ void SketcherWorkspaceHost::BeginFrame(double DeltaSeconds)
     Sketcher::BeginSketcherHostedFrame(State);
 }
 
-void SketcherWorkspaceHost::EndFrame(double DeltaSeconds, bool DrawFloatingOverlays)
+void SketcherWorkspaceHost::EndFrame(double DeltaSeconds, bool DrawFloatingOverlays, bool HostedOverlayMode)
 {
-    Sketcher::EndSketcherHostedFrame(State, std::max(1.0e-4, DeltaSeconds), DrawFloatingOverlays);
+    Sketcher::EndSketcherHostedFrame(State, std::max(1.0e-4, DeltaSeconds), DrawFloatingOverlays, HostedOverlayMode);
     Sketcher::ConcludeSketcherFrame(State);
+}
+
+bool SketcherWorkspaceHost::IntakeExternalFileDrop(const std::string& FilePath, std::string* OutDiagnostic)
+{
+    return Sketcher::IntakeSketcherDroppedFile(State, FilePath, OutDiagnostic);
 }
 
 void SketcherWorkspaceHost::RenderViewportTarget()

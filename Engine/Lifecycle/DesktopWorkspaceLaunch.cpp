@@ -1537,6 +1537,14 @@ int LaunchDesktopWorkspace(
                 (void)StampHost.IntakeExternalFileDrop(DropFile, DropDiag);
             }
         }
+        else if (CurrentSurface == ActiveHostSurface::SketcherWorkspaceSurface && SketcherHostReady)
+        {
+            for (const std::string& DropFile : DroppedPaths)
+            {
+                std::string DropDiag {};
+                (void)SketcherHost.IntakeExternalFileDrop(DropFile, &DropDiag);
+            }
+        }
 #else
         for (const std::string& DropFile : DroppedPaths)
         {
@@ -1683,7 +1691,7 @@ int LaunchDesktopWorkspace(
             }
             SketcherHost.BeginFrame(Dt);
             SketcherDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
-            SketcherHost.EndFrame(Dt, false);
+            SketcherHost.EndFrame(Dt, true, true);
             WorkspaceAppearance::ClearOverlayPointerShield();
             SketcherBrowser.Render(FullBounds, Dt, HostUiScale);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));

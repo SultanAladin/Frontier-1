@@ -114,9 +114,16 @@ std::atomic<uint32_t> ActiveGlfwWindowCount{ 0 }; // [count] - Reference-counted
         case GLFW_KEY_PAGE_DOWN:     return Input::InputLogicalKey::PageDown;
         case GLFW_KEY_COMMA:         return Input::InputLogicalKey::Comma;
         case GLFW_KEY_PERIOD:        return Input::InputLogicalKey::Period;
-        case GLFW_KEY_KP_DECIMAL:    return Input::InputLogicalKey::Period;
         case GLFW_KEY_SLASH:         return Input::InputLogicalKey::Slash;
         case GLFW_KEY_SEMICOLON:     return Input::InputLogicalKey::Semicolon;
+        case GLFW_KEY_MINUS:         return Input::InputLogicalKey::Minus;
+        case GLFW_KEY_EQUAL:         return Input::InputLogicalKey::Equal;
+        case GLFW_KEY_LEFT_BRACKET:  return Input::InputLogicalKey::LeftBracket;
+        case GLFW_KEY_RIGHT_BRACKET: return Input::InputLogicalKey::RightBracket;
+        case GLFW_KEY_BACKSLASH:     return Input::InputLogicalKey::Backslash;
+        case GLFW_KEY_APOSTROPHE:    return Input::InputLogicalKey::Apostrophe;
+        case GLFW_KEY_GRAVE_ACCENT:  return Input::InputLogicalKey::GraveAccent;
+        case GLFW_KEY_CAPS_LOCK:     return Input::InputLogicalKey::CapsLock;
         case GLFW_KEY_A:             return Input::InputLogicalKey::A;
         case GLFW_KEY_B:             return Input::InputLogicalKey::B;
         case GLFW_KEY_C:             return Input::InputLogicalKey::C;
@@ -143,26 +150,32 @@ std::atomic<uint32_t> ActiveGlfwWindowCount{ 0 }; // [count] - Reference-counted
         case GLFW_KEY_X:             return Input::InputLogicalKey::X;
         case GLFW_KEY_Y:             return Input::InputLogicalKey::Y;
         case GLFW_KEY_Z:             return Input::InputLogicalKey::Z;
-        case GLFW_KEY_0:
-        case GLFW_KEY_KP_0:          return Input::InputLogicalKey::Digit0;
-        case GLFW_KEY_1:
-        case GLFW_KEY_KP_1:          return Input::InputLogicalKey::Digit1;
-        case GLFW_KEY_2:
-        case GLFW_KEY_KP_2:          return Input::InputLogicalKey::Digit2;
-        case GLFW_KEY_3:
-        case GLFW_KEY_KP_3:          return Input::InputLogicalKey::Digit3;
-        case GLFW_KEY_4:
-        case GLFW_KEY_KP_4:          return Input::InputLogicalKey::Digit4;
-        case GLFW_KEY_5:
-        case GLFW_KEY_KP_5:          return Input::InputLogicalKey::Digit5;
-        case GLFW_KEY_6:
-        case GLFW_KEY_KP_6:          return Input::InputLogicalKey::Digit6;
-        case GLFW_KEY_7:
-        case GLFW_KEY_KP_7:          return Input::InputLogicalKey::Digit7;
-        case GLFW_KEY_8:
-        case GLFW_KEY_KP_8:          return Input::InputLogicalKey::Digit8;
-        case GLFW_KEY_9:
-        case GLFW_KEY_KP_9:          return Input::InputLogicalKey::Digit9;
+        case GLFW_KEY_0:             return Input::InputLogicalKey::Digit0;
+        case GLFW_KEY_1:             return Input::InputLogicalKey::Digit1;
+        case GLFW_KEY_2:             return Input::InputLogicalKey::Digit2;
+        case GLFW_KEY_3:             return Input::InputLogicalKey::Digit3;
+        case GLFW_KEY_4:             return Input::InputLogicalKey::Digit4;
+        case GLFW_KEY_5:             return Input::InputLogicalKey::Digit5;
+        case GLFW_KEY_6:             return Input::InputLogicalKey::Digit6;
+        case GLFW_KEY_7:             return Input::InputLogicalKey::Digit7;
+        case GLFW_KEY_8:             return Input::InputLogicalKey::Digit8;
+        case GLFW_KEY_9:             return Input::InputLogicalKey::Digit9;
+        case GLFW_KEY_KP_0:          return Input::InputLogicalKey::Keypad0;
+        case GLFW_KEY_KP_1:          return Input::InputLogicalKey::Keypad1;
+        case GLFW_KEY_KP_2:          return Input::InputLogicalKey::Keypad2;
+        case GLFW_KEY_KP_3:          return Input::InputLogicalKey::Keypad3;
+        case GLFW_KEY_KP_4:          return Input::InputLogicalKey::Keypad4;
+        case GLFW_KEY_KP_5:          return Input::InputLogicalKey::Keypad5;
+        case GLFW_KEY_KP_6:          return Input::InputLogicalKey::Keypad6;
+        case GLFW_KEY_KP_7:          return Input::InputLogicalKey::Keypad7;
+        case GLFW_KEY_KP_8:          return Input::InputLogicalKey::Keypad8;
+        case GLFW_KEY_KP_9:          return Input::InputLogicalKey::Keypad9;
+        case GLFW_KEY_KP_DECIMAL:    return Input::InputLogicalKey::KeypadDecimal;
+        case GLFW_KEY_KP_DIVIDE:     return Input::InputLogicalKey::KeypadDivide;
+        case GLFW_KEY_KP_MULTIPLY:   return Input::InputLogicalKey::KeypadMultiply;
+        case GLFW_KEY_KP_SUBTRACT:   return Input::InputLogicalKey::KeypadSubtract;
+        case GLFW_KEY_KP_ADD:        return Input::InputLogicalKey::KeypadAdd;
+        case GLFW_KEY_KP_EQUAL:      return Input::InputLogicalKey::KeypadEqual;
         case GLFW_KEY_F1:            return Input::InputLogicalKey::F1;
         case GLFW_KEY_F2:            return Input::InputLogicalKey::F2;
         case GLFW_KEY_F3:            return Input::InputLogicalKey::F3;
@@ -429,6 +442,32 @@ bool DesktopPlatformWindow::Initialize(const WindowConfigurationDescriptor& Desc
             {
                 Self->PendingDroppedPaths.emplace_back(Paths[Idx]);
             }
+        }
+    });
+
+    glfwSetWindowFocusCallback(CreatedWindow, [](GLFWwindow* Win, int Focused) {
+        auto* Self = static_cast<DesktopPlatformWindow*>(glfwGetWindowUserPointer(Win));
+        if (Self == nullptr || Focused == GLFW_TRUE) return;
+        const uint64_t NowNs = CurrentMonotonicNanoseconds();
+        static constexpr Input::InputLogicalKey ModifierKeys[] = {
+            Input::InputLogicalKey::LeftShift,
+            Input::InputLogicalKey::RightShift,
+            Input::InputLogicalKey::LeftControl,
+            Input::InputLogicalKey::RightControl,
+            Input::InputLogicalKey::LeftAlt,
+            Input::InputLogicalKey::RightAlt,
+            Input::InputLogicalKey::LeftSuper,
+            Input::InputLogicalKey::RightSuper,
+        };
+        for (Input::InputLogicalKey ModKey : ModifierKeys)
+        {
+            Input::InputSignalPacket Packet{};
+            Packet.TimestampNanoseconds = NowNs;
+            Packet.Category             = Input::InputSignalCategory::KeyboardKey;
+            Packet.LogicalKey           = ModKey;
+            Packet.Transition           = Input::ButtonTransitionCategory::Released;
+            Packet.ModifierBitmask      = 0u;
+            (void)Self->CallbackExchange.IntakeSignal(Packet);
         }
     });
 

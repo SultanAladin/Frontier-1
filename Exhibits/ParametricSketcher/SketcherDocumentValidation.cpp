@@ -6,11 +6,13 @@
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocument.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocumentCodec.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDrawingSheet.h"
+#include "Engine/Workspaces/ParametricSketcher/Document/SketcherImagePlane.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherMatcap.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherScene.h"
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 
 namespace
@@ -130,6 +132,62 @@ int main()
         }
         const SketcherDrawingSheet Sheet = ComposeSketcherDrawingSheet(Doc, Doc.DrawingSheet);
         if (!VerifyCheck(Sheet.Refusal.empty() && Sheet.Bodies == 1, "ComposeSketcherDrawingSheet succeeds for bracket"))
+        {
+            return 1;
+        }
+        ++Passed;
+    }
+
+    // 4. .ImageSpace export -> decode roundtrip & SketcherImagePlane validation
+    {
+        SketcherPicture Source {};
+        Source.Width  = 4u;
+        Source.Height = 4u;
+        Source.Pixels.resize(4u * 4u * 4u, 0u);
+        for (uint32_t Y = 0u; Y < Source.Height; ++Y)
+        {
+            for (uint32_t X = 0u; X < Source.Width; ++X)
+            {
+                const size_t Base = (size_t(Y) * Source.Width + X) * 4u;
+                Source.Pixels[Base + 0u] = static_cast<uint8_t>((X * 64u) + 32u);
+                Source.Pixels[Base + 1u] = static_cast<uint8_t>((Y * 64u) + 16u);
+                Source.Pixels[Base + 2u] = 200u;
+                Source.Pixels[Base + 3u] = 255u;
+            }
+        }
+
+        const std::filesystem::path TempImageSpace =
+            std::filesystem::temp_directory_path() / "SketcherDocTestRef.ImageSpace";
+        std::string ImgDiag {};
+        if (!VerifyCheck(ExportSketcherPictureAsImageSpace(Source, TempImageSpace, ImgDiag, "DocRefPlane"),
+                         "ExportSketcherPictureAsImageSpace writes .ImageSpace"))
+        {
+            std::fprintf(stderr, "ImageSpace export diag: %s\n", ImgDiag.c_str());
+            return 1;
+        }
+        const SketcherPicture Decoded = DecodeSketcherPicture(TempImageSpace.string());
+        std::filesystem::remove(TempImageSpace);
+        if (!VerifyCheck(Decoded.Refusal.empty() && Decoded.Width == 4u && Decoded.Height == 4u &&
+                             Decoded.Pixels.size() == Source.Pixels.size(),
+                         "DecodeSketcherPicture reads .ImageSpace back cleanly"))
+        {
+            return 1;
+        }
+        for (size_t Idx = 0u; Idx < Source.Pixels.size(); ++Idx)
+        {
+            if (!VerifyCheck(std::abs(int(Decoded.Pixels[Idx]) - int(Source.Pixels[Idx])) <= 2,
+                             ".ImageSpace sRGB<->Linear pixel roundtrip matches within 2 LSB"))
+            {
+                return 1;
+            }
+        }
+        SketcherImagePlane Plane {};
+        Plane.Name   = "Blueprint";
+        Plane.Path   = TempImageSpace.string();
+        Plane.Corner = { -2.0, 0.0, 1.0 };
+        Plane.Right  = { 4.0, 0.0, 0.0 };
+        Plane.Down   = { 0.0, 0.0, -2.0 };
+        if (!VerifyCheck(ExamineSketcherImagePlane(Plane).empty(), "ExamineSketcherImagePlane accepts valid plane"))
         {
             return 1;
         }

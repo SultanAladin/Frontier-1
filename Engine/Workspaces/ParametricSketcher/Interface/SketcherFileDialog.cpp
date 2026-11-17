@@ -32,7 +32,7 @@ std::string BrowseSketcherPicture()
     OPENFILENAMEW Request{};
     Request.lStructSize = sizeof(Request);
     Request.hwndOwner   = GetActiveWindow();
-    Request.lpstrFilter = L"Pictures (*.png;*.jpg;*.jpeg;*.bmp;*.gif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0All files (*.*)\0*.*\0";
+    Request.lpstrFilter = L"Pictures & ImageSpace (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.ImageSpace)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.ImageSpace\0ImageSpace (*.ImageSpace)\0*.ImageSpace\0All files (*.*)\0*.*\0";
     Request.lpstrFile   = Chosen.data();
     Request.nMaxFile    = static_cast<DWORD>(Chosen.size());
     Request.lpstrTitle  = L"Reference picture for the image plane";

@@ -1009,4 +1009,119 @@ std::string GeometryInterchange::ExportGltf2JsonText(const GeometrySpace::Polygo
     return Json.str();
 }
 
+bool GeometryInterchange::ImportParametricComplex(
+    const GeometrySpace::Parametric::PolygonComplex& Complex,
+    std::string_view                                 DefaultTitle,
+    GeometrySpace::ConstructedSampleAsset&           OutAsset,
+    std::string&                                     OutDiagnostic)
+{
+    OutAsset = GeometrySpace::ConstructedSampleAsset{};
+    OutAsset.Network.Reset();
+    OutAsset.Network.NetworkTitle = DefaultTitle.empty() ? std::string("ParametricBody") : std::string(DefaultTitle);
+
+    if (Complex.Positions.empty() || Complex.Triangles.empty())
+    {
+        OutDiagnostic = "Parametric PolygonComplex has no geometry to interchange.";
+        return false;
+    }
+
+    OutAsset.Network.ReserveStorage(
+        static_cast<uint32_t>(Complex.Positions.size()),
+        static_cast<uint32_t>(Complex.Triangles.size() * 3u),
+        static_cast<uint32_t>(Complex.Triangles.size()));
+
+    for (const GeometrySpace::Parametric::Vector3& Pos : Complex.Positions)
+    {
+        (void)OutAsset.Network.AppendVertex({
+            static_cast<float>(Pos.X),
+            static_cast<float>(Pos.Y),
+            static_cast<float>(Pos.Z),
+        });
+    }
+
+    GeometrySpace::FaceShadingAssignment DefaultShading{};
+    DefaultShading.AlbedoLinearRGB = { 0.48f, 0.54f, 0.62f };
+    DefaultShading.Metallic        = 0.25f;
+    DefaultShading.Roughness       = 0.34f;
+    DefaultShading.MatCapBlend     = 0.72f;
+
+    const bool HasCharts = Complex.TriangleCharts.size() == Complex.Triangles.size();
+    const bool HasFaces  = Complex.TriangleFaces.size() == Complex.Triangles.size();
+
+    for (std::size_t TriIdx = 0u; TriIdx < Complex.Triangles.size(); ++TriIdx)
+    {
+        const auto& Tri = Complex.Triangles[TriIdx];
+        const std::array<uint32_t, 3> LoopIndices {{
+            static_cast<uint32_t>(Tri[0]),
+            static_cast<uint32_t>(Tri[1]),
+            static_cast<uint32_t>(Tri[2]),
+        }};
+
+        std::array<Mathematics::UVAxes, 3> CornerUVs{};
+        if (HasCharts)
+        {
+            for (std::size_t C = 0u; C < 3u; ++C)
+            {
+                CornerUVs[C] = Mathematics::UVAxes {
+                    static_cast<float>(Complex.TriangleCharts[TriIdx][C].X),
+                    static_cast<float>(Complex.TriangleCharts[TriIdx][C].Y),
+                };
+            }
+        }
+
+        const uint16_t FaceOrdinal = HasFaces
+            ? static_cast<uint16_t>(std::max(0, Complex.TriangleFaces[TriIdx]) + 1)
+            : 1u;
+
+        (void)OutAsset.Network.AppendFace(LoopIndices, CornerUVs, DefaultShading, FaceOrdinal, 1u);
+    }
+
+    OutAsset.Network.LinkOppositeEdges(false);
+    OutAsset.Network.RecomputeNormals();
+    OutAsset.Network.MarkDihedralSharpSeams(32.0f, false);
+    if (!OutAsset.Network.VerifyNetworkIntegrity())
+    {
+        OutDiagnostic = "Interchanged PolygonNetwork failed integrity verification.";
+        return false;
+    }
+
+    FinalizeConstructedAssetUDIMs(OutAsset);
+    OutDiagnostic.clear();
+    return true;
+}
+
+bool GeometryInterchange::ImportParametricBody(
+    const GeometrySpace::Parametric::ModelPartition&       Partition,
+    GeometrySpace::Parametric::BodyToken                   Body,
+    const GeometrySpace::Parametric::TessellationSettings& Settings,
+    std::string_view                                       DefaultTitle,
+    GeometrySpace::ConstructedSampleAsset&                 OutAsset,
+    std::string&                                           OutDiagnostic)
+{
+    const GeometrySpace::Parametric::TessellationOutcome Outcome =
+        GeometrySpace::Parametric::TessellateBody(Partition, Body, Settings);
+    if (!Outcome.Refusal.empty())
+    {
+        OutDiagnostic = Outcome.Refusal;
+        return false;
+    }
+    return ImportParametricComplex(Outcome.Complex, DefaultTitle, OutAsset, OutDiagnostic);
+}
+
+bool GeometryInterchange::ExportParametricBodyToFile(
+    const std::filesystem::path&                           TargetPath,
+    const GeometrySpace::Parametric::ModelPartition&       Partition,
+    GeometrySpace::Parametric::BodyToken                   Body,
+    const GeometrySpace::Parametric::TessellationSettings& Settings,
+    std::string_view                                       DefaultTitle,
+    std::string&                                           OutDiagnostic)
+{
+    GeometrySpace::ConstructedSampleAsset Asset{};
+    if (!ImportParametricBody(Partition, Body, Settings, DefaultTitle, Asset, OutDiagnostic))
+    {
+        return false;
+    }
+    return ExportAssetToFile(TargetPath, Asset.Network, &Asset.Layers, OutDiagnostic);
+}
+
 } // namespace Frontier::Interchange

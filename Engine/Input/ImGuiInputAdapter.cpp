@@ -32,10 +32,18 @@ namespace
         case InputLogicalKey::End:          return ImGuiKey_End;
         case InputLogicalKey::PageUp:       return ImGuiKey_PageUp;
         case InputLogicalKey::PageDown:     return ImGuiKey_PageDown;
-        case InputLogicalKey::Comma:        return ImGuiKey_Comma;
-        case InputLogicalKey::Period:       return ImGuiKey_Period;
-        case InputLogicalKey::Slash:        return ImGuiKey_Slash;
-        case InputLogicalKey::Semicolon:    return ImGuiKey_Semicolon;
+        case InputLogicalKey::Comma:          return ImGuiKey_Comma;
+        case InputLogicalKey::Period:         return ImGuiKey_Period;
+        case InputLogicalKey::Slash:          return ImGuiKey_Slash;
+        case InputLogicalKey::Semicolon:      return ImGuiKey_Semicolon;
+        case InputLogicalKey::Minus:          return ImGuiKey_Minus;
+        case InputLogicalKey::Equal:          return ImGuiKey_Equal;
+        case InputLogicalKey::LeftBracket:    return ImGuiKey_LeftBracket;
+        case InputLogicalKey::RightBracket:   return ImGuiKey_RightBracket;
+        case InputLogicalKey::Backslash:      return ImGuiKey_Backslash;
+        case InputLogicalKey::Apostrophe:     return ImGuiKey_Apostrophe;
+        case InputLogicalKey::GraveAccent:    return ImGuiKey_GraveAccent;
+        case InputLogicalKey::CapsLock:       return ImGuiKey_CapsLock;
         case InputLogicalKey::A:            return ImGuiKey_A;
         case InputLogicalKey::B:            return ImGuiKey_B;
         case InputLogicalKey::C:            return ImGuiKey_C;
@@ -72,6 +80,22 @@ namespace
         case InputLogicalKey::Digit7:       return ImGuiKey_7;
         case InputLogicalKey::Digit8:       return ImGuiKey_8;
         case InputLogicalKey::Digit9:       return ImGuiKey_9;
+        case InputLogicalKey::Keypad0:        return ImGuiKey_Keypad0;
+        case InputLogicalKey::Keypad1:        return ImGuiKey_Keypad1;
+        case InputLogicalKey::Keypad2:        return ImGuiKey_Keypad2;
+        case InputLogicalKey::Keypad3:        return ImGuiKey_Keypad3;
+        case InputLogicalKey::Keypad4:        return ImGuiKey_Keypad4;
+        case InputLogicalKey::Keypad5:        return ImGuiKey_Keypad5;
+        case InputLogicalKey::Keypad6:        return ImGuiKey_Keypad6;
+        case InputLogicalKey::Keypad7:        return ImGuiKey_Keypad7;
+        case InputLogicalKey::Keypad8:        return ImGuiKey_Keypad8;
+        case InputLogicalKey::Keypad9:        return ImGuiKey_Keypad9;
+        case InputLogicalKey::KeypadDecimal:  return ImGuiKey_KeypadDecimal;
+        case InputLogicalKey::KeypadDivide:   return ImGuiKey_KeypadDivide;
+        case InputLogicalKey::KeypadMultiply: return ImGuiKey_KeypadMultiply;
+        case InputLogicalKey::KeypadSubtract: return ImGuiKey_KeypadSubtract;
+        case InputLogicalKey::KeypadAdd:      return ImGuiKey_KeypadAdd;
+        case InputLogicalKey::KeypadEqual:    return ImGuiKey_KeypadEqual;
         case InputLogicalKey::F1:           return ImGuiKey_F1;
         case InputLogicalKey::F2:           return ImGuiKey_F2;
         case InputLogicalKey::F3:           return ImGuiKey_F3;
@@ -107,6 +131,11 @@ ImGuiInputAdapter::ImGuiInputAdapter(ImGuiIO& TargetIo) noexcept
 
 void ImGuiInputAdapter::IntakeSignalPacket(const InputSignalPacket& Packet) noexcept
 {
+    IntakeSignalPacketInternal(Packet, true);
+}
+
+void ImGuiInputAdapter::IntakeSignalPacketInternal(const InputSignalPacket& Packet, bool SyncModifiersFromPacket) noexcept
+{
     if (DestinationIo == nullptr)
     {
         return;
@@ -141,10 +170,13 @@ void ImGuiInputAdapter::IntakeSignalPacket(const InputSignalPacket& Packet) noex
             {
                 DestinationIo->AddKeyEvent(Mapped, Packet.Transition != ButtonTransitionCategory::Released);
             }
-            DestinationIo->AddKeyEvent(ImGuiMod_Shift, (Packet.ModifierBitmask & InputModifierBits::Shift) != 0u);
-            DestinationIo->AddKeyEvent(ImGuiMod_Ctrl, (Packet.ModifierBitmask & InputModifierBits::Control) != 0u);
-            DestinationIo->AddKeyEvent(ImGuiMod_Alt, (Packet.ModifierBitmask & InputModifierBits::Alt) != 0u);
-            DestinationIo->AddKeyEvent(ImGuiMod_Super, (Packet.ModifierBitmask & InputModifierBits::Super) != 0u);
+            if (SyncModifiersFromPacket)
+            {
+                DestinationIo->AddKeyEvent(ImGuiMod_Shift, (Packet.ModifierBitmask & InputModifierBits::Shift) != 0u);
+                DestinationIo->AddKeyEvent(ImGuiMod_Ctrl, (Packet.ModifierBitmask & InputModifierBits::Control) != 0u);
+                DestinationIo->AddKeyEvent(ImGuiMod_Alt, (Packet.ModifierBitmask & InputModifierBits::Alt) != 0u);
+                DestinationIo->AddKeyEvent(ImGuiMod_Super, (Packet.ModifierBitmask & InputModifierBits::Super) != 0u);
+            }
             break;
         }
         case InputSignalCategory::TextCodepoint:
@@ -168,9 +200,18 @@ void ImGuiInputAdapter::IntakeSignalPacket(const InputSignalPacket& Packet) noex
 std::size_t ImGuiInputAdapter::ForwardEditorExchangeToImGui(InputExtension& InputParticipant, ImGuiIO& TargetIo) noexcept
 {
     ImGuiInputAdapter Adapter(TargetIo);
-    const std::size_t Drained = InputParticipant.DrainEditorExchange(Adapter);
+    struct BatchSink
+    {
+        ImGuiInputAdapter& AdapterRef;
+        void IntakeSignalPacket(const InputSignalPacket& Packet) noexcept
+        {
+            AdapterRef.IntakeSignalPacketInternal(Packet, false);
+        }
+    };
+    BatchSink Sink{ Adapter };
+    const std::size_t Drained = InputParticipant.DrainEditorExchange(Sink);
 
-    // Keep modifier readings synchronized with consolidated EditorSnapshot even on quiet steps.
+    // Keep modifier readings synchronized with consolidated EditorSnapshot once per frame after draining.
     const EditorInputSnapshot& Snapshot = InputParticipant.InspectEditorSnapshot();
     TargetIo.AddKeyEvent(ImGuiMod_Shift, Snapshot.ShiftHeld);
     TargetIo.AddKeyEvent(ImGuiMod_Ctrl, Snapshot.ControlHeld);

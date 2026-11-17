@@ -557,7 +557,9 @@ void VectorViewportInteractor::RouteKeyboardShortcuts(
         return;
     }
 
-    if (!CmdOrCtrl && !Snapshot.ShiftHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::M, false))
+    if (!CmdOrCtrl &&
+        ((!Snapshot.ShiftHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::M, false)) ||
+         (Snapshot.ShiftHeld && Snapshot.QueryKeyPressed(Input::InputLogicalKey::G, false))))
     {
         if (const auto* Sel = Session->InspectSelectedLayer(); Sel != nullptr && Sel->Category != PatternStampLayerCategory::Folder)
         {

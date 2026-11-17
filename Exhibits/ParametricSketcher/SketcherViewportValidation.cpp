@@ -9,6 +9,7 @@
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherScene.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherPortableImage.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherRasterization.h"
+#include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherSnapping.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -134,6 +135,37 @@ int main()
         return 1;
     }
     ++Passed;
+
+    // 5. Object snapping catalogue + SketcherSnapFilter gating
+    {
+        SketcherSnapCatalogue Catalogue = CatalogueSketcherSnaps(Doc, Scene);
+        double CornerPx = 0.0, CornerPy = 0.0;
+        if (!VerifyCheck(!Catalogue.Points.empty() && !Catalogue.Curves.empty(), "Snap catalogue populated") ||
+            !VerifyCheck(ProjectSketcherPoint(Frame, Vector3{ 1.2, 0.9, 0.6 }, CornerPx, CornerPy), "Project block corner to viewport"))
+        {
+            return 1;
+        }
+        SketcherSnapQuery Query {};
+        Query.Frame  = Frame;
+        Query.PixelX = CornerPx;
+        Query.PixelY = CornerPy;
+        const SketcherSnap HitCorner = FindSketcherSnap(Catalogue, Doc, Scene, Query);
+        if (!VerifyCheck(HitCorner.Kind == SketcherSnapKind::Endpoint, "FindSketcherSnap snaps to corner Endpoint"))
+        {
+            return 1;
+        }
+        Query.Filter.EndpointEnabled = false;
+        Query.Filter.CurveEnabled    = false;
+        Query.Filter.FaceEnabled     = false;
+        const SketcherSnap FilteredCorner = FindSketcherSnap(Catalogue, Doc, Scene, Query);
+        if (!VerifyCheck(FilteredCorner.Kind != SketcherSnapKind::Endpoint && FilteredCorner.Kind != SketcherSnapKind::Curve &&
+                             FilteredCorner.Kind != SketcherSnapKind::Face,
+                         "SketcherSnapFilter disables Endpoint/Curve/Face snaps"))
+        {
+            return 1;
+        }
+        ++Passed;
+    }
 
     Raster.Destroy();
     Device.TeardownInterchange();

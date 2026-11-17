@@ -13,6 +13,7 @@
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherNavigation.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherOutliner.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherStyleSheet.h"
+#include "Engine/Components/Panes/WorkspaceAppearance.h"
 
 #include "Engine/GeometrySpace/Parametric/Diagnostics/OperationTrace.h"
 #include "Engine/GeometrySpace/Parametric/Exchange/ExchangePath.h"
@@ -808,23 +809,88 @@ void ResolveExtrudeAxis(SketcherWorkspaceState& State)
     Bevel.AxisDirection = Normalize(Direction);
 }
 
-// Plasticity E: extrude the selected faces; the pointer sets the signed distance like the fillet size.
-void OpenExtrudeSession(SketcherWorkspaceState& State)
+const char* SketcherExtrudeModeLabel(SketcherExtrudeMode Mode) noexcept
 {
+    switch (Mode)
+    {
+    case SketcherExtrudeMode::Standard:        return "Extrude (Normal)";
+    case SketcherExtrudeMode::AlongNormals:    return "Extrude Along Normals";
+    case SketcherExtrudeMode::Manifold:        return "Extrude Manifold";
+    case SketcherExtrudeMode::IndividualFaces: return "Extrude Individual Faces";
+    case SketcherExtrudeMode::Symmetric:       return "Extrude Symmetric";
+    }
+    return "Extrude";
+}
+
+SketcherCommandOutcome RunFaceExtrudeWithMode(SketcherDocument& Document, double Size, SketcherExtrudeMode Mode)
+{
+    if (Mode == SketcherExtrudeMode::IndividualFaces && Document.Selection.Faces.size() > 1)
+    {
+        const std::vector<std::string> Faces = Document.Selection.Faces;
+        SketcherCommandOutcome LastOutcome { true, {}, "extruded individual faces" };
+        for (const std::string& FaceName : Faces)
+        {
+            Document.Selection.Faces = { FaceName };
+            LastOutcome = ChangeSketcherSelection(Document, FaceOperationKind::Extrude, Size);
+            if (!LastOutcome.AcceptedCondition)
+            {
+                Document.Selection.Faces = Faces;
+                return LastOutcome;
+            }
+        }
+        Document.Selection.Faces = Faces;
+        return LastOutcome;
+    }
+    if (Mode == SketcherExtrudeMode::Symmetric)
+    {
+        const double Half = 0.5 * Size;
+        const SketcherCommandOutcome First = ChangeSketcherSelection(Document, FaceOperationKind::Extrude, Half);
+        if (!First.AcceptedCondition) return First;
+        if (std::abs(Half) > 1.0e-9)
+        {
+            return ChangeSketcherSelection(Document, FaceOperationKind::Push, -Half);
+        }
+        return First;
+    }
+    return ChangeSketcherSelection(Document, FaceOperationKind::Extrude, Size);
+}
+
+void OpenSketchExtrudeSession(SketcherWorkspaceState& State);
+
+void OpenExtrudeSessionWithMode(SketcherWorkspaceState& State, SketcherExtrudeMode Mode)
+{
+    State.LastExtrudeMode = Mode;
+    if (State.Document.Selection.Faces.empty() && FocusedSketchCondition(State))
+    {
+        OpenSketchExtrudeSession(State);
+        State.Bevel.ExtrudeMode = Mode;
+        if (Mode == SketcherExtrudeMode::Manifold && State.Bevel.ProfileMaterial != 0)
+        {
+            State.Bevel.AutoCombinationCondition = true;
+        }
+        return;
+    }
     if (State.Document.Selection.Faces.empty())
     {
-        Announce(State, "Extrude needs selected faces (mode 3)");
+        Announce(State, std::string(SketcherExtrudeModeLabel(Mode)) + " needs selected faces (mode 3) or a focused sketch");
         return;
     }
     const double Remembered = State.LastCommand.Kind == SketcherRepeatKind::Face && State.LastCommand.Operation == FaceOperationKind::Extrude ? State.LastCommand.Amount : 0.5;
-    State.Bevel                 = {};
-    State.Bevel.ActiveCondition = true;
-    State.Bevel.Verb            = SketcherSessionVerb::Extrude;
-    State.Bevel.Size            = Remembered;
+    State.Bevel                   = {};
+    State.Bevel.ActiveCondition   = true;
+    State.Bevel.Verb              = SketcherSessionVerb::Extrude;
+    State.Bevel.ExtrudeMode       = Mode;
+    State.Bevel.StagedExtrudeMode = Mode;
+    State.Bevel.Size              = Remembered;
     ResolveExtrudeAxis(State);
     WriteBevelText(State.Bevel);
-    Announce(State, std::string(State.Bevel.AxisCondition ? "Extrude (E): the face follows the pointer along its normal (Blender)" : "Extrude (E): move horizontally") +
-                    " · out adds, in pushes / cuts a pocket (extrude manifold) · click edits the faces · Enter / right-click applies · Esc aborts");
+    Announce(State, std::string(SketcherExtrudeModeLabel(Mode)) + " (E · Ctrl+E menu): drag along normal or type distance · Enter / right-click applies · Esc aborts");
+}
+
+// Plasticity E: extrude the selected faces; the pointer sets the signed distance like the fillet size.
+void OpenExtrudeSession(SketcherWorkspaceState& State)
+{
+    OpenExtrudeSessionWithMode(State, State.LastExtrudeMode);
 }
 
 // Plasticity O on faces (offset-curve of the face boundary) · Blender I: inset the selected planar faces. The pointer sets
@@ -869,6 +935,7 @@ void ResolveProfileCombination(SketcherBevelSession& Bevel)
 [[nodiscard]] bool BevelStagedCurrent(const SketcherBevelSession& Bevel)
 {
     return Bevel.StagedSize == Bevel.Size && Bevel.StagedShape == Bevel.Shape && Bevel.PreviewVerb == Bevel.Verb &&
+           Bevel.StagedExtrudeMode == Bevel.ExtrudeMode &&
            Bevel.StagedVariable == Bevel.VariableEnabled && Bevel.StagedEndSize == Bevel.EndSize && Bevel.StagedReversed == Bevel.ReversedCondition &&
            Bevel.StagedCombination == Bevel.Combination && Bevel.StagedDepth == Bevel.Depth && Bevel.StagedCorners == Bevel.CornerSizes;
 }
@@ -1012,19 +1079,20 @@ void StageBevelPreview(SketcherWorkspaceState& State)
     const int Parameter = ChangedBevelParameter(Bevel);                                      // [idx] - What the bound applies to
     Bevel.StagedDepth       = Bevel.Depth;
     Bevel.StagedCombination = Bevel.Combination;
-    Bevel.StagedSize     = Bevel.Size;
-    Bevel.StagedShape    = Bevel.Shape;
-    Bevel.PreviewVerb    = Bevel.Verb;
-    Bevel.StagedVariable = Bevel.VariableEnabled;
-    Bevel.StagedEndSize  = Bevel.EndSize;
-    Bevel.StagedReversed = Bevel.ReversedCondition;
-    Bevel.StagedCorners  = Bevel.CornerSizes;
+    Bevel.StagedSize        = Bevel.Size;
+    Bevel.StagedShape       = Bevel.Shape;
+    Bevel.PreviewVerb       = Bevel.Verb;
+    Bevel.StagedExtrudeMode = Bevel.ExtrudeMode;
+    Bevel.StagedVariable    = Bevel.VariableEnabled;
+    Bevel.StagedEndSize     = Bevel.EndSize;
+    Bevel.StagedReversed    = Bevel.ReversedCondition;
+    Bevel.StagedCorners     = Bevel.CornerSizes;
     static const char* Verbs[] = { "Blend", "Extrude", "Profile", "Inset", "Corner" };
     FRONTIER_TRACE_SCOPE("Preview", std::string("StageBevelPreview · ") + Verbs[std::clamp(int(Bevel.Verb), 0, 4)] + " · size " + TraceNumber(Bevel.Size));
     SketcherPhaseClock StageClock(State.Profile, "bevel preview · stage");
     Bevel.Preview     = std::make_unique<SketcherDocument>(CloneSketcherDocument(State.Document));
     const SketcherCommandOutcome Outcome = Bevel.Verb == SketcherSessionVerb::Profile ? ExtrudeSketcherSketch(*Bevel.Preview, Bevel.ProfileLabel, Bevel.Size, Bevel.Combination, BooleanTarget(State), ProfileStart(Bevel), true)
-                                         : Bevel.Verb == SketcherSessionVerb::Extrude ? ChangeSketcherSelection(*Bevel.Preview, FaceOperationKind::Extrude, Bevel.Size)
+                                         : Bevel.Verb == SketcherSessionVerb::Extrude ? RunFaceExtrudeWithMode(*Bevel.Preview, Bevel.Size, Bevel.ExtrudeMode)
                                          : Bevel.Verb == SketcherSessionVerb::Inset   ? InsetSketcherSelection(*Bevel.Preview, Bevel.Size, Bevel.Depth)
                                          : Bevel.Verb == SketcherSessionVerb::Corner  ? CutSketcherSketchCorners(*Bevel.Preview, ComposeCornerRequest(Bevel))
                                                                                       : BlendSketcherSelection(*Bevel.Preview, ComposeBlendRequest(Bevel));
@@ -1117,7 +1185,8 @@ void ApplyBevelSession(SketcherWorkspaceState& State)
     }
     if (State.Bevel.Verb == SketcherSessionVerb::Extrude)
     {
-        const SketcherCommandOutcome Outcome = Run([&] { return ChangeSketcherSelection(State.Document, FaceOperationKind::Extrude, Size); });
+        const SketcherExtrudeMode Mode = State.Bevel.ExtrudeMode;
+        const SketcherCommandOutcome Outcome = Run([&] { return RunFaceExtrudeWithMode(State.Document, Size, Mode); });
         if (Outcome.AcceptedCondition)
         {
             SketcherRepeat Rep{};
@@ -1595,8 +1664,16 @@ SketcherSnap FindPointerSnap(SketcherWorkspaceState& State, const OrbitCameraFra
                              std::vector<SketcherSnapPoint> Transient, const std::vector<std::string>& Excluded, bool AnchorCondition)
 {
     const ImGuiIO& Io             = ImGui::GetIO();
-    const bool     AlongCondition = !AnchorCondition && Io.KeyAlt;                            // Alt: on the curve
-    const bool     PointCondition = AnchorCondition || Io.KeyCtrl;                            // Ctrl: important points
+    const bool     CurveWorkflow  = (State.Drawing.ActiveCondition && !State.Drawing.SolidCondition &&
+                                     (State.Drawing.Kind == SketcherDrawingKind::Curve || State.Drawing.Kind == SketcherDrawingKind::Arc ||
+                                      State.Drawing.Kind == SketcherDrawingKind::Line || State.Drawing.Kind == SketcherDrawingKind::Polygon ||
+                                      State.Drawing.Kind == SketcherDrawingKind::Slot)) ||
+                                    State.PickMode == SketcherPickMode::Curve ||
+                                    State.PickMode == SketcherPickMode::ControlPoint ||
+                                    State.Trim.ActiveCondition ||
+                                    State.PoleDrag.ActiveCondition;
+    const bool     AlongCondition = !AnchorCondition && Io.KeyAlt;                            // Alt: snap/slide along curves
+    const bool     PointCondition = AnchorCondition || Io.KeyCtrl;                            // Ctrl: snap to points/features
     if (!State.Picker.Enabled || (!PointCondition && !AlongCondition)) return {};
     SketcherPhaseClock Clock(State.Profile, "snaps");
     SketcherSnapQuery Query;
@@ -1608,20 +1685,29 @@ SketcherSnap FindPointerSnap(SketcherWorkspaceState& State, const OrbitCameraFra
     Query.XRayEnabled = State.Style.XRayEnabled;
     Query.Section     = ActiveSectionClip(State);
     Query.Filter      = State.Picker.Filter;
+    if (State.Picker.ContextAwareSnap && CurveWorkflow)
+    {
+        // Context-aware curve mode: give curve & intersection targets generous pixel reach and allow curve hits cleanly.
+        Query.CurveReach = std::max(Query.CurveReach, 12.0);
+        Query.PointReach = std::max(Query.PointReach, 11.0);
+    }
     if (!AnchorCondition)
     {
-        Query.Filter.CurveEnabled = AlongCondition && Query.Filter.CurveEnabled;             // Alt slides along curves / edges; Ctrl lands on points only
-        Query.Filter.FaceEnabled  = false;
-        if (!PointCondition)                                                                 // Alt alone: the curve only
+        Query.Filter.CurveEnabled = (AlongCondition || (State.Picker.ContextAwareSnap && CurveWorkflow && PointCondition)) && Query.Filter.CurveEnabled;
+        Query.Filter.FaceEnabled  = PointCondition && !CurveWorkflow && Query.Filter.FaceEnabled;
+        if (!PointCondition)                                                                 // Alt alone: snap along curves & curve crossings
         {
-            Query.Filter.EndpointEnabled      = false;
-            Query.Filter.MidpointEnabled      = false;
+            Query.Filter.EndpointEnabled      = State.Picker.ContextAwareSnap && CurveWorkflow && Query.Filter.EndpointEnabled;
+            Query.Filter.MidpointEnabled      = State.Picker.ContextAwareSnap && CurveWorkflow && Query.Filter.MidpointEnabled;
             Query.Filter.QuarterEnabled       = false;
             Query.Filter.CentreEnabled        = false;
-            Query.Filter.IntersectionEnabled  = false;
+            Query.Filter.IntersectionEnabled  = State.Picker.ContextAwareSnap && CurveWorkflow && Query.Filter.IntersectionEnabled;
             Query.Filter.TangentEnabled       = false;
             Query.Filter.PerpendicularEnabled = false;
-            Query.Transient.clear();
+            if (!State.Picker.ContextAwareSnap || !CurveWorkflow)
+            {
+                Query.Transient.clear();
+            }
         }
     }
     const SketcherSnap Found = FindSketcherSnap(SnapCatalogue(State, Excluded), State.Document, State.Scene, Query);
@@ -1774,7 +1860,7 @@ void PlaceDrawingPointer(SketcherWorkspaceState& State, const OrbitCameraFrame& 
         if (const std::optional<Vector2> Snapped = SnapOntoPlane(State, Frame, Local, Plane, Reference, Chain, {})) Point = *Snapped;
         else if (GridSnapCondition(State)) Point = { std::round(Point.X / DrawingSnap) * DrawingSnap, std::round(Point.Y / DrawingSnap) * DrawingSnap };
     }
-    if (Drawing.Kind == SketcherDrawingKind::Rectangle && Drawing.SquareCondition && Drawing.Points.size() == 1 &&
+    if (Drawing.Kind == SketcherDrawingKind::Rectangle && (Drawing.SquareCondition || ImGui::GetIO().KeyShift) && Drawing.Points.size() == 1 &&
         (!Drawing.SolidCondition || Drawing.Solid == SketcherConstructKind::Block || Drawing.Solid == SketcherConstructKind::Wedge))
     {
         const Vector2 From  = Drawing.Points.front();
@@ -1783,15 +1869,16 @@ void PlaceDrawingPointer(SketcherWorkspaceState& State, const OrbitCameraFrame& 
     }
 }
 
-// A temporary Shift chord, not a persistent picker lock: lines use the last
-// click; arc endpoints / slot centres use their first click. The arc bulge and
-// slot width remain free, and freeform curves / primitive sizing are untouched.
+// A temporary Shift chord, not a persistent picker lock: lines and polylines/curves snap straight along orthogonal axes;
+// arc endpoints / slot centres use their first click. Rectangle square is handled in PlaceDrawingPointer.
 bool ApplyDrawingShiftConstraint(SketcherWorkspaceState& State, Vector2& Point)
 {
     auto& Drawing = State.Drawing;
     if (!ImGui::GetIO().KeyShift || Drawing.SolidCondition || Drawing.Points.empty() ||
         State.Picker.Lock != SketcherSnapLockKind::None) return false;
     const bool Baseline = Drawing.Kind == SketcherDrawingKind::Line ||
+        Drawing.Kind == SketcherDrawingKind::Curve ||
+        Drawing.Kind == SketcherDrawingKind::Polygon ||
         ((Drawing.Kind == SketcherDrawingKind::Arc || Drawing.Kind == SketcherDrawingKind::Slot) && Drawing.Points.size() == 1);
     if (!Baseline) return false;
     const OrthonormalFrame Plane = DrawingPlane(Drawing);
@@ -4502,9 +4589,32 @@ void OpenTransformSession(SketcherWorkspaceState& State, SketcherTransformVerb V
         }
     }
 
+    if (Keys.empty() && !DuplicateCondition && !State.Document.ImagePlanes.empty())
+    {
+        std::string ImageTarget = State.FocusedImage;
+        if (ImageTarget.empty() && State.Document.ImagePlanes.size() == 1 && !State.Document.ImagePlanes[0].LockCondition)
+        {
+            ImageTarget = State.Document.ImagePlanes[0].Name;
+        }
+        if (!ImageTarget.empty())
+        {
+            for (const SketcherImagePlane& Plane : State.Document.ImagePlanes)
+            {
+                if (Plane.Name == ImageTarget && !Plane.LockCondition)
+                {
+                    TargetKind = SketcherTransformTarget::ImagePlanes;
+                    Keys       = { Plane.Name };
+                    Pivot      = Plane.Corner + Plane.Right * 0.5 + Plane.Down * 0.5;
+                    Noun       = "image plane";
+                    break;
+                }
+            }
+        }
+    }
+
     if (Keys.empty())
     {
-        Announce(State, std::string(DuplicateCondition ? "Duplicate" : TransformVerbLabel(Verb)) + " needs picked bodies, faces, edges, vertices, or sketches");
+        Announce(State, std::string(DuplicateCondition ? "Duplicate" : TransformVerbLabel(Verb)) + " needs picked bodies, faces, edges, vertices, sketches, or an unlocked image plane");
         return;
     }
     SketcherTransformSession& Transform = State.Transform;
@@ -4660,6 +4770,30 @@ void CancelTransformSession(SketcherWorkspaceState& State)
         return Transform.DuplicateCondition
             ? DuplicateSketcherBodies(Document, Transform.Keys, Map)
             : TransformSketcherBodies(Document, Transform.Keys, Map, TransformVerbLabel(Transform.Verb));
+    case SketcherTransformTarget::ImagePlanes:
+    {
+        auto ApplyAffinePoint = [&](const Vector3& P) -> Vector3
+        {
+            return Map.ColumnX * P.X + Map.ColumnY * P.Y + Map.ColumnZ * P.Z + Map.Shift;
+        };
+        auto ApplyAffineVec = [&](const Vector3& V) -> Vector3
+        {
+            return Map.ColumnX * V.X + Map.ColumnY * V.Y + Map.ColumnZ * V.Z;
+        };
+        bool MovedAny = false;
+        for (SketcherImagePlane& Plane : Document.ImagePlanes)
+        {
+            if (std::find(Transform.Keys.begin(), Transform.Keys.end(), Plane.Name) != Transform.Keys.end() && !Plane.LockCondition)
+            {
+                Plane.Corner = ApplyAffinePoint(Plane.Corner);
+                Plane.Right  = ApplyAffineVec(Plane.Right);
+                Plane.Down   = ApplyAffineVec(Plane.Down);
+                MovedAny     = true;
+            }
+        }
+        return MovedAny ? SketcherCommandOutcome{ true, {}, std::string(TransformVerbLabel(Transform.Verb)) + " image plane" }
+                        : SketcherCommandOutcome{ false, {}, "transform: image plane locked or missing" };
+    }
     }
     return SketcherCommandOutcome{ false, {}, "transform: nothing selected" };
 }
@@ -13185,7 +13319,7 @@ bool AddImagePlane(SketcherWorkspaceState& State)
 void DrawImagePlanePopup(SketcherWorkspaceState& State)
 {
     if (!ImGui::BeginPopupModal("Image plane", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
-    ImGui::TextUnformatted("A reference picture (PNG / JPEG / BMP / GIF) on a view plane, to trace over · not part of the history");
+    ImGui::TextUnformatted("A reference picture (.ImageSpace / PNG / JPEG / BMP / GIF) on a view plane · not part of the history");
     ImGui::SetNextItemWidth(SketcherFileDialogAvailableCondition() ? 360.0f : 460.0f);
     const bool Entered = ImGui::InputText("##PicturePath", State.PicturePath.data(), State.PicturePath.size(), ImGuiInputTextFlags_EnterReturnsTrue);
     RegisterWidget(State, "PicturePathField");
@@ -13239,7 +13373,7 @@ void DrawPathPopups(SketcherWorkspaceState& State)
         if (ImGui::BeginPopupModal(Title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
             const size_t ExportCount = SketcherExportBodies(State.Document).size();
-            const std::string Prompt = ImportCondition ? std::string("Import a STEP file (.step / .stp: every solid becomes a body) or VehicleCurves.toml (curves fitted within 0.2 mm)")
+            const std::string Prompt = ImportCondition ? std::string("Import a STEP (.step / .stp), reference image (.ImageSpace / .png / .jpg), or curves (.toml)")
                                      : ExportCondition ? Compose("Export %d %s body(ies) in millimetres: .step / .stp (STEP AP214, exact B-rep) or .stl (binary facets)", int(ExportCount),
                                                                  State.Document.Selection.Bodies.empty() ? "shown" : "selected")
                                      : OpenCondition   ? std::string("Open a .solidarc document (a .step / .stp file is imported into this one)")
@@ -13252,7 +13386,7 @@ void DrawPathPopups(SketcherWorkspaceState& State)
             {
                 const std::string Path = State.PathText.data();
                 const SketcherExchangeFormat Format = SketcherExchangeFormatOf(Path);
-                if (ImportCondition) ImportFile(State, Path);
+                if (ImportCondition) (void)IntakeSketcherDroppedFile(State, Path);
                 else if (ExportCondition) ExportBodies(State, Path);
                 else if (OpenCondition && Format == SketcherExchangeFormat::Step) ImportStep(State, Path);
                 else if (OpenCondition) OpenDocument(State, Path, true);
@@ -14558,7 +14692,7 @@ void DrawFileMenu(SketcherWorkspaceState& State)
     if (Entry("Dimension lines###MenuDimension", "D")) TriggerDimensionShortcut(State);
     ImGui::Separator();
     if (Entry("Import…###MenuImport", "Ctrl+Shift+I")) State.PopupRequest = "Import";
-    if (Entry("Export…###MenuExport", "Ctrl+E")) State.PopupRequest = "Export";
+    if (Entry("Export…###MenuExport", "Ctrl+Shift+E")) State.PopupRequest = "Export";
     if (Entry("Examples…###MenuExamples", "")) State.PopupRequest = "Examples";
     if (Entry("Restore previous###MenuRestorePrevious", "", std::filesystem::exists(PreviousRecoveryPath(State)))) OpenDocument(State, PreviousRecoveryPath(State), false);
     ImGui::Separator();
@@ -14566,8 +14700,43 @@ void DrawFileMenu(SketcherWorkspaceState& State)
     EndSelectList();
 }
 
-// 📝 Popup host: the file menu and the path / examples / image popups open here (an input-transparent window of its
-//    own) whenever PopupRequest names one — from the menu, the shortcuts or a card.
+void DrawExtrudeTypeMenu(SketcherWorkspaceState& State)
+{
+    if (State.ExtrudeMenuRequest)
+    {
+        ImGui::OpenPopup("ExtrudeTypeContextMenu");
+        State.ExtrudeMenuRequest = false;
+    }
+    if (!BeginSelectList("ExtrudeTypeContextMenu", State.ExtrudeMenuPos)) return;
+    ImGui::TextDisabled("Extrude Type (E repeats last)");
+    ImGui::Separator();
+    static constexpr SketcherExtrudeMode Modes[] = {
+        SketcherExtrudeMode::Standard,
+        SketcherExtrudeMode::AlongNormals,
+        SketcherExtrudeMode::Manifold,
+        SketcherExtrudeMode::IndividualFaces,
+        SketcherExtrudeMode::Symmetric,
+    };
+    for (SketcherExtrudeMode Mode : Modes)
+    {
+        const std::string Label = std::string(SketcherExtrudeModeLabel(Mode)) + "###ExtrudeMode" + std::to_string(int(Mode));
+        if (SelectListEntry(State, Label, State.LastExtrudeMode == Mode))
+        {
+            OpenExtrudeSessionWithMode(State, Mode);
+            ImGui::CloseCurrentPopup();
+        }
+    }
+    ImGui::Separator();
+    if (SelectListEntry(State, "Inset Faces (I)###ExtrudeMenuInset", false))
+    {
+        OpenInsetSession(State);
+        ImGui::CloseCurrentPopup();
+    }
+    EndSelectList();
+}
+
+// 📝 Popup host: the file menu, extrude type menu and the path / examples / image popups open here (an input-transparent
+//    window of its own) whenever PopupRequest / ExtrudeMenuRequest names one — from the menu, shortcuts or a card.
 void DrawWorkspacePopups(SketcherWorkspaceState& State)
 {
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
@@ -14576,10 +14745,11 @@ void DrawWorkspacePopups(SketcherWorkspaceState& State)
                                          ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNav);
     if (!State.PopupRequest.empty())
     {
-        ImGui::OpenPopup(State.PopupRequest.c_str());                                        // Menu, Ctrl+O / Ctrl+Shift+S / Ctrl+I / Ctrl+E
+        ImGui::OpenPopup(State.PopupRequest.c_str());                                        // Menu, Ctrl+O / Ctrl+Shift+S / Ctrl+Shift+I / Ctrl+Shift+E
         State.PopupRequest.clear();
     }
     DrawFileMenu(State);
+    DrawExtrudeTypeMenu(State);
     DrawPathPopups(State);
     ImGui::End();
 }
@@ -14624,6 +14794,79 @@ float DrawDisplaySelect(SketcherWorkspaceState& State, SketcherSheet& Sheet, flo
         EndSelectList();
     }
     if (Press.HoveredCondition && !ListCondition && !Press.ClickedCondition) ImGui::SetTooltip("Display overlays: %s", Summary.c_str());
+    return Select.MaximumX - Select.MinimumX;
+}
+
+float DrawSnapSelect(SketcherWorkspaceState& State, SketcherSheet& Sheet, float Left, float Centre, bool CompactCondition = false)
+{
+    const float         Label  = CompactCondition ? 15.0f : Sheet.Measure("Snap", 11.0f);
+    const PlaneExtent   Select = Spanning(Left, Centre - 13.0f, 10.0f + Label + 24.0f, 26.0f);
+    const SketcherPress Press  = PressSketcherRegion(State.Widgets, "SnapMenu", Select);
+    if (State.Picker.Enabled)
+    {
+        Sheet.Box(Select, SketcherInk(Press.HoveredCondition ? 0x2f435a : 0x223244), 13.0f, SketcherInk(0x4d9fff, 0.45f));
+    }
+    else if (Press.HoveredCondition)
+    {
+        Sheet.Box(Select, SketcherInk(0x292929), 13.0f);
+    }
+    const ColorQuad Ink = SketcherInk(State.Picker.Enabled || Press.HoveredCondition ? 0xffffff : 0xa0a0a0);
+    if (CompactCondition) Sheet.Icon(IconSymbol::SketcherPoints, Select.MinimumX + 7.0f, Centre - 7.5f, 15.0f, Ink);
+    else Sheet.Text(Select.MinimumX + 6.0f, Centre, 11.0f, Ink, "Snap");
+    SelectChevron(Sheet, Select.MaximumX - 11.0f, Centre, Ink);
+    if (Press.ClickedCondition) ImGui::OpenPopup("SnapFilterMenu");
+    bool ListOpen = false;
+    if (BeginSelectList("SnapFilterMenu", ImVec2(Select.MinimumX, Select.MaximumY + 4.0f)))
+    {
+        ListOpen = true;
+        if (SelectListEntry(State, "Snap Enabled (Ctrl / Alt)###SnapMaster", State.Picker.Enabled))
+            State.Picker.Enabled = !State.Picker.Enabled;
+        if (SelectListEntry(State, "Context-Aware Snapping###SnapContextAware", State.Picker.ContextAwareSnap))
+            State.Picker.ContextAwareSnap = !State.Picker.ContextAwareSnap;
+        if (SelectListEntry(State, "Grid Steps (0.1 m)###SnapGrid", State.Picker.GridEnabled))
+            State.Picker.GridEnabled = !State.Picker.GridEnabled;
+        if (SelectListEntry(State, "Orient on Face###SnapFaceOrient", State.Picker.FaceOrientEnabled))
+            State.Picker.FaceOrientEnabled = !State.Picker.FaceOrientEnabled;
+        ImGui::Separator();
+        struct SnapTargetItem { const char* Label; bool* Flag; };
+        const SnapTargetItem Targets[] = {
+            { "Points / Endpoints###SnapEndpoint",         &State.Picker.Filter.EndpointEnabled },
+            { "Midpoints###SnapMidpoint",                  &State.Picker.Filter.MidpointEnabled },
+            { "Quarter Points###SnapQuarter",              &State.Picker.Filter.QuarterEnabled },
+            { "Centres###SnapCentre",                      &State.Picker.Filter.CentreEnabled },
+            { "Intersections###SnapIntersection",          &State.Picker.Filter.IntersectionEnabled },
+            { "Tangent###SnapTangent",                     &State.Picker.Filter.TangentEnabled },
+            { "Perpendicular###SnapPerpendicular",         &State.Picker.Filter.PerpendicularEnabled },
+            { "Curves / Edges (Alt)###SnapCurve",          &State.Picker.Filter.CurveEnabled },
+            { "Surfaces / Faces###SnapFace",               &State.Picker.Filter.FaceEnabled },
+        };
+        for (const SnapTargetItem& Item : Targets)
+        {
+            if (SelectListEntry(State, Item.Label, *Item.Flag)) *Item.Flag = !*Item.Flag;
+        }
+        ImGui::Separator();
+        if (SelectListEntry(State, "Preset: All Targets###SnapPresetAll", false))
+        {
+            State.Picker.Enabled = true;
+            State.Picker.Filter  = SketcherSnapFilter{};
+            Announce(State, "Snap filter: all targets enabled");
+        }
+        if (SelectListEntry(State, "Preset: Curves & Points###SnapPresetCurves", false))
+        {
+            State.Picker.Enabled = true;
+            State.Picker.Filter  = { true, true, true, true, true, true, true, true, false };
+            Announce(State, "Snap filter: curves & points preset");
+        }
+        if (SelectListEntry(State, "Preset: Solids & Faces###SnapPresetSolids", false))
+        {
+            State.Picker.Enabled = true;
+            State.Picker.Filter  = { true, true, false, true, false, false, false, true, true };
+            Announce(State, "Snap filter: solids & faces preset");
+        }
+        EndSelectList();
+    }
+    if (Press.HoveredCondition && !ListOpen && !Press.ClickedCondition)
+        ImGui::SetTooltip("Snapping options: Ctrl snaps points · Alt snaps along curves · Shift draws straight lines");
     return Select.MaximumX - Select.MinimumX;
 }
 
@@ -14704,10 +14947,11 @@ void DrawViewportBar(SketcherWorkspaceState& State, SketcherSheet& Sheet, const 
         Cursor = Select.MaximumX + 4.0f;
     }
 
-    // Display overlays select (after a divider), plus Dimension Lines visibility toggle button.
+    // Display overlays & Snap filter selects (after a divider), plus Dimension Lines visibility toggle button.
     Sheet.Surface().FillRectangle(Spanning(Cursor + 5.0f, Centre - 7.5f, 1.0f, 15.0f), SketcherWash(0x10));
     Cursor += 5.0f + 1.0f + 9.0f;
     Cursor += DrawDisplaySelect(State, Sheet, Cursor, Centre, Stage >= 1) + 6.0f;
+    Cursor += DrawSnapSelect(State, Sheet, Cursor, Centre, Stage >= 1) + 6.0f;
     if (Stage < 3)
     {
         const float         DimWidth = 16.0f + Sheet.Measure("Dim", 11.0f);
@@ -15406,7 +15650,8 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
 
     const ImVec2 ActiveOrigin(State.ViewportRect[0], State.ViewportRect[1]);
     const ImVec2 ActiveExtent(State.ViewportRect[2], State.ViewportRect[3]);
-    const bool   Hovered = OuterHovered && !SplitterConsumed && !OverPaneHeader &&
+    const bool   Shielded = WorkspaceAppearance::QueryOverlayPointerBlockedAt(Point2D{ Io.MousePos.x, Io.MousePos.y });
+    const bool   Hovered = OuterHovered && !Shielded && !SplitterConsumed && !OverPaneHeader &&
                            Io.MousePos.x >= ActiveOrigin.x && Io.MousePos.x <= ActiveOrigin.x + ActiveExtent.x &&
                            Io.MousePos.y >= ActiveOrigin.y && Io.MousePos.y <= ActiveOrigin.y + ActiveExtent.y;
     State.ViewportHovered = Hovered;
@@ -16399,6 +16644,30 @@ void DrawBevelCard(SketcherWorkspaceState& State)
             // Blender's extrude manifold: the drag direction picks the Boolean (in = cut, out = add).
             if (ToggleButton(State, "Auto: in cuts, out adds (A)###ProfileAuto", Bevel.AutoCombinationCondition, ImVec2(-1, 0))) ChooseProfileAutomatic(State);
             RegisterWidget(State, "ProfileAuto");
+        }
+    }
+    if (Bevel.Verb == SketcherSessionVerb::Extrude)
+    {
+        static constexpr SketcherExtrudeMode Modes[] = {
+            SketcherExtrudeMode::Standard,
+            SketcherExtrudeMode::AlongNormals,
+            SketcherExtrudeMode::Manifold,
+            SketcherExtrudeMode::IndividualFaces,
+            SketcherExtrudeMode::Symmetric,
+        };
+        if (ImGui::BeginCombo("Mode###BevelExtrudeMode", SketcherExtrudeModeLabel(Bevel.ExtrudeMode)))
+        {
+            for (SketcherExtrudeMode Mode : Modes)
+            {
+                const bool Selected = (Bevel.ExtrudeMode == Mode);
+                if (ImGui::Selectable(SketcherExtrudeModeLabel(Mode), Selected))
+                {
+                    Bevel.ExtrudeMode     = Mode;
+                    State.LastExtrudeMode = Mode;
+                }
+                if (Selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
         }
     }
     if (!Extrude)
@@ -17765,6 +18034,26 @@ void DrawImagePlaneCard(SketcherWorkspaceState& State)
         }
         if (Decoded) ImGui::TextDisabled("%u × %u px · %.3f × %.3f m%s", Width, Height, GeometrySpace::Parametric::Length(Plane.Right), GeometrySpace::Parametric::Length(Plane.Down),
                                          Focused ? " · centre x y z" : "");
+        if (Focused)
+        {
+            const std::filesystem::path SourcePath(ResolveSketcherImagePath(Plane.Path, State.DocumentPath.empty() ? State.Options.DocumentPath : State.DocumentPath));
+            if (SourcePath.extension() != ".ImageSpace" && PressButton(State, "Save as .ImageSpace###ImageExportSpace", ImVec2(-1.0f, 0.0f)))
+            {
+                std::filesystem::path TargetPath = SourcePath;
+                TargetPath.replace_extension(".ImageSpace");
+                std::string ExportDiag {};
+                if (ConvertPictureFileToImageSpace(SourcePath, TargetPath, ExportDiag))
+                {
+                    Plane.Path      = TargetPath.string();
+                    EditedCondition = true;
+                    Announce(State, "Converted to .ImageSpace: " + TargetPath.filename().string());
+                }
+                else
+                {
+                    Announce(State, "ImageSpace export failed: " + ExportDiag);
+                }
+            }
+        }
         ImGui::PopID();
     }
     if (Removal < Planes.size())
@@ -19819,7 +20108,22 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
             if (Shift) State.PopupRequest = "Import";                                       // file:import (Ctrl+Shift+I)
             else ToggleIsolate(State);                                                      // viewport:isolate (Ctrl+I)
         }
-        if (Pressed(ImGuiKey_E)) State.PopupRequest = "Export";                             // file:export
+        if (Pressed(ImGuiKey_E))
+        {
+            if (Shift)
+            {
+                State.PopupRequest = "Export";                                              // file:export (Ctrl+Shift+E)
+            }
+            else
+            {
+                State.ExtrudeMenuRequest = true;                                            // Ctrl+E: open Extrude type context menu
+                State.ExtrudeMenuPos     = Io.MousePos;
+            }
+        }
+        if (Pressed(ImGuiKey_B))
+        {
+            OpenBevelSession(State, Shift ? BlendProfile::Chamfer : BlendProfile::Fillet);  // Ctrl+B bevel/fillet, Ctrl+Shift+B chamfer
+        }
         if (Pressed(ImGuiKey_N)) StartNewDocument(State);
         if (Pressed(ImGuiKey_C)) CopyBodies(State);                                         // edit:copy
         if (Pressed(ImGuiKey_V)) PasteBodies(State);                                        // edit:paste
@@ -19894,8 +20198,7 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
     if (Pressed(ImGuiKey_B)) OpenBevelSession(State, BlendProfile::Fillet);
     if (Pressed(ImGuiKey_E))
     {
-        if (State.Document.Selection.Faces.empty() && FocusedSketchCondition(State)) OpenSketchExtrudeSession(State);
-        else OpenExtrudeSession(State);
+        OpenExtrudeSessionWithMode(State, State.LastExtrudeMode);
     }
     if (Pressed(ImGuiKey_Space)) FrameSelection(State);
     if (Pressed(ImGuiKey_Q)) OpenBooleanSession(State);                                    // command:boolean
@@ -19904,7 +20207,14 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
     if (Pressed(ImGuiKey_S)) OpenTransformSession(State, SketcherTransformVerb::Scale, false);      // command:scale
     if (Pressed(ImGuiKey_H)) ChangeVisibility(State, SketcherVisibilityVerb::HideSelected);         // hide-selected
     if (Pressed(ImGuiKey_D)) TriggerDimensionShortcut(State);                                       // dimension lines (D)
-    if (Pressed(ImGuiKey_C)) ApplyCut(State);                                              // command:cut
+    if (Pressed(ImGuiKey_C))
+    {
+        // C starts Chamfer when edges or sketch corner points are picked (or Edge pick mode); otherwise performs Cut.
+        if (!State.Document.Selection.Edges.empty() || !State.SketchPoints.Points.empty() || State.PickMode == SketcherPickMode::Edge)
+            OpenBevelSession(State, BlendProfile::Chamfer);
+        else
+            ApplyCut(State);
+    }
     if (Pressed(ImGuiKey_T)) OpenTrimSession(State);                                       // command:trim
     if (Pressed(ImGuiKey_V)) OpenTrimSession(State, false, true);                          // point on curve (v is free in Plasticity's global map)
     if (Pressed(ImGuiKey_F)) ToggleSketchFill(State);                                      // fill on / off (f is free in Plasticity's map)
@@ -20547,13 +20857,18 @@ void DrawSketcherDrawingSheetPanel(SketcherWorkspaceState& State)
     State.DrawingSheet.ActiveCondition = PrevActive;
 }
 
-void EndSketcherHostedFrame(SketcherWorkspaceState& State, double DeltaSeconds, bool DrawFloatingOverlays)
+void EndSketcherHostedFrame(SketcherWorkspaceState& State, double DeltaSeconds, bool DrawFloatingOverlays, bool HostedOverlayMode)
 {
     SketcherFrameProfile& Profile = State.Profile;
     const ImVec2 Frame = ImGui::GetIO().DisplaySize;
+    { SketcherPhaseClock Clock(Profile, "shortcuts"); ApplyShortcuts(State); }
     if (DrawFloatingOverlays)
     {
-        { SketcherPhaseClock Clock(Profile, "status bar"); DrawStatusBar(State, Frame); }
+        if (!HostedOverlayMode)
+        {
+            SketcherPhaseClock Clock(Profile, "status bar");
+            DrawStatusBar(State, Frame);
+        }
         DrawDrawingOptions(State);
         DrawCurveGuide(State);
         DrawWorkspacePopups(State);
@@ -20561,10 +20876,40 @@ void EndSketcherHostedFrame(SketcherWorkspaceState& State, double DeltaSeconds, 
         DrawWelcome(State);
         { SketcherPhaseClock Clock(Profile, "trace panel"); DrawTracePanel(State); }
     }
-    { SketcherPhaseClock Clock(Profile, "shortcuts"); ApplyShortcuts(State); }
     { SketcherPhaseClock Clock(Profile, "autosave"); AdvanceAutosave(State, DeltaSeconds); }
     { SketcherPhaseClock Clock(Profile, "bevel preview"); StageBevelPreview(State); }
     State.FrameNumber += 1;
+}
+
+bool IntakeSketcherDroppedFile(SketcherWorkspaceState& State, const std::string& FilePath, std::string* OutDiagnostic)
+{
+    namespace Files = std::filesystem;
+    const Files::path Path(FilePath);
+    std::string Ext = Path.extension().string();
+    for (char& Ch : Ext)
+    {
+        Ch = static_cast<char>(std::tolower(static_cast<unsigned char>(Ch)));
+    }
+    if (Ext == ".imagespace" || Ext == ".png" || Ext == ".jpg" || Ext == ".jpeg" || Ext == ".bmp" || Ext == ".gif")
+    {
+        std::snprintf(State.PicturePath.data(), State.PicturePath.size(), "%s", FilePath.c_str());
+        const bool Added = AddImagePlane(State);
+        if (Added && !State.Document.ImagePlanes.empty())
+        {
+            State.FocusedImage = State.Document.ImagePlanes.back().Name;
+        }
+        if (OutDiagnostic != nullptr) *OutDiagnostic = State.Status;
+        return Added;
+    }
+    if (Ext == ".solidarc")
+    {
+        OpenDocument(State, FilePath, true);
+        if (OutDiagnostic != nullptr) *OutDiagnostic = State.Status;
+        return State.Status.find("Failed") == std::string::npos && State.Status.find("Refused") == std::string::npos;
+    }
+    ImportFile(State, FilePath);
+    if (OutDiagnostic != nullptr) *OutDiagnostic = State.Status;
+    return true;
 }
 
 const SketcherScene& DisplayedSketcherScene(const SketcherWorkspaceState& State)

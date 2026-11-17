@@ -757,6 +757,7 @@ SketcherDocument CloneSketcherDocument(const SketcherDocument& Source)
     Copy.Tree      = Source.Tree;
     Copy.Captions  = Source.Captions;
     Copy.Selection = Source.Selection;
+    Copy.ImagePlanes = Source.ImagePlanes;
     Copy.Appearance = Source.Appearance;
     Copy.DrawingSheet = Source.DrawingSheet;
     Copy.Dimensions = Source.Dimensions;

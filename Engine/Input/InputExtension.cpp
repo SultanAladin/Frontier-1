@@ -435,17 +435,32 @@ void InputExtension::ApplyPacketToEditorSnapshot(const InputSignalPacket& Packet
                 }
             }
 
-            const bool ExplicitModifiers = (Packet.ModifierBitmask != 0u) ||
-                                           (Packet.Transition == ButtonTransitionCategory::Released &&
-                                            (Packet.LogicalKey == InputLogicalKey::LeftShift ||
-                                             Packet.LogicalKey == InputLogicalKey::RightShift ||
-                                             Packet.LogicalKey == InputLogicalKey::LeftControl ||
-                                             Packet.LogicalKey == InputLogicalKey::RightControl ||
-                                             Packet.LogicalKey == InputLogicalKey::LeftAlt ||
-                                             Packet.LogicalKey == InputLogicalKey::RightAlt ||
-                                             Packet.LogicalKey == InputLogicalKey::LeftSuper ||
-                                             Packet.LogicalKey == InputLogicalKey::RightSuper));
-            if (ExplicitModifiers || Packet.LogicalKey != InputLogicalKey::Unassigned)
+            const bool IsModifierKey =
+                (Packet.LogicalKey == InputLogicalKey::LeftShift ||
+                 Packet.LogicalKey == InputLogicalKey::RightShift ||
+                 Packet.LogicalKey == InputLogicalKey::LeftControl ||
+                 Packet.LogicalKey == InputLogicalKey::RightControl ||
+                 Packet.LogicalKey == InputLogicalKey::LeftAlt ||
+                 Packet.LogicalKey == InputLogicalKey::RightAlt ||
+                 Packet.LogicalKey == InputLogicalKey::LeftSuper ||
+                 Packet.LogicalKey == InputLogicalKey::RightSuper);
+            if (IsModifierKey && Packet.Transition == ButtonTransitionCategory::Released)
+            {
+                // On modifier release, trust HeldLogicalKeys rather than stale OS ModifierBitmask
+                EditorSnapshot.ShiftHeld =
+                    EditorSnapshot.QueryKeyHeld(InputLogicalKey::LeftShift) ||
+                    EditorSnapshot.QueryKeyHeld(InputLogicalKey::RightShift);
+                EditorSnapshot.ControlHeld =
+                    EditorSnapshot.QueryKeyHeld(InputLogicalKey::LeftControl) ||
+                    EditorSnapshot.QueryKeyHeld(InputLogicalKey::RightControl);
+                EditorSnapshot.AltHeld =
+                    EditorSnapshot.QueryKeyHeld(InputLogicalKey::LeftAlt) ||
+                    EditorSnapshot.QueryKeyHeld(InputLogicalKey::RightAlt);
+                EditorSnapshot.SuperHeld =
+                    EditorSnapshot.QueryKeyHeld(InputLogicalKey::LeftSuper) ||
+                    EditorSnapshot.QueryKeyHeld(InputLogicalKey::RightSuper);
+            }
+            else if (Packet.ModifierBitmask != 0u || Packet.LogicalKey != InputLogicalKey::Unassigned)
             {
                 EditorSnapshot.ShiftHeld   = (Packet.ModifierBitmask & InputModifierBits::Shift) != 0u ||
                                              EditorSnapshot.QueryKeyHeld(InputLogicalKey::LeftShift) ||

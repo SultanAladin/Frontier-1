@@ -26,6 +26,8 @@ public:
     static std::size_t ForwardEditorExchangeToImGui(InputExtension& InputParticipant, ImGuiIO& TargetIo) noexcept;
 
 private:
+    void IntakeSignalPacketInternal(const InputSignalPacket& Packet, bool SyncModifiersFromPacket) noexcept;
+
     ImGuiIO* DestinationIo = nullptr; // [-] - Target Dear ImGui IO destination
 };
 

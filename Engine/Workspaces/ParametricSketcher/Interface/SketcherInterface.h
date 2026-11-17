@@ -74,6 +74,16 @@ enum class SketcherSessionVerb : uint8_t
     Corner  = 4,                                                                             // Fillet / chamfer 2D sketch corners (B on sketch points or sketches)
 };
 
+// Plasticity / Blender extrude modes surfaced via Ctrl+E context menu; E reuses the last chosen mode.
+enum class SketcherExtrudeMode : uint8_t
+{
+    Standard        = 0,                                                                     // Extrude along averaged face normal / profile Z
+    AlongNormals    = 1,                                                                     // Extrude each face along its outward normal
+    Manifold        = 2,                                                                     // Auto union/cut manifold extrude
+    IndividualFaces = 3,                                                                     // Extrude each selected face individually
+    Symmetric       = 4,                                                                     // Extrude symmetrically in both + and - directions
+};
+
 // Shift+R repeats the last applied command on the current selection.
 enum class SketcherRepeatKind : uint8_t
 {
@@ -108,6 +118,8 @@ struct SketcherBevelSession
     bool                              ActiveCondition = false;                               // [-]   - Session open
     SketcherSessionVerb               Verb            = SketcherSessionVerb::Blend;          // [-]   - B (blend) / E (extrude)
     SketcherSessionVerb               PreviewVerb      = SketcherSessionVerb::Blend;          // [-]   - Verb the preview was built for
+    SketcherExtrudeMode               ExtrudeMode     = SketcherExtrudeMode::AlongNormals;   // [-]   - Active extrude mode (Ctrl+E / E)
+    SketcherExtrudeMode               StagedExtrudeMode = SketcherExtrudeMode::AlongNormals; // [-]   - ExtrudeMode the preview was built for
     bool                              PinnedCondition = false;                               // [-]   - Numeric entry pins the size
     GeometrySpace::Parametric::BlendProfile            Shape           = GeometrySpace::Parametric::BlendProfile::Fillet;      // [-]   - Cross-section
     double                            Size            = 0.25;                                // [len] - Radius / setback
@@ -235,8 +247,9 @@ struct SketcherDrawingSession
 //    the pointer keeps the 0.1 grid.
 struct SketcherPointPicker
 {
-    bool                                   Enabled         = true;                           // [-]   - Object snaps on (Inspector)
-    bool                                   GridEnabled     = false;                          // [-]   - 0.1 grid steps while drawing / dragging (Snaps card; off: free, Ctrl snaps)
+    bool                                   Enabled           = true;                         // [-]   - Object snaps on (Inspector / Snap Menu)
+    bool                                   ContextAwareSnap  = true;                         // [-]   - Bias curve snaps on curves & solid snaps on bodies
+    bool                                   GridEnabled       = false;                        // [-]   - 0.1 grid steps while drawing / dragging (Snaps card; off: free, Ctrl snaps)
     bool                                   FaceOrientEnabled = true;                         // [-]   - Drawing on a body face orients the sketch / solid to it (Inspector)
     SketcherSnapFilter                     Filter          = {};                             // [-]   - Enabled kinds (Inspector)
     SketcherSnap                           Current         = {};                             // [-]   - Snap under the pointer this frame
@@ -411,6 +424,7 @@ enum class SketcherTransformTarget : uint8_t
     Vertices     = 4,                                                                        // Picked B-rep vertices (direct reshape)
     Edges        = 5,                                                                        // Picked B-rep edges (direct reshape)
     Faces        = 6,                                                                        // Picked B-rep faces (reshape, else analytic change)
+    ImagePlanes  = 7,                                                                        // Focused/selected reference image plane (.ImageSpace / image)
 };
 
 struct SketcherTransformSession
@@ -957,6 +971,10 @@ struct SketcherWorkspaceState
     SketcherPictureShelf                  Pictures       = {};                               // [-]   - Decoded image-plane pictures (frame-owned)
     SketcherMatcapShelf                   Matcaps        = {};                               // [-]   - Matcap library + thumbnails + M picker
     SketcherRepeat                        LastCommand    = {};                               // [-]   - Shift+R
+    SketcherExtrudeMode                   LastExtrudeMode = SketcherExtrudeMode::AlongNormals; // [-] - Last extrude type chosen in Ctrl+E menu
+    bool                                  ExtrudeMenuRequest = false;                        // [-]   - Ctrl+E extrude-type context menu pending
+    ImVec2                                ExtrudeMenuPos = {};                               // [px]  - Cursor/viewport anchor for Ctrl+E context menu
+    bool                                  SnapMenuRequest = false;                           // [-]   - Viewport Snap filter popover pending
     std::string                           PopupRequest   = {};                               // [-]   - Header popup a shortcut asked for
     SketcherConstructRequest              ConstructForm  = {};                               // [-]   - Construct dialog values
     bool                                  ConstructOpen  = false;                            // [-]   - Construct dialog requested
@@ -1052,7 +1070,8 @@ void DrawSketcherViewportPanel(SketcherWorkspaceState& State, ImTextureRef Viewp
 void DrawSketcherInspectorPanel(SketcherWorkspaceState& State);
 void DrawSketcherConstructPanel(SketcherWorkspaceState& State);
 void DrawSketcherDrawingSheetPanel(SketcherWorkspaceState& State);
-void EndSketcherHostedFrame(SketcherWorkspaceState& State, double DeltaSeconds, bool DrawFloatingOverlays = true);
+void EndSketcherHostedFrame(SketcherWorkspaceState& State, double DeltaSeconds, bool DrawFloatingOverlays = true, bool HostedOverlayMode = false);
+bool IntakeSketcherDroppedFile(SketcherWorkspaceState& State, const std::string& FilePath, std::string* OutDiagnostic = nullptr);
 
 // Reassembles the matcap library when the document's custom pictures changed (or on first use).
 void RefreshSketcherMatcaps(SketcherWorkspaceState& State);

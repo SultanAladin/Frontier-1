@@ -671,7 +671,6 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometrySpace/Fracture/FastRuntimeFracture.cpp
     Engine/GeometrySpace/Fracture/EngineeringBakedFracture.cpp
     Engine/GeometrySpace/Fracture/ConvexPartitioning.cpp
-    Engine/GeometrySpace/Parametric/ParametricPolygonBridge.cpp
     Engine/GeometrySpace/Parametric/Assembly/AssemblyAnalysis.cpp
     Engine/GeometrySpace/Parametric/Assembly/JointSolver.cpp
     Engine/GeometrySpace/Parametric/Audit/EnclosedVolume.cpp
