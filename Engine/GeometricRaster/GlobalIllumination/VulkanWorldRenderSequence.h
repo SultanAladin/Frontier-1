@@ -75,15 +75,18 @@ private:
         VkBufferUsageFlags    UsageMask);
 
     [[nodiscard]] bool DispatchGpuSignedDistanceGrid(const WorldSceneSpecification& Scene);
+    void DispatchGpuSkyViewLut(VkCommandBuffer Cmd, const WorldSceneSpecification& Scene);
     void UploadSolarCascadeRadiosity(const WorldSceneSpecification& Scene);
 
     VulkanInterchange*     BoundDevice                 = nullptr;
     ComputeDispatchEncoder DispatchEncoder             {};
     uint32_t               RadiometricProgramHandle    = UINT32_MAX;
     uint32_t               SignedDistanceProgramHandle = UINT32_MAX;
+    uint32_t               SkyViewLutProgramHandle     = UINT32_MAX;
 
     DeviceBufferResource   UniformBuffer               {};
     DeviceBufferResource   SdfUniformBuffer            {};
+    DeviceBufferResource   SkyViewUniformBuffer        {};
     DeviceBufferResource   BvhEntryBuffer              {};
     DeviceBufferResource   ShadedTriangleBuffer        {};
     DeviceBufferResource   MaterialEntryBuffer         {};
@@ -94,6 +97,7 @@ private:
     DeviceBufferResource   IrradianceChebyshevBuffer   {};
     DeviceBufferResource   SdfRadiosityVoxelBuffer     {};
     DeviceBufferResource   AccumulationHdrBuffer       {};
+    DeviceBufferResource   AtmosphericSkyViewLutBuffer {};
 
     Mathematics::Axis3D    CachedSdfMinCorner       { -3.5f, -3.5f, -1.2f };
     float                  CachedSdfSpacing         = 0.14f;

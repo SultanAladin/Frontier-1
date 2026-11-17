@@ -10,6 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/DistanceFieldSpace/SignedDistanceVolume.h"
+#include "Engine/GeometricRaster/Atmosphere/VolumetricCloudSequence.h"
 #include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
 #include "Engine/GeometricRaster/GlobalIllumination/IrradianceLatticeSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.h"
@@ -71,6 +72,7 @@ struct WorldSceneSpecification
     std::vector<PolygonalAreaQuadLight>          AreaLights       {};
     IrradianceLatticeConfiguration               LatticeConfig    {};
     Mathematics::LinearRGB                       SkyRadiance      { 0.15f, 0.21f, 0.32f };
+    WorldAtmosphereConfiguration                 Atmosphere       {};
 };
 
 struct WorldRenderFrameResult
@@ -100,6 +102,9 @@ public:
     // Precomputes static/cached scene structures (BounceSlabEntries, 2-Cascade Contact Clips, DDGI Lattice, Radiosity SDF Mips)
     void PrepareWorldScene(WorldSceneSpecification& InOutScene);
 
+    // Synchronizes Sun, SkyRadiance, and SkyView LUT from WorldAtmosphereConfiguration when AtmosphereEnabled is true
+    void SynchronizeWorldAtmosphere(WorldSceneSpecification& InOutScene);
+
     // Compiles BounceSlabEntries and propagates only the Tier 2 RTX Irradiance Lattice (skips CPU 2-cascade shadow clips for GPU path)
     void PrepareRtxIrradianceLatticeOnly(WorldSceneSpecification& InOutScene);
 
@@ -122,12 +127,14 @@ public:
 
     [[nodiscard]] const IrradianceLatticeSequence&    InspectIrradianceLattice() const noexcept { return RtxLattice; }
     [[nodiscard]] const SignedDistanceRadiosityVolume& InspectRadiosityVolume()   const noexcept { return RadiosityVolume; }
+    [[nodiscard]] const AtmosphericSkySequence&        InspectAtmosphericSky()    const noexcept { return SkySequence; }
 
 private:
     OrthographicShadowCascade     FineContactClip   {};
     OrthographicShadowCascade     CoarseContactClip {};
     IrradianceLatticeSequence     RtxLattice        {};
     SignedDistanceRadiosityVolume RadiosityVolume   {};
+    AtmosphericSkySequence        SkySequence       {};
     DepthPyramidSequence          PreviousHiZ       {};
 };
 

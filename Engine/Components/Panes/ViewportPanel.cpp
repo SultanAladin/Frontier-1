@@ -1246,7 +1246,7 @@ void ViewportPanel::RenderSettingsSheet(
     const PaneInputReading& Input)
 {
     const float SheetW = 286.0f;
-    const float SheetH = 426.0f;
+    const float SheetH = std::min(648.0f, std::max(426.0f, Bounds.Height - 28.0f));
     const float SheetX = std::clamp(GearButtonRightBottom.X - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
     const float SheetY = GearButtonRightBottom.Y + 6.0f;
     const Rectangle2D Sheet{ SheetX, SheetY, SheetW, SheetH };
@@ -1414,6 +1414,67 @@ void ViewportPanel::RenderSettingsSheet(
             DebugDropdownOpen  = !DebugDropdownOpen;
             EngineDropdownOpen = false;
             ShadowDropdownOpen = false;
+        }
+    }
+    RowY += 36.0f;
+
+    // 4. Atmosphere, Celestials & Volumetric Clouds Quick Controls
+    if (RowY + 190.0f <= Sheet.Bottom())
+    {
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay,
+            FontWeightClass::Medium,
+            { Sheet.X + 16.0f, RowY },
+            9.5f,
+            ColorRgba{ 138, 138, 138, 255 },
+            "ATMOSPHERE & CLOUDS");
+        RowY += 18.0f;
+
+        ConstructToggleRow("Physical Sky",      DisplaySettings.AtmosphereSkyEnabled);
+        ConstructToggleRow("Volumetric Clouds", DisplaySettings.VolumetricCloudsEnabled);
+        ConstructToggleRow("Sun, Moons & Stars",DisplaySettings.CelestialStarsEnabled);
+        ConstructToggleRow("Day Cycle",         DisplaySettings.DayCyclePlaying);
+
+        // Time of Day slider [0..24h]
+        {
+            WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 2.0f }, 10.5f, WorkspaceSurfaceColors::SecondaryInk, "Time of Day");
+            const uint32_t TotalMins = static_cast<uint32_t>(std::round(std::clamp(DisplaySettings.SolarTimeOfDayHours, 0.0f, 24.0f) * 60.0f)) % 1440u;
+            char TimeLabel[24]{};
+            std::snprintf(TimeLabel, sizeof(TimeLabel), "%02u:%02u", TotalMins / 60u, TotalMins % 60u);
+            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 10.0f, TimeLabel);
+            WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.Right() - 16.0f - TW, RowY + 2.0f }, 10.0f, WorkspaceSurfaceColors::PrimaryInk, TimeLabel);
+
+            const Rectangle2D Track{ Sheet.X + 16.0f, RowY + 20.0f, Sheet.Width - 32.0f, 12.0f };
+            const float NormT = std::clamp(DisplaySettings.SolarTimeOfDayHours / 24.0f, 0.0f, 1.0f);
+            Overlay.FillRectangle(Track, ColorRgba{ 38, 38, 38, 255 }, 6.0f);
+            Overlay.FillRectangle({ Track.X, Track.Y, std::max(8.0f, Track.Width * NormT), Track.Height }, ColorRgba{ 82, 82, 82, 255 }, 6.0f);
+            Overlay.FillCircle({ Track.X + 6.0f + (Track.Width - 12.0f) * NormT, Track.Center().Y }, 5.5f, WorkspaceSurfaceColors::PrimaryInk);
+            if (!AnyDropdownOpen && Track.Contains(Cursor) && Input.PrimaryPointer.Down)
+            {
+                const float NextT = std::clamp((Cursor.X - Track.X) / Track.Width, 0.0f, 1.0f);
+                DisplaySettings.SolarTimeOfDayHours = std::round(NextT * 240.0f) / 10.0f;
+            }
+            RowY += 38.0f;
+        }
+
+        // Cloud Cover slider [0..100%]
+        {
+            WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 2.0f }, 10.5f, WorkspaceSurfaceColors::SecondaryInk, "Cloud Cover");
+            char CovLabel[24]{};
+            std::snprintf(CovLabel, sizeof(CovLabel), "%.0f%%", std::clamp(DisplaySettings.CloudFraction, 0.0f, 1.0f) * 100.0f);
+            const float CW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 10.0f, CovLabel);
+            WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.Right() - 16.0f - CW, RowY + 2.0f }, 10.0f, WorkspaceSurfaceColors::PrimaryInk, CovLabel);
+
+            const Rectangle2D Track{ Sheet.X + 16.0f, RowY + 20.0f, Sheet.Width - 32.0f, 12.0f };
+            const float NormC = std::clamp(DisplaySettings.CloudFraction, 0.0f, 1.0f);
+            Overlay.FillRectangle(Track, ColorRgba{ 38, 38, 38, 255 }, 6.0f);
+            Overlay.FillRectangle({ Track.X, Track.Y, std::max(8.0f, Track.Width * NormC), Track.Height }, ColorRgba{ 82, 82, 82, 255 }, 6.0f);
+            Overlay.FillCircle({ Track.X + 6.0f + (Track.Width - 12.0f) * NormC, Track.Center().Y }, 5.5f, WorkspaceSurfaceColors::PrimaryInk);
+            if (!AnyDropdownOpen && Track.Contains(Cursor) && Input.PrimaryPointer.Down)
+            {
+                const float NextT = std::clamp((Cursor.X - Track.X) / Track.Width, 0.0f, 1.0f);
+                DisplaySettings.CloudFraction = std::round(NextT * 100.0f) / 100.0f;
+            }
         }
     }
 

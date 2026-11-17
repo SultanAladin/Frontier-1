@@ -87,6 +87,12 @@ struct ViewportDisplaySettings
     bool     ReflectionsEnabled    = true;   // [-]   - Specular reflections toggle
     bool     AntiAliasingEnabled   = true;   // [-]   - Temporal anti-aliasing toggle
     bool     RaytracingEnabled     = true;   // [-]   - Hardware raytracing toggle
+    bool     AtmosphereSkyEnabled  = true;   // [-]   - Physical Bruneton/Hillaire atmospheric sky toggle
+    bool     VolumetricCloudsEnabled = true; // [-]   - Raymarched volumetric cloud deck toggle
+    bool     CelestialStarsEnabled = true;   // [-]   - Sun disc, moons & nocturnal starfield toggle
+    bool     DayCyclePlaying       = false;  // [-]   - Advances solar ephemeris time of day
+    float    SolarTimeOfDayHours   = 10.5f;  // [h]   - Solar time of day [0..24]
+    float    CloudFraction         = 0.34f;  // [0-1] - Cloud sky fraction [0..1]
 };
 
 struct ViewportPaneSurfaceSpecification

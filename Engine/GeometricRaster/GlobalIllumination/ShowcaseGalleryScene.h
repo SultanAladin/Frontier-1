@@ -97,9 +97,13 @@ struct ShowcaseWorldSceneBundle
     OutlinerSlotToken                                      CamerasFolderToken   {}; // [id] - "Cameras" collection folder token
     OutlinerSlotToken                                      WorldFolderToken     {}; // [id] - "World" collection folder token
     OutlinerSlotToken                                      LightingFolderToken  {}; // [id] - "Lighting" collection folder token
-    OutlinerSlotToken                                      EditorCameraToken    {}; // [id] - "Editor Camera" entry token
-    OutlinerSlotToken                                      SunEmitterToken      {}; // [id] - "Sun" directional emitter token
-    OutlinerSlotToken                                      CeilingSoftboxToken  {}; // [id] - "Ceiling Softbox" LTC quad light token
+    OutlinerSlotToken                                      EditorCameraToken     {}; // [id] - "Editor Camera" entry token
+    OutlinerSlotToken                                      SunEmitterToken       {}; // [id] - "Sun" directional emitter token
+    OutlinerSlotToken                                      MoonBodyToken         {}; // [id] - "Moon" multi-instance lunar disc token
+    OutlinerSlotToken                                      StarfieldToken        {}; // [id] - "Stars" procedural starfield token
+    OutlinerSlotToken                                      VolumetricCloudsToken {}; // [id] - "Volumetric Clouds" planetary cloud deck token
+    OutlinerSlotToken                                      LocalCloudToken       {}; // [id] - "Local Cloud" bounded 3D cloud box token
+    OutlinerSlotToken                                      CeilingSoftboxToken   {}; // [id] - "Ceiling Softbox" LTC quad light token
 };
 
 //------------------------------------------------------------------------------------------------------------------------

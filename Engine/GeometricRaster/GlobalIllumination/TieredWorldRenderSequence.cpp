@@ -50,10 +50,61 @@ namespace
     return static_cast<float>(PcgNext(State) & 0x00FFFFFFu) * (1.0f / 16777216.0f);
 }
 
-[[nodiscard]] Mathematics::LinearRGB EvaluateSkyDome(Mathematics::Axis3D Dir, Mathematics::LinearRGB SkyRadiance) noexcept
+[[nodiscard]] Mathematics::LinearRGB EvaluateSkyDome(
+    Mathematics::Axis3D           Dir,
+    Mathematics::LinearRGB        SkyRadiance,
+    const WorldSceneSpecification* OptionalScene,
+    const AtmosphericSkySequence*  OptionalSky) noexcept
 {
+    if (OptionalScene != nullptr && OptionalSky != nullptr && OptionalScene->Atmosphere.Medium.AtmosphereEnabled)
+    {
+        return OptionalSky->SampleSkyViewDirection(Dir);
+    }
     const float Up = std::clamp(Dir.Z * 0.5f + 0.5f, 0.0f, 1.0f);
     return SkyRadiance * (0.65f + 0.70f * Up);
+}
+
+[[nodiscard]] Mathematics::LinearRGB EvaluateBackgroundSkyRadiance(
+    const WorldSceneSpecification& Scene,
+    const AtmosphericSkySequence&  SkySeq,
+    Mathematics::Axis3D            RayOrigin,
+    Mathematics::Axis3D            RayDir) noexcept
+{
+    const auto& Atmo = Scene.Atmosphere;
+    if (!Atmo.Medium.AtmosphereEnabled)
+    {
+        return EvaluateSkyDome(RayDir, Scene.SkyRadiance, nullptr, nullptr);
+    }
+
+    const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
+    const auto SolarTrans  = AtmosphericSkySequence::ComputeSolarTransmittance(
+        SolarSolved.WorldDirectionToSun, Atmo.Medium);
+    const auto SkyRad      = SkySeq.SampleSkyViewDirection(RayDir);
+    const auto SunRad      = AtmosphericSkySequence::EvaluateSolarCoronaRadiance(
+        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Solar, SolarTrans, SolarSolved.EffectiveSolarTint);
+    const auto MoonStarRad = LunarStarfieldSequence::EvaluateCelestialField(
+        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds);
+
+    float CloudTrans = 1.0f;
+    const auto LowAngleSky = SkySeq.SampleSkyViewDirection(
+        Mathematics::NormalizeAxis({ RayDir.X, RayDir.Y, std::max(0.05f, RayDir.Z) }));
+    const auto CloudRad = VolumetricCloudSequence::EvaluateVolumetricClouds(
+        RayOrigin,
+        RayDir,
+        SolarSolved.WorldDirectionToSun,
+        Scene.Sun.SolarIrradiance,
+        LowAngleSky,
+        Atmo.Clouds,
+        Atmo.LocalCloud,
+        Atmo.Medium,
+        Atmo.SimulationSeconds,
+        CloudTrans);
+
+    return {
+        (SkyRad.R + SunRad.R + MoonStarRad.R) * CloudTrans + CloudRad.R,
+        (SkyRad.G + SunRad.G + MoonStarRad.G) * CloudTrans + CloudRad.G,
+        (SkyRad.B + SunRad.B + MoonStarRad.B) * CloudTrans + CloudRad.B,
+    };
 }
 
 [[nodiscard]] Mathematics::LinearRGB EvaluateMatCapShading(
@@ -158,6 +209,7 @@ void ApplyDiffuseGiBilateralFilter(
     Mathematics::Axis3D                            Origin,
     Mathematics::Axis3D                            Direction,
     const WorldSceneSpecification&                 Scene,
+    const AtmosphericSkySequence&                  SkySeq,
     uint32_t                                       MaxBounces,
     uint32_t&                                      RngState) noexcept
 {
@@ -183,7 +235,9 @@ void ApplyDiffuseGiBilateralFilter(
         const auto Hit = Scene.SceneTree.TraceClosestRay(Query, false);
         if (!Hit.HitConfirmed)
         {
-            const auto Sky = EvaluateSkyDome(RayD, Scene.SkyRadiance);
+            const auto Sky = (Bounce == 0u && Scene.Atmosphere.Medium.AtmosphereEnabled)
+                ? EvaluateBackgroundSkyRadiance(Scene, SkySeq, RayO, RayD)
+                : EvaluateSkyDome(RayD, Scene.SkyRadiance, &Scene, &SkySeq);
             Radiance.R += Throughput.R * Sky.R;
             Radiance.G += Throughput.G * Sky.G;
             Radiance.B += Throughput.B * Sky.B;
@@ -266,11 +320,16 @@ void ApplyDiffuseGiBilateralFilter(
                 SunQuery.MaximumDistance = 120.0f;
                 if (!Scene.SceneTree.QueryRayOccluded(SunQuery))
                 {
+                    const float CloudShadowT = Scene.Atmosphere.Medium.AtmosphereEnabled
+                        ? VolumetricCloudSequence::EvaluateSolarCloudTransmittance(
+                              HitPos, JitterSun, Scene.Atmosphere.Clouds,
+                              Scene.Atmosphere.Medium.PlanetRadiusMeters, Scene.Atmosphere.SimulationSeconds)
+                        : 1.0f;
                     const auto LocalWi = WorldToLocal(JitterSun);
                     const auto Bsdf    = MaterialSpace::Scattering::EvaluateOpenPbrLocalBsdf(Mat, Lobes, LocalWo, LocalWi);
-                    Radiance.R += Throughput.R * Bsdf.R * Scene.Sun.SolarIrradiance.R * NdotL;
-                    Radiance.G += Throughput.G * Bsdf.G * Scene.Sun.SolarIrradiance.G * NdotL;
-                    Radiance.B += Throughput.B * Bsdf.B * Scene.Sun.SolarIrradiance.B * NdotL;
+                    Radiance.R += Throughput.R * Bsdf.R * Scene.Sun.SolarIrradiance.R * NdotL * CloudShadowT;
+                    Radiance.G += Throughput.G * Bsdf.G * Scene.Sun.SolarIrradiance.G * NdotL * CloudShadowT;
+                    Radiance.B += Throughput.B * Bsdf.B * Scene.Sun.SolarIrradiance.B * NdotL * CloudShadowT;
                 }
             }
         }
@@ -509,8 +568,49 @@ void TieredWorldRenderSequence::CompileBounceSummaries(WorldSceneSpecification& 
     }
 }
 
+void TieredWorldRenderSequence::SynchronizeWorldAtmosphere(WorldSceneSpecification& InOutScene)
+{
+    if (!InOutScene.Atmosphere.Medium.AtmosphereEnabled)
+    {
+        return;
+    }
+
+    const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(InOutScene.Atmosphere.Solar);
+    SkySequence.BuildSkyViewLut(
+        SolarSolved.WorldDirectionToSun,
+        InOutScene.Atmosphere.Medium,
+        InOutScene.Atmosphere.Solar.SolarIntensityMultiplier);
+
+    const auto Trans = AtmosphericSkySequence::ComputeSolarTransmittance(
+        SolarSolved.WorldDirectionToSun,
+        InOutScene.Atmosphere.Medium);
+
+    const float SunVis = std::clamp((SolarSolved.ElevationDegrees + 4.0f) / 10.0f, 0.0f, 1.0f);
+    InOutScene.Sun.DirectionToSun = SolarSolved.WorldDirectionToSun;
+    InOutScene.Sun.SunAngularRadiusRadians =
+        std::clamp(InOutScene.Atmosphere.Solar.AngularDiameterDegrees * 0.5f * Constants::DegToRadFloat, 0.002f, 0.25f);
+    const float IrradScale =
+        InOutScene.Atmosphere.Solar.SolarIntensityMultiplier *
+        InOutScene.Atmosphere.Solar.DirectGainMultiplier * 0.044f * SunVis;
+    InOutScene.Sun.SolarIrradiance = {
+        SolarSolved.EffectiveSolarTint.R * Trans.R * IrradScale,
+        SolarSolved.EffectiveSolarTint.G * Trans.G * IrradScale,
+        SolarSolved.EffectiveSolarTint.B * Trans.B * IrradScale,
+    };
+
+    const auto OverheadSky = SkySequence.SampleSkyViewDirection({ 0.0f, 0.0f, 1.0f });
+    InOutScene.SkyRadiance = {
+        std::max(0.015f, OverheadSky.R),
+        std::max(0.020f, OverheadSky.G),
+        std::max(0.032f, OverheadSky.B),
+    };
+}
+
 void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOutScene)
 {
+    // 0. Synchronize physical Atmosphere, Sun Ephemeris, and SkyView LUT
+    SynchronizeWorldAtmosphere(InOutScene);
+
     // 1. Compile 32 B BounceSlabEntries for every registered material slot!
     CompileBounceSummaries(InOutScene);
 
@@ -538,6 +638,7 @@ void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOut
 
 void TieredWorldRenderSequence::PrepareRtxIrradianceLatticeOnly(WorldSceneSpecification& InOutScene)
 {
+    SynchronizeWorldAtmosphere(InOutScene);
     CompileBounceSummaries(InOutScene);
     RtxLattice.PropagateRtxIrradianceLattice(
         InOutScene.LatticeConfig,
@@ -652,23 +753,35 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     //====================================================================================================================
     if (Config.Engine == WorldRenderEngine::MatCap)
     {
-        for (std::size_t Off = 0u; Off < TotalPixels; ++Off)
+        for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
         {
-            const auto& Hit = PrimarySamples[Off];
-            Mathematics::LinearRGB OutHdr { 0.05f, 0.07f, 0.12f };
-            if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+            for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
             {
-                const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
-                OutHdr = (Config.DebugChannel != 0u)
-                    ? EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat)
-                    : EvaluateMatCapShading(CurBasis, Hit.TangentFrame.NormalZ, Mat);
+                const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
+                const auto& Hit = PrimarySamples[Off];
+                Mathematics::LinearRGB OutHdr { 0.05f, 0.07f, 0.12f };
+                if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                {
+                    const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+                    OutHdr = (Config.DebugChannel != 0u)
+                        ? EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat)
+                        : EvaluateMatCapShading(CurBasis, Hit.TangentFrame.NormalZ, Mat);
+                }
+                else if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled && Config.DebugChannel == 0u)
+                {
+                    const float NdcX = ((static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx)) * 2.0f - 1.0f;
+                    const float NdcY = 1.0f - ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx)) * 2.0f;
+                    const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
+                        CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
+                    OutHdr = EvaluateBackgroundSkyRadiance(PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir);
+                }
+                Result.CompositeLinearHdr[Off] = OutHdr;
+                const auto Tone = (Config.DebugChannel != 0u) ? OutHdr : ApplyAcesFilmic(OutHdr);
+                Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
+                Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
+                Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
+                Result.DisplayRgba8[Off * 4u + 3u] = 255u;
             }
-            Result.CompositeLinearHdr[Off] = OutHdr;
-            const auto Tone = (Config.DebugChannel != 0u) ? OutHdr : ApplyAcesFilmic(OutHdr);
-            Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
-            Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
-            Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
-            Result.DisplayRgba8[Off * 4u + 3u] = 255u;
         }
         PreviousHiZ = std::move(CurrentHiZ);
         return Result;
@@ -705,7 +818,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                     const float NdcY = 1.0f - Jy * 2.0f;
                     const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                         CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
-                    Sum = Sum + TracePathSample(CurBasis.CameraOrigin, RayDir, PreparedScene, MaxB, Rng);
+                    Sum = Sum + TracePathSample(CurBasis.CameraOrigin, RayDir, PreparedScene, SkySequence, MaxB, Rng);
                 }
                 Result.CompositeLinearHdr[Off] = Sum * (1.0f / static_cast<float>(Spp));
             }
@@ -811,53 +924,65 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         }
     }
 
-    for (std::size_t Off = 0u; Off < TotalPixels; ++Off)
+    for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
     {
-        const auto& Hit = PrimarySamples[Off];
-        if (Config.DebugChannel != 0u && Hit.ValidHit && Hit.MaterialSlot < MatCount)
+        for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
         {
-            const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
-            const auto Dbg  = EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat);
-            Result.CompositeLinearHdr[Off] = Dbg;
-            Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Dbg.R) * 255.0f));
-            Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Dbg.G) * 255.0f));
-            Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Dbg.B) * 255.0f));
+            const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
+            const auto& Hit = PrimarySamples[Off];
+            if (Config.DebugChannel != 0u && Hit.ValidHit && Hit.MaterialSlot < MatCount)
+            {
+                const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+                const auto Dbg  = EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat);
+                Result.CompositeLinearHdr[Off] = Dbg;
+                Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Dbg.R) * 255.0f));
+                Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Dbg.G) * 255.0f));
+                Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Dbg.B) * 255.0f));
+                Result.DisplayRgba8[Off * 4u + 3u] = 255u;
+                continue;
+            }
+
+            Mathematics::LinearRGB FinalHdr = Result.DirectLighting.DirectHdrRadiance[Off];
+            if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+            {
+                const auto& Mat        = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+                const float DiffAo     = Result.DirectLighting.CombinedDiffuseAo[Off];
+                const float SpecAo     = Result.DirectLighting.LagardeSpecularAo[Off];
+                const float DiffFactor = (1.0f - Mat.Specular.Metalness) *
+                                         (1.0f - Mat.Transmission.TransmissionWeight) *
+                                         Mat.Diffuse.BaseWeight;
+
+                const auto& IndirectOverPi = RawIndirectOverPi[Off];
+                const Mathematics::LinearRGB DiffuseGi {
+                    IndirectOverPi.R * Mat.Diffuse.BaseColor.R * DiffFactor * (0.35f + 0.65f * DiffAo),
+                    IndirectOverPi.G * Mat.Diffuse.BaseColor.G * DiffFactor * (0.35f + 0.65f * DiffAo),
+                    IndirectOverPi.B * Mat.Diffuse.BaseColor.B * DiffFactor * (0.35f + 0.65f * DiffAo),
+                };
+                Result.IndirectDiffuseHdr[Off] = DiffuseGi;
+
+                FinalHdr = FinalHdr + DiffuseGi + Result.SpecularGlass.IndirectSpecularHdr[Off] * SpecAo;
+            }
+            else if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled && VisTargets.GlassPeelFront64[Off] == 0ull)
+            {
+                const float NdcX = ((static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx)) * 2.0f - 1.0f;
+                const float NdcY = 1.0f - ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx)) * 2.0f;
+                const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
+                    CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
+                FinalHdr = EvaluateBackgroundSkyRadiance(PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir);
+            }
+
+            if (VisTargets.GlassPeelFront64[Off] != 0ull)
+            {
+                FinalHdr = Result.SpecularGlass.RefractedGlassHdr[Off];
+            }
+
+            Result.CompositeLinearHdr[Off] = FinalHdr;
+            const auto Tone = ApplyAcesFilmic(FinalHdr);
+            Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
+            Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
+            Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
             Result.DisplayRgba8[Off * 4u + 3u] = 255u;
-            continue;
         }
-
-        Mathematics::LinearRGB FinalHdr = Result.DirectLighting.DirectHdrRadiance[Off];
-        if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
-        {
-            const auto& Mat        = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
-            const float DiffAo     = Result.DirectLighting.CombinedDiffuseAo[Off];
-            const float SpecAo     = Result.DirectLighting.LagardeSpecularAo[Off];
-            const float DiffFactor = (1.0f - Mat.Specular.Metalness) *
-                                     (1.0f - Mat.Transmission.TransmissionWeight) *
-                                     Mat.Diffuse.BaseWeight;
-
-            const auto& IndirectOverPi = RawIndirectOverPi[Off];
-            const Mathematics::LinearRGB DiffuseGi {
-                IndirectOverPi.R * Mat.Diffuse.BaseColor.R * DiffFactor * (0.35f + 0.65f * DiffAo),
-                IndirectOverPi.G * Mat.Diffuse.BaseColor.G * DiffFactor * (0.35f + 0.65f * DiffAo),
-                IndirectOverPi.B * Mat.Diffuse.BaseColor.B * DiffFactor * (0.35f + 0.65f * DiffAo),
-            };
-            Result.IndirectDiffuseHdr[Off] = DiffuseGi;
-
-            FinalHdr = FinalHdr + DiffuseGi + Result.SpecularGlass.IndirectSpecularHdr[Off] * SpecAo;
-        }
-
-        if (VisTargets.GlassPeelFront64[Off] != 0ull)
-        {
-            FinalHdr = Result.SpecularGlass.RefractedGlassHdr[Off];
-        }
-
-        Result.CompositeLinearHdr[Off] = FinalHdr;
-        const auto Tone = ApplyAcesFilmic(FinalHdr);
-        Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
-        Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
-        Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
-        Result.DisplayRgba8[Off * 4u + 3u] = 255u;
     }
 
     PreviousHiZ = std::move(CurrentHiZ);

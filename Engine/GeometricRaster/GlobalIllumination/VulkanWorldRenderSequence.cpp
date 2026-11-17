@@ -36,30 +36,81 @@ struct GpuGlassSphereStd140
     float OpticsSlotPacked[4]   {};
 };
 
-struct WorldViewportUniformBlockStd140
+struct VolumetricCloudUniformStd140
 {
-    float                  CameraOriginTanX[4]         {};
-    float                  CameraRightTanY[4]          {};
-    float                  CameraUpWidth[4]            {};
-    float                  CameraForwardHeight[4]      {};
-    float                  SunDirConeTan[4]            {};
-    float                  SolarIrradianceTier[4]      {};
-    float                  SkyRadianceBvhCount[4]      {};
-    float                  SdfMinSpacing[4]            {};
-    uint32_t               SdfDimsLightCount[4]        {};
-    float                  LatticeMinGlassCount[4]     {};
-    float                  LatticeMaxDebugMode[4]      {};
-    uint32_t               LatticeDimsMaterialCount[4] {};
-    uint32_t               EngineShadowReflSample[4]   {};
-    float                  SunCascadeCenterSpan[4]     {};
-    float                  SunCascadeRightRes[4]       {};
-    float                  SunCascadeUpDepth[4]        {};
-    float                  SunCascadeForwardPad[4]     {};
-    GpuAreaQuadLightStd140 AreaLights[4]               {};
-    GpuGlassSphereStd140   GlassSpheres[4]             {};
+    float OriginTimeVector[4]      {};
+    float SunAxisToggle[4]   {};
+    float SolarIrradianceExt[4] {};
+    float SkyColorWind[4]        {};
+    float DeckGeometry[4]       {};
+    float DeckOptics[4]         {};
+    float WindVectorOcclude[4]   {};
+    float LocalCenterExt[4]     {};
+    float LocalExtentFraction[4] {};
+    float LocalDensityPhase[4]  {};
 };
 
-static_assert(sizeof(WorldViewportUniformBlockStd140) == 656u, "WorldViewportUniformBlockStd140 must equal 656 bytes.");
+static_assert(sizeof(VolumetricCloudUniformStd140) == 160u, "VolumetricCloudUniformStd140 must equal 160 bytes.");
+
+struct GpuMoonDescriptorStd140
+{
+    float DirectionRadiusRad[4] {};
+    float TintSynodicPhase[4]       {};
+    float OpticsOrientation[4] {};
+    float MetaMask[4]          {};
+};
+
+struct CelestialFieldUniformStd140
+{
+    float SunAxisRadius[4]  {};
+    float SunTintIntensity[4] {};
+    float StarParams[4]          {};
+    float StarScintillationRot[4]      {};
+    float ClockViewportDims[4]     {};
+    GpuMoonDescriptorStd140 Moons[4] {};
+};
+
+static_assert(sizeof(CelestialFieldUniformStd140) == 336u, "CelestialFieldUniformStd140 must equal 336 bytes.");
+
+struct AtmosphericSkyUniformStd140
+{
+    float    SunDirectionIntensity[4] {};
+    float    ScatteringStrengths[4]   {};
+    float    PlanetDimensions[4]      {};
+    float    SkyTintBrightness[4]     {};
+    float    GroundAlbedoLimbGlow[4]  {};
+    uint32_t LutDimensions[4]         {};
+};
+
+static_assert(sizeof(AtmosphericSkyUniformStd140) == 96u, "AtmosphericSkyUniformStd140 must equal 96 bytes.");
+
+struct WorldViewportUniformBlockStd140
+{
+    float                       CameraOriginTanX[4]         {};
+    float                       CameraRightTanY[4]          {};
+    float                       CameraUpWidth[4]            {};
+    float                       CameraForwardHeight[4]      {};
+    float                       SunDirConeTan[4]            {};
+    float                       SolarIrradianceTier[4]      {};
+    float                       SkyRadianceBvhCount[4]      {};
+    float                       SdfMinSpacing[4]            {};
+    uint32_t                    SdfDimsLightCount[4]        {};
+    float                       LatticeMinGlassCount[4]     {};
+    float                       LatticeMaxDebugMode[4]      {};
+    uint32_t                    LatticeDimsMaterialCount[4] {};
+    uint32_t                    EngineShadowReflSample[4]   {};
+    float                       SunCascadeCenterSpan[4]     {};
+    float                       SunCascadeRightRes[4]       {};
+    float                       SunCascadeUpDepth[4]        {};
+    float                       SunCascadeForwardPad[4]     {};
+    GpuAreaQuadLightStd140      AreaLights[4]               {};
+    GpuGlassSphereStd140        GlassSpheres[4]             {};
+    uint32_t                    AtmosphereMaskPad[4]       {};
+    VolumetricCloudUniformStd140 CloudParams                {};
+    CelestialFieldUniformStd140  CelestialParams            {};
+};
+
+static_assert(sizeof(WorldViewportUniformBlockStd140) == 1168u, "WorldViewportUniformBlockStd140 must equal 1168 bytes.");
 
 struct SignedDistanceGridUniformStd140
 {
@@ -181,8 +232,9 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
-    constexpr std::array<VkDescriptorType, 11u> SlotTypes {{
+    constexpr std::array<VkDescriptorType, 12u> SlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -223,8 +275,26 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         SdfSlotTypes,
         "ComputeEntry");
 
+    constexpr std::array<VkDescriptorType, 2u> SkySlotTypes {{
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+    }};
+    const std::filesystem::path SkyShaderPath = CompiledShaderDirectory / "SkyViewTransmittanceCompute.comp.spv";
+    SkyViewLutProgramHandle = DispatchEncoder.RegisterProgram(
+        SkyShaderPath,
+        SkySlotTypes,
+        "ComputeEntry");
+
     EnsureBufferCapacity(UniformBuffer, sizeof(WorldViewportUniformBlockStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     EnsureBufferCapacity(SdfUniformBuffer, sizeof(SignedDistanceGridUniformStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    EnsureBufferCapacity(SkyViewUniformBuffer, sizeof(AtmosphericSkyUniformStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    constexpr uint64_t SkyLutBytes = static_cast<uint64_t>(AtmosphericSkySequence::SkyViewWidthPx) *
+                                     AtmosphericSkySequence::SkyViewHeightPx * sizeof(float) * 4ull;
+    EnsureBufferCapacity(AtmosphericSkyViewLutBuffer, SkyLutBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    if (AtmosphericSkyViewLutBuffer.HostAddress != nullptr)
+    {
+        std::memset(AtmosphericSkyViewLutBuffer.HostAddress, 0, static_cast<std::size_t>(SkyLutBytes));
+    }
     if (UniformBuffer.BufferHandle != VK_NULL_HANDLE)
     {
         std::fprintf(
@@ -247,6 +317,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         vkDeviceWaitIdle(BoundDevice->AccessDevice());
         BoundDevice->ReleaseBuffer(UniformBuffer);
         BoundDevice->ReleaseBuffer(SdfUniformBuffer);
+        BoundDevice->ReleaseBuffer(SkyViewUniformBuffer);
         BoundDevice->ReleaseBuffer(BvhEntryBuffer);
         BoundDevice->ReleaseBuffer(ShadedTriangleBuffer);
         BoundDevice->ReleaseBuffer(MaterialEntryBuffer);
@@ -257,10 +328,12 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(IrradianceChebyshevBuffer);
         BoundDevice->ReleaseBuffer(SdfRadiosityVoxelBuffer);
         BoundDevice->ReleaseBuffer(AccumulationHdrBuffer);
+        BoundDevice->ReleaseBuffer(AtmosphericSkyViewLutBuffer);
     }
     DispatchEncoder.TeardownEncoder();
     RadiometricProgramHandle    = UINT32_MAX;
     SignedDistanceProgramHandle = UINT32_MAX;
+    SkyViewLutProgramHandle     = UINT32_MAX;
     BoundDevice                 = nullptr;
     SceneUploadedOnce           = false;
     UploadedBvhCount            = 0u;
@@ -917,6 +990,75 @@ bool VulkanWorldRenderSequence::RenderWorldViewportRgba8(
     return RenderWorldViewportWithEngine(Config, 0u, Camera, Scene, OutDisplayRgba8);
 }
 
+void VulkanWorldRenderSequence::DispatchGpuSkyViewLut(VkCommandBuffer Cmd, const WorldSceneSpecification& Scene)
+{
+    if (SkyViewLutProgramHandle == UINT32_MAX || SkyViewUniformBuffer.HostAddress == nullptr ||
+        AtmosphericSkyViewLutBuffer.BufferHandle == VK_NULL_HANDLE)
+    {
+        return;
+    }
+
+    const auto& Atmo = Scene.Atmosphere;
+    const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
+
+    AtmosphericSkyUniformStd140 SkyUni {};
+    SkyUni.SunDirectionIntensity[0] = SolarSolved.WorldDirectionToSun.X;
+    SkyUni.SunDirectionIntensity[1] = SolarSolved.WorldDirectionToSun.Y;
+    SkyUni.SunDirectionIntensity[2] = SolarSolved.WorldDirectionToSun.Z;
+    SkyUni.SunDirectionIntensity[3] = Atmo.Solar.SolarIntensityMultiplier;
+
+    SkyUni.ScatteringStrengths[0]   = Atmo.Medium.RayleighStrength;
+    SkyUni.ScatteringStrengths[1]   = Atmo.Medium.MieStrength;
+    SkyUni.ScatteringStrengths[2]   = Atmo.Medium.MieAnisotropy;
+    SkyUni.ScatteringStrengths[3]   = Atmo.Medium.OzoneStrength;
+
+    SkyUni.PlanetDimensions[0]      = Atmo.Medium.PlanetRadiusMeters;
+    SkyUni.PlanetDimensions[1]      = Atmo.Medium.AtmosphereThicknessMeters;
+    SkyUni.PlanetDimensions[2]      = Atmo.Medium.RayleighScaleHeightMeters;
+    SkyUni.PlanetDimensions[3]      = Atmo.Medium.MieScaleHeightMeters;
+
+    SkyUni.SkyTintBrightness[0]     = Atmo.Medium.SkyTint.R;
+    SkyUni.SkyTintBrightness[1]     = Atmo.Medium.SkyTint.G;
+    SkyUni.SkyTintBrightness[2]     = Atmo.Medium.SkyTint.B;
+    SkyUni.SkyTintBrightness[3]     = Atmo.Medium.SkyBrightnessMultiplier;
+
+    SkyUni.GroundAlbedoLimbGlow[0]  = Atmo.Medium.GroundAlbedo.R;
+    SkyUni.GroundAlbedoLimbGlow[1]  = Atmo.Medium.GroundAlbedo.G;
+    SkyUni.GroundAlbedoLimbGlow[2]  = Atmo.Medium.GroundAlbedo.B;
+    SkyUni.GroundAlbedoLimbGlow[3]  = Atmo.Medium.LimbGlowIntensity;
+
+    SkyUni.LutDimensions[0]         = AtmosphericSkySequence::SkyViewWidthPx;
+    SkyUni.LutDimensions[1]         = AtmosphericSkySequence::SkyViewHeightPx;
+
+    std::memcpy(SkyViewUniformBuffer.HostAddress, &SkyUni, sizeof(SkyUni));
+
+    const std::array<ComputeSlotDescriptor, 2u> SkySlots {{
+        { 0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, SkyViewUniformBuffer.BufferHandle,          sizeof(AtmosphericSkyUniformStd140) },
+        { 1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AtmosphericSkyViewLutBuffer.BufferHandle, VK_WHOLE_SIZE },
+    }};
+
+    const uint32_t GroupsX = (AtmosphericSkySequence::SkyViewWidthPx  + 7u) / 8u;
+    const uint32_t GroupsY = (AtmosphericSkySequence::SkyViewHeightPx + 7u) / 8u;
+    if (DispatchEncoder.EncodeComputeDispatch(Cmd, SkyViewLutProgramHandle, SkySlots, GroupsX, GroupsY, 1u))
+    {
+        VkMemoryBarrier ComputeToCompute {};
+        ComputeToCompute.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        ComputeToCompute.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        ComputeToCompute.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(
+            Cmd,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0u,
+            1u,
+            &ComputeToCompute,
+            0u,
+            nullptr,
+            0u,
+            nullptr);
+    }
+}
+
 bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     const WorldRenderConfiguration& Config,
     uint32_t                        PathTraceSampleIndex,
@@ -970,16 +1112,37 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     Uniforms.CameraForwardHeight[2] = Basis.ForwardAxis.Z;
     Uniforms.CameraForwardHeight[3] = static_cast<float>(HeightPx);
 
-    const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis(Scene.Sun.DirectionToSun, { 0.42f, -0.55f, 0.72f });
+    const bool AtmoActive = Scene.Atmosphere.Medium.AtmosphereEnabled;
+    const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(Scene.Atmosphere.Solar);
+    const Mathematics::Axis3D SunDir = AtmoActive
+        ? SolarSolved.WorldDirectionToSun
+        : Mathematics::NormalizeAxis(Scene.Sun.DirectionToSun, { 0.42f, -0.55f, 0.72f });
     Uniforms.SunDirConeTan[0]       = SunDir.X;
     Uniforms.SunDirConeTan[1]       = SunDir.Y;
     Uniforms.SunDirConeTan[2]       = SunDir.Z;
-    Uniforms.SunDirConeTan[3]       = std::tan(std::max(0.004f, Scene.Sun.SunAngularRadiusRadians));
+    Uniforms.SunDirConeTan[3]       = std::tan(std::max(0.004f,
+        AtmoActive ? (Scene.Atmosphere.Solar.AngularDiameterDegrees * 0.5f * Constants::DegToRadFloat)
+                   : Scene.Sun.SunAngularRadiusRadians));
+
+    Mathematics::LinearRGB EffectiveSunIrrad = Scene.Sun.SolarIrradiance;
+    Mathematics::LinearRGB SolarTrans { 1.0f, 1.0f, 1.0f };
+    if (AtmoActive)
+    {
+        SolarTrans = AtmosphericSkySequence::ComputeSolarTransmittance(SunDir, Scene.Atmosphere.Medium);
+        const float SunVis     = std::clamp((SolarSolved.ElevationDegrees + 4.0f) / 10.0f, 0.0f, 1.0f);
+        const float IrradScale = Scene.Atmosphere.Solar.SolarIntensityMultiplier *
+                                 Scene.Atmosphere.Solar.DirectGainMultiplier * 0.044f * SunVis;
+        EffectiveSunIrrad = Mathematics::LinearRGB{
+            SolarSolved.EffectiveSolarTint.R * SolarTrans.R * IrradScale,
+            SolarSolved.EffectiveSolarTint.G * SolarTrans.G * IrradScale,
+            SolarSolved.EffectiveSolarTint.B * SolarTrans.B * IrradScale,
+        };
+    }
 
     const bool LatticeReady = (CachedLatticeDimX >= 2u);
-    Uniforms.SolarIrradianceTier[0] = Scene.Sun.SolarIrradiance.R;
-    Uniforms.SolarIrradianceTier[1] = Scene.Sun.SolarIrradiance.G;
-    Uniforms.SolarIrradianceTier[2] = Scene.Sun.SolarIrradiance.B;
+    Uniforms.SolarIrradianceTier[0] = EffectiveSunIrrad.R;
+    Uniforms.SolarIrradianceTier[1] = EffectiveSunIrrad.G;
+    Uniforms.SolarIrradianceTier[2] = EffectiveSunIrrad.B;
     Uniforms.SolarIrradianceTier[3] = (Config.Engine == WorldRenderEngine::DdgiRaytracing && LatticeReady) ? 1.0f : 0.0f;
 
     Uniforms.SkyRadianceBvhCount[0] = Scene.SkyRadiance.R;
@@ -1079,6 +1242,107 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     Uniforms.SunCascadeForwardPad[2] = CachedSunCascade.LightForwardAxis.Z;
     Uniforms.SunCascadeForwardPad[3] = static_cast<float>(std::clamp(Config.PathTraceMaxBounces, 1u, 6u));
 
+    Uniforms.AtmosphereMaskPad[0] = AtmoActive ? 1u : 0u;
+    Uniforms.AtmosphereMaskPad[1] = AtmosphericSkySequence::SkyViewWidthPx;
+    Uniforms.AtmosphereMaskPad[2] = AtmosphericSkySequence::SkyViewHeightPx;
+    Uniforms.AtmosphereMaskPad[3] = 0u;
+
+    {
+        const auto& Atmo = Scene.Atmosphere;
+        const auto& Deck = Atmo.Clouds;
+        const float BearRad = Deck.WindBearingDegrees * Constants::DegToRadFloat;
+        const float WindVX  = std::cos(BearRad) * Deck.WindSpeedMetersPerSecond;
+        const float WindVY  = -std::sin(BearRad) * Deck.WindSpeedMetersPerSecond;
+
+        auto& C = Uniforms.CloudParams;
+        C.OriginTimeVector[0]      = Camera.CameraOrigin.X;
+        C.OriginTimeVector[1]      = Camera.CameraOrigin.Y;
+        C.OriginTimeVector[2]      = Camera.CameraOrigin.Z;
+        C.OriginTimeVector[3]      = Atmo.SimulationSeconds;
+        C.SunAxisToggle[0]   = SunDir.X;
+        C.SunAxisToggle[1]   = SunDir.Y;
+        C.SunAxisToggle[2]   = SunDir.Z;
+        C.SunAxisToggle[3]   = Deck.CloudsEnabled ? 1.0f : 0.0f;
+        C.SolarIrradianceExt[0] = EffectiveSunIrrad.R;
+        C.SolarIrradianceExt[1] = EffectiveSunIrrad.G;
+        C.SolarIrradianceExt[2] = EffectiveSunIrrad.B;
+        C.SolarIrradianceExt[3] = Atmo.Medium.PlanetRadiusMeters;
+        C.SkyColorWind[0]        = Scene.SkyRadiance.R;
+        C.SkyColorWind[1]        = Scene.SkyRadiance.G;
+        C.SkyColorWind[2]        = Scene.SkyRadiance.B;
+        C.SkyColorWind[3]        = Deck.FollowWindEnabled ? 1.0f : 0.0f;
+        C.DeckGeometry[0]       = std::clamp(Deck.CloudFloorMeters, 100.0f, std::max(200.0f, Deck.DeckCeilingMeters - 100.0f));
+        C.DeckGeometry[1]       = Deck.LayerThicknessMeters;
+        C.DeckGeometry[2]       = Deck.CloudFraction;
+        C.DeckGeometry[3]       = Deck.ExtinctionMultiplier;
+        C.DeckOptics[0]         = Deck.FeatureScaleMultiplier;
+        C.DeckOptics[1]         = Deck.AnvilTopSpread;
+        C.DeckOptics[2]         = Deck.ForwardScatterAnisotropy;
+        C.DeckOptics[3]         = Deck.WindShearPerKilometer;
+        C.WindVectorOcclude[0]   = WindVX;
+        C.WindVectorOcclude[1]   = WindVY;
+        C.WindVectorOcclude[2]   = Deck.CloudShadow.ShadowEnabled ? 1.0f : 0.0f;
+        C.WindVectorOcclude[3]   = Atmo.LocalCloud.LocalEnabled ? 1.0f : 0.0f;
+        C.LocalCenterExt[0]     = Atmo.LocalCloud.VolumeCenterMeters.X;
+        C.LocalCenterExt[1]     = Atmo.LocalCloud.VolumeCenterMeters.Y;
+        C.LocalCenterExt[2]     = Atmo.LocalCloud.VolumeCenterMeters.Z;
+        C.LocalCenterExt[3]     = Atmo.LocalCloud.FeatureScaleMeters;
+        C.LocalExtentFraction[0] = Atmo.LocalCloud.HalfExtentMeters.X;
+        C.LocalExtentFraction[1] = Atmo.LocalCloud.HalfExtentMeters.Y;
+        C.LocalExtentFraction[2] = Atmo.LocalCloud.HalfExtentMeters.Z;
+        C.LocalExtentFraction[3] = Atmo.LocalCloud.CloudFraction;
+        C.LocalDensityPhase[0]  = Atmo.LocalCloud.ExtinctionMultiplier;
+        C.LocalDensityPhase[1]  = Atmo.LocalCloud.ForwardScatterAnisotropy;
+        C.LocalDensityPhase[2]  = static_cast<float>(WidthPx);
+        C.LocalDensityPhase[3]  = static_cast<float>(HeightPx);
+
+        auto& Cel = Uniforms.CelestialParams;
+        Cel.SunAxisRadius[0]  = SunDir.X;
+        Cel.SunAxisRadius[1]  = SunDir.Y;
+        Cel.SunAxisRadius[2]  = SunDir.Z;
+        Cel.SunAxisRadius[3]  = Atmo.Solar.AngularDiameterDegrees * 0.5f * Constants::DegToRadFloat;
+        Cel.SunTintIntensity[0] = SolarSolved.EffectiveSolarTint.R * SolarTrans.R;
+        Cel.SunTintIntensity[1] = SolarSolved.EffectiveSolarTint.G * SolarTrans.G;
+        Cel.SunTintIntensity[2] = SolarSolved.EffectiveSolarTint.B * SolarTrans.B;
+        Cel.SunTintIntensity[3] = (Atmo.Solar.SolarEnabled && Atmo.Solar.SolarIntensityMultiplier > 0.0f)
+            ? (Atmo.Solar.SolarIntensityMultiplier * Atmo.Medium.SkyBrightnessMultiplier * 0.075f)
+            : 0.0f;
+        Cel.StarParams[0]          = Atmo.Stars.StarfieldEnabled ? 1.0f : 0.0f;
+        Cel.StarParams[1]          = Atmo.Stars.LimitingMagnitude;
+        Cel.StarParams[2]          = Atmo.Stars.BrightnessMultiplier;
+        Cel.StarParams[3]          = Atmo.Stars.PointSizeScale;
+        Cel.StarScintillationRot[0]      = Atmo.Stars.ScintillationEnabled ? 1.0f : 0.0f;
+        Cel.StarScintillationRot[1]      = Atmo.Stars.ScintillationDepthPercent;
+        Cel.StarScintillationRot[2]      = Atmo.Stars.ScintillationRateHertz;
+        Cel.StarScintillationRot[3]      = Atmo.Stars.CelestialRotationDegrees * Constants::DegToRadFloat;
+        Cel.ClockViewportDims[0]     = Atmo.SimulationSeconds;
+        Cel.ClockViewportDims[1]     = static_cast<float>(WidthPx);
+        Cel.ClockViewportDims[2]     = static_cast<float>(HeightPx);
+        Cel.ClockViewportDims[3]     = 4.0f;
+
+        for (uint32_t MIdx = 0u; MIdx < 4u; ++MIdx)
+        {
+            const auto& SrcM = Atmo.Moons[MIdx];
+            auto&       DstM = Cel.Moons[MIdx];
+            const auto  MDir = LunarStarfieldSequence::ResolveMoonWorldDirection(SrcM, SunDir);
+            const auto  MTint = LunarStarfieldSequence::QueryPresetTint(SrcM.SurfacePreset);
+            DstM.DirectionRadiusRad[0] = MDir.X;
+            DstM.DirectionRadiusRad[1] = MDir.Y;
+            DstM.DirectionRadiusRad[2] = MDir.Z;
+            DstM.DirectionRadiusRad[3] = SrcM.AngularDiameterDegrees * 0.5f * Constants::DegToRadFloat;
+            DstM.TintSynodicPhase[0]       = MTint.R;
+            DstM.TintSynodicPhase[1]       = MTint.G;
+            DstM.TintSynodicPhase[2]       = MTint.B;
+            DstM.TintSynodicPhase[3]       = SrcM.SynodicPhaseFraction;
+            DstM.OpticsOrientation[0] = SrcM.BrightnessMultiplier;
+            DstM.OpticsOrientation[1] = SrcM.HaloGlowMultiplier;
+            DstM.OpticsOrientation[2] = SrcM.SurfaceRollDegrees * Constants::DegToRadFloat;
+            DstM.OpticsOrientation[3] = SrcM.SurfacePitchDegrees * Constants::DegToRadFloat;
+            DstM.MetaMask[0]          = SrcM.Visible ? 1.0f : 0.0f;
+            DstM.MetaMask[1]          = static_cast<float>(static_cast<uint32_t>(SrcM.SurfacePreset)) * 3.17f;
+        }
+    }
+
     std::memcpy(UniformBuffer.HostAddress, &Uniforms, sizeof(Uniforms));
 
     DispatchEncoder.ResetTransientDescriptors();
@@ -1088,18 +1352,24 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
         return false;
     }
 
-    const std::array<ComputeSlotDescriptor, 11u> Slots {{
-        {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,             sizeof(WorldViewportUniformBlockStd140) },
-        {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,            VK_WHOLE_SIZE },
-        {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,      VK_WHOLE_SIZE },
-        {  3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MaterialEntryBuffer.BufferHandle,       VK_WHOLE_SIZE },
-        {  4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SignedDistanceBuffer.BufferHandle,      VK_WHOLE_SIZE },
-        {  5u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, IrradianceLatticeBuffer.BufferHandle,   VK_WHOLE_SIZE },
-        {  6u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutputPixelBuffer.BufferHandle,         OutBytes      },
-        {  7u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SolarShadowDepthBuffer.BufferHandle,    VK_WHOLE_SIZE },
-        {  8u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, IrradianceChebyshevBuffer.BufferHandle, VK_WHOLE_SIZE },
-        {  9u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SdfRadiosityVoxelBuffer.BufferHandle,   VK_WHOLE_SIZE },
-        { 10u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AccumulationHdrBuffer.BufferHandle,     AccBytes      },
+    if (AtmoActive)
+    {
+        DispatchGpuSkyViewLut(Cmd, Scene);
+    }
+
+    const std::array<ComputeSlotDescriptor, 12u> Slots {{
+        {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,              sizeof(WorldViewportUniformBlockStd140) },
+        {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
+        {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,       VK_WHOLE_SIZE },
+        {  3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MaterialEntryBuffer.BufferHandle,        VK_WHOLE_SIZE },
+        {  4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SignedDistanceBuffer.BufferHandle,       VK_WHOLE_SIZE },
+        {  5u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, IrradianceLatticeBuffer.BufferHandle,    VK_WHOLE_SIZE },
+        {  6u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutputPixelBuffer.BufferHandle,          OutBytes      },
+        {  7u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SolarShadowDepthBuffer.BufferHandle,     VK_WHOLE_SIZE },
+        {  8u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, IrradianceChebyshevBuffer.BufferHandle,  VK_WHOLE_SIZE },
+        {  9u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SdfRadiosityVoxelBuffer.BufferHandle,    VK_WHOLE_SIZE },
+        { 10u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AccumulationHdrBuffer.BufferHandle,      AccBytes      },
+        { 11u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AtmosphericSkyViewLutBuffer.BufferHandle,VK_WHOLE_SIZE },
     }};
 
     const uint32_t GroupsX = (WidthPx  + 7u) / 8u;

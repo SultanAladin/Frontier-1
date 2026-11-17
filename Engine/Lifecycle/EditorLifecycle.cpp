@@ -343,12 +343,79 @@ void EditorLifecycle::AttachForceFieldAuthoringToActivePanes()
     Panes->Inspector.ConfigureFullOverrideCallback(
         [this](PixelSpace& Surface, Rectangle2D Bounds, OutlinerPanel* OutlinerPtr, OutlinerRecordEntry* PrimaryEntry, const PaneInputReading& Input, double Δt) -> bool
         {
-            if (PrimaryEntry == nullptr || PrimaryEntry->Category != ConstructSlotCategory::ForceField)
+            if (PrimaryEntry == nullptr)
             {
                 return false;
             }
             WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
             if (ActivePanes == nullptr)
+            {
+                return false;
+            }
+
+            if (ShowcaseBundle != nullptr)
+            {
+                auto& Atmo       = ShowcaseBundle->Scene.Atmosphere;
+                auto& DisplayCfg = ActivePanes->Viewport.AccessDisplaySettings();
+
+                if (PrimaryEntry->Token == ShowcaseBundle->SunEmitterToken)
+                {
+                    Editor::Inspectors::SunInspectorTargets Targets{ &Atmo.Solar, &Atmo.Medium };
+                    if (SunInspector.Render(Surface, Bounds, Targets, Input, Δt))
+                    {
+                        PrimaryEntry->VisibilityEnabled  = Atmo.Solar.SolarEnabled;
+                        DisplayCfg.SolarTimeOfDayHours   = Atmo.Solar.LocalHours;
+                        DisplayCfg.DayCyclePlaying       = Atmo.Solar.CycleAnimationEnabled;
+                        AtmosphereInspectorDirty         = true;
+                    }
+                    return true;
+                }
+                if (PrimaryEntry->Token == ShowcaseBundle->MoonBodyToken)
+                {
+                    Editor::Inspectors::MoonInspectorTargets Targets{ &Atmo.Moons, &ActiveMoonSlot };
+                    if (MoonInspector.Render(Surface, Bounds, Targets, Input, Δt))
+                    {
+                        PrimaryEntry->VisibilityEnabled = Atmo.Moons[ActiveMoonSlot].Visible;
+                        AtmosphereInspectorDirty        = true;
+                    }
+                    return true;
+                }
+                if (PrimaryEntry->Token == ShowcaseBundle->StarfieldToken)
+                {
+                    Editor::Inspectors::StarsInspectorTargets Targets{ &Atmo.Stars, Atmo.SimulationSeconds };
+                    if (StarsInspector.Render(Surface, Bounds, Targets, Input, Δt))
+                    {
+                        PrimaryEntry->VisibilityEnabled = Atmo.Stars.StarfieldEnabled;
+                        AtmosphereInspectorDirty        = true;
+                    }
+                    return true;
+                }
+                if (PrimaryEntry->Token == ShowcaseBundle->VolumetricCloudsToken)
+                {
+                    Editor::Inspectors::CloudsInspectorTargets Targets{ &Atmo.Clouds, &Atmo.LocalCloud, false };
+                    if (CloudsInspector.Render(Surface, Bounds, Targets, Input, Δt))
+                    {
+                        PrimaryEntry->VisibilityEnabled    = Atmo.Clouds.CloudsEnabled;
+                        PrimaryEntry->CastShadows          = Atmo.Clouds.CloudShadow.ShadowEnabled;
+                        DisplayCfg.VolumetricCloudsEnabled = Atmo.Clouds.CloudsEnabled;
+                        DisplayCfg.CloudFraction           = Atmo.Clouds.CloudFraction;
+                        AtmosphereInspectorDirty           = true;
+                    }
+                    return true;
+                }
+                if (PrimaryEntry->Token == ShowcaseBundle->LocalCloudToken)
+                {
+                    Editor::Inspectors::CloudsInspectorTargets Targets{ &Atmo.Clouds, &Atmo.LocalCloud, true };
+                    if (CloudsInspector.Render(Surface, Bounds, Targets, Input, Δt))
+                    {
+                        PrimaryEntry->VisibilityEnabled = Atmo.LocalCloud.LocalEnabled;
+                        AtmosphereInspectorDirty        = true;
+                    }
+                    return true;
+                }
+            }
+
+            if (PrimaryEntry->Category != ConstructSlotCategory::ForceField)
             {
                 return false;
             }
@@ -669,6 +736,22 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
 
     const bool GpuActive = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
     GeometricRaster::BuildShowcaseGalleryScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx, !GpuActive);
+    {
+        const auto& DisplayCfg = Panes->Viewport.QueryDisplaySettings();
+        auto& Atmo = ShowcaseBundle->Scene.Atmosphere;
+        Atmo.Medium.AtmosphereEnabled  = DisplayCfg.AtmosphereSkyEnabled;
+        Atmo.Clouds.CloudsEnabled      = DisplayCfg.VolumetricCloudsEnabled;
+        Atmo.Clouds.CloudFraction      = DisplayCfg.CloudFraction;
+        Atmo.Stars.StarfieldEnabled    = DisplayCfg.CelestialStarsEnabled;
+        Atmo.Solar.SolarEnabled        = DisplayCfg.CelestialStarsEnabled;
+        Atmo.Moons[0].Visible          = DisplayCfg.CelestialStarsEnabled;
+        Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
+        Atmo.Solar.LocalHours          = DisplayCfg.SolarTimeOfDayHours;
+        if (Atmo.Medium.AtmosphereEnabled)
+        {
+            ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
+        }
+    }
     if (GpuActive)
     {
         GpuWorldRenderer->SynchronizeSceneResources(ShowcaseBundle->Scene, nullptr, true);
@@ -1327,7 +1410,12 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
         DisplayCfg.DebugChannelIndex != LastViewportDebug ||
         DisplayCfg.GlobalIllumination != LastGiEnabled ||
-        DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled;
+        DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
+        DisplayCfg.AtmosphereSkyEnabled != LastAtmosphereSky ||
+        DisplayCfg.VolumetricCloudsEnabled != LastCloudsEnabled ||
+        DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled ||
+        std::fabs(DisplayCfg.SolarTimeOfDayHours - LastSolarTimeHours) > 1.0e-3f ||
+        std::fabs(DisplayCfg.CloudFraction - LastCloudFraction) > 1.0e-3f;
     if (ResetPathAccum)
     {
         PathTraceAccumIndex = 0u;
@@ -1454,10 +1542,65 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
         {
             const OutlinerSlotToken CurrentSel = Panes->Outliner.QueryPrimarySelection();
             const Rectangle2D       CanvasRect = Panes->Viewport.QueryLastCanvasPaneBounds();
-            const auto&             DisplayCfg = Panes->Viewport.QueryDisplaySettings();
+            auto&                   DisplayCfg = Panes->Viewport.AccessDisplaySettings();
             const uint32_t          CurCanvasW = static_cast<uint32_t>(std::max(0.0f, std::round(CanvasRect.Width)));
             const uint32_t          CurCanvasH = static_cast<uint32_t>(std::max(0.0f, std::round(CanvasRect.Height)));
             const int32_t           CurScale   = static_cast<int32_t>(std::lround(DisplayCfg.RenderScalePercent));
+
+            auto& Atmo = ShowcaseBundle->Scene.Atmosphere;
+            if (DisplayCfg.DayCyclePlaying && SafeStep > 0.0)
+            {
+                Atmo.Solar.CycleAnimationEnabled = true;
+                GeometricRaster::CelestialEphemerisSolver::AdvanceDayCycleHours(Atmo.Solar, SafeStep);
+                DisplayCfg.SolarTimeOfDayHours = Atmo.Solar.LocalHours;
+            }
+            const bool AtmoAnimTick =
+                DisplayCfg.AtmosphereSkyEnabled &&
+                (DisplayCfg.DayCyclePlaying || DisplayCfg.VolumetricCloudsEnabled) &&
+                SafeStep > 0.0;
+            if (AtmoAnimTick)
+            {
+                Atmo.SimulationSeconds += static_cast<float>(SafeStep);
+            }
+
+            const bool ViewportTogglesChanged =
+                DisplayCfg.AtmosphereSkyEnabled != LastAtmosphereSky ||
+                DisplayCfg.VolumetricCloudsEnabled != LastCloudsEnabled ||
+                DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled ||
+                std::fabs(DisplayCfg.SolarTimeOfDayHours - LastSolarTimeHours) > 1.0e-3f ||
+                std::fabs(DisplayCfg.CloudFraction - LastCloudFraction) > 1.0e-3f;
+
+            if (DisplayCfg.AtmosphereSkyEnabled != LastAtmosphereSky)
+            {
+                Atmo.Medium.AtmosphereEnabled = DisplayCfg.AtmosphereSkyEnabled;
+            }
+            if (DisplayCfg.VolumetricCloudsEnabled != LastCloudsEnabled)
+            {
+                Atmo.Clouds.CloudsEnabled = DisplayCfg.VolumetricCloudsEnabled;
+            }
+            if (std::fabs(DisplayCfg.CloudFraction - LastCloudFraction) > 1.0e-3f)
+            {
+                Atmo.Clouds.CloudFraction = DisplayCfg.CloudFraction;
+            }
+            if (DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled)
+            {
+                Atmo.Stars.StarfieldEnabled = DisplayCfg.CelestialStarsEnabled;
+                Atmo.Solar.SolarEnabled     = DisplayCfg.CelestialStarsEnabled;
+                Atmo.Moons[0].Visible       = DisplayCfg.CelestialStarsEnabled;
+            }
+            if (std::fabs(DisplayCfg.SolarTimeOfDayHours - LastSolarTimeHours) > 1.0e-3f)
+            {
+                Atmo.Solar.LocalHours = DisplayCfg.SolarTimeOfDayHours;
+            }
+            Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
+
+            const bool AtmoChanged = ViewportTogglesChanged || AtmoAnimTick || AtmosphereInspectorDirty;
+            AtmosphereInspectorDirty = false;
+            if (AtmoChanged && ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled)
+            {
+                ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
+            }
+
             const bool              DisplayChanged =
                 (CurCanvasW >= 120u && CurCanvasH >= 90u &&
                  (std::abs(static_cast<int>(CurCanvasW) - static_cast<int>(LastCanvasPaneWidth)) > 8 ||
@@ -1469,6 +1612,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
                 DisplayCfg.GlobalIllumination != LastGiEnabled ||
                 DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
+                AtmoChanged ||
                 CurScale != LastRenderScalePct;
 
             if (CurCanvasW >= 120u && CurCanvasH >= 90u)
@@ -1483,6 +1627,11 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastReflectionSource   = DisplayCfg.ReflectionSourceIndex;
             LastGiEnabled          = DisplayCfg.GlobalIllumination;
             LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
+            LastAtmosphereSky      = DisplayCfg.AtmosphereSkyEnabled;
+            LastCloudsEnabled      = DisplayCfg.VolumetricCloudsEnabled;
+            LastCelestialsEnabled  = DisplayCfg.CelestialStarsEnabled;
+            LastSolarTimeHours     = DisplayCfg.SolarTimeOfDayHours;
+            LastCloudFraction      = DisplayCfg.CloudFraction;
             LastRenderScalePct     = CurScale;
 
             const bool GpuReady  = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());

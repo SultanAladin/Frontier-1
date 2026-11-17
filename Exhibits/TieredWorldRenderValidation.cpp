@@ -506,12 +506,16 @@ int main()
 
         GeometricRaster::RegisterShowcaseGalleryInOutliner(EditorOutliner, ShowcaseBundle);
 
-        Score.Verify(EditorOutliner.QueryTotalCount() == 17u &&
+        Score.Verify(EditorOutliner.QueryTotalCount() == 21u &&
                      EditorOutliner.CountDirectNested(ShowcaseBundle.ShowcaseFolderToken) == 10u &&
                      EditorOutliner.FindEntry(ShowcaseBundle.EditorCameraToken) != nullptr &&
                      EditorOutliner.FindEntry(ShowcaseBundle.SunEmitterToken) != nullptr &&
+                     EditorOutliner.FindEntry(ShowcaseBundle.MoonBodyToken) != nullptr &&
+                     EditorOutliner.FindEntry(ShowcaseBundle.StarfieldToken) != nullptr &&
+                     EditorOutliner.FindEntry(ShowcaseBundle.VolumetricCloudsToken) != nullptr &&
+                     EditorOutliner.FindEntry(ShowcaseBundle.LocalCloudToken) != nullptr &&
                      EditorOutliner.FindEntry(ShowcaseBundle.CeilingSoftboxToken) != nullptr,
-                     "Registered all 17 Cornell-Studio Gallery objects (Showcase x10, Editor Camera, Sun, Ceiling Softbox) in C++ OutlinerPanel");
+                     "Registered all 21 Cornell-Studio Gallery objects (Showcase x10, Editor Camera, World Sun/Moon/Stars/Clouds/LocalCloud, Ceiling Softbox) in C++ OutlinerPanel");
 
         if (OutlinerRecordEntry* CamRecord = EditorOutliner.AccessEntry(ShowcaseBundle.EditorCameraToken))
         {

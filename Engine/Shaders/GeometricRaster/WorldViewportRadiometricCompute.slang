@@ -5,6 +5,11 @@
 // 0=MatCap, 1=OpenPbrDirect, 2=DdgiRaytracing (Chebyshev), 3=SdfGlobalIllumination (Radiosity Cone March), 4=DeterministicPathTrace (MIS/VNDF)
 // Enforces Zero SDF Shadows (5 Shadow Lab algorithms over depth32float + BVH4) & Zero SDF Reflections (BVH4 or Sky Environment).
 
+#define FRONTIER_ATMOSPHERE_EMBEDDED 1
+#include "../Atmosphere/SkyViewTransmittanceCompute.slang"
+#include "../Atmosphere/VolumetricCloudCompute.slang"
+#include "../Atmosphere/CelestialDiscStarCompute.slang"
+
 struct GpuAreaQuadLight
 {
     float4 CenterHalfWidth; // xyz = CenterWorld, w = HalfWidthMeters
@@ -40,6 +45,9 @@ struct WorldViewportUniformBlock
     float4 SunCascadeForwardPad;     // xyz = LightForward, w = PathTraceMaxBounces
     GpuAreaQuadLight AreaLights[4];
     GpuGlassSphere   GlassSpheres[4];
+    uint4                       AtmosphereMaskPad; // x = AtmosphereEnabled (0/1), y = SkyViewW, z = SkyViewH, w = Pad
+    VolumetricCloudUniformBlock CloudParams;
+    CelestialFieldUniformBlock  CelestialParams;
 };
 
 struct GpuWideTreeEntry128
@@ -83,6 +91,7 @@ struct GpuWorldMaterial64
 [[vk::binding(8,  0)]] StructuredBuffer<float2>                  IrradianceChebyshevDepth;
 [[vk::binding(9,  0)]] StructuredBuffer<float4>                  SdfRadiosityVoxels;
 [[vk::binding(10, 0)]] RWStructuredBuffer<float4>                AccumulationHdrBuffer;
+[[vk::binding(11, 0)]] StructuredBuffer<float4>                  AtmosphericSkyViewLut;
 
 static const float PiConst    = 3.14159265359;
 static const float TauConst   = 6.28318530718;
@@ -112,8 +121,51 @@ float PcgFloat01(inout uint State)
 
 float3 EvaluateSkyDome(float3 Dir)
 {
+    if (WorldUniforms.AtmosphereMaskPad.x != 0u)
+    {
+        return EvaluateSkyViewLutSample(
+            AtmosphericSkyViewLut,
+            WorldUniforms.AtmosphereMaskPad.y,
+            WorldUniforms.AtmosphereMaskPad.z,
+            Dir);
+    }
     float Up = saturate(Dir.z * 0.5 + 0.5);
     return WorldUniforms.SkyRadianceBvhCount.xyz * (0.65 + 0.70 * Up);
+}
+
+float3 EvaluateBackgroundSkyCloudsGpu(float3 RayDir)
+{
+    if (WorldUniforms.AtmosphereMaskPad.x == 0u)
+    {
+        return EvaluateSkyDome(RayDir);
+    }
+    float3 SkyRad       = EvaluateSkyDome(RayDir);
+    float3 CelestialRad = EvaluateCelestialBodiesGpu(WorldUniforms.CelestialParams, RayDir);
+    float  CloudTrans   = 1.0;
+    float3 CloudRad     = EvaluateVolumetricCloudsGpu(WorldUniforms.CloudParams, RayDir, CloudTrans);
+    return (SkyRad + CelestialRad) * CloudTrans + CloudRad;
+}
+
+float EvaluateSolarCloudTransmittanceGpu(float3 WorldPos, float3 SunDir)
+{
+    VolumetricCloudUniformBlock C = WorldUniforms.CloudParams;
+    if (WorldUniforms.AtmosphereMaskPad.x == 0u || C.SunAxisToggle.w < 0.5 || C.WindVectorOcclude.z < 0.5 || SunDir.z <= 0.01)
+    {
+        return 1.0;
+    }
+    float WindX   = (C.SkyColorWind.w > 0.5) ? (C.WindVectorOcclude.x * C.OriginTimeVector.w) : 0.0;
+    float WindY   = (C.SkyColorWind.w > 0.5) ? (C.WindVectorOcclude.y * C.OriginTimeVector.w) : 0.0;
+    float PlanetR = max(500000.0, C.SolarIrradianceExt.w);
+    float FloorM  = max(100.0, C.DeckGeometry.x);
+    float ThickM  = max(100.0, C.DeckGeometry.y);
+    float MidAlt  = FloorM + ThickM * 0.45;
+    float DistM   = MidAlt / max(0.05, SunDir.z);
+    float3 P      = float3(WorldPos.x + SunDir.x * DistM, WorldPos.y + SunDir.y * DistM, PlanetR + 100.0 + MidAlt);
+    float FScale  = 0.00065 / max(0.08, C.DeckOptics.x);
+    float D = SampleCloudDeckDensityGpu(
+        P, PlanetR, FloorM, ThickM, clamp(C.DeckGeometry.z, 0.0, 1.0), clamp(C.DeckOptics.y, 0.0, 1.0),
+        max(0.0, C.DeckGeometry.w) * 0.008, FScale, WindX, WindY, C.DeckOptics.w);
+    return exp(-D * ThickM * 0.65);
 }
 
 float IntersectTriangleMT(float3 Origin, float3 Dir, float MinT, float MaxT, uint TriIndex, out float2 OutUV)
@@ -973,7 +1025,7 @@ float3 ShadePrimarySurface(RayHitReading Hit, float3 ViewDir, uint2 PixelXY)
     // 1. Direct Solar Shadow (Shadow Lab modes — ZERO SDF shadows!) + OpenPBR Shading
     float3 DirectHdr      = float3(0.0);
     float3 SafePrimaryPos = Hit.Position + Hit.GeomNormal * 0.012 + N * 0.006;
-    float  SunVis         = EvaluateSolarShadow(Hit, SunDir, PixelXY);
+    float  SunVis         = EvaluateSolarShadow(Hit, SunDir, PixelXY) * EvaluateSolarCloudTransmittanceGpu(Hit.Position, SunDir);
     if (SunVis > 0.001)
     {
         DirectHdr += EvaluateSurfaceBrdf(Mat, N, ViewDir, SunDir) * SunIrr * SunVis;
@@ -1096,7 +1148,8 @@ float3 TraceDeterministicPathSample(float3 CamOrigin, float3 CamRayDir, uint2 Pi
         RayHitReading Hit = TraceSceneClosest(RayO, RayD, 1.5e-3, 120.0);
         if (!Hit.Hit)
         {
-            Radiance += Throughput * EvaluateSkyDome(RayD);
+            float3 SkyB = (B == 0u) ? EvaluateBackgroundSkyCloudsGpu(RayD) : EvaluateSkyDome(RayD);
+            Radiance += Throughput * SkyB;
             break;
         }
 
@@ -1113,7 +1166,7 @@ float3 TraceDeterministicPathSample(float3 CamOrigin, float3 CamRayDir, uint2 Pi
             float3 L = normalize(SunDir + SunT * (JR * cos(JA)) + SunB * (JR * sin(JA)));
             if (dot(N, L) > 0.0 && !TraceSceneAnyHit(Hit.Position + Hit.GeomNormal * 0.008, L, 0.010, 90.0))
             {
-                Radiance += Throughput * EvaluateSurfaceBrdf(Mat, N, V, L) * SunIrr;
+                Radiance += Throughput * EvaluateSurfaceBrdf(Mat, N, V, L) * SunIrr * EvaluateSolarCloudTransmittanceGpu(Hit.Position, L);
             }
         }
 
@@ -1345,7 +1398,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
     else
     {
-        FinalHdr = EvaluateSkyDome(RayDir);
+        FinalHdr = (DebugMode != 0u) ? float3(0.0) : EvaluateBackgroundSkyCloudsGpu(RayDir);
     }
 
     float3 DisplayLinear = (DebugMode != 0u) ? FinalHdr : ApplyAcesFilmicGpu(FinalHdr);

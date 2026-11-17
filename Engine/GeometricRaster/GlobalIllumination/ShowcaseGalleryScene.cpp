@@ -943,8 +943,8 @@ void RegisterShowcaseGalleryInOutliner(
     if (OutlinerRecordEntry* Folder = TargetOutliner.AccessEntry(InOutBundle.WorldFolderToken))
     {
         Folder->FolderTint  = WorkspaceSurfaceColors::ShowcaseWarmGold;
-        Folder->Subtitle    = "Solar emitter & environment";
-        Folder->AuthorNotes = "Calibrated directional solar emitter (next phase: full Atmosphere).";
+        Folder->Subtitle    = "Sun, Moon, Stars & Volumetric Clouds";
+        Folder->AuthorNotes = "Physical Rayleigh/Mie/Ozone sky dome, 4-slot lunar discs, deterministic starfield, and 3D FBM volumetric clouds.";
         Folder->Expanded    = true;
     }
 
@@ -954,13 +954,61 @@ void RegisterShowcaseGalleryInOutliner(
         SunEntry->Category          = ConstructSlotCategory::LayerGroup;
         SunEntry->Title             = "Sun";
         SunEntry->CategoryLabel     = "World / Solar Light";
-        SunEntry->Subtitle          = "Directional · 5.40, 5.10, 4.65 W/m2 · 1.03 deg";
-        SunEntry->AuthorNotes       = "3.91 mm/tx GTX Contact-Clip + SDF Cone Penumbra directional sun.";
+        SunEntry->Subtitle          = "Solar ephemeris & direct disc";
+        SunEntry->AuthorNotes       = "3.91 mm/tx GTX Contact-Clip + SDF Cone Penumbra directional sun and physical SkyView LUT driver.";
         SunEntry->PositionX         = InOutBundle.Scene.Sun.DirectionToSun.X;
         SunEntry->PositionY         = InOutBundle.Scene.Sun.DirectionToSun.Y;
         SunEntry->PositionZ         = InOutBundle.Scene.Sun.DirectionToSun.Z;
-        SunEntry->VisibilityEnabled = true;
+        SunEntry->VisibilityEnabled = InOutBundle.Scene.Atmosphere.Solar.SolarEnabled;
         SunEntry->CastShadows       = true;
+    }
+
+    InOutBundle.MoonBodyToken = TargetOutliner.ConstructFromTemplate(LightTemplateOrd, InOutBundle.WorldFolderToken);
+    if (OutlinerRecordEntry* MoonEntry = TargetOutliner.AccessEntry(InOutBundle.MoonBodyToken))
+    {
+        MoonEntry->Category          = ConstructSlotCategory::LayerGroup;
+        MoonEntry->Title             = "Moon";
+        MoonEntry->CategoryLabel     = "World / Lunar Disc";
+        MoonEntry->Subtitle          = "Luna · Slot 0 · 29.53 d phase";
+        MoonEntry->AuthorNotes       = "Multi-slot lunar disc (6 presets: Luna, Ember, Glacier, Sulfur, Shroud, Shard).";
+        MoonEntry->VisibilityEnabled = InOutBundle.Scene.Atmosphere.Moons[0].Visible;
+        MoonEntry->CastShadows       = false;
+    }
+
+    InOutBundle.StarfieldToken = TargetOutliner.ConstructFromTemplate(LightTemplateOrd, InOutBundle.WorldFolderToken);
+    if (OutlinerRecordEntry* StarsEntry = TargetOutliner.AccessEntry(InOutBundle.StarfieldToken))
+    {
+        StarsEntry->Category          = ConstructSlotCategory::LayerGroup;
+        StarsEntry->Title             = "Stars";
+        StarsEntry->CategoryLabel     = "World / Starfield";
+        StarsEntry->Subtitle          = "Limiting 5.5 mag · scintillation";
+        StarsEntry->AuthorNotes       = "Deterministic nocturnal starfield modulated by limiting magnitude and atmospheric scintillation.";
+        StarsEntry->VisibilityEnabled = InOutBundle.Scene.Atmosphere.Stars.StarfieldEnabled;
+        StarsEntry->CastShadows       = false;
+    }
+
+    InOutBundle.VolumetricCloudsToken = TargetOutliner.ConstructFromTemplate(LightTemplateOrd, InOutBundle.WorldFolderToken);
+    if (OutlinerRecordEntry* CloudsEntry = TargetOutliner.AccessEntry(InOutBundle.VolumetricCloudsToken))
+    {
+        CloudsEntry->Category          = ConstructSlotCategory::LayerGroup;
+        CloudsEntry->Title             = "Volumetric Clouds";
+        CloudsEntry->CategoryLabel     = "World / Volumetric Clouds";
+        CloudsEntry->Subtitle          = "Cumulus · 34% cover · 1.40 km floor";
+        CloudsEntry->AuthorNotes       = "Raymarched 3D FBM cloud deck with dual-lobe Henyey-Greenstein and Beer-Powder self-shadowing.";
+        CloudsEntry->VisibilityEnabled = InOutBundle.Scene.Atmosphere.Clouds.CloudsEnabled;
+        CloudsEntry->CastShadows       = InOutBundle.Scene.Atmosphere.Clouds.CloudShadow.ShadowEnabled;
+    }
+
+    InOutBundle.LocalCloudToken = TargetOutliner.ConstructFromTemplate(LightTemplateOrd, InOutBundle.WorldFolderToken);
+    if (OutlinerRecordEntry* LocalEntry = TargetOutliner.AccessEntry(InOutBundle.LocalCloudToken))
+    {
+        LocalEntry->Category          = ConstructSlotCategory::LayerGroup;
+        LocalEntry->Title             = "Local Cloud";
+        LocalEntry->CategoryLabel     = "World / Local Cloud Volume";
+        LocalEntry->Subtitle          = "Bounded 3D cloud box · 200x200x100 m";
+        LocalEntry->AuthorNotes       = "Spatially bounded 3D FBM cloud box in world meters.";
+        LocalEntry->VisibilityEnabled = InOutBundle.Scene.Atmosphere.LocalCloud.LocalEnabled;
+        LocalEntry->CastShadows       = false;
     }
 
     InOutBundle.LightingFolderToken = TargetOutliner.ConstructFolder("Lighting");
@@ -1185,6 +1233,11 @@ bool SynchronizeShowcaseGalleryFromOutliner(
             InOutBundle.Scene.Sun.SolarIrradiance = TargetIrr;
             Changed                               = true;
         }
+        if (InOutBundle.Scene.Atmosphere.Solar.SolarEnabled != SunVisible)
+        {
+            InOutBundle.Scene.Atmosphere.Solar.SolarEnabled = SunVisible;
+            Changed                                         = true;
+        }
         const Mathematics::Axis3D NextDir = Mathematics::NormalizeAxis(
             { SunEntry->PositionX, SunEntry->PositionY, SunEntry->PositionZ },
             { 0.42f, -0.55f, 0.72f });
@@ -1194,6 +1247,48 @@ bool SynchronizeShowcaseGalleryFromOutliner(
         {
             InOutBundle.Scene.Sun.DirectionToSun = NextDir;
             Changed                              = true;
+        }
+    }
+
+    if (SourceOutliner.FindEntry(InOutBundle.MoonBodyToken) != nullptr)
+    {
+        const bool MoonVis = SourceOutliner.QueryEffectiveVisibility(InOutBundle.MoonBodyToken);
+        if (InOutBundle.Scene.Atmosphere.Moons[0].Visible != MoonVis)
+        {
+            InOutBundle.Scene.Atmosphere.Moons[0].Visible = MoonVis;
+            Changed                                       = true;
+        }
+    }
+
+    if (SourceOutliner.FindEntry(InOutBundle.StarfieldToken) != nullptr)
+    {
+        const bool StarsVis = SourceOutliner.QueryEffectiveVisibility(InOutBundle.StarfieldToken);
+        if (InOutBundle.Scene.Atmosphere.Stars.StarfieldEnabled != StarsVis)
+        {
+            InOutBundle.Scene.Atmosphere.Stars.StarfieldEnabled = StarsVis;
+            Changed                                             = true;
+        }
+    }
+
+    if (const OutlinerRecordEntry* CloudsEntry = SourceOutliner.FindEntry(InOutBundle.VolumetricCloudsToken))
+    {
+        const bool CloudsVis = SourceOutliner.QueryEffectiveVisibility(InOutBundle.VolumetricCloudsToken);
+        if (InOutBundle.Scene.Atmosphere.Clouds.CloudsEnabled != CloudsVis ||
+            InOutBundle.Scene.Atmosphere.Clouds.CloudShadow.ShadowEnabled != CloudsEntry->CastShadows)
+        {
+            InOutBundle.Scene.Atmosphere.Clouds.CloudsEnabled             = CloudsVis;
+            InOutBundle.Scene.Atmosphere.Clouds.CloudShadow.ShadowEnabled = CloudsEntry->CastShadows;
+            Changed                                                       = true;
+        }
+    }
+
+    if (SourceOutliner.FindEntry(InOutBundle.LocalCloudToken) != nullptr)
+    {
+        const bool LocalVis = SourceOutliner.QueryEffectiveVisibility(InOutBundle.LocalCloudToken);
+        if (InOutBundle.Scene.Atmosphere.LocalCloud.LocalEnabled != LocalVis)
+        {
+            InOutBundle.Scene.Atmosphere.LocalCloud.LocalEnabled = LocalVis;
+            Changed                                              = true;
         }
     }
 
@@ -1255,6 +1350,10 @@ bool SynchronizeShowcaseGallerySceneLive(
             Entry.Category == ConstructSlotCategory::ForceField ||
             Entry.Token == InOutBundle.EditorCameraToken ||
             Entry.Token == InOutBundle.SunEmitterToken ||
+            Entry.Token == InOutBundle.MoonBodyToken ||
+            Entry.Token == InOutBundle.StarfieldToken ||
+            Entry.Token == InOutBundle.VolumetricCloudsToken ||
+            Entry.Token == InOutBundle.LocalCloudToken ||
             Entry.Token == InOutBundle.CeilingSoftboxToken)
         {
             continue;

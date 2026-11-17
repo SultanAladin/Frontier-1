@@ -17,6 +17,10 @@
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/Editor/Explorer/ContentBrowser.h"
+#include "Engine/Editor/Inspectors/CloudsInspectorView.h"
+#include "Engine/Editor/Inspectors/MoonInspectorView.h"
+#include "Engine/Editor/Inspectors/StarsInspectorView.h"
+#include "Engine/Editor/Inspectors/SunInspectorView.h"
 #include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/Editor/Workspaces/Simulation/ForceInspectorView.h"
 #include "Engine/Editor/Workspaces/Simulation/ForcePresetBrowserPanel.h"
@@ -171,6 +175,17 @@ private:
     uint32_t                                                         LastReflectionSource = UINT32_MAX;
     bool                                                             LastGiEnabled        = true;
     bool                                                             LastReflectionsEnabled = true;
+    bool                                                             LastAtmosphereSky      = true;
+    bool                                                             LastCloudsEnabled      = true;
+    bool                                                             LastCelestialsEnabled  = true;
+    float                                                            LastSolarTimeHours     = 10.5f;
+    float                                                            LastCloudFraction      = 0.34f;
+    bool                                                             AtmosphereInspectorDirty = false;
+    uint32_t                                                         ActiveMoonSlot         = 0u;
+    Editor::Inspectors::SunInspectorView                             SunInspector           {};
+    Editor::Inspectors::MoonInspectorView                            MoonInspector          {};
+    Editor::Inspectors::StarsInspectorView                           StarsInspector         {};
+    Editor::Inspectors::CloudsInspectorView                          CloudsInspector        {};
     uint32_t                                                         PathTraceAccumIndex  = 0u;
     Mathematics::Axis3D                                              LastPtCameraOrigin   {};
     Mathematics::Axis3D                                              LastPtCameraTarget   {};

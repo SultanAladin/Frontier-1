@@ -282,6 +282,9 @@ function(frontier_compile_slang_shader SLANG_FILE ENTRY_NAME SHADER_UNIT OUT_SPV
         DEPENDS
             "${FRONTIER_SHADER_SRC_DIR}/${SLANG_FILE}"
             "${FRONTIER_SHADER_SRC_DIR}/MatCapEvaluation.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Atmosphere/SkyViewTransmittanceCompute.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Atmosphere/VolumetricCloudCompute.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Atmosphere/CelestialDiscStarCompute.slang"
         COMMENT "[Slang] Compiling ${SLANG_FILE} (${SHADER_UNIT}) -> ${OUT_SPV_NAME}"
         VERBATIM
     )
@@ -314,6 +317,7 @@ function(frontier_compile_modular_slang_shader DOMAIN_REL_PATH ENTRY_NAME SHADER
         "${FRONTIER_MODULAR_SHADER_DIR}/Visibility/*.slang"
         "${FRONTIER_MODULAR_SHADER_DIR}/DirectLighting/*.slang"
         "${FRONTIER_MODULAR_SHADER_DIR}/GlobalIllumination/*.slang"
+        "${FRONTIER_MODULAR_SHADER_DIR}/Atmosphere/*.slang"
         "${FRONTIER_MODULAR_SHADER_DIR}/Colour/*.slang"
         "${FRONTIER_MODULAR_SHADER_DIR}/Compute/*.slang"
         "${FRONTIER_MODULAR_SHADER_DIR}/Particles/*.slang"
@@ -326,6 +330,7 @@ function(frontier_compile_modular_slang_shader DOMAIN_REL_PATH ENTRY_NAME SHADER
             -I "${FRONTIER_MODULAR_SHADER_DIR}/Visibility"
             -I "${FRONTIER_MODULAR_SHADER_DIR}/DirectLighting"
             -I "${FRONTIER_MODULAR_SHADER_DIR}/GlobalIllumination"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/Atmosphere"
             -I "${FRONTIER_MODULAR_SHADER_DIR}/Colour"
             -I "${FRONTIER_MODULAR_SHADER_DIR}/Compute"
             -I "${FRONTIER_MODULAR_SHADER_DIR}/Particles"
@@ -387,6 +392,9 @@ frontier_compile_modular_slang_shader(DirectLighting/PlaneAwareShadowFilter.slan
 frontier_compile_modular_slang_shader(GlobalIllumination/OctahedralIrradianceLattice.slang       IrradianceLatticeComputeEntry   compute  OctahedralIrradianceLattice.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/SignedDistanceConeIllumination.slang    SdfConeGiComputeEntry           compute  SignedDistanceConeIllumination.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/SpecularGlassRaytrace.slang          SpecularRaytraceComputeEntry    compute  SpecularGlassRaytrace.comp.spv)
+frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              ComputeEntry                    compute  SkyViewTransmittanceCompute.comp.spv)
+frontier_compile_modular_slang_shader(Atmosphere/VolumetricCloudCompute.slang                   ComputeEntry                    compute  VolumetricCloudCompute.comp.spv)
+frontier_compile_modular_slang_shader(Atmosphere/CelestialDiscStarCompute.slang                 ComputeEntry                    compute  CelestialDiscStarCompute.comp.spv)
 
 function(frontier_compile_slang_shader_unit SLANG_REL_PATH ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
     set(IN_SLANG "${CMAKE_SOURCE_DIR}/${SLANG_REL_PATH}")
@@ -567,6 +575,10 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.cpp
+    Engine/GeometricRaster/Atmosphere/CelestialEphemerisSolver.cpp
+    Engine/GeometricRaster/Atmosphere/AtmosphericSkySequence.cpp
+    Engine/GeometricRaster/Atmosphere/LunarStarfieldSequence.cpp
+    Engine/GeometricRaster/Atmosphere/VolumetricCloudSequence.cpp
     Engine/Components/Camera/CameraComponent.cpp
     Engine/Components/Camera/VisualEffects/CameraOpticsEncoder.cpp
     Engine/GeometrySpace/Network/PolygonNetwork.cpp
@@ -730,6 +742,10 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
     list(APPEND FRONTIER_ENGINE_SOURCES
         Engine/Editor/Explorer/ContentBrowser.cpp
         Engine/Editor/Explorer/ProjectBrowser.cpp
+        Engine/Editor/Inspectors/SunInspectorView.cpp
+        Engine/Editor/Inspectors/MoonInspectorView.cpp
+        Engine/Editor/Inspectors/StarsInspectorView.cpp
+        Engine/Editor/Inspectors/CloudsInspectorView.cpp
         Engine/Editor/Workspaces/Simulation/ForcePresetBrowserPanel.cpp
         Engine/Editor/Workspaces/Simulation/ForceInspectorView.cpp
         Engine/GeometricRaster/Simulation/VectorFieldOverlaySequence.cpp
@@ -926,6 +942,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(VisibilityRasterValidation     Exhibits/VisibilityRasterValidation.cpp)
     frontier_register_exhibit(SolarShadowValidation          Exhibits/SolarShadowValidation.cpp)
     frontier_register_exhibit(TieredWorldRenderValidation    Exhibits/TieredWorldRenderValidation.cpp)
+    frontier_register_exhibit(CelestialCloudsValidation      Exhibits/CelestialCloudsValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(DrawerGestureWorldValidation   Exhibits/DrawerGestureWorldValidation.cpp)
     endif()
