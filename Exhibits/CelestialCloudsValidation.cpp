@@ -350,7 +350,12 @@ int main()
     VulkanInterchange VulkanDevice {};
     const bool VulkanOk = VulkanDevice.InitializeInterchange(RepoRoot);
     VulkanWorldRenderSequence GpuRenderer {};
-    const bool GpuOk = VulkanOk && GpuRenderer.InitializeSequence(VulkanDevice, RepoRoot / "Build/CompiledShaders");
+#ifdef FRONTIER_COMPILED_SHADER_DIR
+    const std::filesystem::path ShaderDir = std::filesystem::path(FRONTIER_COMPILED_SHADER_DIR);
+#else
+    const std::filesystem::path ShaderDir = RepoRoot / "Build/CompiledShaders";
+#endif
+    const bool GpuOk = VulkanOk && GpuRenderer.InitializeSequence(VulkanDevice, ShaderDir);
     Score.Verify(GpuOk, "VulkanWorldRenderSequence initialized with SkyViewTransmittanceCompute + WorldViewportRadiometricCompute");
 
     OutdoorGeometryAsset FloorBox {}, PedestalBox {}, GoldSphere {}, GlassSphere {};

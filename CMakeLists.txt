@@ -623,6 +623,104 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometrySpace/Fracture/FastRuntimeFracture.cpp
     Engine/GeometrySpace/Fracture/EngineeringBakedFracture.cpp
     Engine/GeometrySpace/Fracture/ConvexPartitioning.cpp
+    Engine/GeometrySpace/Parametric/ParametricPolygonBridge.cpp
+    Engine/GeometrySpace/Parametric/Assembly/AssemblyAnalysis.cpp
+    Engine/GeometrySpace/Parametric/Assembly/JointSolver.cpp
+    Engine/GeometrySpace/Parametric/Audit/EnclosedVolume.cpp
+    Engine/GeometrySpace/Parametric/Audit/IntersectionAudit.cpp
+    Engine/GeometrySpace/Parametric/Audit/ModelAudit.cpp
+    Engine/GeometrySpace/Parametric/Audit/TessellationAudit.cpp
+    Engine/GeometrySpace/Parametric/Blend/BlendCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Blend/EdgeBlend.cpp
+    Engine/GeometrySpace/Parametric/Blend/FairPatch.cpp
+    Engine/GeometrySpace/Parametric/Blend/RollingBallGeometry.cpp
+    Engine/GeometrySpace/Parametric/Boolean/BooleanCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Boolean/GeneralFuse.cpp
+    Engine/GeometrySpace/Parametric/Construction/BodyAssembly.cpp
+    Engine/GeometrySpace/Parametric/Construction/BodyModifiers.cpp
+    Engine/GeometrySpace/Parametric/Construction/BodyTransform.cpp
+    Engine/GeometrySpace/Parametric/Construction/PrimitiveConstruction.cpp
+    Engine/GeometrySpace/Parametric/Containment/FaceDomain.cpp
+    Engine/GeometrySpace/Parametric/Containment/WindingNumber.cpp
+    Engine/GeometrySpace/Parametric/Diagnostics/OperationTrace.cpp
+    Engine/GeometrySpace/Parametric/Drawing/DrawingExport.cpp
+    Engine/GeometrySpace/Parametric/Drawing/DrawingProjection.cpp
+    Engine/GeometrySpace/Parametric/Drawing/DrawingSheet.cpp
+    Engine/GeometrySpace/Parametric/Exchange/StepExchange.cpp
+    Engine/GeometrySpace/Parametric/Exchange/StepReading.cpp
+    Engine/GeometrySpace/Parametric/Exchange/StlExchange.cpp
+    Engine/GeometrySpace/Parametric/Feature/BodyCut.cpp
+    Engine/GeometrySpace/Parametric/Feature/FeatureCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Feature/FeatureTree.cpp
+    Engine/GeometrySpace/Parametric/Feature/PathSweep.cpp
+    Engine/GeometrySpace/Parametric/Feature/ProfileSweep.cpp
+    Engine/GeometrySpace/Parametric/Feature/ReplayDigest.cpp
+    Engine/GeometrySpace/Parametric/Feature/TopologicalNaming.cpp
+    Engine/GeometrySpace/Parametric/Geometry/CurveGeometry.cpp
+    Engine/GeometrySpace/Parametric/Geometry/NurbsCarrier.cpp
+    Engine/GeometrySpace/Parametric/Geometry/ParallelCarrier.cpp
+    Engine/GeometrySpace/Parametric/Geometry/ProjectedCurve.cpp
+    Engine/GeometrySpace/Parametric/Geometry/RollingBallCarrier.cpp
+    Engine/GeometrySpace/Parametric/Geometry/SurfaceGeometry.cpp
+    Engine/GeometrySpace/Parametric/Inspection/BlendEncoding.cpp
+    Engine/GeometrySpace/Parametric/Inspection/BooleanEncoding.cpp
+    Engine/GeometrySpace/Parametric/Inspection/FaceOperationEncoding.cpp
+    Engine/GeometrySpace/Parametric/Inspection/FeatureEncoding.cpp
+    Engine/GeometrySpace/Parametric/Inspection/InspectionEncoding.cpp
+    Engine/GeometrySpace/Parametric/Inspection/IntersectionCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Inspection/IntersectionEncoding.cpp
+    Engine/GeometrySpace/Parametric/Inspection/SpecimenCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Inspection/TessellationEncoding.cpp
+    Engine/GeometrySpace/Parametric/Intersection/BernsteinPolynomial.cpp
+    Engine/GeometrySpace/Parametric/Intersection/CurveSurfaceIntersection.cpp
+    Engine/GeometrySpace/Parametric/Intersection/ImplicitSurface.cpp
+    Engine/GeometrySpace/Parametric/Intersection/IntersectionCurve.cpp
+    Engine/GeometrySpace/Parametric/Intersection/IsoParameterCurve.cpp
+    Engine/GeometrySpace/Parametric/Intersection/SurfaceIntersection.cpp
+    Engine/GeometrySpace/Parametric/Local/FaceChange.cpp
+    Engine/GeometrySpace/Parametric/Local/FaceOperationCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Local/FaceOperations.cpp
+    Engine/GeometrySpace/Parametric/Local/RedundantTopology.cpp
+    Engine/GeometrySpace/Parametric/Local/TopologyRebuild.cpp
+    Engine/GeometrySpace/Parametric/Measurement/MassProperties.cpp
+    Engine/GeometrySpace/Parametric/Measurement/MinimumDistance.cpp
+    Engine/GeometrySpace/Parametric/Measurement/PlaneSection.cpp
+    Engine/GeometrySpace/Parametric/Precision/ExactPredicates.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchConstraining.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchCorner.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchEditing.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchFlow.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchProfile.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchRegion.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchSection.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchSolver.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchSpline.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchTrim.cpp
+    Engine/GeometrySpace/Parametric/Surfacing/CarrierApproximation.cpp
+    Engine/GeometrySpace/Parametric/Surfacing/CurveFitting.cpp
+    Engine/GeometrySpace/Parametric/Surfacing/CurveNetwork.cpp
+    Engine/GeometrySpace/Parametric/Surfacing/LinearSystem.cpp
+    Engine/GeometrySpace/Parametric/Surfacing/PanelAssembly.cpp
+    Engine/GeometrySpace/Parametric/Surfacing/SectionLoft.cpp
+    Engine/GeometrySpace/Parametric/Surfacing/SurfaceAlgebra.cpp
+    Engine/GeometrySpace/Parametric/Surfacing/SurfaceDistanceCurve.cpp
+    Engine/GeometrySpace/Parametric/Tessellation/BodyTessellation.cpp
+    Engine/GeometrySpace/Parametric/Tessellation/ChartTriangulation.cpp
+    Engine/GeometrySpace/Parametric/Topology/EulerEdits.cpp
+    Engine/GeometrySpace/Parametric/Topology/ModelPartition.cpp
+    Engine/Workspaces/ParametricSketcher/Viewport/SketcherOrbitCamera.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherCurveImport.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherDocument.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherDocumentCodec.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherDrawingSheet.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherExchange.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherImagePlane.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherKnife.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherMatcap.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherMeasurement.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherScene.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherSpecimen.cpp
     Engine/SpatialAcceleration/ClusterPyramid.cpp
     Engine/SpatialAcceleration/WideBoundingTree.cpp
     Engine/DistanceFieldSpace/SignedDistanceVolume.cpp
@@ -1003,6 +1101,8 @@ if(BUILD_TESTING)
     frontier_register_exhibit(BakingGPUValidation               Exhibits/BakingGPUValidation.cpp)
     frontier_register_exhibit(WindCloudsFogValidation           Exhibits/WindCloudsFogValidation.cpp)
     frontier_register_exhibit(FluidSimulationValidation         Exhibits/FluidSimulationValidation.cpp)
+    frontier_register_exhibit(SketcherKernelValidation          Exhibits/ParametricSketcher/SketcherKernelValidation.cpp)
+    frontier_register_exhibit(SketcherDocumentValidation        Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(FluidWorkspaceUIValidation        Exhibits/FluidWorkspaceUIValidation.cpp)
         frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)
