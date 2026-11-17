@@ -219,6 +219,14 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/Fracture/FractureViewportHost.cpp
     Engine/Workspaces/Fracture/FractureInspectorPanel.cpp
     Engine/Workspaces/Fracture/FractureWorkspaceHost.cpp
+    Engine/Workspaces/Fluid/FluidWorkspaceSession.cpp
+    Engine/Workspaces/Fluid/FluidOutlinerPanel.cpp
+    Engine/Workspaces/Fluid/FluidViewportHost.cpp
+    Engine/Workspaces/Fluid/FluidInspectorPanel.cpp
+    Engine/Workspaces/Fluid/FluidPresetBrowser.cpp
+    Engine/Workspaces/Fluid/FluidAtlasMinimap.cpp
+    Engine/Workspaces/Fluid/FluidFlipbookExporter.cpp
+    Engine/Workspaces/Fluid/FluidWorkspaceHost.cpp
     Engine/Workspaces/Texturing/PatternStampLayerStackPane.cpp
     Engine/Workspaces/Texturing/PatternStampToolHeaderPane.cpp
     Engine/Workspaces/Texturing/PatternStampInspectorPane.cpp
@@ -286,6 +294,8 @@ function(frontier_compile_slang_shader SLANG_FILE ENTRY_NAME SHADER_UNIT OUT_SPV
             "${CMAKE_SOURCE_DIR}/Engine/Shaders/Atmosphere/VolumetricCloudCompute.slang"
             "${CMAKE_SOURCE_DIR}/Engine/Shaders/Atmosphere/CelestialDiscStarCompute.slang"
             "${CMAKE_SOURCE_DIR}/Engine/Shaders/Atmosphere/LensFlareCompute.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Fluid/FluidSolverLayouts.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Fluid/FluidVolumetricRaymarch.slang"
         COMMENT "[Slang] Compiling ${SLANG_FILE} (${SHADER_UNIT}) -> ${OUT_SPV_NAME}"
         VERBATIM
     )
@@ -322,6 +332,7 @@ function(frontier_compile_modular_slang_shader DOMAIN_REL_PATH ENTRY_NAME SHADER
         "${FRONTIER_MODULAR_SHADER_DIR}/Colour/*.slang"
         "${FRONTIER_MODULAR_SHADER_DIR}/Compute/*.slang"
         "${FRONTIER_MODULAR_SHADER_DIR}/Particles/*.slang"
+        "${FRONTIER_MODULAR_SHADER_DIR}/Fluid/*.slang"
     )
     add_custom_command(
         OUTPUT "${OUT_SPV}"
@@ -335,6 +346,7 @@ function(frontier_compile_modular_slang_shader DOMAIN_REL_PATH ENTRY_NAME SHADER
             -I "${FRONTIER_MODULAR_SHADER_DIR}/Colour"
             -I "${FRONTIER_MODULAR_SHADER_DIR}/Compute"
             -I "${FRONTIER_MODULAR_SHADER_DIR}/Particles"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/Fluid"
             -I "${FRONTIER_MODULAR_SHADER_DIR}"
             -target spirv
             -profile spirv_1_3+spvGroupNonUniformArithmetic+spvInt64Atomics
@@ -399,6 +411,14 @@ frontier_compile_modular_slang_shader(Atmosphere/VolumetricFogCompute.slang     
 frontier_compile_modular_slang_shader(Atmosphere/CelestialDiscStarCompute.slang                 ComputeEntry                    compute  CelestialDiscStarCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/LensFlareBakeCompute.slang                     ComputeEntry                    compute  LensFlareBakeCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/LensFlareCompute.slang                         ComputeEntry                    compute  LensFlareCompute.comp.spv)
+frontier_compile_modular_slang_shader(Fluid/FluidSplatObstacle.slang                            FluidSplatObstacleEntry         compute  FluidSplatObstacle.comp.spv)
+frontier_compile_modular_slang_shader(Fluid/FluidAdvectMacCormack.slang                         FluidAdvectMacCormackEntry      compute  FluidAdvectMacCormack.comp.spv)
+frontier_compile_modular_slang_shader(Fluid/FluidVorticityCombustion.slang                      FluidCurlComputeEntry           compute  FluidCurlCompute.comp.spv)
+frontier_compile_modular_slang_shader(Fluid/FluidVorticityCombustion.slang                      FluidVorticityForcesEntry       compute  FluidVorticityForces.comp.spv)
+frontier_compile_modular_slang_shader(Fluid/FluidDivergencePressure.slang                       FluidDivergenceEntry            compute  FluidDivergence.comp.spv)
+frontier_compile_modular_slang_shader(Fluid/FluidDivergencePressure.slang                       FluidJacobiPressureEntry        compute  FluidJacobiPressure.comp.spv)
+frontier_compile_modular_slang_shader(Fluid/FluidDivergencePressure.slang                       FluidGradientSubtractEntry      compute  FluidGradientSubtract.comp.spv)
+frontier_compile_modular_slang_shader(Fluid/FluidLightReduction.slang                           FluidLightReductionEntry        compute  FluidLightReduction.comp.spv)
 
 function(frontier_compile_slang_shader_unit SLANG_REL_PATH ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
     set(IN_SLANG "${CMAKE_SOURCE_DIR}/${SLANG_REL_PATH}")
@@ -694,6 +714,15 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/SimulationSpace/ForceFields/FieldFormulaCompiler.cpp
     Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.cpp
     Engine/SimulationSpace/ForceFields/FieldLatticeCascade.cpp
+    Engine/SimulationSpace/FluidSpace/FluidPresets.cpp
+    Engine/SimulationSpace/FluidSpace/FluidCodec.cpp
+    Engine/SimulationSpace/FluidSpace/FluidGridBuffers.cpp
+    Engine/SimulationSpace/FluidSpace/FluidWorldGridManager.cpp
+    Engine/SimulationSpace/FluidSpace/FluidObstacleVoxelizer.cpp
+    Engine/SimulationSpace/FluidSpace/FluidForceCoupler.cpp
+    Engine/SimulationSpace/FluidSpace/FluidParticleCoupler.cpp
+    Engine/SimulationSpace/FluidSpace/FluidGiLightExtractor.cpp
+    Engine/SimulationSpace/FluidSpace/FluidSimulationSequence.cpp
     Engine/SimulationSpace/PhysicsSpace/RigidBodyDynamics.cpp
     Engine/SimulationSpace/PhysicsSpace/BroadphaseSolver.cpp
     Engine/SimulationSpace/PhysicsSpace/CollisionDetection.cpp
@@ -972,6 +1001,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(VectorGraphicsGPUValidation       Exhibits/VectorGraphicsGPUValidation.cpp)
     frontier_register_exhibit(BakingGPUValidation               Exhibits/BakingGPUValidation.cpp)
     frontier_register_exhibit(WindCloudsFogValidation           Exhibits/WindCloudsFogValidation.cpp)
+    frontier_register_exhibit(FluidSimulationValidation         Exhibits/FluidSimulationValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)
     endif()

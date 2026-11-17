@@ -16,6 +16,7 @@
 #include "Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.h"
 #include "Engine/MaterialSpace/CompactMaterialRegister.h"
 #include "Engine/MaterialSpace/MaterialSurfaceLayer/BounceLayerSummary.h"
+#include "Engine/SimulationSpace/FluidSpace/FluidSimulationSequence.h"
 #include "Engine/SpatialAcceleration/ClusterPyramid.h"
 #include "Engine/SpatialAcceleration/WideBoundingTree.h"
 
@@ -70,9 +71,10 @@ struct WorldSceneSpecification
     DistanceFieldSpace::SignedDistanceVolume     SceneSdf         {};
     SolarDirectionalEmitter                      Sun              {};
     std::vector<PolygonalAreaQuadLight>          AreaLights       {};
-    IrradianceLatticeConfiguration               LatticeConfig    {};
-    Mathematics::LinearRGB                       SkyRadiance      { 0.15f, 0.21f, 0.32f };
-    WorldAtmosphereConfiguration                 Atmosphere       {};
+    IrradianceLatticeConfiguration                               LatticeConfig    {};
+    Mathematics::LinearRGB                                       SkyRadiance      { 0.15f, 0.21f, 0.32f };
+    WorldAtmosphereConfiguration                                 Atmosphere       {};
+    const SimulationSpace::FluidSpace::FluidSimulationSequence*  OptionalFluid    = nullptr;
 };
 
 struct WorldRenderFrameResult

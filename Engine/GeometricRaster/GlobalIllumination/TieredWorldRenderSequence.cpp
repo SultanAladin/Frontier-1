@@ -454,6 +454,55 @@ void ApplyDiffuseGiBilateralFilter(
     };
 }
 
+Mathematics::LinearRGB EvaluateFluidEmissiveOnSurface(
+    const WorldSceneSpecification&        Scene,
+    const Mathematics::Axis3D&            HitPos,
+    const Mathematics::Axis3D&            Normal,
+    const Mathematics::Axis3D&            ViewDir,
+    uint16_t                              MaterialSlot,
+    const MaterialSpace::SurfaceMaterial& Mat) noexcept
+{
+    Mathematics::LinearRGB Sum {};
+    if (Scene.OptionalFluid == nullptr) return Sum;
+    const auto& Lights = Scene.OptionalFluid->InspectEmissiveLights();
+    if (Lights.empty()) return Sum;
+
+    const uint32_t Lobes = Scene.MaterialRegister.InspectCompactEntry(MaterialSlot).ActiveLobeMask;
+    const auto WorldToLocal = [&](const Mathematics::Axis3D& W) noexcept -> Mathematics::Axis3D
+    {
+        Mathematics::Axis3D T {}, B {};
+        if (std::abs(Normal.Z) < 0.999f)
+        {
+            T = Mathematics::NormalizeAxis(Mathematics::EvaluateCross({ 0.0f, 0.0f, 1.0f }, Normal));
+        }
+        else
+        {
+            T = { 1.0f, 0.0f, 0.0f };
+        }
+        B = Mathematics::EvaluateCross(Normal, T);
+        return { Mathematics::EvaluateDot(W, T), Mathematics::EvaluateDot(W, B), Mathematics::EvaluateDot(W, Normal) };
+    };
+    const auto LocalWo = WorldToLocal(ViewDir);
+
+    for (const auto& L : Lights)
+    {
+        const Mathematics::Axis3D ToL = L.WorldPosition - HitPos;
+        const float Dist2 = std::max(0.08f, Mathematics::EvaluateDot(ToL, ToL) + L.RadiusMeters * L.RadiusMeters * 0.35f);
+        const float Dist  = std::sqrt(Dist2);
+        const Mathematics::Axis3D Wi = ToL * (1.0f / Dist);
+        const float NdotL = Mathematics::EvaluateDot(Normal, Wi);
+        if (NdotL <= 1.0e-4f) continue;
+
+        const auto LocalWi = WorldToLocal(Wi);
+        const auto Bsdf = MaterialSpace::Scattering::EvaluateOpenPbrLocalBsdf(Mat, Lobes, LocalWo, LocalWi);
+        const float Atten = NdotL / (4.0f * Constants::PiFloat * Dist2);
+        Sum.R += Bsdf.R * L.ColorIrradiance.R * Atten;
+        Sum.G += Bsdf.G * L.ColorIrradiance.G * Atten;
+        Sum.B += Bsdf.B * L.ColorIrradiance.B * Atten;
+    }
+    return Sum;
+}
+
 void ApplyATrousWaveletDenoiser(
     uint32_t                                       WidthPx,
     uint32_t                                       HeightPx,
@@ -862,6 +911,33 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
             {
                 const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
+                const auto& Hit = PrimarySamples[Off];
+                if (Config.DebugChannel == 0u && PreparedScene.OptionalFluid != nullptr)
+                {
+                    if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                    {
+                        const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+                        const auto ViewDir = Mathematics::NormalizeAxis(CurBasis.CameraOrigin - Hit.WorldPosition);
+                        Result.CompositeLinearHdr[Off] = Result.CompositeLinearHdr[Off] +
+                            EvaluateFluidEmissiveOnSurface(PreparedScene, Hit.WorldPosition, Hit.TangentFrame.NormalZ, ViewDir, Hit.MaterialSlot, Mat);
+                    }
+                    const float NdcX = ((static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx)) * 2.0f - 1.0f;
+                    const float NdcY = 1.0f - ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx)) * 2.0f;
+                    const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
+                        CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
+                    const float HitDist = Hit.ValidHit ? Mathematics::EvaluateLength(Hit.WorldPosition - CurBasis.CameraOrigin) : 3500.0f;
+                    const auto SkyForVol = PreparedScene.Atmosphere.Medium.AtmosphereEnabled
+                        ? SkySequence.SampleSkyViewDirection(RayDir)
+                        : PreparedScene.SkyRadiance;
+                    const auto FluidRes = PreparedScene.OptionalFluid->EvaluateFluidSegment(
+                        CurBasis.CameraOrigin, RayDir, HitDist, PreparedScene.Sun.DirectionToSun,
+                        PreparedScene.Sun.SolarIrradiance, SkyForVol, EvaluateCloudIgn(PX, PY));
+                    Result.CompositeLinearHdr[Off] = {
+                        Result.CompositeLinearHdr[Off].R * FluidRes.Transmittance + FluidRes.RadianceHdr.R,
+                        Result.CompositeLinearHdr[Off].G * FluidRes.Transmittance + FluidRes.RadianceHdr.G,
+                        Result.CompositeLinearHdr[Off].B * FluidRes.Transmittance + FluidRes.RadianceHdr.B,
+                    };
+                }
                 if (FlareProj.EffectiveGain > 1.0e-4f && Config.DebugChannel == 0u)
                 {
                     const float FU = (static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx);
@@ -997,6 +1073,17 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                     FinalHdr = FinalHdr * CloudShadowT;
                 }
                 const auto& Mat        = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+                if (PreparedScene.OptionalFluid != nullptr && Config.DebugChannel == 0u)
+                {
+                    const float FluidShadowT = PreparedScene.OptionalFluid->EvaluateFluidShadowTransmittance(
+                        Hit.WorldPosition + Hit.TangentFrame.NormalZ * 0.015f,
+                        PreparedScene.Sun.DirectionToSun,
+                        32.0f);
+                    FinalHdr = FinalHdr * FluidShadowT;
+                    const auto ViewDir = Mathematics::NormalizeAxis(CurBasis.CameraOrigin - Hit.WorldPosition);
+                    FinalHdr = FinalHdr + EvaluateFluidEmissiveOnSurface(
+                        PreparedScene, Hit.WorldPosition, Hit.TangentFrame.NormalZ, ViewDir, Hit.MaterialSlot, Mat);
+                }
                 const float DiffAo     = Result.DirectLighting.CombinedDiffuseAo[Off];
                 const float SpecAo     = Result.DirectLighting.LagardeSpecularAo[Off];
                 const float DiffFactor = (1.0f - Mat.Specular.Metalness) *
@@ -1055,6 +1142,18 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                         FinalHdr.R * LocalCloudT + LocalCloudR.R,
                         FinalHdr.G * LocalCloudT + LocalCloudR.G,
                         FinalHdr.B * LocalCloudT + LocalCloudR.B,
+                    };
+                }
+
+                if (PreparedScene.OptionalFluid != nullptr)
+                {
+                    const auto FluidRes = PreparedScene.OptionalFluid->EvaluateFluidSegment(
+                        CurBasis.CameraOrigin, RayDir, HitDist, PreparedScene.Sun.DirectionToSun,
+                        PreparedScene.Sun.SolarIrradiance, SkyForVol, Ign);
+                    FinalHdr = {
+                        FinalHdr.R * FluidRes.Transmittance + FluidRes.RadianceHdr.R,
+                        FinalHdr.G * FluidRes.Transmittance + FluidRes.RadianceHdr.G,
+                        FinalHdr.B * FluidRes.Transmittance + FluidRes.RadianceHdr.B,
                     };
                 }
 

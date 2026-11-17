@@ -131,6 +131,30 @@ struct AtmosphericSkyUniformStd140
 
 static_assert(sizeof(AtmosphericSkyUniformStd140) == 96u, "AtmosphericSkyUniformStd140 must equal 96 bytes.");
 
+struct FluidEmissiveLightStd140
+{
+    float PositionRadius[4]  {};
+    float ColorIrradiance[4] {};
+};
+
+struct FluidRenderUniformStd140
+{
+    float                  HeroBoxMinFade[4]   {};
+    float                  HeroBoxMaxRes[4]    {};
+    float                  WorldCenterSpan[4]  {};
+    float                  SunDirRaySteps[4]   {};
+    float                  SolarIrradiance[4]  {};
+    float                  SkyRadiance[4]      {};
+    float                  ShadingCore[4]      {};
+    float                  ShadingScatter[4]   {};
+    float                  ShadingMode[4]      {};
+    float                  CrossSectionCfg[4]  {};
+    float                  ShockwaveCenter[4]  {};
+    FluidEmissiveLightStd140 EmissiveLights[8] {};
+};
+
+static_assert(sizeof(FluidRenderUniformStd140) == 432u, "FluidRenderUniformStd140 must equal 432 bytes.");
+
 struct WorldViewportUniformBlockStd140
 {
     float                       CameraOriginTanX[4]         {};
@@ -157,9 +181,10 @@ struct WorldViewportUniformBlockStd140
     VolumetricFogUniformStd140   FogParams                  {};
     CelestialFieldUniformStd140  CelestialParams            {};
     LensFlareUniformStd140       LensFlareParams            {};
+    FluidRenderUniformStd140     FluidParams                {};
 };
 
-static_assert(sizeof(WorldViewportUniformBlockStd140) == 2608u, "WorldViewportUniformBlockStd140 must equal 2608 bytes.");
+static_assert(sizeof(WorldViewportUniformBlockStd140) == 3040u, "WorldViewportUniformBlockStd140 must equal 3040 bytes.");
 
 struct SignedDistanceGridUniformStd140
 {
@@ -281,8 +306,10 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
-    constexpr std::array<VkDescriptorType, 14u> SlotTypes {{
+    constexpr std::array<VkDescriptorType, 16u> SlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -404,6 +431,8 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(AtmosphericSkyViewLutBuffer);
         BoundDevice->ReleaseBuffer(LunarSurfaceAtlasBuffer);
         BoundDevice->ReleaseBuffer(BakedLensFlareAtlasBuffer);
+        BoundDevice->ReleaseBuffer(FluidHeroThermoBuffer);
+        BoundDevice->ReleaseBuffer(FluidWorldThermoBuffer);
     }
     DispatchEncoder.TeardownEncoder();
     RadiometricProgramHandle    = UINT32_MAX;
@@ -1577,6 +1606,99 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
             LFU.SourceTintAspect[2]  = FlareProj.SourceTint.B;
             LFU.SourceTintAspect[3]  = static_cast<float>(WidthPx) / static_cast<float>(std::max(1u, HeightPx));
         }
+
+        // Upload Dual-Tier Fluid Volume (Hero + World Drift) + Emissive Fire Lights
+        auto& FLU = Uniforms.FluidParams;
+        if (Scene.OptionalFluid != nullptr && Config.DebugChannel == 0u)
+        {
+            const auto& Doc  = Scene.OptionalFluid->InspectDocument();
+            const auto& Hero = Scene.OptionalFluid->InspectHeroGrid();
+            const auto& Wrld = Scene.OptionalFluid->InspectWorldDriftGrid();
+            const auto& Sh   = Doc.Shading;
+            const auto& Gi   = Doc.GiCoupling;
+
+            FLU.HeroBoxMinFade[0]  = Hero.BoxMinWorld.X;
+            FLU.HeroBoxMinFade[1]  = Hero.BoxMinWorld.Y;
+            FLU.HeroBoxMinFade[2]  = Hero.BoxMinWorld.Z;
+            FLU.HeroBoxMinFade[3]  = (Hero.Resolution > 0u) ? 1.0f : 0.0f;
+            FLU.HeroBoxMaxRes[0]   = Hero.BoxMaxWorld.X;
+            FLU.HeroBoxMaxRes[1]   = Hero.BoxMaxWorld.Y;
+            FLU.HeroBoxMaxRes[2]   = Hero.BoxMaxWorld.Z;
+            FLU.HeroBoxMaxRes[3]   = static_cast<float>(Hero.Resolution);
+            FLU.WorldCenterSpan[0] = Wrld.CenterWorld.X;
+            FLU.WorldCenterSpan[1] = Wrld.CenterWorld.Y;
+            FLU.WorldCenterSpan[2] = Wrld.CenterWorld.Z;
+            FLU.WorldCenterSpan[3] = Wrld.SpanMeters;
+            FLU.SunDirRaySteps[0]  = SunDir.X;
+            FLU.SunDirRaySteps[1]  = SunDir.Y;
+            FLU.SunDirRaySteps[2]  = SunDir.Z;
+            FLU.SunDirRaySteps[3]  = static_cast<float>(Sh.RaymarchSteps);
+            FLU.SolarIrradiance[0] = Scene.Sun.SolarIrradiance.R;
+            FLU.SolarIrradiance[1] = Scene.Sun.SolarIrradiance.G;
+            FLU.SolarIrradiance[2] = Scene.Sun.SolarIrradiance.B;
+            FLU.SolarIrradiance[3] = static_cast<float>(Sh.ShadowSteps);
+            FLU.SkyRadiance[0]     = Scene.SkyRadiance.R;
+            FLU.SkyRadiance[1]     = Scene.SkyRadiance.G;
+            FLU.SkyRadiance[2]     = Scene.SkyRadiance.B;
+            FLU.SkyRadiance[3]     = Scene.OptionalFluid->QueryElapsedSeconds();
+            FLU.ShadingCore[0]     = Sh.DensityExtinction;
+            FLU.ShadingCore[1]     = Sh.SmokeAlbedo;
+            FLU.ShadingCore[2]     = Sh.FireIntensity;
+            FLU.ShadingCore[3]     = Sh.TemperatureScale;
+            FLU.ShadingScatter[0]  = Sh.AmbientIntensity;
+            FLU.ShadingScatter[1]  = Sh.PhaseAnisotropy;
+            FLU.ShadingScatter[2]  = Sh.ShadowDensity;
+            FLU.ShadingScatter[3]  = Sh.InternalScattering;
+            FLU.ShadingMode[0]     = static_cast<float>(static_cast<uint32_t>(Sh.ColorPalette));
+            FLU.ShadingMode[1]     = static_cast<float>(static_cast<uint32_t>(Sh.RenderChannel));
+            FLU.ShadingMode[2]     = (Doc.Domain.WorldGridEnabled && Wrld.Resolution > 0u) ? 1.0f : 0.0f;
+            FLU.ShadingMode[3]     = Gi.CastGiShadows ? Gi.GiShadowStrength : 0.0f;
+            FLU.CrossSectionCfg[0] = static_cast<float>(Sh.SliceAxis);
+            FLU.CrossSectionCfg[1] = Sh.SlicePosition;
+            FLU.CrossSectionCfg[2] = 0.6f;
+            FLU.CrossSectionCfg[3] = Scene.OptionalFluid->QueryShockwaveAge();
+            FLU.ShockwaveCenter[0] = Scene.OptionalFluid->QueryShockwaveCenter().X;
+            FLU.ShockwaveCenter[1] = Scene.OptionalFluid->QueryShockwaveCenter().Y;
+            FLU.ShockwaveCenter[2] = Scene.OptionalFluid->QueryShockwaveCenter().Z;
+            FLU.ShockwaveCenter[3] = static_cast<float>(Wrld.Resolution);
+
+            const auto& FLights = Scene.OptionalFluid->InspectEmissiveLights();
+            for (uint32_t FI = 0u; FI < 8u; ++FI)
+            {
+                if (FI < FLights.size())
+                {
+                    FLU.EmissiveLights[FI].PositionRadius[0]  = FLights[FI].WorldPosition.X;
+                    FLU.EmissiveLights[FI].PositionRadius[1]  = FLights[FI].WorldPosition.Y;
+                    FLU.EmissiveLights[FI].PositionRadius[2]  = FLights[FI].WorldPosition.Z;
+                    FLU.EmissiveLights[FI].PositionRadius[3]  = FLights[FI].RadiusMeters;
+                    FLU.EmissiveLights[FI].ColorIrradiance[0] = FLights[FI].ColorIrradiance.R;
+                    FLU.EmissiveLights[FI].ColorIrradiance[1] = FLights[FI].ColorIrradiance.G;
+                    FLU.EmissiveLights[FI].ColorIrradiance[2] = FLights[FI].ColorIrradiance.B;
+                    FLU.EmissiveLights[FI].ColorIrradiance[3] = 1.0f;
+                }
+            }
+
+            const auto& HeroTh = Hero.Thermo[Hero.ReadIdx()];
+            const uint64_t HeroBytes = std::max<uint64_t>(16ull, static_cast<uint64_t>(HeroTh.size() * sizeof(SimulationSpace::FluidSpace::FluidVoxelSample4)));
+            EnsureBufferCapacity(FluidHeroThermoBuffer, HeroBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            if (FluidHeroThermoBuffer.HostAddress != nullptr && !HeroTh.empty())
+            {
+                std::memcpy(FluidHeroThermoBuffer.HostAddress, HeroTh.data(), HeroTh.size() * sizeof(SimulationSpace::FluidSpace::FluidVoxelSample4));
+            }
+
+            const uint64_t WorldBytes = std::max<uint64_t>(16ull, static_cast<uint64_t>(Wrld.Thermo.size() * sizeof(SimulationSpace::FluidSpace::FluidVoxelSample4)));
+            EnsureBufferCapacity(FluidWorldThermoBuffer, WorldBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            if (FluidWorldThermoBuffer.HostAddress != nullptr && !Wrld.Thermo.empty())
+            {
+                std::memcpy(FluidWorldThermoBuffer.HostAddress, Wrld.Thermo.data(), Wrld.Thermo.size() * sizeof(SimulationSpace::FluidSpace::FluidVoxelSample4));
+            }
+        }
+        else
+        {
+            FLU.HeroBoxMinFade[3] = 0.0f;
+            EnsureBufferCapacity(FluidHeroThermoBuffer, 16ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            EnsureBufferCapacity(FluidWorldThermoBuffer, 16ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        }
     }
 
     std::memcpy(UniformBuffer.HostAddress, &Uniforms, sizeof(Uniforms));
@@ -1593,7 +1715,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
         DispatchGpuSkyViewLut(Cmd, Scene);
     }
 
-    const std::array<ComputeSlotDescriptor, 14u> Slots {{
+    const std::array<ComputeSlotDescriptor, 16u> Slots {{
         {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,              sizeof(WorldViewportUniformBlockStd140) },
         {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
         {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,       VK_WHOLE_SIZE },
@@ -1608,6 +1730,8 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
         { 11u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AtmosphericSkyViewLutBuffer.BufferHandle,VK_WHOLE_SIZE },
         { 12u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LunarSurfaceAtlasBuffer.BufferHandle,    VK_WHOLE_SIZE },
         { 13u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BakedLensFlareAtlasBuffer.BufferHandle,  VK_WHOLE_SIZE },
+        { 14u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, FluidHeroThermoBuffer.BufferHandle,      VK_WHOLE_SIZE },
+        { 15u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, FluidWorldThermoBuffer.BufferHandle,     VK_WHOLE_SIZE },
     }};
 
     const uint32_t GroupsX = (WidthPx  + 7u) / 8u;

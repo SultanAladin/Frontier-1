@@ -11,6 +11,7 @@
 #include "../Atmosphere/VolumetricFogCompute.slang"
 #include "../Atmosphere/CelestialDiscStarCompute.slang"
 #include "../Atmosphere/LensFlareCompute.slang"
+#include "../Fluid/FluidVolumetricRaymarch.slang"
 
 struct GpuAreaQuadLight
 {
@@ -52,6 +53,7 @@ struct WorldViewportUniformBlock
     VolumetricFogUniformBlock   FogParams;
     CelestialFieldUniformBlock  CelestialParams;
     LensFlareUniformBlock       LensFlareParams;
+    FluidRenderUniformBlock     FluidParams;
 };
 
 struct GpuWideTreeEntry128
@@ -98,6 +100,8 @@ struct GpuWorldMaterial64
 [[vk::binding(11, 0)]] StructuredBuffer<float4>                  AtmosphericSkyViewLut;
 [[vk::binding(12, 0)]] StructuredBuffer<uint>                    LunarSurfaceAtlasTexels;
 [[vk::binding(13, 0)]] StructuredBuffer<uint>                    BakedLensFlareAtlasTexels;
+[[vk::binding(14, 0)]] StructuredBuffer<float4>                  FluidHeroThermoTexels;
+[[vk::binding(15, 0)]] StructuredBuffer<float4>                  FluidWorldThermoTexels;
 
 static const float PiConst    = 3.14159265359;
 static const float TauConst   = 6.28318530718;
@@ -1032,7 +1036,9 @@ float3 ShadePrimarySurface(RayHitReading Hit, float3 ViewDir, uint2 PixelXY)
     // 1. Direct Solar Shadow (Shadow Lab modes — ZERO SDF shadows!) + OpenPBR Shading
     float3 DirectHdr      = float3(0.0);
     float3 SafePrimaryPos = Hit.Position + Hit.GeomNormal * 0.012 + N * 0.006;
-    float  SunVis         = EvaluateSolarShadow(Hit, SunDir, PixelXY) * EvaluateSolarCloudTransmittanceGpu(Hit.Position, SunDir);
+    float  SunVis         = EvaluateSolarShadow(Hit, SunDir, PixelXY) * EvaluateSolarCloudTransmittanceGpu(Hit.Position, SunDir)
+                          * EvaluateFluidShadowTransmittanceBufferGpu(
+                                WorldUniforms.FluidParams, FluidHeroThermoTexels, FluidWorldThermoTexels, SafePrimaryPos, SunDir, 32.0);
     if (SunVis > 0.001)
     {
         DirectHdr += EvaluateSurfaceBrdf(Mat, N, ViewDir, SunDir) * SunIrr * SunVis;
@@ -1043,6 +1049,26 @@ float3 ShadePrimarySurface(RayHitReading Hit, float3 ViewDir, uint2 PixelXY)
     for (uint L = 0u; L < LightCnt; ++L)
     {
         DirectHdr += EvaluateAreaQuadLight(WorldUniforms.AreaLights[L], SafePrimaryPos, N, ViewDir, Mat);
+    }
+
+    // 2b. Dynamic Fluid Blackbody Fire Proxy Lights
+    if (WorldUniforms.FluidParams.HeroBoxMinFade.w > 0.5)
+    {
+        for (uint FL = 0u; FL < 8u; ++FL)
+        {
+            FluidEmissiveLightGpu FLgt = WorldUniforms.FluidParams.EmissiveLights[FL];
+            if (FLgt.ColorIrradiance.w < 0.5) continue;
+            float3 ToL = FLgt.PositionRadius.xyz - SafePrimaryPos;
+            float Dist2 = max(0.08, dot(ToL, ToL) + FLgt.PositionRadius.w * FLgt.PositionRadius.w * 0.35);
+            float Dist = sqrt(Dist2);
+            float3 Wi = ToL / Dist;
+            float NdotL = dot(N, Wi);
+            if (NdotL > 1.0e-4)
+            {
+                float Atten = NdotL / (4.0 * PiConst * Dist2);
+                DirectHdr += EvaluateSurfaceBrdf(Mat, N, ViewDir, Wi) * FLgt.ColorIrradiance.rgb * Atten;
+            }
+        }
     }
 
     // 3. Fast BVH4 Ambient Occlusion (Zero SDF AO!) + Lagarde Specular AO
@@ -1439,6 +1465,24 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         float3 LocalCloudRad   = EvaluateLocalCloudsSegmentGpu(
             WorldUniforms.CloudParams, CamOrigin, RayDir, HitDistForClouds, float2(DispatchThreadID.xy), LocalCloudTrans);
         FinalHdr = FinalHdr * LocalCloudTrans + LocalCloudRad;
+
+        if (WorldUniforms.FluidParams.HeroBoxMinFade.w > 0.5)
+        {
+            float3 FluidRad   = float3(0.0);
+            float  FluidTrans = 1.0;
+            float  IgnJit     = fract(sin(dot(float2(DispatchThreadID.xy), float2(12.9898, 78.233))) * 43758.5453);
+            EvaluateFluidSegmentBufferGpu(
+                WorldUniforms.FluidParams,
+                FluidHeroThermoTexels,
+                FluidWorldThermoTexels,
+                CamOrigin,
+                RayDir,
+                HitDistForFog,
+                IgnJit,
+                FluidRad,
+                FluidTrans);
+            FinalHdr = FinalHdr * FluidTrans + FluidRad;
+        }
 
         float  FogTrans = 1.0;
         float3 FogRad   = EvaluateVolumetricFogGpu(

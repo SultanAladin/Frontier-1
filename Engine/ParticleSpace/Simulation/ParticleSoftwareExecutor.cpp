@@ -248,6 +248,17 @@ uint32_t ExecuteParticleRigStepCpu(
                 Slot.VelocityMps[2] += ((AmbientV[2] + ForceSample.AdvectionVelocity.Z) - Slot.VelocityMps[2]) * Blend;
             }
 
+            if (Context.OptionalFluid != nullptr)
+            {
+                const Mathematics::Axis3D WPos { Slot.PositionMeters[0], Slot.PositionMeters[1], Slot.PositionMeters[2] };
+                const auto FluidV = Context.OptionalFluid->SampleVelocityAtWorldPoint(WPos);
+                const auto FluidT = Context.OptionalFluid->SampleThermoAtWorldPoint(WPos);
+                const float Couple = std::clamp(std::max(0.35f, WindRate) * DtSec * 2.5f, 0.0f, 1.0f);
+                Slot.VelocityMps[0] += (FluidV.X - Slot.VelocityMps[0]) * Couple;
+                Slot.VelocityMps[1] += (FluidV.Y - Slot.VelocityMps[1]) * Couple;
+                Slot.VelocityMps[2] += (FluidV.Z - Slot.VelocityMps[2]) * Couple + FluidT.Y * 1.4f * DtSec;
+            }
+
             if (D.Ballistic.FlutterAmplitude > 1e-4f)
             {
                 const float FPhase = Context.ElapsedSeconds * 5.2f + Slot.SeedScalar * 31.4f;

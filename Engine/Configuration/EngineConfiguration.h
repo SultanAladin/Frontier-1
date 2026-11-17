@@ -38,6 +38,7 @@ enum class WorkspaceCategory : uint8_t
     Audio        = 9u,  // [-] - Spatial acoustic studio workspace
     Baking       = 10u, // [-] - High-to-low surface & 3D volume SDF GPU baking studio
     Fracture     = 11u, // [-] - Brittle/ductile/fibrous fracture & rigid-body simulation studio
+    Fluid        = 12u, // [-] - Eulerian pyro/fire/smoke simulation & volumetric studio
 };
 
 } // namespace Frontier

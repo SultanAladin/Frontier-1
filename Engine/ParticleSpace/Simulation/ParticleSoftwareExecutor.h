@@ -11,6 +11,7 @@
 
 #include "Engine/ParticleSpace/ParticleBuffers.h"
 #include "Engine/ParticleSpace/ParticleDocument.h"
+#include "Engine/SimulationSpace/FluidSpace/FluidSimulationSequence.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.h"
 #include "Engine/SimulationSpace/PhysicsSpace/BroadphaseSolver.h"
 
@@ -38,6 +39,7 @@ struct ParticleStepContext
     std::span<const SimulationSpace::PhysicsSpace::RigidColliderProxy> RigidColliders    {};
     SimulationSpace::PhysicsSpace::PhysicsExtension*                   PhysicsRuntime    = nullptr;
     float                                                              ParticleMassKg    = 0.025f;
+    const SimulationSpace::FluidSpace::FluidSimulationSequence*        OptionalFluid     = nullptr;
 };
 
 //------------------------------------------------------------------------------------------------------------------------

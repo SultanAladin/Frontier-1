@@ -23,6 +23,7 @@
 #include "Engine/Input/ImGuiInputAdapter.h"
 #include "Engine/Input/InputExtension.h"
 #include "Engine/Windowing/PlatformWindow.h"
+#include "Engine/Workspaces/Fluid/FluidWorkspaceHost.h"
 #include "Engine/Workspaces/Fracture/FractureWorkspaceHost.h"
 #include "Engine/Workspaces/Material/MaterialWorkspaceHost.h"
 #include "Engine/Workspaces/Particle/ParticleWorkspaceHost.h"
@@ -418,6 +419,7 @@ int LaunchDesktopWorkspace(
         ParticleWorkspaceSurface   = 7u,
         ForceFieldWorkspaceSurface = 8u,
         FractureWorkspaceSurface   = 9u,
+        FluidWorkspaceSurface      = 10u,
     };
 
     const bool StandaloneVectorLaunch =
@@ -442,6 +444,10 @@ int LaunchDesktopWorkspace(
         !InitialOptions.OpenProjectBrowser;
     const bool StandaloneFractureLaunch =
         (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::Fracture) &&
+        !InitialOptions.OpenWorldEditor &&
+        !InitialOptions.OpenProjectBrowser;
+    const bool StandaloneFluidLaunch =
+        (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::Fluid) &&
         !InitialOptions.OpenWorldEditor &&
         !InitialOptions.OpenProjectBrowser;
     const bool StandaloneUVLaunch =
@@ -470,6 +476,10 @@ int LaunchDesktopWorkspace(
     else if (StandaloneFractureLaunch)
     {
         CurrentSurface = ActiveHostSurface::FractureWorkspaceSurface;
+    }
+    else if (StandaloneFluidLaunch)
+    {
+        CurrentSurface = ActiveHostSurface::FluidWorkspaceSurface;
     }
     else if (StandaloneBakingLaunch)
     {
@@ -602,6 +612,7 @@ int LaunchDesktopWorkspace(
     Workspaces::MaterialWorkspaceHost                  MaterialHost {};
     Workspaces::ParticleWorkspaceHost                  ParticleHost {};
     Workspaces::Fracture::FractureWorkspaceHost        FractureHost {};
+    Workspaces::FluidWorkspaceHost                     FluidHost {};
     Components::HeadlessWorkspaceDockContainer         MaterialDock {};
     Components::HeadlessWorkspaceDockContainer         ForceFieldDock {};
     Lifecycle::EditorLifecycle                         EditorLoop {};
@@ -612,6 +623,7 @@ int LaunchDesktopWorkspace(
     Editor::Explorer::ContentBrowser                   MaterialBrowser {};
     Editor::Explorer::ContentBrowser                   ParticleBrowser {};
     Editor::Explorer::ContentBrowser                   FractureBrowser {};
+    Editor::Explorer::ContentBrowser                   FluidBrowser {};
     Editor::Explorer::ProjectBrowser                   HostProjectBrowser {};
     OutlinerPanel                                      ForceOutliner {};
     ViewportPanel                                      ForceViewport {};
@@ -627,6 +639,7 @@ int LaunchDesktopWorkspace(
     bool                                               MaterialHostReady         = false;
     bool                                               ParticleHostReady         = false;
     bool                                               ForceFieldHostReady       = false;
+    bool                                               FluidHostReady            = false;
     bool                                               FractureHostReady         = false;
     bool                                               ProjectBrowserInitialized = false;
     bool                                               SharedThemeInitialized    = false;
@@ -929,6 +942,21 @@ int LaunchDesktopWorkspace(
         return true;
     };
 
+    auto EnsureFluidHostReady = [&]() -> bool
+    {
+        EnsureSharedControlCentreReady();
+        if (!FluidHostReady)
+        {
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            FluidBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            FluidBrowser.AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::Fluid);
+            FluidBrowser.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
+            FluidHost.AttachContentBrowserPanel(&FluidBrowser.AccessPanel());
+            FluidHostReady = true;
+        }
+        return true;
+    };
+
     auto EnsureForceFieldHostReady = [&]() -> bool
     {
         EnsureSharedControlCentreReady();
@@ -1141,6 +1169,14 @@ int LaunchDesktopWorkspace(
     else if (CurrentSurface == ActiveHostSurface::FractureWorkspaceSurface)
     {
         if (!EnsureFractureHostReady())
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+    }
+    else if (CurrentSurface == ActiveHostSurface::FluidWorkspaceSurface)
+    {
+        if (!EnsureFluidHostReady())
         {
             ImGui::DestroyContext(GuiCtx);
             return 1;
@@ -1483,6 +1519,30 @@ int LaunchDesktopWorkspace(
                 FullBounds.Height / HostUiScale,
             };
             FractureHost.RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
+            StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
+        }
+        else if (CurrentSurface == ActiveHostSurface::FluidWorkspaceSurface)
+        {
+            const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            PixelSpace StudioSurface(ImGui::GetForegroundDrawList(), Point2D{ 0.0f, 0.0f }, HostUiScale);
+            const Point2D MouseLogical = StudioSurface.QueryMousePosition();
+            ContentBrowserPointerInput PtrInput {};
+            if (!StandaloneControlCentre.QueryOpen())
+            {
+                PtrInput.CursorX           = MouseLogical.X;
+                PtrInput.CursorY           = MouseLogical.Y;
+                PtrInput.HeldDown = StudioSurface.QueryMouseDown(0);
+                PtrInput.Pressed  = StudioSurface.QueryMouseClicked(0);
+                PtrInput.Released = StudioSurface.QueryMouseReleased(0);
+            }
+            const Rectangle2D LogicalBounds {
+                0.0f,
+                0.0f,
+                FullBounds.Width / HostUiScale,
+                FullBounds.Height / HostUiScale,
+            };
+            FluidHost.RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
         else if (CurrentSurface == ActiveHostSurface::ForceFieldWorkspaceSurface)
