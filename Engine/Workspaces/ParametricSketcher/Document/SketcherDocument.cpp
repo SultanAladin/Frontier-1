@@ -3069,6 +3069,104 @@ const char* SketcherEdgePathModeLabel(SketcherEdgePathMode Mode) noexcept
     return "Along loop";
 }
 
+namespace
+{
+
+struct EdgePathRoute
+{
+    std::vector<EdgeToken> Interior;
+    uint32_t               Leave  = 0;
+    uint32_t               Arrive = 0;
+    double                 Length = 0.0;
+};
+
+struct EdgePathCarrier
+{
+    std::set<uint32_t> Edges;
+    std::string        Caption;
+};
+
+[[nodiscard]] std::optional<EdgePathRoute> ConnectEdgePathRoute(
+    const ModelPartition&                             Partition,
+    const std::map<uint32_t, double>&                 Lengths,
+    const std::map<uint32_t, std::vector<EdgeToken>>& AtVertex,
+    EdgeToken                                         First,
+    EdgeToken                                         Last,
+    const std::set<uint32_t>*                         Allowed,
+    const std::vector<uint32_t>&                      Sources,
+    const std::vector<uint32_t>&                      Targets)
+{
+    std::map<uint32_t, double>                        Best;
+    std::map<uint32_t, std::pair<uint32_t, EdgeToken>> Previous;
+    std::map<uint32_t, uint32_t>                      Origin;
+    using Entry = std::pair<double, uint32_t>;
+    std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> Open;
+    for (const uint32_t Source : Sources)
+    {
+        Best[Source]   = 0.0;
+        Origin[Source] = Source;
+        Open.push({ 0.0, Source });
+    }
+    while (!Open.empty())
+    {
+        const Entry Top = Open.top();
+        Open.pop();
+        const double   Cost   = Top.first;
+        const uint32_t Vertex = Top.second;
+        if (Cost > Best[Vertex]) continue;
+        if (std::find(Targets.begin(), Targets.end(), Vertex) != Targets.end())
+        {
+            EdgePathRoute Found;
+            Found.Arrive = Vertex;
+            Found.Length = Cost;
+            for (uint32_t At = Vertex; Previous.contains(At); At = Previous[At].first)
+                Found.Interior.insert(Found.Interior.begin(), Previous[At].second);
+            Found.Leave = Origin[Vertex];
+            return Found;
+        }
+        const auto FoundEdges = AtVertex.find(Vertex);
+        if (FoundEdges == AtVertex.end()) continue;
+        for (const EdgeToken Edge : FoundEdges->second)
+        {
+            if (Edge == First || Edge == Last || (Allowed && !Allowed->contains(Edge.Slot))) continue;
+            const EdgeProfile& Profile = Partition.Edges.Resolve(Edge);
+            const uint32_t     Other   = Profile.Start.Slot == Vertex ? Profile.End.Slot : Profile.Start.Slot;
+            const auto         LenIt   = Lengths.find(Edge.Slot);
+            const double       Next    = Cost + (LenIt != Lengths.end() ? LenIt->second : 0.0);
+            if (Best.contains(Other) && Best[Other] <= Next) continue;
+            Best[Other]     = Next;
+            Previous[Other] = { Vertex, Edge };
+            Origin[Other]   = Origin[Vertex];
+            Open.push({ Next, Other });
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::pair<std::vector<std::string>, double> AssembleEdgePathRoute(
+    const SketcherTopologyWalk&       Walk,
+    const std::map<uint32_t, double>& Lengths,
+    EdgeToken                         First,
+    EdgeToken                         Last,
+    const EdgePathRoute&              Taken)
+{
+    std::vector<std::string> Names{ Walk.Naming->Edges.at(First.Slot) };
+    double                   Total = Lengths.at(First.Slot);
+    for (const EdgeToken Edge : Taken.Interior)
+    {
+        Names.push_back(Walk.Naming->Edges.at(Edge.Slot));
+        Total += Lengths.at(Edge.Slot);
+    }
+    if (!(Last == First))
+    {
+        Names.push_back(Walk.Naming->Edges.at(Last.Slot));
+        Total += Lengths.at(Last.Slot);
+    }
+    return { std::move(Names), Total };
+}
+
+} // namespace
+
 SketcherEdgePath SketcherEdgePathBetween(const SketcherDocument& Document, const std::string& From, const std::string& To, SketcherEdgePathMode Mode, bool OtherSideCondition,
                                          const std::string& Body)
 {
@@ -3091,86 +3189,39 @@ SketcherEdgePath SketcherEdgePathBetween(const SketcherDocument& Document, const
     const auto Target = ByName.find(To);
     if (Target == ByName.end()) { Path.Refusal = To + " is on another body than " + From; return Path; }
     const EdgeToken First = Walk.Start, Last = Target->second;
-    const auto Name = [&](EdgeToken Edge) { return Walk.Naming->Edges.at(Edge.Slot); };
-    const auto Ends = [&](EdgeToken Edge) { const EdgeProfile& Profile = Partition.Edges.Resolve(Edge); return std::array<uint32_t, 2>{ Profile.Start.Slot, Profile.End.Slot }; };
-
-    // Dijkstra over vertices from From's ends (or one of them) to To's ends, through Allowed edges only (From and To
-    // themselves never inside). Interior: the edges between, in order; empty optional when To is out of reach.
-    struct Route { std::vector<EdgeToken> Interior; uint32_t Leave = 0, Arrive = 0; double Length = 0.0; };
-    const auto Connect = [&](const std::set<uint32_t>* Allowed, const std::vector<uint32_t>& Sources, const std::vector<uint32_t>& Targets) -> std::optional<Route>
-    {
-        std::map<uint32_t, double> Best;
-        std::map<uint32_t, std::pair<uint32_t, EdgeToken>> Previous;                         // Vertex → (vertex before, edge taken)
-        std::map<uint32_t, uint32_t> Origin;                                                 // Vertex → source it grew from
-        using Entry = std::pair<double, uint32_t>;
-        std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> Open;
-        for (const uint32_t Source : Sources) { Best[Source] = 0.0; Origin[Source] = Source; Open.push({ 0.0, Source }); }
-        while (!Open.empty())
-        {
-            const auto [Cost, Vertex] = Open.top();
-            Open.pop();
-            if (Cost > Best[Vertex]) continue;
-            if (std::find(Targets.begin(), Targets.end(), Vertex) != Targets.end())
-            {
-                Route Found;
-                Found.Arrive = Vertex;
-                Found.Length = Cost;
-                for (uint32_t At = Vertex; Previous.contains(At); At = Previous[At].first) Found.Interior.insert(Found.Interior.begin(), Previous[At].second);
-                Found.Leave = Origin[Vertex];
-                return Found;
-            }
-            for (const EdgeToken Edge : AtVertex[Vertex])
-            {
-                if (Edge == First || Edge == Last || (Allowed && !Allowed->contains(Edge.Slot))) continue;
-                const std::array<uint32_t, 2> Pair = Ends(Edge);
-                const uint32_t Other = Pair[0] == Vertex ? Pair[1] : Pair[0];
-                const double   Next  = Cost + Lengths[Edge.Slot];
-                if (Best.contains(Other) && Best[Other] <= Next) continue;
-                Best[Other] = Next;
-                Previous[Other] = { Vertex, Edge };
-                Origin[Other] = Origin[Vertex];
-                Open.push({ Next, Other });
-            }
-        }
-        return std::nullopt;
-    };
-    const std::array<uint32_t, 2> FromEnds = Ends(First), ToEnds = Ends(Last);
-    const auto Assemble = [&](const Route& Taken)
-    {
-        std::vector<std::string> Names{ Name(First) };
-        double Total = Lengths[First.Slot];
-        for (const EdgeToken Edge : Taken.Interior) { Names.push_back(Name(Edge)); Total += Lengths[Edge.Slot]; }
-        if (!(Last == First)) { Names.push_back(Name(Last)); Total += Lengths[Last.Slot]; }
-        return std::pair<std::vector<std::string>, double>{ Names, Total };
-    };
+    const EdgeProfile& FirstProf = Partition.Edges.Resolve(First);
+    const EdgeProfile& LastProf  = Partition.Edges.Resolve(Last);
+    const std::array<uint32_t, 2> FromEnds{ FirstProf.Start.Slot, FirstProf.End.Slot };
+    const std::array<uint32_t, 2> ToEnds{ LastProf.Start.Slot, LastProf.End.Slot };
     if (First == Last) { Path.Edges = { From }; Path.Length = Lengths[First.Slot]; Path.Carrier = "one edge"; return Path; }
 
     if (Mode == SketcherEdgePathMode::Shortest)
     {
-        const std::optional<Route> Taken = Connect(nullptr, { FromEnds[0], FromEnds[1] }, { ToEnds[0], ToEnds[1] });
+        const std::optional<EdgePathRoute> Taken = ConnectEdgePathRoute(
+            Partition, Lengths, AtVertex, First, Last, nullptr, { FromEnds[0], FromEnds[1] }, { ToEnds[0], ToEnds[1] });
         if (!Taken) { Path.Refusal = To + " is not connected to " + From + " by edges"; return Path; }
-        std::tie(Path.Edges, Path.Length) = Assemble(*Taken);
+        std::tie(Path.Edges, Path.Length) = AssembleEdgePathRoute(Walk, Lengths, First, Last, *Taken);
         Path.Carrier = "any edges";
         return Path;
     }
 
     // ① Loops holding both edges: the edge loops through either, the rims of the faces beside From, From's tangent chain.
-    struct Carrier { std::set<uint32_t> Edges; std::string Caption; };
-    std::vector<Carrier> Carriers;
-    const auto FromNames = [&](const std::vector<std::string>& Names, const std::string& Caption)
+    std::vector<EdgePathCarrier> Carriers;
+    auto CollectCarrierFromNames = [&](const std::vector<std::string>& Names, const std::string& Caption)
     {
-        Carrier Each{ {}, Caption };
-        for (const std::string& Member : Names) if (const auto Found = ByName.find(Member); Found != ByName.end()) Each.Edges.insert(Found->second.Slot);
+        EdgePathCarrier Each{ {}, Caption };
+        for (const std::string& Member : Names)
+            if (const auto Found = ByName.find(Member); Found != ByName.end()) Each.Edges.insert(Found->second.Slot);
         if (Each.Edges.contains(First.Slot) && Each.Edges.contains(Last.Slot)) Carriers.push_back(std::move(Each));
     };
-    FromNames(SketcherEdgeLoop(Document, From, Body), "edge loop");
-    FromNames(SketcherEdgeLoop(Document, To, Body), "edge loop");
+    CollectCarrierFromNames(SketcherEdgeLoop(Document, From, Body), "edge loop");
+    CollectCarrierFromNames(SketcherEdgeLoop(Document, To, Body), "edge loop");
     {
         FinToken Fin = Partition.Edges.Resolve(First).RadialFin;
         for (int Guard = 0; Fin.PresentCondition() && Guard < RadialLimit; ++Guard)
         {
             const FinProfile& Use = Partition.Fins.Resolve(Fin);
-            Carrier Rim{ {}, "rim of a face" };
+            EdgePathCarrier Rim{ {}, "rim of a face" };
             const auto FaceName = Walk.Naming->Faces.find(Partition.Loops.Resolve(Use.Loop).Face.Slot);
             if (FaceName != Walk.Naming->Faces.end()) Rim.Caption = "rim of " + FaceName->second;
             FinToken Cycle = Fin;
@@ -3185,7 +3236,7 @@ SketcherEdgePath SketcherEdgePathBetween(const SketcherDocument& Document, const
             if (!Fin.PresentCondition() || Fin == Partition.Edges.Resolve(First).RadialFin) break;
         }
     }
-    FromNames(SketcherTangentChain(Document, From), "tangent chain");
+    CollectCarrierFromNames(SketcherTangentChain(Document, From), "tangent chain");
     if (Carriers.empty())
     {
         Path.Refusal = From + " and " + To + " share no edge loop, face rim or tangent chain (Inspector › Edge path › Shortest takes any edges)";
@@ -3197,18 +3248,21 @@ SketcherEdgePath SketcherEdgePathBetween(const SketcherDocument& Document, const
     int    Chosen = -1;
     double Best   = 1.0e300;
     bool   BestClosed = false;
-    std::optional<Route> ChosenNear, ChosenFar;
+    std::optional<EdgePathRoute> ChosenNear, ChosenFar;
     for (int Index = 0; Index < int(Carriers.size()); ++Index)
     {
-        const Carrier& Each = Carriers[Index];
-        const std::optional<Route> Near = Connect(&Each.Edges, { FromEnds[0], FromEnds[1] }, { ToEnds[0], ToEnds[1] });
+        const EdgePathCarrier& Each = Carriers[Index];
+        const std::optional<EdgePathRoute> Near = ConnectEdgePathRoute(
+            Partition, Lengths, AtVertex, First, Last, &Each.Edges, { FromEnds[0], FromEnds[1] }, { ToEnds[0], ToEnds[1] });
         if (!Near) continue;
         std::set<uint32_t> Rest = Each.Edges;
         for (const EdgeToken Edge : Near->Interior) Rest.erase(Edge.Slot);
         const uint32_t FarFrom = FromEnds[0] == Near->Leave ? FromEnds[1] : FromEnds[0];
         const uint32_t FarTo   = ToEnds[0] == Near->Arrive ? ToEnds[1] : ToEnds[0];
-        const std::optional<Route> Far = FarFrom == Near->Leave || FarTo == Near->Arrive ? std::nullopt : Connect(&Rest, { FarFrom }, { FarTo });
-        const double Ranked = Assemble(*Near).second;
+        const std::optional<EdgePathRoute> Far = FarFrom == Near->Leave || FarTo == Near->Arrive
+            ? std::nullopt
+            : ConnectEdgePathRoute(Partition, Lengths, AtVertex, First, Last, &Rest, { FarFrom }, { FarTo });
+        const double Ranked = AssembleEdgePathRoute(Walk, Lengths, First, Last, *Near).second;
         const bool   Shorter = Ranked < Best - 1.0e-12;
         const bool   Tied    = std::abs(Ranked - Best) <= 1.0e-12;
         if (!Shorter && !(Tied && Far && !BestClosed)) continue;
@@ -3216,9 +3270,9 @@ SketcherEdgePath SketcherEdgePathBetween(const SketcherDocument& Document, const
     }
     if (Chosen >= 0)
     {
-        const Carrier& Each  = Carriers[Chosen];
-        const Route&   Taken = OtherSideCondition && ChosenFar ? *ChosenFar : *ChosenNear;
-        std::tie(Path.Edges, Path.Length) = Assemble(Taken);
+        const EdgePathCarrier& Each  = Carriers[Chosen];
+        const EdgePathRoute&   Taken = OtherSideCondition && ChosenFar ? *ChosenFar : *ChosenNear;
+        std::tie(Path.Edges, Path.Length) = AssembleEdgePathRoute(Walk, Lengths, First, Last, Taken);
         if (Mode == SketcherEdgePathMode::WholeLoop)
         {
             for (const uint32_t Slot : Each.Edges)
@@ -3234,10 +3288,6 @@ SketcherEdgePath SketcherEdgePathBetween(const SketcherDocument& Document, const
     return Path;
 }
 
-#if defined(_MSC_VER)
-#pragma optimize("", off)
-__declspec(noinline)
-#endif
 static std::string ExecuteCombineBodySteps(
     SketcherDocument&               Document,
     const std::string&              Target,
@@ -3281,9 +3331,6 @@ SketcherCommandOutcome CombineSketcherBodies(SketcherDocument& Document, const s
         return ExecuteCombineBodySteps(Document, Target, Tools, Combination);
     });
 }
-#if defined(_MSC_VER)
-#pragma optimize("", on)
-#endif
 
 SketcherCommandOutcome CutSketcherBody(SketcherDocument& Document, const SketcherCutRequest& Request)
 {
