@@ -1,14 +1,16 @@
-name: UV workspace regression checks
+name: Frontier CI
 
 on:
   push:
     branches:
       - 'arena/**'
+      - 'main'
     paths:
-      - '.github/workflows/uv-workspace-ci.yml'
+      - '.github/workflows/frontier-ci.yml'
       - 'CMakeLists.txt'
       - 'Automation/**'
       - 'Engine/**'
+      - 'EngineContent/**'
       - 'Exhibits/**'
       - 'ExternalPackages/**'
   workflow_dispatch:
@@ -117,7 +119,7 @@ jobs:
         run: |
           payload="${RUNNER_TEMP}/Frontier-Workspaces-Linux-x64"
           mkdir -p "$payload/CompiledShaders" "$payload/EngineContent" "$payload/Binaries/Win64"
-          for app in Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp FrontierMaterial FrontierParticle FrontierFracture FrontierForceField; do
+          for app in Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp FrontierMaterial FrontierParticle FrontierFracture FrontierForceField FrontierFluid; do
             cp "Build/CI/Editor/${app}" "$payload/"
           done
           cp -r Build/CI/Editor/Binaries/Win64/* "$payload/Binaries/Win64/"
@@ -137,7 +139,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: uv-workspace-linux-diagnostics
+          name: frontier-ci-linux-diagnostics
           path: |
             Build/CI/**/Testing/Temporary/LastTest.log
             Build/CI/**/CMakeFiles/CMakeConfigureLog.yaml

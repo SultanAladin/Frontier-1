@@ -900,6 +900,7 @@ if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
     frontier_register_desktop_app(FrontierParticle   Engine/Lifecycle/FrontierParticleLaunch.cpp)
     frontier_register_desktop_app(FrontierFracture   Engine/Lifecycle/FrontierFractureLaunch.cpp)
     frontier_register_desktop_app(FrontierForceField Engine/Lifecycle/FrontierForceFieldLaunch.cpp)
+    frontier_register_desktop_app(FrontierFluid      Engine/Lifecycle/FrontierFluidLaunch.cpp)
 endif()
 
 #------------------------------------------------------------------------------------------------------------------------
@@ -1043,6 +1044,10 @@ if(BUILD_TESTING)
         add_test(
             NAME FrontierForceFieldExecutableSmoke
             COMMAND FrontierForceField --frames=1
+        )
+        add_test(
+            NAME FrontierFluidExecutableSmoke
+            COMMAND FrontierFluid --frames=1
         )
     endif()
 endif()

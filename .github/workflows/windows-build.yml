@@ -1,11 +1,12 @@
-name: UV workspace Windows build
+name: Frontier Windows Build
 
 on:
   push:
     branches:
       - 'arena/**'
+      - 'main'
     paths:
-      - '.github/workflows/windows-uv-build.yml'
+      - '.github/workflows/windows-build.yml'
       - 'CMakeLists.txt'
       - 'Automation/**'
       - 'Engine/**'
@@ -18,7 +19,7 @@ permissions:
 
 jobs:
   windows-x64:
-    name: Build portable UV workspace package
+    name: Build portable Frontier workspace package
     runs-on: windows-2022
     timeout-minutes: 90
     steps:
@@ -68,7 +69,7 @@ jobs:
         run: |
           $Output = & cmake --build Build/Windows --config Release --parallel 4 --target `
             Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp `
-            FrontierMaterial FrontierParticle FrontierFracture FrontierForceField `
+            FrontierMaterial FrontierParticle FrontierFracture FrontierForceField FrontierFluid `
             FrontierEngineRuntimeDll FrontierWorkspaceUiDll `
             UVBoundaryValidation ProjectBrowserValidation 2>&1
           $Result = $LASTEXITCODE
@@ -108,7 +109,8 @@ jobs:
             'FrontierMaterial.exe',
             'FrontierParticle.exe',
             'FrontierFracture.exe',
-            'FrontierForceField.exe'
+            'FrontierForceField.exe',
+            'FrontierFluid.exe'
           )
           foreach ($App in $Apps) {
             Copy-Item "Build/Windows/Release/$App" "$Payload/"
@@ -130,6 +132,7 @@ jobs:
             - FrontierParticle.exe    : 93-Preset Particle & ForceField Studio
             - FrontierFracture.exe    : 6-Solver Fracture & JoltPhysics Simulation Studio
             - FrontierForceField.exe  : 3D Vector Field & Force Simulation Studio
+            - FrontierFluid.exe       : Eulerian Pyro, Smoke & Fire Simulation Studio
 
           Keep CompiledShaders, EngineContent, and Binaries/Win64 beside the executables.
           A Windows Vulkan 1.2+ graphics driver is required.
