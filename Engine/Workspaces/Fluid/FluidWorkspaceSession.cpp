@@ -88,22 +88,22 @@ void FluidWorkspaceSession::ApplyCameraPreset(FluidCameraPreset Preset)
 void FluidWorkspaceSession::TriggerBlastNow()
 {
     auto Blast = Simulation.InspectDocument().Blast;
-    if (SelectedBurstKind == 1u)
+    if (SelectedBurstPattern == 1u)
     {
         Blast.Lobes = 8.0f;
         Blast.StrengthMps *= 1.35f;
     }
-    else if (SelectedBurstKind == 2u)
+    else if (SelectedBurstPattern == 2u)
     {
         Blast.Lobes = 5.0f;
         Blast.RadiusMeters *= 1.3f;
     }
-    else if (SelectedBurstKind == 3u)
+    else if (SelectedBurstPattern == 3u)
     {
         Blast.Lobes = 2.0f;
         Blast.StrengthMps *= 1.25f;
     }
-    else if (SelectedBurstKind == 4u)
+    else if (SelectedBurstPattern == 4u)
     {
         Blast.StrengthMps *= 1.45f;
         Blast.Temperature *= 1.4f;
@@ -225,10 +225,10 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
         }
 
         const bool IsDebris = ForceDebris || (P.AuxScalar < -0.5f);
-        const uint32_t KindIdx = IsDebris
+        const uint32_t CatIdx = IsDebris
             ? static_cast<uint32_t>(std::clamp(std::lround(-P.AuxScalar - 1.0f), 0l, 5l))
             : 0u;
-        const auto Kind = static_cast<SimulationSpace::FluidSpace::FluidDebrisKind>(KindIdx);
+        const auto Category = static_cast<SimulationSpace::FluidSpace::FluidDebrisCategory>(CatIdx);
         const float ScreenPerMeter = static_cast<float>(PreviewHeightPx) / (2.0f * Z * TanY);
         const float BaseRad = std::clamp(P.SizeMeters * ScreenPerMeter, IsDebris ? 1.35f : 0.95f, IsDebris ? 3.2f : 2.15f);
 
@@ -237,8 +237,8 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
         const float VLen = std::hypot(VX, VY);
         float DirX = (VLen > 1.0e-3f) ? (VX / VLen) : 1.0f;
         float DirY = (VLen > 1.0e-3f) ? (VY / VLen) : 0.0f;
-        if (IsDebris && (Kind == SimulationSpace::FluidSpace::FluidDebrisKind::PaperSheet ||
-                         Kind == SimulationSpace::FluidSpace::FluidDebrisKind::Leaf))
+        if (IsDebris && (Category == SimulationSpace::FluidSpace::FluidDebrisCategory::PaperSheet ||
+                         Category == SimulationSpace::FluidSpace::FluidDebrisCategory::Leaf))
         {
             const float Tumble = P.SeedScalar * 6.28318f + P.AgeSeconds * 8.5f;
             DirX = std::cos(Tumble);
@@ -248,14 +248,14 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
         float PerpScale = 1.0f;
         if (IsDebris)
         {
-            switch (Kind)
+            switch (Category)
             {
-            case SimulationSpace::FluidSpace::FluidDebrisKind::RockChunk:    Stretch = 1.05f; PerpScale = 0.85f; break;
-            case SimulationSpace::FluidSpace::FluidDebrisKind::TwigStick:    Stretch = 1.95f; PerpScale = 0.28f; break;
-            case SimulationSpace::FluidSpace::FluidDebrisKind::Leaf:         Stretch = 1.38f; PerpScale = 0.65f; break;
-            case SimulationSpace::FluidSpace::FluidDebrisKind::PaperSheet:   Stretch = 1.32f; PerpScale = 0.88f; break;
-            case SimulationSpace::FluidSpace::FluidDebrisKind::WoodSplinter: Stretch = 1.80f; PerpScale = 0.34f; break;
-            case SimulationSpace::FluidSpace::FluidDebrisKind::MetalScrap:   Stretch = 1.25f; PerpScale = 0.68f; break;
+            case SimulationSpace::FluidSpace::FluidDebrisCategory::RockChunk:    Stretch = 1.05f; PerpScale = 0.85f; break;
+            case SimulationSpace::FluidSpace::FluidDebrisCategory::TwigStick:    Stretch = 1.95f; PerpScale = 0.28f; break;
+            case SimulationSpace::FluidSpace::FluidDebrisCategory::Leaf:         Stretch = 1.38f; PerpScale = 0.65f; break;
+            case SimulationSpace::FluidSpace::FluidDebrisCategory::PaperSheet:   Stretch = 1.32f; PerpScale = 0.88f; break;
+            case SimulationSpace::FluidSpace::FluidDebrisCategory::WoodSplinter: Stretch = 1.80f; PerpScale = 0.34f; break;
+            case SimulationSpace::FluidSpace::FluidDebrisCategory::MetalScrap:   Stretch = 1.25f; PerpScale = 0.68f; break;
             }
         }
 
@@ -286,19 +286,19 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
                 float ShapeDist = Along * Along + Perp * Perp;
                 if (IsDebris)
                 {
-                    if (Kind == SimulationSpace::FluidSpace::FluidDebrisKind::PaperSheet)
+                    if (Category == SimulationSpace::FluidSpace::FluidDebrisCategory::PaperSheet)
                     {
                         const float Box = std::max(std::abs(Along), std::abs(Perp));
                         ShapeDist = Box * Box;
                     }
-                    else if (Kind == SimulationSpace::FluidSpace::FluidDebrisKind::Leaf)
+                    else if (Category == SimulationSpace::FluidSpace::FluidDebrisCategory::Leaf)
                     {
                         const float LeafWidth = std::max(0.25f, 1.0f - 0.42f * std::abs(Along));
                         const float LP = Perp / LeafWidth;
                         ShapeDist = Along * Along + LP * LP;
                     }
-                    else if (Kind == SimulationSpace::FluidSpace::FluidDebrisKind::RockChunk ||
-                             Kind == SimulationSpace::FluidSpace::FluidDebrisKind::MetalScrap)
+                    else if (Category == SimulationSpace::FluidSpace::FluidDebrisCategory::RockChunk ||
+                             Category == SimulationSpace::FluidSpace::FluidDebrisCategory::MetalScrap)
                     {
                         const float Oct = std::max(std::abs(Along) * 0.88f + std::abs(Perp) * 0.45f, std::abs(Perp) * 0.95f);
                         ShapeDist = Oct * Oct;

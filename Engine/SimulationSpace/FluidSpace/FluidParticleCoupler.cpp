@@ -205,9 +205,9 @@ void FluidParticleCoupler::StepCoupledParticles(
             {
                 const float SlotFrac = static_cast<float>(Idx % 20u) / 20.0f;
                 const bool IsDebris = UseDebrisArray && (SlotFrac < DebrisRatio);
-                const FluidDebrisKind DebrisKind = IsDebris
+                const FluidDebrisCategory DebrisCat = IsDebris
                     ? Settings.DebrisTypes[Idx % Settings.DebrisTypes.size()]
-                    : FluidDebrisKind::RockChunk;
+                    : FluidDebrisCategory::RockChunk;
 
                 const float Ang = NextRand01(RngState) * 2.0f * Constants::PiFloat;
                 // Light paper & leaves ride higher up the funnel; heavy rocks & metal swirl lower/mid-funnel
@@ -215,12 +215,12 @@ void FluidParticleCoupler::StepCoupledParticles(
                 float HeightMin  = 0.03f;
                 if (IsDebris)
                 {
-                    if (DebrisKind == FluidDebrisKind::PaperSheet || DebrisKind == FluidDebrisKind::Leaf)
+                    if (DebrisCat == FluidDebrisCategory::PaperSheet || DebrisCat == FluidDebrisCategory::Leaf)
                     {
                         HeightMin  = 0.12f;
                         HeightSpan = 0.78f;
                     }
-                    else if (DebrisKind == FluidDebrisKind::RockChunk || DebrisKind == FluidDebrisKind::MetalScrap)
+                    else if (DebrisCat == FluidDebrisCategory::RockChunk || DebrisCat == FluidDebrisCategory::MetalScrap)
                     {
                         HeightMin  = 0.02f;
                         HeightSpan = 0.56f;
@@ -249,17 +249,17 @@ void FluidParticleCoupler::StepCoupledParticles(
                 if (IsDebris)
                 {
                     float BaseSize = 0.028f;
-                    switch (DebrisKind)
+                    switch (DebrisCat)
                     {
-                    case FluidDebrisKind::RockChunk:    BaseSize = 0.025f; break;
-                    case FluidDebrisKind::TwigStick:    BaseSize = 0.032f; break;
-                    case FluidDebrisKind::Leaf:         BaseSize = 0.027f; break;
-                    case FluidDebrisKind::PaperSheet:   BaseSize = 0.034f; break;
-                    case FluidDebrisKind::WoodSplinter: BaseSize = 0.031f; break;
-                    case FluidDebrisKind::MetalScrap:   BaseSize = 0.026f; break;
+                    case FluidDebrisCategory::RockChunk:    BaseSize = 0.025f; break;
+                    case FluidDebrisCategory::TwigStick:    BaseSize = 0.032f; break;
+                    case FluidDebrisCategory::Leaf:         BaseSize = 0.027f; break;
+                    case FluidDebrisCategory::PaperSheet:   BaseSize = 0.034f; break;
+                    case FluidDebrisCategory::WoodSplinter: BaseSize = 0.031f; break;
+                    case FluidDebrisCategory::MetalScrap:   BaseSize = 0.026f; break;
                     }
                     E.SizeMeters = BaseSize * std::max(0.4f, Settings.EmberSize) * (0.78f + 0.65f * NextRand01(RngState));
-                    E.AuxScalar  = -1.0f - static_cast<float>(static_cast<uint8_t>(DebrisKind)); // Encodes FluidDebrisKind
+                    E.AuxScalar  = -1.0f - static_cast<float>(static_cast<uint8_t>(DebrisCat)); // Encodes FluidDebrisCategory
                 }
                 else
                 {
@@ -275,13 +275,13 @@ void FluidParticleCoupler::StepCoupledParticles(
                 SampleCombinedFluid(HeroGrid, WorldGrid, Pos, FV, FT);
 
                 const bool IsDebris = (E.AuxScalar < -0.5f);
-                const uint32_t KindRaw = IsDebris
+                const uint32_t CatRaw = IsDebris
                     ? static_cast<uint32_t>(std::clamp(std::lround(-E.AuxScalar - 1.0f), 0l, 5l))
                     : 0u;
-                const FluidDebrisKind DebrisKind = static_cast<FluidDebrisKind>(KindRaw);
+                const FluidDebrisCategory DebrisCat = static_cast<FluidDebrisCategory>(CatRaw);
 
                 const float Ph = E.SeedScalar * 43.7f;
-                const float Flutter = (IsDebris && (DebrisKind == FluidDebrisKind::PaperSheet || DebrisKind == FluidDebrisKind::Leaf)) ? 1.85f : 1.0f;
+                const float Flutter = (IsDebris && (DebrisCat == FluidDebrisCategory::PaperSheet || DebrisCat == FluidDebrisCategory::Leaf)) ? 1.85f : 1.0f;
                 const float Jx = (std::sin(ElapsedSeconds * 6.5f + Ph) * 0.95f + std::cos(ElapsedSeconds * 11.3f - Ph * 1.7f) * 0.55f) * Flutter;
                 const float Jy = (std::cos(ElapsedSeconds * 5.9f + Ph * 1.3f) * 0.95f - std::sin(ElapsedSeconds * 10.7f + Ph) * 0.55f) * Flutter;
                 const float Jz = (std::sin(ElapsedSeconds * 4.8f - Ph * 0.9f) * 0.45f) * Flutter;
@@ -292,19 +292,19 @@ void FluidParticleCoupler::StepCoupledParticles(
                 float TargetRSlope = 0.24f;
                 if (IsDebris)
                 {
-                    switch (DebrisKind)
+                    switch (DebrisCat)
                     {
-                    case FluidDebrisKind::RockChunk:
+                    case FluidDebrisCategory::RockChunk:
                         Drag = 0.30f; GravZ = -3.4f; TargetRBase = 0.13f; TargetRSlope = 0.20f; break;
-                    case FluidDebrisKind::TwigStick:
+                    case FluidDebrisCategory::TwigStick:
                         Drag = 0.62f; GravZ = -1.5f; TargetRBase = 0.14f; TargetRSlope = 0.26f; break;
-                    case FluidDebrisKind::Leaf:
+                    case FluidDebrisCategory::Leaf:
                         Drag = 1.15f; GravZ = -0.55f; TargetRBase = 0.15f; TargetRSlope = 0.32f; break;
-                    case FluidDebrisKind::PaperSheet:
+                    case FluidDebrisCategory::PaperSheet:
                         Drag = 1.28f; GravZ = -0.42f; TargetRBase = 0.16f; TargetRSlope = 0.34f; break;
-                    case FluidDebrisKind::WoodSplinter:
+                    case FluidDebrisCategory::WoodSplinter:
                         Drag = 0.50f; GravZ = -2.0f; TargetRBase = 0.14f; TargetRSlope = 0.24f; break;
-                    case FluidDebrisKind::MetalScrap:
+                    case FluidDebrisCategory::MetalScrap:
                         Drag = 0.36f; GravZ = -2.9f; TargetRBase = 0.13f; TargetRSlope = 0.22f; break;
                     }
                 }
@@ -330,7 +330,7 @@ void FluidParticleCoupler::StepCoupledParticles(
                 }
 
                 const float LiftZ = IsDebris
-                    ? (FT.X * (DebrisKind == FluidDebrisKind::PaperSheet || DebrisKind == FluidDebrisKind::Leaf ? 0.72f : 0.35f))
+                    ? (FT.X * (DebrisCat == FluidDebrisCategory::PaperSheet || DebrisCat == FluidDebrisCategory::Leaf ? 0.72f : 0.35f))
                     : (FT.Y * Settings.BuoyancyCoupling * 1.45f);
                 E.VelocityMps[2] += (FV.Z - E.VelocityMps[2]) * Couple + (LiftZ + GravZ + Jz) * Dt;
 
@@ -356,7 +356,7 @@ void FluidParticleCoupler::StepCoupledParticles(
                 if (IsDebris)
                 {
                     const bool CharredHot = (Emitter.Temperature > 1.2f) && ((Idx % 4u) == 0u) && (Life01 < 0.50f) &&
-                                            (DebrisKind == FluidDebrisKind::PaperSheet || DebrisKind == FluidDebrisKind::TwigStick || DebrisKind == FluidDebrisKind::Leaf);
+                                            (DebrisCat == FluidDebrisCategory::PaperSheet || DebrisCat == FluidDebrisCategory::TwigStick || DebrisCat == FluidDebrisCategory::Leaf);
                     if (CharredHot)
                     {
                         const auto Glow = FluidPresets::EvaluateBlackbodyPalette(3.3f * (1.0f - Life01), Shading.TemperatureScale, Shading.ColorPalette);
@@ -367,13 +367,13 @@ void FluidParticleCoupler::StepCoupledParticles(
                     else
                     {
                         const float V = 0.82f + 0.36f * E.SeedScalar;
-                        switch (DebrisKind)
+                        switch (DebrisCat)
                         {
-                        case FluidDebrisKind::RockChunk:
+                        case FluidDebrisCategory::RockChunk:
                             E.ColourLinear[0] = 0.22f * V; E.ColourLinear[1] = 0.21f * V; E.ColourLinear[2] = 0.20f * V; break;
-                        case FluidDebrisKind::TwigStick:
+                        case FluidDebrisCategory::TwigStick:
                             E.ColourLinear[0] = 0.34f * V; E.ColourLinear[1] = 0.23f * V; E.ColourLinear[2] = 0.13f * V; break;
-                        case FluidDebrisKind::Leaf:
+                        case FluidDebrisCategory::Leaf:
                             if ((Idx % 3u) == 0u) // Autumn amber/russet leaf
                             {
                                 E.ColourLinear[0] = 0.44f * V; E.ColourLinear[1] = 0.26f * V; E.ColourLinear[2] = 0.09f * V;
@@ -383,11 +383,11 @@ void FluidParticleCoupler::StepCoupledParticles(
                                 E.ColourLinear[0] = 0.19f * V; E.ColourLinear[1] = 0.34f * V; E.ColourLinear[2] = 0.12f * V;
                             }
                             break;
-                        case FluidDebrisKind::PaperSheet:
+                        case FluidDebrisCategory::PaperSheet:
                             E.ColourLinear[0] = 0.72f * V; E.ColourLinear[1] = 0.69f * V; E.ColourLinear[2] = 0.62f * V; break;
-                        case FluidDebrisKind::WoodSplinter:
+                        case FluidDebrisCategory::WoodSplinter:
                             E.ColourLinear[0] = 0.46f * V; E.ColourLinear[1] = 0.33f * V; E.ColourLinear[2] = 0.19f * V; break;
-                        case FluidDebrisKind::MetalScrap:
+                        case FluidDebrisCategory::MetalScrap:
                             E.ColourLinear[0] = 0.36f * V; E.ColourLinear[1] = 0.39f * V; E.ColourLinear[2] = 0.44f * V; break;
                         }
                     }

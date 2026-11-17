@@ -571,6 +571,94 @@ float VolumetricCloudSequence::EvaluateSolarCloudTransmittance(
     return 0.32f + 0.68f * std::exp(-D * ThickM * 0.22f);
 }
 
+float VolumetricCloudSequence::EvaluateAllSolarCloudTransmittance(
+    const Mathematics::Axis3D&          WorldPos,
+    const Mathematics::Axis3D&          SunDirection,
+    const WorldAtmosphereConfiguration& Atmosphere) noexcept
+{
+    if (SunDirection.Z <= 0.01f)
+    {
+        return 1.0f;
+    }
+
+    float Trans = EvaluateSolarCloudTransmittance(
+        WorldPos, SunDirection, Atmosphere.Clouds,
+        Atmosphere.Medium.PlanetRadiusMeters, Atmosphere.SimulationSeconds);
+
+    const float TimeSec = Atmosphere.SimulationSeconds;
+    const auto SafeInv  = [](float V) noexcept -> float { return (std::abs(V) > 1.0e-7f) ? (1.0f / V) : 1.0e7f; };
+    const float InvX = SafeInv(SunDirection.X), InvY = SafeInv(SunDirection.Y), InvZ = SafeInv(SunDirection.Z);
+
+    auto OccludeByLocalCloud = [&](const BoundedCloudVolume& Vol)
+    {
+        if (!Vol.LocalEnabled || Vol.CloudFraction <= 0.01f || Vol.ExtinctionMultiplier <= 0.01f)
+        {
+            return;
+        }
+        const float MaxExt = std::max({ Vol.HalfExtentMeters.X, Vol.HalfExtentMeters.Y, Vol.HalfExtentMeters.Z }) * 1.45f;
+        const Mathematics::Axis3D BoxMin = Vol.VolumeCenterMeters - Mathematics::Axis3D{ MaxExt, MaxExt, Vol.HalfExtentMeters.Z };
+        const Mathematics::Axis3D BoxMax = Vol.VolumeCenterMeters + Mathematics::Axis3D{ MaxExt, MaxExt, Vol.HalfExtentMeters.Z };
+        const float TX0 = (BoxMin.X - WorldPos.X) * InvX, TX1 = (BoxMax.X - WorldPos.X) * InvX;
+        const float TY0 = (BoxMin.Y - WorldPos.Y) * InvY, TY1 = (BoxMax.Y - WorldPos.Y) * InvY;
+        const float TZ0 = (BoxMin.Z - WorldPos.Z) * InvZ, TZ1 = (BoxMax.Z - WorldPos.Z) * InvZ;
+        const float TE  = std::max({ 0.02f, std::min(TX0, TX1), std::min(TY0, TY1), std::min(TZ0, TZ1) });
+        const float TX  = std::min({ 250.0f, std::max(TX0, TX1), std::max(TY0, TY1), std::max(TZ0, TZ1) });
+        if (TX <= TE)
+        {
+            return;
+        }
+
+        const ResolvedWindSample Wind = Vol.FollowWindEnabled
+            ? AtmosphericWindSolver::ResolveWindSample(
+                  Atmosphere.Wind,
+                  Atmosphere.Clouds.WindSpeedMetersPerSecond,
+                  Atmosphere.Clouds.WindBearingDegrees,
+                  Vol.WindSource,
+                  Vol.VolumeCenterMeters,
+                  Vol.VolumeCenterMeters.Z,
+                  TimeSec,
+                  Atmosphere.ForceFieldSource,
+                  Atmosphere.WindLatticeCascade)
+            : ResolvedWindSample {};
+
+        constexpr uint32_t ShadowSteps = 6u;
+        const float Dt     = (TX - TE) / static_cast<float>(ShadowSteps);
+        const float LScale = 1.0f / std::max(2.0f, Vol.FeatureScaleMeters);
+        const float Thresh = 1.0f - std::clamp(Vol.CloudFraction, 0.0f, 1.0f);
+        float Tau = 0.0f;
+        for (uint32_t S = 0u; S < ShadowSteps; ++S)
+        {
+            const float T = TE + (static_cast<float>(S) + 0.5f) * Dt;
+            const Mathematics::Axis3D P = WorldPos + SunDirection * T;
+            const float ShapeMask = AtmosphericWindSolver::EvaluateVolumeShapeMask(
+                P, Vol.VolumeCenterMeters, Vol.HalfExtentMeters, Vol.Shape,
+                Vol.YawDegrees, Vol.PrismSides, Vol.EdgeSoftness);
+            if (ShapeMask <= 1.0e-4f)
+            {
+                continue;
+            }
+            const float AdvX = P.X - Wind.VelocityMetersPerSec.X * TimeSec;
+            const float AdvY = P.Y - Wind.VelocityMetersPerSec.Y * TimeSec;
+            const float AdvZ = P.Z - Wind.VelocityMetersPerSec.Z * TimeSec * 0.35f;
+            const float N    = CloudFbm3(AdvX * LScale, AdvY * LScale, AdvZ * LScale);
+            const float Den  = std::max(0.0f, (N - Thresh) / std::max(0.15f, Vol.CloudFraction)) *
+                               ShapeMask * Vol.ExtinctionMultiplier * 0.085f;
+            Tau += Den * Dt;
+        }
+        Trans *= (0.14f + 0.86f * std::exp(-Tau));
+    };
+
+    if (Atmosphere.LocalCloud.LocalEnabled)
+    {
+        OccludeByLocalCloud(Atmosphere.LocalCloud);
+    }
+    for (const auto& Vol : Atmosphere.LocalClouds)
+    {
+        OccludeByLocalCloud(Vol);
+    }
+    return std::clamp(Trans, 0.08f, 1.0f);
+}
+
 Mathematics::LinearRGB VolumetricCloudSequence::EvaluateLocalCloudsOverSegment(
     const Mathematics::Axis3D&          RayOriginWorld,
     const Mathematics::Axis3D&          RayDirection,

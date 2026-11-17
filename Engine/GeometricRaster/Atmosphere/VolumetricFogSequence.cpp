@@ -73,6 +73,81 @@ namespace
     return (1.0f - G2) / (4.0f * Constants::PiFloat * std::pow(Den, 1.5f));
 }
 
+[[nodiscard]] float EvaluateSingleLocalFogDensity(
+    const LocalFogVolume&                                    Vol,
+    const Mathematics::Axis3D&                               P,
+    const AtmosphericWindParameters&                         GlobalWind,
+    float                                                    DeckWindSpeedMps,
+    float                                                    DeckWindBearingDeg,
+    float                                                    SimulationSeconds,
+    const ResolvedWindSample&                                CenterWind,
+    const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields,
+    const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice,
+    float&                                                   OutCurlHighlight) noexcept
+{
+    OutCurlHighlight = 0.0f;
+    const float ShapeMask = AtmosphericWindSolver::EvaluateVolumeShapeMask(
+        P, Vol.VolumeCenterMeters, Vol.HalfExtentMeters, Vol.Shape,
+        Vol.YawDegrees, Vol.PrismSides, Vol.EdgeSoftness);
+    if (ShapeMask <= 1.0e-4f)
+    {
+        return 0.0f;
+    }
+
+    ResolvedWindSample Wind = CenterWind;
+    const bool SpatialForces = (OptionalForceFields != nullptr && OptionalForceFields->QueryActiveSourceCount() > 0u) ||
+                               (OptionalLattice != nullptr);
+    if (Vol.FollowWind && SpatialForces)
+    {
+        Wind = AtmosphericWindSolver::ResolveWindSample(
+            GlobalWind, DeckWindSpeedMps, DeckWindBearingDeg, Vol.WindSource,
+            P, P.Z, SimulationSeconds, OptionalForceFields, OptionalLattice);
+    }
+
+    const float Speed = std::sqrt(
+        Wind.VelocityMetersPerSec.X * Wind.VelocityMetersPerSec.X +
+        Wind.VelocityMetersPerSec.Y * Wind.VelocityMetersPerSec.Y +
+        Wind.VelocityMetersPerSec.Z * Wind.VelocityMetersPerSec.Z);
+
+    // Spatial streamline advection + helical vortex twist directly inside the fog domain
+    const float AdvScale = 0.72f;
+    float AdvX = P.X - Wind.VelocityMetersPerSec.X * SimulationSeconds * AdvScale;
+    float AdvY = P.Y - Wind.VelocityMetersPerSec.Y * SimulationSeconds * AdvScale;
+    float AdvZ = P.Z - Wind.VelocityMetersPerSec.Z * SimulationSeconds * 0.40f;
+    float SpiralMod = 1.0f;
+    if (Wind.CurlScalar > 1.0e-3f)
+    {
+        const float Dx = P.X - Vol.VolumeCenterMeters.X;
+        const float Dy = P.Y - Vol.VolumeCenterMeters.Y;
+        const float RadXY = std::sqrt(Dx * Dx + Dy * Dy);
+        const float Theta = std::atan2(Dy, Dx);
+        const float Twist = std::clamp(Wind.CurlScalar * 0.18f, 0.0f, 3.6f) *
+                            (0.45f * SimulationSeconds - 0.08f * RadXY);
+        const float Cs = std::cos(Twist), Sn = std::sin(Twist);
+        AdvX = Vol.VolumeCenterMeters.X + (Dx * Cs - Dy * Sn) - Wind.VelocityMetersPerSec.X * SimulationSeconds * 0.42f;
+        AdvY = Vol.VolumeCenterMeters.Y + (Dx * Sn + Dy * Cs) - Wind.VelocityMetersPerSec.Y * SimulationSeconds * 0.42f;
+        AdvZ += std::sin(Theta * 2.0f + Twist) * 1.15f;
+        SpiralMod = 0.62f + 0.72f * (0.5f + 0.5f * std::cos(Theta * 2.0f - RadXY * 0.22f + SimulationSeconds * 1.1f));
+    }
+
+    const float LScale = 1.0f / std::max(1.5f, Vol.FeatureScaleMeters);
+    const float N      = FogFbm3(AdvX * LScale, AdvY * LScale, AdvZ * LScale);
+    const float Thresh = 1.0f - std::clamp(Vol.Coverage, 0.0f, 1.0f);
+    float BaseDen = std::max(0.0f, (N - Thresh) / std::max(0.15f, Vol.Coverage));
+
+    // ForceField & wind-stream internal sculpting: carves wake/eye channels in fast jets & condenses curl filaments
+    if (Vol.FollowWind && (SpatialForces || Speed > 0.25f))
+    {
+        const float StreamWave  = 0.5f + 0.5f * std::sin((AdvX * 0.30f - AdvY * 0.24f) + Speed * 0.35f);
+        const float CurlBoost   = 1.0f + std::clamp(Wind.CurlScalar * 0.28f, 0.0f, 1.15f) * SpiralMod;
+        const float JetClear    = 1.0f - std::clamp((Speed - 6.0f) * 0.036f, 0.0f, 0.64f) * (1.0f - StreamWave * 0.45f);
+        BaseDen *= std::clamp(CurlBoost * JetClear, 0.22f, 2.15f);
+        OutCurlHighlight = std::clamp(Wind.CurlScalar * 0.14f, 0.0f, 0.40f);
+    }
+
+    return BaseDen * ShapeMask * Vol.Density * 0.075f;
+}
+
 } // namespace
 
 float VolumetricFogSequence::EvaluateHeightFogOpticalDepth(
@@ -111,6 +186,55 @@ float VolumetricFogSequence::ComputeTwoPercentVisibilityRangeMeters(
         return 1.0e6f;
     }
     return -std::log(0.02f) / Sigma;
+}
+
+float VolumetricFogSequence::EvaluateFogMediumDensityAtPoint(
+    const Mathematics::Axis3D&                               WorldPoint,
+    const AtmosphericFogConfiguration&                       FogConfig,
+    const AtmosphericWindParameters&                         GlobalWind,
+    float                                                    DeckWindSpeedMps,
+    float                                                    DeckWindBearingDeg,
+    float                                                    SimulationSeconds,
+    const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields,
+    const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice) noexcept
+{
+    float Sigma = 0.0f;
+    if (FogConfig.HeightFog.Enabled && FogConfig.HeightFog.Density > 1.0e-6f)
+    {
+        const float Falloff = std::max(10.0f, FogConfig.HeightFog.FalloffHeightMeters);
+        const float RelZ    = std::max(0.0f, (WorldPoint.Z - FogConfig.HeightFog.BaseAltitudeMeters) / Falloff);
+        Sigma += std::clamp(FogConfig.HeightFog.Density, 0.0f, 0.25f) * std::exp(-RelZ);
+    }
+
+    for (const auto& Vol : FogConfig.LocalFogs)
+    {
+        if (!Vol.Enabled || Vol.Density <= 1.0e-4f || Vol.Coverage <= 1.0e-4f)
+        {
+            continue;
+        }
+        const float MaxExtent = std::max({ Vol.HalfExtentMeters.X, Vol.HalfExtentMeters.Y, Vol.HalfExtentMeters.Z }) * 1.45f;
+        const float MinZ = (Vol.Shape == AtmosphericVolumeShape::HalfSphere)
+            ? (Vol.VolumeCenterMeters.Z - 0.14f * Vol.HalfExtentMeters.Z)
+            : (Vol.VolumeCenterMeters.Z - Vol.HalfExtentMeters.Z);
+        if (WorldPoint.X < Vol.VolumeCenterMeters.X - MaxExtent || WorldPoint.X > Vol.VolumeCenterMeters.X + MaxExtent ||
+            WorldPoint.Y < Vol.VolumeCenterMeters.Y - MaxExtent || WorldPoint.Y > Vol.VolumeCenterMeters.Y + MaxExtent ||
+            WorldPoint.Z < MinZ || WorldPoint.Z > Vol.VolumeCenterMeters.Z + Vol.HalfExtentMeters.Z)
+        {
+            continue;
+        }
+        const ResolvedWindSample CenterWind = Vol.FollowWind
+            ? AtmosphericWindSolver::ResolveWindSample(
+                  GlobalWind, DeckWindSpeedMps, DeckWindBearingDeg, Vol.WindSource,
+                  Vol.VolumeCenterMeters, Vol.VolumeCenterMeters.Z, SimulationSeconds,
+                  OptionalForceFields, OptionalLattice)
+            : ResolvedWindSample {};
+        float DummyCurl = 0.0f;
+        Sigma += EvaluateSingleLocalFogDensity(
+            Vol, WorldPoint, GlobalWind, DeckWindSpeedMps, DeckWindBearingDeg,
+            SimulationSeconds, CenterWind, OptionalForceFields, OptionalLattice, DummyCurl);
+    }
+
+    return Sigma;
 }
 
 FogEvaluationResult VolumetricFogSequence::EvaluateVolumetricFog(
@@ -197,7 +321,7 @@ FogEvaluationResult VolumetricFogSequence::EvaluateVolumetricFog(
         }
     }
 
-    // 3. Wind-driven Multi-Shape LocalFogVolumes (24 jittered steps clipped against MaxDistanceMeters)
+    // 3. Wind-driven Multi-Shape LocalFogVolumes (32 jittered steps clipped against MaxDistanceMeters)
     for (const auto& Vol : FogConfig.LocalFogs)
     {
         if (!Vol.Enabled || Vol.Density <= 1.0e-4f || Vol.Coverage <= 1.0e-4f)
@@ -206,7 +330,10 @@ FogEvaluationResult VolumetricFogSequence::EvaluateVolumetricFog(
         }
 
         const float MaxExtent = std::max({ Vol.HalfExtentMeters.X, Vol.HalfExtentMeters.Y, Vol.HalfExtentMeters.Z }) * 1.45f;
-        const Mathematics::Axis3D BoxMin = Vol.VolumeCenterMeters - Mathematics::Axis3D{ MaxExtent, MaxExtent, Vol.HalfExtentMeters.Z };
+        const float MinZOff   = (Vol.Shape == AtmosphericVolumeShape::HalfSphere)
+            ? (0.14f * Vol.HalfExtentMeters.Z)
+            : Vol.HalfExtentMeters.Z;
+        const Mathematics::Axis3D BoxMin = Vol.VolumeCenterMeters - Mathematics::Axis3D{ MaxExtent, MaxExtent, MinZOff };
         const Mathematics::Axis3D BoxMax = Vol.VolumeCenterMeters + Mathematics::Axis3D{ MaxExtent, MaxExtent, Vol.HalfExtentMeters.Z };
 
         const auto SafeInv = [](float V) noexcept -> float { return (std::abs(V) > 1.0e-7f) ? (1.0f / V) : 1.0e7f; };
@@ -228,50 +355,26 @@ FogEvaluationResult VolumetricFogSequence::EvaluateVolumetricFog(
                   OptionalForceFields, OptionalLattice)
             : ResolvedWindSample {};
 
-        constexpr uint32_t Steps = 24u;
+        constexpr uint32_t Steps = 32u;
         const float Dt     = (TExit - TEnter) / static_cast<float>(Steps);
-        const float LScale = 1.0f / std::max(1.5f, Vol.FeatureScaleMeters);
         const float Phase  = 0.72f * EvaluateFogPhaseHG(CosTheta, Vol.AnisotropyG) +
                              0.28f * EvaluateFogPhaseHG(CosTheta, -0.18f);
-        const float Thresh = 1.0f - std::clamp(Vol.Coverage, 0.0f, 1.0f);
 
         for (uint32_t S = 0u; S < Steps; ++S)
         {
             const float T = TEnter + (static_cast<float>(S) + Jitter) * Dt;
             const Mathematics::Axis3D P = RayOriginWorld + RayDirection * T;
-            const float ShapeMask = AtmosphericWindSolver::EvaluateVolumeShapeMask(
-                P, Vol.VolumeCenterMeters, Vol.HalfExtentMeters, Vol.Shape,
-                Vol.YawDegrees, Vol.PrismSides, Vol.EdgeSoftness);
-            if (ShapeMask <= 1.0e-4f)
-            {
-                continue;
-            }
-
-            // Advect & swirl fog coordinates by wind velocity + ForceField curl/vorticity
-            float AdvX = P.X - Wind.VelocityMetersPerSec.X * SimulationSeconds;
-            float AdvY = P.Y - Wind.VelocityMetersPerSec.Y * SimulationSeconds;
-            const float AdvZ = P.Z - Wind.VelocityMetersPerSec.Z * SimulationSeconds * 0.4f;
-            if (Wind.CurlScalar > 1.0e-3f)
-            {
-                const float Dx = P.X - Vol.VolumeCenterMeters.X;
-                const float Dy = P.Y - Vol.VolumeCenterMeters.Y;
-                const float SwirlAngle = std::clamp(Wind.CurlScalar * 0.12f, -2.5f, 2.5f) *
-                                         std::sin(SimulationSeconds * 0.7f + 0.05f * std::sqrt(Dx * Dx + Dy * Dy));
-                const float Cs = std::cos(SwirlAngle), Sn = std::sin(SwirlAngle);
-                AdvX = Vol.VolumeCenterMeters.X + (Dx * Cs - Dy * Sn) - Wind.VelocityMetersPerSec.X * SimulationSeconds * 0.35f;
-                AdvY = Vol.VolumeCenterMeters.Y + (Dx * Sn + Dy * Cs) - Wind.VelocityMetersPerSec.Y * SimulationSeconds * 0.35f;
-            }
-
-            const float N   = FogFbm3(AdvX * LScale, AdvY * LScale, AdvZ * LScale);
-            const float Den = std::max(0.0f, (N - Thresh) / std::max(0.15f, Vol.Coverage)) *
-                              ShapeMask * Vol.Density * 0.075f;
+            float CurlHighlight = 0.0f;
+            const float Den = EvaluateSingleLocalFogDensity(
+                Vol, P, GlobalWind, DeckWindSpeedMps, DeckWindBearingDeg,
+                SimulationSeconds, Wind, OptionalForceFields, OptionalLattice, CurlHighlight);
             if (Den > 1.0e-5f)
             {
                 const float SegT    = std::exp(-Den * Dt);
                 const float Scatter = 1.0f - SegT;
-                const float HeightNorm = std::clamp((P.Z - (Vol.VolumeCenterMeters.Z - Vol.HalfExtentMeters.Z)) /
-                                                    std::max(0.2f, 2.0f * Vol.HalfExtentMeters.Z), 0.0f, 1.0f);
-                const float Amb = 0.42f + 0.58f * HeightNorm;
+                const float HeightNorm = std::clamp((P.Z - BoxMin.Z) /
+                                                    std::max(0.2f, BoxMax.Z - BoxMin.Z), 0.0f, 1.0f);
+                const float Amb = 0.42f + 0.58f * HeightNorm + CurlHighlight * 0.25f;
                 Out.InScatterHdr.R += Out.Transmittance * Vol.FogTint.R * (SolarIrradiance.R * Phase * 1.45f + SkyRadiance.R * Amb * 0.75f) * Scatter;
                 Out.InScatterHdr.G += Out.Transmittance * Vol.FogTint.G * (SolarIrradiance.G * Phase * 1.45f + SkyRadiance.G * Amb * 0.75f) * Scatter;
                 Out.InScatterHdr.B += Out.Transmittance * Vol.FogTint.B * (SolarIrradiance.B * Phase * 1.45f + SkyRadiance.B * Amb * 0.75f) * Scatter;

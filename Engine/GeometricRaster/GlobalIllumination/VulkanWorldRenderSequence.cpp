@@ -77,17 +77,30 @@ struct GpuLocalFogVolumeStd140
 
 static_assert(sizeof(GpuLocalFogVolumeStd140) == 80u, "GpuLocalFogVolumeStd140 must equal 80 bytes.");
 
-struct VolumetricFogUniformStd140
+struct GpuFogForceProbeStd140
 {
-    float                 HeightParams0[4] {};
-    float                 HeightParams1[4] {};
-    float                 AerialParams[4]  {};
-    float                 FogWindClock[4]  {};
-    float                 FogMeta[4]       {};
-    GpuLocalFogVolumeStd140 LocalFogs[8]  {};
+    float PosRadius[4]       {};
+    float ForwardStrength[4] {};
+    float Params[4]          {};
 };
 
-static_assert(sizeof(VolumetricFogUniformStd140) == 720u, "VolumetricFogUniformStd140 must equal 720 bytes.");
+static_assert(sizeof(GpuFogForceProbeStd140) == 48u, "GpuFogForceProbeStd140 must equal 48 bytes.");
+
+struct VolumetricFogUniformStd140
+{
+    float                   HeightParams0[4] {};
+    float                   HeightParams1[4] {};
+    float                   AerialParams[4]  {};
+    float                   FogWindClock[4]  {};
+    float                   FogMeta[4]       {};
+    float                   GodRayParams0[4] {};
+    float                   GodRayParams1[4] {};
+    float                   GodRayTint[4]    {};
+    GpuLocalFogVolumeStd140 LocalFogs[8]     {};
+    GpuFogForceProbeStd140  ForceProbes[8]   {};
+};
+
+static_assert(sizeof(VolumetricFogUniformStd140) == 1152u, "VolumetricFogUniformStd140 must equal 1152 bytes.");
 
 struct GpuMoonDescriptorStd140
 {
@@ -184,7 +197,7 @@ struct WorldViewportUniformBlockStd140
     FluidRenderUniformStd140     FluidParams                {};
 };
 
-static_assert(sizeof(WorldViewportUniformBlockStd140) == 3040u, "WorldViewportUniformBlockStd140 must equal 3040 bytes.");
+static_assert(sizeof(WorldViewportUniformBlockStd140) == 3472u, "WorldViewportUniformBlockStd140 must equal 3472 bytes.");
 
 struct SignedDistanceGridUniformStd140
 {
@@ -1523,10 +1536,55 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
             Dst.TintAniso[2]            = Vol.FogTint.B;
             Dst.TintAniso[3]            = Vol.AnisotropyG;
         }
+        uint32_t ForceProbeCount = 0u;
+        if (Atmo.ForceFieldSource != nullptr)
+        {
+            const auto Sources = Atmo.ForceFieldSource->QuerySources();
+            bool HasSolo = false;
+            for (const auto& Src : Sources)
+            {
+                if (Src.Enabled && Src.Solo) { HasSolo = true; break; }
+            }
+            for (const auto& Src : Sources)
+            {
+                if (!Src.Enabled || (HasSolo && !Src.Solo) || ForceProbeCount >= 8u) continue;
+                const float YawR   = Src.EulerDegrees.Z * Constants::DegToRadFloat;
+                const float PitchR = Src.EulerDegrees.Y * Constants::DegToRadFloat;
+                const float FwdX   = std::cos(YawR) * std::cos(PitchR);
+                const float FwdY   = std::sin(YawR) * std::cos(PitchR);
+                const float FwdZ   = -std::sin(PitchR);
+                auto& Pr = F.ForceProbes[ForceProbeCount++];
+                Pr.PosRadius[0]       = Src.EvaluatedCentreMeters.X;
+                Pr.PosRadius[1]       = Src.EvaluatedCentreMeters.Y;
+                Pr.PosRadius[2]       = Src.EvaluatedCentreMeters.Z;
+                Pr.PosRadius[3]       = Src.RadiusMeters;
+                Pr.ForwardStrength[0] = FwdX;
+                Pr.ForwardStrength[1] = FwdY;
+                Pr.ForwardStrength[2] = FwdZ;
+                Pr.ForwardStrength[3] = Src.Strength;
+                Pr.Params[0]          = static_cast<float>(static_cast<uint32_t>(Src.Model));
+                Pr.Params[1]          = Src.SwirlRatio;
+                Pr.Params[2]          = Src.CoreRadiusMeters;
+                Pr.Params[3]          = Src.TurbulenceScaleMeters;
+            }
+        }
         F.FogMeta[0] = static_cast<float>(LocalFogCount);
         F.FogMeta[1] = Fg.AerialFog.ScaleHeightMeters;
         F.FogMeta[2] = (LocalFogCount > 0u) ? Fg.LocalFogs[0].EdgeSoftness : 0.35f;
-        F.FogMeta[3] = 0.0f;
+        F.FogMeta[3] = static_cast<float>(ForceProbeCount);
+
+        F.GodRayParams0[0] = Fg.GodRays.Enabled ? 1.0f : 0.0f;
+        F.GodRayParams0[1] = Fg.GodRays.Intensity;
+        F.GodRayParams0[2] = Fg.GodRays.AnisotropyG;
+        F.GodRayParams0[3] = Fg.GodRays.Density;
+        F.GodRayParams1[0] = Fg.GodRays.MaxDistanceMeters;
+        F.GodRayParams1[1] = static_cast<float>(std::clamp(Fg.GodRays.SampleSteps, 8u, 48u));
+        F.GodRayParams1[2] = Fg.GodRays.InteractWithClouds ? 1.0f : 0.0f;
+        F.GodRayParams1[3] = Fg.GodRays.InteractWithFog ? 1.0f : 0.0f;
+        F.GodRayTint[0]    = Fg.GodRays.ShaftTint.R;
+        F.GodRayTint[1]    = Fg.GodRays.ShaftTint.G;
+        F.GodRayTint[2]    = Fg.GodRays.ShaftTint.B;
+        F.GodRayTint[3]    = Fg.GodRays.Decay;
 
         auto& Cel = Uniforms.CelestialParams;
         Cel.SunAxisRadius[0]  = SunDir.X;
@@ -1655,7 +1713,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
             FLU.ShadingMode[3]     = Gi.CastGiShadows ? Gi.GiShadowStrength : 0.0f;
             FLU.CrossSectionCfg[0] = static_cast<float>(Sh.SliceAxis);
             FLU.CrossSectionCfg[1] = Sh.SlicePosition;
-            FLU.CrossSectionCfg[2] = 0.6f;
+            FLU.CrossSectionCfg[2] = Sh.GodRaysIntensity;
             FLU.CrossSectionCfg[3] = Scene.OptionalFluid->QueryShockwaveAge();
             FLU.ShockwaveCenter[0] = Scene.OptionalFluid->QueryShockwaveCenter().X;
             FLU.ShockwaveCenter[1] = Scene.OptionalFluid->QueryShockwaveCenter().Y;

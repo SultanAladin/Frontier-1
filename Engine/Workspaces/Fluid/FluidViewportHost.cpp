@@ -50,7 +50,7 @@ using namespace ParticleAppearance;
     return "Lit volume";
 }
 
-[[nodiscard]] const char* QueryBurstLabel(uint32_t Kind) noexcept
+[[nodiscard]] const char* QueryBurstLabel(uint32_t Pattern) noexcept
 {
     static constexpr std::array<const char*, 5> Labels {{
         "Single burst",
@@ -59,7 +59,7 @@ using namespace ParticleAppearance;
         "Colliding waves",
         "Mushroom cloud",
     }};
-    return Labels[Kind % Labels.size()];
+    return Labels[Pattern % Labels.size()];
 }
 
 void DrawToolIcon(PixelSpace& Surface, Point2D C, uint32_t Index, ColorRgba Ink) noexcept
@@ -512,7 +512,7 @@ void FluidViewportHost::Render(
     Surface.PopClip();
 
     //--------------------------------------------------------------------------------------------------------------------
-    // 5. Transport Bar (Rewind | Play | Step | Timecode | Speed | Live/uncached ... Burst kind | Trigger D)
+    // 5. Transport Bar (Rewind | Play | Step | Timecode | Speed | Live/uncached ... Burst pattern | Trigger D)
     //--------------------------------------------------------------------------------------------------------------------
     Surface.FillRectangle({ TransBar.X + 12.0f, TransBar.Y, TransBar.Width - 24.0f, 1.0f }, C.Hairline, 0.0f);
     float BX = TransBar.X + 16.0f;
@@ -574,7 +574,7 @@ void FluidViewportHost::Render(
     Surface.FillCircle({ BX + 4.0f, TransCY }, 2.8f, C.LiveGreen);
     Surface.Text({ BX + 12.0f, TransCY - 5.5f }, 9.8f, C.TextMuted, "Live / uncached");
 
-    // Right: Burst kind dropdown + Trigger [D] button
+    // Right: Burst pattern dropdown + Trigger [D] button
     const Rectangle2D TriggerBtn { TransBar.Right() - 98.0f, TransCY - 14.0f, 84.0f, 28.0f };
     const bool TrigHov = ControlAppearance::QueryPointerOver(TriggerBtn, Pointer);
     Surface.FillRectangle(TriggerBtn, TrigHov ? C.CardElevated : C.CardBg, 14.0f);
@@ -582,12 +582,12 @@ void FluidViewportHost::Render(
     Surface.TextCentered(TriggerBtn, 10.2f, C.TextPrimary, "Trigger  D");
     if (TrigHov && Pointer.Pressed) Session.TriggerBlastNow();
 
-    const Rectangle2D BurstKindBtn { TriggerBtn.X - 116.0f, TransCY - 12.0f, 108.0f, 24.0f };
-    const bool BurstHov = ControlAppearance::QueryPointerOver(BurstKindBtn, Pointer);
-    if (BurstHov) Surface.FillRectangle(BurstKindBtn, C.CardElevated, 12.0f);
-    Surface.Text({ BurstKindBtn.X + 8.0f, BurstKindBtn.Y + 6.0f }, 10.0f, C.TextSoft, QueryBurstLabel(Session.SelectedBurstKind));
-    Surface.TextRightAligned({ BurstKindBtn.X, BurstKindBtn.Y + 6.0f, BurstKindBtn.Width - 6.0f, 12.0f }, 9.0f, C.TextMuted, "v");
-    if (BurstHov && Pointer.Pressed) Session.SelectedBurstKind = (Session.SelectedBurstKind + 1u) % 5u;
+    const Rectangle2D BurstPatternBtn { TriggerBtn.X - 116.0f, TransCY - 12.0f, 108.0f, 24.0f };
+    const bool BurstHov = ControlAppearance::QueryPointerOver(BurstPatternBtn, Pointer);
+    if (BurstHov) Surface.FillRectangle(BurstPatternBtn, C.CardElevated, 12.0f);
+    Surface.Text({ BurstPatternBtn.X + 8.0f, BurstPatternBtn.Y + 6.0f }, 10.0f, C.TextSoft, QueryBurstLabel(Session.SelectedBurstPattern));
+    Surface.TextRightAligned({ BurstPatternBtn.X, BurstPatternBtn.Y + 6.0f, BurstPatternBtn.Width - 6.0f, 12.0f }, 9.0f, C.TextMuted, "v");
+    if (BurstHov && Pointer.Pressed) Session.SelectedBurstPattern = (Session.SelectedBurstPattern + 1u) % 5u;
 
     //--------------------------------------------------------------------------------------------------------------------
     // 6. Simulation Ruler (SIMULATION / FRAME 0020 + 0s..30s ticks + Continuous emission track + playhead)

@@ -188,6 +188,12 @@ void EvaluateFluidSegmentGpu(
                 float FireGain = Cfg.ShadingCore.z * 2.25;
 
                 OutRadianceHdr += OutTransmittance * (SmokeScat * SmokeExt + FireEmit * FireGain) * IntW;
+                if (Cfg.CrossSectionCfg.z > 1.0e-3 && SunDir.z > 0.01)
+                {
+                    float ShaftPhase = FluidDualHgPhase(dot(RayDirection, SunDir), 0.78);
+                    float WispSigma  = (0.012 + min(Smoke, 0.45) * 0.14) * Cfg.CrossSectionCfg.z;
+                    OutRadianceHdr  += Cfg.SolarIrradiance.rgb * (OutTransmittance * SunT * ShaftPhase * WispSigma * EffStep * 1.35);
+                }
                 OutTransmittance *= StepT;
                 if (OutTransmittance < 0.008) break;
             }
@@ -426,6 +432,12 @@ void EvaluateFluidSegmentBufferGpu(
                 float FireGain = Cfg.ShadingCore.z * 2.25;
 
                 OutRadianceHdr += OutTransmittance * (SmokeScat * SmokeExt + FireEmit * FireGain) * IntW;
+                if (Cfg.CrossSectionCfg.z > 1.0e-3 && SunDir.z > 0.01)
+                {
+                    float ShaftPhase = FluidDualHgPhase(dot(RayDirection, SunDir), 0.78);
+                    float WispSigma  = (0.012 + min(Smoke, 0.45) * 0.14) * Cfg.CrossSectionCfg.z;
+                    OutRadianceHdr  += Cfg.SolarIrradiance.rgb * (OutTransmittance * SunT * ShaftPhase * WispSigma * EffStep * 1.35);
+                }
                 OutTransmittance *= StepT;
                 if (OutTransmittance < 0.008) break;
             }

@@ -12,6 +12,8 @@
 #include "Engine/GeometricRaster/Atmosphere/AtmosphericSkySequence.h"
 #include "Engine/GeometricRaster/Atmosphere/AtmosphericWindSolver.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -69,7 +71,22 @@ struct AtmosphericFogConfiguration
     HeightFogConfiguration      HeightFog   {};
     AerialFogConfiguration      AerialFog   {};
     std::vector<LocalFogVolume> LocalFogs   {};
+    struct GodRayConfiguration
+    {
+        bool                   Enabled            = false;  // [-]      - Volumetric crepuscular sun shafts through clouds & fog
+        float                  Intensity          = 0.85f;  // [x]      - Shaft radiance multiplier [0..4]
+        float                  AnisotropyG        = 0.78f;  // [0..0.95]- Forward Mie phase concentration around sun
+        float                  Decay              = 0.92f;  // [0..1]   - Distance attenuation control
+        float                  Density            = 0.55f;  // [x]      - Aerosol & fog-coupled scattering density [0..3]
+        float                  MaxDistanceMeters  = 220.0f; // [m]      - Maximum raymarch shaft distance [10..2000]
+        uint32_t               SampleSteps        = 24u;    // [cnt]    - IGN-jittered raymarch samples [8..48]
+        bool                   InteractWithClouds = true;   // [-]      - Cloud-deck & LocalCloud shadow modulation
+        bool                   InteractWithFog    = true;   // [-]      - Couples shaft medium density to HeightFog & LocalFogs
+        Mathematics::LinearRGB ShaftTint          { 1.00f, 0.94f, 0.84f }; // [lin] - Crepuscular shaft color tint
+    }                           GodRays     {};
 };
+
+using GodRayConfiguration = AtmosphericFogConfiguration::GodRayConfiguration;
 
 struct FogEvaluationResult
 {
@@ -98,7 +115,18 @@ public:
         float                         AltitudeMeters,
         const HeightFogConfiguration& HeightFog) noexcept;
 
-    // Evaluates combined Height Fog + Aerial Perspective + Wind-driven LocalFogVolumes over [0, MaxDistanceMeters]
+    // Evaluates local ForceField-advected fog extinction density at a 3D world point (HeightFog + LocalFogs)
+    [[nodiscard]] static float EvaluateFogMediumDensityAtPoint(
+        const Mathematics::Axis3D&                               WorldPoint,
+        const AtmosphericFogConfiguration&                       FogConfig,
+        const AtmosphericWindParameters&                         GlobalWind,
+        float                                                    DeckWindSpeedMps,
+        float                                                    DeckWindBearingDeg,
+        float                                                    SimulationSeconds,
+        const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields = nullptr,
+        const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice     = nullptr) noexcept;
+
+    // Evaluates combined Height Fog + Aerial Perspective + Wind/ForceField-driven LocalFogVolumes over [0, MaxDistanceMeters]
     [[nodiscard]] static FogEvaluationResult EvaluateVolumetricFog(
         const Mathematics::Axis3D&                               RayOriginWorld,
         const Mathematics::Axis3D&                               RayDirection,
@@ -114,6 +142,110 @@ public:
         const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields = nullptr,
         const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice     = nullptr,
         float                                                    PixelJitter01       = -1.0f) noexcept;
+
+    // Evaluates volumetric crepuscular God Rays interacting with Scene Occlusion, Clouds, and Fog
+    template <typename SceneVisFn, typename CloudVisFn>
+    [[nodiscard]] static Mathematics::LinearRGB EvaluateVolumetricGodRays(
+        const Mathematics::Axis3D&                               RayOriginWorld,
+        const Mathematics::Axis3D&                               RayDirection,
+        float                                                    MaxDistanceMeters,
+        const Mathematics::Axis3D&                               SunDirection,
+        const Mathematics::LinearRGB&                            SolarIrradiance,
+        const AtmosphericFogConfiguration&                       FogConfig,
+        const AtmosphericWindParameters&                         GlobalWind,
+        float                                                    DeckWindSpeedMps,
+        float                                                    DeckWindBearingDeg,
+        float                                                    SimulationSeconds,
+        const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields,
+        const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice,
+        SceneVisFn&&                                             EvaluateSceneSolarVisibility,
+        CloudVisFn&&                                             EvaluateCloudSolarVisibility,
+        float                                                    PixelJitter01 = -1.0f) noexcept;
 };
+
+template <typename SceneVisFn, typename CloudVisFn>
+Mathematics::LinearRGB VolumetricFogSequence::EvaluateVolumetricGodRays(
+    const Mathematics::Axis3D&                               RayOriginWorld,
+    const Mathematics::Axis3D&                               RayDirection,
+    float                                                    MaxDistanceMeters,
+    const Mathematics::Axis3D&                               SunDirection,
+    const Mathematics::LinearRGB&                            SolarIrradiance,
+    const AtmosphericFogConfiguration&                       FogConfig,
+    const AtmosphericWindParameters&                         GlobalWind,
+    float                                                    DeckWindSpeedMps,
+    float                                                    DeckWindBearingDeg,
+    float                                                    SimulationSeconds,
+    const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields,
+    const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice,
+    SceneVisFn&&                                             EvaluateSceneSolarVisibility,
+    CloudVisFn&&                                             EvaluateCloudSolarVisibility,
+    float                                                    PixelJitter01) noexcept
+{
+    const auto& GR = FogConfig.GodRays;
+    if (!GR.Enabled || GR.Intensity <= 1.0e-4f || SunDirection.Z <= 0.005f || MaxDistanceMeters <= 0.25f)
+    {
+        return { 0.0f, 0.0f, 0.0f };
+    }
+
+    const float RangeM   = std::min(std::max(0.25f, MaxDistanceMeters), std::max(10.0f, GR.MaxDistanceMeters));
+    const uint32_t Steps = std::clamp(GR.SampleSteps, 8u, 48u);
+    const float Dt       = (RangeM - 0.15f) / static_cast<float>(Steps);
+    const auto FracGr = [](float V) noexcept -> float { return V - std::floor(V); };
+    const float Ign      = (PixelJitter01 >= 0.0f)
+        ? std::clamp(PixelJitter01, 0.0f, 1.0f)
+        : FracGr(52.9829189f * FracGr(RayDirection.X * 193.7f + RayDirection.Y * 371.4f + RayDirection.Z * 547.8f));
+    const float Jitter   = 0.5f + 0.72f * (Ign - 0.5f);
+
+    const float CosTheta = Mathematics::EvaluateDot(RayDirection, SunDirection);
+    const float G        = std::clamp(GR.AnisotropyG, 0.0f, 0.94f);
+    const float G2       = G * G;
+    const float Den      = std::max(1.0e-3f, 1.0f + G2 - 2.0f * G * CosTheta);
+    const float MiePhase = (1.0f - G2) / (4.0f * Constants::PiFloat * std::pow(Den, 1.5f));
+    const float Phase    = 0.85f * MiePhase + 0.15f * (1.0f / (4.0f * Constants::PiFloat));
+    const float DecayScale = std::max(15.0f, GR.MaxDistanceMeters * (1.35f - 0.85f * std::clamp(GR.Decay, 0.0f, 1.0f)));
+
+    Mathematics::LinearRGB Accum { 0.0f, 0.0f, 0.0f };
+    float CamTrans = 1.0f;
+
+    for (uint32_t S = 0u; S < Steps; ++S)
+    {
+        const float T = 0.15f + (static_cast<float>(S) + Jitter) * Dt;
+        const Mathematics::Axis3D P = RayOriginWorld + RayDirection * T;
+
+        const float SceneVis = std::clamp(EvaluateSceneSolarVisibility(P, SunDirection), 0.0f, 1.0f);
+        if (SceneVis <= 1.0e-3f)
+        {
+            continue;
+        }
+        const float RawCloudVis = GR.InteractWithClouds
+            ? std::clamp(EvaluateCloudSolarVisibility(P, SunDirection), 0.0f, 1.0f)
+            : 1.0f;
+        const float CloudVis = GR.InteractWithClouds
+            ? std::pow(std::clamp((RawCloudVis - 0.12f) / 0.88f, 0.0f, 1.0f), 2.35f)
+            : 1.0f;
+
+        float MediumSigma = 0.0048f * std::max(0.0f, GR.Density);
+        if (GR.InteractWithFog)
+        {
+            const float FogRho = EvaluateFogMediumDensityAtPoint(
+                P, FogConfig, GlobalWind, DeckWindSpeedMps, DeckWindBearingDeg,
+                SimulationSeconds, OptionalForceFields, OptionalLattice);
+            MediumSigma += FogRho * 0.68f * std::max(0.1f, GR.Density);
+        }
+
+        const float DecayW  = std::exp(-T / DecayScale);
+        const float StepWt  = CamTrans * SceneVis * CloudVis * MediumSigma * Phase * GR.Intensity * DecayW * Dt * 0.72f;
+        Accum.R += SolarIrradiance.R * GR.ShaftTint.R * StepWt;
+        Accum.G += SolarIrradiance.G * GR.ShaftTint.G * StepWt;
+        Accum.B += SolarIrradiance.B * GR.ShaftTint.B * StepWt;
+        CamTrans *= std::exp(-MediumSigma * Dt * 0.35f);
+        if (CamTrans < 0.02f)
+        {
+            break;
+        }
+    }
+
+    return Accum;
+}
 
 } // namespace Frontier::GeometricRaster

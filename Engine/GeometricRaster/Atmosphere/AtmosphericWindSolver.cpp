@@ -93,10 +93,25 @@ float AtmosphericWindSolver::EvaluateVolumeShapeMask(
             NormDist = std::max(Rad, std::abs(NZ));
             break;
         }
+        case AtmosphericVolumeShape::HalfSphere:
+        {
+            const float BaseDepth = (LZ < 0.0f) ? (-LZ / std::max(0.05f, 0.14f * HZ)) : 0.0f;
+            const float DomeRad   = (LZ >= 0.0f)
+                ? std::sqrt(NX * NX + NY * NY + NZ * NZ)
+                : std::sqrt(NX * NX + NY * NY);
+            NormDist = std::max(DomeRad, BaseDepth);
+            break;
+        }
     }
 
-    const float Soft = std::clamp(EdgeSoftness, 0.04f, 0.85f);
-    return 1.0f - SmoothStepWind(std::max(0.0f, 1.0f - Soft), 1.0f, NormDist);
+    const float Soft = std::clamp(EdgeSoftness, 0.04f, 0.92f);
+    float Mask = 1.0f - SmoothStepWind(std::max(0.0f, 1.0f - Soft), 1.0f, NormDist);
+    if (Shape == AtmosphericVolumeShape::HalfSphere)
+    {
+        const float RadialDecay = std::pow(std::clamp(1.0f - NormDist * 0.82f, 0.0f, 1.0f), 0.72f);
+        Mask *= (0.35f + 0.65f * RadialDecay);
+    }
+    return Mask;
 }
 
 ResolvedWindSample AtmosphericWindSolver::ResolveWindSample(

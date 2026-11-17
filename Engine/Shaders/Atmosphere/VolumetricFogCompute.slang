@@ -7,11 +7,18 @@ static const float FogPiConst = 3.14159265359;
 
 struct GpuLocalFogVolume
 {
-    float4 CenterShape;          // xyz = CenterWorld, w = Shape (0=Box,1=Sphere,2=Ellipsoid,3=Cylinder,4=Cone,5=Diamond,6=Prism)
+    float4 CenterShape;          // xyz = CenterWorld, w = Shape (0=Box,1=Sphere,2=Ellipsoid,3=Cylinder,4=Cone,5=Diamond,6=Prism,7=HalfSphere)
     float4 HalfExtentYaw;        // xyz = HalfExtentM, w = YawRad
     float4 DensityCovScaleSides; // x = Density, y = Coverage, z = InvFeatureScale, w = float(PrismSides)
     float4 WindVelCurl;          // xyz = ResolvedWindVelMps, w = CurlScalar
     float4 TintAniso;            // xyz = FogTintLinear, w = AnisotropyG
+};
+
+struct GpuFogForceProbe
+{
+    float4 PosRadius;       // xyz = EvaluatedCentreMeters, w = RadiusMeters
+    float4 ForwardStrength; // xyz = UnitForwardAxis, w = Strength
+    float4 Params;          // x = ModelId, y = SwirlRatio, z = CoreRadiusM, w = TurbulenceScaleM
 };
 
 struct VolumetricFogUniformBlock
@@ -20,8 +27,12 @@ struct VolumetricFogUniformBlock
     float4            HeightParams1; // xyz = HeightColour, w = SunScatterIntensity
     float4            AerialParams;  // x = Enabled, y = DensityMul, z = StartDistM, w = MieBlend
     float4            FogWindClock;  // x = HeightFollowWind, y = HeightWindVX, z = HeightWindVY, w = SimulationSeconds
-    float4            FogMeta;       // x = LocalFogCount (0..8), y = AerialScaleHeightM, z = Softness, w = Pad
+    float4            FogMeta;       // x = LocalFogCount (0..8), y = AerialScaleHeightM, z = Softness, w = ForceProbeCount (0..8)
+    float4            GodRayParams0; // x = Enabled, y = Intensity, z = AnisotropyG, w = Density
+    float4            GodRayParams1; // x = MaxDistanceM, y = SampleSteps, z = InteractWithClouds, w = InteractWithFog
+    float4            GodRayTint;    // xyz = ShaftTint, w = Decay
     GpuLocalFogVolume LocalFogs[8];
+    GpuFogForceProbe  ForceProbes[8];
 };
 
 float HashFogInt3Gpu(int IX, int IY, int IZ)
@@ -115,7 +126,7 @@ float EvaluateVolumeShapeMaskGpu(
     {
         NormDist = abs(N.x) + abs(N.y) + abs(N.z);
     }
-    else // Prism
+    else if (Shape == 6u) // Prism
     {
         float Sides = clamp(PrismSides, 3.0, 16.0);
         float Theta = atan2(N.y, N.x);
@@ -124,9 +135,192 @@ float EvaluateVolumeShapeMaskGpu(
         float Rad   = length(N.xy) * cos(ModA) / max(0.25, cos(0.5 * Sec));
         NormDist    = max(Rad, abs(N.z));
     }
+    else // HalfSphere (7u)
+    {
+        float BaseDepth = (L.z < 0.0) ? (-L.z / max(0.05, 0.14 * H.z)) : 0.0;
+        float DomeRad   = (L.z >= 0.0) ? length(N) : length(N.xy);
+        NormDist        = max(DomeRad, BaseDepth);
+    }
 
-    float Soft = clamp(Softness, 0.04, 0.85);
-    return 1.0 - smoothstep(max(0.0, 1.0 - Soft), 1.0, NormDist);
+    float Soft = clamp(Softness, 0.04, 0.92);
+    float Mask = 1.0 - smoothstep(max(0.0, 1.0 - Soft), 1.0, NormDist);
+    if (Shape == 7u)
+    {
+        float RadialDecay = pow(saturate(1.0 - NormDist * 0.82), 0.72);
+        Mask *= (0.35 + 0.65 * RadialDecay);
+    }
+    return Mask;
+}
+
+void EvaluateFogForceProbesGpu(
+    VolumetricFogUniformBlock Fog,
+    float3                    WorldPos,
+    float                     TimeSec,
+    float4                    BaseWindVelCurl,
+    out float3                OutVel,
+    out float                 OutCurl)
+{
+    OutVel  = BaseWindVelCurl.xyz;
+    OutCurl = BaseWindVelCurl.w;
+    uint ProbeCount = min(8u, uint(Fog.FogMeta.w + 0.5));
+    if (ProbeCount == 0u) return;
+
+    // Recompute spatial ForceField velocity & curl directly at WorldPos
+    float3 SumVel = float3(Fog.FogWindClock.y, Fog.FogWindClock.z, 0.0);
+    float  SumCurl = 0.0;
+    for (uint I = 0u; I < ProbeCount; ++I)
+    {
+        GpuFogForceProbe Pr = Fog.ForceProbes[I];
+        float  Radius   = max(0.25, Pr.PosRadius.w);
+        float3 D        = WorldPos - Pr.PosRadius.xyz;
+        float  Dist     = length(D);
+        float  T        = saturate(Dist / Radius);
+        float  Atten    = 1.0 - smoothstep(0.0, 1.0, T);
+        if (Atten <= 1.0e-4) continue;
+
+        uint   ModelId  = uint(Pr.Params.x + 0.5);
+        float  Strength = Pr.ForwardStrength.w * Atten;
+        float  CoreR    = max(0.25, Pr.Params.z);
+        float  Swirl    = Pr.Params.y;
+        float3 Fwd      = normalize(select(dot(Pr.ForwardStrength.xyz, Pr.ForwardStrength.xyz) > 1.0e-5, Pr.ForwardStrength.xyz, float3(1.0, 0.0, 0.0)));
+
+        if (ModelId == 0u || ModelId == 11u || ModelId == 16u) // LinearWind, AtmosphericGust, FlowStream
+        {
+            float Gust = (ModelId == 11u) ? (0.75 + 0.5 * sin(TimeSec * 2.2 + dot(WorldPos.xy, float2(0.18, -0.14)))) : 1.0;
+            SumVel  += Fwd * (Strength * Gust);
+            SumCurl += abs(Strength) * 0.04;
+        }
+        else if (ModelId == 2u || ModelId == 4u) // RadialBurst, Repulsor
+        {
+            float3 Dir = (Dist > 1.0e-3) ? (D / Dist) : float3(0.0, 0.0, 1.0);
+            SumVel  += Dir * Strength;
+            SumCurl += abs(Strength) * 0.08 * (1.0 - T);
+        }
+        else if (ModelId == 3u || ModelId == 5u || ModelId == 6u) // Attractor, AxisAttractor, Containment
+        {
+            float3 Dir = (Dist > 1.0e-3) ? (-D / Dist) : float3(0.0, 0.0, 0.0);
+            SumVel  += Dir * Strength * (Dist / (Dist + CoreR));
+            SumCurl += abs(Strength) * 0.06;
+        }
+        else if (ModelId == 7u || ModelId == 8u || ModelId == 12u) // RotationalColumn, Torque, VorticityConfinement
+        {
+            float2 Dxy   = D.xy;
+            float  Rxy   = max(0.08, length(Dxy));
+            float2 TanXY = float2(-Dxy.y / Rxy, Dxy.x / Rxy);
+            float  Prof  = (Rxy * CoreR) / (Rxy * Rxy + CoreR * CoreR) * 2.0;
+            float3 VortexV = float3(TanXY.x * Strength * Prof, TanXY.y * Strength * Prof, Strength * Swirl * 0.28 * Prof);
+            SumVel  += VortexV;
+            SumCurl += abs(Strength) * (0.18 + 0.25 * Prof);
+        }
+        else if (ModelId == 10u || ModelId == 13u) // CurlNoise, BrownianNoise
+        {
+            float TurbS = 1.0 / max(1.0, Pr.Params.w);
+            float3 NP = WorldPos * TurbS + float3(TimeSec * 0.25, -TimeSec * 0.18, TimeSec * 0.12);
+            float3 CDir = float3(
+                LatticeNoiseFog3Gpu(NP + float3(0.0, 3.1, 1.7)) - 0.5,
+                LatticeNoiseFog3Gpu(NP + float3(5.3, 0.0, 2.9)) - 0.5,
+                LatticeNoiseFog3Gpu(NP + float3(1.9, 4.7, 0.0)) - 0.5) * 2.0;
+            SumVel  += CDir * Strength;
+            SumCurl += abs(Strength) * 0.22;
+        }
+        else
+        {
+            SumVel  += Fwd * Strength;
+            SumCurl += abs(Strength) * 0.08;
+        }
+    }
+    OutVel  = SumVel;
+    OutCurl = max(BaseWindVelCurl.w, SumCurl);
+}
+
+float EvaluateSingleLocalFogDensityGpu(
+    VolumetricFogUniformBlock Fog,
+    GpuLocalFogVolume         Vol,
+    float3                    P,
+    float                     Softness,
+    float                     TimeSec,
+    out float                 OutCurlHighlight)
+{
+    OutCurlHighlight = 0.0;
+    uint   ShapeIdx  = uint(Vol.CenterShape.w + 0.5);
+    float3 Center    = Vol.CenterShape.xyz;
+    float3 HalfExt   = Vol.HalfExtentYaw.xyz;
+    float  Mask      = EvaluateVolumeShapeMaskGpu(
+        P, Center, HalfExt, ShapeIdx, Vol.HalfExtentYaw.w, Vol.DensityCovScaleSides.w, Softness);
+    if (Mask <= 1.0e-4) return 0.0;
+
+    float3 Vel;
+    float  Curl;
+    EvaluateFogForceProbesGpu(Fog, P, TimeSec, Vol.WindVelCurl, Vel, Curl);
+
+    float Speed = length(Vel);
+    float3 AdvP = float3(
+        P.x - Vel.x * TimeSec * 0.72,
+        P.y - Vel.y * TimeSec * 0.72,
+        P.z - Vel.z * TimeSec * 0.40);
+    float SpiralMod = 1.0;
+    if (Curl > 1.0e-3)
+    {
+        float2 Dxy   = P.xy - Center.xy;
+        float  RadXY = length(Dxy);
+        float  Theta = atan2(Dxy.y, Dxy.x);
+        float  Twist = clamp(Curl * 0.18, 0.0, 3.6) * (0.45 * TimeSec - 0.08 * RadXY);
+        float  Cs = cos(Twist), Sn = sin(Twist);
+        AdvP.x = Center.x + (Dxy.x * Cs - Dxy.y * Sn) - Vel.x * TimeSec * 0.42;
+        AdvP.y = Center.y + (Dxy.x * Sn + Dxy.y * Cs) - Vel.y * TimeSec * 0.42;
+        AdvP.z += sin(Theta * 2.0 + Twist) * 1.15;
+        SpiralMod = 0.62 + 0.72 * (0.5 + 0.5 * cos(Theta * 2.0 - RadXY * 0.22 + TimeSec * 1.1));
+    }
+
+    float LScale  = Vol.DensityCovScaleSides.z;
+    float Cov     = clamp(Vol.DensityCovScaleSides.y, 0.01, 1.0);
+    float Thresh  = 1.0 - Cov;
+    float N       = FogFbmGpu3(AdvP * LScale);
+    float BaseDen = max(0.0, (N - Thresh) / max(0.15, Cov));
+
+    if (uint(Fog.FogMeta.w + 0.5) > 0u || Speed > 0.25)
+    {
+        float StreamWave = 0.5 + 0.5 * sin((AdvP.x * 0.30 - AdvP.y * 0.24) + Speed * 0.35);
+        float CurlBoost  = 1.0 + clamp(Curl * 0.28, 0.0, 1.15) * SpiralMod;
+        float JetClear   = 1.0 - clamp((Speed - 6.0) * 0.036, 0.0, 0.64) * (1.0 - StreamWave * 0.45);
+        BaseDen *= clamp(CurlBoost * JetClear, 0.22, 2.15);
+        OutCurlHighlight = clamp(Curl * 0.14, 0.0, 0.40);
+    }
+
+    return BaseDen * Mask * Vol.DensityCovScaleSides.x * 0.075;
+}
+
+float EvaluateFogMediumDensityAtPointGpu(VolumetricFogUniformBlock Fog, float3 WorldPos)
+{
+    float Sigma = 0.0;
+    if (Fog.HeightParams0.x > 0.5 && Fog.HeightParams0.y > 1.0e-6)
+    {
+        float Falloff = max(10.0, Fog.HeightParams0.z);
+        float RelZ    = max(0.0, (WorldPos.z - Fog.HeightParams0.w) / Falloff);
+        Sigma += clamp(Fog.HeightParams0.y, 0.0, 0.25) * exp(-RelZ);
+    }
+    uint LocalCount = min(8u, uint(Fog.FogMeta.x + 0.5));
+    float Softness  = clamp(Fog.FogMeta.z, 0.04, 0.92);
+    float TimeSec   = Fog.FogWindClock.w;
+    for (uint I = 0u; I < LocalCount; ++I)
+    {
+        GpuLocalFogVolume Vol = Fog.LocalFogs[I];
+        if (Vol.DensityCovScaleSides.x <= 1.0e-4 || Vol.DensityCovScaleSides.y <= 1.0e-4) continue;
+        float3 Center  = Vol.CenterShape.xyz;
+        float3 HalfExt = Vol.HalfExtentYaw.xyz;
+        float  MaxExt  = max(HalfExt.x, max(HalfExt.y, HalfExt.z)) * 1.45;
+        uint   ShapeIdx = uint(Vol.CenterShape.w + 0.5);
+        float  MinZ    = (ShapeIdx == 7u) ? (Center.z - 0.14 * HalfExt.z) : (Center.z - HalfExt.z);
+        if (WorldPos.x < Center.x - MaxExt || WorldPos.x > Center.x + MaxExt ||
+            WorldPos.y < Center.y - MaxExt || WorldPos.y > Center.y + MaxExt ||
+            WorldPos.z < MinZ || WorldPos.z > Center.z + HalfExt.z)
+        {
+            continue;
+        }
+        float DummyCurl = 0.0;
+        Sigma += EvaluateSingleLocalFogDensityGpu(Fog, Vol, WorldPos, Softness, TimeSec, DummyCurl);
+    }
+    return Sigma;
 }
 
 float EvaluateHeightFogOpticalDepthGpu(float OriginZ, float DirZ, float SegM, float Density, float FalloffM, float BaseAltM)
@@ -205,9 +399,9 @@ float3 EvaluateVolumetricFogGpu(
         }
     }
 
-    // 3. Wind-Driven Multi-Shape LocalFogVolumes (up to 8)
+    // 3. Wind-Driven Multi-Shape LocalFogVolumes (up to 8, 32 steps with spatial ForceField probes)
     uint LocalCount = min(8u, uint(Fog.FogMeta.x + 0.5));
-    float Softness  = clamp(Fog.FogMeta.z, 0.04, 0.85);
+    float Softness  = clamp(Fog.FogMeta.z, 0.04, 0.92);
     float3 InvD     = 1.0 / select(abs(RayDir) > float3(1.0e-6), RayDir, float3(1.0e-6));
 
     for (uint I = 0u; I < LocalCount; ++I)
@@ -218,7 +412,9 @@ float3 EvaluateVolumetricFogGpu(
         float3 Center   = Vol.CenterShape.xyz;
         float3 HalfExt  = Vol.HalfExtentYaw.xyz;
         float  MaxExt   = max(HalfExt.x, max(HalfExt.y, HalfExt.z)) * 1.45;
-        float3 BoxMin   = Center - float3(MaxExt, MaxExt, HalfExt.z);
+        uint   ShapeIdx = uint(Vol.CenterShape.w + 0.5);
+        float  MinZOff  = (ShapeIdx == 7u) ? (0.14 * HalfExt.z) : HalfExt.z;
+        float3 BoxMin   = Center - float3(MaxExt, MaxExt, MinZOff);
         float3 BoxMax   = Center + float3(MaxExt, MaxExt, HalfExt.z);
         float3 T0       = (BoxMin - RayOrigin) * InvD;
         float3 T1       = (BoxMax - RayOrigin) * InvD;
@@ -228,43 +424,22 @@ float3 EvaluateVolumetricFogGpu(
         float  TExit    = min(SafeDist, min(TF.x, min(TF.y, TF.z)));
         if (TExit <= TEnter) continue;
 
-        float  Dt       = (TExit - TEnter) / 24.0;
-        float  LScale   = Vol.DensityCovScaleSides.z;
-        float  Cov      = clamp(Vol.DensityCovScaleSides.y, 0.01, 1.0);
-        float  Thresh   = 1.0 - Cov;
+        float  Dt       = (TExit - TEnter) / 32.0;
         float  Phase    = 0.72 * EvaluateFogPhaseHGGpu(CosTheta, Vol.TintAniso.w) +
                           0.28 * EvaluateFogPhaseHGGpu(CosTheta, -0.18);
-        uint   ShapeIdx = uint(Vol.CenterShape.w + 0.5);
 
-        for (uint S = 0u; S < 24u; ++S)
+        for (uint S = 0u; S < 32u; ++S)
         {
             float  T    = TEnter + (float(S) + Jitter) * Dt;
             float3 P    = RayOrigin + RayDir * T;
-            float  Mask = EvaluateVolumeShapeMaskGpu(
-                P, Center, HalfExt, ShapeIdx, Vol.HalfExtentYaw.w, Vol.DensityCovScaleSides.w, Softness);
-            if (Mask <= 1.0e-4) continue;
-
-            float3 AdvP = float3(
-                P.x - Vol.WindVelCurl.x * TimeSec,
-                P.y - Vol.WindVelCurl.y * TimeSec,
-                P.z - Vol.WindVelCurl.z * TimeSec * 0.4);
-            if (Vol.WindVelCurl.w > 1.0e-3)
-            {
-                float2 Dxy = P.xy - Center.xy;
-                float  SwirlA = clamp(Vol.WindVelCurl.w * 0.12, -2.5, 2.5) * sin(TimeSec * 0.7 + 0.05 * length(Dxy));
-                float  Cs = cos(SwirlA), Sn = sin(SwirlA);
-                AdvP.x = Center.x + (Dxy.x * Cs - Dxy.y * Sn) - Vol.WindVelCurl.x * TimeSec * 0.35;
-                AdvP.y = Center.y + (Dxy.x * Sn + Dxy.y * Cs) - Vol.WindVelCurl.y * TimeSec * 0.35;
-            }
-
-            float N   = FogFbmGpu3(AdvP * LScale);
-            float Den = max(0.0, (N - Thresh) / max(0.15, Cov)) * Mask * Vol.DensityCovScaleSides.x * 0.075;
+            float  CurlHighlight = 0.0;
+            float  Den  = EvaluateSingleLocalFogDensityGpu(Fog, Vol, P, Softness, TimeSec, CurlHighlight);
             if (Den > 1.0e-5)
             {
                 float SegT    = exp(-Den * Dt);
                 float Scatter = 1.0 - SegT;
-                float HNorm   = clamp((P.z - (Center.z - HalfExt.z)) / max(0.2, 2.0 * HalfExt.z), 0.0, 1.0);
-                float Amb     = 0.42 + 0.58 * HNorm;
+                float HNorm   = clamp((P.z - BoxMin.z) / max(0.2, BoxMax.z - BoxMin.z), 0.0, 1.0);
+                float Amb     = 0.42 + 0.58 * HNorm + CurlHighlight * 0.25;
                 InScatter        += OutTransmittance * Vol.TintAniso.xyz * (SolarIrrad * Phase * 1.45 + SkyColor * Amb * 0.75) * Scatter;
                 OutTransmittance *= SegT;
                 if (OutTransmittance < 0.01) break;

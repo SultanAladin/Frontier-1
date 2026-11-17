@@ -36,13 +36,14 @@ enum class WindBindingSource : uint8_t
 
 enum class AtmosphericVolumeShape : uint8_t
 {
-    Box       = 0u, // [-] - Axis/yaw-oriented rectangular bounding prism
-    Sphere    = 1u, // [-] - Spherical volume inscribed inside HalfExtent min radius
-    Ellipsoid = 2u, // [-] - Anisotropic 3D ellipsoid scaled by HalfExtentMeters
-    Cylinder  = 3u, // [-] - Vertical finite cylinder along +Z
-    Cone      = 4u, // [-] - Tapered vertical cone widening at base
-    Diamond   = 5u, // [-] - Octahedral diamond volume (|x|/hx + |y|/hy + |z|/hz <= 1)
-    Prism     = 6u, // [-] - Regular N-sided extruded prism (PrismSides = 3..16)
+    Box        = 0u, // [-] - Axis/yaw-oriented rectangular bounding prism
+    Sphere     = 1u, // [-] - Spherical volume inscribed inside HalfExtent min radius
+    Ellipsoid  = 2u, // [-] - Anisotropic 3D ellipsoid scaled by HalfExtentMeters
+    Cylinder   = 3u, // [-] - Vertical finite cylinder along +Z
+    Cone       = 4u, // [-] - Tapered vertical cone widening at base
+    Diamond    = 5u, // [-] - Octahedral diamond volume (|x|/hx + |y|/hy + |z|/hz <= 1)
+    Prism      = 6u, // [-] - Regular N-sided extruded prism (PrismSides = 3..16)
+    HalfSphere = 7u, // [-] - Grounded hemispherical dome (+Z up) with smooth radial & base falloff
 };
 
 //------------------------------------------------------------------------------------------------------------------------

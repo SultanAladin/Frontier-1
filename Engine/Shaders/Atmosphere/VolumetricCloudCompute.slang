@@ -242,7 +242,7 @@ float EvaluateCloudVolumeShapeMaskGpu(
     {
         NormDist = abs(N.x) + abs(N.y) + abs(N.z);
     }
-    else
+    else if (Shape == 6u)
     {
         float Sides = clamp(PrismSides, 3.0, 16.0);
         float Theta = atan2(N.y, N.x);
@@ -251,9 +251,75 @@ float EvaluateCloudVolumeShapeMaskGpu(
         float Rad   = length(N.xy) * cos(ModA) / max(0.25, cos(0.5 * Sec));
         NormDist    = max(Rad, abs(N.z));
     }
+    else // HalfSphere (7u)
+    {
+        float BaseDepth = (L.z < 0.0) ? (-L.z / max(0.05, 0.14 * H.z)) : 0.0;
+        float DomeRad   = (L.z >= 0.0) ? length(N) : length(N.xy);
+        NormDist        = max(DomeRad, BaseDepth);
+    }
 
-    float Soft = clamp(Softness, 0.04, 0.85);
-    return 1.0 - smoothstep(max(0.0, 1.0 - Soft), 1.0, NormDist);
+    float Soft = clamp(Softness, 0.04, 0.92);
+    float Mask = 1.0 - smoothstep(max(0.0, 1.0 - Soft), 1.0, NormDist);
+    if (Shape == 7u)
+    {
+        float RadialDecay = pow(saturate(1.0 - NormDist * 0.82), 0.72);
+        Mask *= (0.35 + 0.65 * RadialDecay);
+    }
+    return Mask;
+}
+
+float EvaluateLocalCloudsShadowGpu(VolumetricCloudUniformBlock Cfg, float3 WorldPos, float3 SunDir)
+{
+    uint VolCount = min(8u, uint(Cfg.FormationOptics.w + 0.5));
+    if (VolCount == 0u || SunDir.z <= 0.01) return 1.0;
+
+    float TimeSec = Cfg.OriginTimeVector.w;
+    float3 InvD   = 1.0 / select(abs(SunDir) > float3(1.0e-6), SunDir, float3(1.0e-6));
+    float Trans   = 1.0;
+
+    for (uint I = 0u; I < VolCount; ++I)
+    {
+        GpuLocalCloudVolume Vol = Cfg.LocalClouds[I];
+        if (Vol.DensityCovScaleSides.x <= 0.01 || Vol.DensityCovScaleSides.y <= 0.01) continue;
+
+        float3 Center  = Vol.CenterShape.xyz;
+        float3 HalfExt = Vol.HalfExtentYaw.xyz;
+        float  MaxExt  = max(HalfExt.x, max(HalfExt.y, HalfExt.z)) * 1.45;
+        float3 BoxMin  = Center - float3(MaxExt, MaxExt, HalfExt.z);
+        float3 BoxMax  = Center + float3(MaxExt, MaxExt, HalfExt.z);
+        float3 T0      = (BoxMin - WorldPos) * InvD;
+        float3 T1      = (BoxMax - WorldPos) * InvD;
+        float3 TN      = min(T0, T1);
+        float3 TF      = max(T0, T1);
+        float  TEnter  = max(0.02, max(TN.x, max(TN.y, TN.z)));
+        float  TExit   = min(250.0, min(TF.x, min(TF.y, TF.z)));
+        if (TExit <= TEnter) continue;
+
+        float Dt       = (TExit - TEnter) / 6.0;
+        float LScale   = Vol.DensityCovScaleSides.z;
+        float Cov      = clamp(Vol.DensityCovScaleSides.y, 0.01, 1.0);
+        float Thresh   = 1.0 - Cov;
+        uint  ShapeIdx = uint(Vol.CenterShape.w + 0.5);
+        bool  DoWind   = (Vol.SoftAnisoPad.z > 0.5);
+        float Tau      = 0.0;
+
+        for (uint S = 0u; S < 6u; ++S)
+        {
+            float  T    = TEnter + (float(S) + 0.5) * Dt;
+            float3 P    = WorldPos + SunDir * T;
+            float  Mask = EvaluateCloudVolumeShapeMaskGpu(
+                P, Center, HalfExt, ShapeIdx, Vol.HalfExtentYaw.w, Vol.DensityCovScaleSides.w, Vol.SoftAnisoPad.x);
+            if (Mask <= 1.0e-4) continue;
+            float3 AdvP = DoWind
+                ? float3(P.x - Vol.WindVelCurl.x * TimeSec, P.y - Vol.WindVelCurl.y * TimeSec, P.z - Vol.WindVelCurl.z * TimeSec * 0.35)
+                : P;
+            float N   = CloudFbmGpu3(AdvP * LScale, 1.0);
+            float Den = max(0.0, (N - Thresh) / max(0.15, Cov)) * Mask * Vol.DensityCovScaleSides.x * 0.085;
+            Tau += Den * Dt;
+        }
+        Trans *= (0.14 + 0.86 * exp(-Tau));
+    }
+    return clamp(Trans, 0.08, 1.0);
 }
 
 float3 EvaluateLocalCloudsSegmentGpu(

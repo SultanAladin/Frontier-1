@@ -196,7 +196,7 @@ void FluidOutlinerPanel::Render(
         const char*         Label;
         const char*         Tag;
         FluidOutlinerFilter Group;
-        uint8_t             IconKind; // 0=cube, 1=flame, 2=sun, 3=wind
+        uint8_t             IconBadge; // 0=cube, 1=flame, 2=sun, 3=wind
     };
     constexpr std::array<NodeEntry, 7> Nodes {{
         { FluidOutlinerNode::HeroVolume,     "Gas domain",       "VOLUME", FluidOutlinerFilter::Gas,      0u },
@@ -235,13 +235,13 @@ void FluidOutlinerPanel::Render(
         }
 
         const Point2D IconC { RowRect.X + 20.0f, RowRect.Center().Y };
-        const ColorRgba IconTint = (N.IconKind == 1u) ? C.WarmAccent
-                                 : (N.IconKind == 2u) ? ColorRgba { 240u, 198u, 96u, 255u }
-                                 : (N.IconKind == 3u) ? C.TealTint
-                                                      : ColorRgba { 98u, 174u, 240u, 255u };
-        if (N.IconKind == 1u)      DrawFlameGlyph(Surface, IconC, 5.5f, IconTint);
-        else if (N.IconKind == 2u) DrawSunGlyph(Surface, IconC, 5.8f, IconTint);
-        else if (N.IconKind == 3u) RasterizeWindLinesGlyph(Surface, IconC, 5.0f, IconTint);
+        const ColorRgba IconTint = (N.IconBadge == 1u) ? C.WarmAccent
+                                 : (N.IconBadge == 2u) ? ColorRgba { 240u, 198u, 96u, 255u }
+                                 : (N.IconBadge == 3u) ? C.TealTint
+                                                       : ColorRgba { 98u, 174u, 240u, 255u };
+        if (N.IconBadge == 1u)      DrawFlameGlyph(Surface, IconC, 5.5f, IconTint);
+        else if (N.IconBadge == 2u) DrawSunGlyph(Surface, IconC, 5.8f, IconTint);
+        else if (N.IconBadge == 3u) RasterizeWindLinesGlyph(Surface, IconC, 5.0f, IconTint);
         else                       DrawCubeGlyph(Surface, IconC, 5.5f, IconTint);
 
         Surface.Text({ RowRect.X + 35.0f, RowRect.Center().Y - 6.0f }, 11.2f, Selected ? C.TextPrimary : C.TextSoft, N.Label);

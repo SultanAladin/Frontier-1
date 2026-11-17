@@ -233,10 +233,10 @@ struct SceneGeoAsset
         if (CX < -6.0f || CY < -6.0f || CX > static_cast<float>(W) + 6.0f || CY > static_cast<float>(H) + 6.0f) return;
 
         const bool IsDebris = ForceDebris || (P.AuxScalar < -0.5f);
-        const uint32_t KindIdx = IsDebris
+        const uint32_t CatIdx = IsDebris
             ? static_cast<uint32_t>(std::clamp(std::lround(-P.AuxScalar - 1.0f), 0l, 5l))
             : 0u;
-        const auto Kind = static_cast<FluidDebrisKind>(KindIdx);
+        const auto Category = static_cast<FluidDebrisCategory>(CatIdx);
         const float ScreenPerMeter = static_cast<float>(H) / (2.0f * Z * TanY);
         const float BaseRad = std::clamp(P.SizeMeters * ScreenPerMeter, IsDebris ? 1.35f : 0.95f, IsDebris ? 3.2f : 2.1f);
 
@@ -245,7 +245,7 @@ struct SceneGeoAsset
         const float VLen = std::hypot(VX, VY);
         float DirX = (VLen > 1.0e-3f) ? (VX / VLen) : 1.0f;
         float DirY = (VLen > 1.0e-3f) ? (VY / VLen) : 0.0f;
-        if (IsDebris && (Kind == FluidDebrisKind::PaperSheet || Kind == FluidDebrisKind::Leaf))
+        if (IsDebris && (Category == FluidDebrisCategory::PaperSheet || Category == FluidDebrisCategory::Leaf))
         {
             const float Tumble = P.SeedScalar * 6.28318f + P.AgeSeconds * 8.5f;
             DirX = std::cos(Tumble);
@@ -255,14 +255,14 @@ struct SceneGeoAsset
         float PerpScale = 1.0f;
         if (IsDebris)
         {
-            switch (Kind)
+            switch (Category)
             {
-            case FluidDebrisKind::RockChunk:    Stretch = 1.05f; PerpScale = 0.85f; break;
-            case FluidDebrisKind::TwigStick:    Stretch = 1.95f; PerpScale = 0.28f; break;
-            case FluidDebrisKind::Leaf:         Stretch = 1.38f; PerpScale = 0.65f; break;
-            case FluidDebrisKind::PaperSheet:   Stretch = 1.32f; PerpScale = 0.88f; break;
-            case FluidDebrisKind::WoodSplinter: Stretch = 1.80f; PerpScale = 0.34f; break;
-            case FluidDebrisKind::MetalScrap:   Stretch = 1.25f; PerpScale = 0.68f; break;
+            case FluidDebrisCategory::RockChunk:    Stretch = 1.05f; PerpScale = 0.85f; break;
+            case FluidDebrisCategory::TwigStick:    Stretch = 1.95f; PerpScale = 0.28f; break;
+            case FluidDebrisCategory::Leaf:         Stretch = 1.38f; PerpScale = 0.65f; break;
+            case FluidDebrisCategory::PaperSheet:   Stretch = 1.32f; PerpScale = 0.88f; break;
+            case FluidDebrisCategory::WoodSplinter: Stretch = 1.80f; PerpScale = 0.34f; break;
+            case FluidDebrisCategory::MetalScrap:   Stretch = 1.25f; PerpScale = 0.68f; break;
             }
         }
 
@@ -298,18 +298,18 @@ struct SceneGeoAsset
                 float ShapeDist = Along * Along + Perp * Perp;
                 if (IsDebris)
                 {
-                    if (Kind == FluidDebrisKind::PaperSheet)
+                    if (Category == FluidDebrisCategory::PaperSheet)
                     {
                         const float Box = std::max(std::abs(Along), std::abs(Perp));
                         ShapeDist = Box * Box;
                     }
-                    else if (Kind == FluidDebrisKind::Leaf)
+                    else if (Category == FluidDebrisCategory::Leaf)
                     {
                         const float LeafWidth = std::max(0.25f, 1.0f - 0.42f * std::abs(Along));
                         const float LP = Perp / LeafWidth;
                         ShapeDist = Along * Along + LP * LP;
                     }
-                    else if (Kind == FluidDebrisKind::RockChunk || Kind == FluidDebrisKind::MetalScrap)
+                    else if (Category == FluidDebrisCategory::RockChunk || Category == FluidDebrisCategory::MetalScrap)
                     {
                         const float Oct = std::max(std::abs(Along) * 0.88f + std::abs(Perp) * 0.45f, std::abs(Perp) * 0.95f);
                         ShapeDist = Oct * Oct;
@@ -435,17 +435,17 @@ int main()
         Doc.Domain.GridResolution = 40u;
         SimDust.Configure(Doc);
         for (uint32_t S = 0u; S < 60u; ++S) SimDust.StepSimulation(1.0f / 60.0f);
-        std::array<bool, 6> SeenKinds {};
+        std::array<bool, 6> SeenCategories {};
         for (const auto& P : SimDust.InspectParticleCoupler().InspectEmberSlots())
         {
             if (ParticleSpace::QueryParticleSlotAlive(P) && P.AuxScalar < -0.5f)
             {
                 const int K = static_cast<int>(std::clamp(std::lround(-P.AuxScalar - 1.0f), 0l, 5l));
-                SeenKinds[static_cast<std::size_t>(K)] = true;
+                SeenCategories[static_cast<std::size_t>(K)] = true;
             }
         }
-        const uint32_t KindCount = static_cast<uint32_t>(std::count(SeenKinds.begin(), SeenKinds.end(), true));
-        Score.Verify(KindCount == 6u, "Tornado spawns all 6 typed debris array particles (rock, twig, leaf, paper, wood, metal)");
+        const uint32_t CategoryCount = static_cast<uint32_t>(std::count(SeenCategories.begin(), SeenCategories.end(), true));
+        Score.Verify(CategoryCount == 6u, "Tornado spawns all 6 typed debris array particles (rock, twig, leaf, paper, wood, metal)");
         TileDustTornado = RenderFluidPreviewRgba(SimDust, TileW, TileH, { 2.9f, -2.9f, 1.70f }, { 0.0f, 0.0f, 1.25f });
     }
     {

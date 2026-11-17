@@ -212,12 +212,12 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
         Doc.Particles.EnableTornadoDebrisArray = true;
         Doc.Particles.TornadoDebrisRatio    = 0.52f;
         Doc.Particles.DebrisTypes           = {
-            FluidDebrisKind::RockChunk,
-            FluidDebrisKind::TwigStick,
-            FluidDebrisKind::Leaf,
-            FluidDebrisKind::PaperSheet,
-            FluidDebrisKind::WoodSplinter,
-            FluidDebrisKind::MetalScrap,
+            FluidDebrisCategory::RockChunk,
+            FluidDebrisCategory::TwigStick,
+            FluidDebrisCategory::Leaf,
+            FluidDebrisCategory::PaperSheet,
+            FluidDebrisCategory::WoodSplinter,
+            FluidDebrisCategory::MetalScrap,
         };
     }
     else if (PresetKey == "dust_tornado")
@@ -258,12 +258,12 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
         Doc.Particles.EnableTornadoDebrisArray = true;
         Doc.Particles.TornadoDebrisRatio    = 0.85f;
         Doc.Particles.DebrisTypes           = {
-            FluidDebrisKind::RockChunk,
-            FluidDebrisKind::TwigStick,
-            FluidDebrisKind::Leaf,
-            FluidDebrisKind::PaperSheet,
-            FluidDebrisKind::WoodSplinter,
-            FluidDebrisKind::MetalScrap,
+            FluidDebrisCategory::RockChunk,
+            FluidDebrisCategory::TwigStick,
+            FluidDebrisCategory::Leaf,
+            FluidDebrisCategory::PaperSheet,
+            FluidDebrisCategory::WoodSplinter,
+            FluidDebrisCategory::MetalScrap,
         };
     }
     else

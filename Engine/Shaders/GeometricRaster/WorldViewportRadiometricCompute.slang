@@ -159,24 +159,30 @@ float3 EvaluateBackgroundSkyCloudsGpu(float3 RayDir, float2 PixelCoord)
 float EvaluateSolarCloudTransmittanceGpu(float3 WorldPos, float3 SunDir)
 {
     VolumetricCloudUniformBlock C = WorldUniforms.CloudParams;
-    if (WorldUniforms.AtmosphereMaskPad.x == 0u || C.SunAxisToggle.w < 0.5 || C.WindVectorOcclude.z < 0.5 || SunDir.z <= 0.01)
+    if (WorldUniforms.AtmosphereMaskPad.x == 0u || SunDir.z <= 0.01)
     {
         return 1.0;
     }
-    float WindX   = (C.SkyColorWind.w > 0.5) ? (C.WindVectorOcclude.x * C.OriginTimeVector.w) : 0.0;
-    float WindY   = (C.SkyColorWind.w > 0.5) ? (C.WindVectorOcclude.y * C.OriginTimeVector.w) : 0.0;
-    float PlanetR = max(500000.0, C.SolarIrradianceExt.w);
-    float FloorM  = max(100.0, C.DeckGeometry.x);
-    float ThickM  = max(100.0, C.DeckGeometry.y);
-    float MidAlt  = FloorM + ThickM * 0.45;
-    float DistM   = MidAlt / max(0.05, SunDir.z);
-    float3 P      = float3(WorldPos.x + SunDir.x * DistM, WorldPos.y + SunDir.y * DistM, PlanetR + 100.0 + MidAlt);
-    float FScale  = 0.00065 / max(0.08, C.DeckOptics.x);
-    float D = SampleCloudDeckDensityGpu(
-        P, PlanetR, FloorM, ThickM, clamp(C.DeckGeometry.z, 0.0, 1.0), clamp(C.DeckOptics.y, 0.0, 1.0),
-        max(0.0, C.DeckGeometry.w) * 0.0085, FScale, WindX, WindY, C.DeckOptics.w, uint(C.FormationOptics.x + 0.5), 8000.0,
-        C.FormationOptics.y, C.FormationOptics.z);
-    return 0.32 + 0.68 * exp(-D * ThickM * 0.22);
+    float Trans = 1.0;
+    if (C.SunAxisToggle.w >= 0.5 && C.WindVectorOcclude.z >= 0.5)
+    {
+        float WindX   = (C.SkyColorWind.w > 0.5) ? (C.WindVectorOcclude.x * C.OriginTimeVector.w) : 0.0;
+        float WindY   = (C.SkyColorWind.w > 0.5) ? (C.WindVectorOcclude.y * C.OriginTimeVector.w) : 0.0;
+        float PlanetR = max(500000.0, C.SolarIrradianceExt.w);
+        float FloorM  = max(100.0, C.DeckGeometry.x);
+        float ThickM  = max(100.0, C.DeckGeometry.y);
+        float MidAlt  = FloorM + ThickM * 0.45;
+        float DistM   = MidAlt / max(0.05, SunDir.z);
+        float3 P      = float3(WorldPos.x + SunDir.x * DistM, WorldPos.y + SunDir.y * DistM, PlanetR + 100.0 + MidAlt);
+        float FScale  = 0.00065 / max(0.08, C.DeckOptics.x);
+        float D = SampleCloudDeckDensityGpu(
+            P, PlanetR, FloorM, ThickM, clamp(C.DeckGeometry.z, 0.0, 1.0), clamp(C.DeckOptics.y, 0.0, 1.0),
+            max(0.0, C.DeckGeometry.w) * 0.0085, FScale, WindX, WindY, C.DeckOptics.w, uint(C.FormationOptics.x + 0.5), 8000.0,
+            C.FormationOptics.y, C.FormationOptics.z);
+        Trans *= (0.32 + 0.68 * exp(-D * ThickM * 0.22));
+    }
+    Trans *= EvaluateLocalCloudsShadowGpu(C, WorldPos, SunDir);
+    return clamp(Trans, 0.08, 1.0);
 }
 
 float IntersectTriangleMT(float3 Origin, float3 Dir, float MinT, float MaxT, uint TriIndex, out float2 OutUV)
@@ -1322,6 +1328,75 @@ uint PackLinearToSrgb8Rgba(float3 LinearColor)
     return Byte.x | (Byte.y << 8u) | (Byte.z << 16u) | (255u << 24u);
 }
 
+float3 EvaluateVolumetricGodRaysGpu(
+    float3 RayOrigin,
+    float3 RayDir,
+    float  MaxDistM,
+    float3 SunDir,
+    float3 SolarIrrad,
+    float2 PixelCoord)
+{
+    VolumetricFogUniformBlock Fog = WorldUniforms.FogParams;
+    if (Fog.GodRayParams0.x < 0.5 || Fog.GodRayParams0.y <= 1.0e-4 || SunDir.z <= 0.005 || MaxDistM <= 0.25)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    float  RangeM  = min(max(0.25, MaxDistM), max(10.0, Fog.GodRayParams1.x));
+    uint   Steps   = clamp(uint(Fog.GodRayParams1.y + 0.5), 8u, 48u);
+    float  Dt      = (RangeM - 0.15) / float(Steps);
+    float  Ign     = frac(52.9829189 * frac(dot(PixelCoord, float2(0.06711056, 0.00583715))));
+    float  Jitter  = 0.5 + 0.72 * (Ign - 0.5);
+
+    float  CosTheta   = dot(RayDir, SunDir);
+    float  G          = clamp(Fog.GodRayParams0.z, 0.0, 0.94);
+    float  G2         = G * G;
+    float  Den        = max(1.0e-3, 1.0 + G2 - 2.0 * G * CosTheta);
+    float  MiePhase   = (1.0 - G2) / (4.0 * PiConst * pow(Den, 1.5));
+    float  Phase      = 0.85 * MiePhase + 0.15 * (1.0 / (4.0 * PiConst));
+    float  DecayScale = max(15.0, Fog.GodRayParams1.x * (1.35 - 0.85 * saturate(Fog.GodRayTint.w)));
+
+    float3 Accum    = float3(0.0, 0.0, 0.0);
+    float  CamTrans = 1.0;
+    bool   DoClouds = (Fog.GodRayParams1.z > 0.5);
+    bool   DoFog    = (Fog.GodRayParams1.w > 0.5);
+    float  BaseDen  = max(0.0, Fog.GodRayParams0.w);
+
+    for (uint S = 0u; S < Steps; ++S)
+    {
+        float  T = 0.15 + (float(S) + Jitter) * Dt;
+        float3 P = RayOrigin + RayDir * T;
+
+        if (TraceSceneAnyHit(P + SunDir * 0.02, SunDir, 0.02, 140.0))
+        {
+            continue;
+        }
+        float SceneVis = 1.0;
+        if (WorldUniforms.FluidParams.HeroBoxMinFade.w > 0.5)
+        {
+            SceneVis *= EvaluateFluidShadowTransmittanceBufferGpu(
+                WorldUniforms.FluidParams, FluidHeroThermoTexels, FluidWorldThermoTexels, P, SunDir, 32.0);
+        }
+        float RawCloudVis = DoClouds ? EvaluateSolarCloudTransmittanceGpu(P, SunDir) : 1.0;
+        float CloudVis    = DoClouds ? pow(saturate((RawCloudVis - 0.12) / 0.88), 2.35) : 1.0;
+
+        float MediumSigma = 0.0048 * BaseDen;
+        if (DoFog)
+        {
+            float FogRho = EvaluateFogMediumDensityAtPointGpu(Fog, P);
+            MediumSigma += FogRho * 0.68 * max(0.1, BaseDen);
+        }
+
+        float DecayW = exp(-T / DecayScale);
+        float StepWt = CamTrans * SceneVis * CloudVis * MediumSigma * Phase * Fog.GodRayParams0.y * DecayW * Dt * 0.72;
+        Accum       += SolarIrrad * Fog.GodRayTint.xyz * StepWt;
+        CamTrans    *= exp(-MediumSigma * Dt * 0.35);
+        if (CamTrans < 0.02) break;
+    }
+
+    return Accum;
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
@@ -1373,6 +1448,11 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             EvaluateSkyDome(RayDir),
             float2(DispatchThreadID.xy), PtFogT);
         SampleHdr = SampleHdr * PtFogT + PtFogR;
+        SampleHdr += EvaluateVolumetricGodRaysGpu(
+            CamOrigin, RayDir, PtFogDist,
+            normalize(WorldUniforms.SunDirConeTan.xyz),
+            WorldUniforms.SolarIrradianceTier.xyz,
+            float2(DispatchThreadID.xy));
 
         float4 PrevAcc   = (SampleIdx == 0u) ? float4(0.0, 0.0, 0.0, 0.0) : AccumulationHdrBuffer[PixelIdx];
         float  NewCount  = PrevAcc.w + 1.0;
@@ -1496,6 +1576,13 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             float2(DispatchThreadID.xy),
             FogTrans);
         FinalHdr = FinalHdr * FogTrans + FogRad;
+        FinalHdr += EvaluateVolumetricGodRaysGpu(
+            CamOrigin,
+            RayDir,
+            HitDistForFog,
+            normalize(WorldUniforms.SunDirConeTan.xyz),
+            WorldUniforms.SolarIrradianceTier.xyz,
+            float2(DispatchThreadID.xy));
     }
 
     if (DebugMode == 0u && WorldUniforms.AtmosphereMaskPad.x != 0u && WorldUniforms.LensFlareParams.GhostRotationTint.w > 0.5)

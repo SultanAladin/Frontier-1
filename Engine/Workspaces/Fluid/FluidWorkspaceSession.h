@@ -140,7 +140,7 @@ public:
     bool                      FlipbookModalOpen    = false;
     bool                      HelpModalOpen        = false;
     float                     PlaybackSpeed        = 1.0f;
-    uint32_t                  SelectedBurstKind    = 0u; // 0=Single burst, 1=Shrapnel, 2=Salvo, 3=Collide, 4=Mushroom
+    uint32_t                  SelectedBurstPattern = 0u; // 0=Single burst, 1=Shrapnel, 2=Salvo, 3=Collide, 4=Mushroom
     uint32_t                  FlipbookFrameCols    = 4u;
     uint32_t                  FlipbookFrameRows    = 4u;
     uint32_t                  FlipbookCellSizePx   = 96u;

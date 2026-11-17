@@ -992,6 +992,18 @@ FluidRaymarchResult FluidSimulationSequence::EvaluateFluidSegment(
                 Out.RadianceHdr.R += Out.Transmittance * (SmokeScat.R * SmokeExt + FireEmit.R * FireGain) * IntW;
                 Out.RadianceHdr.G += Out.Transmittance * (SmokeScat.G * SmokeExt + FireEmit.G * FireGain) * IntW;
                 Out.RadianceHdr.B += Out.Transmittance * (SmokeScat.B * SmokeExt + FireEmit.B * FireGain) * IntW;
+
+                // Crepuscular shaft scattering inside tenuous smoke wisps around the plume
+                if (Document.Shading.GodRaysIntensity > 1.0e-3f && SunDirection.Z > 0.01f)
+                {
+                    const float ShaftPhase = DualHgPhase(CosTheta, 0.78f);
+                    const float WispSigma  = (0.012f + std::min(Smoke, 0.45f) * 0.14f) * Document.Shading.GodRaysIntensity;
+                    const float ShaftGain  = Out.Transmittance * SunT * ShaftPhase * WispSigma * EffStep * 1.35f;
+                    Out.RadianceHdr.R += SolarIrradiance.R * ShaftGain;
+                    Out.RadianceHdr.G += SolarIrradiance.G * ShaftGain;
+                    Out.RadianceHdr.B += SolarIrradiance.B * ShaftGain;
+                }
+
                 Out.Transmittance *= StepT;
                 if (Out.Transmittance < 0.008f) break;
             }

@@ -473,13 +473,13 @@ void FluidInspectorPanel::Render(
 
         Surface.Text({ CX, CY }, 9.2f, C.TextMuted, "Tornado debris array (rock/twig/leaf/paper/wood/metal)");
         CY += 16.0f;
-        constexpr std::array<SimulationSpace::FluidSpace::FluidDebrisKind, 6> AllKinds {{
-            SimulationSpace::FluidSpace::FluidDebrisKind::RockChunk,
-            SimulationSpace::FluidSpace::FluidDebrisKind::TwigStick,
-            SimulationSpace::FluidSpace::FluidDebrisKind::Leaf,
-            SimulationSpace::FluidSpace::FluidDebrisKind::PaperSheet,
-            SimulationSpace::FluidSpace::FluidDebrisKind::WoodSplinter,
-            SimulationSpace::FluidSpace::FluidDebrisKind::MetalScrap,
+        constexpr std::array<SimulationSpace::FluidSpace::FluidDebrisCategory, 6> AllCategories {{
+            SimulationSpace::FluidSpace::FluidDebrisCategory::RockChunk,
+            SimulationSpace::FluidSpace::FluidDebrisCategory::TwigStick,
+            SimulationSpace::FluidSpace::FluidDebrisCategory::Leaf,
+            SimulationSpace::FluidSpace::FluidDebrisCategory::PaperSheet,
+            SimulationSpace::FluidSpace::FluidDebrisCategory::WoodSplinter,
+            SimulationSpace::FluidSpace::FluidDebrisCategory::MetalScrap,
         }};
         const float ChipW = (CW - 10.0f) / 3.0f;
         for (uint32_t K = 0u; K < 6u; ++K)
@@ -487,14 +487,14 @@ void FluidInspectorPanel::Render(
             const uint32_t Col = K % 3u;
             const uint32_t Row = K / 3u;
             const Rectangle2D CR { CX + static_cast<float>(Col) * (ChipW + 5.0f), CY + static_cast<float>(Row) * 24.0f, ChipW, 20.0f };
-            const auto Kind = AllKinds[K];
-            const auto It = std::find(Doc.Particles.DebrisTypes.begin(), Doc.Particles.DebrisTypes.end(), Kind);
+            const auto Category = AllCategories[K];
+            const auto It = std::find(Doc.Particles.DebrisTypes.begin(), Doc.Particles.DebrisTypes.end(), Category);
             const bool Act = (It != Doc.Particles.DebrisTypes.end());
             const bool Hov = ControlAppearance::QueryPointerOver(CR, Pointer);
             Surface.FillRectangle(CR, Act ? C.CardElevated : ColorRgba { 10u, 10u, 12u, 255u }, 10.0f);
             Surface.StrokeRectangle(CR, Act ? C.WarmAccent : C.Hairline, 10.0f, 0.85f);
             Surface.TextCentered(CR, 9.0f, Act ? C.TextPrimary : C.TextMuted,
-                                 SimulationSpace::FluidSpace::QueryFluidDebrisKindLabel(Kind));
+                                 SimulationSpace::FluidSpace::QueryFluidDebrisCategoryLabel(Category));
             if (Hov && Pointer.Pressed)
             {
                 if (Act)
@@ -506,7 +506,7 @@ void FluidInspectorPanel::Render(
                 }
                 else
                 {
-                    Doc.Particles.DebrisTypes.push_back(Kind);
+                    Doc.Particles.DebrisTypes.push_back(Category);
                 }
                 Edited = true;
             }

@@ -618,6 +618,153 @@ int main()
                      "Write 04-MultiShapeLocalFogWithForceFields.png");
     }
 
+    // 6. Sheet 5: Large-Radius HalfSphere Fog + Internal ForceField Sculpting + Volumetric God Rays (Clouds + Fog)
+    {
+        OutdoorProofScene S {};
+        S.BuildBase(TileW, TileH);
+        // Sun slightly front-left behind pillars & broken clouds for dramatic crepuscular shafts into fog
+        S.Scene.Atmosphere.Solar.ManualAzimuthDegrees   = 264.0f;
+        S.Scene.Atmosphere.Solar.ManualElevationDegrees = 19.0f;
+        S.Scene.Atmosphere.Clouds.CloudFraction         = 0.54f;
+        S.Scene.Atmosphere.Clouds.ExtinctionMultiplier  = 2.6f;
+
+        // Broken LocalClouds overhead to cast distinct cloud shafts down through the HalfSphere fog
+        auto AddCloud = [&](Mathematics::Axis3D Center, Mathematics::Scalar3D Ext, AtmosphericVolumeShape Sh)
+        {
+            BoundedCloudVolume C {};
+            C.LocalEnabled         = true;
+            C.VolumeCenterMeters   = Center;
+            C.HalfExtentMeters     = Ext;
+            C.Shape                = Sh;
+            C.EdgeSoftness         = 0.36f;
+            C.CloudFraction        = 0.90f;
+            C.ExtinctionMultiplier = 3.8f;
+            C.FeatureScaleMeters   = 15.0f;
+            S.Scene.Atmosphere.LocalClouds.push_back(C);
+        };
+        AddCloud({ -9.5f, 36.0f, 16.5f }, { 7.5f, 5.5f, 3.4f }, AtmosphericVolumeShape::Ellipsoid);
+        AddCloud({  7.0f, 39.0f, 17.5f }, { 7.2f, 5.5f, 3.4f }, AtmosphericVolumeShape::Ellipsoid);
+
+        // Large-radius HalfSphere fog dome with smooth radial & height falloff
+        LocalFogVolume HalfSphereDome {};
+        HalfSphereDome.Enabled            = true;
+        HalfSphereDome.FollowWind         = true;
+        HalfSphereDome.WindSource         = WindBindingSource::LocalFogWind;
+        HalfSphereDome.Shape              = AtmosphericVolumeShape::HalfSphere;
+        HalfSphereDome.VolumeCenterMeters = { 0.0f, 34.0f, 0.0f };
+        HalfSphereDome.HalfExtentMeters   = { 44.0f, 44.0f, 22.0f };
+        HalfSphereDome.EdgeSoftness       = 0.78f;
+        HalfSphereDome.Density            = 1.45f;
+        HalfSphereDome.Coverage           = 0.78f;
+        HalfSphereDome.FeatureScaleMeters = 10.0f;
+        HalfSphereDome.AnisotropyG        = 0.68f;
+        HalfSphereDome.FogTint            = { 0.78f, 0.86f, 0.95f };
+        S.Scene.Atmosphere.Fog.LocalFogs.push_back(HalfSphereDome);
+
+        // Tile 1: HalfSphere fog (no ForceField, no GodRays)
+        S.Scene.Atmosphere.Wind.Enabled = false;
+        S.Scene.Atmosphere.SimulationSeconds = 0.0f;
+        const auto RHalfSphereStill = RenderCpu(S);
+
+        // Verify HalfSphere falloff math (smooth monotonic drop from center outward, zero below base)
+        const float MaskCenter = AtmosphericWindSolver::EvaluateVolumeShapeMask(
+            { 0.0f, 34.0f, 1.0f }, HalfSphereDome.VolumeCenterMeters, HalfSphereDome.HalfExtentMeters,
+            AtmosphericVolumeShape::HalfSphere, 0.0f, 6u, HalfSphereDome.EdgeSoftness);
+        const float MaskMid = AtmosphericWindSolver::EvaluateVolumeShapeMask(
+            { 20.0f, 34.0f, 6.0f }, HalfSphereDome.VolumeCenterMeters, HalfSphereDome.HalfExtentMeters,
+            AtmosphericVolumeShape::HalfSphere, 0.0f, 6u, HalfSphereDome.EdgeSoftness);
+        const float MaskRim = AtmosphericWindSolver::EvaluateVolumeShapeMask(
+            { 40.0f, 34.0f, 2.0f }, HalfSphereDome.VolumeCenterMeters, HalfSphereDome.HalfExtentMeters,
+            AtmosphericVolumeShape::HalfSphere, 0.0f, 6u, HalfSphereDome.EdgeSoftness);
+        const float MaskOut = AtmosphericWindSolver::EvaluateVolumeShapeMask(
+            { 50.0f, 34.0f, 2.0f }, HalfSphereDome.VolumeCenterMeters, HalfSphereDome.HalfExtentMeters,
+            AtmosphericVolumeShape::HalfSphere, 0.0f, 6u, HalfSphereDome.EdgeSoftness);
+        Score.Verify(MaskCenter > MaskMid && MaskMid > MaskRim && MaskRim > 0.0f && MaskOut == 0.0f,
+                     "HalfSphere fog mask exhibits smooth radial dome falloff and clean outer boundary");
+
+        // Tile 2: ForceField + Wind active INSIDE the HalfSphere fog (Vortex + RadialBurst + Wind)
+        SimulationSpace::ForceFields::ForceFieldAccumulator DomeForces;
+        {
+            SimulationSpace::ForceFields::ForceSourceRecordEntry Vortex {};
+            Vortex.UniqueToken     = 11u;
+            Vortex.Enabled         = true;
+            Vortex.Model           = SimulationSpace::ForceFields::ForceModel::RotationalColumn;
+            Vortex.CentreMeters    = { -2.0f, 26.0f, 4.0f };
+            Vortex.EvaluatedCentreMeters = Vortex.CentreMeters;
+            Vortex.RadiusMeters    = 22.0f;
+            Vortex.CoreRadiusMeters = 4.5f;
+            Vortex.Strength        = 24.0f;
+            Vortex.SwirlRatio      = 1.15f;
+
+            SimulationSpace::ForceFields::ForceSourceRecordEntry Burst {};
+            Burst.UniqueToken      = 12u;
+            Burst.Enabled          = true;
+            Burst.Model            = SimulationSpace::ForceFields::ForceModel::RadialBurst;
+            Burst.CentreMeters     = { 7.5f, 32.0f, 3.5f };
+            Burst.EvaluatedCentreMeters = Burst.CentreMeters;
+            Burst.RadiusMeters     = 16.0f;
+            Burst.Strength         = 18.0f;
+
+            const std::array<SimulationSpace::ForceFields::ForceSourceRecordEntry, 2> Srcs { Vortex, Burst };
+            DomeForces.AssignSources(Srcs);
+        }
+        S.Scene.Atmosphere.Wind.Enabled      = true;
+        S.Scene.Atmosphere.ForceFieldSource  = &DomeForces;
+        S.Scene.Atmosphere.Fog.LocalFogs[0].WindSource = WindBindingSource::ForceFieldCascade;
+        S.Scene.Atmosphere.SimulationSeconds = 8.5f;
+        const auto RHalfSphereForced = RenderCpu(S);
+
+        Score.Verify(MeanAbsPixelDiff(RHalfSphereStill.DisplayRgba8, RHalfSphereForced.DisplayRgba8) > 0.75f,
+                     "ForceField + Wind visibly sculpts and swirls interior of HalfSphere fog");
+
+        // Tile 3: Enable Volumetric God Rays interacting with Clouds + HalfSphere Fog
+        S.Scene.Atmosphere.Fog.HeightFog.Enabled             = true;
+        S.Scene.Atmosphere.Fog.HeightFog.Density             = 0.0028f;
+        S.Scene.Atmosphere.Fog.HeightFog.FalloffHeightMeters = 18.0f;
+        S.Scene.Atmosphere.Fog.GodRays.Enabled               = true;
+        S.Scene.Atmosphere.Fog.GodRays.Intensity             = 1.45f;
+        S.Scene.Atmosphere.Fog.GodRays.AnisotropyG           = 0.78f;
+        S.Scene.Atmosphere.Fog.GodRays.Density               = 0.85f;
+        S.Scene.Atmosphere.Fog.GodRays.Decay                 = 0.90f;
+        S.Scene.Atmosphere.Fog.GodRays.MaxDistanceMeters     = 180.0f;
+        S.Scene.Atmosphere.Fog.GodRays.SampleSteps           = 24u;
+        S.Scene.Atmosphere.Fog.GodRays.InteractWithClouds    = true;
+        S.Scene.Atmosphere.Fog.GodRays.InteractWithFog       = true;
+        const auto RGodRaysFull = RenderCpu(S);
+
+        // Tile 4: God Rays with Fog+Clouds disabled vs enabled comparison + GPU parity
+        Score.Verify(MeanAbsPixelDiff(RHalfSphereForced.DisplayRgba8, RGodRaysFull.DisplayRgba8) > 1.25f,
+                     "Volumetric God Rays visibly project sunlit shafts through Clouds + Fog");
+
+        std::vector<uint8_t> GpuGodRayPixels(TileW * TileH * 4u, 255u);
+        VulkanInterchange VkDevice {};
+        if (VkDevice.InitializeInterchange(RepoRoot))
+        {
+            VulkanWorldRenderSequence WorldGpu {};
+            if (WorldGpu.InitializeSequence(VkDevice, ShaderDir))
+            {
+                WorldGpu.SynchronizeSceneResources(S.Scene, nullptr, true);
+                const bool GpuOk = WorldGpu.RenderWorldViewportWithEngine(Cfg, 0u, S.CamFrame, S.Scene, GpuGodRayPixels);
+                Score.Verify(GpuOk && GpuGodRayPixels.size() == TileW * TileH * 4u,
+                             "Vulkan GPU rendered HalfSphere Fog + ForceFields + Clouds + GodRays frame");
+                if (GpuOk)
+                {
+                    const float CpuGpuMad = MeanAbsPixelDiff(RGodRaysFull.DisplayRgba8, GpuGodRayPixels);
+                    std::printf("[WindCloudsFogValidation] CPU vs GPU HalfSphere+ForceField+GodRays MAD = %.2f\n", CpuGpuMad);
+                    Score.Verify(CpuGpuMad < 35.0f, "GPU matches CPU on HalfSphere Fog + ForceFields + GodRays");
+                }
+            }
+        }
+
+        std::vector<uint8_t> Sheet(TileW * 2u * TileH * 2u * 4u, 255u);
+        BlitTile(Sheet, TileW * 2u, 0u,    0u,    TileW, TileH, RHalfSphereStill.DisplayRgba8.data());
+        BlitTile(Sheet, TileW * 2u, TileW, 0u,    TileW, TileH, RHalfSphereForced.DisplayRgba8.data());
+        BlitTile(Sheet, TileW * 2u, 0u,    TileH, TileW, TileH, RGodRaysFull.DisplayRgba8.data());
+        BlitTile(Sheet, TileW * 2u, TileW, TileH, TileW, TileH, GpuGodRayPixels.data());
+        Score.Verify(WritePngRgba8(OutDir / "05-HalfSphereFogForceFieldsAndGodRays.png", TileW * 2u, TileH * 2u, Sheet.data()),
+                     "Write 05-HalfSphereFogForceFieldsAndGodRays.png");
+    }
+
     std::printf("[WindCloudsFogValidation] Passed=%u Failed=%u\n", Score.Passed, Score.Failed);
     return (Score.Failed == 0u) ? 0 : 1;
 }

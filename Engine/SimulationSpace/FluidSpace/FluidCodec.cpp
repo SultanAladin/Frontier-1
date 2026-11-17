@@ -193,9 +193,9 @@ std::string FluidCodec::SerializeSceneToml(const FluidSceneDocument& Doc)
     S.insert("tornadoDebrisRatio", static_cast<double>(Doc.Particles.TornadoDebrisRatio));
     {
         toml::array DebrisArr;
-        for (FluidDebrisKind Kind : Doc.Particles.DebrisTypes)
+        for (FluidDebrisCategory Category : Doc.Particles.DebrisTypes)
         {
-            DebrisArr.push_back(QueryFluidDebrisKindKey(Kind));
+            DebrisArr.push_back(QueryFluidDebrisCategoryKey(Category));
         }
         S.insert("debrisTypes", std::move(DebrisArr));
     }
@@ -434,12 +434,12 @@ bool FluidCodec::DeserializeSceneToml(
             if (const auto* Str = Elem.as_string())
             {
                 const std::string& V = Str->get();
-                if      (V == "rock")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::RockChunk);
-                else if (V == "twig")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::TwigStick);
-                else if (V == "leaf")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::Leaf);
-                else if (V == "paper") OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::PaperSheet);
-                else if (V == "wood")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::WoodSplinter);
-                else if (V == "metal") OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::MetalScrap);
+                if      (V == "rock")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisCategory::RockChunk);
+                else if (V == "twig")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisCategory::TwigStick);
+                else if (V == "leaf")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisCategory::Leaf);
+                else if (V == "paper") OutDocument.Particles.DebrisTypes.push_back(FluidDebrisCategory::PaperSheet);
+                else if (V == "wood")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisCategory::WoodSplinter);
+                else if (V == "metal") OutDocument.Particles.DebrisTypes.push_back(FluidDebrisCategory::MetalScrap);
             }
         }
     }

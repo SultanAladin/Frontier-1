@@ -912,31 +912,78 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             {
                 const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
                 const auto& Hit = PrimarySamples[Off];
-                if (Config.DebugChannel == 0u && PreparedScene.OptionalFluid != nullptr)
+                if (Config.DebugChannel == 0u)
                 {
-                    if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
-                    {
-                        const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
-                        const auto ViewDir = Mathematics::NormalizeAxis(CurBasis.CameraOrigin - Hit.WorldPosition);
-                        Result.CompositeLinearHdr[Off] = Result.CompositeLinearHdr[Off] +
-                            EvaluateFluidEmissiveOnSurface(PreparedScene, Hit.WorldPosition, Hit.TangentFrame.NormalZ, ViewDir, Hit.MaterialSlot, Mat);
-                    }
                     const float NdcX = ((static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx)) * 2.0f - 1.0f;
                     const float NdcY = 1.0f - ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx)) * 2.0f;
                     const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                         CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
                     const float HitDist = Hit.ValidHit ? Mathematics::EvaluateLength(Hit.WorldPosition - CurBasis.CameraOrigin) : 3500.0f;
-                    const auto SkyForVol = PreparedScene.Atmosphere.Medium.AtmosphereEnabled
+                    const float Ign = EvaluateCloudIgn(PX, PY);
+                    const auto& Atmo = PreparedScene.Atmosphere;
+                    const auto SkyForVol = Atmo.Medium.AtmosphereEnabled
                         ? SkySequence.SampleSkyViewDirection(RayDir)
                         : PreparedScene.SkyRadiance;
-                    const auto FluidRes = PreparedScene.OptionalFluid->EvaluateFluidSegment(
-                        CurBasis.CameraOrigin, RayDir, HitDist, PreparedScene.Sun.DirectionToSun,
-                        PreparedScene.Sun.SolarIrradiance, SkyForVol, EvaluateCloudIgn(PX, PY));
-                    Result.CompositeLinearHdr[Off] = {
-                        Result.CompositeLinearHdr[Off].R * FluidRes.Transmittance + FluidRes.RadianceHdr.R,
-                        Result.CompositeLinearHdr[Off].G * FluidRes.Transmittance + FluidRes.RadianceHdr.G,
-                        Result.CompositeLinearHdr[Off].B * FluidRes.Transmittance + FluidRes.RadianceHdr.B,
-                    };
+
+                    if (PreparedScene.OptionalFluid != nullptr)
+                    {
+                        if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                        {
+                            const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+                            const auto ViewDir = Mathematics::NormalizeAxis(CurBasis.CameraOrigin - Hit.WorldPosition);
+                            Result.CompositeLinearHdr[Off] = Result.CompositeLinearHdr[Off] +
+                                EvaluateFluidEmissiveOnSurface(PreparedScene, Hit.WorldPosition, Hit.TangentFrame.NormalZ, ViewDir, Hit.MaterialSlot, Mat);
+                        }
+                        const auto FluidRes = PreparedScene.OptionalFluid->EvaluateFluidSegment(
+                            CurBasis.CameraOrigin, RayDir, HitDist, PreparedScene.Sun.DirectionToSun,
+                            PreparedScene.Sun.SolarIrradiance, SkyForVol, Ign);
+                        Result.CompositeLinearHdr[Off] = {
+                            Result.CompositeLinearHdr[Off].R * FluidRes.Transmittance + FluidRes.RadianceHdr.R,
+                            Result.CompositeLinearHdr[Off].G * FluidRes.Transmittance + FluidRes.RadianceHdr.G,
+                            Result.CompositeLinearHdr[Off].B * FluidRes.Transmittance + FluidRes.RadianceHdr.B,
+                        };
+                    }
+
+                    if (Atmo.Fog.HeightFog.Enabled || Atmo.Fog.AerialFog.Enabled || !Atmo.Fog.LocalFogs.empty())
+                    {
+                        const auto FogRes = VolumetricFogSequence::EvaluateVolumetricFog(
+                            CurBasis.CameraOrigin, RayDir, HitDist, PreparedScene.Sun.DirectionToSun,
+                            PreparedScene.Sun.SolarIrradiance, SkyForVol, Atmo.Fog, Atmo.Wind,
+                            Atmo.Clouds.WindSpeedMetersPerSecond, Atmo.Clouds.WindBearingDegrees,
+                            Atmo.SimulationSeconds, Atmo.ForceFieldSource, Atmo.WindLatticeCascade, Ign);
+                        Result.CompositeLinearHdr[Off] = {
+                            Result.CompositeLinearHdr[Off].R * FogRes.Transmittance + FogRes.InScatterHdr.R,
+                            Result.CompositeLinearHdr[Off].G * FogRes.Transmittance + FogRes.InScatterHdr.G,
+                            Result.CompositeLinearHdr[Off].B * FogRes.Transmittance + FogRes.InScatterHdr.B,
+                        };
+                    }
+
+                    if (Atmo.Fog.GodRays.Enabled && Atmo.Fog.GodRays.Intensity > 1.0e-4f)
+                    {
+                        const auto SceneVisFn = [&](const Mathematics::Axis3D& P, const Mathematics::Axis3D& SDir) noexcept -> float
+                        {
+                            SpatialAcceleration::RaySegmentQuery Q {};
+                            Q.Origin          = P + SDir * 0.02f;
+                            Q.UnitDirection   = SDir;
+                            Q.MinimumDistance = 0.02f;
+                            Q.MaximumDistance = 140.0f;
+                            if (PreparedScene.SceneTree.QueryRayOccluded(Q)) return 0.0f;
+                            return (PreparedScene.OptionalFluid != nullptr)
+                                ? PreparedScene.OptionalFluid->EvaluateFluidShadowTransmittance(P, SDir, 32.0f)
+                                : 1.0f;
+                        };
+                        const auto CloudVisFn = [&](const Mathematics::Axis3D& P, const Mathematics::Axis3D& SDir) noexcept -> float
+                        {
+                            return VolumetricCloudSequence::EvaluateAllSolarCloudTransmittance(P, SDir, Atmo);
+                        };
+                        const auto ShaftHdr = VolumetricFogSequence::EvaluateVolumetricGodRays(
+                            CurBasis.CameraOrigin, RayDir, HitDist, PreparedScene.Sun.DirectionToSun,
+                            PreparedScene.Sun.SolarIrradiance, Atmo.Fog, Atmo.Wind,
+                            Atmo.Clouds.WindSpeedMetersPerSecond, Atmo.Clouds.WindBearingDegrees,
+                            Atmo.SimulationSeconds, Atmo.ForceFieldSource, Atmo.WindLatticeCascade,
+                            SceneVisFn, CloudVisFn, Ign);
+                        Result.CompositeLinearHdr[Off] = Result.CompositeLinearHdr[Off] + ShaftHdr;
+                    }
                 }
                 if (FlareProj.EffectiveGain > 1.0e-4f && Config.DebugChannel == 0u)
                 {
@@ -1169,6 +1216,32 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                         FinalHdr.G * FogRes.Transmittance + FogRes.InScatterHdr.G,
                         FinalHdr.B * FogRes.Transmittance + FogRes.InScatterHdr.B,
                     };
+                }
+
+                if (Atmo.Fog.GodRays.Enabled && Atmo.Fog.GodRays.Intensity > 1.0e-4f)
+                {
+                    const auto SceneVisFn = [&](const Mathematics::Axis3D& P, const Mathematics::Axis3D& SDir) noexcept -> float
+                    {
+                        SpatialAcceleration::RaySegmentQuery Q {};
+                        Q.Origin          = P + SDir * 0.02f;
+                        Q.UnitDirection   = SDir;
+                        Q.MinimumDistance = 0.02f;
+                        Q.MaximumDistance = 140.0f;
+                        if (PreparedScene.SceneTree.QueryRayOccluded(Q)) return 0.0f;
+                        return (PreparedScene.OptionalFluid != nullptr)
+                            ? PreparedScene.OptionalFluid->EvaluateFluidShadowTransmittance(P, SDir, 32.0f)
+                            : 1.0f;
+                    };
+                    const auto CloudVisFn = [&](const Mathematics::Axis3D& P, const Mathematics::Axis3D& SDir) noexcept -> float
+                    {
+                        return VolumetricCloudSequence::EvaluateAllSolarCloudTransmittance(P, SDir, Atmo);
+                    };
+                    FinalHdr = FinalHdr + VolumetricFogSequence::EvaluateVolumetricGodRays(
+                        CurBasis.CameraOrigin, RayDir, HitDist, PreparedScene.Sun.DirectionToSun,
+                        PreparedScene.Sun.SolarIrradiance, Atmo.Fog, Atmo.Wind,
+                        Atmo.Clouds.WindSpeedMetersPerSecond, Atmo.Clouds.WindBearingDegrees,
+                        Atmo.SimulationSeconds, Atmo.ForceFieldSource, Atmo.WindLatticeCascade,
+                        SceneVisFn, CloudVisFn, Ign);
                 }
             }
 

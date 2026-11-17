@@ -65,7 +65,7 @@ enum class FluidAtlasMinimapField : uint32_t
     PressureIrradiance = 3u,
 };
 
-enum class FluidDebrisKind : uint8_t
+enum class FluidDebrisCategory : uint8_t
 {
     RockChunk    = 0u,
     TwigStick    = 1u,
@@ -75,30 +75,30 @@ enum class FluidDebrisKind : uint8_t
     MetalScrap   = 5u,
 };
 
-[[nodiscard]] inline const char* QueryFluidDebrisKindKey(FluidDebrisKind Kind) noexcept
+[[nodiscard]] inline const char* QueryFluidDebrisCategoryKey(FluidDebrisCategory Category) noexcept
 {
-    switch (Kind)
+    switch (Category)
     {
-    case FluidDebrisKind::RockChunk:    return "rock";
-    case FluidDebrisKind::TwigStick:    return "twig";
-    case FluidDebrisKind::Leaf:         return "leaf";
-    case FluidDebrisKind::PaperSheet:   return "paper";
-    case FluidDebrisKind::WoodSplinter: return "wood";
-    case FluidDebrisKind::MetalScrap:   return "metal";
+    case FluidDebrisCategory::RockChunk:    return "rock";
+    case FluidDebrisCategory::TwigStick:    return "twig";
+    case FluidDebrisCategory::Leaf:         return "leaf";
+    case FluidDebrisCategory::PaperSheet:   return "paper";
+    case FluidDebrisCategory::WoodSplinter: return "wood";
+    case FluidDebrisCategory::MetalScrap:   return "metal";
     }
     return "rock";
 }
 
-[[nodiscard]] inline const char* QueryFluidDebrisKindLabel(FluidDebrisKind Kind) noexcept
+[[nodiscard]] inline const char* QueryFluidDebrisCategoryLabel(FluidDebrisCategory Category) noexcept
 {
-    switch (Kind)
+    switch (Category)
     {
-    case FluidDebrisKind::RockChunk:    return "Rock";
-    case FluidDebrisKind::TwigStick:    return "Twig";
-    case FluidDebrisKind::Leaf:         return "Leaf";
-    case FluidDebrisKind::PaperSheet:   return "Paper";
-    case FluidDebrisKind::WoodSplinter: return "Wood";
-    case FluidDebrisKind::MetalScrap:   return "Metal";
+    case FluidDebrisCategory::RockChunk:    return "Rock";
+    case FluidDebrisCategory::TwigStick:    return "Twig";
+    case FluidDebrisCategory::Leaf:         return "Leaf";
+    case FluidDebrisCategory::PaperSheet:   return "Paper";
+    case FluidDebrisCategory::WoodSplinter: return "Wood";
+    case FluidDebrisCategory::MetalScrap:   return "Metal";
     }
     return "Rock";
 }
@@ -232,13 +232,13 @@ struct FluidParticleCouplingSettings
     float    BuoyancyCoupling         = 0.75f; // [x]    - Thermal updraft lift weight on particles
     bool     EnableTornadoDebrisArray = true;  // [-]    - Spawn typed debris array inside swirling tornado funnels
     float    TornadoDebrisRatio       = 0.55f; // [0..1] - Fraction of tornado particles spawned from DebrisTypes array
-    std::vector<FluidDebrisKind> DebrisTypes {
-        FluidDebrisKind::RockChunk,
-        FluidDebrisKind::TwigStick,
-        FluidDebrisKind::Leaf,
-        FluidDebrisKind::PaperSheet,
-        FluidDebrisKind::WoodSplinter,
-        FluidDebrisKind::MetalScrap,
+    std::vector<FluidDebrisCategory> DebrisTypes {
+        FluidDebrisCategory::RockChunk,
+        FluidDebrisCategory::TwigStick,
+        FluidDebrisCategory::Leaf,
+        FluidDebrisCategory::PaperSheet,
+        FluidDebrisCategory::WoodSplinter,
+        FluidDebrisCategory::MetalScrap,
     };
 };
 

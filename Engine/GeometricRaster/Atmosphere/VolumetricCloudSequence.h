@@ -192,13 +192,19 @@ public:
         float&                                OutTransmittance,
         float                                 PixelJitter01 = -1.0f) noexcept;
 
-    // Evaluates soft volumetric cloud optical transmittance along a sun ray
+    // Evaluates soft volumetric cloud optical transmittance along a sun ray (deck only)
     [[nodiscard]] static float EvaluateSolarCloudTransmittance(
         const Mathematics::Axis3D&    WorldPos,
         const Mathematics::Axis3D&    SunDirection,
         const CloudDeckConfiguration& Deck,
         float                         PlanetRadiusMeters,
         float                         SimulationSeconds) noexcept;
+
+    // Evaluates combined global CloudDeck + LocalCloud/LocalClouds volumetric transmittance along a sun ray
+    [[nodiscard]] static float EvaluateAllSolarCloudTransmittance(
+        const Mathematics::Axis3D&          WorldPos,
+        const Mathematics::Axis3D&          SunDirection,
+        const WorldAtmosphereConfiguration& Atmosphere) noexcept;
 };
 
 } // namespace Frontier::GeometricRaster
