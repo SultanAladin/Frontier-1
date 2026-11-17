@@ -289,12 +289,11 @@ struct CascadeSampleOutcome
     const float RotPhi = static_cast<float>(RotationSeed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
     constexpr float GoldenAngle = 2.39996323f;
 
-    // EEVEE-Next Quadratic Shadow Map Ray March (SMRT): 4 rays x 14 quadratic steps with occlusion slope tracking
-    constexpr uint32_t SmrtRays  = 4u;
+    // EEVEE-Next Quadratic Shadow Map Ray March (SMRT): 8 rays x 14 quadratic steps with occlusion slope tracking
+    constexpr uint32_t SmrtRays  = 8u;
     constexpr uint32_t SmrtSteps = 14u;
     const float MaxMarchWorldM   = 2.60f;
     const float MaxStepTexels    = std::clamp((MaxMarchWorldM * TanSunRadius) / TexelM, 2.0f, 36.0f);
-    const float StepZWorld       = MaxMarchWorldM / static_cast<float>(SmrtSteps * SmrtSteps);
     const float ThicknessM       = std::max(0.08f, TexelM * 26.0f);
 
     float LitSum     = 0.0f;
@@ -303,20 +302,23 @@ struct CascadeSampleOutcome
 
     for (uint32_t RIdx = 0u; RIdx < SmrtRays; ++RIdx)
     {
-        const float Radial  = std::sqrt((static_cast<float>(RIdx) + 0.5f) / static_cast<float>(SmrtRays));
-        const float Angle   = static_cast<float>(RIdx) * GoldenAngle + RotPhi;
-        const float DirTX   = Radial * std::cos(Angle) * MaxStepTexels;
-        const float DirTY   = Radial * std::sin(Angle) * MaxStepTexels;
-        bool Occluded       = false;
-        float BestHitDist   = 0.0f;
+        uint32_t StepRng     = (RotationSeed ^ (RIdx * 747796405u + 2891336453u)) | 1u;
+        StepRng              = StepRng * 747796405u + 2891336453u;
+        const float StepJit  = static_cast<float>(((StepRng >> ((StepRng >> 28u) + 4u)) ^ StepRng) * 277803737u >> 8u) * (1.0f / 16777216.0f);
+        const float Radial   = std::sqrt((static_cast<float>(RIdx) + 0.5f) / static_cast<float>(SmrtRays));
+        const float Angle    = static_cast<float>(RIdx) * GoldenAngle + RotPhi;
+        const float DirTX    = Radial * std::cos(Angle) * MaxStepTexels;
+        const float DirTY    = Radial * std::sin(Angle) * MaxStepTexels;
+        bool Occluded        = false;
+        float BestHitDist    = 0.0f;
 
         for (uint32_t Step = 1u; Step <= SmrtSteps; ++Step)
         {
-            const float TNorm = static_cast<float>(Step) / static_cast<float>(SmrtSteps);
+            const float TNorm = (static_cast<float>(Step) - 0.5f + StepJit) / static_cast<float>(SmrtSteps);
             const float TQuad = TNorm * TNorm;
             const int TX      = std::clamp(static_cast<int>(std::floor(CX + DirTX * TQuad)), 0, MaxIdx);
             const int TY      = std::clamp(static_cast<int>(std::floor(CY + DirTY * TQuad)), 0, MaxIdx);
-            const float RayD      = RecD - StepZWorld * static_cast<float>(Step * Step);
+            const float RayD      = RecD - MaxMarchWorldM * TQuad;
             const float CascadeD  = Cascade.ClosestLightDepth[static_cast<std::size_t>(TY) * Cascade.ResolutionTexels + static_cast<uint32_t>(TX)];
             const float Diff      = RayD - CascadeD;
 

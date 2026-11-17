@@ -143,8 +143,10 @@ float PcgFloat01(inout uint State)
 
 float2 PixelR2(uint2 PixelXY)
 {
-    return frac(float(PixelXY.x) * float2(0.7548776662, 0.5698402910) +
-                float(PixelXY.y) * float2(0.5698402910, 0.3247179572));
+    float IgnA = frac(52.9829189 * frac(float(PixelXY.x) * 0.06711056 + float(PixelXY.y) * 0.00583715));
+    uint  Rng  = (PixelXY.x * 747796405u + PixelXY.y * 2891336453u + 277803737u) | 1u;
+    float RandB = PcgFloat01(Rng);
+    return float2(IgnA, RandB);
 }
 
 uint ReverseBits32(uint X)
@@ -872,22 +874,23 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
     {
         float MaxMarchM  = 2.60;
         float MaxStepPx  = clamp((MaxMarchM * TanSun) / TexelM, 2.0, 40.0);
-        float StepZM     = MaxMarchM / 196.0;
         float ThicknessM = max(0.08, TexelM * 26.0);
         float Lit        = 0.0;
-        for (uint R = 0u; R < 4u; ++R)
+        for (uint R = 0u; R < 8u; ++R)
         {
-            float Rad   = sqrt((float(R) + 0.5) * 0.25);
-            float Ang   = float(R) * 2.39996323 + RotPhi;
+            uint   StepRng = (PixelXY.x * 747796405u + PixelXY.y * 2891336453u + R * 277803737u) | 1u;
+            float  StepJit = PcgFloat01(StepRng);
+            float  Rad     = sqrt((float(R) + 0.5) * 0.125);
+            float  Ang     = float(R) * 2.39996323 + RotPhi;
             float2 StepDir = float2(cos(Ang), sin(Ang)) * (Rad * MaxStepPx);
             bool Occ = false;
             for (uint S = 1u; S <= 14u; ++S)
             {
-                float TNorm = float(S) / 14.0;
+                float TNorm = (float(S) - 0.5 + StepJit) / 14.0;
                 float TQuad = TNorm * TNorm;
                 int TX = clamp(int(floor(CenterTXY.x + StepDir.x * TQuad)), 0, MaxIdx);
                 int TY = clamp(int(floor(CenterTXY.y + StepDir.y * TQuad)), 0, MaxIdx);
-                float RayD     = RecD - StepZM * float(S * S);
+                float RayD     = RecD - MaxMarchM * TQuad;
                 float CascadeD = SolarShadowDepthBuffer[BufOffs + uint(TY) * Res + uint(TX)];
                 float Diff     = RayD - CascadeD;
                 if (Diff > Bias && Diff < ThicknessM)
@@ -897,7 +900,7 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
                     break;
                 }
             }
-            if (!Occ) Lit += 0.25;
+            if (!Occ) Lit += 0.125;
         }
         return Lit;
     }
@@ -1167,6 +1170,7 @@ void ShadePrimarySurfaceDemod(
     float3        ViewDir,
     uint2         PixelXY,
     out float3    OutDirectBaseHdr,
+    out float3    OutSpecReflHdr,
     out float3    OutUnoccludedSunHdr,
     out float3    OutDemodGiOverPi,
     out float3    OutDiffuseAlbedoMatte,
@@ -1185,6 +1189,7 @@ void ShadePrimarySurfaceDemod(
 
     // 1. Direct Solar Shadow (Two-Cascade Fine/Coarse + BVH4 Contact Gate)
     OutDirectBaseHdr      = float3(0.0);
+    OutSpecReflHdr        = float3(0.0);
     OutUnoccludedSunHdr   = float3(0.0);
     OutSunVis             = 1.0;
     OutBlockerDist        = 0.0;
@@ -1230,23 +1235,23 @@ void ShadePrimarySurfaceDemod(
         }
     }
 
-    // 3. Fast BVH4 Ambient Occlusion (R2-jittered, Zero SDF AO!) + Lagarde Specular AO
+    // 3. Fast BVH4 Ambient Occlusion (IGN-jittered 8-ray, Zero SDF AO!) + Lagarde Specular AO
     float2 R2P = PixelR2(PixelXY);
     {
         float3 T, B;
         ConstructOrthonormalBasis(N, T, B);
         float3 AoOrig = Hit.Position + Hit.GeomNormal * 0.008;
         float  OccSum = 0.0;
-        for (uint R = 0u; R < 4u; ++R)
+        for (uint R = 0u; R < 8u; ++R)
         {
-            float U1 = (float(R) + 0.15 + 0.7 * R2P.y) * 0.25;
+            float U1 = (float(R) + 0.15 + 0.7 * R2P.y) * 0.125;
             float Phi = float(R) * 2.39996323 + R2P.x * TauConst;
             float SinT = sqrt(saturate(U1));
             float CosT = sqrt(max(0.0, 1.0 - U1));
             float3 AoDir = T * (SinT * cos(Phi)) + B * (SinT * sin(Phi)) + N * CosT;
             if (!TraceSceneAnyHit(AoOrig, AoDir, 0.006, 0.85))
             {
-                OccSum += 0.25;
+                OccSum += 0.125;
             }
         }
         OutDiffAo = saturate(0.28 + 0.72 * OccSum);
@@ -1274,6 +1279,7 @@ void ShadePrimarySurfaceDemod(
     }
 
     // 5. Secondary Specular Reflection (BVH4 WideTreeRaytrace or SkyEnvironment — Zero SDF!)
+    //    Stored un-occluded in OutSpecReflHdr and modulated by denoised OutDiffAo in DenoiseCompositeEntry!
     float CoatW = saturate(Mat.EdgeTintCoatWeight.w);
     if (Metalness > 0.20 || CoatW > 0.20 || OutSpecRough < 0.24)
     {
@@ -1290,7 +1296,7 @@ void ShadePrimarySurfaceDemod(
             Fresnel = max(Fresnel, float3((0.04 + 0.96 * Schlick) * CoatW));
             Gloss   = max(Gloss, 1.0 - Mat.CoatRoughnessOptics.x);
         }
-        OutDirectBaseHdr += EnvRad * Fresnel * Gloss * OutSpecAo;
+        OutSpecReflHdr = EnvRad * Fresnel * Gloss;
     }
 }
 
@@ -1744,6 +1750,96 @@ float3 EvaluateVolumetricGodRaysGpu(
     return Accum;
 }
 
+//------------------------------------------------------------------------------------------------------------------------
+// GLOBAL DISTANCE FIELD (GDF) DEBUG VISUALIZATION HELPERS (Zero BVH4 Triangles for Mode 5/6!)
+//------------------------------------------------------------------------------------------------------------------------
+
+bool IntersectSdfVolumeBounds(float3 RayO, float3 RayD, out float OutTMin, out float OutTMax)
+{
+    uint3 Dims = WorldUniforms.SdfDimsLightCount.xyz;
+    float Spacing = max(1.0e-4, WorldUniforms.SdfMinSpacing.w);
+    float3 BoxMin = WorldUniforms.SdfMinSpacing.xyz;
+    float3 BoxMax = BoxMin + float3(Dims - uint3(1u, 1u, 1u)) * Spacing;
+    float3 SafeD  = select(abs(RayD) > float3(1.0e-8), RayD, float3(1.0e-8));
+    float3 InvD   = 1.0 / SafeD;
+    float3 T0     = (BoxMin - RayO) * InvD;
+    float3 T1     = (BoxMax - RayO) * InvD;
+    float3 TSm    = min(T0, T1);
+    float3 TLg    = max(T0, T1);
+    OutTMin = max(0.05, max(TSm.x, max(TSm.y, TSm.z)));
+    OutTMax = min(60.0, min(TLg.x, min(TLg.y, TLg.z)));
+    return OutTMax > OutTMin;
+}
+
+float3 EvaluateGdfIsoSurfaceDebug(float3 RayO, float3 RayD)
+{
+    float TMin, TMax;
+    if (!IntersectSdfVolumeBounds(RayO, RayD, TMin, TMax))
+    {
+        return float3(0.04, 0.05, 0.08);
+    }
+
+    float  Spacing = max(0.03, WorldUniforms.SdfMinSpacing.w);
+    float  Eps     = max(0.008, Spacing * 0.14);
+    float  T       = TMin + 0.01;
+    bool   HitIso  = false;
+    float3 HitP    = float3(0.0);
+    for (uint Step = 0u; Step < 64u && T < TMax; ++Step)
+    {
+        float3 P = RayO + RayD * T;
+        float  D = SampleSdfGrid(P);
+        if (D < Eps)
+        {
+            HitIso = true;
+            HitP   = P;
+            break;
+        }
+        T += max(Eps * 0.65, D * 0.85);
+    }
+    if (HitIso)
+    {
+        float3 N      = EvaluateSdfNormal(HitP);
+        float  Rim    = 0.85 + 0.15 * saturate(dot(N, -RayD));
+        float  Stripe = 0.90 + 0.10 * cos(HitP.z * 24.0);
+        return saturate((N * 0.5 + 0.5) * Rim * Stripe);
+    }
+    return float3(0.04, 0.05, 0.08);
+}
+
+float3 ColorMapSignedDistance(float D)
+{
+    float Isoline = abs(frac(D / 0.16 + 0.5) - 0.5) * 0.16;
+    float LineMask = 1.0 - smoothstep(0.008, 0.022, Isoline);
+    float ZeroMask = 1.0 - smoothstep(0.014, 0.032, abs(D));
+    float3 BaseCol = (D < 0.0)
+        ? lerp(float3(0.96, 0.36, 0.10), float3(0.45, 0.06, 0.02), saturate(-D * 2.2))
+        : lerp(float3(0.14, 0.68, 0.96), float3(0.03, 0.12, 0.34), saturate(D * 1.1));
+    BaseCol *= (1.0 - 0.38 * LineMask);
+    return lerp(BaseCol, float3(1.0, 0.98, 0.92), ZeroMask);
+}
+
+float3 EvaluateGdfSliceDebug(float3 RayO, float3 RayD, RayHitReading PrimaryHit)
+{
+    float PlaneZ = -0.15;
+    if (abs(RayD.z) > 1.0e-4)
+    {
+        float TPlane = (PlaneZ - RayO.z) / RayD.z;
+        float TMin, TMax;
+        if (TPlane > 0.05 && IntersectSdfVolumeBounds(RayO, RayD, TMin, TMax) && TPlane >= TMin && TPlane <= TMax)
+        {
+            float3 SlicePos = RayO + RayD * TPlane;
+            float  D        = SampleSdfGrid(SlicePos);
+            return ColorMapSignedDistance(D);
+        }
+    }
+    if (PrimaryHit.Hit)
+    {
+        float D = SampleSdfGrid(PrimaryHit.Position + PrimaryHit.ShadingNormal * 0.05);
+        return ColorMapSignedDistance(D);
+    }
+    return float3(0.03, 0.04, 0.06);
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
@@ -1862,10 +1958,18 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float HitDistForClouds = (BestGlassIdx >= 0) ? BestGlassT : (PrimaryHit.Hit ? PrimaryHit.Distance : 60000.0);
     float HitDistForFog    = (BestGlassIdx >= 0) ? BestGlassT : (PrimaryHit.Hit ? PrimaryHit.Distance : 3500.0);
 
-    if (DebugMode != 0u)
+    if (DebugMode != 0u && DebugMode != 8u)
     {
         float3 DbgHdr = float3(0.0);
-        if (PrimaryHit.Hit)
+        if (DebugMode == 5u)
+        {
+            DbgHdr = EvaluateGdfIsoSurfaceDebug(CamOrigin, RayDir);
+        }
+        else if (DebugMode == 6u)
+        {
+            DbgHdr = EvaluateGdfSliceDebug(CamOrigin, RayDir, PrimaryHit);
+        }
+        else if (PrimaryHit.Hit)
         {
             uint MatCount = max(1u, WorldUniforms.LatticeDimsMaterialCount.w);
             GpuWorldMaterial64 Mat = MaterialEntries[min(PrimaryHit.MaterialSlot, MatCount - 1u)];
@@ -1873,6 +1977,12 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             else if (DebugMode == 2u) DbgHdr = Mat.DiffuseAlbedoRoughness.xyz;
             else if (DebugMode == 3u) DbgHdr = PrimaryHit.ShadingNormal * 0.5 + 0.5;
             else if (DebugMode == 4u) DbgHdr = float3(Mat.SpecParams.x);
+            else if (DebugMode == 7u)
+            {
+                float  Spacing = max(0.04, WorldUniforms.SdfMinSpacing.w);
+                float3 VRad    = SampleSdfRadiosityTrilinear(PrimaryHit.Position + PrimaryHit.ShadingNormal * (Spacing * 0.65));
+                DbgHdr         = ApplyAcesFilmicGpu(VRad * 1.35);
+            }
         }
         GBufPosMask[PixelIdx]    = float4(0.0, 0.0, 0.0, 0.0);
         GBufNormAo[PixelIdx]     = float4(0.0, 0.0, 1.0, 1.0);
@@ -1884,7 +1994,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         return;
     }
 
-    if (BestGlassIdx >= 0)
+    if (BestGlassIdx >= 0 && DebugMode == 0u)
     {
         GpuGlassSphere Glass = WorldUniforms.GlassSpheres[BestGlassIdx];
         float3 Center        = Glass.CenterRadiusPacked.xyz;
@@ -1925,7 +2035,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     if (!PrimaryHit.Hit)
     {
-        float3 SkyHdr = EvaluateBackgroundSkyCloudsGpu(RayDir, float2(DispatchThreadID.xy));
+        float3 SkyHdr = (DebugMode == 8u) ? float3(0.03, 0.04, 0.07) : EvaluateBackgroundSkyCloudsGpu(RayDir, float2(DispatchThreadID.xy));
         GBufPosMask[PixelIdx]    = float4(0.0, 0.0, 0.0, 0.0);
         GBufNormAo[PixelIdx]     = float4(0.0, 0.0, 1.0, 1.0);
         GBufDirectBase[PixelIdx] = float4(SkyHdr, HitDistForClouds);
@@ -1936,7 +2046,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         return;
     }
 
-    if (EngineMode == 0u)
+    if (EngineMode == 0u && DebugMode == 0u)
     {
         float3 MatCapHdr = EvaluateMatCapSurface(PrimaryHit);
         GBufPosMask[PixelIdx]    = float4(0.0, 0.0, 0.0, 0.0);
@@ -1950,6 +2060,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     float3 DirectBaseHdr = float3(0.0);
+    float3 SpecReflHdr   = float3(0.0);
     float3 UnoccludedSunHdr = float3(0.0);
     float3 DemodGiOverPi = float3(0.0);
     float3 DiffuseAlbedoMatte = float3(0.0);
@@ -1959,6 +2070,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         -RayDir,
         DispatchThreadID.xy,
         DirectBaseHdr,
+        SpecReflHdr,
         UnoccludedSunHdr,
         DemodGiOverPi,
         DiffuseAlbedoMatte,
@@ -1968,13 +2080,27 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         SpecRough,
         SpecAo);
 
-    GBufPosMask[PixelIdx]    = float4(PrimaryHit.Position, 1.0 + SpecRough);
-    GBufNormAo[PixelIdx]     = float4(PrimaryHit.ShadingNormal, DiffAo);
-    GBufDirectBase[PixelIdx] = float4(DirectBaseHdr, HitDistForClouds);
-    GBufSunContrib[PixelIdx] = float4(UnoccludedSunHdr, HitDistForFog);
-    GBufAlbedo[PixelIdx]     = float4(DiffuseAlbedoMatte, SpecAo);
-    PingShadowAo[PixelIdx]   = float4(SunVis, DiffAo, BlockerDist, 1.0);
-    PingGiHdr[PixelIdx]      = float4(DemodGiOverPi, 1.0);
+    if (DebugMode == 8u)
+    {
+        AccumulationHdrBuffer[PixelIdx] = float4(0.0, 0.0, 0.0, 0.5);
+        GBufPosMask[PixelIdx]           = float4(PrimaryHit.Position, 1.5);
+        GBufNormAo[PixelIdx]            = float4(PrimaryHit.ShadingNormal, 1.0);
+        GBufDirectBase[PixelIdx]        = float4(0.0, 0.0, 0.0, HitDistForClouds);
+        GBufSunContrib[PixelIdx]        = float4(0.0, 0.0, 0.0, HitDistForFog);
+        GBufAlbedo[PixelIdx]            = float4(1.0, 1.0, 1.0, 1.0);
+        PingShadowAo[PixelIdx]          = float4(1.0, 1.0, 0.0, 1.0);
+        PingGiHdr[PixelIdx]             = float4(DemodGiOverPi, 1.0);
+        return;
+    }
+
+    AccumulationHdrBuffer[PixelIdx] = float4(SpecReflHdr, SpecRough);
+    GBufPosMask[PixelIdx]           = float4(PrimaryHit.Position, 1.0 + SpecRough);
+    GBufNormAo[PixelIdx]      = float4(PrimaryHit.ShadingNormal, DiffAo);
+    GBufDirectBase[PixelIdx]  = float4(DirectBaseHdr, HitDistForClouds);
+    GBufSunContrib[PixelIdx]  = float4(UnoccludedSunHdr, HitDistForFog);
+    GBufAlbedo[PixelIdx]      = float4(DiffuseAlbedoMatte, SpecAo);
+    PingShadowAo[PixelIdx]    = float4(SunVis, DiffAo, BlockerDist, 1.0);
+    PingGiHdr[PixelIdx]       = float4(DemodGiOverPi, 1.0);
 }
 
 [shader("compute")]
@@ -2093,9 +2219,20 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
     else if (CenterPos.w > 0.0 && DebugMode == 0u)
     {
+        float3 CamOrigin = WorldUniforms.CameraOriginTanX.xyz;
+        float3 VDir      = normalize(CamOrigin - CenterPos.xyz);
+        float  NdotV     = max(1.0e-3, dot(normalize(CenterNorm.xyz), VDir));
+        float4 SpecPack  = AccumulationHdrBuffer[PixelIdx];
+        float  SpecRough = clamp(SpecPack.w, 0.025, 1.0);
+        float  SpecAo    = saturate(pow(NdotV + OutDiffAo, exp2(-16.0 * SpecRough - 1.0)) - 1.0 + OutDiffAo);
         FinalHdr = DirectBase.xyz
+                 + SpecPack.xyz * SpecAo
                  + SunContrib.xyz * OutSunVis
                  + AlbedoPack.xyz * OutGi * (0.35 + 0.65 * OutDiffAo);
+    }
+    else if (CenterPos.w > 0.0 && DebugMode == 8u)
+    {
+        FinalHdr = ApplyAcesFilmicGpu(OutGi * 1.25);
     }
 
     if (DebugMode == 0u)

@@ -406,24 +406,6 @@ void ProjectBrowser::RenderThumbnailForEntry(BrowserCollectionEntry& Entry, uint
         DisplayRgba = std::move(CpuOutput.DisplayRgba8);
     }
 
-    // Subtle UV grid accent overlay on UV/Geometry entries so Geometry vs Project formats read distinctly at a glance
-    if (Entry.Category == BrowserEntryCategory::Geometry && OutW > 0u && OutH > 0u)
-    {
-        for (uint32_t Py = 0u; Py < OutH; ++Py)
-        {
-            for (uint32_t Px = 0u; Px < OutW; ++Px)
-            {
-                if ((Px % 22u == 0u) || (Py % 22u == 0u))
-                {
-                    const std::size_t Off = (static_cast<std::size_t>(Py) * OutW + Px) * 4u;
-                    DisplayRgba[Off + 0u] = static_cast<uint8_t>((DisplayRgba[Off + 0u] * 3u + 160u) / 4u);
-                    DisplayRgba[Off + 1u] = static_cast<uint8_t>((DisplayRgba[Off + 1u] * 3u + 190u) / 4u);
-                    DisplayRgba[Off + 2u] = static_cast<uint8_t>((DisplayRgba[Off + 2u] * 3u + 175u) / 4u);
-                }
-            }
-        }
-    }
-
     Entry.ThumbnailRgba = std::move(DisplayRgba);
     Entry.ThumbnailW    = OutW;
     Entry.ThumbnailH    = OutH;

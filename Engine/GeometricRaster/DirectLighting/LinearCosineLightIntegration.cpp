@@ -360,9 +360,11 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
             const auto LocalWo       = Hit.TangentFrame.WorldToLocal(Hit.WorldViewDirection);
 
             // Evaluate 2-Scale Physical Ambient Occlusion (0.25 m micro-contact + 2.20 m chassis underbody)
-            const uint32_t AoRays     = std::clamp(AoSettings.RaysPerPixel, 2u, 32u);
-            const uint32_t Seed       = PX * 1973u + PY * 9277u + 89173u;
-            const float    RotOffset  = static_cast<float>(Seed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
+            const uint32_t AoRays = std::clamp(std::max(8u, AoSettings.RaysPerPixel), 8u, 32u);
+            uint32_t       Seed   = (PX * 747796405u + PY * 2891336453u + 277803737u) | 1u;
+            Seed                  = ((Seed >> ((Seed >> 28u) + 4u)) ^ Seed) * 277803737u;
+            Seed                 ^= (Seed >> 22u);
+            const float RotOffset = static_cast<float>(Seed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
             float ContactUnoccluded   = 0.0f;
             float ChassisUnoccluded   = 0.0f;
             const Mathematics::Axis3D AoOrigin = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 2.0e-3f;

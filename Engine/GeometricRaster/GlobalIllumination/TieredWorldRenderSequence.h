@@ -55,7 +55,7 @@ struct WorldRenderConfiguration
     WorldRenderEngine        Engine              = WorldRenderEngine::SdfGlobalIllumination;
     SolarShadowAlgorithm     ShadowAlgorithm     = SolarShadowAlgorithm::ContactPcss;
     SpecularReflectionSource ReflectionSource    = SpecularReflectionSource::WideTreeRaytrace;
-    uint32_t                 DebugChannel        = 0u;    // [0..4] - 0=Lit, 1=Depth, 2=Albedo, 3=Normal, 4=Roughness
+    uint32_t                 DebugChannel        = 0u;    // [0..8] - 0=Lit, 1=Depth, 2=Albedo, 3=Normal, 4=Roughness, 5=GDF Iso, 6=GDF Slice, 7=GDF Radiosity, 8=GDF Cone GI
     uint32_t                 PathTraceSamples    = 16u;   // [spp]  - Samples per pixel for DeterministicPathTrace
     uint32_t                 PathTraceMaxBounces = 5u;    // [cnt]  - Maximum bounce depth for DeterministicPathTrace
     bool                     PathTraceDenoise    = true;  // [-]    - 3-pass albedo/normal/depth A-Trous denoiser

@@ -883,7 +883,9 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                     continue;
                 }
 
-                uint32_t Rng = (PX * 1973u + PY * 9277u + 26699u) | 1u;
+                uint32_t Rng = (PX * 747796405u + PY * 2891336453u + 277803737u) | 1u;
+                (void)PcgFloat01(Rng);
+                (void)PcgFloat01(Rng);
                 Mathematics::LinearRGB Sum {};
                 for (uint32_t S = 0u; S < Spp; ++S)
                 {

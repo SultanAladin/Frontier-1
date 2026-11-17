@@ -75,7 +75,17 @@ namespace
 
 [[nodiscard]] const char* QueryDebugChannelName(uint32_t Channel) noexcept
 {
-    constexpr std::array<const char*, 5> Names = {{ "Off", "Depth", "Albedo", "Normal", "Roughness" }};
+    constexpr std::array<const char*, 9> Names = {{
+        "Off",
+        "Depth",
+        "Albedo",
+        "Normal",
+        "Roughness",
+        "GDF Iso",
+        "GDF Slice",
+        "GDF Rad",
+        "GDF GI"
+    }};
     return Names[std::min<std::size_t>(Channel, Names.size() - 1u)];
 }
 
@@ -1529,15 +1539,19 @@ void ViewportPanel::RenderSettingsSheet(
     }
     else if (DebugDropdownOpen)
     {
-        constexpr std::array<const char*, 5> DebugOptions = {{
+        constexpr std::array<const char*, 9> DebugOptions = {{
             "Debug View: Off",
             "Debug View: Depth",
             "Debug View: Albedo",
             "Debug View: Normal",
             "Debug View: Roughness",
+            "Debug View: GDF Iso-Surface",
+            "Debug View: GDF Slice & Isolines",
+            "Debug View: GDF Radiosity Volume",
+            "Debug View: GDF Cone GI",
         }};
         const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(DebugBtn, static_cast<uint32_t>(DebugOptions.size()));
-        const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 5u;
+        const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 9u;
         uint32_t          ChosenIdx  = CurrentIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 Overlay,

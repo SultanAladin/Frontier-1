@@ -1941,7 +1941,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
 
     const uint32_t EngIdx = static_cast<uint32_t>(Config.Engine);
     const bool SpatialDenoise =
-        (Config.DebugChannel == 0u) &&
+        (Config.DebugChannel == 0u || Config.DebugChannel == 8u) &&
         ((EngIdx == 1u || EngIdx == 2u || EngIdx == 3u) || (EngIdx == 4u && PathTraceSampleIndex < 8u));
 
     if (SpatialDenoise)

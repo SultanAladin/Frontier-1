@@ -619,7 +619,9 @@ int main()
 
         // Verify GPU Compute .slang across all 5 engines via SwiftShader/Vulkan if available
         std::vector<std::vector<uint8_t>> GpuEngineTiles(5u);
+        std::vector<std::vector<uint8_t>> GdfDebugTiles(4u);
         bool GpuEnginesValid = false;
+        bool GdfDebugValid   = false;
         {
             GeometricRaster::VulkanInterchange GpuDevice {};
             if (GpuDevice.InitializeInterchange(std::filesystem::path(FRONTIER_REPO_ROOT_DIR)))
@@ -646,10 +648,92 @@ int main()
                         }
                         GpuEnginesValid = GpuEnginesValid && Ok && (GpuEngineTiles[E].size() == TileW * TileH * 4u);
                     }
+
+                    // Render Global Distance Field (GDF) GPU Debug Channels 5..8
+                    GdfDebugValid = true;
+                    for (uint32_t D = 0u; D < 4u; ++D)
+                    {
+                        GeometricRaster::WorldRenderConfiguration GdfCfg {};
+                        GdfCfg.Engine           = GeometricRaster::WorldRenderEngine::SdfGlobalIllumination;
+                        GdfCfg.ShadowAlgorithm  = GeometricRaster::SolarShadowAlgorithm::ContactPcss;
+                        GdfCfg.ReflectionSource = GeometricRaster::SpecularReflectionSource::WideTreeRaytrace;
+                        GdfCfg.DebugChannel     = 5u + D;
+                        const bool Ok = GpuSeq.RenderWorldViewportWithEngine(GdfCfg, 0u, EvalCam, WorldScene, GdfDebugTiles[D]);
+                        GdfDebugValid = GdfDebugValid && Ok && (GdfDebugTiles[D].size() == TileW * TileH * 4u);
+                    }
                 }
             }
         }
         Score.Verify(GpuEnginesValid, "Vulkan .slang compute renders all 5 unified WorldRenderEngines cleanly");
+        Score.Verify(GdfDebugValid, "Vulkan .slang compute renders all 4 Global Distance Field (GDF) debug views (Modes 5..8)");
+
+        if (GdfDebugValid)
+        {
+            // Verify DebugChannel=5 (Pure GDF Sphere-Trace) has > 70% non-background geometry hits
+            uint32_t GdfHitPx = 0u;
+            const std::size_t TotalPx = TileW * TileH;
+            for (std::size_t P = 0u; P < TotalPx; ++P)
+            {
+                const uint8_t R = GdfDebugTiles[0][P * 4u + 0u];
+                const uint8_t G = GdfDebugTiles[0][P * 4u + 1u];
+                const uint8_t B = GdfDebugTiles[0][P * 4u + 2u];
+                if (R > 40u || G > 40u || B > 60u) ++GdfHitPx;
+            }
+            const double GdfHitRatio = static_cast<double>(GdfHitPx) / static_cast<double>(TotalPx);
+            Score.Verify(GdfHitRatio > 0.70, "Pure GPU GDF sphere-traced iso-surface (Mode 5) covers > 70% of gallery pixels");
+
+            // Verify DebugChannel=7 (GDF 3D Radiosity Volume) captures Crimson left vs Emerald right bounce asymmetry
+            double LeftRed = 0.0, LeftGreen = 0.0, RightRed = 0.0, RightGreen = 0.0;
+            for (uint32_t Y = 40u; Y < TileH - 40u; ++Y)
+            {
+                for (uint32_t X = 10u; X < 70u; ++X)
+                {
+                    const std::size_t Off = (static_cast<std::size_t>(Y) * TileW + X) * 4u;
+                    LeftRed   += GdfDebugTiles[2][Off + 0u];
+                    LeftGreen += GdfDebugTiles[2][Off + 1u];
+                }
+                for (uint32_t X = TileW - 70u; X < TileW - 10u; ++X)
+                {
+                    const std::size_t Off = (static_cast<std::size_t>(Y) * TileW + X) * 4u;
+                    RightRed   += GdfDebugTiles[2][Off + 0u];
+                    RightGreen += GdfDebugTiles[2][Off + 1u];
+                }
+            }
+            Score.Verify(LeftRed > LeftGreen * 1.5 && RightGreen > RightRed * 1.5,
+                         "GDF 3D Radiosity Volume (Mode 7) stores Crimson west & Emerald east bounce radiance");
+
+            constexpr uint32_t GdfSheetW = 1540u;
+            constexpr uint32_t GdfSheetH = 316u;
+            const std::array<const char*, 4u> GdfTitles {{
+                "01 // GDF SPHERE-TRACED ZERO-ISOSURFACE (NO BVH)",
+                "02 // GDF SIGNED DISTANCE SLICE + 0.16m ISOLINES",
+                "03 // GDF 3D RADIOSITY VOLUME (CRIMSON / EMERALD)",
+                "04 // GDF 16-CONE MARCHED GI (ISOLATED + DENOISED)",
+            }};
+            Io.DisplaySize = ImVec2(float(GdfSheetW), float(GdfSheetH));
+            ImGui::NewFrame();
+            ImDrawList* GdfDraw = ImGui::GetBackgroundDrawList();
+            GdfDraw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(float(GdfSheetW), float(GdfSheetH)), BgCol);
+            GdfDraw->AddText(ImVec2(24.0f, 16.0f), AccentCol,
+                             "FRONTIER GLOBAL DISTANCE FIELD (GDF) DEBUG & PROOF  //  SignedDistanceGridCompute.comp.spv -> SampleSdfGrid -> SdfRadiosityVoxels");
+            for (std::size_t D = 0u; D < 4u; ++D)
+            {
+                const float X = 20.0f + static_cast<float>(D) * 378.0f;
+                GdfDraw->AddRectFilled(ImVec2(X, 46.0f), ImVec2(X + 368.0f, 304.0f), CardBg, 6.0f);
+                GdfDraw->AddText(ImVec2(X + 8.0f, 52.0f), GoldCol, GdfTitles[D]);
+            }
+            ImGui::Render();
+            Exhibits::SoftwareRasterCanvas GdfSheet(GdfSheetW, GdfSheetH, { 11u, 14u, 20u, 255u });
+            GdfSheet.RasterizeImGuiBatches(ImGui::GetDrawData());
+            for (std::size_t D = 0u; D < 4u; ++D)
+            {
+                GdfSheet.BlitRgbaRegion(24u + static_cast<uint32_t>(D) * 378u, 72u, TileW, TileH, GdfDebugTiles[D].data());
+            }
+            const std::filesystem::path GdfProofPath =
+                std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "Exhibits" / "Images" / "GlobalIllumination" / "05-GlobalDistanceFieldDebugProof.png";
+            Score.Verify(GdfSheet.WritePngFile(GdfProofPath) && std::filesystem::exists(GdfProofPath),
+                         "Exported 05-GlobalDistanceFieldDebugProof.png");
+        }
 
         // Verify engine differentiation (MatCap vs OpenPBR vs DDGI vs SDF GI vs PathTracer)
         const auto MeasureMeanLumaDiff = [](const std::vector<uint8_t>& A, const std::vector<uint8_t>& B) -> double

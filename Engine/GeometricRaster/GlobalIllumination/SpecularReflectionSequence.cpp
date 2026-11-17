@@ -289,22 +289,40 @@ SpecularReflectionBuffer SpecularReflectionSequence::EvaluateRtxSpecularRefracti
                     Mathematics::LinearRGB IncomingRad {};
                     if (EffRough < 0.38f)
                     {
-                        const uint32_t Seed = PX * 2654435761u ^ (PY * 2246822519u);
+                        const uint32_t SampleCount = (EffRough < 0.06f) ? 1u : 6u;
                         const auto Alpha = MaterialSpace::Scattering::ComputeAnisotropicAlpha(EffRough * 0.45f, Mat.Specular.Anisotropy);
-                        const float U1   = static_cast<float>(Seed & 0xFFFFu) / 65536.0f;
-                        const float U2   = static_cast<float>((Seed >> 16u) & 0xFFFFu) / 65536.0f;
-                        const auto HalfV = MaterialSpace::Scattering::SampleAnisotropicSphericalCapVndf(LocalWo, Alpha, U1, U2);
-                        const auto LocalWi = HalfV * (2.0f * Mathematics::EvaluateDot(LocalWo, HalfV)) - LocalWo;
-
-                        if (LocalWi.Z > 1.0e-4f)
+                        uint32_t Rng = ((PX * 747796405u) ^ (PY * 2891336453u) ^ 0x9E3779B9u) | 1u;
+                        uint32_t ValidSamples = 0u;
+                        for (uint32_t SIdx = 0u; SIdx < SampleCount; ++SIdx)
                         {
-                            const Mathematics::Axis3D WorldReflDir = Hit.TangentFrame.LocalToWorld(LocalWi);
-                            bool HitGeom = false;
-                            IncomingRad = ShadeSecondaryRayHit(
-                                SceneTree, BounceSummaries, GiLattice, Sun,
-                                Hit.WorldPosition + Hit.TangentFrame.NormalZ * 2.5e-3f,
-                                WorldReflDir, SkyRadiance, HitGeom);
-                            if (HitGeom) ++Out.RaytracedHitPixelCount;
+                            Rng = Rng * 747796405u + 2891336453u;
+                            uint32_t W = ((Rng >> ((Rng >> 28u) + 4u)) ^ Rng) * 277803737u;
+                            W ^= (W >> 22u);
+                            const float JitterA = static_cast<float>(W & 0xFFFFu) / 65536.0f;
+                            const float JitterB = static_cast<float>((W >> 16u) & 0xFFFFu) / 65536.0f;
+                            const float U1 = (SampleCount == 1u)
+                                ? JitterA
+                                : std::clamp((static_cast<float>(SIdx) + JitterA) / static_cast<float>(SampleCount), 1.0e-4f, 0.9999f);
+                            const float U2 = JitterB;
+                            const auto HalfV = MaterialSpace::Scattering::SampleAnisotropicSphericalCapVndf(LocalWo, Alpha, U1, U2);
+                            const auto LocalWi = HalfV * (2.0f * Mathematics::EvaluateDot(LocalWo, HalfV)) - LocalWo;
+
+                            if (LocalWi.Z > 1.0e-4f)
+                            {
+                                const Mathematics::Axis3D WorldReflDir = Hit.TangentFrame.LocalToWorld(LocalWi);
+                                bool HitGeom = false;
+                                const auto Rad = ShadeSecondaryRayHit(
+                                    SceneTree, BounceSummaries, GiLattice, Sun,
+                                    Hit.WorldPosition + Hit.TangentFrame.NormalZ * 2.5e-3f,
+                                    WorldReflDir, SkyRadiance, HitGeom);
+                                IncomingRad = IncomingRad + Rad;
+                                ++ValidSamples;
+                                if (HitGeom && SIdx == 0u) ++Out.RaytracedHitPixelCount;
+                            }
+                        }
+                        if (ValidSamples > 1u)
+                        {
+                            IncomingRad = IncomingRad * (1.0f / static_cast<float>(ValidSamples));
                         }
                     }
                     else
