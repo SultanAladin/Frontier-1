@@ -269,6 +269,16 @@ void CameraComponent::AssignSplineProgress(float NormalizedProgress) noexcept
 
 void CameraComponent::AdvanceKinematics(float DeltaSeconds, float ViewportAspectRatio) noexcept
 {
+    if (Posture.HasPreviousFrame)
+    {
+        Posture.PreviousEyePosition = Posture.CurrentEyePosition;
+        Posture.PreviousRightAxis   = Posture.RightAxis;
+        Posture.PreviousUpAxis      = Posture.UpAxis;
+        Posture.PreviousForwardAxis = Posture.ForwardAxis;
+        Posture.PreviousViewClip    = Posture.ViewClip;
+        Posture.LastDeltaSeconds    = std::max(1.0e-4f, DeltaSeconds);
+    }
+
     Projection::RefreshOpticalTelemetry(Configuration.Optics, Posture);
 
     switch (Configuration.OperatingMode)
@@ -295,6 +305,15 @@ void CameraComponent::AdvanceKinematics(float DeltaSeconds, float ViewportAspect
     }
 
     Posture.ViewClip = Projection::EvaluateViewClipTransform(Configuration, Posture, ViewportAspectRatio);
+    if (!Posture.HasPreviousFrame)
+    {
+        Posture.PreviousEyePosition = Posture.CurrentEyePosition;
+        Posture.PreviousRightAxis   = Posture.RightAxis;
+        Posture.PreviousUpAxis      = Posture.UpAxis;
+        Posture.PreviousForwardAxis = Posture.ForwardAxis;
+        Posture.PreviousViewClip    = Posture.ViewClip;
+        Posture.HasPreviousFrame    = true;
+    }
 }
 
 void CameraComponent::SnapToTargets(float ViewportAspectRatio) noexcept
@@ -318,6 +337,7 @@ void CameraComponent::SnapToTargets(float ViewportAspectRatio) noexcept
     Posture.CurrentSplineParameter = Posture.TargetSplineParameter;
     Posture.FollowPivotVelocity    = { 0.0f, 0.0f, 0.0f };
 
+    Posture.HasPreviousFrame       = false;
     AdvanceKinematics(10.0f, ViewportAspectRatio);
 }
 

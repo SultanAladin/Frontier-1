@@ -70,6 +70,20 @@ enum class CompositionGuideStyle : uint8_t
     CrosshairThirds = 3u, // [-] - Optical center reticle + Rule-of-Thirds grid
 };
 
+enum class MotionBlurStyle : uint8_t
+{
+    CameraVelocity     = 0u, // [-] - Per-pixel depth-reprojected camera velocity blur (parallax-aware)
+    DirectionalShutter = 1u, // [-] - Cinematic 180-deg shutter-angle directional motion blur
+    RadialZoom         = 2u, // [-] - Concentric radial zoom & speed-focus swirl blur
+};
+
+enum class WorldDistortionKind : uint8_t
+{
+    HeatShimmer = 0u, // [-] - Rising convective thermal mirage refraction linked to world emitters / plumes
+    BlackHole   = 1u, // [-] - Gravitational Einstein ring lensing, Kerr swirl & dark photon sphere
+    Glitch      = 2u, // [-] - Quantized digital block shear, scanline tear & RGB channel desync
+};
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
@@ -162,6 +176,64 @@ struct VignetteParameters
     float Roundness = 0.75f; // [-] - Aspect-ratio circularity blend (0..1)
 };
 
+struct MotionBlurParameters
+{
+    bool            Enabled             = false;                           // [-]   - Master GPU motion blur toggle
+    MotionBlurStyle Style               = MotionBlurStyle::CameraVelocity; // [-]   - 0=CameraVelocity, 1=DirectionalShutter, 2=RadialZoom
+    float           Intensity           = 0.85f;                           // [x]   - Shutter blur strength [0..2]
+    float           ShutterAngleDegrees = 180.0f;                          // [deg] - Cinema rotary shutter angle [0..360]
+    uint32_t        SampleCount         = 12u;                             // [cnt] - Multi-tap integration samples [4..24]
+    float           MaxBlurRadiusPx     = 28.0f;                           // [px]  - Maximum screen blur radius clamp [2..64]
+    float           ZoomCenterU         = 0.50f;                           // [uv]  - RadialZoom focal center U
+    float           ZoomCenterV         = 0.50f;                           // [uv]  - RadialZoom focal center V
+    float           RadialSpinAmount    = 0.18f;                           // [x]   - Tangential swirl mix in RadialZoom [0..1]
+    float           DirectionalAngleRad = 0.0f;                            // [rad] - Explicit shutter direction for DirectionalShutter
+    float           VelocityUvOverrideX = 0.0f;                            // [uv]  - Optional manual screen velocity U override
+    float           VelocityUvOverrideY = 0.0f;                            // [uv]  - Optional manual screen velocity V override
+};
+
+struct HeatShimmerParameters
+{
+    bool  Enabled             = false; // [-]   - Master convective thermal heat-shimmer distortion toggle
+    float Intensity           = 0.65f; // [x]   - Refractive UV displacement strength [0..2]
+    float Frequency           = 18.0f; // [1/m] - Convective wave spatial frequency [4..48]
+    float RiseSpeed           = 2.4f;  // [1/s] - Buoyant upward shimmer velocity [0..10]
+    float ChromaticDispersion = 0.28f; // [x]   - Mirage R/B edge dispersion [0..1]
+    bool  UseWorldAnchors     = true;  // [-]   - True localizes to projected world/particle anchors when present
+};
+
+struct BlackHoleLensParameters
+{
+    bool                   Enabled                = false;                   // [-] - Master gravitational lensing toggle
+    float                  LensingStrength        = 1.00f;                   // [x] - Einstein ring background deflection [0..3]
+    float                  EventHorizonScale      = 0.36f;                   // [x] - Dark photon sphere radius ratio [0.1..0.7]
+    float                  AccretionGlowIntensity = 1.15f;                   // [x] - Relativistic photon ring & disc glow [0..3]
+    float                  ChromaticSplit         = 0.35f;                   // [x] - Spectral ring dispersion [0..1]
+    float                  SwirlTwist             = 0.45f;                   // [x] - Kerr frame-dragging spiral twist [0..2]
+    Mathematics::Scalar3D  AccretionTint          { 1.00f, 0.58f, 0.18f };   // [lin] - Accretion plasma tint
+};
+
+struct GlitchEffectParameters
+{
+    bool  Enabled                = false; // [-]  - Master digital / holographic glitch toggle
+    float Intensity              = 0.60f; // [x]  - Overall glitch energy [0..2]
+    float BlockJitter            = 0.55f; // [x]  - Quantized macro-block horizontal displacement [0..1.5]
+    float ScanlineTear           = 0.65f; // [x]  - High-frequency scanline horizontal shear [0..1.5]
+    float RgbSplit               = 0.70f; // [x]  - Horizontal RGB channel desynchronization [0..1.5]
+    float RateHz                 = 14.0f; // [Hz] - Quantized temporal glitch tick rate [1..60]
+    bool  LocalizeToWorldAnchors = false; // [-]  - True restricts glitch to projected world/particle Glitch anchors
+};
+
+struct CameraWorldDistortionAnchor
+{
+    WorldDistortionKind Kind           = WorldDistortionKind::HeatShimmer; // [-] - Distortion type driven by this world component
+    Mathematics::Axis3D WorldPosition  { 0.0f, 2.0f, 0.5f };               // [m] - World-space center of particle rig or object
+    float               RadiusMeters   = 1.25f;                            // [m] - World-space distortion influence radius
+    float               Strength       = 1.0f;                             // [x] - Per-emitter strength multiplier
+    float               SecondaryParam = 0.0f;                             // [-] - Per-emitter phase / spin / temperature offset
+    bool                Active         = true;                             // [-] - Active toggle
+};
+
 #if !FRONTIER_PROFILE_SHIPPING
 struct CameraDiagnosticsParameters
 {
@@ -184,6 +256,12 @@ struct CameraConfiguration
     ChromaticAberrationParameters     ChromaticAberration {};
     DepthOfFieldParameters            DepthOfField        {};
     VignetteParameters                Vignette            {};
+    MotionBlurParameters              MotionBlur          {};
+    HeatShimmerParameters             HeatShimmer         {};
+    BlackHoleLensParameters           BlackHoleLens       {};
+    GlitchEffectParameters            Glitch              {};
+    float                             EffectClockSeconds  = 0.0f;
+    std::vector<CameraWorldDistortionAnchor> WorldDistortionAnchors {};
     std::vector<Mathematics::Axis3D>  SplineControlPoints {};
     Mathematics::Axis3D               FollowOffset        { 0.0f, -4.2f, 1.6f };
 #if !FRONTIER_PROFILE_SHIPPING

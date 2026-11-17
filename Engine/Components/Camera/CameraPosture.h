@@ -59,6 +59,15 @@ struct CameraPosture
 
     // Isolated Vulkan NDC View-Projection transform
     Mathematics::ClipTransform4x4 ViewClip {};
+
+    // Previous-frame motion history (for depth-aware CameraVelocity motion blur)
+    Mathematics::Axis3D           PreviousEyePosition { 0.0f, -4.6f, 1.8f };
+    Mathematics::Axis3D           PreviousRightAxis   { 1.0f, 0.0f, 0.0f };
+    Mathematics::Axis3D           PreviousUpAxis      { 0.0f, 0.0f, 1.0f };
+    Mathematics::Axis3D           PreviousForwardAxis { 0.0f, 1.0f, 0.0f };
+    Mathematics::ClipTransform4x4 PreviousViewClip    {};
+    float                         LastDeltaSeconds    = 1.0f / 60.0f;
+    bool                          HasPreviousFrame    = false;
 };
 
 } // namespace Frontier::Components
