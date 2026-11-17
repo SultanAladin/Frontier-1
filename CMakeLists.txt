@@ -1003,6 +1003,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(WindCloudsFogValidation           Exhibits/WindCloudsFogValidation.cpp)
     frontier_register_exhibit(FluidSimulationValidation         Exhibits/FluidSimulationValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(FluidWorkspaceUIValidation        Exhibits/FluidWorkspaceUIValidation.cpp)
         frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)
     endif()
 

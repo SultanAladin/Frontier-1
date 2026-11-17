@@ -1,13 +1,9 @@
 /*============================================================================================================================================
-                                                            FLUIDVIEWPORTHOST.H
+                                                           FLUIDVIEWPORTHOST.H
 ============================================================================================================================================*/
-// 🧩 Floating 22px Center Viewport panel with live volumetric raymarch preview, 4-tool rail, orbit/Pyro-brush input & playback controls
+// 🧩 Center panel for Fluid Studio: Scene View top bar, 3D floor grid + volumetric fire/smoke viewport, HUD, Diagnostics, Transport & Ruler
 
 #pragma once
-
-//------------------------------------------------------------------------------------------------------------------------
-//                                                        INCLUDES
-//------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Controls/ControlAppearance.h"
 #include "Engine/Components/PixelSpace.h"
@@ -26,12 +22,18 @@ public:
         const ControlPointer&  Pointer,
         float                  Opacity = 1.0f) noexcept;
 
-    [[nodiscard]] Rectangle2D QueryLastSurfaceBounds() const noexcept { return LastSurfaceBounds; }
+    [[nodiscard]] Rectangle2D QueryLastSurfaceBounds() const noexcept     { return LastSurfaceBounds; }
+    [[nodiscard]] Rectangle2D QueryLastBakeButtonBounds() const noexcept  { return LastBakeButtonBounds; }
+    [[nodiscard]] Rectangle2D QueryLastDiagButtonBounds() const noexcept  { return LastDiagButtonBounds; }
+    [[nodiscard]] Rectangle2D QueryLastBoundsBtnBounds() const noexcept   { return LastBoundsBtnBounds; }
 
 private:
-    Rectangle2D LastSurfaceBounds {};
-    bool        DraggingOrbit     = false;
-    Point2D     LastPointerPos    {};
+    Rectangle2D LastSurfaceBounds    {};
+    Rectangle2D LastBakeButtonBounds {};
+    Rectangle2D LastDiagButtonBounds {};
+    Rectangle2D LastBoundsBtnBounds  {};
+    bool        DraggingOrbit        = false;
+    Point2D     LastPointerPos       {};
 };
 
 } // namespace Frontier::Workspaces

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                          FLUIDWORKSPACESESSION.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of FluidWorkspaceSession: simulation stepping, ForceFields coupling, TOML I/O & volumetric preview rendering
+// 🧩 Implementation of FluidWorkspaceSession: simulation stepping, ForceFields coupling, TOML I/O & transparent-alpha volumetric raymarch
 
 #include "Engine/Workspaces/Fluid/FluidWorkspaceSession.h"
 #include "Engine/Constants/MathConstants.h"
@@ -17,10 +17,10 @@ namespace Frontier::Workspaces
 namespace
 {
 
-[[nodiscard]] float ToneMapReinhard(float X) noexcept
+[[nodiscard]] float ToneMapAcesApprox(float X) noexcept
 {
     const float V = std::max(0.0f, X);
-    return V / (1.0f + V);
+    return (V * (2.51f * V + 0.03f)) / (V * (2.43f * V + 0.59f) + 0.14f);
 }
 
 [[nodiscard]] uint8_t LinearToSrgb8(float Linear) noexcept
@@ -41,38 +41,95 @@ void FluidWorkspaceSession::LoadPreset(std::string_view PresetId)
 {
     const auto Doc = SimulationSpace::FluidSpace::FluidPresets::ConstructPreset(PresetId);
     ActivePresetId = Doc.PresetKey;
+    DocumentTitle  = Doc.SceneName;
+    DocumentDirty  = false;
     Simulation.Configure(Doc);
     Simulation.ResetSimulation();
 
-    // Seed an initial warm step or blast if the preset disables continuous emitter
     if (!Doc.Emitter.Enabled)
     {
         TriggerBlastNow();
     }
-    StepSimulation(1.0 / 60.0);
-    StatusMessage = "Loaded preset: " + Doc.SceneName;
+    for (int I = 0; I < 36; ++I)
+    {
+        StepSimulation(1.0 / 60.0);
+    }
+    StatusMessage = "Simulation ready";
+}
+
+void FluidWorkspaceSession::ApplyCameraPreset(FluidCameraPreset Preset)
+{
+    CameraPreset = Preset;
+    switch (Preset)
+    {
+    case FluidCameraPreset::Perspective:
+        Camera.YawRadians     = 0.72f;
+        Camera.PitchRadians   = 0.36f;
+        Camera.DistanceMeters = 4.25f;
+        break;
+    case FluidCameraPreset::Front:
+        Camera.YawRadians     = 0.0f;
+        Camera.PitchRadians   = 0.08f;
+        Camera.DistanceMeters = 4.10f;
+        break;
+    case FluidCameraPreset::Side:
+        Camera.YawRadians     = 1.5707963f;
+        Camera.PitchRadians   = 0.08f;
+        Camera.DistanceMeters = 4.10f;
+        break;
+    case FluidCameraPreset::Top:
+        Camera.YawRadians     = 0.0f;
+        Camera.PitchRadians   = 1.38f;
+        Camera.DistanceMeters = 4.40f;
+        break;
+    }
 }
 
 void FluidWorkspaceSession::TriggerBlastNow()
 {
-    const auto& Doc = Simulation.InspectDocument();
+    auto Blast = Simulation.InspectDocument().Blast;
+    if (SelectedBurstKind == 1u)
+    {
+        Blast.Lobes = 8.0f;
+        Blast.StrengthMps *= 1.35f;
+    }
+    else if (SelectedBurstKind == 2u)
+    {
+        Blast.Lobes = 5.0f;
+        Blast.RadiusMeters *= 1.3f;
+    }
+    else if (SelectedBurstKind == 3u)
+    {
+        Blast.Lobes = 2.0f;
+        Blast.StrengthMps *= 1.25f;
+    }
+    else if (SelectedBurstKind == 4u)
+    {
+        Blast.StrengthMps *= 1.45f;
+        Blast.Temperature *= 1.4f;
+    }
+
     SimulationSpace::FluidSpace::FluidStepContext Ctx {};
     Ctx.ForceFieldSource   = &ForceFields;
     Ctx.MutableForceFields = &ForceFields;
     Ctx.WindLatticeCascade = &WindLattice;
-    Simulation.TriggerBlast(Doc.Blast, Ctx);
-    StatusMessage = "Detonated multi-lobe Rayleigh-Taylor blast";
+    Simulation.TriggerBlast(Blast, Ctx);
+    StatusMessage = "Triggered pyro burst";
 }
 
 void FluidWorkspaceSession::TriggerReset()
 {
     Simulation.ResetSimulation();
-    StatusMessage = "Simulation buffers cleared";
+    StatusMessage = "Simulation reset";
 }
 
 void FluidWorkspaceSession::StepSimulation(double DeltaSeconds)
 {
-    const float Dt = std::clamp(static_cast<float>(DeltaSeconds), 1.0f / 120.0f, 1.0f / 30.0f);
+    if (TurntableEnabled && !Simulation.InspectDocument().Domain.Paused)
+    {
+        Camera.YawRadians += static_cast<float>(DeltaSeconds) * 0.35f;
+    }
+    const float Dt = std::clamp(static_cast<float>(DeltaSeconds) * PlaybackSpeed, 1.0f / 180.0f, 1.0f / 24.0f);
     SimulationSpace::FluidSpace::FluidStepContext Ctx {};
     Ctx.ForceFieldSource   = &ForceFields;
     Ctx.MutableForceFields = &ForceFields;
@@ -104,6 +161,7 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
     const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis({ -0.55f, 0.45f, 0.70f });
     const Mathematics::LinearRGB SunIrr { 3.2f, 2.95f, 2.65f };
     const Mathematics::LinearRGB SkyRad { 0.14f, 0.18f, 0.25f };
+    const float Exposure = std::max(0.25f, Simulation.InspectDocument().Shading.Exposure) * 0.045f;
 
     for (uint32_t PY = 0u; PY < PreviewHeightPx; ++PY)
     {
@@ -114,31 +172,13 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
             const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                 Forward + Right * (NdcX * TanX) + Up * (NdcY * TanY));
 
-            float HitDist = 45.0f;
-            Mathematics::LinearRGB Bg {
-                0.045f + 0.055f * std::clamp(RayDir.Z * 0.5f + 0.5f, 0.0f, 1.0f),
-                0.055f + 0.075f * std::clamp(RayDir.Z * 0.5f + 0.5f, 0.0f, 1.0f),
-                0.075f + 0.105f * std::clamp(RayDir.Z * 0.5f + 0.5f, 0.0f, 1.0f),
-            };
-
-            // Ground floor plane at Z = 0
+            float HitDist = 28.0f;
             if (RayDir.Z < -1.0e-4f && Eye.Z > 0.0f)
             {
                 const float TG = -Eye.Z / RayDir.Z;
                 if (TG > 0.0f && TG < HitDist)
                 {
                     HitDist = TG;
-                    const Mathematics::Axis3D GP = Eye + RayDir * TG;
-                    const int CX = static_cast<int>(std::floor(GP.X * 2.0f));
-                    const int CY = static_cast<int>(std::floor(GP.Y * 2.0f));
-                    const float Checker = ((CX + CY) & 1) ? 0.12f : 0.08f;
-                    const float Fade    = std::exp(-0.08f * std::hypot(GP.X, GP.Y));
-                    const float ShadowT = Simulation.EvaluateFluidShadowTransmittance(GP + Mathematics::Axis3D{ 0.0f, 0.0f, 0.02f }, SunDir, 18.0f);
-                    Bg = {
-                        (0.05f + Checker * Fade) * ShadowT,
-                        (0.055f + Checker * Fade) * ShadowT,
-                        (0.065f + Checker * Fade) * ShadowT,
-                    };
                 }
             }
 
@@ -146,17 +186,21 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
                 Eye, RayDir, HitDist, SunDir, SunIrr, SkyRad,
                 static_cast<float>((PX * 73u + PY * 179u) & 31u) / 31.0f);
 
+            const float SmokeOpacity = std::clamp(1.0f - Res.Transmittance, 0.0f, 1.0f);
+            const float FireLum      = std::max({ Res.RadianceHdr.R, Res.RadianceHdr.G, Res.RadianceHdr.B }) * 0.42f;
+            const float Alpha        = std::clamp(std::max(SmokeOpacity * 0.85f, 1.0f - std::exp(-FireLum * 1.15f)), 0.0f, 0.96f);
+
             const Mathematics::LinearRGB FinalHdr {
-                Bg.R * Res.Transmittance + Res.RadianceHdr.R,
-                Bg.G * Res.Transmittance + Res.RadianceHdr.G,
-                Bg.B * Res.Transmittance + Res.RadianceHdr.B,
+                Res.RadianceHdr.R * Exposure,
+                Res.RadianceHdr.G * Exposure,
+                Res.RadianceHdr.B * Exposure,
             };
 
             const std::size_t Off = (static_cast<std::size_t>(PY) * PreviewWidthPx + PX) * 4u;
-            PreviewRgba8[Off + 0u] = LinearToSrgb8(ToneMapReinhard(FinalHdr.R));
-            PreviewRgba8[Off + 1u] = LinearToSrgb8(ToneMapReinhard(FinalHdr.G));
-            PreviewRgba8[Off + 2u] = LinearToSrgb8(ToneMapReinhard(FinalHdr.B));
-            PreviewRgba8[Off + 3u] = 255u;
+            PreviewRgba8[Off + 0u] = LinearToSrgb8(ToneMapAcesApprox(FinalHdr.R));
+            PreviewRgba8[Off + 1u] = LinearToSrgb8(ToneMapAcesApprox(FinalHdr.G));
+            PreviewRgba8[Off + 2u] = LinearToSrgb8(ToneMapAcesApprox(FinalHdr.B));
+            PreviewRgba8[Off + 3u] = static_cast<uint8_t>(std::round(Alpha * 255.0f));
         }
     }
 }
@@ -187,6 +231,8 @@ bool FluidWorkspaceSession::ImportSceneToml(std::string_view FilePath)
     }
 
     ActivePresetId = Parsed.PresetKey;
+    DocumentTitle  = Parsed.SceneName;
+    DocumentDirty  = false;
     Simulation.Configure(Parsed);
     Simulation.ResetSimulation();
     StatusMessage = "Imported TOML: " + Parsed.SceneName;

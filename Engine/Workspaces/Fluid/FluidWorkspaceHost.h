@@ -1,13 +1,9 @@
 /*============================================================================================================================================
-                                                            FLUIDWORKSPACEHOST.H
+                                                           FLUIDWORKSPACEHOST.H
 ============================================================================================================================================*/
-// 🧩 Top-level Frontier Fluid Studio host mounting 56px Studio Header, 3 floating 22px panels, PresetBrowser, Minimap & Status Bar
+// 🧩 Top-level host for Fluid Studio: 52px header + 34px document bar + 3-column workspace + Flipbook modal + Preset modal + Status bar
 
 #pragma once
-
-//------------------------------------------------------------------------------------------------------------------------
-//                                                        INCLUDES
-//------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/Controls/ControlAppearance.h"
@@ -25,8 +21,6 @@ namespace Frontier::Workspaces
 class FluidWorkspaceHost
 {
 public:
-    FluidWorkspaceHost() = default;
-
     void AttachContentBrowserPanel(ContentBrowserPanel* TargetPanel) noexcept;
 
     void RenderStudio(
@@ -37,17 +31,22 @@ public:
 
     [[nodiscard]] FluidWorkspaceSession&       AccessSession() noexcept       { return Session; }
     [[nodiscard]] const FluidWorkspaceSession& InspectSession() const noexcept { return Session; }
+    [[nodiscard]] FluidOutlinerPanel&          AccessOutliner() noexcept      { return Outliner; }
+    [[nodiscard]] FluidViewportHost&           AccessViewport() noexcept      { return Viewport; }
+    [[nodiscard]] FluidInspectorPanel&         AccessInspector() noexcept     { return Inspector; }
 
 private:
     void RenderStudioHeader(PixelSpace& Surface, Rectangle2D HeaderRect, const ControlPointer& Pointer) noexcept;
+    void RenderDocumentBar(PixelSpace& Surface, Rectangle2D DocRect, const ControlPointer& Pointer) noexcept;
+    void RenderFlipbookModal(PixelSpace& Surface, Rectangle2D WindowBounds, const ControlPointer& Pointer) noexcept;
     void RenderStatusBar(PixelSpace& Surface, Rectangle2D StatusRect) const noexcept;
 
     FluidWorkspaceSession Session      {};
     FluidOutlinerPanel    Outliner     {};
     FluidViewportHost     Viewport     {};
     FluidInspectorPanel   Inspector    {};
-    FluidPresetBrowser    PresetModal  {};
     FluidAtlasMinimap     Minimap      {};
+    FluidPresetBrowser    PresetModal  {};
     ContentBrowserPanel*  BoundBrowser = nullptr;
 };
 
