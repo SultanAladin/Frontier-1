@@ -19,6 +19,12 @@ namespace Frontier::Workspaces
 class FluidPresetBrowser
 {
 public:
+    void RenderPane(
+        PixelSpace&            Surface,
+        Rectangle2D            PaneBounds,
+        FluidWorkspaceSession& Session,
+        const ControlPointer&  Pointer) noexcept;
+
     void RenderModal(
         PixelSpace&            Surface,
         Rectangle2D            WindowBounds,

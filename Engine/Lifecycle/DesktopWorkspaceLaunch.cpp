@@ -369,6 +369,12 @@ int LaunchDesktopWorkspace(
             InitialOptions.OpenProjectBrowser = false;
             InitialOptions.WindowTitle        = "Frontier ForceField";
         }
+        else if (Arg == "--standalone-fluid" || Arg == "--standalone=fluid" || Arg == "--workspace=fluid" || Arg == "--fluid")
+        {
+            InitialOptions.OpenWorldEditor    = false;
+            InitialOptions.OpenProjectBrowser = false;
+            InitialOptions.WindowTitle        = "Frontier Fluid";
+        }
         else if (Arg == "--project-browser")
         {
             InitialOptions.OpenProjectBrowser = true;
@@ -615,6 +621,7 @@ int LaunchDesktopWorkspace(
     Workspaces::FluidWorkspaceHost                     FluidHost {};
     Components::HeadlessWorkspaceDockContainer         MaterialDock {};
     Components::HeadlessWorkspaceDockContainer         ForceFieldDock {};
+    Components::HeadlessWorkspaceDockContainer         FluidDock {};
     Lifecycle::EditorLifecycle                         EditorLoop {};
     Editor::Explorer::ContentBrowser                   StandaloneBrowser {};
     Editor::Explorer::ContentBrowser                   PatternBrowser {};
@@ -952,6 +959,15 @@ int LaunchDesktopWorkspace(
             FluidBrowser.AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::Fluid);
             FluidBrowser.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
             FluidHost.AttachContentBrowserPanel(&FluidBrowser.AccessPanel());
+
+            (void)FluidDock.Initialize(
+                Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow(
+                    "Frontier Fluid", InitialOptions.InitialWidthPx, InitialOptions.InitialHeightPx));
+            Components::ConfigureImGuiWorkspaceStyle(FluidDock.ActiveTabMetrics());
+            Components::ConfigureImGuiWorkspaceTheme(
+                FluidDock.ActiveTabMetrics(),
+                StandaloneControlCentre.QueryThemeRepository());
+            FluidHost.RegisterDockPanes(FluidDock);
             FluidHostReady = true;
         }
         return true;
@@ -1380,6 +1396,13 @@ int LaunchDesktopWorkspace(
                 HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
             }
         }
+        if (FluidHostReady)
+        {
+            if (auto* HostSurface = FluidDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+            {
+                HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
+            }
+        }
 #else
         if (auto* HostSurface = StandaloneDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
         {
@@ -1525,24 +1548,30 @@ int LaunchDesktopWorkspace(
         {
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
             ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
-            PixelSpace StudioSurface(ImGui::GetForegroundDrawList(), Point2D{ 0.0f, 0.0f }, HostUiScale);
-            const Point2D MouseLogical = StudioSurface.QueryMousePosition();
-            ContentBrowserPointerInput PtrInput {};
-            if (!StandaloneControlCentre.QueryOpen())
+            FluidHost.SynchronizeHostScale(HostUiScale);
+            FluidHost.AccessSession().StepSimulation(Dt);
+
+            Components::ConfigureImGuiWorkspaceTheme(
+                FluidDock.ActiveTabMetrics(),
+                StandaloneControlCentre.QueryThemeRepository());
+            auto& FluidBrowserPanel = FluidBrowser.AccessPanel();
+            FluidBrowserPanel.SynchronizeHostBounds(FullBounds, HostUiScale);
+            StandaloneControlCentre.SynchronizeHostBounds(FullBounds, HostUiScale);
+            if (StandaloneControlCentre.QueryFullScreenBlocking() || FluidBrowserPanel.QueryShelfDragging())
             {
-                PtrInput.CursorX           = MouseLogical.X;
-                PtrInput.CursorY           = MouseLogical.Y;
-                PtrInput.HeldDown = StudioSurface.QueryMouseDown(0);
-                PtrInput.Pressed  = StudioSurface.QueryMouseClicked(0);
-                PtrInput.Released = StudioSurface.QueryMouseReleased(0);
+                WorkspaceAppearance::AssignOverlayPointerShield(FullBounds);
             }
-            const Rectangle2D LogicalBounds {
-                0.0f,
-                0.0f,
-                FullBounds.Width / HostUiScale,
-                FullBounds.Height / HostUiScale,
-            };
-            FluidHost.RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
+            else
+            {
+                WorkspaceAppearance::AssignOverlayPointerShield(
+                    FluidBrowserPanel.QueryDrawerPhysicalBounds(),
+                    FluidBrowserPanel.QueryNotchPhysicalBounds());
+                WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryShadePhysicalBounds());
+                WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryTabPhysicalBounds());
+            }
+            FluidDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+            WorkspaceAppearance::ClearOverlayPointerShield();
+            FluidBrowser.Render(FullBounds, Dt, HostUiScale);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
         else if (CurrentSurface == ActiveHostSurface::ForceFieldWorkspaceSurface)
@@ -1767,6 +1796,10 @@ int LaunchDesktopWorkspace(
     if (ForceFieldHostReady)
     {
         ForceFieldDock.Finalize();
+    }
+    if (FluidHostReady)
+    {
+        FluidDock.Finalize();
     }
 #else
     StandaloneDock.Finalize();

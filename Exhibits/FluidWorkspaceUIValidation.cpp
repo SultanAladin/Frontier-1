@@ -11,6 +11,7 @@
 #include "Engine/Components/Appearance/TypographyRepository.h"
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/Controls/ControlAppearance.h"
+#include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/Workspaces/Fluid/FluidWorkspaceHost.h"
 #include "Exhibits/SoftwareCanvasRasterizer.h"
 
@@ -48,6 +49,7 @@ int main()
     ImGuiContext* Gui = ImGui::CreateContext();
     ImGui::SetCurrentContext(Gui);
     ImGuiIO& Io = ImGui::GetIO();
+    Io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     Io.IniFilename = nullptr;
 
     const std::filesystem::path RepoRoot = ResolveRepositoryRootPath();
@@ -199,7 +201,44 @@ int main()
         return 1;
     }
 
-    std::printf("[FluidWorkspaceUIValidation] All 6 UI parity checks & 5 1440x900 PNG captures passed -> %s\n", OutDir.string().c_str());
+    // 7. Dockable workspace container validation (Outliner + Presets + Viewport + Inspector tabs, zero top strip)
+    Studio.AccessSession().LoadPreset("ue5_pyro_default");
+    Components::HeadlessWorkspaceDockContainer FluidDock {};
+    if (!VerifyCheck(FluidDock.Initialize(Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow(
+                         "Frontier Fluid", CanvasW, CanvasH)),
+                     "Initialize FluidDock"))
+    {
+        ImGui::DestroyContext(Gui);
+        return 1;
+    }
+    Components::ConfigureImGuiWorkspaceStyle(FluidDock.ActiveTabMetrics());
+    Components::ConfigureImGuiWorkspaceTheme(FluidDock.ActiveTabMetrics(), Theme);
+    Studio.RegisterDockPanes(FluidDock);
+    if (!VerifyCheck(Studio.QueryRegisteredTabCount() == 4u && FluidDock.RegisteredPaneCount() == 4u,
+                     "FluidWorkspaceHost registered 4 dockable panes (Outliner, Presets, Viewport, Inspector)"))
+    {
+        FluidDock.Finalize();
+        ImGui::DestroyContext(Gui);
+        return 1;
+    }
+    for (int F = 0; F < 4; ++F)
+    {
+        Io.DisplaySize = ImVec2(static_cast<float>(CanvasW), static_cast<float>(CanvasH));
+        Io.DeltaTime   = 1.0f / 60.0f;
+        ImGui::NewFrame();
+        Components::ConfigureImGuiWorkspaceTheme(FluidDock.ActiveTabMetrics(), Theme);
+        FluidDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+        ImGui::Render();
+    }
+    if (!SavePng("Cpp_WorkspaceUI_Docked.png"))
+    {
+        FluidDock.Finalize();
+        ImGui::DestroyContext(Gui);
+        return 1;
+    }
+    FluidDock.Finalize();
+
+    std::printf("[FluidWorkspaceUIValidation] All 7 UI & docking checks + PNG captures passed -> %s\n", OutDir.string().c_str());
     ImGui::DestroyContext(Gui);
     return 0;
 }

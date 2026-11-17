@@ -1,11 +1,15 @@
 /*============================================================================================================================================
                                                            FLUIDWORKSPACEHOST.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of FluidWorkspaceHost: HTML-matched 52px header, 34px document bar, 3 floating panels, Flipbook & Preset modals, Status bar
+// 🧩 Implementation of FluidWorkspaceHost: dockable Outliner, Viewport, Presets, and Inspector panes + Flipbook & Preset modals
 
 #include "Engine/Workspaces/Fluid/FluidWorkspaceHost.h"
+#include "Engine/Components/Panes/WorkspaceAppearance.h"
+#include "Engine/Input/InputExtension.h"
 #include "Engine/Workspaces/Fluid/FluidFlipbookExporter.h"
 #include "Engine/Workspaces/Particle/ParticlePaneAppearance.h"
+
+#include <imgui.h>
 
 #include <algorithm>
 #include <array>
@@ -19,6 +23,72 @@ namespace
 
 using namespace ParticleAppearance;
 
+[[nodiscard]] ControlPointer CaptureDockPanePointer(
+    const void*       PaneKey,
+    const PixelSpace& Surface,
+    Rectangle2D       ScreenBounds,
+    float             SafeScale) noexcept
+{
+    const auto& Snapshot = Input::InputExtension::InspectActiveEditorSnapshot();
+    if (Snapshot.PointerSeeded)
+    {
+        PaneInputReading Input =
+            WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
+        WorkspaceAppearance::EnforcePanePointerOwnership(PaneKey, Input);
+        return Input.PrimaryPointer;
+    }
+
+    ControlPointer Ptr {};
+    const ImGuiIO& Io = ImGui::GetIO();
+    const Point2D ScreenCursor { Io.MousePos.x, Io.MousePos.y };
+    const bool InsidePane = ScreenBounds.Contains(ScreenCursor);
+    const bool Hovered    = InsidePane && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+    const Point2D LocalPt = Surface.QueryMousePosition();
+    Ptr.X       = LocalPt.X;
+    Ptr.Y       = LocalPt.Y;
+    Ptr.Enabled = Hovered || InsidePane;
+    Ptr.Down    = (Hovered || InsidePane) && Surface.QueryMouseDown(0);
+    Ptr.Pressed = (Hovered || InsidePane) && Surface.QueryMouseClicked(0);
+    Ptr.Released = Surface.QueryMouseReleased(0);
+
+    PaneInputReading FallbackInput {};
+    FallbackInput.PrimaryPointer = Ptr;
+    WorkspaceAppearance::EnforcePanePointerOwnership(PaneKey, FallbackInput);
+    return FallbackInput.PrimaryPointer;
+}
+
+template <typename RenderFn>
+void RenderFluidDockPane(
+    const char* CanvasId,
+    const void* PaneKey,
+    float       ScaleFactor,
+    RenderFn&&  DrawCallback) noexcept
+{
+    const float  SafeScale = std::max(0.25f, ScaleFactor);
+    const ImVec2 WinPos    = ImGui::GetWindowPos();
+    const ImVec2 WinSize   = ImGui::GetWindowSize();
+    const ImVec2 CursorPos = ImGui::GetCursorScreenPos();
+    const float  TopY      = CursorPos.y - ImGui::GetStyle().WindowPadding.y;
+    const float  PaneH     = std::max(1.0f, (WinPos.y + WinSize.y) - TopY);
+
+    ImGui::InvisibleButton(
+        CanvasId,
+        ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x), std::max(1.0f, ImGui::GetContentRegionAvail().y)),
+        ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
+
+    const Rectangle2D ScreenBounds  { WinPos.x, TopY, WinSize.x, PaneH };
+    const Rectangle2D LogicalBounds { 0.0f, 0.0f, WinSize.x / SafeScale, PaneH / SafeScale };
+    if (LogicalBounds.Width < 16.0f || LogicalBounds.Height < 16.0f)
+    {
+        return;
+    }
+
+    PixelSpace Surface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
+    const ControlPointer Ptr = CaptureDockPanePointer(PaneKey, Surface, ScreenBounds, SafeScale);
+
+    DrawCallback(Surface, LogicalBounds, Ptr, ScreenBounds);
+}
+
 } // namespace
 
 void FluidWorkspaceHost::AttachContentBrowserPanel(ContentBrowserPanel* TargetPanel) noexcept
@@ -30,158 +100,129 @@ void FluidWorkspaceHost::AttachContentBrowserPanel(ContentBrowserPanel* TargetPa
     }
 }
 
-void FluidWorkspaceHost::RenderStudioHeader(
-    PixelSpace&           Surface,
-    Rectangle2D           HeaderRect,
-    const ControlPointer& Pointer) noexcept
+void FluidWorkspaceHost::SynchronizeHostScale(float ScaleFactor) noexcept
 {
-    const auto C = QueryStudioColors();
-    Surface.FillRectangle(HeaderRect, C.CanvasBg, 0.0f);
-
-    const float CY = HeaderRect.Center().Y;
-    float X = HeaderRect.X + 16.0f;
-
-    // 1. Slanted Document Tab ("Ember study.fluid •") + "+" circular button
-    char TabTitle[96] {};
-    std::snprintf(TabTitle, sizeof(TabTitle), "%s.fluid", Session.DocumentTitle.c_str());
-    const float TabW = std::clamp(Surface.MeasureTextWidth(10.8f, TabTitle) + 64.0f, 136.0f, 220.0f);
-    const Rectangle2D TabRect { X, CY - 14.0f, TabW, 30.0f };
-    const std::array<Point2D, 4> Trap {{
-        { TabRect.X + 10.0f,       TabRect.Y },
-        { TabRect.Right() - 10.0f, TabRect.Y },
-        { TabRect.Right(),         TabRect.Bottom() },
-        { TabRect.X,               TabRect.Bottom() },
-    }};
-    Surface.FillPolygon(Trap, { 28u, 28u, 32u, 255u });
-    Surface.StrokeLine({ TabRect.X + 14.0f, TabRect.Bottom() }, { TabRect.Right() - 14.0f, TabRect.Bottom() }, C.WarmAccent, 1.4f);
-    Surface.Text({ TabRect.X + 26.0f, TabRect.Center().Y - 5.5f }, 10.5f, C.TextPrimary, TabTitle);
-    if (Session.DocumentDirty)
-    {
-        Surface.FillCircle({ TabRect.Right() - 18.0f, TabRect.Center().Y }, 2.2f, C.TextPrimary);
-    }
-    X = TabRect.Right() + 10.0f;
-
-    const Rectangle2D PlusBtn { X, CY - 12.0f, 24.0f, 24.0f };
-    const bool PlusHov = ControlAppearance::QueryPointerOver(PlusBtn, Pointer);
-    Surface.FillCircle(PlusBtn.Center(), 12.0f, PlusHov ? C.CardElevated : C.CardBg);
-    Surface.StrokeCircle(PlusBtn.Center(), 12.0f, C.Hairline, 0.9f);
-    RasterizePlusGlyph(Surface, PlusBtn.Center(), 4.2f, PlusHov ? C.TextPrimary : C.TextSoft);
-    if (PlusHov && Pointer.Pressed)
-    {
-        Session.LoadPreset("ue5_pyro_default");
-    }
-
-    // 2. Center Navigation Pill: Workspace | Presets
-    const float NavW = 196.0f;
-    const Rectangle2D NavCapsule { HeaderRect.Center().X - NavW * 0.5f + 90.0f, CY - 17.0f, NavW, 34.0f };
-    Surface.FillRectangle(NavCapsule, C.PanelBg, 17.0f);
-    Surface.StrokeRectangle(NavCapsule, C.Hairline, 17.0f, 0.9f);
-
-    const Rectangle2D WorkBtn   { NavCapsule.X + 3.0f, NavCapsule.Y + 3.0f, 96.0f, 28.0f };
-    const Rectangle2D PresetBtn { WorkBtn.Right() + 2.0f, NavCapsule.Y + 3.0f, 92.0f, 28.0f };
-
-    const bool WorkAct   = !Session.PresetBrowserOpen;
-    const bool PresetAct = Session.PresetBrowserOpen;
-    if (WorkAct)
-    {
-        Surface.FillRectangle(WorkBtn, { 36u, 36u, 40u, 255u }, 14.0f);
-        Surface.StrokeRectangle(WorkBtn, C.Hairline, 14.0f, 0.8f);
-    }
-    Surface.TextCentered(WorkBtn, 11.2f, WorkAct ? C.TextPrimary : C.TextMuted, "Workspace");
-    if (ControlAppearance::QueryPointerOver(WorkBtn, Pointer) && Pointer.Pressed)
-    {
-        Session.PresetBrowserOpen = false;
-    }
-
-    if (PresetAct)
-    {
-        Surface.FillRectangle(PresetBtn, { 36u, 36u, 40u, 255u }, 14.0f);
-        Surface.StrokeRectangle(PresetBtn, C.Hairline, 14.0f, 0.8f);
-    }
-    Surface.TextCentered(PresetBtn, 11.2f, PresetAct ? C.TextPrimary : C.TextMuted, "Presets");
-    if (ControlAppearance::QueryPointerOver(PresetBtn, Pointer) && Pointer.Pressed)
-    {
-        Session.PresetBrowserOpen = !Session.PresetBrowserOpen;
-    }
-
-    // 3. Right Header End: ● Gas simulation + ? Help + Save scene
-    const Rectangle2D SaveBtn { HeaderRect.Right() - 122.0f, CY - 16.0f, 106.0f, 32.0f };
-    const bool SaveHov = ControlAppearance::QueryPointerOver(SaveBtn, Pointer);
-    Surface.FillRectangle(SaveBtn, SaveHov ? C.CardElevated : C.CardBg, 16.0f);
-    Surface.StrokeRectangle(SaveBtn, SaveHov ? C.HairlineStrong : C.Hairline, 16.0f, 1.0f);
-    Surface.TextCentered(SaveBtn, 10.6f, C.TextPrimary, "Save scene");
-    if (SaveHov && Pointer.Pressed)
-    {
-        if (Session.ExportSceneToml("FluidStudioScene.gasscene.toml"))
-        {
-            Session.DocumentDirty = false;
-            Session.StatusMessage = "Saved FluidStudioScene.gasscene.toml";
-        }
-    }
-
-    const Rectangle2D HelpBtn { SaveBtn.X - 36.0f, CY - 13.0f, 26.0f, 26.0f };
-    const bool HelpHov = ControlAppearance::QueryPointerOver(HelpBtn, Pointer);
-    Surface.FillCircle(HelpBtn.Center(), 13.0f, HelpHov ? C.CardElevated : C.CardBg);
-    Surface.StrokeCircle(HelpBtn.Center(), 13.0f, C.Hairline, 0.9f);
-    Surface.TextCentered(HelpBtn, 10.5f, C.TextSoft, "?");
-
-    const float TagX = HelpBtn.X - 116.0f;
-    Surface.FillCircle({ TagX, CY }, 2.6f, C.LiveGreen);
-    Surface.Text({ TagX + 9.0f, CY - 5.5f }, 10.2f, C.TextSoft, "Gas simulation");
+    HostScaleFactor = std::clamp(ScaleFactor, 0.25f, 4.0f);
 }
 
-void FluidWorkspaceHost::RenderDocumentBar(
-    PixelSpace&           Surface,
-    Rectangle2D           DocRect,
-    const ControlPointer& Pointer) noexcept
+void FluidWorkspaceHost::RegisterDockPanes(Components::HeadlessWorkspaceDockContainer& DockContainer)
 {
-    const auto C = QueryStudioColors();
-    Surface.FillRectangle(DocRect, C.CanvasBg, 0.0f);
+    using Components::DockPlacementDirection;
+    using Components::PaneDirectiveMask;
+    using Components::WorkspaceDockPaneDescriptor;
 
-    const float CY = DocRect.Center().Y;
-    float X = DocRect.X + 20.0f;
+    RegisteredTabCount = 0u;
 
-    Surface.StrokeRectangle({ X, CY - 6.0f, 10.0f, 12.0f }, C.TextMuted, 2.0f, 1.0f);
-    X += 18.0f;
-    Surface.Text({ X, CY - 6.0f }, 10.8f, C.TextPrimary, Session.DocumentTitle.c_str());
-    X += Surface.MeasureTextWidth(10.8f, Session.DocumentTitle.c_str()) + 3.0f;
-    Surface.Text({ X, CY - 5.5f }, 10.0f, C.TextMuted, ".fluid");
-    X += 34.0f;
-    Surface.FillCircle({ X, CY }, 2.2f, Session.DocumentDirty ? C.WarmAccent : C.TextMuted);
-    X += 12.0f;
-    Surface.FillRectangle({ X, CY - 6.0f, 1.0f, 12.0f }, C.Hairline, 0.0f);
-    X += 12.0f;
-    Surface.Text({ X, CY - 5.5f }, 10.0f, C.TextMuted, "Smoke / fire authoring");
+    (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
+        "Outliner",
+        DockPlacementDirection::SplitLeft,
+        0.21f,
+        PaneDirectiveMask::StandardPaneDirectives,
+        [this]() { PresentOutlinerPane(); },
+    });
+    ++RegisteredTabCount;
 
-    // Right side: Open scene | Samples | Load a sample scene... | Save as TOML
-    const Rectangle2D TomlBtn { DocRect.Right() - 108.0f, CY - 11.0f, 92.0f, 22.0f };
-    const bool TomlHov = ControlAppearance::QueryPointerOver(TomlBtn, Pointer);
-    Surface.TextCentered(TomlBtn, 10.0f, TomlHov ? C.TextPrimary : C.TextSoft, "Save as TOML");
-    if (TomlHov && Pointer.Pressed)
-    {
-        if (Session.ExportSceneToml("FluidStudioScene.gasscene.toml"))
+    (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
+        "Viewport",
+        DockPlacementDirection::CenterTabGroup,
+        0.53f,
+        PaneDirectiveMask::CentralViewportDirectives,
+        [this]() { PresentViewportPane(); },
+    });
+    ++RegisteredTabCount;
+
+    (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
+        "Presets",
+        DockPlacementDirection::CenterTabGroup,
+        0.53f,
+        PaneDirectiveMask::StandardPaneDirectives,
+        [this]() { PresentPresetsPane(); },
+    });
+    ++RegisteredTabCount;
+
+    (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
+        "Inspector",
+        DockPlacementDirection::SplitRight,
+        0.26f,
+        PaneDirectiveMask::StandardPaneDirectives,
+        [this]() { PresentInspectorPane(); },
+    });
+    ++RegisteredTabCount;
+}
+
+void FluidWorkspaceHost::PresentOutlinerPane()
+{
+    RenderFluidDockPane(
+        "##FluidOutlinerCanvas",
+        &Outliner,
+        HostScaleFactor,
+        [this](PixelSpace& Surface, Rectangle2D LogicalBounds, const ControlPointer& Ptr, Rectangle2D /*ScreenBounds*/)
         {
-            Session.StatusMessage = "Exported TOML manifest";
-        }
-    }
+            Outliner.Render(Surface, LogicalBounds, Session, Ptr);
+        });
+}
 
-    const Rectangle2D SampleDrop { TomlBtn.X - 182.0f, CY - 12.0f, 168.0f, 24.0f };
-    const bool SampleHov = ControlAppearance::QueryPointerOver(SampleDrop, Pointer);
-    Surface.FillRectangle(SampleDrop, SampleHov ? C.CardElevated : C.CardBg, 12.0f);
-    Surface.StrokeRectangle(SampleDrop, C.Hairline, 12.0f, 0.9f);
-    Surface.Text({ SampleDrop.X + 12.0f, SampleDrop.Y + 6.0f }, 9.8f, C.TextMuted, "Load a sample scene...");
-    if (SampleHov && Pointer.Pressed)
-    {
-        Session.PresetBrowserOpen = true;
-    }
+void FluidWorkspaceHost::PresentPresetsPane()
+{
+    RenderFluidDockPane(
+        "##FluidPresetsCanvas",
+        &PresetModal,
+        HostScaleFactor,
+        [this](PixelSpace& Surface, Rectangle2D LogicalBounds, const ControlPointer& Ptr, Rectangle2D /*ScreenBounds*/)
+        {
+            PresetModal.RenderPane(Surface, LogicalBounds, Session, Ptr);
+        });
+}
 
-    Surface.Text({ SampleDrop.X - 54.0f, CY - 5.5f }, 9.8f, C.TextMuted, "Samples");
-    const Rectangle2D OpenBtn { SampleDrop.X - 146.0f, CY - 11.0f, 78.0f, 22.0f };
-    if (ControlAppearance::QueryPointerOver(OpenBtn, Pointer) && Pointer.Pressed)
-    {
-        (void)Session.ImportSceneToml("FluidStudioScene.gasscene.toml");
-    }
-    Surface.TextCentered(OpenBtn, 10.0f, C.TextSoft, "Open scene");
+void FluidWorkspaceHost::PresentViewportPane()
+{
+    RenderFluidDockPane(
+        "##FluidViewportCanvas",
+        &Viewport,
+        HostScaleFactor,
+        [this](PixelSpace& Surface, Rectangle2D LogicalBounds, const ControlPointer& Ptr, Rectangle2D ScreenBounds)
+        {
+            constexpr float StatusH = 24.0f;
+            const Rectangle2D ViewBounds {
+                LogicalBounds.X,
+                LogicalBounds.Y,
+                LogicalBounds.Width,
+                std::max(160.0f, LogicalBounds.Height - StatusH),
+            };
+            const Rectangle2D StatusRect {
+                LogicalBounds.X,
+                ViewBounds.Bottom(),
+                LogicalBounds.Width,
+                StatusH,
+            };
+
+            Viewport.Render(Surface, ViewBounds, Session, Ptr);
+            Minimap.RenderOverlay(Surface, Viewport.QueryLastSurfaceBounds(), Session, Ptr);
+            PresetModal.RenderModal(Surface, LogicalBounds, Session, Ptr);
+            RenderFlipbookModal(Surface, LogicalBounds, Ptr);
+            RenderStatusBar(Surface, StatusRect);
+
+            PaneInputReading InputReading {};
+            InputReading.PrimaryPointer = Ptr;
+            WorkspaceAppearance::UpdatePanePointerOwnership(
+                &Viewport,
+                ScreenBounds,
+                HostScaleFactor,
+                InputReading,
+                Ptr.Down && Viewport.QueryLastSurfaceBounds().Contains({ Ptr.X, Ptr.Y }));
+        });
+}
+
+void FluidWorkspaceHost::PresentInspectorPane()
+{
+    RenderFluidDockPane(
+        "##FluidInspectorCanvas",
+        &Inspector,
+        HostScaleFactor,
+        [this](PixelSpace& Surface, Rectangle2D LogicalBounds, const ControlPointer& Ptr, Rectangle2D /*ScreenBounds*/)
+        {
+            Inspector.Render(Surface, LogicalBounds, Session, Ptr);
+        });
 }
 
 void FluidWorkspaceHost::RenderFlipbookModal(
@@ -322,10 +363,12 @@ void FluidWorkspaceHost::RenderStatusBar(PixelSpace& Surface, Rectangle2D Status
         Doc.Domain.BoundsWidthMeters, Doc.Domain.BoundsWidthMeters, Doc.Domain.BoundsHeightMeters);
     Surface.Text({ X, CY - 5.5f }, 9.4f, C.TextMuted, VoxBuf);
 
-    // Right status text
-    Surface.FillCircle({ StatusRect.Right() - 234.0f, CY }, 2.6f, C.LiveGreen);
-    Surface.TextRightAligned({ StatusRect.X, CY - 6.0f, StatusRect.Width - 16.0f, 14.0f }, 9.4f, C.TextMuted,
-        "CPU / Vulkan   |   FRONTIER / FLUID  0.1");
+    if (StatusRect.Width >= 520.0f)
+    {
+        Surface.FillCircle({ StatusRect.Right() - 234.0f, CY }, 2.6f, C.LiveGreen);
+        Surface.TextRightAligned({ StatusRect.X, CY - 6.0f, StatusRect.Width - 16.0f, 14.0f }, 9.4f, C.TextMuted,
+            "CPU / Vulkan   |   FRONTIER / FLUID  0.1");
+    }
 }
 
 void FluidWorkspaceHost::RenderStudio(
@@ -347,18 +390,14 @@ void FluidWorkspaceHost::RenderStudio(
 
     Session.StepSimulation(DeltaSeconds);
 
-    constexpr float HeaderH = 50.0f;
-    constexpr float DocBarH = 34.0f;
     constexpr float StatusH = 26.0f;
-    constexpr float Gap     = 10.0f;
-    const Rectangle2D HeaderRect { WindowBounds.X, WindowBounds.Y, WindowBounds.Width, HeaderH };
-    const Rectangle2D DocRect    { WindowBounds.X, HeaderRect.Bottom(), WindowBounds.Width, DocBarH };
+    constexpr float Gap     = 4.0f;
     const Rectangle2D StatusRect { WindowBounds.X, WindowBounds.Bottom() - StatusH, WindowBounds.Width, StatusH };
     const Rectangle2D BodyRect   {
-        WindowBounds.X + 12.0f,
-        DocRect.Bottom() + 2.0f,
-        WindowBounds.Width - 24.0f,
-        std::max(240.0f, StatusRect.Y - DocRect.Bottom() - 8.0f),
+        WindowBounds.X,
+        WindowBounds.Y,
+        WindowBounds.Width,
+        std::max(240.0f, StatusRect.Y - WindowBounds.Y),
     };
 
     const float OutlinerW  = std::min(FluidOutlinerPanel::RecommendedWidthPx, BodyRect.Width * 0.22f);
@@ -369,8 +408,6 @@ void FluidWorkspaceHost::RenderStudio(
     const Rectangle2D ViewportRect  { OutlinerRect.Right() + Gap, BodyRect.Y, ViewportW, BodyRect.Height };
     const Rectangle2D InspectorRect { ViewportRect.Right() + Gap, BodyRect.Y, InspectorW, BodyRect.Height };
 
-    RenderStudioHeader(Surface, HeaderRect, Ptr);
-    RenderDocumentBar(Surface, DocRect, Ptr);
     Outliner.Render(Surface, OutlinerRect, Session, Ptr);
     Viewport.Render(Surface, ViewportRect, Session, Ptr);
     Inspector.Render(Surface, InspectorRect, Session, Ptr);

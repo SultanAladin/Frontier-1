@@ -180,8 +180,8 @@ void FluidInspectorPanel::Render(
     LastTabRects.fill(Rectangle2D {});
     LastBlackbodyStripRect = Rectangle2D {};
 
-    Surface.FillRectangle(Bounds, C.PanelBg.ScaledAlpha(Opacity), 22.0f);
-    Surface.StrokeRectangle(Bounds, C.Hairline.ScaledAlpha(Opacity), 22.0f, 1.0f);
+    Surface.FillRectangle(Bounds, C.PanelBg.ScaledAlpha(Opacity), 0.0f);
+    Surface.StrokeRectangle(Bounds, C.Hairline.ScaledAlpha(Opacity), 0.0f, 1.0f);
 
     const float PadX   = 16.0f;
     const float InnerW = Bounds.Width - PadX * 2.0f;

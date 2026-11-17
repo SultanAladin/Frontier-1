@@ -135,8 +135,8 @@ void FluidViewportHost::Render(
     float                  Opacity) noexcept
 {
     const auto C = QueryStudioColors();
-    Surface.FillRectangle(Bounds, C.PanelBg.ScaledAlpha(Opacity), 22.0f);
-    Surface.StrokeRectangle(Bounds, C.Hairline.ScaledAlpha(Opacity), 22.0f, 1.0f);
+    Surface.FillRectangle(Bounds, C.PanelBg.ScaledAlpha(Opacity), 0.0f);
+    Surface.StrokeRectangle(Bounds, C.Hairline.ScaledAlpha(Opacity), 0.0f, 1.0f);
 
     // Layout: Top Viewport Bar (40px) + Canvas + Transport Bar (42px) + Ruler (44px)
     const Rectangle2D TopBar    { Bounds.X, Bounds.Y, Bounds.Width, 40.0f };
@@ -224,6 +224,46 @@ void FluidViewportHost::Render(
     Surface.StrokeRectangle(BakeBtn, C.Hairline, 12.0f, 0.9f);
     Surface.TextCentered(BakeBtn, 10.2f, C.TextPrimary, "Bake");
     if (BakeHov && Pointer.Pressed) Session.FlipbookModalOpen = !Session.FlipbookModalOpen;
+    RX = BakeBtn.X - 6.0f;
+
+    if (RX - (CamPill.Right() + 12.0f) >= 172.0f)
+    {
+        const Rectangle2D SaveBtn { RX - 50.0f, TopCY - 12.0f, 50.0f, 24.0f };
+        const bool SaveHov = ControlAppearance::QueryPointerOver(SaveBtn, Pointer);
+        Surface.FillRectangle(SaveBtn, SaveHov ? C.CardElevated : C.CardBg, 12.0f);
+        Surface.StrokeRectangle(SaveBtn, C.Hairline, 12.0f, 0.9f);
+        Surface.TextCentered(SaveBtn, 10.0f, C.TextSoft, "Save");
+        if (SaveHov && Pointer.Pressed)
+        {
+            if (Session.ExportSceneToml("FluidStudioScene.gasscene.toml"))
+            {
+                Session.DocumentDirty = false;
+                Session.StatusMessage = "Saved FluidStudioScene.gasscene.toml";
+            }
+        }
+        RX = SaveBtn.X - 6.0f;
+
+        const Rectangle2D OpenBtn { RX - 50.0f, TopCY - 12.0f, 50.0f, 24.0f };
+        const bool OpenHov = ControlAppearance::QueryPointerOver(OpenBtn, Pointer);
+        Surface.FillRectangle(OpenBtn, OpenHov ? C.CardElevated : C.CardBg, 12.0f);
+        Surface.StrokeRectangle(OpenBtn, C.Hairline, 12.0f, 0.9f);
+        Surface.TextCentered(OpenBtn, 10.0f, C.TextSoft, "Open");
+        if (OpenHov && Pointer.Pressed)
+        {
+            (void)Session.ImportSceneToml("FluidStudioScene.gasscene.toml");
+        }
+        RX = OpenBtn.X - 6.0f;
+
+        const Rectangle2D PresetBtn { RX - 62.0f, TopCY - 12.0f, 62.0f, 24.0f };
+        const bool PresetHov = ControlAppearance::QueryPointerOver(PresetBtn, Pointer);
+        Surface.FillRectangle(PresetBtn, Session.PresetBrowserOpen ? C.CardElevated : (PresetHov ? C.CardElevated : C.CardBg), 12.0f);
+        Surface.StrokeRectangle(PresetBtn, C.Hairline, 12.0f, 0.9f);
+        Surface.TextCentered(PresetBtn, 10.0f, C.TextSoft, "Presets");
+        if (PresetHov && Pointer.Pressed)
+        {
+            Session.PresetBrowserOpen = !Session.PresetBrowserOpen;
+        }
+    }
 
     //--------------------------------------------------------------------------------------------------------------------
     // 2. Interactive Orbit / Brush / Detonate inside Viewport Surface
