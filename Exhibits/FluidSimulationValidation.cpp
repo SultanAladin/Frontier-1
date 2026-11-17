@@ -233,15 +233,38 @@ struct SceneGeoAsset
         if (CX < -6.0f || CY < -6.0f || CX > static_cast<float>(W) + 6.0f || CY > static_cast<float>(H) + 6.0f) return;
 
         const bool IsDebris = ForceDebris || (P.AuxScalar < -0.5f);
+        const uint32_t KindIdx = IsDebris
+            ? static_cast<uint32_t>(std::clamp(std::lround(-P.AuxScalar - 1.0f), 0l, 5l))
+            : 0u;
+        const auto Kind = static_cast<FluidDebrisKind>(KindIdx);
         const float ScreenPerMeter = static_cast<float>(H) / (2.0f * Z * TanY);
-        const float BaseRad = std::clamp(P.SizeMeters * ScreenPerMeter, IsDebris ? 1.15f : 0.95f, IsDebris ? 2.4f : 2.1f);
+        const float BaseRad = std::clamp(P.SizeMeters * ScreenPerMeter, IsDebris ? 1.35f : 0.95f, IsDebris ? 3.2f : 2.1f);
 
         const float VX = Mathematics::EvaluateDot({ P.VelocityMps[0], P.VelocityMps[1], P.VelocityMps[2] }, Right);
         const float VY = -Mathematics::EvaluateDot({ P.VelocityMps[0], P.VelocityMps[1], P.VelocityMps[2] }, Up);
         const float VLen = std::hypot(VX, VY);
-        const float DirX = (VLen > 1.0e-3f) ? (VX / VLen) : 1.0f;
-        const float DirY = (VLen > 1.0e-3f) ? (VY / VLen) : 0.0f;
-        const float Stretch = IsDebris ? 1.35f : (1.0f + std::clamp(VLen * 0.025f, 0.0f, 0.35f));
+        float DirX = (VLen > 1.0e-3f) ? (VX / VLen) : 1.0f;
+        float DirY = (VLen > 1.0e-3f) ? (VY / VLen) : 0.0f;
+        if (IsDebris && (Kind == FluidDebrisKind::PaperSheet || Kind == FluidDebrisKind::Leaf))
+        {
+            const float Tumble = P.SeedScalar * 6.28318f + P.AgeSeconds * 8.5f;
+            DirX = std::cos(Tumble);
+            DirY = std::sin(Tumble);
+        }
+        float Stretch = 1.0f + std::clamp(VLen * 0.025f, 0.0f, 0.35f);
+        float PerpScale = 1.0f;
+        if (IsDebris)
+        {
+            switch (Kind)
+            {
+            case FluidDebrisKind::RockChunk:    Stretch = 1.05f; PerpScale = 0.85f; break;
+            case FluidDebrisKind::TwigStick:    Stretch = 1.95f; PerpScale = 0.28f; break;
+            case FluidDebrisKind::Leaf:         Stretch = 1.38f; PerpScale = 0.65f; break;
+            case FluidDebrisKind::PaperSheet:   Stretch = 1.32f; PerpScale = 0.88f; break;
+            case FluidDebrisKind::WoodSplinter: Stretch = 1.80f; PerpScale = 0.34f; break;
+            case FluidDebrisKind::MetalScrap:   Stretch = 1.25f; PerpScale = 0.68f; break;
+            }
+        }
 
         const float PA = std::clamp(P.ColourLinear[3], 0.0f, 1.0f);
         if (PA <= 0.01f) return;
@@ -270,13 +293,33 @@ struct SceneGeoAsset
             {
                 const float DX = (static_cast<float>(X) + 0.5f) - CX;
                 const float Along = (DX * DirX + DY * DirY) / (BaseRad * Stretch);
-                const float Perp  = (-DX * DirY + DY * DirX) / (BaseRad * (IsDebris ? 0.55f : 1.0f));
-                const float D2 = Along * Along + Perp * Perp;
-                if (D2 >= 1.0f) continue;
+                const float Perp  = (-DX * DirY + DY * DirX) / (BaseRad * PerpScale);
+
+                float ShapeDist = Along * Along + Perp * Perp;
+                if (IsDebris)
+                {
+                    if (Kind == FluidDebrisKind::PaperSheet)
+                    {
+                        const float Box = std::max(std::abs(Along), std::abs(Perp));
+                        ShapeDist = Box * Box;
+                    }
+                    else if (Kind == FluidDebrisKind::Leaf)
+                    {
+                        const float LeafWidth = std::max(0.25f, 1.0f - 0.42f * std::abs(Along));
+                        const float LP = Perp / LeafWidth;
+                        ShapeDist = Along * Along + LP * LP;
+                    }
+                    else if (Kind == FluidDebrisKind::RockChunk || Kind == FluidDebrisKind::MetalScrap)
+                    {
+                        const float Oct = std::max(std::abs(Along) * 0.88f + std::abs(Perp) * 0.45f, std::abs(Perp) * 0.95f);
+                        ShapeDist = Oct * Oct;
+                    }
+                }
+                if (ShapeDist >= 1.0f) continue;
 
                 const float Falloff = IsDebris
-                    ? std::clamp((1.0f - D2) * 1.6f, 0.0f, 1.0f)
-                    : (Additive ? std::exp(-3.6f * D2) * (1.0f - D2) : std::clamp((1.0f - D2) * 1.25f, 0.0f, 1.0f));
+                    ? std::clamp((1.0f - ShapeDist) * 2.2f, 0.0f, 1.0f)
+                    : (Additive ? std::exp(-3.6f * ShapeDist) * (1.0f - ShapeDist) : std::clamp((1.0f - ShapeDist) * 1.25f, 0.0f, 1.0f));
                 const float SA = std::clamp(PA * Falloff * 0.85f, 0.0f, 1.0f);
                 const std::size_t Off = (static_cast<std::size_t>(Y) * W + static_cast<uint32_t>(X)) * 4u;
                 const float DstR = static_cast<float>(Rgba[Off + 0u]) / 255.0f;
@@ -392,6 +435,17 @@ int main()
         Doc.Domain.GridResolution = 40u;
         SimDust.Configure(Doc);
         for (uint32_t S = 0u; S < 60u; ++S) SimDust.StepSimulation(1.0f / 60.0f);
+        std::array<bool, 6> SeenKinds {};
+        for (const auto& P : SimDust.InspectParticleCoupler().InspectEmberSlots())
+        {
+            if (ParticleSpace::QueryParticleSlotAlive(P) && P.AuxScalar < -0.5f)
+            {
+                const int K = static_cast<int>(std::clamp(std::lround(-P.AuxScalar - 1.0f), 0l, 5l));
+                SeenKinds[static_cast<std::size_t>(K)] = true;
+            }
+        }
+        const uint32_t KindCount = static_cast<uint32_t>(std::count(SeenKinds.begin(), SeenKinds.end(), true));
+        Score.Verify(KindCount == 6u, "Tornado spawns all 6 typed debris array particles (rock, twig, leaf, paper, wood, metal)");
         TileDustTornado = RenderFluidPreviewRgba(SimDust, TileW, TileH, { 2.9f, -2.9f, 1.70f }, { 0.0f, 0.0f, 1.25f });
     }
     {
@@ -419,25 +473,26 @@ int main()
         FluidSimulationSequence Sim;
         auto Doc = FluidPresets::ConstructPreset("ue5_pyro_default");
         Doc.Domain.GridResolution      = 32u;
-        Doc.Domain.BoundsWidthMeters   = 2.0f;
-        Doc.Domain.BoundsHeightMeters  = 2.4f;
-        Doc.Domain.WorldGridResolution = 24u;
-        Doc.Domain.WorldGridSpanMeters = 18.0f;
+        Doc.Domain.BoundsWidthMeters   = 1.8f;
+        Doc.Domain.BoundsHeightMeters  = 2.2f;
+        Doc.Domain.WorldGridResolution = 28u;
+        Doc.Domain.WorldGridSpanMeters = 12.0f;
         Doc.Emitter.Temperature        = 3.4f;
         Doc.Emitter.Fuel               = 2.6f;
-        Doc.Emitter.Smoke              = 2.4f;
+        Doc.Emitter.Smoke              = 2.6f;
+        Doc.Shading.SmokeAlbedo        = 0.44f;
         Doc.Combustion.WindVelocityXY  = { 0.0f, 0.0f };
         Sim.Configure(Doc);
         for (uint32_t S = 0u; S < 24u; ++S) Sim.StepSimulation(1.0f / 60.0f);
-        TileNoWind = RenderFluidPreviewRgba(Sim, TileW, TileH, { 0.0f, -4.8f, 1.8f }, { 0.0f, 0.0f, 1.2f });
+        TileNoWind = RenderFluidPreviewRgba(Sim, TileW, TileH, { 0.0f, -5.2f, 1.85f }, { 0.35f, 0.0f, 1.15f });
 
         // Now push strong +X wind so smoke continuously escapes Hero bounds into World Drift Grid
         Sim.AccessDocument().Combustion.WindVelocityXY = { 4.2f, 0.4f };
-        for (uint32_t S = 0u; S < 72u; ++S) Sim.StepSimulation(1.0f / 60.0f);
+        for (uint32_t S = 0u; S < 84u; ++S) Sim.StepSimulation(1.0f / 60.0f);
         float WorldSmokeSum = 0.0f;
         for (const auto& V : Sim.InspectWorldDriftGrid().Thermo) WorldSmokeSum += V.X;
         Score.Verify(WorldSmokeSum > 0.25f, "Sliding World Drift Grid captures continuous wind-carried smoke outside Hero bounds");
-        TileWorldDrift = RenderFluidPreviewRgba(Sim, TileW, TileH, { 0.0f, -6.2f, 2.2f }, { 1.6f, 0.0f, 1.3f });
+        TileWorldDrift = RenderFluidPreviewRgba(Sim, TileW, TileH, { 1.1f, -6.0f, 2.15f }, { 1.55f, 0.0f, 1.25f });
         TileDualTier   = RenderFluidPreviewRgba(Sim, TileW, TileH, { 1.6f, -7.2f, 3.0f }, { 1.8f, 0.0f, 1.4f });
     }
     {

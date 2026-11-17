@@ -206,9 +206,19 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
         Doc.Shading.ColorPalette            = FluidColorPalette::CinemaNapalm;
         Doc.Shading.FireIntensity           = 6.2f;
         Doc.Shading.DensityExtinction       = 17.5f;
-        Doc.Particles.EmberCount            = 420u;
-        Doc.Particles.EmberLifetime         = 1.8f;
+        Doc.Particles.EmberCount            = 480u;
+        Doc.Particles.EmberLifetime         = 1.9f;
         Doc.Particles.EmberAshiness         = 0.25f;
+        Doc.Particles.EnableTornadoDebrisArray = true;
+        Doc.Particles.TornadoDebrisRatio    = 0.52f;
+        Doc.Particles.DebrisTypes           = {
+            FluidDebrisKind::RockChunk,
+            FluidDebrisKind::TwigStick,
+            FluidDebrisKind::Leaf,
+            FluidDebrisKind::PaperSheet,
+            FluidDebrisKind::WoodSplinter,
+            FluidDebrisKind::MetalScrap,
+        };
     }
     else if (PresetKey == "dust_tornado")
     {
@@ -240,11 +250,21 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
         Doc.Shading.FireIntensity           = 0.20f;
         Doc.Shading.InternalScattering      = 0.5f;
         Doc.Particles.ShowEmbers            = true;
-        Doc.Particles.EmberCount            = 420u;
-        Doc.Particles.EmberSize             = 0.95f;
+        Doc.Particles.EmberCount            = 520u;
+        Doc.Particles.EmberSize             = 1.05f;
         Doc.Particles.EmberIntensity        = 0.25f;
-        Doc.Particles.EmberLifetime         = 2.2f;
+        Doc.Particles.EmberLifetime         = 2.3f;
         Doc.Particles.EmberAshiness         = 1.0f;
+        Doc.Particles.EnableTornadoDebrisArray = true;
+        Doc.Particles.TornadoDebrisRatio    = 0.85f;
+        Doc.Particles.DebrisTypes           = {
+            FluidDebrisKind::RockChunk,
+            FluidDebrisKind::TwigStick,
+            FluidDebrisKind::Leaf,
+            FluidDebrisKind::PaperSheet,
+            FluidDebrisKind::WoodSplinter,
+            FluidDebrisKind::MetalScrap,
+        };
     }
     else
     {

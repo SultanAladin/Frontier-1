@@ -205,15 +205,17 @@ void FluidWorldGridManager::StepWorldDriftExchange(
         (void)OldShiftY;
     }
 
-    // Semi-Lagrangian drift step on World Smoke Grid + deposit smoke from Hero grid periphery/interior
+    // MacCormack-corrected advection on World Smoke Grid + deposit smoke from Hero grid periphery/interior
     const float Half = 0.5f * InOutWorldGrid.SpanMeters;
-    const float Decay = std::exp(-std::max(0.01f, Combustion.SmokeDissipation * 0.45f) * DeltaSeconds);
-    const float Cool  = std::exp(-std::max(0.05f, Combustion.CoolingRate * 0.6f) * DeltaSeconds);
+    const float Decay = std::exp(-std::max(0.005f, Combustion.SmokeDissipation * 0.20f) * DeltaSeconds);
+    const float Cool  = std::exp(-std::max(0.04f, Combustion.CoolingRate * 0.45f) * DeltaSeconds);
     const std::vector<FluidVoxelSample4> PrevThermo = InOutWorldGrid.Thermo;
     const std::vector<FluidVoxelSample4> PrevVel    = InOutWorldGrid.VelocitySolid;
 
+    std::vector<FluidVoxelSample4> PredThermo(PrevThermo.size());
     const uint32_t HRd = HeroGrid.ReadIdx();
 
+    // Pass 1: Forward Semi-Lagrangian estimate
     for (uint32_t IZ = 0u; IZ < WR; ++IZ)
     {
         const float WZ = (InOutWorldGrid.CenterWorld.Z - Half) + (static_cast<float>(IZ) + 0.5f) * CellSize;
@@ -232,26 +234,65 @@ void FluidWorldGridManager::StepWorldDriftExchange(
                 const float VZ = CurV.Z;
 
                 const Mathematics::Axis3D BackWorld { WX - VX * DeltaSeconds, WY - VY * DeltaSeconds, WZ - VZ * DeltaSeconds };
-                auto AdvT = InOutWorldGrid.SampleWorldTrilinear(PrevThermo, BackWorld);
-                AdvT.X *= Decay;
-                AdvT.Y *= Cool;
+                PredThermo[Idx] = InOutWorldGrid.SampleWorldTrilinear(PrevThermo, BackWorld);
+            }
+        }
+    }
+
+    // Pass 2: MacCormack error correction + Hero-to-World handoff
+    for (uint32_t IZ = 0u; IZ < WR; ++IZ)
+    {
+        const float WZ = (InOutWorldGrid.CenterWorld.Z - Half) + (static_cast<float>(IZ) + 0.5f) * CellSize;
+        for (uint32_t IY = 0u; IY < WR; ++IY)
+        {
+            const float WY = (InOutWorldGrid.CenterWorld.Y - Half) + (static_cast<float>(IY) + 0.5f) * CellSize;
+            for (uint32_t IX = 0u; IX < WR; ++IX)
+            {
+                const float WX = (InOutWorldGrid.CenterWorld.X - Half) + (static_cast<float>(IX) + 0.5f) * CellSize;
+                const uint32_t Idx = InOutWorldGrid.FlatIndexWrapped(
+                    static_cast<int32_t>(IX), static_cast<int32_t>(IY), static_cast<int32_t>(IZ));
+
+                const auto& CurV = PrevVel[Idx];
+                const float VX = (std::abs(CurV.X) > 1.0e-3f) ? CurV.X : Combustion.WindVelocityXY.X;
+                const float VY = (std::abs(CurV.Y) > 1.0e-3f) ? CurV.Y : Combustion.WindVelocityXY.Y;
+                const float VZ = CurV.Z;
+
+                const Mathematics::Axis3D BackWorld { WX - VX * DeltaSeconds, WY - VY * DeltaSeconds, WZ - VZ * DeltaSeconds };
+                const Mathematics::Axis3D FwdWorld  { WX + VX * DeltaSeconds, WY + VY * DeltaSeconds, WZ + VZ * DeltaSeconds };
+                const auto& Pred = PredThermo[Idx];
+                const auto  Rev  = InOutWorldGrid.SampleWorldTrilinear(PredThermo, FwdWorld);
+                const auto& CurT = PrevThermo[Idx];
+
+                FluidVoxelSample4 AdvT {
+                    std::max(0.0f, Pred.X + 0.5f * (CurT.X - Rev.X)),
+                    std::max(0.0f, Pred.Y + 0.5f * (CurT.Y - Rev.Y)),
+                    std::max(0.0f, Pred.Z + 0.5f * (CurT.Z - Rev.Z)),
+                    0.0f,
+                };
+                // Safe MacCormack bounds around BackWorld sample to preserve sharp smoke wisps without overshoot
+                const float MaxS = std::max(CurT.X, Pred.X) * 1.15f + 0.02f;
+                const float MaxT = std::max(CurT.Y, Pred.Y) * 1.15f + 0.02f;
+                AdvT.X = std::clamp(AdvT.X, 0.0f, MaxS) * Decay;
+                AdvT.Y = std::clamp(AdvT.Y, 0.0f, MaxT) * Cool;
                 AdvT.Z *= Cool;
 
                 auto AdvV = InOutWorldGrid.SampleWorldTrilinear(PrevVel, BackWorld);
-                AdvV.X += (Combustion.WindVelocityXY.X - AdvV.X) * std::min(1.0f, DeltaSeconds * 0.45f);
-                AdvV.Y += (Combustion.WindVelocityXY.Y - AdvV.Y) * std::min(1.0f, DeltaSeconds * 0.45f);
-                AdvV.Z += (AdvT.Y * Combustion.Buoyancy * 0.25f - AdvT.X * Combustion.SmokeWeight * 0.2f) * DeltaSeconds;
+                const float EddiesY = std::sin(WX * 1.8f + WZ * 2.1f) * 0.65f;
+                const float EddiesZ = std::cos(WX * 1.4f - WY * 1.7f) * 0.55f;
+                AdvV.X += (Combustion.WindVelocityXY.X - AdvV.X) * std::min(1.0f, DeltaSeconds * 1.45f);
+                AdvV.Y += (Combustion.WindVelocityXY.Y + EddiesY - AdvV.Y) * std::min(1.0f, DeltaSeconds * 1.35f);
+                AdvV.Z += (AdvT.Y * Combustion.Buoyancy * 0.28f + AdvT.X * (0.45f + EddiesZ) - AdvT.X * Combustion.SmokeWeight * 0.05f) * DeltaSeconds;
 
                 // Blend outgoing/rising Hero smoke into the World Drift grid so plumes continue seamlessly beyond Hero bounds
                 const auto HeroTh = HeroGrid.SampleWorldTrilinear(HeroGrid.Thermo[HRd], { WX, WY, WZ });
-                if (HeroTh.X > 0.01f || HeroTh.Y > 0.01f)
+                if (HeroTh.X > 0.008f || HeroTh.Y > 0.008f)
                 {
                     const auto HeroVl = HeroGrid.SampleWorldTrilinear(HeroGrid.VelocitySolid[HRd], { WX, WY, WZ });
-                    AdvT.X = std::max(AdvT.X, HeroTh.X * 0.85f);
-                    AdvT.Y = std::max(AdvT.Y, HeroTh.Y * 0.65f);
-                    AdvV.X = 0.5f * (AdvV.X + HeroVl.X);
-                    AdvV.Y = 0.5f * (AdvV.Y + HeroVl.Y);
-                    AdvV.Z = 0.5f * (AdvV.Z + HeroVl.Z);
+                    AdvT.X = std::max(AdvT.X, HeroTh.X * 1.10f);
+                    AdvT.Y = std::max(AdvT.Y, HeroTh.Y * 0.72f);
+                    AdvV.X = 0.45f * AdvV.X + 0.55f * HeroVl.X;
+                    AdvV.Y = 0.45f * AdvV.Y + 0.55f * HeroVl.Y;
+                    AdvV.Z = 0.45f * AdvV.Z + 0.55f * HeroVl.Z;
                 }
 
                 InOutWorldGrid.Thermo[Idx]        = AdvT;

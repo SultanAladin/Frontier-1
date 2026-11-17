@@ -142,7 +142,7 @@ void FluidSimulationSequence::Configure(const FluidSceneDocument& NewDocument)
         const Mathematics::Axis3D WorldCenter {
             Document.Domain.OriginMeters.X,
             Document.Domain.OriginMeters.Y,
-            Document.Domain.OriginMeters.Z + 0.5f * Document.Domain.WorldGridSpanMeters,
+            Document.Domain.OriginMeters.Z + 0.30f * Document.Domain.WorldGridSpanMeters,
         };
         WorldGrid.Allocate(NewWRes, Document.Domain.WorldGridSpanMeters, WorldCenter);
     }
@@ -670,7 +670,7 @@ void FluidSimulationSequence::ExecuteVorticityAndCombustion(float Dt, const Flui
                         Context.ForceFieldSource, Context.WindLatticeCascade);
                 }
 
-                const float WindFade = SmoothStepF(0.03f, 0.55f, UZ);
+                const float WindFade = SmoothStepF(0.02f, 0.30f, UZ);
                 const float WindGain = Activity * WindFade;
 
                 Vel.X += (VortX + BaroX + FunnelX + Turb.X * Document.Combustion.TurbulenceStrength * Activity + ExtVel.X * WindGain) * Dt;
@@ -999,7 +999,7 @@ FluidRaymarchResult FluidSimulationSequence::EvaluateFluidSegment(
     }
 
     // 2. Continuous Sliding World Smoke Drift Grid (blends seamlessly outside Hero bounds)
-    if (Document.Domain.WorldGridEnabled && WorldGrid.Resolution > 0u && Out.Transmittance > 0.02f)
+    if (Document.Domain.WorldGridEnabled && WorldGrid.Resolution > 0u && Out.Transmittance > 0.015f)
     {
         const float Half = 0.5f * WorldGrid.SpanMeters;
         const Mathematics::Axis3D WMin = WorldGrid.CenterWorld - Mathematics::Axis3D{ Half, Half, Half };
@@ -1010,31 +1010,52 @@ FluidRaymarchResult FluidSimulationSequence::EvaluateFluidSegment(
             const float TExit  = std::min(SafeMax, TFar);
             if (TExit > TEnter)
             {
-                const uint32_t WSteps = 32u;
+                const uint32_t WSteps = 44u;
                 const float Dt = (TExit - TEnter) / static_cast<float>(WSteps);
                 for (uint32_t S = 0u; S < WSteps; ++S)
                 {
                     const float T = TEnter + (static_cast<float>(S) + Jitter) * Dt;
                     const Mathematics::Axis3D P = RayOriginWorld + RayDirection * T;
-                    // Avoid double-counting inside Hero grid core
-                    if (P.X >= HeroGrid.BoxMinWorld.X && P.X <= HeroGrid.BoxMaxWorld.X &&
-                        P.Y >= HeroGrid.BoxMinWorld.Y && P.Y <= HeroGrid.BoxMaxWorld.Y &&
-                        P.Z >= HeroGrid.BoxMinWorld.Z && P.Z <= HeroGrid.BoxMaxWorld.Z)
-                    {
-                        continue;
-                    }
-                    const auto Th = WorldGrid.SampleWorldTrilinear(WorldGrid.Thermo, P);
-                    if (Th.X <= 0.005f && Th.Y <= 0.01f) continue;
+                    if (P.Z < HeroGrid.BoxMinWorld.Z - 0.05f) continue;
 
-                    const float Ext = std::max(0.005f, Th.X * Document.Shading.DensityExtinction * 0.06f);
-                    const float StepT = std::exp(-Ext * Dt);
-                    const float W = 1.0f - StepT;
-                    const auto FireEmit = FluidPresets::EvaluateBlackbodyPalette(Th.Y, Document.Shading.TemperatureScale, Document.Shading.ColorPalette);
-                    Out.RadianceHdr.R += Out.Transmittance * (Document.Shading.SmokeAlbedo * (SolarIrradiance.R * Phase * 1.4f + SkyRadiance.R * Document.Shading.AmbientIntensity) + FireEmit.R * 0.25f) * W;
-                    Out.RadianceHdr.G += Out.Transmittance * (Document.Shading.SmokeAlbedo * (SolarIrradiance.G * Phase * 1.4f + SkyRadiance.G * Document.Shading.AmbientIntensity) + FireEmit.G * 0.25f) * W;
-                    Out.RadianceHdr.B += Out.Transmittance * (Document.Shading.SmokeAlbedo * (SolarIrradiance.B * Phase * 1.4f + SkyRadiance.B * Document.Shading.AmbientIntensity) + FireEmit.B * 0.25f) * W;
+                    // Smooth perimeter transition so World drift smoke blends seamlessly without Hero border seams
+                    const float HX = std::max(HeroGrid.BoxMinWorld.X - P.X, P.X - HeroGrid.BoxMaxWorld.X);
+                    const float HY = std::max(HeroGrid.BoxMinWorld.Y - P.Y, P.Y - HeroGrid.BoxMaxWorld.Y);
+                    const float HZ = std::max(HeroGrid.BoxMinWorld.Z - P.Z, P.Z - HeroGrid.BoxMaxWorld.Z);
+                    const float DistOut = std::max({ HX, HY, HZ });
+                    if (DistOut < -0.35f) continue;
+                    const float EdgeBlend = SmoothStepF(-0.35f, 0.12f, DistOut);
+
+                    const auto Th = WorldGrid.SampleWorldTrilinear(WorldGrid.Thermo, P);
+                    float Smoke = Th.X * EdgeBlend;
+                    const float Temp = Th.Y * EdgeBlend;
+                    if (Smoke <= 0.004f && Temp <= 0.01f) continue;
+
+                    const float Erode = Fbm2Noise3(
+                        P.X * 2.1f - Document.Combustion.WindVelocityXY.X * ElapsedSeconds * 0.35f,
+                        P.Y * 2.1f - Document.Combustion.WindVelocityXY.Y * ElapsedSeconds * 0.35f,
+                        P.Z * 2.1f - ElapsedSeconds * 0.45f);
+                    Smoke = std::max(0.0f, Smoke * (0.76f + 0.48f * Erode) - 0.025f * std::max(0.0f, 0.32f - Erode));
+                    if (Smoke <= 0.004f && Temp <= 0.01f) continue;
+
+                    const float SunT = EvaluateFluidShadowTransmittance(P, SunDirection, 24.0f);
+                    const float Powder = 1.0f - 0.45f * std::exp(-Smoke * Document.Shading.DensityExtinction * 0.65f);
+                    const float SmokeExt = Smoke * Document.Shading.DensityExtinction * 0.34f;
+                    const float Ext      = std::max(0.002f, SmokeExt + Temp * 0.35f);
+                    const float StepT    = std::exp(-Ext * Dt * 0.55f);
+                    const float IntW     = (1.0f - StepT) / Ext;
+
+                    const Mathematics::LinearRGB SmokeScat {
+                        Document.Shading.SmokeAlbedo * (SolarIrradiance.R * SunT * Phase * Powder * 2.1f + (SkyRadiance.R + 0.16f) * Document.Shading.AmbientIntensity * 1.6f),
+                        Document.Shading.SmokeAlbedo * (SolarIrradiance.G * SunT * Phase * Powder * 2.1f + (SkyRadiance.G + 0.16f) * Document.Shading.AmbientIntensity * 1.6f),
+                        Document.Shading.SmokeAlbedo * (SolarIrradiance.B * SunT * Phase * Powder * 2.1f + (SkyRadiance.B + 0.18f) * Document.Shading.AmbientIntensity * 1.6f),
+                    };
+                    const auto FireEmit = FluidPresets::EvaluateBlackbodyPalette(Temp, Document.Shading.TemperatureScale, Document.Shading.ColorPalette);
+                    Out.RadianceHdr.R += Out.Transmittance * (SmokeScat.R * SmokeExt + FireEmit.R * 0.45f) * IntW;
+                    Out.RadianceHdr.G += Out.Transmittance * (SmokeScat.G * SmokeExt + FireEmit.G * 0.45f) * IntW;
+                    Out.RadianceHdr.B += Out.Transmittance * (SmokeScat.B * SmokeExt + FireEmit.B * 0.45f) * IntW;
                     Out.Transmittance *= StepT;
-                    if (Out.Transmittance < 0.01f) break;
+                    if (Out.Transmittance < 0.008f) break;
                 }
             }
         }

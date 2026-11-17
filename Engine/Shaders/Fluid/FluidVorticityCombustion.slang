@@ -80,7 +80,7 @@ void FluidVorticityForcesEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     float Activity = clamp(Th.x * 0.65 + Th.y * 0.85 + Th.z * 0.55, 0.0, 1.5);
     float3 Turb = FluidCurlFbm2(WorldPos * (FluidCfg.CombustionC.y * 0.95) + float3(TimeSec * 0.75, TimeSec * 0.55, -TimeSec * 1.65));
-    float WindGain = Activity * smoothstep(0.03, 0.55, UVW.z);
+    float WindGain = Activity * smoothstep(0.02, 0.30, UVW.z);
 
     float3 Funnel = float3(0.0, 0.0, 0.0);
     if (FluidCfg.EmitterParams.z >= 3.0 && Activity > 1.0e-3)

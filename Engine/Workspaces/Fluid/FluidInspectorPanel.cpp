@@ -460,15 +460,57 @@ void FluidInspectorPanel::Render(
 
         Y = ShadeCard.Bottom() + 12.0f;
 
-        // Card 2: Directional light & GI
-        const Rectangle2D GiCard { Bounds.X + PadX, Y, InnerW, 134.0f };
+        // Card 2: Directional light & GI & Tornado Debris Array
+        const Rectangle2D GiCard { Bounds.X + PadX, Y, InnerW, 198.0f };
         BeginPropertyCard(Surface, GiCard, "Directional light & GI", "LIGHT");
         CY = GiCard.Y + 42.0f;
         Edited |= DrawToggleRow(Surface, { CX, CY, CW, 24.0f }, "Emit GI fire lights", Doc.GiCoupling.EmitGiLights, Pointer);
-        CY += 28.0f;
+        CY += 26.0f;
         Edited |= DrawToggleRow(Surface, { CX, CY, CW, 24.0f }, "Cast volumetric GI shadows", Doc.GiCoupling.CastGiShadows, Pointer);
+        CY += 26.0f;
+        Edited |= DrawToggleRow(Surface, { CX, CY, CW, 24.0f }, "Fluid-advected embers & debris", Doc.Particles.ShowEmbers, Pointer);
         CY += 28.0f;
-        Edited |= DrawToggleRow(Surface, { CX, CY, CW, 24.0f }, "Fluid-advected embers", Doc.Particles.ShowEmbers, Pointer);
+
+        Surface.Text({ CX, CY }, 9.2f, C.TextMuted, "Tornado debris array (rock/twig/leaf/paper/wood/metal)");
+        CY += 16.0f;
+        constexpr std::array<SimulationSpace::FluidSpace::FluidDebrisKind, 6> AllKinds {{
+            SimulationSpace::FluidSpace::FluidDebrisKind::RockChunk,
+            SimulationSpace::FluidSpace::FluidDebrisKind::TwigStick,
+            SimulationSpace::FluidSpace::FluidDebrisKind::Leaf,
+            SimulationSpace::FluidSpace::FluidDebrisKind::PaperSheet,
+            SimulationSpace::FluidSpace::FluidDebrisKind::WoodSplinter,
+            SimulationSpace::FluidSpace::FluidDebrisKind::MetalScrap,
+        }};
+        const float ChipW = (CW - 10.0f) / 3.0f;
+        for (uint32_t K = 0u; K < 6u; ++K)
+        {
+            const uint32_t Col = K % 3u;
+            const uint32_t Row = K / 3u;
+            const Rectangle2D CR { CX + static_cast<float>(Col) * (ChipW + 5.0f), CY + static_cast<float>(Row) * 24.0f, ChipW, 20.0f };
+            const auto Kind = AllKinds[K];
+            const auto It = std::find(Doc.Particles.DebrisTypes.begin(), Doc.Particles.DebrisTypes.end(), Kind);
+            const bool Act = (It != Doc.Particles.DebrisTypes.end());
+            const bool Hov = ControlAppearance::QueryPointerOver(CR, Pointer);
+            Surface.FillRectangle(CR, Act ? C.CardElevated : ColorRgba { 10u, 10u, 12u, 255u }, 10.0f);
+            Surface.StrokeRectangle(CR, Act ? C.WarmAccent : C.Hairline, 10.0f, 0.85f);
+            Surface.TextCentered(CR, 9.0f, Act ? C.TextPrimary : C.TextMuted,
+                                 SimulationSpace::FluidSpace::QueryFluidDebrisKindLabel(Kind));
+            if (Hov && Pointer.Pressed)
+            {
+                if (Act)
+                {
+                    if (Doc.Particles.DebrisTypes.size() > 1u)
+                    {
+                        Doc.Particles.DebrisTypes.erase(It);
+                    }
+                }
+                else
+                {
+                    Doc.Particles.DebrisTypes.push_back(Kind);
+                }
+                Edited = true;
+            }
+        }
     }
 
     Surface.PopClip();

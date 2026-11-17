@@ -193,6 +193,8 @@ void FluidParticleCoupler::StepCoupledParticles(
         const float FloorZ = HeroGrid.BoxMinWorld.Z + Emitter.HeightMeters;
         const float SpanZ  = std::max(0.5f, HeroGrid.BoxMaxWorld.Z - HeroGrid.BoxMinWorld.Z);
         const bool  IsTornado = (Emitter.Swirl >= 3.0f);
+        const bool  UseDebrisArray = IsTornado && Settings.EnableTornadoDebrisArray && !Settings.DebrisTypes.empty();
+        const float DebrisRatio    = std::clamp(Settings.TornadoDebrisRatio, 0.0f, 1.0f);
 
         for (uint32_t Idx = 0u; Idx < EmberSlots.size(); ++Idx)
         {
@@ -201,14 +203,35 @@ void FluidParticleCoupler::StepCoupledParticles(
             const bool NeedRespawn = !ParticleSpace::QueryParticleSlotAlive(E);
             if (NeedRespawn && Emitter.Enabled)
             {
-                const bool IsDebris = IsTornado && ((Idx % 10u) < 4u);
+                const float SlotFrac = static_cast<float>(Idx % 20u) / 20.0f;
+                const bool IsDebris = UseDebrisArray && (SlotFrac < DebrisRatio);
+                const FluidDebrisKind DebrisKind = IsDebris
+                    ? Settings.DebrisTypes[Idx % Settings.DebrisTypes.size()]
+                    : FluidDebrisKind::RockChunk;
+
                 const float Ang = NextRand01(RngState) * 2.0f * Constants::PiFloat;
+                // Light paper & leaves ride higher up the funnel; heavy rocks & metal swirl lower/mid-funnel
+                float HeightSpan = 0.78f;
+                float HeightMin  = 0.03f;
+                if (IsDebris)
+                {
+                    if (DebrisKind == FluidDebrisKind::PaperSheet || DebrisKind == FluidDebrisKind::Leaf)
+                    {
+                        HeightMin  = 0.12f;
+                        HeightSpan = 0.78f;
+                    }
+                    else if (DebrisKind == FluidDebrisKind::RockChunk || DebrisKind == FluidDebrisKind::MetalScrap)
+                    {
+                        HeightMin  = 0.02f;
+                        HeightSpan = 0.56f;
+                    }
+                }
                 const float SpawnH = IsTornado
-                    ? (HeroGrid.BoxMinWorld.Z + 0.04f + NextRand01(RngState) * SpanZ * 0.72f)
+                    ? (HeroGrid.BoxMinWorld.Z + HeightMin + NextRand01(RngState) * SpanZ * HeightSpan)
                     : (FloorZ + NextRand01(RngState) * 0.28f);
                 const float H01 = std::clamp((SpawnH - HeroGrid.BoxMinWorld.Z) / SpanZ, 0.0f, 1.0f);
                 const float Rad = IsTornado
-                    ? ((0.08f + 0.22f * H01) * (0.65f + 0.55f * NextRand01(RngState)))
+                    ? ((0.09f + 0.26f * H01) * (0.65f + 0.55f * NextRand01(RngState)))
                     : (Emitter.RadiusMeters * (0.25f + 0.95f * std::sqrt(NextRand01(RngState))));
 
                 E.PositionMeters[0] = Domain.OriginMeters.X + std::cos(Ang) * Rad;
@@ -216,7 +239,7 @@ void FluidParticleCoupler::StepCoupledParticles(
                 E.PositionMeters[2] = SpawnH;
 
                 const float TanX = -std::sin(Ang), TanY = std::cos(Ang);
-                const float SwirlSpd = IsTornado ? (Emitter.Swirl * (0.55f + 0.35f * NextRand01(RngState))) : (Emitter.Swirl * 0.45f);
+                const float SwirlSpd = IsTornado ? (Emitter.Swirl * (0.58f + 0.35f * NextRand01(RngState))) : (Emitter.Swirl * 0.45f);
                 E.VelocityMps[0]    = TanX * SwirlSpd + (NextRand01(RngState) - 0.5f) * 1.1f;
                 E.VelocityMps[1]    = TanY * SwirlSpd + (NextRand01(RngState) - 0.5f) * 1.1f;
                 E.VelocityMps[2]    = Emitter.UpwardVelocityMps * (0.25f + 0.75f * NextRand01(RngState));
@@ -225,8 +248,18 @@ void FluidParticleCoupler::StepCoupledParticles(
                 E.SeedScalar        = NextRand01(RngState);
                 if (IsDebris)
                 {
-                    E.SizeMeters = 0.026f * std::max(0.4f, Settings.EmberSize) * (0.75f + 0.85f * NextRand01(RngState));
-                    E.AuxScalar  = -1.0f; // Sentinel for oriented tornado debris chunk
+                    float BaseSize = 0.028f;
+                    switch (DebrisKind)
+                    {
+                    case FluidDebrisKind::RockChunk:    BaseSize = 0.025f; break;
+                    case FluidDebrisKind::TwigStick:    BaseSize = 0.032f; break;
+                    case FluidDebrisKind::Leaf:         BaseSize = 0.027f; break;
+                    case FluidDebrisKind::PaperSheet:   BaseSize = 0.034f; break;
+                    case FluidDebrisKind::WoodSplinter: BaseSize = 0.031f; break;
+                    case FluidDebrisKind::MetalScrap:   BaseSize = 0.026f; break;
+                    }
+                    E.SizeMeters = BaseSize * std::max(0.4f, Settings.EmberSize) * (0.78f + 0.65f * NextRand01(RngState));
+                    E.AuxScalar  = -1.0f - static_cast<float>(static_cast<uint8_t>(DebrisKind)); // Encodes FluidDebrisKind
                 }
                 else
                 {
@@ -242,24 +275,52 @@ void FluidParticleCoupler::StepCoupledParticles(
                 SampleCombinedFluid(HeroGrid, WorldGrid, Pos, FV, FT);
 
                 const bool IsDebris = (E.AuxScalar < -0.5f);
-                const float Ph = E.SeedScalar * 43.7f;
-                const float Jx = std::sin(ElapsedSeconds * 6.5f + Ph) * 0.95f + std::cos(ElapsedSeconds * 11.3f - Ph * 1.7f) * 0.55f;
-                const float Jy = std::cos(ElapsedSeconds * 5.9f + Ph * 1.3f) * 0.95f - std::sin(ElapsedSeconds * 10.7f + Ph) * 0.55f;
-                const float Jz = std::sin(ElapsedSeconds * 4.8f - Ph * 0.9f) * 0.45f;
+                const uint32_t KindRaw = IsDebris
+                    ? static_cast<uint32_t>(std::clamp(std::lround(-E.AuxScalar - 1.0f), 0l, 5l))
+                    : 0u;
+                const FluidDebrisKind DebrisKind = static_cast<FluidDebrisKind>(KindRaw);
 
-                const float Drag = IsDebris ? 0.42f : 1.0f;
+                const float Ph = E.SeedScalar * 43.7f;
+                const float Flutter = (IsDebris && (DebrisKind == FluidDebrisKind::PaperSheet || DebrisKind == FluidDebrisKind::Leaf)) ? 1.85f : 1.0f;
+                const float Jx = (std::sin(ElapsedSeconds * 6.5f + Ph) * 0.95f + std::cos(ElapsedSeconds * 11.3f - Ph * 1.7f) * 0.55f) * Flutter;
+                const float Jy = (std::cos(ElapsedSeconds * 5.9f + Ph * 1.3f) * 0.95f - std::sin(ElapsedSeconds * 10.7f + Ph) * 0.55f) * Flutter;
+                const float Jz = (std::sin(ElapsedSeconds * 4.8f - Ph * 0.9f) * 0.45f) * Flutter;
+
+                float Drag = 1.0f;
+                float GravZ = -1.15f * (0.25f + 0.95f * std::clamp(Settings.EmberAshiness, 0.0f, 1.0f));
+                float TargetRBase = 0.09f;
+                float TargetRSlope = 0.24f;
+                if (IsDebris)
+                {
+                    switch (DebrisKind)
+                    {
+                    case FluidDebrisKind::RockChunk:
+                        Drag = 0.30f; GravZ = -3.4f; TargetRBase = 0.13f; TargetRSlope = 0.20f; break;
+                    case FluidDebrisKind::TwigStick:
+                        Drag = 0.62f; GravZ = -1.5f; TargetRBase = 0.14f; TargetRSlope = 0.26f; break;
+                    case FluidDebrisKind::Leaf:
+                        Drag = 1.15f; GravZ = -0.55f; TargetRBase = 0.15f; TargetRSlope = 0.32f; break;
+                    case FluidDebrisKind::PaperSheet:
+                        Drag = 1.28f; GravZ = -0.42f; TargetRBase = 0.16f; TargetRSlope = 0.34f; break;
+                    case FluidDebrisKind::WoodSplinter:
+                        Drag = 0.50f; GravZ = -2.0f; TargetRBase = 0.14f; TargetRSlope = 0.24f; break;
+                    case FluidDebrisKind::MetalScrap:
+                        Drag = 0.36f; GravZ = -2.9f; TargetRBase = 0.13f; TargetRSlope = 0.22f; break;
+                    }
+                }
+
                 const float Couple = std::clamp(Settings.AdvectionCoupling * Drag * Dt * 4.2f, 0.0f, 1.0f);
                 E.VelocityMps[0] += (FV.X - E.VelocityMps[0]) * Couple + Jx * Dt;
                 E.VelocityMps[1] += (FV.Y - E.VelocityMps[1]) * Couple + Jy * Dt;
 
-                // Tornado vortex orbit stabilization for debris & funnel particles
+                // Tornado vortex orbit stabilization for typed debris & funnel particles
                 if (IsTornado)
                 {
                     const float RDX = E.PositionMeters[0] - Domain.OriginMeters.X;
                     const float RDY = E.PositionMeters[1] - Domain.OriginMeters.Y;
                     const float RXY = std::max(0.03f, std::hypot(RDX, RDY));
                     const float H01 = std::clamp((E.PositionMeters[2] - HeroGrid.BoxMinWorld.Z) / SpanZ, 0.0f, 1.0f);
-                    const float TargetR = (IsDebris ? 0.14f : 0.09f) + H01 * 0.24f;
+                    const float TargetR = TargetRBase + H01 * TargetRSlope + 0.04f * std::sin(Ph + ElapsedSeconds * 2.1f);
                     const float TanX = -RDY / RXY, TanY = RDX / RXY;
                     const float RadX =  RDX / RXY, RadY = RDY / RXY;
                     const float RadialSpring = (TargetR - RXY) * 12.5f;
@@ -268,10 +329,9 @@ void FluidParticleCoupler::StepCoupledParticles(
                     E.VelocityMps[1] += (TanY * OrbitBoost + RadY * RadialSpring) * Dt;
                 }
 
-                // Hot particles float up with thermal lift; cooling ash & debris settle naturally instead of pooling at top
-                const float AshFrac = IsDebris ? 1.0f : std::clamp(Settings.EmberAshiness, 0.0f, 1.0f);
-                const float GravZ = IsDebris ? -2.2f : (-1.15f * (0.25f + 0.95f * AshFrac));
-                const float LiftZ = IsDebris ? (FT.X * 0.35f) : (FT.Y * Settings.BuoyancyCoupling * 1.45f);
+                const float LiftZ = IsDebris
+                    ? (FT.X * (DebrisKind == FluidDebrisKind::PaperSheet || DebrisKind == FluidDebrisKind::Leaf ? 0.72f : 0.35f))
+                    : (FT.Y * Settings.BuoyancyCoupling * 1.45f);
                 E.VelocityMps[2] += (FV.Z - E.VelocityMps[2]) * Couple + (LiftZ + GravZ + Jz) * Dt;
 
                 E.PositionMeters[0] += E.VelocityMps[0] * Dt;
@@ -295,22 +355,43 @@ void FluidParticleCoupler::StepCoupledParticles(
                 const float Fade = std::sin(Life01 * Constants::PiFloat);
                 if (IsDebris)
                 {
-                    const bool CharredHot = (Emitter.Temperature > 1.2f) && ((Idx % 3u) == 0u) && (Life01 < 0.55f);
+                    const bool CharredHot = (Emitter.Temperature > 1.2f) && ((Idx % 4u) == 0u) && (Life01 < 0.50f) &&
+                                            (DebrisKind == FluidDebrisKind::PaperSheet || DebrisKind == FluidDebrisKind::TwigStick || DebrisKind == FluidDebrisKind::Leaf);
                     if (CharredHot)
                     {
-                        const auto Glow = FluidPresets::EvaluateBlackbodyPalette(3.6f * (1.0f - Life01), Shading.TemperatureScale, Shading.ColorPalette);
-                        E.ColourLinear[0] = 0.22f + Glow.R * 1.35f;
-                        E.ColourLinear[1] = 0.14f + Glow.G * 1.15f;
-                        E.ColourLinear[2] = 0.08f + Glow.B * 0.85f;
+                        const auto Glow = FluidPresets::EvaluateBlackbodyPalette(3.3f * (1.0f - Life01), Shading.TemperatureScale, Shading.ColorPalette);
+                        E.ColourLinear[0] = 0.28f + Glow.R * 1.25f;
+                        E.ColourLinear[1] = 0.14f + Glow.G * 1.05f;
+                        E.ColourLinear[2] = 0.08f + Glow.B * 0.80f;
                     }
                     else
                     {
-                        const float Tone = 0.24f + 0.18f * E.SeedScalar;
-                        E.ColourLinear[0] = Tone * 1.08f;
-                        E.ColourLinear[1] = Tone * 0.96f;
-                        E.ColourLinear[2] = Tone * 0.82f;
+                        const float V = 0.82f + 0.36f * E.SeedScalar;
+                        switch (DebrisKind)
+                        {
+                        case FluidDebrisKind::RockChunk:
+                            E.ColourLinear[0] = 0.22f * V; E.ColourLinear[1] = 0.21f * V; E.ColourLinear[2] = 0.20f * V; break;
+                        case FluidDebrisKind::TwigStick:
+                            E.ColourLinear[0] = 0.34f * V; E.ColourLinear[1] = 0.23f * V; E.ColourLinear[2] = 0.13f * V; break;
+                        case FluidDebrisKind::Leaf:
+                            if ((Idx % 3u) == 0u) // Autumn amber/russet leaf
+                            {
+                                E.ColourLinear[0] = 0.44f * V; E.ColourLinear[1] = 0.26f * V; E.ColourLinear[2] = 0.09f * V;
+                            }
+                            else // Olive/forest leaf
+                            {
+                                E.ColourLinear[0] = 0.19f * V; E.ColourLinear[1] = 0.34f * V; E.ColourLinear[2] = 0.12f * V;
+                            }
+                            break;
+                        case FluidDebrisKind::PaperSheet:
+                            E.ColourLinear[0] = 0.72f * V; E.ColourLinear[1] = 0.69f * V; E.ColourLinear[2] = 0.62f * V; break;
+                        case FluidDebrisKind::WoodSplinter:
+                            E.ColourLinear[0] = 0.46f * V; E.ColourLinear[1] = 0.33f * V; E.ColourLinear[2] = 0.19f * V; break;
+                        case FluidDebrisKind::MetalScrap:
+                            E.ColourLinear[0] = 0.36f * V; E.ColourLinear[1] = 0.39f * V; E.ColourLinear[2] = 0.44f * V; break;
+                        }
                     }
-                    E.ColourLinear[3] = std::clamp(Fade * 1.15f, 0.0f, 0.82f);
+                    E.ColourLinear[3] = std::clamp(Fade * 1.25f, 0.0f, 0.92f);
                 }
                 else
                 {

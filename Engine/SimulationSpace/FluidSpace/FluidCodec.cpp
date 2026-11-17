@@ -189,6 +189,16 @@ std::string FluidCodec::SerializeSceneToml(const FluidSceneDocument& Doc)
     S.insert("shrapnelEnabled", Doc.Particles.ShrapnelEnabled);
     S.insert("advectionCoupling", static_cast<double>(Doc.Particles.AdvectionCoupling));
     S.insert("buoyancyCoupling", static_cast<double>(Doc.Particles.BuoyancyCoupling));
+    S.insert("enableTornadoDebrisArray", Doc.Particles.EnableTornadoDebrisArray);
+    S.insert("tornadoDebrisRatio", static_cast<double>(Doc.Particles.TornadoDebrisRatio));
+    {
+        toml::array DebrisArr;
+        for (FluidDebrisKind Kind : Doc.Particles.DebrisTypes)
+        {
+            DebrisArr.push_back(QueryFluidDebrisKindKey(Kind));
+        }
+        S.insert("debrisTypes", std::move(DebrisArr));
+    }
 
     S.insert("collideWithGiScene", Doc.GiCoupling.CollideWithGiScene);
     S.insert("castGiShadows", Doc.GiCoupling.CastGiShadows);
@@ -414,6 +424,25 @@ bool FluidCodec::DeserializeSceneToml(
     ReadOr(S, "shrapnelEnabled", OutDocument.Particles.ShrapnelEnabled);
     ReadFloatOr(S, "advectionCoupling", OutDocument.Particles.AdvectionCoupling);
     ReadFloatOr(S, "buoyancyCoupling", OutDocument.Particles.BuoyancyCoupling);
+    ReadOr(S, "enableTornadoDebrisArray", OutDocument.Particles.EnableTornadoDebrisArray);
+    ReadFloatOr(S, "tornadoDebrisRatio", OutDocument.Particles.TornadoDebrisRatio);
+    if (const auto* DebrisArr = (*S)["debrisTypes"].as_array())
+    {
+        OutDocument.Particles.DebrisTypes.clear();
+        for (const auto& Elem : *DebrisArr)
+        {
+            if (const auto* Str = Elem.as_string())
+            {
+                const std::string& V = Str->get();
+                if      (V == "rock")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::RockChunk);
+                else if (V == "twig")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::TwigStick);
+                else if (V == "leaf")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::Leaf);
+                else if (V == "paper") OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::PaperSheet);
+                else if (V == "wood")  OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::WoodSplinter);
+                else if (V == "metal") OutDocument.Particles.DebrisTypes.push_back(FluidDebrisKind::MetalScrap);
+            }
+        }
+    }
 
     ReadOr(S, "collideWithGiScene", OutDocument.GiCoupling.CollideWithGiScene);
     ReadOr(S, "castGiShadows", OutDocument.GiCoupling.CastGiShadows);
