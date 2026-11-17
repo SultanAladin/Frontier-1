@@ -1342,23 +1342,34 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     const bool ResetPathAccum =
         CamDelta > 1.0e-4f ||
         CameraInteractiveDrag ||
-        DisplayCfg.RenderEngineIndex != LastRenderEngine ||
-        DisplayCfg.ShadowAlgorithmIndex != LastShadowAlgorithm ||
-        DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
-        DisplayCfg.DebugChannelIndex != LastViewportDebug ||
-        DisplayCfg.GlobalIllumination != LastGiEnabled ||
-        DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
-        DisplayCfg.AtmosphereSkyEnabled != LastAtmosphereSky ||
-        DisplayCfg.VolumetricCloudsEnabled != LastCloudsEnabled ||
-        DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled ||
-        std::fabs(DisplayCfg.SolarTimeOfDayHours - LastSolarTimeHours) > 1.0e-3f ||
-        std::fabs(DisplayCfg.CloudFraction - LastCloudFraction) > 1.0e-3f;
+        ShowcaseBundle->EditorCamera.ViewportWidthPx != LastPtWidthPx ||
+        ShowcaseBundle->EditorCamera.ViewportHeightPx != LastPtHeightPx ||
+        DisplayCfg.RenderEngineIndex != LastPtEngineIndex ||
+        DisplayCfg.ShadowAlgorithmIndex != LastPtShadowAlg ||
+        DisplayCfg.ReflectionSourceIndex != LastPtReflSrc ||
+        DisplayCfg.DebugChannelIndex != LastPtDebugChan ||
+        DisplayCfg.AtmosphereSkyEnabled != LastPtAtmoSky ||
+        DisplayCfg.VolumetricCloudsEnabled != LastPtClouds ||
+        DisplayCfg.CelestialStarsEnabled != LastPtCelestials ||
+        std::fabs(DisplayCfg.SolarTimeOfDayHours - LastPtSolarHours) > 1.0e-3f ||
+        std::fabs(DisplayCfg.CloudFraction - LastPtCloudFraction) > 1.0e-3f;
     if (ResetPathAccum)
     {
         PathTraceAccumIndex = 0u;
     }
-    LastPtCameraOrigin = ShowcaseBundle->EditorCamera.CameraOrigin;
-    LastPtCameraTarget = ShowcaseBundle->EditorCamera.TargetPoint;
+    LastPtCameraOrigin   = ShowcaseBundle->EditorCamera.CameraOrigin;
+    LastPtCameraTarget   = ShowcaseBundle->EditorCamera.TargetPoint;
+    LastPtWidthPx        = ShowcaseBundle->EditorCamera.ViewportWidthPx;
+    LastPtHeightPx       = ShowcaseBundle->EditorCamera.ViewportHeightPx;
+    LastPtEngineIndex    = DisplayCfg.RenderEngineIndex;
+    LastPtShadowAlg      = DisplayCfg.ShadowAlgorithmIndex;
+    LastPtReflSrc        = DisplayCfg.ReflectionSourceIndex;
+    LastPtDebugChan      = DisplayCfg.DebugChannelIndex;
+    LastPtAtmoSky        = DisplayCfg.AtmosphereSkyEnabled;
+    LastPtClouds         = DisplayCfg.VolumetricCloudsEnabled;
+    LastPtCelestials     = DisplayCfg.CelestialStarsEnabled;
+    LastPtSolarHours     = DisplayCfg.SolarTimeOfDayHours;
+    LastPtCloudFraction  = DisplayCfg.CloudFraction;
 
     std::vector<uint8_t> CleanWorldRgba {};
     uint32_t             OutWidthPx     = ShowcaseBundle->EditorCamera.ViewportWidthPx;
@@ -1375,7 +1386,8 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
             CleanWorldRgba);
         if (RenderedOnGpu && RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DeterministicPathTrace && !CameraInteractiveDrag)
         {
-            ++PathTraceAccumIndex;
+            const uint32_t SamplesRan = HwGpu ? std::clamp(RenderConfig.PathTraceSamples, 1u, 4u) : 1u;
+            PathTraceAccumIndex += SamplesRan;
         }
     }
 
@@ -1491,9 +1503,16 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 GeometricRaster::CelestialEphemerisSolver::AdvanceDayCycleHours(Atmo.Solar, SafeStep);
                 DisplayCfg.SolarTimeOfDayHours = Atmo.Solar.LocalHours;
             }
+            const bool ActivePathTraceFrozen =
+                (DisplayCfg.RenderEngineIndex == 4u) && !DisplayCfg.DayCyclePlaying;
+            const bool CloudsMoving =
+                DisplayCfg.VolumetricCloudsEnabled &&
+                Atmo.Clouds.FollowWindEnabled &&
+                Atmo.Clouds.WindSpeedMetersPerSecond > 0.01f;
             const bool AtmoAnimTick =
                 DisplayCfg.AtmosphereSkyEnabled &&
-                (DisplayCfg.DayCyclePlaying || DisplayCfg.VolumetricCloudsEnabled) &&
+                !ActivePathTraceFrozen &&
+                (DisplayCfg.DayCyclePlaying || CloudsMoving) &&
                 SafeStep > 0.0;
             if (AtmoAnimTick)
             {
@@ -1531,10 +1550,43 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             }
             Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
 
+            const bool GpuReady = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
             const bool AtmoChanged = ViewportTogglesChanged || AtmoAnimTick;
-            if (AtmoChanged && ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled)
+            const bool NeedCpuSkySync =
+                ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled &&
+                (ViewportTogglesChanged || DisplayCfg.DayCyclePlaying || (!GpuReady && AtmoAnimTick));
+            if (NeedCpuSkySync)
             {
                 ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
+            }
+
+            const ViewportProjectionPreset CurProjection = Panes->Viewport.QueryPrimaryProjection();
+            bool ProjectionChanged = false;
+            if (CurProjection != LastPrimaryProjection)
+            {
+                LastPrimaryProjection = CurProjection;
+                ProjectionChanged     = true;
+                auto& Cam             = ShowcaseBundle->EditorCamera;
+                Cam.TargetPoint       = { 0.00f, 0.55f, 0.15f };
+                Cam.WorldUpAxis       = { 0.00f, 0.00f, 1.00f };
+                switch (CurProjection)
+                {
+                case ViewportProjectionPreset::Top:
+                    Cam.CameraOrigin = { 0.00f, 0.50f, 5.20f };
+                    Cam.WorldUpAxis  = { 0.00f, 1.00f, 0.00f };
+                    break;
+                case ViewportProjectionPreset::Front:
+                    Cam.CameraOrigin = { 0.00f, -4.40f, 0.45f };
+                    break;
+                case ViewportProjectionPreset::Right:
+                    Cam.CameraOrigin = { 4.60f, 0.55f, 0.45f };
+                    break;
+                case ViewportProjectionPreset::Perspective:
+                case ViewportProjectionPreset::Orthographic:
+                default:
+                    Cam.CameraOrigin = { 0.00f, -3.55f, 0.42f };
+                    break;
+                }
             }
 
             const bool              DisplayChanged =
@@ -1549,6 +1601,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.GlobalIllumination != LastGiEnabled ||
                 DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
                 AtmoChanged ||
+                ProjectionChanged ||
                 CurScale != LastRenderScalePct;
 
             if (CurCanvasW >= 120u && CurCanvasH >= 90u)
@@ -1570,7 +1623,6 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastCloudFraction      = DisplayCfg.CloudFraction;
             LastRenderScalePct     = CurScale;
 
-            const bool GpuReady  = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
             const bool LatticeUpdated = ConsumeCompletedRtxLatticeBake();
             bool       NeedsPrep = false;
             const bool SceneMutated = GeometricRaster::SynchronizeShowcaseGallerySceneLive(

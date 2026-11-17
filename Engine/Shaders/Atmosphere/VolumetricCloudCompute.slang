@@ -467,8 +467,8 @@ float3 EvaluateVolumetricCloudsGpu(
     OutTransmittance = 1.0;
     float3 TotalRad  = float3(0.0, 0.0, 0.0);
 
-    float Ign    = frac(52.9829189 * frac(dot(PixelCoord, float2(0.06711056, 0.00583715))));
-    float Jitter = 0.5 + 0.72 * (Ign - 0.5);
+    float2 R2Val  = frac(PixelCoord.x * float2(0.7548776662, 0.5698402910) + PixelCoord.y * float2(0.5698402910, 0.3247179572));
+    float  Jitter = 0.5 + 0.34 * (R2Val.x - 0.5);
 
     float3 SunDir = normalize(Cfg.SunAxisToggle.xyz);
     float  WindX  = (Cfg.SkyColorWind.w > 0.5) ? (Cfg.WindVectorOcclude.x * Cfg.OriginTimeVector.w) : 0.0;
@@ -583,9 +583,10 @@ float3 EvaluateVolumetricCloudsGpu(
         }
     }
 
-    float LowAngleFade = smoothstep(0.015, 0.145, RayDir.z);
-    float Haze = 1.0 - exp(-EnterHit.y * 0.000042);
-    DeckR = lerp(DeckR, Cfg.SkyColorWind.xyz * (1.0 - DeckT), Haze) * LowAngleFade;
+    float LowAngleFade = smoothstep(0.012, 0.165, RayDir.z);
+    float Haze = 1.0 - exp(-EnterHit.y * 0.000032);
+    float3 HorizonTint = max(Cfg.SkyColorWind.xyz, float3(0.18, 0.25, 0.36) * (0.25 + 0.75 * max(0.0, SunDir.z)));
+    DeckR = lerp(DeckR, HorizonTint * (1.0 - DeckT), Haze * 0.78) * LowAngleFade;
     DeckT = 1.0 - (1.0 - DeckT) * LowAngleFade;
     TotalRad += OutTransmittance * DeckR;
     OutTransmittance *= DeckT;

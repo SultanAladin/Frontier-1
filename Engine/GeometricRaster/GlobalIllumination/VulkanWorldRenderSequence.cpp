@@ -187,6 +187,9 @@ struct WorldViewportUniformBlockStd140
     float                       SunCascadeRightRes[4]       {};
     float                       SunCascadeUpDepth[4]        {};
     float                       SunCascadeForwardPad[4]     {};
+    float                       FineCascadeCenterSpan[4]    {};
+    float                       FineCascadeParams[4]        {};
+    uint32_t                    DenoiseStepParams[4]        {};
     GpuAreaQuadLightStd140      AreaLights[4]               {};
     GpuGlassSphereStd140        GlassSpheres[4]             {};
     uint32_t                    AtmosphereMaskPad[4]       {};
@@ -197,7 +200,7 @@ struct WorldViewportUniformBlockStd140
     FluidRenderUniformStd140     FluidParams                {};
 };
 
-static_assert(sizeof(WorldViewportUniformBlockStd140) == 3472u, "WorldViewportUniformBlockStd140 must equal 3472 bytes.");
+static_assert(sizeof(WorldViewportUniformBlockStd140) == 3520u, "WorldViewportUniformBlockStd140 must equal 3520 bytes.");
 
 struct SignedDistanceGridUniformStd140
 {
@@ -319,8 +322,17 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
-    constexpr std::array<VkDescriptorType, 16u> SlotTypes {{
+    constexpr std::array<VkDescriptorType, 25u> SlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -354,6 +366,22 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
+    const std::filesystem::path DenoiseShaderPath = CompiledShaderDirectory / "WorldViewportDenoiseCompute.comp.spv";
+    DenoiseProgramHandle = DispatchEncoder.RegisterProgram(
+        DenoiseShaderPath,
+        SlotTypes,
+        "DenoiseCompositeEntry");
+    if (DenoiseProgramHandle == UINT32_MAX)
+    {
+        const std::string PathText = DenoiseShaderPath.generic_string();
+        std::fprintf(
+            stderr,
+            "[FrontierWorld] WARNING: Failed to load GPU denoise shader %s — falling back to CPU GI.\n",
+            PathText.c_str());
+        TeardownSequence();
+        return false;
+    }
+
     constexpr std::array<VkDescriptorType, 4u> SdfSlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -376,7 +404,7 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         SkySlotTypes,
         "ComputeEntry");
 
-    EnsureBufferCapacity(UniformBuffer, sizeof(WorldViewportUniformBlockStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    EnsureBufferCapacity(UniformBuffer, 4096ull * 4ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     EnsureBufferCapacity(SdfUniformBuffer, sizeof(SignedDistanceGridUniformStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     EnsureBufferCapacity(SkyViewUniformBuffer, sizeof(AtmosphericSkyUniformStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     constexpr uint64_t SkyLutBytes = static_cast<uint64_t>(AtmosphericSkySequence::SkyViewWidthPx) *
@@ -446,9 +474,19 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(BakedLensFlareAtlasBuffer);
         BoundDevice->ReleaseBuffer(FluidHeroThermoBuffer);
         BoundDevice->ReleaseBuffer(FluidWorldThermoBuffer);
+        BoundDevice->ReleaseBuffer(GBufPosMaskBuffer);
+        BoundDevice->ReleaseBuffer(GBufNormAoBuffer);
+        BoundDevice->ReleaseBuffer(GBufDirectBaseBuffer);
+        BoundDevice->ReleaseBuffer(GBufSunContribBuffer);
+        BoundDevice->ReleaseBuffer(GBufAlbedoBuffer);
+        BoundDevice->ReleaseBuffer(PingShadowAoBuffer);
+        BoundDevice->ReleaseBuffer(PingGiHdrBuffer);
+        BoundDevice->ReleaseBuffer(PongShadowAoBuffer);
+        BoundDevice->ReleaseBuffer(PongGiHdrBuffer);
     }
     DispatchEncoder.TeardownEncoder();
     RadiometricProgramHandle    = UINT32_MAX;
+    DenoiseProgramHandle        = UINT32_MAX;
     SignedDistanceProgramHandle = UINT32_MAX;
     SkyViewLutProgramHandle     = UINT32_MAX;
     BoundDevice                 = nullptr;
@@ -465,7 +503,8 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
 
 bool VulkanWorldRenderSequence::QueryReady() const noexcept
 {
-    return BoundDevice != nullptr && BoundDevice->Ready() && RadiometricProgramHandle != UINT32_MAX;
+    return BoundDevice != nullptr && BoundDevice->Ready() &&
+           RadiometricProgramHandle != UINT32_MAX && DenoiseProgramHandle != UINT32_MAX;
 }
 
 bool VulkanWorldRenderSequence::QueryHardwareGpuActive() const noexcept
@@ -575,12 +614,25 @@ void VulkanWorldRenderSequence::UploadSolarCascadeRadiosity(const WorldSceneSpec
         return;
     }
 
-    // 1. Build & upload orthographic Sun depth32float cascade for GPU Shadow Lab (ContactPcss/Pcss/SMRT/PCF)
+    // 1. Build & upload TWO-CASCADE orthographic Sun depth32float clips (FineClip 3.91mm + CoarseClip 15.625mm)
     const Mathematics::Axis3D FocusCenter = (Scene.SceneTree.RootBoundsMin + Scene.SceneTree.RootBoundsMax) * 0.5f;
-    OrthographicShadowCascade FineClip {};
-    SolarShadowSequence::BuildTwoCascadeContactClips(Scene.Sun, FocusCenter, Scene.SceneTree, FineClip, CachedSunCascade);
-    if (!CachedSunCascade.ClosestLightDepth.empty())
+    SolarShadowSequence::BuildTwoCascadeContactClips(Scene.Sun, FocusCenter, Scene.SceneTree, CachedFineSunCascade, CachedSunCascade);
+    if (!CachedFineSunCascade.ClosestLightDepth.empty() && !CachedSunCascade.ClosestLightDepth.empty())
     {
+        CoarseShadowOffsetTexels = static_cast<uint32_t>(CachedFineSunCascade.ClosestLightDepth.size());
+        const uint64_t FineBytes   = CachedFineSunCascade.ClosestLightDepth.size() * sizeof(float);
+        const uint64_t CoarseBytes = CachedSunCascade.ClosestLightDepth.size() * sizeof(float);
+        EnsureBufferCapacity(SolarShadowDepthBuffer, FineBytes + CoarseBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        if (SolarShadowDepthBuffer.HostAddress != nullptr)
+        {
+            uint8_t* Dst = reinterpret_cast<uint8_t*>(SolarShadowDepthBuffer.HostAddress);
+            std::memcpy(Dst, CachedFineSunCascade.ClosestLightDepth.data(), FineBytes);
+            std::memcpy(Dst + FineBytes, CachedSunCascade.ClosestLightDepth.data(), CoarseBytes);
+        }
+    }
+    else if (!CachedSunCascade.ClosestLightDepth.empty())
+    {
+        CoarseShadowOffsetTexels = 0u;
         const uint64_t DepthBytes = CachedSunCascade.ClosestLightDepth.size() * sizeof(float);
         EnsureBufferCapacity(SolarShadowDepthBuffer, DepthBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         if (SolarShadowDepthBuffer.HostAddress != nullptr)
@@ -590,6 +642,7 @@ void VulkanWorldRenderSequence::UploadSolarCascadeRadiosity(const WorldSceneSpec
     }
     else
     {
+        CoarseShadowOffsetTexels = 0u;
         const float FallbackDepth[4]{ 60.0f, 60.0f, 60.0f, 60.0f };
         EnsureBufferCapacity(SolarShadowDepthBuffer, sizeof(FallbackDepth), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         if (SolarShadowDepthBuffer.HostAddress != nullptr)
@@ -600,7 +653,21 @@ void VulkanWorldRenderSequence::UploadSolarCascadeRadiosity(const WorldSceneSpec
 
     // 2. Populate 3D Radiosity SDF Volume matching CachedSdfDims (strictly for SdfGlobalIllumination GI only!)
     const uint64_t TotalVoxels = static_cast<uint64_t>(CachedSdfDimX) * CachedSdfDimY * CachedSdfDimZ;
-    if (TotalVoxels >= 8ull && SignedDistanceBuffer.HostAddress != nullptr && !Scene.BounceSummaries.empty())
+    std::vector<MaterialSpace::BounceSlabEntry> FallbackSlabs {};
+    const std::vector<MaterialSpace::BounceSlabEntry>* ActiveSlabs = &Scene.BounceSummaries;
+    if (ActiveSlabs->empty() && Scene.MaterialRegister.QuerySlotCount() > 0u)
+    {
+        const uint32_t SlotCount = Scene.MaterialRegister.QuerySlotCount();
+        FallbackSlabs.resize(SlotCount);
+        for (uint32_t Slot = 0u; Slot < SlotCount; ++Slot)
+        {
+            FallbackSlabs[Slot] = MaterialSpace::CompileBounceSlabEntry(
+                Scene.MaterialRegister.InspectAuthoredMaterial(static_cast<uint16_t>(Slot)));
+        }
+        ActiveSlabs = &FallbackSlabs;
+    }
+
+    if (TotalVoxels >= 8ull && SignedDistanceBuffer.HostAddress != nullptr && !ActiveSlabs->empty())
     {
         const float* SdfSamples = reinterpret_cast<const float*>(SignedDistanceBuffer.HostAddress);
         std::vector<float> RadiosityVoxels(TotalVoxels * 4ull, 0.0f);
@@ -654,8 +721,8 @@ void VulkanWorldRenderSequence::UploadSolarCascadeRadiosity(const WorldSceneSpec
                         continue;
                     }
 
-                    const uint16_t Slot = (Hit.MaterialOrdinal < Scene.BounceSummaries.size()) ? Hit.MaterialOrdinal : 0u;
-                    const auto& Slab    = Scene.BounceSummaries[Slot];
+                    const uint16_t Slot = (Hit.MaterialOrdinal < ActiveSlabs->size()) ? Hit.MaterialOrdinal : 0u;
+                    const auto& Slab    = (*ActiveSlabs)[Slot];
                     const Mathematics::Axis3D HitPos = VoxelRay.Origin + VoxelRay.UnitDirection * Hit.HitDistanceMeters;
                     const Mathematics::Axis3D HitNrm = (Mathematics::EvaluateDot(Hit.GeometricNormal, VoxelRay.UnitDirection) < 0.0f)
                         ? Hit.GeometricNormal
@@ -685,6 +752,38 @@ void VulkanWorldRenderSequence::UploadSolarCascadeRadiosity(const WorldSceneSpec
                             VoxelRad = VoxelRad + Direct;
                         }
                     }
+                    for (const auto& Quad : Scene.AreaLights)
+                    {
+                        const Mathematics::Axis3D ToL = Quad.CenterWorld - HitPos;
+                        const float Dist2 = std::max(0.08f, Mathematics::EvaluateDot(ToL, ToL));
+                        const float Dist  = std::sqrt(Dist2);
+                        const Mathematics::Axis3D Wi = ToL * (1.0f / Dist);
+                        const float NdotL = Mathematics::EvaluateDot(HitNrm, Wi);
+                        if (NdotL > 0.01f)
+                        {
+                            const Mathematics::Axis3D LNorm = Mathematics::NormalizeAxis(
+                                Mathematics::EvaluateCross(Quad.RightTangent, Quad.UpBitangent), { 0.0f, 0.0f, -1.0f });
+                            const float LCos = Quad.TwoSidedEmission
+                                ? std::fabs(Mathematics::EvaluateDot(LNorm, Wi * -1.0f))
+                                : std::max(0.0f, Mathematics::EvaluateDot(LNorm, Wi * -1.0f));
+                            if (LCos > 0.01f)
+                            {
+                                SpatialAcceleration::RaySegmentQuery QRay {};
+                                QRay.Origin          = HitPos + HitNrm * 4.0e-3f;
+                                QRay.UnitDirection   = Wi;
+                                QRay.MinimumDistance = 1.0e-3f;
+                                QRay.MaximumDistance = std::max(0.02f, Dist - 0.02f);
+                                if (!Scene.SceneTree.QueryRayOccluded(QRay))
+                                {
+                                    const float Area = 4.0f * Quad.HalfWidthMeters * Quad.HalfHeightMeters;
+                                    const float Geom = (NdotL * LCos * Area) / (3.14159265f * Dist2);
+                                    const auto  QuadIrr = Quad.EmittedRadiance * Geom;
+                                    VoxelRad = VoxelRad + MaterialSpace::EvaluateBounceSlabRadiance(
+                                        Slab, HitNrm, Grad, Wi, QuadIrr);
+                                }
+                            }
+                        }
+                    }
 
                     RadiosityVoxels[Idx * 4ull + 0ull] = VoxelRad.R;
                     RadiosityVoxels[Idx * 4ull + 1ull] = VoxelRad.G;
@@ -703,11 +802,11 @@ void VulkanWorldRenderSequence::UploadSolarCascadeRadiosity(const WorldSceneSpec
     }
     else
     {
-        const float ZeroVec[4]{ 0.0f, 0.0f, 0.0f, 0.0f };
-        EnsureBufferCapacity(SdfRadiosityVoxelBuffer, sizeof(ZeroVec), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        const uint64_t RadBytes = std::max<uint64_t>(16ull, TotalVoxels * 4ull * sizeof(float));
+        EnsureBufferCapacity(SdfRadiosityVoxelBuffer, RadBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         if (SdfRadiosityVoxelBuffer.HostAddress != nullptr)
         {
-            std::memcpy(SdfRadiosityVoxelBuffer.HostAddress, ZeroVec, sizeof(ZeroVec));
+            std::memset(SdfRadiosityVoxelBuffer.HostAddress, 0, static_cast<std::size_t>(RadBytes));
         }
     }
 }
@@ -730,9 +829,9 @@ bool VulkanWorldRenderSequence::DispatchGpuSignedDistanceGrid(const WorldSceneSp
         return false;
     }
 
-    constexpr uint32_t TargetX = 44u;
-    constexpr uint32_t TargetY = 40u;
-    constexpr uint32_t TargetZ = 24u;
+    constexpr uint32_t TargetX = 64u;
+    constexpr uint32_t TargetY = 56u;
+    constexpr uint32_t TargetZ = 32u;
     const float StepX = Span.X / static_cast<float>(TargetX - 1u);
     const float StepY = Span.Y / static_cast<float>(TargetY - 1u);
     const float StepZ = Span.Z / static_cast<float>(TargetZ - 1u);
@@ -1201,7 +1300,17 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     const uint64_t AccBytes = static_cast<uint64_t>(WidthPx) * HeightPx * 16ull;
     EnsureBufferCapacity(OutputPixelBuffer, OutBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureBufferCapacity(AccumulationHdrBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-    if (OutputPixelBuffer.HostAddress == nullptr || AccumulationHdrBuffer.HostAddress == nullptr)
+    EnsureBufferCapacity(GBufPosMaskBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureBufferCapacity(GBufNormAoBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureBufferCapacity(GBufDirectBaseBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureBufferCapacity(GBufSunContribBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureBufferCapacity(GBufAlbedoBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureBufferCapacity(PingShadowAoBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureBufferCapacity(PingGiHdrBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureBufferCapacity(PongShadowAoBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureBufferCapacity(PongGiHdrBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    if (OutputPixelBuffer.HostAddress == nullptr || AccumulationHdrBuffer.HostAddress == nullptr ||
+        GBufPosMaskBuffer.BufferHandle == VK_NULL_HANDLE || PongGiHdrBuffer.BufferHandle == VK_NULL_HANDLE)
     {
         return false;
     }
@@ -1358,6 +1467,17 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     Uniforms.SunCascadeForwardPad[1] = CachedSunCascade.LightForwardAxis.Y;
     Uniforms.SunCascadeForwardPad[2] = CachedSunCascade.LightForwardAxis.Z;
     Uniforms.SunCascadeForwardPad[3] = static_cast<float>(std::clamp(Config.PathTraceMaxBounces, 1u, 6u));
+
+    const uint32_t PathSamplesPerDispatch = QueryHardwareGpuActive() ? std::clamp(Config.PathTraceSamples, 1u, 4u) : 1u;
+    Uniforms.FineCascadeCenterSpan[0] = CachedFineSunCascade.CenterWorld.X;
+    Uniforms.FineCascadeCenterSpan[1] = CachedFineSunCascade.CenterWorld.Y;
+    Uniforms.FineCascadeCenterSpan[2] = CachedFineSunCascade.CenterWorld.Z;
+    Uniforms.FineCascadeCenterSpan[3] = CachedFineSunCascade.HalfSpanMeters;
+
+    Uniforms.FineCascadeParams[0] = static_cast<float>(CachedFineSunCascade.ResolutionTexels);
+    Uniforms.FineCascadeParams[1] = CachedFineSunCascade.DepthExtentMeters;
+    Uniforms.FineCascadeParams[2] = static_cast<float>(CoarseShadowOffsetTexels);
+    Uniforms.FineCascadeParams[3] = static_cast<float>(PathSamplesPerDispatch);
 
     Uniforms.AtmosphereMaskPad[0] = AtmoActive ? 1u : 0u;
     Uniforms.AtmosphereMaskPad[1] = AtmosphericSkySequence::SkyViewWidthPx;
@@ -1759,7 +1879,10 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
         }
     }
 
-    std::memcpy(UniformBuffer.HostAddress, &Uniforms, sizeof(Uniforms));
+    constexpr uint64_t UniformStrideBytes = 4096ull;
+    EnsureBufferCapacity(UniformBuffer, UniformStrideBytes * 4ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    uint8_t* UniformBase = reinterpret_cast<uint8_t*>(UniformBuffer.HostAddress);
+    std::memcpy(UniformBase, &Uniforms, sizeof(Uniforms));
 
     DispatchEncoder.ResetTransientDescriptors();
     VkCommandBuffer Cmd = BoundDevice->BeginSingleTimeCommands();
@@ -1773,30 +1896,85 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
         DispatchGpuSkyViewLut(Cmd, Scene);
     }
 
-    const std::array<ComputeSlotDescriptor, 16u> Slots {{
-        {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,              sizeof(WorldViewportUniformBlockStd140) },
-        {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
-        {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,       VK_WHOLE_SIZE },
-        {  3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MaterialEntryBuffer.BufferHandle,        VK_WHOLE_SIZE },
-        {  4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SignedDistanceBuffer.BufferHandle,       VK_WHOLE_SIZE },
-        {  5u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, IrradianceLatticeBuffer.BufferHandle,    VK_WHOLE_SIZE },
-        {  6u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutputPixelBuffer.BufferHandle,          OutBytes      },
-        {  7u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SolarShadowDepthBuffer.BufferHandle,     VK_WHOLE_SIZE },
-        {  8u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, IrradianceChebyshevBuffer.BufferHandle,  VK_WHOLE_SIZE },
-        {  9u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SdfRadiosityVoxelBuffer.BufferHandle,    VK_WHOLE_SIZE },
-        { 10u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AccumulationHdrBuffer.BufferHandle,      AccBytes      },
-        { 11u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AtmosphericSkyViewLutBuffer.BufferHandle,VK_WHOLE_SIZE },
-        { 12u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LunarSurfaceAtlasBuffer.BufferHandle,    VK_WHOLE_SIZE },
-        { 13u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BakedLensFlareAtlasBuffer.BufferHandle,  VK_WHOLE_SIZE },
-        { 14u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, FluidHeroThermoBuffer.BufferHandle,      VK_WHOLE_SIZE },
-        { 15u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, FluidWorldThermoBuffer.BufferHandle,     VK_WHOLE_SIZE },
-    }};
+    auto MakePassSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 25u>
+    {
+        const auto& InShadow  = SwapPingPong ? PongShadowAoBuffer : PingShadowAoBuffer;
+        const auto& InGi      = SwapPingPong ? PongGiHdrBuffer    : PingGiHdrBuffer;
+        const auto& OutShadow = SwapPingPong ? PingShadowAoBuffer : PongShadowAoBuffer;
+        const auto& OutGi     = SwapPingPong ? PingGiHdrBuffer    : PongGiHdrBuffer;
+        return {{
+            {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,              sizeof(WorldViewportUniformBlockStd140), UniOffset },
+            {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
+            {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,       VK_WHOLE_SIZE },
+            {  3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MaterialEntryBuffer.BufferHandle,        VK_WHOLE_SIZE },
+            {  4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SignedDistanceBuffer.BufferHandle,       VK_WHOLE_SIZE },
+            {  5u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, IrradianceLatticeBuffer.BufferHandle,    VK_WHOLE_SIZE },
+            {  6u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutputPixelBuffer.BufferHandle,          OutBytes      },
+            {  7u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SolarShadowDepthBuffer.BufferHandle,     VK_WHOLE_SIZE },
+            {  8u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, IrradianceChebyshevBuffer.BufferHandle,  VK_WHOLE_SIZE },
+            {  9u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SdfRadiosityVoxelBuffer.BufferHandle,    VK_WHOLE_SIZE },
+            { 10u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AccumulationHdrBuffer.BufferHandle,      AccBytes      },
+            { 11u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AtmosphericSkyViewLutBuffer.BufferHandle,VK_WHOLE_SIZE },
+            { 12u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LunarSurfaceAtlasBuffer.BufferHandle,    VK_WHOLE_SIZE },
+            { 13u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BakedLensFlareAtlasBuffer.BufferHandle,  VK_WHOLE_SIZE },
+            { 14u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, FluidHeroThermoBuffer.BufferHandle,      VK_WHOLE_SIZE },
+            { 15u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, FluidWorldThermoBuffer.BufferHandle,     VK_WHOLE_SIZE },
+            { 16u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufPosMaskBuffer.BufferHandle,          AccBytes      },
+            { 17u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufNormAoBuffer.BufferHandle,           AccBytes      },
+            { 18u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufDirectBaseBuffer.BufferHandle,       AccBytes      },
+            { 19u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufSunContribBuffer.BufferHandle,       AccBytes      },
+            { 20u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufAlbedoBuffer.BufferHandle,           AccBytes      },
+            { 21u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, InShadow.BufferHandle,                   AccBytes      },
+            { 22u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, InGi.BufferHandle,                       AccBytes      },
+            { 23u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutShadow.BufferHandle,                  AccBytes      },
+            { 24u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutGi.BufferHandle,                      AccBytes      },
+        }};
+    };
 
     const uint32_t GroupsX = (WidthPx  + 7u) / 8u;
     const uint32_t GroupsY = (HeightPx + 7u) / 8u;
-    if (!DispatchEncoder.EncodeComputeDispatch(Cmd, RadiometricProgramHandle, Slots, GroupsX, GroupsY, 1u))
+    const auto Pass0Slots = MakePassSlots(0ull, false);
+    if (!DispatchEncoder.EncodeComputeDispatch(Cmd, RadiometricProgramHandle, Pass0Slots, GroupsX, GroupsY, 1u))
     {
         return false;
+    }
+
+    const uint32_t EngIdx = static_cast<uint32_t>(Config.Engine);
+    const bool SpatialDenoise =
+        (Config.DebugChannel == 0u) &&
+        ((EngIdx == 1u || EngIdx == 2u || EngIdx == 3u) || (EngIdx == 4u && PathTraceSampleIndex < 8u));
+
+    if (SpatialDenoise)
+    {
+        constexpr std::array<uint32_t, 3u> Strides {{ 1u, 2u, 4u }};
+        for (uint32_t Pass = 0u; Pass < 3u; ++Pass)
+        {
+            const uint64_t UniOffs = static_cast<uint64_t>(Pass + 1u) * UniformStrideBytes;
+            WorldViewportUniformBlockStd140 PassUni = Uniforms;
+            PassUni.DenoiseStepParams[0] = Strides[Pass];
+            PassUni.DenoiseStepParams[1] = 2u | ((Pass == 2u) ? 1u : 0u);
+            std::memcpy(UniformBase + UniOffs, &PassUni, sizeof(PassUni));
+
+            const auto PassSlots = MakePassSlots(UniOffs, (Pass & 1u) != 0u);
+            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DenoiseProgramHandle, PassSlots, GroupsX, GroupsY, 1u))
+            {
+                return false;
+            }
+        }
+    }
+    else
+    {
+        const uint64_t UniOffs = UniformStrideBytes;
+        WorldViewportUniformBlockStd140 PassUni = Uniforms;
+        PassUni.DenoiseStepParams[0] = 1u;
+        PassUni.DenoiseStepParams[1] = 1u;
+        std::memcpy(UniformBase + UniOffs, &PassUni, sizeof(PassUni));
+
+        const auto PassSlots = MakePassSlots(UniOffs, false);
+        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DenoiseProgramHandle, PassSlots, GroupsX, GroupsY, 1u))
+        {
+            return false;
+        }
     }
 
     VkMemoryBarrier HostReadBarrier {};

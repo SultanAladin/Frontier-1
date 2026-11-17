@@ -187,11 +187,17 @@ float3 ComputePhysicalSkyTexel(AtmosphericSkyUniformBlock Uni, float2 Uv)
 
     if (GroundRay)
     {
-        float SunUp = max(0.0, SunDir.z);
-        float3 GndCol = Uni.GroundAlbedoLimbGlow.xyz *
-                        (OverheadT * SunUp * 0.8 + OutRgb * 0.35 + float3(0.24 * SunUp * 0.08 + 0.0005));
-        float Blend = clamp(-RawDir.z * 3.5, 0.0, 1.0);
-        OutRgb = lerp(OutRgb, GndCol, Blend);
+        float SunUp     = max(0.0, SunDir.z);
+        float Depth     = clamp(-RawDir.z, 0.0, 1.0);
+        float HazeBlend = smoothstep(0.0, 0.28, Depth);
+        float NadirFade = smoothstep(0.18, 0.92, Depth);
+        // Physical planetary lower-hemisphere aerial perspective: luminous horizon haze -> cool atmospheric indigo-slate nadir
+        float3 HorizonHaze = OutRgb * lerp(1.0, 0.72, HazeBlend);
+        float3 AtmoNadir   = float3(0.032, 0.068, 0.135) * (0.18 + 0.82 * SunUp) * OverheadT +
+                             NightAir * (1.0 - DayVis * 0.85) * 1.4;
+        float3 SubtleGnd   = Uni.GroundAlbedoLimbGlow.xyz * (OverheadT * SunUp * 0.12 + 0.0005);
+        float3 LowerAtmo   = lerp(HorizonHaze, AtmoNadir + SubtleGnd, HazeBlend);
+        OutRgb = lerp(LowerAtmo, AtmoNadir * 0.72 + SubtleGnd * 0.65, NadirFade * 0.65);
     }
     return max(float3(0.0), OutRgb);
 }

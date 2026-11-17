@@ -49,7 +49,7 @@ int main()
     // 1. Validate WorkspaceCapabilityRegister
     Workspaces::WorkspaceCapabilityRegister CapReg {};
     const auto AllCaps = CapReg.QueryAllCapabilities();
-    if (AllCaps.size() != 7u ||
+    if (AllCaps.size() != 11u ||
         AllCaps[0].Identifier != "Frontier" ||
         AllCaps[0].ActionTitle != "Open with Frontier" ||
         AllCaps[1].Identifier != "UVWorkspace" ||
@@ -63,9 +63,17 @@ int main()
         AllCaps[5].Identifier != "FractureWorkspace" ||
         AllCaps[5].ActionTitle != "Open with FractureWorkspace" ||
         AllCaps[6].Identifier != "Sketcher" ||
-        AllCaps[6].ActionTitle != "Open with Sketcher")
+        AllCaps[6].ActionTitle != "Open with Sketcher" ||
+        AllCaps[7].Identifier != "FluidWorkspace" ||
+        AllCaps[7].ActionTitle != "Open with Fluid Studio" ||
+        AllCaps[8].Identifier != "MaterialWorkspace" ||
+        AllCaps[8].ActionTitle != "Open with Material Studio" ||
+        AllCaps[9].Identifier != "ParticleWorkspace" ||
+        AllCaps[9].ActionTitle != "Open with Particle Studio" ||
+        AllCaps[10].Identifier != "ForceFieldWorkspace" ||
+        AllCaps[10].ActionTitle != "Open with ForceField Studio")
     {
-        std::fprintf(stderr, "[FAIL] WorkspaceCapabilityRegister expected Frontier + UVWorkspace + PatternWorkspace + StampWorkspace + BakingWorkspace + FractureWorkspace + Sketcher capabilities.\n");
+        std::fprintf(stderr, "[FAIL] WorkspaceCapabilityRegister expected all 11 Frontier workspace capabilities.\n");
         return 1;
     }
 

@@ -177,6 +177,18 @@ private:
     float                                                            LastSolarTimeHours     = 10.5f;
     float                                                            LastCloudFraction      = 0.34f;
     uint32_t                                                         PathTraceAccumIndex  = 0u;
+    uint32_t                                                         LastPtEngineIndex    = UINT32_MAX;
+    uint32_t                                                         LastPtShadowAlg      = UINT32_MAX;
+    uint32_t                                                         LastPtReflSrc        = UINT32_MAX;
+    uint32_t                                                         LastPtDebugChan      = UINT32_MAX;
+    uint32_t                                                         LastPtWidthPx        = 0u;
+    uint32_t                                                         LastPtHeightPx       = 0u;
+    bool                                                             LastPtAtmoSky        = true;
+    bool                                                             LastPtClouds         = true;
+    bool                                                             LastPtCelestials     = true;
+    float                                                            LastPtSolarHours     = 10.5f;
+    float                                                            LastPtCloudFraction  = 0.34f;
+    ViewportProjectionPreset                                         LastPrimaryProjection = ViewportProjectionPreset::Perspective;
     Mathematics::Axis3D                                              LastPtCameraOrigin   {};
     Mathematics::Axis3D                                              LastPtCameraTarget   {};
     int32_t                                                          LastRenderScalePct   = 100;

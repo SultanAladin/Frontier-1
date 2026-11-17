@@ -25,13 +25,17 @@ namespace Frontier::Workspaces
 
 enum class HostWorkspaceTarget : uint8_t
 {
-    FrontierWorld    = 0u, // [-] - Open with Frontier (EditorLifecycle + TieredWorldRenderSequence + ShowcaseGalleryScene)
-    UVWorkspace      = 1u, // [-] - Open with UVWorkspace (UVWorkspaceHost dual 2D UV + 3D Surface viewports)
-    PatternWorkspace = 2u, // [-] - Open with Pattern Studio (PatternStampWorkspaceHost seamless 2D vector & OpenPBR tile)
-    StampWorkspace    = 3u, // [-] - Open with Stamp Studio (PatternStampWorkspaceHost alpha cutout vector stamp)
-    BakingWorkspace   = 4u, // [-] - Open with Baking Studio (BakingWorkspaceHost pure-GPU GTX BVH4 + RTX RayQuery baker)
-    FractureWorkspace = 5u, // [-] - Open with FractureWorkspace (FractureWorkspaceHost 6-solver fracture & JoltPhysics)
-    SketcherWorkspace = 6u, // [-] - Open with Sketcher (SketcherWorkspaceHost parametric NURBS / B-rep CAD & 2D drawing sheet)
+    FrontierWorld       = 0u, // [-] - Open with Frontier (EditorLifecycle + TieredWorldRenderSequence + ShowcaseGalleryScene)
+    UVWorkspace         = 1u, // [-] - Open with UVWorkspace (UVWorkspaceHost dual 2D UV + 3D Surface viewports)
+    PatternWorkspace    = 2u, // [-] - Open with Pattern Studio (PatternStampWorkspaceHost seamless 2D vector & OpenPBR tile)
+    StampWorkspace      = 3u, // [-] - Open with Stamp Studio (PatternStampWorkspaceHost alpha cutout vector stamp)
+    BakingWorkspace     = 4u, // [-] - Open with Baking Studio (BakingWorkspaceHost pure-GPU GTX BVH4 + RTX RayQuery baker)
+    FractureWorkspace   = 5u, // [-] - Open with FractureWorkspace (FractureWorkspaceHost 6-solver fracture & JoltPhysics)
+    SketcherWorkspace   = 6u, // [-] - Open with Sketcher (SketcherWorkspaceHost parametric NURBS / B-rep CAD & 2D drawing sheet)
+    FluidWorkspace      = 7u, // [-] - Open with Fluid Studio (FluidWorkspaceHost Eulerian pyro, smoke & fire simulation)
+    MaterialWorkspace   = 8u, // [-] - Open with Material Studio (MaterialWorkspaceHost dynamic OpenPBR material preview)
+    ParticleWorkspace   = 9u, // [-] - Open with Particle Studio (ParticleWorkspaceHost 93-preset GPU particle & force solver)
+    ForceFieldWorkspace = 10u, // [-] - Open with ForceField Studio (VectorFieldViewportSession 3D vector field simulator)
 };
 
 //------------------------------------------------------------------------------------------------------------------------

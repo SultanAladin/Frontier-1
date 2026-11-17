@@ -838,13 +838,13 @@ struct VectorFieldOverlaySequence::SequenceImplementation
         Pane.WidthPx  = WidthPx;
         Pane.HeightPx = HeightPx;
 
-        Pane.TextureRecord.Status        = ImTextureStatus_OK;
-        Pane.TextureRecord.TexID         = static_cast<ImTextureID>(0x56460001ull + static_cast<uint64_t>(&Pane - Panes.data()));
         Pane.TextureRecord.Format        = ImTextureFormat_RGBA32;
         Pane.TextureRecord.Width         = static_cast<int>(WidthPx);
         Pane.TextureRecord.Height        = static_cast<int>(HeightPx);
         Pane.TextureRecord.BytesPerPixel = 4;
         Pane.TextureRecord.Pixels        = Pane.CpuColorRgba.data();
+        Pane.TextureRecord.UpdateRect    = { 0u, 0u, static_cast<unsigned short>(WidthPx), static_cast<unsigned short>(HeightPx) };
+        Pane.TextureRecord.SetStatus(ImTextureStatus_WantCreate);
         return true;
     }
 
@@ -1771,7 +1771,11 @@ OverlayRenderOutput VectorFieldOverlaySequence::RenderPane(
     }
 
     Pane.TextureRecord.Pixels = Pane.CpuColorRgba.data();
-    Pane.TextureRecord.Status = ImTextureStatus_OK;
+    Pane.TextureRecord.UpdateRect = { 0u, 0u, static_cast<unsigned short>(W), static_cast<unsigned short>(H) };
+    Pane.TextureRecord.SetStatus(
+        (Pane.TextureRecord.BackendUserData != nullptr && Pane.TextureRecord.GetTexID() != ImTextureID_Invalid)
+            ? ImTextureStatus_WantUpdates
+            : ImTextureStatus_WantCreate);
 
     Output.ImTextureDataPtr = &Pane.TextureRecord;
     Output.WidthPx          = W;

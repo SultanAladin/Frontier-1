@@ -346,8 +346,8 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
         }
     }
 
-    // 2. Deterministic procedural Starfield with daylight extinction & scintillation
-    if (Stars.StarfieldEnabled && RayDirection.Z > 0.005f)
+    // 2. Deterministic procedural Starfield (Cube-face 3x3 angular PSF — zero popping under camera rotation!)
+    if (Stars.StarfieldEnabled && RayDirection.Z > -0.02f)
     {
         const float DayFade = std::clamp(1.0f - (SunDirection.Z + 0.08f) * 5.0f, 0.0f, 1.0f);
         if (DayFade > 0.01f)
@@ -355,48 +355,88 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
             const float RotRad = Stars.CelestialRotationDegrees * Constants::DegToRadFloat;
             const float CR = std::cos(RotRad);
             const float SR = std::sin(RotRad);
-            const float RX = RayDirection.X * CR - RayDirection.Y * SR;
-            const float RY = RayDirection.X * SR + RayDirection.Y * CR;
-            const float RZ = RayDirection.Z;
+            const Mathematics::Axis3D RotDir = Mathematics::NormalizeAxis(
+                Mathematics::Axis3D{
+                    RayDirection.X * CR - RayDirection.Y * SR,
+                    RayDirection.X * SR + RayDirection.Y * CR,
+                    RayDirection.Z,
+                });
 
-            constexpr float GridScale = 175.0f;
-            const float GX = RX * GridScale;
-            const float GY = RY * GridScale;
-            const float GZ = RZ * GridScale;
-            const int32_t IX = static_cast<int32_t>(std::floor(GX));
-            const int32_t IY = static_cast<int32_t>(std::floor(GY));
-            const int32_t IZ = static_cast<int32_t>(std::floor(GZ));
-
-            const float H1 = HashInt3(IX, IY, IZ);
-            const float H2 = HashInt3(IX + 19, IY - 7, IZ + 31);
-            const float H3 = HashInt3(IX - 13, IY + 29, IZ - 5);
-            const float MagThresh = std::clamp(Stars.LimitingMagnitude / 8.5f, 0.05f, 0.98f);
-
-            if (H1 > 1.0f - 0.18f * MagThresh)
+            const float AX = std::fabs(RotDir.X);
+            const float AY = std::fabs(RotDir.Y);
+            const float AZ = std::fabs(RotDir.Z);
+            int32_t Face = 0;
+            float FU = 0.0f;
+            float FV = 0.0f;
+            if (AX >= AY && AX >= AZ)
             {
-                const float CX = static_cast<float>(IX) + 0.2f + 0.6f * H2;
-                const float CY = static_cast<float>(IY) + 0.2f + 0.6f * H3;
-                const float CZ = static_cast<float>(IZ) + 0.2f + 0.6f * std::fmod(H1 * 7.13f, 1.0f);
-                const float DX = GX - CX;
-                const float DY = GY - CY;
-                const float DZ = GZ - CZ;
-                const float Dist2 = DX * DX + DY * DY + DZ * DZ;
-                const float Rad   = 0.08f * std::clamp(Stars.PointSizeScale, 0.4f, 3.0f);
-                if (Dist2 < Rad * Rad)
+                if (RotDir.X >= 0.0f) { Face = 0; FU = -RotDir.Z / AX; FV = RotDir.Y / AX; }
+                else                  { Face = 1; FU =  RotDir.Z / AX; FV = RotDir.Y / AX; }
+            }
+            else if (AY >= AX && AY >= AZ)
+            {
+                if (RotDir.Y >= 0.0f) { Face = 2; FU = RotDir.X / AY; FV = -RotDir.Z / AY; }
+                else                  { Face = 3; FU = RotDir.X / AY; FV =  RotDir.Z / AY; }
+            }
+            else
+            {
+                if (RotDir.Z >= 0.0f) { Face = 4; FU = RotDir.X / AZ; FV =  RotDir.Y / AZ; }
+                else                  { Face = 5; FU = RotDir.X / AZ; FV = -RotDir.Y / AZ; }
+            }
+
+            constexpr int32_t GridCount = 88;
+            constexpr float   GridN     = 88.0f;
+            const int32_t CX = std::clamp(static_cast<int32_t>(std::floor((FU * 0.5f + 0.5f) * GridN)), 0, GridCount - 1);
+            const int32_t CY = std::clamp(static_cast<int32_t>(std::floor((FV * 0.5f + 0.5f) * GridN)), 0, GridCount - 1);
+
+            const float MagThresh  = std::clamp(Stars.LimitingMagnitude / 8.5f, 0.05f, 0.98f);
+            const float StarProb   = 0.22f * MagThresh;
+            const float PixelAng   = 1.25f / 540.0f;
+            const float BaseAng    = 0.00058f * std::clamp(Stars.PointSizeScale, 0.4f, 3.0f);
+            const float SigmaAng   = std::max(BaseAng, PixelAng * 0.56f);
+            const float EnergyNorm = std::clamp((BaseAng * BaseAng) / (SigmaAng * SigmaAng), 0.16f, 1.0f);
+            const float AltFade    = std::clamp((RayDirection.Z + 0.01f) * 4.5f, 0.0f, 1.0f);
+
+            for (int32_t DY = -1; DY <= 1; ++DY)
+            {
+                const int32_t NY = CY + DY;
+                if (NY < 0 || NY >= GridCount) continue;
+                for (int32_t DX = -1; DX <= 1; ++DX)
                 {
-                    const float Falloff = std::exp(-Dist2 / (Rad * Rad * 0.35f));
-                    const float Twinkle = Stars.ScintillationEnabled
-                        ? (1.0f - (Stars.ScintillationDepthPercent * 0.008f) *
-                              (0.5f + 0.5f * std::sin(SimulationSeconds * Stars.ScintillationRateHertz * 5.0f + H2 * 40.0f)))
-                        : 1.0f;
-                    const float AltFade = std::clamp(RayDirection.Z * 4.0f, 0.0f, 1.0f);
-                    const float Intensity = (0.45f + 1.55f * H3 * H3) * Stars.BrightnessMultiplier * DayFade * Twinkle * Falloff * AltFade;
-                    const float TempR = 0.78f + 0.42f * H2;
-                    const float TempG = 0.88f + 0.12f * H2;
-                    const float TempB = 1.20f - 0.35f * H2;
-                    Out.R += TempR * Intensity;
-                    Out.G += TempG * Intensity;
-                    Out.B += TempB * Intensity;
+                    const int32_t NX = CX + DX;
+                    if (NX < 0 || NX >= GridCount) continue;
+
+                    const float H1 = HashInt3(Face * 131 + NX, NY, 17);
+                    if (H1 <= 1.0f - StarProb) continue;
+
+                    const float H2 = HashInt3(Face * 131 + NX + 19, NY - 7, 31);
+                    const float H3 = HashInt3(Face * 131 + NX - 13, NY + 29, 53);
+                    const float SU = ((static_cast<float>(NX) + 0.20f + 0.60f * H2) / GridN) * 2.0f - 1.0f;
+                    const float SV = ((static_cast<float>(NY) + 0.20f + 0.60f * H3) / GridN) * 2.0f - 1.0f;
+
+                    Mathematics::Axis3D StarDir{};
+                    if      (Face == 0) StarDir = Mathematics::NormalizeAxis({  1.0f,  SV, -SU });
+                    else if (Face == 1) StarDir = Mathematics::NormalizeAxis({ -1.0f,  SV,  SU });
+                    else if (Face == 2) StarDir = Mathematics::NormalizeAxis({  SU,  1.0f, -SV });
+                    else if (Face == 3) StarDir = Mathematics::NormalizeAxis({  SU, -1.0f,  SV });
+                    else if (Face == 4) StarDir = Mathematics::NormalizeAxis({  SU,  SV,  1.0f });
+                    else                StarDir = Mathematics::NormalizeAxis({  SU, -SV, -1.0f });
+
+                    const float Chord = Mathematics::EvaluateLength(RotDir - StarDir);
+                    if (Chord < SigmaAng * 3.4f)
+                    {
+                        const float NormR   = Chord / SigmaAng;
+                        const float Falloff = std::exp(-0.5f * NormR * NormR);
+                        const float Twinkle = Stars.ScintillationEnabled
+                            ? (1.0f - (Stars.ScintillationDepthPercent * 0.008f) *
+                                  (0.5f + 0.5f * std::sin(SimulationSeconds * Stars.ScintillationRateHertz * 5.0f + H2 * 40.0f)))
+                            : 1.0f;
+                        const float MagRank   = std::clamp((H1 - (1.0f - StarProb)) / std::max(1.0e-4f, StarProb), 0.0f, 1.0f);
+                        const float Intensity = (0.35f + 2.25f * MagRank * MagRank) * Stars.BrightnessMultiplier * DayFade * Twinkle * Falloff * AltFade * EnergyNorm;
+                        Out.R += (0.78f + 0.42f * H2) * Intensity;
+                        Out.G += (0.88f + 0.12f * H2) * Intensity;
+                        Out.B += (1.20f - 0.35f * H2) * Intensity;
+                    }
                 }
             }
         }

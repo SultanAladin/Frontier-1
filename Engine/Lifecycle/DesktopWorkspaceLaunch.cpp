@@ -51,8 +51,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <fstream>
+#include <memory>
 #include <string>
+
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 #include <vector>
 
 namespace Frontier::Lifecycle
@@ -259,6 +265,33 @@ int LaunchDesktopWorkspace(
     const std::filesystem::path&  RepositoryRootPath,
     const std::filesystem::path&  CompiledShaderDir)
 {
+    std::set_terminate([]()
+    {
+        std::fprintf(stderr, "[FrontierHost] Unhandled C++ terminate invoked.\n");
+        std::fflush(stderr);
+        if (std::FILE* Log = std::fopen("FrontierCrash.log", "a"))
+        {
+            std::fprintf(Log, "[FrontierHost] Unhandled C++ terminate invoked.\n");
+            std::fclose(Log);
+        }
+        std::abort();
+    });
+#if defined(_WIN32)
+    SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* Info) -> LONG
+    {
+        const unsigned long Code = (Info && Info->ExceptionRecord) ? Info->ExceptionRecord->ExceptionCode : 0ul;
+        const void* Addr = (Info && Info->ExceptionRecord) ? Info->ExceptionRecord->ExceptionAddress : nullptr;
+        std::fprintf(stderr, "[FrontierHost] Windows unhandled exception 0x%08lX at %p\n", Code, Addr);
+        std::fflush(stderr);
+        if (std::FILE* Log = std::fopen("FrontierCrash.log", "a"))
+        {
+            std::fprintf(Log, "[FrontierHost] Windows unhandled exception 0x%08lX at %p\n", Code, Addr);
+            std::fclose(Log);
+        }
+        return EXCEPTION_EXECUTE_HANDLER;
+    });
+#endif
+
     Configuration::EngineConfigurationDescriptor BaseDesc =
         InitialOptions.DefaultLaunchMode == Configuration::HostLaunchMode::StandaloneWorkspace
             ? Configuration::EngineConfiguration::ConstructStandaloneUVDefault()
@@ -369,6 +402,12 @@ int LaunchDesktopWorkspace(
             InitialOptions.OpenWorldEditor    = false;
             InitialOptions.OpenProjectBrowser = false;
             InitialOptions.WindowTitle        = "Frontier ForceField";
+        }
+        else if (Arg == "--standalone-fracture" || Arg == "--standalone=fracture" || Arg == "--workspace=fracture" || Arg == "--fracture")
+        {
+            InitialOptions.OpenWorldEditor    = false;
+            InitialOptions.OpenProjectBrowser = false;
+            InitialOptions.WindowTitle        = "Frontier Fracture";
         }
         else if (Arg == "--standalone-fluid" || Arg == "--standalone=fluid" || Arg == "--workspace=fluid" || Arg == "--fluid")
         {
@@ -617,44 +656,51 @@ int LaunchDesktopWorkspace(
         }
     }
 
-    Workspaces::UVWorkspaceHost           UVHost {};
-    Workspaces::PatternStampWorkspaceHost PatternHost(Workspaces::PatternStampWorkspaceMode::Pattern);
-    Workspaces::PatternStampWorkspaceHost StampHost(Workspaces::PatternStampWorkspaceMode::Stamp);
-    Workspaces::BakingWorkspaceHost       BakingHost {};
+    std::unique_ptr<Workspaces::UVWorkspaceHost>           UVHostPtr;
+    std::unique_ptr<Workspaces::PatternStampWorkspaceHost> PatternHostPtr;
+    std::unique_ptr<Workspaces::PatternStampWorkspaceHost> StampHostPtr;
+    std::unique_ptr<Workspaces::BakingWorkspaceHost>       BakingHostPtr;
 
-    Components::HeadlessWorkspaceDockContainer StandaloneDock {};
-    Components::HeadlessWorkspaceDockContainer PatternDock {};
-    Components::HeadlessWorkspaceDockContainer StampDock {};
-    Components::HeadlessWorkspaceDockContainer BakingDock {};
-    ControlCentrePanel                         StandaloneControlCentre {};
-    Input::InputExtension                      InputParticipant {};
+    auto StandaloneDockPtr          = std::make_unique<Components::HeadlessWorkspaceDockContainer>();
+    auto PatternDockPtr             = std::make_unique<Components::HeadlessWorkspaceDockContainer>();
+    auto StampDockPtr               = std::make_unique<Components::HeadlessWorkspaceDockContainer>();
+    auto BakingDockPtr              = std::make_unique<Components::HeadlessWorkspaceDockContainer>();
+    auto StandaloneControlCentrePtr = std::make_unique<ControlCentrePanel>();
+    auto InputParticipantPtr        = std::make_unique<Input::InputExtension>();
+
+    auto& StandaloneDock          = *StandaloneDockPtr;
+    auto& PatternDock             = *PatternDockPtr;
+    auto& StampDock               = *StampDockPtr;
+    auto& BakingDock              = *BakingDockPtr;
+    auto& StandaloneControlCentre = *StandaloneControlCentrePtr;
+    auto& InputParticipant        = *InputParticipantPtr;
     InputParticipant.Initialize();
 
 #if FRONTIER_EDITOR_ENABLED
-    Workspaces::MaterialWorkspaceHost                  MaterialHost {};
-    Workspaces::ParticleWorkspaceHost                  ParticleHost {};
-    Workspaces::Fracture::FractureWorkspaceHost        FractureHost {};
-    Workspaces::FluidWorkspaceHost                     FluidHost {};
-    Workspaces::SketcherWorkspaceHost                  SketcherHost {};
-    Components::HeadlessWorkspaceDockContainer         MaterialDock {};
-    Components::HeadlessWorkspaceDockContainer         ForceFieldDock {};
-    Components::HeadlessWorkspaceDockContainer         FluidDock {};
-    Components::HeadlessWorkspaceDockContainer         SketcherDock {};
-    Lifecycle::EditorLifecycle                         EditorLoop {};
-    Editor::Explorer::ContentBrowser                   StandaloneBrowser {};
-    Editor::Explorer::ContentBrowser                   PatternBrowser {};
-    Editor::Explorer::ContentBrowser                   StampBrowser {};
-    Editor::Explorer::ContentBrowser                   BakingBrowser {};
-    Editor::Explorer::ContentBrowser                   MaterialBrowser {};
-    Editor::Explorer::ContentBrowser                   ParticleBrowser {};
-    Editor::Explorer::ContentBrowser                   FractureBrowser {};
-    Editor::Explorer::ContentBrowser                   FluidBrowser {};
-    Editor::Explorer::ContentBrowser                   SketcherBrowser {};
-    Editor::Explorer::ProjectBrowser                   HostProjectBrowser {};
-    OutlinerPanel                                      ForceOutliner {};
-    ViewportPanel                                      ForceViewport {};
-    InspectorPanel                                     ForceInspector {};
-    Editor::Simulation::VectorFieldViewportSession ForceSession {};
+    std::unique_ptr<Workspaces::MaterialWorkspaceHost>           MaterialHostPtr;
+    std::unique_ptr<Workspaces::ParticleWorkspaceHost>           ParticleHostPtr;
+    std::unique_ptr<Workspaces::Fracture::FractureWorkspaceHost> FractureHostPtr;
+    std::unique_ptr<Workspaces::FluidWorkspaceHost>              FluidHostPtr;
+    std::unique_ptr<Workspaces::SketcherWorkspaceHost>           SketcherHostPtr;
+    std::unique_ptr<Components::HeadlessWorkspaceDockContainer>  MaterialDockPtr;
+    std::unique_ptr<Components::HeadlessWorkspaceDockContainer>  ForceFieldDockPtr;
+    std::unique_ptr<Components::HeadlessWorkspaceDockContainer>  FluidDockPtr;
+    std::unique_ptr<Components::HeadlessWorkspaceDockContainer>  SketcherDockPtr;
+    std::unique_ptr<Lifecycle::EditorLifecycle>                  EditorLoopPtr;
+    std::unique_ptr<Editor::Explorer::ContentBrowser>            StandaloneBrowserPtr;
+    std::unique_ptr<Editor::Explorer::ContentBrowser>            PatternBrowserPtr;
+    std::unique_ptr<Editor::Explorer::ContentBrowser>            StampBrowserPtr;
+    std::unique_ptr<Editor::Explorer::ContentBrowser>            BakingBrowserPtr;
+    std::unique_ptr<Editor::Explorer::ContentBrowser>            MaterialBrowserPtr;
+    std::unique_ptr<Editor::Explorer::ContentBrowser>            ParticleBrowserPtr;
+    std::unique_ptr<Editor::Explorer::ContentBrowser>            FractureBrowserPtr;
+    std::unique_ptr<Editor::Explorer::ContentBrowser>            FluidBrowserPtr;
+    std::unique_ptr<Editor::Explorer::ContentBrowser>            SketcherBrowserPtr;
+    std::unique_ptr<Editor::Explorer::ProjectBrowser>            HostProjectBrowserPtr;
+    std::unique_ptr<OutlinerPanel>                               ForceOutlinerPtr;
+    std::unique_ptr<ViewportPanel>                               ForceViewportPtr;
+    std::unique_ptr<InspectorPanel>                              ForceInspectorPtr;
+    std::unique_ptr<Editor::Simulation::VectorFieldViewportSession> ForceSessionPtr;
     double                                             LastFrameDtSeconds        = 1.0 / 60.0;
     float                                              LastHostUiScale           = 1.0f;
     bool                                               EditorStackReady          = false;
@@ -690,18 +736,22 @@ int LaunchDesktopWorkspace(
         {
             return;
         }
-        HostProjectBrowser.AttachVulkanWorldRenderer(&DeviceInterchange, CompiledShaderDir);
-        HostProjectBrowser.InitializeDefaultCollection(
+        if (!HostProjectBrowserPtr)
+        {
+            HostProjectBrowserPtr = std::make_unique<Editor::Explorer::ProjectBrowser>();
+        }
+        HostProjectBrowserPtr->AttachVulkanWorldRenderer(&DeviceInterchange, CompiledShaderDir);
+        HostProjectBrowserPtr->InitializeDefaultCollection(
             RepositoryRootPath / "Projects",
             RepositoryRootPath,
             CompiledShaderDir.parent_path());
         if (InitialOptions.PreviewReaderOnStart)
         {
-            HostProjectBrowser.ActivateEntryByIndex(0);
+            HostProjectBrowserPtr->ActivateEntryByIndex(0);
         }
         if (InitialOptions.OpenNewProjectModal)
         {
-            HostProjectBrowser.OpenNewProjectSheet("AeroGallery", RepositoryRootPath / "Projects");
+            HostProjectBrowserPtr->OpenNewProjectSheet("AeroGallery", RepositoryRootPath / "Projects");
         }
         ProjectBrowserInitialized = true;
     };
@@ -710,6 +760,10 @@ int LaunchDesktopWorkspace(
     {
         if (!EditorStackReady)
         {
+            if (!EditorLoopPtr)
+            {
+                EditorLoopPtr = std::make_unique<Lifecycle::EditorLifecycle>();
+            }
             Lifecycle::EditorStartupConfiguration EditorCfg {};
             EditorCfg.WindowDescriptor = Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow(
                 InitialOptions.WindowTitle, InitialOptions.InitialWidthPx, InitialOptions.InitialHeightPx);
@@ -718,18 +772,18 @@ int LaunchDesktopWorkspace(
             EditorCfg.PopulateShowcaseScene   = true;
             EditorCfg.VulkanDevice            = &DeviceInterchange;
             EditorCfg.CompiledShaderDirectory = CompiledShaderDir;
-            if (!EditorLoop.Initialize(EditorCfg))
+            if (!EditorLoopPtr->Initialize(EditorCfg))
             {
                 std::fprintf(stderr, "[FrontierHost] EditorLifecycle initialization failed.\n");
                 return false;
             }
-            EditorLoop.AssignReturnToProjectBrowserCallback(
+            EditorLoopPtr->AssignReturnToProjectBrowserCallback(
                 [&]()
                 {
                     EnsureProjectBrowserReady();
                     CurrentSurface = ActiveHostSurface::ProjectBrowserSurface;
                 });
-            auto& EditorBrowserPanel = EditorLoop.AccessContentBrowser().AccessPanel();
+            auto& EditorBrowserPanel = EditorLoopPtr->AccessContentBrowser().AccessPanel();
             EditorBrowserPanel.ConfigureShelfExtent(
                 InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
                 true);
@@ -738,7 +792,7 @@ int LaunchDesktopWorkspace(
         }
         if (!ProjectTitle.empty())
         {
-            EditorLoop.ConfigureActiveProjectTitle(ProjectTitle);
+            EditorLoopPtr->ConfigureActiveProjectTitle(ProjectTitle);
         }
         return true;
     };
@@ -752,9 +806,11 @@ int LaunchDesktopWorkspace(
         EnsureSharedControlCentreReady();
         if (!UvHostReady)
         {
-            UVHost.ConfigureLaunchPolicy(EngineConfig);
-            (void)UVHost.AccessSession().InitializeGPUSolvers(&DeviceInterchange, CompiledShaderDir);
-            (void)UVHost.AttachVulkanRasterizer(&UVRasterizer);
+            if (!UVHostPtr) UVHostPtr = std::make_unique<Workspaces::UVWorkspaceHost>();
+            if (!StandaloneBrowserPtr) StandaloneBrowserPtr = std::make_unique<Editor::Explorer::ContentBrowser>();
+            UVHostPtr->ConfigureLaunchPolicy(EngineConfig);
+            (void)UVHostPtr->AccessSession().InitializeGPUSolvers(&DeviceInterchange, CompiledShaderDir);
+            (void)UVHostPtr->AttachVulkanRasterizer(&UVRasterizer);
 
             ThemeRepository ThemeRepo {};
             (void)StandaloneDock.Initialize(
@@ -763,13 +819,13 @@ int LaunchDesktopWorkspace(
             Components::ConfigureImGuiWorkspaceStyle(StandaloneDock.ActiveTabMetrics());
             Components::ConfigureImGuiWorkspaceTheme(StandaloneDock.ActiveTabMetrics(), ThemeRepo);
 
-            StandaloneBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
-            UVHost.AttachContentBrowser(&StandaloneBrowser);
-            StandaloneBrowser.AccessPanel().ConfigureShelfExtent(
+            StandaloneBrowserPtr->AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            UVHostPtr->AttachContentBrowser(StandaloneBrowserPtr.get());
+            StandaloneBrowserPtr->AccessPanel().ConfigureShelfExtent(
                 InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
                 true);
-            (void)StandaloneBrowser.AccessPanel().ActivateCategory(ContentCategory::Colours);
-            UVHost.RegisterDockPanes(StandaloneDock);
+            (void)StandaloneBrowserPtr->AccessPanel().ActivateCategory(ContentCategory::Colours);
+            UVHostPtr->RegisterDockPanes(StandaloneDock);
             UvHostReady = true;
         }
         const std::filesystem::path PathToLoad = GeometryPath.empty() ? InitialOptions.StartupImportPath : GeometryPath;
@@ -779,7 +835,7 @@ int LaunchDesktopWorkspace(
             const std::string Ext = PathToLoad.extension().string();
             if (Ext == ".obj" || Ext == ".OBJ" || Ext == ".GeometrySpace" || Ext == ".geometryspace")
             {
-                (void)UVHost.IntakeExternalFileDrop(PathToLoad, ImportDiag);
+                (void)UVHostPtr->IntakeExternalFileDrop(PathToLoad, ImportDiag);
             }
         }
         return true;
@@ -794,9 +850,11 @@ int LaunchDesktopWorkspace(
         EnsureSharedControlCentreReady();
         if (!PatternHostReady)
         {
-            PatternHost.ConfigureLaunchPolicy(EngineConfig);
-            PatternHost.ConfigureRepositoryRoot(RepositoryRootPath);
-            PatternHost.AttachVulkanRasterizer(&VectorRasterizer);
+            if (!PatternHostPtr) PatternHostPtr = std::make_unique<Workspaces::PatternStampWorkspaceHost>(Workspaces::PatternStampWorkspaceMode::Pattern);
+            if (!PatternBrowserPtr) PatternBrowserPtr = std::make_unique<Editor::Explorer::ContentBrowser>();
+            PatternHostPtr->ConfigureLaunchPolicy(EngineConfig);
+            PatternHostPtr->ConfigureRepositoryRoot(RepositoryRootPath);
+            PatternHostPtr->AttachVulkanRasterizer(&VectorRasterizer);
 
             ThemeRepository ThemeRepo {};
             (void)PatternDock.Initialize(
@@ -805,13 +863,13 @@ int LaunchDesktopWorkspace(
             Components::ConfigureImGuiWorkspaceStyle(PatternDock.ActiveTabMetrics());
             Components::ConfigureImGuiWorkspaceTheme(PatternDock.ActiveTabMetrics(), ThemeRepo);
 
-            PatternBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
-            PatternHost.AttachContentBrowser(&PatternBrowser);
-            PatternBrowser.AccessPanel().ConfigureShelfExtent(
+            PatternBrowserPtr->AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            PatternHostPtr->AttachContentBrowser(PatternBrowserPtr.get());
+            PatternBrowserPtr->AccessPanel().ConfigureShelfExtent(
                 InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
                 true);
-            (void)PatternBrowser.AccessPanel().ActivateCategory(ContentCategory::Vectors);
-            PatternHost.RegisterDockPanes(PatternDock);
+            (void)PatternBrowserPtr->AccessPanel().ActivateCategory(ContentCategory::Vectors);
+            PatternHostPtr->RegisterDockPanes(PatternDock);
             PatternHostReady = true;
         }
         const std::filesystem::path PathToLoad = VectorPath.empty() ? InitialOptions.StartupImportPath : VectorPath;
@@ -821,7 +879,7 @@ int LaunchDesktopWorkspace(
             const std::string Ext = PathToLoad.extension().string();
             if (Ext == ".VectorSpace" || Ext == ".vectorspace" || Ext == ".svg" || Ext == ".SVG")
             {
-                (void)PatternHost.IntakeExternalFileDrop(PathToLoad, ImportDiag);
+                (void)PatternHostPtr->IntakeExternalFileDrop(PathToLoad, ImportDiag);
             }
         }
         return true;
@@ -836,9 +894,11 @@ int LaunchDesktopWorkspace(
         EnsureSharedControlCentreReady();
         if (!StampHostReady)
         {
-            StampHost.ConfigureLaunchPolicy(EngineConfig);
-            StampHost.ConfigureRepositoryRoot(RepositoryRootPath);
-            StampHost.AttachVulkanRasterizer(&VectorRasterizer);
+            if (!StampHostPtr) StampHostPtr = std::make_unique<Workspaces::PatternStampWorkspaceHost>(Workspaces::PatternStampWorkspaceMode::Stamp);
+            if (!StampBrowserPtr) StampBrowserPtr = std::make_unique<Editor::Explorer::ContentBrowser>();
+            StampHostPtr->ConfigureLaunchPolicy(EngineConfig);
+            StampHostPtr->ConfigureRepositoryRoot(RepositoryRootPath);
+            StampHostPtr->AttachVulkanRasterizer(&VectorRasterizer);
 
             ThemeRepository ThemeRepo {};
             (void)StampDock.Initialize(
@@ -847,13 +907,13 @@ int LaunchDesktopWorkspace(
             Components::ConfigureImGuiWorkspaceStyle(StampDock.ActiveTabMetrics());
             Components::ConfigureImGuiWorkspaceTheme(StampDock.ActiveTabMetrics(), ThemeRepo);
 
-            StampBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
-            StampHost.AttachContentBrowser(&StampBrowser);
-            StampBrowser.AccessPanel().ConfigureShelfExtent(
+            StampBrowserPtr->AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            StampHostPtr->AttachContentBrowser(StampBrowserPtr.get());
+            StampBrowserPtr->AccessPanel().ConfigureShelfExtent(
                 InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
                 true);
-            (void)StampBrowser.AccessPanel().ActivateCategory(ContentCategory::Vectors);
-            StampHost.RegisterDockPanes(StampDock);
+            (void)StampBrowserPtr->AccessPanel().ActivateCategory(ContentCategory::Vectors);
+            StampHostPtr->RegisterDockPanes(StampDock);
             StampHostReady = true;
         }
         const std::filesystem::path PathToLoad = VectorPath.empty() ? InitialOptions.StartupImportPath : VectorPath;
@@ -863,7 +923,7 @@ int LaunchDesktopWorkspace(
             const std::string Ext = PathToLoad.extension().string();
             if (Ext == ".VectorSpace" || Ext == ".vectorspace" || Ext == ".svg" || Ext == ".SVG")
             {
-                (void)StampHost.IntakeExternalFileDrop(PathToLoad, ImportDiag);
+                (void)StampHostPtr->IntakeExternalFileDrop(PathToLoad, ImportDiag);
             }
         }
         return true;
@@ -874,8 +934,10 @@ int LaunchDesktopWorkspace(
         EnsureSharedControlCentreReady();
         if (!BakingHostReady)
         {
-            BakingHost.ConfigureLaunchPolicy(EngineConfig);
-            BakingHost.AttachVulkanDevice(&DeviceInterchange, CompiledShaderDir);
+            if (!BakingHostPtr) BakingHostPtr = std::make_unique<Workspaces::BakingWorkspaceHost>();
+            if (!BakingBrowserPtr) BakingBrowserPtr = std::make_unique<Editor::Explorer::ContentBrowser>();
+            BakingHostPtr->ConfigureLaunchPolicy(EngineConfig);
+            BakingHostPtr->AttachVulkanDevice(&DeviceInterchange, CompiledShaderDir);
 
             ThemeRepository ThemeRepo {};
             (void)BakingDock.Initialize(
@@ -884,13 +946,13 @@ int LaunchDesktopWorkspace(
             Components::ConfigureImGuiWorkspaceStyle(BakingDock.ActiveTabMetrics());
             Components::ConfigureImGuiWorkspaceTheme(BakingDock.ActiveTabMetrics(), ThemeRepo);
 
-            BakingBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
-            BakingHost.AttachContentBrowser(&BakingBrowser);
-            BakingBrowser.AccessPanel().ConfigureShelfExtent(
+            BakingBrowserPtr->AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            BakingHostPtr->AttachContentBrowser(BakingBrowserPtr.get());
+            BakingBrowserPtr->AccessPanel().ConfigureShelfExtent(
                 InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
                 true);
-            (void)BakingBrowser.AccessPanel().ActivateCategory(ContentCategory::Colours);
-            BakingHost.RegisterDockPanes(BakingDock);
+            (void)BakingBrowserPtr->AccessPanel().ActivateCategory(ContentCategory::Colours);
+            BakingHostPtr->RegisterDockPanes(BakingDock);
             BakingHostReady = true;
         }
         const std::filesystem::path PathToLoad = MeshPath.empty() ? InitialOptions.StartupImportPath : MeshPath;
@@ -900,7 +962,7 @@ int LaunchDesktopWorkspace(
             const std::string Ext = PathToLoad.extension().string();
             if (Ext == ".obj" || Ext == ".OBJ" || Ext == ".stl" || Ext == ".STL")
             {
-                (void)BakingHost.IntakeExternalFileDrop(PathToLoad.string(), false, ImportDiag);
+                (void)BakingHostPtr->IntakeExternalFileDrop(PathToLoad.string(), false, ImportDiag);
             }
         }
         return true;
@@ -911,23 +973,26 @@ int LaunchDesktopWorkspace(
         EnsureSharedControlCentreReady();
         if (!MaterialHostReady)
         {
-            MaterialHost.ConfigureLaunchPolicy(EngineConfig);
-            (void)MaterialHost.AttachVulkanDevice(&DeviceInterchange, CompiledShaderDir);
+            if (!MaterialHostPtr) MaterialHostPtr = std::make_unique<Workspaces::MaterialWorkspaceHost>();
+            if (!MaterialDockPtr) MaterialDockPtr = std::make_unique<Components::HeadlessWorkspaceDockContainer>();
+            if (!MaterialBrowserPtr) MaterialBrowserPtr = std::make_unique<Editor::Explorer::ContentBrowser>();
+            MaterialHostPtr->ConfigureLaunchPolicy(EngineConfig);
+            (void)MaterialHostPtr->AttachVulkanDevice(&DeviceInterchange, CompiledShaderDir);
 
             ThemeRepository ThemeRepo {};
-            (void)MaterialDock.Initialize(
+            (void)MaterialDockPtr->Initialize(
                 Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow(
                     "Frontier Material", InitialOptions.InitialWidthPx, InitialOptions.InitialHeightPx));
-            Components::ConfigureImGuiWorkspaceStyle(MaterialDock.ActiveTabMetrics());
-            Components::ConfigureImGuiWorkspaceTheme(MaterialDock.ActiveTabMetrics(), ThemeRepo);
+            Components::ConfigureImGuiWorkspaceStyle(MaterialDockPtr->ActiveTabMetrics());
+            Components::ConfigureImGuiWorkspaceTheme(MaterialDockPtr->ActiveTabMetrics(), ThemeRepo);
 
-            MaterialBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
-            MaterialBrowser.AccessPanel().ConfigureOriginFilter(ContentOriginFilter::Project);
-            MaterialHost.AttachContentBrowser(&MaterialBrowser);
-            MaterialBrowser.AccessPanel().ConfigureShelfExtent(
+            MaterialBrowserPtr->AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            MaterialBrowserPtr->AccessPanel().ConfigureOriginFilter(ContentOriginFilter::Project);
+            MaterialHostPtr->AttachContentBrowser(MaterialBrowserPtr.get());
+            MaterialBrowserPtr->AccessPanel().ConfigureShelfExtent(
                 InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
                 true);
-            MaterialHost.RegisterDockPanes(MaterialDock);
+            MaterialHostPtr->RegisterDockPanes(*MaterialDockPtr);
             MaterialHostReady = true;
         }
         return true;
@@ -938,16 +1003,18 @@ int LaunchDesktopWorkspace(
         EnsureSharedControlCentreReady();
         if (!ParticleHostReady)
         {
+            if (!ParticleHostPtr) ParticleHostPtr = std::make_unique<Workspaces::ParticleWorkspaceHost>();
+            if (!ParticleBrowserPtr) ParticleBrowserPtr = std::make_unique<Editor::Explorer::ContentBrowser>();
             ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
-            ParticleBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
-            ParticleBrowser.AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::Particle);
-            ParticleBrowser.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
-            (void)ParticleBrowser.AccessPanel().ActivateCategory(ContentCategory::Colours);
-            ParticleBrowser.AccessPanel().ConfigureColourCollectionScope(ColourCollectionScope::Ramps);
-            ParticleHost.AttachContentBrowserPanel(&ParticleBrowser.AccessPanel());
+            ParticleBrowserPtr->AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            ParticleBrowserPtr->AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::Particle);
+            ParticleBrowserPtr->AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
+            (void)ParticleBrowserPtr->AccessPanel().ActivateCategory(ContentCategory::Colours);
+            ParticleBrowserPtr->AccessPanel().ConfigureColourCollectionScope(ColourCollectionScope::Ramps);
+            ParticleHostPtr->AttachContentBrowserPanel(&ParticleBrowserPtr->AccessPanel());
 
             std::string ParticleVkDiag {};
-            (void)ParticleHost.AccessSession().VulkanExecutor.Initialize(CompiledShaderDir, ParticleVkDiag);
+            (void)ParticleHostPtr->AccessSession().VulkanExecutor.Initialize(CompiledShaderDir, ParticleVkDiag);
             ParticleHostReady = true;
         }
         return true;
@@ -958,12 +1025,14 @@ int LaunchDesktopWorkspace(
         EnsureSharedControlCentreReady();
         if (!FractureHostReady)
         {
+            if (!FractureHostPtr) FractureHostPtr = std::make_unique<Workspaces::Fracture::FractureWorkspaceHost>();
+            if (!FractureBrowserPtr) FractureBrowserPtr = std::make_unique<Editor::Explorer::ContentBrowser>();
             ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
-            FractureBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
-            FractureBrowser.AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::Fracture);
-            FractureBrowser.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
-            FractureHost.AttachContentBrowserPanel(&FractureBrowser.AccessPanel());
-            FractureHost.AttachVulkanDevice(DeviceInterchange, CompiledShaderDir);
+            FractureBrowserPtr->AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            FractureBrowserPtr->AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::Fracture);
+            FractureBrowserPtr->AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
+            FractureHostPtr->AttachContentBrowserPanel(&FractureBrowserPtr->AccessPanel());
+            FractureHostPtr->AttachVulkanDevice(DeviceInterchange, CompiledShaderDir);
             FractureHostReady = true;
         }
         return true;
@@ -974,20 +1043,23 @@ int LaunchDesktopWorkspace(
         EnsureSharedControlCentreReady();
         if (!FluidHostReady)
         {
+            if (!FluidHostPtr) FluidHostPtr = std::make_unique<Workspaces::FluidWorkspaceHost>();
+            if (!FluidDockPtr) FluidDockPtr = std::make_unique<Components::HeadlessWorkspaceDockContainer>();
+            if (!FluidBrowserPtr) FluidBrowserPtr = std::make_unique<Editor::Explorer::ContentBrowser>();
             ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
-            FluidBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
-            FluidBrowser.AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::Fluid);
-            FluidBrowser.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
-            FluidHost.AttachContentBrowserPanel(&FluidBrowser.AccessPanel());
+            FluidBrowserPtr->AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            FluidBrowserPtr->AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::Fluid);
+            FluidBrowserPtr->AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
+            FluidHostPtr->AttachContentBrowserPanel(&FluidBrowserPtr->AccessPanel());
 
-            (void)FluidDock.Initialize(
+            (void)FluidDockPtr->Initialize(
                 Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow(
                     "Frontier Fluid", InitialOptions.InitialWidthPx, InitialOptions.InitialHeightPx));
-            Components::ConfigureImGuiWorkspaceStyle(FluidDock.ActiveTabMetrics());
+            Components::ConfigureImGuiWorkspaceStyle(FluidDockPtr->ActiveTabMetrics());
             Components::ConfigureImGuiWorkspaceTheme(
-                FluidDock.ActiveTabMetrics(),
+                FluidDockPtr->ActiveTabMetrics(),
                 StandaloneControlCentre.QueryThemeRepository());
-            FluidHost.RegisterDockPanes(FluidDock);
+            FluidHostPtr->RegisterDockPanes(*FluidDockPtr);
             FluidHostReady = true;
         }
         return true;
@@ -998,33 +1070,36 @@ int LaunchDesktopWorkspace(
         EnsureSharedControlCentreReady();
         if (!SketcherHostReady)
         {
+            if (!SketcherHostPtr) SketcherHostPtr = std::make_unique<Workspaces::SketcherWorkspaceHost>();
+            if (!SketcherDockPtr) SketcherDockPtr = std::make_unique<Components::HeadlessWorkspaceDockContainer>();
+            if (!SketcherBrowserPtr) SketcherBrowserPtr = std::make_unique<Editor::Explorer::ContentBrowser>();
             ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
-            SketcherBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
-            SketcherBrowser.AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::GeometryCad);
-            SketcherBrowser.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
-            SketcherHost.AttachContentBrowserPanel(&SketcherBrowser.AccessPanel());
+            SketcherBrowserPtr->AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            SketcherBrowserPtr->AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::GeometryCad);
+            SketcherBrowserPtr->AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
+            SketcherHostPtr->AttachContentBrowserPanel(&SketcherBrowserPtr->AccessPanel());
 
-            (void)SketcherDock.Initialize(
+            (void)SketcherDockPtr->Initialize(
                 Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow(
                     "Frontier Parametric Sketcher", InitialOptions.InitialWidthPx, InitialOptions.InitialHeightPx));
-            Components::ConfigureImGuiWorkspaceStyle(SketcherDock.ActiveTabMetrics());
+            Components::ConfigureImGuiWorkspaceStyle(SketcherDockPtr->ActiveTabMetrics());
             Components::ConfigureImGuiWorkspaceTheme(
-                SketcherDock.ActiveTabMetrics(),
+                SketcherDockPtr->ActiveTabMetrics(),
                 StandaloneControlCentre.QueryThemeRepository());
 
             std::string SketcherDiag {};
             const std::string InitialDoc = InitialOptions.StartupImportPath.empty() ? std::string{} : InitialOptions.StartupImportPath.string();
-            (void)SketcherHost.Initialize(
+            (void)SketcherHostPtr->Initialize(
                 &DeviceInterchange,
                 CompiledShaderDir,
                 RepositoryRootPath / "EngineContent/Icons",
                 InitialDoc,
                 &SketcherDiag);
-            Components::ConfigureImGuiWorkspaceStyle(SketcherDock.ActiveTabMetrics());
+            Components::ConfigureImGuiWorkspaceStyle(SketcherDockPtr->ActiveTabMetrics());
             Components::ConfigureImGuiWorkspaceTheme(
-                SketcherDock.ActiveTabMetrics(),
+                SketcherDockPtr->ActiveTabMetrics(),
                 StandaloneControlCentre.QueryThemeRepository());
-            SketcherHost.RegisterDockPanes(SketcherDock);
+            SketcherHostPtr->RegisterDockPanes(*SketcherDockPtr);
             SketcherHostReady = true;
         }
         return true;
@@ -1035,12 +1110,18 @@ int LaunchDesktopWorkspace(
         EnsureSharedControlCentreReady();
         if (!ForceFieldHostReady)
         {
+            if (!ForceFieldDockPtr) ForceFieldDockPtr = std::make_unique<Components::HeadlessWorkspaceDockContainer>();
+            if (!ForceOutlinerPtr) ForceOutlinerPtr = std::make_unique<OutlinerPanel>();
+            if (!ForceViewportPtr) ForceViewportPtr = std::make_unique<ViewportPanel>();
+            if (!ForceInspectorPtr) ForceInspectorPtr = std::make_unique<InspectorPanel>();
+            if (!ForceSessionPtr) ForceSessionPtr = std::make_unique<Editor::Simulation::VectorFieldViewportSession>();
+
             std::string ForceDiag {};
             const std::filesystem::path SwiftShaderDir = RepositoryRootPath / "ExternalPackages/VulkanCompute/SwiftShader";
-            if (!ForceSession.AttachInitializedSession(
-                    ForceOutliner,
-                    ForceViewport,
-                    ForceInspector,
+            if (!ForceSessionPtr->AttachInitializedSession(
+                    *ForceOutlinerPtr,
+                    *ForceViewportPtr,
+                    *ForceInspectorPtr,
                     CompiledShaderDir,
                     SwiftShaderDir,
                     ForceDiag))
@@ -1051,7 +1132,7 @@ int LaunchDesktopWorkspace(
 
             // Populate canonical Wind Tunnel demo forces so standalone ForceField Studio opens with live 3D simulation
             using namespace SimulationSpace::ForceFields;
-            const OutlinerSlotToken WindFolder = ForceOutliner.ConstructFolder("Wind Tunnel Forces");
+            const OutlinerSlotToken WindFolder = ForceOutlinerPtr->ConstructFolder("Wind Tunnel Forces");
 
             ForceSourceRecordEntry VortexDesc {};
             VortexDesc.Label                        = "Helical Vortex Path";
@@ -1068,7 +1149,7 @@ int LaunchDesktopWorkspace(
             VortexDesc.Motion.Waypoints[0]          = { -14.0f, -6.0f, 4.5f };
             VortexDesc.Motion.Waypoints[1]          = { -3.0f, 10.0f, 8.0f };
             VortexDesc.Motion.Waypoints[2]          = { 12.0f, -4.0f, 6.0f };
-            const OutlinerSlotToken VortexToken = ForceSession.AddForceSourceEntry(VortexDesc, WindFolder);
+            const OutlinerSlotToken VortexToken = ForceSessionPtr->AddForceSourceEntry(VortexDesc, WindFolder);
 
             ForceSourceRecordEntry JetDesc {};
             JetDesc.Label         = "Cantilever Jet Plume";
@@ -1078,7 +1159,7 @@ int LaunchDesktopWorkspace(
             JetDesc.EulerDegrees  = { 0.0f, -12.0f, -145.0f };
             JetDesc.RadiusMeters  = 17.0f;
             JetDesc.Strength      = 26.0f;
-            (void)ForceSession.AddForceSourceEntry(JetDesc, WindFolder);
+            (void)ForceSessionPtr->AddForceSourceEntry(JetDesc, WindFolder);
 
             ForceSourceRecordEntry BurstDesc {};
             BurstDesc.Label                        = "Orbital Radial Burst";
@@ -1095,14 +1176,14 @@ int LaunchDesktopWorkspace(
             BurstDesc.Motion.WaypointCount         = 2u;
             BurstDesc.Motion.Waypoints[0]          = { -12.0f, 15.0f, 6.0f };
             BurstDesc.Motion.Waypoints[1]          = { -4.0f, 15.0f, 6.0f };
-            (void)ForceSession.AddForceSourceEntry(BurstDesc, WindFolder);
+            (void)ForceSessionPtr->AddForceSourceEntry(BurstDesc, WindFolder);
 
-            ForceOutliner.SelectSingle(VortexToken);
-            ForceOutliner.ConfigureFilterStripOpen(true);
-            ForceSession.ConfigureSelectedWaypointIndex(1);
+            ForceOutlinerPtr->SelectSingle(VortexToken);
+            ForceOutlinerPtr->ConfigureFilterStripOpen(true);
+            ForceSessionPtr->ConfigureSelectedWaypointIndex(1);
 
-            ForceViewport.ConfigureExecutionMode(ViewportExecutionMode::Simulate, false);
-            auto& Ov = ForceViewport.AccessForceOverlaySettings();
+            ForceViewportPtr->ConfigureExecutionMode(ViewportExecutionMode::Simulate, false);
+            auto& Ov = ForceViewportPtr->AccessForceOverlaySettings();
             Ov.Enabled                      = true;
             Ov.ShowHeatmap                  = true;
             Ov.ShowVectors                  = true;
@@ -1118,97 +1199,140 @@ int LaunchDesktopWorkspace(
             Ov.AnemometerWorldMeters        = { 1.5f, 2.0f, 5.5f };
 
             ThemeRepository ThemeRepo {};
-            (void)ForceFieldDock.Initialize(
+            (void)ForceFieldDockPtr->Initialize(
                 Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow(
                     "Frontier ForceField", InitialOptions.InitialWidthPx, InitialOptions.InitialHeightPx));
-            Components::ConfigureImGuiWorkspaceStyle(ForceFieldDock.ActiveTabMetrics());
-            Components::ConfigureImGuiWorkspaceTheme(ForceFieldDock.ActiveTabMetrics(), ThemeRepo);
+            Components::ConfigureImGuiWorkspaceStyle(ForceFieldDockPtr->ActiveTabMetrics());
+            Components::ConfigureImGuiWorkspaceTheme(ForceFieldDockPtr->ActiveTabMetrics(), ThemeRepo);
 
-            (void)ForceFieldDock.RegisterPane(Components::WorkspaceDockPaneDescriptor{
+            (void)ForceFieldDockPtr->RegisterPane(Components::WorkspaceDockPaneDescriptor{
                 "Outliner",
                 Components::DockPlacementDirection::SplitLeft,
                 0.21f,
                 Components::PaneDirectiveMask::StandardPaneDirectives,
-                [&]() { ForceOutliner.PresentInImGuiPane(LastFrameDtSeconds, LastHostUiScale); } });
-            (void)ForceFieldDock.RegisterPane(Components::WorkspaceDockPaneDescriptor{
+                [&]() { ForceOutlinerPtr->PresentInImGuiPane(LastFrameDtSeconds, LastHostUiScale); } });
+            (void)ForceFieldDockPtr->RegisterPane(Components::WorkspaceDockPaneDescriptor{
                 "Viewport",
                 Components::DockPlacementDirection::CenterTabGroup,
                 0.53f,
                 Components::PaneDirectiveMask::CentralViewportDirectives,
-                [&]() { ForceViewport.PresentInImGuiPane(LastFrameDtSeconds, LastHostUiScale); } });
-            (void)ForceFieldDock.RegisterPane(Components::WorkspaceDockPaneDescriptor{
+                [&]() { ForceViewportPtr->PresentInImGuiPane(LastFrameDtSeconds, LastHostUiScale); } });
+            (void)ForceFieldDockPtr->RegisterPane(Components::WorkspaceDockPaneDescriptor{
                 "Inspector",
                 Components::DockPlacementDirection::SplitRight,
                 0.26f,
                 Components::PaneDirectiveMask::StandardPaneDirectives,
-                [&]() { ForceInspector.PresentInImGuiPane(LastFrameDtSeconds, LastHostUiScale); } });
+                [&]() { ForceInspectorPtr->PresentInImGuiPane(LastFrameDtSeconds, LastHostUiScale); } });
 
             ForceFieldHostReady = true;
         }
         return true;
     };
 
-    HostProjectBrowser.AssignLaunchWorkspaceCallback(
-        [&](const Editor::Explorer::BrowserWorkspaceLaunchDirective& Directive)
+    auto BindProjectBrowserLaunchCallback = [&]()
+    {
+        if (!HostProjectBrowserPtr)
         {
-            if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::BakingWorkspace)
+            return;
+        }
+        HostProjectBrowserPtr->AssignLaunchWorkspaceCallback(
+            [&](const Editor::Explorer::BrowserWorkspaceLaunchDirective& Directive)
             {
-                if (EnsureBakingHostReady(Directive.SelectedFilePath))
+                if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::BakingWorkspace)
                 {
-                    CurrentSurface = ActiveHostSurface::BakingWorkspaceSurface;
+                    if (EnsureBakingHostReady(Directive.SelectedFilePath))
+                    {
+                        CurrentSurface = ActiveHostSurface::BakingWorkspaceSurface;
+                    }
                 }
-            }
-            else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::PatternWorkspace)
-            {
-                if (EnsurePatternHostReady(Directive.SelectedFilePath))
+                else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::PatternWorkspace)
                 {
-                    CurrentSurface = ActiveHostSurface::PatternWorkspaceSurface;
+                    if (EnsurePatternHostReady(Directive.SelectedFilePath))
+                    {
+                        CurrentSurface = ActiveHostSurface::PatternWorkspaceSurface;
+                    }
                 }
-            }
-            else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::StampWorkspace)
-            {
-                if (EnsureStampHostReady(Directive.SelectedFilePath))
+                else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::StampWorkspace)
                 {
-                    CurrentSurface = ActiveHostSurface::StampWorkspaceSurface;
+                    if (EnsureStampHostReady(Directive.SelectedFilePath))
+                    {
+                        CurrentSurface = ActiveHostSurface::StampWorkspaceSurface;
+                    }
                 }
-            }
-            else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::UVWorkspace)
-            {
-                if (EnsureUvHostReady(Directive.SelectedFilePath))
+                else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::UVWorkspace)
                 {
-                    CurrentSurface = ActiveHostSurface::UvWorkspaceSurface;
+                    if (EnsureUvHostReady(Directive.SelectedFilePath))
+                    {
+                        CurrentSurface = ActiveHostSurface::UvWorkspaceSurface;
+                    }
                 }
-            }
-            else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::FractureWorkspace)
-            {
-                if (EnsureFractureHostReady())
+                else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::FractureWorkspace)
                 {
-                    CurrentSurface = ActiveHostSurface::FractureWorkspaceSurface;
+                    if (EnsureFractureHostReady())
+                    {
+                        CurrentSurface = ActiveHostSurface::FractureWorkspaceSurface;
+                    }
                 }
-            }
-            else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::SketcherWorkspace)
-            {
-                if (!Directive.SelectedFilePath.empty())
+                else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::SketcherWorkspace)
                 {
-                    InitialOptions.StartupImportPath = Directive.SelectedFilePath;
+                    if (!Directive.SelectedFilePath.empty())
+                    {
+                        InitialOptions.StartupImportPath = Directive.SelectedFilePath;
+                    }
+                    if (EnsureSketcherHostReady())
+                    {
+                        CurrentSurface = ActiveHostSurface::SketcherWorkspaceSurface;
+                    }
                 }
-                if (EnsureSketcherHostReady())
+                else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::FluidWorkspace)
                 {
-                    CurrentSurface = ActiveHostSurface::SketcherWorkspaceSurface;
+                    if (EnsureFluidHostReady())
+                    {
+                        CurrentSurface = ActiveHostSurface::FluidWorkspaceSurface;
+                    }
                 }
-            }
-            else
-            {
-                if (EnsureEditorLifecycleReady(Directive.SelectedFilePath, Directive.ProjectTitle))
+                else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::MaterialWorkspace)
                 {
-                    CurrentSurface = ActiveHostSurface::WorldEditorSurface;
+                    if (EnsureMaterialHostReady())
+                    {
+                        CurrentSurface = ActiveHostSurface::MaterialWorkspaceSurface;
+                    }
                 }
-            }
-        });
+                else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::ParticleWorkspace)
+                {
+                    if (EnsureParticleHostReady())
+                    {
+                        CurrentSurface = ActiveHostSurface::ParticleWorkspaceSurface;
+                    }
+                }
+                else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::ForceFieldWorkspace)
+                {
+                    if (EnsureForceFieldHostReady())
+                    {
+                        CurrentSurface = ActiveHostSurface::ForceFieldWorkspaceSurface;
+                    }
+                }
+                else
+                {
+                    if (EnsureEditorLifecycleReady(Directive.SelectedFilePath, Directive.ProjectTitle))
+                    {
+                        CurrentSurface = ActiveHostSurface::WorldEditorSurface;
+                    }
+                }
+            });
+    };
 
     if (CurrentSurface == ActiveHostSurface::ProjectBrowserSurface)
     {
         EnsureProjectBrowserReady();
+        BindProjectBrowserLaunchCallback();
+    }
+    else
+    {
+        BindProjectBrowserLaunchCallback();
+    }
+    if (CurrentSurface == ActiveHostSurface::ProjectBrowserSurface)
+    {
     }
     else if (CurrentSurface == ActiveHostSurface::WorldEditorSurface)
     {
@@ -1299,6 +1423,14 @@ int LaunchDesktopWorkspace(
         }
     }
 #else
+    if (!UVHostPtr) UVHostPtr = std::make_unique<Workspaces::UVWorkspaceHost>();
+    if (!PatternHostPtr) PatternHostPtr = std::make_unique<Workspaces::PatternStampWorkspaceHost>(Workspaces::PatternStampWorkspaceMode::Pattern);
+    if (!StampHostPtr) StampHostPtr = std::make_unique<Workspaces::PatternStampWorkspaceHost>(Workspaces::PatternStampWorkspaceMode::Stamp);
+    if (!BakingHostPtr) BakingHostPtr = std::make_unique<Workspaces::BakingWorkspaceHost>();
+    auto& UVHost = *UVHostPtr;
+    auto& PatternHost = *PatternHostPtr;
+    auto& StampHost = *StampHostPtr;
+    auto& BakingHost = *BakingHostPtr;
     ContentBrowserPanel StandaloneBrowserPanel {};
     ThemeRepository ThemeRepo {};
     (void)StandaloneDock.Initialize(
@@ -1402,7 +1534,7 @@ int LaunchDesktopWorkspace(
         }
 
         const auto   NowTick = std::chrono::steady_clock::now();
-        const double Dt      = std::clamp(std::chrono::duration<double>(NowTick - LastTick).count(), 1.0 / 240.0, 0.050);
+        const double Dt      = std::clamp(std::chrono::duration<double>(NowTick - LastTick).count(), 1.0 / 240.0, 0.250);
         LastTick             = NowTick;
 
         uint32_t SurfaceW = InitialOptions.InitialWidthPx;
@@ -1423,9 +1555,9 @@ int LaunchDesktopWorkspace(
         SurfaceW = Extent.SurfacePixelWidth;
         SurfaceH = Extent.SurfacePixelHeight;
 #if FRONTIER_EDITOR_ENABLED
-        if (EditorStackReady)
+        if (EditorStackReady && EditorLoopPtr)
         {
-            if (auto* HostSurface = EditorLoop.AccessDockContainer().AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+            if (auto* HostSurface = EditorLoopPtr->AccessDockContainer().AccessOperatingSurface(Components::HostWindowToken{ 0u }))
             {
                 HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
             }
@@ -1458,30 +1590,30 @@ int LaunchDesktopWorkspace(
                 HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
             }
         }
-        if (MaterialHostReady)
+        if (MaterialHostReady && MaterialDockPtr)
         {
-            if (auto* HostSurface = MaterialDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+            if (auto* HostSurface = MaterialDockPtr->AccessOperatingSurface(Components::HostWindowToken{ 0u }))
             {
                 HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
             }
         }
-        if (ForceFieldHostReady)
+        if (ForceFieldHostReady && ForceFieldDockPtr)
         {
-            if (auto* HostSurface = ForceFieldDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+            if (auto* HostSurface = ForceFieldDockPtr->AccessOperatingSurface(Components::HostWindowToken{ 0u }))
             {
                 HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
             }
         }
-        if (FluidHostReady)
+        if (FluidHostReady && FluidDockPtr)
         {
-            if (auto* HostSurface = FluidDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+            if (auto* HostSurface = FluidDockPtr->AccessOperatingSurface(Components::HostWindowToken{ 0u }))
             {
                 HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
             }
         }
-        if (SketcherHostReady)
+        if (SketcherHostReady && SketcherDockPtr)
         {
-            if (auto* HostSurface = SketcherDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+            if (auto* HostSurface = SketcherDockPtr->AccessOperatingSurface(Components::HostWindowToken{ 0u }))
             {
                 HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
             }
@@ -1497,52 +1629,52 @@ int LaunchDesktopWorkspace(
 
         const auto DroppedPaths = InputParticipant.ConsumeDroppedFilePaths();
 #if FRONTIER_EDITOR_ENABLED
-        if (CurrentSurface == ActiveHostSurface::ProjectBrowserSurface)
+        if (CurrentSurface == ActiveHostSurface::ProjectBrowserSurface && HostProjectBrowserPtr)
         {
             for (const std::string& DropFile : DroppedPaths)
             {
-                (void)HostProjectBrowser.RegisterDiskPathInCollection(std::filesystem::path(DropFile), true);
+                (void)HostProjectBrowserPtr->RegisterDiskPathInCollection(std::filesystem::path(DropFile), true);
             }
         }
-        else if (CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface && BakingHostReady)
+        else if (CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface && BakingHostReady && BakingHostPtr)
         {
             for (const std::string& DropFile : DroppedPaths)
             {
                 std::string DropDiag {};
                 const bool HighTarget = Io.KeyShift;
-                (void)BakingHost.IntakeExternalFileDrop(DropFile, HighTarget, DropDiag);
+                (void)BakingHostPtr->IntakeExternalFileDrop(DropFile, HighTarget, DropDiag);
             }
         }
-        else if (CurrentSurface == ActiveHostSurface::UvWorkspaceSurface && UvHostReady)
+        else if (CurrentSurface == ActiveHostSurface::UvWorkspaceSurface && UvHostReady && UVHostPtr)
         {
             for (const std::string& DropFile : DroppedPaths)
             {
                 std::string DropDiag {};
-                (void)UVHost.IntakeExternalFileDrop(DropFile, DropDiag);
+                (void)UVHostPtr->IntakeExternalFileDrop(DropFile, DropDiag);
             }
         }
-        else if (CurrentSurface == ActiveHostSurface::PatternWorkspaceSurface && PatternHostReady)
+        else if (CurrentSurface == ActiveHostSurface::PatternWorkspaceSurface && PatternHostReady && PatternHostPtr)
         {
             for (const std::string& DropFile : DroppedPaths)
             {
                 std::string DropDiag {};
-                (void)PatternHost.IntakeExternalFileDrop(DropFile, DropDiag);
+                (void)PatternHostPtr->IntakeExternalFileDrop(DropFile, DropDiag);
             }
         }
-        else if (CurrentSurface == ActiveHostSurface::StampWorkspaceSurface && StampHostReady)
+        else if (CurrentSurface == ActiveHostSurface::StampWorkspaceSurface && StampHostReady && StampHostPtr)
         {
             for (const std::string& DropFile : DroppedPaths)
             {
                 std::string DropDiag {};
-                (void)StampHost.IntakeExternalFileDrop(DropFile, DropDiag);
+                (void)StampHostPtr->IntakeExternalFileDrop(DropFile, DropDiag);
             }
         }
-        else if (CurrentSurface == ActiveHostSurface::SketcherWorkspaceSurface && SketcherHostReady)
+        else if (CurrentSurface == ActiveHostSurface::SketcherWorkspaceSurface && SketcherHostReady && SketcherHostPtr)
         {
             for (const std::string& DropFile : DroppedPaths)
             {
                 std::string DropDiag {};
-                (void)SketcherHost.IntakeExternalFileDrop(DropFile, &DropDiag);
+                (void)SketcherHostPtr->IntakeExternalFileDrop(DropFile, &DropDiag);
             }
         }
 #else
@@ -1574,19 +1706,21 @@ int LaunchDesktopWorkspace(
 #if FRONTIER_EDITOR_ENABLED
         if (CurrentSurface == ActiveHostSurface::ProjectBrowserSurface)
         {
-            HostProjectBrowser.Render(FullBounds, Dt, 1.0f);
+            EnsureProjectBrowserReady();
+            BindProjectBrowserLaunchCallback();
+            HostProjectBrowserPtr->Render(FullBounds, Dt, 1.0f);
         }
-        else if (CurrentSurface == ActiveHostSurface::WorldEditorSurface)
+        else if (CurrentSurface == ActiveHostSurface::WorldEditorSurface && EditorLoopPtr)
         {
-            (void)EditorLoop.ExecuteExternalDesktopTick(Dt);
+            (void)EditorLoopPtr->ExecuteExternalDesktopTick(Dt);
             Input::InputExtension::AssignActiveExtension(&InputParticipant);
-            EditorLoop.PresentPrimaryEditorImGui(Dt);
+            EditorLoopPtr->PresentPrimaryEditorImGui(Dt);
         }
-        else if (CurrentSurface == ActiveHostSurface::ParticleWorkspaceSurface)
+        else if (CurrentSurface == ActiveHostSurface::ParticleWorkspaceSurface && ParticleHostPtr)
         {
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
             ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
-            ParticleHost.AccessSession().StepSimulationClock(Dt);
+            ParticleHostPtr->AccessSession().StepSimulationClock(Dt);
             PixelSpace StudioSurface(ImGui::GetForegroundDrawList(), Point2D{ 0.0f, 0.0f }, HostUiScale);
             const Point2D MouseLogical = StudioSurface.QueryMousePosition();
             ContentBrowserPointerInput PtrInput {};
@@ -1606,10 +1740,10 @@ int LaunchDesktopWorkspace(
                 FullBounds.Width / HostUiScale,
                 FullBounds.Height / HostUiScale,
             };
-            ParticleHost.RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
+            ParticleHostPtr->RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
-        else if (CurrentSurface == ActiveHostSurface::FractureWorkspaceSurface)
+        else if (CurrentSurface == ActiveHostSurface::FractureWorkspaceSurface && FractureHostPtr)
         {
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
             ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
@@ -1632,20 +1766,20 @@ int LaunchDesktopWorkspace(
                 FullBounds.Width / HostUiScale,
                 FullBounds.Height / HostUiScale,
             };
-            FractureHost.RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
+            FractureHostPtr->RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
-        else if (CurrentSurface == ActiveHostSurface::FluidWorkspaceSurface)
+        else if (CurrentSurface == ActiveHostSurface::FluidWorkspaceSurface && FluidHostPtr && FluidDockPtr && FluidBrowserPtr)
         {
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
             ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
-            FluidHost.SynchronizeHostScale(HostUiScale);
-            FluidHost.AccessSession().StepSimulation(Dt);
+            FluidHostPtr->SynchronizeHostScale(HostUiScale);
+            FluidHostPtr->AccessSession().StepSimulation(Dt);
 
             Components::ConfigureImGuiWorkspaceTheme(
-                FluidDock.ActiveTabMetrics(),
+                FluidDockPtr->ActiveTabMetrics(),
                 StandaloneControlCentre.QueryThemeRepository());
-            auto& FluidBrowserPanel = FluidBrowser.AccessPanel();
+            auto& FluidBrowserPanel = FluidBrowserPtr->AccessPanel();
             FluidBrowserPanel.SynchronizeHostBounds(FullBounds, HostUiScale);
             StandaloneControlCentre.SynchronizeHostBounds(FullBounds, HostUiScale);
             if (StandaloneControlCentre.QueryFullScreenBlocking() || FluidBrowserPanel.QueryShelfDragging())
@@ -1660,21 +1794,21 @@ int LaunchDesktopWorkspace(
                 WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryShadePhysicalBounds());
                 WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryTabPhysicalBounds());
             }
-            FluidDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+            FluidDockPtr->PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
             WorkspaceAppearance::ClearOverlayPointerShield();
-            FluidBrowser.Render(FullBounds, Dt, HostUiScale);
+            FluidBrowserPtr->Render(FullBounds, Dt, HostUiScale);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
-        else if (CurrentSurface == ActiveHostSurface::SketcherWorkspaceSurface)
+        else if (CurrentSurface == ActiveHostSurface::SketcherWorkspaceSurface && SketcherHostPtr && SketcherDockPtr && SketcherBrowserPtr)
         {
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
             ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
-            SketcherHost.SynchronizeHostScale(HostUiScale);
+            SketcherHostPtr->SynchronizeHostScale(HostUiScale);
 
             Components::ConfigureImGuiWorkspaceTheme(
-                SketcherDock.ActiveTabMetrics(),
+                SketcherDockPtr->ActiveTabMetrics(),
                 StandaloneControlCentre.QueryThemeRepository());
-            auto& SketcherBrowserPanel = SketcherBrowser.AccessPanel();
+            auto& SketcherBrowserPanel = SketcherBrowserPtr->AccessPanel();
             SketcherBrowserPanel.SynchronizeHostBounds(FullBounds, HostUiScale);
             StandaloneControlCentre.SynchronizeHostBounds(FullBounds, HostUiScale);
             if (StandaloneControlCentre.QueryFullScreenBlocking() || SketcherBrowserPanel.QueryShelfDragging())
@@ -1689,21 +1823,21 @@ int LaunchDesktopWorkspace(
                 WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryShadePhysicalBounds());
                 WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryTabPhysicalBounds());
             }
-            SketcherHost.BeginFrame(Dt);
-            SketcherDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
-            SketcherHost.EndFrame(Dt, true, true);
+            SketcherHostPtr->BeginFrame(Dt);
+            SketcherDockPtr->PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+            SketcherHostPtr->EndFrame(Dt, true, true);
             WorkspaceAppearance::ClearOverlayPointerShield();
-            SketcherBrowser.Render(FullBounds, Dt, HostUiScale);
+            SketcherBrowserPtr->Render(FullBounds, Dt, HostUiScale);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
-        else if (CurrentSurface == ActiveHostSurface::ForceFieldWorkspaceSurface)
+        else if (CurrentSurface == ActiveHostSurface::ForceFieldWorkspaceSurface && ForceSessionPtr && ForceFieldDockPtr)
         {
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
             LastFrameDtSeconds = Dt;
             LastHostUiScale    = HostUiScale;
-            ForceSession.StepSimulation(Dt);
+            ForceSessionPtr->StepSimulation(Dt);
             Components::ConfigureImGuiWorkspaceTheme(
-                ForceFieldDock.ActiveTabMetrics(),
+                ForceFieldDockPtr->ActiveTabMetrics(),
                 StandaloneControlCentre.QueryThemeRepository());
             StandaloneControlCentre.SynchronizeHostBounds(FullBounds, HostUiScale);
             if (StandaloneControlCentre.QueryFullScreenBlocking())
@@ -1716,23 +1850,23 @@ int LaunchDesktopWorkspace(
                     StandaloneControlCentre.QueryShadePhysicalBounds(),
                     StandaloneControlCentre.QueryTabPhysicalBounds());
             }
-            ForceFieldDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+            ForceFieldDockPtr->PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
             WorkspaceAppearance::ClearOverlayPointerShield();
-            ForceSession.AccessContentBrowser().PresentInImGuiHost(Dt, HostUiScale);
+            ForceSessionPtr->AccessContentBrowser().PresentInImGuiHost(Dt, HostUiScale);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
         else
         {
             Components::HeadlessWorkspaceDockContainer& ActiveDock =
-                (CurrentSurface == ActiveHostSurface::MaterialWorkspaceSurface) ? MaterialDock :
+                (CurrentSurface == ActiveHostSurface::MaterialWorkspaceSurface && MaterialDockPtr) ? *MaterialDockPtr :
                 ((CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface) ? BakingDock :
                 ((CurrentSurface == ActiveHostSurface::PatternWorkspaceSurface) ? PatternDock :
                 ((CurrentSurface == ActiveHostSurface::StampWorkspaceSurface) ? StampDock : StandaloneDock)));
             Editor::Explorer::ContentBrowser& ActiveBrowser =
-                (CurrentSurface == ActiveHostSurface::MaterialWorkspaceSurface) ? MaterialBrowser :
-                ((CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface) ? BakingBrowser :
-                ((CurrentSurface == ActiveHostSurface::PatternWorkspaceSurface) ? PatternBrowser :
-                ((CurrentSurface == ActiveHostSurface::StampWorkspaceSurface) ? StampBrowser : StandaloneBrowser)));
+                (CurrentSurface == ActiveHostSurface::MaterialWorkspaceSurface && MaterialBrowserPtr) ? *MaterialBrowserPtr :
+                ((CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface && BakingBrowserPtr) ? *BakingBrowserPtr :
+                ((CurrentSurface == ActiveHostSurface::PatternWorkspaceSurface && PatternBrowserPtr) ? *PatternBrowserPtr :
+                ((CurrentSurface == ActiveHostSurface::StampWorkspaceSurface && StampBrowserPtr) ? *StampBrowserPtr : *StandaloneBrowserPtr)));
 
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
             Components::ConfigureImGuiWorkspaceTheme(
@@ -1741,9 +1875,9 @@ int LaunchDesktopWorkspace(
             auto& ActiveBrowserPanel = ActiveBrowser.AccessPanel();
             ActiveBrowserPanel.SynchronizeHostBounds(FullBounds, HostUiScale);
             StandaloneControlCentre.SynchronizeHostBounds(FullBounds, HostUiScale);
-            if (CurrentSurface == ActiveHostSurface::MaterialWorkspaceSurface)
+            if (CurrentSurface == ActiveHostSurface::MaterialWorkspaceSurface && MaterialHostPtr)
             {
-                MaterialHost.SynchronizeContentBrowserOcclusion(HostUiScale);
+                MaterialHostPtr->SynchronizeContentBrowserOcclusion(HostUiScale);
             }
             if (StandaloneControlCentre.QueryFullScreenBlocking() || ActiveBrowserPanel.QueryShelfDragging())
             {
@@ -1828,6 +1962,7 @@ int LaunchDesktopWorkspace(
                 if (CapsuleButton::Construct(TopOverlay, { PillX, 3.0f, 76.0f, 23.0f }, ButtonDescriptor{ "Projects", ButtonTone::Secondary, 10.2f, 11.5f }, Ptr).Pressed)
                 {
                     EnsureProjectBrowserReady();
+                    BindProjectBrowserLaunchCallback();
                     CurrentSurface = ActiveHostSurface::ProjectBrowserSurface;
                 }
             }
@@ -1886,16 +2021,19 @@ int LaunchDesktopWorkspace(
 
     SwapchainPresenter.TeardownOverlay();
 #if FRONTIER_EDITOR_ENABLED
-    HostProjectBrowser.ReleaseGpuTextures();
-    HostProjectBrowser.AttachVulkanWorldRenderer(nullptr, {});
-    if (EditorStackReady)
+    if (HostProjectBrowserPtr)
     {
-        EditorLoop.Finalize();
+        HostProjectBrowserPtr->ReleaseGpuTextures();
+        HostProjectBrowserPtr->AttachVulkanWorldRenderer(nullptr, {});
     }
-    if (UvHostReady)
+    if (EditorStackReady && EditorLoopPtr)
+    {
+        EditorLoopPtr->Finalize();
+    }
+    if (UvHostReady && UVHostPtr)
     {
         StandaloneDock.Finalize();
-        UVHost.AccessSession().TeardownGPUSolvers();
+        UVHostPtr->AccessSession().TeardownGPUSolvers();
     }
     if (PatternHostReady)
     {
@@ -1905,29 +2043,41 @@ int LaunchDesktopWorkspace(
     {
         StampDock.Finalize();
     }
-    if (BakingHostReady)
+    if (BakingHostReady && BakingHostPtr)
     {
         BakingDock.Finalize();
-        BakingHost.AttachVulkanDevice(nullptr);
+        BakingHostPtr->AttachVulkanDevice(nullptr);
     }
-    if (MaterialHostReady)
+    if (MaterialHostReady && MaterialDockPtr && MaterialHostPtr)
     {
-        MaterialDock.Finalize();
-        MaterialHost.AccessPreviewRenderer().TeardownVulkanPreview();
+        MaterialDockPtr->Finalize();
+        MaterialHostPtr->AccessPreviewRenderer().TeardownVulkanPreview();
     }
-    if (ForceFieldHostReady)
+    if (ForceFieldHostReady && ForceFieldDockPtr)
     {
-        ForceFieldDock.Finalize();
+        ForceFieldDockPtr->Finalize();
     }
-    if (FluidHostReady)
+    if (FluidHostReady && FluidDockPtr)
     {
-        FluidDock.Finalize();
+        FluidDockPtr->Finalize();
     }
-    if (SketcherHostReady)
+    if (SketcherHostReady && SketcherHostPtr && SketcherDockPtr)
     {
-        SketcherHost.Finalize();
-        SketcherDock.Finalize();
+        SketcherHostPtr->Finalize();
+        SketcherDockPtr->Finalize();
     }
+    FractureHostPtr.reset();
+    ParticleHostPtr.reset();
+    FluidHostPtr.reset();
+    SketcherHostPtr.reset();
+    MaterialHostPtr.reset();
+    BakingHostPtr.reset();
+    StampHostPtr.reset();
+    PatternHostPtr.reset();
+    UVHostPtr.reset();
+    ForceSessionPtr.reset();
+    EditorLoopPtr.reset();
+    HostProjectBrowserPtr.reset();
 #else
     StandaloneDock.Finalize();
     if (StandaloneBakingLaunch)

@@ -123,6 +123,10 @@ void FluidViewportHost::UploadPreviewTexture(
     if (PreviewTexture.Pixels != nullptr)
     {
         std::memcpy(PreviewTexture.GetPixels(), RgbaPixels.data(), static_cast<size_t>(WidthPx) * HeightPx * 4u);
+        if (!NeedsCreate)
+        {
+            PreviewTexture.UpdateRect = { 0u, 0u, static_cast<unsigned short>(WidthPx), static_cast<unsigned short>(HeightPx) };
+        }
         PreviewTexture.SetStatus(NeedsCreate ? ImTextureStatus_WantCreate : ImTextureStatus_WantUpdates);
     }
 }

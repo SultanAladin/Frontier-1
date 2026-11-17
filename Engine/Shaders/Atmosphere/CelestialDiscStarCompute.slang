@@ -146,39 +146,89 @@ float3 EvaluateCelestialBodiesGpu(
         }
     }
 
-    // 3. Deterministic Nocturnal Starfield
-    if (Cfg.StarParams.x > 0.5 && RayDir.z > 0.005)
+    // 3. Deterministic Nocturnal Starfield (Cube-face 3x3 angular PSF — zero popping under camera rotation!)
+    if (Cfg.StarParams.x > 0.5 && RayDir.z > -0.02)
     {
         float DayFade = clamp(1.0 - (SunDir.z + 0.08) * 5.0, 0.0, 1.0);
         if (DayFade > 0.01)
         {
             float CR = cos(Cfg.StarScintillationRot.w);
             float SR = sin(Cfg.StarScintillationRot.w);
-            float3 RotDir = float3(RayDir.x * CR - RayDir.y * SR, RayDir.x * SR + RayDir.y * CR, RayDir.z);
-            float3 G = RotDir * 175.0;
-            int3   I = int3(floor(G));
+            float3 RotDir = normalize(float3(RayDir.x * CR - RayDir.y * SR, RayDir.x * SR + RayDir.y * CR, RayDir.z));
 
-            float H1 = HashCelestial3(I.x, I.y, I.z);
-            float H2 = HashCelestial3(I.x + 19, I.y - 7, I.z + 31);
-            float H3 = HashCelestial3(I.x - 13, I.y + 29, I.z - 5);
-            float MagThresh = clamp(Cfg.StarParams.y / 8.5, 0.05, 0.98);
-
-            if (H1 > 1.0 - 0.18 * MagThresh)
+            float AX = abs(RotDir.x);
+            float AY = abs(RotDir.y);
+            float AZ = abs(RotDir.z);
+            int   Face = 0;
+            float FU   = 0.0;
+            float FV   = 0.0;
+            if (AX >= AY && AX >= AZ)
             {
-                float3 StarC = float3(I) + float3(0.2 + 0.6 * H2, 0.2 + 0.6 * H3, 0.2 + 0.6 * frac(H1 * 7.13));
-                float3 Delta = G - StarC;
-                float  D2    = dot(Delta, Delta);
-                float  Rad   = 0.08 * clamp(Cfg.StarParams.w, 0.4, 3.0);
-                if (D2 < Rad * Rad)
+                if (RotDir.x >= 0.0) { Face = 0; FU = -RotDir.z / AX; FV = RotDir.y / AX; }
+                else                 { Face = 1; FU =  RotDir.z / AX; FV = RotDir.y / AX; }
+            }
+            else if (AY >= AX && AY >= AZ)
+            {
+                if (RotDir.y >= 0.0) { Face = 2; FU = RotDir.x / AY; FV = -RotDir.z / AY; }
+                else                 { Face = 3; FU = RotDir.x / AY; FV =  RotDir.z / AY; }
+            }
+            else
+            {
+                if (RotDir.z >= 0.0) { Face = 4; FU = RotDir.x / AZ; FV =  RotDir.y / AZ; }
+                else                 { Face = 5; FU = RotDir.x / AZ; FV = -RotDir.y / AZ; }
+            }
+
+            const float GridN = 88.0;
+            float2 GridUv = float2(FU * 0.5 + 0.5, FV * 0.5 + 0.5) * GridN;
+            int    CX     = clamp(int(floor(GridUv.x)), 0, 87);
+            int    CY     = clamp(int(floor(GridUv.y)), 0, 87);
+
+            float MagThresh   = clamp(Cfg.StarParams.y / 8.5, 0.05, 0.98);
+            float StarProb    = 0.22 * MagThresh;
+            float PixelAng    = 1.25 / max(320.0, Cfg.ClockViewportDims.z);
+            float BaseAng     = 0.00058 * clamp(Cfg.StarParams.w, 0.4, 3.0);
+            float SigmaAng    = max(BaseAng, PixelAng * 0.56);
+            float EnergyNorm  = clamp((BaseAng * BaseAng) / (SigmaAng * SigmaAng), 0.16, 1.0);
+            float AltFade     = clamp((RayDir.z + 0.01) * 4.5, 0.0, 1.0);
+
+            for (int DY = -1; DY <= 1; ++DY)
+            {
+                int NY = CY + DY;
+                if (NY < 0 || NY >= 88) continue;
+                for (int DX = -1; DX <= 1; ++DX)
                 {
-                    float Falloff = exp(-D2 / (Rad * Rad * 0.35));
-                    float Twinkle = (Cfg.StarScintillationRot.x > 0.5)
-                        ? (1.0 - (Cfg.StarScintillationRot.y * 0.008) *
-                              (0.5 + 0.5 * sin(Cfg.ClockViewportDims.x * Cfg.StarScintillationRot.z * 5.0 + H2 * 40.0)))
-                        : 1.0;
-                    float AltFade   = clamp(RayDir.z * 4.0, 0.0, 1.0);
-                    float Intensity = (0.45 + 1.55 * H3 * H3) * Cfg.StarParams.z * DayFade * Twinkle * Falloff * AltFade;
-                    OutRgb += float3(0.78 + 0.42 * H2, 0.88 + 0.12 * H2, 1.20 - 0.35 * H2) * Intensity;
+                    int NX = CX + DX;
+                    if (NX < 0 || NX >= 88) continue;
+
+                    float H1 = HashCelestial3(Face * 131 + NX, NY, 17);
+                    if (H1 <= 1.0 - StarProb) continue;
+
+                    float H2 = HashCelestial3(Face * 131 + NX + 19, NY - 7, 31);
+                    float H3 = HashCelestial3(Face * 131 + NX - 13, NY + 29, 53);
+                    float SU = ((float(NX) + 0.20 + 0.60 * H2) / GridN) * 2.0 - 1.0;
+                    float SV = ((float(NY) + 0.20 + 0.60 * H3) / GridN) * 2.0 - 1.0;
+
+                    float3 StarDir;
+                    if      (Face == 0) StarDir = normalize(float3( 1.0,  SV, -SU));
+                    else if (Face == 1) StarDir = normalize(float3(-1.0,  SV,  SU));
+                    else if (Face == 2) StarDir = normalize(float3( SU,  1.0, -SV));
+                    else if (Face == 3) StarDir = normalize(float3( SU, -1.0,  SV));
+                    else if (Face == 4) StarDir = normalize(float3( SU,  SV,  1.0));
+                    else                StarDir = normalize(float3( SU, -SV, -1.0));
+
+                    float Chord = length(RotDir - StarDir);
+                    if (Chord < SigmaAng * 3.4)
+                    {
+                        float NormR   = Chord / SigmaAng;
+                        float Falloff = exp(-0.5 * NormR * NormR);
+                        float Twinkle = (Cfg.StarScintillationRot.x > 0.5)
+                            ? (1.0 - (Cfg.StarScintillationRot.y * 0.008) *
+                                  (0.5 + 0.5 * sin(Cfg.ClockViewportDims.x * Cfg.StarScintillationRot.z * 5.0 + H2 * 40.0)))
+                            : 1.0;
+                        float MagRank   = saturate((H1 - (1.0 - StarProb)) / max(1.0e-4, StarProb));
+                        float Intensity = (0.35 + 2.25 * MagRank * MagRank) * Cfg.StarParams.z * DayFade * Twinkle * Falloff * AltFade * EnergyNorm;
+                        OutRgb += float3(0.78 + 0.42 * H2, 0.88 + 0.12 * H2, 1.20 - 0.35 * H2) * Intensity;
+                    }
                 }
             }
         }

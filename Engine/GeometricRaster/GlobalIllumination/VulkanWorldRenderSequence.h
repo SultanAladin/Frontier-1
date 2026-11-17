@@ -81,6 +81,7 @@ private:
     VulkanInterchange*     BoundDevice                 = nullptr;
     ComputeDispatchEncoder DispatchEncoder             {};
     uint32_t               RadiometricProgramHandle    = UINT32_MAX;
+    uint32_t               DenoiseProgramHandle        = UINT32_MAX;
     uint32_t               SignedDistanceProgramHandle = UINT32_MAX;
     uint32_t               SkyViewLutProgramHandle     = UINT32_MAX;
 
@@ -102,6 +103,15 @@ private:
     DeviceBufferResource   BakedLensFlareAtlasBuffer   {};
     DeviceBufferResource   FluidHeroThermoBuffer       {};
     DeviceBufferResource   FluidWorldThermoBuffer      {};
+    DeviceBufferResource   GBufPosMaskBuffer           {};
+    DeviceBufferResource   GBufNormAoBuffer            {};
+    DeviceBufferResource   GBufDirectBaseBuffer        {};
+    DeviceBufferResource   GBufSunContribBuffer        {};
+    DeviceBufferResource   GBufAlbedoBuffer            {};
+    DeviceBufferResource   PingShadowAoBuffer          {};
+    DeviceBufferResource   PingGiHdrBuffer             {};
+    DeviceBufferResource   PongShadowAoBuffer          {};
+    DeviceBufferResource   PongGiHdrBuffer             {};
 
     Mathematics::Axis3D    CachedSdfMinCorner       { -3.5f, -3.5f, -1.2f };
     float                  CachedSdfSpacing         = 0.14f;
@@ -115,7 +125,9 @@ private:
     uint32_t               CachedLatticeDimY        = 0u;
     uint32_t               CachedLatticeDimZ        = 0u;
 
+    OrthographicShadowCascade CachedFineSunCascade  {};
     OrthographicShadowCascade CachedSunCascade      {};
+    uint32_t               CoarseShadowOffsetTexels = 0u;
     uint32_t               UploadedBvhCount         = 0u;
     uint32_t               UploadedMaterialCount    = 0u;
     bool                   SceneUploadedOnce        = false;

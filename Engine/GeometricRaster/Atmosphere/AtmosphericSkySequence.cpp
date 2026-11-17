@@ -304,15 +304,32 @@ void AtmosphericSkySequence::BuildSkyViewLut(
 
             if (GroundRay)
             {
-                const float SunUp = std::max(0.0f, SunDirection.Z);
-                const float GndBounce = 0.24f * SunUp;
-                const float GR = Medium.GroundAlbedo.R * (OverheadSunT[0] * SunUp * 0.8f + OutR * 0.35f + GndBounce * 0.08f + 0.0005f);
-                const float GG = Medium.GroundAlbedo.G * (OverheadSunT[1] * SunUp * 0.8f + OutG * 0.35f + GndBounce * 0.08f + 0.0006f);
-                const float GB = Medium.GroundAlbedo.B * (OverheadSunT[2] * SunUp * 0.8f + OutB * 0.35f + GndBounce * 0.08f + 0.0010f);
-                const float Blend = std::clamp(-RawDir.Z * 3.5f, 0.0f, 1.0f);
-                OutR = OutR * (1.0f - Blend) + GR * Blend;
-                OutG = OutG * (1.0f - Blend) + GG * Blend;
-                OutB = OutB * (1.0f - Blend) + GB * Blend;
+                const float SunUp     = std::max(0.0f, SunDirection.Z);
+                const float Depth     = std::clamp(-RawDir.Z, 0.0f, 1.0f);
+                const float HazeBlend = std::clamp(Depth / 0.28f, 0.0f, 1.0f);
+                const float SmoothHz  = HazeBlend * HazeBlend * (3.0f - 2.0f * HazeBlend);
+                const float NadirT    = std::clamp((Depth - 0.18f) / 0.74f, 0.0f, 1.0f);
+                const float SmoothNd  = NadirT * NadirT * (3.0f - 2.0f * NadirT);
+                const float DayScale  = 0.18f + 0.82f * SunUp;
+                const float NightAdd  = 1.0f - DayVis * 0.85f;
+
+                const float NadirR = 0.032f * DayScale * OverheadSunT[0] + NightR * NightAdd * 1.4f;
+                const float NadirG = 0.068f * DayScale * OverheadSunT[1] + NightG * NightAdd * 1.4f;
+                const float NadirB = 0.135f * DayScale * OverheadSunT[2] + NightB * NightAdd * 1.4f;
+                const float SubGndR = Medium.GroundAlbedo.R * (OverheadSunT[0] * SunUp * 0.12f + 0.0005f);
+                const float SubGndG = Medium.GroundAlbedo.G * (OverheadSunT[1] * SunUp * 0.12f + 0.0005f);
+                const float SubGndB = Medium.GroundAlbedo.B * (OverheadSunT[2] * SunUp * 0.12f + 0.0005f);
+
+                const float HzR = OutR * (1.0f - 0.28f * SmoothHz);
+                const float HzG = OutG * (1.0f - 0.28f * SmoothHz);
+                const float HzB = OutB * (1.0f - 0.28f * SmoothHz);
+                const float LowR = HzR * (1.0f - SmoothHz) + (NadirR + SubGndR) * SmoothHz;
+                const float LowG = HzG * (1.0f - SmoothHz) + (NadirG + SubGndG) * SmoothHz;
+                const float LowB = HzB * (1.0f - SmoothHz) + (NadirB + SubGndB) * SmoothHz;
+                const float NdMix = SmoothNd * 0.65f;
+                OutR = LowR * (1.0f - NdMix) + (NadirR * 0.72f + SubGndR * 0.65f) * NdMix;
+                OutG = LowG * (1.0f - NdMix) + (NadirG * 0.72f + SubGndG * 0.65f) * NdMix;
+                OutB = LowB * (1.0f - NdMix) + (NadirB * 0.72f + SubGndB * 0.65f) * NdMix;
             }
 
             const std::size_t Idx = (static_cast<std::size_t>(Y) * SkyViewWidthPx + X) * 4u;

@@ -787,38 +787,60 @@ void SketcherRasterization::DestroyTargets()
 
 void SketcherRasterization::Resize(uint32_t Width, uint32_t Height)
 {
+    if (!Device || !Device->Ready())
+    {
+        return;
+    }
     Width  = std::max<uint32_t>(Width, 8u);
     Height = std::max<uint32_t>(Height, 8u);
     if (Width == Colour.WidthPx && Height == Colour.HeightPx)
     {
         return;
     }
-    vkDeviceWaitIdle(Device->AccessDevice());
-    DestroyTargets();
-    CreateTargets(Width, Height);
+    try
+    {
+        vkDeviceWaitIdle(Device->AccessDevice());
+        DestroyTargets();
+        CreateTargets(Width, Height);
+    }
+    catch (const std::exception& Failure)
+    {
+        std::fprintf(stderr, "[SketcherRasterization] Resize(%u, %u) failed: %s\n", Width, Height, Failure.what());
+    }
 }
 
 void SketcherRasterization::UploadScene(const SketcherScene& Scene)
 {
-    vkDeviceWaitIdle(Device->AccessDevice());
-    DestroyBuffer(CornerBuffer);
-    DestroyBuffer(SegmentBuffer);
-    CornerCount       = static_cast<uint32_t>(Scene.Corners.size());
-    SolidCornerCount  = Scene.SolidCornerCount > 0u && Scene.SolidCornerCount <= CornerCount ? Scene.SolidCornerCount : (Scene.SolidCornerCount == 0u && !Scene.Bodies.empty() ? 0u : CornerCount);
-    SegmentCount      = static_cast<uint32_t>(Scene.Segments.size());
-    SolidSegmentCount = Scene.SolidSegmentCount > 0u && Scene.SolidSegmentCount <= SegmentCount ? Scene.SolidSegmentCount : (Scene.SolidSegmentCount == 0u && !Scene.Bodies.empty() ? 0u : SegmentCount);
-    CornerBuffer      = CreateHostBuffer(sizeof(SketcherSceneCorner) * std::max<size_t>(CornerCount, 1u), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    SegmentBuffer     = CreateHostBuffer(sizeof(SketcherSceneSegment) * std::max<size_t>(SegmentCount, 1u), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-    if (CornerCount > 0u)
+    if (!Device || !Device->Ready())
     {
-        std::memcpy(CornerBuffer.HostAddress, Scene.Corners.data(), sizeof(SketcherSceneCorner) * CornerCount);
+        return;
     }
-    if (SegmentCount > 0u)
+    try
     {
-        std::memcpy(SegmentBuffer.HostAddress, Scene.Segments.data(), sizeof(SketcherSceneSegment) * SegmentCount);
+        vkDeviceWaitIdle(Device->AccessDevice());
+        DestroyBuffer(CornerBuffer);
+        DestroyBuffer(SegmentBuffer);
+        CornerCount       = static_cast<uint32_t>(Scene.Corners.size());
+        SolidCornerCount  = Scene.SolidCornerCount > 0u && Scene.SolidCornerCount <= CornerCount ? Scene.SolidCornerCount : (Scene.SolidCornerCount == 0u && !Scene.Bodies.empty() ? 0u : CornerCount);
+        SegmentCount      = static_cast<uint32_t>(Scene.Segments.size());
+        SolidSegmentCount = Scene.SolidSegmentCount > 0u && Scene.SolidSegmentCount <= SegmentCount ? Scene.SolidSegmentCount : (Scene.SolidSegmentCount == 0u && !Scene.Bodies.empty() ? 0u : SegmentCount);
+        CornerBuffer      = CreateHostBuffer(sizeof(SketcherSceneCorner) * std::max<size_t>(CornerCount, 1u), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        SegmentBuffer     = CreateHostBuffer(sizeof(SketcherSceneSegment) * std::max<size_t>(SegmentCount, 1u), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        if (CornerCount > 0u && CornerBuffer.HostAddress != nullptr)
+        {
+            std::memcpy(CornerBuffer.HostAddress, Scene.Corners.data(), sizeof(SketcherSceneCorner) * CornerCount);
+        }
+        if (SegmentCount > 0u && SegmentBuffer.HostAddress != nullptr)
+        {
+            std::memcpy(SegmentBuffer.HostAddress, Scene.Segments.data(), sizeof(SketcherSceneSegment) * SegmentCount);
+        }
+        UploadedGeneration = Scene.Generation;
+        AssignStates(std::vector<uint32_t>(Scene.Faces.size(), 0u), std::vector<uint32_t>(Scene.Edges.size(), 0u));
     }
-    UploadedGeneration = Scene.Generation;
-    AssignStates(std::vector<uint32_t>(Scene.Faces.size(), 0u), std::vector<uint32_t>(Scene.Edges.size(), 0u));
+    catch (const std::exception& Failure)
+    {
+        std::fprintf(stderr, "[SketcherRasterization] UploadScene failed: %s\n", Failure.what());
+    }
 }
 
 void SketcherRasterization::ReleasePictures()
@@ -840,140 +862,162 @@ void SketcherRasterization::ReleasePictures()
 
 void SketcherRasterization::UploadPictures(const std::vector<SketcherPicture>& Sources)
 {
-    vkDeviceWaitIdle(Device->AccessDevice());
-    ReleasePictures();
-    for (const SketcherPicture& Source : Sources)
+    if (!Device || !Device->Ready())
     {
-        if (Pictures.size() >= 16u)
+        return;
+    }
+    try
+    {
+        vkDeviceWaitIdle(Device->AccessDevice());
+        ReleasePictures();
+        for (const SketcherPicture& Source : Sources)
         {
-            break;
-        }
-        const bool ReadyCondition = Source.Refusal.empty() && Source.Width > 0 && Source.Height > 0 &&
-            Source.Pixels.size() == size_t(Source.Width) * Source.Height * 4u;
-        const uint32_t Width  = ReadyCondition ? Source.Width : 1u;
-        const uint32_t Height = ReadyCondition ? Source.Height : 1u;
-        static const uint8_t Placeholder[4] = { 255, 255, 255, 255 };
-
-        std::vector<VkBufferImageCopy> Copies;
-        VkDeviceSize Bytes = 0;
-        for (uint32_t W = Width, H = Height, Level = 0u; ; ++Level)
-        {
-            VkBufferImageCopy Copy {};
-            Copy.bufferOffset     = Bytes;
-            Copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, Level, 0u, 1u };
-            Copy.imageExtent      = { W, H, 1u };
-            Copies.push_back(Copy);
-            Bytes += VkDeviceSize(W) * H * 4u;
-            if (W == 1u && H == 1u)
+            if (Pictures.size() >= 16u)
             {
                 break;
             }
-            W = std::max(1u, W / 2u);
-            H = std::max(1u, H / 2u);
-        }
-        const uint32_t MipLevels = static_cast<uint32_t>(Copies.size());
+            const bool ReadyCondition = Source.Refusal.empty() && Source.Width > 0 && Source.Height > 0 &&
+                Source.Pixels.size() == size_t(Source.Width) * Source.Height * 4u;
+            const uint32_t Width  = ReadyCondition ? Source.Width : 1u;
+            const uint32_t Height = ReadyCondition ? Source.Height : 1u;
+            static const uint8_t Placeholder[4] = { 255, 255, 255, 255 };
 
-        PictureTexture Texture;
-        Texture.Image = CreateGpuImage(
-            Width,
-            Height,
-            VK_FORMAT_R8G8B8A8_UNORM,
-            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-            VK_IMAGE_ASPECT_COLOR_BIT,
-            0u,
-            MipLevels);
-        GeometricRaster::DeviceBufferResource Staging = CreateHostBuffer(Bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-        auto* Pixels = static_cast<unsigned char*>(Staging.HostAddress);
-        std::memcpy(Pixels, ReadyCondition ? Source.Pixels.data() : Placeholder, size_t(Width) * Height * 4u);
-        for (size_t Level = 1u; Level < Copies.size(); ++Level)
-        {
-            const auto& A = Copies[Level - 1u];
-            const auto& B = Copies[Level];
-            if (!stbir_resize_uint8_linear(
-                    Pixels + A.bufferOffset, int(A.imageExtent.width), int(A.imageExtent.height), 0,
-                    Pixels + B.bufferOffset, int(B.imageExtent.width), int(B.imageExtent.height), 0, STBIR_RGBA))
+            std::vector<VkBufferImageCopy> Copies;
+            VkDeviceSize Bytes = 0;
+            for (uint32_t W = Width, H = Height, Level = 0u; ; ++Level)
             {
-                throw std::runtime_error("reference image mip filtering failed");
+                VkBufferImageCopy Copy {};
+                Copy.bufferOffset     = Bytes;
+                Copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, Level, 0u, 1u };
+                Copy.imageExtent      = { W, H, 1u };
+                Copies.push_back(Copy);
+                Bytes += VkDeviceSize(W) * H * 4u;
+                if (W == 1u && H == 1u)
+                {
+                    break;
+                }
+                W = std::max(1u, W / 2u);
+                H = std::max(1u, H / 2u);
             }
+            const uint32_t MipLevels = static_cast<uint32_t>(Copies.size());
+
+            PictureTexture Texture;
+            Texture.Image = CreateGpuImage(
+                Width,
+                Height,
+                VK_FORMAT_R8G8B8A8_UNORM,
+                VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                0u,
+                MipLevels);
+            GeometricRaster::DeviceBufferResource Staging = CreateHostBuffer(Bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+            auto* Pixels = static_cast<unsigned char*>(Staging.HostAddress);
+            std::memcpy(Pixels, ReadyCondition ? Source.Pixels.data() : Placeholder, size_t(Width) * Height * 4u);
+            for (size_t Level = 1u; Level < Copies.size(); ++Level)
+            {
+                const auto& A = Copies[Level - 1u];
+                const auto& B = Copies[Level];
+                if (!stbir_resize_uint8_linear(
+                        Pixels + A.bufferOffset, int(A.imageExtent.width), int(A.imageExtent.height), 0,
+                        Pixels + B.bufferOffset, int(B.imageExtent.width), int(B.imageExtent.height), 0, STBIR_RGBA))
+                {
+                    throw std::runtime_error("reference image mip filtering failed");
+                }
+            }
+            SubmitImmediately([&](VkCommandBuffer Commands)
+            {
+                TransitionImageLayout(Commands, Texture.Image.ImageHandle, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevels);
+                vkCmdCopyBufferToImage(Commands, Staging.BufferHandle, Texture.Image.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevels, Copies.data());
+                TransitionImageLayout(Commands, Texture.Image.ImageHandle, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, MipLevels);
+            });
+            DestroyBuffer(Staging);
+
+            VkDescriptorSetAllocateInfo Request { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+            Request.descriptorPool     = PicturePool;
+            Request.descriptorSetCount = 1u;
+            Request.pSetLayouts        = &PictureLayout;
+            Require(vkAllocateDescriptorSets(Device->AccessDevice(), &Request, &Texture.Set), "vkAllocateDescriptorSets (picture)");
+
+            const VkDescriptorImageInfo Target { PictureSampler, Texture.Image.ViewHandle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            VkWriteDescriptorSet Write { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            Write.dstSet          = Texture.Set;
+            Write.dstBinding      = 0u;
+            Write.descriptorCount = 1u;
+            Write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            Write.pImageInfo      = &Target;
+            vkUpdateDescriptorSets(Device->AccessDevice(), 1u, &Write, 0u, nullptr);
+            Pictures.push_back(Texture);
         }
-        SubmitImmediately([&](VkCommandBuffer Commands)
-        {
-            TransitionImageLayout(Commands, Texture.Image.ImageHandle, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevels);
-            vkCmdCopyBufferToImage(Commands, Staging.BufferHandle, Texture.Image.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, MipLevels, Copies.data());
-            TransitionImageLayout(Commands, Texture.Image.ImageHandle, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, MipLevels);
-        });
-        DestroyBuffer(Staging);
-
-        VkDescriptorSetAllocateInfo Request { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-        Request.descriptorPool     = PicturePool;
-        Request.descriptorSetCount = 1u;
-        Request.pSetLayouts        = &PictureLayout;
-        Require(vkAllocateDescriptorSets(Device->AccessDevice(), &Request, &Texture.Set), "vkAllocateDescriptorSets (picture)");
-
-        const VkDescriptorImageInfo Target { PictureSampler, Texture.Image.ViewHandle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-        VkWriteDescriptorSet Write { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-        Write.dstSet          = Texture.Set;
-        Write.dstBinding      = 0u;
-        Write.descriptorCount = 1u;
-        Write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        Write.pImageInfo      = &Target;
-        vkUpdateDescriptorSets(Device->AccessDevice(), 1u, &Write, 0u, nullptr);
-        Pictures.push_back(Texture);
+    }
+    catch (const std::exception& Failure)
+    {
+        std::fprintf(stderr, "[SketcherRasterization] UploadPictures failed: %s\n", Failure.what());
     }
 }
 
 void SketcherRasterization::UploadMatcaps(const std::vector<SketcherPicture>& Layers)
 {
-    vkDeviceWaitIdle(Device->AccessDevice());
-    DestroyGpuImage(MatcapArray);
-
-    const uint32_t Extent     = Layers.empty() || Layers.front().Width == 0 ? 1u : Layers.front().Width;
-    const uint32_t Count      = std::max<uint32_t>(static_cast<uint32_t>(Layers.size()), 1u);
-    const size_t   LayerBytes = size_t(Extent) * Extent * 4u;
-
-    GeometricRaster::DeviceBufferResource Staging = CreateHostBuffer(VkDeviceSize(LayerBytes) * Count, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-    for (uint32_t Layer = 0u; Layer < Count; ++Layer)
+    if (!Device || !Device->Ready())
     {
-        uint8_t* Target = static_cast<uint8_t*>(Staging.HostAddress) + LayerBytes * Layer;
-        const bool FitCondition = Layer < Layers.size() && Layers[Layer].Width == Extent && Layers[Layer].Height == Extent &&
-            Layers[Layer].Pixels.size() == LayerBytes;
-        if (FitCondition)
-        {
-            std::memcpy(Target, Layers[Layer].Pixels.data(), LayerBytes);
-        }
-        else
-        {
-            std::memset(Target, 128, LayerBytes);
-        }
+        return;
     }
-
-    MatcapArray = CreateGpuImage(
-        Extent,
-        Extent,
-        VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-        VK_IMAGE_ASPECT_COLOR_BIT,
-        Count);
-    SubmitImmediately([&](VkCommandBuffer Commands)
+    try
     {
-        TransitionImageLayout(Commands, MatcapArray.ImageHandle, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, Count);
-        VkBufferImageCopy Copy {};
-        Copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, Count };
-        Copy.imageExtent      = { Extent, Extent, 1u };
-        vkCmdCopyBufferToImage(Commands, Staging.BufferHandle, MatcapArray.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &Copy);
-        TransitionImageLayout(Commands, MatcapArray.ImageHandle, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1u, Count);
-    });
-    DestroyBuffer(Staging);
+        vkDeviceWaitIdle(Device->AccessDevice());
+        DestroyGpuImage(MatcapArray);
 
-    const VkDescriptorImageInfo Target { PictureSampler, MatcapArray.ViewHandle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-    VkWriteDescriptorSet Write { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-    Write.dstSet          = MatcapSet;
-    Write.dstBinding      = 0u;
-    Write.descriptorCount = 1u;
-    Write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    Write.pImageInfo      = &Target;
-    vkUpdateDescriptorSets(Device->AccessDevice(), 1u, &Write, 0u, nullptr);
-    MatcapLayers = Layers.empty() ? 0u : Count;
+        const uint32_t Extent     = Layers.empty() || Layers.front().Width == 0 ? 1u : Layers.front().Width;
+        const uint32_t Count      = std::max<uint32_t>(static_cast<uint32_t>(Layers.size()), 1u);
+        const size_t   LayerBytes = size_t(Extent) * Extent * 4u;
+
+        GeometricRaster::DeviceBufferResource Staging = CreateHostBuffer(VkDeviceSize(LayerBytes) * Count, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+        for (uint32_t Layer = 0u; Layer < Count; ++Layer)
+        {
+            uint8_t* Target = static_cast<uint8_t*>(Staging.HostAddress) + LayerBytes * Layer;
+            const bool FitCondition = Layer < Layers.size() && Layers[Layer].Width == Extent && Layers[Layer].Height == Extent &&
+                Layers[Layer].Pixels.size() == LayerBytes;
+            if (FitCondition)
+            {
+                std::memcpy(Target, Layers[Layer].Pixels.data(), LayerBytes);
+            }
+            else
+            {
+                std::memset(Target, 128, LayerBytes);
+            }
+        }
+
+        MatcapArray = CreateGpuImage(
+            Extent,
+            Extent,
+            VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            Count);
+        SubmitImmediately([&](VkCommandBuffer Commands)
+        {
+            TransitionImageLayout(Commands, MatcapArray.ImageHandle, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, Count);
+            VkBufferImageCopy Copy {};
+            Copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, Count };
+            Copy.imageExtent      = { Extent, Extent, 1u };
+            vkCmdCopyBufferToImage(Commands, Staging.BufferHandle, MatcapArray.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &Copy);
+            TransitionImageLayout(Commands, MatcapArray.ImageHandle, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1u, Count);
+        });
+        DestroyBuffer(Staging);
+
+        const VkDescriptorImageInfo Target { PictureSampler, MatcapArray.ViewHandle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        VkWriteDescriptorSet Write { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+        Write.dstSet          = MatcapSet;
+        Write.dstBinding      = 0u;
+        Write.descriptorCount = 1u;
+        Write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        Write.pImageInfo      = &Target;
+        vkUpdateDescriptorSets(Device->AccessDevice(), 1u, &Write, 0u, nullptr);
+        MatcapLayers = Layers.empty() ? 0u : Count;
+    }
+    catch (const std::exception& Failure)
+    {
+        std::fprintf(stderr, "[SketcherRasterization] UploadMatcaps failed: %s\n", Failure.what());
+    }
 }
 
 void SketcherRasterization::AssignStates(const std::vector<uint32_t>& FaceStates, const std::vector<uint32_t>& EdgeStates)

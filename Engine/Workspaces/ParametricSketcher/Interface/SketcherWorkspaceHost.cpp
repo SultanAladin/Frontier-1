@@ -194,68 +194,76 @@ void SketcherWorkspaceHost::RenderViewportTarget()
         return;
     }
 
-    const uint32_t TargetW = std::clamp(static_cast<uint32_t>(std::max(320.0f, State.ViewportRect[2])), 320u, 1920u);
-    const uint32_t TargetH = std::clamp(static_cast<uint32_t>(std::max(200.0f, State.ViewportRect[3])), 200u, 1080u);
-    if (TargetW != Rasterizer.Width() || TargetH != Rasterizer.Height())
+    try
     {
-        Rasterizer.Resize(TargetW, TargetH);
-    }
-
-    if (UploadedMatcapGen != State.Matcaps.Generation)
-    {
-        Rasterizer.UploadMatcaps(State.Matcaps.Library.Pictures);
-        UploadedMatcapGen = State.Matcaps.Generation;
-    }
-
-    const auto& Scene  = Sketcher::DisplayedSketcherScene(State);
-    const auto  States = Sketcher::DisplayedSketcherStates(State);
-    if (UploadedSceneGen != Scene.Revision)
-    {
-        Rasterizer.UploadScene(Scene);
-        UploadedSceneGen = Scene.Revision;
-    }
-    Rasterizer.AssignStates(States.Faces, States.Edges);
-
-    const auto Panes = Sketcher::ComposeSketcherRasterPanes(State, Rasterizer.Width(), Rasterizer.Height());
-    int ProbeX = -1;
-    int ProbeY = -1;
-    if (State.ViewportHovered && ImGui::GetCurrentContext() != nullptr && State.ViewportRect[2] > 1.0f && State.ViewportRect[3] > 1.0f)
-    {
-        const ImVec2 Mouse = ImGui::GetIO().MousePos;
-        const float U = (Mouse.x - State.ViewportRect[0]) / State.ViewportRect[2];
-        const float V = (Mouse.y - State.ViewportRect[1]) / State.ViewportRect[3];
-        if (U >= 0.0f && U < 1.0f && V >= 0.0f && V < 1.0f)
+        const uint32_t TargetW = std::clamp(static_cast<uint32_t>(std::max(320.0f, State.ViewportRect[2])), 320u, 1920u);
+        const uint32_t TargetH = std::clamp(static_cast<uint32_t>(std::max(200.0f, State.ViewportRect[3])), 200u, 1080u);
+        if (TargetW != Rasterizer.Width() || TargetH != Rasterizer.Height())
         {
-            ProbeX = std::clamp(static_cast<int>(U * float(Rasterizer.Width())), 0, int(Rasterizer.Width()) - 1);
-            ProbeY = std::clamp(static_cast<int>(V * float(Rasterizer.Height())), 0, int(Rasterizer.Height()) - 1);
+            Rasterizer.Resize(TargetW, TargetH);
         }
-    }
 
-    VkCommandBuffer Cmd = Device->BeginSingleTimeCommands();
-    if (Cmd == VK_NULL_HANDLE)
-    {
-        return;
-    }
+        if (UploadedMatcapGen != State.Matcaps.Generation)
+        {
+            Rasterizer.UploadMatcaps(State.Matcaps.Library.Pictures);
+            UploadedMatcapGen = State.Matcaps.Generation;
+        }
 
-    if (Panes.size() > 1)
-    {
-        Rasterizer.RecordPanes(Cmd, Panes, State.Style.Background, true, ProbeX, ProbeY);
-    }
-    else
-    {
-        const OrbitCameraFrame Frame =
-            FrameOrbitCamera(State.Camera, double(Rasterizer.Width()), double(Rasterizer.Height()));
-        Rasterizer.Record(Cmd, Frame, State.Style, true, ProbeX, ProbeY);
-    }
-    vkEndCommandBuffer(Cmd);
+        const auto& Scene  = Sketcher::DisplayedSketcherScene(State);
+        const auto  States = Sketcher::DisplayedSketcherStates(State);
+        if (UploadedSceneGen != Scene.Revision)
+        {
+            Rasterizer.UploadScene(Scene);
+            UploadedSceneGen = Scene.Revision;
+        }
+        Rasterizer.AssignStates(States.Faces, States.Edges);
 
-    const uint64_t Tick = Device->DispatchCommandBufferAsync(Cmd);
-    if (Device->AwaitTimelineTick(Tick))
-    {
-        State.HoverIdentity = Rasterizer.ProbedIdentity();
-        UploadViewportPixels(Rasterizer.ReadbackColour(), Rasterizer.Width(), Rasterizer.Height());
+        const auto Panes = Sketcher::ComposeSketcherRasterPanes(State, Rasterizer.Width(), Rasterizer.Height());
+        int ProbeX = -1;
+        int ProbeY = -1;
+        if (State.ViewportHovered && ImGui::GetCurrentContext() != nullptr && State.ViewportRect[2] > 1.0f && State.ViewportRect[3] > 1.0f)
+        {
+            const ImVec2 Mouse = ImGui::GetIO().MousePos;
+            const float U = (Mouse.x - State.ViewportRect[0]) / State.ViewportRect[2];
+            const float V = (Mouse.y - State.ViewportRect[1]) / State.ViewportRect[3];
+            if (U >= 0.0f && U < 1.0f && V >= 0.0f && V < 1.0f)
+            {
+                ProbeX = std::clamp(static_cast<int>(U * float(Rasterizer.Width())), 0, int(Rasterizer.Width()) - 1);
+                ProbeY = std::clamp(static_cast<int>(V * float(Rasterizer.Height())), 0, int(Rasterizer.Height()) - 1);
+            }
+        }
+
+        VkCommandBuffer Cmd = Device->BeginSingleTimeCommands();
+        if (Cmd == VK_NULL_HANDLE)
+        {
+            return;
+        }
+
+        if (Panes.size() > 1)
+        {
+            Rasterizer.RecordPanes(Cmd, Panes, State.Style.Background, true, ProbeX, ProbeY);
+        }
+        else
+        {
+            const OrbitCameraFrame Frame =
+                FrameOrbitCamera(State.Camera, double(Rasterizer.Width()), double(Rasterizer.Height()));
+            Rasterizer.Record(Cmd, Frame, State.Style, true, ProbeX, ProbeY);
+        }
+
+        // DispatchCommandBufferAsync ends Cmd internally; do not call vkEndCommandBuffer twice.
+        const uint64_t Tick = Device->DispatchCommandBufferAsync(Cmd);
+        if (Device->AwaitTimelineTick(Tick))
+        {
+            State.HoverIdentity = Rasterizer.ProbedIdentity();
+            UploadViewportPixels(Rasterizer.ReadbackColour(), Rasterizer.Width(), Rasterizer.Height());
+        }
+        Device->FreeCommandBuffer(Cmd);
     }
-    Device->FreeCommandBuffer(Cmd);
+    catch (const std::exception& Failure)
+    {
+        std::fprintf(stderr, "[SketcherWorkspaceHost] RenderViewportTarget error: %s\n", Failure.what());
+        RasterReady = false;
+    }
 }
 
 void SketcherWorkspaceHost::UploadViewportPixels(const uint32_t* Pixels, uint32_t Width, uint32_t Height)
@@ -280,6 +288,10 @@ void SketcherWorkspaceHost::UploadViewportPixels(const uint32_t* Pixels, uint32_
     if (ViewportTexture.Pixels != nullptr)
     {
         std::memcpy(ViewportTexture.GetPixels(), Pixels, static_cast<size_t>(Width) * Height * 4u);
+        if (!NeedsCreate)
+        {
+            ViewportTexture.UpdateRect = { 0u, 0u, static_cast<unsigned short>(Width), static_cast<unsigned short>(Height) };
+        }
         ViewportTexture.SetStatus(NeedsCreate ? ImTextureStatus_WantCreate : ImTextureStatus_WantUpdates);
     }
 }

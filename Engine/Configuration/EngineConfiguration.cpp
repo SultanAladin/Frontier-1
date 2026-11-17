@@ -112,6 +112,18 @@ void EngineConfiguration::ConfigureFromCommandLine(std::span<const std::string_v
             Modified.ActiveWorkspace  = WorkspaceCategory::Simulation;
             Modified.ApplicationTitle = "Frontier ForceField";
         }
+        else if (Argument == "--standalone-fluid" || Argument == "--standalone=fluid" || Argument == "--workspace=fluid" || Argument == "--fluid")
+        {
+            Modified.LaunchMode       = HostLaunchMode::StandaloneWorkspace;
+            Modified.ActiveWorkspace  = WorkspaceCategory::Fluid;
+            Modified.ApplicationTitle = "Frontier Fluid";
+        }
+        else if (Argument == "--standalone-fracture" || Argument == "--standalone=fracture" || Argument == "--workspace=fracture" || Argument == "--fracture")
+        {
+            Modified.LaunchMode       = HostLaunchMode::StandaloneWorkspace;
+            Modified.ActiveWorkspace  = WorkspaceCategory::Fracture;
+            Modified.ApplicationTitle = "Frontier Fracture";
+        }
         else if (Argument == "--standalone-sketcher" || Argument == "--standalone=sketcher" || Argument == "--workspace=sketcher" || Argument == "--sketcher" || Argument == "--cad" || Argument == "--solidarc")
         {
             Modified.LaunchMode       = HostLaunchMode::StandaloneWorkspace;

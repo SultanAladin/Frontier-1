@@ -433,20 +433,16 @@ void ViewportPanel::RenderCanvasPane(
         const float       ChipW    = std::max(122.0f, WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 11.0f, ProjName) + 52.0f);
         const Rectangle2D ProjChip{ PaneBounds.X + 10.0f, PaneBounds.Y + 10.0f, ChipW, 28.0f };
 
-        const ControlContact ChipHit = DropdownSelector::ConstructButton(Surface, ProjChip, ProjName, false, Input.PrimaryPointer);
+        const ControlContact ChipHit = DropdownSelector::ConstructButton(Surface, ProjChip, ProjName, ProjectionDropdownOpen, Input.PrimaryPointer);
         if (ChipHit.Pressed)
         {
             ProjectionChipConsumed = true;
-            const uint8_t NextOrd = static_cast<uint8_t>((static_cast<uint8_t>(Projection) + 1u) %
-                                                         static_cast<uint8_t>(ViewportProjectionPreset::Count));
-            if (PaneIndex == 0u)
-            {
-                PrimaryProjection = static_cast<ViewportProjectionPreset>(NextOrd);
-            }
-            else
-            {
-                SecondaryProjection = static_cast<ViewportProjectionPreset>(NextOrd);
-            }
+            ActivePaneIndex        = PaneIndex;
+            ProjectionDropdownOpen = !ProjectionDropdownOpen;
+            ConstructSheetOpen     = false;
+            SettingsSheetOpen      = false;
+            DebugDropdownOpen      = false;
+            ForceOverlaySheetOpen  = false;
         }
         else if (!OverlayCoversCanvas && PaneBounds.Contains(Cursor) && Input.PrimaryPointer.Pressed)
         {
@@ -660,13 +656,17 @@ void ViewportPanel::RenderDiagnosticsPanel(
     char ScaleText[48]{};
     std::snprintf(ScaleText, sizeof(ScaleText), "%.0f", DisplaySettings.RenderScalePercent);
 
+    const float RealFps = 1000.0f / std::max(0.1f, AvgMs);
+    char FpsUnitBuf[32]{};
+    std::snprintf(FpsUnitBuf, sizeof(FpsUnitBuf), "ms  (%.1f fps)", RealFps);
+
     const std::array<DiagnosticsMetricChannel, 3> Channels = {{
         DiagnosticsMetricChannel{
             "Frame time",
             "Timing",
             WholeMs,
             FracMs,
-            "ms  (60.0 fps)",
+            FpsUnitBuf,
             "",
             "",
             OrderedSamples,

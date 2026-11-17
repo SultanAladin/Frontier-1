@@ -951,6 +951,10 @@ bool ImGuiOverlayRasterization::PresentImGuiBatches(
         {
             return 0u;
         }
+        if (Texture->Status == ImTextureStatus_WantUpdates && Texture->BackendUserData == nullptr)
+        {
+            Texture->SetStatus(ImTextureStatus_WantCreate);
+        }
         if (Texture->Status == ImTextureStatus_WantCreate &&
             (Texture->BackendUserData != nullptr || Texture->GetTexID() != ImTextureID_Invalid))
         {
@@ -959,6 +963,12 @@ bool ImGuiOverlayRasterization::PresentImGuiBatches(
             Texture->UnusedFrames = 64;
             ImGui_ImplVulkan_UpdateTexture(Texture);
             Texture->SetStatus(ImTextureStatus_WantCreate);
+        }
+        if (Texture->Status == ImTextureStatus_WantUpdates &&
+            (Texture->UpdateRect.w == 0 || Texture->UpdateRect.h == 0) &&
+            Texture->Width > 0 && Texture->Height > 0)
+        {
+            Texture->UpdateRect = { 0u, 0u, static_cast<unsigned short>(Texture->Width), static_cast<unsigned short>(Texture->Height) };
         }
         const bool UploadRequested =
             Texture->Status == ImTextureStatus_WantCreate || Texture->Status == ImTextureStatus_WantUpdates;

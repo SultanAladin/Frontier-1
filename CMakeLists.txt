@@ -325,8 +325,9 @@ frontier_compile_slang_shader(UVDistortionInspection.slang   ComputeEntry  compu
 frontier_compile_slang_shader(StretchRelaxCompute.slang               ComputeEntry  compute  StretchRelaxCompute.comp.spv)
 frontier_compile_slang_shader(ConcaveSkylineCompute.slang             ComputeEntry  compute  ConcaveSkylineCompute.comp.spv)
 frontier_compile_slang_shader(CameraVisualEffects.slang               ComputeEntry  compute  CameraVisualEffects.comp.spv)
-frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ComputeEntry  compute  WorldViewportRadiometricCompute.comp.spv)
-frontier_compile_slang_shader(SignedDistanceGridCompute.slang         ComputeEntry  compute  SignedDistanceGridCompute.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ComputeEntry          compute  WorldViewportRadiometricCompute.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   DenoiseCompositeEntry compute  WorldViewportDenoiseCompute.comp.spv)
+frontier_compile_slang_shader(SignedDistanceGridCompute.slang         ComputeEntry          compute  SignedDistanceGridCompute.comp.spv)
 
 set(FRONTIER_MODULAR_SHADER_DIR "${CMAKE_SOURCE_DIR}/Engine/Shaders")
 
@@ -1034,12 +1035,15 @@ endforeach()
 #                         DESKTOP APPLICATION EXECUTABLES (STANDALONE INDIVIDUAL WORKSPACES)
 #------------------------------------------------------------------------------------------------------------------------
 
-if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
-    function(frontier_register_desktop_app APP_NAME LAUNCH_SOURCE)
-        add_executable(${APP_NAME} ${LAUNCH_SOURCE})
-        target_compile_definitions(${APP_NAME} PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
-        target_link_libraries(${APP_NAME} PRIVATE FrontierEngine FrontierImGui)
-    endfunction()
+    if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
+        function(frontier_register_desktop_app APP_NAME LAUNCH_SOURCE)
+            add_executable(${APP_NAME} ${LAUNCH_SOURCE})
+            target_compile_definitions(${APP_NAME} PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
+            target_link_libraries(${APP_NAME} PRIVATE FrontierEngine FrontierImGui)
+            if(WIN32)
+                target_link_options(${APP_NAME} PRIVATE "/STACK:8388608")
+            endif()
+        endfunction()
 
     frontier_register_desktop_app(Frontier           Engine/Lifecycle/FrontierHostLaunch.cpp)
     frontier_register_desktop_app(FrontierEditor     Engine/Lifecycle/FrontierEditorLaunch.cpp)
