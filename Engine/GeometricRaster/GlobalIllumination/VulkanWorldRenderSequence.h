@@ -98,6 +98,7 @@ private:
     DeviceBufferResource   SdfRadiosityVoxelBuffer     {};
     DeviceBufferResource   AccumulationHdrBuffer       {};
     DeviceBufferResource   AtmosphericSkyViewLutBuffer {};
+    DeviceBufferResource   LunarSurfaceAtlasBuffer     {};
 
     Mathematics::Axis3D    CachedSdfMinCorner       { -3.5f, -3.5f, -1.2f };
     float                  CachedSdfSpacing         = 0.14f;

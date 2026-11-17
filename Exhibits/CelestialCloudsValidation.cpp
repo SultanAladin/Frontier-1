@@ -4,26 +4,15 @@
 // 🧩 Validation & Visual Proofs for Sun Ephemeris, Bruneton/Hillaire SkyView LUT, 4x Moons, Starfield & Raymarched Volumetric Clouds
 
 #include "Engine/Codecs/ImageCodec.h"
-#include "Engine/Components/Appearance/TypographyRepository.h"
-#include "Engine/Components/Panes/InspectorPanel.h"
-#include "Engine/Components/Panes/OutlinerPanel.h"
-#include "Engine/Components/Panes/ViewportPanel.h"
-#include "Engine/Editor/Inspectors/CloudsInspectorView.h"
-#include "Engine/Editor/Inspectors/MoonInspectorView.h"
-#include "Engine/Editor/Inspectors/StarsInspectorView.h"
-#include "Engine/Editor/Inspectors/SunInspectorView.h"
 #include "Engine/GeometricRaster/Atmosphere/AtmosphericSkySequence.h"
 #include "Engine/GeometricRaster/Atmosphere/CelestialEphemerisSolver.h"
 #include "Engine/GeometricRaster/Atmosphere/LunarStarfieldSequence.h"
 #include "Engine/GeometricRaster/Atmosphere/VolumetricCloudSequence.h"
-#include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/GeometrySpace/Primitives/AnalyticPrimitives.h"
 #include "Exhibits/SoftwareCanvasRasterizer.h"
-
-#include <imgui.h>
 
 #include <algorithm>
 #include <array>
@@ -300,14 +289,14 @@ int main()
     }
 
     // -----------------------------------------------------------------------------------------------------------------
-    // 3. Lunar Atlas .ImageSpace Roundtrip & Multi-Moon / Starfield Evaluation
+    // 3. Real 2K Lunar Atlas .ImageSpace Roundtrip & Multi-Moon / Starfield Evaluation
     // -----------------------------------------------------------------------------------------------------------------
     {
-        const auto AtlasRgba = LunarStarfieldSequence::BuildProceduralLunarSurfaceAtlasRgba8();
+        const auto& AtlasRgba = LunarStarfieldSequence::QueryLunarSurfaceAtlasRgba8();
         Score.Verify(AtlasRgba.size() == LunarStarfieldSequence::AtlasTileWidthPx *
                                              LunarStarfieldSequence::AtlasTileHeightPx *
                                              LunarStarfieldSequence::AtlasPresetCount * 4u,
-                     "Procedural 6-preset Lunar Atlas dimensions match 256x768 RGBA8");
+                     "Real 2K 6-preset Lunar Atlas dimensions match 512x1536 RGBA8");
 
         const std::filesystem::path AtlasPath = RepoRoot / "EngineContent/Skies/LunarSurfaceAtlas.ImageSpace";
         std::filesystem::create_directories(AtlasPath.parent_path());
@@ -332,18 +321,22 @@ int main()
         Codecs::ImageSpaceDocumentModel Decoded {};
         Score.Verify(Codecs::ImageDecoder::DecodeFromFile(AtlasPath, Decoded, Diag) &&
                          Decoded.Layers.size() == 6u &&
-                         Decoded.NominalWidthPx == 256u,
-                     "Decoded EngineContent/Skies/LunarSurfaceAtlas.ImageSpace with 6 preset layers");
+                         Decoded.NominalWidthPx == 512u,
+                     "Decoded EngineContent/Skies/LunarSurfaceAtlas.ImageSpace with 6 real 2K preset layers");
     }
 
     // -----------------------------------------------------------------------------------------------------------------
-    // 4. Volumetric Clouds: 6 Presets, Local Volume & Solar Cloud Shadow Transmittance
+    // 4. Volumetric Clouds: 12 Formations (6 Classic + 6 Unique), Local Volume & Solar Cloud Shadow Transmittance
     // -----------------------------------------------------------------------------------------------------------------
     {
         CloudDeckConfiguration Deck {};
         VolumetricCloudSequence::ApplyCloudCategoryPreset(Deck, CloudCategoryType::Cumulonimbus);
         Score.Verify(Deck.LayerThicknessMeters > 4000.0f && Deck.AnvilTopSpread > 0.8f,
                      "Cumulonimbus preset applies tall vertical anvil cloud thickness");
+
+        VolumetricCloudSequence::ApplyCloudCategoryPreset(Deck, CloudCategoryType::Nacreous);
+        Score.Verify(Deck.CloudFloorMeters > 10000.0f,
+                     "Nacreous stratospheric preset places clouds above 10 km altitude");
 
         const float ClearShadow = VolumetricCloudSequence::EvaluateSolarCloudTransmittance(
             { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, Deck, 6371000.0f, 0.0f);
@@ -364,8 +357,8 @@ int main()
     WorldSceneSpecification Scene = BuildOutdoorShowcaseScene(FloorBox, PedestalBox, GoldSphere, GlassSphere);
     TieredWorldRenderSequence CpuRenderer {};
 
-    const uint32_t TileW = 280u;
-    const uint32_t TileH = 180u;
+    const uint32_t TileW = 340u;
+    const uint32_t TileH = 210u;
     PerspectiveCameraFrame Cam {};
     Cam.CameraOrigin     = { 0.0f, -3.6f, 1.25f };
     Cam.TargetPoint      = { 0.0f,  2.2f, 2.25f };
@@ -385,11 +378,13 @@ int main()
             Scene.Atmosphere.Solar.LocalHours              = Hours[Idx];
             Scene.Atmosphere.Solar.ManualDirectionOverride = false;
             Scene.Atmosphere.Clouds.CloudsEnabled          = true;
-            Scene.Atmosphere.Clouds.CloudFraction       = (Idx == 3u) ? 0.15f : 0.34f;
+            VolumetricCloudSequence::ApplyCloudCategoryPreset(Scene.Atmosphere.Clouds, CloudCategoryType::Cumulus);
+            Scene.Atmosphere.Clouds.CloudFraction       = (Idx == 3u) ? 0.15f : 0.38f;
             Scene.Atmosphere.Moons[0].Visible           = true;
+            Scene.Atmosphere.Moons[0].SurfacePreset     = LunarSurfacePreset::Luna;
             Scene.Atmosphere.Moons[0].AzimuthDegrees    = 280.0f;
             Scene.Atmosphere.Moons[0].ElevationDegrees  = 22.0f;
-            Scene.Atmosphere.Moons[0].AngularDiameterDegrees = 6.5f;
+            Scene.Atmosphere.Moons[0].AngularDiameterDegrees = 7.5f;
             Scene.Atmosphere.Moons[0].BrightnessMultiplier   = 2.6f;
             Scene.Atmosphere.Stars.StarfieldEnabled     = true;
             Scene.Atmosphere.Stars.PointSizeScale       = 1.6f;
@@ -424,25 +419,31 @@ int main()
                      "Exported 01-SkySunDayCycleCpuAndGpu.png");
     }
 
-    // Exhibit 02: 6 Cloud Categorys + Bounded LocalCloudVolume
+    // Exhibit 02: All 12 Cloud Formations (6 Classic + 6 Unique) + Bounded LocalCloudVolume
     {
-        const std::array<CloudCategoryType, 6u> Types {{
+        const std::array<CloudCategoryType, 12u> Types {{
             CloudCategoryType::Stratus,
             CloudCategoryType::Stratocumulus,
             CloudCategoryType::Cumulus,
             CloudCategoryType::Cumulonimbus,
             CloudCategoryType::Altostratus,
             CloudCategoryType::Cirrus,
+            CloudCategoryType::Lenticular,
+            CloudCategoryType::Mammatus,
+            CloudCategoryType::KelvinHelmholtz,
+            CloudCategoryType::Asperitas,
+            CloudCategoryType::Nacreous,
+            CloudCategoryType::Pyrocumulus,
         }};
-        std::vector<uint8_t> Sheet(static_cast<std::size_t>(TileW * 3u) * (TileH * 2u) * 4u, 255u);
+        std::vector<uint8_t> Sheet(static_cast<std::size_t>(TileW * 4u) * (TileH * 3u) * 4u, 255u);
 
         PerspectiveCameraFrame SkyCam = Cam;
         SkyCam.CameraOrigin = { 0.0f, -4.5f, 1.4f };
         SkyCam.TargetPoint  = { 0.0f,  5.0f, 3.8f };
 
-        for (uint32_t Idx = 0u; Idx < 6u; ++Idx)
+        for (uint32_t Idx = 0u; Idx < 12u; ++Idx)
         {
-            Scene.Atmosphere.Solar.LocalHours     = 10.5f;
+            Scene.Atmosphere.Solar.LocalHours     = (Idx == 10u) ? 17.55f : 10.5f; // Golden-indigo twilight boosts Nacreous iridescence
             Scene.Atmosphere.Moons[0].Visible     = false;
             VolumetricCloudSequence::ApplyCloudCategoryPreset(Scene.Atmosphere.Clouds, Types[Idx]);
             Scene.Atmosphere.LocalCloud.LocalEnabled = (Idx == 2u);
@@ -458,15 +459,15 @@ int main()
             {
                 TileRgba = CpuRenderer.RenderWorldFrameWithEngine(Cfg, SkyCam, SkyCam, Scene).DisplayRgba8;
             }
-            BlitTile(Sheet, TileW * 3u, (Idx % 3u) * TileW, (Idx / 3u) * TileH, TileRgba.data(), TileW, TileH);
+            BlitTile(Sheet, TileW * 4u, (Idx % 4u) * TileW, (Idx / 4u) * TileH, TileRgba.data(), TileW, TileH);
         }
 
-        const std::filesystem::path P2 = OutDir / "02-SixCloudTypesAndLocalCloud.png";
-        Score.Verify(WritePngRgba8(P2, TileW * 3u, TileH * 2u, Sheet.data()),
-                     "Exported 02-SixCloudTypesAndLocalCloud.png");
+        const std::filesystem::path P2 = OutDir / "02-TwelveCloudFormationsAndLocalCloud.png";
+        Score.Verify(WritePngRgba8(P2, TileW * 4u, TileH * 3u, Sheet.data()),
+                     "Exported 02-TwelveCloudFormationsAndLocalCloud.png");
     }
 
-    // Exhibit 03: Multi-Moon (4 Simultaneous Moons) + Starfield + 6-Preset Lunar Atlas Strip
+    // Exhibit 03: All 6 Real 2K Textured Moons (Luna, Ember, Glacier, Sulfur, Shroud, Shard) + Starfield
     {
         Scene.Atmosphere.LocalCloud.LocalEnabled = false;
         Scene.Atmosphere.Clouds.CloudsEnabled    = false;
@@ -475,43 +476,61 @@ int main()
         Scene.Atmosphere.Stars.BrightnessMultiplier = 1.8f;
         Scene.Atmosphere.Stars.PointSizeScale    = 1.7f;
 
-        Scene.Atmosphere.Moons[0] = { true, false, LunarSurfacePreset::Luna,    0.65f, 2.4f, 0.9f, 9.0f, 250.0f, 22.0f, 0.0f, 0.0f };
-        Scene.Atmosphere.Moons[1] = { true, false, LunarSurfacePreset::Ember,   0.38f, 2.2f, 1.1f, 7.5f, 263.0f, 26.0f, 18.0f, -10.0f };
-        Scene.Atmosphere.Moons[2] = { true, false, LunarSurfacePreset::Glacier, 0.78f, 2.0f, 0.7f, 6.5f, 276.0f, 21.0f, -15.0f, 12.0f };
-        Scene.Atmosphere.Moons[3] = { true, false, LunarSurfacePreset::Sulfur,  0.50f, 2.3f, 0.8f, 7.0f, 289.0f, 25.0f, 28.0f, 0.0f };
-
         PerspectiveCameraFrame NightCam = Cam;
         NightCam.CameraOrigin = { 0.0f, -4.5f, 1.2f };
         NightCam.TargetPoint  = { 0.0f,  5.0f, 3.6f };
-        NightCam.ViewportWidthPx  = 640u;
-        NightCam.ViewportHeightPx = 360u;
+        NightCam.ViewportWidthPx  = 800u;
+        NightCam.ViewportHeightPx = 300u;
+
+        // Top panel: 4 simultaneous moons (Luna, Ember, Glacier, Sulfur)
+        Scene.Atmosphere.Moons[0] = { true, false, LunarSurfacePreset::Luna,    0.58f, 2.1f, 0.7f, 9.5f, 250.0f, 23.0f, 0.0f, 0.0f };
+        Scene.Atmosphere.Moons[1] = { true, false, LunarSurfacePreset::Ember,   0.46f, 2.2f, 0.8f, 9.5f, 263.0f, 25.0f, 18.0f, -10.0f };
+        Scene.Atmosphere.Moons[2] = { true, false, LunarSurfacePreset::Glacier, 0.68f, 2.0f, 0.7f, 9.5f, 276.0f, 22.0f, -15.0f, 12.0f };
+        Scene.Atmosphere.Moons[3] = { true, false, LunarSurfacePreset::Sulfur,  0.52f, 2.2f, 0.8f, 9.5f, 289.0f, 25.0f, 28.0f, 0.0f };
 
         CpuRenderer.SynchronizeWorldAtmosphere(Scene);
-        std::vector<uint8_t> NightRgba;
+        std::vector<uint8_t> TopRgba;
         WorldRenderConfiguration Cfg {};
         Cfg.Engine = WorldRenderEngine::OpenPbrDirect;
-        if (!GpuOk || !GpuRenderer.RenderWorldViewportWithEngine(Cfg, 0u, NightCam, Scene, NightRgba))
+        if (!GpuOk || !GpuRenderer.RenderWorldViewportWithEngine(Cfg, 0u, NightCam, Scene, TopRgba))
         {
-            NightRgba = CpuRenderer.RenderWorldFrameWithEngine(Cfg, NightCam, NightCam, Scene).DisplayRgba8;
+            TopRgba = CpuRenderer.RenderWorldFrameWithEngine(Cfg, NightCam, NightCam, Scene).DisplayRgba8;
         }
+
+        // Bottom panel: Shroud & Shard + full Luna showcase
+        Scene.Atmosphere.Moons[0] = { true, false, LunarSurfacePreset::Shroud, 0.56f, 2.3f, 0.7f, 11.0f, 258.0f, 23.0f, 10.0f, 5.0f };
+        Scene.Atmosphere.Moons[1] = { true, false, LunarSurfacePreset::Shard,  0.52f, 2.3f, 0.7f, 11.0f, 280.0f, 24.0f, -12.0f, 8.0f };
+        Scene.Atmosphere.Moons[2].Visible = false;
+        Scene.Atmosphere.Moons[3].Visible = false;
+        CpuRenderer.SynchronizeWorldAtmosphere(Scene);
+        std::vector<uint8_t> BotRgba;
+        if (!GpuOk || !GpuRenderer.RenderWorldViewportWithEngine(Cfg, 0u, NightCam, Scene, BotRgba))
+        {
+            BotRgba = CpuRenderer.RenderWorldFrameWithEngine(Cfg, NightCam, NightCam, Scene).DisplayRgba8;
+        }
+
+        std::vector<uint8_t> Combined(static_cast<std::size_t>(800u) * 600u * 4u, 255u);
+        BlitTile(Combined, 800u, 0u,   0u, TopRgba.data(), 800u, 300u);
+        BlitTile(Combined, 800u, 0u, 300u, BotRgba.data(), 800u, 300u);
+
         const std::filesystem::path P3 = OutDir / "03-MultiMoonAtlasAndPhasePresets.png";
-        Score.Verify(WritePngRgba8(P3, 640u, 360u, NightRgba.data()),
+        Score.Verify(WritePngRgba8(P3, 800u, 600u, Combined.data()),
                      "Exported 03-MultiMoonAtlasAndPhasePresets.png");
     }
 
-    // Exhibit 04: Outdoor World Architecture Lit by Physical Sky + Sun + Cloud Shadows (CPU vs GPU Parity)
+    // Exhibit 04: Outdoor World Architecture Lit by Physical Sky + Sun + Anti-Banded Multi-Scatter Clouds (CPU vs GPU Parity)
     {
         Scene.Atmosphere.Solar.LocalHours     = 15.6f;
         Scene.Atmosphere.Clouds.CloudsEnabled = true;
         VolumetricCloudSequence::ApplyCloudCategoryPreset(Scene.Atmosphere.Clouds, CloudCategoryType::Cumulus);
-        Scene.Atmosphere.Moons[0] = { true, false, LunarSurfacePreset::Luna, 0.62f, 1.8f, 0.8f, 5.0f, 28.0f, 22.0f, 0.0f, 0.0f };
+        Scene.Atmosphere.Moons[0] = { true, false, LunarSurfacePreset::Luna, 0.62f, 1.8f, 0.8f, 6.0f, 28.0f, 22.0f, 0.0f, 0.0f };
         Scene.Atmosphere.Moons[1].Visible = false;
         Scene.Atmosphere.Moons[2].Visible = false;
         Scene.Atmosphere.Moons[3].Visible = false;
 
         PerspectiveCameraFrame HeroCam = Cam;
-        HeroCam.ViewportWidthPx  = 480u;
-        HeroCam.ViewportHeightPx = 300u;
+        HeroCam.ViewportWidthPx  = 640u;
+        HeroCam.ViewportHeightPx = 400u;
 
         CpuRenderer.PrepareWorldScene(Scene);
         WorldRenderConfiguration Cfg {};
@@ -534,11 +553,11 @@ int main()
         Score.Verify(std::fabs(CpuMean - GpuMean) < 0.14f,
                      "CPU vs GPU outdoor physical sky + cloud render mean brightness parity (< 0.14)");
 
-        std::vector<uint8_t> SideBySide(static_cast<std::size_t>(480u * 2u) * 300u * 4u, 255u);
-        BlitTile(SideBySide, 960u,   0u, 0u, CpuOut.DisplayRgba8.data(), 480u, 300u);
-        BlitTile(SideBySide, 960u, 480u, 0u, GpuOut.data(),              480u, 300u);
+        std::vector<uint8_t> SideBySide(static_cast<std::size_t>(640u * 2u) * 400u * 4u, 255u);
+        BlitTile(SideBySide, 1280u,   0u, 0u, CpuOut.DisplayRgba8.data(), 640u, 400u);
+        BlitTile(SideBySide, 1280u, 640u, 0u, GpuOut.data(),              640u, 400u);
         const std::filesystem::path P4 = OutDir / "04-OutdoorWorldWithAtmosphereGpu.png";
-        Score.Verify(WritePngRgba8(P4, 960u, 300u, SideBySide.data()),
+        Score.Verify(WritePngRgba8(P4, 1280u, 400u, SideBySide.data()),
                      "Exported 04-OutdoorWorldWithAtmosphereGpu.png");
     }
 
@@ -549,150 +568,6 @@ int main()
     if (VulkanOk)
     {
         VulkanDevice.TeardownInterchange();
-    }
-
-    //================================================================================================================
-    // 5. TURN 3 NATIVE C++20 CELESTIAL & CLOUDS INSPECTOR VIEWS + 3-PANE WORLD EDITOR PROOF
-    //================================================================================================================
-    {
-        ImGui::CreateContext();
-        ImGuiIO& Io = ImGui::GetIO();
-        Io.IniFilename = nullptr;
-
-        TypographyRepository EditorFonts {};
-        const std::filesystem::path FontRoot =
-            std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "EngineContent" / "FontsArchives";
-        if (std::filesystem::exists(FontRoot / "FontRepository.FontSpace") &&
-            EditorFonts.LoadRepository(FontRoot) > 0u)
-        {
-            TypographyRepository::AssignCurrent(&EditorFonts);
-            if (ImFont* DefaultUiFont = EditorFonts.QueryTabStripFont())
-            {
-                Io.FontDefault = DefaultUiFont;
-            }
-        }
-        unsigned char* FontPixels = nullptr;
-        int            FontW      = 0;
-        int            FontH      = 0;
-        Io.Fonts->GetTexDataAsRGBA32(&FontPixels, &FontW, &FontH);
-
-        Editor::Inspectors::SunInspectorView    SunView {};
-        Editor::Inspectors::MoonInspectorView   MoonView {};
-        Editor::Inspectors::StarsInspectorView  StarsView {};
-        Editor::Inspectors::CloudsInspectorView CloudsView {};
-        Editor::Inspectors::CloudsInspectorView LocalCloudView {};
-
-        WorldAtmosphereConfiguration InspAtmo {};
-        InspAtmo.Medium.AtmosphereEnabled = true;
-        InspAtmo.Solar.LocalHours         = 15.50f;
-        InspAtmo.LocalCloud.LocalEnabled  = true;
-        uint32_t ActiveMoonSlot           = 0u;
-
-        constexpr float PanelW = 380.0f;
-        constexpr float PanelH = 980.0f;
-        constexpr uint32_t SheetW = static_cast<uint32_t>(PanelW * 5.0f + 8.0f);
-        constexpr uint32_t SheetH = static_cast<uint32_t>(PanelH);
-        Io.DisplaySize = ImVec2(static_cast<float>(SheetW), static_cast<float>(SheetH));
-
-        // Test live interactive click on Sun "Enabled" tile (left half of capability tile row)
-        PaneInputReading ClickSunToggle {};
-        ClickSunToggle.PrimaryPointer = { 90.0f, 108.0f, true, true, true, false };
-        ImGui::NewFrame();
-        PixelSpace HitTestSurface(ImGui::GetBackgroundDrawList(), { 0.0f, 0.0f }, 1.0f, Io.FontDefault);
-        const bool SolarToggled = SunView.Render(
-            HitTestSurface,
-            { 0.0f, 0.0f, PanelW, PanelH },
-            { &InspAtmo.Solar, &InspAtmo.Medium },
-            ClickSunToggle,
-            1.0 / 60.0);
-        ImGui::EndFrame();
-        Score.Verify(SolarToggled && !InspAtmo.Solar.SolarEnabled,
-                     "SunInspectorView capability tile click toggles SolarEnabled cleanly");
-        InspAtmo.Solar.SolarEnabled = true;
-
-        // Render all 5 Native C++ Inspector Views side-by-side
-        ImGui::NewFrame();
-        PixelSpace SheetSurface(ImGui::GetBackgroundDrawList(), { 0.0f, 0.0f }, 1.0f, Io.FontDefault);
-        SheetSurface.FillRectangle({ 0.0f, 0.0f, static_cast<float>(SheetW), static_cast<float>(SheetH) }, ColorRgba{ 38, 38, 38, 255 });
-
-        PaneInputReading IdleInput {};
-        IdleInput.PrimaryPointer = { -1000.0f, -1000.0f, false, false, false, false };
-
-        (void)SunView.Render(SheetSurface,        { 0.0f * (PanelW + 2.0f), 0.0f, PanelW, PanelH }, { &InspAtmo.Solar, &InspAtmo.Medium }, IdleInput, 1.0 / 60.0);
-        (void)MoonView.Render(SheetSurface,       { 1.0f * (PanelW + 2.0f), 0.0f, PanelW, PanelH }, { &InspAtmo.Moons, &ActiveMoonSlot }, IdleInput, 1.0 / 60.0);
-        (void)StarsView.Render(SheetSurface,      { 2.0f * (PanelW + 2.0f), 0.0f, PanelW, PanelH }, { &InspAtmo.Stars, 1.25f }, IdleInput, 1.0 / 60.0);
-        (void)CloudsView.Render(SheetSurface,     { 3.0f * (PanelW + 2.0f), 0.0f, PanelW, PanelH }, { &InspAtmo.Clouds, &InspAtmo.LocalCloud, false }, IdleInput, 1.0 / 60.0);
-        (void)LocalCloudView.Render(SheetSurface, { 4.0f * (PanelW + 2.0f), 0.0f, PanelW, PanelH }, { &InspAtmo.Clouds, &InspAtmo.LocalCloud, true }, IdleInput, 1.0 / 60.0);
-        ImGui::Render();
-
-        Exhibits::SoftwareRasterCanvas InspCanvas(SheetW, SheetH, { 18u, 18u, 18u, 255u });
-        InspCanvas.RasterizeImGuiBatches(ImGui::GetDrawData());
-        const std::filesystem::path P5 = OutDir / "05-CelestialInspectorViewsProof.png";
-        Score.Verify(InspCanvas.WritePngFile(P5) && std::filesystem::exists(P5),
-                     "Exported 05-CelestialInspectorViewsProof.png (Sun, Moon, Stars, Volumetric Clouds, Local Cloud)");
-
-        // 3-Pane World Editor Integration Proof (Outliner + Atmospheric Sky Viewport + Sun Inspector)
-        ShowcaseWorldSceneBundle EditorBundle {};
-        BuildShowcaseGalleryScene(EditorBundle, 640u, 360u, true);
-        EditorBundle.Scene.Atmosphere.Medium.AtmosphereEnabled = true;
-        EditorBundle.Scene.Atmosphere.Solar.LocalHours         = 15.8f;
-        EditorBundle.Scene.Atmosphere.Clouds.CloudsEnabled     = true;
-        // Open back wall & roof baffle in outdoor proof so atmospheric sky + cumulus clouds frame the gallery specimens
-        if (EditorBundle.Scene.ClusterInstances.size() > 4u)
-        {
-            EditorBundle.Scene.ClusterInstances[1u].UniformScale = 0.0f;
-            EditorBundle.Scene.ClusterInstances[4u].UniformScale = 0.0f;
-        }
-        RebuildShowcaseSceneAcceleration(EditorBundle, true);
-        CpuRenderer.PrepareWorldScene(EditorBundle.Scene);
-        CpuRenderer.SynchronizeWorldAtmosphere(EditorBundle.Scene);
-
-        const auto SkyRaster = CpuRenderer.RenderWorldFrameWithEngine(
-            { WorldRenderEngine::OpenPbrDirect },
-            EditorBundle.EditorCamera,
-            EditorBundle.EditorCamera,
-            EditorBundle.Scene);
-
-        OutlinerPanel  EditorOutliner {};
-        ViewportPanel  EditorViewport {};
-        InspectorPanel EditorInspector {};
-        EditorViewport.AttachOutliner(&EditorOutliner);
-        EditorInspector.AttachOutliner(&EditorOutliner);
-        EditorViewport.ConfigureSceneTitle("Outdoor Atmosphere Showcase");
-        EditorViewport.AssignCanvasRasterImage(SkyRaster.DisplayRgba8.data(), SkyRaster.WidthPx, SkyRaster.HeightPx);
-        RegisterShowcaseGalleryInOutliner(EditorOutliner, EditorBundle);
-        EditorOutliner.SelectSingle(EditorBundle.SunEmitterToken);
-        EditorInspector.ConfigureFullOverrideCallback(
-            [&](PixelSpace& Surf, Rectangle2D Rect, OutlinerPanel*, OutlinerRecordEntry* Primary, const PaneInputReading& Inp, double Dt) -> bool
-            {
-                if (Primary != nullptr && Primary->Token == EditorBundle.SunEmitterToken)
-                {
-                    (void)SunView.Render(Surf, Rect, { &EditorBundle.Scene.Atmosphere.Solar, &EditorBundle.Scene.Atmosphere.Medium }, Inp, Dt);
-                    return true;
-                }
-                return false;
-            });
-
-        constexpr uint32_t EdW = 1600u;
-        constexpr uint32_t EdH = 940u;
-        Io.DisplaySize = ImVec2(static_cast<float>(EdW), static_cast<float>(EdH));
-        ImGui::NewFrame();
-        PixelSpace EdSurface(ImGui::GetBackgroundDrawList(), { 0.0f, 0.0f }, 1.0f, Io.FontDefault);
-        PixelSpace EdOverlay(ImGui::GetForegroundDrawList(), { 0.0f, 0.0f }, 1.0f, Io.FontDefault);
-        EdSurface.FillRectangle({ 0.0f, 0.0f, static_cast<float>(EdW), static_cast<float>(EdH) }, WorkspaceSurfaceColors::RootGap);
-        EditorOutliner.Render(EdSurface, { 0.0f, 0.0f, 336.0f, static_cast<float>(EdH) }, IdleInput, 1.0 / 60.0, &EdOverlay);
-        EditorViewport.Render(EdSurface, { 338.0f, 0.0f, 924.0f, static_cast<float>(EdH) }, IdleInput, 1.0 / 60.0, &EdOverlay);
-        EditorInspector.Render(EdSurface, { 1264.0f, 0.0f, 336.0f, static_cast<float>(EdH) }, IdleInput, 1.0 / 60.0);
-        ImGui::Render();
-
-        Exhibits::SoftwareRasterCanvas EdCanvas(EdW, EdH, { 18u, 18u, 18u, 255u });
-        EdCanvas.RasterizeImGuiBatches(ImGui::GetDrawData());
-        const std::filesystem::path P6 = OutDir / "06-CppWorldEditorWithCelestialInspector.png";
-        Score.Verify(EdCanvas.WritePngFile(P6) && std::filesystem::exists(P6),
-                     "Exported 06-CppWorldEditorWithCelestialInspector.png");
-
-        TypographyRepository::AssignCurrent(nullptr);
-        ImGui::DestroyContext();
     }
 
     std::printf("[CelestialCloudsValidation] Passed=%u Failed=%u\n", Score.Passed, Score.Failed);

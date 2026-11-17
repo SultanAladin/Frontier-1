@@ -64,11 +64,20 @@ namespace
     return SkyRadiance * (0.65f + 0.70f * Up);
 }
 
+[[nodiscard]] float EvaluateCloudIgn(uint32_t PX, uint32_t PY) noexcept
+{
+    const float DotV = static_cast<float>(PX) * 0.06711056f + static_cast<float>(PY) * 0.00583715f;
+    const float F1   = DotV - std::floor(DotV);
+    const float F2   = 52.9829189f * F1;
+    return F2 - std::floor(F2);
+}
+
 [[nodiscard]] Mathematics::LinearRGB EvaluateBackgroundSkyRadiance(
     const WorldSceneSpecification& Scene,
     const AtmosphericSkySequence&  SkySeq,
     Mathematics::Axis3D            RayOrigin,
-    Mathematics::Axis3D            RayDir) noexcept
+    Mathematics::Axis3D            RayDir,
+    float                          PixelJitter01 = -1.0f) noexcept
 {
     const auto& Atmo = Scene.Atmosphere;
     if (!Atmo.Medium.AtmosphereEnabled)
@@ -98,7 +107,8 @@ namespace
         Atmo.LocalCloud,
         Atmo.Medium,
         Atmo.SimulationSeconds,
-        CloudTrans);
+        CloudTrans,
+        PixelJitter01);
 
     return {
         (SkyRad.R + SunRad.R + MoonStarRad.R) * CloudTrans + CloudRad.R,
@@ -773,7 +783,8 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                     const float NdcY = 1.0f - ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx)) * 2.0f;
                     const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                         CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
-                    OutHdr = EvaluateBackgroundSkyRadiance(PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir);
+                    OutHdr = EvaluateBackgroundSkyRadiance(
+                        PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY));
                 }
                 Result.CompositeLinearHdr[Off] = OutHdr;
                 const auto Tone = (Config.DebugChannel != 0u) ? OutHdr : ApplyAcesFilmic(OutHdr);
@@ -945,6 +956,19 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             Mathematics::LinearRGB FinalHdr = Result.DirectLighting.DirectHdrRadiance[Off];
             if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
             {
+                if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled &&
+                    PreparedScene.Atmosphere.Clouds.CloudsEnabled &&
+                    PreparedScene.Atmosphere.Clouds.CloudShadow.ShadowEnabled &&
+                    PreparedScene.AreaLights.empty())
+                {
+                    const float CloudShadowT = VolumetricCloudSequence::EvaluateSolarCloudTransmittance(
+                        Hit.WorldPosition,
+                        PreparedScene.Sun.DirectionToSun,
+                        PreparedScene.Atmosphere.Clouds,
+                        PreparedScene.Atmosphere.Medium.PlanetRadiusMeters,
+                        PreparedScene.Atmosphere.SimulationSeconds);
+                    FinalHdr = FinalHdr * CloudShadowT;
+                }
                 const auto& Mat        = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
                 const float DiffAo     = Result.DirectLighting.CombinedDiffuseAo[Off];
                 const float SpecAo     = Result.DirectLighting.LagardeSpecularAo[Off];
@@ -968,7 +992,8 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 const float NdcY = 1.0f - ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx)) * 2.0f;
                 const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                     CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
-                FinalHdr = EvaluateBackgroundSkyRadiance(PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir);
+                FinalHdr = EvaluateBackgroundSkyRadiance(
+                    PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY));
             }
 
             if (VisTargets.GlassPeelFront64[Off] != 0ull)

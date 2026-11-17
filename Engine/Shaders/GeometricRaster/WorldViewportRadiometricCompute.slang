@@ -92,6 +92,7 @@ struct GpuWorldMaterial64
 [[vk::binding(9,  0)]] StructuredBuffer<float4>                  SdfRadiosityVoxels;
 [[vk::binding(10, 0)]] RWStructuredBuffer<float4>                AccumulationHdrBuffer;
 [[vk::binding(11, 0)]] StructuredBuffer<float4>                  AtmosphericSkyViewLut;
+[[vk::binding(12, 0)]] StructuredBuffer<uint>                    LunarSurfaceAtlasTexels;
 
 static const float PiConst    = 3.14159265359;
 static const float TauConst   = 6.28318530718;
@@ -133,16 +134,16 @@ float3 EvaluateSkyDome(float3 Dir)
     return WorldUniforms.SkyRadianceBvhCount.xyz * (0.65 + 0.70 * Up);
 }
 
-float3 EvaluateBackgroundSkyCloudsGpu(float3 RayDir)
+float3 EvaluateBackgroundSkyCloudsGpu(float3 RayDir, float2 PixelCoord)
 {
     if (WorldUniforms.AtmosphereMaskPad.x == 0u)
     {
         return EvaluateSkyDome(RayDir);
     }
     float3 SkyRad       = EvaluateSkyDome(RayDir);
-    float3 CelestialRad = EvaluateCelestialBodiesGpu(WorldUniforms.CelestialParams, RayDir);
+    float3 CelestialRad = EvaluateCelestialBodiesGpu(WorldUniforms.CelestialParams, LunarSurfaceAtlasTexels, RayDir);
     float  CloudTrans   = 1.0;
-    float3 CloudRad     = EvaluateVolumetricCloudsGpu(WorldUniforms.CloudParams, RayDir, CloudTrans);
+    float3 CloudRad     = EvaluateVolumetricCloudsGpu(WorldUniforms.CloudParams, RayDir, PixelCoord, CloudTrans);
     return (SkyRad + CelestialRad) * CloudTrans + CloudRad;
 }
 
@@ -164,8 +165,8 @@ float EvaluateSolarCloudTransmittanceGpu(float3 WorldPos, float3 SunDir)
     float FScale  = 0.00065 / max(0.08, C.DeckOptics.x);
     float D = SampleCloudDeckDensityGpu(
         P, PlanetR, FloorM, ThickM, clamp(C.DeckGeometry.z, 0.0, 1.0), clamp(C.DeckOptics.y, 0.0, 1.0),
-        max(0.0, C.DeckGeometry.w) * 0.008, FScale, WindX, WindY, C.DeckOptics.w);
-    return exp(-D * ThickM * 0.65);
+        max(0.0, C.DeckGeometry.w) * 0.0085, FScale, WindX, WindY, C.DeckOptics.w, uint(C.FormationOptics.x + 0.5), 8000.0);
+    return 0.32 + 0.68 * exp(-D * ThickM * 0.22);
 }
 
 float IntersectTriangleMT(float3 Origin, float3 Dir, float MinT, float MaxT, uint TriIndex, out float2 OutUV)
@@ -1148,7 +1149,7 @@ float3 TraceDeterministicPathSample(float3 CamOrigin, float3 CamRayDir, uint2 Pi
         RayHitReading Hit = TraceSceneClosest(RayO, RayD, 1.5e-3, 120.0);
         if (!Hit.Hit)
         {
-            float3 SkyB = (B == 0u) ? EvaluateBackgroundSkyCloudsGpu(RayD) : EvaluateSkyDome(RayD);
+            float3 SkyB = (B == 0u) ? EvaluateBackgroundSkyCloudsGpu(RayD, float2(PixelXY)) : EvaluateSkyDome(RayD);
             Radiance += Throughput * SkyB;
             break;
         }
@@ -1398,7 +1399,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
     else
     {
-        FinalHdr = (DebugMode != 0u) ? float3(0.0) : EvaluateBackgroundSkyCloudsGpu(RayDir);
+        FinalHdr = (DebugMode != 0u) ? float3(0.0) : EvaluateBackgroundSkyCloudsGpu(RayDir, float2(DispatchThreadID.xy));
     }
 
     float3 DisplayLinear = (DebugMode != 0u) ? FinalHdr : ApplyAcesFilmicGpu(FinalHdr);

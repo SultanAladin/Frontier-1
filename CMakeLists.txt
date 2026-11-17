@@ -742,10 +742,6 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
     list(APPEND FRONTIER_ENGINE_SOURCES
         Engine/Editor/Explorer/ContentBrowser.cpp
         Engine/Editor/Explorer/ProjectBrowser.cpp
-        Engine/Editor/Inspectors/SunInspectorView.cpp
-        Engine/Editor/Inspectors/MoonInspectorView.cpp
-        Engine/Editor/Inspectors/StarsInspectorView.cpp
-        Engine/Editor/Inspectors/CloudsInspectorView.cpp
         Engine/Editor/Workspaces/Simulation/ForcePresetBrowserPanel.cpp
         Engine/Editor/Workspaces/Simulation/ForceInspectorView.cpp
         Engine/GeometricRaster/Simulation/VectorFieldOverlaySequence.cpp

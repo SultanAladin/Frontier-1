@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         VOLUMETRICCLOUDSEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Raymarched 3D FBM planetary volumetric cloud deck, bounded LocalCloudVolume, Henyey-Greenstein scattering, and solar cloud shadows
+// 🧩 Anti-banded 3D multi-scattering planetary volumetric cloud deck (12 formations), BoundedCloudVolume, and solar cloud shadows
 
 #pragma once
 
@@ -24,12 +24,18 @@ namespace Frontier::GeometricRaster
 
 enum class CloudCategoryType : uint8_t
 {
-    Stratus       = 0u, // [-] - Low uniform layered blanket
-    Stratocumulus = 1u, // [-] - Broken convective rolls
-    Cumulus       = 2u, // [-] - Classic puffy fair-weather towers
-    Cumulonimbus  = 3u, // [-] - Deep vertical anvil storm deck
-    Altostratus   = 4u, // [-] - Mid-altitude sheet veil
-    Cirrus        = 5u, // [-] - High ice-crystal wisps
+    Stratus         = 0u,  // [-] - Low uniform layered blanket
+    Stratocumulus   = 1u,  // [-] - Broken convective rolls
+    Cumulus         = 2u,  // [-] - Classic puffy fair-weather towers
+    Cumulonimbus    = 3u,  // [-] - Deep vertical anvil storm deck
+    Altostratus     = 4u,  // [-] - Mid-altitude sheet veil
+    Cirrus          = 5u,  // [-] - High ice-crystal wisps
+    Lenticular      = 6u,  // [-] - Stationary stacked orographic laminar lenses
+    Mammatus        = 7u,  // [-] - Storm-anvil hanging cellular pouches
+    KelvinHelmholtz = 8u,  // [-] - Breaking-wave wind-shear instability curls
+    Asperitas       = 9u,  // [-] - Undulating dark-lit gravity-wave undersides
+    Nacreous        = 10u, // [-] - Polar stratospheric iridescent mother-of-pearl ribbons
+    Pyrocumulus     = 11u, // [-] - Towering convective plume with warm ember under-glow
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -38,33 +44,33 @@ enum class CloudCategoryType : uint8_t
 
 struct CloudShadowConfiguration
 {
-    bool                    ShadowEnabled           = true;
-    CloudCategoryType ShadowCategory    = CloudCategoryType::Cumulus;
-    float                   ShadowFraction          = 1.0f;
-    float                   ShadowDensityMultiplier = 1.0f;
-    float                   ShadowScale             = 1.0f;
-    float                   ShadowAnvil             = 1.0f;
-    float                   ShadowFloorMeters       = 1.0f;
-    float                   ShadowThicknessMeters   = 50.0f;
+    bool              ShadowEnabled           = true;
+    CloudCategoryType ShadowCategory          = CloudCategoryType::Cumulus;
+    float             ShadowFraction          = 1.0f;
+    float             ShadowDensityMultiplier = 1.0f;
+    float             ShadowScale             = 1.0f;
+    float             ShadowAnvil             = 1.0f;
+    float             ShadowFloorMeters       = 1.0f;
+    float             ShadowThicknessMeters   = 50.0f;
 };
 
 struct CloudDeckConfiguration
 {
-    bool                     CloudsEnabled              = true;
-    bool                     FollowWindEnabled          = true;
-    CloudCategoryType  Category             = CloudCategoryType::Cumulus;
-    float                    CloudFraction              = 0.34f;  // [0..1]   - Fractional sky cover
-    float                    ExtinctionMultiplier       = 2.40f;  // [x]      - Volumetric optical density scale [0..4]
-    float                    FeatureScaleMultiplier     = 0.35f;  // [x]      - Noise octave wavelength scale [0.2..3.0]
-    float                    CloudFloorMeters           = 1400.0f;// [m]      - Base altitude above sea level [100..12000]
-    float                    LayerThicknessMeters       = 1100.0f;// [m]      - Vertical cloud depth [100..6000]
-    float                    DeckCeilingMeters          = 14000.0f;//[m]      - Maximum ceiling [4000..20000]
-    float                    AnvilTopSpread             = 0.50f;  // [0..1]   - Upper anvil widening factor
-    float                    ForwardScatterAnisotropy   = 0.45f;  // [-.9..9] - Henyey-Greenstein phase g
-    float                    WindSpeedMetersPerSecond   = 7.0f;   // [m/s]    - Advection wind speed [0..40]
-    float                    WindBearingDegrees         = 250.0f; // [deg]    - Advection wind bearing [0..360)
-    float                    WindShearPerKilometer      = 0.35f;  // [/km]    - Vertical altitude shear
-    CloudShadowConfiguration CloudShadow                {};
+    bool                     CloudsEnabled            = true;
+    bool                     FollowWindEnabled        = true;
+    CloudCategoryType        Category                 = CloudCategoryType::Cumulus;
+    float                    CloudFraction            = 0.34f;   // [0..1]   - Fractional sky cover
+    float                    ExtinctionMultiplier     = 2.40f;   // [x]      - Volumetric optical density scale [0..4]
+    float                    FeatureScaleMultiplier   = 0.35f;   // [x]      - Noise octave wavelength scale [0.2..3.0]
+    float                    CloudFloorMeters         = 1400.0f; // [m]      - Base altitude above sea level [100..15000]
+    float                    LayerThicknessMeters     = 1100.0f; // [m]      - Vertical cloud depth [100..6500]
+    float                    DeckCeilingMeters        = 16000.0f;// [m]      - Maximum ceiling [4000..22000]
+    float                    AnvilTopSpread           = 0.50f;   // [0..1]   - Upper anvil widening factor
+    float                    ForwardScatterAnisotropy = 0.45f;   // [-.9..9] - Henyey-Greenstein phase g
+    float                    WindSpeedMetersPerSecond = 7.0f;    // [m/s]    - Advection wind speed [0..40]
+    float                    WindBearingDegrees       = 250.0f;  // [deg]    - Advection wind bearing [0..360)
+    float                    WindShearPerKilometer    = 0.35f;   // [/km]    - Vertical altitude shear
+    CloudShadowConfiguration CloudShadow              {};
 };
 
 struct BoundedCloudVolume
@@ -102,12 +108,14 @@ struct WorldAtmosphereConfiguration
 class VolumetricCloudSequence
 {
 public:
-    // Applies canonical physical parameters for any of the 6 CloudCategoryTypes
+    static constexpr uint32_t PresetCount = 12u;
+
+    // Applies canonical physical parameters for any of the 12 CloudCategoryTypes
     static void ApplyCloudCategoryPreset(
         CloudDeckConfiguration& InOutDeck,
-        CloudCategoryType Category) noexcept;
+        CloudCategoryType       Category) noexcept;
 
-    // Evaluates raymarched global planetary cloud shell + optional BoundedCloudVolume
+    // Evaluates raymarched global planetary cloud shell + optional BoundedCloudVolume with 3-octave multi-scattering & IGN anti-banding
     [[nodiscard]] static Mathematics::LinearRGB EvaluateVolumetricClouds(
         const Mathematics::Axis3D&            RayOriginWorld,
         const Mathematics::Axis3D&            RayDirection,
@@ -118,7 +126,8 @@ public:
         const BoundedCloudVolume&             LocalVolume,
         const AtmosphericMediumConfiguration& Medium,
         float                                 SimulationSeconds,
-        float&                                OutTransmittance) noexcept;
+        float&                                OutTransmittance,
+        float                                 PixelJitter01 = -1.0f) noexcept;
 
     // Evaluates soft volumetric cloud optical transmittance along a sun ray
     [[nodiscard]] static float EvaluateSolarCloudTransmittance(

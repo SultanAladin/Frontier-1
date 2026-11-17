@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         LUNARSTARFIELDSEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Multi-instance Lunar discs (6 surface presets, 29.53-day phase, roll/pitch) and deterministic twinkling Starfield evaluation
+// 🧩 Multi-instance Lunar discs (6 real 2K surface presets, 29.53-day phase, roll/pitch) and deterministic twinkling Starfield evaluation
 
 #pragma once
 
@@ -41,7 +41,7 @@ struct LunarBodyConfiguration
 {
     bool               Visible                = false;                        // [-]   - Enables lunar disc & halo
     bool               FollowSkyOppositeSun   = false;                        // [-]   - Locks moon anti-solar to SunDirection
-    LunarSurfacePreset SurfacePreset          = LunarSurfacePreset::Luna;     // [-]   - Surface tint & mare profile
+    LunarSurfacePreset SurfacePreset          = LunarSurfacePreset::Luna;     // [-]   - Surface texture & mare profile
     float              SynodicPhaseFraction   = 0.62f;                        // [0-1] - 0=New, 0.5=Full, 1=New
     float              BrightnessMultiplier   = 1.60f;                        // [x]   - Disc brightness scale [0..6]
     float              HaloGlowMultiplier     = 0.80f;                        // [x]   - Atmospheric halo glow [0..3]
@@ -71,11 +71,11 @@ struct StarfieldConfiguration
 class LunarStarfieldSequence
 {
 public:
-    static constexpr uint32_t AtlasTileWidthPx  = 256u;
-    static constexpr uint32_t AtlasTileHeightPx = 128u;
+    static constexpr uint32_t AtlasTileWidthPx  = 512u;
+    static constexpr uint32_t AtlasTileHeightPx = 256u;
     static constexpr uint32_t AtlasPresetCount  = 6u;
 
-    // Returns canonical linear RGB tint for a LunarSurfacePreset
+    // Returns canonical linear RGB tint for a LunarSurfacePreset (used for atmospheric halo glow & procedural fallback)
     [[nodiscard]] static Mathematics::LinearRGB QueryPresetTint(LunarSurfacePreset Preset) noexcept;
 
     // Resolves world-space unit direction toward the moon (honoring FollowSkyOppositeSun)
@@ -83,16 +83,22 @@ public:
         const LunarBodyConfiguration& Moon,
         const Mathematics::Axis3D&    SunDirection) noexcept;
 
-    // Synthesizes procedural 6-tier cratered/mare lunar atlas (RGBA8, 256 x 768)
+    // Builds 6-tile stacked lunar surface atlas (RGBA8, 512 x 1536) from the 2K moon textures with procedural fallback
+    [[nodiscard]] static std::vector<uint8_t> BuildLunarSurfaceAtlasRgba8();
+
+    // Synthesizes procedural 6-tier cratered/mare lunar atlas fallback (RGBA8, 512 x 1536)
     [[nodiscard]] static std::vector<uint8_t> BuildProceduralLunarSurfaceAtlasRgba8();
 
-    // Evaluates all 4 moon slots + deterministic twinkling starfield along RayDirection
+    // Returns cached 512 x 1536 RGBA8 atlas built from the real 2K moon textures (thread-safe lazy load)
+    [[nodiscard]] static const std::vector<uint8_t>& QueryLunarSurfaceAtlasRgba8();
+
+    // Evaluates all 4 moon slots (real equirectangular atlas) + deterministic twinkling starfield along RayDirection
     [[nodiscard]] static Mathematics::LinearRGB EvaluateCelestialField(
-        const Mathematics::Axis3D&               RayDirection,
-        const Mathematics::Axis3D&               SunDirection,
+        const Mathematics::Axis3D&                  RayDirection,
+        const Mathematics::Axis3D&                  SunDirection,
         std::span<const LunarBodyConfiguration, 4u> Moons,
-        const StarfieldConfiguration&            Stars,
-        float                                    SimulationSeconds) noexcept;
+        const StarfieldConfiguration&               Stars,
+        float                                       SimulationSeconds) noexcept;
 };
 
 } // namespace Frontier::GeometricRaster

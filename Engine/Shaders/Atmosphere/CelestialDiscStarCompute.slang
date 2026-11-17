@@ -1,26 +1,29 @@
 /*============================================================================================================================================
                                                       CELESTIALDISCSTARCOMPUTE.SLANG
 ============================================================================================================================================*/
-// 🧩 Analytical Sun Disc + Corona, 4x Multi-Moon Phase/Crater/Halo Discs & Deterministic Nocturnal Starfield
+// 🧩 Analytical Sun Disc + Corona, 4x Multi-Moon Real 2K Atlas Discs & Deterministic Nocturnal Starfield
 
 static const float CelestialPiConst  = 3.14159265359;
 static const float CelestialTauConst = 6.28318530718;
+static const uint  MoonAtlasTileW    = 512u;
+static const uint  MoonAtlasTileH    = 256u;
+static const uint  MoonAtlasPresets  = 6u;
 
 struct GpuMoonDescriptor
 {
     float4 DirectionRadiusRad; // xyz = UnitMoonDir, w = HalfAngularRadiusRad
-    float4 TintSynodicPhase;       // xyz = LinearTint, w = SynodicPhase (0..1)
-    float4 OpticsOrientation; // x = Bright, y = HaloGlow, z = RollRad, w = PitchRad
-    float4 MetaMask;          // x = Visible (0/1), y = PresetSeed, z = Pad, w = Pad
+    float4 TintSynodicPhase;   // xyz = LinearTint, w = SynodicPhase (0..1)
+    float4 OpticsOrientation;  // x = Bright, y = HaloGlow, z = RollRad, w = PitchRad
+    float4 MetaMask;           // x = Visible (0/1), y = PresetSeed, z = PresetIndex (0..5), w = Pad
 };
 
 struct CelestialFieldUniformBlock
 {
-    float4 SunAxisRadius;  // xyz = UnitSunDir, w = SunHalfAngleRad
-    float4 SunTintIntensity; // xyz = EffectiveSunTint * Transmittance, w = SunEnabledScale
-    float4 StarParams;          // x = StarsEnabled(0/1), y = LimMag, z = Bright, w = PointSize
-    float4 StarScintillationRot;      // x = TwinkleEnabled(0/1), y = DepthPct, z = RateHz, w = RotRad
-    float4 ClockViewportDims;     // x = SimulationSeconds, y = ViewportW, z = ViewportH, w = MoonCount
+    float4 SunAxisRadius;        // xyz = UnitSunDir, w = SunHalfAngleRad
+    float4 SunTintIntensity;     // xyz = EffectiveSunTint * Transmittance, w = SunEnabledScale
+    float4 StarParams;           // x = StarsEnabled(0/1), y = LimMag, z = Bright, w = PointSize
+    float4 StarScintillationRot; // x = TwinkleEnabled(0/1), y = DepthPct, z = RateHz, w = RotRad
+    float4 ClockViewportDims;    // x = SimulationSeconds, y = ViewportW, z = ViewportH, w = MoonCount
     GpuMoonDescriptor Moons[4];
 };
 
@@ -32,24 +35,47 @@ float HashCelestial3(int IX, int IY, int IZ)
     return float(N) * (1.0 / 4294967296.0);
 }
 
-float LatticeNoiseCelestial3(float3 P)
+float3 UnpackSrgbByteToLinear(uint PackedRgba8)
 {
-    int3 I = int3(floor(P));
-    float3 F = P - float3(I);
-    float3 U = F * F * (3.0 - 2.0 * F);
-
-    float N000 = HashCelestial3(I.x, I.y, I.z),         N100 = HashCelestial3(I.x + 1, I.y, I.z);
-    float N010 = HashCelestial3(I.x, I.y + 1, I.z),     N110 = HashCelestial3(I.x + 1, I.y + 1, I.z);
-    float N001 = HashCelestial3(I.x, I.y, I.z + 1),     N101 = HashCelestial3(I.x + 1, I.y, I.z + 1);
-    float N011 = HashCelestial3(I.x, I.y + 1, I.z + 1), N111 = HashCelestial3(I.x + 1, I.y + 1, I.z + 1);
-
-    return lerp(
-        lerp(lerp(N000, N100, U.x), lerp(N010, N110, U.x), U.y),
-        lerp(lerp(N001, N101, U.x), lerp(N011, N111, U.x), U.y),
-        U.z);
+    float3 S = float3(
+        float(PackedRgba8 & 0xFFu),
+        float((PackedRgba8 >> 8u) & 0xFFu),
+        float((PackedRgba8 >> 16u) & 0xFFu)) * (1.0 / 255.0);
+    return select(S <= float3(0.04045), S / 12.92, pow((S + 0.055) / 1.055, float3(2.2)));
 }
 
-float3 EvaluateCelestialBodiesGpu(CelestialFieldUniformBlock Cfg, float3 RayDir)
+float3 SampleLunarAtlasGpu(
+    StructuredBuffer<uint> LunarAtlas,
+    uint                   PresetIndex,
+    float                  LonU,
+    float                  LatV)
+{
+    uint P = min(PresetIndex, MoonAtlasPresets - 1u);
+    float WrappedU = LonU - floor(LonU);
+    if (WrappedU < 0.0) WrappedU += 1.0;
+    float ClampedV = clamp(LatV, 0.0, 1.0);
+
+    float FX = WrappedU * float(MoonAtlasTileW) - 0.5;
+    float FY = ClampedV * float(MoonAtlasTileH - 1u);
+    int   X0 = ((int(floor(FX)) % int(MoonAtlasTileW)) + int(MoonAtlasTileW)) % int(MoonAtlasTileW);
+    int   X1 = (X0 + 1) % int(MoonAtlasTileW);
+    int   Y0 = clamp(int(floor(FY)), 0, int(MoonAtlasTileH - 1u));
+    int   Y1 = min(Y0 + 1, int(MoonAtlasTileH - 1u));
+    float TX = FX - floor(FX);
+    float TY = FY - floor(FY);
+
+    uint RowBase = P * MoonAtlasTileH;
+    float3 C00 = UnpackSrgbByteToLinear(LunarAtlas[(RowBase + uint(Y0)) * MoonAtlasTileW + uint(X0)]);
+    float3 C10 = UnpackSrgbByteToLinear(LunarAtlas[(RowBase + uint(Y0)) * MoonAtlasTileW + uint(X1)]);
+    float3 C01 = UnpackSrgbByteToLinear(LunarAtlas[(RowBase + uint(Y1)) * MoonAtlasTileW + uint(X0)]);
+    float3 C11 = UnpackSrgbByteToLinear(LunarAtlas[(RowBase + uint(Y1)) * MoonAtlasTileW + uint(X1)]);
+    return lerp(lerp(C00, C10, TX), lerp(C01, C11, TX), TY);
+}
+
+float3 EvaluateCelestialBodiesGpu(
+    CelestialFieldUniformBlock Cfg,
+    StructuredBuffer<uint>     LunarAtlas,
+    float3                     RayDir)
 {
     float3 OutRgb = float3(0.0, 0.0, 0.0);
     float3 SunDir = normalize(Cfg.SunAxisRadius.xyz);
@@ -66,7 +92,7 @@ float3 EvaluateCelestialBodiesGpu(CelestialFieldUniformBlock Cfg, float3 RayDir)
         OutRgb += Cfg.SunTintIntensity.xyz * (DiscEdge * 26.0 + Corona) * (Cfg.SunTintIntensity.w * LimbFade);
     }
 
-    // 2. Multi-Instance Moons (up to 4)
+    // 2. Multi-Instance Moons (up to 4) sampling real 2K lunar equirectangular atlas
     uint MoonCount = min(4u, uint(Cfg.ClockViewportDims.w + 0.5));
     for (uint MIdx = 0u; MIdx < MoonCount; ++MIdx)
     {
@@ -103,14 +129,19 @@ float3 EvaluateCelestialBodiesGpu(CelestialFieldUniformBlock Cfg, float3 RayDir)
                 float SurfY = PY * CosP - PZ * SinP;
                 float SurfZ = PY * SinP + PZ * CosP;
 
+                float LonU = atan2(PX, SurfZ) / CelestialTauConst + 0.5;
+                float LatV = acos(clamp(SurfY, -1.0, 1.0)) / CelestialPiConst;
+                uint  PresetIdx = uint(M.MetaMask.z + 0.5);
+                float3 TexAlbedo = SampleLunarAtlasGpu(LunarAtlas, PresetIdx, LonU, LatV);
+
                 float PhAng = (M.TintSynodicPhase.w - 0.5) * CelestialTauConst;
                 float3 PhL  = normalize(float3(sin(PhAng), 0.18, cos(PhAng)));
                 float NdotL = max(0.0, dot(float3(PX, PY, PZ), PhL));
 
-                float Mare   = 0.62 + 0.38 * LatticeNoiseCelestial3(float3(PX * 3.8 + 4.1 + M.MetaMask.y, SurfY * 3.8 - 2.3, SurfZ * 3.8));
-                float EdgeAa = clamp((1.0 - sqrt(R2)) * 14.0, 0.0, 1.0);
-                float Lum    = (0.015 + NdotL * 1.45) * Mare * M.OpticsOrientation.x * EdgeAa;
-                OutRgb += M.TintSynodicPhase.xyz * Lum;
+                float EdgeAa    = clamp((1.0 - sqrt(R2)) * 18.0, 0.0, 1.0);
+                float LimbBoost = 0.78 + 0.22 * sqrt(max(0.0, 1.0 - R2));
+                float Lum       = (0.025 + NdotL * 1.95) * LimbBoost * M.OpticsOrientation.x * EdgeAa;
+                OutRgb += TexAlbedo * Lum;
             }
         }
     }
@@ -159,6 +190,7 @@ float3 EvaluateCelestialBodiesGpu(CelestialFieldUniformBlock Cfg, float3 RayDir)
 #ifndef FRONTIER_ATMOSPHERE_EMBEDDED
 [[vk::binding(0, 0)]] ConstantBuffer<CelestialFieldUniformBlock> CelestialUniforms;
 [[vk::binding(1, 0)]] RWStructuredBuffer<float4>                OutCelestialRgba;
+[[vk::binding(2, 0)]] StructuredBuffer<uint>                    LunarSurfaceAtlasTexels;
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
@@ -172,6 +204,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float Az  = (Uv.x - 0.5) * CelestialTauConst;
     float El  = (1.0 - Uv.y) * (CelestialPiConst * 0.5);
     float3 Rd = float3(cos(El) * cos(Az), cos(El) * sin(Az), sin(El));
-    OutCelestialRgba[DispatchThreadID.y * W + DispatchThreadID.x] = float4(EvaluateCelestialBodiesGpu(CelestialUniforms, Rd), 1.0);
+    OutCelestialRgba[DispatchThreadID.y * W + DispatchThreadID.x] =
+        float4(EvaluateCelestialBodiesGpu(CelestialUniforms, LunarSurfaceAtlasTexels, Rd), 1.0);
 }
 #endif

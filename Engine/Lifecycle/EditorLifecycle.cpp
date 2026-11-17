@@ -352,69 +352,6 @@ void EditorLifecycle::AttachForceFieldAuthoringToActivePanes()
             {
                 return false;
             }
-
-            if (ShowcaseBundle != nullptr)
-            {
-                auto& Atmo       = ShowcaseBundle->Scene.Atmosphere;
-                auto& DisplayCfg = ActivePanes->Viewport.AccessDisplaySettings();
-
-                if (PrimaryEntry->Token == ShowcaseBundle->SunEmitterToken)
-                {
-                    Editor::Inspectors::SunInspectorTargets Targets{ &Atmo.Solar, &Atmo.Medium };
-                    if (SunInspector.Render(Surface, Bounds, Targets, Input, Δt))
-                    {
-                        PrimaryEntry->VisibilityEnabled  = Atmo.Solar.SolarEnabled;
-                        DisplayCfg.SolarTimeOfDayHours   = Atmo.Solar.LocalHours;
-                        DisplayCfg.DayCyclePlaying       = Atmo.Solar.CycleAnimationEnabled;
-                        AtmosphereInspectorDirty         = true;
-                    }
-                    return true;
-                }
-                if (PrimaryEntry->Token == ShowcaseBundle->MoonBodyToken)
-                {
-                    Editor::Inspectors::MoonInspectorTargets Targets{ &Atmo.Moons, &ActiveMoonSlot };
-                    if (MoonInspector.Render(Surface, Bounds, Targets, Input, Δt))
-                    {
-                        PrimaryEntry->VisibilityEnabled = Atmo.Moons[ActiveMoonSlot].Visible;
-                        AtmosphereInspectorDirty        = true;
-                    }
-                    return true;
-                }
-                if (PrimaryEntry->Token == ShowcaseBundle->StarfieldToken)
-                {
-                    Editor::Inspectors::StarsInspectorTargets Targets{ &Atmo.Stars, Atmo.SimulationSeconds };
-                    if (StarsInspector.Render(Surface, Bounds, Targets, Input, Δt))
-                    {
-                        PrimaryEntry->VisibilityEnabled = Atmo.Stars.StarfieldEnabled;
-                        AtmosphereInspectorDirty        = true;
-                    }
-                    return true;
-                }
-                if (PrimaryEntry->Token == ShowcaseBundle->VolumetricCloudsToken)
-                {
-                    Editor::Inspectors::CloudsInspectorTargets Targets{ &Atmo.Clouds, &Atmo.LocalCloud, false };
-                    if (CloudsInspector.Render(Surface, Bounds, Targets, Input, Δt))
-                    {
-                        PrimaryEntry->VisibilityEnabled    = Atmo.Clouds.CloudsEnabled;
-                        PrimaryEntry->CastShadows          = Atmo.Clouds.CloudShadow.ShadowEnabled;
-                        DisplayCfg.VolumetricCloudsEnabled = Atmo.Clouds.CloudsEnabled;
-                        DisplayCfg.CloudFraction           = Atmo.Clouds.CloudFraction;
-                        AtmosphereInspectorDirty           = true;
-                    }
-                    return true;
-                }
-                if (PrimaryEntry->Token == ShowcaseBundle->LocalCloudToken)
-                {
-                    Editor::Inspectors::CloudsInspectorTargets Targets{ &Atmo.Clouds, &Atmo.LocalCloud, true };
-                    if (CloudsInspector.Render(Surface, Bounds, Targets, Input, Δt))
-                    {
-                        PrimaryEntry->VisibilityEnabled = Atmo.LocalCloud.LocalEnabled;
-                        AtmosphereInspectorDirty        = true;
-                    }
-                    return true;
-                }
-            }
-
             if (PrimaryEntry->Category != ConstructSlotCategory::ForceField)
             {
                 return false;
@@ -1594,8 +1531,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             }
             Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
 
-            const bool AtmoChanged = ViewportTogglesChanged || AtmoAnimTick || AtmosphereInspectorDirty;
-            AtmosphereInspectorDirty = false;
+            const bool AtmoChanged = ViewportTogglesChanged || AtmoAnimTick;
             if (AtmoChanged && ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled)
             {
                 ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
