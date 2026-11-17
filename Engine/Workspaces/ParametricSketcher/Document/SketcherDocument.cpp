@@ -3234,6 +3234,10 @@ SketcherEdgePath SketcherEdgePathBetween(const SketcherDocument& Document, const
     return Path;
 }
 
+#if defined(_MSC_VER)
+#pragma optimize("", off)
+__declspec(noinline)
+#endif
 static std::string ExecuteCombineBodySteps(
     SketcherDocument&               Document,
     const std::string&              Target,
@@ -3277,6 +3281,9 @@ SketcherCommandOutcome CombineSketcherBodies(SketcherDocument& Document, const s
         return ExecuteCombineBodySteps(Document, Target, Tools, Combination);
     });
 }
+#if defined(_MSC_VER)
+#pragma optimize("", on)
+#endif
 
 SketcherCommandOutcome CutSketcherBody(SketcherDocument& Document, const SketcherCutRequest& Request)
 {
