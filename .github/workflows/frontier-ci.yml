@@ -45,6 +45,8 @@ jobs:
           node-version: '22'
 
       - name: Recover pinned dependencies, fonts and shader tools
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -o pipefail
           retry() {
