@@ -790,7 +790,11 @@ bool ProjectBrowser::RegisterDiskPathInCollection(const std::filesystem::path& D
 
     const std::string ExtLower = LowercaseString(DiskPath.extension().string());
     BrowserEntryCategory Cat   = BrowserEntryCategory::Project;
-    if (ExtLower == ".obj" || ExtLower == ".uvspace" || ExtLower == ".geometryspace" || ExtLower == ".geometry")
+    if (ExtLower == ".solidarc" || ExtLower == ".step" || ExtLower == ".stp" || ExtLower == ".iges" || ExtLower == ".igs")
+    {
+        Cat = BrowserEntryCategory::Cad;
+    }
+    else if (ExtLower == ".obj" || ExtLower == ".uvspace" || ExtLower == ".geometryspace" || ExtLower == ".geometry")
     {
         Cat = BrowserEntryCategory::Geometry;
     }
@@ -811,15 +815,19 @@ bool ProjectBrowser::RegisterDiskPathInCollection(const std::filesystem::path& D
     Entry.Title           = Title.empty() ? "LocalEntry" : Title;
     Entry.Suffix       = DiskPath.extension().empty() ? ".projectspace" : DiskPath.extension().string();
     Entry.Category        = Cat;
-    Entry.SummaryCaption  = (Cat == BrowserEntryCategory::Geometry)
-                                ? "Local Geometry · UVWorkspace & Frontier"
-                                : "Local C++20 Frontier Project · 3 Targets";
+    Entry.SummaryCaption  = (Cat == BrowserEntryCategory::Cad)
+                                ? "Local Parametric CAD · Sketcher & Frontier"
+                                : (Cat == BrowserEntryCategory::Geometry)
+                                      ? "Local Geometry · UVWorkspace & Frontier"
+                                      : "Local C++20 Frontier Project · 3 Targets";
     Entry.Description     = "Mounted from local filesystem (" + DiskPath.generic_string() + ").";
     Entry.LastOpenedText  = "Just now";
     Entry.FilePath        = DiskPath;
-    Entry.ViewTitles      = (Cat == BrowserEntryCategory::Geometry)
-                                ? std::vector<std::string>{ "Geometry", "UV layout", "Surface" }
-                                : std::vector<std::string>{ "Studio", "Courtyard", "Workshop" };
+    Entry.ViewTitles      = (Cat == BrowserEntryCategory::Cad)
+                                ? std::vector<std::string>{ "Isometric", "Front", "Drawing Sheet" }
+                                : (Cat == BrowserEntryCategory::Geometry)
+                                      ? std::vector<std::string>{ "Geometry", "UV layout", "Surface" }
+                                      : std::vector<std::string>{ "Studio", "Courtyard", "Workshop" };
     Entry.RevisionTitles  = { "Local working tree · Current" };
     Entry.Starred         = true;
     Entry.LocalDiskEntry  = true;

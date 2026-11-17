@@ -49,7 +49,7 @@ int main()
     // 1. Validate WorkspaceCapabilityRegister
     Workspaces::WorkspaceCapabilityRegister CapReg {};
     const auto AllCaps = CapReg.QueryAllCapabilities();
-    if (AllCaps.size() != 6u ||
+    if (AllCaps.size() != 7u ||
         AllCaps[0].Identifier != "Frontier" ||
         AllCaps[0].ActionTitle != "Open with Frontier" ||
         AllCaps[1].Identifier != "UVWorkspace" ||
@@ -61,9 +61,11 @@ int main()
         AllCaps[4].Identifier != "BakingWorkspace" ||
         AllCaps[4].ActionTitle != "Open with Baking Studio" ||
         AllCaps[5].Identifier != "FractureWorkspace" ||
-        AllCaps[5].ActionTitle != "Open with FractureWorkspace")
+        AllCaps[5].ActionTitle != "Open with FractureWorkspace" ||
+        AllCaps[6].Identifier != "Sketcher" ||
+        AllCaps[6].ActionTitle != "Open with Sketcher")
     {
-        std::fprintf(stderr, "[FAIL] WorkspaceCapabilityRegister expected Frontier + UVWorkspace + PatternWorkspace + StampWorkspace + BakingWorkspace + FractureWorkspace capabilities.\n");
+        std::fprintf(stderr, "[FAIL] WorkspaceCapabilityRegister expected Frontier + UVWorkspace + PatternWorkspace + StampWorkspace + BakingWorkspace + FractureWorkspace + Sketcher capabilities.\n");
         return 1;
     }
 
@@ -72,11 +74,13 @@ int main()
     const auto VecPermitted      = CapReg.QueryPermittedForPath("MotifTile.VectorSpace");
     const auto BakePermitted     = CapReg.QueryPermittedForPath("Statue.stl");
     const auto FracturePermitted = CapReg.QueryPermittedForPath("Column.FractureSpace");
+    const auto SketcherPermitted = CapReg.QueryPermittedForPath("Bracket.solidarc");
     if (ProjPermitted.empty() || ProjPermitted.front().Target != Workspaces::HostWorkspaceTarget::FrontierWorld ||
         UvPermitted.empty() || UvPermitted.front().Target != Workspaces::HostWorkspaceTarget::UVWorkspace ||
         VecPermitted.empty() || VecPermitted.front().Target != Workspaces::HostWorkspaceTarget::PatternWorkspace ||
         BakePermitted.empty() || BakePermitted.front().Target != Workspaces::HostWorkspaceTarget::BakingWorkspace ||
-        FracturePermitted.empty() || FracturePermitted.front().Target != Workspaces::HostWorkspaceTarget::FractureWorkspace)
+        FracturePermitted.empty() || FracturePermitted.front().Target != Workspaces::HostWorkspaceTarget::FractureWorkspace ||
+        SketcherPermitted.empty() || SketcherPermitted.front().Target != Workspaces::HostWorkspaceTarget::SketcherWorkspace)
     {
         std::fprintf(stderr, "[FAIL] WorkspaceCapabilityRegister path priority mismatch.\n");
         return 1;

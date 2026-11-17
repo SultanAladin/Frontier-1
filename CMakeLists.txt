@@ -74,7 +74,7 @@ if(MSVC)
         WIN32_LEAN_AND_MEAN
         _CRT_SECURE_NO_WARNINGS
     )
-    target_compile_options(FrontierCompileSettings INTERFACE /utf-8 /W4 /permissive-)
+    target_compile_options(FrontierCompileSettings INTERFACE /utf-8 /W4 /permissive- /bigobj)
     if(FRONTIER_PROFILE STREQUAL "Shipping")
         target_compile_options(FrontierCompileSettings INTERFACE $<$<NOT:$<CONFIG:Debug>>:/O2> /DNDEBUG)
     else()
@@ -227,6 +227,15 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/Fluid/FluidAtlasMinimap.cpp
     Engine/Workspaces/Fluid/FluidFlipbookExporter.cpp
     Engine/Workspaces/Fluid/FluidWorkspaceHost.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherIcons.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherStyleSheet.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherOutliner.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherOptions.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherNavigation.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherFileDialog.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherScript.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherInterface.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherWorkspaceHost.cpp
     Engine/Workspaces/Texturing/PatternStampLayerStackPane.cpp
     Engine/Workspaces/Texturing/PatternStampToolHeaderPane.cpp
     Engine/Workspaces/Texturing/PatternStampInspectorPane.cpp
@@ -451,6 +460,45 @@ frontier_compile_slang_shader_unit(
     "compute"
     "FieldLatticeCompute.spv"
 )
+
+function(frontier_compile_sketcher_slang_shader SLANG_FILE ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
+    set(IN_SLANG "${CMAKE_SOURCE_DIR}/Engine/Shaders/Sketcher/${SLANG_FILE}")
+    set(OUT_SPV "${FRONTIER_COMPILED_SHADER_DIR}/${OUT_SPV_NAME}")
+    add_custom_command(
+        OUTPUT "${OUT_SPV}"
+        COMMAND "${FRONTIER_SLANGC_BIN}"
+            -profile spirv_1_3
+            -target spirv
+            -emit-spirv-directly
+            -O0
+            -I "${CMAKE_SOURCE_DIR}"
+            -entry "${ENTRY_NAME}"
+            -stage "${SHADER_UNIT}"
+            "${IN_SLANG}"
+            -o "${OUT_SPV}"
+        DEPENDS
+            "${IN_SLANG}"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Sketcher/SketcherProjection.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Sketcher/SketcherMatCapLookup.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/Sketcher/SketcherCadStroke.slang"
+        COMMENT "[Slang] Compiling Sketcher/${SLANG_FILE} (${SHADER_UNIT}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
+        VERBATIM
+    )
+    set(FRONTIER_SPV_OUTPUTS ${FRONTIER_SPV_OUTPUTS} "${OUT_SPV}" PARENT_SCOPE)
+endfunction()
+
+frontier_compile_sketcher_slang_shader(SketcherSurface.slang    SketcherSurfaceVertex          vertex   SketcherSurface.vert.spv)
+frontier_compile_sketcher_slang_shader(SketcherSurface.slang    SketcherSurfaceFragment        fragment SketcherSurface.frag.spv)
+frontier_compile_sketcher_slang_shader(SketcherEdge.slang       SketcherEdgeVertex             vertex   SketcherEdge.vert.spv)
+frontier_compile_sketcher_slang_shader(SketcherEdge.slang       SketcherEdgeFragment           fragment SketcherEdge.frag.spv)
+frontier_compile_sketcher_slang_shader(SketcherEdge.slang       SketcherEdgeOccludedFragment   fragment SketcherEdgeOccluded.frag.spv)
+frontier_compile_sketcher_slang_shader(SketcherEdge.slang       SketcherEdgeIdentityFragment   fragment SketcherEdgeIdentity.frag.spv)
+frontier_compile_sketcher_slang_shader(SketcherGrid.slang       SketcherGridVertex             vertex   SketcherGrid.vert.spv)
+frontier_compile_sketcher_slang_shader(SketcherGrid.slang       SketcherGridFragment           fragment SketcherGrid.frag.spv)
+frontier_compile_sketcher_slang_shader(SketcherImagePlane.slang SketcherImagePlaneVertex       vertex   SketcherImagePlane.vert.spv)
+frontier_compile_sketcher_slang_shader(SketcherImagePlane.slang SketcherImagePlaneFragment     fragment SketcherImagePlane.frag.spv)
+frontier_compile_sketcher_slang_shader(SketcherGizmo.slang      SketcherGizmoVertex            vertex   SketcherGizmo.vert.spv)
+frontier_compile_sketcher_slang_shader(SketcherGizmo.slang      SketcherGizmoFragment          fragment SketcherGizmo.frag.spv)
 
 function(frontier_compile_vector_slang_shader SLANG_REL_PATH ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
     set(IN_SLANG "${CMAKE_SOURCE_DIR}/Engine/Shaders/Vector/${SLANG_REL_PATH}")
@@ -709,7 +757,13 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometrySpace/Parametric/Tessellation/ChartTriangulation.cpp
     Engine/GeometrySpace/Parametric/Topology/EulerEdits.cpp
     Engine/GeometrySpace/Parametric/Topology/ModelPartition.cpp
+    Engine/Workspaces/ParametricSketcher/Viewport/SketcherCamera.cpp
+    Engine/Workspaces/ParametricSketcher/Viewport/SketcherGizmoSpace.cpp
     Engine/Workspaces/ParametricSketcher/Viewport/SketcherOrbitCamera.cpp
+    Engine/Workspaces/ParametricSketcher/Viewport/SketcherPortableImage.cpp
+    Engine/Workspaces/ParametricSketcher/Viewport/SketcherRasterization.cpp
+    Engine/Workspaces/ParametricSketcher/Viewport/SketcherSnapping.cpp
+    Engine/Workspaces/ParametricSketcher/Viewport/SketcherSurfaceTracing.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherCurveImport.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherDocument.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherDocumentCodec.cpp
@@ -999,6 +1053,7 @@ if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
     frontier_register_desktop_app(FrontierFracture   Engine/Lifecycle/FrontierFractureLaunch.cpp)
     frontier_register_desktop_app(FrontierForceField Engine/Lifecycle/FrontierForceFieldLaunch.cpp)
     frontier_register_desktop_app(FrontierFluid      Engine/Lifecycle/FrontierFluidLaunch.cpp)
+    frontier_register_desktop_app(FrontierSketcher   Engine/Lifecycle/FrontierSketcherLaunch.cpp)
 endif()
 
 #------------------------------------------------------------------------------------------------------------------------
@@ -1103,9 +1158,11 @@ if(BUILD_TESTING)
     frontier_register_exhibit(FluidSimulationValidation         Exhibits/FluidSimulationValidation.cpp)
     frontier_register_exhibit(SketcherKernelValidation          Exhibits/ParametricSketcher/SketcherKernelValidation.cpp)
     frontier_register_exhibit(SketcherDocumentValidation        Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)
+    frontier_register_exhibit(SketcherViewportValidation        Exhibits/ParametricSketcher/SketcherViewportValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(FluidWorkspaceUIValidation        Exhibits/FluidWorkspaceUIValidation.cpp)
         frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)
+        frontier_register_exhibit(SketcherWorkspaceValidation       Exhibits/ParametricSketcher/SketcherWorkspaceValidation.cpp)
     endif()
 
     if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
@@ -1148,6 +1205,10 @@ if(BUILD_TESTING)
         add_test(
             NAME FrontierFluidExecutableSmoke
             COMMAND FrontierFluid --frames=1
+        )
+        add_test(
+            NAME FrontierSketcherExecutableSmoke
+            COMMAND FrontierSketcher --frames=1
         )
     endif()
 endif()

@@ -74,8 +74,10 @@ jobs:
           $Output = & cmake --build Build/Windows --config Release --parallel 4 --target `
             Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp `
             FrontierMaterial FrontierParticle FrontierFracture FrontierForceField FrontierFluid `
+            FrontierSketcher `
             FrontierEngineRuntimeDll FrontierWorkspaceUiDll `
-            UVBoundaryValidation ProjectBrowserValidation 2>&1
+            UVBoundaryValidation ProjectBrowserValidation `
+            SketcherKernelValidation SketcherDocumentValidation SketcherViewportValidation SketcherWorkspaceValidation 2>&1
           $Result = $LASTEXITCODE
           $Output | ForEach-Object { Write-Output "$_" }
           if ($Result -ne 0) {
@@ -89,7 +91,7 @@ jobs:
       - name: Run Windows hostile-input, UV chart, and Project Browser checks
         shell: pwsh
         run: |
-          $Output = & ctest --test-dir Build/Windows -C Release --output-on-failure -R '^(UVBoundaryValidation|ProjectBrowserValidation)$' 2>&1
+          $Output = & ctest --test-dir Build/Windows -C Release --output-on-failure -R '^(UVBoundaryValidation|ProjectBrowserValidation|SketcherKernelValidation|SketcherDocumentValidation|SketcherViewportValidation|SketcherWorkspaceValidation)$' 2>&1
           $Result = $LASTEXITCODE
           $Output | ForEach-Object { Write-Output "$_" }
           if ($Result -ne 0) {
@@ -114,7 +116,8 @@ jobs:
             'FrontierParticle.exe',
             'FrontierFracture.exe',
             'FrontierForceField.exe',
-            'FrontierFluid.exe'
+            'FrontierFluid.exe',
+            'FrontierSketcher.exe'
           )
           foreach ($App in $Apps) {
             Copy-Item "Build/Windows/Release/$App" "$Payload/"

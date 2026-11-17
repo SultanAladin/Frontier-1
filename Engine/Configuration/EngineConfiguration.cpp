@@ -112,6 +112,12 @@ void EngineConfiguration::ConfigureFromCommandLine(std::span<const std::string_v
             Modified.ActiveWorkspace  = WorkspaceCategory::Simulation;
             Modified.ApplicationTitle = "Frontier ForceField";
         }
+        else if (Argument == "--standalone-sketcher" || Argument == "--standalone=sketcher" || Argument == "--workspace=sketcher" || Argument == "--sketcher" || Argument == "--cad" || Argument == "--solidarc")
+        {
+            Modified.LaunchMode       = HostLaunchMode::StandaloneWorkspace;
+            Modified.ActiveWorkspace  = WorkspaceCategory::GeometryCad;
+            Modified.ApplicationTitle = "Frontier Parametric Sketcher";
+        }
         else if (Argument == "--feature-set" || Argument == "--workspace=all")
         {
             Modified.LaunchMode       = HostLaunchMode::FeatureSet;

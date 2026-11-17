@@ -26,6 +26,7 @@
 #include "Engine/Workspaces/Fluid/FluidWorkspaceHost.h"
 #include "Engine/Workspaces/Fracture/FractureWorkspaceHost.h"
 #include "Engine/Workspaces/Material/MaterialWorkspaceHost.h"
+#include "Engine/Workspaces/ParametricSketcher/Interface/SketcherWorkspaceHost.h"
 #include "Engine/Workspaces/Particle/ParticleWorkspaceHost.h"
 #include "Engine/Workspaces/Texturing/BakingWorkspaceHost.h"
 #include "Engine/Workspaces/Texturing/PatternStampWorkspaceHost.h"
@@ -375,6 +376,12 @@ int LaunchDesktopWorkspace(
             InitialOptions.OpenProjectBrowser = false;
             InitialOptions.WindowTitle        = "Frontier Fluid";
         }
+        else if (Arg == "--standalone-sketcher" || Arg == "--standalone=sketcher" || Arg == "--workspace=sketcher" || Arg == "--sketcher" || Arg == "--cad" || Arg == "--solidarc")
+        {
+            InitialOptions.OpenWorldEditor    = false;
+            InitialOptions.OpenProjectBrowser = false;
+            InitialOptions.WindowTitle        = "Frontier Parametric Sketcher";
+        }
         else if (Arg == "--project-browser")
         {
             InitialOptions.OpenProjectBrowser = true;
@@ -426,6 +433,7 @@ int LaunchDesktopWorkspace(
         ForceFieldWorkspaceSurface = 8u,
         FractureWorkspaceSurface   = 9u,
         FluidWorkspaceSurface      = 10u,
+        SketcherWorkspaceSurface   = 11u,
     };
 
     const bool StandaloneVectorLaunch =
@@ -454,6 +462,10 @@ int LaunchDesktopWorkspace(
         !InitialOptions.OpenProjectBrowser;
     const bool StandaloneFluidLaunch =
         (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::Fluid) &&
+        !InitialOptions.OpenWorldEditor &&
+        !InitialOptions.OpenProjectBrowser;
+    const bool StandaloneSketcherLaunch =
+        (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::GeometryCad) &&
         !InitialOptions.OpenWorldEditor &&
         !InitialOptions.OpenProjectBrowser;
     const bool StandaloneUVLaunch =
@@ -486,6 +498,10 @@ int LaunchDesktopWorkspace(
     else if (StandaloneFluidLaunch)
     {
         CurrentSurface = ActiveHostSurface::FluidWorkspaceSurface;
+    }
+    else if (StandaloneSketcherLaunch)
+    {
+        CurrentSurface = ActiveHostSurface::SketcherWorkspaceSurface;
     }
     else if (StandaloneBakingLaunch)
     {
@@ -619,9 +635,11 @@ int LaunchDesktopWorkspace(
     Workspaces::ParticleWorkspaceHost                  ParticleHost {};
     Workspaces::Fracture::FractureWorkspaceHost        FractureHost {};
     Workspaces::FluidWorkspaceHost                     FluidHost {};
+    Workspaces::SketcherWorkspaceHost                  SketcherHost {};
     Components::HeadlessWorkspaceDockContainer         MaterialDock {};
     Components::HeadlessWorkspaceDockContainer         ForceFieldDock {};
     Components::HeadlessWorkspaceDockContainer         FluidDock {};
+    Components::HeadlessWorkspaceDockContainer         SketcherDock {};
     Lifecycle::EditorLifecycle                         EditorLoop {};
     Editor::Explorer::ContentBrowser                   StandaloneBrowser {};
     Editor::Explorer::ContentBrowser                   PatternBrowser {};
@@ -631,6 +649,7 @@ int LaunchDesktopWorkspace(
     Editor::Explorer::ContentBrowser                   ParticleBrowser {};
     Editor::Explorer::ContentBrowser                   FractureBrowser {};
     Editor::Explorer::ContentBrowser                   FluidBrowser {};
+    Editor::Explorer::ContentBrowser                   SketcherBrowser {};
     Editor::Explorer::ProjectBrowser                   HostProjectBrowser {};
     OutlinerPanel                                      ForceOutliner {};
     ViewportPanel                                      ForceViewport {};
@@ -647,6 +666,7 @@ int LaunchDesktopWorkspace(
     bool                                               ParticleHostReady         = false;
     bool                                               ForceFieldHostReady       = false;
     bool                                               FluidHostReady            = false;
+    bool                                               SketcherHostReady         = false;
     bool                                               FractureHostReady         = false;
     bool                                               ProjectBrowserInitialized = false;
     bool                                               SharedThemeInitialized    = false;
@@ -973,6 +993,43 @@ int LaunchDesktopWorkspace(
         return true;
     };
 
+    auto EnsureSketcherHostReady = [&]() -> bool
+    {
+        EnsureSharedControlCentreReady();
+        if (!SketcherHostReady)
+        {
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            SketcherBrowser.AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            SketcherBrowser.AccessPanel().ConfigureWorkspaceDomain(WorkspaceCategory::GeometryCad);
+            SketcherBrowser.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::Closed, true);
+            SketcherHost.AttachContentBrowserPanel(&SketcherBrowser.AccessPanel());
+
+            (void)SketcherDock.Initialize(
+                Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow(
+                    "Frontier Parametric Sketcher", InitialOptions.InitialWidthPx, InitialOptions.InitialHeightPx));
+            Components::ConfigureImGuiWorkspaceStyle(SketcherDock.ActiveTabMetrics());
+            Components::ConfigureImGuiWorkspaceTheme(
+                SketcherDock.ActiveTabMetrics(),
+                StandaloneControlCentre.QueryThemeRepository());
+
+            std::string SketcherDiag {};
+            const std::string InitialDoc = InitialOptions.StartupImportPath.empty() ? std::string{} : InitialOptions.StartupImportPath.string();
+            (void)SketcherHost.Initialize(
+                &DeviceInterchange,
+                CompiledShaderDir,
+                RepositoryRootPath / "EngineContent/Icons",
+                InitialDoc,
+                &SketcherDiag);
+            Components::ConfigureImGuiWorkspaceStyle(SketcherDock.ActiveTabMetrics());
+            Components::ConfigureImGuiWorkspaceTheme(
+                SketcherDock.ActiveTabMetrics(),
+                StandaloneControlCentre.QueryThemeRepository());
+            SketcherHost.RegisterDockPanes(SketcherDock);
+            SketcherHostReady = true;
+        }
+        return true;
+    };
+
     auto EnsureForceFieldHostReady = [&]() -> bool
     {
         EnsureSharedControlCentreReady();
@@ -1129,6 +1186,17 @@ int LaunchDesktopWorkspace(
                     CurrentSurface = ActiveHostSurface::FractureWorkspaceSurface;
                 }
             }
+            else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::SketcherWorkspace)
+            {
+                if (!Directive.SelectedFilePath.empty())
+                {
+                    InitialOptions.StartupImportPath = Directive.SelectedFilePath;
+                }
+                if (EnsureSketcherHostReady())
+                {
+                    CurrentSurface = ActiveHostSurface::SketcherWorkspaceSurface;
+                }
+            }
             else
             {
                 if (EnsureEditorLifecycleReady(Directive.SelectedFilePath, Directive.ProjectTitle))
@@ -1193,6 +1261,14 @@ int LaunchDesktopWorkspace(
     else if (CurrentSurface == ActiveHostSurface::FluidWorkspaceSurface)
     {
         if (!EnsureFluidHostReady())
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+    }
+    else if (CurrentSurface == ActiveHostSurface::SketcherWorkspaceSurface)
+    {
+        if (!EnsureSketcherHostReady())
         {
             ImGui::DestroyContext(GuiCtx);
             return 1;
@@ -1403,6 +1479,13 @@ int LaunchDesktopWorkspace(
                 HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
             }
         }
+        if (SketcherHostReady)
+        {
+            if (auto* HostSurface = SketcherDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+            {
+                HostSurface->ResizeSurface(SurfaceW, SurfaceH, Extent.DpiScaleFactor);
+            }
+        }
 #else
         if (auto* HostSurface = StandaloneDock.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
         {
@@ -1572,6 +1655,37 @@ int LaunchDesktopWorkspace(
             FluidDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
             WorkspaceAppearance::ClearOverlayPointerShield();
             FluidBrowser.Render(FullBounds, Dt, HostUiScale);
+            StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
+        }
+        else if (CurrentSurface == ActiveHostSurface::SketcherWorkspaceSurface)
+        {
+            const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            SketcherHost.SynchronizeHostScale(HostUiScale);
+
+            Components::ConfigureImGuiWorkspaceTheme(
+                SketcherDock.ActiveTabMetrics(),
+                StandaloneControlCentre.QueryThemeRepository());
+            auto& SketcherBrowserPanel = SketcherBrowser.AccessPanel();
+            SketcherBrowserPanel.SynchronizeHostBounds(FullBounds, HostUiScale);
+            StandaloneControlCentre.SynchronizeHostBounds(FullBounds, HostUiScale);
+            if (StandaloneControlCentre.QueryFullScreenBlocking() || SketcherBrowserPanel.QueryShelfDragging())
+            {
+                WorkspaceAppearance::AssignOverlayPointerShield(FullBounds);
+            }
+            else
+            {
+                WorkspaceAppearance::AssignOverlayPointerShield(
+                    SketcherBrowserPanel.QueryDrawerPhysicalBounds(),
+                    SketcherBrowserPanel.QueryNotchPhysicalBounds());
+                WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryShadePhysicalBounds());
+                WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryTabPhysicalBounds());
+            }
+            SketcherHost.BeginFrame(Dt);
+            SketcherDock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+            SketcherHost.EndFrame(Dt, false);
+            WorkspaceAppearance::ClearOverlayPointerShield();
+            SketcherBrowser.Render(FullBounds, Dt, HostUiScale);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
         else if (CurrentSurface == ActiveHostSurface::ForceFieldWorkspaceSurface)
@@ -1800,6 +1914,11 @@ int LaunchDesktopWorkspace(
     if (FluidHostReady)
     {
         FluidDock.Finalize();
+    }
+    if (SketcherHostReady)
+    {
+        SketcherHost.Finalize();
+        SketcherDock.Finalize();
     }
 #else
     StandaloneDock.Finalize();

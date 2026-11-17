@@ -3233,38 +3233,47 @@ SketcherEdgePath SketcherEdgePathBetween(const SketcherDocument& Document, const
     return Path;
 }
 
+static std::string ExecuteCombineBodySteps(
+    SketcherDocument&               Document,
+    const std::string&              Target,
+    const std::vector<std::string>& Tools,
+    FeatureCombination              Combination)
+{
+    if (Combination != FeatureCombination::Union && Combination != FeatureCombination::Difference && Combination != FeatureCombination::Intersection)
+        return "choose Union, Difference or Intersection";
+    if (Tools.empty()) return "select two or more bodies (the first is the target)";
+    if (!FindRegeneratedBody(Document, Target)) return "no body named " + Target;
+    std::set<std::string> Seen{ Target };
+    for (const std::string& Tool : Tools)
+    {
+        if (!FindRegeneratedBody(Document, Tool)) return "no body named " + Tool;
+        if (!Seen.insert(Tool).second) return SketcherBodyCaption(Document, Tool) + " is picked twice (the target cannot be a tool)";
+    }
+    const std::string Caption = NextCaption(Document, "Combine");
+    for (const std::string& Tool : Tools)
+    {
+        FeatureStep Step;
+        Step.Kind        = FeatureStepKind::Combine;
+        Step.Label       = "Combine#" + std::to_string(NextStepOrdinal(Document.Tree));
+        Step.Combination = Combination;
+        Step.Target      = Target;
+        Step.Tool        = Tool;
+        Document.Captions[Step.Label] = Caption;
+        Document.Tree.Steps.push_back(std::move(Step));
+    }
+    Document.Selection = {};
+    return {};
+}
+
 SketcherCommandOutcome CombineSketcherBodies(SketcherDocument& Document, const std::string& Target, const std::vector<std::string>& Tools, FeatureCombination Combination)
 {
     std::string Operands = SketcherBodyCaption(Document, Target);
-    const char* Sign = Combination == FeatureCombination::Difference ? " − " : Combination == FeatureCombination::Intersection ? " ∩ " : " ∪ ";
+    const char* Sign = Combination == FeatureCombination::Difference ? " - " : Combination == FeatureCombination::Intersection ? " & " : " + ";
     for (const std::string& Tool : Tools) Operands += Sign + SketcherBodyCaption(Document, Tool);
     const std::string Label = std::string("Combine · ") + FeatureCombinationLabel(Combination) + " (" + Operands + ")";
     return RunCommand(Document, Label, false, [&]() -> std::string
     {
-        if (Combination != FeatureCombination::Union && Combination != FeatureCombination::Difference && Combination != FeatureCombination::Intersection)
-            return "choose Union, Difference or Intersection";
-        if (Tools.empty()) return "select two or more bodies (the first is the target)";
-        if (!FindRegeneratedBody(Document, Target)) return "no body named " + Target;
-        std::set<std::string> Seen{ Target };
-        for (const std::string& Tool : Tools)
-        {
-            if (!FindRegeneratedBody(Document, Tool)) return "no body named " + Tool;
-            if (!Seen.insert(Tool).second) return SketcherBodyCaption(Document, Tool) + " is picked twice (the target cannot be a tool)";
-        }
-        const std::string Caption = NextCaption(Document, "Combine");
-        for (const std::string& Tool : Tools)
-        {
-            FeatureStep Step;
-            Step.Kind        = FeatureStepKind::Combine;
-            Step.Label       = "Combine#" + std::to_string(NextStepOrdinal(Document.Tree));
-            Step.Combination = Combination;
-            Step.Target      = Target;
-            Step.Tool        = Tool;
-            Document.Captions[Step.Label] = Caption;
-            Document.Tree.Steps.push_back(std::move(Step));
-        }
-        Document.Selection = {};
-        return {};
+        return ExecuteCombineBodySteps(Document, Target, Tools, Combination);
     });
 }
 

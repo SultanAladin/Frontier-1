@@ -31,6 +31,7 @@ enum class HostWorkspaceTarget : uint8_t
     StampWorkspace    = 3u, // [-] - Open with Stamp Studio (PatternStampWorkspaceHost alpha cutout vector stamp)
     BakingWorkspace   = 4u, // [-] - Open with Baking Studio (BakingWorkspaceHost pure-GPU GTX BVH4 + RTX RayQuery baker)
     FractureWorkspace = 5u, // [-] - Open with FractureWorkspace (FractureWorkspaceHost 6-solver fracture & JoltPhysics)
+    SketcherWorkspace = 6u, // [-] - Open with Sketcher (SketcherWorkspaceHost parametric NURBS / B-rep CAD & 2D drawing sheet)
 };
 
 //------------------------------------------------------------------------------------------------------------------------
