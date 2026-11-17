@@ -98,16 +98,16 @@ namespace
     float CloudTrans = 1.0f;
     const auto LowAngleSky = SkySeq.SampleSkyViewDirection(
         Mathematics::NormalizeAxis({ RayDir.X, RayDir.Y, std::max(0.05f, RayDir.Z) }));
-    const auto CloudRad = VolumetricCloudSequence::EvaluateVolumetricClouds(
+    WorldAtmosphereConfiguration DeckOnlyAtmo = Atmo;
+    DeckOnlyAtmo.LocalCloud.LocalEnabled      = false;
+    DeckOnlyAtmo.LocalClouds.clear();
+    const auto CloudRad = VolumetricCloudSequence::EvaluateVolumetricCloudsWithWind(
         RayOrigin,
         RayDir,
         SolarSolved.WorldDirectionToSun,
         Scene.Sun.SolarIrradiance,
         LowAngleSky,
-        Atmo.Clouds,
-        Atmo.LocalCloud,
-        Atmo.Medium,
-        Atmo.SimulationSeconds,
+        DeckOnlyAtmo,
         CloudTrans,
         PixelJitter01);
 
@@ -1026,6 +1026,51 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             if (VisTargets.GlassPeelFront64[Off] != 0ull)
             {
                 FinalHdr = Result.SpecularGlass.RefractedGlassHdr[Off];
+            }
+
+            // Depth-clipped LocalClouds + Atmospheric/Local Fog (CPU parity with GPU compute)
+            {
+                const float NdcX = ((static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx)) * 2.0f - 1.0f;
+                const float NdcY = 1.0f - ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx)) * 2.0f;
+                const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
+                    CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
+                const float HitDist = (Hit.ValidHit && VisTargets.GlassPeelFront64[Off] == 0ull)
+                    ? Mathematics::EvaluateLength(Hit.WorldPosition - CurBasis.CameraOrigin)
+                    : 3500.0f;
+                const float CloudDist = (Hit.ValidHit && VisTargets.GlassPeelFront64[Off] == 0ull) ? HitDist : 60000.0f;
+                const float Ign = EvaluateCloudIgn(PX, PY);
+
+                const auto& Atmo = PreparedScene.Atmosphere;
+                const Mathematics::LinearRGB SkyForVol = Atmo.Medium.AtmosphereEnabled
+                    ? SkySequence.SampleSkyViewDirection(RayDir)
+                    : EvaluateSkyDome(RayDir, PreparedScene.SkyRadiance, nullptr, nullptr);
+
+                if (Atmo.LocalCloud.LocalEnabled || !Atmo.LocalClouds.empty())
+                {
+                    float LocalCloudT = 1.0f;
+                    const auto LocalCloudR = VolumetricCloudSequence::EvaluateLocalCloudsOverSegment(
+                        CurBasis.CameraOrigin, RayDir, CloudDist, PreparedScene.Sun.DirectionToSun,
+                        PreparedScene.Sun.SolarIrradiance, SkyForVol, Atmo, LocalCloudT, Ign);
+                    FinalHdr = {
+                        FinalHdr.R * LocalCloudT + LocalCloudR.R,
+                        FinalHdr.G * LocalCloudT + LocalCloudR.G,
+                        FinalHdr.B * LocalCloudT + LocalCloudR.B,
+                    };
+                }
+
+                if (Atmo.Fog.HeightFog.Enabled || Atmo.Fog.AerialFog.Enabled || !Atmo.Fog.LocalFogs.empty())
+                {
+                    const auto FogRes = VolumetricFogSequence::EvaluateVolumetricFog(
+                        CurBasis.CameraOrigin, RayDir, HitDist, PreparedScene.Sun.DirectionToSun,
+                        PreparedScene.Sun.SolarIrradiance, SkyForVol, Atmo.Fog, Atmo.Wind,
+                        Atmo.Clouds.WindSpeedMetersPerSecond, Atmo.Clouds.WindBearingDegrees,
+                        Atmo.SimulationSeconds, Atmo.ForceFieldSource, Atmo.WindLatticeCascade, Ign);
+                    FinalHdr = {
+                        FinalHdr.R * FogRes.Transmittance + FogRes.InScatterHdr.R,
+                        FinalHdr.G * FogRes.Transmittance + FogRes.InScatterHdr.G,
+                        FinalHdr.B * FogRes.Transmittance + FogRes.InScatterHdr.B,
+                    };
+                }
             }
 
             if (FlareProj.EffectiveGain > 1.0e-4f)

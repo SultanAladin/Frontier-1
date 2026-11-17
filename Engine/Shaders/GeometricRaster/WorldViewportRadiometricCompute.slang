@@ -8,6 +8,7 @@
 #define FRONTIER_ATMOSPHERE_EMBEDDED 1
 #include "../Atmosphere/SkyViewTransmittanceCompute.slang"
 #include "../Atmosphere/VolumetricCloudCompute.slang"
+#include "../Atmosphere/VolumetricFogCompute.slang"
 #include "../Atmosphere/CelestialDiscStarCompute.slang"
 #include "../Atmosphere/LensFlareCompute.slang"
 
@@ -48,6 +49,7 @@ struct WorldViewportUniformBlock
     GpuGlassSphere   GlassSpheres[4];
     uint4                       AtmosphereMaskPad; // x = AtmosphereEnabled (0/1), y = SkyViewW, z = SkyViewH, w = Pad
     VolumetricCloudUniformBlock CloudParams;
+    VolumetricFogUniformBlock   FogParams;
     CelestialFieldUniformBlock  CelestialParams;
     LensFlareUniformBlock       LensFlareParams;
 };
@@ -146,7 +148,7 @@ float3 EvaluateBackgroundSkyCloudsGpu(float3 RayDir, float2 PixelCoord)
     float3 SkyRad       = EvaluateSkyDome(RayDir);
     float3 CelestialRad = EvaluateCelestialBodiesGpu(WorldUniforms.CelestialParams, LunarSurfaceAtlasTexels, RayDir);
     float  CloudTrans   = 1.0;
-    float3 CloudRad     = EvaluateVolumetricCloudsGpu(WorldUniforms.CloudParams, RayDir, PixelCoord, CloudTrans);
+    float3 CloudRad     = EvaluateVolumetricCloudsGpu(WorldUniforms.CloudParams, RayDir, PixelCoord, CloudTrans, false);
     return (SkyRad + CelestialRad) * CloudTrans + CloudRad;
 }
 
@@ -168,7 +170,8 @@ float EvaluateSolarCloudTransmittanceGpu(float3 WorldPos, float3 SunDir)
     float FScale  = 0.00065 / max(0.08, C.DeckOptics.x);
     float D = SampleCloudDeckDensityGpu(
         P, PlanetR, FloorM, ThickM, clamp(C.DeckGeometry.z, 0.0, 1.0), clamp(C.DeckOptics.y, 0.0, 1.0),
-        max(0.0, C.DeckGeometry.w) * 0.0085, FScale, WindX, WindY, C.DeckOptics.w, uint(C.FormationOptics.x + 0.5), 8000.0);
+        max(0.0, C.DeckGeometry.w) * 0.0085, FScale, WindX, WindY, C.DeckOptics.w, uint(C.FormationOptics.x + 0.5), 8000.0,
+        C.FormationOptics.y, C.FormationOptics.z);
     return 0.32 + 0.68 * exp(-D * ThickM * 0.22);
 }
 
@@ -1329,6 +1332,22 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     if (EngineMode == 4u && DebugMode == 0u)
     {
         float3 SampleHdr = TraceDeterministicPathSample(CamOrigin, RayDir, DispatchThreadID.xy, SampleIdx);
+        RayHitReading PtHit = TraceSceneClosest(CamOrigin, RayDir, 0.08, 120.0);
+        float PtCloudDist = PtHit.Hit ? PtHit.Distance : 60000.0;
+        float PtFogDist   = PtHit.Hit ? PtHit.Distance : 3500.0;
+        float PtCloudT = 1.0;
+        float3 PtCloudR = EvaluateLocalCloudsSegmentGpu(
+            WorldUniforms.CloudParams, CamOrigin, RayDir, PtCloudDist, float2(DispatchThreadID.xy), PtCloudT);
+        SampleHdr = SampleHdr * PtCloudT + PtCloudR;
+        float PtFogT = 1.0;
+        float3 PtFogR = EvaluateVolumetricFogGpu(
+            WorldUniforms.FogParams, CamOrigin, RayDir, PtFogDist,
+            normalize(WorldUniforms.SunDirConeTan.xyz),
+            WorldUniforms.SolarIrradianceTier.xyz,
+            EvaluateSkyDome(RayDir),
+            float2(DispatchThreadID.xy), PtFogT);
+        SampleHdr = SampleHdr * PtFogT + PtFogR;
+
         float4 PrevAcc   = (SampleIdx == 0u) ? float4(0.0, 0.0, 0.0, 0.0) : AccumulationHdrBuffer[PixelIdx];
         float  NewCount  = PrevAcc.w + 1.0;
         float3 MeanHdr   = lerp(PrevAcc.xyz, SampleHdr, 1.0 / NewCount);
@@ -1409,6 +1428,30 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     else
     {
         FinalHdr = (DebugMode != 0u) ? float3(0.0) : EvaluateBackgroundSkyCloudsGpu(RayDir, float2(DispatchThreadID.xy));
+    }
+
+    if (DebugMode == 0u)
+    {
+        float HitDistForClouds = (BestGlassIdx >= 0) ? BestGlassT : (PrimaryHit.Hit ? PrimaryHit.Distance : 60000.0);
+        float HitDistForFog    = (BestGlassIdx >= 0) ? BestGlassT : (PrimaryHit.Hit ? PrimaryHit.Distance : 3500.0);
+
+        float  LocalCloudTrans = 1.0;
+        float3 LocalCloudRad   = EvaluateLocalCloudsSegmentGpu(
+            WorldUniforms.CloudParams, CamOrigin, RayDir, HitDistForClouds, float2(DispatchThreadID.xy), LocalCloudTrans);
+        FinalHdr = FinalHdr * LocalCloudTrans + LocalCloudRad;
+
+        float  FogTrans = 1.0;
+        float3 FogRad   = EvaluateVolumetricFogGpu(
+            WorldUniforms.FogParams,
+            CamOrigin,
+            RayDir,
+            HitDistForFog,
+            normalize(WorldUniforms.SunDirConeTan.xyz),
+            WorldUniforms.SolarIrradianceTier.xyz,
+            EvaluateSkyDome(RayDir),
+            float2(DispatchThreadID.xy),
+            FogTrans);
+        FinalHdr = FinalHdr * FogTrans + FogRad;
     }
 
     if (DebugMode == 0u && WorldUniforms.AtmosphereMaskPad.x != 0u && WorldUniforms.LensFlareParams.GhostRotationTint.w > 0.5)

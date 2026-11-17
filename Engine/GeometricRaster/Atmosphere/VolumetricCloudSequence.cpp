@@ -102,7 +102,9 @@ constexpr float ViewerAltM = 100.0f;
     float Cov, float Anvil, float DensMul, float FScale,
     float WindX, float WindY, float ShearPerKm,
     uint32_t FormationIndex,
-    float    DistanceMeters) noexcept
+    float    DistanceMeters,
+    float    VeerRadPerKm = 0.0f,
+    float    TurbulenceAmp = 0.0f) noexcept
 {
     const float Alt     = std::sqrt(PX * PX + PY * PY + PZ * PZ) - PlanetR;
     const float H       = std::clamp((Alt - FloorM) / std::max(1.0f, ThickM), 0.0f, 1.0f);
@@ -115,9 +117,21 @@ constexpr float ViewerAltM = 100.0f;
     }
 
     const float HighOctFade = 1.0f - SmoothStep(6500.0f, 22000.0f, DistanceMeters);
-    const float ShearShift  = ((Alt - FloorM) * 0.001f) * ShearPerKm * 45.0f;
-    const float WX = PX + WindX + ShearShift;
-    const float WY = PY + WindY;
+    const float AltKm       = (Alt - FloorM) * 0.001f;
+    const float VeerAng     = AltKm * VeerRadPerKm;
+    const float CsV         = std::cos(VeerAng);
+    const float SnV         = std::sin(VeerAng);
+    const float VeeredWX    = WindX * CsV - WindY * SnV;
+    const float VeeredWY    = WindX * SnV + WindY * CsV;
+    const float ShearShift  = AltKm * ShearPerKm * 45.0f;
+    const float TurbWarpX   = (TurbulenceAmp > 1.0e-4f)
+        ? (SmoothLatticeNoise3((PX + VeeredWX) * FScale * 0.45f, (PY + VeeredWY) * FScale * 0.45f, AltKm * 0.8f) - 0.5f) * (TurbulenceAmp * 160.0f)
+        : 0.0f;
+    const float TurbWarpY   = (TurbulenceAmp > 1.0e-4f)
+        ? (SmoothLatticeNoise3((PY + VeeredWY) * FScale * 0.45f + 7.3f, (PX + VeeredWX) * FScale * 0.45f, AltKm * 0.8f) - 0.5f) * (TurbulenceAmp * 160.0f)
+        : 0.0f;
+    const float WX = PX + VeeredWX + ShearShift + TurbWarpX;
+    const float WY = PY + VeeredWY + TurbWarpY;
     const float WZ = Alt - FloorM;
 
     float ShapeCov = std::clamp(Cov + Anvil * H * H * 0.22f, 0.0f, 1.0f);
@@ -434,7 +448,8 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
         const float PY = RayDirection.Y * T;
         const float PZ = OrigZ + RayDirection.Z * T;
         const float D  = SampleDeckDensity(
-            PX, PY, PZ, PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Deck.WindShearPerKilometer, FmtIdx, T);
+            PX, PY, PZ, PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Deck.WindShearPerKilometer, FmtIdx, T,
+            Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat, Deck.WindTurbulence);
         if (D > 1.0e-6f)
         {
             float SunTau = 0.0f;
@@ -448,7 +463,8 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
                         PX + SunDirection.X * KS,
                         PY + SunDirection.Y * KS,
                         PZ + SunDirection.Z * KS,
-                        PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Deck.WindShearPerKilometer, FmtIdx, T) *
+                        PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Deck.WindShearPerKilometer, FmtIdx, T,
+                        Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat, Deck.WindTurbulence) *
                         (SunWeights[K] * ConeReach);
                 }
             }
@@ -549,9 +565,198 @@ float VolumetricCloudSequence::EvaluateSolarCloudTransmittance(
     const float DensMul = std::max(0.0f, Deck.ExtinctionMultiplier * Deck.CloudShadow.ShadowDensityMultiplier) * 0.0085f;
     const float D = SampleDeckDensity(
         PX, PY, PZ, PlanetR, FloorM, ThickM, Cov, Deck.AnvilTopSpread * Deck.CloudShadow.ShadowAnvil,
-        DensMul, FScale, WindX, WindY, Deck.WindShearPerKilometer, static_cast<uint32_t>(Deck.Category), 8000.0f);
+        DensMul, FScale, WindX, WindY, Deck.WindShearPerKilometer, static_cast<uint32_t>(Deck.Category), 8000.0f,
+        Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat, Deck.WindTurbulence);
 
     return 0.32f + 0.68f * std::exp(-D * ThickM * 0.22f);
+}
+
+Mathematics::LinearRGB VolumetricCloudSequence::EvaluateLocalCloudsOverSegment(
+    const Mathematics::Axis3D&          RayOriginWorld,
+    const Mathematics::Axis3D&          RayDirection,
+    float                               MaxDistanceMeters,
+    const Mathematics::Axis3D&          SunDirection,
+    const Mathematics::LinearRGB&       SolarIrradiance,
+    const Mathematics::LinearRGB&       SkyRadiance,
+    const WorldAtmosphereConfiguration& Atmosphere,
+    float&                              InOutTransmittance,
+    float                               PixelJitter01) noexcept
+{
+    Mathematics::LinearRGB TotalRad { 0.0f, 0.0f, 0.0f };
+    const float SafeMax = std::max(0.0f, MaxDistanceMeters);
+    if (SafeMax <= 0.05f)
+    {
+        return TotalRad;
+    }
+
+    const float Ign = (PixelJitter01 >= 0.0f)
+        ? std::clamp(PixelJitter01, 0.0f, 1.0f)
+        : Frac(52.9829189f * Frac(RayDirection.X * 193.713f + RayDirection.Y * 371.419f + RayDirection.Z * 547.823f));
+    const float Jitter = 0.5f + 0.72f * (Ign - 0.5f);
+    const float CosTheta = Mathematics::EvaluateDot(RayDirection, SunDirection);
+    const float TimeSec  = Atmosphere.SimulationSeconds;
+
+    auto MarchSingleVolume = [&](const BoundedCloudVolume& Vol)
+    {
+        if (!Vol.LocalEnabled || Vol.CloudFraction <= 0.01f || Vol.ExtinctionMultiplier <= 0.01f)
+        {
+            return;
+        }
+        const float MaxExt = std::max({ Vol.HalfExtentMeters.X, Vol.HalfExtentMeters.Y, Vol.HalfExtentMeters.Z }) * 1.45f;
+        const Mathematics::Axis3D BoxMin = Vol.VolumeCenterMeters - Mathematics::Axis3D{ MaxExt, MaxExt, Vol.HalfExtentMeters.Z };
+        const Mathematics::Axis3D BoxMax = Vol.VolumeCenterMeters + Mathematics::Axis3D{ MaxExt, MaxExt, Vol.HalfExtentMeters.Z };
+
+        const auto SafeInv = [](float V) noexcept -> float { return (std::abs(V) > 1.0e-7f) ? (1.0f / V) : 1.0e7f; };
+        const float InvX = SafeInv(RayDirection.X), InvY = SafeInv(RayDirection.Y), InvZ = SafeInv(RayDirection.Z);
+        const float TX0 = (BoxMin.X - RayOriginWorld.X) * InvX, TX1 = (BoxMax.X - RayOriginWorld.X) * InvX;
+        const float TY0 = (BoxMin.Y - RayOriginWorld.Y) * InvY, TY1 = (BoxMax.Y - RayOriginWorld.Y) * InvY;
+        const float TZ0 = (BoxMin.Z - RayOriginWorld.Z) * InvZ, TZ1 = (BoxMax.Z - RayOriginWorld.Z) * InvZ;
+        const float TE  = std::max({ 0.05f, std::min(TX0, TX1), std::min(TY0, TY1), std::min(TZ0, TZ1) });
+        const float TX  = std::min({ SafeMax, std::max(TX0, TX1), std::max(TY0, TY1), std::max(TZ0, TZ1) });
+        if (TX <= TE)
+        {
+            return;
+        }
+
+        const ResolvedWindSample Wind = Vol.FollowWindEnabled
+            ? AtmosphericWindSolver::ResolveWindSample(
+                  Atmosphere.Wind,
+                  Atmosphere.Clouds.WindSpeedMetersPerSecond,
+                  Atmosphere.Clouds.WindBearingDegrees,
+                  Vol.WindSource,
+                  Vol.VolumeCenterMeters,
+                  Vol.VolumeCenterMeters.Z,
+                  TimeSec,
+                  Atmosphere.ForceFieldSource,
+                  Atmosphere.WindLatticeCascade)
+            : ResolvedWindSample {};
+
+        constexpr uint32_t LocalSteps = 24u;
+        const float Dt     = (TX - TE) / static_cast<float>(LocalSteps);
+        const float LScale = 1.0f / std::max(2.0f, Vol.FeatureScaleMeters);
+        const float Phase  = 0.76f * EvaluateHenyeyGreenstein(CosTheta, Vol.ForwardScatterAnisotropy) +
+                             0.24f * EvaluateHenyeyGreenstein(CosTheta, -0.22f);
+        const float Thresh = 1.0f - std::clamp(Vol.CloudFraction, 0.0f, 1.0f);
+
+        for (uint32_t S = 0u; S < LocalSteps; ++S)
+        {
+            const float T = TE + (static_cast<float>(S) + Jitter) * Dt;
+            const Mathematics::Axis3D P = RayOriginWorld + RayDirection * T;
+            const float ShapeMask = AtmosphericWindSolver::EvaluateVolumeShapeMask(
+                P, Vol.VolumeCenterMeters, Vol.HalfExtentMeters, Vol.Shape,
+                Vol.YawDegrees, Vol.PrismSides, Vol.EdgeSoftness);
+            if (ShapeMask <= 1.0e-4f)
+            {
+                continue;
+            }
+
+            float AdvX = P.X - Wind.VelocityMetersPerSec.X * TimeSec;
+            float AdvY = P.Y - Wind.VelocityMetersPerSec.Y * TimeSec;
+            const float AdvZ = P.Z - Wind.VelocityMetersPerSec.Z * TimeSec * 0.35f;
+            if (Wind.CurlScalar > 1.0e-3f)
+            {
+                const float Dx = P.X - Vol.VolumeCenterMeters.X;
+                const float Dy = P.Y - Vol.VolumeCenterMeters.Y;
+                const float SwirlA = std::clamp(Wind.CurlScalar * 0.14f, -2.5f, 2.5f) *
+                                     std::sin(TimeSec * 0.8f + 0.06f * std::sqrt(Dx * Dx + Dy * Dy));
+                const float Cs = std::cos(SwirlA), Sn = std::sin(SwirlA);
+                AdvX = Vol.VolumeCenterMeters.X + (Dx * Cs - Dy * Sn) - Wind.VelocityMetersPerSec.X * TimeSec * 0.35f;
+                AdvY = Vol.VolumeCenterMeters.Y + (Dx * Sn + Dy * Cs) - Wind.VelocityMetersPerSec.Y * TimeSec * 0.35f;
+            }
+
+            const float N   = CloudFbm3(AdvX * LScale, AdvY * LScale, AdvZ * LScale);
+            const float Den = std::max(0.0f, (N - Thresh) / std::max(0.15f, Vol.CloudFraction)) *
+                              ShapeMask * Vol.ExtinctionMultiplier * 0.048f;
+            if (Den > 1.0e-5f)
+            {
+                const float SegT    = std::exp(-Den * Dt);
+                const float Scatter = 1.0f - SegT;
+                const float Amb     = 0.38f + 0.58f * std::clamp((P.Z - BoxMin.Z) / std::max(1.0f, BoxMax.Z - BoxMin.Z), 0.0f, 1.0f);
+                TotalRad.R += InOutTransmittance * (SolarIrradiance.R * Phase * 2.2f + SkyRadiance.R * Amb * 0.68f) * Scatter;
+                TotalRad.G += InOutTransmittance * (SolarIrradiance.G * Phase * 2.2f + SkyRadiance.G * Amb * 0.68f) * Scatter;
+                TotalRad.B += InOutTransmittance * (SolarIrradiance.B * Phase * 2.2f + SkyRadiance.B * Amb * 0.68f) * Scatter;
+                InOutTransmittance *= SegT;
+                if (InOutTransmittance < 0.01f)
+                {
+                    break;
+                }
+            }
+        }
+    };
+
+    if (Atmosphere.LocalCloud.LocalEnabled)
+    {
+        MarchSingleVolume(Atmosphere.LocalCloud);
+    }
+    for (const auto& Vol : Atmosphere.LocalClouds)
+    {
+        if (InOutTransmittance < 0.01f)
+        {
+            break;
+        }
+        MarchSingleVolume(Vol);
+    }
+
+    return TotalRad;
+}
+
+Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricCloudsWithWind(
+    const Mathematics::Axis3D&          RayOriginWorld,
+    const Mathematics::Axis3D&          RayDirection,
+    const Mathematics::Axis3D&          SunDirection,
+    const Mathematics::LinearRGB&       SolarIrradiance,
+    const Mathematics::LinearRGB&       SkyRadiance,
+    const WorldAtmosphereConfiguration& Atmosphere,
+    float&                              OutTransmittance,
+    float                               PixelJitter01) noexcept
+{
+    OutTransmittance = 1.0f;
+    Mathematics::LinearRGB TotalRad = EvaluateLocalCloudsOverSegment(
+        RayOriginWorld, RayDirection, 60000.0f, SunDirection, SolarIrradiance, SkyRadiance,
+        Atmosphere, OutTransmittance, PixelJitter01);
+
+    if (!Atmosphere.Clouds.CloudsEnabled || RayDirection.Z <= 0.008f ||
+        Atmosphere.Clouds.CloudFraction <= 0.01f || Atmosphere.Clouds.ExtinctionMultiplier <= 0.01f)
+    {
+        return TotalRad;
+    }
+
+    const auto& Deck = Atmosphere.Clouds;
+    CloudDeckConfiguration EffectiveDeck = Deck;
+    if (Deck.FollowWindEnabled)
+    {
+        const auto DeckWind = AtmosphericWindSolver::ResolveWindSample(
+            Atmosphere.Wind,
+            Deck.WindSpeedMetersPerSecond,
+            Deck.WindBearingDegrees,
+            Deck.WindSource,
+            { 0.0f, 0.0f, Deck.CloudFloorMeters },
+            Deck.CloudFloorMeters,
+            Atmosphere.SimulationSeconds,
+            Atmosphere.ForceFieldSource,
+            Atmosphere.WindLatticeCascade);
+        EffectiveDeck.WindSpeedMetersPerSecond = std::sqrt(
+            DeckWind.VelocityMetersPerSec.X * DeckWind.VelocityMetersPerSec.X +
+            DeckWind.VelocityMetersPerSec.Y * DeckWind.VelocityMetersPerSec.Y);
+        if (EffectiveDeck.WindSpeedMetersPerSecond > 1.0e-4f)
+        {
+            EffectiveDeck.WindBearingDegrees =
+                std::atan2(-DeckWind.VelocityMetersPerSec.Y, DeckWind.VelocityMetersPerSec.X) * Constants::RadToDegFloat;
+        }
+    }
+
+    BoundedCloudVolume DisabledLocal {};
+    DisabledLocal.LocalEnabled = false;
+    float DeckTrans = 1.0f;
+    const Mathematics::LinearRGB DeckRad = EvaluateVolumetricClouds(
+        RayOriginWorld, RayDirection, SunDirection, SolarIrradiance, SkyRadiance,
+        EffectiveDeck, DisabledLocal, Atmosphere.Medium, Atmosphere.SimulationSeconds, DeckTrans, PixelJitter01);
+
+    TotalRad.R += OutTransmittance * DeckRad.R;
+    TotalRad.G += OutTransmittance * DeckRad.G;
+    TotalRad.B += OutTransmittance * DeckRad.B;
+    OutTransmittance *= DeckTrans;
+    return TotalRad;
 }
 
 } // namespace Frontier::GeometricRaster

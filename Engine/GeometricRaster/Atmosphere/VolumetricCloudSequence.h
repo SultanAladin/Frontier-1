@@ -10,10 +10,14 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometricRaster/Atmosphere/AtmosphericSkySequence.h"
+#include "Engine/GeometricRaster/Atmosphere/AtmosphericWindSolver.h"
 #include "Engine/GeometricRaster/Atmosphere/LunarStarfieldSequence.h"
+#include "Engine/GeometricRaster/Atmosphere/VolumetricFogSequence.h"
 
 #include <array>
 #include <cstdint>
+#include <span>
+#include <vector>
 
 namespace Frontier::GeometricRaster
 {
@@ -65,6 +69,7 @@ struct CloudDeckConfiguration
 {
     bool                     CloudsEnabled            = true;
     bool                     FollowWindEnabled        = true;
+    WindBindingSource        WindSource               = WindBindingSource::CloudWind;
     CloudCategoryType        Category                 = CloudCategoryType::Cumulus;
     float                    CloudFraction            = 0.34f;   // [0..1]   - Fractional sky cover
     float                    ExtinctionMultiplier     = 2.40f;   // [x]      - Volumetric optical density scale [0..4]
@@ -77,19 +82,26 @@ struct CloudDeckConfiguration
     float                    WindSpeedMetersPerSecond = 7.0f;    // [m/s]    - Advection wind speed [0..40]
     float                    WindBearingDegrees       = 250.0f;  // [deg]    - Advection wind bearing [0..360)
     float                    WindShearPerKilometer    = 0.35f;   // [/km]    - Vertical altitude shear
+    float                    WindVeerDegreesPerKm     = 12.0f;   // [d/km]   - Ekman wind bearing rotation with altitude [-60..60]
+    float                    WindTurbulence           = 0.30f;   // [0..1]   - Wind eddy warp on cloud silhouettes
     CloudShadowConfiguration CloudShadow              {};
 };
 
 struct BoundedCloudVolume
 {
-    bool                  LocalEnabled             = false;
-    bool                  FollowWindEnabled        = true;
-    Mathematics::Axis3D   VolumeCenterMeters       { -100.0f, 260.0f, 130.0f };
-    Mathematics::Scalar3D HalfExtentMeters         { 100.0f, 100.0f, 50.0f };
-    float                 ExtinctionMultiplier     = 2.50f;
-    float                 CloudFraction            = 0.80f;
-    float                 FeatureScaleMeters       = 40.0f;
-    float                 ForwardScatterAnisotropy = 0.45f;
+    bool                   LocalEnabled             = false;
+    bool                   FollowWindEnabled        = true;
+    WindBindingSource      WindSource               = WindBindingSource::LocalCloudWind;
+    AtmosphericVolumeShape Shape                    = AtmosphericVolumeShape::Box;
+    uint32_t               PrismSides               = 6u;
+    Mathematics::Axis3D    VolumeCenterMeters       { -100.0f, 260.0f, 130.0f };
+    Mathematics::Scalar3D  HalfExtentMeters         { 100.0f, 100.0f, 50.0f };
+    float                  YawDegrees               = 0.0f;
+    float                  EdgeSoftness             = 0.35f;
+    float                  ExtinctionMultiplier     = 2.50f;
+    float                  CloudFraction            = 0.80f;
+    float                  FeatureScaleMeters       = 40.0f;
+    float                  ForwardScatterAnisotropy = 0.45f;
 };
 
 struct LensFlareConfiguration
@@ -117,10 +129,15 @@ struct WorldAtmosphereConfiguration
         { false, false, LunarSurfacePreset::Sulfur, 0.50f, 1.80f, 1.00f, 0.60f, 45.0f,  19.0f, 0.0f, 0.0f },
     }};
     StarfieldConfiguration         Stars              {};
+    AtmosphericWindParameters      Wind               {};
     CloudDeckConfiguration         Clouds             {};
     BoundedCloudVolume             LocalCloud         {};
+    std::vector<BoundedCloudVolume> LocalClouds       {};
+    AtmosphericFogConfiguration    Fog                {};
     LensFlareConfiguration         LensFlare          {};
     float                          SimulationSeconds  = 0.0f;
+    const SimulationSpace::ForceFields::ForceFieldAccumulator* ForceFieldSource   = nullptr;
+    const SimulationSpace::ForceFields::FieldLatticeCascade*   WindLatticeCascade = nullptr;
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -130,12 +147,25 @@ struct WorldAtmosphereConfiguration
 class VolumetricCloudSequence
 {
 public:
-    static constexpr uint32_t PresetCount = 12u;
+    static constexpr uint32_t PresetCount             = 12u;
+    static constexpr uint32_t MaxGpuLocalCloudVolumes = 8u;
 
     // Applies canonical physical parameters for any of the 12 CloudCategoryTypes
     static void ApplyCloudCategoryPreset(
         CloudDeckConfiguration& InOutDeck,
         CloudCategoryType       Category) noexcept;
+
+    // Evaluates depth-clipped local BoundedCloudVolumes (for foreground geometry hits and sky rays) with wind & ForceFields advection
+    [[nodiscard]] static Mathematics::LinearRGB EvaluateLocalCloudsOverSegment(
+        const Mathematics::Axis3D&                               RayOriginWorld,
+        const Mathematics::Axis3D&                               RayDirection,
+        float                                                    MaxDistanceMeters,
+        const Mathematics::Axis3D&                               SunDirection,
+        const Mathematics::LinearRGB&                            SolarIrradiance,
+        const Mathematics::LinearRGB&                            SkyRadiance,
+        const WorldAtmosphereConfiguration&                      Atmosphere,
+        float&                                                   InOutTransmittance,
+        float                                                    PixelJitter01 = -1.0f) noexcept;
 
     // Evaluates raymarched global planetary cloud shell + optional BoundedCloudVolume with 3-octave multi-scattering & IGN anti-banding
     [[nodiscard]] static Mathematics::LinearRGB EvaluateVolumetricClouds(
@@ -148,6 +178,17 @@ public:
         const BoundedCloudVolume&             LocalVolume,
         const AtmosphericMediumConfiguration& Medium,
         float                                 SimulationSeconds,
+        float&                                OutTransmittance,
+        float                                 PixelJitter01 = -1.0f) noexcept;
+
+    // Overload taking full WorldAtmosphereConfiguration (Global Wind + ForceFields + multi-volume LocalClouds)
+    [[nodiscard]] static Mathematics::LinearRGB EvaluateVolumetricCloudsWithWind(
+        const Mathematics::Axis3D&            RayOriginWorld,
+        const Mathematics::Axis3D&            RayDirection,
+        const Mathematics::Axis3D&            SunDirection,
+        const Mathematics::LinearRGB&         SolarIrradiance,
+        const Mathematics::LinearRGB&         SkyRadiance,
+        const WorldAtmosphereConfiguration&   Atmosphere,
         float&                                OutTransmittance,
         float                                 PixelJitter01 = -1.0f) noexcept;
 

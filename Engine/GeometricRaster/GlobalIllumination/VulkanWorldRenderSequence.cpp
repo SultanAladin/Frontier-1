@@ -37,22 +37,57 @@ struct GpuGlassSphereStd140
     float OpticsSlotPacked[4]   {};
 };
 
-struct VolumetricCloudUniformStd140
+struct GpuLocalCloudVolumeStd140
 {
-    float OriginTimeVector[4]    {};
-    float SunAxisToggle[4]       {};
-    float SolarIrradianceExt[4]  {};
-    float SkyColorWind[4]        {};
-    float DeckGeometry[4]        {};
-    float DeckOptics[4]          {};
-    float WindVectorOcclude[4]   {};
-    float LocalCenterExt[4]      {};
-    float LocalExtentFraction[4] {};
-    float LocalDensityPhase[4]   {};
-    float FormationOptics[4]     {};
+    float CenterShape[4]          {};
+    float HalfExtentYaw[4]        {};
+    float DensityCovScaleSides[4] {};
+    float WindVelCurl[4]          {};
+    float SoftAnisoPad[4]         {};
 };
 
-static_assert(sizeof(VolumetricCloudUniformStd140) == 176u, "VolumetricCloudUniformStd140 must equal 176 bytes.");
+static_assert(sizeof(GpuLocalCloudVolumeStd140) == 80u, "GpuLocalCloudVolumeStd140 must equal 80 bytes.");
+
+struct VolumetricCloudUniformStd140
+{
+    float                    OriginTimeVector[4]    {};
+    float                    SunAxisToggle[4]       {};
+    float                    SolarIrradianceExt[4]  {};
+    float                    SkyColorWind[4]        {};
+    float                    DeckGeometry[4]        {};
+    float                    DeckOptics[4]          {};
+    float                    WindVectorOcclude[4]   {};
+    float                    LocalCenterExt[4]      {};
+    float                    LocalExtentFraction[4] {};
+    float                    LocalDensityPhase[4]   {};
+    float                    FormationOptics[4]     {};
+    GpuLocalCloudVolumeStd140 LocalClouds[8]        {};
+};
+
+static_assert(sizeof(VolumetricCloudUniformStd140) == 816u, "VolumetricCloudUniformStd140 must equal 816 bytes.");
+
+struct GpuLocalFogVolumeStd140
+{
+    float CenterShape[4]          {};
+    float HalfExtentYaw[4]        {};
+    float DensityCovScaleSides[4] {};
+    float WindVelCurl[4]          {};
+    float TintAniso[4]            {};
+};
+
+static_assert(sizeof(GpuLocalFogVolumeStd140) == 80u, "GpuLocalFogVolumeStd140 must equal 80 bytes.");
+
+struct VolumetricFogUniformStd140
+{
+    float                 HeightParams0[4] {};
+    float                 HeightParams1[4] {};
+    float                 AerialParams[4]  {};
+    float                 FogWindClock[4]  {};
+    float                 FogMeta[4]       {};
+    GpuLocalFogVolumeStd140 LocalFogs[8]  {};
+};
+
+static_assert(sizeof(VolumetricFogUniformStd140) == 720u, "VolumetricFogUniformStd140 must equal 720 bytes.");
 
 struct GpuMoonDescriptorStd140
 {
@@ -119,11 +154,12 @@ struct WorldViewportUniformBlockStd140
     GpuGlassSphereStd140        GlassSpheres[4]             {};
     uint32_t                    AtmosphereMaskPad[4]       {};
     VolumetricCloudUniformStd140 CloudParams                {};
+    VolumetricFogUniformStd140   FogParams                  {};
     CelestialFieldUniformStd140  CelestialParams            {};
     LensFlareUniformStd140       LensFlareParams            {};
 };
 
-static_assert(sizeof(WorldViewportUniformBlockStd140) == 1248u, "WorldViewportUniformBlockStd140 must equal 1248 bytes.");
+static_assert(sizeof(WorldViewportUniformBlockStd140) == 2608u, "WorldViewportUniformBlockStd140 must equal 2608 bytes.");
 
 struct SignedDistanceGridUniformStd140
 {
@@ -1289,9 +1325,22 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     {
         const auto& Atmo = Scene.Atmosphere;
         const auto& Deck = Atmo.Clouds;
-        const float BearRad = Deck.WindBearingDegrees * Constants::DegToRadFloat;
-        const float WindVX  = std::cos(BearRad) * Deck.WindSpeedMetersPerSecond;
-        const float WindVY  = -std::sin(BearRad) * Deck.WindSpeedMetersPerSecond;
+        ResolvedWindSample DeckWind {};
+        if (Deck.FollowWindEnabled)
+        {
+            DeckWind = AtmosphericWindSolver::ResolveWindSample(
+                Atmo.Wind,
+                Deck.WindSpeedMetersPerSecond,
+                Deck.WindBearingDegrees,
+                Deck.WindSource,
+                { 0.0f, 0.0f, Deck.CloudFloorMeters },
+                Deck.CloudFloorMeters,
+                Atmo.SimulationSeconds,
+                Atmo.ForceFieldSource,
+                Atmo.WindLatticeCascade);
+        }
+        const float WindVX = DeckWind.VelocityMetersPerSec.X;
+        const float WindVY = DeckWind.VelocityMetersPerSec.Y;
 
         auto& C = Uniforms.CloudParams;
         C.OriginTimeVector[0]      = Camera.CameraOrigin.X;
@@ -1335,9 +1384,120 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
         C.LocalDensityPhase[2]  = static_cast<float>(WidthPx);
         C.LocalDensityPhase[3]  = static_cast<float>(HeightPx);
         C.FormationOptics[0]    = static_cast<float>(static_cast<uint32_t>(Deck.Category));
-        C.FormationOptics[1]    = 0.0f;
-        C.FormationOptics[2]    = 0.0f;
-        C.FormationOptics[3]    = 0.0f;
+        C.FormationOptics[1]    = Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat;
+        C.FormationOptics[2]    = std::max(Deck.WindTurbulence, DeckWind.TurbulenceScalar);
+
+        uint32_t LocalCloudCount = 0u;
+        auto PackLocalCloud = [&](const BoundedCloudVolume& Vol)
+        {
+            if (LocalCloudCount >= 8u || !Vol.LocalEnabled || Vol.CloudFraction <= 0.01f || Vol.ExtinctionMultiplier <= 0.01f)
+            {
+                return;
+            }
+            const ResolvedWindSample W = Vol.FollowWindEnabled
+                ? AtmosphericWindSolver::ResolveWindSample(
+                      Atmo.Wind, Deck.WindSpeedMetersPerSecond, Deck.WindBearingDegrees,
+                      Vol.WindSource, Vol.VolumeCenterMeters, Vol.VolumeCenterMeters.Z,
+                      Atmo.SimulationSeconds, Atmo.ForceFieldSource, Atmo.WindLatticeCascade)
+                : ResolvedWindSample {};
+            auto& Dst = C.LocalClouds[LocalCloudCount++];
+            Dst.CenterShape[0]          = Vol.VolumeCenterMeters.X;
+            Dst.CenterShape[1]          = Vol.VolumeCenterMeters.Y;
+            Dst.CenterShape[2]          = Vol.VolumeCenterMeters.Z;
+            Dst.CenterShape[3]          = static_cast<float>(static_cast<uint32_t>(Vol.Shape));
+            Dst.HalfExtentYaw[0]        = Vol.HalfExtentMeters.X;
+            Dst.HalfExtentYaw[1]        = Vol.HalfExtentMeters.Y;
+            Dst.HalfExtentYaw[2]        = Vol.HalfExtentMeters.Z;
+            Dst.HalfExtentYaw[3]        = Vol.YawDegrees * Constants::DegToRadFloat;
+            Dst.DensityCovScaleSides[0] = Vol.ExtinctionMultiplier;
+            Dst.DensityCovScaleSides[1] = Vol.CloudFraction;
+            Dst.DensityCovScaleSides[2] = 1.0f / std::max(2.0f, Vol.FeatureScaleMeters);
+            Dst.DensityCovScaleSides[3] = static_cast<float>(std::clamp(Vol.PrismSides, 3u, 16u));
+            Dst.WindVelCurl[0]          = W.VelocityMetersPerSec.X;
+            Dst.WindVelCurl[1]          = W.VelocityMetersPerSec.Y;
+            Dst.WindVelCurl[2]          = W.VelocityMetersPerSec.Z;
+            Dst.WindVelCurl[3]          = W.CurlScalar;
+            Dst.SoftAnisoPad[0]         = Vol.EdgeSoftness;
+            Dst.SoftAnisoPad[1]         = Vol.ForwardScatterAnisotropy;
+            Dst.SoftAnisoPad[2]         = Vol.FollowWindEnabled ? 1.0f : 0.0f;
+            Dst.SoftAnisoPad[3]         = 0.0f;
+        };
+        if (Atmo.LocalCloud.LocalEnabled)
+        {
+            PackLocalCloud(Atmo.LocalCloud);
+        }
+        for (const auto& Vol : Atmo.LocalClouds)
+        {
+            PackLocalCloud(Vol);
+        }
+        C.FormationOptics[3] = static_cast<float>(LocalCloudCount);
+
+        // Pack Atmospheric Fog (Height Fog + Aerial Perspective) + Wind-Driven LocalFogVolumes
+        const auto& Fg = Atmo.Fog;
+        auto& F        = Uniforms.FogParams;
+        F.HeightParams0[0] = Fg.HeightFog.Enabled ? 1.0f : 0.0f;
+        F.HeightParams0[1] = Fg.HeightFog.Density;
+        F.HeightParams0[2] = Fg.HeightFog.FalloffHeightMeters;
+        F.HeightParams0[3] = Fg.HeightFog.BaseAltitudeMeters;
+        F.HeightParams1[0] = Fg.HeightFog.HeightColour.R;
+        F.HeightParams1[1] = Fg.HeightFog.HeightColour.G;
+        F.HeightParams1[2] = Fg.HeightFog.HeightColour.B;
+        F.HeightParams1[3] = Fg.HeightFog.SunScatterIntensity;
+        F.AerialParams[0]  = Fg.AerialFog.Enabled ? 1.0f : 0.0f;
+        F.AerialParams[1]  = Fg.AerialFog.DensityMultiplier;
+        F.AerialParams[2]  = Fg.AerialFog.StartDistanceMeters;
+        F.AerialParams[3]  = Fg.AerialFog.MieBlend;
+
+        const ResolvedWindSample HeightWind = Fg.HeightFog.FollowWind
+            ? AtmosphericWindSolver::ResolveWindSample(
+                  Atmo.Wind, Deck.WindSpeedMetersPerSecond, Deck.WindBearingDegrees,
+                  Fg.HeightFog.WindSource, Camera.CameraOrigin, Fg.HeightFog.BaseAltitudeMeters,
+                  Atmo.SimulationSeconds, Atmo.ForceFieldSource, Atmo.WindLatticeCascade)
+            : ResolvedWindSample {};
+        F.FogWindClock[0] = Fg.HeightFog.FollowWind ? 1.0f : 0.0f;
+        F.FogWindClock[1] = HeightWind.VelocityMetersPerSec.X;
+        F.FogWindClock[2] = HeightWind.VelocityMetersPerSec.Y;
+        F.FogWindClock[3] = Atmo.SimulationSeconds;
+
+        uint32_t LocalFogCount = 0u;
+        for (const auto& Vol : Fg.LocalFogs)
+        {
+            if (LocalFogCount >= 8u || !Vol.Enabled || Vol.Density <= 1.0e-4f || Vol.Coverage <= 1.0e-4f)
+            {
+                continue;
+            }
+            const ResolvedWindSample FW = Vol.FollowWind
+                ? AtmosphericWindSolver::ResolveWindSample(
+                      Atmo.Wind, Deck.WindSpeedMetersPerSecond, Deck.WindBearingDegrees,
+                      Vol.WindSource, Vol.VolumeCenterMeters, Vol.VolumeCenterMeters.Z,
+                      Atmo.SimulationSeconds, Atmo.ForceFieldSource, Atmo.WindLatticeCascade)
+                : ResolvedWindSample {};
+            auto& Dst = F.LocalFogs[LocalFogCount++];
+            Dst.CenterShape[0]          = Vol.VolumeCenterMeters.X;
+            Dst.CenterShape[1]          = Vol.VolumeCenterMeters.Y;
+            Dst.CenterShape[2]          = Vol.VolumeCenterMeters.Z;
+            Dst.CenterShape[3]          = static_cast<float>(static_cast<uint32_t>(Vol.Shape));
+            Dst.HalfExtentYaw[0]        = Vol.HalfExtentMeters.X;
+            Dst.HalfExtentYaw[1]        = Vol.HalfExtentMeters.Y;
+            Dst.HalfExtentYaw[2]        = Vol.HalfExtentMeters.Z;
+            Dst.HalfExtentYaw[3]        = Vol.YawDegrees * Constants::DegToRadFloat;
+            Dst.DensityCovScaleSides[0] = Vol.Density;
+            Dst.DensityCovScaleSides[1] = Vol.Coverage;
+            Dst.DensityCovScaleSides[2] = 1.0f / std::max(1.5f, Vol.FeatureScaleMeters);
+            Dst.DensityCovScaleSides[3] = static_cast<float>(std::clamp(Vol.PrismSides, 3u, 16u));
+            Dst.WindVelCurl[0]          = FW.VelocityMetersPerSec.X;
+            Dst.WindVelCurl[1]          = FW.VelocityMetersPerSec.Y;
+            Dst.WindVelCurl[2]          = FW.VelocityMetersPerSec.Z;
+            Dst.WindVelCurl[3]          = FW.CurlScalar;
+            Dst.TintAniso[0]            = Vol.FogTint.R;
+            Dst.TintAniso[1]            = Vol.FogTint.G;
+            Dst.TintAniso[2]            = Vol.FogTint.B;
+            Dst.TintAniso[3]            = Vol.AnisotropyG;
+        }
+        F.FogMeta[0] = static_cast<float>(LocalFogCount);
+        F.FogMeta[1] = Fg.AerialFog.ScaleHeightMeters;
+        F.FogMeta[2] = (LocalFogCount > 0u) ? Fg.LocalFogs[0].EdgeSoftness : 0.35f;
+        F.FogMeta[3] = 0.0f;
 
         auto& Cel = Uniforms.CelestialParams;
         Cel.SunAxisRadius[0]  = SunDir.X;
