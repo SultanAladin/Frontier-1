@@ -1621,6 +1621,335 @@ OutlinerSlotToken ConstructShowcasePrimitiveInOutliner(
     return Slot;
 }
 
+MaterialSpace::SurfaceMaterial BuildMaterialFromContentPreset(
+    std::string_view DisplayTitle,
+    ColorRgba        PreviewTint) noexcept
+{
+    const Mathematics::LinearRGB LinearTint {
+        SrgbByteToLinear(PreviewTint.Red),
+        SrgbByteToLinear(PreviewTint.Green),
+        SrgbByteToLinear(PreviewTint.Blue),
+    };
+
+    MaterialSpace::SurfaceMaterial Mat{};
+    if (ContainsCaseInsensitive(DisplayTitle, "glass") || ContainsCaseInsensitive(DisplayTitle, "dielectric"))
+    {
+        Mat = MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::AbbeCrownGlassDispersion);
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "titanium") || ContainsCaseInsensitive(DisplayTitle, "brushed"))
+    {
+        Mat = MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::HeatBluedTitaniumIridescent);
+        Mat.Diffuse.BaseColor     = LinearTint;
+        Mat.Specular.Metalness    = 0.94f;
+        Mat.Specular.Roughness    = 0.24f;
+        Mat.Specular.Anisotropy   = 0.55f;
+        Mat.ThinFilm.ThinFilmWeight = 0.18f;
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "clearcoat") || ContainsCaseInsensitive(DisplayTitle, "automotive"))
+    {
+        Mat = MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::MetallicCarPaintGlinty);
+        Mat.Diffuse.BaseColor       = LinearTint;
+        Mat.Clearcoat.CoatWeight    = 1.0f;
+        Mat.Clearcoat.CoatRoughness = 0.04f;
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "wax") || ContainsCaseInsensitive(DisplayTitle, "subsurface"))
+    {
+        Mat = MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::SubsurfaceJadeOrganic);
+        Mat.Diffuse.BaseColor           = LinearTint;
+        Mat.Subsurface.SubsurfaceColor  = LinearTint;
+        Mat.Subsurface.SubsurfaceWeight = 0.78f;
+    }
+    else
+    {
+        Mat.Diffuse.BaseColor        = LinearTint;
+        Mat.Diffuse.BaseWeight       = 1.0f;
+        Mat.Diffuse.DiffuseRoughness = 0.36f;
+        Mat.Specular.Roughness       = 0.28f;
+        Mat.Specular.DielectricIOR   = 1.50f;
+    }
+    Mat.MaterialName = std::string(DisplayTitle);
+    return Mat;
+}
+
+bool AssignShowcaseEntryMaterial(
+    OutlinerPanel&                        InOutOutliner,
+    ShowcaseWorldSceneBundle&             InOutBundle,
+    OutlinerSlotToken                     TargetSlot,
+    const MaterialSpace::SurfaceMaterial& NextMaterial,
+    std::string_view                      MaterialAlias)
+{
+    if (!TargetSlot.Valid())
+    {
+        return false;
+    }
+
+    for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+    {
+        if (Obj.SlotToken != TargetSlot)
+        {
+            continue;
+        }
+
+        MaterialSpace::SurfaceMaterial Authored = NextMaterial;
+        if (!MaterialAlias.empty())
+        {
+            Authored.MaterialName = std::string(MaterialAlias);
+        }
+
+        if (!Obj.DedicatedMaterial)
+        {
+            Obj.MaterialSlot      = InOutBundle.Scene.MaterialRegister.RegisterMaterial(Authored);
+            Obj.DedicatedMaterial = true;
+            if (Obj.ClusterInstanceIndex < InOutBundle.Scene.ClusterInstances.size())
+            {
+                InOutBundle.Scene.ClusterInstances[Obj.ClusterInstanceIndex].MaterialSlot = Obj.MaterialSlot;
+            }
+        }
+        else
+        {
+            (void)InOutBundle.Scene.MaterialRegister.UpdateMaterialSlot(Obj.MaterialSlot, Authored);
+        }
+
+        const bool IsGlass = (Authored.Transmission.TransmissionWeight > 0.25f);
+        Obj.GlassShell     = IsGlass;
+        if (Obj.ClusterInstanceIndex < InOutBundle.Scene.ClusterInstances.size())
+        {
+            InOutBundle.Scene.ClusterInstances[Obj.ClusterInstanceIndex].TransparentGlass = IsGlass;
+        }
+
+        Obj.MaterialTitle = Authored.MaterialName.empty() ? std::string("OpenPBR Material") : Authored.MaterialName;
+        if (OutlinerRecordEntry* Entry = InOutOutliner.AccessEntry(TargetSlot))
+        {
+            Entry->CategoryLabel = "Geometry · " + Obj.MaterialTitle;
+        }
+        RebuildShowcaseSceneAcceleration(InOutBundle);
+        return true;
+    }
+
+    return false;
+}
+
+OutlinerSlotToken ConstructShowcaseModelInOutliner(
+    OutlinerPanel&            InOutOutliner,
+    ShowcaseWorldSceneBundle& InOutBundle,
+    std::string_view          DisplayTitle,
+    ColorRgba                 PreviewTint,
+    Mathematics::Axis3D       WorldPosition,
+    OutlinerSlotToken         ExplicitEnclosure,
+    bool                      BuildCpuSdf)
+{
+    const OutlinerRecordEntry* ExplicitFolder = ExplicitEnclosure.Valid() ? InOutOutliner.FindEntry(ExplicitEnclosure) : nullptr;
+    OutlinerSlotToken TargetEnclosure = {};
+    if (ExplicitFolder != nullptr)
+    {
+        TargetEnclosure = (ExplicitFolder->Category == ConstructSlotCategory::Folder)
+                              ? ExplicitFolder->Token
+                              : ExplicitFolder->EnclosingToken;
+    }
+
+    if (ContainsCaseInsensitive(DisplayTitle, "light") ||
+        ContainsCaseInsensitive(DisplayTitle, "ies") ||
+        ContainsCaseInsensitive(DisplayTitle, "softbox"))
+    {
+        if (!TargetEnclosure.Valid())
+        {
+            TargetEnclosure = InOutBundle.LightingFolderToken.Valid() ? InOutBundle.LightingFolderToken : InOutBundle.ShowcaseFolderToken;
+        }
+        uint32_t LightTemplateIdx = 0u;
+        const auto Templates = InOutOutliner.QueryConstructTemplates();
+        for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Templates.size()); ++Idx)
+        {
+            if (Templates[Idx].Category == ConstructSlotCategory::PointLuminaire)
+            {
+                LightTemplateIdx = Idx;
+                break;
+            }
+        }
+        const OutlinerSlotToken Slot = InOutOutliner.ConstructFromTemplate(LightTemplateIdx, TargetEnclosure);
+        if (OutlinerRecordEntry* Entry = InOutOutliner.AccessEntry(Slot))
+        {
+            Entry->Category          = ConstructSlotCategory::PointLuminaire;
+            Entry->Title             = std::string(DisplayTitle);
+            Entry->CategoryLabel     = "Photometry · LTC Area Luminaire";
+            Entry->Subtitle          = "LTC Quad Light · 1.20 × 0.90 m";
+            Entry->PositionX         = WorldPosition.X;
+            Entry->PositionY         = WorldPosition.Y;
+            Entry->PositionZ         = std::max(0.85f, WorldPosition.Z + 1.15f);
+            Entry->ScaleX            = 1.20f;
+            Entry->ScaleY            = 0.90f;
+            Entry->ScaleZ            = 1.0f;
+            Entry->VisibilityEnabled = true;
+        }
+        bool NeedsRebuild = false;
+        (void)SynchronizeShowcaseGallerySceneLive(InOutOutliner, InOutBundle, NeedsRebuild, BuildCpuSdf);
+        if (!InOutBundle.AreaLightBindings.empty())
+        {
+            auto& Binding = InOutBundle.AreaLightBindings.back();
+            if (Binding.SlotToken == Slot && Binding.AreaLightIndex < InOutBundle.Scene.AreaLights.size())
+            {
+                const Mathematics::LinearRGB Rad {
+                    5.8f * std::max(0.25f, SrgbByteToLinear(PreviewTint.Red)),
+                    5.8f * std::max(0.25f, SrgbByteToLinear(PreviewTint.Green)),
+                    5.8f * std::max(0.25f, SrgbByteToLinear(PreviewTint.Blue)),
+                };
+                Binding.BaseEmittedRadiance = Rad;
+                InOutBundle.Scene.AreaLights[Binding.AreaLightIndex].EmittedRadiance = Rad;
+            }
+        }
+        InOutOutliner.SelectSingle(Slot);
+        return Slot;
+    }
+
+    if (ContainsCaseInsensitive(DisplayTitle, "camera"))
+    {
+        if (!TargetEnclosure.Valid())
+        {
+            TargetEnclosure = InOutBundle.CamerasFolderToken.Valid() ? InOutBundle.CamerasFolderToken : InOutBundle.ShowcaseFolderToken;
+        }
+        uint32_t CamTemplateIdx = 0u;
+        const auto Templates = InOutOutliner.QueryConstructTemplates();
+        for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Templates.size()); ++Idx)
+        {
+            if (Templates[Idx].Category == ConstructSlotCategory::OpticsCamera)
+            {
+                CamTemplateIdx = Idx;
+                break;
+            }
+        }
+        const OutlinerSlotToken Slot = InOutOutliner.ConstructFromTemplate(CamTemplateIdx, TargetEnclosure);
+        if (OutlinerRecordEntry* Entry = InOutOutliner.AccessEntry(Slot))
+        {
+            Entry->Category          = ConstructSlotCategory::OpticsCamera;
+            Entry->Title             = std::string(DisplayTitle);
+            Entry->CategoryLabel     = "Camera · Perspective Optical Rig";
+            Entry->Subtitle          = "FOV 43° · Near 0.15 m";
+            Entry->PositionX         = WorldPosition.X;
+            Entry->PositionY         = WorldPosition.Y;
+            Entry->PositionZ         = std::max(-0.20f, WorldPosition.Z + 0.35f);
+            Entry->VisibilityEnabled = true;
+        }
+        InOutOutliner.SelectSingle(Slot);
+        return Slot;
+    }
+
+    if (!TargetEnclosure.Valid())
+    {
+        TargetEnclosure = InOutBundle.ShowcaseFolderToken;
+    }
+
+    ShowcasePrimitiveShape Shape = ShowcasePrimitiveShape::Box;
+    if (ContainsCaseInsensitive(DisplayTitle, "torus"))
+    {
+        Shape = ShowcasePrimitiveShape::Torus;
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "cylinder cone") ||
+             ContainsCaseInsensitive(DisplayTitle, "cylinder") ||
+             ContainsCaseInsensitive(DisplayTitle, "tyre") ||
+             ContainsCaseInsensitive(DisplayTitle, "fan") ||
+             ContainsCaseInsensitive(DisplayTitle, "integrator"))
+    {
+        Shape = ShowcasePrimitiveShape::Cylinder;
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "cone"))
+    {
+        Shape = ShowcasePrimitiveShape::Cone;
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "sphere") ||
+             ContainsCaseInsensitive(DisplayTitle, "ball") ||
+             ContainsCaseInsensitive(DisplayTitle, "bust"))
+    {
+        Shape = ShowcasePrimitiveShape::Sphere;
+    }
+
+    Mathematics::Scalar3D Dims = DefaultDimensionsForShape(Shape);
+    if (ContainsCaseInsensitive(DisplayTitle, "traffic cone"))
+    {
+        Dims = { 0.48f, 0.48f, 0.78f };
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "cylinder cone"))
+    {
+        Dims = { 0.32f, 0.32f, 0.82f };
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "torus"))
+    {
+        Dims = { 0.68f, 0.68f, 0.24f };
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "tyre"))
+    {
+        Dims = { 0.66f, 0.66f, 0.44f };
+    }
+
+    const Mathematics::Axis3D FloorPlaced {
+        WorldPosition.X,
+        WorldPosition.Y,
+        -0.64f + Dims.Z * 0.5f,
+    };
+
+    const OutlinerSlotToken Slot = ConstructShowcasePrimitiveInOutliner(
+        InOutOutliner,
+        InOutBundle,
+        Shape,
+        FloorPlaced,
+        BuildCpuSdf);
+
+    if (TargetEnclosure.Valid() && TargetEnclosure != InOutBundle.ShowcaseFolderToken)
+    {
+        (void)InOutOutliner.AttachToEnclosure(Slot, TargetEnclosure);
+    }
+
+    if (OutlinerRecordEntry* Entry = InOutOutliner.AccessEntry(Slot))
+    {
+        Entry->Title  = std::string(DisplayTitle);
+        Entry->ScaleX = Dims.X;
+        Entry->ScaleY = Dims.Y;
+        Entry->ScaleZ = Dims.Z;
+        char SubBuf[96]{};
+        std::snprintf(SubBuf, sizeof(SubBuf), "%s · %.2f × %.2f × %.2f m · OpenPBR", ShapeDisplayLabel(Shape), Dims.X, Dims.Y, Dims.Z);
+        Entry->Subtitle = SubBuf;
+        for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+        {
+            if (Obj.SlotToken == Slot)
+            {
+                Obj.Title    = Entry->Title;
+                Obj.Subtitle = Entry->Subtitle;
+                break;
+            }
+        }
+    }
+
+    MaterialSpace::SurfaceMaterial ModelMat{};
+    ModelMat.Diffuse.BaseColor = {
+        SrgbByteToLinear(PreviewTint.Red),
+        SrgbByteToLinear(PreviewTint.Green),
+        SrgbByteToLinear(PreviewTint.Blue),
+    };
+    ModelMat.Diffuse.BaseWeight       = 1.0f;
+    ModelMat.Diffuse.DiffuseRoughness = 0.38f;
+    ModelMat.Specular.Roughness       = 0.30f;
+    ModelMat.Specular.DielectricIOR   = 1.50f;
+    if (ContainsCaseInsensitive(DisplayTitle, "traffic cone") || ContainsCaseInsensitive(DisplayTitle, "cylinder cone"))
+    {
+        ModelMat.Clearcoat.CoatWeight    = 0.30f;
+        ModelMat.Clearcoat.CoatRoughness = 0.16f;
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "torus") || ContainsCaseInsensitive(DisplayTitle, "titanium") ||
+             ContainsCaseInsensitive(DisplayTitle, "fan") || ContainsCaseInsensitive(DisplayTitle, "hull"))
+    {
+        ModelMat.Specular.Metalness = 0.86f;
+        ModelMat.Specular.Roughness = 0.24f;
+    }
+    else if (ContainsCaseInsensitive(DisplayTitle, "tyre"))
+    {
+        ModelMat.Diffuse.BaseColor = { 0.045f, 0.048f, 0.055f };
+        ModelMat.Specular.Roughness = 0.78f;
+    }
+    ModelMat.MaterialName = std::string(DisplayTitle);
+
+    (void)AssignShowcaseEntryMaterial(InOutOutliner, InOutBundle, Slot, ModelMat, DisplayTitle);
+    InOutOutliner.SelectSingle(Slot);
+    return Slot;
+}
+
 bool AssignShowcaseEntryBaseColor(
     OutlinerPanel&            InOutOutliner,
     ShowcaseWorldSceneBundle& InOutBundle,

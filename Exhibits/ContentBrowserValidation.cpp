@@ -13,6 +13,7 @@
 #include "Engine/Components/ContentBrowser/ThumbnailSheetRepository.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
+#include "Engine/Lifecycle/EditorLifecycle.h"
 #include "Engine/Threading/Threads/Streaming/AssetStreamThread.h"
 #include "Exhibits/SoftwareCanvasRasterizer.h"
 
@@ -642,9 +643,241 @@ bool ValidateContentBrowserSnapshots()
         return false;
     }
 
+    // Snapshot 11: Dark Theme + Geometry Category showing transparent 3D OpenPBR models & FrontierWorldMirror props
+    Theme.ConfigureTheme(Frontier::ThemePreset::Dark);
+    Theme.ConfigureAccent(Frontier::AccentPreset::Blue);
+    (void)Browser.ActivateCategory(ContentCategory::Geometry);
+    StepPresentation(IdleInput);
+    if (!WriteCurrentSnapshot("11-GeometryModelsTransparent3D.png"))
+    {
+        std::filesystem::remove_all(TempDropDir, DropErr);
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+
+    // Verify transparent RGBA silhouettes on baked Geometry & Materials tiles
+    const auto& Repo        = Browser.QueryThumbnailRepository();
+    const auto  RepoEntries = Repo.QueryAllEntries();
+    bool FoundTrafficCone = false;
+    bool FoundStandardMat = false;
+    for (std::size_t Idx = 0u; Idx < RepoEntries.size(); ++Idx)
+    {
+        const auto& E = RepoEntries[Idx];
+        if (E.DisplayTitle == "Traffic Cone" || E.DisplayTitle == "Standard Preset")
+        {
+            std::vector<uint8_t> TileRgba{};
+            if (!VerifyAssertion(Repo.QueryTileRgbaPixels(Idx, TileRgba) && !TileRgba.empty(), "Baked Geometry/Material tile pixels resident"))
+            {
+                std::filesystem::remove_all(TempDropDir, DropErr);
+                ImGui::DestroyContext(GuiSession);
+                return false;
+            }
+            bool HasTransparent = false;
+            bool HasOpaque      = false;
+            for (std::size_t Off = 0u; Off + 3u < TileRgba.size(); Off += 4u)
+            {
+                const uint8_t A = TileRgba[Off + 3u];
+                HasTransparent = HasTransparent || (A == 0u);
+                HasOpaque      = HasOpaque || (A == 255u);
+            }
+            if (!VerifyAssertion(HasTransparent && HasOpaque, "Baked 3D specimen tile has transparent background & opaque silhouette"))
+            {
+                std::filesystem::remove_all(TempDropDir, DropErr);
+                ImGui::DestroyContext(GuiSession);
+                return false;
+            }
+            if (E.DisplayTitle == "Traffic Cone") FoundTrafficCone = true;
+            if (E.DisplayTitle == "Standard Preset") FoundStandardMat = true;
+        }
+    }
+    if (!VerifyAssertion(FoundTrafficCone && FoundStandardMat, "Traffic Cone & Standard Preset exist in ThumbnailSheetRepository"))
+    {
+        std::filesystem::remove_all(TempDropDir, DropErr);
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+
     std::filesystem::remove_all(TempDropDir, DropErr);
     TypographyRepository::AssignCurrent(nullptr);
     Dock.Finalize();
+    ImGui::DestroyContext(GuiSession);
+    return true;
+}
+
+bool ValidateEditorDropPlacement()
+{
+    ImGuiContext* GuiSession = ImGui::CreateContext();
+    ImGui::SetCurrentContext(GuiSession);
+    ImGuiIO& Io = ImGui::GetIO();
+    Io.IniFilename = nullptr;
+    Io.LogFilename = nullptr;
+    Io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    Io.DisplaySize = ImVec2(1440.0f, 900.0f);
+    Frontier::Lifecycle::EditorStartupConfiguration Cfg{};
+    Cfg.WindowDescriptor = Frontier::Windowing::WindowConfigurationDescriptor::ConstructApplicationWindow("Frontier", 1440u, 900u);
+    Cfg.FontRepositoryRoot           = ResolveRepositoryRootPath() / "EngineContent/FontsArchives";
+    Cfg.PopulateShowcaseScene        = true;
+
+    Frontier::Lifecycle::EditorLifecycle Editor{};
+    if (!VerifyAssertion(Editor.Initialize(Cfg), "EditorLifecycle initializes cleanly for drag-drop validation"))
+    {
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+
+    unsigned char* FontPixels = nullptr;
+    int            FontW      = 0;
+    int            FontH      = 0;
+    Io.Fonts->GetTexDataAsRGBA32(&FontPixels, &FontW, &FontH);
+    Io.Fonts->SetTexID(static_cast<ImTextureID>(1));
+
+    auto StepEditorFrame = [&]()
+    {
+        (void)Editor.ExecuteAuthoringTick(1.0 / 60.0);
+        Io.DisplaySize = ImVec2(1440.0f, 900.0f);
+        Io.DeltaTime   = 1.0f / 60.0f;
+        ImGui::NewFrame();
+        Editor.PresentPrimaryEditorImGui(1.0 / 60.0);
+        ImGui::Render();
+    };
+
+    // Run 2 frames so DockContainer splits Outliner/Viewport/Inspector and registers drop targets
+    StepEditorFrame();
+    StepEditorFrame();
+
+    auto* Panes   = Editor.AccessWorkspaces().AccessActivePanes();
+    auto* Scene   = Editor.AccessShowcaseScene();
+    auto& Browser = Editor.AccessContentBrowser().AccessPanel();
+    if (!VerifyAssertion(Panes != nullptr && Scene != nullptr, "Active workspace panes & ShowcaseWorldSceneBundle present"))
+    {
+        Editor.Finalize();
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+
+    const Rectangle2D ViewportPhys = Panes->Viewport.QueryLastCanvasPhysicalBounds();
+    const Rectangle2D OutlinerPhys = Panes->Outliner.QueryLastPhysicalBounds();
+    if (!VerifyAssertion(ViewportPhys.Width > 100.0f && OutlinerPhys.Width > 100.0f && ViewportPhys.X > OutlinerPhys.X,
+                         "Viewport & Outliner physical bounds recorded in multi-pane dock layout"))
+    {
+        Editor.Finalize();
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+
+    const Rectangle2D ViewportDrop = Browser.MapPhysicalToLogicalBounds(ViewportPhys);
+    const Rectangle2D OutlinerDrop = Browser.MapPhysicalToLogicalBounds(OutlinerPhys);
+    const Point2D ViewportCenter{ ViewportDrop.X + ViewportDrop.Width * 0.5f, ViewportDrop.Y + ViewportDrop.Height * 0.62f };
+    const Point2D OutlinerCenter{ OutlinerDrop.X + OutlinerDrop.Width * 0.5f, OutlinerDrop.Y + OutlinerDrop.Height * 0.50f };
+
+    const auto FindRepoIndex = [&](std::string_view Title) -> std::size_t
+    {
+        const auto List = Browser.QueryThumbnailRepository().QueryAllEntries();
+        for (std::size_t Idx = 0u; Idx < List.size(); ++Idx)
+        {
+            if (List[Idx].DisplayTitle == Title)
+            {
+                return Idx;
+            }
+        }
+        return List.size();
+    };
+
+    const std::size_t InitialObjCount   = Scene->Objects.size();
+    const std::size_t InitialLightCount = Scene->Scene.AreaLights.size();
+    const std::size_t InitialForceCount = Editor.AccessForceAccumulator().QuerySources().size();
+
+    // 1. Drop Traffic Cone onto 3D Viewport
+    const std::size_t ConeIdx = FindRepoIndex("Traffic Cone");
+    if (!VerifyAssertion(ConeIdx < Browser.QueryThumbnailRepository().QueryAllEntries().size(), "Traffic Cone entry located") ||
+        !VerifyAssertion(Browser.ApplyContentEntryToDropZone(ConeIdx, "world.viewport", ViewportCenter),
+                         "Drop Traffic Cone onto world.viewport zone") ||
+        !VerifyAssertion(Scene->Objects.size() == InitialObjCount + 1u && Scene->Objects.back().Title == "Traffic Cone",
+                         "Traffic Cone constructed in 3D ShowcaseWorldSceneBundle & Outliner"))
+    {
+        Editor.Finalize();
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+
+    // 2. Drop Dielectric Glass Material onto a row via world.outliner zone
+    const std::size_t GlassIdx = FindRepoIndex("Dielectric Glass");
+    if (!VerifyAssertion(GlassIdx < Browser.QueryThumbnailRepository().QueryAllEntries().size(), "Dielectric Glass entry located") ||
+        !VerifyAssertion(Browser.ApplyContentEntryToDropZone(GlassIdx, "world.outliner", OutlinerCenter),
+                         "Drop Dielectric Glass onto world.outliner zone"))
+    {
+        Editor.Finalize();
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+    {
+        const Frontier::OutlinerSlotToken SelectedAfterMat = Panes->Outliner.QueryPrimarySelection();
+        bool AppliedToTarget = false;
+        for (const auto& Obj : Scene->Objects)
+        {
+            if (Obj.SlotToken == SelectedAfterMat && Obj.GlassShell && Obj.MaterialTitle == "Dielectric Glass")
+            {
+                AppliedToTarget = true;
+                break;
+            }
+        }
+        if (!VerifyAssertion(AppliedToTarget, "Dielectric Glass applied OpenPBR glass material to dropped Outliner target"))
+        {
+            Editor.Finalize();
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+    }
+
+    // 3. Drop Studio Softbox Light (Photometry) onto world.outliner
+    const std::size_t LightIdx = FindRepoIndex("Studio Softbox Light");
+    if (!VerifyAssertion(LightIdx < Browser.QueryThumbnailRepository().QueryAllEntries().size(), "Studio Softbox Light entry located") ||
+        !VerifyAssertion(Browser.ApplyContentEntryToDropZone(LightIdx, "world.outliner", OutlinerCenter),
+                         "Drop Studio Softbox Light onto world.outliner zone") ||
+        !VerifyAssertion(Scene->Scene.AreaLights.size() == InitialLightCount + 1u,
+                         "Studio Softbox Light spawned new LTC area luminaire"))
+    {
+        Editor.Finalize();
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+
+    // 4. Drop Turbulent Wind Field (Simulations) onto world.viewport
+    const std::size_t WindIdx = FindRepoIndex("Turbulent Wind Field");
+    if (!VerifyAssertion(WindIdx < Browser.QueryThumbnailRepository().QueryAllEntries().size(), "Turbulent Wind Field entry located") ||
+        !VerifyAssertion(Browser.ApplyContentEntryToDropZone(WindIdx, "world.viewport", ViewportCenter),
+                         "Drop Turbulent Wind Field onto world.viewport zone") ||
+        !VerifyAssertion(Editor.AccessForceAccumulator().QuerySources().size() == InitialForceCount + 1u,
+                         "Turbulent Wind Field spawned ForceField source in world"))
+    {
+        Editor.Finalize();
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+
+    // 5. Drop Studio MatCap onto WorldViewportMatCap
+    const std::size_t MatCapIdx = FindRepoIndex("CNC Aluminum");
+    if (!VerifyAssertion(MatCapIdx < Browser.QueryThumbnailRepository().QueryAllEntries().size(), "CNC Aluminum MatCap located") ||
+        !VerifyAssertion(Browser.ApplyMatCapEntryToSlot(MatCapIdx, "WorldViewportMatCap"),
+                         "Drop CNC Aluminum MatCap onto WorldViewportMatCap") ||
+        !VerifyAssertion(Panes->Viewport.QueryDisplaySettings().RenderEngineIndex == 0u,
+                         "MatCap drop switched Viewport RenderEngineIndex to MatCap (0)"))
+    {
+        Editor.Finalize();
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+
+    // 6. Drop Colour Swatch onto ActiveWorldSurfaceColour
+    if (!VerifyAssertion(Browser.ApplyColourIndexToSlot(0u, "ActiveWorldSurfaceColour", ViewportCenter),
+                         "Drop Colour Swatch onto ActiveWorldSurfaceColour"))
+    {
+        Editor.Finalize();
+        ImGui::DestroyContext(GuiSession);
+        return false;
+    }
+
+    Editor.Finalize();
     ImGui::DestroyContext(GuiSession);
     return true;
 }
@@ -669,6 +902,10 @@ int main()
     {
         return 1;
     }
-    std::printf("[ContentBrowserValidation] All ThumbnailSheet, SSD/HDD streaming, Quarantine Import, UV mask, and .ColourSwatch checks passed.\n");
+    if (!ValidateEditorDropPlacement())
+    {
+        return 1;
+    }
+    std::printf("[ContentBrowserValidation] All ThumbnailSheet, SSD/HDD streaming, Quarantine Import, UV mask, .ColourSwatch, and Editor drag-drop checks passed.\n");
     return 0;
 }

@@ -89,7 +89,8 @@ namespace
 
 SpecimenPreviewImage RasterizeMaterialSpecimenPreview(
     const SurfaceMaterial& RawMaterial,
-    uint32_t               ResolutionPixels)
+    uint32_t               ResolutionPixels,
+    bool                   TransparentBackground)
 {
     SurfaceMaterial Mat = RawMaterial;
     SanitizeSurfaceMaterial(Mat);
@@ -141,13 +142,23 @@ SpecimenPreviewImage RasterizeMaterialSpecimenPreview(
 
             if (Disc <= 0.0f)
             {
-                // Subtle dark vignette background card
-                const float RadSq = ScreenX * ScreenX + ScreenY * ScreenY;
-                const uint8_t Bg  = static_cast<uint8_t>(std::clamp(28.0f - 36.0f * RadSq, 16.0f, 30.0f));
-                Image.Rgba8[PixelBase + 0u] = Bg;
-                Image.Rgba8[PixelBase + 1u] = static_cast<uint8_t>(Bg + 4u);
-                Image.Rgba8[PixelBase + 2u] = static_cast<uint8_t>(Bg + 11u);
-                Image.Rgba8[PixelBase + 3u] = 255u;
+                if (TransparentBackground)
+                {
+                    Image.Rgba8[PixelBase + 0u] = 0u;
+                    Image.Rgba8[PixelBase + 1u] = 0u;
+                    Image.Rgba8[PixelBase + 2u] = 0u;
+                    Image.Rgba8[PixelBase + 3u] = 0u;
+                }
+                else
+                {
+                    // Subtle dark vignette background card
+                    const float RadSq = ScreenX * ScreenX + ScreenY * ScreenY;
+                    const uint8_t Bg  = static_cast<uint8_t>(std::clamp(28.0f - 36.0f * RadSq, 16.0f, 30.0f));
+                    Image.Rgba8[PixelBase + 0u] = Bg;
+                    Image.Rgba8[PixelBase + 1u] = static_cast<uint8_t>(Bg + 4u);
+                    Image.Rgba8[PixelBase + 2u] = static_cast<uint8_t>(Bg + 11u);
+                    Image.Rgba8[PixelBase + 3u] = 255u;
+                }
                 continue;
             }
 
@@ -253,10 +264,13 @@ SpecimenPreviewImage RasterizeMaterialSpecimenPreview(
                 PixelLinear.B += TransWeight * TraceRefractedChannel(DispersedIor.Z, 2);
             }
 
+            const float EdgeCoverage = TransparentBackground
+                ? std::clamp(std::sqrt(Disc) / std::max(0.01f, InvRes * 2.2f), 0.0f, 1.0f)
+                : 1.0f;
             Image.Rgba8[PixelBase + 0u] = EncodeAcesSrgbByte(PixelLinear.R);
             Image.Rgba8[PixelBase + 1u] = EncodeAcesSrgbByte(PixelLinear.G);
             Image.Rgba8[PixelBase + 2u] = EncodeAcesSrgbByte(PixelLinear.B);
-            Image.Rgba8[PixelBase + 3u] = 255u;
+            Image.Rgba8[PixelBase + 3u] = static_cast<uint8_t>(std::lround(EdgeCoverage * 255.0f));
         }
     }
 

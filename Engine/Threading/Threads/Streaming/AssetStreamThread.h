@@ -90,6 +90,7 @@ public:
     void ConfigureHardwareTierOverride(StorageHardwareTier RequestedTier, const std::filesystem::path& MountTargetPath = {}) noexcept;
 
     [[nodiscard]] bool EnqueueSliceRead(StreamSliceRequest Request);
+    [[nodiscard]] bool EnqueueSliceBatch(std::vector<StreamSliceRequest> Requests);
     void               FlushPendingSynchronously();
 
     [[nodiscard]] AssetStreamReading  InspectReading() const noexcept;
@@ -103,10 +104,12 @@ private:
 
     mutable std::mutex               QueueMutex          {};                                         // [-]     - Guards PendingRequests
     std::condition_variable          WakeSignal          {};                                         // [-]     - Signals thread on new slice
+    std::condition_variable          BatchDoneSignal     {};                                         // [-]     - Signals flush waiters when batch ends
     std::vector<StreamSliceRequest>  PendingRequests     {};                                         // [-]     - Queued slice read requests
     std::thread                      BackgroundThread    {};                                         // [-]     - Dedicated streaming OS thread
     ThreadProgressionTracker*        ProgressionMonitor  = nullptr;                                  // [-]     - Optional progression monitor
     uint32_t                         MonitorSlotIndex    = 0u;                                       // [idx]   - Registered monitor slot
+    uint32_t                         InFlightBatchCount  = 0u;                                       // [-]     - Batches actively executing I/O
     std::atomic<StorageHardwareTier> ActiveTier          { StorageHardwareTier::FlashStorageRandomIo };// [-]     - Active I/O path
     std::atomic<uint64_t>            CompletedSlices     { 0ull };                                   // [count] - Fulfilled slice count
     std::atomic<uint64_t>            IssuedSweeps        { 0ull };                                   // [count] - Underlying file read ops

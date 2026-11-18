@@ -861,6 +861,18 @@ void OutlinerPanel::Render(
         return;
     }
 
+    {
+        const Point2D Origin = Surface.QueryOrigin();
+        const float   Scale  = std::max(0.25f, Surface.QueryScale());
+        LastPhysicalBounds = {
+            Origin.X + Bounds.X * Scale,
+            Origin.Y + Bounds.Y * Scale,
+            Bounds.Width * Scale,
+            Bounds.Height * Scale,
+        };
+        LastRenderedRowBounds.clear();
+    }
+
     PixelSpace& ActiveOverlay = (OverlaySurface != nullptr) ? *OverlaySurface : Surface;
     const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
     const bool    OverlayOpenBefore = ConstructDropdownOpen || SettingsDropdownOpen || DirectiveSheetOpen;
@@ -1314,6 +1326,19 @@ void OutlinerPanel::Render(
             }
 
             const Rectangle2D RowRect{ TreeViewport.X + 10.0f, RowY, std::max(40.0f, TreeViewport.Width - 20.0f), RowHeight };
+            {
+                const Point2D Origin = Surface.QueryOrigin();
+                const float   Scale  = std::max(0.25f, Surface.QueryScale());
+                LastRenderedRowBounds.push_back({
+                    Entry->Token,
+                    {
+                        Origin.X + RowRect.X * Scale,
+                        Origin.Y + RowRect.Y * Scale,
+                        RowRect.Width * Scale,
+                        RowRect.Height * Scale,
+                    },
+                });
+            }
             const Rectangle2D RowBox{ RowRect.X, RowRect.Y + 1.0f, RowRect.Width, RowRect.Height - 2.0f };
             const bool        Selected   = QuerySlotSelected(Entry->Token);
             const bool        RowHovered = !OverlayOpenBefore && TreeViewport.Contains(Cursor) && RowRect.Contains(Cursor);
@@ -1822,6 +1847,18 @@ void OutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
     WorkspaceAppearance::EnforcePanePointerOwnership(this, Input);
     Render(WindowSurface, LogicalBounds, Input, Δt, &ForegroundSurface);
     WorkspaceAppearance::UpdatePanePointerOwnership(this, ScreenBounds, SafeScale, Input, false);
+}
+
+OutlinerSlotToken OutlinerPanel::QuerySlotAtPhysicalPoint(Point2D PhysicalPoint) const noexcept
+{
+    for (const OutlinerRowHitBounds& Row : LastRenderedRowBounds)
+    {
+        if (Row.PhysicalBounds.Contains(PhysicalPoint))
+        {
+            return Row.Token;
+        }
+    }
+    return {};
 }
 
 } // namespace Frontier

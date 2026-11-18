@@ -199,6 +199,11 @@ void ViewportPanel::ConfigureConstructPresetCallback(std::function<void(uint32_t
     ConstructPresetCallback = std::move(Callback);
 }
 
+void ViewportPanel::ConfigureConstructCanvasDropCallback(ConstructCanvasDropCallback Callback)
+{
+    OnConstructCanvasDrop = std::move(Callback);
+}
+
 void ViewportPanel::ConfigureOpenContentBrowserCallback(std::function<void()> Callback)
 {
     OpenContentBrowserCallback = std::move(Callback);
@@ -636,6 +641,14 @@ void ViewportPanel::RenderCanvasPane(
     if (!SplitViewportEnabled || ActivePaneIndex == PaneIndex)
     {
         LastCanvasPaneBounds = PaneBounds;
+        const Point2D Origin = Surface.QueryOrigin();
+        const float   Scale  = std::max(0.25f, Surface.QueryScale());
+        LastCanvasPhysicalBounds = {
+            Origin.X + PaneBounds.X * Scale,
+            Origin.Y + PaneBounds.Y * Scale,
+            PaneBounds.Width * Scale,
+            PaneBounds.Height * Scale,
+        };
     }
     if (PaneBounds.Width >= 140.0f && PaneBounds.Height >= 186.0f &&
         (!SplitViewportEnabled || ActivePaneIndex == PaneIndex))
@@ -1325,22 +1338,15 @@ void ViewportPanel::RenderConstructDialog(
 
         if (Hovered && Input.PrimaryPointer.Pressed)
         {
-            if (Choices[Idx].PresetIndex >= 0 && ConstructPresetCallback)
-            {
-                ConstructPresetCallback(static_cast<uint32_t>(Choices[Idx].PresetIndex));
-            }
-            else if (AttachedOutliner != nullptr)
-            {
-                if (Choices[Idx].TemplateIndex >= 0)
-                {
-                    AttachedOutliner->ConstructFromTemplate(static_cast<uint32_t>(Choices[Idx].TemplateIndex));
-                }
-                else
-                {
-                    AttachedOutliner->ConstructFolder("Folder");
-                }
-            }
-            ConstructSheetOpen = false;
+            ConstructTilePressed         = true;
+            ConstructDragActive          = false;
+            ConstructDragOrigin          = Cursor;
+            ConstructDragTemplateIndex   = Choices[Idx].TemplateIndex;
+            ConstructDragPresetIndex     = Choices[Idx].PresetIndex;
+            ConstructDragCategory        = Choices[Idx].Category;
+            ConstructDragForceOrdinal    = Choices[Idx].ForceModelOrdinal;
+            ConstructDragFormulaOverride = Choices[Idx].FormulaOverride;
+            ConstructDragLabel           = std::string(Choices[Idx].Label);
         }
     }
     Overlay.PopClip();
@@ -1357,6 +1363,82 @@ void ViewportPanel::RenderConstructDialog(
     }
 
     Overlay.PopClip();
+
+    if (ConstructTilePressed && Input.PrimaryPointer.Down && !ConstructDragActive)
+    {
+        const float Dx = Cursor.X - ConstructDragOrigin.X;
+        const float Dy = Cursor.Y - ConstructDragOrigin.Y;
+        if (Dx * Dx + Dy * Dy > 36.0f)
+        {
+            ConstructDragActive = true;
+        }
+    }
+
+    if (ConstructDragActive)
+    {
+        const bool OverDropCanvas = !Dialog.Contains(Cursor) && LastCanvasPaneBounds.Contains(Cursor);
+        if (OverDropCanvas)
+        {
+            Overlay.StrokeRectangle(LastCanvasPaneBounds.Inset(3.0f), WorkspaceSurfaceColors::SelectionAmber, 4.0f, 2.0f);
+        }
+        const Rectangle2D GhostRect{ Cursor.X - 18.0f, Cursor.Y - 18.0f, 168.0f, 36.0f };
+        Overlay.FillRectangle(GhostRect, ColorRgba{ 28, 32, 38, 240 }, 10.0f);
+        Overlay.StrokeRectangle(
+            GhostRect,
+            OverDropCanvas ? WorkspaceSurfaceColors::SelectionAmber : ColorRgba{ 120, 130, 145, 255 },
+            10.0f,
+            1.6f);
+        if (ConstructDragCategory == ConstructSlotCategory::ForceField && ConstructDragForceOrdinal < 19u)
+        {
+            const ColorRgba Tint = ConstructDragFormulaOverride
+                ? WorkspaceSurfaceColors::SelectionAmber
+                : WorkspaceAppearance::QueryForceModelTint(ConstructDragForceOrdinal);
+            WorkspaceAppearance::ConstructForceModelIcon(Overlay, ConstructDragForceOrdinal, { GhostRect.X + 7.0f, GhostRect.Y + 7.0f }, 22.0f, Tint, 1.0f);
+        }
+        else
+        {
+            WorkspaceAppearance::ConstructSlotCategoryIcon(Overlay, ConstructDragCategory, { GhostRect.X + 7.0f, GhostRect.Y + 7.0f }, 22.0f);
+        }
+        WorkspaceAppearance::ConstructTruncatedText(
+            Overlay,
+            FontWeightClass::Medium,
+            { GhostRect.X + 36.0f, GhostRect.Y + 11.0f },
+            GhostRect.Width - 44.0f,
+            10.2f,
+            WorkspaceSurfaceColors::PrimaryInk,
+            ConstructDragLabel);
+    }
+
+    if (Input.PrimaryPointer.Released && ConstructTilePressed)
+    {
+        const bool DroppedOnCanvas = ConstructDragActive && !Dialog.Contains(Cursor) && LastCanvasPaneBounds.Contains(Cursor);
+        if (DroppedOnCanvas && OnConstructCanvasDrop)
+        {
+            OnConstructCanvasDrop(ConstructDragTemplateIndex, ConstructDragPresetIndex, Cursor);
+            ConstructSheetOpen = false;
+        }
+        else if (!ConstructDragActive)
+        {
+            if (ConstructDragPresetIndex >= 0 && ConstructPresetCallback)
+            {
+                ConstructPresetCallback(static_cast<uint32_t>(ConstructDragPresetIndex));
+            }
+            else if (AttachedOutliner != nullptr)
+            {
+                if (ConstructDragTemplateIndex >= 0)
+                {
+                    AttachedOutliner->ConstructFromTemplate(static_cast<uint32_t>(ConstructDragTemplateIndex));
+                }
+                else
+                {
+                    AttachedOutliner->ConstructFolder("Folder");
+                }
+            }
+            ConstructSheetOpen = false;
+        }
+        ConstructTilePressed = false;
+        ConstructDragActive  = false;
+    }
 }
 
 void ViewportPanel::RenderSettingsSheet(
@@ -2416,7 +2498,7 @@ void ViewportPanel::Render(
     if (ConstructSheetOpen)
     {
         RenderConstructDialog(ActiveOverlay, Bounds, Input);
-        if (OverlayOpenBefore && Input.PrimaryPointer.Pressed && !ConstructBtn.Contains(Cursor))
+        if (OverlayOpenBefore && Input.PrimaryPointer.Pressed && !ConstructBtn.Contains(Cursor) && !ConstructDragActive)
         {
             const Rectangle2D DialogRect = QueryConstructDialogBounds(Bounds);
             if (!DialogRect.Contains(Cursor))

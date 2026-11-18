@@ -758,6 +758,98 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
         {
             ProcessShowcaseNavigationDirective(Directive);
         });
+    Panes->Viewport.ConfigureConstructCanvasDropCallback(
+        [this](int32_t TemplateIndex, int32_t PresetIndex, Point2D CanvasLogicalPos)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            const Rectangle2D CanvasBounds = ActivePanes->Viewport.QueryLastCanvasPaneBounds();
+            const float U = std::clamp((CanvasLogicalPos.X - CanvasBounds.X) / std::max(1.0f, CanvasBounds.Width), 0.0f, 1.0f);
+            const float V = std::clamp((CanvasLogicalPos.Y - CanvasBounds.Y) / std::max(1.0f, CanvasBounds.Height), 0.0f, 1.0f);
+            const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, U, V, 0.36f);
+
+            if (PresetIndex >= 0)
+            {
+                const auto& AllAssets = ForcePresetCatalog.QueryAllAssets();
+                uint32_t MatchIdx = 0u;
+                for (const auto& Asset : AllAssets)
+                {
+                    if (Asset.Category == ContentAssetCategory::ForcePresets || Asset.Category == ContentAssetCategory::FormulaPresets)
+                    {
+                        if (MatchIdx == static_cast<uint32_t>(PresetIndex))
+                        {
+                            SimulationSpace::ForceFields::ForceSourceRecordEntry Preset = Asset.PresetDocument.ForceSource;
+                            Preset.CentreMeters = { DropPos.X, DropPos.Y, DropPos.Z + 0.65f };
+                            (void)SpawnForceFieldEntry(Preset);
+                            RefreshShowcaseViewportRaster();
+                            return;
+                        }
+                        ++MatchIdx;
+                    }
+                }
+            }
+
+            if (TemplateIndex >= 0)
+            {
+                const auto Templates = ActivePanes->Outliner.QueryConstructTemplates();
+                if (static_cast<std::size_t>(TemplateIndex) < Templates.size())
+                {
+                    const auto& Tpl = Templates[static_cast<std::size_t>(TemplateIndex)];
+                    if (Tpl.Category == ConstructSlotCategory::ForceField)
+                    {
+                        auto ForceDesc = BuildEditorForcePreset(Tpl.ForceModelOrdinal, Tpl.DefaultTitle);
+                        ForceDesc.CentreMeters = { DropPos.X, DropPos.Y, DropPos.Z + 0.65f };
+                        (void)SpawnForceFieldEntry(ForceDesc);
+                        RefreshShowcaseViewportRaster();
+                        return;
+                    }
+                    const std::string_view Title = Tpl.DefaultTitle.empty() ? std::string_view(Tpl.DropdownLabel) : std::string_view(Tpl.DefaultTitle);
+                    (void)GeometricRaster::ConstructShowcaseModelInOutliner(
+                        ActivePanes->Outliner,
+                        *ShowcaseBundle,
+                        Title,
+                        { 212u, 208u, 200u, 255u },
+                        DropPos,
+                        {},
+                        true);
+                    SynchronizeShowcaseRendererAfterEdit(true);
+                }
+            }
+            else
+            {
+                (void)ActivePanes->Outliner.ConstructFolder("Folder");
+            }
+        });
+
+    auto& BrowserPanel = ContentBrowserDrawer.AccessPanel();
+    BrowserPanel.AttachOutlinerFallback(&Panes->Outliner);
+    BrowserPanel.AssignContentActivationCallback(
+        [this](const ContentRepositoryEntry& Entry)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            if (Entry.IndexHeader.MatCapPresetMarker != 0u)
+            {
+                ActivePanes->Viewport.AccessDisplaySettings().RenderEngineIndex =
+                    static_cast<uint32_t>(GeometricRaster::WorldRenderEngine::MatCap);
+                ActivePanes->Viewport.AccessDisplaySettings().DebugChannelIndex =
+                    (Entry.IndexHeader.MatCapSlotOrdinal == 9u) ? 3u : 0u;
+                RefreshShowcaseViewportRaster();
+                return;
+            }
+            const Rectangle2D DropBounds = ContentBrowserDrawer.QueryPanel().MapPhysicalToLogicalBounds(
+                ActivePanes->Viewport.QueryLastCanvasPhysicalBounds());
+            HandleContentDropOnViewport(
+                Entry,
+                { DropBounds.X + DropBounds.Width * 0.5f, DropBounds.Y + DropBounds.Height * 0.62f },
+                DropBounds);
+        });
 
     SynchronizeShowcaseGizmoAnchor();
     RefreshShowcaseViewportRaster();
@@ -1112,6 +1204,172 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     }
 }
 
+void EditorLifecycle::SynchronizeShowcaseRendererAfterEdit(bool RebuildGeometry)
+{
+    if (ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    InvalidateRtxLattice();
+    if (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady())
+    {
+        GpuWorldRenderer->SynchronizeSceneResources(ShowcaseBundle->Scene, nullptr, RebuildGeometry);
+    }
+    else if (ShowcaseRenderer != nullptr)
+    {
+        ShowcaseRenderer->PrepareWorldScene(ShowcaseBundle->Scene);
+        RtxLatticePrepared = true;
+    }
+    SynchronizeShowcaseGizmoAnchor();
+    RefreshShowcaseViewportRaster();
+}
+
+void EditorLifecycle::HandleContentDropOnViewport(
+    const ContentRepositoryEntry& Entry,
+    Point2D                       DropLogicalPos,
+    Rectangle2D                   ViewportDropBounds)
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    const float U = std::clamp((DropLogicalPos.X - ViewportDropBounds.X) / std::max(1.0f, ViewportDropBounds.Width), 0.0f, 1.0f);
+    const float V = std::clamp((DropLogicalPos.Y - ViewportDropBounds.Y) / std::max(1.0f, ViewportDropBounds.Height), 0.0f, 1.0f);
+    const ColorRgba Tint { Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u };
+    const ContentCategory Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
+
+    if (Category == ContentCategory::Geometry || Category == ContentCategory::Photometry)
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, U, V, 0.36f);
+        (void)GeometricRaster::ConstructShowcaseModelInOutliner(
+            Panes->Outliner,
+            *ShowcaseBundle,
+            Entry.DisplayTitle,
+            Tint,
+            DropPos,
+            {},
+            true);
+        SynchronizeShowcaseRendererAfterEdit(true);
+        return;
+    }
+
+    if (Category == ContentCategory::Materials && Entry.IndexHeader.MatCapPresetMarker == 0u)
+    {
+        OutlinerSlotToken Target = GeometricRaster::PickShowcaseGalleryEntryAtUv(Panes->Outliner, *ShowcaseBundle, U, V);
+        if (!Target.Valid())
+        {
+            Target = Panes->Outliner.QueryPrimarySelection();
+        }
+        else
+        {
+            Panes->Outliner.SelectSingle(Target);
+        }
+        const MaterialSpace::SurfaceMaterial Mat = GeometricRaster::BuildMaterialFromContentPreset(Entry.DisplayTitle, Tint);
+        if (GeometricRaster::AssignShowcaseEntryMaterial(Panes->Outliner, *ShowcaseBundle, Target, Mat, Entry.DisplayTitle))
+        {
+            if (Panes->Viewport.QueryDisplaySettings().RenderEngineIndex == static_cast<uint32_t>(GeometricRaster::WorldRenderEngine::MatCap))
+            {
+                Panes->Viewport.AccessDisplaySettings().RenderEngineIndex =
+                    static_cast<uint32_t>(GeometricRaster::WorldRenderEngine::SdfGlobalIllumination);
+                Panes->Viewport.AccessDisplaySettings().DebugChannelIndex = 0u;
+            }
+            SynchronizeShowcaseRendererAfterEdit(false);
+        }
+        return;
+    }
+
+    if (Category == ContentCategory::Simulations)
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, U, V, 0.65f);
+        auto ForceDesc = BuildEditorForcePreset(0xFFFFFFFFu, Entry.DisplayTitle);
+        ForceDesc.CentreMeters = { DropPos.X, DropPos.Y, DropPos.Z + 0.65f };
+        (void)SpawnForceFieldEntry(ForceDesc);
+        RefreshShowcaseViewportRaster();
+    }
+}
+
+void EditorLifecycle::HandleContentDropOnOutliner(
+    const ContentRepositoryEntry& Entry,
+    Point2D                       DropLogicalPos,
+    Rectangle2D                   OutlinerDropBounds)
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    const Rectangle2D OutlinerPhys = Panes->Outliner.QueryLastPhysicalBounds();
+    const float RelX = (DropLogicalPos.X - OutlinerDropBounds.X) / std::max(1.0f, OutlinerDropBounds.Width);
+    const float RelY = (DropLogicalPos.Y - OutlinerDropBounds.Y) / std::max(1.0f, OutlinerDropBounds.Height);
+    const Point2D PhysicalPt {
+        OutlinerPhys.X + RelX * OutlinerPhys.Width,
+        OutlinerPhys.Y + RelY * OutlinerPhys.Height,
+    };
+
+    OutlinerSlotToken HitSlot = Panes->Outliner.QuerySlotAtPhysicalPoint(PhysicalPt);
+    const ColorRgba Tint { Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u };
+    const ContentCategory Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
+
+    if (Category == ContentCategory::Geometry || Category == ContentCategory::Photometry)
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, 0.50f, 0.62f, 0.36f);
+        (void)GeometricRaster::ConstructShowcaseModelInOutliner(
+            Panes->Outliner,
+            *ShowcaseBundle,
+            Entry.DisplayTitle,
+            Tint,
+            DropPos,
+            HitSlot,
+            true);
+        SynchronizeShowcaseRendererAfterEdit(true);
+        return;
+    }
+
+    if (Category == ContentCategory::Materials && Entry.IndexHeader.MatCapPresetMarker == 0u)
+    {
+        if (!HitSlot.Valid())
+        {
+            HitSlot = Panes->Outliner.QueryPrimarySelection();
+        }
+        else
+        {
+            Panes->Outliner.SelectSingle(HitSlot);
+        }
+        const MaterialSpace::SurfaceMaterial Mat = GeometricRaster::BuildMaterialFromContentPreset(Entry.DisplayTitle, Tint);
+        if (GeometricRaster::AssignShowcaseEntryMaterial(Panes->Outliner, *ShowcaseBundle, HitSlot, Mat, Entry.DisplayTitle))
+        {
+            SynchronizeShowcaseRendererAfterEdit(false);
+        }
+        return;
+    }
+
+    if (Category == ContentCategory::Simulations)
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, 0.50f, 0.58f, 0.65f);
+        auto ForceDesc = BuildEditorForcePreset(0xFFFFFFFFu, Entry.DisplayTitle);
+        ForceDesc.CentreMeters = { DropPos.X, DropPos.Y, DropPos.Z + 0.65f };
+        const OutlinerSlotToken ForceSlot = SpawnForceFieldEntry(ForceDesc);
+        if (HitSlot.Valid())
+        {
+            if (const OutlinerRecordEntry* TargetEntry = Panes->Outliner.FindEntry(HitSlot))
+            {
+                const OutlinerSlotToken FolderToken = (TargetEntry->Category == ConstructSlotCategory::Folder)
+                                                          ? TargetEntry->Token
+                                                          : TargetEntry->EnclosingToken;
+                if (FolderToken.Valid())
+                {
+                    (void)Panes->Outliner.AttachToEnclosure(ForceSlot, FolderToken);
+                }
+            }
+        }
+        RefreshShowcaseViewportRaster();
+    }
+}
+
 void EditorLifecycle::SynchronizeContentBrowserColourTargets()
 {
     WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
@@ -1121,16 +1379,20 @@ void EditorLifecycle::SynchronizeContentBrowserColourTargets()
     }
 
     auto& BrowserPanel = ContentBrowserDrawer.AccessPanel();
-    BrowserPanel.ClearColourSlots();
+    const Rectangle2D ViewportPhys       = Panes->Viewport.QueryLastCanvasPhysicalBounds();
+    const Rectangle2D ViewportDropBounds = BrowserPanel.MapPhysicalToLogicalBounds(ViewportPhys);
+    const Rectangle2D OutlinerPhys       = Panes->Outliner.QueryLastPhysicalBounds();
+    const Rectangle2D OutlinerDropBounds = BrowserPanel.MapPhysicalToLogicalBounds(OutlinerPhys);
 
     const OutlinerSlotToken    PrimarySlot = Panes->Outliner.QueryPrimarySelection();
     const OutlinerRecordEntry* Selected    = PrimarySlot.Valid() ? Panes->Outliner.FindEntry(PrimarySlot) : nullptr;
     const std::string          TargetLabel = (Selected != nullptr) ? (Selected->Title + " BaseColor") : std::string("Active World Surface");
 
+    BrowserPanel.ClearColourSlots();
     ColourSlotRegistration WorldSlot {};
     WorldSlot.SlotIdentifier = "ActiveWorldSurfaceColour";
     WorldSlot.DisplayTitle   = TargetLabel;
-    WorldSlot.ScreenBounds   = BrowserPanel.MapPhysicalToLogicalBounds(Panes->Viewport.QueryLastCanvasPaneBounds());
+    WorldSlot.ScreenBounds   = ViewportDropBounds;
     WorldSlot.NotifyColourAssigned = [this](ColorRgba AssignedColor, const ColourSwatchEntry& SwatchEntry)
     {
         WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
@@ -1146,21 +1408,120 @@ void EditorLifecycle::SynchronizeContentBrowserColourTargets()
                 AssignedColor,
                 SwatchEntry.AliasName))
         {
-            InvalidateRtxLattice();
-            if (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady())
-            {
-                GpuWorldRenderer->SynchronizeSceneResources(ShowcaseBundle->Scene, nullptr, false);
-            }
-            else if (ShowcaseRenderer != nullptr)
-            {
-                ShowcaseRenderer->PrepareWorldScene(ShowcaseBundle->Scene);
-                RtxLatticePrepared = true;
-            }
-            RefreshShowcaseViewportRaster();
+            SynchronizeShowcaseRendererAfterEdit(false);
+        }
+    };
+    WorldSlot.NotifyColourAssignedAt = [this, ViewportDropBounds](ColorRgba AssignedColor, const ColourSwatchEntry& SwatchEntry, Point2D DropLogicalPos)
+    {
+        WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+        if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+        {
+            return;
+        }
+        const float U = std::clamp((DropLogicalPos.X - ViewportDropBounds.X) / std::max(1.0f, ViewportDropBounds.Width), 0.0f, 1.0f);
+        const float V = std::clamp((DropLogicalPos.Y - ViewportDropBounds.Y) / std::max(1.0f, ViewportDropBounds.Height), 0.0f, 1.0f);
+        OutlinerSlotToken Target = GeometricRaster::PickShowcaseGalleryEntryAtUv(ActivePanes->Outliner, *ShowcaseBundle, U, V);
+        if (Target.Valid())
+        {
+            ActivePanes->Outliner.SelectSingle(Target);
+        }
+        else
+        {
+            Target = ActivePanes->Outliner.QueryPrimarySelection();
+        }
+        if (GeometricRaster::AssignShowcaseEntryBaseColor(
+                ActivePanes->Outliner,
+                *ShowcaseBundle,
+                Target,
+                AssignedColor,
+                SwatchEntry.AliasName))
+        {
+            SynchronizeShowcaseRendererAfterEdit(false);
         }
     };
     BrowserPanel.RegisterColourSlot(WorldSlot);
+
+    ColourSlotRegistration OutlinerColourSlot {};
+    OutlinerColourSlot.SlotIdentifier = "OutlinerSurfaceColour";
+    OutlinerColourSlot.DisplayTitle   = "Outliner Row Colour";
+    OutlinerColourSlot.ScreenBounds   = OutlinerDropBounds;
+    OutlinerColourSlot.NotifyColourAssignedAt = [this, OutlinerDropBounds](ColorRgba AssignedColor, const ColourSwatchEntry& SwatchEntry, Point2D DropLogicalPos)
+    {
+        WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+        if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+        {
+            return;
+        }
+        const Rectangle2D OutlinerPhysNow = ActivePanes->Outliner.QueryLastPhysicalBounds();
+        const float RelX = (DropLogicalPos.X - OutlinerDropBounds.X) / std::max(1.0f, OutlinerDropBounds.Width);
+        const float RelY = (DropLogicalPos.Y - OutlinerDropBounds.Y) / std::max(1.0f, OutlinerDropBounds.Height);
+        const Point2D PhysicalPt {
+            OutlinerPhysNow.X + RelX * OutlinerPhysNow.Width,
+            OutlinerPhysNow.Y + RelY * OutlinerPhysNow.Height,
+        };
+        OutlinerSlotToken Target = ActivePanes->Outliner.QuerySlotAtPhysicalPoint(PhysicalPt);
+        if (Target.Valid())
+        {
+            ActivePanes->Outliner.SelectSingle(Target);
+        }
+        else
+        {
+            Target = ActivePanes->Outliner.QueryPrimarySelection();
+        }
+        if (GeometricRaster::AssignShowcaseEntryBaseColor(
+                ActivePanes->Outliner,
+                *ShowcaseBundle,
+                Target,
+                AssignedColor,
+                SwatchEntry.AliasName))
+        {
+            SynchronizeShowcaseRendererAfterEdit(false);
+        }
+    };
+    BrowserPanel.RegisterColourSlot(OutlinerColourSlot);
     BrowserPanel.FocusColourSlot("ActiveWorldSurfaceColour");
+
+    BrowserPanel.ClearMatCapSlots();
+    BrowserPanel.RegisterMatCapSlot(MatCapSlotRegistration{
+        "WorldViewportMatCap",
+        "3D World MatCap",
+        ViewportDropBounds,
+        [this](uint8_t MatCapSlot, const ContentRepositoryEntry&)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            ActivePanes->Viewport.AccessDisplaySettings().RenderEngineIndex =
+                static_cast<uint32_t>(GeometricRaster::WorldRenderEngine::MatCap);
+            ActivePanes->Viewport.AccessDisplaySettings().DebugChannelIndex =
+                (MatCapSlot == 9u) ? 3u : 0u;
+            RefreshShowcaseViewportRaster();
+        },
+    });
+
+    BrowserPanel.ClearContentDropZones();
+    BrowserPanel.RegisterContentDropZone(ContentDropZoneRegistration{
+        "world.viewport",
+        "3D World Viewport",
+        ViewportDropBounds,
+        ContentCategory::All,
+        [this, ViewportDropBounds](const ContentRepositoryEntry& Entry, Point2D DropLogicalPos)
+        {
+            HandleContentDropOnViewport(Entry, DropLogicalPos, ViewportDropBounds);
+        },
+    });
+    BrowserPanel.RegisterContentDropZone(ContentDropZoneRegistration{
+        "world.outliner",
+        "World Outliner",
+        OutlinerDropBounds,
+        ContentCategory::All,
+        [this, OutlinerDropBounds](const ContentRepositoryEntry& Entry, Point2D DropLogicalPos)
+        {
+            HandleContentDropOnOutliner(Entry, DropLogicalPos, OutlinerDropBounds);
+        },
+    });
 }
 
 bool EditorLifecycle::UpdateForceFieldOverlayCache(

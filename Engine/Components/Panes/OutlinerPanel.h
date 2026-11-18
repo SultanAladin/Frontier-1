@@ -137,6 +137,12 @@ struct OutlinerFooterReadings
     std::string CameraText   = "0, 2, 0";  // [-] - Fifth footer slot (CAM)
 };
 
+struct OutlinerRowHitBounds
+{
+    OutlinerSlotToken Token          {}; // [id] - Displayed row slot token
+    Rectangle2D       PhysicalBounds {}; // [px] - Physical host coordinates of row
+};
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                  FUNCTION PROTOTYPES
 //------------------------------------------------------------------------------------------------------------------------
@@ -210,6 +216,8 @@ public:
     [[nodiscard]] bool                                     QueryConstructDropdownOpen() const noexcept;
     [[nodiscard]] bool                                     QuerySettingsDropdownOpen() const noexcept;
     [[nodiscard]] bool                                     QueryDirectiveSheetOpen() const noexcept;
+    [[nodiscard]] Rectangle2D                              QueryLastPhysicalBounds() const noexcept;
+    [[nodiscard]] OutlinerSlotToken                        QuerySlotAtPhysicalPoint(Point2D PhysicalPoint) const noexcept;
 
     void BuildVisibleRows(std::vector<OutlinerVisibleRow>& OutRows) const;
 
@@ -254,6 +262,8 @@ private:
 
     OutlinerFooterReadings                 FooterReadings          {};                                    // [-]   - Bottom 5-slot telemetry strings
     OutlinerSettingsDirective              LastSettingsDirective   = OutlinerSettingsDirective::None;     // [-]   - Most recent settings selection
+    Rectangle2D                            LastPhysicalBounds      {};                                    // [px]  - Last rendered Outliner physical bounds
+    std::vector<OutlinerRowHitBounds>      LastRenderedRowBounds   {};                                    // [px]  - Last rendered row physical rects
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -308,6 +318,11 @@ inline bool OutlinerPanel::QuerySettingsDropdownOpen() const noexcept
 inline bool OutlinerPanel::QueryDirectiveSheetOpen() const noexcept
 {
     return DirectiveSheetOpen;
+}
+
+inline Rectangle2D OutlinerPanel::QueryLastPhysicalBounds() const noexcept
+{
+    return LastPhysicalBounds;
 }
 
 } // namespace Frontier

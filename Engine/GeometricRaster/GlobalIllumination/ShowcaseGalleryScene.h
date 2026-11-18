@@ -157,6 +157,29 @@ bool AssignShowcaseEntryBaseColor(
     ColorRgba                 SrgbSwatchColor,
     std::string_view          SwatchAlias = {});
 
+// Assigns an authored OpenPBR SurfaceMaterial preset to the target entry (with optional glass shell toggle)
+bool AssignShowcaseEntryMaterial(
+    OutlinerPanel&                        InOutOutliner,
+    ShowcaseWorldSceneBundle&             InOutBundle,
+    OutlinerSlotToken                     TargetSlot,
+    const MaterialSpace::SurfaceMaterial& NextMaterial,
+    std::string_view                      MaterialAlias = {});
+
+// Builds an OpenPBR SurfaceMaterial matching a ContentBrowser material preset title and sRGB preview tint
+[[nodiscard]] MaterialSpace::SurfaceMaterial BuildMaterialFromContentPreset(
+    std::string_view DisplayTitle,
+    ColorRgba        PreviewTint) noexcept;
+
+// Constructs a named ContentBrowser geometry/camera/photometry model at WorldPosition in Outliner + ShowcaseWorldSceneBundle
+OutlinerSlotToken ConstructShowcaseModelInOutliner(
+    OutlinerPanel&            InOutOutliner,
+    ShowcaseWorldSceneBundle& InOutBundle,
+    std::string_view          DisplayTitle,
+    ColorRgba                 PreviewTint,
+    Mathematics::Axis3D       WorldPosition,
+    OutlinerSlotToken         ExplicitEnclosure = {},
+    bool                      BuildCpuSdf = true);
+
 // Analytical 3D ray pick against visible Showcase geometry and area lights for NormalizedU/V in [0, 1]
 [[nodiscard]] OutlinerSlotToken PickShowcaseGalleryEntryAtUv(
     const OutlinerPanel&            SourceOutliner,

@@ -235,25 +235,74 @@ bool AssetStreamThread::EnqueueSliceRead(StreamSliceRequest Request)
     return true;
 }
 
-void AssetStreamThread::FlushPendingSynchronously()
+bool AssetStreamThread::EnqueueSliceBatch(std::vector<StreamSliceRequest> Requests)
 {
-    std::vector<StreamSliceRequest> Drained{};
+    bool EnqueuedAny = false;
     {
         std::lock_guard<std::mutex> Guard(QueueMutex);
-        Drained.swap(PendingRequests);
+        for (StreamSliceRequest& Request : Requests)
+        {
+            if (Request.SourcePath.empty())
+            {
+                if (Request.CompletionTarget != nullptr)
+                {
+                    Request.CompletionTarget->Decrement();
+                }
+                continue;
+            }
+            PendingRequests.push_back(std::move(Request));
+            EnqueuedAny = true;
+        }
     }
-    if (Drained.empty())
+    if (EnqueuedAny)
     {
-        return;
+        WakeSignal.notify_one();
     }
+    return EnqueuedAny;
+}
 
-    if (ActiveTier.load(std::memory_order_acquire) == StorageHardwareTier::RotationalSequentialIo)
+void AssetStreamThread::FlushPendingSynchronously()
+{
+    for (;;)
     {
-        ProcessRotationalElevatorSweep(Drained);
-    }
-    else
-    {
-        ProcessFlashStorageBatch(Drained);
+        std::vector<StreamSliceRequest> Drained{};
+        {
+            std::unique_lock<std::mutex> Lock(QueueMutex);
+            if (!PendingRequests.empty())
+            {
+                Drained.swap(PendingRequests);
+                ++InFlightBatchCount;
+            }
+            else if (InFlightBatchCount > 0u)
+            {
+                BatchDoneSignal.wait(Lock, [this]() {
+                    return InFlightBatchCount == 0u || !PendingRequests.empty();
+                });
+                continue;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (ActiveTier.load(std::memory_order_acquire) == StorageHardwareTier::RotationalSequentialIo)
+        {
+            ProcessRotationalElevatorSweep(Drained);
+        }
+        else
+        {
+            ProcessFlashStorageBatch(Drained);
+        }
+
+        {
+            std::lock_guard<std::mutex> Guard(QueueMutex);
+            if (InFlightBatchCount > 0u)
+            {
+                --InFlightBatchCount;
+            }
+        }
+        BatchDoneSignal.notify_all();
     }
 }
 
@@ -294,7 +343,11 @@ void AssetStreamThread::ExecuteBackgroundLoop()
             WakeSignal.wait_for(Lock, std::chrono::milliseconds(8), [this]() {
                 return ShutdownRequested.load(std::memory_order_acquire) || !PendingRequests.empty();
             });
-            WorkBatch.swap(PendingRequests);
+            if (!PendingRequests.empty())
+            {
+                WorkBatch.swap(PendingRequests);
+                ++InFlightBatchCount;
+            }
         }
 
         if (WorkBatch.empty())
@@ -310,6 +363,15 @@ void AssetStreamThread::ExecuteBackgroundLoop()
         {
             ProcessFlashStorageBatch(WorkBatch);
         }
+
+        {
+            std::lock_guard<std::mutex> Guard(QueueMutex);
+            if (InFlightBatchCount > 0u)
+            {
+                --InFlightBatchCount;
+            }
+        }
+        BatchDoneSignal.notify_all();
     }
 
     // Drain any final requests queued prior to Finalize

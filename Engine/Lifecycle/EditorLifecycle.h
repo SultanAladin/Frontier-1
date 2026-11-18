@@ -155,6 +155,9 @@ private:
     void ProcessShowcaseViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
     void ProcessShowcaseNavigationDirective(ViewportNavigationDirective Directive);
     void SynchronizeContentBrowserColourTargets();
+    void SynchronizeShowcaseRendererAfterEdit(bool RebuildGeometry = false);
+    void HandleContentDropOnViewport(const ContentRepositoryEntry& Entry, Point2D DropLogicalPos, Rectangle2D ViewportDropBounds);
+    void HandleContentDropOnOutliner(const ContentRepositoryEntry& Entry, Point2D DropLogicalPos, Rectangle2D OutlinerDropBounds);
     void InvalidateRtxLattice() noexcept;
     void BeginAsyncRtxLatticeBake();
     [[nodiscard]] bool ConsumeCompletedRtxLatticeBake();

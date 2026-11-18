@@ -35,6 +35,7 @@ struct SpecimenPreviewImage
 // 📝 Render a calibrated studio shader-ball preview using the exact 10-lobe OpenPBR 1.1 + Glinty BSDF
 [[nodiscard]] SpecimenPreviewImage RasterizeMaterialSpecimenPreview(
     const SurfaceMaterial& Material,
-    uint32_t               ResolutionPixels = 96u);
+    uint32_t               ResolutionPixels      = 96u,
+    bool                   TransparentBackground = false);
 
 } // namespace Frontier::MaterialSpace

@@ -639,6 +639,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/MaterialSpace/EnergyCompensation/SheenCosineIntegral.cpp
     Engine/MaterialSpace/Baking/ProceduralChannelBaker.cpp
     Engine/MaterialSpace/Baking/MaterialSpecimenRasterizer.cpp
+    Engine/GeometricRaster/Baking/GeometrySpecimenRasterizer.cpp
     Engine/MaterialSpace/Dynamic/DynamicParameterBlock.cpp
     Engine/MaterialSpace/Dynamic/DynamicMaterialRecipe.cpp
     Engine/MaterialSpace/Dynamic/DynamicMaterialCompiler.cpp

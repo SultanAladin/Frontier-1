@@ -130,7 +130,8 @@ using ViewportPaneInteractionCallback = std::function<void(uint32_t PaneIndex, R
 class ViewportPanel
 {
 public:
-    using NavigationCallback = std::function<void(ViewportNavigationDirective)>;
+    using NavigationCallback          = std::function<void(ViewportNavigationDirective)>;
+    using ConstructCanvasDropCallback = std::function<void(int32_t TemplateIndex, int32_t PresetIndex, Point2D CanvasLogicalPos)>;
 
     ViewportPanel() noexcept;
     ~ViewportPanel() noexcept;
@@ -145,6 +146,7 @@ public:
     void ClearCanvasRasterImage() noexcept;
     void ConfigureConstructPresets(std::vector<ViewportConstructPresetEntry> Presets);
     void ConfigureConstructPresetCallback(std::function<void(uint32_t PresetIndex)> Callback);
+    void ConfigureConstructCanvasDropCallback(ConstructCanvasDropCallback Callback);
     void ConfigureOpenContentBrowserCallback(std::function<void()> Callback);
     void ConfigureRasterCallback(ViewportPaneRasterCallback Callback);
     void ConfigureInteractionCallback(ViewportPaneInteractionCallback Callback);
@@ -186,6 +188,7 @@ public:
     [[nodiscard]] uint32_t                       QueryActivePaneIndex() const noexcept;
     [[nodiscard]] float                          QueryViewportZoomScale() const noexcept;
     [[nodiscard]] Rectangle2D                    QueryLastCanvasPaneBounds() const noexcept;
+    [[nodiscard]] Rectangle2D                    QueryLastCanvasPhysicalBounds() const noexcept;
     [[nodiscard]] const ViewportDisplaySettings&                           QueryDisplaySettings() const noexcept;
     [[nodiscard]] ViewportDisplaySettings&                                 AccessDisplaySettings() noexcept;
     [[nodiscard]] bool                                                     QueryForceOverlayToolsVisible() const noexcept;
@@ -262,10 +265,21 @@ private:
     TextEditBuffer             ConstructSearchEditor   {};                                        // [-]   - Construct search filter buffer
     float                      ViewportZoomScale       = 1.0f;                                    // [x]   - Interactive canvas zoom multiplier
     Rectangle2D                LastCanvasPaneBounds    {};                                        // [px]  - Last rendered active sub-viewport rect
+    Rectangle2D                LastCanvasPhysicalBounds{};                                        // [px]  - Last rendered active sub-viewport physical rect
     NavigationCallback         OnNavigationDirective   {};                                        // [-]   - Optional callback when + / - / Fit triggers
     std::vector<ViewportConstructPresetEntry> ConstructPresets {};                                // [-]   - Optional Force presets shown in Construct dialog
     std::function<void(uint32_t)>             ConstructPresetCallback {};                         // [-]   - Callback invoked when preset tile chosen
+    ConstructCanvasDropCallback               OnConstructCanvasDrop {};                           // [-]   - Optional drag-to-canvas Construct drop callback
     std::function<void()>                     OpenContentBrowserCallback {};                      // [-]   - Callback invoked by Content Browser button
+    bool                                      ConstructTilePressed        = false;                // [-]   - Tile pressed inside Construct dialog
+    bool                                      ConstructDragActive         = false;                // [-]   - Tile dragged onto 3D canvas
+    Point2D                                   ConstructDragOrigin         {};                     // [px]  - Press position for Construct drag deadzone
+    int32_t                                   ConstructDragTemplateIndex  = -1;                   // [idx] - Template index being dragged/clicked
+    int32_t                                   ConstructDragPresetIndex    = -1;                   // [idx] - Preset index being dragged/clicked
+    ConstructSlotCategory                     ConstructDragCategory       = ConstructSlotCategory::GeometryVolume;
+    uint32_t                                  ConstructDragForceOrdinal   = 0xFFFFFFFFu;
+    bool                                      ConstructDragFormulaOverride = false;
+    std::string                               ConstructDragLabel          {};                     // [-]   - Label shown on floating Construct ghost
 
     ViewportPaneRasterCallback      RasterCallback          {};                                        // [-]   - Optional GPU / software surface feeder
     ViewportPaneInteractionCallback InteractionCallback     {};                                        // [-]   - Optional canvas pointer router
@@ -304,6 +318,11 @@ inline float ViewportPanel::QueryViewportZoomScale() const noexcept
 inline Rectangle2D ViewportPanel::QueryLastCanvasPaneBounds() const noexcept
 {
     return LastCanvasPaneBounds;
+}
+
+inline Rectangle2D ViewportPanel::QueryLastCanvasPhysicalBounds() const noexcept
+{
+    return LastCanvasPhysicalBounds;
 }
 
 inline ViewportExecutionMode ViewportPanel::QueryExecutionMode() const noexcept

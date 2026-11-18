@@ -7,6 +7,9 @@
 
 #include "Engine/ColourSpace/ColourRampSampler.h"
 #include "Engine/ColourSpace/TransferFunction.h"
+#include "Engine/GeometricRaster/Baking/GeometrySpecimenRasterizer.h"
+#include "Engine/MaterialSpace/Baking/MaterialSpecimenRasterizer.h"
+#include "Engine/MaterialSpace/SurfaceMaterial.h"
 #include "Engine/ParticleSpace/Sprites/ProceduralSpriteSynthesizer.h"
 
 #include <algorithm>
@@ -944,6 +947,67 @@ void ThumbnailSheetRepository::CopyTileBytesIntoPage(
     }
 }
 
+void SynthesizeMaterialPreviewTileRgba(
+    std::string_view   DisplayTitle,
+    ColorRgba          Tint,
+    std::span<uint8_t> OutTileRgba) noexcept
+{
+    const auto DecodeTint = [Tint]() noexcept -> Mathematics::LinearRGB
+    {
+        return {
+            ColourSpace::DecodePiecewiseSrgbChannel(static_cast<float>(Tint.Red) / 255.0f),
+            ColourSpace::DecodePiecewiseSrgbChannel(static_cast<float>(Tint.Green) / 255.0f),
+            ColourSpace::DecodePiecewiseSrgbChannel(static_cast<float>(Tint.Blue) / 255.0f),
+        };
+    };
+
+    const std::string LowerTitle = LowercaseAscii(DisplayTitle);
+    MaterialSpace::SurfaceMaterial Mat{};
+    if (LowerTitle.find("glass") != std::string::npos || LowerTitle.find("dielectric") != std::string::npos)
+    {
+        Mat = MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::AbbeCrownGlassDispersion);
+    }
+    else if (LowerTitle.find("titanium") != std::string::npos || LowerTitle.find("brushed") != std::string::npos)
+    {
+        Mat = MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::HeatBluedTitaniumIridescent);
+        Mat.Diffuse.BaseColor     = DecodeTint();
+        Mat.Specular.Metalness    = 0.94f;
+        Mat.Specular.Roughness    = 0.24f;
+        Mat.Specular.Anisotropy   = 0.55f;
+        Mat.ThinFilm.ThinFilmWeight = 0.18f;
+    }
+    else if (LowerTitle.find("clearcoat") != std::string::npos || LowerTitle.find("automotive") != std::string::npos)
+    {
+        Mat = MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::MetallicCarPaintGlinty);
+        Mat.Diffuse.BaseColor       = DecodeTint();
+        Mat.Clearcoat.CoatWeight    = 1.0f;
+        Mat.Clearcoat.CoatRoughness = 0.04f;
+    }
+    else if (LowerTitle.find("wax") != std::string::npos || LowerTitle.find("subsurface") != std::string::npos)
+    {
+        Mat = MaterialSpace::ConstructMaterialPreset(MaterialSpace::MaterialPresetCategory::SubsurfaceJadeOrganic);
+        Mat.Diffuse.BaseColor         = DecodeTint();
+        Mat.Subsurface.SubsurfaceColor = Mat.Diffuse.BaseColor;
+        Mat.Subsurface.SubsurfaceWeight = 0.78f;
+    }
+    else
+    {
+        Mat.Diffuse.BaseColor        = DecodeTint();
+        Mat.Diffuse.BaseWeight       = 1.0f;
+        Mat.Diffuse.DiffuseRoughness = 0.36f;
+        Mat.Specular.Roughness       = 0.28f;
+        Mat.Specular.DielectricIOR   = 1.50f;
+    }
+    Mat.MaterialName = std::string(DisplayTitle);
+
+    const MaterialSpace::SpecimenPreviewImage Baked = MaterialSpace::RasterizeMaterialSpecimenPreview(
+        Mat,
+        ThumbnailSheetRepository::TileDimensionPixels,
+        true);
+    const std::size_t CopyBytes = std::min(OutTileRgba.size(), Baked.Rgba8.size());
+    std::memcpy(OutTileRgba.data(), Baked.Rgba8.data(), CopyBytes);
+}
+
 void ThumbnailSheetRepository::BakeProceduralTileIntoPage(ContentRepositoryEntry& Entry)
 {
     std::vector<uint8_t> TileRgba(static_cast<std::size_t>(TileDimensionPixels) * TileDimensionPixels * 4u, 0u);
@@ -952,6 +1016,20 @@ void ThumbnailSheetRepository::BakeProceduralTileIntoPage(ContentRepositoryEntry
     if (Category == ContentCategory::Particles)
     {
         SynthesizeParticlePreviewTileRgba(Entry.DisplayTitle, Tint, TileRgba);
+    }
+    else if (Category == ContentCategory::Geometry || Category == ContentCategory::Photometry)
+    {
+        const MaterialSpace::SpecimenPreviewImage Baked = GeometricRaster::RasterizeGeometrySpecimenByTitle(
+            Entry.DisplayTitle,
+            Tint,
+            TileDimensionPixels,
+            true);
+        const std::size_t CopyBytes = std::min(TileRgba.size(), Baked.Rgba8.size());
+        std::memcpy(TileRgba.data(), Baked.Rgba8.data(), CopyBytes);
+    }
+    else if (Category == ContentCategory::Materials)
+    {
+        SynthesizeMaterialPreviewTileRgba(Entry.DisplayTitle, Tint, TileRgba);
     }
     else
     {
@@ -1232,7 +1310,7 @@ void ThumbnailSheetRepository::PopulateDefaultWorkspaceEntries()
         const char*         RelativePath    = nullptr;
     };
 
-    constexpr std::array<SeedEntry, 46> StockEntries = {{
+    constexpr std::array<SeedEntry, 58> StockEntries = {{
         // Materials (EngineContent/Materials/)
         { "Standard Preset",      ContentCategory::Materials,   ContentOriginFilter::Engine,  { 199u, 173u, 160u, 255u } },
         { "Dielectric Glass",     ContentCategory::Materials,   ContentOriginFilter::Engine,  { 176u, 222u, 242u, 255u } },
@@ -1287,6 +1365,19 @@ void ThumbnailSheetRepository::PopulateDefaultWorkspaceEntries()
         { "Downlight Narrow IES",         ContentCategory::Photometry,  ContentOriginFilter::Engine,  { 248u, 224u, 134u, 255u } },
         { "Turbine Loop Bus",             ContentCategory::Audio,       ContentOriginFilter::Engine,  { 124u, 218u, 156u, 255u } },
         { "MicrofacetGGX.slang",          ContentCategory::Shaders,     ContentOriginFilter::Engine,  { 186u, 156u, 238u, 255u } },
+        // Placeable World Models & Multi-Part Studio Props (FrontierWorldMirror parity)
+        { "Traffic Cone",                 ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 236u, 93u,  22u,  255u } },
+        { "Cylinder Cone",                ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 234u, 179u, 8u,   255u } },
+        { "Calibration Box",              ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 210u, 207u, 201u, 255u } },
+        { "Shader Sphere",                ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 216u, 221u, 228u, 255u } },
+        { "Standard Cylinder",            ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 203u, 200u, 194u, 255u } },
+        { "Shader Torus",                 ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 200u, 137u, 84u,  255u } },
+        { "Editor Camera Rig",            ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 59u,  66u,  78u,  255u } },
+        { "Engine Camera",                ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 33u,  37u,  45u,  255u } },
+        { "Tripod Broadcast Camera",      ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 203u, 213u, 225u, 255u } },
+        { "Studio Softbox Light",         ContentCategory::Photometry,  ContentOriginFilter::Engine,  { 255u, 244u, 214u, 255u } },
+        { "Turbine Wind Fan",             ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 100u, 116u, 139u, 255u } },
+        { "Tyre Stack",                   ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 59u,  120u, 216u, 255u } },
     }};
 
     for (const SeedEntry& Seed : StockEntries)
@@ -1473,6 +1564,9 @@ void ThumbnailSheetRepository::RequestVisibleTileStreaming(
     std::mutex PageWriteMutex{};
     Threading::CompletionCounter Counter{};
 
+    std::vector<Threading::StreamSliceRequest> BatchRequests;
+    BatchRequests.reserve(VisibleEntryIndices.size());
+
     uint16_t Rank = 0u;
     for (const std::size_t EntryIdx : VisibleEntryIndices)
     {
@@ -1500,7 +1594,12 @@ void ThumbnailSheetRepository::RequestVisibleTileStreaming(
             CopyTileBytesIntoPage(Entries[EntryIdx].IndexHeader, TileBytes);
             Entries[EntryIdx].TileResident = true;
         };
-        (void)Streamer.EnqueueSliceRead(std::move(Request));
+        BatchRequests.push_back(std::move(Request));
+    }
+
+    if (!BatchRequests.empty())
+    {
+        (void)Streamer.EnqueueSliceBatch(std::move(BatchRequests));
     }
 
     Streamer.FlushPendingSynchronously();
