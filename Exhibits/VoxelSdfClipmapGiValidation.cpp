@@ -12,6 +12,8 @@
 #include "Engine/DistanceFieldSpace/VoxelSdfClipmap.h"
 #include "Engine/GeometricRaster/GlobalIllumination/DeterministicIntegrators.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
+#include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/GeometrySpace/Primitives/AnalyticPrimitives.h"
 #include "Engine/ParticleSpace/Origins/ControlVehicleSurfaceLoader.h"
 
@@ -499,12 +501,14 @@ void RebuildWorldTreeAndInstances(
     }
     (void)Bundle.Vehicle.CombinedLocalBvh.BuildFromPolygonNetwork(Bundle.Vehicle.CombinedLocalNet);
     (void)Bundle.Vehicle.LocalSdfAsset.BakeFromLocalTree(
-        "ControlVehicle", Bundle.Vehicle.CombinedLocalBvh, Scene.MaterialRegister, 0.085f, 0.30f);
+        "ControlVehicle", Bundle.Vehicle.CombinedLocalBvh, Scene.MaterialRegister, 0.048f, 0.30f);
 
-    // Build Static Studio Architecture (floor + color-bleed walls + overhang canopy + pillars for crisp shadow & GI proofs)
-    Bundle.StaticNets.reserve(6u);
-    Bundle.StaticPyrs.reserve(6u);
-    const auto AddStaticBox = [&](Mathematics::Axis3D Center, Mathematics::Scalar3D HalfExt, uint16_t MatSlot)
+    // Build Static Studio Architecture:
+    // - Primary rasterizers get subdivided tiles (clean camera near-plane clipping)
+    // - StaticOnlyNet gets SEAMLESS monolithic solid slabs so the SDF clipmap has zero interior seam cracks!
+    Bundle.StaticNets.reserve(64u);
+    Bundle.StaticPyrs.reserve(64u);
+    const auto AddPrimaryTile = [&](Mathematics::Axis3D Center, Mathematics::Scalar3D HalfExt, uint16_t MatSlot)
     {
         GeometrySpace::PolygonNetwork Net {};
         GeometrySpace::AppendBoxPrimitive(Net, { 0.0f, 0.0f, 0.0f }, HalfExt, {}, {}, 0u, MatSlot);
@@ -514,32 +518,39 @@ void RebuildWorldTreeAndInstances(
         Bundle.StaticPyrs.push_back(std::move(Pyr));
         Bundle.StaticSlots.push_back(MatSlot);
         Bundle.StaticCenters.push_back(Center);
-        GeometrySpace::AppendBoxPrimitive(Bundle.StaticOnlyNet, Center, HalfExt, {}, {}, 0u, MatSlot);
     };
 
-    // Tesselate floor & walls into exact non-overlapping 2.1m tiles for primary visibility, while Clipmap SDF gets seamless geometry
+    // Seamless SDF slabs in StaticOnlyNet
+    GeometrySpace::AppendBoxPrimitive(Bundle.StaticOnlyNet, {  0.0f,  0.0f, -0.08f }, { 8.40f, 6.30f, 0.08f }, {}, {}, 0u, Bundle.SlotPlaster);
+    GeometrySpace::AppendBoxPrimitive(Bundle.StaticOnlyNet, {  0.0f,  4.10f, 1.60f }, { 8.40f, 0.14f, 1.80f }, {}, {}, 0u, Bundle.SlotPlaster);
+    GeometrySpace::AppendBoxPrimitive(Bundle.StaticOnlyNet, { -5.20f, 0.0f,  1.60f }, { 0.14f, 5.20f, 1.80f }, {}, {}, 0u, Bundle.SlotCrimson);
+    GeometrySpace::AppendBoxPrimitive(Bundle.StaticOnlyNet, {  5.20f, 0.0f,  1.60f }, { 0.14f, 5.20f, 1.80f }, {}, {}, 0u, Bundle.SlotEmerald);
+    GeometrySpace::AppendBoxPrimitive(Bundle.StaticOnlyNet, {  3.45f, 1.05f, 1.15f }, { 0.24f, 0.24f, 1.15f }, {}, {}, 0u, Bundle.SlotCobalt);
+    GeometrySpace::AppendBoxPrimitive(Bundle.StaticOnlyNet, { -2.85f, 1.95f, 1.15f }, { 0.28f, 0.28f, 1.15f }, {}, {}, 0u, Bundle.SlotPlaster);
+
+    // Tesselate floor & walls into exact non-overlapping tiles for primary visibility
     for (int IX = -4; IX <= 3; ++IX)
     {
         for (int IY = -3; IY <= 2; ++IY)
         {
             const float CX = (static_cast<float>(IX) + 0.5f) * 2.10f;
             const float CY = (static_cast<float>(IY) + 0.5f) * 2.10f;
-            AddStaticBox({ CX, CY, -0.08f }, { 1.05f, 1.05f, 0.08f }, Bundle.SlotPlaster);
+            AddPrimaryTile({ CX, CY, -0.08f }, { 1.05f, 1.05f, 0.08f }, Bundle.SlotPlaster);
         }
     }
     for (int IX = -4; IX <= 3; ++IX)
     {
         const float CX = (static_cast<float>(IX) + 0.5f) * 2.10f;
-        AddStaticBox({ CX, 4.10f, 1.60f }, { 1.05f, 0.14f, 1.80f }, Bundle.SlotPlaster); // Back neutral wall
+        AddPrimaryTile({ CX, 4.10f, 1.60f }, { 1.05f, 0.14f, 1.80f }, Bundle.SlotPlaster); // Back neutral wall
     }
     for (int IY = -3; IY <= 2; ++IY)
     {
         const float CY = (static_cast<float>(IY) + 0.5f) * 1.55f;
-        AddStaticBox({ -5.20f, CY, 1.60f }, { 0.14f, 0.775f, 1.80f }, Bundle.SlotCrimson); // Left Crimson wall
-        AddStaticBox({  5.20f, CY, 1.60f }, { 0.14f, 0.775f, 1.80f }, Bundle.SlotEmerald); // Right Emerald wall
+        AddPrimaryTile({ -5.20f, CY, 1.60f }, { 0.14f, 0.775f, 1.80f }, Bundle.SlotCrimson); // Left Crimson wall
+        AddPrimaryTile({  5.20f, CY, 1.60f }, { 0.14f, 0.775f, 1.80f }, Bundle.SlotEmerald); // Right Emerald wall
     }
-    AddStaticBox({  3.45f,  1.05f,  1.15f }, { 0.24f, 0.24f, 1.15f }, Bundle.SlotCobalt);  // Mid-right pillar cleanly clear of bumper
-    AddStaticBox({ -2.85f,  1.95f,  1.15f }, { 0.28f, 0.28f, 1.15f }, Bundle.SlotPlaster); // Back-left pillar
+    AddPrimaryTile({  3.45f,  1.05f,  1.15f }, { 0.24f, 0.24f, 1.15f }, Bundle.SlotCobalt);  // Mid-right pillar cleanly clear of bumper
+    AddPrimaryTile({ -2.85f,  1.95f,  1.15f }, { 0.28f, 0.28f, 1.15f }, Bundle.SlotPlaster); // Back-left pillar
 
     // Clipmap 2-cascade configuration: Clip0 covers +/-4.65 m (72^3 -> ~12.9 cm voxels), Clip1 covers +/-12.0 m (48^3 -> 50 cm)
     Scene.ClipmapConfig.Clip0CenterWorld      = { 0.0f, 0.0f, 1.10f };
@@ -667,8 +678,102 @@ int main()
     RebuildWorldTreeAndInstances(Bundle, PoseA, true);
 
     const auto& Clipmap = Renderer.InspectClipmapVolume();
-    Score.Verify(Clipmap.StaticClip0.DimX == 72u && Clipmap.StaticClip1.DimX == 48u,
-                 "2-Cascade Voxel SDF Clipmap built (Clip0 72^3 fine + Clip1 48^3 wide)");
+    Score.Verify(Clipmap.StaticClip0.DimX == 72u && Clipmap.StaticClip1.DimX == 48u &&
+                 Clipmap.ToroidalClipmap.Levels[0].Initialized &&
+                 DistanceFieldSpace::DistanceClipmap::Resolution == 48u &&
+                 DistanceFieldSpace::DistanceClipmap::LevelCount == 3u,
+                 "3-Tier 48^3 Toroidal DistanceClipmap (0.125/0.25/0.5 m) + 80x40x32 BakedFacetDistance initialized");
+
+    // Exact arena/f2d37e4b-frontier Numeric & Lipschitz Conservatism Acceptance Checks!
+    double NearestFloatDoubleMaxErr = 0.0;
+    double LocalLowerMaxExcess = 0.0;
+    double ClipLowerMaxExcess = 0.0;
+    uint32_t HybridVisibilityMismatches = 0u;
+    bool DirtyVsColdByteExact = false;
+    {
+        const auto& Asset = Bundle.Vehicle.LocalSdfAsset;
+        const auto& DynObj = Scene.DynamicSdfObjects[0];
+        DistanceFieldSpace::RigidPose Pose {};
+        Pose.Translation = { DynObj.Transform.LocalToWorld[3], DynObj.Transform.LocalToWorld[7], DynObj.Transform.LocalToWorld[11] };
+        Pose.Cosine      = DynObj.Transform.LocalToWorld[0];
+        Pose.Sine        = DynObj.Transform.LocalToWorld[4];
+
+        for (uint32_t I = 0u; I < 512u; ++I)
+        {
+            const auto Q0 = DistanceFieldSpace::SobolQuadrature(I, 0u);
+            const auto Q1 = DistanceFieldSpace::SobolQuadrature(I, 1u);
+            const DistanceFieldSpace::ClipVector LP {
+                Asset.BakedDistance.Low.X + Q0[0] * (Asset.BakedDistance.High.X - Asset.BakedDistance.Low.X),
+                Asset.BakedDistance.Low.Y + Q0[1] * (Asset.BakedDistance.High.Y - Asset.BakedDistance.Low.Y),
+                Asset.BakedDistance.Low.Z + Q1[0] * (Asset.BakedDistance.High.Z - Asset.BakedDistance.Low.Z),
+            };
+            const double ExactD = Asset.LocalAtlas.Geometry.Nearest({ LP.X, LP.Y, LP.Z }).Distance;
+            const double FloatD = static_cast<double>(Asset.LocalAtlas.Nearest(LP));
+            NearestFloatDoubleMaxErr = std::max(NearestFloatDoubleMaxErr, std::abs(ExactD - FloatD));
+
+            const auto LocalSample = Asset.BakedDistance.Sample(LP);
+            LocalLowerMaxExcess = std::max(LocalLowerMaxExcess, static_cast<double>(LocalSample.Lower) - ExactD);
+
+            const auto WP = Pose.ToWorld(LP);
+            const auto ClipInterval = Clipmap.SampleClipmapInterval({ WP.X, WP.Y, WP.Z });
+            double ExactWorldD = Asset.LocalAtlas.Geometry.Nearest({
+                Pose.ToLocal(WP).X, Pose.ToLocal(WP).Y, Pose.ToLocal(WP).Z
+            }).Distance;
+            if (!Clipmap.StaticAtlas.Surfaces.empty())
+            {
+                ExactWorldD = std::min(ExactWorldD, Clipmap.StaticAtlas.Geometry.Nearest({ WP.X, WP.Y, WP.Z }).Distance);
+            }
+            ClipLowerMaxExcess = std::max(ClipLowerMaxExcess, static_cast<double>(ClipInterval.Lower) - ExactWorldD);
+        }
+
+        // Byte-exact dirty vs cold toroidal clipmap relocation check!
+        DistanceFieldSpace::DistanceClipmap DirtyCopy = Clipmap.ToroidalClipmap;
+        DistanceFieldSpace::DistanceClipmap ColdCopy  = Clipmap.ToroidalClipmap;
+        const DistanceFieldSpace::RigidPose MovePose { { PoseB.X, PoseB.Y, PoseB.Z }, 0.996f, 0.089f };
+        const DistanceFieldSpace::ClipVector Focus { 0.0f, 0.0f, 1.0f };
+        DirtyCopy.Relocate(MovePose, Focus, false);
+        ColdCopy.Relocate(MovePose, Focus, true);
+        DirtyVsColdByteExact = true;
+        for (unsigned L = 0u; L < DistanceFieldSpace::DistanceClipmap::LevelCount; ++L)
+        {
+            if (DirtyCopy.Levels[L].Origin != ColdCopy.Levels[L].Origin ||
+                std::memcmp(DirtyCopy.Levels[L].Texels.data(), ColdCopy.Levels[L].Texels.data(),
+                            DirtyCopy.Levels[L].Texels.size() * sizeof(DistanceFieldSpace::ClipTexel)) != 0)
+            {
+                DirtyVsColdByteExact = false;
+                break;
+            }
+        }
+
+        // 2048-ray Hybrid visibility exactness check (0 disagreements vs exact BVH triangle trace!)
+        for (uint32_t R = 0u; R < 2048u; ++R)
+        {
+            const auto Q0 = DistanceFieldSpace::SobolQuadrature(R, 0u);
+            const auto Q1 = DistanceFieldSpace::SobolQuadrature(R, 1u);
+            const auto Q2 = DistanceFieldSpace::SobolQuadrature(R, 2u);
+            const Mathematics::Axis3D O { Q0[0] * 10.0f - 5.0f, Q0[1] * 8.0f - 4.0f, 0.05f + Q1[0] * 2.5f };
+            const Mathematics::Axis3D T { Q1[1] * 6.0f - 3.0f, Q2[0] * 3.0f - 1.5f, Q2[1] * 1.8f + 0.05f };
+            const Mathematics::Axis3D D = Mathematics::NormalizeAxis(T - O);
+            const float Limit = 20.0f;
+            const bool HybridHit = Clipmap.TraceHybridOccluded(O, D, Limit, Scene.DynamicSdfObjects);
+            bool ExactHit = false;
+            if (!Clipmap.StaticAtlas.Surfaces.empty())
+            {
+                ExactHit = Clipmap.StaticAtlas.Trace({ O.X, O.Y, O.Z }, { D.X, D.Y, D.Z }, Limit, true).Confirmed();
+            }
+            if (!ExactHit)
+            {
+                const auto LO = DynObj.Transform.TransformPoint(DynObj.Transform.WorldToLocal, O);
+                const auto LD = DynObj.Transform.TransformDirection(DynObj.Transform.WorldToLocal, D);
+                ExactHit = Asset.LocalAtlas.Trace({ LO.X, LO.Y, LO.Z }, { LD.X, LD.Y, LD.Z }, Limit, true).Confirmed();
+            }
+            if (HybridHit != ExactHit) ++HybridVisibilityMismatches;
+        }
+    }
+    Score.Verify(NearestFloatDoubleMaxErr < 2.0e-4 && LocalLowerMaxExcess <= 2.0e-6 && ClipLowerMaxExcess <= 2.0e-6,
+                 "Exact arena/f2d37e4b-frontier Lipschitz conservatism (float/double < 2e-4, local/clip Lower excess <= 2e-6)");
+    Score.Verify(DirtyVsColdByteExact && HybridVisibilityMismatches == 0u,
+                 "Byte-exact dirty vs cold toroidal clipmap relocation & 0/2048 hybrid visibility disagreements");
 
     // Verify dynamic vehicle SDF presence at PoseA and dirty-AABB incremental update when moving to PoseB!
     int DummyCascade = 0;
@@ -826,27 +931,42 @@ int main()
     Score.Verify(GiDeterminismRmse == 0.0f,
                  "Deterministic Clipmap Cone GI produces bit-identical pixels across repeated runs (RMSE == 0.0)");
 
-    // 3f. Shadow Mode Proofs (VoxelSdfPenumbra, VoxelSdfClipmapPenumbra, HybridSdf)
+    // 3f. Dedicated Solar Shadow Mode Proofs (VoxelSdfPenumbra, VoxelSdfClipmapPenumbra, HybridSdf)
+    //     Use a clean directional sun + subtle sky fill (without drowning overhead softbox) for razor-clear penumbra & contact comparison!
     {
+        StudioSceneBundle SunShadowBundle = BuildControlVehicleStudioScene();
+        RebuildWorldTreeAndInstances(SunShadowBundle, PoseA, false);
+        SunShadowBundle.Scene.DynamicSdfObjects = { MakeVehicleDynamicSdfInstance(SunShadowBundle, PoseA) };
+        SunShadowBundle.Scene.Sun.DirectionToSun = Mathematics::NormalizeAxis({ -0.45f, 0.42f, 0.78f });
+        SunShadowBundle.Scene.Sun.SunAngularRadiusRadians = 0.045f;
+        SunShadowBundle.Scene.Sun.SolarIrradiance = { 6.40f, 5.95f, 5.20f };
+        SunShadowBundle.Scene.SkyRadiance = { 0.12f, 0.18f, 0.28f };
+        SunShadowBundle.Scene.AreaLights.clear();
+        SunShadowBundle.Scene.PointLights.clear();
+
+        GeometricRaster::TieredWorldRenderSequence ShadowRenderer {};
+        ShadowRenderer.PrepareWorldScene(SunShadowBundle.Scene);
+        RebuildWorldTreeAndInstances(SunShadowBundle, PoseA, true);
+
         GeometricRaster::WorldRenderConfiguration SCfg = RealSdfCfg;
         SCfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::VoxelSdfPenumbra;
-        const auto S5 = Renderer.RenderWorldFrameWithEngine(SCfg, Cam, Cam, Scene);
+        const auto S5 = ShadowRenderer.RenderWorldFrameWithEngine(SCfg, Cam, Cam, SunShadowBundle.Scene);
         SavePngRgba8(OutDir / "08_ShadowProof_VoxelSdfPenumbra.png", W, H, S5.DisplayRgba8);
 
         SCfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::VoxelSdfClipmapPenumbra;
-        const auto S6 = Renderer.RenderWorldFrameWithEngine(SCfg, Cam, Cam, Scene);
+        const auto S6 = ShadowRenderer.RenderWorldFrameWithEngine(SCfg, Cam, Cam, SunShadowBundle.Scene);
         SavePngRgba8(OutDir / "09_ShadowProof_VoxelSdfClipmapPenumbra.png", W, H, S6.DisplayRgba8);
 
         SCfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::HybridSdf;
-        const auto S7 = Renderer.RenderWorldFrameWithEngine(SCfg, Cam, Cam, Scene);
+        const auto S7 = ShadowRenderer.RenderWorldFrameWithEngine(SCfg, Cam, Cam, SunShadowBundle.Scene);
         SavePngRgba8(OutDir / "10_ShadowProof_HybridSdf.png", W, H, S7.DisplayRgba8);
     }
 
-    // 3g. Deterministic Path Tracer Proof (Sobol (0,2) + Dupuy-Benyoub Spherical-Cap VNDF + Depth-0 Lobe Split, NO Denoiser!)
+    // 3g. Deterministic Path Tracer Proof (16 SPP Owen-scrambled Sobol (0,2) + Dupuy-Benyoub Spherical-Cap VNDF + AreaLight MIS, NO Denoiser!)
     const auto PtStart = std::chrono::steady_clock::now();
     GeometricRaster::WorldRenderConfiguration PtCfg {};
     PtCfg.Engine = GeometricRaster::WorldRenderEngine::DeterministicPathTrace;
-    PtCfg.PathTraceSamples = 8u;
+    PtCfg.PathTraceSamples = 16u;
     PtCfg.PathTraceMaxBounces = 4u;
     PtCfg.PathTraceDenoise = false;
     const auto PtA = Renderer.RenderWorldFrameWithEngine(PtCfg, Cam, Cam, Scene);
@@ -858,7 +978,7 @@ int main()
     Score.Verify(PtDeterminismRmse == 0.0f,
                  "Sobol (0,2) + Spherical-Cap VNDF Path Tracer (NO RNG, NO RR, NO Denoiser) is bit-exact deterministic");
 
-    // 3h. Fake vs Real Audit Pair: (Left: Direct-Only / No Clipmap Multi-Bounce GI, Right: Real Multi-Bounce Clipmap GI vs Reference PT)
+    // 3h. Fake vs Real Audit Pair: (Left: Direct-Only / Flat-Ambient Fake, Right: Real Multi-Bounce Clipmap GI vs 16 SPP PT)
     double FakeNoGiMs = 0.0;
     float FakeVsPtRmse = 0.0f;
     float RealVsPtRmse = 0.0f;
@@ -876,6 +996,8 @@ int main()
         RealVsPtRmse = ComputeRmseRgb(CombinedA.DisplayRgba8, PtA.DisplayRgba8);
         SavePngRgba8(OutDir / "11_FakeVsReal_AuditComparison.png", W * 2u + 8u, H,
                      MakeSideBySidePair(W, H, FakeFrame.DisplayRgba8, CombinedA.DisplayRgba8));
+        Score.Verify(RealVsPtRmse < FakeVsPtRmse,
+                     "Real Multi-Bounce Clipmap GI achieves lower RMSE vs Path-Traced reference than Fake Direct-Only");
     }
 
     // 3i. Multi-Frame Moving ControlVehicle Animation GIF (Incremental Dirty-AABB ActiveClip0 Updates!)
@@ -897,6 +1019,181 @@ int main()
         WriteAnimatedGif89a(OutDir / "13_DynamicVehicleAnimation.gif", W, H, GifFrames, 16u);
     }
 
+    // 3j. Vulkan .slang GPU Compute Execution Proof (DistanceEvaluation.slang + VoxelSdfClipmapCompute + WorldViewportRadiometricCompute)
+    float GpuClipmapSlangMs = 0.0f;
+    float GpuRadiometricSlangMs = 0.0f;
+    float GpuVsCpuConeGiRmse = 0.0f;
+    double GpuDistBakeMaxErr = 0.0;
+    double GpuDistClipMaxErr = 0.0;
+    uint32_t GpuDistProbeMismatches = 0u;
+    bool  GpuSlangExecuted = false;
+    bool  GpuDistEvalParityOk = false;
+    {
+        // Restore PoseA cleanly for GPU parity comparison
+        const auto PrevRestore = Scene.DynamicSdfObjects;
+        Scene.DynamicSdfObjects = { MakeVehicleDynamicSdfInstance(Bundle, PoseA) };
+        Renderer.UpdateDynamicClipmapObjects(Scene, PrevRestore, Scene.DynamicSdfObjects);
+        RebuildWorldTreeAndInstances(Bundle, PoseA, true);
+
+        GeometricRaster::VulkanInterchange GpuDev {};
+        if (GpuDev.InitializeInterchange(std::filesystem::path(FRONTIER_REPO_ROOT_DIR)))
+        {
+            GeometricRaster::VulkanWorldRenderSequence GpuSeq {};
+            const std::filesystem::path ShaderDir = std::filesystem::path(FRONTIER_COMPILED_SHADER_DIR);
+            if (GpuSeq.InitializeSequence(GpuDev, ShaderDir))
+            {
+                // Prepare primary surface positions/normals for VoxelSdfClipmapCompute.slang
+                const Mathematics::Axis3D Fwd = Mathematics::NormalizeAxis(Cam.TargetPoint - Cam.CameraOrigin);
+                const Mathematics::Axis3D Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis));
+                const Mathematics::Axis3D Up = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd));
+                const float TanHalfY = std::tan(0.5f * Cam.VerticalFovRadians);
+                const float TanHalfX = TanHalfY * (static_cast<float>(W) / static_cast<float>(H));
+                std::vector<float> PosXyzw(static_cast<std::size_t>(W) * H * 4u, 0.0f);
+                std::vector<float> NrmXyzw(static_cast<std::size_t>(W) * H * 4u, 0.0f);
+                for (uint32_t Y = 0u; Y < H; ++Y)
+                {
+                    const float NdcY = 1.0f - ((static_cast<float>(Y) + 0.5f) / static_cast<float>(H)) * 2.0f;
+                    for (uint32_t X = 0u; X < W; ++X)
+                    {
+                        const float NdcX = ((static_cast<float>(X) + 0.5f) / static_cast<float>(W)) * 2.0f - 1.0f;
+                        const Mathematics::Axis3D Dir = Mathematics::NormalizeAxis(
+                            Fwd + Right * (NdcX * TanHalfX) + Up * (NdcY * TanHalfY));
+                        SpatialAcceleration::RaySegmentQuery Ray {};
+                        Ray.Origin          = Cam.CameraOrigin;
+                        Ray.UnitDirection   = Dir;
+                        Ray.MinimumDistance = 0.02f;
+                        Ray.MaximumDistance = 60.0f;
+                        const auto Hit = Scene.SceneTree.TraceClosestRay(Ray, false);
+                        if (Hit.HitConfirmed)
+                        {
+                            const std::size_t P = static_cast<std::size_t>(Y) * W + X;
+                            const auto Pos = Cam.CameraOrigin + Dir * Hit.HitDistanceMeters;
+                            PosXyzw[P * 4u + 0u] = Pos.X;
+                            PosXyzw[P * 4u + 1u] = Pos.Y;
+                            PosXyzw[P * 4u + 2u] = Pos.Z;
+                            PosXyzw[P * 4u + 3u] = 1.0f;
+                            NrmXyzw[P * 4u + 0u] = Hit.GeometricNormal.X;
+                            NrmXyzw[P * 4u + 1u] = Hit.GeometricNormal.Y;
+                            NrmXyzw[P * 4u + 2u] = Hit.GeometricNormal.Z;
+                            NrmXyzw[P * 4u + 3u] = 1.0f;
+                        }
+                    }
+                }
+
+                std::vector<Mathematics::LinearRGB> GpuConeGi {};
+                const bool ClipmapGpuOk = GpuSeq.ExecuteGpuVoxelSdfClipmap(
+                    Renderer.InspectClipmapVolume(),
+                    Scene,
+                    Scene.DynamicSdfObjects,
+                    PosXyzw,
+                    NrmXyzw,
+                    W,
+                    H,
+                    GpuConeGi,
+                    GpuClipmapSlangMs);
+
+                double DiffSq = 0.0;
+                double GpuLumSum = 0.0;
+                for (std::size_t P = 0u; P < GpuConeGi.size() && P < CombinedA.IndirectDiffuseHdr.size(); ++P)
+                {
+                    GpuLumSum += 0.2126 * GpuConeGi[P].R + 0.7152 * GpuConeGi[P].G + 0.0722 * GpuConeGi[P].B;
+                    const double DR = static_cast<double>(GpuConeGi[P].R) - static_cast<double>(CombinedA.IndirectDiffuseHdr[P].R);
+                    const double DG = static_cast<double>(GpuConeGi[P].G) - static_cast<double>(CombinedA.IndirectDiffuseHdr[P].G);
+                    const double DB = static_cast<double>(GpuConeGi[P].B) - static_cast<double>(CombinedA.IndirectDiffuseHdr[P].B);
+                    DiffSq += (DR * DR + DG * DG + DB * DB) / 3.0;
+                }
+                GpuVsCpuConeGiRmse = static_cast<float>(std::sqrt(DiffSq / std::max<std::size_t>(1u, GpuConeGi.size())));
+
+                // Also dispatch unified WorldViewportRadiometricCompute.slang on Vulkan/SwiftShader
+                GpuSeq.SynchronizeSceneResources(Scene, &Renderer.InspectIrradianceLattice(), true);
+                std::vector<uint8_t> GpuFrameRgba8 {};
+                GeometricRaster::WorldRenderConfiguration GpuCfg = RealSdfCfg;
+                GpuCfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::HybridSdf;
+                const bool FrameGpuOk = GpuSeq.RenderWorldViewportWithEngine(GpuCfg, 0u, Cam, Scene, GpuFrameRgba8);
+                GpuRadiometricSlangMs = GpuSeq.QueryLastDispatchMilliseconds();
+                if (FrameGpuOk && GpuFrameRgba8.size() == static_cast<std::size_t>(W) * H * 4u)
+                {
+                    SavePngRgba8(OutDir / "14_VulkanSlangGpu_RadiometricSdfGi.png", W, H, GpuFrameRgba8);
+                }
+                GpuSlangExecuted = ClipmapGpuOk && FrameGpuOk && (GpuLumSum > 0.0);
+
+                // Also run exact arena/f2d37e4b-frontier DistanceEvaluation.slang GPU parity test!
+                if (GpuSeq.QueryGpuDistanceEvaluationReady())
+                {
+                    const auto& DynObj = Scene.DynamicSdfObjects[0];
+                    DistanceFieldSpace::RigidPose Pose {};
+                    Pose.Translation = { DynObj.Transform.LocalToWorld[3], DynObj.Transform.LocalToWorld[7], DynObj.Transform.LocalToWorld[11] };
+                    Pose.Cosine      = DynObj.Transform.LocalToWorld[0];
+                    Pose.Sine        = DynObj.Transform.LocalToWorld[4];
+
+                    constexpr uint32_t ProbeCount = 1024u;
+                    std::vector<std::array<float, 12>> ProbeRays(ProbeCount);
+                    for (uint32_t I = 0u; I < ProbeCount; ++I)
+                    {
+                        const auto Q0 = DistanceFieldSpace::SobolQuadrature(I, 0u);
+                        const auto Q1 = DistanceFieldSpace::SobolQuadrature(I, 1u);
+                        const auto Q2 = DistanceFieldSpace::SobolQuadrature(I, 2u);
+                        const DistanceFieldSpace::ClipVector O { Q0[0] * 12.0f - 6.0f, Q0[1] * 9.0f - 4.5f, 0.001f + Q1[0] * 3.0f };
+                        const DistanceFieldSpace::ClipVector D = DistanceFieldSpace::Normalize(
+                            DistanceFieldSpace::ClipVector{ Q1[1] * 6.0f - 3.0f, Q2[0] * 2.0f - 1.0f, Q2[1] * 1.5f + 0.1f } - O);
+                        const DistanceFieldSpace::ClipVector P { Q1[0] * 12.0f - 6.0f, Q1[1] * 9.0f - 4.5f, Q2[0] * 3.0f };
+                        ProbeRays[I] = {{ O.X, O.Y, O.Z, 20.0f, D.X, D.Y, D.Z, 0.0f, P.X, P.Y, P.Z, 0.0f }};
+                    }
+
+                    const auto& Asset = Bundle.Vehicle.LocalSdfAsset;
+                    DistanceFieldSpace::DistanceClipmap CpuRefToroidal {};
+                    CpuRefToroidal.Local = &Asset.BakedDistance;
+                    CpuRefToroidal.ClosedSurfaces = Renderer.InspectClipmapVolume().ClosedBoxes;
+                    CpuRefToroidal.Relocate(Pose, { 0.0f, 0.0f, 1.0f }, true);
+                    std::vector<float> GpuLocalDist {};
+                    std::vector<DistanceFieldSpace::ClipTexel> GpuClip {};
+                    std::vector<std::array<float, 4>> GpuProbeRes {};
+                    float DistGpuMs = 0.0f;
+                    if (GpuSeq.ExecuteGpuDistanceEvaluation(
+                            Asset.LocalAtlas,
+                            Asset.BakedDistance,
+                            CpuRefToroidal,
+                            Pose,
+                            Renderer.InspectClipmapVolume().ClosedBoxes,
+                            ProbeRays,
+                            GpuLocalDist,
+                            GpuClip,
+                            GpuProbeRes,
+                            DistGpuMs))
+                    {
+                        for (std::size_t I = 0u; I < GpuLocalDist.size() && I < Asset.BakedDistance.Samples.size(); ++I)
+                        {
+                            GpuDistBakeMaxErr = std::max(GpuDistBakeMaxErr, std::abs(static_cast<double>(GpuLocalDist[I]) - static_cast<double>(Asset.BakedDistance.Samples[I])));
+                        }
+                        for (uint32_t L = 0u; L < DistanceFieldSpace::DistanceClipmap::LevelCount; ++L)
+                        {
+                            const std::size_t Base = static_cast<std::size_t>(L) * CpuRefToroidal.Levels[L].Texels.size();
+                            for (std::size_t I = 0u; I < CpuRefToroidal.Levels[L].Texels.size(); ++I)
+                            {
+                                GpuDistClipMaxErr = std::max(GpuDistClipMaxErr, std::abs(static_cast<double>(GpuClip[Base + I].Raw) - static_cast<double>(CpuRefToroidal.Levels[L].Texels[I].Raw)));
+                                GpuDistClipMaxErr = std::max(GpuDistClipMaxErr, std::abs(static_cast<double>(GpuClip[Base + I].Lower) - static_cast<double>(CpuRefToroidal.Levels[L].Texels[I].Lower)));
+                            }
+                        }
+                        for (uint32_t I = 0u; I < ProbeCount; ++I)
+                        {
+                            const auto& PR = ProbeRays[I];
+                            const bool GpuHit = (GpuProbeRes[I][0] > 0.5f);
+                            const auto LO = Pose.ToLocal({ PR[0], PR[1], PR[2] });
+                            const auto LD = Pose.Unrotate({ PR[4], PR[5], PR[6] });
+                            const bool ExactCarHit = Asset.LocalAtlas.Trace(LO, LD, PR[3], true).Confirmed();
+                            if (GpuHit != ExactCarHit) ++GpuDistProbeMismatches;
+                        }
+                        GpuDistEvalParityOk = (GpuDistBakeMaxErr < 5.0e-5) && (GpuDistClipMaxErr < 5.0e-5) && (GpuDistProbeMismatches == 0u);
+                    }
+                }
+            }
+        }
+        Score.Verify(GpuSlangExecuted,
+                     "Vulkan .slang GPU compute shaders (VoxelSdfClipmapCompute + WorldViewportRadiometricCompute) execute cleanly");
+        Score.Verify(GpuDistEvalParityOk,
+                     "Vulkan DistanceEvaluation.slang GPU/CPU parity (< 5e-5 bake & clipmap error, 0/1024 probe mismatches)");
+    }
+
     // Write structured audit metrics JSON for the live HTML proof gallery
     {
         std::ofstream Json(OutDir / "audit_metrics.json");
@@ -911,13 +1208,24 @@ int main()
              << "  \"dirty_voxels\": " << Stats.DirtyVoxelCount << ",\n"
              << "  \"total_clip0_voxels\": " << Stats.TotalClip0Voxels << ",\n"
              << "  \"real_clipmap_gi_render_ms\": " << RealClipmapGiMs << ",\n"
-             << "  \"deterministic_pt_8spp_ms\": " << PtMs << ",\n"
+             << "  \"deterministic_pt_16spp_ms\": " << PtMs << ",\n"
              << "  \"fake_nogi_render_ms\": " << FakeNoGiMs << ",\n"
              << "  \"fake_vs_pt_rmse\": " << FakeVsPtRmse << ",\n"
              << "  \"real_clipmap_vs_pt_rmse\": " << RealVsPtRmse << ",\n"
              << "  \"emissive_only_gi_mean_lum\": " << EmissiveGiMeanLum << ",\n"
              << "  \"gi_determinism_rmse\": " << GiDeterminismRmse << ",\n"
              << "  \"pt_determinism_rmse\": " << PtDeterminismRmse << ",\n"
+             << "  \"gpu_clipmap_slang_ms\": " << GpuClipmapSlangMs << ",\n"
+             << "  \"gpu_radiometric_slang_ms\": " << GpuRadiometricSlangMs << ",\n"
+             << "  \"gpu_vs_cpu_cone_gi_rmse\": " << GpuVsCpuConeGiRmse << ",\n"
+             << "  \"nearest_float_double_max_err\": " << NearestFloatDoubleMaxErr << ",\n"
+             << "  \"local_lower_max_excess\": " << LocalLowerMaxExcess << ",\n"
+             << "  \"clip_lower_max_excess\": " << ClipLowerMaxExcess << ",\n"
+             << "  \"dirty_vs_cold_byte_exact\": " << (DirtyVsColdByteExact ? 1 : 0) << ",\n"
+             << "  \"hybrid_visibility_mismatches\": " << HybridVisibilityMismatches << ",\n"
+             << "  \"gpu_dist_bake_max_err\": " << GpuDistBakeMaxErr << ",\n"
+             << "  \"gpu_dist_clip_max_err\": " << GpuDistClipMaxErr << ",\n"
+             << "  \"gpu_dist_probe_mismatches\": " << GpuDistProbeMismatches << ",\n"
              << "  \"passed\": " << Score.Passed << ",\n"
              << "  \"failed\": " << Score.Failed << "\n"
              << "}\n";

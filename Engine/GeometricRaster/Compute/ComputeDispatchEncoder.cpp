@@ -103,7 +103,8 @@ void ComputeDispatchEncoder::TeardownEncoder() noexcept
 uint32_t ComputeDispatchEncoder::RegisterProgram(
     const std::filesystem::path&      SpirvPath,
     std::span<const VkDescriptorType> SlotCategories,
-    const char*                       EntryPointName)
+    const char*                       EntryPointName,
+    uint32_t                          PushConstantBytes)
 {
     if (DeviceInterchange == nullptr || !DeviceInterchange->Ready())
     {
@@ -138,10 +139,17 @@ uint32_t ComputeDispatchEncoder::RegisterProgram(
         return UINT32_MAX;
     }
 
+    VkPushConstantRange PushRange {};
+    PushRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    PushRange.offset     = 0u;
+    PushRange.size       = PushConstantBytes;
+
     VkPipelineLayoutCreateInfo ProgramLayoutSpec {};
-    ProgramLayoutSpec.sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    ProgramLayoutSpec.setLayoutCount = 1u;
-    ProgramLayoutSpec.pSetLayouts    = &Prog.SlotLayout;
+    ProgramLayoutSpec.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ProgramLayoutSpec.setLayoutCount         = 1u;
+    ProgramLayoutSpec.pSetLayouts            = &Prog.SlotLayout;
+    ProgramLayoutSpec.pushConstantRangeCount = (PushConstantBytes > 0u) ? 1u : 0u;
+    ProgramLayoutSpec.pPushConstantRanges    = (PushConstantBytes > 0u) ? &PushRange : nullptr;
     if (vkCreatePipelineLayout(DeviceHandle, &ProgramLayoutSpec, nullptr, &Prog.ProgramLayout) != VK_SUCCESS)
     {
         vkDestroyDescriptorSetLayout(DeviceHandle, Prog.SlotLayout, nullptr);
@@ -192,7 +200,9 @@ bool ComputeDispatchEncoder::EncodeComputeDispatch(
     std::span<const ComputeSlotDescriptor> Slots,
     uint32_t                                  GroupCountX,
     uint32_t                                  GroupCountY,
-    uint32_t                                  GroupCountZ)
+    uint32_t                                  GroupCountZ,
+    const void*                               PushData,
+    uint32_t                                  PushBytes)
 {
     if (DeviceInterchange == nullptr || ProgramHandle >= Programs.size() || GroupCountX == 0u)
     {
@@ -285,6 +295,10 @@ bool ComputeDispatchEncoder::EncodeComputeDispatch(
 
     vkCmdBindPipeline(CmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, Prog.ComputeProgram);
     vkCmdBindDescriptorSets(CmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, Prog.ProgramLayout, 0u, 1u, &DescSet, 0u, nullptr);
+    if (PushData != nullptr && PushBytes > 0u)
+    {
+        vkCmdPushConstants(CmdBuffer, Prog.ProgramLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0u, PushBytes, PushData);
+    }
     vkCmdDispatch(CmdBuffer, GroupCountX, GroupCountY, GroupCountZ);
 
     VkMemoryBarrier ComputeToShaderBarrier {};

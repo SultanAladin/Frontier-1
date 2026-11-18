@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/DistanceFieldSpace/ToroidalDistanceClipmap.h"
 #include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
 #include "Engine/GeometricRaster/DirectLighting/SolarShadowSequence.h"
 #include "Engine/MaterialSpace/CompactMaterialRegister.h"
@@ -120,6 +121,10 @@ struct VoxelClipmapCascade
     uint32_t                           Mip1DimY          = 0u;
     uint32_t                           Mip1DimZ          = 0u;
     std::vector<Mathematics::LinearRGB> Mip1Radiance     {};
+    uint32_t                           Mip2DimX          = 0u;
+    uint32_t                           Mip2DimY          = 0u;
+    uint32_t                           Mip2DimZ          = 0u;
+    std::vector<Mathematics::LinearRGB> Mip2Radiance     {};
 
     [[nodiscard]] bool ContainsInsideMargin(Mathematics::Axis3D WorldPos, float MarginFrac = 0.015f) const noexcept;
     [[nodiscard]] float SampleDistanceTrilinear(Mathematics::Axis3D WorldPos) const noexcept;
@@ -145,14 +150,20 @@ struct LocalObjectSdfAsset
     uint32_t                           DimY            = 0u;
     uint32_t                           DimZ            = 0u;
     std::vector<VoxelSurfaceCacheEntry> LocalVoxels    {};
+    FacetAtlas                         LocalAtlas      {};
+    BakedFacetDistance                 BakedDistance   {};
 
-    // Bakes exact signed distance + local surface cache attributes ONCE in object-local space
+    // Bakes exact unsigned distance + local surface cache attributes ONCE in object-local space
+    // using arena/f2d37e4b-frontier FacetAtlas + BakedFacetDistance (80x40x32 default).
     bool BakeFromLocalTree(
         std::string_view                               Name,
         const SpatialAcceleration::WideBoundingTree&   LocalTree,
         const MaterialSpace::CompactMaterialRegister&  Materials,
         float                                          TargetSpacingM = 0.038f,
-        float                                          PaddingM       = 0.28f);
+        float                                          PaddingM       = 0.15f);
+
+    // Conservative Lipschitz lower-bound interval { Raw, Lower } from BakedFacetDistance
+    [[nodiscard]] DistanceInterval SampleConservativeLocalInterval(Mathematics::Axis3D LocalPos) const noexcept;
 
     // Conservative AABB-padded distance (boxDist + max(0, innerDist)) so rays outside never leak
     [[nodiscard]] float SampleConservativeLocalDistance(Mathematics::Axis3D LocalPos) const noexcept;
@@ -217,11 +228,24 @@ public:
     VoxelClipmapCascade StaticClip1 {};
     VoxelClipmapCascade ActiveClip0 {}; // StaticClip0 + dynamic local object composition (never rebuilds static!)
 
+    // Exact arena/f2d37e4b-frontier 3-tier 48^3 toroidal clipmap + static atlas + two-sided surface cache
+    DistanceClipmap                      ToroidalClipmap    {};
+    FacetAtlas                           StaticAtlas        {};
+    std::vector<ClosedBox>               ClosedBoxes        {};
+    std::vector<Mathematics::LinearRGB>  VehicleSideCache   {};
+    std::vector<Mathematics::LinearRGB>  StaticSideCache    {};
+    std::vector<Mathematics::LinearRGB>  GroundSideCache    {};
+    static constexpr uint32_t            GroundCacheExtent  = 64u;
+    const MaterialSpace::CompactMaterialRegister* BoundMaterials = nullptr;
+
     Mathematics::Axis3D DirtyPrevMin { 0.0f, 0.0f, 0.0f };
     Mathematics::Axis3D DirtyPrevMax { 0.0f, 0.0f, 0.0f };
     bool                HasDirtyPrev = false;
 
+    void SetClosedStaticBoxes(std::span<const ClosedBox> Boxes) noexcept;
+
     // Bakes static Clip0 (fine near focus) and Clip1 (coarse wide) once from static scene BVH + materials
+    // and initializes the 3-tier 48^3 toroidal DistanceClipmap.
     void BuildStaticClipmap(
         const SpatialAcceleration::WideBoundingTree&  StaticTree,
         const MaterialSpace::CompactMaterialRegister& Materials,
@@ -236,7 +260,7 @@ public:
         uint32_t                                      Clip1DimY,
         uint32_t                                      Clip1DimZ);
 
-    // Evaluates direct lighting (Emissive, Point, Sun, Area) into StaticClip0 & StaticClip1 surface caches and runs 2 bounce passes
+    // Evaluates direct lighting (Emissive, Point, Sun, Area) into StaticClip0 & StaticClip1 + two-sided surface caches
     void BakeStaticSurfaceCacheLighting(
         const ClipmapLightingMask&                            Mask,
         const GeometricRaster::SolarDirectionalEmitter&       Sun,
@@ -245,8 +269,7 @@ public:
         Mathematics::LinearRGB                                SkyRadiance,
         uint32_t                                              BouncePasses = 2u);
 
-    // Composes dynamic moving local objects into ActiveClip0 WITHOUT rebuilding StaticClip0 or StaticClip1!
-    // Also dynamically updates moving emissive lights (e.g. ControlVehicle headlights/taillights) and local ground/wall bounce + shadow.
+    // Relocates the 3-tier 48^3 toroidal DistanceClipmap with dirty-region repair + updates ActiveClip0
     void ComposeDynamicObjectsIntoActiveClip0(
         std::span<const DynamicLocalSdfInstance>              DynamicObjects,
         const ClipmapLightingMask&                            Mask,
@@ -256,7 +279,20 @@ public:
         Mathematics::LinearRGB                                SkyRadiance,
         bool                                                  FullRefresh = false);
 
-    // Samples Clip0 -> Clip1 signed distance (plus exact conservative dynamic local objects if supplied)
+    // Exact arena/f2d37e4b-frontier Lipschitz lower-bound clipmap interval sample
+    [[nodiscard]] DistanceInterval SampleClipmapInterval(
+        Mathematics::Axis3D WorldPos,
+        unsigned*           OutTier = nullptr) const noexcept;
+
+    // Exact arena/f2d37e4b-frontier Hybrid occlusion: conservative clipmap lower-bound march + exact triangle BVH refinement
+    [[nodiscard]] bool TraceHybridOccluded(
+        Mathematics::Axis3D                      Origin,
+        Mathematics::Axis3D                      Direction,
+        float                                    Limit,
+        std::span<const DynamicLocalSdfInstance> DynamicObjects = {},
+        unsigned*                                OutSteps       = nullptr) const noexcept;
+
+    // Samples ToroidalClipmap / Clip0 -> Clip1 distance
     [[nodiscard]] float SampleClipmapDistance(
         Mathematics::Axis3D                      WorldPos,
         int&                                     OutCascade,

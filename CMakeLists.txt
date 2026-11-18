@@ -434,6 +434,25 @@ frontier_compile_modular_slang_shader(GlobalIllumination/VoxelSdfClipmapCompute.
 frontier_compile_modular_slang_shader(GlobalIllumination/VoxelSdfClipmapCompute.slang            PropagateClipmapRadiosityBounceEntry  compute  VoxelSdfClipmapRadiosity.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/VoxelSdfClipmapCompute.slang            EvaluateClipmapConeGiEntry            compute  VoxelSdfClipmapConeGi.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/SpecularGlassRaytrace.slang             SpecularRaytraceComputeEntry          compute  SpecularGlassRaytrace.comp.spv)
+
+foreach(FRONTIER_DE_ENTRY BakeLocalDistance FillClipmap EvaluateDistanceProbes RelightVehicleCache GatherVehicleCache ClearVehicleCache)
+    set(FRONTIER_DE_OUT "${FRONTIER_COMPILED_SHADER_DIR}/DistanceEvaluation.${FRONTIER_DE_ENTRY}.comp.spv")
+    add_custom_command(
+        OUTPUT "${FRONTIER_DE_OUT}"
+        COMMAND "${FRONTIER_SLANGC_BIN}"
+            "${FRONTIER_MODULAR_SHADER_DIR}/GlobalIllumination/DistanceEvaluation.slang"
+            -entry "${FRONTIER_DE_ENTRY}"
+            -target spirv
+            -profile glsl_450
+            -fp-mode precise
+            -O0
+            -o "${FRONTIER_DE_OUT}"
+        DEPENDS "${FRONTIER_MODULAR_SHADER_DIR}/GlobalIllumination/DistanceEvaluation.slang"
+        COMMENT "[Slang] Compiling GlobalIllumination/DistanceEvaluation.slang (${FRONTIER_DE_ENTRY}) -> DistanceEvaluation.${FRONTIER_DE_ENTRY}.comp.spv"
+        VERBATIM
+    )
+    list(APPEND FRONTIER_SPV_OUTPUTS "${FRONTIER_DE_OUT}")
+endforeach()
 frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              ComputeEntry                    compute  SkyViewTransmittanceCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/VolumetricCloudCompute.slang                   ComputeEntry                    compute  VolumetricCloudCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/VolumetricFogCompute.slang                     ComputeEntry                    compute  VolumetricFogCompute.comp.spv)

@@ -451,6 +451,79 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         SlotTypes,
         "DdgiLatticeComputeEntry");
 
+    constexpr std::array<VkDescriptorType, 16u> ClipmapSlotTypes {{
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+    }};
+    ClipmapComposeProgramHandle = DispatchEncoder.RegisterProgram(
+        CompiledShaderDirectory / "VoxelSdfClipmapCompose.comp.spv",
+        ClipmapSlotTypes,
+        "ComposeDynamicLocalSdfClip0Entry");
+    ClipmapRadiosityProgramHandle = DispatchEncoder.RegisterProgram(
+        CompiledShaderDirectory / "VoxelSdfClipmapRadiosity.comp.spv",
+        ClipmapSlotTypes,
+        "PropagateClipmapRadiosityBounceEntry");
+    ClipmapConeGiProgramHandle = DispatchEncoder.RegisterProgram(
+        CompiledShaderDirectory / "VoxelSdfClipmapConeGi.comp.spv",
+        ClipmapSlotTypes,
+        "EvaluateClipmapConeGiEntry");
+
+    constexpr std::array<VkDescriptorType, 8u> DistEvalSlotTypes {{
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+    }};
+    constexpr uint32_t DistEvalPushBytes = 128u;
+    DistEvalBakeProgramHandle = DispatchEncoder.RegisterProgram(
+        CompiledShaderDirectory / "DistanceEvaluation.BakeLocalDistance.comp.spv",
+        DistEvalSlotTypes,
+        "main",
+        DistEvalPushBytes);
+    DistEvalFillClipmapProgramHandle = DispatchEncoder.RegisterProgram(
+        CompiledShaderDirectory / "DistanceEvaluation.FillClipmap.comp.spv",
+        DistEvalSlotTypes,
+        "main",
+        DistEvalPushBytes);
+    DistEvalProbesProgramHandle = DispatchEncoder.RegisterProgram(
+        CompiledShaderDirectory / "DistanceEvaluation.EvaluateDistanceProbes.comp.spv",
+        DistEvalSlotTypes,
+        "main",
+        DistEvalPushBytes);
+    DistEvalRelightVehicleProgramHandle = DispatchEncoder.RegisterProgram(
+        CompiledShaderDirectory / "DistanceEvaluation.RelightVehicleCache.comp.spv",
+        DistEvalSlotTypes,
+        "main",
+        DistEvalPushBytes);
+    DistEvalGatherVehicleProgramHandle = DispatchEncoder.RegisterProgram(
+        CompiledShaderDirectory / "DistanceEvaluation.GatherVehicleCache.comp.spv",
+        DistEvalSlotTypes,
+        "main",
+        DistEvalPushBytes);
+    DistEvalClearVehicleProgramHandle = DispatchEncoder.RegisterProgram(
+        CompiledShaderDirectory / "DistanceEvaluation.ClearVehicleCache.comp.spv",
+        DistEvalSlotTypes,
+        "main",
+        DistEvalPushBytes);
+
     if (TargetDevice.QueryTimestampValidBits() > 0u)
     {
         VkQueryPoolCreateInfo PoolInfo {};
@@ -676,6 +749,22 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(PongShadowAoBuffer);
         BoundDevice->ReleaseBuffer(PongGiHdrBuffer);
         BoundDevice->ReleaseBuffer(CloudRadiometricBuffer);
+        BoundDevice->ReleaseBuffer(ClipmapUniformBuffer);
+        BoundDevice->ReleaseBuffer(ClipmapStaticDist0Buffer);
+        BoundDevice->ReleaseBuffer(ClipmapDist1Buffer);
+        BoundDevice->ReleaseBuffer(ClipmapActiveDist0Buffer);
+        BoundDevice->ReleaseBuffer(ClipmapAlbedoMet0Buffer);
+        BoundDevice->ReleaseBuffer(ClipmapNormalRough0Buffer);
+        BoundDevice->ReleaseBuffer(ClipmapEmissive0Buffer);
+        BoundDevice->ReleaseBuffer(ClipmapRadiosityRead0Buffer);
+        BoundDevice->ReleaseBuffer(ClipmapRadiosityWrite0Buffer);
+        BoundDevice->ReleaseBuffer(ClipmapRadiosityRead1Buffer);
+        BoundDevice->ReleaseBuffer(ClipmapDynObjectsBuffer);
+        BoundDevice->ReleaseBuffer(ClipmapLocalSdfVoxelsBuffer);
+        BoundDevice->ReleaseBuffer(ClipmapPointLightsBuffer);
+        BoundDevice->ReleaseBuffer(ClipmapPrimaryPosBuffer);
+        BoundDevice->ReleaseBuffer(ClipmapPrimaryNormBuffer);
+        BoundDevice->ReleaseImage2D(ClipmapConeGiOutputImage2D);
         BoundDevice->ReleaseImage2D(SdfBakedVolume3D);
         BoundDevice->ReleaseImage2D(SdfDummySampledVolume3D);
         BoundDevice->ReleaseImage2D(SdfDummyStorageVolume3D);
@@ -693,9 +782,18 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     DenoiseProgramHandle        = UINT32_MAX;
     SignedDistanceProgramHandle = UINT32_MAX;
     SkyViewLutProgramHandle     = UINT32_MAX;
-    ShadowCascadeProgramHandle  = UINT32_MAX;
-    SdfRadiosityProgramHandle   = UINT32_MAX;
-    DdgiLatticeProgramHandle    = UINT32_MAX;
+    ShadowCascadeProgramHandle        = UINT32_MAX;
+    SdfRadiosityProgramHandle         = UINT32_MAX;
+    DdgiLatticeProgramHandle          = UINT32_MAX;
+    ClipmapComposeProgramHandle       = UINT32_MAX;
+    ClipmapRadiosityProgramHandle     = UINT32_MAX;
+    ClipmapConeGiProgramHandle        = UINT32_MAX;
+    DistEvalBakeProgramHandle         = UINT32_MAX;
+    DistEvalFillClipmapProgramHandle  = UINT32_MAX;
+    DistEvalProbesProgramHandle       = UINT32_MAX;
+    DistEvalRelightVehicleProgramHandle = UINT32_MAX;
+    DistEvalGatherVehicleProgramHandle  = UINT32_MAX;
+    DistEvalClearVehicleProgramHandle   = UINT32_MAX;
     BoundDevice                 = nullptr;
     SceneUploadedOnce           = false;
     DdgiManagedByGpu            = false;
@@ -2853,6 +2951,560 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     }
 
     LastDispatchMilliseconds = TotalDispatchMs;
+    return true;
+}
+
+bool VulkanWorldRenderSequence::ExecuteGpuVoxelSdfClipmap(
+    const DistanceFieldSpace::VoxelSdfClipmapVolume&             Clipmap,
+    const WorldSceneSpecification&                               Scene,
+    std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> DynamicObjects,
+    std::span<const float>                                       PrimaryPositionsXyzw,
+    std::span<const float>                                       PrimaryNormalsXyzw,
+    uint32_t                                                     WidthPx,
+    uint32_t                                                     HeightPx,
+    std::vector<Mathematics::LinearRGB>&                         OutConeGiOverPi,
+    float&                                                       OutGpuElapsedMs)
+{
+    OutGpuElapsedMs = 0.0f;
+    if (BoundDevice == nullptr || !BoundDevice->Ready() || !QueryGpuVoxelSdfClipmapReady())
+    {
+        return false;
+    }
+    const auto& C0 = Clipmap.ActiveClip0;
+    const auto& S0 = Clipmap.StaticClip0;
+    const auto& C1 = Clipmap.StaticClip1;
+    if (C0.DimX < 2u || C0.Voxels.empty() || C1.DimX < 2u || C1.Voxels.empty() || WidthPx == 0u || HeightPx == 0u)
+    {
+        return false;
+    }
+    const std::size_t PixelCount = static_cast<std::size_t>(WidthPx) * HeightPx;
+    if (PrimaryPositionsXyzw.size() < PixelCount * 4u || PrimaryNormalsXyzw.size() < PixelCount * 4u)
+    {
+        return false;
+    }
+
+    const auto T0 = std::chrono::steady_clock::now();
+
+    struct alignas(16) ClipmapUniformBlockStd140
+    {
+        uint32_t Clip0Dims[4]          {};
+        uint32_t Clip1Dims[4]          {};
+        float    Clip0CenterSpacing[4] {};
+        float    Clip0HalfExtents[4]   {};
+        float    Clip1CenterSpacing[4] {};
+        float    Clip1HalfExtents[4]   {};
+        uint32_t GridParams[4]         {};
+        float    SunDirTanRadius[4]    {};
+        float    SunIrradiancePad[4]   {};
+        float    SkyRadiancePad[4]     {};
+        int32_t  DirtyMinVoxel[4]      {};
+        int32_t  DirtyMaxVoxel[4]      {};
+    };
+    struct alignas(16) DynamicLocalSdfGpuStd430
+    {
+        float    WorldToLocalRow0[4] {};
+        float    WorldToLocalRow1[4] {};
+        float    WorldToLocalRow2[4] {};
+        float    LocalMinSpacing[4]  {};
+        float    LocalMaxPad[4]      {};
+        uint32_t LocalDimsOffset[4]  {};
+        float    WorldAabbMin[4]     {};
+        float    WorldAabbMax[4]     {};
+        float    EmissiveRadiosity[4]{};
+        float    AlbedoRoughness[4]  {};
+    };
+    struct alignas(16) PointLightGpuStd430
+    {
+        float PositionRange[4]  {};
+        float ColorIntensity[4] {};
+        float RadiusPad[4]      {};
+    };
+
+    const uint32_t Total0 = C0.DimX * C0.DimY * C0.DimZ;
+    const uint32_t Total1 = C1.DimX * C1.DimY * C1.DimZ;
+
+    std::vector<float> StaticDist0(Total0);
+    std::vector<float> ActiveDist0(Total0);
+    std::vector<float> AlbMet0(static_cast<std::size_t>(Total0) * 4u);
+    std::vector<float> NrmRgh0(static_cast<std::size_t>(Total0) * 4u);
+    std::vector<float> Emis0(static_cast<std::size_t>(Total0) * 4u);
+    std::vector<float> Rad0(static_cast<std::size_t>(Total0) * 4u);
+    for (uint32_t I = 0u; I < Total0; ++I)
+    {
+        const auto& SV = S0.Voxels[I];
+        const auto& AV = C0.Voxels[I];
+        StaticDist0[I] = SV.SignedDistanceM;
+        ActiveDist0[I] = AV.SignedDistanceM;
+        AlbMet0[I * 4u + 0u] = AV.AlbedoRgb.R;
+        AlbMet0[I * 4u + 1u] = AV.AlbedoRgb.G;
+        AlbMet0[I * 4u + 2u] = AV.AlbedoRgb.B;
+        AlbMet0[I * 4u + 3u] = AV.Metalness;
+        NrmRgh0[I * 4u + 0u] = AV.SurfaceNormal.X;
+        NrmRgh0[I * 4u + 1u] = AV.SurfaceNormal.Y;
+        NrmRgh0[I * 4u + 2u] = AV.SurfaceNormal.Z;
+        NrmRgh0[I * 4u + 3u] = AV.HasSurface ? AV.Roughness : -1.0f;
+        Emis0[I * 4u + 0u]   = AV.EmissiveRgb.R;
+        Emis0[I * 4u + 1u]   = AV.EmissiveRgb.G;
+        Emis0[I * 4u + 2u]   = AV.EmissiveRgb.B;
+        Emis0[I * 4u + 3u]   = 1.0f;
+        Rad0[I * 4u + 0u]    = AV.BounceRadiance.R;
+        Rad0[I * 4u + 1u]    = AV.BounceRadiance.G;
+        Rad0[I * 4u + 2u]    = AV.BounceRadiance.B;
+        Rad0[I * 4u + 3u]    = 1.0f;
+    }
+
+    std::vector<float> Dist1(Total1);
+    std::vector<float> Rad1(static_cast<std::size_t>(Total1) * 4u);
+    for (uint32_t I = 0u; I < Total1; ++I)
+    {
+        const auto& V = C1.Voxels[I];
+        Dist1[I] = V.SignedDistanceM;
+        Rad1[I * 4u + 0u] = V.BounceRadiance.R;
+        Rad1[I * 4u + 1u] = V.BounceRadiance.G;
+        Rad1[I * 4u + 2u] = V.BounceRadiance.B;
+        Rad1[I * 4u + 3u] = 1.0f;
+    }
+
+    std::vector<DynamicLocalSdfGpuStd430> DynEntries;
+    std::vector<float> LocalSdfVoxels;
+    for (const auto& Obj : DynamicObjects)
+    {
+        if (!Obj.Enabled || Obj.Asset == nullptr || Obj.Asset->LocalVoxels.empty()) continue;
+        DynamicLocalSdfGpuStd430 Entry {};
+        const auto& M = Obj.Transform.WorldToLocal;
+        Entry.WorldToLocalRow0[0] = M[0];  Entry.WorldToLocalRow0[1] = M[1];  Entry.WorldToLocalRow0[2] = M[2];  Entry.WorldToLocalRow0[3] = M[3];
+        Entry.WorldToLocalRow1[0] = M[4];  Entry.WorldToLocalRow1[1] = M[5];  Entry.WorldToLocalRow1[2] = M[6];  Entry.WorldToLocalRow1[3] = M[7];
+        Entry.WorldToLocalRow2[0] = M[8];  Entry.WorldToLocalRow2[1] = M[9];  Entry.WorldToLocalRow2[2] = M[10]; Entry.WorldToLocalRow2[3] = M[11];
+        Entry.LocalMinSpacing[0]  = Obj.Asset->LocalMin.X;
+        Entry.LocalMinSpacing[1]  = Obj.Asset->LocalMin.Y;
+        Entry.LocalMinSpacing[2]  = Obj.Asset->LocalMin.Z;
+        Entry.LocalMinSpacing[3]  = Obj.Asset->VoxelSpacingM;
+        Entry.LocalMaxPad[0]      = Obj.Asset->LocalMax.X;
+        Entry.LocalMaxPad[1]      = Obj.Asset->LocalMax.Y;
+        Entry.LocalMaxPad[2]      = Obj.Asset->LocalMax.Z;
+        Entry.LocalDimsOffset[0]  = Obj.Asset->DimX;
+        Entry.LocalDimsOffset[1]  = Obj.Asset->DimY;
+        Entry.LocalDimsOffset[2]  = Obj.Asset->DimZ;
+        Entry.LocalDimsOffset[3]  = static_cast<uint32_t>(LocalSdfVoxels.size());
+        Entry.WorldAabbMin[0]     = Obj.WorldAabbMin.X;
+        Entry.WorldAabbMin[1]     = Obj.WorldAabbMin.Y;
+        Entry.WorldAabbMin[2]     = Obj.WorldAabbMin.Z;
+        Entry.WorldAabbMax[0]     = Obj.WorldAabbMax.X;
+        Entry.WorldAabbMax[1]     = Obj.WorldAabbMax.Y;
+        Entry.WorldAabbMax[2]     = Obj.WorldAabbMax.Z;
+        DynEntries.push_back(Entry);
+        for (const auto& LV : Obj.Asset->LocalVoxels)
+        {
+            LocalSdfVoxels.push_back(LV.SignedDistanceM);
+        }
+    }
+    if (DynEntries.empty()) DynEntries.push_back({});
+    if (LocalSdfVoxels.empty()) LocalSdfVoxels.push_back(4.0f);
+
+    std::vector<PointLightGpuStd430> PtEntries;
+    for (const auto& P : Scene.PointLights)
+    {
+        PointLightGpuStd430 E {};
+        E.PositionRange[0]  = P.PositionWorld.X;
+        E.PositionRange[1]  = P.PositionWorld.Y;
+        E.PositionRange[2]  = P.PositionWorld.Z;
+        E.PositionRange[3]  = P.RangeMeters;
+        E.ColorIntensity[0] = P.Color.R;
+        E.ColorIntensity[1] = P.Color.G;
+        E.ColorIntensity[2] = P.Color.B;
+        E.ColorIntensity[3] = P.Intensity;
+        E.RadiusPad[0]      = P.RadiusMeters;
+        PtEntries.push_back(E);
+    }
+    if (PtEntries.empty()) PtEntries.push_back({});
+
+    ClipmapUniformBlockStd140 Uni {};
+    Uni.Clip0Dims[0] = C0.DimX; Uni.Clip0Dims[1] = C0.DimY; Uni.Clip0Dims[2] = C0.DimZ; Uni.Clip0Dims[3] = Total0;
+    Uni.Clip1Dims[0] = C1.DimX; Uni.Clip1Dims[1] = C1.DimY; Uni.Clip1Dims[2] = C1.DimZ; Uni.Clip1Dims[3] = Total1;
+    const Mathematics::Axis3D C0Center = (C0.BoundsMin + C0.BoundsMax) * 0.5f;
+    const Mathematics::Axis3D C0Half   = (C0.BoundsMax - C0.BoundsMin) * 0.5f;
+    const Mathematics::Axis3D C1Center = (C1.BoundsMin + C1.BoundsMax) * 0.5f;
+    const Mathematics::Axis3D C1Half   = (C1.BoundsMax - C1.BoundsMin) * 0.5f;
+    Uni.Clip0CenterSpacing[0] = C0Center.X; Uni.Clip0CenterSpacing[1] = C0Center.Y; Uni.Clip0CenterSpacing[2] = C0Center.Z; Uni.Clip0CenterSpacing[3] = C0.VoxelSpacingM;
+    Uni.Clip0HalfExtents[0]   = C0Half.X;   Uni.Clip0HalfExtents[1]   = C0Half.Y;   Uni.Clip0HalfExtents[2]   = C0Half.Z;
+    Uni.Clip1CenterSpacing[0] = C1Center.X; Uni.Clip1CenterSpacing[1] = C1Center.Y; Uni.Clip1CenterSpacing[2] = C1Center.Z; Uni.Clip1CenterSpacing[3] = C1.VoxelSpacingM;
+    Uni.Clip1HalfExtents[0]   = C1Half.X;   Uni.Clip1HalfExtents[1]   = C1Half.Y;   Uni.Clip1HalfExtents[2]   = C1Half.Z;
+    Uni.GridParams[0] = static_cast<uint32_t>(DynamicObjects.size());
+    Uni.GridParams[1] = static_cast<uint32_t>(Scene.PointLights.size());
+    Uni.GridParams[2] = WidthPx;
+    Uni.GridParams[3] = HeightPx;
+    Uni.SunDirTanRadius[0] = Scene.Sun.DirectionToSun.X;
+    Uni.SunDirTanRadius[1] = Scene.Sun.DirectionToSun.Y;
+    Uni.SunDirTanRadius[2] = Scene.Sun.DirectionToSun.Z;
+    Uni.SunDirTanRadius[3] = std::tan(std::max(0.002f, Scene.Sun.SunAngularRadiusRadians));
+    Uni.SunIrradiancePad[0] = Scene.Sun.SolarIrradiance.R;
+    Uni.SunIrradiancePad[1] = Scene.Sun.SolarIrradiance.G;
+    Uni.SunIrradiancePad[2] = Scene.Sun.SolarIrradiance.B;
+    Uni.SkyRadiancePad[0] = Scene.SkyRadiance.R;
+    Uni.SkyRadiancePad[1] = Scene.SkyRadiance.G;
+    Uni.SkyRadiancePad[2] = Scene.SkyRadiance.B;
+    Uni.DirtyMinVoxel[0] = 0; Uni.DirtyMinVoxel[1] = 0; Uni.DirtyMinVoxel[2] = 0;
+    Uni.DirtyMaxVoxel[0] = static_cast<int32_t>(C0.DimX) - 1;
+    Uni.DirtyMaxVoxel[1] = static_cast<int32_t>(C0.DimY) - 1;
+    Uni.DirtyMaxVoxel[2] = static_cast<int32_t>(C0.DimZ) - 1;
+
+    EnsureBufferCapacity(ClipmapUniformBuffer, sizeof(Uni), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    std::memcpy(ClipmapUniformBuffer.HostAddress, &Uni, sizeof(Uni));
+
+    const auto StorageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    UploadToDeviceBuffer(ClipmapStaticDist0Buffer, StaticDist0.data(), StaticDist0.size() * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapDist1Buffer, Dist1.data(), Dist1.size() * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapActiveDist0Buffer, ActiveDist0.data(), ActiveDist0.size() * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapAlbedoMet0Buffer, AlbMet0.data(), AlbMet0.size() * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapNormalRough0Buffer, NrmRgh0.data(), NrmRgh0.size() * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapEmissive0Buffer, Emis0.data(), Emis0.size() * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapRadiosityRead0Buffer, Rad0.data(), Rad0.size() * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapRadiosityWrite0Buffer, Rad0.data(), Rad0.size() * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapRadiosityRead1Buffer, Rad1.data(), Rad1.size() * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapDynObjectsBuffer, DynEntries.data(), DynEntries.size() * sizeof(DynamicLocalSdfGpuStd430), StorageFlags);
+    UploadToDeviceBuffer(ClipmapLocalSdfVoxelsBuffer, LocalSdfVoxels.data(), LocalSdfVoxels.size() * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapPointLightsBuffer, PtEntries.data(), PtEntries.size() * sizeof(PointLightGpuStd430), StorageFlags);
+    UploadToDeviceBuffer(ClipmapPrimaryPosBuffer, PrimaryPositionsXyzw.data(), PixelCount * 4ull * sizeof(float), StorageFlags);
+    UploadToDeviceBuffer(ClipmapPrimaryNormBuffer, PrimaryNormalsXyzw.data(), PixelCount * 4ull * sizeof(float), StorageFlags);
+
+    if (ClipmapConeGiOutputImage2D.ImageHandle == VK_NULL_HANDLE ||
+        ClipmapConeGiOutputImage2D.WidthPx != WidthPx ||
+        ClipmapConeGiOutputImage2D.HeightPx != HeightPx)
+    {
+        vkDeviceWaitIdle(BoundDevice->AccessDevice());
+        BoundDevice->ReleaseImage2D(ClipmapConeGiOutputImage2D);
+        ClipmapConeGiOutputImage2D = BoundDevice->AllocateImage2D(
+            WidthPx,
+            HeightPx,
+            VK_FORMAT_R32G32B32A32_SFLOAT,
+            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT);
+    }
+
+    const uint64_t ReadbackBytes = static_cast<uint64_t>(PixelCount) * 4ull * sizeof(float);
+    EnsureReadbackBufferCapacity(OutputReadbackStagingBuffer, ReadbackBytes);
+
+    VkCommandBuffer Cmd = BoundDevice->BeginSingleTimeCommands();
+    if (Cmd == VK_NULL_HANDLE) return false;
+
+    VkImageMemoryBarrier ImgToGen {};
+    ImgToGen.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    ImgToGen.srcAccessMask       = 0u;
+    ImgToGen.dstAccessMask       = VK_ACCESS_SHADER_WRITE_BIT;
+    ImgToGen.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+    ImgToGen.newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+    ImgToGen.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ImgToGen.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ImgToGen.image               = ClipmapConeGiOutputImage2D.ImageHandle;
+    ImgToGen.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+    vkCmdPipelineBarrier(
+        Cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0u, 0u, nullptr, 0u, nullptr, 1u, &ImgToGen);
+
+    auto MakeClipmapSlots = [&](bool PingPongSwap) -> std::array<ComputeSlotDescriptor, 16u>
+    {
+        const VkBuffer RadRead  = PingPongSwap ? ClipmapRadiosityWrite0Buffer.BufferHandle : ClipmapRadiosityRead0Buffer.BufferHandle;
+        const VkBuffer RadWrite = PingPongSwap ? ClipmapRadiosityRead0Buffer.BufferHandle  : ClipmapRadiosityWrite0Buffer.BufferHandle;
+        return {{
+            { 0u,  VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, ClipmapUniformBuffer.BufferHandle,        sizeof(Uni), 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 1u,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapStaticDist0Buffer.BufferHandle,    VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 2u,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapDist1Buffer.BufferHandle,          VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 3u,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapActiveDist0Buffer.BufferHandle,    VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 4u,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapAlbedoMet0Buffer.BufferHandle,     VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 5u,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapNormalRough0Buffer.BufferHandle,   VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 6u,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapEmissive0Buffer.BufferHandle,      VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 7u,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, RadRead,                                  VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 8u,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, RadWrite,                                 VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 9u,  VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapRadiosityRead1Buffer.BufferHandle, VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 10u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapDynObjectsBuffer.BufferHandle,     VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 11u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapLocalSdfVoxelsBuffer.BufferHandle, VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 12u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapPointLightsBuffer.BufferHandle,    VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 13u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapPrimaryPosBuffer.BufferHandle,     VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 14u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipmapPrimaryNormBuffer.BufferHandle,    VK_WHOLE_SIZE, 0ull, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED },
+            { 15u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,  VK_NULL_HANDLE,                           0ull, 0ull, ClipmapConeGiOutputImage2D.ViewHandle, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL },
+        }};
+    };
+
+    const uint32_t VoxelGroups = (Total0 + 63u) / 64u;
+    const auto SlotsA = MakeClipmapSlots(false);
+    const auto SlotsB = MakeClipmapSlots(true);
+
+    VkMemoryBarrier ComputeBarrier {};
+    ComputeBarrier.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    ComputeBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    ComputeBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    // 1) Dynamic Local Object SDF Union into ActiveClip0
+    if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ClipmapComposeProgramHandle, SlotsA, VoxelGroups, 1u, 1u))
+    {
+        return false;
+    }
+    vkCmdPipelineBarrier(Cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 1u, &ComputeBarrier, 0u, nullptr, 0u, nullptr);
+
+    // 2) Propagate Clipmap Multi-Bounce Surface Cache Radiosity (2 passes)
+    if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ClipmapRadiosityProgramHandle, SlotsA, VoxelGroups, 1u, 1u))
+    {
+        return false;
+    }
+    vkCmdPipelineBarrier(Cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 1u, &ComputeBarrier, 0u, nullptr, 0u, nullptr);
+    if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ClipmapRadiosityProgramHandle, SlotsB, VoxelGroups, 1u, 1u))
+    {
+        return false;
+    }
+    vkCmdPipelineBarrier(Cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 1u, &ComputeBarrier, 0u, nullptr, 0u, nullptr);
+
+    // 3) Evaluate Deterministic 24-Cone Clipmap GI
+    const uint32_t GroupsX = (WidthPx + 7u) / 8u;
+    const uint32_t GroupsY = (HeightPx + 7u) / 8u;
+    if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ClipmapConeGiProgramHandle, SlotsA, GroupsX, GroupsY, 1u))
+    {
+        return false;
+    }
+
+    VkImageMemoryBarrier ImgToSrc {};
+    ImgToSrc.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    ImgToSrc.srcAccessMask       = VK_ACCESS_SHADER_WRITE_BIT;
+    ImgToSrc.dstAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
+    ImgToSrc.oldLayout           = VK_IMAGE_LAYOUT_GENERAL;
+    ImgToSrc.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    ImgToSrc.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ImgToSrc.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ImgToSrc.image               = ClipmapConeGiOutputImage2D.ImageHandle;
+    ImgToSrc.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+    vkCmdPipelineBarrier(
+        Cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0u, 0u, nullptr, 0u, nullptr, 1u, &ImgToSrc);
+
+    VkBufferImageCopy CopyRegion {};
+    CopyRegion.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
+    CopyRegion.imageExtent      = { WidthPx, HeightPx, 1u };
+    vkCmdCopyImageToBuffer(
+        Cmd,
+        ClipmapConeGiOutputImage2D.ImageHandle,
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        OutputReadbackStagingBuffer.BufferHandle,
+        1u,
+        &CopyRegion);
+
+    const uint64_t SyncTick = BoundDevice->DispatchCommandBufferAsync(Cmd);
+    if (!BoundDevice->AwaitTimelineTick(SyncTick, 120000000000ull))
+    {
+        return false;
+    }
+
+    OutConeGiOverPi.resize(PixelCount);
+    const float* FloatPixels = static_cast<const float*>(OutputReadbackStagingBuffer.HostAddress);
+    for (std::size_t P = 0u; P < PixelCount; ++P)
+    {
+        OutConeGiOverPi[P] = {
+            std::max(0.0f, FloatPixels[P * 4u + 0u]),
+            std::max(0.0f, FloatPixels[P * 4u + 1u]),
+            std::max(0.0f, FloatPixels[P * 4u + 2u]),
+        };
+    }
+
+    const auto T1 = std::chrono::steady_clock::now();
+    OutGpuElapsedMs = static_cast<float>(std::chrono::duration<double, std::milli>(T1 - T0).count());
+    return true;
+}
+
+bool VulkanWorldRenderSequence::ExecuteGpuDistanceEvaluation(
+    const DistanceFieldSpace::FacetAtlas&          LocalAtlas,
+    const DistanceFieldSpace::BakedFacetDistance&  Baked,
+    const DistanceFieldSpace::DistanceClipmap&     Clipmap,
+    const DistanceFieldSpace::RigidPose&           Pose,
+    std::span<const DistanceFieldSpace::ClosedBox> Boxes,
+    std::span<const std::array<float, 12>>         ProbeRays,
+    std::vector<float>&                            OutGpuLocalDistances,
+    std::vector<DistanceFieldSpace::ClipTexel>&    OutGpuClipTexels,
+    std::vector<std::array<float, 4>>&             OutGpuProbeResults,
+    float&                                         OutGpuElapsedMs)
+{
+    OutGpuElapsedMs = 0.0f;
+    if (BoundDevice == nullptr || !BoundDevice->Ready() || !QueryGpuDistanceEvaluationReady() ||
+        LocalAtlas.Surfaces.empty() || LocalAtlas.Packed.Enclosures.empty())
+    {
+        return false;
+    }
+
+    struct alignas(16) FacetFootprintStd430
+    {
+        std::array<float, 3> A {};
+        uint32_t             Material = 0u;
+        std::array<float, 4> B {};
+        std::array<float, 4> C {};
+    };
+    struct alignas(16) BoxFootprintStd430
+    {
+        std::array<float, 4> Centre {};
+        std::array<float, 4> HalfExtent {};
+    };
+    struct alignas(16) DistanceFootprintPush
+    {
+        std::array<float, 4>    LocalMinimum {};
+        std::array<float, 4>    LocalSpacing {};
+        std::array<uint32_t, 4> ExtentAndCount {};
+        std::array<float, 4>    PoseCosineSine {};
+        std::array<float, 4>    Translation {};
+        std::array<int32_t, 4>  ClipOrigin0 {};
+        std::array<int32_t, 4>  ClipOrigin1 {};
+        std::array<int32_t, 4>  ClipOrigin2 {};
+    };
+    static_assert(sizeof(DistanceFootprintPush) == 128u);
+
+    const auto T0 = std::chrono::steady_clock::now();
+
+    const uint32_t LocalTexelCount = Baked.Extent[0] * Baked.Extent[1] * Baked.Extent[2];
+    const uint32_t ClipLevelTexels = DistanceFieldSpace::DistanceClipmap::Resolution *
+                                     DistanceFieldSpace::DistanceClipmap::Resolution *
+                                     DistanceFieldSpace::DistanceClipmap::Resolution;
+    const uint32_t TotalClipTexels = DistanceFieldSpace::DistanceClipmap::LevelCount * ClipLevelTexels;
+    const uint32_t ProbeCount      = std::max<uint32_t>(1u, static_cast<uint32_t>(ProbeRays.size()));
+
+    const auto& Packed = LocalAtlas.Packed;
+    std::vector<FacetFootprintStd430> FacetsGpu(Packed.Corners.size());
+    for (std::size_t Slot = 0u; Slot < Packed.Corners.size(); ++Slot)
+    {
+        const auto& PT = Packed.Corners[Slot];
+        FacetsGpu[Slot].A        = {{ PT.A[0], PT.A[1], PT.A[2] }};
+        FacetsGpu[Slot].Material = LocalAtlas.Surfaces[Packed.OriginalFacets[Slot]].Material;
+        FacetsGpu[Slot].B        = PT.B;
+        FacetsGpu[Slot].C        = PT.C;
+    }
+    std::vector<BoxFootprintStd430> BoxesGpu(std::max<std::size_t>(1u, Boxes.size()));
+    for (std::size_t I = 0u; I < Boxes.size(); ++I)
+    {
+        BoxesGpu[I].Centre     = {{ Boxes[I].Centre.X, Boxes[I].Centre.Y, Boxes[I].Centre.Z, 0.0f }};
+        BoxesGpu[I].HalfExtent = {{ Boxes[I].HalfExtent.X, Boxes[I].HalfExtent.Y, Boxes[I].HalfExtent.Z, 0.0f }};
+    }
+    std::vector<std::array<float, 12>> ProbesGpu(ProbeCount);
+    for (std::size_t I = 0u; I < ProbeRays.size(); ++I) ProbesGpu[I] = ProbeRays[I];
+
+    const uint64_t EnclBytes   = Packed.Enclosures.size() * sizeof(TriangleVisibilitySpace::FloatEnclosure);
+    const uint64_t FacetBytes  = FacetsGpu.size() * sizeof(FacetFootprintStd430);
+    const uint64_t LocalBytes  = static_cast<uint64_t>(LocalTexelCount) * sizeof(float);
+    const uint64_t ClipBytes   = static_cast<uint64_t>(TotalClipTexels) * sizeof(DistanceFieldSpace::ClipTexel);
+    const uint64_t ProbeBytes  = static_cast<uint64_t>(ProbeCount) * sizeof(std::array<float, 12>);
+    const uint64_t ResultBytes = static_cast<uint64_t>(ProbeCount) * sizeof(std::array<float, 4>);
+    const uint64_t BoxBytes    = BoxesGpu.size() * sizeof(BoxFootprintStd430);
+    const uint64_t RadBytes    = std::max<uint64_t>(64ull, static_cast<uint64_t>(LocalAtlas.Surfaces.size()) * 2ull * 16ull);
+
+    DeviceBufferResource EnclBuf  = DispatchEncoder.AllocateHostWritableBuffer(EnclBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    DeviceBufferResource FacetBuf = DispatchEncoder.AllocateHostWritableBuffer(FacetBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    DeviceBufferResource LocalBuf = DispatchEncoder.AllocateHostWritableBuffer(LocalBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    DeviceBufferResource ClipBuf  = DispatchEncoder.AllocateHostWritableBuffer(ClipBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    DeviceBufferResource ProbeBuf = DispatchEncoder.AllocateHostWritableBuffer(ProbeBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    DeviceBufferResource ResBuf   = DispatchEncoder.AllocateHostWritableBuffer(ResultBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    DeviceBufferResource BoxBuf   = DispatchEncoder.AllocateHostWritableBuffer(BoxBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    DeviceBufferResource RadBuf   = DispatchEncoder.AllocateHostWritableBuffer(RadBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
+    auto ReleaseAll = [&]()
+    {
+        BoundDevice->ReleaseBuffer(EnclBuf);
+        BoundDevice->ReleaseBuffer(FacetBuf);
+        BoundDevice->ReleaseBuffer(LocalBuf);
+        BoundDevice->ReleaseBuffer(ClipBuf);
+        BoundDevice->ReleaseBuffer(ProbeBuf);
+        BoundDevice->ReleaseBuffer(ResBuf);
+        BoundDevice->ReleaseBuffer(BoxBuf);
+        BoundDevice->ReleaseBuffer(RadBuf);
+    };
+
+    if (!EnclBuf.HostAddress || !FacetBuf.HostAddress || !LocalBuf.HostAddress || !ClipBuf.HostAddress ||
+        !ProbeBuf.HostAddress || !ResBuf.HostAddress || !BoxBuf.HostAddress || !RadBuf.HostAddress)
+    {
+        ReleaseAll();
+        return false;
+    }
+
+    std::memcpy(EnclBuf.HostAddress, Packed.Enclosures.data(), EnclBytes);
+    std::memcpy(FacetBuf.HostAddress, FacetsGpu.data(), FacetBytes);
+    std::memset(LocalBuf.HostAddress, 0, LocalBytes);
+    std::memset(ClipBuf.HostAddress, 0, ClipBytes);
+    std::memcpy(ProbeBuf.HostAddress, ProbesGpu.data(), ProbeBytes);
+    std::memset(ResBuf.HostAddress, 0, ResultBytes);
+    std::memcpy(BoxBuf.HostAddress, BoxesGpu.data(), BoxBytes);
+    std::memset(RadBuf.HostAddress, 0, RadBytes);
+
+    const std::array<ComputeSlotDescriptor, 8u> Slots {{
+        { 0u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, EnclBuf.BufferHandle,  EnclBytes },
+        { 1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, FacetBuf.BufferHandle, FacetBytes },
+        { 2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LocalBuf.BufferHandle, LocalBytes },
+        { 3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ClipBuf.BufferHandle,  ClipBytes },
+        { 4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ProbeBuf.BufferHandle, ProbeBytes },
+        { 5u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ResBuf.BufferHandle,   ResultBytes },
+        { 6u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BoxBuf.BufferHandle,   BoxBytes },
+        { 7u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, RadBuf.BufferHandle,   RadBytes },
+    }};
+
+    DistanceFootprintPush Push {};
+    Push.LocalMinimum   = {{ Baked.Low.X, Baked.Low.Y, Baked.Low.Z, static_cast<float>(Boxes.size()) }};
+    Push.LocalSpacing   = {{ Baked.Spacing.X, Baked.Spacing.Y, Baked.Spacing.Z, 0.0f }};
+    Push.ExtentAndCount = {{ Baked.Extent[0], Baked.Extent[1], Baked.Extent[2], static_cast<uint32_t>(ProbeRays.size()) }};
+    Push.PoseCosineSine = {{ Pose.Cosine, Pose.Sine, static_cast<float>(LocalAtlas.Surfaces.size()), 0.0f }};
+    Push.Translation    = {{ Pose.Translation.X, Pose.Translation.Y, Pose.Translation.Z, 0.0f }};
+    Push.ClipOrigin0    = {{ Clipmap.Levels[0].Origin[0], Clipmap.Levels[0].Origin[1], Clipmap.Levels[0].Origin[2], 0 }};
+    Push.ClipOrigin1    = {{ Clipmap.Levels[1].Origin[0], Clipmap.Levels[1].Origin[1], Clipmap.Levels[1].Origin[2], 0 }};
+    Push.ClipOrigin2    = {{ Clipmap.Levels[2].Origin[0], Clipmap.Levels[2].Origin[1], Clipmap.Levels[2].Origin[2], 0 }};
+
+    DispatchEncoder.ResetTransientDescriptors();
+    VkCommandBuffer Cmd = BoundDevice->BeginSingleTimeCommands();
+    if (Cmd == VK_NULL_HANDLE)
+    {
+        ReleaseAll();
+        return false;
+    }
+
+    VkMemoryBarrier HostToCompute {};
+    HostToCompute.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    HostToCompute.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+    HostToCompute.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(Cmd, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 1u, &HostToCompute, 0u, nullptr, 0u, nullptr);
+
+    const auto DispatchStep = [&](uint32_t ProgramHandle, uint32_t ItemCount) -> bool
+    {
+        return DispatchEncoder.EncodeComputeDispatch(
+            Cmd, ProgramHandle, Slots, (ItemCount + 63u) / 64u, 1u, 1u, &Push, sizeof(Push));
+    };
+
+    bool Ok = DispatchStep(DistEvalBakeProgramHandle, LocalTexelCount) &&
+              DispatchStep(DistEvalFillClipmapProgramHandle, TotalClipTexels);
+    if (Ok && !ProbeRays.empty())
+    {
+        Ok = DispatchStep(DistEvalProbesProgramHandle, static_cast<uint32_t>(ProbeRays.size()));
+    }
+    if (!Ok)
+    {
+        ReleaseAll();
+        return false;
+    }
+
+    VkMemoryBarrier ComputeToHost {};
+    ComputeToHost.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    ComputeToHost.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    ComputeToHost.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(Cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0u, 1u, &ComputeToHost, 0u, nullptr, 0u, nullptr);
+
+    const uint64_t SyncTick = BoundDevice->DispatchCommandBufferAsync(Cmd);
+    if (!BoundDevice->AwaitTimelineTick(SyncTick, 120000000000ull))
+    {
+        ReleaseAll();
+        return false;
+    }
+
+    OutGpuLocalDistances.resize(LocalTexelCount);
+    std::memcpy(OutGpuLocalDistances.data(), LocalBuf.HostAddress, LocalBytes);
+    OutGpuClipTexels.resize(TotalClipTexels);
+    std::memcpy(OutGpuClipTexels.data(), ClipBuf.HostAddress, ClipBytes);
+    OutGpuProbeResults.resize(ProbeRays.size());
+    if (!ProbeRays.empty())
+    {
+        std::memcpy(OutGpuProbeResults.data(), ResBuf.HostAddress, ResultBytes);
+    }
+
+    ReleaseAll();
+    const auto T1 = std::chrono::steady_clock::now();
+    OutGpuElapsedMs = static_cast<float>(std::chrono::duration<double, std::milli>(T1 - T0).count());
     return true;
 }
 

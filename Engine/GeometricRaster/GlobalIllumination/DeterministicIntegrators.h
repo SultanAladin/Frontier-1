@@ -113,18 +113,33 @@ namespace Frontier::GeometricRaster
         std::max(0.0f, CapZ + Stretched.Z),
     };
 
-    return Mathematics::NormalizeAxis(
+    const Mathematics::Axis3D LocalHalf = Mathematics::NormalizeAxis(
         { AlphaX * HalfStretched.X, AlphaY * HalfStretched.Y, std::max(1.0e-5f, HalfStretched.Z) },
+        { 0.0f, 0.0f, 1.0f });
+    const float TwoWoDotH = 2.0f * Mathematics::EvaluateDot(LocalWo, LocalHalf);
+    return Mathematics::NormalizeAxis(
+        {
+            TwoWoDotH * LocalHalf.X - LocalWo.X,
+            TwoWoDotH * LocalHalf.Y - LocalWo.Y,
+            TwoWoDotH * LocalHalf.Z - LocalWo.Z,
+        },
         { 0.0f, 0.0f, 1.0f });
 }
 
 [[nodiscard]] inline float EvaluateSphericalCapGgxVndfPdf(
     Mathematics::Axis3D LocalWo,
-    Mathematics::Axis3D LocalHalf,
+    Mathematics::Axis3D LocalWi,
     float               AlphaX,
     float               AlphaY) noexcept
 {
-    if (LocalWo.Z <= 1.0e-5f || LocalHalf.Z <= 1.0e-5f)
+    if (LocalWo.Z <= 1.0e-5f || LocalWi.Z <= 1.0e-5f)
+    {
+        return 0.0f;
+    }
+    const Mathematics::Axis3D LocalHalf = Mathematics::NormalizeAxis(
+        { LocalWo.X + LocalWi.X, LocalWo.Y + LocalWi.Y, LocalWo.Z + LocalWi.Z },
+        { 0.0f, 0.0f, 1.0f });
+    if (LocalHalf.Z <= 1.0e-5f)
     {
         return 0.0f;
     }

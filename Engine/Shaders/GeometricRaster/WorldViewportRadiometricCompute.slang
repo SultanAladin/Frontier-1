@@ -998,17 +998,18 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
     // Algorithms 5, 6, 7: Voxel SDF Penumbra / Voxel SDF Clipmap Penumbra / Hybrid SDF (0.24 m BVH4 Contact + SDF Penumbra)
     if (ShadowAlg == 5u || ShadowAlg == 6u || ShadowAlg == 7u)
     {
-        float Spacing = max(0.04, WorldUniforms.SdfMinSpacing.w);
-        float DistM   = Spacing * 0.90;
-        float Vis     = 1.0;
-        float BlkDist = 0.0;
-        float MaxDist = 24.0;
-        for (uint Step = 0u; Step < 48u && DistM < MaxDist; ++Step)
+        float Spacing = max(0.035, WorldUniforms.SdfMinSpacing.w);
+        float NormBias = max(0.028, Spacing * 0.45);
+        float DistM    = max(0.028, Spacing * 0.35);
+        float Vis      = 1.0;
+        float BlkDist  = 0.0;
+        float MaxDist  = 24.0;
+        for (uint Step = 0u; Step < 56u && DistM < MaxDist; ++Step)
         {
-            float3 SPos = Hit.Position + Hit.ShadingNormal * (Spacing * 0.65) + SunDir * DistM;
+            float3 SPos = Hit.Position + Hit.ShadingNormal * NormBias + SunDir * DistM;
             float  SdfD = SampleSdfBakedVolume(SPos).w;
-            float  ConeR = max(0.025, DistM * TanSun);
-            float  Pen   = saturate(0.5 + 0.5 * SdfD / ConeR);
+            float  ConeR = max(0.018, DistM * TanSun);
+            float  Pen   = smoothstep(-ConeR * 0.20, ConeR * 0.90, SdfD);
             if (Pen < Vis)
             {
                 Vis     = Pen;
@@ -1019,15 +1020,15 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
                 Vis = 0.0;
                 break;
             }
-            DistM += max(Spacing * 0.35, abs(SdfD) * 0.85);
+            DistM += clamp(SdfD * 0.72, 0.022, 0.36);
         }
         if (ShadowAlg == 7u)
         {
-            float3 COrig = Hit.Position + Hit.GeomNormal * 0.006;
-            if (TraceSceneAnyHit(COrig, SunDir, 0.003, 0.24))
+            float3 COrig = Hit.Position + Hit.GeomNormal * 0.005;
+            if (TraceSceneAnyHit(COrig, SunDir, 0.002, 0.26))
             {
                 Vis     = 0.0;
-                BlkDist = 0.08;
+                BlkDist = 0.06;
             }
         }
         OutBlockerDist = BlkDist;
@@ -1287,33 +1288,33 @@ float3 EvaluateSdfRadiosityConeGi(float3 WorldPos, float3 Normal, uint2 PixelXY)
     ConstructOrthonormalBasis(Normal, T, B);
 
     float  Spacing   = max(0.04, WorldUniforms.SdfMinSpacing.w);
-    float3 Origin    = WorldPos + Normal * (Spacing * 0.85);
+    float3 Origin    = WorldPos + Normal * max(0.032, Spacing * 0.75);
 
     float3 Accum = float3(0.0);
-    for (uint C = 0u; C < 16u; ++C)
+    for (uint C = 0u; C < 24u; ++C)
     {
-        float U1   = (float(C) + 0.5) / 16.0;
-        float Phi  = float(C) * 2.39996323;
-        float SinT = sqrt(saturate(U1));
-        float CosT = sqrt(max(0.0, 1.0 - U1));
+        float U1   = (float(C) + 0.5) / 24.0;
+        float Phi  = float(C) * 2.39996323 + 0.31;
+        float SinT = sqrt(clamp(U1, 0.015, 0.96));
+        float CosT = sqrt(max(0.0, 1.0 - SinT * SinT));
         float3 Dir = T * (SinT * cos(Phi)) + B * (SinT * sin(Phi)) + Normal * CosT;
 
-        float  DistM   = max(0.05, Spacing * 0.60);
+        float  DistM   = max(0.055, Spacing * 0.90);
         float  SkyVis  = 1.0;
         float3 BounceR = float3(0.0);
-        for (uint Step = 0u; Step < 24u && DistM < 7.5; ++Step)
+        for (uint Step = 0u; Step < 24u && DistM < 8.5; ++Step)
         {
             float3 SPos   = Origin + Dir * DistM;
             float4 Baked  = SampleSdfBakedVolume(SPos);
             float  SdfD   = Baked.w;
-            float  ConeR  = max(0.035, DistM * 0.40);
+            float  ConeR  = max(Spacing * 0.85, DistM * 0.32);
             if (SdfD < ConeR)
             {
-                float  NearBoost = (DistM < 0.85) ? 1.15 : 1.0;
+                float  NearBoost = (DistM < 0.85) ? 1.20 : 1.0;
                 float  Occ       = saturate((1.0 - SdfD / ConeR) * NearBoost);
                 float3 SurfN     = EvaluateSdfNormal(SPos);
-                float  FrontEmit = smoothstep(-0.04, 0.58, dot(SurfN, -Dir)) * 1.26;
-                float3 VRad      = Baked.rgb;
+                float  FrontEmit = smoothstep(-0.18, 0.45, dot(SurfN, -Dir)) * 1.15;
+                float3 VRad      = min(Baked.rgb, float3(8.0));
                 BounceR         += VRad * (Occ * SkyVis * FrontEmit);
                 SkyVis          *= (1.0 - Occ * 0.72);
                 if (SkyVis < 0.035)
@@ -1322,9 +1323,9 @@ float3 EvaluateSdfRadiosityConeGi(float3 WorldPos, float3 Normal, uint2 PixelXY)
                     break;
                 }
             }
-            DistM += max(Spacing * 0.50, abs(SdfD) * 0.85);
+            DistM += max(Spacing * 0.68, abs(SdfD) * 0.78);
         }
-        Accum += (EvaluateSkyDome(Dir) * SkyVis + BounceR) * (1.0 / 16.0);
+        Accum += (EvaluateSkyDome(Dir) * SkyVis + BounceR) * (1.0 / 24.0);
     }
     return max(Accum, float3(0.0));
 }
@@ -1794,7 +1795,16 @@ float3 TracePathTail(
                     float3 LNorm = normalize(cross(Q.RightHalfHeight.xyz, Q.UpTwoSided.xyz));
                     float  LCos  = (Q.UpTwoSided.w > 0.5) ? abs(dot(LNorm, -LDir)) : max(0.0, dot(LNorm, -LDir));
                     float  Area  = 4.0 * Q.CenterHalfWidth.w * Q.RightHalfHeight.w;
-                    float  Geom  = (NdotL * LCos * Area) / max(1.0e-4, D2);
+                    float  SafeD2 = max(0.04, D2);
+                    float  PdfArea = SafeD2 / max(1.0e-5, LCos * Area);
+                    float3 LocalWoL = float3(dot(V, T), dot(V, BVec), max(1.0e-4, dot(V, N)));
+                    float3 LocalWiL = float3(dot(LDir, T), dot(LDir, BVec), max(1.0e-4, NdotL));
+                    float  RoughL   = clamp(Mat.SpecParams.x, 0.025, 1.0);
+                    float  AlphaL   = max(0.0015, RoughL * RoughL);
+                    float  DiffWtL  = 1.0 - saturate(Mat.SpecParams.y);
+                    float  PdfBsdfL = DiffWtL * (NdotL * InvPiConst) + (1.0 - DiffWtL * 0.5) * EvaluateSphericalCapGgxVndfPdf(LocalWoL, LocalWiL, AlphaL, AlphaL);
+                    float  MisW     = (B == 0u || SpecBounce) ? 1.0 : ((PdfArea * PdfArea) / max(1.0e-10, PdfArea * PdfArea + PdfBsdfL * PdfBsdfL));
+                    float  Geom     = (NdotL * MisW) / max(1.0e-4, PdfArea);
                     Radiance += Throughput * EvaluateSurfaceBrdf(Mat, N, V, LDir) * Q.RadiancePacked.xyz * Geom;
                 }
             }

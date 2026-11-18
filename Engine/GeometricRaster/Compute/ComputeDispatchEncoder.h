@@ -61,7 +61,8 @@ public:
     [[nodiscard]] uint32_t RegisterProgram(
         const std::filesystem::path&        SpirvPath,
         std::span<const VkDescriptorType>   SlotCategories,
-        const char*                         EntryPointName = "ComputeEntry");
+        const char*                         EntryPointName = "ComputeEntry",
+        uint32_t                            PushConstantBytes = 0u);
 
     void ResetTransientDescriptors() noexcept;
 
@@ -71,7 +72,9 @@ public:
         std::span<const ComputeSlotDescriptor>   Slots,
         uint32_t                                    GroupCountX,
         uint32_t                                    GroupCountY = 1u,
-        uint32_t                                    GroupCountZ = 1u);
+        uint32_t                                    GroupCountZ = 1u,
+        const void*                                 PushData    = nullptr,
+        uint32_t                                    PushBytes   = 0u);
 
     [[nodiscard]] DeviceBufferResource AllocateHostWritableBuffer(
         uint64_t           ByteSize,

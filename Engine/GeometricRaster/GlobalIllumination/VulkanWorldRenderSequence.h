@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -43,6 +44,21 @@ public:
     [[nodiscard]] bool             QueryReady() const noexcept;
     [[nodiscard]] bool             QueryHardwareGpuActive() const noexcept;
     [[nodiscard]] bool             QueryGpuSdfComputeReady() const noexcept { return SignedDistanceProgramHandle != UINT32_MAX; }
+    [[nodiscard]] bool QueryGpuVoxelSdfClipmapReady() const noexcept
+    {
+        return ClipmapComposeProgramHandle != UINT32_MAX &&
+               ClipmapRadiosityProgramHandle != UINT32_MAX &&
+               ClipmapConeGiProgramHandle != UINT32_MAX;
+    }
+    [[nodiscard]] bool QueryGpuDistanceEvaluationReady() const noexcept
+    {
+        return DistEvalBakeProgramHandle != UINT32_MAX &&
+               DistEvalFillClipmapProgramHandle != UINT32_MAX &&
+               DistEvalProbesProgramHandle != UINT32_MAX &&
+               DistEvalRelightVehicleProgramHandle != UINT32_MAX &&
+               DistEvalGatherVehicleProgramHandle != UINT32_MAX &&
+               DistEvalClearVehicleProgramHandle != UINT32_MAX;
+    }
     [[nodiscard]] bool             QueryIrradianceLatticeUploaded() const noexcept { return CachedLatticeDimX > 0u && CachedLatticeDimY > 0u && CachedLatticeDimZ > 0u; }
     [[nodiscard]] uint32_t         QueryCachedSdfVoxelCount() const noexcept { return CachedSdfDimX * CachedSdfDimY * CachedSdfDimZ; }
     [[nodiscard]] std::string_view QueryAdapterTitle() const noexcept;
@@ -79,6 +95,29 @@ public:
         const WorldSceneSpecification& Scene,
         uint32_t                       DebugChannel,
         std::vector<uint8_t>&          OutDisplayRgba8);
+
+    [[nodiscard]] bool ExecuteGpuVoxelSdfClipmap(
+        const DistanceFieldSpace::VoxelSdfClipmapVolume&                Clipmap,
+        const WorldSceneSpecification&                                  Scene,
+        std::span<const DistanceFieldSpace::DynamicLocalSdfInstance>    DynamicObjects,
+        std::span<const float>                                          PrimaryPositionsXyzw,
+        std::span<const float>                                          PrimaryNormalsXyzw,
+        uint32_t                                                        WidthPx,
+        uint32_t                                                        HeightPx,
+        std::vector<Mathematics::LinearRGB>&                            OutConeGiOverPi,
+        float&                                                          OutGpuElapsedMs);
+
+    [[nodiscard]] bool ExecuteGpuDistanceEvaluation(
+        const DistanceFieldSpace::FacetAtlas&                           LocalAtlas,
+        const DistanceFieldSpace::BakedFacetDistance&                   Baked,
+        const DistanceFieldSpace::DistanceClipmap&                      Clipmap,
+        const DistanceFieldSpace::RigidPose&                            Pose,
+        std::span<const DistanceFieldSpace::ClosedBox>                  Boxes,
+        std::span<const std::array<float, 12>>                          ProbeRays,
+        std::vector<float>&                                             OutGpuLocalDistances,
+        std::vector<DistanceFieldSpace::ClipTexel>&                     OutGpuClipTexels,
+        std::vector<std::array<float, 4>>&                              OutGpuProbeResults,
+        float&                                                          OutGpuElapsedMs);
 
 private:
     void EnsureBufferCapacity(
@@ -126,11 +165,36 @@ private:
     uint32_t               ShadowCascadeProgramHandle  = UINT32_MAX;
     uint32_t               SdfRadiosityProgramHandle   = UINT32_MAX;
     uint32_t               DdgiLatticeProgramHandle    = UINT32_MAX;
+    uint32_t               ClipmapComposeProgramHandle = UINT32_MAX;
+    uint32_t               ClipmapRadiosityProgramHandle = UINT32_MAX;
+    uint32_t               ClipmapConeGiProgramHandle  = UINT32_MAX;
+    uint32_t               DistEvalBakeProgramHandle   = UINT32_MAX;
+    uint32_t               DistEvalFillClipmapProgramHandle = UINT32_MAX;
+    uint32_t               DistEvalProbesProgramHandle = UINT32_MAX;
+    uint32_t               DistEvalRelightVehicleProgramHandle = UINT32_MAX;
+    uint32_t               DistEvalGatherVehicleProgramHandle  = UINT32_MAX;
+    uint32_t               DistEvalClearVehicleProgramHandle   = UINT32_MAX;
     VkQueryPool            TimestampQueryPool          = VK_NULL_HANDLE;
 
     DeviceBufferResource   UniformBuffer               {};
     DeviceBufferResource   SdfUniformBuffer            {};
     DeviceBufferResource   SkyViewUniformBuffer        {};
+    DeviceBufferResource   ClipmapUniformBuffer        {};
+    DeviceBufferResource   ClipmapStaticDist0Buffer    {};
+    DeviceBufferResource   ClipmapDist1Buffer          {};
+    DeviceBufferResource   ClipmapActiveDist0Buffer    {};
+    DeviceBufferResource   ClipmapAlbedoMet0Buffer     {};
+    DeviceBufferResource   ClipmapNormalRough0Buffer   {};
+    DeviceBufferResource   ClipmapEmissive0Buffer      {};
+    DeviceBufferResource   ClipmapRadiosityRead0Buffer {};
+    DeviceBufferResource   ClipmapRadiosityWrite0Buffer{};
+    DeviceBufferResource   ClipmapRadiosityRead1Buffer {};
+    DeviceBufferResource   ClipmapDynObjectsBuffer     {};
+    DeviceBufferResource   ClipmapLocalSdfVoxelsBuffer {};
+    DeviceBufferResource   ClipmapPointLightsBuffer    {};
+    DeviceBufferResource   ClipmapPrimaryPosBuffer     {};
+    DeviceBufferResource   ClipmapPrimaryNormBuffer    {};
+    DeviceImageResource    ClipmapConeGiOutputImage2D  {};
     DeviceBufferResource   UploadStagingBuffer         {};
     DeviceBufferResource   OutputReadbackStagingBuffer {};
     DeviceBufferResource   BvhEntryBuffer              {};

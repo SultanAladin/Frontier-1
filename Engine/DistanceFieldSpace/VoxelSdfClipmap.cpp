@@ -205,13 +205,16 @@ struct ClosestTriHit
         return 0.0f;
     }
 
-    // 3-direction majority vote inside/outside check only when reasonably close to shell
+    // 6-direction majority vote inside/outside check for robust closed & thin-shell sign reconstruction
     if (UnsignedD < CutoffDist * 0.85f)
     {
-        static constexpr std::array<Mathematics::Axis3D, 3u> ProbeDirs {{
-            { 0.57735f,  0.57735f,  0.57735f },
-            { -0.7071f,  0.50000f,  0.50000f },
-            { 0.25880f, -0.70710f,  0.65810f },
+        static constexpr std::array<Mathematics::Axis3D, 6u> ProbeDirs {{
+            {  1.0000f,  0.0000f,  0.0000f },
+            { -1.0000f,  0.0000f,  0.0000f },
+            {  0.0000f,  1.0000f,  0.0000f },
+            {  0.0000f, -1.0000f,  0.0000f },
+            {  0.0000f,  0.0000f,  1.0000f },
+            {  0.57735f, 0.57735f, 0.57735f },
         }};
         int BackVotes = 0;
         for (const auto& Dir : ProbeDirs)
@@ -227,7 +230,7 @@ struct ClosestTriHit
                 ++BackVotes;
             }
         }
-        if (BackVotes >= 2)
+        if (BackVotes >= 4)
         {
             return -UnsignedD;
         }
@@ -474,37 +477,53 @@ Mathematics::LinearRGB VoxelClipmapCascade::SampleRadiosityTrilinear(
         return (C00 * (1.0f - TY) + C10 * TY) * (1.0f - TZ) + (C01 * (1.0f - TY) + C11 * TY) * TZ;
     };
 
+    const auto SampleGrid3 = [&](
+        const std::vector<Mathematics::LinearRGB>& Grid,
+        uint32_t                                   GX,
+        uint32_t                                   GY,
+        uint32_t                                   GZ) noexcept -> Mathematics::LinearRGB
+    {
+        const float FX = std::clamp((WorldPos.X - BoundsMin.X) * InvSpan.X * static_cast<float>(GX - 1u), 0.0f, static_cast<float>(GX - 1u));
+        const float FY = std::clamp((WorldPos.Y - BoundsMin.Y) * InvSpan.Y * static_cast<float>(GY - 1u), 0.0f, static_cast<float>(GY - 1u));
+        const float FZ = std::clamp((WorldPos.Z - BoundsMin.Z) * InvSpan.Z * static_cast<float>(GZ - 1u), 0.0f, static_cast<float>(GZ - 1u));
+        const uint32_t X0 = static_cast<uint32_t>(std::floor(FX));
+        const uint32_t Y0 = static_cast<uint32_t>(std::floor(FY));
+        const uint32_t Z0 = static_cast<uint32_t>(std::floor(FZ));
+        const uint32_t X1 = std::min(GX - 1u, X0 + 1u);
+        const uint32_t Y1 = std::min(GY - 1u, Y0 + 1u);
+        const uint32_t Z1 = std::min(GZ - 1u, Z0 + 1u);
+        const float TX = FX - static_cast<float>(X0);
+        const float TY = FY - static_cast<float>(Y0);
+        const float TZ = FZ - static_cast<float>(Z0);
+        const uint32_t SXY = GX * GY;
+        const auto At = [&](uint32_t X, uint32_t Y, uint32_t Z) noexcept -> Mathematics::LinearRGB
+        {
+            return Grid[static_cast<std::size_t>(Z) * SXY + static_cast<std::size_t>(Y) * GX + X];
+        };
+        const auto C00 = At(X0, Y0, Z0) * (1.0f - TX) + At(X1, Y0, Z0) * TX;
+        const auto C10 = At(X0, Y1, Z0) * (1.0f - TX) + At(X1, Y1, Z0) * TX;
+        const auto C01 = At(X0, Y0, Z1) * (1.0f - TX) + At(X1, Y0, Z1) * TX;
+        const auto C11 = At(X0, Y1, Z1) * (1.0f - TX) + At(X1, Y1, Z1) * TX;
+        return (C00 * (1.0f - TY) + C10 * TY) * (1.0f - TZ) + (C01 * (1.0f - TY) + C11 * TY) * TZ;
+    };
+
     const auto Rad0 = SampleMip0();
-    if (ConeRadiusM <= VoxelSpacingM * 1.4f || Mip1DimX < 2u || Mip1Radiance.empty())
+    if (ConeRadiusM <= VoxelSpacingM * 1.1f || Mip1DimX < 2u || Mip1Radiance.empty())
     {
         return Rad0;
     }
 
-    const float FX = std::clamp((WorldPos.X - BoundsMin.X) * InvSpan.X * static_cast<float>(Mip1DimX - 1u), 0.0f, static_cast<float>(Mip1DimX - 1u));
-    const float FY = std::clamp((WorldPos.Y - BoundsMin.Y) * InvSpan.Y * static_cast<float>(Mip1DimY - 1u), 0.0f, static_cast<float>(Mip1DimY - 1u));
-    const float FZ = std::clamp((WorldPos.Z - BoundsMin.Z) * InvSpan.Z * static_cast<float>(Mip1DimZ - 1u), 0.0f, static_cast<float>(Mip1DimZ - 1u));
-    const uint32_t X0 = static_cast<uint32_t>(std::floor(FX));
-    const uint32_t Y0 = static_cast<uint32_t>(std::floor(FY));
-    const uint32_t Z0 = static_cast<uint32_t>(std::floor(FZ));
-    const uint32_t X1 = std::min(Mip1DimX - 1u, X0 + 1u);
-    const uint32_t Y1 = std::min(Mip1DimY - 1u, Y0 + 1u);
-    const uint32_t Z1 = std::min(Mip1DimZ - 1u, Z0 + 1u);
-    const float TX = FX - static_cast<float>(X0);
-    const float TY = FY - static_cast<float>(Y0);
-    const float TZ = FZ - static_cast<float>(Z0);
-    const uint32_t SXY = Mip1DimX * Mip1DimY;
-    const auto At1 = [&](uint32_t X, uint32_t Y, uint32_t Z) noexcept -> Mathematics::LinearRGB
+    const auto Rad1 = SampleGrid3(Mip1Radiance, Mip1DimX, Mip1DimY, Mip1DimZ);
+    const float Mip1Thresh = VoxelSpacingM * 2.2f;
+    if (ConeRadiusM <= Mip1Thresh || Mip2DimX < 2u || Mip2Radiance.empty())
     {
-        return Mip1Radiance[static_cast<std::size_t>(Z) * SXY + static_cast<std::size_t>(Y) * Mip1DimX + X];
-    };
-    const auto C00 = At1(X0, Y0, Z0) * (1.0f - TX) + At1(X1, Y0, Z0) * TX;
-    const auto C10 = At1(X0, Y1, Z0) * (1.0f - TX) + At1(X1, Y1, Z0) * TX;
-    const auto C01 = At1(X0, Y0, Z1) * (1.0f - TX) + At1(X1, Y0, Z1) * TX;
-    const auto C11 = At1(X0, Y1, Z1) * (1.0f - TX) + At1(X1, Y1, Z1) * TX;
-    const auto Rad1 = (C00 * (1.0f - TY) + C10 * TY) * (1.0f - TZ) + (C01 * (1.0f - TY) + C11 * TY) * TZ;
+        const float T01 = std::clamp((ConeRadiusM - VoxelSpacingM * 1.1f) / std::max(0.03f, VoxelSpacingM * 1.1f), 0.0f, 1.0f);
+        return Rad0 * (1.0f - T01) + Rad1 * T01;
+    }
 
-    const float Blend = std::clamp((ConeRadiusM - VoxelSpacingM * 1.4f) / std::max(0.04f, VoxelSpacingM * 2.2f), 0.0f, 0.72f);
-    return Rad0 * (1.0f - Blend) + Rad1 * Blend;
+    const auto Rad2 = SampleGrid3(Mip2Radiance, Mip2DimX, Mip2DimY, Mip2DimZ);
+    const float T12 = std::clamp((ConeRadiusM - Mip1Thresh) / std::max(0.05f, VoxelSpacingM * 2.6f), 0.0f, 1.0f);
+    return Rad1 * (1.0f - T12) + Rad2 * T12;
 }
 
 Mathematics::Axis3D VoxelClipmapCascade::EvaluateNormal(Mathematics::Axis3D WorldPos) const noexcept
@@ -560,9 +579,49 @@ void VoxelClipmapCascade::RebuildMip1() noexcept
                 }
                 if (Active > 0.0f)
                 {
-                    // Mild empty-space attenuation prevents over-brightening thin features at coarse MIP
+                    // Energy-conserving dilution prevents sparse emissive voxels from spiking across wide blocks
                     Mip1Radiance[static_cast<std::size_t>(Z) * SXY1 + static_cast<std::size_t>(Y) * Mip1DimX + X] =
-                        Sum * (1.0f / (Active * 0.72f + 2.24f * 0.28f));
+                        Sum * (1.0f / std::max(1.0f, Active * 0.62f + 8.0f * 0.38f));
+                }
+            }
+        }
+    }
+
+    Mip2DimX = std::max(2u, (Mip1DimX + 1u) / 2u);
+    Mip2DimY = std::max(2u, (Mip1DimY + 1u) / 2u);
+    Mip2DimZ = std::max(2u, (Mip1DimZ + 1u) / 2u);
+    Mip2Radiance.assign(static_cast<std::size_t>(Mip2DimX) * Mip2DimY * Mip2DimZ, {});
+    const uint32_t SXY2 = Mip2DimX * Mip2DimY;
+    for (uint32_t Z = 0u; Z < Mip2DimZ; ++Z)
+    {
+        for (uint32_t Y = 0u; Y < Mip2DimY; ++Y)
+        {
+            for (uint32_t X = 0u; X < Mip2DimX; ++X)
+            {
+                Mathematics::LinearRGB Sum {};
+                float Active = 0.0f;
+                for (uint32_t DZ = 0u; DZ < 2u; ++DZ)
+                {
+                    const uint32_t SZ = std::min(Mip1DimZ - 1u, Z * 2u + DZ);
+                    for (uint32_t DY = 0u; DY < 2u; ++DY)
+                    {
+                        const uint32_t SY = std::min(Mip1DimY - 1u, Y * 2u + DY);
+                        for (uint32_t DX = 0u; DX < 2u; ++DX)
+                        {
+                            const uint32_t SX = std::min(Mip1DimX - 1u, X * 2u + DX);
+                            const auto& R = Mip1Radiance[static_cast<std::size_t>(SZ) * SXY1 + static_cast<std::size_t>(SY) * Mip1DimX + SX];
+                            if ((R.R + R.G + R.B) > 1.0e-4f)
+                            {
+                                Sum = Sum + R;
+                                Active += 1.0f;
+                            }
+                        }
+                    }
+                }
+                if (Active > 0.0f)
+                {
+                    Mip2Radiance[static_cast<std::size_t>(Z) * SXY2 + static_cast<std::size_t>(Y) * Mip2DimX + X] =
+                        Sum * (1.0f / std::max(1.0f, Active * 0.65f + 8.0f * 0.35f));
                 }
             }
         }
@@ -580,17 +639,33 @@ bool LocalObjectSdfAsset::BakeFromLocalTree(
     float                                         TargetSpacingM,
     float                                         PaddingM)
 {
+    (void)TargetSpacingM;
+    (void)PaddingM;
     DebugName = std::string(Name);
     if (LocalTree.Primitives.empty()) return false;
 
-    const float Sp = std::max(0.015f, TargetSpacingM);
-    VoxelSpacingM = Sp;
-    LocalMin = LocalTree.RootBoundsMin - Mathematics::Axis3D{ PaddingM, PaddingM, PaddingM };
-    LocalMax = LocalTree.RootBoundsMax + Mathematics::Axis3D{ PaddingM, PaddingM, PaddingM };
+    // Build exact arena/f2d37e4b-frontier FacetAtlas + 80x40x32 BakedFacetDistance
+    std::vector<Facet> Facets;
+    Facets.reserve(LocalTree.Primitives.size());
+    for (const auto& Prim : LocalTree.Primitives)
+    {
+        const ClipVector A { Prim.Corner0.X, Prim.Corner0.Y, Prim.Corner0.Z };
+        const ClipVector B { Prim.Corner0.X + Prim.Edge01.X, Prim.Corner0.Y + Prim.Edge01.Y, Prim.Corner0.Z + Prim.Edge01.Z };
+        const ClipVector C { Prim.Corner0.X + Prim.Edge02.X, Prim.Corner0.Y + Prim.Edge02.Y, Prim.Corner0.Z + Prim.Edge02.Z };
+        const ClipVector N = Normalize(Cross(B - A, C - A));
+        Facets.push_back(Facet{ {{ A, B, C }}, {{ N, N, N }}, static_cast<unsigned>(Prim.MaterialOrdinal) });
+    }
+    LocalAtlas.Construct(std::move(Facets));
+    BakedDistance.Extent = { 80u, 40u, 32u };
+    BakedDistance.Bake(LocalAtlas);
+
+    LocalMin = { BakedDistance.Low.X,  BakedDistance.Low.Y,  BakedDistance.Low.Z  };
+    LocalMax = { BakedDistance.High.X, BakedDistance.High.Y, BakedDistance.High.Z };
+    DimX     = BakedDistance.Extent[0];
+    DimY     = BakedDistance.Extent[1];
+    DimZ     = BakedDistance.Extent[2];
+    VoxelSpacingM = std::max({ BakedDistance.Spacing.X, BakedDistance.Spacing.Y, BakedDistance.Spacing.Z });
     const Mathematics::Axis3D Span = LocalMax - LocalMin;
-    DimX = std::clamp(static_cast<uint32_t>(std::ceil(Span.X / Sp)) + 1u, 4u, 144u);
-    DimY = std::clamp(static_cast<uint32_t>(std::ceil(Span.Y / Sp)) + 1u, 4u, 128u);
-    DimZ = std::clamp(static_cast<uint32_t>(std::ceil(Span.Z / Sp)) + 1u, 4u, 96u);
     InvSpan = {
         1.0f / std::max(1.0e-5f, Span.X),
         1.0f / std::max(1.0e-5f, Span.Y),
@@ -598,8 +673,7 @@ bool LocalObjectSdfAsset::BakeFromLocalTree(
     };
 
     const uint32_t MatCount = std::max(1u, Materials.QuerySlotCount());
-    const float Cutoff = std::max(0.75f, Sp * 5.0f);
-    const float Band   = Sp * 1.95f;
+    const float Band   = VoxelSpacingM * 1.95f;
     const uint32_t SXY = DimX * DimY;
     LocalVoxels.assign(static_cast<std::size_t>(DimX) * DimY * DimZ, {});
 
@@ -607,30 +681,34 @@ bool LocalObjectSdfAsset::BakeFromLocalTree(
     {
         for (uint32_t Z = ZStart; Z < ZEnd; ++Z)
         {
-            const float PZ = LocalMin.Z + (static_cast<float>(Z) / static_cast<float>(DimZ - 1u)) * Span.Z;
+            const float PZ = LocalMin.Z + static_cast<float>(Z) * BakedDistance.Spacing.Z;
             for (uint32_t Y = 0u; Y < DimY; ++Y)
             {
-                const float PY = LocalMin.Y + (static_cast<float>(Y) / static_cast<float>(DimY - 1u)) * Span.Y;
+                const float PY = LocalMin.Y + static_cast<float>(Y) * BakedDistance.Spacing.Y;
                 for (uint32_t X = 0u; X < DimX; ++X)
                 {
-                    const float PX = LocalMin.X + (static_cast<float>(X) / static_cast<float>(DimX - 1u)) * Span.X;
-                    ClosestTriHit Hit {};
-                    const float D = ComputeSignedDistanceWithMajorityVote(LocalTree, { PX, PY, PZ }, Cutoff, Hit);
+                    const float PX = LocalMin.X + static_cast<float>(X) * BakedDistance.Spacing.X;
+                    const std::size_t Idx = static_cast<std::size_t>(Z) * SXY + static_cast<std::size_t>(Y) * DimX + X;
+                    const float D = BakedDistance.Samples[Idx];
                     VoxelSurfaceCacheEntry Entry {};
                     Entry.SignedDistanceM = D;
-                    if (Hit.Valid && std::fabs(D) <= Band)
+                    if (D <= Band)
                     {
-                        const uint32_t Slot = std::min(static_cast<uint32_t>(Hit.MaterialSlot), MatCount - 1u);
-                        const auto& Mat = Materials.InspectAuthoredMaterial(Slot);
-                        Entry.MaterialSlot  = static_cast<uint16_t>(Slot);
-                        Entry.AlbedoRgb     = Mat.Diffuse.BaseColor * Mat.Diffuse.BaseWeight;
-                        Entry.EmissiveRgb   = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight);
-                        Entry.SurfaceNormal = Hit.Normal;
-                        Entry.Metalness     = Mat.Specular.Metalness;
-                        Entry.Roughness     = Mat.Specular.Roughness;
-                        Entry.HasSurface    = 1u;
+                        const ClosestTriHit Hit = QueryClosestTriangleBvh(LocalTree, { PX, PY, PZ }, Band * 1.5f);
+                        if (Hit.Valid)
+                        {
+                            const uint32_t Slot = std::min(static_cast<uint32_t>(Hit.MaterialSlot), MatCount - 1u);
+                            const auto& Mat = Materials.InspectAuthoredMaterial(Slot);
+                            Entry.MaterialSlot  = static_cast<uint16_t>(Slot);
+                            Entry.AlbedoRgb     = Mat.Diffuse.BaseColor * Mat.Diffuse.BaseWeight;
+                            Entry.EmissiveRgb   = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight);
+                            Entry.SurfaceNormal = Hit.Normal;
+                            Entry.Metalness     = Mat.Specular.Metalness;
+                            Entry.Roughness     = Mat.Specular.Roughness;
+                            Entry.HasSurface    = 1u;
+                        }
                     }
-                    LocalVoxels[static_cast<std::size_t>(Z) * SXY + static_cast<std::size_t>(Y) * DimX + X] = Entry;
+                    LocalVoxels[Idx] = Entry;
                 }
             }
         }
@@ -639,41 +717,14 @@ bool LocalObjectSdfAsset::BakeFromLocalTree(
     return true;
 }
 
+DistanceInterval LocalObjectSdfAsset::SampleConservativeLocalInterval(Mathematics::Axis3D LocalPos) const noexcept
+{
+    return BakedDistance.Sample({ LocalPos.X, LocalPos.Y, LocalPos.Z });
+}
+
 float LocalObjectSdfAsset::SampleConservativeLocalDistance(Mathematics::Axis3D LocalPos) const noexcept
 {
-    if (DimX < 2u || DimY < 2u || DimZ < 2u || LocalVoxels.empty()) return 1.0e5f;
-    const float Pad = 0.012f;
-    const Mathematics::Axis3D Clamped {
-        std::clamp(LocalPos.X, LocalMin.X + Pad, LocalMax.X - Pad),
-        std::clamp(LocalPos.Y, LocalMin.Y + Pad, LocalMax.Y - Pad),
-        std::clamp(LocalPos.Z, LocalMin.Z + Pad, LocalMax.Z - Pad),
-    };
-    const float BoxDist = Mathematics::EvaluateLength(LocalPos - Clamped);
-
-    const float FX = std::clamp((Clamped.X - LocalMin.X) * InvSpan.X * static_cast<float>(DimX - 1u), 0.0f, static_cast<float>(DimX - 1u));
-    const float FY = std::clamp((Clamped.Y - LocalMin.Y) * InvSpan.Y * static_cast<float>(DimY - 1u), 0.0f, static_cast<float>(DimY - 1u));
-    const float FZ = std::clamp((Clamped.Z - LocalMin.Z) * InvSpan.Z * static_cast<float>(DimZ - 1u), 0.0f, static_cast<float>(DimZ - 1u));
-    const uint32_t X0 = static_cast<uint32_t>(std::floor(FX));
-    const uint32_t Y0 = static_cast<uint32_t>(std::floor(FY));
-    const uint32_t Z0 = static_cast<uint32_t>(std::floor(FZ));
-    const uint32_t X1 = std::min(DimX - 1u, X0 + 1u);
-    const uint32_t Y1 = std::min(DimY - 1u, Y0 + 1u);
-    const uint32_t Z1 = std::min(DimZ - 1u, Z0 + 1u);
-    const float TX = FX - static_cast<float>(X0);
-    const float TY = FY - static_cast<float>(Y0);
-    const float TZ = FZ - static_cast<float>(Z0);
-
-    const uint32_t SXY = DimX * DimY;
-    const auto At = [&](uint32_t X, uint32_t Y, uint32_t Z) noexcept -> float
-    {
-        return LocalVoxels[static_cast<std::size_t>(Z) * SXY + static_cast<std::size_t>(Y) * DimX + X].SignedDistanceM;
-    };
-    const float C00 = At(X0, Y0, Z0) * (1.0f - TX) + At(X1, Y0, Z0) * TX;
-    const float C10 = At(X0, Y1, Z0) * (1.0f - TX) + At(X1, Y1, Z0) * TX;
-    const float C01 = At(X0, Y0, Z1) * (1.0f - TX) + At(X1, Y0, Z1) * TX;
-    const float C11 = At(X0, Y1, Z1) * (1.0f - TX) + At(X1, Y1, Z1) * TX;
-    const float Inner = (C00 * (1.0f - TY) + C10 * TY) * (1.0f - TZ) + (C01 * (1.0f - TY) + C11 * TY) * TZ;
-    return (BoxDist > 0.0f) ? (BoxDist + std::max(0.0f, Inner)) : Inner;
+    return BakedDistance.Sample({ LocalPos.X, LocalPos.Y, LocalPos.Z }).Raw;
 }
 
 bool LocalObjectSdfAsset::SampleLocalSurfaceCache(
@@ -802,8 +853,14 @@ void DynamicLocalSdfInstance::UpdateWorldBounds() noexcept
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-//                                           2-CASCADE CLIPMAP + SURFACE CACHE
+//                                     3-TIER TOROIDAL CLIPMAP + SURFACE CACHE
 //------------------------------------------------------------------------------------------------------------------------
+
+void VoxelSdfClipmapVolume::SetClosedStaticBoxes(std::span<const ClosedBox> Boxes) noexcept
+{
+    ClosedBoxes.assign(Boxes.begin(), Boxes.end());
+    ToroidalClipmap.ClosedSurfaces = ClosedBoxes;
+}
 
 void VoxelSdfClipmapVolume::BuildStaticClipmap(
     const SpatialAcceleration::WideBoundingTree&  StaticTree,
@@ -819,6 +876,26 @@ void VoxelSdfClipmapVolume::BuildStaticClipmap(
     uint32_t                                      Clip1DimY,
     uint32_t                                      Clip1DimZ)
 {
+    BoundMaterials = &Materials;
+    if (!StaticTree.Primitives.empty())
+    {
+        std::vector<Facet> StaticFacets;
+        StaticFacets.reserve(StaticTree.Primitives.size());
+        for (const auto& Prim : StaticTree.Primitives)
+        {
+            const ClipVector A { Prim.Corner0.X, Prim.Corner0.Y, Prim.Corner0.Z };
+            const ClipVector B { Prim.Corner0.X + Prim.Edge01.X, Prim.Corner0.Y + Prim.Edge01.Y, Prim.Corner0.Z + Prim.Edge01.Z };
+            const ClipVector C { Prim.Corner0.X + Prim.Edge02.X, Prim.Corner0.Y + Prim.Edge02.Y, Prim.Corner0.Z + Prim.Edge02.Z };
+            const ClipVector N = Normalize(Cross(B - A, C - A));
+            StaticFacets.push_back(Facet{ {{ A, B, C }}, {{ N, N, N }}, static_cast<unsigned>(Prim.MaterialOrdinal) });
+        }
+        StaticAtlas.Construct(std::move(StaticFacets));
+    }
+    ToroidalClipmap.ClosedSurfaces      = ClosedBoxes;
+    ToroidalClipmap.StaticTriangleAtlas = StaticAtlas.Surfaces.empty() ? nullptr : &StaticAtlas;
+    const Mathematics::Axis3D FocusCenter = (Clip0Min + Clip0Max) * 0.5f;
+    ToroidalClipmap.Relocate({}, { FocusCenter.X, FocusCenter.Y, FocusCenter.Z }, true);
+
     const uint32_t MatCount = std::max(1u, Materials.QuerySlotCount());
 
     auto BakeCascade = [&](
@@ -1054,8 +1131,7 @@ void VoxelSdfClipmapVolume::BakeStaticSurfaceCacheLighting(
         PropagateCascade(StaticClip1, Prev1);
     }
 
-    ActiveClip0.Voxels       = StaticClip0.Voxels;
-    ActiveClip0.Mip1Radiance = StaticClip0.Mip1Radiance;
+    ActiveClip0  = StaticClip0;
     HasDirtyPrev = false;
 }
 
@@ -1096,8 +1172,7 @@ void VoxelSdfClipmapVolume::ComposeDynamicObjectsIntoActiveClip0(
 
     if (!AnyDyn)
     {
-        ActiveClip0.Voxels       = StaticClip0.Voxels;
-        ActiveClip0.Mip1Radiance = StaticClip0.Mip1Radiance;
+        ActiveClip0  = StaticClip0;
         HasDirtyPrev = false;
         return;
     }
@@ -1282,6 +1357,103 @@ void VoxelSdfClipmapVolume::ComposeDynamicObjectsIntoActiveClip0(
     HasDirtyPrev = true;
     LastDynamicStats.DirtyVoxelCount = (X1 - X0 + 1u) * (Y1 - Y0 + 1u) * (Z1 - Z0 + 1u);
     LastDynamicStats.TotalClip0Voxels = static_cast<uint32_t>(ActiveClip0.Voxels.size());
+
+    // Execute exact arena/f2d37e4b-frontier 3-tier 48^3 toroidal DistanceClipmap relocation
+    const DynamicLocalSdfInstance* PrimaryDyn = nullptr;
+    for (const auto& Obj : DynamicObjects)
+    {
+        if (Obj.Enabled && Obj.Asset != nullptr)
+        {
+            PrimaryDyn = &Obj;
+            break;
+        }
+    }
+    if (PrimaryDyn != nullptr)
+    {
+        ToroidalClipmap.Local = &PrimaryDyn->Asset->BakedDistance;
+        const auto& M = PrimaryDyn->Transform.LocalToWorld;
+        RigidPose Pose {};
+        Pose.Translation = { M[3], M[7], M[11] };
+        Pose.Cosine      = M[0];
+        Pose.Sine        = M[4];
+        const Mathematics::Axis3D FocusCenter = (ActiveClip0.BoundsMin + ActiveClip0.BoundsMax) * 0.5f;
+        ToroidalClipmap.Relocate(Pose, { FocusCenter.X, FocusCenter.Y, FocusCenter.Z }, FullRefresh);
+        const unsigned RewrittenTotal = ToroidalClipmap.Rewritten[0] + ToroidalClipmap.Rewritten[1] + ToroidalClipmap.Rewritten[2];
+        if (ToroidalClipmap.Levels[0].Initialized)
+        {
+            LastDynamicStats.DirtyVoxelCount  = RewrittenTotal;
+            LastDynamicStats.TotalClip0Voxels = DistanceClipmap::LevelCount * DistanceClipmap::Resolution * DistanceClipmap::Resolution * DistanceClipmap::Resolution;
+        }
+    }
+}
+
+DistanceInterval VoxelSdfClipmapVolume::SampleClipmapInterval(
+    Mathematics::Axis3D WorldPos,
+    unsigned*           OutTier) const noexcept
+{
+    if (ToroidalClipmap.Levels[0].Initialized)
+    {
+        return ToroidalClipmap.Sample({ WorldPos.X, WorldPos.Y, WorldPos.Z }, OutTier);
+    }
+    if (OutTier) *OutTier = UINT32_MAX;
+    return { 0.0f, 0.0f };
+}
+
+bool VoxelSdfClipmapVolume::TraceHybridOccluded(
+    Mathematics::Axis3D                      Origin,
+    Mathematics::Axis3D                      Direction,
+    float                                    Limit,
+    std::span<const DynamicLocalSdfInstance> DynamicObjects,
+    unsigned*                                OutSteps) const noexcept
+{
+    const ClipVector O { Origin.X, Origin.Y, Origin.Z };
+    const ClipVector D { Direction.X, Direction.Y, Direction.Z };
+
+    if (!StaticAtlas.Surfaces.empty())
+    {
+        if (StaticAtlas.Trace(O, D, Limit, true).Confirmed())
+        {
+            return true;
+        }
+    }
+
+    // Exact arena/f2d37e4b-frontier CarOccluded: AABB check -> conservative Lower interval march -> exact triangle refinement
+    for (const auto& Obj : DynamicObjects)
+    {
+        if (!Obj.Enabled || Obj.Asset == nullptr || Obj.Asset->LocalAtlas.Surfaces.empty()) continue;
+        const auto LP0 = Obj.Transform.TransformPoint(Obj.Transform.WorldToLocal, Origin);
+        const auto LD0 = Obj.Transform.TransformDirection(Obj.Transform.WorldToLocal, Direction);
+        const ClipVector LocalOrigin { LP0.X, LP0.Y, LP0.Z };
+        const ClipVector LocalDirection { LD0.X, LD0.Y, LD0.Z };
+        float Near = 0.0f;
+        if (!FacetAtlas::IntersectEnclosure(
+                LocalOrigin, LocalDirection, Obj.Asset->LocalAtlas.Low, Obj.Asset->LocalAtlas.High, 0.0f, Limit, Near))
+        {
+            continue;
+        }
+        float Travel = Near;
+        for (unsigned Step = 0u; Step < 96u; ++Step)
+        {
+            if (OutSteps) ++(*OutSteps);
+            const auto Interval = SampleClipmapInterval(Origin + Direction * Travel);
+            if (Interval.Lower < 1.0e-4f) break;
+            Travel += Interval.Lower;
+            if (Travel > Limit) break;
+            const ClipVector P = LocalOrigin + LocalDirection * Travel;
+            if (P.X < Obj.Asset->LocalAtlas.Low.X - 1.0e-4f || P.X > Obj.Asset->LocalAtlas.High.X + 1.0e-4f ||
+                P.Y < Obj.Asset->LocalAtlas.Low.Y - 1.0e-4f || P.Y > Obj.Asset->LocalAtlas.High.Y + 1.0e-4f ||
+                P.Z < Obj.Asset->LocalAtlas.Low.Z - 1.0e-4f || P.Z > Obj.Asset->LocalAtlas.High.Z + 1.0e-4f)
+            {
+                break;
+            }
+        }
+        // Refinement on the original interval (never an advanced biased origin)
+        if (Obj.Asset->LocalAtlas.Trace(LocalOrigin, LocalDirection, Limit, true).Confirmed())
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 float VoxelSdfClipmapVolume::SampleClipmapDistance(
@@ -1289,6 +1461,19 @@ float VoxelSdfClipmapVolume::SampleClipmapDistance(
     int&                                     OutCascade,
     std::span<const DynamicLocalSdfInstance> DynamicObjects) const noexcept
 {
+    if (ToroidalClipmap.Levels[0].Initialized)
+    {
+        unsigned Tier = 0u;
+        const auto Interval = ToroidalClipmap.Sample({ WorldPos.X, WorldPos.Y, WorldPos.Z }, &Tier);
+        if (Tier < DistanceClipmap::LevelCount)
+        {
+            OutCascade = static_cast<int>(Tier);
+            return Interval.Raw;
+        }
+        OutCascade = static_cast<int>(DistanceClipmap::LevelCount);
+        return 1.0e5f;
+    }
+
     float D = 1.0e5f;
     if (ActiveClip0.ContainsInsideMargin(WorldPos, 0.018f))
     {
@@ -1387,63 +1572,64 @@ ClipmapShadowResult VoxelSdfClipmapVolume::TraceClipmapSdfPenumbra(
         return Res;
     }
 
-    const float BaseVoxel = ForceCoarseOnly
-        ? std::max(0.08f, StaticClip1.VoxelSpacingM)
-        : std::max(0.03f, ActiveClip0.VoxelSpacingM);
-    const float MinStart  = std::max(0.055f, BaseVoxel * 1.10f);
-    const Mathematics::Axis3D Origin = WorldPos + SurfaceNormal * MinStart;
-
-    float T = MinStart;
-    float Vis = 1.0f;
-    float MinRatio = 1.0e4f;
-
-    for (uint32_t S = 0u; S < 40u && T < MaxDistM; ++S)
+    // Exact arena/f2d37e4b-frontier Penumbra algorithm (LocalPenumbra when ForceCoarseOnly=true, ClipPenumbra when false)
+    const bool Global = !ForceCoarseOnly && ToroidalClipmap.Levels[0].Initialized;
+    float Voxel = 0.125f;
+    if (!Global && !DynamicObjects.empty() && DynamicObjects[0].Asset != nullptr)
     {
-        const Mathematics::Axis3D SP = Origin + ToLightDir * T;
-        int Casc = 2;
-        float D = 1.0e5f;
-        if (ForceCoarseOnly)
+        const auto& Sp = DynamicObjects[0].Asset->BakedDistance.Spacing;
+        Voxel = std::max({ Sp.X, Sp.Y, Sp.Z, 0.04f });
+    }
+
+    const Mathematics::Axis3D Origin = WorldPos + SurfaceNormal * 2.0e-4f;
+    const float AngularRadius = IsDirectionalLight
+        ? std::max(0.00465f, LightAngularOrRadius)
+        : std::max(0.01f, LightAngularOrRadius / std::max(0.25f, MaxDistM));
+
+    float Travel = Voxel;
+    float Vis    = 1.0f;
+
+    for (uint32_t Step = 0u; Step < 96u && Travel < MaxDistM; ++Step)
+    {
+        const Mathematics::Axis3D P = Origin + ToLightDir * Travel;
+        float Distance = 1.0e5f;
+        if (Global)
         {
-            if (StaticClip1.ContainsInsideMargin(SP, 0.015f))
-            {
-                Casc = 1;
-                D = StaticClip1.SampleDistanceTrilinear(SP);
-            }
-            for (const auto& Obj : DynamicObjects)
-            {
-                if (!Obj.Enabled || Obj.Asset == nullptr) continue;
-                const Mathematics::Axis3D LP = Obj.Transform.TransformPoint(Obj.Transform.WorldToLocal, SP);
-                D = std::min(D, Obj.Asset->SampleConservativeLocalDistance(LP));
-                Casc = 1;
-            }
+            unsigned Tier = 0u;
+            Distance = ToroidalClipmap.Sample({ P.X, P.Y, P.Z }, &Tier).Raw;
+            if (Tier == UINT32_MAX) break;
         }
         else
         {
-            D = SampleClipmapDistance(SP, Casc, DynamicObjects);
-        }
-
-        if (Casc == 2 || D > 4.0e3f) break;
-
-        const float ConeW = IsDirectionalLight
-            ? std::max(BaseVoxel * 0.42f, LightAngularOrRadius * T)
-            : std::max(BaseVoxel * 0.42f, LightAngularOrRadius * (T / std::max(MaxDistM, 0.25f)));
-        const float StepVis = SmoothStep(-ConeW * 0.35f, ConeW, D);
-        if (StepVis < Vis) Vis = StepVis;
-        if (D < ConeW)
-        {
-            const float Ratio = D / std::max(ConeW, 1.0e-4f);
-            if (Ratio < MinRatio)
+            for (const auto& Obj : DynamicObjects)
             {
-                MinRatio = Ratio;
-                Res.BlockerDistM = T;
+                if (!Obj.Enabled || Obj.Asset == nullptr) continue;
+                const auto LP = Obj.Transform.TransformPoint(Obj.Transform.WorldToLocal, P);
+                Distance = std::min(Distance, Obj.Asset->SampleConservativeLocalDistance(LP));
+            }
+            for (const auto& Box : ClosedBoxes)
+            {
+                Distance = std::min(Distance, std::abs(SignedBoxDistance({ P.X, P.Y, P.Z }, Box)));
+            }
+            if (ClosedBoxes.empty() && !StaticAtlas.Surfaces.empty())
+            {
+                Distance = std::min(Distance, StaticAtlas.Nearest({ P.X, P.Y, P.Z }));
             }
         }
-        if (Vis < 0.002f)
+
+        if (Distance < 0.008f)
         {
-            Vis = 0.0f;
-            break;
+            Res.Visibility   = 0.0f;
+            Res.BlockerDistM = Travel;
+            return Res;
         }
-        T += std::clamp(D * 0.78f, 0.035f, 0.42f);
+        const float StepVis = std::clamp(Distance / std::max(0.001f, Travel * AngularRadius), 0.0f, 1.0f);
+        if (StepVis < Vis)
+        {
+            Vis = StepVis;
+            Res.BlockerDistM = Travel;
+        }
+        Travel += std::max(Voxel * 0.25f, Distance * 0.9f);
     }
 
     Res.Visibility = Vis;
@@ -1457,55 +1643,55 @@ Mathematics::LinearRGB VoxelSdfClipmapVolume::EvaluateDeterministicConeGiOverPi(
     uint32_t                                 ConeCount,
     std::span<const DynamicLocalSdfInstance> DynamicObjects) const noexcept
 {
-    const uint32_t Count = std::clamp(ConeCount, 6u, 24u);
+    const uint32_t Count = std::clamp(ConeCount, 12u, 24u);
     const float InvCount = 1.0f / static_cast<float>(Count);
     const Mathematics::Axis3D N = Mathematics::NormalizeAxis(SurfaceNormal, { 0.0f, 0.0f, 1.0f });
     Mathematics::Axis3D T {}, B {};
     BuildOrthonormalDuff(N, T, B);
 
-    const float BaseBias = std::max(0.035f, ActiveClip0.VoxelSpacingM * 0.95f);
+    const float BaseBias = std::max(0.032f, ActiveClip0.VoxelSpacingM * 0.75f);
     const Mathematics::Axis3D Origin = WorldPos + N * BaseBias;
 
     Mathematics::LinearRGB GiIrr {};
     for (uint32_t K = 0u; K < Count; ++K)
     {
-        // Pure deterministic cosine-weighted Fibonacci lattice (zero PCG, zero pixel jitter, zero denoiser!)
+        // Pure deterministic 24-cone cosine-weighted Fibonacci lattice (zero PCG, zero pixel jitter, zero denoiser!)
         const float URad = (static_cast<float>(K) + 0.5f) * InvCount;
-        const float R    = std::sqrt(std::clamp(URad, 0.02f, 0.96f));
+        const float R    = std::sqrt(std::clamp(URad, 0.015f, 0.96f));
         const float Ang  = static_cast<float>(K) * 2.39996323f + 0.31f;
         const Mathematics::Axis3D CDir = Mathematics::NormalizeAxis(
             T * (R * std::cos(Ang)) + B * (R * std::sin(Ang)) + N * std::sqrt(std::max(0.0f, 1.0f - R * R)));
 
-        float CT = std::max(0.06f, ActiveClip0.VoxelSpacingM * 1.15f);
+        float CT = std::max(0.055f, ActiveClip0.VoxelSpacingM * 0.90f);
         float CAlpha = 0.0f;
         Mathematics::LinearRGB CCol {};
 
-        for (uint32_t St = 0u; St < 20u && CAlpha < 0.97f && CT < 14.0f; ++St)
+        for (uint32_t St = 0u; St < 24u && CAlpha < 0.97f && CT < 14.0f; ++St)
         {
             const Mathematics::Axis3D SP = Origin + CDir * CT;
-            int Casc = 2;
+            int Casc = 3;
             const float CD = SampleClipmapDistance(SP, Casc, DynamicObjects);
-            if (Casc == 2) break;
+            if (Casc >= 3 || CD > 4.0e3f) break;
 
-            const float Vox   = (Casc == 0) ? ActiveClip0.VoxelSpacingM : StaticClip1.VoxelSpacingM;
-            const float ConeR = std::max(Vox * 0.78f, CT * 0.28f);
+            const float Vox   = (Casc == 0) ? 0.125f : (Casc == 1) ? 0.25f : 0.50f;
+            const float ConeR = std::max(Vox * 0.85f, CT * 0.32f);
             if (CD < ConeR)
             {
-                float Occ = 1.0f - SmoothStep(-Vox * 0.18f, ConeR, CD);
-                const auto SRad  = SampleClipmapRadiosity(SP, Casc, ConeR * 1.15f);
+                float Occ = 1.0f - SmoothStep(-Vox * 0.15f, ConeR, CD);
+                const auto SRad  = SampleClipmapRadiosity(SP, Casc, ConeR * 1.35f);
                 const auto SurfN = EvaluateClipmapNormal(SP, Casc, DynamicObjects);
-                const float FrontEmit = SmoothStep(-0.08f, 0.55f, Mathematics::EvaluateDot(SurfN, CDir * -1.0f)) * 1.22f;
+                const float FrontEmit = SmoothStep(-0.18f, 0.45f, Mathematics::EvaluateDot(SurfN, CDir * -1.0f)) * 1.15f;
                 if (CT < 0.85f && std::max({ SRad.R, SRad.G, SRad.B }) < 0.25f)
                 {
                     Occ = std::min(1.0f, Occ * 1.35f);
                 }
                 const float StepW = (1.0f - CAlpha) * Occ;
-                CCol.R += SRad.R * FrontEmit * StepW;
-                CCol.G += SRad.G * FrontEmit * StepW;
-                CCol.B += SRad.B * FrontEmit * StepW;
+                CCol.R += std::min(SRad.R, 8.0f) * FrontEmit * StepW;
+                CCol.G += std::min(SRad.G, 8.0f) * FrontEmit * StepW;
+                CCol.B += std::min(SRad.B, 8.0f) * FrontEmit * StepW;
                 CAlpha += StepW;
             }
-            CT += std::max(CD * 0.80f, Vox * 0.75f);
+            CT += std::max(CD * 0.78f, Vox * 0.68f);
         }
 
         const float SkyHem = 0.5f + 0.5f * CDir.Z;
