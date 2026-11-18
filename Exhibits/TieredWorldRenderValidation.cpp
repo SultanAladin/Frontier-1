@@ -974,21 +974,22 @@ int main()
         Score.Verify(EngineSheet.WritePngFile(EnginesSheetPath) && std::filesystem::exists(EnginesSheetPath),
                      "Exported 01-FiveUnifiedEnginesCpuAndGpu.png");
 
-        // Render Sheet 2: Shadow Lab 5 Algorithms (Zero SDF Shadows!)
+        // Render Sheet 2: Shadow Lab 6 Algorithms (including Hybrid SDF Clipmap!)
         struct ShadowSpec
         {
             GeometricRaster::SolarShadowAlgorithm Alg;
             const char*                           Title;
         };
-        const std::array<ShadowSpec, 5u> ShadowSpecs {{
+        const std::array<ShadowSpec, 6u> ShadowSpecs {{
             { GeometricRaster::SolarShadowAlgorithm::ContactPcss,      "01 // CONTACT PCSS" },
             { GeometricRaster::SolarShadowAlgorithm::PcssPlaneAware,   "02 // PCSS + PLANE FILTER" },
             { GeometricRaster::SolarShadowAlgorithm::ShadowRayMarch,   "03 // SMRT RAYMARCH" },
             { GeometricRaster::SolarShadowAlgorithm::PcfBilinear,      "04 // PCF 3X3" },
             { GeometricRaster::SolarShadowAlgorithm::WideTreeRayQuery, "05 // BVH4 RAY QUERY" },
+            { GeometricRaster::SolarShadowAlgorithm::HybridSdf,        "06 // HYBRID SDF CLIPMAP" },
         }};
-        std::vector<std::vector<uint8_t>> ShadowTiles(5u);
-        for (std::size_t S = 0u; S < 5u; ++S)
+        std::vector<std::vector<uint8_t>> ShadowTiles(6u);
+        for (std::size_t S = 0u; S < 6u; ++S)
         {
             GeometricRaster::WorldRenderConfiguration Cfg {};
             Cfg.Engine           = GeometricRaster::WorldRenderEngine::OpenPbrDirect;
@@ -997,29 +998,35 @@ int main()
             const auto Frame     = WorldRenderer.RenderWorldFrameWithEngine(Cfg, EvalCam, EvalCam, WorldScene);
             ShadowTiles[S]       = Frame.DisplayRgba8;
         }
-        constexpr uint32_t SSheetH = 310u;
-        Io.DisplaySize = ImVec2(float(SheetW), float(SSheetH));
+        constexpr uint32_t SSheetW = 1160u;
+        constexpr uint32_t SSheetH = 580u;
+        Io.DisplaySize = ImVec2(float(SSheetW), float(SSheetH));
         ImGui::NewFrame();
         ImDrawList* ShDraw = ImGui::GetBackgroundDrawList();
-        ShDraw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(float(SheetW), float(SSheetH)), BgCol);
+        ShDraw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(float(SSheetW), float(SSheetH)), BgCol);
         ShDraw->AddText(ImVec2(24.0f, 16.0f), AccentCol,
-                        "FRONTIER SHADOW LAB  //  5 DIRECT SHADOW ALGORITHMS (ZERO SDF SHADOWS)");
-        for (std::size_t S = 0u; S < 5u; ++S)
+                        "FRONTIER SHADOW LAB  //  6 SHADOW ALGORITHMS (CONTACT PCSS, PCSS+FILTER, SMRT, PCF 3X3, BVH4 RAY, HYBRID SDF CLIPMAP)");
+        for (std::size_t S = 0u; S < 6u; ++S)
         {
-            const float X = 20.0f + static_cast<float>(S) * 378.0f;
-            ShDraw->AddRectFilled(ImVec2(X, 46.0f), ImVec2(X + 368.0f, 300.0f), CardBg, 6.0f);
-            ShDraw->AddText(ImVec2(X + 8.0f, 52.0f), GoldCol, ShadowSpecs[S].Title);
+            const uint32_t Col = static_cast<uint32_t>(S % 3u);
+            const uint32_t Row = static_cast<uint32_t>(S / 3u);
+            const float X = 20.0f + static_cast<float>(Col) * 378.0f;
+            const float Y = 46.0f + static_cast<float>(Row) * 266.0f;
+            ShDraw->AddRectFilled(ImVec2(X, Y), ImVec2(X + 368.0f, Y + 254.0f), CardBg, 6.0f);
+            ShDraw->AddText(ImVec2(X + 8.0f, Y + 6.0f), GoldCol, ShadowSpecs[S].Title);
         }
         ImGui::Render();
-        Exhibits::SoftwareRasterCanvas ShadowSheet(SheetW, SSheetH, { 11u, 14u, 20u, 255u });
+        Exhibits::SoftwareRasterCanvas ShadowSheet(SSheetW, SSheetH, { 11u, 14u, 20u, 255u });
         ShadowSheet.RasterizeImGuiBatches(ImGui::GetDrawData());
-        for (std::size_t S = 0u; S < 5u; ++S)
+        for (std::size_t S = 0u; S < 6u; ++S)
         {
-            ShadowSheet.BlitRgbaRegion(24u + static_cast<uint32_t>(S) * 378u, 72u, TileW, TileH, ShadowTiles[S].data());
+            const uint32_t Col = static_cast<uint32_t>(S % 3u);
+            const uint32_t Row = static_cast<uint32_t>(S / 3u);
+            ShadowSheet.BlitRgbaRegion(24u + Col * 378u, 72u + Row * 266u, TileW, TileH, ShadowTiles[S].data());
         }
-        const std::filesystem::path ShadowSheetPath = EnginesDir / "02-ShadowLabFiveAlgorithms.png";
+        const std::filesystem::path ShadowSheetPath = EnginesDir / "02-ShadowLabSixAlgorithms.png";
         Score.Verify(ShadowSheet.WritePngFile(ShadowSheetPath) && std::filesystem::exists(ShadowSheetPath),
-                     "Exported 02-ShadowLabFiveAlgorithms.png");
+                     "Exported 02-ShadowLabSixAlgorithms.png");
 
         TypographyRepository::AssignCurrent(nullptr);
     }

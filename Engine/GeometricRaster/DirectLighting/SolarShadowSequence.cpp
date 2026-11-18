@@ -490,9 +490,70 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
                     Result.BlockerDistanceMeters[Off] = static_cast<float>(OccludedHits) / HarmonicInvDistS;
                 }
             }
+            else if (Algorithm == SolarShadowAlgorithm::HybridSdf)
+            {
+                // Exact arena/f2d37e4b-frontier Hybrid SDF Clipmap + Exact Triangle Refinement over Vogel Solar Disc!
+                const uint32_t RayCount = std::clamp(Sun.RtxSamplesPerPixel, 4u, 8u);
+                const float    RotPhi   = static_cast<float>(Seed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
+                constexpr float GoldenAngle = 2.39996323f;
+
+                const Mathematics::Axis3D RayOrigin = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 1.5e-3f;
+                float    UnoccludedSum     = 0.0f;
+                float    HarmonicInvDistS  = 0.0f;
+                uint32_t OccludedHits      = 0u;
+                const bool UseClipmapHybrid = (OptionalClipmap != nullptr) &&
+                    (!OptionalClipmap->StaticAtlas.Surfaces.empty() || !DynamicObjects.empty());
+
+                for (uint32_t RIdx = 0u; RIdx < RayCount; ++RIdx)
+                {
+                    const float DiscR = std::sqrt((static_cast<float>(RIdx) + 0.5f) / static_cast<float>(RayCount)) * TanSunRadius;
+                    const float Angle = static_cast<float>(RIdx) * GoldenAngle + RotPhi;
+                    const Mathematics::Axis3D JitteredSun = Mathematics::NormalizeAxis(
+                        SunDir + DiscTangentU * (DiscR * std::cos(Angle)) + DiscTangentV * (DiscR * std::sin(Angle)),
+                        SunDir);
+
+                    bool HitOccluded = false;
+                    float HitDistM   = 1.0f;
+                    if (UseClipmapHybrid)
+                    {
+                        HitOccluded = OptionalClipmap->TraceHybridOccluded(RayOrigin, JitteredSun, 45.0f, DynamicObjects);
+                        if (HitOccluded)
+                        {
+                            const auto Interval = OptionalClipmap->SampleClipmapInterval(RayOrigin + JitteredSun * 0.25f);
+                            HitDistM = std::max(0.05f, Interval.Raw);
+                        }
+                    }
+                    else
+                    {
+                        SpatialAcceleration::RaySegmentQuery Ray {};
+                        Ray.Origin          = RayOrigin;
+                        Ray.UnitDirection   = JitteredSun;
+                        Ray.MinimumDistance = 1.0e-3f;
+                        Ray.MaximumDistance = 150.0f;
+                        const auto RayHit = SceneTree.TraceClosestRay(Ray, false);
+                        HitOccluded = RayHit.HitConfirmed;
+                        HitDistM    = RayHit.HitDistanceMeters;
+                    }
+
+                    if (HitOccluded)
+                    {
+                        ++OccludedHits;
+                        HarmonicInvDistS += 1.0f / std::max(5.0e-3f, HitDistM);
+                    }
+                    else
+                    {
+                        UnoccludedSum += 1.0f;
+                    }
+                }
+
+                Result.RawVisibility[Off] = UnoccludedSum / static_cast<float>(RayCount);
+                if (OccludedHits > 0u)
+                {
+                    Result.BlockerDistanceMeters[Off] = static_cast<float>(OccludedHits) / HarmonicInvDistS;
+                }
+            }
             else if (Algorithm == SolarShadowAlgorithm::VoxelSdfPenumbra ||
-                     Algorithm == SolarShadowAlgorithm::VoxelSdfClipmapPenumbra ||
-                     Algorithm == SolarShadowAlgorithm::HybridSdf)
+                     Algorithm == SolarShadowAlgorithm::VoxelSdfClipmapPenumbra)
             {
                 float SdfVis = 1.0f;
                 float SdfBlk = 0.0f;
@@ -505,44 +566,8 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
                     SdfVis = SdfRes.Visibility;
                     SdfBlk = SdfRes.BlockerDistM;
                 }
-
-                if (Algorithm == SolarShadowAlgorithm::HybridSdf)
-                {
-                    // Tight 3.9 mm fine contact depth map / 0.24 m BVH4 contact gate + Voxel SDF Clipmap Penumbra!
-                    float ContactVis = 1.0f;
-                    float ContactBlk = SdfBlk;
-                    if (OptionalFineClip != nullptr)
-                    {
-                        const auto ClipSample = SampleCascadePcf3x3(*OptionalFineClip, BiasedOrigin, SlopeScale);
-                        if (ClipSample.InsideCascade)
-                        {
-                            ContactVis = ClipSample.Visibility;
-                            if (ClipSample.BlockerDistanceM > 0.0f) ContactBlk = ClipSample.BlockerDistanceM;
-                        }
-                    }
-
-                    SpatialAcceleration::RaySegmentQuery ContactRay {};
-                    ContactRay.Origin          = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 2.0e-3f;
-                    ContactRay.UnitDirection   = SunDir;
-                    ContactRay.MinimumDistance = 1.0e-3f;
-                    ContactRay.MaximumDistance = 0.24f;
-                    const auto ContactHit = SceneTree.TraceClosestRay(ContactRay, false);
-                    if (ContactHit.HitConfirmed)
-                    {
-                        ContactVis = std::min(ContactVis, 0.0f);
-                        ContactBlk = ContactHit.HitDistanceMeters;
-                    }
-
-                    const float FarW = std::clamp((ContactBlk - 0.14f) / 0.42f, 0.0f, 1.0f) * 0.85f;
-                    const float FinalVis = (1.0f - FarW) * ContactVis + FarW * std::min(ContactVis + 0.35f, SdfVis);
-                    Result.RawVisibility[Off]         = std::clamp(FinalVis, 0.0f, 1.0f);
-                    Result.BlockerDistanceMeters[Off] = ContactBlk;
-                }
-                else
-                {
-                    Result.RawVisibility[Off]         = std::clamp(SdfVis, 0.0f, 1.0f);
-                    Result.BlockerDistanceMeters[Off] = SdfBlk;
-                }
+                Result.RawVisibility[Off]         = std::clamp(SdfVis, 0.0f, 1.0f);
+                Result.BlockerDistanceMeters[Off] = SdfBlk;
             }
             else if (Algorithm == SolarShadowAlgorithm::PcfBilinear)
             {
@@ -622,9 +647,7 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
         }
     }
 
-    if (Algorithm == SolarShadowAlgorithm::PcfBilinear ||
-        Algorithm == SolarShadowAlgorithm::VoxelSdfPenumbra ||
-        Algorithm == SolarShadowAlgorithm::VoxelSdfClipmapPenumbra)
+    if (Algorithm == SolarShadowAlgorithm::PcfBilinear)
     {
         Result.FilteredVisibility = Result.RawVisibility;
     }

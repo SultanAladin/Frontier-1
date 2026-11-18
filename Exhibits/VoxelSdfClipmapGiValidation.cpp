@@ -864,7 +864,7 @@ int main()
         GeometricRaster::WorldRenderConfiguration Cfg {};
         Cfg.Engine = GeometricRaster::WorldRenderEngine::SdfGlobalIllumination;
         Cfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::HybridSdf;
-        Cfg.SdfGiBilateral = false;
+        Cfg.SdfGiBilateral = true;
         const auto EmisFrame = EmisRenderer.RenderWorldFrameWithEngine(Cfg, Cam, Cam, EmisBundle.Scene);
         EmissiveGiMeanLum = ComputeMeanLinearLum(EmisFrame.IndirectDiffuseHdr);
         SavePngRgba8(OutDir / "04_EmissiveOnly_SdfClipmapGi.png", W, H, EmisFrame.DisplayRgba8);
@@ -889,7 +889,7 @@ int main()
         GeometricRaster::WorldRenderConfiguration Cfg {};
         Cfg.Engine = GeometricRaster::WorldRenderEngine::SdfGlobalIllumination;
         Cfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::VoxelSdfClipmapPenumbra;
-        Cfg.SdfGiBilateral = false;
+        Cfg.SdfGiBilateral = true;
         const auto PtFrame = PtRenderer.RenderWorldFrameWithEngine(Cfg, Cam, Cam, PtBundle.Scene);
         SavePngRgba8(OutDir / "05_PointLight_SdfClipmapGi.png", W, H, PtFrame.DisplayRgba8);
     }
@@ -911,7 +911,7 @@ int main()
         GeometricRaster::WorldRenderConfiguration Cfg {};
         Cfg.Engine = GeometricRaster::WorldRenderEngine::SdfGlobalIllumination;
         Cfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::HybridSdf;
-        Cfg.SdfGiBilateral = false;
+        Cfg.SdfGiBilateral = true;
         const auto SaFrame = SaRenderer.RenderWorldFrameWithEngine(Cfg, Cam, Cam, SunAreaBundle.Scene);
         SavePngRgba8(OutDir / "06_SunAndArea_SdfClipmapGi.png", W, H, SaFrame.DisplayRgba8);
     }
@@ -921,7 +921,7 @@ int main()
     GeometricRaster::WorldRenderConfiguration RealSdfCfg {};
     RealSdfCfg.Engine = GeometricRaster::WorldRenderEngine::SdfGlobalIllumination;
     RealSdfCfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::HybridSdf;
-    RealSdfCfg.SdfGiBilateral = false;
+    RealSdfCfg.SdfGiBilateral = true;
     const auto CombinedA = Renderer.RenderWorldFrameWithEngine(RealSdfCfg, Cam, Cam, Scene);
     const double RealClipmapGiMs = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - GiStart).count();
@@ -960,15 +960,53 @@ int main()
         SCfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::HybridSdf;
         const auto S7 = ShadowRenderer.RenderWorldFrameWithEngine(SCfg, Cam, Cam, SunShadowBundle.Scene);
         SavePngRgba8(OutDir / "10_ShadowProof_HybridSdf.png", W, H, S7.DisplayRgba8);
+
+        // Render all 6 shadow algorithms cleanly in a 3x2 grid on the ControlVehicle scene (angled key sun casting visible foreground shadow)
+        SunShadowBundle.Scene.Sun.DirectionToSun = Mathematics::NormalizeAxis({ 0.48f, -0.52f, 0.70f });
+        ShadowRenderer.PrepareWorldScene(SunShadowBundle.Scene);
+        RebuildWorldTreeAndInstances(SunShadowBundle, PoseA, true);
+
+        GeometricRaster::WorldRenderConfiguration SixCfg = RealSdfCfg;
+        SixCfg.Engine = GeometricRaster::WorldRenderEngine::OpenPbrDirect;
+        const std::array<GeometricRaster::SolarShadowAlgorithm, 6u> SixAlgs {{
+            GeometricRaster::SolarShadowAlgorithm::ContactPcss,
+            GeometricRaster::SolarShadowAlgorithm::PcssPlaneAware,
+            GeometricRaster::SolarShadowAlgorithm::ShadowRayMarch,
+            GeometricRaster::SolarShadowAlgorithm::PcfBilinear,
+            GeometricRaster::SolarShadowAlgorithm::WideTreeRayQuery,
+            GeometricRaster::SolarShadowAlgorithm::HybridSdf,
+        }};
+        std::vector<std::vector<uint8_t>> SixTiles(6u);
+        for (std::size_t I = 0u; I < 6u; ++I)
+        {
+            SixCfg.ShadowAlgorithm = SixAlgs[I];
+            SixTiles[I] = ShadowRenderer.RenderWorldFrameWithEngine(SixCfg, Cam, Cam, SunShadowBundle.Scene).DisplayRgba8;
+        }
+        constexpr uint32_t Gap = 8u;
+        const uint32_t GridW = W * 3u + Gap * 2u;
+        const uint32_t GridH = H * 2u + Gap;
+        std::vector<uint8_t> GridImg(static_cast<std::size_t>(GridW) * GridH * 4u, 22u);
+        for (uint32_t I = 0u; I < 6u; ++I)
+        {
+            const uint32_t Ox = (I % 3u) * (W + Gap);
+            const uint32_t Oy = (I / 3u) * (H + Gap);
+            for (uint32_t Y = 0u; Y < H; ++Y)
+            {
+                std::memcpy(&GridImg[(static_cast<std::size_t>(Oy + Y) * GridW + Ox) * 4u],
+                            &SixTiles[I][static_cast<std::size_t>(Y) * W * 4u],
+                            static_cast<std::size_t>(W) * 4u);
+            }
+        }
+        SavePngRgba8(OutDir / "15_SixShadowTypes_Comparison.png", GridW, GridH, GridImg);
     }
 
-    // 3g. Deterministic Path Tracer Proof (16 SPP Owen-scrambled Sobol (0,2) + Dupuy-Benyoub Spherical-Cap VNDF + AreaLight MIS, NO Denoiser!)
+    // 3g. Deterministic Path Tracer Proof (16 SPP Owen-scrambled Sobol (0,2) + Dupuy-Benyoub Spherical-Cap VNDF + AreaLight MIS)
     const auto PtStart = std::chrono::steady_clock::now();
     GeometricRaster::WorldRenderConfiguration PtCfg {};
     PtCfg.Engine = GeometricRaster::WorldRenderEngine::DeterministicPathTrace;
     PtCfg.PathTraceSamples = 16u;
     PtCfg.PathTraceMaxBounces = 4u;
-    PtCfg.PathTraceDenoise = false;
+    PtCfg.PathTraceDenoise = true;
     const auto PtA = Renderer.RenderWorldFrameWithEngine(PtCfg, Cam, Cam, Scene);
     const double PtMs = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - PtStart).count();
@@ -976,7 +1014,7 @@ int main()
     const float PtDeterminismRmse = ComputeRmseRgb(PtA.DisplayRgba8, PtB.DisplayRgba8);
     SavePngRgba8(OutDir / "12_DeterministicPathTracer_SobolSphericalCap.png", W, H, PtA.DisplayRgba8);
     Score.Verify(PtDeterminismRmse == 0.0f,
-                 "Sobol (0,2) + Spherical-Cap VNDF Path Tracer (NO RNG, NO RR, NO Denoiser) is bit-exact deterministic");
+                 "Sobol (0,2) + Spherical-Cap VNDF Path Tracer (NO RNG, NO RR) is bit-exact deterministic");
 
     // 3h. Fake vs Real Audit Pair: (Left: Direct-Only / Flat-Ambient Fake, Right: Real Multi-Bounce Clipmap GI vs 16 SPP PT)
     double FakeNoGiMs = 0.0;

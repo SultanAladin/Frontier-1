@@ -809,6 +809,17 @@ void BuildShowcaseGalleryScene(
     OutBundle.Scene.LatticeConfig.FibonacciRayCount = 64u;
     OutBundle.Scene.LatticeConfig.BouncePasses      = 2u;
 
+    if (BuildCpuSdf)
+    {
+        OutBundle.Scene.ClipmapConfig.Clip0CenterWorld      = { 0.0f, 0.45f, 0.55f };
+        OutBundle.Scene.ClipmapConfig.Clip1CenterWorld      = { 0.0f, 0.45f, 0.55f };
+        OutBundle.Scene.ClipmapConfig.Clip0HalfExtentMeters = 2.8f;
+        OutBundle.Scene.ClipmapConfig.Clip1HalfExtentMeters = 5.6f;
+        OutBundle.Scene.ClipmapConfig.Clip0Resolution       = 48u;
+        OutBundle.Scene.ClipmapConfig.Clip1Resolution       = 48u;
+        OutBundle.Scene.ClipmapConfig.RadiosityBounces      = 2u;
+    }
+
     OutBundle.EditorCamera.CameraOrigin       = { 0.00f, -3.55f, 0.42f };
     OutBundle.EditorCamera.TargetPoint        = { 0.00f,  0.55f, 0.15f };
     OutBundle.EditorCamera.WorldUpAxis        = { 0.00f,  0.00f, 1.00f };

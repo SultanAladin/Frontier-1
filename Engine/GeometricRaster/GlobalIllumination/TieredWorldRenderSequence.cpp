@@ -1422,7 +1422,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
 
                 const bool HitGlassPx = (VisTargets.GlassPeelFront64.size() == TotalPixels && VisTargets.GlassPeelFront64[Off] != 0ull);
                 const uint32_t PixelSpp = (HitGlassPx && Spp >= 8u) ? std::min(64u, Spp * 3u) : Spp;
-                constexpr uint32_t PixelSeed = 0u; // Shared Owen-scrambled Sobol (0,2) point set: zero random pixel grain!
+                const uint32_t PixelSeed = ((PX * 1973u) ^ (PY * 9277u) ^ 26699u) | 1u; // Deterministic per-pixel Owen scramble (zero RNG, zero polygon streaks)
                 Mathematics::LinearRGB Sum {};
                 for (uint32_t S = 0u; S < PixelSpp; ++S)
                 {

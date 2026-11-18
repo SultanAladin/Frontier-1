@@ -1581,15 +1581,15 @@ ClipmapShadowResult VoxelSdfClipmapVolume::TraceClipmapSdfPenumbra(
         Voxel = std::max({ Sp.X, Sp.Y, Sp.Z, 0.04f });
     }
 
-    const Mathematics::Axis3D Origin = WorldPos + SurfaceNormal * 2.0e-4f;
+    const Mathematics::Axis3D Origin = WorldPos + SurfaceNormal * 0.032f;
     const float AngularRadius = IsDirectionalLight
-        ? std::max(0.00465f, LightAngularOrRadius)
-        : std::max(0.01f, LightAngularOrRadius / std::max(0.25f, MaxDistM));
+        ? std::max(0.012f, LightAngularOrRadius)
+        : std::max(0.015f, LightAngularOrRadius / std::max(0.25f, MaxDistM));
 
-    float Travel = Voxel;
+    float Travel = std::max(0.045f, Voxel * 0.45f);
     float Vis    = 1.0f;
 
-    for (uint32_t Step = 0u; Step < 96u && Travel < MaxDistM; ++Step)
+    for (uint32_t Step = 0u; Step < 80u && Travel < MaxDistM; ++Step)
     {
         const Mathematics::Axis3D P = Origin + ToLightDir * Travel;
         float Distance = 1.0e5f;
@@ -1617,19 +1617,19 @@ ClipmapShadowResult VoxelSdfClipmapVolume::TraceClipmapSdfPenumbra(
             }
         }
 
-        if (Distance < 0.008f)
-        {
-            Res.Visibility   = 0.0f;
-            Res.BlockerDistM = Travel;
-            return Res;
-        }
-        const float StepVis = std::clamp(Distance / std::max(0.001f, Travel * AngularRadius), 0.0f, 1.0f);
+        const float ConeR = std::max(Voxel * 0.35f, Travel * AngularRadius);
+        const float StepVis = SmoothStep(0.004f, ConeR, Distance);
         if (StepVis < Vis)
         {
             Vis = StepVis;
             Res.BlockerDistM = Travel;
         }
-        Travel += std::max(Voxel * 0.25f, Distance * 0.9f);
+        if (Vis < 0.002f)
+        {
+            Vis = 0.0f;
+            break;
+        }
+        Travel += std::max(Voxel * 0.32f, Distance * 0.85f);
     }
 
     Res.Visibility = Vis;
@@ -1662,7 +1662,7 @@ Mathematics::LinearRGB VoxelSdfClipmapVolume::EvaluateDeterministicConeGiOverPi(
         const Mathematics::Axis3D CDir = Mathematics::NormalizeAxis(
             T * (R * std::cos(Ang)) + B * (R * std::sin(Ang)) + N * std::sqrt(std::max(0.0f, 1.0f - R * R)));
 
-        float CT = std::max(0.055f, ActiveClip0.VoxelSpacingM * 0.90f);
+        float CT = std::max(0.14f, ActiveClip0.VoxelSpacingM * 1.15f);
         float CAlpha = 0.0f;
         Mathematics::LinearRGB CCol {};
 
@@ -1674,24 +1674,24 @@ Mathematics::LinearRGB VoxelSdfClipmapVolume::EvaluateDeterministicConeGiOverPi(
             if (Casc >= 3 || CD > 4.0e3f) break;
 
             const float Vox   = (Casc == 0) ? 0.125f : (Casc == 1) ? 0.25f : 0.50f;
-            const float ConeR = std::max(Vox * 0.85f, CT * 0.32f);
+            const float ConeR = std::max(Vox * 1.15f, CT * 0.42f);
             if (CD < ConeR)
             {
-                float Occ = 1.0f - SmoothStep(-Vox * 0.15f, ConeR, CD);
-                const auto SRad  = SampleClipmapRadiosity(SP, Casc, ConeR * 1.35f);
+                float Occ = (1.0f - SmoothStep(0.0f, ConeR, CD)) * 0.78f;
+                const auto SRad  = SampleClipmapRadiosity(SP, Casc, ConeR * 1.45f);
                 const auto SurfN = EvaluateClipmapNormal(SP, Casc, DynamicObjects);
-                const float FrontEmit = SmoothStep(-0.18f, 0.45f, Mathematics::EvaluateDot(SurfN, CDir * -1.0f)) * 1.15f;
+                const float FrontEmit = 0.45f + 0.70f * SmoothStep(-0.15f, 0.55f, Mathematics::EvaluateDot(SurfN, CDir * -1.0f));
                 if (CT < 0.85f && std::max({ SRad.R, SRad.G, SRad.B }) < 0.25f)
                 {
-                    Occ = std::min(1.0f, Occ * 1.35f);
+                    Occ = std::min(1.0f, Occ * 1.25f);
                 }
                 const float StepW = (1.0f - CAlpha) * Occ;
-                CCol.R += std::min(SRad.R, 8.0f) * FrontEmit * StepW;
-                CCol.G += std::min(SRad.G, 8.0f) * FrontEmit * StepW;
-                CCol.B += std::min(SRad.B, 8.0f) * FrontEmit * StepW;
+                CCol.R += std::min(SRad.R, 2.5f) * FrontEmit * StepW;
+                CCol.G += std::min(SRad.G, 2.5f) * FrontEmit * StepW;
+                CCol.B += std::min(SRad.B, 2.5f) * FrontEmit * StepW;
                 CAlpha += StepW;
             }
-            CT += std::max(CD * 0.78f, Vox * 0.68f);
+            CT += std::max(CD * 0.75f, Vox * 0.75f);
         }
 
         const float SkyHem = 0.5f + 0.5f * CDir.Z;
