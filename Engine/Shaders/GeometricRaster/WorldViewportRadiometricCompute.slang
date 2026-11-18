@@ -1673,11 +1673,14 @@ float3 ApplyAcesFilmicGpu(float3 Hdr)
     return saturate((V * (2.51 * V + 0.03)) / (V * (2.43 * V + 0.59) + 0.14));
 }
 
-uint PackLinearToSrgb8Rgba(float3 LinearColor)
+uint PackLinearToSrgb8Rgba(float3 LinearColor, uint2 PixelXY)
 {
     float3 C    = saturate(LinearColor);
     float3 Srgb = select(C <= float3(0.0031308), C * 12.92, 1.055 * pow(max(C, float3(1.0e-6)), float3(1.0 / 2.4)) - 0.055);
-    uint3  Byte = uint3(clamp(round(Srgb * 255.0), float3(0.0), float3(255.0)));
+    float  IgnA = frac(52.9829189 * frac(float(PixelXY.x) * 0.06711056 + float(PixelXY.y) * 0.00583715));
+    float  IgnB = frac(52.9829189 * frac(float(PixelXY.x + 17u) * 0.06711056 + float(PixelXY.y + 31u) * 0.00583715));
+    float  Tpdf = (IgnA + IgnB - 1.0) / 255.0;
+    uint3  Byte = uint3(clamp(round((Srgb + float3(Tpdf)) * 255.0), float3(0.0), float3(255.0)));
     return Byte.x | (Byte.y << 8u) | (Byte.z << 16u) | (255u << 24u);
 }
 
@@ -2299,5 +2302,5 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     float3 DisplayLinear = (DebugMode != 0u) ? FinalHdr : ApplyAcesFilmicGpu(FinalHdr);
-    OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(DisplayLinear);
+    OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(DisplayLinear, DispatchThreadID.xy);
 }

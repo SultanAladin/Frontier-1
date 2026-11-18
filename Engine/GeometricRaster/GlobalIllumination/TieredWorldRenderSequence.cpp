@@ -29,6 +29,20 @@ namespace
     return (C <= 0.0031308f) ? (12.92f * C) : (1.055f * std::pow(C, 1.0f / 2.4f) - 0.055f);
 }
 
+[[nodiscard]] float EvaluateTriangularSrgbDither(uint32_t PX, uint32_t PY) noexcept
+{
+    const auto Frac = [](float X) noexcept -> float { return X - std::floor(X); };
+    const float IgnA = Frac(52.9829189f * Frac(static_cast<float>(PX) * 0.06711056f + static_cast<float>(PY) * 0.00583715f));
+    const float IgnB = Frac(52.9829189f * Frac(static_cast<float>(PX + 17u) * 0.06711056f + static_cast<float>(PY + 31u) * 0.00583715f));
+    return (IgnA + IgnB - 1.0f) / 255.0f;
+}
+
+[[nodiscard]] uint8_t EncodeLinearToSrgbByteDithered(float LinearVal, float TpdfDither) noexcept
+{
+    const float S = std::clamp(EncodeLinearToSrgb(LinearVal) + TpdfDither, 0.0f, 1.0f);
+    return static_cast<uint8_t>(std::round(S * 255.0f));
+}
+
 [[nodiscard]] Mathematics::LinearRGB ApplyAcesFilmic(Mathematics::LinearRGB Hdr) noexcept
 {
     const auto Curve = [](float X) noexcept -> float
@@ -852,9 +866,10 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 }
                 Result.CompositeLinearHdr[Off] = OutHdr;
                 const auto Tone = (Config.DebugChannel != 0u) ? OutHdr : ApplyAcesFilmic(OutHdr);
-                Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
-                Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
-                Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
+                const float Dth = (Config.DebugChannel != 0u) ? 0.0f : EvaluateTriangularSrgbDither(PX, PY);
+                Result.DisplayRgba8[Off * 4u + 0u] = EncodeLinearToSrgbByteDithered(Tone.R, Dth);
+                Result.DisplayRgba8[Off * 4u + 1u] = EncodeLinearToSrgbByteDithered(Tone.G, Dth);
+                Result.DisplayRgba8[Off * 4u + 2u] = EncodeLinearToSrgbByteDithered(Tone.B, Dth);
                 Result.DisplayRgba8[Off * 4u + 3u] = 255u;
             }
         }
@@ -998,9 +1013,10 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 const auto Tone = (Config.DebugChannel != 0u)
                     ? Result.CompositeLinearHdr[Off]
                     : ApplyAcesFilmic(Result.CompositeLinearHdr[Off]);
-                Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
-                Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
-                Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
+                const float Dth = (Config.DebugChannel != 0u) ? 0.0f : EvaluateTriangularSrgbDither(PX, PY);
+                Result.DisplayRgba8[Off * 4u + 0u] = EncodeLinearToSrgbByteDithered(Tone.R, Dth);
+                Result.DisplayRgba8[Off * 4u + 1u] = EncodeLinearToSrgbByteDithered(Tone.G, Dth);
+                Result.DisplayRgba8[Off * 4u + 2u] = EncodeLinearToSrgbByteDithered(Tone.B, Dth);
                 Result.DisplayRgba8[Off * 4u + 3u] = 255u;
             }
         }
@@ -1257,9 +1273,10 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
 
             Result.CompositeLinearHdr[Off] = FinalHdr;
             const auto Tone = ApplyAcesFilmic(FinalHdr);
-            Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
-            Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
-            Result.DisplayRgba8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
+            const float Dth = (Config.DebugChannel != 0u) ? 0.0f : EvaluateTriangularSrgbDither(PX, PY);
+            Result.DisplayRgba8[Off * 4u + 0u] = EncodeLinearToSrgbByteDithered(Tone.R, Dth);
+            Result.DisplayRgba8[Off * 4u + 1u] = EncodeLinearToSrgbByteDithered(Tone.G, Dth);
+            Result.DisplayRgba8[Off * 4u + 2u] = EncodeLinearToSrgbByteDithered(Tone.B, Dth);
             Result.DisplayRgba8[Off * 4u + 3u] = 255u;
         }
     }

@@ -566,6 +566,96 @@ int main()
                      "Exported 04-OutdoorWorldWithAtmosphereGpu.png");
     }
 
+    // Exhibit 05: Sky-Alone 24-Hour Day-to-Night Cycle Animation (Zero Foreground Geometry, Zero Clouds)
+    {
+        WorldSceneSpecification SkyOnlyScene {};
+        {
+            MaterialSpace::SurfaceMaterial DummyMat {};
+            (void)SkyOnlyScene.MaterialRegister.RegisterMaterial(DummyMat);
+        }
+        SkyOnlyScene.Atmosphere.Medium.AtmosphereEnabled  = true;
+        SkyOnlyScene.Atmosphere.Solar.SolarEnabled        = true;
+        SkyOnlyScene.Atmosphere.Clouds.CloudsEnabled      = false;
+        SkyOnlyScene.Atmosphere.LocalCloud.LocalEnabled   = false;
+        SkyOnlyScene.Atmosphere.Moons[0]                  = { true, false, LunarSurfacePreset::Luna, 0.72f, 2.2f, 0.75f, 5.5f, 225.0f, 28.0f, 0.0f, 0.0f };
+        SkyOnlyScene.Atmosphere.Stars.StarfieldEnabled    = true;
+        SkyOnlyScene.Atmosphere.Stars.PointSizeScale      = 1.5f;
+        SkyOnlyScene.Atmosphere.Stars.BrightnessMultiplier = 1.6f;
+
+        const uint32_t FrameW = 360u;
+        const uint32_t FrameH = 200u;
+        PerspectiveCameraFrame SkyOnlyCam {};
+        SkyOnlyCam.CameraOrigin       = { 0.0f, 0.0f, 1.5f };
+        SkyOnlyCam.TargetPoint        = { 0.0f, 12.0f, 4.8f };
+        SkyOnlyCam.WorldUpAxis        = { 0.0f, 0.0f, 1.0f };
+        SkyOnlyCam.VerticalFovRadians = 0.96f;
+        SkyOnlyCam.ViewportWidthPx    = FrameW;
+        SkyOnlyCam.ViewportHeightPx   = FrameH;
+
+        constexpr uint32_t FrameCount = 24u;
+        const std::filesystem::path FramesDir = "/tmp/frontier_sky_cycle_frames";
+        std::filesystem::create_directories(FramesDir);
+        std::vector<uint8_t> CycleSheet(static_cast<std::size_t>(FrameW * 6u) * (FrameH * 4u) * 4u, 255u);
+        std::array<float, FrameCount> FrameMeans {};
+
+        WorldRenderConfiguration SkyCfg {};
+        SkyCfg.Engine = WorldRenderEngine::OpenPbrDirect;
+
+        double MaxSkyColumnJump = 0.0;
+        for (uint32_t F = 0u; F < FrameCount; ++F)
+        {
+            // Sweep smoothly from 05:00 dawn across noon (12:00), sunset (18:00), midnight (24:00) to 04:00 pre-dawn
+            const float LocalHr = std::fmod(5.0f + static_cast<float>(F), 24.0f);
+            SkyOnlyScene.Atmosphere.Solar.LocalHours = LocalHr;
+            SkyOnlyScene.Atmosphere.Solar.ManualDirectionOverride = false;
+            SkyOnlyScene.Atmosphere.Moons[0].AzimuthDegrees   = 205.0f + static_cast<float>(F) * 2.5f;
+            SkyOnlyScene.Atmosphere.Moons[0].ElevationDegrees = 18.0f + 16.0f * std::sin(static_cast<float>(F) * 0.24f);
+
+            CpuRenderer.PrepareWorldScene(SkyOnlyScene);
+            if (GpuOk)
+            {
+                GpuRenderer.SynchronizeSceneResources(SkyOnlyScene, &CpuRenderer.InspectIrradianceLattice(), F == 0u);
+            }
+
+            std::vector<uint8_t> FrameRgba;
+            if (!GpuOk || !GpuRenderer.RenderWorldViewportWithEngine(SkyCfg, 0u, SkyOnlyCam, SkyOnlyScene, FrameRgba))
+            {
+                FrameRgba = CpuRenderer.RenderWorldFrameWithEngine(SkyCfg, SkyOnlyCam, SkyOnlyCam, SkyOnlyScene).DisplayRgba8;
+            }
+            FrameMeans[F] = MeanRgbaBrightness(FrameRgba);
+
+            // Check horizontal-band-free vertical gradient smoothness across 3 sky columns (minimum jump ignores pinpoint stars/sun)
+            const auto ColLuma = [&](uint32_t CX, uint32_t Y) -> double
+            {
+                const std::size_t P = (static_cast<std::size_t>(Y) * FrameW + CX) * 4u;
+                return 0.2126 * FrameRgba[P] + 0.7152 * FrameRgba[P + 1u] + 0.0722 * FrameRgba[P + 2u];
+            };
+            for (uint32_t Y = 5u; Y + 5u < FrameH / 2u; ++Y)
+            {
+                const double J0 = std::abs(ColLuma(30u, Y + 1u) - ColLuma(30u, Y));
+                const double J1 = std::abs(ColLuma(90u, Y + 1u) - ColLuma(90u, Y));
+                const double J2 = std::abs(ColLuma(150u, Y + 1u) - ColLuma(150u, Y));
+                const double RowBandJump = std::min({ J0, J1, J2 });
+                MaxSkyColumnJump = std::max(MaxSkyColumnJump, RowBandJump);
+            }
+
+            char NameBuf[64];
+            std::snprintf(NameBuf, sizeof(NameBuf), "frame_%02u.png", F);
+            (void)WritePngRgba8(FramesDir / NameBuf, FrameW, FrameH, FrameRgba.data());
+            BlitTile(CycleSheet, FrameW * 6u, (F % 6u) * FrameW, (F / 6u) * FrameH, FrameRgba.data(), FrameW, FrameH);
+        }
+
+        // Frame 7 is 12:00 Noon, Frame 19 is 00:00 Midnight
+        Score.Verify(FrameMeans[7] > FrameMeans[19] * 3.0f,
+                     "Sky-alone day-to-night cycle transitions cleanly from bright noon to dark starry night");
+        Score.Verify(MaxSkyColumnJump < 12.0,
+                     "Sky-alone vertical gradient is smooth without Mach-band contour steps (< 12 LSB/px)");
+
+        const std::filesystem::path P5 = OutDir / "05-SkyAloneDayToNightCycle.png";
+        Score.Verify(WritePngRgba8(P5, FrameW * 6u, FrameH * 4u, CycleSheet.data()),
+                     "Exported 05-SkyAloneDayToNightCycle.png");
+    }
+
     if (GpuOk)
     {
         GpuRenderer.TeardownSequence();

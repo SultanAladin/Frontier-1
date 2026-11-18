@@ -111,7 +111,7 @@ float SampleCloudDeckDensityGpu(
     float Profile = Bot * Top;
     if (Profile <= 0.001) return 0.0;
 
-    float HighOctFade = 1.0 - smoothstep(6500.0, 22000.0, DistanceMeters);
+    float HighOctFade = 1.0 - smoothstep(5500.0, 19000.0, DistanceMeters);
     float AltKm       = (Alt - FloorM) * 0.001;
     float VeerAng     = AltKm * VeerRadPerKm;
     float CsV         = cos(VeerAng);
@@ -132,60 +132,62 @@ float SampleCloudDeckDensityGpu(
     float ShapeCov = clamp(Cov + Anvil * H * H * 0.22, 0.0, 1.0);
     float NNorm    = 0.0;
 
-    if (FormationIndex == 6u) // Lenticular
+    if (FormationIndex == 6u) // Lenticular (smooth FBM-warped laminar mountain lenses)
     {
         float MacroLobes    = LatticeNoiseCloud3(float3(WX * FScale * 0.22, WY * FScale * 0.55, 1.7));
-        float SubtleWarp    = LatticeNoiseCloud3(float3(WX * FScale * 0.65, WY * FScale * 0.65, WZ * FScale * 0.25));
-        float LaminarSlices = pow(0.5 + 0.5 * sin(H * CloudPiConst * 5.0 - 0.6), 1.35);
-        float LensMask      = smoothstep(0.46, 0.76, MacroLobes + (SubtleWarp - 0.5) * 0.22);
-        NNorm   = clamp(LensMask * (0.45 + 0.55 * LaminarSlices), 0.0, 1.0);
-        Profile = smoothstep(0.04, 0.22, H) * (1.0 - smoothstep(0.75, 0.96, H));
+        float SubtleWarp    = LatticeNoiseCloud3(float3(WX * FScale * 0.58, WY * FScale * 0.58, WZ * FScale * 0.30));
+        float LaminarSlices = 0.5 + 0.5 * sin(H * CloudPiConst * 2.5 - 0.3 + (SubtleWarp - 0.5) * 0.85);
+        float LensMask      = smoothstep(0.45, 0.76, MacroLobes + (SubtleWarp - 0.5) * 0.26);
+        NNorm   = clamp(LensMask * (0.52 + 0.48 * HighOctFade * LaminarSlices), 0.0, 1.0);
+        Profile = smoothstep(0.04, 0.24, H) * (1.0 - smoothstep(0.74, 0.96, H));
     }
     else if (FormationIndex == 7u) // Mammatus
     {
         float BaseFbm    = CloudFbmGpu3(float3(WX * FScale * 0.95, WY * FScale * 0.95, WZ * FScale * 1.15), HighOctFade);
-        float CellPhaseX = sin(WX * FScale * 3.8 + BaseFbm * 2.6);
-        float CellPhaseY = sin(WY * FScale * 3.8 - BaseFbm * 2.6);
-        float PouchLobe  = pow(abs(CellPhaseX * CellPhaseY), 0.65);
-        float LowerMask  = 1.0 - smoothstep(0.18, 0.65, H);
-        NNorm    = clamp(((BaseFbm - 0.25) / 0.44) * 0.55 + PouchLobe * LowerMask * 0.62, 0.0, 1.0);
+        float CellPhaseX = sin(WX * FScale * 3.4 + BaseFbm * 2.8);
+        float CellPhaseY = sin(WY * FScale * 3.4 - BaseFbm * 2.8);
+        float PouchLobe  = pow(abs(CellPhaseX * CellPhaseY), 0.75) * (0.3 + 0.7 * HighOctFade);
+        float LowerMask  = 1.0 - smoothstep(0.18, 0.68, H);
+        NNorm    = clamp(((BaseFbm - 0.24) / 0.44) * 0.62 + PouchLobe * LowerMask * 0.58, 0.0, 1.0);
         ShapeCov = clamp(Cov + LowerMask * 0.14 + Anvil * H * 0.16, 0.0, 1.0);
     }
     else if (FormationIndex == 8u) // KelvinHelmholtz
     {
-        float MacroBand = smoothstep(0.40, 0.72, LatticeNoiseCloud3(float3(WX * FScale * 0.28, WY * FScale * 0.28, 3.1)));
+        float MacroBand = smoothstep(0.38, 0.72, LatticeNoiseCloud3(float3(WX * FScale * 0.28, WY * FScale * 0.28, 3.1)));
         float CurlSkew  = 280.0 * sin(H * CloudPiConst) + 190.0 * H * H;
         float CurlX     = WX + CurlSkew;
-        float WavePhase = CurlX * FScale * 4.4 + LatticeNoiseCloud3(float3(WX * FScale * 0.9, WY * FScale * 0.9, 0.4)) * 2.4;
-        float Crest     = 0.5 + 0.5 * sin(WavePhase + H * 3.6);
-        float BreakCurl = smoothstep(0.32, 0.86, Crest) * smoothstep(0.12, 0.65, H + 0.24 * Crest);
+        float WavePhase = CurlX * FScale * 3.8 + LatticeNoiseCloud3(float3(WX * FScale * 0.85, WY * FScale * 0.85, 0.4)) * 2.6;
+        float Crest     = 0.5 + 0.5 * sin(WavePhase + H * 3.0);
+        float BreakCurl = smoothstep(0.28, 0.88, Crest) * smoothstep(0.12, 0.65, H + 0.24 * Crest);
         float Billow    = CloudFbmGpu3(float3(CurlX * FScale * 1.05, WY * FScale * 0.85, WZ * FScale * 1.4), HighOctFade);
-        NNorm = clamp(MacroBand * (BreakCurl * 0.68 + ((Billow - 0.26) / 0.46) * 0.42), 0.0, 1.0);
+        NNorm = clamp(MacroBand * (BreakCurl * (0.35 + 0.35 * HighOctFade) + ((Billow - 0.24) / 0.46) * 0.48), 0.0, 1.0);
     }
     else if (FormationIndex == 9u) // Asperitas
     {
         float Warp   = CloudFbmGpu3(float3(WX * FScale * 0.75, WY * FScale * 0.75, WZ * FScale), HighOctFade);
-        float W1     = sin(WX * FScale * 4.2 + WY * FScale * 1.6 + Warp * 3.2);
-        float W2     = cos(WY * FScale * 4.6 - WX * FScale * 1.8 - Warp * 2.8);
-        float Swell  = 0.5 + 0.25 * (W1 + W2);
+        float W1     = sin(WX * FScale * 3.8 + WY * FScale * 1.5 + Warp * 3.4);
+        float W2     = cos(WY * FScale * 4.1 - WX * FScale * 1.6 - Warp * 3.0);
+        float Swell  = 0.5 + 0.25 * (W1 + W2) * (0.3 + 0.7 * HighOctFade);
         float Detail = CloudFbmGpu3(float3(WX * FScale * 1.15, WY * FScale * 1.15, WZ * FScale * 1.3), HighOctFade);
-        NNorm = clamp(((Detail - 0.24) / 0.46) * 0.62 + Swell * 0.46, 0.0, 1.0);
+        NNorm = clamp(((Detail - 0.24) / 0.46) * 0.64 + Swell * 0.44, 0.0, 1.0);
     }
     else if (FormationIndex == 10u) // Nacreous
     {
-        float MacroEnv = smoothstep(0.36, 0.72, LatticeNoiseCloud3(float3(WX * FScale * 0.35, WY * FScale * 0.35, 2.3)));
-        float Ribbon   = 0.5 + 0.5 * sin((WX * 0.42 + WY * 0.88) * FScale * 3.2 +
-                                         LatticeNoiseCloud3(float3(WX * FScale * 0.8, WY * FScale * 0.8, 0.5)) * 3.5);
-        float Silk     = LatticeNoiseCloud3(float3(WX * FScale * 1.2, WY * FScale * 1.2, WZ * FScale));
-        NNorm = clamp(MacroEnv * (Ribbon * 0.68 + Silk * 0.38), 0.0, 1.0);
+        float MacroEnv = smoothstep(0.32, 0.74, LatticeNoiseCloud3(float3(WX * FScale * 0.34, WY * FScale * 0.34, 2.3)));
+        float WarpN    = LatticeNoiseCloud3(float3(WX * FScale * 0.75, WY * FScale * 0.75, 0.5));
+        float RibSin   = 0.5 + 0.5 * sin((WX * 0.42 + WY * 0.88) * FScale * 2.6 + WarpN * 3.8);
+        float Ribbon   = RibSin * (1.45 - 0.45 * RibSin);
+        float Silk     = LatticeNoiseCloud3(float3(WX * FScale * 1.05, WY * FScale * 1.05, WZ * FScale));
+        NNorm = clamp(MacroEnv * ((0.22 + 0.38 * HighOctFade) * Ribbon + Silk * 0.52), 0.0, 1.0);
     }
     else if (FormationIndex == 11u) // Pyrocumulus
     {
         float PlumeColumn = LatticeNoiseCloud3(float3(WX * FScale * 0.36, WY * FScale * 0.36, 4.7));
-        float PlumeMask   = smoothstep(0.46, 0.74, PlumeColumn + H * 0.10);
+        float PlumeMask   = smoothstep(0.45, 0.74, PlumeColumn + H * 0.10);
         float Base        = CloudFbmGpu3(float3(WX * FScale * 0.90, WY * FScale * 0.90, WZ * FScale * 1.15), HighOctFade);
-        float BillowRidge = 1.0 - abs(LatticeNoiseCloud3(float3(WX * FScale * 2.1, WY * FScale * 2.1, WZ * FScale * 2.3)) * 2.0 - 1.0);
-        NNorm    = clamp(PlumeMask * (((Base - 0.20) / 0.44) * 0.68 + BillowRidge * 0.38), 0.0, 1.0);
+        float RidgeRaw    = LatticeNoiseCloud3(float3(WX * FScale * 1.6, WY * FScale * 1.6, WZ * FScale * 1.7)) * 2.0 - 1.0;
+        float BillowRidge = 1.0 - RidgeRaw * RidgeRaw;
+        NNorm    = clamp(PlumeMask * (((Base - 0.20) / 0.44) * 0.76 + BillowRidge * 0.28 * (0.25 + 0.75 * HighOctFade)), 0.0, 1.0);
         ShapeCov = clamp(Cov + 0.14 * H, 0.0, 1.0);
     }
     else // Classic 0..5
@@ -335,7 +337,7 @@ float3 EvaluateLocalCloudsSegmentGpu(
     if (SafeMax <= 0.05) return TotalRad;
 
     float Ign      = frac(52.9829189 * frac(dot(PixelCoord, float2(0.06711056, 0.00583715))));
-    float Jitter   = 0.5 + 0.72 * (Ign - 0.5);
+    float Jitter   = Ign;
     float3 SunDir  = normalize(Cfg.SunAxisToggle.xyz);
     float CosTheta = dot(RayDir, SunDir);
     float TimeSec  = Cfg.OriginTimeVector.w;
@@ -467,8 +469,8 @@ float3 EvaluateVolumetricCloudsGpu(
     OutTransmittance = 1.0;
     float3 TotalRad  = float3(0.0, 0.0, 0.0);
 
-    float2 R2Val  = frac(PixelCoord.x * float2(0.7548776662, 0.5698402910) + PixelCoord.y * float2(0.5698402910, 0.3247179572));
-    float  Jitter = 0.5 + 0.34 * (R2Val.x - 0.5);
+    float Ign    = frac(52.9829189 * frac(dot(PixelCoord, float2(0.06711056, 0.00583715))));
+    float Jitter = Ign;
 
     float3 SunDir = normalize(Cfg.SunAxisToggle.xyz);
     float  WindX  = (Cfg.SkyColorWind.w > 0.5) ? (Cfg.WindVectorOcclude.x * Cfg.OriginTimeVector.w) : 0.0;
@@ -480,8 +482,8 @@ float3 EvaluateVolumetricCloudsGpu(
             Cfg, Cfg.OriginTimeVector.xyz, RayDir, 60000.0, PixelCoord, OutTransmittance);
     }
 
-    // 2. Global Planetary Cloud Shell (64 jittered steps + LOD FBM + 3-octave multi-scattering + Beer-Powder + Ekman Veer + Turbulence)
-    if (Cfg.SunAxisToggle.w < 0.5 || RayDir.z <= 0.008 || Cfg.DeckGeometry.z <= 0.01 || Cfg.DeckGeometry.w <= 0.01)
+    // 2. Global Planetary Cloud Shell (96 IGN-jittered steps + LOD FBM + 3-octave multi-scattering + Beer-Powder + Ekman Veer + Turbulence)
+    if (Cfg.SunAxisToggle.w < 0.5 || RayDir.z <= 0.006 || Cfg.DeckGeometry.z <= 0.01 || Cfg.DeckGeometry.w <= 0.01)
     {
         return TotalRad;
     }
@@ -493,10 +495,10 @@ float3 EvaluateVolumetricCloudsGpu(
 
     float2 EnterHit = IntersectCloudShell(OrigZ, RayDir.z, PlanetR + FloorM);
     float2 ExitHit  = IntersectCloudShell(OrigZ, RayDir.z, PlanetR + FloorM + ThickM);
-    float  MaxDist  = min(ExitHit.y, EnterHit.y + 28000.0);
-    if (MaxDist <= EnterHit.y || EnterHit.y < 0.0 || EnterHit.y > 65000.0) return TotalRad;
+    float  MaxDist  = min(ExitHit.y, EnterHit.y + 32000.0);
+    if (MaxDist <= EnterHit.y || EnterHit.y < 0.0 || EnterHit.y > 85000.0) return TotalRad;
 
-    float Dt        = (MaxDist - EnterHit.y) / 64.0;
+    float Dt        = (MaxDist - EnterHit.y) / 96.0;
     float FScale    = 0.00065 / max(0.08, Cfg.DeckOptics.x);
     float Cov       = clamp(Cfg.DeckGeometry.z, 0.0, 1.0);
     float DensMul   = max(0.0, Cfg.DeckGeometry.w) * 0.0085;
@@ -512,7 +514,7 @@ float3 EvaluateVolumetricCloudsGpu(
 
     float  DeckT = 1.0;
     float3 DeckR = float3(0.0, 0.0, 0.0);
-    for (uint S = 0u; S < 64u; ++S)
+    for (uint S = 0u; S < 96u; ++S)
     {
         float  T = EnterHit.y + (float(S) + Jitter) * Dt;
         float3 P = float3(RayDir.x * T, RayDir.y * T, OrigZ + RayDir.z * T);
@@ -583,7 +585,7 @@ float3 EvaluateVolumetricCloudsGpu(
         }
     }
 
-    float LowAngleFade = smoothstep(0.012, 0.165, RayDir.z);
+    float LowAngleFade = smoothstep(0.008, 0.165, RayDir.z) * (1.0 - smoothstep(42000.0, 82000.0, EnterHit.y));
     float Haze = 1.0 - exp(-EnterHit.y * 0.000032);
     float3 HorizonTint = max(Cfg.SkyColorWind.xyz, float3(0.18, 0.25, 0.36) * (0.25 + 0.75 * max(0.0, SunDir.z)));
     DeckR = lerp(DeckR, HorizonTint * (1.0 - DeckT), Haze * 0.78) * LowAngleFade;

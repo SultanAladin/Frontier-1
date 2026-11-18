@@ -45,8 +45,8 @@ struct AtmosphericMediumConfiguration
 class AtmosphericSkySequence
 {
 public:
-    static constexpr uint32_t SkyViewWidthPx       = 96u;
-    static constexpr uint32_t SkyViewHeightPx      = 48u;
+    static constexpr uint32_t SkyViewWidthPx       = 256u;
+    static constexpr uint32_t SkyViewHeightPx      = 128u;
     static constexpr uint32_t TransmittanceWidthPx = 128u;
     static constexpr uint32_t TransmittanceHeightPx = 32u;
 
@@ -55,13 +55,13 @@ public:
         const Mathematics::Axis3D&            SunDirection,
         const AtmosphericMediumConfiguration& Medium) noexcept;
 
-    // Rebuilds the 96x48 RGBA32F Bruneton/Hillaire SkyView LUT on CPU for CPU fallback & DDGI IBL parity
+    // Rebuilds the 256x128 RGBA32F Bruneton/Hillaire SkyView LUT on CPU for CPU fallback & DDGI IBL parity
     void BuildSkyViewLut(
         const Mathematics::Axis3D&            SunDirection,
         const AtmosphericMediumConfiguration& Medium,
         float                                 SolarIntensityScale = 22.0f);
 
-    // Samples the cached 96x48 SkyView LUT using non-linear elevation mapping
+    // Samples the cached 256x128 SkyView LUT using non-linear elevation mapping + Catmull-Rom vertical filtering
     [[nodiscard]] Mathematics::LinearRGB SampleSkyViewDirection(
         const Mathematics::Axis3D& WorldDirection) const noexcept;
 

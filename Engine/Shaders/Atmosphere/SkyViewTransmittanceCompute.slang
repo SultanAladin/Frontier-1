@@ -91,12 +91,14 @@ float3 EvaluateSkyViewLutSample(StructuredBuffer<float4> SkyLut, uint WidthPx, u
     int   IY1 = clamp(IY0 + 1, 0, int(HeightPx) - 1);
     float TX  = FX - floor(FX);
     float TY  = FY - floor(FY);
+    float SX  = TX * TX * (3.0 - 2.0 * TX);
+    float SY  = TY * TY * (3.0 - 2.0 * TY);
 
     float3 C00 = SkyLut[uint(IY0) * WidthPx + uint(IX0)].xyz;
     float3 C10 = SkyLut[uint(IY0) * WidthPx + uint(IX1)].xyz;
     float3 C01 = SkyLut[uint(IY1) * WidthPx + uint(IX0)].xyz;
     float3 C11 = SkyLut[uint(IY1) * WidthPx + uint(IX1)].xyz;
-    return lerp(lerp(C00, C10, TX), lerp(C01, C11, TX), TY);
+    return lerp(lerp(C00, C10, SX), lerp(C01, C11, SX), SY);
 }
 
 float3 ComputePhysicalSkyTexel(AtmosphericSkyUniformBlock Uni, float2 Uv)
@@ -145,11 +147,11 @@ float3 ComputePhysicalSkyTexel(AtmosphericSkyUniformBlock Uni, float2 Uv)
     float3 TAccum   = float3(1.0, 1.0, 1.0);
     float3 RadAccum = float3(0.0, 0.0, 0.0);
     float3 MsAccum  = float3(0.0, 0.0, 0.0);
-    float  Step     = max(1.0, MaxDist / 18.0);
+    float  Step     = max(1.0, MaxDist / 28.0);
     float  AvgGnd   = (Uni.GroundAlbedoLimbGlow.x + Uni.GroundAlbedoLimbGlow.y + Uni.GroundAlbedoLimbGlow.z) * 0.333333;
     float  MsBounce = 0.24 + 0.18 * AvgGnd;
 
-    for (uint S = 0u; S < 18u; ++S)
+    for (uint S = 0u; S < 28u; ++S)
     {
         float  T   = (float(S) + 0.5) * Step;
         float3 P   = float3(0.0, 0.0, OrigZ) + Rd * T;

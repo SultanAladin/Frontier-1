@@ -116,7 +116,8 @@ constexpr float ViewerAltM = 100.0f;
         return 0.0f;
     }
 
-    const float HighOctFade = 1.0f - SmoothStep(6500.0f, 22000.0f, DistanceMeters);
+    const float HighOctFade = 1.0f - SmoothStep(5500.0f, 19000.0f, DistanceMeters);
+    const float WaveDetail  = 0.28f + 0.72f * HighOctFade;
     const float AltKm       = (Alt - FloorM) * 0.001f;
     const float VeerAng     = AltKm * VeerRadPerKm;
     const float CsV         = std::cos(VeerAng);
@@ -137,61 +138,65 @@ constexpr float ViewerAltM = 100.0f;
     float ShapeCov = std::clamp(Cov + Anvil * H * H * 0.22f, 0.0f, 1.0f);
     float NNorm    = 0.0f;
 
-    if (FormationIndex == 6u) // Lenticular: large organic wind-aligned stacked laminar mountain-wave lenses
+    if (FormationIndex == 6u) // Lenticular: smooth FBM-warped laminar mountain-wave lenses
     {
-        // Anisotropic macro envelope stretched along wind axis + smooth vertical laminar pancakes
         const float MacroLobes = SmoothLatticeNoise3(WX * FScale * 0.22f, WY * FScale * 0.55f, 1.7f);
-        const float SubtleWarp = SmoothLatticeNoise3(WX * FScale * 0.65f, WY * FScale * 0.65f, WZ * FScale * 0.25f);
-        const float LaminarSlices = std::pow(0.5f + 0.5f * std::sin(H * Constants::PiFloat * 5.0f - 0.6f), 1.35f);
-        const float LensMask = SmoothStep(0.46f, 0.76f, MacroLobes + (SubtleWarp - 0.5f) * 0.22f);
-        NNorm   = std::clamp(LensMask * (0.45f + 0.55f * LaminarSlices), 0.0f, 1.0f);
-        Profile = SmoothStep(0.04f, 0.22f, H) * (1.0f - SmoothStep(0.75f, 0.96f, H));
+        const float SubtleWarp = CloudFbm3(WX * FScale * 0.58f, WY * FScale * 0.58f, WZ * FScale * 0.30f, HighOctFade);
+        const float LaminarPhase = H * Constants::PiFloat * 2.5f - 0.3f + (SubtleWarp - 0.5f) * 0.85f;
+        const float LaminarRaw   = std::pow(0.5f + 0.5f * std::sin(LaminarPhase), 1.15f);
+        const float LaminarMix   = 0.35f + 0.45f * WaveDetail;
+        const float LaminarSlices = 0.76f * (1.0f - LaminarMix) + LaminarRaw * LaminarMix;
+        const float LensMask = SmoothStep(0.45f, 0.76f, MacroLobes + (SubtleWarp - 0.5f) * 0.26f);
+        NNorm   = std::clamp(LensMask * LaminarSlices, 0.0f, 1.0f);
+        Profile = SmoothStep(0.04f, 0.24f, H) * (1.0f - SmoothStep(0.74f, 0.96f, H));
     }
     else if (FormationIndex == 7u) // Mammatus: dramatic cellular hanging pouches under storm deck
     {
         const float BaseFbm    = CloudFbm3(WX * FScale * 0.95f, WY * FScale * 0.95f, WZ * FScale * 1.15f, HighOctFade);
-        const float CellPhaseX = std::sin(WX * FScale * 3.8f + BaseFbm * 2.6f);
-        const float CellPhaseY = std::sin(WY * FScale * 3.8f - BaseFbm * 2.6f);
-        const float PouchLobe  = std::pow(std::abs(CellPhaseX * CellPhaseY), 0.65f);
-        const float LowerMask  = 1.0f - SmoothStep(0.18f, 0.65f, H);
-        NNorm    = std::clamp(((BaseFbm - 0.25f) / 0.44f) * 0.55f + PouchLobe * LowerMask * 0.62f, 0.0f, 1.0f);
+        const float CellPhaseX = std::sin(WX * FScale * 3.4f + BaseFbm * 2.8f);
+        const float CellPhaseY = std::sin(WY * FScale * 3.4f - BaseFbm * 2.8f);
+        const float PouchLobe  = std::pow(std::abs(CellPhaseX * CellPhaseY), 0.75f) * WaveDetail;
+        const float LowerMask  = 1.0f - SmoothStep(0.18f, 0.68f, H);
+        NNorm    = std::clamp(((BaseFbm - 0.24f) / 0.44f) * (0.58f + 0.22f * (1.0f - WaveDetail)) + PouchLobe * LowerMask * 0.58f, 0.0f, 1.0f);
         ShapeCov = std::clamp(Cov + LowerMask * 0.14f + Anvil * H * 0.16f, 0.0f, 1.0f);
     }
     else if (FormationIndex == 8u) // KelvinHelmholtz: localized breaking wave-crest curls
     {
-        const float MacroBand = SmoothStep(0.40f, 0.72f, SmoothLatticeNoise3(WX * FScale * 0.28f, WY * FScale * 0.28f, 3.1f));
+        const float MacroBand = SmoothStep(0.38f, 0.72f, SmoothLatticeNoise3(WX * FScale * 0.28f, WY * FScale * 0.28f, 3.1f));
         const float CurlSkew  = 280.0f * std::sin(H * Constants::PiFloat) + 190.0f * H * H;
         const float CurlX     = WX + CurlSkew;
-        const float WavePhase = CurlX * FScale * 4.4f + SmoothLatticeNoise3(WX * FScale * 0.9f, WY * FScale * 0.9f, 0.4f) * 2.4f;
-        const float Crest     = 0.5f + 0.5f * std::sin(WavePhase + H * 3.6f);
-        const float BreakCurl = SmoothStep(0.32f, 0.86f, Crest) * SmoothStep(0.12f, 0.65f, H + 0.24f * Crest);
+        const float WavePhase = CurlX * FScale * 3.8f + CloudFbm3(WX * FScale * 0.85f, WY * FScale * 0.85f, 0.4f, HighOctFade) * 2.6f;
+        const float Crest     = 0.5f + 0.5f * std::sin(WavePhase + H * 3.0f);
+        const float BreakCurl = SmoothStep(0.28f, 0.88f, Crest) * SmoothStep(0.12f, 0.65f, H + 0.24f * Crest);
         const float Billow    = CloudFbm3(CurlX * FScale * 1.05f, WY * FScale * 0.85f, WZ * FScale * 1.4f, HighOctFade);
-        NNorm = std::clamp(MacroBand * (BreakCurl * 0.68f + ((Billow - 0.26f) / 0.46f) * 0.42f), 0.0f, 1.0f);
+        NNorm = std::clamp(MacroBand * (BreakCurl * (0.35f + 0.35f * WaveDetail) + ((Billow - 0.24f) / 0.46f) * 0.48f), 0.0f, 1.0f);
     }
     else if (FormationIndex == 9u) // Asperitas: undulating gravity-wave undersides
     {
         const float Warp   = CloudFbm3(WX * FScale * 0.75f, WY * FScale * 0.75f, WZ * FScale, HighOctFade);
-        const float W1     = std::sin(WX * FScale * 4.2f + WY * FScale * 1.6f + Warp * 3.2f);
-        const float W2     = std::cos(WY * FScale * 4.6f - WX * FScale * 1.8f - Warp * 2.8f);
-        const float Swell  = 0.5f + 0.25f * (W1 + W2);
+        const float W1     = std::sin(WX * FScale * 3.8f + WY * FScale * 1.5f + Warp * 3.4f);
+        const float W2     = std::cos(WY * FScale * 4.1f - WX * FScale * 1.6f - Warp * 3.0f);
+        const float Swell  = 0.5f + 0.25f * (W1 + W2) * WaveDetail;
         const float Detail = CloudFbm3(WX * FScale * 1.15f, WY * FScale * 1.15f, WZ * FScale * 1.3f, HighOctFade);
-        NNorm = std::clamp(((Detail - 0.24f) / 0.46f) * 0.62f + Swell * 0.46f, 0.0f, 1.0f);
+        NNorm = std::clamp(((Detail - 0.24f) / 0.46f) * 0.64f + Swell * 0.44f, 0.0f, 1.0f);
     }
     else if (FormationIndex == 10u) // Nacreous: smooth stratospheric mother-of-pearl ribbons
     {
-        const float MacroEnv = SmoothStep(0.36f, 0.72f, SmoothLatticeNoise3(WX * FScale * 0.35f, WY * FScale * 0.35f, 2.3f));
-        const float Ribbon   = 0.5f + 0.5f * std::sin((WX * 0.42f + WY * 0.88f) * FScale * 3.2f +
-                                                      SmoothLatticeNoise3(WX * FScale * 0.8f, WY * FScale * 0.8f, 0.5f) * 3.5f);
-        const float Silk     = SmoothLatticeNoise3(WX * FScale * 1.2f, WY * FScale * 1.2f, WZ * FScale);
-        NNorm = std::clamp(MacroEnv * (Ribbon * 0.68f + Silk * 0.38f), 0.0f, 1.0f);
+        const float MacroEnv = SmoothStep(0.32f, 0.74f, CloudFbm3(WX * FScale * 0.34f, WY * FScale * 0.34f, 2.3f, HighOctFade));
+        const float WarpFbm  = CloudFbm3(WX * FScale * 0.75f, WY * FScale * 0.75f, 0.5f, HighOctFade);
+        const float Ribbon   = std::pow(0.5f + 0.5f * std::sin((WX * 0.42f + WY * 0.88f) * FScale * 2.6f + WarpFbm * 3.8f), 0.75f);
+        const float Silk     = CloudFbm3(WX * FScale * 1.05f, WY * FScale * 1.05f, WZ * FScale, HighOctFade);
+        const float RibMix   = 0.35f + 0.55f * WaveDetail;
+        NNorm = std::clamp(MacroEnv * ((0.52f * (1.0f - RibMix) + Ribbon * RibMix) * 0.58f + Silk * 0.48f), 0.0f, 1.0f);
     }
     else if (FormationIndex == 11u) // Pyrocumulus: isolated towering cauliflower thermal plumes
     {
         const float PlumeColumn = SmoothLatticeNoise3(WX * FScale * 0.36f, WY * FScale * 0.36f, 4.7f);
-        const float PlumeMask   = SmoothStep(0.46f, 0.74f, PlumeColumn + H * 0.10f);
+        const float PlumeMask   = SmoothStep(0.45f, 0.74f, PlumeColumn + H * 0.10f);
         const float Base        = CloudFbm3(WX * FScale * 0.90f, WY * FScale * 0.90f, WZ * FScale * 1.15f, HighOctFade);
-        const float BillowRidge = 1.0f - std::abs(SmoothLatticeNoise3(WX * FScale * 2.1f, WY * FScale * 2.1f, WZ * FScale * 2.3f) * 2.0f - 1.0f);
-        NNorm    = std::clamp(PlumeMask * (((Base - 0.20f) / 0.44f) * 0.68f + BillowRidge * 0.38f), 0.0f, 1.0f);
+        const float RidgeRaw    = SmoothLatticeNoise3(WX * FScale * 1.6f, WY * FScale * 1.6f, WZ * FScale * 1.7f) * 2.0f - 1.0f;
+        const float BillowRidge = 1.0f - RidgeRaw * RidgeRaw;
+        NNorm    = std::clamp(PlumeMask * (((Base - 0.20f) / 0.44f) * 0.76f + BillowRidge * 0.28f * (0.25f + 0.75f * HighOctFade)), 0.0f, 1.0f);
         ShapeCov = std::clamp(Cov + 0.14f * H, 0.0f, 1.0f);
     }
     else // Classic 0..5 formations (Stratus, Stratocumulus, Cumulus, Cumulonimbus, Altostratus, Cirrus)
@@ -343,8 +348,8 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
     const float Ign = (PixelJitter01 >= 0.0f)
         ? std::clamp(PixelJitter01, 0.0f, 1.0f)
         : Frac(52.9829189f * Frac(RayDirection.X * 193.713f + RayDirection.Y * 371.419f + RayDirection.Z * 547.823f));
-    // Soft centered jitter eliminates contour slice banding without creating 1px salt-and-pepper stipple
-    const float Jitter = 0.5f + 0.72f * (Ign - 0.5f);
+    // Full [0..1] IGN jitter eliminates step-slice banding without periodic R2 checker patterns
+    const float Jitter = Ign;
 
     const float BearRad = Deck.WindBearingDegrees * Constants::DegToRadFloat;
     const float WindVX  = std::cos(BearRad) * Deck.WindSpeedMetersPerSecond;
@@ -369,7 +374,7 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
         const float TX  = std::min({ std::max(TX0, TX1), std::max(TY0, TY1), std::max(TZ0, TZ1) });
         if (TX > TE)
         {
-            constexpr uint32_t LocalSteps = 24u;
+            constexpr uint32_t LocalSteps = 36u;
             const float Dt = (TX - TE) / static_cast<float>(LocalSteps);
             const float CosTheta = Mathematics::EvaluateDot(RayDirection, SunDirection);
             const float Phase = 0.76f * EvaluateHenyeyGreenstein(CosTheta, LocalVolume.ForwardScatterAnisotropy) +
@@ -405,8 +410,8 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
         }
     }
 
-    // 2. Global Planetary Cloud Deck (64 jittered steps + LOD FBM + 3-octave multi-scattering + Beer-Powder)
-    if (!Deck.CloudsEnabled || RayDirection.Z <= 0.008f || Deck.CloudFraction <= 0.01f || Deck.ExtinctionMultiplier <= 0.01f)
+    // 2. Global Planetary Cloud Deck (96 IGN-jittered steps + LOD FBM + 3-octave multi-scattering + Beer-Powder)
+    if (!Deck.CloudsEnabled || RayDirection.Z <= 0.006f || Deck.CloudFraction <= 0.01f || Deck.ExtinctionMultiplier <= 0.01f)
     {
         return TotalRad;
     }
@@ -420,13 +425,13 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
 
     const auto [_1, TEnter] = IntersectOriginSphere(OrigZ, RayDirection.Z, RInner);
     const auto [_2, TExit]  = IntersectOriginSphere(OrigZ, RayDirection.Z, ROuter);
-    const float MaxDist = std::min(TExit, TEnter + 28000.0f);
-    if (MaxDist <= TEnter || TEnter < 0.0f || TEnter > 65000.0f)
+    const float MaxDist = std::min(TExit, TEnter + 32000.0f);
+    if (MaxDist <= TEnter || TEnter < 0.0f || TEnter > 85000.0f)
     {
         return TotalRad;
     }
 
-    constexpr uint32_t Steps = 64u;
+    constexpr uint32_t Steps = 96u;
     const float Dt       = (MaxDist - TEnter) / static_cast<float>(Steps);
     const float FScale   = 0.00065f / std::max(0.08f, Deck.FeatureScaleMultiplier);
     const float Cov      = std::clamp(Deck.CloudFraction, 0.0f, 1.0f);
@@ -436,8 +441,8 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
     const float CosTheta = Mathematics::EvaluateDot(RayDirection, SunDirection);
     const uint32_t FmtIdx = static_cast<uint32_t>(Deck.Category);
 
-    static constexpr std::array<float, 5u> SunOffsets {{ 0.08f, 0.22f, 0.44f, 0.78f, 1.35f }};
-    static constexpr std::array<float, 5u> SunWeights {{ 0.14f, 0.22f, 0.28f, 0.36f, 0.50f }};
+    static constexpr std::array<float, 6u> SunOffsets {{ 0.06f, 0.16f, 0.32f, 0.56f, 0.90f, 1.40f }};
+    static constexpr std::array<float, 6u> SunWeights {{ 0.10f, 0.16f, 0.22f, 0.28f, 0.34f, 0.42f }};
 
     float DeckTrans = 1.0f;
     float DR = 0.0f, DG = 0.0f, DB = 0.0f;
@@ -456,7 +461,7 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
             if (Deck.CloudShadow.ShadowEnabled)
             {
                 const float ConeReach = ThickM * 0.42f;
-                for (uint32_t K = 0u; K < 5u; ++K)
+                for (uint32_t K = 0u; K < 6u; ++K)
                 {
                     const float KS = SunOffsets[K] * ConeReach;
                     SunTau += SampleDeckDensity(
@@ -522,8 +527,8 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
         }
     }
 
-    const float LowAngleFade = SmoothStep(0.015f, 0.145f, RayDirection.Z);
-    const float Haze = 1.0f - std::exp(-TEnter * 0.000042f);
+    const float LowAngleFade = SmoothStep(0.008f, 0.165f, RayDirection.Z) * (1.0f - SmoothStep(42000.0f, 82000.0f, TEnter));
+    const float Haze = 1.0f - std::exp(-TEnter * 0.000032f);
     DR = (DR * (1.0f - Haze) + SkyRadiance.R * (1.0f - DeckTrans) * Haze) * LowAngleFade;
     DG = (DG * (1.0f - Haze) + SkyRadiance.G * (1.0f - DeckTrans) * Haze) * LowAngleFade;
     DB = (DB * (1.0f - Haze) + SkyRadiance.B * (1.0f - DeckTrans) * Haze) * LowAngleFade;

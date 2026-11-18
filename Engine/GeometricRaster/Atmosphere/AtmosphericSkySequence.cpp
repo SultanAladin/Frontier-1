@@ -195,7 +195,7 @@ void AtmosphericSkySequence::BuildSkyViewLut(
         }
     }
 
-    // 2. Build 96x48 SkyView LUT
+    // 2. Build 256x128 SkyView LUT
     SkyViewTexelsRgba.assign(SkyViewWidthPx * SkyViewHeightPx * 4u, 0.0f);
     const float OrigZ        = PlanetR + ViewerAltitudeMeters;
     const float SunElevRad   = std::asin(std::clamp(SunDirection.Z, -1.0f, 1.0f));
@@ -230,7 +230,7 @@ void AtmosphericSkySequence::BuildSkyViewLut(
             float RadR = 0.0f, RadG = 0.0f, RadB = 0.0f;
             float MsR = 0.0f, MsG = 0.0f, MsB = 0.0f;
 
-            constexpr uint32_t Steps = 18u;
+            constexpr uint32_t Steps = 28u;
             const float Step = std::max(1.0f, MaxDist / static_cast<float>(Steps));
             for (uint32_t S = 0u; S < Steps; ++S)
             {
@@ -357,27 +357,45 @@ Mathematics::LinearRGB AtmosphericSkySequence::SampleSkyViewDirection(
 
     const float FX = U * static_cast<float>(SkyViewWidthPx) - 0.5f;
     const float FY = V * static_cast<float>(SkyViewHeightPx) - 0.5f;
-    const int32_t IX0 = ((static_cast<int32_t>(std::floor(FX)) % static_cast<int32_t>(SkyViewWidthPx)) + static_cast<int32_t>(SkyViewWidthPx)) % static_cast<int32_t>(SkyViewWidthPx);
-    const int32_t IX1 = (IX0 + 1) % static_cast<int32_t>(SkyViewWidthPx);
-    const int32_t IY0 = std::clamp(static_cast<int32_t>(std::floor(FY)), 0, static_cast<int32_t>(SkyViewHeightPx) - 1);
-    const int32_t IY1 = std::clamp(IY0 + 1, 0, static_cast<int32_t>(SkyViewHeightPx) - 1);
+    const int32_t W = static_cast<int32_t>(SkyViewWidthPx);
+    const int32_t H = static_cast<int32_t>(SkyViewHeightPx);
+    const int32_t IX0 = ((static_cast<int32_t>(std::floor(FX)) % W) + W) % W;
+    const int32_t IX1 = (IX0 + 1) % W;
+    const int32_t IY1 = std::clamp(static_cast<int32_t>(std::floor(FY)), 0, H - 1);
+    const int32_t IY0 = std::clamp(IY1 - 1, 0, H - 1);
+    const int32_t IY2 = std::clamp(IY1 + 1, 0, H - 1);
+    const int32_t IY3 = std::clamp(IY1 + 2, 0, H - 1);
     const float TX = FX - std::floor(FX);
-    const float TY = FY - std::floor(FY);
+    const float SX = TX * TX * (3.0f - 2.0f * TX);
+    const float TY = std::clamp(FY - std::floor(FY), 0.0f, 1.0f);
 
     const auto Fetch = [&](int32_t X, int32_t Y) noexcept -> Mathematics::LinearRGB
     {
         const std::size_t Idx = (static_cast<std::size_t>(Y) * SkyViewWidthPx + static_cast<std::size_t>(X)) * 4u;
         return { SkyViewTexelsRgba[Idx + 0u], SkyViewTexelsRgba[Idx + 1u], SkyViewTexelsRgba[Idx + 2u] };
     };
-    const auto C00 = Fetch(IX0, IY0);
-    const auto C10 = Fetch(IX1, IY0);
-    const auto C01 = Fetch(IX0, IY1);
-    const auto C11 = Fetch(IX1, IY1);
     const auto MixC = [](const Mathematics::LinearRGB& A, const Mathematics::LinearRGB& B, float T) noexcept -> Mathematics::LinearRGB
     {
         return { A.R + (B.R - A.R) * T, A.G + (B.G - A.G) * T, A.B + (B.B - A.B) * T };
     };
-    return MixC(MixC(C00, C10, TX), MixC(C01, C11, TX), TY);
+    const auto CatmullRom = [](float P0, float P1, float P2, float P3, float T) noexcept -> float
+    {
+        const float T2 = T * T;
+        const float T3 = T2 * T;
+        return 0.5f * ((2.0f * P1) +
+                       (-P0 + P2) * T +
+                       (2.0f * P0 - 5.0f * P1 + 4.0f * P2 - P3) * T2 +
+                       (-P0 + 3.0f * P1 - 3.0f * P2 + P3) * T3);
+    };
+    const auto Row0 = MixC(Fetch(IX0, IY0), Fetch(IX1, IY0), SX);
+    const auto Row1 = MixC(Fetch(IX0, IY1), Fetch(IX1, IY1), SX);
+    const auto Row2 = MixC(Fetch(IX0, IY2), Fetch(IX1, IY2), SX);
+    const auto Row3 = MixC(Fetch(IX0, IY3), Fetch(IX1, IY3), SX);
+    return {
+        std::max(0.0f, CatmullRom(Row0.R, Row1.R, Row2.R, Row3.R, TY)),
+        std::max(0.0f, CatmullRom(Row0.G, Row1.G, Row2.G, Row3.G, TY)),
+        std::max(0.0f, CatmullRom(Row0.B, Row1.B, Row2.B, Row3.B, TY)),
+    };
 }
 
 Mathematics::LinearRGB AtmosphericSkySequence::EvaluateSolarCoronaRadiance(
