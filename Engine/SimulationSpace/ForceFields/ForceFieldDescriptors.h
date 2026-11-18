@@ -180,6 +180,15 @@ struct ForceMotionSpecification
     float                                    EvaluatedArcLengthMeters   = 0.0f;                           // [m]   - Cached arc length
 };
 
+struct WindFieldSubcomponent
+{
+    bool  DrivesAtmosphereAndClouds = true;    // [-] - Couple this ForceSource to clouds, fog & sky wind advection
+    bool  ProjectToCloudDeck        = true;    // [-] - Project horizontal field vertically across cloud layer altitudes
+    float CouplingScaleHeightMeters = 2800.0f; // [m] - Vertical atmospheric coupling scale height
+    float CloudAdvectionGain        = 1.0f;    // [-] - Multiplier on ForceField -> cloud/sky advection velocity
+    float TurbulenceSwirlGain       = 1.0f;    // [-] - Multiplier on vorticity curl injected into cloud/fog turbulence
+};
+
 struct ForceSourceRecordEntry
 {
     uint32_t                 UniqueToken          = 0u;                                  // [id]    - Monotonic force identifier
@@ -219,6 +228,7 @@ struct ForceSourceRecordEntry
     std::string              FormulaSourceText    {};                                    // [-]     - VectorFieldLang expression
     uint32_t                 CompiledFormulaSlot  = 0u;                                  // [idx]   - Bytecode slot index when compiled
     ForceMotionSpecification Motion               {};                                    // [-]     - Optional waypoint motion path
+    WindFieldSubcomponent    WindField            {};                                    // [-]     - Atmosphere / Cloud / Fog wind coupling subcomponent
 };
 
 struct alignas(16) ForceSourceShaderEntry

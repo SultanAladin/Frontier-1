@@ -99,6 +99,20 @@ public:
         float                                                    TimeSeconds,
         const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields = nullptr,
         const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice     = nullptr) noexcept;
+
+    // 4-step RK2 backward streamline advection through Global/Cloud wind + ForceFields + FieldLatticeCascade
+    [[nodiscard]] static Mathematics::Axis3D AdvectWorldPointBackward(
+        const AtmosphericWindParameters&                         GlobalWind,
+        float                                                    DeckWindSpeedMps,
+        float                                                    DeckWindBearingDeg,
+        WindBindingSource                                        Source,
+        const Mathematics::Axis3D&                               WorldPoint,
+        float                                                    AltitudeMeters,
+        float                                                    TimeSeconds,
+        float*                                                   OutSwirlScalar      = nullptr,
+        float*                                                   OutSpeedScalar      = nullptr,
+        const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields = nullptr,
+        const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice     = nullptr) noexcept;
 };
 
 } // namespace Frontier::GeometricRaster

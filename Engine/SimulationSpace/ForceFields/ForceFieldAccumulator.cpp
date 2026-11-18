@@ -195,6 +195,80 @@ SpatialForceSample ForceFieldAccumulator::QueryForceFieldSample(
     return Accumulated;
 }
 
+SpatialForceSample ForceFieldAccumulator::QueryWindFieldSample(
+    const SpatialVector3& WorldPoint,
+    double                TimeSeconds,
+    bool                  ProjectToCloudAltitude) const noexcept
+{
+    bool HasSolo = false;
+    for (const ForceSourceRecordEntry& Entry : ActiveSources)
+    {
+        if (Entry.Enabled && Entry.Solo)
+        {
+            HasSolo = true;
+            break;
+        }
+    }
+
+    SpatialForceSample Accumulated{};
+    for (const ForceSourceRecordEntry& Entry : ActiveSources)
+    {
+        if (!Entry.Enabled || (HasSolo && !Entry.Solo) || !Entry.WindField.DrivesAtmosphereAndClouds)
+        {
+            continue;
+        }
+
+        SpatialVector3 QueryPoint = WorldPoint;
+        float          VertGain   = 1.0f;
+        if (ProjectToCloudAltitude && Entry.WindField.ProjectToCloudDeck)
+        {
+            const float Dz         = std::abs(WorldPoint.Z - Entry.EvaluatedCentreMeters.Z);
+            const float ScaleH     = std::max(250.0f, Entry.WindField.CouplingScaleHeightMeters);
+            const float Vertical01 = std::exp(-0.5f * (Dz / ScaleH) * (Dz / ScaleH));
+            VertGain               = 0.30f + 0.70f * Vertical01;
+            QueryPoint.Z           = Entry.EvaluatedCentreMeters.Z;
+        }
+
+        SpatialForceSample Partial{};
+        if (Entry.FormulaEnabled && !Entry.FormulaSourceText.empty())
+        {
+            for (const CompiledSlotEntry& Slot : CompiledFormulas)
+            {
+                if (Slot.UniqueToken == Entry.UniqueToken && Slot.Program.InstructionCount > 0u)
+                {
+                    Partial.AdvectionVelocity = EvaluateCompiledFormula(Slot.Program, Entry, QueryPoint, {}, TimeSeconds);
+                    break;
+                }
+            }
+        }
+        else
+        {
+            switch (QueryDomainForModel(Entry.Model))
+            {
+                case ForceDomainCategory::StreamTransport:
+                    Partial = EvaluateStreamTransportModel(Entry, QueryPoint, {}, TimeSeconds);
+                    break;
+                case ForceDomainCategory::TurbulenceField:
+                    Partial = EvaluateTurbulenceModel(Entry, QueryPoint, {}, TimeSeconds);
+                    break;
+                case ForceDomainCategory::VectorField:
+                default:
+                    Partial = EvaluateVectorFieldModel(Entry, QueryPoint, {}, TimeSeconds);
+                    break;
+            }
+        }
+
+        const float AdvGain   = VertGain * std::max(0.0f, Entry.WindField.CloudAdvectionGain);
+        const float SwirlGain = VertGain * std::max(0.0f, Entry.WindField.TurbulenceSwirlGain);
+        Accumulated.AdvectionVelocity  += Partial.AdvectionVelocity * AdvGain;
+        Accumulated.LinearAcceleration += Partial.LinearAcceleration * AdvGain;
+        Accumulated.AngularTorque      += Partial.AngularTorque * SwirlGain;
+        Accumulated.DragDecayRate      += Partial.DragDecayRate * VertGain;
+    }
+
+    return Accumulated;
+}
+
 ForceDiagnosticsReading ForceFieldAccumulator::QueryAnemometerDiagnostics(
     const SpatialVector3& WorldPoint,
     double                TimeSeconds) const noexcept

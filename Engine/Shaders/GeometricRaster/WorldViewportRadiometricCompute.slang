@@ -51,7 +51,10 @@ struct WorldViewportUniformBlock
     uint4  DenoiseStepParams;        // x = StridePx, y = Flags (bit0=FinalComposite, bit1=SpatialDenoise, bit2=LowSppPt), z = Pad, w = Pad
     GpuAreaQuadLight AreaLights[4];
     GpuGlassSphere   GlassSpheres[4];
-    uint4                       AtmosphereMaskPad; // x = AtmosphereEnabled (0/1), y = SkyViewW, z = SkyViewH, w = Pad
+    uint4                       AtmosphereMaskPad;        // x = AtmosphereEnabled (0/1), y = SkyViewW, z = SkyViewH, w = FlagBits
+    float4                      AtmosphereObserver;       // x = ObserverAltitudeM, y = OrbitalViewEnabled (0/1), z = AtmoThicknessM, w = MieAnisotropy
+    float4                      AtmosphereSkyColorParams; // xyz = SkyTint * SkyBrightnessMultiplier, w = SolarIntensityScale
+    float4                      AtmosphereScaleHeights;   // x = RayleighScaleHeightM, y = MieScaleHeightM, z = Pad, w = Pad
     VolumetricCloudUniformBlock CloudParams;
     VolumetricFogUniformBlock   FogParams;
     CelestialFieldUniformBlock  CelestialParams;
@@ -249,6 +252,23 @@ float4 SampleCloudBufferBilinear(float2 PixelUv, out float OutCloudTrans)
     float4 C01 = CloudRadiometricBuffer[Y1 * CW + X0];
     float4 C11 = CloudRadiometricBuffer[Y1 * CW + X1];
     float4 Res = lerp(lerp(C00, C10, TX), lerp(C01, C11, TX), TY);
+
+    // Light 5-tap spatial anti-stipple filter when upscaling half/quarter-res cloud pass
+    uint FullW = uint(WorldUniforms.CameraUpWidth.w + 0.5);
+    if (CW < FullW && CW >= 4u && CH >= 4u)
+    {
+        uint XM = (X0 > 0u) ? (X0 - 1u) : X0;
+        uint XP = min(CW - 1u, X1 + 1u);
+        uint YM = (Y0 > 0u) ? (Y0 - 1u) : Y0;
+        uint YP = min(CH - 1u, Y1 + 1u);
+        float4 S0 = CloudRadiometricBuffer[Y0 * CW + XM];
+        float4 S1 = CloudRadiometricBuffer[Y0 * CW + XP];
+        float4 S2 = CloudRadiometricBuffer[YM * CW + X0];
+        float4 S3 = CloudRadiometricBuffer[YP * CW + X0];
+        float4 AvgNbr = (S0 + S1 + S2 + S3) * 0.25;
+        Res = lerp(Res, AvgNbr, 0.52);
+    }
+
     OutCloudTrans = clamp(Res.w, 0.0, 1.0);
     return Res;
 }
@@ -257,6 +277,10 @@ float3 EvaluateCloudDeckReflectionGpu(float3 RayDir, out float OutCloudTrans)
 {
     OutCloudTrans = 1.0;
     VolumetricCloudUniformBlock C = WorldUniforms.CloudParams;
+    if (WorldUniforms.AtmosphereObserver.y > 0.5)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
     if (C.SunAxisToggle.w < 0.5 || RayDir.z <= 0.015 || C.DeckGeometry.z <= 0.01 || C.DeckGeometry.w <= 0.01)
     {
         return float3(0.0, 0.0, 0.0);
@@ -270,11 +294,20 @@ float3 EvaluateCloudDeckReflectionGpu(float3 RayDir, out float OutCloudTrans)
     float MidAlt  = FloorM + ThickM * 0.45;
     float DistM   = min(38000.0, MidAlt / max(0.03, RayDir.z));
     float3 P      = float3(RayDir.x * DistM, RayDir.y * DistM, PlanetR + 100.0 + MidAlt);
+    float ExtraTurb = 0.0;
+    if (C.SkyColorWind.w > 0.5 && C.CloudPassControl.w > 0.5 && uint(C.WindProbeMeta.x + 0.5) > 0u)
+    {
+        float SwirlNow = 0.0;
+        float3 Adv = AdvectCloudPointBackwardGpu(C, float3(P.x, P.y, MidAlt), float3(0.0, 0.0, 0.0), TimeSec, true, SwirlNow);
+        P.x = Adv.x;
+        P.y = Adv.y;
+        ExtraTurb = clamp(SwirlNow * 0.25, 0.0, 1.25);
+    }
     float FScale  = 0.00065 / max(0.08, C.DeckOptics.x);
     float D = SampleCloudDeckDensityGpu(
         P, PlanetR, FloorM, ThickM, clamp(C.DeckGeometry.z, 0.0, 1.0), clamp(C.DeckOptics.y, 0.0, 1.0),
         max(0.0, C.DeckGeometry.w) * 0.0085, FScale, WindX, WindY, C.DeckOptics.w, uint(C.FormationOptics.x + 0.5), DistM,
-        C.FormationOptics.y, C.FormationOptics.z, TimeSec);
+        C.FormationOptics.y, C.FormationOptics.z + ExtraTurb, TimeSec);
     if (D <= 1.0e-5)
     {
         return float3(0.0, 0.0, 0.0);
@@ -296,6 +329,39 @@ float3 EvaluateBackgroundSkyCloudsGpu(float3 RayDir, float2 PixelCoord)
     {
         return EvaluateSkyDome(RayDir);
     }
+
+    if (WorldUniforms.AtmosphereObserver.y > 0.5)
+    {
+        AtmosphericSkyUniformBlock SpaceUni;
+        SpaceUni.SunDirectionIntensity = float4(normalize(WorldUniforms.SunDirConeTan.xyz), WorldUniforms.AtmosphereSkyColorParams.w);
+        SpaceUni.ScatteringStrengths   = float4(
+            WorldUniforms.CelestialParams.AtmoMediumPack.x,
+            WorldUniforms.CelestialParams.AtmoMediumPack.y,
+            WorldUniforms.AtmosphereObserver.w,
+            WorldUniforms.CelestialParams.AtmoMediumPack.z);
+        SpaceUni.PlanetDimensions      = float4(
+            max(500000.0, WorldUniforms.CloudParams.SolarIrradianceExt.w),
+            max(10000.0, WorldUniforms.AtmosphereObserver.z),
+            max(500.0, WorldUniforms.AtmosphereScaleHeights.x),
+            max(200.0, WorldUniforms.AtmosphereScaleHeights.y));
+        SpaceUni.SkyTintBrightness     = float4(WorldUniforms.AtmosphereSkyColorParams.xyz, 1.0);
+        SpaceUni.GroundAlbedoLimbGlow  = float4(0.08, 0.12, 0.18, 1.0);
+        SpaceUni.LutDimensions         = uint4(256u, 128u, 0u, 0u);
+        SpaceUni.ObserverParams        = float4(WorldUniforms.AtmosphereObserver.x, 1.0, 0.0, 0.0);
+
+        float3 SpaceTrans = float3(1.0, 1.0, 1.0);
+        float3 PlanetLimb = EvaluateOrbitalSpaceGpu(
+            RayDir,
+            WorldUniforms.CameraOriginTanX.xyz,
+            normalize(WorldUniforms.SunDirConeTan.xyz),
+            SpaceUni,
+            WorldUniforms.CloudParams.OriginTimeVector.w,
+            WorldUniforms.CloudParams.DeckGeometry.z,
+            SpaceTrans);
+        float3 CelestialRad = EvaluateCelestialBodiesGpu(WorldUniforms.CelestialParams, LunarSurfaceAtlasTexels, RayDir);
+        return PlanetLimb + CelestialRad * SpaceTrans;
+    }
+
     float3 SkyRad       = EvaluateSkyDome(RayDir);
     float3 CelestialRad = EvaluateCelestialBodiesGpu(WorldUniforms.CelestialParams, LunarSurfaceAtlasTexels, RayDir);
     if (WorldUniforms.CloudParams.SunAxisToggle.w < 0.5)
@@ -328,7 +394,7 @@ float3 EvaluateBackgroundSkyCloudsGpu(float3 RayDir, float2 PixelCoord)
 float EvaluateSolarCloudTransmittanceGpu(float3 WorldPos, float3 SunDir)
 {
     VolumetricCloudUniformBlock C = WorldUniforms.CloudParams;
-    if (WorldUniforms.AtmosphereMaskPad.x == 0u || SunDir.z <= 0.01)
+    if (WorldUniforms.AtmosphereMaskPad.x == 0u || WorldUniforms.AtmosphereObserver.y > 0.5 || SunDir.z <= 0.01)
     {
         return 1.0;
     }
@@ -344,6 +410,15 @@ float EvaluateSolarCloudTransmittanceGpu(float3 WorldPos, float3 SunDir)
         float MidAlt  = FloorM + ThickM * 0.45;
         float DistM   = MidAlt / max(0.05, SunDir.z);
         float3 P      = float3(WorldPos.x + SunDir.x * DistM, WorldPos.y + SunDir.y * DistM, PlanetR + 100.0 + MidAlt);
+        float ExtraTurb = 0.0;
+        if (C.SkyColorWind.w > 0.5 && C.CloudPassControl.w > 0.5 && uint(C.WindProbeMeta.x + 0.5) > 0u)
+        {
+            float SwirlNow = 0.0;
+            float3 Adv = AdvectCloudPointBackwardGpu(C, float3(P.x, P.y, MidAlt), float3(0.0, 0.0, 0.0), TimeSec, true, SwirlNow);
+            P.x = Adv.x;
+            P.y = Adv.y;
+            ExtraTurb = clamp(SwirlNow * 0.25, 0.0, 1.25);
+        }
         float FScale  = (0.00065 / max(0.08, C.DeckOptics.x)) * max(0.01, C.CloudShadowOptics.z);
         float Cov     = clamp(C.DeckGeometry.z * C.CloudShadowOptics.x, 0.0, 1.0);
         float DensMul = max(0.0, C.DeckGeometry.w * C.CloudShadowOptics.y) * 0.0085;
@@ -351,7 +426,7 @@ float EvaluateSolarCloudTransmittanceGpu(float3 WorldPos, float3 SunDir)
         float D = SampleCloudDeckDensityGpu(
             P, PlanetR, FloorM, ThickM, Cov, Anvil,
             DensMul, FScale, WindX, WindY, C.DeckOptics.w, uint(C.FormationOptics.x + 0.5), 8000.0,
-            C.FormationOptics.y, C.FormationOptics.z, TimeSec);
+            C.FormationOptics.y, C.FormationOptics.z + ExtraTurb, TimeSec);
         Trans *= (0.12 + 0.88 * exp(-D * ThickM * 0.36));
     }
     Trans *= EvaluateLocalCloudsShadowGpu(C, WorldPos, SunDir);
@@ -2191,7 +2266,9 @@ void CloudComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     uint PIdx = DispatchThreadID.y * CW + DispatchThreadID.x;
-    if (WorldUniforms.AtmosphereMaskPad.x == 0u || WorldUniforms.CloudParams.SunAxisToggle.w < 0.5)
+    if (WorldUniforms.AtmosphereMaskPad.x == 0u ||
+        WorldUniforms.AtmosphereObserver.y > 0.5 ||
+        WorldUniforms.CloudParams.SunAxisToggle.w < 0.5)
     {
         CloudRadiometricBuffer[PIdx] = float4(0.0, 0.0, 0.0, 1.0);
         return;
@@ -2719,25 +2796,28 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             FinalHdr = FinalHdr * FluidTrans + FluidRad;
         }
 
-        float  FogTrans = 1.0;
-        float3 FogRad   = EvaluateVolumetricFogGpu(
-            WorldUniforms.FogParams,
-            CamOrigin,
-            RayDir,
-            HitDistForFog,
-            normalize(WorldUniforms.SunDirConeTan.xyz),
-            WorldUniforms.SolarIrradianceTier.xyz,
-            EvaluateSkyDome(RayDir),
-            float2(DispatchThreadID.xy),
-            FogTrans);
-        FinalHdr = FinalHdr * FogTrans + FogRad;
-        FinalHdr += EvaluateVolumetricGodRaysGpu(
-            CamOrigin,
-            RayDir,
-            HitDistForFog,
-            normalize(WorldUniforms.SunDirConeTan.xyz),
-            WorldUniforms.SolarIrradianceTier.xyz,
-            float2(DispatchThreadID.xy));
+        if (WorldUniforms.AtmosphereObserver.y < 0.5)
+        {
+            float  FogTrans = 1.0;
+            float3 FogRad   = EvaluateVolumetricFogGpu(
+                WorldUniforms.FogParams,
+                CamOrigin,
+                RayDir,
+                HitDistForFog,
+                normalize(WorldUniforms.SunDirConeTan.xyz),
+                WorldUniforms.SolarIrradianceTier.xyz,
+                EvaluateSkyDome(RayDir),
+                float2(DispatchThreadID.xy),
+                FogTrans);
+            FinalHdr = FinalHdr * FogTrans + FogRad;
+            FinalHdr += EvaluateVolumetricGodRaysGpu(
+                CamOrigin,
+                RayDir,
+                HitDistForFog,
+                normalize(WorldUniforms.SunDirConeTan.xyz),
+                WorldUniforms.SolarIrradianceTier.xyz,
+                float2(DispatchThreadID.xy));
+        }
 
         if (WorldUniforms.AtmosphereMaskPad.x != 0u && WorldUniforms.LensFlareParams.GhostRotationTint.w > 0.5)
         {

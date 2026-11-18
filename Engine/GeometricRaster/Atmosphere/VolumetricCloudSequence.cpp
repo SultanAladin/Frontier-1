@@ -30,7 +30,9 @@ constexpr float ViewerAltM = 100.0f;
 
 [[nodiscard]] float HashInt3(int32_t IX, int32_t IY, int32_t IZ) noexcept
 {
-    uint32_t N = static_cast<uint32_t>(IX * 374761393 + IY * 668265263 + IZ * 2147483647);
+    uint32_t N = static_cast<uint32_t>(IX) * 374761393u +
+                 static_cast<uint32_t>(IY) * 668265263u +
+                 static_cast<uint32_t>(IZ) * 1442695041u;
     N = (N ^ (N >> 13u)) * 1274126177u;
     N = N ^ (N >> 16u);
     return static_cast<float>(N) * (1.0f / 4294967296.0f);
@@ -62,15 +64,19 @@ constexpr float ViewerAltM = 100.0f;
 
 [[nodiscard]] float CloudFbm3(float X, float Y, float Z, float HighOctaveFade = 1.0f) noexcept
 {
+    // Orthonormal 3D rotation between octaves eliminates axis-aligned grid artifacts and diagonal crosshatching
     float Sum  = 0.0f;
     float Amp  = 0.52f;
-    float Freq = 1.0f;
+    float PX = X, PY = Y, PZ = Z;
     for (uint32_t Oct = 0u; Oct < 5u; ++Oct)
     {
         const float W = (Oct >= 3u) ? HighOctaveFade : 1.0f;
-        Sum  += Amp * (W * SmoothLatticeNoise3(X * Freq, Y * Freq, Z * Freq) + (1.0f - W) * 0.5f);
-        Freq *= 2.05f;
-        Amp  *= 0.48f;
+        Sum += Amp * (W * SmoothLatticeNoise3(PX, PY, PZ) + (1.0f - W) * 0.5f);
+        const float NX = (0.80f * PX - 0.60f * PY) * 2.04f + 11.3f;
+        const float NY = (0.48f * PX + 0.64f * PY - 0.60f * PZ) * 2.04f - 7.1f;
+        const float NZ = (0.36f * PX + 0.48f * PY + 0.80f * PZ) * 2.04f + 5.7f;
+        PX = NX; PY = NY; PZ = NZ;
+        Amp *= 0.48f;
     }
     return Sum;
 }
@@ -128,13 +134,13 @@ constexpr float ViewerAltM = 100.0f;
     const float ShearShift  = AltKm * ShearPerKm * 45.0f;
     const float BoilPhase   = TimeSec * (0.045f + 0.095f * TurbulenceAmp);
     const float TurbWarpX   = (TurbulenceAmp > 1.0e-4f)
-        ? (SmoothLatticeNoise3((PX + VeeredWX) * FScale * 0.45f, (PY + VeeredWY) * FScale * 0.45f, AltKm * 0.8f + BoilPhase) - 0.5f) * (TurbulenceAmp * 210.0f)
+        ? (SmoothLatticeNoise3((PX - VeeredWX) * FScale * 0.45f, (PY - VeeredWY) * FScale * 0.45f, AltKm * 0.8f + BoilPhase) - 0.5f) * (TurbulenceAmp * 210.0f)
         : 0.0f;
     const float TurbWarpY   = (TurbulenceAmp > 1.0e-4f)
-        ? (SmoothLatticeNoise3((PY + VeeredWY) * FScale * 0.45f + 7.3f, (PX + VeeredWX) * FScale * 0.45f, AltKm * 0.8f - BoilPhase * 0.85f) - 0.5f) * (TurbulenceAmp * 210.0f)
+        ? (SmoothLatticeNoise3((PY - VeeredWY) * FScale * 0.45f + 7.3f, (PX - VeeredWX) * FScale * 0.45f, AltKm * 0.8f - BoilPhase * 0.85f) - 0.5f) * (TurbulenceAmp * 210.0f)
         : 0.0f;
-    const float WX = PX + VeeredWX + ShearShift + TurbWarpX;
-    const float WY = PY + VeeredWY + TurbWarpY;
+    const float WX = PX - VeeredWX - ShearShift + TurbWarpX;
+    const float WY = PY - VeeredWY + TurbWarpY;
     const float WZ = (Alt - FloorM) + TimeSec * (1.8f + 4.2f * TurbulenceAmp);
 
     float ShapeCov = std::clamp(Cov + Anvil * H * H * 0.22f, 0.0f, 1.0f);
@@ -152,14 +158,18 @@ constexpr float ViewerAltM = 100.0f;
         NNorm   = std::clamp(LensMask * LaminarSlices, 0.0f, 1.0f);
         Profile = SmoothStep(0.04f, 0.24f, H) * (1.0f - SmoothStep(0.74f, 0.96f, H));
     }
-    else if (FormationIndex == 7u) // Mammatus: dramatic cellular hanging pouches under storm deck
+    else if (FormationIndex == 7u) // Mammatus: organic 3-axis hexagonal hanging pouches (zero rectilinear dot-matrix)
     {
-        const float BaseFbm    = CloudFbm3(WX * FScale * 0.95f, WY * FScale * 0.95f, WZ * FScale * 1.15f, HighOctFade);
-        const float CellPhaseX = std::sin(WX * FScale * 3.4f + BaseFbm * 2.8f);
-        const float CellPhaseY = std::sin(WY * FScale * 3.4f - BaseFbm * 2.8f);
-        const float PouchLobe  = std::pow(std::abs(CellPhaseX * CellPhaseY), 0.75f) * WaveDetail;
-        const float LowerMask  = 1.0f - SmoothStep(0.18f, 0.68f, H);
-        NNorm    = std::clamp(((BaseFbm - 0.24f) / 0.44f) * (0.58f + 0.22f * (1.0f - WaveDetail)) + PouchLobe * LowerMask * 0.58f, 0.0f, 1.0f);
+        const float BaseFbm  = CloudFbm3(WX * FScale * 0.95f, WY * FScale * 0.95f, WZ * FScale * 1.15f, HighOctFade);
+        const float WarpX    = WX + (BaseFbm - 0.5f) * (1.2f / std::max(1.0e-5f, FScale));
+        const float WarpY    = WY + (SmoothLatticeNoise3(WX * FScale * 0.8f + 5.1f, WY * FScale * 0.8f, WZ * FScale) - 0.5f) * (1.2f / std::max(1.0e-5f, FScale));
+        const float K        = FScale * 2.4f;
+        const float Hex0     = 0.5f + 0.5f * std::cos(WarpX * K);
+        const float Hex1     = 0.5f + 0.5f * std::cos((-0.5f * WarpX + 0.866025f * WarpY) * K + 1.3f);
+        const float Hex2     = 0.5f + 0.5f * std::cos((-0.5f * WarpX - 0.866025f * WarpY) * K - 0.9f);
+        const float PouchLobe = std::pow((Hex0 + Hex1 + Hex2) * 0.3333f, 1.35f) * WaveDetail;
+        const float LowerMask = 1.0f - SmoothStep(0.18f, 0.68f, H);
+        NNorm    = std::clamp(((BaseFbm - 0.24f) / 0.44f) * (0.58f + 0.22f * (1.0f - WaveDetail)) + PouchLobe * LowerMask * 0.54f, 0.0f, 1.0f);
         ShapeCov = std::clamp(Cov + LowerMask * 0.14f + Anvil * H * 0.16f, 0.0f, 1.0f);
     }
     else if (FormationIndex == 8u) // KelvinHelmholtz: localized breaking wave-crest curls
@@ -173,14 +183,16 @@ constexpr float ViewerAltM = 100.0f;
         const float Billow    = CloudFbm3(CurlX * FScale * 1.05f, WY * FScale * 0.85f, WZ * FScale * 1.4f, HighOctFade);
         NNorm = std::clamp(MacroBand * (BreakCurl * (0.35f + 0.35f * WaveDetail) + ((Billow - 0.24f) / 0.46f) * 0.48f), 0.0f, 1.0f);
     }
-    else if (FormationIndex == 9u) // Asperitas: undulating gravity-wave undersides
+    else if (FormationIndex == 9u) // Asperitas: 4-direction rotated FBM-warped gravity-wave swells (zero 2-dir crosshatch)
     {
         const float Warp   = CloudFbm3(WX * FScale * 0.75f, WY * FScale * 0.75f, WZ * FScale, HighOctFade);
-        const float W1     = std::sin(WX * FScale * 3.8f + WY * FScale * 1.5f + Warp * 3.4f);
-        const float W2     = std::cos(WY * FScale * 4.1f - WX * FScale * 1.6f - Warp * 3.0f);
-        const float Swell  = 0.5f + 0.25f * (W1 + W2) * WaveDetail;
+        const float W1     = std::sin((WX * 0.96f + WY * 0.28f) * FScale * 2.7f + Warp * 3.6f);
+        const float W2     = std::cos((WX * 0.62f + WY * 0.78f) * FScale * 3.1f - Warp * 2.9f);
+        const float W3     = std::sin((-WX * 0.19f + WY * 0.98f) * FScale * 2.3f + Warp * 2.4f);
+        const float W4     = std::cos((-WX * 0.77f + WY * 0.64f) * FScale * 2.9f - Warp * 3.1f);
+        const float Swell  = 0.5f + 0.14f * (W1 + W2 + W3 + W4) * WaveDetail;
         const float Detail = CloudFbm3(WX * FScale * 1.15f, WY * FScale * 1.15f, WZ * FScale * 1.3f, HighOctFade);
-        NNorm = std::clamp(((Detail - 0.24f) / 0.46f) * 0.64f + Swell * 0.44f, 0.0f, 1.0f);
+        NNorm = std::clamp(((Detail - 0.24f) / 0.46f) * 0.66f + Swell * 0.42f, 0.0f, 1.0f);
     }
     else if (FormationIndex == 10u) // Nacreous: smooth stratospheric mother-of-pearl ribbons
     {
@@ -332,17 +344,20 @@ void VolumetricCloudSequence::ApplyCloudCategoryPreset(
 }
 
 Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
-    const Mathematics::Axis3D&            RayOriginWorld,
-    const Mathematics::Axis3D&            RayDirection,
-    const Mathematics::Axis3D&            SunDirection,
-    const Mathematics::LinearRGB&         SolarIrradiance,
-    const Mathematics::LinearRGB&         SkyRadiance,
-    const CloudDeckConfiguration&         Deck,
-    const BoundedCloudVolume&             LocalVolume,
-    const AtmosphericMediumConfiguration& Medium,
-    float                                 SimulationSeconds,
-    float&                                OutTransmittance,
-    float                                 PixelJitter01) noexcept
+    const Mathematics::Axis3D&                               RayOriginWorld,
+    const Mathematics::Axis3D&                               RayDirection,
+    const Mathematics::Axis3D&                               SunDirection,
+    const Mathematics::LinearRGB&                            SolarIrradiance,
+    const Mathematics::LinearRGB&                            SkyRadiance,
+    const CloudDeckConfiguration&                            Deck,
+    const BoundedCloudVolume&                                LocalVolume,
+    const AtmosphericMediumConfiguration&                    Medium,
+    float                                                    SimulationSeconds,
+    float&                                                   OutTransmittance,
+    float                                                    PixelJitter01,
+    const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields,
+    const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice,
+    const AtmosphericWindParameters*                         OptionalGlobalWind) noexcept
 {
     OutTransmittance = 1.0f;
     Mathematics::LinearRGB TotalRad { 0.0f, 0.0f, 0.0f };
@@ -350,8 +365,8 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
     const float Ign = (PixelJitter01 >= 0.0f)
         ? std::clamp(PixelJitter01, 0.0f, 1.0f)
         : Frac(52.9829189f * Frac(RayDirection.X * 193.713f + RayDirection.Y * 371.419f + RayDirection.Z * 547.823f));
-    // Full [0..1] IGN jitter eliminates step-slice banding without periodic R2 checker patterns
-    const float Jitter = Ign;
+    // Narrow IGN jitter centered in step eliminates slice banding without stochastic salt-and-pepper grain
+    const float Jitter = 0.25f + 0.50f * Ign;
 
     const float BearRad = Deck.WindBearingDegrees * Constants::DegToRadFloat;
     const float WindVX  = std::cos(BearRad) * Deck.WindSpeedMetersPerSecond;
@@ -359,7 +374,7 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
     const float WindX   = Deck.FollowWindEnabled ? (WindVX * SimulationSeconds) : 0.0f;
     const float WindY   = Deck.FollowWindEnabled ? (WindVY * SimulationSeconds) : 0.0f;
 
-    // 1. Optional bounded LocalCloudVolume AABB raymarch (24 jittered steps)
+    // 1. Optional bounded LocalCloudVolume AABB raymarch (36 jittered steps)
     if (LocalVolume.LocalEnabled && LocalVolume.CloudFraction > 0.01f && LocalVolume.ExtinctionMultiplier > 0.01f)
     {
         const Mathematics::Axis3D BoxMin = LocalVolume.VolumeCenterMeters - Mathematics::Axis3D{
@@ -393,7 +408,7 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
                 const float NY = std::abs(P.Y - LocalVolume.VolumeCenterMeters.Y) / std::max(0.1f, LocalVolume.HalfExtentMeters.Y);
                 const float NZ = std::abs(P.Z - LocalVolume.VolumeCenterMeters.Z) / std::max(0.1f, LocalVolume.HalfExtentMeters.Z);
                 const float EdgeFalloff = 1.0f - SmoothStep(0.65f, 1.0f, std::max({ NX, NY, NZ }));
-                const float N = CloudFbm3((P.X + LWindX) * LScale, (P.Y + LWindY) * LScale, P.Z * LScale);
+                const float N = CloudFbm3((P.X - LWindX) * LScale, (P.Y - LWindY) * LScale, P.Z * LScale);
                 const float Thresh = 1.0f - LocalVolume.CloudFraction;
                 const float Den = std::max(0.0f, (N - Thresh) / std::max(0.15f, LocalVolume.CloudFraction)) *
                                   EdgeFalloff * LocalVolume.ExtinctionMultiplier * 0.028f;
@@ -447,6 +462,13 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
     static constexpr std::array<float, 6u> SunOffsets {{ 0.06f, 0.16f, 0.32f, 0.56f, 0.90f, 1.40f }};
     static constexpr std::array<float, 6u> SunWeights {{ 0.10f, 0.16f, 0.22f, 0.28f, 0.34f, 0.42f }};
 
+    const bool HasForceAdvection =
+        Deck.FollowWindEnabled &&
+        ((OptionalForceFields != nullptr && OptionalForceFields->QueryActiveSourceCount() > 0u) ||
+         OptionalLattice != nullptr);
+    const AtmosphericWindParameters ZeroGlobalWind { false, 0.0f, 0.0f, 0.0f, 0.0f, false, 0.0f, 0.3f, 0.0f, 1.0f };
+    const AtmosphericWindParameters& EffGlobalWind = (OptionalGlobalWind != nullptr) ? *OptionalGlobalWind : ZeroGlobalWind;
+
     float DeckTrans = 1.0f;
     float DR = 0.0f, DG = 0.0f, DB = 0.0f;
     for (uint32_t S = 0u; S < Steps; ++S)
@@ -455,9 +477,32 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
         const float PX = RayDirection.X * T;
         const float PY = RayDirection.Y * T;
         const float PZ = OrigZ + RayDirection.Z * T;
+
+        float EvalPX = PX, EvalPY = PY;
+        float ExtraTurb = 0.0f;
+        if (HasForceAdvection)
+        {
+            const float AltNow = std::sqrt(PX * PX + PY * PY + PZ * PZ) - PlanetR;
+            float SwirlNow = 0.0f;
+            const auto Adv = AtmosphericWindSolver::AdvectWorldPointBackward(
+                EffGlobalWind,
+                Deck.WindSpeedMetersPerSecond,
+                Deck.WindBearingDegrees,
+                WindBindingSource::ForceFieldCascade,
+                { PX, PY, AltNow },
+                AltNow,
+                ActiveTimeSec,
+                &SwirlNow,
+                nullptr,
+                OptionalForceFields,
+                OptionalLattice);
+            EvalPX = Adv.X;
+            EvalPY = Adv.Y;
+            ExtraTurb = std::clamp(SwirlNow * 0.25f, 0.0f, 1.25f);
+        }
         const float D  = SampleDeckDensity(
-            PX, PY, PZ, PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Deck.WindShearPerKilometer, FmtIdx, T,
-            Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat, Deck.WindTurbulence, ActiveTimeSec);
+            EvalPX, EvalPY, PZ, PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Deck.WindShearPerKilometer, FmtIdx, T,
+            Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat, Deck.WindTurbulence + ExtraTurb, ActiveTimeSec);
         if (D > 1.0e-6f)
         {
             float SunTau = 0.0f;
@@ -468,11 +513,11 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
                 {
                     const float KS = SunOffsets[K] * ConeReach;
                     SunTau += SampleDeckDensity(
-                        PX + SunDirection.X * KS,
-                        PY + SunDirection.Y * KS,
+                        EvalPX + SunDirection.X * KS,
+                        EvalPY + SunDirection.Y * KS,
                         PZ + SunDirection.Z * KS,
                         PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Deck.WindShearPerKilometer, FmtIdx, T,
-                        Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat, Deck.WindTurbulence, ActiveTimeSec) *
+                        Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat, Deck.WindTurbulence + ExtraTurb, ActiveTimeSec) *
                         (SunWeights[K] * ConeReach);
                 }
             }
@@ -545,11 +590,14 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricClouds(
 }
 
 float VolumetricCloudSequence::EvaluateSolarCloudTransmittance(
-    const Mathematics::Axis3D&    WorldPos,
-    const Mathematics::Axis3D&    SunDirection,
-    const CloudDeckConfiguration& Deck,
-    float                         PlanetRadiusMeters,
-    float                         SimulationSeconds) noexcept
+    const Mathematics::Axis3D&                               WorldPos,
+    const Mathematics::Axis3D&                               SunDirection,
+    const CloudDeckConfiguration&                            Deck,
+    float                                                    PlanetRadiusMeters,
+    float                                                    SimulationSeconds,
+    const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields,
+    const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice,
+    const AtmosphericWindParameters*                         OptionalGlobalWind) noexcept
 {
     if (!Deck.CloudsEnabled || !Deck.CloudShadow.ShadowEnabled || SunDirection.Z <= 0.01f)
     {
@@ -564,18 +612,34 @@ float VolumetricCloudSequence::EvaluateSolarCloudTransmittance(
     const float ThickM  = std::max(100.0f, Deck.LayerThicknessMeters);
     const float MidAlt  = FloorM + ThickM * 0.45f;
     const float DistM   = MidAlt / std::max(0.05f, SunDirection.Z);
-    const float PX      = WorldPos.X + SunDirection.X * DistM;
-    const float PY      = WorldPos.Y + SunDirection.Y * DistM;
+    float PX            = WorldPos.X + SunDirection.X * DistM;
+    float PY            = WorldPos.Y + SunDirection.Y * DistM;
     const float PZ      = PlanetR + ViewerAltM + MidAlt;
+
+    const float ActiveTimeSec = Deck.FollowWindEnabled ? SimulationSeconds : 0.0f;
+    float ExtraTurb = 0.0f;
+    if (Deck.FollowWindEnabled &&
+        ((OptionalForceFields != nullptr && OptionalForceFields->QueryActiveSourceCount() > 0u) || OptionalLattice != nullptr))
+    {
+        const AtmosphericWindParameters ZeroGlobalWind { false, 0.0f, 0.0f, 0.0f, 0.0f, false, 0.0f, 0.3f, 0.0f, 1.0f };
+        const AtmosphericWindParameters& EffGlobalWind = (OptionalGlobalWind != nullptr) ? *OptionalGlobalWind : ZeroGlobalWind;
+        float SwirlNow = 0.0f;
+        const auto Adv = AtmosphericWindSolver::AdvectWorldPointBackward(
+            EffGlobalWind, Deck.WindSpeedMetersPerSecond, Deck.WindBearingDegrees,
+            WindBindingSource::ForceFieldCascade, { PX, PY, MidAlt }, MidAlt, ActiveTimeSec,
+            &SwirlNow, nullptr, OptionalForceFields, OptionalLattice);
+        PX = Adv.X;
+        PY = Adv.Y;
+        ExtraTurb = std::clamp(SwirlNow * 0.25f, 0.0f, 1.25f);
+    }
 
     const float FScale  = (0.00065f / std::max(0.08f, Deck.FeatureScaleMultiplier)) * std::max(0.01f, Deck.CloudShadow.ShadowScale);
     const float Cov     = std::clamp(Deck.CloudFraction * Deck.CloudShadow.ShadowFraction, 0.0f, 1.0f);
     const float DensMul = std::max(0.0f, Deck.ExtinctionMultiplier * Deck.CloudShadow.ShadowDensityMultiplier) * 0.0085f;
-    const float ActiveTimeSec = Deck.FollowWindEnabled ? SimulationSeconds : 0.0f;
     const float D = SampleDeckDensity(
         PX, PY, PZ, PlanetR, FloorM, ThickM, Cov, Deck.AnvilTopSpread * Deck.CloudShadow.ShadowAnvil,
         DensMul, FScale, WindX, WindY, Deck.WindShearPerKilometer, static_cast<uint32_t>(Deck.Category), 8000.0f,
-        Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat, Deck.WindTurbulence, ActiveTimeSec);
+        Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat, Deck.WindTurbulence + ExtraTurb, ActiveTimeSec);
 
     return 0.12f + 0.88f * std::exp(-D * ThickM * 0.36f);
 }
@@ -592,7 +656,8 @@ float VolumetricCloudSequence::EvaluateAllSolarCloudTransmittance(
 
     float Trans = EvaluateSolarCloudTransmittance(
         WorldPos, SunDirection, Atmosphere.Clouds,
-        Atmosphere.Medium.PlanetRadiusMeters, Atmosphere.SimulationSeconds);
+        Atmosphere.Medium.PlanetRadiusMeters, Atmosphere.SimulationSeconds,
+        Atmosphere.ForceFieldSource, Atmosphere.WindLatticeCascade, &Atmosphere.Wind);
 
     const float TimeSec = Atmosphere.SimulationSeconds;
     const auto SafeInv  = [](float V) noexcept -> float { return (std::abs(V) > 1.0e-7f) ? (1.0f / V) : 1.0e7f; };
@@ -715,19 +780,6 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateLocalCloudsOverSegment(
             return;
         }
 
-        const ResolvedWindSample Wind = Vol.FollowWindEnabled
-            ? AtmosphericWindSolver::ResolveWindSample(
-                  Atmosphere.Wind,
-                  Atmosphere.Clouds.WindSpeedMetersPerSecond,
-                  Atmosphere.Clouds.WindBearingDegrees,
-                  Vol.WindSource,
-                  Vol.VolumeCenterMeters,
-                  Vol.VolumeCenterMeters.Z,
-                  TimeSec,
-                  Atmosphere.ForceFieldSource,
-                  Atmosphere.WindLatticeCascade)
-            : ResolvedWindSample {};
-
         constexpr uint32_t LocalSteps = 24u;
         const float Dt     = (TX - TE) / static_cast<float>(LocalSteps);
         const float LScale = 1.0f / std::max(2.0f, Vol.FeatureScaleMeters);
@@ -747,21 +799,22 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateLocalCloudsOverSegment(
                 continue;
             }
 
-            float AdvX = P.X - Wind.VelocityMetersPerSec.X * TimeSec;
-            float AdvY = P.Y - Wind.VelocityMetersPerSec.Y * TimeSec;
-            const float AdvZ = P.Z - Wind.VelocityMetersPerSec.Z * TimeSec * 0.35f;
-            if (Wind.CurlScalar > 1.0e-3f)
-            {
-                const float Dx = P.X - Vol.VolumeCenterMeters.X;
-                const float Dy = P.Y - Vol.VolumeCenterMeters.Y;
-                const float SwirlA = std::clamp(Wind.CurlScalar * 0.14f, -2.5f, 2.5f) *
-                                     std::sin(TimeSec * 0.8f + 0.06f * std::sqrt(Dx * Dx + Dy * Dy));
-                const float Cs = std::cos(SwirlA), Sn = std::sin(SwirlA);
-                AdvX = Vol.VolumeCenterMeters.X + (Dx * Cs - Dy * Sn) - Wind.VelocityMetersPerSec.X * TimeSec * 0.35f;
-                AdvY = Vol.VolumeCenterMeters.Y + (Dx * Sn + Dy * Cs) - Wind.VelocityMetersPerSec.Y * TimeSec * 0.35f;
-            }
+            const Mathematics::Axis3D AdvP = Vol.FollowWindEnabled
+                ? AtmosphericWindSolver::AdvectWorldPointBackward(
+                      Atmosphere.Wind,
+                      Atmosphere.Clouds.WindSpeedMetersPerSecond,
+                      Atmosphere.Clouds.WindBearingDegrees,
+                      Vol.WindSource,
+                      P,
+                      P.Z,
+                      TimeSec,
+                      nullptr,
+                      nullptr,
+                      Atmosphere.ForceFieldSource,
+                      Atmosphere.WindLatticeCascade)
+                : P;
 
-            const float N   = CloudFbm3(AdvX * LScale, AdvY * LScale, AdvZ * LScale);
+            const float N   = CloudFbm3(AdvP.X * LScale, AdvP.Y * LScale, AdvP.Z * LScale);
             const float Den = std::max(0.0f, (N - Thresh) / std::max(0.15f, Vol.CloudFraction)) *
                               ShapeMask * Vol.ExtinctionMultiplier * 0.048f;
             if (Den > 1.0e-5f)
@@ -820,7 +873,7 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricCloudsWithWind
 
     const auto& Deck = Atmosphere.Clouds;
     CloudDeckConfiguration EffectiveDeck = Deck;
-    if (Deck.FollowWindEnabled)
+    if (Deck.FollowWindEnabled && Atmosphere.Wind.Enabled)
     {
         const auto DeckWind = AtmosphericWindSolver::ResolveWindSample(
             Atmosphere.Wind,
@@ -830,8 +883,8 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricCloudsWithWind
             { 0.0f, 0.0f, Deck.CloudFloorMeters },
             Deck.CloudFloorMeters,
             Atmosphere.SimulationSeconds,
-            Atmosphere.ForceFieldSource,
-            Atmosphere.WindLatticeCascade);
+            nullptr,
+            nullptr);
         EffectiveDeck.WindSpeedMetersPerSecond = std::sqrt(
             DeckWind.VelocityMetersPerSec.X * DeckWind.VelocityMetersPerSec.X +
             DeckWind.VelocityMetersPerSec.Y * DeckWind.VelocityMetersPerSec.Y);
@@ -847,7 +900,8 @@ Mathematics::LinearRGB VolumetricCloudSequence::EvaluateVolumetricCloudsWithWind
     float DeckTrans = 1.0f;
     const Mathematics::LinearRGB DeckRad = EvaluateVolumetricClouds(
         RayOriginWorld, RayDirection, SunDirection, SolarIrradiance, SkyRadiance,
-        EffectiveDeck, DisabledLocal, Atmosphere.Medium, Atmosphere.SimulationSeconds, DeckTrans, PixelJitter01);
+        EffectiveDeck, DisabledLocal, Atmosphere.Medium, Atmosphere.SimulationSeconds, DeckTrans, PixelJitter01,
+        Atmosphere.ForceFieldSource, Atmosphere.WindLatticeCascade, &Atmosphere.Wind);
 
     TotalRad.R += OutTransmittance * DeckRad.R;
     TotalRad.G += OutTransmittance * DeckRad.G;

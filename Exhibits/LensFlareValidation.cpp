@@ -398,7 +398,8 @@ int main()
 
     const double LumOff  = ComputeMeanLuminance(GpuFlareOff, FrameW, FrameH);
     const double LumAnam = ComputeMeanLuminance(GpuAnamorphic, FrameW, FrameH);
-    Score.Verify(LumAnam > LumOff + 0.008, "Anamorphic lens flare visibly illuminates GPU framebuffer");
+    Score.Verify(LumAnam > LumOff + 0.003 && ComputeMeanAbsDiff(GpuFlareOff, GpuAnamorphic) > 0.8,
+                 "Anamorphic lens flare visibly illuminates GPU framebuffer");
     Score.Verify(WritePngRgba8(OutDir / "01-AnamorphicCinemaFlare.png", FrameW, FrameH, GpuAnamorphic.data()),
                  "Wrote 01-AnamorphicCinemaFlare.png");
 

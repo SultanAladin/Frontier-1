@@ -101,7 +101,7 @@ struct CpuDownsampledCloudField
         const AtmosphericSkySequence&  SkySeq)
     {
         const auto& Atmo = Scene.Atmosphere;
-        if (!Atmo.Medium.AtmosphereEnabled || !Atmo.Clouds.CloudsEnabled || FullW == 0u || FullH == 0u)
+        if (!Atmo.Medium.AtmosphereEnabled || Atmo.Medium.OrbitalViewEnabled || !Atmo.Clouds.CloudsEnabled || FullW == 0u || FullH == 0u)
         {
             WidthPx = HeightPx = 0u;
             RgbaT.clear();
@@ -201,11 +201,39 @@ struct CpuDownsampledCloudField
     }
 
     const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
+    if (Atmo.Medium.OrbitalViewEnabled)
+    {
+        Mathematics::LinearRGB SpaceTrans { 1.0f, 1.0f, 1.0f };
+        const auto PlanetLimb = AtmosphericSkySequence::EvaluateOrbitalSpaceRadiance(
+            RayDir,
+            RayOrigin,
+            SolarSolved.WorldDirectionToSun,
+            Atmo.Medium,
+            Atmo.Solar.SolarIntensityMultiplier,
+            Atmo.SimulationSeconds,
+            Atmo.Clouds.CloudFraction,
+            &SpaceTrans);
+        const auto SunRad = AtmosphericSkySequence::EvaluateSolarCoronaRadiance(
+            RayDir,
+            SolarSolved.WorldDirectionToSun,
+            Atmo.Solar,
+            { 1.0f, 1.0f, 1.0f },
+            SolarSolved.EffectiveSolarTint,
+            true);
+        const auto MoonStarRad = LunarStarfieldSequence::EvaluateCelestialField(
+            RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds, &Atmo.Medium);
+        return {
+            PlanetLimb.R + (SunRad.R + MoonStarRad.R) * SpaceTrans.R,
+            PlanetLimb.G + (SunRad.G + MoonStarRad.G) * SpaceTrans.G,
+            PlanetLimb.B + (SunRad.B + MoonStarRad.B) * SpaceTrans.B,
+        };
+    }
+
     const auto SolarTrans  = AtmosphericSkySequence::ComputeSolarTransmittance(
         SolarSolved.WorldDirectionToSun, Atmo.Medium);
     const auto SkyRad      = SkySeq.SampleSkyViewDirection(RayDir);
     const auto SunRad      = AtmosphericSkySequence::EvaluateSolarCoronaRadiance(
-        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Solar, SolarTrans, SolarSolved.EffectiveSolarTint);
+        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Solar, SolarTrans, SolarSolved.EffectiveSolarTint, false);
     const auto MoonStarRad = LunarStarfieldSequence::EvaluateCelestialField(
         RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds, &Atmo.Medium);
 
@@ -1180,7 +1208,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
 
     const uint32_t MatCount = PreparedScene.MaterialRegister.QuerySlotCount();
     CpuDownsampledCloudField CpuCloudField {};
-    if (Config.DebugChannel == 0u)
+    if (Config.DebugChannel == 0u && !PreparedScene.Atmosphere.Medium.OrbitalViewEnabled)
     {
         CpuCloudField.Build(Result.WidthPx, Result.HeightPx, CurBasis, PreparedScene, SkySequence);
     }
@@ -1328,7 +1356,8 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                         };
                     }
 
-                    if (Atmo.Fog.HeightFog.Enabled || Atmo.Fog.AerialFog.Enabled || !Atmo.Fog.LocalFogs.empty())
+                    if (!Atmo.Medium.OrbitalViewEnabled &&
+                        (Atmo.Fog.HeightFog.Enabled || Atmo.Fog.AerialFog.Enabled || !Atmo.Fog.LocalFogs.empty()))
                     {
                         const auto FogRes = VolumetricFogSequence::EvaluateVolumetricFog(
                             CurBasis.CameraOrigin, RayDir, HitDist, PreparedScene.Sun.DirectionToSun,
@@ -1625,7 +1654,8 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                     };
                 }
 
-                if (Atmo.Fog.HeightFog.Enabled || Atmo.Fog.AerialFog.Enabled || !Atmo.Fog.LocalFogs.empty())
+                if (!Atmo.Medium.OrbitalViewEnabled &&
+                    (Atmo.Fog.HeightFog.Enabled || Atmo.Fog.AerialFog.Enabled || !Atmo.Fog.LocalFogs.empty()))
                 {
                     const auto FogRes = VolumetricFogSequence::EvaluateVolumetricFog(
                         CurBasis.CameraOrigin, RayDir, HitDist, PreparedScene.Sun.DirectionToSun,
