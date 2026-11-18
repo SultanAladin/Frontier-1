@@ -1536,6 +1536,7 @@ int LaunchDesktopWorkspace(
         const auto   NowTick = std::chrono::steady_clock::now();
         const double Dt      = std::clamp(std::chrono::duration<double>(NowTick - LastTick).count(), 1.0 / 240.0, 0.250);
         LastTick             = NowTick;
+        float        UiBuildMs = 0.0f;
 
         uint32_t SurfaceW = InitialOptions.InitialWidthPx;
         uint32_t SurfaceH = InitialOptions.InitialHeightPx;
@@ -1714,7 +1715,10 @@ int LaunchDesktopWorkspace(
         {
             (void)EditorLoopPtr->ExecuteExternalDesktopTick(Dt);
             Input::InputExtension::AssignActiveExtension(&InputParticipant);
+            const auto UiStart = std::chrono::steady_clock::now();
             EditorLoopPtr->PresentPrimaryEditorImGui(Dt);
+            UiBuildMs = static_cast<float>(
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - UiStart).count());
         }
         else if (CurrentSurface == ActiveHostSurface::ParticleWorkspaceSurface && ParticleHostPtr)
         {
@@ -1993,6 +1997,7 @@ int LaunchDesktopWorkspace(
 #endif
         ImGui::Render();
 
+        const auto PresentStart = std::chrono::steady_clock::now();
         if (!SwapchainPresenter.PresentImGuiBatches(ImGui::GetDrawData(), SurfaceW, SurfaceH))
         {
             const std::string Diagnostic(SwapchainPresenter.QueryLastPresentationDiagnostic());
@@ -2001,6 +2006,17 @@ int LaunchDesktopWorkspace(
             ImGui::DestroyContext(GuiCtx);
             return 1;
         }
+        const auto PresentEnd = std::chrono::steady_clock::now();
+#if FRONTIER_EDITOR_ENABLED
+        if (CurrentSurface == ActiveHostSurface::WorldEditorSurface && EditorLoopPtr)
+        {
+            const float PresentMs = static_cast<float>(
+                std::chrono::duration<double, std::milli>(PresentEnd - PresentStart).count());
+            const float TotalFrameMs = static_cast<float>(
+                std::chrono::duration<double, std::milli>(PresentEnd - NowTick).count());
+            EditorLoopPtr->RecordFramePresentationTiming(UiBuildMs, PresentMs, TotalFrameMs);
+        }
+#endif
         ++ExecutedSteps;
     }
 

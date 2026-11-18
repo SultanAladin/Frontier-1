@@ -110,6 +110,8 @@ private:
     DeviceImageResource                                       OffscreenTarget       {};
     VkSemaphore                                               ImageAcquireSemaphore = VK_NULL_HANDLE;
     VkSemaphore                                               RenderDoneSemaphore   = VK_NULL_HANDLE;
+    VkFence                                                   PresentFence          = VK_NULL_HANDLE;
+    VkCommandBuffer                                           PreviousPresentCommandBuffer = VK_NULL_HANDLE;
 
     VkSampler                                                 LinearSampler         = VK_NULL_HANDLE;
     VkRenderPass                                              OverlayRenderUnit     = VK_NULL_HANDLE;

@@ -164,7 +164,8 @@ bool VulkanInterchange::InitializeInterchange(
 
     VkPhysicalDeviceProperties SelectedProps {};
     vkGetPhysicalDeviceProperties(PhysicalAdapter, &SelectedProps);
-    AdapterName = SelectedProps.deviceName;
+    AdapterName       = SelectedProps.deviceName;
+    TimestampPeriodNs = (SelectedProps.limits.timestampPeriod > 0.0f) ? SelectedProps.limits.timestampPeriod : 1.0f;
 
     uint32_t QueueGroupCount = 0u;
     vkGetPhysicalDeviceQueueFamilyProperties(PhysicalAdapter, &QueueGroupCount, nullptr);
@@ -177,7 +178,8 @@ bool VulkanInterchange::InitializeInterchange(
         const VkQueueFlags UsageMask = QueueGroups[FamIdx].queueFlags;
         if ((UsageMask & VK_QUEUE_GRAPHICS_BIT) != 0u && (UsageMask & VK_QUEUE_COMPUTE_BIT) != 0u)
         {
-            QueueOrdinal = FamIdx;
+            QueueOrdinal       = FamIdx;
+            TimestampValidBits = QueueGroups[FamIdx].timestampValidBits;
             FoundQueue         = true;
             break;
         }

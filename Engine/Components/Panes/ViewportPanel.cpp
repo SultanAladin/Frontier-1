@@ -288,6 +288,11 @@ void ViewportPanel::ConfigureSimulationTimeSeconds(double TimeSeconds) noexcept
     SimulationTimeSeconds = std::max(0.0, TimeSeconds);
 }
 
+void ViewportPanel::ConfigureFrameTimingBreakdown(const FrameTimingBreakdown& Breakdown) noexcept
+{
+    LastTimingBreakdown = Breakdown;
+}
+
 void ViewportPanel::ConfigureProbeReadoutText(std::string_view ReadoutText)
 {
     ProbeReadoutText.assign(ReadoutText.begin(), ReadoutText.end());
@@ -680,7 +685,34 @@ void ViewportPanel::RenderDiagnosticsPanel(
     char FpsUnitBuf[32]{};
     std::snprintf(FpsUnitBuf, sizeof(FpsUnitBuf), "ms  (%.1f fps)", RealFps);
 
-    const std::array<DiagnosticsMetricChannel, 3> Channels = {{
+    const float ProfMs = (LastTimingBreakdown.TotalFrameMs > 0.0f)
+        ? LastTimingBreakdown.TotalFrameMs
+        : CurMs;
+    char ProfWhole[16]{};
+    char ProfFrac[16]{};
+    const int ProfWholeInt = static_cast<int>(ProfMs);
+    const int ProfTenths   = std::clamp(static_cast<int>(std::round((ProfMs - static_cast<float>(ProfWholeInt)) * 10.0f)), 0, 9);
+    std::snprintf(ProfWhole, sizeof(ProfWhole), "%d", ProfWholeInt);
+    std::snprintf(ProfFrac, sizeof(ProfFrac), ".%d", ProfTenths);
+
+    char ProfSub[64]{};
+    std::snprintf(
+        ProfSub,
+        sizeof(ProfSub),
+        "%ux%u  |  %s / %s",
+        LastTimingBreakdown.RenderWidthPx,
+        LastTimingBreakdown.RenderHeightPx,
+        QueryEngineShortLabel(LastTimingBreakdown.EngineMode),
+        QueryShadowShortLabel(LastTimingBreakdown.ShadowAlgorithm));
+
+    char ProfDebug[80]{};
+    std::snprintf(
+        ProfDebug,
+        sizeof(ProfDebug),
+        "Log: FrontierTiming.log  |  Scene sync: %.2f ms",
+        LastTimingBreakdown.SceneSyncGpuMs);
+
+    const std::array<DiagnosticsMetricChannel, 4> Channels = {{
         DiagnosticsMetricChannel{
             "Frame time",
             "Timing",
@@ -733,6 +765,31 @@ void ViewportPanel::RenderDiagnosticsPanel(
             false,
             ColorRgba{ 142, 198, 152, 240 },
             {}
+        },
+        DiagnosticsMetricChannel{
+            "Stage profiler",
+            "Profiler",
+            ProfWhole,
+            ProfFrac,
+            "ms  (frame)",
+            ProfSub,
+            ProfDebug,
+            {},
+            0.0f,
+            1.0f,
+            0.0f,
+            false,
+            ColorRgba{ 142, 198, 152, 240 },
+            {
+                { "GPU World",      FormatMs(LastTimingBreakdown.GpuPrimaryTraceMs) },
+                { "GPU Denoise",    FormatMs(LastTimingBreakdown.GpuDenoiseMs) },
+                { "GPU Clouds+Sky", FormatMs(LastTimingBreakdown.GpuCloudsMs + LastTimingBreakdown.GpuSkyLutMs) },
+                { "GPU Readback",   FormatMs(LastTimingBreakdown.GpuReadbackCopyMs) },
+                { "GPU Frame Total",FormatMs(LastTimingBreakdown.GpuTotalPassMs) },
+                { "Force Overlay",  FormatMs(LastTimingBreakdown.ForceOverlayMs) },
+                { "UI + Gizmo",     FormatMs(LastTimingBreakdown.DesktopPollAndUiMs + LastTimingBreakdown.GizmoOverlayMs) },
+                { "Present / Swap", FormatMs(LastTimingBreakdown.SwapchainPresentMs) },
+            }
         },
     }};
 

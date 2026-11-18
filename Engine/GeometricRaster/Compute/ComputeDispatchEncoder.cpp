@@ -229,7 +229,7 @@ bool ComputeDispatchEncoder::EncodeComputeDispatch(
         }
         const std::array<VkDescriptorPoolSize, 4u> AllocatorSizes {{
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         MaxDispatchesPerAllocator * 2u },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         MaxDispatchesPerAllocator * 6u },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         MaxDispatchesPerAllocator * 28u },
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          MaxDispatchesPerAllocator * 8u },
             { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MaxDispatchesPerAllocator * 4u },
         }};
@@ -319,7 +319,48 @@ DeviceBufferResource ComputeDispatchEncoder::AllocateHostWritableBuffer(
         ByteSize,
         UsageMask | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+}
+
+DeviceBufferResource ComputeDispatchEncoder::AllocateDeviceLocalBuffer(
+    uint64_t           ByteSize,
+    VkBufferUsageFlags UsageMask) const
+{
+    if (DeviceInterchange == nullptr)
+    {
+        return {};
+    }
+    return DeviceInterchange->AllocateBuffer(
+        ByteSize,
+        UsageMask | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+}
+
+DeviceBufferResource ComputeDispatchEncoder::AllocateReadbackStagingBuffer(
+    uint64_t           ByteSize,
+    VkBufferUsageFlags UsageMask) const
+{
+    if (DeviceInterchange == nullptr)
+    {
+        return {};
+    }
+    return DeviceInterchange->AllocateBuffer(
+        ByteSize,
+        UsageMask | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+}
+
+DeviceBufferResource ComputeDispatchEncoder::AllocateUploadStagingBuffer(uint64_t ByteSize) const
+{
+    if (DeviceInterchange == nullptr)
+    {
+        return {};
+    }
+    return DeviceInterchange->AllocateBuffer(
+        ByteSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 }
 
 } // namespace Frontier::GeometricRaster

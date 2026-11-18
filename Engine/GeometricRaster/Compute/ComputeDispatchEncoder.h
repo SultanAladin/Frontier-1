@@ -77,6 +77,16 @@ public:
         uint64_t           ByteSize,
         VkBufferUsageFlags UsageMask) const;
 
+    [[nodiscard]] DeviceBufferResource AllocateDeviceLocalBuffer(
+        uint64_t           ByteSize,
+        VkBufferUsageFlags UsageMask) const;
+
+    [[nodiscard]] DeviceBufferResource AllocateReadbackStagingBuffer(
+        uint64_t           ByteSize,
+        VkBufferUsageFlags UsageMask = VK_BUFFER_USAGE_TRANSFER_DST_BIT) const;
+
+    [[nodiscard]] DeviceBufferResource AllocateUploadStagingBuffer(uint64_t ByteSize) const;
+
     template <typename EntryScalar>
     void UploadSpanToBuffer(DeviceBufferResource& TargetBuffer, std::span<const EntryScalar> EntryCount) const noexcept
     {

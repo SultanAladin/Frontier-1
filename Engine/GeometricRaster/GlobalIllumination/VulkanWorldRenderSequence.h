@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Components/Diagnostics/FrameTimingTelemetry.h"
 #include "Engine/GeometricRaster/Compute/ComputeDispatchEncoder.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 
@@ -46,6 +47,8 @@ public:
     [[nodiscard]] uint32_t         QueryCachedSdfVoxelCount() const noexcept { return CachedSdfDimX * CachedSdfDimY * CachedSdfDimZ; }
     [[nodiscard]] std::string_view QueryAdapterTitle() const noexcept;
     [[nodiscard]] float            QueryLastDispatchMilliseconds() const noexcept { return LastDispatchMilliseconds; }
+    [[nodiscard]] float            QueryLastSceneSyncMilliseconds() const noexcept { return LastSceneSyncMilliseconds; }
+    [[nodiscard]] const FrameTimingBreakdown& QueryLastTimingBreakdown() const noexcept { return LastTimingBreakdown; }
 
     void SynchronizeSceneResources(
         const WorldSceneSpecification&   Scene,
@@ -74,9 +77,25 @@ private:
         uint64_t              MinimumBytes,
         VkBufferUsageFlags    UsageMask);
 
+    void EnsureDeviceBufferCapacity(
+        DeviceBufferResource& TargetBuffer,
+        uint64_t              MinimumBytes,
+        VkBufferUsageFlags    UsageMask);
+
+    void EnsureReadbackBufferCapacity(
+        DeviceBufferResource& TargetBuffer,
+        uint64_t              MinimumBytes);
+
+    bool UploadToDeviceBuffer(
+        DeviceBufferResource& TargetBuffer,
+        const void*           SourceData,
+        uint64_t              ByteCount,
+        VkBufferUsageFlags    UsageMask);
+
     [[nodiscard]] bool DispatchGpuSignedDistanceGrid(const WorldSceneSpecification& Scene);
     void DispatchGpuSkyViewLut(VkCommandBuffer Cmd, const WorldSceneSpecification& Scene);
-    void UploadSolarCascadeRadiosity(const WorldSceneSpecification& Scene);
+    void UploadSolarCascadeRadiosity(const WorldSceneSpecification& Scene, bool BuildDdgiOnGpu);
+    [[nodiscard]] bool DispatchGpuScenePrecompute(const WorldSceneSpecification& Scene, bool BuildDdgiOnGpu);
 
     VulkanInterchange*     BoundDevice                 = nullptr;
     ComputeDispatchEncoder DispatchEncoder             {};
@@ -85,10 +104,16 @@ private:
     uint32_t               DenoiseProgramHandle        = UINT32_MAX;
     uint32_t               SignedDistanceProgramHandle = UINT32_MAX;
     uint32_t               SkyViewLutProgramHandle     = UINT32_MAX;
+    uint32_t               ShadowCascadeProgramHandle  = UINT32_MAX;
+    uint32_t               SdfRadiosityProgramHandle   = UINT32_MAX;
+    uint32_t               DdgiLatticeProgramHandle    = UINT32_MAX;
+    VkQueryPool            TimestampQueryPool          = VK_NULL_HANDLE;
 
     DeviceBufferResource   UniformBuffer               {};
     DeviceBufferResource   SdfUniformBuffer            {};
     DeviceBufferResource   SkyViewUniformBuffer        {};
+    DeviceBufferResource   UploadStagingBuffer         {};
+    DeviceBufferResource   OutputReadbackStagingBuffer {};
     DeviceBufferResource   BvhEntryBuffer              {};
     DeviceBufferResource   ShadedTriangleBuffer        {};
     DeviceBufferResource   MaterialEntryBuffer         {};
@@ -129,11 +154,15 @@ private:
 
     OrthographicShadowCascade CachedFineSunCascade  {};
     OrthographicShadowCascade CachedSunCascade      {};
+    Mathematics::Axis3D    LastSyncedSunDir         { 0.0f, 0.0f, 0.0f };
     uint32_t               CoarseShadowOffsetTexels = 0u;
     uint32_t               UploadedBvhCount         = 0u;
     uint32_t               UploadedMaterialCount    = 0u;
     bool                   SceneUploadedOnce        = false;
+    bool                   DdgiManagedByGpu         = false;
     float                  LastDispatchMilliseconds = 0.0f;
+    float                  LastSceneSyncMilliseconds = 0.0f;
+    FrameTimingBreakdown   LastTimingBreakdown      {};
 };
 
 } // namespace Frontier::GeometricRaster

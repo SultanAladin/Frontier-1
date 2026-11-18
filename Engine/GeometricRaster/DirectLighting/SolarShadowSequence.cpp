@@ -289,12 +289,12 @@ struct CascadeSampleOutcome
     const float RotPhi = static_cast<float>(RotationSeed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
     constexpr float GoldenAngle = 2.39996323f;
 
-    // EEVEE-Next Quadratic Shadow Map Ray March (SMRT): 8 rays x 14 quadratic steps with occlusion slope tracking
+    // EEVEE-Next Quadratic Shadow Map Ray March (SMRT): 8 rays x 16 quadratic steps with segment-crossing continuity
     constexpr uint32_t SmrtRays  = 8u;
-    constexpr uint32_t SmrtSteps = 14u;
-    const float MaxMarchWorldM   = 2.60f;
-    const float MaxStepTexels    = std::clamp((MaxMarchWorldM * TanSunRadius) / TexelM, 2.0f, 36.0f);
-    const float ThicknessM       = std::max(0.08f, TexelM * 26.0f);
+    constexpr uint32_t SmrtSteps = 16u;
+    const float MaxMarchWorldM   = 6.50f;
+    const float MaxStepTexels    = std::clamp((MaxMarchWorldM * TanSunRadius) / TexelM, 2.5f, 44.0f);
+    const float ThicknessM       = std::max(0.65f, TexelM * 42.0f);
 
     float LitSum     = 0.0f;
     float BlkDistSum = 0.0f;
@@ -311,6 +311,7 @@ struct CascadeSampleOutcome
         const float DirTY    = Radial * std::sin(Angle) * MaxStepTexels;
         bool Occluded        = false;
         float BestHitDist    = 0.0f;
+        float PrevRayD       = RecD;
 
         for (uint32_t Step = 1u; Step <= SmrtSteps; ++Step)
         {
@@ -320,14 +321,16 @@ struct CascadeSampleOutcome
             const int TY      = std::clamp(static_cast<int>(std::floor(CY + DirTY * TQuad)), 0, MaxIdx);
             const float RayD      = RecD - MaxMarchWorldM * TQuad;
             const float CascadeD  = Cascade.ClosestLightDepth[static_cast<std::size_t>(TY) * Cascade.ResolutionTexels + static_cast<uint32_t>(TX)];
-            const float Diff      = RayD - CascadeD;
+            const float DiffCurr  = RayD - CascadeD;
+            const float DiffPrev  = PrevRayD - CascadeD;
 
-            if (Diff > Bias && Diff < ThicknessM)
+            if (DiffCurr > Bias && DiffPrev < ThicknessM)
             {
                 Occluded    = true;
-                BestHitDist = std::max(0.02f, RecD - CascadeD);
+                BestHitDist = std::max(0.04f, RecD - CascadeD);
                 break;
             }
+            PrevRayD = RayD;
         }
         if (Occluded)
         {

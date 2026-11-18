@@ -173,6 +173,9 @@ bool ImGuiOverlayRasterization::InitializeOverlay(
     {
         (void)vkCreateSemaphore(LogicalVk, &SemSpec, nullptr, &ImageAcquireSemaphore);
         (void)vkCreateSemaphore(LogicalVk, &SemSpec, nullptr, &RenderDoneSemaphore);
+        VkFenceCreateInfo FenceSpec {};
+        FenceSpec.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        (void)vkCreateFence(LogicalVk, &FenceSpec, nullptr, &PresentFence);
     }
 
     if (!ConstructRasterResources(ActiveColorFormat, OptionalDiagnostic))
@@ -540,6 +543,16 @@ void ImGuiOverlayRasterization::DestroyTargetAttachments() noexcept
         return;
     }
     const VkDevice LogicalVk = BoundDevice->AccessDevice();
+    if (PreviousPresentCommandBuffer != VK_NULL_HANDLE)
+    {
+        if (PresentFence != VK_NULL_HANDLE)
+        {
+            (void)vkWaitForFences(LogicalVk, 1u, &PresentFence, VK_TRUE, 5000000000ull);
+            (void)vkResetFences(LogicalVk, 1u, &PresentFence);
+        }
+        vkFreeCommandBuffers(LogicalVk, BoundDevice->AccessCommandAllocator(), 1u, &PreviousPresentCommandBuffer);
+        PreviousPresentCommandBuffer = VK_NULL_HANDLE;
+    }
     vkDeviceWaitIdle(LogicalVk);
 
     for (VkFramebuffer TargetFb : TargetAttachments)
@@ -613,7 +626,37 @@ bool ImGuiOverlayRasterization::RebuildSwapchainOrOffscreenTarget(uint32_t Width
         ScSpec.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         ScSpec.preTransform     = Caps.currentTransform;
         ScSpec.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        ScSpec.presentMode      = VK_PRESENT_MODE_FIFO_KHR;
+        VkPresentModeKHR ChosenPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+        if (vkGetPhysicalDeviceSurfacePresentModesKHR != nullptr)
+        {
+            uint32_t ModeCount = 0u;
+            vkGetPhysicalDeviceSurfacePresentModesKHR(BoundDevice->AccessPhysicalDevice(), WindowSurface, &ModeCount, nullptr);
+            if (ModeCount > 0u)
+            {
+                std::vector<VkPresentModeKHR> Modes(ModeCount);
+                vkGetPhysicalDeviceSurfacePresentModesKHR(BoundDevice->AccessPhysicalDevice(), WindowSurface, &ModeCount, Modes.data());
+                for (VkPresentModeKHR M : Modes)
+                {
+                    if (M == VK_PRESENT_MODE_MAILBOX_KHR)
+                    {
+                        ChosenPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+                        break;
+                    }
+                }
+                if (ChosenPresentMode == VK_PRESENT_MODE_FIFO_KHR)
+                {
+                    for (VkPresentModeKHR M : Modes)
+                    {
+                        if (M == VK_PRESENT_MODE_IMMEDIATE_KHR)
+                        {
+                            ChosenPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        ScSpec.presentMode      = ChosenPresentMode;
         ScSpec.clipped          = VK_TRUE;
 
         if (vkCreateSwapchainKHR(LogicalVk, &ScSpec, nullptr, &SwapchainHandle) != VK_SUCCESS)
@@ -1042,6 +1085,16 @@ bool ImGuiOverlayRasterization::PresentImGuiBatches(
     uint32_t ImageIndex = 0u;
     if (Stats.LiveWindowSwapchain)
     {
+        if (PreviousPresentCommandBuffer != VK_NULL_HANDLE)
+        {
+            if (PresentFence != VK_NULL_HANDLE)
+            {
+                (void)vkWaitForFences(BoundDevice->AccessDevice(), 1u, &PresentFence, VK_TRUE, 5000000000ull);
+                (void)vkResetFences(BoundDevice->AccessDevice(), 1u, &PresentFence);
+            }
+            vkFreeCommandBuffers(BoundDevice->AccessDevice(), BoundDevice->AccessCommandAllocator(), 1u, &PreviousPresentCommandBuffer);
+            PreviousPresentCommandBuffer = VK_NULL_HANDLE;
+        }
         const VkResult AcquireResult = vkAcquireNextImageKHR(
             BoundDevice->AccessDevice(),
             SwapchainHandle,
@@ -1111,7 +1164,7 @@ bool ImGuiOverlayRasterization::PresentImGuiBatches(
         SubmitInfo.pCommandBuffers      = &CommandBuffer;
         SubmitInfo.signalSemaphoreCount = 1u;
         SubmitInfo.pSignalSemaphores    = &RenderDoneSemaphore;
-        const VkResult SubmitResult = vkQueueSubmit(BoundDevice->AccessQueue(), 1u, &SubmitInfo, VK_NULL_HANDLE);
+        const VkResult SubmitResult = vkQueueSubmit(BoundDevice->AccessQueue(), 1u, &SubmitInfo, PresentFence);
         if (SubmitResult != VK_SUCCESS)
         {
             vkFreeCommandBuffers(BoundDevice->AccessDevice(), BoundDevice->AccessCommandAllocator(), 1u, &CommandBuffer);
@@ -1128,15 +1181,19 @@ bool ImGuiOverlayRasterization::PresentImGuiBatches(
         PresentInfo.pImageIndices      = &ImageIndex;
         const VkResult PresentResult = vkQueuePresentKHR(BoundDevice->AccessQueue(), &PresentInfo);
 
-        // The presenter intentionally serializes its single reusable command allocator.
-        // This mirrors the old working frame lifetime and prevents an in-flight command
-        // buffer from being freed/reused before the next acquire.
-        const VkResult IdleResult = vkQueueWaitIdle(BoundDevice->AccessQueue());
-        vkFreeCommandBuffers(BoundDevice->AccessDevice(), BoundDevice->AccessCommandAllocator(), 1u, &CommandBuffer);
-        if (IdleResult != VK_SUCCESS)
+        if (PresentFence != VK_NULL_HANDLE)
         {
-            return ReportPresentationFailure(
-                "vkQueueWaitIdle failed with VkResult " + std::to_string(static_cast<int32_t>(IdleResult)) + ".");
+            PreviousPresentCommandBuffer = CommandBuffer;
+        }
+        else
+        {
+            const VkResult IdleResult = vkQueueWaitIdle(BoundDevice->AccessQueue());
+            vkFreeCommandBuffers(BoundDevice->AccessDevice(), BoundDevice->AccessCommandAllocator(), 1u, &CommandBuffer);
+            if (IdleResult != VK_SUCCESS)
+            {
+                return ReportPresentationFailure(
+                    "vkQueueWaitIdle failed with VkResult " + std::to_string(static_cast<int32_t>(IdleResult)) + ".");
+            }
         }
         if (PresentResult == VK_ERROR_OUT_OF_DATE_KHR || PresentResult == VK_SUBOPTIMAL_KHR)
         {
@@ -1179,6 +1236,17 @@ bool ImGuiOverlayRasterization::ReadbackLastPresentedRgba(
     if (BoundDevice == nullptr || !BoundDevice->Ready() || Stats.WidthPx == 0u || Stats.HeightPx == 0u)
     {
         return false;
+    }
+
+    if (PreviousPresentCommandBuffer != VK_NULL_HANDLE)
+    {
+        if (PresentFence != VK_NULL_HANDLE)
+        {
+            (void)vkWaitForFences(BoundDevice->AccessDevice(), 1u, &PresentFence, VK_TRUE, 5000000000ull);
+            (void)vkResetFences(BoundDevice->AccessDevice(), 1u, &PresentFence);
+        }
+        vkFreeCommandBuffers(BoundDevice->AccessDevice(), BoundDevice->AccessCommandAllocator(), 1u, &PreviousPresentCommandBuffer);
+        PreviousPresentCommandBuffer = VK_NULL_HANDLE;
     }
 
     VkImage SourceImage = OffscreenTarget.ImageHandle;
@@ -1312,6 +1380,11 @@ void ImGuiOverlayRasterization::TeardownOverlay() noexcept
     {
         vkDestroySemaphore(LogicalVk, RenderDoneSemaphore, nullptr);
         RenderDoneSemaphore = VK_NULL_HANDLE;
+    }
+    if (PresentFence != VK_NULL_HANDLE)
+    {
+        vkDestroyFence(LogicalVk, PresentFence, nullptr);
+        PresentFence = VK_NULL_HANDLE;
     }
     if (WindowSurface != VK_NULL_HANDLE && vkDestroySurfaceKHR != nullptr)
     {

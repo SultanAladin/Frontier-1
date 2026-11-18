@@ -79,6 +79,8 @@ public:
     [[nodiscard]] bool             QueryUsesKhrDynamicRendering() const noexcept { return DynamicRenderingEnabled; }
     [[nodiscard]] bool             QueryUsesKhrSynchronization2() const noexcept { return Synchronization2Enabled; }
     [[nodiscard]] uint32_t         QueryAccelerationScratchAlignment() const noexcept { return AccelerationScratchAlignment; }
+    [[nodiscard]] float            QueryTimestampPeriodNs() const noexcept { return TimestampPeriodNs; }
+    [[nodiscard]] uint32_t         QueryTimestampValidBits() const noexcept { return TimestampValidBits; }
     [[nodiscard]] uint64_t         QueryBufferDeviceAddress(VkBuffer BufferHandle) const noexcept;
 
     [[nodiscard]] DeviceBufferResource AllocateBuffer(
@@ -128,6 +130,8 @@ private:
     uint64_t         NextTimelineTick               = 1ull;           // [count] - Next timeline signal counter
     uint32_t         QueueOrdinal                   = 0u;             // [idx]   - Selected queue family index
     uint32_t         AccelerationScratchAlignment   = 256u;           // [B]     - minAccelerationStructureScratchOffsetAlignment
+    float            TimestampPeriodNs              = 1.0f;           // [ns]    - Nanoseconds per GPU timestamp tick
+    uint32_t         TimestampValidBits             = 0u;             // [bits]  - Queue timestamp valid bit width
     bool             UseKhrTimelineEntry            = false;          // [-]     - True when KHR extension entry points are active
     bool             HardwareAccelerated            = false;          // [-]     - True when discrete/integrated GPU is active
     bool             HardwareRayQuerySupported      = false;          // [-]     - True when VK_KHR_acceleration_structure + VK_KHR_ray_query active

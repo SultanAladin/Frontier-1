@@ -12,6 +12,7 @@
 #include "Engine/Components/Controls/CapsuleButton.h"
 #include "Engine/Components/Controls/ExecutionModeStrip.h"
 #include "Engine/Components/Diagnostics/DiagnosticsOverlay.h"
+#include "Engine/Components/Diagnostics/FrameTimingTelemetry.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldDescriptors.h"
 
@@ -40,9 +41,10 @@ enum class ViewportExecutionMode : uint8_t
 
 enum class DiagnosticsTabCategory : uint8_t
 {
-    Timing = 0, // [-] - Frame time sparkline & percentile statistics
-    Scene  = 1, // [-] - Constructed/visible slot breakdown
-    Render = 2, // [-] - Quality, raytracing & render scale telemetry
+    Timing   = 0, // [-] - Frame time sparkline & percentile statistics
+    Scene    = 1, // [-] - Constructed/visible slot breakdown
+    Render   = 2, // [-] - Quality, raytracing & render scale telemetry
+    Profiler = 3, // [-] - Detailed per-stage GPU + CPU millisecond breakdown
 };
 
 enum class ConstructCategoryRail : uint8_t
@@ -148,6 +150,7 @@ public:
     void ConfigureForceOverlaySheetOpen(bool Open) noexcept;
     void ConfigureForceOverlaySettings(const SimulationSpace::ForceFields::ForceOverlaySettings& Settings) noexcept;
     void ConfigureSimulationTimeSeconds(double TimeSeconds) noexcept;
+    void ConfigureFrameTimingBreakdown(const FrameTimingBreakdown& Breakdown) noexcept;
     void ConfigureProbeReadoutText(std::string_view ReadoutText);
     void ConfigureSceneTitle(std::string_view Title);
     void ConfigureExecutionMode(ViewportExecutionMode Mode, bool Paused = false) noexcept;
@@ -250,6 +253,7 @@ private:
     DiagnosticsOverlaySession  DiagnosticsSession      {};                                        // [-]   - Reusable DiagnosticsOverlay session
     std::array<float, 120>     IntervalHistoryMs      {};                                        // [ms]  - Rolling 120-step timing samples
     uint32_t                   HistoryWriteCursor      = 0u;                                      // [idx] - Ring buffer write cursor
+    FrameTimingBreakdown       LastTimingBreakdown     {};                                        // [ms]  - Latest per-stage GPU/CPU telemetry
     ConstructCategoryRail      ConstructRail           = ConstructCategoryRail::All;              // [-]   - Active Construct category rail
     ForceConstructCategory     ForceConstructTab       = ForceConstructCategory::All;             // [-]   - Active Force Construct rail tab
     float                      ConstructGridScrollY    = 0.0f;                                    // [px]  - Construct tile grid scroll offset
