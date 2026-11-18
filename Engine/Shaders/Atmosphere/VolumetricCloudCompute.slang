@@ -27,6 +27,8 @@ struct VolumetricCloudUniformBlock
     float4 LocalExtentFraction;  // xyz = LocalHalfExtentM, w = LocalFraction
     float4 LocalDensityPhase;    // x = LocalDensityMul, y = LocalAnisotropyG, z = ViewportW, w = ViewportH
     float4 FormationOptics;      // x = FormationIndex (0..11), y = VeerRadPerKm, z = WindTurbulence, w = LocalCloudCount (0..8)
+    float4 CloudShadowOptics;    // x = ShadowFraction, y = ShadowDensityMul, z = ShadowScale, w = ShadowAnvil
+    float4 CloudPassControl;     // x = CloudPassW, y = CloudPassH, z = CloudMarchSteps (12..96), w = ForceWindEnabled (0/1)
     GpuLocalCloudVolume LocalClouds[8];
 };
 
@@ -102,7 +104,8 @@ float SampleCloudDeckDensityGpu(
     uint   FormationIndex,
     float  DistanceMeters,
     float  VeerRadPerKm = 0.0,
-    float  TurbulenceAmp = 0.0)
+    float  TurbulenceAmp = 0.0,
+    float  TimeSec = 0.0)
 {
     float Alt     = length(P) - PlanetR;
     float H       = clamp((Alt - FloorM) / max(1.0, ThickM), 0.0, 1.0);
@@ -119,15 +122,16 @@ float SampleCloudDeckDensityGpu(
     float VeeredWX    = WindX * CsV - WindY * SnV;
     float VeeredWY    = WindX * SnV + WindY * CsV;
     float ShearShift  = AltKm * ShearPerKm * 45.0;
+    float BoilPhase   = TimeSec * (0.045 + 0.095 * TurbulenceAmp);
     float TurbWarpX   = (TurbulenceAmp > 1.0e-4)
-        ? (LatticeNoiseCloud3(float3((P.x + VeeredWX) * FScale * 0.45, (P.y + VeeredWY) * FScale * 0.45, AltKm * 0.8)) - 0.5) * (TurbulenceAmp * 160.0)
+        ? (LatticeNoiseCloud3(float3((P.x + VeeredWX) * FScale * 0.45, (P.y + VeeredWY) * FScale * 0.45, AltKm * 0.8 + BoilPhase)) - 0.5) * (TurbulenceAmp * 210.0)
         : 0.0;
     float TurbWarpY   = (TurbulenceAmp > 1.0e-4)
-        ? (LatticeNoiseCloud3(float3((P.y + VeeredWY) * FScale * 0.45 + 7.3, (P.x + VeeredWX) * FScale * 0.45, AltKm * 0.8)) - 0.5) * (TurbulenceAmp * 160.0)
+        ? (LatticeNoiseCloud3(float3((P.y + VeeredWY) * FScale * 0.45 + 7.3, (P.x + VeeredWX) * FScale * 0.45, AltKm * 0.8 - BoilPhase * 0.85)) - 0.5) * (TurbulenceAmp * 210.0)
         : 0.0;
     float WX = P.x + VeeredWX + ShearShift + TurbWarpX;
     float WY = P.y + VeeredWY + TurbWarpY;
-    float WZ = Alt - FloorM;
+    float WZ = (Alt - FloorM) + TimeSec * (1.8 + 4.2 * TurbulenceAmp);
 
     float ShapeCov = clamp(Cov + Anvil * H * H * 0.22, 0.0, 1.0);
     float NNorm    = 0.0;
@@ -464,7 +468,8 @@ float3 EvaluateVolumetricCloudsGpu(
     float3                      RayDir,
     float2                      PixelCoord,
     out float                   OutTransmittance,
-    bool                        IncludeLocalClouds = true)
+    bool                        IncludeLocalClouds = true,
+    uint                        StepCountOverride = 0u)
 {
     OutTransmittance = 1.0;
     float3 TotalRad  = float3(0.0, 0.0, 0.0);
@@ -498,7 +503,10 @@ float3 EvaluateVolumetricCloudsGpu(
     float  MaxDist  = min(ExitHit.y, EnterHit.y + 32000.0);
     if (MaxDist <= EnterHit.y || EnterHit.y < 0.0 || EnterHit.y > 85000.0) return TotalRad;
 
-    float Dt        = (MaxDist - EnterHit.y) / 96.0;
+    uint  MarchSteps = (StepCountOverride > 0u)
+        ? clamp(StepCountOverride, 12u, 96u)
+        : ((Cfg.CloudPassControl.z > 1.0) ? clamp(uint(Cfg.CloudPassControl.z + 0.5), 12u, 96u) : 36u);
+    float Dt        = (MaxDist - EnterHit.y) / float(MarchSteps);
     float FScale    = 0.00065 / max(0.08, Cfg.DeckOptics.x);
     float Cov       = clamp(Cfg.DeckGeometry.z, 0.0, 1.0);
     float DensMul   = max(0.0, Cfg.DeckGeometry.w) * 0.0085;
@@ -508,18 +516,19 @@ float3 EvaluateVolumetricCloudsGpu(
     uint  FmtIdx    = uint(Cfg.FormationOptics.x + 0.5);
     float VeerRadKm = Cfg.FormationOptics.y;
     float TurbAmp   = Cfg.FormationOptics.z;
+    float TimeSec   = (Cfg.SkyColorWind.w > 0.5) ? Cfg.OriginTimeVector.w : 0.0;
 
     static const float SunOffsets[5] = { 0.08, 0.22, 0.44, 0.78, 1.35 };
     static const float SunWeights[5] = { 0.14, 0.22, 0.28, 0.36, 0.50 };
 
     float  DeckT = 1.0;
     float3 DeckR = float3(0.0, 0.0, 0.0);
-    for (uint S = 0u; S < 96u; ++S)
+    for (uint S = 0u; S < MarchSteps; ++S)
     {
         float  T = EnterHit.y + (float(S) + Jitter) * Dt;
         float3 P = float3(RayDir.x * T, RayDir.y * T, OrigZ + RayDir.z * T);
         float  D = SampleCloudDeckDensityGpu(
-            P, PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Cfg.DeckOptics.w, FmtIdx, T, VeerRadKm, TurbAmp);
+            P, PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Cfg.DeckOptics.w, FmtIdx, T, VeerRadKm, TurbAmp, TimeSec);
         if (D > 1.0e-6)
         {
             float SunTau = 0.0;
@@ -531,7 +540,7 @@ float3 EvaluateVolumetricCloudsGpu(
                     float KS = SunOffsets[K] * ConeReach;
                     SunTau += SampleCloudDeckDensityGpu(
                         P + SunDir * KS,
-                        PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Cfg.DeckOptics.w, FmtIdx, T, VeerRadKm, TurbAmp) *
+                        PlanetR, FloorM, ThickM, Cov, Anvil, DensMul, FScale, WindX, WindY, Cfg.DeckOptics.w, FmtIdx, T, VeerRadKm, TurbAmp, TimeSec) *
                         (SunWeights[K] * ConeReach);
                 }
             }

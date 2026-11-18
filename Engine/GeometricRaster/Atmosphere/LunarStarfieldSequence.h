@@ -19,6 +19,8 @@
 namespace Frontier::GeometricRaster
 {
 
+struct AtmosphericMediumConfiguration;
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
@@ -98,7 +100,8 @@ public:
         const Mathematics::Axis3D&                  SunDirection,
         std::span<const LunarBodyConfiguration, 4u> Moons,
         const StarfieldConfiguration&               Stars,
-        float                                       SimulationSeconds) noexcept;
+        float                                       SimulationSeconds,
+        const AtmosphericMediumConfiguration*       AtmosphereMedium = nullptr) noexcept;
 };
 
 } // namespace Frontier::GeometricRaster

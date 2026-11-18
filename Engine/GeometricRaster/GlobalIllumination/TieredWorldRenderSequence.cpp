@@ -87,12 +87,112 @@ namespace
     return F2 - std::floor(F2);
 }
 
+struct CpuDownsampledCloudField
+{
+    uint32_t WidthPx  = 0u;
+    uint32_t HeightPx = 0u;
+    std::vector<std::array<float, 4u>> RgbaT {};
+
+    void Build(
+        uint32_t                       FullW,
+        uint32_t                       FullH,
+        const OrthonormalCameraBasis&  Basis,
+        const WorldSceneSpecification& Scene,
+        const AtmosphericSkySequence&  SkySeq)
+    {
+        const auto& Atmo = Scene.Atmosphere;
+        if (!Atmo.Medium.AtmosphereEnabled || !Atmo.Clouds.CloudsEnabled || FullW == 0u || FullH == 0u)
+        {
+            WidthPx = HeightPx = 0u;
+            RgbaT.clear();
+            return;
+        }
+        const float Scale = std::clamp(Atmo.Clouds.CloudRenderScale, 0.25f, 1.0f);
+        if (Scale >= 0.99f)
+        {
+            WidthPx = HeightPx = 0u;
+            RgbaT.clear();
+            return;
+        }
+        WidthPx  = std::max(1u, static_cast<uint32_t>(std::lround(static_cast<float>(FullW) * Scale)));
+        HeightPx = std::max(1u, static_cast<uint32_t>(std::lround(static_cast<float>(FullH) * Scale)));
+        RgbaT.assign(static_cast<std::size_t>(WidthPx) * HeightPx, { 0.0f, 0.0f, 0.0f, 1.0f });
+
+        const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
+        WorldAtmosphereConfiguration DeckOnlyAtmo = Atmo;
+        DeckOnlyAtmo.LocalCloud.LocalEnabled = false;
+        DeckOnlyAtmo.LocalClouds.clear();
+
+        for (uint32_t CY = 0u; CY < HeightPx; ++CY)
+        {
+            const float NdcY = 1.0f - ((static_cast<float>(CY) + 0.5f) / static_cast<float>(HeightPx)) * 2.0f;
+            for (uint32_t CX = 0u; CX < WidthPx; ++CX)
+            {
+                const float NdcX = ((static_cast<float>(CX) + 0.5f) / static_cast<float>(WidthPx)) * 2.0f - 1.0f;
+                const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
+                    Basis.ForwardAxis + Basis.RightAxis * (NdcX * Basis.TanHalfFovX) + Basis.UpAxis * (NdcY * Basis.TanHalfFovY));
+                if (RayDir.Z <= 0.006f)
+                {
+                    continue;
+                }
+                const auto LowAngleSky = SkySeq.SampleSkyViewDirection(
+                    Mathematics::NormalizeAxis({ RayDir.X, RayDir.Y, std::max(0.05f, RayDir.Z) }));
+                float CloudTrans = 1.0f;
+                const auto CloudRad = VolumetricCloudSequence::EvaluateVolumetricCloudsWithWind(
+                    Basis.CameraOrigin,
+                    RayDir,
+                    SolarSolved.WorldDirectionToSun,
+                    Scene.Sun.SolarIrradiance,
+                    LowAngleSky,
+                    DeckOnlyAtmo,
+                    CloudTrans,
+                    EvaluateCloudIgn(CX, CY));
+                RgbaT[static_cast<std::size_t>(CY) * WidthPx + CX] = { CloudRad.R, CloudRad.G, CloudRad.B, CloudTrans };
+            }
+        }
+    }
+
+    [[nodiscard]] bool SampleBilinear(float U, float V, Mathematics::LinearRGB& OutRad, float& OutTrans) const noexcept
+    {
+        if (WidthPx == 0u || HeightPx == 0u || RgbaT.empty())
+        {
+            return false;
+        }
+        const float FX = std::clamp(U * static_cast<float>(WidthPx) - 0.5f, 0.0f, std::max(0.0f, static_cast<float>(WidthPx) - 1.0f));
+        const float FY = std::clamp(V * static_cast<float>(HeightPx) - 0.5f, 0.0f, std::max(0.0f, static_cast<float>(HeightPx) - 1.0f));
+        const uint32_t X0 = static_cast<uint32_t>(std::floor(FX));
+        const uint32_t Y0 = static_cast<uint32_t>(std::floor(FY));
+        const uint32_t X1 = std::min(WidthPx - 1u, X0 + 1u);
+        const uint32_t Y1 = std::min(HeightPx - 1u, Y0 + 1u);
+        const float TX = FX - static_cast<float>(X0);
+        const float TY = FY - static_cast<float>(Y0);
+        const auto& C00 = RgbaT[static_cast<std::size_t>(Y0) * WidthPx + X0];
+        const auto& C10 = RgbaT[static_cast<std::size_t>(Y0) * WidthPx + X1];
+        const auto& C01 = RgbaT[static_cast<std::size_t>(Y1) * WidthPx + X0];
+        const auto& C11 = RgbaT[static_cast<std::size_t>(Y1) * WidthPx + X1];
+        const auto Blend = [&](uint32_t K) noexcept
+        {
+            const float Top = C00[K] * (1.0f - TX) + C10[K] * TX;
+            const float Bot = C01[K] * (1.0f - TX) + C11[K] * TX;
+            return Top * (1.0f - TY) + Bot * TY;
+        };
+        OutRad.R = Blend(0u);
+        OutRad.G = Blend(1u);
+        OutRad.B = Blend(2u);
+        OutTrans = std::clamp(Blend(3u), 0.0f, 1.0f);
+        return true;
+    }
+};
+
 [[nodiscard]] Mathematics::LinearRGB EvaluateBackgroundSkyRadiance(
-    const WorldSceneSpecification& Scene,
-    const AtmosphericSkySequence&  SkySeq,
-    Mathematics::Axis3D            RayOrigin,
-    Mathematics::Axis3D            RayDir,
-    float                          PixelJitter01 = -1.0f) noexcept
+    const WorldSceneSpecification&    Scene,
+    const AtmosphericSkySequence&     SkySeq,
+    Mathematics::Axis3D               RayOrigin,
+    Mathematics::Axis3D               RayDir,
+    float                             PixelJitter01 = -1.0f,
+    const CpuDownsampledCloudField*   CloudField    = nullptr,
+    float                             ScreenU       = -1.0f,
+    float                             ScreenV       = -1.0f) noexcept
 {
     const auto& Atmo = Scene.Atmosphere;
     if (!Atmo.Medium.AtmosphereEnabled)
@@ -107,15 +207,26 @@ namespace
     const auto SunRad      = AtmosphericSkySequence::EvaluateSolarCoronaRadiance(
         RayDir, SolarSolved.WorldDirectionToSun, Atmo.Solar, SolarTrans, SolarSolved.EffectiveSolarTint);
     const auto MoonStarRad = LunarStarfieldSequence::EvaluateCelestialField(
-        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds);
+        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds, &Atmo.Medium);
 
     float CloudTrans = 1.0f;
+    Mathematics::LinearRGB CloudRad {};
+    if (CloudField != nullptr && ScreenU >= 0.0f && ScreenV >= 0.0f &&
+        CloudField->SampleBilinear(ScreenU, ScreenV, CloudRad, CloudTrans))
+    {
+        return {
+            (SkyRad.R + SunRad.R + MoonStarRad.R) * CloudTrans + CloudRad.R,
+            (SkyRad.G + SunRad.G + MoonStarRad.G) * CloudTrans + CloudRad.G,
+            (SkyRad.B + SunRad.B + MoonStarRad.B) * CloudTrans + CloudRad.B,
+        };
+    }
+
     const auto LowAngleSky = SkySeq.SampleSkyViewDirection(
         Mathematics::NormalizeAxis({ RayDir.X, RayDir.Y, std::max(0.05f, RayDir.Z) }));
     WorldAtmosphereConfiguration DeckOnlyAtmo = Atmo;
     DeckOnlyAtmo.LocalCloud.LocalEnabled      = false;
     DeckOnlyAtmo.LocalClouds.clear();
-    const auto CloudRad = VolumetricCloudSequence::EvaluateVolumetricCloudsWithWind(
+    CloudRad = VolumetricCloudSequence::EvaluateVolumetricCloudsWithWind(
         RayOrigin,
         RayDir,
         SolarSolved.WorldDirectionToSun,
@@ -230,13 +341,116 @@ void ApplyDiffuseGiBilateralFilter(
     }
 }
 
+[[nodiscard]] bool IntersectCpuGlassSphere(
+    Mathematics::Axis3D Origin,
+    Mathematics::Axis3D Dir,
+    Mathematics::Axis3D Center,
+    float               Radius,
+    float&              OutTEnter,
+    float&              OutTExit) noexcept
+{
+    OutTEnter = -1.0f;
+    OutTExit  = -1.0f;
+    const Mathematics::Axis3D Oc = Origin - Center;
+    const float B    = Mathematics::EvaluateDot(Oc, Dir);
+    const float C    = Mathematics::EvaluateDot(Oc, Oc) - Radius * Radius;
+    const float Disc = B * B - C;
+    if (Disc <= 0.0f) return false;
+    const float SqrtD = std::sqrt(Disc);
+    OutTEnter         = -B - SqrtD;
+    OutTExit          = -B + SqrtD;
+    return OutTExit > 1.0e-3f;
+}
+
+[[nodiscard]] int32_t FindClosestCpuGlassSphere(
+    Mathematics::Axis3D            Origin,
+    Mathematics::Axis3D            Dir,
+    const WorldSceneSpecification& Scene,
+    float                          MinT,
+    float                          MaxT,
+    Mathematics::Axis3D&           OutCenter,
+    float&                         OutRadius,
+    uint16_t&                      OutMatSlot,
+    float&                         OutHitT) noexcept
+{
+    OutHitT        = MaxT;
+    int32_t Best   = -1;
+    for (uint32_t I = 0u; I < static_cast<uint32_t>(Scene.ClusterInstances.size()); ++I)
+    {
+        const auto& Inst = Scene.ClusterInstances[I];
+        if (!Inst.TransparentGlass || Inst.UniformScale <= 1.0e-4f || Inst.PyramidAsset == nullptr) continue;
+        float LocalRad = 0.40f;
+        if (!Inst.PyramidAsset->Positions.empty())
+        {
+            LocalRad = 0.05f;
+            for (const Mathematics::Axis3D& Pos : Inst.PyramidAsset->Positions)
+            {
+                LocalRad = std::max(LocalRad, std::sqrt(Pos.X * Pos.X + Pos.Y * Pos.Y + Pos.Z * Pos.Z));
+            }
+        }
+        const float Rad = std::max(0.04f, LocalRad * Inst.UniformScale);
+        float TEn = 0.0f, TEx = 0.0f;
+        if (IntersectCpuGlassSphere(Origin, Dir, Inst.WorldTranslation, Rad, TEn, TEx))
+        {
+            const float HitT = (TEn > MinT) ? TEn : TEx;
+            if (HitT > MinT && HitT < OutHitT)
+            {
+                OutHitT    = HitT;
+                OutCenter  = Inst.WorldTranslation;
+                OutRadius  = Rad;
+                OutMatSlot = Inst.MaterialSlot;
+                Best       = static_cast<int32_t>(I);
+            }
+        }
+    }
+    return Best;
+}
+
+[[nodiscard]] bool IntersectCpuAreaLightsClosest(
+    Mathematics::Axis3D            Origin,
+    Mathematics::Axis3D            Dir,
+    const WorldSceneSpecification& Scene,
+    float                          MinT,
+    float                          MaxT,
+    Mathematics::LinearRGB&        OutEmit,
+    float&                         OutT) noexcept
+{
+    OutT = MaxT;
+    bool AnyHit = false;
+    for (const auto& Q : Scene.AreaLights)
+    {
+        if (std::max({ Q.EmittedRadiance.R, Q.EmittedRadiance.G, Q.EmittedRadiance.B }) <= 1.0e-4f) continue;
+        const Mathematics::Axis3D LNorm = Mathematics::NormalizeAxis(
+            Mathematics::EvaluateCross(Q.RightTangent, Q.UpBitangent), { 0.0f, 0.0f, -1.0f });
+        const float Den   = Mathematics::EvaluateDot(LNorm, Dir);
+        const bool  Front = Q.TwoSidedEmission ? (std::fabs(Den) > 1.0e-5f) : (Den < -1.0e-5f);
+        if (!Front) continue;
+        const float T = Mathematics::EvaluateDot(Q.CenterWorld - Origin, LNorm) / Den;
+        if (T >= MinT && T < OutT)
+        {
+            const Mathematics::Axis3D Rel = (Origin + Dir * T) - Q.CenterWorld;
+            const float U = Mathematics::EvaluateDot(Rel, Q.RightTangent);
+            const float V = Mathematics::EvaluateDot(Rel, Q.UpBitangent);
+            if (std::fabs(U) <= Q.HalfWidthMeters && std::fabs(V) <= Q.HalfHeightMeters)
+            {
+                OutT    = T;
+                OutEmit = Q.EmittedRadiance;
+                AnyHit  = true;
+            }
+        }
+    }
+    return AnyHit;
+}
+
 [[nodiscard]] Mathematics::LinearRGB TracePathSample(
     Mathematics::Axis3D                            Origin,
     Mathematics::Axis3D                            Direction,
     const WorldSceneSpecification&                 Scene,
     const AtmosphericSkySequence&                  SkySeq,
     uint32_t                                       MaxBounces,
-    uint32_t&                                      RngState) noexcept
+    bool                                           ReflectionsEnabled,
+    uint32_t&                                      RngState,
+    bool                                           AllowDepth0GlassSplit = true) noexcept
 {
     const uint32_t MatCount = Scene.MaterialRegister.QuerySlotCount();
     const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis(Scene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
@@ -248,6 +462,7 @@ void ApplyDiffuseGiBilateralFilter(
     Mathematics::LinearRGB Throughput { 1.0f, 1.0f, 1.0f };
     Mathematics::Axis3D    RayO = Origin;
     Mathematics::Axis3D    RayD = Direction;
+    bool                   PrevWasSpec = false;
 
     for (uint32_t Bounce = 0u; Bounce < MaxBounces; ++Bounce)
     {
@@ -258,6 +473,107 @@ void ApplyDiffuseGiBilateralFilter(
         Query.MaximumDistance = 160.0f;
 
         const auto Hit = Scene.SceneTree.TraceClosestRay(Query, false);
+        const float ClosestTriT = Hit.HitConfirmed ? Hit.HitDistanceMeters : 160.0f;
+
+        Mathematics::Axis3D GCenter {};
+        float GRadius = 0.0f, GT = ClosestTriT;
+        uint16_t GMatSlot = 0u;
+        const int32_t GlassIdx = FindClosestCpuGlassSphere(RayO, RayD, Scene, 1.0e-3f, ClosestTriT, GCenter, GRadius, GMatSlot, GT);
+        if (GlassIdx >= 0)
+        {
+            const auto& GMat = Scene.MaterialRegister.InspectAuthoredMaterial((GMatSlot < MatCount) ? GMatSlot : 0u);
+            const Mathematics::Axis3D GPos = RayO + RayD * GT;
+            const Mathematics::Axis3D GNrm = Mathematics::NormalizeAxis(GPos - GCenter, { 0.0f, 0.0f, 1.0f });
+            const float CrownIor = std::max(1.05f, GMat.Specular.DielectricIOR);
+            const float Disp     = std::clamp(0.45f / std::max(10.0f, GMat.Transmission.AbbeDispersionNumber), 0.004f, 0.028f);
+            const float CosI     = std::clamp(Mathematics::EvaluateDot(GNrm, RayD * -1.0f), 0.0f, 1.0f);
+            const float Fres     = ReflectionsEnabled ? MaterialSpace::Scattering::EvaluateExactDielectricFresnel(CosI, CrownIor) : 0.0f;
+
+            bool TraceRefract = true;
+            if (AllowDepth0GlassSplit && Bounce == 0u)
+            {
+                if (Fres > 1.0e-4f)
+                {
+                    const Mathematics::Axis3D ReflO = GPos + GNrm * 2.5e-3f;
+                    const Mathematics::Axis3D ReflD = Mathematics::NormalizeAxis(RayD + GNrm * (2.0f * CosI));
+                    const auto ReflRad = TracePathSample(ReflO, ReflD, Scene, SkySeq, std::min(3u, MaxBounces), ReflectionsEnabled, RngState, false);
+                    Radiance.R += Throughput.R * Fres * ReflRad.R;
+                    Radiance.G += Throughput.G * Fres * ReflRad.G;
+                    Radiance.B += Throughput.B * Fres * ReflRad.B;
+                }
+                Throughput.R *= (1.0f - Fres);
+                Throughput.G *= (1.0f - Fres);
+                Throughput.B *= (1.0f - Fres);
+            }
+            else if (PcgFloat01(RngState) < Fres)
+            {
+                RayO = GPos + GNrm * 2.5e-3f;
+                RayD = Mathematics::NormalizeAxis(RayD + GNrm * (2.0f * CosI));
+                TraceRefract = false;
+            }
+
+            if (TraceRefract)
+            {
+                const float WSel = PcgFloat01(RngState);
+                const float IorC = CrownIor + ((WSel < 0.3333f) ? -Disp : ((WSel < 0.6667f) ? 0.0f : Disp * 1.15f));
+                const float Eta  = 1.0f / IorC;
+                const float Sin2T = Eta * Eta * std::max(0.0f, 1.0f - CosI * CosI);
+                if (Sin2T >= 1.0f)
+                {
+                    RayO = GPos + GNrm * 2.5e-3f;
+                    RayD = Mathematics::NormalizeAxis(RayD + GNrm * (2.0f * CosI));
+                }
+                else
+                {
+                    const Mathematics::Axis3D InsideD = Mathematics::NormalizeAxis(
+                        RayD * Eta + GNrm * (Eta * CosI - std::sqrt(1.0f - Sin2T)));
+                    float TIn = 0.0f, TOut = 0.0f;
+                    if (IntersectCpuGlassSphere(GPos + InsideD * 2.0e-3f, InsideD, GCenter, GRadius, TIn, TOut) && TOut > 0.0f)
+                    {
+                        const Mathematics::Axis3D ExitPos = GPos + InsideD * (2.0e-3f + TOut);
+                        const Mathematics::Axis3D OutNrm  = Mathematics::NormalizeAxis(ExitPos - GCenter, GNrm);
+                        const float CosE  = std::clamp(Mathematics::EvaluateDot(InsideD * -1.0f, OutNrm * -1.0f), 0.0f, 1.0f);
+                        const float Sin2E = IorC * IorC * std::max(0.0f, 1.0f - CosE * CosE);
+                        if (Sin2E >= 1.0f)
+                        {
+                            RayD = Mathematics::NormalizeAxis(InsideD - OutNrm * (2.0f * Mathematics::EvaluateDot(InsideD, OutNrm)));
+                            RayO = ExitPos - OutNrm * 2.0e-3f;
+                        }
+                        else
+                        {
+                            RayD = Mathematics::NormalizeAxis(
+                                InsideD * IorC - OutNrm * (IorC * CosE - std::sqrt(1.0f - Sin2E)));
+                            RayO = ExitPos + OutNrm * 3.0e-3f;
+                        }
+                    }
+                    else
+                    {
+                        RayO = GPos + InsideD * (GRadius * 2.1f);
+                        RayD = InsideD;
+                    }
+                    Throughput.R *= 0.95f;
+                    Throughput.G *= 0.98f;
+                    Throughput.B *= 1.00f;
+                }
+            }
+            PrevWasSpec = true;
+            if (Bounce + 1u >= MaxBounces) MaxBounces = std::min(8u, MaxBounces + 2u);
+            continue;
+        }
+
+        if (PrevWasSpec)
+        {
+            Mathematics::LinearRGB LEmit {};
+            float LT = ClosestTriT;
+            if (IntersectCpuAreaLightsClosest(RayO, RayD, Scene, 1.0e-3f, ClosestTriT, LEmit, LT))
+            {
+                Radiance.R += Throughput.R * LEmit.R;
+                Radiance.G += Throughput.G * LEmit.G;
+                Radiance.B += Throughput.B * LEmit.B;
+                break;
+            }
+        }
+
         if (!Hit.HitConfirmed)
         {
             const auto Sky = (Bounce == 0u && Scene.Atmosphere.Medium.AtmosphereEnabled)
@@ -399,7 +715,7 @@ void ApplyDiffuseGiBilateralFilter(
         }
 
         // 3. MIS Next-Bounce Sampling: Heitz (2018) GGX VNDF Specular vs Cosine Diffuse
-        const float DiffProb = std::clamp((1.0f - Mat.Specular.Metalness) * 0.65f, 0.10f, 0.85f);
+        const float DiffProb = ReflectionsEnabled ? std::clamp((1.0f - Mat.Specular.Metalness) * 0.65f, 0.0f, 0.85f) : 1.0f;
         const float SpecProb = 1.0f - DiffProb;
         const bool PickDiff  = (PcgFloat01(RngState) < DiffProb);
 
@@ -414,11 +730,13 @@ void ApplyDiffuseGiBilateralFilter(
             const float R   = std::sqrt(U1);
             const float Phi = U2 * Constants::TauFloat;
             LocalWi = { R * std::cos(Phi), R * std::sin(Phi), std::sqrt(std::max(0.0f, 1.0f - U1)) };
+            PrevWasSpec = false;
         }
         else
         {
             const auto HalfV = MaterialSpace::Scattering::SampleAnisotropicSphericalCapVndf(LocalWo, Alpha, U1, U2);
             LocalWi = HalfV * (2.0f * Mathematics::EvaluateDot(LocalWo, HalfV)) - LocalWo;
+            PrevWasSpec = (Mat.Specular.Roughness < 0.28f);
         }
 
         if (LocalWi.Z <= 1.0e-4f)
@@ -445,8 +763,8 @@ void ApplyDiffuseGiBilateralFilter(
         Throughput.G = std::min(12.0f, Throughput.G * Bsdf.G * Weight);
         Throughput.B = std::min(12.0f, Throughput.B * Bsdf.B * Weight);
 
-        // Russian Roulette after bounce 2
-        if (Bounce >= 2u)
+        // Russian Roulette after bounce 3
+        if (Bounce >= 3u)
         {
             const float MaxT = std::clamp(std::max({ Throughput.R, Throughput.G, Throughput.B }), 0.05f, 0.95f);
             if (PcgFloat01(RngState) > MaxT)
@@ -460,11 +778,15 @@ void ApplyDiffuseGiBilateralFilter(
         RayD = Mathematics::NormalizeAxis(LocalToWorld(LocalWi));
     }
 
-    // Clamp extreme fireflies per sample
+    // Clamp extreme fireflies & sanitize NaNs/Infs per sample
+    const auto SanitizeF = [](float V) noexcept -> float
+    {
+        return std::isfinite(V) ? std::clamp(V, 0.0f, 18.0f) : 0.0f;
+    };
     return {
-        std::min(Radiance.R, 18.0f),
-        std::min(Radiance.G, 18.0f),
-        std::min(Radiance.B, 18.0f),
+        SanitizeF(Radiance.R),
+        SanitizeF(Radiance.G),
+        SanitizeF(Radiance.B),
     };
 }
 
@@ -518,12 +840,13 @@ Mathematics::LinearRGB EvaluateFluidEmissiveOnSurface(
 }
 
 void ApplyATrousWaveletDenoiser(
-    uint32_t                                       WidthPx,
-    uint32_t                                       HeightPx,
+    uint                                       WidthPx,
+    uint                                       HeightPx,
     Mathematics::Axis3D                            CameraOrigin,
     std::span<const AnalyticResolvedSurfaceSample> PrimarySamples,
     const MaterialSpace::CompactMaterialRegister&  MaterialRegister,
-    std::vector<Mathematics::LinearRGB>&           InOutRadiance)
+    std::vector<Mathematics::LinearRGB>&           InOutRadiance,
+    std::span<const uint64_t>                      GlassPeelFront64 = {})
 {
     const std::size_t Total = static_cast<std::size_t>(WidthPx) * HeightPx;
     if (Total == 0u || InOutRadiance.size() != Total)
@@ -532,6 +855,7 @@ void ApplyATrousWaveletDenoiser(
     }
 
     const uint32_t MatCount = MaterialRegister.QuerySlotCount();
+    const bool     HasGlass = (GlassPeelFront64.size() == Total);
     std::vector<Mathematics::LinearRGB> Scratch(Total);
     constexpr float Kernel1D[3] { 1.0f, 2.0f / 3.0f, 1.0f / 6.0f };
 
@@ -544,7 +868,8 @@ void ApplyATrousWaveletDenoiser(
             {
                 const std::size_t CenterOff = static_cast<std::size_t>(PY) * WidthPx + PX;
                 const auto& CHit            = PrimarySamples[CenterOff];
-                if (!CHit.ValidHit || CHit.MaterialSlot >= MatCount)
+                if ((HasGlass && GlassPeelFront64[CenterOff] != 0ull) ||
+                    !CHit.ValidHit || CHit.MaterialSlot >= MatCount)
                 {
                     Scratch[CenterOff] = InOutRadiance[CenterOff];
                     continue;
@@ -552,6 +877,11 @@ void ApplyATrousWaveletDenoiser(
                 const float CDepth = Mathematics::EvaluateLength(CHit.WorldPosition - CameraOrigin);
                 const auto& CMat   = MaterialRegister.InspectAuthoredMaterial(CHit.MaterialSlot);
                 const auto& CRad   = InOutRadiance[CenterOff];
+                if (CMat.Specular.Roughness < 0.12f)
+                {
+                    Scratch[CenterOff] = CRad;
+                    continue;
+                }
                 const float CLum   = 0.2126f * CRad.R + 0.7152f * CRad.G + 0.0722f * CRad.B;
 
                 Mathematics::LinearRGB Accum {};
@@ -565,13 +895,18 @@ void ApplyATrousWaveletDenoiser(
                         const int NX = std::clamp(static_cast<int>(PX) + DX * Step, 0, static_cast<int>(WidthPx) - 1);
                         const std::size_t NOff = static_cast<std::size_t>(NY) * WidthPx + static_cast<uint32_t>(NX);
                         const auto& NHit       = PrimarySamples[NOff];
-                        if (!NHit.ValidHit || NHit.MaterialSlot >= MatCount)
+                        if ((HasGlass && GlassPeelFront64[NOff] != 0ull) ||
+                            !NHit.ValidHit || NHit.MaterialSlot >= MatCount)
                         {
                             continue;
                         }
                         const float NDepth = Mathematics::EvaluateLength(NHit.WorldPosition - CameraOrigin);
                         const auto& NMat   = MaterialRegister.InspectAuthoredMaterial(NHit.MaterialSlot);
                         const auto& NRad   = InOutRadiance[NOff];
+                        if (!std::isfinite(NRad.R) || !std::isfinite(NRad.G) || !std::isfinite(NRad.B))
+                        {
+                            continue;
+                        }
                         const float NLum   = 0.2126f * NRad.R + 0.7152f * NRad.G + 0.0722f * NRad.B;
 
                         const float KW      = Kernel1D[std::abs(DX)] * Kernel1D[std::abs(DY)];
@@ -606,7 +941,7 @@ void ApplyATrousWaveletDenoiser(
 {
     if (DebugChannel == 1u)
     {
-        const float D = std::clamp(1.0f - Mathematics::EvaluateLength(Hit.WorldPosition - CameraOrigin) / 20.0f, 0.0f, 1.0f);
+        const float D = std::pow(std::clamp(1.0f - Mathematics::EvaluateLength(Hit.WorldPosition - CameraOrigin) / 11.0f, 0.0f, 1.0f), 1.8f);
         return { D, D, D };
     }
     if (DebugChannel == 2u)
@@ -614,6 +949,29 @@ void ApplyATrousWaveletDenoiser(
         return Mat.Diffuse.BaseColor;
     }
     if (DebugChannel == 3u)
+    {
+        return {
+            Hit.TangentFrame.NormalZ.X * 0.5f + 0.5f,
+            Hit.TangentFrame.NormalZ.Y * 0.5f + 0.5f,
+            Hit.TangentFrame.NormalZ.Z * 0.5f + 0.5f,
+        };
+    }
+    if (DebugChannel == 9u)
+    {
+        const float M = std::clamp(Mat.Specular.Metalness, 0.0f, 1.0f);
+        return { M, M, M };
+    }
+    if (DebugChannel == 10u)
+    {
+        const uint32_t SId = static_cast<uint32_t>(Hit.MaterialSlot) + 1u;
+        const auto Frac = [](float V) noexcept { return V - std::floor(V); };
+        return {
+            0.18f + 0.78f * Frac(static_cast<float>(SId) * 0.3819660113f),
+            0.18f + 0.78f * Frac(static_cast<float>(SId) * 0.6180339887f + 0.27f),
+            0.18f + 0.78f * Frac(static_cast<float>(SId) * 0.7548776662f + 0.53f),
+        };
+    }
+    if (DebugChannel == 11u)
     {
         return {
             Hit.TangentFrame.NormalZ.X * 0.5f + 0.5f,
@@ -821,6 +1179,11 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     }
 
     const uint32_t MatCount = PreparedScene.MaterialRegister.QuerySlotCount();
+    CpuDownsampledCloudField CpuCloudField {};
+    if (Config.DebugChannel == 0u)
+    {
+        CpuCloudField.Build(Result.WidthPx, Result.HeightPx, CurBasis, PreparedScene, SkySequence);
+    }
     const float AspectRatio = static_cast<float>(Result.WidthPx) / static_cast<float>(std::max(1u, Result.HeightPx));
     const ProjectedLensFlareFrame FlareProj =
         (Config.DebugChannel == 0u && PreparedScene.Atmosphere.Medium.AtmosphereEnabled && PreparedScene.Atmosphere.LensFlare.Enabled)
@@ -850,12 +1213,14 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 }
                 else if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled && Config.DebugChannel == 0u)
                 {
-                    const float NdcX = ((static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx)) * 2.0f - 1.0f;
-                    const float NdcY = 1.0f - ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx)) * 2.0f;
+                    const float FU = (static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx);
+                    const float FV = (static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx);
+                    const float NdcX = FU * 2.0f - 1.0f;
+                    const float NdcY = 1.0f - FV * 2.0f;
                     const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                         CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
                     OutHdr = EvaluateBackgroundSkyRadiance(
-                        PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY));
+                        PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY), &CpuCloudField, FU, FV);
                 }
                 if (FlareProj.EffectiveGain > 1.0e-4f && Config.DebugChannel == 0u)
                 {
@@ -882,8 +1247,8 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     //====================================================================================================================
     if (Config.Engine == WorldRenderEngine::DeterministicPathTrace)
     {
-        const uint32_t Spp = std::clamp(Config.PathTraceSamples, 1u, 128u);
-        const uint32_t MaxB = std::clamp(Config.PathTraceMaxBounces, 1u, 8u);
+        const uint32_t Spp  = std::clamp(Config.PathTraceSamples, 1u, 128u);
+        const uint32_t MaxB = Config.GlobalIlluminationEnabled ? std::clamp(Config.PathTraceMaxBounces, 1u, 8u) : 1u;
 
         for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
         {
@@ -901,8 +1266,10 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 uint32_t Rng = (PX * 747796405u + PY * 2891336453u + 277803737u) | 1u;
                 (void)PcgFloat01(Rng);
                 (void)PcgFloat01(Rng);
+                const bool HitGlassPx = (VisTargets.GlassPeelFront64.size() == TotalPixels && VisTargets.GlassPeelFront64[Off] != 0ull);
+                const uint32_t PixelSpp = (HitGlassPx && Spp >= 8u) ? std::min(64u, Spp * 3u) : Spp;
                 Mathematics::LinearRGB Sum {};
-                for (uint32_t S = 0u; S < Spp; ++S)
+                for (uint32_t S = 0u; S < PixelSpp; ++S)
                 {
                     const float Jx = (static_cast<float>(PX) + PcgFloat01(Rng)) / static_cast<float>(Result.WidthPx);
                     const float Jy = (static_cast<float>(PY) + PcgFloat01(Rng)) / static_cast<float>(Result.HeightPx);
@@ -910,9 +1277,9 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                     const float NdcY = 1.0f - Jy * 2.0f;
                     const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                         CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
-                    Sum = Sum + TracePathSample(CurBasis.CameraOrigin, RayDir, PreparedScene, SkySequence, MaxB, Rng);
+                    Sum = Sum + TracePathSample(CurBasis.CameraOrigin, RayDir, PreparedScene, SkySequence, MaxB, Config.ReflectionsEnabled, Rng);
                 }
-                Result.CompositeLinearHdr[Off] = Sum * (1.0f / static_cast<float>(Spp));
+                Result.CompositeLinearHdr[Off] = Sum * (1.0f / static_cast<float>(PixelSpp));
             }
         }
 
@@ -920,7 +1287,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         {
             ApplyATrousWaveletDenoiser(
                 Result.WidthPx, Result.HeightPx, CurBasis.CameraOrigin, PrimarySamples,
-                PreparedScene.MaterialRegister, Result.CompositeLinearHdr);
+                PreparedScene.MaterialRegister, Result.CompositeLinearHdr, VisTargets.GlassPeelFront64);
         }
 
         for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
@@ -1053,7 +1420,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         PreparedScene.SkyRadiance);
 
     std::vector<Mathematics::LinearRGB> RawIndirectOverPi(TotalPixels, { 0.0f, 0.0f, 0.0f });
-    if (Config.Engine == WorldRenderEngine::DdgiRaytracing)
+    if (Config.GlobalIlluminationEnabled && Config.Engine == WorldRenderEngine::DdgiRaytracing)
     {
         for (std::size_t Off = 0u; Off < TotalPixels; ++Off)
         {
@@ -1065,7 +1432,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             }
         }
     }
-    else if (Config.Engine == WorldRenderEngine::SdfGlobalIllumination)
+    else if (Config.GlobalIlluminationEnabled && Config.Engine == WorldRenderEngine::SdfGlobalIllumination)
     {
         // Lazily build radiosity mip levels if PrepareWorldScene wasn't called with SdfVolume ready
         SignedDistanceRadiosityVolume LocalRadiosity {};
@@ -1112,7 +1479,34 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             if (Config.DebugChannel != 0u && Hit.ValidHit && Hit.MaterialSlot < MatCount)
             {
                 const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
-                const auto Dbg  = EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat);
+                Mathematics::LinearRGB Dbg {};
+                if (Config.DebugChannel == 8u)
+                {
+                    Dbg = ApplyAcesFilmic(RawIndirectOverPi[Off] * 1.25f);
+                }
+                else if (Config.DebugChannel == 12u && Off < Result.DirectLighting.SolarShadows.FilteredVisibility.size())
+                {
+                    const float V = Result.DirectLighting.SolarShadows.FilteredVisibility[Off];
+                    Dbg = { V, V, V };
+                }
+                else if (Config.DebugChannel == 13u && Off < Result.DirectLighting.CombinedDiffuseAo.size())
+                {
+                    const float A = Result.DirectLighting.CombinedDiffuseAo[Off];
+                    Dbg = { A, A, A };
+                }
+                else if (Config.DebugChannel == 14u)
+                {
+                    Dbg = ApplyAcesFilmic(Result.DirectLighting.DirectHdrRadiance[Off]);
+                }
+                else if (Config.DebugChannel == 15u)
+                {
+                    const float SpecAo = Result.DirectLighting.LagardeSpecularAo[Off];
+                    Dbg = ApplyAcesFilmic(Result.SpecularGlass.IndirectSpecularHdr[Off] * SpecAo);
+                }
+                else
+                {
+                    Dbg = EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat);
+                }
                 Result.CompositeLinearHdr[Off] = Dbg;
                 Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Dbg.R) * 255.0f));
                 Result.DisplayRgba8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Dbg.G) * 255.0f));
@@ -1163,16 +1557,25 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 };
                 Result.IndirectDiffuseHdr[Off] = DiffuseGi;
 
-                FinalHdr = FinalHdr + DiffuseGi + Result.SpecularGlass.IndirectSpecularHdr[Off] * SpecAo;
+                if (Config.GlobalIlluminationEnabled)
+                {
+                    FinalHdr = FinalHdr + DiffuseGi;
+                }
+                if (Config.ReflectionsEnabled)
+                {
+                    FinalHdr = FinalHdr + Result.SpecularGlass.IndirectSpecularHdr[Off] * SpecAo;
+                }
             }
             else if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled && VisTargets.GlassPeelFront64[Off] == 0ull)
             {
-                const float NdcX = ((static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx)) * 2.0f - 1.0f;
-                const float NdcY = 1.0f - ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx)) * 2.0f;
+                const float FU = (static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx);
+                const float FV = (static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx);
+                const float NdcX = FU * 2.0f - 1.0f;
+                const float NdcY = 1.0f - FV * 2.0f;
                 const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                     CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
                 FinalHdr = EvaluateBackgroundSkyRadiance(
-                    PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY));
+                    PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY), &CpuCloudField, FU, FV);
             }
 
             if (VisTargets.GlassPeelFront64[Off] != 0ull)

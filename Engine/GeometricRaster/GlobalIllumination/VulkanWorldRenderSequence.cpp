@@ -61,10 +61,12 @@ struct VolumetricCloudUniformStd140
     float                    LocalExtentFraction[4] {};
     float                    LocalDensityPhase[4]   {};
     float                    FormationOptics[4]     {};
+    float                    CloudShadowOptics[4]   {};
+    float                    CloudPassControl[4]    {};
     GpuLocalCloudVolumeStd140 LocalClouds[8]        {};
 };
 
-static_assert(sizeof(VolumetricCloudUniformStd140) == 816u, "VolumetricCloudUniformStd140 must equal 816 bytes.");
+static_assert(sizeof(VolumetricCloudUniformStd140) == 848u, "VolumetricCloudUniformStd140 must equal 848 bytes.");
 
 struct GpuLocalFogVolumeStd140
 {
@@ -200,7 +202,7 @@ struct WorldViewportUniformBlockStd140
     FluidRenderUniformStd140     FluidParams                {};
 };
 
-static_assert(sizeof(WorldViewportUniformBlockStd140) == 3520u, "WorldViewportUniformBlockStd140 must equal 3520 bytes.");
+static_assert(sizeof(WorldViewportUniformBlockStd140) == 3552u, "WorldViewportUniformBlockStd140 must equal 3552 bytes.");
 
 struct SignedDistanceGridUniformStd140
 {
@@ -322,8 +324,9 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
-    constexpr std::array<VkDescriptorType, 25u> SlotTypes {{
+    constexpr std::array<VkDescriptorType, 26u> SlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -361,6 +364,22 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         std::fprintf(
             stderr,
             "[FrontierWorld] WARNING: Failed to load GPU compute shader %s — falling back to CPU GI.\n",
+            PathText.c_str());
+        TeardownSequence();
+        return false;
+    }
+
+    const std::filesystem::path CloudShaderPath = CompiledShaderDirectory / "WorldViewportCloudCompute.comp.spv";
+    CloudLayerProgramHandle = DispatchEncoder.RegisterProgram(
+        CloudShaderPath,
+        SlotTypes,
+        "CloudComputeEntry");
+    if (CloudLayerProgramHandle == UINT32_MAX)
+    {
+        const std::string PathText = CloudShaderPath.generic_string();
+        std::fprintf(
+            stderr,
+            "[FrontierWorld] WARNING: Failed to load GPU cloud shader %s — falling back to CPU GI.\n",
             PathText.c_str());
         TeardownSequence();
         return false;
@@ -483,9 +502,11 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(PingGiHdrBuffer);
         BoundDevice->ReleaseBuffer(PongShadowAoBuffer);
         BoundDevice->ReleaseBuffer(PongGiHdrBuffer);
+        BoundDevice->ReleaseBuffer(CloudRadiometricBuffer);
     }
     DispatchEncoder.TeardownEncoder();
     RadiometricProgramHandle    = UINT32_MAX;
+    CloudLayerProgramHandle     = UINT32_MAX;
     DenoiseProgramHandle        = UINT32_MAX;
     SignedDistanceProgramHandle = UINT32_MAX;
     SkyViewLutProgramHandle     = UINT32_MAX;
@@ -504,7 +525,9 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
 bool VulkanWorldRenderSequence::QueryReady() const noexcept
 {
     return BoundDevice != nullptr && BoundDevice->Ready() &&
-           RadiometricProgramHandle != UINT32_MAX && DenoiseProgramHandle != UINT32_MAX;
+           RadiometricProgramHandle != UINT32_MAX &&
+           CloudLayerProgramHandle != UINT32_MAX &&
+           DenoiseProgramHandle != UINT32_MAX;
 }
 
 bool VulkanWorldRenderSequence::QueryHardwareGpuActive() const noexcept
@@ -1296,8 +1319,12 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
 
     const uint32_t WidthPx  = std::max(1u, Camera.ViewportWidthPx);
     const uint32_t HeightPx = std::max(1u, Camera.ViewportHeightPx);
-    const uint64_t OutBytes = static_cast<uint64_t>(WidthPx) * HeightPx * 4ull;
-    const uint64_t AccBytes = static_cast<uint64_t>(WidthPx) * HeightPx * 16ull;
+    const float    CloudScale = std::clamp(Scene.Atmosphere.Clouds.CloudRenderScale, 0.25f, 1.0f);
+    const uint32_t CloudW     = std::max(1u, static_cast<uint32_t>(std::lround(static_cast<float>(WidthPx)  * CloudScale)));
+    const uint32_t CloudH     = std::max(1u, static_cast<uint32_t>(std::lround(static_cast<float>(HeightPx) * CloudScale)));
+    const uint64_t OutBytes   = static_cast<uint64_t>(WidthPx) * HeightPx * 4ull;
+    const uint64_t AccBytes   = static_cast<uint64_t>(WidthPx) * HeightPx * 16ull;
+    const uint64_t CloudBytes = static_cast<uint64_t>(CloudW) * CloudH * 16ull;
     EnsureBufferCapacity(OutputPixelBuffer, OutBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureBufferCapacity(AccumulationHdrBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureBufferCapacity(GBufPosMaskBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
@@ -1309,8 +1336,10 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     EnsureBufferCapacity(PingGiHdrBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureBufferCapacity(PongShadowAoBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureBufferCapacity(PongGiHdrBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureBufferCapacity(CloudRadiometricBuffer, CloudBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     if (OutputPixelBuffer.HostAddress == nullptr || AccumulationHdrBuffer.HostAddress == nullptr ||
-        GBufPosMaskBuffer.BufferHandle == VK_NULL_HANDLE || PongGiHdrBuffer.BufferHandle == VK_NULL_HANDLE)
+        GBufPosMaskBuffer.BufferHandle == VK_NULL_HANDLE || PongGiHdrBuffer.BufferHandle == VK_NULL_HANDLE ||
+        CloudRadiometricBuffer.BufferHandle == VK_NULL_HANDLE)
     {
         return false;
     }
@@ -1468,7 +1497,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     Uniforms.SunCascadeForwardPad[2] = CachedSunCascade.LightForwardAxis.Z;
     Uniforms.SunCascadeForwardPad[3] = static_cast<float>(std::clamp(Config.PathTraceMaxBounces, 1u, 6u));
 
-    const uint32_t PathSamplesPerDispatch = QueryHardwareGpuActive() ? std::clamp(Config.PathTraceSamples, 1u, 4u) : 1u;
+    const uint32_t PathSamplesPerDispatch = std::clamp(Config.PathTraceSamples, 1u, 4u);
     Uniforms.FineCascadeCenterSpan[0] = CachedFineSunCascade.CenterWorld.X;
     Uniforms.FineCascadeCenterSpan[1] = CachedFineSunCascade.CenterWorld.Y;
     Uniforms.FineCascadeCenterSpan[2] = CachedFineSunCascade.CenterWorld.Z;
@@ -1482,7 +1511,11 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     Uniforms.AtmosphereMaskPad[0] = AtmoActive ? 1u : 0u;
     Uniforms.AtmosphereMaskPad[1] = AtmosphericSkySequence::SkyViewWidthPx;
     Uniforms.AtmosphereMaskPad[2] = AtmosphericSkySequence::SkyViewHeightPx;
-    Uniforms.AtmosphereMaskPad[3] = 0u;
+    Uniforms.AtmosphereMaskPad[3] =
+        (Config.GlobalIlluminationEnabled ? 0u : 1u) |
+        (Config.ReflectionsEnabled        ? 0u : 2u) |
+        (Config.PathTraceDenoise          ? 0u : 4u) |
+        (Config.RaytracingEnabled         ? 0u : 8u);
 
     {
         const auto& Atmo = Scene.Atmosphere;
@@ -1548,6 +1581,14 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
         C.FormationOptics[0]    = static_cast<float>(static_cast<uint32_t>(Deck.Category));
         C.FormationOptics[1]    = Deck.WindVeerDegreesPerKm * Constants::DegToRadFloat;
         C.FormationOptics[2]    = std::max(Deck.WindTurbulence, DeckWind.TurbulenceScalar);
+        C.CloudShadowOptics[0]  = Deck.CloudShadow.ShadowFraction;
+        C.CloudShadowOptics[1]  = Deck.CloudShadow.ShadowDensityMultiplier;
+        C.CloudShadowOptics[2]  = Deck.CloudShadow.ShadowScale;
+        C.CloudShadowOptics[3]  = Deck.CloudShadow.ShadowAnvil;
+        C.CloudPassControl[0]   = (AtmoActive && Deck.CloudsEnabled) ? static_cast<float>(CloudW) : 0.0f;
+        C.CloudPassControl[1]   = (AtmoActive && Deck.CloudsEnabled) ? static_cast<float>(CloudH) : 0.0f;
+        C.CloudPassControl[2]   = static_cast<float>(std::clamp(Deck.CloudMarchSteps, 12u, 96u));
+        C.CloudPassControl[3]   = (Atmo.ForceFieldSource != nullptr && Atmo.ForceFieldSource->QueryActiveSourceCount() > 0u) ? 1.0f : 0.0f;
 
         uint32_t LocalCloudCount = 0u;
         auto PackLocalCloud = [&](const BoundedCloudVolume& Vol)
@@ -1751,7 +1792,10 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
             DstM.MetaMask[0]          = SrcM.Visible ? 1.0f : 0.0f;
             DstM.MetaMask[1]          = static_cast<float>(static_cast<uint32_t>(SrcM.SurfacePreset)) * 3.17f;
             DstM.MetaMask[2]          = static_cast<float>(static_cast<uint32_t>(SrcM.SurfacePreset));
-            DstM.MetaMask[3]          = 0.0f;
+            DstM.MetaMask[3]          = (MIdx == 0u) ? Atmo.Medium.RayleighStrength
+                                      : (MIdx == 1u) ? Atmo.Medium.MieStrength
+                                      : (MIdx == 2u) ? Atmo.Medium.OzoneStrength
+                                                     : (Atmo.Medium.AtmosphereEnabled ? 1.0f : 0.0f);
         }
 
         const auto& LF = Atmo.LensFlare;
@@ -1896,7 +1940,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
         DispatchGpuSkyViewLut(Cmd, Scene);
     }
 
-    auto MakePassSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 25u>
+    auto MakePassSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 26u>
     {
         const auto& InShadow  = SwapPingPong ? PongShadowAoBuffer : PingShadowAoBuffer;
         const auto& InGi      = SwapPingPong ? PongGiHdrBuffer    : PingGiHdrBuffer;
@@ -1928,21 +1972,36 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
             { 22u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, InGi.BufferHandle,                       AccBytes      },
             { 23u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutShadow.BufferHandle,                  AccBytes      },
             { 24u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutGi.BufferHandle,                      AccBytes      },
+            { 25u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, CloudRadiometricBuffer.BufferHandle,     CloudBytes    },
         }};
     };
 
-    const uint32_t GroupsX = (WidthPx  + 7u) / 8u;
-    const uint32_t GroupsY = (HeightPx + 7u) / 8u;
+    const uint32_t CloudGroupsX = (CloudW   + 7u) / 8u;
+    const uint32_t CloudGroupsY = (CloudH   + 7u) / 8u;
+    const uint32_t GroupsX      = (WidthPx  + 7u) / 8u;
+    const uint32_t GroupsY      = (HeightPx + 7u) / 8u;
     const auto Pass0Slots = MakePassSlots(0ull, false);
+    if (AtmoActive && Scene.Atmosphere.Clouds.CloudsEnabled && Config.DebugChannel == 0u)
+    {
+        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, CloudLayerProgramHandle, Pass0Slots, CloudGroupsX, CloudGroupsY, 1u))
+        {
+            return false;
+        }
+    }
     if (!DispatchEncoder.EncodeComputeDispatch(Cmd, RadiometricProgramHandle, Pass0Slots, GroupsX, GroupsY, 1u))
     {
         return false;
     }
 
     const uint32_t EngIdx = static_cast<uint32_t>(Config.Engine);
+    const bool ShadingDebug =
+        (Config.DebugChannel == 0u || Config.DebugChannel == 8u ||
+         Config.DebugChannel == 12u || Config.DebugChannel == 13u ||
+         Config.DebugChannel == 14u || Config.DebugChannel == 15u);
     const bool SpatialDenoise =
-        (Config.DebugChannel == 0u || Config.DebugChannel == 8u) &&
-        ((EngIdx == 1u || EngIdx == 2u || EngIdx == 3u) || (EngIdx == 4u && PathTraceSampleIndex < 8u));
+        ShadingDebug &&
+        ((EngIdx == 1u || EngIdx == 2u || EngIdx == 3u) ||
+         (EngIdx == 4u && Config.PathTraceDenoise && PathTraceSampleIndex < 16u));
 
     if (SpatialDenoise)
     {

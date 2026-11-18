@@ -23,6 +23,7 @@
 #include "Engine/GeometricRaster/Gizmo/WorldGizmoOverlayRasterization.h"
 #include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
 #include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
+#include "Engine/GeometricRaster/Simulation/VectorFieldOverlaySequence.h"
 #include "Engine/Input/InputExtension.h"
 #include "Engine/Lifecycle/LifecycleSequence.h"
 #include "Engine/Lifecycle/WorkspaceLifecycle.h"
@@ -138,6 +139,7 @@ private:
     void AttachForceFieldAuthoringToActivePanes();
     void SynchronizeForceFieldsWithOutliner(double Δt);
     void SynchronizeShowcaseGizmoAnchor() noexcept;
+    void CompositeForceFieldOverlayOntoBuffer(std::vector<uint8_t>& InOutRgba, uint32_t WidthPx, uint32_t HeightPx);
     void RefreshGizmoOverlayFromCachedWorld();
     void ProcessShowcaseViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
     void ProcessShowcaseNavigationDirective(ViewportNavigationDirective Directive);
@@ -159,6 +161,7 @@ private:
     std::unique_ptr<GeometricRaster::TieredWorldRenderSequence>      ShowcaseRenderer     {}; // [-] - Calibrated Tier 1 GTX / Tier 2 RTX world renderer
     std::unique_ptr<GeometricRaster::VulkanWorldRenderSequence>      GpuWorldRenderer     {}; // [-] - Hardware Vulkan .slang compute world render sequence
     std::unique_ptr<GeometricRaster::WorldGizmoOverlayRasterization> WorldGizmoRasterizer {}; // [-] - Vulkan .slang 3D Gizmo overlay rasterizer
+    std::unique_ptr<Editor::Simulation::VectorFieldOverlaySequence>  ForceOverlayRasterizer{}; // [-] - Vulkan 1.3 dynamic-rendering ForceField debug overlay
     std::vector<uint8_t>                                             CachedWorldRgba8     {}; // [-] - Clean world RGBA8 buffer before gizmo overlay rasterization
     uint32_t                                                         CachedWorldWidthPx   = 0u;
     uint32_t                                                         CachedWorldHeightPx  = 0u;
@@ -171,21 +174,32 @@ private:
     uint32_t                                                         LastReflectionSource = UINT32_MAX;
     bool                                                             LastGiEnabled        = true;
     bool                                                             LastReflectionsEnabled = true;
+    bool                                                             LastAaEnabled        = true;
+    bool                                                             LastRtEnabled        = true;
     bool                                                             LastAtmosphereSky      = true;
     bool                                                             LastCloudsEnabled      = true;
+    bool                                                             LastCloudShadowsEnabled = true;
     bool                                                             LastCelestialsEnabled  = true;
     float                                                            LastSolarTimeHours     = 10.5f;
     float                                                            LastCloudFraction      = 0.34f;
+    float                                                            LastCloudWindSpeedMps  = 7.0f;
+    SimulationSpace::ForceFields::ForceOverlaySettings               LastForceOverlaySettings {};
+    uint32_t                                                         LastForceSourceCount   = 0u;
     uint32_t                                                         PathTraceAccumIndex  = 0u;
     uint32_t                                                         LastPtEngineIndex    = UINT32_MAX;
     uint32_t                                                         LastPtShadowAlg      = UINT32_MAX;
     uint32_t                                                         LastPtReflSrc        = UINT32_MAX;
     uint32_t                                                         LastPtDebugChan      = UINT32_MAX;
+    uint32_t                                                         LastPtQualityTier    = UINT32_MAX;
     uint32_t                                                         LastPtWidthPx        = 0u;
     uint32_t                                                         LastPtHeightPx       = 0u;
     bool                                                             LastPtAtmoSky        = true;
     bool                                                             LastPtClouds         = true;
     bool                                                             LastPtCelestials     = true;
+    bool                                                             LastPtGi             = true;
+    bool                                                             LastPtRefl           = true;
+    bool                                                             LastPtAa             = true;
+    bool                                                             LastPtRt             = true;
     float                                                            LastPtSolarHours     = 10.5f;
     float                                                            LastPtCloudFraction  = 0.34f;
     ViewportProjectionPreset                                         LastPrimaryProjection = ViewportProjectionPreset::Perspective;

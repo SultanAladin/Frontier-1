@@ -217,7 +217,7 @@ void AtmosphericSkySequence::BuildSkyViewLut(
             const float RdY      = GroundRay ? (RawDir.Y * RdScale) : RawDir.Y;
 
             const auto [_, AtmoExit] = IntersectOriginSphere(OrigZ, RdZ, AtmoR);
-            const float MaxDist = std::min(AtmoExit, 180000.0f);
+            const float MaxDist = std::min(AtmoExit, 420000.0f);
             const float CosTheta = RdX * SunDirection.X + RdY * SunDirection.Y + RdZ * SunDirection.Z;
 
             const float PhaseR = (3.0f / (16.0f * Constants::PiFloat)) * (1.0f + CosTheta * CosTheta);
@@ -298,9 +298,22 @@ void AtmosphericSkySequence::BuildSkyViewLut(
             const float NightG     = 0.0010f + 0.0013f * LimbFactor;
             const float NightB     = 0.0022f + 0.0024f * LimbFactor;
 
-            float OutR = ((RadR + MsR) * SolarScale * GlowScale + NightR * (1.0f - DayVis * 0.9f)) * Medium.SkyTint.R * Medium.SkyBrightnessMultiplier;
-            float OutG = ((RadG + MsG) * SolarScale * GlowScale + NightG * (1.0f - DayVis * 0.9f)) * Medium.SkyTint.G * Medium.SkyBrightnessMultiplier;
-            float OutB = ((RadB + MsB) * SolarScale * GlowScale + NightB * (1.0f - DayVis * 0.9f)) * Medium.SkyTint.B * Medium.SkyBrightnessMultiplier;
+            // Dawn / civil twilight luminous whitish-silver horizon line (Rayleigh + forward Mie aerosol multi-scatter)
+            const float SunClamped = std::clamp(SunDirection.Z, -0.2f, 1.0f);
+            const float DawnRise   = std::clamp((SunClamped + 0.10f) / 0.13f, 0.0f, 1.0f);
+            const float DawnFall   = std::clamp((SunClamped - 0.14f) / 0.30f, 0.0f, 1.0f);
+            const float DawnWindow = (DawnRise * DawnRise * (3.0f - 2.0f * DawnRise)) *
+                                     (1.0f - DawnFall * DawnFall * (3.0f - 2.0f * DawnFall));
+            const float HorizonLine = std::exp(-std::abs(RawDir.Z) * 26.0f);
+            const float HorizonGlow = std::exp(-std::abs(RawDir.Z) * 9.0f);
+            const float RdLen2D     = std::sqrt(std::max(1.0e-10f, RdX * RdX + RdY * RdY));
+            const float SunLen2D    = std::sqrt(std::max(1.0e-10f, SunDirection.X * SunDirection.X + SunDirection.Y * SunDirection.Y));
+            const float ForwardAz   = 0.5f + 0.5f * std::clamp((RdX * SunDirection.X + RdY * SunDirection.Y) / (RdLen2D * SunLen2D), -1.0f, 1.0f);
+            const float DawnGain    = (HorizonLine * (0.32f + 0.28f * ForwardAz) + HorizonGlow * 0.10f) * DawnWindow * SolarScale * 0.34f;
+
+            float OutR = ((RadR + MsR) * SolarScale * GlowScale + 0.95f * DawnGain + NightR * (1.0f - DayVis * 0.9f)) * Medium.SkyTint.R * Medium.SkyBrightnessMultiplier;
+            float OutG = ((RadG + MsG) * SolarScale * GlowScale + 0.96f * DawnGain + NightG * (1.0f - DayVis * 0.9f)) * Medium.SkyTint.G * Medium.SkyBrightnessMultiplier;
+            float OutB = ((RadB + MsB) * SolarScale * GlowScale + 1.00f * DawnGain + NightB * (1.0f - DayVis * 0.9f)) * Medium.SkyTint.B * Medium.SkyBrightnessMultiplier;
 
             if (GroundRay)
             {

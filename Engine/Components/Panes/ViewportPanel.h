@@ -78,7 +78,7 @@ struct ViewportConstructPresetEntry
 struct ViewportDisplaySettings
 {
     uint32_t QualityTier           = 2u;     // [idx] - 0=Low, 1=Medium, 2=Standard, 3=High, 4=Ultra
-    uint32_t DebugChannelIndex     = 0u;     // [idx] - 0=Off, 1=Depth, 2=Albedo, 3=Normal, 4=Roughness
+    uint32_t DebugChannelIndex     = 0u;     // [idx] - 0=Off, 1..15=Modular Debug Channels
     uint32_t RenderEngineIndex     = 3u;     // [idx] - 0=MatCap, 1=OpenPbrDirect, 2=DdgiRaytracing, 3=SdfGlobalIllumination, 4=DeterministicPathTrace
     uint32_t ShadowAlgorithmIndex  = 0u;     // [idx] - 0=ContactPcss, 1=PcssPlaneAware, 2=ShadowRayMarch, 3=PcfBilinear, 4=WideTreeRayQuery
     uint32_t ReflectionSourceIndex = 0u;     // [idx] - 0=WideTreeRaytrace, 1=SkyEnvironment
@@ -89,10 +89,12 @@ struct ViewportDisplaySettings
     bool     RaytracingEnabled     = true;   // [-]   - Hardware raytracing toggle
     bool     AtmosphereSkyEnabled  = true;   // [-]   - Physical Bruneton/Hillaire atmospheric sky toggle
     bool     VolumetricCloudsEnabled = true; // [-]   - Raymarched volumetric cloud deck toggle
+    bool     CloudShadowsEnabled   = true;   // [-]   - Volumetric cloud ground shadow casting toggle
     bool     CelestialStarsEnabled = true;   // [-]   - Sun disc, moons & nocturnal starfield toggle
     bool     DayCyclePlaying       = false;  // [-]   - Advances solar ephemeris time of day
     float    SolarTimeOfDayHours   = 10.5f;  // [h]   - Solar time of day [0..24]
     float    CloudFraction         = 0.34f;  // [0-1] - Cloud sky fraction [0..1]
+    float    CloudWindSpeedMps     = 7.0f;   // [m/s] - Cloud deck wind speed [0..35]
 };
 
 struct ViewportPaneSurfaceSpecification
@@ -185,6 +187,7 @@ public:
     [[nodiscard]] bool                                                     QueryForceOverlaySheetOpen() const noexcept;
     [[nodiscard]] const SimulationSpace::ForceFields::ForceOverlaySettings& QueryForceOverlaySettings() const noexcept;
     [[nodiscard]] SimulationSpace::ForceFields::ForceOverlaySettings&       AccessForceOverlaySettings() noexcept;
+    [[nodiscard]] const ImTextureData&                                     QueryCanvasRasterTexture() const noexcept { return CanvasRasterTexture; }
     [[nodiscard]] double                                                   QuerySimulationTimeSeconds() const noexcept;
     [[nodiscard]] bool                                                     ConsumeRewindRequested() noexcept;
 
@@ -230,9 +233,11 @@ private:
     bool                       SettingsSheetOpen       = false;                                   // [-]   - Viewport settings sheet open
     bool                       ConstructSheetOpen      = false;                                   // [-]   - Construct dialog open
     bool                       ProjectionDropdownOpen  = false;                                   // [-]   - Projection selector open
+    bool                       HeaderDebugDropdownOpen = false;                                   // [-]   - Header Debug View DropdownSelector open
     bool                       DebugDropdownOpen       = false;                                   // [-]   - Debug View DropdownSelector open
     bool                       EngineDropdownOpen      = false;                                   // [-]   - Render Engine DropdownSelector open
     bool                       ShadowDropdownOpen      = false;                                   // [-]   - Shadow Algorithm DropdownSelector open
+    Rectangle2D                HeaderDebugButtonBounds {};                                        // [px]  - Last Header Debug button bounds
     Rectangle2D                DebugButtonBounds       {};                                        // [px]  - Last Debug View button bounds
     Rectangle2D                EngineButtonBounds      {};                                        // [px]  - Last Engine selector button bounds
     Rectangle2D                ShadowButtonBounds      {};                                        // [px]  - Last Shadow selector button bounds

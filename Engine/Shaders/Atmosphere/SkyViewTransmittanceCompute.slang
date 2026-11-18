@@ -129,7 +129,7 @@ float3 ComputePhysicalSkyTexel(AtmosphericSkyUniformBlock Uni, float2 Uv)
 
     float  OrigZ     = PlanetR + ViewerAltM;
     float2 AExit     = IntersectOriginSphereAtmo(OrigZ, Rd.z, AtmoR);
-    float  MaxDist   = min(AExit.y, 180000.0);
+    float  MaxDist   = min(AExit.y, 420000.0);
     float  CosTheta  = dot(Rd, SunDir);
 
     float  PhaseR    = (3.0 / (16.0 * AtmoPiConst)) * (1.0 + CosTheta * CosTheta);
@@ -184,7 +184,14 @@ float3 ComputePhysicalSkyTexel(AtmosphericSkyUniformBlock Uni, float2 Uv)
     float DayVis     = clamp((SunElevDeg + 6.0) / 14.0, 0.0, 1.0);
     float3 NightAir  = float3(0.0007, 0.0010, 0.0022) + float3(0.0009, 0.0013, 0.0024) * LimbFactor;
 
-    float3 OutRgb = ((RadAccum + MsAccum) * SolarScale * GlowScale + NightAir * (1.0 - DayVis * 0.9)) *
+    // Dawn / civil twilight luminous whitish-silver horizon line (Rayleigh + forward Mie aerosol multi-scatter)
+    float DawnWindow   = smoothstep(-0.10, 0.03, SunDir.z) * (1.0 - smoothstep(0.14, 0.44, SunDir.z));
+    float HorizonLine  = exp(-abs(RawDir.z) * 26.0);
+    float HorizonGlow  = exp(-abs(RawDir.z) * 9.0);
+    float ForwardAz    = 0.5 + 0.5 * clamp(dot(normalize(float2(Rd.x, Rd.y) + float2(1.0e-5, 0.0)), normalize(float2(SunDir.x, SunDir.y) + float2(1.0e-5, 0.0))), -1.0, 1.0);
+    float3 DawnMist    = float3(0.95, 0.96, 1.00) * (HorizonLine * (0.32 + 0.28 * ForwardAz) + HorizonGlow * 0.10) * DawnWindow * SolarScale * 0.34;
+
+    float3 OutRgb = ((RadAccum + MsAccum) * SolarScale * GlowScale + DawnMist + NightAir * (1.0 - DayVis * 0.9)) *
                     Uni.SkyTintBrightness.xyz * Uni.SkyTintBrightness.w;
 
     if (GroundRay)

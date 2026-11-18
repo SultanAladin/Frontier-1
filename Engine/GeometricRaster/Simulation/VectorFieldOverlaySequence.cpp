@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometricRaster/Simulation/VectorFieldOverlaySequence.h"
+#include "Engine/GeometricRaster/VulkanInterchange.h"
 
 #include <volk.h>
 #include <imgui.h>
@@ -150,10 +151,11 @@ struct Float3
 }
 
 void ComputeCameraBasisViewProj(
-    const OverlayCameraState& Cam,
-    float                     Aspect,
+    const OverlayFrameRequest& Request,
+    float                      Aspect,
     ViewportOverlayUniformsGpu& OutUbo) noexcept
 {
+    const OverlayCameraState& Cam = Request.Camera;
     Float3 Target{
         static_cast<float>(Cam.FocusTargetMeters.X),
         static_cast<float>(Cam.FocusTargetMeters.Y),
@@ -164,46 +166,58 @@ void ComputeCameraBasisViewProj(
     Float3 UpRef{ 0.0f, 0.0f, 1.0f };
     Float3 CamPos{};
 
-    const float Dist = std::max(4.0f, Cam.DistanceMeters);
-
-    switch (Cam.Projection)
+    if (Request.UseExplicitCamera)
     {
-        case ViewportProjectionPreset::Top:
-            CamPos = { Target.X, Target.Y, Target.Z + Dist * 1.4f };
-            Fwd    = { 0.0f, 0.0f, -1.0f };
-            UpRef  = { 1.0f, 0.0f, 0.0f };
-            break;
+        CamPos = { Request.ExplicitCameraOrigin[0], Request.ExplicitCameraOrigin[1], Request.ExplicitCameraOrigin[2] };
+        Target = { Request.ExplicitTargetPoint[0],  Request.ExplicitTargetPoint[1],  Request.ExplicitTargetPoint[2] };
+        UpRef  = { Request.ExplicitWorldUp[0],      Request.ExplicitWorldUp[1],      Request.ExplicitWorldUp[2] };
+        const Float3 Delta{ Target.X - CamPos.X, Target.Y - CamPos.Y, Target.Z - CamPos.Z };
+        const float Len2 = Dot3(Delta, Delta);
+        Fwd = (Len2 > 1.0e-6f) ? Normalize3(Delta) : Float3{ 0.0f, 1.0f, 0.0f };
+    }
+    else
+    {
+        const float Dist = std::max(4.0f, Cam.DistanceMeters);
 
-        case ViewportProjectionPreset::Front:
-            CamPos = { Target.X - Dist, Target.Y, Target.Z };
-            Fwd    = { 1.0f, 0.0f, 0.0f };
-            UpRef  = { 0.0f, 0.0f, 1.0f };
-            break;
-
-        case ViewportProjectionPreset::Right:
-            CamPos = { Target.X, Target.Y - Dist, Target.Z };
-            Fwd    = { 0.0f, 1.0f, 0.0f };
-            UpRef  = { 0.0f, 0.0f, 1.0f };
-            break;
-
-        case ViewportProjectionPreset::Perspective:
-        case ViewportProjectionPreset::Orthographic:
-        case ViewportProjectionPreset::Count:
-        default:
+        switch (Cam.Projection)
         {
-            const float CosP = std::cos(Cam.PitchRadians);
-            const float SinP = std::sin(Cam.PitchRadians);
-            const float CosY = std::cos(Cam.YawRadians);
-            const float SinY = std::sin(Cam.YawRadians);
-            const Float3 Offset{
-                Dist * CosP * CosY,
-                Dist * CosP * SinY,
-                Dist * SinP,
-            };
-            CamPos = { Target.X + Offset.X, Target.Y + Offset.Y, Target.Z + Offset.Z };
-            Fwd    = Normalize3({ Target.X - CamPos.X, Target.Y - CamPos.Y, Target.Z - CamPos.Z });
-            UpRef  = { 0.0f, 0.0f, 1.0f };
-            break;
+            case ViewportProjectionPreset::Top:
+                CamPos = { Target.X, Target.Y, Target.Z + Dist * 1.4f };
+                Fwd    = { 0.0f, 0.0f, -1.0f };
+                UpRef  = { 1.0f, 0.0f, 0.0f };
+                break;
+
+            case ViewportProjectionPreset::Front:
+                CamPos = { Target.X - Dist, Target.Y, Target.Z };
+                Fwd    = { 1.0f, 0.0f, 0.0f };
+                UpRef  = { 0.0f, 0.0f, 1.0f };
+                break;
+
+            case ViewportProjectionPreset::Right:
+                CamPos = { Target.X, Target.Y - Dist, Target.Z };
+                Fwd    = { 0.0f, 1.0f, 0.0f };
+                UpRef  = { 0.0f, 0.0f, 1.0f };
+                break;
+
+            case ViewportProjectionPreset::Perspective:
+            case ViewportProjectionPreset::Orthographic:
+            case ViewportProjectionPreset::Count:
+            default:
+            {
+                const float CosP = std::cos(Cam.PitchRadians);
+                const float SinP = std::sin(Cam.PitchRadians);
+                const float CosY = std::cos(Cam.YawRadians);
+                const float SinY = std::sin(Cam.YawRadians);
+                const Float3 Offset{
+                    Dist * CosP * CosY,
+                    Dist * CosP * SinY,
+                    Dist * SinP,
+                };
+                CamPos = { Target.X + Offset.X, Target.Y + Offset.Y, Target.Z + Offset.Z };
+                Fwd    = Normalize3({ Target.X - CamPos.X, Target.Y - CamPos.Y, Target.Z - CamPos.Z });
+                UpRef  = { 0.0f, 0.0f, 1.0f };
+                break;
+            }
         }
     }
 
@@ -231,14 +245,15 @@ void ComputeCameraBasisViewProj(
     OutUbo.CameraUpEmissive[2] = CamUp.Z;
 
     const float SafeAspect = std::max(0.1f, Aspect);
-    const bool  IsOrtho    = (Cam.Projection != ViewportProjectionPreset::Perspective);
+    const bool  IsOrtho    = (!Request.UseExplicitCamera && Cam.Projection != ViewportProjectionPreset::Perspective);
 
     float* M = OutUbo.ViewProjection;
     std::memset(M, 0, sizeof(OutUbo.ViewProjection));
 
     if (!IsOrtho)
     {
-        const float HalfFovRad = std::clamp(Cam.VerticalFovDeg, 15.0f, 110.0f) * (3.14159265f / 360.0f);
+        const float FovDeg     = Request.UseExplicitCamera ? Request.ExplicitVerticalFovDeg : Cam.VerticalFovDeg;
+        const float HalfFovRad = std::clamp(FovDeg, 15.0f, 110.0f) * (3.14159265f / 360.0f);
         const float TanHalf    = std::tan(HalfFovRad);
         const float Sx         = 1.0f / (SafeAspect * TanHalf);
         const float Sy         = 1.0f / TanHalf;
@@ -922,6 +937,45 @@ bool VectorFieldOverlaySequence::Initialize(
     Impl->DynEndRender   = Impl->UseKhrDynRender ? vkCmdEndRenderingKHR   : vkCmdEndRendering;
     Impl->Sync2Barrier   = Impl->UseKhrSync2     ? vkCmdPipelineBarrier2KHR : vkCmdPipelineBarrier2;
 
+    return InitializeAfterDeviceResolved(ShaderBinaryDirectory, OutDiagnostic);
+}
+
+bool VectorFieldOverlaySequence::Initialize(
+    Frontier::GeometricRaster::VulkanInterchange& BoundDevice,
+    const std::filesystem::path&                  ShaderBinaryDirectory,
+    std::string&                                  OutDiagnostic) noexcept
+{
+    Finalize();
+    if (!BoundDevice.Ready())
+    {
+        OutDiagnostic = "VulkanInterchange is not ready for VectorFieldOverlaySequence initialization.";
+        return false;
+    }
+    if (!BoundDevice.QueryUsesKhrDynamicRendering() || !BoundDevice.QueryUsesKhrSynchronization2())
+    {
+        OutDiagnostic = "VulkanInterchange lacks VK_KHR_dynamic_rendering / VK_KHR_synchronization2.";
+        return false;
+    }
+
+    Impl                   = std::make_unique<SequenceImplementation>();
+    Impl->PhysicalDevice   = BoundDevice.AccessPhysicalDevice();
+    Impl->Device           = BoundDevice.AccessDevice();
+    Impl->GraphicsQueue    = BoundDevice.AccessQueue();
+    Impl->QueueFamilyIndex = BoundDevice.QueryQueueOrdinal();
+    Impl->UseKhrDynRender  = BoundDevice.QueryUsesKhrDynamicRendering();
+    Impl->UseKhrSync2      = BoundDevice.QueryUsesKhrSynchronization2();
+
+    Impl->DynBeginRender = (vkCmdBeginRenderingKHR != nullptr) ? vkCmdBeginRenderingKHR : vkCmdBeginRendering;
+    Impl->DynEndRender   = (vkCmdEndRenderingKHR   != nullptr) ? vkCmdEndRenderingKHR   : vkCmdEndRendering;
+    Impl->Sync2Barrier   = (vkCmdPipelineBarrier2KHR != nullptr) ? vkCmdPipelineBarrier2KHR : vkCmdPipelineBarrier2;
+
+    return InitializeAfterDeviceResolved(ShaderBinaryDirectory, OutDiagnostic);
+}
+
+bool VectorFieldOverlaySequence::InitializeAfterDeviceResolved(
+    const std::filesystem::path& ShaderBinaryDirectory,
+    std::string&                 OutDiagnostic) noexcept
+{
     if (Impl->DynBeginRender == nullptr || Impl->DynEndRender == nullptr || Impl->Sync2Barrier == nullptr)
     {
         OutDiagnostic = "Vulkan 1.3 dynamic rendering / synchronization2 entry points unavailable on device.";
@@ -1257,7 +1311,7 @@ OverlayRenderOutput VectorFieldOverlaySequence::RenderPane(
 
     // 1. Upload UBO + ForceSource SSBO + Waypoint SSBO
     ViewportOverlayUniformsGpu Ubo{};
-    ComputeCameraBasisViewProj(Request.Camera, static_cast<float>(W) / static_cast<float>(H), Ubo);
+    ComputeCameraBasisViewProj(Request, static_cast<float>(W) / static_cast<float>(H), Ubo);
     Ubo.CameraPositionTime[3]   = static_cast<float>(Request.TimeSeconds);
     Ubo.CameraRightThickness[3] = Request.OverlaySettings.StreamRibbonThickness;
     Ubo.CameraUpEmissive[3]     = Request.OverlaySettings.StreamEmissiveBoost;
@@ -1562,7 +1616,9 @@ OverlayRenderOutput VectorFieldOverlaySequence::RenderPane(
     ColorAtts[0].imageLayout       = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     ColorAtts[0].loadOp            = VK_ATTACHMENT_LOAD_OP_CLEAR;
     ColorAtts[0].storeOp           = VK_ATTACHMENT_STORE_OP_STORE;
-    ColorAtts[0].clearValue.color  = { { 0.068f, 0.076f, 0.092f, 1.0f } };
+    ColorAtts[0].clearValue.color  = Request.TransparentBackdrop
+        ? VkClearColorValue{ { 0.0f, 0.0f, 0.0f, 0.0f } }
+        : VkClearColorValue{ { 0.068f, 0.076f, 0.092f, 1.0f } };
 
     ColorAtts[1].sType             = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
     ColorAtts[1].imageView         = Pane.PickView;

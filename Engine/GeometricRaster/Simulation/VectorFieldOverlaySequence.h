@@ -20,6 +20,11 @@
 #include <span>
 #include <string>
 
+namespace Frontier::GeometricRaster
+{
+class VulkanInterchange;
+}
+
 namespace Frontier::Editor::Simulation
 {
 
@@ -69,6 +74,12 @@ struct OverlayFrameRequest
     uint32_t                                                            SelectedForceToken    = 0u;
     int32_t                                                             SelectedWaypointIndex = -1;
     bool                                                                LitShadingEnabled     = true;
+    bool                                                                TransparentBackdrop   = false;
+    bool                                                                UseExplicitCamera     = false;
+    std::array<float, 3>                                                ExplicitCameraOrigin  { 0.0f, 0.0f, 0.0f };
+    std::array<float, 3>                                                ExplicitTargetPoint   { 0.0f, 1.0f, 0.0f };
+    std::array<float, 3>                                                ExplicitWorldUp       { 0.0f, 0.0f, 1.0f };
+    float                                                               ExplicitVerticalFovDeg = 46.0f;
     float                                                               SliceHalfSpanMeters   = 36.0f;
     std::span<const SimulationSpace::ForceFields::ForceSourceShaderEntry> PackedSources       {};
     std::span<const uint32_t>                                           SourceTokens          {};
@@ -104,6 +115,11 @@ public:
         const std::filesystem::path&                              ShaderBinaryDirectory,
         std::string&                                              OutDiagnostic) noexcept;
 
+    [[nodiscard]] bool Initialize(
+        Frontier::GeometricRaster::VulkanInterchange&             BoundDevice,
+        const std::filesystem::path&                              ShaderBinaryDirectory,
+        std::string&                                              OutDiagnostic) noexcept;
+
     void Finalize() noexcept;
 
     [[nodiscard]] bool QueryReady() const noexcept;
@@ -126,6 +142,10 @@ public:
     [[nodiscard]] uint32_t QueryPaneHeight(uint32_t PaneIndex) const noexcept;
 
 private:
+    [[nodiscard]] bool InitializeAfterDeviceResolved(
+        const std::filesystem::path& ShaderBinaryDirectory,
+        std::string&                 OutDiagnostic) noexcept;
+
     struct SequenceImplementation;
     std::unique_ptr<SequenceImplementation> Impl{};
 };

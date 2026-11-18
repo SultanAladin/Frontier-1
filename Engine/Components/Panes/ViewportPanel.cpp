@@ -75,16 +75,23 @@ namespace
 
 [[nodiscard]] const char* QueryDebugChannelName(uint32_t Channel) noexcept
 {
-    constexpr std::array<const char*, 9> Names = {{
+    constexpr std::array<const char*, 16> Names = {{
         "Off",
         "Depth",
         "Albedo",
-        "Normal",
+        "Shading Nrm",
         "Roughness",
         "GDF Iso",
         "GDF Slice",
         "GDF Rad",
-        "GDF GI"
+        "Indirect GI",
+        "Metalness",
+        "Cluster ID",
+        "Geom Nrm",
+        "Sun Shadow",
+        "Ambient Occ",
+        "Direct Lit",
+        "Specular"
     }};
     return Names[std::min<std::size_t>(Channel, Names.size() - 1u)];
 }
@@ -221,9 +228,10 @@ void ViewportPanel::ConfigureSettingsSheetOpen(bool Open) noexcept
     SettingsSheetOpen = Open;
     if (Open)
     {
-        ConstructSheetOpen     = false;
-        ProjectionDropdownOpen = false;
-        ForceOverlaySheetOpen  = false;
+        ConstructSheetOpen      = false;
+        ProjectionDropdownOpen  = false;
+        HeaderDebugDropdownOpen = false;
+        ForceOverlaySheetOpen   = false;
     }
 }
 
@@ -232,9 +240,10 @@ void ViewportPanel::ConfigureConstructSheetOpen(bool Open) noexcept
     ConstructSheetOpen = Open;
     if (Open)
     {
-        SettingsSheetOpen      = false;
-        ProjectionDropdownOpen = false;
-        ForceOverlaySheetOpen  = false;
+        SettingsSheetOpen       = false;
+        ProjectionDropdownOpen  = false;
+        HeaderDebugDropdownOpen = false;
+        ForceOverlaySheetOpen   = false;
     }
 }
 
@@ -262,9 +271,10 @@ void ViewportPanel::ConfigureForceOverlaySheetOpen(bool Open) noexcept
     ForceOverlaySheetOpen = Open;
     if (Open)
     {
-        ConstructSheetOpen     = false;
-        SettingsSheetOpen      = false;
-        ProjectionDropdownOpen = false;
+        ConstructSheetOpen      = false;
+        SettingsSheetOpen       = false;
+        ProjectionDropdownOpen  = false;
+        HeaderDebugDropdownOpen = false;
     }
 }
 
@@ -1256,7 +1266,7 @@ void ViewportPanel::RenderSettingsSheet(
     const PaneInputReading& Input)
 {
     const float SheetW = 286.0f;
-    const float SheetH = std::min(648.0f, std::max(426.0f, Bounds.Height - 28.0f));
+    const float SheetH = std::min(716.0f, std::max(426.0f, Bounds.Height - 22.0f));
     const float SheetX = std::clamp(GearButtonRightBottom.X - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
     const float SheetY = GearButtonRightBottom.Y + 6.0f;
     const Rectangle2D Sheet{ SheetX, SheetY, SheetW, SheetH };
@@ -1295,16 +1305,6 @@ void ViewportPanel::RenderSettingsSheet(
             if (Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
             {
                 DisplaySettings.QualityTier = Tier;
-                if (Tier >= 4u)
-                {
-                    DisplaySettings.RenderEngineIndex    = 2u; // DDGI Raytracing
-                    DisplaySettings.ShadowAlgorithmIndex = 4u; // WideTreeRayQuery
-                }
-                else
-                {
-                    DisplaySettings.RenderEngineIndex    = 3u; // SDF GI
-                    DisplaySettings.ShadowAlgorithmIndex = 0u; // ContactPcss
-                }
             }
         }
         RowY += 36.0f;
@@ -1429,7 +1429,7 @@ void ViewportPanel::RenderSettingsSheet(
     RowY += 36.0f;
 
     // 4. Atmosphere, Celestials & Volumetric Clouds Quick Controls
-    if (RowY + 190.0f <= Sheet.Bottom())
+    if (RowY + 120.0f <= Sheet.Bottom())
     {
         WorkspaceAppearance::ConstructWeightedText(
             Overlay,
@@ -1440,12 +1440,14 @@ void ViewportPanel::RenderSettingsSheet(
             "ATMOSPHERE & CLOUDS");
         RowY += 18.0f;
 
-        ConstructToggleRow("Physical Sky",      DisplaySettings.AtmosphereSkyEnabled);
-        ConstructToggleRow("Volumetric Clouds", DisplaySettings.VolumetricCloudsEnabled);
-        ConstructToggleRow("Sun, Moons & Stars",DisplaySettings.CelestialStarsEnabled);
-        ConstructToggleRow("Day Cycle",         DisplaySettings.DayCyclePlaying);
+        if (RowY + 30.0f <= Sheet.Bottom()) ConstructToggleRow("Physical Sky",       DisplaySettings.AtmosphereSkyEnabled);
+        if (RowY + 30.0f <= Sheet.Bottom()) ConstructToggleRow("Volumetric Clouds",  DisplaySettings.VolumetricCloudsEnabled);
+        if (RowY + 30.0f <= Sheet.Bottom()) ConstructToggleRow("Cloud Shadows",      DisplaySettings.CloudShadowsEnabled);
+        if (RowY + 30.0f <= Sheet.Bottom()) ConstructToggleRow("Sun, Moons & Stars", DisplaySettings.CelestialStarsEnabled);
+        if (RowY + 30.0f <= Sheet.Bottom()) ConstructToggleRow("Day Cycle",          DisplaySettings.DayCyclePlaying);
 
         // Time of Day slider [0..24h]
+        if (RowY + 36.0f <= Sheet.Bottom())
         {
             WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 2.0f }, 10.5f, WorkspaceSurfaceColors::SecondaryInk, "Time of Day");
             const uint32_t TotalMins = static_cast<uint32_t>(std::round(std::clamp(DisplaySettings.SolarTimeOfDayHours, 0.0f, 24.0f) * 60.0f)) % 1440u;
@@ -1468,6 +1470,7 @@ void ViewportPanel::RenderSettingsSheet(
         }
 
         // Cloud Cover slider [0..100%]
+        if (RowY + 36.0f <= Sheet.Bottom())
         {
             WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 2.0f }, 10.5f, WorkspaceSurfaceColors::SecondaryInk, "Cloud Cover");
             char CovLabel[24]{};
@@ -1484,6 +1487,28 @@ void ViewportPanel::RenderSettingsSheet(
             {
                 const float NextT = std::clamp((Cursor.X - Track.X) / Track.Width, 0.0f, 1.0f);
                 DisplaySettings.CloudFraction = std::round(NextT * 100.0f) / 100.0f;
+            }
+            RowY += 38.0f;
+        }
+
+        // Wind Speed slider [0..35 m/s]
+        if (RowY + 36.0f <= Sheet.Bottom())
+        {
+            WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 2.0f }, 10.5f, WorkspaceSurfaceColors::SecondaryInk, "Wind Speed");
+            char WindLabel[24]{};
+            std::snprintf(WindLabel, sizeof(WindLabel), "%.0f m/s", std::clamp(DisplaySettings.CloudWindSpeedMps, 0.0f, 35.0f));
+            const float WW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 10.0f, WindLabel);
+            WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.Right() - 16.0f - WW, RowY + 2.0f }, 10.5f, WorkspaceSurfaceColors::PrimaryInk, WindLabel);
+
+            const Rectangle2D Track{ Sheet.X + 16.0f, RowY + 20.0f, Sheet.Width - 32.0f, 12.0f };
+            const float NormW = std::clamp(DisplaySettings.CloudWindSpeedMps / 35.0f, 0.0f, 1.0f);
+            Overlay.FillRectangle(Track, ColorRgba{ 38, 38, 38, 255 }, 6.0f);
+            Overlay.FillRectangle({ Track.X, Track.Y, std::max(8.0f, Track.Width * NormW), Track.Height }, ColorRgba{ 82, 82, 82, 255 }, 6.0f);
+            Overlay.FillCircle({ Track.X + 6.0f + (Track.Width - 12.0f) * NormW, Track.Center().Y }, 5.5f, WorkspaceSurfaceColors::PrimaryInk);
+            if (!AnyDropdownOpen && Track.Contains(Cursor) && Input.PrimaryPointer.Down)
+            {
+                const float NextT = std::clamp((Cursor.X - Track.X) / Track.Width, 0.0f, 1.0f);
+                DisplaySettings.CloudWindSpeedMps = std::round(NextT * 35.0f);
             }
         }
     }
@@ -1539,19 +1564,26 @@ void ViewportPanel::RenderSettingsSheet(
     }
     else if (DebugDropdownOpen)
     {
-        constexpr std::array<const char*, 9> DebugOptions = {{
+        constexpr std::array<const char*, 16> DebugOptions = {{
             "Debug View: Off",
             "Debug View: Depth",
             "Debug View: Albedo",
-            "Debug View: Normal",
+            "Debug View: Shading Normal",
             "Debug View: Roughness",
             "Debug View: GDF Iso-Surface",
             "Debug View: GDF Slice & Isolines",
             "Debug View: GDF Radiosity Volume",
-            "Debug View: GDF Cone GI",
+            "Debug View: Indirect GI",
+            "Debug View: Metalness",
+            "Debug View: Material / Cluster ID",
+            "Debug View: Geometric Normal",
+            "Debug View: Solar Shadow",
+            "Debug View: Ambient Occlusion",
+            "Debug View: Direct Lighting",
+            "Debug View: Specular & Reflections",
         }};
         const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(DebugBtn, static_cast<uint32_t>(DebugOptions.size()));
-        const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 9u;
+        const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 16u;
         uint32_t          ChosenIdx  = CurrentIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 Overlay,
@@ -1730,7 +1762,7 @@ void ViewportPanel::Render(
 
     PixelSpace&   ActiveOverlay     = (OverlaySurface != nullptr) ? *OverlaySurface : Surface;
     const Point2D Cursor            = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    const bool    OverlayOpenBefore = ConstructSheetOpen || SettingsSheetOpen || ProjectionDropdownOpen || ForceOverlaySheetOpen;
+    const bool    OverlayOpenBefore = ConstructSheetOpen || SettingsSheetOpen || ProjectionDropdownOpen || HeaderDebugDropdownOpen || ForceOverlaySheetOpen;
 
     PushDiagnosticsSample(Δt);
     WorkspaceAppearance::ForwardInputToTextBuffer(ConstructSearchEditor, Input, Δt);
@@ -1743,6 +1775,7 @@ void ViewportPanel::Render(
         ConstructSheetOpen           = false;
         SettingsSheetOpen            = false;
         ProjectionDropdownOpen       = false;
+        HeaderDebugDropdownOpen      = false;
         ForceOverlaySheetOpen        = false;
         ConstructSearchEditor.Active = false;
     }
@@ -2007,6 +2040,37 @@ void ViewportPanel::Render(
         }
     }
 
+    // Header Debug View Dropdown Pill (1-click access to Lit + 15 modular debug views)
+    {
+        const float DebugStartX = (ForceOverlayToolsVisible && ForceVizBtn.Right() + 8.0f < SplitBtn.X)
+            ? (ForceVizBtn.Right() + 8.0f)
+            : (ProjectionBtn.Right() + 8.0f);
+        std::string HeaderDbgLabel = "Debug: ";
+        HeaderDbgLabel += QueryDebugChannelName(DisplaySettings.DebugChannelIndex);
+        const float DbgBtnW = std::clamp(
+            WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.5f, HeaderDbgLabel) + 38.0f,
+            102.0f, 156.0f);
+        if (DebugStartX + DbgBtnW + 8.0f < SplitBtn.X)
+        {
+            const Rectangle2D HeaderDbgBtn{ DebugStartX, ToolsRowY, DbgBtnW, 31.0f };
+            HeaderDebugButtonBounds = HeaderDbgBtn;
+            ControlPointer DbgPtr   = Input.PrimaryPointer;
+            if (ConstructSheetOpen || SettingsSheetOpen || ProjectionDropdownOpen)
+            {
+                DbgPtr.Enabled = false;
+            }
+            if (DropdownSelector::ConstructButton(
+                    Surface, HeaderDbgBtn, HeaderDbgLabel.c_str(), HeaderDebugDropdownOpen, DbgPtr).Pressed)
+            {
+                HeaderDebugDropdownOpen = !HeaderDebugDropdownOpen;
+                ProjectionDropdownOpen  = false;
+                ConstructSheetOpen      = false;
+                SettingsSheetOpen       = false;
+                ForceOverlaySheetOpen   = false;
+            }
+        }
+    }
+
     auto ConstructSecondaryToolButton = [&](Rectangle2D Btn, bool ToggledOn, auto ConstructIconFn)
     {
         const bool      Hovered = Btn.Contains(Cursor);
@@ -2175,6 +2239,44 @@ void ViewportPanel::Render(
         }
     }
 
+    if (HeaderDebugDropdownOpen)
+    {
+        constexpr std::array<const char*, 16> HeaderDebugOptions = {{
+            "00 · Lit (Off)",
+            "01 · Depth",
+            "02 · Albedo",
+            "03 · Shading Normal",
+            "04 · Roughness",
+            "05 · GDF Iso-Surface",
+            "06 · GDF Slice & Isolines",
+            "07 · GDF Radiosity Volume",
+            "08 · Indirect GI",
+            "09 · Metalness",
+            "10 · Material / Cluster ID",
+            "11 · Geometric Normal",
+            "12 · Solar Shadow",
+            "13 · Ambient Occlusion",
+            "14 · Direct Lighting",
+            "15 · Specular & Reflections",
+        }};
+        const Rectangle2D DropSheet = DropdownSelector::QuerySheetBounds(
+            HeaderDebugButtonBounds, static_cast<uint32_t>(HeaderDebugOptions.size()));
+        const uint32_t CurIdx    = DisplaySettings.DebugChannelIndex % 16u;
+        uint32_t       ChosenIdx = CurIdx;
+        if (DropdownSelector::ConstructOptionSheet(
+                ActiveOverlay, HeaderDebugButtonBounds, HeaderDebugOptions.data(),
+                static_cast<uint32_t>(HeaderDebugOptions.size()), CurIdx, Input.PrimaryPointer, ChosenIdx).Clicked)
+        {
+            DisplaySettings.DebugChannelIndex = ChosenIdx;
+            HeaderDebugDropdownOpen           = false;
+        }
+        else if (OverlayOpenBefore && Input.PrimaryPointer.Pressed &&
+                 !DropSheet.Contains(Cursor) && !HeaderDebugButtonBounds.Contains(Cursor))
+        {
+            HeaderDebugDropdownOpen = false;
+        }
+    }
+
     if (ConstructSheetOpen)
     {
         RenderConstructDialog(ActiveOverlay, Bounds, Input);
@@ -2194,12 +2296,12 @@ void ViewportPanel::Render(
         if (OverlayOpenBefore && Input.PrimaryPointer.Pressed && !SettingsBtn.Contains(Cursor))
         {
             const float SheetW = 286.0f;
-            const float SheetH = 426.0f;
+            const float SheetH = std::min(716.0f, std::max(426.0f, Bounds.Height - 22.0f));
             const float SheetX = std::clamp(SettingsBtn.Right() - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
             const Rectangle2D SheetRect{ SheetX, SettingsBtn.Bottom() + 6.0f, SheetW, SheetH };
             const Rectangle2D EngineSheetRect = DropdownSelector::QuerySheetBounds(EngineButtonBounds, 5u);
             const Rectangle2D ShadowSheetRect = DropdownSelector::QuerySheetBounds(ShadowButtonBounds, 5u);
-            const Rectangle2D DebugSheetRect  = DropdownSelector::QuerySheetBounds(DebugButtonBounds, 5u);
+            const Rectangle2D DebugSheetRect  = DropdownSelector::QuerySheetBounds(DebugButtonBounds, 16u);
             const bool InDropdown =
                 (EngineDropdownOpen && EngineSheetRect.Contains(Cursor)) ||
                 (ShadowDropdownOpen && ShadowSheetRect.Contains(Cursor)) ||

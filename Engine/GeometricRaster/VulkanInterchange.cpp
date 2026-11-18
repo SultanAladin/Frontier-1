@@ -206,6 +206,12 @@ bool VulkanInterchange::InitializeInterchange(
     bool SupportsSpirv14Ext        = false;
     bool SupportsFloatControlsExt  = false;
     bool SupportsBufferAddressExt  = false;
+    bool SupportsDynamicRenderExt  = false;
+    bool SupportsDepthStencilRes   = false;
+    bool SupportsCreateRenderPass2 = false;
+    bool SupportsMultiviewExt      = false;
+    bool SupportsMaintenance2Ext   = false;
+    bool SupportsSync2Ext          = false;
     for (const VkExtensionProperties& Ext : DeviceExts)
     {
         if (std::strcmp(Ext.extensionName, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME) == 0)
@@ -239,6 +245,30 @@ bool VulkanInterchange::InitializeInterchange(
         else if (std::strcmp(Ext.extensionName, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) == 0)
         {
             SupportsBufferAddressExt = true;
+        }
+        else if (std::strcmp(Ext.extensionName, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) == 0)
+        {
+            SupportsDynamicRenderExt = true;
+        }
+        else if (std::strcmp(Ext.extensionName, VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME) == 0)
+        {
+            SupportsDepthStencilRes = true;
+        }
+        else if (std::strcmp(Ext.extensionName, VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME) == 0)
+        {
+            SupportsCreateRenderPass2 = true;
+        }
+        else if (std::strcmp(Ext.extensionName, VK_KHR_MULTIVIEW_EXTENSION_NAME) == 0)
+        {
+            SupportsMultiviewExt = true;
+        }
+        else if (std::strcmp(Ext.extensionName, VK_KHR_MAINTENANCE2_EXTENSION_NAME) == 0)
+        {
+            SupportsMaintenance2Ext = true;
+        }
+        else if (std::strcmp(Ext.extensionName, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) == 0)
+        {
+            SupportsSync2Ext = true;
         }
     }
 
@@ -333,6 +363,40 @@ bool VulkanInterchange::InitializeInterchange(
                 }
             }
         }
+    }
+
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR DynRenderFeatures {};
+    DynRenderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
+    VkPhysicalDeviceSynchronization2FeaturesKHR Sync2Features {};
+    Sync2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
+    DynamicRenderingEnabled = false;
+    Synchronization2Enabled = false;
+
+    void* ChainTail = &TimelineFeatures;
+    auto AppendChain = [&](void* Node, void*& NodePNext) noexcept
+    {
+        NodePNext = TimelineFeatures.pNext;
+        TimelineFeatures.pNext = Node;
+        (void)ChainTail;
+    };
+
+    if (SupportsDynamicRenderExt)
+    {
+        EnabledDeviceExtensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+        if (SupportsDepthStencilRes)   EnabledDeviceExtensions.push_back(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME);
+        if (SupportsCreateRenderPass2) EnabledDeviceExtensions.push_back(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME);
+        if (SupportsMultiviewExt)      EnabledDeviceExtensions.push_back(VK_KHR_MULTIVIEW_EXTENSION_NAME);
+        if (SupportsMaintenance2Ext)   EnabledDeviceExtensions.push_back(VK_KHR_MAINTENANCE2_EXTENSION_NAME);
+        DynRenderFeatures.dynamicRendering = VK_TRUE;
+        AppendChain(&DynRenderFeatures, DynRenderFeatures.pNext);
+        DynamicRenderingEnabled = true;
+    }
+    if (SupportsSync2Ext)
+    {
+        EnabledDeviceExtensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+        Sync2Features.synchronization2 = VK_TRUE;
+        AppendChain(&Sync2Features, Sync2Features.pNext);
+        Synchronization2Enabled = true;
     }
 
     const float QueuePriority = 1.0f;

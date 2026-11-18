@@ -81,6 +81,7 @@ private:
     VulkanInterchange*     BoundDevice                 = nullptr;
     ComputeDispatchEncoder DispatchEncoder             {};
     uint32_t               RadiometricProgramHandle    = UINT32_MAX;
+    uint32_t               CloudLayerProgramHandle     = UINT32_MAX;
     uint32_t               DenoiseProgramHandle        = UINT32_MAX;
     uint32_t               SignedDistanceProgramHandle = UINT32_MAX;
     uint32_t               SkyViewLutProgramHandle     = UINT32_MAX;
@@ -112,6 +113,7 @@ private:
     DeviceBufferResource   PingGiHdrBuffer             {};
     DeviceBufferResource   PongShadowAoBuffer          {};
     DeviceBufferResource   PongGiHdrBuffer             {};
+    DeviceBufferResource   CloudRadiometricBuffer      {};
 
     Mathematics::Axis3D    CachedSdfMinCorner       { -3.5f, -3.5f, -1.2f };
     float                  CachedSdfSpacing         = 0.14f;

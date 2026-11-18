@@ -84,6 +84,8 @@ struct CloudDeckConfiguration
     float                    WindShearPerKilometer    = 0.35f;   // [/km]    - Vertical altitude shear
     float                    WindVeerDegreesPerKm     = 12.0f;   // [d/km]   - Ekman wind bearing rotation with altitude [-60..60]
     float                    WindTurbulence           = 0.30f;   // [0..1]   - Wind eddy warp on cloud silhouettes
+    float                    CloudRenderScale         = 0.50f;   // [0.25..1]- Offscreen cloud pass resolution scale (0.5 = half-res)
+    uint32_t                 CloudMarchSteps          = 36u;     // [16..96] - Volumetric cloud deck raymarch steps
     CloudShadowConfiguration CloudShadow              {};
 };
 

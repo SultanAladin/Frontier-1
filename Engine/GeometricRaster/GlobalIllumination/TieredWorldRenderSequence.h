@@ -52,14 +52,18 @@ enum class WorldRenderEngine : uint8_t
 
 struct WorldRenderConfiguration
 {
-    WorldRenderEngine        Engine              = WorldRenderEngine::SdfGlobalIllumination;
-    SolarShadowAlgorithm     ShadowAlgorithm     = SolarShadowAlgorithm::ContactPcss;
-    SpecularReflectionSource ReflectionSource    = SpecularReflectionSource::WideTreeRaytrace;
-    uint32_t                 DebugChannel        = 0u;    // [0..8] - 0=Lit, 1=Depth, 2=Albedo, 3=Normal, 4=Roughness, 5=GDF Iso, 6=GDF Slice, 7=GDF Radiosity, 8=GDF Cone GI
-    uint32_t                 PathTraceSamples    = 16u;   // [spp]  - Samples per pixel for DeterministicPathTrace
-    uint32_t                 PathTraceMaxBounces = 5u;    // [cnt]  - Maximum bounce depth for DeterministicPathTrace
-    bool                     PathTraceDenoise    = true;  // [-]    - 3-pass albedo/normal/depth A-Trous denoiser
-    bool                     SdfGiBilateral      = true;  // [-]    - 7x7 joint bilateral spatial filter for SDF GI
+    WorldRenderEngine        Engine                    = WorldRenderEngine::SdfGlobalIllumination;
+    SolarShadowAlgorithm     ShadowAlgorithm           = SolarShadowAlgorithm::ContactPcss;
+    SpecularReflectionSource ReflectionSource          = SpecularReflectionSource::WideTreeRaytrace;
+    uint32_t                 DebugChannel              = 0u;    // [0..15] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=GdfIso, 6=GdfSlice, 7=GdfRad, 8=IndirectGi, 9=Metal, 10=MatId, 11=GeomNrm, 12=SunVis, 13=DiffAO, 14=Direct, 15=SpecRefl
+    uint32_t                 PathTraceSamples          = 16u;   // [spp]  - Samples per pixel for DeterministicPathTrace
+    uint32_t                 PathTraceMaxBounces       = 5u;    // [cnt]  - Maximum bounce depth for DeterministicPathTrace
+    bool                     PathTraceDenoise          = true;  // [-]    - 3-pass albedo/normal/depth A-Trous denoiser
+    bool                     SdfGiBilateral            = true;  // [-]    - 7x7 joint bilateral spatial filter for SDF GI
+    bool                     GlobalIlluminationEnabled = true;  // [-]    - Render setting toggle for indirect GI / bounces
+    bool                     ReflectionsEnabled        = true;  // [-]    - Render setting toggle for specular reflections
+    bool                     RaytracingEnabled         = true;  // [-]    - Render setting toggle for hardware/BVH raytracing
+    uint32_t                 QualityTier               = 1u;    // [0..2] - 0=Medium, 1=High, 2=Epic
 };
 
 struct WorldSceneSpecification

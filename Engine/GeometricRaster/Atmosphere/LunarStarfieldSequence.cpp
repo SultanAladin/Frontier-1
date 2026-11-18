@@ -4,6 +4,7 @@
 // 🧩 Multi-instance Lunar discs (real 2K texture atlas, 29.53-day phase, roll/pitch) and deterministic twinkling Starfield evaluation
 
 #include "Engine/GeometricRaster/Atmosphere/LunarStarfieldSequence.h"
+#include "Engine/GeometricRaster/Atmosphere/AtmosphericSkySequence.h"
 
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_IMPLEMENTATION
@@ -149,6 +150,27 @@ void FillProceduralTile(std::vector<uint8_t>& Pixels, uint32_t PresetIdx) noexce
     }
 }
 
+struct LunarExosphereParams
+{
+    Mathematics::LinearRGB LimbTint       {};
+    float                  LimbStrength   = 0.0f;
+    float                  TerminatorWrap = 0.0f;
+};
+
+[[nodiscard]] LunarExosphereParams QueryLunarExosphereParams(LunarSurfacePreset Preset) noexcept
+{
+    switch (Preset)
+    {
+        case LunarSurfacePreset::Luna:    return { { 0.85f, 0.88f, 0.94f }, 0.05f, 0.03f };
+        case LunarSurfacePreset::Ember:   return { { 1.00f, 0.46f, 0.18f }, 0.42f, 0.16f };
+        case LunarSurfacePreset::Glacier: return { { 0.44f, 0.74f, 1.00f }, 0.56f, 0.18f };
+        case LunarSurfacePreset::Sulfur:  return { { 1.00f, 0.84f, 0.34f }, 0.48f, 0.16f };
+        case LunarSurfacePreset::Shroud:  return { { 0.48f, 0.68f, 0.96f }, 0.78f, 0.24f };
+        case LunarSurfacePreset::Shard:   return { { 0.46f, 0.95f, 0.86f }, 0.44f, 0.14f };
+    }
+    return { { 0.85f, 0.88f, 0.94f }, 0.05f, 0.03f };
+}
+
 } // namespace
 
 Mathematics::LinearRGB LunarStarfieldSequence::QueryPresetTint(LunarSurfacePreset Preset) noexcept
@@ -272,12 +294,24 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
     const Mathematics::Axis3D&                  SunDirection,
     std::span<const LunarBodyConfiguration, 4u> Moons,
     const StarfieldConfiguration&               Stars,
-    float                                       SimulationSeconds) noexcept
+    float                                       SimulationSeconds,
+    const AtmosphericMediumConfiguration*       AtmosphereMedium) noexcept
 {
     Mathematics::LinearRGB Out { 0.0f, 0.0f, 0.0f };
     const auto& Atlas = QueryLunarSurfaceAtlasRgba8();
 
-    // 1. Evaluate active Moon discs + halos using real equirectangular 2K texture atlas
+    const AtmosphericMediumConfiguration DefaultMedium {};
+    const AtmosphericMediumConfiguration& Med = (AtmosphereMedium != nullptr) ? *AtmosphereMedium : DefaultMedium;
+    const bool ApplyAtmo = (AtmosphereMedium == nullptr) || AtmosphereMedium->AtmosphereEnabled;
+    const Mathematics::LinearRGB AtmoTrans = (ApplyAtmo && RayDirection.Z > -0.05f)
+        ? AtmosphericSkySequence::ComputeSolarTransmittance(
+              Mathematics::NormalizeAxis({ RayDirection.X, RayDirection.Y, std::max(0.01f, RayDirection.Z) }),
+              Med)
+        : Mathematics::LinearRGB{ 1.0f, 1.0f, 1.0f };
+    const float HorizonFactor = std::exp(-std::max(0.0f, RayDirection.Z) * 9.0f);
+    const float DayVis        = std::clamp((SunDirection.Z + 0.06f) * 6.5f, 0.0f, 1.0f);
+
+    // 1. Evaluate active Moon discs + atmospheric limb/halo using real equirectangular 2K texture atlas
     for (const LunarBodyConfiguration& Moon : Moons)
     {
         if (!Moon.Visible || RayDirection.Z < -0.05f)
@@ -289,11 +323,17 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
         const float AngR   = std::max(0.001f, Moon.AngularDiameterDegrees * 0.5f * Constants::DegToRadFloat);
         const float CosEdge = std::cos(AngR);
         const auto  Tint   = QueryPresetTint(Moon.SurfacePreset);
+        const auto  Exo    = QueryLunarExosphereParams(Moon.SurfacePreset);
 
-        const float Glow = std::pow(std::max(0.0f, CosM), 420.0f) * Moon.HaloGlowMultiplier * 0.28f * Moon.BrightnessMultiplier;
-        Out.R += Tint.R * Glow;
-        Out.G += Tint.G * Glow;
-        Out.B += Tint.B * Glow;
+        // Earth atmosphere Mie aureole + lunar exosphere corona around disc
+        const float GlowBoost = 1.0f + (ApplyAtmo ? (0.45f * Med.MieStrength * HorizonFactor) : 0.0f);
+        const float Glow = std::pow(std::max(0.0f, CosM), 380.0f) * Moon.HaloGlowMultiplier * 0.24f * Moon.BrightnessMultiplier * GlowBoost;
+        const float HaloR = Tint.R * (1.0f - Exo.LimbStrength * 0.35f) + Exo.LimbTint.R * (Exo.LimbStrength * 0.35f);
+        const float HaloG = Tint.G * (1.0f - Exo.LimbStrength * 0.35f) + Exo.LimbTint.G * (Exo.LimbStrength * 0.35f);
+        const float HaloB = Tint.B * (1.0f - Exo.LimbStrength * 0.35f) + Exo.LimbTint.B * (Exo.LimbStrength * 0.35f);
+        Out.R += HaloR * Glow * AtmoTrans.R;
+        Out.G += HaloG * Glow * AtmoTrans.G;
+        Out.B += HaloB * Glow * AtmoTrans.B;
 
         if (CosM > CosEdge)
         {
@@ -333,20 +373,31 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
                 const float LY = 0.18f;
                 const float LZ = std::cos(PhaseAng);
                 const float LL = std::sqrt(LX * LX + LY * LY + LZ * LZ);
-                const float NdotL = std::max(0.0f, (PX * LX + PY * LY + PZ * LZ) / std::max(1.0e-4f, LL));
+                const float RawDot = (PX * LX + PY * LY + PZ * LZ) / std::max(1.0e-4f, LL);
+                const float NdotL  = std::max(0.0f, RawDot);
 
-                const float EdgeAa = std::clamp((1.0f - std::sqrt(R2)) * 18.0f, 0.0f, 1.0f);
-                // Earthshine ambient + Lambertian Lommel-Seeliger-like regolith shading
-                const float LimbBoost = 0.78f + 0.22f * std::sqrt(std::max(0.0f, 1.0f - R2));
-                const float Lum = (0.025f + NdotL * 1.95f) * LimbBoost * Moon.BrightnessMultiplier * EdgeAa;
-                Out.R += TexAlbedo.R * Lum;
-                Out.G += TexAlbedo.G * Lum;
-                Out.B += TexAlbedo.B * Lum;
+                const float EdgeAa = std::clamp((1.0f - std::sqrt(R2)) * 22.0f, 0.0f, 1.0f);
+                // Earthshine masked by daytime foreground sky so the dark lunar side blends naturally into blue sky
+                const float Earthshine = 0.022f * (1.0f - 0.78f * DayVis);
+                const float LimbBoost  = 0.78f + 0.22f * PZ;
+                const float Lum = (Earthshine + NdotL * 1.95f) * LimbBoost * Moon.BrightnessMultiplier * EdgeAa;
+
+                // Per-moon exosphere / planetary limb Rayleigh + Mie terminator scattering
+                const float TermWrap = std::clamp((RawDot + Exo.TerminatorWrap) / std::max(0.05f, 1.0f + Exo.TerminatorWrap), 0.0f, 1.0f);
+                const float RimAtmo  = std::pow(1.0f - PZ, 2.35f) * Exo.LimbStrength * TermWrap * Moon.BrightnessMultiplier * EdgeAa * 0.75f;
+
+                const float DiscR = TexAlbedo.R * Lum + Exo.LimbTint.R * RimAtmo;
+                const float DiscG = TexAlbedo.G * Lum + Exo.LimbTint.G * RimAtmo;
+                const float DiscB = TexAlbedo.B * Lum + Exo.LimbTint.B * RimAtmo;
+
+                Out.R += DiscR * AtmoTrans.R;
+                Out.G += DiscG * AtmoTrans.G;
+                Out.B += DiscB * AtmoTrans.B;
             }
         }
     }
 
-    // 2. Deterministic procedural Starfield (Cube-face 3x3 angular PSF — zero popping under camera rotation!)
+    // 2. Deterministic procedural Starfield (Crisp pinpoint PSF — zero popping under camera rotation!)
     if (Stars.StarfieldEnabled && RayDirection.Z > -0.02f)
     {
         const float DayFade = std::clamp(1.0f - (SunDirection.Z + 0.08f) * 5.0f, 0.0f, 1.0f);
@@ -384,17 +435,17 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
                 else                  { Face = 5; FU = RotDir.X / AZ; FV = -RotDir.Y / AZ; }
             }
 
-            constexpr int32_t GridCount = 88;
-            constexpr float   GridN     = 88.0f;
+            constexpr int32_t GridCount = 116;
+            constexpr float   GridN     = 116.0f;
             const int32_t CX = std::clamp(static_cast<int32_t>(std::floor((FU * 0.5f + 0.5f) * GridN)), 0, GridCount - 1);
             const int32_t CY = std::clamp(static_cast<int32_t>(std::floor((FV * 0.5f + 0.5f) * GridN)), 0, GridCount - 1);
 
             const float MagThresh  = std::clamp(Stars.LimitingMagnitude / 8.5f, 0.05f, 0.98f);
-            const float StarProb   = 0.22f * MagThresh;
-            const float PixelAng   = 1.25f / 540.0f;
-            const float BaseAng    = 0.00058f * std::clamp(Stars.PointSizeScale, 0.4f, 3.0f);
-            const float SigmaAng   = std::max(BaseAng, PixelAng * 0.56f);
-            const float EnergyNorm = std::clamp((BaseAng * BaseAng) / (SigmaAng * SigmaAng), 0.16f, 1.0f);
+            const float StarProb   = 0.24f * MagThresh;
+            const float PixelAng   = 0.85f / 720.0f;
+            const float BaseAng    = 0.00018f * std::clamp(Stars.PointSizeScale, 0.35f, 2.5f);
+            const float SigmaAng   = std::max(BaseAng, PixelAng * 0.34f);
+            const float EnergyNorm = std::clamp((BaseAng * BaseAng) / (SigmaAng * SigmaAng), 0.14f, 1.0f);
             const float AltFade    = std::clamp((RayDirection.Z + 0.01f) * 4.5f, 0.0f, 1.0f);
 
             for (int32_t DY = -1; DY <= 1; ++DY)
@@ -423,19 +474,19 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
                     else                StarDir = Mathematics::NormalizeAxis({  SU, -SV, -1.0f });
 
                     const float Chord = Mathematics::EvaluateLength(RotDir - StarDir);
-                    if (Chord < SigmaAng * 3.4f)
+                    if (Chord < SigmaAng * 2.3f)
                     {
                         const float NormR   = Chord / SigmaAng;
-                        const float Falloff = std::exp(-0.5f * NormR * NormR);
+                        const float Falloff = std::exp(-1.15f * NormR * NormR);
                         const float Twinkle = Stars.ScintillationEnabled
                             ? (1.0f - (Stars.ScintillationDepthPercent * 0.008f) *
                                   (0.5f + 0.5f * std::sin(SimulationSeconds * Stars.ScintillationRateHertz * 5.0f + H2 * 40.0f)))
                             : 1.0f;
                         const float MagRank   = std::clamp((H1 - (1.0f - StarProb)) / std::max(1.0e-4f, StarProb), 0.0f, 1.0f);
-                        const float Intensity = (0.35f + 2.25f * MagRank * MagRank) * Stars.BrightnessMultiplier * DayFade * Twinkle * Falloff * AltFade * EnergyNorm;
-                        Out.R += (0.78f + 0.42f * H2) * Intensity;
-                        Out.G += (0.88f + 0.12f * H2) * Intensity;
-                        Out.B += (1.20f - 0.35f * H2) * Intensity;
+                        const float Intensity = (0.22f + 2.60f * std::pow(MagRank, 2.5f)) * Stars.BrightnessMultiplier * DayFade * Twinkle * Falloff * AltFade * EnergyNorm;
+                        Out.R += (0.78f + 0.42f * H2) * Intensity * AtmoTrans.R;
+                        Out.G += (0.88f + 0.12f * H2) * Intensity * AtmoTrans.G;
+                        Out.B += (1.20f - 0.35f * H2) * Intensity * AtmoTrans.B;
                     }
                 }
             }

@@ -72,13 +72,52 @@ float3 SampleLunarAtlasGpu(
     return lerp(lerp(C00, C10, TX), lerp(C01, C11, TX), TY);
 }
 
+float3 EvaluateCelestialAtmoTransmittance(CelestialFieldUniformBlock Cfg, float3 RayDir)
+{
+    // Unpack Earth atmosphere medium densities from Moons[0..3].MetaMask.w (default 1.0 if unset)
+    bool  ExplicitPack = (Cfg.Moons[3].MetaMask.w > 0.5 || Cfg.Moons[0].MetaMask.w > 0.0 || Cfg.Moons[1].MetaMask.w > 0.0);
+    float RayScale     = ExplicitPack ? Cfg.Moons[0].MetaMask.w : 1.0;
+    float MieScale     = ExplicitPack ? Cfg.Moons[1].MetaMask.w : 1.0;
+    float OzScale      = ExplicitPack ? Cfg.Moons[2].MetaMask.w : 1.2;
+    bool  AtmoEnabled  = ExplicitPack ? (Cfg.Moons[3].MetaMask.w > 0.5) : true;
+    if (!AtmoEnabled || RayDir.z < -0.05)
+    {
+        return float3(1.0, 1.0, 1.0);
+    }
+
+    // Kasten-Young spherical optical airmass along RayDir through Earth's Rayleigh/Mie/Ozone shell
+    float CosZ    = clamp(RayDir.z, 0.012, 1.0);
+    float ElevDeg = asin(CosZ) * (180.0 / CelestialPiConst);
+    float AirMass = 1.0 / (CosZ + 0.50572 * pow(max(0.5, ElevDeg + 6.07995), -1.6364));
+    AirMass       = min(AirMass, 38.0);
+
+    float3 RayTau = float3(0.005802, 0.013558, 0.033100) * (RayScale * 7.8 * AirMass);
+    float3 MieTau = float3(0.004440, 0.004440, 0.004440) * (MieScale * 1.45 * AirMass);
+    float3 OzTau  = float3(0.001050, 0.001920, 0.000090) * (OzScale  * 6.2  * min(AirMass, 18.0));
+    return exp(-(RayTau + MieTau + OzTau));
+}
+
+void QueryLunarExosphereGpu(uint PresetIdx, out float3 OutLimbTint, out float OutLimbStrength, out float OutTermWrap)
+{
+    if (PresetIdx == 1u)      { OutLimbTint = float3(1.00, 0.46, 0.18); OutLimbStrength = 0.42; OutTermWrap = 0.16; }
+    else if (PresetIdx == 2u) { OutLimbTint = float3(0.44, 0.74, 1.00); OutLimbStrength = 0.56; OutTermWrap = 0.18; }
+    else if (PresetIdx == 3u) { OutLimbTint = float3(1.00, 0.84, 0.34); OutLimbStrength = 0.48; OutTermWrap = 0.16; }
+    else if (PresetIdx == 4u) { OutLimbTint = float3(0.48, 0.68, 0.96); OutLimbStrength = 0.78; OutTermWrap = 0.24; }
+    else if (PresetIdx == 5u) { OutLimbTint = float3(0.46, 0.95, 0.86); OutLimbStrength = 0.44; OutTermWrap = 0.14; }
+    else                      { OutLimbTint = float3(0.85, 0.88, 0.94); OutLimbStrength = 0.05; OutTermWrap = 0.03; }
+}
+
 float3 EvaluateCelestialBodiesGpu(
     CelestialFieldUniformBlock Cfg,
     StructuredBuffer<uint>     LunarAtlas,
     float3                     RayDir)
 {
-    float3 OutRgb = float3(0.0, 0.0, 0.0);
-    float3 SunDir = normalize(Cfg.SunAxisRadius.xyz);
+    float3 OutRgb    = float3(0.0, 0.0, 0.0);
+    float3 SunDir    = normalize(Cfg.SunAxisRadius.xyz);
+    float3 AtmoTrans = EvaluateCelestialAtmoTransmittance(Cfg, RayDir);
+    float  HorizonF  = exp(-max(0.0, RayDir.z) * 9.0);
+    float  MieScale  = (Cfg.Moons[3].MetaMask.w > 0.5) ? Cfg.Moons[1].MetaMask.w : 1.0;
+    float  DayVis    = clamp((SunDir.z + 0.06) * 6.5, 0.0, 1.0);
 
     // 1. Solar Disc + Corona
     if (Cfg.SunTintIntensity.w > 0.0 && RayDir.z >= -0.04)
@@ -92,7 +131,7 @@ float3 EvaluateCelestialBodiesGpu(
         OutRgb += Cfg.SunTintIntensity.xyz * (DiscEdge * 26.0 + Corona) * (Cfg.SunTintIntensity.w * LimbFade);
     }
 
-    // 2. Multi-Instance Moons (up to 4) sampling real 2K lunar equirectangular atlas
+    // 2. Multi-Instance Moons (up to 4) sampling real 2K lunar equirectangular atlas + Earth/Lunar atmosphere
     uint MoonCount = min(4u, uint(Cfg.ClockViewportDims.w + 0.5));
     for (uint MIdx = 0u; MIdx < MoonCount; ++MIdx)
     {
@@ -104,8 +143,15 @@ float3 EvaluateCelestialBodiesGpu(
         float  CosM    = clamp(dot(RayDir, MoonDir), -1.0, 1.0);
         float  CosEdge = cos(AngR);
 
-        float  Glow = pow(max(0.0, CosM), 420.0) * M.OpticsOrientation.y * 0.28 * M.OpticsOrientation.x;
-        OutRgb += M.TintSynodicPhase.xyz * Glow;
+        uint   PresetIdx = uint(M.MetaMask.z + 0.5);
+        float3 ExoTint;
+        float  ExoStr, ExoWrap;
+        QueryLunarExosphereGpu(PresetIdx, ExoTint, ExoStr, ExoWrap);
+
+        float  GlowBoost = 1.0 + 0.45 * MieScale * HorizonF;
+        float  Glow      = pow(max(0.0, CosM), 380.0) * M.OpticsOrientation.y * 0.24 * M.OpticsOrientation.x * GlowBoost;
+        float3 HaloCol   = lerp(M.TintSynodicPhase.xyz, ExoTint, ExoStr * 0.35);
+        OutRgb += HaloCol * Glow * AtmoTrans;
 
         if (CosM > CosEdge)
         {
@@ -131,22 +177,26 @@ float3 EvaluateCelestialBodiesGpu(
 
                 float LonU = atan2(PX, SurfZ) / CelestialTauConst + 0.5;
                 float LatV = acos(clamp(SurfY, -1.0, 1.0)) / CelestialPiConst;
-                uint  PresetIdx = uint(M.MetaMask.z + 0.5);
                 float3 TexAlbedo = SampleLunarAtlasGpu(LunarAtlas, PresetIdx, LonU, LatV);
 
                 float PhAng = (M.TintSynodicPhase.w - 0.5) * CelestialTauConst;
                 float3 PhL  = normalize(float3(sin(PhAng), 0.18, cos(PhAng)));
-                float NdotL = max(0.0, dot(float3(PX, PY, PZ), PhL));
+                float RawDot = dot(float3(PX, PY, PZ), PhL);
+                float NdotL  = max(0.0, RawDot);
 
-                float EdgeAa    = clamp((1.0 - sqrt(R2)) * 18.0, 0.0, 1.0);
-                float LimbBoost = 0.78 + 0.22 * sqrt(max(0.0, 1.0 - R2));
-                float Lum       = (0.025 + NdotL * 1.95) * LimbBoost * M.OpticsOrientation.x * EdgeAa;
-                OutRgb += TexAlbedo * Lum;
+                float EdgeAa     = clamp((1.0 - sqrt(R2)) * 22.0, 0.0, 1.0);
+                float Earthshine = 0.022 * (1.0 - 0.78 * DayVis);
+                float LimbBoost  = 0.78 + 0.22 * PZ;
+                float Lum        = (Earthshine + NdotL * 1.95) * LimbBoost * M.OpticsOrientation.x * EdgeAa;
+
+                float TermWrap = clamp((RawDot + ExoWrap) / max(0.05, 1.0 + ExoWrap), 0.0, 1.0);
+                float RimAtmo  = pow(1.0 - PZ, 2.35) * ExoStr * TermWrap * M.OpticsOrientation.x * EdgeAa * 0.75;
+                OutRgb += (TexAlbedo * Lum + ExoTint * RimAtmo) * AtmoTrans;
             }
         }
     }
 
-    // 3. Deterministic Nocturnal Starfield (Cube-face 3x3 angular PSF — zero popping under camera rotation!)
+    // 3. Deterministic Nocturnal Starfield (Crisp pinpoint PSF — zero popping under camera rotation!)
     if (Cfg.StarParams.x > 0.5 && RayDir.z > -0.02)
     {
         float DayFade = clamp(1.0 - (SunDir.z + 0.08) * 5.0, 0.0, 1.0);
@@ -178,27 +228,27 @@ float3 EvaluateCelestialBodiesGpu(
                 else                 { Face = 5; FU = RotDir.x / AZ; FV = -RotDir.y / AZ; }
             }
 
-            const float GridN = 88.0;
+            const float GridN = 116.0;
             float2 GridUv = float2(FU * 0.5 + 0.5, FV * 0.5 + 0.5) * GridN;
-            int    CX     = clamp(int(floor(GridUv.x)), 0, 87);
-            int    CY     = clamp(int(floor(GridUv.y)), 0, 87);
+            int    CX     = clamp(int(floor(GridUv.x)), 0, 115);
+            int    CY     = clamp(int(floor(GridUv.y)), 0, 115);
 
             float MagThresh   = clamp(Cfg.StarParams.y / 8.5, 0.05, 0.98);
-            float StarProb    = 0.22 * MagThresh;
-            float PixelAng    = 1.25 / max(320.0, Cfg.ClockViewportDims.z);
-            float BaseAng     = 0.00058 * clamp(Cfg.StarParams.w, 0.4, 3.0);
-            float SigmaAng    = max(BaseAng, PixelAng * 0.56);
-            float EnergyNorm  = clamp((BaseAng * BaseAng) / (SigmaAng * SigmaAng), 0.16, 1.0);
+            float StarProb    = 0.24 * MagThresh;
+            float PixelAng    = 0.85 / max(720.0, Cfg.ClockViewportDims.z);
+            float BaseAng     = 0.00018 * clamp(Cfg.StarParams.w, 0.35, 2.5);
+            float SigmaAng    = max(BaseAng, PixelAng * 0.34);
+            float EnergyNorm  = clamp((BaseAng * BaseAng) / (SigmaAng * SigmaAng), 0.14, 1.0);
             float AltFade     = clamp((RayDir.z + 0.01) * 4.5, 0.0, 1.0);
 
             for (int DY = -1; DY <= 1; ++DY)
             {
                 int NY = CY + DY;
-                if (NY < 0 || NY >= 88) continue;
+                if (NY < 0 || NY >= 116) continue;
                 for (int DX = -1; DX <= 1; ++DX)
                 {
                     int NX = CX + DX;
-                    if (NX < 0 || NX >= 88) continue;
+                    if (NX < 0 || NX >= 116) continue;
 
                     float H1 = HashCelestial3(Face * 131 + NX, NY, 17);
                     if (H1 <= 1.0 - StarProb) continue;
@@ -217,17 +267,17 @@ float3 EvaluateCelestialBodiesGpu(
                     else                StarDir = normalize(float3( SU, -SV, -1.0));
 
                     float Chord = length(RotDir - StarDir);
-                    if (Chord < SigmaAng * 3.4)
+                    if (Chord < SigmaAng * 2.3)
                     {
                         float NormR   = Chord / SigmaAng;
-                        float Falloff = exp(-0.5 * NormR * NormR);
+                        float Falloff = exp(-1.15 * NormR * NormR);
                         float Twinkle = (Cfg.StarScintillationRot.x > 0.5)
                             ? (1.0 - (Cfg.StarScintillationRot.y * 0.008) *
                                   (0.5 + 0.5 * sin(Cfg.ClockViewportDims.x * Cfg.StarScintillationRot.z * 5.0 + H2 * 40.0)))
                             : 1.0;
                         float MagRank   = saturate((H1 - (1.0 - StarProb)) / max(1.0e-4, StarProb));
-                        float Intensity = (0.35 + 2.25 * MagRank * MagRank) * Cfg.StarParams.z * DayFade * Twinkle * Falloff * AltFade * EnergyNorm;
-                        OutRgb += float3(0.78 + 0.42 * H2, 0.88 + 0.12 * H2, 1.20 - 0.35 * H2) * Intensity;
+                        float Intensity = (0.22 + 2.60 * pow(MagRank, 2.5)) * Cfg.StarParams.z * DayFade * Twinkle * Falloff * AltFade * EnergyNorm;
+                        OutRgb += float3(0.78 + 0.42 * H2, 0.88 + 0.12 * H2, 1.20 - 0.35 * H2) * Intensity * AtmoTrans;
                     }
                 }
             }

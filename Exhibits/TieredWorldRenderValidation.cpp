@@ -603,6 +603,7 @@ int main()
         }};
 
         std::vector<std::vector<uint8_t>> CpuEngineTiles(5u);
+        bool CpuHdrAllFinite = true;
         for (std::size_t E = 0u; E < 5u; ++E)
         {
             GeometricRaster::WorldRenderConfiguration Cfg {};
@@ -610,18 +611,32 @@ int main()
             Cfg.ShadowAlgorithm     = (E == 2u) ? GeometricRaster::SolarShadowAlgorithm::WideTreeRayQuery
                                                 : GeometricRaster::SolarShadowAlgorithm::ContactPcss;
             Cfg.ReflectionSource    = GeometricRaster::SpecularReflectionSource::WideTreeRaytrace;
-            Cfg.PathTraceSamples    = 8u;
+            Cfg.PathTraceSamples    = 16u;
             Cfg.PathTraceMaxBounces = 4u;
             const auto Frame = WorldRenderer.RenderWorldFrameWithEngine(Cfg, EvalCam, EvalCam, WorldScene);
             Score.Verify(Frame.DisplayRgba8.size() == TileW * TileH * 4u, Engines[E].Title);
+            for (const auto& Px : Frame.CompositeLinearHdr)
+            {
+                if (!std::isfinite(Px.R) || !std::isfinite(Px.G) || !std::isfinite(Px.B) || Px.R < 0.0f || Px.G < 0.0f || Px.B < 0.0f)
+                {
+                    CpuHdrAllFinite = false;
+                    break;
+                }
+            }
             CpuEngineTiles[E] = Frame.DisplayRgba8;
         }
+        Score.Verify(CpuHdrAllFinite, "All 5 CPU WorldRenderEngines produce 100% finite non-negative HDR buffers");
 
         // Verify GPU Compute .slang across all 5 engines via SwiftShader/Vulkan if available
         std::vector<std::vector<uint8_t>> GpuEngineTiles(5u);
         std::vector<std::vector<uint8_t>> GdfDebugTiles(4u);
+        std::vector<std::vector<uint8_t>> AllDebugTiles(16u);
+        std::vector<uint8_t>              PtNoGiTile;
+        std::vector<uint8_t>              PtNoReflTile;
         bool GpuEnginesValid = false;
         bool GdfDebugValid   = false;
+        bool AllDebugValid   = false;
+        bool PtSettingsValid = false;
         {
             GeometricRaster::VulkanInterchange GpuDevice {};
             if (GpuDevice.InitializeInterchange(std::filesystem::path(FRONTIER_REPO_ROOT_DIR)))
@@ -661,11 +676,51 @@ int main()
                         const bool Ok = GpuSeq.RenderWorldViewportWithEngine(GdfCfg, 0u, EvalCam, WorldScene, GdfDebugTiles[D]);
                         GdfDebugValid = GdfDebugValid && Ok && (GdfDebugTiles[D].size() == TileW * TileH * 4u);
                     }
+
+                    // Render all 16 Debug Channels (0..15) reusing GpuEngineTiles[3] (0) & GdfDebugTiles (5..8)
+                    AllDebugValid = GdfDebugValid && GpuEnginesValid;
+                    AllDebugTiles[0] = GpuEngineTiles[3];
+                    for (uint32_t D = 0u; D < 4u; ++D)
+                    {
+                        AllDebugTiles[5u + D] = GdfDebugTiles[D];
+                    }
+                    for (uint32_t D = 1u; D < 16u; ++D)
+                    {
+                        if (D >= 5u && D <= 8u) continue;
+                        GeometricRaster::WorldRenderConfiguration DbgCfg {};
+                        DbgCfg.Engine           = GeometricRaster::WorldRenderEngine::SdfGlobalIllumination;
+                        DbgCfg.ShadowAlgorithm  = GeometricRaster::SolarShadowAlgorithm::ContactPcss;
+                        DbgCfg.ReflectionSource = GeometricRaster::SpecularReflectionSource::WideTreeRaytrace;
+                        DbgCfg.DebugChannel     = D;
+                        const bool Ok = GpuSeq.RenderWorldViewportWithEngine(DbgCfg, 0u, EvalCam, WorldScene, AllDebugTiles[D]);
+                        AllDebugValid = AllDebugValid && Ok && (AllDebugTiles[D].size() == TileW * TileH * 4u);
+                    }
+
+                    // Verify Render Settings toggles on GPU Path Tracer (GI Off, Reflections Off)
+                    {
+                        GeometricRaster::WorldRenderConfiguration NoGiCfg {};
+                        NoGiCfg.Engine                    = GeometricRaster::WorldRenderEngine::DeterministicPathTrace;
+                        NoGiCfg.PathTraceMaxBounces       = 4u;
+                        NoGiCfg.GlobalIlluminationEnabled = false;
+                        const bool Ok1 = GpuSeq.RenderWorldViewportWithEngine(NoGiCfg, 0u, EvalCam, WorldScene, PtNoGiTile);
+
+                        GeometricRaster::WorldRenderConfiguration NoReflCfg {};
+                        NoReflCfg.Engine             = GeometricRaster::WorldRenderEngine::DeterministicPathTrace;
+                        NoReflCfg.PathTraceMaxBounces = 4u;
+                        NoReflCfg.ReflectionsEnabled = false;
+                        const bool Ok2 = GpuSeq.RenderWorldViewportWithEngine(NoReflCfg, 0u, EvalCam, WorldScene, PtNoReflTile);
+
+                        PtSettingsValid = Ok1 && Ok2 &&
+                                          (PtNoGiTile.size() == TileW * TileH * 4u) &&
+                                          (PtNoReflTile.size() == TileW * TileH * 4u);
+                    }
                 }
             }
         }
         Score.Verify(GpuEnginesValid, "Vulkan .slang compute renders all 5 unified WorldRenderEngines cleanly");
         Score.Verify(GdfDebugValid, "Vulkan .slang compute renders all 4 Global Distance Field (GDF) debug views (Modes 5..8)");
+        Score.Verify(AllDebugValid, "Vulkan .slang compute renders all 16 modular Debug Views (Modes 0..15)");
+        Score.Verify(PtSettingsValid, "Vulkan Path Tracer dispatches Render Settings toggles (GI Off, Reflections Off) cleanly");
 
         if (GdfDebugValid)
         {
@@ -752,6 +807,139 @@ int main()
         Score.Verify(MeasureMeanLumaDiff(CpuEngineTiles[0], CpuEngineTiles[1]) > 8.0, "MatCap differs meaningfully from OpenPbrDirect");
         Score.Verify(MeasureMeanLumaDiff(CpuEngineTiles[1], CpuEngineTiles[2]) > 2.5, "OpenPbrDirect differs meaningfully from DdgiRaytracing");
         Score.Verify(MeasureMeanLumaDiff(CpuEngineTiles[1], CpuEngineTiles[3]) > 2.5, "OpenPbrDirect differs meaningfully from SdfGlobalIllumination");
+        if (PtSettingsValid)
+        {
+            Score.Verify(MeasureMeanLumaDiff(GpuEngineTiles[4], PtNoGiTile) > 2.0,
+                         "Path Tracer GlobalIlluminationEnabled=false produces darker/different output");
+            Score.Verify(MeasureMeanLumaDiff(GpuEngineTiles[4], PtNoReflTile) > 1.5,
+                         "Path Tracer ReflectionsEnabled=false produces different specular/glass output");
+        }
+        if (AllDebugValid)
+        {
+            const auto InspectBufferSanity = [](const std::vector<uint8_t>& Buf, double& OutMean, double& OutRange, double& OutBlackFrac, double& OutWhiteFrac)
+            {
+                const std::size_t PxCount = Buf.size() / 4u;
+                double Sum = 0.0, MinL = 255.0, MaxL = 0.0;
+                std::size_t Blacks = 0u, Whites = 0u;
+                for (std::size_t P = 0u; P < PxCount; ++P)
+                {
+                    const double L = 0.2126 * Buf[P * 4u + 0u] + 0.7152 * Buf[P * 4u + 1u] + 0.0722 * Buf[P * 4u + 2u];
+                    Sum += L;
+                    MinL = std::min(MinL, L);
+                    MaxL = std::max(MaxL, L);
+                    if (L <= 1.0) ++Blacks;
+                    if (L >= 254.0) ++Whites;
+                }
+                OutMean      = Sum / std::max<std::size_t>(1u, PxCount);
+                OutRange     = MaxL - MinL;
+                OutBlackFrac = static_cast<double>(Blacks) / std::max<std::size_t>(1u, PxCount);
+                OutWhiteFrac = static_cast<double>(Whites) / std::max<std::size_t>(1u, PxCount);
+            };
+
+            bool EnginesPixelSanityOk = true;
+            for (std::size_t E = 0u; E < 5u; ++E)
+            {
+                double CMean = 0.0, CRange = 0.0, CBlk = 0.0, CWht = 0.0;
+                double GMean = 0.0, GRange = 0.0, GBlk = 0.0, GWht = 0.0;
+                InspectBufferSanity(CpuEngineTiles[E], CMean, CRange, CBlk, CWht);
+                InspectBufferSanity(GpuEngineTiles[E], GMean, GRange, GBlk, GWht);
+                if (CMean < 15.0 || CMean > 240.0 || CRange < 40.0 || CBlk > 0.35 || CWht > 0.35 ||
+                    GMean < 15.0 || GMean > 240.0 || GRange < 40.0 || GBlk > 0.35 || GWht > 0.35)
+                {
+                    EnginesPixelSanityOk = false;
+                }
+            }
+            Score.Verify(EnginesPixelSanityOk, "All 5 CPU & GPU engine renders pass automated pixel clipping/black/white sanity checks");
+
+            bool DebugViewsSanityOk = true;
+            for (uint32_t D = 0u; D < 16u; ++D)
+            {
+                double DMean = 0.0, DRange = 0.0, DBlk = 0.0, DWht = 0.0;
+                InspectBufferSanity(AllDebugTiles[D], DMean, DRange, DBlk, DWht);
+                if (DMean < 5.0 || DMean > 245.0 || DRange < 30.0)
+                {
+                    DebugViewsSanityOk = false;
+                }
+                if (D != 0u)
+                {
+                    Score.Verify(MeasureMeanLumaDiff(AllDebugTiles[0], AllDebugTiles[D]) > 2.0,
+                                 "Modular Debug View differs from Lit composite");
+                }
+            }
+            Score.Verify(DebugViewsSanityOk, "All 16 GPU modular Debug Views pass automated pixel dynamic-range sanity checks");
+
+            // Verify Depth (Mode 1) has crisp dynamic range (> 40 sRGB luma range) and GDF Radiosity (Mode 7) has non-black Glass Sphere
+            {
+                double DepthMean = 0.0, DepthRange = 0.0, DepthBlk = 0.0, DepthWht = 0.0;
+                InspectBufferSanity(AllDebugTiles[1], DepthMean, DepthRange, DepthBlk, DepthWht);
+                Score.Verify(DepthRange > 45.0 && DepthMean < 215.0,
+                             "Depth Debug View (Mode 1) exhibits rich perceptual contrast across gallery");
+
+                // Sample glass sphere center pixel region in Mode 7 (around X=235..265, Y=120..145 of 360x208 tile)
+                double GlassRadSum = 0.0;
+                uint32_t GlassSamples = 0u;
+                for (uint32_t Y = 122u; Y <= 142u; ++Y)
+                {
+                    for (uint32_t X = 238u; X <= 258u; ++X)
+                    {
+                        const std::size_t Off = (static_cast<std::size_t>(Y) * TileW + X) * 4u;
+                        GlassRadSum += AllDebugTiles[7][Off + 0u] + AllDebugTiles[7][Off + 1u] + AllDebugTiles[7][Off + 2u];
+                        ++GlassSamples;
+                    }
+                }
+                Score.Verify((GlassRadSum / std::max(1u, GlassSamples)) > 60.0,
+                             "GDF Radiosity Volume (Mode 7) evaluates non-black radiosity across the Glass Sphere");
+            }
+
+            constexpr uint32_t DbgSheetW = 1540u;
+            constexpr uint32_t DbgSheetH = 1120u;
+            const std::array<const char*, 16u> DbgTitles {{
+                "00 // LIT COMPOSITE (SDF GI)",
+                "01 // DEPTH (LINEAR Z)",
+                "02 // ALBEDO",
+                "03 // SHADING NORMAL",
+                "04 // ROUGHNESS",
+                "05 // GDF ISO-SURFACE",
+                "06 // GDF DISTANCE SLICE",
+                "07 // GDF RADIOSITY VOLUME",
+                "08 // INDIRECT GI (DENOISED)",
+                "09 // METALNESS",
+                "10 // MATERIAL / CLUSTER ID",
+                "11 // GEOMETRIC NORMAL",
+                "12 // SOLAR SHADOW VISIBILITY",
+                "13 // AMBIENT OCCLUSION (AO)",
+                "14 // DIRECT LIGHTING ONLY",
+                "15 // SPECULAR & REFLECTIONS",
+            }};
+            Io.DisplaySize = ImVec2(float(DbgSheetW), float(DbgSheetH));
+            ImGui::NewFrame();
+            ImDrawList* DbgDraw = ImGui::GetBackgroundDrawList();
+            DbgDraw->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(float(DbgSheetW), float(DbgSheetH)), BgCol);
+            DbgDraw->AddText(ImVec2(24.0f, 16.0f), AccentCol,
+                             "FRONTIER MODULAR DEBUG VIEWS (00..15)  //  VULKAN .SLANG COMPUTE G-BUFFER, GDF, SHADOW LAB, AO & SPECULAR");
+            for (uint32_t D = 0u; D < 16u; ++D)
+            {
+                const uint32_t Col = D % 4u;
+                const uint32_t Row = D / 4u;
+                const float X = 20.0f + static_cast<float>(Col) * 378.0f;
+                const float Y = 46.0f + static_cast<float>(Row) * 266.0f;
+                DbgDraw->AddRectFilled(ImVec2(X, Y), ImVec2(X + 368.0f, Y + 256.0f), CardBg, 6.0f);
+                DbgDraw->AddText(ImVec2(X + 8.0f, Y + 6.0f), (D == 0u) ? AccentCol : GoldCol, DbgTitles[D]);
+            }
+            ImGui::Render();
+            Exhibits::SoftwareRasterCanvas DbgSheet(DbgSheetW, DbgSheetH, { 11u, 14u, 20u, 255u });
+            DbgSheet.RasterizeImGuiBatches(ImGui::GetDrawData());
+            for (uint32_t D = 0u; D < 16u; ++D)
+            {
+                const uint32_t Col = D % 4u;
+                const uint32_t Row = D / 4u;
+                DbgSheet.BlitRgbaRegion(24u + Col * 378u, 72u + Row * 266u, TileW, TileH, AllDebugTiles[D].data());
+            }
+            const std::filesystem::path AllDbgPath =
+                std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "Exhibits" / "Images" / "GlobalIllumination" / "06-AllDebugViewsProof.png";
+            Score.Verify(DbgSheet.WritePngFile(AllDbgPath) && std::filesystem::exists(AllDbgPath),
+                         "Exported 06-AllDebugViewsProof.png");
+        }
 
         // Render Sheet 1: 5 Unified Engines (Row 1 = CPU Reference, Row 2 = GPU .slang Compute)
         constexpr uint32_t SheetW = 1920u;

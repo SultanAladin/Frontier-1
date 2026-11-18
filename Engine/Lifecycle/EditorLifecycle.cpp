@@ -514,6 +514,7 @@ OutlinerSlotToken EditorLifecycle::SpawnForceFieldEntry(
     Instance.OutlinerTokenId = Slot.Identifier;
     AuthoredForces.push_back(MappedEditorForceSource{ Slot, std::move(Instance) });
     Panes->Outliner.SelectSingle(Slot);
+    Panes->Viewport.AccessForceOverlaySettings().Enabled = true;
     SynchronizeForceFieldsWithOutliner(0.0);
     return Slot;
 }
@@ -529,7 +530,8 @@ void EditorLifecycle::SynchronizeForceFieldsWithOutliner(double Δt)
     const bool Advance =
         (Panes->Viewport.QueryExecutionMode() == ViewportExecutionMode::Simulate) ||
         (Panes->Viewport.QueryExecutionMode() == ViewportExecutionMode::Play && !Panes->Viewport.QueryPlayPaused());
-    if (Advance && Δt > 0.0)
+    const bool OverlayActive = Panes->Viewport.QueryForceOverlaySettings().Enabled;
+    if ((Advance || OverlayActive) && Δt > 0.0)
     {
         ForceClockSeconds += Δt;
     }
@@ -581,7 +583,12 @@ void EditorLifecycle::SynchronizeForceFieldsWithOutliner(double Δt)
     }
 
     ForceAccumulator.AssignSources(ActiveList);
-    ForceAccumulator.StepAnimation(ForceClockSeconds, Advance);
+    ForceAccumulator.StepAnimation(ForceClockSeconds, Advance || OverlayActive);
+    if (ShowcaseBundle != nullptr)
+    {
+        ShowcaseBundle->Scene.Atmosphere.ForceFieldSource   = &ForceAccumulator;
+        ShowcaseBundle->Scene.Atmosphere.WindLatticeCascade = &ForceLatticeCascade;
+    }
 
     const auto ProbePos = Panes->Viewport.QueryForceOverlaySettings().AnemometerWorldMeters;
     const auto Diag     = ForceAccumulator.QueryAnemometerDiagnostics(ProbePos, ForceClockSeconds);
@@ -590,6 +597,17 @@ void EditorLifecycle::SynchronizeForceFieldsWithOutliner(double Δt)
     const float Speed   = (WindSpd > 0.01f) ? WindSpd : AccSpd;
     std::rotate(AnemometerHistory.begin(), AnemometerHistory.begin() + 1, AnemometerHistory.end());
     AnemometerHistory.back() = Speed;
+    if (OverlayActive)
+    {
+        char ProbeBuf[128]{};
+        std::snprintf(
+            ProbeBuf,
+            sizeof(ProbeBuf),
+            "Wind %.1f m/s | %u sources",
+            Speed,
+            static_cast<unsigned>(ForceAccumulator.QueryActiveSourceCount()));
+        Panes->Viewport.ConfigureProbeReadoutText(ProbeBuf);
+    }
 }
 
 bool EditorLifecycle::AttachVulkanGizmoOverlay(
@@ -624,6 +642,23 @@ bool EditorLifecycle::AttachVulkanGizmoOverlay(
         {
             WorldGizmoRasterizer.reset();
             return false;
+        }
+    }
+
+    if (ForceOverlayRasterizer == nullptr || !ForceOverlayRasterizer->QueryReady())
+    {
+        auto CandidateOverlay = std::make_unique<Editor::Simulation::VectorFieldOverlaySequence>();
+        std::string OverlayDiag {};
+        if (CandidateOverlay->Initialize(*BoundDevice, CompiledShaderDirectory, OverlayDiag))
+        {
+            ForceOverlayRasterizer = std::move(CandidateOverlay);
+        }
+        else
+        {
+            std::fprintf(
+                stderr,
+                "[FrontierEditor] WARNING: VectorFieldOverlaySequence unavailable: %s\n",
+                OverlayDiag.c_str());
         }
     }
 
@@ -679,6 +714,16 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
         Atmo.Medium.AtmosphereEnabled  = DisplayCfg.AtmosphereSkyEnabled;
         Atmo.Clouds.CloudsEnabled      = DisplayCfg.VolumetricCloudsEnabled;
         Atmo.Clouds.CloudFraction      = DisplayCfg.CloudFraction;
+        Atmo.Clouds.CloudShadow.ShadowEnabled      = DisplayCfg.CloudShadowsEnabled;
+        Atmo.Clouds.WindSpeedMetersPerSecond       = DisplayCfg.CloudWindSpeedMps;
+        Atmo.Wind.SpeedMetersPerSecond             = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplayCfg.CloudWindSpeedMps);
+        Atmo.ForceFieldSource                      = &ForceAccumulator;
+        Atmo.WindLatticeCascade                    = &ForceLatticeCascade;
+        auto& OverlayInit                          = Panes->Viewport.AccessForceOverlaySettings();
+        OverlayInit.Enabled                        = false;
+        OverlayInit.CrossSectionOffsetMeters       = 0.25f;
+        OverlayInit.AnemometerWorldMeters          = { 0.0f, 0.55f, 0.25f };
+        LastForceOverlaySettings                   = OverlayInit;
         Atmo.Stars.StarfieldEnabled    = DisplayCfg.CelestialStarsEnabled;
         Atmo.Solar.SolarEnabled        = DisplayCfg.CelestialStarsEnabled;
         Atmo.Moons[0].Visible          = DisplayCfg.CelestialStarsEnabled;
@@ -1145,6 +1190,152 @@ void EditorLifecycle::SynchronizeContentBrowserColourTargets()
     BrowserPanel.FocusColourSlot("ActiveWorldSurfaceColour");
 }
 
+void EditorLifecycle::CompositeForceFieldOverlayOntoBuffer(
+    std::vector<uint8_t>& InOutRgba,
+    uint32_t              WidthPx,
+    uint32_t              HeightPx)
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr || WidthPx == 0u || HeightPx == 0u ||
+        InOutRgba.size() < static_cast<std::size_t>(WidthPx) * HeightPx * 4u)
+    {
+        return;
+    }
+
+    const auto& OverlayCfg = Panes->Viewport.QueryForceOverlaySettings();
+    if (!OverlayCfg.Enabled || ForceOverlayRasterizer == nullptr || !ForceOverlayRasterizer->QueryReady())
+    {
+        return;
+    }
+
+    std::vector<SimulationSpace::ForceFields::ForceSourceShaderEntry> PackedSources;
+    std::vector<SimulationSpace::ForceFields::SpatialVector3>         PackedWaypoints;
+    ForceLatticeCascade.PackGpuSourceBuffers(ForceAccumulator, ForceClockSeconds, PackedSources, PackedWaypoints);
+
+    const auto LiveSources = ForceAccumulator.QuerySources();
+    std::vector<uint32_t> SourceTokens;
+    std::vector<uint32_t> WaypointOffsets;
+    std::vector<uint32_t> WaypointCounts;
+    std::vector<uint8_t>  PathIsOrbit;
+
+    if (PackedSources.empty())
+    {
+        // Transient wind-preview source derived from scene wind when no ForceField item has been authored yet
+        const auto& WindCfg = ShowcaseBundle->Scene.Atmosphere.Wind;
+        const float BearingRad = WindCfg.BearingDegrees * 0.0174532925f;
+        const float WX         = std::cos(BearingRad);
+        const float WY         = std::sin(BearingRad);
+        const float WZ         = 0.0f;
+
+        SimulationSpace::ForceFields::ForceSourceShaderEntry TransientWind{};
+        TransientWind.CentreX          = 0.0f;
+        TransientWind.CentreY          = 0.55f;
+        TransientWind.CentreZ          = 0.45f;
+        TransientWind.RadiusMeters     = 14.0f;
+        TransientWind.DirectionX       = WX;
+        TransientWind.DirectionY       = WY;
+        TransientWind.DirectionZ       = WZ;
+        TransientWind.Strength         = std::max(4.0f, WindCfg.SpeedMetersPerSecond);
+        TransientWind.TangentLeftX     = -WY;
+        TransientWind.TangentLeftY     = WX;
+        TransientWind.TangentLeftZ     = 0.0f;
+        TransientWind.FalloffExponent  = 0.25f;
+        TransientWind.UpX              = 0.0f;
+        TransientWind.UpY              = 0.0f;
+        TransientWind.UpZ              = 1.0f;
+        TransientWind.CoreRadiusMeters = 1.0f;
+        TransientWind.HalfExtentX      = 12.0f;
+        TransientWind.HalfExtentY      = 12.0f;
+        TransientWind.HalfExtentZ      = 4.0f;
+        TransientWind.TurbulenceScaleM = 4.0f;
+        TransientWind.FrequencyHertz   = std::max(0.2f, WindCfg.GustFrequencyHz);
+        TransientWind.ModelId          = static_cast<uint32_t>(SimulationSpace::ForceFields::ForceModel::LinearWind);
+        TransientWind.AttenuationId    = static_cast<uint32_t>(SimulationSpace::ForceFields::ForceAttenuationMode::SmoothStep);
+        TransientWind.EnvelopeId       = static_cast<uint32_t>(SimulationSpace::ForceFields::ReachEnvelopeCategory::Sphere);
+        TransientWind.OctaveCount      = 3u;
+        TransientWind.Seed             = 1337u;
+        TransientWind.FlagMask         = 1u;
+        TransientWind.TimeSeconds      = static_cast<float>(ForceClockSeconds);
+        PackedSources.push_back(TransientWind);
+        SourceTokens.push_back(0u);
+        WaypointOffsets.push_back(0u);
+        WaypointCounts.push_back(0u);
+        PathIsOrbit.push_back(0u);
+    }
+    else
+    {
+        SourceTokens.reserve(PackedSources.size());
+        WaypointOffsets.reserve(PackedSources.size());
+        WaypointCounts.reserve(PackedSources.size());
+        PathIsOrbit.reserve(PackedSources.size());
+        for (std::size_t I = 0u; I < PackedSources.size(); ++I)
+        {
+            const uint32_t OutlinerId = (I < LiveSources.size()) ? LiveSources[I].OutlinerTokenId : static_cast<uint32_t>(I + 1u);
+            const bool     IsOrbit    = (I < LiveSources.size()) &&
+                                        (LiveSources[I].Motion.Topology == SimulationSpace::ForceFields::MotionPathTopology::HelicalOrbit);
+            SourceTokens.push_back(OutlinerId);
+            WaypointOffsets.push_back(PackedSources[I].WaypointStartIdx);
+            WaypointCounts.push_back(PackedSources[I].WaypointCount);
+            PathIsOrbit.push_back(IsOrbit ? 1u : 0u);
+        }
+    }
+
+    const OutlinerSlotToken PrimarySel = Panes->Outliner.QueryPrimarySelection();
+    const auto& Cam = ShowcaseBundle->EditorCamera;
+
+    Editor::Simulation::OverlayFrameRequest Req{};
+    Req.PaneIndex              = 0u;
+    Req.WidthPx                = WidthPx;
+    Req.HeightPx               = HeightPx;
+    Req.OverlaySettings        = OverlayCfg;
+    Req.TimeSeconds            = ForceClockSeconds;
+    Req.SelectedForceToken     = PrimarySel.Identifier;
+    Req.SelectedWaypointIndex  = SelectedWaypointIdx;
+    Req.LitShadingEnabled      = false;
+    Req.TransparentBackdrop    = true;
+    Req.UseExplicitCamera      = true;
+    Req.ExplicitCameraOrigin   = { Cam.CameraOrigin.X, Cam.CameraOrigin.Y, Cam.CameraOrigin.Z };
+    Req.ExplicitTargetPoint    = { Cam.TargetPoint.X,  Cam.TargetPoint.Y,  Cam.TargetPoint.Z };
+    Req.ExplicitWorldUp        = { Cam.WorldUpAxis.X,  Cam.WorldUpAxis.Y,  Cam.WorldUpAxis.Z };
+    Req.ExplicitVerticalFovDeg = Cam.VerticalFovRadians * 57.2957795f;
+    Req.SliceHalfSpanMeters    = 10.0f;
+    Req.PackedSources          = PackedSources;
+    Req.SourceTokens           = SourceTokens;
+    Req.PackedWaypoints        = PackedWaypoints;
+    Req.SourceWaypointOffsets  = WaypointOffsets;
+    Req.SourceWaypointCounts   = WaypointCounts;
+    Req.SourcePathIsOrbit      = PathIsOrbit;
+
+    std::string OverlayDiag {};
+    const auto Out = ForceOverlayRasterizer->RenderPane(Req, OverlayDiag);
+    const auto SrcRgba = ForceOverlayRasterizer->QueryColorReadbackRgba(0u);
+    if (!Out.RenderedOnVulkan || Out.WidthPx != WidthPx || Out.HeightPx != HeightPx ||
+        SrcRgba.size() < static_cast<std::size_t>(WidthPx) * HeightPx * 4u)
+    {
+        return;
+    }
+
+    const std::size_t PixelCount = static_cast<std::size_t>(WidthPx) * HeightPx;
+    for (std::size_t I = 0u; I < PixelCount; ++I)
+    {
+        const std::size_t Off = I * 4u;
+        const uint32_t SA = SrcRgba[Off + 3u];
+        if (SA == 0u)
+        {
+            continue;
+        }
+        const uint32_t InvA = 255u - SA;
+        // Premultiplied alpha compositing over opaque world framebuffer
+        for (std::size_t C = 0u; C < 3u; ++C)
+        {
+            const uint32_t Blended = static_cast<uint32_t>(SrcRgba[Off + C]) +
+                                     ((static_cast<uint32_t>(InOutRgba[Off + C]) * InvA + 127u) / 255u);
+            InOutRgba[Off + C] = static_cast<uint8_t>(std::min(255u, Blended));
+        }
+        InOutRgba[Off + 3u] = 255u;
+    }
+}
+
 void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
 {
     WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
@@ -1160,6 +1351,7 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
 
     SynchronizeShowcaseGizmoAnchor();
     std::vector<uint8_t> ViewportRgba = CachedWorldRgba8;
+    CompositeForceFieldOverlayOntoBuffer(ViewportRgba, CachedWorldWidthPx, CachedWorldHeightPx);
     if (WorldGizmoRasterizer != nullptr && WorldGizmoRasterizer->QueryReady() && LastGizmoSlot.Valid())
     {
         (void)WorldGizmoRasterizer->RasterizeGizmoOntoWorldBuffer(
@@ -1277,23 +1469,20 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     if (CanvasBounds.Width >= 120.0f && CanvasBounds.Height >= 90.0f)
     {
         const float Aspect    = std::clamp(CanvasBounds.Width / CanvasBounds.Height, 0.5f, 3.2f);
-        const float ScaleNorm = std::clamp(DisplayCfg.RenderScalePercent / 100.0f, 0.50f, 1.25f);
+        const float ScaleNorm = std::clamp(DisplayCfg.RenderScalePercent / 100.0f, 0.50f, 1.50f);
         uint32_t    RasterW   = 384u;
         if (HwGpu)
         {
             const float TargetW = (CameraInteractiveDrag ? 680.0f : 960.0f) * ScaleNorm;
-            RasterW             = static_cast<uint32_t>(std::clamp(std::round(TargetW), 420.0f, 1280.0f));
-        }
-        else if (GpuReady)
-        {
-            RasterW = CameraInteractiveDrag ? 280u : 384u;
+            RasterW             = static_cast<uint32_t>(std::clamp(std::round(TargetW), 320.0f, 1600.0f));
         }
         else
         {
-            RasterW = CameraInteractiveDrag ? 280u : 384u;
+            const float TargetW = (CameraInteractiveDrag ? 280.0f : 384.0f) * ScaleNorm;
+            RasterW             = static_cast<uint32_t>(std::clamp(std::round(TargetW), 192.0f, 640.0f));
         }
-        uint32_t RasterH = std::max(180u, static_cast<uint32_t>(std::round(static_cast<float>(RasterW) / Aspect)));
-        RasterW          = std::max(240u, static_cast<uint32_t>(std::round(static_cast<float>(RasterH) * Aspect)));
+        uint32_t RasterH = std::max(140u, static_cast<uint32_t>(std::round(static_cast<float>(RasterW) / Aspect)));
+        RasterW          = std::max(192u, static_cast<uint32_t>(std::round(static_cast<float>(RasterH) * Aspect)));
         ShowcaseBundle->EditorCamera.ViewportWidthPx  = RasterW;
         ShowcaseBundle->EditorCamera.ViewportHeightPx = RasterH;
     }
@@ -1303,20 +1492,35 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         ShowcaseBundle->EditorCamera.ViewportHeightPx = 190u;
     }
 
+    const uint32_t QTier = std::min(4u, DisplayCfg.QualityTier);
+    constexpr std::array<uint32_t, 5u> TierBounces = {{ 2u, 3u, 4u, 5u, 6u }};
+    constexpr std::array<uint32_t, 5u> TierSamples = {{ 2u, 2u, 3u, 4u, 4u }};
+
     GeometricRaster::WorldRenderConfiguration RenderConfig {};
     RenderConfig.Engine = static_cast<GeometricRaster::WorldRenderEngine>(std::min(4u, DisplayCfg.RenderEngineIndex));
+    if (!DisplayCfg.RaytracingEnabled && RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DdgiRaytracing)
+    {
+        RenderConfig.Engine = GeometricRaster::WorldRenderEngine::SdfGlobalIllumination;
+    }
     if (!DisplayCfg.GlobalIllumination &&
         (RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DdgiRaytracing ||
          RenderConfig.Engine == GeometricRaster::WorldRenderEngine::SdfGlobalIllumination))
     {
         RenderConfig.Engine = GeometricRaster::WorldRenderEngine::OpenPbrDirect;
     }
-    RenderConfig.ShadowAlgorithm  = static_cast<GeometricRaster::SolarShadowAlgorithm>(std::min(4u, DisplayCfg.ShadowAlgorithmIndex));
-    RenderConfig.ReflectionSource = (DisplayCfg.ReflectionsEnabled && DisplayCfg.ReflectionSourceIndex == 0u)
+    RenderConfig.ShadowAlgorithm           = static_cast<GeometricRaster::SolarShadowAlgorithm>(std::min(4u, DisplayCfg.ShadowAlgorithmIndex));
+    RenderConfig.ReflectionSource          = (DisplayCfg.ReflectionsEnabled && DisplayCfg.RaytracingEnabled && DisplayCfg.ReflectionSourceIndex == 0u)
         ? GeometricRaster::SpecularReflectionSource::WideTreeRaytrace
         : GeometricRaster::SpecularReflectionSource::SkyEnvironment;
-    RenderConfig.DebugChannel     = DisplayCfg.DebugChannelIndex;
-    RenderConfig.PathTraceSamples = CameraInteractiveDrag ? 1u : 8u;
+    RenderConfig.DebugChannel              = DisplayCfg.DebugChannelIndex;
+    RenderConfig.QualityTier               = QTier;
+    RenderConfig.PathTraceMaxBounces       = TierBounces[QTier];
+    RenderConfig.PathTraceSamples          = CameraInteractiveDrag ? 1u : (HwGpu ? TierSamples[QTier] : 1u);
+    RenderConfig.PathTraceDenoise          = DisplayCfg.AntiAliasingEnabled;
+    RenderConfig.SdfGiBilateral            = DisplayCfg.AntiAliasingEnabled;
+    RenderConfig.GlobalIlluminationEnabled = DisplayCfg.GlobalIllumination;
+    RenderConfig.ReflectionsEnabled        = DisplayCfg.ReflectionsEnabled;
+    RenderConfig.RaytracingEnabled         = DisplayCfg.RaytracingEnabled;
 
     if (RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DdgiRaytracing)
     {
@@ -1348,6 +1552,11 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         DisplayCfg.ShadowAlgorithmIndex != LastPtShadowAlg ||
         DisplayCfg.ReflectionSourceIndex != LastPtReflSrc ||
         DisplayCfg.DebugChannelIndex != LastPtDebugChan ||
+        DisplayCfg.QualityTier != LastPtQualityTier ||
+        DisplayCfg.GlobalIllumination != LastPtGi ||
+        DisplayCfg.ReflectionsEnabled != LastPtRefl ||
+        DisplayCfg.AntiAliasingEnabled != LastPtAa ||
+        DisplayCfg.RaytracingEnabled != LastPtRt ||
         DisplayCfg.AtmosphereSkyEnabled != LastPtAtmoSky ||
         DisplayCfg.VolumetricCloudsEnabled != LastPtClouds ||
         DisplayCfg.CelestialStarsEnabled != LastPtCelestials ||
@@ -1365,6 +1574,11 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     LastPtShadowAlg      = DisplayCfg.ShadowAlgorithmIndex;
     LastPtReflSrc        = DisplayCfg.ReflectionSourceIndex;
     LastPtDebugChan      = DisplayCfg.DebugChannelIndex;
+    LastPtQualityTier    = DisplayCfg.QualityTier;
+    LastPtGi             = DisplayCfg.GlobalIllumination;
+    LastPtRefl           = DisplayCfg.ReflectionsEnabled;
+    LastPtAa             = DisplayCfg.AntiAliasingEnabled;
+    LastPtRt             = DisplayCfg.RaytracingEnabled;
     LastPtAtmoSky        = DisplayCfg.AtmosphereSkyEnabled;
     LastPtClouds         = DisplayCfg.VolumetricCloudsEnabled;
     LastPtCelestials     = DisplayCfg.CelestialStarsEnabled;
@@ -1407,6 +1621,7 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     CachedWorldWidthPx  = OutWidthPx;
     CachedWorldHeightPx = OutHeightPx;
 
+    CompositeForceFieldOverlayOntoBuffer(CleanWorldRgba, OutWidthPx, OutHeightPx);
     SynchronizeShowcaseGizmoAnchor();
     if (WorldGizmoRasterizer != nullptr && WorldGizmoRasterizer->QueryReady() && LastGizmoSlot.Valid())
     {
@@ -1522,9 +1737,12 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             const bool ViewportTogglesChanged =
                 DisplayCfg.AtmosphereSkyEnabled != LastAtmosphereSky ||
                 DisplayCfg.VolumetricCloudsEnabled != LastCloudsEnabled ||
+                DisplayCfg.CloudShadowsEnabled != LastCloudShadowsEnabled ||
                 DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled ||
                 std::fabs(DisplayCfg.SolarTimeOfDayHours - LastSolarTimeHours) > 1.0e-3f ||
-                std::fabs(DisplayCfg.CloudFraction - LastCloudFraction) > 1.0e-3f;
+                std::fabs(DisplayCfg.CloudFraction - LastCloudFraction) > 1.0e-3f ||
+                std::fabs(DisplayCfg.CloudWindSpeedMps - LastCloudWindSpeedMps) > 1.0e-2f ||
+                ForceAccumulator.QueryActiveSourceCount() != LastForceSourceCount;
 
             if (DisplayCfg.AtmosphereSkyEnabled != LastAtmosphereSky)
             {
@@ -1534,9 +1752,18 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             {
                 Atmo.Clouds.CloudsEnabled = DisplayCfg.VolumetricCloudsEnabled;
             }
+            if (DisplayCfg.CloudShadowsEnabled != LastCloudShadowsEnabled)
+            {
+                Atmo.Clouds.CloudShadow.ShadowEnabled = DisplayCfg.CloudShadowsEnabled;
+            }
             if (std::fabs(DisplayCfg.CloudFraction - LastCloudFraction) > 1.0e-3f)
             {
                 Atmo.Clouds.CloudFraction = DisplayCfg.CloudFraction;
+            }
+            if (std::fabs(DisplayCfg.CloudWindSpeedMps - LastCloudWindSpeedMps) > 1.0e-2f)
+            {
+                Atmo.Clouds.WindSpeedMetersPerSecond = DisplayCfg.CloudWindSpeedMps;
+                Atmo.Wind.SpeedMetersPerSecond       = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplayCfg.CloudWindSpeedMps);
             }
             if (DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled)
             {
@@ -1554,10 +1781,15 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             const bool AtmoChanged = ViewportTogglesChanged || AtmoAnimTick;
             const bool NeedCpuSkySync =
                 ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled &&
-                (ViewportTogglesChanged || DisplayCfg.DayCyclePlaying || (!GpuReady && AtmoAnimTick));
+                (ViewportTogglesChanged || (!GpuReady && (DisplayCfg.DayCyclePlaying || AtmoAnimTick)));
             if (NeedCpuSkySync)
             {
                 ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
+            }
+            else if (Atmo.Medium.AtmosphereEnabled && DisplayCfg.DayCyclePlaying)
+            {
+                const auto Solved = GeometricRaster::CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
+                ShowcaseBundle->Scene.Sun.DirectionToSun = Solved.WorldDirectionToSun;
             }
 
             const ViewportProjectionPreset CurProjection = Panes->Viewport.QueryPrimaryProjection();
@@ -1600,9 +1832,25 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
                 DisplayCfg.GlobalIllumination != LastGiEnabled ||
                 DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
+                DisplayCfg.AntiAliasingEnabled != LastAaEnabled ||
+                DisplayCfg.RaytracingEnabled != LastRtEnabled ||
                 AtmoChanged ||
                 ProjectionChanged ||
                 CurScale != LastRenderScalePct;
+
+            const auto& CurOverlayCfg = Panes->Viewport.QueryForceOverlaySettings();
+            const bool  ForceOverlayDirty =
+                CurOverlayCfg.Enabled != LastForceOverlaySettings.Enabled ||
+                CurOverlayCfg.ShowStreamlines != LastForceOverlaySettings.ShowStreamlines ||
+                CurOverlayCfg.ShowVectors != LastForceOverlaySettings.ShowVectors ||
+                CurOverlayCfg.ShowHeatmap != LastForceOverlaySettings.ShowHeatmap ||
+                CurOverlayCfg.ShowBounds != LastForceOverlaySettings.ShowBounds ||
+                CurOverlayCfg.CrossSectionAxis != LastForceOverlaySettings.CrossSectionAxis ||
+                std::fabs(CurOverlayCfg.CrossSectionOffsetMeters - LastForceOverlaySettings.CrossSectionOffsetMeters) > 1.0e-3f ||
+                CurOverlayCfg.StreamColorMode != LastForceOverlaySettings.StreamColorMode ||
+                std::fabs(CurOverlayCfg.StreamOpacity - LastForceOverlaySettings.StreamOpacity) > 1.0e-3f ||
+                CurOverlayCfg.StreamLineCount != LastForceOverlaySettings.StreamLineCount ||
+                (CurOverlayCfg.Enabled && SafeStep > 0.0);
 
             if (CurCanvasW >= 120u && CurCanvasH >= 90u)
             {
@@ -1616,11 +1864,17 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastReflectionSource   = DisplayCfg.ReflectionSourceIndex;
             LastGiEnabled          = DisplayCfg.GlobalIllumination;
             LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
+            LastAaEnabled          = DisplayCfg.AntiAliasingEnabled;
+            LastRtEnabled          = DisplayCfg.RaytracingEnabled;
             LastAtmosphereSky      = DisplayCfg.AtmosphereSkyEnabled;
             LastCloudsEnabled      = DisplayCfg.VolumetricCloudsEnabled;
+            LastCloudShadowsEnabled = DisplayCfg.CloudShadowsEnabled;
             LastCelestialsEnabled  = DisplayCfg.CelestialStarsEnabled;
             LastSolarTimeHours     = DisplayCfg.SolarTimeOfDayHours;
             LastCloudFraction      = DisplayCfg.CloudFraction;
+            LastCloudWindSpeedMps  = DisplayCfg.CloudWindSpeedMps;
+            LastForceOverlaySettings = CurOverlayCfg;
+            LastForceSourceCount   = ForceAccumulator.QueryActiveSourceCount();
             LastRenderScalePct     = CurScale;
 
             const bool LatticeUpdated = ConsumeCompletedRtxLatticeBake();
@@ -1653,7 +1907,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             {
                 RefreshShowcaseViewportRaster();
             }
-            else if (CurrentSel != LastGizmoSlot)
+            else if (CurrentSel != LastGizmoSlot || ForceOverlayDirty)
             {
                 RefreshGizmoOverlayFromCachedWorld();
             }
@@ -1831,6 +2085,7 @@ void EditorLifecycle::Finalize() noexcept
     AuthoredForces.clear();
     DefaultForcesFolder = {};
     CachedWorldRgba8.clear();
+    ForceOverlayRasterizer.reset();
     WorldGizmoRasterizer.reset();
     GpuWorldRenderer.reset();
     ShowcaseRenderer.reset();

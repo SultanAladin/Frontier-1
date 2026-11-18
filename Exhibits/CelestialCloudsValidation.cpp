@@ -601,6 +601,12 @@ int main()
         WorldRenderConfiguration SkyCfg {};
         SkyCfg.Engine = WorldRenderEngine::OpenPbrDirect;
 
+        CpuRenderer.PrepareWorldScene(SkyOnlyScene);
+        if (GpuOk)
+        {
+            GpuRenderer.SynchronizeSceneResources(SkyOnlyScene, &CpuRenderer.InspectIrradianceLattice(), true);
+        }
+
         double MaxSkyColumnJump = 0.0;
         for (uint32_t F = 0u; F < FrameCount; ++F)
         {
@@ -611,10 +617,10 @@ int main()
             SkyOnlyScene.Atmosphere.Moons[0].AzimuthDegrees   = 205.0f + static_cast<float>(F) * 2.5f;
             SkyOnlyScene.Atmosphere.Moons[0].ElevationDegrees = 18.0f + 16.0f * std::sin(static_cast<float>(F) * 0.24f);
 
-            CpuRenderer.PrepareWorldScene(SkyOnlyScene);
+            CpuRenderer.SynchronizeWorldAtmosphere(SkyOnlyScene);
             if (GpuOk)
             {
-                GpuRenderer.SynchronizeSceneResources(SkyOnlyScene, &CpuRenderer.InspectIrradianceLattice(), F == 0u);
+                GpuRenderer.SynchronizeSceneResources(SkyOnlyScene, nullptr, false);
             }
 
             std::vector<uint8_t> FrameRgba;

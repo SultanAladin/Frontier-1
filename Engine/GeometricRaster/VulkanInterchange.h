@@ -76,6 +76,8 @@ public:
     [[nodiscard]] std::string_view QueryAdapterName() const noexcept     { return AdapterName; }
     [[nodiscard]] bool             QueryHardwareAccelerated() const noexcept { return HardwareAccelerated; }
     [[nodiscard]] bool             QueryHardwareRayQuerySupported() const noexcept { return HardwareRayQuerySupported; }
+    [[nodiscard]] bool             QueryUsesKhrDynamicRendering() const noexcept { return DynamicRenderingEnabled; }
+    [[nodiscard]] bool             QueryUsesKhrSynchronization2() const noexcept { return Synchronization2Enabled; }
     [[nodiscard]] uint32_t         QueryAccelerationScratchAlignment() const noexcept { return AccelerationScratchAlignment; }
     [[nodiscard]] uint64_t         QueryBufferDeviceAddress(VkBuffer BufferHandle) const noexcept;
 
@@ -129,6 +131,8 @@ private:
     bool             UseKhrTimelineEntry            = false;          // [-]     - True when KHR extension entry points are active
     bool             HardwareAccelerated            = false;          // [-]     - True when discrete/integrated GPU is active
     bool             HardwareRayQuerySupported      = false;          // [-]     - True when VK_KHR_acceleration_structure + VK_KHR_ray_query active
+    bool             DynamicRenderingEnabled        = false;          // [-]     - True when VK_KHR_dynamic_rendering is active
+    bool             Synchronization2Enabled        = false;          // [-]     - True when VK_KHR_synchronization2 is active
     std::string      AdapterName                    { "Uninitialized" }; // [-]  - Physical device name
 };
 
