@@ -995,6 +995,45 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
     float2 R2P    = PixelR2(PixelXY);
     float  RotPhi = R2P.x * TauConst;
 
+    // Algorithms 5, 6, 7: Voxel SDF Penumbra / Voxel SDF Clipmap Penumbra / Hybrid SDF (0.24 m BVH4 Contact + SDF Penumbra)
+    if (ShadowAlg == 5u || ShadowAlg == 6u || ShadowAlg == 7u)
+    {
+        float Spacing = max(0.04, WorldUniforms.SdfMinSpacing.w);
+        float DistM   = Spacing * 0.90;
+        float Vis     = 1.0;
+        float BlkDist = 0.0;
+        float MaxDist = 24.0;
+        for (uint Step = 0u; Step < 48u && DistM < MaxDist; ++Step)
+        {
+            float3 SPos = Hit.Position + Hit.ShadingNormal * (Spacing * 0.65) + SunDir * DistM;
+            float  SdfD = SampleSdfBakedVolume(SPos).w;
+            float  ConeR = max(0.025, DistM * TanSun);
+            float  Pen   = saturate(0.5 + 0.5 * SdfD / ConeR);
+            if (Pen < Vis)
+            {
+                Vis     = Pen;
+                BlkDist = DistM;
+            }
+            if (Vis < 0.005)
+            {
+                Vis = 0.0;
+                break;
+            }
+            DistM += max(Spacing * 0.35, abs(SdfD) * 0.85);
+        }
+        if (ShadowAlg == 7u)
+        {
+            float3 COrig = Hit.Position + Hit.GeomNormal * 0.006;
+            if (TraceSceneAnyHit(COrig, SunDir, 0.003, 0.24))
+            {
+                Vis     = 0.0;
+                BlkDist = 0.08;
+            }
+        }
+        OutBlockerDist = BlkDist;
+        return Vis;
+    }
+
     // Algorithm 4: WideTreeRayQuery (Deterministic Vogel Solar Disc BVH4 Raytrace)
     if (ShadowAlg == 4u)
     {
@@ -1240,22 +1279,21 @@ float3 SampleRtxIrradianceLatticeChebyshev(float3 WorldPos, float3 Normal, float
     return (TotalW > 0.0) ? (Accum / TotalW) : float3(0.0);
 }
 
-// Strictly reserved for EngineMode == 3 (SdfGlobalIllumination) GI only!
+// Strictly reserved for EngineMode == 3 (SdfGlobalIllumination) GI only — Deterministic Fibonacci Cone GI (Zero RNG!)
 float3 EvaluateSdfRadiosityConeGi(float3 WorldPos, float3 Normal, uint2 PixelXY)
 {
+    (void)PixelXY;
     float3 T, B;
     ConstructOrthonormalBasis(Normal, T, B);
 
-    float2 R2P       = PixelR2(PixelXY);
-    float  RotOffset = R2P.x * TauConst;
     float  Spacing   = max(0.04, WorldUniforms.SdfMinSpacing.w);
     float3 Origin    = WorldPos + Normal * (Spacing * 0.85);
 
     float3 Accum = float3(0.0);
     for (uint C = 0u; C < 16u; ++C)
     {
-        float U1   = (float(C) + 0.2 + 0.6 * R2P.y) / 16.0;
-        float Phi  = float(C) * 2.39996323 + RotOffset;
+        float U1   = (float(C) + 0.5) / 16.0;
+        float Phi  = float(C) * 2.39996323;
         float SinT = sqrt(saturate(U1));
         float CosT = sqrt(max(0.0, 1.0 - U1));
         float3 Dir = T * (SinT * cos(Phi)) + B * (SinT * sin(Phi)) + Normal * CosT;
@@ -1288,7 +1326,7 @@ float3 EvaluateSdfRadiosityConeGi(float3 WorldPos, float3 Normal, uint2 PixelXY)
         }
         Accum += (EvaluateSkyDome(Dir) * SkyVis + BounceR) * (1.0 / 16.0);
     }
-    return clamp(Accum, float3(0.0), float3(7.0));
+    return max(Accum, float3(0.0));
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -1507,23 +1545,33 @@ void ShadePrimarySurfaceDemod(
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-// DETERMINISTIC PATH TRACER (EngineMode == 4): Owen-Scrambled Sobol (0,2) + Depth-0 Lobe Splitting + MIS + NEE
+// DETERMINISTIC PATH TRACER (EngineMode == 4): Owen-Scrambled Sobol (0,2) + Dupuy & Benyoub (2023) Spherical-Cap VNDF + Depth-0 Lobe Split
 //------------------------------------------------------------------------------------------------------------------------
 
-float3 SampleGgxVndfLocal(float3 LocalWo, float AlphaX, float AlphaY, float U1, float U2)
+float3 SampleSphericalCapGgxVndfLocal(float3 LocalWo, float AlphaX, float AlphaY, float U1, float U2)
 {
-    float3 Vh  = normalize(float3(AlphaX * LocalWo.x, AlphaY * LocalWo.y, LocalWo.z));
-    float  Len = Vh.x * Vh.x + Vh.y * Vh.y;
-    float3 T1  = (Len > 1.0e-7) ? (float3(-Vh.y, Vh.x, 0.0) * rsqrt(Len)) : float3(1.0, 0.0, 0.0);
-    float3 T2  = cross(Vh, T1);
-    float  R   = sqrt(U1);
+    float3 Vh  = normalize(float3(AlphaX * LocalWo.x, AlphaY * LocalWo.y, max(1.0e-5, LocalWo.z)));
     float  Phi = TauConst * U2;
-    float  P1  = R * cos(Phi);
-    float  P2  = R * sin(Phi);
-    float  S   = 0.5 * (1.0 + Vh.z);
-    P2 = lerp(sqrt(max(0.0, 1.0 - P1 * P1)), P2, S);
-    float3 Nh  = T1 * P1 + T2 * P2 + Vh * sqrt(max(0.0, 1.0 - P1 * P1 - P2 * P2));
-    return normalize(float3(AlphaX * Nh.x, AlphaY * Nh.y, max(1.0e-4, Nh.z)));
+    float  Z   = (1.0 - U1) * (1.0 + Vh.z) - Vh.z;
+    float  SinT = sqrt(max(0.0, 1.0 - Z * Z));
+    float3 C   = float3(SinT * cos(Phi), SinT * sin(Phi), Z);
+    float3 Nh  = C + Vh;
+    float3 Out = float3(AlphaX * Nh.x, AlphaY * Nh.y, max(1.0e-4, Nh.z));
+    return normalize(Out);
+}
+
+float EvaluateSphericalCapGgxVndfPdf(float3 LocalWo, float3 LocalWi, float AlphaX, float AlphaY)
+{
+    if (LocalWo.z <= 1.0e-4 || LocalWi.z <= 1.0e-4) return 0.0;
+    float3 HalfV = normalize(LocalWo + LocalWi);
+    float  NdotH = max(1.0e-4, HalfV.z);
+    float  Ax    = max(0.0015, AlphaX);
+    float  Ay    = max(0.0015, AlphaY);
+    float  TermH = (HalfV.x * HalfV.x) / (Ax * Ax) + (HalfV.y * HalfV.y) / (Ay * Ay) + NdotH * NdotH;
+    float  D     = 1.0 / (PiConst * Ax * Ay * TermH * TermH);
+    float  Tan2V = ((LocalWo.x * Ax) * (LocalWo.x * Ax) + (LocalWo.y * Ay) * (LocalWo.y * Ay)) / max(1.0e-6, LocalWo.z * LocalWo.z);
+    float  G1V   = 2.0 / (1.0 + sqrt(1.0 + Tan2V));
+    return (D * G1V) / (4.0 * max(1.0e-4, LocalWo.z));
 }
 
 bool IntersectGlassSphere(float3 Origin, float3 Dir, float3 Center, float Radius, out float TEnter, out float TExit)
@@ -1773,31 +1821,24 @@ float3 TracePathTail(
         }
         else
         {
-            float3 H = SampleGgxVndfLocal(LocalWo, Alpha, Alpha, DirS.x, DirS.y);
+            float3 H = SampleSphericalCapGgxVndfLocal(LocalWo, Alpha, Alpha, DirS.x, DirS.y);
             LocalWi   = reflect(-LocalWo, H);
             ChoseSpec = (Rough < 0.28);
         }
         if (LocalWi.z <= 1.0e-4) break;
 
         float3 WorldWi = normalize(T * LocalWi.x + BVec * LocalWi.y + N * LocalWi.z);
-        float3 HalfV   = normalize(LocalWo + LocalWi);
-        float  NdotH   = max(1.0e-4, HalfV.z);
-        float  A2      = Alpha * Alpha;
-        float  Den     = NdotH * NdotH * (A2 - 1.0) + 1.0;
-        float  D_GGX   = A2 / max(1.0e-6, PiConst * Den * Den);
-        float  Tan2V   = (LocalWo.x * LocalWo.x + LocalWo.y * LocalWo.y) * A2 / max(1.0e-6, LocalWo.z * LocalWo.z);
-        float  G1V     = 2.0 / (1.0 + sqrt(1.0 + Tan2V));
-        float  PdfSpec = (D_GGX * G1V) / (4.0 * LocalWo.z);
+        float  PdfSpec = EvaluateSphericalCapGgxVndfPdf(LocalWo, LocalWi, Alpha, Alpha);
         float  PdfDiff = LocalWi.z * InvPiConst;
         float  MixPdf  = max(1.0e-4, DiffP * PdfDiff + SpecP * PdfSpec);
 
-        Throughput = min(float3(4.5), Throughput * EvaluateSurfaceBrdf(Mat, N, V, WorldWi) / MixPdf);
+        Throughput = Throughput * EvaluateSurfaceBrdf(Mat, N, V, WorldWi) / MixPdf;
         RayO       = Hit.Position + Hit.GeomNormal * 0.006;
         RayD       = WorldWi;
         SpecBounce = ChoseSpec;
     }
 
-    return min(Radiance, float3(5.5));
+    return max(Radiance, float3(0.0));
 }
 
 float3 TraceDeterministicPathSample(
@@ -2026,7 +2067,7 @@ float3 TraceDeterministicPathSample(
             if (IsReflectionsEnabled() && (max(F0.x, max(F0.y, F0.z)) > 0.015 || CoatW > 0.05))
             {
                 float2 SS  = Sobol02Sample(SampleIdx, PixelHash, 4u);
-                float3 H   = SampleGgxVndfLocal(LocalWo, Alpha, Alpha, SS.x, SS.y);
+                float3 H   = SampleSphericalCapGgxVndfLocal(LocalWo, Alpha, Alpha, SS.x, SS.y);
                 float3 LWi = reflect(-LocalWo, H);
                 if (LWi.z > 1.0e-4)
                 {
@@ -2038,7 +2079,7 @@ float3 TraceDeterministicPathSample(
                     float  G1L     = 2.0 / (1.0 + sqrt(1.0 + Tan2L));
                     TailOrig  = OutPrimaryHit.Position + OutPrimaryHit.GeomNormal * 0.006;
                     TailDir   = normalize(SurfT * LWi.x + SurfB * LWi.y + SurfN * LWi.z);
-                    TailThr   = min(float3(6.0), Fresnel * G1L);
+                    TailThr   = Fresnel * G1L;
                     PairOff   = 32u;
                     TaskSpec  = (SurfRough < 0.28);
                     ValidTask = true;
@@ -2052,7 +2093,7 @@ float3 TraceDeterministicPathSample(
         }
     }
 
-    return min(Radiance, float3(18.0));
+    return max(Radiance, float3(0.0));
 }
 
 float3 TraceThroughGlassSphere(float3 EntryPos, float3 EntryNrm, float3 IncidentDir, float3 Center, float Radius, float IorChannel)
@@ -2308,7 +2349,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     if (EngineMode == 4u && DebugMode == 0u)
     {
         uint SamplesToRun = clamp(uint(WorldUniforms.FineCascadeParams.w + 0.5), 1u, 4u);
-        uint PixelHash    = (DispatchThreadID.x * 1973u + DispatchThreadID.y * 9277u + 89173u) ^ 0x9E3779B9u;
+        uint PixelHash    = 0u; // Shared Owen-scrambled Sobol (0,2) low-discrepancy net (zero spatial scramble noise)
 
         float4 PrevAcc = (SampleIdx == 0u) ? float4(0.0, 0.0, 0.0, 0.0) : AccumulationHdrBuffer[PixelIdx];
         float3 AccSum  = PrevAcc.xyz * PrevAcc.w;

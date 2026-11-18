@@ -103,6 +103,7 @@ public:
     [[nodiscard]] ConstraintToken   IssueConstraint(const ConstraintDescriptor& Descriptor) noexcept;
     bool                            ReclaimConstraint(ConstraintToken Token) noexcept;
     bool                            BreakConstraint(ConstraintToken Token) noexcept;
+    bool                            AssignConstraintMotorTarget(ConstraintToken Token, float TargetCoordinateOrVelocity) noexcept;
     [[nodiscard]] ConstraintReading InspectConstraintReading(ConstraintToken Token) const noexcept;
 
     // Queries, ParticleSpace collider proxy export & contact telemetry

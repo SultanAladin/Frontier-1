@@ -113,6 +113,13 @@ WorkspaceCapabilityRegister::WorkspaceCapabilityRegister()
         "ForceField Studio · 3D vector field splats, streamlines, cross-section anemometer & motion splines",
         true,
     });
+    RegisteredEntries.push_back({
+        HostWorkspaceTarget::ComponentEditorWorkspace,
+        "ComponentEditor",
+        "Open with Component Editor",
+        "Component Editor · ComponentClass assembly, Jolt constraints, 7-channel .slang inspection & VehicleDynamics",
+        true,
+    });
 }
 
 std::span<const WorkspaceCapabilityEntry> WorkspaceCapabilityRegister::QueryAllCapabilities() const noexcept
@@ -130,6 +137,19 @@ std::vector<WorkspaceCapabilityEntry> WorkspaceCapabilityRegister::QueryPermitte
         if (const auto* Sk = FindByTarget(HostWorkspaceTarget::SketcherWorkspace))
         {
             Permitted.push_back(*Sk);
+        }
+        if (const auto* World = FindByTarget(HostWorkspaceTarget::FrontierWorld))
+        {
+            Permitted.push_back(*World);
+        }
+        return Permitted;
+    }
+
+    if (Ext == ".componentspace" || Ext == ".componentclass" || Ext == ".facet")
+    {
+        if (const auto* Ce = FindByTarget(HostWorkspaceTarget::ComponentEditorWorkspace))
+        {
+            Permitted.push_back(*Ce);
         }
         if (const auto* World = FindByTarget(HostWorkspaceTarget::FrontierWorld))
         {

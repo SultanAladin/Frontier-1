@@ -13,6 +13,11 @@
 
 #if FRONTIER_EDITOR_ENABLED
 
+#include "Engine/Codecs/ComponentSpaceCodec.h"
+#include "Engine/ComponentClass/ComponentClassDefinition.h"
+#include "Engine/ComponentClass/ComponentClassValidator.h"
+#include "Engine/ComponentClass/ComponentWorldPlacement.h"
+#include "Engine/ComponentClass/ControlVehicleClassBuilder.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
 #include "Engine/Components/Diagnostics/FrameTimingTelemetry.h"
@@ -113,6 +118,40 @@ public:
     void               RefreshShowcaseViewportRaster();
     void               FrameShowcaseCameraSelection() noexcept;
     [[nodiscard]] OutlinerSlotToken SpawnForceFieldEntry(const SimulationSpace::ForceFields::ForceSourceRecordEntry& SourcePreset);
+
+    struct WorldParticlePlacement
+    {
+        ComponentClass::WorldPlacementToken    PlacementToken    {};
+        ComponentClass::ComponentInstanceToken ComponentToken    {};
+        OutlinerSlotToken                      OutlinerSlot      {};
+        std::string                            PresetTitle       {};
+        Mathematics::Axis3D                    WorldOrigin       {};
+        float                                  EmissionRateScale = 1.0f;
+        bool                                   AutoActivate      = true;
+    };
+
+    struct WorldFluidPlacement
+    {
+        ComponentClass::WorldPlacementToken    PlacementToken     {};
+        ComponentClass::ComponentInstanceToken ComponentToken     {};
+        OutlinerSlotToken                      OutlinerSlot       {};
+        Mathematics::Axis3D                    WorldOrigin        {};
+        Mathematics::Scalar3D                  BoundsExtentMeters { 1.0f, 1.0f, 1.0f };
+        float                                  FuelInjectionRate  = 0.45f;
+        bool                                   AutoActivate       = true;
+    };
+
+    [[nodiscard]] OutlinerSlotToken SpawnComponentClassPlacement(
+        std::string_view             ClassTitle,
+        Mathematics::Axis3D          WorldPosition,
+        OutlinerSlotToken            ExplicitEnclosure = {},
+        const std::filesystem::path& OptionalAssetPath = {});
+    void SynchronizeComponentPlacementOverrides();
+    [[nodiscard]] const ComponentClass::ComponentWorldPlacementRegister& QueryWorldPlacements() const noexcept { return WorldPlacements; }
+    [[nodiscard]] const std::vector<WorldParticlePlacement>&           QueryActiveParticlePlacements() const noexcept { return ActiveParticlePlacements; }
+    [[nodiscard]] const std::vector<WorldFluidPlacement>&              QueryActiveFluidPlacements() const noexcept { return ActiveFluidPlacements; }
+    [[nodiscard]] const std::vector<ComponentClass::ComponentClassDefinition>& QueryComponentDefinitions() const noexcept { return ComponentDefinitions; }
+
     [[nodiscard]] GeometricRaster::ShowcaseWorldSceneBundle* AccessShowcaseScene() noexcept { return ShowcaseBundle.get(); }
     [[nodiscard]] Editor::TransformGizmo&                    AccessTransformGizmo() noexcept { return WorldTransformGizmo; }
     [[nodiscard]] SimulationSpace::ForceFields::ForceFieldAccumulator& AccessForceAccumulator() noexcept { return ForceAccumulator; }
@@ -144,6 +183,14 @@ private:
     {
         OutlinerSlotToken                                  OutlinerSlot {};
         SimulationSpace::ForceFields::ForceSourceRecordEntry Source       {};
+    };
+
+    struct OutlinerPlacementLink
+    {
+        OutlinerSlotToken                      OutlinerSlot   {};
+        ComponentClass::WorldPlacementToken    PlacementToken {};
+        ComponentClass::ComponentInstanceToken ComponentToken {};
+        uint32_t                               ClassIndex     = 0u;
     };
 
     void AttachForceFieldAuthoringToActivePanes();
@@ -250,6 +297,11 @@ private:
     Editor::Simulation::ForceInspectorView              ForceInspector      {};   // [-]  - 4-tab ForceField Inspector (Field/Formula/Layers/Cache)
     ForcePresetBrowserPanel                             ForcePresetCatalog  {};   // [-]  - Curated .ForceModel & Formula preset library
     std::vector<MappedEditorForceSource>                AuthoredForces      {};   // [-]  - Scene-bound ForceField sources
+    std::vector<ComponentClass::ComponentClassDefinition> ComponentDefinitions {}; // [-] - Loaded .ComponentSpace definitions
+    ComponentClass::ComponentWorldPlacementRegister     WorldPlacements     {};   // [-]  - Placed ComponentClass instances
+    std::vector<OutlinerPlacementLink>                  PlacementLinks      {};   // [-]  - Outliner slot <-> ComponentWorldPlacement map
+    std::vector<WorldParticlePlacement>                 ActiveParticlePlacements {}; // [-] - Spawned ParticleInstance world emitters
+    std::vector<WorldFluidPlacement>                    ActiveFluidPlacements    {}; // [-] - Spawned FluidInstance world emitters
     std::array<float, 96>                               AnemometerHistory   {};   // [m/s]- Rolling Beaufort probe samples
     OutlinerSlotToken                                   DefaultForcesFolder {};   // [idx]- Optional Forces folder in Outliner
     int32_t                                             SelectedWaypointIdx = -1; // [idx]- Active ForceField motion waypoint

@@ -31,7 +31,7 @@ struct SpaceSuffixMappingEntry
     std::string_view       LowercaseExtension;
 };
 
-constexpr std::array<SpaceSuffixMappingEntry, 24u> SpaceSuffixRegistry = {{
+constexpr std::array<SpaceSuffixMappingEntry, 25u> SpaceSuffixRegistry = {{
     { SpaceSuffixCategory::ProjectSpace,     ".ProjectSpace",     ".projectspace"     },
     { SpaceSuffixCategory::ColourSpace,      ".ColourSpace",      ".colourspace"      },
     { SpaceSuffixCategory::GeometrySpace,    ".GeometrySpace",    ".geometryspace"    },
@@ -56,6 +56,7 @@ constexpr std::array<SpaceSuffixMappingEntry, 24u> SpaceSuffixRegistry = {{
     { SpaceSuffixCategory::VectorFieldSpace, ".VectorFieldSpace", ".vectorfieldspace" },
     { SpaceSuffixCategory::ForceModel,       ".ForceModel",       ".forcemodel"       },
     { SpaceSuffixCategory::InputSpace,       ".InputSpace",       ".inputspace"       },
+    { SpaceSuffixCategory::ComponentSpace,   ".ComponentSpace",   ".componentspace"   },
 }};
 
 struct SubFormatMappingEntry
@@ -64,7 +65,7 @@ struct SubFormatMappingEntry
     std::string_view LowercaseTag;
 };
 
-constexpr std::array<SubFormatMappingEntry, 39u> SubFormatRegistry = {{
+constexpr std::array<SubFormatMappingEntry, 42u> SubFormatRegistry = {{
     { ".DocumentHeader",        ".documentheader"        },
     { ".SectionDirectory",      ".sectiondirectory"      },
     { ".Revision",              ".revision"              },
@@ -104,6 +105,9 @@ constexpr std::array<SubFormatMappingEntry, 39u> SubFormatRegistry = {{
     { ".ChordRegister",         ".chordregister"         },
     { ".AxisCalibration",       ".axiscalibration"       },
     { ".DeviceProfile",         ".deviceprofile"         },
+    { ".ComponentHierarchy",    ".componenthierarchy"    },
+    { ".ComponentConstraints",  ".componentconstraints"  },
+    { ".ComponentBehaviours",   ".componentbehaviours"   },
 }};
 
 [[nodiscard]] std::string ToAsciiLower(std::string_view Text)

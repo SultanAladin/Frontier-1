@@ -10,6 +10,7 @@
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/DeterministicIntegrators.h"
 #include "Engine/GeometrySpace/Analysis/CurvatureAnalysis.h"
 
 #include <algorithm>
@@ -51,18 +52,6 @@ namespace
         return std::clamp((V * (2.51f * V + 0.03f)) / (V * (2.43f * V + 0.59f) + 0.14f), 0.0f, 1.0f);
     };
     return { Curve(Hdr.R), Curve(Hdr.G), Curve(Hdr.B) };
-}
-
-[[nodiscard]] uint32_t PcgNext(uint32_t& State) noexcept
-{
-    State = State * 747796405u + 2891336453u;
-    const uint32_t Word = ((State >> ((State >> 28u) + 4u)) ^ State) * 277803737u;
-    return (Word >> 22u) ^ Word;
-}
-
-[[nodiscard]] float PcgFloat01(uint32_t& State) noexcept
-{
-    return static_cast<float>(PcgNext(State) & 0x00FFFFFFu) * (1.0f / 16777216.0f);
 }
 
 [[nodiscard]] Mathematics::LinearRGB EvaluateSkyDome(
@@ -470,15 +459,17 @@ void ApplyDiffuseGiBilateralFilter(
     return AnyHit;
 }
 
-[[nodiscard]] Mathematics::LinearRGB TracePathSample(
+[[nodiscard]] Mathematics::LinearRGB TraceDeterministicPathSample(
     Mathematics::Axis3D                            Origin,
     Mathematics::Axis3D                            Direction,
     const WorldSceneSpecification&                 Scene,
     const AtmosphericSkySequence&                  SkySeq,
+    uint32_t                                       SampleIdx,
+    uint32_t                                       PixelSeed,
+    uint32_t                                       StartBounce,
     uint32_t                                       MaxBounces,
     bool                                           ReflectionsEnabled,
-    uint32_t&                                      RngState,
-    bool                                           AllowDepth0GlassSplit = true) noexcept
+    bool                                           AllowDepth0LobeSplit = true) noexcept
 {
     const uint32_t MatCount = Scene.MaterialRegister.QuerySlotCount();
     const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis(Scene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
@@ -492,8 +483,14 @@ void ApplyDiffuseGiBilateralFilter(
     Mathematics::Axis3D    RayD = Direction;
     bool                   PrevWasSpec = false;
 
-    for (uint32_t Bounce = 0u; Bounce < MaxBounces; ++Bounce)
+    for (uint32_t Bounce = StartBounce; Bounce < MaxBounces; ++Bounce)
     {
+        const uint32_t DimBase = 2u + Bounce * 8u;
+        const auto SobSun   = Sobol02Sample(SampleIdx, DimBase + 0u, PixelSeed);
+        const auto SobLight = Sobol02Sample(SampleIdx, DimBase + 2u, PixelSeed);
+        const auto SobDiff  = Sobol02Sample(SampleIdx, DimBase + 4u, PixelSeed);
+        const auto SobSpec  = Sobol02Sample(SampleIdx, DimBase + 6u, PixelSeed);
+
         SpatialAcceleration::RaySegmentQuery Query {};
         Query.Origin          = RayO;
         Query.UnitDirection   = RayD;
@@ -518,13 +515,14 @@ void ApplyDiffuseGiBilateralFilter(
             const float Fres     = ReflectionsEnabled ? MaterialSpace::Scattering::EvaluateExactDielectricFresnel(CosI, CrownIor) : 0.0f;
 
             bool TraceRefract = true;
-            if (AllowDepth0GlassSplit && Bounce == 0u)
+            if (AllowDepth0LobeSplit && Bounce == 0u)
             {
                 if (Fres > 1.0e-4f)
                 {
                     const Mathematics::Axis3D ReflO = GPos + GNrm * 2.5e-3f;
                     const Mathematics::Axis3D ReflD = Mathematics::NormalizeAxis(RayD + GNrm * (2.0f * CosI));
-                    const auto ReflRad = TracePathSample(ReflO, ReflD, Scene, SkySeq, std::min(3u, MaxBounces), ReflectionsEnabled, RngState, false);
+                    const auto ReflRad = TraceDeterministicPathSample(
+                        ReflO, ReflD, Scene, SkySeq, SampleIdx, PixelSeed, Bounce + 1u, std::max(MaxBounces, Bounce + 3u), ReflectionsEnabled, false);
                     Radiance.R += Throughput.R * Fres * ReflRad.R;
                     Radiance.G += Throughput.G * Fres * ReflRad.G;
                     Radiance.B += Throughput.B * Fres * ReflRad.B;
@@ -533,7 +531,7 @@ void ApplyDiffuseGiBilateralFilter(
                 Throughput.G *= (1.0f - Fres);
                 Throughput.B *= (1.0f - Fres);
             }
-            else if (PcgFloat01(RngState) < Fres)
+            else if (SobSpec.X < Fres)
             {
                 RayO = GPos + GNrm * 2.5e-3f;
                 RayD = Mathematics::NormalizeAxis(RayD + GNrm * (2.0f * CosI));
@@ -542,7 +540,7 @@ void ApplyDiffuseGiBilateralFilter(
 
             if (TraceRefract)
             {
-                const float WSel = PcgFloat01(RngState);
+                const float WSel = SobSpec.Y;
                 const float IorC = CrownIor + ((WSel < 0.3333f) ? -Disp : ((WSel < 0.6667f) ? 0.0f : Disp * 1.15f));
                 const float Eta  = 1.0f / IorC;
                 const float Sin2T = Eta * Eta * std::max(0.0f, 1.0f - CosI * CosI);
@@ -589,7 +587,7 @@ void ApplyDiffuseGiBilateralFilter(
             continue;
         }
 
-        if (PrevWasSpec)
+        if (PrevWasSpec || Bounce == 0u)
         {
             Mathematics::LinearRGB LEmit {};
             float LT = ClosestTriT;
@@ -623,7 +621,7 @@ void ApplyDiffuseGiBilateralFilter(
         const Mathematics::Axis3D Wo  = RayD * -1.0f;
 
         Mathematics::Axis3D TanU {}, BitV {};
-        GeometrySpace::ConstructDuffOrthonormalBasis(Nrm, TanU, BitV);
+        BuildDuffBasis(Nrm, TanU, BitV);
         const auto WorldToLocal = [&](Mathematics::Axis3D V) noexcept -> Mathematics::Axis3D
         {
             return {
@@ -637,6 +635,7 @@ void ApplyDiffuseGiBilateralFilter(
             return TanU * L.X + BitV * L.Y + Nrm * L.Z;
         };
 
+        // Emissive Surface Contribution (evaluated via Planckian blackbody + tint)
         const auto Emissive = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight);
         Radiance.R += Throughput.R * Emissive.R;
         Radiance.G += Throughput.G * Emissive.G;
@@ -651,13 +650,13 @@ void ApplyDiffuseGiBilateralFilter(
         // Dielectric Glass Refraction/Reflection Branch
         if (Mat.Transmission.TransmissionWeight > 0.35f)
         {
-            const float Ior       = std::max(1.01f, Mat.Specular.DielectricIOR);
-            const float Eta       = FrontFace ? (1.0f / Ior) : Ior;
-            const float CosI      = std::clamp(Mathematics::EvaluateDot(Wo, Nrm), 0.0f, 1.0f);
-            const float Fres      = MaterialSpace::Scattering::EvaluateExactDielectricFresnel(CosI, Ior);
-            const float Sin2T     = Eta * Eta * std::max(0.0f, 1.0f - CosI * CosI);
+            const float Ior   = std::max(1.01f, Mat.Specular.DielectricIOR);
+            const float Eta   = FrontFace ? (1.0f / Ior) : Ior;
+            const float CosI  = std::clamp(Mathematics::EvaluateDot(Wo, Nrm), 0.0f, 1.0f);
+            const float Fres  = MaterialSpace::Scattering::EvaluateExactDielectricFresnel(CosI, Ior);
+            const float Sin2T = Eta * Eta * std::max(0.0f, 1.0f - CosI * CosI);
 
-            if (Sin2T >= 1.0f || PcgFloat01(RngState) < Fres)
+            if (Sin2T >= 1.0f || SobSpec.X < Fres)
             {
                 RayO = HitPos + Nrm * 2.0e-3f;
                 RayD = Mathematics::NormalizeAxis(RayD + Nrm * (2.0f * CosI));
@@ -670,13 +669,14 @@ void ApplyDiffuseGiBilateralFilter(
                 Throughput.G *= Mat.Transmission.AttenuationColor.G;
                 Throughput.B *= Mat.Transmission.AttenuationColor.B;
             }
+            PrevWasSpec = true;
             continue;
         }
 
-        // 1. NEE: Stratified Solar Disc Visibility + BSDF
+        // 1. NEE: Stratified Sobol (0,2) Solar Disc Visibility + OpenPBR BSDF
         {
-            const float JitterR = std::sqrt(PcgFloat01(RngState)) * TanSun;
-            const float JitterA = PcgFloat01(RngState) * Constants::TauFloat;
+            const float JitterR = std::sqrt(SobSun.X) * TanSun;
+            const float JitterA = SobSun.Y * Constants::TauFloat;
             const Mathematics::Axis3D JitterSun = Mathematics::NormalizeAxis(
                 SunDir + SunTanU * (JitterR * std::cos(JitterA)) + SunTanV * (JitterR * std::sin(JitterA)), SunDir);
             const float NdotL = Mathematics::EvaluateDot(Nrm, JitterSun);
@@ -703,11 +703,11 @@ void ApplyDiffuseGiBilateralFilter(
             }
         }
 
-        // 2. NEE: Random Sample on Polygonal Area Quad Lights
+        // 2. NEE: Sobol (0,2) Sample on Polygonal Area Quad Lights
         for (const auto& Light : Scene.AreaLights)
         {
-            const float LU = PcgFloat01(RngState) * 2.0f - 1.0f;
-            const float LV = PcgFloat01(RngState) * 2.0f - 1.0f;
+            const float LU = SobLight.X * 2.0f - 1.0f;
+            const float LV = SobLight.Y * 2.0f - 1.0f;
             const Mathematics::Axis3D Target = Light.CenterWorld +
                 Light.RightTangent * (Light.HalfWidthMeters * LU) +
                 Light.UpBitangent  * (Light.HalfHeightMeters * LV);
@@ -742,28 +742,103 @@ void ApplyDiffuseGiBilateralFilter(
             }
         }
 
-        // 3. MIS Next-Bounce Sampling: Heitz (2018) GGX VNDF Specular vs Cosine Diffuse
-        const float DiffProb = ReflectionsEnabled ? std::clamp((1.0f - Mat.Specular.Metalness) * 0.65f, 0.0f, 0.85f) : 1.0f;
+        // 3. NEE: Exact Analytic Point Lights (Visibility-Gated against SceneTree)
+        for (const auto& Pt : Scene.PointLights)
+        {
+            const Mathematics::Axis3D ToP = Pt.PositionWorld - HitPos;
+            const float Dist2 = Mathematics::EvaluateLengthSquared(ToP);
+            const float Dist  = std::sqrt(std::max(1.0e-6f, Dist2));
+            if (Dist >= Pt.RangeMeters) continue;
+            const Mathematics::Axis3D LDir = ToP * (1.0f / Dist);
+            const float NdotL = Mathematics::EvaluateDot(Nrm, LDir);
+            if (NdotL <= 1.0e-4f) continue;
+
+            SpatialAcceleration::RaySegmentQuery PtQ {};
+            PtQ.Origin          = HitPos + Nrm * 2.0e-3f;
+            PtQ.UnitDirection   = LDir;
+            PtQ.MinimumDistance = 1.0e-3f;
+            PtQ.MaximumDistance = std::max(2.0e-3f, Dist - Pt.RadiusMeters);
+            if (!Scene.SceneTree.QueryRayOccluded(PtQ))
+            {
+                const float RangeRatio = std::clamp(Dist / std::max(0.5f, Pt.RangeMeters), 0.0f, 1.0f);
+                const float SmoothWin  = std::max(0.0f, 1.0f - RangeRatio * RangeRatio);
+                const float Atten = (Pt.Intensity * SmoothWin * SmoothWin) /
+                                    std::max(0.18f, Dist2 + Pt.RadiusMeters * Pt.RadiusMeters);
+                const auto LocalWi = WorldToLocal(LDir);
+                const auto Bsdf    = MaterialSpace::Scattering::EvaluateOpenPbrLocalBsdf(Mat, Lobes, LocalWo, LocalWi);
+                Radiance.R += Throughput.R * Bsdf.R * Pt.Color.R * (NdotL * Atten);
+                Radiance.G += Throughput.G * Bsdf.G * Pt.Color.G * (NdotL * Atten);
+                Radiance.B += Throughput.B * Bsdf.B * Pt.Color.B * (NdotL * Atten);
+            }
+        }
+
+        if (Bounce + 1u >= MaxBounces)
+        {
+            break;
+        }
+
+        const float RoughSq = std::clamp(Mat.Specular.Roughness * Mat.Specular.Roughness, 0.0025f, 1.0f);
+        const float DiffW   = (1.0f - Mat.Specular.Metalness) * (1.0f - Mat.Transmission.TransmissionWeight);
+
+        // 4. Depth-0 Lobe Splitting (Diffuse + Specular traced separately via Dupuy & Benyoub 2023 Spherical Cap VNDF!)
+        if (AllowDepth0LobeSplit && Bounce == 0u && ReflectionsEnabled)
+        {
+            // 4a. Diffuse Cosine-Hemisphere Lobe
+            if (DiffW > 1.0e-3f)
+            {
+                const float R = std::sqrt(SobDiff.X);
+                const float Phi = SobDiff.Y * Constants::TauFloat;
+                const Mathematics::Axis3D LocalDiff { R * std::cos(Phi), R * std::sin(Phi), std::sqrt(std::max(0.0f, 1.0f - SobDiff.X)) };
+                if (LocalDiff.Z > 1.0e-4f)
+                {
+                    const float PdfDiff = std::max(1.0e-4f, LocalDiff.Z / Constants::PiFloat);
+                    const auto BsdfDiff = MaterialSpace::Scattering::EvaluateOpenPbrLocalBsdf(
+                        Mat, Lobes & (~MaterialSpace::LobeSpecularMetalGGX), LocalWo, LocalDiff);
+                    const auto SubRad = TraceDeterministicPathSample(
+                        HitPos + Nrm * 2.0e-3f, Mathematics::NormalizeAxis(LocalToWorld(LocalDiff)),
+                        Scene, SkySeq, SampleIdx, PixelSeed, Bounce + 1u, MaxBounces, ReflectionsEnabled, false);
+                    const float W = LocalDiff.Z / PdfDiff;
+                    Radiance.R += Throughput.R * BsdfDiff.R * W * SubRad.R;
+                    Radiance.G += Throughput.G * BsdfDiff.G * W * SubRad.G;
+                    Radiance.B += Throughput.B * BsdfDiff.B * W * SubRad.B;
+                }
+            }
+
+            // 4b. Specular Dupuy & Benyoub (2023) Spherical-Cap GGX VNDF Lobe
+            const Mathematics::Axis3D LocalSpec = SampleSphericalCapGgxVndfLocal(LocalWo, RoughSq, RoughSq, SobSpec.X, SobSpec.Y);
+            if (LocalSpec.Z > 1.0e-4f)
+            {
+                const float PdfSpec = std::max(1.0e-4f, EvaluateSphericalCapGgxVndfPdf(LocalWo, LocalSpec, RoughSq, RoughSq));
+                const auto BsdfSpec = MaterialSpace::Scattering::EvaluateOpenPbrLocalBsdf(
+                    Mat, Lobes & (~MaterialSpace::LobeDiffuseEON), LocalWo, LocalSpec);
+                const auto SubRad = TraceDeterministicPathSample(
+                    HitPos + Nrm * 2.0e-3f, Mathematics::NormalizeAxis(LocalToWorld(LocalSpec)),
+                    Scene, SkySeq, SampleIdx, PixelSeed, Bounce + 1u, MaxBounces, ReflectionsEnabled, false);
+                const float W = LocalSpec.Z / PdfSpec;
+                Radiance.R += Throughput.R * BsdfSpec.R * W * SubRad.R;
+                Radiance.G += Throughput.G * BsdfSpec.G * W * SubRad.G;
+                Radiance.B += Throughput.B * BsdfSpec.B * W * SubRad.B;
+            }
+            break;
+        }
+
+        // 5. Higher-Bounce Deterministic MIS Continuation (NO RNG, NO Russian Roulette!)
+        const float DiffProb = ReflectionsEnabled ? std::clamp(DiffW * 0.65f, 0.0f, 0.85f) : 1.0f;
         const float SpecProb = 1.0f - DiffProb;
-        const bool PickDiff  = (PcgFloat01(RngState) < DiffProb);
+        const float LobeSelector = Sobol02Sample(SampleIdx, DimBase + 1u, PixelSeed).X;
+        const bool PickDiff = (LobeSelector < DiffProb);
 
         Mathematics::Axis3D LocalWi {};
-        const float U1 = PcgFloat01(RngState);
-        const float U2 = PcgFloat01(RngState);
-        const auto Alpha = MaterialSpace::Scattering::ComputeAnisotropicAlpha(
-            std::max(0.0015f, Mat.Specular.Roughness * Mat.Specular.Roughness), Mat.Specular.Anisotropy);
-
         if (PickDiff)
         {
-            const float R   = std::sqrt(U1);
-            const float Phi = U2 * Constants::TauFloat;
-            LocalWi = { R * std::cos(Phi), R * std::sin(Phi), std::sqrt(std::max(0.0f, 1.0f - U1)) };
+            const float R   = std::sqrt(SobDiff.X);
+            const float Phi = SobDiff.Y * Constants::TauFloat;
+            LocalWi = { R * std::cos(Phi), R * std::sin(Phi), std::sqrt(std::max(0.0f, 1.0f - SobDiff.X)) };
             PrevWasSpec = false;
         }
         else
         {
-            const auto HalfV = MaterialSpace::Scattering::SampleAnisotropicSphericalCapVndf(LocalWo, Alpha, U1, U2);
-            LocalWi = HalfV * (2.0f * Mathematics::EvaluateDot(LocalWo, HalfV)) - LocalWo;
+            LocalWi = SampleSphericalCapGgxVndfLocal(LocalWo, RoughSq, RoughSq, SobSpec.X, SobSpec.Y);
             PrevWasSpec = (Mat.Specular.Roughness < 0.28f);
         }
 
@@ -772,44 +847,27 @@ void ApplyDiffuseGiBilateralFilter(
             break;
         }
 
-        // Evaluate 1-sample MIS PDF combining Cosine Hemisphere + GGX VNDF
-        const auto HalfVec  = Mathematics::NormalizeAxis(LocalWo + LocalWi);
-        const float NdotH   = std::max(1.0e-4f, HalfVec.Z);
-        const float Ax      = std::max(0.0015f, Alpha.AlphaX);
-        const float Ay      = std::max(0.0015f, Alpha.AlphaY);
-        const float TermH   = (HalfVec.X * HalfVec.X) / (Ax * Ax) + (HalfVec.Y * HalfVec.Y) / (Ay * Ay) + NdotH * NdotH;
-        const float D       = 1.0f / (Constants::PiFloat * Ax * Ay * TermH * TermH);
-        const float Tan2V   = ((LocalWo.X * Ax) * (LocalWo.X * Ax) + (LocalWo.Y * Ay) * (LocalWo.Y * Ay)) / std::max(1.0e-6f, LocalWo.Z * LocalWo.Z);
-        const float G1V     = 2.0f / (1.0f + std::sqrt(1.0f + Tan2V));
-        const float PdfSpec = (D * G1V) / (4.0f * std::max(1.0e-4f, LocalWo.Z));
+        const float PdfSpec = EvaluateSphericalCapGgxVndfPdf(LocalWo, LocalWi, RoughSq, RoughSq);
         const float PdfDiff = LocalWi.Z / Constants::PiFloat;
         const float MixPdf  = std::max(1.0e-4f, DiffProb * PdfDiff + SpecProb * PdfSpec);
 
         const auto Bsdf = MaterialSpace::Scattering::EvaluateOpenPbrLocalBsdf(Mat, Lobes, LocalWo, LocalWi);
         const float Weight = LocalWi.Z / MixPdf;
-        Throughput.R = std::min(12.0f, Throughput.R * Bsdf.R * Weight);
-        Throughput.G = std::min(12.0f, Throughput.G * Bsdf.G * Weight);
-        Throughput.B = std::min(12.0f, Throughput.B * Bsdf.B * Weight);
-
-        // Russian Roulette after bounce 3
-        if (Bounce >= 3u)
+        Throughput.R *= Bsdf.R * Weight;
+        Throughput.G *= Bsdf.G * Weight;
+        Throughput.B *= Bsdf.B * Weight;
+        if (std::max({ Throughput.R, Throughput.G, Throughput.B }) < 1.0e-4f)
         {
-            const float MaxT = std::clamp(std::max({ Throughput.R, Throughput.G, Throughput.B }), 0.05f, 0.95f);
-            if (PcgFloat01(RngState) > MaxT)
-            {
-                break;
-            }
-            Throughput = Throughput * (1.0f / MaxT);
+            break;
         }
 
         RayO = HitPos + Nrm * 2.0e-3f;
         RayD = Mathematics::NormalizeAxis(LocalToWorld(LocalWi));
     }
 
-    // Clamp extreme fireflies & sanitize NaNs/Infs per sample
     const auto SanitizeF = [](float V) noexcept -> float
     {
-        return std::isfinite(V) ? std::clamp(V, 0.0f, 18.0f) : 0.0f;
+        return std::isfinite(V) ? std::max(0.0f, V) : 0.0f;
     };
     return {
         SanitizeF(Radiance.R),
@@ -1087,13 +1145,77 @@ void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOut
         InOutScene.Sun,
         InOutScene.SkyRadiance);
 
-    // 4. Build 3D Radiosity SDF Mip-Volume (Strictly for SdfGlobalIllumination GI Only!)
+    // 4. Build legacy 3D Radiosity SDF Mip-Volume (when SceneSdf provided)
     RadiosityVolume.BuildRadiosityLevels(
         InOutScene.SceneSdf,
         InOutScene.SceneTree,
         InOutScene.BounceSummaries,
         InOutScene.Sun,
         InOutScene.SkyRadiance);
+
+    // 5. Build 2-Cascade Voxel SDF Clipmap + Multi-Bounce Surface Cache (if ClipmapConfig enabled)
+    if (InOutScene.ClipmapConfig.Clip0Resolution > 1u && InOutScene.ClipmapConfig.Clip0HalfExtentMeters > 0.0f)
+    {
+        const Mathematics::Axis3D H0 {
+            InOutScene.ClipmapConfig.Clip0HalfExtentMeters,
+            InOutScene.ClipmapConfig.Clip0HalfExtentMeters,
+            InOutScene.ClipmapConfig.Clip0HalfExtentMeters * 0.55f
+        };
+        const Mathematics::Axis3D H1 {
+            InOutScene.ClipmapConfig.Clip1HalfExtentMeters,
+            InOutScene.ClipmapConfig.Clip1HalfExtentMeters,
+            InOutScene.ClipmapConfig.Clip1HalfExtentMeters * 0.45f
+        };
+        const uint32_t R0 = InOutScene.ClipmapConfig.Clip0Resolution;
+        const uint32_t R1 = InOutScene.ClipmapConfig.Clip1Resolution;
+        ClipmapVolume.BuildStaticClipmap(
+            InOutScene.SceneTree,
+            InOutScene.MaterialRegister,
+            InOutScene.ClipmapConfig.Clip0CenterWorld - H0,
+            InOutScene.ClipmapConfig.Clip0CenterWorld + H0,
+            R0, R0, std::max(16u, (R0 * 55u) / 100u),
+            InOutScene.ClipmapConfig.Clip1CenterWorld - H1,
+            InOutScene.ClipmapConfig.Clip1CenterWorld + H1,
+            R1, R1, std::max(12u, (R1 * 45u) / 100u));
+        ClipmapVolume.BakeStaticSurfaceCacheLighting(
+            InOutScene.ClipmapConfig.LightingMask,
+            InOutScene.Sun,
+            InOutScene.PointLights,
+            InOutScene.AreaLights,
+            InOutScene.SkyRadiance,
+            InOutScene.ClipmapConfig.RadiosityBounces);
+        if (!InOutScene.DynamicSdfObjects.empty())
+        {
+            ClipmapVolume.ComposeDynamicObjectsIntoActiveClip0(
+                InOutScene.DynamicSdfObjects,
+                InOutScene.ClipmapConfig.LightingMask,
+                InOutScene.Sun,
+                InOutScene.PointLights,
+                InOutScene.AreaLights,
+                InOutScene.SkyRadiance,
+                true);
+        }
+    }
+}
+
+void TieredWorldRenderSequence::UpdateDynamicClipmapObjects(
+    const WorldSceneSpecification&                               Scene,
+    std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> PreviousObjects,
+    std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> CurrentObjects)
+{
+    (void)PreviousObjects;
+    if (ClipmapVolume.StaticClip0.DimX < 2u)
+    {
+        return;
+    }
+    ClipmapVolume.ComposeDynamicObjectsIntoActiveClip0(
+        CurrentObjects,
+        Scene.ClipmapConfig.LightingMask,
+        Scene.Sun,
+        Scene.PointLights,
+        Scene.AreaLights,
+        Scene.SkyRadiance,
+        false);
 }
 
 void TieredWorldRenderSequence::PrepareRtxIrradianceLatticeOnly(WorldSceneSpecification& InOutScene)
@@ -1271,7 +1393,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     }
 
     //====================================================================================================================
-    // ENGINE 4: DETERMINISTIC PATH TRACER (MIS + NEE + Heitz GGX VNDF + A-Trous Denoiser)
+    // ENGINE 4: DETERMINISTIC PATH TRACER (Sobol (0,2) + Dupuy-Benyoub Spherical Cap VNDF + Depth-0 Lobe Split + MIS)
     //====================================================================================================================
     if (Config.Engine == WorldRenderEngine::DeterministicPathTrace)
     {
@@ -1291,21 +1413,21 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                     continue;
                 }
 
-                uint32_t Rng = (PX * 747796405u + PY * 2891336453u + 277803737u) | 1u;
-                (void)PcgFloat01(Rng);
-                (void)PcgFloat01(Rng);
                 const bool HitGlassPx = (VisTargets.GlassPeelFront64.size() == TotalPixels && VisTargets.GlassPeelFront64[Off] != 0ull);
                 const uint32_t PixelSpp = (HitGlassPx && Spp >= 8u) ? std::min(64u, Spp * 3u) : Spp;
+                const uint32_t PixelSeed = AvalancheKey32(PX * 1664525u + PY * 1013904223u + 0x9E3779B9u);
                 Mathematics::LinearRGB Sum {};
                 for (uint32_t S = 0u; S < PixelSpp; ++S)
                 {
-                    const float Jx = (static_cast<float>(PX) + PcgFloat01(Rng)) / static_cast<float>(Result.WidthPx);
-                    const float Jy = (static_cast<float>(PY) + PcgFloat01(Rng)) / static_cast<float>(Result.HeightPx);
+                    const auto AaSobol = (PixelSpp == 1u) ? Mathematics::Axis2D { 0.5f, 0.5f } : Sobol02Sample(S, 0u, PixelSeed);
+                    const float Jx = (static_cast<float>(PX) + AaSobol.X) / static_cast<float>(Result.WidthPx);
+                    const float Jy = (static_cast<float>(PY) + AaSobol.Y) / static_cast<float>(Result.HeightPx);
                     const float NdcX = Jx * 2.0f - 1.0f;
                     const float NdcY = 1.0f - Jy * 2.0f;
                     const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                         CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
-                    Sum = Sum + TracePathSample(CurBasis.CameraOrigin, RayDir, PreparedScene, SkySequence, MaxB, Config.ReflectionsEnabled, Rng);
+                    Sum = Sum + TraceDeterministicPathSample(
+                        CurBasis.CameraOrigin, RayDir, PreparedScene, SkySequence, S, PixelSeed, 0u, MaxB, Config.ReflectionsEnabled);
                 }
                 Result.CompositeLinearHdr[Off] = Sum * (1.0f / static_cast<float>(PixelSpp));
             }
@@ -1423,6 +1545,9 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     //====================================================================================================================
     // ENGINES 1, 2, 3: SHARED DIRECT LIGHTING (SHADOW LAB) + BVH4/SKY SPECULAR & GLASS + ENGINE-SPECIFIC GI
     //====================================================================================================================
+    const DistanceFieldSpace::VoxelSdfClipmapVolume* ClipmapPtr =
+        (ClipmapVolume.StaticClip0.DimX >= 2u) ? &ClipmapVolume : nullptr;
+
     Result.DirectLighting = LinearCosineLightIntegration::EvaluateDirectLightingFrameWithAlgorithm(
         Config.ShadowAlgorithm,
         CurrentCamera,
@@ -1433,7 +1558,11 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         PreparedScene.Sun,
         PreparedScene.AreaLights,
         &FineContactClip,
-        &CoarseContactClip);
+        &CoarseContactClip,
+        {},
+        ClipmapPtr,
+        PreparedScene.DynamicSdfObjects,
+        PreparedScene.PointLights);
 
     Result.SpecularGlass = SpecularReflectionSequence::EvaluateSpecularRefractionWithSource(
         Config.ReflectionSource,
@@ -1463,28 +1592,51 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     }
     else if (Config.GlobalIlluminationEnabled && Config.Engine == WorldRenderEngine::SdfGlobalIllumination)
     {
-        // Lazily build radiosity mip levels if PrepareWorldScene wasn't called with SdfVolume ready
-        SignedDistanceRadiosityVolume LocalRadiosity {};
-        const SignedDistanceRadiosityVolume* RadPtr = &RadiosityVolume;
-        if (RadiosityVolume.Level0DimX < 2u && PreparedScene.SceneSdf.VoxelSpacingMeters > 0.0f)
+        if (ClipmapPtr != nullptr)
         {
-            LocalRadiosity.BuildRadiosityLevels(
-                PreparedScene.SceneSdf, PreparedScene.SceneTree,
-                PreparedScene.BounceSummaries, PreparedScene.Sun, PreparedScene.SkyRadiance);
-            RadPtr = &LocalRadiosity;
-        }
-
-        for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
-        {
-            for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
+            for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
             {
-                const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
-                const auto& Hit       = PrimarySamples[Off];
-                if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
                 {
-                    RawIndirectOverPi[Off] = RtxLattice.EvaluateSdfRadiosityConeGi(
-                        Hit.WorldPosition, Hit.TangentFrame.NormalZ, PX, PY,
-                        PreparedScene.SceneSdf, *RadPtr, PreparedScene.SkyRadiance);
+                    const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
+                    const auto& Hit       = PrimarySamples[Off];
+                    if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                    {
+                        RawIndirectOverPi[Off] = ClipmapPtr->EvaluateDeterministicConeGiOverPi(
+                            Hit.WorldPosition,
+                            Hit.TangentFrame.NormalZ,
+                            PreparedScene.SkyRadiance,
+                            16u,
+                            PreparedScene.DynamicSdfObjects);
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Fallback legacy single-grid RadiosityVolume when ClipmapConfig wasn't built
+            SignedDistanceRadiosityVolume LocalRadiosity {};
+            const SignedDistanceRadiosityVolume* RadPtr = &RadiosityVolume;
+            if (RadiosityVolume.Level0DimX < 2u && PreparedScene.SceneSdf.VoxelSpacingMeters > 0.0f)
+            {
+                LocalRadiosity.BuildRadiosityLevels(
+                    PreparedScene.SceneSdf, PreparedScene.SceneTree,
+                    PreparedScene.BounceSummaries, PreparedScene.Sun, PreparedScene.SkyRadiance);
+                RadPtr = &LocalRadiosity;
+            }
+
+            for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
+            {
+                for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
+                {
+                    const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
+                    const auto& Hit       = PrimarySamples[Off];
+                    if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                    {
+                        RawIndirectOverPi[Off] = RtxLattice.EvaluateSdfRadiosityConeGi(
+                            Hit.WorldPosition, Hit.TangentFrame.NormalZ, PX, PY,
+                            PreparedScene.SceneSdf, *RadPtr, PreparedScene.SkyRadiance);
+                    }
                 }
             }
         }
@@ -1531,6 +1683,44 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 {
                     const float SpecAo = Result.DirectLighting.LagardeSpecularAo[Off];
                     Dbg = ApplyAcesFilmic(Result.SpecularGlass.IndirectSpecularHdr[Off] * SpecAo);
+                }
+                else if (Config.DebugChannel >= 16u && Config.DebugChannel <= 20u && ClipmapPtr != nullptr)
+                {
+                    int CascadeUsed = 0;
+                    const float DistM = ClipmapPtr->SampleClipmapDistance(
+                        Hit.WorldPosition, CascadeUsed, PreparedScene.DynamicSdfObjects);
+                    if (Config.DebugChannel == 16u)
+                    {
+                        // Signed Distance Iso / surface accuracy heatmap
+                        const float AbsD = std::clamp(std::fabs(DistM) * 4.0f, 0.0f, 1.0f);
+                        Dbg = (DistM < 0.0f)
+                            ? Mathematics::LinearRGB { 0.9f * (1.0f - AbsD), 0.1f, 0.25f }
+                            : Mathematics::LinearRGB { 0.15f, 0.55f + 0.45f * (1.0f - AbsD), AbsD };
+                    }
+                    else if (Config.DebugChannel == 17u)
+                    {
+                        // Horizontal SDF slice / distance bands
+                        const float Band = 0.5f + 0.5f * std::sin(DistM * 28.0f);
+                        Dbg = { Band * 0.85f, (1.0f - Band) * 0.45f + 0.25f, 0.35f };
+                    }
+                    else if (Config.DebugChannel == 18u)
+                    {
+                        // Surface Cache Multi-Bounce Radiosity on Clipmap
+                        const auto Rad = ClipmapPtr->SampleClipmapRadiosity(Hit.WorldPosition, CascadeUsed, 0.25f);
+                        Dbg = ApplyAcesFilmic(Rad * 1.35f);
+                    }
+                    else if (Config.DebugChannel == 19u)
+                    {
+                        // Surface Cache Albedo
+                        Dbg = ClipmapPtr->SampleClipmapAlbedo(Hit.WorldPosition, CascadeUsed);
+                    }
+                    else
+                    {
+                        // Cascade ID: Green = Clip0 (fine), Blue = Clip1 (coarse), Orange = Outside
+                        Dbg = (CascadeUsed == 0) ? Mathematics::LinearRGB { 0.18f, 0.85f, 0.32f }
+                            : (CascadeUsed == 1) ? Mathematics::LinearRGB { 0.22f, 0.45f, 0.95f }
+                                                 : Mathematics::LinearRGB { 0.95f, 0.40f, 0.10f };
+                    }
                 }
                 else
                 {

@@ -1204,6 +1204,422 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     }
 }
 
+OutlinerSlotToken EditorLifecycle::SpawnComponentClassPlacement(
+    std::string_view             ClassTitle,
+    Mathematics::Axis3D          WorldPosition,
+    OutlinerSlotToken            ExplicitEnclosure,
+    const std::filesystem::path& OptionalAssetPath)
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr)
+    {
+        return {};
+    }
+
+    uint32_t ClassIndex = UINT32_MAX;
+    for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(ComponentDefinitions.size()); ++Idx)
+    {
+        if (ComponentDefinitions[Idx].Title == ClassTitle)
+        {
+            ClassIndex = Idx;
+            break;
+        }
+    }
+
+    if (ClassIndex == UINT32_MAX)
+    {
+        ComponentClass::ComponentClassDefinition Def {};
+        bool Loaded = false;
+        if (!OptionalAssetPath.empty() && std::filesystem::exists(OptionalAssetPath))
+        {
+            std::string Diag {};
+            Loaded = Codecs::ComponentSpaceDecoder::DecodeFromFile(OptionalAssetPath, Def, Diag);
+        }
+        if (!Loaded)
+        {
+            std::filesystem::path ModelsDir = std::filesystem::path("Experimental/Shared/Models");
+            if (!std::filesystem::exists(ModelsDir) && !StartupConfig.FontRepositoryRoot.empty())
+            {
+                ModelsDir = StartupConfig.FontRepositoryRoot.parent_path().parent_path() / "Experimental/Shared/Models";
+            }
+            ComponentClass::ControlVehicleBuildResult BuildRes {};
+            std::string Diag {};
+            if (ComponentClass::ControlVehicleClassBuilder::ConstructControlVehicle(ModelsDir, BuildRes, Diag))
+            {
+                Def = std::move(BuildRes.ClassDefinition);
+                if (!ClassTitle.empty() && ClassTitle != "ControlVehicle")
+                {
+                    Def.Title = std::string(ClassTitle);
+                }
+                Loaded = true;
+            }
+        }
+        if (!Loaded)
+        {
+            return {};
+        }
+
+        const auto ValidationIssues = ComponentClass::ComponentClassValidator::ValidateClass(Def);
+        bool HasErrors = false;
+        for (const auto& Issue : ValidationIssues)
+        {
+            if (Issue.Severity == ComponentClass::DiagnosticSeverity::Error)
+            {
+                HasErrors = true;
+                break;
+            }
+        }
+        if (!HasErrors)
+        {
+            Def.FinalizeCompiledRevision();
+        }
+        ClassIndex = static_cast<uint32_t>(ComponentDefinitions.size());
+        ComponentDefinitions.push_back(std::move(Def));
+    }
+
+    const ComponentClass::ComponentClassDefinition& ClassDef = ComponentDefinitions[ClassIndex];
+    const uint32_t PlacementOrdinal = WorldPlacements.QueryLivePlacementCount() + 1u;
+    char TitleBuf[128]{};
+    std::snprintf(TitleBuf, sizeof(TitleBuf), "%s_%02u", ClassDef.Title.c_str(), PlacementOrdinal);
+
+    const Mathematics::Axis3D FloorOrigin {
+        WorldPosition.X,
+        WorldPosition.Y,
+        std::max(-0.64f, WorldPosition.Z),
+    };
+    ComponentClass::ComponentTransform PlacementXform {};
+    PlacementXform.LocationMeters = FloorOrigin;
+    PlacementXform.ScaleFactors   = { 0.38f, 0.38f, 0.38f };
+
+    const ComponentClass::ComponentClassToken ClassTok { ClassIndex + 1u, 1u };
+    const ComponentClass::WorldPlacementToken PlacementTok =
+        WorldPlacements.SpawnPlacement(ClassTok, TitleBuf, PlacementXform);
+
+    OutlinerSlotToken TargetEnclosure = ShowcaseBundle->ShowcaseFolderToken;
+    if (ExplicitEnclosure.Valid())
+    {
+        if (const OutlinerRecordEntry* ExplicitEntry = Panes->Outliner.FindEntry(ExplicitEnclosure))
+        {
+            TargetEnclosure = (ExplicitEntry->Category == ConstructSlotCategory::Folder)
+                                  ? ExplicitEntry->Token
+                                  : ExplicitEntry->EnclosingToken;
+        }
+    }
+
+    const OutlinerSlotToken RootOutlinerSlot = Panes->Outliner.ConstructFolder(TitleBuf, TargetEnclosure);
+    if (OutlinerRecordEntry* RootRow = Panes->Outliner.AccessEntry(RootOutlinerSlot))
+    {
+        RootRow->Expanded      = true;
+        RootRow->FolderTint    = ColorRgba { 242u, 224u, 48u, 255u };
+        RootRow->CategoryLabel = "ComponentClass · Placement";
+        RootRow->Subtitle      = ClassDef.Title + " · .ComponentSpace";
+        RootRow->PositionX     = FloorOrigin.X;
+        RootRow->PositionY     = FloorOrigin.Y;
+        RootRow->PositionZ     = FloorOrigin.Z;
+    }
+
+    const ComponentClass::ComponentInstanceToken OriginTok = ClassDef.Storage.QueryOriginToken();
+    PlacementLinks.push_back({ RootOutlinerSlot, PlacementTok, OriginTok, ClassIndex });
+
+    std::vector<std::pair<uint32_t, OutlinerSlotToken>> CompToOutliner {};
+    auto LookupEnclosingOutliner = [&](uint32_t EnclosingIdx) -> OutlinerSlotToken
+    {
+        if (EnclosingIdx == ComponentClass::InvalidHierarchyIndex)
+        {
+            return RootOutlinerSlot;
+        }
+        const auto* EncHeader = ClassDef.Storage.InspectHeaderByIndex(EnclosingIdx);
+        if (EncHeader == nullptr || EncHeader->Token == OriginTok)
+        {
+            return RootOutlinerSlot;
+        }
+        for (const auto& Pair : CompToOutliner)
+        {
+            if (Pair.first == EncHeader->Token.SlotIndex)
+            {
+                return Pair.second;
+            }
+        }
+        return RootOutlinerSlot;
+    };
+
+    auto FindTemplateIndex = [&](ConstructSlotCategory Cat) -> uint32_t
+    {
+        const auto Templates = Panes->Outliner.QueryConstructTemplates();
+        for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Templates.size()); ++Idx)
+        {
+            if (Templates[Idx].Category == Cat)
+            {
+                return Idx;
+            }
+        }
+        return 0u;
+    };
+
+    const float WorldScale = 0.38f;
+    ClassDef.Storage.WalkSpatialHierarchy(
+        [&](const ComponentClass::ComponentInstanceHeader& Hdr)
+        {
+            if (Hdr.Token == OriginTok)
+            {
+                return;
+            }
+
+            const OutlinerSlotToken EncOutliner = LookupEnclosingOutliner(Hdr.EnclosingIndex);
+            const ComponentClass::ComponentTransform LocalXform =
+                WorldPlacements.EvaluateEffectiveLocalTransform(ClassDef, PlacementTok, Hdr.Token);
+            const Mathematics::Axis3D WorldPos {
+                FloorOrigin.X + LocalXform.LocationMeters.X * WorldScale,
+                FloorOrigin.Y + LocalXform.LocationMeters.Z * WorldScale,
+                FloorOrigin.Z + LocalXform.LocationMeters.Y * WorldScale + 0.14f,
+            };
+
+            OutlinerSlotToken SpawnedSlot {};
+            if (Hdr.Category == ComponentClass::ComponentCategory::GeometryInstance)
+            {
+                const ColorRgba PartTint = (Hdr.Title.find("Body") != std::string::npos || Hdr.Title.find("Wing") != std::string::npos)
+                                               ? ColorRgba { 242u, 224u, 48u, 255u }
+                                               : ColorRgba { 52u, 56u, 64u, 255u };
+                SpawnedSlot = GeometricRaster::ConstructShowcaseModelInOutliner(
+                    Panes->Outliner,
+                    *ShowcaseBundle,
+                    Hdr.Title,
+                    PartTint,
+                    WorldPos,
+                    EncOutliner,
+                    false);
+                if (OutlinerRecordEntry* Row = Panes->Outliner.AccessEntry(SpawnedSlot))
+                {
+                    Row->PositionX         = LocalXform.LocationMeters.X;
+                    Row->PositionY         = LocalXform.LocationMeters.Y;
+                    Row->PositionZ         = LocalXform.LocationMeters.Z;
+                    Row->RotationX         = LocalXform.RotationDegrees.X;
+                    Row->RotationY         = LocalXform.RotationDegrees.Y;
+                    Row->RotationZ         = LocalXform.RotationDegrees.Z;
+                    Row->ScaleX            = LocalXform.ScaleFactors.X;
+                    Row->ScaleY            = LocalXform.ScaleFactors.Y;
+                    Row->ScaleZ            = LocalXform.ScaleFactors.Z;
+                    Row->VisibilityEnabled = Hdr.VisibilityEnabled;
+                    Row->CategoryLabel     = "Component · GeometryInstance";
+                    Row->Expanded          = true;
+                    if (const auto* Geom = ClassDef.Storage.InspectGeometry(Hdr.Token))
+                    {
+                        Row->Subtitle = Geom->AssetIdentifier;
+                    }
+                }
+            }
+            else if (Hdr.Category == ComponentClass::ComponentCategory::LightInstance)
+            {
+                const auto* Light = ClassDef.Storage.InspectLight(Hdr.Token);
+                SpawnedSlot = Panes->Outliner.ConstructFromTemplate(
+                    FindTemplateIndex(ConstructSlotCategory::PointLuminaire),
+                    EncOutliner);
+                if (OutlinerRecordEntry* Row = Panes->Outliner.AccessEntry(SpawnedSlot))
+                {
+                    Row->Category          = ConstructSlotCategory::PointLuminaire;
+                    Row->Title             = Hdr.Title;
+                    Row->CategoryLabel     = "Component · LightInstance";
+                    Row->Subtitle          = "SpotBeam · OpenPBR Direct";
+                    Row->PositionX         = LocalXform.LocationMeters.X;
+                    Row->PositionY         = LocalXform.LocationMeters.Y;
+                    Row->PositionZ         = LocalXform.LocationMeters.Z;
+                    Row->VisibilityEnabled = Hdr.VisibilityEnabled;
+                }
+                if (Light != nullptr)
+                {
+                    bool NeedsRebuild = false;
+                    (void)GeometricRaster::SynchronizeShowcaseGallerySceneLive(Panes->Outliner, *ShowcaseBundle, NeedsRebuild, false);
+                    for (auto& Binding : ShowcaseBundle->AreaLightBindings)
+                    {
+                        if (Binding.SlotToken == SpawnedSlot && Binding.AreaLightIndex < ShowcaseBundle->Scene.AreaLights.size())
+                        {
+                            const float ScaleRad = std::clamp(Light->IntensityCandela / 250.0f, 1.0f, 12.0f);
+                            const Mathematics::LinearRGB Rad {
+                                Light->LinearColourRGB.X * ScaleRad,
+                                Light->LinearColourRGB.Y * ScaleRad,
+                                Light->LinearColourRGB.Z * ScaleRad,
+                            };
+                            Binding.BaseEmittedRadiance = Rad;
+                            ShowcaseBundle->Scene.AreaLights[Binding.AreaLightIndex].EmittedRadiance = Rad;
+                        }
+                    }
+                }
+            }
+            else if (Hdr.Category == ComponentClass::ComponentCategory::ParticleInstance)
+            {
+                SpawnedSlot = Panes->Outliner.ConstructFromTemplate(
+                    FindTemplateIndex(ConstructSlotCategory::LayerGroup),
+                    EncOutliner);
+                if (OutlinerRecordEntry* Row = Panes->Outliner.AccessEntry(SpawnedSlot))
+                {
+                    Row->Category          = ConstructSlotCategory::LayerGroup;
+                    Row->Title             = Hdr.Title;
+                    Row->CategoryLabel     = "Component · ParticleInstance";
+                    Row->MotionTagText     = "EMIT";
+                    Row->PositionX         = LocalXform.LocationMeters.X;
+                    Row->PositionY         = LocalXform.LocationMeters.Y;
+                    Row->PositionZ         = LocalXform.LocationMeters.Z;
+                    Row->VisibilityEnabled = Hdr.VisibilityEnabled;
+                    if (const auto* Part = ClassDef.Storage.InspectParticle(Hdr.Token))
+                    {
+                        Row->Subtitle = Part->PresetIdentifier;
+                        ActiveParticlePlacements.push_back({
+                            PlacementTok,
+                            Hdr.Token,
+                            SpawnedSlot,
+                            Part->PresetIdentifier,
+                            WorldPos,
+                            Part->EmissionRateScale,
+                            Part->AutoActivate,
+                        });
+                    }
+                }
+            }
+            else if (Hdr.Category == ComponentClass::ComponentCategory::FluidInstance)
+            {
+                SpawnedSlot = Panes->Outliner.ConstructFromTemplate(
+                    FindTemplateIndex(ConstructSlotCategory::LayerGroup),
+                    EncOutliner);
+                if (OutlinerRecordEntry* Row = Panes->Outliner.AccessEntry(SpawnedSlot))
+                {
+                    Row->Category          = ConstructSlotCategory::LayerGroup;
+                    Row->Title             = Hdr.Title;
+                    Row->CategoryLabel     = "Component · FluidInstance";
+                    Row->MotionTagText     = "FLUID";
+                    Row->PositionX         = LocalXform.LocationMeters.X;
+                    Row->PositionY         = LocalXform.LocationMeters.Y;
+                    Row->PositionZ         = LocalXform.LocationMeters.Z;
+                    Row->VisibilityEnabled = Hdr.VisibilityEnabled;
+                    if (const auto* Fl = ClassDef.Storage.InspectFluid(Hdr.Token))
+                    {
+                        Row->Subtitle = Fl->VolumeIdentifier;
+                        ActiveFluidPlacements.push_back({
+                            PlacementTok,
+                            Hdr.Token,
+                            SpawnedSlot,
+                            WorldPos,
+                            Fl->BoundsExtentMeters,
+                            Fl->FuelInjectionRate,
+                            Fl->AutoActivate,
+                        });
+                    }
+                }
+            }
+            else
+            {
+                const ConstructSlotCategory RowCat =
+                    (Hdr.Category == ComponentClass::ComponentCategory::CameraInstance)
+                        ? ConstructSlotCategory::OpticsCamera
+                        : ConstructSlotCategory::LayerGroup;
+                SpawnedSlot = Panes->Outliner.ConstructFromTemplate(FindTemplateIndex(RowCat), EncOutliner);
+                if (OutlinerRecordEntry* Row = Panes->Outliner.AccessEntry(SpawnedSlot))
+                {
+                    Row->Category          = RowCat;
+                    Row->Title             = Hdr.Title;
+                    Row->CategoryLabel     = "Component · " + std::string(ComponentClass::QueryCategoryLabel(Hdr.Category));
+                    Row->Subtitle          = ComponentClass::QueryCategoryLabel(Hdr.Category);
+                    Row->MotionTagText     = (Hdr.Category == ComponentClass::ComponentCategory::ConstraintInstance) ? "JOLT" : "";
+                    Row->PositionX         = LocalXform.LocationMeters.X;
+                    Row->PositionY         = LocalXform.LocationMeters.Y;
+                    Row->PositionZ         = LocalXform.LocationMeters.Z;
+                    Row->ScaleX            = LocalXform.ScaleFactors.X;
+                    Row->ScaleY            = LocalXform.ScaleFactors.Y;
+                    Row->ScaleZ            = LocalXform.ScaleFactors.Z;
+                    Row->VisibilityEnabled = Hdr.VisibilityEnabled;
+                    Row->Expanded          = true;
+                }
+            }
+
+            if (SpawnedSlot.Valid())
+            {
+                CompToOutliner.emplace_back(Hdr.Token.SlotIndex, SpawnedSlot);
+                PlacementLinks.push_back({ SpawnedSlot, PlacementTok, Hdr.Token, ClassIndex });
+            }
+        });
+
+    std::vector<ComponentClass::ComponentInstanceToken> BehaviourTokens {};
+    ClassDef.Storage.CollectBehaviourTokens(BehaviourTokens);
+    for (const auto& BehTok : BehaviourTokens)
+    {
+        if (const auto* Hdr = ClassDef.Storage.InspectHeader(BehTok))
+        {
+            const OutlinerSlotToken BehSlot = Panes->Outliner.ConstructFromTemplate(
+                FindTemplateIndex(ConstructSlotCategory::LayerGroup),
+                RootOutlinerSlot);
+            if (OutlinerRecordEntry* Row = Panes->Outliner.AccessEntry(BehSlot))
+            {
+                Row->Category      = ConstructSlotCategory::LayerGroup;
+                Row->Title         = Hdr->Title;
+                Row->CategoryLabel = "Component · Behaviour";
+                Row->Subtitle      = ComponentClass::QueryCategoryLabel(Hdr->Category);
+                Row->MotionTagText = "DRIVE";
+            }
+            if (BehSlot.Valid())
+            {
+                PlacementLinks.push_back({ BehSlot, PlacementTok, BehTok, ClassIndex });
+            }
+        }
+    }
+
+    SynchronizeShowcaseRendererAfterEdit(true);
+    Panes->Outliner.SelectSingle(RootOutlinerSlot);
+    return RootOutlinerSlot;
+}
+
+void EditorLifecycle::SynchronizeComponentPlacementOverrides()
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || PlacementLinks.empty())
+    {
+        return;
+    }
+
+    auto NearlyDiff = [](float A, float B) noexcept { return std::fabs(A - B) > 1.0e-4f; };
+    for (const OutlinerPlacementLink& Link : PlacementLinks)
+    {
+        if (Link.ClassIndex >= ComponentDefinitions.size())
+        {
+            continue;
+        }
+        const OutlinerRecordEntry* Row = Panes->Outliner.FindEntry(Link.OutlinerSlot);
+        const ComponentClass::ComponentClassDefinition& ClassDef = ComponentDefinitions[Link.ClassIndex];
+        const auto* Hdr = ClassDef.Storage.InspectHeader(Link.ComponentToken);
+        if (Row == nullptr || Hdr == nullptr || Hdr->Token == ClassDef.Storage.QueryOriginToken())
+        {
+            continue;
+        }
+
+        if (ComponentClass::QueryCategoryHasTransform(Hdr->Category))
+        {
+            const auto& AuthoredXform = Hdr->LocalTransform;
+            const bool TransformModified =
+                NearlyDiff(Row->PositionX, AuthoredXform.LocationMeters.X) ||
+                NearlyDiff(Row->PositionY, AuthoredXform.LocationMeters.Y) ||
+                NearlyDiff(Row->PositionZ, AuthoredXform.LocationMeters.Z) ||
+                NearlyDiff(Row->RotationX, AuthoredXform.RotationDegrees.X) ||
+                NearlyDiff(Row->RotationY, AuthoredXform.RotationDegrees.Y) ||
+                NearlyDiff(Row->RotationZ, AuthoredXform.RotationDegrees.Z) ||
+                NearlyDiff(Row->ScaleX, AuthoredXform.ScaleFactors.X) ||
+                NearlyDiff(Row->ScaleY, AuthoredXform.ScaleFactors.Y) ||
+                NearlyDiff(Row->ScaleZ, AuthoredXform.ScaleFactors.Z);
+            if (TransformModified)
+            {
+                auto& Delta = WorldPlacements.AcquireOverride(Link.PlacementToken, Link.ComponentToken);
+                Delta.OverrideTransform               = true;
+                Delta.LocalTransform.LocationMeters   = { Row->PositionX, Row->PositionY, Row->PositionZ };
+                Delta.LocalTransform.RotationDegrees  = { Row->RotationX, Row->RotationY, Row->RotationZ };
+                Delta.LocalTransform.ScaleFactors     = { Row->ScaleX, Row->ScaleY, Row->ScaleZ };
+            }
+        }
+        if (Row->VisibilityEnabled != Hdr->VisibilityEnabled)
+        {
+            auto& Delta = WorldPlacements.AcquireOverride(Link.PlacementToken, Link.ComponentToken);
+            Delta.OverrideVisibility = true;
+            Delta.VisibilityEnabled  = Row->VisibilityEnabled;
+        }
+    }
+}
+
 void EditorLifecycle::SynchronizeShowcaseRendererAfterEdit(bool RebuildGeometry)
 {
     if (ShowcaseBundle == nullptr)
@@ -1240,6 +1656,13 @@ void EditorLifecycle::HandleContentDropOnViewport(
     const float V = std::clamp((DropLogicalPos.Y - ViewportDropBounds.Y) / std::max(1.0f, ViewportDropBounds.Height), 0.0f, 1.0f);
     const ColorRgba Tint { Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u };
     const ContentCategory Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
+
+    if (Entry.ContainerFormat == ".ComponentSpace" || Entry.DiskPath.extension() == ".ComponentSpace")
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, U, V, 0.36f);
+        (void)SpawnComponentClassPlacement(Entry.DisplayTitle, DropPos, {}, Entry.DiskPath);
+        return;
+    }
 
     if (Category == ContentCategory::Geometry || Category == ContentCategory::Photometry)
     {
@@ -1313,6 +1736,13 @@ void EditorLifecycle::HandleContentDropOnOutliner(
     OutlinerSlotToken HitSlot = Panes->Outliner.QuerySlotAtPhysicalPoint(PhysicalPt);
     const ColorRgba Tint { Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u };
     const ContentCategory Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
+
+    if (Entry.ContainerFormat == ".ComponentSpace" || Entry.DiskPath.extension() == ".ComponentSpace")
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, 0.50f, 0.62f, 0.36f);
+        (void)SpawnComponentClassPlacement(Entry.DisplayTitle, DropPos, HitSlot, Entry.DiskPath);
+        return;
+    }
 
     if (Category == ContentCategory::Geometry || Category == ContentCategory::Photometry)
     {
@@ -2499,6 +2929,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             PendingInteractionGizmoRefresh = false;
             PendingInteractionSceneSync    = false;
             PendingInteractionFastDrag     = false;
+
+            SynchronizeComponentPlacementOverrides();
 
             const bool LatticeUpdated = ConsumeCompletedRtxLatticeBake();
             bool       NeedsPrep = false;

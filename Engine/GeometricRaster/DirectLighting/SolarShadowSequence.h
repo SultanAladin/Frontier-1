@@ -17,6 +17,13 @@
 #include <span>
 #include <vector>
 
+namespace Frontier::DistanceFieldSpace
+{
+class VoxelSdfClipmapVolume;
+struct DynamicLocalSdfInstance;
+struct VoxelPointLightSpec;
+}
+
 namespace Frontier::GeometricRaster
 {
 
@@ -26,17 +33,20 @@ namespace Frontier::GeometricRaster
 
 enum class DirectShadowTier : uint8_t
 {
-    GtxContactClipSdfCone    = 0u, // [-] - Legacy alias mapped to ContactPcss (Zero SDF Shadows)
+    GtxContactClipSdfCone    = 0u, // [-] - Legacy alias mapped to ContactPcss
     RtxDeterministicSolarRay = 1u, // [-] - Legacy alias mapped to WideTreeRayQuery
 };
 
 enum class SolarShadowAlgorithm : uint8_t
 {
-    ContactPcss      = 0u, // [-] - 2-Cascade PCSS + 0.24 m BVH4 Contact Gate + Plane-Aware Filter
-    PcssPlaneAware   = 1u, // [-] - 2-Cascade Vogel Blocker Search + Continuous Penumbra + Plane-Aware Filter
-    ShadowRayMarch   = 2u, // [-] - EEVEE-Next Quadratic Shadow Depth Raymarch (SMRT)
-    PcfBilinear      = 3u, // [-] - Fast 3x3 Tent-Weighted Orthographic PCF
-    WideTreeRayQuery = 4u, // [-] - Deterministic Vogel Solar Disc BVH4 Raytrace + Plane-Aware Filter
+    ContactPcss             = 0u, // [-] - 2-Cascade PCSS + 0.24 m BVH4 Contact Gate + Plane-Aware Filter
+    PcssPlaneAware          = 1u, // [-] - 2-Cascade Vogel Blocker Search + Continuous Penumbra + Plane-Aware Filter
+    ShadowRayMarch          = 2u, // [-] - EEVEE-Next Quadratic Shadow Depth Raymarch (SMRT)
+    PcfBilinear             = 3u, // [-] - Fast 3x3 Tent-Weighted Orthographic PCF
+    WideTreeRayQuery        = 4u, // [-] - Deterministic Vogel Solar Disc BVH4 Raytrace + Plane-Aware Filter
+    VoxelSdfPenumbra        = 5u, // [-] - Single-Cascade Coarse Voxel SDF Cone Penumbra
+    VoxelSdfClipmapPenumbra = 6u, // [-] - 2-Cascade Voxel SDF Clipmap + Dynamic Local Object SDF Cone Penumbra
+    HybridSdf               = 7u, // [-] - 0.24 m BVH4/Contact Gate + 2-Cascade Voxel SDF Clipmap Penumbra
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -88,16 +98,18 @@ public:
         OrthographicShadowCascade&                   OutFineCascade,
         OrthographicShadowCascade&                   OutCoarseCascade);
 
-    // Evaluates Shadow Lab algorithm directly across primary surface samples (Zero SDF Shadows!)
+    // Evaluates Shadow Lab algorithm directly across primary surface samples (supports Clipmap SDF & Hybrid SDF!)
     [[nodiscard]] static SolarShadowFieldResult EvaluateSolarShadowFieldWithAlgorithm(
-        SolarShadowAlgorithm                           Algorithm,
-        const SolarDirectionalEmitter&                 Sun,
-        uint32_t                                       ViewportWidth,
-        uint32_t                                       ViewportHeight,
-        std::span<const AnalyticResolvedSurfaceSample> PrimarySamples,
-        const SpatialAcceleration::WideBoundingTree&   SceneTree,
-        const OrthographicShadowCascade*               OptionalFineClip   = nullptr,
-        const OrthographicShadowCascade*               OptionalCoarseClip = nullptr);
+        SolarShadowAlgorithm                                    Algorithm,
+        const SolarDirectionalEmitter&                          Sun,
+        uint32_t                                                ViewportWidth,
+        uint32_t                                                ViewportHeight,
+        std::span<const AnalyticResolvedSurfaceSample>          PrimarySamples,
+        const SpatialAcceleration::WideBoundingTree&            SceneTree,
+        const OrthographicShadowCascade*                        OptionalFineClip     = nullptr,
+        const OrthographicShadowCascade*                        OptionalCoarseClip   = nullptr,
+        const DistanceFieldSpace::VoxelSdfClipmapVolume*        OptionalClipmap      = nullptr,
+        std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> DynamicObjects  = {});
 
     // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm (ignores OptionalSdfVolume; Zero SDF Shadows!)
     [[nodiscard]] static SolarShadowFieldResult EvaluateSolarShadowField(

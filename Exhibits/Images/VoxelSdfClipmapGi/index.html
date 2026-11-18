@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Frontier · Voxel SDF Clipmap GI &amp; Deterministic Path Tracer Proofs</title>
+  <style>
+    :root {
+      --bg: #0b0c0f;
+      --surface: #14161b;
+      --surface-2: #1b1e25;
+      --border: #2a2e39;
+      --ink: #f2f4f8;
+      --muted: #98a2b3;
+      --green: #46d267;
+      --amber: #ffb238;
+      --accent: #f3f1e8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(11, 12, 15, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 12px rgba(70, 210, 103, 0.7);
+    }
+    .brand h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    .brand span { color: var(--muted); font-size: 13px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+    button.tab {
+      background: var(--surface);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 7px 14px;
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    button.tab.active {
+      background: var(--accent);
+      color: #0b0c0f;
+      border-color: var(--accent);
+    }
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      padding: 16px 24px 0;
+    }
+    .metric-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .metric-card .title { font-size: 12.5px; color: var(--muted); }
+    .metric-card .sub { font-size: 11px; color: #7a8494; font-family: ui-monospace, monospace; }
+    .badge-pass {
+      background: rgba(70, 210, 103, 0.14);
+      color: var(--green);
+      border: 1px solid rgba(70, 210, 103, 0.35);
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 3px 9px;
+      white-space: nowrap;
+    }
+    main { padding: 20px 24px 48px; }
+    .section { display: none; }
+    .section.active { display: block; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+      gap: 16px;
+    }
+    .frame-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .frame-box.wide { grid-column: 1 / -1; }
+    .frame-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 9px 14px;
+      font-size: 12.5px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+      gap: 10px;
+    }
+    .frame-label strong { color: var(--ink); }
+    .frame-box img {
+      display: block;
+      width: 100%;
+      height: auto;
+      cursor: zoom-in;
+      background: #08090b;
+    }
+    .audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-top: 16px;
+      font-size: 13px;
+    }
+    .audit-table th, .audit-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    .audit-table th { background: var(--surface-2); color: var(--muted); font-weight: 600; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.9);
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      cursor: zoom-out;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img { max-width: 96vw; max-height: 92vh; border-radius: 10px; border: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <div>
+        <h1>Frontier · Voxel SDF Clipmap GI &amp; Deterministic Path Tracer</h1>
+        <span>2-Cascade Clipmap · Multi-Bounce Surface Cache · Owen Sobol (0,2) + Spherical-Cap VNDF</span>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="tab active" data-tab="all">All Proofs (13)</button>
+      <button class="tab" data-tab="clipmap">SDF &amp; Surface Cache (3)</button>
+      <button class="tab" data-tab="gi">Lighting &amp; GI (4)</button>
+      <button class="tab" data-tab="shadows">Shadows &amp; Audit (4)</button>
+      <button class="tab" data-tab="dynamic">Path Tracer &amp; Dynamic (2)</button>
+    </div>
+  </header>
+
+  <section class="summary-strip" id="metricsStrip">
+    <div class="metric-card">
+      <div><div class="title">VoxelSdfClipmapGiValidation</div><div class="sub">ControlVehicle 25,068 tris · 480×270</div></div>
+      <span class="badge-pass">9 / 9 PASS</span>
+    </div>
+    <div class="metric-card">
+      <div><div class="title">SolarShadowValidation</div><div class="sub">Clipmap &amp; Hybrid SDF Shadows</div></div>
+      <span class="badge-pass">12 / 12 PASS</span>
+    </div>
+    <div class="metric-card">
+      <div><div class="title">Dirty-AABB Dynamic Update</div><div class="sub">60.4 ms vs 525.9 ms Static Bake (8.7×)</div></div>
+      <span class="badge-pass">135k / 202k Voxels</span>
+    </div>
+    <div class="metric-card">
+      <div><div class="title">Bit-Exact Determinism</div><div class="sub">Zero RNG · Zero RR · Zero Denoiser</div></div>
+      <span class="badge-pass">RMSE = 0.0000</span>
+    </div>
+  </section>
+
+  <main>
+    <section id="sec-all" class="section active"></section>
+    <section id="sec-clipmap" class="section"></section>
+    <section id="sec-gi" class="section"></section>
+    <section id="sec-shadows" class="section"></section>
+    <section id="sec-dynamic" class="section"></section>
+    <table class="audit-table" id="auditTable"></table>
+  </main>
+
+  <div id="lightbox"><img id="lightbox-img" alt="Zoomed proof" /></div>
+
+  <script>
+    const proofs = [
+      { group: "clipmap", title: "01 · 2-Cascade SDF Map (Green = Clip0 72³ · Blue = Clip1 48³)", file: "01_SdfDebug_Clip0Clip1CascadeMap.png" },
+      { group: "clipmap", wide: true, title: "02 · SDF Iso-Surface & Clipmap Distance Slice", file: "02_SdfDebug_IsoSurfaceAndSlice.png" },
+      { group: "clipmap", wide: true, title: "03 · Unreal-Style Surface Cache Albedo (L) & 2-Bounce Radiosity (R)", file: "03_SdfDebug_SurfaceCacheAlbedoAndRadiosity.png" },
+      { group: "gi", title: "04 · Emissive-Only GI (Zero Sun/Sky/Point/Area — Headlights + Plate Only)", file: "04_EmissiveOnly_SdfClipmapGi.png" },
+      { group: "gi", title: "05 · Point Light + Emissive + Multi-Bounce Clipmap GI", file: "05_PointLight_SdfClipmapGi.png" },
+      { group: "gi", title: "06 · Sun + Area Quad + Multi-Bounce Clipmap GI", file: "06_SunAndArea_SdfClipmapGi.png" },
+      { group: "gi", title: "07 · Combined Sun + Area + Point + Emissive Clipmap GI", file: "07_CombinedLighting_SdfClipmapGi.png" },
+      { group: "shadows", title: "08 · Shadow Mode: VoxelSdfPenumbra (Clip0+Clip1)", file: "08_ShadowProof_VoxelSdfPenumbra.png" },
+      { group: "shadows", title: "09 · Shadow Mode: VoxelSdfClipmapPenumbra (Clip1 Coarse)", file: "09_ShadowProof_VoxelSdfClipmapPenumbra.png" },
+      { group: "shadows", title: "10 · Shadow Mode: HybridSdf (Contact BVH + Clipmap Penumbra)", file: "10_ShadowProof_HybridSdf.png" },
+      { group: "shadows", wide: true, title: "11 · Fake No-GI (RMSE 0.2774) vs Real 2-Cascade Clipmap GI (RMSE 0.2262)", file: "11_FakeVsReal_AuditComparison.png" },
+      { group: "dynamic", title: "12 · Deterministic Reference Path Tracer (8 SPP Sobol (0,2) + Spherical-Cap VNDF)", file: "12_DeterministicPathTracer_SobolSphericalCap.png" },
+      { group: "dynamic", title: "13 · Animated ControlVehicle Dynamic Local SDF Union (Dirty-AABB Update)", file: "13_DynamicVehicleAnimation.gif" }
+    ];
+
+    const lightbox = document.getElementById("lightbox");
+    const lightboxImg = document.getElementById("lightbox-img");
+    lightbox.addEventListener("click", () => lightbox.classList.remove("open"));
+
+    function makeCard(p) {
+      const box = document.createElement("div");
+      box.className = "frame-box" + (p.wide ? " wide" : "");
+      box.innerHTML = `<div class="frame-label"><strong>${p.title}</strong><span class="mono">${p.file}</span></div>`;
+      const img = document.createElement("img");
+      img.src = `./${p.file}`;
+      img.alt = p.title;
+      img.addEventListener("click", () => { lightboxImg.src = img.src; lightbox.classList.add("open"); });
+      box.appendChild(img);
+      return box;
+    }
+
+    function populateSection(id, filterFn) {
+      const root = document.getElementById(id);
+      const grid = document.createElement("div");
+      grid.className = "grid";
+      proofs.filter(filterFn).forEach((p) => grid.appendChild(makeCard(p)));
+      root.appendChild(grid);
+    }
+
+    populateSection("sec-all", () => true);
+    populateSection("sec-clipmap", (p) => p.group === "clipmap");
+    populateSection("sec-gi", (p) => p.group === "gi");
+    populateSection("sec-shadows", (p) => p.group === "shadows");
+    populateSection("sec-dynamic", (p) => p.group === "dynamic");
+
+    document.querySelectorAll("button.tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("button.tab").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll("main .section").forEach((s) => s.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById("sec-" + btn.dataset.tab).classList.add("active");
+      });
+    });
+
+    fetch("./audit_metrics.json").then((r) => r.json()).then((m) => {
+      const rows = [
+        ["Vehicle Triangles (FCT1)", m.vehicle_triangles],
+        ["Clipmap Cascades", `Clip0 ${m.clip0_resolution}³ + Clip1 ${m.clip1_resolution}³`],
+        ["Static Clipmap Bake", `${m.static_bake_ms.toFixed(1)} ms`],
+        ["Dynamic Dirty-AABB Update", `${m.dynamic_dirty_aabb_update_ms.toFixed(1)} ms (${m.dirty_voxels} / ${m.total_clip0_voxels} voxels)`],
+        ["Real Clipmap GI Render (480×270)", `${m.real_clipmap_gi_render_ms.toFixed(1)} ms`],
+        ["Deterministic Path Tracer (8 SPP)", `${m.deterministic_pt_8spp_ms.toFixed(1)} ms`],
+        ["Fake No-GI vs Path-Traced RMSE", m.fake_vs_pt_rmse.toFixed(4)],
+        ["Real Clipmap GI vs Path-Traced RMSE", m.real_clipmap_vs_pt_rmse.toFixed(4)],
+        ["Emissive-Only GI Mean Luminance", m.emissive_only_gi_mean_lum.toFixed(4)],
+        ["Clipmap GI Determinism RMSE", m.gi_determinism_rmse.toFixed(4)],
+        ["Path Tracer Determinism RMSE", m.pt_determinism_rmse.toFixed(4)],
+        ["Scorecard", `${m.passed} Passed / ${m.failed} Failed`]
+      ];
+      const tbl = document.getElementById("auditTable");
+      tbl.innerHTML = `<thead><tr><th>Audit Metric</th><th>Measured Value</th></tr></thead><tbody>` +
+        rows.map(([k, v]) => `<tr><td>${k}</td><td class="mono">${v}</td></tr>`).join("") + `</tbody>`;
+    }).catch(() => {});
+  </script>
+</body>
+</html>

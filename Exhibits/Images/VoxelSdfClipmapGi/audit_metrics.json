@@ -1,0 +1,20 @@
+{
+  "resolution": "480x270",
+  "vehicle_triangles": 25068,
+  "clip0_resolution": 72,
+  "clip1_resolution": 48,
+  "static_bake_ms": 525.8970,
+  "dynamic_dirty_aabb_update_ms": 60.4188,
+  "dirty_voxels": 135936,
+  "total_clip0_voxels": 202176,
+  "real_clipmap_gi_render_ms": 3444.5630,
+  "deterministic_pt_8spp_ms": 5959.4946,
+  "fake_nogi_render_ms": 688.9156,
+  "fake_vs_pt_rmse": 0.2774,
+  "real_clipmap_vs_pt_rmse": 0.2262,
+  "emissive_only_gi_mean_lum": 0.0289,
+  "gi_determinism_rmse": 0.0000,
+  "pt_determinism_rmse": 0.0000,
+  "passed": 9,
+  "failed": 0
+}

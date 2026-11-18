@@ -8,6 +8,7 @@ _ClaudeScratch/
 # Build & packaged output directories
 Build/
 build/
+build-editor/
 Binaries/
 out/
 dist/

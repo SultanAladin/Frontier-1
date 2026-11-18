@@ -39,6 +39,7 @@
 #include <Jolt/Physics/Constraints/HingeConstraint.h>
 #include <Jolt/Physics/Constraints/PointConstraint.h>
 #include <Jolt/Physics/Constraints/SliderConstraint.h>
+#include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -424,6 +425,7 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
             {
                 case ConstraintCategory::Fixed:
                 case ConstraintCategory::BreakableBond:
+                case ConstraintCategory::Dock:
                 {
                     const auto* Fixed = static_cast<const JPH::FixedConstraint*>(Slot.JoltConstraint.GetPtr());
                     ForceLambda  = Fixed->GetTotalLambdaPosition().Length();
@@ -431,6 +433,7 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
                     break;
                 }
                 case ConstraintCategory::Distance:
+                case ConstraintCategory::Tether:
                 {
                     const auto* Dist = static_cast<const JPH::DistanceConstraint*>(Slot.JoltConstraint.GetPtr());
                     ForceLambda = std::abs(Dist->GetTotalLambdaPosition());
@@ -442,7 +445,15 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
                     ForceLambda = Pt->GetTotalLambdaPosition().Length();
                     break;
                 }
+                case ConstraintCategory::SwingTwist:
+                {
+                    const auto* ST = static_cast<const JPH::SwingTwistConstraint*>(Slot.JoltConstraint.GetPtr());
+                    ForceLambda  = ST->GetTotalLambdaPosition().Length();
+                    TorqueLambda = std::hypot(ST->GetTotalLambdaSwingY(), ST->GetTotalLambdaSwingZ()) + std::abs(ST->GetTotalLambdaTwist());
+                    break;
+                }
                 case ConstraintCategory::Hinge:
+                case ConstraintCategory::Spin:
                 {
                     const auto* Hinge = static_cast<const JPH::HingeConstraint*>(Slot.JoltConstraint.GetPtr());
                     ForceLambda  = Hinge->GetTotalLambdaPosition().Length();
@@ -450,6 +461,7 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
                     break;
                 }
                 case ConstraintCategory::Slider:
+                case ConstraintCategory::Spring:
                 {
                     const auto* Slider = static_cast<const JPH::SliderConstraint*>(Slot.JoltConstraint.GetPtr());
                     ForceLambda  = Slider->GetTotalLambdaPosition().Length();
@@ -1167,6 +1179,7 @@ ConstraintToken PhysicsExtension::IssueConstraint(const ConstraintDescriptor& De
     {
         case ConstraintCategory::Fixed:
         case ConstraintCategory::BreakableBond:
+        case ConstraintCategory::Dock:
         {
             JPH::FixedConstraintSettings Cfg;
             Cfg.mSpace  = JPH::EConstraintSpace::WorldSpace;
@@ -1176,12 +1189,18 @@ ConstraintToken PhysicsExtension::IssueConstraint(const ConstraintDescriptor& De
             break;
         }
         case ConstraintCategory::Distance:
+        case ConstraintCategory::Tether:
         {
             JPH::DistanceConstraintSettings Cfg;
             Cfg.mSpace  = JPH::EConstraintSpace::WorldSpace;
             Cfg.mPoint1 = ToJoltRVec3(Descriptor.AnchorWorldMeters);
             Cfg.mPoint2 = ToJoltRVec3(Descriptor.SecondAnchorMeters);
-            if (Descriptor.MaxLimit > Descriptor.MinLimit && Descriptor.MaxLimit > 0.0f)
+            if (Descriptor.Category == ConstraintCategory::Tether)
+            {
+                Cfg.mMinDistance = 0.0f;
+                Cfg.mMaxDistance = std::max(Descriptor.MaxLimit, 0.01f);
+            }
+            else if (Descriptor.MaxLimit > Descriptor.MinLimit && Descriptor.MaxLimit > 0.0f)
             {
                 Cfg.mMinDistance = std::max(Descriptor.MinLimit, 0.0f);
                 Cfg.mMaxDistance = Descriptor.MaxLimit;
@@ -1204,36 +1223,101 @@ ConstraintToken PhysicsExtension::IssueConstraint(const ConstraintDescriptor& De
             Created = Cfg.Create(*BodyA, *BodyB);
             break;
         }
-        case ConstraintCategory::Hinge:
+        case ConstraintCategory::SwingTwist:
         {
-            JPH::HingeConstraintSettings Cfg;
-            Cfg.mSpace      = JPH::EConstraintSpace::WorldSpace;
-            Cfg.mPoint1     = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mPoint2     = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mHingeAxis1 = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 0.0f, 0.0f, 1.0f }));
-            Cfg.mHingeAxis2 = Cfg.mHingeAxis1;
-            if (Descriptor.MaxLimit > Descriptor.MinLimit)
-            {
-                Cfg.mLimitsMin = Descriptor.MinLimit;
-                Cfg.mLimitsMax = Descriptor.MaxLimit;
-            }
+            const JPH::Vec3 TwistAxis = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 0.0f, 1.0f, 0.0f }));
+            const JPH::Vec3 PlaneAxis = TwistAxis.GetNormalizedPerpendicular();
+            JPH::SwingTwistConstraintSettings Cfg;
+            Cfg.mSpace               = JPH::EConstraintSpace::WorldSpace;
+            Cfg.mPosition1           = ToJoltRVec3(Descriptor.AnchorWorldMeters);
+            Cfg.mPosition2           = ToJoltRVec3(Descriptor.AnchorWorldMeters);
+            Cfg.mTwistAxis1          = TwistAxis;
+            Cfg.mTwistAxis2          = TwistAxis;
+            Cfg.mPlaneAxis1          = PlaneAxis;
+            Cfg.mPlaneAxis2          = PlaneAxis;
+            Cfg.mNormalHalfConeAngle = std::clamp(Descriptor.ConeHalfAngleRad, 0.01f, 3.10f);
+            Cfg.mPlaneHalfConeAngle  = Cfg.mNormalHalfConeAngle;
+            Cfg.mTwistMinAngle       = -std::clamp(Descriptor.TwistHalfAngleRad, 0.01f, 3.14f);
+            Cfg.mTwistMaxAngle       = std::clamp(Descriptor.TwistHalfAngleRad, 0.01f, 3.14f);
             Created = Cfg.Create(*BodyA, *BodyB);
             break;
         }
-        case ConstraintCategory::Slider:
+        case ConstraintCategory::Hinge:
+        case ConstraintCategory::Spin:
         {
-            JPH::SliderConstraintSettings Cfg;
+            const JPH::Vec3 HingeAxis  = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 0.0f, 0.0f, 1.0f }));
+            const JPH::Vec3 NormalAxis = HingeAxis.GetNormalizedPerpendicular();
+            JPH::HingeConstraintSettings Cfg;
             Cfg.mSpace       = JPH::EConstraintSpace::WorldSpace;
             Cfg.mPoint1      = ToJoltRVec3(Descriptor.AnchorWorldMeters);
             Cfg.mPoint2      = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mSliderAxis1 = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 1.0f, 0.0f, 0.0f }));
-            Cfg.mSliderAxis2 = Cfg.mSliderAxis1;
+            Cfg.mHingeAxis1  = HingeAxis;
+            Cfg.mHingeAxis2  = HingeAxis;
+            Cfg.mNormalAxis1 = NormalAxis;
+            Cfg.mNormalAxis2 = NormalAxis;
+            if (Descriptor.Category == ConstraintCategory::Hinge && Descriptor.MaxLimit > Descriptor.MinLimit)
+            {
+                Cfg.mLimitsMin = Descriptor.MinLimit;
+                Cfg.mLimitsMax = Descriptor.MaxLimit;
+            }
+            if (Descriptor.MotorDriveEnabled || Descriptor.Category == ConstraintCategory::Spin)
+            {
+                const float MaxT = std::max(Descriptor.MaxMotorTorqueOrForce, 1.0f);
+                Cfg.mMotorSettings = JPH::MotorSettings(10.0f, 1.0f, MaxT, MaxT);
+                Cfg.mMotorSettings.mMinTorqueLimit = -MaxT;
+                Cfg.mMotorSettings.mMaxTorqueLimit = MaxT;
+            }
+            Created = Cfg.Create(*BodyA, *BodyB);
+            if (Created != nullptr && (Descriptor.MotorDriveEnabled || Descriptor.Category == ConstraintCategory::Spin))
+            {
+                auto* Hinge = static_cast<JPH::HingeConstraint*>(Created.GetPtr());
+                if (Descriptor.MotorVelocityMode || Descriptor.Category == ConstraintCategory::Spin)
+                {
+                    Hinge->SetMotorState(JPH::EMotorState::Velocity);
+                    Hinge->SetTargetAngularVelocity(Descriptor.TargetMotorCoordinate);
+                }
+                else
+                {
+                    Hinge->SetMotorState(JPH::EMotorState::Position);
+                    Hinge->SetTargetAngle(Descriptor.TargetMotorCoordinate);
+                }
+            }
+            break;
+        }
+        case ConstraintCategory::Slider:
+        case ConstraintCategory::Spring:
+        {
+            const JPH::Vec3 SliderAxis = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 1.0f, 0.0f, 0.0f }));
+            const JPH::Vec3 NormalAxis = SliderAxis.GetNormalizedPerpendicular();
+            JPH::SliderConstraintSettings Cfg;
+            Cfg.mSpace        = JPH::EConstraintSpace::WorldSpace;
+            Cfg.mPoint1       = ToJoltRVec3(Descriptor.AnchorWorldMeters);
+            Cfg.mPoint2       = ToJoltRVec3(Descriptor.AnchorWorldMeters);
+            Cfg.mSliderAxis1  = SliderAxis;
+            Cfg.mSliderAxis2  = SliderAxis;
+            Cfg.mNormalAxis1  = NormalAxis;
+            Cfg.mNormalAxis2  = NormalAxis;
             if (Descriptor.MaxLimit > Descriptor.MinLimit)
             {
                 Cfg.mLimitsMin = Descriptor.MinLimit;
                 Cfg.mLimitsMax = Descriptor.MaxLimit;
             }
+            if (Descriptor.Category == ConstraintCategory::Spring)
+            {
+                const float Freq = std::max(Descriptor.SpringFrequencyHz, 0.25f);
+                const float Damp = std::max(Descriptor.SpringDampingRatio, 0.05f);
+                const float MaxF = std::max(Descriptor.MaxMotorTorqueOrForce, 50000.0f);
+                Cfg.mMotorSettings = JPH::MotorSettings(Freq, Damp, MaxF, MaxF);
+                Cfg.mMotorSettings.mMinForceLimit = -MaxF;
+                Cfg.mMotorSettings.mMaxForceLimit = MaxF;
+            }
             Created = Cfg.Create(*BodyA, *BodyB);
+            if (Created != nullptr && Descriptor.Category == ConstraintCategory::Spring)
+            {
+                auto* Slider = static_cast<JPH::SliderConstraint*>(Created.GetPtr());
+                Slider->SetMotorState(JPH::EMotorState::Position);
+                Slider->SetTargetPosition(Descriptor.TargetMotorCoordinate);
+            }
             break;
         }
     }
@@ -1314,6 +1398,50 @@ bool PhysicsExtension::BreakConstraint(ConstraintToken Token) noexcept
     return true;
 }
 
+bool PhysicsExtension::AssignConstraintMotorTarget(ConstraintToken Token, float TargetCoordinateOrVelocity) noexcept
+{
+    if (!Runtime || !Runtime->Initialized || !Token.Valid() || Token.SlotIndex > Runtime->ConstraintSlots.size())
+    {
+        return false;
+    }
+    ConstraintSlotEntry& CSlot = Runtime->ConstraintSlots[Token.SlotIndex - 1u];
+    if (!CSlot.Occupied || CSlot.Generation != Token.Generation || !CSlot.Intact || CSlot.JoltConstraint == nullptr)
+    {
+        return false;
+    }
+
+    CSlot.Descriptor.TargetMotorCoordinate = TargetCoordinateOrVelocity;
+    switch (CSlot.Descriptor.Category)
+    {
+        case ConstraintCategory::Hinge:
+        case ConstraintCategory::Spin:
+        {
+            auto* Hinge = static_cast<JPH::HingeConstraint*>(CSlot.JoltConstraint.GetPtr());
+            if (CSlot.Descriptor.MotorVelocityMode || CSlot.Descriptor.Category == ConstraintCategory::Spin)
+            {
+                Hinge->SetMotorState(JPH::EMotorState::Velocity);
+                Hinge->SetTargetAngularVelocity(TargetCoordinateOrVelocity);
+            }
+            else
+            {
+                Hinge->SetMotorState(JPH::EMotorState::Position);
+                Hinge->SetTargetAngle(TargetCoordinateOrVelocity);
+            }
+            return true;
+        }
+        case ConstraintCategory::Slider:
+        case ConstraintCategory::Spring:
+        {
+            auto* Slider = static_cast<JPH::SliderConstraint*>(CSlot.JoltConstraint.GetPtr());
+            Slider->SetMotorState(JPH::EMotorState::Position);
+            Slider->SetTargetPosition(TargetCoordinateOrVelocity);
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
 ConstraintReading PhysicsExtension::InspectConstraintReading(ConstraintToken Token) const noexcept
 {
     ConstraintReading Reading {};
@@ -1332,6 +1460,17 @@ ConstraintReading PhysicsExtension::InspectConstraintReading(ConstraintToken Tok
     Reading.AppliedForceN   = CSlot.AppliedForceN;
     Reading.AppliedTorqueNm = CSlot.AppliedTorqueNm;
     Reading.StrainRatio     = CSlot.StrainRatio;
+    if (CSlot.Intact && CSlot.JoltConstraint != nullptr)
+    {
+        if (CSlot.Descriptor.Category == ConstraintCategory::Hinge || CSlot.Descriptor.Category == ConstraintCategory::Spin)
+        {
+            Reading.CurrentCoordinate = static_cast<const JPH::HingeConstraint*>(CSlot.JoltConstraint.GetPtr())->GetCurrentAngle();
+        }
+        else if (CSlot.Descriptor.Category == ConstraintCategory::Slider || CSlot.Descriptor.Category == ConstraintCategory::Spring)
+        {
+            Reading.CurrentCoordinate = static_cast<const JPH::SliderConstraint*>(CSlot.JoltConstraint.GetPtr())->GetCurrentPosition();
+        }
+    }
     return Reading;
 }
 

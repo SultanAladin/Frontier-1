@@ -182,6 +182,8 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Diagnostics/LogStreamDrawer.cpp
     Engine/Components/Controls/ExclusiveSelector.cpp
     Engine/Components/Controls/CapsuleButton.cpp
+    Engine/Components/Controls/ConstraintTilePicker.cpp
+    Engine/Components/Controls/Vector3CapsuleInput.cpp
     Engine/Components/Controls/ThemePreviewTile.cpp
     Engine/Components/Controls/DropdownSelector.cpp
     Engine/Components/Controls/TextInputField.cpp
@@ -190,6 +192,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Docking/WorkspaceTabStrip.cpp
     Engine/Components/Docking/WorkspaceDockContainer.cpp
     Engine/Components/Panes/WorkspaceAppearance.cpp
+    Engine/Components/Panes/AssemblySequencePane.cpp
     Engine/Components/Panes/OutlinerPanel.cpp
     Engine/Components/Panes/InspectorPanel.cpp
     Engine/Components/Panes/ViewportPanel.cpp
@@ -198,6 +201,13 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/ContentBrowser/ColourSwatchBrowserView.cpp
     Engine/Components/ContentBrowser/ThumbnailSheetRepository.cpp
     Engine/Components/ContentBrowser/ContentBrowserPanel.cpp
+    Engine/Workspaces/ComponentEditor/ComponentWorkspaceSession.cpp
+    Engine/Workspaces/ComponentEditor/ComponentTreePanel.cpp
+    Engine/Workspaces/ComponentEditor/ComponentContentTray.cpp
+    Engine/Workspaces/ComponentEditor/ComponentViewportHost.cpp
+    Engine/Workspaces/ComponentEditor/ComponentDrawerPanel.cpp
+    Engine/Workspaces/ComponentEditor/ComponentDetailsPanel.cpp
+    Engine/Workspaces/ComponentEditor/ComponentWorkspaceHost.cpp
     Engine/Workspaces/UV/UVOutlinerPanel.cpp
     Engine/Workspaces/UV/UVInspectorPanel.cpp
     Engine/Workspaces/UV/UVViewportInteractor.cpp
@@ -418,9 +428,12 @@ frontier_compile_modular_slang_shader(Visibility/AnalyticBarycentricResolve.slan
 frontier_compile_modular_slang_shader(DirectLighting/SolarFrustumShadow.slang                    SolarShadowComputeEntry         compute  SolarFrustumShadow.comp.spv)
 frontier_compile_modular_slang_shader(DirectLighting/ContactClipShadow.slang                     ContactClipComputeEntry         compute  ContactClipShadow.comp.spv)
 frontier_compile_modular_slang_shader(DirectLighting/PlaneAwareShadowFilter.slang                PlaneFilterComputeEntry         compute  PlaneAwareShadowFilter.comp.spv)
-frontier_compile_modular_slang_shader(GlobalIllumination/OctahedralIrradianceLattice.slang       IrradianceLatticeComputeEntry   compute  OctahedralIrradianceLattice.comp.spv)
-frontier_compile_modular_slang_shader(GlobalIllumination/SignedDistanceConeIllumination.slang    SdfConeGiComputeEntry           compute  SignedDistanceConeIllumination.comp.spv)
-frontier_compile_modular_slang_shader(GlobalIllumination/SpecularGlassRaytrace.slang          SpecularRaytraceComputeEntry    compute  SpecularGlassRaytrace.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/OctahedralIrradianceLattice.slang       IrradianceLatticeComputeEntry         compute  OctahedralIrradianceLattice.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/SignedDistanceConeIllumination.slang    SdfConeGiComputeEntry                 compute  SignedDistanceConeIllumination.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/VoxelSdfClipmapCompute.slang            ComposeDynamicLocalSdfClip0Entry      compute  VoxelSdfClipmapCompose.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/VoxelSdfClipmapCompute.slang            PropagateClipmapRadiosityBounceEntry  compute  VoxelSdfClipmapRadiosity.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/VoxelSdfClipmapCompute.slang            EvaluateClipmapConeGiEntry            compute  VoxelSdfClipmapConeGi.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/SpecularGlassRaytrace.slang             SpecularRaytraceComputeEntry          compute  SpecularGlassRaytrace.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              ComputeEntry                    compute  SkyViewTransmittanceCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/VolumetricCloudCompute.slang                   ComputeEntry                    compute  VolumetricCloudCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/VolumetricFogCompute.slang                     ComputeEntry                    compute  VolumetricFogCompute.comp.spv)
@@ -626,6 +639,42 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
     endforeach()
 endif()
 
+function(frontier_compile_component_editor_slang_shader SLANG_STEM ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
+    set(IN_SLANG "${CMAKE_SOURCE_DIR}/Engine/Shaders/ComponentEditor/${SLANG_STEM}.slang")
+    set(OUT_SPV "${FRONTIER_COMPILED_SHADER_DIR}/${OUT_SPV_NAME}")
+    add_custom_command(
+        OUTPUT "${OUT_SPV}"
+        COMMAND "${FRONTIER_SLANGC_BIN}"
+            "${IN_SLANG}"
+            -I "${CMAKE_SOURCE_DIR}"
+            -target spirv
+            -profile spirv_1_3
+            -emit-spirv-directly
+            -fvk-use-entrypoint-name
+            -matrix-layout-row-major
+            -O0
+            -entry "${ENTRY_NAME}"
+            -stage "${SHADER_UNIT}"
+            -o "${OUT_SPV}"
+        DEPENDS
+            "${IN_SLANG}"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/ComponentEditor/ComponentEditorShared.slang"
+        COMMENT "[Slang] Compiling ComponentEditor/${SLANG_STEM}.slang (${SHADER_UNIT}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
+        VERBATIM
+    )
+    set(FRONTIER_SPV_OUTPUTS ${FRONTIER_SPV_OUTPUTS} "${OUT_SPV}" PARENT_SCOPE)
+endfunction()
+
+foreach(CE_SHADER_STEM
+    ComponentChannelInspection
+    ComponentFieldShell
+    ComponentLightVolume
+    ComponentDotFloor
+    ComponentConstraintVisual)
+    frontier_compile_component_editor_slang_shader("${CE_SHADER_STEM}" "VertexMain"   "vertex"   "${CE_SHADER_STEM}.vert.spv")
+    frontier_compile_component_editor_slang_shader("${CE_SHADER_STEM}" "FragmentMain" "fragment" "${CE_SHADER_STEM}.frag.spv")
+endforeach()
+
 add_custom_target(FrontierShaders DEPENDS ${FRONTIER_SPV_OUTPUTS})
 
 set(FRONTIER_ENGINE_SOURCES
@@ -785,6 +834,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/SpatialAcceleration/ClusterPyramid.cpp
     Engine/SpatialAcceleration/WideBoundingTree.cpp
     Engine/DistanceFieldSpace/SignedDistanceVolume.cpp
+    Engine/DistanceFieldSpace/VoxelSdfClipmap.cpp
     Engine/ColourSpace/TransferFunction.cpp
     Engine/ColourSpace/WhitePointAdaptation.cpp
     Engine/ColourSpace/ChromaticitySpace.cpp
@@ -797,6 +847,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/ColourSpace/ColourAssetRegister.cpp
     Engine/Interchange/ColourInterchange.cpp
     Engine/Interchange/GeometryInterchange.cpp
+    Engine/Interchange/IndexedTriangleStreamInterchange.cpp
     Engine/Interchange/ParticleInterchange.cpp
     Engine/GeometricRaster/Gizmo/TransformGizmo.cpp
     Engine/Components/Camera/ViewportProjection.cpp
@@ -812,6 +863,9 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Baking/GpuTextureBaker.cpp
     Engine/GeometricRaster/Baking/GpuSdfBaker.cpp
     Engine/GeometricRaster/Baking/TextureBakerRasterizer.cpp
+    Engine/GeometricRaster/ComponentEditor/ComponentGizmoGeometry.cpp
+    Engine/GeometricRaster/ComponentEditor/ComponentViewportRenderer.cpp
+    Engine/GeometricRaster/ComponentEditor/ComponentSpecimenBaker.cpp
     Engine/Workspaces/Texturing/PatternStampStackSession.cpp
     Engine/Workspaces/Texturing/BakingWorkspaceSession.cpp
     Engine/Input/InputExchange.cpp
@@ -842,6 +896,12 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Codecs/VectorFieldCodec.cpp
     Engine/Codecs/ForceModelPresetCodec.cpp
     Engine/Codecs/ParticleCodec.cpp
+    Engine/Codecs/ComponentSpaceCodec.cpp
+    Engine/ComponentClass/ComponentInstanceStorage.cpp
+    Engine/ComponentClass/ComponentClassDefinition.cpp
+    Engine/ComponentClass/ComponentClassValidator.cpp
+    Engine/ComponentClass/ComponentWorldPlacement.cpp
+    Engine/ComponentClass/ControlVehicleClassBuilder.cpp
     Engine/ParticleSpace/ParticleTintDriver.cpp
     Engine/ParticleSpace/Origins/AnalyticOrigins.cpp
     Engine/ParticleSpace/Origins/ControlVehicleSurfaceLoader.cpp
@@ -888,6 +948,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/SimulationSpace/PhysicsSpace/ConstraintSolver.cpp
     Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.cpp
     Engine/SimulationSpace/PhysicsSpace/FractureSimulationRunner.cpp
+    Engine/SimulationSpace/PhysicsSpace/VehicleDynamicsSolver.cpp
     Engine/GeometricRaster/Compute/FieldLatticeVulkanExecutor.cpp
     Engine/NetworkingSpace/PacketSerializer.cpp
     Engine/NetworkingSpace/NetworkEndpointRegister.cpp
@@ -1124,6 +1185,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(ParticleMotionGridValidation        Exhibits/ParticleMotionGridValidation.cpp)
     frontier_register_exhibit(ParticleVehicleDissolveValidation   Exhibits/ParticleVehicleDissolveValidation.cpp)
     frontier_register_exhibit(PhysicsSpaceValidation              Exhibits/PhysicsSpaceValidation.cpp)
+    frontier_register_exhibit(ComponentClassPhysicsValidation     Exhibits/ComponentClassPhysicsValidation.cpp)
     frontier_register_exhibit(FractureGeometryValidation          Exhibits/FractureGeometryValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(FractureWorkspaceUIValidation Exhibits/FractureWorkspaceUIValidation.cpp)
@@ -1139,11 +1201,13 @@ if(BUILD_TESTING)
     frontier_register_exhibit(VisibilityRasterValidation     Exhibits/VisibilityRasterValidation.cpp)
     frontier_register_exhibit(SolarShadowValidation          Exhibits/SolarShadowValidation.cpp)
     frontier_register_exhibit(TieredWorldRenderValidation    Exhibits/TieredWorldRenderValidation.cpp)
+    frontier_register_exhibit(VoxelSdfClipmapGiValidation    Exhibits/VoxelSdfClipmapGiValidation.cpp)
     frontier_register_exhibit(CelestialCloudsValidation      Exhibits/CelestialCloudsValidation.cpp)
     frontier_register_exhibit(AtmosphereAuditProof           Exhibits/AtmosphereAuditProof.cpp)
     frontier_register_exhibit(LensFlareValidation            Exhibits/LensFlareValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(DrawerGestureWorldValidation   Exhibits/DrawerGestureWorldValidation.cpp)
+        frontier_register_exhibit(ComponentEditorUIValidation    Exhibits/ComponentEditorUIValidation.cpp)
     endif()
     frontier_register_exhibit(UVRasterPickingGizmoValidation    Exhibits/UVRasterPickingGizmoValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
@@ -1170,6 +1234,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(SketcherKernelValidation          Exhibits/ParametricSketcher/SketcherKernelValidation.cpp)
     frontier_register_exhibit(SketcherDocumentValidation        Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)
     frontier_register_exhibit(SketcherViewportValidation        Exhibits/ParametricSketcher/SketcherViewportValidation.cpp)
+    frontier_register_exhibit(ComponentEditorRenderValidation   Exhibits/ComponentEditorRenderValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(FluidWorkspaceUIValidation        Exhibits/FluidWorkspaceUIValidation.cpp)
         frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)

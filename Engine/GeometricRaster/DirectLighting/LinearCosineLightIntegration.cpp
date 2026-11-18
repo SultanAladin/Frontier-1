@@ -9,6 +9,7 @@
 
 #include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
 #include "Engine/Constants/MathConstants.h"
+#include "Engine/DistanceFieldSpace/VoxelSdfClipmap.h"
 #include "Engine/GeometrySpace/Analysis/CurvatureAnalysis.h"
 #include "Engine/MaterialSpace/EnergyCompensation/DirectionalAlbedoIntegral.h"
 
@@ -296,17 +297,20 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
 }
 
 DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWithAlgorithm(
-    SolarShadowAlgorithm                          Algorithm,
-    const PerspectiveCameraFrame&                 Camera,
-    std::span<const RigidClusterInstance>         Instances,
-    const VisibilityBufferTargets&                VisibilityTargets,
-    const MaterialSpace::CompactMaterialRegister& MaterialRegister,
-    const SpatialAcceleration::WideBoundingTree&  SceneTree,
-    const SolarDirectionalEmitter&                Sun,
-    std::span<const PolygonalAreaQuadLight>       AreaLights,
-    const OrthographicShadowCascade*              OptionalFineClip,
-    const OrthographicShadowCascade*              OptionalCoarseClip,
-    const AmbientOcclusionSettings&               AoSettings)
+    SolarShadowAlgorithm                                         Algorithm,
+    const PerspectiveCameraFrame&                                Camera,
+    std::span<const RigidClusterInstance>                        Instances,
+    const VisibilityBufferTargets&                               VisibilityTargets,
+    const MaterialSpace::CompactMaterialRegister&                MaterialRegister,
+    const SpatialAcceleration::WideBoundingTree&                 SceneTree,
+    const SolarDirectionalEmitter&                               Sun,
+    std::span<const PolygonalAreaQuadLight>                      AreaLights,
+    const OrthographicShadowCascade*                             OptionalFineClip,
+    const OrthographicShadowCascade*                             OptionalCoarseClip,
+    const AmbientOcclusionSettings&                              AoSettings,
+    const DistanceFieldSpace::VoxelSdfClipmapVolume*             OptionalClipmap,
+    std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> DynamicObjects,
+    std::span<const DistanceFieldSpace::VoxelPointLightSpec>     PointLights)
 {
     DirectLightingFrameOutput Out {};
     Out.WidthPx  = VisibilityTargets.WidthPx;
@@ -330,10 +334,10 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
         }
     }
 
-    // 1. Evaluate Shadow Lab Solar Shadows + Plane-Aware Penumbra Filter (Zero SDF Shadows!)
+    // 1. Evaluate Shadow Lab Solar Shadows + Plane-Aware Penumbra Filter (supports Voxel SDF Clipmap & Hybrid SDF)
     Out.SolarShadows = SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorithm(
         Algorithm, Sun, Out.WidthPx, Out.HeightPx, PrimarySamples, SceneTree,
-        OptionalFineClip, OptionalCoarseClip);
+        OptionalFineClip, OptionalCoarseClip, OptionalClipmap, DynamicObjects);
 
     const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis(Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
     const uint32_t MatCount = MaterialRegister.QuerySlotCount();
@@ -430,6 +434,63 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
                 Hdr.R += AreaRad.R;
                 Hdr.G += AreaRad.G;
                 Hdr.B += AreaRad.B;
+            }
+
+            // Direct Point Lights (gated by Voxel SDF Clipmap Penumbra or BVH shadow!)
+            for (const auto& Pt : PointLights)
+            {
+                const Mathematics::Axis3D Delta = Pt.PositionWorld - Hit.WorldPosition;
+                const float Dist2 = Mathematics::EvaluateLengthSquared(Delta);
+                const float Dist  = std::sqrt(std::max(1.0e-5f, Dist2));
+                if (Dist >= Pt.RangeMeters) continue;
+                const Mathematics::Axis3D LDir = Delta * (1.0f / Dist);
+                const float NdotL = Mathematics::EvaluateDot(Hit.TangentFrame.NormalZ, LDir);
+                if (NdotL <= 1.0e-4f) continue;
+
+                float PtVis = 1.0f;
+                if (OptionalClipmap != nullptr &&
+                    (Algorithm == SolarShadowAlgorithm::VoxelSdfPenumbra ||
+                     Algorithm == SolarShadowAlgorithm::VoxelSdfClipmapPenumbra ||
+                     Algorithm == SolarShadowAlgorithm::HybridSdf))
+                {
+                    const bool ForceCoarse = (Algorithm == SolarShadowAlgorithm::VoxelSdfPenumbra);
+                    PtVis = OptionalClipmap->TraceClipmapSdfPenumbra(
+                        Hit.WorldPosition, Hit.TangentFrame.NormalZ, LDir,
+                        std::max(0.15f, Dist - Pt.RadiusMeters),
+                        std::max(0.05f, Pt.RadiusMeters), false, DynamicObjects, ForceCoarse).Visibility;
+                    if (Algorithm == SolarShadowAlgorithm::HybridSdf)
+                    {
+                        SpatialAcceleration::RaySegmentQuery ContactRay {};
+                        ContactRay.Origin          = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 2.0e-3f;
+                        ContactRay.UnitDirection   = LDir;
+                        ContactRay.MinimumDistance = 1.0e-3f;
+                        ContactRay.MaximumDistance = std::min(0.24f, std::max(0.01f, Dist - 0.02f));
+                        if (SceneTree.QueryRayOccluded(ContactRay)) PtVis = 0.0f;
+                    }
+                }
+                else
+                {
+                    SpatialAcceleration::RaySegmentQuery PtRay {};
+                    PtRay.Origin          = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 2.0e-3f;
+                    PtRay.UnitDirection   = LDir;
+                    PtRay.MinimumDistance = 1.0e-3f;
+                    PtRay.MaximumDistance = std::max(0.02f, Dist - Pt.RadiusMeters);
+                    if (SceneTree.QueryRayOccluded(PtRay)) PtVis = 0.0f;
+                }
+
+                if (PtVis > 1.0e-4f)
+                {
+                    const float RangeRatio = std::clamp(Dist / std::max(0.5f, Pt.RangeMeters), 0.0f, 1.0f);
+                    const float SmoothWin  = std::max(0.0f, 1.0f - RangeRatio * RangeRatio);
+                    const float Atten = (Pt.Intensity * SmoothWin * SmoothWin) /
+                                        std::max(0.18f, Dist2 + Pt.RadiusMeters * Pt.RadiusMeters);
+                    const auto LocalWi = Hit.TangentFrame.WorldToLocal(LDir);
+                    const auto Bsdf = MaterialSpace::Scattering::EvaluateOpenPbrLocalBsdf(
+                        Mat, LobeMask, LocalWo, LocalWi, Hit.Footprint);
+                    Hdr.R += Bsdf.R * Pt.Color.R * (NdotL * PtVis * Atten);
+                    Hdr.G += Bsdf.G * Pt.Color.G * (NdotL * PtVis * Atten);
+                    Hdr.B += Bsdf.B * Pt.Color.B * (NdotL * PtVis * Atten);
+                }
             }
 
             // Physically Occluded Sky Dome Fill (Diffuse gated by DiffAo, Specular gated by Lagarde SpecAo!)

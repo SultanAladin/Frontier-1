@@ -78,19 +78,22 @@ public:
         float DiffuseAmbientOcclusion,
         float PerceptualRoughness) noexcept;
 
-    // Evaluates full Direct Lighting Frame with explicit Shadow Lab algorithm (Zero SDF Shadows!)
+    // Evaluates full Direct Lighting Frame with explicit Shadow Lab algorithm (supports Clipmap SDF, Hybrid SDF, & Point Lights)
     [[nodiscard]] static DirectLightingFrameOutput EvaluateDirectLightingFrameWithAlgorithm(
-        SolarShadowAlgorithm                           Algorithm,
-        const PerspectiveCameraFrame&                  Camera,
-        std::span<const RigidClusterInstance>          Instances,
-        const VisibilityBufferTargets&                 VisibilityTargets,
-        const MaterialSpace::CompactMaterialRegister&  MaterialRegister,
-        const SpatialAcceleration::WideBoundingTree&   SceneTree,
-        const SolarDirectionalEmitter&                 Sun,
-        std::span<const PolygonalAreaQuadLight>        AreaLights,
-        const OrthographicShadowCascade*               OptionalFineClip   = nullptr,
-        const OrthographicShadowCascade*               OptionalCoarseClip = nullptr,
-        const AmbientOcclusionSettings&                AoSettings         = {});
+        SolarShadowAlgorithm                                         Algorithm,
+        const PerspectiveCameraFrame&                                Camera,
+        std::span<const RigidClusterInstance>                        Instances,
+        const VisibilityBufferTargets&                               VisibilityTargets,
+        const MaterialSpace::CompactMaterialRegister&                MaterialRegister,
+        const SpatialAcceleration::WideBoundingTree&                 SceneTree,
+        const SolarDirectionalEmitter&                               Sun,
+        std::span<const PolygonalAreaQuadLight>                      AreaLights,
+        const OrthographicShadowCascade*                             OptionalFineClip    = nullptr,
+        const OrthographicShadowCascade*                             OptionalCoarseClip  = nullptr,
+        const AmbientOcclusionSettings&                              AoSettings          = {},
+        const DistanceFieldSpace::VoxelSdfClipmapVolume*             OptionalClipmap     = nullptr,
+        std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> DynamicObjects      = {},
+        std::span<const DistanceFieldSpace::VoxelPointLightSpec>     PointLights         = {});
 
     // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm (ignores OptionalSdfVolume)
     [[nodiscard]] static DirectLightingFrameOutput EvaluateDirectLightingFrame(

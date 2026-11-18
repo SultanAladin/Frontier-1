@@ -10,6 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/DistanceFieldSpace/SignedDistanceVolume.h"
+#include "Engine/DistanceFieldSpace/VoxelSdfClipmap.h"
 #include "Engine/GeometricRaster/Atmosphere/VolumetricCloudSequence.h"
 #include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
 #include "Engine/GeometricRaster/GlobalIllumination/IrradianceLatticeSequence.h"
@@ -55,11 +56,11 @@ struct WorldRenderConfiguration
     WorldRenderEngine        Engine                    = WorldRenderEngine::SdfGlobalIllumination;
     SolarShadowAlgorithm     ShadowAlgorithm           = SolarShadowAlgorithm::ContactPcss;
     SpecularReflectionSource ReflectionSource          = SpecularReflectionSource::WideTreeRaytrace;
-    uint32_t                 DebugChannel              = 0u;    // [0..15] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=GdfIso, 6=GdfSlice, 7=GdfRad, 8=IndirectGi, 9=Metal, 10=MatId, 11=GeomNrm, 12=SunVis, 13=DiffAO, 14=Direct, 15=SpecRefl
+    uint32_t                 DebugChannel              = 0u;    // [0..20] - 0=Lit..15=SpecRefl, 16=ClipmapIso, 17=ClipmapSlice, 18=ClipmapRad, 19=SurfaceCacheAlbedo, 20=ClipmapCascadeId
     uint32_t                 PathTraceSamples          = 16u;   // [spp]  - Samples per pixel for DeterministicPathTrace
     uint32_t                 PathTraceMaxBounces       = 5u;    // [cnt]  - Maximum bounce depth for DeterministicPathTrace
-    bool                     PathTraceDenoise          = true;  // [-]    - 3-pass albedo/normal/depth A-Trous denoiser
-    bool                     SdfGiBilateral            = true;  // [-]    - 7x7 joint bilateral spatial filter for SDF GI
+    bool                     PathTraceDenoise          = false; // [-]    - Optional 3-pass A-Trous denoiser (OFF by default for pure Sobol (0,2))
+    bool                     SdfGiBilateral            = false; // [-]    - Optional 7x7 spatial filter (OFF by default for deterministic cone GI)
     bool                     GlobalIlluminationEnabled = true;  // [-]    - Render setting toggle for indirect GI / bounces
     bool                     ReflectionsEnabled        = true;  // [-]    - Render setting toggle for specular reflections
     bool                     RaytracingEnabled         = true;  // [-]    - Render setting toggle for hardware/BVH raytracing
@@ -68,17 +69,20 @@ struct WorldRenderConfiguration
 
 struct WorldSceneSpecification
 {
-    std::vector<RigidClusterInstance>            ClusterInstances {};
-    MaterialSpace::CompactMaterialRegister       MaterialRegister {};
-    std::vector<MaterialSpace::BounceSlabEntry>  BounceSummaries  {};
-    SpatialAcceleration::WideBoundingTree        SceneTree        {};
-    DistanceFieldSpace::SignedDistanceVolume     SceneSdf         {};
-    SolarDirectionalEmitter                      Sun              {};
-    std::vector<PolygonalAreaQuadLight>          AreaLights       {};
-    IrradianceLatticeConfiguration                               LatticeConfig    {};
-    Mathematics::LinearRGB                                       SkyRadiance      { 0.15f, 0.21f, 0.32f };
-    WorldAtmosphereConfiguration                                 Atmosphere       {};
-    const SimulationSpace::FluidSpace::FluidSimulationSequence*  OptionalFluid    = nullptr;
+    std::vector<RigidClusterInstance>                         ClusterInstances   {};
+    MaterialSpace::CompactMaterialRegister                    MaterialRegister   {};
+    std::vector<MaterialSpace::BounceSlabEntry>               BounceSummaries    {};
+    SpatialAcceleration::WideBoundingTree                     SceneTree          {};
+    DistanceFieldSpace::SignedDistanceVolume                  SceneSdf           {};
+    DistanceFieldSpace::VoxelSdfClipmapConfiguration          ClipmapConfig      {};
+    std::vector<DistanceFieldSpace::DynamicLocalSdfInstance>  DynamicSdfObjects  {};
+    std::vector<DistanceFieldSpace::VoxelPointLightSpec>      PointLights        {};
+    SolarDirectionalEmitter                                   Sun                {};
+    std::vector<PolygonalAreaQuadLight>                       AreaLights         {};
+    IrradianceLatticeConfiguration                            LatticeConfig      {};
+    Mathematics::LinearRGB                                    SkyRadiance        { 0.15f, 0.21f, 0.32f };
+    WorldAtmosphereConfiguration                              Atmosphere         {};
+    const SimulationSpace::FluidSpace::FluidSimulationSequence* OptionalFluid    = nullptr;
 };
 
 struct WorldRenderFrameResult
@@ -131,17 +135,26 @@ public:
         const PerspectiveCameraFrame&  PreviousCamera,
         const WorldSceneSpecification& PreparedScene);
 
-    [[nodiscard]] const IrradianceLatticeSequence&    InspectIrradianceLattice() const noexcept { return RtxLattice; }
-    [[nodiscard]] const SignedDistanceRadiosityVolume& InspectRadiosityVolume()   const noexcept { return RadiosityVolume; }
-    [[nodiscard]] const AtmosphericSkySequence&        InspectAtmosphericSky()    const noexcept { return SkySequence; }
+    // Incrementally updates ActiveClip0 dirty AABB + radiosity when dynamic local SDF objects move (without full static rebake!)
+    void UpdateDynamicClipmapObjects(
+        const WorldSceneSpecification&                             Scene,
+        std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> PreviousObjects,
+        std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> CurrentObjects);
+
+    [[nodiscard]] const IrradianceLatticeSequence&         InspectIrradianceLattice() const noexcept { return RtxLattice; }
+    [[nodiscard]] const SignedDistanceRadiosityVolume&     InspectRadiosityVolume()   const noexcept { return RadiosityVolume; }
+    [[nodiscard]] const DistanceFieldSpace::VoxelSdfClipmapVolume& InspectClipmapVolume() const noexcept { return ClipmapVolume; }
+    [[nodiscard]] DistanceFieldSpace::VoxelSdfClipmapVolume&       AccessClipmapVolume()       noexcept { return ClipmapVolume; }
+    [[nodiscard]] const AtmosphericSkySequence&            InspectAtmosphericSky()    const noexcept { return SkySequence; }
 
 private:
-    OrthographicShadowCascade     FineContactClip   {};
-    OrthographicShadowCascade     CoarseContactClip {};
-    IrradianceLatticeSequence     RtxLattice        {};
-    SignedDistanceRadiosityVolume RadiosityVolume   {};
-    AtmosphericSkySequence        SkySequence       {};
-    DepthPyramidSequence          PreviousHiZ       {};
+    OrthographicShadowCascade                FineContactClip   {};
+    OrthographicShadowCascade                CoarseContactClip {};
+    IrradianceLatticeSequence                RtxLattice        {};
+    SignedDistanceRadiosityVolume            RadiosityVolume   {};
+    DistanceFieldSpace::VoxelSdfClipmapVolume ClipmapVolume    {};
+    AtmosphericSkySequence                   SkySequence       {};
+    DepthPyramidSequence                     PreviousHiZ       {};
 };
 
 } // namespace Frontier::GeometricRaster

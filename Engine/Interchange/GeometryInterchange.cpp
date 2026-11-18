@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Interchange/GeometryInterchange.h"
+#include "Engine/Interchange/IndexedTriangleStreamInterchange.h"
 
 #include <algorithm>
 #include <array>
@@ -192,6 +193,22 @@ ExternalGeometryFormat GeometryInterchange::DetectFormatFromPath(const std::file
     {
         return ExternalGeometryFormat::Gltf2Json;
     }
+    if (Ext == ".facet")
+    {
+        return ExternalGeometryFormat::Fct1TriangleStream;
+    }
+    if (Ext == ".glb")
+    {
+        return ExternalGeometryFormat::Gltf2Binary;
+    }
+    if (Ext == ".stl")
+    {
+        return ExternalGeometryFormat::Stereolithography;
+    }
+    if (Ext == ".ply")
+    {
+        return ExternalGeometryFormat::StanfordPolygon;
+    }
     return ExternalGeometryFormat::Unknown;
 }
 
@@ -200,6 +217,11 @@ bool GeometryInterchange::ImportAssetFromFile(
     GeometrySpace::ConstructedSampleAsset& OutAsset,
     std::string&                           OutDiagnostic)
 {
+    if (DetectFormatFromPath(SourcePath) == ExternalGeometryFormat::Fct1TriangleStream)
+    {
+        return IndexedTriangleStreamInterchange::ImportFct1File(SourcePath, true, OutAsset, OutDiagnostic);
+    }
+
     std::ifstream Stream(SourcePath, std::ios::binary);
     if (!Stream)
     {
@@ -210,6 +232,9 @@ bool GeometryInterchange::ImportAssetFromFile(
     Buffer << Stream.rdbuf();
     const std::string Content = Buffer.str();
     const std::string Stem    = SourcePath.stem().string().empty() ? "ImportedGeometry" : SourcePath.stem().string();
+    const std::span<const uint8_t> ByteSpan(
+        reinterpret_cast<const uint8_t*>(Content.data()),
+        Content.size());
 
     switch (DetectFormatFromPath(SourcePath))
     {
@@ -217,6 +242,14 @@ bool GeometryInterchange::ImportAssetFromFile(
             return ImportWavefrontObjText(Content, Stem, OutAsset, OutDiagnostic);
         case ExternalGeometryFormat::Gltf2Json:
             return ImportGltf2JsonText(Content, SourcePath.parent_path(), Stem, OutAsset, OutDiagnostic);
+        case ExternalGeometryFormat::Fct1TriangleStream:
+            return IndexedTriangleStreamInterchange::ImportFct1File(SourcePath, true, OutAsset, OutDiagnostic);
+        case ExternalGeometryFormat::Gltf2Binary:
+            return ImportGltf2BinaryBytes(ByteSpan, Stem, OutAsset, OutDiagnostic);
+        case ExternalGeometryFormat::Stereolithography:
+            return ImportStlBytes(ByteSpan, Stem, OutAsset, OutDiagnostic);
+        case ExternalGeometryFormat::StanfordPolygon:
+            return ImportPlyBytes(ByteSpan, Stem, OutAsset, OutDiagnostic);
         case ExternalGeometryFormat::Unknown:
             break;
     }
@@ -246,6 +279,10 @@ bool GeometryInterchange::ExportAssetToFile(
         case ExternalGeometryFormat::Gltf2Json:
             Payload = ExportGltf2JsonText(Network);
             break;
+        case ExternalGeometryFormat::Fct1TriangleStream:
+        case ExternalGeometryFormat::Gltf2Binary:
+        case ExternalGeometryFormat::Stereolithography:
+        case ExternalGeometryFormat::StanfordPolygon:
         case ExternalGeometryFormat::Unknown:
             OutDiagnostic = "Unsupported export extension: " + TargetPath.extension().string();
             return false;
@@ -626,9 +663,10 @@ namespace
 
 } // namespace
 
-bool GeometryInterchange::ImportGltf2JsonText(
+[[nodiscard]] bool DecodeGltf2Document(
     std::string_view                       GltfJsonText,
     const std::filesystem::path&           RootDirectory,
+    std::span<const uint8_t>               OverrideBinaryBlob,
     std::string_view                       DefaultTitle,
     GeometrySpace::ConstructedSampleAsset& OutAsset,
     std::string&                           OutDiagnostic)
@@ -640,14 +678,19 @@ bool GeometryInterchange::ImportGltf2JsonText(
     const auto BufferViews = SplitJsonObjectArray(GltfJsonText, "bufferViews");
     const auto Accessors   = SplitJsonObjectArray(GltfJsonText, "accessors");
 
-    if (Buffers.empty() || BufferViews.empty() || Accessors.empty())
+    if (BufferViews.empty() || Accessors.empty())
     {
-        OutDiagnostic = "glTF 2.0 document missing buffers, bufferViews, or accessors.";
+        OutDiagnostic = "glTF 2.0 document missing bufferViews or accessors.";
         return false;
     }
 
-    // Load buffer 0 (embedded base64 data URI or external .bin file)
+    // Load buffer 0 (GLB BIN chunk, embedded base64 data URI, or external .bin file)
     std::vector<uint8_t> BinaryBlob {};
+    if (!OverrideBinaryBlob.empty())
+    {
+        BinaryBlob.assign(OverrideBinaryBlob.begin(), OverrideBinaryBlob.end());
+    }
+    else if (!Buffers.empty())
     {
         const std::string_view Buf0 = Buffers.front();
         const std::size_t UriKey    = Buf0.find("\"uri\"");
@@ -875,6 +918,361 @@ bool GeometryInterchange::ImportGltf2JsonText(
         return false;
     }
 
+    OutAsset.Network.LinkOppositeEdges(true);
+    OutAsset.Network.RecomputeNormals();
+    FinalizeConstructedAssetUDIMs(OutAsset);
+    return true;
+}
+
+bool GeometryInterchange::ImportGltf2JsonText(
+    std::string_view                       GltfJsonText,
+    const std::filesystem::path&           RootDirectory,
+    std::string_view                       DefaultTitle,
+    GeometrySpace::ConstructedSampleAsset& OutAsset,
+    std::string&                           OutDiagnostic)
+{
+    return DecodeGltf2Document(GltfJsonText, RootDirectory, {}, DefaultTitle, OutAsset, OutDiagnostic);
+}
+
+bool GeometryInterchange::ImportGltf2BinaryBytes(
+    std::span<const uint8_t>               GlbBytes,
+    std::string_view                       DefaultTitle,
+    GeometrySpace::ConstructedSampleAsset& OutAsset,
+    std::string&                           OutDiagnostic)
+{
+    if (GlbBytes.size() < 20u)
+    {
+        OutDiagnostic = "GLB stream shorter than 20-byte header.";
+        return false;
+    }
+    uint32_t Magic = 0u, Version = 0u, TotalLength = 0u;
+    std::memcpy(&Magic, GlbBytes.data() + 0u, 4u);
+    std::memcpy(&Version, GlbBytes.data() + 4u, 4u);
+    std::memcpy(&TotalLength, GlbBytes.data() + 8u, 4u);
+    if (Magic != 0x46546C67u || Version != 2u || TotalLength > GlbBytes.size())
+    {
+        OutDiagnostic = "Invalid GLB container header.";
+        return false;
+    }
+
+    std::string_view         JsonChunk {};
+    std::span<const uint8_t> BinChunk {};
+    std::size_t              Cursor = 12u;
+    while (Cursor + 8u <= TotalLength)
+    {
+        uint32_t ChunkLen  = 0u;
+        uint32_t ChunkType = 0u;
+        std::memcpy(&ChunkLen, GlbBytes.data() + Cursor + 0u, 4u);
+        std::memcpy(&ChunkType, GlbBytes.data() + Cursor + 4u, 4u);
+        Cursor += 8u;
+        if (Cursor + ChunkLen > TotalLength)
+        {
+            OutDiagnostic = "GLB chunk overruns container length.";
+            return false;
+        }
+        if (ChunkType == 0x4E4F534Au && JsonChunk.empty())
+        {
+            JsonChunk = std::string_view(reinterpret_cast<const char*>(GlbBytes.data() + Cursor), ChunkLen);
+        }
+        else if (ChunkType == 0x004E4942u && BinChunk.empty())
+        {
+            BinChunk = GlbBytes.subspan(Cursor, ChunkLen);
+        }
+        Cursor += ChunkLen;
+    }
+
+    if (JsonChunk.empty())
+    {
+        OutDiagnostic = "GLB container missing JSON chunk.";
+        return false;
+    }
+    return DecodeGltf2Document(JsonChunk, {}, BinChunk, DefaultTitle, OutAsset, OutDiagnostic);
+}
+
+bool GeometryInterchange::ImportStlBytes(
+    std::span<const uint8_t>               StlBytes,
+    std::string_view                       DefaultTitle,
+    GeometrySpace::ConstructedSampleAsset& OutAsset,
+    std::string&                           OutDiagnostic)
+{
+    OutAsset = GeometrySpace::ConstructedSampleAsset{};
+    OutAsset.Network.NetworkTitle = DefaultTitle.empty() ? std::string("ImportedStl") : std::string(DefaultTitle);
+
+    struct StlQuantKey
+    {
+        int32_t X, Y, Z;
+        bool operator==(const StlQuantKey&) const noexcept = default;
+    };
+    struct StlQuantHash
+    {
+        std::size_t operator()(const StlQuantKey& K) const noexcept
+        {
+            return (static_cast<std::size_t>(K.X) * 73856093u) ^
+                   (static_cast<std::size_t>(K.Y) * 19349663u) ^
+                   (static_cast<std::size_t>(K.Z) * 83492791u);
+        }
+    };
+    std::unordered_map<StlQuantKey, uint32_t, StlQuantHash> Welded {};
+    const uint16_t LayerIdx = OutAsset.Layers.ConstructLayer("Imported Primary", { 0.88f, 0.86f, 0.82f }, 50.0f);
+
+    auto AppendStlVertex = [&](float X, float Y, float Z, Mathematics::UVAxes& OutUV) -> uint32_t
+    {
+        const Mathematics::Axis3D WorldPos = Mathematics::ConvertVectorBetweenBases(
+            { X, Y, Z },
+            Mathematics::WorldCoordinateBasis::RightHandedZUp,
+            Mathematics::QueryActiveWorldBasis());
+        const StlQuantKey Key {
+            static_cast<int32_t>(std::llround(WorldPos.X * 100000.0)),
+            static_cast<int32_t>(std::llround(WorldPos.Y * 100000.0)),
+            static_cast<int32_t>(std::llround(WorldPos.Z * 100000.0))
+        };
+        OutUV = { WorldPos.X * 0.25f + 0.5f, WorldPos.Z * 0.25f + 0.5f };
+        auto [It, Inserted] = Welded.emplace(Key, 0u);
+        if (Inserted)
+        {
+            It->second = OutAsset.Network.AppendVertex(WorldPos);
+        }
+        return It->second;
+    };
+
+    bool IsBinary = false;
+    if (StlBytes.size() >= 84u)
+    {
+        uint32_t TriCount = 0u;
+        std::memcpy(&TriCount, StlBytes.data() + 80u, 4u);
+        const uint64_t Expected = 84ull + static_cast<uint64_t>(TriCount) * 50ull;
+        if (Expected == StlBytes.size())
+        {
+            IsBinary = true;
+            for (uint32_t Tri = 0u; Tri < TriCount; ++Tri)
+            {
+                const uint8_t* Rec = StlBytes.data() + 84u + static_cast<std::size_t>(Tri) * 50u;
+                float Coords[9]{};
+                std::memcpy(Coords, Rec + 12u, 36u);
+                std::array<uint32_t, 3u> LoopV{};
+                std::array<Mathematics::UVAxes, 3u> LoopUV{};
+                for (int C = 0; C < 3; ++C)
+                {
+                    LoopV[C] = AppendStlVertex(Coords[C * 3 + 0], Coords[C * 3 + 1], Coords[C * 3 + 2], LoopUV[C]);
+                }
+                if (LoopV[0] != LoopV[1] && LoopV[1] != LoopV[2] && LoopV[2] != LoopV[0])
+                {
+                    (void)OutAsset.Network.AppendFace(LoopV, LoopUV, {}, LayerIdx, 0u);
+                }
+            }
+        }
+    }
+
+    if (!IsBinary)
+    {
+        const std::string_view Text(reinterpret_cast<const char*>(StlBytes.data()), StlBytes.size());
+        std::array<uint32_t, 3u> LoopV{};
+        std::array<Mathematics::UVAxes, 3u> LoopUV{};
+        int Corner = 0;
+        std::size_t Pos = 0u;
+        while (Pos < Text.size())
+        {
+            std::size_t End = Text.find('\n', Pos);
+            if (End == std::string_view::npos) End = Text.size();
+            const std::string_view Line = TrimAscii(Text.substr(Pos, End - Pos));
+            Pos = End + 1u;
+            if (Line.starts_with("vertex "))
+            {
+                float X = 0.0f, Y = 0.0f, Z = 0.0f;
+                if (std::sscanf(std::string(Line.substr(7u)).c_str(), "%f %f %f", &X, &Y, &Z) == 3)
+                {
+                    LoopV[Corner] = AppendStlVertex(X, Y, Z, LoopUV[Corner]);
+                    ++Corner;
+                    if (Corner == 3)
+                    {
+                        if (LoopV[0] != LoopV[1] && LoopV[1] != LoopV[2] && LoopV[2] != LoopV[0])
+                        {
+                            (void)OutAsset.Network.AppendFace(LoopV, LoopUV, {}, LayerIdx, 0u);
+                        }
+                        Corner = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    if (OutAsset.Network.Faces.empty())
+    {
+        OutDiagnostic = "STL stream yielded zero triangles.";
+        return false;
+    }
+    OutAsset.Network.LinkOppositeEdges(true);
+    OutAsset.Network.RecomputeNormals();
+    FinalizeConstructedAssetUDIMs(OutAsset);
+    return true;
+}
+
+bool GeometryInterchange::ImportPlyBytes(
+    std::span<const uint8_t>               PlyBytes,
+    std::string_view                       DefaultTitle,
+    GeometrySpace::ConstructedSampleAsset& OutAsset,
+    std::string&                           OutDiagnostic)
+{
+    OutAsset = GeometrySpace::ConstructedSampleAsset{};
+    OutAsset.Network.NetworkTitle = DefaultTitle.empty() ? std::string("ImportedPly") : std::string(DefaultTitle);
+
+    const std::string_view Text(reinterpret_cast<const char*>(PlyBytes.data()), PlyBytes.size());
+    const std::size_t HeaderEnd = Text.find("end_header");
+    if (HeaderEnd == std::string_view::npos)
+    {
+        OutDiagnostic = "PLY stream missing end_header.";
+        return false;
+    }
+    std::size_t PayloadStart = Text.find('\n', HeaderEnd);
+    if (PayloadStart == std::string_view::npos)
+    {
+        OutDiagnostic = "PLY header malformed.";
+        return false;
+    }
+    ++PayloadStart;
+
+    bool IsBinaryLE = false;
+    uint32_t VertexCount = 0u;
+    uint32_t FaceCount   = 0u;
+    std::size_t VertStrideBytes = 0u;
+    int XOff = -1, YOff = -1, ZOff = -1;
+    enum class ElementMode { None, Vertex, Face } Mode = ElementMode::None;
+
+    std::size_t Cursor = 0u;
+    while (Cursor < HeaderEnd)
+    {
+        std::size_t LineEnd = Text.find('\n', Cursor);
+        if (LineEnd == std::string_view::npos || LineEnd > HeaderEnd) LineEnd = HeaderEnd;
+        const std::string_view Line = TrimAscii(Text.substr(Cursor, LineEnd - Cursor));
+        Cursor = LineEnd + 1u;
+        if (Line.starts_with("format binary_little_endian"))
+        {
+            IsBinaryLE = true;
+        }
+        else if (Line.starts_with("element vertex "))
+        {
+            Mode = ElementMode::Vertex;
+            (void)std::from_chars(Line.data() + 15, Line.data() + Line.size(), VertexCount);
+        }
+        else if (Line.starts_with("element face "))
+        {
+            Mode = ElementMode::Face;
+            (void)std::from_chars(Line.data() + 13, Line.data() + Line.size(), FaceCount);
+        }
+        else if (Mode == ElementMode::Vertex && Line.starts_with("property "))
+        {
+            std::istringstream Iss{ std::string(Line.substr(9u)) };
+            std::string TypeTok, NameTok;
+            Iss >> TypeTok >> NameTok;
+            const int Off = static_cast<int>(VertStrideBytes);
+            if (NameTok == "x") XOff = Off;
+            else if (NameTok == "y") YOff = Off;
+            else if (NameTok == "z") ZOff = Off;
+            if (TypeTok == "double" || TypeTok == "float64") VertStrideBytes += 8u;
+            else if (TypeTok == "uchar" || TypeTok == "uint8" || TypeTok == "char" || TypeTok == "int8") VertStrideBytes += 1u;
+            else if (TypeTok == "short" || TypeTok == "ushort" || TypeTok == "int16" || TypeTok == "uint16") VertStrideBytes += 2u;
+            else VertStrideBytes += 4u;
+        }
+    }
+
+    if (VertexCount < 3u || FaceCount == 0u)
+    {
+        OutDiagnostic = "PLY stream contains insufficient vertices or faces.";
+        return false;
+    }
+
+    const uint16_t LayerIdx = OutAsset.Layers.ConstructLayer("Imported Primary", { 0.82f, 0.88f, 0.94f }, 50.0f);
+    std::vector<Mathematics::UVAxes> VertUVs(VertexCount, { 0.5f, 0.5f });
+
+    if (!IsBinaryLE)
+    {
+        std::istringstream Body{ std::string(Text.substr(PayloadStart)) };
+        std::string LineStr;
+        for (uint32_t V = 0u; V < VertexCount && std::getline(Body, LineStr); )
+        {
+            if (TrimAscii(LineStr).empty()) continue;
+            std::istringstream Vs(LineStr);
+            float X = 0.0f, Y = 0.0f, Z = 0.0f;
+            Vs >> X >> Y >> Z;
+            const Mathematics::Axis3D Conv = Mathematics::ConvertVectorBetweenBases(
+                { X, Y, Z },
+                Mathematics::WorldCoordinateBasis::RightHandedYUp,
+                Mathematics::QueryActiveWorldBasis());
+            (void)OutAsset.Network.AppendVertex(Conv);
+            VertUVs[V] = { X * 0.25f + 0.5f, Z * 0.25f + 0.5f };
+            ++V;
+        }
+        for (uint32_t F = 0u; F < FaceCount && std::getline(Body, LineStr); )
+        {
+            if (TrimAscii(LineStr).empty()) continue;
+            std::istringstream Fs(LineStr);
+            uint32_t N = 0u;
+            Fs >> N;
+            std::vector<uint32_t> Poly(N);
+            for (uint32_t K = 0u; K < N; ++K) Fs >> Poly[K];
+            for (uint32_t Tri = 1u; Tri + 1u < N; ++Tri)
+            {
+                const std::array<uint32_t, 3u> LoopV {{ Poly[0], Poly[Tri], Poly[Tri + 1u] }};
+                if (LoopV[0] < VertexCount && LoopV[1] < VertexCount && LoopV[2] < VertexCount &&
+                    LoopV[0] != LoopV[1] && LoopV[1] != LoopV[2] && LoopV[2] != LoopV[0])
+                {
+                    const std::array<Mathematics::UVAxes, 3u> LoopUV {{ VertUVs[LoopV[0]], VertUVs[LoopV[1]], VertUVs[LoopV[2]] }};
+                    (void)OutAsset.Network.AppendFace(LoopV, LoopUV, {}, LayerIdx, 0u);
+                }
+            }
+            ++F;
+        }
+    }
+    else if (XOff >= 0 && YOff >= 0 && ZOff >= 0 && VertStrideBytes >= 12u)
+    {
+        std::size_t BinOff = PayloadStart;
+        if (BinOff + static_cast<std::size_t>(VertexCount) * VertStrideBytes > PlyBytes.size())
+        {
+            OutDiagnostic = "Binary PLY vertex section truncated.";
+            return false;
+        }
+        for (uint32_t V = 0u; V < VertexCount; ++V)
+        {
+            float X = 0.0f, Y = 0.0f, Z = 0.0f;
+            std::memcpy(&X, PlyBytes.data() + BinOff + static_cast<std::size_t>(XOff), 4u);
+            std::memcpy(&Y, PlyBytes.data() + BinOff + static_cast<std::size_t>(YOff), 4u);
+            std::memcpy(&Z, PlyBytes.data() + BinOff + static_cast<std::size_t>(ZOff), 4u);
+            BinOff += VertStrideBytes;
+            const Mathematics::Axis3D Conv = Mathematics::ConvertVectorBetweenBases(
+                { X, Y, Z },
+                Mathematics::WorldCoordinateBasis::RightHandedYUp,
+                Mathematics::QueryActiveWorldBasis());
+            (void)OutAsset.Network.AppendVertex(Conv);
+            VertUVs[V] = { X * 0.25f + 0.5f, Z * 0.25f + 0.5f };
+        }
+        for (uint32_t F = 0u; F < FaceCount && BinOff < PlyBytes.size(); ++F)
+        {
+            const uint8_t N = PlyBytes[BinOff++];
+            if (BinOff + static_cast<std::size_t>(N) * 4u > PlyBytes.size()) break;
+            std::vector<uint32_t> Poly(N);
+            for (uint8_t K = 0u; K < N; ++K)
+            {
+                std::memcpy(&Poly[K], PlyBytes.data() + BinOff, 4u);
+                BinOff += 4u;
+            }
+            for (uint8_t Tri = 1u; Tri + 1u < N; ++Tri)
+            {
+                const std::array<uint32_t, 3u> LoopV {{ Poly[0], Poly[Tri], Poly[Tri + 1u] }};
+                if (LoopV[0] < VertexCount && LoopV[1] < VertexCount && LoopV[2] < VertexCount &&
+                    LoopV[0] != LoopV[1] && LoopV[1] != LoopV[2] && LoopV[2] != LoopV[0])
+                {
+                    const std::array<Mathematics::UVAxes, 3u> LoopUV {{ VertUVs[LoopV[0]], VertUVs[LoopV[1]], VertUVs[LoopV[2]] }};
+                    (void)OutAsset.Network.AppendFace(LoopV, LoopUV, {}, LayerIdx, 0u);
+                }
+            }
+        }
+    }
+
+    if (OutAsset.Network.Faces.empty())
+    {
+        OutDiagnostic = "PLY stream yielded zero valid triangles.";
+        return false;
+    }
     OutAsset.Network.LinkOppositeEdges(true);
     OutAsset.Network.RecomputeNormals();
     FinalizeConstructedAssetUDIMs(OutAsset);

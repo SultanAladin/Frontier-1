@@ -1310,7 +1310,8 @@ void ThumbnailSheetRepository::PopulateDefaultWorkspaceEntries()
         const char*         RelativePath    = nullptr;
     };
 
-    constexpr std::array<SeedEntry, 58> StockEntries = {{
+    constexpr std::array<SeedEntry, 59> StockEntries = {{
+        { "ControlVehicle",               ContentCategory::Geometry,    ContentOriginFilter::Project, { 242u, 224u, 48u,  255u }, ".ComponentSpace" },
         // Materials (EngineContent/Materials/)
         { "Standard Preset",      ContentCategory::Materials,   ContentOriginFilter::Engine,  { 199u, 173u, 160u, 255u } },
         { "Dielectric Glass",     ContentCategory::Materials,   ContentOriginFilter::Engine,  { 176u, 222u, 242u, 255u } },

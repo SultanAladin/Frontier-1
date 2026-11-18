@@ -52,7 +52,8 @@ enum class SpaceSuffixCategory : uint8_t
     NetworkSpace    = 20, // [-] - .NetworkSpace distributed session routing & replication policies
     VectorFieldSpace= 21, // [-] - .VectorFieldSpace multi-source vector field rig, curves, & formulas
     ForceModel      = 22, // [-] - .ForceModel Option A single-force preset configuration
-    InputSpace      = 23  // [-] - .InputSpace hardware chord registers, navigation presets & axis calibration
+    InputSpace      = 23, // [-] - .InputSpace hardware chord registers, navigation presets & axis calibration
+    ComponentSpace  = 24  // [-] - .ComponentSpace modular ComponentClass hierarchy, physics constraints & behaviours
 };
 
 //------------------------------------------------------------------------------------------------------------------------

@@ -37,6 +37,7 @@
 #include "Engine/Components/Controls/ControlAppearance.h"
 #include "Engine/Components/Panes/InspectorPanel.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
+#include "Engine/Workspaces/ComponentEditor/ComponentWorkspaceHost.h"
 #include "Engine/Components/Panes/ViewportPanel.h"
 #include "Engine/Editor/Explorer/ContentBrowser.h"
 #include "Engine/Editor/Explorer/ProjectBrowser.h"
@@ -471,8 +472,9 @@ int LaunchDesktopWorkspace(
         ParticleWorkspaceSurface   = 7u,
         ForceFieldWorkspaceSurface = 8u,
         FractureWorkspaceSurface   = 9u,
-        FluidWorkspaceSurface      = 10u,
-        SketcherWorkspaceSurface   = 11u,
+        FluidWorkspaceSurface           = 10u,
+        SketcherWorkspaceSurface        = 11u,
+        ComponentEditorWorkspaceSurface = 12u,
     };
 
     const bool StandaloneVectorLaunch =
@@ -680,7 +682,8 @@ int LaunchDesktopWorkspace(
 #if FRONTIER_EDITOR_ENABLED
     std::unique_ptr<Workspaces::MaterialWorkspaceHost>           MaterialHostPtr;
     std::unique_ptr<Workspaces::ParticleWorkspaceHost>           ParticleHostPtr;
-    std::unique_ptr<Workspaces::Fracture::FractureWorkspaceHost> FractureHostPtr;
+    std::unique_ptr<Workspaces::Fracture::FractureWorkspaceHost>               FractureHostPtr;
+    std::unique_ptr<Workspaces::ComponentEditor::ComponentWorkspaceHost>       ComponentEditorHostPtr;
     std::unique_ptr<Workspaces::FluidWorkspaceHost>              FluidHostPtr;
     std::unique_ptr<Workspaces::SketcherWorkspaceHost>           SketcherHostPtr;
     std::unique_ptr<Components::HeadlessWorkspaceDockContainer>  MaterialDockPtr;
@@ -715,6 +718,7 @@ int LaunchDesktopWorkspace(
     bool                                               FluidHostReady            = false;
     bool                                               SketcherHostReady         = false;
     bool                                               FractureHostReady         = false;
+    bool                                               ComponentEditorHostReady  = false;
     bool                                               ProjectBrowserInitialized = false;
     bool                                               SharedThemeInitialized    = false;
 
@@ -1022,6 +1026,22 @@ int LaunchDesktopWorkspace(
         return true;
     };
 
+    auto EnsureComponentEditorHostReady = [&]() -> bool
+    {
+        EnsureSharedControlCentreReady();
+        if (!ComponentEditorHostReady)
+        {
+            if (!ComponentEditorHostPtr)
+            {
+                ComponentEditorHostPtr = std::make_unique<Workspaces::ComponentEditor::ComponentWorkspaceHost>();
+            }
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            ComponentEditorHostPtr->AttachVulkanDevice(DeviceInterchange, CompiledShaderDir, RepositoryRootPath);
+            ComponentEditorHostReady = true;
+        }
+        return true;
+    };
+
     auto EnsureFractureHostReady = [&]() -> bool
     {
         EnsureSharedControlCentreReady();
@@ -1275,6 +1295,13 @@ int LaunchDesktopWorkspace(
                         CurrentSurface = ActiveHostSurface::FractureWorkspaceSurface;
                     }
                 }
+                else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::ComponentEditorWorkspace)
+                {
+                    if (EnsureComponentEditorHostReady())
+                    {
+                        CurrentSurface = ActiveHostSurface::ComponentEditorWorkspaceSurface;
+                    }
+                }
                 else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::SketcherWorkspace)
                 {
                     if (!Directive.SelectedFilePath.empty())
@@ -1379,6 +1406,14 @@ int LaunchDesktopWorkspace(
     else if (CurrentSurface == ActiveHostSurface::FractureWorkspaceSurface)
     {
         if (!EnsureFractureHostReady())
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+    }
+    else if (CurrentSurface == ActiveHostSurface::ComponentEditorWorkspaceSurface)
+    {
+        if (!EnsureComponentEditorHostReady())
         {
             ImGui::DestroyContext(GuiCtx);
             return 1;
@@ -1774,6 +1809,43 @@ int LaunchDesktopWorkspace(
             FractureHostPtr->RenderStudio(StudioSurface, LogicalBounds, PtrInput, Dt);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
+        else if (CurrentSurface == ActiveHostSurface::ComponentEditorWorkspaceSurface && ComponentEditorHostPtr)
+        {
+            const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            PixelSpace StudioSurface(ImGui::GetForegroundDrawList(), Point2D{ 0.0f, 0.0f }, HostUiScale);
+            const Point2D MouseLogical = StudioSurface.QueryMousePosition();
+            PaneInputReading PtrInput {};
+            if (!StandaloneControlCentre.QueryOpen())
+            {
+                PtrInput.PrimaryPointer.X        = MouseLogical.X;
+                PtrInput.PrimaryPointer.Y        = MouseLogical.Y;
+                PtrInput.PrimaryPointer.Pressed  = StudioSurface.QueryMouseClicked(0);
+                PtrInput.PrimaryPointer.Down     = StudioSurface.QueryMouseDown(0);
+                PtrInput.PrimaryPointer.Released = StudioSurface.QueryMouseReleased(0);
+                PtrInput.DoubleClicked           = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+                PtrInput.SecondaryPressed        = StudioSurface.QueryMouseClicked(1);
+                PtrInput.SecondaryDown           = StudioSurface.QueryMouseDown(1);
+                PtrInput.SecondaryReleased       = StudioSurface.QueryMouseReleased(1);
+                PtrInput.MiddlePressed           = StudioSurface.QueryMouseClicked(2);
+                PtrInput.MiddleDown              = StudioSurface.QueryMouseDown(2);
+                PtrInput.MiddleReleased          = StudioSurface.QueryMouseReleased(2);
+                PtrInput.PointerDeltaX           = Io.MouseDelta.x;
+                PtrInput.PointerDeltaY           = Io.MouseDelta.y;
+                PtrInput.WheelDeltaY             = Io.MouseWheel;
+                PtrInput.ShiftHeld               = Io.KeyShift;
+                PtrInput.ControlHeld             = Io.KeyCtrl;
+                PtrInput.AltHeld                 = Io.KeyAlt;
+            }
+            const Rectangle2D LogicalBounds {
+                0.0f,
+                0.0f,
+                FullBounds.Width / HostUiScale,
+                FullBounds.Height / HostUiScale,
+            };
+            ComponentEditorHostPtr->RenderWorkspace(StudioSurface, LogicalBounds, PtrInput, Dt);
+            StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
+        }
         else if (CurrentSurface == ActiveHostSurface::FluidWorkspaceSurface && FluidHostPtr && FluidDockPtr && FluidBrowserPtr)
         {
             const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
@@ -1963,6 +2035,17 @@ int LaunchDesktopWorkspace(
                     }
                 }
                 PillX += 76.0f;
+
+                const ButtonTone CeTone = (CurrentSurface == ActiveHostSurface::ComponentEditorWorkspaceSurface) ? ButtonTone::Primary : ButtonTone::Secondary;
+                if (CapsuleButton::Construct(TopOverlay, { PillX, 3.0f, 92.0f, 23.0f }, ButtonDescriptor{ "Components", CeTone, 10.2f, 11.5f }, Ptr).Pressed &&
+                    CurrentSurface != ActiveHostSurface::ComponentEditorWorkspaceSurface)
+                {
+                    if (EnsureComponentEditorHostReady())
+                    {
+                        CurrentSurface = ActiveHostSurface::ComponentEditorWorkspaceSurface;
+                    }
+                }
+                PillX += 98.0f;
 
                 if (CapsuleButton::Construct(TopOverlay, { PillX, 3.0f, 76.0f, 23.0f }, ButtonDescriptor{ "Projects", ButtonTone::Secondary, 10.2f, 11.5f }, Ptr).Pressed)
                 {

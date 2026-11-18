@@ -34,8 +34,9 @@ enum class HostWorkspaceTarget : uint8_t
     SketcherWorkspace   = 6u, // [-] - Open with Sketcher (SketcherWorkspaceHost parametric NURBS / B-rep CAD & 2D drawing sheet)
     FluidWorkspace      = 7u, // [-] - Open with Fluid Studio (FluidWorkspaceHost Eulerian pyro, smoke & fire simulation)
     MaterialWorkspace   = 8u, // [-] - Open with Material Studio (MaterialWorkspaceHost dynamic OpenPBR material preview)
-    ParticleWorkspace   = 9u, // [-] - Open with Particle Studio (ParticleWorkspaceHost 93-preset GPU particle & force solver)
-    ForceFieldWorkspace = 10u, // [-] - Open with ForceField Studio (VectorFieldViewportSession 3D vector field simulator)
+    ParticleWorkspace        = 9u, // [-] - Open with Particle Studio (ParticleWorkspaceHost 93-preset GPU particle & force solver)
+    ForceFieldWorkspace      = 10u, // [-] - Open with ForceField Studio (VectorFieldViewportSession 3D vector field simulator)
+    ComponentEditorWorkspace = 11u, // [-] - Open with Component Editor (ComponentWorkspaceHost 3-dock class, constraint & vehicle studio)
 };
 
 //------------------------------------------------------------------------------------------------------------------------
