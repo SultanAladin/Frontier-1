@@ -1404,16 +1404,23 @@ bool VoxelSdfClipmapVolume::TraceHybridOccluded(
     Mathematics::Axis3D                      Direction,
     float                                    Limit,
     std::span<const DynamicLocalSdfInstance> DynamicObjects,
-    unsigned*                                OutSteps) const noexcept
+    unsigned*                                OutSteps,
+    float*                                   OutHitDistM) const noexcept
 {
     const ClipVector O { Origin.X, Origin.Y, Origin.Z };
     const ClipVector D { Direction.X, Direction.Y, Direction.Z };
+    const bool NeedDist = (OutHitDistM != nullptr);
+    bool AnyHit = false;
+    float BestDist = Limit;
 
     if (!StaticAtlas.Surfaces.empty())
     {
-        if (StaticAtlas.Trace(O, D, Limit, true).Confirmed())
+        const auto Res = StaticAtlas.Trace(O, D, Limit, !NeedDist);
+        if (Res.Confirmed())
         {
-            return true;
+            if (!NeedDist) return true;
+            AnyHit = true;
+            BestDist = std::min(BestDist, Res.Travel);
         }
     }
 
@@ -1448,12 +1455,19 @@ bool VoxelSdfClipmapVolume::TraceHybridOccluded(
             }
         }
         // Refinement on the original interval (never an advanced biased origin)
-        if (Obj.Asset->LocalAtlas.Trace(LocalOrigin, LocalDirection, Limit, true).Confirmed())
+        const auto DynRes = Obj.Asset->LocalAtlas.Trace(LocalOrigin, LocalDirection, Limit, !NeedDist);
+        if (DynRes.Confirmed())
         {
-            return true;
+            if (!NeedDist) return true;
+            AnyHit = true;
+            BestDist = std::min(BestDist, DynRes.Travel);
         }
     }
-    return false;
+    if (OutHitDistM != nullptr && AnyHit)
+    {
+        *OutHitDistM = BestDist;
+    }
+    return AnyHit;
 }
 
 float VoxelSdfClipmapVolume::SampleClipmapDistance(

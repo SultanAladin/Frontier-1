@@ -342,7 +342,8 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
     const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis(Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
     const uint32_t MatCount = MaterialRegister.QuerySlotCount();
 
-    // 2. Shade Direct Sun + Visibility-Gated LTC Area Lights + 2-Scale (0.25 m Contact / 2.20 m Chassis) AO + Lagarde specAO!
+    // 1b. Evaluate 2-Scale Physical Ambient Occlusion (0.25 m Contact + 2.20 m Chassis) with IGN + 2-Pass Plane-Aware Denoiser
+    const uint32_t AoRays = std::clamp(std::max(12u, AoSettings.RaysPerPixel), 12u, 32u);
     for (uint32_t PY = 0u; PY < Out.HeightPx; ++PY)
     {
         for (uint32_t PX = 0u; PX < Out.WidthPx; ++PX)
@@ -351,24 +352,12 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
             const auto& Hit       = PrimarySamples[Off];
             if (!Hit.ValidHit || Hit.MaterialSlot >= MatCount)
             {
-                Out.DirectHdrRadiance[Off] = { 0.05f, 0.08f, 0.14f };
-                const auto Tone = ApplyAcesFilmic(Out.DirectHdrRadiance[Off]);
-                Out.ToneMappedSrgb8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
-                Out.ToneMappedSrgb8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
-                Out.ToneMappedSrgb8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
+                Out.CombinedDiffuseAo[Off] = 1.0f;
                 continue;
             }
-
-            const auto& Mat          = MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
-            const uint32_t LobeMask  = MaterialRegister.InspectCompactEntry(Hit.MaterialSlot).ActiveLobeMask;
-            const auto LocalWo       = Hit.TangentFrame.WorldToLocal(Hit.WorldViewDirection);
-
-            // Evaluate 2-Scale Physical Ambient Occlusion (0.25 m micro-contact + 2.20 m chassis underbody)
-            const uint32_t AoRays = std::clamp(std::max(8u, AoSettings.RaysPerPixel), 8u, 32u);
-            uint32_t       Seed   = (PX * 747796405u + PY * 2891336453u + 277803737u) | 1u;
-            Seed                  = ((Seed >> ((Seed >> 28u) + 4u)) ^ Seed) * 277803737u;
-            Seed                 ^= (Seed >> 22u);
-            const float RotOffset = static_cast<float>(Seed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
+            const float IgnDot    = 0.06711056f * static_cast<float>(PX) + 0.00583715f * static_cast<float>(PY);
+            const float IgnFrac   = 52.9829189f * (IgnDot - std::floor(IgnDot));
+            const float RotOffset = (IgnFrac - std::floor(IgnFrac)) * Constants::TauFloat;
             float ContactUnoccluded   = 0.0f;
             float ChassisUnoccluded   = 0.0f;
             const Mathematics::Axis3D AoOrigin = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 2.0e-3f;
@@ -400,16 +389,86 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
                     {
                         ContactUnoccluded += 1.0f;
                     }
-                    // Smooth falloff across 2.20 m chassis horizon
                     ChassisUnoccluded += std::clamp(AoHit.HitDistanceMeters / AoSettings.ChassisRadiusMeters, 0.0f, 1.0f);
                 }
             }
-
             const float ContactAo = ContactUnoccluded / static_cast<float>(AoRays);
             const float ChassisAo = ChassisUnoccluded / static_cast<float>(AoRays);
-            const float DiffAo    = std::clamp(ContactAo * (0.25f + 0.75f * ChassisAo), 0.0f, 1.0f);
-            const float SpecAo    = ComputeLagardeSpecularOcclusion(LocalWo.Z, DiffAo, Mat.Specular.Roughness);
-            Out.CombinedDiffuseAo[Off] = DiffAo;
+            Out.CombinedDiffuseAo[Off] = std::clamp(ContactAo * (0.25f + 0.75f * ChassisAo), 0.0f, 1.0f);
+        }
+    }
+
+    // Plane-aware 2-step à-trous AO smoothing (keeps 0px contact creases sharp while eliminating wall/floor grain!)
+    {
+        std::vector<float> AoPing = Out.CombinedDiffuseAo;
+        std::vector<float> AoPong(TotalPixels, 1.0f);
+        constexpr std::array<int, 2u> AoSteps { 1, 2 };
+        constexpr float K1D[2] { 1.0f, 0.60f };
+        for (int Step : AoSteps)
+        {
+            for (uint32_t PY = 0u; PY < Out.HeightPx; ++PY)
+            {
+                for (uint32_t PX = 0u; PX < Out.WidthPx; ++PX)
+                {
+                    const std::size_t Off = static_cast<std::size_t>(PY) * Out.WidthPx + PX;
+                    const auto& CHit      = PrimarySamples[Off];
+                    if (!CHit.ValidHit || CHit.MaterialSlot >= MatCount)
+                    {
+                        AoPong[Off] = 1.0f;
+                        continue;
+                    }
+                    float SumAo = 0.0f, SumW = 0.0f;
+                    for (int KY = -1; KY <= 1; ++KY)
+                    {
+                        const int NY = std::clamp(static_cast<int>(PY) + KY * Step, 0, static_cast<int>(Out.HeightPx) - 1);
+                        for (int KX = -1; KX <= 1; ++KX)
+                        {
+                            const int NX = std::clamp(static_cast<int>(PX) + KX * Step, 0, static_cast<int>(Out.WidthPx) - 1);
+                            const std::size_t NOff = static_cast<std::size_t>(NY) * Out.WidthPx + static_cast<uint32_t>(NX);
+                            const auto& NHit       = PrimarySamples[NOff];
+                            if (!NHit.ValidHit) continue;
+                            const float KSpatial = K1D[std::abs(KX)] * K1D[std::abs(KY)];
+                            const float PlaneD   = std::fabs(Mathematics::EvaluateDot(
+                                CHit.TangentFrame.NormalZ, NHit.WorldPosition - CHit.WorldPosition));
+                            const float WPlane   = std::exp(-PlaneD * 80.0f);
+                            const float NrmD     = std::max(0.0f, Mathematics::EvaluateDot(
+                                CHit.TangentFrame.NormalZ, NHit.TangentFrame.NormalZ));
+                            const float WNrm     = std::pow(NrmD, 32.0f);
+                            const float W        = KSpatial * WPlane * WNrm;
+                            SumAo += AoPing[NOff] * W;
+                            SumW  += W;
+                        }
+                    }
+                    AoPong[Off] = (SumW > 1.0e-6f) ? (SumAo / SumW) : AoPing[Off];
+                }
+            }
+            AoPing.swap(AoPong);
+        }
+        Out.CombinedDiffuseAo = std::move(AoPing);
+    }
+
+    // 2. Shade Direct Sun + Visibility-Gated LTC Area Lights + Filtered 2-Scale AO + Lagarde specAO!
+    for (uint32_t PY = 0u; PY < Out.HeightPx; ++PY)
+    {
+        for (uint32_t PX = 0u; PX < Out.WidthPx; ++PX)
+        {
+            const std::size_t Off = static_cast<std::size_t>(PY) * Out.WidthPx + PX;
+            const auto& Hit       = PrimarySamples[Off];
+            if (!Hit.ValidHit || Hit.MaterialSlot >= MatCount)
+            {
+                Out.DirectHdrRadiance[Off] = { 0.05f, 0.08f, 0.14f };
+                const auto Tone = ApplyAcesFilmic(Out.DirectHdrRadiance[Off]);
+                Out.ToneMappedSrgb8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
+                Out.ToneMappedSrgb8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
+                Out.ToneMappedSrgb8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
+                continue;
+            }
+
+            const auto& Mat          = MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+            const uint32_t LobeMask  = MaterialRegister.InspectCompactEntry(Hit.MaterialSlot).ActiveLobeMask;
+            const auto LocalWo       = Hit.TangentFrame.WorldToLocal(Hit.WorldViewDirection);
+            const float DiffAo       = Out.CombinedDiffuseAo[Off];
+            const float SpecAo       = ComputeLagardeSpecularOcclusion(LocalWo.Z, DiffAo, Mat.Specular.Roughness);
             Out.LagardeSpecularAo[Off] = SpecAo;
 
             Mathematics::LinearRGB Hdr = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight);

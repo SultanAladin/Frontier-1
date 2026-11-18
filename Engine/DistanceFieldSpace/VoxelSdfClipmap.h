@@ -290,7 +290,8 @@ public:
         Mathematics::Axis3D                      Direction,
         float                                    Limit,
         std::span<const DynamicLocalSdfInstance> DynamicObjects = {},
-        unsigned*                                OutSteps       = nullptr) const noexcept;
+        unsigned*                                OutSteps       = nullptr,
+        float*                                   OutHitDistM    = nullptr) const noexcept;
 
     // Samples ToroidalClipmap / Clip0 -> Clip1 distance
     [[nodiscard]] float SampleClipmapDistance(

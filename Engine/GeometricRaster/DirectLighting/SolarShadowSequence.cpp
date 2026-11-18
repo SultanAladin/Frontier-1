@@ -23,13 +23,95 @@ namespace Frontier::GeometricRaster
 namespace
 {
 
+[[nodiscard]] float InterleavedGradientNoise(uint32_t PX, uint32_t PY) noexcept
+{
+    const float Dot = 0.06711056f * static_cast<float>(PX) + 0.00583715f * static_cast<float>(PY);
+    const float FracDot = Dot - std::floor(Dot);
+    const float Prod = 52.9829189f * FracDot;
+    return Prod - std::floor(Prod);
+}
+
 [[nodiscard]] uint32_t HashPixelSeed(uint32_t PX, uint32_t PY) noexcept
 {
-    uint32_t State = PX * 0x9E3779B1u ^ (PY * 0x85EBCA77u);
-    State ^= State >> 16u;
-    State *= 0x7FEB352Du;
-    State ^= State >> 15u;
-    return State;
+    const float Ign = InterleavedGradientNoise(PX, PY);
+    return static_cast<uint32_t>(std::clamp(Ign, 0.0f, 0.99998f) * 65536.0f);
+}
+
+[[nodiscard]] float SampleCascadeDepthBilinear(
+    const OrthographicShadowCascade& Cascade,
+    float                            TX,
+    float                            TY) noexcept
+{
+    const int MaxIdx = static_cast<int>(Cascade.ResolutionTexels) - 1;
+    const float SX = TX - 0.5f;
+    const float SY = TY - 0.5f;
+    const int X0 = std::clamp(static_cast<int>(std::floor(SX)), 0, MaxIdx);
+    const int Y0 = std::clamp(static_cast<int>(std::floor(SY)), 0, MaxIdx);
+    const int X1 = std::min(X0 + 1, MaxIdx);
+    const int Y1 = std::min(Y0 + 1, MaxIdx);
+    const float FX = std::clamp(SX - std::floor(SX), 0.0f, 1.0f);
+    const float FY = std::clamp(SY - std::floor(SY), 0.0f, 1.0f);
+
+    const uint32_t Res = Cascade.ResolutionTexels;
+    const float D00 = Cascade.ClosestLightDepth[static_cast<std::size_t>(Y0) * Res + static_cast<uint32_t>(X0)];
+    const float D10 = Cascade.ClosestLightDepth[static_cast<std::size_t>(Y0) * Res + static_cast<uint32_t>(X1)];
+    const float D01 = Cascade.ClosestLightDepth[static_cast<std::size_t>(Y1) * Res + static_cast<uint32_t>(X0)];
+    const float D11 = Cascade.ClosestLightDepth[static_cast<std::size_t>(Y1) * Res + static_cast<uint32_t>(X1)];
+
+    // If any corner is unoccluded (+inf), use closest finite depth comparison per tap via CompareCascadeBilinear
+    if (!std::isfinite(D00) || !std::isfinite(D10) || !std::isfinite(D01) || !std::isfinite(D11))
+    {
+        return std::min(std::min(D00, D10), std::min(D01, D11));
+    }
+    const float Top = D00 + (D10 - D00) * FX;
+    const float Bot = D01 + (D11 - D01) * FX;
+    return Top + (Bot - Top) * FY;
+}
+
+[[nodiscard]] float CompareCascadeBilinear(
+    const OrthographicShadowCascade& Cascade,
+    float                            TX,
+    float                            TY,
+    float                            RecD,
+    float                            Bias,
+    float&                           OutBlockerDiffSum,
+    float&                           OutBlockerWeightSum) noexcept
+{
+    const int MaxIdx = static_cast<int>(Cascade.ResolutionTexels) - 1;
+    const float SX = TX - 0.5f;
+    const float SY = TY - 0.5f;
+    const int X0 = std::clamp(static_cast<int>(std::floor(SX)), 0, MaxIdx);
+    const int Y0 = std::clamp(static_cast<int>(std::floor(SY)), 0, MaxIdx);
+    const int X1 = std::min(X0 + 1, MaxIdx);
+    const int Y1 = std::min(Y0 + 1, MaxIdx);
+    const float FX = std::clamp(SX - std::floor(SX), 0.0f, 1.0f);
+    const float FY = std::clamp(SY - std::floor(SY), 0.0f, 1.0f);
+
+    const std::array<int, 2u> Xs { X0, X1 };
+    const std::array<int, 2u> Ys { Y0, Y1 };
+    const std::array<float, 2u> WXs { 1.0f - FX, FX };
+    const std::array<float, 2u> WYs { 1.0f - FY, FY };
+
+    float Vis = 0.0f;
+    for (int IY = 0; IY < 2; ++IY)
+    {
+        for (int IX = 0; IX < 2; ++IX)
+        {
+            const float W = WXs[IX] * WYs[IY];
+            const float D = Cascade.ClosestLightDepth[static_cast<std::size_t>(Ys[IY]) * Cascade.ResolutionTexels + static_cast<uint32_t>(Xs[IX])];
+            const float Diff = RecD - D;
+            if (Diff > Bias)
+            {
+                OutBlockerDiffSum   += Diff * W;
+                OutBlockerWeightSum += W;
+            }
+            else
+            {
+                Vis += W;
+            }
+        }
+    }
+    return Vis;
 }
 
 void RasterizeTreeIntoOrthographicCascade(
@@ -163,37 +245,31 @@ struct CascadeSampleOutcome
         return Out;
     }
     Out.InsideCascade  = true;
-    const float Bias   = TexelM * (1.25f + 0.95f * SlopeScale);
-    const int BaseX    = static_cast<int>(std::floor(CX));
-    const int BaseY    = static_cast<int>(std::floor(CY));
-    const int MaxIdx   = static_cast<int>(Cascade.ResolutionTexels) - 1;
+    const float BaseBias = TexelM * (1.75f + 1.45f * SlopeScale);
 
-    constexpr float KernelW[3] { 0.25f, 0.50f, 0.25f };
+    // True 5x5 Tent Bilinear PCF — crisp edges with zero stair-steps and zero shadow acne!
+    constexpr float KernelW[5] { 0.0625f, 0.1875f, 0.50f, 0.1875f, 0.0625f };
     float VisSum = 0.0f;
     float BlkSum = 0.0f;
     float BlkW   = 0.0f;
 
-    for (int DY = -1; DY <= 1; ++DY)
+    for (int DY = -2; DY <= 2; ++DY)
     {
-        const int TY = std::clamp(BaseY + DY, 0, MaxIdx);
-        for (int DX = -1; DX <= 1; ++DX)
+        for (int DX = -2; DX <= 2; ++DX)
         {
-            const int TX = std::clamp(BaseX + DX, 0, MaxIdx);
-            const float W = KernelW[DY + 1] * KernelW[DX + 1];
-            const float ClosestD = Cascade.ClosestLightDepth[static_cast<std::size_t>(TY) * Cascade.ResolutionTexels + static_cast<uint32_t>(TX)];
-            const float Diff     = RecD - ClosestD;
-            if (Diff > Bias)
-            {
-                BlkSum += Diff * W;
-                BlkW   += W;
-            }
-            else
-            {
-                VisSum += W;
-            }
+            const float W   = KernelW[DY + 2] * KernelW[DX + 2];
+            const float Rad = std::sqrt(static_cast<float>(DX * DX + DY * DY));
+            const float TapBias = BaseBias * (1.0f + 0.30f * Rad);
+            float BSum = 0.0f, BW = 0.0f;
+            const float TapVis = CompareCascadeBilinear(
+                Cascade, CX + static_cast<float>(DX) * 0.65f, CY + static_cast<float>(DY) * 0.65f,
+                RecD, TapBias, BSum, BW);
+            VisSum += TapVis * W;
+            BlkSum += BSum * W;
+            BlkW   += BW * W;
         }
     }
-    Out.Visibility       = VisSum;
+    Out.Visibility       = std::clamp(VisSum, 0.0f, 1.0f);
     Out.BlockerDistanceM = (BlkW > 0.0f) ? (BlkSum / BlkW) : 0.0f;
     return Out;
 }
@@ -212,7 +288,7 @@ struct CascadeSampleOutcome
         return Out;
     }
     Out.InsideCascade  = true;
-    const float Bias   = TexelM * (1.2f + 0.9f * SlopeScale);
+    const float Bias   = TexelM * (1.55f + 1.30f * SlopeScale);
     const int MaxIdx   = static_cast<int>(Cascade.ResolutionTexels) - 1;
     const float RotPhi = static_cast<float>(RotationSeed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
     constexpr float GoldenAngle = 2.39996323f;
@@ -251,21 +327,18 @@ struct CascadeSampleOutcome
     const float PenumbraM     = MeanBlockerD * TanSunRadius * 2.15f;
     const float FilterRadiusPx = std::clamp(PenumbraM / TexelM, 1.15f, 22.0f);
 
-    // 3. 16-Tap Vogel PCF with Receiver-Plane Bias Scaling
+    // 3. 16-Tap Vogel Bilinear PCF with Receiver-Plane Bias Scaling
     constexpr uint32_t PcfTaps = 16u;
     float LitSum = 0.0f;
     for (uint32_t Tap = 0u; Tap < PcfTaps; ++Tap)
     {
         const float R   = std::sqrt((static_cast<float>(Tap) + 0.5f) / static_cast<float>(PcfTaps)) * FilterRadiusPx;
         const float Ang = static_cast<float>(Tap) * GoldenAngle + RotPhi + 0.71f;
-        const int TX    = std::clamp(static_cast<int>(std::floor(CX + R * std::cos(Ang))), 0, MaxIdx);
-        const int TY    = std::clamp(static_cast<int>(std::floor(CY + R * std::sin(Ang))), 0, MaxIdx);
-        const float D   = Cascade.ClosestLightDepth[static_cast<std::size_t>(TY) * Cascade.ResolutionTexels + static_cast<uint32_t>(TX)];
-        const float AdaptiveBias = Bias + TexelM * 0.16f * R;
-        if ((RecD - D) <= AdaptiveBias)
-        {
-            LitSum += 1.0f;
-        }
+        const float SX  = CX + R * std::cos(Ang);
+        const float SY  = CY + R * std::sin(Ang);
+        const float AdaptiveBias = Bias + TexelM * 0.20f * R;
+        float DummyB = 0.0f, DummyW = 0.0f;
+        LitSum += CompareCascadeBilinear(Cascade, SX, SY, RecD, AdaptiveBias, DummyB, DummyW);
     }
     Out.Visibility = LitSum / static_cast<float>(PcfTaps);
     return Out;
@@ -285,17 +358,17 @@ struct CascadeSampleOutcome
         return Out;
     }
     Out.InsideCascade  = true;
-    const int MaxIdx   = static_cast<int>(Cascade.ResolutionTexels) - 1;
-    const float Bias   = TexelM * (1.25f + 0.85f * SlopeScale);
-    const float RotPhi = static_cast<float>(RotationSeed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
+    const float BaseBias = TexelM * (1.55f + 1.35f * SlopeScale);
+    const float Ign01  = static_cast<float>(RotationSeed & 0xFFFFu) / 65536.0f;
+    const float RotPhi = Ign01 * Constants::TauFloat;
     constexpr float GoldenAngle = 2.39996323f;
 
-    // EEVEE-Next Quadratic Shadow Map Ray March (SMRT): 8 rays x 16 quadratic steps with segment-crossing continuity
-    constexpr uint32_t SmrtRays  = 8u;
+    // Stratified Uniform-Step Shadow Map Ray March (SMRT): 16 rays x 16 stratified bilinear steps — zero depth-slice rings!
+    constexpr uint32_t SmrtRays  = 16u;
     constexpr uint32_t SmrtSteps = 16u;
-    const float MaxMarchWorldM   = 6.50f;
-    const float MaxStepTexels    = std::clamp((MaxMarchWorldM * TanSunRadius) / TexelM, 2.5f, 44.0f);
-    const float ThicknessM       = std::max(0.65f, TexelM * 42.0f);
+    const float MaxMarchWorldM   = 3.40f;
+    const float MaxStepTexels    = std::clamp((MaxMarchWorldM * TanSunRadius) / TexelM, 2.5f, 38.0f);
+    const float ThicknessM       = std::max(1.25f, TexelM * 64.0f);
 
     float LitSum     = 0.0f;
     float BlkDistSum = 0.0f;
@@ -303,9 +376,7 @@ struct CascadeSampleOutcome
 
     for (uint32_t RIdx = 0u; RIdx < SmrtRays; ++RIdx)
     {
-        uint32_t StepRng     = (RotationSeed ^ (RIdx * 747796405u + 2891336453u)) | 1u;
-        StepRng              = StepRng * 747796405u + 2891336453u;
-        const float StepJit  = static_cast<float>(((StepRng >> ((StepRng >> 28u) + 4u)) ^ StepRng) * 277803737u >> 8u) * (1.0f / 16777216.0f);
+        const float StepJit  = std::fmod(Ign01 + static_cast<float>(RIdx) * 0.6180339887f + 0.37f, 1.0f);
         const float Radial   = std::sqrt((static_cast<float>(RIdx) + 0.5f) / static_cast<float>(SmrtRays));
         const float Angle    = static_cast<float>(RIdx) * GoldenAngle + RotPhi;
         const float DirTX    = Radial * std::cos(Angle) * MaxStepTexels;
@@ -314,18 +385,23 @@ struct CascadeSampleOutcome
         float BestHitDist    = 0.0f;
         float PrevRayD       = RecD;
 
-        for (uint32_t Step = 1u; Step <= SmrtSteps; ++Step)
+        for (uint32_t Step = 0u; Step < SmrtSteps; ++Step)
         {
-            const float TNorm = (static_cast<float>(Step) - 0.5f + StepJit) / static_cast<float>(SmrtSteps);
-            const float TQuad = TNorm * TNorm;
-            const int TX      = std::clamp(static_cast<int>(std::floor(CX + DirTX * TQuad)), 0, MaxIdx);
-            const int TY      = std::clamp(static_cast<int>(std::floor(CY + DirTY * TQuad)), 0, MaxIdx);
-            const float RayD      = RecD - MaxMarchWorldM * TQuad;
-            const float CascadeD  = Cascade.ClosestLightDepth[static_cast<std::size_t>(TY) * Cascade.ResolutionTexels + static_cast<uint32_t>(TX)];
-            const float DiffCurr  = RayD - CascadeD;
-            const float DiffPrev  = PrevRayD - CascadeD;
+            const float TNorm = (static_cast<float>(Step) + StepJit) / static_cast<float>(SmrtSteps);
+            const float SX    = CX + DirTX * TNorm;
+            const float SY    = CY + DirTY * TNorm;
+            const float RayD  = RecD - MaxMarchWorldM * TNorm;
+            const float CascadeD = SampleCascadeDepthBilinear(Cascade, SX, SY);
+            if (!std::isfinite(CascadeD))
+            {
+                PrevRayD = RayD;
+                continue;
+            }
+            const float StepBias = BaseBias + TexelM * 0.25f * Radial * MaxStepTexels * TNorm;
+            const float DiffCurr = RayD - CascadeD;
+            const float DiffPrev = PrevRayD - CascadeD;
 
-            if (DiffCurr > Bias && DiffPrev < ThicknessM)
+            if (DiffCurr > StepBias && DiffPrev < ThicknessM)
             {
                 Occluded    = true;
                 BestHitDist = std::max(0.04f, RecD - CascadeD);
@@ -449,7 +525,7 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
             if (Algorithm == SolarShadowAlgorithm::WideTreeRayQuery)
             {
                 // Deterministic Vogel Solar Disc Raytrace against 4-Wide WideBoundingTree!
-                const uint32_t RayCount = std::clamp(Sun.RtxSamplesPerPixel, 1u, 32u);
+                const uint32_t RayCount = std::clamp(Sun.RtxSamplesPerPixel, 8u, 32u);
                 const float    RotPhi   = static_cast<float>(Seed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
                 constexpr float GoldenAngle = 2.39996323f;
 
@@ -493,7 +569,7 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
             else if (Algorithm == SolarShadowAlgorithm::HybridSdf)
             {
                 // Exact arena/f2d37e4b-frontier Hybrid SDF Clipmap + Exact Triangle Refinement over Vogel Solar Disc!
-                const uint32_t RayCount = std::clamp(Sun.RtxSamplesPerPixel, 4u, 8u);
+                const uint32_t RayCount = std::clamp(Sun.RtxSamplesPerPixel, 8u, 16u);
                 const float    RotPhi   = static_cast<float>(Seed & 0xFFFFu) * (Constants::TauFloat / 65536.0f);
                 constexpr float GoldenAngle = 2.39996323f;
 
@@ -516,12 +592,8 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
                     float HitDistM   = 1.0f;
                     if (UseClipmapHybrid)
                     {
-                        HitOccluded = OptionalClipmap->TraceHybridOccluded(RayOrigin, JitteredSun, 45.0f, DynamicObjects);
-                        if (HitOccluded)
-                        {
-                            const auto Interval = OptionalClipmap->SampleClipmapInterval(RayOrigin + JitteredSun * 0.25f);
-                            HitDistM = std::max(0.05f, Interval.Raw);
-                        }
+                        HitOccluded = OptionalClipmap->TraceHybridOccluded(
+                            RayOrigin, JitteredSun, 45.0f, DynamicObjects, nullptr, &HitDistM);
                     }
                     else
                     {
@@ -615,7 +687,7 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
 
                 if (Algorithm == SolarShadowAlgorithm::ContactPcss)
                 {
-                    // Short 0.24 m BVH4 Contact Gate eliminates shadow detachment at plinth/tire contacts!
+                    // Short 0.24 m BVH4 Contact Gate eliminates shadow detachment at plinth/tire contacts without hard 0.24 m seam!
                     SpatialAcceleration::RaySegmentQuery ContactRay {};
                     ContactRay.Origin          = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 1.5e-3f;
                     ContactRay.UnitDirection   = SunDir;
@@ -625,7 +697,7 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
                     if (ContactHit.HitConfirmed)
                     {
                         const float ContactFade = std::clamp(ContactHit.HitDistanceMeters / 0.24f, 0.0f, 1.0f);
-                        const float ContactVis  = ContactFade * 0.25f;
+                        const float ContactVis  = ContactFade * ContactFade;
                         FinalVis                = std::min(FinalVis, ContactVis);
                         BlockerD                = (BlockerD > 0.0f) ? std::min(BlockerD, ContactHit.HitDistanceMeters) : ContactHit.HitDistanceMeters;
                     }
@@ -753,7 +825,12 @@ void SolarShadowSequence::ApplyPlaneAwarePenumbraFilter(
                 // Estimate screen-space penumbra radius in pixels from world blocker distance & camera distance
                 const float CamDist = std::max(0.25f, Mathematics::EvaluateLength(CenterHit.WorldPosition));
                 const float PenumbraWorldM = DilatedBlocker[Off] * TanSunAngularRadius;
-                const float SigmaPx = std::clamp(0.35f + (PenumbraWorldM / CamDist) * static_cast<float>(ViewportHeight) * 1.4f, 0.35f, 9.0f);
+                const float MinPenumbraSigma = (InOutField.RawVisibility[Off] > 0.002f && InOutField.RawVisibility[Off] < 0.998f)
+                    ? 1.15f
+                    : 0.35f;
+                const float SigmaPx = std::clamp(
+                    MinPenumbraSigma + (PenumbraWorldM / CamDist) * static_cast<float>(ViewportHeight) * 1.4f,
+                    MinPenumbraSigma, 9.0f);
                 const float InvTwoSigmaSq = 1.0f / (2.0f * SigmaPx * SigmaPx);
 
                 float SumVis    = 0.0f;

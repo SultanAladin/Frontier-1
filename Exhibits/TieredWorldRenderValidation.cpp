@@ -310,6 +310,14 @@ int main()
     WorldScene.LatticeConfig.FibonacciRayCount = 64u;
     WorldScene.LatticeConfig.BouncePasses      = 2u;
 
+    WorldScene.ClipmapConfig.Clip0CenterWorld      = { 0.00f, 0.35f, 0.55f };
+    WorldScene.ClipmapConfig.Clip1CenterWorld      = { 0.00f, 0.35f, 0.55f };
+    WorldScene.ClipmapConfig.Clip0HalfExtentMeters = 2.80f;
+    WorldScene.ClipmapConfig.Clip1HalfExtentMeters = 5.60f;
+    WorldScene.ClipmapConfig.Clip0Resolution       = 48u;
+    WorldScene.ClipmapConfig.Clip1Resolution       = 32u;
+    WorldScene.ClipmapConfig.RadiosityBounces      = 2u;
+
     GeometricRaster::TieredWorldRenderSequence WorldRenderer {};
     WorldRenderer.PrepareWorldScene(WorldScene);
 
