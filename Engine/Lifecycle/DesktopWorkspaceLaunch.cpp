@@ -675,6 +675,7 @@ int LaunchDesktopWorkspace(
     auto& StandaloneControlCentre = *StandaloneControlCentrePtr;
     auto& InputParticipant        = *InputParticipantPtr;
     InputParticipant.Initialize();
+    GeometricRaster::ImGuiOverlayRasterization SwapchainPresenter {};
 
 #if FRONTIER_EDITOR_ENABLED
     std::unique_ptr<Workspaces::MaterialWorkspaceHost>           MaterialHostPtr;
@@ -771,6 +772,7 @@ int LaunchDesktopWorkspace(
             EditorCfg.ProjectSpacePath        = ProjectSpaceFile.empty() ? InitialOptions.StartupProjectSpacePath : ProjectSpaceFile;
             EditorCfg.PopulateShowcaseScene   = true;
             EditorCfg.VulkanDevice            = &DeviceInterchange;
+            EditorCfg.ImGuiPresenter          = &SwapchainPresenter;
             EditorCfg.CompiledShaderDirectory = CompiledShaderDir;
             if (!EditorLoopPtr->Initialize(EditorCfg))
             {
@@ -1498,7 +1500,6 @@ int LaunchDesktopWorkspace(
     }
 #endif
 
-    GeometricRaster::ImGuiOverlayRasterization SwapchainPresenter {};
 #if !defined(__ANDROID__)
     Windowing::DesktopPlatformWindow* PresenterWindow = &DesktopWindow;
 #else

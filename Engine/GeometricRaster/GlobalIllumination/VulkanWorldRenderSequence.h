@@ -64,6 +64,15 @@ public:
         const WorldSceneSpecification&  Scene,
         std::vector<uint8_t>&           OutDisplayRgba8);
 
+    [[nodiscard]] bool RenderWorldViewportToGpuImage(
+        const WorldRenderConfiguration& Config,
+        uint32_t                        PathTraceSampleIndex,
+        const PerspectiveCameraFrame&   Camera,
+        const WorldSceneSpecification&  Scene,
+        VkImageView&                    OutDisplayImageView,
+        uint32_t&                       OutWidthPx,
+        uint32_t&                       OutHeightPx);
+
     [[nodiscard]] bool RenderWorldViewportRgba8(
         WorldRenderTier                Tier,
         const PerspectiveCameraFrame&  Camera,
@@ -96,6 +105,16 @@ private:
     void DispatchGpuSkyViewLut(VkCommandBuffer Cmd, const WorldSceneSpecification& Scene);
     void UploadSolarCascadeRadiosity(const WorldSceneSpecification& Scene, bool BuildDdgiOnGpu);
     [[nodiscard]] bool DispatchGpuScenePrecompute(const WorldSceneSpecification& Scene, bool BuildDdgiOnGpu);
+    void EnsureSdfVolumeTexture(uint32_t DimX, uint32_t DimY, uint32_t DimZ);
+    void EnsureDisplayOutputImage(uint32_t WidthPx, uint32_t HeightPx);
+    [[nodiscard]] bool ExecuteWorldRenderDispatch(
+        const WorldRenderConfiguration& Config,
+        uint32_t                        PathTraceSampleIndex,
+        const PerspectiveCameraFrame&   Camera,
+        const WorldSceneSpecification&  Scene,
+        bool                            CopyToReadbackStaging,
+        bool                            CopyToDisplayImage2D,
+        std::vector<uint8_t>*           OutDisplayRgba8);
 
     VulkanInterchange*     BoundDevice                 = nullptr;
     ComputeDispatchEncoder DispatchEncoder             {};
@@ -139,6 +158,13 @@ private:
     DeviceBufferResource   PongShadowAoBuffer          {};
     DeviceBufferResource   PongGiHdrBuffer             {};
     DeviceBufferResource   CloudRadiometricBuffer      {};
+
+    DeviceImageResource    SdfBakedVolume3D            {};
+    DeviceImageResource    SdfDummySampledVolume3D     {};
+    DeviceImageResource    SdfDummyStorageVolume3D     {};
+    VkSampler              SdfLinearSampler            = VK_NULL_HANDLE;
+    bool                   SdfVolumeInShaderReadLayout = false;
+    DeviceImageResource    DisplayOutputImage2D        {};
 
     Mathematics::Axis3D    CachedSdfMinCorner       { -3.5f, -3.5f, -1.2f };
     float                  CachedSdfSpacing         = 0.14f;

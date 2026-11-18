@@ -201,7 +201,9 @@ void PixelSpace::FillTexturedRectangle(
     Rectangle2D Bounds,
     const void* SoftwareTextureData,
     uint64_t    NativeTextureHandle,
-    ColorRgba   Tint) noexcept
+    ColorRgba   Tint,
+    Point2D     UvMin,
+    Point2D     UvMax) noexcept
 {
     if (!CanvasBuffer || Bounds.Width <= 0.0f || Bounds.Height <= 0.0f || Tint.Alpha == 0u)
     {
@@ -221,8 +223,8 @@ void PixelSpace::FillTexturedRectangle(
         TexRef,
         ImVec2(Phys.X, Phys.Y),
         ImVec2(Phys.Right(), Phys.Bottom()),
-        ImVec2(0.0f, 0.0f),
-        ImVec2(1.0f, 1.0f),
+        ImVec2(UvMin.X, UvMin.Y),
+        ImVec2(UvMax.X, UvMax.Y),
         PackColor(Tint));
 }
 

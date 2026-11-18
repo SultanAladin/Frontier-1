@@ -325,7 +325,7 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
-    constexpr std::array<VkDescriptorType, 26u> SlotTypes {{
+    constexpr std::array<VkDescriptorType, 28u> SlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -352,6 +352,8 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
     }};
 
     const std::filesystem::path ShaderBinaryPath = CompiledShaderDirectory / "WorldViewportRadiometricCompute.comp.spv";
@@ -454,6 +456,122 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         }
     }
 
+    {
+        VkSamplerCreateInfo SampSpec {};
+        SampSpec.sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        SampSpec.magFilter    = VK_FILTER_LINEAR;
+        SampSpec.minFilter    = VK_FILTER_LINEAR;
+        SampSpec.mipmapMode   = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        SampSpec.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        SampSpec.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        SampSpec.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        SampSpec.maxLod       = 1.0f;
+        if (vkCreateSampler(TargetDevice.AccessDevice(), &SampSpec, nullptr, &SdfLinearSampler) != VK_SUCCESS)
+        {
+            TeardownSequence();
+            return false;
+        }
+
+        SdfDummySampledVolume3D = TargetDevice.AllocateImage3D(
+            1u,
+            1u,
+            1u,
+            VK_FORMAT_R16G16B16A16_SFLOAT,
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT);
+        SdfDummyStorageVolume3D = TargetDevice.AllocateImage3D(
+            1u,
+            1u,
+            1u,
+            VK_FORMAT_R16G16B16A16_SFLOAT,
+            VK_IMAGE_USAGE_STORAGE_BIT,
+            VK_IMAGE_ASPECT_COLOR_BIT);
+        if (SdfDummySampledVolume3D.ViewHandle == VK_NULL_HANDLE ||
+            SdfDummyStorageVolume3D.ViewHandle == VK_NULL_HANDLE)
+        {
+            TeardownSequence();
+            return false;
+        }
+
+        VkCommandBuffer InitImgCmd = TargetDevice.BeginSingleTimeCommands();
+        if (InitImgCmd == VK_NULL_HANDLE)
+        {
+            TeardownSequence();
+            return false;
+        }
+        VkImageMemoryBarrier SampledToClear {};
+        SampledToClear.sType                       = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        SampledToClear.srcAccessMask               = 0u;
+        SampledToClear.dstAccessMask               = VK_ACCESS_TRANSFER_WRITE_BIT;
+        SampledToClear.oldLayout                   = VK_IMAGE_LAYOUT_UNDEFINED;
+        SampledToClear.newLayout                   = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        SampledToClear.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+        SampledToClear.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+        SampledToClear.image                       = SdfDummySampledVolume3D.ImageHandle;
+        SampledToClear.subresourceRange            = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+        vkCmdPipelineBarrier(
+            InitImgCmd,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0u,
+            0u,
+            nullptr,
+            0u,
+            nullptr,
+            1u,
+            &SampledToClear);
+
+        const VkClearColorValue ClearDefault {{ 0.0f, 0.0f, 0.0f, 4.0f }};
+        const VkImageSubresourceRange ClearRange { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+        vkCmdClearColorImage(
+            InitImgCmd,
+            SdfDummySampledVolume3D.ImageHandle,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            &ClearDefault,
+            1u,
+            &ClearRange);
+
+        std::array<VkImageMemoryBarrier, 2u> ReadyBarriers {};
+        ReadyBarriers[0].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        ReadyBarriers[0].srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        ReadyBarriers[0].dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+        ReadyBarriers[0].oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        ReadyBarriers[0].newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        ReadyBarriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ReadyBarriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ReadyBarriers[0].image               = SdfDummySampledVolume3D.ImageHandle;
+        ReadyBarriers[0].subresourceRange    = ClearRange;
+
+        ReadyBarriers[1].sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        ReadyBarriers[1].srcAccessMask       = 0u;
+        ReadyBarriers[1].dstAccessMask       = VK_ACCESS_SHADER_WRITE_BIT;
+        ReadyBarriers[1].oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+        ReadyBarriers[1].newLayout           = VK_IMAGE_LAYOUT_GENERAL;
+        ReadyBarriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ReadyBarriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ReadyBarriers[1].image               = SdfDummyStorageVolume3D.ImageHandle;
+        ReadyBarriers[1].subresourceRange    = ClearRange;
+
+        vkCmdPipelineBarrier(
+            InitImgCmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0u,
+            0u,
+            nullptr,
+            0u,
+            nullptr,
+            static_cast<uint32_t>(ReadyBarriers.size()),
+            ReadyBarriers.data());
+
+        const uint64_t InitImgSync = TargetDevice.DispatchCommandBufferAsync(InitImgCmd);
+        if (!TargetDevice.AwaitTimelineTick(InitImgSync))
+        {
+            TeardownSequence();
+            return false;
+        }
+    }
+
     EnsureBufferCapacity(UniformBuffer, 4096ull * 4ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     EnsureBufferCapacity(SdfUniformBuffer, sizeof(SignedDistanceGridUniformStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     EnsureBufferCapacity(SkyViewUniformBuffer, sizeof(AtmosphericSkyUniformStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
@@ -551,6 +669,16 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(PongShadowAoBuffer);
         BoundDevice->ReleaseBuffer(PongGiHdrBuffer);
         BoundDevice->ReleaseBuffer(CloudRadiometricBuffer);
+        BoundDevice->ReleaseImage2D(SdfBakedVolume3D);
+        BoundDevice->ReleaseImage2D(SdfDummySampledVolume3D);
+        BoundDevice->ReleaseImage2D(SdfDummyStorageVolume3D);
+        BoundDevice->ReleaseImage2D(DisplayOutputImage2D);
+        if (SdfLinearSampler != VK_NULL_HANDLE)
+        {
+            vkDestroySampler(BoundDevice->AccessDevice(), SdfLinearSampler, nullptr);
+            SdfLinearSampler = VK_NULL_HANDLE;
+        }
+        SdfVolumeInShaderReadLayout = false;
     }
     DispatchEncoder.TeardownEncoder();
     RadiometricProgramHandle    = UINT32_MAX;
@@ -647,6 +775,58 @@ void VulkanWorldRenderSequence::EnsureReadbackBufferCapacity(
     BoundDevice->ReleaseBuffer(TargetBuffer);
     const uint64_t PaddedBytes = std::max<uint64_t>(SafeBytes, (SafeBytes * 5ull) / 4ull);
     TargetBuffer               = DispatchEncoder.AllocateReadbackStagingBuffer(PaddedBytes);
+}
+
+void VulkanWorldRenderSequence::EnsureSdfVolumeTexture(uint32_t DimX, uint32_t DimY, uint32_t DimZ)
+{
+    const uint32_t SafeX = std::max(1u, DimX);
+    const uint32_t SafeY = std::max(1u, DimY);
+    const uint32_t SafeZ = std::max(1u, DimZ);
+    if (SdfBakedVolume3D.ImageHandle != VK_NULL_HANDLE &&
+        SdfBakedVolume3D.WidthPx == SafeX &&
+        SdfBakedVolume3D.HeightPx == SafeY &&
+        SdfBakedVolume3D.DepthPx == SafeZ)
+    {
+        return;
+    }
+    if (BoundDevice == nullptr || !BoundDevice->Ready())
+    {
+        return;
+    }
+    vkDeviceWaitIdle(BoundDevice->AccessDevice());
+    BoundDevice->ReleaseImage2D(SdfBakedVolume3D);
+    SdfBakedVolume3D = BoundDevice->AllocateImage3D(
+        SafeX,
+        SafeY,
+        SafeZ,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT);
+    SdfVolumeInShaderReadLayout = false;
+}
+
+void VulkanWorldRenderSequence::EnsureDisplayOutputImage(uint32_t WidthPx, uint32_t HeightPx)
+{
+    const uint32_t SafeW = std::max(1u, WidthPx);
+    const uint32_t SafeH = std::max(1u, HeightPx);
+    if (DisplayOutputImage2D.ImageHandle != VK_NULL_HANDLE &&
+        DisplayOutputImage2D.WidthPx == SafeW &&
+        DisplayOutputImage2D.HeightPx == SafeH)
+    {
+        return;
+    }
+    if (BoundDevice == nullptr || !BoundDevice->Ready())
+    {
+        return;
+    }
+    vkDeviceWaitIdle(BoundDevice->AccessDevice());
+    BoundDevice->ReleaseImage2D(DisplayOutputImage2D);
+    DisplayOutputImage2D = BoundDevice->AllocateImage2D(
+        SafeW,
+        SafeH,
+        VK_FORMAT_R8G8B8A8_UNORM,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
 bool VulkanWorldRenderSequence::UploadToDeviceBuffer(
@@ -964,8 +1144,21 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
         std::memcpy(UniformBase + UniformStrideBytes, &Pass1Uni, sizeof(Pass1Uni));
     }
 
-    auto MakePrecomputeSlots = [&](uint64_t UniOffset) -> std::array<ComputeSlotDescriptor, 26u>
+    const uint32_t SdfVolW = std::max(1u, CachedSdfDimX);
+    const uint32_t SdfVolH = std::max(1u, CachedSdfDimY);
+    const uint32_t SdfVolD = std::max(1u, CachedSdfDimZ);
+    EnsureSdfVolumeTexture(SdfVolW, SdfVolH, SdfVolD);
+
+    auto MakePrecomputeSlots = [&](uint64_t UniOffset, bool WritingSdfVolume) -> std::array<ComputeSlotDescriptor, 28u>
     {
+        VkImageView ReadVolView  = WritingSdfVolume
+            ? SdfDummySampledVolume3D.ViewHandle
+            : ((SdfBakedVolume3D.ViewHandle != VK_NULL_HANDLE && SdfVolumeInShaderReadLayout)
+                ? SdfBakedVolume3D.ViewHandle
+                : SdfDummySampledVolume3D.ViewHandle);
+        VkImageView WriteVolView = (WritingSdfVolume && SdfBakedVolume3D.ViewHandle != VK_NULL_HANDLE)
+            ? SdfBakedVolume3D.ViewHandle
+            : SdfDummyStorageVolume3D.ViewHandle;
         return {{
             {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,              sizeof(WorldViewportUniformBlockStd140), UniOffset },
             {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
@@ -993,6 +1186,8 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
             { 23u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PongShadowAoBuffer.BufferHandle,         VK_WHOLE_SIZE },
             { 24u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PongGiHdrBuffer.BufferHandle,            VK_WHOLE_SIZE },
             { 25u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, CloudRadiometricBuffer.BufferHandle,     VK_WHOLE_SIZE },
+            { 26u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, ReadVolView, SdfLinearSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+            { 27u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, WriteVolView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL },
         }};
     };
 
@@ -1008,7 +1203,34 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
         DispatchGpuSkyViewLut(Cmd, Scene);
     }
 
-    const auto Slots0 = MakePrecomputeSlots(0ull);
+    const bool WillBakeSdfVol = (UploadedBvhCount > 0u && TotalVoxels >= 8ull && SdfBakedVolume3D.ImageHandle != VK_NULL_HANDLE);
+    if (SdfBakedVolume3D.ImageHandle != VK_NULL_HANDLE)
+    {
+        VkImageMemoryBarrier SdfPrepare {};
+        SdfPrepare.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        SdfPrepare.srcAccessMask       = SdfVolumeInShaderReadLayout ? VK_ACCESS_SHADER_READ_BIT : 0u;
+        SdfPrepare.dstAccessMask       = WillBakeSdfVol ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_TRANSFER_WRITE_BIT;
+        SdfPrepare.oldLayout           = SdfVolumeInShaderReadLayout ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+        SdfPrepare.newLayout           = WillBakeSdfVol ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        SdfPrepare.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        SdfPrepare.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        SdfPrepare.image               = SdfBakedVolume3D.ImageHandle;
+        SdfPrepare.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+        vkCmdPipelineBarrier(
+            Cmd,
+            SdfVolumeInShaderReadLayout ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            WillBakeSdfVol ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0u,
+            0u,
+            nullptr,
+            0u,
+            nullptr,
+            1u,
+            &SdfPrepare);
+        SdfVolumeInShaderReadLayout = false;
+    }
+
+    const auto SlotsWrite = MakePrecomputeSlots(0ull, true);
     if (UploadedBvhCount == 0u)
     {
         vkCmdFillBuffer(Cmd, SolarShadowDepthBuffer.BufferHandle, 0ull, ShadowDepthBytes, 0x49742400u); // 1.0e6f
@@ -1016,7 +1238,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
     }
     else
     {
-        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ShadowCascadeProgramHandle, Slots0, 128u, 128u, 2u))
+        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ShadowCascadeProgramHandle, SlotsWrite, 128u, 128u, 2u))
         {
             return false;
         }
@@ -1024,17 +1246,56 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
         if (TotalVoxels >= 8ull)
         {
             const uint32_t SdfGroups = static_cast<uint32_t>((TotalVoxels + 63ull) / 64ull);
-            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, SdfRadiosityProgramHandle, Slots0, SdfGroups, 1u, 1u))
+            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, SdfRadiosityProgramHandle, SlotsWrite, SdfGroups, 1u, 1u))
             {
                 return false;
             }
         }
     }
 
+    if (SdfBakedVolume3D.ImageHandle != VK_NULL_HANDLE)
+    {
+        if (!WillBakeSdfVol)
+        {
+            const VkClearColorValue ClearDefault {{ 0.0f, 0.0f, 0.0f, 4.0f }};
+            const VkImageSubresourceRange ClearRange { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+            vkCmdClearColorImage(
+                Cmd,
+                SdfBakedVolume3D.ImageHandle,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                &ClearDefault,
+                1u,
+                &ClearRange);
+        }
+        VkImageMemoryBarrier SdfToRead {};
+        SdfToRead.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        SdfToRead.srcAccessMask       = WillBakeSdfVol ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_TRANSFER_WRITE_BIT;
+        SdfToRead.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+        SdfToRead.oldLayout           = WillBakeSdfVol ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        SdfToRead.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        SdfToRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        SdfToRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        SdfToRead.image               = SdfBakedVolume3D.ImageHandle;
+        SdfToRead.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+        vkCmdPipelineBarrier(
+            Cmd,
+            WillBakeSdfVol ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0u,
+            0u,
+            nullptr,
+            0u,
+            nullptr,
+            1u,
+            &SdfToRead);
+        SdfVolumeInShaderReadLayout = true;
+    }
+
     if (RunDdgi)
     {
+        const auto SlotsRead0 = MakePrecomputeSlots(0ull, false);
         const uint32_t TotalCells = CachedLatticeDimX * CachedLatticeDimY * CachedLatticeDimZ;
-        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DdgiLatticeProgramHandle, Slots0, TotalCells, 1u, 1u))
+        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DdgiLatticeProgramHandle, SlotsRead0, TotalCells, 1u, 1u))
         {
             return false;
         }
@@ -1054,8 +1315,8 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
             0u,
             nullptr);
 
-        const auto Slots1 = MakePrecomputeSlots(UniformStrideBytes);
-        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DdgiLatticeProgramHandle, Slots1, TotalCells, 1u, 1u))
+        const auto SlotsRead1 = MakePrecomputeSlots(UniformStrideBytes, false);
+        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DdgiLatticeProgramHandle, SlotsRead1, TotalCells, 1u, 1u))
         {
             return false;
         }
@@ -1553,6 +1814,44 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     const WorldSceneSpecification&  Scene,
     std::vector<uint8_t>&           OutDisplayRgba8)
 {
+    return ExecuteWorldRenderDispatch(Config, PathTraceSampleIndex, Camera, Scene, true, false, &OutDisplayRgba8);
+}
+
+bool VulkanWorldRenderSequence::RenderWorldViewportToGpuImage(
+    const WorldRenderConfiguration& Config,
+    uint32_t                        PathTraceSampleIndex,
+    const PerspectiveCameraFrame&   Camera,
+    const WorldSceneSpecification&  Scene,
+    VkImageView&                    OutDisplayImageView,
+    uint32_t&                       OutWidthPx,
+    uint32_t&                       OutHeightPx)
+{
+    OutDisplayImageView = VK_NULL_HANDLE;
+    OutWidthPx          = 0u;
+    OutHeightPx         = 0u;
+    if (!ExecuteWorldRenderDispatch(Config, PathTraceSampleIndex, Camera, Scene, false, true, nullptr))
+    {
+        return false;
+    }
+    if (DisplayOutputImage2D.ViewHandle == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    OutDisplayImageView = DisplayOutputImage2D.ViewHandle;
+    OutWidthPx          = DisplayOutputImage2D.WidthPx;
+    OutHeightPx         = DisplayOutputImage2D.HeightPx;
+    return true;
+}
+
+bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
+    const WorldRenderConfiguration& Config,
+    uint32_t                        PathTraceSampleIndex,
+    const PerspectiveCameraFrame&   Camera,
+    const WorldSceneSpecification&  Scene,
+    bool                            CopyToReadbackStaging,
+    bool                            CopyToDisplayImage2D,
+    std::vector<uint8_t>*           OutDisplayRgba8)
+{
     if (!QueryReady())
     {
         return false;
@@ -1575,7 +1874,14 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     const uint64_t AccBytes   = static_cast<uint64_t>(WidthPx) * HeightPx * 16ull;
     const uint64_t CloudBytes = static_cast<uint64_t>(CloudW) * CloudH * 16ull;
     EnsureDeviceBufferCapacity(OutputPixelBuffer, OutBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-    EnsureReadbackBufferCapacity(OutputReadbackStagingBuffer, OutBytes);
+    if (CopyToReadbackStaging)
+    {
+        EnsureReadbackBufferCapacity(OutputReadbackStagingBuffer, OutBytes);
+    }
+    if (CopyToDisplayImage2D)
+    {
+        EnsureDisplayOutputImage(WidthPx, HeightPx);
+    }
     EnsureDeviceBufferCapacity(AccumulationHdrBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureDeviceBufferCapacity(GBufPosMaskBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureDeviceBufferCapacity(GBufNormAoBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
@@ -1588,7 +1894,8 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     EnsureDeviceBufferCapacity(PongGiHdrBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureDeviceBufferCapacity(CloudRadiometricBuffer, CloudBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     if (OutputPixelBuffer.BufferHandle == VK_NULL_HANDLE ||
-        OutputReadbackStagingBuffer.HostAddress == nullptr ||
+        (CopyToReadbackStaging && OutputReadbackStagingBuffer.HostAddress == nullptr) ||
+        (CopyToDisplayImage2D && DisplayOutputImage2D.ImageHandle == VK_NULL_HANDLE) ||
         AccumulationHdrBuffer.BufferHandle == VK_NULL_HANDLE ||
         GBufPosMaskBuffer.BufferHandle == VK_NULL_HANDLE ||
         PongGiHdrBuffer.BufferHandle == VK_NULL_HANDLE ||
@@ -2222,12 +2529,15 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     }
     WriteStamp(1u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-    auto MakePassSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 26u>
+    auto MakePassSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 28u>
     {
         const auto& InShadow  = SwapPingPong ? PongShadowAoBuffer : PingShadowAoBuffer;
         const auto& InGi      = SwapPingPong ? PongGiHdrBuffer    : PingGiHdrBuffer;
         const auto& OutShadow = SwapPingPong ? PingShadowAoBuffer : PongShadowAoBuffer;
         const auto& OutGi     = SwapPingPong ? PingGiHdrBuffer    : PongGiHdrBuffer;
+        VkImageView ReadVolView = (SdfBakedVolume3D.ViewHandle != VK_NULL_HANDLE && SdfVolumeInShaderReadLayout)
+            ? SdfBakedVolume3D.ViewHandle
+            : SdfDummySampledVolume3D.ViewHandle;
         return {{
             {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,              sizeof(WorldViewportUniformBlockStd140), UniOffset },
             {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
@@ -2255,6 +2565,8 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
             { 23u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutShadow.BufferHandle,                  AccBytes      },
             { 24u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutGi.BufferHandle,                      AccBytes      },
             { 25u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, CloudRadiometricBuffer.BufferHandle,     CloudBytes    },
+            { 26u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, ReadVolView, SdfLinearSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+            { 27u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, SdfDummyStorageVolume3D.ViewHandle, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL },
         }};
     };
 
@@ -2326,7 +2638,6 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     WriteStamp(7u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
     WriteStamp(8u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-    if (OutputPixelBuffer.BufferHandle != OutputReadbackStagingBuffer.BufferHandle)
     {
         VkMemoryBarrier ComputeToTransfer {};
         ComputeToTransfer.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -2344,25 +2655,87 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
             0u,
             nullptr);
 
-        VkBufferCopy ReadbackCopy {};
-        ReadbackCopy.size = OutBytes;
-        vkCmdCopyBuffer(Cmd, OutputPixelBuffer.BufferHandle, OutputReadbackStagingBuffer.BufferHandle, 1u, &ReadbackCopy);
+        if (CopyToDisplayImage2D && DisplayOutputImage2D.ImageHandle != VK_NULL_HANDLE)
+        {
+            VkImageMemoryBarrier ImgToDst {};
+            ImgToDst.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            ImgToDst.srcAccessMask       = 0u;
+            ImgToDst.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+            ImgToDst.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+            ImgToDst.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            ImgToDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ImgToDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ImgToDst.image               = DisplayOutputImage2D.ImageHandle;
+            ImgToDst.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+            vkCmdPipelineBarrier(
+                Cmd,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                0u,
+                0u,
+                nullptr,
+                0u,
+                nullptr,
+                1u,
+                &ImgToDst);
 
-        VkMemoryBarrier TransferToHost {};
-        TransferToHost.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        TransferToHost.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        TransferToHost.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-        vkCmdPipelineBarrier(
-            Cmd,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_HOST_BIT,
-            0u,
-            1u,
-            &TransferToHost,
-            0u,
-            nullptr,
-            0u,
-            nullptr);
+            VkBufferImageCopy ImgRegion {};
+            ImgRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            ImgRegion.imageSubresource.layerCount = 1u;
+            ImgRegion.imageExtent                 = { WidthPx, HeightPx, 1u };
+            vkCmdCopyBufferToImage(
+                Cmd,
+                OutputPixelBuffer.BufferHandle,
+                DisplayOutputImage2D.ImageHandle,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1u,
+                &ImgRegion);
+
+            VkImageMemoryBarrier ImgToSampled {};
+            ImgToSampled.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            ImgToSampled.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+            ImgToSampled.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+            ImgToSampled.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            ImgToSampled.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            ImgToSampled.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ImgToSampled.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            ImgToSampled.image               = DisplayOutputImage2D.ImageHandle;
+            ImgToSampled.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+            vkCmdPipelineBarrier(
+                Cmd,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0u,
+                0u,
+                nullptr,
+                0u,
+                nullptr,
+                1u,
+                &ImgToSampled);
+        }
+
+        if (CopyToReadbackStaging && OutputPixelBuffer.BufferHandle != OutputReadbackStagingBuffer.BufferHandle)
+        {
+            VkBufferCopy ReadbackCopy {};
+            ReadbackCopy.size = OutBytes;
+            vkCmdCopyBuffer(Cmd, OutputPixelBuffer.BufferHandle, OutputReadbackStagingBuffer.BufferHandle, 1u, &ReadbackCopy);
+
+            VkMemoryBarrier TransferToHost {};
+            TransferToHost.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            TransferToHost.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            TransferToHost.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+            vkCmdPipelineBarrier(
+                Cmd,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_HOST_BIT,
+                0u,
+                1u,
+                &TransferToHost,
+                0u,
+                nullptr,
+                0u,
+                nullptr);
+        }
     }
     WriteStamp(9u, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
@@ -2371,8 +2744,10 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     {
         std::fprintf(stderr, "[VulkanWorldRenderSequence] AwaitTimelineTick timed out (Engine=%u, %ux%u)\n",
                      static_cast<unsigned>(Config.Engine), WidthPx, HeightPx);
+        BoundDevice->FreeCommandBuffer(Cmd);
         return false;
     }
+    BoundDevice->FreeCommandBuffer(Cmd);
 
     if (UseGpuTimers)
     {
@@ -2407,8 +2782,11 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     }
 
     const auto CopyStart = std::chrono::steady_clock::now();
-    OutDisplayRgba8.resize(static_cast<std::size_t>(OutBytes));
-    std::memcpy(OutDisplayRgba8.data(), OutputReadbackStagingBuffer.HostAddress, static_cast<std::size_t>(OutBytes));
+    if (CopyToReadbackStaging && OutDisplayRgba8 != nullptr)
+    {
+        OutDisplayRgba8->resize(static_cast<std::size_t>(OutBytes));
+        std::memcpy(OutDisplayRgba8->data(), OutputReadbackStagingBuffer.HostAddress, static_cast<std::size_t>(OutBytes));
+    }
     const auto EndClock = std::chrono::steady_clock::now();
     const float CopyMs = static_cast<float>(
         std::chrono::duration<double, std::milli>(EndClock - CopyStart).count());

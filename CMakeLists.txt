@@ -317,6 +317,8 @@ frontier_compile_slang_shader(UVTileRasterization.slang      VertexEntry   verte
 frontier_compile_slang_shader(UVTileRasterization.slang      FragmentEntry fragment UVTileRasterization.frag.spv)
 frontier_compile_slang_shader(GizmoRasterization.slang        VertexEntry   vertex   GizmoRasterization.vert.spv)
 frontier_compile_slang_shader(GizmoRasterization.slang        FragmentEntry fragment GizmoRasterization.frag.spv)
+frontier_compile_slang_shader(WorldViewportBlit.slang         VertexEntry   vertex   WorldViewportBlit.vert.spv)
+frontier_compile_slang_shader(WorldViewportBlit.slang         FragmentEntry fragment WorldViewportBlit.frag.spv)
 frontier_compile_slang_shader(ImGuiOverlayRasterization.slang VertexEntry   vertex   ImGuiOverlayRasterization.vert.spv)
 frontier_compile_slang_shader(ImGuiOverlayRasterization.slang FragmentEntry fragment ImGuiOverlayRasterization.frag.spv)
 frontier_compile_slang_shader(SelectionMaskCompute.slang     ComputeEntry  compute  SelectionMaskCompute.comp.spv)

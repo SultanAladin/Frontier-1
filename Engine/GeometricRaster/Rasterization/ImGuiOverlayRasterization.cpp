@@ -248,12 +248,63 @@ void ImGuiOverlayRasterization::TeardownUpstreamImGuiBackend() noexcept
 {
     if (UpstreamImGuiBackendReady)
     {
+        ReleaseExternalImages();
         if (ImGui::GetCurrentContext() != nullptr)
         {
             ImGui_ImplVulkan_Shutdown();
         }
         UpstreamImGuiBackendReady = false;
     }
+}
+
+void ImGuiOverlayRasterization::ReleaseExternalImages() noexcept
+{
+    if (UpstreamImGuiBackendReady && !ExternalImages.empty() && BoundDevice != nullptr && BoundDevice->Ready())
+    {
+        vkDeviceWaitIdle(BoundDevice->AccessDevice());
+        for (auto& [Key, Entry] : ExternalImages)
+        {
+            (void)Key;
+            if (Entry.Descriptor != VK_NULL_HANDLE)
+            {
+                ImGui_ImplVulkan_RemoveTexture(Entry.Descriptor);
+                Entry.Descriptor = VK_NULL_HANDLE;
+            }
+        }
+    }
+    ExternalImages.clear();
+}
+
+uint64_t ImGuiOverlayRasterization::RegisterOrUpdateExternalImage(
+    uint64_t    Key,
+    uint64_t    Generation,
+    VkImageView ViewHandle)
+{
+    if (!UpstreamImGuiBackendReady || BoundDevice == nullptr || !BoundDevice->Ready() ||
+        ViewHandle == VK_NULL_HANDLE || LinearSampler == VK_NULL_HANDLE)
+    {
+        return 0ull;
+    }
+
+    auto& Entry = ExternalImages[Key];
+    if (Entry.Descriptor != VK_NULL_HANDLE && Entry.Generation == Generation && Entry.ViewHandle == ViewHandle)
+    {
+        return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(Entry.Descriptor));
+    }
+
+    if (Entry.Descriptor != VK_NULL_HANDLE)
+    {
+        vkDeviceWaitIdle(BoundDevice->AccessDevice());
+        ImGui_ImplVulkan_RemoveTexture(Entry.Descriptor);
+        Entry.Descriptor = VK_NULL_HANDLE;
+    }
+
+    Entry.Descriptor = ImGui_ImplVulkan_AddTexture(LinearSampler, ViewHandle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    Entry.Generation = Generation;
+    Entry.ViewHandle = ViewHandle;
+    return (Entry.Descriptor != VK_NULL_HANDLE)
+        ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(Entry.Descriptor))
+        : 0ull;
 }
 
 void ImGuiOverlayRasterization::PrepareImGuiFrame() noexcept

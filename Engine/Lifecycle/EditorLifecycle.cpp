@@ -4,6 +4,7 @@
 // 🧩 Editor-only authoring loop implementation
 
 #include "Engine/Lifecycle/EditorLifecycle.h"
+#include "Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.h"
 #include "Engine/SimulationSpace/ForceFields/FieldFormulaCompiler.h"
 #include "Engine/SimulationSpace/ForceFields/ForceMotionPath.h"
 
@@ -829,7 +830,7 @@ void EditorLifecycle::FrameShowcaseCameraSelection() noexcept
         CamEntry->PositionZ = ShowcaseBundle->EditorCamera.CameraOrigin.Z;
     }
     SynchronizeShowcaseGizmoAnchor();
-    RefreshShowcaseViewportRaster();
+    PendingInteractionWorldRefresh = true;
 }
 
 void EditorLifecycle::ProcessShowcaseNavigationDirective(ViewportNavigationDirective Directive)
@@ -863,7 +864,7 @@ void EditorLifecycle::ProcessShowcaseNavigationDirective(ViewportNavigationDirec
         }
     }
     SynchronizeShowcaseGizmoAnchor();
-    RefreshShowcaseViewportRaster();
+    PendingInteractionWorldRefresh = true;
 }
 
 void EditorLifecycle::ProcessShowcaseViewportInteraction(
@@ -1101,41 +1102,13 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
 
     if (CameraMoved || SceneChanged)
     {
-        const bool FastDrag = WorldTransformGizmo.QueryDragging();
-        const bool GpuReady = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
-        bool       NeedsPrep = false;
-        (void)GeometricRaster::SynchronizeShowcaseGallerySceneLive(
-            Panes->Outliner,
-            *ShowcaseBundle,
-            NeedsPrep,
-            !GpuReady && !FastDrag);
-        if (GizmoDragEnded && !NeedsPrep)
-        {
-            if (!GpuReady)
-            {
-                GeometricRaster::RebuildShowcaseSceneAcceleration(*ShowcaseBundle, true);
-            }
-            NeedsPrep = true;
-        }
-        if (NeedsPrep || GizmoDragEnded)
-        {
-            InvalidateRtxLattice();
-            if (GpuReady)
-            {
-                // GPU compute shader builds SDF grid in < 1 ms on release; during active drag skip SDF dispatch
-                GpuWorldRenderer->SynchronizeSceneResources(ShowcaseBundle->Scene, nullptr, !FastDrag);
-            }
-            else if (ShowcaseRenderer != nullptr)
-            {
-                ShowcaseRenderer->PrepareWorldScene(ShowcaseBundle->Scene);
-                RtxLatticePrepared = true;
-            }
-        }
-        RefreshShowcaseViewportRaster();
+        PendingInteractionWorldRefresh = true;
+        PendingInteractionSceneSync    = true;
+        PendingInteractionFastDrag     = WorldTransformGizmo.QueryDragging() && !GizmoDragEnded;
     }
     else if (GizmoOverlayOnly)
     {
-        RefreshGizmoOverlayFromCachedWorld();
+        PendingInteractionGizmoRefresh = true;
     }
 }
 
@@ -1190,22 +1163,44 @@ void EditorLifecycle::SynchronizeContentBrowserColourTargets()
     BrowserPanel.FocusColourSlot("ActiveWorldSurfaceColour");
 }
 
-void EditorLifecycle::CompositeForceFieldOverlayOntoBuffer(
-    std::vector<uint8_t>& InOutRgba,
-    uint32_t              WidthPx,
-    uint32_t              HeightPx)
+bool EditorLifecycle::UpdateForceFieldOverlayCache(
+    uint32_t WidthPx,
+    uint32_t HeightPx,
+    bool&    OutUpdated)
 {
+    OutUpdated = false;
     WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
-    if (Panes == nullptr || ShowcaseBundle == nullptr || WidthPx == 0u || HeightPx == 0u ||
-        InOutRgba.size() < static_cast<std::size_t>(WidthPx) * HeightPx * 4u)
+    if (Panes == nullptr || ShowcaseBundle == nullptr || WidthPx == 0u || HeightPx == 0u)
     {
-        return;
+        return false;
     }
 
     const auto& OverlayCfg = Panes->Viewport.QueryForceOverlaySettings();
     if (!OverlayCfg.Enabled || ForceOverlayRasterizer == nullptr || !ForceOverlayRasterizer->QueryReady())
     {
-        return;
+        return false;
+    }
+
+    const OutlinerSlotToken PrimarySel = Panes->Outliner.QueryPrimarySelection();
+    const auto& Cam = ShowcaseBundle->EditorCamera;
+
+    const auto NowClock = std::chrono::steady_clock::now();
+    const double ElapsedOverlayMs = std::chrono::duration<double, std::milli>(NowClock - LastForceOverlayRenderAt).count();
+    const float CamMove =
+        Mathematics::EvaluateLength(Cam.CameraOrigin - LastForceOverlayCamOrigin) +
+        Mathematics::EvaluateLength(Cam.TargetPoint  - LastForceOverlayCamTarget);
+    const bool NeedsForceRender =
+        ForceOverlayCacheDirty ||
+        CachedForceOverlayW != WidthPx ||
+        CachedForceOverlayH != HeightPx ||
+        CachedForceOverlayRgba.size() < static_cast<std::size_t>(WidthPx) * HeightPx * 4u ||
+        CamMove > 1.0e-4f ||
+        PrimarySel.Identifier != LastForceOverlaySelection ||
+        ElapsedOverlayMs >= 33.0;
+
+    if (!NeedsForceRender)
+    {
+        return true;
     }
 
     std::vector<SimulationSpace::ForceFields::ForceSourceShaderEntry> PackedSources;
@@ -1280,64 +1275,64 @@ void EditorLifecycle::CompositeForceFieldOverlayOntoBuffer(
         }
     }
 
-    const OutlinerSlotToken PrimarySel = Panes->Outliner.QueryPrimarySelection();
-    const auto& Cam = ShowcaseBundle->EditorCamera;
+    Editor::Simulation::OverlayFrameRequest Req{};
+    Req.PaneIndex              = 0u;
+    Req.WidthPx                = WidthPx;
+    Req.HeightPx               = HeightPx;
+    Req.OverlaySettings        = OverlayCfg;
+    Req.TimeSeconds            = ForceClockSeconds;
+    Req.SelectedForceToken     = PrimarySel.Identifier;
+    Req.SelectedWaypointIndex  = SelectedWaypointIdx;
+    Req.LitShadingEnabled      = false;
+    Req.TransparentBackdrop    = true;
+    Req.UseExplicitCamera      = true;
+    Req.ExplicitCameraOrigin   = { Cam.CameraOrigin.X, Cam.CameraOrigin.Y, Cam.CameraOrigin.Z };
+    Req.ExplicitTargetPoint    = { Cam.TargetPoint.X,  Cam.TargetPoint.Y,  Cam.TargetPoint.Z };
+    Req.ExplicitWorldUp        = { Cam.WorldUpAxis.X,  Cam.WorldUpAxis.Y,  Cam.WorldUpAxis.Z };
+    Req.ExplicitVerticalFovDeg = Cam.VerticalFovRadians * 57.2957795f;
+    Req.SliceHalfSpanMeters    = 10.0f;
+    Req.PackedSources          = PackedSources;
+    Req.SourceTokens           = SourceTokens;
+    Req.PackedWaypoints        = PackedWaypoints;
+    Req.SourceWaypointOffsets  = WaypointOffsets;
+    Req.SourceWaypointCounts   = WaypointCounts;
+    Req.SourcePathIsOrbit      = PathIsOrbit;
 
-    const auto NowClock = std::chrono::steady_clock::now();
-    const double ElapsedOverlayMs = std::chrono::duration<double, std::milli>(NowClock - LastForceOverlayRenderAt).count();
-    const float CamMove =
-        Mathematics::EvaluateLength(Cam.CameraOrigin - LastForceOverlayCamOrigin) +
-        Mathematics::EvaluateLength(Cam.TargetPoint  - LastForceOverlayCamTarget);
-    const bool NeedsForceRender =
-        ForceOverlayCacheDirty ||
-        CachedForceOverlayW != WidthPx ||
-        CachedForceOverlayH != HeightPx ||
-        CachedForceOverlayRgba.size() < static_cast<std::size_t>(WidthPx) * HeightPx * 4u ||
-        CamMove > 1.0e-4f ||
-        PrimarySel.Identifier != LastForceOverlaySelection ||
-        ElapsedOverlayMs >= 33.0;
-
-    if (NeedsForceRender)
+    std::string OverlayDiag {};
+    const auto Out = ForceOverlayRasterizer->RenderPane(Req, OverlayDiag);
+    const auto SrcRgba = ForceOverlayRasterizer->QueryColorReadbackRgba(0u);
+    if (!Out.RenderedOnVulkan || Out.WidthPx != WidthPx || Out.HeightPx != HeightPx ||
+        SrcRgba.size() < static_cast<std::size_t>(WidthPx) * HeightPx * 4u)
     {
-        Editor::Simulation::OverlayFrameRequest Req{};
-        Req.PaneIndex              = 0u;
-        Req.WidthPx                = WidthPx;
-        Req.HeightPx               = HeightPx;
-        Req.OverlaySettings        = OverlayCfg;
-        Req.TimeSeconds            = ForceClockSeconds;
-        Req.SelectedForceToken     = PrimarySel.Identifier;
-        Req.SelectedWaypointIndex  = SelectedWaypointIdx;
-        Req.LitShadingEnabled      = false;
-        Req.TransparentBackdrop    = true;
-        Req.UseExplicitCamera      = true;
-        Req.ExplicitCameraOrigin   = { Cam.CameraOrigin.X, Cam.CameraOrigin.Y, Cam.CameraOrigin.Z };
-        Req.ExplicitTargetPoint    = { Cam.TargetPoint.X,  Cam.TargetPoint.Y,  Cam.TargetPoint.Z };
-        Req.ExplicitWorldUp        = { Cam.WorldUpAxis.X,  Cam.WorldUpAxis.Y,  Cam.WorldUpAxis.Z };
-        Req.ExplicitVerticalFovDeg = Cam.VerticalFovRadians * 57.2957795f;
-        Req.SliceHalfSpanMeters    = 10.0f;
-        Req.PackedSources          = PackedSources;
-        Req.SourceTokens           = SourceTokens;
-        Req.PackedWaypoints        = PackedWaypoints;
-        Req.SourceWaypointOffsets  = WaypointOffsets;
-        Req.SourceWaypointCounts   = WaypointCounts;
-        Req.SourcePathIsOrbit      = PathIsOrbit;
+        return false;
+    }
+    CachedForceOverlayRgba.assign(SrcRgba.begin(), SrcRgba.end());
+    CachedForceOverlayW       = WidthPx;
+    CachedForceOverlayH       = HeightPx;
+    LastForceOverlayCamOrigin = Cam.CameraOrigin;
+    LastForceOverlayCamTarget = Cam.TargetPoint;
+    LastForceOverlaySelection = PrimarySel.Identifier;
+    LastForceOverlayRenderAt  = NowClock;
+    ForceOverlayCacheDirty    = false;
+    OutUpdated                = true;
+    return true;
+}
 
-        std::string OverlayDiag {};
-        const auto Out = ForceOverlayRasterizer->RenderPane(Req, OverlayDiag);
-        const auto SrcRgba = ForceOverlayRasterizer->QueryColorReadbackRgba(0u);
-        if (!Out.RenderedOnVulkan || Out.WidthPx != WidthPx || Out.HeightPx != HeightPx ||
-            SrcRgba.size() < static_cast<std::size_t>(WidthPx) * HeightPx * 4u)
-        {
-            return;
-        }
-        CachedForceOverlayRgba.assign(SrcRgba.begin(), SrcRgba.end());
-        CachedForceOverlayW       = WidthPx;
-        CachedForceOverlayH       = HeightPx;
-        LastForceOverlayCamOrigin = Cam.CameraOrigin;
-        LastForceOverlayCamTarget = Cam.TargetPoint;
-        LastForceOverlaySelection = PrimarySel.Identifier;
-        LastForceOverlayRenderAt  = NowClock;
-        ForceOverlayCacheDirty    = false;
+void EditorLifecycle::CompositeForceFieldOverlayOntoBuffer(
+    std::vector<uint8_t>& InOutRgba,
+    uint32_t              WidthPx,
+    uint32_t              HeightPx)
+{
+    if (WidthPx == 0u || HeightPx == 0u ||
+        InOutRgba.size() < static_cast<std::size_t>(WidthPx) * HeightPx * 4u)
+    {
+        return;
+    }
+
+    bool ForceUpdated = false;
+    if (!UpdateForceFieldOverlayCache(WidthPx, HeightPx, ForceUpdated))
+    {
+        return;
     }
 
     const auto& SrcRgba = CachedForceOverlayRgba;
@@ -1369,6 +1364,81 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
     {
         return;
     }
+
+    const bool GpuReady = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
+    const bool UseGpuViewport =
+        GpuReady &&
+        StartupConfig.ImGuiPresenter != nullptr &&
+        WorldGizmoRasterizer != nullptr &&
+        WorldGizmoRasterizer->QueryReady() &&
+        WorldGizmoRasterizer->QueryGpuCompositeSupported();
+
+    if (UseGpuViewport)
+    {
+        if (LastWorldImageView == VK_NULL_HANDLE || LastTargetWidthPx == 0u || LastTargetHeightPx == 0u)
+        {
+            RefreshShowcaseViewportRaster();
+            return;
+        }
+
+        SynchronizeShowcaseGizmoAnchor();
+        const auto ForceStart = std::chrono::steady_clock::now();
+        bool ForceUpdated = false;
+        const bool ForceActive = UpdateForceFieldOverlayCache(LastTargetWidthPx, LastTargetHeightPx, ForceUpdated);
+        const auto ForceEnd = std::chrono::steady_clock::now();
+        LatestFrameTiming.ForceOverlayMs = static_cast<float>(
+            std::chrono::duration<double, std::milli>(ForceEnd - ForceStart).count());
+
+        const Rectangle2D CanvasBounds = Panes->Viewport.QueryLastCanvasPaneBounds();
+        const bool CursorInCanvas = PointerTrackingValid && CanvasBounds.Width >= 16.0f &&
+                                    CanvasBounds.Height >= 16.0f && CanvasBounds.Contains(LastPointerPosition);
+        uint32_t PickX = LastTargetWidthPx / 2u;
+        uint32_t PickY = LastTargetHeightPx / 2u;
+        if (CursorInCanvas)
+        {
+            const float U = std::clamp((LastPointerPosition.X - CanvasBounds.X) / CanvasBounds.Width, 0.0f, 1.0f);
+            const float V = std::clamp((LastPointerPosition.Y - CanvasBounds.Y) / CanvasBounds.Height, 0.0f, 1.0f);
+            PickX = static_cast<uint32_t>(U * static_cast<float>(std::max(1u, LastTargetWidthPx) - 1u));
+            PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, LastTargetHeightPx) - 1u));
+        }
+
+        GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportCompositeRequest CompReq {};
+        CompReq.WorldSourceView      = LastWorldImageView;
+        CompReq.TargetWidthPx        = LastTargetWidthPx;
+        CompReq.TargetHeightPx       = LastTargetHeightPx;
+        CompReq.Camera               = ShowcaseBundle->EditorCamera;
+        CompReq.Gizmo3D              = &WorldTransformGizmo;
+        CompReq.DrawGizmo            = LastGizmoSlot.Valid();
+        CompReq.ForceOverlayRgba     = ForceActive ? CachedForceOverlayRgba.data() : nullptr;
+        CompReq.ForceOverlayWidthPx  = CachedForceOverlayW;
+        CompReq.ForceOverlayHeightPx = CachedForceOverlayH;
+        CompReq.ForceOverlayEnabled  = ForceActive;
+        CompReq.ForceOverlayUpdated  = ForceUpdated;
+        CompReq.RequestPickPatch     = !CameraInteractiveDrag && CursorInCanvas && LastGizmoSlot.Valid();
+        CompReq.PickCursorX          = PickX;
+        CompReq.PickCursorY          = PickY;
+
+        GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportCompositeResult CompOut {};
+        const auto GizmoStart = std::chrono::steady_clock::now();
+        const bool CompOk = WorldGizmoRasterizer->CompositeOntoGpuViewport(CompReq, CompOut);
+        const auto GizmoEnd = std::chrono::steady_clock::now();
+        LatestFrameTiming.GizmoOverlayMs = static_cast<float>(
+            std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
+
+        if (CompOk && CompOut.ColorImageView != VK_NULL_HANDLE)
+        {
+            const uint64_t NativeTex = StartupConfig.ImGuiPresenter->RegisterOrUpdateExternalImage(
+                0x46525456503031ull,
+                CompOut.ImageGeneration,
+                CompOut.ColorImageView);
+            if (NativeTex != 0ull)
+            {
+                Panes->Viewport.AssignCanvasGpuTexture(NativeTex, CompOut.WidthPx, CompOut.HeightPx);
+                return;
+            }
+        }
+    }
+
     if (CachedWorldRgba8.empty() || CachedWorldWidthPx == 0u || CachedWorldHeightPx == 0u)
     {
         RefreshShowcaseViewportRaster();
@@ -1499,33 +1569,47 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     const auto& DisplayCfg = Panes->Viewport.QueryDisplaySettings();
     const bool  GpuReady   = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
     const bool  HwGpu      = GpuReady && GpuWorldRenderer->QueryHardwareGpuActive();
+    const bool  UseGpuViewport =
+        GpuReady &&
+        StartupConfig.ImGuiPresenter != nullptr &&
+        WorldGizmoRasterizer != nullptr &&
+        WorldGizmoRasterizer->QueryReady() &&
+        WorldGizmoRasterizer->QueryGpuCompositeSupported();
 
+    const uint32_t TraceResIdx = DisplayCfg.TraceResolutionIndex % 3u;
+    const uint32_t TraceDiv    = (TraceResIdx == 2u) ? 4u : ((TraceResIdx == 1u) ? 2u : 1u);
+
+    uint32_t TargetW = 320u;
+    uint32_t TargetH = 190u;
     const Rectangle2D CanvasBounds = Panes->Viewport.QueryLastCanvasPaneBounds();
     if (CanvasBounds.Width >= 120.0f && CanvasBounds.Height >= 90.0f)
     {
         const float Aspect    = std::clamp(CanvasBounds.Width / CanvasBounds.Height, 0.5f, 3.2f);
         const float ScaleNorm = std::clamp(DisplayCfg.RenderScalePercent / 100.0f, 0.50f, 1.50f);
-        uint32_t    RasterW   = 384u;
         if (HwGpu)
         {
-            const float TargetW = (CameraInteractiveDrag ? 680.0f : 960.0f) * ScaleNorm;
-            RasterW             = static_cast<uint32_t>(std::clamp(std::round(TargetW), 320.0f, 1600.0f));
+            const float DesiredW = (UseGpuViewport ? 960.0f : (CameraInteractiveDrag ? 680.0f : 960.0f)) * ScaleNorm;
+            TargetW              = static_cast<uint32_t>(std::clamp(std::round(DesiredW), 320.0f, 1600.0f));
         }
         else
         {
-            const float TargetW = (CameraInteractiveDrag ? 280.0f : 384.0f) * ScaleNorm;
-            RasterW             = static_cast<uint32_t>(std::clamp(std::round(TargetW), 192.0f, 640.0f));
+            const float DesiredW = (UseGpuViewport ? 384.0f : (CameraInteractiveDrag ? 280.0f : 384.0f)) * ScaleNorm;
+            TargetW              = static_cast<uint32_t>(std::clamp(std::round(DesiredW), 192.0f, 640.0f));
         }
-        uint32_t RasterH = std::max(140u, static_cast<uint32_t>(std::round(static_cast<float>(RasterW) / Aspect)));
-        RasterW          = std::max(192u, static_cast<uint32_t>(std::round(static_cast<float>(RasterH) * Aspect)));
-        ShowcaseBundle->EditorCamera.ViewportWidthPx  = RasterW;
-        ShowcaseBundle->EditorCamera.ViewportHeightPx = RasterH;
+        TargetH = std::max(140u, static_cast<uint32_t>(std::round(static_cast<float>(TargetW) / Aspect)));
+        TargetW = std::max(192u, static_cast<uint32_t>(std::round(static_cast<float>(TargetH) * Aspect)));
     }
-    else if (!HwGpu)
+    else if (HwGpu)
     {
-        ShowcaseBundle->EditorCamera.ViewportWidthPx  = 320u;
-        ShowcaseBundle->EditorCamera.ViewportHeightPx = 190u;
+        TargetW = 960u;
+        TargetH = 640u;
     }
+
+    const uint32_t TraceW = std::max(96u, (TargetW + TraceDiv - 1u) / TraceDiv);
+    const uint32_t TraceH = std::max(70u, (TargetH + TraceDiv - 1u) / TraceDiv);
+
+    ShowcaseBundle->EditorCamera.ViewportWidthPx  = UseGpuViewport ? TargetW : TraceW;
+    ShowcaseBundle->EditorCamera.ViewportHeightPx = UseGpuViewport ? TargetH : TraceH;
 
     const uint32_t QTier = std::min(4u, DisplayCfg.QualityTier);
     constexpr std::array<uint32_t, 5u> TierBounces = {{ 2u, 3u, 4u, 5u, 6u }};
@@ -1588,8 +1672,9 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     const bool ResetPathAccum =
         CamDelta > 1.0e-4f ||
         CameraInteractiveDrag ||
-        ShowcaseBundle->EditorCamera.ViewportWidthPx != LastPtWidthPx ||
-        ShowcaseBundle->EditorCamera.ViewportHeightPx != LastPtHeightPx ||
+        TraceW != LastPtWidthPx ||
+        TraceH != LastPtHeightPx ||
+        TraceResIdx != LastPtTraceResIdx ||
         DisplayCfg.RenderEngineIndex != LastPtEngineIndex ||
         DisplayCfg.ShadowAlgorithmIndex != LastPtShadowAlg ||
         DisplayCfg.ReflectionSourceIndex != LastPtReflSrc ||
@@ -1610,8 +1695,9 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     }
     LastPtCameraOrigin   = ShowcaseBundle->EditorCamera.CameraOrigin;
     LastPtCameraTarget   = ShowcaseBundle->EditorCamera.TargetPoint;
-    LastPtWidthPx        = ShowcaseBundle->EditorCamera.ViewportWidthPx;
-    LastPtHeightPx       = ShowcaseBundle->EditorCamera.ViewportHeightPx;
+    LastPtWidthPx        = TraceW;
+    LastPtHeightPx       = TraceH;
+    LastPtTraceResIdx    = TraceResIdx;
     LastPtEngineIndex    = DisplayCfg.RenderEngineIndex;
     LastPtShadowAlg      = DisplayCfg.ShadowAlgorithmIndex;
     LastPtReflSrc        = DisplayCfg.ReflectionSourceIndex;
@@ -1628,11 +1714,101 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     LastPtCloudFraction  = DisplayCfg.CloudFraction;
 
     std::vector<uint8_t> CleanWorldRgba {};
-    uint32_t             OutWidthPx     = ShowcaseBundle->EditorCamera.ViewportWidthPx;
-    uint32_t             OutHeightPx    = ShowcaseBundle->EditorCamera.ViewportHeightPx;
+    uint32_t             OutWidthPx     = TraceW;
+    uint32_t             OutHeightPx    = TraceH;
     bool                 RenderedOnGpu  = false;
+    bool                 GpuCompositeDone = false;
 
-    if (GpuReady)
+    if (UseGpuViewport)
+    {
+        auto TraceCam = ShowcaseBundle->EditorCamera;
+        TraceCam.ViewportWidthPx  = TraceW;
+        TraceCam.ViewportHeightPx = TraceH;
+        VkImageView WorldView = VK_NULL_HANDLE;
+        uint32_t    TracedW   = 0u;
+        uint32_t    TracedH   = 0u;
+        if (GpuWorldRenderer->RenderWorldViewportToGpuImage(
+                RenderConfig,
+                PathTraceAccumIndex,
+                TraceCam,
+                ShowcaseBundle->Scene,
+                WorldView,
+                TracedW,
+                TracedH) && WorldView != VK_NULL_HANDLE)
+        {
+            RenderedOnGpu = true;
+            LastWorldImageView = WorldView;
+            LastTargetWidthPx  = TargetW;
+            LastTargetHeightPx = TargetH;
+
+            const float SavedTickMs = LatestFrameTiming.EditorTickMs;
+            LatestFrameTiming = GpuWorldRenderer->QueryLastTimingBreakdown();
+            LatestFrameTiming.EditorTickMs = SavedTickMs;
+
+            if (RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DeterministicPathTrace && !CameraInteractiveDrag)
+            {
+                const uint32_t SamplesRan = HwGpu ? std::clamp(RenderConfig.PathTraceSamples, 1u, 4u) : 1u;
+                PathTraceAccumIndex += SamplesRan;
+            }
+
+            const auto ForceStart = std::chrono::steady_clock::now();
+            bool ForceUpdated = false;
+            const bool ForceActive = UpdateForceFieldOverlayCache(TargetW, TargetH, ForceUpdated);
+            const auto ForceEnd = std::chrono::steady_clock::now();
+            LatestFrameTiming.ForceOverlayMs = static_cast<float>(
+                std::chrono::duration<double, std::milli>(ForceEnd - ForceStart).count());
+
+            SynchronizeShowcaseGizmoAnchor();
+            const bool CursorInCanvas = PointerTrackingValid && CanvasBounds.Width >= 16.0f &&
+                                        CanvasBounds.Height >= 16.0f && CanvasBounds.Contains(LastPointerPosition);
+            uint32_t PickX = TargetW / 2u;
+            uint32_t PickY = TargetH / 2u;
+            if (CursorInCanvas)
+            {
+                const float U = std::clamp((LastPointerPosition.X - CanvasBounds.X) / CanvasBounds.Width, 0.0f, 1.0f);
+                const float V = std::clamp((LastPointerPosition.Y - CanvasBounds.Y) / CanvasBounds.Height, 0.0f, 1.0f);
+                PickX = static_cast<uint32_t>(U * static_cast<float>(std::max(1u, TargetW) - 1u));
+                PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, TargetH) - 1u));
+            }
+
+            GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportCompositeRequest CompReq {};
+            CompReq.WorldSourceView      = WorldView;
+            CompReq.TargetWidthPx        = TargetW;
+            CompReq.TargetHeightPx       = TargetH;
+            CompReq.Camera               = ShowcaseBundle->EditorCamera;
+            CompReq.Gizmo3D              = &WorldTransformGizmo;
+            CompReq.DrawGizmo            = LastGizmoSlot.Valid();
+            CompReq.ForceOverlayRgba     = ForceActive ? CachedForceOverlayRgba.data() : nullptr;
+            CompReq.ForceOverlayWidthPx  = CachedForceOverlayW;
+            CompReq.ForceOverlayHeightPx = CachedForceOverlayH;
+            CompReq.ForceOverlayEnabled  = ForceActive;
+            CompReq.ForceOverlayUpdated  = ForceUpdated;
+            CompReq.RequestPickPatch     = !CameraInteractiveDrag && CursorInCanvas && LastGizmoSlot.Valid();
+            CompReq.PickCursorX          = PickX;
+            CompReq.PickCursorY          = PickY;
+
+            GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportCompositeResult CompOut {};
+            const auto GizmoStart = std::chrono::steady_clock::now();
+            const bool CompOk = WorldGizmoRasterizer->CompositeOntoGpuViewport(CompReq, CompOut);
+            const auto GizmoEnd = std::chrono::steady_clock::now();
+            LatestFrameTiming.GizmoOverlayMs = static_cast<float>(
+                std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
+
+            if (CompOk && CompOut.ColorImageView != VK_NULL_HANDLE)
+            {
+                const uint64_t NativeTex = StartupConfig.ImGuiPresenter->RegisterOrUpdateExternalImage(
+                    0x46525456503031ull,
+                    CompOut.ImageGeneration,
+                    CompOut.ColorImageView);
+                if (NativeTex != 0ull)
+                {
+                    Panes->Viewport.AssignCanvasGpuTexture(NativeTex, CompOut.WidthPx, CompOut.HeightPx);
+                    GpuCompositeDone = true;
+                }
+            }
+        }
+    }
+    else if (GpuReady)
     {
         RenderedOnGpu = GpuWorldRenderer->RenderWorldViewportWithEngine(
             RenderConfig,
@@ -1670,32 +1846,35 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         CleanWorldRgba = std::move(CpuOutput.DisplayRgba8);
     }
 
-    CachedWorldRgba8    = CleanWorldRgba;
-    CachedWorldWidthPx  = OutWidthPx;
-    CachedWorldHeightPx = OutHeightPx;
-
-    const auto ForceStart = std::chrono::steady_clock::now();
-    CompositeForceFieldOverlayOntoBuffer(CleanWorldRgba, OutWidthPx, OutHeightPx);
-    const auto ForceEnd = std::chrono::steady_clock::now();
-    LatestFrameTiming.ForceOverlayMs = static_cast<float>(
-        std::chrono::duration<double, std::milli>(ForceEnd - ForceStart).count());
-
-    SynchronizeShowcaseGizmoAnchor();
-    const auto GizmoStart = std::chrono::steady_clock::now();
-    if (WorldGizmoRasterizer != nullptr && WorldGizmoRasterizer->QueryReady() && LastGizmoSlot.Valid())
+    if (!GpuCompositeDone)
     {
-        (void)WorldGizmoRasterizer->RasterizeGizmoOntoWorldBuffer(
-            CleanWorldRgba,
-            OutWidthPx,
-            OutHeightPx,
-            ShowcaseBundle->EditorCamera,
-            WorldTransformGizmo);
-    }
-    const auto GizmoEnd = std::chrono::steady_clock::now();
-    LatestFrameTiming.GizmoOverlayMs = static_cast<float>(
-        std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
+        CachedWorldRgba8    = CleanWorldRgba;
+        CachedWorldWidthPx  = OutWidthPx;
+        CachedWorldHeightPx = OutHeightPx;
 
-    Panes->Viewport.AssignCanvasRasterImage(CleanWorldRgba.data(), OutWidthPx, OutHeightPx);
+        const auto ForceStart = std::chrono::steady_clock::now();
+        CompositeForceFieldOverlayOntoBuffer(CleanWorldRgba, OutWidthPx, OutHeightPx);
+        const auto ForceEnd = std::chrono::steady_clock::now();
+        LatestFrameTiming.ForceOverlayMs = static_cast<float>(
+            std::chrono::duration<double, std::milli>(ForceEnd - ForceStart).count());
+
+        SynchronizeShowcaseGizmoAnchor();
+        const auto GizmoStart = std::chrono::steady_clock::now();
+        if (WorldGizmoRasterizer != nullptr && WorldGizmoRasterizer->QueryReady() && LastGizmoSlot.Valid())
+        {
+            (void)WorldGizmoRasterizer->RasterizeGizmoOntoWorldBuffer(
+                CleanWorldRgba,
+                OutWidthPx,
+                OutHeightPx,
+                ShowcaseBundle->EditorCamera,
+                WorldTransformGizmo);
+        }
+        const auto GizmoEnd = std::chrono::steady_clock::now();
+        LatestFrameTiming.GizmoOverlayMs = static_cast<float>(
+            std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
+
+        Panes->Viewport.AssignCanvasRasterImage(CleanWorldRgba.data(), OutWidthPx, OutHeightPx);
+    }
 
     const float SunElevDeg = std::asin(std::clamp(ShowcaseBundle->Scene.Sun.DirectionToSun.Z, -1.0f, 1.0f)) * 57.2957795f;
     uint32_t    ActiveLtc  = 0u;
@@ -1898,6 +2077,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.RenderEngineIndex != LastRenderEngine ||
                 DisplayCfg.ShadowAlgorithmIndex != LastShadowAlgorithm ||
                 DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
+                DisplayCfg.TraceResolutionIndex != LastTraceResolutionIdx ||
                 DisplayCfg.GlobalIllumination != LastGiEnabled ||
                 DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
                 DisplayCfg.AntiAliasingEnabled != LastAaEnabled ||
@@ -1934,6 +2114,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastRenderEngine       = DisplayCfg.RenderEngineIndex;
             LastShadowAlgorithm    = DisplayCfg.ShadowAlgorithmIndex;
             LastReflectionSource   = DisplayCfg.ReflectionSourceIndex;
+            LastTraceResolutionIdx = DisplayCfg.TraceResolutionIndex;
             LastGiEnabled          = DisplayCfg.GlobalIllumination;
             LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
             LastAaEnabled          = DisplayCfg.AntiAliasingEnabled;
@@ -1949,13 +2130,30 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastForceSourceCount   = ForceAccumulator.QueryActiveSourceCount();
             LastRenderScalePct     = CurScale;
 
+            const bool InteractionWorldRefresh = PendingInteractionWorldRefresh;
+            const bool InteractionGizmoRefresh = PendingInteractionGizmoRefresh;
+            const bool InteractionSceneSync    = PendingInteractionSceneSync;
+            const bool InteractionFastDrag     = PendingInteractionFastDrag;
+            PendingInteractionWorldRefresh = false;
+            PendingInteractionGizmoRefresh = false;
+            PendingInteractionSceneSync    = false;
+            PendingInteractionFastDrag     = false;
+
             const bool LatticeUpdated = ConsumeCompletedRtxLatticeBake();
             bool       NeedsPrep = false;
             const bool SceneMutated = GeometricRaster::SynchronizeShowcaseGallerySceneLive(
                 Panes->Outliner,
                 *ShowcaseBundle,
                 NeedsPrep,
-                !GpuReady && !WorldTransformGizmo.QueryDragging());
+                !GpuReady && !WorldTransformGizmo.QueryDragging() && !InteractionFastDrag);
+            if (InteractionSceneSync && !NeedsPrep && !InteractionFastDrag && !WorldTransformGizmo.QueryDragging())
+            {
+                if (!GpuReady)
+                {
+                    GeometricRaster::RebuildShowcaseSceneAcceleration(*ShowcaseBundle, true);
+                }
+                NeedsPrep = true;
+            }
             if (NeedsPrep)
             {
                 PathTraceAccumIndex = 0u;
@@ -1965,7 +2163,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                     GpuWorldRenderer->SynchronizeSceneResources(
                         ShowcaseBundle->Scene,
                         nullptr,
-                        !WorldTransformGizmo.QueryDragging());
+                        !WorldTransformGizmo.QueryDragging() && !InteractionFastDrag);
                 }
                 else if (ShowcaseRenderer != nullptr)
                 {
@@ -1978,11 +2176,11 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             const auto TickPrepEnd = std::chrono::steady_clock::now();
             LatestFrameTiming.EditorTickMs = static_cast<float>(
                 std::chrono::duration<double, std::milli>(TickPrepEnd - TickStart).count());
-            if (SceneMutated || DisplayChanged || LatticeUpdated || ProgressivePathTraceTick)
+            if (InteractionWorldRefresh || SceneMutated || DisplayChanged || LatticeUpdated || ProgressivePathTraceTick)
             {
                 RefreshShowcaseViewportRaster();
             }
-            else if (CurrentSel != LastGizmoSlot || ForceOverlayDirty)
+            else if (InteractionGizmoRefresh || CurrentSel != LastGizmoSlot || ForceOverlayDirty)
             {
                 RefreshGizmoOverlayFromCachedWorld();
             }
@@ -2198,9 +2396,14 @@ void EditorLifecycle::Finalize() noexcept
 
     // 🔴 CRITICAL: Tear down GPU overlay hooks, then workspace sessions, then input, then dock windows.
     EditorSequence.Finalize();
+    if (StartupConfig.ImGuiPresenter != nullptr)
+    {
+        StartupConfig.ImGuiPresenter->ReleaseExternalImages();
+    }
     AuthoredForces.clear();
     DefaultForcesFolder = {};
     CachedWorldRgba8.clear();
+    LastWorldImageView = VK_NULL_HANDLE;
     ForceOverlayRasterizer.reset();
     WorldGizmoRasterizer.reset();
     GpuWorldRenderer.reset();

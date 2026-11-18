@@ -136,6 +136,10 @@ void ViewportPanel::AssignCanvasRasterImage(const uint8_t* RgbaPixels, uint32_t 
         return;
     }
 
+    CanvasGpuTextureHandle = 0ull;
+    CanvasGpuWidthPx       = 0u;
+    CanvasGpuHeightPx      = 0u;
+
     const bool NeedsCreate =
         CanvasRasterTexture.Width != static_cast<int>(WidthPx) ||
         CanvasRasterTexture.Height != static_cast<int>(HeightPx) ||
@@ -164,8 +168,18 @@ void ViewportPanel::AssignCanvasRasterImage(const uint8_t* RgbaPixels, uint32_t 
     }
 }
 
+void ViewportPanel::AssignCanvasGpuTexture(uint64_t NativeTextureHandle, uint32_t WidthPx, uint32_t HeightPx) noexcept
+{
+    CanvasGpuTextureHandle = NativeTextureHandle;
+    CanvasGpuWidthPx       = (NativeTextureHandle != 0ull) ? WidthPx : 0u;
+    CanvasGpuHeightPx      = (NativeTextureHandle != 0ull) ? HeightPx : 0u;
+}
+
 void ViewportPanel::ClearCanvasRasterImage() noexcept
 {
+    CanvasGpuTextureHandle = 0ull;
+    CanvasGpuWidthPx       = 0u;
+    CanvasGpuHeightPx      = 0u;
     CanvasRasterTexture.DestroyPixels();
     CanvasRasterTexture.SetStatus(ImTextureStatus_Destroyed);
 }
@@ -400,6 +414,35 @@ void ViewportPanel::RenderCanvasPane(
                 ColorRgba{ 255u, 255u, 255u, 255u });
             RenderedLiveSurface = true;
         }
+    }
+
+    if (!RenderedLiveSurface && CanvasGpuTextureHandle != 0ull && CanvasGpuWidthPx > 0u && CanvasGpuHeightPx > 0u)
+    {
+        Surface.FillRectangle(PaneBounds, ColorRgba{ 14, 15, 18, 255 });
+        const float SourceAspect = static_cast<float>(CanvasGpuWidthPx) / static_cast<float>(CanvasGpuHeightPx);
+        const float TargetAspect = PaneBounds.Width / std::max(1.0f, PaneBounds.Height);
+        Point2D     UvMin{ 0.0f, 0.0f };
+        Point2D     UvMax{ 1.0f, 1.0f };
+        if (TargetAspect > SourceAspect)
+        {
+            const float CropH = SourceAspect / TargetAspect;
+            UvMin.Y           = 0.5f * (1.0f - CropH);
+            UvMax.Y           = 1.0f - UvMin.Y;
+        }
+        else if (SourceAspect > TargetAspect)
+        {
+            const float CropW = TargetAspect / SourceAspect;
+            UvMin.X           = 0.5f * (1.0f - CropW);
+            UvMax.X           = 1.0f - UvMin.X;
+        }
+        Surface.FillTexturedRectangle(
+            PaneBounds,
+            nullptr,
+            CanvasGpuTextureHandle,
+            ColorRgba{ 255u, 255u, 255u, 255u },
+            UvMin,
+            UvMax);
+        RenderedLiveSurface = true;
     }
 
     if (!RenderedLiveSurface && CanvasRasterTexture.Pixels != nullptr && CanvasRasterTexture.Width > 0 && CanvasRasterTexture.Height > 0)
@@ -1323,7 +1366,7 @@ void ViewportPanel::RenderSettingsSheet(
     const PaneInputReading& Input)
 {
     const float SheetW = 286.0f;
-    const float SheetH = std::min(716.0f, std::max(426.0f, Bounds.Height - 22.0f));
+    const float SheetH = std::min(760.0f, std::max(426.0f, Bounds.Height - 22.0f));
     const float SheetX = std::clamp(GearButtonRightBottom.X - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
     const float SheetY = GearButtonRightBottom.Y + 6.0f;
     const Rectangle2D Sheet{ SheetX, SheetY, SheetW, SheetH };
@@ -1410,6 +1453,42 @@ void ViewportPanel::RenderSettingsSheet(
         if (ExclusiveSelector::ConstructCompact(Overlay, SwitchRect, BvhRefl, Ptr, 1.0f).Clicked)
         {
             DisplaySettings.ReflectionSourceIndex = BvhRefl ? 1u : 0u;
+        }
+        RowY += 32.0f;
+    }
+
+    // Trace Resolution capsules (Full / 1/2 / 1/4) for all render & shadow algorithms
+    {
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay,
+            FontWeightClass::Regular,
+            { Sheet.X + 16.0f, RowY + 5.0f },
+            11.5f,
+            WorkspaceSurfaceColors::SecondaryInk,
+            "Trace Res");
+
+        constexpr std::array<const char*, 3> TraceLabels = {{ "Full", "1/2", "1/4" }};
+        const float GroupW   = 138.0f;
+        const float CapsuleW = (GroupW - 8.0f) / 3.0f;
+        const float GroupX   = Sheet.Right() - 16.0f - GroupW;
+        for (uint32_t ResIdx = 0u; ResIdx < 3u; ++ResIdx)
+        {
+            const Rectangle2D Capsule{ GroupX + static_cast<float>(ResIdx) * (CapsuleW + 4.0f), RowY + 1.0f, CapsuleW, 22.0f };
+            const bool        Active = ((DisplaySettings.TraceResolutionIndex % 3u) == ResIdx);
+            Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+            Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 9.5f, TraceLabels[ResIdx]);
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay,
+                FontWeightClass::Regular,
+                { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.0f },
+                9.5f,
+                Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 },
+                TraceLabels[ResIdx]);
+            if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+            {
+                DisplaySettings.TraceResolutionIndex = ResIdx;
+            }
         }
         RowY += 32.0f;
     }

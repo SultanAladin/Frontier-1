@@ -71,6 +71,13 @@ public:
         uint32_t&             OutWidthPx,
         uint32_t&             OutHeightPx);
 
+    [[nodiscard]] uint64_t RegisterOrUpdateExternalImage(
+        uint64_t    Key,
+        uint64_t    Generation,
+        VkImageView ViewHandle);
+
+    void ReleaseExternalImages() noexcept;
+
     [[nodiscard]] OverlayRasterizationStats InspectStats() const noexcept
     {
         return Stats;
@@ -89,6 +96,13 @@ private:
         uint64_t            ContentHash = 0ull;
         uint64_t            LastTouched = 0ull;
         uint64_t            LastPresentSerial = 0ull;
+    };
+
+    struct ExternalImageEntry
+    {
+        uint64_t        Generation = 0ull;
+        VkImageView     ViewHandle = VK_NULL_HANDLE;
+        VkDescriptorSet Descriptor = VK_NULL_HANDLE;
     };
 
     [[nodiscard]] bool ConstructRasterResources(VkFormat TargetFormat, std::string* OptionalDiagnostic);
@@ -126,6 +140,7 @@ private:
     DeviceImageResource                                       FallbackWhiteTex      {};
     VkDescriptorSet                                           FallbackDescriptor    = VK_NULL_HANDLE;
     std::unordered_map<const ImTextureData*, CachedImGuiTexture> TextureCache       {};
+    std::unordered_map<uint64_t, ExternalImageEntry>            ExternalImages     {};
     uint64_t                                                      TextureUseCounter    = 0ull;
     uint64_t                                                      TexturePresentSerial = 0ull;
     std::string                                                   LastPresentationDiagnostic {};

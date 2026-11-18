@@ -115,6 +115,8 @@ struct GpuWorldMaterial64
 [[vk::binding(23, 0)]] RWStructuredBuffer<float4>                PongShadowAo;
 [[vk::binding(24, 0)]] RWStructuredBuffer<float4>                PongGiHdr;
 [[vk::binding(25, 0)]] RWStructuredBuffer<float4>                CloudRadiometricBuffer;
+[[vk::binding(26, 0)]] Sampler3D<float4>                         SdfBakedVolumeRead;
+[[vk::binding(27, 0)]] RWTexture3D<float4>                       SdfBakedVolumeWrite;
 
 static const float PiConst    = 3.14159265359;
 static const float TauConst   = 6.28318530718;
@@ -556,35 +558,27 @@ bool TraceSceneAnyHit(float3 Origin, float3 Dir, float MinT, float MaxT)
     return false;
 }
 
-float SampleSdfGrid(float3 WorldPos)
+float4 SampleSdfBakedVolume(float3 WorldPos)
 {
     uint3 Dims = WorldUniforms.SdfDimsLightCount.xyz;
-    if (Dims.x < 2u || Dims.y < 2u || Dims.z < 2u) return 4.0;
+    if (Dims.x < 2u || Dims.y < 2u || Dims.z < 2u) return float4(0.0, 0.0, 0.0, 4.0);
 
     float Spacing = max(1.0e-4, WorldUniforms.SdfMinSpacing.w);
     float3 Rel    = (WorldPos - WorldUniforms.SdfMinSpacing.xyz) / Spacing;
-    int3   MaxIdx = int3(Dims) - int3(1);
+    float3 MaxRel = float3(Dims) - float3(1.0);
     if (Rel.x < 0.0 || Rel.y < 0.0 || Rel.z < 0.0 ||
-        Rel.x > float(MaxIdx.x) || Rel.y > float(MaxIdx.y) || Rel.z > float(MaxIdx.z))
+        Rel.x > MaxRel.x || Rel.y > MaxRel.y || Rel.z > MaxRel.z)
     {
-        return 2.5;
+        return float4(0.0, 0.0, 0.0, 2.5);
     }
 
-    int3   P0  = clamp(int3(floor(Rel)), int3(0), MaxIdx);
-    int3   P1  = min(P0 + int3(1), MaxIdx);
-    float3 T   = saturate(Rel - float3(P0));
-    uint   SX  = Dims.x;
-    uint   SXY = Dims.x * Dims.y;
+    float3 Uvw = (Rel + 0.5) / float3(Dims);
+    return SdfBakedVolumeRead.SampleLevel(Uvw, 0.0);
+}
 
-    float C00 = lerp(SignedDistanceGrid[uint(P0.z) * SXY + uint(P0.y) * SX + uint(P0.x)],
-                     SignedDistanceGrid[uint(P0.z) * SXY + uint(P0.y) * SX + uint(P1.x)], T.x);
-    float C10 = lerp(SignedDistanceGrid[uint(P0.z) * SXY + uint(P1.y) * SX + uint(P0.x)],
-                     SignedDistanceGrid[uint(P0.z) * SXY + uint(P1.y) * SX + uint(P1.x)], T.x);
-    float C01 = lerp(SignedDistanceGrid[uint(P1.z) * SXY + uint(P0.y) * SX + uint(P0.x)],
-                     SignedDistanceGrid[uint(P1.z) * SXY + uint(P0.y) * SX + uint(P1.x)], T.x);
-    float C11 = lerp(SignedDistanceGrid[uint(P1.z) * SXY + uint(P1.y) * SX + uint(P0.x)],
-                     SignedDistanceGrid[uint(P1.z) * SXY + uint(P1.y) * SX + uint(P1.x)], T.x);
-    return lerp(lerp(C00, C10, T.y), lerp(C01, C11, T.y), T.z);
+float SampleSdfGrid(float3 WorldPos)
+{
+    return SampleSdfBakedVolume(WorldPos).w;
 }
 
 float3 EvaluateSdfNormal(float3 WorldPos)
@@ -600,33 +594,7 @@ float3 EvaluateSdfNormal(float3 WorldPos)
 
 float3 SampleSdfRadiosityTrilinear(float3 WorldPos)
 {
-    uint3 Dims = WorldUniforms.SdfDimsLightCount.xyz;
-    if (Dims.x < 2u || Dims.y < 2u || Dims.z < 2u) return float3(0.0);
-
-    float Spacing = max(1.0e-4, WorldUniforms.SdfMinSpacing.w);
-    float3 Rel    = (WorldPos - WorldUniforms.SdfMinSpacing.xyz) / Spacing;
-    int3   MaxIdx = int3(Dims) - int3(1);
-    if (Rel.x < 0.0 || Rel.y < 0.0 || Rel.z < 0.0 ||
-        Rel.x > float(MaxIdx.x) || Rel.y > float(MaxIdx.y) || Rel.z > float(MaxIdx.z))
-    {
-        return float3(0.0);
-    }
-
-    int3   P0  = clamp(int3(floor(Rel)), int3(0), MaxIdx);
-    int3   P1  = min(P0 + int3(1), MaxIdx);
-    float3 T   = saturate(Rel - float3(P0));
-    uint   SX  = Dims.x;
-    uint   SXY = Dims.x * Dims.y;
-
-    float3 C00 = lerp(SdfRadiosityVoxels[uint(P0.z) * SXY + uint(P0.y) * SX + uint(P0.x)].xyz,
-                      SdfRadiosityVoxels[uint(P0.z) * SXY + uint(P0.y) * SX + uint(P1.x)].xyz, T.x);
-    float3 C10 = lerp(SdfRadiosityVoxels[uint(P0.z) * SXY + uint(P1.y) * SX + uint(P0.x)].xyz,
-                      SdfRadiosityVoxels[uint(P0.z) * SXY + uint(P1.y) * SX + uint(P1.x)].xyz, T.x);
-    float3 C01 = lerp(SdfRadiosityVoxels[uint(P1.z) * SXY + uint(P0.y) * SX + uint(P0.x)].xyz,
-                      SdfRadiosityVoxels[uint(P1.z) * SXY + uint(P0.y) * SX + uint(P1.x)].xyz, T.x);
-    float3 C11 = lerp(SdfRadiosityVoxels[uint(P1.z) * SXY + uint(P1.y) * SX + uint(P0.x)].xyz,
-                      SdfRadiosityVoxels[uint(P1.z) * SXY + uint(P1.y) * SX + uint(P1.x)].xyz, T.x);
-    return lerp(lerp(C00, C10, T.y), lerp(C01, C11, T.y), T.z);
+    return SampleSdfBakedVolume(WorldPos).rgb;
 }
 
 void ConstructOrthonormalBasis(float3 N, out float3 T, out float3 B)
@@ -1223,7 +1191,8 @@ float3 EvaluateSdfRadiosityConeGi(float3 WorldPos, float3 Normal, uint2 PixelXY)
         for (uint Step = 0u; Step < 24u && DistM < 7.5; ++Step)
         {
             float3 SPos   = Origin + Dir * DistM;
-            float  SdfD   = SampleSdfGrid(SPos);
+            float4 Baked  = SampleSdfBakedVolume(SPos);
+            float  SdfD   = Baked.w;
             float  ConeR  = max(0.035, DistM * 0.40);
             if (SdfD < ConeR)
             {
@@ -1231,7 +1200,7 @@ float3 EvaluateSdfRadiosityConeGi(float3 WorldPos, float3 Normal, uint2 PixelXY)
                 float  Occ       = saturate((1.0 - SdfD / ConeR) * NearBoost);
                 float3 SurfN     = EvaluateSdfNormal(SPos);
                 float  FrontEmit = smoothstep(-0.04, 0.58, dot(SurfN, -Dir)) * 1.26;
-                float3 VRad      = SampleSdfRadiosityTrilinear(SPos);
+                float3 VRad      = Baked.rgb;
                 BounceR         += VRad * (Occ * SkyVis * FrontEmit);
                 SkyVis          *= (1.0 - Occ * 0.72);
                 if (SkyVis < 0.035)
@@ -2858,19 +2827,21 @@ void SdfRadiosityComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     uint  Idx = DispatchThreadID.x;
     if (Idx >= TotalVoxels || Dims.x < 2u || Dims.y < 2u || Dims.z < 2u) return;
 
-    float Spacing = max(0.04, WorldUniforms.SdfMinSpacing.w);
-    float NearBand = Spacing * 1.85;
-    if (abs(SignedDistanceGrid[Idx]) > NearBand)
-    {
-        SdfRadiosityVoxels[Idx] = float4(0.0, 0.0, 0.0, 0.0);
-        return;
-    }
-
     uint SXY = Dims.x * Dims.y;
     uint IZ  = Idx / SXY;
     uint Rem = Idx - IZ * SXY;
     uint IY  = Rem / Dims.x;
     uint IX  = Rem - IY * Dims.x;
+
+    float SdfD = SignedDistanceGrid[Idx];
+    float Spacing = max(0.04, WorldUniforms.SdfMinSpacing.w);
+    float NearBand = Spacing * 1.85;
+    if (abs(SdfD) > NearBand)
+    {
+        SdfRadiosityVoxels[Idx] = float4(0.0, 0.0, 0.0, 0.0);
+        SdfBakedVolumeWrite[uint3(IX, IY, IZ)] = float4(0.0, 0.0, 0.0, SdfD);
+        return;
+    }
 
     uint XM = (IX > 0u) ? (IX - 1u) : 0u;
     uint XP = min(Dims.x - 1u, IX + 1u);
@@ -2891,6 +2862,7 @@ void SdfRadiosityComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     if (!Hit.Hit)
     {
         SdfRadiosityVoxels[Idx] = float4(0.0, 0.0, 0.0, 0.0);
+        SdfBakedVolumeWrite[uint3(IX, IY, IZ)] = float4(0.0, 0.0, 0.0, SdfD);
         return;
     }
 
@@ -2910,6 +2882,7 @@ void SdfRadiosityComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     float3 VoxelRad = DiffAlb * DirectIrr;
     SdfRadiosityVoxels[Idx] = float4(VoxelRad, 1.0);
+    SdfBakedVolumeWrite[uint3(IX, IY, IZ)] = float4(VoxelRad, SdfD);
 }
 
 groupshared float4 SharedDdgiRayDirDist[64];

@@ -43,6 +43,11 @@
 #include <string_view>
 #include <vector>
 
+namespace Frontier::GeometricRaster
+{
+class ImGuiOverlayRasterization;
+}
+
 namespace Frontier::Lifecycle
 {
 
@@ -58,9 +63,10 @@ struct EditorStartupConfiguration
     std::filesystem::path ProjectSpacePath {};                                                         // [-] - Optional .projectspace persistence path
     OutlinerTitleVariant                  OutlinerHeading         = OutlinerTitleVariant::Outliner; // [-] - Outliner vs LayerStack heading
     double                                MaximumStep             = 0.100;                          // [s] - Upper Δt clamp per authoring tick
-    bool                                  PopulateShowcaseScene   = false;                          // [-] - Populate Cornell-Studio Gallery in Outliner & GTX Viewport
-    GeometricRaster::VulkanInterchange*   VulkanDevice            = nullptr;                        // [-] - Optional hardware Vulkan device for GPU .slang World & Gizmo passes
-    std::filesystem::path                 CompiledShaderDirectory {};                               // [-] - Optional CompiledShaders/ path for GPU .slang SPIR-V modules
+    bool                                        PopulateShowcaseScene   = false;                          // [-] - Populate Cornell-Studio Gallery in Outliner & GTX Viewport
+    GeometricRaster::VulkanInterchange*         VulkanDevice            = nullptr;                        // [-] - Optional hardware Vulkan device for GPU .slang World & Gizmo passes
+    GeometricRaster::ImGuiOverlayRasterization* ImGuiPresenter          = nullptr;                        // [-] - Optional ImGui Vulkan presenter for zero-readback GPU viewport
+    std::filesystem::path                       CompiledShaderDirectory {};                               // [-] - Optional CompiledShaders/ path for GPU .slang SPIR-V modules
 };
 
 struct EditorLifecycleReading
@@ -143,6 +149,7 @@ private:
     void AttachForceFieldAuthoringToActivePanes();
     void SynchronizeForceFieldsWithOutliner(double Δt);
     void SynchronizeShowcaseGizmoAnchor() noexcept;
+    [[nodiscard]] bool UpdateForceFieldOverlayCache(uint32_t WidthPx, uint32_t HeightPx, bool& OutUpdated);
     void CompositeForceFieldOverlayOntoBuffer(std::vector<uint8_t>& InOutRgba, uint32_t WidthPx, uint32_t HeightPx);
     void RefreshGizmoOverlayFromCachedWorld();
     void ProcessShowcaseViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
@@ -169,6 +176,9 @@ private:
     std::vector<uint8_t>                                             CachedWorldRgba8     {}; // [-] - Clean world RGBA8 buffer before gizmo overlay rasterization
     uint32_t                                                         CachedWorldWidthPx   = 0u;
     uint32_t                                                         CachedWorldHeightPx  = 0u;
+    VkImageView                                                      LastWorldImageView   = VK_NULL_HANDLE;
+    uint32_t                                                         LastTargetWidthPx    = 0u;
+    uint32_t                                                         LastTargetHeightPx   = 0u;
     uint32_t                                                         LastCanvasPaneWidth  = 0u;
     uint32_t                                                         LastCanvasPaneHeight = 0u;
     uint32_t                                                         LastViewportTier     = UINT32_MAX;
@@ -176,6 +186,7 @@ private:
     uint32_t                                                         LastRenderEngine     = UINT32_MAX;
     uint32_t                                                         LastShadowAlgorithm  = UINT32_MAX;
     uint32_t                                                         LastReflectionSource = UINT32_MAX;
+    uint32_t                                                         LastTraceResolutionIdx = UINT32_MAX;
     bool                                                             LastGiEnabled        = true;
     bool                                                             LastReflectionsEnabled = true;
     bool                                                             LastAaEnabled        = true;
@@ -195,6 +206,7 @@ private:
     uint32_t                                                         LastPtReflSrc        = UINT32_MAX;
     uint32_t                                                         LastPtDebugChan      = UINT32_MAX;
     uint32_t                                                         LastPtQualityTier    = UINT32_MAX;
+    uint32_t                                                         LastPtTraceResIdx    = UINT32_MAX;
     uint32_t                                                         LastPtWidthPx        = 0u;
     uint32_t                                                         LastPtHeightPx       = 0u;
     bool                                                             LastPtAtmoSky        = true;
@@ -224,6 +236,10 @@ private:
     Point2D                                                          LastPointerPosition  {}; // [px]- Previous frame viewport pointer coordinate
     bool                                                             PointerTrackingValid = false;
     bool                                                             CameraInteractiveDrag = false;
+    bool                                                             PendingInteractionWorldRefresh = false;
+    bool                                                             PendingInteractionGizmoRefresh = false;
+    bool                                                             PendingInteractionSceneSync    = false;
+    bool                                                             PendingInteractionFastDrag     = false;
     std::function<void()>                                            ReturnToBrowserCallback {};
     std::string                                                      ActiveProjectTitle   {};
     SimulationSpace::ForceFields::ForceFieldAccumulator ForceAccumulator    {};   // [-]  - Analytical ForceModel / VectorField evaluator (no physics)

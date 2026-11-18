@@ -84,6 +84,7 @@ struct ViewportDisplaySettings
     uint32_t RenderEngineIndex     = 3u;     // [idx] - 0=MatCap, 1=OpenPbrDirect, 2=DdgiRaytracing, 3=SdfGlobalIllumination, 4=DeterministicPathTrace
     uint32_t ShadowAlgorithmIndex  = 0u;     // [idx] - 0=ContactPcss, 1=PcssPlaneAware, 2=ShadowRayMarch, 3=PcfBilinear, 4=WideTreeRayQuery
     uint32_t ReflectionSourceIndex = 0u;     // [idx] - 0=WideTreeRaytrace, 1=SkyEnvironment
+    uint32_t TraceResolutionIndex  = 0u;     // [idx] - 0=Full Trace, 1=1/2 Trace, 2=1/4 Trace
     float    RenderScalePercent    = 100.0f; // [%]   - Internal resolution percentage [50..200]
     bool     GlobalIllumination    = true;   // [-]   - Indirect lighting toggle
     bool     ReflectionsEnabled    = true;   // [-]   - Specular reflections toggle
@@ -140,6 +141,7 @@ public:
     void AttachOutliner(OutlinerPanel* SourceOutliner) noexcept;
     void AssignNavigationCallback(NavigationCallback Callback);
     void AssignCanvasRasterImage(const uint8_t* RgbaPixels, uint32_t WidthPx, uint32_t HeightPx);
+    void AssignCanvasGpuTexture(uint64_t NativeTextureHandle, uint32_t WidthPx, uint32_t HeightPx) noexcept;
     void ClearCanvasRasterImage() noexcept;
     void ConfigureConstructPresets(std::vector<ViewportConstructPresetEntry> Presets);
     void ConfigureConstructPresetCallback(std::function<void(uint32_t PresetIndex)> Callback);
@@ -275,6 +277,9 @@ private:
     std::string                     ProbeReadoutText         {};                                       // [-]   - Optional bottom anemometer strip
     SimulationSpace::ForceFields::ForceOverlaySettings ForceOverlay{};                                 // [-]   - Editor Force Viz overlay parameters
     ImTextureData                   CanvasRasterTexture      {};                                       // [-]   - Optional live GTX/RTX viewport texture
+    uint64_t                        CanvasGpuTextureHandle   = 0ull;                                   // [-]   - GPU-resident ImTextureID (zero-copy viewport)
+    uint32_t                        CanvasGpuWidthPx         = 0u;                                     // [px]  - GPU-resident viewport width
+    uint32_t                        CanvasGpuHeightPx        = 0u;                                     // [px]  - GPU-resident viewport height
 };
 
 //------------------------------------------------------------------------------------------------------------------------

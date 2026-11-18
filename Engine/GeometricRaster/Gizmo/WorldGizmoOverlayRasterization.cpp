@@ -155,13 +155,54 @@ bool WorldGizmoOverlayRasterization::InitializeOverlay(
         return false;
     }
 
-    const std::array<VkDescriptorPoolSize, 2u> Capacities {{
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 16u },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 16u },
+    // GPU-resident composite render pass: blit writes every Color/Pick pixel (DONT_CARE load), outputs SHADER_READ_ONLY_OPTIMAL for ImGui
+    std::array<VkAttachmentDescription, 3u> GpuAtts = Attachments;
+    GpuAtts[0].loadOp        = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    GpuAtts[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    GpuAtts[0].finalLayout   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    GpuAtts[1].loadOp        = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    GpuAtts[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    GpuAtts[1].finalLayout   = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+    std::array<VkSubpassDependency, 2u> GpuDeps {};
+    GpuDeps[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
+    GpuDeps[0].dstSubpass      = 0u;
+    GpuDeps[0].srcStageMask    = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    GpuDeps[0].dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    GpuDeps[0].srcAccessMask   = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    GpuDeps[0].dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    GpuDeps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    GpuDeps[1].srcSubpass      = 0u;
+    GpuDeps[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
+    GpuDeps[1].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    GpuDeps[1].dstStageMask    = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    GpuDeps[1].srcAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    GpuDeps[1].dstAccessMask   = VK_ACCESS_SHADER_READ_BIT;
+    GpuDeps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    VkRenderPassCreateInfo GpuPassSpec {};
+    GpuPassSpec.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    GpuPassSpec.attachmentCount = static_cast<uint32_t>(GpuAtts.size());
+    GpuPassSpec.pAttachments    = GpuAtts.data();
+    GpuPassSpec.subpassCount    = 1u;
+    GpuPassSpec.pSubpasses      = &Subpass;
+    GpuPassSpec.dependencyCount = static_cast<uint32_t>(GpuDeps.size());
+    GpuPassSpec.pDependencies   = GpuDeps.data();
+    if (vkCreateRenderPass(DeviceHandle, &GpuPassSpec, nullptr, &GpuCompositeRenderPass) != VK_SUCCESS)
+    {
+        TeardownOverlay();
+        return false;
+    }
+
+    const std::array<VkDescriptorPoolSize, 3u> Capacities {{
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         32u },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         32u },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 32u },
     }};
     VkDescriptorPoolCreateInfo PoolSpec {};
     PoolSpec.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    PoolSpec.maxSets       = 16u;
+    PoolSpec.maxSets       = 32u;
     PoolSpec.poolSizeCount = static_cast<uint32_t>(Capacities.size());
     PoolSpec.pPoolSizes    = Capacities.data();
     if (vkCreateDescriptorPool(DeviceHandle, &PoolSpec, nullptr, &OverlayDescriptorAllocator) != VK_SUCCESS)
@@ -179,6 +220,94 @@ bool WorldGizmoOverlayRasterization::InitializeOverlay(
         return false;
     }
 
+    const auto BlitVertPath = CompiledShaderDirectory / "WorldViewportBlit.vert.spv";
+    const auto BlitFragPath = CompiledShaderDirectory / "WorldViewportBlit.frag.spv";
+    if (std::filesystem::exists(BlitVertPath) && std::filesystem::exists(BlitFragPath))
+    {
+        if (!ConstructBlitProgram(BlitVertPath, BlitFragPath, ViewportBlitProgram))
+        {
+            TeardownOverlay();
+            return false;
+        }
+    }
+
+    {
+        VkSamplerCreateInfo SampSpec {};
+        SampSpec.sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        SampSpec.magFilter    = VK_FILTER_LINEAR;
+        SampSpec.minFilter    = VK_FILTER_LINEAR;
+        SampSpec.mipmapMode   = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        SampSpec.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        SampSpec.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        SampSpec.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        SampSpec.maxLod       = 1.0f;
+        if (vkCreateSampler(DeviceHandle, &SampSpec, nullptr, &BlitLinearSampler) != VK_SUCCESS)
+        {
+            TeardownOverlay();
+            return false;
+        }
+    }
+
+    FallbackTransparentImage = DeviceInterchange->AllocateImage2D(
+        1u,
+        1u,
+        VK_FORMAT_R8G8B8A8_UNORM,
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT);
+    if (FallbackTransparentImage.ImageHandle == VK_NULL_HANDLE)
+    {
+        TeardownOverlay();
+        return false;
+    }
+    {
+        VkCommandBuffer InitCmd = DeviceInterchange->BeginSingleTimeCommands();
+        if (InitCmd == VK_NULL_HANDLE)
+        {
+            TeardownOverlay();
+            return false;
+        }
+        VkImageMemoryBarrier ToClear {};
+        ToClear.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        ToClear.srcAccessMask       = 0u;
+        ToClear.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        ToClear.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+        ToClear.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        ToClear.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ToClear.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ToClear.image               = FallbackTransparentImage.ImageHandle;
+        ToClear.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+        vkCmdPipelineBarrier(InitCmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, nullptr, 0u, nullptr, 1u, &ToClear);
+
+        const VkClearColorValue ZeroClear {{ 0.0f, 0.0f, 0.0f, 0.0f }};
+        const VkImageSubresourceRange Range { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+        vkCmdClearColorImage(InitCmd, FallbackTransparentImage.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ZeroClear, 1u, &Range);
+
+        VkImageMemoryBarrier ToSampled {};
+        ToSampled.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        ToSampled.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        ToSampled.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+        ToSampled.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        ToSampled.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        ToSampled.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ToSampled.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ToSampled.image               = FallbackTransparentImage.ImageHandle;
+        ToSampled.subresourceRange    = Range;
+        vkCmdPipelineBarrier(InitCmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0u, 0u, nullptr, 0u, nullptr, 1u, &ToSampled);
+        const uint64_t InitSig = DeviceInterchange->DispatchCommandBufferAsync(InitCmd);
+        if (!DeviceInterchange->AwaitTimelineTick(InitSig))
+        {
+            TeardownOverlay();
+            return false;
+        }
+        DeviceInterchange->FreeCommandBuffer(InitCmd);
+    }
+
+    ReadbackPickPatchBuffer = DeviceInterchange->AllocateBuffer(
+        25ull * 16ull,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+
     UniformBuffer = DeviceInterchange->AllocateBuffer(
         sizeof(GPUWorldGizmoUniformBlock),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -193,25 +322,58 @@ bool WorldGizmoOverlayRasterization::InitializeOverlay(
     return true;
 }
 
+void WorldGizmoOverlayRasterization::FlushPreviousCompositeCmd()
+{
+    if (PreviousCompositeCmd != VK_NULL_HANDLE && DeviceInterchange != nullptr && DeviceInterchange->Ready())
+    {
+        if (PreviousCompositeSignal != 0ull)
+        {
+            (void)DeviceInterchange->AwaitTimelineTick(PreviousCompositeSignal);
+        }
+        DeviceInterchange->FreeCommandBuffer(PreviousCompositeCmd);
+    }
+    PreviousCompositeCmd    = VK_NULL_HANDLE;
+    PreviousCompositeSignal = 0ull;
+}
+
 void WorldGizmoOverlayRasterization::TeardownOverlay()
 {
     Ready = false;
     CachedPickOrdinals.clear();
+    CachedPickPatchW = 0u;
+    CachedPickPatchH = 0u;
     if (DeviceInterchange != nullptr && DeviceInterchange->Ready())
     {
         VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
+        FlushPreviousCompositeCmd();
         vkDeviceWaitIdle(DeviceHandle);
         ReleaseRenderTargets();
+        DeviceInterchange->ReleaseImage2D(FallbackTransparentImage);
+        DeviceInterchange->ReleaseImage2D(ForceOverlayImage);
+        ForceOverlayImageValid = false;
+        if (BlitLinearSampler != VK_NULL_HANDLE)
+        {
+            vkDestroySampler(DeviceHandle, BlitLinearSampler, nullptr);
+            BlitLinearSampler = VK_NULL_HANDLE;
+        }
         DeviceInterchange->ReleaseBuffer(UniformBuffer);
         DeviceInterchange->ReleaseBuffer(VertexBuffer);
         DeviceInterchange->ReleaseBuffer(UploadReadbackRgbaBuffer);
         DeviceInterchange->ReleaseBuffer(ReadbackPickBuffer);
+        DeviceInterchange->ReleaseBuffer(ReadbackPickPatchBuffer);
+        DeviceInterchange->ReleaseBuffer(ForceOverlayStagingBuffer);
         DestroyProgramUnit(DeviceHandle, GizmoDepthProgram);
         DestroyProgramUnit(DeviceHandle, GizmoTranslucentProgram);
+        DestroyProgramUnit(DeviceHandle, ViewportBlitProgram);
         if (OverlayDescriptorAllocator != VK_NULL_HANDLE)
         {
             vkDestroyDescriptorPool(DeviceHandle, OverlayDescriptorAllocator, nullptr);
             OverlayDescriptorAllocator = VK_NULL_HANDLE;
+        }
+        if (GpuCompositeRenderPass != VK_NULL_HANDLE)
+        {
+            vkDestroyRenderPass(DeviceHandle, GpuCompositeRenderPass, nullptr);
+            GpuCompositeRenderPass = VK_NULL_HANDLE;
         }
         if (OverlayRenderTargetFormat != VK_NULL_HANDLE)
         {
@@ -229,6 +391,11 @@ void WorldGizmoOverlayRasterization::ReleaseRenderTargets()
         return;
     }
     VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
+    if (GpuCompositeFramebuffer != VK_NULL_HANDLE)
+    {
+        vkDestroyFramebuffer(DeviceHandle, GpuCompositeFramebuffer, nullptr);
+        GpuCompositeFramebuffer = VK_NULL_HANDLE;
+    }
     if (TargetFramebuffer != VK_NULL_HANDLE)
     {
         vkDestroyFramebuffer(DeviceHandle, TargetFramebuffer, nullptr);
@@ -247,12 +414,14 @@ bool WorldGizmoOverlayRasterization::EnsureRenderTargets(uint32_t WidthPx, uint3
     {
         return false;
     }
-    if (TargetFramebuffer != VK_NULL_HANDLE && TargetWidthPx == WidthPx && TargetHeightPx == HeightPx)
+    if (TargetFramebuffer != VK_NULL_HANDLE && GpuCompositeFramebuffer != VK_NULL_HANDLE &&
+        TargetWidthPx == WidthPx && TargetHeightPx == HeightPx)
     {
         return true;
     }
 
     VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
+    FlushPreviousCompositeCmd();
     vkDeviceWaitIdle(DeviceHandle);
     ReleaseRenderTargets();
 
@@ -260,7 +429,8 @@ bool WorldGizmoOverlayRasterization::EnsureRenderTargets(uint32_t WidthPx, uint3
         WidthPx,
         HeightPx,
         VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         VK_IMAGE_ASPECT_COLOR_BIT);
     PickAttachment = DeviceInterchange->AllocateImage2D(
         WidthPx,
@@ -302,34 +472,14 @@ bool WorldGizmoOverlayRasterization::EnsureRenderTargets(uint32_t WidthPx, uint3
         return false;
     }
 
-    const uint64_t RgbaBytes = static_cast<uint64_t>(WidthPx) * HeightPx * 4ull;
-    if (UploadReadbackRgbaBuffer.ByteCapacity < RgbaBytes)
-    {
-        DeviceInterchange->ReleaseBuffer(UploadReadbackRgbaBuffer);
-        UploadReadbackRgbaBuffer = DeviceInterchange->AllocateBuffer(
-            RgbaBytes,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
-    }
-
-    const uint64_t PickBytes = static_cast<uint64_t>(WidthPx) * HeightPx * 16ull;
-    if (ReadbackPickBuffer.ByteCapacity < PickBytes)
-    {
-        DeviceInterchange->ReleaseBuffer(ReadbackPickBuffer);
-        ReadbackPickBuffer = DeviceInterchange->AllocateBuffer(
-            PickBytes,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
-    }
-
-    if (UploadReadbackRgbaBuffer.HostAddress == nullptr || ReadbackPickBuffer.HostAddress == nullptr)
+    FbSpec.renderPass = GpuCompositeRenderPass;
+    if (vkCreateFramebuffer(DeviceHandle, &FbSpec, nullptr, &GpuCompositeFramebuffer) != VK_SUCCESS)
     {
         ReleaseRenderTargets();
         return false;
     }
 
+    ++ColorAttachmentGeneration;
     TargetWidthPx  = WidthPx;
     TargetHeightPx = HeightPx;
     return true;
@@ -444,6 +594,128 @@ bool WorldGizmoOverlayRasterization::ConstructGizmoProgram(
     return vkCreateGraphicsPipelines(DeviceHandle, VK_NULL_HANDLE, 1u, &PipeSpec, nullptr, &OutUnit.ProgramHandle) == VK_SUCCESS;
 }
 
+bool WorldGizmoOverlayRasterization::ConstructBlitProgram(
+    const std::filesystem::path& VertSpirv,
+    const std::filesystem::path& FragSpirv,
+    GraphicsProgramUnit&         OutUnit)
+{
+    if (DeviceInterchange == nullptr || !DeviceInterchange->Ready() || GpuCompositeRenderPass == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
+
+    OutUnit.VertexSpirvBinary   = DeviceInterchange->LoadShaderBinary(VertSpirv);
+    OutUnit.FragmentSpirvBinary = DeviceInterchange->LoadShaderBinary(FragSpirv);
+    if (OutUnit.VertexSpirvBinary == VK_NULL_HANDLE || OutUnit.FragmentSpirvBinary == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    const std::array<VkDescriptorSetLayoutBinding, 2u> LayoutBindings {{
+        { 0u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+        { 1u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+    }};
+    VkDescriptorSetLayoutCreateInfo SetLayoutSpec {};
+    SetLayoutSpec.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    SetLayoutSpec.bindingCount = static_cast<uint32_t>(LayoutBindings.size());
+    SetLayoutSpec.pBindings    = LayoutBindings.data();
+    if (vkCreateDescriptorSetLayout(DeviceHandle, &SetLayoutSpec, nullptr, &OutUnit.SlotLayout) != VK_SUCCESS)
+    {
+        return false;
+    }
+
+    VkPushConstantRange PushRange {};
+    PushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    PushRange.offset     = 0u;
+    PushRange.size       = 16u;
+
+    VkPipelineLayoutCreateInfo PipeLayoutSpec {};
+    PipeLayoutSpec.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    PipeLayoutSpec.setLayoutCount         = 1u;
+    PipeLayoutSpec.pSetLayouts            = &OutUnit.SlotLayout;
+    PipeLayoutSpec.pushConstantRangeCount = 1u;
+    PipeLayoutSpec.pPushConstantRanges    = &PushRange;
+    if (vkCreatePipelineLayout(DeviceHandle, &PipeLayoutSpec, nullptr, &OutUnit.ProgramLayout) != VK_SUCCESS)
+    {
+        return false;
+    }
+
+    std::array<VkPipelineShaderStageCreateInfo, 2u> ShaderStages {};
+    ShaderStages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    ShaderStages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
+    ShaderStages[0].module = OutUnit.VertexSpirvBinary;
+    ShaderStages[0].pName  = "VertexEntry";
+    ShaderStages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    ShaderStages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+    ShaderStages[1].module = OutUnit.FragmentSpirvBinary;
+    ShaderStages[1].pName  = "FragmentEntry";
+
+    VkPipelineVertexInputStateCreateInfo VertexInput {};
+    VertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+    VkPipelineInputAssemblyStateCreateInfo InputAssembly {};
+    InputAssembly.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    InputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkPipelineViewportStateCreateInfo ViewportConfig {};
+    ViewportConfig.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    ViewportConfig.viewportCount = 1u;
+    ViewportConfig.scissorCount  = 1u;
+
+    VkPipelineRasterizationStateCreateInfo RastSpec {};
+    RastSpec.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    RastSpec.polygonMode = VK_POLYGON_MODE_FILL;
+    RastSpec.cullMode    = VK_CULL_MODE_NONE;
+    RastSpec.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    RastSpec.lineWidth   = 1.0f;
+
+    VkPipelineMultisampleStateCreateInfo Multisample {};
+    Multisample.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    Multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineDepthStencilStateCreateInfo DepthStencil {};
+    DepthStencil.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    DepthStencil.depthTestEnable  = VK_FALSE;
+    DepthStencil.depthWriteEnable = VK_FALSE;
+    DepthStencil.depthCompareOp   = VK_COMPARE_OP_ALWAYS;
+
+    std::array<VkPipelineColorBlendAttachmentState, 2u> BlendAtts {};
+    BlendAtts[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    BlendAtts[0].blendEnable    = VK_FALSE;
+    BlendAtts[1].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    BlendAtts[1].blendEnable    = VK_FALSE;
+
+    VkPipelineColorBlendStateCreateInfo BlendConfig {};
+    BlendConfig.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    BlendConfig.attachmentCount = static_cast<uint32_t>(BlendAtts.size());
+    BlendConfig.pAttachments    = BlendAtts.data();
+
+    const std::array<VkDynamicState, 2u> DynEnums {{ VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR }};
+    VkPipelineDynamicStateCreateInfo DynConfig {};
+    DynConfig.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    DynConfig.dynamicStateCount = static_cast<uint32_t>(DynEnums.size());
+    DynConfig.pDynamicStates    = DynEnums.data();
+
+    VkGraphicsPipelineCreateInfo PipeSpec {};
+    PipeSpec.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    PipeSpec.stageCount          = static_cast<uint32_t>(ShaderStages.size());
+    PipeSpec.pStages             = ShaderStages.data();
+    PipeSpec.pVertexInputState   = &VertexInput;
+    PipeSpec.pInputAssemblyState = &InputAssembly;
+    PipeSpec.pViewportState      = &ViewportConfig;
+    PipeSpec.pRasterizationState = &RastSpec;
+    PipeSpec.pMultisampleState   = &Multisample;
+    PipeSpec.pDepthStencilState  = &DepthStencil;
+    PipeSpec.pColorBlendState    = &BlendConfig;
+    PipeSpec.pDynamicState       = &DynConfig;
+    PipeSpec.layout              = OutUnit.ProgramLayout;
+    PipeSpec.renderPass          = GpuCompositeRenderPass;
+    PipeSpec.subpass             = 0u;
+
+    return vkCreateGraphicsPipelines(DeviceHandle, VK_NULL_HANDLE, 1u, &PipeSpec, nullptr, &OutUnit.ProgramHandle) == VK_SUCCESS;
+}
+
 bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
     std::vector<uint8_t>&         InOutDisplayRgba8,
     uint32_t                      WidthPx,
@@ -468,6 +740,8 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
     if (RawVertices.empty())
     {
         CachedPickOrdinals.assign(PixelCount, 0u);
+        CachedPickPatchW = 0u;
+        CachedPickPatchH = 0u;
         return true;
     }
 
@@ -496,6 +770,31 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
     const uint32_t TranslucentVertexCount = static_cast<uint32_t>(OrderedVertices.size()) - OpaqueVertexCount;
 
     if (!EnsureRenderTargets(WidthPx, HeightPx))
+    {
+        return false;
+    }
+
+    const uint64_t RgbaBytes = static_cast<uint64_t>(WidthPx) * HeightPx * 4ull;
+    if (UploadReadbackRgbaBuffer.ByteCapacity < RgbaBytes)
+    {
+        DeviceInterchange->ReleaseBuffer(UploadReadbackRgbaBuffer);
+        UploadReadbackRgbaBuffer = DeviceInterchange->AllocateBuffer(
+            RgbaBytes,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+    }
+    const uint64_t PickBytes = static_cast<uint64_t>(WidthPx) * HeightPx * 16ull;
+    if (ReadbackPickBuffer.ByteCapacity < PickBytes)
+    {
+        DeviceInterchange->ReleaseBuffer(ReadbackPickBuffer);
+        ReadbackPickBuffer = DeviceInterchange->AllocateBuffer(
+            PickBytes,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+    }
+    if (UploadReadbackRgbaBuffer.HostAddress == nullptr || ReadbackPickBuffer.HostAddress == nullptr)
     {
         return false;
     }
@@ -666,6 +965,8 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
 
     std::memcpy(InOutDisplayRgba8.data(), UploadReadbackRgbaBuffer.HostAddress, PixelCount * 4u);
 
+    CachedPickPatchW = 0u;
+    CachedPickPatchH = 0u;
     CachedPickOrdinals.resize(PixelCount);
     const auto* RawPickWords = static_cast<const uint32_t*>(ReadbackPickBuffer.HostAddress);
     for (std::size_t Idx = 0u; Idx < PixelCount; ++Idx)
@@ -675,18 +976,394 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
     return true;
 }
 
+bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
+    const GpuViewportCompositeRequest& Request,
+    GpuViewportCompositeResult&        OutResult)
+{
+    OutResult = {};
+    if (!Ready || DeviceInterchange == nullptr || !DeviceInterchange->Ready() ||
+        ViewportBlitProgram.ProgramHandle == VK_NULL_HANDLE || GpuCompositeRenderPass == VK_NULL_HANDLE ||
+        Request.WorldSourceView == VK_NULL_HANDLE || Request.TargetWidthPx == 0u || Request.TargetHeightPx == 0u)
+    {
+        return false;
+    }
+
+    FlushPreviousCompositeCmd();
+
+    if (!EnsureRenderTargets(Request.TargetWidthPx, Request.TargetHeightPx))
+    {
+        return false;
+    }
+
+    // Build gizmo geometry if requested
+    std::vector<Editor::GizmoGPUVertex> OrderedVertices {};
+    uint32_t OpaqueVertexCount      = 0u;
+    uint32_t TranslucentVertexCount = 0u;
+    Mathematics::Axis3D Eye {}, Right {}, Up {}, Fwd {};
+    ComputeCameraBasis(Request.Camera, Eye, Right, Up, Fwd);
+    if (Request.DrawGizmo && Request.Gizmo3D != nullptr)
+    {
+        const std::vector<Editor::GizmoGPUVertex> RawVertices = Request.Gizmo3D->BuildTriangleStream(Right, Up, Fwd);
+        if (!RawVertices.empty())
+        {
+            OrderedVertices.reserve(RawVertices.size());
+            for (std::size_t Tri = 0u; Tri + 2u < RawVertices.size(); Tri += 3u)
+            {
+                if (RawVertices[Tri].PositionAlpha.W >= 0.95f)
+                {
+                    OrderedVertices.push_back(RawVertices[Tri]);
+                    OrderedVertices.push_back(RawVertices[Tri + 1u]);
+                    OrderedVertices.push_back(RawVertices[Tri + 2u]);
+                }
+            }
+            OpaqueVertexCount = static_cast<uint32_t>(OrderedVertices.size());
+            for (std::size_t Tri = 0u; Tri + 2u < RawVertices.size(); Tri += 3u)
+            {
+                if (RawVertices[Tri].PositionAlpha.W < 0.95f)
+                {
+                    OrderedVertices.push_back(RawVertices[Tri]);
+                    OrderedVertices.push_back(RawVertices[Tri + 1u]);
+                    OrderedVertices.push_back(RawVertices[Tri + 2u]);
+                }
+            }
+            TranslucentVertexCount = static_cast<uint32_t>(OrderedVertices.size()) - OpaqueVertexCount;
+        }
+    }
+
+    uint64_t VertBytes = 0ull;
+    if (!OrderedVertices.empty())
+    {
+        VertBytes = OrderedVertices.size() * sizeof(Editor::GizmoGPUVertex);
+        if (VertexBuffer.ByteCapacity < VertBytes)
+        {
+            DeviceInterchange->ReleaseBuffer(VertexBuffer);
+            VertexBuffer = DeviceInterchange->AllocateBuffer(
+                std::max<uint64_t>(VertBytes, 16384ull),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            if (VertexBuffer.HostAddress == nullptr)
+            {
+                return false;
+            }
+        }
+        std::memcpy(VertexBuffer.HostAddress, OrderedVertices.data(), static_cast<std::size_t>(VertBytes));
+
+        GPUWorldGizmoUniformBlock Uniforms {};
+        const float FovDeg = Request.Camera.VerticalFovRadians * Constants::RadToDegFloat;
+        const float Aspect = static_cast<float>(Request.TargetWidthPx) / static_cast<float>(Request.TargetHeightPx);
+        const auto  Clip   = Mathematics::ConstructVulkanPerspectiveViewClip(
+            Eye,
+            Right,
+            Up,
+            Fwd,
+            std::clamp(FovDeg, 10.0f, 140.0f),
+            Aspect,
+            std::max(0.05f, Request.Camera.NearClipMeters),
+            std::max(10.0f, Request.Camera.FarClipMeters));
+        std::memcpy(Uniforms.ViewProjection, Clip.Rows, sizeof(Clip.Rows));
+        Uniforms.HoverSpacePacked[0] = static_cast<uint32_t>(Request.Gizmo3D->QueryHoveredHandle());
+        Uniforms.HoverSpacePacked[1] = static_cast<uint32_t>(Request.Gizmo3D->QueryActiveHandle());
+        Uniforms.HoverSpacePacked[2] = 0u;
+        const Mathematics::Axis3D KeyLight = Mathematics::NormalizeAxis(
+            Right * 0.38f + Up * 0.45f - Fwd * 0.85f,
+            { 0.45f, 0.72f, 0.52f });
+        Uniforms.HeadlightDirection[0] = KeyLight.X;
+        Uniforms.HeadlightDirection[1] = KeyLight.Y;
+        Uniforms.HeadlightDirection[2] = KeyLight.Z;
+        Uniforms.HeadlightDirection[3] = 1.0f;
+        std::memcpy(UniformBuffer.HostAddress, &Uniforms, sizeof(Uniforms));
+    }
+
+    // Check if force-overlay texture needs allocation/upload
+    const bool HasForceOverlayData = Request.ForceOverlayEnabled && Request.ForceOverlayRgba != nullptr &&
+                                     Request.ForceOverlayWidthPx > 0u && Request.ForceOverlayHeightPx > 0u;
+    bool UploadForceOverlay = false;
+    if (HasForceOverlayData)
+    {
+        if (ForceOverlayImage.ImageHandle == VK_NULL_HANDLE ||
+            ForceOverlayImage.WidthPx != Request.ForceOverlayWidthPx ||
+            ForceOverlayImage.HeightPx != Request.ForceOverlayHeightPx)
+        {
+            DeviceInterchange->ReleaseImage2D(ForceOverlayImage);
+            ForceOverlayImage = DeviceInterchange->AllocateImage2D(
+                Request.ForceOverlayWidthPx,
+                Request.ForceOverlayHeightPx,
+                VK_FORMAT_R8G8B8A8_UNORM,
+                VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                VK_IMAGE_ASPECT_COLOR_BIT);
+            ForceOverlayImageValid = false;
+            UploadForceOverlay = (ForceOverlayImage.ImageHandle != VK_NULL_HANDLE);
+        }
+        else if (Request.ForceOverlayUpdated || !ForceOverlayImageValid)
+        {
+            UploadForceOverlay = true;
+        }
+    }
+
+    const uint64_t OverlayBytes = UploadForceOverlay
+        ? static_cast<uint64_t>(Request.ForceOverlayWidthPx) * Request.ForceOverlayHeightPx * 4ull
+        : 0ull;
+    if (UploadForceOverlay)
+    {
+        if (ForceOverlayStagingBuffer.ByteCapacity < OverlayBytes)
+        {
+            DeviceInterchange->ReleaseBuffer(ForceOverlayStagingBuffer);
+            ForceOverlayStagingBuffer = DeviceInterchange->AllocateBuffer(
+                OverlayBytes,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        }
+        if (ForceOverlayStagingBuffer.HostAddress != nullptr)
+        {
+            std::memcpy(ForceOverlayStagingBuffer.HostAddress, Request.ForceOverlayRgba, static_cast<std::size_t>(OverlayBytes));
+        }
+        else
+        {
+            UploadForceOverlay = false;
+        }
+    }
+
+    VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
+    vkResetDescriptorPool(DeviceHandle, OverlayDescriptorAllocator, 0u);
+
+    VkDescriptorSet BlitSet = VK_NULL_HANDLE;
+    {
+        VkDescriptorSetAllocateInfo AllocBlit { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, OverlayDescriptorAllocator, 1u, &ViewportBlitProgram.SlotLayout };
+        if (vkAllocateDescriptorSets(DeviceHandle, &AllocBlit, &BlitSet) != VK_SUCCESS || BlitSet == VK_NULL_HANDLE)
+        {
+            return false;
+        }
+        const VkImageView OverlayView = (Request.ForceOverlayEnabled && ForceOverlayImageValid && ForceOverlayImage.ViewHandle != VK_NULL_HANDLE)
+            ? ForceOverlayImage.ViewHandle
+            : FallbackTransparentImage.ViewHandle;
+
+        const std::array<VkDescriptorImageInfo, 2u> ImgInfos {{
+            { BlitLinearSampler, Request.WorldSourceView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+            { BlitLinearSampler, OverlayView,             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+        }};
+        std::array<VkWriteDescriptorSet, 2u> BlitWrites {};
+        for (uint32_t Idx = 0u; Idx < 2u; ++Idx)
+        {
+            BlitWrites[Idx].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            BlitWrites[Idx].dstSet          = BlitSet;
+            BlitWrites[Idx].dstBinding      = Idx;
+            BlitWrites[Idx].descriptorCount = 1u;
+            BlitWrites[Idx].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            BlitWrites[Idx].pImageInfo      = &ImgInfos[Idx];
+        }
+        vkUpdateDescriptorSets(DeviceHandle, static_cast<uint32_t>(BlitWrites.size()), BlitWrites.data(), 0u, nullptr);
+    }
+
+    VkDescriptorSet GizmoSet = VK_NULL_HANDLE;
+    if (!OrderedVertices.empty())
+    {
+        VkDescriptorSetAllocateInfo AllocGizmo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, OverlayDescriptorAllocator, 1u, &GizmoDepthProgram.SlotLayout };
+        if (vkAllocateDescriptorSets(DeviceHandle, &AllocGizmo, &GizmoSet) != VK_SUCCESS || GizmoSet == VK_NULL_HANDLE)
+        {
+            return false;
+        }
+        const std::array<VkDescriptorBufferInfo, 2u> BufferInfos {{
+            { UniformBuffer.BufferHandle, 0u, sizeof(GPUWorldGizmoUniformBlock) },
+            { VertexBuffer.BufferHandle, 0u, VertBytes },
+        }};
+        std::array<VkWriteDescriptorSet, 2u> GizmoWrites {};
+        for (uint32_t Idx = 0u; Idx < 2u; ++Idx)
+        {
+            GizmoWrites[Idx].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            GizmoWrites[Idx].dstSet          = GizmoSet;
+            GizmoWrites[Idx].dstBinding      = Idx;
+            GizmoWrites[Idx].descriptorCount = 1u;
+            GizmoWrites[Idx].descriptorType  = (Idx == 0u) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            GizmoWrites[Idx].pBufferInfo     = &BufferInfos[Idx];
+        }
+        vkUpdateDescriptorSets(DeviceHandle, static_cast<uint32_t>(GizmoWrites.size()), GizmoWrites.data(), 0u, nullptr);
+    }
+
+    VkCommandBuffer Cmd = DeviceInterchange->BeginSingleTimeCommands();
+    if (Cmd == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    if (UploadForceOverlay)
+    {
+        VkImageMemoryBarrier ToDst {};
+        ToDst.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        ToDst.srcAccessMask       = 0u;
+        ToDst.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        ToDst.oldLayout           = ForceOverlayImageValid ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+        ToDst.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        ToDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ToDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ToDst.image               = ForceOverlayImage.ImageHandle;
+        ToDst.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+        vkCmdPipelineBarrier(Cmd, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, nullptr, 0u, nullptr, 1u, &ToDst);
+
+        VkBufferImageCopy CopyOverlay {};
+        CopyOverlay.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
+        CopyOverlay.imageExtent      = { Request.ForceOverlayWidthPx, Request.ForceOverlayHeightPx, 1u };
+        vkCmdCopyBufferToImage(Cmd, ForceOverlayStagingBuffer.BufferHandle, ForceOverlayImage.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &CopyOverlay);
+
+        VkImageMemoryBarrier ToSampled {};
+        ToSampled.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        ToSampled.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        ToSampled.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+        ToSampled.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        ToSampled.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        ToSampled.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ToSampled.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        ToSampled.image               = ForceOverlayImage.ImageHandle;
+        ToSampled.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+        vkCmdPipelineBarrier(Cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0u, 0u, nullptr, 0u, nullptr, 1u, &ToSampled);
+        ForceOverlayImageValid = true;
+    }
+
+    std::array<VkClearValue, 3u> Clears {};
+    Clears[2].depthStencil = { 1.0f, 0u };
+
+    VkRenderPassBeginInfo PassBegin {};
+    PassBegin.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    PassBegin.renderPass        = GpuCompositeRenderPass;
+    PassBegin.framebuffer       = GpuCompositeFramebuffer;
+    PassBegin.renderArea.extent = { Request.TargetWidthPx, Request.TargetHeightPx };
+    PassBegin.clearValueCount   = static_cast<uint32_t>(Clears.size());
+    PassBegin.pClearValues      = Clears.data();
+
+    vkCmdBeginRenderPass(Cmd, &PassBegin, VK_SUBPASS_CONTENTS_INLINE);
+
+    const VkViewport Vp { 0.0f, 0.0f, static_cast<float>(Request.TargetWidthPx), static_cast<float>(Request.TargetHeightPx), 0.0f, 1.0f };
+    const VkRect2D Sc { { 0, 0 }, { Request.TargetWidthPx, Request.TargetHeightPx } };
+    vkCmdSetViewport(Cmd, 0u, 1u, &Vp);
+    vkCmdSetScissor(Cmd, 0u, 1u, &Sc);
+
+    struct BlitPushConstants
+    {
+        uint32_t OverlayEnabled;
+        uint32_t Pad[3];
+    } Push { (Request.ForceOverlayEnabled && ForceOverlayImageValid) ? 1u : 0u, { 0u, 0u, 0u } };
+
+    vkCmdBindPipeline(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ViewportBlitProgram.ProgramHandle);
+    vkCmdBindDescriptorSets(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ViewportBlitProgram.ProgramLayout, 0u, 1u, &BlitSet, 0u, nullptr);
+    vkCmdPushConstants(Cmd, ViewportBlitProgram.ProgramLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0u, sizeof(Push), &Push);
+    vkCmdDraw(Cmd, 3u, 1u, 0u, 0u);
+
+    if (!OrderedVertices.empty())
+    {
+        if (OpaqueVertexCount > 0u)
+        {
+            vkCmdBindPipeline(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, GizmoDepthProgram.ProgramHandle);
+            vkCmdBindDescriptorSets(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, GizmoDepthProgram.ProgramLayout, 0u, 1u, &GizmoSet, 0u, nullptr);
+            vkCmdDraw(Cmd, OpaqueVertexCount, 1u, 0u, 0u);
+        }
+        if (TranslucentVertexCount > 0u)
+        {
+            vkCmdBindPipeline(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, GizmoTranslucentProgram.ProgramHandle);
+            vkCmdBindDescriptorSets(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, GizmoTranslucentProgram.ProgramLayout, 0u, 1u, &GizmoSet, 0u, nullptr);
+            vkCmdDraw(Cmd, TranslucentVertexCount, 1u, OpaqueVertexCount, 0u);
+        }
+    }
+
+    vkCmdEndRenderPass(Cmd);
+
+    const bool DoPatchReadback = Request.RequestPickPatch && !OrderedVertices.empty() && ReadbackPickPatchBuffer.HostAddress != nullptr;
+    int32_t PatchX0 = 0;
+    int32_t PatchY0 = 0;
+    uint32_t PatchW = 0u;
+    uint32_t PatchH = 0u;
+
+    if (DoPatchReadback)
+    {
+        const int32_t Cx = std::clamp(static_cast<int32_t>(Request.PickCursorX), 0, static_cast<int32_t>(Request.TargetWidthPx) - 1);
+        const int32_t Cy = std::clamp(static_cast<int32_t>(Request.PickCursorY), 0, static_cast<int32_t>(Request.TargetHeightPx) - 1);
+        PatchX0 = std::max(0, Cx - 2);
+        PatchY0 = std::max(0, Cy - 2);
+        const int32_t PatchX1 = std::min(static_cast<int32_t>(Request.TargetWidthPx) - 1, Cx + 2);
+        const int32_t PatchY1 = std::min(static_cast<int32_t>(Request.TargetHeightPx) - 1, Cy + 2);
+        PatchW = static_cast<uint32_t>(PatchX1 - PatchX0 + 1);
+        PatchH = static_cast<uint32_t>(PatchY1 - PatchY0 + 1);
+
+        VkBufferImageCopy PatchCopy {};
+        PatchCopy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
+        PatchCopy.imageOffset      = { PatchX0, PatchY0, 0 };
+        PatchCopy.imageExtent      = { PatchW, PatchH, 1u };
+        vkCmdCopyImageToBuffer(Cmd, PickAttachment.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, ReadbackPickPatchBuffer.BufferHandle, 1u, &PatchCopy);
+
+        const uint64_t Signal = DeviceInterchange->DispatchCommandBufferAsync(Cmd);
+        (void)DeviceInterchange->AwaitTimelineTick(Signal);
+        DeviceInterchange->FreeCommandBuffer(Cmd);
+
+        CachedPickPatchX0 = static_cast<uint32_t>(PatchX0);
+        CachedPickPatchY0 = static_cast<uint32_t>(PatchY0);
+        CachedPickPatchW  = PatchW;
+        CachedPickPatchH  = PatchH;
+        const std::size_t PatchPixels = static_cast<std::size_t>(PatchW) * PatchH;
+        CachedPickOrdinals.resize(PatchPixels);
+        const auto* RawPickWords = static_cast<const uint32_t*>(ReadbackPickPatchBuffer.HostAddress);
+        for (std::size_t Idx = 0u; Idx < PatchPixels; ++Idx)
+        {
+            CachedPickOrdinals[Idx] = RawPickWords[Idx * 4u + 3u];
+        }
+    }
+    else
+    {
+        if (!Request.DrawGizmo || OrderedVertices.empty())
+        {
+            CachedPickPatchW = 0u;
+            CachedPickPatchH = 0u;
+            CachedPickOrdinals.clear();
+        }
+        PreviousCompositeSignal = DeviceInterchange->DispatchCommandBufferAsync(Cmd);
+        PreviousCompositeCmd    = Cmd;
+    }
+
+    OutResult.ColorImageView  = ColorAttachment.ViewHandle;
+    OutResult.ImageGeneration = ColorAttachmentGeneration;
+    OutResult.WidthPx         = Request.TargetWidthPx;
+    OutResult.HeightPx        = Request.TargetHeightPx;
+    return true;
+}
+
 Editor::GizmoHandleOrdinal WorldGizmoOverlayRasterization::QueryLastGpuPickAtPixel(uint32_t PixelX, uint32_t PixelY) const noexcept
 {
-    if (TargetWidthPx == 0u || TargetHeightPx == 0u || CachedPickOrdinals.size() < static_cast<std::size_t>(TargetWidthPx) * TargetHeightPx)
+    if (TargetWidthPx == 0u || TargetHeightPx == 0u)
     {
         return Editor::GizmoHandleOrdinal::None;
     }
     const uint32_t ClampedX = std::min(PixelX, TargetWidthPx - 1u);
     const uint32_t ClampedY = std::min(PixelY, TargetHeightPx - 1u);
 
-    // Search a tiny 5x5 pixel neighborhood around cursor for crisp axis/arc usability
     uint32_t BestOrd  = 0u;
     int32_t  BestDist = 9999;
+
+    if (CachedPickPatchW > 0u && CachedPickPatchH > 0u &&
+        CachedPickOrdinals.size() >= static_cast<std::size_t>(CachedPickPatchW) * CachedPickPatchH)
+    {
+        for (uint32_t Py = 0u; Py < CachedPickPatchH; ++Py)
+        {
+            const int32_t Sy = CachedPickPatchY0 + static_cast<int32_t>(Py);
+            const int32_t Dy = Sy - static_cast<int32_t>(ClampedY);
+            for (uint32_t Px = 0u; Px < CachedPickPatchW; ++Px)
+            {
+                const int32_t Sx = CachedPickPatchX0 + static_cast<int32_t>(Px);
+                const int32_t Dx = Sx - static_cast<int32_t>(ClampedX);
+                const uint32_t Ord = CachedPickOrdinals[static_cast<std::size_t>(Py) * CachedPickPatchW + static_cast<std::size_t>(Px)];
+                const int32_t Dist = Dx * Dx + Dy * Dy;
+                if (Ord != 0u && Ord <= static_cast<uint32_t>(Editor::GizmoHandleOrdinal::CenterRing) && Dist < BestDist)
+                {
+                    BestOrd  = Ord;
+                    BestDist = Dist;
+                }
+            }
+        }
+        return static_cast<Editor::GizmoHandleOrdinal>(BestOrd);
+    }
+
+    if (CachedPickOrdinals.size() < static_cast<std::size_t>(TargetWidthPx) * TargetHeightPx)
+    {
+        return Editor::GizmoHandleOrdinal::None;
+    }
+
+    // Search a tiny 5x5 pixel neighborhood around cursor for crisp axis/arc usability
     for (int32_t Dy = -2; Dy <= 2; ++Dy)
     {
         const int32_t Sy = std::clamp(static_cast<int32_t>(ClampedY) + Dy, 0, static_cast<int32_t>(TargetHeightPx) - 1);
