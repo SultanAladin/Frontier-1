@@ -840,8 +840,8 @@ Mathematics::LinearRGB EvaluateFluidEmissiveOnSurface(
 }
 
 void ApplyATrousWaveletDenoiser(
-    uint                                       WidthPx,
-    uint                                       HeightPx,
+    uint32_t                                       WidthPx,
+    uint32_t                                       HeightPx,
     Mathematics::Axis3D                            CameraOrigin,
     std::span<const AnalyticResolvedSurfaceSample> PrimarySamples,
     const MaterialSpace::CompactMaterialRegister&  MaterialRegister,

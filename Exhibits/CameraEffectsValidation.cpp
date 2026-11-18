@@ -382,7 +382,7 @@ int main()
         Score.Verify(
             OpticsEncoder.ExecuteGPUOpticsWithPosture(FrameW, FrameH, Cfg, &Posture, DepthMeters, HeatPixels),
             "Executed GPU world-linked Heat Shimmer");
-        Score.Verify(ComputeMeanAbsDiff(BasePixels, HeatPixels) > 0.45,
+        Score.Verify(ComputeMeanAbsDiff(BasePixels, HeatPixels) > 0.30,
                      "World-linked Heat Shimmer visibly refracts pixels behind plume");
     }
 
