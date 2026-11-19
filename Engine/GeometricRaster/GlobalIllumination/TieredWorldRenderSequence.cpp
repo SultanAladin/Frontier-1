@@ -55,6 +55,493 @@ namespace
     return { Curve(Hdr.R), Curve(Hdr.G), Curve(Hdr.B) };
 }
 
+//========================================================================================================================
+// ORDER-2 L2 SPHERICAL HARMONIC (SH9) DETERMINISTIC EMISSIVE MULTI-BOUNCE FIELD (ZERO CONE GI / JITTER / DENOISER)
+//========================================================================================================================
+
+struct EmissiveSh9Tri
+{
+    Mathematics::Axis3D    V0 {};
+    Mathematics::Axis3D    V1 {};
+    Mathematics::Axis3D    V2 {};
+    Mathematics::Axis3D    Centroid {};
+    Mathematics::Axis3D    Normal {};
+    Mathematics::LinearRGB Radiance {};
+};
+
+struct EmissiveBounceSurfel
+{
+    Mathematics::Axis3D    Position {};
+    Mathematics::Axis3D    Normal {};
+    Mathematics::LinearRGB ExitanceOverPi {};
+    float                  Area   = 0.0f;
+    float                  Radius = 0.35f;
+};
+
+struct EmissiveSh9Rgb
+{
+    std::array<Mathematics::LinearRGB, 9u> C {};
+};
+
+[[nodiscard]] std::array<float, 9u> EvaluateEmissiveSh9Basis(Mathematics::Axis3D D) noexcept
+{
+    return {{
+        0.28209479f,
+        0.48860251f * D.Y,
+        0.48860251f * D.Z,
+        0.48860251f * D.X,
+        1.09254843f * D.X * D.Y,
+        1.09254843f * D.Y * D.Z,
+        0.31539157f * (3.0f * D.Z * D.Z - 1.0f),
+        1.09254843f * D.X * D.Z,
+        0.54627422f * (D.X * D.X - D.Y * D.Y),
+    }};
+}
+
+[[nodiscard]] Mathematics::LinearRGB EvaluateEmissiveSh9IrradianceOverPi(
+    const EmissiveSh9Rgb& Sh,
+    Mathematics::Axis3D   N) noexcept
+{
+    static constexpr std::array<float, 9u> BandW {{
+        1.0f,
+        0.6666667f, 0.6666667f, 0.6666667f,
+        0.25f, 0.25f, 0.25f, 0.25f, 0.25f,
+    }};
+    const auto Y = EvaluateEmissiveSh9Basis(N);
+    Mathematics::LinearRGB Out {};
+    for (uint32_t K = 0u; K < 9u; ++K)
+    {
+        const float W = BandW[K] * Y[K];
+        Out.R += Sh.C[K].R * W;
+        Out.G += Sh.C[K].G * W;
+        Out.B += Sh.C[K].B * W;
+    }
+    return { std::max(0.0f, Out.R), std::max(0.0f, Out.G), std::max(0.0f, Out.B) };
+}
+
+[[nodiscard]] float IntegrateSh9EdgeZ(Mathematics::Axis3D A, Mathematics::Axis3D B) noexcept
+{
+    const float X    = std::clamp(Mathematics::EvaluateDot(A, B), -0.99999f, 0.99999f);
+    const float AbsX = std::fabs(X);
+    const float Num  = 5.42031f + (3.12829f + 0.0902326f * AbsX) * AbsX;
+    const float Den  = 3.45068f + (4.18814f + AbsX) * AbsX;
+    float ThetaOverSin = Num / Den;
+    if (X < 0.0f)
+    {
+        const float SinT = std::sqrt(std::max(1.0e-8f, 1.0f - X * X));
+        ThetaOverSin = Constants::PiFloat / SinT - ThetaOverSin;
+    }
+    return (A.X * B.Y - A.Y * B.X) * ThetaOverSin;
+}
+
+[[nodiscard]] float IntegrateSh9ClippedTriFormFactor(
+    const std::array<Mathematics::Axis3D, 3u>& LocalTri) noexcept
+{
+    std::array<Mathematics::Axis3D, 6u> Clipped {};
+    uint32_t Count = 0u;
+    for (uint32_t I = 0u; I < 3u; ++I)
+    {
+        const auto& Cur  = LocalTri[I];
+        const auto& Next = LocalTri[(I + 1u) % 3u];
+        const bool CurUp  = (Cur.Z >= 0.0f);
+        const bool NextUp = (Next.Z >= 0.0f);
+        if (CurUp) Clipped[Count++] = Cur;
+        if (CurUp != NextUp)
+        {
+            const float T = Cur.Z / (Cur.Z - Next.Z);
+            Mathematics::Axis3D Hit = Cur + (Next - Cur) * T;
+            Hit.Z = 0.0f;
+            Clipped[Count++] = Hit;
+        }
+    }
+    if (Count < 3u) return 0.0f;
+    for (uint32_t I = 0u; I < Count; ++I)
+    {
+        Clipped[I] = Mathematics::NormalizeAxis(Clipped[I], { 0.0f, 0.0f, 1.0f });
+    }
+    float Sum = 0.0f;
+    for (uint32_t I = 0u; I < Count; ++I)
+    {
+        Sum += IntegrateSh9EdgeZ(Clipped[I], Clipped[(I + 1u) % Count]);
+    }
+    return std::clamp(std::fabs(Sum) / Constants::TauFloat, 0.0f, 1.0f);
+}
+
+[[nodiscard]] std::vector<EmissiveSh9Tri> ExtractSceneEmissiveTriangles(
+    const SpatialAcceleration::WideBoundingTree&  SceneTree,
+    const MaterialSpace::CompactMaterialRegister& MaterialRegister)
+{
+    std::vector<EmissiveSh9Tri> Out;
+    const uint32_t MatCount = MaterialRegister.QuerySlotCount();
+    for (const auto& Prim : SceneTree.Primitives)
+    {
+        if (Prim.MaterialOrdinal >= MatCount) continue;
+        const auto& Mat = MaterialRegister.InspectAuthoredMaterial(Prim.MaterialOrdinal);
+        const auto Emit = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight);
+        if ((0.2126f * Emit.R + 0.7152f * Emit.G + 0.0722f * Emit.B) <= 1.0e-5f) continue;
+
+        const Mathematics::Axis3D P0 = Prim.Corner0;
+        const Mathematics::Axis3D P1 = Prim.Corner0 + Prim.Edge01;
+        const Mathematics::Axis3D P2 = Prim.Corner0 + Prim.Edge02;
+        const Mathematics::Axis3D CrossN = Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02);
+        const float DoubleArea = Mathematics::EvaluateLength(CrossN);
+        if (DoubleArea <= 1.0e-7f) continue;
+
+        Out.push_back(EmissiveSh9Tri{
+            P0, P1, P2, (P0 + P1 + P2) * (1.0f / 3.0f), CrossN * (1.0f / DoubleArea), Emit
+        });
+    }
+    return Out;
+}
+
+void AccumulateEmissiveSh9IndirectField(
+    const WorldSceneSpecification&                 Scene,
+    std::span<const EmissiveSh9Tri>                Emissives,
+    std::span<const AnalyticResolvedSurfaceSample> PrimarySamples,
+    uint32_t                                       WidthPx,
+    uint32_t                                       HeightPx,
+    std::vector<Mathematics::LinearRGB>&           InOutIndirectDiffuseOverPi,
+    std::vector<Mathematics::LinearRGB>*           OptionalInOutIndirectSpecular)
+{
+    if (Emissives.empty() || Scene.SceneTree.Primitives.empty()) return;
+
+    // 1. Scene-general deterministic bounce surfels over non-emissive geometry triangles (multi-threaded)
+    const uint32_t MatCount = Scene.MaterialRegister.QuerySlotCount();
+    struct SurfelSeed
+    {
+        Mathematics::Axis3D    Pos {};
+        Mathematics::Axis3D    Nrm {};
+        Mathematics::Axis3D    T1 {};
+        Mathematics::Axis3D    T2 {};
+        Mathematics::LinearRGB Albedo {};
+        float                  Area = 0.0f;
+        float                  Rad  = 0.35f;
+    };
+    std::vector<SurfelSeed> Seeds;
+    Seeds.reserve(320u);
+
+    for (const auto& Prim : Scene.SceneTree.Primitives)
+    {
+        if (Prim.MaterialOrdinal >= MatCount) continue;
+        const auto& Mat = Scene.MaterialRegister.InspectAuthoredMaterial(Prim.MaterialOrdinal);
+        const auto Emit = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight);
+        if ((0.2126f * Emit.R + 0.7152f * Emit.G + 0.0722f * Emit.B) > 1.0e-4f) continue;
+        const float DiffW = (1.0f - Mat.Specular.Metalness) * (1.0f - Mat.Transmission.TransmissionWeight) * Mat.Diffuse.BaseWeight;
+        if (DiffW <= 1.0e-3f) continue;
+
+        const Mathematics::Axis3D CrossN = Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02);
+        const float DoubleArea = Mathematics::EvaluateLength(CrossN);
+        const float TriArea = DoubleArea * 0.5f;
+        if (TriArea < 0.15f) continue;
+
+        const Mathematics::Axis3D Nrm = CrossN * (1.0f / DoubleArea);
+        const Mathematics::Axis3D P0 = Prim.Corner0;
+        const Mathematics::Axis3D P1 = Prim.Corner0 + Prim.Edge01;
+        const Mathematics::Axis3D P2 = Prim.Corner0 + Prim.Edge02;
+        const Mathematics::LinearRGB Albedo = Mat.Diffuse.BaseColor * DiffW;
+
+        const uint32_t SubN = std::clamp(static_cast<uint32_t>(std::ceil(std::sqrt(TriArea / 0.65f))), 1u, 6u);
+        const float SubArea = TriArea / static_cast<float>(SubN * SubN);
+        const float SubRad  = std::sqrt(SubArea / Constants::PiFloat);
+
+        Mathematics::Axis3D T1 = Mathematics::NormalizeAxis(
+            Mathematics::EvaluateCross((std::fabs(Nrm.Z) < 0.9f) ? Mathematics::Axis3D{ 0, 0, 1 } : Mathematics::Axis3D{ 1, 0, 0 }, Nrm));
+        Mathematics::Axis3D T2 = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Nrm, T1));
+
+        for (uint32_t IU = 0u; IU < SubN; ++IU)
+        {
+            for (uint32_t IV = 0u; IV < SubN; ++IV)
+            {
+                float U = (static_cast<float>(IU) + 0.5f) / static_cast<float>(SubN);
+                float V = (static_cast<float>(IV) + 0.5f) / static_cast<float>(SubN);
+                if (U + V > 1.0f) { U = 1.0f - U; V = 1.0f - V; }
+                const float W0 = 1.0f - U - V;
+                Seeds.push_back(SurfelSeed{ P0 * W0 + P1 * U + P2 * V, Nrm, T1, T2, Albedo, SubArea, SubRad });
+            }
+        }
+    }
+    if (Seeds.empty()) return;
+
+    std::vector<EmissiveBounceSurfel> SeedSurfels(Seeds.size());
+    std::vector<uint8_t>              SeedActive(Seeds.size(), 0u);
+    const uint32_t ThreadCount = std::min(HeightPx, std::max(1u, std::thread::hardware_concurrency()));
+    {
+        const uint32_t STC = std::min<uint32_t>(static_cast<uint32_t>(Seeds.size()), ThreadCount);
+        const auto EvalSeeds = [&](std::size_t B0, std::size_t B1)
+        {
+            for (std::size_t I = B0; I < B1; ++I)
+            {
+                const auto& Sd = Seeds[I];
+                Mathematics::LinearRGB IrrOverPi {};
+                for (const auto& Tri : Emissives)
+                {
+                    if (Mathematics::EvaluateDot(Sd.Pos - Tri.Centroid, Tri.Normal) <= 1.0e-4f) continue;
+                    const Mathematics::Axis3D ToL = Tri.Centroid - Sd.Pos;
+                    const float Dist = Mathematics::EvaluateLength(ToL);
+                    const Mathematics::Axis3D Dir = ToL * (1.0f / std::max(1.0e-5f, Dist));
+                    if (Mathematics::EvaluateDot(Sd.Nrm, Dir) <= 1.0e-4f) continue;
+
+                    const std::array<Mathematics::Axis3D, 3u> WorldV {{ Tri.V0, Tri.V1, Tri.V2 }};
+                    std::array<Mathematics::Axis3D, 3u> LocalT {};
+                    for (uint32_t K = 0u; K < 3u; ++K)
+                    {
+                        const auto R = WorldV[K] - Sd.Pos;
+                        LocalT[K] = { Mathematics::EvaluateDot(R, Sd.T1), Mathematics::EvaluateDot(R, Sd.T2), Mathematics::EvaluateDot(R, Sd.Nrm) };
+                    }
+                    const float FF = IntegrateSh9ClippedTriFormFactor(LocalT);
+                    if (FF <= 1.0e-5f) continue;
+
+                    SpatialAcceleration::RaySegmentQuery Ray {};
+                    Ray.Origin = Sd.Pos + Sd.Nrm * 3.0e-3f;
+                    Ray.UnitDirection = Dir;
+                    Ray.MinimumDistance = 1.0e-3f;
+                    Ray.MaximumDistance = std::max(2.0e-3f, Dist - 8.0e-3f);
+                    if (Scene.SceneTree.QueryRayOccluded(Ray)) continue;
+                    IrrOverPi = IrrOverPi + Tri.Radiance * FF;
+                }
+                if ((IrrOverPi.R + IrrOverPi.G + IrrOverPi.B) > 1.0e-4f)
+                {
+                    SeedSurfels[I] = EmissiveBounceSurfel{
+                        Sd.Pos,
+                        Sd.Nrm,
+                        Mathematics::LinearRGB{ IrrOverPi.R * Sd.Albedo.R, IrrOverPi.G * Sd.Albedo.G, IrrOverPi.B * Sd.Albedo.B },
+                        Sd.Area,
+                        Sd.Rad,
+                    };
+                    SeedActive[I] = 1u;
+                }
+            }
+        };
+        if (STC <= 1u)
+        {
+            EvalSeeds(0u, Seeds.size());
+        }
+        else
+        {
+            std::vector<std::thread> Workers;
+            Workers.reserve(STC);
+            const std::size_t Chunk = (Seeds.size() + STC - 1u) / STC;
+            for (uint32_t T = 0u; T < STC; ++T)
+            {
+                const std::size_t B0 = static_cast<std::size_t>(T) * Chunk;
+                const std::size_t B1 = std::min(Seeds.size(), B0 + Chunk);
+                if (B0 < B1) Workers.emplace_back([&, B0, B1]() { EvalSeeds(B0, B1); });
+            }
+            for (auto& W : Workers) W.join();
+        }
+    }
+    std::vector<EmissiveBounceSurfel> Surfels;
+    Surfels.reserve(Seeds.size());
+    for (std::size_t I = 0u; I < SeedSurfels.size(); ++I)
+    {
+        if (SeedActive[I] != 0u) Surfels.push_back(SeedSurfels[I]);
+    }
+    if (Surfels.empty()) return;
+
+    // 2. Build 15 x 12 x 6 Order-2 L2 SH9 Irradiance Field over interior scene bounds (multi-threaded)
+    constexpr uint32_t NX = 15u, NY = 12u, NZ = 6u;
+    const Mathematics::Axis3D BoundsExt = Scene.SceneTree.RootBoundsMax - Scene.SceneTree.RootBoundsMin;
+    const Mathematics::Axis3D Pad {
+        std::min(1.5f, BoundsExt.X * 0.14f),
+        std::min(1.5f, BoundsExt.Y * 0.14f),
+        std::min(0.42f, BoundsExt.Z * 0.12f),
+    };
+    const Mathematics::Axis3D GMin = Scene.SceneTree.RootBoundsMin + Pad;
+    const Mathematics::Axis3D GMax = Scene.SceneTree.RootBoundsMax - Mathematics::Axis3D{ Pad.X, Pad.Y, std::min(0.25f, BoundsExt.Z * 0.08f) };
+    const Mathematics::Axis3D Step {
+        std::max(0.10f, (GMax.X - GMin.X) / static_cast<float>(NX - 1u)),
+        std::max(0.10f, (GMax.Y - GMin.Y) / static_cast<float>(NY - 1u)),
+        std::max(0.10f, (GMax.Z - GMin.Z) / static_cast<float>(NZ - 1u)),
+    };
+
+    struct ShProbe
+    {
+        Mathematics::Axis3D Pos {};
+        EmissiveSh9Rgb      Sh {};
+        float               BackfaceRatio = 0.0f;
+    };
+    std::vector<ShProbe> Probes(static_cast<std::size_t>(NX) * NY * NZ);
+
+    {
+        const auto EvalProbes = [&](std::size_t P0, std::size_t P1)
+        {
+            for (std::size_t Idx = P0; Idx < P1; ++Idx)
+            {
+                const uint32_t IZ = static_cast<uint32_t>(Idx / (static_cast<std::size_t>(NX) * NY));
+                const uint32_t Rem = static_cast<uint32_t>(Idx % (static_cast<std::size_t>(NX) * NY));
+                const uint32_t IY = Rem / NX;
+                const uint32_t IX = Rem % NX;
+                const Mathematics::Axis3D P {
+                    GMin.X + static_cast<float>(IX) * Step.X,
+                    GMin.Y + static_cast<float>(IY) * Step.Y,
+                    GMin.Z + static_cast<float>(IZ) * Step.Z,
+                };
+                Probes[Idx].Pos = P;
+
+                uint32_t BackCnt = 0u;
+                for (uint32_t R = 0u; R < 16u; ++R)
+                {
+                    const float Z   = 1.0f - (2.0f * (static_cast<float>(R) + 0.5f)) / 16.0f;
+                    const float Rxy = std::sqrt(std::max(0.0f, 1.0f - Z * Z));
+                    const float Phi = Constants::TauFloat * std::fmod(static_cast<float>(R) * 0.61803398875f, 1.0f);
+                    const Mathematics::Axis3D D { Rxy * std::cos(Phi), Rxy * std::sin(Phi), Z };
+                    SpatialAcceleration::RaySegmentQuery Ray {};
+                    Ray.Origin = P; Ray.UnitDirection = D; Ray.MinimumDistance = 1e-3f; Ray.MaximumDistance = 20.0f;
+                    const auto Hit = Scene.SceneTree.TraceClosestRay(Ray, false);
+                    if (Hit.HitConfirmed && Mathematics::EvaluateDot(Hit.GeometricNormal, D) >= 0.0f) ++BackCnt;
+                }
+                Probes[Idx].BackfaceRatio = static_cast<float>(BackCnt) / 16.0f;
+                if (Probes[Idx].BackfaceRatio > 0.25f) continue;
+
+                for (const auto& S : Surfels)
+                {
+                    const Mathematics::Axis3D Delta = S.Position - P;
+                    const float Dist2 = Mathematics::EvaluateLengthSquared(Delta);
+                    const float Dist  = std::sqrt(std::max(1.0e-5f, Dist2));
+                    const Mathematics::Axis3D Dir = Delta * (1.0f / Dist);
+                    const float CosS = Mathematics::EvaluateDot(S.Normal, Dir * -1.0f);
+                    if (CosS <= 1.0e-3f) continue;
+
+                    SpatialAcceleration::RaySegmentQuery VisRay {};
+                    VisRay.Origin = P; VisRay.UnitDirection = Dir;
+                    VisRay.MinimumDistance = 1e-3f; VisRay.MaximumDistance = std::max(0.01f, Dist - 0.03f);
+                    if (Scene.SceneTree.QueryRayOccluded(VisRay)) continue;
+
+                    const float SolidAngle = std::min(1.5f, (S.Area * CosS) / std::max(0.20f, Dist2 + S.Radius * S.Radius));
+                    const auto Rad = S.ExitanceOverPi * SolidAngle;
+                    const auto Y = EvaluateEmissiveSh9Basis(Dir);
+                    for (uint32_t K = 0u; K < 9u; ++K)
+                    {
+                        Probes[Idx].Sh.C[K].R += Rad.R * Y[K];
+                        Probes[Idx].Sh.C[K].G += Rad.G * Y[K];
+                        Probes[Idx].Sh.C[K].B += Rad.B * Y[K];
+                    }
+                }
+            }
+        };
+        const uint32_t PTC = std::min<uint32_t>(static_cast<uint32_t>(Probes.size()), ThreadCount);
+        if (PTC <= 1u)
+        {
+            EvalProbes(0u, Probes.size());
+        }
+        else
+        {
+            std::vector<std::thread> Workers;
+            Workers.reserve(PTC);
+            const std::size_t Chunk = (Probes.size() + PTC - 1u) / PTC;
+            for (uint32_t T = 0u; T < PTC; ++T)
+            {
+                const std::size_t P0 = static_cast<std::size_t>(T) * Chunk;
+                const std::size_t P1 = std::min(Probes.size(), P0 + Chunk);
+                if (P0 < P1) Workers.emplace_back([&, P0, P1]() { EvalProbes(P0, P1); });
+            }
+            for (auto& W : Workers) W.join();
+        }
+    }
+
+    const auto SampleSh9 = [&](Mathematics::Axis3D Pos, Mathematics::Axis3D N, Mathematics::Axis3D QueryDir) noexcept
+    {
+        const Mathematics::Axis3D SPos = Pos + N * 0.14f;
+        const float FX = std::clamp((SPos.X - GMin.X) / Step.X, 0.0f, static_cast<float>(NX - 1u));
+        const float FY = std::clamp((SPos.Y - GMin.Y) / Step.Y, 0.0f, static_cast<float>(NY - 1u));
+        const float FZ = std::clamp((SPos.Z - GMin.Z) / Step.Z, 0.0f, static_cast<float>(NZ - 1u));
+        const uint32_t X0 = static_cast<uint32_t>(std::floor(FX));
+        const uint32_t Y0 = static_cast<uint32_t>(std::floor(FY));
+        const uint32_t Z0 = static_cast<uint32_t>(std::floor(FZ));
+        const uint32_t X1 = std::min(NX - 1u, X0 + 1u);
+        const uint32_t Y1 = std::min(NY - 1u, Y0 + 1u);
+        const uint32_t Z1 = std::min(NZ - 1u, Z0 + 1u);
+        const float LTX = FX - static_cast<float>(X0), LTY = FY - static_cast<float>(Y0), LTZ = FZ - static_cast<float>(Z0);
+        const float TX = LTX * LTX * (3.0f - 2.0f * LTX);
+        const float TY = LTY * LTY * (3.0f - 2.0f * LTY);
+        const float TZ = LTZ * LTZ * (3.0f - 2.0f * LTZ);
+
+        Mathematics::LinearRGB Sum {};
+        float WSum = 0.0f;
+        for (uint32_t DZ = 0u; DZ < 2u; ++DZ)
+        {
+            const uint32_t CZ = DZ ? Z1 : Z0;
+            const float WZ = DZ ? TZ : (1.0f - TZ);
+            for (uint32_t DY = 0u; DY < 2u; ++DY)
+            {
+                const uint32_t CY = DY ? Y1 : Y0;
+                const float WY = DY ? TY : (1.0f - TY);
+                for (uint32_t DX = 0u; DX < 2u; ++DX)
+                {
+                    const uint32_t CX = DX ? X1 : X0;
+                    const float WX = DX ? TX : (1.0f - TX);
+                    const auto& Pr = Probes[(static_cast<std::size_t>(CZ) * NY + CY) * NX + CX];
+                    if (Pr.BackfaceRatio > 0.25f) continue;
+
+                    const Mathematics::Axis3D ToP = Pr.Pos - Pos;
+                    const float Len = Mathematics::EvaluateLength(ToP);
+                    const Mathematics::Axis3D Dir = (Len > 1e-4f) ? (ToP * (1.0f / Len)) : N;
+                    const float Wrap = 0.5f * (Mathematics::EvaluateDot(Dir, N) + 1.0f);
+                    const float W = WX * WY * WZ * std::max(0.02f, Wrap * Wrap);
+                    Sum = Sum + EvaluateEmissiveSh9IrradianceOverPi(Pr.Sh, QueryDir) * W;
+                    WSum += W;
+                }
+            }
+        }
+        return (WSum > 1.0e-5f) ? (Sum * (1.0f / WSum)) : Mathematics::LinearRGB{};
+    };
+
+    const auto EvalRows = [&](uint32_t Y0, uint32_t Y1)
+    {
+        for (uint32_t PY = Y0; PY < Y1; ++PY)
+        {
+            for (uint32_t PX = 0u; PX < WidthPx; ++PX)
+            {
+                const std::size_t Off = static_cast<std::size_t>(PY) * WidthPx + PX;
+                const auto& Hit = PrimarySamples[Off];
+                if (!Hit.ValidHit || Hit.MaterialSlot >= MatCount) continue;
+
+                const auto& N = Hit.TangentFrame.NormalZ;
+                const auto IrrOverPi = SampleSh9(Hit.WorldPosition, N, N);
+                InOutIndirectDiffuseOverPi[Off] = InOutIndirectDiffuseOverPi[Off] + IrrOverPi;
+
+                if (OptionalInOutIndirectSpecular != nullptr)
+                {
+                    const auto& Mat = Scene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+                    const float NdotV = std::clamp(Mathematics::EvaluateDot(N, Hit.WorldViewDirection), 0.0f, 1.0f);
+                    const float Fres = 0.04f + 0.96f * std::pow(1.0f - NdotV, 5.0f);
+                    const float SpecW = Mat.Clearcoat.CoatWeight * Fres + Mat.Specular.Metalness * 0.85f + Mat.Specular.SpecularWeight * Fres * 0.4f;
+                    if (SpecW > 1.0e-3f)
+                    {
+                        const auto ReflDir = Mathematics::NormalizeAxis(N * (2.0f * NdotV) - Hit.WorldViewDirection);
+                        const auto EnvSpec = SampleSh9(Hit.WorldPosition, N, ReflDir);
+                        const Mathematics::LinearRGB Tint {
+                            Mat.Specular.Metalness > 0.5f ? Mat.Diffuse.BaseColor.R : 1.0f,
+                            Mat.Specular.Metalness > 0.5f ? Mat.Diffuse.BaseColor.G : 1.0f,
+                            Mat.Specular.Metalness > 0.5f ? Mat.Diffuse.BaseColor.B : 1.0f,
+                        };
+                        (*OptionalInOutIndirectSpecular)[Off].R += EnvSpec.R * SpecW * Tint.R;
+                        (*OptionalInOutIndirectSpecular)[Off].G += EnvSpec.G * SpecW * Tint.G;
+                        (*OptionalInOutIndirectSpecular)[Off].B += EnvSpec.B * SpecW * Tint.B;
+                    }
+                }
+            }
+        }
+    };
+    if (ThreadCount <= 1u || HeightPx <= 4u)
+    {
+        EvalRows(0u, HeightPx);
+    }
+    else
+    {
+        std::vector<std::thread> Workers;
+        Workers.reserve(ThreadCount);
+        const uint32_t Chunk = (HeightPx + ThreadCount - 1u) / ThreadCount;
+        for (uint32_t T = 0u; T < ThreadCount; ++T)
+        {
+            const uint32_t Y0 = T * Chunk;
+            const uint32_t Y1 = std::min(HeightPx, Y0 + Chunk);
+            if (Y0 < Y1) Workers.emplace_back([&, Y0, Y1]() { EvalRows(Y0, Y1); });
+        }
+        for (auto& W : Workers) W.join();
+    }
+}
+
 [[nodiscard]] Mathematics::LinearRGB EvaluateSkyDome(
     Mathematics::Axis3D           Dir,
     Mathematics::LinearRGB        SkyRadiance,
@@ -1686,6 +2173,20 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     }
     else if (Config.GlobalIlluminationEnabled && Config.Engine == WorldRenderEngine::SdfGlobalIllumination)
     {
+        const auto SceneEmissives = ExtractSceneEmissiveTriangles(PreparedScene.SceneTree, PreparedScene.MaterialRegister);
+        const float SunLum = 0.2126f * PreparedScene.Sun.SolarIrradiance.R +
+                             0.7152f * PreparedScene.Sun.SolarIrradiance.G +
+                             0.0722f * PreparedScene.Sun.SolarIrradiance.B;
+        const float SkyLum = 0.2126f * PreparedScene.SkyRadiance.R +
+                             0.7152f * PreparedScene.SkyRadiance.G +
+                             0.0722f * PreparedScene.SkyRadiance.B;
+        const bool HasExternalNonEmissiveLight =
+            (SunLum > 1.0e-4f) || (SkyLum > 1.0e-4f) ||
+            !PreparedScene.AreaLights.empty() || !PreparedScene.PointLights.empty();
+
+        // Only evaluate Cone GI for non-emissive external lights (never use Cone Trace GI for emissive lighting!)
+        if (HasExternalNonEmissiveLight || SceneEmissives.empty())
+        {
         if (ClipmapPtr != nullptr)
         {
             const uint32_t ThreadCount = std::min(Result.HeightPx, std::max(1u, std::thread::hardware_concurrency()));
@@ -1778,6 +2279,20 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             RawIndirectOverPi    = std::move(ReplayFrame.FilteredIndirectOverPi);
             PreviousReservoirs   = std::move(ReplayFrame.ResolvedReservoirs);
             PreviousReplayCamera = CurrentCamera;
+        }
+        }
+
+        // Winning Emissive Algorithm (#3): Order-2 L2 SH9 Emissive Multi-Bounce Field (Zero Cone GI, Zero Jitter, Zero Denoiser)
+        if (!SceneEmissives.empty())
+        {
+            AccumulateEmissiveSh9IndirectField(
+                PreparedScene,
+                SceneEmissives,
+                PrimarySamples,
+                Result.WidthPx,
+                Result.HeightPx,
+                RawIndirectOverPi,
+                &Result.SpecularGlass.IndirectSpecularHdr);
         }
     }
 

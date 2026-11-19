@@ -12,9 +12,12 @@
 #include "Engine/DistanceFieldSpace/VoxelSdfClipmap.h"
 #include "Engine/GeometrySpace/Analysis/CurvatureAnalysis.h"
 #include "Engine/MaterialSpace/EnergyCompensation/DirectionalAlbedoIntegral.h"
+#include "Engine/MaterialSpace/Scattering/BlackbodyEmission.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <thread>
 
 namespace Frontier::GeometricRaster
 {
@@ -252,6 +255,230 @@ Mathematics::LinearRGB LinearCosineLightIntegration::EvaluateVisibilityGatedQuad
     };
 }
 
+namespace
+{
+
+struct DirectEmissiveTri
+{
+    Mathematics::Axis3D    V0 {};
+    Mathematics::Axis3D    V1 {};
+    Mathematics::Axis3D    V2 {};
+    Mathematics::Axis3D    Centroid {};
+    Mathematics::Axis3D    Normal {};
+    float                  Area = 0.0f;
+    Mathematics::LinearRGB Radiance {};
+};
+
+[[nodiscard]] std::vector<DirectEmissiveTri> ExtractDirectEmissiveTriangles(
+    const SpatialAcceleration::WideBoundingTree&  SceneTree,
+    const MaterialSpace::CompactMaterialRegister& MaterialRegister)
+{
+    std::vector<DirectEmissiveTri> Out;
+    const uint32_t MatCount = MaterialRegister.QuerySlotCount();
+    for (const auto& Prim : SceneTree.Primitives)
+    {
+        if (Prim.MaterialOrdinal >= MatCount) continue;
+        const auto& Mat = MaterialRegister.InspectAuthoredMaterial(Prim.MaterialOrdinal);
+        const auto Emit = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight);
+        if ((0.2126f * Emit.R + 0.7152f * Emit.G + 0.0722f * Emit.B) <= 1.0e-5f) continue;
+
+        const Mathematics::Axis3D P0 = Prim.Corner0;
+        const Mathematics::Axis3D P1 = Prim.Corner0 + Prim.Edge01;
+        const Mathematics::Axis3D P2 = Prim.Corner0 + Prim.Edge02;
+        const Mathematics::Axis3D CrossN = Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02);
+        const float DoubleArea = Mathematics::EvaluateLength(CrossN);
+        if (DoubleArea <= 1.0e-7f) continue;
+
+        Out.push_back(DirectEmissiveTri{
+            P0, P1, P2, (P0 + P1 + P2) * (1.0f / 3.0f), CrossN * (1.0f / DoubleArea), DoubleArea * 0.5f, Emit
+        });
+    }
+    return Out;
+}
+
+[[nodiscard]] float IntegrateClippedTriCosineFormFactor(
+    const std::array<Mathematics::Axis3D, 3u>& LocalTri) noexcept
+{
+    std::array<Mathematics::Axis3D, 6u> Clipped {};
+    uint32_t Count = 0u;
+    for (uint32_t I = 0u; I < 3u; ++I)
+    {
+        const auto& Cur  = LocalTri[I];
+        const auto& Next = LocalTri[(I + 1u) % 3u];
+        const bool CurUp  = (Cur.Z >= 0.0f);
+        const bool NextUp = (Next.Z >= 0.0f);
+        if (CurUp) Clipped[Count++] = Cur;
+        if (CurUp != NextUp)
+        {
+            const float T = Cur.Z / (Cur.Z - Next.Z);
+            Mathematics::Axis3D Hit = Cur + (Next - Cur) * T;
+            Hit.Z = 0.0f;
+            Clipped[Count++] = Hit;
+        }
+    }
+    if (Count < 3u) return 0.0f;
+    for (uint32_t I = 0u; I < Count; ++I)
+    {
+        Clipped[I] = Mathematics::NormalizeAxis(Clipped[I], { 0.0f, 0.0f, 1.0f });
+    }
+    float Sum = 0.0f;
+    for (uint32_t I = 0u; I < Count; ++I)
+    {
+        Sum += IntegrateSphericalPolygonEdgeZ(Clipped[I], Clipped[(I + 1u) % Count]);
+    }
+    return std::clamp(std::fabs(Sum) / Constants::TauFloat, 0.0f, 1.0f);
+}
+
+[[nodiscard]] Mathematics::LinearRGB EvaluateDirectEmissiveTriangleLtc(
+    const DirectEmissiveTri&                     Tri,
+    const AnalyticResolvedSurfaceSample&         HitSample,
+    const MaterialSpace::SurfaceMaterial&        Mat,
+    uint32_t                                     ActiveLobeMask,
+    const SpatialAcceleration::WideBoundingTree& SceneTree) noexcept
+{
+    const Mathematics::Axis3D Nrm = HitSample.TangentFrame.NormalZ;
+    // Reject pixels behind emitter plane or entirely below emitter horizon
+    if (Mathematics::EvaluateDot(HitSample.WorldPosition - Tri.Centroid, Tri.Normal) <= 1.0e-4f) return {};
+    const float D0 = Mathematics::EvaluateDot(Tri.V0 - HitSample.WorldPosition, Nrm);
+    const float D1 = Mathematics::EvaluateDot(Tri.V1 - HitSample.WorldPosition, Nrm);
+    const float D2 = Mathematics::EvaluateDot(Tri.V2 - HitSample.WorldPosition, Nrm);
+    if (std::max({ D0, D1, D2 }) <= 1.0e-4f) return {};
+
+    // Evaluate analytic LTC form factors first; skip BVH ray queries whenever form factor is zero!
+    const float NdotV = std::clamp(Mathematics::EvaluateDot(Nrm, HitSample.WorldViewDirection), 1.0e-4f, 1.0f);
+    Mathematics::Axis3D T1 = HitSample.WorldViewDirection - Nrm * NdotV;
+    if (Mathematics::EvaluateLengthSquared(T1) <= 1.0e-6f)
+    {
+        T1 = HitSample.TangentFrame.TangentX;
+    }
+    else
+    {
+        T1 = Mathematics::NormalizeAxis(T1);
+    }
+    const Mathematics::Axis3D T2 = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Nrm, T1));
+
+    const std::array<Mathematics::Axis3D, 3u> WorldV {{ Tri.V0, Tri.V1, Tri.V2 }};
+    std::array<Mathematics::Axis3D, 3u> DiffLocal {};
+    for (uint32_t I = 0u; I < 3u; ++I)
+    {
+        const auto Rel = WorldV[I] - HitSample.WorldPosition;
+        DiffLocal[I] = {
+            Mathematics::EvaluateDot(Rel, T1),
+            Mathematics::EvaluateDot(Rel, T2),
+            Mathematics::EvaluateDot(Rel, Nrm),
+        };
+    }
+    const float DiffFF = IntegrateClippedTriCosineFormFactor(DiffLocal);
+
+    const float Alpha     = std::clamp(Mat.Specular.Roughness * Mat.Specular.Roughness, 0.004f, 1.0f);
+    const float SinV      = std::sqrt(std::max(0.0f, 1.0f - NdotV * NdotV));
+    const float InvScaleX = 1.0f / std::max(0.04f, Alpha * (0.85f + 0.15f * NdotV));
+    const float InvScaleY = 1.0f / std::max(0.04f, Alpha);
+    const float ShearXZ   = -SinV / std::max(0.08f, NdotV + Alpha);
+
+    std::array<Mathematics::Axis3D, 3u> SpecLocal {};
+    for (uint32_t I = 0u; I < 3u; ++I)
+    {
+        const auto& D = DiffLocal[I];
+        const float MX = -D.X * NdotV + D.Z * SinV;
+        const float MZ =  D.X * SinV  + D.Z * NdotV;
+        SpecLocal[I] = { (MX + ShearXZ * MZ * Alpha) * InvScaleX, D.Y * InvScaleY, MZ };
+    }
+    const float SpecFF = IntegrateClippedTriCosineFormFactor(SpecLocal);
+    if ((DiffFF + SpecFF) <= 1.0e-6f) return {};
+
+    // Adaptive deterministic stratified barycentric visibility (zero jitter, zero denoiser):
+    // 9 taps for high-solid-angle emitters, 4 taps for medium, 1 centroid tap for small/distant triangles
+    const float Dist2 = std::max(1.0e-4f, Mathematics::EvaluateLengthSquared(Tri.Centroid - HitSample.WorldPosition));
+    const float SolidAngleEst = Tri.Area / Dist2;
+    float Visibility = 0.0f;
+    if (SolidAngleEst > 0.0004f)
+    {
+        static constexpr std::array<std::array<float, 3u>, 9u> Bary9 {{
+            {{ 0.70f, 0.15f, 0.15f }},
+            {{ 0.15f, 0.70f, 0.15f }},
+            {{ 0.15f, 0.15f, 0.70f }},
+            {{ 0.45f, 0.45f, 0.10f }},
+            {{ 0.45f, 0.10f, 0.45f }},
+            {{ 0.10f, 0.45f, 0.45f }},
+            {{ 0.3333f, 0.3333f, 0.3334f }},
+            {{ 0.55f, 0.25f, 0.20f }},
+            {{ 0.20f, 0.55f, 0.25f }},
+        }};
+        uint32_t Unoccluded = 0u;
+        for (const auto& B : Bary9)
+        {
+            const Mathematics::Axis3D Tgt = Tri.V0 * B[0] + Tri.V1 * B[1] + Tri.V2 * B[2];
+            const Mathematics::Axis3D ToL = Tgt - HitSample.WorldPosition;
+            const float Dist = Mathematics::EvaluateLength(ToL);
+            const Mathematics::Axis3D Dir = ToL * (1.0f / std::max(1.0e-5f, Dist));
+            if (Mathematics::EvaluateDot(Nrm, Dir) <= 1.0e-4f) continue;
+
+            SpatialAcceleration::RaySegmentQuery Ray {};
+            Ray.Origin          = HitSample.WorldPosition + Nrm * 2.5e-3f;
+            Ray.UnitDirection   = Dir;
+            Ray.MinimumDistance = 1.0e-3f;
+            Ray.MaximumDistance = std::max(2.0e-3f, Dist - 6.0e-3f);
+            if (!SceneTree.QueryRayOccluded(Ray)) ++Unoccluded;
+        }
+        Visibility = static_cast<float>(Unoccluded) * (1.0f / 9.0f);
+    }
+    else
+    {
+        static constexpr std::array<std::array<float, 3u>, 4u> Bary4 {{
+            {{ 0.3333f, 0.3333f, 0.3334f }},
+            {{ 0.70f, 0.15f, 0.15f }},
+            {{ 0.15f, 0.70f, 0.15f }},
+            {{ 0.15f, 0.15f, 0.70f }},
+        }};
+        uint32_t Unoccluded = 0u;
+        for (const auto& B : Bary4)
+        {
+            const Mathematics::Axis3D Tgt = Tri.V0 * B[0] + Tri.V1 * B[1] + Tri.V2 * B[2];
+            const Mathematics::Axis3D ToL = Tgt - HitSample.WorldPosition;
+            const float Dist = Mathematics::EvaluateLength(ToL);
+            const Mathematics::Axis3D Dir = ToL * (1.0f / std::max(1.0e-5f, Dist));
+            if (Mathematics::EvaluateDot(Nrm, Dir) <= 1.0e-4f) continue;
+
+            SpatialAcceleration::RaySegmentQuery Ray {};
+            Ray.Origin          = HitSample.WorldPosition + Nrm * 2.5e-3f;
+            Ray.UnitDirection   = Dir;
+            Ray.MinimumDistance = 1.0e-3f;
+            Ray.MaximumDistance = std::max(2.0e-3f, Dist - 6.0e-3f);
+            if (!SceneTree.QueryRayOccluded(Ray)) ++Unoccluded;
+        }
+        Visibility = static_cast<float>(Unoccluded) * 0.25f;
+    }
+    if (Visibility <= 1.0e-5f) return {};
+
+    const auto& Sheet = MaterialSpace::InspectGlobalDirectionalAlbedoSheet();
+    const auto  AlbO  = MaterialSpace::SampleDirectionalAlbedo(Sheet, NdotV, Mat.Specular.Roughness);
+    const float DielF0 = ((Mat.Specular.DielectricIOR - 1.0f) / (Mat.Specular.DielectricIOR + 1.0f)) *
+                         ((Mat.Specular.DielectricIOR - 1.0f) / (Mat.Specular.DielectricIOR + 1.0f)) *
+                         Mat.Specular.SpecularWeight;
+    const Mathematics::LinearRGB SpecF0 {
+        DielF0 * (1.0f - Mat.Specular.Metalness) + Mat.Diffuse.BaseColor.R * Mat.Specular.Metalness,
+        DielF0 * (1.0f - Mat.Specular.Metalness) + Mat.Diffuse.BaseColor.G * Mat.Specular.Metalness,
+        DielF0 * (1.0f - Mat.Specular.Metalness) + Mat.Diffuse.BaseColor.B * Mat.Specular.Metalness,
+    };
+    const Mathematics::LinearRGB SpecAlbedo {
+        SpecF0.R * AlbO.DirectionalAlbedoE + (1.0f - SpecF0.R) * (1.0f - AlbO.DirectionalAlbedoE) * 0.25f,
+        SpecF0.G * AlbO.DirectionalAlbedoE + (1.0f - SpecF0.G) * (1.0f - AlbO.DirectionalAlbedoE) * 0.25f,
+        SpecF0.B * AlbO.DirectionalAlbedoE + (1.0f - SpecF0.B) * (1.0f - AlbO.DirectionalAlbedoE) * 0.25f,
+    };
+    const float DiffScale = ((ActiveLobeMask & MaterialSpace::LobeDiffuseEON) != 0u)
+        ? ((1.0f - Mat.Specular.Metalness) * (1.0f - Mat.Transmission.TransmissionWeight) * Mat.Diffuse.BaseWeight)
+        : 0.0f;
+
+    return {
+        Visibility * Tri.Radiance.R * (DiffScale * Mat.Diffuse.BaseColor.R * DiffFF + SpecAlbedo.R * SpecFF),
+        Visibility * Tri.Radiance.G * (DiffScale * Mat.Diffuse.BaseColor.G * DiffFF + SpecAlbedo.G * SpecFF),
+        Visibility * Tri.Radiance.B * (DiffScale * Mat.Diffuse.BaseColor.B * DiffFF + SpecAlbedo.B * SpecFF),
+    };
+}
+
+} // namespace
+
 float LinearCosineLightIntegration::ComputeLagardeSpecularOcclusion(
     float NdotV,
     float DiffuseAmbientOcclusion,
@@ -448,8 +675,12 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
         Out.CombinedDiffuseAo = std::move(AoPing);
     }
 
-    // 2. Shade Direct Sun + Visibility-Gated LTC Area Lights + Filtered 2-Scale AO + Lagarde specAO!
-    for (uint32_t PY = 0u; PY < Out.HeightPx; ++PY)
+    const auto Emissives = ExtractDirectEmissiveTriangles(SceneTree, MaterialRegister);
+
+    // 2. Shade Direct Sun + Visibility-Gated LTC Area Lights + Exact Analytic Emissive-Triangle LTC + Filtered 2-Scale AO + Lagarde specAO!
+    const auto ShadeRows = [&](uint32_t YBegin, uint32_t YEnd)
+    {
+    for (uint32_t PY = YBegin; PY < YEnd; ++PY)
     {
         for (uint32_t PX = 0u; PX < Out.WidthPx; ++PX)
         {
@@ -498,6 +729,15 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
                 Hdr.R += AreaRad.R;
                 Hdr.G += AreaRad.G;
                 Hdr.B += AreaRad.B;
+            }
+
+            // Exact Analytic Emissive-Triangle LTC + 9-Tap Deterministic Stratified Visibility (Zero Cone GI, Zero Jitter, Zero Denoiser)
+            for (const auto& EmisTri : Emissives)
+            {
+                const auto EmisRad = EvaluateDirectEmissiveTriangleLtc(EmisTri, Hit, Mat, LobeMask, SceneTree);
+                Hdr.R += EmisRad.R;
+                Hdr.G += EmisRad.G;
+                Hdr.B += EmisRad.B;
             }
 
             // Direct Point Lights (gated by Voxel SDF Clipmap Penumbra or BVH shadow!)
@@ -579,6 +819,27 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
             Out.ToneMappedSrgb8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
             Out.ToneMappedSrgb8[Off * 4u + 2u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.B) * 255.0f));
         }
+    }
+    };
+    const uint32_t ThreadCount = (!Emissives.empty())
+        ? std::min(Out.HeightPx, std::max(1u, std::thread::hardware_concurrency()))
+        : 1u;
+    if (ThreadCount <= 1u || Out.HeightPx <= 4u)
+    {
+        ShadeRows(0u, Out.HeightPx);
+    }
+    else
+    {
+        std::vector<std::thread> Workers;
+        Workers.reserve(ThreadCount);
+        const uint32_t Chunk = (Out.HeightPx + ThreadCount - 1u) / ThreadCount;
+        for (uint32_t T = 0u; T < ThreadCount; ++T)
+        {
+            const uint32_t Y0 = T * Chunk;
+            const uint32_t Y1 = std::min(Out.HeightPx, Y0 + Chunk);
+            if (Y0 < Y1) Workers.emplace_back([&, Y0, Y1]() { ShadeRows(Y0, Y1); });
+        }
+        for (auto& W : Workers) W.join();
     }
 
     return Out;

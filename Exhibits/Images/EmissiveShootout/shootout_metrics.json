@@ -1,0 +1,12 @@
+{
+  "emissive_triangles": 106,
+  "studio_surfels": 299,
+  "reference_64spp_ms": 19870.9128,
+  "reference_mean_lum": 0.3078,
+  "winner": "Algo3_ExactTriFF_SH9Field",
+  "results": [
+    {"name": "Algo1_AnalyticLtc_SdfPenumbra", "ms": 3634.4979, "srgb_rmse": 0.1669, "hdr_rmse": 0.2254, "grad_rmse": 0.0975, "mean_lum": 0.2815},
+    {"name": "Algo2_Lightcuts_VSL", "ms": 2066.1661, "srgb_rmse": 0.1657, "hdr_rmse": 0.2263, "grad_rmse": 0.0981, "mean_lum": 0.2992},
+    {"name": "Algo3_ExactTriFF_SH9Field", "ms": 3608.1901, "srgb_rmse": 0.1331, "hdr_rmse": 0.2194, "grad_rmse": 0.0972, "mean_lum": 0.2885}
+  ]
+}
