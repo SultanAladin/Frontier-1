@@ -35,16 +35,16 @@ namespace Frontier::GeometricRaster
 
 enum class WorldRenderTier : uint8_t
 {
-    Tier1GtxCalibrated    = 0u, // [-] - Compatibility alias -> SdfGlobalIllumination + ContactPcss + WideTreeRaytrace
-    Tier2RtxDeterministic = 1u, // [-] - Compatibility alias -> DdgiRaytracing + WideTreeRayQuery + WideTreeRaytrace
+    Tier1GtxCalibrated    = 0u, // [-] - Compatibility alias -> SdfGlobalIllumination (Hybrid ReSTIR + 5-pass SVGF) + ContactPcss + WideTreeRaytrace
+    Tier2RtxDeterministic = 1u, // [-] - Compatibility alias -> DdgiRaytracing (DynamicProbeCache) + WideTreeRayQuery + WideTreeRaytrace
 };
 
 enum class WorldRenderEngine : uint8_t
 {
     MatCap                = 0u, // [-] - Studio MatCap Normal/Roughness Shading (Zero GI, Zero Shadow Maps)
     OpenPbrDirect         = 1u, // [-] - Direct OpenPBR + LTC Area Lights + Shadow Lab + BVH4/Sky Reflections (Zero GI)
-    DdgiRaytracing        = 2u, // [-] - Octahedral Chebyshev DDGI + Shadow Lab + BVH4/Sky Reflections
-    SdfGlobalIllumination = 3u, // [-] - 3D Radiosity SDF Mip-Volume + IGN Cone GI + Bilateral Filter (SDF GI Only!)
+    DdgiRaytracing        = 2u, // [-] - DynamicProbeCache (8x8 Octahedral + 16x16 Chebyshev + Backface Gating) + Shadow Lab + BVH4/Sky Reflections
+    SdfGlobalIllumination = 3u, // [-] - Hybrid ReSTIR Path Replay GI (4-Candidate RIS + BVH 1-Bounce + DynamicProbeCache 2nd Bounce + 5-Pass SVGF)
     DeterministicPathTrace = 4u,// [-] - MIS/NEE + Heitz GGX VNDF Monte Carlo Path Tracer + A-Trous Denoiser
 };
 
@@ -61,7 +61,7 @@ struct WorldRenderConfiguration
     uint32_t                 PathTraceSamples          = 16u;   // [spp]  - Samples per pixel for DeterministicPathTrace
     uint32_t                 PathTraceMaxBounces       = 5u;    // [cnt]  - Maximum bounce depth for DeterministicPathTrace
     bool                     PathTraceDenoise          = true;  // [-]    - 3-pass albedo/normal/depth A-Trous denoiser
-    bool                     SdfGiBilateral            = true;  // [-]    - 7x7 joint bilateral spatial filter for SDF GI
+    bool                     SdfGiBilateral            = true;  // [-]    - 5-pass joint albedo/normal/depth/luma SVGF spatial filter for ReSTIR GI
     bool                     GlobalIlluminationEnabled = true;  // [-]    - Render setting toggle for indirect GI / bounces
     bool                     ReflectionsEnabled        = true;  // [-]    - Render setting toggle for specular reflections
     bool                     RaytracingEnabled         = true;  // [-]    - Render setting toggle for hardware/BVH raytracing

@@ -422,8 +422,6 @@ frontier_compile_modular_slang_shader(DirectLighting/PlaneAwareShadowFilter.slan
 frontier_compile_modular_slang_shader(GlobalIllumination/DynamicProbeCache.slang             DynamicProbeCacheComputeEntry     compute  DynamicProbeCache.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/ReservoirPathReplay.slang           ReservoirPathReplayComputeEntry   compute  ReservoirPathReplay.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/ReservoirTemporalFilter.slang       ReservoirTemporalFilterComputeEntry compute ReservoirTemporalFilter.comp.spv)
-frontier_compile_modular_slang_shader(GlobalIllumination/OctahedralIrradianceLattice.slang       IrradianceLatticeComputeEntry     compute  OctahedralIrradianceLattice.comp.spv)
-frontier_compile_modular_slang_shader(GlobalIllumination/SignedDistanceConeIllumination.slang    SdfConeGiComputeEntry           compute  SignedDistanceConeIllumination.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/SpecularGlassRaytrace.slang          SpecularRaytraceComputeEntry    compute  SpecularGlassRaytrace.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              TransmittanceLutComputeEntry    compute  TransmittanceLutCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              MultiScatterLutComputeEntry     compute  MultiScatterLutCompute.comp.spv)

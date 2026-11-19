@@ -1076,12 +1076,7 @@ void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOut
         InOutScene.AreaLights,
         InOutScene.SkyRadiance);
 
-    RtxLattice.PropagateRtxIrradianceLattice(
-        InOutScene.LatticeConfig,
-        InOutScene.SceneTree,
-        InOutScene.BounceSummaries,
-        InOutScene.Sun,
-        InOutScene.SkyRadiance);
+    RtxLattice.AdoptProbeCacheCells(ProbeCache);
 
     // 4. Maintain GDF Radiosity volume for Mode 7 inspection only (not used by GI engines)
     RadiosityVolume.BuildRadiosityLevels(
@@ -1114,12 +1109,7 @@ void TieredWorldRenderSequence::PrepareRtxIrradianceLatticeOnly(WorldSceneSpecif
         InOutScene.AreaLights,
         InOutScene.SkyRadiance);
 
-    RtxLattice.PropagateRtxIrradianceLattice(
-        InOutScene.LatticeConfig,
-        InOutScene.SceneTree,
-        InOutScene.BounceSummaries,
-        InOutScene.Sun,
-        InOutScene.SkyRadiance);
+    RtxLattice.AdoptProbeCacheCells(ProbeCache);
 }
 
 WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrame(

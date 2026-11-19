@@ -2,7 +2,7 @@
                                                     WORLDVIEWPORTRADIOMETRICCOMPUTE.SLANG
 ============================================================================================================================================*/
 // 🧩 Unified 5-Engine GPU Compute Shader:
-// 0=MatCap, 1=OpenPbrDirect, 2=DdgiRaytracing (Chebyshev), 3=SdfGlobalIllumination (Radiosity Cone March), 4=DeterministicPathTrace (MIS/VNDF)
+// 0=MatCap, 1=OpenPbrDirect, 2=DdgiRaytracing (DynamicProbeCache + Chebyshev), 3=SdfGlobalIllumination (Hybrid ReSTIR Path Replay + 5-Pass SVGF), 4=DeterministicPathTrace (MIS/VNDF)
 // Enforces Zero SDF Shadows (5 Shadow Lab algorithms over depth32float + BVH4) & Zero SDF Reflections (BVH4 or Sky Environment).
 
 #define FRONTIER_ATMOSPHERE_EMBEDDED 1
@@ -1259,7 +1259,7 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-// GLOBAL ILLUMINATION ENGINES: DDGI CHEBYSHEV (2) vs SDF RADIOSITY CONE MARCH (3)
+// GLOBAL ILLUMINATION ENGINES: DYNAMIC PROBE CACHE CHEBYSHEV (2) vs HYBRID RESTIR PATH REPLAY + SVGF (3)
 //------------------------------------------------------------------------------------------------------------------------
 
 float2 EncodeUnitOctahedral(float3 Dir)
@@ -1519,7 +1519,8 @@ float3 ShadeSecondaryBounce(float3 RayOrigin, float3 RayDir)
     }
 
     float3 Albedo = Mat.DiffuseAlbedoRoughness.xyz * (1.0 - saturate(Mat.SpecParams.y)) * (1.0 - saturate(Mat.CoatRoughnessOptics.y));
-    bool   HasDdgi = (WorldUniforms.EngineShadowReflSample.x == 2u && WorldUniforms.SolarIrradianceTier.w > 0.5);
+    bool   HasDdgi = ((WorldUniforms.EngineShadowReflSample.x == 2u || WorldUniforms.EngineShadowReflSample.x == 3u) &&
+                      WorldUniforms.SolarIrradianceTier.w > 0.5);
     float3 AmbGi   = HasDdgi
                         ? SampleRtxIrradianceLatticeChebyshev(Hit.Position, N, V)
                         : (WorldUniforms.SkyRadianceBvhCount.xyz * 0.42);

@@ -2277,7 +2277,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.SolarIrradianceTier[0] = EffectiveSunIrrad.R;
     Uniforms.SolarIrradianceTier[1] = EffectiveSunIrrad.G;
     Uniforms.SolarIrradianceTier[2] = EffectiveSunIrrad.B;
-    Uniforms.SolarIrradianceTier[3] = (Config.Engine == WorldRenderEngine::DdgiRaytracing && LatticeReady) ? 1.0f : 0.0f;
+    Uniforms.SolarIrradianceTier[3] = ((Config.Engine == WorldRenderEngine::DdgiRaytracing ||
+                                        Config.Engine == WorldRenderEngine::SdfGlobalIllumination) &&
+                                       LatticeReady) ? 1.0f : 0.0f;
 
     Uniforms.SkyRadianceBvhCount[0] = Scene.SkyRadiance.R;
     Uniforms.SkyRadianceBvhCount[1] = Scene.SkyRadiance.G;

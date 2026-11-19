@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                          IRRADIANCELATTICESEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Tier 2 RTX 1/pi-Normalized Octahedral Irradiance Lattice (16x16 Chebyshev Depth) + Tier 1 GTX 6-Cone SignedDistanceVolume Diffuse GI
+// 🧩 Dynamic Probe Cache Compatibility Facade (8x8 Octahedral + 16x16 Chebyshev Depth) + Mode-7 Debug Radiosity Volume
 
 #pragma once
 
@@ -21,6 +21,8 @@
 
 namespace Frontier::GeometricRaster
 {
+
+class DynamicProbeCacheSequence;
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                       CONSTANTS
@@ -89,7 +91,7 @@ struct SignedDistanceRadiosityVolume
 class IrradianceLatticeSequence
 {
 public:
-    // Updates the 3D OctahedralIrradianceCell lattice via 64-ray Spherical Fibonacci BVH4 raytracing + 32 B BounceSlabEntry multi-bounce!
+    // Updates the 3D OctahedralIrradianceCell lattice by delegating to DynamicProbeCacheSequence
     void PropagateRtxIrradianceLattice(
         const IrradianceLatticeConfiguration&            Config,
         const SpatialAcceleration::WideBoundingTree&     SceneTree,
@@ -97,31 +99,14 @@ public:
         const SolarDirectionalEmitter&                   Sun,
         Mathematics::LinearRGB                           SkyRadiance = { 0.16f, 0.22f, 0.34f });
 
+    // Adopts pre-solved cells directly from DynamicProbeCacheSequence without re-tracing probe rays
+    void AdoptProbeCacheCells(const DynamicProbeCacheSequence& ProbeCache);
+
     // Queries Chebyshev-visibility-weighted 1/pi diffuse exitant radiance L_d = E(N) / pi at (WorldPosition, SurfaceNormal) — zero wall leak!
     [[nodiscard]] Mathematics::LinearRGB SampleChebyshevIrradianceOverPi(
         Mathematics::Axis3D WorldPosition,
         Mathematics::Axis3D SurfaceNormal,
         Mathematics::Axis3D ViewDirection) const noexcept;
-
-    // Evaluates SdfGlobalIllumination 16-Cone IGN Sphere-March + 3D Radiosity SDF Mip-Volume (Strictly GI Only!)
-    [[nodiscard]] Mathematics::LinearRGB EvaluateSdfRadiosityConeGi(
-        Mathematics::Axis3D                              WorldPosition,
-        Mathematics::Axis3D                              SurfaceNormal,
-        uint32_t                                         PixelX,
-        uint32_t                                         PixelY,
-        const DistanceFieldSpace::SignedDistanceVolume&  SdfVolume,
-        const SignedDistanceRadiosityVolume&             RadiosityVolume,
-        Mathematics::LinearRGB                           SkyRadiance = { 0.16f, 0.22f, 0.34f }) const noexcept;
-
-    // Evaluates Tier 1 GTX 6-Cone Directional SignedDistanceVolume Diffuse GI + Surface Bounce Color Bleed without hardware RT
-    [[nodiscard]] Mathematics::LinearRGB EvaluateGtxSignedDistanceConeGi(
-        Mathematics::Axis3D                              WorldPosition,
-        Mathematics::Axis3D                              SurfaceNormal,
-        const DistanceFieldSpace::SignedDistanceVolume&  SdfVolume,
-        const SpatialAcceleration::WideBoundingTree&     SceneTree,
-        std::span<const MaterialSpace::BounceSlabEntry>  BounceSummaries,
-        const SolarDirectionalEmitter&                   Sun,
-        Mathematics::LinearRGB                           SkyRadiance = { 0.16f, 0.22f, 0.34f }) const noexcept;
 
     [[nodiscard]] std::span<const OctahedralIrradianceCell> InspectCells() const noexcept { return Cells; }
     [[nodiscard]] const IrradianceLatticeConfiguration&     InspectConfig() const noexcept { return ActiveConfig; }

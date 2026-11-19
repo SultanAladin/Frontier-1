@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         IRRADIANCELATTICESEQUENCE.CPP
 ============================================================================================================================================*/
-// 🧩 Tier 2 RTX 1/pi-Normalized Octahedral Irradiance Lattice (16x16 Chebyshev Depth) + Tier 1 GTX 6-Cone SignedDistanceVolume Diffuse GI
+// 🧩 Dynamic Probe Cache Compatibility Facade (8x8 Octahedral + 16x16 Chebyshev Depth) + Mode-7 Debug Radiosity Volume
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -138,8 +138,22 @@ void IrradianceLatticeSequence::PropagateRtxIrradianceLattice(
         std::span<const PolygonalAreaQuadLight>{},
         SkyRadiance);
 
-    CellSpacing = ProbeSolver.InspectCellSpacing();
-    const auto ProbeCells = ProbeSolver.InspectCells();
+    AdoptProbeCacheCells(ProbeSolver);
+}
+
+void IrradianceLatticeSequence::AdoptProbeCacheCells(const DynamicProbeCacheSequence& ProbeCache)
+{
+    const auto& ProbeCfg = ProbeCache.InspectConfig();
+    ActiveConfig.GridMinimumWorld  = ProbeCfg.GridMinimumWorld;
+    ActiveConfig.GridMaximumWorld  = ProbeCfg.GridMaximumWorld;
+    ActiveConfig.CountX            = std::max(2u, ProbeCfg.CountX);
+    ActiveConfig.CountY            = std::max(2u, ProbeCfg.CountY);
+    ActiveConfig.CountZ            = std::max(2u, ProbeCfg.CountZ);
+    ActiveConfig.FibonacciRayCount = ProbeCfg.FibonacciRayCount;
+    ActiveConfig.BouncePasses      = ProbeCfg.BouncePasses;
+    CellSpacing                    = ProbeCache.InspectCellSpacing();
+
+    const auto ProbeCells = ProbeCache.InspectCells();
     Cells.assign(ProbeCells.size(), OctahedralIrradianceCell{});
     for (std::size_t Idx = 0u; Idx < ProbeCells.size(); ++Idx)
     {
@@ -223,18 +237,6 @@ Mathematics::LinearRGB IrradianceLatticeSequence::SampleChebyshevIrradianceOverP
     }
 
     return (TotalWeight > 0.0f) ? (WeightedIrradiance * (1.0f / TotalWeight)) : Mathematics::LinearRGB{};
-}
-
-Mathematics::LinearRGB IrradianceLatticeSequence::EvaluateGtxSignedDistanceConeGi(
-    Mathematics::Axis3D                             WorldPosition,
-    Mathematics::Axis3D                             SurfaceNormal,
-    const DistanceFieldSpace::SignedDistanceVolume& /*SdfVolume*/,
-    const SpatialAcceleration::WideBoundingTree&    /*SceneTree*/,
-    std::span<const MaterialSpace::BounceSlabEntry> /*BounceSummaries*/,
-    const SolarDirectionalEmitter&                  /*Sun*/,
-    Mathematics::LinearRGB                          /*SkyRadiance*/) const noexcept
-{
-    return SampleChebyshevIrradianceOverPi(WorldPosition, SurfaceNormal, SurfaceNormal);
 }
 
 void SignedDistanceRadiosityVolume::BuildRadiosityLevels(
@@ -453,77 +455,6 @@ Mathematics::LinearRGB SignedDistanceRadiosityVolume::SampleRadiosityTrilinear(
     const auto L1   = SampleGrid(RadiosityLevel1, Level1DimX, Level1DimY, Level1DimZ, RelNorm);
     const auto L2   = SampleGrid(RadiosityLevel2, Level2DimX, Level2DimY, Level2DimZ, RelNorm);
     return L1 * (1.0f - F12) + L2 * F12;
-}
-
-Mathematics::LinearRGB IrradianceLatticeSequence::EvaluateSdfRadiosityConeGi(
-    Mathematics::Axis3D                             WorldPosition,
-    Mathematics::Axis3D                             SurfaceNormal,
-    uint32_t                                        PixelX,
-    uint32_t                                        PixelY,
-    const DistanceFieldSpace::SignedDistanceVolume& SdfVolume,
-    const SignedDistanceRadiosityVolume&            RadiosityVolume,
-    Mathematics::LinearRGB                          SkyRadiance) const noexcept
-{
-    Mathematics::Axis3D TanU {};
-    Mathematics::Axis3D BitV {};
-    GeometrySpace::ConstructDuffOrthonormalBasis(SurfaceNormal, TanU, BitV);
-
-    // Interleaved Gradient Noise (IGN) phase rotation + 16 Fibonacci Cosine Hemisphere Cones
-    const float IgnPhase = std::fmod(52.9829189f * std::fmod(0.06711056f * static_cast<float>(PixelX) + 0.00583715f * static_cast<float>(PixelY), 1.0f), 1.0f);
-    const float RotOffset = IgnPhase * Constants::TauFloat;
-    constexpr uint32_t ConeCount    = 16u;
-    constexpr float    GoldenAngle  = 2.39996323f;
-    constexpr float    ConeAperture = 0.42f;
-    const float        MaxTraceM    = 7.5f;
-    const Mathematics::Axis3D Origin = WorldPosition + SurfaceNormal * (SdfVolume.VoxelSpacingMeters * 0.90f);
-
-    Mathematics::LinearRGB AccumOverPi { 0.0f, 0.0f, 0.0f };
-    for (uint32_t CIdx = 0u; CIdx < ConeCount; ++CIdx)
-    {
-        const float U1   = (static_cast<float>(CIdx) + 0.5f) / static_cast<float>(ConeCount);
-        const float Phi  = static_cast<float>(CIdx) * GoldenAngle + RotOffset;
-        const float SinT = std::sqrt(U1);
-        const float CosT = std::sqrt(std::max(0.0f, 1.0f - U1));
-        const Mathematics::Axis3D ConeDir =
-            TanU * (SinT * std::cos(Phi)) + BitV * (SinT * std::sin(Phi)) + SurfaceNormal * CosT;
-
-        float DistM     = std::max(0.06f, SdfVolume.VoxelSpacingMeters * 0.65f);
-        float SkyVis    = 1.0f;
-        Mathematics::LinearRGB BounceRad {};
-
-        for (uint32_t Step = 0u; Step < 22u && DistM < MaxTraceM; ++Step)
-        {
-            const Mathematics::Axis3D SamplePos = Origin + ConeDir * DistM;
-            const float SdfD       = SdfVolume.SampleSignedDistance(SamplePos);
-            const float ConeRadius = std::max(0.04f, DistM * ConeAperture);
-
-            if (SdfD < ConeRadius)
-            {
-                const float Occ = std::clamp(1.0f - SdfD / ConeRadius, 0.0f, 1.0f);
-                const auto VoxelRad = RadiosityVolume.SampleRadiosityTrilinear(SamplePos, ConeRadius);
-                const float W = Occ * SkyVis;
-                BounceRad     = BounceRad + VoxelRad * W;
-                SkyVis       *= (1.0f - Occ * 0.68f);
-                if (SkyVis < 0.04f)
-                {
-                    SkyVis = 0.0f;
-                    break;
-                }
-            }
-            DistM += std::max(SdfVolume.VoxelSpacingMeters * 0.55f, std::fabs(SdfD) * 0.85f);
-        }
-
-        const float SkyUp = std::clamp(ConeDir.Z * 0.5f + 0.5f, 0.0f, 1.0f);
-        const auto SkyDir = SkyRadiance * (0.65f + 0.65f * SkyUp);
-        const auto ConeC  = SkyDir * SkyVis + BounceRad;
-        AccumOverPi       = AccumOverPi + ConeC * (1.0f / static_cast<float>(ConeCount));
-    }
-
-    return {
-        std::clamp(AccumOverPi.R, 0.0f, 6.5f),
-        std::clamp(AccumOverPi.G, 0.0f, 6.5f),
-        std::clamp(AccumOverPi.B, 0.0f, 6.5f),
-    };
 }
 
 } // namespace Frontier::GeometricRaster
