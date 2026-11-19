@@ -189,23 +189,61 @@ struct CpuDownsampledCloudField
     const AtmosphericSkySequence&     SkySeq,
     Mathematics::Axis3D               RayOrigin,
     Mathematics::Axis3D               RayDir,
-    float                             PixelJitter01 = -1.0f,
-    const CpuDownsampledCloudField*   CloudField    = nullptr,
-    float                             ScreenU       = -1.0f,
-    float                             ScreenV       = -1.0f) noexcept
+    float                             PixelJitter01       = -1.0f,
+    const CpuDownsampledCloudField*   CloudField          = nullptr,
+    float                             ScreenU             = -1.0f,
+    float                             ScreenV             = -1.0f,
+    float                             PixelAngularSizeRad = 0.0f) noexcept
 {
     const auto& Atmo = Scene.Atmosphere;
-    if (!Atmo.Medium.AtmosphereEnabled)
+    const bool IsOrbital = Atmo.Medium.OrbitalViewEnabled ||
+                           (Atmo.Medium.ObserverAltitudeMeters > Atmo.Medium.AtmosphereThicknessMeters);
+    if (!Atmo.Medium.AtmosphereEnabled && !IsOrbital)
     {
         return EvaluateSkyDome(RayDir, Scene.SkyRadiance, nullptr, nullptr);
     }
 
     const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
+    if (IsOrbital)
+    {
+        const float PlanetR = std::max(500000.0f, Atmo.Medium.PlanetRadiusMeters);
+        const float ObsAlt  = std::max(Atmo.Medium.AtmosphereThicknessMeters + 5000.0f,
+                                       Atmo.Medium.ObserverAltitudeMeters);
+        const float CamZ    = PlanetR + ObsAlt + RayOrigin.Z;
+        const float B = RayOrigin.X * RayDir.X + RayOrigin.Y * RayDir.Y + CamZ * RayDir.Z;
+        const float C = RayOrigin.X * RayOrigin.X + RayOrigin.Y * RayOrigin.Y + CamZ * CamZ - PlanetR * PlanetR;
+        const float Disc = B * B - C;
+        const bool HitsPlanet = (Disc >= 0.0f) && ((-B - std::sqrt(Disc)) > 0.0f);
+
+        SolarCelestialConfiguration SpaceScatteringConfig = Atmo.Solar;
+        SpaceScatteringConfig.SolarEnabled = false;
+        const auto OrbitalRad = AtmosphericSkySequence::EvaluateOrbitalSpaceRadiance(
+            RayOrigin, RayDir, SolarSolved.WorldDirectionToSun, SpaceScatteringConfig, Atmo.Medium,
+            Atmo.Clouds.CloudsEnabled, Atmo.Clouds.CloudFraction, Atmo.SimulationSeconds, Atmo.ForceFieldSource);
+
+        if (HitsPlanet)
+        {
+            return OrbitalRad;
+        }
+
+        const auto SunRad = AtmosphericSkySequence::EvaluateSolarCoronaRadiance(
+            RayDir, SolarSolved.WorldDirectionToSun, Atmo.Solar, { 1.0f, 1.0f, 1.0f }, SolarSolved.EffectiveSolarTint, true,
+            &Atmo.Medium, PixelAngularSizeRad);
+        const auto MoonStarRad = LunarStarfieldSequence::EvaluateCelestialField(
+            RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds, &Atmo.Medium);
+        return {
+            OrbitalRad.R + SunRad.R + MoonStarRad.R,
+            OrbitalRad.G + SunRad.G + MoonStarRad.G,
+            OrbitalRad.B + SunRad.B + MoonStarRad.B,
+        };
+    }
+
     const auto SolarTrans  = AtmosphericSkySequence::ComputeSolarTransmittance(
-        SolarSolved.WorldDirectionToSun, Atmo.Medium);
+        SolarSolved.WorldDirectionToSun, Atmo.Medium, Atmo.Medium.ObserverAltitudeMeters);
     const auto SkyRad      = SkySeq.SampleSkyViewDirection(RayDir);
     const auto SunRad      = AtmosphericSkySequence::EvaluateSolarCoronaRadiance(
-        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Solar, SolarTrans, SolarSolved.EffectiveSolarTint);
+        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Solar, SolarTrans, SolarSolved.EffectiveSolarTint, false,
+        &Atmo.Medium, PixelAngularSizeRad);
     const auto MoonStarRad = LunarStarfieldSequence::EvaluateCelestialField(
         RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds, &Atmo.Medium);
 
@@ -277,68 +315,6 @@ struct CpuDownsampledCloudField
         Mat.Diffuse.BaseColor.G * (StudioL * DiffW + KeySpec * SpecGain * Metal) + KeySpec * SpecGain * (1.0f - Metal) + RimGlow * 0.28f + Emissive.G,
         Mat.Diffuse.BaseColor.B * (StudioL * DiffW + KeySpec * SpecGain * Metal) + KeySpec * SpecGain * (1.0f - Metal) + RimGlow * 0.32f + Emissive.B,
     };
-}
-
-void ApplyDiffuseGiBilateralFilter(
-    uint32_t                                       WidthPx,
-    uint32_t                                       HeightPx,
-    Mathematics::Axis3D                            CameraOrigin,
-    std::span<const AnalyticResolvedSurfaceSample> PrimarySamples,
-    std::span<const Mathematics::LinearRGB>        RawGi,
-    std::vector<Mathematics::LinearRGB>&           OutFiltered)
-{
-    OutFiltered.assign(RawGi.begin(), RawGi.end());
-    if (WidthPx == 0u || HeightPx == 0u)
-    {
-        return;
-    }
-
-    constexpr int Radius = 3; // 7x7 joint bilateral spatial filter
-    for (uint32_t PY = 0u; PY < HeightPx; ++PY)
-    {
-        for (uint32_t PX = 0u; PX < WidthPx; ++PX)
-        {
-            const std::size_t CenterOff = static_cast<std::size_t>(PY) * WidthPx + PX;
-            const auto& CenterHit       = PrimarySamples[CenterOff];
-            if (!CenterHit.ValidHit)
-            {
-                continue;
-            }
-            const float CenterDepth = Mathematics::EvaluateLength(CenterHit.WorldPosition - CameraOrigin);
-
-            Mathematics::LinearRGB Accum {};
-            float WeightSum = 0.0f;
-            for (int DY = -Radius; DY <= Radius; ++DY)
-            {
-                const int NY = std::clamp(static_cast<int>(PY) + DY, 0, static_cast<int>(HeightPx) - 1);
-                for (int DX = -Radius; DX <= Radius; ++DX)
-                {
-                    const int NX = std::clamp(static_cast<int>(PX) + DX, 0, static_cast<int>(WidthPx) - 1);
-                    const std::size_t NOff = static_cast<std::size_t>(NY) * WidthPx + static_cast<uint32_t>(NX);
-                    const auto& NHit       = PrimarySamples[NOff];
-                    if (!NHit.ValidHit)
-                    {
-                        continue;
-                    }
-                    const float NDepth = Mathematics::EvaluateLength(NHit.WorldPosition - CameraOrigin);
-
-                    const float SpaceDist2 = static_cast<float>(DX * DX + DY * DY);
-                    const float WSpace     = std::exp(-SpaceDist2 / (2.0f * 2.1f * 2.1f));
-                    const float NrmDot     = std::max(0.0f, Mathematics::EvaluateDot(CenterHit.TangentFrame.NormalZ, NHit.TangentFrame.NormalZ));
-                    const float WNrm       = std::pow(NrmDot, 24.0f);
-                    const float DepthDiff  = std::fabs(CenterDepth - NDepth);
-                    const float WDepth     = std::exp(-(DepthDiff * DepthDiff) / std::max(1.0e-4f, 0.08f * CenterDepth));
-                    const float W          = WSpace * WNrm * WDepth;
-                    Accum      = Accum + RawGi[NOff] * W;
-                    WeightSum += W;
-                }
-            }
-            if (WeightSum > 1.0e-6f)
-            {
-                OutFiltered[CenterOff] = Accum * (1.0f / WeightSum);
-            }
-        }
-    }
 }
 
 [[nodiscard]] bool IntersectCpuGlassSphere(
@@ -1002,22 +978,27 @@ void TieredWorldRenderSequence::CompileBounceSummaries(WorldSceneSpecification& 
 
 void TieredWorldRenderSequence::SynchronizeWorldAtmosphere(WorldSceneSpecification& InOutScene)
 {
-    if (!InOutScene.Atmosphere.Medium.AtmosphereEnabled)
+    if (!InOutScene.Atmosphere.Medium.AtmosphereEnabled && !InOutScene.Atmosphere.Medium.OrbitalViewEnabled)
     {
         return;
     }
 
     const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(InOutScene.Atmosphere.Solar);
+    const float ObsAlt = InOutScene.Atmosphere.Medium.ObserverAltitudeMeters;
     SkySequence.BuildSkyViewLut(
         SolarSolved.WorldDirectionToSun,
         InOutScene.Atmosphere.Medium,
-        InOutScene.Atmosphere.Solar.SolarIntensityMultiplier);
+        InOutScene.Atmosphere.Solar.SolarIntensityMultiplier,
+        ObsAlt);
 
     const auto Trans = AtmosphericSkySequence::ComputeSolarTransmittance(
         SolarSolved.WorldDirectionToSun,
-        InOutScene.Atmosphere.Medium);
+        InOutScene.Atmosphere.Medium,
+        ObsAlt);
 
-    const float SunVis = std::clamp((SolarSolved.ElevationDegrees + 4.0f) / 10.0f, 0.0f, 1.0f);
+    const bool IsOrbital = InOutScene.Atmosphere.Medium.OrbitalViewEnabled ||
+                           (ObsAlt > InOutScene.Atmosphere.Medium.AtmosphereThicknessMeters);
+    const float SunVis = IsOrbital ? 1.0f : std::clamp((SolarSolved.ElevationDegrees + 4.0f) / 10.0f, 0.0f, 1.0f);
     InOutScene.Sun.DirectionToSun = SolarSolved.WorldDirectionToSun;
     InOutScene.Sun.SunAngularRadiusRadians =
         std::clamp(InOutScene.Atmosphere.Solar.AngularDiameterDegrees * 0.5f * Constants::DegToRadFloat, 0.002f, 0.25f);
@@ -1032,10 +1013,36 @@ void TieredWorldRenderSequence::SynchronizeWorldAtmosphere(WorldSceneSpecificati
 
     const auto OverheadSky = SkySequence.SampleSkyViewDirection({ 0.0f, 0.0f, 1.0f });
     InOutScene.SkyRadiance = {
-        std::max(0.015f, OverheadSky.R),
-        std::max(0.020f, OverheadSky.G),
-        std::max(0.032f, OverheadSky.B),
+        std::max(IsOrbital ? 0.001f : 0.015f, OverheadSky.R),
+        std::max(IsOrbital ? 0.001f : 0.020f, OverheadSky.G),
+        std::max(IsOrbital ? 0.002f : 0.032f, OverheadSky.B),
     };
+}
+
+void TieredWorldRenderSequence::AssignIrradianceLattice(IrradianceLatticeSequence&& BakedLattice) noexcept
+{
+    RtxLattice = std::move(BakedLattice);
+
+    const auto& Cfg = RtxLattice.InspectConfig();
+    DynamicProbeCacheConfiguration ProbeCfg {};
+    ProbeCfg.GridMinimumWorld  = Cfg.GridMinimumWorld;
+    ProbeCfg.GridMaximumWorld  = Cfg.GridMaximumWorld;
+    ProbeCfg.CountX            = Cfg.CountX;
+    ProbeCfg.CountY            = Cfg.CountY;
+    ProbeCfg.CountZ            = Cfg.CountZ;
+    ProbeCfg.FibonacciRayCount = Cfg.FibonacciRayCount;
+    ProbeCfg.BouncePasses      = Cfg.BouncePasses;
+
+    const auto SrcCells = RtxLattice.InspectCells();
+    std::vector<DynamicProbeCell> DstCells(SrcCells.size());
+    for (std::size_t Idx = 0u; Idx < SrcCells.size(); ++Idx)
+    {
+        DstCells[Idx].WorldPosition    = SrcCells[Idx].WorldPosition;
+        DstCells[Idx].IrradianceOverPi = SrcCells[Idx].IrradianceOverPi;
+        DstCells[Idx].DepthMoments     = SrcCells[Idx].DepthMoments;
+        DstCells[Idx].BackfaceRatio    = SrcCells[Idx].BackfaceRatio;
+    }
+    ProbeCache.AssignExternalCells(ProbeCfg, std::move(DstCells));
 }
 
 void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOutScene)
@@ -1051,7 +1058,24 @@ void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOut
     SolarShadowSequence::BuildTwoCascadeContactClips(
         InOutScene.Sun, FocusCenter, InOutScene.SceneTree, FineContactClip, CoarseContactClip);
 
-    // 3. Build & Propagate Multi-Bounce DDGI 1/pi Octahedral Irradiance Lattice (with 16x16 Chebyshev Depth!)
+    // 3. Build & Propagate Multi-Bounce Dynamic Probe Cache (8x8 Octahedral + 16x16 Chebyshev + Backface Gating)
+    DynamicProbeCacheConfiguration ProbeCfg {};
+    ProbeCfg.GridMinimumWorld  = InOutScene.LatticeConfig.GridMinimumWorld;
+    ProbeCfg.GridMaximumWorld  = InOutScene.LatticeConfig.GridMaximumWorld;
+    ProbeCfg.CountX            = InOutScene.LatticeConfig.CountX;
+    ProbeCfg.CountY            = InOutScene.LatticeConfig.CountY;
+    ProbeCfg.CountZ            = InOutScene.LatticeConfig.CountZ;
+    ProbeCfg.FibonacciRayCount = InOutScene.LatticeConfig.FibonacciRayCount;
+    ProbeCfg.BouncePasses      = InOutScene.LatticeConfig.BouncePasses;
+
+    ProbeCache.UpdateProbeCache(
+        ProbeCfg,
+        InOutScene.SceneTree,
+        InOutScene.BounceSummaries,
+        InOutScene.Sun,
+        InOutScene.AreaLights,
+        InOutScene.SkyRadiance);
+
     RtxLattice.PropagateRtxIrradianceLattice(
         InOutScene.LatticeConfig,
         InOutScene.SceneTree,
@@ -1059,7 +1083,7 @@ void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOut
         InOutScene.Sun,
         InOutScene.SkyRadiance);
 
-    // 4. Build 3D Radiosity SDF Mip-Volume (Strictly for SdfGlobalIllumination GI Only!)
+    // 4. Maintain GDF Radiosity volume for Mode 7 inspection only (not used by GI engines)
     RadiosityVolume.BuildRadiosityLevels(
         InOutScene.SceneSdf,
         InOutScene.SceneTree,
@@ -1072,6 +1096,24 @@ void TieredWorldRenderSequence::PrepareRtxIrradianceLatticeOnly(WorldSceneSpecif
 {
     SynchronizeWorldAtmosphere(InOutScene);
     CompileBounceSummaries(InOutScene);
+
+    DynamicProbeCacheConfiguration ProbeCfg {};
+    ProbeCfg.GridMinimumWorld  = InOutScene.LatticeConfig.GridMinimumWorld;
+    ProbeCfg.GridMaximumWorld  = InOutScene.LatticeConfig.GridMaximumWorld;
+    ProbeCfg.CountX            = InOutScene.LatticeConfig.CountX;
+    ProbeCfg.CountY            = InOutScene.LatticeConfig.CountY;
+    ProbeCfg.CountZ            = InOutScene.LatticeConfig.CountZ;
+    ProbeCfg.FibonacciRayCount = InOutScene.LatticeConfig.FibonacciRayCount;
+    ProbeCfg.BouncePasses      = InOutScene.LatticeConfig.BouncePasses;
+
+    ProbeCache.UpdateProbeCache(
+        ProbeCfg,
+        InOutScene.SceneTree,
+        InOutScene.BounceSummaries,
+        InOutScene.Sun,
+        InOutScene.AreaLights,
+        InOutScene.SkyRadiance);
+
     RtxLattice.PropagateRtxIrradianceLattice(
         InOutScene.LatticeConfig,
         InOutScene.SceneTree,
@@ -1219,8 +1261,9 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                     const float NdcY = 1.0f - FV * 2.0f;
                     const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                         CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
+                    const float PixelSizeRad = (2.0f * CurBasis.TanHalfFovY) / static_cast<float>(std::max(1u, Result.HeightPx));
                     OutHdr = EvaluateBackgroundSkyRadiance(
-                        PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY), &CpuCloudField, FU, FV);
+                        PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY), &CpuCloudField, FU, FV, PixelSizeRad);
                 }
                 if (FlareProj.EffectiveGain > 1.0e-4f && Config.DebugChannel == 0u)
                 {
@@ -1422,52 +1465,51 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     std::vector<Mathematics::LinearRGB> RawIndirectOverPi(TotalPixels, { 0.0f, 0.0f, 0.0f });
     if (Config.GlobalIlluminationEnabled && Config.Engine == WorldRenderEngine::DdgiRaytracing)
     {
+        const bool UseProbeCache = !ProbeCache.InspectCells().empty();
         for (std::size_t Off = 0u; Off < TotalPixels; ++Off)
         {
             const auto& Hit = PrimarySamples[Off];
             if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
             {
-                RawIndirectOverPi[Off] = RtxLattice.SampleChebyshevIrradianceOverPi(
-                    Hit.WorldPosition, Hit.TangentFrame.NormalZ, Hit.WorldViewDirection);
+                RawIndirectOverPi[Off] = UseProbeCache
+                    ? ProbeCache.SampleIrradianceOverPi(Hit.WorldPosition, Hit.TangentFrame.NormalZ, Hit.WorldViewDirection)
+                    : RtxLattice.SampleChebyshevIrradianceOverPi(Hit.WorldPosition, Hit.TangentFrame.NormalZ, Hit.WorldViewDirection);
             }
         }
     }
     else if (Config.GlobalIlluminationEnabled && Config.Engine == WorldRenderEngine::SdfGlobalIllumination)
     {
-        // Lazily build radiosity mip levels if PrepareWorldScene wasn't called with SdfVolume ready
-        SignedDistanceRadiosityVolume LocalRadiosity {};
-        const SignedDistanceRadiosityVolume* RadPtr = &RadiosityVolume;
-        if (RadiosityVolume.Level0DimX < 2u && PreparedScene.SceneSdf.VoxelSpacingMeters > 0.0f)
-        {
-            LocalRadiosity.BuildRadiosityLevels(
-                PreparedScene.SceneSdf, PreparedScene.SceneTree,
-                PreparedScene.BounceSummaries, PreparedScene.Sun, PreparedScene.SkyRadiance);
-            RadPtr = &LocalRadiosity;
-        }
+        // Hybrid ReSTIR Path Replay GI (Candidate RIS + BVH 1-Bounce + DynamicProbe 2nd Bounce + Spatial/Temporal Reuse + 5-Pass SVGF)
+        ReservoirPathReplaySettings ReplayCfg {};
+        ReplayCfg.InitialCandidates    = 4u;
+        ReplayCfg.SpatialNeighborCount = 4u;
+        ReplayCfg.SvfgFilterPasses     = Config.SdfGiBilateral ? 5u : 0u;
+        ReplayCfg.EnableSvfgFilter     = Config.SdfGiBilateral;
+        const bool ValidTemporalHistory = (PreviousReservoirs.size() == TotalPixels) &&
+                                          (PreviousReplayCamera.ViewportWidthPx == Result.WidthPx) &&
+                                          (PreviousReplayCamera.ViewportHeightPx == Result.HeightPx);
+        ReplayCfg.EnableTemporalReuse = ValidTemporalHistory;
 
-        for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
-        {
-            for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
-            {
-                const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
-                const auto& Hit       = PrimarySamples[Off];
-                if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
-                {
-                    RawIndirectOverPi[Off] = RtxLattice.EvaluateSdfRadiosityConeGi(
-                        Hit.WorldPosition, Hit.TangentFrame.NormalZ, PX, PY,
-                        PreparedScene.SceneSdf, *RadPtr, PreparedScene.SkyRadiance);
-                }
-            }
-        }
+        const PerspectiveCameraFrame& EffectivePrevCam = ValidTemporalHistory ? PreviousReplayCamera : PreviousCamera;
+        auto ReplayFrame = ReservoirPathReplaySequence::EvaluateReservoirIndirectFrame(
+            CurrentCamera,
+            EffectivePrevCam,
+            PrimarySamples,
+            PreparedScene.MaterialRegister,
+            PreparedScene.BounceSummaries,
+            PreparedScene.SceneTree,
+            ProbeCache,
+            PreparedScene.Sun,
+            PreparedScene.AreaLights,
+            PreparedScene.SkyRadiance,
+            ReplayCfg,
+            ReplaySequenceIndex++,
+            ValidTemporalHistory ? std::span<const ReservoirSampleState>(PreviousReservoirs)
+                                 : std::span<const ReservoirSampleState>{});
 
-        if (Config.SdfGiBilateral)
-        {
-            std::vector<Mathematics::LinearRGB> FilteredGi;
-            ApplyDiffuseGiBilateralFilter(
-                Result.WidthPx, Result.HeightPx, CurBasis.CameraOrigin,
-                PrimarySamples, RawIndirectOverPi, FilteredGi);
-            RawIndirectOverPi.swap(FilteredGi);
-        }
+        RawIndirectOverPi    = std::move(ReplayFrame.FilteredIndirectOverPi);
+        PreviousReservoirs   = std::move(ReplayFrame.ResolvedReservoirs);
+        PreviousReplayCamera = CurrentCamera;
     }
 
     for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
@@ -1574,8 +1616,9 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 const float NdcY = 1.0f - FV * 2.0f;
                 const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                     CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
+                const float PixelSizeRad = (2.0f * CurBasis.TanHalfFovY) / static_cast<float>(std::max(1u, Result.HeightPx));
                 FinalHdr = EvaluateBackgroundSkyRadiance(
-                    PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY), &CpuCloudField, FU, FV);
+                    PreparedScene, SkySequence, CurBasis.CameraOrigin, RayDir, EvaluateCloudIgn(PX, PY), &CpuCloudField, FU, FV, PixelSizeRad);
             }
 
             if (VisTargets.GlassPeelFront64[Off] != 0ull)

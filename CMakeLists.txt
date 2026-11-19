@@ -332,7 +332,8 @@ frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   CloudCompu
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   DenoiseCompositeEntry     compute  WorldViewportDenoiseCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ShadowCascadeComputeEntry compute  WorldViewportShadowCascadeCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   SdfRadiosityComputeEntry  compute  WorldViewportSdfRadiosityCompute.comp.spv)
-frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   DdgiLatticeComputeEntry   compute  WorldViewportDdgiLatticeCompute.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   DdgiLatticeComputeEntry    compute  WorldViewportDdgiLatticeCompute.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ReservoirSpatialReuseEntry compute  WorldViewportReservoirReuseCompute.comp.spv)
 frontier_compile_slang_shader(SignedDistanceGridCompute.slang         ComputeEntry          compute  SignedDistanceGridCompute.comp.spv)
 
 set(FRONTIER_MODULAR_SHADER_DIR "${CMAKE_SOURCE_DIR}/Engine/Shaders")
@@ -418,13 +419,20 @@ frontier_compile_modular_slang_shader(Visibility/AnalyticBarycentricResolve.slan
 frontier_compile_modular_slang_shader(DirectLighting/SolarFrustumShadow.slang                    SolarShadowComputeEntry         compute  SolarFrustumShadow.comp.spv)
 frontier_compile_modular_slang_shader(DirectLighting/ContactClipShadow.slang                     ContactClipComputeEntry         compute  ContactClipShadow.comp.spv)
 frontier_compile_modular_slang_shader(DirectLighting/PlaneAwareShadowFilter.slang                PlaneFilterComputeEntry         compute  PlaneAwareShadowFilter.comp.spv)
-frontier_compile_modular_slang_shader(GlobalIllumination/OctahedralIrradianceLattice.slang       IrradianceLatticeComputeEntry   compute  OctahedralIrradianceLattice.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/DynamicProbeCache.slang             DynamicProbeCacheComputeEntry     compute  DynamicProbeCache.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/ReservoirPathReplay.slang           ReservoirPathReplayComputeEntry   compute  ReservoirPathReplay.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/ReservoirTemporalFilter.slang       ReservoirTemporalFilterComputeEntry compute ReservoirTemporalFilter.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/OctahedralIrradianceLattice.slang       IrradianceLatticeComputeEntry     compute  OctahedralIrradianceLattice.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/SignedDistanceConeIllumination.slang    SdfConeGiComputeEntry           compute  SignedDistanceConeIllumination.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/SpecularGlassRaytrace.slang          SpecularRaytraceComputeEntry    compute  SpecularGlassRaytrace.comp.spv)
+frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              TransmittanceLutComputeEntry    compute  TransmittanceLutCompute.comp.spv)
+frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              MultiScatterLutComputeEntry     compute  MultiScatterLutCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              ComputeEntry                    compute  SkyViewTransmittanceCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/VolumetricCloudCompute.slang                   ComputeEntry                    compute  VolumetricCloudCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/VolumetricFogCompute.slang                     ComputeEntry                    compute  VolumetricFogCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/CelestialDiscStarCompute.slang                 ComputeEntry                    compute  CelestialDiscStarCompute.comp.spv)
+frontier_compile_modular_slang_shader(Atmosphere/StellarTileCullCompute.slang                 ClearStellarTilesEntry          compute  StellarTileClearCompute.comp.spv)
+frontier_compile_modular_slang_shader(Atmosphere/StellarTileCullCompute.slang                 ProjectCullStellarTilesEntry    compute  StellarTileCullCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/LensFlareBakeCompute.slang                     ComputeEntry                    compute  LensFlareBakeCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/LensFlareCompute.slang                         ComputeEntry                    compute  LensFlareCompute.comp.spv)
 frontier_compile_modular_slang_shader(Fluid/FluidSplatObstacle.slang                            FluidSplatObstacleEntry         compute  FluidSplatObstacle.comp.spv)
@@ -650,7 +658,9 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Visibility/VisibilityMaterialResolve.cpp
     Engine/GeometricRaster/DirectLighting/SolarShadowSequence.cpp
     Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.cpp
+    Engine/GeometricRaster/GlobalIllumination/DynamicProbeCacheSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/IrradianceLatticeSequence.cpp
+    Engine/GeometricRaster/GlobalIllumination/ReservoirPathReplaySequence.cpp
     Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.cpp

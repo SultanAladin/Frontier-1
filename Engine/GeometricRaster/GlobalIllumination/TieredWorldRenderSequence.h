@@ -12,7 +12,9 @@
 #include "Engine/DistanceFieldSpace/SignedDistanceVolume.h"
 #include "Engine/GeometricRaster/Atmosphere/VolumetricCloudSequence.h"
 #include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
+#include "Engine/GeometricRaster/GlobalIllumination/DynamicProbeCacheSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/IrradianceLatticeSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/ReservoirPathReplaySequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.h"
 #include "Engine/MaterialSpace/CompactMaterialRegister.h"
 #include "Engine/MaterialSpace/MaterialSurfaceLayer/BounceLayerSummary.h"
@@ -115,7 +117,7 @@ public:
     void PrepareRtxIrradianceLatticeOnly(WorldSceneSpecification& InOutScene);
 
     // Adopts an externally baked Tier 2 RTX Irradiance Lattice (e.g. from background propagation)
-    void AssignIrradianceLattice(IrradianceLatticeSequence&& BakedLattice) noexcept { RtxLattice = std::move(BakedLattice); }
+    void AssignIrradianceLattice(IrradianceLatticeSequence&& BakedLattice) noexcept;
 
     // Executes the complete unified world render frame for any of the 5 WorldRenderEngines
     [[nodiscard]] WorldRenderFrameResult RenderWorldFrameWithEngine(
@@ -132,16 +134,21 @@ public:
         const WorldSceneSpecification& PreparedScene);
 
     [[nodiscard]] const IrradianceLatticeSequence&    InspectIrradianceLattice() const noexcept { return RtxLattice; }
+    [[nodiscard]] const DynamicProbeCacheSequence&    InspectDynamicProbeCache() const noexcept { return ProbeCache; }
     [[nodiscard]] const SignedDistanceRadiosityVolume& InspectRadiosityVolume()   const noexcept { return RadiosityVolume; }
     [[nodiscard]] const AtmosphericSkySequence&        InspectAtmosphericSky()    const noexcept { return SkySequence; }
 
 private:
-    OrthographicShadowCascade     FineContactClip   {};
-    OrthographicShadowCascade     CoarseContactClip {};
-    IrradianceLatticeSequence     RtxLattice        {};
-    SignedDistanceRadiosityVolume RadiosityVolume   {};
-    AtmosphericSkySequence        SkySequence       {};
-    DepthPyramidSequence          PreviousHiZ       {};
+    OrthographicShadowCascade         FineContactClip      {};
+    OrthographicShadowCascade         CoarseContactClip    {};
+    IrradianceLatticeSequence         RtxLattice           {};
+    DynamicProbeCacheSequence         ProbeCache           {};
+    SignedDistanceRadiosityVolume     RadiosityVolume      {};
+    AtmosphericSkySequence            SkySequence          {};
+    DepthPyramidSequence              PreviousHiZ          {};
+    std::vector<ReservoirSampleState> PreviousReservoirs   {};
+    PerspectiveCameraFrame            PreviousReplayCamera {};
+    uint32_t                          ReplaySequenceIndex  = 0u;
 };
 
 } // namespace Frontier::GeometricRaster

@@ -944,7 +944,7 @@ void RegisterShowcaseGalleryInOutliner(
     {
         Folder->FolderTint  = WorkspaceSurfaceColors::ShowcaseWarmGold;
         Folder->Subtitle    = "Sun, Moon, Stars & Volumetric Clouds";
-        Folder->AuthorNotes = "Physical Rayleigh/Mie/Ozone sky dome, 4-slot lunar discs, deterministic starfield, and 3D FBM volumetric clouds.";
+        Folder->AuthorNotes = "Physical Rayleigh/Mie/Ozone sky dome, 6-slot lunar discs, deterministic starfield, and 3D FBM volumetric clouds.";
         Folder->Expanded    = true;
     }
 

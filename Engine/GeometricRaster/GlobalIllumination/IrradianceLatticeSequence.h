@@ -38,6 +38,7 @@ struct OctahedralIrradianceCell
     Mathematics::Axis3D                                                  WorldPosition   {}; // [m]      - Cell world center
     std::array<Mathematics::LinearRGB, IrradianceOctaWidth * IrradianceOctaWidth> IrradianceOverPi {}; // [W/sr/m2]- E(n) / pi!
     std::array<Mathematics::Axis2D,    ChebyshevDepthOctaW * ChebyshevDepthOctaW> DepthMoments    {}; // [m, m^2] - (MeanR, MeanR^2)
+    float                                                                BackfaceRatio   = 0.0f; // [0..1] - Reverse-hit ratio (>0.25 attenuated)
 };
 
 struct IrradianceLatticeConfiguration

@@ -103,6 +103,12 @@ private:
 
     [[nodiscard]] bool DispatchGpuSignedDistanceGrid(const WorldSceneSpecification& Scene);
     void DispatchGpuSkyViewLut(VkCommandBuffer Cmd, const WorldSceneSpecification& Scene);
+    void DispatchGpuStellarTileCull(
+        VkCommandBuffer                Cmd,
+        const PerspectiveCameraFrame&  Camera,
+        const WorldSceneSpecification& Scene,
+        uint32_t                       WidthPx,
+        uint32_t                       HeightPx);
     void UploadSolarCascadeRadiosity(const WorldSceneSpecification& Scene, bool BuildDdgiOnGpu);
     [[nodiscard]] bool DispatchGpuScenePrecompute(const WorldSceneSpecification& Scene, bool BuildDdgiOnGpu);
     void EnsureSdfVolumeTexture(uint32_t DimX, uint32_t DimY, uint32_t DimZ);
@@ -122,15 +128,21 @@ private:
     uint32_t               CloudLayerProgramHandle     = UINT32_MAX;
     uint32_t               DenoiseProgramHandle        = UINT32_MAX;
     uint32_t               SignedDistanceProgramHandle = UINT32_MAX;
-    uint32_t               SkyViewLutProgramHandle     = UINT32_MAX;
+    uint32_t               TransmittanceLutProgramHandle = UINT32_MAX;
+    uint32_t               MultiScatterLutProgramHandle  = UINT32_MAX;
+    uint32_t               SkyViewLutProgramHandle       = UINT32_MAX;
+    uint32_t               StellarClearProgramHandle     = UINT32_MAX;
+    uint32_t               StellarCullProgramHandle      = UINT32_MAX;
     uint32_t               ShadowCascadeProgramHandle  = UINT32_MAX;
     uint32_t               SdfRadiosityProgramHandle   = UINT32_MAX;
     uint32_t               DdgiLatticeProgramHandle    = UINT32_MAX;
+    uint32_t               ReservoirSpatialProgramHandle = UINT32_MAX;
     VkQueryPool            TimestampQueryPool          = VK_NULL_HANDLE;
 
     DeviceBufferResource   UniformBuffer               {};
     DeviceBufferResource   SdfUniformBuffer            {};
     DeviceBufferResource   SkyViewUniformBuffer        {};
+    DeviceBufferResource   StellarCullUniformBuffer    {};
     DeviceBufferResource   UploadStagingBuffer         {};
     DeviceBufferResource   OutputReadbackStagingBuffer {};
     DeviceBufferResource   BvhEntryBuffer              {};
@@ -158,6 +170,11 @@ private:
     DeviceBufferResource   PongShadowAoBuffer          {};
     DeviceBufferResource   PongGiHdrBuffer             {};
     DeviceBufferResource   CloudRadiometricBuffer      {};
+    DeviceBufferResource   ReservoirCurrentBuffer      {};
+    DeviceBufferResource   ReservoirHistoryBuffer      {};
+    DeviceBufferResource   RawCatalogStarBuffer        {};
+    DeviceBufferResource   ProjectedCatalogStarBuffer  {};
+    DeviceBufferResource   StellarTileBinsBuffer       {};
 
     DeviceImageResource    SdfBakedVolume3D            {};
     DeviceImageResource    SdfDummySampledVolume3D     {};
@@ -184,8 +201,13 @@ private:
     uint32_t               CoarseShadowOffsetTexels = 0u;
     uint32_t               UploadedBvhCount         = 0u;
     uint32_t               UploadedMaterialCount    = 0u;
+    uint32_t               UploadedCatalogStarCount = 0u;
     bool                   SceneUploadedOnce        = false;
     bool                   DdgiManagedByGpu         = false;
+    PerspectiveCameraFrame PreviousReplayCamera     {};
+    uint32_t               ReplayWidthPx            = 0u;
+    uint32_t               ReplayHeightPx           = 0u;
+    uint32_t               ReplaySequenceIndex      = 0u;
     float                  LastDispatchMilliseconds = 0.0f;
     float                  LastSceneSyncMilliseconds = 0.0f;
     FrameTimingBreakdown   LastTimingBreakdown      {};

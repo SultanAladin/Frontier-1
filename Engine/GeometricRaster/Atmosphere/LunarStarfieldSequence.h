@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         LUNARSTARFIELDSEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Multi-instance Lunar discs (6 real 2K surface presets, 29.53-day phase, roll/pitch) and deterministic twinkling Starfield evaluation
+// 🧩 Multi-instance Lunar discs (6 real 2K surface presets, Lommel-Seeliger regolith, off-limb exospheres) & pinpoint blackbody Starfield
 
 #pragma once
 
@@ -13,7 +13,9 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace Frontier::GeometricRaster
@@ -41,17 +43,21 @@ enum class LunarSurfacePreset : uint8_t
 
 struct LunarBodyConfiguration
 {
-    bool               Visible                = false;                        // [-]   - Enables lunar disc & halo
-    bool               FollowSkyOppositeSun   = false;                        // [-]   - Locks moon anti-solar to SunDirection
-    LunarSurfacePreset SurfacePreset          = LunarSurfacePreset::Luna;     // [-]   - Surface texture & mare profile
-    float              SynodicPhaseFraction   = 0.62f;                        // [0-1] - 0=New, 0.5=Full, 1=New
-    float              BrightnessMultiplier   = 1.60f;                        // [x]   - Disc brightness scale [0..6]
-    float              HaloGlowMultiplier     = 0.80f;                        // [x]   - Atmospheric halo glow [0..3]
-    float              AngularDiameterDegrees = 0.52f;                        // [deg] - Apparent disc diameter [0.1..180]
-    float              AzimuthDegrees         = 300.0f;                       // [deg] - Sky compass azimuth [0..360)
-    float              ElevationDegrees       = 28.0f;                        // [deg] - Sky altitude angle [-90..+90]
-    float              SurfaceRollDegrees     = 0.0f;                         // [deg] - Surface tangent roll [0..360)
-    float              SurfacePitchDegrees    = 0.0f;                         // [deg] - Surface latitude tilt [-180..+180]
+    bool               Visible                  = false;                        // [-]   - Enables lunar disc & halo
+    bool               FollowSkyOppositeSun     = false;                        // [-]   - Locks moon anti-solar to SunDirection
+    LunarSurfacePreset SurfacePreset            = LunarSurfacePreset::Luna;     // [-]   - Surface texture & mare profile
+    float              SynodicPhaseFraction     = 0.62f;                        // [0-1] - 0=New, 0.5=Full, 1=New
+    float              BrightnessMultiplier     = 1.60f;                        // [x]   - Disc brightness scale [0..6]
+    float              HaloGlowMultiplier       = 0.80f;                        // [x]   - Atmospheric halo glow [0..3]
+    float              AngularDiameterDegrees   = 0.52f;                        // [deg] - Apparent disc diameter [0.1..180]
+    float              AzimuthDegrees           = 300.0f;                       // [deg] - Sky compass azimuth [0..360)
+    float              ElevationDegrees         = 28.0f;                        // [deg] - Sky altitude angle [-90..+90]
+    float              SurfaceRollDegrees       = 0.0f;                         // [deg] - Surface tangent roll [0..360)
+    float              SurfacePitchDegrees      = 0.0f;                         // [deg] - Surface latitude tilt [-180..+180]
+    bool               HasAtmosphere            = false;                        // [-]   - Forces visible off-limb planetary/lunar atmosphere
+    float              AtmosphereIntensity      = 0.85f;                        // [x]   - Exosphere scatter brightness scale [0..3]
+    float              AtmosphereThicknessScale = 0.22f;                        // [x]   - Outer limb atmosphere extension relative to radius
+    Mathematics::LinearRGB AtmosphereTint       { 0.55f, 0.78f, 1.00f };        // [-]   - Exosphere rim/scatter hue (auto-blended with preset)
 };
 
 struct StarfieldConfiguration
@@ -64,6 +70,17 @@ struct StarfieldConfiguration
     float ScintillationDepthPercent = 30.0f;                                  // [%]   - Twinkle modulation depth [0..100]
     float ScintillationRateHertz    = 1.20f;                                  // [Hz]  - Twinkle frequency [0.2..3.0]
     float CelestialRotationDegrees  = 0.0f;                                   // [deg] - Celestial pole rotation [0..360)
+    bool  EnableBrightStarCatalog   = true;                                   // [-]   - Renders J2000 bright navigation stars (Sirius, Rigel, Orion, etc.)
+    bool  EnableGalacticBand        = true;                                   // [-]   - Concentrates faint micro-stars along tilted Milky Way plane
+};
+
+struct StarfieldCatalogEntry
+{
+    std::string            Name        {};
+    Mathematics::Axis3D    Direction   { 0.0f, 0.0f, 1.0f };
+    float                  MagnitudeV  = 2.0f;
+    float                  ColorBv     = 0.0f;
+    Mathematics::LinearRGB ColorLinear { 1.0f, 1.0f, 1.0f };
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -76,9 +93,13 @@ public:
     static constexpr uint32_t AtlasTileWidthPx  = 512u;
     static constexpr uint32_t AtlasTileHeightPx = 256u;
     static constexpr uint32_t AtlasPresetCount  = 6u;
+    static constexpr uint32_t MaxMoonSlots      = 6u;
 
     // Returns canonical linear RGB tint for a LunarSurfacePreset (used for atmospheric halo glow & procedural fallback)
     [[nodiscard]] static Mathematics::LinearRGB QueryPresetTint(LunarSurfacePreset Preset) noexcept;
+
+    // Converts Planckian B-V color index [-0.35..+1.8] or stellar temperature K into LinearRGB blackbody starlight
+    [[nodiscard]] static Mathematics::LinearRGB EvaluateStarColorFromBv(float BvIndex) noexcept;
 
     // Resolves world-space unit direction toward the moon (honoring FollowSkyOppositeSun)
     [[nodiscard]] static Mathematics::Axis3D ResolveMoonWorldDirection(
@@ -94,14 +115,19 @@ public:
     // Returns cached 512 x 1536 RGBA8 atlas built from the real 2K moon textures (thread-safe lazy load)
     [[nodiscard]] static const std::vector<uint8_t>& QueryLunarSurfaceAtlasRgba8();
 
-    // Evaluates all 4 moon slots (real equirectangular atlas) + deterministic twinkling starfield along RayDirection
+    // Returns built-in J2000 bright navigation stars (Sirius, Orion, Aldebaran, Capella, Vega, etc.)
+    [[nodiscard]] static std::span<const StarfieldCatalogEntry> QueryJ2000BrightStarCatalog() noexcept;
+
+    // Evaluates all active moon slots (up to 6 simultaneously with Lommel-Seeliger regolith & off-limb exospheres) + pinpoint stars
     [[nodiscard]] static Mathematics::LinearRGB EvaluateCelestialField(
-        const Mathematics::Axis3D&                  RayDirection,
-        const Mathematics::Axis3D&                  SunDirection,
-        std::span<const LunarBodyConfiguration, 4u> Moons,
-        const StarfieldConfiguration&               Stars,
-        float                                       SimulationSeconds,
-        const AtmosphericMediumConfiguration*       AtmosphereMedium = nullptr) noexcept;
+        const Mathematics::Axis3D&            RayDirection,
+        const Mathematics::Axis3D&            SunDirection,
+        std::span<const LunarBodyConfiguration> Moons,
+        const StarfieldConfiguration&         Stars,
+        float                                 SimulationSeconds,
+        const AtmosphericMediumConfiguration* AtmosphereMedium    = nullptr,
+        std::span<const StarfieldCatalogEntry> ExtraCatalogStars  = {},
+        float                                 PixelAngularRad     = (0.85f / 720.0f)) noexcept;
 };
 
 } // namespace Frontier::GeometricRaster

@@ -57,6 +57,10 @@ struct WorldViewportUniformBlock
     CelestialFieldUniformBlock  CelestialParams;
     LensFlareUniformBlock       LensFlareParams;
     FluidRenderUniformBlock     FluidParams;
+    float4                      PrevCameraOriginTanX;
+    float4                      PrevCameraRightTanY;
+    float4                      PrevCameraUpWidth;
+    float4                      PrevCameraForwardHeight;
 };
 
 struct GpuWideTreeEntry128
@@ -117,6 +121,10 @@ struct GpuWorldMaterial64
 [[vk::binding(25, 0)]] RWStructuredBuffer<float4>                CloudRadiometricBuffer;
 [[vk::binding(26, 0)]] Sampler3D<float4>                         SdfBakedVolumeRead;
 [[vk::binding(27, 0)]] RWTexture3D<float4>                       SdfBakedVolumeWrite;
+[[vk::binding(28, 0)]] RWStructuredBuffer<float4>                ReservoirCurrentBuffer;
+[[vk::binding(29, 0)]] RWStructuredBuffer<float4>                ReservoirHistoryBuffer;
+[[vk::binding(30, 0)]] StructuredBuffer<GpuProjectedStar>        ProjectedCatalogStars;
+[[vk::binding(31, 0)]] StructuredBuffer<uint>                    StellarTileBins;
 
 static const float PiConst    = 3.14159265359;
 static const float TauConst   = 6.28318530718;
@@ -216,11 +224,15 @@ float3 EvaluateSkyDome(float3 Dir)
 {
     if (WorldUniforms.AtmosphereMaskPad.x != 0u)
     {
+        float PlanetRadiusM = max(500000.0, WorldUniforms.CelestialParams.SolarOpticsParams.w);
+        float ObsAltM       = WorldUniforms.CelestialParams.SolarOpticsParams.z;
         return EvaluateSkyViewLutSample(
             AtmosphericSkyViewLut,
             WorldUniforms.AtmosphereMaskPad.y,
             WorldUniforms.AtmosphereMaskPad.z,
-            Dir);
+            Dir,
+            PlanetRadiusM,
+            ObsAltM);
     }
     float Up = saturate(Dir.z * 0.5 + 0.5);
     return WorldUniforms.SkyRadianceBvhCount.xyz * (0.65 + 0.70 * Up);
@@ -262,17 +274,24 @@ float3 EvaluateCloudDeckReflectionGpu(float3 RayDir, out float OutCloudTrans)
         return float3(0.0, 0.0, 0.0);
     }
     float TimeSec = (C.SkyColorWind.w > 0.5) ? C.OriginTimeVector.w : 0.0;
-    float WindX   = C.WindVectorOcclude.x * TimeSec;
-    float WindY   = C.WindVectorOcclude.y * TimeSec;
+    bool  UseProbes = (C.SkyColorWind.w > 0.5 && C.CloudPassControl.w > 0.5 && abs(TimeSec) > 1.0e-4);
+    float WindX   = UseProbes ? 0.0 : (C.WindVectorOcclude.x * TimeSec);
+    float WindY   = UseProbes ? 0.0 : (C.WindVectorOcclude.y * TimeSec);
     float PlanetR = max(500000.0, C.SolarIrradianceExt.w);
     float FloorM  = max(100.0, C.DeckGeometry.x);
     float ThickM  = max(100.0, C.DeckGeometry.y);
     float MidAlt  = FloorM + ThickM * 0.45;
     float DistM   = min(38000.0, MidAlt / max(0.03, RayDir.z));
     float3 P      = float3(RayDir.x * DistM, RayDir.y * DistM, PlanetR + 100.0 + MidAlt);
+    float3 EvalP  = P;
+    if (UseProbes)
+    {
+        float3 Adv = AdvectCloudPointBackwardGpu(C, float3(P.x, P.y, MidAlt), TimeSec, true);
+        EvalP = float3(Adv.x, Adv.y, sqrt(max(1.0, (PlanetR + Adv.z) * (PlanetR + Adv.z) - Adv.x * Adv.x - Adv.y * Adv.y)));
+    }
     float FScale  = 0.00065 / max(0.08, C.DeckOptics.x);
     float D = SampleCloudDeckDensityGpu(
-        P, PlanetR, FloorM, ThickM, clamp(C.DeckGeometry.z, 0.0, 1.0), clamp(C.DeckOptics.y, 0.0, 1.0),
+        EvalP, PlanetR, FloorM, ThickM, clamp(C.DeckGeometry.z, 0.0, 1.0), clamp(C.DeckOptics.y, 0.0, 1.0),
         max(0.0, C.DeckGeometry.w) * 0.0085, FScale, WindX, WindY, C.DeckOptics.w, uint(C.FormationOptics.x + 0.5), DistM,
         C.FormationOptics.y, C.FormationOptics.z, TimeSec);
     if (D <= 1.0e-5)
@@ -289,15 +308,167 @@ float3 EvaluateCloudDeckReflectionGpu(float3 RayDir, out float OutCloudTrans)
     return lerp(LitCol, C.SkyColorWind.xyz, Haze) * (1.0 - OutCloudTrans);
 }
 
+float3 EvaluateOrbitalSpaceGpu(float3 RayOrigin, float3 RayDir, float3 SunDir, out bool OutHitsPlanet)
+{
+    OutHitsPlanet = false;
+    VolumetricCloudUniformBlock C = WorldUniforms.CloudParams;
+    float PlanetR = max(500000.0, C.SolarIrradianceExt.w);
+    float AtmoThk = 100000.0;
+    float ObsAlt  = max(AtmoThk + 5000.0, C.WindForceMeta.w);
+    float3 CamPos = float3(RayOrigin.x, RayOrigin.y, PlanetR + ObsAlt + RayOrigin.z);
+
+    float B = dot(CamPos, RayDir);
+    float K = dot(CamPos, CamPos) - PlanetR * PlanetR;
+    float Disc = B * B - K;
+    float TPlanet = -1.0;
+    if (Disc >= 0.0)
+    {
+        float Root = sqrt(Disc);
+        float T0 = -B - Root;
+        if (T0 > 0.0) TPlanet = T0;
+    }
+    OutHitsPlanet = (TPlanet > 0.0);
+
+    float OutR = PlanetR + AtmoThk;
+    float KA = dot(CamPos, CamPos) - OutR * OutR;
+    float DiscA = B * B - KA;
+    float3 Rad = float3(0.0, 0.0, 0.0);
+    if (DiscA <= 0.0)
+    {
+        return Rad;
+    }
+    float RootA = sqrt(DiscA);
+    float TEnter = max(0.0, -B - RootA);
+    float TExit  = OutHitsPlanet ? min(TPlanet, -B + RootA) : (-B + RootA);
+    if (TExit <= TEnter)
+    {
+        return Rad;
+    }
+
+    float CosTheta = dot(RayDir, SunDir);
+    float RayPhase = 0.05968310366 * (1.0 + CosTheta * CosTheta);
+    float3 RayBeta = float3(5.8e-6, 13.5e-6, 33.1e-6) * max(0.0, WorldUniforms.CelestialParams.AtmoMediumPack.x);
+    float  Steps   = 12.0;
+    float  Dt      = (TExit - TEnter) / Steps;
+    float3 InScat  = float3(0.0, 0.0, 0.0);
+    float3 ViewTau = float3(0.0, 0.0, 0.0);
+    for (uint S = 0u; S < 12u; ++S)
+    {
+        float  T    = TEnter + (float(S) + 0.5) * Dt;
+        float3 P    = CamPos + RayDir * T;
+        float  Alt  = max(0.0, length(P) - PlanetR);
+        float  RhoR = exp(-Alt / 8000.0);
+        ViewTau    += RayBeta * (RhoR * Dt);
+        float3 Up   = normalize(P);
+        float  Mus  = dot(Up, SunDir);
+        if (Mus > -0.14)
+        {
+            float Ch   = 1.0 / max(0.08, max(0.0, Mus) + 0.14);
+            float3 ST  = exp(-(RayBeta * (8000.0 * RhoR * Ch)));
+            InScat    += exp(-ViewTau) * ST * RayBeta * (RhoR * RayPhase * Dt * 12.0);
+        }
+    }
+
+    if (OutHitsPlanet)
+    {
+        float3 HitP = CamPos + RayDir * TPlanet;
+        float3 N    = normalize(HitP);
+        float  NdotLRaw = dot(N, SunDir);
+        float  SunM = max(0.0, NdotLRaw);
+        float  Cont = CloudFbmGpu3(N * 3.1 + float3(4.1, -1.8, 0.9), 1.0);
+        float  PolarIce = smoothstep(0.83 + 0.06 * Cont, 0.92 + 0.06 * Cont, abs(N.z));
+        float  LandMask = smoothstep(0.47, 0.515, Cont);
+        float  Shelf    = smoothstep(0.415, 0.48, Cont) * (1.0 - LandMask);
+        float  Moist = CloudFbmGpu3(N * 7.5 + float3(-2.3, 5.1, 0.0), 1.0);
+        float  Elev  = saturate((Cont - 0.49) / 0.24);
+        float3 LandCol = lerp(float3(0.055, 0.145, 0.048), float3(0.350, 0.265, 0.165), saturate((Moist - 0.44) / 0.24)) * (0.85 + 0.35 * Elev);
+        float3 OceanCol = float3(0.012 + 0.018 * Shelf, 0.042 + 0.058 * Shelf, 0.135 + 0.055 * Shelf);
+        float3 Alb = lerp(OceanCol, LandCol, LandMask);
+        Alb = lerp(Alb, float3(0.72, 0.76, 0.82), PolarIce);
+
+        float3 HVec = normalize(SunDir - RayDir);
+        float  OceanSpec = (1.0 - LandMask) * (1.0 - PolarIce) * pow(max(0.0, dot(N, HVec)), 42.0) * 0.45 * (0.2 + 0.8 * SunM);
+        float  TermWarm  = exp(-abs(NdotLRaw) * 14.0) * saturate((NdotLRaw + 0.08) / 0.16);
+        float  SVBase    = 0.35 + 0.65 * saturate((NdotLRaw + 0.04) / 0.25);
+        float3 SunVisC   = float3(SVBase * (1.0 + 0.65 * TermWarm), SVBase * (1.0 + 0.22 * TermWarm), SVBase * (1.0 - 0.10 * TermWarm));
+
+        float JetLon = C.OriginTimeVector.w * 0.0022;
+        float CosJ = cos(JetLon);
+        float SinJ = sin(JetLon);
+        float3 RotN = float3(N.x * CosJ + N.y * SinJ, -N.x * SinJ + N.y * CosJ, N.z);
+        if (C.SkyColorWind.w > 0.5)
+        {
+            float3 LocalP = float3(HitP.x * 0.0001, HitP.y * 0.0001, 1500.0);
+            float3 AdvL   = AdvectCloudPointBackwardGpu(C, LocalP, C.OriginTimeVector.w, true);
+            RotN = normalize(RotN + float3((AdvL.x - LocalP.x), (AdvL.y - LocalP.y), 0.0) * 0.00015);
+        }
+        float  Lon = atan2(RotN.y, RotN.x);
+        float  Lat = asin(clamp(RotN.z, -1.0, 1.0));
+        float  SpiralR = length(float2(Lon - 0.35, Lat - 0.38));
+        if (SpiralR < 0.45)
+        {
+            float SwirlA = (1.0 - SpiralR / 0.45) * 1.45;
+            float DLon = Lon - 0.35;
+            float DLat = Lat - 0.38;
+            float CS = cos(SwirlA);
+            float SS = sin(SwirlA);
+            RotN = normalize(RotN + float3((DLon * CS - DLat * SS - DLon) * 0.45, (DLon * SS + DLat * CS - DLat) * 0.45, 0.0));
+        }
+        float  Cld  = (C.SunAxisToggle.w > 0.5) ? smoothstep(0.46, 0.72, CloudFbmGpu3(RotN * 5.2, 1.0)) * clamp(C.DeckGeometry.z, 0.0, 1.0) : 0.0;
+        float  CldShad = 1.0 - 0.48 * Cld;
+        float3 Surf = (Alb * SunM * CldShad + float3(OceanSpec)) * SunVisC * 0.28;
+
+        float  NightMask = saturate((-NdotLRaw - 0.04) / 0.14) * LandMask * (1.0 - PolarIce);
+        if (NightMask > 0.01)
+        {
+            float City = saturate((CloudFbmGpu3(N * 16.0, 1.0) - 0.60) / 0.12) * NightMask * (1.0 - 0.65 * Cld);
+            Surf += float3(City * 0.38, City * 0.22, City * 0.06);
+        }
+        if (Cld > 0.001)
+        {
+            float CLit = max(0.015, SunM * 1.15 + 0.04) * 0.28 * 0.85;
+            Surf = lerp(Surf, SunVisC * CLit, Cld * 0.88);
+        }
+        float3 Tr = exp(-ViewTau);
+        return max(float3(0.0), InScat * 0.28 + Surf * Tr);
+    }
+
+    return InScat * 0.28;
+}
+
 float3 EvaluateBackgroundSkyCloudsGpu(float3 RayDir, float2 PixelCoord)
 {
-    (void)PixelCoord;
+    float2 SubPix    = PixelCoord + float2(0.5, 0.5);
+    float2 VpDims    = max(float2(1.0, 1.0), float2(WorldUniforms.CameraUpWidth.w, WorldUniforms.CameraForwardHeight.w));
+    float2 PrimUv    = SubPix / VpDims;
+    float3 PrimDir   = normalize(WorldUniforms.CameraForwardHeight.xyz
+                               + WorldUniforms.CameraRightTanY.xyz * ((PrimUv.x * 2.0 - 1.0) * WorldUniforms.CameraOriginTanX.w)
+                               + WorldUniforms.CameraUpWidth.xyz   * ((1.0 - PrimUv.y * 2.0) * WorldUniforms.CameraRightTanY.w));
+    bool   UseTiled  = (dot(normalize(RayDir), PrimDir) > 0.999);
+
+    int AtmoFlags = int(WorldUniforms.CelestialParams.AtmoMediumPack.w + 0.5);
+    if ((AtmoFlags & 2) != 0)
+    {
+        bool HitsPlanet = false;
+        float3 OrbRad = EvaluateOrbitalSpaceGpu(WorldUniforms.CameraOriginTanX.xyz, RayDir, normalize(WorldUniforms.SunDirConeTan.xyz), HitsPlanet);
+        if (HitsPlanet)
+        {
+            return OrbRad;
+        }
+        float3 StarSky = UseTiled
+            ? EvaluateCelestialBodiesTiledGpu(WorldUniforms.CelestialParams, LunarSurfaceAtlasTexels, ProjectedCatalogStars, StellarTileBins, SubPix, RayDir)
+            : EvaluateCelestialBodiesGpu(WorldUniforms.CelestialParams, LunarSurfaceAtlasTexels, RayDir);
+        return OrbRad + StarSky;
+    }
+
     if (WorldUniforms.AtmosphereMaskPad.x == 0u)
     {
         return EvaluateSkyDome(RayDir);
     }
     float3 SkyRad       = EvaluateSkyDome(RayDir);
-    float3 CelestialRad = EvaluateCelestialBodiesGpu(WorldUniforms.CelestialParams, LunarSurfaceAtlasTexels, RayDir);
+    float3 CelestialRad = UseTiled
+        ? EvaluateCelestialBodiesTiledGpu(WorldUniforms.CelestialParams, LunarSurfaceAtlasTexels, ProjectedCatalogStars, StellarTileBins, SubPix, RayDir)
+        : EvaluateCelestialBodiesGpu(WorldUniforms.CelestialParams, LunarSurfaceAtlasTexels, RayDir);
     if (WorldUniforms.CloudParams.SunAxisToggle.w < 0.5)
     {
         return SkyRad + CelestialRad;
@@ -335,21 +506,28 @@ float EvaluateSolarCloudTransmittanceGpu(float3 WorldPos, float3 SunDir)
     float Trans = 1.0;
     if (C.SunAxisToggle.w >= 0.5 && C.WindVectorOcclude.z >= 0.5)
     {
-        float TimeSec = (C.SkyColorWind.w > 0.5) ? C.OriginTimeVector.w : 0.0;
-        float WindX   = C.WindVectorOcclude.x * TimeSec;
-        float WindY   = C.WindVectorOcclude.y * TimeSec;
-        float PlanetR = max(500000.0, C.SolarIrradianceExt.w);
-        float FloorM  = max(100.0, C.DeckGeometry.x);
-        float ThickM  = max(100.0, C.DeckGeometry.y);
-        float MidAlt  = FloorM + ThickM * 0.45;
-        float DistM   = MidAlt / max(0.05, SunDir.z);
-        float3 P      = float3(WorldPos.x + SunDir.x * DistM, WorldPos.y + SunDir.y * DistM, PlanetR + 100.0 + MidAlt);
-        float FScale  = (0.00065 / max(0.08, C.DeckOptics.x)) * max(0.01, C.CloudShadowOptics.z);
-        float Cov     = clamp(C.DeckGeometry.z * C.CloudShadowOptics.x, 0.0, 1.0);
-        float DensMul = max(0.0, C.DeckGeometry.w * C.CloudShadowOptics.y) * 0.0085;
-        float Anvil   = clamp(C.DeckOptics.y * C.CloudShadowOptics.w, 0.0, 1.0);
+        float TimeSec   = (C.SkyColorWind.w > 0.5) ? C.OriginTimeVector.w : 0.0;
+        bool  UseProbes = (C.SkyColorWind.w > 0.5 && C.CloudPassControl.w > 0.5 && abs(TimeSec) > 1.0e-4);
+        float WindX     = UseProbes ? 0.0 : (C.WindVectorOcclude.x * TimeSec);
+        float WindY     = UseProbes ? 0.0 : (C.WindVectorOcclude.y * TimeSec);
+        float PlanetR   = max(500000.0, C.SolarIrradianceExt.w);
+        float FloorM    = max(100.0, C.DeckGeometry.x);
+        float ThickM    = max(100.0, C.DeckGeometry.y);
+        float MidAlt    = FloorM + ThickM * 0.45;
+        float DistM     = MidAlt / max(0.05, SunDir.z);
+        float3 P        = float3(WorldPos.x + SunDir.x * DistM, WorldPos.y + SunDir.y * DistM, PlanetR + 100.0 + MidAlt);
+        float3 EvalP    = P;
+        if (UseProbes)
+        {
+            float3 Adv = AdvectCloudPointBackwardGpu(C, float3(P.x, P.y, MidAlt), TimeSec, true);
+            EvalP = float3(Adv.x, Adv.y, sqrt(max(1.0, (PlanetR + Adv.z) * (PlanetR + Adv.z) - Adv.x * Adv.x - Adv.y * Adv.y)));
+        }
+        float FScale    = (0.00065 / max(0.08, C.DeckOptics.x)) * max(0.01, C.CloudShadowOptics.z);
+        float Cov       = clamp(C.DeckGeometry.z * C.CloudShadowOptics.x, 0.0, 1.0);
+        float DensMul   = max(0.0, C.DeckGeometry.w * C.CloudShadowOptics.y) * 0.0085;
+        float Anvil     = clamp(C.DeckOptics.y * C.CloudShadowOptics.w, 0.0, 1.0);
         float D = SampleCloudDeckDensityGpu(
-            P, PlanetR, FloorM, ThickM, Cov, Anvil,
+            EvalP, PlanetR, FloorM, ThickM, Cov, Anvil,
             DensMul, FScale, WindX, WindY, C.DeckOptics.w, uint(C.FormationOptics.x + 0.5), 8000.0,
             C.FormationOptics.y, C.FormationOptics.z, TimeSec);
         Trans *= (0.12 + 0.88 * exp(-D * ThickM * 0.36));
@@ -1140,8 +1318,10 @@ float3 SampleRtxIrradianceLatticeChebyshev(float3 WorldPos, float3 Normal, float
                 float  DistToCell = length(CellToSurf);
                 float3 DirFromC   = (DistToCell > 1.0e-5) ? (CellToSurf / DistToCell) : Normal;
 
-                float Backface = max(1.0e-4, (dot(-DirFromC, Normal) + 1.0) * 0.5);
-                float VisW     = Backface * Backface + 1.0e-4;
+                float Backface = max(0.02, (dot(-DirFromC, Normal) + 1.0) * 0.5);
+                float4 CellTexel = IrradianceLatticeTexels[CellId * 64u + TexId];
+                float ValidGate  = (CellTexel.w > 0.25) ? 0.02 : 1.0;
+                float VisW       = Backface * Backface * ValidGate;
 
                 // 16x16 Chebyshev depth upper-tail visibility weight eliminating wall leaks!
                 float2 OctD  = EncodeUnitOctahedral(DirFromC);
@@ -1157,7 +1337,7 @@ float3 SampleRtxIrradianceLatticeChebyshev(float3 WorldPos, float3 Normal, float
                 }
 
                 float CombinedW = max(1.0e-7, TriW * VisW);
-                Accum          += IrradianceLatticeTexels[CellId * 64u + TexId].xyz * CombinedW;
+                Accum          += CellTexel.xyz * CombinedW;
                 TotalW         += CombinedW;
             }
         }
@@ -1165,55 +1345,138 @@ float3 SampleRtxIrradianceLatticeChebyshev(float3 WorldPos, float3 Normal, float
     return (TotalW > 0.0) ? (Accum / TotalW) : float3(0.0);
 }
 
-// Strictly reserved for EngineMode == 3 (SdfGlobalIllumination) GI only!
-float3 EvaluateSdfRadiosityConeGi(float3 WorldPos, float3 Normal, uint2 PixelXY)
+// Hybrid ReSTIR Path Replay GI for EngineMode == 3 (4-Candidate Owen-Sobol RIS + 1-Bounce BVH Replay + DynamicProbe 2nd Bounce + Temporal Reuse)
+float3 EvaluateReservoirPathReplayCandidate(float3 WorldPos, float3 Normal, uint2 PixelXY, uint PixelIdx)
 {
     float3 T, B;
     ConstructOrthonormalBasis(Normal, T, B);
 
-    float2 R2P       = PixelR2(PixelXY);
-    float  RotOffset = R2P.x * TauConst;
-    float  Spacing   = max(0.04, WorldUniforms.SdfMinSpacing.w);
-    float3 Origin    = WorldPos + Normal * (Spacing * 0.85);
+    uint  SeqIdx    = WorldUniforms.DenoiseStepParams.w;
+    uint  PixelHash = AvalancheKey32(PixelXY.x * 1973u + PixelXY.y * 9277u + 89173u + SeqIdx * 104729u);
+    uint  Rng       = PixelHash | 1u;
+    float3 SunDir   = WorldUniforms.SunDirConeTan.xyz;
+    float3 SunIrr   = WorldUniforms.SolarIrradianceTier.xyz;
+    uint  MatCount  = max(1u, WorldUniforms.LatticeDimsMaterialCount.w);
+    uint  LightCnt  = min(4u, WorldUniforms.SdfDimsLightCount.w);
+    bool  HasProbes = (WorldUniforms.LatticeDimsMaterialCount.x >= 2u);
 
-    float3 Accum = float3(0.0);
-    for (uint C = 0u; C < 16u; ++C)
+    float3 WinPos  = float3(0.0);
+    float3 WinRad  = float3(0.0);
+    float  WinPdf  = 0.0;
+    uint   WinSky  = 0u;
+    float  WeightS = 0.0;
+
+    for (uint C = 0u; C < 4u; ++C)
     {
-        float U1   = (float(C) + 0.2 + 0.6 * R2P.y) / 16.0;
-        float Phi  = float(C) * 2.39996323 + RotOffset;
-        float SinT = sqrt(saturate(U1));
-        float CosT = sqrt(max(0.0, 1.0 - U1));
-        float3 Dir = T * (SinT * cos(Phi)) + B * (SinT * sin(Phi)) + Normal * CosT;
+        float2 U    = Sobol02Sample(SeqIdx * 4u + C, PixelHash, 0u);
+        float  Phi  = TauConst * U.x;
+        float  SinT = sqrt(saturate(U.y));
+        float  CosT = sqrt(max(0.0, 1.0 - U.y));
+        float3 Dir  = normalize(T * (SinT * cos(Phi)) + B * (SinT * sin(Phi)) + Normal * CosT);
 
-        float  DistM   = max(0.05, Spacing * 0.60);
-        float  SkyVis  = 1.0;
-        float3 BounceR = float3(0.0);
-        for (uint Step = 0u; Step < 24u && DistM < 7.5; ++Step)
+        RayHitReading Hit2 = TraceSceneClosest(WorldPos + Normal * 2.5e-3, Dir, 1.0e-3, 80.0);
+
+        float3 CandPos = Dir * 1.0e4;
+        float3 CandRad = float3(0.0);
+        uint   CandSky = 1u;
+
+        if (!Hit2.Hit)
         {
-            float3 SPos   = Origin + Dir * DistM;
-            float4 Baked  = SampleSdfBakedVolume(SPos);
-            float  SdfD   = Baked.w;
-            float  ConeR  = max(0.035, DistM * 0.40);
-            if (SdfD < ConeR)
+            CandRad = EvaluateSkyDome(Dir);
+        }
+        else
+        {
+            CandSky = 0u;
+            CandPos = Hit2.Position;
+            float3 N2 = Hit2.ShadingNormal;
+            if (dot(N2, Dir) > 0.0) N2 = -N2;
+            GpuWorldMaterial64 Mat2 = MaterialEntries[min(Hit2.MaterialSlot, MatCount - 1u)];
+            float3 SafeHit2 = Hit2.Position + N2 * 4.0e-3;
+            float3 DiffAlb2 = Mat2.DiffuseAlbedoRoughness.xyz * (1.0 - saturate(Mat2.SpecParams.y)) * (1.0 - saturate(Mat2.CoatRoughnessOptics.y));
+
+            if (dot(N2, SunDir) > 0.0 && !TraceSceneAnyHit(SafeHit2, SunDir, 0.02, 80.0))
             {
-                float  NearBoost = (DistM < 0.85) ? 1.15 : 1.0;
-                float  Occ       = saturate((1.0 - SdfD / ConeR) * NearBoost);
-                float3 SurfN     = EvaluateSdfNormal(SPos);
-                float  FrontEmit = smoothstep(-0.04, 0.58, dot(SurfN, -Dir)) * 1.26;
-                float3 VRad      = Baked.rgb;
-                BounceR         += VRad * (Occ * SkyVis * FrontEmit);
-                SkyVis          *= (1.0 - Occ * 0.72);
-                if (SkyVis < 0.035)
+                CandRad += EvaluateSurfaceBrdf(Mat2, N2, -Dir, SunDir) * SunIrr;
+            }
+            for (uint L = 0u; L < LightCnt; ++L)
+            {
+                CandRad += EvaluateAreaQuadLight(WorldUniforms.AreaLights[L], SafeHit2, N2, -Dir, Mat2);
+            }
+            if (HasProbes)
+            {
+                CandRad += SampleRtxIrradianceLatticeChebyshev(Hit2.Position, N2, -Dir) * DiffAlb2;
+            }
+            else
+            {
+                CandRad += (WorldUniforms.SkyRadianceBvhCount.xyz * 0.35) * DiffAlb2;
+            }
+        }
+
+        float Luma = max(1.0e-5, dot(CandRad, float3(0.2126, 0.7152, 0.0722)));
+        float Pdf  = Luma * (max(1.0e-4, CosT) * InvPiConst);
+        WeightS   += Luma;
+        if (PcgFloat01(Rng) < (Luma / max(1.0e-12, WeightS)))
+        {
+            WinPos = CandPos;
+            WinRad = CandRad;
+            WinPdf = Pdf;
+            WinSky = CandSky;
+        }
+    }
+
+    uint TotalM = 4u;
+    if (WorldUniforms.DenoiseStepParams.z != 0u && WorldUniforms.PrevCameraUpWidth.w > 1.0)
+    {
+        float3 RelP  = WorldPos - WorldUniforms.PrevCameraOriginTanX.xyz;
+        float  DepP  = dot(RelP, WorldUniforms.PrevCameraForwardHeight.xyz);
+        if (DepP > 0.05)
+        {
+            float NdcX = dot(RelP, WorldUniforms.PrevCameraRightTanY.xyz) / (DepP * max(1.0e-4, WorldUniforms.PrevCameraOriginTanX.w));
+            float NdcY = dot(RelP, WorldUniforms.PrevCameraUpWidth.xyz)   / (DepP * max(1.0e-4, WorldUniforms.PrevCameraRightTanY.w));
+            int   PX   = int(floor((NdcX * 0.5 + 0.5) * WorldUniforms.PrevCameraUpWidth.w));
+            int   PY   = int(floor((0.5 - NdcY * 0.5) * WorldUniforms.PrevCameraForwardHeight.w));
+            int   PW   = int(WorldUniforms.PrevCameraUpWidth.w + 0.5);
+            int   PH   = int(WorldUniforms.PrevCameraForwardHeight.w + 0.5);
+            if (PX >= 0 && PX < PW && PY >= 0 && PY < PH)
+            {
+                uint   PrevIdx = uint(PY) * uint(PW) + uint(PX);
+                float4 Prev0   = ReservoirHistoryBuffer[PrevIdx * 2u + 0u];
+                float4 Prev1   = ReservoirHistoryBuffer[PrevIdx * 2u + 1u];
+                uint   PMeta   = asuint(Prev1.w);
+                uint   PM      = min(PMeta & 0xFFFFu, 20u);
+                if (((PMeta & (1u << 16u)) != 0u) && PM > 0u)
                 {
-                    SkyVis = 0.0;
-                    break;
+                    bool   PSky  = ((PMeta & (1u << 17u)) != 0u);
+                    float3 PDir  = PSky ? normalize(Prev0.xyz) : normalize(Prev0.xyz - WorldPos);
+                    float  PPdf  = dot(Prev1.rgb, float3(0.2126, 0.7152, 0.0722)) * max(0.0, dot(Normal, PDir)) * InvPiConst;
+                    if (PPdf > 1.0e-6)
+                    {
+                        float TempW = PPdf * Prev0.w * float(PM);
+                        TotalM  += PM;
+                        WeightS += TempW;
+                        if (PcgFloat01(Rng) < (TempW / max(1.0e-12, WeightS)))
+                        {
+                            WinPos = Prev0.xyz;
+                            WinRad = Prev1.rgb;
+                            WinPdf = PPdf;
+                            WinSky = PSky ? 1u : 0u;
+                        }
+                    }
                 }
             }
-            DistM += max(Spacing * 0.50, abs(SdfD) * 0.85);
         }
-        Accum += (EvaluateSkyDome(Dir) * SkyVis + BounceR) * (1.0 / 16.0);
     }
-    return clamp(Accum, float3(0.0), float3(7.0));
+
+    float3 DirY    = (WinSky != 0u) ? normalize(WinPos) : normalize(WinPos - WorldPos);
+    float  CosY    = max(0.0, dot(Normal, DirY));
+    float  MaxRawW = (20.0 * PiConst) / max(1.0e-3, CosY);
+    float  FinalW  = (WinPdf > 1.0e-9) ? clamp(WeightS / (float(TotalM) * WinPdf), 0.0, MaxRawW) : 0.0;
+    float3 GiVal   = WinRad * ((CosY * InvPiConst) * FinalW);
+
+    uint Meta = min(TotalM, 0xFFFFu) | (1u << 16u) | ((WinSky & 1u) << 17u);
+    ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(WinPos, FinalW);
+    ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(WinRad, asfloat(Meta));
+    return GiVal;
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -1405,8 +1668,17 @@ void ShadePrimarySurfaceDemod(
         }
         else if (EngineMode == 3u)
         {
-            OutDemodGiOverPi = EvaluateSdfRadiosityConeGi(Hit.Position, N, PixelXY);
+            uint Width = max(1u, uint(WorldUniforms.CameraUpWidth.w + 0.5));
+            uint PixelIdx = PixelXY.y * Width + PixelXY.x;
+            OutDemodGiOverPi = EvaluateReservoirPathReplayCandidate(Hit.Position, N, PixelXY, PixelIdx);
         }
+    }
+    if (!IsGiEnabled() || EngineMode != 3u)
+    {
+        uint Width    = max(1u, uint(WorldUniforms.CameraUpWidth.w + 0.5));
+        uint PixelIdx = PixelXY.y * Width + PixelXY.x;
+        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
     }
 
     // 5. Secondary Specular Reflection (BVH4 WideTreeRaytrace or SkyEnvironment — Zero SDF!)
@@ -2304,6 +2576,8 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GBufAlbedo[PixelIdx]     = float4(SafeAlb, LastSpecRough);
         PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, Count);
         PingGiHdr[PixelIdx]      = float4(DemodMean, Count);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
         return;
     }
 
@@ -2392,6 +2666,8 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GBufAlbedo[PixelIdx]     = float4(0.0, 0.0, 0.0, 1.0);
         PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, 1.0);
         PingGiHdr[PixelIdx]      = float4(0.0, 0.0, 0.0, 1.0);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
         return;
     }
 
@@ -2433,6 +2709,8 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GBufAlbedo[PixelIdx]     = float4(0.0, 0.0, 0.0, 1.0);
         PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, 1.0);
         PingGiHdr[PixelIdx]      = float4(0.0, 0.0, 0.0, 1.0);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
         return;
     }
 
@@ -2446,6 +2724,8 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GBufAlbedo[PixelIdx]     = float4(0.0, 0.0, 0.0, 1.0);
         PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, 1.0);
         PingGiHdr[PixelIdx]      = float4(0.0, 0.0, 0.0, 1.0);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
         return;
     }
 
@@ -2459,6 +2739,8 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GBufAlbedo[PixelIdx]     = float4(0.0, 0.0, 0.0, 1.0);
         PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, 1.0);
         PingGiHdr[PixelIdx]      = float4(0.0, 0.0, 0.0, 1.0);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
         return;
     }
 
@@ -2582,7 +2864,7 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
                 float WNrm      = pow(saturate(dot(CenterN, NNrm)), 24.0);
                 float WGeom     = WPlane * WNrm;
 
-                if (EngineMode == 4u)
+                if (EngineMode == 3u || EngineMode == 4u)
                 {
                     float4 NAlb    = GBufAlbedo[SIdx];
                     float3 AlbDiff = NAlb.xyz - CenterAlb.xyz;
@@ -3005,11 +3287,11 @@ void DdgiLatticeComputeEntry(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : S
         if (RF.w < 0.5) BackHits += 1.0;
     }
     float3 OutIrr = (WeightS > 1.0e-5) ? (IrrSum / WeightS) : float3(0.0);
-    if (BackHits > 22.0) OutIrr *= 0.25;
+    float  BackRatio = BackHits / 64.0;
 
     if (PassIdx == 0u)
     {
-        PingGiHdr[CellIdx * 64u + ThreadIdx] = float4(OutIrr, 1.0);
+        PingGiHdr[CellIdx * 64u + ThreadIdx] = float4(OutIrr, BackRatio);
         // Also populate 16x16 Chebyshev radial depth moments (4 texels per thread)
         for (uint Sub = 0u; Sub < 4u; ++Sub)
         {
@@ -3024,7 +3306,7 @@ void DdgiLatticeComputeEntry(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : S
                 float  DotV = max(0.0, dot(DDir, DD.xyz));
                 if (DotV > 0.0)
                 {
-                    float W = pow(DotV, 12.0);
+                    float W = pow(DotV, 16.0);
                     SumW  += W;
                     SumR  += DD.w * W;
                     SumR2 += (DD.w * DD.w) * W;
@@ -3037,7 +3319,120 @@ void DdgiLatticeComputeEntry(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : S
     }
     else
     {
-        IrradianceLatticeTexels[CellIdx * 64u + ThreadIdx] = float4(OutIrr, 1.0);
+        IrradianceLatticeTexels[CellIdx * 64u + ThreadIdx] = float4(OutIrr, BackRatio);
     }
+}
+
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void ReservoirSpatialReuseEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint Width  = uint(WorldUniforms.CameraUpWidth.w + 0.5);
+    uint Height = uint(WorldUniforms.CameraForwardHeight.w + 0.5);
+    if (DispatchThreadID.x >= Width || DispatchThreadID.y >= Height)
+    {
+        return;
+    }
+
+    uint   PixelIdx   = DispatchThreadID.y * Width + DispatchThreadID.x;
+    float4 CenterPos  = GBufPosMask[PixelIdx];
+    float4 CenterNorm = GBufNormAo[PixelIdx];
+
+    if (CenterPos.w <= 0.0 || !IsGiEnabled())
+    {
+        ReservoirHistoryBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        ReservoirHistoryBuffer[PixelIdx * 2u + 1u] = float4(0.0);
+        return;
+    }
+
+    float3 P1        = CenterPos.xyz;
+    float3 N1        = normalize(CenterNorm.xyz);
+    float3 CenterAlb = GBufAlbedo[PixelIdx].rgb;
+
+    float4 Cur0  = ReservoirCurrentBuffer[PixelIdx * 2u + 0u];
+    float4 Cur1  = ReservoirCurrentBuffer[PixelIdx * 2u + 1u];
+    uint   Meta  = asuint(Cur1.w);
+    uint   CM    = Meta & 0xFFFFu;
+    bool   CVal  = ((Meta & (1u << 16u)) != 0u);
+    bool   CSky  = ((Meta & (1u << 17u)) != 0u);
+
+    float3 CDir  = CSky ? normalize(Cur0.xyz) : normalize(Cur0.xyz - P1);
+    float  CPdf  = CVal ? (dot(Cur1.rgb, float3(0.2126, 0.7152, 0.0722)) * max(0.0, dot(N1, CDir)) * InvPiConst) : 0.0;
+    float  WSum  = CPdf * Cur0.w * float(CM);
+    float3 WPos  = Cur0.xyz;
+    float3 WRad  = Cur1.rgb;
+    float  WPdf  = CPdf;
+    uint   WSky  = CSky ? 1u : 0u;
+    uint   WVal  = CVal ? 1u : 0u;
+
+    uint SeqIdx = WorldUniforms.DenoiseStepParams.w;
+    uint Rng    = AvalancheKey32(DispatchThreadID.x * 747796405u + DispatchThreadID.y * 2891336453u + (SeqIdx + 1u) * 277803737u) | 1u;
+
+    for (uint Tap = 0u; Tap < 4u; ++Tap)
+    {
+        float Angle  = TauConst * ((float(Tap) + PcgFloat01(Rng)) * 0.25);
+        float Radius = 2.0 + 8.0 * sqrt(PcgFloat01(Rng));
+        int   NX     = clamp(int(round(float(DispatchThreadID.x) + cos(Angle) * Radius)), 0, int(Width) - 1);
+        int   NY     = clamp(int(round(float(DispatchThreadID.y) + sin(Angle) * Radius)), 0, int(Height) - 1);
+        uint  NIdx   = uint(NY) * Width + uint(NX);
+
+        float4 NPos = GBufPosMask[NIdx];
+        if (NPos.w <= 0.0) continue;
+        float3 NNrm = normalize(GBufNormAo[NIdx].xyz);
+        if (abs(dot(N1, NPos.xyz - P1)) > 0.08 || dot(N1, NNrm) < 0.90) continue;
+
+        float3 NAlb = GBufAlbedo[NIdx].rgb;
+        if (dot(abs(CenterAlb - NAlb), float3(1.0)) > 0.35) continue;
+
+        float4 N0    = ReservoirCurrentBuffer[NIdx * 2u + 0u];
+        float4 N1Buf = ReservoirCurrentBuffer[NIdx * 2u + 1u];
+        uint   NMeta = asuint(N1Buf.w);
+        uint   NM    = min(NMeta & 0xFFFFu, 16u);
+        if (((NMeta & (1u << 16u)) == 0u) || NM == 0u) continue;
+        bool   NSky  = ((NMeta & (1u << 17u)) != 0u);
+
+        float3 DirC  = NSky ? normalize(N0.xyz) : normalize(N0.xyz - P1);
+        float  CosC  = max(0.0, dot(N1, DirC));
+        float  NPdf  = dot(N1Buf.rgb, float3(0.2126, 0.7152, 0.0722)) * CosC * InvPiConst;
+        if (NPdf <= 1.0e-6) continue;
+
+        float Jacobian = 1.0;
+        if (!NSky)
+        {
+            float DistC = length(N0.xyz - P1);
+            if (DistC <= 0.02) continue;
+            if (TraceSceneAnyHit(P1 + N1 * 2.5e-3, DirC, 1.0e-3, max(0.01, DistC - 0.02))) continue;
+            float DistN = max(0.05, length(N0.xyz - NPos.xyz));
+            Jacobian = clamp((DistN * DistN) / (DistC * DistC), 0.0, 3.0);
+        }
+        else if (TraceSceneAnyHit(P1 + N1 * 2.5e-3, DirC, 1.0e-3, 80.0))
+        {
+            continue;
+        }
+
+        float NW = NPdf * Jacobian * N0.w * float(NM);
+        CM   += NM;
+        WSum += NW;
+        if (PcgFloat01(Rng) < (NW / max(1.0e-12, WSum)))
+        {
+            WPos = N0.xyz;
+            WRad = N1Buf.rgb;
+            WPdf = NPdf;
+            WSky = NSky ? 1u : 0u;
+            WVal = 1u;
+        }
+    }
+
+    float3 DirOut  = (WSky != 0u) ? normalize(WPos) : normalize(WPos - P1);
+    float  CosOut  = max(0.0, dot(N1, DirOut));
+    float  MaxRawW = (20.0 * PiConst) / max(1.0e-3, CosOut);
+    float  FinalW  = (WVal != 0u && WPdf > 1.0e-9 && CM > 0u) ? clamp(WSum / (float(CM) * WPdf), 0.0, MaxRawW) : 0.0;
+    CM             = min(CM, 24u);
+    float3 GiOut   = (WVal != 0u) ? (WRad * ((CosOut * InvPiConst) * FinalW)) : float3(0.0);
+
+    uint OutMeta = (CM & 0xFFFFu) | ((WVal & 1u) << 16u) | ((WSky & 1u) << 17u);
+    ReservoirHistoryBuffer[PixelIdx * 2u + 0u] = float4(WPos, FinalW);
+    ReservoirHistoryBuffer[PixelIdx * 2u + 1u] = float4(WRad, asfloat(OutMeta));
+    PingGiHdr[PixelIdx] = float4(GiOut, float(CM));
 }
 

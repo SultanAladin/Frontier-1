@@ -176,8 +176,17 @@ struct ForceMotionSpecification
     bool                                     OrientAlongPathTangent     = true;                           // [-]   - Align Euler rotation with path velocity
     uint32_t                                 WaypointCount              = 0u;                             // [count]- Active waypoints [0..16]
     std::array<SpatialVector3, MaxForceMotionWaypoints> Waypoints       {};                               // [m]   - Path knots A..P..B
-    float                                    NormalizedProgress         = 0.0f;                           // [0-1] - Most recently evaluated phase
-    float                                    EvaluatedArcLengthMeters   = 0.0f;                           // [m]   - Cached arc length
+    float                    NormalizedProgress         = 0.0f;                           // [0-1] - Most recently evaluated phase
+    float                    EvaluatedArcLengthMeters   = 0.0f;                           // [m]   - Cached arc length
+};
+
+struct WindFieldSubcomponent
+{
+    bool  DrivesAtmosphereAndClouds = true;    // [-] - Couple ForceSource into atmospheric/cloud WindField advection
+    bool  ProjectToCloudDeck        = true;    // [-] - Project horizontal influence across sky/cloud deck altitudes
+    float CloudAdvectionGain        = 1.0f;    // [x] - Advection velocity multiplier transferred to volumetric clouds
+    float TurbulenceSwirlGain       = 1.0f;    // [x] - Curl & vorticity multiplier driving cloud eddy shear
+    float CouplingScaleHeightMeters = 4500.0f; // [m] - Smooth atmospheric altitude coupling span when projecting
 };
 
 struct ForceSourceRecordEntry
@@ -219,6 +228,7 @@ struct ForceSourceRecordEntry
     std::string              FormulaSourceText    {};                                    // [-]     - VectorFieldLang expression
     uint32_t                 CompiledFormulaSlot  = 0u;                                  // [idx]   - Bytecode slot index when compiled
     ForceMotionSpecification Motion               {};                                    // [-]     - Optional waypoint motion path
+    WindFieldSubcomponent    WindField            {};                                    // [-]     - Atmospheric & volumetric cloud coupling subcomponent
 };
 
 struct alignas(16) ForceSourceShaderEntry

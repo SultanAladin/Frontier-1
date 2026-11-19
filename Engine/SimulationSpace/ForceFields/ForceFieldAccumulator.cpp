@@ -195,6 +195,96 @@ SpatialForceSample ForceFieldAccumulator::QueryForceFieldSample(
     return Accumulated;
 }
 
+SpatialForceSample ForceFieldAccumulator::QueryWindFieldSample(
+    const SpatialVector3& WorldPoint,
+    double                TimeSeconds,
+    bool                  ProjectAcrossCloudDeck) const noexcept
+{
+    bool HasSolo = false;
+    for (const ForceSourceRecordEntry& Entry : ActiveSources)
+    {
+        if (Entry.Enabled && Entry.Solo)
+        {
+            HasSolo = true;
+            break;
+        }
+    }
+
+    SpatialForceSample Accumulated{};
+    for (const ForceSourceRecordEntry& Entry : ActiveSources)
+    {
+        if (!Entry.Enabled || (HasSolo && !Entry.Solo) || !Entry.WindField.DrivesAtmosphereAndClouds)
+        {
+            continue;
+        }
+
+        const SpatialVector3 Centre = Entry.DynamicMotion ? Entry.EvaluatedCentreMeters : Entry.CentreMeters;
+        const float Dz = WorldPoint.Z - Centre.Z;
+        SpatialVector3 QueryPt = WorldPoint;
+        float AltitudeWeight = 1.0f;
+        if (ProjectAcrossCloudDeck && Entry.WindField.ProjectToCloudDeck)
+        {
+            const float DirectLimit = (Entry.Envelope == ReachEnvelopeCategory::Sphere)
+                ? std::max(10.0f, Entry.RadiusMeters * 0.35f)
+                : std::max(4.0f, std::min(Entry.RadiusMeters, Entry.HalfExtentsMeters.Z) * 0.45f);
+            const float AbsDz = std::abs(Dz);
+            if (AbsDz > DirectLimit)
+            {
+                const float Excess = AbsDz - DirectLimit;
+                const float Span   = std::max(500.0f, Entry.WindField.CouplingScaleHeightMeters);
+                const float BlendT = std::clamp(Excess / std::max(4.0f, DirectLimit * 0.65f), 0.0f, 1.0f);
+                const float SmoothT = BlendT * BlendT * (3.0f - 2.0f * BlendT);
+                QueryPt.Z = WorldPoint.Z + (Centre.Z - WorldPoint.Z) * SmoothT;
+                const float NormZ = Excess / Span;
+                AltitudeWeight = std::exp(-0.5f * NormZ * NormZ);
+            }
+        }
+
+        const float AdvGain = std::max(0.0f, Entry.WindField.CloudAdvectionGain) * AltitudeWeight;
+        if (AdvGain <= 1.0e-5f)
+        {
+            continue;
+        }
+
+        if (Entry.FormulaEnabled && !Entry.FormulaSourceText.empty())
+        {
+            for (const CompiledSlotEntry& Slot : CompiledFormulas)
+            {
+                if (Slot.UniqueToken == Entry.UniqueToken && Slot.Program.InstructionCount > 0u)
+                {
+                    const SpatialVector3 Vel = EvaluateCompiledFormula(Slot.Program, Entry, QueryPt, {}, TimeSeconds);
+                    Accumulated.AdvectionVelocity += Vel * AdvGain;
+                    break;
+                }
+            }
+            continue;
+        }
+
+        SpatialForceSample Partial{};
+        switch (QueryDomainForModel(Entry.Model))
+        {
+            case ForceDomainCategory::StreamTransport:
+                Partial = EvaluateStreamTransportModel(Entry, QueryPt, {}, TimeSeconds);
+                break;
+            case ForceDomainCategory::TurbulenceField:
+                Partial = EvaluateTurbulenceModel(Entry, QueryPt, {}, TimeSeconds);
+                break;
+            case ForceDomainCategory::VectorField:
+            default:
+                Partial = EvaluateVectorFieldModel(Entry, QueryPt, {}, TimeSeconds);
+                break;
+        }
+
+        const float SwirlGain = std::max(0.0f, Entry.WindField.TurbulenceSwirlGain) * AltitudeWeight;
+        Accumulated.AdvectionVelocity  += Partial.AdvectionVelocity * AdvGain;
+        Accumulated.LinearAcceleration += Partial.LinearAcceleration * AdvGain;
+        Accumulated.AngularTorque      += Partial.AngularTorque * SwirlGain;
+        Accumulated.DragDecayRate      += Partial.DragDecayRate * AltitudeWeight;
+    }
+
+    return Accumulated;
+}
+
 ForceDiagnosticsReading ForceFieldAccumulator::QueryAnemometerDiagnostics(
     const SpatialVector3& WorldPoint,
     double                TimeSeconds) const noexcept

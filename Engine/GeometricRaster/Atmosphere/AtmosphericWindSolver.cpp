@@ -154,17 +154,42 @@ ResolvedWindSample AtmosphericWindSolver::ResolveWindSample(
         Out.TurbulenceScalar       = std::clamp(GlobalWind.Turbulence + GlobalWind.GustStrength * 0.35f, 0.0f, 2.0f);
     }
 
-    // Hook ForceFieldAccumulator (all 19 analytical ForceModels: LinearWind, AtmosphericGust, RotationalColumn, CurlNoise, etc.)
+    // Hook ForceFieldAccumulator WindField subcomponent (fast single-pass advection + horizontal curl vorticity)
     if (OptionalForceFields != nullptr && OptionalForceFields->QueryActiveSourceCount() > 0u)
     {
-        const auto Diag = OptionalForceFields->QueryAnemometerDiagnostics(
+        const bool ProjectToClouds = (Source == WindBindingSource::CloudWind ||
+                                      Source == WindBindingSource::LocalCloudWind ||
+                                      Source == WindBindingSource::GlobalWind ||
+                                      Source == WindBindingSource::ForceFieldCascade);
+        const auto WF = OptionalForceFields->QueryWindFieldSample(
             ToSpatialVec(WorldPoint),
-            static_cast<double>(TimeSeconds));
-        Out.VelocityMetersPerSec.X += Diag.TotalForce.AdvectionVelocity.X + Diag.TotalForce.LinearAcceleration.X * 0.5f;
-        Out.VelocityMetersPerSec.Y += Diag.TotalForce.AdvectionVelocity.Y + Diag.TotalForce.LinearAcceleration.Y * 0.5f;
-        Out.VelocityMetersPerSec.Z += Diag.TotalForce.AdvectionVelocity.Z + Diag.TotalForce.LinearAcceleration.Z * 0.5f;
-        Out.CurlScalar             += Diag.CurlMagnitude;
-        Out.TurbulenceScalar       = std::max(Out.TurbulenceScalar, std::clamp(Diag.CurlMagnitude * 0.35f, 0.0f, 2.0f));
+            static_cast<double>(TimeSeconds),
+            ProjectToClouds);
+
+        const float VX = WF.AdvectionVelocity.X + WF.LinearAcceleration.X * 0.5f;
+        const float VY = WF.AdvectionVelocity.Y + WF.LinearAcceleration.Y * 0.5f;
+        const float VZ = WF.AdvectionVelocity.Z + WF.LinearAcceleration.Z * 0.5f;
+        Out.VelocityMetersPerSec.X += VX;
+        Out.VelocityMetersPerSec.Y += VY;
+        Out.VelocityMetersPerSec.Z += VZ;
+
+        // Fast horizontal vorticity estimate (2-tap central-adjacent delta + direct rotational torque)
+        constexpr float DeltaH = 1.5f;
+        const auto WFx = OptionalForceFields->QueryWindFieldSample(
+            { WorldPoint.X + DeltaH, WorldPoint.Y, WorldPoint.Z, 0.0f },
+            static_cast<double>(TimeSeconds),
+            ProjectToClouds);
+        const auto WFy = OptionalForceFields->QueryWindFieldSample(
+            { WorldPoint.X, WorldPoint.Y + DeltaH, WorldPoint.Z, 0.0f },
+            static_cast<double>(TimeSeconds),
+            ProjectToClouds);
+        const float dVy_dx = ((WFx.AdvectionVelocity.Y + WFx.LinearAcceleration.Y * 0.5f) - VY) / DeltaH;
+        const float dVx_dy = ((WFy.AdvectionVelocity.X + WFy.LinearAcceleration.X * 0.5f) - VX) / DeltaH;
+        const float TorqueMag = SimulationSpace::ForceFields::VectorLength(WF.AngularTorque);
+        const float LocalCurl = std::abs(dVy_dx - dVx_dy) + TorqueMag * 0.25f;
+
+        Out.CurlScalar       += LocalCurl;
+        Out.TurbulenceScalar  = std::max(Out.TurbulenceScalar, std::clamp(LocalCurl * 0.35f, 0.0f, 2.0f));
     }
 
     // Hook 4-tier FieldLatticeCascade (Near/Zone/District/Weather) when provided
@@ -182,6 +207,66 @@ ResolvedWindSample AtmosphericWindSolver::ResolveWindSample(
     }
 
     return Out;
+}
+
+Mathematics::Axis3D AtmosphericWindSolver::AdvectWorldPointBackward(
+    const AtmosphericWindParameters&                           GlobalWind,
+    float                                                      DeckWindSpeedMps,
+    float                                                      DeckWindBearingDeg,
+    WindBindingSource                                          Source,
+    const Mathematics::Axis3D&                                 WorldPoint,
+    float                                                      AltitudeMeters,
+    float                                                      TotalSeconds,
+    const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields,
+    const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice,
+    float*                                                     OutCurlScalar) noexcept
+{
+    if (std::abs(TotalSeconds) <= 1.0e-4f)
+    {
+        if (OutCurlScalar != nullptr)
+        {
+            const auto W0 = ResolveWindSample(
+                GlobalWind, DeckWindSpeedMps, DeckWindBearingDeg, Source,
+                WorldPoint, AltitudeMeters, 0.0f, OptionalForceFields, OptionalLattice);
+            *OutCurlScalar = W0.CurlScalar;
+        }
+        return WorldPoint;
+    }
+
+    // 4-step RK2 Semi-Lagrangian backward streamline advection (strictly monotone forward flow, never reverses)
+    constexpr uint32_t Steps = 4u;
+    const float Dt = TotalSeconds / static_cast<float>(Steps);
+    Mathematics::Axis3D Pos = WorldPoint;
+    float CurlAcc = 0.0f;
+
+    for (uint32_t Step = 0u; Step < Steps; ++Step)
+    {
+        const float TNow = TotalSeconds - static_cast<float>(Step) * Dt;
+        const auto K1 = ResolveWindSample(
+            GlobalWind, DeckWindSpeedMps, DeckWindBearingDeg, Source,
+            Pos, AltitudeMeters, TNow, OptionalForceFields, OptionalLattice);
+        CurlAcc = std::max(CurlAcc, K1.CurlScalar);
+
+        const Mathematics::Axis3D MidPos {
+            Pos.X - 0.5f * Dt * K1.VelocityMetersPerSec.X,
+            Pos.Y - 0.5f * Dt * K1.VelocityMetersPerSec.Y,
+            Pos.Z - 0.5f * Dt * K1.VelocityMetersPerSec.Z,
+        };
+        const auto K2 = ResolveWindSample(
+            GlobalWind, DeckWindSpeedMps, DeckWindBearingDeg, Source,
+            MidPos, AltitudeMeters, TNow - 0.5f * Dt, OptionalForceFields, OptionalLattice);
+        CurlAcc = std::max(CurlAcc, K2.CurlScalar);
+
+        Pos.X -= Dt * K2.VelocityMetersPerSec.X;
+        Pos.Y -= Dt * K2.VelocityMetersPerSec.Y;
+        Pos.Z -= Dt * K2.VelocityMetersPerSec.Z;
+    }
+
+    if (OutCurlScalar != nullptr)
+    {
+        *OutCurlScalar = CurlAcc;
+    }
+    return Pos;
 }
 
 } // namespace Frontier::GeometricRaster
