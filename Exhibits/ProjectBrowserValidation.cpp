@@ -49,7 +49,7 @@ int main()
     // 1. Validate WorkspaceCapabilityRegister
     Workspaces::WorkspaceCapabilityRegister CapReg {};
     const auto AllCaps = CapReg.QueryAllCapabilities();
-    if (AllCaps.size() != 11u ||
+    if (AllCaps.size() != 12u ||
         AllCaps[0].Identifier != "Frontier" ||
         AllCaps[0].ActionTitle != "Open with Frontier" ||
         AllCaps[1].Identifier != "UVWorkspace" ||
@@ -71,24 +71,28 @@ int main()
         AllCaps[9].Identifier != "ParticleWorkspace" ||
         AllCaps[9].ActionTitle != "Open with Particle Studio" ||
         AllCaps[10].Identifier != "ForceFieldWorkspace" ||
-        AllCaps[10].ActionTitle != "Open with ForceField Studio")
+        AllCaps[10].ActionTitle != "Open with ForceField Studio" ||
+        AllCaps[11].Identifier != "ComponentEditor" ||
+        AllCaps[11].ActionTitle != "Open with Component Editor")
     {
-        std::fprintf(stderr, "[FAIL] WorkspaceCapabilityRegister expected all 11 Frontier workspace capabilities.\n");
+        std::fprintf(stderr, "[FAIL] WorkspaceCapabilityRegister expected all 12 Frontier workspace capabilities.\n");
         return 1;
     }
 
-    const auto ProjPermitted     = CapReg.QueryPermittedForPath("Demo.projectspace");
-    const auto UvPermitted       = CapReg.QueryPermittedForPath("Housing.UVSpace");
-    const auto VecPermitted      = CapReg.QueryPermittedForPath("MotifTile.VectorSpace");
-    const auto BakePermitted     = CapReg.QueryPermittedForPath("Statue.stl");
-    const auto FracturePermitted = CapReg.QueryPermittedForPath("Column.FractureSpace");
-    const auto SketcherPermitted = CapReg.QueryPermittedForPath("Bracket.solidarc");
+    const auto ProjPermitted      = CapReg.QueryPermittedForPath("Demo.projectspace");
+    const auto UvPermitted        = CapReg.QueryPermittedForPath("Housing.UVSpace");
+    const auto VecPermitted       = CapReg.QueryPermittedForPath("MotifTile.VectorSpace");
+    const auto BakePermitted      = CapReg.QueryPermittedForPath("Statue.stl");
+    const auto FracturePermitted  = CapReg.QueryPermittedForPath("Column.FractureSpace");
+    const auto SketcherPermitted  = CapReg.QueryPermittedForPath("Bracket.solidarc");
+    const auto ComponentPermitted = CapReg.QueryPermittedForPath("Chassis.ComponentSpace");
     if (ProjPermitted.empty() || ProjPermitted.front().Target != Workspaces::HostWorkspaceTarget::FrontierWorld ||
         UvPermitted.empty() || UvPermitted.front().Target != Workspaces::HostWorkspaceTarget::UVWorkspace ||
         VecPermitted.empty() || VecPermitted.front().Target != Workspaces::HostWorkspaceTarget::PatternWorkspace ||
         BakePermitted.empty() || BakePermitted.front().Target != Workspaces::HostWorkspaceTarget::BakingWorkspace ||
         FracturePermitted.empty() || FracturePermitted.front().Target != Workspaces::HostWorkspaceTarget::FractureWorkspace ||
-        SketcherPermitted.empty() || SketcherPermitted.front().Target != Workspaces::HostWorkspaceTarget::SketcherWorkspace)
+        SketcherPermitted.empty() || SketcherPermitted.front().Target != Workspaces::HostWorkspaceTarget::SketcherWorkspace ||
+        ComponentPermitted.empty() || ComponentPermitted.front().Target != Workspaces::HostWorkspaceTarget::ComponentEditorWorkspace)
     {
         std::fprintf(stderr, "[FAIL] WorkspaceCapabilityRegister path priority mismatch.\n");
         return 1;

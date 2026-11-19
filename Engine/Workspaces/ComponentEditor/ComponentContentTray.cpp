@@ -48,7 +48,7 @@ void ComponentContentTray::Render(
     WorkspaceAppearance::ConstructWeightedText(
         Surface, FontWeightClass::SemiBold, { Bounds.X + PadX, Y }, 17.5f, WorkspaceSurfaceColors::PrimaryInk, "Content");
     char CountBuf[40] {};
-    std::snprintf(CountBuf, sizeof(CountBuf), "compiled assets · %zu", Session.Catalog.size());
+    std::snprintf(CountBuf, sizeof(CountBuf), "compiled assets · %zu", Session.Repository.size());
     WorkspaceAppearance::ConstructRightAlignedText(
         Surface, FontWeightClass::Regular, { Bounds.Right() - PadX, Y + 5.0f }, 10.0f, WorkspaceSurfaceColors::MutedInk, CountBuf);
     Y += 32.0f;
@@ -102,7 +102,7 @@ void ComponentContentTray::Render(
     Surface.PushClip(ListRect);
     float TileY = ListRect.Y - ScrollOffsetPx;
 
-    for (const auto& Entry : Session.Catalog)
+    for (const auto& Entry : Session.Repository)
     {
         const Rectangle2D Tile { Bounds.X + PadX, TileY, InnerW, 114.0f };
         TileY += 122.0f;
@@ -136,7 +136,7 @@ void ComponentContentTray::Render(
         bool InUse = false;
         if (ActiveDoc != nullptr)
         {
-            ActiveDoc->ClassDefinition.Storage.WalkSpatialHierarchy([&](const ComponentClass::ComponentInstanceHeader& H)
+            ActiveDoc->ClassDefinition.Storage.WalkSpatialNesting([&](const ComponentClass::ComponentInstanceHeader& H)
             {
                 if (H.Category == ComponentClass::ComponentCategory::GeometryInstance)
                 {
@@ -181,7 +181,7 @@ void ComponentContentTray::Render(
             Session.AddComponentToActive(
                 ComponentClass::ComponentCategory::GeometryInstance,
                 Entry.DisplayTitle,
-                ComponentClass::PhysicsConstraintKind::Fixed,
+                ComponentClass::PhysicsConstraintCategory::Fixed,
                 Entry.AssetIdentifier);
         }
         if (CapsuleButton::Construct(Surface, B2, ButtonDescriptor{ "New Class", ButtonTone::Secondary, 10.2f, 8.0f }, Ptr).Clicked)

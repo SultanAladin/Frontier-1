@@ -177,7 +177,7 @@ SpecimenPreviewImage RasterizeMaterialSpecimenPreview(
                     { 0.0f, 1.0f, 0.0f });
             }
             const Mathematics::Axis3D BitangentY = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Normal, TangentX));
-            const Scattering::SurfaceShadingFrame Frame { TangentX, BitangentY, Normal };
+            const Scattering::SurfaceShadingBasis Frame { TangentX, BitangentY, Normal };
             const Mathematics::Axis3D LocalWo = Frame.WorldToLocal(Outgoing);
 
             // Spherical UV + screen footprint Jacobian for Kemppinen 2025 multiscale glints!

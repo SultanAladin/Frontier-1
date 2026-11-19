@@ -69,7 +69,7 @@ struct CloudDeckConfiguration
 {
     bool                     CloudsEnabled            = true;
     bool                     FollowWindEnabled        = true;
-    WindBindingSource        WindSource               = WindBindingSource::CloudWind;
+    WindCouplingSource        WindSource               = WindCouplingSource::CloudWind;
     CloudCategoryType        Category                 = CloudCategoryType::Cumulus;
     float                    CloudFraction            = 0.34f;   // [0..1]   - Fractional sky cover
     float                    ExtinctionMultiplier     = 2.40f;   // [x]      - Volumetric optical density scale [0..4]
@@ -93,7 +93,7 @@ struct BoundedCloudVolume
 {
     bool                   LocalEnabled             = false;
     bool                   FollowWindEnabled        = true;
-    WindBindingSource      WindSource               = WindBindingSource::LocalCloudWind;
+    WindCouplingSource      WindSource               = WindCouplingSource::LocalCloudWind;
     AtmosphericVolumeShape Shape                    = AtmosphericVolumeShape::Box;
     uint32_t               PrismSides               = 6u;
     Mathematics::Axis3D    VolumeCenterMeters       { -100.0f, 260.0f, 130.0f };

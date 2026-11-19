@@ -98,7 +98,7 @@ struct DrawingTitleBlock
     std::string Company       = "Frontier";                                                  // [-] - Organisation
 };
 
-enum class DrawingDimensionKind : uint8_t
+enum class DrawingDimensionCategory : uint8_t
 {
     Horizontal = 0,                                                                          // Along the sheet 𝑥
     Vertical   = 1,                                                                          // Along the sheet 𝑦
@@ -109,7 +109,7 @@ enum class DrawingDimensionKind : uint8_t
 // 📝 Feature points and Value come from the projected geometry (exact); the rest is placement.
 struct DrawingDimension
 {
-    DrawingDimensionKind Kind         = DrawingDimensionKind::Horizontal;                    // [-]   - Kind
+    DrawingDimensionCategory Kind         = DrawingDimensionCategory::Horizontal;                    // [-]   - Kind
     int                  View         = 0;                                                   // [-]   - Index into DrawingSheet::Views
     double               Value        = 0.0;                                                 // [len] - Model length (× ModelUnitMillimetres in the text)
     std::string          Text         = {};                                                  // [-]   - "40", "⌀6", "R3"
@@ -139,7 +139,7 @@ struct DrawingSheetRequest
     double                          Scale                = 0.0;                               // [-]  - Paper : model, 0 → largest standard scale that fits
     double                          ModelUnitMillimetres = 1.0;                               // [mm] - Length of one model unit
     bool                            IsometricEnabled     = true;                              // [-]  - Isometric in the free quadrant (unless a section takes it)
-    std::optional<OrthonormalFrame> Section              = {};                                // [-]  - Section A-A (material on −ZAxis kept, seen from +ZAxis)
+    std::optional<OrthonormalBasis> Section              = {};                                // [-]  - Section A-A (material on −ZAxis kept, seen from +ZAxis)
     bool                            HiddenLinesEnabled   = true;                              // [-]  - Dashed hidden lines
     bool                            TangentEdgesEnabled  = true;                              // [-]  - Thin tangent edges
     bool                            DimensionsEnabled    = true;                              // [-]  - Automatic dimensions and centre marks

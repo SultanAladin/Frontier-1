@@ -41,7 +41,7 @@ struct ViewportOverlayUniforms
     float4   AnemometerWorldActive;   // xyz = Anemometer [m], w = Active(0/1)
 };
 
-struct DrawObjectPushConstants
+struct RenderInstancePushConstants
 {
     uint ObjectIndex;     // [idx] - Source index, instance offset, or shape slot
     uint SubMode;         // [-]   - Plane axis / shape kind / path mode

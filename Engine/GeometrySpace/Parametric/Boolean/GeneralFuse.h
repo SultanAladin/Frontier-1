@@ -11,7 +11,7 @@
 
 #include "Engine/GeometrySpace/Parametric/Containment/WindingNumber.h"
 #include "Engine/GeometrySpace/Parametric/Intersection/SurfaceIntersection.h"
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <cstdint>
 #include <string>
@@ -36,7 +36,7 @@ enum class BooleanOperation : uint8_t
 };
 
 // 📝 State of a split face relative to the OTHER argument (OCCT: IN / OUT / ON with same or opposite orientation).
-enum class FragmentState : uint8_t
+enum class FragmentCondition : uint8_t
 {
     Inside     = 0,                                                                          // Inside the other solid
     Outside    = 1,                                                                          // Outside the other solid
@@ -70,7 +70,7 @@ struct GeneralFuseStatistics
     int    SectionEdges       = 0;                                                           // [-]  - Section pave blocks
     int    ImprintedEdges     = 0;                                                           // [-]  - Argument edges lying in the other's faces
     int    Fragments[2]       = { 0, 0 };                                                    // [-]  - Split faces per argument
-    int    States[4]          = { 0, 0, 0, 0 };                                              // [-]  - Fragments per FragmentState
+    int    States[4]          = { 0, 0, 0, 0 };                                              // [-]  - Fragments per FragmentCondition
     int    PropagatedStates   = 0;                                                           // [-]  - Fragments that took a neighbour's state
     int    DroppedCycles      = 0;                                                           // [-]  - Degenerate face-finding cycles
     double IntersectMilliseconds = 0.0;                                                      // [ms] - Interference phase
@@ -114,7 +114,7 @@ struct FuseFragment
     SurfaceGeometry                   Surface   = PlaneSurface{};                            // [-] - Carrier
     Orientation                       Sense     = Orientation::Forward;                      // [-] - Outward vs surface normal
     std::vector<std::vector<FuseUse>> Loops     = {};                                        // [-] - Outer first, then holes
-    FragmentState                     State     = FragmentState::Outside;                    // [-] - Against the other argument
+    FragmentCondition                     State     = FragmentCondition::Outside;                    // [-] - Against the other argument
     Vector3                           Probe     = {};                                        // [len] - Classification point
 };
 
@@ -133,7 +133,7 @@ struct FaceHistory
     FaceToken     Result   = {};                                                             // [-] - Face of the result body
     int           Argument = 0;                                                              // [-] - 0 = A, 1 = B
     FaceToken     Source   = {};                                                             // [-] - Argument face it was split from
-    FragmentState State    = FragmentState::Outside;                                         // [-] - Classification that kept it
+    FragmentCondition State    = FragmentCondition::Outside;                                         // [-] - Classification that kept it
     bool          Flipped  = false;                                                          // [-] - Orientation reversed (B in A − B)
 };
 
@@ -189,6 +189,6 @@ struct BooleanOutcome
 [[nodiscard]] BooleanOutcome ImprintBody(ModelPartition& Partition, BodyToken Body, BodyToken Tool, const Vector3& PlaneOrigin, const Vector3& PlaneNormal, int& Faces);
 
 [[nodiscard]] const char* BooleanOperationLabel(BooleanOperation Operation) noexcept;
-[[nodiscard]] const char* FragmentStateLabel(FragmentState State) noexcept;
+[[nodiscard]] const char* FragmentStateLabel(FragmentCondition State) noexcept;
 
 } // namespace Frontier::GeometrySpace::Parametric

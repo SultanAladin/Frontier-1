@@ -20,7 +20,7 @@ namespace Frontier::Workspaces::Sketcher
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-bool NavigateSketcherPointer(OrbitCamera& Camera, const OrbitCameraFrame& Frame, const SketcherNavigationPointer& Pointer)
+bool NavigateSketcherPointer(OrbitCamera& Camera, const OrbitCameraBasis& Frame, const SketcherNavigationPointer& Pointer)
 {
     bool MovedCondition = false;
     if (Pointer.CapturedCondition)
@@ -45,7 +45,7 @@ bool NavigateSketcherPointer(OrbitCamera& Camera, const OrbitCameraFrame& Frame,
 }
 
 std::optional<OrbitViewPreset> NavigateSketcherKeypad(OrbitCamera& Camera, const SketcherNavigationKeypad& Keypad,
-                                                      const OrbitCameraFrame* Frame, bool* MovedOut)
+                                                      const OrbitCameraBasis* Frame, bool* MovedOut)
 {
     constexpr double HalfPi    = 0.5 * std::numbers::pi;
     constexpr double OrbitStep = std::numbers::pi / 12.0;                                    // [rad] - 15° Blender numpad orbit step
@@ -74,7 +74,7 @@ std::optional<OrbitViewPreset> NavigateSketcherKeypad(OrbitCamera& Camera, const
         const double Vert  = (Keypad.OrbitUpPressed ? 1.0 : 0.0) - (Keypad.OrbitDownPressed ? 1.0 : 0.0);
         if (Keypad.ControlCondition)
         {
-            const OrbitCameraFrame Fallback = Frame ? *Frame : FrameOrbitCamera(Camera, 800.0, 600.0);
+            const OrbitCameraBasis Fallback = Frame ? *Frame : FrameOrbitCamera(Camera, 800.0, 600.0);
             PanOrbitCamera(Camera, Fallback, -Horiz * PanPixels, Vert * PanPixels);
         }
         else

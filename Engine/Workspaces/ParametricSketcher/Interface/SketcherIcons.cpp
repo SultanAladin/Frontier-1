@@ -174,18 +174,18 @@ void AppendRectContour(std::vector<VectorIconRepository::Contour>& Out, float X,
     return Ex * Ex + Ey * Ey;
 }
 
-struct IconPresentationState
+struct IconPresentationMode
 {
     std::filesystem::path      Root {};
     std::unique_ptr<IconAtlas> Current {};
     std::unique_ptr<IconAtlas> Retired {};
 
-    explicit IconPresentationState(std::filesystem::path IconsRoot)
+    explicit IconPresentationMode(std::filesystem::path IconsRoot)
         : Root(std::move(IconsRoot))
     {
     }
 
-    ~IconPresentationState()
+    ~IconPresentationMode()
     {
         Forget(Retired);
         Forget(Current);
@@ -394,7 +394,7 @@ struct IconPresentationState
 
 void HookCallback(ImGuiContext*, ImGuiContextHook* H)
 {
-    auto* P = static_cast<IconPresentationState*>(H->UserData);
+    auto* P = static_cast<IconPresentationMode*>(H->UserData);
     if (H->Type == ImGuiContextHookType_NewFramePre)
     {
         P->Frame();
@@ -405,7 +405,7 @@ void HookCallback(ImGuiContext*, ImGuiContextHook* H)
     }
 }
 
-IconPresentationState* FindPresentation()
+IconPresentationMode* FindPresentation()
 {
     ImGuiContext* Context = ImGui::GetCurrentContext();
     if (!Context)
@@ -416,7 +416,7 @@ IconPresentationState* FindPresentation()
     {
         if (H.Callback == HookCallback && H.Type == ImGuiContextHookType_Shutdown)
         {
-            return static_cast<IconPresentationState*>(H.UserData);
+            return static_cast<IconPresentationMode*>(H.UserData);
         }
     }
     return nullptr;
@@ -439,7 +439,7 @@ void SketcherIconPresentation::Attach(const std::filesystem::path& IconsRoot)
             Resolved = Fallback;
         }
     }
-    auto P = std::make_unique<IconPresentationState>(Resolved);
+    auto P = std::make_unique<IconPresentationMode>(Resolved);
     P->Frame();
     ImGuiContextHook H;
     H.Callback = HookCallback;

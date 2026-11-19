@@ -32,7 +32,7 @@ enum class ComponentCategory : uint8_t
     ConstraintInstance = 3u,  // [-] - Physics-backed Jolt two-body constraint replacing legacy sockets
     ParticleInstance   = 4u,  // [-] - GPU compute .ParticleSpace source attached to component transform
     FluidInstance      = 5u,  // [-] - Eulerian .VolumetricSpace / FluidSpace smoke/fire/liquid emitter
-    LightInstance      = 6u,  // [-] - PointEmission, SpotBeam, or AreaEmitter light source
+    LightInstance      = 6u,  // [-] - PointEmission, SpotBeam, or AreaLightSource light source
     CameraInstance     = 7u,  // [-] - Perspective lens & frustum preview with Look-Through pilot mode
     CollisionVolume    = 8u,  // [-] - Box, Sphere, or Capsule Jolt collision / overlap proxy
     DirectionArrow     = 9u,  // [-] - Shaded +X orientation arrow visual
@@ -40,7 +40,7 @@ enum class ComponentCategory : uint8_t
     RotationalMotion   = 11u, // [-] - Non-transform continuous angular velocity driver
 };
 
-enum class PhysicsConstraintKind : uint8_t
+enum class PhysicsConstraintCategory : uint8_t
 {
     Fixed  = 0u, // [-] - Rigid 6-DOF weld with optional strain rupture
     Hinge  = 1u, // [-] - Single-axis revolute joint with angular limits & Hold/Steer/Sway motor
@@ -68,14 +68,14 @@ enum class ConstraintDriveMode : uint8_t
     Freewheel = 4u, // [-] - Unpowered coasting spin
 };
 
-enum class LightEmitterKind : uint8_t
+enum class LightSourceCategory : uint8_t
 {
     PointEmission = 0u, // [-] - Omnidirectional inverse-square point light
     SpotBeam      = 1u, // [-] - Directional cone spotlight along +X
-    AreaEmitter   = 2u, // [-] - Rectangular LTC area emitter
+    AreaLightSource   = 2u, // [-] - Rectangular LTC area emitter
 };
 
-enum class CollisionVolumeKind : uint8_t
+enum class CollisionVolumeCategory : uint8_t
 {
     Box     = 0u, // [-] - Axis-aligned half-extents box
     Sphere  = 1u, // [-] - Uniform radius sphere
@@ -89,14 +89,14 @@ enum class GeometryCollisionProfile : uint8_t
     NoCollision = 2u, // [-] - Render-only geometry without physics proxy
 };
 
-enum class FluidEmissionKind : uint8_t
+enum class FluidSourceCategory : uint8_t
 {
     Smoke = 0u, // [-] - Buoyant soot & vapour plume
     Fire  = 1u, // [-] - Combustive thermal plume
     Steam = 2u, // [-] - Pressurized condensation jet
 };
 
-enum class CurveInterpolationKind : uint8_t
+enum class CurveInterpolationForm : uint8_t
 {
     Linear       = 0u, // [-] - Piecewise linear segments
     SmoothSpline = 1u, // [-] - Catmull-Rom smooth spline
@@ -132,7 +132,7 @@ struct GeometryComponentSettings
 
 struct ConstraintComponentSettings
 {
-    PhysicsConstraintKind Kind                 = PhysicsConstraintKind::Fixed; // [-]    - Active physics constraint kind
+    PhysicsConstraintCategory Form                 = PhysicsConstraintCategory::Fixed; // [-]    - Active physics constraint kind
     ConstraintAxis        Axis                 = ConstraintAxis::AxisY;        // [-]    - Primary joint axis (X, Y, Z)
     ConstraintDriveMode   DriveMode            = ConstraintDriveMode::Hold;    // [-]    - Motor/input driver behaviour
     float                 MinAngleDegrees      = -32.0f;                       // [deg]  - Lower hinge limit
@@ -168,7 +168,7 @@ struct ParticleComponentSettings
 struct FluidComponentSettings
 {
     std::string           VolumeIdentifier   { "TyreSmokePlume" };          // [-]      - VolumetricSpace / Fluid preset identifier
-    FluidEmissionKind     EmissionMode       = FluidEmissionKind::Smoke;    // [-]      - Smoke, Fire, or Steam emission regime
+    FluidSourceCategory     EmissionMode       = FluidSourceCategory::Smoke;    // [-]      - Smoke, Fire, or Steam emission regime
     Mathematics::Scalar3D BoundsExtentMeters { 0.80f, 0.80f, 1.20f };       // [m]      - Emitter volume half-extents
     float                 BuoyancyScale      = 1.2f;                        // [1]      - Thermal lift multiplier
     float                 FuelInjectionRate  = 0.45f;                       // [kg/s]   - Scalar fuel/smoke injection rate
@@ -177,7 +177,7 @@ struct FluidComponentSettings
 
 struct LightComponentSettings
 {
-    LightEmitterKind      Kind                   = LightEmitterKind::SpotBeam; // [-]   - PointEmission, SpotBeam, or AreaEmitter
+    LightSourceCategory      Form                   = LightSourceCategory::SpotBeam; // [-]   - PointEmission, SpotBeam, or AreaLightSource
     Mathematics::Scalar3D LinearColourRGB        { 1.0f, 0.96f, 0.88f };       // [0-1] - Linear RGB emitter chromaticity
     float                 IntensityCandela       = 1200.0f;                    // [cd]  - Luminous intensity
     float                 AttenuationRangeMeters = 12.0f;                      // [m]   - Cutoff attenuation radius
@@ -197,7 +197,7 @@ struct CameraComponentSettings
 
 struct CollisionVolumeSettings
 {
-    CollisionVolumeKind   Kind               = CollisionVolumeKind::Box; // [-] - Box, Sphere, or Capsule shape
+    CollisionVolumeCategory   Form               = CollisionVolumeCategory::Box; // [-] - Box, Sphere, or Capsule shape
     Mathematics::Scalar3D HalfExtentsMeters  { 0.95f, 0.24f, 0.28f };    // [m] - Box half-extents
     float                 RadiusMeters       = 0.35f;                    // [m] - Sphere / Capsule radius
     float                 HalfHeightMeters   = 0.45f;                    // [m] - Capsule cylindrical half-height
@@ -227,7 +227,7 @@ struct VehicleDynamicsSettings
     float                               AeroLiftAreaM2       = 1.40f;                                 // [m^2]   - Downforce lift area feeding RearWing load
     float                               FinalDriveRatio      = 3.72f;                                 // [-]     - Differential final drive ratio
     std::array<float, 6u>               GearRatios           { 3.36f, 2.07f, 1.43f, 1.09f, 0.87f, 0.72f }; // [-] - 6-speed gearbox ratios
-    CurveInterpolationKind              Interpolation        = CurveInterpolationKind::SmoothSpline;  // [-]     - Torque curve interpolation law
+    CurveInterpolationForm              Interpolation        = CurveInterpolationForm::SmoothSpline;  // [-]     - Torque curve interpolation law
     std::vector<EngineTorqueSample>     TorqueCurve          {};                                      // [-]     - Ordered [rpm, N*m] curve points
     std::vector<ComponentInstanceToken> BoundWheelTokens     {};                                      // [-]     - Tyre/wheel GeometryInstances driven by solver
 };
@@ -243,9 +243,9 @@ struct ComponentInstanceHeader
     ComponentInstanceToken Token              {};                              // [id]   - Generation-checked instance identity
     ComponentCategory      Category           = ComponentCategory::TransformPivot; // [-] - Typed component category
     std::string            Title              {};                              // [-]    - Unique instance name inside ComponentClass
-    uint32_t               EnclosingIndex     = InvalidHierarchyIndex;         // [idx]  - Enclosing parent index in flat storage
-    uint32_t               FirstNestedIndex   = InvalidHierarchyIndex;         // [idx]  - First nested instance index
-    uint32_t               NextPeerIndex      = InvalidHierarchyIndex;         // [idx]  - Next sibling peer index under same EnclosingIndex
+    uint32_t               EnclosingIndex     = InvalidNestingIndex;         // [idx]  - Enclosing parent index in flat storage
+    uint32_t               FirstNestedIndex   = InvalidNestingIndex;         // [idx]  - First nested instance index
+    uint32_t               NextPeerIndex      = InvalidNestingIndex;         // [idx]  - Next sibling peer index under same EnclosingIndex
     uint16_t               DepthLevel         = 0u;                            // [cnt]  - Hierarchy indentation depth (0 = SpatialOrigin)
     uint32_t               CategorySlotIndex  = 0u;                            // [idx]  - Index inside typed category array
     ComponentTransform     LocalTransform     {};                              // [-]    - Local transform (unused for Behaviour categories)
@@ -279,18 +279,18 @@ struct ComponentInstanceHeader
     return "Component";
 }
 
-[[nodiscard]] constexpr const char* QueryConstraintKindLabel(PhysicsConstraintKind Kind) noexcept
+[[nodiscard]] constexpr const char* QueryConstraintCategoryLabel(PhysicsConstraintCategory Form) noexcept
 {
-    switch (Kind)
+    switch (Form)
     {
-        case PhysicsConstraintKind::Fixed:  return "Fixed";
-        case PhysicsConstraintKind::Hinge:  return "Hinge";
-        case PhysicsConstraintKind::Slider: return "Slider";
-        case PhysicsConstraintKind::Ball:   return "Ball";
-        case PhysicsConstraintKind::Spring: return "Spring";
-        case PhysicsConstraintKind::Spin:   return "Spin";
-        case PhysicsConstraintKind::Tether: return "Tether";
-        case PhysicsConstraintKind::Dock:   return "Dock";
+        case PhysicsConstraintCategory::Fixed:  return "Fixed";
+        case PhysicsConstraintCategory::Hinge:  return "Hinge";
+        case PhysicsConstraintCategory::Slider: return "Slider";
+        case PhysicsConstraintCategory::Ball:   return "Ball";
+        case PhysicsConstraintCategory::Spring: return "Spring";
+        case PhysicsConstraintCategory::Spin:   return "Spin";
+        case PhysicsConstraintCategory::Tether: return "Tether";
+        case PhysicsConstraintCategory::Dock:   return "Dock";
     }
     return "Constraint";
 }

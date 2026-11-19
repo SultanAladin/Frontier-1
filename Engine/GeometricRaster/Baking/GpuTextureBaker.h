@@ -45,7 +45,7 @@ struct BakeCompletionSummary
     bool                    VolumeSucceeded  = false;
     double                  SurfaceElapsedMs = 0.0;
     double                  VolumeElapsedMs  = 0.0;
-    BakeAccelerationBackend ExecutedBackend  = BakeAccelerationBackend::GtxComputeBvh4;
+    BakeAccelerationEngine ExecutedBackend  = BakeAccelerationEngine::GtxComputeBvh4;
     std::string             DiagnosticText   {};
 };
 
@@ -82,13 +82,13 @@ public:
     [[nodiscard]] bool QueryStudyUploaded() const noexcept { return Accel.Ready(); }
     [[nodiscard]] bool QueryHardwareRayQueryAvailable() const noexcept { return Accel.QueryHardwareAccelReady(); }
     [[nodiscard]] bool QueryRtxShadersLoaded() const noexcept { return RtxProgramsLoaded; }
-    [[nodiscard]] BakeAccelerationBackend QueryActiveBackend(bool PreferComputeBvh4 = false) const noexcept
+    [[nodiscard]] BakeAccelerationEngine QueryActiveBackend(bool PreferComputeBvh4 = false) const noexcept
     {
         if (!PreferComputeBvh4 && Accel.QueryHardwareAccelReady() && RtxProgramsLoaded)
         {
-            return BakeAccelerationBackend::RtxHardwareRayQuery;
+            return BakeAccelerationEngine::RtxHardwareRayQuery;
         }
-        return BakeAccelerationBackend::GtxComputeBvh4;
+        return BakeAccelerationEngine::GtxComputeBvh4;
     }
 
     [[nodiscard]] uint32_t QuerySurfaceResolutionPx() const noexcept { return AllocatedSurfaceResPx; }

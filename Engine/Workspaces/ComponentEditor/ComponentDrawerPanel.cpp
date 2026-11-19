@@ -37,7 +37,7 @@ void ComponentDrawerPanel::Render(
             StripBuf, sizeof(StripBuf), "COMPONENT EDITOR · %s · %s · %zu ASSETS",
             Doc->ClassDefinition.Title.c_str(),
             Session.SimulationActive ? "SIMULATING" : "LIT · MATERIAL SLOTS",
-            Session.Catalog.size());
+            Session.Repository.size());
         WorkspaceAppearance::ConstructWeightedText(
             Surface, FontWeightClass::Regular, { Bounds.X + 14.0f, Bounds.Y + 9.0f }, 8.8f,
             WorkspaceSurfaceColors::FaintInk, StripBuf, true);
@@ -86,7 +86,7 @@ void ComponentDrawerPanel::Render(
         const float TileH = std::min(BodyRect.Height, 132.0f);
         struct SummaryTile { const char* Title; const char* Val; const char* Sub; };
         char AssetCountBuf[32] {};
-        std::snprintf(AssetCountBuf, sizeof(AssetCountBuf), "%zu assets", Session.Catalog.size());
+        std::snprintf(AssetCountBuf, sizeof(AssetCountBuf), "%zu assets", Session.Repository.size());
         const std::array<SummaryTile, 5> Tiles {{
             { "Icon",        Doc->IconBaked ? "128x128" : "Pending", "OpenPbrDirect cutout" },
             { "UV charts",   "Ready",                                AssetCountBuf },
@@ -142,7 +142,7 @@ void ComponentDrawerPanel::Render(
     uint32_t NextInterp = InterpIdx;
     if (CapsuleButton::ConstructSegmented(Surface, InterpRect, InterpLabels.data(), static_cast<uint32_t>(InterpLabels.size()), InterpIdx, Ptr, NextInterp).Clicked)
     {
-        VehPtr->Interpolation = static_cast<ComponentClass::CurveInterpolationKind>(NextInterp);
+        VehPtr->Interpolation = static_cast<ComponentClass::CurveInterpolationForm>(NextInterp);
         Session.MarkActiveDirty();
     }
 

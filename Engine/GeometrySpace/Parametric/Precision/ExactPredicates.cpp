@@ -154,7 +154,7 @@ double NaiveOrient3D(Vector3 A, Vector3 B, Vector3 C, Vector3 D) noexcept
     return AD.X * (BD.Y * CD.Z - BD.Z * CD.Y) + BD.X * (CD.Y * AD.Z - CD.Z * AD.Y) + CD.X * (AD.Y * BD.Z - AD.Z * BD.Y);
 }
 
-PredicateOutcome Orient2D(Vector2 A, Vector2 B, Vector2 C) noexcept
+SignOutcome Orient2D(Vector2 A, Vector2 B, Vector2 C) noexcept
 {
     // ① Filter: the rounded determinant is trusted when it exceeds Shewchuk's forward error bound.
     const double LeftProduct  = (A.X - C.X) * (B.Y - C.Y);                                   // [-] - Rounded first term
@@ -163,16 +163,16 @@ PredicateOutcome Orient2D(Vector2 A, Vector2 B, Vector2 C) noexcept
     const double Magnitude    = std::fabs(LeftProduct) + std::fabs(RightProduct);            // [-] - Error-bound scale
     if (std::fabs(Determinant) > Orient2DBound * Magnitude)
     {
-        return { Determinant > 0.0 ? 1 : -1, PredicateResolution::Filtered };
+        return { Determinant > 0.0 ? 1 : -1, SignResolution::Filtered };
     }
 
     // ② Exact: every difference and product is carried as an expansion, so the sign is exact.
     const Expansion First  = MultiplyExpansions(ExactDifference(A.X, C.X), ExactDifference(B.Y, C.Y));
     const Expansion Second = MultiplyExpansions(ExactDifference(A.Y, C.Y), ExactDifference(B.X, C.X));
-    return { ExpansionSign(SumExpansions(First, NegateExpansion(Second))), PredicateResolution::Expansion };
+    return { ExpansionSign(SumExpansions(First, NegateExpansion(Second))), SignResolution::Expansion };
 }
 
-PredicateOutcome Orient3D(Vector3 A, Vector3 B, Vector3 C, Vector3 D) noexcept
+SignOutcome Orient3D(Vector3 A, Vector3 B, Vector3 C, Vector3 D) noexcept
 {
     // ① Filter with Shewchuk's permanent-based bound.
     const Vector3 AD = A - D;                                                                // [len] - Rounded difference
@@ -188,7 +188,7 @@ PredicateOutcome Orient3D(Vector3 A, Vector3 B, Vector3 C, Vector3 D) noexcept
         (std::fabs(AD.X * BD.Y) + std::fabs(BD.X * AD.Y)) * std::fabs(CD.Z);                // [-] - Error-bound scale
     if (std::fabs(Determinant) > Orient3DBound * Permanent)
     {
-        return { Determinant > 0.0 ? 1 : -1, PredicateResolution::Filtered };
+        return { Determinant > 0.0 ? 1 : -1, SignResolution::Filtered };
     }
 
     // ② Exact cofactor expansion on exact differences.
@@ -203,10 +203,10 @@ PredicateOutcome Orient3D(Vector3 A, Vector3 B, Vector3 C, Vector3 D) noexcept
     const Expansion CA = ExactMinor(CDx, ADy, ADx, CDy);
     const Expansion AB = ExactMinor(ADx, BDy, BDx, ADy);
     const Expansion Total = SumExpansions(SumExpansions(MultiplyExpansions(ADz, BC), MultiplyExpansions(BDz, CA)), MultiplyExpansions(CDz, AB));
-    return { ExpansionSign(Total), PredicateResolution::Expansion };
+    return { ExpansionSign(Total), SignResolution::Expansion };
 }
 
-PredicateOutcome InCircle(Vector2 A, Vector2 B, Vector2 C, Vector2 D) noexcept
+SignOutcome InCircle(Vector2 A, Vector2 B, Vector2 C, Vector2 D) noexcept
 {
     // ① Filter with Shewchuk's permanent-based bound.
     const Vector2 AD = A - D;                                                                // [-] - Rounded difference
@@ -222,7 +222,7 @@ PredicateOutcome InCircle(Vector2 A, Vector2 B, Vector2 C, Vector2 D) noexcept
         (std::fabs(AD.X * BD.Y) + std::fabs(BD.X * AD.Y)) * CLift;                          // [-] - Error-bound scale
     if (std::fabs(Determinant) > InCircleBound * Permanent)
     {
-        return { Determinant > 0.0 ? 1 : -1, PredicateResolution::Filtered };
+        return { Determinant > 0.0 ? 1 : -1, SignResolution::Filtered };
     }
 
     // ② Exact lifted determinant on exact differences.
@@ -237,7 +237,7 @@ PredicateOutcome InCircle(Vector2 A, Vector2 B, Vector2 C, Vector2 D) noexcept
     const Expansion Total = SumExpansions(SumExpansions(MultiplyExpansions(Lift(ADx, ADy), Minor(BDx, CDy, CDx, BDy)),
                                                         MultiplyExpansions(Lift(BDx, BDy), Minor(CDx, ADy, ADx, CDy))),
                                           MultiplyExpansions(Lift(CDx, CDy), Minor(ADx, BDy, BDx, ADy)));
-    return { ExpansionSign(Total), PredicateResolution::Expansion };
+    return { ExpansionSign(Total), SignResolution::Expansion };
 }
 
 } // namespace Frontier::GeometrySpace::Parametric

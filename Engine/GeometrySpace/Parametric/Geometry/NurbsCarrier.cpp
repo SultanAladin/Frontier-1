@@ -973,7 +973,7 @@ std::optional<NurbsSurface> ExtendNurbsSurface(const NurbsSurfaceDefinition& Def
     return NurbsSurface{ std::move(Image) };
 }
 
-NurbsSurface ConstructNurbsRevolution(const NurbsCurveDefinition& Profile, const OrthonormalFrame& Axis, double StartAngle, double Sweep)
+NurbsSurface ConstructNurbsRevolution(const NurbsCurveDefinition& Profile, const OrthonormalBasis& Axis, double StartAngle, double Sweep)
 {
     // 📝 Every ring pole is an affine image of the profile pole Q = O + a·X + b·Y + h·Z: rotated by the joint angle θₖ
     //    (the radial part only), scaled by 1/cos(Δ/2) at the middle poles, height kept. That map is linear in Q and the
@@ -1015,7 +1015,7 @@ std::optional<NurbsSurface> ConvertSurfaceToNurbs(const SurfaceGeometry& Surface
     {
         const auto [U0, U1] = Widen(BoxLow.X, BoxHigh.X);
         const auto [V0, V1] = Widen(BoxLow.Y, BoxHigh.Y);
-        const OrthonormalFrame& Frame = Plane->Frame;
+        const OrthonormalBasis& Frame = Plane->Frame;
         const auto Point = [&](double 𝑢, double 𝑣) { return Frame.Origin + Frame.XAxis * 𝑢 + Frame.YAxis * 𝑣; };
         return ConstructNurbsSurface(1, 1, 2, 2, { U0, U0, U1, U1 }, { V0, V0, V1, V1 }, { Point(U0, V0), Point(U0, V1), Point(U1, V0), Point(U1, V1) }, { 1.0, 1.0, 1.0, 1.0 });
     }
@@ -1024,7 +1024,7 @@ std::optional<NurbsSurface> ConvertSurfaceToNurbs(const SurfaceGeometry& Surface
     if (const auto* Cylinder = std::get_if<CylinderSurface>(&Surface))
     {
         const auto [V0, V1] = Widen(BoxLow.Y, BoxHigh.Y);
-        const OrthonormalFrame& Frame = Cylinder->Frame;
+        const OrthonormalBasis& Frame = Cylinder->Frame;
         const NurbsCurve Profile = *ConstructNurbsCurve(1, { V0, V0, V1, V1 }, { Frame.Origin + Frame.XAxis * Cylinder->Radius + Frame.ZAxis * V0,
                                                                                  Frame.Origin + Frame.XAxis * Cylinder->Radius + Frame.ZAxis * V1 }, { 1.0, 1.0 });
         return ConstructNurbsRevolution(*Profile.Definition, Frame, Start, FullTurn);
@@ -1032,7 +1032,7 @@ std::optional<NurbsSurface> ConvertSurfaceToNurbs(const SurfaceGeometry& Surface
     if (const auto* Cone = std::get_if<ConeSurface>(&Surface))
     {
         const auto [V0, V1] = Widen(BoxLow.Y, BoxHigh.Y);
-        const OrthonormalFrame& Frame = Cone->Frame;
+        const OrthonormalBasis& Frame = Cone->Frame;
         // 📝 Signed radius: a profile crossing the apex sweeps both nappes, exactly as the analytic chart does.
         const auto Point = [&](double 𝑣) { return Frame.Origin + Frame.XAxis * (Cone->OriginRadius + 𝑣 * Cone->RadialSlope) + Frame.ZAxis * 𝑣; };
         const NurbsCurve Profile = *ConstructNurbsCurve(1, { V0, V0, V1, V1 }, { Point(V0), Point(V1) }, { 1.0, 1.0 });
@@ -1040,13 +1040,13 @@ std::optional<NurbsSurface> ConvertSurfaceToNurbs(const SurfaceGeometry& Surface
     }
     if (const auto* Sphere = std::get_if<SphereSurface>(&Surface))
     {
-        const OrthonormalFrame& Frame = Sphere->Frame;
+        const OrthonormalBasis& Frame = Sphere->Frame;
         const ConicForm Meridian{ Frame.Origin, Frame.XAxis * Sphere->Radius, Frame.ZAxis * Sphere->Radius, Frame.YAxis * -1.0 };
         const NurbsCurve Profile = ConvertConicToNurbs(Meridian, -QuarterTurn, QuarterTurn);
         return ConstructNurbsRevolution(*Profile.Definition, Frame, Start, FullTurn);
     }
     const auto& Torus = std::get<TorusSurface>(Surface);
-    const OrthonormalFrame& Frame = Torus.Frame;
+    const OrthonormalBasis& Frame = Torus.Frame;
     const ConicForm Tube{ Frame.Origin + Frame.XAxis * Torus.MajorRadius, Frame.XAxis * Torus.MinorRadius, Frame.ZAxis * Torus.MinorRadius, Frame.YAxis * -1.0 };
     const NurbsCurve Profile = ConvertConicToNurbs(Tube, BoxLow.Y, BoxLow.Y + FullTurn);
     return ConstructNurbsRevolution(*Profile.Definition, Frame, Start, FullTurn);

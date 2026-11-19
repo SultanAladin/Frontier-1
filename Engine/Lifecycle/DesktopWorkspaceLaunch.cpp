@@ -1164,7 +1164,7 @@ int LaunchDesktopWorkspace(
             VortexDesc.Strength                     = 22.0f;
             VortexDesc.SwirlRatio                   = 1.15f;
             VortexDesc.DynamicMotion                = true;
-            VortexDesc.Motion.Topology              = MotionPathTopology::CatmullSpline;
+            VortexDesc.Motion.Topology              = MotionPathGeometry::CatmullSpline;
             VortexDesc.Motion.CycleBehavior         = MotionCycleBehavior::PingPong;
             VortexDesc.Motion.SpeedMetresPerSecond  = 5.5f;
             VortexDesc.Motion.WaypointCount         = 3u;
@@ -1176,7 +1176,7 @@ int LaunchDesktopWorkspace(
             ForceSourceRecordEntry JetDesc {};
             JetDesc.Label         = "Cantilever Jet Plume";
             JetDesc.Model         = ForceModel::FlowStream;
-            JetDesc.StreamProfile = FlowStreamProfile::SlipstreamJet;
+            JetDesc.StreamProfile = StreamTransportProfile::SlipstreamJet;
             JetDesc.CentreMeters  = { 14.0f, 8.0f, 7.0f };
             JetDesc.EulerDegrees  = { 0.0f, -12.0f, -145.0f };
             JetDesc.RadiusMeters  = 17.0f;
@@ -1192,7 +1192,7 @@ int LaunchDesktopWorkspace(
             BurstDesc.DurationMode                 = ForceDurationMode::Modulated;
             BurstDesc.FrequencyHertz               = 0.4f;
             BurstDesc.DynamicMotion                = true;
-            BurstDesc.Motion.Topology              = MotionPathTopology::HelicalOrbit;
+            BurstDesc.Motion.Topology              = MotionPathGeometry::HelicalOrbit;
             BurstDesc.Motion.SpeedMetresPerSecond  = 6.0f;
             BurstDesc.Motion.OrbitRadiusMeters     = 8.0f;
             BurstDesc.Motion.WaypointCount         = 2u;

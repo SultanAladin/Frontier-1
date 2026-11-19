@@ -3,7 +3,7 @@
 ============================================================================================================================================*/
 // 🧩 Parallel Jacobi stretch-guided UV relaxation kernel preserving pinned vertices and seam boundaries on VRAM
 
-struct RelaxCornerRecord
+struct RelaxCornerEntry
 {
     float2 CurrentUV;        // Current corner UV
     float2 NeighborAvgUV;    // Area-weighted 1-ring interior UV centroid
@@ -21,7 +21,7 @@ struct RelaxDispatchParams
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<RelaxDispatchParams>   Params;
-[[vk::binding(1, 0)]] StructuredBuffer<RelaxCornerRecord>   InputCorners;
+[[vk::binding(1, 0)]] StructuredBuffer<RelaxCornerEntry>   InputCorners;
 [[vk::binding(2, 0)]] RWStructuredBuffer<float2>            OutputCornerUVs;
 
 [shader("compute")]
@@ -34,7 +34,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         return;
     }
 
-    RelaxCornerRecord Rec = InputCorners[Idx];
+    RelaxCornerEntry Rec = InputCorners[Idx];
     if ((Rec.PinnedOrSeamLock & 1u) != 0u)
     {
         OutputCornerUVs[Idx] = Rec.CurrentUV;

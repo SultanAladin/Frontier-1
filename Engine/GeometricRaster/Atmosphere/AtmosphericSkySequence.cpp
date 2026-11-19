@@ -553,7 +553,7 @@ void AtmosphericSkySequence::BuildSkyViewLut(
     const float LimbAngle   = ComputeLimbPolarAngle(StartRadiusKm, GroundKm);
     const float SunElevRad  = std::asin(ClampUnit(UnitSun.Z));
     const float DayVis      = std::clamp((SunElevRad * Constants::RadToDegFloat + 6.0f) / 14.0f, 0.0f, 1.0f);
-    const float SolarScale  = std::max(0.0f, SolarIntensityScale) * 0.28f;
+    const float SolarScale  = std::max(0.0f, SolarIntensityScale) * 0.24f;
     const float G2          = MieG * MieG;
 
     for (uint32_t Y = 0u; Y < SkyViewHeightPx; ++Y)

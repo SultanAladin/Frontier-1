@@ -41,6 +41,6 @@ struct SketchSectionOutcome
 //    joined with parameter spans proportional to piece length (JoinNurbsCurves), lifted onto Plane.
 //    Closed loops run counter-clockwise about Plane.ZAxis and start where the ray from the loop centroid along
 //    +Plane.XAxis meets the loop (split exactly there), so similar sections line up without a twist.
-[[nodiscard]] SketchSectionOutcome ComposeSketchSection(const SketchModel& Sketch, const OrthonormalFrame& Plane);
+[[nodiscard]] SketchSectionOutcome ComposeSketchSection(const SketchModel& Sketch, const OrthonormalBasis& Plane);
 
 } // namespace Frontier::GeometrySpace::Parametric

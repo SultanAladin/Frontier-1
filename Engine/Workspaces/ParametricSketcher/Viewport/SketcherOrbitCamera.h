@@ -52,7 +52,7 @@ struct OrbitCamera
 };
 
 // 📝 Everything a frame needs, derived once per frame from the camera and the viewport size.
-struct OrbitCameraFrame
+struct OrbitCameraBasis
 {
     CameraMatrix          ClipFromWorld       = {};                                          // [-]   - Projection × view (Vulkan clip: y down, z ∈ [0, 1])
     CameraMatrix          WorldFromClip       = {};                                          // [-]   - Inverse
@@ -76,13 +76,13 @@ struct OrbitRay
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] OrbitCameraFrame FrameOrbitCamera(const OrbitCamera& Camera, double Width, double Height);
+[[nodiscard]] OrbitCameraBasis FrameOrbitCamera(const OrbitCamera& Camera, double Width, double Height);
 
 // Pixel (x right, y down, from the top-left corner; centres at +0.5) → world ray through it.
-[[nodiscard]] OrbitRay CastOrbitRay(const OrbitCameraFrame& Frame, double PixelX, double PixelY);
+[[nodiscard]] OrbitRay CastOrbitRay(const OrbitCameraBasis& Frame, double PixelX, double PixelY);
 
 void RevolveOrbitCamera(OrbitCamera& Camera, double DeltaX, double DeltaY);                               // [px]
-void PanOrbitCamera(OrbitCamera& Camera, const OrbitCameraFrame& Frame, double DeltaX, double DeltaY);    // [px]
+void PanOrbitCamera(OrbitCamera& Camera, const OrbitCameraBasis& Frame, double DeltaX, double DeltaY);    // [px]
 void DollyOrbitCamera(OrbitCamera& Camera, double WheelSteps);                                            // [-] + = closer
 void PresentOrbitView(OrbitCamera& Camera, OrbitViewPreset Preset);
 

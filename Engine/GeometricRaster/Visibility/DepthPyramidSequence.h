@@ -22,7 +22,7 @@ namespace Frontier::GeometricRaster
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct PerspectiveCameraFrame
+struct PerspectiveCameraBasis
 {
     Mathematics::Axis3D CameraOrigin       { 0.0f, -4.5f, 1.8f }; // [m]   - World-space eye position (Z-up right-handed)
     Mathematics::Axis3D TargetPoint        { 0.0f,  0.0f, 0.4f }; // [m]   - World-space look-at target
@@ -100,7 +100,7 @@ private:
 //                                                  CAMERA PROJECTION HELPERS
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] OrthonormalCameraBasis ComputeCameraBasis(const PerspectiveCameraFrame& Camera) noexcept;
+[[nodiscard]] OrthonormalCameraBasis ComputeCameraBasis(const PerspectiveCameraBasis& Camera) noexcept;
 
 [[nodiscard]] float EncodeReversedLinearDepth(float ViewSpaceDepthMeters, float NearClip, float FarClip) noexcept;
 

@@ -58,7 +58,7 @@ ParameterCurve FitSurfaceCurve(const SurfaceGeometry& Surface, const CurveGeomet
     const auto* Plane = std::get_if<PlaneSurface>(&Surface);
     if (Plane && !std::holds_alternative<IntersectionCurve>(Curve) && !std::holds_alternative<ContactCurve>(Curve) && !std::holds_alternative<NurbsCurve>(Curve))
     {
-        const OrthonormalFrame& Frame = Plane->Frame;
+        const OrthonormalBasis& Frame = Plane->Frame;
         const auto Chart = [&](Vector3 Direction) { return Vector2{ Dot(Direction, Frame.XAxis), Dot(Direction, Frame.YAxis) }; };
         if (const auto* Line = std::get_if<StraightLine>(&Curve))
         {

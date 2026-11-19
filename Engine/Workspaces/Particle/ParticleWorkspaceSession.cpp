@@ -23,7 +23,7 @@ namespace Frontier::Workspaces
 namespace
 {
 
-using SimulationSpace::ForceFields::FlowStreamProfile;
+using SimulationSpace::ForceFields::StreamTransportProfile;
 using SimulationSpace::ForceFields::ForceAttenuationMode;
 using SimulationSpace::ForceFields::ForceDomainCategory;
 using SimulationSpace::ForceFields::ForceDurationMode;
@@ -114,7 +114,7 @@ void ParticleWorkspaceSession::ResetStudioDefaultScene()
         ConstructForceSource(5u, "Attractor",           ForceModel::Attractor,        ForceDomainCategory::VectorField,  9.5f, 2.8f,  2.8f, 1.6f,  2.1f),
         ConstructForceSource(6u, "Repulsor",            ForceModel::Repulsor,         ForceDomainCategory::VectorField, 11.5f, 2.2f, -2.6f, 1.4f, -2.2f),
     };
-    ForceSources[2].StreamProfile = FlowStreamProfile::SlipstreamJet;
+    ForceSources[2].StreamProfile = StreamTransportProfile::SlipstreamJet;
 
     // 6 Studio Default Particle Rigs (total capacity 13,300, total alive 6,512 matching HTML Studio Default!)
     ParticleRigs.clear();
@@ -234,7 +234,7 @@ void ParticleWorkspaceSession::ResetStudioDefaultScene()
         else if (Meta.CategoryLabel == "Shields & Tech" || Meta.CategoryLabel == "Space & Distortion") RampId = "plasma";
         else if (Meta.CategoryLabel == "Cloth & Rigging") RampId = "grayscale";
 
-        AssetPresets.push_back(ParticleAssetPresetCard {
+        AssetPresets.push_back(ParticleAssetPresetTile {
             std::string(Meta.Identifier),
             std::string(Meta.DisplayName),
             std::string(Meta.CategoryLabel),
@@ -456,7 +456,7 @@ void ParticleWorkspaceSession::AddPresetToScene(std::size_t AssetIndex)
     {
         return;
     }
-    ParticleAssetPresetCard& Card = AssetPresets[AssetIndex];
+    ParticleAssetPresetTile& Card = AssetPresets[AssetIndex];
     Card.InScene = true;
 
     AuthoredParticleRigUi Added {};

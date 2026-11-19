@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
-#include "Engine/GeometrySpace/Parametric/Blend/BlendCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Blend/BlendRepository.h"
 #include "Engine/GeometrySpace/Parametric/Blend/EdgeBlend.h"
 
 #include <string>

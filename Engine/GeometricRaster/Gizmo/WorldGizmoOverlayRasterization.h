@@ -50,15 +50,15 @@ public:
         std::vector<uint8_t>&         InOutDisplayRgba8,
         uint32_t                      WidthPx,
         uint32_t                      HeightPx,
-        const PerspectiveCameraFrame& Camera,
+        const PerspectiveCameraBasis& Camera,
         const Editor::TransformGizmo& Gizmo3D);
 
-    struct GpuViewportCompositeRequest
+    struct GpuViewportOverlayRequest
     {
         VkImageView                   WorldSourceView      = VK_NULL_HANDLE;
         uint32_t                      TargetWidthPx        = 0u;
         uint32_t                      TargetHeightPx       = 0u;
-        PerspectiveCameraFrame        Camera               {};
+        PerspectiveCameraBasis        Camera               {};
         const Editor::TransformGizmo* Gizmo3D              = nullptr;
         bool                          DrawGizmo            = true;
         const uint8_t*                ForceOverlayRgba     = nullptr;
@@ -71,7 +71,7 @@ public:
         uint32_t                      PickCursorY          = 0u;
     };
 
-    struct GpuViewportCompositeResult
+    struct GpuViewportOverlayResult
     {
         VkImageView ColorImageView  = VK_NULL_HANDLE;
         uint64_t    ImageGeneration = 0ull;
@@ -80,8 +80,8 @@ public:
     };
 
     [[nodiscard]] bool CompositeOntoGpuViewport(
-        const GpuViewportCompositeRequest& Request,
-        GpuViewportCompositeResult&        OutResult);
+        const GpuViewportOverlayRequest& Request,
+        GpuViewportOverlayResult&        OutResult);
 
     [[nodiscard]] Editor::GizmoHandleOrdinal QueryLastGpuPickAtPixel(uint32_t PixelX, uint32_t PixelY) const noexcept;
 

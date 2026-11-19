@@ -68,10 +68,10 @@ void RouteVisibleCommand(
 //------------------------------------------------------------------------------------------------------------------------
 
 TwoPhaseCullReport ClusterCullEncoder::EncodePhaseOneVisibility(
-    const PerspectiveCameraFrame&         CurrentCamera,
+    const PerspectiveCameraBasis&         CurrentCamera,
     std::span<const RigidClusterInstance> Instances,
     const DepthPyramidSequence*           PreviousFrameHiZ,
-    const PerspectiveCameraFrame*         PreviousCamera,
+    const PerspectiveCameraBasis*         PreviousCamera,
     const ClusterCullSettings&            Settings)
 {
     TwoPhaseCullReport Report {};
@@ -151,7 +151,7 @@ TwoPhaseCullReport ClusterCullEncoder::EncodePhaseOneVisibility(
 }
 
 void ClusterCullEncoder::ResolvePhaseTwoDisocclusions(
-    const PerspectiveCameraFrame&         Camera,
+    const PerspectiveCameraBasis&         Camera,
     std::span<const RigidClusterInstance> Instances,
     const DepthPyramidSequence&           CurrentFrameHiZ,
     TwoPhaseCullReport&                   InOutReport,

@@ -109,7 +109,7 @@ int main()
     {
         SpatialAcceleration::WideBoundingTree EmptyBvh {};
         std::vector<MaterialSpace::BounceSlabEntry> DummySlabs(1u);
-        GeometricRaster::SolarDirectionalEmitter OffSun {};
+        GeometricRaster::SolarDirectionalSource OffSun {};
         OffSun.SolarIrradiance = { 0.0f, 0.0f, 0.0f };
 
         GeometricRaster::IrradianceLatticeConfiguration WhiteCfg {};
@@ -154,7 +154,7 @@ int main()
         SpatialAcceleration::WideBoundingTree VaultBvh {};
         Score.Verify(VaultBvh.BuildFromPolygonNetwork(VaultNet), "Built BVH4 for sealed shadow chamber Chebyshev vault");
 
-        GeometricRaster::SolarDirectionalEmitter BrightSun {};
+        GeometricRaster::SolarDirectionalSource BrightSun {};
         BrightSun.DirectionToSun  = Mathematics::NormalizeAxis({ 0.85f, 0.15f, 0.50f });
         BrightSun.SolarIrradiance = { 10.0f, 10.0f, 10.0f };
 
@@ -340,7 +340,7 @@ int main()
     constexpr uint32_t ViewW = 640u;
     constexpr uint32_t ViewH = 336u;
 
-    GeometricRaster::PerspectiveCameraFrame Camera {};
+    GeometricRaster::PerspectiveCameraBasis Camera {};
     Camera.CameraOrigin        = { 0.00f, -3.55f, 0.42f };
     Camera.TargetPoint         = { 0.00f,  0.55f, 0.15f };
     Camera.WorldUpAxis         = { 0.00f,  0.00f, 1.00f };
@@ -593,7 +593,7 @@ int main()
 
         constexpr uint32_t TileW = 360u;
         constexpr uint32_t TileH = 220u;
-        GeometricRaster::PerspectiveCameraFrame EvalCam = Camera;
+        GeometricRaster::PerspectiveCameraBasis EvalCam = Camera;
         EvalCam.ViewportWidthPx  = TileW;
         EvalCam.ViewportHeightPx = TileH;
 

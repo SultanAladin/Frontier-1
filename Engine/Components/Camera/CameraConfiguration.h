@@ -77,7 +77,7 @@ enum class MotionBlurStyle : uint8_t
     RadialZoom         = 2u, // [-] - Concentric radial zoom & speed-focus swirl blur
 };
 
-enum class WorldDistortionKind : uint8_t
+enum class WorldDistortionCategory : uint8_t
 {
     HeatShimmer = 0u, // [-] - Rising convective thermal mirage refraction linked to world emitters / plumes
     BlackHole   = 1u, // [-] - Gravitational Einstein ring lensing, Kerr swirl & dark photon sphere
@@ -226,7 +226,7 @@ struct GlitchEffectParameters
 
 struct CameraWorldDistortionAnchor
 {
-    WorldDistortionKind Kind           = WorldDistortionKind::HeatShimmer; // [-] - Distortion type driven by this world component
+    WorldDistortionCategory Kind           = WorldDistortionCategory::HeatShimmer; // [-] - Distortion type driven by this world component
     Mathematics::Axis3D WorldPosition  { 0.0f, 2.0f, 0.5f };               // [m] - World-space center of particle rig or object
     float               RadiusMeters   = 1.25f;                            // [m] - World-space distortion influence radius
     float               Strength       = 1.0f;                             // [x] - Per-emitter strength multiplier

@@ -12,7 +12,7 @@
 #include "Engine/Components/Controls/CapsuleButton.h"
 #include "Engine/Components/Controls/ExecutionModeStrip.h"
 #include "Engine/Components/Diagnostics/DiagnosticsOverlay.h"
-#include "Engine/Components/Diagnostics/FrameTimingTelemetry.h"
+#include "Engine/Components/Diagnostics/ViewportTimingTelemetry.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldDescriptors.h"
 
@@ -154,7 +154,7 @@ public:
     void ConfigureForceOverlaySheetOpen(bool Open) noexcept;
     void ConfigureForceOverlaySettings(const SimulationSpace::ForceFields::ForceOverlaySettings& Settings) noexcept;
     void ConfigureSimulationTimeSeconds(double TimeSeconds) noexcept;
-    void ConfigureFrameTimingBreakdown(const FrameTimingBreakdown& Breakdown) noexcept;
+    void ConfigureViewportTimingBreakdown(const ViewportTimingBreakdown& Breakdown) noexcept;
     void ConfigureProbeReadoutText(std::string_view ReadoutText);
     void ConfigureSceneTitle(std::string_view Title);
     void ConfigureExecutionMode(ViewportExecutionMode Mode, bool Paused = false) noexcept;
@@ -258,7 +258,7 @@ private:
     DiagnosticsOverlaySession  DiagnosticsSession      {};                                        // [-]   - Reusable DiagnosticsOverlay session
     std::array<float, 120>     IntervalHistoryMs      {};                                        // [ms]  - Rolling 120-step timing samples
     uint32_t                   HistoryWriteCursor      = 0u;                                      // [idx] - Ring buffer write cursor
-    FrameTimingBreakdown       LastTimingBreakdown     {};                                        // [ms]  - Latest per-stage GPU/CPU telemetry
+    ViewportTimingBreakdown       LastViewportTiming     {};                                        // [ms]  - Latest per-stage GPU/CPU telemetry
     ConstructCategoryRail      ConstructRail           = ConstructCategoryRail::All;              // [-]   - Active Construct category rail
     ForceConstructCategory     ForceConstructTab       = ForceConstructCategory::All;             // [-]   - Active Force Construct rail tab
     float                      ConstructGridScrollY    = 0.0f;                                    // [px]  - Construct tile grid scroll offset

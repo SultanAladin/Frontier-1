@@ -211,7 +211,7 @@ void ParticleSimulationSession::SpawnSingleSlot(std::size_t RigIdx, RigRuntimeSl
         }
     }
 
-    ParticleTintEvaluationContext TintCtx {};
+    ParticleTintInput TintCtx {};
     TintCtx.OriginMeters[0] = Spawn.PositionMeters[0];
     TintCtx.OriginMeters[1] = Spawn.PositionMeters[1];
     TintCtx.OriginMeters[2] = Spawn.PositionMeters[2];
@@ -252,7 +252,7 @@ void ParticleSimulationSession::StepSingleRig(std::size_t RigIdx, RigRuntimeSlic
         }
     }
 
-    const ParticleStepContext StepCtx {
+    const ParticleStepInput StepCtx {
         Document,
         ForceAccumulator,
         DtSec,

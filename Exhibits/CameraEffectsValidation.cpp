@@ -297,9 +297,9 @@ int main()
         LinkParticleDocumentDistortionAnchors(Doc, Anchors);
         Score.Verify(Anchors.size() == 3u, "Linked 3 world distortion anchors directly from ParticleDocument rigs");
         Score.Verify(Anchors.size() >= 3u &&
-                     Anchors[0].Kind == WorldDistortionKind::HeatShimmer &&
-                     Anchors[1].Kind == WorldDistortionKind::BlackHole &&
-                     Anchors[2].Kind == WorldDistortionKind::Glitch,
+                     Anchors[0].Kind == WorldDistortionCategory::HeatShimmer &&
+                     Anchors[1].Kind == WorldDistortionCategory::BlackHole &&
+                     Anchors[2].Kind == WorldDistortionCategory::Glitch,
                      "Particle carriers mapped accurately to HeatShimmer, BlackHole, and Glitch camera anchors");
     }
 
@@ -337,7 +337,7 @@ int main()
     CamComp.SnapToTargets(Aspect);
 
     const auto& Posture = CamComp.InspectPosture();
-    GeometricRaster::PerspectiveCameraFrame WorldCam {};
+    GeometricRaster::PerspectiveCameraBasis WorldCam {};
     WorldCam.CameraOrigin       = Posture.CurrentEyePosition;
     WorldCam.TargetPoint        = Posture.CurrentEyePosition + Posture.ForwardAxis * 8.0f;
     WorldCam.WorldUpAxis        = Posture.UpAxis;

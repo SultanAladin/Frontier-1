@@ -475,8 +475,8 @@ BakeCompletionSummary GpuSdfBaker::ExecuteVolumeSdfBake(
     const auto T0 = std::chrono::steady_clock::now();
     const bool UseRtx = (!Spec.PreferComputeBvh4 && Accel.QueryHardwareAccelReady() && RtxProgramsLoaded);
     Summary.ExecutedBackend = UseRtx
-        ? BakeAccelerationBackend::RtxHardwareRayQuery
-        : BakeAccelerationBackend::GtxComputeBvh4;
+        ? BakeAccelerationEngine::RtxHardwareRayQuery
+        : BakeAccelerationEngine::GtxComputeBvh4;
     LastStudyDisplayLabel = Study.StudyDisplayLabel;
 
     const Mathematics::Axis3D Span      = Study.BoundsMax - Study.BoundsMin;

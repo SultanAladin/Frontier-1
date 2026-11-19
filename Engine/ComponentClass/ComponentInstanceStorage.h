@@ -84,7 +84,7 @@ public:
     [[nodiscard]] RotationalMotionSettings*         ResolveRotation(ComponentInstanceToken Token) noexcept;
     [[nodiscard]] const RotationalMotionSettings*   InspectRotation(ComponentInstanceToken Token) const noexcept;
 
-    void WalkSpatialHierarchy(const std::function<void(const ComponentInstanceHeader&)>& Visitor) const;
+    void WalkSpatialNesting(const std::function<void(const ComponentInstanceHeader&)>& Visitor) const;
     void CollectBehaviourTokens(std::vector<ComponentInstanceToken>& OutTokens) const;
     void CollectNestedTokens(ComponentInstanceToken EnclosingToken, std::vector<ComponentInstanceToken>& OutTokens) const;
 
@@ -95,14 +95,14 @@ public:
     [[nodiscard]] static bool QueryDockTagAccepted(std::string_view DockKey, std::string_view TagCsv) noexcept;
 
 private:
-    struct SlotRecord
+    struct SlotEntry
     {
         ComponentInstanceHeader Header   {};
         uint32_t                Gen      = 1u;
         bool                    Occupied = false;
     };
 
-    std::vector<SlotRecord>                  Headers      {};
+    std::vector<SlotEntry>                  Headers      {};
     std::vector<uint32_t>                    FreeSlots    {};
     ComponentInstanceToken                   OriginToken  {};
 
@@ -122,7 +122,7 @@ private:
     void                      UnlinkFromEnclosing(uint32_t TargetZeroIdx) noexcept;
     void                      LinkUnderEnclosing(uint32_t TargetZeroIdx, uint32_t EnclosingZeroIdx) noexcept;
     void                      RefreshDepthLevels(uint32_t RootZeroIdx, uint16_t Depth) noexcept;
-    [[nodiscard]] bool        QueryAncestorMatch(uint32_t CandidateZeroIdx, uint32_t ProbeZeroIdx) const noexcept;
+    [[nodiscard]] bool        QueryEnclosingMatch(uint32_t CandidateZeroIdx, uint32_t SampleZeroIdx) const noexcept;
 };
 
 } // namespace Frontier::ComponentClass

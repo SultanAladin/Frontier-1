@@ -223,7 +223,7 @@ struct DielectricArcSpec
     bool     ShowElectrodes     = true;                    // [-]   - Render 3D metallic electrode spheres / cage pylons / storm terminals
 };
 
-struct FieldMatrixSpec
+struct FieldTensorSpec
 {
     float EffectorRadiusM        = 1.85f; // [m] - Orbiting spherical effector reach
     float DisplacementAmplitudeM = 0.95f; // [m] - Peak vertical displacement amplitude
@@ -411,7 +411,7 @@ struct SimulationDynamicsEnsemble
     std::optional<ElasticStrandSpec>       ElasticStrand {};
     std::optional<ThermalFireworkSpec>     Thermal       {};
     std::optional<DielectricArcSpec>       DielectricArc {};
-    std::optional<FieldMatrixSpec>         FieldMatrix   {};
+    std::optional<FieldTensorSpec>         FieldMatrix   {};
 
     [[nodiscard]] uint32_t ComputeActiveBitmask() const noexcept
     {

@@ -54,16 +54,16 @@ float VehicleDynamicsSolver::EvaluateTorqueCurveNm(
 
     switch (Settings.Interpolation)
     {
-        case ComponentClass::CurveInterpolationKind::StepHold:
+        case ComponentClass::CurveInterpolationForm::StepHold:
             return Y0;
-        case ComponentClass::CurveInterpolationKind::Linear:
+        case ComponentClass::CurveInterpolationForm::Linear:
             return Y0 + (Y1 - Y0) * T;
-        case ComponentClass::CurveInterpolationKind::EaseInOut:
+        case ComponentClass::CurveInterpolationForm::EaseInOut:
         {
             const float SmoothT = 0.5f - 0.5f * std::cos(static_cast<float>(Constants::Pi) * T);
             return Y0 + (Y1 - Y0) * SmoothT;
         }
-        case ComponentClass::CurveInterpolationKind::SmoothSpline:
+        case ComponentClass::CurveInterpolationForm::SmoothSpline:
         {
             const float P0 = (Seg > 0u) ? Pts[Seg - 1u].TorqueNm : Y0;
             const float P3 = (Seg + 2u < Pts.size()) ? Pts[Seg + 2u].TorqueNm : Y1;
@@ -145,23 +145,23 @@ float VehicleDynamicsSolver::EvaluateConstraintEditScalar(
     const ComponentClass::ConstraintComponentSettings& Settings) noexcept
 {
     const float Pose = std::clamp(Settings.NormalizedEditPose, 0.0f, 1.0f);
-    switch (Settings.Kind)
+    switch (Settings.Form)
     {
-        case ComponentClass::PhysicsConstraintKind::Hinge:
+        case ComponentClass::PhysicsConstraintCategory::Hinge:
             return Settings.MinAngleDegrees + (Settings.MaxAngleDegrees - Settings.MinAngleDegrees) * Pose;
-        case ComponentClass::PhysicsConstraintKind::Slider:
+        case ComponentClass::PhysicsConstraintCategory::Slider:
             return Settings.MinTravelMeters + (Settings.MaxTravelMeters - Settings.MinTravelMeters) * Pose;
-        case ComponentClass::PhysicsConstraintKind::Spring:
+        case ComponentClass::PhysicsConstraintCategory::Spring:
             return -Settings.TravelEachWayMeters + 2.0f * Settings.TravelEachWayMeters * Pose;
-        case ComponentClass::PhysicsConstraintKind::Ball:
+        case ComponentClass::PhysicsConstraintCategory::Ball:
             return Settings.ConeAngleDegrees * (Pose * 2.0f - 1.0f);
-        case ComponentClass::PhysicsConstraintKind::Spin:
+        case ComponentClass::PhysicsConstraintCategory::Spin:
             return Settings.TargetRpm;
-        case ComponentClass::PhysicsConstraintKind::Tether:
+        case ComponentClass::PhysicsConstraintCategory::Tether:
             return Settings.RopeLengthMeters * Pose;
-        case ComponentClass::PhysicsConstraintKind::Dock:
+        case ComponentClass::PhysicsConstraintCategory::Dock:
             return Settings.DockConnected ? 1.0f : 0.0f;
-        case ComponentClass::PhysicsConstraintKind::Fixed:
+        case ComponentClass::PhysicsConstraintCategory::Fixed:
             return 0.0f;
     }
     return 0.0f;

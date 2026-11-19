@@ -22,7 +22,7 @@ namespace Frontier::GeometrySpace::Parametric
 //                                                    ENUMS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class SketchPickKind : uint8_t
+enum class SketchPickCategory : uint8_t
 {
     Point = 0,                                                                               // Index into SketchModel::Points
     Curve = 1,                                                                               // Index into SketchModel::Curves
@@ -51,7 +51,7 @@ enum class SketchConstraintVerb : uint8_t
 
 struct SketchPick
 {
-    SketchPickKind Kind  = SketchPickKind::Point;                                            // [-] - Point or curve
+    SketchPickCategory Kind  = SketchPickCategory::Point;                                            // [-] - Point or curve
     int            Index = -1;                                                               // [-] - Its index in the sketch
 };
 
@@ -92,7 +92,7 @@ struct SketchDragOutcome
 [[nodiscard]] double MeasureSketchConstraint(const SketchModel& Sketch, const SketchConstraint& Constraint);
 
 // Dimension-carrying kinds: Distance, HorizontalDistance, VerticalDistance, Length, Angle, Radius.
-[[nodiscard]] bool SketchDimensionCondition(SketchConstraintKind Kind) noexcept;
+[[nodiscard]] bool SketchDimensionCondition(SketchConstraintCategory Kind) noexcept;
 
 // "Line2", "Line2.Start", "Arc3.Centre", "Spline4.Point2", "Point0" (a point no curve uses).
 [[nodiscard]] std::string NameSketchPick(const SketchModel& Sketch, SketchPick Pick);
@@ -101,7 +101,7 @@ struct SketchDragOutcome
 [[nodiscard]] std::string DescribeSketchConstraint(const SketchModel& Sketch, const SketchConstraint& Constraint);
 
 // "Distance", "Horizontal distance", "Equal length", …
-[[nodiscard]] const char* SketchConstraintTitle(SketchConstraintKind Kind) noexcept;
+[[nodiscard]] const char* SketchConstraintTitle(SketchConstraintCategory Kind) noexcept;
 
 // [D] [N] [H] … the SolveSpace key of a verb, and its menu name.
 [[nodiscard]] char        SketchConstraintVerbKey(SketchConstraintVerb Verb) noexcept;

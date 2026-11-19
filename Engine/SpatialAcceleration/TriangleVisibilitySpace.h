@@ -35,7 +35,7 @@ class TriangleVisibilitySpace
         std::array<double, 3> Minimum{}, Maximum{};
         uint32_t First = 0, Count = 0, Lower = 0, Upper = 0;
     };
-    std::vector<std::array<SpatialVector, 3>> Facets;
+    std::vector<std::array<SpatialVector, 3>> SurfaceFaces;
     std::vector<uint32_t> Order;
     std::vector<Enclosure> Bounds;
 
@@ -55,7 +55,7 @@ class TriangleVisibilitySpace
         Region.Minimum.fill(std::numeric_limits<double>::infinity());
         Region.Maximum.fill(-std::numeric_limits<double>::infinity());
         for (uint32_t Slot = First; Slot < First + Count; ++Slot)
-            for (auto Corner : Facets[Order[Slot]])
+            for (auto Corner : SurfaceFaces[Order[Slot]])
                 for (uint32_t Axis = 0; Axis < 3; ++Axis)
                 {
                     Region.Minimum[Axis] = std::min(Region.Minimum[Axis], Coordinate(Corner, Axis));
@@ -71,9 +71,9 @@ class TriangleVisibilitySpace
                     Region.Maximum[Axis] - Region.Minimum[Axis])
                     Axis = Other;
             const uint32_t Middle = First + Count / 2;
-            auto Centre = [&](uint32_t Facet)
+            auto Centre = [&](uint32_t SurfaceFace)
             {
-                const auto& Triangle = Facets[Facet];
+                const auto& Triangle = SurfaceFaces[SurfaceFace];
                 return Coordinate(Triangle[0], Axis) / 3 + Coordinate(Triangle[1], Axis) / 3 +
                        Coordinate(Triangle[2], Axis) / 3;
             };
@@ -94,14 +94,14 @@ class TriangleVisibilitySpace
         std::array<float, 4> Minimum{}, Maximum{};
         std::array<uint32_t, 4> Links{};
     };
-    struct FloatFacet
+    struct FloatFace
     {
         std::array<float, 4> A{}, B{}, C{};
     };
     struct FloatAtlas
     {
         std::vector<FloatEnclosure> Enclosures;
-        std::vector<FloatFacet> Corners;
+        std::vector<FloatFace> Corners;
         std::vector<uint32_t> OriginalFacets;
     };
     FloatAtlas PackFloat32() const
@@ -118,7 +118,7 @@ class TriangleVisibilitySpace
                 Packed.Maximum[Axis] =
                     std::nextafter(float(Region.Maximum[Axis]), std::numeric_limits<float>::infinity());
                 if (!std::isfinite(Packed.Minimum[Axis]) || !std::isfinite(Packed.Maximum[Axis]))
-                    throw std::runtime_error("Facet bounds exceed float32 range");
+                    throw std::runtime_error("SurfaceFace bounds exceed float32 range");
             }
             Packed.Links = {Region.Count ? Region.First : Region.Lower,
                             Region.Count ? Region.Count : Region.Upper, Region.Count ? 1u : 0u, 0u};
@@ -126,10 +126,10 @@ class TriangleVisibilitySpace
         }
         for (auto Index : Order)
         {
-            FloatFacet Packed;
+            FloatFace Packed;
             for (uint32_t Corner = 0; Corner < 3; ++Corner)
             {
-                const auto P = Facets[Index][Corner];
+                const auto P = SurfaceFaces[Index][Corner];
                 auto& Destination = Corner == 0 ? Packed.A : Corner == 1 ? Packed.B : Packed.C;
                 Destination = {float(P.X), float(P.Y), float(P.Z), 0};
             }
@@ -142,14 +142,14 @@ class TriangleVisibilitySpace
     {
         bool Hit = false;
         double Travel = 0;
-        uint32_t Facet = UINT32_MAX;
+        uint32_t SurfaceFace = UINT32_MAX;
     };
     struct TriangleProximity
     {
         double Distance = std::numeric_limits<double>::infinity();
-        uint32_t Facet = UINT32_MAX;
+        uint32_t SurfaceFace = UINT32_MAX;
     };
-    uint32_t FacetCount() const { return uint32_t(Facets.size()); }
+    uint32_t FacetCount() const { return uint32_t(SurfaceFaces.size()); }
 
     TriangleProximity Nearest(SpatialVector Point) const noexcept
     {
@@ -182,7 +182,7 @@ class TriangleVisibilitySpace
             }
             for (uint32_t Slot = Region.First; Slot < Region.First + Region.Count; ++Slot)
             {
-                const auto& Triangle = Facets[Order[Slot]];
+                const auto& Triangle = SurfaceFaces[Order[Slot]];
                 double Squared = std::numeric_limits<double>::infinity();
                 for (uint32_t Edge = 0; Edge < 3; ++Edge)
                 {
@@ -212,7 +212,7 @@ class TriangleVisibilitySpace
                 if (Squared < BestSquared)
                 {
                     BestSquared = Squared;
-                    Result.Facet = Order[Slot];
+                    Result.SurfaceFace = Order[Slot];
                 }
             }
         }
@@ -228,12 +228,12 @@ class TriangleVisibilitySpace
             for (auto Corner : Triangle)
                 if (!Finite(Corner))
                     throw std::runtime_error("Nonfinite triangle visibility coordinate");
-        Facets = std::move(Geometry);
-        Order.resize(Facets.size());
+        SurfaceFaces = std::move(Geometry);
+        Order.resize(SurfaceFaces.size());
         std::iota(Order.begin(), Order.end(), 0u);
         Bounds.clear();
-        if (!Facets.empty())
-            Partition(0, uint32_t(Facets.size()));
+        if (!SurfaceFaces.empty())
+            Partition(0, uint32_t(SurfaceFaces.size()));
     }
 
     TriangleStrike Trace(SpatialVector Origin, SpatialVector Direction, double Minimum, double Maximum,
@@ -279,7 +279,7 @@ class TriangleVisibilitySpace
             }
             for (uint32_t Slot = Region.First; Slot < Region.First + Region.Count; ++Slot)
             {
-                const auto& Triangle = Facets[Order[Slot]];
+                const auto& Triangle = SurfaceFaces[Order[Slot]];
                 auto Subtract = [](SpatialVector A, SpatialVector B)
                 { return SpatialVector{A.X - B.X, A.Y - B.Y, A.Z - B.Z}; };
                 auto Cross = [](SpatialVector A, SpatialVector B) {

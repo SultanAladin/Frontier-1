@@ -21,7 +21,7 @@
 namespace Frontier::Workspaces::Sketcher
 {
 
-struct SketcherWorkspaceState;
+struct SketcherWorkspaceStatus;
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    ENUMS
@@ -73,7 +73,7 @@ struct SketcherFigure
 };
 
 // 📝 Panel state the HTML keeps in the DOM: search text, filter chip, compact rows, folded collection, rows scroll.
-struct SketcherOutlinerState
+struct SketcherOutlinerMode
 {
     std::array<char, 96> Search          = {};                                               // [-]  - #scene-search
     int                  Filter          = -1;                                               // [-]  - −1 All, else a SketcherFigureCategory
@@ -101,9 +101,9 @@ struct SketcherOutlinerIntent
 //------------------------------------------------------------------------------------------------------------------------
 
 // Bodies (creation order), then sketches and space curves (tree order), then image planes, with selection, visibility and lock.
-[[nodiscard]] std::vector<SketcherFigure> CollectSketcherFigures(const SketcherWorkspaceState& State);
+[[nodiscard]] std::vector<SketcherFigure> CollectSketcherFigures(const SketcherWorkspaceStatus& State);
 
 // Draws the panel into the current ImGui window over Panel (logical px) and returns the action of this frame.
-SketcherOutlinerIntent ConstructSketcherOutliner(SketcherWorkspaceState& State, const PlaneExtent& Panel);
+SketcherOutlinerIntent ConstructSketcherOutliner(SketcherWorkspaceStatus& State, const PlaneExtent& Panel);
 
 } // namespace Frontier::Workspaces::Sketcher

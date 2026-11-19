@@ -24,24 +24,24 @@ namespace Frontier::GeometrySpace::Parametric
 
 namespace
 {
-    [[nodiscard]] Vector3 LocalCoordinates(const OrthonormalFrame& Frame, Vector3 Position) noexcept
+    [[nodiscard]] Vector3 LocalCoordinates(const OrthonormalBasis& Frame, Vector3 Position) noexcept
     {
         const Vector3 Offset = Position - Frame.Origin;                                      // [len] - From the origin
         return { Dot(Offset, Frame.XAxis), Dot(Offset, Frame.YAxis), Dot(Offset, Frame.ZAxis) };
     }
 
-    [[nodiscard]] const OrthonormalFrame& FrameOf(const SurfaceGeometry& Surface) noexcept
+    [[nodiscard]] const OrthonormalBasis& FrameOf(const SurfaceGeometry& Surface) noexcept
     {
-        return std::visit([](const auto& Typed) -> const OrthonormalFrame&
+        return std::visit([](const auto& Typed) -> const OrthonormalBasis&
         {
             using Kind = std::decay_t<decltype(Typed)>;
-            if constexpr (std::is_same_v<Kind, RollingBallSurface> || std::is_same_v<Kind, NurbsSurface> || std::is_same_v<Kind, ParallelSurface>) { static const OrthonormalFrame Unused{}; return Unused; }   // No frame: handled first
+            if constexpr (std::is_same_v<Kind, RollingBallSurface> || std::is_same_v<Kind, NurbsSurface> || std::is_same_v<Kind, ParallelSurface>) { static const OrthonormalBasis Unused{}; return Unused; }   // No frame: handled first
             else return Typed.Frame;
         }, Surface);
     }
 
     // Unit radial direction of a local point; on the axis any perpendicular direction is a valid gradient choice.
-    [[nodiscard]] Vector3 RadialDirection(const OrthonormalFrame& Frame, Vector3 Local, double ρ) noexcept
+    [[nodiscard]] Vector3 RadialDirection(const OrthonormalBasis& Frame, Vector3 Local, double ρ) noexcept
     {
         return ρ > 0.0 ? (Frame.XAxis * Local.X + Frame.YAxis * Local.Y) * (1.0 / ρ) : Frame.XAxis;
     }
@@ -55,7 +55,7 @@ namespace
         BernsteinPolynomial W = {};                                                          // [-]   - Σ wᵢ·Bᵢ
     };
 
-    [[nodiscard]] HomogeneousCoordinates ComposeHomogeneous(const OrthonormalFrame& Frame, const RationalSegment& Segment)
+    [[nodiscard]] HomogeneousCoordinates ComposeHomogeneous(const OrthonormalBasis& Frame, const RationalSegment& Segment)
     {
         HomogeneousCoordinates Coordinates;
         for (size_t Index = 0; Index < Segment.ControlPoints.size(); ++Index)
@@ -99,7 +99,7 @@ SurfaceDistance MeasureSurfaceDistance(const SurfaceGeometry& Surface, Vector3 P
         const Vector3 Normal    = EvaluateNurbsNormal(*Spline, Parameter);
         return { Dot(Position - Foot, Normal), Normal, Foot };
     }
-    const OrthonormalFrame& Frame = FrameOf(Surface);
+    const OrthonormalBasis& Frame = FrameOf(Surface);
     const Vector3           Local = LocalCoordinates(Frame, Position);                       // [len] - Frame coordinates
     const double            ρ     = std::hypot(Local.X, Local.Y);                            // [len] - Distance from the axis
     SurfaceDistance         Measure;
@@ -260,7 +260,7 @@ BernsteinPolynomial ComposeImplicitEquation(const SurfaceGeometry& Surface, cons
 double ImplicitMagnitude(const SurfaceGeometry& Surface, const RationalSegment& Segment)
 {
     // 📝 Characteristic length L (control points + radii); the composed coefficients scale as L^d.
-    const OrthonormalFrame& Frame = FrameOf(Surface);
+    const OrthonormalBasis& Frame = FrameOf(Surface);
     double Scale = 0.0;                                                                      // [len] - L
     for (const Vector3& Control : Segment.ControlPoints) Scale = std::max(Scale, Length(LocalCoordinates(Frame, Control)));
     std::visit([&](const auto& Typed)

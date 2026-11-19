@@ -9,7 +9,7 @@
 
 #include "Engine/GeometrySpace/Parametric/Local/FaceChange.h"
 
-#include "Engine/GeometrySpace/Parametric/Construction/BodyAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Construction/BodyArrangement.h"
 #include "Engine/GeometrySpace/Parametric/Containment/FaceDomain.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/ProjectedCurve.h"
 #include "Engine/GeometrySpace/Parametric/Intersection/CurveSurfaceIntersection.h"
@@ -832,7 +832,7 @@ FaceChangeOutcome ChangeFaces(ModelPartition& Partition, BodyToken Body, const s
     };
     FaceChangeRebuild Rebuild(Partition, Body, Replacements, Outcome);
     if (std::string Refusal = Rebuild.Run(); !Refusal.empty()) return Finish(Refusal);
-    const AssemblyOutcome Assembly = AssembleBody(Partition, Rebuild.Blueprint, Label);
+    const ArrangementOutcome Assembly = AssembleBody(Partition, Rebuild.Blueprint, Label);
     if (!Assembly.Refusal.empty()) return Finish(Assembly.Refusal);
     Outcome.Audit = AuditBody(Partition, Assembly.Body);
     if (!Outcome.Audit.SoundCondition())

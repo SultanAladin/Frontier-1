@@ -85,7 +85,7 @@ enum class SketcherExtrudeMode : uint8_t
 };
 
 // Shift+R repeats the last applied command on the current selection.
-enum class SketcherRepeatKind : uint8_t
+enum class SketcherRepeatCategory : uint8_t
 {
     None      = 0,
     Blend     = 1,
@@ -95,10 +95,10 @@ enum class SketcherRepeatKind : uint8_t
 
 struct SketcherRepeat
 {
-    SketcherRepeatKind          Kind      = SketcherRepeatKind::None;                        // [-]   - What to repeat
+    SketcherRepeatCategory          Kind      = SketcherRepeatCategory::None;                        // [-]   - What to repeat
     GeometrySpace::Parametric::BlendProfile      Shape     = GeometrySpace::Parametric::BlendProfile::Fillet;                  // [-]   - Blend
     double                      Size      = 0.0;                                             // [len] - Blend size
-    GeometrySpace::Parametric::FaceOperationKind Operation = GeometrySpace::Parametric::FaceOperationKind::Extrude;            // [-]   - Face verb
+    GeometrySpace::Parametric::FaceOperationCategory Operation = GeometrySpace::Parametric::FaceOperationCategory::Extrude;            // [-]   - Face verb
     double                      Amount    = 0.0;                                             // [-]   - Face amount (model units)
     SketcherConstructRequest    Construct = {};                                              // [-]   - Construct request
     SketcherBlendRequest        Blend     = {};                                              // [-]   - Blend request (variable sizes, flip)
@@ -209,9 +209,9 @@ struct SketcherDrawingSession
     std::vector<GeometrySpace::Parametric::Vector3> TracePreview = {};
     std::vector<GeometrySpace::Parametric::Vector3> TraceControls = {};
     uint64_t                       TraceRevision = 0;
-    OrbitCameraFrame               TraceFrame = {};
+    OrbitCameraBasis               TraceFrame = {};
     GeometrySpace::Parametric::SketchSplineForm TraceForm = GeometrySpace::Parametric::SketchSplineForm::Hermite;
-    SketcherDrawingKind            Kind             = SketcherDrawingKind::Line;             // [-]   - Tool
+    SketcherDrawingCategory            Kind             = SketcherDrawingCategory::Line;             // [-]   - Tool
     std::vector<GeometrySpace::Parametric::Vector2> Points           = {};                                    // [len] - Committed clicks (plane coordinates)
     GeometrySpace::Parametric::Vector2              Pointer          = {};                                    // [len] - Pointer on the plane (snapped)
     bool                           PointerCondition = false;                                 // [-]   - Pointer hits the plane
@@ -226,13 +226,13 @@ struct SketcherDrawingSession
     bool                           PressPlacedCondition = false;                             // [-]   - That press placed the first point (its release is no click)
     std::string                    StartFace        = {};                                    // [-]   - Solid: face under its first click (empty: ground / snap)
     bool                           SolidCondition   = false;                                 // [-]   - Construct solid: plane clicks, then a height
-    SketcherConstructKind          Solid            = SketcherConstructKind::Block;          // [-]   - Which solid
+    SketcherConstructCategory          Solid            = SketcherConstructCategory::Block;          // [-]   - Which solid
     double                         Elevation        = 0.0;                                   // [len] - Plane height (solids: z of the first click)
     double                         PointerElevation = 0.0;                                   // [len] - Height the pointer snapped to before the first click
     double                         Lift             = 0.0;                                   // [len] - Height from the pointer (signed, along +z)
     GeometrySpace::Parametric::FeatureCombination Combination = GeometrySpace::Parametric::FeatureCombination::Separate;   // [-] - Solid: R new body (default) · Q / W / E
     bool                           FacePlaneCondition = false;                               // [-]   - Drawn on the body face under the first click (sketch or solid)
-    GeometrySpace::Parametric::OrthonormalFrame     FacePlane        = {};                                    // [len] - That face plane (grid-aligned axes, outward n̂)
+    GeometrySpace::Parametric::OrthonormalBasis     FacePlane        = {};                                    // [len] - That face plane (grid-aligned axes, outward n̂)
     std::string                    FaceName         = {};                                    // [-]   - Persistent name of the face (empty: grid plane)
     uint64_t                       FaceRevision     = 0;                                     // [-]   - Document revision FacePlane was resolved at
     // 📝 Curve (Shift+S) with Alt on a curve off the drawing plane (a wrapped 3D curve, a loft rim): the point keeps its
@@ -254,10 +254,10 @@ struct SketcherPointPicker
     SketcherSnapFilter                     Filter          = {};                             // [-]   - Enabled kinds (Inspector)
     SketcherSnap                           Current         = {};                             // [-]   - Snap under the pointer this frame
     SketcherSnap                           Placed          = {};                             // [-]   - Snap of the last placed point (t / n / b)
-    SketcherSnapLockKind                   Lock            = SketcherSnapLockKind::None;     // [-]   - Direction lock (cleared by the next point)
+    SketcherSnapLockCategory                   Lock            = SketcherSnapLockCategory::None;     // [-]   - Direction lock (cleared by the next point)
     GeometrySpace::Parametric::Vector3                      LockOrigin      = {};                             // [len] - Last placed point
     GeometrySpace::Parametric::Vector3                      LockDirection   = {};                             // [-]   - Unit lock direction
-    std::unique_ptr<SketcherSnapCatalogue> Catalogue       = {};                             // [-]   - Exact carriers of the shown scene
+    std::unique_ptr<SketcherSnapRepository> Catalogue       = {};                             // [-]   - Exact carriers of the shown scene
     size_t                                 SceneFaces      = 0;                              // [-]   - Scene face count the catalogue indexes
     int                                    Snapped         = 0;                              // [-]   - Points placed on object snaps (script evidence)
     bool                                   AlongUsedCondition = false;                       // [-]   - Alt slid along a curve since it went down
@@ -452,8 +452,8 @@ struct SketcherTransformSession
     std::string                       Typed              = {};                               // [-]   - Typed amount
     double                            CurrentValue       = 0.0;                              // [-]   - Live scalar (m, °, ×) shown in Inspector numeric field
     std::array<char, 48>              ValueText          = {};                               // [-]   - Editable numeric text buffer in Inspector session card
-    GeometrySpace::Parametric::AffineMap     Map                = {};                               // [-]   - Current map
-    GeometrySpace::Parametric::AffineMap               StagedMap          = {};                               // [-]   - Map the preview shows
+    GeometrySpace::Parametric::AffineMapping     Map                = {};                               // [-]   - Current map
+    GeometrySpace::Parametric::AffineMapping               StagedMap          = {};                               // [-]   - Map the preview shows
     bool                              StagedCondition    = false;                            // [-]   - A preview was built
     std::unique_ptr<SketcherDocument> Preview            = {};                               // [-]   - Staged document
     SketcherScene                     PreviewScene       = {};                               // [-]   - Its display arrays
@@ -474,7 +474,7 @@ enum class SketcherViewportLayout : uint8_t
     Quad          = 4,                                                                       // 4 views CAD Quad (Top | 3D / Front | Right)
 };
 
-struct SketcherSplitViewState
+struct SketcherSplitViewMode
 {
     SketcherViewportLayout              Layout          = SketcherViewportLayout::Single;    // [-]   - Active split layout
     SketcherViewportLayout              LastMultiLayout = SketcherViewportLayout::Quad;      // [-]   - Restored on Ctrl+Alt+Q toggle
@@ -581,7 +581,7 @@ struct SketcherKnifeSession
     bool                                   DepthChosenCondition = false;                     // [-]   - Insert: depth set by hand (else it keeps the shape)
     double                                 InsertDepth          = 0.075;                     // [len] - Insert: below the face (above it for Q)
     bool                                   InsertThroughCondition = false;                   // [-]   - Insert: T, straight through (this session only)
-    GeometrySpace::Parametric::OrthonormalFrame   Spot                 = {};                        // [len] - Insert: surface point + face frame
+    GeometrySpace::Parametric::OrthonormalBasis   Spot                 = {};                        // [len] - Insert: surface point + face frame
     std::string                            SpotBody             = {};                        // [-]   - Insert: body under the spot
     double                                 Size                 = 0.25;                      // [len] - Insert: width
     double                                 Turn                 = 0.0;                       // [rad] - Insert: about the face normal
@@ -607,9 +607,9 @@ struct SketcherKnifeSession
     bool                                   LibraryCondition     = false;                     // [-]   - Library assembled
     // 📝 Toolbar tool menu: the cutter Shift+K and the knife icon open with (kept across sessions).
     SketcherKnifeMode                      PreferredMode        = SketcherKnifeMode::Sketch; // [-]   - Sketch shape or library insert
-    SketcherDrawingKind                    PreferredShape       = SketcherDrawingKind::Circle; // [-] - Sketch: the shape drawn first
+    SketcherDrawingCategory                    PreferredShape       = SketcherDrawingCategory::Circle; // [-] - Sketch: the shape drawn first
     bool                                   PreferredSolidCondition = false;                  // [-]   - The cutter is a Construct primitive (3D)
-    SketcherConstructKind                  PreferredSolid       = SketcherConstructKind::Block; // [-] - That primitive (box, cylinder, …)
+    SketcherConstructCategory                  PreferredSolid       = SketcherConstructCategory::Block; // [-] - That primitive (box, cylinder, …)
     bool                                   PreferredPolylineCondition = false;               // [-]   - Line cutter: a polyline (Enter / right-click ends)
     // 📝 Insert / Compound Boolean Library: built-in 2-stage Compound Cutters (0..5: Countersink, Counterbore, Stepped hole,
     //    Hex socket, Stepped slot, Stepped pocket) are drawn stage-by-stage on the face without non-uniform stretching:
@@ -697,7 +697,7 @@ struct SketcherDrawingSheetSession
     int                   Exports         = 0;                                               // [-]  - Files written
 };
 
-struct SketcherIsolateState
+struct SketcherIsolateMode
 {
     bool                  ActiveCondition = false;                                           // [-] - Ctrl+I isolate toggle active
     std::set<std::string> HiddenBodies    = {};                                              // [-] - Pre-isolate HiddenBodies snapshot
@@ -711,9 +711,9 @@ struct SketcherDimensionSession
 {
     bool                                        ActiveCondition     = false;                 // [-]   - Interactive Dimension Tool active
     int                                         Stage               = 0;                     // [-]   - 0 pick start/entity · 1 pick end · 2 position offset
-    SketcherDimensionKind                       PreviewKind         = SketcherDimensionKind::Linear; // [-] - Linear, Radius, Diameter, Angular
-    SketcherSelectionKind                       FirstKind           = SketcherSelectionKind::Vertex; // [-] - First associative entity kind
-    SketcherSelectionKind                       SecondKind          = SketcherSelectionKind::Vertex; // [-] - Second associative entity kind
+    SketcherDimensionCategory                       PreviewKind         = SketcherDimensionCategory::Linear; // [-] - Linear, Radius, Diameter, Angular
+    SketcherSelectionCategory                       FirstKind           = SketcherSelectionCategory::Vertex; // [-] - First associative entity kind
+    SketcherSelectionCategory                       SecondKind          = SketcherSelectionCategory::Vertex; // [-] - Second associative entity kind
     GeometrySpace::Parametric::Vector3                 FirstPoint          = {};                    // [len] - Snapped start anchor (or circle/arc centre)
     GeometrySpace::Parametric::Vector3                 SecondPoint         = {};                    // [len] - Snapped end anchor (or circle/arc rim)
     GeometrySpace::Parametric::Vector3                 HoverPoint          = {};                    // [len] - Live snapped hover point
@@ -771,7 +771,7 @@ struct SketcherJointSession
     bool                              ActiveCondition = false;                               // [-] - Alt+J pressed, not ended
     int                               Phase           = 0;                                   // [-] - 0 moving origin · 1 fixed origin · 2 adjust
     SketcherJointRequest              Request         = {};                                  // [-] - Picks, kind and values
-    SketcherSelectionKind             HoverKind       = SketcherSelectionKind::Edge;         // [-] - Entity under the pointer
+    SketcherSelectionCategory             HoverKind       = SketcherSelectionCategory::Edge;         // [-] - Entity under the pointer
     std::string                       HoverName       = {};                                  // [-] - Its name (empty: none)
     SketcherJointOrigin               Hover           = {};                                  // [-] - Its joint origin (glyph)
     SketcherJointOrigin               Moving          = {};                                  // [-] - Picked origin on the moving body
@@ -869,16 +869,16 @@ struct SketcherGizmoSession
 
 // 📝 Frame timing for the trace (SketcherTrace.log / F12): each frame records named CPU phases; a frame slower than
 //    SlowThreshold writes one "Frame" line with the total, the host's GPU wait and upload, and the costliest phases.
-struct SketcherFramePhase
+struct SketcherRenderPhase
 {
     const char* Name         = "";                                                            // [-]  - Static phase name
     double      Milliseconds = 0.0;                                                           // [ms] - Time this frame
     int         Calls        = 0;                                                             // [-]  - Entries this frame
 };
 
-struct SketcherFrameProfile
+struct SketcherRenderProfile
 {
-    std::vector<SketcherFramePhase> Phases        = {};                                       // [-]  - This frame's phases (entry order)
+    std::vector<SketcherRenderPhase> Phases        = {};                                       // [-]  - This frame's phases (entry order)
     double                          InterfaceMs   = 0.0;                                      // [ms] - DrawSketcherInterface, whole
     double                          UploadMs      = 0.0;                                      // [ms] - Host: PrepareViewport (scene / matcap uploads)
     double                          GpuWaitMs     = 0.0;                                      // [ms] - Host: fence wait for the previous frame
@@ -894,19 +894,19 @@ struct SketcherFrameProfile
 class SketcherPhaseClock
 {
 public:
-    SketcherPhaseClock(SketcherFrameProfile& Profile, const char* Name);
+    SketcherPhaseClock(SketcherRenderProfile& Profile, const char* Name);
     ~SketcherPhaseClock();
 
     SketcherPhaseClock(const SketcherPhaseClock&)            = delete;
     SketcherPhaseClock& operator=(const SketcherPhaseClock&) = delete;
 
 private:
-    SketcherFrameProfile& Profile;                                                            // [-]  - Where the time goes
+    SketcherRenderProfile& Profile;                                                            // [-]  - Where the time goes
     const char*           Name;                                                               // [-]  - Phase name (static text)
     double                Start;                                                              // [s]  - Entry time (steady clock)
 };
 
-struct SketcherWorkspaceState
+struct SketcherWorkspaceStatus
 {
     bool SurfaceTraceEnabled = false;
     bool DrawingCurveSnap = true;
@@ -954,7 +954,7 @@ struct SketcherWorkspaceState
     SketcherKnifeSession                  Knife          = {};                               // [-]   - Shift+K knife (KitOps-style cutters)
     SketcherClipboard                     Clipboard      = {};                               // [-]   - Ctrl+C / Ctrl+V
     SketcherMeasureSession                Measure        = {};                               // [-]   - I: Measure card + overlay
-    SketcherIsolateState                  Isolate        = {};                               // [-]   - Ctrl+I: Isolate toggle snapshot
+    SketcherIsolateMode                  Isolate        = {};                               // [-]   - Ctrl+I: Isolate toggle snapshot
     SketcherDimensionSession              DimensionTool  = {};                               // [-]   - D / Dim: Interactive CAD dimension lines
     SketcherSectionSession                Section        = {};                               // [-]   - Alt+S: section plane, caps, exact figures
     SketcherDrawingSheetSession           DrawingSheet   = {};                               // [-]   - Alt+D: paper, views, dimensions, export
@@ -966,7 +966,7 @@ struct SketcherWorkspaceState
     SketcherInspectorTab                  InspectorTab   = SketcherInspectorTab::Geometry; // [-]   - Inspector tab shown
     bool                                  ZebraEnabled   = false;                            // [-]   - Zebra stripes on the faces (fine tessellation, V8)
     bool                                  DeviationEnabled = false;                          // [-]   - Needles from imported points to the panels (V8)
-    SketcherDeviationMap                  Deviation      = {};                               // [-]   - Cached per document revision
+    SketcherDeviationPlot                  Deviation      = {};                               // [-]   - Cached per document revision
     bool                                  ImagePlanesEnabled = true;                         // [-]   - Blueprint image planes drawn (toolbar Images)
     std::string                           FocusedImage       = {};                           // [-]   - Image plane picked in the Outliner (its Inspector rows open)
     int                                   RingPicks          = 0;                            // [-]   - Alt / Alt+Shift edge picks (script evidence)
@@ -985,10 +985,10 @@ struct SketcherWorkspaceState
     bool                                  ConstructMenuRequest = false;                      // [-]   - Construct catalogue popover requested
     bool                                  TraceShown     = false;                            // [-]   - F12 operation trace panel (development builds)
     std::string                           TraceFilter    = {};                               // [-]   - Its substring filter
-    SketcherOutlinerState                 Outliner       = {};                               // [-]   - Scene search, filter chips, compact / folded
+    SketcherOutlinerMode                 Outliner       = {};                               // [-]   - Scene search, filter chips, compact / folded
     bool                                  ViewportMaximizedEnabled = false;                  // [-]   - Scene panel spans the row (maximize button)
     size_t                                HistoryCount   = 0;                                // [-]   - Steps when the strip last scrolled to the newest
-    GeometrySpace::Parametric::FaceOperationKind           FaceVerb       = GeometrySpace::Parametric::FaceOperationKind::Push; // [-]  - Face-edit verb
+    GeometrySpace::Parametric::FaceOperationCategory           FaceVerb       = GeometrySpace::Parametric::FaceOperationCategory::Push; // [-]  - Face-edit verb
     double                                FaceAmount     = 0.25;                             // [-]   - Face-edit amount (by verb)
     std::string                           FocusedStep    = {};                               // [-]   - Outliner row (step label)
     std::string                           DocumentPath   = {};                               // [-]   - Save / Open path
@@ -1001,17 +1001,17 @@ struct SketcherWorkspaceState
     bool                                  WelcomeOpen    = false;                            // [-]   - Recovery prompt pending
     uint32_t                              HoverIdentity  = 0;                                // [-]   - GPU identity under the pointer
     std::array<float, 4>                  ViewportRect   = { 0, 0, 1, 1 };                   // [px]  - Active pane x, y, width, height in the frame
-    SketcherSplitViewState                SplitView      = {};                               // [-]   - 1 / 2 / 3 / 4 docked split-viewport state
+    SketcherSplitViewMode                SplitView      = {};                               // [-]   - 1 / 2 / 3 / 4 docked split-viewport state
     bool                                  ViewportHovered = false;                           // [-]   - Pointer over the viewport
     std::string                           Status         = "Ready";                          // [-]   - Status line
     std::vector<std::string>              Journal        = {};                               // [-]   - Command log (newest last)
     SketcherWidgetBoard                   Widgets        = {};                               // [px]  - Named widget rectangles of the last frame (scripts)
     uint64_t                              FrameNumber    = 0;                                // [-]   - Frames drawn
     double                                FrameMs        = 0.0;                              // [ms]  - Last frame's CPU + GPU time
-    SketcherFrameProfile                  Profile        = {};                               // [-]   - Phase timing of the current frame
+    SketcherRenderProfile                  Profile        = {};                               // [-]   - Phase timing of the current frame
     std::string                           DeviceLabel    = {};                               // [-]   - Vulkan device description
     // 💡 Flow along curve (Inspector › Curves › Flow): the rail is the first picked sketch (FlowSwapCondition: the last).
-    GeometrySpace::Parametric::SketchFlowSettings Flow              = {};                           // [-]   - Axis, stretch, reverse
+    GeometrySpace::Parametric::SketchRailDeformSettings Flow              = {};                           // [-]   - Axis, stretch, reverse
     bool                                  FlowSwapCondition = false;                         // [-]   - Rail is the last pick instead of the first
     // 💡 Edge path (Ctrl+click an unpicked edge with edges picked): the mode and side, and the last pick so a change in
     //    Inspector › Edge path redoes it while the selection is still that pick's.
@@ -1039,7 +1039,7 @@ struct SketcherWorkspaceState
     std::array<char, 64>                  EdgeGroupNameText = { 'C', 'r', 'e', 'a', 's', 'e', 0 };          // [-] - Active edge group name
     double                                EdgeGroupWeight   = 1.0;                           // [-]   - Weight assigned to selected edges
     std::string                           EdgeGroupVariable = {};                            // [-]   - Optional variable bound to edge weight
-    int                                   AddModifierKind   = 0;                             // [-]   - Selected ModifierKind in '+ Add Modifier'
+    int                                   AddModifierKind   = 0;                             // [-]   - Selected ModifierCategory in '+ Add Modifier'
     bool                                  DimensionsEnabled = true;                          // [-]   - Persistent CAD dimension lines overlay
 };
 
@@ -1051,47 +1051,47 @@ struct SketcherWorkspaceState
 void ConfigureSketcherInterface(const SketcherOptions& Options);
 
 // Empty document + defaults; offers recovery when Options.RecoveryPath holds an autosave.
-void InitialiseSketcherWorkspace(SketcherWorkspaceState& State, const SketcherOptions& Options);
+void InitialiseSketcherWorkspace(SketcherWorkspaceStatus& State, const SketcherOptions& Options);
 
 // Host hook, once per frame after present: writes the slow-frame trace line for the frame just shown (FrameMs set).
-void ConcludeSketcherFrame(SketcherWorkspaceState& State);
+void ConcludeSketcherFrame(SketcherWorkspaceStatus& State);
 
 // Rigid previews (a move / rotate / scale of whole bodies shows the scene carried by the map, no regeneration): the map a
 // gizmo drag shows, and the volume the commit will give (each keyed body's volume × det M).
-[[nodiscard]] GeometrySpace::Parametric::AffineMap GizmoPreviewMap(const SketcherGizmoSession& Gizmo);
-[[nodiscard]] double                        RigidPreviewVolume(const SketcherDocument& Document, const std::vector<std::string>& Keys, const GeometrySpace::Parametric::AffineMap& Map);
+[[nodiscard]] GeometrySpace::Parametric::AffineMapping GizmoPreviewMap(const SketcherGizmoSession& Gizmo);
+[[nodiscard]] double                        RigidPreviewVolume(const SketcherDocument& Document, const std::vector<std::string>& Keys, const GeometrySpace::Parametric::AffineMapping& Map);
 
 // 💡 Builds the whole frame (between ImGui::NewFrame and ImGui::Render). ViewportTexture is the colour target of the
 //    previous viewport render. Serves every shortcut and viewport gesture; DeltaSeconds drives the autosave timer.
-void DrawSketcherInterface(SketcherWorkspaceState& State, ImTextureID ViewportTexture, double DeltaSeconds);
+void DrawSketcherInterface(SketcherWorkspaceStatus& State, ImTextureID ViewportTexture, double DeltaSeconds);
 
 // Hosted dock-pane entry points for Frontier's HeadlessWorkspaceDockContainer (used by SketcherWorkspaceHost).
-void BeginSketcherHostedFrame(SketcherWorkspaceState& State);
-void DrawSketcherOutlinerPanel(SketcherWorkspaceState& State);
-void DrawSketcherViewportPanel(SketcherWorkspaceState& State, ImTextureRef ViewportTexture);
-void DrawSketcherInspectorPanel(SketcherWorkspaceState& State);
-void DrawSketcherConstructPanel(SketcherWorkspaceState& State);
-void DrawSketcherDrawingSheetPanel(SketcherWorkspaceState& State);
-void EndSketcherHostedFrame(SketcherWorkspaceState& State, double DeltaSeconds, bool DrawFloatingOverlays = true, bool HostedOverlayMode = false);
-bool IntakeSketcherDroppedFile(SketcherWorkspaceState& State, const std::string& FilePath, std::string* OutDiagnostic = nullptr);
+void BeginSketcherHostedFrame(SketcherWorkspaceStatus& State);
+void DrawSketcherOutlinerPanel(SketcherWorkspaceStatus& State);
+void DrawSketcherViewportPanel(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture);
+void DrawSketcherInspectorPanel(SketcherWorkspaceStatus& State);
+void DrawSketcherConstructPanel(SketcherWorkspaceStatus& State);
+void DrawSketcherDrawingSheetPanel(SketcherWorkspaceStatus& State);
+void EndSketcherHostedFrame(SketcherWorkspaceStatus& State, double DeltaSeconds, bool DrawFloatingOverlays = true, bool HostedOverlayMode = false);
+bool IntakeSketcherDroppedFile(SketcherWorkspaceStatus& State, const std::string& FilePath, std::string* OutDiagnostic = nullptr);
 
 // Reassembles the matcap library when the document's custom pictures changed (or on first use).
-void RefreshSketcherMatcaps(SketcherWorkspaceState& State);
+void RefreshSketcherMatcaps(SketcherWorkspaceStatus& State);
 
 // The scene the viewport must show (the staged preview during a bevel session).
-[[nodiscard]] const SketcherScene& DisplayedSketcherScene(const SketcherWorkspaceState& State);
+[[nodiscard]] const SketcherScene& DisplayedSketcherScene(const SketcherWorkspaceStatus& State);
 
 // Per-face / per-edge state words for the displayed scene (selection, active operand, hover).
-[[nodiscard]] SketcherSceneStates DisplayedSketcherStates(const SketcherWorkspaceState& State);
+[[nodiscard]] SketcherSceneStates DisplayedSketcherStates(const SketcherWorkspaceStatus& State);
 
 // Split-viewport pane count (1, 2, 3, or 4), layout switcher, and GPU raster pane descriptor list.
 [[nodiscard]] int  SketcherViewportPaneCount(SketcherViewportLayout Layout) noexcept;
-void               ConfigureSketcherStartupViews(SketcherWorkspaceState& State);
-void               SetSketcherViewportLayout(SketcherWorkspaceState& State, SketcherViewportLayout Layout);
-[[nodiscard]] std::vector<SketcherRasterPane> ComposeSketcherRasterPanes(const SketcherWorkspaceState& State, uint32_t TargetWidth, uint32_t TargetHeight);
+void               ConfigureSketcherStartupViews(SketcherWorkspaceStatus& State);
+void               SetSketcherViewportLayout(SketcherWorkspaceStatus& State, SketcherViewportLayout Layout);
+[[nodiscard]] std::vector<SketcherRasterPane> ComposeSketcherRasterPanes(const SketcherWorkspaceStatus& State, uint32_t TargetWidth, uint32_t TargetHeight);
 
 // Rebuilds the scene after a document change and marks the document dirty (autosave pending).
-void RefreshSketcherScene(SketcherWorkspaceState& State, bool DirtyCondition);
+void RefreshSketcherScene(SketcherWorkspaceStatus& State, bool DirtyCondition);
 
 // Where New document keeps the previous recovery copy ("X.solidarc" → "X.previous.solidarc").
 [[nodiscard]] std::string SketcherPreviousRecoveryPath(const SketcherOptions& Options);
@@ -1100,17 +1100,17 @@ void RefreshSketcherScene(SketcherWorkspaceState& State, bool DirtyCondition);
 bool ParseSketcherLength(const std::string& Text, double& Value);
 
 // Sketch step the constraint card / script fields describe: the K session's, else the focused sketch step, else "".
-[[nodiscard]] std::string SketcherConstraintSketch(const SketcherWorkspaceState& State);
+[[nodiscard]] std::string SketcherConstraintSketch(const SketcherWorkspaceStatus& State);
 
 // JSON summary of the workspace (document, selection, camera, bevel session) for capture exhibits.
-[[nodiscard]] std::string DescribeSketcherWorkspace(const SketcherWorkspaceState& State);
+[[nodiscard]] std::string DescribeSketcherWorkspace(const SketcherWorkspaceStatus& State);
 
 // Evaluates the selection's gizmo target, fits its handles to State.Camera's view (2D in 90° views, 3D otherwise),
 // and builds State.Gizmo.Geometry on CPU without requiring a GPU / ImGui frame (used by document/gizmo validation).
-void EvaluateSketcherGizmo(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame);
+void EvaluateSketcherGizmo(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame);
 
 // Executes a single gizmo command on State.Document for the currently resolved State.Gizmo target and refreshes Scene.
-[[nodiscard]] SketcherCommandOutcome ApplySketcherGizmo(SketcherWorkspaceState& State, GizmoHandle Handle,
+[[nodiscard]] SketcherCommandOutcome ApplySketcherGizmo(SketcherWorkspaceStatus& State, GizmoHandle Handle,
                                                         GeometrySpace::Parametric::Vector3 Shift, double Angle = 0.0, double Factor = 1.0);
 
 } // namespace Frontier::Workspaces::Sketcher

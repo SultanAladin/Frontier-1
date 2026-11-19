@@ -24,13 +24,13 @@ void ComponentClassDefinition::FinalizeCompiledRevision() noexcept
     CompiledDirty    = false;
 }
 
-const char* ComponentClassDefinition::QueryRoleLabel(ComponentClassRole Role) noexcept
+const char* ComponentClassDefinition::QueryArchetypeLabel(ComponentClassArchetype Archetype) noexcept
 {
-    switch (Role)
+    switch (Archetype)
     {
-        case ComponentClassRole::AssemblyProp: return "AssemblyProp";
-        case ComponentClassRole::Driveable:    return "Driveable";
-        case ComponentClassRole::DynamicRig:   return "DynamicRig";
+        case ComponentClassArchetype::StaticMechanicalProp: return "AssemblyProp";
+        case ComponentClassArchetype::Driveable:    return "Driveable";
+        case ComponentClassArchetype::DynamicRig:   return "DynamicRig";
     }
     return "AssemblyProp";
 }

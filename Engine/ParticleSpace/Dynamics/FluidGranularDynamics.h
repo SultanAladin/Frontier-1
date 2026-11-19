@@ -58,7 +58,7 @@ void StepDielectricArcDynamics(
 
 /// Steps MoGraph spherical field-matrix effectors displacing anchored lattice elements cleanly.
 void StepFieldMatrixDynamics(
-    const FieldMatrixSpec&  Spec,
+    const FieldTensorSpec&  Spec,
     const float             OriginCenter[3],
     std::span<ParticleSlot> Slots,
     float                   ElapsedSeconds,

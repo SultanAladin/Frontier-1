@@ -71,7 +71,7 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
         Doc.Emitter.UpwardVelocityMps       = 6.4f;
         Doc.Emitter.Fuel                    = 4.8f;
         Doc.Emitter.Temperature             = 5.2f;
-        Doc.Shading.ColorPalette            = FluidColorPalette::CinemaNapalm;
+        Doc.Shading.ColorPalette            = FluidColorScheme::CinemaNapalm;
         Doc.Shading.FireIntensity           = 6.4f;
         Doc.Shading.DensityExtinction       = 22.0f;
     }
@@ -89,7 +89,7 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
         Doc.Particles.EmberCount            = 650u;
         Doc.Domain.DynamicBounds            = true;
         Doc.Domain.AdaptiveCeilingEnabled   = true;
-        Doc.Shading.ColorPalette            = FluidColorPalette::ThermobaricWhiteHot;
+        Doc.Shading.ColorPalette            = FluidColorScheme::ThermobaricWhiteHot;
     }
     else if (PresetKey == "megaton_open_bounds")
     {
@@ -181,7 +181,7 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
     else if (PresetKey == "plasma_reactor_arc")
     {
         Doc.SceneName                       = "Cherenkov plasma";
-        Doc.Shading.ColorPalette            = FluidColorPalette::CherenkovBluePlasma;
+        Doc.Shading.ColorPalette            = FluidColorScheme::CherenkovBluePlasma;
         Doc.Shading.FireIntensity           = 6.4f;
         Doc.Emitter.Temperature             = 5.2f;
         Doc.Emitter.Smoke                   = 0.45f;
@@ -208,7 +208,7 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
         Doc.Combustion.SootGeneration       = 1.85f;
         Doc.Combustion.CoolingRate          = 1.95f;
         Doc.Combustion.WindVelocityXY       = { 0.06f, 0.0f };
-        Doc.Shading.ColorPalette            = FluidColorPalette::CinemaNapalm;
+        Doc.Shading.ColorPalette            = FluidColorScheme::CinemaNapalm;
         Doc.Shading.FireIntensity           = 5.2f;
         Doc.Shading.DensityExtinction       = 18.5f;
         Doc.Particles.EmberCount            = 480u;
@@ -283,7 +283,7 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
 Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
     float             RawTemperature,
     float             TemperatureScale,
-    FluidColorPalette Palette) noexcept
+    FluidColorScheme Palette) noexcept
 {
     // Exact 1:1 port of Experimental/FluidEditor/src/shaders-wgsl.js :: evaluateBlackbodyPalette
     const float T = std::clamp(RawTemperature * TemperatureScale * 0.28f, 0.0f, 1.60f);
@@ -296,7 +296,7 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
     float Gain = T * T * 1.65f;
     switch (Palette)
     {
-        case FluidColorPalette::CinemaNapalm:
+        case FluidColorScheme::CinemaNapalm:
         {
             Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.65f, 0.02f, 0.002f }, SmoothStepF(0.0f, 0.25f, T));
             Col = MixRgb(Col, { 1.00f, 0.16f, 0.005f }, SmoothStepF(0.20f, 0.62f, T));
@@ -304,7 +304,7 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
             Col = MixRgb(Col, { 1.00f, 0.90f, 0.48f }, SmoothStepF(0.95f, 1.48f, T));
             break;
         }
-        case FluidColorPalette::ThermobaricWhiteHot:
+        case FluidColorScheme::ThermobaricWhiteHot:
         {
             Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.72f, 0.12f, 0.01f }, SmoothStepF(0.0f, 0.18f, T));
             Col = MixRgb(Col, { 1.00f, 0.45f, 0.08f }, SmoothStepF(0.15f, 0.42f, T));
@@ -313,7 +313,7 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
             Gain = T * T * 2.10f;
             break;
         }
-        case FluidColorPalette::WildfireCopperEmerald:
+        case FluidColorScheme::WildfireCopperEmerald:
         {
             Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.03f, 0.35f, 0.14f }, SmoothStepF(0.0f, 0.22f, T));
             Col = MixRgb(Col, { 0.10f, 0.92f, 0.38f }, SmoothStepF(0.18f, 0.54f, T));
@@ -322,7 +322,7 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
             Gain = T * T * 1.70f;
             break;
         }
-        case FluidColorPalette::CherenkovBluePlasma:
+        case FluidColorScheme::CherenkovBluePlasma:
         {
             Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.04f, 0.10f, 0.62f }, SmoothStepF(0.0f, 0.20f, T));
             Col = MixRgb(Col, { 0.12f, 0.52f, 1.00f }, SmoothStepF(0.16f, 0.50f, T));
@@ -331,7 +331,7 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
             Gain = T * T * 1.85f;
             break;
         }
-        case FluidColorPalette::ArcaneVoidMagenta:
+        case FluidColorScheme::ArcaneVoidMagenta:
         {
             Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.38f, 0.02f, 0.48f }, SmoothStepF(0.0f, 0.20f, T));
             Col = MixRgb(Col, { 0.88f, 0.14f, 0.98f }, SmoothStepF(0.16f, 0.52f, T));
@@ -340,7 +340,7 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
             Gain = T * T * 1.75f;
             break;
         }
-        case FluidColorPalette::PlanckianBlackbody:
+        case FluidColorScheme::PlanckianBlackbody:
         default:
         {
             Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.55f, 0.03f, 0.005f }, SmoothStepF(0.0f, 0.22f, T));
@@ -354,16 +354,16 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
     return { Col.R * Gain, Col.G * Gain, Col.B * Gain };
 }
 
-std::string_view FluidPresets::QueryPaletteLabel(FluidColorPalette Palette) noexcept
+std::string_view FluidPresets::QueryPaletteLabel(FluidColorScheme Palette) noexcept
 {
     switch (Palette)
     {
-        case FluidColorPalette::CinemaNapalm:          return "Cinema Napalm";
-        case FluidColorPalette::ThermobaricWhiteHot:   return "Thermobaric White-Hot";
-        case FluidColorPalette::WildfireCopperEmerald: return "Wildfire Copper Emerald";
-        case FluidColorPalette::CherenkovBluePlasma:   return "Cherenkov Blue Plasma";
-        case FluidColorPalette::ArcaneVoidMagenta:     return "Arcane Void Magenta";
-        case FluidColorPalette::PlanckianBlackbody:
+        case FluidColorScheme::CinemaNapalm:          return "Cinema Napalm";
+        case FluidColorScheme::ThermobaricWhiteHot:   return "Thermobaric White-Hot";
+        case FluidColorScheme::WildfireCopperEmerald: return "Wildfire Copper Emerald";
+        case FluidColorScheme::CherenkovBluePlasma:   return "Cherenkov Blue Plasma";
+        case FluidColorScheme::ArcaneVoidMagenta:     return "Arcane Void Magenta";
+        case FluidColorScheme::PlanckianBlackbody:
         default:                                       return "Planckian Blackbody";
     }
 }

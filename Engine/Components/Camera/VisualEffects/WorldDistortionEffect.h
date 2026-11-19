@@ -30,7 +30,7 @@ namespace Frontier::Components::VisualEffects
 
 struct ProjectedScreenDistortionAnchor
 {
-    WorldDistortionKind Kind               = WorldDistortionKind::HeatShimmer;
+    WorldDistortionCategory Kind               = WorldDistortionCategory::HeatShimmer;
     float               ScreenU            = 0.5f;
     float               ScreenV            = 0.5f;
     float               ScreenRadiusUv     = 0.12f;
@@ -206,8 +206,8 @@ inline void LinkParticleRigDistortionAnchor(
     {
         CameraWorldDistortionAnchor Anchor {};
         Anchor.Kind           = Lens->GravitationalBlackHole
-            ? WorldDistortionKind::BlackHole
-            : WorldDistortionKind::HeatShimmer;
+            ? WorldDistortionCategory::BlackHole
+            : WorldDistortionCategory::HeatShimmer;
         Anchor.WorldPosition  = Center;
         Anchor.RadiusMeters   = std::max(0.45f, Radius * 1.25f);
         Anchor.Strength       = std::max(0.1f, Lens->DistortionStrength);
@@ -222,7 +222,7 @@ inline void LinkParticleRigDistortionAnchor(
         if (Sprite->Cutout == ParticleSpace::SpriteCutoutCategory::HologramGlitch)
         {
             CameraWorldDistortionAnchor Anchor {};
-            Anchor.Kind           = WorldDistortionKind::Glitch;
+            Anchor.Kind           = WorldDistortionCategory::Glitch;
             Anchor.WorldPosition  = Center;
             Anchor.RadiusMeters   = std::max(0.5f, Radius * 1.25f);
             Anchor.Strength       = 1.0f;
@@ -236,7 +236,7 @@ inline void LinkParticleRigDistortionAnchor(
     if (Rig.Dynamics.Transition.has_value() && Rig.Dynamics.Transition->TransitionVariant == 7u)
     {
         CameraWorldDistortionAnchor Anchor {};
-        Anchor.Kind           = WorldDistortionKind::Glitch;
+        Anchor.Kind           = WorldDistortionCategory::Glitch;
         Anchor.WorldPosition  = Center;
         Anchor.RadiusMeters   = std::max(0.5f, Radius * 1.3f);
         Anchor.Strength       = 1.0f;
@@ -250,7 +250,7 @@ inline void LinkParticleRigDistortionAnchor(
     if (Rig.Dynamics.Ballistic.BuoyancyMps2 > 2.2f || Rig.Dynamics.Thermal.has_value())
     {
         CameraWorldDistortionAnchor Anchor {};
-        Anchor.Kind           = WorldDistortionKind::HeatShimmer;
+        Anchor.Kind           = WorldDistortionCategory::HeatShimmer;
         Anchor.WorldPosition  = { Center.X, Center.Y, Center.Z + Radius * 0.55f };
         Anchor.RadiusMeters   = std::max(0.55f, Radius * 1.25f);
         Anchor.Strength       = std::clamp(std::max(0.55f, Rig.Dynamics.Ballistic.BuoyancyMps2 * 0.22f), 0.35f, 1.5f);

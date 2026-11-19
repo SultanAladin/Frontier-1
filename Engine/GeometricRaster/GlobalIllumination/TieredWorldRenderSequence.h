@@ -13,9 +13,9 @@
 #include "Engine/DistanceFieldSpace/VoxelSdfClipmap.h"
 #include "Engine/GeometricRaster/Atmosphere/VolumetricCloudSequence.h"
 #include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
-#include "Engine/GeometricRaster/GlobalIllumination/DynamicProbeCacheSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/DynamicIrradianceCacheSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/IrradianceLatticeSequence.h"
-#include "Engine/GeometricRaster/GlobalIllumination/ReservoirPathReplaySequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/WeightedPathReplaySequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.h"
 #include "Engine/MaterialSpace/CompactMaterialRegister.h"
 #include "Engine/MaterialSpace/MaterialSurfaceLayer/BounceLayerSummary.h"
@@ -37,15 +37,15 @@ namespace Frontier::GeometricRaster
 enum class WorldRenderTier : uint8_t
 {
     Tier1GtxCalibrated    = 0u, // [-] - Compatibility alias -> SdfGlobalIllumination (Hybrid ReSTIR + 5-pass SVGF) + ContactPcss + WideTreeRaytrace
-    Tier2RtxDeterministic = 1u, // [-] - Compatibility alias -> DdgiRaytracing (DynamicProbeCache) + WideTreeRayQuery + WideTreeRaytrace
+    Tier2RtxDeterministic = 1u, // [-] - Compatibility alias -> DdgiRaytracing (DynamicIrradianceCache) + WideTreeRayQuery + WideTreeRaytrace
 };
 
 enum class WorldRenderEngine : uint8_t
 {
     MatCap                = 0u, // [-] - Studio MatCap Normal/Roughness Shading (Zero GI, Zero Shadow Maps)
     OpenPbrDirect         = 1u, // [-] - Direct OpenPBR + LTC Area Lights + Shadow Lab + BVH4/Sky Reflections (Zero GI)
-    DdgiRaytracing        = 2u, // [-] - DynamicProbeCache (8x8 Octahedral + 16x16 Chebyshev + Backface Gating) + Shadow Lab + BVH4/Sky Reflections
-    SdfGlobalIllumination = 3u, // [-] - Hybrid ReSTIR Path Replay GI (4-Candidate RIS + BVH 1-Bounce + DynamicProbeCache 2nd Bounce + 5-Pass SVGF)
+    DdgiRaytracing        = 2u, // [-] - DynamicIrradianceCache (8x8 Octahedral + 16x16 Chebyshev + Backface Gating) + Shadow Lab + BVH4/Sky Reflections
+    SdfGlobalIllumination = 3u, // [-] - Hybrid ReSTIR Path Replay GI (4-Candidate RIS + BVH 1-Bounce + DynamicIrradianceCache 2nd Bounce + 5-Pass SVGF)
     DeterministicPathTrace = 4u,// [-] - MIS/NEE + Heitz GGX VNDF Monte Carlo Path Tracer + A-Trous Denoiser
 };
 
@@ -79,7 +79,7 @@ struct WorldSceneSpecification
     DistanceFieldSpace::VoxelSdfClipmapConfiguration          ClipmapConfig      {};
     std::vector<DistanceFieldSpace::DynamicLocalSdfInstance>  DynamicSdfObjects  {};
     std::vector<DistanceFieldSpace::VoxelPointLightSpec>      PointLights        {};
-    SolarDirectionalEmitter                                   Sun                {};
+    SolarDirectionalSource                                   Sun                {};
     std::vector<PolygonalAreaQuadLight>                       AreaLights         {};
     IrradianceLatticeConfiguration                            LatticeConfig      {};
     Mathematics::LinearRGB                                    SkyRadiance        { 0.15f, 0.21f, 0.32f };
@@ -87,7 +87,7 @@ struct WorldSceneSpecification
     const SimulationSpace::FluidSpace::FluidSimulationSequence* OptionalFluid    = nullptr;
 };
 
-struct WorldRenderFrameResult
+struct WorldRenderOutput
 {
     uint32_t                            WidthPx             = 0u;   // [px]    - Viewport width
     uint32_t                            HeightPx            = 0u;   // [px]    - Viewport height
@@ -97,7 +97,7 @@ struct WorldRenderFrameResult
     std::vector<Mathematics::LinearRGB> IndirectDiffuseHdr  {};     // [cd/m2] - Isolated diffuse global illumination buffer
     std::vector<uint8_t>                DisplayRgba8        {};     // [rgba8] - ACES filmic + sRGB8 viewport output (ready for ImGui/Pane!)
     TwoPhaseCullReport                  VisibilityCull      {};     // [-]     - Cluster culling telemetry
-    DirectLightingFrameOutput           DirectLighting      {};     // [-]     - Solar shadow, LTC, & chassis AO telemetry
+    DirectLightingOutput           DirectLighting      {};     // [-]     - Solar shadow, LTC, & chassis AO telemetry
     SpecularReflectionBuffer            SpecularGlass    {};     // [-]     - Reflection & glass refraction telemetry
 };
 
@@ -124,17 +124,17 @@ public:
     void AssignIrradianceLattice(IrradianceLatticeSequence&& BakedLattice) noexcept;
 
     // Executes the complete unified world render frame for any of the 5 WorldRenderEngines
-    [[nodiscard]] WorldRenderFrameResult RenderWorldFrameWithEngine(
+    [[nodiscard]] WorldRenderOutput RenderWorldFrameWithEngine(
         const WorldRenderConfiguration& Config,
-        const PerspectiveCameraFrame&   CurrentCamera,
-        const PerspectiveCameraFrame&   PreviousCamera,
+        const PerspectiveCameraBasis&   CurrentCamera,
+        const PerspectiveCameraBasis&   PreviousCamera,
         const WorldSceneSpecification&  PreparedScene);
 
     // Compatibility wrapper mapping WorldRenderTier -> WorldRenderConfiguration
-    [[nodiscard]] WorldRenderFrameResult RenderWorldFrame(
+    [[nodiscard]] WorldRenderOutput RenderWorldFrame(
         WorldRenderTier                Tier,
-        const PerspectiveCameraFrame&  CurrentCamera,
-        const PerspectiveCameraFrame&  PreviousCamera,
+        const PerspectiveCameraBasis&  CurrentCamera,
+        const PerspectiveCameraBasis&  PreviousCamera,
         const WorldSceneSpecification& PreparedScene);
 
     // Incrementally updates ActiveClip0 dirty AABB + radiosity when dynamic local SDF objects move (without full static rebake!)
@@ -144,7 +144,7 @@ public:
         std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> CurrentObjects);
 
     [[nodiscard]] const IrradianceLatticeSequence&         InspectIrradianceLattice() const noexcept { return RtxLattice; }
-    [[nodiscard]] const DynamicProbeCacheSequence&         InspectDynamicProbeCache() const noexcept { return ProbeCache; }
+    [[nodiscard]] const DynamicIrradianceCacheSequence&         InspectDynamicIrradianceCache() const noexcept { return IrradianceCache; }
     [[nodiscard]] const SignedDistanceRadiosityVolume&     InspectRadiosityVolume()   const noexcept { return RadiosityVolume; }
     [[nodiscard]] const DistanceFieldSpace::VoxelSdfClipmapVolume& InspectClipmapVolume() const noexcept { return ClipmapVolume; }
     [[nodiscard]] DistanceFieldSpace::VoxelSdfClipmapVolume&       AccessClipmapVolume()       noexcept { return ClipmapVolume; }
@@ -154,13 +154,13 @@ private:
     OrthographicShadowCascade                FineContactClip      {};
     OrthographicShadowCascade                CoarseContactClip    {};
     IrradianceLatticeSequence                RtxLattice           {};
-    DynamicProbeCacheSequence                ProbeCache           {};
+    DynamicIrradianceCacheSequence                IrradianceCache           {};
     SignedDistanceRadiosityVolume            RadiosityVolume      {};
     DistanceFieldSpace::VoxelSdfClipmapVolume ClipmapVolume       {};
     AtmosphericSkySequence                   SkySequence          {};
     DepthPyramidSequence                     PreviousHiZ          {};
     std::vector<ReservoirSampleState>        PreviousReservoirs   {};
-    PerspectiveCameraFrame                   PreviousReplayCamera {};
+    PerspectiveCameraBasis                   PreviousReplayCamera {};
     uint32_t                                 ReplaySequenceIndex  = 0u;
 };
 

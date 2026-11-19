@@ -2,8 +2,8 @@
                                                         TOROIDALDISTANCECLIPMAP.H
 ============================================================================================================================================*/
 // 🧩 Exact port of arena/f2d37e4b-frontier (Experimental/DistanceClipmap) algorithms:
-//    - Production TriangleVisibilitySpace double-precision + Float32 Packed BVH (FacetAtlas)
-//    - Baked local unsigned distance volume with 1-Lipschitz corner-corrected lower intervals (BakedFacetDistance)
+//    - Production TriangleVisibilitySpace double-precision + Float32 Packed BVH (FaceBvhRepository)
+//    - Baked local unsigned distance volume with 1-Lipschitz corner-corrected lower intervals (BakedFaceDistance)
 //    - 3-tier 48^3 toroidal DistanceClipmap with dirty-region rigid-motion repair and SignedBox static union
 //    - 32D Joe-Kuo Sobol Quadrature + Spherical Cap / Cosine Hemisphere samplers
 
@@ -205,7 +205,7 @@ struct RigidPose
     }
 };
 
-struct Facet
+struct SurfaceFace
 {
     std::array<ClipVector, 3> Corner{};
     std::array<ClipVector, 3> Normal{};
@@ -229,15 +229,15 @@ struct Strike
 //                                              PRODUCTION BOUNDS / FLOAT32 QUERIES
 //------------------------------------------------------------------------------------------------------------------------
 
-class FacetAtlas
+class FaceBvhRepository
 {
 public:
     TriangleVisibilitySpace             Geometry{};
     TriangleVisibilitySpace::FloatAtlas Packed{};
-    std::vector<Facet>                  Surfaces{};
+    std::vector<SurfaceFace>                  Surfaces{};
     ClipVector                          Low{}, High{};
 
-    void Construct(std::vector<Facet> Triangles)
+    void Construct(std::vector<SurfaceFace> Triangles)
     {
         RequireCondition(!Triangles.empty(), "Empty facet atlas");
         Surfaces = std::move(Triangles);
@@ -458,7 +458,7 @@ struct DistanceInterval
 //                                                       LOCAL DISTANCE BAKE
 //------------------------------------------------------------------------------------------------------------------------
 
-class BakedFacetDistance
+class BakedFaceDistance
 {
 public:
     ClipVector              Low{}, High{}, Spacing{};
@@ -470,7 +470,7 @@ public:
         return (std::size_t(Z) * Extent[1] + Y) * Extent[0] + X;
     }
 
-    void Bake(const FacetAtlas& Atlas)
+    void Bake(const FaceBvhRepository& Atlas)
     {
         Low     = Atlas.Low - ClipVector{0.15f, 0.15f, 0.15f};
         High    = Atlas.High + ClipVector{0.15f, 0.15f, 0.15f};
@@ -552,9 +552,9 @@ public:
         std::vector<ClipTexel> Texels{};
     };
     std::array<Level, LevelCount>    Levels{};
-    const BakedFacetDistance*        Local               = nullptr;
+    const BakedFaceDistance*        Local               = nullptr;
     std::vector<ClosedBox>           ClosedSurfaces{};
-    const FacetAtlas*                StaticTriangleAtlas = nullptr; // Optional fallback for arbitrary static meshes
+    const FaceBvhRepository*                StaticTriangleAtlas = nullptr; // Optional fallback for arbitrary static meshes
     RigidPose                        PreviousPose{};
     bool                             PreviousInitialized = false;
     std::array<unsigned, LevelCount> Rewritten{};

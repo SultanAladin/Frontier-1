@@ -43,10 +43,10 @@ namespace
         double     DepthHigh = 0.0;                                                          // [len] - Nearest point toward the viewer
     };
 
-    struct ViewContext
+    struct ViewSpec
     {
         const ModelPartition*     Partition    = nullptr;                                    // [-]   - Partition projected (scratch for sections)
-        OrthonormalFrame          Frame        = {};                                         // [-]   - View frame
+        OrthonormalBasis          Frame        = {};                                         // [-]   - View frame
         std::vector<OccluderFace> Faces        = {};                                         // [-]   - Every face of the shown bodies
         double                    Reach        = 1.0;                                        // [len] - Model radius
         double                    DepthCeiling = 0.0;                                        // [len] - Largest depth of any face box
@@ -58,7 +58,7 @@ namespace
     // One stroke before visibility: a parameterised 3D curve with the samples that carry its shape.
     struct StrokeSource
     {
-        DrawingStrokeKind                    Kind     = DrawingStrokeKind::Edge;             // [-] - What draws it
+        DrawingStrokeCategory                    Kind     = DrawingStrokeCategory::Edge;             // [-] - What draws it
         BodyToken                            Body     = {};                                  // [-] - Body
         uint32_t                             Source   = 0;                                   // [-] - Edge or face slot
         std::function<Vector3(double)>       Evaluate = {};                                  // [-] - Point at a parameter
@@ -69,9 +69,9 @@ namespace
         Vector2                              High     = {};                                  // [len] - Outline box
     };
 
-    [[nodiscard]] double ViewDepth(const OrthonormalFrame& Frame, Vector3 Position) noexcept { return Dot(Position - Frame.Origin, Frame.ZAxis); }
+    [[nodiscard]] double ViewDepth(const OrthonormalBasis& Frame, Vector3 Position) noexcept { return Dot(Position - Frame.Origin, Frame.ZAxis); }
 
-    [[nodiscard]] bool OrthonormalCondition(const OrthonormalFrame& Frame) noexcept
+    [[nodiscard]] bool OrthonormalCondition(const OrthonormalBasis& Frame) noexcept
     {
         constexpr double Tolerance = 1.0e-9;
         const bool Units = std::fabs(Length(Frame.XAxis) - 1.0) < Tolerance && std::fabs(Length(Frame.YAxis) - 1.0) < Tolerance && std::fabs(Length(Frame.ZAxis) - 1.0) < Tolerance;
@@ -81,7 +81,7 @@ namespace
 
     // 💡 Quantitative invisibility by one exact ray: hidden when the ray toward the viewer pierces the interior of a face
     //    (a touch, a boundary hit or the point's own face within Gap do not count).
-    [[nodiscard]] bool HiddenCondition(ViewContext& View, Vector3 Position)
+    [[nodiscard]] bool HiddenCondition(ViewSpec& View, Vector3 Position)
     {
         ++View.Probes;
         const Vector2 At   = ProjectDrawingPoint(View.Frame, Position);
@@ -114,7 +114,7 @@ namespace
     //    change is snapped to where the stroke crosses a projected outline — another edge or silhouette passing within
     //    Window of it — by Newton on p(𝑠) − q(𝑡) = 0 (2 × 2, central differences); the nearest crossing inside the
     //    bracket wins. Parallel (coincident) projections are singular and skipped.
-    [[nodiscard]] double SnapTransition(const ViewContext& View, const StrokeSource& Source, const std::vector<StrokeSource>& Sources, double Before, double After)
+    [[nodiscard]] double SnapTransition(const ViewSpec& View, const StrokeSource& Source, const std::vector<StrokeSource>& Sources, double Before, double After)
     {
         const double Low = Source.Shape.front(), High = Source.Shape.back();
         const double Change = 0.5 * (Before + After);
@@ -171,7 +171,7 @@ namespace
 
     // Visibility runs of one stroke: classified at the shape samples plus evenly spaced probes, each change bisected
     // along the stroke parameter, then snapped to the exact outline crossing.
-    void TraceStroke(ViewContext& View, const StrokeSource& Source, const std::vector<StrokeSource>& Sources, std::vector<DrawingStroke>& Strokes)
+    void TraceStroke(ViewSpec& View, const StrokeSource& Source, const std::vector<StrokeSource>& Sources, std::vector<DrawingStroke>& Strokes)
     {
         if (Source.Shape.size() < 2) return;
         const double Low = Source.Shape.front(), High = Source.Shape.back();
@@ -276,7 +276,7 @@ namespace
     //    its grid edge (sign with a 10⁻¹² dead band counted positive, so a carrier seen along its rulings — a hole from
     //    above — has no contour), chains linked through shared grid edges, then cut to the face by the chart winding
     //    number (the run ends bisected onto the boundary).
-    void TraceSilhouettes(ViewContext& View, const OccluderFace& Face, int Density, std::vector<StrokeSource>& Sources)
+    void TraceSilhouettes(ViewSpec& View, const OccluderFace& Face, int Density, std::vector<StrokeSource>& Sources)
     {
         const SurfaceGeometry& Surface = Face.Domain.Surface;
         if (std::holds_alternative<PlaneSurface>(Surface)) return;
@@ -370,7 +370,7 @@ namespace
                 if (Run.size() >= 2)
                 {
                     StrokeSource Source;
-                    Source.Kind   = DrawingStrokeKind::Silhouette;
+                    Source.Kind   = DrawingStrokeCategory::Silhouette;
                     Source.Body   = Face.Body;
                     Source.Source = Face.Face.Slot;
                     const std::vector<Vector2> Points = Run;
@@ -438,7 +438,7 @@ namespace
     //--------------------------------------------------------------------------------------------------------------------
 
     // Parallel lines n·p = (k + ½)·Spacing across one cap, clipped by the even-odd rule against its sampled boundary.
-    void HatchCap(const ViewContext& View, FaceToken Cap, BodyToken Body, double Spacing, double Angle, double Step, std::vector<DrawingStroke>& Strokes)
+    void HatchCap(const ViewSpec& View, FaceToken Cap, BodyToken Body, double Spacing, double Angle, double Step, std::vector<DrawingStroke>& Strokes)
     {
         const ModelPartition& Partition = *View.Partition;
         std::vector<std::pair<Vector2, Vector2>> Boundary;
@@ -478,7 +478,7 @@ namespace
             {
                 if (Hits[Index + 1] - Hits[Index] <= View.Margin) continue;
                 DrawingStroke Stroke;
-                Stroke.Kind   = DrawingStrokeKind::Hatch;
+                Stroke.Kind   = DrawingStrokeCategory::Hatch;
                 Stroke.Body   = Body;
                 Stroke.Source = Cap.Slot;
                 Stroke.Points = { { Along.X * Hits[Index] + Across.X * Offset, Along.Y * Hits[Index] + Across.Y * Offset },
@@ -493,7 +493,7 @@ namespace
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-OrthonormalFrame StandardDrawingFrame(DrawingStandardView View) noexcept
+OrthonormalBasis StandardDrawingFrame(DrawingStandardView View) noexcept
 {
     const double Third = 1.0 / std::sqrt(3.0), Sixth = 1.0 / std::sqrt(6.0), Half = 1.0 / std::sqrt(2.0);
     switch (View)
@@ -524,20 +524,20 @@ const char* DrawingStandardViewLabel(DrawingStandardView View) noexcept
     return "?";
 }
 
-const char* DrawingStrokeKindLabel(DrawingStrokeKind Kind) noexcept
+const char* DrawingStrokeKindLabel(DrawingStrokeCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case DrawingStrokeKind::Edge:           return "edge";
-    case DrawingStrokeKind::TangentEdge:    return "tangent edge";
-    case DrawingStrokeKind::Silhouette:     return "silhouette";
-    case DrawingStrokeKind::SectionOutline: return "section outline";
-    case DrawingStrokeKind::Hatch:          return "hatch";
+    case DrawingStrokeCategory::Edge:           return "edge";
+    case DrawingStrokeCategory::TangentEdge:    return "tangent edge";
+    case DrawingStrokeCategory::Silhouette:     return "silhouette";
+    case DrawingStrokeCategory::SectionOutline: return "section outline";
+    case DrawingStrokeCategory::Hatch:          return "hatch";
     }
     return "?";
 }
 
-Vector2 ProjectDrawingPoint(const OrthonormalFrame& Frame, Vector3 Position) noexcept
+Vector2 ProjectDrawingPoint(const OrthonormalBasis& Frame, Vector3 Position) noexcept
 {
     const Vector3 Offset = Position - Frame.Origin;
     return { Dot(Offset, Frame.XAxis), Dot(Offset, Frame.YAxis) };
@@ -573,8 +573,8 @@ DrawingView ProjectDrawingView(const ModelPartition& Partition, const std::vecto
     {
         Scratch = Partition;
         Shown.clear();
-        const OrthonormalFrame& Plane   = *Request.Section;
-        const OrthonormalFrame  Flipped = { Plane.Origin, Plane.XAxis, Plane.YAxis * -1.0, Plane.ZAxis * -1.0 };   // Keeps the −ZAxis side
+        const OrthonormalBasis& Plane   = *Request.Section;
+        const OrthonormalBasis  Flipped = { Plane.Origin, Plane.XAxis, Plane.YAxis * -1.0, Plane.ZAxis * -1.0 };   // Keeps the −ZAxis side
         for (BodyToken Body : Bodies)
         {
             const HalfSpaceCut Cut = CutBodyAtPlane(*Scratch, Body, Flipped);
@@ -593,7 +593,7 @@ DrawingView ProjectDrawingView(const ModelPartition& Partition, const std::vecto
     const ModelPartition& Work = Scratch ? *Scratch : Partition;
 
     // ---- ② occluders: every face with its chart domain and view box
-    ViewContext Context;
+    ViewSpec Context;
     Context.Partition = &Work;
     Context.Frame     = Request.Frame;
     Vector3 BoxLow = { 1.0e300, 1.0e300, 1.0e300 }, BoxHigh = { -1.0e300, -1.0e300, -1.0e300 };
@@ -646,7 +646,7 @@ DrawingView ProjectDrawingView(const ModelPartition& Partition, const std::vecto
             if (Around.size() == 2 && Around[0] == Around[1]) continue;                      // Seam of a periodic face
             const CurveGeometry& Curve = Work.Curves.Resolve(Profile.Curve);
             StrokeSource Source;
-            Source.Kind     = DrawingStrokeKind::Edge;
+            Source.Kind     = DrawingStrokeCategory::Edge;
             Source.Body     = Body;
             Source.Source   = Edge.Slot;
             Source.Straight = std::holds_alternative<StraightLine>(Curve);
@@ -654,15 +654,15 @@ DrawingView ProjectDrawingView(const ModelPartition& Partition, const std::vecto
             Source.Shape    = EdgeShape(Work, Edge, Step);
             bool CapEdge = false;
             for (FaceToken Face : Around) CapEdge = CapEdge || Caps.count(Face.Slot) > 0;
-            if (CapEdge) Source.Kind = DrawingStrokeKind::SectionOutline;
+            if (CapEdge) Source.Kind = DrawingStrokeCategory::SectionOutline;
             else if (Around.size() == 2 && FaceBySlot.count(Around[0].Slot) && FaceBySlot.count(Around[1].Slot))
             {
                 const Vector3 Middle = EvaluateCurve(Curve, 0.5 * (Profile.IntervalLow + Profile.IntervalHigh)).Position;
                 const Vector3 First  = OutwardNormal(Work, FaceBySlot[Around[0].Slot]->Domain, Middle);
                 const Vector3 Second = OutwardNormal(Work, FaceBySlot[Around[1].Slot]->Domain, Middle);
-                if (Length(Cross(First, Second)) < 1.0e-6 && Dot(First, Second) > 0.0) Source.Kind = DrawingStrokeKind::TangentEdge;
+                if (Length(Cross(First, Second)) < 1.0e-6 && Dot(First, Second) > 0.0) Source.Kind = DrawingStrokeCategory::TangentEdge;
             }
-            if (Source.Kind == DrawingStrokeKind::TangentEdge && !Request.TangentEdgesEnabled) continue;
+            if (Source.Kind == DrawingStrokeCategory::TangentEdge && !Request.TangentEdgesEnabled) continue;
             Sources.push_back(std::move(Source));
         }
     }

@@ -14,7 +14,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 [[vk::push_constant]]
-ConstantBuffer<DrawObjectPushConstants> DrawPush;
+ConstantBuffer<RenderInstancePushConstants> SurfacePush;
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<ViewportOverlayUniforms> Overlay;
@@ -57,6 +57,6 @@ OverlayFragmentOutput FragmentMain(BeaconVaryings In)
     float  Shade = 0.72 + 0.28 * saturate(dot(N, Sun));
 
     Out.Color  = float4(In.Color.rgb * Shade, In.Color.a);
-    Out.PickId = uint4(DrawPush.PickCategory, DrawPush.PickPrimaryId, DrawPush.PickSecondaryId, 0u);
+    Out.PickId = uint4(SurfacePush.PickCategory, SurfacePush.PickPrimaryId, SurfacePush.PickSecondaryId, 0u);
     return Out;
 }

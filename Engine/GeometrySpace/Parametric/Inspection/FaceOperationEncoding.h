@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
-#include "Engine/GeometrySpace/Parametric/Local/FaceOperationCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Local/FaceOperationRepository.h"
 #include "Engine/GeometrySpace/Parametric/Local/FaceOperations.h"
 
 #include <string>

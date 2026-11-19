@@ -74,7 +74,7 @@ struct SketcherSection
 {
     uint64_t                                    Revision     = 0;                            // [-]    - Document revision cut
     std::string                                 RequestKey   = {};                           // [-]    - Request it describes (cache key)
-    GeometrySpace::Parametric::OrthonormalFrame                  Plane        = {};                           // [-]    - Cut plane (ZAxis = kept side)
+    GeometrySpace::Parametric::OrthonormalBasis                  Plane        = {};                           // [-]    - Cut plane (ZAxis = kept side)
     bool                                        PlaneCondition = false;                      // [-]    - Plane resolved (face found, planar)
     double                                      Area         = 0.0;                          // [len²] - Σ region areas
     double                                      Perimeter    = 0.0;                          // [len]  - Σ boundary lengths

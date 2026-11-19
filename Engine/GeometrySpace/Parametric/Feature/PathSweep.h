@@ -84,10 +84,10 @@ struct EvolutionOutcome
 //    rails bit-for-bit; stations double until every side is within ToleranceRatio·scale of the true sweep midway. The
 //    caps are the exact profile and its rigid image, holes included. Refused: closed or cusped paths, a path leaving
 //    along the profile plane, a profile reaching ≥ 1/κmax from the path start (the sweep would fold), no convergence.
-[[nodiscard]] EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalFrame& Plane, const NurbsCurve& Path,
+[[nodiscard]] EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalBasis& Plane, const NurbsCurve& Path,
                                              const EvolutionSettings& Settings = {});
 // Profile on Plane swept along Displacement: a displacement ∥ the plane normal is an extrude; oblique ones 🚧.
-[[nodiscard]] SweepOutcome SweepProfileAlongLine(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalFrame& Plane, Vector3 Displacement);
+[[nodiscard]] SweepOutcome SweepProfileAlongLine(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalBasis& Plane, Vector3 Displacement);
 
 // 💡 Ruled loft between two circles: coaxial ones (both normals ∥ the centre line) give a cylinder or a frustum.
 //    Others are skinned surfaces outside the carrier kinds (🚧).

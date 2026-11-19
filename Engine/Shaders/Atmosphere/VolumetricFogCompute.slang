@@ -14,7 +14,7 @@ struct GpuLocalFogVolume
     float4 TintAniso;            // xyz = FogTintLinear, w = AnisotropyG
 };
 
-struct GpuFogForceProbe
+struct GpuFogForceSensor
 {
     float4 PosRadius;       // xyz = EvaluatedCentreMeters, w = RadiusMeters
     float4 ForwardStrength; // xyz = UnitForwardAxis, w = Strength
@@ -32,7 +32,7 @@ struct VolumetricFogUniformBlock
     float4            GodRayParams1; // x = MaxDistanceM, y = SampleSteps, z = InteractWithClouds, w = InteractWithFog
     float4            GodRayTint;    // xyz = ShaftTint, w = Decay
     GpuLocalFogVolume LocalFogs[8];
-    GpuFogForceProbe  ForceProbes[8];
+    GpuFogForceSensor  ForceProbes[8];
 };
 
 float HashFogInt3Gpu(int IX, int IY, int IZ)
@@ -173,7 +173,7 @@ void EvaluateFogForceProbesGpu(
     float  SumCurl = 0.0;
     for (uint I = 0u; I < ProbeCount; ++I)
     {
-        GpuFogForceProbe Pr = Fog.ForceProbes[I];
+        GpuFogForceSensor Pr = Fog.ForceProbes[I];
         float  Radius   = max(0.25, Pr.PosRadius.w);
         float3 D        = WorldPos - Pr.PosRadius.xyz;
         float  Dist     = length(D);

@@ -385,7 +385,7 @@ bool FluidCodec::DeserializeSceneToml(
         ReadUintOr(S, "colorPalette", Cp);
         ReadUintOr(S, "atlasMinimapField", Am);
         OutDocument.Shading.RenderChannel     = static_cast<FluidRenderChannel>(std::min(Rc, 8u));
-        OutDocument.Shading.ColorPalette      = static_cast<FluidColorPalette>(std::min(Cp, 5u));
+        OutDocument.Shading.ColorPalette      = static_cast<FluidColorScheme>(std::min(Cp, 5u));
         OutDocument.Overlays.AtlasMinimapField = static_cast<FluidAtlasMinimapField>(std::min(Am, 3u));
     }
     ReadUintOr(S, "raymarchSteps", OutDocument.Shading.RaymarchSteps);

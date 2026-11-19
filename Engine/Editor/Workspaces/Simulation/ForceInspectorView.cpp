@@ -483,14 +483,14 @@ void WriteScalarSlot(SimulationSpace::ForceFields::ForceSourceRecordEntry& Src, 
     return "Continuous";
 }
 
-[[nodiscard]] const char* TopologyLabel(SimulationSpace::ForceFields::MotionPathTopology Topo) noexcept
+[[nodiscard]] const char* TopologyLabel(SimulationSpace::ForceFields::MotionPathGeometry Topo) noexcept
 {
     switch (Topo)
     {
-        case SimulationSpace::ForceFields::MotionPathTopology::Static:        return "Static (None)";
-        case SimulationSpace::ForceFields::MotionPathTopology::LinearSpan:    return "Linear A -> B";
-        case SimulationSpace::ForceFields::MotionPathTopology::CatmullSpline: return "3D Spline Curve";
-        case SimulationSpace::ForceFields::MotionPathTopology::HelicalOrbit:  return "Orbit Loop";
+        case SimulationSpace::ForceFields::MotionPathGeometry::Static:        return "Static (None)";
+        case SimulationSpace::ForceFields::MotionPathGeometry::LinearSpan:    return "Linear A -> B";
+        case SimulationSpace::ForceFields::MotionPathGeometry::CatmullSpline: return "3D Spline Curve";
+        case SimulationSpace::ForceFields::MotionPathGeometry::HelicalOrbit:  return "Orbit Loop";
     }
     return "Static (None)";
 }
@@ -506,15 +506,15 @@ void WriteScalarSlot(SimulationSpace::ForceFields::ForceSourceRecordEntry& Src, 
     return "PingPong";
 }
 
-[[nodiscard]] const char* StreamProfileLabel(SimulationSpace::ForceFields::FlowStreamProfile Profile) noexcept
+[[nodiscard]] const char* StreamProfileLabel(SimulationSpace::ForceFields::StreamTransportProfile Profile) noexcept
 {
     switch (Profile)
     {
-        case SimulationSpace::ForceFields::FlowStreamProfile::Current:         return "Current";
-        case SimulationSpace::ForceFields::FlowStreamProfile::ThermalUpdraft:  return "ThermalUpdraft";
-        case SimulationSpace::ForceFields::FlowStreamProfile::SlipstreamJet:   return "SlipstreamJet";
-        case SimulationSpace::ForceFields::FlowStreamProfile::NavigationField: return "NavigationField";
-        case SimulationSpace::ForceFields::FlowStreamProfile::VesselWake:      return "VesselWake";
+        case SimulationSpace::ForceFields::StreamTransportProfile::Current:         return "Current";
+        case SimulationSpace::ForceFields::StreamTransportProfile::ThermalUpdraft:  return "ThermalUpdraft";
+        case SimulationSpace::ForceFields::StreamTransportProfile::SlipstreamJet:   return "SlipstreamJet";
+        case SimulationSpace::ForceFields::StreamTransportProfile::NavigationField: return "NavigationField";
+        case SimulationSpace::ForceFields::StreamTransportProfile::VesselWake:      return "VesselWake";
     }
     return "Current";
 }
@@ -1438,7 +1438,7 @@ bool ForceInspectorView::Render(
                 {
                     SimulationSpace::ForceFields::AssignPresetMotionPath(
                         *Targets.ActiveForce,
-                        static_cast<SimulationSpace::ForceFields::MotionPathTopology>(ChosenIdx));
+                        static_cast<SimulationSpace::ForceFields::MotionPathGeometry>(ChosenIdx));
                 }
                 else if (OpenDropdown == OpenDropdownCategory::MotionCycle && Targets.ActiveForce != nullptr)
                 {
@@ -1446,7 +1446,7 @@ bool ForceInspectorView::Render(
                 }
                 else if (OpenDropdown == OpenDropdownCategory::StreamProfile && Targets.ActiveForce != nullptr)
                 {
-                    Targets.ActiveForce->StreamProfile = static_cast<SimulationSpace::ForceFields::FlowStreamProfile>(ChosenIdx);
+                    Targets.ActiveForce->StreamProfile = static_cast<SimulationSpace::ForceFields::StreamTransportProfile>(ChosenIdx);
                 }
                 else if (OpenDropdown == OpenDropdownCategory::HeatmapField && Targets.OverlaySettings != nullptr)
                 {
@@ -1791,8 +1791,8 @@ float ForceInspectorView::RenderFieldTab(
         : WorkspaceAppearance::QueryForceModelTint(static_cast<uint32_t>(Src.Model));
 
     const bool  StreamProfileActive = (Src.Model == SimulationSpace::ForceFields::ForceModel::FlowStream);
-    const bool  MotionPathActive    = (Src.Motion.Topology != SimulationSpace::ForceFields::MotionPathTopology::Static);
-    const bool  HelicalOrbitActive  = (Src.Motion.Topology == SimulationSpace::ForceFields::MotionPathTopology::HelicalOrbit);
+    const bool  MotionPathActive    = (Src.Motion.Topology != SimulationSpace::ForceFields::MotionPathGeometry::Static);
+    const bool  HelicalOrbitActive  = (Src.Motion.Topology == SimulationSpace::ForceFields::MotionPathGeometry::HelicalOrbit);
     const uint32_t ParamRows        = Law.ParamCount;
     const uint32_t WpRows           = (!MotionPathActive || HelicalOrbitActive) ? 0u : std::max(2u, Src.Motion.WaypointCount);
 
@@ -1996,10 +1996,10 @@ float ForceInspectorView::RenderFieldTab(
     }
 
     Y += 20.0f;
-    const std::array<std::pair<const char*, SimulationSpace::ForceFields::MotionPathTopology>, 3> QuickModes = {{
-        { "A -> B Line",     SimulationSpace::ForceFields::MotionPathTopology::LinearSpan    },
-        { "3D Spline Curve", SimulationSpace::ForceFields::MotionPathTopology::CatmullSpline },
-        { "Orbit",           SimulationSpace::ForceFields::MotionPathTopology::HelicalOrbit  },
+    const std::array<std::pair<const char*, SimulationSpace::ForceFields::MotionPathGeometry>, 3> QuickModes = {{
+        { "A -> B Line",     SimulationSpace::ForceFields::MotionPathGeometry::LinearSpan    },
+        { "3D Spline Curve", SimulationSpace::ForceFields::MotionPathGeometry::CatmullSpline },
+        { "Orbit",           SimulationSpace::ForceFields::MotionPathGeometry::HelicalOrbit  },
     }};
     const uint32_t BtnCount = MotionPathActive ? 4u : 3u;
     const float    BtnGap   = 5.0f;
@@ -2027,7 +2027,7 @@ float ForceInspectorView::RenderFieldTab(
         ConstructCapsuleButton(Surface, ClrRect, "Clear", false, Hov, 9.5f, InspectorSurfaceColors::InkMuted);
         if (Hov && Input.PrimaryPointer.Pressed)
         {
-            Src.Motion.Topology = SimulationSpace::ForceFields::MotionPathTopology::Static;
+            Src.Motion.Topology = SimulationSpace::ForceFields::MotionPathGeometry::Static;
             Src.DynamicMotion   = false;
             if (Targets.SelectedWaypoint != nullptr)
             {

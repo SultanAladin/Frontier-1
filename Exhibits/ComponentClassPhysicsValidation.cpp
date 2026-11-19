@@ -50,13 +50,13 @@ bool ValidateControlVehicleClass()
         return false;
     }
 
-    if (!Require(Build.GeometryCatalog.size() == 4u, "ControlVehicle catalog contains 4 compiled assets"))
+    if (!Require(Build.GeometryRepository.size() == 4u, "ControlVehicle catalog contains 4 compiled assets"))
     {
         return false;
     }
 
     // Body dimensions after Z-up -> Y-up conversion (~6.22 m long X, ~1.46 m tall Y)
-    const auto& BodyNet = Build.GeometryCatalog[0].Asset.Network;
+    const auto& BodyNet = Build.GeometryRepository[0].Asset.Network;
     float MinX = 1.0e9f, MaxX = -1.0e9f, MinY = 1.0e9f, MaxY = -1.0e9f;
     for (const auto& V : BodyNet.Vertices)
     {
@@ -71,7 +71,7 @@ bool ValidateControlVehicleClass()
         return false;
     }
 
-    const auto& WingNet = Build.GeometryCatalog[3].Asset.Network;
+    const auto& WingNet = Build.GeometryRepository[3].Asset.Network;
     if (!Require(WingNet.Faces.size() == 72u, "Procedural RearWing has 72 triangles"))
     {
         return false;
@@ -87,7 +87,7 @@ bool ValidateControlVehicleClass()
 
     auto AssetPredicate = [&](std::string_view Id) -> bool
     {
-        for (const auto& Entry : Build.GeometryCatalog)
+        for (const auto& Entry : Build.GeometryRepository)
         {
             if (Entry.AssetIdentifier == Id)
             {
@@ -355,7 +355,7 @@ bool ValidatePhysicsConstraintDynamics()
     Veh.DragCoefficient   = 0.34f;
     Veh.FrontalAreaM2     = 2.15f;
     Veh.GearRatios        = { 4.2f, 3.1f, 2.5f, 1.9f, 1.5f, 1.2f };
-    Veh.Interpolation     = CurveInterpolationKind::SmoothSpline;
+    Veh.Interpolation     = CurveInterpolationForm::SmoothSpline;
     Veh.TorqueCurve       = {
         { 800.0f, 234.0f }, { 2400.0f, 428.0f }, { 4800.0f, 520.0f }, { 7000.0f, 462.0f }, { 8500.0f, 442.0f }
     };

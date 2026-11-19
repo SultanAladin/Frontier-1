@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometrySpace/Parametric/Audit/IntersectionAudit.h"
-#include "Engine/GeometrySpace/Parametric/Inspection/IntersectionCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Inspection/IntersectionRepository.h"
 
 #include <string>
 

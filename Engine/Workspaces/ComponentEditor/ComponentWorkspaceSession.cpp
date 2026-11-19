@@ -20,7 +20,7 @@ void ComponentWorkspaceSession::InitializeDefaultWorkspace(const std::filesystem
 {
     RepoRoot = RepositoryRoot;
     Documents.clear();
-    Catalog.clear();
+    Repository.clear();
     AssetIcons.clear();
 
     const std::filesystem::path ModelsDir = RepositoryRoot / "Experimental/Shared/Models";
@@ -28,7 +28,7 @@ void ComponentWorkspaceSession::InitializeDefaultWorkspace(const std::filesystem
     std::string Diag {};
     if (ComponentClass::ControlVehicleClassBuilder::ConstructControlVehicle(ModelsDir, Build, Diag))
     {
-        Catalog = std::move(Build.GeometryCatalog);
+        Repository = std::move(Build.GeometryRepository);
 
         ComponentClassDocument Doc {};
         Doc.ClassDefinition = std::move(Build.ClassDefinition);
@@ -37,9 +37,9 @@ void ComponentWorkspaceSession::InitializeDefaultWorkspace(const std::filesystem
             Doc.ClassDefinition,
             [&](std::string_view AssetId)
             {
-                return std::any_of(Catalog.begin(), Catalog.end(), [&](const auto& E) { return E.AssetIdentifier == AssetId; });
+                return std::any_of(Repository.begin(), Repository.end(), [&](const auto& E) { return E.AssetIdentifier == AssetId; });
             });
-        Doc.CanCompile      = !ComponentClass::ComponentClassValidator::QueryHasBlockingErrors(Doc.Diagnostics);
+        Doc.CompilePermitted      = !ComponentClass::ComponentClassValidator::QueryHasBlockingErrors(Doc.Diagnostics);
         Doc.Dirty           = false;
         Doc.Camera.FocusPointMeters = { 0.0f, 0.55f, 0.0f };
         Doc.Camera.YawRadians       = 0.72f;
@@ -48,7 +48,7 @@ void ComponentWorkspaceSession::InitializeDefaultWorkspace(const std::filesystem
         SyncEditPoseFromClass(Doc);
         Documents.push_back(std::move(Doc));
         ActiveDocIndex = 0u;
-        StatusNote     = "ControlVehicle loaded (" + std::to_string(Catalog.size()) + " assets)";
+        StatusNote     = "ControlVehicle loaded (" + std::to_string(Repository.size()) + " assets)";
     }
     else
     {
@@ -126,7 +126,7 @@ void ComponentWorkspaceSession::CreateNewClassDocument(std::string_view Title, s
 {
     ComponentClassDocument Doc {};
     Doc.ClassDefinition.Title     = std::string(Title.empty() ? "ComponentClass" : Title);
-    Doc.ClassDefinition.ClassRole = ComponentClass::ComponentClassRole::AssemblyProp;
+    Doc.ClassDefinition.ClassArchetype = ComponentClass::ComponentClassArchetype::StaticMechanicalProp;
     Doc.ClassDefinition.Storage.ResetWithSpatialOrigin("Origin");
     const auto Origin = Doc.ClassDefinition.Storage.QueryOriginToken();
     Doc.SelectedToken = Origin;
@@ -147,11 +147,11 @@ void ComponentWorkspaceSession::CreateNewClassDocument(std::string_view Title, s
         Doc.ClassDefinition,
         [&](std::string_view AssetId)
         {
-            return std::any_of(Catalog.begin(), Catalog.end(), [&](const auto& E) { return E.AssetIdentifier == AssetId; });
+            return std::any_of(Repository.begin(), Repository.end(), [&](const auto& E) { return E.AssetIdentifier == AssetId; });
         });
-    Doc.CanCompile  = !ComponentClass::ComponentClassValidator::QueryHasBlockingErrors(Doc.Diagnostics);
+    Doc.CompilePermitted  = !ComponentClass::ComponentClassValidator::QueryHasBlockingErrors(Doc.Diagnostics);
     Doc.Camera     = (BoundRenderer != nullptr && BoundRenderer->QueryVulkanReady())
-        ? BoundRenderer->ComputeFramedCameraForClass(Doc.ClassDefinition, Catalog)
+        ? BoundRenderer->ComputeFramedCameraForClass(Doc.ClassDefinition, Repository)
         : GeometricRaster::ComponentEditor::ComponentViewportCamera{};
     Documents.push_back(std::move(Doc));
     ActiveDocIndex = Documents.size() - 1u;
@@ -185,13 +185,13 @@ void ComponentWorkspaceSession::CompileActiveDocument()
         Doc->ClassDefinition,
         [&](std::string_view AssetId)
         {
-            return std::any_of(Catalog.begin(), Catalog.end(), [&](const auto& E) { return E.AssetIdentifier == AssetId; });
+            return std::any_of(Repository.begin(), Repository.end(), [&](const auto& E) { return E.AssetIdentifier == AssetId; });
         });
-    Doc->CanCompile = !ComponentClass::ComponentClassValidator::QueryHasBlockingErrors(Doc->Diagnostics);
+    Doc->CompilePermitted = !ComponentClass::ComponentClassValidator::QueryHasBlockingErrors(Doc->Diagnostics);
     Doc->Dirty      = false;
     Doc->IconBaked  = false;
     BakePendingThumbnails();
-    StatusNote = Doc->CanCompile
+    StatusNote = Doc->CompilePermitted
         ? ("Compiled rev " + std::to_string(Doc->ClassDefinition.CompiledRevision))
         : ("Compile issues: " + std::to_string(Doc->Diagnostics.size()));
     ++RenderMutator;
@@ -204,7 +204,7 @@ void ComponentWorkspaceSession::BakePendingThumbnails()
         return;
     }
 
-    for (const auto& Entry : Catalog)
+    for (const auto& Entry : Repository)
     {
         if (AssetIcons.contains(Entry.AssetIdentifier))
         {
@@ -223,7 +223,7 @@ void ComponentWorkspaceSession::BakePendingThumbnails()
         if (!Doc.IconBaked || Doc.ClassDefinition.BakedIconRgba8.empty())
         {
             Doc.IconBaked = GeometricRaster::ComponentEditor::ComponentSpecimenBaker::BakeClassThumbnail(
-                *BoundRenderer, Doc.ClassDefinition, Catalog, 128u);
+                *BoundRenderer, Doc.ClassDefinition, Repository, 128u);
         }
     }
 }
@@ -241,24 +241,24 @@ bool ComponentWorkspaceSession::ImportGeometryFile(const std::filesystem::path& 
         return false;
     }
 
-    std::string BaseId = FilePath.stem().string();
-    if (BaseId.empty())
+    std::string PrimaryId = FilePath.stem().string();
+    if (PrimaryId.empty())
     {
-        BaseId = "ImportedGeometry";
+        PrimaryId = "ImportedGeometry";
     }
-    std::string UniqueId = BaseId;
+    std::string UniqueId = PrimaryId;
     uint32_t Suffix = 1u;
-    while (std::any_of(Catalog.begin(), Catalog.end(), [&](const auto& E) { return E.AssetIdentifier == UniqueId; }))
+    while (std::any_of(Repository.begin(), Repository.end(), [&](const auto& E) { return E.AssetIdentifier == UniqueId; }))
     {
-        UniqueId = BaseId + "_" + std::to_string(++Suffix);
+        UniqueId = PrimaryId + "_" + std::to_string(++Suffix);
     }
 
-    ComponentClass::CompiledGeometryCatalogEntry Entry {};
+    ComponentClass::CompiledGeometryRepositoryEntry Entry {};
     Entry.AssetIdentifier = UniqueId;
     Entry.DisplayTitle    = UniqueId;
     Entry.SourceFormat    = FilePath.extension().string();
     Entry.Asset           = std::move(ImportedAsset);
-    Catalog.push_back(std::move(Entry));
+    Repository.push_back(std::move(Entry));
 
     if (auto* Doc = AccessActiveDocument())
     {
@@ -283,7 +283,7 @@ bool ComponentWorkspaceSession::ImportGeometryFile(const std::filesystem::path& 
 void ComponentWorkspaceSession::AddComponentToActive(
     ComponentClass::ComponentCategory     Category,
     std::string_view                      Title,
-    ComponentClass::PhysicsConstraintKind ConstraintKind,
+    ComponentClass::PhysicsConstraintCategory ConstraintCategory,
     std::string_view                      AssetId)
 {
     auto* Doc = AccessActiveDocument();
@@ -323,14 +323,14 @@ void ComponentWorkspaceSession::AddComponentToActive(
         {
             G->AssetIdentifier = !AssetId.empty()
                 ? std::string(AssetId)
-                : (Catalog.empty() ? std::string() : Catalog.front().AssetIdentifier);
+                : (Repository.empty() ? std::string() : Repository.front().AssetIdentifier);
         }
     }
     else if (Category == ComponentClass::ComponentCategory::ConstraintInstance)
     {
         if (auto* C = Doc->ClassDefinition.Storage.ResolveConstraint(Tok))
         {
-            C->Kind = ConstraintKind;
+            C->Form = ConstraintCategory;
             C->Axis = ComponentClass::ConstraintAxis::AxisY;
         }
     }
@@ -368,7 +368,7 @@ void ComponentWorkspaceSession::RemoveSelectedComponent()
     }
 }
 
-void ComponentWorkspaceSession::FrameSelectedOrClass()
+void ComponentWorkspaceSession::FocusSelectedOrClass()
 {
     auto* Doc = AccessActiveDocument();
     if (Doc == nullptr || BoundRenderer == nullptr)
@@ -377,7 +377,7 @@ void ComponentWorkspaceSession::FrameSelectedOrClass()
     }
     Doc->Camera = BoundRenderer->ComputeFramedCameraForClass(
         Doc->ClassDefinition,
-        Catalog,
+        Repository,
         Doc->Camera.YawRadians,
         Doc->Camera.PitchRadians);
     ++RenderMutator;
@@ -388,7 +388,7 @@ void ComponentWorkspaceSession::ToggleSimulation() noexcept
     SimulationActive = !SimulationActive;
     if (!SimulationActive)
     {
-        ResetMotionState();
+        ResetMotionKinematics();
     }
     ++RenderMutator;
 }
@@ -402,7 +402,7 @@ void ComponentWorkspaceSession::TriggerConstraintKick(ComponentClass::ComponentI
     }
 }
 
-void ComponentWorkspaceSession::ResetMotionState() noexcept
+void ComponentWorkspaceSession::ResetMotionKinematics() noexcept
 {
     VehicleTelemetry = SimulationSpace::PhysicsSpace::VehicleSimulationTelemetry{};
     ThrottleInput    = 0.0f;
@@ -420,8 +420,8 @@ void ComponentWorkspaceSession::ResetMotionState() noexcept
 void ComponentWorkspaceSession::SyncEditPoseFromClass(ComponentClassDocument& Doc) noexcept
 {
     RenderOptions.LiveConstraintCoordinates.clear();
-    RenderOptions.DockIntactFlags.clear();
-    Doc.ClassDefinition.Storage.WalkSpatialHierarchy([&](const ComponentClass::ComponentInstanceHeader& H)
+    RenderOptions.DockIntactMask.clear();
+    Doc.ClassDefinition.Storage.WalkSpatialNesting([&](const ComponentClass::ComponentInstanceHeader& H)
     {
         if (H.Category != ComponentClass::ComponentCategory::ConstraintInstance)
         {
@@ -431,7 +431,7 @@ void ComponentWorkspaceSession::SyncEditPoseFromClass(ComponentClassDocument& Do
         {
             RenderOptions.LiveConstraintCoordinates[H.Token.SlotIndex] =
                 SimulationSpace::PhysicsSpace::VehicleDynamicsSolver::EvaluateConstraintEditScalar(*C);
-            RenderOptions.DockIntactFlags[H.Token.SlotIndex] = C->DockConnected;
+            RenderOptions.DockIntactMask[H.Token.SlotIndex] = C->DockConnected;
         }
     });
 }
@@ -463,7 +463,7 @@ void ComponentWorkspaceSession::StepLiveSimulation(double DeltaSeconds) noexcept
             *VehSettings, ThrottleInput, BrakeInput, Dt, VehicleTelemetry);
     }
 
-    Doc->ClassDefinition.Storage.WalkSpatialHierarchy([&](const ComponentClass::ComponentInstanceHeader& H)
+    Doc->ClassDefinition.Storage.WalkSpatialNesting([&](const ComponentClass::ComponentInstanceHeader& H)
     {
         if (H.Category != ComponentClass::ComponentCategory::ConstraintInstance)
         {
@@ -475,7 +475,7 @@ void ComponentWorkspaceSession::StepLiveSimulation(double DeltaSeconds) noexcept
         float& Coord = RenderOptions.LiveConstraintCoordinates[H.Token.SlotIndex];
         float& Vel   = SpringVelocities[H.Token.SlotIndex];
 
-        if (C->Kind == ComponentClass::PhysicsConstraintKind::Spring)
+        if (C->Form == ComponentClass::PhysicsConstraintCategory::Spring)
         {
             const float Omega = 2.0f * static_cast<float>(Constants::Pi) * std::max(C->NaturalFrequencyHz, 0.25f);
             float Target = 0.0f;
@@ -496,7 +496,7 @@ void ComponentWorkspaceSession::StepLiveSimulation(double DeltaSeconds) noexcept
             Vel   += Acc * Dt;
             Coord  = std::clamp(Coord + Vel * Dt, -C->TravelEachWayMeters, C->TravelEachWayMeters);
         }
-        else if (C->Kind == ComponentClass::PhysicsConstraintKind::Hinge)
+        else if (C->Form == ComponentClass::PhysicsConstraintCategory::Hinge)
         {
             if (C->DriveMode == ComponentClass::ConstraintDriveMode::Steer)
             {
@@ -509,13 +509,13 @@ void ComponentWorkspaceSession::StepLiveSimulation(double DeltaSeconds) noexcept
                 Coord += (C->TargetRpm * 2.0f * static_cast<float>(Constants::Pi) / 60.0f) * Dt;
             }
         }
-        else if (C->Kind == ComponentClass::PhysicsConstraintKind::Spin)
+        else if (C->Form == ComponentClass::PhysicsConstraintCategory::Spin)
         {
             Coord += (C->TargetRpm * 2.0f * static_cast<float>(Constants::Pi) / 60.0f) * Dt;
         }
-        else if (C->Kind == ComponentClass::PhysicsConstraintKind::Dock)
+        else if (C->Form == ComponentClass::PhysicsConstraintCategory::Dock)
         {
-            bool& Intact = RenderOptions.DockIntactFlags[H.Token.SlotIndex];
+            bool& Intact = RenderOptions.DockIntactMask[H.Token.SlotIndex];
             if (!C->DockConnected)
             {
                 Intact = false;

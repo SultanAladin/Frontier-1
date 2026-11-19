@@ -53,7 +53,7 @@ enum class SolarShadowAlgorithm : uint8_t
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct SolarDirectionalEmitter
+struct SolarDirectionalSource
 {
     Mathematics::Axis3D    DirectionToSun           { -0.45f, -0.52f, 0.725f }; // [-]     - Unit vector pointing toward solar disc
     Mathematics::LinearRGB SolarIrradiance          { 4.20f,   3.98f, 3.65f  }; // [W/m^2] - Direct perpendicular solar irradiance
@@ -92,7 +92,7 @@ class SolarShadowSequence
 public:
     // Builds Cascade 0 (4.0 m span @ 1024 -> 3.91 mm/tx) and Cascade 1 (16.0 m span @ 1024 -> 15.6 mm/tx) from scene geometry
     static void BuildTwoCascadeContactClips(
-        const SolarDirectionalEmitter&               Sun,
+        const SolarDirectionalSource&               Sun,
         Mathematics::Axis3D                          FocusCenterWorld,
         const SpatialAcceleration::WideBoundingTree& SceneTree,
         OrthographicShadowCascade&                   OutFineCascade,
@@ -101,7 +101,7 @@ public:
     // Evaluates Shadow Lab algorithm directly across primary surface samples (supports Clipmap SDF & Hybrid SDF!)
     [[nodiscard]] static SolarShadowFieldResult EvaluateSolarShadowFieldWithAlgorithm(
         SolarShadowAlgorithm                                    Algorithm,
-        const SolarDirectionalEmitter&                          Sun,
+        const SolarDirectionalSource&                          Sun,
         uint32_t                                                ViewportWidth,
         uint32_t                                                ViewportHeight,
         std::span<const AnalyticResolvedSurfaceSample>          PrimarySamples,
@@ -114,7 +114,7 @@ public:
     // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm (ignores OptionalSdfVolume; Zero SDF Shadows!)
     [[nodiscard]] static SolarShadowFieldResult EvaluateSolarShadowField(
         DirectShadowTier                                    Tier,
-        const SolarDirectionalEmitter&                      Sun,
+        const SolarDirectionalSource&                      Sun,
         uint32_t                                            ViewportWidth,
         uint32_t                                            ViewportHeight,
         std::span<const AnalyticResolvedSurfaceSample>      PrimarySamples,

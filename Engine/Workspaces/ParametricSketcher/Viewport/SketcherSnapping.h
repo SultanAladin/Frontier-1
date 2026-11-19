@@ -32,7 +32,7 @@ namespace Frontier::Workspaces::Sketcher
 
 // 📝 What the pointer snapped to. Point snaps (Endpoint … Perpendicular) win over Curve, Curve over Face; Grid and Axis
 //    are set by the callers (construction grid, direction lock).
-enum class SketcherSnapKind : uint8_t
+enum class SketcherSnapCategory : uint8_t
 {
     None          = 0,                                                                       // Nothing in reach
     Grid          = 1,                                                                       // Construction grid step
@@ -50,7 +50,7 @@ enum class SketcherSnapKind : uint8_t
 
 // 📝 Plasticity point-picker choices (body[gizmo=point-picker]: x y z n b t) — the next point runs along that line
 //    through the last placed point; Square is the rectangle's s (snaps:set-square).
-enum class SketcherSnapLockKind : uint8_t
+enum class SketcherSnapLockCategory : uint8_t
 {
     None     = 0,
     X        = 1,                                                                            // World x̂
@@ -78,7 +78,7 @@ struct SketcherSnapFilter
 //    tangent and its normal (in-plane for planar curves, principal otherwise), a face's unit normal, a circle's axis.
 struct SketcherSnap
 {
-    SketcherSnapKind  Kind     = SketcherSnapKind::None;                                     // [-]   - What it is
+    SketcherSnapCategory  Kind     = SketcherSnapCategory::None;                                     // [-]   - What it is
     GeometrySpace::Parametric::Vector3 Position = {};                                                         // [len] - Snapped world point (exact)
     GeometrySpace::Parametric::Vector3 Tangent  = {};                                                         // [-]   - Unit tangent (curves)
     GeometrySpace::Parametric::Vector3 Normal   = {};                                                         // [-]   - Unit normal (curves, faces, circle axis)
@@ -98,7 +98,7 @@ struct SketcherSnapCurve
     double                                    Low            = 0.0;                          // [-]   - Parameter range
     double                                    High           = 1.0;                          // [-]   - Parameter range
     std::optional<GeometrySpace::Parametric::ProfileSegment>   Segment        = {};                           // [-]   - Sketch segment (fraction 0 … 1)
-    GeometrySpace::Parametric::OrthonormalFrame                Plane          = {};                           // [-]   - Sketch plane (Segment)
+    GeometrySpace::Parametric::OrthonormalBasis                Plane          = {};                           // [-]   - Sketch plane (Segment)
     bool                                      PlanarCondition = false;                       // [-]   - Lies in the plane ⊥ PlaneNormal
     GeometrySpace::Parametric::Vector3                         PlaneNormal    = {};                           // [-]   - Unit (planar curves)
     std::optional<GeometrySpace::Parametric::Vector3>          Centre         = {};                           // [len] - Circle / arc centre
@@ -110,7 +110,7 @@ struct SketcherSnapCurve
 // 📝 A fixed snap point (endpoint, midpoint, centre, coplanar sketch crossing), found once per document revision.
 struct SketcherSnapPoint
 {
-    SketcherSnapKind  Kind     = SketcherSnapKind::Endpoint;                                 // [-]   - Endpoint, Midpoint, Centre, Intersection
+    SketcherSnapCategory  Kind     = SketcherSnapCategory::Endpoint;                                 // [-]   - Endpoint, Midpoint, Centre, Intersection
     GeometrySpace::Parametric::Vector3 Position = {};                                                         // [len] - Exact point
     GeometrySpace::Parametric::Vector3 Tangent  = {};                                                         // [-]   - Curve tangent there (zero: none)
     GeometrySpace::Parametric::Vector3 Normal   = {};                                                         // [-]   - Curve normal / circle axis (zero: none)
@@ -121,7 +121,7 @@ struct SketcherSnapPoint
 // 📝 Everything snappable in one document revision. Excluded names bodies (Move snaps onto other bodies) and sketch or
 //    SpaceCurve step labels (a dragged sketch point or pole never snaps onto its own geometry).
 //    Surfaces / FaceTokens follow the scene face table; face centres are measured lazily (planar faces only).
-struct SketcherSnapCatalogue
+struct SketcherSnapRepository
 {
     uint64_t                                          Revision     = 0;                      // [-]   - Document revision
     std::string                                       ExclusionKey = {};                     // [-]   - Excluded body keys / step labels joined
@@ -136,7 +136,7 @@ struct SketcherSnapCatalogue
 
 struct SketcherSnapQuery
 {
-    OrbitCameraFrame              Frame       = {};                                       // [-]   - Camera of the viewport
+    OrbitCameraBasis              Frame       = {};                                       // [-]   - Camera of the viewport
     double                           PixelX      = 0.0;                                      // [px]  - Pointer, viewport-local
     double                           PixelY      = 0.0;                                      // [px]  - Pointer, viewport-local
     double                           PointReach  = 12.0;                                     // [px]  - Point snaps
@@ -158,7 +158,7 @@ struct SketcherSnapQuery
 // 💡 Collects the snappable geometry of the shown bodies (exact edge carriers and vertices, arc-length midpoints, conic
 //    centres, face carriers), every sketch (solved, on its elevated plane: segment ends, midpoints, arc / circle
 //    centres, crossings of segments sharing one plane frame) and every fitted SpaceCurve.
-[[nodiscard]] SketcherSnapCatalogue CatalogueSketcherSnaps(const SketcherDocument& Document, const SketcherScene& Scene, const std::vector<std::string>& Excluded = {});
+[[nodiscard]] SketcherSnapRepository CatalogueSketcherSnaps(const SketcherDocument& Document, const SketcherScene& Scene, const std::vector<std::string>& Excluded = {});
 
 // 💡 The snap under the pointer. Point candidates within PointReach (fixed points, transient points, crossings of the
 //    curves near the pointer by Gauss–Newton on both carriers, tangent / perpendicular points from Reference by
@@ -166,15 +166,15 @@ struct SketcherSnapQuery
 //    nearest point of a curve within CurveReach (golden section on the ray distance); else the exact ray hit on the face
 //    under the pointer (Newton on the signed distance). Hidden candidates (behind a face, or on the removed side of the
 //    section) are skipped unless x-ray. Every returned Position lies on its exact carrier.
-[[nodiscard]] SketcherSnap FindSketcherSnap(SketcherSnapCatalogue& Catalogue, const SketcherDocument& Document, const SketcherScene& Scene, const SketcherSnapQuery& Query);
+[[nodiscard]] SketcherSnap FindSketcherSnap(SketcherSnapRepository& Catalogue, const SketcherDocument& Document, const SketcherScene& Scene, const SketcherSnapQuery& Query);
 
 // Line parameter of the point of Origin + t·Direction nearest to the ray (nothing when they run parallel).
 [[nodiscard]] std::optional<double> ApproachSketcherLine(const OrbitRay& Ray, GeometrySpace::Parametric::Vector3 Origin, GeometrySpace::Parametric::Vector3 Direction) noexcept;
 
 // World point → viewport-local pixel (false behind the eye).
-[[nodiscard]] bool ProjectSketcherPoint(const OrbitCameraFrame& Frame, GeometrySpace::Parametric::Vector3 Point, double& PixelX, double& PixelY) noexcept;
+[[nodiscard]] bool ProjectSketcherPoint(const OrbitCameraBasis& Frame, GeometrySpace::Parametric::Vector3 Point, double& PixelX, double& PixelY) noexcept;
 
-[[nodiscard]] const char* SketcherSnapLabel(SketcherSnapKind Kind) noexcept;
-[[nodiscard]] const char* SketcherSnapLockLabel(SketcherSnapLockKind Kind) noexcept;
+[[nodiscard]] const char* SketcherSnapLabel(SketcherSnapCategory Kind) noexcept;
+[[nodiscard]] const char* SketcherSnapLockLabel(SketcherSnapLockCategory Kind) noexcept;
 
 } // namespace Frontier::Workspaces::Sketcher

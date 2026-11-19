@@ -861,7 +861,7 @@ BakeCompletionSummary GpuTextureBaker::ExecuteSurfaceBake(const SurfaceBakeExecu
     }
 
     const auto T0 = std::chrono::steady_clock::now();
-    const BakeAccelerationBackend ActiveBackend = QueryActiveBackend(Spec.PreferComputeBvh4);
+    const BakeAccelerationEngine ActiveBackend = QueryActiveBackend(Spec.PreferComputeBvh4);
     Summary.ExecutedBackend = ActiveBackend;
 
     // 1. Update Surface Uniforms
@@ -895,7 +895,7 @@ BakeCompletionSummary GpuTextureBaker::ExecuteSurfaceBake(const SurfaceBakeExecu
     AttachBufferSlot(Writes, BufSlots, UvRasterDescriptorSet, 0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, SurfaceUniformBuffer.BufferHandle);
     AttachBufferSlot(Writes, BufSlots, UvRasterDescriptorSet, 1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, Accel.AccessLowVertexBuffer());
 
-    const bool UseRtx = (ActiveBackend == BakeAccelerationBackend::RtxHardwareRayQuery);
+    const bool UseRtx = (ActiveBackend == BakeAccelerationEngine::RtxHardwareRayQuery);
     VkWriteDescriptorSetAccelerationStructureKHR AccelWrite {};
     VkAccelerationStructureKHR TlasHandle = Accel.AccessTopLevelAccel();
     if (UseRtx)
@@ -1089,7 +1089,7 @@ BakeCompletionSummary GpuTextureBaker::ExecuteSurfaceBake(const SurfaceBakeExecu
     SurfaceTexturesReady     = true;
     Summary.SurfaceSucceeded = true;
     Summary.SurfaceElapsedMs = std::chrono::duration<double, std::milli>(T1 - T0).count();
-    Summary.DiagnosticText   = (ActiveBackend == BakeAccelerationBackend::RtxHardwareRayQuery)
+    Summary.DiagnosticText   = (ActiveBackend == BakeAccelerationEngine::RtxHardwareRayQuery)
         ? "RTX RayQuery Surface Bake Complete"
         : "GTX BVH4 Compute Surface Bake Complete";
     return Summary;

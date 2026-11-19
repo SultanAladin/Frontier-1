@@ -485,8 +485,8 @@ std::vector<Vector2> SampleSketchCurve(const SketchModel& Sketch, const SketchCu
     std::vector<Vector2> Samples;
     const int PointCount = static_cast<int>(Sketch.Points.size());
     auto Position = [&](int Index) { return Index >= 0 && Index < PointCount ? Sketch.Points[Index].Position : Vector2{}; };
-    if (Curve.Kind == SketchCurveKind::Line) return { Position(Curve.Start), Position(Curve.End) };
-    if (Curve.Kind == SketchCurveKind::Spline)
+    if (Curve.Kind == SketchCurveCategory::Line) return { Position(Curve.Start), Position(Curve.End) };
+    if (Curve.Kind == SketchCurveCategory::Spline)
     {
         const SketchSplineOutcome Resolved = ResolveSketchCurveSpline(Sketch, Curve);
         if (!Resolved.Refusal.empty())
@@ -504,7 +504,7 @@ std::vector<Vector2> SampleSketchCurve(const SketchModel& Sketch, const SketchCu
     const Vector2 Centre = Position(Curve.Centre);
     const double  Radius = MeasureSketchRadius(Sketch, Curve);
     double First = 0.0, Sweep = 2.0 * std::numbers::pi;
-    if (Curve.Kind == SketchCurveKind::Arc)
+    if (Curve.Kind == SketchCurveCategory::Arc)
     {
         const Vector2 Start = Position(Curve.Start) - Centre, End = Position(Curve.End) - Centre;
         First = std::atan2(Start.Y, Start.X);

@@ -145,7 +145,7 @@ namespace
     case ForceModel::FlowStream:
         Desc.Strength      = 24.0f;
         Desc.RadiusMeters  = 18.0f;
-        Desc.StreamProfile = FlowStreamProfile::SlipstreamJet;
+        Desc.StreamProfile = StreamTransportProfile::SlipstreamJet;
         if (Title.find("Formula") != std::string_view::npos)
         {
             Desc.FormulaEnabled    = true;
@@ -198,9 +198,9 @@ bool VectorFieldViewportSession::AttachInitializedSession(
     AuthoredSources.clear();
     NextForceToken = 1u;
 
-    Cameras[0]            = OverlayCameraState{};
+    Cameras[0]            = OverlayCameraBasis{};
     Cameras[0].Projection = ViewportProjectionPreset::Perspective;
-    Cameras[1]            = OverlayCameraState{};
+    Cameras[1]            = OverlayCameraBasis{};
     Cameras[1].Projection = ViewportProjectionPreset::Top;
     Cameras[1].OrthoHalfHeightM = 36.0f;
 
@@ -464,7 +464,7 @@ void VectorFieldViewportSession::SynchronizeForceAccumulator()
         else
         {
             It->Enabled = BoundOutliner->QueryEffectiveVisibility(Entry.Token);
-            if (!It->DynamicMotion && It->Motion.Topology == SimulationSpace::ForceFields::MotionPathTopology::Static)
+            if (!It->DynamicMotion && It->Motion.Topology == SimulationSpace::ForceFields::MotionPathGeometry::Static)
             {
                 It->CentreMeters          = { Entry.PositionX, Entry.PositionY, Entry.PositionZ };
                 It->EvaluatedCentreMeters = It->CentreMeters;
@@ -534,7 +534,7 @@ ViewportRasterSurface VectorFieldViewportSession::DispatchViewportRaster(const V
     {
         const uint32_t OutlinerId = (I < LiveSources.size()) ? LiveSources[I].OutlinerTokenId : static_cast<uint32_t>(I + 1u);
         const bool     IsOrbit    = (I < LiveSources.size()) &&
-                                    (LiveSources[I].Motion.Topology == SimulationSpace::ForceFields::MotionPathTopology::HelicalOrbit);
+                                    (LiveSources[I].Motion.Topology == SimulationSpace::ForceFields::MotionPathGeometry::HelicalOrbit);
         SourceTokens.push_back(OutlinerId);
         WaypointOffsets.push_back(PackedSources[I].WaypointStartIdx);
         WaypointCounts.push_back(PackedSources[I].WaypointCount);
@@ -573,7 +573,7 @@ ViewportRasterSurface VectorFieldViewportSession::DispatchViewportRaster(const V
         BoundViewport->ConfigureProbeReadoutText(ProbeBuf);
     }
 
-    OverlayFrameRequest Req{};
+    OverlayRenderRequest Req{};
     Req.PaneIndex             = PaneIdx;
     Req.WidthPx               = Spec.WidthPx;
     Req.HeightPx              = Spec.HeightPx;
@@ -737,7 +737,7 @@ SimulationSpace::ForceFields::FieldLatticeVulkanExecutor& VectorFieldViewportSes
 VectorFieldOverlaySequence& VectorFieldViewportSession::AccessOverlaySequence() noexcept { return OverlaySequence; }
 ForceInspectorView& VectorFieldViewportSession::AccessForceInspectorView() noexcept { return InspectorView; }
 ForcePresetBrowserPanel& VectorFieldViewportSession::AccessContentBrowser() noexcept { return ContentBrowser; }
-OverlayCameraState& VectorFieldViewportSession::AccessCamera(uint32_t PaneIndex) noexcept { return Cameras[PaneIndex < 2u ? PaneIndex : 0u]; }
+OverlayCameraBasis& VectorFieldViewportSession::AccessCamera(uint32_t PaneIndex) noexcept { return Cameras[PaneIndex < 2u ? PaneIndex : 0u]; }
 int32_t VectorFieldViewportSession::QuerySelectedWaypointIndex() const noexcept { return SelectedWaypointIdx; }
 void VectorFieldViewportSession::ConfigureSelectedWaypointIndex(int32_t WaypointIdx) noexcept { SelectedWaypointIdx = WaypointIdx; }
 uint32_t VectorFieldViewportSession::QueryMappedForceToken(OutlinerSlotToken OutlinerToken) const noexcept

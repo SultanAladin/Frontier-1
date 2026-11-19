@@ -132,7 +132,7 @@ void TransitionImageLayout(
     vkCmdPipelineBarrier(Commands, SrcStage, DstStage, 0u, 0u, nullptr, 0u, nullptr, 1u, &Barrier);
 }
 
-struct PipelineRecipe
+struct RenderProgramRecipe
 {
     VkShaderModule                                 Vertex        = VK_NULL_HANDLE;
     VkShaderModule                                 Fragment      = VK_NULL_HANDLE;
@@ -149,7 +149,7 @@ struct PipelineRecipe
     VkSampleCountFlagBits                          Samples       = VK_SAMPLE_COUNT_1_BIT;
 };
 
-VkPipeline CreatePipeline(VkDevice Device, VkRenderPass RenderPass, VkPipelineLayout Layout, const PipelineRecipe& Recipe)
+VkPipeline CreatePipeline(VkDevice Device, VkRenderPass RenderPass, VkPipelineLayout Layout, const RenderProgramRecipe& Recipe)
 {
     VkPipelineShaderStageCreateInfo Programs[2]{};
     Programs[0] = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT, Recipe.Vertex, Recipe.VertexEntry, nullptr };
@@ -252,7 +252,7 @@ void Narrow(const std::array<double, 3>& Source, float Target[4], float Fourth)
 
 } // namespace
 
-bool FacesSketcherImagePlane(const SketcherImagePlaneDraw& Draw, const OrbitCameraFrame& Frame) noexcept
+bool FacesSketcherImagePlane(const SketcherImagePlaneQuad& Draw, const OrbitCameraBasis& Frame) noexcept
 {
     if (!Draw.FrontOnlyCondition)
     {
@@ -594,7 +594,7 @@ void SketcherRasterization::CreatePipelines(const std::filesystem::path& Compile
     const VkShaderModule GizmoVertex     = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherGizmo.vert.spv");
     const VkShaderModule GizmoFragment   = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherGizmo.frag.spv");
 
-    PipelineRecipe Surface;
+    RenderProgramRecipe Surface;
     Surface.Samples    = Samples;
     Surface.Vertex     = SurfaceVertex;
     Surface.Fragment   = SurfaceFragment;
@@ -602,25 +602,25 @@ void SketcherRasterization::CreatePipelines(const std::filesystem::path& Compile
     Surface.Attributes = { { 0u, 0u, VK_FORMAT_R32G32B32_SFLOAT, 0u }, { 1u, 0u, VK_FORMAT_R32G32B32_SFLOAT, 12u }, { 2u, 0u, VK_FORMAT_R32_UINT, 24u } };
     SurfacePipeline    = CreatePipeline(LogicalDevice, RenderPass, PlaneLayout, Surface);
 
-    PipelineRecipe SurfaceDepth = Surface;
+    RenderProgramRecipe SurfaceDepth = Surface;
     SurfaceDepth.ColourWrite    = false;
     SurfaceDepthPipeline        = CreatePipeline(LogicalDevice, RenderPass, PlaneLayout, SurfaceDepth);
 
-    PipelineRecipe SurfaceGhost = Surface;
+    RenderProgramRecipe SurfaceGhost = Surface;
     SurfaceGhost.DepthWrite     = false;
     SurfaceGhost.ColourBlend    = true;
     SurfaceGhost.IdentityWrite  = false;
     SurfaceGhostPipeline        = CreatePipeline(LogicalDevice, RenderPass, PlaneLayout, SurfaceGhost);
 
-    PipelineRecipe CutterDepth  = SurfaceDepth;
+    RenderProgramRecipe CutterDepth  = SurfaceDepth;
     CutterDepth.DepthBias       = true;
     CutterDepthPipeline         = CreatePipeline(LogicalDevice, RenderPass, PlaneLayout, CutterDepth);
 
-    PipelineRecipe CutterGhost  = SurfaceGhost;
+    RenderProgramRecipe CutterGhost  = SurfaceGhost;
     CutterGhost.DepthBias       = true;
     CutterGhostPipeline         = CreatePipeline(LogicalDevice, RenderPass, PlaneLayout, CutterGhost);
 
-    PipelineRecipe Edge;
+    RenderProgramRecipe Edge;
     Edge.Samples       = Samples;
     Edge.Vertex        = EdgeVertex;
     Edge.Fragment      = EdgeFragment;
@@ -631,23 +631,23 @@ void SketcherRasterization::CreatePipelines(const std::filesystem::path& Compile
     Edge.IdentityWrite = false;
     EdgePipeline       = CreatePipeline(LogicalDevice, RenderPass, PipelineLayout, Edge);
 
-    PipelineRecipe EdgeCodes = Edge;
+    RenderProgramRecipe EdgeCodes = Edge;
     EdgeCodes.Fragment       = EdgeIdentity;
     EdgeCodes.ColourWrite    = false;
     EdgeCodes.IdentityWrite  = true;
     EdgeIdentityPipeline     = CreatePipeline(LogicalDevice, RenderPass, PipelineLayout, EdgeCodes);
 
-    PipelineRecipe Occluded = Edge;
+    RenderProgramRecipe Occluded = Edge;
     Occluded.Fragment       = EdgeOccluded;
     Occluded.DepthWrite     = false;
     Occluded.DepthCompare   = VK_COMPARE_OP_GREATER;
     EdgeOccludedPipeline    = CreatePipeline(LogicalDevice, RenderPass, PipelineLayout, Occluded);
 
-    PipelineRecipe OccludedCodes = EdgeCodes;
+    RenderProgramRecipe OccludedCodes = EdgeCodes;
     OccludedCodes.DepthCompare   = VK_COMPARE_OP_GREATER;
     EdgeOccludedIdentityPipeline = CreatePipeline(LogicalDevice, RenderPass, PipelineLayout, OccludedCodes);
 
-    PipelineRecipe Grid;
+    RenderProgramRecipe Grid;
     Grid.Samples       = Samples;
     Grid.Vertex        = GridVertex;
     Grid.Fragment      = GridFragment;
@@ -656,7 +656,7 @@ void SketcherRasterization::CreatePipelines(const std::filesystem::path& Compile
     Grid.IdentityWrite = false;
     GridPipeline       = CreatePipeline(LogicalDevice, RenderPass, PipelineLayout, Grid);
 
-    PipelineRecipe Plane;
+    RenderProgramRecipe Plane;
     Plane.Samples       = Samples;
     Plane.Vertex        = PlaneVertex;
     Plane.Fragment      = PlaneFragment;
@@ -665,7 +665,7 @@ void SketcherRasterization::CreatePipelines(const std::filesystem::path& Compile
     Plane.IdentityWrite = false;
     PlanePipeline       = CreatePipeline(LogicalDevice, RenderPass, PlaneLayout, Plane);
 
-    PipelineRecipe Gizmo;
+    RenderProgramRecipe Gizmo;
     Gizmo.Samples       = Samples;
     Gizmo.Vertex        = GizmoVertex;
     Gizmo.Fragment      = GizmoFragment;
@@ -1059,7 +1059,7 @@ void SketcherRasterization::AssignStates(const std::vector<uint32_t>& FaceStates
 
 void SketcherRasterization::Record(
     VkCommandBuffer              Commands,
-    const OrbitCameraFrame&      Frame,
+    const OrbitCameraBasis&      Frame,
     const SketcherViewportStyle& Style,
     bool                         ReadbackCondition,
     int                          ProbeX,
@@ -1113,7 +1113,7 @@ void SketcherRasterization::RecordPanes(
 
     if (!Panes.empty() && SectionBuffer.HostAddress != nullptr)
     {
-        const OrbitCameraFrame&      FirstFrame = Panes.front().Frame;
+        const OrbitCameraBasis&      FirstFrame = Panes.front().Frame;
         const SketcherViewportStyle& FirstStyle = Panes.front().Style;
         const float Block[8] = {
             float(FirstStyle.SectionPlane[0]), float(FirstStyle.SectionPlane[1]), float(FirstStyle.SectionPlane[2]), float(FirstStyle.SectionPlane[3]),
@@ -1144,7 +1144,7 @@ void SketcherRasterization::RecordPanes(
     for (size_t PaneIdx = 0u; PaneIdx < Panes.size(); ++PaneIdx)
     {
         const SketcherRasterPane&    Pane  = Panes[PaneIdx];
-        const OrbitCameraFrame&      Frame = Pane.Frame;
+        const OrbitCameraBasis&      Frame = Pane.Frame;
         const SketcherViewportStyle& Style = Pane.Style;
 
         const int32_t  ClampedX = std::clamp<int32_t>(Pane.OffsetX, 0, int32_t(Colour.WidthPx));
@@ -1236,7 +1236,7 @@ void SketcherRasterization::RecordPanes(
             }
             vkCmdBindPipeline(Commands, VK_PIPELINE_BIND_POINT_GRAPHICS, PlanePipeline);
             vkCmdBindDescriptorSets(Commands, VK_PIPELINE_BIND_POINT_GRAPHICS, PlaneLayout, 0u, 1u, &BufferSet, 0u, nullptr);
-            for (const SketcherImagePlaneDraw& Draw : Style.ImagePlanes)
+            for (const SketcherImagePlaneQuad& Draw : Style.ImagePlanes)
             {
                 if (Draw.Picture >= Pictures.size() || !FacesSketcherImagePlane(Draw, Frame))
                 {

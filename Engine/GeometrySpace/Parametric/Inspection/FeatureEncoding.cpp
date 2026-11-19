@@ -20,13 +20,13 @@ namespace Frontier::GeometrySpace::Parametric
 
 namespace
 {
-    [[nodiscard]] Vector3 PlacePoint(const OrthonormalFrame& Plane, Vector2 Position)
+    [[nodiscard]] Vector3 PlacePoint(const OrthonormalBasis& Plane, Vector2 Position)
     {
         return Plane.Origin + Plane.XAxis * Position.X + Plane.YAxis * Position.Y;
     }
 
     // Curve polyline in the plane (arcs counter-clockwise from Start to End, splines per knot span).
-    void WriteSketchCurve(JsonWriter& Writer, const SketchModel& Sketch, const SketchCurve& Curve, const OrthonormalFrame& Plane)
+    void WriteSketchCurve(JsonWriter& Writer, const SketchModel& Sketch, const SketchCurve& Curve, const OrthonormalBasis& Plane)
     {
         Writer.OpenArray("Polyline");
         for (const Vector2& Sample : SampleSketchCurve(Sketch, Curve)) Writer.Point(nullptr, PlacePoint(Plane, Sample));
@@ -96,12 +96,12 @@ bool EditableDimensionCondition(const SketchConstraint& Constraint)
 {
     switch (Constraint.Kind)
     {
-    case SketchConstraintKind::Distance:
-    case SketchConstraintKind::HorizontalDistance:
-    case SketchConstraintKind::VerticalDistance:
-    case SketchConstraintKind::Length:
-    case SketchConstraintKind::Radius:
-    case SketchConstraintKind::Angle: return true;
+    case SketchConstraintCategory::Distance:
+    case SketchConstraintCategory::HorizontalDistance:
+    case SketchConstraintCategory::VerticalDistance:
+    case SketchConstraintCategory::Length:
+    case SketchConstraintCategory::Radius:
+    case SketchConstraintCategory::Angle: return true;
     default:                          return false;
     }
 }
@@ -176,19 +176,19 @@ std::string EncodeFeature(const ModelPartition& Partition, const FeatureSpecimen
         Writer.String("Status", Report.Status == FeatureStepStatus::Built ? "Built" : "Refused");
         if (!Report.Refusal.empty()) Writer.String("Refusal", Report.Refusal);
         Writer.Number("Milliseconds", Report.Milliseconds);
-        if (Report.Kind == FeatureStepKind::Extrude || Report.Kind == FeatureStepKind::Revolve)
+        if (Report.Kind == FeatureStepCategory::Extrude || Report.Kind == FeatureStepCategory::Revolve)
         {
             Writer.String("Detail", Step.Profile + " · " + FeatureCombinationLabel(Step.Combination) +
-                                    (Report.Kind == FeatureStepKind::Extrude ? " · extent " + std::to_string(EvaluateFeatureValue(Tree, Step.Extent)).substr(0, 6) : std::string()));
+                                    (Report.Kind == FeatureStepCategory::Extrude ? " · extent " + std::to_string(EvaluateFeatureValue(Tree, Step.Extent)).substr(0, 6) : std::string()));
         }
-        if (Report.Kind == FeatureStepKind::Sketch)
+        if (Report.Kind == FeatureStepCategory::Sketch)
         {
             Writer.String("Detail", "DOF " + std::to_string(Report.Solve.DegreesOfFreedom) + " · rank " + std::to_string(Report.Solve.Rank) + "/" +
                                     std::to_string(Report.Solve.Unknowns) + (Report.Solve.SingularCondition ? " · singular" : ""));
         }
-        if (Report.Kind == FeatureStepKind::Blend) Writer.String("Detail", std::string(Step.Shape == BlendProfile::Fillet ? "fillet " : "chamfer ") + std::to_string(EvaluateFeatureValue(Tree, Step.Size)).substr(0, 6));
-        if (Report.Kind == FeatureStepKind::FaceOperation) Writer.String("Detail", std::string(FaceOperationLabel(Step.Operation)) + " " + std::to_string(EvaluateFeatureValue(Tree, Step.Amount)).substr(0, 6));
-        if (Report.Kind == FeatureStepKind::SpaceCurve)
+        if (Report.Kind == FeatureStepCategory::Blend) Writer.String("Detail", std::string(Step.Shape == BlendProfile::Fillet ? "fillet " : "chamfer ") + std::to_string(EvaluateFeatureValue(Tree, Step.Size)).substr(0, 6));
+        if (Report.Kind == FeatureStepCategory::FaceOperation) Writer.String("Detail", std::string(FaceOperationLabel(Step.Operation)) + " " + std::to_string(EvaluateFeatureValue(Tree, Step.Amount)).substr(0, 6));
+        if (Report.Kind == FeatureStepCategory::SpaceCurve)
         {
             const auto Found = Outcome.Curves.find(Step.Label);
             std::string Detail = std::to_string(Step.Points.size()) + " points";
@@ -199,14 +199,14 @@ std::string EncodeFeature(const ModelPartition& Partition, const FeatureSpecimen
             if (!Step.PoleEdits.empty()) Detail += " · " + std::to_string(Step.PoleEdits.size()) + " pole edits";
             Writer.String("Detail", Detail);
         }
-        if (Report.Kind == FeatureStepKind::Loft || Report.Kind == FeatureStepKind::Network)
+        if (Report.Kind == FeatureStepCategory::Loft || Report.Kind == FeatureStepCategory::Network)
         {
             std::string Detail;
             for (size_t Section = 0; Section < Step.Sections.size(); ++Section) Detail += (Section ? " · " : "") + Step.Sections[Section];
             if (Step.Continuity > 0) Detail += " · G" + std::to_string(Step.Continuity);
             Writer.String("Detail", Detail);
         }
-        if (Report.Kind == FeatureStepKind::Mirror)
+        if (Report.Kind == FeatureStepCategory::Mirror)
         {
             const Vector3 Normal = Step.Plane.ZAxis;
             Writer.String("Detail", "normal (" + std::to_string(Normal.X).substr(0, 5) + ", " + std::to_string(Normal.Y).substr(0, 5) + ", " + std::to_string(Normal.Z).substr(0, 5) + ")");
@@ -223,7 +223,7 @@ std::string EncodeFeature(const ModelPartition& Partition, const FeatureSpecimen
                 if (!Resolved.Matched.empty()) Writer.String("Matched", Resolved.Matched);
                 if (Resolved.Method != ResolutionMethod::Refused)
                 {
-                    Writer.String("Token", Step.References[Reference].Kind == ReferenceKind::Face ? LabelToken("F", Partition.Faces.TokenAt(Resolved.Slot))
+                    Writer.String("Token", Step.References[Reference].Kind == ReferenceCategory::Face ? LabelToken("F", Partition.Faces.TokenAt(Resolved.Slot))
                                                                                                   : LabelToken("E", Partition.Edges.TokenAt(Resolved.Slot)));
                 }
             }
@@ -239,10 +239,10 @@ std::string EncodeFeature(const ModelPartition& Partition, const FeatureSpecimen
     for (size_t Index = 0; Index < Outcome.Steps.size(); ++Index)
     {
         const FeatureStep& Step = Tree.Steps[Index];
-        if (Step.Kind != FeatureStepKind::Sketch) continue;
+        if (Step.Kind != FeatureStepCategory::Sketch) continue;
         const auto Found = Outcome.Sketches.find(Step.Label);
         if (Found == Outcome.Sketches.end()) continue;
-        OrthonormalFrame Plane = Step.Plane;
+        OrthonormalBasis Plane = Step.Plane;
         Plane.Origin = Step.Plane.Origin + Step.Plane.ZAxis * EvaluateFeatureValue(Tree, Step.Elevation);
         Writer.OpenObject();
         Writer.String("Label", Step.Label);
@@ -311,7 +311,7 @@ std::string EncodeSketch(const SketchSpecimen& Specimen, const SketchModel& Solv
     Writer.CloseArray();
 
     // ---- geometry in the viewer's body format: points as vertices, curves as edges, no faces
-    const OrthonormalFrame Plane{};
+    const OrthonormalBasis Plane{};
     Writer.OpenObject("Audit"); Writer.Boolean("Sound", true); Writer.Integer("Genus", 0); Writer.OpenArray("Tallies"); Writer.CloseArray(); Writer.OpenArray("Findings"); Writer.CloseArray(); Writer.CloseObject();
     Writer.OpenObject("Tree");
     Writer.String("Label", Specimen.Name + " · " + std::to_string(Solved.Points.size()) + " points · " + std::to_string(Solved.Curves.size()) + " curves");
@@ -342,7 +342,7 @@ std::string EncodeSketch(const SketchSpecimen& Specimen, const SketchModel& Solv
         const SketchCurve& Curve = Solved.Curves[Index];
         Writer.OpenObject();
         Writer.String("Token", SketchCurveName(Curve));
-        Writer.String("Curve", Curve.Kind == SketchCurveKind::Line ? "Line" : Curve.Kind == SketchCurveKind::Arc ? "Arc" : Curve.Kind == SketchCurveKind::Spline ? SketchSplineFormLabel(Curve.Form) : "Circle");
+        Writer.String("Curve", Curve.Kind == SketchCurveCategory::Line ? "Line" : Curve.Kind == SketchCurveCategory::Arc ? "Arc" : Curve.Kind == SketchCurveCategory::Spline ? SketchSplineFormLabel(Curve.Form) : "Circle");
         Writer.Boolean("Construction", Curve.Construction);
         Writer.Boolean("Fixed", Index < Solve.CurveFixed.size() && Solve.CurveFixed[Index]);
         WriteSketchCurve(Writer, Solved, Curve, Plane);
@@ -356,7 +356,7 @@ std::string EncodeSketch(const SketchSpecimen& Specimen, const SketchModel& Solv
 
 void EncodeSketcherCatalogue(JsonWriter& Writer)
 {
-    for (const SketchSpecimen& Specimen : BuildSketchCatalogue())
+    for (const SketchSpecimen& Specimen : BuildSketchRepository())
     {
         Writer.OpenObject();
         Writer.String("Name", Specimen.Name);

@@ -37,7 +37,7 @@ enum class LogChannelCategory : uint8_t
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct LogStreamRecord
+struct LogStreamEntry
 {
     std::string        TimestampText { "00:00:00" };               // [-] - HH:MM:SS timestamp
     LogChannelCategory Channel       = LogChannelCategory::Particles;
@@ -65,7 +65,7 @@ public:
     static void Construct(
         PixelSpace&                      Surface,
         Rectangle2D                      Bounds,
-        std::span<const LogStreamRecord> Records,
+        std::span<const LogStreamEntry> Records,
         LogStreamDrawerSession&          Session,
         const ControlPointer&            Pointer,
         float                            Opacity = 1.0f) noexcept;

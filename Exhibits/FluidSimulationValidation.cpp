@@ -533,7 +533,7 @@ int main()
         Doc.Domain.GridResolution = 32u;
         Doc.Combustion.CoupleForceFields = true;
         SimV.Configure(Doc);
-        FluidStepContext Ctx {};
+        FluidStepInput Ctx {};
         Ctx.ForceFieldSource   = &Acc;
         Ctx.MutableForceFields = &Acc;
         for (uint32_t S = 0u; S < 32u; ++S) SimV.StepSimulation(1.0f / 60.0f, Ctx);
@@ -589,7 +589,7 @@ int main()
         FluidSimulationSequence SimC;
         auto Doc = FluidPresets::ConstructPreset("ue5_pyro_default");
         Doc.Domain.GridResolution = 32u;
-        Doc.Shading.ColorPalette  = FluidColorPalette::WildfireCopperEmerald;
+        Doc.Shading.ColorPalette  = FluidColorScheme::WildfireCopperEmerald;
         SimC.Configure(Doc);
         for (uint32_t S = 0u; S < 24u; ++S) SimC.StepSimulation(1.0f / 60.0f);
         TileCryo = RenderFluidPreviewRgba(SimC, TileW, TileH, { 2.3f, -2.3f, 1.35f }, { 0.0f, 0.0f, 0.9f });
@@ -693,7 +693,7 @@ int main()
         Doc.GiCoupling.EmissiveLightIntensity = 2.4f;
         GiFluid.Configure(Doc);
 
-        FluidStepContext Ctx {};
+        FluidStepInput Ctx {};
         Ctx.SceneSdf           = &Scene.SceneSdf;
         Ctx.SceneTree          = &Scene.SceneTree;
         Ctx.BakeGiObstaclesNow = true;
@@ -717,7 +717,7 @@ int main()
 
         Scene.OptionalFluid = &GiFluid;
 
-        PerspectiveCameraFrame Cam {};
+        PerspectiveCameraBasis Cam {};
         Cam.CameraOrigin       = { 0.2f, -4.6f, 2.05f };
         Cam.TargetPoint        = { 0.0f, 0.2f, 1.15f };
         Cam.WorldUpAxis        = { 0.0f, 0.0f, 1.0f };
@@ -778,7 +778,7 @@ int main()
         const auto NightFrame = NightCpu.RenderWorldFrameWithEngine(GiCfg, Cam, Cam, NightScene);
 
         // Tile 4: Depth-clipped view looking right past the foreground pillar at the fire
-        PerspectiveCameraFrame DepthCam = Cam;
+        PerspectiveCameraBasis DepthCam = Cam;
         DepthCam.CameraOrigin = { 2.35f, -3.1f, 1.45f };
         DepthCam.TargetPoint  = { 0.55f, -0.55f, 1.15f };
         const auto DepthFrame = CpuSeq.RenderWorldFrameWithEngine(GiCfg, DepthCam, DepthCam, Scene);

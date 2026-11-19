@@ -9,7 +9,7 @@ struct SurfaceDistanceCurveOutcome {
     std::string Refusal;
     double SourceGap = 0;
 };
-[[nodiscard]] SurfaceDistanceCurveOutcome TraceSurfaceDistanceCurve(const PolygonComplex& Mesh,
+[[nodiscard]] SurfaceDistanceCurveOutcome TraceSurfaceDistanceCurve(const PolygonNetworkStructure& Mesh,
     const NurbsCurve& Guide, const NurbsCurve& Target, double Distance, double SourceTolerance);
 // Refines the CAD tessellation until successive intrinsic contours agree within
 // tolerance. Refuses on resource limits / nonconvergence; never substitutes XYZ offset.

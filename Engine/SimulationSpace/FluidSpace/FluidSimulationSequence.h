@@ -18,7 +18,7 @@
 #include "Engine/SimulationSpace/FluidSpace/FluidGridBuffers.h"
 #include "Engine/SimulationSpace/FluidSpace/FluidObstacleVoxelizer.h"
 #include "Engine/SimulationSpace/FluidSpace/FluidParticleCoupler.h"
-#include "Engine/SimulationSpace/FluidSpace/FluidWorldGridManager.h"
+#include "Engine/SimulationSpace/FluidSpace/FluidWorldGridPartition.h"
 #include "Engine/SimulationSpace/ForceFields/FieldLatticeCascade.h"
 #include "Engine/SimulationSpace/ForceFields/ForceFieldAccumulator.h"
 #include "Engine/SpatialAcceleration/WideBoundingTree.h"
@@ -39,7 +39,7 @@ struct FluidRaymarchResult
     float                  Transmittance = 1.0f;
 };
 
-struct FluidStepContext
+struct FluidStepInput
 {
     const ForceFields::ForceFieldAccumulator*      ForceFieldSource   = nullptr;
     ForceFields::ForceFieldAccumulator*            MutableForceFields = nullptr;
@@ -65,7 +65,7 @@ public:
 
     void TriggerBlast(
         const FluidBlastSpecification& Blast,
-        const FluidStepContext&        Context = {});
+        const FluidStepInput&        Context = {});
 
     void ApplyPyroBrush(
         const Mathematics::Axis3D& WorldPosition,
@@ -75,7 +75,7 @@ public:
 
     void StepSimulation(
         float                   DeltaSeconds,
-        const FluidStepContext& Context = {});
+        const FluidStepInput& Context = {});
 
     // Evaluates depth-clipped Hero + World Drift fluid radiance & transmittance over [0, MaxDistanceMeters]
     [[nodiscard]] FluidRaymarchResult EvaluateFluidSegment(
@@ -109,15 +109,15 @@ public:
     [[nodiscard]] const Mathematics::Axis3D&                QueryShockwaveCenter() const noexcept  { return ShockwaveCenter; }
 
 private:
-    void ExecuteSplatAndObstacles(float Dt, const FluidStepContext& Context);
+    void ExecuteSplatAndObstacles(float Dt, const FluidStepInput& Context);
     void ExecuteMacCormackAdvection(float Dt);
-    void ExecuteVorticityAndCombustion(float Dt, const FluidStepContext& Context);
+    void ExecuteVorticityAndCombustion(float Dt, const FluidStepInput& Context);
     void ExecuteDivergenceAndPressure(float Dt);
 
     FluidSceneDocument                    Document           {};
     FluidGridVolume                       HeroGrid           {};
     FluidWorldDriftVolume                 WorldGrid          {};
-    FluidWorldGridManager                 WorldManager       {};
+    FluidWorldGridPartition                 WorldPartition       {};
     FluidParticleCoupler                  ParticleCoupler    {};
     std::vector<FluidBlastSpecification>  PendingBlasts      {};
     std::vector<FluidParticleSplat>       PendingSplats      {};

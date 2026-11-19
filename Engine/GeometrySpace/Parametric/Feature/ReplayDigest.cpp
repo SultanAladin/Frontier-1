@@ -48,8 +48,8 @@ namespace
         }
         void Point(const Vector2& Value) { Number(Value.X); Number(Value.Y); }
         void Point(const Vector3& Value) { Number(Value.X); Number(Value.Y); Number(Value.Z); }
-        void Frame(const OrthonormalFrame& Value) { Point(Value.Origin); Point(Value.XAxis); Point(Value.YAxis); Point(Value.ZAxis); }
-        void Map(const AffineMap& Value) { Point(Value.ColumnX); Point(Value.ColumnY); Point(Value.ColumnZ); Point(Value.Shift); }
+        void Frame(const OrthonormalBasis& Value) { Point(Value.Origin); Point(Value.XAxis); Point(Value.YAxis); Point(Value.ZAxis); }
+        void Map(const AffineMapping& Value) { Point(Value.ColumnX); Point(Value.ColumnY); Point(Value.ColumnZ); Point(Value.Shift); }
 
         // A bound parameter contributes its name and current value (absent: a sentinel, so creating it changes the digest).
         void Binding(const std::string& Name)
@@ -65,7 +65,7 @@ namespace
             }
             Flag(false);
         }
-        void Value(const FeatureValue& Value)
+        void Value(const FeatureScalar& Value)
         {
             Number(Value.Literal);
             Binding(Value.Parameter);
@@ -74,7 +74,7 @@ namespace
             Binding(Value.SecondParameter);
             Number(Value.SecondFactor);
         }
-        void Reference(const TopologyReference& Value)
+        void Reference(const ConnectivityReference& Value)
         {
             Kind(Value.Kind);
             Phrase(Value.Name);
@@ -157,13 +157,13 @@ std::string DigestFeatureStep(const FeatureTree& Tree, const FeatureStep& Step)
     Writer.Flag(Step.EndSize.has_value());
     if (Step.EndSize) Writer.Value(*Step.EndSize);
     Writer.Word(Step.SizeAnchors.size());
-    for (const TopologyReference& Anchor : Step.SizeAnchors) Writer.Reference(Anchor);
+    for (const ConnectivityReference& Anchor : Step.SizeAnchors) Writer.Reference(Anchor);
     Writer.Word(Step.AnchorSizes.size());
-    for (const FeatureValue& Size : Step.AnchorSizes) Writer.Value(Size);
+    for (const FeatureScalar& Size : Step.AnchorSizes) Writer.Value(Size);
     Writer.Kind(Step.Operation);
     Writer.Value(Step.Amount);
     Writer.Word(Step.References.size());
-    for (const TopologyReference& Reference : Step.References) Writer.Reference(Reference);
+    for (const ConnectivityReference& Reference : Step.References) Writer.Reference(Reference);
     Writer.Word(Step.Points.size());
     for (const Vector3& Point : Step.Points) Writer.Point(Point);
     Writer.Flag(Step.ClosedCondition);
@@ -192,7 +192,7 @@ std::string DigestFeatureStep(const FeatureTree& Tree, const FeatureStep& Step)
     Writer.Phrase(Step.Source);
     const FeatureJoint& Joint = Step.Joint;
     Writer.Kind(Joint.Kind);
-    for (const FeatureValue* Value : { &Joint.Angle, &Joint.Slide, &Joint.SecondSlide, &Joint.Pitch, &Joint.Roll, &Joint.Offset }) Writer.Value(*Value);
+    for (const FeatureScalar* Value : { &Joint.Angle, &Joint.Slide, &Joint.SecondSlide, &Joint.Pitch, &Joint.Roll, &Joint.Offset }) Writer.Value(*Value);
     Writer.Flag(Joint.FlippedCondition);
     for (const std::optional<JointRange>* Range : { &Joint.AngleRange, &Joint.SlideRange })
     {
@@ -201,9 +201,9 @@ std::string DigestFeatureStep(const FeatureTree& Tree, const FeatureStep& Step)
     }
     Writer.Phrase(Step.Exchange);
     Writer.Number(Step.ExchangeUnit);
-    if (Step.Kind == FeatureStepKind::SpaceCurve)
+    if (Step.Kind == FeatureStepCategory::SpaceCurve)
     {
-        for (const FeatureStep& Other : Tree.Steps) if (Other.Kind == FeatureStepKind::Mirror) Writer.Frame(Other.Plane);
+        for (const FeatureStep& Other : Tree.Steps) if (Other.Kind == FeatureStepCategory::Mirror) Writer.Frame(Other.Plane);
     }
     if (Step.Offset.Literal != 0.0 || !Step.Offset.Parameter.empty() || !Step.Offset.SecondParameter.empty() || Step.Offset.Offset != 0.0)
     {
@@ -246,7 +246,7 @@ std::string DigestModifiers(const FeatureTree& Tree)
         Writer.Kind(Modifier.LimitMode);
         Writer.Phrase(Modifier.EdgeGroup);
         Writer.Word(Modifier.References.size());
-        for (const TopologyReference& Reference : Modifier.References) Writer.Reference(Reference);
+        for (const ConnectivityReference& Reference : Modifier.References) Writer.Reference(Reference);
         Writer.Value(Modifier.Size);
         Writer.Value(Modifier.Angle);
         Writer.Value(Modifier.Count);

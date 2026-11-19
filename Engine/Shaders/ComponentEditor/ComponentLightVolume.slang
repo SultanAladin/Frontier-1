@@ -6,7 +6,7 @@
 #include "Engine/Shaders/ComponentEditor/ComponentEditorShared.slang"
 
 [[vk::push_constant]]
-ConstantBuffer<ComponentSurfacePushConstants> DrawPush;
+ConstantBuffer<ComponentSurfacePushConstants> SurfacePush;
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<ComponentViewportUniforms> Viewport;
@@ -22,8 +22,8 @@ struct BeamVertexInput
 [shader("vertex")]
 ComponentVertexOutput VertexMain(BeamVertexInput Input)
 {
-    float4 World4 = mul(DrawPush.ModelMatrix, float4(Input.PositionMeters, 1.0));
-    float3x3 M3   = (float3x3)DrawPush.ModelMatrix;
+    float4 World4 = mul(SurfacePush.WorldTransform, float4(Input.PositionMeters, 1.0));
+    float3x3 M3   = (float3x3)SurfacePush.WorldTransform;
 
     ComponentVertexOutput Out;
     Out.ClipPosition = mul(Viewport.ViewProjection, World4);
@@ -39,8 +39,8 @@ ComponentVertexOutput VertexMain(BeamVertexInput Input)
 [shader("fragment")]
 ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
 {
-    float  BeamLength = max(DrawPush.ChannelModifiers.w, 0.1);
-    float  Strength   = max(DrawPush.ChannelModifiers.y, 0.05);
+    float  BeamLength = max(SurfacePush.ChannelModifiers.w, 0.1);
+    float  Strength   = max(SurfacePush.ChannelModifiers.y, 0.05);
     float  Along      = clamp(In.LocalPos.x / BeamLength, 0.0, 1.0);
     float3 N          = CeNormalizeSafe(In.WorldNormal, float3(0.0, 1.0, 0.0));
     float3 V          = CeNormalizeSafe(Viewport.CameraPositionTime.xyz - In.WorldPos, float3(0.0, 0.0, 1.0));
@@ -51,7 +51,7 @@ ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
     float  Alpha      = Strength * Falloff * (0.25 + 0.75 * Core) * Shimmer;
 
     ComponentFragmentOutput Out;
-    Out.ColorRGBA = float4(DrawPush.AlbedoRoughness.rgb * Alpha, clamp(Alpha, 0.0, 1.0));
+    Out.ColorRGBA = float4(SurfacePush.AlbedoRoughness.rgb * Alpha, clamp(Alpha, 0.0, 1.0));
     Out.PickIDs   = uint4(0u, 0u, 0u, 0u);
     return Out;
 }

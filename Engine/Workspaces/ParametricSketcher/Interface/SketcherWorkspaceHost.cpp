@@ -245,7 +245,7 @@ void SketcherWorkspaceHost::RenderViewportTarget()
         }
         else
         {
-            const OrbitCameraFrame Frame =
+            const OrbitCameraBasis Frame =
                 FrameOrbitCamera(State.Camera, double(Rasterizer.Width()), double(Rasterizer.Height()));
             Rasterizer.Record(Cmd, Frame, State.Style, true, ProbeX, ProbeY);
         }

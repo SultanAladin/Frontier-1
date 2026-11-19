@@ -425,6 +425,7 @@ float3 IntegrateUpperSkyRadiance(
                         ((2.0 + G2) * pow(Denom, 1.5));
     float  MaxDistKm  = AtmoIntersectUpperKm(StartR, CosPolar, TopKm);
 
+    float  AntiCool   = lerp(lerp(0.38, 1.0, smoothstep(-0.35, 0.30, CosTheta)), 1.0, smoothstep(0.06, 0.24, UnitSun.z));
     float3 TAccum   = float3(1.0, 1.0, 1.0);
     float3 RadAccum = float3(0.0, 0.0, 0.0);
     for (uint S = 0u; S < 40u; ++S)
@@ -446,11 +447,11 @@ float3 IntegrateUpperSkyRadiance(
 
         float  SampleSunCos = clamp((StartR * UnitSun.z + T * CosTheta) / RK, -1.0, 1.0);
         float3 SunT         = SampleTransmittancePacked(RK, SampleSunCos, GroundKm, TopKm);
-        float3 Multi        = SampleMultiScatterPacked(AltKm, SampleSunCos, ThicknessKm);
+        float3 Multi        = SampleMultiScatterPacked(AltKm, SampleSunCos, ThicknessKm) * AntiCool;
 
         float3 Scat = C.RayScatter * PhaseR + float3(C.MieScatter * PhaseM);
         float3 MsW  = C.RayScatter + float3(C.MieScatter);
-        RadAccum += TAccum * (Scat * SunT + MsW * Multi) * IntS;
+        RadAccum += TAccum * (Scat * SunT * AntiCool + MsW * Multi) * IntS;
         TAccum   *= SegT;
     }
 
@@ -483,7 +484,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float  U           = (float(DispatchThreadID.x) + 0.5) / float(W);
     float  Azimuth     = (U - 0.5) * AtmoTauConst;
     float3 UnitSun     = normalize(SkyUniforms.SunDirectionIntensity.xyz);
-    float  SolarScale  = max(0.0, SkyUniforms.SunDirectionIntensity.w) * 0.28;
+    float  SolarScale  = max(0.0, SkyUniforms.SunDirectionIntensity.w) * 0.24;
     float  MieG        = clamp(SkyUniforms.ScatteringStrengths.z, 0.0, 0.99);
     float  SunElevDeg  = asin(clamp(UnitSun.z, -1.0, 1.0)) * (180.0 / AtmoPiConst);
     float  DayVis      = clamp((SunElevDeg + 6.0) / 14.0, 0.0, 1.0);
@@ -512,6 +513,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float  PhaseM     = (3.0 / (8.0 * AtmoPiConst)) * ((1.0 - G2) * (1.0 + CosTheta * CosTheta)) /
                         ((2.0 + G2) * pow(Denom, 1.5));
 
+    float  AntiCool     = lerp(lerp(0.38, 1.0, smoothstep(-0.35, 0.30, CosTheta)), 1.0, smoothstep(0.06, 0.24, UnitSun.z));
     bool   HitsGround   = false;
     float  GroundDistKm = AtmoIntersectLowerKm(StartR, CosPolar, GroundKm, HitsGround);
     float  MaxDistKm    = HitsGround ? max(0.005, GroundDistKm) : AtmoIntersectUpperKm(StartR, CosPolar, TopKm);
@@ -538,11 +540,11 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 
         float  SampleSunCos = clamp((StartR * UnitSun.z + T * CosTheta) / RK, -1.0, 1.0);
         float3 SunT         = SampleTransmittancePacked(RK, SampleSunCos, GroundKm, TopKm);
-        float3 Multi        = SampleMultiScatterPacked(AltKm, SampleSunCos, ThicknessKm);
+        float3 Multi        = SampleMultiScatterPacked(AltKm, SampleSunCos, ThicknessKm) * AntiCool;
 
         float3 Scat = C.RayScatter * PhaseR + float3(C.MieScatter * PhaseM);
         float3 MsW  = C.RayScatter + float3(C.MieScatter);
-        RadAccum += TAccum * (Scat * SunT + MsW * Multi) * IntS;
+        RadAccum += TAccum * (Scat * SunT * AntiCool + MsW * Multi) * IntS;
         TAccum   *= SegT;
     }
 
@@ -552,9 +554,9 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         float3 GroundSunT = (HitSunCos > 0.0)
             ? SampleTransmittancePacked(GroundKm, HitSunCos, GroundKm, TopKm)
             : float3(0.0, 0.0, 0.0);
-        float3 GroundMulti = SampleMultiScatterPacked(0.0, HitSunCos, ThicknessKm);
+        float3 GroundMulti = SampleMultiScatterPacked(0.0, HitSunCos, ThicknessKm) * AntiCool;
         float  SunTerm     = max(0.0, HitSunCos) / AtmoPiConst;
-        RadAccum += TAccum * SkyUniforms.GroundAlbedoLimbGlow.xyz * (GroundSunT * SunTerm + GroundMulti * 0.70);
+        RadAccum += TAccum * SkyUniforms.GroundAlbedoLimbGlow.xyz * (GroundSunT * SunTerm + GroundMulti * 0.35);
     }
 
     float LimbFactor = exp(-max(0.0, CosPolar) * 7.5);

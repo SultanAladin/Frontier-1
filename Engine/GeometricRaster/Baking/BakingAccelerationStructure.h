@@ -22,7 +22,7 @@ namespace Frontier::GeometricRaster::Baking
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class BakeAccelerationBackend : uint8_t
+enum class BakeAccelerationEngine : uint8_t
 {
     GtxComputeBvh4      = 0u,
     RtxHardwareRayQuery = 1u,
@@ -49,11 +49,11 @@ public:
 
     [[nodiscard]] bool Ready() const noexcept { return HighTriangleCount > 0u && WideEntryCount > 0u; }
     [[nodiscard]] bool QueryHardwareAccelReady() const noexcept { return HardwareAccelReady; }
-    [[nodiscard]] BakeAccelerationBackend QueryActiveBackend(bool PreferComputeBvh4 = false) const noexcept
+    [[nodiscard]] BakeAccelerationEngine QueryActiveBackend(bool PreferComputeBvh4 = false) const noexcept
     {
         return (!PreferComputeBvh4 && HardwareAccelReady)
-            ? BakeAccelerationBackend::RtxHardwareRayQuery
-            : BakeAccelerationBackend::GtxComputeBvh4;
+            ? BakeAccelerationEngine::RtxHardwareRayQuery
+            : BakeAccelerationEngine::GtxComputeBvh4;
     }
 
     [[nodiscard]] uint32_t QueryLowVertexCount() const noexcept   { return LowVertexCount; }

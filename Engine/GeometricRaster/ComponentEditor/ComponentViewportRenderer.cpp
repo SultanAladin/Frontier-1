@@ -65,7 +65,7 @@ static_assert(sizeof(ComponentViewportUniformsGpu) == 528u);
 
 struct ComponentSurfacePushConstantsGpu
 {
-    float    ModelMatrix[16];
+    float    WorldTransform[16];
     float    AlbedoRoughness[4];
     float    EmissiveMetalness[4];
     float    ChannelModifiers[4];
@@ -234,7 +234,7 @@ struct GpuVertexSliceUpload
     uint32_t             VertexCount = 0u;
 };
 
-struct CachedAssetGpuRecord
+struct CachedAssetGpuEntry
 {
     uint64_t                    Revision = 0ull;
     CompiledGeometryVisualBatch Batch {};
@@ -257,12 +257,12 @@ struct ComponentViewportRenderer::RendererImplementation
 
     VkDescriptorSetLayout DescLayout = VK_NULL_HANDLE;
     VkPipelineLayout      PipeLayout = VK_NULL_HANDLE;
-    VkDescriptorPool      DescPool   = VK_NULL_HANDLE;
+    VkDescriptorPool      DescriptorArena   = VK_NULL_HANDLE;
     VkDescriptorSet       DescSet    = VK_NULL_HANDLE;
 
     VkPipeline ChannelOpaquePipe      = VK_NULL_HANDLE;
     VkPipeline ChannelAlphaPipe       = VK_NULL_HANDLE;
-    VkPipeline FieldShellPipe         = VK_NULL_HANDLE;
+    VkPipeline FieldHullRaster         = VK_NULL_HANDLE;
     VkPipeline LightVolumePipe        = VK_NULL_HANDLE;
     VkPipeline DotFloorPipe           = VK_NULL_HANDLE;
     VkPipeline ConstraintSolidPipe    = VK_NULL_HANDLE;
@@ -277,7 +277,7 @@ struct ComponentViewportRenderer::RendererImplementation
     GpuVertexSliceUpload ArrowUnitBuf     {};
     GpuVertexSliceUpload CameraFrustumBuf {};
 
-    std::unordered_map<std::string, CachedAssetGpuRecord> AssetCache {};
+    std::unordered_map<std::string, CachedAssetGpuEntry> AssetCache {};
 
     uint32_t              TargetW = 0u;
     uint32_t              TargetH = 0u;
@@ -288,7 +288,7 @@ struct ComponentViewportRenderer::RendererImplementation
     DeviceBufferResource  PickReadback  {};
     std::vector<uint32_t> CpuPickRgba32ui {};
 
-    std::vector<DeviceBufferResource> TransientFrameBuffers {};
+    std::vector<DeviceBufferResource> TransientOutputBuffers {};
 
     void UploadVertexBuffer(std::span<const ComponentShaderVertex> Verts, GpuVertexSliceUpload& Out)
     {
@@ -331,17 +331,17 @@ struct ComponentViewportRenderer::RendererImplementation
         {
             std::memcpy(Buf.HostAddress, Verts.data(), Bytes);
         }
-        TransientFrameBuffers.push_back(Buf);
+        TransientOutputBuffers.push_back(Buf);
         return Buf.BufferHandle;
     }
 
     void ReleaseTransientBuffers() noexcept
     {
-        for (auto& Buf : TransientFrameBuffers)
+        for (auto& Buf : TransientOutputBuffers)
         {
             DeviceInterchange->ReleaseBuffer(Buf);
         }
-        TransientFrameBuffers.clear();
+        TransientOutputBuffers.clear();
     }
 
     void ReleaseAssetCache() noexcept
@@ -414,7 +414,7 @@ struct ComponentViewportRenderer::RendererImplementation
 
     enum class BlendRecipe : uint8_t { Opaque, AlphaBlend, Additive };
 
-    [[nodiscard]] VkPipeline BuildGraphicsPipeline(
+    [[nodiscard]] VkPipeline ConstructGraphicsProgram(
         const std::filesystem::path& VertSpv,
         const std::filesystem::path& FragSpv,
         bool                         DepthWrite,
@@ -462,10 +462,10 @@ struct ComponentViewportRenderer::RendererImplementation
         InputAsm.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
         InputAsm.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-        VkPipelineViewportStateCreateInfo ViewState {};
-        ViewState.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-        ViewState.viewportCount = 1u;
-        ViewState.scissorCount  = 1u;
+        VkPipelineViewportStateCreateInfo ViewportOptions {};
+        ViewportOptions.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        ViewportOptions.viewportCount = 1u;
+        ViewportOptions.scissorCount  = 1u;
 
         VkPipelineRasterizationStateCreateInfo Raster {};
         Raster.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -509,41 +509,41 @@ struct ComponentViewportRenderer::RendererImplementation
         Blends[1].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         Blends[1].blendEnable    = VK_FALSE;
 
-        VkPipelineColorBlendStateCreateInfo BlendInfo {};
-        BlendInfo.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        BlendInfo.attachmentCount = static_cast<uint32_t>(Blends.size());
-        BlendInfo.pAttachments    = Blends.data();
+        VkPipelineColorBlendStateCreateInfo BlendSpec {};
+        BlendSpec.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        BlendSpec.attachmentCount = static_cast<uint32_t>(Blends.size());
+        BlendSpec.pAttachments    = Blends.data();
 
         const std::array<VkDynamicState, 2> DynStates {{ VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR }};
-        VkPipelineDynamicStateCreateInfo DynInfo {};
-        DynInfo.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        DynInfo.dynamicStateCount = static_cast<uint32_t>(DynStates.size());
-        DynInfo.pDynamicStates    = DynStates.data();
+        VkPipelineDynamicStateCreateInfo DynamicSpec {};
+        DynamicSpec.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        DynamicSpec.dynamicStateCount = static_cast<uint32_t>(DynStates.size());
+        DynamicSpec.pDynamicStates    = DynStates.data();
 
         const std::array<VkFormat, 2> ColorFormats {{ VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R32G32B32A32_UINT }};
-        VkPipelineRenderingCreateInfo RenderInfo {};
-        RenderInfo.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-        RenderInfo.colorAttachmentCount    = static_cast<uint32_t>(ColorFormats.size());
-        RenderInfo.pColorAttachmentFormats = ColorFormats.data();
-        RenderInfo.depthAttachmentFormat   = VK_FORMAT_D32_SFLOAT;
+        VkPipelineRenderingCreateInfo RenderSpec {};
+        RenderSpec.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+        RenderSpec.colorAttachmentCount    = static_cast<uint32_t>(ColorFormats.size());
+        RenderSpec.pColorAttachmentFormats = ColorFormats.data();
+        RenderSpec.depthAttachmentFormat   = VK_FORMAT_D32_SFLOAT;
 
-        VkGraphicsPipelineCreateInfo PipeInfo {};
-        PipeInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        PipeInfo.pNext               = &RenderInfo;
-        PipeInfo.stageCount          = 2u;
-        PipeInfo.pStages             = ShaderEntries;
-        PipeInfo.pVertexInputState   = &VertInput;
-        PipeInfo.pInputAssemblyState = &InputAsm;
-        PipeInfo.pViewportState      = &ViewState;
-        PipeInfo.pRasterizationState = &Raster;
-        PipeInfo.pMultisampleState   = &Msaa;
-        PipeInfo.pDepthStencilState  = &Depth;
-        PipeInfo.pColorBlendState    = &BlendInfo;
-        PipeInfo.pDynamicState       = &DynInfo;
-        PipeInfo.layout              = PipeLayout;
+        VkGraphicsPipelineCreateInfo ProgramSpec {};
+        ProgramSpec.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        ProgramSpec.pNext               = &RenderSpec;
+        ProgramSpec.stageCount          = 2u;
+        ProgramSpec.pStages             = ShaderEntries;
+        ProgramSpec.pVertexInputState   = &VertInput;
+        ProgramSpec.pInputAssemblyState = &InputAsm;
+        ProgramSpec.pViewportState      = &ViewportOptions;
+        ProgramSpec.pRasterizationState = &Raster;
+        ProgramSpec.pMultisampleState   = &Msaa;
+        ProgramSpec.pDepthStencilState  = &Depth;
+        ProgramSpec.pColorBlendState    = &BlendSpec;
+        ProgramSpec.pDynamicState       = &DynamicSpec;
+        ProgramSpec.layout              = PipeLayout;
 
         VkPipeline Result = VK_NULL_HANDLE;
-        (void)vkCreateGraphicsPipelines(Device, VK_NULL_HANDLE, 1u, &PipeInfo, nullptr, &Result);
+        (void)vkCreateGraphicsPipelines(Device, VK_NULL_HANDLE, 1u, &ProgramSpec, nullptr, &Result);
 
         vkDestroyShaderModule(Device, VertMod, nullptr);
         vkDestroyShaderModule(Device, FragMod, nullptr);
@@ -556,16 +556,16 @@ struct ComponentViewportRenderer::RendererImplementation
         VkImageAspectFlags    Aspect,
         VkImageLayout         OldLayout,
         VkImageLayout         NewLayout,
-        VkPipelineStageFlags2 SrcStage,
+        VkPipelineStageFlags2 SrcBarrierMask,
         VkAccessFlags2        SrcAccess,
-        VkPipelineStageFlags2 DstStage,
+        VkPipelineStageFlags2 DstBarrierMask,
         VkAccessFlags2        DstAccess) const
     {
         VkImageMemoryBarrier2 Barrier {};
         Barrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-        Barrier.srcStageMask                    = SrcStage;
+        Barrier.srcStageMask                    = SrcBarrierMask;
         Barrier.srcAccessMask                   = SrcAccess;
-        Barrier.dstStageMask                    = DstStage;
+        Barrier.dstStageMask                    = DstBarrierMask;
         Barrier.dstAccessMask                   = DstAccess;
         Barrier.oldLayout                       = OldLayout;
         Barrier.newLayout                       = NewLayout;
@@ -583,14 +583,14 @@ struct ComponentViewportRenderer::RendererImplementation
         Sync2Barrier(Cmd, &Dep);
     }
 
-    const CachedAssetGpuRecord* AcquireAssetRecord(const ComponentClass::CompiledGeometryCatalogEntry& Entry)
+    const CachedAssetGpuEntry* AcquireAssetEntry(const ComponentClass::CompiledGeometryRepositoryEntry& Entry)
     {
         auto It = AssetCache.find(Entry.AssetIdentifier);
         if (It != AssetCache.end() && It->second.Revision == Entry.Asset.Network.NetworkRevision)
         {
             return &It->second;
         }
-        CachedAssetGpuRecord& Rec = AssetCache[Entry.AssetIdentifier];
+        CachedAssetGpuEntry& Rec = AssetCache[Entry.AssetIdentifier];
         Rec.Revision = Entry.Asset.Network.NetworkRevision;
         Rec.Batch    = ComponentGizmoGeometry::BuildCompiledAssetBatch(Entry);
         UploadVertexBuffer(Rec.Batch.FullDetailVertices, Rec.FullBuf);
@@ -635,17 +635,17 @@ bool ComponentViewportRenderer::InitializeVulkan(
         return false;
     }
 
-    VkDescriptorSetLayoutBinding UboBinding {};
-    UboBinding.binding         = 0u;
-    UboBinding.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    UboBinding.descriptorCount = 1u;
-    UboBinding.stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    VkDescriptorSetLayoutBinding UniformSlotIdx {};
+    UniformSlotIdx.binding         = 0u;
+    UniformSlotIdx.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    UniformSlotIdx.descriptorCount = 1u;
+    UniformSlotIdx.stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    VkDescriptorSetLayoutCreateInfo LayoutInfo {};
-    LayoutInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    LayoutInfo.bindingCount = 1u;
-    LayoutInfo.pBindings    = &UboBinding;
-    if (vkCreateDescriptorSetLayout(Impl->Device, &LayoutInfo, nullptr, &Impl->DescLayout) != VK_SUCCESS)
+    VkDescriptorSetLayoutCreateInfo LayoutSpec {};
+    LayoutSpec.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    LayoutSpec.bindingCount = 1u;
+    LayoutSpec.pBindings    = &UniformSlotIdx;
+    if (vkCreateDescriptorSetLayout(Impl->Device, &LayoutSpec, nullptr, &Impl->DescLayout) != VK_SUCCESS)
     {
         TeardownVulkan();
         return false;
@@ -656,36 +656,36 @@ bool ComponentViewportRenderer::InitializeVulkan(
     PushRange.offset     = 0u;
     PushRange.size       = sizeof(ComponentSurfacePushConstantsGpu);
 
-    VkPipelineLayoutCreateInfo PipeLayoutInfo {};
-    PipeLayoutInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    PipeLayoutInfo.setLayoutCount         = 1u;
-    PipeLayoutInfo.pSetLayouts            = &Impl->DescLayout;
-    PipeLayoutInfo.pushConstantRangeCount = 1u;
-    PipeLayoutInfo.pPushConstantRanges    = &PushRange;
-    if (vkCreatePipelineLayout(Impl->Device, &PipeLayoutInfo, nullptr, &Impl->PipeLayout) != VK_SUCCESS)
+    VkPipelineLayoutCreateInfo ProgramLayoutSpec {};
+    ProgramLayoutSpec.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    ProgramLayoutSpec.setLayoutCount         = 1u;
+    ProgramLayoutSpec.pSetLayouts            = &Impl->DescLayout;
+    ProgramLayoutSpec.pushConstantRangeCount = 1u;
+    ProgramLayoutSpec.pPushConstantRanges    = &PushRange;
+    if (vkCreatePipelineLayout(Impl->Device, &ProgramLayoutSpec, nullptr, &Impl->PipeLayout) != VK_SUCCESS)
     {
         TeardownVulkan();
         return false;
     }
 
-    VkDescriptorPoolSize PoolSize { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u };
-    VkDescriptorPoolCreateInfo PoolInfo {};
-    PoolInfo.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    PoolInfo.maxSets       = 1u;
-    PoolInfo.poolSizeCount = 1u;
-    PoolInfo.pPoolSizes    = &PoolSize;
-    if (vkCreateDescriptorPool(Impl->Device, &PoolInfo, nullptr, &Impl->DescPool) != VK_SUCCESS)
+    VkDescriptorPoolSize DescriptorCountSpec { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u };
+    VkDescriptorPoolCreateInfo ArenaSpec {};
+    ArenaSpec.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    ArenaSpec.maxSets       = 1u;
+    ArenaSpec.poolSizeCount = 1u;
+    ArenaSpec.pPoolSizes    = &DescriptorCountSpec;
+    if (vkCreateDescriptorPool(Impl->Device, &ArenaSpec, nullptr, &Impl->DescriptorArena) != VK_SUCCESS)
     {
         TeardownVulkan();
         return false;
     }
 
-    VkDescriptorSetAllocateInfo AllocInfo {};
-    AllocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    AllocInfo.descriptorPool     = Impl->DescPool;
-    AllocInfo.descriptorSetCount = 1u;
-    AllocInfo.pSetLayouts        = &Impl->DescLayout;
-    if (vkAllocateDescriptorSets(Impl->Device, &AllocInfo, &Impl->DescSet) != VK_SUCCESS)
+    VkDescriptorSetAllocateInfo AllocSpec {};
+    AllocSpec.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    AllocSpec.descriptorPool     = Impl->DescriptorArena;
+    AllocSpec.descriptorSetCount = 1u;
+    AllocSpec.pSetLayouts        = &Impl->DescLayout;
+    if (vkAllocateDescriptorSets(Impl->Device, &AllocSpec, &Impl->DescSet) != VK_SUCCESS)
     {
         TeardownVulkan();
         return false;
@@ -701,28 +701,28 @@ bool ComponentViewportRenderer::InitializeVulkan(
         return false;
     }
 
-    VkDescriptorBufferInfo BufInfo { Impl->UniformBuffer.BufferHandle, 0ull, sizeof(ComponentViewportUniformsGpu) };
+    VkDescriptorBufferInfo BufferSpec { Impl->UniformBuffer.BufferHandle, 0ull, sizeof(ComponentViewportUniformsGpu) };
     VkWriteDescriptorSet Write {};
     Write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     Write.dstSet          = Impl->DescSet;
     Write.dstBinding      = 0u;
     Write.descriptorCount = 1u;
     Write.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    Write.pBufferInfo     = &BufInfo;
+    Write.pBufferInfo     = &BufferSpec;
     vkUpdateDescriptorSets(Impl->Device, 1u, &Write, 0u, nullptr);
 
     using BR = RendererImplementation::BlendRecipe;
     const auto Spv = [&](const char* File) { return CompiledShaderDirectory / File; };
-    Impl->ChannelOpaquePipe      = Impl->BuildGraphicsPipeline(Spv("ComponentChannelInspection.vert.spv"), Spv("ComponentChannelInspection.frag.spv"), true,  true,  BR::Opaque);
-    Impl->ChannelAlphaPipe       = Impl->BuildGraphicsPipeline(Spv("ComponentChannelInspection.vert.spv"), Spv("ComponentChannelInspection.frag.spv"), false, false, BR::AlphaBlend);
-    Impl->FieldShellPipe         = Impl->BuildGraphicsPipeline(Spv("ComponentFieldShell.vert.spv"),        Spv("ComponentFieldShell.frag.spv"),        false, false, BR::AlphaBlend);
-    Impl->LightVolumePipe        = Impl->BuildGraphicsPipeline(Spv("ComponentLightVolume.vert.spv"),       Spv("ComponentLightVolume.frag.spv"),       false, false, BR::Additive);
-    Impl->DotFloorPipe           = Impl->BuildGraphicsPipeline(Spv("ComponentDotFloor.vert.spv"),          Spv("ComponentDotFloor.frag.spv"),          false, false, BR::AlphaBlend);
-    Impl->ConstraintSolidPipe    = Impl->BuildGraphicsPipeline(Spv("ComponentConstraintVisual.vert.spv"),  Spv("ComponentConstraintVisual.frag.spv"),  true,  true,  BR::Opaque);
-    Impl->ConstraintAdditivePipe = Impl->BuildGraphicsPipeline(Spv("ComponentConstraintVisual.vert.spv"),  Spv("ComponentConstraintVisual.frag.spv"),  false, false, BR::Additive);
+    Impl->ChannelOpaquePipe      = Impl->ConstructGraphicsProgram(Spv("ComponentChannelInspection.vert.spv"), Spv("ComponentChannelInspection.frag.spv"), true,  true,  BR::Opaque);
+    Impl->ChannelAlphaPipe       = Impl->ConstructGraphicsProgram(Spv("ComponentChannelInspection.vert.spv"), Spv("ComponentChannelInspection.frag.spv"), false, false, BR::AlphaBlend);
+    Impl->FieldHullRaster         = Impl->ConstructGraphicsProgram(Spv("ComponentFieldHull.vert.spv"),        Spv("ComponentFieldHull.frag.spv"),        false, false, BR::AlphaBlend);
+    Impl->LightVolumePipe        = Impl->ConstructGraphicsProgram(Spv("ComponentLightVolume.vert.spv"),       Spv("ComponentLightVolume.frag.spv"),       false, false, BR::Additive);
+    Impl->DotFloorPipe           = Impl->ConstructGraphicsProgram(Spv("ComponentDotFloor.vert.spv"),          Spv("ComponentDotFloor.frag.spv"),          false, false, BR::AlphaBlend);
+    Impl->ConstraintSolidPipe    = Impl->ConstructGraphicsProgram(Spv("ComponentConstraintVisual.vert.spv"),  Spv("ComponentConstraintVisual.frag.spv"),  true,  true,  BR::Opaque);
+    Impl->ConstraintAdditivePipe = Impl->ConstructGraphicsProgram(Spv("ComponentConstraintVisual.vert.spv"),  Spv("ComponentConstraintVisual.frag.spv"),  false, false, BR::Additive);
 
     if (Impl->ChannelOpaquePipe == VK_NULL_HANDLE ||
-        Impl->FieldShellPipe == VK_NULL_HANDLE ||
+        Impl->FieldHullRaster == VK_NULL_HANDLE ||
         Impl->DotFloorPipe == VK_NULL_HANDLE ||
         Impl->ConstraintSolidPipe == VK_NULL_HANDLE)
     {
@@ -731,8 +731,8 @@ bool ComponentViewportRenderer::InitializeVulkan(
     }
 
     Impl->UploadVertexBuffer(ComponentGizmoGeometry::BuildDotFloorQuad(120.0f), Impl->DotFloorBuf);
-    Impl->UploadVertexBuffer(ComponentGizmoGeometry::BuildUnitBoxShell(), Impl->UnitBoxBuf);
-    Impl->UploadVertexBuffer(ComponentGizmoGeometry::BuildUnitSphereShell(), Impl->UnitSphereBuf);
+    Impl->UploadVertexBuffer(ComponentGizmoGeometry::ConstructUnitBoxHull(), Impl->UnitBoxBuf);
+    Impl->UploadVertexBuffer(ComponentGizmoGeometry::ConstructUnitSphereHull(), Impl->UnitSphereBuf);
     Impl->UploadVertexBuffer(ComponentGizmoGeometry::BuildOriginRing(0.14f), Impl->OriginRingBuf);
     Impl->UploadVertexBuffer(ComponentGizmoGeometry::BuildSolidArrow(1.0f), Impl->ArrowUnitBuf);
     Impl->UploadVertexBuffer(ComponentGizmoGeometry::BuildCameraFrustumBeam(1.8f, 52.0f, 16.0f / 9.0f), Impl->CameraFrustumBuf);
@@ -773,13 +773,13 @@ void ComponentViewportRenderer::TeardownVulkan() noexcept
         };
         DestroyPipe(Impl->ChannelOpaquePipe);
         DestroyPipe(Impl->ChannelAlphaPipe);
-        DestroyPipe(Impl->FieldShellPipe);
+        DestroyPipe(Impl->FieldHullRaster);
         DestroyPipe(Impl->LightVolumePipe);
         DestroyPipe(Impl->DotFloorPipe);
         DestroyPipe(Impl->ConstraintSolidPipe);
         DestroyPipe(Impl->ConstraintAdditivePipe);
 
-        if (Impl->DescPool != VK_NULL_HANDLE)   { vkDestroyDescriptorPool(Impl->Device, Impl->DescPool, nullptr);       Impl->DescPool = VK_NULL_HANDLE; }
+        if (Impl->DescriptorArena != VK_NULL_HANDLE)   { vkDestroyDescriptorPool(Impl->Device, Impl->DescriptorArena, nullptr);       Impl->DescriptorArena = VK_NULL_HANDLE; }
         if (Impl->PipeLayout != VK_NULL_HANDLE) { vkDestroyPipelineLayout(Impl->Device, Impl->PipeLayout, nullptr);     Impl->PipeLayout = VK_NULL_HANDLE; }
         if (Impl->DescLayout != VK_NULL_HANDLE) { vkDestroyDescriptorSetLayout(Impl->Device, Impl->DescLayout, nullptr); Impl->DescLayout = VK_NULL_HANDLE; }
     }
@@ -804,14 +804,14 @@ void ComponentViewportRenderer::ClearGeometryCache() noexcept
 
 ComponentViewportCamera ComponentViewportRenderer::ComputeFramedCameraForClass(
     const ComponentClass::ComponentClassDefinition&               ClassDef,
-    std::span<const ComponentClass::CompiledGeometryCatalogEntry> Catalog,
+    std::span<const ComponentClass::CompiledGeometryRepositoryEntry> Repository,
     float                                                         YawRadians,
     float                                                         PitchRadians) const
 {
-    std::unordered_map<std::string_view, const ComponentClass::CompiledGeometryCatalogEntry*> CatalogMap {};
-    for (const auto& Entry : Catalog)
+    std::unordered_map<std::string_view, const ComponentClass::CompiledGeometryRepositoryEntry*> RepositoryLookup {};
+    for (const auto& Entry : Repository)
     {
-        CatalogMap[Entry.AssetIdentifier] = &Entry;
+        RepositoryLookup[Entry.AssetIdentifier] = &Entry;
     }
 
     const uint32_t RawCount = ClassDef.Storage.QueryRawSlotCount();
@@ -819,11 +819,11 @@ ComponentViewportCamera ComponentViewportRenderer::ComputeFramedCameraForClass(
     std::vector<const ComponentClass::ComponentInstanceHeader*> Ordered {};
     Ordered.reserve(RawCount);
 
-    ClassDef.Storage.WalkSpatialHierarchy([&](const ComponentClass::ComponentInstanceHeader& H)
+    ClassDef.Storage.WalkSpatialNesting([&](const ComponentClass::ComponentInstanceHeader& H)
     {
         Ordered.push_back(&H);
         const Mat4 Local = Mat4FromTransform(H.LocalTransform);
-        if (H.EnclosingIndex == ComponentClass::InvalidHierarchyIndex)
+        if (H.EnclosingIndex == ComponentClass::InvalidNestingIndex)
         {
             WorldMats[H.Token.SlotIndex] = Local;
         }
@@ -835,7 +835,7 @@ ComponentViewportCamera ComponentViewportRenderer::ComputeFramedCameraForClass(
 
     Mathematics::Axis3D MinB {  1.0e9f,  1.0e9f,  1.0e9f };
     Mathematics::Axis3D MaxB { -1.0e9f, -1.0e9f, -1.0e9f };
-    bool HasBounds = false;
+    bool BoundsPresent = false;
 
     for (const auto* HPtr : Ordered)
     {
@@ -846,22 +846,22 @@ ComponentViewportCamera ComponentViewportRenderer::ComputeFramedCameraForClass(
         }
         const auto* Geom = ClassDef.Storage.InspectGeometry(H.Token);
         if (Geom == nullptr) continue;
-        const auto CatIt = CatalogMap.find(Geom->AssetIdentifier);
-        if (CatIt == CatalogMap.end()) continue;
+        const auto CatIt = RepositoryLookup.find(Geom->AssetIdentifier);
+        if (CatIt == RepositoryLookup.end()) continue;
 
         for (const auto& V : CatIt->second->Asset.Network.Vertices)
         {
             const Mathematics::Axis3D W = TransformPoint(WorldMats[H.Token.SlotIndex], V.Axes);
             MinB.X = std::min(MinB.X, W.X); MinB.Y = std::min(MinB.Y, W.Y); MinB.Z = std::min(MinB.Z, W.Z);
             MaxB.X = std::max(MaxB.X, W.X); MaxB.Y = std::max(MaxB.Y, W.Y); MaxB.Z = std::max(MaxB.Z, W.Z);
-            HasBounds = true;
+            BoundsPresent = true;
         }
     }
 
     ComponentViewportCamera Cam {};
     Cam.YawRadians   = YawRadians;
     Cam.PitchRadians = PitchRadians;
-    if (HasBounds)
+    if (BoundsPresent)
     {
         Cam.FocusPointMeters = {
             0.5f * (MinB.X + MaxB.X),
@@ -877,16 +877,16 @@ ComponentViewportCamera ComponentViewportRenderer::ComputeFramedCameraForClass(
     return Cam;
 }
 
-ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
+ComponentViewportOutput ComponentViewportRenderer::RenderClassViewport(
     const ComponentClass::ComponentClassDefinition&               ClassDef,
-    std::span<const ComponentClass::CompiledGeometryCatalogEntry> Catalog,
+    std::span<const ComponentClass::CompiledGeometryRepositoryEntry> Repository,
     const ComponentViewportCamera&                                Camera,
     const ComponentRenderOptions&                                 Options,
     uint32_t                                                      WidthPx,
     uint32_t                                                      HeightPx,
     bool                                                          PerformHostReadback)
 {
-    ComponentViewportFrameOutput Result {};
+    ComponentViewportOutput Result {};
     if (!QueryVulkanReady() || WidthPx == 0u || HeightPx == 0u)
     {
         return Result;
@@ -898,10 +898,10 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
         return Result;
     }
 
-    std::unordered_map<std::string_view, const CachedAssetGpuRecord*> GpuCatalog {};
-    for (const auto& Entry : Catalog)
+    std::unordered_map<std::string_view, const CachedAssetGpuEntry*> GpuCatalog {};
+    for (const auto& Entry : Repository)
     {
-        GpuCatalog[Entry.AssetIdentifier] = Impl->AcquireAssetRecord(Entry);
+        GpuCatalog[Entry.AssetIdentifier] = Impl->AcquireAssetEntry(Entry);
     }
 
     const uint32_t RawCount = ClassDef.Storage.QueryRawSlotCount();
@@ -910,7 +910,7 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
     std::vector<const ComponentClass::ComponentInstanceHeader*> SpatialOrdered {};
     SpatialOrdered.reserve(RawCount);
 
-    ClassDef.Storage.WalkSpatialHierarchy([&](const ComponentClass::ComponentInstanceHeader& H)
+    ClassDef.Storage.WalkSpatialNesting([&](const ComponentClass::ComponentInstanceHeader& H)
     {
         SpatialOrdered.push_back(&H);
         if (const auto OvIt = Options.SimulationWorldOverrides.find(H.Token.SlotIndex);
@@ -922,15 +922,15 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
         }
 
         const Mat4 Local = Mat4FromTransform(H.LocalTransform);
-        Mat4 BaseWorld = Local;
-        if (H.EnclosingIndex != ComponentClass::InvalidHierarchyIndex)
+        Mat4 PrimaryWorld = Local;
+        if (H.EnclosingIndex != ComponentClass::InvalidNestingIndex)
         {
             if (const auto* Enc = ClassDef.Storage.InspectHeaderByIndex(H.EnclosingIndex))
             {
-                BaseWorld = Mat4Multiply(WorldMats[Enc->Token.SlotIndex], Local);
+                PrimaryWorld = Mat4Multiply(WorldMats[Enc->Token.SlotIndex], Local);
             }
         }
-        AnchorMats[H.Token.SlotIndex] = BaseWorld;
+        AnchorMats[H.Token.SlotIndex] = PrimaryWorld;
 
         if (H.Category == ComponentClass::ComponentCategory::ConstraintInstance)
         {
@@ -944,20 +944,20 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
                 if (Con->Axis == ComponentClass::ConstraintAxis::AxisZ) Ax = { 0.0f, 0.0f, 1.0f };
 
                 Mat4 PoseDelta = Mat4Identity();
-                if (Con->Kind == ComponentClass::PhysicsConstraintKind::Hinge ||
-                    Con->Kind == ComponentClass::PhysicsConstraintKind::Spin)
+                if (Con->Form == ComponentClass::PhysicsConstraintCategory::Hinge ||
+                    Con->Form == ComponentClass::PhysicsConstraintCategory::Spin)
                 {
                     PoseDelta = Mat4FromAxisAngle(Ax, Coord);
                 }
-                else if (Con->Kind == ComponentClass::PhysicsConstraintKind::Slider ||
-                         Con->Kind == ComponentClass::PhysicsConstraintKind::Spring)
+                else if (Con->Form == ComponentClass::PhysicsConstraintCategory::Slider ||
+                         Con->Form == ComponentClass::PhysicsConstraintCategory::Spring)
                 {
                     PoseDelta = Mat4Translation({ Ax.X * Coord, Ax.Y * Coord, Ax.Z * Coord });
                 }
-                BaseWorld = Mat4Multiply(BaseWorld, PoseDelta);
+                PrimaryWorld = Mat4Multiply(PrimaryWorld, PoseDelta);
             }
         }
-        WorldMats[H.Token.SlotIndex] = BaseWorld;
+        WorldMats[H.Token.SlotIndex] = PrimaryWorld;
     });
 
     Mathematics::Axis3D Eye {};
@@ -1032,7 +1032,7 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
         GpuL.DirectionCosine[0] = WDir.X;
         GpuL.DirectionCosine[1] = WDir.Y;
         GpuL.DirectionCosine[2] = WDir.Z;
-        GpuL.DirectionCosine[3] = (Lgt->Kind == ComponentClass::LightEmitterKind::SpotBeam)
+        GpuL.DirectionCosine[3] = (Lgt->Form == ComponentClass::LightSourceCategory::SpotBeam)
             ? std::cos(Lgt->ConeAngleDegrees * DegToRad)
             : -2.0f;
         GpuL.ColorIntensity[0]  = Lgt->LinearColourRGB.X;
@@ -1094,18 +1094,18 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
     DepthAtt.storeOp                       = VK_ATTACHMENT_STORE_OP_STORE;
     DepthAtt.clearValue.depthStencil.depth = 1.0f;
 
-    VkRenderingInfo BeginInfo {};
-    BeginInfo.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    BeginInfo.renderArea           = { { 0, 0 }, { WidthPx, HeightPx } };
-    BeginInfo.layerCount           = 1u;
-    BeginInfo.colorAttachmentCount = static_cast<uint32_t>(ColorAtts.size());
-    BeginInfo.pColorAttachments    = ColorAtts.data();
-    BeginInfo.pDepthAttachment     = &DepthAtt;
+    VkRenderingInfo BeginSpec {};
+    BeginSpec.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    BeginSpec.renderArea           = { { 0, 0 }, { WidthPx, HeightPx } };
+    BeginSpec.layerCount           = 1u;
+    BeginSpec.colorAttachmentCount = static_cast<uint32_t>(ColorAtts.size());
+    BeginSpec.pColorAttachments    = ColorAtts.data();
+    BeginSpec.pDepthAttachment     = &DepthAtt;
 
     VkViewport Viewport { 0.0f, 0.0f, static_cast<float>(WidthPx), static_cast<float>(HeightPx), 0.0f, 1.0f };
     VkRect2D   Scissor  { { 0, 0 }, { WidthPx, HeightPx } };
 
-    auto BindPipelineAndState = [&](VkPipeline Pipe)
+    auto BindRasterProgram = [&](VkPipeline Pipe)
     {
         vkCmdBindPipeline(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipe);
         vkCmdSetViewport(Cmd, 0u, 1u, &Viewport);
@@ -1113,7 +1113,7 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
         vkCmdBindDescriptorSets(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, Impl->PipeLayout, 0u, 1u, &Impl->DescSet, 0u, nullptr);
     };
 
-    auto EmitDraw = [&](VkBuffer Vb, uint32_t VertCount, const ComponentSurfacePushConstantsGpu& Push)
+    auto RecordSpan = [&](VkBuffer Vb, uint32_t VertCount, const ComponentSurfacePushConstantsGpu& Push)
     {
         if (Vb == VK_NULL_HANDLE || VertCount == 0u) return;
         const VkDeviceSize Offset = 0ull;
@@ -1128,23 +1128,23 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
         vkCmdDraw(Cmd, VertCount, 1u, 0u, 0u);
     };
 
-    Impl->DynBeginRender(Cmd, &BeginInfo);
+    Impl->DynBeginRender(Cmd, &BeginSpec);
 
     // 1. Ground dot floor
     if (Options.ShowDotFloor && !Options.TransparentBackdrop && Impl->DotFloorBuf.VertexCount > 0u)
     {
-        BindPipelineAndState(Impl->DotFloorPipe);
+        BindRasterProgram(Impl->DotFloorPipe);
         ComponentSurfacePushConstantsGpu FloorPush {};
         const Mat4 Id = Mat4Identity();
-        std::memcpy(FloorPush.ModelMatrix, Id.M, sizeof(FloorPush.ModelMatrix));
-        EmitDraw(Impl->DotFloorBuf.Buffer.BufferHandle, Impl->DotFloorBuf.VertexCount, FloorPush);
+        std::memcpy(FloorPush.WorldTransform, Id.M, sizeof(FloorPush.WorldTransform));
+        RecordSpan(Impl->DotFloorBuf.Buffer.BufferHandle, Impl->DotFloorBuf.VertexCount, FloorPush);
     }
 
     // 2. Compiled GeometryInstances (Layer 0)
     const VkPipeline SurfacePipe = (Options.Channel == ComponentInspectionChannel::Collision && Impl->ChannelAlphaPipe != VK_NULL_HANDLE)
         ? Impl->ChannelAlphaPipe
         : Impl->ChannelOpaquePipe;
-    BindPipelineAndState(SurfacePipe);
+    BindRasterProgram(SurfacePipe);
 
     for (const auto* HPtr : SpatialOrdered)
     {
@@ -1158,7 +1158,7 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
         const auto CatIt = GpuCatalog.find(Geom->AssetIdentifier);
         if (CatIt == GpuCatalog.end() || CatIt->second == nullptr) continue;
 
-        const CachedAssetGpuRecord* Rec = CatIt->second;
+        const CachedAssetGpuEntry* Rec = CatIt->second;
         const GpuVertexSliceUpload* VSlice = &Rec->FullBuf;
         if (Options.Channel == ComponentInspectionChannel::Density)
         {
@@ -1169,14 +1169,14 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
             VSlice = &Rec->LodBuf;
         }
 
-        const bool IsSelected = (H.Token == Options.SelectedToken);
+        const bool Selected = (H.Token == Options.SelectedToken);
         ++Result.DrawnGeometries;
         Result.DrawnTriangles += Rec->Batch.TriangleCount;
 
         for (const auto& Slice : Rec->Batch.SlotSlices)
         {
             ComponentSurfacePushConstantsGpu Push {};
-            std::memcpy(Push.ModelMatrix, WorldMats[H.Token.SlotIndex].M, sizeof(Push.ModelMatrix));
+            std::memcpy(Push.WorldTransform, WorldMats[H.Token.SlotIndex].M, sizeof(Push.WorldTransform));
 
             Mathematics::Scalar3D Albedo = Slice.AlbedoLinearRGB;
             for (const auto& Ov : Geom->SlotOverrides)
@@ -1195,9 +1195,9 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
             Push.EmissiveMetalness[1] = Slice.EmissiveRGB.Y;
             Push.EmissiveMetalness[2] = Slice.EmissiveRGB.Z;
             Push.EmissiveMetalness[3] = Slice.Metalness;
-            Push.ChannelModifiers[0]  = IsSelected ? 1.0f : 0.0f;
+            Push.ChannelModifiers[0]  = Selected ? 1.0f : 0.0f;
             Push.ChannelModifiers[1]  = (Options.Channel == ComponentInspectionChannel::Collision) ? 0.35f : 1.0f;
-            Push.ChannelModifiers[2]  = Rec->Batch.HasValidUvs ? 0.0f : 1.0f;
+            Push.ChannelModifiers[2]  = Rec->Batch.ValidUvsPresent ? 0.0f : 1.0f;
             Push.PickPacked[0]        = static_cast<uint32_t>(H.Category);
             Push.PickPacked[1]        = H.Token.SlotIndex;
             Push.PickPacked[2]        = H.Token.Generation;
@@ -1222,7 +1222,7 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
     // 3. Field shells (Collision channel SDF/Box shells + CollisionVolumes + FluidInstances)
     if (Options.ShowDebugHelpers)
     {
-        BindPipelineAndState(Impl->FieldShellPipe);
+        BindRasterProgram(Impl->FieldHullRaster);
 
         if (Options.Channel == ComponentInspectionChannel::Collision)
         {
@@ -1244,19 +1244,19 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
                     std::max(0.5f * (BMax.Z - BMin.Z), 0.05f)
                 };
                 const Mat4 BoxMat = Mat4Multiply(WorldMats[H.Token.SlotIndex], Mat4Multiply(Mat4Translation(Center), Mat4Scale(Half)));
-                ComponentSurfacePushConstantsGpu ShellPush {};
-                std::memcpy(ShellPush.ModelMatrix, BoxMat.M, sizeof(ShellPush.ModelMatrix));
-                ShellPush.AlbedoRoughness[0]   = 0.275f; // #46d267 green collision shell
-                ShellPush.AlbedoRoughness[1]   = 0.824f;
-                ShellPush.AlbedoRoughness[2]   = 0.404f;
-                ShellPush.ChannelModifiers[1]  = 0.05f;
-                ShellPush.ChannelModifiers[2]  = 0.50f;
-                ShellPush.ChannelModifiers[3]  = 0.22f;
-                ShellPush.EmissiveMetalness[0] = 0.35f;
-                ShellPush.PickPacked[0]        = static_cast<uint32_t>(H.Category);
-                ShellPush.PickPacked[1]        = H.Token.SlotIndex;
-                ShellPush.PickPacked[2]        = H.Token.Generation;
-                EmitDraw(Impl->UnitBoxBuf.Buffer.BufferHandle, Impl->UnitBoxBuf.VertexCount, ShellPush);
+                ComponentSurfacePushConstantsGpu HullPush {};
+                std::memcpy(HullPush.WorldTransform, BoxMat.M, sizeof(HullPush.WorldTransform));
+                HullPush.AlbedoRoughness[0]   = 0.275f; // #46d267 green collision shell
+                HullPush.AlbedoRoughness[1]   = 0.824f;
+                HullPush.AlbedoRoughness[2]   = 0.404f;
+                HullPush.ChannelModifiers[1]  = 0.05f;
+                HullPush.ChannelModifiers[2]  = 0.50f;
+                HullPush.ChannelModifiers[3]  = 0.22f;
+                HullPush.EmissiveMetalness[0] = 0.35f;
+                HullPush.PickPacked[0]        = static_cast<uint32_t>(H.Category);
+                HullPush.PickPacked[1]        = H.Token.SlotIndex;
+                HullPush.PickPacked[2]        = H.Token.Generation;
+                RecordSpan(Impl->UnitBoxBuf.Buffer.BufferHandle, Impl->UnitBoxBuf.VertexCount, HullPush);
             }
         }
 
@@ -1264,16 +1264,16 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
         {
             const auto& H = *HPtr;
             if (!H.VisibilityEnabled) continue;
-            const bool IsSelected = (H.Token == Options.SelectedToken);
+            const bool Selected = (H.Token == Options.SelectedToken);
             if (H.Category == ComponentClass::ComponentCategory::CollisionVolume &&
-                (IsSelected || Options.Channel == ComponentInspectionChannel::Collision))
+                (Selected || Options.Channel == ComponentInspectionChannel::Collision))
             {
                 const auto* Col = ClassDef.Storage.InspectCollision(H.Token);
                 if (Col == nullptr) continue;
                 Mat4 ScaleMat = Mat4Scale(Col->HalfExtentsMeters);
                 VkBuffer ShellVb = Impl->UnitBoxBuf.Buffer.BufferHandle;
                 uint32_t ShellVc = Impl->UnitBoxBuf.VertexCount;
-                if (Col->Kind == ComponentClass::CollisionVolumeKind::Sphere)
+                if (Col->Form == ComponentClass::CollisionVolumeCategory::Sphere)
                 {
                     ScaleMat = Mat4Scale({ Col->RadiusMeters, Col->RadiusMeters, Col->RadiusMeters });
                     ShellVb = Impl->UnitSphereBuf.Buffer.BufferHandle;
@@ -1281,26 +1281,26 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
                 }
                 const Mat4 M = Mat4Multiply(WorldMats[H.Token.SlotIndex], ScaleMat);
                 ComponentSurfacePushConstantsGpu Push {};
-                std::memcpy(Push.ModelMatrix, M.M, sizeof(Push.ModelMatrix));
+                std::memcpy(Push.WorldTransform, M.M, sizeof(Push.WorldTransform));
                 Push.AlbedoRoughness[0]   = 1.0f;
                 Push.AlbedoRoughness[1]   = 0.698f;
                 Push.AlbedoRoughness[2]   = 0.220f;
-                Push.ChannelModifiers[1]  = IsSelected ? 0.09f : 0.04f;
-                Push.ChannelModifiers[2]  = IsSelected ? 0.72f : 0.45f;
+                Push.ChannelModifiers[1]  = Selected ? 0.09f : 0.04f;
+                Push.ChannelModifiers[2]  = Selected ? 0.72f : 0.45f;
                 Push.ChannelModifiers[3]  = 0.22f;
                 Push.EmissiveMetalness[0] = 0.40f;
                 Push.PickPacked[0]        = static_cast<uint32_t>(H.Category);
                 Push.PickPacked[1]        = H.Token.SlotIndex;
                 Push.PickPacked[2]        = H.Token.Generation;
-                EmitDraw(ShellVb, ShellVc, Push);
+                RecordSpan(ShellVb, ShellVc, Push);
             }
-            else if (H.Category == ComponentClass::ComponentCategory::FluidInstance && IsSelected)
+            else if (H.Category == ComponentClass::ComponentCategory::FluidInstance && Selected)
             {
                 const auto* Fl = ClassDef.Storage.InspectFluid(H.Token);
                 if (Fl == nullptr) continue;
                 const Mat4 M = Mat4Multiply(WorldMats[H.Token.SlotIndex], Mat4Scale(Fl->BoundsExtentMeters));
                 ComponentSurfacePushConstantsGpu Push {};
-                std::memcpy(Push.ModelMatrix, M.M, sizeof(Push.ModelMatrix));
+                std::memcpy(Push.WorldTransform, M.M, sizeof(Push.WorldTransform));
                 Push.AlbedoRoughness[0]   = 0.416f;
                 Push.AlbedoRoughness[1]   = 0.655f;
                 Push.AlbedoRoughness[2]   = 0.780f;
@@ -1311,14 +1311,14 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
                 Push.PickPacked[0]        = static_cast<uint32_t>(H.Category);
                 Push.PickPacked[1]        = H.Token.SlotIndex;
                 Push.PickPacked[2]        = H.Token.Generation;
-                EmitDraw(Impl->UnitBoxBuf.Buffer.BufferHandle, Impl->UnitBoxBuf.VertexCount, Push);
+                RecordSpan(Impl->UnitBoxBuf.Buffer.BufferHandle, Impl->UnitBoxBuf.VertexCount, Push);
             }
         }
 
         // 4. Light & Camera volumetric beams (additive)
         if (Impl->LightVolumePipe != VK_NULL_HANDLE)
         {
-            BindPipelineAndState(Impl->LightVolumePipe);
+            BindRasterProgram(Impl->LightVolumePipe);
             for (const auto* HPtr : SpatialOrdered)
             {
                 const auto& H = *HPtr;
@@ -1326,37 +1326,37 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
                 if (H.Category == ComponentClass::ComponentCategory::LightInstance)
                 {
                     const auto* Lgt = ClassDef.Storage.InspectLight(H.Token);
-                    if (Lgt == nullptr || Lgt->Kind != ComponentClass::LightEmitterKind::SpotBeam) continue;
+                    if (Lgt == nullptr || Lgt->Form != ComponentClass::LightSourceCategory::SpotBeam) continue;
                     const float BeamLen = std::min(Lgt->AttenuationRangeMeters * 0.35f, 3.4f);
                     const float BeamRad = std::tan(Lgt->ConeAngleDegrees * DegToRad) * BeamLen;
                     auto ConeVerts = ComponentGizmoGeometry::BuildSpotBeamCone(BeamLen, BeamRad, 28u);
                     const VkBuffer ConeVb = Impl->UploadTransientVertices(ConeVerts);
                     ComponentSurfacePushConstantsGpu Push {};
-                    std::memcpy(Push.ModelMatrix, WorldMats[H.Token.SlotIndex].M, sizeof(Push.ModelMatrix));
+                    std::memcpy(Push.WorldTransform, WorldMats[H.Token.SlotIndex].M, sizeof(Push.WorldTransform));
                     Push.AlbedoRoughness[0]  = Lgt->LinearColourRGB.X;
                     Push.AlbedoRoughness[1]  = Lgt->LinearColourRGB.Y;
                     Push.AlbedoRoughness[2]  = Lgt->LinearColourRGB.Z;
                     Push.ChannelModifiers[1] = (H.Token == Options.SelectedToken) ? 0.34f : 0.22f;
                     Push.ChannelModifiers[3] = BeamLen;
-                    EmitDraw(ConeVb, static_cast<uint32_t>(ConeVerts.size()), Push);
+                    RecordSpan(ConeVb, static_cast<uint32_t>(ConeVerts.size()), Push);
                 }
                 else if (H.Category == ComponentClass::ComponentCategory::CameraInstance &&
                          (!Camera.PilotActive || Camera.PilotCameraToken != H.Token))
                 {
                     ComponentSurfacePushConstantsGpu Push {};
-                    std::memcpy(Push.ModelMatrix, WorldMats[H.Token.SlotIndex].M, sizeof(Push.ModelMatrix));
+                    std::memcpy(Push.WorldTransform, WorldMats[H.Token.SlotIndex].M, sizeof(Push.WorldTransform));
                     Push.AlbedoRoughness[0]  = 0.56f;
                     Push.AlbedoRoughness[1]  = 0.72f;
                     Push.AlbedoRoughness[2]  = 1.0f;
                     Push.ChannelModifiers[1] = (H.Token == Options.SelectedToken) ? 0.36f : 0.16f;
                     Push.ChannelModifiers[3] = 1.8f;
-                    EmitDraw(Impl->CameraFrustumBuf.Buffer.BufferHandle, Impl->CameraFrustumBuf.VertexCount, Push);
+                    RecordSpan(Impl->CameraFrustumBuf.Buffer.BufferHandle, Impl->CameraFrustumBuf.VertexCount, Push);
                 }
             }
         }
 
         // 5. DirectionArrow + SpatialOrigin helpers
-        BindPipelineAndState(Impl->ConstraintSolidPipe);
+        BindRasterProgram(Impl->ConstraintSolidPipe);
         for (const auto* HPtr : SpatialOrdered)
         {
             const auto& H = *HPtr;
@@ -1364,12 +1364,12 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
             if (H.Category == ComponentClass::ComponentCategory::SpatialOrigin)
             {
                 ComponentSurfacePushConstantsGpu Push {};
-                std::memcpy(Push.ModelMatrix, WorldMats[H.Token.SlotIndex].M, sizeof(Push.ModelMatrix));
+                std::memcpy(Push.WorldTransform, WorldMats[H.Token.SlotIndex].M, sizeof(Push.WorldTransform));
                 Push.AlbedoRoughness[0] = 0.85f; Push.AlbedoRoughness[1] = 0.85f; Push.AlbedoRoughness[2] = 0.88f; Push.AlbedoRoughness[3] = 0.35f;
                 Push.EmissiveMetalness[0] = 0.2f; Push.EmissiveMetalness[1] = 0.2f; Push.EmissiveMetalness[2] = 0.22f; Push.EmissiveMetalness[3] = 0.2f;
                 Push.ChannelModifiers[1] = 1.0f;
                 Push.PickPacked[0] = static_cast<uint32_t>(H.Category); Push.PickPacked[1] = H.Token.SlotIndex; Push.PickPacked[2] = H.Token.Generation;
-                EmitDraw(Impl->OriginRingBuf.Buffer.BufferHandle, Impl->OriginRingBuf.VertexCount, Push);
+                RecordSpan(Impl->OriginRingBuf.Buffer.BufferHandle, Impl->OriginRingBuf.VertexCount, Push);
             }
             else if (H.Category == ComponentClass::ComponentCategory::DirectionArrow)
             {
@@ -1377,32 +1377,32 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
                 if (Arr == nullptr) continue;
                 const Mat4 M = Mat4Multiply(WorldMats[H.Token.SlotIndex], Mat4Scale({ Arr->LengthMeters, Arr->LengthMeters, Arr->LengthMeters }));
                 ComponentSurfacePushConstantsGpu Push {};
-                std::memcpy(Push.ModelMatrix, M.M, sizeof(Push.ModelMatrix));
+                std::memcpy(Push.WorldTransform, M.M, sizeof(Push.WorldTransform));
                 Push.AlbedoRoughness[0] = Arr->LinearColourRGB.X; Push.AlbedoRoughness[1] = Arr->LinearColourRGB.Y; Push.AlbedoRoughness[2] = Arr->LinearColourRGB.Z; Push.AlbedoRoughness[3] = 0.35f;
                 Push.EmissiveMetalness[0] = Arr->LinearColourRGB.X * 0.45f; Push.EmissiveMetalness[1] = Arr->LinearColourRGB.Y * 0.45f; Push.EmissiveMetalness[2] = Arr->LinearColourRGB.Z * 0.45f;
                 Push.ChannelModifiers[1] = 1.0f;
                 Push.PickPacked[0] = static_cast<uint32_t>(H.Category); Push.PickPacked[1] = H.Token.SlotIndex; Push.PickPacked[2] = H.Token.Generation;
-                EmitDraw(Impl->ArrowUnitBuf.Buffer.BufferHandle, Impl->ArrowUnitBuf.VertexCount, Push);
+                RecordSpan(Impl->ArrowUnitBuf.Buffer.BufferHandle, Impl->ArrowUnitBuf.VertexCount, Push);
             }
         }
     }
 
-    auto DrawConstraints = [&](bool OnlySelected)
+    auto ConstructConstraintVisuals = [&](bool OnlySelected)
     {
         for (const auto* HPtr : SpatialOrdered)
         {
             const auto& H = *HPtr;
             if (H.Category != ComponentClass::ComponentCategory::ConstraintInstance || !H.VisibilityEnabled) continue;
-            const bool IsSelected = (H.Token == Options.SelectedToken);
-            if (IsSelected != OnlySelected) continue;
+            const bool Selected = (H.Token == Options.SelectedToken);
+            if (Selected != OnlySelected) continue;
             const auto* Con = ClassDef.Storage.InspectConstraint(H.Token);
             if (Con == nullptr) continue;
 
             const float CurCoord = Options.LiveConstraintCoordinates.contains(H.Token.SlotIndex)
                 ? Options.LiveConstraintCoordinates.at(H.Token.SlotIndex)
                 : 0.0f;
-            const bool DockIntact = Options.DockIntactFlags.contains(H.Token.SlotIndex)
-                ? Options.DockIntactFlags.at(H.Token.SlotIndex)
+            const bool DockIntact = Options.DockIntactMask.contains(H.Token.SlotIndex)
+                ? Options.DockIntactMask.at(H.Token.SlotIndex)
                 : Con->DockConnected;
 
             const auto Pieces = ComponentGizmoGeometry::BuildConstraintVisualPieces(
@@ -1411,12 +1411,12 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
             {
                 const VkBuffer PieceVb = Impl->UploadTransientVertices(Piece.Vertices);
                 if (PieceVb == VK_NULL_HANDLE) continue;
-                BindPipelineAndState(
-                    Piece.PieceKind == ConstraintPieceKind::ShadedSolid
+                BindRasterProgram(
+                    Piece.PieceCategory == ConstraintPieceCategory::ShadedSolid
                         ? Impl->ConstraintSolidPipe
                         : Impl->ConstraintAdditivePipe);
                 ComponentSurfacePushConstantsGpu Push {};
-                std::memcpy(Push.ModelMatrix, AnchorMats[H.Token.SlotIndex].M, sizeof(Push.ModelMatrix));
+                std::memcpy(Push.WorldTransform, AnchorMats[H.Token.SlotIndex].M, sizeof(Push.WorldTransform));
                 Push.AlbedoRoughness[0]   = Piece.AlbedoRgb[0];
                 Push.AlbedoRoughness[1]   = Piece.AlbedoRgb[1];
                 Push.AlbedoRoughness[2]   = Piece.AlbedoRgb[2];
@@ -1425,21 +1425,21 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
                 Push.EmissiveMetalness[1] = Piece.EmissiveRgb[1];
                 Push.EmissiveMetalness[2] = Piece.EmissiveRgb[2];
                 Push.EmissiveMetalness[3] = Piece.Metalness;
-                Push.ChannelModifiers[0]  = IsSelected ? 1.0f : 0.0f;
+                Push.ChannelModifiers[0]  = Selected ? 1.0f : 0.0f;
                 Push.ChannelModifiers[1]  = Piece.AlphaOrScale;
-                Push.ChannelModifiers[2]  = static_cast<float>(Piece.PieceKind);
+                Push.ChannelModifiers[2]  = static_cast<float>(Piece.PieceCategory);
                 Push.ChannelModifiers[3]  = Piece.NormCursor;
                 Push.PickPacked[0]        = static_cast<uint32_t>(H.Category);
                 Push.PickPacked[1]        = H.Token.SlotIndex;
                 Push.PickPacked[2]        = H.Token.Generation;
-                EmitDraw(PieceVb, static_cast<uint32_t>(Piece.Vertices.size()), Push);
+                RecordSpan(PieceVb, static_cast<uint32_t>(Piece.Vertices.size()), Push);
             }
         }
     };
 
     if (Options.ShowDebugHelpers)
     {
-        DrawConstraints(false);
+        ConstructConstraintVisuals(false);
     }
 
     Impl->DynEndRender(Cmd);
@@ -1451,8 +1451,8 @@ ComponentViewportFrameOutput ComponentViewportRenderer::RenderClassFrame(
         ColorAtts[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         ColorAtts[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         DepthAtt.loadOp     = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        Impl->DynBeginRender(Cmd, &BeginInfo);
-        DrawConstraints(true);
+        Impl->DynBeginRender(Cmd, &BeginSpec);
+        ConstructConstraintVisuals(true);
         Impl->DynEndRender(Cmd);
     }
 

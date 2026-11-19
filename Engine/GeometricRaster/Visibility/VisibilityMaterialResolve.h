@@ -35,12 +35,12 @@ struct AnalyticResolvedSurfaceSample
     Mathematics::Axis3D                               BarycentricWeights  {};      // [-]     - Exact perspective-correct (L0, L1, L2)
     Mathematics::Axis3D                               WorldPosition       {};      // [m]     - Reconstructed world hit position
     Mathematics::Axis3D                               WorldViewDirection  {};      // [-]     - Unit eye vector toward CameraOrigin
-    MaterialSpace::Scattering::SurfaceShadingFrame    TangentFrame        {};      // [-]     - Interpolated Oct32 Mikk/Duff frame
+    MaterialSpace::Scattering::SurfaceShadingBasis    TangentFrame        {};      // [-]     - Interpolated Oct32 Mikk/Duff frame
     MaterialSpace::Scattering::TextureFootprintJacobian Footprint         {};      // [uv/px] - Exact analytic UV + dUV/dx + dUV/dy!
     Mathematics::Axis2D                               MotionVectorPx      {};      // [px]    - CurrentPx - PreviousPx sub-pixel velocity
 };
 
-struct VisibilityResolveFrameBuffer
+struct VisibilityResolveBuffer
 {
     uint32_t                          WidthPx                  = 0u;  // [px]    - Viewport width
     uint32_t                          HeightPx                 = 0u;  // [px]    - Viewport height
@@ -70,9 +70,9 @@ public:
         std::span<const RigidClusterInstance> Instances) noexcept;
 
     // Resolves the full 64-bit VisibilityBuffer + 2-layer Glass Peel in 8x8 wave tiles with WaveActiveBitOr lobe-mask culling
-    [[nodiscard]] static VisibilityResolveFrameBuffer ResolveVisibilityFrame(
-        const PerspectiveCameraFrame&               CurrentCamera,
-        const PerspectiveCameraFrame&               PreviousCamera,
+    [[nodiscard]] static VisibilityResolveBuffer ResolveVisibilityFrame(
+        const PerspectiveCameraBasis&               CurrentCamera,
+        const PerspectiveCameraBasis&               PreviousCamera,
         std::span<const RigidClusterInstance>       Instances,
         const VisibilityBufferTargets&              VisibilityTargets,
         const MaterialSpace::CompactMaterialRegister& MaterialRegister);

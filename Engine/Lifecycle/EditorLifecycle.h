@@ -20,7 +20,7 @@
 #include "Engine/ComponentClass/ControlVehicleClassBuilder.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
-#include "Engine/Components/Diagnostics/FrameTimingTelemetry.h"
+#include "Engine/Components/Diagnostics/ViewportTimingTelemetry.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/Editor/Explorer/ContentBrowser.h"
 #include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
@@ -164,7 +164,7 @@ public:
 
     void PresentPrimaryEditorImGui(double Δt);
     void RecordFramePresentationTiming(float DesktopPollAndUiMs, float SwapchainPresentMs, float TotalFrameMs) noexcept;
-    [[nodiscard]] const FrameTimingBreakdown& QueryLatestFrameTiming() const noexcept { return LatestFrameTiming; }
+    [[nodiscard]] const ViewportTimingBreakdown& QueryLatestViewportTiming() const noexcept { return LatestViewportTiming; }
 
     [[nodiscard]] bool                                       QueryActive() const noexcept;
     [[nodiscard]] EditorLifecycleReading                     InspectReading() const noexcept;
@@ -312,7 +312,7 @@ private:
     Components::WorkspaceDockPaneToken         InspectorPaneToken     {};     // [idx]   - Registered right Inspector pane
     double                                     CurrentStepSeconds     = 0.016;// [s]     - Active authoring step passed to pane presenters
     uint32_t                                   RegisteredGpuOverlays = 0u;   // [count] - Registered GPU .slang viewport overlay hooks
-    FrameTimingBreakdown                       LatestFrameTiming      {};     // [ms]    - Latest per-stage GPU/CPU telemetry
+    ViewportTimingBreakdown                       LatestViewportTiming      {};     // [ms]    - Latest per-stage GPU/CPU telemetry
     bool                                       TimingLogInitialized   = false;
     uint64_t                                   TimingFrameCounter     = 0ull;
     std::chrono::steady_clock::time_point      LastForceOverlayRenderAt {};

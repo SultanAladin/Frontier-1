@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometrySpace/Parametric/Geometry/ProjectedCurve.h"
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <cstdint>
 #include <optional>

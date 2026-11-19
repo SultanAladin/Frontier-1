@@ -25,7 +25,7 @@ namespace Frontier::GeometrySpace::Parametric
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-HalfSpaceCut CutBodyAtPlane(ModelPartition& Scratch, BodyToken Body, const OrthonormalFrame& Plane)
+HalfSpaceCut CutBodyAtPlane(ModelPartition& Scratch, BodyToken Body, const OrthonormalBasis& Plane)
 {
     HalfSpaceCut Kept;
     bool SolidCondition = false;
@@ -35,9 +35,9 @@ HalfSpaceCut CutBodyAtPlane(ModelPartition& Scratch, BodyToken Body, const Ortho
     // ---- ① the cut: a chain along Plane.YAxis on the plane through Plane.XAxis; its left side is +Plane.ZAxis
     const double   Reach   = MeasureCutReach(Scratch, Body, Plane);                          // [len] - Body radius about the origin
     Kept.Reach = Reach;
-    const OrthonormalFrame Through = { Plane.Origin, Plane.YAxis, Plane.ZAxis, Plane.XAxis };
+    const OrthonormalBasis Through = { Plane.Origin, Plane.YAxis, Plane.ZAxis, Plane.XAxis };
     ProfileSegment Chain;
-    Chain.Kind  = ProfileSegmentKind::Line;
+    Chain.Kind  = ProfileSegmentCategory::Line;
     Chain.Start = { -2.0 * Reach, 0.0 };
     Chain.End   = { 2.0 * Reach, 0.0 };
     Chain.Name  = "Section";
@@ -66,7 +66,7 @@ HalfSpaceCut CutBodyAtPlane(ModelPartition& Scratch, BodyToken Body, const Ortho
     return Kept;
 }
 
-PlaneSectionMeasure SectionBody(const ModelPartition& Partition, BodyToken Body, const OrthonormalFrame& Plane, double OutlineStep)
+PlaneSectionMeasure SectionBody(const ModelPartition& Partition, BodyToken Body, const OrthonormalBasis& Plane, double OutlineStep)
 {
     const auto          Start = std::chrono::steady_clock::now();
     PlaneSectionMeasure Measure;

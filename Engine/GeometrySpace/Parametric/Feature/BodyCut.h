@@ -43,7 +43,7 @@ struct BodyCutOutcome
 //------------------------------------------------------------------------------------------------------------------------
 
 // Radius about Plane.Origin that holds the whole body (coarse tessellation, padded for chordal sag).
-[[nodiscard]] double MeasureCutReach(const ModelPartition& Partition, BodyToken Body, const OrthonormalFrame& Plane);
+[[nodiscard]] double MeasureCutReach(const ModelPartition& Partition, BodyToken Body, const OrthonormalBasis& Plane);
 
 // 💡 Open chain (segments in traversal order, end to start joined) closed on its LEFT side: tangent extensions past
 //    the reach, then a far box. The result is the profile of a half-plane bounded by the chain within the reach;
@@ -56,9 +56,9 @@ struct BodyCutOutcome
 
 // SpaceCurve projected along Plane.ZAxis onto the plane: the poles project exactly (parallel projection is affine), so
 // a polynomial NURBS stays exact. Rational or periodic curves are refused (empty).
-[[nodiscard]] std::optional<ProfileSegment> ProjectCutCurve(const NurbsCurve& Curve, const OrthonormalFrame& Plane, const std::string& Name);
+[[nodiscard]] std::optional<ProfileSegment> ProjectCutCurve(const NurbsCurve& Curve, const OrthonormalBasis& Plane, const std::string& Name);
 
 // Cuts Body with Profile (plane coordinates of Plane). Reach ≤ 0 → MeasureCutReach.
-[[nodiscard]] BodyCutOutcome CutBody(ModelPartition& Partition, BodyToken Body, const SketchProfile& Profile, const OrthonormalFrame& Plane, double Reach = 0.0);
+[[nodiscard]] BodyCutOutcome CutBody(ModelPartition& Partition, BodyToken Body, const SketchProfile& Profile, const OrthonormalBasis& Plane, double Reach = 0.0);
 
 } // namespace Frontier::GeometrySpace::Parametric

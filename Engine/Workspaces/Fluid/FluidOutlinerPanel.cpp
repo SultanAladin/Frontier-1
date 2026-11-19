@@ -59,7 +59,7 @@ void DrawSunGlyph(PixelSpace& Surface, Point2D C, float R, ColorRgba Ink) noexce
 
 } // namespace
 
-Rectangle2D FluidOutlinerPanel::QueryLastNodeRowBounds(FluidOutlinerNode Node) const noexcept
+Rectangle2D FluidOutlinerPanel::QueryLastNodeRowBounds(FluidOutlinerRow Node) const noexcept
 {
     const std::size_t Idx = static_cast<std::size_t>(Node);
     return (Idx < LastNodeRowRects.size()) ? LastNodeRowRects[Idx] : Rectangle2D {};
@@ -190,22 +190,22 @@ void FluidOutlinerPanel::Render(
     Y += 28.0f;
 
     // 6. Scene Tree Rows
-    struct NodeEntry
+    struct OutlinerRowEntry
     {
-        FluidOutlinerNode   Id;
+        FluidOutlinerRow   Id;
         const char*         Label;
         const char*         Tag;
         FluidOutlinerFilter Group;
         uint8_t             IconBadge; // 0=cube, 1=flame, 2=sun, 3=wind
     };
-    constexpr std::array<NodeEntry, 7> Nodes {{
-        { FluidOutlinerNode::HeroVolume,     "Gas domain",       "VOLUME", FluidOutlinerFilter::Gas,      0u },
-        { FluidOutlinerNode::EmitterSource,  "Fire emitter",     "SOURCE", FluidOutlinerFilter::Gas,      1u },
-        { FluidOutlinerNode::GiLighting,     "Directional light","LIGHT",  FluidOutlinerFilter::Lights,   2u },
-        { FluidOutlinerNode::SceneObstacle,  "Scene collider",   "SDF",    FluidOutlinerFilter::Geometry, 0u },
-        { FluidOutlinerNode::ForceFields,    "ForceFields wind", "WIND",   FluidOutlinerFilter::Gas,      3u },
-        { FluidOutlinerNode::WorldDriftGrid, "World drift grid", "DRIFT",  FluidOutlinerFilter::Gas,      0u },
-        { FluidOutlinerNode::ParticleEmbers, "Embers & GI",      "FX",     FluidOutlinerFilter::Lights,   1u },
+    constexpr std::array<OutlinerRowEntry, 7> Nodes {{
+        { FluidOutlinerRow::HeroVolume,     "Gas domain",       "VOLUME", FluidOutlinerFilter::Gas,      0u },
+        { FluidOutlinerRow::EmitterSource,  "Fire emitter",     "SOURCE", FluidOutlinerFilter::Gas,      1u },
+        { FluidOutlinerRow::GiLighting,     "Directional light","LIGHT",  FluidOutlinerFilter::Lights,   2u },
+        { FluidOutlinerRow::SceneObstacle,  "Scene collider",   "SDF",    FluidOutlinerFilter::Geometry, 0u },
+        { FluidOutlinerRow::ForceFields,    "ForceFields wind", "WIND",   FluidOutlinerFilter::Gas,      3u },
+        { FluidOutlinerRow::WorldDriftGrid, "World drift grid", "DRIFT",  FluidOutlinerFilter::Gas,      0u },
+        { FluidOutlinerRow::ParticleEmbers, "Embers & GI",      "FX",     FluidOutlinerFilter::Lights,   1u },
     }};
 
     const std::size_t MaxShownNodes = Session.CompactOutliner ? 3u : 6u;

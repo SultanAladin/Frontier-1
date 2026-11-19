@@ -545,7 +545,7 @@ int main()
     //                  PHASE 6: DIFFERENTIAL WORLD ENCODER (SECTOR-16 + LOCAL-24 + SMALLEST-THREE + SLERP)
     //--------------------------------------------------------------------------------------------------------------------
     {
-        std::vector<ReplicatedEntityKinematics> BaselineEntities(8u);
+        std::vector<ReplicatedActorKinematics> BaselineEntities(8u);
         for (uint32_t Idx = 0u; Idx < 8u; ++Idx)
         {
             BaselineEntities[Idx].EntityIdentifier = Idx + 1u;
@@ -559,8 +559,8 @@ int main()
             BaselineEntities[Idx].LinearVelocityMetersPerSec = Mathematics::Axis3D{ 32.5f, -4.2f, 0.0f };
         }
 
-        const QuantizedSpatialRecord QuantizedZero     = QuantizeEntityKinematics(BaselineEntities[0]);
-        const ReplicatedEntityKinematics DequantZero   = DequantizeEntityKinematics(QuantizedZero);
+        const QuantizedSpatialEntry QuantizedZero     = QuantizeEntityKinematics(BaselineEntities[0]);
+        const ReplicatedActorKinematics DequantZero   = DequantizeEntityKinematics(QuantizedZero);
         const double ReconstructedDoubleX =
             static_cast<double>(QuantizedZero.SectorIndices[0]) * static_cast<double>(WorldSectorSpanMeters) +
             (static_cast<double>(QuantizedZero.LocalSigned24[0]) / 8388607.0) * (static_cast<double>(WorldSectorSpanMeters) * 0.5);
@@ -597,7 +597,7 @@ int main()
         ExhibitSummary.FullKeyframeBytes = static_cast<uint32_t>(FullKeyframeBytes.size());
 
         // Advance only Entity 1; keep Entities 2..8 unchanged -> delta must suppress 7 entities!
-        std::vector<ReplicatedEntityKinematics> NextEntities = BaselineEntities;
+        std::vector<ReplicatedActorKinematics> NextEntities = BaselineEntities;
         NextEntities[0].PositionMeters.X += 0.54f;
         std::vector<uint8_t> DeltaBytes;
         uint32_t             DeltaChangedCount = 0u;
@@ -610,7 +610,7 @@ int main()
 
         uint32_t DecodedAnchorTick = 0u;
         uint32_t DecodedTargetTick = 0u;
-        std::vector<ReplicatedEntityKinematics> Reconstructed;
+        std::vector<ReplicatedActorKinematics> Reconstructed;
         Board.Verify(
             DecodeWorldSnapshotDelta(BaselineEntities, DeltaBytes, DecodedAnchorTick, DecodedTargetTick, Reconstructed) &&
             ComputeWorldAlignmentDigest(Reconstructed) == ComputeWorldAlignmentDigest(NextEntities),
@@ -619,7 +619,7 @@ int main()
         SpatialInterpolationWindow Interp;
         Interp.PushAuthoritativeSnapshot(WorldSnapshotView{ 100u, 1.00, BaselineEntities });
         Interp.PushAuthoritativeSnapshot(WorldSnapshotView{ 101u, 1.10, NextEntities });
-        std::vector<ReplicatedEntityKinematics> MidSample;
+        std::vector<ReplicatedActorKinematics> MidSample;
         Board.Verify(
             Interp.SampleInterpolatedEntities(1.05, MidSample) &&
             MidSample.size() == 8u &&
@@ -682,7 +682,7 @@ int main()
         std::vector<uint8_t> ReliableBatch;
         Board.Verify(SenderReliable.BuildOutboundBatch(ReliableBatch), "ReliableDirectiveRouter builds outbound batch");
 
-        std::vector<ReliableDirectiveRecord> Delivered;
+        std::vector<ReliableDirectiveEntry> Delivered;
         Board.Verify(
             ReceiverReliable.IngestInboundBatch(ReliableBatch, Delivered) &&
             Delivered.size() == 2u &&

@@ -87,7 +87,7 @@ bool DefaultSketcherDrawingSheetCondition(const SketcherDrawingSheetSettings& Se
     return SketcherDrawingSheetKey(Settings) == SketcherDrawingSheetKey(SketcherDrawingSheetSettings{}) && SketcherSectionKey(Settings.Section) == SketcherSectionKey(SketcherDrawingSheetSettings{}.Section);
 }
 
-GeometrySpace::Parametric::OrthonormalFrame SketcherSheetSectionFrame(const GeometrySpace::Parametric::OrthonormalFrame& Plane)
+GeometrySpace::Parametric::OrthonormalBasis SketcherSheetSectionFrame(const GeometrySpace::Parametric::OrthonormalBasis& Plane)
 {
     return GeometrySpace::Parametric::ConstructFrame(Plane.Origin, Plane.ZAxis * -1.0, Plane.XAxis);
 }

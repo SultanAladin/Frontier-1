@@ -22,7 +22,7 @@
 namespace Frontier::GeometricRaster
 {
 
-class DynamicProbeCacheSequence;
+class DynamicIrradianceCacheSequence;
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                       CONSTANTS
@@ -76,7 +76,7 @@ struct SignedDistanceRadiosityVolume
         const DistanceFieldSpace::SignedDistanceVolume& SdfVolume,
         const SpatialAcceleration::WideBoundingTree&    SceneTree,
         std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
-        const SolarDirectionalEmitter&                  Sun,
+        const SolarDirectionalSource&                  Sun,
         Mathematics::LinearRGB                          SkyRadiance = { 0.16f, 0.22f, 0.34f });
 
     [[nodiscard]] Mathematics::LinearRGB SampleRadiosityTrilinear(
@@ -91,16 +91,16 @@ struct SignedDistanceRadiosityVolume
 class IrradianceLatticeSequence
 {
 public:
-    // Updates the 3D OctahedralIrradianceCell lattice by delegating to DynamicProbeCacheSequence
+    // Updates the 3D OctahedralIrradianceCell lattice by delegating to DynamicIrradianceCacheSequence
     void PropagateRtxIrradianceLattice(
         const IrradianceLatticeConfiguration&            Config,
         const SpatialAcceleration::WideBoundingTree&     SceneTree,
         std::span<const MaterialSpace::BounceSlabEntry>  BounceSummaries,
-        const SolarDirectionalEmitter&                   Sun,
+        const SolarDirectionalSource&                   Sun,
         Mathematics::LinearRGB                           SkyRadiance = { 0.16f, 0.22f, 0.34f });
 
-    // Adopts pre-solved cells directly from DynamicProbeCacheSequence without re-tracing probe rays
-    void AdoptProbeCacheCells(const DynamicProbeCacheSequence& ProbeCache);
+    // Adopts pre-solved cells directly from DynamicIrradianceCacheSequence without re-tracing probe rays
+    void AdoptIrradianceCacheCells(const DynamicIrradianceCacheSequence& IrradianceCache);
 
     // Queries Chebyshev-visibility-weighted 1/pi diffuse exitant radiance L_d = E(N) / pi at (WorldPosition, SurfaceNormal) — zero wall leak!
     [[nodiscard]] Mathematics::LinearRGB SampleChebyshevIrradianceOverPi(

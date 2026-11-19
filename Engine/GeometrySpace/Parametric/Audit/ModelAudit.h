@@ -9,7 +9,7 @@
 //                                                    INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <string>
 #include <vector>

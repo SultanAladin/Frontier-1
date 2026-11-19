@@ -16,7 +16,7 @@ namespace Frontier::GeometrySpace::Parametric
 //                                                    STRUCTS
 //------------------------------------------------------------------------------------------------------------------------
 
-// 💡 Everything is recomputed from the PolygonComplex and the B-rep; nothing is taken from the tessellator's counters.
+// 💡 Everything is recomputed from the PolygonNetworkStructure and the B-rep; nothing is taken from the tessellator's counters.
 struct TessellationAuditReport
 {
     // ---- N1 closure and topology
@@ -55,6 +55,6 @@ struct TessellationAuditReport
 [[nodiscard]] TessellationAuditReport AuditTessellation(const ModelPartition& Partition, BodyToken Body, const TessellationOutcome& Outcome);
 
 // FNV-1a over positions and triangles: equal for bitwise-identical complexes (determinism gate).
-[[nodiscard]] uint64_t DigestPolygonComplex(const PolygonComplex& Complex);
+[[nodiscard]] uint64_t DigestPolygonComplex(const PolygonNetworkStructure& Complex);
 
 } // namespace Frontier::GeometrySpace::Parametric

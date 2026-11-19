@@ -134,7 +134,7 @@ void ReadModifiers(const std::vector<std::string>& Words, size_t Index, bool& Co
 //                                                    EXECUTION
 //------------------------------------------------------------------------------------------------------------------------
 
-bool ResolveTarget(const SketcherScriptTarget& Target, const SketcherWorkspaceState& State, ImVec2& Point)
+bool ResolveTarget(const SketcherScriptTarget& Target, const SketcherWorkspaceStatus& State, ImVec2& Point)
 {
     const auto& Rect = State.ViewportRect;
     if (!Target.Widget.empty())
@@ -145,7 +145,7 @@ bool ResolveTarget(const SketcherScriptTarget& Target, const SketcherWorkspaceSt
     }
     else if (Target.World)
     {
-        const OrbitCameraFrame Frame = FrameOrbitCamera(State.Camera, Rect[2], Rect[3]);
+        const OrbitCameraBasis Frame = FrameOrbitCamera(State.Camera, Rect[2], Rect[3]);
         double Clip[4] = {};
         for (int Row = 0; Row < 4; ++Row)
             Clip[Row] = Frame.ClipFromWorld[0 * 4 + Row] * Target.Values[0] + Frame.ClipFromWorld[1 * 4 + Row] * Target.Values[1] +
@@ -167,7 +167,7 @@ bool ResolveTarget(const SketcherScriptTarget& Target, const SketcherWorkspaceSt
 }
 
 // 📝 Observed value of a named state field, as text and (when numeric) as a number.
-bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field, std::string& Text, double& Number)
+bool ObserveField(const SketcherWorkspaceStatus& State, const std::string& Field, std::string& Text, double& Number)
 {
     const SketcherDocument& Document = State.Document;
     auto Numeric = [&](double Value)
@@ -224,7 +224,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
         for (const auto& [Label, Sketch] : Preview->Regeneration.Sketches)
             for (const GeometrySpace::Parametric::SketchCurve& Curve : Sketch.Curves)
             {
-                if (Curve.Kind != GeometrySpace::Parametric::SketchCurveKind::Arc || Curve.Centre < 0) continue;
+                if (Curve.Kind != GeometrySpace::Parametric::SketchCurveCategory::Arc || Curve.Centre < 0) continue;
                 const GeometrySpace::Parametric::Vector2 Centre = Sketch.Points[Curve.Centre].Position;
                 const GeometrySpace::Parametric::Vector2 Start  = Sketch.Points[Curve.Start].Position - Centre;
                 const GeometrySpace::Parametric::Vector2 End    = Sketch.Points[Curve.End].Position - Centre;
@@ -290,7 +290,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
     {
         // Start offset of the last Extrude step (0 without one).
         for (auto Step = Document.Tree.Steps.rbegin(); Step != Document.Tree.Steps.rend(); ++Step)
-            if (Step->Kind == GeometrySpace::Parametric::FeatureStepKind::Extrude) return Numeric(GeometrySpace::Parametric::EvaluateFeatureValue(Document.Tree, Step->Start));
+            if (Step->Kind == GeometrySpace::Parametric::FeatureStepCategory::Extrude) return Numeric(GeometrySpace::Parametric::EvaluateFeatureValue(Document.Tree, Step->Start));
         return Numeric(0.0);
     }
     if (Field == "transform-rigid") return Numeric(State.Transform.RigidCondition ? 1 : 0);
@@ -329,7 +329,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
     {
         // 📝 The newest sketch step's plane: its origin height, or the z of its normal.
         for (auto Step = Document.Tree.Steps.rbegin(); Step != Document.Tree.Steps.rend(); ++Step)
-            if (Step->Kind == GeometrySpace::Parametric::FeatureStepKind::Sketch) return Numeric(Field == "last-sketch-z" ? Step->Plane.Origin.Z : Step->Plane.ZAxis.Z);
+            if (Step->Kind == GeometrySpace::Parametric::FeatureStepCategory::Sketch) return Numeric(Field == "last-sketch-z" ? Step->Plane.Origin.Z : Step->Plane.ZAxis.Z);
         return Numeric(0.0);
     }
     if (Field == "last-step") { Text = Document.Tree.Steps.empty() ? std::string() : Document.Tree.Steps.back().Label; Number = Document.Tree.Steps.empty() || !Document.Tree.Steps.back().ClosedCondition ? 0.0 : 1.0; return true; }
@@ -365,7 +365,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
             // Linked points + curves of the sketch: "Point2,Line2.Start,…,Line2", Number = the count.
             std::vector<std::string> Names;
             for (int Point = 0; Point < int(Sketch->Points.size()); ++Point)
-                if (!Sketch->Points[Point].Link.Sketch.empty()) Names.push_back(GeometrySpace::Parametric::NameSketchPick(*Sketch, { GeometrySpace::Parametric::SketchPickKind::Point, Point }));
+                if (!Sketch->Points[Point].Link.Sketch.empty()) Names.push_back(GeometrySpace::Parametric::NameSketchPick(*Sketch, { GeometrySpace::Parametric::SketchPickCategory::Point, Point }));
             for (int Curve = 0; Curve < int(Sketch->Curves.size()); ++Curve)
                 if (!Sketch->Curves[Curve].Link.Sketch.empty()) Names.push_back(GeometrySpace::Parametric::SketchCurveName(Sketch->Curves[Curve]));
             return Join(Names);
@@ -450,7 +450,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
         const int Total = SketcherCompoundCutterCount + int(State.Knife.Library.Inserts.size());
         const bool Present = State.Knife.Insert >= 0 && State.Knife.Insert < Total;
         if (Present && State.Knife.Insert < SketcherCompoundCutterCount)
-            Text = SketcherCompoundCutterLabel(static_cast<SketcherCompoundCutterKind>(State.Knife.Insert));
+            Text = SketcherCompoundCutterLabel(static_cast<SketcherCompoundCutterCategory>(State.Knife.Insert));
         else if (Present)
             Text = State.Knife.Library.Inserts[size_t(State.Knife.Insert - SketcherCompoundCutterCount)].Name;
         else
@@ -501,11 +501,11 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
     if (Field == "sketch-filled")
     {
         for (const GeometrySpace::Parametric::FeatureStep& Step : Document.Tree.Steps)
-            if (Step.Label == State.FocusedStep && Step.Kind == GeometrySpace::Parametric::FeatureStepKind::Sketch) return Numeric(Step.FillCondition ? 1 : 0);
+            if (Step.Label == State.FocusedStep && Step.Kind == GeometrySpace::Parametric::FeatureStepCategory::Sketch) return Numeric(Step.FillCondition ? 1 : 0);
         return Numeric(-1);
     }
     if (Field == "flips")
-        return Numeric(double(std::count_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [](const GeometrySpace::Parametric::FeatureStep& Step) { return Step.Kind == GeometrySpace::Parametric::FeatureStepKind::Flip; })));
+        return Numeric(double(std::count_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [](const GeometrySpace::Parametric::FeatureStep& Step) { return Step.Kind == GeometrySpace::Parametric::FeatureStepCategory::Flip; })));
     if (Field == "tint-loops")
     {
         size_t Loops = 0;
@@ -887,14 +887,14 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
     if (Field == "snap")
     {
         const SketcherSnap& Snap = State.Picker.Current;
-        Text   = Snap.Kind == SketcherSnapKind::None ? std::string("none") : std::string(SketcherSnapLabel(Snap.Kind)) + " · " + Snap.Source;
+        Text   = Snap.Kind == SketcherSnapCategory::None ? std::string("none") : std::string(SketcherSnapLabel(Snap.Kind)) + " · " + Snap.Source;
         Number = double(int(Snap.Kind));
         return true;
     }
     if (Field == "snap-x") return Numeric(State.Picker.Current.Position.X);
     if (Field == "snap-y") return Numeric(State.Picker.Current.Position.Y);
     if (Field == "snap-z") return Numeric(State.Picker.Current.Position.Z);
-    if (Field == "snap-lock") { Text = State.Picker.Lock == SketcherSnapLockKind::None ? std::string("none") : std::string(SketcherSnapLockLabel(State.Picker.Lock)); Number = double(int(State.Picker.Lock)); return true; }
+    if (Field == "snap-lock") { Text = State.Picker.Lock == SketcherSnapLockCategory::None ? std::string("none") : std::string(SketcherSnapLockLabel(State.Picker.Lock)); Number = double(int(State.Picker.Lock)); return true; }
     if (Field == "snap-enabled") return Numeric(State.Picker.Enabled ? 1 : 0);
     if (Field == "snap-grid") return Numeric(State.Picker.GridEnabled ? 1 : 0);
     if (Field == "ring-picks") return Numeric(State.RingPicks);
@@ -907,13 +907,13 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
         if (Solved == Document.Regeneration.Sketches.end()) return Numeric(0);
         for (const GeometrySpace::Parametric::SketchCurve& Curve : Solved->second.Curves)
         {
-            if (Field != "curve-radius" && (Curve.Kind == GeometrySpace::Parametric::SketchCurveKind::Circle || Curve.Kind == GeometrySpace::Parametric::SketchCurveKind::Arc))
+            if (Field != "curve-radius" && (Curve.Kind == GeometrySpace::Parametric::SketchCurveCategory::Circle || Curve.Kind == GeometrySpace::Parametric::SketchCurveCategory::Arc))
             {
                 const auto Centre = Solved->second.Points.at(size_t(Curve.Centre)).Position;
                 return Numeric(Field == "curve-center-u" ? Centre.X : Centre.Y);
             }
-            if (Curve.Kind == GeometrySpace::Parametric::SketchCurveKind::Circle) return Numeric(Curve.Radius);
-            if (Curve.Kind == GeometrySpace::Parametric::SketchCurveKind::Arc)
+            if (Curve.Kind == GeometrySpace::Parametric::SketchCurveCategory::Circle) return Numeric(Curve.Radius);
+            if (Curve.Kind == GeometrySpace::Parametric::SketchCurveCategory::Arc)
                 return Numeric(GeometrySpace::Parametric::Distance(Solved->second.Points[size_t(Curve.Centre)].Position, Solved->second.Points[size_t(Curve.Start)].Position));
         }
         return Numeric(0);
@@ -928,7 +928,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
     if (Field == "plane-normal-x" || Field == "plane-normal-y" || Field == "plane-normal-z")
     {
         // Plane normal of the newest sketch step (a drawn sketch, or the section of a Construct solid); 0 without one.
-        const auto Newest = std::find_if(Document.Tree.Steps.rbegin(), Document.Tree.Steps.rend(), [](const GeometrySpace::Parametric::FeatureStep& Step) { return Step.Kind == GeometrySpace::Parametric::FeatureStepKind::Sketch; });
+        const auto Newest = std::find_if(Document.Tree.Steps.rbegin(), Document.Tree.Steps.rend(), [](const GeometrySpace::Parametric::FeatureStep& Step) { return Step.Kind == GeometrySpace::Parametric::FeatureStepCategory::Sketch; });
         if (Newest == Document.Tree.Steps.rend()) return Numeric(0.0);
         const GeometrySpace::Parametric::Vector3 Normal = Newest->Plane.ZAxis;
         return Numeric(Field.back() == 'x' ? Normal.X : Field.back() == 'y' ? Normal.Y : Normal.Z);
@@ -936,7 +936,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
     if (Field == "plane-offset")
     {
         // Signed distance of the newest sketch plane from the world origin along its normal (n̂ · origin, elevation included).
-        const auto Newest = std::find_if(Document.Tree.Steps.rbegin(), Document.Tree.Steps.rend(), [](const GeometrySpace::Parametric::FeatureStep& Step) { return Step.Kind == GeometrySpace::Parametric::FeatureStepKind::Sketch; });
+        const auto Newest = std::find_if(Document.Tree.Steps.rbegin(), Document.Tree.Steps.rend(), [](const GeometrySpace::Parametric::FeatureStep& Step) { return Step.Kind == GeometrySpace::Parametric::FeatureStepCategory::Sketch; });
         if (Newest == Document.Tree.Steps.rend()) return Numeric(0.0);
         return Numeric(GeometrySpace::Parametric::Dot(Newest->Plane.Origin, Newest->Plane.ZAxis) + GeometrySpace::Parametric::EvaluateFeatureValue(Document.Tree, Newest->Elevation));
     }
@@ -954,7 +954,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
         const GeometrySpace::Parametric::Vector3 Normal = State.Drawing.FacePlaneCondition ? State.Drawing.FacePlane.ZAxis : SketcherSketchPlane(State.Drawing.GridPlane).ZAxis;
         return Numeric(Field.back() == 'x' ? Normal.X : Field.back() == 'y' ? Normal.Y : Normal.Z);
     }
-    if (Field == "pole-snap-gap") return Numeric(State.PoleDrag.ActiveCondition && State.Picker.Current.Kind != SketcherSnapKind::None ? GeometrySpace::Parametric::Distance(State.PoleDrag.Position, State.Picker.Current.Position) : std::nan(""));
+    if (Field == "pole-snap-gap") return Numeric(State.PoleDrag.ActiveCondition && State.Picker.Current.Kind != SketcherSnapCategory::None ? GeometrySpace::Parametric::Distance(State.PoleDrag.Position, State.Picker.Current.Position) : std::nan(""));
     if (Field == "pole-drag-x") return Numeric(State.PoleDrag.Position.X);
     if (Field == "pole-drag-y") return Numeric(State.PoleDrag.Position.Y);
     if (Field == "pole-drag-z") return Numeric(State.PoleDrag.Position.Z);
@@ -1004,7 +1004,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
     {
         // The matcap every selected face (else body) shows ("mixed" when they differ), the default when nothing is selected.
         const auto FaceShows = [&](const std::string& Face)
-        { return SketcherFaceMatcap(Document.Appearance, SketcherBodyOfName(Document, SketcherSelectionKind::Face, Face), Face); };
+        { return SketcherFaceMatcap(Document.Appearance, SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Face), Face); };
         if (!Document.Selection.Faces.empty())
         {
             Text = FaceShows(Document.Selection.Faces.front());
@@ -1026,7 +1026,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
     if (Field == "triangles") return Numeric(double(State.Scene.Corners.size() / 3));
     if (Field == "deviation-worst" || Field == "deviation-points")
     {
-        const SketcherDeviationMap Map = MeasureSketcherDeviation(Document);
+        const SketcherDeviationPlot Map = MeasureSketcherDeviation(Document);
         return Numeric(Field == "deviation-worst" ? Map.Worst : double(Map.Needles.size()));
     }
     if (Field == "loft-continuity") return Numeric(State.LoftContinuity);
@@ -1057,7 +1057,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
         std::vector<std::string> Captions;
         for (const GeometrySpace::Parametric::FeatureStep& Step : Document.Tree.Steps)
         {
-            if (Step.Kind != GeometrySpace::Parametric::FeatureStepKind::Sketch) continue;
+            if (Step.Kind != GeometrySpace::Parametric::FeatureStepCategory::Sketch) continue;
             if (Document.Appearance.RemovedCurves.contains(Step.Label)) continue;              // Deleted, kept for the steps that read it
             const auto Caption = Document.Captions.find(Step.Label);
             Captions.push_back(Caption != Document.Captions.end() ? Caption->second : Step.Label);
@@ -1091,7 +1091,7 @@ bool ObserveField(const SketcherWorkspaceState& State, const std::string& Field,
     return false;
 }
 
-SketcherExpectation Evaluate(const SketcherScriptStep& Step, const SketcherWorkspaceState& State)
+SketcherExpectation Evaluate(const SketcherScriptStep& Step, const SketcherWorkspaceStatus& State)
 {
     SketcherExpectation Result{ Step.Line, Step.Text, {}, false };
     const std::vector<std::string> Words = SplitWords(Step.Text);
@@ -1176,7 +1176,7 @@ SketcherScript ParseSketcherScript(const std::string& Text)
         else if (Verb == "move")
         {
             // move TARGET (remembered as the anchor) · move offset DX DY (pixels from the last anchor, e.g. mid-drag)
-            SketcherScriptStep Step{ SketcherStepKind::Move };
+            SketcherScriptStep Step{ SketcherStepCategory::Move };
             if (Words.size() == 4 && Words[1] == "offset")
             {
                 Step.Anchored       = true;
@@ -1194,9 +1194,9 @@ SketcherScript ParseSketcherScript(const std::string& Text)
         }
         else if (Verb == "click" || Verb == "press" || Verb == "release")
         {
-            SketcherScriptStep Move{ SketcherStepKind::Move };
+            SketcherScriptStep Move{ SketcherStepCategory::Move };
             if (Verb == "click" && !ReadTarget(Words, Index, Move.Target)) { Refuse("click target"); continue; }
-            SketcherScriptStep Down{ SketcherStepKind::Button };
+            SketcherScriptStep Down{ SketcherStepCategory::Button };
             Down.Button = Index < Words.size() ? ButtonByName(Words[Index]) : ImGuiMouseButton_Left;
             ReadModifiers(Words, Index, Down.Control, Down.Shift, Down.Alternate);
             Down.Down = true;
@@ -1220,12 +1220,12 @@ SketcherScript ParseSketcherScript(const std::string& Text)
             const int   Count   = std::max(1, std::stoi(Words[Index + 3]));
             bool Control = false, Shift = false, Alternate = false;
             ReadModifiers(Words, Index + 4, Control, Shift, Alternate);
-            SketcherScriptStep Start{ SketcherStepKind::Move };
+            SketcherScriptStep Start{ SketcherStepCategory::Move };
             Start.Target    = From;
             Start.Anchoring = true;
             Push(Start);
             Push({});
-            SketcherScriptStep Down{ SketcherStepKind::Button };
+            SketcherScriptStep Down{ SketcherStepCategory::Button };
             Down.Button  = Button;
             Down.Down    = true;
             Down.Control   = Control;
@@ -1234,7 +1234,7 @@ SketcherScript ParseSketcherScript(const std::string& Text)
             Push(Down);
             for (int Frame = 1; Frame <= Count; ++Frame)
             {
-                SketcherScriptStep Along{ SketcherStepKind::Move };
+                SketcherScriptStep Along{ SketcherStepCategory::Move };
                 Along.Anchored       = true;
                 Along.Target.OffsetX = float(Frame) / float(Count) * TravelX;
                 Along.Target.OffsetY = float(Frame) / float(Count) * TravelY;
@@ -1250,11 +1250,11 @@ SketcherScript ParseSketcherScript(const std::string& Text)
         }
         else if (Verb == "wheel")
         {
-            SketcherScriptStep Move{ SketcherStepKind::Move };
+            SketcherScriptStep Move{ SketcherStepCategory::Move };
             if (!ReadTarget(Words, Index, Move.Target) || Index >= Words.size()) { Refuse("wheel target"); continue; }
             Push(Move);
             Push({});
-            SketcherScriptStep Wheel{ SketcherStepKind::Wheel };
+            SketcherScriptStep Wheel{ SketcherStepCategory::Wheel };
             Wheel.Wheel = std::stof(Words[Index]);
             Push(Wheel);
             Push({});
@@ -1262,7 +1262,7 @@ SketcherScript ParseSketcherScript(const std::string& Text)
         else if (Verb == "key")
         {
             if (Words.size() < 2 || KeyByName(Words[1]) == ImGuiKey_None) { Refuse("unknown key"); continue; }
-            SketcherScriptStep Down{ SketcherStepKind::Key };
+            SketcherScriptStep Down{ SketcherStepCategory::Key };
             Down.Key  = KeyByName(Words[1]);
             Down.Down = true;
             ReadModifiers(Words, 2, Down.Control, Down.Shift, Down.Alternate);
@@ -1274,7 +1274,7 @@ SketcherScript ParseSketcherScript(const std::string& Text)
         }
         else if (Verb == "type")
         {
-            SketcherScriptStep Typed{ SketcherStepKind::Text };
+            SketcherScriptStep Typed{ SketcherStepCategory::Text };
             Typed.Text = Line.substr(Line.find("type") + 4);
             Typed.Text.erase(0, Typed.Text.find_first_not_of(' '));
             Typed.Text.erase(Typed.Text.find_last_not_of(" \r") + 1);
@@ -1285,7 +1285,7 @@ SketcherScript ParseSketcherScript(const std::string& Text)
         {
             if (Words.size() < 2) { Refuse("capture name"); continue; }
             Push({});
-            SketcherScriptStep Capture{ SketcherStepKind::Capture };
+            SketcherScriptStep Capture{ SketcherStepCategory::Capture };
             Capture.Text = Words[1];
             Push(Capture);
         }
@@ -1293,13 +1293,13 @@ SketcherScript ParseSketcherScript(const std::string& Text)
         {
             // snap grid on | off: the 0.1 drawing grid (off by default: free placement, Ctrl snaps to objects).
             if (Words.size() < 3 || Words[1] != "grid" || (Words[2] != "on" && Words[2] != "off")) { Refuse("snap grid on | off"); continue; }
-            SketcherScriptStep Setting{ SketcherStepKind::Setting };
+            SketcherScriptStep Setting{ SketcherStepCategory::Setting };
             Setting.Text = "grid " + Words[2];
             Push(Setting);
         }
         else if (Verb == "expect")
         {
-            SketcherScriptStep Expect{ SketcherStepKind::Expect };
+            SketcherScriptStep Expect{ SketcherStepCategory::Expect };
             Expect.Text = Line.substr(Line.find("expect") + 6);
             Expect.Text.erase(0, Expect.Text.find_first_not_of(' '));
             Expect.Text.erase(Expect.Text.find_last_not_of(" \r") + 1);
@@ -1313,19 +1313,19 @@ SketcherScript ParseSketcherScript(const std::string& Text)
     return Script;
 }
 
-std::string AdvanceSketcherScript(SketcherScript& Script, SketcherWorkspaceState& State)
+std::string AdvanceSketcherScript(SketcherScript& Script, SketcherWorkspaceStatus& State)
 {
     ImGuiIO& Io = ImGui::GetIO();
     // Expectations run back to back without consuming frames.
-    while (Script.Cursor < Script.Steps.size() && Script.Steps[Script.Cursor].Kind == SketcherStepKind::Expect)
+    while (Script.Cursor < Script.Steps.size() && Script.Steps[Script.Cursor].Kind == SketcherStepCategory::Expect)
         Script.Expectations.push_back(Evaluate(Script.Steps[Script.Cursor++], State));
     if (Script.Cursor >= Script.Steps.size()) return {};
     const SketcherScriptStep& Step = Script.Steps[Script.Cursor++];
     switch (Step.Kind)
     {
-    case SketcherStepKind::Idle:
+    case SketcherStepCategory::Idle:
         break;
-    case SketcherStepKind::Move:
+    case SketcherStepCategory::Move:
     {
         ImVec2 Point;
         if (Step.Anchored)
@@ -1358,7 +1358,7 @@ std::string AdvanceSketcherScript(SketcherScript& Script, SketcherWorkspaceState
         else Script.Expectations.push_back({ Step.Line, "target resolves", "unresolved target " + Step.Target.Widget, false });
         break;
     }
-    case SketcherStepKind::Button:
+    case SketcherStepCategory::Button:
         if (Step.Down)
         {
             Io.AddKeyEvent(ImGuiMod_Ctrl, Step.Control);
@@ -1373,7 +1373,7 @@ std::string AdvanceSketcherScript(SketcherScript& Script, SketcherWorkspaceState
             Io.AddKeyEvent(ImGuiMod_Alt, false);
         }
         break;
-    case SketcherStepKind::Key:
+    case SketcherStepCategory::Key:
         if (Step.Down)
         {
             Io.AddKeyEvent(ImGuiMod_Ctrl, Step.Control);
@@ -1389,19 +1389,19 @@ std::string AdvanceSketcherScript(SketcherScript& Script, SketcherWorkspaceState
             Io.AddKeyEvent(ImGuiMod_Alt, false);
         }
         break;
-    case SketcherStepKind::Text:
+    case SketcherStepCategory::Text:
         Io.AddInputCharactersUTF8(Step.Text.c_str());
         break;
-    case SketcherStepKind::Wheel:
+    case SketcherStepCategory::Wheel:
         Io.AddMouseWheelEvent(0.0f, Step.Wheel);
         break;
-    case SketcherStepKind::Capture:
+    case SketcherStepCategory::Capture:
         return Step.Text;
-    case SketcherStepKind::Setting:
+    case SketcherStepCategory::Setting:
         if (Step.Text == "grid on") State.Picker.GridEnabled = true;
         if (Step.Text == "grid off") State.Picker.GridEnabled = false;
         break;
-    case SketcherStepKind::Expect:
+    case SketcherStepCategory::Expect:
         break;
     }
     return {};

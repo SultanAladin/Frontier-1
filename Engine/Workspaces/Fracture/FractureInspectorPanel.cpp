@@ -553,8 +553,8 @@ void FractureInspectorPanel::Render(
             Surface.TextRightAligned({ X, Cy + 2.0f, InnerW, 14.0f }, 9.8f, ColorRgba { 126u, 126u, 124u, 255u }, "6 solvers");
             Cy += 22.0f;
 
-            struct AlgItem { FractureSolverMethod M; uint32_t GlyphIdx; const char* Name; const char* Sub; };
-            static constexpr std::array<AlgItem, 6> Algs {{
+            struct SolverOptionEntry { FractureSolverMethod M; uint32_t GlyphIdx; const char* Name; const char* Sub; };
+            static constexpr std::array<SolverOptionEntry, 6> Algs {{
                 { FractureSolverMethod::ClusteredVoronoi,      0u, "Clustered Voronoi", "Dense near hit" },
                 { FractureSolverMethod::FastRuntimeBoussinesq, 1u, "Uniform Voronoi",   "Even cells" },
                 { FractureSolverMethod::LefmWavefront,         2u, "Radial",            "Rays + rings" },

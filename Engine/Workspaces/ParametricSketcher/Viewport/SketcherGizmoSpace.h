@@ -88,18 +88,18 @@ struct GizmoGeometry
 
 // 📝 The camera of a perspective view given by its eye, forward and up directions (any up axis: Sketcher is y up, the
 //    Frontier level z up) over a Width × Height pixel viewport. WorldFromClip stays empty: the gizmo never casts rays from it.
-[[nodiscard]] OrbitCameraFrame ResolveGizmoCamera(const std::array<double, 3>& Eye, const std::array<double, 3>& Forward,
+[[nodiscard]] OrbitCameraBasis ResolveGizmoCamera(const std::array<double, 3>& Eye, const std::array<double, 3>& Forward,
                                                  const std::array<double, 3>& Up, double VerticalFieldOfView, double Width, double Height);
 
 // World length that spans Pixels on screen at Origin's depth (perspective or orthographic).
-[[nodiscard]] double MeasureGizmoSize(const OrbitCameraFrame& Frame, GeometrySpace::Parametric::Vector3 Origin, double Pixels);
+[[nodiscard]] double MeasureGizmoSize(const OrbitCameraBasis& Frame, GeometrySpace::Parametric::Vector3 Origin, double Pixels);
 
 // Handle triangles in world space: Hover / Grabbed glow (Slate emissive #555555), the ring billboarded to Frame.
-[[nodiscard]] GizmoGeometry BuildGizmoGeometry(const GizmoPose& Pose, const OrbitCameraFrame& Frame, GizmoHandle Hover, GizmoHandle Grabbed);
+[[nodiscard]] GizmoGeometry BuildGizmoGeometry(const GizmoPose& Pose, const OrbitCameraBasis& Frame, GizmoHandle Hover, GizmoHandle Grabbed);
 
 // Handle under the viewport pixel (local, top-left origin): inside a projected triangle or within Reach pixels of one
 // (inside first, opaque handles before see-through plane quads, then nearest); None when the pointer misses the gizmo.
-[[nodiscard]] GizmoHandle PickGizmoHandle(const GizmoGeometry& Geometry, const OrbitCameraFrame& Frame, double PixelX, double PixelY, double Reach);
+[[nodiscard]] GizmoHandle PickGizmoHandle(const GizmoGeometry& Geometry, const OrbitCameraBasis& Frame, double PixelX, double PixelY, double Reach);
 
 // Axis index 0 / 1 / 2 a handle acts along / about (−1: plane-free or centre).
 [[nodiscard]] int GizmoHandleAxis(GizmoHandle Handle) noexcept;

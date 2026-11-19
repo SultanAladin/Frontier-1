@@ -32,7 +32,7 @@ namespace
 
     switch (Entry.StreamProfile)
     {
-        case FlowStreamProfile::ThermalUpdraft:
+        case StreamTransportProfile::ThermalUpdraft:
         {
             const float          Axial  = DotProduct(Delta, Basis.Up);
             const SpatialVector3 Rad    = Delta - Basis.Up * Axial;
@@ -46,7 +46,7 @@ namespace
             break;
         }
 
-        case FlowStreamProfile::SlipstreamJet:
+        case StreamTransportProfile::SlipstreamJet:
         {
             const float          FwdDist = std::max(0.0f, DotProduct(Delta, Basis.Forward));
             const SpatialVector3 Lat     = Delta - Basis.Forward * FwdDist;
@@ -58,7 +58,7 @@ namespace
             break;
         }
 
-        case FlowStreamProfile::NavigationField:
+        case StreamTransportProfile::NavigationField:
         {
             const float          Axial     = DotProduct(Delta, Basis.Up);
             const SpatialVector3 Flat      = Delta - Basis.Up * Axial;
@@ -69,7 +69,7 @@ namespace
             break;
         }
 
-        case FlowStreamProfile::VesselWake:
+        case StreamTransportProfile::VesselWake:
         {
             const float          FwdDist  = DotProduct(Delta, Basis.Forward);
             const float          LatDist  = DotProduct(Delta, Basis.Left);
@@ -81,7 +81,7 @@ namespace
             break;
         }
 
-        case FlowStreamProfile::Current:
+        case StreamTransportProfile::Current:
         default:
         {
             const float Meander = 0.28f * std::sin(DotProduct(Delta, Basis.Forward) / std::max(1.0f, Entry.TurbulenceScaleMeters) +
@@ -135,7 +135,7 @@ SpatialForceSample EvaluateStreamTransportModel(
 
         case ForceModel::SplineForce:
         {
-            if (Entry.Motion.WaypointCount < 2u || Entry.Motion.Topology == MotionPathTopology::Static)
+            if (Entry.Motion.WaypointCount < 2u || Entry.Motion.Topology == MotionPathGeometry::Static)
             {
                 Output.AdvectionVelocity = Basis.Forward * Scale;
                 return Output;

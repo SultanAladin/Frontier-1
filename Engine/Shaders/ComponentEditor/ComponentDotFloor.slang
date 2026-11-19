@@ -6,7 +6,7 @@
 #include "Engine/Shaders/ComponentEditor/ComponentEditorShared.slang"
 
 [[vk::push_constant]]
-ConstantBuffer<ComponentSurfacePushConstants> DrawPush;
+ConstantBuffer<ComponentSurfacePushConstants> SurfacePush;
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<ComponentViewportUniforms> Viewport;
@@ -22,7 +22,7 @@ struct FloorVertexInput
 [shader("vertex")]
 ComponentVertexOutput VertexMain(FloorVertexInput Input)
 {
-    float4 World4 = mul(DrawPush.ModelMatrix, float4(Input.PositionMeters, 1.0));
+    float4 World4 = mul(SurfacePush.WorldTransform, float4(Input.PositionMeters, 1.0));
 
     ComponentVertexOutput Out;
     Out.ClipPosition = mul(Viewport.ViewProjection, World4);

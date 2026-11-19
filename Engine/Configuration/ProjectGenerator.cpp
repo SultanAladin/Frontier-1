@@ -250,7 +250,7 @@ ProjectScaffoldOutcome ProjectGenerator::GenerateProject(const ProjectScaffoldSp
         std::ostringstream UiH {};
         UiH << "#pragma once\n\n"
             << "namespace " << Proj << "::UserInterface\n{\n\n"
-            << "struct WorkspaceOverlayController\n{\n"
+            << "struct WorkspaceOverlayHost\n{\n"
             << "    double LastOverlayDeltaSeconds = 0.0;\n"
             << "    void TickOverlay(double DeltaSeconds) noexcept;\n"
             << "};\n\n"
@@ -267,7 +267,7 @@ ProjectScaffoldOutcome ProjectGenerator::GenerateProject(const ProjectScaffoldSp
         std::ostringstream UiCpp {};
         UiCpp << "#include \"Engine/UserInterface/" << Proj << "ViewportOverlay.h\"\n\n"
               << "namespace " << Proj << "::UserInterface\n{\n\n"
-              << "void WorkspaceOverlayController::TickOverlay(double DeltaSeconds) noexcept\n{\n"
+              << "void WorkspaceOverlayHost::TickOverlay(double DeltaSeconds) noexcept\n{\n"
               << "    LastOverlayDeltaSeconds = DeltaSeconds;\n"
               << "}\n\n"
               << "} // namespace " << Proj << "::UserInterface\n";
@@ -308,7 +308,7 @@ ProjectScaffoldOutcome ProjectGenerator::GenerateProject(const ProjectScaffoldSp
                << "struct ProjectRuntimeSession\n{\n"
                << "    SimulationSpace::WorldSimulationSession Simulation {};\n"
                << "#if !" << MacroPrefix << "_SHIPPING_BUILD\n"
-               << "    UserInterface::WorkspaceOverlayController Overlay {};\n"
+               << "    UserInterface::WorkspaceOverlayHost Overlay {};\n"
                << "#endif\n"
                << "};\n\n"
                << "void DispatchSimulationStep(double DeltaSeconds, void* Payload)\n{\n"

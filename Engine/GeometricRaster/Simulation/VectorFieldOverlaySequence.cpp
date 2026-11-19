@@ -56,7 +56,7 @@ struct alignas(16) ViewportOverlayUniformsGpu
 
 static_assert(sizeof(ViewportOverlayUniformsGpu) == 192u);
 
-struct DrawObjectPushConstantsGpu
+struct RenderInstancePushConstantsGpu
 {
     uint32_t ObjectIndex;
     uint32_t SubMode;
@@ -66,7 +66,7 @@ struct DrawObjectPushConstantsGpu
     uint32_t ReservedPad;
 };
 
-static_assert(sizeof(DrawObjectPushConstantsGpu) == 24u);
+static_assert(sizeof(RenderInstancePushConstantsGpu) == 24u);
 
 struct alignas(16) ForceSourceGpuStd430
 {
@@ -151,11 +151,11 @@ struct Float3
 }
 
 void ComputeCameraBasisViewProj(
-    const OverlayFrameRequest& Request,
+    const OverlayRenderRequest& Request,
     float                      Aspect,
     ViewportOverlayUniformsGpu& OutUbo) noexcept
 {
-    const OverlayCameraState& Cam = Request.Camera;
+    const OverlayCameraBasis& Cam = Request.Camera;
     Float3 Target{
         static_cast<float>(Cam.FocusTargetMeters.X),
         static_cast<float>(Cam.FocusTargetMeters.Y),
@@ -1003,7 +1003,7 @@ bool VectorFieldOverlaySequence::InitializeAfterDeviceResolved(
     VkPushConstantRange PushRange{};
     PushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     PushRange.offset     = 0u;
-    PushRange.size       = sizeof(DrawObjectPushConstantsGpu);
+    PushRange.size       = sizeof(RenderInstancePushConstantsGpu);
 
     VkPipelineLayoutCreateInfo PipeLayoutInfo{};
     PipeLayoutInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -1288,7 +1288,7 @@ bool VectorFieldOverlaySequence::QueryReady() const noexcept
 //------------------------------------------------------------------------------------------------------------------------
 
 OverlayRenderOutput VectorFieldOverlaySequence::RenderPane(
-    const OverlayFrameRequest& Request,
+    const OverlayRenderRequest& Request,
     std::string&               OutDiagnostic) noexcept
 {
     OverlayRenderOutput Output{};
@@ -1383,13 +1383,13 @@ OverlayRenderOutput VectorFieldOverlaySequence::RenderPane(
 
     // Build dynamic beacon / motion-path / waypoint / gizmo / anemometer geometry on CPU into BeaconBuf
     std::vector<LitBeaconVertex> BeaconVerts;
-    struct BeaconDrawSpan
+    struct BeaconRenderSpan
     {
         uint32_t                   FirstVertex;
         uint32_t                   VertexCount;
-        DrawObjectPushConstantsGpu Push;
+        RenderInstancePushConstantsGpu Push;
     };
-    std::vector<BeaconDrawSpan> BeaconDraws;
+    std::vector<BeaconRenderSpan> BeaconDraws;
 
     auto EmitBeaconDraw = [&](uint32_t Cat, uint32_t PrimaryId, uint32_t SecondaryId, auto&& BuildFn)
     {
@@ -1670,7 +1670,7 @@ OverlayRenderOutput VectorFieldOverlaySequence::RenderPane(
         nullptr);
 
     const VkDeviceSize ZeroOffset = 0u;
-    auto PushCmd = [&](const DrawObjectPushConstantsGpu& P)
+    auto PushCmd = [&](const RenderInstancePushConstantsGpu& P)
     {
         vkCmdPushConstants(
             Impl->CmdBuffer,

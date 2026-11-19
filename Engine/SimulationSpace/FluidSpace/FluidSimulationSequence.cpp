@@ -146,8 +146,8 @@ void FluidSimulationSequence::Configure(const FluidSceneDocument& NewDocument)
     if (OldRes != NewRes)
     {
         HeroGrid.Allocate(NewRes);
-        WorldManager = FluidWorldGridManager {};
-        WorldManager.UpdateAdaptiveHeroBounds(Document.Domain, 0.0f, 0.0f, HeroGrid);
+        WorldPartition = FluidWorldGridPartition {};
+        WorldPartition.UpdateAdaptiveHeroBounds(Document.Domain, 0.0f, 0.0f, HeroGrid);
         ObstaclesBakedOnce = false;
         ElapsedSeconds = 0.0f;
         StepCount      = 0ull;
@@ -173,8 +173,8 @@ void FluidSimulationSequence::ResetSimulation()
 {
     HeroGrid.ClearState();
     WorldGrid.ClearState();
-    WorldManager = FluidWorldGridManager {};
-    WorldManager.UpdateAdaptiveHeroBounds(Document.Domain, 0.0f, 0.0f, HeroGrid);
+    WorldPartition = FluidWorldGridPartition {};
+    WorldPartition.UpdateAdaptiveHeroBounds(Document.Domain, 0.0f, 0.0f, HeroGrid);
     ParticleCoupler.Reset();
     PendingBlasts.clear();
     PendingBrushes.clear();
@@ -190,7 +190,7 @@ void FluidSimulationSequence::ResetSimulation()
 
 void FluidSimulationSequence::TriggerBlast(
     const FluidBlastSpecification& Blast,
-    const FluidStepContext&        Context)
+    const FluidStepInput&        Context)
 {
     PendingBlasts.push_back(Blast);
     DynamicTarget01 = 1.0f;
@@ -214,7 +214,7 @@ void FluidSimulationSequence::ApplyPyroBrush(
 
 void FluidSimulationSequence::StepSimulation(
     float                   DeltaSeconds,
-    const FluidStepContext& Context)
+    const FluidStepInput& Context)
 {
     if (Document.Domain.Paused || DeltaSeconds <= 0.0f)
     {
@@ -236,7 +236,7 @@ void FluidSimulationSequence::StepSimulation(
     {
         DynamicSurge01 = std::max(0.0f, DynamicSurge01 - Dt * 0.22f);
     }
-    WorldManager.UpdateAdaptiveHeroBounds(Document.Domain, DynamicSurge01, Dt, HeroGrid);
+    WorldPartition.UpdateAdaptiveHeroBounds(Document.Domain, DynamicSurge01, Dt, HeroGrid);
 
     // 2. Bake GI SignedDistanceVolume / WideBoundingTree / Analytical obstacle occupancy
     if (!ObstaclesBakedOnce || Document.Obstacle.AutoMove || Context.BakeGiObstaclesNow)
@@ -265,7 +265,7 @@ void FluidSimulationSequence::StepSimulation(
         Context.WorldFocusPoint.Y,
         Document.Domain.OriginMeters.Z + 0.5f * Document.Domain.WorldGridSpanMeters,
     };
-    WorldManager.StepWorldDriftExchange(Document.Domain, Document.Combustion, DriftFocus, Dt, HeroGrid, WorldGrid);
+    WorldPartition.StepWorldDriftExchange(Document.Domain, Document.Combustion, DriftFocus, Dt, HeroGrid, WorldGrid);
 
     // 6. Advance internal embers/shrapnel + any external ParticleSpace slots
     ParticleCoupler.StepCoupledParticles(
@@ -282,7 +282,7 @@ void FluidSimulationSequence::StepSimulation(
     FluidGiLightExtractor::ExtractEmissiveLights(HeroGrid, Document.Shading, Document.GiCoupling, EmissiveLights);
 }
 
-void FluidSimulationSequence::ExecuteSplatAndObstacles(float Dt, const FluidStepContext& /*Context*/)
+void FluidSimulationSequence::ExecuteSplatAndObstacles(float Dt, const FluidStepInput& /*Context*/)
 {
     const uint32_t R  = HeroGrid.Resolution;
     const uint32_t Rd = HeroGrid.ReadIdx();
@@ -552,7 +552,7 @@ void FluidSimulationSequence::ExecuteMacCormackAdvection(float Dt)
     HeroGrid.SwapPingPong();
 }
 
-void FluidSimulationSequence::ExecuteVorticityAndCombustion(float Dt, const FluidStepContext& Context)
+void FluidSimulationSequence::ExecuteVorticityAndCombustion(float Dt, const FluidStepInput& Context)
 {
     const uint32_t R  = HeroGrid.Resolution;
     const uint32_t Rd = HeroGrid.ReadIdx();

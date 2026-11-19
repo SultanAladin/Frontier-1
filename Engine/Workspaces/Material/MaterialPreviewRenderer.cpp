@@ -531,7 +531,7 @@ PreviewRenderResult MaterialPreviewRenderer::RenderPreviewCpuReference(
                 Sample.ShadingNormal);
             const Mathematics::Axis3D LocalTx = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(BitangentY, ShadeN), TangentX);
             const Mathematics::Axis3D LocalBitangentY = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(ShadeN, LocalTx), BitangentY);
-            const MaterialSpace::Scattering::SurfaceShadingFrame ShadingBasis { LocalTx, LocalBitangentY, ShadeN };
+            const MaterialSpace::Scattering::SurfaceShadingBasis ShadingBasis { LocalTx, LocalBitangentY, ShadeN };
             const Mathematics::Axis3D LocalWo = ShadingBasis.WorldToLocal(ViewV);
 
             const uint32_t ActiveMask = MaterialSpace::DetermineActiveLobeMask(Sample.Material);

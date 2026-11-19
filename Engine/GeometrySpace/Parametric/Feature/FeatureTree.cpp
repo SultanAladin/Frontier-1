@@ -16,13 +16,13 @@
 #include "Engine/GeometrySpace/Parametric/Exchange/StepExchange.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/NurbsCarrier.h"
 #include "Engine/GeometrySpace/Parametric/Local/FaceOperations.h"
-#include "Engine/GeometrySpace/Parametric/Local/TopologyRebuild.h"
+#include "Engine/GeometrySpace/Parametric/Local/ConnectivityRebuild.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchConstraining.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchProfile.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchSection.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchSpline.h"
 #include "Engine/GeometrySpace/Parametric/Surfacing/CurveNetwork.h"
-#include "Engine/GeometrySpace/Parametric/Surfacing/PanelAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Surfacing/PanelJoining.h"
 #include "Engine/GeometrySpace/Parametric/Surfacing/SectionLoft.h"
 
 #include <algorithm>
@@ -46,7 +46,7 @@ namespace
     {
         SketchModel        Model    = {};                                                    // [-] - Solved positions
         bool               FillCondition = true;                                             // [-] - Closed loops are filled faces
-        OrthonormalFrame   Plane    = {};                                                    // [-] - Plane with elevation applied
+        OrthonormalBasis   Plane    = {};                                                    // [-] - Plane with elevation applied
         bool               UsableCondition = false;                                          // [-] - Converged without conflicts
     };
 
@@ -140,7 +140,7 @@ namespace
             RegionRecord.Body = NewBody;
             for (SolidShellToken& Shell : RegionRecord.Shells)
             {
-                SolidShellProfile ShellRecord = Source.Shells.Resolve(Shell);
+                SolidHullProfile ShellRecord = Source.Shells.Resolve(Shell);
                 ShellRecord.Region = {};
                 for (FaceToken& Face : ShellRecord.Faces) Face = FaceMap.at(Face.Slot);
                 const SolidShellToken NewShell = Target.Shells.Issue(std::move(ShellRecord));
@@ -258,10 +258,10 @@ namespace
     {
         switch (Settings.Kind)
         {
-        case FaceOperationKind::Rotate:
-        case FaceOperationKind::Draft: Settings.Angle  = Amount; break;
-        case FaceOperationKind::Scale: Settings.Factor = Amount; break;
-        case FaceOperationKind::Tweak: Settings.Vector = { 0.0, 0.0, Amount }; break;
+        case FaceOperationCategory::Rotate:
+        case FaceOperationCategory::Draft: Settings.Angle  = Amount; break;
+        case FaceOperationCategory::Scale: Settings.Factor = Amount; break;
+        case FaceOperationCategory::Tweak: Settings.Vector = { 0.0, 0.0, Amount }; break;
         default:                       Settings.Distance = Amount; break;
         }
     }
@@ -271,7 +271,7 @@ namespace
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-double EvaluateFeatureValue(const FeatureTree& Tree, const FeatureValue& Value)
+double EvaluateFeatureValue(const FeatureTree& Tree, const FeatureScalar& Value)
 {
     if (Value.Parameter.empty()) return Value.Literal;
     auto Find = [&](const std::string& Name) -> const FeatureParameter*
@@ -302,9 +302,9 @@ bool AssignFeatureParameter(FeatureTree& Tree, const std::string& Name, double V
     return false;
 }
 
-FeatureValue LiteralValue(double Value) { return { Value, {}, 1.0, 0.0, {}, 0.0 }; }
-FeatureValue ParameterValue(const std::string& Name, double Factor, double Offset) { return { 0.0, Name, Factor, Offset, {}, 0.0 }; }
-FeatureValue SumValue(const std::string& First, double FirstFactor, const std::string& Second, double SecondFactor, double Offset)
+FeatureScalar LiteralValue(double Value) { return { Value, {}, 1.0, 0.0, {}, 0.0 }; }
+FeatureScalar ParameterValue(const std::string& Name, double Factor, double Offset) { return { 0.0, Name, Factor, Offset, {}, 0.0 }; }
+FeatureScalar SumValue(const std::string& First, double FirstFactor, const std::string& Second, double SecondFactor, double Offset)
 {
     return { 0.0, First, FirstFactor, Offset, Second, SecondFactor };
 }
@@ -313,21 +313,21 @@ FeatureValue SumValue(const std::string& First, double FirstFactor, const std::s
 //                                              SKETCH LINKS
 //------------------------------------------------------------------------------------------------------------------------
 
-OrthonormalFrame SketchStepFrame(const FeatureTree& Tree, const FeatureStep& Step)
+OrthonormalBasis SketchStepFrame(const FeatureTree& Tree, const FeatureStep& Step)
 {
-    OrthonormalFrame Frame = Step.Plane;
+    OrthonormalBasis Frame = Step.Plane;
     Frame.Origin = Step.Plane.Origin + Step.Plane.ZAxis * EvaluateFeatureValue(Tree, Step.Elevation);
     return Frame;
 }
 
-std::vector<std::string> ProjectSketchLinks(SketchModel& Model, const OrthonormalFrame& Plane, const std::function<LinkedSketchSource(const std::string&)>& Source)
+std::vector<std::string> ProjectSketchLinks(SketchModel& Model, const OrthonormalBasis& Plane, const std::function<LinkedSketchSource(const std::string&)>& Source)
 {
     std::vector<std::string> Notes;
     for (size_t Point = 0; Point < Model.Points.size(); ++Point)
     {
         const SketchLink& Link = Model.Points[Point].Link;
         if (Link.Sketch.empty()) continue;
-        const std::string Name  = NameSketchPick(Model, { SketchPickKind::Point, static_cast<int>(Point) });
+        const std::string Name  = NameSketchPick(Model, { SketchPickCategory::Point, static_cast<int>(Point) });
         const LinkedSketchSource Found = Source(Link.Sketch);
         if (!Found.Model) { Notes.push_back(Name + ": link to " + Link.Sketch + " is dangling (held where it was)"); continue; }
         const SketchModel& From = *Found.Model;
@@ -338,12 +338,12 @@ std::vector<std::string> ProjectSketchLinks(SketchModel& Model, const Orthonorma
     }
     for (SketchCurve& Curve : Model.Curves)
     {
-        if (Curve.Kind != SketchCurveKind::Circle || Curve.Link.Sketch.empty()) continue;
+        if (Curve.Kind != SketchCurveCategory::Circle || Curve.Link.Sketch.empty()) continue;
         const LinkedSketchSource Found = Source(Curve.Link.Sketch);
         if (!Found.Model) { Notes.push_back(SketchCurveName(Curve) + ": link to " + Curve.Link.Sketch + " is dangling (held where it was)"); continue; }
         const SketchModel& From = *Found.Model;
-        if (Curve.Link.Index < 0 || Curve.Link.Index >= static_cast<int>(From.Curves.size()) || From.Curves[Curve.Link.Index].Kind == SketchCurveKind::Line
-            || From.Curves[Curve.Link.Index].Kind == SketchCurveKind::Spline)
+        if (Curve.Link.Index < 0 || Curve.Link.Index >= static_cast<int>(From.Curves.size()) || From.Curves[Curve.Link.Index].Kind == SketchCurveCategory::Line
+            || From.Curves[Curve.Link.Index].Kind == SketchCurveCategory::Spline)
         {
             Notes.push_back(SketchCurveName(Curve) + ": " + Curve.Link.Sketch + " has no circle " + std::to_string(Curve.Link.Index) + " (held where it was)");
             continue;
@@ -420,7 +420,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
         Target = Active = static_cast<int>(Bodies.size()) - 1;
     };
     // Bodies jointed (directly or through a chain) to Key follow it when it moves by Map; their joint origins move too.
-    auto CarryDependents = [&](const std::string& Key, const AffineMap& Map) -> std::string
+    auto CarryDependents = [&](const std::string& Key, const AffineMapping& Map) -> std::string
     {
         std::set<std::string> Carried = { Key };
         for (bool Grown = true; Grown;)
@@ -463,14 +463,14 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
     std::set<std::pair<std::string, std::string>>                  Served;                   // Requests met (a missing body takes none)
     for (const FeatureStep& Step : Tree.Steps)
     {
-        if (Step.Kind == FeatureStepKind::Duplicate && !Step.Source.empty()) SnapshotRequests[Step.Source].push_back(Step.Target);
+        if (Step.Kind == FeatureStepCategory::Duplicate && !Step.Source.empty()) SnapshotRequests[Step.Source].push_back(Step.Target);
     }
 
     // Mirror planes ahead of time: SpaceCurves ending on one leave it perpendicularly (the halves then meet G1).
     std::vector<MirrorPlane> Planes;
     for (const FeatureStep& Step : Tree.Steps)
     {
-        if (Step.Kind == FeatureStepKind::Mirror && Length(Step.Plane.ZAxis) > 0.0) Planes.push_back({ Step.Plane.Origin, Normalize(Step.Plane.ZAxis) });
+        if (Step.Kind == FeatureStepCategory::Mirror && Length(Step.Plane.ZAxis) > 0.0) Planes.push_back({ Step.Plane.Origin, Normalize(Step.Plane.ZAxis) });
     }
 
     // Sews Panels (with plane caps when Capped) into a new current body named per panel; refusal text or empty.
@@ -478,9 +478,9 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
     {
         std::vector<SurfacePanel> Surfaces;
         for (const TreePanel& Panel : Panels) Surfaces.push_back(Panel.Panel);
-        PanelAssemblySettings Settings;
+        PanelJoiningSettings Settings;
         Settings.CapCondition = Capped;
-        const PanelAssemblyOutcome Assembly = AssemblePanels(Partition, Surfaces, Settings, Capped ? "Close" : "Sew");
+        const PanelJoiningOutcome Assembly = AssemblePanels(Partition, Surfaces, Settings, Capped ? "Close" : "Sew");
         if (!Assembly.Refusal.empty()) return Assembly.Refusal;
         if (Capped && !Assembly.SolidCondition) return "Close: the panels do not close (" + std::to_string(Assembly.LaminarEdges) + " rim edges remain open)";
         std::vector<FaceToken>   Faces = Assembly.Faces;
@@ -552,14 +552,14 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             const ModelPartition& Before = Index == 0 ? Empty : Cache->Checkpoints[Index - 1]->Partition;
             const std::vector<ResolvedReference>& Resolutions = Cache->Checkpoints[Index]->Outcome.Steps[Index].Resolutions;
             const size_t Edges   = Step.References.size();
-            const size_t Anchors = Step.Kind == FeatureStepKind::Blend && (Step.EndSize || !Step.AnchorSizes.empty()) ? Step.SizeAnchors.size() : 0;
+            const size_t Anchors = Step.Kind == FeatureStepCategory::Blend && (Step.EndSize || !Step.AnchorSizes.empty()) ? Step.SizeAnchors.size() : 0;
             if (Resolutions.size() == Edges + Anchors)                                       // Fewer: refused before resolving, nothing captured
             {
                 for (size_t Reference = 0; Reference < Edges + Anchors; ++Reference)
                 {
                     const ResolvedReference& Resolved = Resolutions[Reference];
                     if (Resolved.Method == ResolutionMethod::Refused) continue;
-                    TopologyReference& Target = Reference < Edges ? Step.References[Reference] : Step.SizeAnchors[Reference - Edges];
+                    ConnectivityReference& Target = Reference < Edges ? Step.References[Reference] : Step.SizeAnchors[Reference - Edges];
                     Target.Signature = CaptureSignature(Before, Target.Kind, Resolved.Slot);
                 }
             }
@@ -609,7 +609,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
 
         switch (Step.Kind)
         {
-        case FeatureStepKind::Sketch:
+        case FeatureStepCategory::Sketch:
         {
             // ① Bind parameters, solve from the authored positions (deterministic), keep the solved copy.
             SolvedSketch Solved;
@@ -641,9 +641,9 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             Sketches[Step.Label] = Solved;
             break;
         }
-        case FeatureStepKind::Extrude:
-        case FeatureStepKind::Revolve:
-        case FeatureStepKind::Evolution:
+        case FeatureStepCategory::Extrude:
+        case FeatureStepCategory::Revolve:
+        case FeatureStepCategory::Evolution:
         {
             // ② Sweep the profile into a tool body named by role, then combine.
             const auto Found = Sketches.find(Step.Profile);
@@ -652,18 +652,18 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             const SketchProfile Profile = ExtractSketchProfile(Solved.Model);
             SweepOutcome Sweep;
             // An unfilled profile (Plasticity's fresh curves) extrudes into walls: an open sheet, a body of its own.
-            const bool WallsCondition = Step.Kind == FeatureStepKind::Extrude && !Solved.FillCondition;
+            const bool WallsCondition = Step.Kind == FeatureStepCategory::Extrude && !Solved.FillCondition;
             if (WallsCondition && (Step.Combination == FeatureCombination::Difference || Step.Combination == FeatureCombination::Intersection))
             {
                 Refuse("Extrude: " + Step.Profile + " is unfilled, so it makes walls (a sheet) — fill it (F) to " + FeatureCombinationLabel(Step.Combination));
                 break;
             }
-            if (Step.Kind == FeatureStepKind::Extrude)
+            if (Step.Kind == FeatureStepCategory::Extrude)
             {
                 // A start offset slides the sketch plane along its normal; the far end stays at Extent.
                 const double     Start  = EvaluateFeatureValue(Tree, Step.Start);
                 const double     Extent = EvaluateFeatureValue(Tree, Step.Extent);
-                OrthonormalFrame Plane  = Solved.Plane;
+                OrthonormalBasis Plane  = Solved.Plane;
                 Plane.Origin            = Plane.Origin + Plane.ZAxis * Start;
                 if (Start != 0.0 && !((Extent - Start) * (Extent >= 0.0 ? 1.0 : -1.0) > 1.0e-9)) { Refuse("Extrude: the start " + std::to_string(Start) + " passes the end " + std::to_string(Extent)); break; }
                 // A cut whose side stops a sliver short of a convex rim of the face it starts on opens through it.
@@ -675,7 +675,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 }
                 Sweep = ExtrudeProfile(Partition, Outline, Plane, Extent - Start, !WallsCondition);
             }
-            else if (Step.Kind == FeatureStepKind::Evolution)
+            else if (Step.Kind == FeatureStepCategory::Evolution)
             {
                 // ⑯ Path: a SpaceCurve, or another sketch holding exactly one open curve (line, arc or spline).
                 std::optional<NurbsCurve> Path;
@@ -693,13 +693,13 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     {
                         const ProfileSegment Segment = ResolveSketchCurveSegment(Carrier.Model, Drawn.front(), 1.0e-12, Problem);
                         if (!Problem.empty()) Problem = "Evolution: " + Problem;
-                        else if (Segment.Kind == ProfileSegmentKind::Circle) Problem = "Evolution: the path " + Segment.Name + " is closed (🚧 closed sweeps)";
+                        else if (Segment.Kind == ProfileSegmentCategory::Circle) Problem = "Evolution: the path " + Segment.Name + " is closed (🚧 closed sweeps)";
                         else
                         {
-                            const OrthonormalFrame& Frame = Carrier.Plane;
+                            const OrthonormalBasis& Frame = Carrier.Plane;
                             const auto Lift = [&](Vector2 Point) { return Frame.Origin + Frame.XAxis * Point.X + Frame.YAxis * Point.Y; };
-                            if (Segment.Kind == ProfileSegmentKind::Line) Path = ConvertLineToNurbs(StraightLine{ Lift(Segment.Start), Normalize(Lift(Segment.End) - Lift(Segment.Start)) }, 0.0, Distance(Segment.Start, Segment.End));
-                            else if (Segment.Kind == ProfileSegmentKind::Arc)
+                            if (Segment.Kind == ProfileSegmentCategory::Line) Path = ConvertLineToNurbs(StraightLine{ Lift(Segment.Start), Normalize(Lift(Segment.End) - Lift(Segment.Start)) }, 0.0, Distance(Segment.Start, Segment.End));
+                            else if (Segment.Kind == ProfileSegmentCategory::Arc)
                             {
                                 const double Sign = Segment.Sweep > 0.0 ? 1.0 : -1.0;
                                 const ConicForm Conic{ Lift(Segment.Centre), Frame.XAxis * Segment.Radius, Frame.YAxis * (Sign * Segment.Radius), Frame.ZAxis * Sign };
@@ -743,7 +743,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 if (Step.AxisIdentifier >= 0)
                 {
                     const SketchCurve* Axis = nullptr;
-                    for (const SketchCurve& Curve : Solved.Model.Curves) if (Curve.Kind == SketchCurveKind::Line && Curve.Identifier == Step.AxisIdentifier) Axis = &Curve;
+                    for (const SketchCurve& Curve : Solved.Model.Curves) if (Curve.Kind == SketchCurveCategory::Line && Curve.Identifier == Step.AxisIdentifier) Axis = &Curve;
                     if (!Axis) { Refuse("Revolve: axis line " + std::to_string(Step.AxisIdentifier) + " not in sketch " + Step.Profile); break; }
                     // The axis may close the profile loop itself (its segments sweep nothing) or be a construction line.
                     Start     = Solved.Model.Points[Axis->Start].Position;
@@ -774,16 +774,16 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             Store();
             break;
         }
-        case FeatureStepKind::Blend:
-        case FeatureStepKind::FaceOperation:
+        case FeatureStepCategory::Blend:
+        case FeatureStepCategory::FaceOperation:
         {
             // ③ Resolve references on the current body; any refusal refuses the step (never a partial selection).
             if (Bodies.empty()) { Refuse(std::string(Verb) + ": no body yet"); break; }
             if (!Load(Step.Target)) { Refuse(std::string(Verb) + ": no body named " + Step.Target); break; }
             if (Partition.Bodies.Resolve(Current).Category == BodyCategory::Sheet) { Refuse(std::string(Verb) + ": the body is a sheet (🚧 blends / face operations on sheets)"); break; }
             std::vector<uint32_t>      Slots;
-            std::vector<ReferenceKind> Kinds;                                                // [-] - Per slot (Reshape takes vertices and edges)
-            for (TopologyReference& Reference : Step.References)
+            std::vector<ReferenceCategory> Kinds;                                                // [-] - Per slot (Reshape takes vertices and edges)
+            for (ConnectivityReference& Reference : Step.References)
             {
                 const ResolvedReference Resolved = ResolveReference(Partition, Current, Naming, Reference);
                 Report.Resolutions.push_back(Resolved);
@@ -795,9 +795,9 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             // ③′ A variable blend's anchors (the vertices taking Size) resolve like the edges, so a regeneration that
             //    reverses an edge keeps each size at its vertex.
             std::vector<VertexToken> Anchors;
-            if (Step.Kind == FeatureStepKind::Blend && (Step.EndSize || !Step.AnchorSizes.empty()))
+            if (Step.Kind == FeatureStepCategory::Blend && (Step.EndSize || !Step.AnchorSizes.empty()))
             {
-                for (TopologyReference& Reference : Step.SizeAnchors)
+                for (ConnectivityReference& Reference : Step.SizeAnchors)
                 {
                     const ResolvedReference Resolved = ResolveReference(Partition, Current, Naming, Reference);
                     Report.Resolutions.push_back(Resolved);
@@ -820,8 +820,8 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 break;
             }
             if (Report.Status == FeatureStepStatus::Refused) break;
-            const double Amount = EvaluateFeatureValue(Tree, Step.Kind == FeatureStepKind::Blend ? Step.Size : Step.Amount);
-            if (Step.Kind == FeatureStepKind::Blend)
+            const double Amount = EvaluateFeatureValue(Tree, Step.Kind == FeatureStepCategory::Blend ? Step.Size : Step.Amount);
+            if (Step.Kind == FeatureStepCategory::Blend)
             {
                 std::vector<EdgeToken> Edges;
                 for (uint32_t Slot : Slots) Edges.push_back(Partition.Edges.TokenAt(Slot));
@@ -832,7 +832,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 {
                     if (Step.AnchorSizes.size() != Anchors.size()) { Refuse("Blend: per-vertex sizes do not match their vertices"); break; }
                     Settings.SizeAnchors = Anchors;
-                    for (const FeatureValue& Size : Step.AnchorSizes) Settings.AnchorSizes.push_back(EvaluateFeatureValue(Tree, Size));
+                    for (const FeatureScalar& Size : Step.AnchorSizes) Settings.AnchorSizes.push_back(EvaluateFeatureValue(Tree, Size));
                 }
                 else if (Step.EndSize)
                 {
@@ -850,18 +850,18 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             // ③″ Extrude manifold (Blender's push-in): a negative face extrusion goes into the body. A face whose
             //    neighbours can follow it is pushed; an imprinted region (every neighbour coplanar) — or a face the push
             //    refuses — becomes a prism of its own outline, started a hair outside the face, cut out of the body.
-            if (Step.Operation == FaceOperationKind::Extrude && Amount < 0.0)
+            if (Step.Operation == FaceOperationCategory::Extrude && Amount < 0.0)
             {
                 std::vector<FaceToken>        Faces;
                 std::vector<SketchProfile>    Outlines;
-                std::vector<OrthonormalFrame> Planes;
+                std::vector<OrthonormalBasis> Planes;
                 std::string                   Problem;
                 bool                          IslandCondition = true;
                 for (uint32_t Slot : Slots)
                 {
                     Faces.push_back(Partition.Faces.TokenAt(Slot));
                     SketchProfile    Outline;
-                    OrthonormalFrame Plane;
+                    OrthonormalBasis Plane;
                     bool             Island = false;
                     Problem = DescribePlanarFaceProfile(Partition, Current, Faces.back(), Outline, Plane, Island);
                     if (!Problem.empty()) break;
@@ -872,7 +872,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 if (!IslandCondition || !Problem.empty())
                 {
                     FaceOperationSettings Push;
-                    Push.Kind     = FaceOperationKind::Push;
+                    Push.Kind     = FaceOperationCategory::Push;
                     Push.Faces    = Faces;
                     Push.Distance = Amount;
                     const FaceOperationOutcome Change = ApplyFaceOperation(Partition, Current, Push);
@@ -892,7 +892,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     const double     Lead  = 1.0e-3 * Outlines[Index].Scale;                 // [len] - Cutter start outside the face
                     // A side a sliver short of a convex rim of the face opens through it (no strip left over the cut).
                     (void)OpenSliverBridges(Partition, Current, Planes[Index], -1.0, &Faces[Index], Outlines[Index]);
-                    OrthonormalFrame Plane = Planes[Index];
+                    OrthonormalBasis Plane = Planes[Index];
                     Plane.Origin           = Plane.Origin + Plane.ZAxis * Lead;
                     const SweepOutcome Sweep = ExtrudeProfile(Partition, Outlines[Index], Plane, Amount - Lead, true);
                     if (!Sweep.Refusal.empty()) { Refusal = Sweep.Refusal; break; }
@@ -907,10 +907,10 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 break;
             }
             // ③‴ Reshape (direct vertex / edge / face editing): picked vertices, ends of picked edges, and boundary vertices of picked faces, carried by Placement.
-            if (Step.Operation == FaceOperationKind::Reshape)
+            if (Step.Operation == FaceOperationCategory::Reshape)
             {
                 FaceOperationSettings Reshape;
-                Reshape.Kind      = FaceOperationKind::Reshape;
+                Reshape.Kind      = FaceOperationCategory::Reshape;
                 Reshape.Placement = Step.Placement;
                 const auto Carry  = [&](VertexToken Vertex)
                 {
@@ -920,14 +920,14 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 const size_t FinLimit = Partition.Fins.OccupiedCount() + 1;
                 for (size_t Index = 0; Index < Slots.size(); ++Index)
                 {
-                    if (Kinds[Index] == ReferenceKind::Vertex) Carry(Partition.Vertices.TokenAt(Slots[Index]));
-                    else if (Kinds[Index] == ReferenceKind::Edge)
+                    if (Kinds[Index] == ReferenceCategory::Vertex) Carry(Partition.Vertices.TokenAt(Slots[Index]));
+                    else if (Kinds[Index] == ReferenceCategory::Edge)
                     {
                         const EdgeProfile& Edge = Partition.Edges.Resolve(Partition.Edges.TokenAt(Slots[Index]));
                         Carry(Edge.Start);
                         Carry(Edge.End);
                     }
-                    else if (Kinds[Index] == ReferenceKind::Face)
+                    else if (Kinds[Index] == ReferenceCategory::Face)
                     {
                         const FaceProfile& Face = Partition.Faces.Resolve(Partition.Faces.TokenAt(Slots[Index]));
                         for (LoopToken Loop : Face.Loops)
@@ -961,8 +961,8 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             for (size_t Index = 0; Index < Slots.size(); ++Index)
             {
                 // ③⁗ Heal on picked edges / vertices (Delete on edges, vertices): only those dissolve.
-                if (Kinds[Index] == ReferenceKind::Edge && Step.Operation == FaceOperationKind::Heal) Settings.Edges.push_back(Partition.Edges.TokenAt(Slots[Index]));
-                else if (Kinds[Index] == ReferenceKind::Vertex && Step.Operation == FaceOperationKind::Heal) Settings.Vertices.push_back(Partition.Vertices.TokenAt(Slots[Index]));
+                if (Kinds[Index] == ReferenceCategory::Edge && Step.Operation == FaceOperationCategory::Heal) Settings.Edges.push_back(Partition.Edges.TokenAt(Slots[Index]));
+                else if (Kinds[Index] == ReferenceCategory::Vertex && Step.Operation == FaceOperationCategory::Heal) Settings.Vertices.push_back(Partition.Vertices.TokenAt(Slots[Index]));
                 else Settings.Faces.push_back(Partition.Faces.TokenAt(Slots[Index]));
             }
             ApplySettingsAmount(Settings, Amount);
@@ -970,10 +970,10 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             //    Tweak runs along +z and Rotate about +x as before.
             if (!Step.Points.empty() && Length(Step.Points.front()) > 1.0e-12)
             {
-                if (Step.Operation == FaceOperationKind::Tweak)  Settings.Vector = Normalize(Step.Points.front()) * Amount;
-                if (Step.Operation == FaceOperationKind::Rotate) Settings.Axis   = Normalize(Step.Points.front());
+                if (Step.Operation == FaceOperationCategory::Tweak)  Settings.Vector = Normalize(Step.Points.front()) * Amount;
+                if (Step.Operation == FaceOperationCategory::Rotate) Settings.Axis   = Normalize(Step.Points.front());
             }
-            if (Step.Operation == FaceOperationKind::Inset) Settings.Depth = EvaluateFeatureValue(Tree, Step.Extent);
+            if (Step.Operation == FaceOperationCategory::Inset) Settings.Depth = EvaluateFeatureValue(Tree, Step.Extent);
             const FaceOperationOutcome Change = ApplyFaceOperation(Partition, Current, Settings);
             if (!Change.Refusal.empty()) { Refuse(Change.Refusal); break; }
             Outcome.Audits.emplace_back(Change.Body, Change.Audit);
@@ -982,7 +982,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             Store();
             break;
         }
-        case FeatureStepKind::SpaceCurve:
+        case FeatureStepCategory::SpaceCurve:
         {
             // ④ Re-fit the imported points at the step tolerance, then re-apply the dragged poles (no body change).
             std::vector<Vector3> Points = Step.Points;
@@ -1064,7 +1064,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             Outcome.Curves[Step.Label] = std::move(Fit);
             break;
         }
-        case FeatureStepKind::Loft:
+        case FeatureStepCategory::Loft:
         {
             // ⑤ Skin a sheet through the named sections, in order: SpaceCurve results, or sketches holding one chain
             //    (line, polyline, arc, slot, rectangle, circle, spline) composed into one exact NURBS each.
@@ -1095,9 +1095,9 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 if (Open < Sections.size()) { Refuse("Loft: section " + Step.Sections[Open] + " is open, so the loft cannot close into a solid"); break; }
                 const LoftSurfaceOutcome Skin = LoftSectionSurface(Sections, LoftSettings{});
                 if (!Skin.Refusal.empty()) { Refuse(Skin.Refusal); break; }
-                PanelAssemblySettings Capping;
+                PanelJoiningSettings Capping;
                 Capping.CapCondition = true;
-                const PanelAssemblyOutcome Assembly = AssemblePanels(Partition, { SurfacePanel{ Skin.Surface } }, Capping, "Close");
+                const PanelJoiningOutcome Assembly = AssemblePanels(Partition, { SurfacePanel{ Skin.Surface } }, Capping, "Close");
                 if (!Assembly.Refusal.empty()) { Refuse("Loft: " + Assembly.Refusal); break; }
                 if (!Assembly.SolidCondition)
                 {
@@ -1229,7 +1229,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 {
                     // When the new panel is sound on its own (e.g. a 3rd panel branching from an already-sewn edge in a T/V fin),
                     // emit it as an independent sheet body rather than refusing the loft step outright.
-                    const PanelAssemblyOutcome Standalone = AssemblePanels(Partition, { SurfacePanel{ OrientSheet(Loft.Surface,Step.ReverseNormals) } }, PanelAssemblySettings{}, "Sew");
+                    const PanelJoiningOutcome Standalone = AssemblePanels(Partition, { SurfacePanel{ OrientSheet(Loft.Surface,Step.ReverseNormals) } }, PanelJoiningSettings{}, "Sew");
                     if (Standalone.Refusal.empty())
                     {
                         Naming  = NamePanelBody(Partition, Standalone.Body, Standalone.Faces, { Step.Label + ".Side(Surface)" });
@@ -1244,7 +1244,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             }
             break;
         }
-        case FeatureStepKind::Network:
+        case FeatureStepCategory::Network:
         {
             // ⑦ Gordon / Coons panel (or closed-loop triangle / quad / N-gon panels) through the named curves.
             std::vector<NurbsCurve> Curves;
@@ -1315,7 +1315,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 {
                     // When adjacent loops share an edge with differing parameterization or branch at a T-junction,
                     // emit the closed-loop surface as an independent sheet body rather than refusing it.
-                    const PanelAssemblyOutcome Standalone = AssemblePanels(Partition, NewPanels, PanelAssemblySettings{}, "Sew");
+                    const PanelJoiningOutcome Standalone = AssemblePanels(Partition, NewPanels, PanelJoiningSettings{}, "Sew");
                     if (Standalone.Refusal.empty())
                     {
                         std::vector<std::string> Names;
@@ -1338,7 +1338,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             }
             break;
         }
-        case FeatureStepKind::Mirror:
+        case FeatureStepCategory::Mirror:
         {
             // ⑧ Mirror image of every panel so far; halves sharing a boundary on the plane sew into one body (V7).
             if (Panels.empty()) { Refuse("Mirror: there are no surface panels to mirror"); break; }
@@ -1353,7 +1353,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             if (const std::string Problem = Reassemble("Sew", false); !Problem.empty()) { Panels.resize(Count); Refuse("Mirror: " + Problem); }
             break;
         }
-        case FeatureStepKind::Close:
+        case FeatureStepCategory::Close:
         {
             // ⑨ Plane caps on the planar rim loops; the closed panel body becomes a solid (V7).
             if (Panels.empty()) { Refuse("Close: there are no surface panels to close"); break; }
@@ -1362,7 +1362,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             ClosedBy = Step.Label;
             break;
         }
-        case FeatureStepKind::Combine:
+        case FeatureStepCategory::Combine:
         {
             // ⑩ Boolean between two bodies of the part (Plasticity Q): the target keeps its key, the tool is consumed.
             if (Step.Combination != FeatureCombination::Union && Step.Combination != FeatureCombination::Difference && Step.Combination != FeatureCombination::Intersection)
@@ -1407,12 +1407,12 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             }
             break;
         }
-        case FeatureStepKind::Cut:
+        case FeatureStepCategory::Cut:
         {
             // ⑪ Split a body (Plasticity C): the outside piece keeps the key, the inside piece becomes a body keyed by the step.
             if (!Load(Step.Target)) { Refuse("Cut: no body named " + (Step.Target.empty() ? std::string("(active)") : Step.Target)); break; }
             const int        Source = Target;
-            OrthonormalFrame Plane;
+            OrthonormalBasis Plane;
             SketchProfile    Profile;
             double           Reach = 0.0;
             if (!Step.Sections.empty())
@@ -1461,7 +1461,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             Create();
             break;
         }
-        case FeatureStepKind::Imprint:
+        case FeatureStepCategory::Imprint:
         {
             // ⑳ 2D cutter (Plasticity / Fusion split face): the sketch outline (closed loops, or an open chain closed past
             //    the body) is swept a hair along ±𝑧 — the side away from the material, Extent's sign — into a tool that only
@@ -1470,7 +1470,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             if (Partition.Bodies.Resolve(Current).Category == BodyCategory::Sheet) { Refuse("Imprint: the body is a sheet (🚧 imprints on sheets)"); break; }
             const auto Found = Sketches.find(Step.Profile);
             if (Found == Sketches.end() || !Found->second.UsableCondition) { Refuse("Imprint: sketch " + Step.Profile + " is unavailable"); break; }
-            const OrthonormalFrame& Plane   = Found->second.Plane;
+            const OrthonormalBasis& Plane   = Found->second.Plane;
             const double            Reach   = MeasureCutReach(Partition, Current, Plane);
             const SketchProfile     Profile = BuildSketchCutProfile(Found->second.Model, Reach);
             if (!Profile.Refusal.empty()) { Refuse("Imprint: " + Profile.Refusal); break; }
@@ -1486,7 +1486,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             Store();
             break;
         }
-        case FeatureStepKind::Remove:
+        case FeatureStepCategory::Remove:
         {
             // ⑫ Delete a body (Plasticity X); the last remaining body becomes active when the active one goes.
             if (!Load(Step.Target)) { Refuse("Remove: no body named " + (Step.Target.empty() ? std::string("(active)") : Step.Target)); break; }
@@ -1505,13 +1505,13 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             Naming  = Active >= 0 ? Bodies[Active].Naming : BodyNaming{};
             break;
         }
-        case FeatureStepKind::Transform:
+        case FeatureStepCategory::Transform:
         {
             // ⑬ Move / rotate / scale a body in place (Plasticity G / R / S): exact image, every name kept.
             if (!Load(Step.Target)) { Refuse("Transform: no body named " + (Step.Target.empty() ? std::string("(active)") : Step.Target)); break; }
             const double Shift = EvaluateFeatureValue(Tree, Step.Offset);
             if (!std::isfinite(Shift)) { Refuse("Transform: unknown offset parameter " + Step.Offset.Parameter); break; }
-            AffineMap EffectiveMap = Step.Placement;
+            AffineMapping EffectiveMap = Step.Placement;
             if (std::fabs(Shift) > 1.0e-12 && Length(Step.OffsetAxis) > 1.0e-12)
                 EffectiveMap.Shift = EffectiveMap.Shift + Normalize(Step.OffsetAxis) * Shift;
             const auto KnownVolume = std::find_if(Outcome.Volumes.rbegin(), Outcome.Volumes.rend(), [&](const auto& Entry) { return Entry.first == Current; });
@@ -1523,7 +1523,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             if (Target == PanelBody) ClosedBy = Step.Label;                                  // Re-sewing the panels would undo the move
             Store();
             // Bodies jointed to it follow a rigid move (an assembly moves as one); a scale leaves them where they are.
-            const AffineMap& Map = EffectiveMap;
+            const AffineMapping& Map = EffectiveMap;
             const double Determinant = Dot(Map.ColumnX, Cross(Map.ColumnY, Map.ColumnZ));
             const bool Rigid = std::fabs(Dot(Map.ColumnX, Map.ColumnX) - 1.0) < 1.0e-12 && std::fabs(Dot(Map.ColumnY, Map.ColumnY) - 1.0) < 1.0e-12
                             && std::fabs(Dot(Map.ColumnZ, Map.ColumnZ) - 1.0) < 1.0e-12 && std::fabs(Dot(Map.ColumnX, Map.ColumnY)) < 1.0e-12
@@ -1536,18 +1536,18 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             }
             break;
         }
-        case FeatureStepKind::Flip:
+        case FeatureStepCategory::Flip:
         {
             // ⑲ A sheet turned over (flip normals): same carriers, every face sense and loop reversed, every name kept.
             if (!Load(Step.Target)) { Refuse("Flip: no body named " + (Step.Target.empty() ? std::string("(active)") : Step.Target)); break; }
             // ⑲′ Face references: only the pieces (faces joined through shared edges) holding one turn over.
             std::vector<FaceToken> Seeds;
             bool                   Lost = false;
-            for (TopologyReference& Reference : Step.References)
+            for (ConnectivityReference& Reference : Step.References)
             {
                 const ResolvedReference Resolved = ResolveReference(Partition, Current, Naming, Reference);
                 Report.Resolutions.push_back(Resolved);
-                if (Resolved.Method == ResolutionMethod::Refused || Reference.Kind != ReferenceKind::Face) { Lost = true; continue; }
+                if (Resolved.Method == ResolutionMethod::Refused || Reference.Kind != ReferenceCategory::Face) { Lost = true; continue; }
                 Seeds.push_back(Partition.Faces.TokenAt(Resolved.Slot));
                 if (CaptureCondition) Reference.Signature = CaptureSignature(Partition, Reference.Kind, Resolved.Slot);
             }
@@ -1560,7 +1560,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             Store();
             break;
         }
-        case FeatureStepKind::Duplicate:
+        case FeatureStepCategory::Duplicate:
         {
             // ⑭ Copy of a body (Plasticity Shift+D / Ctrl+V) as it is now, or as it stood after step Source.
             RegeneratedBody Original;
@@ -1582,7 +1582,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             Create();
             break;
         }
-        case FeatureStepKind::Import:
+        case FeatureStepCategory::Import:
         {
             // ⑱ One body read from the step's embedded STEP text (priority 4 X4): a body of its own keyed by the step,
             //    faces named Label.Face(k) in file order. The text is the kernel's own canonical export of the body, so
@@ -1603,7 +1603,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             for (const std::string& Note : Reading.Notes) Report.Notes.push_back(Note);
             break;
         }
-        case FeatureStepKind::Joint:
+        case FeatureStepCategory::Joint:
         {
             // ⑰ Place Step.Target by a joint to Step.Tool (Fusion joints): both joint origins are read off the current
             //    geometry (References[0] on the target, [1] on the tool), the target takes the rigid placement and every
@@ -1664,7 +1664,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             Outcome.Joints.push_back({ Step.Label, Step.Target, Step.Tool, Joint.Kind, Placement.Target, FixedOrigin.Frame });
             break;
         }
-        case FeatureStepKind::Pipe:
+        case FeatureStepCategory::Pipe:
         {
             // ⑮ Circle of radius Size along a path (Plasticity P): lines / arcs / circles exact, free-form paths a NURBS tube.
             const double Radius = EvaluateFeatureValue(Tree, Step.Size);
@@ -1690,10 +1690,10 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 std::string Problem;
                 const ProfileSegment Segment = ResolveSketchCurveSegment(Solved.Model, Drawn.front(), 1.0e-12, Problem);
                 if (!Problem.empty()) { Refuse("Pipe: " + Problem); break; }
-                const OrthonormalFrame& Plane = Solved.Plane;
+                const OrthonormalBasis& Plane = Solved.Plane;
                 const auto Lift = [&](Vector2 Point) { return Plane.Origin + Plane.XAxis * Point.X + Plane.YAxis * Point.Y; };
                 PathStart = Lift(Segment.Start);
-                if (Segment.Kind == ProfileSegmentKind::Spline)
+                if (Segment.Kind == ProfileSegmentCategory::Spline)
                 {
                     std::vector<Vector3> Poles;
                     for (const Vector2& Pole : Segment.Spline.Poles) Poles.push_back(Lift(Pole));
@@ -1706,7 +1706,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                 else
                 {
                     SweepOutcome Swept;
-                    if (Segment.Kind == ProfileSegmentKind::Line)
+                    if (Segment.Kind == ProfileSegmentCategory::Line)
                     {
                         const Vector3 Start = Lift(Segment.Start), End = Lift(Segment.End);
                         Swept = PipeAlongPath(Partition, StraightLine{ Start, Normalize(End - Start) }, 0.0, Distance(Start, End), Radius);
@@ -1821,7 +1821,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     {
                         const ResolvedReference Resolved = ResolveReference(Partition, Bodies[Owner].Body, Bodies[Owner].Naming, Entry.Edge);
                         if (Resolved.Method != ResolutionMethod::Refused)
-                            Entry.Edge.Signature = CaptureSignature(Partition, ReferenceKind::Edge, Resolved.Slot);
+                            Entry.Edge.Signature = CaptureSignature(Partition, ReferenceCategory::Edge, Resolved.Slot);
                     }
                 }
             }
@@ -1881,7 +1881,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
 
                 switch (Modifier.Kind)
                 {
-                case ModifierKind::Boolean:
+                case ModifierCategory::Boolean:
                 {
                     const int ToolIndex = FindBody(Modifier.Tool);
                     if (ToolIndex < 0) { ModRefuse("Boolean: cutter body " + (Modifier.Tool.empty() ? "(none)" : Modifier.Tool) + " not found"); break; }
@@ -1917,7 +1917,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     }
                     break;
                 }
-                case ModifierKind::Bevel:
+                case ModifierCategory::Bevel:
                 {
                     if (Partition.Bodies.Resolve(Bodies[HostIndex].Body).Category != BodyCategory::Solid)
                     {
@@ -1947,11 +1947,11 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     }
                     else if (Modifier.LimitMode == BevelLimitMode::Picked)
                     {
-                        for (TopologyReference& Reference : Modifier.References)
+                        for (ConnectivityReference& Reference : Modifier.References)
                         {
                             const ResolvedReference Resolved = ResolveReference(Partition, Bodies[HostIndex].Body, Bodies[HostIndex].Naming, Reference);
                             if (Resolved.Method == ResolutionMethod::Refused) { ModRefuse("Bevel: " + Resolved.Refusal); break; }
-                            if (CaptureCondition) Reference.Signature = CaptureSignature(Partition, ReferenceKind::Edge, Resolved.Slot);
+                            if (CaptureCondition) Reference.Signature = CaptureSignature(Partition, ReferenceCategory::Edge, Resolved.Slot);
                             if (Weights.emplace(Resolved.Slot, 1.0).second) Edges.push_back(Partition.Edges.TokenAt(Resolved.Slot));
                         }
                         if (ModReport.Status == FeatureStepStatus::Refused) break;
@@ -2028,7 +2028,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     Bodies[HostIndex].Body   = Blended.Body;
                     break;
                 }
-                case ModifierKind::LinearArray:
+                case ModifierCategory::LinearArray:
                 {
                     const double RawX  = EvaluateFeatureValue(Tree, Modifier.Count);
                     const double RawY  = EvaluateFeatureValue(Tree, Modifier.SecondaryCount);
@@ -2050,7 +2050,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     ModReport.Instances      = Arrayed.Instances;
                     break;
                 }
-                case ModifierKind::CircularArray:
+                case ModifierCategory::CircularArray:
                 {
                     const double RawCount = EvaluateFeatureValue(Tree, Modifier.Count);
                     const double Sweep    = EvaluateFeatureValue(Tree, Modifier.Angle);
@@ -2069,7 +2069,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     ModReport.Instances      = Arrayed.Instances;
                     break;
                 }
-                case ModifierKind::CurveArray:
+                case ModifierCategory::CurveArray:
                 {
                     NurbsCurve  Rail;
                     bool        ClosedRail = false;
@@ -2087,7 +2087,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     ModReport.Instances      = Arrayed.Instances;
                     break;
                 }
-                case ModifierKind::SurfaceArray:
+                case ModifierCategory::SurfaceArray:
                 {
                     const int SurfaceHost = FindBody(Modifier.Tool);
                     if (SurfaceHost < 0) { ModRefuse("SurfaceArray: target shape body '" + Modifier.Tool + "' not found"); break; }
@@ -2097,7 +2097,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     {
                         const ResolvedReference Resolved = ResolveReference(Partition, Bodies[SurfaceHost].Body, Bodies[SurfaceHost].Naming, Modifier.References.front());
                         if (Resolved.Method == ResolutionMethod::Refused) { ModRefuse("SurfaceArray: " + Resolved.Refusal); break; }
-                        if (CaptureCondition) Modifier.References.front().Signature = CaptureSignature(Partition, ReferenceKind::Face, Resolved.Slot);
+                        if (CaptureCondition) Modifier.References.front().Signature = CaptureSignature(Partition, ReferenceCategory::Face, Resolved.Slot);
                         ChosenFace = Partition.Faces.TokenAt(Resolved.Slot);
                     }
                     else
@@ -2131,7 +2131,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
                     ModReport.Instances      = Arrayed.Instances;
                     break;
                 }
-                case ModifierKind::CurveBend:
+                case ModifierCategory::CurveBend:
                 {
                     NurbsCurve  Rail;
                     bool        ClosedRail = false;
@@ -2188,31 +2188,31 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
     return Outcome;
 }
 
-const char* FeatureStepKindLabel(FeatureStepKind Kind) noexcept
+const char* FeatureStepKindLabel(FeatureStepCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case FeatureStepKind::Sketch:        return "Sketch";
-    case FeatureStepKind::Extrude:       return "Extrude";
-    case FeatureStepKind::Revolve:       return "Revolve";
-    case FeatureStepKind::Blend:         return "Blend";
-    case FeatureStepKind::FaceOperation: return "FaceOperation";
-    case FeatureStepKind::SpaceCurve:    return "SpaceCurve";
-    case FeatureStepKind::Loft:          return "Loft";
-    case FeatureStepKind::Network:       return "Network";
-    case FeatureStepKind::Mirror:        return "Mirror";
-    case FeatureStepKind::Close:         return "Close";
-    case FeatureStepKind::Combine:       return "Combine";
-    case FeatureStepKind::Cut:           return "Cut";
-    case FeatureStepKind::Remove:        return "Remove";
-    case FeatureStepKind::Transform:     return "Transform";
-    case FeatureStepKind::Duplicate:     return "Duplicate";
-    case FeatureStepKind::Pipe:          return "Pipe";
-    case FeatureStepKind::Evolution:     return "Evolution";
-    case FeatureStepKind::Joint:         return "Joint";
-    case FeatureStepKind::Import:        return "Import";
-    case FeatureStepKind::Flip:          return "Flip";
-    case FeatureStepKind::Imprint:       return "Imprint";
+    case FeatureStepCategory::Sketch:        return "Sketch";
+    case FeatureStepCategory::Extrude:       return "Extrude";
+    case FeatureStepCategory::Revolve:       return "Revolve";
+    case FeatureStepCategory::Blend:         return "Blend";
+    case FeatureStepCategory::FaceOperation: return "FaceOperation";
+    case FeatureStepCategory::SpaceCurve:    return "SpaceCurve";
+    case FeatureStepCategory::Loft:          return "Loft";
+    case FeatureStepCategory::Network:       return "Network";
+    case FeatureStepCategory::Mirror:        return "Mirror";
+    case FeatureStepCategory::Close:         return "Close";
+    case FeatureStepCategory::Combine:       return "Combine";
+    case FeatureStepCategory::Cut:           return "Cut";
+    case FeatureStepCategory::Remove:        return "Remove";
+    case FeatureStepCategory::Transform:     return "Transform";
+    case FeatureStepCategory::Duplicate:     return "Duplicate";
+    case FeatureStepCategory::Pipe:          return "Pipe";
+    case FeatureStepCategory::Evolution:     return "Evolution";
+    case FeatureStepCategory::Joint:         return "Joint";
+    case FeatureStepCategory::Import:        return "Import";
+    case FeatureStepCategory::Flip:          return "Flip";
+    case FeatureStepCategory::Imprint:       return "Imprint";
     }
     return "?";
 }
@@ -2230,17 +2230,17 @@ const char* FeatureCombinationLabel(FeatureCombination Combination) noexcept
     return "?";
 }
 
-const char* ModifierKindLabel(ModifierKind Kind) noexcept
+const char* ModifierKindLabel(ModifierCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case ModifierKind::Boolean:       return "Boolean";
-    case ModifierKind::Bevel:         return "Bevel";
-    case ModifierKind::LinearArray:   return "LinearArray";
-    case ModifierKind::CircularArray: return "CircularArray";
-    case ModifierKind::CurveArray:    return "CurveArray";
-    case ModifierKind::SurfaceArray:  return "SurfaceArray";
-    case ModifierKind::CurveBend:     return "CurveBend";
+    case ModifierCategory::Boolean:       return "Boolean";
+    case ModifierCategory::Bevel:         return "Bevel";
+    case ModifierCategory::LinearArray:   return "LinearArray";
+    case ModifierCategory::CircularArray: return "CircularArray";
+    case ModifierCategory::CurveArray:    return "CurveArray";
+    case ModifierCategory::SurfaceArray:  return "SurfaceArray";
+    case ModifierCategory::CurveBend:     return "CurveBend";
     }
     return "?";
 }

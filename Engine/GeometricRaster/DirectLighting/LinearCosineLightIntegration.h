@@ -42,7 +42,7 @@ struct AmbientOcclusionSettings
     uint32_t RaysPerPixel        = 8u;    // [cnt]- Stratified cosine-hemisphere AO rays per pixel
 };
 
-struct DirectLightingFrameOutput
+struct DirectLightingOutput
 {
     uint32_t                            WidthPx                = 0u; // [px]    - Viewport width
     uint32_t                            HeightPx               = 0u; // [px]    - Viewport height
@@ -79,14 +79,14 @@ public:
         float PerceptualRoughness) noexcept;
 
     // Evaluates full Direct Lighting Frame with explicit Shadow Lab algorithm (supports Clipmap SDF, Hybrid SDF, & Point Lights)
-    [[nodiscard]] static DirectLightingFrameOutput EvaluateDirectLightingFrameWithAlgorithm(
+    [[nodiscard]] static DirectLightingOutput EvaluateDirectLightingFrameWithAlgorithm(
         SolarShadowAlgorithm                                         Algorithm,
-        const PerspectiveCameraFrame&                                Camera,
+        const PerspectiveCameraBasis&                                Camera,
         std::span<const RigidClusterInstance>                        Instances,
         const VisibilityBufferTargets&                               VisibilityTargets,
         const MaterialSpace::CompactMaterialRegister&                MaterialRegister,
         const SpatialAcceleration::WideBoundingTree&                 SceneTree,
-        const SolarDirectionalEmitter&                               Sun,
+        const SolarDirectionalSource&                               Sun,
         std::span<const PolygonalAreaQuadLight>                      AreaLights,
         const OrthographicShadowCascade*                             OptionalFineClip    = nullptr,
         const OrthographicShadowCascade*                             OptionalCoarseClip  = nullptr,
@@ -96,14 +96,14 @@ public:
         std::span<const DistanceFieldSpace::VoxelPointLightSpec>     PointLights         = {});
 
     // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm (ignores OptionalSdfVolume)
-    [[nodiscard]] static DirectLightingFrameOutput EvaluateDirectLightingFrame(
+    [[nodiscard]] static DirectLightingOutput EvaluateDirectLightingFrame(
         DirectShadowTier                                Tier,
-        const PerspectiveCameraFrame&                   Camera,
+        const PerspectiveCameraBasis&                   Camera,
         std::span<const RigidClusterInstance>           Instances,
         const VisibilityBufferTargets&                  VisibilityTargets,
         const MaterialSpace::CompactMaterialRegister&   MaterialRegister,
         const SpatialAcceleration::WideBoundingTree&    SceneTree,
-        const SolarDirectionalEmitter&                  Sun,
+        const SolarDirectionalSource&                  Sun,
         std::span<const PolygonalAreaQuadLight>         AreaLights,
         const DistanceFieldSpace::SignedDistanceVolume* OptionalSdfVolume  = nullptr,
         const OrthographicShadowCascade*                OptionalFineClip   = nullptr,

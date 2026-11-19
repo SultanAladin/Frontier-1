@@ -1526,7 +1526,7 @@ ParticleRig InstantiateRigFromPreset(const ParticlePresetMetadata& P)
         case 10u: Rig.Dynamics.ElasticStrand = ElasticStrandSpec {}; break;
         case 11u: Rig.Dynamics.Thermal       = ThermalFireworkSpec {}; break;
         case 12u: Rig.Dynamics.DielectricArc = DielectricArcSpec {}; break;
-        case 13u: Rig.Dynamics.FieldMatrix   = FieldMatrixSpec {}; break;
+        case 13u: Rig.Dynamics.FieldMatrix   = FieldTensorSpec {}; break;
         case 14u: Rig.Dynamics.Botanical     = BotanicalSwaySpec {}; break;
         case 15u: Rig.Dynamics.BotanicalGrowth        = OrganicGrowthSpec {}; break;
         default:  break;

@@ -51,7 +51,7 @@ void NetworkingExtension::Tick(double Δt) noexcept
     EndpointRegister.AdvanceSilenceTimers(Δt);
     ReassemblyRegister.PurgeExpiredSlots(ElapsedRuntimeSeconds);
 
-    for (ReplicationScheduleContract& Contract : ActiveConfiguration.ReplicationContracts)
+    for (ReplicationScheduleSpec& Contract : ActiveConfiguration.ReplicationContracts)
     {
         AccumulateReplicationElapsed(Contract, Δt);
     }
@@ -103,7 +103,7 @@ void NetworkingExtension::Tick(double Δt) noexcept
             continue;
         }
 
-        InboundEnvelopeRecord Record{};
+        InboundEnvelopeEntry Record{};
         Record.SourceEndpointIdentifier = SenderId;
         Record.ArrivalTimestampSeconds  = RawDatagram.ArrivalTimestampSeconds;
         Record.Datagram                 = std::move(Decoded);
@@ -359,7 +359,7 @@ bool NetworkingExtension::SendFragmentedTransfer(
     return true;
 }
 
-void NetworkingExtension::DrainReceivedEnvelopes(std::vector<InboundEnvelopeRecord>& OutEnvelopes)
+void NetworkingExtension::DrainReceivedEnvelopes(std::vector<InboundEnvelopeEntry>& OutEnvelopes)
 {
     OutEnvelopes = std::move(InboundEnvelopeQueue);
     InboundEnvelopeQueue.clear();

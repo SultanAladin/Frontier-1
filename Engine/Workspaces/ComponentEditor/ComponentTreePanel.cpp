@@ -49,23 +49,23 @@ const char* QueryCategorySubtitle(
         {
             const auto* C = Def.Storage.InspectConstraint(H.Token);
             if (C == nullptr) return "Constraint";
-            switch (C->Kind)
+            switch (C->Form)
             {
-                case ComponentClass::PhysicsConstraintKind::Fixed:  return "Fixed constraint";
-                case ComponentClass::PhysicsConstraintKind::Hinge:  return "Hinge constraint";
-                case ComponentClass::PhysicsConstraintKind::Slider: return "Slider constraint";
-                case ComponentClass::PhysicsConstraintKind::Ball:   return "Ball constraint";
-                case ComponentClass::PhysicsConstraintKind::Spring: return "Spring constraint";
-                case ComponentClass::PhysicsConstraintKind::Spin:   return "Spin constraint";
-                case ComponentClass::PhysicsConstraintKind::Tether: return "Tether constraint";
-                case ComponentClass::PhysicsConstraintKind::Dock:   return "Dock constraint";
+                case ComponentClass::PhysicsConstraintCategory::Fixed:  return "Fixed constraint";
+                case ComponentClass::PhysicsConstraintCategory::Hinge:  return "Hinge constraint";
+                case ComponentClass::PhysicsConstraintCategory::Slider: return "Slider constraint";
+                case ComponentClass::PhysicsConstraintCategory::Ball:   return "Ball constraint";
+                case ComponentClass::PhysicsConstraintCategory::Spring: return "Spring constraint";
+                case ComponentClass::PhysicsConstraintCategory::Spin:   return "Spin constraint";
+                case ComponentClass::PhysicsConstraintCategory::Tether: return "Tether constraint";
+                case ComponentClass::PhysicsConstraintCategory::Dock:   return "Dock constraint";
             }
             return "Constraint";
         }
         case Cat::LightInstance:
         {
             const auto* L = Def.Storage.InspectLight(H.Token);
-            return (L != nullptr && L->Kind == ComponentClass::LightEmitterKind::SpotBeam) ? "SpotBeam" : "PointEmission";
+            return (L != nullptr && L->Form == ComponentClass::LightSourceCategory::SpotBeam) ? "SpotBeam" : "PointEmission";
         }
         case Cat::CameraInstance:   return "Camera";
         case Cat::CollisionVolume:  return "Box trigger";
@@ -166,13 +166,13 @@ void ComponentTreePanel::Render(
     const auto Metrics = Doc->ClassDefinition.Storage.ComputeSummaryMetrics();
 
     uint32_t TotalTriangles = 0u;
-    Doc->ClassDefinition.Storage.WalkSpatialHierarchy([&](const ComponentClass::ComponentInstanceHeader& H)
+    Doc->ClassDefinition.Storage.WalkSpatialNesting([&](const ComponentClass::ComponentInstanceHeader& H)
     {
         if (H.Category == ComponentClass::ComponentCategory::GeometryInstance)
         {
             if (const auto* G = Doc->ClassDefinition.Storage.InspectGeometry(H.Token))
             {
-                for (const auto& Entry : Session.Catalog)
+                for (const auto& Entry : Session.Repository)
                 {
                     if (Entry.AssetIdentifier == G->AssetIdentifier)
                     {
@@ -269,17 +269,17 @@ void ComponentTreePanel::Render(
 
     const std::string_view Filter = Session.ComponentSearch.Text;
     std::vector<const ComponentClass::ComponentInstanceHeader*> VisibleRows {};
-    Doc->ClassDefinition.Storage.WalkSpatialHierarchy([&](const ComponentClass::ComponentInstanceHeader& H)
+    Doc->ClassDefinition.Storage.WalkSpatialNesting([&](const ComponentClass::ComponentInstanceHeader& H)
     {
         if (!Filter.empty() && !ContainsCaseInsensitive(H.Title, Filter))
         {
             return;
         }
         // Check if any ancestor is collapsed
-        if (Filter.empty() && H.EnclosingIndex != ComponentClass::InvalidHierarchyIndex)
+        if (Filter.empty() && H.EnclosingIndex != ComponentClass::InvalidNestingIndex)
         {
             uint32_t AncIdx = H.EnclosingIndex;
-            while (AncIdx != ComponentClass::InvalidHierarchyIndex)
+            while (AncIdx != ComponentClass::InvalidNestingIndex)
             {
                 const auto* Anc = Doc->ClassDefinition.Storage.InspectHeaderByIndex(AncIdx);
                 if (Anc == nullptr) break;
@@ -318,8 +318,8 @@ void ComponentTreePanel::Render(
         }
 
         const float IndentX = RowRect.X + 10.0f + static_cast<float>(H.DepthLevel) * 14.0f;
-        const bool HasNested = (H.FirstNestedIndex != ComponentClass::InvalidHierarchyIndex);
-        if (HasNested)
+        const bool NestedPresent = (H.FirstNestedIndex != ComponentClass::InvalidNestingIndex);
+        if (NestedPresent)
         {
             const Rectangle2D ChevRect { IndentX - 4.0f, RowRect.Y + 8.0f, 14.0f, 18.0f };
             const bool Collapsed = CollapsedNodes[H.Token.SlotIndex];
@@ -405,7 +405,7 @@ void ComponentTreePanel::Render(
             }
             if (Input.DoubleClicked)
             {
-                Session.FrameSelectedOrClass();
+                Session.FocusSelectedOrClass();
             }
         }
         if (DraggedToken.Valid() && Ptr.Released && Hovered && DraggedToken != H.Token)
@@ -468,22 +468,22 @@ void ComponentTreePanel::Render(
         {
             const char*                           Label;
             ComponentClass::ComponentCategory     Cat;
-            ComponentClass::PhysicsConstraintKind ConKind;
+            ComponentClass::PhysicsConstraintCategory ConCategory;
             bool                                  HeaderOnly;
         };
         static constexpr std::array<AddDirectiveSpec, 12> Specs {{
-            { "SCENE & CONSTRAINTS", ComponentClass::ComponentCategory::SpatialOrigin,      ComponentClass::PhysicsConstraintKind::Fixed,  true  },
-            { "Geometry Instance",   ComponentClass::ComponentCategory::GeometryInstance,   ComponentClass::PhysicsConstraintKind::Fixed,  false },
-            { "Spring Constraint",   ComponentClass::ComponentCategory::ConstraintInstance, ComponentClass::PhysicsConstraintKind::Spring, false },
-            { "Hinge Constraint",    ComponentClass::ComponentCategory::ConstraintInstance, ComponentClass::PhysicsConstraintKind::Hinge,  false },
-            { "Dock Constraint",     ComponentClass::ComponentCategory::ConstraintInstance, ComponentClass::PhysicsConstraintKind::Dock,   false },
-            { "SpotBeam Light",      ComponentClass::ComponentCategory::LightInstance,      ComponentClass::PhysicsConstraintKind::Fixed,  false },
-            { "Box Collider",        ComponentClass::ComponentCategory::CollisionVolume,    ComponentClass::PhysicsConstraintKind::Fixed,  false },
-            { "Camera",              ComponentClass::ComponentCategory::CameraInstance,     ComponentClass::PhysicsConstraintKind::Fixed,  false },
-            { "Particle Instance",   ComponentClass::ComponentCategory::ParticleInstance,   ComponentClass::PhysicsConstraintKind::Fixed,  false },
-            { "Fluid Instance",      ComponentClass::ComponentCategory::FluidInstance,      ComponentClass::PhysicsConstraintKind::Fixed,  false },
-            { "BEHAVIOURS",          ComponentClass::ComponentCategory::VehicleDynamics,    ComponentClass::PhysicsConstraintKind::Fixed,  true  },
-            { "Vehicle Dynamics",    ComponentClass::ComponentCategory::VehicleDynamics,    ComponentClass::PhysicsConstraintKind::Fixed,  false },
+            { "SCENE & CONSTRAINTS", ComponentClass::ComponentCategory::SpatialOrigin,      ComponentClass::PhysicsConstraintCategory::Fixed,  true  },
+            { "Geometry Instance",   ComponentClass::ComponentCategory::GeometryInstance,   ComponentClass::PhysicsConstraintCategory::Fixed,  false },
+            { "Spring Constraint",   ComponentClass::ComponentCategory::ConstraintInstance, ComponentClass::PhysicsConstraintCategory::Spring, false },
+            { "Hinge Constraint",    ComponentClass::ComponentCategory::ConstraintInstance, ComponentClass::PhysicsConstraintCategory::Hinge,  false },
+            { "Dock Constraint",     ComponentClass::ComponentCategory::ConstraintInstance, ComponentClass::PhysicsConstraintCategory::Dock,   false },
+            { "SpotBeam Light",      ComponentClass::ComponentCategory::LightInstance,      ComponentClass::PhysicsConstraintCategory::Fixed,  false },
+            { "Box Collider",        ComponentClass::ComponentCategory::CollisionVolume,    ComponentClass::PhysicsConstraintCategory::Fixed,  false },
+            { "Camera",              ComponentClass::ComponentCategory::CameraInstance,     ComponentClass::PhysicsConstraintCategory::Fixed,  false },
+            { "Particle Instance",   ComponentClass::ComponentCategory::ParticleInstance,   ComponentClass::PhysicsConstraintCategory::Fixed,  false },
+            { "Fluid Instance",      ComponentClass::ComponentCategory::FluidInstance,      ComponentClass::PhysicsConstraintCategory::Fixed,  false },
+            { "BEHAVIOURS",          ComponentClass::ComponentCategory::VehicleDynamics,    ComponentClass::PhysicsConstraintCategory::Fixed,  true  },
+            { "Vehicle Dynamics",    ComponentClass::ComponentCategory::VehicleDynamics,    ComponentClass::PhysicsConstraintCategory::Fixed,  false },
         }};
 
         std::array<DropdownDirectiveEntry, 12> Entries {};
@@ -505,7 +505,7 @@ void ComponentTreePanel::Render(
         if (DropdownSelector::ConstructDirectiveSheet(Surface, SheetBounds, Entries, Ptr, Chosen, 1.0f).Clicked &&
             Chosen >= 0 && Chosen < static_cast<int32_t>(Specs.size()) && !Specs[Chosen].HeaderOnly)
         {
-            Session.AddComponentToActive(Specs[Chosen].Cat, Specs[Chosen].Label, Specs[Chosen].ConKind);
+            Session.AddComponentToActive(Specs[Chosen].Cat, Specs[Chosen].Label, Specs[Chosen].ConCategory);
             Session.AddSheetOpen = false;
         }
         else if (Ptr.Pressed && !SheetBounds.Contains({ Ptr.X, Ptr.Y }) && !AddBtnRect.Contains({ Ptr.X, Ptr.Y }))

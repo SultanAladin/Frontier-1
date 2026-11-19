@@ -70,7 +70,7 @@ struct SketcherImagePlaneBlock
 static_assert(sizeof(SketcherImagePlaneBlock) == 128, "SketcherImagePlaneProjection push constant must stay 128 bytes");
 
 // One image plane to draw this frame: the uploaded picture it samples and its world parallelogram.
-struct SketcherImagePlaneDraw
+struct SketcherImagePlaneQuad
 {
     uint32_t              Picture = 0;                                                       // [idx] - Into the last UploadPictures list
     std::array<double, 3> Corner  = {};                                                      // [len] - Crop top-left (world)
@@ -82,7 +82,7 @@ struct SketcherImagePlaneDraw
     bool                  FrontOnlyCondition = false;                                      // [-]   - Optional one-sided reference; evaluated per viewport
 };
 
-[[nodiscard]] bool FacesSketcherImagePlane(const SketcherImagePlaneDraw& Draw, const OrbitCameraFrame& Frame) noexcept;
+[[nodiscard]] bool FacesSketcherImagePlane(const SketcherImagePlaneQuad& Draw, const OrbitCameraBasis& Frame) noexcept;
 
 struct SketcherViewportStyle
 {
@@ -98,7 +98,7 @@ struct SketcherViewportStyle
     float XRayOpacity     = 0.45f;                                                           // [0-1] - Ghost face opacity α in x-ray
     bool  SectionEnabled  = false;                                                           // [-]   - Alt+S: clip at SectionPlane, cap the solids
     std::array<double, 4> SectionPlane = { 0.0, 0.0, 1.0, 0.0 };                             // [-]   - (n, w): kept side n·P + w ≥ 0
-    std::vector<SketcherImagePlaneDraw> ImagePlanes = {};                                    // [-]   - Blueprint references, depth-tested behind the model
+    std::vector<SketcherImagePlaneQuad> ImagePlanes = {};                                    // [-]   - Blueprint references, depth-tested behind the model
     GizmoGeometry Gizmo        = {};                                                         // [-]   - Transform gizmo (CPU points, drawn last on cleared depth)
 };
 
@@ -109,7 +109,7 @@ struct SketcherRasterPane
     int                   OffsetY = 0;                                                       // [px] - Scissor/viewport top within Colour target
     uint32_t              Width   = 0;                                                       // [px] - Pane width
     uint32_t              Height  = 0;                                                       // [px] - Pane height
-    OrbitCameraFrame      Frame   = {};                                                      // [-]  - Camera frame for this pane
+    OrbitCameraBasis      Frame   = {};                                                      // [-]  - Camera frame for this pane
     SketcherViewportStyle Style   = {};                                                      // [-]  - Per-pane GridPlane + scaled Gizmo
 };
 
@@ -145,7 +145,7 @@ public:
     [[nodiscard]] uint32_t MatcapLayerCount() const { return MatcapLayers; }
 
     // Records the viewport. ProbeX / ProbeY ≥ 0 copy that identity texel; ReadbackCondition copies both whole targets.
-    void Record(VkCommandBuffer Commands, const OrbitCameraFrame& Frame, const SketcherViewportStyle& Style, bool ReadbackCondition,
+    void Record(VkCommandBuffer Commands, const OrbitCameraBasis& Frame, const SketcherViewportStyle& Style, bool ReadbackCondition,
                 int ProbeX, int ProbeY);
 
     // Records 1 … 4 split-viewport panes into the shared Colour / Identity / Depth targets with per-pane viewport + scissor.

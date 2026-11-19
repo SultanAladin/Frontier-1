@@ -44,7 +44,7 @@ namespace
         int     SketchCurve = -1;                                                            // [-]
     };
 
-    [[nodiscard]] bool ClosedCondition(const ProfileSegment& Segment) noexcept { return Segment.Kind == ProfileSegmentKind::Circle; }
+    [[nodiscard]] bool ClosedCondition(const ProfileSegment& Segment) noexcept { return Segment.Kind == ProfileSegmentCategory::Circle; }
 
     [[nodiscard]] double Wrap(double Fraction) noexcept
     {
@@ -61,7 +61,7 @@ namespace
     {
         SampledSegment            Sampled;
         const std::vector<double> Breaks = CollectProfileBreaks(Segment);
-        const int                 Steps  = Segment.Kind == ProfileSegmentKind::Line ? 1 : SamplesPerPiece;
+        const int                 Steps  = Segment.Kind == ProfileSegmentCategory::Line ? 1 : SamplesPerPiece;
         for (size_t Piece = 0; Piece + 1 < Breaks.size(); ++Piece)
         {
             for (int Step = Piece == 0 ? 0 : 1; Step <= Steps; ++Step)
@@ -100,50 +100,50 @@ namespace
         return Length(EvaluateProfileSegment(Target, TargetFraction) - EvaluateProfileSegment(Cutter, CutterFraction));
     }
 
-    // 📝 Which of First / Second / Third name a curve (see SketchConstraintKind).
-    [[nodiscard]] std::array<bool, 3> CurveSlots(SketchConstraintKind Kind) noexcept
+    // 📝 Which of First / Second / Third name a curve (see SketchConstraintCategory).
+    [[nodiscard]] std::array<bool, 3> CurveSlots(SketchConstraintCategory Kind) noexcept
     {
         switch (Kind)
         {
-            case SketchConstraintKind::Horizontal:
-            case SketchConstraintKind::Vertical:
-            case SketchConstraintKind::Length:
-            case SketchConstraintKind::Radius:
-            case SketchConstraintKind::ArcRule:       return { true, false, false };
-            case SketchConstraintKind::Parallel:
-            case SketchConstraintKind::Perpendicular:
-            case SketchConstraintKind::Angle:
-            case SketchConstraintKind::EqualLength:
-            case SketchConstraintKind::EqualRadius:
-            case SketchConstraintKind::Tangent:
-            case SketchConstraintKind::Concentric:
-            case SketchConstraintKind::SplineTangent:
-            case SketchConstraintKind::SplineCurvature: return { true, true, false };
-            case SketchConstraintKind::SplineDirection: return { true, false, false };
-            case SketchConstraintKind::PointOnSpline:
-            case SketchConstraintKind::PointOnLine:
-            case SketchConstraintKind::PointOnCircle:
-            case SketchConstraintKind::Midpoint:      return { false, true, false };
-            case SketchConstraintKind::Symmetric:     return { false, false, true };
+            case SketchConstraintCategory::Horizontal:
+            case SketchConstraintCategory::Vertical:
+            case SketchConstraintCategory::Length:
+            case SketchConstraintCategory::Radius:
+            case SketchConstraintCategory::ArcRule:       return { true, false, false };
+            case SketchConstraintCategory::Parallel:
+            case SketchConstraintCategory::Perpendicular:
+            case SketchConstraintCategory::Angle:
+            case SketchConstraintCategory::EqualLength:
+            case SketchConstraintCategory::EqualRadius:
+            case SketchConstraintCategory::Tangent:
+            case SketchConstraintCategory::Concentric:
+            case SketchConstraintCategory::SplineTangent:
+            case SketchConstraintCategory::SplineCurvature: return { true, true, false };
+            case SketchConstraintCategory::SplineDirection: return { true, false, false };
+            case SketchConstraintCategory::PointOnSpline:
+            case SketchConstraintCategory::PointOnLine:
+            case SketchConstraintCategory::PointOnCircle:
+            case SketchConstraintCategory::Midpoint:      return { false, true, false };
+            case SketchConstraintCategory::Symmetric:     return { false, false, true };
             default:                                  return { false, false, false };
         }
     }
 
-    // 📝 Which of First / Second / Third name a point (see SketchConstraintKind).
-    [[nodiscard]] std::array<bool, 3> PointSlots(SketchConstraintKind Kind) noexcept
+    // 📝 Which of First / Second / Third name a point (see SketchConstraintCategory).
+    [[nodiscard]] std::array<bool, 3> PointSlots(SketchConstraintCategory Kind) noexcept
     {
         switch (Kind)
         {
-            case SketchConstraintKind::Coincident:
-            case SketchConstraintKind::Distance:
-            case SketchConstraintKind::HorizontalDistance:
-            case SketchConstraintKind::VerticalDistance:
-            case SketchConstraintKind::Symmetric:     return { true, true, false };
-            case SketchConstraintKind::Fixed:
-            case SketchConstraintKind::PointOnLine:
-            case SketchConstraintKind::PointOnCircle:
-            case SketchConstraintKind::PointOnSpline:
-            case SketchConstraintKind::Midpoint:      return { true, false, false };
+            case SketchConstraintCategory::Coincident:
+            case SketchConstraintCategory::Distance:
+            case SketchConstraintCategory::HorizontalDistance:
+            case SketchConstraintCategory::VerticalDistance:
+            case SketchConstraintCategory::Symmetric:     return { true, true, false };
+            case SketchConstraintCategory::Fixed:
+            case SketchConstraintCategory::PointOnLine:
+            case SketchConstraintCategory::PointOnCircle:
+            case SketchConstraintCategory::PointOnSpline:
+            case SketchConstraintCategory::Midpoint:      return { true, false, false };
             default:                                  return { false, false, false };
         }
     }
@@ -170,24 +170,24 @@ namespace
     {
         std::erase_if(Sketch.Constraints, [&](const SketchConstraint& Constraint)
         {
-            const bool LengthKind = Constraint.Kind == SketchConstraintKind::Length || Constraint.Kind == SketchConstraintKind::EqualLength
-                                 || Constraint.Kind == SketchConstraintKind::Midpoint || Constraint.Kind == SketchConstraintKind::Symmetric;
+            const bool LengthKind = Constraint.Kind == SketchConstraintCategory::Length || Constraint.Kind == SketchConstraintCategory::EqualLength
+                                 || Constraint.Kind == SketchConstraintCategory::Midpoint || Constraint.Kind == SketchConstraintCategory::Symmetric;
             return LengthKind && NamesCurve(Constraint, CurveIndex);
         });
     }
 
     // A split curve's second part inherits the direction (lines) or radius (arcs) constraints of the first.
-    void CopyShapeConstraints(SketchModel& Sketch, int CurveIndex, int NewIndex, SketchCurveKind Kind)
+    void CopyShapeConstraints(SketchModel& Sketch, int CurveIndex, int NewIndex, SketchCurveCategory Kind)
     {
         const size_t Count = Sketch.Constraints.size();
         for (size_t Index = 0; Index < Count; ++Index)
         {
             const SketchConstraint Constraint = Sketch.Constraints[Index];
             if (!NamesCurve(Constraint, CurveIndex)) continue;
-            const SketchConstraintKind Family = Constraint.Kind;
-            const bool LineCopy = Kind == SketchCurveKind::Line && (Family == SketchConstraintKind::Horizontal || Family == SketchConstraintKind::Vertical
-                               || Family == SketchConstraintKind::Parallel || Family == SketchConstraintKind::Perpendicular || Family == SketchConstraintKind::Angle);
-            const bool ArcCopy  = Kind == SketchCurveKind::Arc && (Family == SketchConstraintKind::Radius || Family == SketchConstraintKind::EqualRadius);
+            const SketchConstraintCategory Family = Constraint.Kind;
+            const bool LineCopy = Kind == SketchCurveCategory::Line && (Family == SketchConstraintCategory::Horizontal || Family == SketchConstraintCategory::Vertical
+                               || Family == SketchConstraintCategory::Parallel || Family == SketchConstraintCategory::Perpendicular || Family == SketchConstraintCategory::Angle);
+            const bool ArcCopy  = Kind == SketchCurveCategory::Arc && (Family == SketchConstraintCategory::Radius || Family == SketchConstraintCategory::EqualRadius);
             if (LineCopy || ArcCopy) Sketch.Constraints.push_back(Redirect(Constraint, CurveIndex, NewIndex));
         }
     }
@@ -196,12 +196,12 @@ namespace
     void PinToCutter(SketchModel& Sketch, int Point, int SketchCurve)
     {
         if (SketchCurve < 0) return;
-        const SketchCurveKind Kind = Sketch.Curves[SketchCurve].Kind;
-        if (Kind == SketchCurveKind::Line) AppendSketchConstraint(Sketch, SketchConstraintKind::PointOnLine, Point, SketchCurve);
-        else if (Kind == SketchCurveKind::Circle || Kind == SketchCurveKind::Arc) AppendSketchConstraint(Sketch, SketchConstraintKind::PointOnCircle, Point, SketchCurve);
+        const SketchCurveCategory Kind = Sketch.Curves[SketchCurve].Kind;
+        if (Kind == SketchCurveCategory::Line) AppendSketchConstraint(Sketch, SketchConstraintCategory::PointOnLine, Point, SketchCurve);
+        else if (Kind == SketchCurveCategory::Circle || Kind == SketchCurveCategory::Arc) AppendSketchConstraint(Sketch, SketchConstraintCategory::PointOnCircle, Point, SketchCurve);
     }
 
-    [[nodiscard]] int NextIdentifier(const SketchModel& Sketch, SketchCurveKind Kind)
+    [[nodiscard]] int NextIdentifier(const SketchModel& Sketch, SketchCurveCategory Kind)
     {
         int Largest = 0;
         for (const SketchCurve& Curve : Sketch.Curves) if (Curve.Kind == Kind) Largest = std::max(Largest, Curve.Identifier);
@@ -220,7 +220,7 @@ namespace
         for (const SketchPoint& Point : Sketch.Points) Grow(Point.Position);
         for (const SketchCurve& Curve : Sketch.Curves)
         {
-            if (Curve.Kind != SketchCurveKind::Circle) continue;
+            if (Curve.Kind != SketchCurveCategory::Circle) continue;
             const Vector2 Centre = Sketch.Points[Curve.Centre].Position;
             Grow(Centre + Vector2{ Curve.Radius, Curve.Radius });
             Grow(Centre - Vector2{ Curve.Radius, Curve.Radius });
@@ -318,7 +318,7 @@ namespace
             Points.push_back(AppendSketchPoint(Sketch, Piece.Poles[Pole]));
         }
         SketchCurve& Curve = Sketch.Curves[CurveIndex];
-        Curve.Kind   = SketchCurveKind::Spline;
+        Curve.Kind   = SketchCurveCategory::Spline;
         Curve.Form   = SketchSplineForm::Nurbs;
         Curve.Points = std::move(Points);
         Curve.Knots  = Piece.Knots;
@@ -327,7 +327,7 @@ namespace
     [[nodiscard]] std::vector<Vector2> SamplePiece(const ProfileSegment& Segment, double From, double To)
     {
         std::vector<Vector2> Polyline;
-        const int Steps = Segment.Kind == ProfileSegmentKind::Line ? 1 : 64;
+        const int Steps = Segment.Kind == ProfileSegmentCategory::Line ? 1 : 64;
         for (int Step = 0; Step <= Steps; ++Step) Polyline.push_back(EvaluateProfileSegment(Segment, From + (To - From) * Step / Steps));
         return Polyline;
     }
@@ -478,7 +478,7 @@ SketchTrimOutcome TrimSketchCurve(const SketchModel& Sketch, int CurveIndex, Vec
     const ProfileSegment Target = ResolveSketchCurveSegment(Sketch, CurveIndex, Join, Refusal);
     if (!Refusal.empty()) { Outcome.Refusal = Refusal; return Outcome; }
     // A circle, or a spline whose last point is its first (closed: first = last).
-    const bool Loop = ClosedCondition(Target) || (Target.Kind == ProfileSegmentKind::Spline && Sketch.Curves[CurveIndex].Points.size() >= 2
+    const bool Loop = ClosedCondition(Target) || (Target.Kind == ProfileSegmentCategory::Spline && Sketch.Curves[CurveIndex].Points.size() >= 2
                                                   && Sketch.Curves[CurveIndex].Points.front() == Sketch.Curves[CurveIndex].Points.back());
     const std::string Name = SketchCurveName(Sketch.Curves[CurveIndex]);
 
@@ -521,7 +521,7 @@ SketchTrimOutcome TrimSketchCurve(const SketchModel& Sketch, int CurveIndex, Vec
         EraseSketchCurve(Outcome.Sketch, CurveIndex);
         return Outcome;
     }
-    if (Target.Kind == ProfileSegmentKind::Spline)
+    if (Target.Kind == ProfileSegmentCategory::Spline)
     {
         // ③′ a spline (Hermite, Bezier, NURBS, cubic): the kept pieces are exact pieces of its B-spline carrier (knot
         //    insertion, the shape untouched), each a NURBS-form curve; constraints on the curve let go (their slots
@@ -567,7 +567,7 @@ SketchTrimOutcome TrimSketchCurve(const SketchModel& Sketch, int CurveIndex, Vec
             {
                 AssignSplinePiece(Edited, CurveIndex, SplineCarrierPiece(Carrier, Low, At(Distinct[Lower].Fraction)), { StartSlot, -1 });
                 SketchCurve Second = Original;
-                Second.Identifier  = NextIdentifier(Edited, SketchCurveKind::Spline);
+                Second.Identifier  = NextIdentifier(Edited, SketchCurveCategory::Spline);
                 Edited.Curves.push_back(Second);
                 AssignSplinePiece(Edited, static_cast<int>(Edited.Curves.size()) - 1, SplineCarrierPiece(Carrier, At(Distinct[Upper].Fraction), High), { -1, EndSlot });
             }
@@ -602,7 +602,7 @@ SketchTrimOutcome TrimSketchCurve(const SketchModel& Sketch, int CurveIndex, Vec
         const int StartPoint = AppendSketchPoint(Edited, Distinct[Upper].Position);          // The arc runs counter-clockwise
         const int EndPoint   = AppendSketchPoint(Edited, Distinct[Lower].Position);          // from the removed end to its start
         SketchCurve& Curve = Edited.Curves[CurveIndex];
-        Curve.Kind  = SketchCurveKind::Arc;
+        Curve.Kind  = SketchCurveCategory::Arc;
         Curve.Start = StartPoint;
         Curve.End   = EndPoint;
         PinToCutter(Edited, StartPoint, Distinct[Upper].SketchCurve);
@@ -619,8 +619,8 @@ SketchTrimOutcome TrimSketchCurve(const SketchModel& Sketch, int CurveIndex, Vec
     Outcome.FromFraction = Lower < 0 ? 0.0 : Distinct[Lower].Fraction;
     Outcome.ToFraction   = Upper < 0 ? 1.0 : Distinct[Upper].Fraction;
     Outcome.Removed      = SamplePiece(Target, Outcome.FromFraction, Outcome.ToFraction);
-    const SketchCurveKind Kind = Edited.Curves[CurveIndex].Kind;
-    if (Kind == SketchCurveKind::Line) DropLengthConstraints(Edited, CurveIndex);
+    const SketchCurveCategory Kind = Edited.Curves[CurveIndex].Kind;
+    if (Kind == SketchCurveCategory::Line) DropLengthConstraints(Edited, CurveIndex);
     if (Lower < 0)                                                                           // The start piece comes off
     {
         const int Point = AppendSketchPoint(Edited, Distinct[Upper].Position);
@@ -663,11 +663,11 @@ SketchTrimOutcome SplitSketchCurve(const SketchModel& Sketch, int CurveIndex, Ve
     const ProfileSegment Target = ResolveSketchCurveSegment(Sketch, CurveIndex, Join, Refusal);
     if (!Refusal.empty()) { Outcome.Refusal = Refusal; return Outcome; }
     // A circle, or a spline whose last point is its first (closed: first = last).
-    const bool Loop = ClosedCondition(Target) || (Target.Kind == ProfileSegmentKind::Spline && Sketch.Curves[CurveIndex].Points.size() >= 2
+    const bool Loop = ClosedCondition(Target) || (Target.Kind == ProfileSegmentCategory::Spline && Sketch.Curves[CurveIndex].Points.size() >= 2
                                                   && Sketch.Curves[CurveIndex].Points.front() == Sketch.Curves[CurveIndex].Points.back());
     const std::string Name = SketchCurveName(Sketch.Curves[CurveIndex]);
     const double Picked = LocateProfileFraction(Target, Pick);
-    if (Target.Kind == ProfileSegmentKind::Spline)
+    if (Target.Kind == ProfileSegmentCategory::Spline)
     {
         // A spline: two exact pieces of its carrier meeting at the pick (closed: at the pick and the partner, else the
         // pick and the point half the parameter range on); the shape is untouched.
@@ -684,7 +684,7 @@ SketchTrimOutcome SplitSketchCurve(const SketchModel& Sketch, int CurveIndex, Ve
         std::erase_if(Edited.Constraints, [&](const SketchConstraint& Constraint) { return NamesCurve(Constraint, CurveIndex); });
         Outcome.FromFraction = Outcome.ToFraction = Picked;
         SketchCurve Second = Original;
-        Second.Identifier  = NextIdentifier(Edited, SketchCurveKind::Spline);
+        Second.Identifier  = NextIdentifier(Edited, SketchCurveCategory::Spline);
         Edited.Curves.push_back(Second);
         const int SecondIndex = static_cast<int>(Edited.Curves.size()) - 1;
         if (Loop)
@@ -734,15 +734,15 @@ SketchTrimOutcome SplitSketchCurve(const SketchModel& Sketch, int CurveIndex, Ve
         const int     FirstPoint  = AppendSketchPoint(Edited, First);
         const int     SecondPoint = AppendSketchPoint(Edited, Second);
         SketchCurve& Curve = Edited.Curves[CurveIndex];
-        Curve.Kind  = SketchCurveKind::Arc;
+        Curve.Kind  = SketchCurveCategory::Arc;
         Curve.Start = FirstPoint;
         Curve.End   = SecondPoint;
         SketchCurve Other = Curve;
-        Other.Identifier  = NextIdentifier(Edited, SketchCurveKind::Arc);
+        Other.Identifier  = NextIdentifier(Edited, SketchCurveCategory::Arc);
         Other.Start       = SecondPoint;
         Other.End         = FirstPoint;
         Edited.Curves.push_back(Other);
-        CopyShapeConstraints(Edited, CurveIndex, static_cast<int>(Edited.Curves.size()) - 1, SketchCurveKind::Arc);
+        CopyShapeConstraints(Edited, CurveIndex, static_cast<int>(Edited.Curves.size()) - 1, SketchCurveCategory::Arc);
         Outcome.SplitPositions = { First, Second };
         Outcome.Pieces         = 2;
         return Outcome;
@@ -755,8 +755,8 @@ SketchTrimOutcome SplitSketchCurve(const SketchModel& Sketch, int CurveIndex, Ve
 
     // ② a line or an arc: the curve keeps its start part, a new curve carries the rest; both share the new point.
     const Vector2         Position = EvaluateProfileSegment(Target, Picked);
-    const SketchCurveKind Kind     = Edited.Curves[CurveIndex].Kind;
-    if (Kind == SketchCurveKind::Line) DropLengthConstraints(Edited, CurveIndex);
+    const SketchCurveCategory Kind     = Edited.Curves[CurveIndex].Kind;
+    if (Kind == SketchCurveCategory::Line) DropLengthConstraints(Edited, CurveIndex);
     const int   Point  = AppendSketchPoint(Edited, Position);
     SketchCurve Second = Edited.Curves[CurveIndex];
     Second.Identifier  = NextIdentifier(Edited, Kind);
@@ -780,7 +780,7 @@ SketchTrimOutcome InsertSketchCurvePoint(const SketchModel& Sketch, int CurveInd
     const std::string  Name     = SketchCurveName(Original);
 
     // ① lines, arcs, circles: Cut's split, the line's direction constraints let go.
-    if (Original.Kind != SketchCurveKind::Spline)
+    if (Original.Kind != SketchCurveCategory::Spline)
     {
         const size_t PointsBefore = Sketch.Points.size();
         Outcome = SplitSketchCurve(Sketch, CurveIndex, Pick);
@@ -790,12 +790,12 @@ SketchTrimOutcome InsertSketchCurvePoint(const SketchModel& Sketch, int CurveInd
             return Outcome;
         }
         Outcome.InsertedPoint = static_cast<int>(PointsBefore);                              // The first point the split appended
-        if (Original.Kind == SketchCurveKind::Line)
+        if (Original.Kind == SketchCurveCategory::Line)
         {
             const int Second = static_cast<int>(Outcome.Sketch.Curves.size()) - 1;
             std::erase_if(Outcome.Sketch.Constraints, [&](const SketchConstraint& Constraint)
             {
-                using Kind = SketchConstraintKind;
+                using Kind = SketchConstraintCategory;
                 const bool Direction = Constraint.Kind == Kind::Horizontal || Constraint.Kind == Kind::Vertical || Constraint.Kind == Kind::Parallel
                                     || Constraint.Kind == Kind::Perpendicular || Constraint.Kind == Kind::Angle;
                 const bool Touches   = Constraint.First == CurveIndex || Constraint.First == Second || Constraint.Second == CurveIndex || Constraint.Second == Second;

@@ -190,7 +190,7 @@ struct LexToken
 //                                      RECURSIVE-DESCENT COMPILER (BYTECODE + .SLANG)
 //------------------------------------------------------------------------------------------------------------------------
 
-struct ParsedValueResult
+struct ParsedScalarOutput
 {
     FormulaExpressionCategory Category = FormulaExpressionCategory::Scalar;
     std::string               SlangCode{};
@@ -207,7 +207,7 @@ public:
 
     bool CompileRoot()
     {
-        ParsedValueResult Result{};
+        ParsedScalarOutput Result{};
         if (!ParseAdditive(Result))
         {
             return false;
@@ -273,7 +273,7 @@ private:
         return true;
     }
 
-    bool ParseAdditive(ParsedValueResult& Out)
+    bool ParseAdditive(ParsedScalarOutput& Out)
     {
         if (!ParseMultiplicative(Out))
         {
@@ -284,7 +284,7 @@ private:
             const bool IsAdd = (Current().Category == LexTokenCategory::Plus);
             const uint32_t Col = Current().Column;
             Advance();
-            ParsedValueResult Rhs{};
+            ParsedScalarOutput Rhs{};
             if (!ParseMultiplicative(Rhs))
             {
                 return false;
@@ -304,7 +304,7 @@ private:
         return true;
     }
 
-    bool ParseMultiplicative(ParsedValueResult& Out)
+    bool ParseMultiplicative(ParsedScalarOutput& Out)
     {
         if (!ParsePower(Out))
         {
@@ -318,7 +318,7 @@ private:
             const LexTokenCategory Op  = Current().Category;
             const uint32_t         Col = Current().Column;
             Advance();
-            ParsedValueResult Rhs{};
+            ParsedScalarOutput Rhs{};
             if (!ParsePower(Rhs))
             {
                 return false;
@@ -407,7 +407,7 @@ private:
         return true;
     }
 
-    bool ParsePower(ParsedValueResult& Out)
+    bool ParsePower(ParsedScalarOutput& Out)
     {
         if (!ParseUnary(Out))
         {
@@ -417,7 +417,7 @@ private:
         {
             const uint32_t Col = Current().Column;
             Advance();
-            ParsedValueResult Exponent{};
+            ParsedScalarOutput Exponent{};
             if (!ParsePower(Exponent))
             {
                 return false;
@@ -435,7 +435,7 @@ private:
         return true;
     }
 
-    bool ParseUnary(ParsedValueResult& Out)
+    bool ParseUnary(ParsedScalarOutput& Out)
     {
         if (Current().Category == LexTokenCategory::Minus)
         {
@@ -459,7 +459,7 @@ private:
         return ParsePostfix(Out);
     }
 
-    bool ParsePostfix(ParsedValueResult& Out)
+    bool ParsePostfix(ParsedScalarOutput& Out)
     {
         if (!ParsePrimary(Out))
         {
@@ -503,7 +503,7 @@ private:
         return true;
     }
 
-    bool ParsePrimary(ParsedValueResult& Out)
+    bool ParsePrimary(ParsedScalarOutput& Out)
     {
         const LexToken Tok = Current();
         if (Tok.Category == LexTokenCategory::Number)
@@ -548,7 +548,7 @@ private:
         return Fail("Expected scalar, vector, or subexpression", Tok.Column);
     }
 
-    bool ResolveSymbolIdentifier(const std::string& Name, uint32_t Col, ParsedValueResult& Out)
+    bool ResolveSymbolIdentifier(const std::string& Name, uint32_t Col, ParsedScalarOutput& Out)
     {
         if (Name == "p" || Name == "pos")
         {
@@ -633,14 +633,14 @@ private:
         return Fail("Unknown symbol '" + Name + "'", Col);
     }
 
-    bool ParseArgumentList(std::vector<ParsedValueResult>& OutArgs)
+    bool ParseArgumentList(std::vector<ParsedScalarOutput>& OutArgs)
     {
         Advance(); // consume '('
         if (Current().Category != LexTokenCategory::RightParen)
         {
             while (true)
             {
-                ParsedValueResult Arg{};
+                ParsedScalarOutput Arg{};
                 if (!ParseAdditive(Arg))
                 {
                     return false;
@@ -662,9 +662,9 @@ private:
         return true;
     }
 
-    bool ParseFunctionCall(const std::string& FnName, uint32_t Col, ParsedValueResult& Out)
+    bool ParseFunctionCall(const std::string& FnName, uint32_t Col, ParsedScalarOutput& Out)
     {
-        std::vector<ParsedValueResult> Args;
+        std::vector<ParsedScalarOutput> Args;
         if (!ParseArgumentList(Args))
         {
             return false;

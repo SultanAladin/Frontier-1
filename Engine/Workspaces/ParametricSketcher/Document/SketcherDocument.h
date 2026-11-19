@@ -17,10 +17,10 @@
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchConstraining.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchCorner.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchEditing.h"
-#include "Engine/GeometrySpace/Parametric/Sketch/SketchFlow.h"
+#include "Engine/GeometrySpace/Parametric/Sketch/SketchRailDeform.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchRegion.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchTrim.h"
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <cstdint>
 #include <map>
@@ -37,7 +37,7 @@ namespace Frontier::Workspaces::Sketcher
 //------------------------------------------------------------------------------------------------------------------------
 
 // 📝 Construct catalogue tiles. Every tile authors an editable sketch + sweep pair, never a frozen primitive body.
-enum class SketcherConstructKind : uint8_t
+enum class SketcherConstructCategory : uint8_t
 {
     Block    = 0,                                                                            // Rectangle sketch on XY, extruded along +z
     Cylinder = 1,                                                                            // Circle sketch on XY, extruded along +z
@@ -51,7 +51,7 @@ enum class SketcherConstructKind : uint8_t
 
 // 📝 Drawing tools on the construction plane (Plasticity: Shift+A line, Shift+Q corner rectangle, Shift+W centre circle,
 //    Shift+S curve; arc and slot from the Draw card). Each finished drawing becomes one editable sketch step.
-enum class SketcherDrawingKind : uint8_t
+enum class SketcherDrawingCategory : uint8_t
 {
     Line      = 0,                                                                           // Polyline through the clicks (closes on its first point)
     Rectangle = 1,                                                                           // Two corners, or centre + corner
@@ -62,7 +62,7 @@ enum class SketcherDrawingKind : uint8_t
     Polygon   = 6,                                                                           // Regular polygon: centre + a vertex (Sides)
 };
 
-enum class SketcherSelectionKind : uint8_t
+enum class SketcherSelectionCategory : uint8_t
 {
     Face = 0,                                                                                // A face (persistent name)
     Edge = 1,                                                                                // An edge (persistent name)
@@ -81,7 +81,7 @@ enum class SketcherSelectionKind : uint8_t
 //    z (and every Height) along its outward normal — so the solid stands on the face whatever its tilt.
 struct SketcherConstructRequest
 {
-    SketcherConstructKind        Kind        = SketcherConstructKind::Block;                 // [-]   - Tile
+    SketcherConstructCategory        Kind        = SketcherConstructCategory::Block;                 // [-]   - Tile
     GeometrySpace::Parametric::FeatureCombination Combination = GeometrySpace::Parametric::FeatureCombination::Union;           // [-]   - With the target body (first body: New; Separate = new body)
     std::string                  Target      = {};                                           // [-]   - Body key the Boolean acts on (empty: the active body)
     GeometrySpace::Parametric::Vector3            Position    = { 0.0, 0.0, 0.0 };                             // [len] - Placement
@@ -96,7 +96,7 @@ struct SketcherConstructRequest
     int                          Sides       = 6;                                            // [-]   - Prism sides (3 … 64)
     double                       Angle       = 0.0;                                          // [rad] - Prism: direction of the first vertex from the centre
     bool                         PlaneCondition = false;                                     // [-]   - Built on Plane (a body face) instead of the world floor
-    GeometrySpace::Parametric::OrthonormalFrame   Plane       = {};                                           // [len] - Face frame (origin, x̂, ŷ, outward n̂) when PlaneCondition
+    GeometrySpace::Parametric::OrthonormalBasis   Plane       = {};                                           // [len] - Face frame (origin, x̂, ŷ, outward n̂) when PlaneCondition
     double                       Start       = 0.0;                                          // [len] - ≤ 0: Union extrudes start this far below Plane (curved face)
 };
 
@@ -104,7 +104,7 @@ struct SketcherConstructRequest
 //    the kind are read; a Line or Curve is closed when ClosedCondition (its last point joins its first).
 struct SketcherDrawingRequest
 {
-    SketcherDrawingKind            Kind            = SketcherDrawingKind::Line;              // [-]   - Tool
+    SketcherDrawingCategory            Kind            = SketcherDrawingCategory::Line;              // [-]   - Tool
     int                            GridPlane       = 0;                                      // [-]   - 0 XY · 1 XZ · 2 YZ
     std::vector<GeometrySpace::Parametric::Vector2> Points          = {};                                     // [len] - Clicks in plane coordinates
     bool                           ClosedCondition = false;                                  // [-]   - Line / curve: close the chain
@@ -112,7 +112,7 @@ struct SketcherDrawingRequest
     GeometrySpace::Parametric::SketchSplineForm     Form            = GeometrySpace::Parametric::SketchSplineForm::CubicSpline; // [-]  - Curve form (Plasticity 1 … 4)
     int                            Sides           = 6;                                      // [-]   - Polygon sides (3 … 64)
     bool                           PlaneCondition  = false;                                  // [-]   - Plane below replaces GridPlane (drawn on a body face)
-    GeometrySpace::Parametric::OrthonormalFrame     Plane           = {};                                     // [len] - Face plane (origin, x̂, ŷ, n̂) when PlaneCondition
+    GeometrySpace::Parametric::OrthonormalBasis     Plane           = {};                                     // [len] - Face plane (origin, x̂, ŷ, n̂) when PlaneCondition
     bool                           FillCondition   = false;                                  // [-]   - Closed loops start filled (Plasticity: unfilled until F / Fill)
 };
 
@@ -123,7 +123,7 @@ struct SketcherSelection
     std::vector<std::string> Edges = {};                                                     // [-] - Selected edge names
     std::vector<std::string> Curves = {};                                                    // [-] - Selected SpaceCurve labels, in pick order (loft order)
     std::vector<std::string> Bodies = {};                                                    // [-] - Selected body keys, in pick order (first = Boolean target)
-    SketcherSelectionKind    LastKind = SketcherSelectionKind::Face;                          // [-] - Kind of the most recent pick (active operand)
+    SketcherSelectionCategory    LastKind = SketcherSelectionCategory::Face;                          // [-] - Kind of the most recent pick (active operand)
     std::string              PickedBody = {};                                                // [-] - Body the faces / edges were picked on (pieces of one cut share names)
     std::vector<std::string> Vertices = {};                                                  // [-] - Selected body vertex names (mode 1, reshape)
 };
@@ -156,11 +156,11 @@ struct SketcherTrimRequest
 };
 
 // 📝 Flow along curve: Rail is the sketch the shapes follow (the first pick), Shapes the coplanar sketches bent along it.
-struct SketcherFlowRequest
+struct SketcherRailDeformRequest
 {
     std::string                            Rail     = {};                                    // [-] - Rail sketch step label
     std::vector<std::string>               Shapes   = {};                                    // [-] - Shape sketch step labels
-    GeometrySpace::Parametric::SketchFlowSettings Settings = {};                                    // [-] - Axis, stretch, direction
+    GeometrySpace::Parametric::SketchRailDeformSettings Settings = {};                                    // [-] - Axis, stretch, direction
 };
 
 // 📝 Wrap around curve: the shapes (any planes) laid round the surface the rail sweeps along its normal (a circle: a can).
@@ -182,7 +182,7 @@ struct SketcherRegionRequest
 struct SketcherRegionPreview
 {
     GeometrySpace::Parametric::SketchRegion     Region      = {};                                   // [-] - Loops in Plane coordinates
-    GeometrySpace::Parametric::OrthonormalFrame Plane       = {};                                   // [-] - Plane of Region (elevation applied)
+    GeometrySpace::Parametric::OrthonormalBasis Plane       = {};                                   // [-] - Plane of Region (elevation applied)
     std::vector<std::string>             Sources     = {};                                   // [-] - Sketch label per input segment
     std::string                          WholeSketch = {};                                   // [-] - Region is exactly this sketch's own loops
     std::string                          Refusal     = {};                                   // [-] - Why no region
@@ -280,7 +280,7 @@ struct SketcherBodySummary
 // 📝 Persistent associative CAD dimension annotation in 3D model space: Linear (aligned or ΔX/ΔY/ΔZ), Radius (R),
 //    Diameter (⌀), or Angular (°). When FirstName / SecondName reference persistent B-rep topology or curves,
 //    RefreshSketcherDimensions recomputes exact endpoints / radii / angles on every regeneration.
-enum class SketcherDimensionKind : uint8_t
+enum class SketcherDimensionCategory : uint8_t
 {
     Linear   = 0,                                                                            // Point-to-point, edge length, clearance, or ΔX/ΔY/ΔZ
     Radius   = 1,                                                                            // R callout on arc, circle, cylinder, or sphere
@@ -291,10 +291,10 @@ enum class SketcherDimensionKind : uint8_t
 struct SketcherDimension
 {
     std::string                 Id               = {};                                       // [-]     - Unique identifier ("Dim1", "Dim2", …)
-    SketcherDimensionKind       Kind             = SketcherDimensionKind::Linear;            // [-]     - Linear, Radius, Diameter, Angular
-    SketcherSelectionKind       FirstKind        = SketcherSelectionKind::Vertex;            // [-]     - First associative entity kind
+    SketcherDimensionCategory       Kind             = SketcherDimensionCategory::Linear;            // [-]     - Linear, Radius, Diameter, Angular
+    SketcherSelectionCategory       FirstKind        = SketcherSelectionCategory::Vertex;            // [-]     - First associative entity kind
     std::string                 FirstName        = {};                                       // [-]     - Persistent name (empty: explicit point)
-    SketcherSelectionKind       SecondKind       = SketcherSelectionKind::Vertex;            // [-]     - Second associative entity kind
+    SketcherSelectionCategory       SecondKind       = SketcherSelectionCategory::Vertex;            // [-]     - Second associative entity kind
     std::string                 SecondName       = {};                                       // [-]     - Persistent name (empty: explicit / single)
     GeometrySpace::Parametric::Vector3 FirstPoint       = {};                                       // [len]   - Start point (or centre for R / ⌀ / ∠)
     GeometrySpace::Parametric::Vector3 SecondPoint      = {};                                       // [len]   - End point (or rim point for R / ⌀)
@@ -413,13 +413,13 @@ struct VehicleCurveFile;
 [[nodiscard]] std::vector<SketcherBlendHandle> MeasureSketcherBlendHandles(const SketcherDocument& Document, const std::vector<std::string>& Edges);
 [[nodiscard]] SketcherBlendFit MeasureSketcherBlendFit(const SketcherDocument& Document, const std::vector<std::string>& Edges);
 // Direction (gizmo): Tweak moves along it by Amount, Rotate turns about it (through each face centre) by Amount [rad].
-[[nodiscard]] SketcherCommandOutcome ChangeSketcherSelection(SketcherDocument& Document, GeometrySpace::Parametric::FaceOperationKind Operation, double Amount,
+[[nodiscard]] SketcherCommandOutcome ChangeSketcherSelection(SketcherDocument& Document, GeometrySpace::Parametric::FaceOperationCategory Operation, double Amount,
                                                              std::optional<GeometrySpace::Parametric::Vector3> Direction = std::nullopt);
 // Inset (Plasticity O on faces · I): border ring Distance wide; the inner face moves Depth along the outward normal (− pocket).
 // 💡 Direct edit of the picked vertices / edges (mode 1 / 2 gizmo): a FaceOperation Reshape step carrying them by Map; the
 //    faces at them are re-fitted (planes when still flat, or bilinear NURBS patches for four-sided faces across single or
 //    repeated vertex edits). Like face changes, it goes before the same body's trailing fillets so they re-solve on the new shape.
-[[nodiscard]] SketcherCommandOutcome ReshapeSketcherSelection(SketcherDocument& Document, const GeometrySpace::Parametric::AffineMap& Map, const std::string& Verb);
+[[nodiscard]] SketcherCommandOutcome ReshapeSketcherSelection(SketcherDocument& Document, const GeometrySpace::Parametric::AffineMapping& Map, const std::string& Verb);
 [[nodiscard]] SketcherCommandOutcome InsetSketcherSelection(SketcherDocument& Document, double Distance, double Depth);
 [[nodiscard]] SketcherCommandOutcome AssignSketcherParameter(SketcherDocument& Document, const std::string& Name, double Value);
 [[nodiscard]] SketcherCommandOutcome DeleteSketcherStep(SketcherDocument& Document, const std::string& Label);
@@ -469,7 +469,7 @@ struct VehicleCurveFile;
 // 💡 Flow along curve (Rhino Flow): the shapes (joined in the first shape's plane) bent along the rail by
 //    GeometrySpace::Parametric::FlowSketchModel, as a new sketch step "FlowN" in the rail's plane, picked; filled when the first
 //    shape is filled and the result is still a closed profile. The shapes and the rail stay. One undo entry.
-[[nodiscard]] SketcherCommandOutcome FlowSketcherSketches(SketcherDocument& Document, const SketcherFlowRequest& Request);
+[[nodiscard]] SketcherCommandOutcome FlowSketcherSketches(SketcherDocument& Document, const SketcherRailDeformRequest& Request);
 
 // 💡 Wrap around curve: GeometrySpace::Parametric::WrapSketchModels lays every shape curve round the rail's surface (one shared
 //    centre, so letters stay apart); each wrapped curve becomes a 3D curve step ("WrapN", a SpaceCurve fitted to 10⁻⁶ of
@@ -506,7 +506,7 @@ struct SketcherPointCut
 
 // 💡 X / Delete on the picked faces. Fillet / chamfer faces (Blend#n.Strip(edge)) un-blend: their blend step lets go of the
 //    source edges (an emptied blend step goes), so the sharp edge comes back exactly. Any other face is deleted and its
-//    neighbours grow over the gap (FaceOperationKind::Delete, heal). One undo entry; refused (document untouched) when the
+//    neighbours grow over the gap (FaceOperationCategory::Delete, heal). One undo entry; refused (document untouched) when the
 //    solid cannot close or a later step refuses.
 [[nodiscard]] SketcherCommandOutcome DeleteSketcherFaces(SketcherDocument& Document);
 
@@ -533,24 +533,24 @@ struct SketcherPointCut
 // Plasticity G / R / S: one Transform step per body applying Map (x′ = X·x + Y·y + Z·z + Shift); Verb captions the steps
 // ("Move", "Rotate", "Scale"). Names, selection and every later step that references the bodies follow them.
 [[nodiscard]] SketcherCommandOutcome TransformSketcherBodies(SketcherDocument& Document, const std::vector<std::string>& Keys,
-                                                             const GeometrySpace::Parametric::AffineMap& Map, const std::string& Verb);
+                                                             const GeometrySpace::Parametric::AffineMapping& Map, const std::string& Verb);
 
 // 📝 G / R / S and the gizmo on sketches: a rigid Map carries each listed Sketch step's plane (the elevation rides
 //    along its normal); a scale moves the solved points into the image plane, circle radii and dimensions scale with it
 //    (S then X / Y stretches lines and splines, refusing arcs and circles: they would be ellipses 🚧). A pure mirror is
 //    refused (🚧), as are labels that are not sketches. Later steps regenerate from the new sketch.
 [[nodiscard]] SketcherCommandOutcome PlaceSketcherSketches(SketcherDocument& Document, const std::vector<std::string>& Labels,
-                                                           const GeometrySpace::Parametric::AffineMap& Map, const std::string& Verb);
+                                                           const GeometrySpace::Parametric::AffineMapping& Map, const std::string& Verb);
 
 // Shift+D / Ctrl+D on 2D objects: each listed sketch is copied as a new sketch step (next caption of its kind, e.g.
 // Circle2) carried by Map as PlaceSketcherSketches does (scales too); the copies are selected.
 [[nodiscard]] SketcherCommandOutcome DuplicateSketcherSketches(SketcherDocument& Document, const std::vector<std::string>& Labels,
-                                                               const GeometrySpace::Parametric::AffineMap& Map);
+                                                               const GeometrySpace::Parametric::AffineMapping& Map);
 
 // Shift+D / Ctrl+V: one Duplicate step per body, placed by Map; each copy is a new body (key = its step label), the last
 // one active, the copies selected. Source (paste) copies each body as it stood right after that step — the clipboard.
 [[nodiscard]] SketcherCommandOutcome DuplicateSketcherBodies(SketcherDocument& Document, const std::vector<std::string>& Keys,
-                                                             const GeometrySpace::Parametric::AffineMap& Map, const std::string& Source = {});
+                                                             const GeometrySpace::Parametric::AffineMapping& Map, const std::string& Source = {});
 
 // 💡 Knife (KitOps-style cutters, Shift+K): a closed sketch is filled and extruded from Top (≥ 0, a lift above its plane
 //    so the cutter clears a flush face) down to Bottom (< Top, below the plane) and combined into Target (Difference cuts,
@@ -565,7 +565,7 @@ struct SketcherInsertPlacement
 {
     std::string                            Name        = {};                                 // [-] - Library caption ("Round hole")
     std::string                            Exchange    = {};                                 // [-] - STEP text (insert frame)
-    GeometrySpace::Parametric::AffineMap          Map         = {};                                 // [-] - Insert frame → world
+    GeometrySpace::Parametric::AffineMapping          Map         = {};                                 // [-] - Insert frame → world
     GeometrySpace::Parametric::FeatureCombination Combination = GeometrySpace::Parametric::FeatureCombination::Difference; // [-] - Into Target
     std::string                            Target      = {};                                 // [-] - Body cut / joined
 };
@@ -585,7 +585,7 @@ struct SketcherInsertPlacement
 //    step; KeepCondition places a Duplicate instead so the cutter stays where it was) and combined into Target. One undo
 //    entry; refused (document untouched) for a degenerate or mirrored Map, Tool == Target, or Separate.
 [[nodiscard]] SketcherCommandOutcome KnifeSketcherPlacedBody(SketcherDocument& Document, const std::string& Target, const std::string& Tool,
-                                                             const GeometrySpace::Parametric::AffineMap& Map, GeometrySpace::Parametric::FeatureCombination Combination,
+                                                             const GeometrySpace::Parametric::AffineMapping& Map, GeometrySpace::Parametric::FeatureCombination Combination,
                                                              bool KeepCondition);
 
 // 📝 Knife with a Construct primitive drawn as the cutter (box, cylinder, cone, prism, sphere, torus, wedge, tube): the
@@ -601,11 +601,11 @@ struct SketcherInsertPlacement
 //    so the step card and the parameter fields drag it, replaying from the joint only.
 struct SketcherJointRequest
 {
-    SketcherSelectionKind MovingKind  = SketcherSelectionKind::Edge;                         // [-]   - Edge or face
+    SketcherSelectionCategory MovingKind  = SketcherSelectionCategory::Edge;                         // [-]   - Edge or face
     std::string           MovingName  = {};                                                  // [-]   - Joint origin on the moving body
-    SketcherSelectionKind FixedKind   = SketcherSelectionKind::Edge;                         // [-]   - Edge or face
+    SketcherSelectionCategory FixedKind   = SketcherSelectionCategory::Edge;                         // [-]   - Edge or face
     std::string           FixedName   = {};                                                  // [-]   - Joint origin on the fixed body
-    GeometrySpace::Parametric::JointKind   Kind        = GeometrySpace::Parametric::JointKind::Revolute;                       // [-]   - Fusion joint type
+    GeometrySpace::Parametric::JointCategory   Kind        = GeometrySpace::Parametric::JointCategory::Revolute;                       // [-]   - Fusion joint type
     double                Angle       = 0.0;                                                 // [deg] - Turn about the joint 𝑧 (ball: yaw)
     double                Offset      = 0.0;                                                 // [len] - Along the joint 𝑧
     double                Slide       = 0.0;                                                 // [len] - Slider / cylindrical 𝑧 · pin-slot / planar 𝑥
@@ -619,12 +619,12 @@ struct SketcherJointRequest
 struct SketcherJointOrigin
 {
     std::string                Body        = {};                                             // [-] - Owning body key
-    GeometrySpace::Parametric::OrthonormalFrame Frame       = {};                                             // [-] - Origin and axes (world)
+    GeometrySpace::Parametric::OrthonormalBasis Frame       = {};                                             // [-] - Origin and axes (world)
     std::string                Description = {};                                             // [-] - "circle centre", "plane centroid", …
     std::string                Refusal     = {};                                             // [-] - Empty when the entity offers one
 };
 
-[[nodiscard]] SketcherJointOrigin ResolveSketcherJointOrigin(const SketcherDocument& Document, SketcherSelectionKind Kind, const std::string& Name);
+[[nodiscard]] SketcherJointOrigin ResolveSketcherJointOrigin(const SketcherDocument& Document, SketcherSelectionCategory Kind, const std::string& Name);
 
 // 📝 Exact foot of a point on a named face's surface: the closest surface point and the outward unit normal there (the
 //    face sense applied). The tangent plane of a curved face for sketching on it (Orient to faces).
@@ -791,16 +791,16 @@ struct SketcherLinkedPicks
                                                               const std::vector<GeometrySpace::Parametric::Vector2>& Targets);
 
 // "H3", "D2": the label the next constraint of that kind gets in Sketch.
-[[nodiscard]] std::string NextSketcherConstraintLabel(const GeometrySpace::Parametric::SketchModel& Sketch, GeometrySpace::Parametric::SketchConstraintKind Kind);
+[[nodiscard]] std::string NextSketcherConstraintLabel(const GeometrySpace::Parametric::SketchModel& Sketch, GeometrySpace::Parametric::SketchConstraintCategory Kind);
 
 // Key of the body carrying a face / edge name, or the key itself for Body; empty when no body has it.
-[[nodiscard]] std::string SketcherBodyOfName(const SketcherDocument& Document, SketcherSelectionKind Kind, const std::string& Name);
+[[nodiscard]] std::string SketcherBodyOfName(const SketcherDocument& Document, SketcherSelectionCategory Kind, const std::string& Name);
 
 // Shown name of a body: the caption of its creating step ("Block1"), else the key.
 [[nodiscard]] std::string SketcherBodyCaption(const SketcherDocument& Document, const std::string& Key);
 
 // Construction plane frame: 0 XY (normal +z), 1 XZ (x → x, sketch y → z, normal −y), 2 YZ (y → x, z → y, normal +x).
-[[nodiscard]] GeometrySpace::Parametric::OrthonormalFrame SketcherSketchPlane(int GridPlane) noexcept;
+[[nodiscard]] GeometrySpace::Parametric::OrthonormalBasis SketcherSketchPlane(int GridPlane) noexcept;
 
 // A sketch step some extrude / revolve already uses as its profile.
 [[nodiscard]] bool SketcherSketchConsumedCondition(const SketcherDocument& Document, const std::string& SketchLabel);
@@ -879,7 +879,7 @@ struct SketcherSpaceLoopPreview
 //    3D curve of the same form through its points (Points of Sketch → Targets, in the world; Plane: the sketch's placed
 //    plane) and leaves the sketch (an emptied sketch goes). Refused when an arc / circle passes through a moved
 //    point, or when a later step uses the sketch. The new curves are picked; one undo entry.
-[[nodiscard]] SketcherCommandOutcome LiftSketcherSketchPoints(SketcherDocument& Document, const std::string& Sketch, const GeometrySpace::Parametric::OrthonormalFrame& Plane,
+[[nodiscard]] SketcherCommandOutcome LiftSketcherSketchPoints(SketcherDocument& Document, const std::string& Sketch, const GeometrySpace::Parametric::OrthonormalBasis& Plane,
                                                               const std::vector<int>& Points, const std::vector<GeometrySpace::Parametric::Vector3>& Targets);
 
 // 💡 V3 (Plasticity mode 1): pole Pole of a SpaceCurve moves to Position; kept as a pole edit re-applied after every re-fit.
@@ -914,7 +914,7 @@ void SummarizeSketcherDocument(SketcherDocument& Document);
 // Selection by persistent name; Additive toggles membership, otherwise the selection becomes exactly this name.
 // Body: the key of the body a face / edge was picked on (kept as Selection.PickedBody; a cut's two pieces carry the same
 // names, so the body decides which piece the blend, inset or loop works on).
-void SelectSketcherName(SketcherDocument& Document, SketcherSelectionKind Kind, const std::string& Name, bool AdditiveCondition, const std::string& Body = {});
+void SelectSketcherName(SketcherDocument& Document, SketcherSelectionCategory Kind, const std::string& Name, bool AdditiveCondition, const std::string& Body = {});
 void ClearSketcherSelection(SketcherDocument& Document);
 
 // Names of the edge's tangent chain on the current body (the edge itself first); just the name when it does not resolve.
@@ -963,9 +963,9 @@ struct SketcherEdgePath
 // Step caption for the outliner ("Block1 · Sketch", "Fillet3"), falling back to the label.
 [[nodiscard]] std::string DescribeSketcherStep(const SketcherDocument& Document, const GeometrySpace::Parametric::FeatureStep& Step);
 
-[[nodiscard]] const char* SketcherConstructLabel(SketcherConstructKind Kind) noexcept;
-[[nodiscard]] const char* SketcherFaceOperationLabel(GeometrySpace::Parametric::FaceOperationKind Operation) noexcept;
-[[nodiscard]] const char* SketcherDrawingLabel(SketcherDrawingKind Kind) noexcept;
+[[nodiscard]] const char* SketcherConstructLabel(SketcherConstructCategory Kind) noexcept;
+[[nodiscard]] const char* SketcherFaceOperationLabel(GeometrySpace::Parametric::FaceOperationCategory Operation) noexcept;
+[[nodiscard]] const char* SketcherDrawingLabel(SketcherDrawingCategory Kind) noexcept;
 
 // 💡 Modular Parametric Variables: create, rename, delete (unbinding references cleanly to their current evaluated literals),
 //    bind any step field ("Size", "EndSize", "Extent", "Start", "Elevation", "Angle", "Amount", "Offset", "Joint.Offset",
@@ -993,7 +993,7 @@ struct SketcherEdgePath
 // 💡 Multi-Stage Compound Cutters (Boolean Library): non-stretching, zero-duplicate multi-stage cutters drawn interactively
 //    stage-by-stage (Stage 1 profile → Stage 1 extrude → Stage 2 profile → Stage 2 extrude), preserving exact analytic
 //    PlaneSurface / CylinderSurface / ConeSurface carriers for both destructive cuts and semitransparent Live Booleans.
-enum class SketcherCompoundCutterKind : uint8_t
+enum class SketcherCompoundCutterCategory : uint8_t
 {
     Countersink   = 0,                                                                       // Conical chamfer Ø₁ × D₁ + shaft Ø₂ × D₂
     Counterbore   = 1,                                                                       // Cylindrical head bore Ø₁ × D₁ + shaft Ø₂ × D₂
@@ -1005,12 +1005,12 @@ enum class SketcherCompoundCutterKind : uint8_t
 
 inline constexpr int SketcherCompoundCutterCount = 6;
 
-[[nodiscard]] const char* SketcherCompoundCutterLabel(SketcherCompoundCutterKind Kind) noexcept;
+[[nodiscard]] const char* SketcherCompoundCutterLabel(SketcherCompoundCutterCategory Kind) noexcept;
 
 struct SketcherCompoundCutterSpec
 {
-    SketcherCompoundCutterKind             Kind          = SketcherCompoundCutterKind::Countersink; // [-]   - Compound profile family
-    GeometrySpace::Parametric::OrthonormalFrame   Spot          = {};                                      // [len] - Face contact origin + outward normal ZAxis
+    SketcherCompoundCutterCategory             Kind          = SketcherCompoundCutterCategory::Countersink; // [-]   - Compound profile family
+    GeometrySpace::Parametric::OrthonormalBasis   Spot          = {};                                      // [len] - Face contact origin + outward normal ZAxis
     double                                 Turn          = 0.0;                                     // [rad] - In-plane rotation about Spot.ZAxis
     double                                 OuterRadius   = 0.12;                                    // [len] - Stage 1 radius / half-width
     double                                 OuterDepth    = 0.05;                                    // [len] - Stage 1 extrude depth
@@ -1026,7 +1026,7 @@ struct SketcherCompoundCutterSpec
 // 💡 Edge Weight Groups ("vertex paint for edges"): assign literal or variable-bound weights to selected edges so Bevel
 //    modifiers reference them and interpolate smooth variable-radius rolling-ball fillets / chamfers across corners.
 [[nodiscard]] SketcherCommandOutcome AssignSketcherEdgeWeights(SketcherDocument& Document, const std::string& GroupName,
-                                                               const std::vector<std::string>& EdgeNames, GeometrySpace::Parametric::FeatureValue Weight);
+                                                               const std::vector<std::string>& EdgeNames, GeometrySpace::Parametric::FeatureScalar Weight);
 [[nodiscard]] SketcherCommandOutcome RemoveSketcherEdgeGroup(SketcherDocument& Document, const std::string& GroupName);
 void                                 SelectSketcherEdgeGroup(SketcherDocument& Document, const std::string& GroupName);
 
@@ -1045,10 +1045,10 @@ void                                 SelectSketcherEdgeGroup(SketcherDocument& D
 // 💡 Persistent CAD Dimension Lines (D): associative 3D linear, radial, diametral, angular, and bounding-box dimensions.
 void                                                RefreshSketcherDimensions(SketcherDocument& Document);
 [[nodiscard]] std::vector<SketcherDimension>        EvaluateSketcherDimensions(const SketcherDocument& Document);
-[[nodiscard]] const char*                           SketcherDimensionKindLabel(SketcherDimensionKind Kind) noexcept;
+[[nodiscard]] const char*                           SketcherDimensionKindLabel(SketcherDimensionCategory Kind) noexcept;
 [[nodiscard]] std::string                           FormatSketcherDimension(const SketcherDimension& Dimension);
 [[nodiscard]] SketcherCommandOutcome                AddSketcherDimensionFromSelection(SketcherDocument& Document,
-                                                                                      std::optional<SketcherDimensionKind> PreferredKind = std::nullopt,
+                                                                                      std::optional<SketcherDimensionCategory> PreferredKind = std::nullopt,
                                                                                       double Offset = 0.35);
 [[nodiscard]] SketcherCommandOutcome                AddSketcherInteractiveDimension(SketcherDocument& Document, const SketcherDimension& Spec);
 [[nodiscard]] SketcherCommandOutcome                AddSketcherPointDimension(SketcherDocument& Document, GeometrySpace::Parametric::Vector3 First,
@@ -1056,9 +1056,9 @@ void                                                RefreshSketcherDimensions(Sk
                                                                               GeometrySpace::Parametric::Vector3 PlaneNormal = { 0.0, 0.0, 1.0 },
                                                                               double Offset = 0.35, int AxisFilter = -1,
                                                                               const std::string& FirstEntity = {},
-                                                                              SketcherSelectionKind FirstKind = SketcherSelectionKind::Vertex,
+                                                                              SketcherSelectionCategory FirstKind = SketcherSelectionCategory::Vertex,
                                                                               const std::string& SecondEntity = {},
-                                                                              SketcherSelectionKind SecondKind = SketcherSelectionKind::Vertex);
+                                                                              SketcherSelectionCategory SecondKind = SketcherSelectionCategory::Vertex);
 [[nodiscard]] SketcherCommandOutcome                UpdateSketcherDimensionOffset(SketcherDocument& Document, const std::string& Id, double Offset);
 [[nodiscard]] SketcherCommandOutcome                UpdateSketcherDimensionPlacement(SketcherDocument& Document, const std::string& Id, double Offset,
                                                                                      GeometrySpace::Parametric::Vector3 Direction,

@@ -29,12 +29,12 @@ namespace
     constexpr double ParallelSine   = 1.0e-12;                                               // [-]   - Axes / normals parallel below
     constexpr double ParameterSlack = 1.0e-9;                                                // [-]   - Box membership slack
 
-    [[nodiscard]] const OrthonormalFrame& FrameOf(const SurfaceGeometry& Surface) noexcept
+    [[nodiscard]] const OrthonormalBasis& FrameOf(const SurfaceGeometry& Surface) noexcept
     {
-        return std::visit([](const auto& Typed) -> const OrthonormalFrame&
+        return std::visit([](const auto& Typed) -> const OrthonormalBasis&
         {
             using Kind = std::decay_t<decltype(Typed)>;
-            if constexpr (std::is_same_v<Kind, RollingBallSurface> || std::is_same_v<Kind, NurbsSurface> || std::is_same_v<Kind, ParallelSurface>) { static const OrthonormalFrame Unused{}; return Unused; }   // Never an axis candidate
+            if constexpr (std::is_same_v<Kind, RollingBallSurface> || std::is_same_v<Kind, NurbsSurface> || std::is_same_v<Kind, ParallelSurface>) { static const OrthonormalBasis Unused{}; return Unused; }   // Never an axis candidate
             else return Typed.Frame;
         }, Surface);
     }
@@ -42,7 +42,7 @@ namespace
     [[nodiscard]] Vector2 BoxCentre(const ParameterBox& Box) noexcept { return (Box.Low + Box.High) * 0.5; }
 
     // Everything the marching and the analytic clipper share about the pair.
-    struct IntersectionContext
+    struct IntersectionEnvironment
     {
         const SurfaceGeometry&             First;
         const ParameterBox&                FirstBox;
@@ -53,7 +53,7 @@ namespace
         SurfaceIntersectionOutcome&        Outcome;
     };
 
-    [[nodiscard]] bool InsideBoth(const IntersectionContext& Context, Vector3 Position)
+    [[nodiscard]] bool InsideBoth(const IntersectionEnvironment& Context, Vector3 Position)
     {
         return InsideParameterBox(Context.First, Context.FirstBox, ProjectOntoSurface(Context.First, Position, BoxCentre(Context.FirstBox)), ParameterSlack)
             && InsideParameterBox(Context.Second, Context.SecondBox, ProjectOntoSurface(Context.Second, Position, BoxCentre(Context.SecondBox)), ParameterSlack);
@@ -76,7 +76,7 @@ namespace
 
     // ---- Pair probes and correctors -----------------------------------------------------------------------------------
 
-    struct PairProbe
+    struct PairQuery
     {
         SurfaceDistance First  = {};                                                         // [-] - Distance to the first surface
         SurfaceDistance Second = {};                                                         // [-] - Distance to the second surface
@@ -84,9 +84,9 @@ namespace
         double          Sine   = 0.0;                                                        // [-] - |N₁ × N₂|
     };
 
-    [[nodiscard]] PairProbe ProbePair(const IntersectionContext& Context, Vector3 Position)
+    [[nodiscard]] PairQuery ProbePair(const IntersectionEnvironment& Context, Vector3 Position)
     {
-        PairProbe Probe;
+        PairQuery Probe;
         Probe.First  = MeasureSurfaceDistance(Context.First, Position);
         Probe.Second = MeasureSurfaceDistance(Context.Second, Position);
         Probe.Cross  = Cross(Probe.First.Normal, Probe.Second.Normal);
@@ -94,9 +94,9 @@ namespace
         return Probe;
     }
 
-    [[nodiscard]] PairProbe ProbePairNear(const IntersectionContext& Context, Vector3 Position, Vector2& FirstHint, Vector2& SecondHint)
+    [[nodiscard]] PairQuery ProbePairNear(const IntersectionEnvironment& Context, Vector3 Position, Vector2& FirstHint, Vector2& SecondHint)
     {
-        PairProbe Probe;
+        PairQuery Probe;
         Probe.First  = MeasureSurfaceDistanceNear(Context.First, Position, FirstHint);
         Probe.Second = MeasureSurfaceDistanceNear(Context.Second, Position, SecondHint);
         Probe.Cross  = Cross(Probe.First.Normal, Probe.Second.Normal);
@@ -106,7 +106,7 @@ namespace
 
     // 📝 Newton in 3D on { d₁(X) = 0, d₂(X) = 0, Π·(X − Q) = 0 } with rows N₁, N₂, Π — parameter-free, so poles and the
     //    apex are ordinary points. Inverse of the row matrix: (r₀·(b×c) + r₁·(c×a) + r₂·(a×b)) / (a·(b×c)).
-    [[nodiscard]] bool CorrectOntoBoth(const IntersectionContext& Context, Vector3& Position, Vector3 PlaneNormal, Vector3 PlanePoint, Vector2 FirstSeed = { NAN, NAN },
+    [[nodiscard]] bool CorrectOntoBoth(const IntersectionEnvironment& Context, Vector3& Position, Vector3 PlaneNormal, Vector3 PlanePoint, Vector2 FirstSeed = { NAN, NAN },
                                        Vector2 SecondSeed = { NAN, NAN })
     {
         Context.Outcome.Statistics.Corrections += 1;
@@ -114,7 +114,7 @@ namespace
         Vector2 SecondHint = SecondSeed;
         for (int Iteration = 0; Iteration < 16; ++Iteration)
         {
-            const PairProbe Probe       = ProbePairNear(Context, Position, FirstHint, SecondHint);
+            const PairQuery Probe       = ProbePairNear(Context, Position, FirstHint, SecondHint);
             const Vector3&  A           = Probe.First.Normal;
             const Vector3&  B           = Probe.Second.Normal;
             const double    Determinant = Dot(A, Cross(B, PlaneNormal));                     // [-] - a·(b×c)
@@ -124,20 +124,20 @@ namespace
             Position = Position - Step;
             if (Length(Step) <= 1.0e-15 * (1.0 + Length(Position))) break;
         }
-        const PairProbe Final     = ProbePairNear(Context, Position, FirstHint, SecondHint);
+        const PairQuery Final     = ProbePairNear(Context, Position, FirstHint, SecondHint);
         const double    Tolerance = std::max(1.0e-11 * (1.0 + Context.Scale), 1.0e-3 * Context.Settings.Precision);
         return std::fabs(Final.First.Distance) <= Tolerance && std::fabs(Final.Second.Distance) <= Tolerance;
     }
 
     // 📝 Singular / touch point: Gauss–Newton on R(X) = (d₁, d₂, L·(N₁ × N₂)) — both distances zero AND normals parallel.
-    [[nodiscard]] bool RefineSpecialPoint(const IntersectionContext& Context, Vector3& Position, Vector2 FirstSeed = { NAN, NAN }, Vector2 SecondSeed = { NAN, NAN })
+    [[nodiscard]] bool RefineSpecialPoint(const IntersectionEnvironment& Context, Vector3& Position, Vector2 FirstSeed = { NAN, NAN }, Vector2 SecondSeed = { NAN, NAN })
     {
         const double Weight     = std::max(1.0, Context.Scale);                              // [len] - Balances units
         Vector2      FirstHint  = FirstSeed;
         Vector2      SecondHint = SecondSeed;
         const auto   Residual   = [&](Vector3 Probe, Vector2& HintA, Vector2& HintB)
         {
-            const PairProbe Pair = ProbePairNear(Context, Probe, HintA, HintB);
+            const PairQuery Pair = ProbePairNear(Context, Probe, HintA, HintB);
             return std::array<double, 5>{ Pair.First.Distance, Pair.Second.Distance, Pair.Cross.X * Weight, Pair.Cross.Y * Weight, Pair.Cross.Z * Weight };
         };
         const double Increment = 1.0e-7 * (1.0 + Context.Scale);                             // [len] - Difference step
@@ -172,11 +172,11 @@ namespace
             Position = Position - Step;
             if (Length(Step) <= 1.0e-14 * (1.0 + Context.Scale)) break;
         }
-        const PairProbe Final = ProbePairNear(Context, Position, FirstHint, SecondHint);
+        const PairQuery Final = ProbePairNear(Context, Position, FirstHint, SecondHint);
         return std::fabs(Final.First.Distance) <= 1.0e-9 * (1.0 + Context.Scale) && std::fabs(Final.Second.Distance) <= 1.0e-9 * (1.0 + Context.Scale) && Final.Sine <= 1.0e-5;
     }
 
-    void RegisterSpecialPoint(const IntersectionContext& Context, Vector3 Position, SpecialPointCategory Category)
+    void RegisterSpecialPoint(const IntersectionEnvironment& Context, Vector3 Position, SpecialPointCategory Category)
     {
         for (const IntersectionSpecialPoint& Known : Context.Outcome.SpecialPoints)
         {
@@ -286,7 +286,7 @@ namespace
 
     // 📝 Meridian primitives of a surface of revolution about Axis, in (ρ, z) with z along Axis.ZAxis from Axis.Origin.
     //    Mirrors (ρ → −ρ) are included so the union is symmetric and every ρ ≥ 0 hit is found.
-    [[nodiscard]] std::optional<std::vector<PlanarPrimitive>> RevolveAbout(const SurfaceGeometry& Surface, const OrthonormalFrame& Axis, double Precision)
+    [[nodiscard]] std::optional<std::vector<PlanarPrimitive>> RevolveAbout(const SurfaceGeometry& Surface, const OrthonormalBasis& Axis, double Precision)
     {
         const auto OnAxis = [&](Vector3 Point) { return Length(Cross(Point - Axis.Origin, Axis.ZAxis)) <= Precision; };
         const auto Height = [&](Vector3 Point) { return Dot(Point - Axis.Origin, Axis.ZAxis); };
@@ -301,7 +301,7 @@ namespace
             if (!OnAxis(Sphere->Frame.Origin)) return std::nullopt;
             return std::vector<PlanarPrimitive>{ { true, { 0.0, Height(Sphere->Frame.Origin) }, {}, Sphere->Radius } };
         }
-        const OrthonormalFrame& Frame = FrameOf(Surface);
+        const OrthonormalBasis& Frame = FrameOf(Surface);
         if (Length(Cross(Frame.ZAxis, Axis.ZAxis)) > ParallelSine || !OnAxis(Frame.Origin)) return std::nullopt;
         const double h = Height(Frame.Origin);                                               // [len] - Frame height on the axis
         const double σ = Dot(Frame.ZAxis, Axis.ZAxis) > 0.0 ? 1.0 : -1.0;                    // [-]   - Axis orientation
@@ -325,9 +325,9 @@ namespace
     }
 
     // Candidate common axes of revolution for the pair.
-    [[nodiscard]] std::vector<OrthonormalFrame> CandidateAxes(const SurfaceGeometry& First, const SurfaceGeometry& Second)
+    [[nodiscard]] std::vector<OrthonormalBasis> CandidateAxes(const SurfaceGeometry& First, const SurfaceGeometry& Second)
     {
-        std::vector<OrthonormalFrame> Axes;
+        std::vector<OrthonormalBasis> Axes;
         for (const SurfaceGeometry* Surface : { &First, &Second })
         {
             if (std::holds_alternative<CylinderSurface>(*Surface) || std::holds_alternative<ConeSurface>(*Surface) || std::holds_alternative<TorusSurface>(*Surface)) Axes.push_back(FrameOf(*Surface));
@@ -354,7 +354,7 @@ namespace
         double High = 0.0;                                                                   // [-] - τ end
     };
 
-    [[nodiscard]] std::vector<CurveInterval> ClipCurveToBoxes(const IntersectionContext& Context, const CurveGeometry& Curve, double Low, double High, bool PeriodicCurve)
+    [[nodiscard]] std::vector<CurveInterval> ClipCurveToBoxes(const IntersectionEnvironment& Context, const CurveGeometry& Curve, double Low, double High, bool PeriodicCurve)
     {
         constexpr int SampleCount = 720;
         const auto Inside = [&](double τ) { return InsideBoth(Context, EvaluateCurve(Curve, τ).Position); };
@@ -387,7 +387,7 @@ namespace
         return Intervals;
     }
 
-    void RegisterAnalyticBranch(const IntersectionContext& Context, const CurveGeometry& Curve, double Low, double High, bool TangentialCondition)
+    void RegisterAnalyticBranch(const IntersectionEnvironment& Context, const CurveGeometry& Curve, double Low, double High, bool TangentialCondition)
     {
         const bool PeriodicCurve = PeriodicCondition(Curve);
         for (const CurveInterval& Interval : ClipCurveToBoxes(Context, Curve, Low, High, PeriodicCurve))
@@ -424,7 +424,7 @@ namespace
     }
 
     // Finite parameter range of a line inside both boxes (projection of box samples), widened a little.
-    [[nodiscard]] std::optional<CurveInterval> LineRange(const IntersectionContext& Context, const StraightLine& Line)
+    [[nodiscard]] std::optional<CurveInterval> LineRange(const IntersectionEnvironment& Context, const StraightLine& Line)
     {
         CurveInterval Range{ -1.0e300, 1.0e300 };
         for (const auto& [Surface, Box] : { std::pair{ &Context.First, &Context.FirstBox }, std::pair{ &Context.Second, &Context.SecondBox } })
@@ -443,16 +443,16 @@ namespace
         return Range;
     }
 
-    void RegisterLine(const IntersectionContext& Context, const StraightLine& Line, bool TangentialCondition)
+    void RegisterLine(const IntersectionEnvironment& Context, const StraightLine& Line, bool TangentialCondition)
     {
         if (const auto Range = LineRange(Context, Line)) RegisterAnalyticBranch(Context, Line, Range->Low, Range->High, TangentialCondition);
     }
 
     // ① Coaxial surfaces of revolution: meridian intersection in (ρ, z).
-    [[nodiscard]] bool SolveCoaxial(const IntersectionContext& Context)
+    [[nodiscard]] bool SolveCoaxial(const IntersectionEnvironment& Context)
     {
         const double Precision = Context.Settings.Precision;
-        for (const OrthonormalFrame& Axis : CandidateAxes(Context.First, Context.Second))
+        for (const OrthonormalBasis& Axis : CandidateAxes(Context.First, Context.Second))
         {
             const auto FirstMeridian  = RevolveAbout(Context.First, Axis, Precision);
             const auto SecondMeridian = RevolveAbout(Context.Second, Axis, Precision);
@@ -490,14 +490,14 @@ namespace
     }
 
     // ② Parallel cylinders, or a plane parallel to a cylinder axis: cross-section ⟂ the axis.
-    [[nodiscard]] bool SolveParallelCrossSection(const IntersectionContext& Context)
+    [[nodiscard]] bool SolveParallelCrossSection(const IntersectionEnvironment& Context)
     {
         const auto* FirstCylinder  = std::get_if<CylinderSurface>(&Context.First);
         const auto* SecondCylinder = std::get_if<CylinderSurface>(&Context.Second);
         const CylinderSurface* Cylinder = FirstCylinder ? FirstCylinder : SecondCylinder;
         if (!Cylinder) return false;
         const SurfaceGeometry& Other = FirstCylinder ? Context.Second : Context.First;
-        const OrthonormalFrame& Frame = Cylinder->Frame;
+        const OrthonormalBasis& Frame = Cylinder->Frame;
         const auto Section = [&](Vector3 Point) { return Vector2{ Dot(Point - Frame.Origin, Frame.XAxis), Dot(Point - Frame.Origin, Frame.YAxis) }; };
         PlanarPrimitive OtherSection;
         if (const auto* OtherCylinder = std::get_if<CylinderSurface>(&Other))
@@ -520,14 +520,14 @@ namespace
     }
 
     // ③ A plane containing a cone or torus axis: two generator lines / two meridian circles.
-    [[nodiscard]] bool SolvePlaneThroughAxis(const IntersectionContext& Context)
+    [[nodiscard]] bool SolvePlaneThroughAxis(const IntersectionEnvironment& Context)
     {
         const auto* FirstPlane = std::get_if<PlaneSurface>(&Context.First);
         const PlaneSurface* Plane = FirstPlane ? FirstPlane : std::get_if<PlaneSurface>(&Context.Second);
         if (!Plane) return false;
         const SurfaceGeometry& Other = FirstPlane ? Context.Second : Context.First;
         if (!std::holds_alternative<ConeSurface>(Other) && !std::holds_alternative<TorusSurface>(Other)) return false;
-        const OrthonormalFrame& Frame = FrameOf(Other);
+        const OrthonormalBasis& Frame = FrameOf(Other);
         if (std::fabs(Dot(Plane->Frame.ZAxis, Frame.ZAxis)) > ParallelSine || std::fabs(Dot(Frame.Origin - Plane->Frame.Origin, Plane->Frame.ZAxis)) > Context.Settings.Precision) return false;
         const Vector3 InPlane = Normalize(Cross(Plane->Frame.ZAxis, Frame.ZAxis));           // [-] - Radial direction in the plane
         Context.Outcome.Method = "Analytic · plane through axis";
@@ -552,7 +552,7 @@ namespace
     //    two ellipses in the bisector planes (X − C)·(𝐚 ∓ 𝐛) = 0. Both share the minor axis ±r·𝐧 (𝐧 = 𝐚 × 𝐛 unit), where
     //    N₁ ∥ N₂: the singular points that a marcher cannot cross reliably, registered here so the boolean splits there.
     //    Plane ⟂ (𝐚 − 𝐛): major r / sin(θ/2) along 𝐚 + 𝐛; plane ⟂ (𝐚 + 𝐛): major r / cos(θ/2) along 𝐚 − 𝐛.
-    [[nodiscard]] bool SolveEqualCylinders(const IntersectionContext& Context)
+    [[nodiscard]] bool SolveEqualCylinders(const IntersectionEnvironment& Context)
     {
         const auto* First  = std::get_if<CylinderSurface>(&Context.First);
         const auto* Second = std::get_if<CylinderSurface>(&Context.Second);
@@ -578,7 +578,7 @@ namespace
         {
             const Vector3 Major = Normalize(AxisA - AxisB * Side);                            // [-]   - In-plane major direction
             const double  Lean  = std::fabs(Dot(AxisA, Normalize(AxisA + AxisB * Side)));    // [-]   - |𝐚 · plane normal|
-            const OrthonormalFrame Frame{ Centre, Major, Minor, Cross(Major, Minor) };
+            const OrthonormalBasis Frame{ Centre, Major, Minor, Cross(Major, Minor) };
             for (const double Low : { -0.5 * std::numbers::pi, 0.5 * std::numbers::pi }) RegisterAnalyticBranch(Context, EllipticalArc{ Frame, Radius / Lean, Radius }, Low, Low + std::numbers::pi, false);
         }
         std::vector<Vector3> Singular;                                                       // [len] - The two crossing points
@@ -603,7 +603,7 @@ namespace
     }
 
     // ④ Plane–plane.
-    [[nodiscard]] bool SolvePlanePlane(const IntersectionContext& Context)
+    [[nodiscard]] bool SolvePlanePlane(const IntersectionEnvironment& Context)
     {
         const auto* FirstPlane  = std::get_if<PlaneSurface>(&Context.First);
         const auto* SecondPlane = std::get_if<PlaneSurface>(&Context.Second);
@@ -632,12 +632,12 @@ namespace
         BranchTermination                   Termination = BranchTermination::Limit;          // [-] - How it ended
     };
 
-    [[nodiscard]] IntersectionChartPoint ChartPoint(const IntersectionContext& Context, Vector3 Position, Vector2 FirstReference, Vector2 SecondReference)
+    [[nodiscard]] IntersectionChartPoint ChartPoint(const IntersectionEnvironment& Context, Vector3 Position, Vector2 FirstReference, Vector2 SecondReference)
     {
         return { Position, ProjectOntoSurface(Context.First, Position, FirstReference), ProjectOntoSurface(Context.Second, Position, SecondReference) };
     }
 
-    [[nodiscard]] IntersectionChartPoint ChartPointNear(const IntersectionContext& Context, Vector3 Position, Vector2 FirstReference, Vector2 SecondReference)
+    [[nodiscard]] IntersectionChartPoint ChartPointNear(const IntersectionEnvironment& Context, Vector3 Position, Vector2 FirstReference, Vector2 SecondReference)
     {
         return { Position, ProjectOntoSurfaceNear(Context.First, Position, FirstReference), ProjectOntoSurfaceNear(Context.Second, Position, SecondReference) };
     }
@@ -645,19 +645,19 @@ namespace
     // 💡 NURBS and open rolling-ball feet are confined to their domains, so a point marched past a NURBS edge or open
     //    spine end still projects inside the box (and its signed distance there can stay ≈ 0 on the clamped end-ball):
     //    the point is on the carrier only when its evaluated foot actually reaches it (≤ 10·precision).
-    [[nodiscard]] bool FootReaches(const IntersectionContext& Context, const SurfaceGeometry& Surface, Vector2 Foot, Vector3 Position)
+    [[nodiscard]] bool FootReaches(const IntersectionEnvironment& Context, const SurfaceGeometry& Surface, Vector2 Foot, Vector3 Position)
     {
         if (ResolveNurbsChart(Surface) == nullptr && !std::holds_alternative<RollingBallSurface>(Surface)) return true;
         return Distance(EvaluateSurface(Surface, Foot).Position, Position) <= 10.0 * Context.Settings.Precision;
     }
 
-    [[nodiscard]] bool InsideBoxes(const IntersectionContext& Context, const IntersectionChartPoint& Point)
+    [[nodiscard]] bool InsideBoxes(const IntersectionEnvironment& Context, const IntersectionChartPoint& Point)
     {
         return InsideParameterBox(Context.First, Context.FirstBox, Point.First, ParameterSlack) && InsideParameterBox(Context.Second, Context.SecondBox, Point.Second, ParameterSlack)
             && FootReaches(Context, Context.First, Point.First, Point.Position) && FootReaches(Context, Context.Second, Point.Second, Point.Position);
     }
 
-    [[nodiscard]] HalfTrace TraceHalf(const IntersectionContext& Context, const IntersectionChartPoint& Seed, double Sign)
+    [[nodiscard]] HalfTrace TraceHalf(const IntersectionEnvironment& Context, const IntersectionChartPoint& Seed, double Sign)
     {
         const SurfaceIntersectionSettings& Settings = Context.Settings;
         const double MinimumStep = 1.0e-9 * (1.0 + Context.Scale);                           // [len] - Give-up step
@@ -680,7 +680,7 @@ namespace
             bool    Accepted  = CorrectOntoBoth(Context, Corrected, Tangent, Current.Position + Tangent * Step, StepHintA, StepHintB);
             if (Accepted)
             {
-                const PairProbe Probe = ProbePairNear(Context, Corrected, StepHintA, StepHintB);
+                const PairQuery Probe = ProbePairNear(Context, Corrected, StepHintA, StepHintB);
                 if (Probe.Sine < Settings.SingularSine)
                 {
                     // 📝 Approaching N₁ ∥ N₂: locate the special point and end the branch there.
@@ -785,7 +785,7 @@ namespace
         return Trace;
     }
 
-    [[nodiscard]] bool OnKnownBranch(const IntersectionContext& Context, Vector3 Position)
+    [[nodiscard]] bool OnKnownBranch(const IntersectionEnvironment& Context, Vector3 Position)
     {
         const double Reach = 1.5 * Context.Settings.ChordTolerance + 10.0 * Context.Settings.Precision;
         for (const IntersectionBranch& Branch : Context.Outcome.Branches)
@@ -795,10 +795,10 @@ namespace
         return false;
     }
 
-    void TraceFromSeed(const IntersectionContext& Context, Vector3 Position)
+    void TraceFromSeed(const IntersectionEnvironment& Context, Vector3 Position)
     {
         if (OnKnownBranch(Context, Position)) { Context.Outcome.Statistics.SeedsSkipped += 1; return; }
-        const PairProbe Probe = ProbePair(Context, Position);
+        const PairQuery Probe = ProbePair(Context, Position);
         if (Probe.Sine < Context.Settings.SingularSine)
         {
             Vector3 Special = Position;
@@ -830,7 +830,7 @@ namespace
 
     // 📝 Start points from exact curve–surface intersection: every iso-curve of the first surface's lattice, and the
     //    boundary iso-curves of the second box, against the other (untrimmed) surface, filtered to both boxes.
-    [[nodiscard]] std::vector<Vector3> CollectLatticeSeeds(const IntersectionContext& Context)
+    [[nodiscard]] std::vector<Vector3> CollectLatticeSeeds(const IntersectionEnvironment& Context)
     {
         std::vector<Vector3> Seeds;
         const auto Harvest = [&](const SurfaceGeometry& CurveSurface, const ParameterBox& CurveBox, const SurfaceGeometry& Target, IsoDirection Direction, double Value)
@@ -848,7 +848,7 @@ namespace
                 //    carriers in the plane across the branch, as loop seeds are, before the foot gate sees it.
                 if (Iso.ApproximateCondition)
                 {
-                    const PairProbe Probe = ProbePair(Context, Position);
+                    const PairQuery Probe = ProbePair(Context, Position);
                     if (Probe.Sine < Context.Settings.SingularSine || !CorrectOntoBoth(Context, Position, Normalize(Probe.Cross), Position)) continue;
                 }
                 if (!InsideBoth(Context, Position)) continue;
@@ -965,28 +965,28 @@ namespace
         return Angle <= Limit || std::numbers::pi - Angle <= Limit;
     }
 
-    struct PatchNode
+    struct PatchEntry
     {
         PatchCell                                  Cell     = {};
-        std::unique_ptr<std::array<PatchNode, 4>>  Children = nullptr;
+        std::unique_ptr<std::array<PatchEntry, 4>>  Children = nullptr;
     };
 
-    std::array<PatchNode, 4>& EnsureChildren(const SurfaceGeometry& Surface, PatchNode& Node)
+    std::array<PatchEntry, 4>& EnsureChildren(const SurfaceGeometry& Surface, PatchEntry& Node)
     {
         if (!Node.Children)
         {
             const Vector2 Middle = (Node.Cell.Low + Node.Cell.High) * 0.5;
-            Node.Children = std::make_unique<std::array<PatchNode, 4>>(std::array<PatchNode, 4>{
-                PatchNode{ DescribeCell(Surface, Node.Cell.Low, Middle), nullptr },
-                PatchNode{ DescribeCell(Surface, { Middle.X, Node.Cell.Low.Y }, { Node.Cell.High.X, Middle.Y }), nullptr },
-                PatchNode{ DescribeCell(Surface, { Node.Cell.Low.X, Middle.Y }, { Middle.X, Node.Cell.High.Y }), nullptr },
-                PatchNode{ DescribeCell(Surface, Middle, Node.Cell.High), nullptr }
+            Node.Children = std::make_unique<std::array<PatchEntry, 4>>(std::array<PatchEntry, 4>{
+                PatchEntry{ DescribeCell(Surface, Node.Cell.Low, Middle), nullptr },
+                PatchEntry{ DescribeCell(Surface, { Middle.X, Node.Cell.Low.Y }, { Node.Cell.High.X, Middle.Y }), nullptr },
+                PatchEntry{ DescribeCell(Surface, { Node.Cell.Low.X, Middle.Y }, { Middle.X, Node.Cell.High.Y }), nullptr },
+                PatchEntry{ DescribeCell(Surface, Middle, Node.Cell.High), nullptr }
             });
         }
         return *Node.Children;
     }
 
-    void SearchLoops(const IntersectionContext& Context, PatchNode& NodeA, PatchNode& NodeB, int Depth, std::vector<Vector3>& Seeds, int& Budget)
+    void SearchLoops(const IntersectionEnvironment& Context, PatchEntry& NodeA, PatchEntry& NodeB, int Depth, std::vector<Vector3>& Seeds, int& Budget)
     {
         if (Budget <= 0) return;
         const PatchCell& A = NodeA.Cell;
@@ -1017,7 +1017,7 @@ namespace
                 if (Iteration >= 3 && Distance(OnFirst, OnSecond) <= Context.Settings.ChordTolerance && OnKnownBranch(Context, Position)) return;
                 if (Iteration >= 8 && Distance(Position, A.Centre) > 4.0 * (A.Radius + B.Radius)) return;
             }
-            const PairProbe Probe = ProbePairNear(Context, Position, HintA, HintB);
+            const PairQuery Probe = ProbePairNear(Context, Position, HintA, HintB);
             if (std::fabs(Probe.Second.Distance) > 2.0 * (A.Radius + B.Radius)) return;
             if (Probe.Sine < Context.Settings.SingularSine)
             {
@@ -1034,17 +1034,17 @@ namespace
         }
         auto& ChildrenA = EnsureChildren(Context.First, NodeA);
         auto& ChildrenB = EnsureChildren(Context.Second, NodeB);
-        for (PatchNode& SubA : ChildrenA)
+        for (PatchEntry& SubA : ChildrenA)
         {
-            for (PatchNode& SubB : ChildrenB) SearchLoops(Context, SubA, SubB, Depth + 1, Seeds, Budget);
+            for (PatchEntry& SubB : ChildrenB) SearchLoops(Context, SubA, SubB, Depth + 1, Seeds, Budget);
         }
     }
 
-    [[nodiscard]] std::vector<Vector3> CollectLoopSeeds(const IntersectionContext& Context)
+    [[nodiscard]] std::vector<Vector3> CollectLoopSeeds(const IntersectionEnvironment& Context)
     {
         std::vector<Vector3> Seeds;
         const int Divisions = std::max(1, Context.Settings.LatticeDivisions);
-        std::vector<PatchNode> FirstCells, SecondCells;
+        std::vector<PatchEntry> FirstCells, SecondCells;
         for (const auto& [Surface, Box, Cells] : { std::tuple{ &Context.First, &Context.FirstBox, &FirstCells }, std::tuple{ &Context.Second, &Context.SecondBox, &SecondCells } })
         {
             for (int Row = 0; Row < Divisions; ++Row)
@@ -1058,9 +1058,9 @@ namespace
             }
         }
         int Budget = 4096;                                                                   // [-] - Leaf pairs examined at most
-        for (PatchNode& A : FirstCells)
+        for (PatchEntry& A : FirstCells)
         {
-            for (PatchNode& B : SecondCells) SearchLoops(Context, A, B, 0, Seeds, Budget);
+            for (PatchEntry& B : SecondCells) SearchLoops(Context, A, B, 0, Seeds, Budget);
         }
         return Seeds;
     }
@@ -1071,7 +1071,7 @@ namespace
     //    split there, so branch ends coincide with true singular points (future vertices).
     // 📝 The singular point replaced a marched point, so its two segments were never chord-checked: bisect them with the
     //    corrector (plane ⟂ chord through the midpoint) until the bulge is within the chord tolerance.
-    void RefineSingularChord(const IntersectionContext& Context, std::vector<IntersectionChartPoint>& Chart, size_t Segment, int Depth)
+    void RefineSingularChord(const IntersectionEnvironment& Context, std::vector<IntersectionChartPoint>& Chart, size_t Segment, int Depth)
     {
         if (Depth > 10 || Segment + 1 >= Chart.size()) return;
         const IntersectionChartPoint& Start = Chart[Segment];
@@ -1090,7 +1090,7 @@ namespace
         RefineSingularChord(Context, Chart, Segment, Depth + 1);
     }
 
-    void SplitAtSingularPoints(const IntersectionContext& Context)
+    void SplitAtSingularPoints(const IntersectionEnvironment& Context)
     {
         std::vector<IntersectionBranch> Result;
         for (IntersectionBranch& Branch : Context.Outcome.Branches)
@@ -1198,7 +1198,7 @@ SurfaceIntersectionOutcome IntersectSurfaces(const SurfaceGeometry& First, const
         const std::vector<Vector3> Samples = SampleBox(*Surface, *Box, 4);
         for (const Vector3& Sample : Samples) Scale = std::max(Scale, Distance(Sample, Samples.front()));
     }
-    const IntersectionContext Context{ First, FirstBox, Second, SecondBox, Settings, Scale, Outcome };
+    const IntersectionEnvironment Context{ First, FirstBox, Second, SecondBox, Settings, Scale, Outcome };
 
     if (Settings.Policy == IntersectionPolicy::Hybrid && (SolvePlanePlane(Context) || SolveCoaxial(Context) || SolveParallelCrossSection(Context) || SolvePlaneThroughAxis(Context) || SolveEqualCylinders(Context)))
     {

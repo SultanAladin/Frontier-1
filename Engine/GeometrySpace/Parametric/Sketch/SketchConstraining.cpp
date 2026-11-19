@@ -23,7 +23,7 @@ namespace Frontier::GeometrySpace::Parametric
 
 namespace
 {
-    using Kind = SketchConstraintKind;
+    using Kind = SketchConstraintCategory;
 
     // 📝 The picks sorted by what they are: points, lines, circles (circles and arcs), splines — each in pick order.
     struct SortedPicks
@@ -40,7 +40,7 @@ namespace
         SortedPicks Sorted;
         for (const SketchPick& Pick : Picks)
         {
-            if (Pick.Kind == SketchPickKind::Point)
+            if (Pick.Kind == SketchPickCategory::Point)
             {
                 if (Pick.Index < 0 || Pick.Index >= static_cast<int>(Sketch.Points.size())) { Sorted.Refusal = "a picked point is not in the sketch"; return Sorted; }
                 if (std::find(Sorted.Points.begin(), Sorted.Points.end(), Pick.Index) != Sorted.Points.end()) { Sorted.Refusal = "the same point is picked twice"; return Sorted; }
@@ -48,8 +48,8 @@ namespace
                 continue;
             }
             if (Pick.Index < 0 || Pick.Index >= static_cast<int>(Sketch.Curves.size())) { Sorted.Refusal = "a picked curve is not in the sketch"; return Sorted; }
-            std::vector<int>& Bucket = Sketch.Curves[Pick.Index].Kind == SketchCurveKind::Line ? Sorted.Lines
-                                     : Sketch.Curves[Pick.Index].Kind == SketchCurveKind::Spline ? Sorted.Splines : Sorted.Circles;
+            std::vector<int>& Bucket = Sketch.Curves[Pick.Index].Kind == SketchCurveCategory::Line ? Sorted.Lines
+                                     : Sketch.Curves[Pick.Index].Kind == SketchCurveCategory::Spline ? Sorted.Splines : Sorted.Circles;
             if (std::find(Bucket.begin(), Bucket.end(), Pick.Index) != Bucket.end()) { Sorted.Refusal = "the same curve is picked twice"; return Sorted; }
             Bucket.push_back(Pick.Index);
         }
@@ -92,14 +92,14 @@ namespace
         double Best = 1e300;
         for (int End : { Curve.Points.front(), Curve.Points.back() })
         {
-            if (Shape.Kind == SketchCurveKind::Circle)
+            if (Shape.Kind == SketchCurveCategory::Circle)
             {
                 const double Gap = std::fabs(Distance(Position(End), Position(Shape.Centre)) - Shape.Radius);
                 if (Gap < Best) { Best = Gap; Joint.End = End; }
                 continue;
             }
             std::vector<std::pair<int, double>> Ends;
-            if (Shape.Kind == SketchCurveKind::Spline)
+            if (Shape.Kind == SketchCurveCategory::Spline)
             {
                 if (Shape.Points.size() < 2 || Shape.Points.front() == Shape.Points.back()) { Joint.Refusal = SketchCurveName(Shape) + " is closed: it has no end"; return Joint; }
                 Ends = { { Shape.Points.front(), 0.0 }, { Shape.Points.back(), 1.0 } };
@@ -215,7 +215,7 @@ namespace
             if (Constraint.First >= int(Before.Curves.size()) || Constraint.Second >= int(Before.Curves.size())) continue;
             const SketchCurve& Line = Before.Curves[Constraint.First];
             const SketchCurve& Arc  = Before.Curves[Constraint.Second];
-            if (Line.Kind != SketchCurveKind::Line || Arc.Kind != SketchCurveKind::Arc) continue;
+            if (Line.Kind != SketchCurveCategory::Line || Arc.Kind != SketchCurveCategory::Arc) continue;
             const bool Joined = Line.Start == Arc.Start || Line.Start == Arc.End || Line.End == Arc.Start || Line.End == Arc.End;
             TangentEnds[Constraint.Second] += Joined ? 1 : 0;
         }
@@ -263,7 +263,7 @@ SketchConstraintProposal ProposeSketchConstraint(const SketchModel& Sketch, cons
             if (!Pattern(Sorted, 1, 0, 0, 1)) return Refuse(Verb, "takes a point and a spline");
             const auto& Defining = Sketch.Curves[S[0]].Points;
             if (std::find(Defining.begin(), Defining.end(), P[0]) != Defining.end())
-                return Refuse(Verb, NameSketchPick(Sketch, { SketchPickKind::Point, P[0] }) + " defines " + Spline);
+                return Refuse(Verb, NameSketchPick(Sketch, { SketchPickCategory::Point, P[0] }) + " defines " + Spline);
             return Accept(Make(Kind::PointOnSpline, P[0], S[0]));
         }
         case SketchConstraintVerb::Horizontal:
@@ -289,7 +289,7 @@ SketchConstraintProposal ProposeSketchConstraint(const SketchModel& Sketch, cons
             {
                 for (int Curve : { First, Other })
                 {
-                    if (Sketch.Curves[Curve].Kind == SketchCurveKind::Spline && Sketch.Curves[Curve].Form == SketchSplineForm::CubicSpline)
+                    if (Sketch.Curves[Curve].Kind == SketchCurveCategory::Spline && Sketch.Curves[Curve].Form == SketchSplineForm::CubicSpline)
                         return Refuse(Verb, SketchCurveName(Sketch.Curves[Curve]) + " is a cubic spline: its ends have zero curvature by construction (use Hermite, Bezier or NURBS for G2)");
                 }
             }
@@ -333,12 +333,12 @@ SketchConstraintProposal ProposeSketchConstraint(const SketchModel& Sketch, cons
         if (Pattern(Sorted, 2, 0, 0)) return Accept(Make(Kind::Coincident, P[0], P[1]));
         if (Pattern(Sorted, 1, 1, 0))
         {
-            if (EndpointCondition(Sketch.Curves[L[0]], P[0])) return Refuse(Verb, NameSketchPick(Sketch, { SketchPickKind::Point, P[0] }) + " already ends " + SketchCurveName(Sketch.Curves[L[0]]));
+            if (EndpointCondition(Sketch.Curves[L[0]], P[0])) return Refuse(Verb, NameSketchPick(Sketch, { SketchPickCategory::Point, P[0] }) + " already ends " + SketchCurveName(Sketch.Curves[L[0]]));
             return Accept(Make(Kind::PointOnLine, P[0], L[0]));
         }
         if (Pattern(Sorted, 1, 0, 1))
         {
-            if (EndpointCondition(Sketch.Curves[C[0]], P[0])) return Refuse(Verb, NameSketchPick(Sketch, { SketchPickKind::Point, P[0] }) + " already belongs to " + SketchCurveName(Sketch.Curves[C[0]]));
+            if (EndpointCondition(Sketch.Curves[C[0]], P[0])) return Refuse(Verb, NameSketchPick(Sketch, { SketchPickCategory::Point, P[0] }) + " already belongs to " + SketchCurveName(Sketch.Curves[C[0]]));
             return Accept(Make(Kind::PointOnCircle, P[0], C[0]));
         }
         if (Pattern(Sorted, 0, 0, 2)) return Accept(Make(Kind::Concentric, C[0], C[1]));
@@ -353,7 +353,7 @@ SketchConstraintProposal ProposeSketchConstraint(const SketchModel& Sketch, cons
     case SketchConstraintVerb::Midpoint:
     {
         if (!Pattern(Sorted, 1, 1, 0)) return Refuse(Verb, "takes a point and a line");
-        if (EndpointCondition(Sketch.Curves[L[0]], P[0])) return Refuse(Verb, NameSketchPick(Sketch, { SketchPickKind::Point, P[0] }) + " ends " + SketchCurveName(Sketch.Curves[L[0]]));
+        if (EndpointCondition(Sketch.Curves[L[0]], P[0])) return Refuse(Verb, NameSketchPick(Sketch, { SketchPickCategory::Point, P[0] }) + " ends " + SketchCurveName(Sketch.Curves[L[0]]));
         return Accept(Make(Kind::Midpoint, P[0], L[0]));
     }
     case SketchConstraintVerb::Symmetric:
@@ -428,7 +428,7 @@ double MeasureSketchConstraint(const SketchModel& Sketch, const SketchConstraint
     }
 }
 
-bool SketchDimensionCondition(SketchConstraintKind Constraint) noexcept
+bool SketchDimensionCondition(SketchConstraintCategory Constraint) noexcept
 {
     return Constraint == Kind::Distance || Constraint == Kind::HorizontalDistance || Constraint == Kind::VerticalDistance || Constraint == Kind::Length ||
            Constraint == Kind::Angle || Constraint == Kind::Radius;
@@ -436,15 +436,15 @@ bool SketchDimensionCondition(SketchConstraintKind Constraint) noexcept
 
 std::string NameSketchPick(const SketchModel& Sketch, SketchPick Pick)
 {
-    if (Pick.Kind == SketchPickKind::Curve)
+    if (Pick.Kind == SketchPickCategory::Curve)
         return Pick.Index >= 0 && Pick.Index < static_cast<int>(Sketch.Curves.size()) ? SketchCurveName(Sketch.Curves[Pick.Index]) : "Curve?";
     for (const SketchCurve& Curve : Sketch.Curves)
     {
-        if (Curve.Kind != SketchCurveKind::Spline)
+        if (Curve.Kind != SketchCurveCategory::Spline)
         {
-            if (Curve.Start == Pick.Index && Curve.Kind != SketchCurveKind::Circle) return SketchCurveName(Curve) + ".Start";
-            if (Curve.End == Pick.Index && Curve.Kind != SketchCurveKind::Circle) return SketchCurveName(Curve) + ".End";
-            if (Curve.Centre == Pick.Index && Curve.Kind != SketchCurveKind::Line) return SketchCurveName(Curve) + ".Centre";
+            if (Curve.Start == Pick.Index && Curve.Kind != SketchCurveCategory::Circle) return SketchCurveName(Curve) + ".Start";
+            if (Curve.End == Pick.Index && Curve.Kind != SketchCurveCategory::Circle) return SketchCurveName(Curve) + ".End";
+            if (Curve.Centre == Pick.Index && Curve.Kind != SketchCurveCategory::Line) return SketchCurveName(Curve) + ".Centre";
             continue;
         }
         const auto Found = std::find(Curve.Points.begin(), Curve.Points.end(), Pick.Index);
@@ -460,7 +460,7 @@ std::string DescribeSketchConstraint(const SketchModel& Sketch, const SketchCons
     {
         const double Degrees = Constraint.Value * 180.0 / std::numbers::pi;
         Text = std::abs(Degrees) < 1.0e-9 ? "Horizontal end" : std::abs(Degrees - 90.0) < 1.0e-9 ? "Vertical end" : "End direction " + FormatNumber(Degrees) + "°";
-        return Text + " · " + NameSketchPick(Sketch, { SketchPickKind::Point, Constraint.Third });
+        return Text + " · " + NameSketchPick(Sketch, { SketchPickCategory::Point, Constraint.Third });
     }
     if (Constraint.Kind == Kind::Angle) Text += " " + FormatNumber(Constraint.Value * 180.0 / std::numbers::pi) + "°";
     else if (SketchDimensionCondition(Constraint.Kind)) Text += " " + FormatNumber(Constraint.Value);
@@ -470,11 +470,11 @@ std::string DescribeSketchConstraint(const SketchModel& Sketch, const SketchCons
     const ReferenceLayout Layout = LayoutOf(Constraint.Kind);
     const int Slots[3] = { Constraint.First, Constraint.Second, Constraint.Third };
     for (int Slot = 0; Slot < Layout.Count; ++Slot)
-        Text += " · " + NameSketchPick(Sketch, { Layout.Points[Slot] ? SketchPickKind::Point : SketchPickKind::Curve, Slots[Slot] });
+        Text += " · " + NameSketchPick(Sketch, { Layout.Points[Slot] ? SketchPickCategory::Point : SketchPickCategory::Curve, Slots[Slot] });
     return Text;
 }
 
-const char* SketchConstraintTitle(SketchConstraintKind Constraint) noexcept
+const char* SketchConstraintTitle(SketchConstraintCategory Constraint) noexcept
 {
     switch (Constraint)
     {
@@ -541,7 +541,7 @@ SketchDragOutcome DragSketchPoint(const SketchModel& Sketch, int Point, Vector2 
     const Vector2 Origin = Sketch.Points[Point].Position;
     if (!Sketch.Points[Point].Link.Sketch.empty())
     {
-        Outcome.Refusal = "Drag: " + NameSketchPick(Sketch, { SketchPickKind::Point, Point }) + " is linked to " + Sketch.Points[Point].Link.Sketch + " (move it there)";
+        Outcome.Refusal = "Drag: " + NameSketchPick(Sketch, { SketchPickCategory::Point, Point }) + " is linked to " + Sketch.Points[Point].Link.Sketch + " (move it there)";
         return Outcome;
     }
 
@@ -577,7 +577,7 @@ SketchDragOutcome DragSketchPoint(const SketchModel& Sketch, int Point, Vector2 
     if (!Outcome.Solve.Converged || !Outcome.Solve.ConflictGroups.empty()) { Outcome.Refusal = "Drag: the sketch has no solution near there"; return Outcome; }
     if (const int Inverted = InvertedFillet(Sketch, Free); Inverted >= 0)
     {
-        Outcome.Refusal = "Drag: " + NameSketchPick(Sketch, { SketchPickKind::Curve, Inverted }) + " would turn inside out (a fillet stays under a half turn)";
+        Outcome.Refusal = "Drag: " + NameSketchPick(Sketch, { SketchPickCategory::Curve, Inverted }) + " would turn inside out (a fillet stays under a half turn)";
         return Outcome;
     }
     Release(Free);

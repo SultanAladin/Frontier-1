@@ -185,14 +185,14 @@ void BlitTile(
     return Scene;
 }
 
-[[nodiscard]] PerspectiveCameraFrame MakeCamera(
+[[nodiscard]] PerspectiveCameraBasis MakeCamera(
     Mathematics::Axis3D Origin,
     Mathematics::Axis3D Target,
     uint32_t            W,
     uint32_t            H,
     float               FovDeg = 58.0f)
 {
-    PerspectiveCameraFrame Cam {};
+    PerspectiveCameraBasis Cam {};
     Cam.CameraOrigin       = Origin;
     Cam.TargetPoint        = Target;
     Cam.WorldUpAxis        = { 0.0f, 0.0f, 1.0f };

@@ -171,7 +171,7 @@ struct OutdoorProofScene
     SceneGeoAsset FarPillar {};
     SceneGeoAsset SphereAsset {};
     GeometricRaster::WorldSceneSpecification Scene {};
-    GeometricRaster::PerspectiveCameraFrame  CamFrame {};
+    GeometricRaster::PerspectiveCameraBasis  CamFrame {};
 
     void BuildBase(uint32_t TileW, uint32_t TileH)
     {
@@ -343,11 +343,11 @@ int main()
         Wp.Steadiness           = 0.8f;
 
         const auto Auth0 = AtmosphericWindSolver::ResolveWindSample(
-            Wp, 10.0f, 250.0f, WindBindingSource::GlobalWind, { 0.0f, 24.0f, 0.0f }, 0.0f, 1.5f);
+            Wp, 10.0f, 250.0f, WindCouplingSource::GlobalWind, { 0.0f, 24.0f, 0.0f }, 0.0f, 1.5f);
         const auto Auth2Km = AtmosphericWindSolver::ResolveWindSample(
-            Wp, 10.0f, 250.0f, WindBindingSource::GlobalWind, { 0.0f, 24.0f, 2000.0f }, 2000.0f, 1.5f);
+            Wp, 10.0f, 250.0f, WindCouplingSource::GlobalWind, { 0.0f, 24.0f, 2000.0f }, 2000.0f, 1.5f);
         const auto FfSample = AtmosphericWindSolver::ResolveWindSample(
-            Wp, 10.0f, 250.0f, WindBindingSource::ForceFieldCascade, { 6.0f, 24.0f, 6.0f }, 6.0f, 2.0f, &Accumulator, &Cascade);
+            Wp, 10.0f, 250.0f, WindCouplingSource::ForceFieldCascade, { 6.0f, 24.0f, 6.0f }, 6.0f, 2.0f, &Accumulator, &Cascade);
 
         Score.Verify(Auth0.VelocityMetersPerSec.X != 0.0f || Auth0.VelocityMetersPerSec.Y != 0.0f, "GlobalWind resolves positive velocity");
         Score.Verify(std::abs(Auth0.VelocityMetersPerSec.X - Auth2Km.VelocityMetersPerSec.X) > 0.5f, "Ekman veer rotates wind vector with altitude");
@@ -404,7 +404,7 @@ int main()
         const auto R45 = RenderCpu(S);
 
         S.Scene.Atmosphere.SimulationSeconds    = 8.0f;
-        S.Scene.Atmosphere.Clouds.WindSource    = WindBindingSource::ForceFieldCascade;
+        S.Scene.Atmosphere.Clouds.WindSource    = WindCouplingSource::ForceFieldCascade;
         S.Scene.Atmosphere.ForceFieldSource     = &Accumulator;
         S.Scene.Atmosphere.WindLatticeCascade   = &Cascade;
         const auto Rff = RenderCpu(S);
@@ -448,7 +448,7 @@ int main()
             V.FeatureScaleMeters       = 14.0f;
             V.ForwardScatterAnisotropy = 0.50f;
             V.FollowWindEnabled        = true;
-            V.WindSource               = WindBindingSource::LocalCloudWind;
+            V.WindSource               = WindCouplingSource::LocalCloudWind;
             return V;
         };
 
@@ -467,7 +467,7 @@ int main()
         S.Scene.Atmosphere.ForceFieldSource   = &Accumulator;
         S.Scene.Atmosphere.WindLatticeCascade = &Cascade;
         S.Scene.Atmosphere.SimulationSeconds  = 8.0f;
-        for (auto& V : S.Scene.Atmosphere.LocalClouds) V.WindSource = WindBindingSource::ForceFieldCascade;
+        for (auto& V : S.Scene.Atmosphere.LocalClouds) V.WindSource = WindCouplingSource::ForceFieldCascade;
         const auto RSwirl = RenderCpu(S);
 
         S.Scene.Atmosphere.LocalClouds.clear();
@@ -547,7 +547,7 @@ int main()
             V.AnisotropyG        = 0.62f;
             V.FogTint            = Tint;
             V.FollowWind         = true;
-            V.WindSource         = WindBindingSource::LocalFogWind;
+            V.WindSource         = WindCouplingSource::LocalFogWind;
             return V;
         };
 
@@ -565,7 +565,7 @@ int main()
 
         S.Scene.Atmosphere.ForceFieldSource   = &Accumulator;
         S.Scene.Atmosphere.WindLatticeCascade = &Cascade;
-        for (auto& V : S.Scene.Atmosphere.Fog.LocalFogs) V.WindSource = WindBindingSource::ForceFieldCascade;
+        for (auto& V : S.Scene.Atmosphere.Fog.LocalFogs) V.WindSource = WindCouplingSource::ForceFieldCascade;
         const auto RForceFog = RenderCpu(S);
 
         S.Scene.Atmosphere.Fog.HeightFog.Enabled             = true;
@@ -582,7 +582,7 @@ int main()
         HeroCloud.CloudFraction        = 0.82f;
         HeroCloud.ExtinctionMultiplier = 2.8f;
         HeroCloud.FeatureScaleMeters   = 16.0f;
-        HeroCloud.WindSource           = WindBindingSource::ForceFieldCascade;
+        HeroCloud.WindSource           = WindCouplingSource::ForceFieldCascade;
         S.Scene.Atmosphere.LocalClouds.push_back(HeroCloud);
         const auto RFullStack = RenderCpu(S);
 
@@ -649,7 +649,7 @@ int main()
         LocalFogVolume HalfSphereDome {};
         HalfSphereDome.Enabled            = true;
         HalfSphereDome.FollowWind         = true;
-        HalfSphereDome.WindSource         = WindBindingSource::LocalFogWind;
+        HalfSphereDome.WindSource         = WindCouplingSource::LocalFogWind;
         HalfSphereDome.Shape              = AtmosphericVolumeShape::HalfSphere;
         HalfSphereDome.VolumeCenterMeters = { 0.0f, 34.0f, 0.0f };
         HalfSphereDome.HalfExtentMeters   = { 44.0f, 44.0f, 22.0f };
@@ -710,7 +710,7 @@ int main()
         }
         S.Scene.Atmosphere.Wind.Enabled      = true;
         S.Scene.Atmosphere.ForceFieldSource  = &DomeForces;
-        S.Scene.Atmosphere.Fog.LocalFogs[0].WindSource = WindBindingSource::ForceFieldCascade;
+        S.Scene.Atmosphere.Fog.LocalFogs[0].WindSource = WindCouplingSource::ForceFieldCascade;
         S.Scene.Atmosphere.SimulationSeconds = 8.5f;
         const auto RHalfSphereForced = RenderCpu(S);
 

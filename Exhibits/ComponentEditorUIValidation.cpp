@@ -101,7 +101,7 @@ int main()
         ComponentWorkspaceHost Host {};
         Host.AttachVulkanDevice(Vulkan, ShaderDir, RepoRoot);
         auto& Session = Host.AccessSession();
-        if (!Require(Session.VulkanReady && !Session.Documents.empty() && Session.Catalog.size() >= 4u,
+        if (!Require(Session.VulkanReady && !Session.Documents.empty() && Session.Repository.size() >= 4u,
                      "ComponentWorkspaceHost initialized with ControlVehicle & Vulkan renderer"))
         {
             ImGui::DestroyContext(Gui);
@@ -140,7 +140,7 @@ int main()
         if (!CaptureFrame("02-ConstraintDetails.png")) return 6;
 
         // 3. Assembly Sequence view
-        Session.ActiveCenterTab = CenterViewTab::AssemblySequence;
+        Session.ActiveCenterTab = CenterViewTab::ExecutionSequence;
         if (!CaptureFrame("03-AssemblySequence.png")) return 7;
 
         // 4. Response curves drawer + Simulate active
@@ -166,10 +166,10 @@ int main()
         Session.AddComponentToActive(
             ComponentClass::ComponentCategory::LightInstance,
             "SpotBeacon",
-            ComponentClass::PhysicsConstraintKind::Fixed);
+            ComponentClass::PhysicsConstraintCategory::Fixed);
         Session.DuplicateSelectedComponent();
         Session.CompileActiveDocument();
-        if (!Require(!Session.InspectActiveDocument()->Dirty && Session.InspectActiveDocument()->CanCompile,
+        if (!Require(!Session.InspectActiveDocument()->Dirty && Session.InspectActiveDocument()->CompilePermitted,
                      "Add + Duplicate + Compile mutates ComponentClass cleanly"))
         {
             return 10;

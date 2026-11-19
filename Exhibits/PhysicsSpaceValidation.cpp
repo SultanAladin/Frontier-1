@@ -417,7 +417,7 @@ int main()
     {
         Physics.ExportRigidColliderProxies(Proxies);
         FRONTIER_REQUIRE(!Proxies.empty());
-        const ParticleSpace::ParticleStepContext StepCtx {
+        const ParticleSpace::ParticleStepInput StepCtx {
             ParticleDoc,
             ForceAcc,
             1.0f / 60.0f,
@@ -471,7 +471,7 @@ int main()
         Physics.ExportRigidColliderProxies(Proxies);
         for (int Step = 0; Step < 12; ++Step)
         {
-            const ParticleSpace::ParticleStepContext GpuCtx {
+            const ParticleSpace::ParticleStepInput GpuCtx {
                 ParticleDoc,
                 ForceAcc,
                 1.0f / 60.0f,

@@ -31,7 +31,7 @@ namespace
         Vector3 Tangent = {};                                                                // [-] - −sin 𝑢·X + cos 𝑢·Y
     };
 
-    [[nodiscard]] RadialDirection EvaluateRadial(const OrthonormalFrame& Frame, double 𝑢) noexcept
+    [[nodiscard]] RadialDirection EvaluateRadial(const OrthonormalBasis& Frame, double 𝑢) noexcept
     {
         const double Cosine = std::cos(𝑢);                                                   // [-] - cos 𝑢
         const double Sine   = std::sin(𝑢);                                                   // [-] - sin 𝑢
@@ -39,7 +39,7 @@ namespace
     }
 
     // Local coordinates of a point in a frame.
-    [[nodiscard]] Vector3 LocalCoordinates(const OrthonormalFrame& Frame, Vector3 Position) noexcept
+    [[nodiscard]] Vector3 LocalCoordinates(const OrthonormalBasis& Frame, Vector3 Position) noexcept
     {
         const Vector3 Offset = Position - Frame.Origin;                                      // [len] - From the origin
         return { Dot(Offset, Frame.XAxis), Dot(Offset, Frame.YAxis), Dot(Offset, Frame.ZAxis) };
@@ -154,10 +154,10 @@ Vector2 ProjectOntoSurface(const SurfaceGeometry& Surface, Vector3 Position, Vec
         const Vector3 Local = LocalCoordinates(Plane->Frame, Position);
         return { Local.X, Local.Y };
     }
-    const OrthonormalFrame& Frame = std::visit([](const auto& Typed) -> const OrthonormalFrame&
+    const OrthonormalBasis& Frame = std::visit([](const auto& Typed) -> const OrthonormalBasis&
     {
         using Kind = std::decay_t<decltype(Typed)>;
-        if constexpr (std::is_same_v<Kind, RollingBallSurface> || std::is_same_v<Kind, NurbsSurface> || std::is_same_v<Kind, ParallelSurface>) { static const OrthonormalFrame Unused{}; return Unused; }   // Returned above
+        if constexpr (std::is_same_v<Kind, RollingBallSurface> || std::is_same_v<Kind, NurbsSurface> || std::is_same_v<Kind, ParallelSurface>) { static const OrthonormalBasis Unused{}; return Unused; }   // Returned above
         else return Typed.Frame;
     }, Surface);
     const Vector3 Local  = LocalCoordinates(Frame, Position);                                // [len] - Frame coordinates

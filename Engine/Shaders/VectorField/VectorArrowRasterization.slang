@@ -14,7 +14,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 [[vk::push_constant]]
-ConstantBuffer<DrawObjectPushConstants> DrawPush;
+ConstantBuffer<RenderInstancePushConstants> SurfacePush;
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<ViewportOverlayUniforms> Overlay;

@@ -448,7 +448,7 @@ namespace
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-ShellVolumeMeasure MeasureShellVolume(const ModelPartition& Partition, SolidShellToken SolidShell)
+SolidVolumeMeasure MeasureShellVolume(const ModelPartition& Partition, SolidShellToken SolidShell)
 {
     // ⚠️ The noise floor 10⁻¹⁵ · Σ∫|G 𝑣′| is taken over the whole shell, never one face: a plane through the origin
     //    has flux density P·n ≡ 0, so its own magnitude is round-off and a per-face floor never stops the refinement.
@@ -458,7 +458,7 @@ ShellVolumeMeasure MeasureShellVolume(const ModelPartition& Partition, SolidShel
     std::vector<double> FaceMagnitudes(Faces.size(), 0.0);                                   // [len³] - Per face ∫|G 𝑣′| dτ
     double Magnitude = 0.0;                                                                  // [len³] - Σ∫|G 𝑣′| dτ
     for (size_t Index = 0; Index < Faces.size(); ++Index) Magnitude += FaceMagnitudes[Index] = IntegrateFaceFlux(Partition, Faces[Index], 0.0, true);
-    ShellVolumeMeasure Measure;
+    SolidVolumeMeasure Measure;
     for (size_t Index = 0; Index < Faces.size(); ++Index)
     {
         const FaceToken Face  = Faces[Index];

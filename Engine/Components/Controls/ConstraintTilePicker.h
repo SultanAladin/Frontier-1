@@ -28,12 +28,12 @@ public:
     [[nodiscard]] static bool Construct(
         PixelSpace&                            Surface,
         Rectangle2D                            Bounds,
-        ComponentClass::PhysicsConstraintKind& InOutKind,
+        ComponentClass::PhysicsConstraintCategory& InOutKind,
         const ControlPointer&                  Pointer,
         float                                  Opacity = 1.0f) noexcept;
 
-    [[nodiscard]] static const char* QueryKindLabel(ComponentClass::PhysicsConstraintKind Kind) noexcept;
-    [[nodiscard]] static const char* QueryKindSummary(ComponentClass::PhysicsConstraintKind Kind) noexcept;
+    [[nodiscard]] static const char* QueryCategoryLabel(ComponentClass::PhysicsConstraintCategory Form) noexcept;
+    [[nodiscard]] static const char* QueryCategorySummary(ComponentClass::PhysicsConstraintCategory Form) noexcept;
 };
 
 } // namespace Frontier

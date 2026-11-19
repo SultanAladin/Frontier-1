@@ -306,7 +306,7 @@ void StepDynamicStrandEnsemble(
     const float BallRad      = Collider.BallActive ? Collider.BallRadiusMeters : 0.0f;
     const float BallSpd      = Len3(BallVel);
 
-    ParticleTintEvaluationContext TintCtx {};
+    ParticleTintInput TintCtx {};
     TintCtx.ElapsedSeconds  = ElapsedSeconds;
     TintCtx.OriginMeters[0] = Org.X; TintCtx.OriginMeters[1] = Org.Y; TintCtx.OriginMeters[2] = Org.Z;
 

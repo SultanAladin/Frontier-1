@@ -9,7 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Components/Diagnostics/FrameTimingTelemetry.h"
+#include "Engine/Components/Diagnostics/ViewportTimingTelemetry.h"
 #include "Engine/GeometricRaster/Compute/ComputeDispatchEncoder.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 
@@ -60,11 +60,12 @@ public:
                DistEvalClearVehicleProgramHandle != UINT32_MAX;
     }
     [[nodiscard]] bool             QueryIrradianceLatticeUploaded() const noexcept { return CachedLatticeDimX > 0u && CachedLatticeDimY > 0u && CachedLatticeDimZ > 0u; }
+    [[nodiscard]] bool             QueryDdgiManagedByGpu() const noexcept { return DdgiManagedByGpu; }
     [[nodiscard]] uint32_t         QueryCachedSdfVoxelCount() const noexcept { return CachedSdfDimX * CachedSdfDimY * CachedSdfDimZ; }
     [[nodiscard]] std::string_view QueryAdapterTitle() const noexcept;
     [[nodiscard]] float            QueryLastDispatchMilliseconds() const noexcept { return LastDispatchMilliseconds; }
     [[nodiscard]] float            QueryLastSceneSyncMilliseconds() const noexcept { return LastSceneSyncMilliseconds; }
-    [[nodiscard]] const FrameTimingBreakdown& QueryLastTimingBreakdown() const noexcept { return LastTimingBreakdown; }
+    [[nodiscard]] const ViewportTimingBreakdown& QueryLastTimingBreakdown() const noexcept { return LastViewportTiming; }
 
     void SynchronizeSceneResources(
         const WorldSceneSpecification&   Scene,
@@ -76,14 +77,14 @@ public:
     [[nodiscard]] bool RenderWorldViewportWithEngine(
         const WorldRenderConfiguration& Config,
         uint32_t                        PathTraceSampleIndex,
-        const PerspectiveCameraFrame&   Camera,
+        const PerspectiveCameraBasis&   Camera,
         const WorldSceneSpecification&  Scene,
         std::vector<uint8_t>&           OutDisplayRgba8);
 
     [[nodiscard]] bool RenderWorldViewportToGpuImage(
         const WorldRenderConfiguration& Config,
         uint32_t                        PathTraceSampleIndex,
-        const PerspectiveCameraFrame&   Camera,
+        const PerspectiveCameraBasis&   Camera,
         const WorldSceneSpecification&  Scene,
         VkImageView&                    OutDisplayImageView,
         uint32_t&                       OutWidthPx,
@@ -91,7 +92,7 @@ public:
 
     [[nodiscard]] bool RenderWorldViewportRgba8(
         WorldRenderTier                Tier,
-        const PerspectiveCameraFrame&  Camera,
+        const PerspectiveCameraBasis&  Camera,
         const WorldSceneSpecification& Scene,
         uint32_t                       DebugChannel,
         std::vector<uint8_t>&          OutDisplayRgba8);
@@ -108,8 +109,8 @@ public:
         float&                                                          OutGpuElapsedMs);
 
     [[nodiscard]] bool ExecuteGpuDistanceEvaluation(
-        const DistanceFieldSpace::FacetAtlas&                           LocalAtlas,
-        const DistanceFieldSpace::BakedFacetDistance&                   Baked,
+        const DistanceFieldSpace::FaceBvhRepository&                           LocalAtlas,
+        const DistanceFieldSpace::BakedFaceDistance&                   Baked,
         const DistanceFieldSpace::DistanceClipmap&                      Clipmap,
         const DistanceFieldSpace::RigidPose&                            Pose,
         std::span<const DistanceFieldSpace::ClosedBox>                  Boxes,
@@ -144,7 +145,7 @@ private:
     void DispatchGpuSkyViewLut(VkCommandBuffer Cmd, const WorldSceneSpecification& Scene);
     void DispatchGpuStellarTileCull(
         VkCommandBuffer                Cmd,
-        const PerspectiveCameraFrame&  Camera,
+        const PerspectiveCameraBasis&  Camera,
         const WorldSceneSpecification& Scene,
         uint32_t                       WidthPx,
         uint32_t                       HeightPx);
@@ -155,7 +156,7 @@ private:
     [[nodiscard]] bool ExecuteWorldRenderDispatch(
         const WorldRenderConfiguration& Config,
         uint32_t                        PathTraceSampleIndex,
-        const PerspectiveCameraFrame&   Camera,
+        const PerspectiveCameraBasis&   Camera,
         const WorldSceneSpecification&  Scene,
         bool                            CopyToReadbackStaging,
         bool                            CopyToDisplayImage2D,
@@ -177,7 +178,7 @@ private:
     uint32_t               ShadowCascadeProgramHandle  = UINT32_MAX;
     uint32_t               SdfRadiosityProgramHandle   = UINT32_MAX;
     uint32_t               DdgiLatticeProgramHandle    = UINT32_MAX;
-    uint32_t               ReservoirSpatialProgramHandle = UINT32_MAX;
+    uint32_t               ImportanceSpatialProgramHandle = UINT32_MAX;
     uint32_t               ClipmapComposeProgramHandle = UINT32_MAX;
     uint32_t               ClipmapRadiosityProgramHandle = UINT32_MAX;
     uint32_t               ClipmapConeGiProgramHandle  = UINT32_MAX;
@@ -236,7 +237,7 @@ private:
     DeviceBufferResource   PongShadowAoBuffer          {};
     DeviceBufferResource   PongGiHdrBuffer             {};
     DeviceBufferResource   CloudRadiometricBuffer      {};
-    DeviceBufferResource   ReservoirCurrentBuffer      {};
+    DeviceBufferResource   WeightedCurrentBuffer      {};
     DeviceBufferResource   ReservoirHistoryBuffer      {};
     DeviceBufferResource   RawCatalogStarBuffer        {};
     DeviceBufferResource   ProjectedCatalogStarBuffer  {};
@@ -270,13 +271,13 @@ private:
     uint32_t               UploadedCatalogStarCount = 0u;
     bool                   SceneUploadedOnce        = false;
     bool                   DdgiManagedByGpu         = false;
-    PerspectiveCameraFrame PreviousReplayCamera     {};
+    PerspectiveCameraBasis PreviousReplayCamera     {};
     uint32_t               ReplayWidthPx            = 0u;
     uint32_t               ReplayHeightPx           = 0u;
     uint32_t               ReplaySequenceIndex      = 0u;
     float                  LastDispatchMilliseconds = 0.0f;
     float                  LastSceneSyncMilliseconds = 0.0f;
-    FrameTimingBreakdown   LastTimingBreakdown      {};
+    ViewportTimingBreakdown   LastViewportTiming      {};
 };
 
 } // namespace Frontier::GeometricRaster

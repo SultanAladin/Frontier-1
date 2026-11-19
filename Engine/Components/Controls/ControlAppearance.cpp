@@ -253,7 +253,7 @@ void ConstructScrollIndicator(PixelSpace &Surface, Rectangle2D ViewBounds, float
 namespace
 {
 
-struct DeferredTooltipRecord
+struct DeferredTooltipEntry
 {
     Rectangle2D      Anchor      {};
     std::string      TitleBuffer {};
@@ -265,7 +265,7 @@ struct DeferredTooltipRecord
     bool             Pending     = false;
 };
 
-DeferredTooltipRecord PendingTooltip{};
+DeferredTooltipEntry PendingTooltip{};
 
 } // namespace
 

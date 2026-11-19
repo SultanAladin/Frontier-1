@@ -48,7 +48,7 @@ enum class ParticleScalarChannel : uint8_t
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct ParticleTintEvaluationContext
+struct ParticleTintInput
 {
     float OriginMeters[3]    = { 0.0f, 0.0f, 0.0f };  // [m] - Rig release origin centre
     float CameraMeters[3]    = { 0.0f, 3.0f, 9.0f };  // [m] - Active camera world position
@@ -73,13 +73,13 @@ struct ParticleTintDriverSpec
 [[nodiscard]] float ExtractParticleChannelScalar(
     ParticleScalarChannel                Channel,
     const ParticleSlot&                  Slot,
-    const ParticleTintEvaluationContext& Context) noexcept;
+    const ParticleTintInput& Context) noexcept;
 
 /// Routes the extracted particle scalar directly into Frontier::ColourSpace::SampleColourSource (zero duplicated colour math).
 [[nodiscard]] ColourSpace::LinearRgba EvaluateParticleTint(
     const ParticleTintDriverSpec&        Driver,
     const ColourSpace::ColourSourceProfile& ColourProfile,
     const ParticleSlot&                  Slot,
-    const ParticleTintEvaluationContext& Context) noexcept;
+    const ParticleTintInput& Context) noexcept;
 
 } // namespace Frontier::ParticleSpace

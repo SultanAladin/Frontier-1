@@ -229,7 +229,7 @@ inline constexpr ColorRgba TealFormula     { 169, 217, 200, 255 };
     case ForceModel::FlowStream:
         Src.Strength      = 24.0f;
         Src.RadiusMeters  = 18.0f;
-        Src.StreamProfile = FlowStreamProfile::SlipstreamJet;
+        Src.StreamProfile = StreamTransportProfile::SlipstreamJet;
         break;
     case ForceModel::SplineForce:
         Src.Strength     = 20.0f;
@@ -311,7 +311,7 @@ void ForcePresetBrowserPanel::PopulateDefaultForcePresets()
     }
     {
         auto S = ConstructDefaultLawSource(ForceModel::FlowStream);
-        S.Strength = 26.0f; S.RadiusMeters = 17.0f; S.StreamProfile = FlowStreamProfile::SlipstreamJet; S.CentreMeters = { -16.0f, 0.0f, 6.0f };
+        S.Strength = 26.0f; S.RadiusMeters = 17.0f; S.StreamProfile = StreamTransportProfile::SlipstreamJet; S.CentreMeters = { -16.0f, 0.0f, 6.0f };
         AppendPreset("preset-cantilever-jet", "Cantilever Jet Plume", "Focused directional jet corridor with Gaussian profile.", std::move(S));
     }
     {

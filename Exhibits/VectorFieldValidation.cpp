@@ -105,7 +105,7 @@ bool ValidateAllForceModelsDivergence()
 
         if (Entry.Model == ForceModel::SplineForce)
         {
-            AssignPresetMotionPath(Entry, MotionPathTopology::CatmullSpline);
+            AssignPresetMotionPath(Entry, MotionPathGeometry::CatmullSpline);
         }
 
         ForceFieldAccumulator Acc{};
@@ -129,7 +129,7 @@ bool ValidateAllForceModelsDivergence()
         ForceSourceRecordEntry UpEntry{};
         UpEntry.UniqueToken   = 99u;
         UpEntry.Model         = ForceModel::FlowStream;
-        UpEntry.StreamProfile = FlowStreamProfile::ThermalUpdraft;
+        UpEntry.StreamProfile = StreamTransportProfile::ThermalUpdraft;
         UpEntry.RadiusMeters  = 20.0f;
         UpEntry.Strength      = 14.0f;
         UpEntry.CentreMeters  = { 0.0f, 0.0f, 0.0f };
@@ -194,7 +194,7 @@ bool ValidateMotionPathsTemporalModels()
     LineEntry.RadiusMeters               = 15.0f;
     LineEntry.Strength                   = 12.0f;
     LineEntry.DynamicMotion              = true;
-    LineEntry.Motion.Topology            = MotionPathTopology::LinearSpan;
+    LineEntry.Motion.Topology            = MotionPathGeometry::LinearSpan;
     LineEntry.Motion.CycleBehavior       = MotionCycleBehavior::PingPong;
     LineEntry.Motion.SpeedMetresPerSecond = 10.0f;
     LineEntry.Motion.WaypointCount       = 2u;
@@ -216,7 +216,7 @@ bool ValidateMotionPathsTemporalModels()
     OrbitEntry.UniqueToken                         = 2u;
     OrbitEntry.Model                               = ForceModel::LinearWind;
     OrbitEntry.DynamicMotion                       = true;
-    OrbitEntry.Motion.Topology                     = MotionPathTopology::HelicalOrbit;
+    OrbitEntry.Motion.Topology                     = MotionPathGeometry::HelicalOrbit;
     OrbitEntry.Motion.SpeedMetresPerSecond         = 8.0f;
     OrbitEntry.Motion.OrbitRadiusMeters            = 10.0f;
     OrbitEntry.Motion.OrbitVerticalAmplitudeMeters = 0.0f;
@@ -384,11 +384,11 @@ bool ValidateVectorFieldCodecs()
     Rec1.UniqueToken                = 101u;
     Rec1.Label                      = "PrimaryJet";
     Rec1.Model                      = ForceModel::FlowStream;
-    Rec1.StreamProfile              = FlowStreamProfile::SlipstreamJet;
+    Rec1.StreamProfile              = StreamTransportProfile::SlipstreamJet;
     Rec1.CentreMeters               = { -10.0f, 2.0f, 5.0f };
     Rec1.Strength                   = 22.0f;
     Rec1.RadiusMeters               = 18.0f;
-    Rec1.Motion.Topology            = MotionPathTopology::CatmullSpline;
+    Rec1.Motion.Topology            = MotionPathGeometry::CatmullSpline;
     Rec1.Motion.WaypointCount       = 3u;
     Rec1.Motion.Waypoints[0]        = { -10.0f, 2.0f, 5.0f };
     Rec1.Motion.Waypoints[1]        = { 0.0f, 8.0f, 7.0f };
@@ -490,7 +490,7 @@ bool ValidateEditorVulkanOverlayExhibits()
     VortexDesc.Strength               = 22.0f;
     VortexDesc.SwirlRatio             = 1.15f;
     VortexDesc.DynamicMotion          = true;
-    VortexDesc.Motion.Topology        = MotionPathTopology::CatmullSpline;
+    VortexDesc.Motion.Topology        = MotionPathGeometry::CatmullSpline;
     VortexDesc.Motion.CycleBehavior   = MotionCycleBehavior::PingPong;
     VortexDesc.Motion.SpeedMetresPerSecond = 5.5f;
     VortexDesc.Motion.WaypointCount   = 3u;
@@ -502,7 +502,7 @@ bool ValidateEditorVulkanOverlayExhibits()
     ForceSourceRecordEntry JetDesc{};
     JetDesc.Label        = "Cantilever Jet Plume";
     JetDesc.Model        = ForceModel::FlowStream;
-    JetDesc.StreamProfile= FlowStreamProfile::SlipstreamJet;
+    JetDesc.StreamProfile= StreamTransportProfile::SlipstreamJet;
     JetDesc.CentreMeters = { 14.0f, 8.0f, 7.0f };
     JetDesc.EulerDegrees = { 0.0f, -12.0f, -145.0f };
     JetDesc.RadiusMeters = 17.0f;
@@ -518,7 +518,7 @@ bool ValidateEditorVulkanOverlayExhibits()
     BurstDesc.DurationMode                 = ForceDurationMode::Modulated;
     BurstDesc.FrequencyHertz               = 0.4f;
     BurstDesc.DynamicMotion                = true;
-    BurstDesc.Motion.Topology              = MotionPathTopology::HelicalOrbit;
+    BurstDesc.Motion.Topology              = MotionPathGeometry::HelicalOrbit;
     BurstDesc.Motion.SpeedMetresPerSecond  = 6.0f;
     BurstDesc.Motion.OrbitRadiusMeters     = 8.0f;
     BurstDesc.Motion.WaypointCount         = 2u;
@@ -643,10 +643,10 @@ bool ValidateEditorVulkanOverlayExhibits()
             Tokens[I] = (I < LiveSrcs.size()) ? LiveSrcs[I].OutlinerTokenId : static_cast<uint32_t>(I + 1u);
             WpOff[I]  = PackedSrcs[I].WaypointStartIdx;
             WpCnt[I]  = PackedSrcs[I].WaypointCount;
-            IsOrb[I]  = (I < LiveSrcs.size() && LiveSrcs[I].Motion.Topology == MotionPathTopology::HelicalOrbit) ? 1u : 0u;
+            IsOrb[I]  = (I < LiveSrcs.size() && LiveSrcs[I].Motion.Topology == MotionPathGeometry::HelicalOrbit) ? 1u : 0u;
         }
 
-        OverlayFrameRequest DirectReq{};
+        OverlayRenderRequest DirectReq{};
         DirectReq.PaneIndex             = 0u;
         DirectReq.WidthPx               = 1280u;
         DirectReq.HeightPx              = 720u;

@@ -71,7 +71,7 @@ class VisibilityClusterRasterization
 public:
     // Executes Hardware (>=4 px) + Software Compute (<4 px) opaque visibility passes into OpaquePrimary64
     static void RasterizeOpaqueClusters(
-        const PerspectiveCameraFrame&            Camera,
+        const PerspectiveCameraBasis&            Camera,
         std::span<const RigidClusterInstance>    Instances,
         std::span<const VisibleClusterCommand>   HardwareBatches,
         std::span<const VisibleClusterCommand>   MicroSoftwareBatches,
@@ -79,7 +79,7 @@ public:
 
     // Executes 2-layer Order-Independent Dielectric Depth Peel strictly in front of OpaquePrimary64
     static void RasterizeTwoLayerGlassPeel(
-        const PerspectiveCameraFrame&            Camera,
+        const PerspectiveCameraBasis&            Camera,
         std::span<const RigidClusterInstance>    Instances,
         std::span<const VisibleClusterCommand>   GlassBatches,
         VisibilityBufferTargets&                 InOutTargets);

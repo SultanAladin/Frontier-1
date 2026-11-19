@@ -48,11 +48,11 @@ struct ClassDiagnosticIssue
 class ComponentClassValidator
 {
 public:
-    using AssetExistsPredicate = std::function<bool(std::string_view AssetIdentifier)>;
+    using AssetExistsCondition = std::function<bool(std::string_view AssetIdentifier)>;
 
     [[nodiscard]] static std::vector<ClassDiagnosticIssue> ValidateClass(
         const ComponentClassDefinition& Definition,
-        const AssetExistsPredicate&     QueryAssetCompiled = nullptr);
+        const AssetExistsCondition&     QueryAssetCompiled = nullptr);
 
     [[nodiscard]] static bool QueryHasBlockingErrors(const std::vector<ClassDiagnosticIssue>& Issues) noexcept;
 };

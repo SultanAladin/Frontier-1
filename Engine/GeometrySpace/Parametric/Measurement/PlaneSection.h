@@ -9,7 +9,7 @@
 //                                                    INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <array>
 #include <string>
@@ -58,8 +58,8 @@ struct HalfSpaceCut
 //    chord of the outline polylines (0 → 1 % of the body reach).
 // 💡 Cuts Body in Partition (callers pass a scratch copy: the partition gains the tool and both pieces) by the half-space on
 //    the +Plane.ZAxis side and finds the cap faces. Shared by SectionBody and the drawing section views.
-[[nodiscard]] HalfSpaceCut CutBodyAtPlane(ModelPartition& Partition, BodyToken Body, const OrthonormalFrame& Plane);
+[[nodiscard]] HalfSpaceCut CutBodyAtPlane(ModelPartition& Partition, BodyToken Body, const OrthonormalBasis& Plane);
 
-[[nodiscard]] PlaneSectionMeasure SectionBody(const ModelPartition& Partition, BodyToken Body, const OrthonormalFrame& Plane, double OutlineStep = 0.0);
+[[nodiscard]] PlaneSectionMeasure SectionBody(const ModelPartition& Partition, BodyToken Body, const OrthonormalBasis& Plane, double OutlineStep = 0.0);
 
 } // namespace Frontier::GeometrySpace::Parametric

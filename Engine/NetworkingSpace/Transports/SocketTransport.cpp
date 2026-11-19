@@ -652,7 +652,7 @@ void SocketTransport::RegisterPeerSocketAddress(uint32_t EndpointIdentifier, con
     {
         return;
     }
-    for (PeerRouteRecord& Existing : PeerRoutes)
+    for (PeerRouteEntry& Existing : PeerRoutes)
     {
         if (Existing.EndpointIdentifier == EndpointIdentifier)
         {
@@ -660,7 +660,7 @@ void SocketTransport::RegisterPeerSocketAddress(uint32_t EndpointIdentifier, con
             return;
         }
     }
-    PeerRoutes.push_back(PeerRouteRecord{ EndpointIdentifier, Address });
+    PeerRoutes.push_back(PeerRouteEntry{ EndpointIdentifier, Address });
 }
 
 bool SocketTransport::OpenChannel() noexcept
@@ -837,7 +837,7 @@ bool SocketTransport::TransmitDatagram(
     }
 
     const IpSocketAddress* RouteAddr = nullptr;
-    for (const PeerRouteRecord& Route : PeerRoutes)
+    for (const PeerRouteEntry& Route : PeerRoutes)
     {
         if (Route.EndpointIdentifier == TargetEndpointIdentifier)
         {

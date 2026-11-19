@@ -9,7 +9,7 @@
 
 #include "Engine/GeometrySpace/Parametric/Blend/FairPatch.h"
 
-#include "Engine/GeometrySpace/Parametric/Construction/BodyAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Construction/BodyArrangement.h"
 #include "Engine/GeometrySpace/Parametric/Containment/FaceDomain.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/ProjectedCurve.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/RollingBallCarrier.h"
@@ -648,7 +648,7 @@ namespace
             return true;
         }
 
-        [[nodiscard]] static std::optional<OrthonormalFrame> AxisOf(const SurfaceGeometry& Surface)
+        [[nodiscard]] static std::optional<OrthonormalBasis> AxisOf(const SurfaceGeometry& Surface)
         {
             if (const auto* Torus = std::get_if<TorusSurface>(&Surface))       return Torus->Frame;
             if (const auto* Cone = std::get_if<ConeSurface>(&Surface))         return Cone->Frame;
@@ -669,7 +669,7 @@ namespace
             if (Closed)
             {
                 const auto*                     Plane = std::get_if<PlaneSurface>(&Cliff);
-                const std::optional<OrthonormalFrame> Axis = AxisOf(Sheet.Surface);
+                const std::optional<OrthonormalBasis> Axis = AxisOf(Sheet.Surface);
                 if (!Plane || !Axis || Length(Cross(Plane->Frame.ZAxis, Axis->ZAxis)) > 1.0e-12) return Subject + "closed cliff section off a plane square to the blend axis (🚧)";
                 const Vector3 Point  = PositionOf(From);
                 const Vector3 Centre = Axis->Origin + Axis->ZAxis * Dot(Point - Axis->Origin, Axis->ZAxis);
@@ -2110,7 +2110,7 @@ static BlendOutcome BlendEdgesUntraced(ModelPartition& Partition, BodyToken Body
     if (std::string Refusal = Rebuild.Run(Selection); !Refusal.empty()) return Finish(Refusal);
 
     // ⑤ Assembly and the atomic soundness gate (topology + geometry audit, genus unchanged).
-    const AssemblyOutcome Assembly = AssembleBody(Partition, Rebuild.Blueprint, "Blend");
+    const ArrangementOutcome Assembly = AssembleBody(Partition, Rebuild.Blueprint, "Blend");
     if (!Assembly.Refusal.empty()) return Finish(Assembly.Refusal);
     Outcome.Audit = AuditBody(Partition, Assembly.Body);
     if (!Outcome.Audit.SoundCondition())

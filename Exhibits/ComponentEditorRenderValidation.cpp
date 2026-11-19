@@ -198,7 +198,7 @@ int main()
     }
 
     const ComponentViewportCamera HeroCam = Renderer.ComputeFramedCameraForClass(
-        Build.ClassDefinition, Build.GeometryCatalog, 0.72f, 0.28f);
+        Build.ClassDefinition, Build.GeometryRepository, 0.72f, 0.28f);
 
     struct ChannelCase
     {
@@ -222,8 +222,8 @@ int main()
         Opts.ShowDotFloor   = true;
         Opts.ShowDebugHelpers = true;
         Opts.ElapsedSeconds = 0.5f;
-        const auto FrameOut = Renderer.RenderClassFrame(
-            Build.ClassDefinition, Build.GeometryCatalog, HeroCam, Opts, 1024u, 640u, true);
+        const auto FrameOut = Renderer.RenderClassViewport(
+            Build.ClassDefinition, Build.GeometryRepository, HeroCam, Opts, 1024u, 640u, true);
 
         const double Var = ComputeRgbVariance(FrameOut.DisplayRgba8);
         if (!Require(FrameOut.VulkanGpuActive && FrameOut.DrawnTriangles > 10000u && Var > 20.0, Case.FileName))
@@ -253,7 +253,7 @@ int main()
         Opts.ElapsedSeconds   = 0.75f;
         Opts.SelectedToken    = SpringTok;
         Opts.LiveConstraintCoordinates[SpringTok.SlotIndex] = -0.045f;
-        const auto Out = Renderer.RenderClassFrame(Build.ClassDefinition, Build.GeometryCatalog, HeroCam, Opts, 1024u, 640u, true);
+        const auto Out = Renderer.RenderClassViewport(Build.ClassDefinition, Build.GeometryRepository, HeroCam, Opts, 1024u, 640u, true);
         (void)ComponentViewportRenderer::WritePngFile(OutDir / "08-XRay-SpringConstraint.png", Out.WidthPx, Out.HeightPx, Out.DisplayRgba8);
         if (!Require(ComputeRgbVariance(Out.DisplayRgba8) > 20.0, "X-ray Spring Constraint renders cleanly over vehicle"))
         {
@@ -267,13 +267,13 @@ int main()
         Opts.ShowDebugHelpers = true;
         Opts.ElapsedSeconds   = 0.75f;
         Opts.SelectedToken    = DockTok;
-        Opts.DockIntactFlags[DockTok.SlotIndex] = true;
-        const auto Out = Renderer.RenderClassFrame(Build.ClassDefinition, Build.GeometryCatalog, HeroCam, Opts, 1024u, 640u, true);
+        Opts.DockIntactMask[DockTok.SlotIndex] = true;
+        const auto Out = Renderer.RenderClassViewport(Build.ClassDefinition, Build.GeometryRepository, HeroCam, Opts, 1024u, 640u, true);
         (void)ComponentViewportRenderer::WritePngFile(OutDir / "09-XRay-DockConstraint.png", Out.WidthPx, Out.HeightPx, Out.DisplayRgba8);
     }
 
     // 128x128 transparent cutout thumbnail bake
-    if (!Require(ComponentSpecimenBaker::BakeClassThumbnail(Renderer, Build.ClassDefinition, Build.GeometryCatalog, 128u),
+    if (!Require(ComponentSpecimenBaker::BakeClassThumbnail(Renderer, Build.ClassDefinition, Build.GeometryRepository, 128u),
                  "ComponentSpecimenBaker::BakeClassThumbnail (128x128)"))
     {
         return 8;

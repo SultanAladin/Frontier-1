@@ -49,7 +49,7 @@ namespace
     [[nodiscard]] int CornerPoint(const SketchCurve& Line, bool EndCondition) { return EndCondition ? Line.End : Line.Start; }
     [[nodiscard]] int FarPoint(const SketchCurve& Line, bool EndCondition)    { return EndCondition ? Line.Start : Line.End; }
 
-    [[nodiscard]] int NextIdentifier(const SketchModel& Sketch, SketchCurveKind Kind)
+    [[nodiscard]] int NextIdentifier(const SketchModel& Sketch, SketchCurveCategory Kind)
     {
         int Largest = 0;
         for (const SketchCurve& Curve : Sketch.Curves) if (Curve.Kind == Kind) Largest = std::max(Largest, Curve.Identifier);
@@ -67,14 +67,14 @@ namespace
         {
             const SketchCurve& Curve = Sketch.Curves[Index];
             if (Curve.Construction) continue;
-            if (Curve.Kind == SketchCurveKind::Line)
+            if (Curve.Kind == SketchCurveCategory::Line)
             {
                 if (Meets(Curve.Start)) Lines.push_back({ static_cast<int>(Index), false });
                 else if (Meets(Curve.End)) Lines.push_back({ static_cast<int>(Index), true });
                 continue;
             }
-            if (Curve.Kind == SketchCurveKind::Arc && (Meets(Curve.Start) || Meets(Curve.End))) ++Others;
-            if (Curve.Kind == SketchCurveKind::Spline && !Curve.Points.empty() && (Meets(Curve.Points.front()) || Meets(Curve.Points.back()))) ++Others;
+            if (Curve.Kind == SketchCurveCategory::Arc && (Meets(Curve.Start) || Meets(Curve.End))) ++Others;
+            if (Curve.Kind == SketchCurveCategory::Spline && !Curve.Points.empty() && (Meets(Curve.Points.front()) || Meets(Curve.Points.back()))) ++Others;
         }
     }
 
@@ -174,13 +174,13 @@ SketchCornerOutcome CutSketchCorners(const SketchModel& Sketch, const std::vecto
             int Side = -1;
             for (int Candidate = 0; Candidate < 2; ++Candidate)
             {
-                const bool Names = (Constraint.Kind == SketchConstraintKind::Length || Constraint.Kind == SketchConstraintKind::EqualLength) ? (Constraint.First == Lines[Candidate].Curve || (Constraint.Kind == SketchConstraintKind::EqualLength && Constraint.Second == Lines[Candidate].Curve))
-                                 : Constraint.Kind == SketchConstraintKind::Midpoint ? Constraint.Second == Lines[Candidate].Curve : false;
+                const bool Names = (Constraint.Kind == SketchConstraintCategory::Length || Constraint.Kind == SketchConstraintCategory::EqualLength) ? (Constraint.First == Lines[Candidate].Curve || (Constraint.Kind == SketchConstraintCategory::EqualLength && Constraint.Second == Lines[Candidate].Curve))
+                                 : Constraint.Kind == SketchConstraintCategory::Midpoint ? Constraint.Second == Lines[Candidate].Curve : false;
                 if (Names) Side = Candidate;
             }
             if (Side < 0) { Kept.push_back(std::move(Constraint)); continue; }
-            if (Constraint.Kind != SketchConstraintKind::Length) continue;                   // EqualLength / Midpoint drop
-            Constraint.Kind   = SketchConstraintKind::Distance;
+            if (Constraint.Kind != SketchConstraintCategory::Length) continue;                   // EqualLength / Midpoint drop
+            Constraint.Kind   = SketchConstraintCategory::Distance;
             Constraint.First  = Ends[Side];
             Constraint.Second = Fars[Side];
             Kept.push_back(std::move(Constraint));
@@ -191,7 +191,7 @@ SketchCornerOutcome CutSketchCorners(const SketchModel& Sketch, const std::vecto
             for (int Line = 0; Line < 2; ++Line)
             {
                 if (Side == 1 && Ends[0] == Ends[1]) continue;                               // One shared corner point: pinned once per line
-                AppendSketchConstraint(Edited, SketchConstraintKind::PointOnLine, Ends[Side], Lines[Line].Curve);
+                AppendSketchConstraint(Edited, SketchConstraintCategory::PointOnLine, Ends[Side], Lines[Line].Curve);
             }
         }
 
@@ -205,16 +205,16 @@ SketchCornerOutcome CutSketchCorners(const SketchModel& Sketch, const std::vecto
             const Vector2 From   = Edited.Points[Tangent[0]].Position - Middle;
             const Vector2 To     = Edited.Points[Tangent[1]].Position - Middle;
             const bool    TurnCondition = From.X * To.Y - From.Y * To.X > 0.0;                // Counter-clockwise T₁ → T₂
-            const int     Arc = AppendSketchArc(Edited, Centre, TurnCondition ? Tangent[0] : Tangent[1], TurnCondition ? Tangent[1] : Tangent[0], NextIdentifier(Edited, SketchCurveKind::Arc));
-            AppendSketchConstraint(Edited, SketchConstraintKind::Tangent, Lines[0].Curve, Arc);
-            AppendSketchConstraint(Edited, SketchConstraintKind::Tangent, Lines[1].Curve, Arc);
-            AppendSketchConstraint(Edited, SketchConstraintKind::Radius, Arc, -1, -1, Size, "Fillet");
+            const int     Arc = AppendSketchArc(Edited, Centre, TurnCondition ? Tangent[0] : Tangent[1], TurnCondition ? Tangent[1] : Tangent[0], NextIdentifier(Edited, SketchCurveCategory::Arc));
+            AppendSketchConstraint(Edited, SketchConstraintCategory::Tangent, Lines[0].Curve, Arc);
+            AppendSketchConstraint(Edited, SketchConstraintCategory::Tangent, Lines[1].Curve, Arc);
+            AppendSketchConstraint(Edited, SketchConstraintCategory::Radius, Arc, -1, -1, Size, "Fillet");
         }
         else
         {
-            AppendSketchLine(Edited, Tangent[0], Tangent[1], NextIdentifier(Edited, SketchCurveKind::Line));
-            AppendSketchConstraint(Edited, SketchConstraintKind::Distance, Ends[0], Tangent[0], -1, Size, "Chamfer");
-            AppendSketchConstraint(Edited, SketchConstraintKind::Distance, Ends[1], Tangent[1], -1, Size, "Chamfer");
+            AppendSketchLine(Edited, Tangent[0], Tangent[1], NextIdentifier(Edited, SketchCurveCategory::Line));
+            AppendSketchConstraint(Edited, SketchConstraintCategory::Distance, Ends[0], Tangent[0], -1, Size, "Chamfer");
+            AppendSketchConstraint(Edited, SketchConstraintCategory::Distance, Ends[1], Tangent[1], -1, Size, "Chamfer");
         }
         Outcome.Corners.push_back(Point);
         Outcome.Setback = std::max(Outcome.Setback, Setback);

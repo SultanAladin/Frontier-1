@@ -23,7 +23,7 @@ namespace Frontier::ComponentClass
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct CompiledGeometryCatalogEntry
+struct CompiledGeometryRepositoryEntry
 {
     std::string                            AssetIdentifier {}; // [-] - Key referenced by GeometryComponentSettings
     std::string                            DisplayTitle    {}; // [-] - Human-readable title
@@ -34,7 +34,7 @@ struct CompiledGeometryCatalogEntry
 struct ControlVehicleBuildResult
 {
     ComponentClassDefinition                  ClassDefinition {}; // [-] - Assembled ControlVehicle ComponentClass
-    std::vector<CompiledGeometryCatalogEntry> GeometryCatalog {}; // [-] - 4 compiled vehicle assets (Body, Tyre, Rim, RearWing)
+    std::vector<CompiledGeometryRepositoryEntry> GeometryRepository {}; // [-] - 4 compiled vehicle assets (Body, Tyre, Rim, RearWing)
 };
 
 //------------------------------------------------------------------------------------------------------------------------

@@ -44,7 +44,7 @@ int main()
     SketcherDocument Doc = CreateSketcherDocument("Bracket");
     {
         SketcherConstructRequest BoxReq {};
-        BoxReq.Kind     = SketcherConstructKind::Block;
+        BoxReq.Kind     = SketcherConstructCategory::Block;
         BoxReq.Position = { -1.5, -1.0, 0.0 };
         BoxReq.Width    = 3.0;
         BoxReq.Depth    = 2.0;
@@ -57,7 +57,7 @@ int main()
         }
 
         SketcherDrawingRequest CircleReq {};
-        CircleReq.Kind            = SketcherDrawingKind::Circle;
+        CircleReq.Kind            = SketcherDrawingCategory::Circle;
         CircleReq.GridPlane       = 0;
         CircleReq.CentreCondition = true;
         CircleReq.FillCondition   = true;
@@ -88,7 +88,7 @@ int main()
         }
 
         const OrbitCamera Cam {};
-        const OrbitCameraFrame Frame = FrameOrbitCamera(Cam, 1280.0, 720.0);
+        const OrbitCameraBasis Frame = FrameOrbitCamera(Cam, 1280.0, 720.0);
         const OrbitRay CenterRay = CastOrbitRay(Frame, 640.0, 360.0);
         const auto Hit = PickSketcherScene(Scene, CenterRay, 0.05);
         if (!VerifyCheck(Hit.has_value(), "PickSketcherScene hits extruded bracket"))
@@ -219,7 +219,7 @@ int main()
         {
             SketcherDocument RetopoDoc = CreateSketcherDocument();
             SketcherConstructRequest RefSphere {};
-            RefSphere.Kind   = SketcherConstructKind::Sphere;
+            RefSphere.Kind   = SketcherConstructCategory::Sphere;
             RefSphere.Radius = 2.0;
             const auto RefOut = ConstructSketcherPrimitive(RetopoDoc, RefSphere);
             if (!VerifyCheck(RefOut.AcceptedCondition && RetopoDoc.Summary.Bodies.size() == 1u, "Construct curved reference sphere"))
@@ -280,7 +280,7 @@ int main()
         {
             SketcherDocument CageDoc = CreateSketcherDocument();
             SketcherConstructRequest RefSphere {};
-            RefSphere.Kind   = SketcherConstructKind::Sphere;
+            RefSphere.Kind   = SketcherConstructCategory::Sphere;
             RefSphere.Radius = 2.0;
             const auto RefOut = ConstructSketcherPrimitive(CageDoc, RefSphere);
             if (!VerifyCheck(RefOut.AcceptedCondition, "Construct curved reference sphere for multi-cell cage")) return 1;

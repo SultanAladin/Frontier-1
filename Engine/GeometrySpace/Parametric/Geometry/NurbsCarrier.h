@@ -191,7 +191,7 @@ struct NurbsBasisSample
 // 📝 Surface of revolution: the profile (in any half-plane through the axis) swept by exact rational circles about
 //    Axis.ZAxis, 𝑢 counter-clockwise from Axis.XAxis + StartAngle over Sweep, 𝑢-domain [StartAngle, StartAngle + Sweep];
 //    the profile's τ becomes 𝑣. Poles on the axis collapse to a point row (sphere poles, cone apex).
-[[nodiscard]] NurbsSurface            ConstructNurbsRevolution(const NurbsCurveDefinition& Profile, const OrthonormalFrame& Axis, double StartAngle, double Sweep);
+[[nodiscard]] NurbsSurface            ConstructNurbsRevolution(const NurbsCurveDefinition& Profile, const OrthonormalBasis& Axis, double StartAngle, double Sweep);
 
 // Exact NURBS image of an analytic carrier covering Box: same chart orientation (S𝑢 × S𝑣 along the analytic normal);
 // planes, cylinders and cones keep (𝑢, 𝑣) exactly, angular directions match at the ≤ π/2 joints only. Empty for

@@ -32,9 +32,9 @@ namespace
 UVWorkspaceHost::UVWorkspaceHost()
 {
     Outliner.AttachSession(&Session);
-    ViewportHost2D.ConfigureHostRole(UVViewportHostRole::Dedicated2D);
+    ViewportHost2D.ConfigureHostRole(UVViewportHostMode::Dedicated2D);
     ViewportHost2D.AttachSession(&Session);
-    ViewportHost3D.ConfigureHostRole(UVViewportHostRole::Dedicated3D);
+    ViewportHost3D.ConfigureHostRole(UVViewportHostMode::Dedicated3D);
     ViewportHost3D.AttachSession(&Session);
     Inspector.AttachSession(&Session);
 }

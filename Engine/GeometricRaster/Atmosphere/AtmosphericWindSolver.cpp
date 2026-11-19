@@ -118,7 +118,7 @@ ResolvedWindSample AtmosphericWindSolver::ResolveWindSample(
     const AtmosphericWindParameters&                         GlobalWind,
     float                                                    DeckWindSpeedMps,
     float                                                    DeckWindBearingDeg,
-    WindBindingSource                                        Source,
+    WindCouplingSource                                        Source,
     const Mathematics::Axis3D&                               WorldPoint,
     float                                                    AltitudeMeters,
     float                                                    TimeSeconds,
@@ -130,13 +130,13 @@ ResolvedWindSample AtmosphericWindSolver::ResolveWindSample(
 
     float BaseSpeed   = GlobalWind.Enabled ? GlobalWind.SpeedMetersPerSecond : 0.0f;
     float BaseBearing = GlobalWind.BearingDegrees;
-    if (Source == WindBindingSource::CloudWind)
+    if (Source == WindCouplingSource::CloudWind)
     {
         BaseSpeed   = DeckWindSpeedMps;
         BaseBearing = DeckWindBearingDeg;
     }
 
-    if (Source != WindBindingSource::ForceFieldCascade && BaseSpeed > 1.0e-4f)
+    if (Source != WindCouplingSource::ForceFieldCascade && BaseSpeed > 1.0e-4f)
     {
         // Apply Ekman directional veer with altitude & temporal gust modulation
         const float EffectiveBearing = BaseBearing + GlobalWind.VeerDegreesPerKm * AltKm;
@@ -157,10 +157,10 @@ ResolvedWindSample AtmosphericWindSolver::ResolveWindSample(
     // Hook ForceFieldAccumulator WindField subcomponent (fast single-pass advection + horizontal curl vorticity)
     if (OptionalForceFields != nullptr && OptionalForceFields->QueryActiveSourceCount() > 0u)
     {
-        const bool ProjectToClouds = (Source == WindBindingSource::CloudWind ||
-                                      Source == WindBindingSource::LocalCloudWind ||
-                                      Source == WindBindingSource::GlobalWind ||
-                                      Source == WindBindingSource::ForceFieldCascade);
+        const bool ProjectToClouds = (Source == WindCouplingSource::CloudWind ||
+                                      Source == WindCouplingSource::LocalCloudWind ||
+                                      Source == WindCouplingSource::GlobalWind ||
+                                      Source == WindCouplingSource::ForceFieldCascade);
         const auto WF = OptionalForceFields->QueryWindFieldSample(
             ToSpatialVec(WorldPoint),
             static_cast<double>(TimeSeconds),
@@ -195,9 +195,9 @@ ResolvedWindSample AtmosphericWindSolver::ResolveWindSample(
     // Hook 4-tier FieldLatticeCascade (Near/Zone/District/Weather) when provided
     if (OptionalLattice != nullptr)
     {
-        const uint32_t Tier = (Source == WindBindingSource::CloudWind || Source == WindBindingSource::GlobalWind)
+        const uint32_t Tier = (Source == WindCouplingSource::CloudWind || Source == WindCouplingSource::GlobalWind)
                                   ? 3u
-                                  : ((Source == WindBindingSource::AerialFogWind) ? 2u : 1u);
+                                  : ((Source == WindCouplingSource::AerialFogWind) ? 2u : 1u);
         const auto Voxel = OptionalLattice->SampleTierTrilinear(Tier, ToSpatialVec(WorldPoint));
         Out.VelocityMetersPerSec.X += Voxel.VelocityX;
         Out.VelocityMetersPerSec.Y += Voxel.VelocityY;
@@ -213,7 +213,7 @@ Mathematics::Axis3D AtmosphericWindSolver::AdvectWorldPointBackward(
     const AtmosphericWindParameters&                           GlobalWind,
     float                                                      DeckWindSpeedMps,
     float                                                      DeckWindBearingDeg,
-    WindBindingSource                                          Source,
+    WindCouplingSource                                          Source,
     const Mathematics::Axis3D&                                 WorldPoint,
     float                                                      AltitudeMeters,
     float                                                      TotalSeconds,

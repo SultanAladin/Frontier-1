@@ -23,7 +23,7 @@ namespace Frontier::Workspaces::Sketcher
 //                                                    ENUMS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class SketcherStepKind : uint8_t
+enum class SketcherStepCategory : uint8_t
 {
     Idle    = 0,                                                                             // One frame without input
     Move    = 1,                                                                             // Pointer to Target
@@ -54,7 +54,7 @@ struct SketcherScriptTarget
 
 struct SketcherScriptStep
 {
-    SketcherStepKind     Kind      = SketcherStepKind::Idle;                                 // [-] - What happens this frame
+    SketcherStepCategory     Kind      = SketcherStepCategory::Idle;                                 // [-] - What happens this frame
     SketcherScriptTarget Target    = {};                                                     // [-] - Move
     int                  Button    = 0;                                                      // [-] - ImGuiMouseButton
     bool                 Down      = false;                                                  // [-] - Button / key state
@@ -95,7 +95,7 @@ struct SketcherScript
 
 // 💡 Runs the next step: queues its ImGui input events before ImGui::NewFrame. Returns the capture name when this
 //    frame must be written (empty otherwise). Expectations are evaluated against the state as it stands.
-std::string AdvanceSketcherScript(SketcherScript& Script, SketcherWorkspaceState& State);
+std::string AdvanceSketcherScript(SketcherScript& Script, SketcherWorkspaceStatus& State);
 
 [[nodiscard]] bool FinishedSketcherScript(const SketcherScript& Script);
 

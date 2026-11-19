@@ -60,7 +60,7 @@ void ExtractOriginCenter(const ReleaseOriginSpec& Origin, float OutCenter[3]) no
 
 uint32_t ExecuteParticleRigStepCpu(
     const ParticleRig&         Rig,
-    const ParticleStepContext& Context,
+    const ParticleStepInput& Context,
     std::span<ParticleSlot>    RigSlots,
     std::span<StrandVertex>    OptionalStrandHistory)
 {
@@ -298,7 +298,7 @@ uint32_t ExecuteParticleRigStepCpu(
         return 0u;
     }();
 
-    ParticleTintEvaluationContext TintCtx {};
+    ParticleTintInput TintCtx {};
     TintCtx.ElapsedSeconds = Context.ElapsedSeconds;
 
     uint32_t LiveCount = 0u;

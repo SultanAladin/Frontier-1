@@ -34,7 +34,7 @@ struct StraightLine
 // 📝 P(τ) = Centre + r·(cos τ·XAxis + sin τ·YAxis); the circle's axis is Frame.ZAxis (counter-clockwise about it).
 struct CircularArc
 {
-    OrthonormalFrame Frame  = {};                                                            // [-]   - Origin is the centre
+    OrthonormalBasis Frame  = {};                                                            // [-]   - Origin is the centre
     double           Radius = 1.0;                                                           // [len] - Circle radius
 };
 
@@ -42,7 +42,7 @@ struct CircularArc
 //    section of a cylinder by an oblique plane, and the mitre between two equal-radius blend cylinders with meeting axes.
 struct EllipticalArc
 {
-    OrthonormalFrame Frame       = {};                                                       // [-]   - Origin is the centre
+    OrthonormalBasis Frame       = {};                                                       // [-]   - Origin is the centre
     double           MajorRadius = 2.0;                                                      // [len] - a, semi-axis along XAxis
     double           MinorRadius = 1.0;                                                      // [len] - b, semi-axis along YAxis
 };

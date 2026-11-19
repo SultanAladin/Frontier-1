@@ -406,7 +406,7 @@ StepExport WriteStep(const ModelPartition& Partition, const std::vector<BodyToke
                     }
                     else if (const auto* Cylinder = std::get_if<CylinderSurface>(&Surface))
                     {
-                        const OrthonormalFrame Frame = Cylinder->Frame;
+                        const OrthonormalBasis Frame = Cylinder->Frame;
                         Carrier = { Writer.Add("CYLINDRICAL_SURFACE(''," + StepWriter::Ref(Writer.Placement(Frame.Origin, Frame.ZAxis, Frame.XAxis)) + "," + Real(Cylinder->Radius * Request.ModelUnitMillimetres) + ")"),
                                     [Frame](Vector3 Position, Vector2) { const Vector3 Offset = Position - Frame.Origin; return Offset - Frame.ZAxis * Dot(Offset, Frame.ZAxis); } };
                     }
@@ -434,7 +434,7 @@ StepExport WriteStep(const ModelPartition& Partition, const std::vector<BodyToke
                     }
                     else if (const auto* Torus = std::get_if<TorusSurface>(&Surface))
                     {
-                        const OrthonormalFrame Frame = Torus->Frame;
+                        const OrthonormalBasis Frame = Torus->Frame;
                         const double           Major = Torus->MajorRadius;
                         Carrier = { Writer.Add("TOROIDAL_SURFACE(''," + StepWriter::Ref(Writer.Placement(Frame.Origin, Frame.ZAxis, Frame.XAxis)) + "," + Real(Major * Request.ModelUnitMillimetres) + ","
                                                + Real(Torus->MinorRadius * Request.ModelUnitMillimetres) + ")"),

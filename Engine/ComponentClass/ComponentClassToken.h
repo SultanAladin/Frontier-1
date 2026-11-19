@@ -57,6 +57,6 @@ struct WorldPlacementToken
     [[nodiscard]] constexpr bool operator==(const WorldPlacementToken&) const noexcept = default;
 };
 
-inline constexpr uint32_t InvalidHierarchyIndex = 0xFFFFFFFFu; // [idx] - Unlinked EnclosingIndex / FirstNestedIndex / NextPeerIndex
+inline constexpr uint32_t InvalidNestingIndex = 0xFFFFFFFFu; // [idx] - Unlinked EnclosingIndex / FirstNestedIndex / NextPeerIndex
 
 } // namespace Frontier::ComponentClass

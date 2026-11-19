@@ -110,7 +110,7 @@ namespace
         ProfileSegment Piece = Source;
         const bool Whole = From <= MergeFraction && To >= 1.0 - MergeFraction;
         if (Whole) return Piece;
-        if (Source.Kind == ProfileSegmentKind::Spline)
+        if (Source.Kind == ProfileSegmentCategory::Spline)
         {
             const double Low = Source.Spline.Knots.front(), High = Source.Spline.Knots.back();
             Piece.Spline = RestrictSpline(Source.Spline, Low + From * (High - Low), Low + To * (High - Low));
@@ -118,9 +118,9 @@ namespace
             Piece.End    = Piece.Spline.Poles.back();
             return Piece;
         }
-        if (Source.Kind != ProfileSegmentKind::Line)
+        if (Source.Kind != ProfileSegmentCategory::Line)
         {
-            Piece.Kind       = ProfileSegmentKind::Arc;
+            Piece.Kind       = ProfileSegmentCategory::Arc;
             Piece.StartAngle = Source.StartAngle + From * Source.Sweep;
             Piece.Sweep      = (To - From) * Source.Sweep;
         }
@@ -133,8 +133,8 @@ namespace
     void SampleSegment(const ProfileSegment& Segment, std::vector<Vector2>& Points)
     {
         int Count = 1;
-        if (Segment.Kind == ProfileSegmentKind::Arc || Segment.Kind == ProfileSegmentKind::Circle) Count = std::max(4, static_cast<int>(std::ceil(std::fabs(Segment.Sweep) / 0.05)));
-        if (Segment.Kind == ProfileSegmentKind::Spline) Count = 16 * std::max<int>(1, static_cast<int>(Segment.Spline.Knots.size()) - 2 * Segment.Spline.Degree - 1);
+        if (Segment.Kind == ProfileSegmentCategory::Arc || Segment.Kind == ProfileSegmentCategory::Circle) Count = std::max(4, static_cast<int>(std::ceil(std::fabs(Segment.Sweep) / 0.05)));
+        if (Segment.Kind == ProfileSegmentCategory::Spline) Count = 16 * std::max<int>(1, static_cast<int>(Segment.Spline.Knots.size()) - 2 * Segment.Spline.Degree - 1);
         for (int Index = 1; Index <= Count; ++Index) Points.push_back(EvaluateProfileSegment(Segment, static_cast<double>(Index) / Count));
     }
 
@@ -398,7 +398,7 @@ SketchModel ComposeRegionSketch(const SketchRegion& Region)
     // Consecutive arcs of one circle (a circle's seam inside the region) become one arc.
     const auto Continues = [&](const ProfileSegment& One, const ProfileSegment& Two)
     {
-        const bool Round = (One.Kind == ProfileSegmentKind::Arc || One.Kind == ProfileSegmentKind::Circle) && (Two.Kind == ProfileSegmentKind::Arc || Two.Kind == ProfileSegmentKind::Circle);
+        const bool Round = (One.Kind == ProfileSegmentCategory::Arc || One.Kind == ProfileSegmentCategory::Circle) && (Two.Kind == ProfileSegmentCategory::Arc || Two.Kind == ProfileSegmentCategory::Circle);
         return Round && Distance(One.Centre, Two.Centre) <= Share && std::fabs(One.Radius - Two.Radius) <= Share && (One.Sweep > 0.0) == (Two.Sweep > 0.0)
             && Distance(One.End, Two.Start) <= Share && std::fabs(One.Sweep + Two.Sweep) < 2.0 * std::numbers::pi;
     };
@@ -410,7 +410,7 @@ SketchModel ComposeRegionSketch(const SketchRegion& Region)
         {
             if (!Merged.empty() && Continues(Merged.back(), Piece.Segment))
             {
-                Merged.back().Kind  = ProfileSegmentKind::Arc;
+                Merged.back().Kind  = ProfileSegmentCategory::Arc;
                 Merged.back().Sweep += Piece.Segment.Sweep;
                 Merged.back().End   = Piece.Segment.End;
             }
@@ -418,7 +418,7 @@ SketchModel ComposeRegionSketch(const SketchRegion& Region)
         }
         if (Merged.size() > 1 && Continues(Merged.back(), Merged.front()))
         {
-            Merged.back().Kind  = ProfileSegmentKind::Arc;
+            Merged.back().Kind  = ProfileSegmentCategory::Arc;
             Merged.back().Sweep += Merged.front().Sweep;
             Merged.back().End   = Merged.front().End;
             Merged.erase(Merged.begin());
@@ -434,40 +434,40 @@ SketchModel ComposeRegionSketch(const SketchRegion& Region)
             Curve.Identifier = Identifier++;
             switch (Segment.Kind)
             {
-            case ProfileSegmentKind::Line:
-                Curve.Kind  = SketchCurveKind::Line;
+            case ProfileSegmentCategory::Line:
+                Curve.Kind  = SketchCurveCategory::Line;
                 Curve.Start = Shared(Segment.Start);
                 Curve.End   = Shared(Segment.End);
                 Sketch.Curves.push_back(Curve);
                 break;
-            case ProfileSegmentKind::Circle:
-                Curve.Kind   = SketchCurveKind::Circle;
+            case ProfileSegmentCategory::Circle:
+                Curve.Kind   = SketchCurveCategory::Circle;
                 Curve.Centre = Fresh(Segment.Centre);
                 Curve.Radius = Segment.Radius;
                 Sketch.Curves.push_back(Curve);
                 break;
-            case ProfileSegmentKind::Arc:
+            case ProfileSegmentCategory::Arc:
                 if (std::fabs(Segment.Sweep) >= 2.0 * std::numbers::pi - 1.0e-12)
                 {
-                    Curve.Kind   = SketchCurveKind::Circle;
+                    Curve.Kind   = SketchCurveCategory::Circle;
                     Curve.Centre = Fresh(Segment.Centre);
                     Curve.Radius = Segment.Radius;
                 }
                 else
                 {
                     // Sketch arcs run counter-clockwise from Start to End.
-                    Curve.Kind   = SketchCurveKind::Arc;
+                    Curve.Kind   = SketchCurveCategory::Arc;
                     Curve.Start  = Shared(Segment.Sweep > 0.0 ? Segment.Start : Segment.End);
                     Curve.End    = Shared(Segment.Sweep > 0.0 ? Segment.End : Segment.Start);
                     Curve.Centre = Fresh(Segment.Centre);
                 }
                 Sketch.Curves.push_back(Curve);
                 break;
-            case ProfileSegmentKind::Spline:
+            case ProfileSegmentCategory::Spline:
                 for (const std::vector<Vector2>& Span : ExtractSplineBezierSpans(Segment.Spline, Segment.Spline.Knots.front(), Segment.Spline.Knots.back()))
                 {
                     SketchCurve Bezier;
-                    Bezier.Kind       = SketchCurveKind::Spline;
+                    Bezier.Kind       = SketchCurveCategory::Spline;
                     Bezier.Form       = SketchSplineForm::Bezier;
                     Bezier.Identifier = Curve.Identifier;
                     for (size_t Index = 0; Index < Span.size(); ++Index)

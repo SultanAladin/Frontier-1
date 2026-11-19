@@ -91,9 +91,9 @@ IconSymbol SketchIcon(const SketchModel& Sketch)
         if (Curve.Construction) continue;
         switch (Curve.Kind)
         {
-        case SketchCurveKind::Circle: return IconSymbol::SketcherCircle;
-        case SketchCurveKind::Arc:    return IconSymbol::SketcherArc;
-        case SketchCurveKind::Spline:
+        case SketchCurveCategory::Circle: return IconSymbol::SketcherCircle;
+        case SketchCurveCategory::Arc:    return IconSymbol::SketcherArc;
+        case SketchCurveCategory::Spline:
             switch (Curve.Form)
             {
             case SketchSplineForm::Hermite: return IconSymbol::SketcherHermite;
@@ -101,14 +101,14 @@ IconSymbol SketchIcon(const SketchModel& Sketch)
             case SketchSplineForm::Nurbs:   return IconSymbol::SketcherNurbs;
             default:                        return IconSymbol::SketcherCurve;
             }
-        case SketchCurveKind::Line: ++Lines; break;
+        case SketchCurveCategory::Line: ++Lines; break;
         }
     }
     return Lines == 4 ? IconSymbol::SketcherRectangle : Lines > 1 ? IconSymbol::SketcherPolyline : IconSymbol::SketcherEdge;
 }
 
 // .icon-button: 28 px circle, #888 glyph; hover #292929 / #fff.
-bool IconButton(SketcherWorkspaceState& State, SketcherSheet& Sheet, const std::string& Key, const PlaneExtent& Extent, IconSymbol Symbol,
+bool IconButton(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const std::string& Key, const PlaneExtent& Extent, IconSymbol Symbol,
                 float GlyphSize, ColorQuad Border = { 0.0f, 0.0f, 0.0f, 0.0f })
 {
     const SketcherPress Press = PressSketcherRegion(State.Widgets, Key, Extent);
@@ -141,7 +141,7 @@ void LockGlyph(SketcherSheet& Sheet, float CentreX, float CentreY, bool LockedCo
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-std::vector<SketcherFigure> CollectSketcherFigures(const SketcherWorkspaceState& State)
+std::vector<SketcherFigure> CollectSketcherFigures(const SketcherWorkspaceStatus& State)
 {
     const SketcherDocument&  Document = State.Document;
     const SketcherSelection& Picked   = Document.Selection;
@@ -161,9 +161,9 @@ std::vector<SketcherFigure> CollectSketcherFigures(const SketcherWorkspaceState&
         Figure.Rank = Order == Picked.Bodies.end() ? -1 : int(Order - Picked.Bodies.begin());
         Figure.SelectedCondition = Figure.Rank >= 0;
         for (const std::string& Face : Picked.Faces)
-            if (!Figure.SelectedCondition && SketcherBodyOfName(Document, SketcherSelectionKind::Face, Face) == Body.Key) Figure.SelectedCondition = true;
+            if (!Figure.SelectedCondition && SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Face) == Body.Key) Figure.SelectedCondition = true;
         for (const std::string& Edge : Picked.Edges)
-            if (!Figure.SelectedCondition && SketcherBodyOfName(Document, SketcherSelectionKind::Edge, Edge) == Body.Key) Figure.SelectedCondition = true;
+            if (!Figure.SelectedCondition && SketcherBodyOfName(Document, SketcherSelectionCategory::Edge, Edge) == Body.Key) Figure.SelectedCondition = true;
         Figures.push_back(std::move(Figure));
     }
     for (const FeatureStep& Step : Document.Tree.Steps)
@@ -175,7 +175,7 @@ std::vector<SketcherFigure> CollectSketcherFigures(const SketcherWorkspaceState&
         Figure.Category = SketcherFigureCategory::Curve;
         Figure.HiddenCondition = SketcherCurveHiddenCondition(Document, Step.Label);
         Figure.LockedCondition = SketcherLockedCondition(Document, Step.Label);
-        if (Step.Kind == FeatureStepKind::Sketch)
+        if (Step.Kind == FeatureStepCategory::Sketch)
         {
             // Extruded / revolved sketches stay listed, so their leftover lines can be hidden or locked too.
             const auto Solved = Document.Regeneration.Sketches.find(Step.Label);
@@ -188,7 +188,7 @@ std::vector<SketcherFigure> CollectSketcherFigures(const SketcherWorkspaceState&
                                     || (State.FocusedStep == Step.Label && Picked.Bodies.empty() && Picked.Faces.empty() && Picked.Edges.empty());
             if (Figure.SelectedCondition && Figure.Rank < 0) Figure.Rank = 0;
         }
-        else if (Step.Kind == FeatureStepKind::SpaceCurve)
+        else if (Step.Kind == FeatureStepCategory::SpaceCurve)
         {
             const auto Order = std::find(Picked.Curves.begin(), Picked.Curves.end(), Step.Label);
             Figure.Source            = SketcherFigureSource::SpaceCurve;
@@ -220,13 +220,13 @@ std::vector<SketcherFigure> CollectSketcherFigures(const SketcherWorkspaceState&
     return Figures;
 }
 
-SketcherOutlinerIntent ConstructSketcherOutliner(SketcherWorkspaceState& State, const PlaneExtent& Panel)
+SketcherOutlinerIntent ConstructSketcherOutliner(SketcherWorkspaceStatus& State, const PlaneExtent& Panel)
 {
     SketcherOutlinerIntent Intent;
     SketcherSheet          Sheet;
     State.Outliner.HoveredCondition = false;                                                 // Re-found below while drawn
     if (!Sheet.Begin()) return Intent;
-    SketcherOutlinerState&            Outliner = State.Outliner;
+    SketcherOutlinerMode&            Outliner = State.Outliner;
     const std::vector<SketcherFigure> Figures  = CollectSketcherFigures(State);
     const ColorQuad                   Clear    = { 0.0f, 0.0f, 0.0f, 0.0f };
 

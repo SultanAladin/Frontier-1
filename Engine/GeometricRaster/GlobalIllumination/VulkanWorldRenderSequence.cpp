@@ -8,7 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
-#include "Engine/GeometricRaster/Atmosphere/J2000BrightStarCatalog.h"
+#include "Engine/GeometricRaster/Atmosphere/J2000BrightStarRepository.h"
 #include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
 #include "Engine/GeometrySpace/Analysis/CurvatureAnalysis.h"
 
@@ -50,14 +50,14 @@ struct GpuLocalCloudVolumeStd140
 
 static_assert(sizeof(GpuLocalCloudVolumeStd140) == 80u, "GpuLocalCloudVolumeStd140 must equal 80 bytes.");
 
-struct GpuCloudWindForceProbeStd140
+struct GpuCloudWindForceSensorStd140
 {
     float PosRadius[4]       {};
     float ForwardStrength[4] {};
     float Params[4]          {};
 };
 
-static_assert(sizeof(GpuCloudWindForceProbeStd140) == 48u, "GpuCloudWindForceProbeStd140 must equal 48 bytes.");
+static_assert(sizeof(GpuCloudWindForceSensorStd140) == 48u, "GpuCloudWindForceProbeStd140 must equal 48 bytes.");
 
 struct VolumetricCloudUniformStd140
 {
@@ -76,7 +76,7 @@ struct VolumetricCloudUniformStd140
     float                         CloudPassControl[4]    {};
     float                         WindForceMeta[4]       {};
     GpuLocalCloudVolumeStd140     LocalClouds[8]         {};
-    GpuCloudWindForceProbeStd140  WindProbes[8]          {};
+    GpuCloudWindForceSensorStd140  WindProbes[8]          {};
 };
 static_assert(sizeof(VolumetricCloudUniformStd140) == 1248u, "VolumetricCloudUniformStd140 must equal 1248 bytes.");
 
@@ -102,7 +102,7 @@ struct VolumetricFogUniformStd140
     float                   GodRayParams1[4] {};
     float                   GodRayTint[4]    {};
     GpuLocalFogVolumeStd140    LocalFogs[8]     {};
-    GpuCloudWindForceProbeStd140 ForceProbes[8] {};
+    GpuCloudWindForceSensorStd140 ForceProbes[8] {};
 };
 
 static_assert(sizeof(VolumetricFogUniformStd140) == 1152u, "VolumetricFogUniformStd140 must equal 1152 bytes.");
@@ -504,11 +504,11 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         SlotTypes,
         "DdgiLatticeComputeEntry");
 
-    const std::filesystem::path ReservoirReuseShaderPath = CompiledShaderDirectory / "WorldViewportReservoirReuseCompute.comp.spv";
-    ReservoirSpatialProgramHandle = DispatchEncoder.RegisterProgram(
-        ReservoirReuseShaderPath,
+    const std::filesystem::path ImportanceReuseShaderPath = CompiledShaderDirectory / "WorldViewportImportanceReuseCompute.comp.spv";
+    ImportanceSpatialProgramHandle = DispatchEncoder.RegisterProgram(
+        ImportanceReuseShaderPath,
         SlotTypes,
-        "ReservoirSpatialReuseEntry");
+        "ImportanceSpatialReuseEntry");
 
     constexpr std::array<VkDescriptorType, 16u> ClipmapSlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -715,7 +715,7 @@ bool VulkanWorldRenderSequence::InitializeSequence(
     EnsureBufferCapacity(SdfUniformBuffer, sizeof(SignedDistanceGridUniformStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     EnsureBufferCapacity(SkyViewUniformBuffer, sizeof(AtmosphericSkyUniformStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     EnsureBufferCapacity(StellarCullUniformBuffer, sizeof(StellarCullUniformBlockStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-    EnsureDeviceBufferCapacity(ReservoirCurrentBuffer, 64ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureDeviceBufferCapacity(WeightedCurrentBuffer, 64ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureDeviceBufferCapacity(ReservoirHistoryBuffer, 64ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     {
         std::vector<GpuRawStarSpecStd140> RawStars;
@@ -846,7 +846,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(PongShadowAoBuffer);
         BoundDevice->ReleaseBuffer(PongGiHdrBuffer);
         BoundDevice->ReleaseBuffer(CloudRadiometricBuffer);
-        BoundDevice->ReleaseBuffer(ReservoirCurrentBuffer);
+        BoundDevice->ReleaseBuffer(WeightedCurrentBuffer);
         BoundDevice->ReleaseBuffer(ReservoirHistoryBuffer);
         BoundDevice->ReleaseBuffer(RawCatalogStarBuffer);
         BoundDevice->ReleaseBuffer(ProjectedCatalogStarBuffer);
@@ -892,7 +892,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     ShadowCascadeProgramHandle    = UINT32_MAX;
     SdfRadiosityProgramHandle     = UINT32_MAX;
     DdgiLatticeProgramHandle      = UINT32_MAX;
-    ReservoirSpatialProgramHandle = UINT32_MAX;
+    ImportanceSpatialProgramHandle = UINT32_MAX;
     ClipmapComposeProgramHandle       = UINT32_MAX;
     ClipmapRadiosityProgramHandle     = UINT32_MAX;
     ClipmapConeGiProgramHandle        = UINT32_MAX;
@@ -1410,7 +1410,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
             { 25u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, CloudRadiometricBuffer.BufferHandle,     VK_WHOLE_SIZE },
             { 26u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, ReadVolView, SdfLinearSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
             { 27u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, WriteVolView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL },
-            { 28u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ReservoirCurrentBuffer.BufferHandle,     VK_WHOLE_SIZE },
+            { 28u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, WeightedCurrentBuffer.BufferHandle,     VK_WHOLE_SIZE },
             { 29u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ReservoirHistoryBuffer.BufferHandle,     VK_WHOLE_SIZE },
             { 30u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ProjectedCatalogStarBuffer.BufferHandle, VK_WHOLE_SIZE },
             { 31u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, StellarTileBinsBuffer.BufferHandle,      VK_WHOLE_SIZE },
@@ -1942,7 +1942,7 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
 
 bool VulkanWorldRenderSequence::RenderWorldViewportRgba8(
     WorldRenderTier                Tier,
-    const PerspectiveCameraFrame&  Camera,
+    const PerspectiveCameraBasis&  Camera,
     const WorldSceneSpecification& Scene,
     uint32_t                       DebugChannel,
     std::vector<uint8_t>&          OutDisplayRgba8)
@@ -2065,7 +2065,7 @@ void VulkanWorldRenderSequence::DispatchGpuSkyViewLut(VkCommandBuffer Cmd, const
 
 void VulkanWorldRenderSequence::DispatchGpuStellarTileCull(
     VkCommandBuffer                Cmd,
-    const PerspectiveCameraFrame&  Camera,
+    const PerspectiveCameraBasis&  Camera,
     const WorldSceneSpecification& Scene,
     uint32_t                       WidthPx,
     uint32_t                       HeightPx)
@@ -2174,7 +2174,7 @@ void VulkanWorldRenderSequence::DispatchGpuStellarTileCull(
 bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     const WorldRenderConfiguration& Config,
     uint32_t                        PathTraceSampleIndex,
-    const PerspectiveCameraFrame&   Camera,
+    const PerspectiveCameraBasis&   Camera,
     const WorldSceneSpecification&  Scene,
     std::vector<uint8_t>&           OutDisplayRgba8)
 {
@@ -2184,7 +2184,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
 bool VulkanWorldRenderSequence::RenderWorldViewportToGpuImage(
     const WorldRenderConfiguration& Config,
     uint32_t                        PathTraceSampleIndex,
-    const PerspectiveCameraFrame&   Camera,
+    const PerspectiveCameraBasis&   Camera,
     const WorldSceneSpecification&  Scene,
     VkImageView&                    OutDisplayImageView,
     uint32_t&                       OutWidthPx,
@@ -2210,7 +2210,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportToGpuImage(
 bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     const WorldRenderConfiguration& Config,
     uint32_t                        PathTraceSampleIndex,
-    const PerspectiveCameraFrame&   Camera,
+    const PerspectiveCameraBasis&   Camera,
     const WorldSceneSpecification&  Scene,
     bool                            CopyToReadbackStaging,
     bool                            CopyToDisplayImage2D,
@@ -2227,7 +2227,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     }
 
     const auto StartClock = std::chrono::steady_clock::now();
-    LastTimingBreakdown = {};
+    LastViewportTiming = {};
 
     const uint32_t WidthPx  = std::max(1u, Camera.ViewportWidthPx);
     const uint32_t HeightPx = std::max(1u, Camera.ViewportHeightPx);
@@ -2258,7 +2258,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     EnsureDeviceBufferCapacity(PongGiHdrBuffer, AccBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureDeviceBufferCapacity(CloudRadiometricBuffer, CloudBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     const uint64_t ResBytes = AccBytes * 2ull;
-    EnsureDeviceBufferCapacity(ReservoirCurrentBuffer, ResBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    EnsureDeviceBufferCapacity(WeightedCurrentBuffer, ResBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureDeviceBufferCapacity(ReservoirHistoryBuffer, ResBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     const uint32_t StarTileCols  = (std::max(1u, WidthPx) + 15u) / 16u;
     const uint32_t StarTileRows  = (std::max(1u, HeightPx) + 15u) / 16u;
@@ -2271,7 +2271,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         GBufPosMaskBuffer.BufferHandle == VK_NULL_HANDLE ||
         PongGiHdrBuffer.BufferHandle == VK_NULL_HANDLE ||
         CloudRadiometricBuffer.BufferHandle == VK_NULL_HANDLE ||
-        ReservoirCurrentBuffer.BufferHandle == VK_NULL_HANDLE ||
+        WeightedCurrentBuffer.BufferHandle == VK_NULL_HANDLE ||
         ReservoirHistoryBuffer.BufferHandle == VK_NULL_HANDLE ||
         StellarTileBinsBuffer.BufferHandle == VK_NULL_HANDLE)
     {
@@ -2335,7 +2335,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         const auto PreSyncStart = std::chrono::steady_clock::now();
         (void)DispatchGpuScenePrecompute(Scene, DdgiManagedByGpu);
         const auto PreSyncEnd = std::chrono::steady_clock::now();
-        LastTimingBreakdown.SceneSyncGpuMs = static_cast<float>(
+        LastViewportTiming.SceneSyncGpuMs = static_cast<float>(
             std::chrono::duration<double, std::milli>(PreSyncEnd - PreSyncStart).count());
     }
     Uniforms.SunDirConeTan[0]       = SunDir.X;
@@ -2839,7 +2839,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         auto&       LFU = Uniforms.LensFlareParams;
         if (AtmoActive && LF.Enabled && Config.DebugChannel == 0u)
         {
-            const ProjectedLensFlareFrame FlareProj = LensFlareSequence::ResolveSolarFlareProjection(
+            const ProjectedLensFlareSlice FlareProj = LensFlareSequence::ResolveSolarFlareProjection(
                 Basis.CameraOrigin,
                 Basis.ForwardAxis,
                 Basis.RightAxis,
@@ -3086,7 +3086,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             { 25u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, CloudRadiometricBuffer.BufferHandle,     CloudBytes    },
             { 26u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, ReadVolView, SdfLinearSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
             { 27u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, SdfDummyStorageVolume3D.ViewHandle, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL },
-            { 28u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ReservoirCurrentBuffer.BufferHandle,     ResBytes      },
+            { 28u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, WeightedCurrentBuffer.BufferHandle,     ResBytes      },
             { 29u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ReservoirHistoryBuffer.BufferHandle,     ResBytes      },
             { 30u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ProjectedCatalogStarBuffer.BufferHandle, VK_WHOLE_SIZE },
             { 31u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, StellarTileBinsBuffer.BufferHandle,      VK_WHOLE_SIZE },
@@ -3121,7 +3121,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
          Config.DebugChannel == 12u || Config.DebugChannel == 13u ||
          Config.DebugChannel == 14u || Config.DebugChannel == 15u);
 
-    if (EngIdx == 3u && Config.GlobalIlluminationEnabled && ShadingDebug && ReservoirSpatialProgramHandle != UINT32_MAX)
+    if (EngIdx == 3u && Config.GlobalIlluminationEnabled && ShadingDebug && ImportanceSpatialProgramHandle != UINT32_MAX)
     {
         VkMemoryBarrier ReservoirBarrier {};
         ReservoirBarrier.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -3138,7 +3138,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             nullptr,
             0u,
             nullptr);
-        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ReservoirSpatialProgramHandle, Pass0Slots, GroupsX, GroupsY, 1u))
+        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ImportanceSpatialProgramHandle, Pass0Slots, GroupsX, GroupsY, 1u))
         {
             return false;
         }
@@ -3333,13 +3333,13 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
                 const uint64_t DB = Stamps[B] & Mask;
                 return (DB >= DA) ? static_cast<float>(static_cast<double>(DB - DA) * PeriodMs) : 0.0f;
             };
-            LastTimingBreakdown.GpuSkyLutMs        = DeltaMs(0u, 1u);
-            LastTimingBreakdown.GpuCloudsMs        = DeltaMs(2u, 3u);
-            LastTimingBreakdown.GpuPrimaryTraceMs  = DeltaMs(4u, 5u);
-            LastTimingBreakdown.GpuDenoiseMs       = DeltaMs(6u, 7u);
-            LastTimingBreakdown.GpuReadbackCopyMs  = DeltaMs(8u, 9u);
-            LastTimingBreakdown.GpuTotalPassMs     = DeltaMs(0u, 9u);
-            LastTimingBreakdown.GpuTimestampsValid = true;
+            LastViewportTiming.GpuSkyLutMs        = DeltaMs(0u, 1u);
+            LastViewportTiming.GpuCloudsMs        = DeltaMs(2u, 3u);
+            LastViewportTiming.GpuPrimaryTraceMs  = DeltaMs(4u, 5u);
+            LastViewportTiming.GpuDenoiseMs       = DeltaMs(6u, 7u);
+            LastViewportTiming.GpuReadbackCopyMs  = DeltaMs(8u, 9u);
+            LastViewportTiming.GpuTotalPassMs     = DeltaMs(0u, 9u);
+            LastViewportTiming.GpuTimestampsValid = true;
         }
     }
 
@@ -3355,18 +3355,18 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     const float TotalDispatchMs = static_cast<float>(
         std::chrono::duration<double, std::milli>(EndClock - StartClock).count());
 
-    LastTimingBreakdown.RenderWidthPx       = WidthPx;
-    LastTimingBreakdown.RenderHeightPx      = HeightPx;
-    LastTimingBreakdown.EngineMode          = EngIdx;
-    LastTimingBreakdown.ShadowAlgorithm     = static_cast<uint32_t>(Config.ShadowAlgorithm);
-    LastTimingBreakdown.QualityTier         = Config.QualityTier;
-    LastTimingBreakdown.HardwareGpuActive   = QueryHardwareGpuActive();
-    LastTimingBreakdown.WorldDispatched     = true;
-    LastTimingBreakdown.AdapterName         = std::string(QueryAdapterTitle());
-    LastTimingBreakdown.GpuHostSubmitWaitMs = std::max(0.0f, (TotalDispatchMs - LastTimingBreakdown.GpuTotalPassMs)) + CpuUniformMs * 0.0f + CopyMs * 0.0f;
-    if (LastTimingBreakdown.SceneSyncGpuMs <= 0.0f && LastSceneSyncMilliseconds > 0.0f)
+    LastViewportTiming.RenderWidthPx       = WidthPx;
+    LastViewportTiming.RenderHeightPx      = HeightPx;
+    LastViewportTiming.EngineMode          = EngIdx;
+    LastViewportTiming.ShadowAlgorithm     = static_cast<uint32_t>(Config.ShadowAlgorithm);
+    LastViewportTiming.QualityTier         = Config.QualityTier;
+    LastViewportTiming.HardwareGpuActive   = QueryHardwareGpuActive();
+    LastViewportTiming.WorldDispatched     = true;
+    LastViewportTiming.AdapterName         = std::string(QueryAdapterTitle());
+    LastViewportTiming.GpuHostSubmitWaitMs = std::max(0.0f, (TotalDispatchMs - LastViewportTiming.GpuTotalPassMs)) + CpuUniformMs * 0.0f + CopyMs * 0.0f;
+    if (LastViewportTiming.SceneSyncGpuMs <= 0.0f && LastSceneSyncMilliseconds > 0.0f)
     {
-        LastTimingBreakdown.SceneSyncGpuMs = LastSceneSyncMilliseconds;
+        LastViewportTiming.SceneSyncGpuMs = LastSceneSyncMilliseconds;
         LastSceneSyncMilliseconds          = 0.0f;
     }
 
@@ -3729,8 +3729,8 @@ bool VulkanWorldRenderSequence::ExecuteGpuVoxelSdfClipmap(
 }
 
 bool VulkanWorldRenderSequence::ExecuteGpuDistanceEvaluation(
-    const DistanceFieldSpace::FacetAtlas&          LocalAtlas,
-    const DistanceFieldSpace::BakedFacetDistance&  Baked,
+    const DistanceFieldSpace::FaceBvhRepository&          LocalAtlas,
+    const DistanceFieldSpace::BakedFaceDistance&  Baked,
     const DistanceFieldSpace::DistanceClipmap&     Clipmap,
     const DistanceFieldSpace::RigidPose&           Pose,
     std::span<const DistanceFieldSpace::ClosedBox> Boxes,

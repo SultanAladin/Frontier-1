@@ -5,7 +5,7 @@
 
 import MatCapEvaluation;
 
-struct SurfaceVertexRecord
+struct SurfaceVertexEntry
 {
     float4 PositionUVertex;       // xyz = World Position, w = UV.U
     float4 NormalVPacked;         // xyz = World Normal,   w = UV.V
@@ -32,7 +32,7 @@ struct ViewportUniformBlock
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<ViewportUniformBlock> ViewportUniforms;
-[[vk::binding(1, 0)]] StructuredBuffer<SurfaceVertexRecord> VertexRecords;
+[[vk::binding(1, 0)]] StructuredBuffer<SurfaceVertexEntry> VertexRecords;
 [[vk::binding(2, 0)]] StructuredBuffer<uint>                FaceSelectionBitmask;
 [[vk::binding(5, 0)]] StructuredBuffer<uint>                EdgeSelectionBitmask;
 [[vk::binding(6, 0)]] StructuredBuffer<uint>                VertexSelectionBitmask;
@@ -92,7 +92,7 @@ bool QueryBitSet(StructuredBuffer<uint> Bitmask, uint Index)
 [shader("vertex")]
 VertexInterpolators VertexEntry(uint VertexID : SV_VertexID)
 {
-    SurfaceVertexRecord Rec = VertexRecords[VertexID];
+    SurfaceVertexEntry Rec = VertexRecords[VertexID];
     VertexInterpolators   Out;
     Out.ClipPosition      = mul(ViewportUniforms.ViewProjection, float4(Rec.PositionUVertex.xyz, 1.0));
     Out.WorldPosition     = Rec.PositionUVertex.xyz;

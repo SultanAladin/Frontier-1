@@ -44,7 +44,7 @@ ColorRgba LogStreamDrawer::QueryChannelAccent(LogChannelCategory Channel) noexce
 void LogStreamDrawer::Construct(
     PixelSpace&                      Surface,
     Rectangle2D                      Bounds,
-    std::span<const LogStreamRecord> Records,
+    std::span<const LogStreamEntry> Records,
     LogStreamDrawerSession&          Session,
     const ControlPointer&            Pointer,
     float                            Opacity) noexcept
@@ -113,7 +113,7 @@ void LogStreamDrawer::Construct(
     float RowY = ListRect.Y - Session.ScrollY;
     constexpr float RowH = 20.0f;
 
-    for (const LogStreamRecord& Entry : Records)
+    for (const LogStreamEntry& Entry : Records)
     {
         if (Session.ActiveFilter != LogChannelCategory::All && Entry.Channel != Session.ActiveFilter)
         {

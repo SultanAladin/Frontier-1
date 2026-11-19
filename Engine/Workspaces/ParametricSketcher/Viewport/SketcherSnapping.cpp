@@ -54,7 +54,7 @@ struct CurvePoint
     Vector3 Derivative = {};                                                                 // [len] - dC/ds
 };
 
-[[nodiscard]] Vector3 PlacePlanar(const GeometrySpace::Parametric::OrthonormalFrame& Plane, Vector2 Point) noexcept
+[[nodiscard]] Vector3 PlacePlanar(const GeometrySpace::Parametric::OrthonormalBasis& Plane, Vector2 Point) noexcept
 {
     return Plane.Origin + Plane.XAxis * Point.X + Plane.YAxis * Point.Y;
 }
@@ -74,7 +74,7 @@ struct CurvePoint
 // 📝 Closed carriers (full circles, closed splines) wrap; open ones clamp.
 [[nodiscard]] bool WrappingCondition(const SketcherSnapCurve& Curve) noexcept
 {
-    if (Curve.Segment) return Curve.Segment->Kind == GeometrySpace::Parametric::ProfileSegmentKind::Circle;
+    if (Curve.Segment) return Curve.Segment->Kind == GeometrySpace::Parametric::ProfileSegmentCategory::Circle;
     return Curve.Carrier && GeometrySpace::Parametric::PeriodicCondition(*Curve.Carrier) && Curve.High - Curve.Low >= 2.0 * std::numbers::pi - 1.0e-9;
 }
 
@@ -131,7 +131,7 @@ void DescribeCurvePoint(const SketcherSnapCurve& Curve, double Parameter, Vector
 [[nodiscard]] double LocateFraction(const SketcherSnapCurve& Curve, double Fraction)
 {
     const bool Uniform = (Curve.Carrier && (std::holds_alternative<GeometrySpace::Parametric::StraightLine>(*Curve.Carrier) || std::holds_alternative<GeometrySpace::Parametric::CircularArc>(*Curve.Carrier)))
-                      || (Curve.Segment && Curve.Segment->Kind != GeometrySpace::Parametric::ProfileSegmentKind::Spline);
+                      || (Curve.Segment && Curve.Segment->Kind != GeometrySpace::Parametric::ProfileSegmentCategory::Spline);
     if (Uniform) return Curve.Low + Fraction * (Curve.High - Curve.Low);
     const std::vector<double> Stops = CollectCurveStops(Curve);
     std::vector<double> Edges, Lengths = { 0.0 };
@@ -178,7 +178,7 @@ void AppendPoint(std::vector<SketcherSnapPoint>& Points, SketcherSnapPoint Point
 }
 
 // Endpoints, midpoint and centre of a catalogued curve.
-void CatalogueCurvePoints(SketcherSnapCatalogue& Catalogue, const SketcherSnapCurve& Curve, bool OpenCondition)
+void CatalogueCurvePoints(SketcherSnapRepository& Catalogue, const SketcherSnapCurve& Curve, bool OpenCondition)
 {
     Vector3 Tangent, Normal;
     if (OpenCondition)
@@ -186,11 +186,11 @@ void CatalogueCurvePoints(SketcherSnapCatalogue& Catalogue, const SketcherSnapCu
         for (const double Parameter : { Curve.Low, Curve.High })
         {
             DescribeCurvePoint(Curve, Parameter, Tangent, Normal);
-            AppendPoint(Catalogue.Points, { SketcherSnapKind::Endpoint, EvaluateSnapCurve(Curve, Parameter).Position, Tangent, Normal, Curve.Source, Curve.Body }, Catalogue.Scale);
+            AppendPoint(Catalogue.Points, { SketcherSnapCategory::Endpoint, EvaluateSnapCurve(Curve, Parameter).Position, Tangent, Normal, Curve.Source, Curve.Body }, Catalogue.Scale);
         }
         const double Middle = LocateFraction(Curve, 0.5);
         DescribeCurvePoint(Curve, Middle, Tangent, Normal);
-        AppendPoint(Catalogue.Points, { SketcherSnapKind::Midpoint, EvaluateSnapCurve(Curve, Middle).Position, Tangent, Normal, Curve.Source, Curve.Body }, Catalogue.Scale);
+        AppendPoint(Catalogue.Points, { SketcherSnapCategory::Midpoint, EvaluateSnapCurve(Curve, Middle).Position, Tangent, Normal, Curve.Source, Curve.Body }, Catalogue.Scale);
     }
     // Quarter points: ¼ and ¾ of an open curve; a closed one (circle, closed spline) at 0, ¼, ½, ¾ — a circle's quadrants.
     const std::vector<double> Fractions = OpenCondition ? std::vector<double>{ 0.25, 0.75 } : std::vector<double>{ 0.0, 0.25, 0.5, 0.75 };
@@ -198,9 +198,9 @@ void CatalogueCurvePoints(SketcherSnapCatalogue& Catalogue, const SketcherSnapCu
     {
         const double Parameter = LocateFraction(Curve, Fraction);
         DescribeCurvePoint(Curve, Parameter, Tangent, Normal);
-        AppendPoint(Catalogue.Points, { SketcherSnapKind::Quarter, EvaluateSnapCurve(Curve, Parameter).Position, Tangent, Normal, Curve.Source, Curve.Body }, Catalogue.Scale);
+        AppendPoint(Catalogue.Points, { SketcherSnapCategory::Quarter, EvaluateSnapCurve(Curve, Parameter).Position, Tangent, Normal, Curve.Source, Curve.Body }, Catalogue.Scale);
     }
-    if (Curve.Centre) AppendPoint(Catalogue.Points, { SketcherSnapKind::Centre, *Curve.Centre, {}, Curve.PlaneNormal, Curve.Source, Curve.Body }, Catalogue.Scale);
+    if (Curve.Centre) AppendPoint(Catalogue.Points, { SketcherSnapCategory::Centre, *Curve.Centre, {}, Curve.PlaneNormal, Curve.Source, Curve.Body }, Catalogue.Scale);
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -247,34 +247,34 @@ void CatalogueCurvePoints(SketcherSnapCatalogue& Catalogue, const SketcherSnapCu
 //                                                    CANDIDATES
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] int RankOf(SketcherSnapKind Kind) noexcept
+[[nodiscard]] int RankOf(SketcherSnapCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case SketcherSnapKind::Endpoint:      return 0;
-    case SketcherSnapKind::Intersection:  return 1;
-    case SketcherSnapKind::Centre:        return 2;
-    case SketcherSnapKind::Midpoint:      return 3;
-    case SketcherSnapKind::Quarter:       return 6;                                // Generic: a reference-driven point there wins
-    case SketcherSnapKind::Tangent:       return 4;
-    case SketcherSnapKind::Perpendicular: return 5;
+    case SketcherSnapCategory::Endpoint:      return 0;
+    case SketcherSnapCategory::Intersection:  return 1;
+    case SketcherSnapCategory::Centre:        return 2;
+    case SketcherSnapCategory::Midpoint:      return 3;
+    case SketcherSnapCategory::Quarter:       return 6;                                // Generic: a reference-driven point there wins
+    case SketcherSnapCategory::Tangent:       return 4;
+    case SketcherSnapCategory::Perpendicular: return 5;
     default:                              return 9;
     }
 }
 
-[[nodiscard]] bool EnabledCondition(const SketcherSnapFilter& Filter, SketcherSnapKind Kind) noexcept
+[[nodiscard]] bool EnabledCondition(const SketcherSnapFilter& Filter, SketcherSnapCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case SketcherSnapKind::Endpoint:      return Filter.EndpointEnabled;
-    case SketcherSnapKind::Midpoint:      return Filter.MidpointEnabled;
-    case SketcherSnapKind::Quarter:       return Filter.QuarterEnabled;
-    case SketcherSnapKind::Centre:        return Filter.CentreEnabled;
-    case SketcherSnapKind::Intersection:  return Filter.IntersectionEnabled;
-    case SketcherSnapKind::Tangent:       return Filter.TangentEnabled;
-    case SketcherSnapKind::Perpendicular: return Filter.PerpendicularEnabled;
-    case SketcherSnapKind::Curve:         return Filter.CurveEnabled;
-    case SketcherSnapKind::Face:          return Filter.FaceEnabled;
+    case SketcherSnapCategory::Endpoint:      return Filter.EndpointEnabled;
+    case SketcherSnapCategory::Midpoint:      return Filter.MidpointEnabled;
+    case SketcherSnapCategory::Quarter:       return Filter.QuarterEnabled;
+    case SketcherSnapCategory::Centre:        return Filter.CentreEnabled;
+    case SketcherSnapCategory::Intersection:  return Filter.IntersectionEnabled;
+    case SketcherSnapCategory::Tangent:       return Filter.TangentEnabled;
+    case SketcherSnapCategory::Perpendicular: return Filter.PerpendicularEnabled;
+    case SketcherSnapCategory::Curve:         return Filter.CurveEnabled;
+    case SketcherSnapCategory::Face:          return Filter.FaceEnabled;
     default:                              return true;
     }
 }
@@ -285,7 +285,7 @@ struct PointContest
     SketcherSnap Best  = {};
     double       Score = 1.0e300;
 
-    void Offer(const SketcherSnapQuery& Query, SketcherSnapKind Kind, Vector3 Position, Vector3 Tangent, Vector3 Normal, const std::string& Source, double Pixels)
+    void Offer(const SketcherSnapQuery& Query, SketcherSnapCategory Kind, Vector3 Position, Vector3 Tangent, Vector3 Normal, const std::string& Source, double Pixels)
     {
         if (!EnabledCondition(Query.Filter, Kind) || Pixels > Query.PointReach) return;
         const double Candidate = Pixels + RankPixels * RankOf(Kind);
@@ -304,7 +304,7 @@ struct NearCurve
     size_t Sample   = 0;                                                                     // [-]  - Segment start sample
 };
 
-[[nodiscard]] std::optional<NearCurve> ApproachCurve(const SketcherSnapCatalogue& Catalogue, const SketcherSnapQuery& Query, size_t Index)
+[[nodiscard]] std::optional<NearCurve> ApproachCurve(const SketcherSnapRepository& Catalogue, const SketcherSnapQuery& Query, size_t Index)
 {
     const SketcherSnapCurve& Curve = Catalogue.Curves[Index];
     NearCurve Near{ Index };
@@ -436,7 +436,7 @@ std::vector<double> BracketRoots(const SketcherSnapCurve& Curve, ResidualFunctio
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-bool ProjectSketcherPoint(const OrbitCameraFrame& Frame, Vector3 Point, double& PixelX, double& PixelY) noexcept
+bool ProjectSketcherPoint(const OrbitCameraBasis& Frame, Vector3 Point, double& PixelX, double& PixelY) noexcept
 {
     double Clip[4] = {};
     for (int Row = 0; Row < 4; ++Row)
@@ -457,9 +457,9 @@ std::optional<double> ApproachSketcherLine(const OrbitRay& Ray, Vector3 Origin, 
     return Parameter / GeometrySpace::Parametric::Length(Direction);
 }
 
-SketcherSnapCatalogue CatalogueSketcherSnaps(const SketcherDocument& Document, const SketcherScene& Scene, const std::vector<std::string>& Excluded)
+SketcherSnapRepository CatalogueSketcherSnaps(const SketcherDocument& Document, const SketcherScene& Scene, const std::vector<std::string>& Excluded)
 {
-    SketcherSnapCatalogue Catalogue;
+    SketcherSnapRepository Catalogue;
     Catalogue.Revision = Document.Revision;
     for (const std::string& Key : Excluded) Catalogue.ExclusionKey += Key + ";";
     Catalogue.Scale = std::max(1.0e-9, std::hypot(Scene.BoundsHigh[0] - Scene.BoundsLow[0], Scene.BoundsHigh[1] - Scene.BoundsLow[1], Scene.BoundsHigh[2] - Scene.BoundsLow[2]));
@@ -518,14 +518,14 @@ SketcherSnapCatalogue CatalogueSketcherSnaps(const SketcherDocument& Document, c
     }
 
     // ---- Sketches: solved, on the elevated plane; ends, midpoints, centres; crossings within one plane frame
-    struct PlacedSegment { size_t Curve; GeometrySpace::Parametric::OrthonormalFrame Plane; Vector2 Low, High; };
+    struct PlacedSegment { size_t Curve; GeometrySpace::Parametric::OrthonormalBasis Plane; Vector2 Low, High; };
     std::vector<PlacedSegment> Placed;
     for (const GeometrySpace::Parametric::FeatureStep& Step : Document.Tree.Steps)
     {
-        if (Step.Kind != GeometrySpace::Parametric::FeatureStepKind::Sketch || ExcludedCondition(Step.Label) || Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
+        if (Step.Kind != GeometrySpace::Parametric::FeatureStepCategory::Sketch || ExcludedCondition(Step.Label) || Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
         const auto Solved = Document.Regeneration.Sketches.find(Step.Label);
         const GeometrySpace::Parametric::SketchModel& Sketch = Solved != Document.Regeneration.Sketches.end() ? Solved->second : Step.Sketch;
-        GeometrySpace::Parametric::OrthonormalFrame Plane = Step.Plane;
+        GeometrySpace::Parametric::OrthonormalBasis Plane = Step.Plane;
         Plane.Origin = Plane.Origin + Plane.ZAxis * GeometrySpace::Parametric::EvaluateFeatureValue(Document.Tree, Step.Elevation);
         const auto   Caption = Document.Captions.find(Step.Label);
         const std::string Owner = Caption != Document.Captions.end() ? Caption->second : Step.Label;
@@ -542,13 +542,13 @@ SketcherSnapCatalogue CatalogueSketcherSnaps(const SketcherDocument& Document, c
             Curve.Plane           = Plane;
             Curve.PlanarCondition = true;
             Curve.PlaneNormal     = Plane.ZAxis;
-            if (Segment.Kind == GeometrySpace::Parametric::ProfileSegmentKind::Arc || Segment.Kind == GeometrySpace::Parametric::ProfileSegmentKind::Circle)
+            if (Segment.Kind == GeometrySpace::Parametric::ProfileSegmentCategory::Arc || Segment.Kind == GeometrySpace::Parametric::ProfileSegmentCategory::Circle)
             {
                 Curve.Centre = PlacePlanar(Plane, Segment.Centre);
                 Curve.Radius = Segment.Radius;
             }
-            SampleCurve(Curve, Segment.Kind == GeometrySpace::Parametric::ProfileSegmentKind::Line ? 1 : CurveSamples);
-            CatalogueCurvePoints(Catalogue, Curve, Segment.Kind != GeometrySpace::Parametric::ProfileSegmentKind::Circle);
+            SampleCurve(Curve, Segment.Kind == GeometrySpace::Parametric::ProfileSegmentCategory::Line ? 1 : CurveSamples);
+            CatalogueCurvePoints(Catalogue, Curve, Segment.Kind != GeometrySpace::Parametric::ProfileSegmentCategory::Circle);
             Vector2 Low{ 1.0e300, 1.0e300 }, High{ -1.0e300, -1.0e300 };
             for (double Parameter : Curve.Parameters)
             {
@@ -556,12 +556,12 @@ SketcherSnapCatalogue CatalogueSketcherSnaps(const SketcherDocument& Document, c
                 Low  = { std::min(Low.X, Point.X), std::min(Low.Y, Point.Y) };
                 High = { std::max(High.X, Point.X), std::max(High.Y, Point.Y) };
             }
-            const double Bulge = Segment.Kind == GeometrySpace::Parametric::ProfileSegmentKind::Line ? 0.0 : 0.05 * std::max(High.X - Low.X, High.Y - Low.Y) + Segment.Radius * 0.01;
+            const double Bulge = Segment.Kind == GeometrySpace::Parametric::ProfileSegmentCategory::Line ? 0.0 : 0.05 * std::max(High.X - Low.X, High.Y - Low.Y) + Segment.Radius * 0.01;
             Placed.push_back({ Catalogue.Curves.size(), Plane, { Low.X - Bulge, Low.Y - Bulge }, { High.X + Bulge, High.Y + Bulge } });
             Catalogue.Curves.push_back(std::move(Curve));
         }
     }
-    const auto SameFrame = [&](const GeometrySpace::Parametric::OrthonormalFrame& First, const GeometrySpace::Parametric::OrthonormalFrame& Second)
+    const auto SameFrame = [&](const GeometrySpace::Parametric::OrthonormalBasis& First, const GeometrySpace::Parametric::OrthonormalBasis& Second)
     {
         const double Tolerance = 1.0e-12 * (1.0 + Catalogue.Scale);
         return GeometrySpace::Parametric::Distance(First.Origin, Second.Origin) <= Tolerance && GeometrySpace::Parametric::Distance(First.XAxis, Second.XAxis) <= 1.0e-12 && GeometrySpace::Parametric::Distance(First.YAxis, Second.YAxis) <= 1.0e-12;
@@ -578,7 +578,7 @@ SketcherSnapCatalogue CatalogueSketcherSnaps(const SketcherDocument& Document, c
             {
                 Vector3 Tangent, Normal;
                 DescribeCurvePoint(CurveA, Crossing.TargetFraction, Tangent, Normal);
-                AppendPoint(Catalogue.Points, { SketcherSnapKind::Intersection, PlacePlanar(A.Plane, Crossing.Position), Tangent, Normal, CurveA.Source + " × " + CurveB.Source, {} }, Catalogue.Scale);
+                AppendPoint(Catalogue.Points, { SketcherSnapCategory::Intersection, PlacePlanar(A.Plane, Crossing.Position), Tangent, Normal, CurveA.Source + " × " + CurveB.Source, {} }, Catalogue.Scale);
             }
         }
 
@@ -615,13 +615,13 @@ SketcherSnapCatalogue CatalogueSketcherSnaps(const SketcherDocument& Document, c
             Vector3 Tangent, Normal;
             DescribeCurvePoint(CurveA, Cross.First, Tangent, Normal);
             const Vector3 Pos = GeometrySpace::Parametric::EvaluateNurbsCurve(*SpaceNurbs[I].Definition, Cross.First).Position;
-            AppendPoint(Catalogue.Points, { SketcherSnapKind::Intersection, Pos, Tangent, Normal, CurveA.Source + " × " + CurveB.Source, {} }, Catalogue.Scale);
+            AppendPoint(Catalogue.Points, { SketcherSnapCategory::Intersection, Pos, Tangent, Normal, CurveA.Source + " × " + CurveB.Source, {} }, Catalogue.Scale);
         }
     }
     return Catalogue;
 }
 
-SketcherSnap FindSketcherSnap(SketcherSnapCatalogue& Catalogue, const SketcherDocument& Document, const SketcherScene& Scene, const SketcherSnapQuery& Query)
+SketcherSnap FindSketcherSnap(SketcherSnapRepository& Catalogue, const SketcherDocument& Document, const SketcherScene& Scene, const SketcherSnapQuery& Query)
 {
     const double      Scale = Catalogue.Scale;
     const OrbitRay Ray   = CastOrbitRay(Query.Frame, Query.PixelX, Query.PixelY);
@@ -663,7 +663,7 @@ SketcherSnap FindSketcherSnap(SketcherSnapCatalogue& Catalogue, const SketcherDo
                 if (!Meeting || !VisibleCondition(Scene, Query, *Meeting, Scale)) continue;
                 Vector3 Tangent, Normal;
                 DescribeCurvePoint(A, ConfineParameter(A, Near[First].Seed), Tangent, Normal);
-                Contest.Offer(Query, SketcherSnapKind::Intersection, *Meeting, Tangent, Normal, A.Source + " × " + B.Source, MeasurePixels(Query, *Meeting));
+                Contest.Offer(Query, SketcherSnapCategory::Intersection, *Meeting, Tangent, Normal, A.Source + " × " + B.Source, MeasurePixels(Query, *Meeting));
             }
 
     // ---- Tangent and perpendicular points from the last placed point
@@ -674,7 +674,7 @@ SketcherSnap FindSketcherSnap(SketcherSnapCatalogue& Catalogue, const SketcherDo
         {
             if (Each.Pixels > Query.PointReach) continue;
             const SketcherSnapCurve& Curve = Catalogue.Curves[Each.Index];
-            const auto Offer = [&](SketcherSnapKind Kind, double Parameter)
+            const auto Offer = [&](SketcherSnapCategory Kind, double Parameter)
             {
                 const Vector3 Position = EvaluateSnapCurve(Curve, Parameter).Position;
                 if (GeometrySpace::Parametric::Distance(Position, Reference) <= 1.0e-9 * (1.0 + Scale) || !VisibleCondition(Scene, Query, Position, Scale)) return;
@@ -684,15 +684,15 @@ SketcherSnap FindSketcherSnap(SketcherSnapCatalogue& Catalogue, const SketcherDo
             };
             if (Query.Filter.PerpendicularEnabled)
                 for (double Root : BracketRoots(Curve, [&](double Parameter) { const CurvePoint Point = EvaluateSnapCurve(Curve, Parameter); return GeometrySpace::Parametric::Dot(Point.Position - Reference, Point.Derivative); }))
-                    Offer(SketcherSnapKind::Perpendicular, Root);
+                    Offer(SketcherSnapCategory::Perpendicular, Root);
             // Tangent lines exist in the curve's plane only: the reference must lie in it.
             const bool Coplanar = Curve.PlanarCondition && std::fabs(GeometrySpace::Parametric::Dot(Reference - Curve.Points.front(), Curve.PlaneNormal)) <= 1.0e-9 * (1.0 + Scale);
             if (Query.Filter.TangentEnabled && Coplanar)
                 for (double Root : BracketRoots(Curve, [&](double Parameter) { const CurvePoint Point = EvaluateSnapCurve(Curve, Parameter); return GeometrySpace::Parametric::Dot(GeometrySpace::Parametric::Cross(Point.Position - Reference, Point.Derivative), Curve.PlaneNormal); }))
-                    Offer(SketcherSnapKind::Tangent, Root);
+                    Offer(SketcherSnapCategory::Tangent, Root);
         }
     }
-    if (Contest.Best.Kind != SketcherSnapKind::None) return Contest.Best;
+    if (Contest.Best.Kind != SketcherSnapCategory::None) return Contest.Best;
 
     // ---- Nearest point on a curve
     if (Query.Filter.CurveEnabled)
@@ -710,9 +710,9 @@ SketcherSnap FindSketcherSnap(SketcherSnapCatalogue& Catalogue, const SketcherDo
             Vector3 Tangent, Normal;
             DescribeCurvePoint(Curve, Parameter, Tangent, Normal);
             BestPixels = Pixels;
-            Best       = { SketcherSnapKind::Curve, Position, Tangent, Normal, Curve.Source, Pixels };
+            Best       = { SketcherSnapCategory::Curve, Position, Tangent, Normal, Curve.Source, Pixels };
         }
-        if (Best.Kind != SketcherSnapKind::None) return Best;
+        if (Best.Kind != SketcherSnapCategory::None) return Best;
     }
 
     // ---- The face under the pointer: its centre (planar faces) or the exact ray hit
@@ -737,14 +737,14 @@ SketcherSnap FindSketcherSnap(SketcherSnapCatalogue& Catalogue, const SketcherDo
                     {
                         const double Pixels = MeasurePixels(Query, *Found->second);
                         if (Pixels <= Query.PointReach && VisibleCondition(Scene, Query, *Found->second, Scale))
-                            return { SketcherSnapKind::Centre, *Found->second, {}, std::get<GeometrySpace::Parametric::PlaneSurface>(*Surface).Frame.ZAxis * Sense, "Face " + Catalogue.FaceNames[Face] + " centre", Pixels };
+                            return { SketcherSnapCategory::Centre, *Found->second, {}, std::get<GeometrySpace::Parametric::PlaneSurface>(*Surface).Frame.ZAxis * Sense, "Face " + Catalogue.FaceNames[Face] + " centre", Pixels };
                     }
                 }
                 if (Query.Filter.FaceEnabled)
                 {
                     Vector3 Normal;
                     const Vector3 Position = PierceSurface(*Surface, Ray, Hit->Distance, Normal, Scale);
-                    return { SketcherSnapKind::Face, Position, {}, Normal * Sense, "Face " + Catalogue.FaceNames[Face], MeasurePixels(Query, Position) };
+                    return { SketcherSnapCategory::Face, Position, {}, Normal * Sense, "Face " + Catalogue.FaceNames[Face], MeasurePixels(Query, Position) };
                 }
             }
         }
@@ -752,35 +752,35 @@ SketcherSnap FindSketcherSnap(SketcherSnapCatalogue& Catalogue, const SketcherDo
     return {};
 }
 
-const char* SketcherSnapLabel(SketcherSnapKind Kind) noexcept
+const char* SketcherSnapLabel(SketcherSnapCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case SketcherSnapKind::Grid:          return "Grid";
-    case SketcherSnapKind::Endpoint:      return "Endpoint";
-    case SketcherSnapKind::Midpoint:      return "Midpoint";
-    case SketcherSnapKind::Quarter:       return "Quarter";
-    case SketcherSnapKind::Centre:        return "Centre";
-    case SketcherSnapKind::Intersection:  return "Intersection";
-    case SketcherSnapKind::Tangent:       return "Tangent";
-    case SketcherSnapKind::Perpendicular: return "Perpendicular";
-    case SketcherSnapKind::Curve:         return "On curve";
-    case SketcherSnapKind::Face:          return "On face";
-    case SketcherSnapKind::Axis:          return "Axis";
+    case SketcherSnapCategory::Grid:          return "Grid";
+    case SketcherSnapCategory::Endpoint:      return "Endpoint";
+    case SketcherSnapCategory::Midpoint:      return "Midpoint";
+    case SketcherSnapCategory::Quarter:       return "Quarter";
+    case SketcherSnapCategory::Centre:        return "Centre";
+    case SketcherSnapCategory::Intersection:  return "Intersection";
+    case SketcherSnapCategory::Tangent:       return "Tangent";
+    case SketcherSnapCategory::Perpendicular: return "Perpendicular";
+    case SketcherSnapCategory::Curve:         return "On curve";
+    case SketcherSnapCategory::Face:          return "On face";
+    case SketcherSnapCategory::Axis:          return "Axis";
     default:                              return "";
     }
 }
 
-const char* SketcherSnapLockLabel(SketcherSnapLockKind Kind) noexcept
+const char* SketcherSnapLockLabel(SketcherSnapLockCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case SketcherSnapLockKind::X:        return "x";
-    case SketcherSnapLockKind::Y:        return "y";
-    case SketcherSnapLockKind::Z:        return "z";
-    case SketcherSnapLockKind::Tangent:  return "tangent";
-    case SketcherSnapLockKind::Normal:   return "normal";
-    case SketcherSnapLockKind::Binormal: return "binormal";
+    case SketcherSnapLockCategory::X:        return "x";
+    case SketcherSnapLockCategory::Y:        return "y";
+    case SketcherSnapLockCategory::Z:        return "z";
+    case SketcherSnapLockCategory::Tangent:  return "tangent";
+    case SketcherSnapLockCategory::Normal:   return "normal";
+    case SketcherSnapLockCategory::Binormal: return "binormal";
     default:                             return "";
     }
 }

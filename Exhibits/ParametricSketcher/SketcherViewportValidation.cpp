@@ -48,7 +48,7 @@ int main()
     SketcherDocument Doc = CreateSketcherDocument("ViewportBracket");
     {
         SketcherConstructRequest BoxReq {};
-        BoxReq.Kind     = SketcherConstructKind::Block;
+        BoxReq.Kind     = SketcherConstructCategory::Block;
         BoxReq.Position = { -1.2, -0.9, -0.6 };
         BoxReq.Width    = 2.4;
         BoxReq.Depth    = 1.8;
@@ -59,7 +59,7 @@ int main()
         }
 
         SketcherDrawingRequest CircleReq {};
-        CircleReq.Kind            = SketcherDrawingKind::Circle;
+        CircleReq.Kind            = SketcherDrawingCategory::Circle;
         CircleReq.GridPlane       = 0;
         CircleReq.CentreCondition = true;
         CircleReq.FillCondition   = true;
@@ -80,11 +80,11 @@ int main()
 
     OrbitCamera Cam {};
     Cam.Distance = 4.5;
-    const OrbitCameraFrame Frame = FrameOrbitCamera(Cam, 640.0, 360.0);
+    const OrbitCameraBasis Frame = FrameOrbitCamera(Cam, 640.0, 360.0);
 
     // 1. Object snapping catalogue + SketcherSnapFilter gating (CPU)
     {
-        SketcherSnapCatalogue Catalogue = CatalogueSketcherSnaps(Doc, Scene);
+        SketcherSnapRepository Catalogue = CatalogueSketcherSnaps(Doc, Scene);
         double CornerPx = 0.0, CornerPy = 0.0;
         if (!VerifyCheck(!Catalogue.Points.empty() && !Catalogue.Curves.empty(), "Snap catalogue populated") ||
             !VerifyCheck(ProjectSketcherPoint(Frame, Vector3{ 1.2, 0.9, 0.6 }, CornerPx, CornerPy), "Project block corner to viewport"))
@@ -96,7 +96,7 @@ int main()
         Query.PixelX = CornerPx;
         Query.PixelY = CornerPy;
         const SketcherSnap HitCorner = FindSketcherSnap(Catalogue, Doc, Scene, Query);
-        if (!VerifyCheck(HitCorner.Kind == SketcherSnapKind::Endpoint, "FindSketcherSnap snaps to corner Endpoint"))
+        if (!VerifyCheck(HitCorner.Kind == SketcherSnapCategory::Endpoint, "FindSketcherSnap snaps to corner Endpoint"))
         {
             return 1;
         }
@@ -104,8 +104,8 @@ int main()
         Query.Filter.CurveEnabled    = false;
         Query.Filter.FaceEnabled     = false;
         const SketcherSnap FilteredCorner = FindSketcherSnap(Catalogue, Doc, Scene, Query);
-        if (!VerifyCheck(FilteredCorner.Kind != SketcherSnapKind::Endpoint && FilteredCorner.Kind != SketcherSnapKind::Curve &&
-                             FilteredCorner.Kind != SketcherSnapKind::Face,
+        if (!VerifyCheck(FilteredCorner.Kind != SketcherSnapCategory::Endpoint && FilteredCorner.Kind != SketcherSnapCategory::Curve &&
+                             FilteredCorner.Kind != SketcherSnapCategory::Face,
                          "SketcherSnapFilter disables Endpoint/Curve/Face snaps"))
         {
             return 1;
@@ -200,14 +200,14 @@ int main()
 
         SketcherDocument Retopo = CreateSketcherDocument("CurvedRetopologyProof");
         SketcherConstructRequest RefSphere {};
-        RefSphere.Kind   = SketcherConstructKind::Sphere;
+        RefSphere.Kind   = SketcherConstructCategory::Sphere;
         RefSphere.Radius = 2.0;
         if (!VerifyCheck(ConstructSketcherPrimitive(Retopo, RefSphere).AcceptedCondition, "Construct curved Clay reference sphere"))
         {
             return 1;
         }
         const std::string RefBody = Retopo.Summary.Bodies.front().Key;
-        SelectSketcherName(Retopo, SketcherSelectionKind::Body, RefBody, false);
+        SelectSketcherName(Retopo, SketcherSelectionCategory::Body, RefBody, false);
         (void)AssignSketcherMatcap(Retopo, "Clay");
         (void)ToggleSketcherLock(Retopo, RefBody);
 
@@ -244,7 +244,7 @@ int main()
         {
             if (Body.Key == RefBody) continue;
             RebuiltFaces += Body.Faces;
-            SelectSketcherName(Retopo, SketcherSelectionKind::Body, Body.Key, false);
+            SelectSketcherName(Retopo, SketcherSelectionCategory::Body, Body.Key, false);
             (void)AssignSketcherMatcap(Retopo, "Ceramic");
         }
         if (!VerifyCheck(RebuiltFaces >= 3, "Curved retopology cage built Square, Rectangle, and Triangle CAD patches"))
@@ -263,9 +263,9 @@ int main()
         RetopoCam.Azimuth   = -0.45;
         RetopoCam.Elevation = 0.42;
         RetopoCam.Distance  = 5.2;
-        const OrbitCameraFrame RetopoFrame = FrameOrbitCamera(RetopoCam, 1280.0, 720.0);
+        const OrbitCameraBasis RetopoFrame = FrameOrbitCamera(RetopoCam, 1280.0, 720.0);
 
-        SketcherSnapCatalogue RetopoCatalogue = CatalogueSketcherSnaps(Retopo, RetopoScene);
+        SketcherSnapRepository RetopoCatalogue = CatalogueSketcherSnaps(Retopo, RetopoScene);
         const Vector3 CrossPos = SpherePoint(RCurve, -0.35, 0.48);
         double CrossPx = 0.0, CrossPy = 0.0;
         if (!VerifyCheck(ProjectSketcherPoint(RetopoFrame, CrossPos, CrossPx, CrossPy), "Project SpaceCurve crossing to viewport"))
@@ -280,7 +280,7 @@ int main()
         CrossQ.FreeCurvesOnly = true;
         CrossQ.OverlayCurvesVisible = true;
         const SketcherSnap CrossHit = FindSketcherSnap(RetopoCatalogue, Retopo, RetopoScene, CrossQ);
-        if (!VerifyCheck(CrossHit.Kind == SketcherSnapKind::Intersection && Distance(CrossHit.Position, CrossPos) < 0.02,
+        if (!VerifyCheck(CrossHit.Kind == SketcherSnapCategory::Intersection && Distance(CrossHit.Position, CrossPos) < 0.02,
                          "FindSketcherSnap detects 3D SpaceCurve x SpaceCurve Intersection"))
         {
             return 1;

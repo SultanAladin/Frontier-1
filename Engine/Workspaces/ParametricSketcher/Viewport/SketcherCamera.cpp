@@ -37,7 +37,7 @@ void FitSketcherCamera(OrbitCamera& Camera, const SketcherScene& Scene)
     FitOrbitCamera(Camera, Scene.BoundsLow, Scene.BoundsHigh);
 }
 
-std::vector<uint32_t> EncloseSketcherEdges(const SketcherScene& Scene, const OrbitCameraFrame& Frame, std::array<double, 2> Low,
+std::vector<uint32_t> EncloseSketcherEdges(const SketcherScene& Scene, const OrbitCameraBasis& Frame, std::array<double, 2> Low,
                                            std::array<double, 2> High, bool XRayEnabled, const SketcherSectionClip* Section)
 {
     const auto Kept = [&](const float Point[3])

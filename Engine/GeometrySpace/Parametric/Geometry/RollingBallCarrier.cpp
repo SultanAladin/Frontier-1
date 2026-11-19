@@ -82,7 +82,7 @@ namespace
     }
 
     // Spine point, unit tangent and the cross-section frame E₁ (towards the guide foot), E₂ = E₁ × T.
-    struct SectionFrame
+    struct SectionBasis
     {
         Vector3 Centre  = {};                                                                // [len] - C(𝑢)
         Vector3 Tangent = {};                                                                // [-]   - T(𝑢)
@@ -129,7 +129,7 @@ namespace
         return Memo;
     }
 
-    [[nodiscard]] SectionFrame ResolveSection(const RollingBallDefinition& Definition, double 𝑢) noexcept
+    [[nodiscard]] SectionBasis ResolveSection(const RollingBallDefinition& Definition, double 𝑢) noexcept
     {
         std::vector<SectionMemo>& Memo = ThreadSectionMemo();
         SectionMemo* Slot = nullptr;
@@ -139,7 +139,7 @@ namespace
             if (Slot->Serial == Definition.Serial && Slot->𝑢 == 𝑢)
                 return { Slot->Centre, Slot->Tangent, Slot->First, Cross(Slot->First, Slot->Tangent) * Definition.Handedness, Slot->Velocity };
         }
-        SectionFrame Frame;
+        SectionBasis Frame;
         const CurveSample Sample = EvaluateCurve(Definition.Spine, Clamp(𝑢, Definition.SpineLow, Definition.SpineHigh, Definition.Period));
         Frame.Centre   = Sample.Position;
         Frame.Velocity = Sample.Derivative;
@@ -157,19 +157,19 @@ namespace
     //    spine it equals the section frame, so d/d𝑢 of the frame is its derivative along C′ — taken on the tangent line
     //    C ± h·C′, which needs no Newton solve onto the curve. The symmetric stencil cancels the O(h²) offset of the
     //    tangent line from the curve, so the quotient keeps the O(h²) truncation of the exact central difference.
-    struct FieldFrame
+    struct FieldBasis
     {
         Vector3 First  = {};                                                                 // [-] - E₁(X)
         Vector3 Second = {};                                                                 // [-] - E₂(X)
     };
 
     // Hints: chart feet on Trace.First, Trace.Second and the guide, carried from the + stencil point to the − one.
-    [[nodiscard]] FieldFrame ResolveFieldFrame(const RollingBallDefinition& Definition, const TracedIntersection& Trace, Vector3 Position, Vector3 Reference, std::array<Vector2, 3>& Hints) noexcept
+    [[nodiscard]] FieldBasis ResolveFieldFrame(const RollingBallDefinition& Definition, const TracedIntersection& Trace, Vector3 Position, Vector3 Reference, std::array<Vector2, 3>& Hints) noexcept
     {
         Vector3 Tangent = Normalize(Cross(MeasureSurfaceDistanceNear(Trace.First, Position, Hints[0]).Normal, MeasureSurfaceDistanceNear(Trace.Second, Position, Hints[1]).Normal));
         if (Dot(Tangent, Reference) < 0.0) Tangent = -Tangent;
         const Vector3 Towards = FootOnSupport(Definition.Guide, Position, Hints[2]) - Position;   // [len] - ≈ r·E₁
-        FieldFrame Frame;
+        FieldBasis Frame;
         Frame.First  = Normalize(Towards - Tangent * Dot(Towards, Tangent));
         Frame.Second = Cross(Frame.First, Tangent) * Definition.Handedness;
         return Frame;
@@ -191,7 +191,7 @@ namespace
         double  Ball   = 0.0;                                                                // [len] - r(𝑢)
     };
 
-    [[nodiscard]] CanalSection ResolveCanal(const RollingBallDefinition& Definition, const SectionFrame& Frame, double 𝑢) noexcept
+    [[nodiscard]] CanalSection ResolveCanal(const RollingBallDefinition& Definition, const SectionBasis& Frame, double 𝑢) noexcept
     {
         CanalSection Section;
         Section.Ball  = RadiusAt(Definition, 𝑢);
@@ -205,7 +205,7 @@ namespace
 
     [[nodiscard]] Vector3 EvaluatePosition(const RollingBallDefinition& Definition, Vector2 Parameter) noexcept
     {
-        const SectionFrame Frame = ResolveSection(Definition, Parameter.X);
+        const SectionBasis Frame = ResolveSection(Definition, Parameter.X);
         const Vector3 Around = Frame.First * std::cos(Parameter.Y) + Frame.Second * std::sin(Parameter.Y);   // [-] - In-plane direction
         if (!CanalCondition(Definition)) return Frame.Centre + Around * Definition.Radius;
         const CanalSection Section = ResolveCanal(Definition, Frame, Parameter.X);
@@ -292,7 +292,7 @@ namespace
             Slot = &Memo[SectionMemoSlot(Definition.Serial, 𝑢) & 4095u];
             if (Slot->Serial == Definition.Serial && Slot->𝑢 == 𝑢) return Slot->Ruling;
         }
-        const SectionFrame Frame = ResolveSection(Definition, 𝑢);
+        const SectionBasis Frame = ResolveSection(Definition, 𝑢);
         const double  Step  = DifferenceStep(Definition.SpineLow, Definition.SpineHigh, Definition.Period);
         const Vector3 Reach = Frame.Velocity * Step;                                         // [len] - h·C′
         ChordRuling Ruling;
@@ -443,7 +443,7 @@ SurfaceSample EvaluateRollingBall(const RollingBallSurface& Surface, Vector2 Par
 {
     const RollingBallDefinition& Definition = *Surface.Definition;
     if (ChordCondition(Definition)) return EvaluateChord(Definition, Parameter);
-    const SectionFrame Frame  = ResolveSection(Definition, Parameter.X);
+    const SectionBasis Frame  = ResolveSection(Definition, Parameter.X);
     const double       Cosine = std::cos(Parameter.Y), Sine = std::sin(Parameter.Y);           // [-] - cos 𝑣, sin 𝑣
     SurfaceSample Sample;
     if (CanalCondition(Definition))
@@ -465,7 +465,7 @@ SurfaceSample EvaluateRollingBall(const RollingBallSurface& Surface, Vector2 Par
         //    positions would amplify a ball-law spine's Newton jitter (~10⁻¹³) by 1/h; directions barely see it.
         const auto NormalAt = [&](double At)
         {
-            const SectionFrame Near = ResolveSection(Definition, At);
+            const SectionBasis Near = ResolveSection(Definition, At);
             const CanalSection Canal = ResolveCanal(Definition, Near, At);
             return Near.Tangent * -Canal.Slope + (Near.First * Cosine + Near.Second * Sine) * Canal.Lean;
         };
@@ -498,8 +498,8 @@ SurfaceSample EvaluateRollingBall(const RollingBallSurface& Surface, Vector2 Par
             const Vector3    Reach = Frame.Velocity * Step;                                  // [len] - h·C′
             const std::array<Vector2, 2> Feet = InterpolateIntersectionFeet(*Traced->Trace, Clamp(Parameter.X, Definition.SpineLow, Definition.SpineHigh, Definition.Period));
             std::array<Vector2, 3> Hints = { Feet[0], Feet[1], SpineFootHint(Definition.Spine, Definition.Guide, Clamp(Parameter.X, Definition.SpineLow, Definition.SpineHigh, Definition.Period)) };
-            const FieldFrame Ahead = ResolveFieldFrame(Definition, *Traced->Trace, Frame.Centre + Reach, Frame.Tangent, Hints);
-            const FieldFrame Back  = ResolveFieldFrame(Definition, *Traced->Trace, Frame.Centre - Reach, Frame.Tangent, Hints);
+            const FieldBasis Ahead = ResolveFieldFrame(Definition, *Traced->Trace, Frame.Centre + Reach, Frame.Tangent, Hints);
+            const FieldBasis Back  = ResolveFieldFrame(Definition, *Traced->Trace, Frame.Centre - Reach, Frame.Tangent, Hints);
             FirstRate  = (Ahead.First - Back.First) * (1.0 / (2.0 * Step));
             SecondRate = (Ahead.Second - Back.Second) * (1.0 / (2.0 * Step));
             if (Slot && Slot->Serial == Definition.Serial && Slot->𝑢 == Parameter.X)
@@ -526,7 +526,7 @@ Vector3 EvaluateRollingBallNormal(const RollingBallSurface& Surface, Vector2 Par
         const SurfaceSample Sample = EvaluateChord(*Surface.Definition, Parameter);
         return Normalize(Cross(Sample.DerivativeU, Sample.DerivativeV)) * Surface.Definition->Handedness;
     }
-    const SectionFrame Frame = ResolveSection(*Surface.Definition, Parameter.X);
+    const SectionBasis Frame = ResolveSection(*Surface.Definition, Parameter.X);
     // Exact radial direction; ∂𝑢 × ∂𝑣 points away from the spine for handedness +1, towards it for the mirror image.
     const Vector3 Around = Frame.First * std::cos(Parameter.Y) + Frame.Second * std::sin(Parameter.Y);   // [-] - In-plane direction
     if (!CanalCondition(*Surface.Definition)) return Around * Surface.Definition->Handedness;
@@ -543,7 +543,7 @@ Vector2 ProjectOntoRollingBall(const RollingBallSurface& Surface, Vector3 Positi
     const double SpineLow = Definition.Period > 0.0 ? Reference.X - 0.5 * Definition.Period : (std::isfinite(Definition.SpineLow) ? Definition.SpineLow : 0.0);
     double       𝑢        = CanalCondition(Definition) ? SolveCanalFoot(Definition, Position, SpineLow) : ProjectOntoCurve(Definition.Spine, Position, SpineLow);
     𝑢 = Fold(Clamp(𝑢, Definition.SpineLow, Definition.SpineHigh, Definition.Period), Reference.X - 0.5 * Definition.Period, Definition.Period);
-    const SectionFrame Frame  = ResolveSection(Definition, 𝑢);
+    const SectionBasis Frame  = ResolveSection(Definition, 𝑢);
     const Vector3      Offset = Position - Frame.Centre;                                     // [len] - From the ball centre
     const double       𝑣      = std::atan2(Dot(Offset, Frame.Second), Dot(Offset, Frame.First));
     return { 𝑢, Fold(𝑣, Reference.Y - std::numbers::pi, FullTurn) };
@@ -563,7 +563,7 @@ Vector2 ProjectOntoRollingBallNear(const RollingBallSurface& Surface, Vector3 Po
     else
         𝑢 = ProjectOntoCurve(Definition.Spine, Position, SpineLow);
     𝑢 = Fold(Clamp(𝑢, Definition.SpineLow, Definition.SpineHigh, Definition.Period), Reference.X - 0.5 * Definition.Period, Definition.Period);
-    const SectionFrame Frame  = ResolveSection(Definition, 𝑢);
+    const SectionBasis Frame  = ResolveSection(Definition, 𝑢);
     const Vector3      Offset = Position - Frame.Centre;
     const double       𝑣      = std::atan2(Dot(Offset, Frame.Second), Dot(Offset, Frame.First));
     return { 𝑢, Fold(𝑣, Reference.Y - std::numbers::pi, FullTurn) };
@@ -621,13 +621,13 @@ double MeasureRollingBallCurvature(const RollingBallSurface& Surface, double �
 
 CircularArc ExtractRollingBallSection(const RollingBallSurface& Surface, double 𝑢) noexcept
 {
-    const SectionFrame Frame = ResolveSection(*Surface.Definition, 𝑢);
+    const SectionBasis Frame = ResolveSection(*Surface.Definition, 𝑢);
     if (CanalCondition(*Surface.Definition))
     {
         const CanalSection Section = ResolveCanal(*Surface.Definition, Frame, 𝑢);              // The characteristic circle
-        return CircularArc{ OrthonormalFrame{ Section.Centre, Frame.First, Frame.Second, Cross(Frame.First, Frame.Second) }, Section.Radius };
+        return CircularArc{ OrthonormalBasis{ Section.Centre, Frame.First, Frame.Second, Cross(Frame.First, Frame.Second) }, Section.Radius };
     }
-    return CircularArc{ OrthonormalFrame{ Frame.Centre, Frame.First, Frame.Second, Cross(Frame.First, Frame.Second) }, Surface.Definition->Radius };
+    return CircularArc{ OrthonormalBasis{ Frame.Centre, Frame.First, Frame.Second, Cross(Frame.First, Frame.Second) }, Surface.Definition->Radius };
 }
 
 RollingBallDistance MeasureRollingBallDistance(const RollingBallSurface& Surface, Vector3 Position) noexcept

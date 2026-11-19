@@ -9,10 +9,10 @@
 
 #include "Engine/GeometrySpace/Parametric/Audit/EnclosedVolume.h"
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
-#include "Engine/GeometrySpace/Parametric/Construction/BodyAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Construction/BodyArrangement.h"
 #include "Engine/GeometrySpace/Parametric/Intersection/CurveSurfaceIntersection.h"
 #include "Engine/GeometrySpace/Parametric/Intersection/IntersectionCurve.h"
-#include "Engine/GeometrySpace/Parametric/Local/RedundantTopology.h"
+#include "Engine/GeometrySpace/Parametric/Local/RedundantConnectivity.h"
 
 #include <algorithm>
 #include <array>
@@ -1103,7 +1103,7 @@ namespace
                 if (!Clean) continue;
                 for (size_t User = 1; User < Users[Edge].size(); ++User) Group[Root(Users[Edge][User])] = Root(Users[Edge][0]);
             }
-            std::vector<int> Decided(Count, -1);                                             // [-] - Root → FragmentState; −1 open, −2 never
+            std::vector<int> Decided(Count, -1);                                             // [-] - Root → FragmentCondition; −1 open, −2 never
             for (size_t Index = 0; Index < Count; ++Index)
             {
                 FuseFragment& Fragment = Outcome.Fragments[Index];
@@ -1112,7 +1112,7 @@ namespace
                 const int Owner = Root(static_cast<int>(Index));
                 if (Decided[Owner] >= 0)
                 {
-                    Fragment.State = static_cast<FragmentState>(Decided[Owner]);
+                    Fragment.State = static_cast<FragmentCondition>(Decided[Owner]);
                     ++Outcome.Statistics.States[Decided[Owner]];
                     ++Outcome.Statistics.PropagatedStates;
                     continue;
@@ -1148,19 +1148,19 @@ namespace
                     Outcome.Refusal = "GeneralFuse: fragment winding " + std::to_string(Class.Winding) + " is not integral (argument not closed?)";
                     return false;
                 }
-                if (Class.Membership == PointMembership::Inside)       Fragment.State = FragmentState::Inside;
-                else if (Class.Membership == PointMembership::Outside) Fragment.State = FragmentState::Outside;
+                if (Class.Membership == PointMembership::Inside)       Fragment.State = FragmentCondition::Inside;
+                else if (Class.Membership == PointMembership::Outside) Fragment.State = FragmentCondition::Outside;
                 else
                 {
                     const FaceDomain& Touched = Other.Faces[Class.BoundaryFace];
                     const Vector2 Foot = ProjectOntoSurface(Touched.Surface, Fragment.Probe, (Touched.Window.Low + Touched.Window.High) * 0.5);
                     const Vector3 OwnNormal   = EvaluateSurfaceNormal(Fragment.Surface, *Interior) * (Fragment.Sense == Orientation::Forward ? 1.0 : -1.0);
                     const Vector3 OtherNormal = EvaluateSurfaceNormal(Touched.Surface, Foot) * (Touched.Sense == Orientation::Forward ? 1.0 : -1.0);
-                    Fragment.State = Dot(OwnNormal, OtherNormal) > 0.0 ? FragmentState::OnSame : FragmentState::OnOpposite;
+                    Fragment.State = Dot(OwnNormal, OtherNormal) > 0.0 ? FragmentCondition::OnSame : FragmentCondition::OnOpposite;
                 }
                 ++Outcome.Statistics.States[static_cast<int>(Fragment.State)];
                 // A group with an ON member breaks the clean-block premise somewhere: every later member classifies itself.
-                if (Decided[Owner] == -1) Decided[Owner] = Fragment.State == FragmentState::Inside || Fragment.State == FragmentState::Outside ? static_cast<int>(Fragment.State) : -2;
+                if (Decided[Owner] == -1) Decided[Owner] = Fragment.State == FragmentCondition::Inside || Fragment.State == FragmentCondition::Outside ? static_cast<int>(Fragment.State) : -2;
             }
             return true;
         }
@@ -1171,9 +1171,9 @@ namespace
     //--------------------------------------------------------------------------------------------------------------------
 
     // Keep / flip rule per operation (OCCT BOP selection over GF fragments).
-    [[nodiscard]] std::pair<bool, bool> SelectFragment(BooleanOperation Operation, int Argument, FragmentState State)
+    [[nodiscard]] std::pair<bool, bool> SelectFragment(BooleanOperation Operation, int Argument, FragmentCondition State)
     {
-        using enum FragmentState;
+        using enum FragmentCondition;
         const bool First = Argument == 0;
         switch (Operation)
         {
@@ -1235,7 +1235,7 @@ BooleanOutcome AssembleBoolean(ModelPartition& Partition, const GeneralFuseOutco
     }
 
     // ② Assembly, then OCCT-style history: every result face is Modified from one argument face.
-    const AssemblyOutcome Assembly = AssembleBody(Partition, Blueprint, "Boolean");
+    const ArrangementOutcome Assembly = AssembleBody(Partition, Blueprint, "Boolean");
     if (!Assembly.Refusal.empty()) { Outcome.Refusal = Assembly.Refusal; return Outcome; }
     // ⚠️ Topology gate (T1–T5, no geometry: ~1 % of the assembly): every edge used twice is not enough — two argument
     //    faces tangent at a point (crossing cylinders with r₁ + offset = r₂) leave the result pinched at one vertex,
@@ -1263,7 +1263,7 @@ BooleanOutcome AssembleBoolean(ModelPartition& Partition, const GeneralFuseOutco
     if (!MaximalFacesEnabled) return Outcome;
 
     // ③ Maximal faces: merged fragments hand their history to the surviving face (OCCT: Modified → the merged face).
-    const RedundancyOutcome Redundancy = RemoveRedundantTopology(Partition, Outcome.Body);
+    const RedundancyOutcome Redundancy = RemoveRedundantConnectivity(Partition, Outcome.Body);
     for (const auto& [Absorbed, Survivor] : Redundancy.FaceMerges)
     {
         for (FaceHistory& History : Outcome.FaceHistories) if (History.Result == Absorbed) History.Result = Survivor;
@@ -1324,7 +1324,7 @@ BooleanOutcome ImprintBody(ModelPartition& Partition, BodyToken Body, BodyToken 
         const auto* Plane = std::get_if<PlaneSurface>(&Partition.Surfaces.Resolve(Partition.Faces.Resolve(Face).Surface));
         return Plane != nullptr && std::fabs(Dot(Plane->Frame.ZAxis, Normal)) >= 1.0 - 1.0e-9 && std::fabs(Dot(Plane->Frame.Origin - PlaneOrigin, Normal)) <= Tolerance;
     };
-    const RedundancyOutcome Redundancy = RemoveRedundantTopology(Partition, Outcome.Body, SessionPrecision, [&](EdgeToken Edge)
+    const RedundancyOutcome Redundancy = RemoveRedundantConnectivity(Partition, Outcome.Body, SessionPrecision, [&](EdgeToken Edge)
     {
         const FinToken First    = Partition.Edges.Resolve(Edge).RadialFin;
         if (!First.PresentCondition()) return true;
@@ -1353,7 +1353,7 @@ BooleanOutcome ImprintBody(ModelPartition& Partition, BodyToken Body, BodyToken 
     return Outcome;
 }
 
-const char* FragmentStateLabel(FragmentState State) noexcept
+const char* FragmentStateLabel(FragmentCondition State) noexcept
 {
     constexpr const char* Labels[] = { "Inside", "Outside", "OnSame", "OnOpposite" };
     return Labels[static_cast<int>(State)];

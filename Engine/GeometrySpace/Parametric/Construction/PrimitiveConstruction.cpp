@@ -28,7 +28,7 @@ namespace
     // Image of a 3D curve on a plane's (𝑢, 𝑣) chart, parameterised by the same τ.
     [[nodiscard]] ParameterCurve ProjectCurveOntoPlane(const CurveGeometry& Curve, const PlaneSurface& Plane)
     {
-        const OrthonormalFrame& Chart = Plane.Frame;
+        const OrthonormalBasis& Chart = Plane.Frame;
         const auto Chart2D = [&](Vector3 Position) -> Vector2
         {
             const Vector3 Offset = Position - Chart.Origin;                                  // [len] - From the chart origin
@@ -114,13 +114,13 @@ namespace
 
     // Closed polygon chain in a fresh body: MVFS, MEV per further vertex, MEF to close.
     // The acorn face keeps the counter-clockwise loop; the closing face receives the reversed one.
-    struct PolygonAssembly
+    struct PolygonArrangement
     {
         AcornOutcome    Acorn   = {};                                                        // [-] - MVFS records
         EdgeFaceOutcome Closure = {};                                                        // [-] - Closing MEF
     };
 
-    [[nodiscard]] EditOutcome<PolygonAssembly> ConstructPolygon(ModelPartition& Partition, const std::vector<Vector3>& Profile)
+    [[nodiscard]] EditOutcome<PolygonArrangement> ConstructPolygon(ModelPartition& Partition, const std::vector<Vector3>& Profile)
     {
         if (Profile.size() < 3) return { {}, "Polygon: fewer than three vertices" };
         SOLIDARC_REQUIRE(Acorn, ConstructBodyFaceVertex(Partition, Profile.front()));
@@ -144,13 +144,13 @@ namespace
         };
     }
 
-    [[nodiscard]] OrthonormalFrame TranslateFrame(const OrthonormalFrame& Frame, Vector3 Offset)
+    [[nodiscard]] OrthonormalBasis TranslateFrame(const OrthonormalBasis& Frame, Vector3 Offset)
     {
         return { Frame.Origin + Offset, Frame.XAxis, Frame.YAxis, Frame.ZAxis };
     }
 
     // Plane whose natural normal is −ZAxis of the frame (a downward-facing cap).
-    [[nodiscard]] PlaneSurface InvertedPlane(const OrthonormalFrame& Frame)
+    [[nodiscard]] PlaneSurface InvertedPlane(const OrthonormalBasis& Frame)
     {
         return { { Frame.Origin, Frame.XAxis, -Frame.YAxis, -Frame.ZAxis } };
     }
@@ -160,11 +160,11 @@ namespace
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-EditOutcome<PrismAssembly> ConstructPrism(ModelPartition& Partition, const std::vector<Vector3>& Profile, Vector3 Displacement)
+EditOutcome<PrismArrangement> ConstructPrism(ModelPartition& Partition, const std::vector<Vector3>& Profile, Vector3 Displacement)
 {
     SOLIDARC_REQUIRE(Polygon, ConstructPolygon(Partition, Profile));
     SOLIDARC_REQUIRE(SideFaces, SweepPlanarFace(Partition, Polygon.Acorn.Face, Displacement));
-    PrismAssembly Assembly{ Polygon.Acorn.Body, Polygon.Closure.Face, Polygon.Acorn.Face, SideFaces };
+    PrismArrangement Assembly{ Polygon.Acorn.Body, Polygon.Closure.Face, Polygon.Acorn.Face, SideFaces };
     AttachLinearGeometry(Partition, Assembly.Body);
     Partition.Bodies.Resolve(Assembly.Body).Category = BodyCategory::Solid;
     return { Assembly };
@@ -177,7 +177,7 @@ EditOutcome<BodyToken> ConstructBlock(ModelPartition& Partition, Vector3 Corner,
     return { Assembly.Body };
 }
 
-EditOutcome<BodyToken> ConstructCylinder(ModelPartition& Partition, const OrthonormalFrame& Frame, double Radius, double Height)
+EditOutcome<BodyToken> ConstructCylinder(ModelPartition& Partition, const OrthonormalBasis& Frame, double Radius, double Height)
 {
     if (!(Radius > 0.0) || !(Height > 0.0)) return { {}, "Cylinder: radius and height must be positive" };
     const Vector3 RimVertex = Frame.Origin + Frame.XAxis * Radius;                          // [len] - Seam foot
@@ -207,7 +207,7 @@ EditOutcome<BodyToken> ConstructCylinder(ModelPartition& Partition, const Orthon
     return { Acorn.Body };
 }
 
-EditOutcome<BodyToken> ConstructCone(ModelPartition& Partition, const OrthonormalFrame& Frame, double Radius, double Height)
+EditOutcome<BodyToken> ConstructCone(ModelPartition& Partition, const OrthonormalBasis& Frame, double Radius, double Height)
 {
     if (!(Radius > 0.0) || !(Height > 0.0)) return { {}, "Cone: radius and height must be positive" };
     const Vector3 RimVertex = Frame.Origin + Frame.XAxis * Radius;                          // [len] - Seam foot
@@ -233,7 +233,7 @@ EditOutcome<BodyToken> ConstructCone(ModelPartition& Partition, const Orthonorma
     return { Acorn.Body };
 }
 
-EditOutcome<BodyToken> ConstructFrustum(ModelPartition& Partition, const OrthonormalFrame& Frame, double OriginRadius, double TopRadius, double Height)
+EditOutcome<BodyToken> ConstructFrustum(ModelPartition& Partition, const OrthonormalBasis& Frame, double OriginRadius, double TopRadius, double Height)
 {
     if (!(OriginRadius > 0.0) || !(TopRadius > 0.0) || !(Height > 0.0)) return { {}, "Frustum: radii and height must be positive" };
     const Vector3 RimVertex = Frame.Origin + Frame.XAxis * OriginRadius;                      // [len] - Seam foot
@@ -266,7 +266,7 @@ EditOutcome<BodyToken> ConstructFrustum(ModelPartition& Partition, const Orthono
     return { Acorn.Body };
 }
 
-EditOutcome<BodyToken> ConstructSphere(ModelPartition& Partition, const OrthonormalFrame& Frame, double Radius)
+EditOutcome<BodyToken> ConstructSphere(ModelPartition& Partition, const OrthonormalBasis& Frame, double Radius)
 {
     if (!(Radius > 0.0)) return { {}, "Sphere: radius must be positive" };
     constexpr double HalfTurn = std::numbers::pi * 0.5;                                      // [rad] - π/2
@@ -276,7 +276,7 @@ EditOutcome<BodyToken> ConstructSphere(ModelPartition& Partition, const Orthonor
     SOLIDARC_REQUIRE(Seam, ConstructEdgeVertex(Partition, { Acorn.Loop, {} }, Frame.Origin + Frame.ZAxis * Radius));
 
     // ② Seam = meridian through +XAxis in the (X, Z) plane, τ = latitude; poles are singular rows of the chart.
-    const OrthonormalFrame Meridian{ Frame.Origin, Frame.XAxis, Frame.ZAxis, Cross(Frame.XAxis, Frame.ZAxis) };
+    const OrthonormalBasis Meridian{ Frame.Origin, Frame.XAxis, Frame.ZAxis, Cross(Frame.XAxis, Frame.ZAxis) };
     Partition.AttachCurve(Seam.Edge, CircularArc{ Meridian, Radius }, -HalfTurn, HalfTurn);
     Partition.AttachSurface(Acorn.Face, SphereSurface{ Frame, Radius }, Orientation::Forward);
     Partition.AttachSurfaceCurve(Seam.OutboundFin, ParameterLine{ { FullTurn, 0.0 }, { 0.0, 1.0 } });
@@ -285,7 +285,7 @@ EditOutcome<BodyToken> ConstructSphere(ModelPartition& Partition, const Orthonor
     return { Acorn.Body };
 }
 
-EditOutcome<BodyToken> ConstructTorus(ModelPartition& Partition, const OrthonormalFrame& Frame, double MajorRadius, double MinorRadius)
+EditOutcome<BodyToken> ConstructTorus(ModelPartition& Partition, const OrthonormalBasis& Frame, double MajorRadius, double MinorRadius)
 {
     if (!(MinorRadius > 0.0) || !(MajorRadius > MinorRadius)) return { {}, "Torus: requires 0 < minor radius < major radius" };
 
@@ -297,7 +297,7 @@ EditOutcome<BodyToken> ConstructTorus(ModelPartition& Partition, const Orthonorm
     SOLIDARC_REQUIRE(Meridian, ConstructEdgeCollapseRing(Partition, { Acorn.Loop, Equator.RetainedFin }, { Equator.Loop, Equator.TransferredFin }));
 
     // ② Chart [0, 2π]²: equator at 𝑣 = 0 and 𝑣 = 2π, meridian at 𝑢 = 2π and 𝑢 = 0.
-    const OrthonormalFrame MeridianFrame{ Frame.Origin + Frame.XAxis * MajorRadius, Frame.XAxis, Frame.ZAxis, Cross(Frame.XAxis, Frame.ZAxis) };
+    const OrthonormalBasis MeridianFrame{ Frame.Origin + Frame.XAxis * MajorRadius, Frame.XAxis, Frame.ZAxis, Cross(Frame.XAxis, Frame.ZAxis) };
     Partition.AttachCurve(Equator.Edge, CircularArc{ Frame, MajorRadius + MinorRadius }, 0.0, FullTurn);
     Partition.AttachCurve(Meridian.Edge, CircularArc{ MeridianFrame, MinorRadius }, 0.0, FullTurn);
     Partition.AttachSurface(Acorn.Face, TorusSurface{ Frame, MajorRadius, MinorRadius }, Orientation::Forward);

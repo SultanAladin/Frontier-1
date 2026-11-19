@@ -24,7 +24,7 @@
 #include "Engine/GeometrySpace/Parametric/Exchange/StepExchange.h"
 #include "Engine/GeometrySpace/Parametric/Local/FaceChange.h"
 #include "Engine/GeometrySpace/Parametric/Measurement/MinimumDistance.h"
-#include "Engine/GeometrySpace/Parametric/Sketch/SketchCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Sketch/SketchRepository.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchSolver.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchSpline.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchSection.h"
@@ -55,7 +55,7 @@ namespace
 //                                                    CONSTANTS
 //------------------------------------------------------------------------------------------------------------------------
 
-using Kind = SketchConstraintKind;
+using Kind = SketchConstraintCategory;
 constexpr double Pi = std::numbers::pi;
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -123,10 +123,10 @@ struct TileAuthoring
         Sketch.Constraints[Index].Parameter = Named(Suffix);
     }
 
-    FeatureStep& Step(FeatureStepKind StepKind, const std::string& Label)
+    FeatureStep& Step(FeatureStepCategory StepCategory, const std::string& Label)
     {
         FeatureStep Step;
-        Step.Kind  = StepKind;
+        Step.Kind  = StepCategory;
         Step.Label = Label;
         Tree.Steps.push_back(std::move(Step));
         return Tree.Steps.back();
@@ -135,11 +135,11 @@ struct TileAuthoring
 
 // 📝 Sketch planes: XY (normal +z, elevation = Z) for extrusions, XZ (x → x, sketch y → z, normal −y, elevation = −Y)
 //    for revolutions about a vertical axis.
-[[nodiscard]] OrthonormalFrame FloorPlane() { return {}; }
+[[nodiscard]] OrthonormalBasis FloorPlane() { return {}; }
 
-[[nodiscard]] OrthonormalFrame UprightPlane()
+[[nodiscard]] OrthonormalBasis UprightPlane()
 {
-    OrthonormalFrame Plane;
+    OrthonormalBasis Plane;
     Plane.XAxis = { 1.0, 0.0, 0.0 };
     Plane.YAxis = { 0.0, 0.0, 1.0 };
     Plane.ZAxis = { 0.0, -1.0, 0.0 };
@@ -161,7 +161,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
 
     switch (Request.Kind)
     {
-    case SketcherConstructKind::Block:
+    case SketcherConstructCategory::Block:
     {
         Author.Parameter("X", Spot.X, Spot.X - 5.0, Spot.X + 5.0, "corner x");
         Author.Parameter("Y", Spot.Y, Spot.Y - 5.0, Spot.Y + 5.0, "corner y");
@@ -169,7 +169,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Author.Parameter("Width", Request.Width, 0.1, 10.0, "extent along x");
         Author.Parameter("Depth", Request.Depth, 0.1, 10.0, "extent along y");
         Author.Parameter("Height", Request.Height, 0.1, 10.0, "extent along z (extrude)");
-        FeatureStep& Section = Author.Step(FeatureStepKind::Sketch, SketchLabel);
+        FeatureStep& Section = Author.Step(FeatureStepCategory::Sketch, SketchLabel);
         Section.Plane        = FloorPlane();
         Section.Elevation    = ParameterValue(Author.Named("Z"));
         SketchModel& Sketch  = Section.Sketch;
@@ -180,14 +180,14 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Author.Bound(Sketch, Kind::VerticalDistance, Origin, Rectangle.FirstPoint, "Y");
         Author.Bound(Sketch, Kind::HorizontalDistance, Rectangle.FirstPoint, Rectangle.FirstPoint + 1, "Width");
         Author.Bound(Sketch, Kind::VerticalDistance, Rectangle.FirstPoint, Rectangle.FirstPoint + 3, "Depth");
-        FeatureStep& Sweep = Author.Step(FeatureStepKind::Extrude, "Extrude#" + std::to_string(Ordinal + 1));
+        FeatureStep& Sweep = Author.Step(FeatureStepCategory::Extrude, "Extrude#" + std::to_string(Ordinal + 1));
         Sweep.Profile      = SketchLabel;
         Sweep.Extent       = ParameterValue(Author.Named("Height"));
         Sweep.Combination  = Combination;
         Sweep.Target       = Request.Target;
         break;
     }
-    case SketcherConstructKind::Cylinder:
+    case SketcherConstructCategory::Cylinder:
     {
         // 📝 Axis z: floor sketch at elevation Z, circle at (X, Y). Axis x: YZ sketch (normal +x) at elevation X, circle at
         //    (Y, Z). Axis y: upright sketch (normal −y) at elevation −Y, circle at (X, Z), extent negated so Height runs +y.
@@ -204,7 +204,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         const char* First     = Axis == 0 ? "Y" : "X";
         const char* Second    = Axis == 2 ? "Y" : "Z";
         const GeometrySpace::Parametric::Vector2 Place = Axis == 0 ? GeometrySpace::Parametric::Vector2{ Spot.Y, Spot.Z } : Axis == 1 ? GeometrySpace::Parametric::Vector2{ Spot.X, Spot.Z } : GeometrySpace::Parametric::Vector2{ Spot.X, Spot.Y };
-        FeatureStep& Section = Author.Step(FeatureStepKind::Sketch, SketchLabel);
+        FeatureStep& Section = Author.Step(FeatureStepCategory::Sketch, SketchLabel);
         Section.Plane        = Axis == 0 ? SketcherSketchPlane(2) : Axis == 1 ? UprightPlane() : FloorPlane();
         Section.Elevation    = ParameterValue(Author.Named(Elevation), Axis == 1 ? -1.0 : 1.0);
         SketchModel& Sketch  = Section.Sketch;
@@ -215,21 +215,21 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Author.Bound(Sketch, Kind::HorizontalDistance, Origin, Centre, First);
         Author.Bound(Sketch, Kind::VerticalDistance, Origin, Centre, Second);
         Author.Bound(Sketch, Kind::Radius, Circle, -1, "Radius");
-        FeatureStep& Sweep = Author.Step(FeatureStepKind::Extrude, "Extrude#" + std::to_string(Ordinal + 1));
+        FeatureStep& Sweep = Author.Step(FeatureStepCategory::Extrude, "Extrude#" + std::to_string(Ordinal + 1));
         Sweep.Profile      = SketchLabel;
         Sweep.Extent       = ParameterValue(Author.Named("Height"), Axis == 1 ? -1.0 : 1.0);
         Sweep.Combination  = Combination;
         Sweep.Target       = Request.Target;
         break;
     }
-    case SketcherConstructKind::Sphere:
+    case SketcherConstructCategory::Sphere:
     {
         // 📝 Half disc: closing line on the axis (a profile line, not construction) + arc through +x, revolved 2π.
         Author.Parameter("X", Spot.X, Spot.X - 5.0, Spot.X + 5.0, "centre x");
         Author.Parameter("Y", Spot.Y, Spot.Y - 5.0, Spot.Y + 5.0, "centre y (sketch elevation)");
         Author.Parameter("Z", Spot.Z, Spot.Z - 5.0, Spot.Z + 5.0, "centre z");
         Author.Parameter("Radius", Request.Radius, 0.05, 5.0, "radius");
-        FeatureStep& Section = Author.Step(FeatureStepKind::Sketch, SketchLabel);
+        FeatureStep& Section = Author.Step(FeatureStepCategory::Sketch, SketchLabel);
         Section.Plane        = UprightPlane();
         Section.Elevation    = ParameterValue(Author.Named("Y"), -1.0);
         SketchModel& Sketch  = Section.Sketch;
@@ -245,7 +245,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         AppendSketchConstraint(Sketch, Kind::HorizontalDistance, Centre, South, -1, 0.0, "SouthOnAxis");
         AppendSketchConstraint(Sketch, Kind::HorizontalDistance, Centre, North, -1, 0.0, "NorthOnAxis");
         Author.Bound(Sketch, Kind::VerticalDistance, Centre, North, "Radius");
-        FeatureStep& Sweep    = Author.Step(FeatureStepKind::Revolve, "Revolve#" + std::to_string(Ordinal + 1));
+        FeatureStep& Sweep    = Author.Step(FeatureStepCategory::Revolve, "Revolve#" + std::to_string(Ordinal + 1));
         Sweep.Profile         = SketchLabel;
         Sweep.Combination     = Combination;
         Sweep.Target          = Request.Target;
@@ -253,14 +253,14 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Sweep.Angle           = LiteralValue(2.0 * Pi);
         break;
     }
-    case SketcherConstructKind::Torus:
+    case SketcherConstructCategory::Torus:
     {
         Author.Parameter("X", Spot.X, Spot.X - 5.0, Spot.X + 5.0, "axis x");
         Author.Parameter("Y", Spot.Y, Spot.Y - 5.0, Spot.Y + 5.0, "axis y (sketch elevation)");
         Author.Parameter("Z", Spot.Z, Spot.Z - 5.0, Spot.Z + 5.0, "centre z");
         Author.Parameter("Major", Request.Major, 0.2, 5.0, "axis to tube centre");
         Author.Parameter("Minor", Request.Minor, 0.05, 2.0, "tube radius");
-        FeatureStep& Section = Author.Step(FeatureStepKind::Sketch, SketchLabel);
+        FeatureStep& Section = Author.Step(FeatureStepCategory::Sketch, SketchLabel);
         Section.Plane        = UprightPlane();
         Section.Elevation    = ParameterValue(Author.Named("Y"), -1.0);
         SketchModel& Sketch  = Section.Sketch;
@@ -278,7 +278,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Author.Bound(Sketch, Kind::HorizontalDistance, AxisStart, Centre, "Major");
         AppendSketchConstraint(Sketch, Kind::VerticalDistance, AxisStart, Centre, -1, 0.0, "Level");
         Author.Bound(Sketch, Kind::Radius, Circle, -1, "Minor");
-        FeatureStep& Sweep    = Author.Step(FeatureStepKind::Revolve, "Revolve#" + std::to_string(Ordinal + 1));
+        FeatureStep& Sweep    = Author.Step(FeatureStepCategory::Revolve, "Revolve#" + std::to_string(Ordinal + 1));
         Sweep.Profile         = SketchLabel;
         Sweep.Combination     = Combination;
         Sweep.Target          = Request.Target;
@@ -286,7 +286,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Sweep.Angle           = LiteralValue(2.0 * Pi);
         break;
     }
-    case SketcherConstructKind::Cone:
+    case SketcherConstructCategory::Cone:
     {
         // 📝 Right triangle on XZ: the leg on the axis is a profile line (as the sphere's diameter) and the revolution axis;
         //    the apex sits Height above the base centre (negative: the cone points down).
@@ -295,7 +295,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Author.Parameter("Z", Spot.Z, Spot.Z - 5.0, Spot.Z + 5.0, "base z");
         Author.Parameter("Radius", Request.Radius, 0.05, 5.0, "base radius");
         Author.Parameter("Height", Request.Height, 0.1, 10.0, "base → apex along +z");
-        FeatureStep& Section = Author.Step(FeatureStepKind::Sketch, SketchLabel);
+        FeatureStep& Section = Author.Step(FeatureStepCategory::Sketch, SketchLabel);
         Section.Plane        = UprightPlane();
         Section.Elevation    = ParameterValue(Author.Named("Y"), -1.0);
         SketchModel& Sketch  = Section.Sketch;
@@ -313,7 +313,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Author.Bound(Sketch, Kind::VerticalDistance, Base, Apex, "Height");
         AppendSketchConstraint(Sketch, Kind::VerticalDistance, Base, Rim, -1, 0.0, "Level");
         Author.Bound(Sketch, Kind::HorizontalDistance, Base, Rim, "Radius");
-        FeatureStep& Sweep    = Author.Step(FeatureStepKind::Revolve, "Revolve#" + std::to_string(Ordinal + 1));
+        FeatureStep& Sweep    = Author.Step(FeatureStepCategory::Revolve, "Revolve#" + std::to_string(Ordinal + 1));
         Sweep.Profile         = SketchLabel;
         Sweep.Combination     = Combination;
         Sweep.Target          = Request.Target;
@@ -321,7 +321,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Sweep.Angle           = LiteralValue(2.0 * Pi);
         break;
     }
-    case SketcherConstructKind::Wedge:
+    case SketcherConstructCategory::Wedge:
     {
         // 📝 Right triangle on XZ (upright sketch, normal −y, elevation −Y) extruded by −Depth, so Depth runs along +y as
         //    the y-axis cylinder does. The high side stands at x = X; the slope falls to the floor at x = X + Width.
@@ -331,7 +331,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Author.Parameter("Width", Request.Width, 0.1, 10.0, "extent along x (slope run)");
         Author.Parameter("Depth", Request.Depth, 0.1, 10.0, "extent along y (extrude)");
         Author.Parameter("Height", Request.Height, 0.1, 10.0, "height of the high side");
-        FeatureStep& Section = Author.Step(FeatureStepKind::Sketch, SketchLabel);
+        FeatureStep& Section = Author.Step(FeatureStepCategory::Sketch, SketchLabel);
         Section.Plane        = UprightPlane();
         Section.Elevation    = ParameterValue(Author.Named("Y"), -1.0);
         SketchModel& Sketch  = Section.Sketch;
@@ -349,14 +349,14 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         AppendSketchConstraint(Sketch, Kind::VerticalDistance, Heel, Toe, -1, 0.0, "Level");
         AppendSketchConstraint(Sketch, Kind::HorizontalDistance, Heel, Crest, -1, 0.0, "Upright");
         Author.Bound(Sketch, Kind::VerticalDistance, Heel, Crest, "Height");
-        FeatureStep& Sweep = Author.Step(FeatureStepKind::Extrude, "Extrude#" + std::to_string(Ordinal + 1));
+        FeatureStep& Sweep = Author.Step(FeatureStepCategory::Extrude, "Extrude#" + std::to_string(Ordinal + 1));
         Sweep.Profile      = SketchLabel;
         Sweep.Extent       = ParameterValue(Author.Named("Depth"), -1.0);
         Sweep.Combination  = Combination;
         Sweep.Target       = Request.Target;
         break;
     }
-    case SketcherConstructKind::Prism:
+    case SketcherConstructCategory::Prism:
     {
         // 📝 Regular n-gon on XY: every vertex on a construction circle of the bound Radius, every side equal to the first,
         //    the first vertex on a construction ray from the centre at Angle. 2n + 5 unknowns, 2n + 5 equations.
@@ -366,7 +366,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Author.Parameter("Z", Spot.Z, Spot.Z - 5.0, Spot.Z + 5.0, "base z (sketch elevation)");
         Author.Parameter("Radius", Request.Radius, 0.05, 5.0, "circumradius (centre → vertex)");
         Author.Parameter("Height", Request.Height, 0.1, 10.0, "extent along +z (extrude)");
-        FeatureStep& Section = Author.Step(FeatureStepKind::Sketch, SketchLabel);
+        FeatureStep& Section = Author.Step(FeatureStepCategory::Sketch, SketchLabel);
         Section.Plane        = FloorPlane();
         Section.Elevation    = ParameterValue(Author.Named("Z"));
         SketchModel& Sketch  = Section.Sketch;
@@ -395,14 +395,14 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
             AppendSketchConstraint(Sketch, Kind::PointOnCircle, Corners[Index], Ring, -1, 0.0, "OnRing" + std::to_string(Index + 1));
         for (int Index = 1; Index < Sides; ++Index)
             AppendSketchConstraint(Sketch, Kind::EqualLength, Edges[0], Edges[Index], -1, 0.0, "Equal" + std::to_string(Index + 1));
-        FeatureStep& Sweep = Author.Step(FeatureStepKind::Extrude, "Extrude#" + std::to_string(Ordinal + 1));
+        FeatureStep& Sweep = Author.Step(FeatureStepCategory::Extrude, "Extrude#" + std::to_string(Ordinal + 1));
         Sweep.Profile      = SketchLabel;
         Sweep.Extent       = ParameterValue(Author.Named("Height"));
         Sweep.Combination  = Combination;
         Sweep.Target       = Request.Target;
         break;
     }
-    case SketcherConstructKind::Tube:
+    case SketcherConstructCategory::Tube:
     {
         // 📝 Annulus on XY: two circles on one centre point (concentric by construction), the inner one a hole of the profile.
         Author.Parameter("X", Spot.X, Spot.X - 5.0, Spot.X + 5.0, "axis x");
@@ -411,7 +411,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Author.Parameter("Radius", Request.Radius, 0.05, 5.0, "outer radius");
         Author.Parameter("Inner", Request.Inner, 0.02, 5.0, "bore radius");
         Author.Parameter("Height", Request.Height, 0.1, 10.0, "extent along +z (extrude)");
-        FeatureStep& Section = Author.Step(FeatureStepKind::Sketch, SketchLabel);
+        FeatureStep& Section = Author.Step(FeatureStepCategory::Sketch, SketchLabel);
         Section.Plane        = FloorPlane();
         Section.Elevation    = ParameterValue(Author.Named("Z"));
         SketchModel& Sketch  = Section.Sketch;
@@ -424,7 +424,7 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         Author.Bound(Sketch, Kind::VerticalDistance, Origin, Centre, "Y");
         Author.Bound(Sketch, Kind::Radius, Outer, -1, "Radius");
         Author.Bound(Sketch, Kind::Radius, Bore, -1, "Inner");
-        FeatureStep& Sweep = Author.Step(FeatureStepKind::Extrude, "Extrude#" + std::to_string(Ordinal + 1));
+        FeatureStep& Sweep = Author.Step(FeatureStepCategory::Extrude, "Extrude#" + std::to_string(Ordinal + 1));
         Sweep.Profile      = SketchLabel;
         Sweep.Extent       = ParameterValue(Author.Named("Height"));
         Sweep.Combination  = Combination;
@@ -437,12 +437,12 @@ std::string AuthorTile(SketcherDocument& Document, const SketcherConstructReques
         // 📝 Oriented to a body face: the tile is authored in its own floor frame, then every sketch plane it made is carried
         //    rigidly into the face frame F (o ↦ F.o + F.x̂·oₓ + F.ŷ·o_y + F.n̂·o_z, axes rotated alike). Elevations run along
         //    the carried normals and extrusions / revolutions follow their sketches, so the whole solid turns with the face.
-        const OrthonormalFrame& Face = Request.Plane;
+        const OrthonormalBasis& Face = Request.Plane;
         const auto Carry  = [&Face](Vector3 Point) { return Face.XAxis * Point.X + Face.YAxis * Point.Y + Face.ZAxis * Point.Z; };
         for (size_t Index = FirstStep; Index < Tree.Steps.size(); ++Index)
         {
             FeatureStep& Step = Tree.Steps[Index];
-            if (Step.Kind != FeatureStepKind::Sketch) continue;
+            if (Step.Kind != FeatureStepCategory::Sketch) continue;
             Step.Plane = { Face.Origin + Carry(Step.Plane.Origin), Carry(Step.Plane.XAxis), Carry(Step.Plane.YAxis), Carry(Step.Plane.ZAxis) };
         }
         for (size_t Index = FirstParameter; Index < Tree.Parameters.size(); ++Index) Tree.Parameters[Index].Description += " · face frame";
@@ -596,14 +596,14 @@ void KeepResolvedNames(std::vector<std::string>& Names, const std::vector<Regene
 }
 
 // 📝 The one body carrying every name (faces or edges); refusal text when they span bodies or none carries one.
-[[nodiscard]] std::string CommonBody(const SketcherDocument& Document, SketcherSelectionKind Kind, const std::vector<std::string>& Names, std::string& Key)
+[[nodiscard]] std::string CommonBody(const SketcherDocument& Document, SketcherSelectionCategory Kind, const std::vector<std::string>& Names, std::string& Key)
 {
     Key.clear();
     // ① The bodies carrying every name (a cut's pieces share names): the picked body, the active one, else the first.
     std::vector<std::string> Carriers;
     for (const RegeneratedBody& Body : Document.Regeneration.Bodies)
     {
-        const std::map<uint32_t, std::string>& Table = Kind == SketcherSelectionKind::Edge ? Body.Naming.Edges : Kind == SketcherSelectionKind::Vertex ? Body.Naming.Vertices
+        const std::map<uint32_t, std::string>& Table = Kind == SketcherSelectionCategory::Edge ? Body.Naming.Edges : Kind == SketcherSelectionCategory::Vertex ? Body.Naming.Vertices
                                                      : Body.Naming.Faces;
         std::set<std::string> Present;
         for (const auto& Entry : Table) Present.insert(Entry.second);
@@ -616,7 +616,7 @@ void KeepResolvedNames(std::vector<std::string>& Names, const std::vector<Regene
     for (const std::string& Name : Names)
     {
         const std::string Owner = SketcherBodyOfName(Document, Kind, Name);
-        if (Owner.empty()) return (Kind == SketcherSelectionKind::Edge ? "edge " : Kind == SketcherSelectionKind::Vertex ? "vertex " : "face ") + Name + " is on no body";
+        if (Owner.empty()) return (Kind == SketcherSelectionCategory::Edge ? "edge " : Kind == SketcherSelectionCategory::Vertex ? "vertex " : "face ") + Name + " is on no body";
         if (!Key.empty() && Owner != Key)
             return "the selection spans " + SketcherBodyCaption(Document, Key) + " and " + SketcherBodyCaption(Document, Owner) + " (one body at a time)";
         Key = Owner;
@@ -776,23 +776,23 @@ SketcherCommandOutcome ConstructSketcherPrimitive(SketcherDocument& Document, co
     return RunCommand(Document, Label, false, [&]() -> std::string
     {
         // 📝 Only the dimensions the tile reads are checked (a cone's Height may be negative: it points down).
-        const SketcherConstructKind Tile = Request.Kind;
-        const bool BoxLike = Tile == SketcherConstructKind::Block || Tile == SketcherConstructKind::Wedge;
-        const bool Round   = Tile == SketcherConstructKind::Cylinder || Tile == SketcherConstructKind::Sphere || Tile == SketcherConstructKind::Cone ||
-                             Tile == SketcherConstructKind::Prism || Tile == SketcherConstructKind::Tube;
-        const bool Tall    = Tile != SketcherConstructKind::Sphere && Tile != SketcherConstructKind::Torus;
+        const SketcherConstructCategory Tile = Request.Kind;
+        const bool BoxLike = Tile == SketcherConstructCategory::Block || Tile == SketcherConstructCategory::Wedge;
+        const bool Round   = Tile == SketcherConstructCategory::Cylinder || Tile == SketcherConstructCategory::Sphere || Tile == SketcherConstructCategory::Cone ||
+                             Tile == SketcherConstructCategory::Prism || Tile == SketcherConstructCategory::Tube;
+        const bool Tall    = Tile != SketcherConstructCategory::Sphere && Tile != SketcherConstructCategory::Torus;
         if ((BoxLike && (Request.Width <= 0.0 || Request.Depth <= 0.0)) || (Round && Request.Radius <= 0.0) ||
-            (Tall && (Tile == SketcherConstructKind::Cone ? Request.Height == 0.0 : Request.Height <= 0.0)))
+            (Tall && (Tile == SketcherConstructCategory::Cone ? Request.Height == 0.0 : Request.Height <= 0.0)))
             return "every dimension must be positive";
-        if (Tile == SketcherConstructKind::Torus && (Request.Minor <= 0.0 || Request.Major <= Request.Minor)) return "torus: Major must exceed Minor > 0";
-        if (Tile == SketcherConstructKind::Tube && (Request.Inner <= 0.0 || Request.Inner >= Request.Radius)) return "tube: the bore must lie inside the outer radius";
-        if (Tile == SketcherConstructKind::Prism && (Request.Sides < 3 || Request.Sides > 64)) return "prism: 3 … 64 sides";
+        if (Tile == SketcherConstructCategory::Torus && (Request.Minor <= 0.0 || Request.Major <= Request.Minor)) return "torus: Major must exceed Minor > 0";
+        if (Tile == SketcherConstructCategory::Tube && (Request.Inner <= 0.0 || Request.Inner >= Request.Radius)) return "tube: the bore must lie inside the outer radius";
+        if (Tile == SketcherConstructCategory::Prism && (Request.Sides < 3 || Request.Sides > 64)) return "prism: 3 … 64 sides";
         if (!FirstBodyCondition && Request.Combination == FeatureCombination::New)
             return "a second body needs Union, Difference, Intersection or New body";
         if (!Request.Target.empty() && !FindRegeneratedBody(Document, Request.Target)) return "no body named " + Request.Target;
         if (Request.PlaneCondition)
         {
-            const OrthonormalFrame& Face = Request.Plane;
+            const OrthonormalBasis& Face = Request.Plane;
             const bool Finite = std::isfinite(Face.Origin.X) && std::isfinite(Face.Origin.Y) && std::isfinite(Face.Origin.Z);
             const bool Square = std::abs(Length(Face.XAxis) - 1.0) < 1.0e-9 && std::abs(Length(Face.YAxis) - 1.0) < 1.0e-9 && std::abs(Length(Face.ZAxis) - 1.0) < 1.0e-9
                              && std::abs(Dot(Face.XAxis, Face.YAxis)) < 1.0e-9 && Length(Cross(Face.XAxis, Face.YAxis) - Face.ZAxis) < 1.0e-9;
@@ -807,8 +807,8 @@ SketcherCommandOutcome ConstructSketcherPrimitive(SketcherDocument& Document, co
             for (size_t Index = Authored; Index < Document.Tree.Steps.size(); ++Index)
             {
                 FeatureStep& Step = Document.Tree.Steps[Index];
-                if (Step.Kind == FeatureStepKind::Extrude && Step.Combination == FeatureCombination::Union && EvaluateFeatureValue(Document.Tree, Step.Extent) > 0.0)
-                    Step.Start = FeatureValue{ Request.Start };
+                if (Step.Kind == FeatureStepCategory::Extrude && Step.Combination == FeatureCombination::Union && EvaluateFeatureValue(Document.Tree, Step.Extent) > 0.0)
+                    Step.Start = FeatureScalar{ Request.Start };
             }
         return {};
     });
@@ -837,11 +837,11 @@ static SketcherCommandOutcome BlendSketcherEdges(SketcherDocument& Document, con
         if (Request.Size <= 0.0 || (VariableCondition && *Request.EndSize <= 0.0)) return "the blend size must be positive";
         for (const auto& [Vertex, Size] : Request.VertexSizes) if (!(Size > 0.0)) return "the corner size at " + Vertex + " must be positive";
         std::string Owner;
-        if (const std::string Problem = CommonBody(Document, SketcherSelectionKind::Edge, Document.Selection.Edges, Owner); !Problem.empty()) return Problem;
+        if (const std::string Problem = CommonBody(Document, SketcherSelectionCategory::Edge, Document.Selection.Edges, Owner); !Problem.empty()) return Problem;
         const RegeneratedBody* Target = FindRegeneratedBody(Document, Owner);
 
         // ① Variable: name each edge's anchor vertex on the current body (start, or end when reversed).
-        std::vector<TopologyReference> Anchors;
+        std::vector<ConnectivityReference> Anchors;
         if (VariableCondition)
         {
             if (!Document.Partition || !Target) return "there is no body to blend";
@@ -855,12 +855,12 @@ static SketcherCommandOutcome BlendSketcherEdges(SketcherDocument& Document, con
                 const VertexToken Anchor = Request.ReversedCondition ? Profile.End : Profile.Start;
                 const auto Vertex = Naming.Vertices.find(Anchor.Slot);
                 if (Vertex == Naming.Vertices.end()) return "the anchor vertex of " + EdgeName + " has no persistent name";
-                Anchors.push_back({ ReferenceKind::Vertex, Vertex->second, {} });
+                Anchors.push_back({ ReferenceCategory::Vertex, Vertex->second, {} });
             }
         }
 
         // ①′ Handles: every listed vertex must be an end of a picked edge on the current body.
-        std::vector<TopologyReference> Corners;
+        std::vector<ConnectivityReference> Corners;
         if (HandleCondition)
         {
             if (!Document.Partition || !Target) return "there is no body to blend";
@@ -878,7 +878,7 @@ static SketcherCommandOutcome BlendSketcherEdges(SketcherDocument& Document, con
             {
                 if (!Ends.contains(Vertex)) return "corner " + Vertex + " is not an end of a picked edge";
                 if (!Seen.insert(Vertex).second) return "corner " + Vertex + " has two sizes";
-                Corners.push_back({ ReferenceKind::Vertex, Vertex, {} });
+                Corners.push_back({ ReferenceCategory::Vertex, Vertex, {} });
             }
         }
 
@@ -891,7 +891,7 @@ static SketcherCommandOutcome BlendSketcherEdges(SketcherDocument& Document, con
         Document.Tree.Parameters.push_back({ Caption + ".Size", Request.Size, 0.0, std::max(1.0, 4.0 * Larger),
                                              VariableCondition ? std::string(Meaning) + " at the anchor corners" : std::string(Meaning) });
         FeatureStep Step;
-        Step.Kind  = FeatureStepKind::Blend;
+        Step.Kind  = FeatureStepCategory::Blend;
         Step.Label = StepLabel;
         Step.Shape  = Request.Shape;
         Step.Size   = ParameterValue(Caption + ".Size");
@@ -909,7 +909,7 @@ static SketcherCommandOutcome BlendSketcherEdges(SketcherDocument& Document, con
         }
         Grown = Chain.size() > Document.Selection.Edges.size();
         if (PropagateCondition && !Grown) return "no tangent chain to propagate";
-        for (const std::string& Name : Chain) Step.References.push_back({ ReferenceKind::Edge, Name, {} });
+        for (const std::string& Name : Chain) Step.References.push_back({ ReferenceCategory::Edge, Name, {} });
         if (VariableCondition)
         {
             Document.Tree.Parameters.push_back({ Caption + ".EndSize", *Request.EndSize, 0.0, std::max(1.0, 4.0 * Larger), std::string(Meaning) + " at the far corners" });
@@ -944,7 +944,7 @@ SketcherCommandOutcome BlendSketcherSelection(SketcherDocument& Document, const 
 {
     Owner = nullptr;
     std::string Key;
-    if (!Document.Partition || Edges.empty() || !CommonBody(Document, SketcherSelectionKind::Edge, Edges, Key).empty()) return {};
+    if (!Document.Partition || Edges.empty() || !CommonBody(Document, SketcherSelectionCategory::Edge, Edges, Key).empty()) return {};
     Owner = FindRegeneratedBody(Document, Key);
     if (!Owner) return {};
     std::vector<EdgeToken> Tokens;
@@ -1180,17 +1180,17 @@ SketcherBlendFit MeasureSketcherBlendFit(const SketcherDocument& Document, const
     for (size_t Index = Steps.size(); Index-- > 0;)
     {
         const FeatureStep& Step = Steps[Index];
-        if (Step.Kind == FeatureStepKind::Sketch || Step.Kind == FeatureStepKind::SpaceCurve) continue;
-        const bool CreatesSeparateBody = ((Step.Kind == FeatureStepKind::Extrude || Step.Kind == FeatureStepKind::Revolve ||
-                                           Step.Kind == FeatureStepKind::Loft || Step.Kind == FeatureStepKind::Network ||
-                                           Step.Kind == FeatureStepKind::Pipe || Step.Kind == FeatureStepKind::Evolution) &&
+        if (Step.Kind == FeatureStepCategory::Sketch || Step.Kind == FeatureStepCategory::SpaceCurve) continue;
+        const bool CreatesSeparateBody = ((Step.Kind == FeatureStepCategory::Extrude || Step.Kind == FeatureStepCategory::Revolve ||
+                                           Step.Kind == FeatureStepCategory::Loft || Step.Kind == FeatureStepCategory::Network ||
+                                           Step.Kind == FeatureStepCategory::Pipe || Step.Kind == FeatureStepCategory::Evolution) &&
                                           (Step.Combination == FeatureCombination::New || Step.Combination == FeatureCombination::Separate)) ||
-                                         Step.Kind == FeatureStepKind::Import;
+                                         Step.Kind == FeatureStepCategory::Import;
         const bool TouchesCondition = CreatesSeparateBody
                                     ? (Step.Label == Owner)
                                     : (Step.Target.empty() || Step.Target == Owner || Step.Tool == Owner || Step.Label == Owner || Step.Source == Owner);
         if (!TouchesCondition) continue;
-        if (Step.Kind != FeatureStepKind::Blend) break;
+        if (Step.Kind != FeatureStepCategory::Blend) break;
         const std::string Made = Step.Label + ".";
         if (std::any_of(Names.begin(), Names.end(), [&](const std::string& Name) { return Name.find(Made) != std::string::npos; })) break;
         Insertion = Index;
@@ -1222,15 +1222,15 @@ template <typename Author>
     return Appended;
 }
 
-SketcherCommandOutcome ChangeSketcherSelection(SketcherDocument& Document, FaceOperationKind Operation, double Amount, std::optional<Vector3> Direction)
+SketcherCommandOutcome ChangeSketcherSelection(SketcherDocument& Document, FaceOperationCategory Operation, double Amount, std::optional<Vector3> Direction)
 {
     const std::string Stem  = SketcherFaceOperationLabel(Operation);
     const std::string Label = Stem + " " + FormatAmount(Amount) + " on " + std::to_string(Document.Selection.Faces.size()) + " face(s)";
-    const bool WholeBodyCondition = Operation == FaceOperationKind::OffsetBody || Operation == FaceOperationKind::Heal;
+    const bool WholeBodyCondition = Operation == FaceOperationCategory::OffsetBody || Operation == FaceOperationCategory::Heal;
     std::string Owner;
     std::string OwnerProblem;
     if (!Document.Selection.Faces.empty() && Document.Summary.PresentCondition)
-        OwnerProblem = CommonBody(Document, SketcherSelectionKind::Face, Document.Selection.Faces, Owner);
+        OwnerProblem = CommonBody(Document, SketcherSelectionCategory::Face, Document.Selection.Faces, Owner);
     if (Owner.empty() && !Document.Selection.Bodies.empty()) Owner = Document.Selection.Bodies.front();   // Whole-body verbs on a picked body
     // Whole-body verbs (offset body, heal) stay at the end: they act on the body as it stands.
     const std::string Placed = WholeBodyCondition || !OwnerProblem.empty() ? std::string() : Owner;
@@ -1243,25 +1243,25 @@ SketcherCommandOutcome ChangeSketcherSelection(SketcherDocument& Document, FaceO
         const std::string StepLabel = "Change#" + std::to_string(NextStepOrdinal(Document.Tree));
         const double      Span = std::max(1.0, 4.0 * std::abs(Amount));
         Document.Tree.Parameters.push_back({ Caption + ".Amount", Amount, std::min(-Span, Amount), std::max(Span, Amount),
-                                             Operation == FaceOperationKind::Draft ? "draft angle [rad]" : Operation == FaceOperationKind::Rotate ? "angle [rad]"
-                                             : Operation == FaceOperationKind::Scale ? "factor" : "distance" });
-        Step.Kind      = FeatureStepKind::FaceOperation;
+                                             Operation == FaceOperationCategory::Draft ? "draft angle [rad]" : Operation == FaceOperationCategory::Rotate ? "angle [rad]"
+                                             : Operation == FaceOperationCategory::Scale ? "factor" : "distance" });
+        Step.Kind      = FeatureStepCategory::FaceOperation;
         Step.Label     = StepLabel;
         Step.Operation = Operation;
         Step.Amount    = ParameterValue(Caption + ".Amount");
         Step.Target    = Owner;
-        if (Direction && (Operation == FaceOperationKind::Tweak || Operation == FaceOperationKind::Rotate))
+        if (Direction && (Operation == FaceOperationCategory::Tweak || Operation == FaceOperationCategory::Rotate))
         {
             if (!(Length(*Direction) > 1.0e-12)) return "the direction is zero";
             Step.Points = { Normalize(*Direction) };
         }
-        for (const std::string& Name : Document.Selection.Faces) Step.References.push_back({ ReferenceKind::Face, Name, {} });
+        for (const std::string& Name : Document.Selection.Faces) Step.References.push_back({ ReferenceCategory::Face, Name, {} });
         Document.Captions[StepLabel] = Caption;
         return {};
     });
 }
 
-SketcherCommandOutcome ReshapeSketcherSelection(SketcherDocument& Document, const AffineMap& Map, const std::string& Verb)
+SketcherCommandOutcome ReshapeSketcherSelection(SketcherDocument& Document, const AffineMapping& Map, const std::string& Verb)
 {
     const SketcherSelection& Selection = Document.Selection;
     const size_t Count = Selection.Vertices.size() + Selection.Edges.size() + Selection.Faces.size();
@@ -1276,7 +1276,7 @@ SketcherCommandOutcome ReshapeSketcherSelection(SketcherDocument& Document, cons
     else if (!Document.Summary.PresentCondition) Problem = "there is no body to reshape";
     else
     {
-        const auto MergeOwner = [&](SketcherSelectionKind Kind, const std::vector<std::string>& Items)
+        const auto MergeOwner = [&](SketcherSelectionCategory Kind, const std::vector<std::string>& Items)
         {
             if (!Problem.empty() || Items.empty()) return;
             std::string PartOwner;
@@ -1285,9 +1285,9 @@ SketcherCommandOutcome ReshapeSketcherSelection(SketcherDocument& Document, cons
             if (!Owner.empty() && Owner != PartOwner) Problem = "the picked elements are on different bodies (one body at a time)";
             else Owner = PartOwner;
         };
-        MergeOwner(SketcherSelectionKind::Face, Selection.Faces);
-        MergeOwner(SketcherSelectionKind::Edge, Selection.Edges);
-        MergeOwner(SketcherSelectionKind::Vertex, Selection.Vertices);
+        MergeOwner(SketcherSelectionCategory::Face, Selection.Faces);
+        MergeOwner(SketcherSelectionCategory::Edge, Selection.Edges);
+        MergeOwner(SketcherSelectionCategory::Vertex, Selection.Vertices);
     }
     std::vector<std::string> Names = Selection.Vertices;
     Names.insert(Names.end(), Selection.Edges.begin(), Selection.Edges.end());
@@ -1296,14 +1296,14 @@ SketcherCommandOutcome ReshapeSketcherSelection(SketcherDocument& Document, cons
     {
         if (!Problem.empty()) return Problem;
         const std::string StepLabel = "Change#" + std::to_string(NextStepOrdinal(Document.Tree));
-        Step.Kind      = FeatureStepKind::FaceOperation;
+        Step.Kind      = FeatureStepCategory::FaceOperation;
         Step.Label     = StepLabel;
-        Step.Operation = FaceOperationKind::Reshape;
+        Step.Operation = FaceOperationCategory::Reshape;
         Step.Placement = Map;
         Step.Target    = Owner;
-        for (const std::string& Name : Document.Selection.Vertices) Step.References.push_back({ ReferenceKind::Vertex, Name, {} });
-        for (const std::string& Name : Document.Selection.Edges) Step.References.push_back({ ReferenceKind::Edge, Name, {} });
-        for (const std::string& Name : Document.Selection.Faces) Step.References.push_back({ ReferenceKind::Face, Name, {} });
+        for (const std::string& Name : Document.Selection.Vertices) Step.References.push_back({ ReferenceCategory::Vertex, Name, {} });
+        for (const std::string& Name : Document.Selection.Edges) Step.References.push_back({ ReferenceCategory::Edge, Name, {} });
+        for (const std::string& Name : Document.Selection.Faces) Step.References.push_back({ ReferenceCategory::Face, Name, {} });
         Document.Captions[StepLabel] = NextCaption(Document, "Reshape");
         return {};
     });
@@ -1318,20 +1318,20 @@ SketcherCommandOutcome InsetSketcherSelection(SketcherDocument& Document, double
         if (Document.Selection.Faces.empty()) return "select one or more planar faces first";
         if (!Document.Summary.PresentCondition) return "there is no body to change";
         std::string Owner;
-        if (const std::string Problem = CommonBody(Document, SketcherSelectionKind::Face, Document.Selection.Faces, Owner); !Problem.empty()) return Problem;
+        if (const std::string Problem = CommonBody(Document, SketcherSelectionCategory::Face, Document.Selection.Faces, Owner); !Problem.empty()) return Problem;
         const std::string Caption   = NextCaption(Document, "Inset");
         const std::string StepLabel = "Change#" + std::to_string(NextStepOrdinal(Document.Tree));
         const double      Span      = std::max(1.0, 4.0 * std::max(std::abs(Distance), std::abs(Depth)));
         Document.Tree.Parameters.push_back({ Caption + ".Amount", Distance, 0.0, std::max(Span, Distance), "inset distance" });
         Document.Tree.Parameters.push_back({ Caption + ".Depth", Depth, std::min(-Span, Depth), std::max(Span, Depth), "depth (− pocket)" });
         FeatureStep Step;
-        Step.Kind      = FeatureStepKind::FaceOperation;
+        Step.Kind      = FeatureStepCategory::FaceOperation;
         Step.Label     = StepLabel;
-        Step.Operation = FaceOperationKind::Inset;
+        Step.Operation = FaceOperationCategory::Inset;
         Step.Amount    = ParameterValue(Caption + ".Amount");
         Step.Extent    = ParameterValue(Caption + ".Depth");
         Step.Target    = Owner;
-        for (const std::string& Name : Document.Selection.Faces) Step.References.push_back({ ReferenceKind::Face, Name, {} });
+        for (const std::string& Name : Document.Selection.Faces) Step.References.push_back({ ReferenceCategory::Face, Name, {} });
         Document.Tree.Steps.push_back(std::move(Step));
         Document.Captions[StepLabel] = Caption;
         return {};
@@ -1395,7 +1395,7 @@ std::string ComposeSketcherSketch(const SketcherDrawingRequest& Request, SketchM
     };
     switch (Request.Kind)
     {
-    case SketcherDrawingKind::Line:
+    case SketcherDrawingCategory::Line:
     {
         if (std::string Refusal = Needs(Request.ClosedCondition ? 3 : 2); !Refusal.empty()) return Refusal;
         std::vector<int> Indices;
@@ -1409,7 +1409,7 @@ std::string ComposeSketcherSketch(const SketcherDrawingRequest& Request, SketchM
         }
         return {};
     }
-    case SketcherDrawingKind::Rectangle:
+    case SketcherDrawingCategory::Rectangle:
     {
         if (std::string Refusal = Needs(2); !Refusal.empty()) return Refusal;
         const Vector2 First  = Request.CentreCondition ? Points[0] * 2.0 - Points[1] : Points[0];
@@ -1419,7 +1419,7 @@ std::string ComposeSketcherSketch(const SketcherDrawingRequest& Request, SketchM
         AppendSketchRectangle(Sketch, Low, High, 1);
         return {};
     }
-    case SketcherDrawingKind::Circle:
+    case SketcherDrawingCategory::Circle:
     {
         if (std::string Refusal = Needs(2); !Refusal.empty()) return Refusal;
         const Vector2 Centre = Request.CentreCondition ? Points[0] : (Points[0] + Points[1]) * 0.5;
@@ -1428,7 +1428,7 @@ std::string ComposeSketcherSketch(const SketcherDrawingRequest& Request, SketchM
         AppendSketchCircle(Sketch, AppendSketchPoint(Sketch, Centre), Radius, 1);
         return {};
     }
-    case SketcherDrawingKind::Arc:
+    case SketcherDrawingCategory::Arc:
     {
         // Circle through start, end and the third click; counter-clockwise from start to end when start → third → end
         // turns left (orientation > 0), else stored from end to start (the sketch arc is always counter-clockwise).
@@ -1446,7 +1446,7 @@ std::string ComposeSketcherSketch(const SketcherDrawingRequest& Request, SketchM
         else AppendSketchArc(Sketch, CentreIndex, EndIndex, StartIndex, 1);
         return {};
     }
-    case SketcherDrawingKind::Slot:
+    case SketcherDrawingCategory::Slot:
     {
         // Stadium: caps centred on the first two clicks, half-width = distance of the third click from their line.
         if (std::string Refusal = Needs(3); !Refusal.empty()) return Refusal;
@@ -1470,7 +1470,7 @@ std::string ComposeSketcherSketch(const SketcherDrawingRequest& Request, SketchM
         AppendSketchConstraint(Sketch, Kind::Tangent, Bottom, Back, -1, 0.0, "T4");
         return {};
     }
-    case SketcherDrawingKind::Polygon:
+    case SketcherDrawingCategory::Polygon:
     {
         // Regular polygon: the first click is the centre, the second a vertex (size and turn); Sides closed lines.
         if (std::string Refusal = Needs(2); !Refusal.empty()) return Refusal;
@@ -1488,7 +1488,7 @@ std::string ComposeSketcherSketch(const SketcherDrawingRequest& Request, SketchM
         for (int Index = 0; Index < Request.Sides; ++Index) AppendSketchLine(Sketch, Corners[Index], Corners[(Index + 1) % Request.Sides], Index + 1);
         return {};
     }
-    case SketcherDrawingKind::Curve:
+    case SketcherDrawingCategory::Curve:
     {
         if (std::string Refusal = Needs(Request.ClosedCondition ? 3 : 2); !Refusal.empty()) return Refusal;
         std::vector<int> Indices;
@@ -1504,22 +1504,22 @@ std::string ComposeSketcherSketch(const SketcherDrawingRequest& Request, SketchM
 
 SketcherCommandOutcome DrawSketcherSketch(SketcherDocument& Document, const SketcherDrawingRequest& Request)
 {
-    const std::string Stem    = Request.Kind == SketcherDrawingKind::Curve ? std::string("Curve") : SketcherDrawingLabel(Request.Kind);
+    const std::string Stem    = Request.Kind == SketcherDrawingCategory::Curve ? std::string("Curve") : SketcherDrawingLabel(Request.Kind);
     const std::string Caption = NextCaption(Document, Stem);
-    const char*       FormTag = Request.Kind == SketcherDrawingKind::Curve ? SketchSplineFormLabel(Request.Form) : nullptr;
+    const char*       FormTag = Request.Kind == SketcherDrawingCategory::Curve ? SketchSplineFormLabel(Request.Form) : nullptr;
     return RunCommand(Document, Caption + (FormTag ? std::string(" · ") + FormTag : std::string{}), false, [&]() -> std::string
     {
         if (Request.GridPlane < 0 || Request.GridPlane > 2) return "construction plane must be XY, XZ or YZ";
         SketchModel Sketch;
         if (std::string Refusal = ComposeSketcherSketch(Request, Sketch); !Refusal.empty()) return Refusal;
         FeatureStep Step;
-        Step.Kind   = FeatureStepKind::Sketch;
+        Step.Kind   = FeatureStepCategory::Sketch;
         Step.Label  = "Sketch#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Plane  = SketcherSketchPlane(Request.GridPlane);
         if (Request.PlaneCondition)
         {
             // Drawn on a body face: the face plane (orthonormal, finite) carries the sketch.
-            const OrthonormalFrame& Face = Request.Plane;
+            const OrthonormalBasis& Face = Request.Plane;
             const bool Finite = std::isfinite(Face.Origin.X) && std::isfinite(Face.Origin.Y) && std::isfinite(Face.Origin.Z);
             const bool Square = std::abs(Length(Face.XAxis) - 1.0) < 1.0e-9 && std::abs(Length(Face.YAxis) - 1.0) < 1.0e-9 && std::abs(Length(Face.ZAxis) - 1.0) < 1.0e-9
                              && std::abs(Dot(Face.XAxis, Face.YAxis)) < 1.0e-9 && Length(Cross(Face.XAxis, Face.YAxis) - Face.ZAxis) < 1.0e-9;
@@ -1541,7 +1541,7 @@ SketcherCommandOutcome FillSketcherSketch(SketcherDocument& Document, const std:
     return RunCommand(Document, std::string(FillCondition ? "Fill " : "Unfill ") + Caption, false, [&]() -> std::string
     {
         const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Sketch; });
-        if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepKind::Sketch) return "no sketch step labelled " + Sketch;
+        if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepCategory::Sketch) return "no sketch step labelled " + Sketch;
         if (Found->FillCondition == FillCondition) return Caption + (FillCondition ? " is already filled" : " is already unfilled");
         if (FillCondition)
         {
@@ -1579,7 +1579,7 @@ SketcherCommandOutcome FlipSketcherBodies(SketcherDocument& Document, const std:
             auto Last = Document.Tree.Steps.end();
             for (auto Step = Document.Tree.Steps.begin(); Step != Document.Tree.Steps.end(); ++Step)
                 if (Step->Target == Key || Step->Label == Key) Last = Step;
-            if (Last != Document.Tree.Steps.end() && Last->Kind == FeatureStepKind::Flip && Last->Target == Key && Last->References.empty())
+            if (Last != Document.Tree.Steps.end() && Last->Kind == FeatureStepCategory::Flip && Last->Target == Key && Last->References.empty())
             {
                 Document.Captions.erase(Last->Label);
                 Document.Tree.Steps.erase(Last);
@@ -1587,7 +1587,7 @@ SketcherCommandOutcome FlipSketcherBodies(SketcherDocument& Document, const std:
             }
             // ② else a new Flip step
             FeatureStep Step;
-            Step.Kind   = FeatureStepKind::Flip;
+            Step.Kind   = FeatureStepCategory::Flip;
             Step.Label  = "Flip#" + std::to_string(NextStepOrdinal(Document.Tree));
             Step.Target = Key;
             Document.Captions[Step.Label] = NextCaption(Document, "Flip");
@@ -1603,7 +1603,7 @@ SketcherCommandOutcome FlipSketcherFaces(SketcherDocument& Document, const std::
     std::vector<std::pair<std::string, std::vector<std::string>>> Groups;
     for (const std::string& Face : Faces)
     {
-        const std::string Key = SketcherBodyOfName(Document, SketcherSelectionKind::Face, Face);
+        const std::string Key = SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Face);
         auto Group = std::find_if(Groups.begin(), Groups.end(), [&](const auto& Entry) { return Entry.first == Key; });
         if (Group == Groups.end()) { Groups.push_back({ Key, {} }); Group = Groups.end() - 1; }
         if (std::find(Group->second.begin(), Group->second.end(), Face) == Group->second.end()) Group->second.push_back(Face);
@@ -1626,8 +1626,8 @@ SketcherCommandOutcome FlipSketcherFaces(SketcherDocument& Document, const std::
             auto Last = Document.Tree.Steps.end();
             for (auto Step = Document.Tree.Steps.begin(); Step != Document.Tree.Steps.end(); ++Step)
                 if (Step->Target == Key || Step->Label == Key) Last = Step;
-            if (Last != Document.Tree.Steps.end() && Last->Kind == FeatureStepKind::Flip && Last->Target == Key && Last->References.size() == Named.size()
-                && std::all_of(Last->References.begin(), Last->References.end(), [&](const TopologyReference& Reference)
+            if (Last != Document.Tree.Steps.end() && Last->Kind == FeatureStepCategory::Flip && Last->Target == Key && Last->References.size() == Named.size()
+                && std::all_of(Last->References.begin(), Last->References.end(), [&](const ConnectivityReference& Reference)
                                { return std::find(Named.begin(), Named.end(), Reference.Name) != Named.end(); }))
             {
                 Document.Captions.erase(Last->Label);
@@ -1636,10 +1636,10 @@ SketcherCommandOutcome FlipSketcherFaces(SketcherDocument& Document, const std::
             }
             // ② else a new Flip step naming the faces
             FeatureStep Step;
-            Step.Kind   = FeatureStepKind::Flip;
+            Step.Kind   = FeatureStepCategory::Flip;
             Step.Label  = "Flip#" + std::to_string(NextStepOrdinal(Document.Tree));
             Step.Target = Key;
-            for (const std::string& Name : Named) Step.References.push_back({ ReferenceKind::Face, Name, {} });
+            for (const std::string& Name : Named) Step.References.push_back({ ReferenceCategory::Face, Name, {} });
             Document.Captions[Step.Label] = NextCaption(Document, "Flip");
             Document.Tree.Steps.push_back(std::move(Step));
         }
@@ -1658,7 +1658,7 @@ SketcherCommandOutcome ExtrudeSketcherSketch(SketcherDocument& Document, const s
     return RunCommand(Document, Label, false, [&]() -> std::string
     {
         const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == SketchLabel; });
-        if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepKind::Sketch) return "no sketch step labelled " + SketchLabel;
+        if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepCategory::Sketch) return "no sketch step labelled " + SketchLabel;
         if (!(std::abs(Distance) > 1.0e-9)) return "extrude distance is zero";
         if (FirstBodyCondition && (Combination == FeatureCombination::Difference || Combination == FeatureCombination::Intersection))
             return std::string("nothing to ") + (Combination == FeatureCombination::Difference ? "subtract from" : "intersect with") + " yet (no body)";
@@ -1668,11 +1668,11 @@ SketcherCommandOutcome ExtrudeSketcherSketch(SketcherDocument& Document, const s
         // A cut of zero-thickness walls means nothing: the region it cuts is filled first (as the knife does).
         if (FillCondition && !FirstBodyCondition && (Combination == FeatureCombination::Difference || Combination == FeatureCombination::Intersection)) Found->FillCondition = true;
         FeatureStep Step;
-        Step.Kind        = FeatureStepKind::Extrude;
-        if (Start != 0.0) Step.Start = FeatureValue{ Start };
+        Step.Kind        = FeatureStepCategory::Extrude;
+        if (Start != 0.0) Step.Start = FeatureScalar{ Start };
         Step.Label       = "Extrude#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Profile     = SketchLabel;
-        Step.Extent      = FeatureValue{ Distance };
+        Step.Extent      = FeatureScalar{ Distance };
         Step.Combination = FirstBodyCondition ? FeatureCombination::New : Combination;
         Step.Target      = Target;
         Document.Captions[Step.Label] = Caption;
@@ -1681,9 +1681,9 @@ SketcherCommandOutcome ExtrudeSketcherSketch(SketcherDocument& Document, const s
     });
 }
 
-OrthonormalFrame SketcherSketchPlane(int GridPlane) noexcept
+OrthonormalBasis SketcherSketchPlane(int GridPlane) noexcept
 {
-    OrthonormalFrame Plane;
+    OrthonormalBasis Plane;
     if (GridPlane == 1) return UprightPlane();
     if (GridPlane == 2)
     {
@@ -1724,12 +1724,12 @@ SketcherCommandOutcome ImportSketcherCurves(SketcherDocument& Document, const Ve
         for (const VehicleCurve& Curve : File.Curves)
         {
             FeatureStep Step;
-            Step.Kind            = FeatureStepKind::SpaceCurve;
+            Step.Kind            = FeatureStepCategory::SpaceCurve;
             Step.Label           = "Curve#" + std::to_string(NextStepOrdinal(Document.Tree));
             Step.Points          = Curve.Points;
             Step.ClosedCondition = Curve.ClosedCondition;
             Step.PlanarCondition = Curve.PlanarCondition;
-            Step.Tolerance       = FeatureValue{ Tolerance };
+            Step.Tolerance       = FeatureScalar{ Tolerance };
             const bool Taken = std::any_of(Document.Captions.begin(), Document.Captions.end(), [&](const auto& Entry) { return Entry.second == Curve.Name; });
             Document.Captions[Step.Label] = Taken ? NextCaption(Document, Curve.Name + ".") : Curve.Name;
             Document.Tree.Steps.push_back(std::move(Step));
@@ -1759,7 +1759,7 @@ SketcherCommandOutcome ImportSketcherStep(SketcherDocument& Document, const Sket
         for (size_t Index = 0; Index < Reading.Texts.size(); ++Index)
         {
             FeatureStep Step;
-            Step.Kind         = FeatureStepKind::Import;
+            Step.Kind         = FeatureStepCategory::Import;
             Step.Label        = "Import#" + std::to_string(NextStepOrdinal(Document.Tree));
             Step.Exchange     = Reading.Texts[Index];
             Step.ExchangeUnit = SketcherModelUnitMillimetres;
@@ -1812,7 +1812,7 @@ SketcherCommandOutcome LoftSketcherCurves(SketcherDocument& Document, const std:
         for (size_t Index = 0; Index < Labels.size(); ++Index)
         {
             const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Labels[Index]; });
-            if (Found == Document.Tree.Steps.end() || (Found->Kind != FeatureStepKind::SpaceCurve && Found->Kind != FeatureStepKind::Sketch)) return "no curve or sketch step labelled " + Labels[Index];
+            if (Found == Document.Tree.Steps.end() || (Found->Kind != FeatureStepCategory::SpaceCurve && Found->Kind != FeatureStepCategory::Sketch)) return "no curve or sketch step labelled " + Labels[Index];
             if (std::find(Labels.begin(), Labels.begin() + Index, Labels[Index]) != Labels.begin() + Index) return "curve " + Labels[Index] + " is selected twice";
         }
         if (Continuity < 0 || Continuity > 2) return "continuity must be G0, G1 or G2";
@@ -1826,7 +1826,7 @@ SketcherCommandOutcome LoftSketcherCurves(SketcherDocument& Document, const std:
             {
                 const ClosedCurveLoop& Loop = SelectedLoops[LoopIdx];
                 FeatureStep Step;
-                Step.Kind      = FeatureStepKind::Network;
+                Step.Kind      = FeatureStepCategory::Network;
                 Step.Label     = "Network#" + std::to_string(NextStepOrdinal(Document.Tree));
                 Step.Tolerance = { LoftNetSettings.MeetingGap };
                 std::vector<NurbsCurve> LoopCurves;
@@ -1863,7 +1863,7 @@ SketcherCommandOutcome LoftSketcherCurves(SketcherDocument& Document, const std:
             return {};
         }
         FeatureStep Step;
-        Step.Kind       = NetworkCondition ? FeatureStepKind::Network : FeatureStepKind::Loft;
+        Step.Kind       = NetworkCondition ? FeatureStepCategory::Network : FeatureStepCategory::Loft;
         Step.Label      = (NetworkCondition ? "Network#" : "Loft#") + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Sections   = Labels;
         if (NetworkCondition) Step.Tolerance = { LoftNetSettings.MeetingGap };
@@ -1949,7 +1949,7 @@ SketcherCommandOutcome LoftSketcherSelection(SketcherDocument& Document, int Con
             const Vector3 EndC   = TargetFit->second.Curve.Definition->Poles.back();
             std::string SheetKey = !Document.Selection.Bodies.empty() ? Document.Selection.Bodies.front() : Document.Selection.PickedBody;
             if (SheetKey.empty() && !Document.Selection.Faces.empty())
-                SheetKey = SketcherBodyOfName(Document, SketcherSelectionKind::Face, Document.Selection.Faces.front());
+                SheetKey = SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Document.Selection.Faces.front());
             const RegeneratedBody* Owner = FindRegeneratedBody(Document, SheetKey);
             if (Owner && Document.Partition->Bodies.Authenticate(Owner->Body)
                 && Document.Partition->Bodies.Resolve(Owner->Body).Category == BodyCategory::Sheet)
@@ -1959,7 +1959,7 @@ SketcherCommandOutcome LoftSketcherSelection(SketcherDocument& Document, int Con
                 double      BestHingeGap = 1.0e-3;
                 for (const FeatureStep& Step : Document.Tree.Steps)
                 {
-                    if (Step.Kind != FeatureStepKind::Loft) continue;
+                    if (Step.Kind != FeatureStepCategory::Loft) continue;
                     for (const std::string& Section : Step.Sections)
                     {
                         if (Section == TargetCurve) continue;
@@ -2042,7 +2042,7 @@ SketcherCommandOutcome LoftSketcherSelection(SketcherDocument& Document, int Con
         std::string MatchedLabel;
         for (const FeatureStep& Step : Document.Tree.Steps)
         {
-            if (Step.Kind != FeatureStepKind::Sketch && Step.Kind != FeatureStepKind::SpaceCurve) continue;
+            if (Step.Kind != FeatureStepCategory::Sketch && Step.Kind != FeatureStepCategory::SpaceCurve) continue;
             const auto Fitted = Document.Regeneration.Curves.find(Step.Label);
             if (Fitted == Document.Regeneration.Curves.end() || !Fitted->second.Curve.Definition) continue;
             const NurbsDomain Domain = MeasureNurbsCurveDomain(*Fitted->second.Curve.Definition);
@@ -2119,7 +2119,7 @@ SketcherCommandOutcome LoftSketcherSelection(SketcherDocument& Document, int Con
                 continue;
             }
             FeatureStep CurveStep;
-            CurveStep.Kind            = FeatureStepKind::SpaceCurve;
+            CurveStep.Kind            = FeatureStepCategory::SpaceCurve;
             CurveStep.Label           = "Curve#" + std::to_string(NextStepOrdinal(Document.Tree));
             CurveStep.Points          = Item.Points;
             CurveStep.CurveKnots      = Item.CurveKnots;
@@ -2134,7 +2134,7 @@ SketcherCommandOutcome LoftSketcherSelection(SketcherDocument& Document, int Con
         if (Continuity < 0 || Continuity > 2) return "continuity must be G0, G1 or G2";
         if (SolidCondition && Continuity > 0) return "a solid loft is G0 (G1 / G2 join a loft to neighbouring panels)";
         FeatureStep Step;
-        Step.Kind            = FeatureStepKind::Loft;
+        Step.Kind            = FeatureStepCategory::Loft;
         Step.Label           = "Loft#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Sections        = std::move(Labels);
         Step.Continuity      = Continuity;
@@ -2227,13 +2227,13 @@ namespace
             High = { std::max(High.X, Point.X), std::max(High.Y, Point.Y), std::max(High.Z, Point.Z) };
         }
         FeatureStep Step;
-        Step.Kind            = FeatureStepKind::SpaceCurve;
+        Step.Kind            = FeatureStepCategory::SpaceCurve;
         Step.Label           = "Curve#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Points          = Exact ? Exact->Poles : std::move(Samples);
         Step.CurveKnots      = Exact ? Exact->Knots : std::vector<double>{};
         Step.ClosedCondition = ClosedCondition;
         Step.PlanarCondition = false;
-        Step.Tolerance       = FeatureValue{ 1.0e-6 * std::max(Distance(Low, High), 1.0e-3) };
+        Step.Tolerance       = FeatureScalar{ 1.0e-6 * std::max(Distance(Low, High), 1.0e-3) };
         Document.Captions[Step.Label] = Caption;
         Document.Tree.Steps.push_back(std::move(Step));
         return Document.Tree.Steps.back().Label;
@@ -2322,7 +2322,7 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
     std::vector<Curve> Curves;
     constexpr int Samples=96;
     for(const auto& S:D.Tree.Steps) {
-        if(S.Kind!=FeatureStepKind::SpaceCurve || SketcherLockedCondition(D,S.Label)) continue;
+        if(S.Kind!=FeatureStepCategory::SpaceCurve || SketcherLockedCondition(D,S.Label)) continue;
         NurbsCurveDefinition Def;
         if(auto It=D.Regeneration.Curves.find(S.Label);It!=D.Regeneration.Curves.end() && It->second.Curve.Definition)
             Def=MapCurveOntoUnit(*It->second.Curve.Definition);
@@ -2397,7 +2397,7 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
         {
             if (Other.Label == CurveLabel) continue;
             if (Other.CurveOffsetGuide == CurveLabel || Other.Profile == CurveLabel || Other.Path == CurveLabel) return true;
-            if (Other.Kind != FeatureStepKind::Network &&
+            if (Other.Kind != FeatureStepCategory::Network &&
                 std::find(Other.Sections.begin(), Other.Sections.end(), CurveLabel) != Other.Sections.end())
                 return true;
         }
@@ -2437,7 +2437,7 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
         if(!InsertedPieces.empty()) {
             D.Tree.Steps.insert(D.Tree.Steps.begin()+static_cast<ptrdiff_t>(Index+1),InsertedPieces.begin(),InsertedPieces.end());
             for(FeatureStep& Dependent:D.Tree.Steps) {
-                if(Dependent.Kind!=FeatureStepKind::Network)continue;
+                if(Dependent.Kind!=FeatureStepCategory::Network)continue;
                 auto Pos=std::find(Dependent.Sections.begin(),Dependent.Sections.end(),C.Label);
                 if(Pos!=Dependent.Sections.end()) Dependent.Sections.insert(Pos+1,NewPieceLabels.begin(),NewPieceLabels.end());
             }
@@ -2448,7 +2448,7 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
 
 [[nodiscard]] std::optional<NurbsCurve> ResolveSpaceCurveForLoop(const SketcherDocument& Document, const FeatureStep& Step)
 {
-    if (Step.Kind != FeatureStepKind::SpaceCurve) return std::nullopt;
+    if (Step.Kind != FeatureStepCategory::SpaceCurve) return std::nullopt;
     if (!Step.CurveKnots.empty() && Step.Points.size() >= 2)
     {
         const int Degree = static_cast<int>(Step.CurveKnots.size()) - static_cast<int>(Step.Points.size()) - 1;
@@ -2477,7 +2477,7 @@ std::string BuildLoopsInPlace(SketcherDocument& Document, double Tolerance, bool
     std::vector<NurbsCurve>  Curves;
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::SpaceCurve || Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
+        if (Step.Kind != FeatureStepCategory::SpaceCurve || Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
         const std::optional<NurbsCurve> Curve = ResolveSpaceCurveForLoop(Document, Step);
         if (!Curve) continue;
         Labels.push_back(Step.Label);
@@ -2493,7 +2493,7 @@ std::string BuildLoopsInPlace(SketcherDocument& Document, double Tolerance, bool
     {
         for (const FeatureStep& Step : Document.Tree.Steps)
         {
-            if (Step.Kind != FeatureStepKind::Network && Step.Kind != FeatureStepKind::Loft) continue;
+            if (Step.Kind != FeatureStepCategory::Network && Step.Kind != FeatureStepCategory::Loft) continue;
             std::vector<std::string> Sorted = Step.Sections;
             std::sort(Sorted.begin(), Sorted.end());
             ExistingLoopSets.insert(std::move(Sorted));
@@ -2521,7 +2521,7 @@ std::string BuildLoopsInPlace(SketcherDocument& Document, double Tolerance, bool
         if (!Closed.Refusal.empty() || Closed.Panels.empty()) continue;
 
         FeatureStep Step;
-        Step.Kind      = FeatureStepKind::Network;
+        Step.Kind      = FeatureStepCategory::Network;
         Step.Label     = "Network#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Sections  = std::move(LoopLabels);
         Step.Tolerance = { Tolerance };
@@ -2562,7 +2562,7 @@ SketcherCommandOutcome SplitSketcherSpaceCurveAt(SketcherDocument& Document, con
     {
         auto Step = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(),
                                  [&](const FeatureStep& Candidate) { return Candidate.Label == OriginalLabel; });
-        if (Step == Document.Tree.Steps.end() || Step->Kind != FeatureStepKind::SpaceCurve)
+        if (Step == Document.Tree.Steps.end() || Step->Kind != FeatureStepCategory::SpaceCurve)
             return "Choose an authored 3D curve";
         if (SketcherLockedCondition(Document, OriginalLabel)) return "Unlock this curve before splitting";
         if (!Step->CurveOffsetGuide.empty()) return "Detach the live distance target before splitting it";
@@ -2629,7 +2629,7 @@ SketcherSpaceLoopPreview PreviewSketcherSpaceLoop(const SketcherDocument& Docume
     std::vector<NurbsCurve>  Curves;
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::SpaceCurve || Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
+        if (Step.Kind != FeatureStepCategory::SpaceCurve || Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
         const std::optional<NurbsCurve> Curve = ResolveSpaceCurveForLoop(Document, Step);
         if (!Curve) continue;
         Labels.push_back(Step.Label);
@@ -2707,7 +2707,7 @@ SketcherCommandOutcome LinkSketcherSurfaceOffset(SketcherDocument& D,const std::
         if(Guide==Target || !(Distance>0) || !(Tolerance>0) || !std::isfinite(Distance+Tolerance)) return "Select two different curves and finite positive distance/tolerance";
         auto G=std::find_if(D.Tree.Steps.begin(),D.Tree.Steps.end(),[&](const auto& S){return S.Label==Guide;});
         auto T=std::find_if(D.Tree.Steps.begin(),D.Tree.Steps.end(),[&](const auto& S){return S.Label==Target;});
-        if(G==D.Tree.Steps.end() || T==D.Tree.Steps.end() || T->Kind!=FeatureStepKind::SpaceCurve) return "Target must be an existing native 3D spline";
+        if(G==D.Tree.Steps.end() || T==D.Tree.Steps.end() || T->Kind!=FeatureStepCategory::SpaceCurve) return "Target must be an existing native 3D spline";
         if(G>T) {
             for(auto It=T+1;It<=G;++It)
                 if(It->CurveOffsetGuide==Target || It->Profile==Target || It->Path==Target || std::find(It->Sections.begin(),It->Sections.end(),Target)!=It->Sections.end())
@@ -2750,7 +2750,7 @@ SketcherCommandOutcome DeleteSketcherCurvePoles(SketcherDocument& Document, cons
     const std::string Label=Owner; // May alias Tree.Steps storage.
     return RunCommand(Document,"Delete selected spline controls",false,[&]() -> std::string
     {
-        auto Step=std::find_if(Document.Tree.Steps.begin(),Document.Tree.Steps.end(),[&](const auto& S){return S.Label==Label && S.Kind==FeatureStepKind::SpaceCurve;});
+        auto Step=std::find_if(Document.Tree.Steps.begin(),Document.Tree.Steps.end(),[&](const auto& S){return S.Label==Label && S.Kind==FeatureStepCategory::SpaceCurve;});
         const auto Fit=Document.Regeneration.Curves.find(Label);
         if (Step==Document.Tree.Steps.end() || Fit==Document.Regeneration.Curves.end()) return "Select a spline control first";
         if (SketcherLockedCondition(Document,Label)) return "The spline is locked";
@@ -2780,7 +2780,7 @@ SketcherCommandOutcome SubdivideSketcherCurve(SketcherDocument& Document, const 
     return RunCommand(Document,"Subdivide spline (exact knot insertion)",false,[&]() -> std::string
     {
         const auto Fit=Document.Regeneration.Curves.find(Label);
-        auto Step=std::find_if(Document.Tree.Steps.begin(),Document.Tree.Steps.end(),[&](const auto& S){return S.Label==Label && S.Kind==FeatureStepKind::SpaceCurve;});
+        auto Step=std::find_if(Document.Tree.Steps.begin(),Document.Tree.Steps.end(),[&](const auto& S){return S.Label==Label && S.Kind==FeatureStepCategory::SpaceCurve;});
         if (Step==Document.Tree.Steps.end() || Fit==Document.Regeneration.Curves.end()) return "Select a spline or control span first";
         if (SketcherLockedCondition(Document,Label)) return "The spline is locked";
         if (!Step->CurveOffsetGuide.empty()) return "Detach the live surface offset before editing its controls or spans";
@@ -2804,7 +2804,7 @@ SketcherCommandOutcome DeleteSketcherCurveSpans(SketcherDocument& Document, cons
     return RunCommand(Document,"Delete selected spline spans",false,[&]() -> std::string
     {
         const auto Fit=Document.Regeneration.Curves.find(Label);
-        auto Step=std::find_if(Document.Tree.Steps.begin(),Document.Tree.Steps.end(),[&](const auto& S){return S.Label==Label && S.Kind==FeatureStepKind::SpaceCurve;});
+        auto Step=std::find_if(Document.Tree.Steps.begin(),Document.Tree.Steps.end(),[&](const auto& S){return S.Label==Label && S.Kind==FeatureStepCategory::SpaceCurve;});
         if (Step==Document.Tree.Steps.end() || Fit==Document.Regeneration.Curves.end()) return "Select a spline span first";
         if (SketcherLockedCondition(Document,Label)) return "The spline is locked";
         if (!Step->CurveOffsetGuide.empty()) return "Detach the live surface offset before editing its controls or spans";
@@ -2843,7 +2843,7 @@ SketcherCommandOutcome DeleteSketcherCurveSpans(SketcherDocument& Document, cons
     },0);
 }
 
-SketcherCommandOutcome LiftSketcherSketchPoints(SketcherDocument& Document, const std::string& SketchName, const OrthonormalFrame& Plane, const std::vector<int>& Points,
+SketcherCommandOutcome LiftSketcherSketchPoints(SketcherDocument& Document, const std::string& SketchName, const OrthonormalBasis& Plane, const std::vector<int>& Points,
                                                 const std::vector<Vector3>& Targets)
 {
     // The caller may pass a label owned by Tree.Steps; appending curves reallocates that vector.
@@ -2851,7 +2851,7 @@ SketcherCommandOutcome LiftSketcherSketchPoints(SketcherDocument& Document, cons
     std::vector<std::string> Made;
     SketcherCommandOutcome Outcome = RunCommand(Document, "Lift " + CaptionOfStep(Document, Sketch) + " points off its plane", false, [&]() -> std::string
     {
-        auto Step = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Each) { return Each.Label == Sketch && Each.Kind == FeatureStepKind::Sketch; });
+        auto Step = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Each) { return Each.Label == Sketch && Each.Kind == FeatureStepCategory::Sketch; });
         if (Step == Document.Tree.Steps.end()) return "no sketch named " + Sketch;
         if (Points.size() != Targets.size() || Points.empty()) return "no point moved";
         const auto         Solved = Document.Regeneration.Sketches.find(Sketch);
@@ -2867,10 +2867,10 @@ SketcherCommandOutcome LiftSketcherSketchPoints(SketcherDocument& Document, cons
         for (int Curve = 0; Curve < int(Model.Curves.size()); ++Curve)
         {
             const SketchCurve& Each  = Model.Curves[static_cast<size_t>(Curve)];
-            const bool         Touch = Each.Kind == SketchCurveKind::Spline ? std::any_of(Each.Points.begin(), Each.Points.end(), [&](int Point) { return Moved.contains(Point); })
+            const bool         Touch = Each.Kind == SketchCurveCategory::Spline ? std::any_of(Each.Points.begin(), Each.Points.end(), [&](int Point) { return Moved.contains(Point); })
                                                                             : Moved.contains(Each.Start) || Moved.contains(Each.End) || Moved.contains(Each.Centre);
             if (!Touch) continue;
-            if (Each.Kind != SketchCurveKind::Spline && Each.Kind != SketchCurveKind::Line) return "move the whole arc / circle in XYZ; its individual points retain the analytic plane";
+            if (Each.Kind != SketchCurveCategory::Spline && Each.Kind != SketchCurveCategory::Line) return "move the whole arc / circle in XYZ; its individual points retain the analytic plane";
             Curves.push_back(Curve);
         }
         if (Curves.empty()) return "no curve passes through the moved points";
@@ -2881,7 +2881,7 @@ SketcherCommandOutcome LiftSketcherSketchPoints(SketcherDocument& Document, cons
         for (int Curve : Curves)
         {
             const SketchCurve&   Each = Model.Curves[static_cast<size_t>(Curve)];
-            const std::vector<int> Indices = Each.Kind == SketchCurveKind::Line ? std::vector<int>{ Each.Start, Each.End } : Each.Points;
+            const std::vector<int> Indices = Each.Kind == SketchCurveCategory::Line ? std::vector<int>{ Each.Start, Each.End } : Each.Points;
             const bool           Closed = Indices.size() >= 3 && Indices.front() == Indices.back();
             std::vector<Vector3> Slots;
             for (size_t Index = 0; Index + (Closed ? 1 : 0) < Indices.size(); ++Index)
@@ -2894,7 +2894,7 @@ SketcherCommandOutcome LiftSketcherSketchPoints(SketcherDocument& Document, cons
             Made.push_back(AppendSpaceCurveStep(Document, std::move(Samples), Closed, NextCaption(Document, "Curve"), ResolveExactThrough(Slots, Closed, Each.Form, Each.Knots)));
         }
         // ③ they leave the sketch (an emptied sketch goes); the appends above may have moved the steps
-        Step = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Each) { return Each.Label == Sketch && Each.Kind == FeatureStepKind::Sketch; });
+        Step = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Each) { return Each.Label == Sketch && Each.Kind == FeatureStepCategory::Sketch; });
         for (auto Curve = Curves.rbegin(); Curve != Curves.rend(); ++Curve) EraseSketchCurve(Step->Sketch, *Curve);
         if (Step->Sketch.Curves.empty())
         {
@@ -2915,7 +2915,7 @@ SketcherCommandOutcome MirrorSketcherPanels(SketcherDocument& Document, int Axis
     {
         if (Axis < 0 || Axis > 2) return "mirror axis must be x, y or z";
         FeatureStep Step;
-        Step.Kind         = FeatureStepKind::Mirror;
+        Step.Kind         = FeatureStepCategory::Mirror;
         Step.Label        = "Mirror#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Plane.Origin = { 0.0, 0.0, 0.0 };
         Step.Plane.ZAxis  = { Axis == 0 ? 1.0 : 0.0, Axis == 1 ? 1.0 : 0.0, Axis == 2 ? 1.0 : 0.0 };
@@ -2933,7 +2933,7 @@ SketcherCommandOutcome CloseSketcherPanels(SketcherDocument& Document)
     return RunCommand(Document, Caption + " · plane caps", false, [&]() -> std::string
     {
         FeatureStep Step;
-        Step.Kind  = FeatureStepKind::Close;
+        Step.Kind  = FeatureStepCategory::Close;
         Step.Label = "Close#" + std::to_string(NextStepOrdinal(Document.Tree));
         Document.Captions[Step.Label] = Caption;
         Document.Tree.Steps.push_back(std::move(Step));
@@ -2956,7 +2956,7 @@ SketcherCommandOutcome MoveSketcherPoles(SketcherDocument& Document, const std::
     {
         if (Poles.empty() || Poles.size() != Positions.size()) return "pick at least one pole to move";
         const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Label; });
-        if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepKind::SpaceCurve) return "no curve step labelled " + Label;
+        if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepCategory::SpaceCurve) return "no curve step labelled " + Label;
         const auto Fitted = Document.Regeneration.Curves.find(Label);
         if (Fitted == Document.Regeneration.Curves.end()) return "curve " + Label + " has no fitted poles (refused step)";
         if (!Found->CurveOffsetGuide.empty()) return "Detach the live surface offset before moving its controls";
@@ -3097,21 +3097,21 @@ SketcherCommandOutcome AddSketcherMatcapPicture(SketcherDocument& Document, cons
     });
 }
 
-void SelectSketcherName(SketcherDocument& Document, SketcherSelectionKind Kind, const std::string& Name, bool AdditiveCondition, const std::string& Body)
+void SelectSketcherName(SketcherDocument& Document, SketcherSelectionCategory Kind, const std::string& Name, bool AdditiveCondition, const std::string& Body)
 {
-    std::vector<std::string>& Names = Kind == SketcherSelectionKind::Face ? Document.Selection.Faces
-                                    : Kind == SketcherSelectionKind::Edge ? Document.Selection.Edges
-                                    : Kind == SketcherSelectionKind::Vertex ? Document.Selection.Vertices : Document.Selection.Bodies;
+    std::vector<std::string>& Names = Kind == SketcherSelectionCategory::Face ? Document.Selection.Faces
+                                    : Kind == SketcherSelectionCategory::Edge ? Document.Selection.Edges
+                                    : Kind == SketcherSelectionCategory::Vertex ? Document.Selection.Vertices : Document.Selection.Bodies;
     if (!AdditiveCondition)
     {
         Document.Selection = {};
         Names.push_back(Name);
         Document.Selection.LastKind = Kind;
-        if (Kind != SketcherSelectionKind::Body) Document.Selection.PickedBody = Body;
+        if (Kind != SketcherSelectionCategory::Body) Document.Selection.PickedBody = Body;
         return;
     }
     Document.Selection.LastKind = Kind;
-    if (Kind != SketcherSelectionKind::Body && !Body.empty()) Document.Selection.PickedBody = Body;
+    if (Kind != SketcherSelectionCategory::Body && !Body.empty()) Document.Selection.PickedBody = Body;
     const auto Found = std::find(Names.begin(), Names.end(), Name);
     if (Found != Names.end()) Names.erase(Found);
     else Names.push_back(Name);
@@ -3119,7 +3119,7 @@ void SelectSketcherName(SketcherDocument& Document, SketcherSelectionKind Kind, 
 
 std::vector<std::string> SketcherTangentChain(const SketcherDocument& Document, const std::string& Name)
 {
-    const RegeneratedBody* Owner = FindRegeneratedBody(Document, SketcherBodyOfName(Document, SketcherSelectionKind::Edge, Name));
+    const RegeneratedBody* Owner = FindRegeneratedBody(Document, SketcherBodyOfName(Document, SketcherSelectionCategory::Edge, Name));
     if (!Document.Partition || !Owner) return { Name };
     const GeometrySpace::Parametric::BodyNaming&    Naming    = Owner->Naming;
     const GeometrySpace::Parametric::BodyInventory  Inventory = Document.Partition->CollectInventory(Owner->Body);
@@ -3146,7 +3146,7 @@ constexpr int RadialLimit = 16;                                                 
 constexpr int CycleLimit  = 4096;                                                            // [-] - Fins round one loop (corrupt-cycle guard)
 
 // One body's topology as the Blender walkers see it: edge names, fins round each edge, edge ends at each vertex.
-struct SketcherTopologyWalk
+struct SketcherConnectivityWalk
 {
     const ModelPartition*                 Partition = nullptr;                               // [-] - Owning partition
     const GeometrySpace::Parametric::BodyNaming* Naming    = nullptr;                               // [-] - Persistent names
@@ -3156,10 +3156,10 @@ struct SketcherTopologyWalk
     bool                                  StartCondition = false;                            // [-] - The name resolved
 };
 
-SketcherTopologyWalk PrepareTopologyWalk(const SketcherDocument& Document, const std::string& Name, const std::string& Body)
+SketcherConnectivityWalk PrepareTopologyWalk(const SketcherDocument& Document, const std::string& Name, const std::string& Body)
 {
-    SketcherTopologyWalk Walk;
-    const RegeneratedBody* Owner = FindRegeneratedBody(Document, Body.empty() ? SketcherBodyOfName(Document, SketcherSelectionKind::Edge, Name) : Body);
+    SketcherConnectivityWalk Walk;
+    const RegeneratedBody* Owner = FindRegeneratedBody(Document, Body.empty() ? SketcherBodyOfName(Document, SketcherSelectionCategory::Edge, Name) : Body);
     if (!Document.Partition || !Owner) return Walk;
     Walk.Partition = Document.Partition.get();
     Walk.Naming    = &Owner->Naming;
@@ -3231,7 +3231,7 @@ SketcherTopologyWalk PrepareTopologyWalk(const SketcherDocument& Document, const
     return int(Faces.size());
 }
 
-std::vector<std::string> NameWalkedEdges(const SketcherTopologyWalk& Walk, const std::vector<EdgeToken>& Walked, const std::string& Name)
+std::vector<std::string> NameWalkedEdges(const SketcherConnectivityWalk& Walk, const std::vector<EdgeToken>& Walked, const std::string& Name)
 {
     std::vector<std::string> Names;
     for (const EdgeToken Edge : Walked)
@@ -3244,7 +3244,7 @@ std::vector<std::string> NameWalkedEdges(const SketcherTopologyWalk& Walk, const
 
 // BMW_EDGERING: breadth-first across even faces (QuadOnly: four-sided only, the face-loop walker); Crossed collects the
 // face slots stepped over.
-std::vector<EdgeToken> WalkEdgeRing(const SketcherTopologyWalk& Walk, bool QuadOnly, std::vector<FaceToken>* Crossed)
+std::vector<EdgeToken> WalkEdgeRing(const SketcherConnectivityWalk& Walk, bool QuadOnly, std::vector<FaceToken>* Crossed)
 {
     const ModelPartition&  Partition = *Walk.Partition;
     std::vector<EdgeToken> Ring{ Walk.Start };
@@ -3280,16 +3280,16 @@ std::vector<EdgeToken> WalkEdgeRing(const SketcherTopologyWalk& Walk, bool QuadO
 
 std::vector<std::string> SketcherEdgeRing(const SketcherDocument& Document, const std::string& Name, const std::string& Body)
 {
-    const SketcherTopologyWalk Walk = PrepareTopologyWalk(Document, Name, Body);
+    const SketcherConnectivityWalk Walk = PrepareTopologyWalk(Document, Name, Body);
     if (!Walk.StartCondition) return { Name };
     return NameWalkedEdges(Walk, WalkEdgeRing(Walk, false, nullptr), Name);
 }
 
 std::vector<std::string> SketcherFaceLoop(const SketcherDocument& Document, const std::string& Edge, const std::string& Body)
 {
-    const SketcherTopologyWalk Walk = PrepareTopologyWalk(Document, Edge, Body);
+    const SketcherConnectivityWalk Walk = PrepareTopologyWalk(Document, Edge, Body);
     if (!Walk.StartCondition) return {};
-    const RegeneratedBody* Owner = FindRegeneratedBody(Document, Body.empty() ? SketcherBodyOfName(Document, SketcherSelectionKind::Edge, Edge) : Body);
+    const RegeneratedBody* Owner = FindRegeneratedBody(Document, Body.empty() ? SketcherBodyOfName(Document, SketcherSelectionCategory::Edge, Edge) : Body);
     std::vector<FaceToken> Crossed;
     (void)WalkEdgeRing(Walk, true, &Crossed);
     std::vector<std::string> Names;
@@ -3303,7 +3303,7 @@ std::vector<std::string> SketcherFaceLoop(const SketcherDocument& Document, cons
 
 std::vector<std::string> SketcherEdgeLoop(const SketcherDocument& Document, const std::string& Name, const std::string& Body)
 {
-    const SketcherTopologyWalk Walk = PrepareTopologyWalk(Document, Name, Body);
+    const SketcherConnectivityWalk Walk = PrepareTopologyWalk(Document, Name, Body);
     if (!Walk.StartCondition) return { Name };
     const ModelPartition& Partition = *Walk.Partition;
     const auto ValenceOf = [&](VertexToken Vertex) { const auto Found = Walk.Valence.find(Vertex.Slot); return Found == Walk.Valence.end() ? 0 : Found->second; };
@@ -3487,7 +3487,7 @@ struct EdgePathCarrier
 }
 
 [[nodiscard]] std::pair<std::vector<std::string>, double> AssembleEdgePathRoute(
-    const SketcherTopologyWalk&       Walk,
+    const SketcherConnectivityWalk&       Walk,
     const std::map<uint32_t, double>& Lengths,
     EdgeToken                         First,
     EdgeToken                         Last,
@@ -3514,7 +3514,7 @@ SketcherEdgePath SketcherEdgePathBetween(const SketcherDocument& Document, const
                                          const std::string& Body)
 {
     SketcherEdgePath Path;
-    const SketcherTopologyWalk Walk = PrepareTopologyWalk(Document, From, Body);
+    const SketcherConnectivityWalk Walk = PrepareTopologyWalk(Document, From, Body);
     if (!Walk.StartCondition) { Path.Refusal = From + " is not an edge of the picked body"; return Path; }
     const ModelPartition& Partition = *Walk.Partition;
     std::map<std::string, EdgeToken> ByName;
@@ -3651,7 +3651,7 @@ static std::string ExecuteCombineBodySteps(
     for (const std::string& Tool : Tools)
     {
         FeatureStep Step;
-        Step.Kind        = FeatureStepKind::Combine;
+        Step.Kind        = FeatureStepCategory::Combine;
         Step.Label       = "Combine#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Combination = Combination;
         Step.Target      = Target;
@@ -3685,13 +3685,13 @@ SketcherCommandOutcome CutSketcherBody(SketcherDocument& Document, const Sketche
         if (!FindRegeneratedBody(Document, Target)) return "no body named " + Target;
         const FeatureStep* Cutter = nullptr;
         for (const FeatureStep& Step : Document.Tree.Steps) if (Step.Label == Request.Cutter) Cutter = &Step;
-        if (!Cutter || (Cutter->Kind != FeatureStepKind::Sketch && Cutter->Kind != FeatureStepKind::SpaceCurve))
+        if (!Cutter || (Cutter->Kind != FeatureStepCategory::Sketch && Cutter->Kind != FeatureStepCategory::SpaceCurve))
             return "choose the cutter: focus a sketch step or select a curve";
         FeatureStep Step;
-        Step.Kind   = FeatureStepKind::Cut;
+        Step.Kind   = FeatureStepCategory::Cut;
         Step.Label  = "Cut#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Target = Target;
-        if (Cutter->Kind == FeatureStepKind::Sketch) Step.Profile = Cutter->Label;
+        if (Cutter->Kind == FeatureStepCategory::Sketch) Step.Profile = Cutter->Label;
         else
         {
             Step.Sections    = { Cutter->Label };
@@ -3718,7 +3718,7 @@ SketcherCommandOutcome RemoveSketcherBodies(SketcherDocument& Document, const st
             if (!FindRegeneratedBody(Document, Key)) return "no body named " + Key;
             if (!Seen.insert(Key).second) continue;
             FeatureStep Step;
-            Step.Kind   = FeatureStepKind::Remove;
+            Step.Kind   = FeatureStepCategory::Remove;
             Step.Label  = "Remove#" + std::to_string(NextStepOrdinal(Document.Tree));
             Step.Target = Key;
             Document.Captions[Step.Label] = NextCaption(Document, "Remove");
@@ -3731,9 +3731,9 @@ SketcherCommandOutcome RemoveSketcherBodies(SketcherDocument& Document, const st
 
 namespace
 {
-    [[nodiscard]] OrthonormalFrame ElevatedPlane(const FeatureTree& Tree, const FeatureStep& Step)
+    [[nodiscard]] OrthonormalBasis ElevatedPlane(const FeatureTree& Tree, const FeatureStep& Step)
     {
-        OrthonormalFrame Plane = Step.Plane;
+        OrthonormalBasis Plane = Step.Plane;
         Plane.Origin = Plane.Origin + Plane.ZAxis * EvaluateFeatureValue(Tree, Step.Elevation);
         return Plane;
     }
@@ -3746,7 +3746,7 @@ namespace
 
     // 📝 A segment of a sketch on plane From, re-expressed in the coordinates of the coplanar plane To (rotation, offset,
     //    and a mirror when the normals oppose: arcs then run the other way). Exact for lines, arcs, circles and B-splines.
-    [[nodiscard]] ProfileSegment MapSegment(ProfileSegment Segment, const OrthonormalFrame& From, const OrthonormalFrame& To)
+    [[nodiscard]] ProfileSegment MapSegment(ProfileSegment Segment, const OrthonormalBasis& From, const OrthonormalBasis& To)
     {
         auto Map = [&](Vector2 Point)
         {
@@ -3756,8 +3756,8 @@ namespace
         const double Turn = Dot(From.XAxis, To.XAxis) * Dot(From.YAxis, To.YAxis) - Dot(From.YAxis, To.XAxis) * Dot(From.XAxis, To.YAxis);
         Segment.Start = Map(Segment.Start);
         Segment.End   = Map(Segment.End);
-        if (Segment.Kind == ProfileSegmentKind::Line) return Segment;
-        if (Segment.Kind == ProfileSegmentKind::Spline)
+        if (Segment.Kind == ProfileSegmentCategory::Line) return Segment;
+        if (Segment.Kind == ProfileSegmentCategory::Spline)
         {
             for (Vector2& Pole : Segment.Spline.Poles) Pole = Map(Pole);
             return Segment;
@@ -3774,7 +3774,7 @@ namespace
 SketchTrimOutcome PreviewSketcherTrim(const SketcherDocument& Document, const SketcherTrimRequest& Request)
 {
     const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Request.Sketch; });
-    if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepKind::Sketch)
+    if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepCategory::Sketch)
     {
         SketchTrimOutcome Outcome;
         Outcome.Refusal = "no sketch step labelled " + Request.Sketch;
@@ -3782,12 +3782,12 @@ SketchTrimOutcome PreviewSketcherTrim(const SketcherDocument& Document, const Sk
     }
     if (Request.InsertCondition) return InsertSketchCurvePoint(SolvedSketch(Document, *Found), Request.Curve, Request.Pick);
     if (Request.SplitCondition) return SplitSketchCurve(SolvedSketch(Document, *Found), Request.Curve, Request.Pick);
-    const OrthonormalFrame      Plane = ElevatedPlane(Document.Tree, *Found);
+    const OrthonormalBasis      Plane = ElevatedPlane(Document.Tree, *Found);
     std::vector<ProfileSegment> Foreign;
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch || Step.Label == Request.Sketch || Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
-        const OrthonormalFrame Other = ElevatedPlane(Document.Tree, Step);
+        if (Step.Kind != FeatureStepCategory::Sketch || Step.Label == Request.Sketch || Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
+        const OrthonormalBasis Other = ElevatedPlane(Document.Tree, Step);
         const Vector3          Apart = Other.Origin - Plane.Origin;
         if (std::fabs(Dot(Other.ZAxis, Plane.ZAxis)) < 1.0 - 1.0e-9 || std::fabs(Dot(Apart, Plane.ZAxis)) > 1.0e-9 * std::max(1.0, Length(Apart))) continue;
         const SketchModel& Sketch = SolvedSketch(Document, Step);
@@ -3805,7 +3805,7 @@ SketcherRegionPreview PreviewSketcherRegion(const SketcherDocument& Document, co
 {
     SketcherRegionPreview Preview;
     const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Request.Sketch; });
-    if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepKind::Sketch) { Preview.Refusal = "no sketch step labelled " + Request.Sketch; return Preview; }
+    if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepCategory::Sketch) { Preview.Refusal = "no sketch step labelled " + Request.Sketch; return Preview; }
     Preview.Plane = ElevatedPlane(Document.Tree, *Found);
     // ① every drawn curve of this sketch and of the shown sketches in its plane, in its coordinates
     std::vector<ProfileSegment> Segments;
@@ -3813,9 +3813,9 @@ SketcherRegionPreview PreviewSketcherRegion(const SketcherDocument& Document, co
     double Scale = 1.0;
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch) continue;
+        if (Step.Kind != FeatureStepCategory::Sketch) continue;
         if (Step.Label != Request.Sketch && Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
-        const OrthonormalFrame Other = ElevatedPlane(Document.Tree, Step);
+        const OrthonormalBasis Other = ElevatedPlane(Document.Tree, Step);
         const Vector3          Apart = Other.Origin - Preview.Plane.Origin;
         if (std::fabs(Dot(Other.ZAxis, Preview.Plane.ZAxis)) < 1.0 - 1.0e-9 || std::fabs(Dot(Apart, Preview.Plane.ZAxis)) > 1.0e-9 * std::max(1.0, Length(Apart))) continue;
         const SketchModel& Sketch = SolvedSketch(Document, Step);
@@ -3862,7 +3862,7 @@ SketcherCommandOutcome FillSketcherRegion(SketcherDocument& Document, const Sket
     {
         if (!Preview.Refusal.empty()) return "Fill: " + Preview.Refusal;
         FeatureStep Step;
-        Step.Kind          = FeatureStepKind::Sketch;
+        Step.Kind          = FeatureStepCategory::Sketch;
         Step.Label         = "Sketch#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Plane         = Preview.Plane;
         Step.Sketch        = ComposeRegionSketch(Preview.Region);
@@ -3881,7 +3881,7 @@ SketcherCommandOutcome TrimSketcherSketch(SketcherDocument& Document, const Sket
     std::string CurveName = "curve " + std::to_string(Request.Curve);
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        if (Step.Label != Request.Sketch || Step.Kind != FeatureStepKind::Sketch) continue;
+        if (Step.Label != Request.Sketch || Step.Kind != FeatureStepCategory::Sketch) continue;
         const SketchModel& Sketch = SolvedSketch(Document, Step);
         if (Request.Curve >= 0 && Request.Curve < static_cast<int>(Sketch.Curves.size())) CurveName = SketchCurveName(Sketch.Curves[Request.Curve]);
     }
@@ -3938,11 +3938,11 @@ namespace
     {
         constexpr double EndGuard = 1.0e-3;                                                  // [-]   - As SplitSketchCurve: no break at an open end
         const double     Tolerance = 1.0e-6 * std::max(1.0, Length(Point));                   // [len] - Point on a plane / curve
-        const auto Shown = [&](const FeatureStep& Step) { return Step.Kind == FeatureStepKind::Sketch && !Document.Appearance.HiddenCurves.contains(Step.Label); };
+        const auto Shown = [&](const FeatureStep& Step) { return Step.Kind == FeatureStepCategory::Sketch && !Document.Appearance.HiddenCurves.contains(Step.Label); };
         for (const FeatureStep& Step : Document.Tree.Steps)
         {
             if (!Shown(Step)) continue;
-            const OrthonormalFrame Plane = ElevatedPlane(Document.Tree, Step);
+            const OrthonormalBasis Plane = ElevatedPlane(Document.Tree, Step);
             if (std::fabs(Dot(Point - Plane.Origin, Plane.ZAxis)) > Tolerance) continue;
             const Vector2 Pick{ Dot(Point - Plane.Origin, Plane.XAxis), Dot(Point - Plane.Origin, Plane.YAxis) };
             // Curves of the other shown sketches in this plane (a circle's second break may come from them).
@@ -3950,7 +3950,7 @@ namespace
             for (const FeatureStep& Other : Document.Tree.Steps)
             {
                 if (!Shown(Other) || Other.Label == Step.Label) continue;
-                const OrthonormalFrame Frame = ElevatedPlane(Document.Tree, Other);
+                const OrthonormalBasis Frame = ElevatedPlane(Document.Tree, Other);
                 const Vector3          Apart = Frame.Origin - Plane.Origin;
                 if (std::fabs(Dot(Frame.ZAxis, Plane.ZAxis)) < 1.0 - 1.0e-9 || std::fabs(Dot(Apart, Plane.ZAxis)) > 1.0e-9 * std::max(1.0, Length(Apart))) continue;
                 const SketchModel& Sketch = SolvedSketch(Document, Other);
@@ -3971,10 +3971,10 @@ namespace
                     if (Model.Curves[Curve].Construction) continue;
                     std::string          Refusal;
                     const ProfileSegment Target = ResolveSketchCurveSegment(Model, Curve, 1.0e-9, Refusal);
-                    if (!Refusal.empty() || Target.Kind == ProfileSegmentKind::Spline) continue;
+                    if (!Refusal.empty() || Target.Kind == ProfileSegmentCategory::Spline) continue;
                     const double Fraction = LocateProfileFraction(Target, Pick);
                     if (Distance(EvaluateProfileSegment(Target, Fraction), Pick) > Tolerance) continue;
-                    const bool Closed = Target.Kind == ProfileSegmentKind::Circle;
+                    const bool Closed = Target.Kind == ProfileSegmentCategory::Circle;
                     if (!Closed && (Fraction <= EndGuard || Fraction >= 1.0 - EndGuard)) continue;   // Touches Point at an end
                     // A circle's partner: its next crossing counter-clockwise with another curve of the plane.
                     std::optional<Vector2> Partner;
@@ -4076,7 +4076,7 @@ SketcherCommandOutcome CutSketcherSketchCorners(SketcherDocument& Document, cons
         for (const std::string& Sketch : Request.Sketches)
         {
             const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Sketch; });
-            if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepKind::Sketch) return "no sketch step labelled " + Sketch;
+            if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepCategory::Sketch) return "no sketch step labelled " + Sketch;
             const SketchCornerOutcome Cut = CutSketchCorners(SolvedSketch(Document, *Found), Request.Points, Request.Size, Request.Shape);
             const auto Caption = Document.Captions.find(Sketch);
             if (!Cut.Refusal.empty()) return (Caption != Document.Captions.end() ? Caption->second : Sketch) + ": " + Cut.Refusal;
@@ -4117,7 +4117,7 @@ namespace
     //    scale, dimensions are re-measured (a bound parameter lets go of its value) and fixed points follow. A uniform scale
     //    keeps every relation; a stretch (S then X / Y / Z) refuses arcs and circles (they would become ellipses) and drops
     //    the relations it breaks (perpendicular, equal length, symmetric, G2, end directions; vertical when sheared).
-    [[nodiscard]] std::string CarrySketchStep(const SketcherDocument& Document, FeatureStep& Step, const AffineMap& Map, int& Dropped)
+    [[nodiscard]] std::string CarrySketchStep(const SketcherDocument& Document, FeatureStep& Step, const AffineMapping& Map, int& Dropped)
     {
         const auto Turn = [&](Vector3 Vector) { return Map.ColumnX * Vector.X + Map.ColumnY * Vector.Y + Map.ColumnZ * Vector.Z; };
         const Vector3 Columns[3] = { Map.ColumnX, Map.ColumnY, Map.ColumnZ };
@@ -4125,7 +4125,7 @@ namespace
         for (int First = 0; First < 3; ++First)
             for (int Second = 0; Second < 3; ++Second)
                 RigidCondition = RigidCondition && std::abs(Dot(Columns[First], Columns[Second]) - (First == Second ? 1.0 : 0.0)) <= 1.0e-9;
-        OrthonormalFrame& Plane = Step.Plane;
+        OrthonormalBasis& Plane = Step.Plane;
         if (RigidCondition)
         {
             if (Dot(Cross(Map.ColumnX, Map.ColumnY), Map.ColumnZ) < 0.0) return "a sketch cannot be mirrored (🚧)";
@@ -4149,15 +4149,15 @@ namespace
         SketchModel Model = SolvedSketch(Document, Step);                                    // As shown (solved positions)
         if (!UniformCondition)
             for (const SketchCurve& Curve : Model.Curves)
-                if (Curve.Kind == SketchCurveKind::Circle || Curve.Kind == SketchCurveKind::Arc)
+                if (Curve.Kind == SketchCurveCategory::Circle || Curve.Kind == SketchCurveCategory::Arc)
                     return "a stretch would turn " + SketchCurveName(Curve) + " into an ellipse (🚧): press S without an axis to scale evenly";
         const auto Apply = [&](Vector2 Point) { return Vector2{ A11 * Point.X + A12 * Point.Y, A22 * Point.Y }; };
         for (SketchPoint& Point : Model.Points) Point.Position = Apply(Point.Position);
-        for (SketchCurve& Curve : Model.Curves) if (Curve.Kind == SketchCurveKind::Circle) Curve.Radius *= A11;
+        for (SketchCurve& Curve : Model.Curves) if (Curve.Kind == SketchCurveCategory::Circle) Curve.Radius *= A11;
         std::vector<SketchConstraint> Kept;
         for (SketchConstraint Constraint : Model.Constraints)
         {
-            using Kind = SketchConstraintKind;
+            using Kind = SketchConstraintCategory;
             if (!UniformCondition && (Constraint.Kind == Kind::Perpendicular || Constraint.Kind == Kind::EqualLength || Constraint.Kind == Kind::Symmetric
                                       || Constraint.Kind == Kind::SplineCurvature || Constraint.Kind == Kind::SplineDirection
                                       || (Constraint.Kind == Kind::Vertical && std::abs(A12) > 1.0e-9 * A11)))
@@ -4195,7 +4195,7 @@ namespace
 namespace
 {
 
-void CarryDimensionsWithAffine(SketcherDocument& Document, const std::vector<std::string>& Keys, const AffineMap& Map, bool SketchCondition)
+void CarryDimensionsWithAffine(SketcherDocument& Document, const std::vector<std::string>& Keys, const AffineMapping& Map, bool SketchCondition)
 {
     if (Document.Dimensions.empty() || Keys.empty()) return;
     const auto ApplyLinear = [&](Vector3 Vec) -> Vector3
@@ -4205,7 +4205,7 @@ void CarryDimensionsWithAffine(SketcherDocument& Document, const std::vector<std
     const double Det   = std::abs(Dot(Cross(Map.ColumnX, Map.ColumnY), Map.ColumnZ));
     const double Scale = std::isfinite(Det) && Det > 1.0e-12 ? std::cbrt(Det) : 1.0;
 
-    const auto MatchesTarget = [&](SketcherSelectionKind Kind, const std::string& Name) -> bool
+    const auto MatchesTarget = [&](SketcherSelectionCategory Kind, const std::string& Name) -> bool
     {
         if (Name.empty()) return false;
         const size_t At = Name.find('@');
@@ -4216,7 +4216,7 @@ void CarryDimensionsWithAffine(SketcherDocument& Document, const std::vector<std
             return std::find(Keys.begin(), Keys.end(), StepLabel) != Keys.end();
         }
         if (SketchCondition) return false;
-        if (Kind == SketcherSelectionKind::Body)
+        if (Kind == SketcherSelectionCategory::Body)
             return std::find(Keys.begin(), Keys.end(), Name) != Keys.end();
         const std::string Owner = SketcherBodyOfName(Document, Kind, Name);
         return !Owner.empty() && std::find(Keys.begin(), Keys.end(), Owner) != Keys.end();
@@ -4235,7 +4235,7 @@ void CarryDimensionsWithAffine(SketcherDocument& Document, const std::vector<std
 
 } // namespace
 
-SketcherCommandOutcome TransformSketcherBodies(SketcherDocument& Document, const std::vector<std::string>& Keys, const AffineMap& Map, const std::string& Verb)
+SketcherCommandOutcome TransformSketcherBodies(SketcherDocument& Document, const std::vector<std::string>& Keys, const AffineMapping& Map, const std::string& Verb)
 {
     const std::vector<std::string> Unique = UniqueKeys(Keys);
     return RunCommand(Document, Verb + " (" + ListCaptions(Document, Unique) + ")", false, [&]() -> std::string
@@ -4247,7 +4247,7 @@ SketcherCommandOutcome TransformSketcherBodies(SketcherDocument& Document, const
         for (const std::string& Key : Unique)
         {
             FeatureStep Step;
-            Step.Kind      = FeatureStepKind::Transform;
+            Step.Kind      = FeatureStepCategory::Transform;
             Step.Label     = "Transform#" + std::to_string(NextStepOrdinal(Document.Tree));
             Step.Target    = Key;
             Step.Placement = Map;
@@ -4258,10 +4258,10 @@ SketcherCommandOutcome TransformSketcherBodies(SketcherDocument& Document, const
     });
 }
 
-SketcherCommandOutcome PlaceSketcherSketches(SketcherDocument& Document, const std::vector<std::string>& Labels, const AffineMap& Map, const std::string& Verb)
+SketcherCommandOutcome PlaceSketcherSketches(SketcherDocument& Document, const std::vector<std::string>& Labels, const AffineMapping& Map, const std::string& Verb)
 {
     const std::vector<std::string> Unique = UniqueKeys(Labels);
-    const auto CarrySpaceCurve = [](FeatureStep& Step, const AffineMap& Transform) -> std::string
+    const auto CarrySpaceCurve = [](FeatureStep& Step, const AffineMapping& Transform) -> std::string
     {
         if (!Step.CurveOffsetGuide.empty()) return "Detach the live surface offset before transforming its result";
         const double Det = Dot(Cross(Transform.ColumnX, Transform.ColumnY), Transform.ColumnZ);
@@ -4289,9 +4289,9 @@ SketcherCommandOutcome PlaceSketcherSketches(SketcherDocument& Document, const s
         for (const std::string& Label : Unique)
         {
             const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Label; });
-            if (Found == Document.Tree.Steps.end() || (Found->Kind != FeatureStepKind::Sketch && Found->Kind != FeatureStepKind::SpaceCurve))
+            if (Found == Document.Tree.Steps.end() || (Found->Kind != FeatureStepCategory::Sketch && Found->Kind != FeatureStepCategory::SpaceCurve))
                 return "no sketch step labelled " + Label;
-            const std::string Refusal = Found->Kind == FeatureStepKind::SpaceCurve ? CarrySpaceCurve(*Found, Map) : CarrySketchStep(Document, *Found, Map, Dropped);
+            const std::string Refusal = Found->Kind == FeatureStepCategory::SpaceCurve ? CarrySpaceCurve(*Found, Map) : CarrySketchStep(Document, *Found, Map, Dropped);
             if (!Refusal.empty()) return Refusal;
         }
         CarryDimensionsWithAffine(Document, Unique, Map, true);
@@ -4299,7 +4299,7 @@ SketcherCommandOutcome PlaceSketcherSketches(SketcherDocument& Document, const s
     },0);
 }
 
-SketcherCommandOutcome DuplicateSketcherSketches(SketcherDocument& Document, const std::vector<std::string>& Labels, const AffineMap& Map)
+SketcherCommandOutcome DuplicateSketcherSketches(SketcherDocument& Document, const std::vector<std::string>& Labels, const AffineMapping& Map)
 {
     const std::vector<std::string> Unique = UniqueKeys(Labels);
     std::string Operands;
@@ -4316,10 +4316,10 @@ SketcherCommandOutcome DuplicateSketcherSketches(SketcherDocument& Document, con
         for (const std::string& Label : Unique)
         {
             const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Label; });
-            if (Found == Document.Tree.Steps.end() || (Found->Kind != FeatureStepKind::Sketch && Found->Kind != FeatureStepKind::SpaceCurve))
+            if (Found == Document.Tree.Steps.end() || (Found->Kind != FeatureStepCategory::Sketch && Found->Kind != FeatureStepCategory::SpaceCurve))
                 return "no sketch step labelled " + Label;
             FeatureStep Copy = *Found;
-            if (Found->Kind == FeatureStepKind::SpaceCurve)
+            if (Found->Kind == FeatureStepCategory::SpaceCurve)
             {
                 const double Det = Dot(Cross(Map.ColumnX, Map.ColumnY), Map.ColumnZ);
                 if (!std::isfinite(Det) || std::abs(Det) <= 1.0e-12) return "a scale of 0 flattens the curve";
@@ -4335,9 +4335,9 @@ SketcherCommandOutcome DuplicateSketcherSketches(SketcherDocument& Document, con
                 if (const std::string Refusal = CarrySketchStep(Document, Copy, Map, Dropped); !Refusal.empty()) return Refusal;
             }
             const auto  Caption = Document.Captions.find(Label);
-            std::string Stem    = Caption != Document.Captions.end() ? Caption->second : (Found->Kind == FeatureStepKind::SpaceCurve ? std::string("Curve") : std::string("Sketch"));
+            std::string Stem    = Caption != Document.Captions.end() ? Caption->second : (Found->Kind == FeatureStepCategory::SpaceCurve ? std::string("Curve") : std::string("Sketch"));
             while (!Stem.empty() && std::isdigit(static_cast<unsigned char>(Stem.back()))) Stem.pop_back();
-            if (Stem.empty()) Stem = Found->Kind == FeatureStepKind::SpaceCurve ? "Curve" : "Sketch";
+            if (Stem.empty()) Stem = Found->Kind == FeatureStepCategory::SpaceCurve ? "Curve" : "Sketch";
             Document.Captions[Copy.Label] = NextCaption(Document, Stem);
             Copies.push_back(Copy.Label);
             Document.Tree.Steps.push_back(std::move(Copy));
@@ -4348,18 +4348,18 @@ SketcherCommandOutcome DuplicateSketcherSketches(SketcherDocument& Document, con
     });
 }
 
-SketcherJointOrigin ResolveSketcherJointOrigin(const SketcherDocument& Document, SketcherSelectionKind Kind, const std::string& Name)
+SketcherJointOrigin ResolveSketcherJointOrigin(const SketcherDocument& Document, SketcherSelectionCategory Kind, const std::string& Name)
 {
     SketcherJointOrigin Origin;
     if (!Document.Partition) { Origin.Refusal = "there is no body"; return Origin; }
-    if (Kind != SketcherSelectionKind::Edge && Kind != SketcherSelectionKind::Face) { Origin.Refusal = "a joint origin is an edge or a face"; return Origin; }
+    if (Kind != SketcherSelectionCategory::Edge && Kind != SketcherSelectionCategory::Face) { Origin.Refusal = "a joint origin is an edge or a face"; return Origin; }
     for (const RegeneratedBody& Body : Document.Regeneration.Bodies)
     {
-        const std::map<uint32_t, std::string>& Names = Kind == SketcherSelectionKind::Edge ? Body.Naming.Edges : Body.Naming.Faces;
+        const std::map<uint32_t, std::string>& Names = Kind == SketcherSelectionCategory::Edge ? Body.Naming.Edges : Body.Naming.Faces;
         for (const auto& [Slot, Candidate] : Names)
         {
             if (Candidate != Name) continue;
-            const JointConnector Connector = ResolveJointConnector(*Document.Partition, Kind == SketcherSelectionKind::Edge ? ReferenceKind::Edge : ReferenceKind::Face, Slot);
+            const JointConnector Connector = ResolveJointConnector(*Document.Partition, Kind == SketcherSelectionCategory::Edge ? ReferenceCategory::Edge : ReferenceCategory::Face, Slot);
             Origin.Body        = Body.Key;
             Origin.Frame       = Connector.Frame;
             Origin.Description = Connector.Description;
@@ -4415,24 +4415,24 @@ SketcherCommandOutcome JointSketcherBodies(SketcherDocument& Document, const Ske
             Document.Tree.Parameters.push_back({ Caption + "." + Field, Value, std::min(Low, Value), std::max(High, Value), Meaning });
             return ParameterValue(Caption + "." + Field, Factor);
         };
-        const JointKind Kind   = Request.Kind;
-        const bool      Slides = Kind == JointKind::Slider || Kind == JointKind::Cylindrical || Kind == JointKind::PinSlot || Kind == JointKind::Planar;
+        const JointCategory Kind   = Request.Kind;
+        const bool      Slides = Kind == JointCategory::Slider || Kind == JointCategory::Cylindrical || Kind == JointCategory::PinSlot || Kind == JointCategory::Planar;
         const double    Span   = std::max({ 1.0, 4.0 * std::abs(Request.Slide), 4.0 * std::abs(Request.SecondSlide), 4.0 * std::abs(Request.Offset) });
         FeatureStep Step;
-        Step.Kind   = FeatureStepKind::Joint;
+        Step.Kind   = FeatureStepCategory::Joint;
         Step.Label  = StepLabel;
         Step.Target = Moving.Body;
         Step.Tool   = Fixed.Body;
-        Step.References.push_back({ Request.MovingKind == SketcherSelectionKind::Edge ? ReferenceKind::Edge : ReferenceKind::Face, Request.MovingName, {} });
-        Step.References.push_back({ Request.FixedKind == SketcherSelectionKind::Edge ? ReferenceKind::Edge : ReferenceKind::Face, Request.FixedName, {} });
+        Step.References.push_back({ Request.MovingKind == SketcherSelectionCategory::Edge ? ReferenceCategory::Edge : ReferenceCategory::Face, Request.MovingName, {} });
+        Step.References.push_back({ Request.FixedKind == SketcherSelectionCategory::Edge ? ReferenceCategory::Edge : ReferenceCategory::Face, Request.FixedName, {} });
         FeatureJoint& Joint = Step.Joint;
         Joint.Kind             = Kind;
         Joint.FlippedCondition = Request.Flipped;
-        Joint.Angle            = Bind("Angle", Request.Angle, -180.0, 180.0, Kind == JointKind::Ball ? "yaw about the joint z [deg]" : "turn about the joint z [deg]", Degree);
+        Joint.Angle            = Bind("Angle", Request.Angle, -180.0, 180.0, Kind == JointCategory::Ball ? "yaw about the joint z [deg]" : "turn about the joint z [deg]", Degree);
         Joint.Offset           = Bind("Offset", Request.Offset, -Span, Span, "offset along the joint z", 1.0);
-        if (Slides) Joint.Slide = Bind("Slide", Request.Slide, -Span, Span, Kind == JointKind::Slider || Kind == JointKind::Cylindrical ? "slide along the joint z" : "slide along the joint x", 1.0);
-        if (Kind == JointKind::Planar) Joint.SecondSlide = Bind("SecondSlide", Request.SecondSlide, -Span, Span, "slide along the joint y", 1.0);
-        if (Kind == JointKind::Ball)
+        if (Slides) Joint.Slide = Bind("Slide", Request.Slide, -Span, Span, Kind == JointCategory::Slider || Kind == JointCategory::Cylindrical ? "slide along the joint z" : "slide along the joint x", 1.0);
+        if (Kind == JointCategory::Planar) Joint.SecondSlide = Bind("SecondSlide", Request.SecondSlide, -Span, Span, "slide along the joint y", 1.0);
+        if (Kind == JointCategory::Ball)
         {
             Joint.Pitch = Bind("Pitch", Request.Pitch, -180.0, 180.0, "pitch about the joint y [deg]", Degree);
             Joint.Roll  = Bind("Roll", Request.Roll, -180.0, 180.0, "roll about the joint x [deg]", Degree);
@@ -4443,7 +4443,7 @@ SketcherCommandOutcome JointSketcherBodies(SketcherDocument& Document, const Ske
     });
 }
 
-SketcherCommandOutcome DuplicateSketcherBodies(SketcherDocument& Document, const std::vector<std::string>& Keys, const AffineMap& Map, const std::string& Source)
+SketcherCommandOutcome DuplicateSketcherBodies(SketcherDocument& Document, const std::vector<std::string>& Keys, const AffineMapping& Map, const std::string& Source)
 {
     const std::vector<std::string> Unique = UniqueKeys(Keys);
     return RunCommand(Document, (Source.empty() ? "Duplicate (" : "Paste (") + ListCaptions(Document, Unique) + ")", false, [&]() -> std::string
@@ -4455,7 +4455,7 @@ SketcherCommandOutcome DuplicateSketcherBodies(SketcherDocument& Document, const
         for (const std::string& Key : Unique)
         {
             FeatureStep Step;
-            Step.Kind      = FeatureStepKind::Duplicate;
+            Step.Kind      = FeatureStepCategory::Duplicate;
             Step.Label     = "Duplicate#" + std::to_string(NextStepOrdinal(Document.Tree));
             Step.Target    = Key;
             Step.Placement = Map;
@@ -4470,7 +4470,7 @@ SketcherCommandOutcome DuplicateSketcherBodies(SketcherDocument& Document, const
         }
         Document.Selection          = {};
         Document.Selection.Bodies   = Copies;
-        Document.Selection.LastKind = SketcherSelectionKind::Body;
+        Document.Selection.LastKind = SketcherSelectionCategory::Body;
         return {};
     });
 }
@@ -4487,7 +4487,7 @@ SketcherCommandOutcome KnifeSketcherSketch(SketcherDocument& Document, const std
     return RunCommand(Document, Label, false, [&]() -> std::string
     {
         const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == SketchLabel; });
-        if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepKind::Sketch) return "no sketch step labelled " + SketchLabel;
+        if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepCategory::Sketch) return "no sketch step labelled " + SketchLabel;
         if (!(Top >= 0.0) || !(Bottom < -1.0e-9) || !(Top - Bottom > 1.0e-9)) return "the knife depth must be positive";
         if (Combination == FeatureCombination::New) return "choose Difference, Union, Intersection or Separate";
         if (Combination != FeatureCombination::Separate)
@@ -4497,11 +4497,11 @@ SketcherCommandOutcome KnifeSketcherSketch(SketcherDocument& Document, const std
         }
         Found->FillCondition = true;                                                         // A cutter is solid
         FeatureStep Step;
-        Step.Kind        = FeatureStepKind::Extrude;
+        Step.Kind        = FeatureStepCategory::Extrude;
         Step.Label       = "Extrude#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Profile     = SketchLabel;
-        if (Top > 0.0) Step.Start = FeatureValue{ Top };
-        Step.Extent      = FeatureValue{ Bottom };
+        if (Top > 0.0) Step.Start = FeatureScalar{ Top };
+        Step.Extent      = FeatureScalar{ Bottom };
         Step.Combination = Combination;
         Step.Target      = Combination == FeatureCombination::Separate ? std::string{} : Target;
         Document.Captions[Step.Label] = Caption;
@@ -4511,7 +4511,7 @@ SketcherCommandOutcome KnifeSketcherSketch(SketcherDocument& Document, const std
         if (Combination == FeatureCombination::Separate)
         {
             Document.Selection.Bodies   = { Made };
-            Document.Selection.LastKind = SketcherSelectionKind::Body;
+            Document.Selection.LastKind = SketcherSelectionCategory::Body;
         }
         return {};
     });
@@ -4529,14 +4529,14 @@ SketcherCommandOutcome ImprintSketcherSketch(SketcherDocument& Document, const s
     return RunCommand(Document, Label, false, [&]() -> std::string
     {
         const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == SketchLabel; });
-        if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepKind::Sketch) return "no sketch step labelled " + SketchLabel;
+        if (Found == Document.Tree.Steps.end() || Found->Kind != FeatureStepCategory::Sketch) return "no sketch step labelled " + SketchLabel;
         if (!Document.Summary.PresentCondition) return "nothing to imprint on yet (no body)";
         if (Key.empty() || !FindRegeneratedBody(Document, Key)) return Key.empty() ? std::string("no body under the outline") : "no body named " + Key;
         FeatureStep Step;
-        Step.Kind    = FeatureStepKind::Imprint;
+        Step.Kind    = FeatureStepCategory::Imprint;
         Step.Label   = "Imprint#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Profile = SketchLabel;
-        Step.Extent  = FeatureValue{ Material > 0 ? -1.0 : 1.0 };
+        Step.Extent  = FeatureScalar{ Material > 0 ? -1.0 : 1.0 };
         Step.Target  = Key;
         Document.Captions[Step.Label] = Caption;
         Document.Tree.Steps.push_back(std::move(Step));
@@ -4552,7 +4552,7 @@ SketcherCommandOutcome KnifeSketcherInsert(SketcherDocument& Document, const Ske
     return RunCommand(Document, Label, false, [&]() -> std::string
     {
         if (Placement.Exchange.empty()) return "the insert " + Placement.Name + " holds no solid";
-        const AffineMap& Map = Placement.Map;
+        const AffineMapping& Map = Placement.Map;
         const double Volume = Dot(Map.ColumnX, Cross(Map.ColumnY, Map.ColumnZ));
         if (!(Volume > 1.0e-15)) return "the insert placement is degenerate (zero size or mirrored)";
         if (Placement.Combination != FeatureCombination::Separate)
@@ -4564,7 +4564,7 @@ SketcherCommandOutcome KnifeSketcherInsert(SketcherDocument& Document, const Ske
                 return Placement.Target.empty() ? std::string("place the insert on a body's face") : "no body named " + Placement.Target;
         }
         FeatureStep Import;
-        Import.Kind         = FeatureStepKind::Import;
+        Import.Kind         = FeatureStepCategory::Import;
         Import.Label        = "Import#" + std::to_string(NextStepOrdinal(Document.Tree));
         Import.Exchange     = Placement.Exchange;
         Import.ExchangeUnit = SketcherModelUnitMillimetres;
@@ -4572,7 +4572,7 @@ SketcherCommandOutcome KnifeSketcherInsert(SketcherDocument& Document, const Ske
         Document.Captions[Insert] = NextCaption(Document, Placement.Name.empty() ? std::string("Insert") : Placement.Name);
         Document.Tree.Steps.push_back(std::move(Import));
         FeatureStep Place;
-        Place.Kind      = FeatureStepKind::Transform;
+        Place.Kind      = FeatureStepCategory::Transform;
         Place.Label     = "Transform#" + std::to_string(NextStepOrdinal(Document.Tree));
         Place.Target    = Insert;
         Place.Placement = Map;
@@ -4582,11 +4582,11 @@ SketcherCommandOutcome KnifeSketcherInsert(SketcherDocument& Document, const Ske
         if (Placement.Combination == FeatureCombination::Separate)
         {
             Document.Selection.Bodies   = { Insert };
-            Document.Selection.LastKind = SketcherSelectionKind::Body;
+            Document.Selection.LastKind = SketcherSelectionCategory::Body;
             return {};
         }
         FeatureStep Combine;
-        Combine.Kind        = FeatureStepKind::Combine;
+        Combine.Kind        = FeatureStepCategory::Combine;
         Combine.Label       = "Combine#" + std::to_string(NextStepOrdinal(Document.Tree));
         Combine.Combination = Placement.Combination;
         Combine.Target      = Placement.Target;
@@ -4618,14 +4618,14 @@ SketcherCommandOutcome KnifeSketcherBodies(SketcherDocument& Document, const std
             if (!FindRegeneratedBody(Document, Tool)) return "no body named " + Tool;
             if (!Seen.insert(Tool).second) return SketcherBodyCaption(Document, Tool) + " is picked twice (the target cannot be a cutter)";
         }
-        const AffineMap Identity;                                                            // In place
+        const AffineMapping Identity;                                                            // In place
         for (const std::string& Tool : Tools)
         {
             std::string Cutter = Tool;
             if (KeepCondition)
             {
                 FeatureStep Copy;
-                Copy.Kind      = FeatureStepKind::Duplicate;
+                Copy.Kind      = FeatureStepCategory::Duplicate;
                 Copy.Label     = "Duplicate#" + std::to_string(NextStepOrdinal(Document.Tree));
                 Copy.Target    = Tool;
                 Copy.Placement = Identity;
@@ -4634,7 +4634,7 @@ SketcherCommandOutcome KnifeSketcherBodies(SketcherDocument& Document, const std
                 Document.Tree.Steps.push_back(std::move(Copy));
             }
             FeatureStep Step;
-            Step.Kind        = FeatureStepKind::Combine;
+            Step.Kind        = FeatureStepCategory::Combine;
             Step.Label       = "Combine#" + std::to_string(NextStepOrdinal(Document.Tree));
             Step.Combination = Combination;
             Step.Target      = Cut;
@@ -4644,12 +4644,12 @@ SketcherCommandOutcome KnifeSketcherBodies(SketcherDocument& Document, const std
         }
         Document.Selection          = {};
         Document.Selection.Bodies   = { Cut };
-        Document.Selection.LastKind = SketcherSelectionKind::Body;
+        Document.Selection.LastKind = SketcherSelectionCategory::Body;
         return {};
     });
 }
 
-SketcherCommandOutcome KnifeSketcherPlacedBody(SketcherDocument& Document, const std::string& Target, const std::string& Tool, const AffineMap& Map,
+SketcherCommandOutcome KnifeSketcherPlacedBody(SketcherDocument& Document, const std::string& Target, const std::string& Tool, const AffineMapping& Map,
                                                FeatureCombination Combination, bool KeepCondition)
 {
     const std::string Cut     = Target;                                                      // Both may live in the selection this command clears
@@ -4669,7 +4669,7 @@ SketcherCommandOutcome KnifeSketcherPlacedBody(SketcherDocument& Document, const
         const double Volume = Dot(Map.ColumnX, Cross(Map.ColumnY, Map.ColumnZ));
         if (!(Volume > 1.0e-15)) return "the cutter placement is degenerate (zero size or mirrored)";
         FeatureStep Place;
-        Place.Kind      = KeepCondition ? FeatureStepKind::Duplicate : FeatureStepKind::Transform;
+        Place.Kind      = KeepCondition ? FeatureStepCategory::Duplicate : FeatureStepCategory::Transform;
         Place.Label     = (KeepCondition ? "Duplicate#" : "Transform#") + std::to_string(NextStepOrdinal(Document.Tree));
         Place.Target    = Moved;
         Place.Placement = Map;
@@ -4677,7 +4677,7 @@ SketcherCommandOutcome KnifeSketcherPlacedBody(SketcherDocument& Document, const
         Document.Captions[Place.Label] = NextCaption(Document, KeepCondition ? SketcherBodyCaption(Document, Moved) + "Cutter" : std::string("Place"));
         Document.Tree.Steps.push_back(std::move(Place));
         FeatureStep Combine;
-        Combine.Kind        = FeatureStepKind::Combine;
+        Combine.Kind        = FeatureStepCategory::Combine;
         Combine.Label       = "Combine#" + std::to_string(NextStepOrdinal(Document.Tree));
         Combine.Combination = Combination;
         Combine.Target      = Cut;
@@ -4709,20 +4709,20 @@ SketcherCommandOutcome KnifeSketcherPrimitive(SketcherDocument& Document, const 
             if (!FindRegeneratedBody(Document, Cut)) return "no body named " + Cut;
         }
         // The same checks as a Construct tile (a cone's Height may be negative: it points down).
-        const SketcherConstructKind Tile = Request.Kind;
-        const bool BoxLike = Tile == SketcherConstructKind::Block || Tile == SketcherConstructKind::Wedge;
-        const bool Round   = Tile == SketcherConstructKind::Cylinder || Tile == SketcherConstructKind::Sphere || Tile == SketcherConstructKind::Cone ||
-                             Tile == SketcherConstructKind::Prism || Tile == SketcherConstructKind::Tube;
-        const bool Tall    = Tile != SketcherConstructKind::Sphere && Tile != SketcherConstructKind::Torus;
+        const SketcherConstructCategory Tile = Request.Kind;
+        const bool BoxLike = Tile == SketcherConstructCategory::Block || Tile == SketcherConstructCategory::Wedge;
+        const bool Round   = Tile == SketcherConstructCategory::Cylinder || Tile == SketcherConstructCategory::Sphere || Tile == SketcherConstructCategory::Cone ||
+                             Tile == SketcherConstructCategory::Prism || Tile == SketcherConstructCategory::Tube;
+        const bool Tall    = Tile != SketcherConstructCategory::Sphere && Tile != SketcherConstructCategory::Torus;
         if ((BoxLike && (Request.Width <= 0.0 || Request.Depth <= 0.0)) || (Round && Request.Radius <= 0.0) ||
-            (Tall && (Tile == SketcherConstructKind::Cone ? Request.Height == 0.0 : Request.Height <= 0.0)))
+            (Tall && (Tile == SketcherConstructCategory::Cone ? Request.Height == 0.0 : Request.Height <= 0.0)))
             return "every dimension must be positive";
-        if (Tile == SketcherConstructKind::Torus && (Request.Minor <= 0.0 || Request.Major <= Request.Minor)) return "torus: Major must exceed Minor > 0";
-        if (Tile == SketcherConstructKind::Tube && (Request.Inner <= 0.0 || Request.Inner >= Request.Radius)) return "tube: the bore must lie inside the outer radius";
-        if (Tile == SketcherConstructKind::Prism && (Request.Sides < 3 || Request.Sides > 64)) return "prism: 3 … 64 sides";
+        if (Tile == SketcherConstructCategory::Torus && (Request.Minor <= 0.0 || Request.Major <= Request.Minor)) return "torus: Major must exceed Minor > 0";
+        if (Tile == SketcherConstructCategory::Tube && (Request.Inner <= 0.0 || Request.Inner >= Request.Radius)) return "tube: the bore must lie inside the outer radius";
+        if (Tile == SketcherConstructCategory::Prism && (Request.Sides < 3 || Request.Sides > 64)) return "prism: 3 … 64 sides";
         if (Request.PlaneCondition)
         {
-            const OrthonormalFrame& Face = Request.Plane;
+            const OrthonormalBasis& Face = Request.Plane;
             const bool Finite = std::isfinite(Face.Origin.X) && std::isfinite(Face.Origin.Y) && std::isfinite(Face.Origin.Z);
             const bool Square = std::abs(Length(Face.XAxis) - 1.0) < 1.0e-9 && std::abs(Length(Face.YAxis) - 1.0) < 1.0e-9 && std::abs(Length(Face.ZAxis) - 1.0) < 1.0e-9
                              && std::abs(Dot(Face.XAxis, Face.YAxis)) < 1.0e-9 && Length(Cross(Face.XAxis, Face.YAxis) - Face.ZAxis) < 1.0e-9;
@@ -4739,20 +4739,20 @@ SketcherCommandOutcome KnifeSketcherPrimitive(SketcherDocument& Document, const 
         if (Combination == FeatureCombination::Separate)
         {
             Document.Selection.Bodies   = { Made };
-            Document.Selection.LastKind = SketcherSelectionKind::Body;
+            Document.Selection.LastKind = SketcherSelectionCategory::Body;
             return {};
         }
         if (Direct) return {};
         FeatureStep Copy;
-        Copy.Kind      = FeatureStepKind::Duplicate;
+        Copy.Kind      = FeatureStepCategory::Duplicate;
         Copy.Label     = "Duplicate#" + std::to_string(NextStepOrdinal(Document.Tree));
         Copy.Target    = Made;
-        Copy.Placement = AffineMap{};
+        Copy.Placement = AffineMapping{};
         const std::string Tool = Copy.Label;
         Document.Captions[Tool] = NextCaption(Document, Document.Captions[Made] + "Cutter");
         Document.Tree.Steps.push_back(std::move(Copy));
         FeatureStep Combine;
-        Combine.Kind        = FeatureStepKind::Combine;
+        Combine.Kind        = FeatureStepCategory::Combine;
         Combine.Label       = "Combine#" + std::to_string(NextStepOrdinal(Document.Tree));
         Combine.Combination = Combination;
         Combine.Target      = Cut;
@@ -4768,8 +4768,8 @@ SketcherCommandOutcome ChangeSketcherVisibility(SketcherDocument& Document, Sket
     // The picked bodies: body picks plus the owners of picked faces and edges; the picked curves: sketches and 3D curves
     // (H hides them too — the Outliner eye's set).
     std::set<std::string> Picked(Document.Selection.Bodies.begin(), Document.Selection.Bodies.end());
-    for (const std::string& Face : Document.Selection.Faces) if (const std::string Key = SketcherBodyOfName(Document, SketcherSelectionKind::Face, Face); !Key.empty()) Picked.insert(Key);
-    for (const std::string& Edge : Document.Selection.Edges) if (const std::string Key = SketcherBodyOfName(Document, SketcherSelectionKind::Edge, Edge); !Key.empty()) Picked.insert(Key);
+    for (const std::string& Face : Document.Selection.Faces) if (const std::string Key = SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Face); !Key.empty()) Picked.insert(Key);
+    for (const std::string& Edge : Document.Selection.Edges) if (const std::string Key = SketcherBodyOfName(Document, SketcherSelectionCategory::Edge, Edge); !Key.empty()) Picked.insert(Key);
     const std::set<std::string> PickedCurves(Document.Selection.Curves.begin(), Document.Selection.Curves.end());
     static const char* const Labels[] = { "Hide selected", "Hide unselected", "Unhide all", "Invert hidden" };
     return RunAppearanceCommand(Document, Labels[static_cast<int>(Verb)], [&]() -> std::string
@@ -4781,8 +4781,8 @@ SketcherCommandOutcome ChangeSketcherVisibility(SketcherDocument& Document, Sket
         // 📝 Curves H may show: sketches and 3D curves that are not deleted and not read by a later step (an extruded
         //    sketch stays with its body; its eye in the Outliner still works).
         for (const FeatureStep& Step : Document.Tree.Steps)
-            if ((Step.Kind == FeatureStepKind::Sketch || Step.Kind == FeatureStepKind::SpaceCurve) && !Document.Appearance.RemovedCurves.contains(Step.Label)
-                && (Step.Kind == FeatureStepKind::SpaceCurve || !SketcherSketchConsumedCondition(Document, Step.Label) || Curves.contains(Step.Label) || PickedCurves.contains(Step.Label)))
+            if ((Step.Kind == FeatureStepCategory::Sketch || Step.Kind == FeatureStepCategory::SpaceCurve) && !Document.Appearance.RemovedCurves.contains(Step.Label)
+                && (Step.Kind == FeatureStepCategory::SpaceCurve || !SketcherSketchConsumedCondition(Document, Step.Label) || Curves.contains(Step.Label) || PickedCurves.contains(Step.Label)))
                 Drawn.insert(Step.Label);
         std::erase_if(Hidden, [&](const std::string& Key) { return !Present.contains(Key); });       // Keys of removed bodies
         const std::set<std::string> Before = Hidden, CurvesBefore = Curves;
@@ -4814,9 +4814,9 @@ SketcherCommandOutcome ChangeSketcherVisibility(SketcherDocument& Document, Sket
         if (Hidden == Before && Curves == CurvesBefore) return Verb == SketcherVisibilityVerb::UnhideAll ? "nothing is hidden" : "nothing changes";
         // Hidden bodies and curves leave the selection.
         std::erase_if(Document.Selection.Bodies, [&](const std::string& Key) { return Hidden.contains(Key); });
-        std::erase_if(Document.Selection.Faces, [&](const std::string& Name) { return Hidden.contains(SketcherBodyOfName(Document, SketcherSelectionKind::Face, Name)); });
-        std::erase_if(Document.Selection.Edges, [&](const std::string& Name) { return Hidden.contains(SketcherBodyOfName(Document, SketcherSelectionKind::Edge, Name)); });
-        std::erase_if(Document.Selection.Vertices, [&](const std::string& Name) { return Hidden.contains(SketcherBodyOfName(Document, SketcherSelectionKind::Vertex, Name)); });
+        std::erase_if(Document.Selection.Faces, [&](const std::string& Name) { return Hidden.contains(SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Name)); });
+        std::erase_if(Document.Selection.Edges, [&](const std::string& Name) { return Hidden.contains(SketcherBodyOfName(Document, SketcherSelectionCategory::Edge, Name)); });
+        std::erase_if(Document.Selection.Vertices, [&](const std::string& Name) { return Hidden.contains(SketcherBodyOfName(Document, SketcherSelectionCategory::Vertex, Name)); });
         std::erase_if(Document.Selection.Curves, [&](const std::string& Label) { return Curves.contains(Label); });
         return {};
     });
@@ -4839,9 +4839,9 @@ SketcherCommandOutcome ToggleSketcherBodyVisibility(SketcherDocument& Document, 
         Hidden.insert(Key);
         // A hidden body leaves the selection.
         std::erase(Document.Selection.Bodies, Key);
-        std::erase_if(Document.Selection.Faces, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionKind::Face, Name) == Key; });
-        std::erase_if(Document.Selection.Edges, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionKind::Edge, Name) == Key; });
-        std::erase_if(Document.Selection.Vertices, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionKind::Vertex, Name) == Key; });
+        std::erase_if(Document.Selection.Faces, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Name) == Key; });
+        std::erase_if(Document.Selection.Edges, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionCategory::Edge, Name) == Key; });
+        std::erase_if(Document.Selection.Vertices, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionCategory::Vertex, Name) == Key; });
         return {};
     });
 }
@@ -4862,7 +4862,7 @@ SketcherCommandOutcome ToggleSketcherCurveVisibility(SketcherDocument& Document,
     return RunAppearanceCommand(Document, HiddenCondition ? "Show curve" : "Hide curve", [&]() -> std::string
     {
         const bool Present = std::any_of(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step)
-                                         { return Step.Label == Label && (Step.Kind == FeatureStepKind::Sketch || Step.Kind == FeatureStepKind::SpaceCurve); });
+                                         { return Step.Label == Label && (Step.Kind == FeatureStepCategory::Sketch || Step.Kind == FeatureStepCategory::SpaceCurve); });
         if (!Present) return "no sketch or curve " + Label;
         if (Document.Appearance.RemovedCurves.contains(Label)) return Label + " is deleted (a later step still reads it): undo brings it back";
         std::set<std::string>& Hidden = Document.Appearance.HiddenCurves;
@@ -4884,7 +4884,7 @@ SketcherCommandOutcome ToggleSketcherLock(SketcherDocument& Document, const std:
     {
         const bool Body  = std::any_of(Document.Regeneration.Bodies.begin(), Document.Regeneration.Bodies.end(), [&](const RegeneratedBody& Entry) { return Entry.Key == Key; });
         const bool Curve = std::any_of(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step)
-                                       { return Step.Label == Key && (Step.Kind == FeatureStepKind::Sketch || Step.Kind == FeatureStepKind::SpaceCurve); });
+                                       { return Step.Label == Key && (Step.Kind == FeatureStepCategory::Sketch || Step.Kind == FeatureStepCategory::SpaceCurve); });
         if (!Body && !Curve) return "no body, sketch or curve " + Key;
         std::set<std::string>& Locked = Document.Appearance.LockedFigures;
         if (LockedCondition)
@@ -4896,9 +4896,9 @@ SketcherCommandOutcome ToggleSketcherLock(SketcherDocument& Document, const std:
         // A locked figure leaves the selection (it cannot be edited until unlocked).
         std::erase(Document.Selection.Curves, Key);
         std::erase(Document.Selection.Bodies, Key);
-        std::erase_if(Document.Selection.Faces, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionKind::Face, Name) == Key; });
-        std::erase_if(Document.Selection.Edges, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionKind::Edge, Name) == Key; });
-        std::erase_if(Document.Selection.Vertices, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionKind::Vertex, Name) == Key; });
+        std::erase_if(Document.Selection.Faces, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Name) == Key; });
+        std::erase_if(Document.Selection.Edges, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionCategory::Edge, Name) == Key; });
+        std::erase_if(Document.Selection.Vertices, [&](const std::string& Name) { return SketcherBodyOfName(Document, SketcherSelectionCategory::Vertex, Name) == Key; });
         return {};
     });
 }
@@ -4911,15 +4911,15 @@ SketcherCommandOutcome JoinSketcherSketches(SketcherDocument& Document, const st
     {
         if (Sketches.size() < 2) return "pick two or more sketches to join";
         const FeatureStep* First = FindStep(Document, Sketches.front());
-        if (!First || First->Kind != FeatureStepKind::Sketch) return "no sketch step labelled " + Sketches.front();
-        const OrthonormalFrame Base   = ElevatedPlane(Document.Tree, *First);
+        if (!First || First->Kind != FeatureStepCategory::Sketch) return "no sketch step labelled " + Sketches.front();
+        const OrthonormalBasis Base   = ElevatedPlane(Document.Tree, *First);
         SketchModel            Joined = SolvedSketch(Document, *First);
         for (size_t Index = 1; Index < Sketches.size(); ++Index)
         {
             const FeatureStep* Other = FindStep(Document, Sketches[Index]);
-            if (!Other || Other->Kind != FeatureStepKind::Sketch) return "no sketch step labelled " + Sketches[Index];
+            if (!Other || Other->Kind != FeatureStepCategory::Sketch) return "no sketch step labelled " + Sketches[Index];
             if (Sketches[Index] == Sketches.front()) return SketcherBodyCaption(Document, Sketches[Index]) + " is picked twice";
-            const OrthonormalFrame Plane = ElevatedPlane(Document.Tree, *Other);
+            const OrthonormalBasis Plane = ElevatedPlane(Document.Tree, *Other);
             const Vector3          Apart = Plane.Origin - Base.Origin;
             if (std::fabs(Dot(Plane.ZAxis, Base.ZAxis)) < 1.0 - 1.0e-9 || std::fabs(Dot(Apart, Base.ZAxis)) > 1.0e-9 * std::max(1.0, Length(Apart)))
                 return SketcherBodyCaption(Document, Other->Label) + " is not in the plane of " + SketcherBodyCaption(Document, First->Label);
@@ -4963,7 +4963,7 @@ SketcherCommandOutcome JoinSketcherSketches(SketcherDocument& Document, const st
     }, 0);
 }
 
-SketcherCommandOutcome FlowSketcherSketches(SketcherDocument& Document, const SketcherFlowRequest& Request)
+SketcherCommandOutcome FlowSketcherSketches(SketcherDocument& Document, const SketcherRailDeformRequest& Request)
 {
     const std::string Caption = NextCaption(Document, "Flow");
     std::vector<std::string> Shapes;
@@ -4973,20 +4973,20 @@ SketcherCommandOutcome FlowSketcherSketches(SketcherDocument& Document, const Sk
                       [&]() -> std::string
     {
         const FeatureStep* Rail = FindStep(Document, Request.Rail);
-        if (!Rail || Rail->Kind != FeatureStepKind::Sketch) return "Flow: pick the rail sketch first, then the shapes";
+        if (!Rail || Rail->Kind != FeatureStepCategory::Sketch) return "Flow: pick the rail sketch first, then the shapes";
         if (Request.Shapes.empty()) return "Flow: pick the rail curve, then one or more shapes to bend along it";
         const FeatureStep* First = FindStep(Document, Request.Shapes.front());
-        if (!First || First->Kind != FeatureStepKind::Sketch) return "Flow: no sketch step labelled " + Request.Shapes.front();
+        if (!First || First->Kind != FeatureStepCategory::Sketch) return "Flow: no sketch step labelled " + Request.Shapes.front();
         // ① the shapes as one model in the first shape's plane (coplanar, as Join).
-        const OrthonormalFrame Base  = ElevatedPlane(Document.Tree, *First);
+        const OrthonormalBasis Base  = ElevatedPlane(Document.Tree, *First);
         SketchModel            Shape = SolvedSketch(Document, *First);
         for (const std::string& Label : Request.Shapes)
         {
             if (Label == Request.Rail) return "Flow: " + SketcherBodyCaption(Document, Label) + " is the rail and a shape";
             if (Label == Request.Shapes.front()) continue;
             const FeatureStep* Other = FindStep(Document, Label);
-            if (!Other || Other->Kind != FeatureStepKind::Sketch) return "Flow: no sketch step labelled " + Label;
-            const OrthonormalFrame Plane = ElevatedPlane(Document.Tree, *Other);
+            if (!Other || Other->Kind != FeatureStepCategory::Sketch) return "Flow: no sketch step labelled " + Label;
+            const OrthonormalBasis Plane = ElevatedPlane(Document.Tree, *Other);
             const Vector3          Apart = Plane.Origin - Base.Origin;
             if (std::fabs(Dot(Plane.ZAxis, Base.ZAxis)) < 1.0 - 1.0e-9 || std::fabs(Dot(Apart, Base.ZAxis)) > 1.0e-9 * std::max(1.0, Length(Apart)))
                 return "Flow: " + SketcherBodyCaption(Document, Label) + " is not in the plane of " + SketcherBodyCaption(Document, First->Label);
@@ -5000,7 +5000,7 @@ SketcherCommandOutcome FlowSketcherSketches(SketcherDocument& Document, const Sk
             Shape = Joined.Sketch;
         }
         // ② bend, then a new sketch step on the rail's plane.
-        const SketchFlowOutcome Flowed = FlowSketchModel(Shape, SolvedSketch(Document, *Rail), Request.Settings);
+        const SketchRailDeformOutcome Flowed = FlowSketchModel(Shape, SolvedSketch(Document, *Rail), Request.Settings);
         if (!Flowed.Refusal.empty()) return "Flow: " + Flowed.Refusal;
         FeatureStep Step   = *Rail;
         Step.Label         = "Sketch#" + std::to_string(NextStepOrdinal(Document.Tree));
@@ -5015,18 +5015,18 @@ SketcherCommandOutcome FlowSketcherSketches(SketcherDocument& Document, const Sk
 
 SketcherCommandOutcome WrapSketcherSketches(SketcherDocument& Document, const SketcherWrapRequest& Request)
 {
-    const char* Verb = Request.Settings.Kind == SketchWrapKind::Project ? "Project " : "Wrap ";
+    const char* Verb = Request.Settings.Kind == SketchWrapCategory::Project ? "Project " : "Wrap ";
     return RunCommand(Document, Verb + ListCaptions(Document, Request.Shapes) + " round " + SketcherBodyCaption(Document, Request.Rail), false, [&]() -> std::string
     {
         const FeatureStep* Rail = FindStep(Document, Request.Rail);
-        if (!Rail || Rail->Kind != FeatureStepKind::Sketch) return "Wrap: pick the shapes and the curve to wrap round (a circle: a can)";
+        if (!Rail || Rail->Kind != FeatureStepCategory::Sketch) return "Wrap: pick the shapes and the curve to wrap round (a circle: a can)";
         if (Request.Shapes.empty()) return "Wrap: pick the shapes (text, outlines) and the curve to wrap them round";
         std::vector<SketchWrapShape> Shapes;
         for (const std::string& Label : Request.Shapes)
         {
             if (Label == Request.Rail) return "Wrap: " + SketcherBodyCaption(Document, Label) + " is the rail and a shape";
             const FeatureStep* Shape = FindStep(Document, Label);
-            if (!Shape || Shape->Kind != FeatureStepKind::Sketch) return "Wrap: no sketch step labelled " + Label;
+            if (!Shape || Shape->Kind != FeatureStepCategory::Sketch) return "Wrap: no sketch step labelled " + Label;
             Shapes.push_back({ SolvedSketch(Document, *Shape), ElevatedPlane(Document.Tree, *Shape) });
         }
         const SketchWrapOutcome Wrapped = WrapSketchModels(Shapes, SolvedSketch(Document, *Rail), ElevatedPlane(Document.Tree, *Rail), Request.Settings);
@@ -5048,12 +5048,12 @@ SketcherCommandOutcome WrapSketcherSketches(SketcherDocument& Document, const Sk
                 if (FitSpaceCurve(Closing, Trial).Refusal.empty()) { Tolerance = Trial.Tolerance; break; }
             }
             FeatureStep Step;
-            Step.Kind            = FeatureStepKind::SpaceCurve;
+            Step.Kind            = FeatureStepCategory::SpaceCurve;
             Step.Label           = "Curve#" + std::to_string(NextStepOrdinal(Document.Tree));
             Step.Points          = Wrapped.Curves[Index];
             Step.ClosedCondition = Wrapped.Closed[Index];
             Step.PlanarCondition = false;
-            Step.Tolerance       = FeatureValue{ Tolerance };
+            Step.Tolerance       = FeatureScalar{ Tolerance };
             Document.Captions[Step.Label] = NextCaption(Document, "Wrap");
             Made.push_back(Step.Label);
             Document.Tree.Steps.push_back(std::move(Step));
@@ -5068,16 +5068,16 @@ std::vector<std::string> SketcherJoinCandidates(const SketcherDocument& Document
 {
     std::vector<std::string> Group;
     const FeatureStep* First = FindStep(Document, Sketch);
-    if (!First || First->Kind != FeatureStepKind::Sketch) return Group;
-    const OrthonormalFrame   Base = ElevatedPlane(Document.Tree, *First);
+    if (!First || First->Kind != FeatureStepCategory::Sketch) return Group;
+    const OrthonormalBasis   Base = ElevatedPlane(Document.Tree, *First);
     std::vector<SketchModel> Members{ SolvedSketch(Document, *First) };
     Group.push_back(Sketch);
     // Every other candidate, placed in the base plane's coordinates.
     std::vector<std::pair<std::string, SketchModel>> Pending;
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch || Step.Label == Sketch || SketcherSketchConsumedCondition(Document, Step.Label)) continue;
-        const OrthonormalFrame Plane = ElevatedPlane(Document.Tree, Step);
+        if (Step.Kind != FeatureStepCategory::Sketch || Step.Label == Sketch || SketcherSketchConsumedCondition(Document, Step.Label)) continue;
+        const OrthonormalBasis Plane = ElevatedPlane(Document.Tree, Step);
         const Vector3          Apart = Plane.Origin - Base.Origin;
         if (std::fabs(Dot(Plane.ZAxis, Base.ZAxis)) < 1.0 - 1.0e-9 || std::fabs(Dot(Apart, Base.ZAxis)) > 1.0e-9 * std::max(1.0, Length(Apart))) continue;
         SketchPlacement Placement;
@@ -5113,7 +5113,7 @@ std::vector<std::string> SketcherJoinCandidates(const SketcherDocument& Document
 SketchOffsetOutcome PreviewSketcherOffset(const SketcherDocument& Document, const std::string& Sketch, double Distance)
 {
     const FeatureStep* Found = FindStep(Document, Sketch);
-    if (!Found || Found->Kind != FeatureStepKind::Sketch)
+    if (!Found || Found->Kind != FeatureStepCategory::Sketch)
     {
         SketchOffsetOutcome Outcome;
         Outcome.Refusal = "no sketch step labelled " + Sketch;
@@ -5130,7 +5130,7 @@ SketcherCommandOutcome OffsetSketcherSketch(SketcherDocument& Document, const st
         if (!Outcome.Refusal.empty()) return Outcome.Refusal;
         const FeatureStep* Found = FindStep(Document, Sketch);
         FeatureStep Step;
-        Step.Kind      = FeatureStepKind::Sketch;
+        Step.Kind      = FeatureStepCategory::Sketch;
         Step.Label     = "Sketch#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Plane     = Found->Plane;
         Step.Elevation = Found->Elevation;
@@ -5146,14 +5146,14 @@ SketcherCommandOutcome PipeSketcherPath(SketcherDocument& Document, const std::s
     return RunCommand(Document, "Pipe r " + FormatAmount(Radius) + " along " + SketcherBodyCaption(Document, Path), false, [&]() -> std::string
     {
         const FeatureStep* Found = FindStep(Document, Path);
-        if (!Found || (Found->Kind != FeatureStepKind::Sketch && Found->Kind != FeatureStepKind::SpaceCurve)) return "choose the path: focus a sketch step or select a curve";
+        if (!Found || (Found->Kind != FeatureStepCategory::Sketch && Found->Kind != FeatureStepCategory::SpaceCurve)) return "choose the path: focus a sketch step or select a curve";
         FeatureStep Step;
-        Step.Kind        = FeatureStepKind::Pipe;
+        Step.Kind        = FeatureStepCategory::Pipe;
         Step.Label       = "Pipe#" + std::to_string(NextStepOrdinal(Document.Tree));
-        Step.Size        = FeatureValue{ Radius };
+        Step.Size        = FeatureScalar{ Radius };
         Step.Combination = Combination;
         Step.Target      = Combination == FeatureCombination::Separate || Combination == FeatureCombination::New ? std::string{} : Target;
-        if (Found->Kind == FeatureStepKind::Sketch) Step.Profile = Path;
+        if (Found->Kind == FeatureStepCategory::Sketch) Step.Profile = Path;
         else Step.Sections = { Path };
         Document.Captions[Step.Label] = NextCaption(Document, "Pipe");
         Document.Tree.Steps.push_back(std::move(Step));
@@ -5166,11 +5166,11 @@ SketcherRevolveAxis ProposeSketcherRevolveAxis(const SketcherDocument& Document,
 {
     SketcherRevolveAxis Axis;
     const FeatureStep* Found = FindStep(Document, Sketch);
-    if (!Found || Found->Kind != FeatureStepKind::Sketch) return Axis;
+    if (!Found || Found->Kind != FeatureStepCategory::Sketch) return Axis;
     const SketchModel& Model = SolvedSketch(Document, *Found);
     for (const SketchCurve& Curve : Model.Curves)
     {
-        if (Curve.Kind == SketchCurveKind::Line && Curve.Construction) { Axis.Line = Curve.Identifier; return Axis; }
+        if (Curve.Kind == SketchCurveCategory::Line && Curve.Construction) { Axis.Line = Curve.Identifier; return Axis; }
     }
     // Side test on the drawn geometry (curve samples, so bulging arcs and splines count).
     double LowX = 1e300, HighX = -1e300, LowY = 1e300, HighY = -1e300, Scale = 0.0;
@@ -5233,16 +5233,16 @@ SketcherCommandOutcome RevolveSketcherSketch(SketcherDocument& Document, const s
     return RunCommand(Document, Label, false, [&]() -> std::string
     {
         const FeatureStep* Found = FindStep(Document, Sketch);
-        if (!Found || Found->Kind != FeatureStepKind::Sketch) return "choose the profile: focus a sketch step";
+        if (!Found || Found->Kind != FeatureStepCategory::Sketch) return "choose the profile: focus a sketch step";
         if (!(Angle > 1.0e-9) || Angle > 2.0 * std::numbers::pi + 1.0e-12) return "the angle must lie in (0°, 360°]";
         if (const std::string Refusal = CombinationRefusal(Document, Combination, FirstBodyCondition, Target); !Refusal.empty()) return Refusal;
         FeatureStep Step;
-        Step.Kind           = FeatureStepKind::Revolve;
+        Step.Kind           = FeatureStepCategory::Revolve;
         Step.Label          = "Revolve#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Profile        = Sketch;
         Step.AxisIdentifier = Axis.Line;
         if (Axis.Line < 0) { Step.AxisOrigin = Axis.Origin; Step.AxisDirection = Axis.Direction; }
-        Step.Angle          = FeatureValue{ Angle };
+        Step.Angle          = FeatureScalar{ Angle };
         Step.Combination    = FirstBodyCondition ? FeatureCombination::New : Combination;
         Step.Target         = Target;
         Document.Captions[Step.Label] = Caption;
@@ -5260,13 +5260,13 @@ SketcherCommandOutcome EvolveSketcherProfile(SketcherDocument& Document, const s
     return RunCommand(Document, Label, false, [&]() -> std::string
     {
         const FeatureStep* Found = FindStep(Document, Profile);
-        if (!Found || Found->Kind != FeatureStepKind::Sketch) return "choose the profile: focus a sketch step";
+        if (!Found || Found->Kind != FeatureStepCategory::Sketch) return "choose the profile: focus a sketch step";
         const FeatureStep* Spine = FindStep(Document, Path);
-        if (!Spine || (Spine->Kind != FeatureStepKind::Sketch && Spine->Kind != FeatureStepKind::SpaceCurve)) return "choose the path: click a one-curve sketch or select a curve";
+        if (!Spine || (Spine->Kind != FeatureStepCategory::Sketch && Spine->Kind != FeatureStepCategory::SpaceCurve)) return "choose the path: click a one-curve sketch or select a curve";
         if (Path == Profile) return "the path must be another sketch than the profile";
         if (const std::string Refusal = CombinationRefusal(Document, Combination, FirstBodyCondition, Target); !Refusal.empty()) return Refusal;
         FeatureStep Step;
-        Step.Kind        = FeatureStepKind::Evolution;
+        Step.Kind        = FeatureStepCategory::Evolution;
         Step.Label       = "Evolution#" + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Profile     = Profile;
         Step.Path        = Path;
@@ -5284,7 +5284,7 @@ std::string ProposeSketcherEvolutionPath(const SketcherDocument& Document, const
     if (!Document.Selection.Curves.empty()) return Document.Selection.Curves.front();
     for (auto Step = Document.Tree.Steps.rbegin(); Step != Document.Tree.Steps.rend(); ++Step)
     {
-        if (Step->Kind != FeatureStepKind::Sketch || Step->Label == Profile) continue;
+        if (Step->Kind != FeatureStepCategory::Sketch || Step->Label == Profile) continue;
         const SketchModel& Model = SolvedSketch(Document, *Step);
         int Drawn = 0;
         bool Open = true;
@@ -5292,17 +5292,17 @@ std::string ProposeSketcherEvolutionPath(const SketcherDocument& Document, const
         {
             if (Curve.Construction) continue;
             ++Drawn;
-            Open = Open && Curve.Kind != SketchCurveKind::Circle && !(Curve.Kind == SketchCurveKind::Spline && Curve.Points.size() > 1 && Curve.Points.front() == Curve.Points.back());
+            Open = Open && Curve.Kind != SketchCurveCategory::Circle && !(Curve.Kind == SketchCurveCategory::Spline && Curve.Points.size() > 1 && Curve.Points.front() == Curve.Points.back());
         }
         if (Drawn == 1 && Open) return Step->Label;
     }
     return {};
 }
 
-std::string SketcherBodyOfName(const SketcherDocument& Document, SketcherSelectionKind Kind, const std::string& Name)
+std::string SketcherBodyOfName(const SketcherDocument& Document, SketcherSelectionCategory Kind, const std::string& Name)
 {
     // 💡 The two pieces of a cut carry the same names: the body the user picked on wins, then the active body.
-    if (Kind != SketcherSelectionKind::Body)
+    if (Kind != SketcherSelectionCategory::Body)
     {
         for (const std::string& Preferred : { Document.Selection.PickedBody, Document.Regeneration.Active })
         {
@@ -5310,17 +5310,17 @@ std::string SketcherBodyOfName(const SketcherDocument& Document, SketcherSelecti
             for (const RegeneratedBody& Body : Document.Regeneration.Bodies)
             {
                 if (Body.Key != Preferred) continue;
-                const std::map<uint32_t, std::string>& Table = Kind == SketcherSelectionKind::Edge ? Body.Naming.Edges
-                                                             : Kind == SketcherSelectionKind::Vertex ? Body.Naming.Vertices : Body.Naming.Faces;
+                const std::map<uint32_t, std::string>& Table = Kind == SketcherSelectionCategory::Edge ? Body.Naming.Edges
+                                                             : Kind == SketcherSelectionCategory::Vertex ? Body.Naming.Vertices : Body.Naming.Faces;
                 for (const auto& Entry : Table) if (Entry.second == Name) return Body.Key;
             }
         }
     }
     for (const RegeneratedBody& Body : Document.Regeneration.Bodies)
     {
-        if (Kind == SketcherSelectionKind::Body) { if (Body.Key == Name) return Body.Key; continue; }
-        const std::map<uint32_t, std::string>& Table = Kind == SketcherSelectionKind::Edge ? Body.Naming.Edges
-                                                     : Kind == SketcherSelectionKind::Vertex ? Body.Naming.Vertices : Body.Naming.Faces;
+        if (Kind == SketcherSelectionCategory::Body) { if (Body.Key == Name) return Body.Key; continue; }
+        const std::map<uint32_t, std::string>& Table = Kind == SketcherSelectionCategory::Edge ? Body.Naming.Edges
+                                                     : Kind == SketcherSelectionCategory::Vertex ? Body.Naming.Vertices : Body.Naming.Faces;
         for (const auto& Entry : Table) if (Entry.second == Name) return Body.Key;
     }
     return {};
@@ -5344,18 +5344,18 @@ std::string DescribeSketcherStep(const SketcherDocument& Document, const Feature
     return Found->second + " · " + FeatureStepKindLabel(Step.Kind);
 }
 
-const char* SketcherConstructLabel(SketcherConstructKind Kind) noexcept
+const char* SketcherConstructLabel(SketcherConstructCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case SketcherConstructKind::Block:    return "Block";
-    case SketcherConstructKind::Cylinder: return "Cylinder";
-    case SketcherConstructKind::Sphere:   return "Sphere";
-    case SketcherConstructKind::Torus:    return "Torus";
-    case SketcherConstructKind::Cone:     return "Cone";
-    case SketcherConstructKind::Wedge:    return "Wedge";
-    case SketcherConstructKind::Prism:    return "Prism";
-    case SketcherConstructKind::Tube:     return "Tube";
+    case SketcherConstructCategory::Block:    return "Block";
+    case SketcherConstructCategory::Cylinder: return "Cylinder";
+    case SketcherConstructCategory::Sphere:   return "Sphere";
+    case SketcherConstructCategory::Torus:    return "Torus";
+    case SketcherConstructCategory::Cone:     return "Cone";
+    case SketcherConstructCategory::Wedge:    return "Wedge";
+    case SketcherConstructCategory::Prism:    return "Prism";
+    case SketcherConstructCategory::Tube:     return "Tube";
     }
     return "Construct";
 }
@@ -5367,7 +5367,7 @@ const char* SketcherConstructLabel(SketcherConstructKind Kind) noexcept
 namespace
 {
     // 📝 Label prefix per kind; the rectangle tool's own H1 V1 H2 V2 share the scheme.
-    [[nodiscard]] const char* ConstraintPrefix(SketchConstraintKind Constraint) noexcept
+    [[nodiscard]] const char* ConstraintPrefix(SketchConstraintCategory Constraint) noexcept
     {
         switch (Constraint)
         {
@@ -5424,7 +5424,7 @@ namespace
     [[nodiscard]] size_t SketchStepIndex(const SketcherDocument& Document, const std::string& Label)
     {
         for (size_t Index = 0; Index < Document.Tree.Steps.size(); ++Index)
-            if (Document.Tree.Steps[Index].Label == Label && Document.Tree.Steps[Index].Kind == FeatureStepKind::Sketch) return Index;
+            if (Document.Tree.Steps[Index].Label == Label && Document.Tree.Steps[Index].Kind == FeatureStepCategory::Sketch) return Index;
         return Document.Tree.Steps.size();
     }
 
@@ -5446,7 +5446,7 @@ namespace
                                         std::vector<SketchPick>& Local, int& Appended)
     {
         const std::string&     Own   = Document.Tree.Steps[Target].Label;
-        const OrthonormalFrame Plane = SketchStepFrame(Document.Tree, Document.Tree.Steps[Target]);
+        const OrthonormalBasis Plane = SketchStepFrame(Document.Tree, Document.Tree.Steps[Target]);
         for (const SketcherSketchPick& Pick : Picks)
         {
             if (Pick.Sketch.empty() || Pick.Sketch == Own) { Local.push_back(Pick.Pick); continue; }
@@ -5475,31 +5475,31 @@ namespace
                 ++Appended;
                 return Added;
             };
-            const int Count = Pick.Pick.Kind == SketchPickKind::Point ? static_cast<int>(From.Points.size()) : static_cast<int>(From.Curves.size());
-            if (Pick.Pick.Index < 0 || Pick.Pick.Index >= Count) return Pick.Sketch + " has no " + (Pick.Pick.Kind == SketchPickKind::Point ? "point " : "curve ") + std::to_string(Pick.Pick.Index);
-            if (Pick.Pick.Kind == SketchPickKind::Point) { Local.push_back({ SketchPickKind::Point, LinkPoint(Pick.Pick.Index) }); continue; }
+            const int Count = Pick.Pick.Kind == SketchPickCategory::Point ? static_cast<int>(From.Points.size()) : static_cast<int>(From.Curves.size());
+            if (Pick.Pick.Index < 0 || Pick.Pick.Index >= Count) return Pick.Sketch + " has no " + (Pick.Pick.Kind == SketchPickCategory::Point ? "point " : "curve ") + std::to_string(Pick.Pick.Index);
+            if (Pick.Pick.Kind == SketchPickCategory::Point) { Local.push_back({ SketchPickCategory::Point, LinkPoint(Pick.Pick.Index) }); continue; }
             int Reused = -1;
             for (size_t Index = 0; Index < Model.Curves.size(); ++Index)
                 if (Model.Curves[Index].Link.Sketch == Pick.Sketch && Model.Curves[Index].Link.Index == Pick.Pick.Index) Reused = static_cast<int>(Index);
-            if (Reused >= 0) { Local.push_back({ SketchPickKind::Curve, Reused }); continue; }
+            if (Reused >= 0) { Local.push_back({ SketchPickCategory::Curve, Reused }); continue; }
             const SketchCurve& Curve = From.Curves[Pick.Pick.Index];
-            if ((Curve.Kind == SketchCurveKind::Circle || Curve.Kind == SketchCurveKind::Arc) && std::fabs(Alignment) < 1.0 - 1.0e-12)
+            if ((Curve.Kind == SketchCurveCategory::Circle || Curve.Kind == SketchCurveCategory::Arc) && std::fabs(Alignment) < 1.0 - 1.0e-12)
                 return SketchCurveName(Curve) + " of " + Pick.Sketch + " is not parallel to " + Own + " (it would project to an ellipse)";
             int Identifier = 1;
             for (const SketchCurve& Existing : Model.Curves) Identifier = std::max(Identifier, Existing.Identifier + 1);
             int Added = -1;
             switch (Curve.Kind)
             {
-            case SketchCurveKind::Line:
+            case SketchCurveCategory::Line:
             {
                 const int Start = LinkPoint(Curve.Start);
                 Added = AppendSketchLine(Model, Start, LinkPoint(Curve.End), Identifier, true);
                 break;
             }
-            case SketchCurveKind::Circle:
+            case SketchCurveCategory::Circle:
                 Added = AppendSketchCircle(Model, LinkPoint(Curve.Centre), MeasureSketchRadius(From, Curve), Identifier, true);
                 break;
-            case SketchCurveKind::Arc:
+            case SketchCurveCategory::Arc:
             {
                 const int Centre = LinkPoint(Curve.Centre);
                 const int Start  = LinkPoint(Curve.Start);
@@ -5507,7 +5507,7 @@ namespace
                 Added = Alignment > 0.0 ? AppendSketchArc(Model, Centre, Start, End, Identifier, true) : AppendSketchArc(Model, Centre, End, Start, Identifier, true);
                 break;
             }
-            case SketchCurveKind::Spline:
+            case SketchCurveCategory::Spline:
             {
                 std::vector<int> Points;
                 for (int Point : Curve.Points) Points.push_back(LinkPoint(Point));
@@ -5518,7 +5518,7 @@ namespace
             }
             Model.Curves[Added].Link = { Pick.Sketch, Pick.Pick.Index };
             ++Appended;
-            Local.push_back({ SketchPickKind::Curve, Added });
+            Local.push_back({ SketchPickCategory::Curve, Added });
         }
         return {};
     }
@@ -5526,7 +5526,7 @@ namespace
     [[nodiscard]] FeatureStep* FindSketchStep(SketcherDocument& Document, const std::string& Label, size_t& Index)
     {
         for (Index = 0; Index < Document.Tree.Steps.size(); ++Index)
-            if (Document.Tree.Steps[Index].Label == Label) return Document.Tree.Steps[Index].Kind == FeatureStepKind::Sketch ? &Document.Tree.Steps[Index] : nullptr;
+            if (Document.Tree.Steps[Index].Label == Label) return Document.Tree.Steps[Index].Kind == FeatureStepCategory::Sketch ? &Document.Tree.Steps[Index] : nullptr;
         return nullptr;
     }
 
@@ -5613,7 +5613,7 @@ namespace
     }
 }
 
-std::string NextSketcherConstraintLabel(const SketchModel& Sketch, SketchConstraintKind Constraint)
+std::string NextSketcherConstraintLabel(const SketchModel& Sketch, SketchConstraintCategory Constraint)
 {
     return NextLabel(Sketch, ConstraintPrefix(Constraint));
 }
@@ -5634,13 +5634,13 @@ std::vector<std::string> SketcherLinkSources(const SketcherDocument& Document, c
     std::vector<std::string> Sources;
     const size_t Target = SketchStepIndex(Document, Sketch);
     for (size_t Index = 0; Index < Target && Index < Document.Tree.Steps.size(); ++Index)
-        if (Document.Tree.Steps[Index].Kind == FeatureStepKind::Sketch) Sources.push_back(Document.Tree.Steps[Index].Label);
+        if (Document.Tree.Steps[Index].Kind == FeatureStepCategory::Sketch) Sources.push_back(Document.Tree.Steps[Index].Label);
     return Sources;
 }
 
 bool SketcherLinkedCondition(const SketchModel& Sketch, SketchPick Pick) noexcept
 {
-    if (Pick.Kind == SketchPickKind::Point) return Pick.Index >= 0 && Pick.Index < static_cast<int>(Sketch.Points.size()) && !Sketch.Points[Pick.Index].Link.Sketch.empty();
+    if (Pick.Kind == SketchPickCategory::Point) return Pick.Index >= 0 && Pick.Index < static_cast<int>(Sketch.Points.size()) && !Sketch.Points[Pick.Index].Link.Sketch.empty();
     return Pick.Index >= 0 && Pick.Index < static_cast<int>(Sketch.Curves.size()) && !Sketch.Curves[Pick.Index].Link.Sketch.empty();
 }
 
@@ -5649,7 +5649,7 @@ SketcherSketchDiagnosis DiagnoseSketcherSketch(const SketcherDocument& Document,
     SketcherSketchDiagnosis Diagnosis;
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        if (Step.Label != Sketch || Step.Kind != FeatureStepKind::Sketch) continue;
+        if (Step.Label != Sketch || Step.Kind != FeatureStepCategory::Sketch) continue;
         Diagnosis.PresentCondition = true;
         Diagnosis.Sketch           = BindSketch(Document, Step);
         Diagnosis.Solve            = SolveSketch(Diagnosis.Sketch);
@@ -5779,10 +5779,10 @@ SketcherCommandOutcome UnlinkSketcherGeometry(SketcherDocument& Document, const 
         WriteBackPositions(*Found, Projected);
         SketchModel& Model = Found->Sketch;
         const auto Free = [&](int Point) { if (Point >= 0 && Point < static_cast<int>(Model.Points.size())) Model.Points[Point].Link = {}; };
-        if (Pick.Kind == SketchPickKind::Point)
+        if (Pick.Kind == SketchPickCategory::Point)
         {
             Free(Pick.Index);
-            for (SketchCurve& Curve : Model.Curves) if (Curve.Kind == SketchCurveKind::Circle && Curve.Centre == Pick.Index) Curve.Link = {};
+            for (SketchCurve& Curve : Model.Curves) if (Curve.Kind == SketchCurveCategory::Circle && Curve.Centre == Pick.Index) Curve.Link = {};
             return {};
         }
         SketchCurve& Curve = Model.Curves[Pick.Index];
@@ -5798,7 +5798,7 @@ SketcherCommandOutcome UnlinkSketcherGeometry(SketcherDocument& Document, const 
 SketchDragOutcome PreviewSketcherDrag(const SketcherDocument& Document, const std::string& Sketch, int Point, Vector2 Target)
 {
     for (const FeatureStep& Step : Document.Tree.Steps)
-        if (Step.Label == Sketch && Step.Kind == FeatureStepKind::Sketch) return DragSketchPoint(BindSketch(Document, Step), Point, Target);
+        if (Step.Label == Sketch && Step.Kind == FeatureStepCategory::Sketch) return DragSketchPoint(BindSketch(Document, Step), Point, Target);
     SketchDragOutcome Missing;
     Missing.Refusal = "Drag: no sketch step " + Sketch;
     return Missing;
@@ -5808,7 +5808,7 @@ SketcherCommandOutcome DragSketcherSketchPoint(SketcherDocument& Document, const
 {
     size_t Index = 0;
     FeatureStep* Found = FindSketchStep(Document, Sketch, Index);
-    const std::string Named = Found ? NameSketchPick(Found->Sketch, { SketchPickKind::Point, Point }) : std::string("point");
+    const std::string Named = Found ? NameSketchPick(Found->Sketch, { SketchPickCategory::Point, Point }) : std::string("point");
     return RunCommand(Document, "Drag " + Named + " of " + SketchOwner(Document, Sketch), false, [&]() -> std::string
     {
         if (!Found) return "no sketch step " + Sketch;
@@ -5831,7 +5831,7 @@ SketcherCommandOutcome DragSketcherSketchPoints(SketcherDocument& Document, cons
         if (Points.empty() || Points.size() != Targets.size()) return "Drag: points and targets do not pair up";
         SketchModel Working = {};
         for (const FeatureStep& Step : Document.Tree.Steps)
-            if (Step.Label == Sketch && Step.Kind == FeatureStepKind::Sketch) Working = BindSketch(Document, Step);
+            if (Step.Label == Sketch && Step.Kind == FeatureStepCategory::Sketch) Working = BindSketch(Document, Step);
         for (int Point : Points)
             if (Point < 0 || Point >= int(Working.Points.size())) return "Drag: no point " + std::to_string(Point) + " in " + Sketch;
         const std::vector<SketchPoint> Start = Working.Points;
@@ -5855,41 +5855,41 @@ SketcherCommandOutcome DragSketcherSketchPoints(SketcherDocument& Document, cons
     }, Index);
 }
 
-const char* SketcherDrawingLabel(SketcherDrawingKind Kind) noexcept
+const char* SketcherDrawingLabel(SketcherDrawingCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case SketcherDrawingKind::Line:      return "Line";
-    case SketcherDrawingKind::Rectangle: return "Rectangle";
-    case SketcherDrawingKind::Circle:    return "Circle";
-    case SketcherDrawingKind::Arc:       return "Arc";
-    case SketcherDrawingKind::Slot:      return "Slot";
-    case SketcherDrawingKind::Curve:     return "Curve";
-    case SketcherDrawingKind::Polygon:   return "Polygon";
+    case SketcherDrawingCategory::Line:      return "Line";
+    case SketcherDrawingCategory::Rectangle: return "Rectangle";
+    case SketcherDrawingCategory::Circle:    return "Circle";
+    case SketcherDrawingCategory::Arc:       return "Arc";
+    case SketcherDrawingCategory::Slot:      return "Slot";
+    case SketcherDrawingCategory::Curve:     return "Curve";
+    case SketcherDrawingCategory::Polygon:   return "Polygon";
     }
     return "Drawing";
 }
 
-const char* SketcherFaceOperationLabel(FaceOperationKind Operation) noexcept
+const char* SketcherFaceOperationLabel(FaceOperationCategory Operation) noexcept
 {
     switch (Operation)
     {
-    case FaceOperationKind::Offset:     return "Offset";
-    case FaceOperationKind::Push:       return "Push";
-    case FaceOperationKind::Tweak:      return "Tweak";
-    case FaceOperationKind::Scale:      return "Scale";
-    case FaceOperationKind::Rotate:     return "Rotate";
-    case FaceOperationKind::Draft:      return "Draft";
-    case FaceOperationKind::Extend:     return "Extend";
-    case FaceOperationKind::Trim:       return "Trim";
-    case FaceOperationKind::OffsetBody: return "OffsetBody";
-    case FaceOperationKind::Hollow:     return "Hollow";
-    case FaceOperationKind::Extrude:    return "ExtrudeFaces";
-    case FaceOperationKind::Delete:     return "DeleteFaces";
-    case FaceOperationKind::Heal:       return "Heal";
-    case FaceOperationKind::Thicken:    return "Thicken";
-    case FaceOperationKind::Inset:      return "Inset";
-    case FaceOperationKind::Reshape:    return "Reshape";
+    case FaceOperationCategory::Offset:     return "Offset";
+    case FaceOperationCategory::Push:       return "Push";
+    case FaceOperationCategory::Tweak:      return "Tweak";
+    case FaceOperationCategory::Scale:      return "Scale";
+    case FaceOperationCategory::Rotate:     return "Rotate";
+    case FaceOperationCategory::Draft:      return "Draft";
+    case FaceOperationCategory::Extend:     return "Extend";
+    case FaceOperationCategory::Trim:       return "Trim";
+    case FaceOperationCategory::OffsetBody: return "OffsetBody";
+    case FaceOperationCategory::Hollow:     return "Hollow";
+    case FaceOperationCategory::Extrude:    return "ExtrudeFaces";
+    case FaceOperationCategory::Delete:     return "DeleteFaces";
+    case FaceOperationCategory::Heal:       return "Heal";
+    case FaceOperationCategory::Thicken:    return "Thicken";
+    case FaceOperationCategory::Inset:      return "Inset";
+    case FaceOperationCategory::Reshape:    return "Reshape";
     }
     return "Change";
 }
@@ -5934,7 +5934,7 @@ namespace
         const size_t At = Face.find(Marker);
         if (At == std::string::npos) return false;
         const FeatureStep* Step = FindStep(Document, Face.substr(0, At));
-        if (!Step || Step->Kind != FeatureStepKind::Blend) return false;
+        if (!Step || Step->Kind != FeatureStepCategory::Blend) return false;
         const size_t Open  = At + Marker.size();
         int          Depth = 1;
         for (size_t Index = Open; Index < Face.size(); ++Index)
@@ -6014,9 +6014,9 @@ namespace
 
     // 📝 Dissolve by a restricted Heal step on Owner carrying the picked edges / vertices (the kernel refuses unless every
     //    one goes, and touches nothing else). Appended: a heal acts on the body as it stands.
-    [[nodiscard]] SketcherCommandOutcome DissolveSketcherNames(SketcherDocument& Document, SketcherSelectionKind Kind, const std::vector<std::string>& Names)
+    [[nodiscard]] SketcherCommandOutcome DissolveSketcherNames(SketcherDocument& Document, SketcherSelectionCategory Kind, const std::vector<std::string>& Names)
     {
-        const bool        EdgeCondition = Kind == SketcherSelectionKind::Edge;
+        const bool        EdgeCondition = Kind == SketcherSelectionCategory::Edge;
         const std::string Noun          = EdgeCondition ? " edge(s)" : " vertex(es)";
         std::string       Owner, Problem;
         if (Names.empty()) Problem = EdgeCondition ? "pick edges first (mode 2)" : "pick vertices first (mode 1)";
@@ -6026,11 +6026,11 @@ namespace
         {
             if (!Problem.empty()) return Problem;
             FeatureStep Step;
-            Step.Kind      = FeatureStepKind::FaceOperation;
+            Step.Kind      = FeatureStepCategory::FaceOperation;
             Step.Label     = "Change#" + std::to_string(NextStepOrdinal(Document.Tree));
-            Step.Operation = FaceOperationKind::Heal;
+            Step.Operation = FaceOperationCategory::Heal;
             Step.Target    = Owner;
-            for (const std::string& Name : Names) Step.References.push_back({ EdgeCondition ? ReferenceKind::Edge : ReferenceKind::Vertex, Name, {} });
+            for (const std::string& Name : Names) Step.References.push_back({ EdgeCondition ? ReferenceCategory::Edge : ReferenceCategory::Vertex, Name, {} });
             Document.Captions[Step.Label] = NextCaption(Document, "Dissolve");
             Document.Tree.Steps.push_back(std::move(Step));
             return {};
@@ -6070,7 +6070,7 @@ SketcherCommandOutcome DeleteSketcherFaces(SketcherDocument& Document)
         ++Strips;
     }
     if (!Faces.empty() && Strips == Faces.size()) return UnblendSketcherEdges(Document, Sources, std::to_string(Faces.size()) + " fillet face(s)");
-    return ChangeSketcherSelection(Document, FaceOperationKind::Delete, 0.0);
+    return ChangeSketcherSelection(Document, FaceOperationCategory::Delete, 0.0);
 }
 
 SketcherCommandOutcome DeleteSketcherEdges(SketcherDocument& Document)
@@ -6098,12 +6098,12 @@ SketcherCommandOutcome DeleteSketcherEdges(SketcherDocument& Document)
         Outcome.Refusal = "fillet edges and plain edges are picked together: delete them separately";
         return Outcome;
     }
-    return DissolveSketcherNames(Document, SketcherSelectionKind::Edge, Edges);
+    return DissolveSketcherNames(Document, SketcherSelectionCategory::Edge, Edges);
 }
 
 SketcherCommandOutcome DeleteSketcherVertices(SketcherDocument& Document)
 {
-    return DissolveSketcherNames(Document, SketcherSelectionKind::Vertex, Document.Selection.Vertices);
+    return DissolveSketcherNames(Document, SketcherSelectionCategory::Vertex, Document.Selection.Vertices);
 }
 
 SketcherCommandOutcome DeleteSketcherCurves(SketcherDocument& Document, const std::vector<std::string>& Labels)
@@ -6123,7 +6123,7 @@ SketcherCommandOutcome DeleteSketcherCurves(SketcherDocument& Document, const st
         for (const std::string& Label : Selected)
         {
             const FeatureStep* Step = FindStep(Document, Label);
-            if (!Step || (Step->Kind != FeatureStepKind::Sketch && Step->Kind != FeatureStepKind::SpaceCurve)) return "no sketch or curve labelled " + Label;
+            if (!Step || (Step->Kind != FeatureStepCategory::Sketch && Step->Kind != FeatureStepCategory::SpaceCurve)) return "no sketch or curve labelled " + Label;
             if (SketcherLockedCondition(Document, Label)) return CaptionOrLabel(Document, Label) + " is locked";
             if (Document.Appearance.RemovedCurves.contains(Label)) return CaptionOrLabel(Document, Label) + " is already deleted";
         }
@@ -6142,7 +6142,7 @@ SketcherCommandOutcome DeleteSketcherSketchPoints(SketcherDocument& Document, co
     SketchModel       Edited;
     std::string       Problem;
     int               Erased = 0;
-    if (const FeatureStep* Step = FindStep(Document, Sketch); !Step || Step->Kind != FeatureStepKind::Sketch) Problem = "no sketch labelled " + Sketch;
+    if (const FeatureStep* Step = FindStep(Document, Sketch); !Step || Step->Kind != FeatureStepCategory::Sketch) Problem = "no sketch labelled " + Sketch;
     else if (Points.empty()) Problem = "pick sketch points first (mode 1)";
     else
     {
@@ -6150,7 +6150,7 @@ SketcherCommandOutcome DeleteSketcherSketchPoints(SketcherDocument& Document, co
         for (int Point : Points) if (Point < 0 || Point >= static_cast<int>(Edited.Points.size())) Problem = "point " + std::to_string(Point) + " is not in " + Owner;
         // Disconnect only the selected spline controls; do not erase the whole incident spline.
         int Changed=0;
-        if(Problem.empty()) for(auto& Curve:Edited.Curves) if(Curve.Kind==SketchCurveKind::Spline)
+        if(Problem.empty()) for(auto& Curve:Edited.Curves) if(Curve.Kind==SketchCurveCategory::Spline)
         {
             const auto Old=Curve.Points;
             std::erase_if(Curve.Points,[&](int I){return std::find(Points.begin(),Points.end(),I)!=Points.end();});
@@ -6212,7 +6212,7 @@ namespace
         return std::all_of(Name.begin(), Name.end(), [](unsigned char Ch) { return std::isalnum(Ch) || Ch == '_'; });
     }
 
-    [[nodiscard]] FeatureValue* ResolveMutableStepField(FeatureStep& Step, const std::string& Field)
+    [[nodiscard]] FeatureScalar* ResolveMutableStepField(FeatureStep& Step, const std::string& Field)
     {
         if (Field == "Size")         return &Step.Size;
         if (Field == "EndSize")      { if (!Step.EndSize) Step.EndSize = Step.Size; return &*Step.EndSize; }
@@ -6234,17 +6234,17 @@ namespace
     {
         for (FeatureStep& Step : Tree.Steps)
         {
-            for (FeatureValue* Ptr : { &Step.Elevation, &Step.Extent, &Step.Start, &Step.Angle, &Step.Size, &Step.Amount, &Step.Tolerance, &Step.Offset,
+            for (FeatureScalar* Ptr : { &Step.Elevation, &Step.Extent, &Step.Start, &Step.Angle, &Step.Size, &Step.Amount, &Step.Tolerance, &Step.Offset,
                                        &Step.Joint.Angle, &Step.Joint.Slide, &Step.Joint.SecondSlide, &Step.Joint.Pitch, &Step.Joint.Roll, &Step.Joint.Offset })
                 Visit(*Ptr);
             if (Step.EndSize) Visit(*Step.EndSize);
-            for (FeatureValue& Anchor : Step.AnchorSizes) Visit(Anchor);
+            for (FeatureScalar& Anchor : Step.AnchorSizes) Visit(Anchor);
         }
         for (FeatureEdgeGroup& Group : Tree.EdgeGroups)
             for (EdgeWeightEntry& Entry : Group.Entries) Visit(Entry.Weight);
         for (FeatureModifier& Modifier : Tree.Modifiers)
         {
-            for (FeatureValue* Ptr : { &Modifier.Offset, &Modifier.Size, &Modifier.Angle, &Modifier.Count, &Modifier.SecondaryCount,
+            for (FeatureScalar* Ptr : { &Modifier.Offset, &Modifier.Size, &Modifier.Angle, &Modifier.Count, &Modifier.SecondaryCount,
                                        &Modifier.Distance, &Modifier.SecondaryDistance, &Modifier.Margin })
                 Visit(*Ptr);
         }
@@ -6262,7 +6262,7 @@ namespace
         std::erase_if(Document.Appearance.LiveCutters, [&](const std::string& Key)
         {
             return std::none_of(Document.Tree.Modifiers.begin(), Document.Tree.Modifiers.end(),
-                                [&](const FeatureModifier& Mod) { return Mod.Kind == ModifierKind::Boolean && Mod.KeepToolCondition && Mod.Tool == Key; });
+                                [&](const FeatureModifier& Mod) { return Mod.Kind == ModifierCategory::Boolean && Mod.KeepToolCondition && Mod.Tool == Key; });
         });
     }
 } // namespace
@@ -6296,12 +6296,12 @@ SketcherCommandOutcome DeleteSketcherVariable(SketcherDocument& Document, const 
                                         [&](const FeatureParameter& Param) { return Param.Name == Name; });
         if (Found == Document.Tree.Parameters.end()) return "no variable named '" + Name + "'";
         // Bake current evaluated values into any bound fields so deleting a variable preserves exact current geometry.
-        VisitAllFeatureValues(Document.Tree, [&](FeatureValue& Val)
+        VisitAllFeatureValues(Document.Tree, [&](FeatureScalar& Val)
         {
             if (Val.Parameter == Name || Val.SecondParameter == Name)
             {
                 const double Current = EvaluateFeatureValue(Document.Tree, Val);
-                Val = FeatureValue{ std::isfinite(Current) ? Current : Val.Literal };
+                Val = FeatureScalar{ std::isfinite(Current) ? Current : Val.Literal };
             }
         });
         for (FeatureStep& Step : Document.Tree.Steps)
@@ -6324,7 +6324,7 @@ SketcherCommandOutcome RenameSketcherVariable(SketcherDocument& Document, const 
         for (const FeatureParameter& Existing : Document.Tree.Parameters)
             if (Existing.Name == NewName) return "a variable named '" + NewName + "' already exists";
         Found->Name = NewName;
-        VisitAllFeatureValues(Document.Tree, [&](FeatureValue& Val)
+        VisitAllFeatureValues(Document.Tree, [&](FeatureScalar& Val)
         {
             if (Val.Parameter == OldName) Val.Parameter = NewName;
             if (Val.SecondParameter == OldName) Val.SecondParameter = NewName;
@@ -6346,12 +6346,12 @@ SketcherCommandOutcome BindSketcherStepValue(SketcherDocument& Document, const s
         const auto StepIt = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(),
                                          [&](const FeatureStep& Step) { return Step.Label == StepLabel; });
         if (StepIt == Document.Tree.Steps.end()) return "no step labelled '" + StepLabel + "'";
-        FeatureValue* Target = ResolveMutableStepField(*StepIt, Field);
+        FeatureScalar* Target = ResolveMutableStepField(*StepIt, Field);
         if (!Target) return "step field '" + Field + "' cannot be bound";
         if (ParameterName.empty())
         {
             const double Current = EvaluateFeatureValue(Document.Tree, *Target);
-            *Target = FeatureValue{ std::isfinite(Current) ? Current : Target->Literal };
+            *Target = FeatureScalar{ std::isfinite(Current) ? Current : Target->Literal };
             return {};
         }
         const auto ParamIt = std::find_if(Document.Tree.Parameters.begin(), Document.Tree.Parameters.end(),
@@ -6376,7 +6376,7 @@ SketcherCommandOutcome SaveStepValueAsVariable(SketcherDocument& Document, const
         const auto StepIt = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(),
                                          [&](const FeatureStep& Step) { return Step.Label == StepLabel; });
         if (StepIt == Document.Tree.Steps.end()) return "no step labelled '" + StepLabel + "'";
-        FeatureValue* Target = ResolveMutableStepField(*StepIt, Field);
+        FeatureScalar* Target = ResolveMutableStepField(*StepIt, Field);
         if (!Target) return "step field '" + Field + "' is unknown";
         const double Current = EvaluateFeatureValue(Document.Tree, *Target);
         if (!std::isfinite(Current)) return "current value of " + Field + " is not finite";
@@ -6441,12 +6441,12 @@ SketcherCommandOutcome AddSketcherLiveBoolean(SketcherDocument& Document, const 
     }
 
     FeatureModifier Modifier;
-    Modifier.Kind              = ModifierKind::Boolean;
+    Modifier.Kind              = ModifierCategory::Boolean;
     Modifier.Label             = "Boolean#" + std::to_string(NextStepOrdinal(Document.Tree));
     Modifier.Target            = HostKey;
     Modifier.Tool              = Tool;
     Modifier.Combination       = Combination;
-    Modifier.Offset            = FeatureValue{ Offset };
+    Modifier.Offset            = FeatureScalar{ Offset };
     Modifier.OffsetAxis        = Length(OffsetAxis) > 1.0e-12 ? Normalize(OffsetAxis) : Vector3{ 0.0, 0.0, 1.0 };
     Modifier.KeepToolCondition = true;
     const std::string ModLabel = Modifier.Label;
@@ -6465,7 +6465,7 @@ SketcherCommandOutcome AddSketcherLiveBoolean(SketcherDocument& Document, const 
     SummarizeSketcherDocument(Document);
     Document.Selection         = {};
     Document.Selection.Bodies  = { Tool };
-    Document.Selection.LastKind = SketcherSelectionKind::Body;
+    Document.Selection.LastKind = SketcherSelectionCategory::Body;
     Document.UndoEntries.push_back(std::move(Before));
     Document.RedoEntries.clear();
     TrimHistoryReplay(Document);
@@ -6493,7 +6493,7 @@ SketcherCommandOutcome KnifeSketcherLiveInsert(SketcherDocument& Document, const
     if (!Outcome.Refusal.empty()) { Outcome.Milliseconds = ElapsedMs(Start); return Outcome; }
 
     FeatureStep Import;
-    Import.Kind         = FeatureStepKind::Import;
+    Import.Kind         = FeatureStepCategory::Import;
     Import.Label        = "Import#" + std::to_string(NextStepOrdinal(Document.Tree));
     Import.Exchange     = Placement.Exchange;
     Import.ExchangeUnit = SketcherModelUnitMillimetres;
@@ -6502,7 +6502,7 @@ SketcherCommandOutcome KnifeSketcherLiveInsert(SketcherDocument& Document, const
     Document.Tree.Steps.push_back(std::move(Import));
 
     FeatureStep Place;
-    Place.Kind       = FeatureStepKind::Transform;
+    Place.Kind       = FeatureStepCategory::Transform;
     Place.Label      = "Transform#" + std::to_string(NextStepOrdinal(Document.Tree));
     Place.Target     = CutterKey;
     Place.Placement  = Placement.Map;
@@ -6511,7 +6511,7 @@ SketcherCommandOutcome KnifeSketcherLiveInsert(SketcherDocument& Document, const
     Document.Tree.Steps.push_back(std::move(Place));
 
     FeatureModifier Modifier;
-    Modifier.Kind              = ModifierKind::Boolean;
+    Modifier.Kind              = ModifierCategory::Boolean;
     Modifier.Label             = "Boolean#" + std::to_string(NextStepOrdinal(Document.Tree));
     Modifier.Target            = Placement.Target;
     Modifier.Tool              = CutterKey;
@@ -6540,7 +6540,7 @@ SketcherCommandOutcome KnifeSketcherLiveInsert(SketcherDocument& Document, const
     SummarizeSketcherDocument(Document);
     Document.Selection          = {};
     Document.Selection.Bodies   = { CutterKey };
-    Document.Selection.LastKind = SketcherSelectionKind::Body;
+    Document.Selection.LastKind = SketcherSelectionCategory::Body;
     Document.UndoEntries.push_back(std::move(Before));
     Document.RedoEntries.clear();
     TrimHistoryReplay(Document);
@@ -6574,16 +6574,16 @@ SketcherCommandOutcome ToggleSketcherLiveCutter(SketcherDocument& Document, cons
     return Outcome;
 }
 
-const char* SketcherCompoundCutterLabel(SketcherCompoundCutterKind Kind) noexcept
+const char* SketcherCompoundCutterLabel(SketcherCompoundCutterCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case SketcherCompoundCutterKind::Countersink:   return "Countersink";
-    case SketcherCompoundCutterKind::Counterbore:   return "Counterbore";
-    case SketcherCompoundCutterKind::SteppedHole:   return "Stepped hole";
-    case SketcherCompoundCutterKind::HexSocket:     return "Hex socket";
-    case SketcherCompoundCutterKind::SteppedSlot:   return "Stepped slot";
-    case SketcherCompoundCutterKind::SteppedPocket: return "Stepped pocket";
+    case SketcherCompoundCutterCategory::Countersink:   return "Countersink";
+    case SketcherCompoundCutterCategory::Counterbore:   return "Counterbore";
+    case SketcherCompoundCutterCategory::SteppedHole:   return "Stepped hole";
+    case SketcherCompoundCutterCategory::HexSocket:     return "Hex socket";
+    case SketcherCompoundCutterCategory::SteppedSlot:   return "Stepped slot";
+    case SketcherCompoundCutterCategory::SteppedPocket: return "Stepped pocket";
     }
     return "Compound cutter";
 }
@@ -6634,13 +6634,13 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
     const std::string CutterCaption = NextCaption(Document, CutterStem.empty() ? "Cutter" : CutterStem);
     std::string       CutterKey;
 
-    const bool Revolved = Spec.Kind == SketcherCompoundCutterKind::Countersink ||
-                          Spec.Kind == SketcherCompoundCutterKind::Counterbore ||
-                          Spec.Kind == SketcherCompoundCutterKind::SteppedHole;
+    const bool Revolved = Spec.Kind == SketcherCompoundCutterCategory::Countersink ||
+                          Spec.Kind == SketcherCompoundCutterCategory::Counterbore ||
+                          Spec.Kind == SketcherCompoundCutterCategory::SteppedHole;
     if (Revolved)
     {
         FeatureStep Meridian;
-        Meridian.Kind          = FeatureStepKind::Sketch;
+        Meridian.Kind          = FeatureStepCategory::Sketch;
         Meridian.Label         = "Sketch#" + std::to_string(NextStepOrdinal(Document.Tree));
         Meridian.FillCondition = true;
         Meridian.Plane.Origin  = Spec.Spot.Origin;
@@ -6652,14 +6652,14 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
         const int P0 = AppendSketchPoint(Sketch, { 0.0, -Lift });
         const int P1 = AppendSketchPoint(Sketch, { R1,  -Lift });
         int P2 = -1, P3 = -1, P4 = -1, P5 = -1;
-        if (Spec.Kind == SketcherCompoundCutterKind::Countersink)
+        if (Spec.Kind == SketcherCompoundCutterCategory::Countersink)
         {
             P2 = AppendSketchPoint(Sketch, { R1, 0.0 });
             P3 = AppendSketchPoint(Sketch, { R2, D1 });
             P4 = AppendSketchPoint(Sketch, { R2, D1 + D2 });
             P5 = AppendSketchPoint(Sketch, { 0.0, D1 + D2 });
         }
-        else if (Spec.Kind == SketcherCompoundCutterKind::Counterbore)
+        else if (Spec.Kind == SketcherCompoundCutterCategory::Counterbore)
         {
             P2 = AppendSketchPoint(Sketch, { R1, D1 });
             P3 = AppendSketchPoint(Sketch, { R2, D1 });
@@ -6688,7 +6688,7 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
         Document.Tree.Steps.push_back(std::move(Meridian));
 
         FeatureStep Sweep;
-        Sweep.Kind           = FeatureStepKind::Revolve;
+        Sweep.Kind           = FeatureStepCategory::Revolve;
         Sweep.Label          = "Revolve#" + std::to_string(NextStepOrdinal(Document.Tree));
         Sweep.Profile        = MeridianLabel;
         Sweep.AxisIdentifier = 1;
@@ -6704,7 +6704,7 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
         const auto PopulateProfile = [&](SketchModel& Sketch, bool OuterStage)
         {
             const double Rad = OuterStage ? R1 : R2;
-            if (OuterStage && Spec.Kind == SketcherCompoundCutterKind::HexSocket)
+            if (OuterStage && Spec.Kind == SketcherCompoundCutterCategory::HexSocket)
             {
                 std::vector<int> Pts;
                 for (int Corner = 0; Corner < 6; ++Corner)
@@ -6715,12 +6715,12 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
                 for (int Corner = 0; Corner < 6; ++Corner)
                     AppendSketchLine(Sketch, Pts[Corner], Pts[(Corner + 1) % 6], Corner + 1);
             }
-            else if (!OuterStage && Spec.Kind == SketcherCompoundCutterKind::HexSocket)
+            else if (!OuterStage && Spec.Kind == SketcherCompoundCutterCategory::HexSocket)
             {
                 const int Centre = AppendSketchPoint(Sketch, { 0.0, 0.0 });
                 AppendSketchCircle(Sketch, Centre, Rad, 1);
             }
-            else if (Spec.Kind == SketcherCompoundCutterKind::SteppedSlot)
+            else if (Spec.Kind == SketcherCompoundCutterCategory::SteppedSlot)
             {
                 const double  HalfSpan = 1.15 * R1;                                          // Concentric cap centres across both stages
                 const Vector2 First{ -HalfSpan, 0.0 }, Second{ +HalfSpan, 0.0 }, Left{ 0.0, 1.0 };
@@ -6749,7 +6749,7 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
         };
 
         FeatureStep OuterSketch;
-        OuterSketch.Kind          = FeatureStepKind::Sketch;
+        OuterSketch.Kind          = FeatureStepCategory::Sketch;
         OuterSketch.Label         = "Sketch#" + std::to_string(NextStepOrdinal(Document.Tree));
         OuterSketch.FillCondition = true;
         OuterSketch.Plane         = { Spec.Spot.Origin - Dir * Lift, Across, FrameY, Dir };
@@ -6762,7 +6762,7 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
 
         Document.Tree.Parameters.push_back({ CutterCaption + ".OuterDepth", Lift + D1, 0.001, std::max(10.0, 4.0 * (Lift + D1)), "Stage 1 depth (+collar)" });
         FeatureStep OuterExtrude;
-        OuterExtrude.Kind        = FeatureStepKind::Extrude;
+        OuterExtrude.Kind        = FeatureStepCategory::Extrude;
         OuterExtrude.Label       = "Extrude#" + std::to_string(NextStepOrdinal(Document.Tree));
         OuterExtrude.Profile     = OuterSketchLabel;
         OuterExtrude.Extent      = ParameterValue(CutterCaption + ".OuterDepth");
@@ -6773,7 +6773,7 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
 
         const double Overlap = std::min(0.002, 0.25 * D1);
         FeatureStep InnerSketch;
-        InnerSketch.Kind          = FeatureStepKind::Sketch;
+        InnerSketch.Kind          = FeatureStepCategory::Sketch;
         InnerSketch.Label         = "Sketch#" + std::to_string(NextStepOrdinal(Document.Tree));
         InnerSketch.FillCondition = true;
         InnerSketch.Plane         = { Spec.Spot.Origin + Dir * (D1 - Overlap), Across, FrameY, Dir };
@@ -6786,7 +6786,7 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
 
         Document.Tree.Parameters.push_back({ CutterCaption + ".InnerDepth", D2 + Overlap, 0.001, std::max(10.0, 4.0 * (D2 + Overlap)), "Stage 2 depth" });
         FeatureStep InnerExtrude;
-        InnerExtrude.Kind        = FeatureStepKind::Extrude;
+        InnerExtrude.Kind        = FeatureStepCategory::Extrude;
         InnerExtrude.Label       = "Extrude#" + std::to_string(NextStepOrdinal(Document.Tree));
         InnerExtrude.Profile     = InnerSketchLabel;
         InnerExtrude.Extent      = ParameterValue(CutterCaption + ".InnerDepth");
@@ -6801,12 +6801,12 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
     {
         Document.Selection          = {};
         Document.Selection.Bodies   = { CutterKey };
-        Document.Selection.LastKind = SketcherSelectionKind::Body;
+        Document.Selection.LastKind = SketcherSelectionCategory::Body;
     }
     else if (Live)
     {
         FeatureModifier Modifier;
-        Modifier.Kind              = ModifierKind::Boolean;
+        Modifier.Kind              = ModifierCategory::Boolean;
         Modifier.Label             = "Boolean#" + std::to_string(NextStepOrdinal(Document.Tree));
         Modifier.Target            = Spec.Target;
         Modifier.Tool              = CutterKey;
@@ -6819,12 +6819,12 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
         Document.Appearance.LiveCutters.insert(CutterKey);
         Document.Selection          = {};
         Document.Selection.Bodies   = { CutterKey };
-        Document.Selection.LastKind = SketcherSelectionKind::Body;
+        Document.Selection.LastKind = SketcherSelectionCategory::Body;
     }
     else
     {
         FeatureStep Combine;
-        Combine.Kind        = FeatureStepKind::Combine;
+        Combine.Kind        = FeatureStepCategory::Combine;
         Combine.Label       = "Combine#" + std::to_string(NextStepOrdinal(Document.Tree));
         Combine.Combination = Spec.Combination;
         Combine.Target      = Spec.Target;
@@ -6859,7 +6859,7 @@ SketcherCommandOutcome KnifeSketcherCompoundCutter(SketcherDocument& Document, c
 }
 
 SketcherCommandOutcome AssignSketcherEdgeWeights(SketcherDocument& Document, const std::string& GroupName,
-                                                 const std::vector<std::string>& EdgeNames, FeatureValue Weight)
+                                                 const std::vector<std::string>& EdgeNames, FeatureScalar Weight)
 {
     const std::vector<std::string>& Picks = EdgeNames.empty() ? Document.Selection.Edges : EdgeNames;
     const std::string Label = "Paint " + std::to_string(Picks.size()) + " edge(s) → " + GroupName;
@@ -6870,7 +6870,7 @@ SketcherCommandOutcome AssignSketcherEdgeWeights(SketcherDocument& Document, con
     if (GroupName.empty()) Outcome.Refusal = "name the edge group first";
     else if (Picks.empty()) Outcome.Refusal = "select one or more edges first";
     std::string Owner;
-    if (Outcome.Refusal.empty()) Outcome.Refusal = CommonBody(Document, SketcherSelectionKind::Edge, Picks, Owner);
+    if (Outcome.Refusal.empty()) Outcome.Refusal = CommonBody(Document, SketcherSelectionCategory::Edge, Picks, Owner);
     const double EvaluatedWeight = EvaluateFeatureValue(Document.Tree, Weight);
     if (Outcome.Refusal.empty() && !std::isfinite(EvaluatedWeight))
         Outcome.Refusal = "edge weight variable '" + Weight.Parameter + "' is undefined";
@@ -6902,7 +6902,7 @@ SketcherCommandOutcome AssignSketcherEdgeWeights(SketcherDocument& Document, con
             continue;
         }
         if (Existing != GroupIt->Entries.end()) Existing->Weight = Weight;
-        else GroupIt->Entries.push_back({ { ReferenceKind::Edge, EdgeName, {} }, Weight });
+        else GroupIt->Entries.push_back({ { ReferenceCategory::Edge, EdgeName, {} }, Weight });
     }
 
     RegenerateSketcherDocumentDeferred(Document, true);
@@ -6943,7 +6943,7 @@ void SelectSketcherEdgeGroup(SketcherDocument& Document, const std::string& Grou
     Document.Selection.Edges.clear();
     for (const EdgeWeightEntry& Entry : Found->Entries) Document.Selection.Edges.push_back(Entry.Edge.Name);
     Document.Selection.PickedBody = Found->Body;
-    Document.Selection.LastKind   = SketcherSelectionKind::Edge;
+    Document.Selection.LastKind   = SketcherSelectionCategory::Edge;
     KeepResolvedNames(Document.Selection.Edges, Document.Regeneration.Bodies, true);
 }
 
@@ -6963,7 +6963,7 @@ SketcherCommandOutcome AddSketcherModifier(SketcherDocument& Document, FeatureMo
     SketcherCommandOutcome Outcome;
     Outcome.Label = Label;
     Document.Captions[ModLabel] = Caption;
-    if (Modifier.Kind == ModifierKind::Boolean && Modifier.KeepToolCondition && !Modifier.Tool.empty())
+    if (Modifier.Kind == ModifierCategory::Boolean && Modifier.KeepToolCondition && !Modifier.Tool.empty())
         Document.Appearance.LiveCutters.insert(Modifier.Tool);
     Document.Tree.Modifiers.push_back(std::move(Modifier));
 
@@ -7001,7 +7001,7 @@ SketcherCommandOutcome UpdateSketcherModifier(SketcherDocument& Document, const 
     }
     *Found       = Updated;
     Found->Label = Label;
-    if (Found->Kind == ModifierKind::Boolean && Found->KeepToolCondition && !Found->Tool.empty())
+    if (Found->Kind == ModifierCategory::Boolean && Found->KeepToolCondition && !Found->Tool.empty())
         Document.Appearance.LiveCutters.insert(Found->Tool);
     PruneUnusedLiveCutters(Document);
 
@@ -7124,10 +7124,10 @@ SketcherCommandOutcome ApplySketcherModifier(SketcherDocument& Document, const s
         }
     }
 
-    if (Copy.Kind == ModifierKind::Boolean)
+    if (Copy.Kind == ModifierCategory::Boolean)
     {
         FeatureStep Combine;
-        Combine.Kind        = FeatureStepKind::Combine;
+        Combine.Kind        = FeatureStepCategory::Combine;
         Combine.Label       = "Combine#" + std::to_string(NextStepOrdinal(Document.Tree));
         Combine.Target      = TargetKey;
         Combine.Tool        = Copy.Tool;
@@ -7167,7 +7167,7 @@ SketcherCommandOutcome ApplySketcherModifier(SketcherDocument& Document, const s
 
         const std::string BaseCaption = SketcherBodyCaption(Document, TargetKey);
         FeatureStep RemoveOld;
-        RemoveOld.Kind   = FeatureStepKind::Remove;
+        RemoveOld.Kind   = FeatureStepCategory::Remove;
         RemoveOld.Label  = "Remove#" + std::to_string(NextStepOrdinal(Document.Tree));
         RemoveOld.Target = TargetKey;
         Document.Tree.Steps.push_back(std::move(RemoveOld));
@@ -7178,7 +7178,7 @@ SketcherCommandOutcome ApplySketcherModifier(SketcherDocument& Document, const s
             const StepExport Single = WriteStep(VerifyPartition, { Split.Bodies[SolidIndex] }, ExportReq);
             if (!Single.Refusal.empty()) { Restore(Document, std::move(Before)); Outcome.Refusal = Single.Refusal; return Outcome; }
             FeatureStep Imp;
-            Imp.Kind         = FeatureStepKind::Import;
+            Imp.Kind         = FeatureStepCategory::Import;
             Imp.Label        = "Import#" + std::to_string(NextStepOrdinal(Document.Tree));
             Imp.Exchange     = Single.Bytes;
             Imp.ExchangeUnit = SketcherModelUnitMillimetres;
@@ -7213,7 +7213,7 @@ SketcherCommandOutcome RestoreSketcherVisibility(SketcherDocument& Document, con
 
         std::set<std::string> FilteredCurves = Document.Appearance.RemovedCurves;            // RemovedCurves ⊂ HiddenCurves invariant
         for (const FeatureStep& Step : Document.Tree.Steps)
-            if ((Step.Kind == FeatureStepKind::Sketch || Step.Kind == FeatureStepKind::SpaceCurve) && HiddenCurves.contains(Step.Label))
+            if ((Step.Kind == FeatureStepCategory::Sketch || Step.Kind == FeatureStepCategory::SpaceCurve) && HiddenCurves.contains(Step.Label))
                 FilteredCurves.insert(Step.Label);
 
         if (Document.Appearance.HiddenBodies == FilteredBodies && Document.Appearance.HiddenCurves == FilteredCurves)
@@ -7308,7 +7308,7 @@ struct ResolvedDimensionOperand
     return true;
 }
 
-[[nodiscard]] ResolvedDimensionOperand ResolveDimensionOperand(const SketcherDocument& Document, SketcherSelectionKind Kind, const std::string& Name)
+[[nodiscard]] ResolvedDimensionOperand ResolveDimensionOperand(const SketcherDocument& Document, SketcherSelectionCategory Kind, const std::string& Name)
 {
     ResolvedDimensionOperand Out;
     if (Name.empty()) return Out;
@@ -7322,11 +7322,11 @@ struct ResolvedDimensionOperand
         for (const FeatureStep& Step : Document.Tree.Steps)
         {
             if (Step.Label != StepLabel) continue;
-            if (Step.Kind == FeatureStepKind::Sketch)
+            if (Step.Kind == FeatureStepCategory::Sketch)
             {
                 const auto         SolvedIt = Document.Regeneration.Sketches.find(StepLabel);
                 const SketchModel& Sketch   = SolvedIt != Document.Regeneration.Sketches.end() ? SolvedIt->second : Step.Sketch;
-                OrthonormalFrame   Plane    = Step.Plane;
+                OrthonormalBasis   Plane    = Step.Plane;
                 const double       Lift     = EvaluateFeatureValue(Document.Tree, Step.Elevation);
                 if (std::isfinite(Lift)) Plane.Origin = Plane.Origin + Plane.ZAxis * Lift;
                 const auto ToWorld = [&](Vector2 Local) -> Vector3 { return Plane.Origin + Plane.XAxis * Local.X + Plane.YAxis * Local.Y; };
@@ -7364,7 +7364,7 @@ struct ResolvedDimensionOperand
                     {
                         if (Curve.Identifier != ParsedIdx) continue;
                         Out.PlaneNormal = SafeUnitNormal(Plane.ZAxis);
-                        if (Curve.Kind == SketchCurveKind::Line && Curve.Start >= 0 && Curve.Start < int(Sketch.Points.size())
+                        if (Curve.Kind == SketchCurveCategory::Line && Curve.Start >= 0 && Curve.Start < int(Sketch.Points.size())
                             && Curve.End >= 0 && Curve.End < int(Sketch.Points.size()))
                         {
                             Out.FoundCondition   = true;
@@ -7374,7 +7374,7 @@ struct ResolvedDimensionOperand
                             Out.SegmentCondition = Out.EdgeSpan > 1.0e-9;
                             if (Out.SegmentCondition) Out.LineDir = SafeUnitNormal(Out.SecondEndpoint - Out.Point);
                         }
-                        else if (Curve.Kind == SketchCurveKind::Circle && Curve.Centre >= 0 && Curve.Centre < int(Sketch.Points.size()))
+                        else if (Curve.Kind == SketchCurveCategory::Circle && Curve.Centre >= 0 && Curve.Centre < int(Sketch.Points.size()))
                         {
                             Out.FoundCondition  = true;
                             Out.RadialCondition = true;
@@ -7383,7 +7383,7 @@ struct ResolvedDimensionOperand
                             Out.Point           = Out.Centre;
                             Out.Rim             = Out.Centre + SafeUnitNormal(Plane.XAxis, { 1.0, 0.0, 0.0 }) * Curve.Radius;
                         }
-                        else if (Curve.Kind == SketchCurveKind::Arc && Curve.Centre >= 0 && Curve.Centre < int(Sketch.Points.size())
+                        else if (Curve.Kind == SketchCurveCategory::Arc && Curve.Centre >= 0 && Curve.Centre < int(Sketch.Points.size())
                                  && Curve.Start >= 0 && Curve.Start < int(Sketch.Points.size())
                                  && Curve.End >= 0 && Curve.End < int(Sketch.Points.size()))
                         {
@@ -7422,7 +7422,7 @@ struct ResolvedDimensionOperand
                 }
                 return Out;
             }
-            if (Step.Kind == FeatureStepKind::SpaceCurve)
+            if (Step.Kind == FeatureStepCategory::SpaceCurve)
             {
                 const auto FitIt = Document.Regeneration.Curves.find(StepLabel);
                 int ParsedIdx = -1;
@@ -7473,7 +7473,7 @@ struct ResolvedDimensionOperand
     {
         if (!Body.Body.PresentCondition()) continue;
         const BodyInventory Inventory = Partition.CollectInventory(Body.Body);
-        if (Kind == SketcherSelectionKind::Vertex)
+        if (Kind == SketcherSelectionCategory::Vertex)
         {
             for (const VertexToken Vertex : Inventory.Vertices)
             {
@@ -7486,7 +7486,7 @@ struct ResolvedDimensionOperand
                 return Out;
             }
         }
-        else if (Kind == SketcherSelectionKind::Edge)
+        else if (Kind == SketcherSelectionCategory::Edge)
         {
             for (const EdgeToken Edge : Inventory.Edges)
             {
@@ -7545,7 +7545,7 @@ struct ResolvedDimensionOperand
                 return Out;
             }
         }
-        else if (Kind == SketcherSelectionKind::Face)
+        else if (Kind == SketcherSelectionCategory::Face)
         {
             for (const FaceToken Face : Inventory.Faces)
             {
@@ -7596,7 +7596,7 @@ struct ResolvedDimensionOperand
                 return Out;
             }
         }
-        else if (Kind == SketcherSelectionKind::Body && Body.Key == Name)
+        else if (Kind == SketcherSelectionCategory::Body && Body.Key == Name)
         {
             Vector3 Low{}, High{};
             if (ComputeBodyBounds(Document, Name, Low, High))
@@ -7646,7 +7646,7 @@ void EvaluateLinearValue(SketcherDimension& Dim)
 
 void EvaluateSingleDimension(const SketcherDocument& Document, SketcherDimension& Dim)
 {
-    if (!Dim.FirstName.empty() && Dim.FirstKind == SketcherSelectionKind::Body && Dim.SecondName.empty() && Dim.AxisFilter >= 0 && Dim.AxisFilter < 3)
+    if (!Dim.FirstName.empty() && Dim.FirstKind == SketcherSelectionCategory::Body && Dim.SecondName.empty() && Dim.AxisFilter >= 0 && Dim.AxisFilter < 3)
     {
         Vector3 Low{}, High{};
         if (ComputeBodyBounds(Document, Dim.FirstName, Low, High))
@@ -7675,9 +7675,9 @@ void EvaluateSingleDimension(const SketcherDocument& Document, SketcherDimension
     }
     if (Dim.FirstName.empty())
     {
-        if (Dim.Kind == SketcherDimensionKind::Linear) EvaluateLinearValue(Dim);
-        else if (Dim.Kind == SketcherDimensionKind::Radius) Dim.Value = Distance(Dim.FirstPoint, Dim.SecondPoint);
-        else if (Dim.Kind == SketcherDimensionKind::Diameter) Dim.Value = 2.0 * Distance(Dim.FirstPoint, Dim.SecondPoint);
+        if (Dim.Kind == SketcherDimensionCategory::Linear) EvaluateLinearValue(Dim);
+        else if (Dim.Kind == SketcherDimensionCategory::Radius) Dim.Value = Distance(Dim.FirstPoint, Dim.SecondPoint);
+        else if (Dim.Kind == SketcherDimensionCategory::Diameter) Dim.Value = 2.0 * Distance(Dim.FirstPoint, Dim.SecondPoint);
         return;
     }
     const ResolvedDimensionOperand First = ResolveDimensionOperand(Document, Dim.FirstKind, Dim.FirstName);
@@ -7685,7 +7685,7 @@ void EvaluateSingleDimension(const SketcherDocument& Document, SketcherDimension
 
     if (Dim.SecondName.empty())
     {
-        if ((Dim.Kind == SketcherDimensionKind::Radius || Dim.Kind == SketcherDimensionKind::Diameter) && First.RadialCondition)
+        if ((Dim.Kind == SketcherDimensionCategory::Radius || Dim.Kind == SketcherDimensionCategory::Diameter) && First.RadialCondition)
         {
             Dim.FirstPoint  = First.Centre;
             Dim.PlaneNormal = First.PlaneNormal;
@@ -7701,9 +7701,9 @@ void EvaluateSingleDimension(const SketcherDocument& Document, SketcherDimension
                 Dim.SecondPoint = First.Rim;
                 Dim.Direction   = SafeUnitNormal(First.Rim - First.Centre, { 1.0, 0.0, 0.0 });
             }
-            Dim.Value = Dim.Kind == SketcherDimensionKind::Diameter ? 2.0 * First.Radius : First.Radius;
+            Dim.Value = Dim.Kind == SketcherDimensionCategory::Diameter ? 2.0 * First.Radius : First.Radius;
         }
-        else if (Dim.Kind == SketcherDimensionKind::Linear && First.SegmentCondition)
+        else if (Dim.Kind == SketcherDimensionCategory::Linear && First.SegmentCondition)
         {
             Dim.FirstPoint  = First.Point;
             Dim.SecondPoint = First.SecondEndpoint;
@@ -7717,7 +7717,7 @@ void EvaluateSingleDimension(const SketcherDocument& Document, SketcherDimension
     const ResolvedDimensionOperand Second = ResolveDimensionOperand(Document, Dim.SecondKind, Dim.SecondName);
     if (!Second.FoundCondition) return;
 
-    if (Dim.Kind == SketcherDimensionKind::Angular)
+    if (Dim.Kind == SketcherDimensionCategory::Angular)
     {
         constexpr double RadToDeg = 180.0 / std::numbers::pi;
         Vector3 RayA = First.LineDir.value_or(First.FaceNormal.value_or(Vector3{ 1.0, 0.0, 0.0 }));
@@ -7752,8 +7752,8 @@ void EvaluateSingleDimension(const SketcherDocument& Document, SketcherDimension
         return;
     }
 
-    const bool BothExactPoints = (Dim.FirstKind == SketcherSelectionKind::Vertex || Dim.FirstName.find("@Point:") != std::string::npos || Dim.FirstName.find("@Mid:") != std::string::npos || Dim.FirstName.find("@Pole:") != std::string::npos)
-                              && (Dim.SecondKind == SketcherSelectionKind::Vertex || Dim.SecondName.find("@Point:") != std::string::npos || Dim.SecondName.find("@Mid:") != std::string::npos || Dim.SecondName.find("@Pole:") != std::string::npos);
+    const bool BothExactPoints = (Dim.FirstKind == SketcherSelectionCategory::Vertex || Dim.FirstName.find("@Point:") != std::string::npos || Dim.FirstName.find("@Mid:") != std::string::npos || Dim.FirstName.find("@Pole:") != std::string::npos)
+                              && (Dim.SecondKind == SketcherSelectionCategory::Vertex || Dim.SecondName.find("@Point:") != std::string::npos || Dim.SecondName.find("@Mid:") != std::string::npos || Dim.SecondName.find("@Pole:") != std::string::npos);
 
     if (!BothExactPoints && Document.Partition && First.TargetCondition && Second.TargetCondition)
     {
@@ -7793,14 +7793,14 @@ void RefreshSketcherDimensions(SketcherDocument& Document)
     for (SketcherDimension& Dim : Document.Dimensions) EvaluateSingleDimension(Document, Dim);
 }
 
-const char* SketcherDimensionKindLabel(SketcherDimensionKind Kind) noexcept
+const char* SketcherDimensionKindLabel(SketcherDimensionCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case SketcherDimensionKind::Linear:   return "Linear";
-    case SketcherDimensionKind::Radius:   return "Radius";
-    case SketcherDimensionKind::Diameter: return "Diameter";
-    case SketcherDimensionKind::Angular:  return "Angle";
+    case SketcherDimensionCategory::Linear:   return "Linear";
+    case SketcherDimensionCategory::Radius:   return "Radius";
+    case SketcherDimensionCategory::Diameter: return "Diameter";
+    case SketcherDimensionCategory::Angular:  return "Angle";
     }
     return "Linear";
 }
@@ -7811,16 +7811,16 @@ std::string FormatSketcherDimension(const SketcherDimension& Dimension)
     const std::string Prefix = Dimension.Note.empty() ? std::string{} : (Dimension.Note + " ");
     switch (Dimension.Kind)
     {
-    case SketcherDimensionKind::Angular:
+    case SketcherDimensionCategory::Angular:
         std::snprintf(Buffer, sizeof(Buffer), "%s%.2f\xC2\xB0", Prefix.c_str(), Dimension.Value);
         return Buffer;
-    case SketcherDimensionKind::Radius:
+    case SketcherDimensionCategory::Radius:
         std::snprintf(Buffer, sizeof(Buffer), "%sR%.4g m", Prefix.c_str(), Dimension.Value);
         return Buffer;
-    case SketcherDimensionKind::Diameter:
+    case SketcherDimensionCategory::Diameter:
         std::snprintf(Buffer, sizeof(Buffer), "%s\xC3\x98%.4g m", Prefix.c_str(), Dimension.Value);
         return Buffer;
-    case SketcherDimensionKind::Linear:
+    case SketcherDimensionCategory::Linear:
     {
         const char* AxisTag = Dimension.AxisFilter == 0 ? "dX " : Dimension.AxisFilter == 1 ? "dY " : Dimension.AxisFilter == 2 ? "dZ " : "";
         std::snprintf(Buffer, sizeof(Buffer), "%s%s%.4g m", Prefix.c_str(), Dimension.Note.empty() ? AxisTag : "", Dimension.Value);
@@ -7830,42 +7830,42 @@ std::string FormatSketcherDimension(const SketcherDimension& Dimension)
     return {};
 }
 
-SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Document, std::optional<SketcherDimensionKind> PreferredKind, double Offset)
+SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Document, std::optional<SketcherDimensionCategory> PreferredKind, double Offset)
 {
     return RunAppearanceCommand(Document, "Add dimension", [&]() -> std::string
     {
         // Collect ordered selection items across vertices, edges, faces, curves, and bodies.
-        struct PickEntry { SketcherSelectionKind Kind; std::string Name; };
+        struct PickEntry { SketcherSelectionCategory Kind; std::string Name; };
         std::vector<PickEntry> Picks;
-        for (const std::string& Name : Document.Selection.Vertices) Picks.push_back({ SketcherSelectionKind::Vertex, Name });
-        for (const std::string& Name : Document.Selection.Faces)    Picks.push_back({ SketcherSelectionKind::Face, Name });
-        for (const std::string& Name : Document.Selection.Edges)    Picks.push_back({ SketcherSelectionKind::Edge, Name });
+        for (const std::string& Name : Document.Selection.Vertices) Picks.push_back({ SketcherSelectionCategory::Vertex, Name });
+        for (const std::string& Name : Document.Selection.Faces)    Picks.push_back({ SketcherSelectionCategory::Face, Name });
+        for (const std::string& Name : Document.Selection.Edges)    Picks.push_back({ SketcherSelectionCategory::Edge, Name });
 
         if (Picks.size() == 1)
         {
             const ResolvedDimensionOperand Op = ResolveDimensionOperand(Document, Picks[0].Kind, Picks[0].Name);
             if (!Op.FoundCondition) return "Dimension: selected entity could not be resolved";
-            if (Op.RadialCondition && PreferredKind != SketcherDimensionKind::Linear)
+            if (Op.RadialCondition && PreferredKind != SketcherDimensionCategory::Linear)
             {
                 SketcherDimension Dim;
                 Dim.Id          = NextDimensionId(Document);
-                Dim.Kind        = PreferredKind == SketcherDimensionKind::Radius ? SketcherDimensionKind::Radius : SketcherDimensionKind::Diameter;
+                Dim.Kind        = PreferredKind == SketcherDimensionCategory::Radius ? SketcherDimensionCategory::Radius : SketcherDimensionCategory::Diameter;
                 Dim.FirstKind   = Picks[0].Kind;
                 Dim.FirstName   = Picks[0].Name;
                 Dim.FirstPoint  = Op.Centre;
                 Dim.SecondPoint = Op.Rim;
                 Dim.PlaneNormal = Op.PlaneNormal;
                 Dim.Offset      = Offset;
-                Dim.Value       = Dim.Kind == SketcherDimensionKind::Diameter ? 2.0 * Op.Radius : Op.Radius;
+                Dim.Value       = Dim.Kind == SketcherDimensionCategory::Diameter ? 2.0 * Op.Radius : Op.Radius;
                 Document.Dimensions.push_back(std::move(Dim));
                 return {};
             }
-            if (Picks[0].Kind == SketcherSelectionKind::Edge && Op.SegmentCondition)
+            if (Picks[0].Kind == SketcherSelectionCategory::Edge && Op.SegmentCondition)
             {
                 SketcherDimension Dim;
                 Dim.Id          = NextDimensionId(Document);
-                Dim.Kind        = SketcherDimensionKind::Linear;
-                Dim.FirstKind   = SketcherSelectionKind::Edge;
+                Dim.Kind        = SketcherDimensionCategory::Linear;
+                Dim.FirstKind   = SketcherSelectionCategory::Edge;
                 Dim.FirstName   = Picks[0].Name;
                 Dim.FirstPoint  = Op.Point;
                 Dim.SecondPoint = Op.SecondEndpoint;
@@ -7877,7 +7877,7 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
             }
             // Single planar/non-radial face: fall through to dimension its owning body's W × D × H envelope if no second pick.
             const std::string OwnerBody = SketcherBodyOfName(Document, Picks[0].Kind, Picks[0].Name);
-            if (!OwnerBody.empty() && PreferredKind != SketcherDimensionKind::Angular && PreferredKind != SketcherDimensionKind::Radius && PreferredKind != SketcherDimensionKind::Diameter)
+            if (!OwnerBody.empty() && PreferredKind != SketcherDimensionCategory::Angular && PreferredKind != SketcherDimensionCategory::Radius && PreferredKind != SketcherDimensionCategory::Diameter)
             {
                 Vector3 Low{}, High{};
                 if (ComputeBodyBounds(Document, OwnerBody, Low, High))
@@ -7887,8 +7887,8 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
                     {
                         SketcherDimension Dim;
                         Dim.Id         = NextDimensionId(Document);
-                        Dim.Kind       = SketcherDimensionKind::Linear;
-                        Dim.FirstKind  = SketcherSelectionKind::Body;
+                        Dim.Kind       = SketcherDimensionCategory::Linear;
+                        Dim.FirstKind  = SketcherSelectionCategory::Body;
                         Dim.FirstName  = OwnerBody;
                         Dim.AxisFilter = Axis;
                         Dim.Offset     = Axis == 0 ? -std::abs(Offset) : std::abs(Offset);
@@ -7917,12 +7917,12 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
                 const double  Cosine = std::abs(Dot(DirA, DirB));
                 if (Cosine < 0.9995) AutoAngular = true;
             }
-            if (PreferredKind == SketcherDimensionKind::Angular || AutoAngular)
+            if (PreferredKind == SketcherDimensionCategory::Angular || AutoAngular)
             {
                 if (!BothDirectional) return "Angle dimension needs two linear edges or planar/cylindrical faces";
                 SketcherDimension Dim;
                 Dim.Id         = NextDimensionId(Document);
-                Dim.Kind       = SketcherDimensionKind::Angular;
+                Dim.Kind       = SketcherDimensionCategory::Angular;
                 Dim.FirstKind  = Picks[0].Kind;
                 Dim.FirstName  = Picks[0].Name;
                 Dim.SecondKind = Picks[1].Kind;
@@ -7935,7 +7935,7 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
 
             SketcherDimension Dim;
             Dim.Id          = NextDimensionId(Document);
-            Dim.Kind        = SketcherDimensionKind::Linear;
+            Dim.Kind        = SketcherDimensionCategory::Linear;
             Dim.FirstKind   = Picks[0].Kind;
             Dim.FirstName   = Picks[0].Name;
             Dim.SecondKind  = Picks[1].Kind;
@@ -7950,7 +7950,7 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
             if (Document.Dimensions.back().Value < 1.0e-7 && BothDirectional)
             {
                 // Intersecting edges / adjacent planar faces with 0 separation: default to clean Angular dimension!
-                Document.Dimensions.back().Kind = SketcherDimensionKind::Angular;
+                Document.Dimensions.back().Kind = SketcherDimensionCategory::Angular;
                 RefreshSketcherDimensions(Document);
             }
             return {};
@@ -7962,29 +7962,29 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
             const std::string& Label = Document.Selection.Curves.back();
             for (const FeatureStep& Step : Document.Tree.Steps)
             {
-                if (Step.Label != Label || Step.Kind != FeatureStepKind::Sketch) continue;
+                if (Step.Label != Label || Step.Kind != FeatureStepCategory::Sketch) continue;
                 const auto SolvedIt = Document.Regeneration.Sketches.find(Label);
                 const SketchModel& Sketch = SolvedIt != Document.Regeneration.Sketches.end() ? SolvedIt->second : Step.Sketch;
-                OrthonormalFrame Plane = Step.Plane;
+                OrthonormalBasis Plane = Step.Plane;
                 Plane.Origin = Plane.Origin + Plane.ZAxis * EvaluateFeatureValue(Document.Tree, Step.Elevation);
                 const auto ToWorld = [&](Vector2 Local) { return Plane.Origin + Plane.XAxis * Local.X + Plane.YAxis * Local.Y; };
-                if (Sketch.Curves.size() == 1 && (Sketch.Curves[0].Kind == SketchCurveKind::Circle || Sketch.Curves[0].Kind == SketchCurveKind::Arc) && Sketch.Curves[0].Centre >= 0)
+                if (Sketch.Curves.size() == 1 && (Sketch.Curves[0].Kind == SketchCurveCategory::Circle || Sketch.Curves[0].Kind == SketchCurveCategory::Arc) && Sketch.Curves[0].Centre >= 0)
                 {
                     const Vector2 Centre2 = Sketch.Points[Sketch.Curves[0].Centre].Position;
-                    const double  Radius  = Sketch.Curves[0].Kind == SketchCurveKind::Circle ? Sketch.Curves[0].Radius
+                    const double  Radius  = Sketch.Curves[0].Kind == SketchCurveCategory::Circle ? Sketch.Curves[0].Radius
                                           : Distance(Centre2, Sketch.Points[Sketch.Curves[0].Start].Position);
                     SketcherDimension Dim;
                     Dim.Id          = NextDimensionId(Document);
-                    Dim.Kind        = PreferredKind == SketcherDimensionKind::Radius ? SketcherDimensionKind::Radius
-                                    : (Sketch.Curves[0].Kind == SketchCurveKind::Arc ? SketcherDimensionKind::Radius : SketcherDimensionKind::Diameter);
-                    Dim.FirstKind   = SketcherSelectionKind::Edge;
+                    Dim.Kind        = PreferredKind == SketcherDimensionCategory::Radius ? SketcherDimensionCategory::Radius
+                                    : (Sketch.Curves[0].Kind == SketchCurveCategory::Arc ? SketcherDimensionCategory::Radius : SketcherDimensionCategory::Diameter);
+                    Dim.FirstKind   = SketcherSelectionCategory::Edge;
                     Dim.FirstName   = Label + "@Curve:" + std::to_string(Sketch.Curves[0].Identifier);
                     Dim.FirstPoint  = ToWorld(Centre2);
                     Dim.SecondPoint = ToWorld({ Centre2.X + Radius, Centre2.Y });
                     Dim.Direction   = SafeUnitNormal(Plane.XAxis, { 1.0, 0.0, 0.0 });
                     Dim.PlaneNormal = Plane.ZAxis;
                     Dim.Offset      = Offset;
-                    Dim.Value       = Dim.Kind == SketcherDimensionKind::Diameter ? 2.0 * Radius : Radius;
+                    Dim.Value       = Dim.Kind == SketcherDimensionCategory::Diameter ? 2.0 * Radius : Radius;
                     Document.Dimensions.push_back(std::move(Dim));
                     RefreshSketcherDimensions(Document);
                     return {};
@@ -7995,7 +7995,7 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
                     int HorizCurveId = -1, VertCurveId = -1;
                     for (const SketchCurve& C : Sketch.Curves)
                     {
-                        if (C.Kind != SketchCurveKind::Line || C.Start < 0 || C.End < 0) continue;
+                        if (C.Kind != SketchCurveCategory::Line || C.Start < 0 || C.End < 0) continue;
                         const Vector2 Delta = Sketch.Points[C.End].Position - Sketch.Points[C.Start].Position;
                         if (HorizCurveId < 0 && std::abs(Delta.X) > std::abs(Delta.Y) && std::abs(Delta.X) > 1.0e-6) HorizCurveId = C.Identifier;
                         else if (VertCurveId < 0 && std::abs(Delta.Y) >= std::abs(Delta.X) && std::abs(Delta.Y) > 1.0e-6) VertCurveId = C.Identifier;
@@ -8010,10 +8010,10 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
                     {
                         SketcherDimension DimX;
                         DimX.Id          = NextDimensionId(Document);
-                        DimX.Kind        = SketcherDimensionKind::Linear;
+                        DimX.Kind        = SketcherDimensionCategory::Linear;
                         if (HorizCurveId >= 0)
                         {
-                            DimX.FirstKind = SketcherSelectionKind::Edge;
+                            DimX.FirstKind = SketcherSelectionCategory::Edge;
                             DimX.FirstName = Label + "@Curve:" + std::to_string(HorizCurveId);
                         }
                         DimX.FirstPoint  = ToWorld({ Low.X, Low.Y });
@@ -8027,10 +8027,10 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
                     {
                         SketcherDimension DimY;
                         DimY.Id          = NextDimensionId(Document);
-                        DimY.Kind        = SketcherDimensionKind::Linear;
+                        DimY.Kind        = SketcherDimensionCategory::Linear;
                         if (VertCurveId >= 0)
                         {
-                            DimY.FirstKind = SketcherSelectionKind::Edge;
+                            DimY.FirstKind = SketcherSelectionCategory::Edge;
                             DimY.FirstName = Label + "@Curve:" + std::to_string(VertCurveId);
                         }
                         DimY.FirstPoint  = ToWorld({ High.X, Low.Y });
@@ -8075,10 +8075,10 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
                 {
                     SketcherDimension Dim;
                     Dim.Id          = NextDimensionId(Document);
-                    Dim.Kind        = SketcherDimensionKind::Linear;
-                    Dim.FirstKind   = SketcherSelectionKind::Face;
+                    Dim.Kind        = SketcherDimensionCategory::Linear;
+                    Dim.FirstKind   = SketcherSelectionCategory::Face;
                     Dim.FirstName   = FaceNameA;
-                    Dim.SecondKind  = SketcherSelectionKind::Face;
+                    Dim.SecondKind  = SketcherSelectionCategory::Face;
                     Dim.SecondName  = FaceNameB;
                     Dim.FirstPoint  = BestA;
                     Dim.SecondPoint = BestB;
@@ -8100,8 +8100,8 @@ SketcherCommandOutcome AddSketcherDimensionFromSelection(SketcherDocument& Docum
             {
                 SketcherDimension Dim;
                 Dim.Id         = NextDimensionId(Document);
-                Dim.Kind       = SketcherDimensionKind::Linear;
-                Dim.FirstKind  = SketcherSelectionKind::Body;
+                Dim.Kind       = SketcherDimensionCategory::Linear;
+                Dim.FirstKind  = SketcherSelectionCategory::Body;
                 Dim.FirstName  = BodyKey;
                 Dim.AxisFilter = Axis;
                 Dim.Offset     = Axis == 0 ? -std::abs(Offset) : std::abs(Offset);
@@ -8128,9 +8128,9 @@ SketcherCommandOutcome AddSketcherInteractiveDimension(SketcherDocument& Documen
         if (Length(Dim.Direction) > 1.0e-9) Dim.Direction = Normalize(Dim.Direction);
         else Dim.Direction = { 1.0, 0.0, 0.0 };
         EvaluateSingleDimension(Document, Dim);
-        if (Dim.Kind == SketcherDimensionKind::Linear && Dim.Value < 1.0e-7)
+        if (Dim.Kind == SketcherDimensionCategory::Linear && Dim.Value < 1.0e-7)
             return "Dimension: start and end points coincide or have zero projected span";
-        if ((Dim.Kind == SketcherDimensionKind::Radius || Dim.Kind == SketcherDimensionKind::Diameter) && Dim.Value < 1.0e-7)
+        if ((Dim.Kind == SketcherDimensionCategory::Radius || Dim.Kind == SketcherDimensionCategory::Diameter) && Dim.Value < 1.0e-7)
             return "Dimension: circle / arc radius is zero";
         Document.Dimensions.push_back(std::move(Dim));
         RefreshSketcherDimensions(Document);
@@ -8140,11 +8140,11 @@ SketcherCommandOutcome AddSketcherInteractiveDimension(SketcherDocument& Documen
 
 SketcherCommandOutcome AddSketcherPointDimension(SketcherDocument& Document, Vector3 First, Vector3 Second, Vector3 PlaneNormal,
                                                  double Offset, int AxisFilter, const std::string& FirstEntity,
-                                                 SketcherSelectionKind FirstKind, const std::string& SecondEntity,
-                                                 SketcherSelectionKind SecondKind)
+                                                 SketcherSelectionCategory FirstKind, const std::string& SecondEntity,
+                                                 SketcherSelectionCategory SecondKind)
 {
     SketcherDimension Spec;
-    Spec.Kind        = SketcherDimensionKind::Linear;
+    Spec.Kind        = SketcherDimensionCategory::Linear;
     Spec.FirstKind   = FirstKind;
     Spec.FirstName   = FirstEntity;
     Spec.SecondKind  = SecondKind;
@@ -8215,7 +8215,7 @@ SketcherCommandOutcome UpdateSketcherDimensionAxisFilter(SketcherDocument& Docum
         for (SketcherDimension& Dim : Document.Dimensions)
         {
             if (Dim.Id != Id) continue;
-            if (Dim.Kind != SketcherDimensionKind::Linear) return Id + " is not a linear dimension";
+            if (Dim.Kind != SketcherDimensionCategory::Linear) return Id + " is not a linear dimension";
             const int Clamped = std::clamp(AxisFilter, -1, 2);
             const int Prev    = Dim.AxisFilter;
             Dim.AxisFilter    = Clamped;
@@ -8267,15 +8267,15 @@ SketcherCommandOutcome ToggleSketcherDimensionRadialKind(SketcherDocument& Docum
         for (SketcherDimension& Dim : Document.Dimensions)
         {
             if (Dim.Id != Id) continue;
-            if (Dim.Kind == SketcherDimensionKind::Diameter)
+            if (Dim.Kind == SketcherDimensionCategory::Diameter)
             {
-                Dim.Kind  = SketcherDimensionKind::Radius;
+                Dim.Kind  = SketcherDimensionCategory::Radius;
                 Dim.Value *= 0.5;
                 return {};
             }
-            if (Dim.Kind == SketcherDimensionKind::Radius)
+            if (Dim.Kind == SketcherDimensionCategory::Radius)
             {
-                Dim.Kind  = SketcherDimensionKind::Diameter;
+                Dim.Kind  = SketcherDimensionCategory::Diameter;
                 Dim.Value *= 2.0;
                 return {};
             }

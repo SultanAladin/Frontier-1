@@ -136,7 +136,7 @@ public:
     [[nodiscard]] uint16_t                 QueryBoundPort() const noexcept { return BoundPortHostOrder; }
 
 private:
-    struct PeerRouteRecord
+    struct PeerRouteEntry
     {
         uint32_t        EndpointIdentifier = 0u;
         IpSocketAddress Address            {};
@@ -151,7 +151,7 @@ private:
     double                                          LocalClockSeconds       = 0.0;
     bool                                            CipherEnabled           = false;
     std::array<uint8_t, ChaCha20KeyByteCount>       CipherKey               {};
-    std::vector<PeerRouteRecord>                    PeerRoutes              {};
+    std::vector<PeerRouteEntry>                    PeerRoutes              {};
 };
 
 static_assert(PacketTransportChannel<SocketTransport>, "SocketTransport must satisfy PacketTransportChannel");

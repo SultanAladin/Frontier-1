@@ -183,7 +183,7 @@ int main()
     {
         auto& Doc = Host.AccessState().Document;
         SketcherConstructRequest BoxReq {};
-        BoxReq.Kind     = SketcherConstructKind::Block;
+        BoxReq.Kind     = SketcherConstructCategory::Block;
         BoxReq.Position = { -1.2, -0.9, -0.6 };
         BoxReq.Width    = 2.4;
         BoxReq.Depth    = 1.8;
@@ -197,7 +197,7 @@ int main()
         }
 
         SketcherDrawingRequest CircleReq {};
-        CircleReq.Kind            = SketcherDrawingKind::Circle;
+        CircleReq.Kind            = SketcherDrawingCategory::Circle;
         CircleReq.GridPlane       = 0;
         CircleReq.CentreCondition = true;
         CircleReq.FillCondition   = true;
@@ -559,7 +559,7 @@ int main()
             Io.AddKeyEvent(ImGuiMod_Shift, true);
             Io.AddKeyEvent(ImGuiKey_A, true);
         });
-        const bool LineDrawingStarted = State.Drawing.ActiveCondition && State.Drawing.Kind == SketcherDrawingKind::Line;
+        const bool LineDrawingStarted = State.Drawing.ActiveCondition && State.Drawing.Kind == SketcherDrawingCategory::Line;
         StepHostedFrame([&]()
         {
             Io.AddKeyEvent(ImGuiKey_A, false);

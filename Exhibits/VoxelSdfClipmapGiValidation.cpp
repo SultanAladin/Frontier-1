@@ -283,7 +283,7 @@ struct VehicleMeshBuckets
     std::array<uint16_t, 16u>                        SlotToMatReg {};
     GeometrySpace::PolygonNetwork                    CombinedLocalNet {};
     SpatialAcceleration::WideBoundingTree            CombinedLocalBvh {};
-    DistanceFieldSpace::LocalObjectSdfAsset          LocalSdfAsset    {};
+    DistanceFieldSpace::LocalGeometrySdfAsset          LocalSdfAsset    {};
 };
 
 struct StudioSceneBundle
@@ -813,7 +813,7 @@ int main()
     constexpr uint32_t W = 480u;
     constexpr uint32_t H = 270u;
 
-    GeometricRaster::PerspectiveCameraFrame Cam {};
+    GeometricRaster::PerspectiveCameraBasis Cam {};
     Cam.CameraOrigin       = { 3.35f, -4.35f, 1.85f };
     Cam.TargetPoint        = { -0.35f, 0.15f, 0.70f };
     Cam.WorldUpAxis        = { 0.0f, 0.0f, 1.0f };

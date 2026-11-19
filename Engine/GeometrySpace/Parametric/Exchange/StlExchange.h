@@ -1,7 +1,7 @@
 /*====================================================================================================================================
                                                         STLEXCHANGE.H
 ====================================================================================================================================*/
-// 🧩 STL exchange: bodies → watertight PolygonComplex → binary / ASCII STL in millimetres, and the reader that welds a file
+// 🧩 STL exchange: bodies → watertight PolygonNetworkStructure → binary / ASCII STL in millimetres, and the reader that welds a file
 //    back into shared vertices and measures its soundness (open / non-manifold / misoriented sides, Euler χ, volume)
 
 #pragma once

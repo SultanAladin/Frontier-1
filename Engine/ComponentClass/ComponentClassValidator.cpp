@@ -14,7 +14,7 @@ namespace Frontier::ComponentClass
 
 std::vector<ClassDiagnosticIssue> ComponentClassValidator::ValidateClass(
     const ComponentClassDefinition& Definition,
-    const AssetExistsPredicate&     QueryAssetCompiled)
+    const AssetExistsCondition&     QueryAssetCompiled)
 {
     std::vector<ClassDiagnosticIssue> Issues {};
     const ComponentInstanceStorage& Storage = Definition.Storage;
@@ -51,13 +51,13 @@ std::vector<ClassDiagnosticIssue> ComponentClassValidator::ValidateClass(
         else if (Header->Category == ComponentCategory::ConstraintInstance)
         {
             const ConstraintComponentSettings* Constraint = Storage.InspectConstraint(Header->Token);
-            if (Constraint != nullptr && Constraint->Kind == PhysicsConstraintKind::Dock)
+            if (Constraint != nullptr && Constraint->Form == PhysicsConstraintCategory::Dock)
             {
                 std::vector<ComponentInstanceToken> Nested {};
                 Storage.CollectNestedTokens(Header->Token, Nested);
-                for (const ComponentInstanceToken ChildTok : Nested)
+                for (const ComponentInstanceToken NestedTok : Nested)
                 {
-                    const ComponentInstanceHeader* NestedHeader = Storage.InspectHeader(ChildTok);
+                    const ComponentInstanceHeader* NestedHeader = Storage.InspectHeader(NestedTok);
                     if (NestedHeader != nullptr &&
                         !ComponentInstanceStorage::QueryDockTagAccepted(Constraint->DockKey, NestedHeader->TagCsv))
                     {

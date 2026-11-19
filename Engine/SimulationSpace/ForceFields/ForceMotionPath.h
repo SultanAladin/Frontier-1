@@ -34,7 +34,7 @@ struct MotionSamplePoint
 
 void AssignPresetMotionPath(
     ForceSourceRecordEntry& Entry,
-    MotionPathTopology      PresetTopology) noexcept;
+    MotionPathGeometry      PresetTopology) noexcept;
 
 [[nodiscard]] float ResolveCycleNormalizedPhase(
     double              TimeSeconds,

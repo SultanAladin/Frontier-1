@@ -139,7 +139,7 @@ struct VoxelClipmapCascade
 //                                      BAKED LOCAL OBJECT SDF (FOR MOVING OBJECTS)
 //------------------------------------------------------------------------------------------------------------------------
 
-struct LocalObjectSdfAsset
+struct LocalGeometrySdfAsset
 {
     std::string                        DebugName       {};
     Mathematics::Axis3D                LocalMin        {};
@@ -150,11 +150,11 @@ struct LocalObjectSdfAsset
     uint32_t                           DimY            = 0u;
     uint32_t                           DimZ            = 0u;
     std::vector<VoxelSurfaceCacheEntry> LocalVoxels    {};
-    FacetAtlas                         LocalAtlas      {};
-    BakedFacetDistance                 BakedDistance   {};
+    FaceBvhRepository                         LocalAtlas      {};
+    BakedFaceDistance                 BakedDistance   {};
 
     // Bakes exact unsigned distance + local surface cache attributes ONCE in object-local space
-    // using arena/f2d37e4b-frontier FacetAtlas + BakedFacetDistance (80x40x32 default).
+    // using arena/f2d37e4b-frontier FaceBvhRepository + BakedFaceDistance (80x40x32 default).
     bool BakeFromLocalTree(
         std::string_view                               Name,
         const SpatialAcceleration::WideBoundingTree&   LocalTree,
@@ -162,7 +162,7 @@ struct LocalObjectSdfAsset
         float                                          TargetSpacingM = 0.038f,
         float                                          PaddingM       = 0.15f);
 
-    // Conservative Lipschitz lower-bound interval { Raw, Lower } from BakedFacetDistance
+    // Conservative Lipschitz lower-bound interval { Raw, Lower } from BakedFaceDistance
     [[nodiscard]] DistanceInterval SampleConservativeLocalInterval(Mathematics::Axis3D LocalPos) const noexcept;
 
     // Conservative AABB-padded distance (boxDist + max(0, innerDist)) so rays outside never leak
@@ -202,7 +202,7 @@ struct RigidTransform3D
 
 struct DynamicLocalSdfInstance
 {
-    const LocalObjectSdfAsset* Asset     = nullptr;
+    const LocalGeometrySdfAsset* Asset     = nullptr;
     RigidTransform3D           Transform {};
     Mathematics::Axis3D        WorldAabbMin {};
     Mathematics::Axis3D        WorldAabbMax {};
@@ -230,7 +230,7 @@ public:
 
     // Exact arena/f2d37e4b-frontier 3-tier 48^3 toroidal clipmap + static atlas + two-sided surface cache
     DistanceClipmap                      ToroidalClipmap    {};
-    FacetAtlas                           StaticAtlas        {};
+    FaceBvhRepository                           StaticAtlas        {};
     std::vector<ClosedBox>               ClosedBoxes        {};
     std::vector<Mathematics::LinearRGB>  VehicleSideCache   {};
     std::vector<Mathematics::LinearRGB>  StaticSideCache    {};
@@ -263,7 +263,7 @@ public:
     // Evaluates direct lighting (Emissive, Point, Sun, Area) into StaticClip0 & StaticClip1 + two-sided surface caches
     void BakeStaticSurfaceCacheLighting(
         const ClipmapLightingMask&                            Mask,
-        const GeometricRaster::SolarDirectionalEmitter&       Sun,
+        const GeometricRaster::SolarDirectionalSource&       Sun,
         std::span<const VoxelPointLightSpec>                  PointLights,
         std::span<const GeometricRaster::PolygonalAreaQuadLight> AreaLights,
         Mathematics::LinearRGB                                SkyRadiance,
@@ -273,7 +273,7 @@ public:
     void ComposeDynamicObjectsIntoActiveClip0(
         std::span<const DynamicLocalSdfInstance>              DynamicObjects,
         const ClipmapLightingMask&                            Mask,
-        const GeometricRaster::SolarDirectionalEmitter&       Sun,
+        const GeometricRaster::SolarDirectionalSource&       Sun,
         std::span<const VoxelPointLightSpec>                  PointLights,
         std::span<const GeometricRaster::PolygonalAreaQuadLight> AreaLights,
         Mathematics::LinearRGB                                SkyRadiance,

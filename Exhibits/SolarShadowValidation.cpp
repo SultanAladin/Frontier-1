@@ -222,7 +222,7 @@ int main()
     constexpr uint32_t ViewW = 652u;
     constexpr uint32_t ViewH = 312u;
 
-    GeometricRaster::PerspectiveCameraFrame Camera {};
+    GeometricRaster::PerspectiveCameraBasis Camera {};
     Camera.CameraOrigin       = { 0.32f, -4.15f, 1.38f };
     Camera.TargetPoint        = { 0.32f,  0.05f, -0.18f };
     Camera.VerticalFovRadians = 0.74f;
@@ -235,7 +235,7 @@ int main()
     GeometricRaster::VisibilityClusterRasterization::RasterizeOpaqueClusters(
         Camera, Instances, CullReport.HardwareClusterBatches, CullReport.MicroSoftwareClusters, VisTargets);
 
-    GeometricRaster::SolarDirectionalEmitter Sun {};
+    GeometricRaster::SolarDirectionalSource Sun {};
     Sun.DirectionToSun          = Mathematics::NormalizeAxis({ -0.52f, -0.38f, 0.765f });
     Sun.SolarIrradiance         = { 4.40f, 4.15f, 3.82f };
     Sun.SunAngularRadiusRadians = 0.038f;

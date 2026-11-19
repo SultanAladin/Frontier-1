@@ -9,7 +9,7 @@
 //                                                    INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <cstdint>
 #include <optional>
@@ -36,7 +36,7 @@ enum class DrawingStandardView : uint8_t
     Isometric = 6,                                                                           // Viewer along (1, −1, 1): z up
 };
 
-enum class DrawingStrokeKind : uint8_t
+enum class DrawingStrokeCategory : uint8_t
 {
     Edge           = 0,                                                                      // A model edge between faces meeting at an angle
     TangentEdge    = 1,                                                                      // A model edge between tangent faces (fillet run-out)
@@ -55,7 +55,7 @@ enum class DrawingVisibility : uint8_t
 //    end points only (plus the points where their visibility changes).
 struct DrawingStroke
 {
-    DrawingStrokeKind    Kind       = DrawingStrokeKind::Edge;                               // [-]   - What drew it
+    DrawingStrokeCategory    Kind       = DrawingStrokeCategory::Edge;                               // [-]   - What drew it
     DrawingVisibility    Visibility = DrawingVisibility::Visible;                            // [-]   - Solid or dashed
     std::vector<Vector2> Points     = {};                                                    // [len] - View coordinates
     BodyToken            Body       = {};                                                    // [-]   - Body of the source entity
@@ -64,10 +64,10 @@ struct DrawingStroke
 
 struct DrawingViewRequest
 {
-    OrthonormalFrame                Frame               = {};                                // [-]   - View frame (ZAxis at the viewer)
+    OrthonormalBasis                Frame               = {};                                // [-]   - View frame (ZAxis at the viewer)
     bool                            HiddenLinesEnabled  = true;                              // [-]   - Keep hidden strokes (else dropped)
     bool                            TangentEdgesEnabled = true;                              // [-]   - Keep tangent edges
-    std::optional<OrthonormalFrame> Section             = {};                                // [-]   - Cut plane: material on its −ZAxis side stays
+    std::optional<OrthonormalBasis> Section             = {};                                // [-]   - Cut plane: material on its −ZAxis side stays
     double                          HatchSpacing        = 0.0;                               // [len] - 0 → 2.5 % of the reach
     double                          HatchAngle          = 0.785398163397448;                 // [rad] - From the view 𝑥 axis (45°)
     double                          ChordStep           = 0.0;                               // [len] - Curve polyline step, 0 → 0.5 % of the reach
@@ -76,7 +76,7 @@ struct DrawingViewRequest
 
 struct DrawingView
 {
-    OrthonormalFrame           Frame             = {};                                       // [-]    - View frame used
+    OrthonormalBasis           Frame             = {};                                       // [-]    - View frame used
     std::vector<DrawingStroke> Strokes           = {};                                       // [-]    - All strokes
     Vector2                    Low               = {};                                       // [len]  - View-space box
     Vector2                    High              = {};                                       // [len]  - View-space box
@@ -92,10 +92,10 @@ struct DrawingView
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] OrthonormalFrame StandardDrawingFrame(DrawingStandardView View) noexcept;
+[[nodiscard]] OrthonormalBasis StandardDrawingFrame(DrawingStandardView View) noexcept;
 [[nodiscard]] const char*      DrawingStandardViewLabel(DrawingStandardView View) noexcept;
-[[nodiscard]] const char*      DrawingStrokeKindLabel(DrawingStrokeKind Kind) noexcept;
-[[nodiscard]] Vector2          ProjectDrawingPoint(const OrthonormalFrame& Frame, Vector3 Position) noexcept;
+[[nodiscard]] const char*      DrawingStrokeKindLabel(DrawingStrokeCategory Kind) noexcept;
+[[nodiscard]] Vector2          ProjectDrawingPoint(const OrthonormalBasis& Frame, Vector3 Position) noexcept;
 [[nodiscard]] double           MeasureStrokeLength(const DrawingStroke& Stroke) noexcept;
 
 // 💡 Hidden-line projection (research: Appel 1967 quantitative invisibility, here by exact rays):

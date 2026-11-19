@@ -41,11 +41,11 @@ SpaceContainerPayload NetworkEncoder::BuildPayload(
     RoutingSection.insert_or_assign("AllowEncryptedRelay",   Configuration.AllowEncryptedRelay);
     Payload.DomainManifest.insert_or_assign(".SessionRouting", std::move(RoutingSection));
 
-    // Pack binary ReplicationScheduleContract records into a deterministic little-endian Tier 2 section
+    // Pack binary ReplicationScheduleSpec records into a deterministic little-endian Tier 2 section
     std::vector<uint8_t> RawBytes;
     RawBytes.reserve(4u + Configuration.ReplicationContracts.size() * 20u);
     NetworkingSpace::AppendLittleEndian32(RawBytes, static_cast<uint32_t>(Configuration.ReplicationContracts.size()));
-    for (const NetworkingSpace::ReplicationScheduleContract& Contract : Configuration.ReplicationContracts)
+    for (const NetworkingSpace::ReplicationScheduleSpec& Contract : Configuration.ReplicationContracts)
     {
         NetworkingSpace::AppendLittleEndian32(RawBytes, Contract.ContractIdentifier);
         RawBytes.push_back(static_cast<uint8_t>(Contract.Authority));
@@ -175,7 +175,7 @@ bool NetworkDecoder::ExtractConfiguration(
                     return false;
                 }
 
-                NetworkingSpace::ReplicationScheduleContract Contract{};
+                NetworkingSpace::ReplicationScheduleSpec Contract{};
                 if (!NetworkingSpace::ReadLittleEndian32(Bytes, Cursor, Contract.ContractIdentifier))
                 {
                     return false;

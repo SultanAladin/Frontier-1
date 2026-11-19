@@ -15,18 +15,18 @@ namespace Frontier
 namespace
 {
 
-using Kind = ComponentClass::PhysicsConstraintKind;
+using ConstraintCat = ComponentClass::PhysicsConstraintCategory;
 
-constexpr std::array<Kind, 8u> OrderedKinds {{
-    Kind::Fixed, Kind::Hinge, Kind::Slider, Kind::Ball,
-    Kind::Spring, Kind::Spin, Kind::Tether, Kind::Dock,
+constexpr std::array<ConstraintCat, 8u> OrderedCategories {{
+    ConstraintCat::Fixed, ConstraintCat::Hinge, ConstraintCat::Slider, ConstraintCat::Ball,
+    ConstraintCat::Spring, ConstraintCat::Spin, ConstraintCat::Tether, ConstraintCat::Dock,
 }};
 
-void RenderConstraintGlyph(PixelSpace& Surface, Kind K, Point2D C, ColorRgba Ink) noexcept
+void RenderConstraintIcon(PixelSpace& Surface, ConstraintCat K, Point2D C, ColorRgba Ink) noexcept
 {
     switch (K)
     {
-        case Kind::Fixed:
+        case ConstraintCat::Fixed:
         {
             std::array<Point2D, 6> Hex {};
             for (int I = 0; I < 6; ++I)
@@ -38,14 +38,14 @@ void RenderConstraintGlyph(PixelSpace& Surface, Kind K, Point2D C, ColorRgba Ink
             Surface.StrokeCircle(C, 2.3f, Ink, 1.2f);
             break;
         }
-        case Kind::Hinge:
+        case ConstraintCat::Hinge:
         {
             Surface.StrokeLine({ C.X - 5.0f, C.Y - 4.0f }, { C.X + 5.0f, C.Y + 4.0f }, Ink, 1.4f);
             Surface.StrokeLine({ C.X - 5.0f, C.Y + 4.0f }, { C.X + 5.0f, C.Y - 4.0f }, Ink, 1.4f);
             Surface.FillCircle(C, 2.1f, Ink);
             break;
         }
-        case Kind::Slider:
+        case ConstraintCat::Slider:
         {
             Surface.StrokeLine({ C.X - 7.0f, C.Y }, { C.X + 7.0f, C.Y }, Ink, 1.3f);
             Surface.StrokeLine({ C.X - 7.0f, C.Y - 4.0f }, { C.X - 7.0f, C.Y + 4.0f }, Ink, 1.4f);
@@ -53,14 +53,14 @@ void RenderConstraintGlyph(PixelSpace& Surface, Kind K, Point2D C, ColorRgba Ink
             Surface.FillRectangle({ C.X - 3.0f, C.Y - 3.0f, 6.0f, 6.0f }, Ink, 1.5f);
             break;
         }
-        case Kind::Ball:
+        case ConstraintCat::Ball:
         {
             Surface.StrokeCircle({ C.X, C.Y + 2.0f }, 4.6f, Ink, 1.3f);
             Surface.StrokeLine({ C.X, C.Y - 2.5f }, { C.X - 4.0f, C.Y - 7.0f }, Ink, 1.2f);
             Surface.StrokeLine({ C.X, C.Y - 2.5f }, { C.X + 4.0f, C.Y - 7.0f }, Ink, 1.2f);
             break;
         }
-        case Kind::Spring:
+        case ConstraintCat::Spring:
         {
             Surface.StrokeLine({ C.X - 4.5f, C.Y - 6.5f }, { C.X + 4.5f, C.Y - 6.5f }, Ink, 1.4f);
             Surface.StrokeLine({ C.X - 4.5f, C.Y + 6.5f }, { C.X + 4.5f, C.Y + 6.5f }, Ink, 1.4f);
@@ -75,7 +75,7 @@ void RenderConstraintGlyph(PixelSpace& Surface, Kind K, Point2D C, ColorRgba Ink
             Surface.StrokePolyline(Zig, Ink, 1.3f, false);
             break;
         }
-        case Kind::Spin:
+        case ConstraintCat::Spin:
         {
             std::array<Point2D, 10> Arc {};
             for (int I = 0; I < 10; ++I)
@@ -87,7 +87,7 @@ void RenderConstraintGlyph(PixelSpace& Surface, Kind K, Point2D C, ColorRgba Ink
             Surface.FillCircle(C, 2.0f, Ink);
             break;
         }
-        case Kind::Tether:
+        case ConstraintCat::Tether:
         {
             Surface.StrokeCircle({ C.X - 5.0f, C.Y - 3.0f }, 2.2f, Ink, 1.2f);
             Surface.StrokeCircle({ C.X + 5.0f, C.Y + 3.0f }, 2.2f, Ink, 1.2f);
@@ -100,7 +100,7 @@ void RenderConstraintGlyph(PixelSpace& Surface, Kind K, Point2D C, ColorRgba Ink
             Surface.StrokePolyline(Sag, Ink, 1.3f, false);
             break;
         }
-        case Kind::Dock:
+        case ConstraintCat::Dock:
         {
             Surface.StrokeRectangle({ C.X - 7.0f, C.Y - 4.0f, 5.5f, 8.0f }, Ink, 1.5f, 1.2f);
             Surface.StrokeRectangle({ C.X + 1.5f, C.Y - 4.0f, 5.5f, 8.0f }, Ink, 1.5f, 1.2f);
@@ -112,34 +112,34 @@ void RenderConstraintGlyph(PixelSpace& Surface, Kind K, Point2D C, ColorRgba Ink
 
 } // namespace
 
-const char* ConstraintTilePicker::QueryKindLabel(Kind K) noexcept
+const char* ConstraintTilePicker::QueryCategoryLabel(ConstraintCat K) noexcept
 {
     switch (K)
     {
-        case Kind::Fixed:  return "Fixed";
-        case Kind::Hinge:  return "Hinge";
-        case Kind::Slider: return "Slider";
-        case Kind::Ball:   return "Ball";
-        case Kind::Spring: return "Spring";
-        case Kind::Spin:   return "Spin";
-        case Kind::Tether: return "Tether";
-        case Kind::Dock:   return "Dock";
+        case ConstraintCat::Fixed:  return "Fixed";
+        case ConstraintCat::Hinge:  return "Hinge";
+        case ConstraintCat::Slider: return "Slider";
+        case ConstraintCat::Ball:   return "Ball";
+        case ConstraintCat::Spring: return "Spring";
+        case ConstraintCat::Spin:   return "Spin";
+        case ConstraintCat::Tether: return "Tether";
+        case ConstraintCat::Dock:   return "Dock";
     }
     return "Fixed";
 }
 
-const char* ConstraintTilePicker::QueryKindSummary(Kind K) noexcept
+const char* ConstraintTilePicker::QueryCategorySummary(ConstraintCat K) noexcept
 {
     switch (K)
     {
-        case Kind::Fixed:  return "Rigid mount moving rigidly with its enclosing instance.";
-        case Kind::Hinge:  return "Single-axis pivot with optional angular limits or steering drive.";
-        case Kind::Slider: return "Prismatic linear rail constrained between min/max travel stops.";
-        case Kind::Ball:   return "Cone-limited spherical socket for articulated joints.";
-        case Kind::Spring: return "A slider with stiffness and damping that reacts to load and road bumps.";
-        case Kind::Spin:   return "Continuous motorized axle rotation driven toward target RPM.";
-        case Kind::Tether: return "Flexible cable constraining maximum separation distance up to break force.";
-        case Kind::Dock:   return "Keyed snap coupler that latches matching tags and detaches past overload.";
+        case ConstraintCat::Fixed:  return "Rigid mount moving rigidly with its enclosing instance.";
+        case ConstraintCat::Hinge:  return "Single-axis pivot with optional angular limits or steering drive.";
+        case ConstraintCat::Slider: return "Prismatic linear rail constrained between min/max travel stops.";
+        case ConstraintCat::Ball:   return "Cone-limited spherical socket for articulated joints.";
+        case ConstraintCat::Spring: return "A slider with stiffness and damping that reacts to load and road bumps.";
+        case ConstraintCat::Spin:   return "Continuous motorized axle rotation driven toward target RPM.";
+        case ConstraintCat::Tether: return "Flexible cable constraining maximum separation distance up to break force.";
+        case ConstraintCat::Dock:   return "Keyed snap coupler that latches matching tags and detaches past overload.";
     }
     return "";
 }
@@ -147,7 +147,7 @@ const char* ConstraintTilePicker::QueryKindSummary(Kind K) noexcept
 bool ConstraintTilePicker::Construct(
     PixelSpace&           Surface,
     Rectangle2D           Bounds,
-    Kind&                 InOutKind,
+    ConstraintCat&                 InOutKind,
     const ControlPointer& Pointer,
     float                 Opacity) noexcept
 {
@@ -156,7 +156,7 @@ bool ConstraintTilePicker::Construct(
     const float TileW = (Bounds.Width - Gap * 3.0f) * 0.25f;
     const float TileH = (Bounds.Height - Gap) * 0.5f;
 
-    for (std::size_t I = 0u; I < OrderedKinds.size(); ++I)
+    for (std::size_t I = 0u; I < OrderedCategories.size(); ++I)
     {
         const uint32_t Col = static_cast<uint32_t>(I % 4u);
         const uint32_t Row = static_cast<uint32_t>(I / 4u);
@@ -166,7 +166,7 @@ bool ConstraintTilePicker::Construct(
             TileW,
             TileH,
         };
-        const Kind K         = OrderedKinds[I];
+        const ConstraintCat K         = OrderedCategories[I];
         const bool Active    = (InOutKind == K);
         const bool Hovered   = ControlAppearance::QueryPointerOver(TileRect, Pointer);
 
@@ -183,8 +183,8 @@ bool ConstraintTilePicker::Construct(
         Surface.FillRectangle(TileRect, Fill, 8.0f);
         Surface.StrokeRectangle(TileRect, Border, 8.0f, Active ? 1.5f : 1.0f);
 
-        RenderConstraintGlyph(Surface, K, { TileRect.Center().X, TileRect.Y + TileH * 0.38f }, Ink);
-        const char* Label = QueryKindLabel(K);
+        RenderConstraintIcon(Surface, K, { TileRect.Center().X, TileRect.Y + TileH * 0.38f }, Ink);
+        const char* Label = QueryCategoryLabel(K);
         const float Tw = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 10.0f, Label);
         WorkspaceAppearance::ConstructWeightedText(
             Surface,

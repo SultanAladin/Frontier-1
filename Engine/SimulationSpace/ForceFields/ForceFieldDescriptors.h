@@ -58,7 +58,7 @@ enum class ForceModel : uint32_t
     Count                = 19u, // [count] - Total analytical ForceModel laws
 };
 
-enum class FlowStreamProfile : uint32_t
+enum class StreamTransportProfile : uint32_t
 {
     Current         = 0u, // [-] - River / ocean laminar channel current
     ThermalUpdraft  = 1u, // [-] - Rising convective thermal column (+Z Up)
@@ -97,7 +97,7 @@ enum class ReachEnvelopeCategory : uint32_t
     PlanarBox   = 3u, // [-] - Thin box slab aligned with local XY plane
 };
 
-enum class MotionPathTopology : uint32_t
+enum class MotionPathGeometry : uint32_t
 {
     Static        = 0u, // [-] - Stationary at authored Centre
     LinearSpan    = 1u, // [-] - Straight geodesic travel A -> B
@@ -166,7 +166,7 @@ struct BasisVectors3
 
 struct ForceMotionSpecification
 {
-    MotionPathTopology                       Topology                   = MotionPathTopology::Static;     // [-]   - Path geometry topology
+    MotionPathGeometry                       Topology                   = MotionPathGeometry::Static;     // [-]   - Path geometry topology
     MotionCycleBehavior                      CycleBehavior              = MotionCycleBehavior::PingPong;  // [-]   - Time loop behavior
     float                                    SpeedMetresPerSecond       = 8.0f;                           // [m/s] - Traversal speed along arc
     float                                    PhaseOffset                = 0.0f;                           // [0-1] - Normalized starting phase offset
@@ -196,7 +196,7 @@ struct ForceSourceRecordEntry
     std::string              Label                { "Linear Wind" };                     // [-]     - Authoring display title
     ForceModel               Model                = ForceModel::LinearWind;              // [-]     - Analytical law identifier
     ForceDomainCategory      Domain               = ForceDomainCategory::VectorField;    // [-]     - Governing subsystem domain
-    FlowStreamProfile        StreamProfile        = FlowStreamProfile::Current;          // [-]     - Profile when Model == FlowStream
+    StreamTransportProfile        StreamProfile        = StreamTransportProfile::Current;          // [-]     - Profile when Model == FlowStream
     ForceAttenuationMode     Attenuation          = ForceAttenuationMode::SmoothStep;    // [-]     - Radial distance decay
     ForceDurationMode        DurationMode         = ForceDurationMode::Continuous;       // [-]     - Temporal modulation envelope
     ReachEnvelopeCategory    Envelope             = ReachEnvelopeCategory::Sphere;       // [-]     - Spatial bounding shell shape
@@ -264,7 +264,7 @@ struct alignas(16) ForceSourceShaderEntry
     float    DragCoefficient;   // [1/s]  - Linear drag damping rate
 
     uint32_t ModelId;           // [-]    - ForceModel enum ordinal
-    uint32_t StreamProfileId;   // [-]    - FlowStreamProfile enum ordinal
+    uint32_t StreamProfileId;   // [-]    - StreamTransportProfile enum ordinal
     uint32_t AttenuationId;     // [-]    - ForceAttenuationMode enum ordinal
     uint32_t EnvelopeId;        // [-]    - ReachEnvelopeCategory enum ordinal
 
@@ -358,7 +358,7 @@ concept SpatialForceSampleSource = requires(
 
 [[nodiscard]] constexpr ForceDomainCategory QueryDomainForModel(ForceModel Model) noexcept;
 [[nodiscard]] constexpr const char*         QueryForceModelDisplayName(ForceModel Model) noexcept;
-[[nodiscard]] constexpr const char*         QueryFlowStreamDisplayName(FlowStreamProfile Profile) noexcept;
+[[nodiscard]] constexpr const char*         QueryFlowStreamDisplayName(StreamTransportProfile Profile) noexcept;
 [[nodiscard]] ForceSourceShaderEntry        PackForceSourceForShader(
     const ForceSourceRecordEntry& Entry,
     double                        TimeSeconds,
@@ -526,15 +526,15 @@ constexpr const char* QueryForceModelDisplayName(ForceModel Model) noexcept
     }
 }
 
-constexpr const char* QueryFlowStreamDisplayName(FlowStreamProfile Profile) noexcept
+constexpr const char* QueryFlowStreamDisplayName(StreamTransportProfile Profile) noexcept
 {
     switch (Profile)
     {
-        case FlowStreamProfile::Current:         return "Current";
-        case FlowStreamProfile::ThermalUpdraft:  return "Thermal Updraft";
-        case FlowStreamProfile::SlipstreamJet:   return "Slipstream Jet";
-        case FlowStreamProfile::NavigationField: return "NavigationField";
-        case FlowStreamProfile::VesselWake:      return "Vessel Wake";
+        case StreamTransportProfile::Current:         return "Current";
+        case StreamTransportProfile::ThermalUpdraft:  return "Thermal Updraft";
+        case StreamTransportProfile::SlipstreamJet:   return "Slipstream Jet";
+        case StreamTransportProfile::NavigationField: return "NavigationField";
+        case StreamTransportProfile::VesselWake:      return "Vessel Wake";
         default:                                 return "Current";
     }
 }

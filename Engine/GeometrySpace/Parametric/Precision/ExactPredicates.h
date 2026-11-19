@@ -21,16 +21,16 @@ namespace Frontier::GeometrySpace::Parametric
 //------------------------------------------------------------------------------------------------------------------------
 
 // 📝 Which branch produced the sign: the cheap filtered determinant, or the exact expansion fallback.
-enum class PredicateResolution : uint8_t
+enum class SignResolution : uint8_t
 {
     Filtered = 0,
     Expansion,
 };
 
-struct PredicateOutcome
+struct SignOutcome
 {
     int                 Sign       = 0;                                                      // [-] - −1, 0, +1 exactly
-    PredicateResolution Resolution = PredicateResolution::Filtered;                          // [-] - Branch that decided the sign
+    SignResolution Resolution = SignResolution::Filtered;                          // [-] - Branch that decided the sign
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -38,15 +38,15 @@ struct PredicateOutcome
 //------------------------------------------------------------------------------------------------------------------------
 
 // Exact sign of the orientation determinant of A, B, C in the plane: +1 counter-clockwise, −1 clockwise, 0 collinear.
-[[nodiscard]] PredicateOutcome Orient2D(Vector2 A, Vector2 B, Vector2 C) noexcept;
+[[nodiscard]] SignOutcome Orient2D(Vector2 A, Vector2 B, Vector2 C) noexcept;
 
 // Exact sign of the orientation determinant of D relative to the plane through A, B, C:
 // +1 when D lies below the plane (A, B, C counter-clockwise seen from above), −1 above, 0 coplanar.
-[[nodiscard]] PredicateOutcome Orient3D(Vector3 A, Vector3 B, Vector3 C, Vector3 D) noexcept;
+[[nodiscard]] SignOutcome Orient3D(Vector3 A, Vector3 B, Vector3 C, Vector3 D) noexcept;
 
 // Exact sign of the lifted (in-circle) determinant: +1 when D lies strictly inside the circle through A, B, C taken
 // counter-clockwise, −1 outside, 0 cocircular. Clockwise A, B, C flip the sign.
-[[nodiscard]] PredicateOutcome InCircle(Vector2 A, Vector2 B, Vector2 C, Vector2 D) noexcept;
+[[nodiscard]] SignOutcome InCircle(Vector2 A, Vector2 B, Vector2 C, Vector2 D) noexcept;
 
 // Naive (unfiltered, inexact) determinants — retained only so the validation can measure how often they are wrong.
 [[nodiscard]] double NaiveOrient2D(Vector2 A, Vector2 B, Vector2 C) noexcept;

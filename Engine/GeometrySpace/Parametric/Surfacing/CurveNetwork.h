@@ -11,8 +11,8 @@
 
 #include "Engine/GeometrySpace/Parametric/Feature/ProfileSweep.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/SurfaceGeometry.h"
-#include "Engine/GeometrySpace/Parametric/Surfacing/PanelAssembly.h"
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Surfacing/PanelJoining.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <string>
 #include <vector>

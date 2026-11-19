@@ -86,9 +86,9 @@ CameraMatrix InvertCameraMatrix(const CameraMatrix& Source)
     return Inverse;
 }
 
-OrbitCameraFrame FrameOrbitCamera(const OrbitCamera& Camera, double Width, double Height)
+OrbitCameraBasis FrameOrbitCamera(const OrbitCamera& Camera, double Width, double Height)
 {
-    OrbitCameraFrame Frame;
+    OrbitCameraBasis Frame;
     Frame.Width  = std::max(1.0, Width);
     Frame.Height = std::max(1.0, Height);
     Frame.OrthographicEnabled = Camera.OrthographicEnabled;
@@ -145,7 +145,7 @@ OrbitCameraFrame FrameOrbitCamera(const OrbitCamera& Camera, double Width, doubl
     return Frame;
 }
 
-OrbitRay CastOrbitRay(const OrbitCameraFrame& Frame, double PixelX, double PixelY)
+OrbitRay CastOrbitRay(const OrbitCameraBasis& Frame, double PixelX, double PixelY)
 {
     const double DeviceX = 2.0 * PixelX / Frame.Width - 1.0;
     const double DeviceY = 2.0 * PixelY / Frame.Height - 1.0;
@@ -165,7 +165,7 @@ void RevolveOrbitCamera(OrbitCamera& Camera, double DeltaX, double DeltaY)
     Camera.Elevation = std::clamp(Camera.Elevation + DeltaY * 0.008, -HalfPi, HalfPi);
 }
 
-void PanOrbitCamera(OrbitCamera& Camera, const OrbitCameraFrame& Frame, double DeltaX, double DeltaY)
+void PanOrbitCamera(OrbitCamera& Camera, const OrbitCameraBasis& Frame, double DeltaX, double DeltaY)
 {
     for (int Axis = 0; Axis < 3; ++Axis)
         Camera.Target[Axis] += (-DeltaX * Frame.Right[Axis] + DeltaY * Frame.Up[Axis]) * Frame.WorldPerPixel;

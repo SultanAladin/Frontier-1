@@ -17,7 +17,7 @@ namespace Frontier::GeometricRaster::ComponentEditor
 bool ComponentSpecimenBaker::BakeClassThumbnail(
     ComponentViewportRenderer&                                    Renderer,
     ComponentClass::ComponentClassDefinition&                     InOutClassDef,
-    std::span<const ComponentClass::CompiledGeometryCatalogEntry> Catalog,
+    std::span<const ComponentClass::CompiledGeometryRepositoryEntry> Repository,
     uint32_t                                                      ResolutionPixels)
 {
     if (!Renderer.QueryVulkanReady() || ResolutionPixels == 0u)
@@ -25,7 +25,7 @@ bool ComponentSpecimenBaker::BakeClassThumbnail(
         return false;
     }
 
-    ComponentViewportCamera Cam = Renderer.ComputeFramedCameraForClass(InOutClassDef, Catalog, 0.62f, 0.28f);
+    ComponentViewportCamera Cam = Renderer.ComputeFramedCameraForClass(InOutClassDef, Repository, 0.62f, 0.28f);
     Cam.DistanceMeters *= 0.92f;
 
     ComponentRenderOptions Opts {};
@@ -34,9 +34,9 @@ bool ComponentSpecimenBaker::BakeClassThumbnail(
     Opts.ShowDebugHelpers    = false;
     Opts.TransparentBackdrop = true;
 
-    const ComponentViewportFrameOutput Out = Renderer.RenderClassFrame(
+    const ComponentViewportOutput Out = Renderer.RenderClassViewport(
         InOutClassDef,
-        Catalog,
+        Repository,
         Cam,
         Opts,
         ResolutionPixels,
@@ -56,7 +56,7 @@ bool ComponentSpecimenBaker::BakeClassThumbnail(
 
 bool ComponentSpecimenBaker::BakeGeometryAssetThumbnail(
     ComponentViewportRenderer&                          Renderer,
-    const ComponentClass::CompiledGeometryCatalogEntry& Entry,
+    const ComponentClass::CompiledGeometryRepositoryEntry& Entry,
     std::vector<uint8_t>&                               OutRgba8,
     uint32_t                                            ResolutionPixels)
 {
@@ -82,8 +82,8 @@ bool ComponentSpecimenBaker::BakeGeometryAssetThumbnail(
         Geom->AssetIdentifier = Entry.AssetIdentifier;
     }
 
-    const std::array<ComponentClass::CompiledGeometryCatalogEntry, 1> SingleCatalog {{ Entry }};
-    if (!BakeClassThumbnail(Renderer, TempClass, SingleCatalog, ResolutionPixels))
+    const std::array<ComponentClass::CompiledGeometryRepositoryEntry, 1> SingleRepository {{ Entry }};
+    if (!BakeClassThumbnail(Renderer, TempClass, SingleRepository, ResolutionPixels))
     {
         return false;
     }

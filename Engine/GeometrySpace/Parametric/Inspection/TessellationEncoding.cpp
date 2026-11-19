@@ -1,7 +1,7 @@
 /*====================================================================================================================================
                                                    TESSELLATIONENCODING.CPP
 ====================================================================================================================================*/
-// 🧩 PolygonComplex → JSON: geometry for the shaded view, per-face refinement records and the N1–N7 gate verdicts
+// 🧩 PolygonNetworkStructure → JSON: geometry for the shaded view, per-face refinement records and the N1–N7 gate verdicts
 
 #include "Engine/GeometrySpace/Parametric/Inspection/TessellationEncoding.h"
 
@@ -45,7 +45,7 @@ namespace
 std::string EncodeTessellation(const ModelPartition& Partition, const std::string& SpecimenName, double SagRatio, const TessellationOutcome& Outcome,
                                const TessellationAuditReport& Report, double AuditMilliseconds)
 {
-    const PolygonComplex& Complex = Outcome.Complex;
+    const PolygonNetworkStructure& Complex = Outcome.Complex;
     JsonWriter Writer;
     Writer.OpenObject();
     Writer.String("Kind", "Tessellation");
@@ -75,7 +75,7 @@ std::string EncodeTessellation(const ModelPartition& Partition, const std::strin
     for (int Face : Complex.TriangleFaces) Writer.Integer(nullptr, Face);
     Writer.CloseArray();
     Writer.OpenArray("Edges");
-    for (const PolygonComplexEdge& Edge : Complex.Edges)
+    for (const PolygonNetEdge& Edge : Complex.Edges)
     {
         Writer.OpenArray();
         for (int Vertex : Edge.Vertices) Writer.Integer(nullptr, Vertex);
@@ -85,7 +85,7 @@ std::string EncodeTessellation(const ModelPartition& Partition, const std::strin
 
     // ② Per-face refinement records.
     Writer.OpenArray("Faces");
-    for (const PolygonComplexFace& Face : Complex.Faces)
+    for (const PolygonNetFace& Face : Complex.Faces)
     {
         const FaceProfile& Patch = Partition.Faces.Resolve(Face.Face);
         Writer.OpenObject();
@@ -106,7 +106,7 @@ std::string EncodeTessellation(const ModelPartition& Partition, const std::strin
 
     // ③ Gates, as in TessellationValidation.
     int64_t Folded = 0, Delaunay = 0;
-    for (const PolygonComplexFace& Face : Complex.Faces)
+    for (const PolygonNetFace& Face : Complex.Faces)
     {
         Folded   += Face.FoldedResidual;
         Delaunay += Face.DelaunayViolations;

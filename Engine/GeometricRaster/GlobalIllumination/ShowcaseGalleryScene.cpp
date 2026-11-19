@@ -154,7 +154,7 @@ struct LocalCornerTriEntry
     };
 }
 
-void EnsureObjectLocalSmoothTriangles(ShowcaseWorldObjectEntry& Obj)
+void EnsureObjectLocalSmoothTriangles(ShowcaseWorldAssetEntry& Obj)
 {
     if (Obj.GlassShell || !Obj.LocalSmoothTriangles.empty())
     {
@@ -414,7 +414,7 @@ void EnsureObjectLocalSmoothTriangles(ShowcaseWorldObjectEntry& Obj)
 }
 
 void BuildCameraRay(
-    const PerspectiveCameraFrame& Cam,
+    const PerspectiveCameraBasis& Cam,
     float                         NormalizedU,
     float                         NormalizedV,
     Mathematics::Axis3D&          OutOrigin,
@@ -603,7 +603,7 @@ void BuildShowcaseGalleryScene(
         OutBundle.Scene.ClusterInstances.push_back(
             { &OutBundle.GeometryAssets[AssetOrdinal].Pyramid, Center, Center, 1.0f, Slot, GlassShell });
 
-        ShowcaseWorldObjectEntry Record {};
+        ShowcaseWorldAssetEntry Record {};
         Record.Title                = Title;
         Record.StableIdentifier     = StableId;
         Record.MaterialTitle        = MaterialTitle;
@@ -639,7 +639,7 @@ void BuildShowcaseGalleryScene(
             { &OutBundle.GeometryAssets[AssetOrdinal].Pyramid, Center, Center, 1.0f, Slot, GlassShell });
 
         const float Diameter = Radius * 2.0f;
-        ShowcaseWorldObjectEntry Record {};
+        ShowcaseWorldAssetEntry Record {};
         Record.Title                = Title;
         Record.StableIdentifier     = StableId;
         Record.MaterialTitle        = MaterialTitle;
@@ -895,7 +895,7 @@ void RegisterShowcaseGalleryInOutliner(
         Folder->Expanded    = true;
     }
 
-    for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+    for (ShowcaseWorldAssetEntry& Obj : InOutBundle.Objects)
     {
         const OutlinerSlotToken Slot = TargetOutliner.ConstructFromTemplate(
             Obj.SphericalPrimitive ? SphereTemplateOrd : BoxTemplateOrd,
@@ -1084,7 +1084,7 @@ void RebuildShowcaseSceneAcceleration(
     bool                      RebuildSdfVolume)
 {
     std::size_t TotalTriangleCount = 0u;
-    for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+    for (ShowcaseWorldAssetEntry& Obj : InOutBundle.Objects)
     {
         if (Obj.ClusterInstanceIndex >= InOutBundle.Scene.ClusterInstances.size())
         {
@@ -1105,7 +1105,7 @@ void RebuildShowcaseSceneAcceleration(
     WorldNormals.reserve(std::max<std::size_t>(12u, TotalTriangleCount));
 
     uint32_t PrimCounter = 0u;
-    for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+    for (ShowcaseWorldAssetEntry& Obj : InOutBundle.Objects)
     {
         if (Obj.ClusterInstanceIndex >= InOutBundle.Scene.ClusterInstances.size())
         {
@@ -1180,7 +1180,7 @@ bool SynchronizeShowcaseGalleryFromOutliner(
     bool Changed         = false;
     bool AccelInvalidated = false;
 
-    for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+    for (ShowcaseWorldAssetEntry& Obj : InOutBundle.Objects)
     {
         if (!Obj.SlotToken.Valid() || Obj.ClusterInstanceIndex >= InOutBundle.Scene.ClusterInstances.size())
         {
@@ -1375,7 +1375,7 @@ bool SynchronizeShowcaseGallerySceneLive(
             const bool KnownObject = std::any_of(
                 InOutBundle.Objects.begin(),
                 InOutBundle.Objects.end(),
-                [&](const ShowcaseWorldObjectEntry& Obj) { return Obj.SlotToken == Entry.Token; });
+                [&](const ShowcaseWorldAssetEntry& Obj) { return Obj.SlotToken == Entry.Token; });
             if (!KnownObject)
             {
                 const ShowcasePrimitiveShape Shape = InferShapeFromRecord(Entry);
@@ -1431,7 +1431,7 @@ bool SynchronizeShowcaseGallerySceneLive(
                 });
                 InOutBundle.DynamicGeometryAssets.push_back(std::move(DynAsset));
 
-                ShowcaseWorldObjectEntry NewObj {};
+                ShowcaseWorldAssetEntry NewObj {};
                 NewObj.Title                = Entry.Title;
                 NewObj.StableIdentifier     = "constructed-" + std::to_string(Entry.Token.Identifier);
                 NewObj.MaterialTitle        = SpawnMat.MaterialName;
@@ -1458,7 +1458,7 @@ bool SynchronizeShowcaseGallerySceneLive(
             const bool KnownLight = std::any_of(
                 InOutBundle.AreaLightBindings.begin(),
                 InOutBundle.AreaLightBindings.end(),
-                [&](const ShowcaseAreaLightBinding& L) { return L.SlotToken == Entry.Token; });
+                [&](const ShowcaseAreaLightLink& L) { return L.SlotToken == Entry.Token; });
             if (!KnownLight)
             {
                 PolygonalAreaQuadLight NewQuad {};
@@ -1490,7 +1490,7 @@ bool SynchronizeShowcaseGallerySceneLive(
     }
 
     // 2. Sync dynamic area light bindings (beyond index 0 Ceiling Softbox)
-    for (ShowcaseAreaLightBinding& Binding : InOutBundle.AreaLightBindings)
+    for (ShowcaseAreaLightLink& Binding : InOutBundle.AreaLightBindings)
     {
         if (Binding.SlotToken == InOutBundle.CeilingSoftboxToken ||
             Binding.AreaLightIndex >= InOutBundle.Scene.AreaLights.size())
@@ -1521,7 +1521,7 @@ bool SynchronizeShowcaseGallerySceneLive(
 
     // 3. Synchronize existing gallery & constructed objects + camera + sun + softbox
     bool AccelInvalidated = false;
-    for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+    for (ShowcaseWorldAssetEntry& Obj : InOutBundle.Objects)
     {
         if (!Obj.SlotToken.Valid() || Obj.ClusterInstanceIndex >= InOutBundle.Scene.ClusterInstances.size())
         {
@@ -1694,7 +1694,7 @@ bool AssignShowcaseEntryMaterial(
         return false;
     }
 
-    for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+    for (ShowcaseWorldAssetEntry& Obj : InOutBundle.Objects)
     {
         if (Obj.SlotToken != TargetSlot)
         {
@@ -1917,7 +1917,7 @@ OutlinerSlotToken ConstructShowcaseModelInOutliner(
         char SubBuf[96]{};
         std::snprintf(SubBuf, sizeof(SubBuf), "%s · %.2f × %.2f × %.2f m · OpenPBR", ShapeDisplayLabel(Shape), Dims.X, Dims.Y, Dims.Z);
         Entry->Subtitle = SubBuf;
-        for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+        for (ShowcaseWorldAssetEntry& Obj : InOutBundle.Objects)
         {
             if (Obj.SlotToken == Slot)
             {
@@ -1982,7 +1982,7 @@ bool AssignShowcaseEntryBaseColor(
         }
     }
 
-    for (ShowcaseWorldObjectEntry& Obj : InOutBundle.Objects)
+    for (ShowcaseWorldAssetEntry& Obj : InOutBundle.Objects)
     {
         if (Obj.SlotToken != TargetSlot)
         {
@@ -2041,7 +2041,7 @@ OutlinerSlotToken PickShowcaseGalleryEntryAtUv(
     float             ClosestDistance = std::numeric_limits<float>::max();
     OutlinerSlotToken ClosestToken    {};
 
-    for (const ShowcaseWorldObjectEntry& Obj : Bundle.Objects)
+    for (const ShowcaseWorldAssetEntry& Obj : Bundle.Objects)
     {
         if (!Obj.SlotToken.Valid() || !SourceOutliner.QueryEffectiveVisibility(Obj.SlotToken))
         {
@@ -2081,7 +2081,7 @@ OutlinerSlotToken PickShowcaseGalleryEntryAtUv(
         }
     }
 
-    for (const ShowcaseAreaLightBinding& LightBind : Bundle.AreaLightBindings)
+    for (const ShowcaseAreaLightLink& LightBind : Bundle.AreaLightBindings)
     {
         if (!LightBind.SlotToken.Valid() ||
             LightBind.AreaLightIndex >= Bundle.Scene.AreaLights.size() ||

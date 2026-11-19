@@ -1151,17 +1151,17 @@ void TieredWorldRenderSequence::AssignIrradianceLattice(IrradianceLatticeSequenc
     RtxLattice = std::move(BakedLattice);
 
     const auto& Cfg = RtxLattice.InspectConfig();
-    DynamicProbeCacheConfiguration ProbeCfg {};
-    ProbeCfg.GridMinimumWorld  = Cfg.GridMinimumWorld;
-    ProbeCfg.GridMaximumWorld  = Cfg.GridMaximumWorld;
-    ProbeCfg.CountX            = Cfg.CountX;
-    ProbeCfg.CountY            = Cfg.CountY;
-    ProbeCfg.CountZ            = Cfg.CountZ;
-    ProbeCfg.FibonacciRayCount = Cfg.FibonacciRayCount;
-    ProbeCfg.BouncePasses      = Cfg.BouncePasses;
+    DynamicIrradianceCacheConfiguration IrradianceCfg {};
+    IrradianceCfg.GridMinimumWorld  = Cfg.GridMinimumWorld;
+    IrradianceCfg.GridMaximumWorld  = Cfg.GridMaximumWorld;
+    IrradianceCfg.CountX            = Cfg.CountX;
+    IrradianceCfg.CountY            = Cfg.CountY;
+    IrradianceCfg.CountZ            = Cfg.CountZ;
+    IrradianceCfg.FibonacciRayCount = Cfg.FibonacciRayCount;
+    IrradianceCfg.BouncePasses      = Cfg.BouncePasses;
 
     const auto SrcCells = RtxLattice.InspectCells();
-    std::vector<DynamicProbeCell> DstCells(SrcCells.size());
+    std::vector<DynamicIrradianceCell> DstCells(SrcCells.size());
     for (std::size_t Idx = 0u; Idx < SrcCells.size(); ++Idx)
     {
         DstCells[Idx].WorldPosition    = SrcCells[Idx].WorldPosition;
@@ -1169,7 +1169,7 @@ void TieredWorldRenderSequence::AssignIrradianceLattice(IrradianceLatticeSequenc
         DstCells[Idx].DepthMoments     = SrcCells[Idx].DepthMoments;
         DstCells[Idx].BackfaceRatio    = SrcCells[Idx].BackfaceRatio;
     }
-    ProbeCache.AssignExternalCells(ProbeCfg, std::move(DstCells));
+    IrradianceCache.AssignExternalCells(IrradianceCfg, std::move(DstCells));
 }
 
 void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOutScene)
@@ -1186,24 +1186,24 @@ void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOut
         InOutScene.Sun, FocusCenter, InOutScene.SceneTree, FineContactClip, CoarseContactClip);
 
     // 3. Build & Propagate Multi-Bounce Dynamic Probe Cache (8x8 Octahedral + 16x16 Chebyshev + Backface Gating)
-    DynamicProbeCacheConfiguration ProbeCfg {};
-    ProbeCfg.GridMinimumWorld  = InOutScene.LatticeConfig.GridMinimumWorld;
-    ProbeCfg.GridMaximumWorld  = InOutScene.LatticeConfig.GridMaximumWorld;
-    ProbeCfg.CountX            = InOutScene.LatticeConfig.CountX;
-    ProbeCfg.CountY            = InOutScene.LatticeConfig.CountY;
-    ProbeCfg.CountZ            = InOutScene.LatticeConfig.CountZ;
-    ProbeCfg.FibonacciRayCount = InOutScene.LatticeConfig.FibonacciRayCount;
-    ProbeCfg.BouncePasses      = InOutScene.LatticeConfig.BouncePasses;
+    DynamicIrradianceCacheConfiguration IrradianceCfg {};
+    IrradianceCfg.GridMinimumWorld  = InOutScene.LatticeConfig.GridMinimumWorld;
+    IrradianceCfg.GridMaximumWorld  = InOutScene.LatticeConfig.GridMaximumWorld;
+    IrradianceCfg.CountX            = InOutScene.LatticeConfig.CountX;
+    IrradianceCfg.CountY            = InOutScene.LatticeConfig.CountY;
+    IrradianceCfg.CountZ            = InOutScene.LatticeConfig.CountZ;
+    IrradianceCfg.FibonacciRayCount = InOutScene.LatticeConfig.FibonacciRayCount;
+    IrradianceCfg.BouncePasses      = InOutScene.LatticeConfig.BouncePasses;
 
-    ProbeCache.UpdateProbeCache(
-        ProbeCfg,
+    IrradianceCache.UpdateIrradianceCache(
+        IrradianceCfg,
         InOutScene.SceneTree,
         InOutScene.BounceSummaries,
         InOutScene.Sun,
         InOutScene.AreaLights,
         InOutScene.SkyRadiance);
 
-    RtxLattice.AdoptProbeCacheCells(ProbeCache);
+    RtxLattice.AdoptIrradianceCacheCells(IrradianceCache);
 
     // 4. Maintain GDF Radiosity volume for Mode 7 inspection only (not used by GI engines)
     RadiosityVolume.BuildRadiosityLevels(
@@ -1283,30 +1283,30 @@ void TieredWorldRenderSequence::PrepareRtxIrradianceLatticeOnly(WorldSceneSpecif
     SynchronizeWorldAtmosphere(InOutScene);
     CompileBounceSummaries(InOutScene);
 
-    DynamicProbeCacheConfiguration ProbeCfg {};
-    ProbeCfg.GridMinimumWorld  = InOutScene.LatticeConfig.GridMinimumWorld;
-    ProbeCfg.GridMaximumWorld  = InOutScene.LatticeConfig.GridMaximumWorld;
-    ProbeCfg.CountX            = InOutScene.LatticeConfig.CountX;
-    ProbeCfg.CountY            = InOutScene.LatticeConfig.CountY;
-    ProbeCfg.CountZ            = InOutScene.LatticeConfig.CountZ;
-    ProbeCfg.FibonacciRayCount = InOutScene.LatticeConfig.FibonacciRayCount;
-    ProbeCfg.BouncePasses      = InOutScene.LatticeConfig.BouncePasses;
+    DynamicIrradianceCacheConfiguration IrradianceCfg {};
+    IrradianceCfg.GridMinimumWorld  = InOutScene.LatticeConfig.GridMinimumWorld;
+    IrradianceCfg.GridMaximumWorld  = InOutScene.LatticeConfig.GridMaximumWorld;
+    IrradianceCfg.CountX            = InOutScene.LatticeConfig.CountX;
+    IrradianceCfg.CountY            = InOutScene.LatticeConfig.CountY;
+    IrradianceCfg.CountZ            = InOutScene.LatticeConfig.CountZ;
+    IrradianceCfg.FibonacciRayCount = InOutScene.LatticeConfig.FibonacciRayCount;
+    IrradianceCfg.BouncePasses      = InOutScene.LatticeConfig.BouncePasses;
 
-    ProbeCache.UpdateProbeCache(
-        ProbeCfg,
+    IrradianceCache.UpdateIrradianceCache(
+        IrradianceCfg,
         InOutScene.SceneTree,
         InOutScene.BounceSummaries,
         InOutScene.Sun,
         InOutScene.AreaLights,
         InOutScene.SkyRadiance);
 
-    RtxLattice.AdoptProbeCacheCells(ProbeCache);
+    RtxLattice.AdoptIrradianceCacheCells(IrradianceCache);
 }
 
-WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrame(
+WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrame(
     WorldRenderTier                Tier,
-    const PerspectiveCameraFrame&  CurrentCamera,
-    const PerspectiveCameraFrame&  PreviousCamera,
+    const PerspectiveCameraBasis&  CurrentCamera,
+    const PerspectiveCameraBasis&  PreviousCamera,
     const WorldSceneSpecification& PreparedScene)
 {
     WorldRenderConfiguration Config {};
@@ -1322,18 +1322,18 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrame(
         Config.ShadowAlgorithm  = SolarShadowAlgorithm::ContactPcss;
         Config.ReflectionSource = SpecularReflectionSource::WideTreeRaytrace;
     }
-    WorldRenderFrameResult Out = RenderWorldFrameWithEngine(Config, CurrentCamera, PreviousCamera, PreparedScene);
+    WorldRenderOutput Out = RenderWorldFrameWithEngine(Config, CurrentCamera, PreviousCamera, PreparedScene);
     Out.ActiveTier = Tier;
     return Out;
 }
 
-WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
+WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     const WorldRenderConfiguration& Config,
-    const PerspectiveCameraFrame&   CurrentCamera,
-    const PerspectiveCameraFrame&   PreviousCamera,
+    const PerspectiveCameraBasis&   CurrentCamera,
+    const PerspectiveCameraBasis&   PreviousCamera,
     const WorldSceneSpecification&  PreparedScene)
 {
-    WorldRenderFrameResult Result {};
+    WorldRenderOutput Result {};
     Result.WidthPx      = std::max(1u, CurrentCamera.ViewportWidthPx);
     Result.HeightPx     = std::max(1u, CurrentCamera.ViewportHeightPx);
     Result.ActiveEngine = Config.Engine;
@@ -1408,12 +1408,12 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         CpuCloudField.Build(Result.WidthPx, Result.HeightPx, CurBasis, PreparedScene, SkySequence);
     }
     const float AspectRatio = static_cast<float>(Result.WidthPx) / static_cast<float>(std::max(1u, Result.HeightPx));
-    const ProjectedLensFlareFrame FlareProj =
+    const ProjectedLensFlareSlice FlareProj =
         (Config.DebugChannel == 0u && PreparedScene.Atmosphere.Medium.AtmosphereEnabled && PreparedScene.Atmosphere.LensFlare.Enabled)
             ? LensFlareSequence::ResolveSolarFlareProjection(
                   CurBasis.CameraOrigin, CurBasis.ForwardAxis, CurBasis.RightAxis, CurBasis.UpAxis,
                   CurBasis.TanHalfFovX, CurBasis.TanHalfFovY, PreparedScene.Atmosphere, &PreparedScene.SceneTree)
-            : ProjectedLensFlareFrame{};
+            : ProjectedLensFlareSlice{};
 
     //====================================================================================================================
     // ENGINE 0: MATCAP (Zero GI, Zero Shadow Maps, Zero Reflections)
@@ -1654,14 +1654,14 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     std::vector<Mathematics::LinearRGB> RawIndirectOverPi(TotalPixels, { 0.0f, 0.0f, 0.0f });
     if (Config.GlobalIlluminationEnabled && Config.Engine == WorldRenderEngine::DdgiRaytracing)
     {
-        const bool UseProbeCache = !ProbeCache.InspectCells().empty();
+        const bool UseProbeCache = !IrradianceCache.InspectCells().empty();
         for (std::size_t Off = 0u; Off < TotalPixels; ++Off)
         {
             const auto& Hit = PrimarySamples[Off];
             if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
             {
                 RawIndirectOverPi[Off] = UseProbeCache
-                    ? ProbeCache.SampleIrradianceOverPi(Hit.WorldPosition, Hit.TangentFrame.NormalZ, Hit.WorldViewDirection)
+                    ? IrradianceCache.SampleIrradianceOverPi(Hit.WorldPosition, Hit.TangentFrame.NormalZ, Hit.WorldViewDirection)
                     : RtxLattice.SampleChebyshevIrradianceOverPi(Hit.WorldPosition, Hit.TangentFrame.NormalZ, Hit.WorldViewDirection);
             }
         }
@@ -1699,7 +1699,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         else
         {
             // Hybrid ReSTIR Path Replay GI (Candidate RIS + BVH 1-Bounce + DynamicProbe 2nd Bounce + Spatial/Temporal Reuse + 5-Pass SVGF)
-            ReservoirPathReplaySettings ReplayCfg {};
+            WeightedPathReplaySettings ReplayCfg {};
             ReplayCfg.InitialCandidates    = 4u;
             ReplayCfg.SpatialNeighborCount = 4u;
             ReplayCfg.SvfgFilterPasses     = Config.SdfGiBilateral ? 5u : 0u;
@@ -1709,15 +1709,15 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                                               (PreviousReplayCamera.ViewportHeightPx == Result.HeightPx);
             ReplayCfg.EnableTemporalReuse = ValidTemporalHistory;
 
-            const PerspectiveCameraFrame& EffectivePrevCam = ValidTemporalHistory ? PreviousReplayCamera : PreviousCamera;
-            auto ReplayFrame = ReservoirPathReplaySequence::EvaluateReservoirIndirectFrame(
+            const PerspectiveCameraBasis& EffectivePrevCam = ValidTemporalHistory ? PreviousReplayCamera : PreviousCamera;
+            auto ReplayFrame = WeightedPathReplaySequence::EvaluateWeightedIndirectOutput(
                 CurrentCamera,
                 EffectivePrevCam,
                 PrimarySamples,
                 PreparedScene.MaterialRegister,
                 PreparedScene.BounceSummaries,
                 PreparedScene.SceneTree,
-                ProbeCache,
+                IrradianceCache,
                 PreparedScene.Sun,
                 PreparedScene.AreaLights,
                 PreparedScene.SkyRadiance,
@@ -1757,7 +1757,7 @@ WorldRenderFrameResult TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                         const Mathematics::Axis3D P = CurBasis.CameraOrigin + RayDir * T;
                         int C = 3;
                         float D = ClipmapPtr->SampleClipmapDistance(P, C, PreparedScene.DynamicSdfObjects);
-                        // Avoid false-stopping on the empty outer AABB shell of BakedFacetDistance (Outside > 0 -> 0 at box face)
+                        // Avoid false-stopping on the empty outer AABB shell of BakedFaceDistance (Outside > 0 -> 0 at box face)
                         float TrueSurfaceD = D;
                         if (C < 3 && D < 0.12f)
                         {

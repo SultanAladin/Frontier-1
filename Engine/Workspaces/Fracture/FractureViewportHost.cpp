@@ -736,7 +736,7 @@ void FractureViewportHost::Render(
 
     if (Session.DebugDropdownOpen)
     {
-        struct DebugOptionItem
+        struct DebugOptionEntry
         {
             const char* Label;
             bool*       Flag;
@@ -744,7 +744,7 @@ void FractureViewportHost::Render(
         };
         const bool ExactColMode =
             Session.CollisionShapeMode == SimulationSpace::PhysicsSpace::FractureCollisionShapeMode::CollisionMesh;
-        std::array<DebugOptionItem, 6> DebugItems {{
+        std::array<DebugOptionEntry, 6> DebugItems {{
             { "Collision shapes",   &Session.RenderOptions.ShowCollisionShapes, ExactColMode ? "Exact" : "Convex" },
             { "Mesh wireframe",     &Session.RenderOptions.ShowWireframe,       nullptr },
             { "Breakable bonds",    &Session.RenderOptions.ShowBonds,           nullptr },

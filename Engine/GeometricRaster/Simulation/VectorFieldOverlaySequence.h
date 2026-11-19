@@ -45,7 +45,7 @@ enum class OverlayPickCategory : uint8_t
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct OverlayCameraState
+struct OverlayCameraBasis
 {
     SimulationSpace::ForceFields::SpatialVector3 FocusTargetMeters { 0.0f, 0.0f, 4.0f }; // [m] - Orbit/look target in +Z Up world space
     float                           YawRadians        = -0.785398f;      // [rad] - Azimuth around +Z
@@ -63,12 +63,12 @@ struct OverlayPickResult
     uint32_t            SecondaryId = 0u;                        // [id] - Waypoint index or sub-element
 };
 
-struct OverlayFrameRequest
+struct OverlayRenderRequest
 {
     uint32_t                                                            PaneIndex             = 0u;
     uint32_t                                                            WidthPx               = 640u;
     uint32_t                                                            HeightPx              = 360u;
-    OverlayCameraState                                                  Camera                {};
+    OverlayCameraBasis                                                  Camera                {};
     SimulationSpace::ForceFields::ForceOverlaySettings                  OverlaySettings       {};
     double                                                              TimeSeconds           = 0.0;
     uint32_t                                                            SelectedForceToken    = 0u;
@@ -125,7 +125,7 @@ public:
     [[nodiscard]] bool QueryReady() const noexcept;
 
     [[nodiscard]] OverlayRenderOutput RenderPane(
-        const OverlayFrameRequest& Request,
+        const OverlayRenderRequest& Request,
         std::string&               OutDiagnostic) noexcept;
 
     [[nodiscard]] OverlayPickResult QueryPickAtNormalizedUv(

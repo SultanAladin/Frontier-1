@@ -10,9 +10,9 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
-#include "Engine/GeometrySpace/Parametric/Feature/FeatureCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Feature/FeatureRepository.h"
 #include "Engine/GeometrySpace/Parametric/Inspection/JsonWriter.h"
-#include "Engine/GeometrySpace/Parametric/Sketch/SketchCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Sketch/SketchRepository.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchProfile.h"
 
 #include <string>

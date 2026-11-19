@@ -3,7 +3,7 @@
 ============================================================================================================================================*/
 // 🧩 Shared 3D & 2D Slate GizmoPRO handle rasterizer writing handle RGBA color + GizmoHandleOrdinal in PickIDs.w
 
-struct GizmoVertexRecord
+struct GizmoVertexEntry
 {
     float4 PositionAlpha;  // xyz = World or NDC Position, w = BaseAlpha (1.0 solid, 0.28 translucent plane quad)
     float4 NormalHandlePacked;   // xyz = Shading Normal,        w = float(GizmoHandleOrdinal)
@@ -18,7 +18,7 @@ struct GizmoUniformBlock
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<GizmoUniformBlock>    GizmoUniforms;
-[[vk::binding(1, 0)]] StructuredBuffer<GizmoVertexRecord>  GizmoVertices;
+[[vk::binding(1, 0)]] StructuredBuffer<GizmoVertexEntry>  GizmoVertices;
 
 struct GizmoVSOutput
 {
@@ -38,7 +38,7 @@ struct GizmoFSOutput
 [shader("vertex")]
 GizmoVSOutput VertexEntry(uint VertexID : SV_VulkanVertexID)
 {
-    GizmoVertexRecord Rec = GizmoVertices[VertexID];
+    GizmoVertexEntry Rec = GizmoVertices[VertexID];
     GizmoVSOutput     Out;
     if (GizmoUniforms.HoverSpacePacked.z != 0u)
     {

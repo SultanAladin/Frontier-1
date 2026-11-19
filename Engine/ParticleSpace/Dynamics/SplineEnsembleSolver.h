@@ -42,7 +42,7 @@ struct ElectrodeSphereProp
     bool  VerticalPost       = false;
 };
 
-struct ConductorLineProp
+struct GuideLineProp
 {
     float StartMeters[3]  = { 0.0f, 0.0f, 0.0f };
     float EndMeters[3]    = { 0.0f, 0.0f, 0.0f };
@@ -71,7 +71,7 @@ struct DielectricArcFlash
 struct DielectricArcGeometry
 {
     std::vector<ElectrodeSphereProp>  Electrodes;
-    std::vector<ConductorLineProp>    Conductors;
+    std::vector<GuideLineProp>    Conductors;
     std::vector<DielectricArcSegment> Segments;
     std::vector<DielectricArcFlash>   Flashes;
 };

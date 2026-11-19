@@ -22,7 +22,7 @@ namespace Frontier::GeometrySpace::Parametric
 //                                                    STRUCTS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class ProfileSegmentKind : uint8_t
+enum class ProfileSegmentCategory : uint8_t
 {
     Line   = 0,                                                                              // Start → End
     Arc    = 1,                                                                              // Centre, StartAngle + Sweep
@@ -35,7 +35,7 @@ enum class ProfileSegmentKind : uint8_t
 //    curve is stored already in traversal order (reversal mirrors its knots).
 struct ProfileSegment
 {
-    ProfileSegmentKind Kind       = ProfileSegmentKind::Line;                                // [-]   - Piece type
+    ProfileSegmentCategory Kind       = ProfileSegmentCategory::Line;                                // [-]   - Piece type
     Vector2            Start      = {};                                                      // [len] - Traversal start
     Vector2            End        = {};                                                      // [len] - Traversal end
     Vector2            Centre     = {};                                                      // [len] - Arc / circle centre

@@ -723,8 +723,8 @@ int main()
         auto& Host2D = Host.Access2DViewportHost();
         auto& Host3D = Host.Access3DViewportHost();
         if (!VerifyInvariant(
-                Host2D.QueryHostRole() == UVViewportHostRole::Dedicated2D &&
-                    Host3D.QueryHostRole() == UVViewportHostRole::Dedicated3D,
+                Host2D.QueryHostRole() == UVViewportHostMode::Dedicated2D &&
+                    Host3D.QueryHostRole() == UVViewportHostMode::Dedicated3D,
                 "UVWorkspaceHost configures Dedicated2D and Dedicated3D hosts"))
         {
             ImGui::DestroyContext(GuiCtx);

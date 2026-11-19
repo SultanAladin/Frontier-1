@@ -34,7 +34,7 @@ struct HeightFogConfiguration
     float                  SunScatterIntensity = 0.60f;                  // [x]   - Forward Henyey-Greenstein solar in-scatter [0..2]
     Mathematics::LinearRGB HeightColour        { 0.84f, 0.90f, 0.96f };  // [lin] - Scattering albedo / tint
     bool                   FollowWind          = false;                  // [-]   - Wind-driven boundary-layer density undulation
-    WindBindingSource      WindSource          = WindBindingSource::HeightFogWind;
+    WindCouplingSource      WindSource          = WindCouplingSource::HeightFogWind;
 };
 
 struct AerialFogConfiguration
@@ -45,14 +45,14 @@ struct AerialFogConfiguration
     float             MieBlend            = 0.40f; // [-] - Warm forward Mie aerosol scatter blend [0..1]
     float             ScaleHeightMeters   = 1800.0f;
     bool              FollowWind          = false;
-    WindBindingSource WindSource          = WindBindingSource::AerialFogWind;
+    WindCouplingSource WindSource          = WindCouplingSource::AerialFogWind;
 };
 
 struct LocalFogVolume
 {
     bool                   Enabled            = false;
     bool                   FollowWind         = true;
-    WindBindingSource      WindSource         = WindBindingSource::LocalFogWind;
+    WindCouplingSource      WindSource         = WindCouplingSource::LocalFogWind;
     AtmosphericVolumeShape Shape              = AtmosphericVolumeShape::Box;
     uint32_t               PrismSides         = 6u;                          // [cnt] - Sides for Prism [3..16]
     Mathematics::Axis3D    VolumeCenterMeters { 0.0f, 0.0f, 1.5f };          // [m]   - World-space volume center

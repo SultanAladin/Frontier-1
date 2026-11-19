@@ -139,7 +139,7 @@ struct AmbientWindProfile
     float GustAmplitude  = 0.45f;
 };
 
-struct ParticleAssetPresetCard
+struct ParticleAssetPresetTile
 {
     std::string                      Identifier    {};
     std::string                      Title         {};
@@ -231,7 +231,7 @@ public:
     std::vector<AuthoredParticleRigUi>                                 ParticleRigs {};
     std::vector<SimulationSpace::ForceFields::ForceSourceRecordEntry>  ForceSources {};
     AmbientWindProfile                                                 AmbientWind  {};
-    std::vector<ParticleAssetPresetCard>                               AssetPresets {};
+    std::vector<ParticleAssetPresetTile>                               AssetPresets {};
 
     // Telemetry metrics & live revision counter
     float                              MeasuredFps      = 60.0f;
@@ -249,7 +249,7 @@ public:
     ScalarCurveEditorSession           CurveSession      {};
     SimulationTimeRulerSession         RulerSession      {};
     LogStreamDrawerSession             LogDrawerSession  {};
-    std::vector<LogStreamRecord>       LogRecords        {};
+    std::vector<LogStreamEntry>       LogRecords        {};
     RevisionTracker                    Revisions         {};
 };
 

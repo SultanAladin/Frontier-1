@@ -350,7 +350,7 @@ Frontier/
     │   ├── Compute/                               // FieldLatticeCompute & shared ForceField .slang
     │   ├── DirectLighting/                        // Solar shadow, contact clip, plane filter & WideTreeRayQuery .slang
     │   ├── GeometricRaster/                       // SurfaceShading, MatCap, UVTile, Gizmo, ImGuiOverlay, Picking & Radiometric .slang
-    │   ├── GlobalIllumination/                    // DynamicProbeCache, ReservoirPathReplay, ReservoirTemporalFilter & SpecularGlassRaytrace .slang
+    │   ├── GlobalIllumination/                    // DynamicIrradianceCache, WeightedPathReplay, WeightedTemporalFilter & SpecularGlassRaytrace .slang
     │   ├── MaterialSpace/                         // 10-lobe OpenPBR, DynamicMaterialResolve, ProceduralFields & SubsurfaceTransmission .slang
     │   ├── Particles/                             // 21 Vulkan 1.3 particle compute & raster .slang shaders
     │   ├── Vector/                                // Vector modifier expand, stencil fill, cover, layer stack & PBR .slang
@@ -380,10 +380,10 @@ Frontier/
     │   │   ├── SolarShadowSequence.{h,cpp}        // RTX deterministic solar frustum + GTX 2-cascade contact clip + SDF
     │   │   └── LinearCosineLightIntegration.{h,cpp}// Visibility-gated analytic polygonal lights + 2.2 m chassis AO
     │   │
-    │   ├── GlobalIllumination/                    // Multi-bounce GI, DynamicProbeCache, ReSTIR path replay & RT reflections
-    │   │   ├── DynamicProbeCacheSequence.{h,cpp}  // 8x8 octahedral 1/pi probe cache + 16x16 Chebyshev depth + backface gating
-    │   │   ├── ReservoirPathReplaySequence.{h,cpp}// Hybrid ReSTIR path replay (4-cand RIS + temporal/spatial reuse + 5-pass SVGF)
-    │   │   ├── IrradianceLatticeSequence.{h,cpp}  // Compatibility facade over DynamicProbeCacheSequence + Mode-7 debug radiosity volume
+    │   ├── GlobalIllumination/                    // Multi-bounce GI, DynamicIrradianceCache, ReSTIR path replay & RT reflections
+    │   │   ├── DynamicIrradianceCacheSequence.{h,cpp}  // 8x8 octahedral 1/pi probe cache + 16x16 Chebyshev depth + backface gating
+    │   │   ├── WeightedPathReplaySequence.{h,cpp}// Hybrid ReSTIR path replay (4-cand RIS + temporal/spatial reuse + 5-pass SVGF)
+    │   │   ├── IrradianceLatticeSequence.{h,cpp}  // Compatibility facade over DynamicIrradianceCacheSequence + Mode-7 debug radiosity volume
     │   │   ├── SpecularReflectionSequence.{h,cpp} // Coherent WideBoundingTree multi-bounce specular & glass refraction
     │   │   └── TieredWorldRenderSequence.{h,cpp}  // Complete ordered GTX/RTX world sequence bound to viewports
     │   │
@@ -391,7 +391,7 @@ Frontier/
     │   │   ├── CelestialEphemerisSolver.{h,cpp}   // Solar/orbital ephemeris, Kelvin blackbody & azimuth/elevation basis
     │   │   ├── AtmosphericSkySequence.{h,cpp}     // 256x64 Transmittance + 32x32 Multi-Scatter + 192x108 SkyView LUTs & solar optics
     │   │   ├── LunarStarfieldSequence.{h,cpp}     // 6-moon 3D exosphere/umbra + 1640 BSC5 catalog, nebulae & Leinert zodiacal light
-    │   │   └── J2000BrightStarCatalog.h           // Compiled Yale BSC5 1640 bright star equatorial catalog (Vmag <= 5.05)
+    │   │   └── J2000BrightStarRepository.h           // Compiled Yale BSC5 1640 bright star equatorial catalog (Vmag <= 5.05)
     │   │
     │   └── PostProcess/                           // Ordered image operations
     │       ├── PostProcessSequence.{h,cpp}        // Ordered image operation execution sequence
@@ -423,10 +423,10 @@ Frontier/
     │   │   ├── SolarFrustumShadow.slang           // Deterministic Vogel solar disc trace + chassis 2-scale AO
     │   │   ├── ContactClipShadow.slang            // GTX 2-cascade tight contact shadow + SDF cone penumbra blend
     │   │   └── PlaneAwareShadowFilter.slang       // Coplanar dilation + 3-step continuous-sigma edge-preserving filter
-    │   ├── GlobalIllumination/                    // DynamicProbeCache, ReSTIR path replay, SVGF temporal filter & specular/glass raytrace
-    │   │   ├── DynamicProbeCache.slang            // 8x8 octahedral 1/pi probe cache, 16x16 Chebyshev moments & backface validity
-    │   │   ├── ReservoirPathReplay.slang          // 4-candidate Owen-Sobol RIS + BVH4 1-bounce replay + DynamicProbeCache 2nd bounce
-    │   │   ├── ReservoirTemporalFilter.slang      // Temporal/spatial reservoir reuse + 5-pass edge-aware A-Trous SVGF
+    │   ├── GlobalIllumination/                    // DynamicIrradianceCache, ReSTIR path replay, SVGF temporal filter & specular/glass raytrace
+    │   │   ├── DynamicIrradianceCache.slang            // 8x8 octahedral 1/pi probe cache, 16x16 Chebyshev moments & backface validity
+    │   │   ├── WeightedPathReplay.slang          // 4-candidate Owen-Sobol RIS + BVH4 1-bounce replay + DynamicIrradianceCache 2nd bounce
+    │   │   ├── WeightedTemporalFilter.slang      // Temporal/spatial reservoir reuse + 5-pass edge-aware A-Trous SVGF
     │   │   └── SpecularGlassRaytrace.slang        // Coherent cone-footprint multi-bounce specular & dielectric glass
     │   ├── UV/                                    // GPU UVTile, wireframe, ground plane & shadow shaders
     │   │   ├── UVTileRasterization.slang          // 2D UVTile coordinates, checker patterns & stretch heat

@@ -96,7 +96,7 @@ int main()
     const auto BeforeMetrics = ParticleSpace::ParticleMetricsCollector::CollectFromSlots(GpuSlots);
     Expect(BeforeMetrics.LiveCount > 100u, "Seeded >100 live particles for Vulkan compute dispatch");
 
-    ParticleSpace::ParticleStepContext StepCtx { Doc, ForceAcc, 1.0f / 60.0f, 0.5f };
+    ParticleSpace::ParticleStepInput StepCtx { Doc, ForceAcc, 1.0f / 60.0f, 0.5f };
     for (int Step = 0; Step < 5; ++Step)
     {
         StepCtx.ElapsedSeconds += StepCtx.DeltaSeconds;

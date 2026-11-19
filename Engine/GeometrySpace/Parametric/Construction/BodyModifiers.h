@@ -14,7 +14,7 @@
 #include "Engine/GeometrySpace/Parametric/Feature/TopologicalNaming.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/NurbsCarrier.h"
 #include "Engine/GeometrySpace/Parametric/Surfacing/CarrierApproximation.h"
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <string>
 #include <vector>

@@ -24,7 +24,7 @@ namespace
     [[nodiscard]] std::vector<Vector2> SampleSegment(const ProfileSegment& Segment)
     {
         std::vector<Vector2> Samples;
-        if (Segment.Kind == ProfileSegmentKind::Spline)
+        if (Segment.Kind == ProfileSegmentCategory::Spline)
         {
             const std::vector<double> Breaks = CollectProfileBreaks(Segment);
             for (size_t Piece = 0; Piece + 1 < Breaks.size(); ++Piece)
@@ -33,7 +33,7 @@ namespace
             }
             return Samples;
         }
-        const int Pieces = Segment.Kind == ProfileSegmentKind::Line ? 1 : std::max(4, static_cast<int>(std::ceil(std::fabs(Segment.Sweep) / FullTurn * 64.0)));
+        const int Pieces = Segment.Kind == ProfileSegmentCategory::Line ? 1 : std::max(4, static_cast<int>(std::ceil(std::fabs(Segment.Sweep) / FullTurn * 64.0)));
         for (int Index = 0; Index <= Pieces; ++Index) Samples.push_back(EvaluateProfileSegment(Segment, static_cast<double>(Index) / Pieces));
         return Samples;
     }
@@ -130,8 +130,8 @@ namespace
 
 Vector2 EvaluateProfileSegment(const ProfileSegment& Segment, double Fraction) noexcept
 {
-    if (Segment.Kind == ProfileSegmentKind::Line) return Segment.Start + (Segment.End - Segment.Start) * Fraction;
-    if (Segment.Kind == ProfileSegmentKind::Spline)
+    if (Segment.Kind == ProfileSegmentCategory::Line) return Segment.Start + (Segment.End - Segment.Start) * Fraction;
+    if (Segment.Kind == ProfileSegmentCategory::Spline)
     {
         if (Fraction <= 0.0) return Segment.Start;
         if (Fraction >= 1.0) return Segment.End;
@@ -144,8 +144,8 @@ Vector2 EvaluateProfileSegment(const ProfileSegment& Segment, double Fraction) n
 
 Vector2 EvaluateProfileTangent(const ProfileSegment& Segment, double Fraction) noexcept
 {
-    if (Segment.Kind == ProfileSegmentKind::Line) return Segment.End - Segment.Start;
-    if (Segment.Kind == ProfileSegmentKind::Spline)
+    if (Segment.Kind == ProfileSegmentCategory::Line) return Segment.End - Segment.Start;
+    if (Segment.Kind == ProfileSegmentCategory::Spline)
     {
         const double Low = Segment.Spline.Knots.front(), High = Segment.Spline.Knots.back();
         return EvaluateSketchSpline(Segment.Spline, Low + Fraction * (High - Low)).First * (High - Low);
@@ -157,7 +157,7 @@ Vector2 EvaluateProfileTangent(const ProfileSegment& Segment, double Fraction) n
 std::vector<double> CollectProfileBreaks(const ProfileSegment& Segment)
 {
     std::vector<double> Breaks;
-    if (Segment.Kind == ProfileSegmentKind::Spline)
+    if (Segment.Kind == ProfileSegmentCategory::Spline)
     {
         const double Low = Segment.Spline.Knots.front(), High = Segment.Spline.Knots.back();
         for (double Knot : CollectSketchSplineBreaks(Segment.Spline)) Breaks.push_back((Knot - Low) / (High - Low));
@@ -165,14 +165,14 @@ std::vector<double> CollectProfileBreaks(const ProfileSegment& Segment)
         Breaks.back()  = 1.0;
         return Breaks;
     }
-    const int Pieces = Segment.Kind == ProfileSegmentKind::Line ? 1 : std::max(1, static_cast<int>(std::ceil(std::fabs(Segment.Sweep) / (std::numbers::pi / 4.0))));
+    const int Pieces = Segment.Kind == ProfileSegmentCategory::Line ? 1 : std::max(1, static_cast<int>(std::ceil(std::fabs(Segment.Sweep) / (std::numbers::pi / 4.0))));
     for (int Piece = 0; Piece <= Pieces; ++Piece) Breaks.push_back(static_cast<double>(Piece) / Pieces);
     return Breaks;
 }
 
 void ReverseProfileSegment(ProfileSegment& Segment) noexcept
 {
-    if (Segment.Kind == ProfileSegmentKind::Spline) ReverseSketchSpline(Segment.Spline);
+    if (Segment.Kind == ProfileSegmentCategory::Spline) ReverseSketchSpline(Segment.Spline);
     std::swap(Segment.Start, Segment.End);
     Segment.StartAngle += Segment.Sweep;
     Segment.Sweep       = -Segment.Sweep;
@@ -184,21 +184,21 @@ ProfileSegment ResolveSketchCurveSegment(const SketchModel& Sketch, int CurveInd
     ProfileSegment Segment;
     Segment.Curve = CurveIndex;
     Segment.Name  = SketchCurveName(Curve);
-    if (Curve.Kind == SketchCurveKind::Circle)
+    if (Curve.Kind == SketchCurveCategory::Circle)
     {
         if (!(Curve.Radius > Join)) { Refusal = "circle " + Segment.Name + " has no radius"; return Segment; }
-        Segment.Kind   = ProfileSegmentKind::Circle;
+        Segment.Kind   = ProfileSegmentCategory::Circle;
         Segment.Centre = Sketch.Points[Curve.Centre].Position;
         Segment.Radius = Curve.Radius;
         Segment.Sweep  = FullTurn;
         Segment.Start  = Segment.End = Segment.Centre + Vector2{ Curve.Radius, 0.0 };
         return Segment;
     }
-    if (Curve.Kind == SketchCurveKind::Spline)
+    if (Curve.Kind == SketchCurveCategory::Spline)
     {
         const SketchSplineOutcome Resolved = ResolveSketchCurveSpline(Sketch, Curve);
         if (!Resolved.Refusal.empty()) { Refusal = Resolved.Refusal; return Segment; }
-        Segment.Kind   = ProfileSegmentKind::Spline;
+        Segment.Kind   = ProfileSegmentCategory::Spline;
         Segment.Spline = Resolved.Curve;
         Segment.Start  = Resolved.Curve.Poles.front();
         Segment.End    = Resolved.Curve.Poles.back();
@@ -207,9 +207,9 @@ ProfileSegment ResolveSketchCurveSegment(const SketchModel& Sketch, int CurveInd
     Segment.Start = Sketch.Points[Curve.Start].Position;
     Segment.End   = Sketch.Points[Curve.End].Position;
     if (Distance(Segment.Start, Segment.End) <= Join) { Refusal = Segment.Name + " has zero length"; return Segment; }
-    if (Curve.Kind == SketchCurveKind::Arc)
+    if (Curve.Kind == SketchCurveCategory::Arc)
     {
-        Segment.Kind       = ProfileSegmentKind::Arc;
+        Segment.Kind       = ProfileSegmentCategory::Arc;
         Segment.Centre     = Sketch.Points[Curve.Centre].Position;
         Segment.Radius     = Distance(Segment.Start, Segment.Centre);
         Segment.StartAngle = std::atan2(Segment.Start.Y - Segment.Centre.Y, Segment.Start.X - Segment.Centre.X);
@@ -234,7 +234,7 @@ SketchProfile ExtractSketchProfile(const SketchModel& Sketch)
         High = { std::max(High.X, Point.Position.X), std::max(High.Y, Point.Position.Y) };
     }
     Profile.Scale = Sketch.Points.empty() ? 1.0 : std::max(Distance(Low, High), 1.0e-300);
-    for (const SketchCurve& Curve : Sketch.Curves) if (Curve.Kind == SketchCurveKind::Circle && !Curve.Construction) Profile.Scale = std::max(Profile.Scale, 2.0 * Curve.Radius);
+    for (const SketchCurve& Curve : Sketch.Curves) if (Curve.Kind == SketchCurveCategory::Circle && !Curve.Construction) Profile.Scale = std::max(Profile.Scale, 2.0 * Curve.Radius);
     const double Join = 1.0e-9 * Profile.Scale;                                              // [len] - Endpoint join distance
     std::vector<int> Roots(Sketch.Points.size());
     for (size_t Index = 0; Index < Roots.size(); ++Index) Roots[Index] = static_cast<int>(Index);
@@ -256,14 +256,14 @@ SketchProfile ExtractSketchProfile(const SketchModel& Sketch)
         std::string Refusal;
         ProfileSegment Segment = ResolveSketchCurveSegment(Sketch, Index, Join, Refusal);
         if (!Refusal.empty()) { Profile.Refusal = Refusal; return Profile; }
-        if (Curve.Kind == SketchCurveKind::Circle)
+        if (Curve.Kind == SketchCurveCategory::Circle)
         {
             ProfileLoop Loop;
             Loop.Segments.push_back(Segment);
             Profile.Loops.push_back(Loop);
             continue;
         }
-        if (Curve.Kind == SketchCurveKind::Spline)
+        if (Curve.Kind == SketchCurveCategory::Spline)
         {
             Open.push_back(Segment);
             Ends.push_back({ FindRoot(Roots, Curve.Points.front()), FindRoot(Roots, Curve.Points.back()) });
@@ -330,7 +330,7 @@ void ArrangeProfileLoops(SketchProfile& Profile)
         // A spline against itself: non-neighbouring pieces must not cross (a closed spline's two end pieces touch).
         const ProfileSegment& Own = Profile.Loops[Owners[First].first].Segments[Owners[First].second];
         const size_t Pieces = Samples[First].size() - 1;
-        for (size_t Low1 = 0; Own.Kind == ProfileSegmentKind::Spline && Low1 < Pieces; ++Low1)
+        for (size_t Low1 = 0; Own.Kind == ProfileSegmentCategory::Spline && Low1 < Pieces; ++Low1)
         {
             for (size_t Low2 = Low1 + 2; Low2 < Pieces; ++Low2)
             {

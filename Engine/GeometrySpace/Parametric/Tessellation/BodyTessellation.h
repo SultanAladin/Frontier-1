@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Engine/GeometrySpace/Parametric/Tessellation/ChartTriangulation.h"
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <array>
 #include <string>
@@ -29,14 +29,14 @@ struct TessellationSettings
 };
 
 // 📝 One B-rep edge sampled once; both faces of the edge reuse these vertices, which makes the complex watertight.
-struct PolygonComplexEdge
+struct PolygonNetEdge
 {
     EdgeToken           Edge       = {};                                                     // [-] - Sampled edge
     std::vector<double> Parameters = {};                                                     // [-] - τ samples, IntervalLow → IntervalHigh
     std::vector<int>    Vertices   = {};                                                     // [-] - Complex vertex per sample
 };
 
-struct PolygonComplexFace
+struct PolygonNetFace
 {
     FaceToken Face               = {};                                                       // [-]  - Tessellated face
     int       FirstTriangle      = 0;                                                        // [-]  - Span start in Triangles
@@ -56,21 +56,21 @@ struct PolygonComplexFace
     double    Milliseconds       = 0.0;                                                      // [ms]  - Face time
 };
 
-// 💡 PolygonComplex = triangles over shared vertices. Positions[0 … TopologicalVertices) are the B-rep vertices.
-struct PolygonComplex
+// 💡 PolygonNetworkStructure = triangles over shared vertices. Positions[0 … TopologicalVertices) are the B-rep vertices.
+struct PolygonNetworkStructure
 {
     std::vector<Vector3>                Positions           = {};                            // [len] - Vertex positions
     std::vector<std::array<int, 3>>     Triangles           = {};                            // [-]   - Outward counter-clockwise corners
     std::vector<std::array<Vector2, 3>> TriangleCharts      = {};                            // [-]   - Chart (𝑢, 𝑣) per corner
     std::vector<int>                    TriangleFaces       = {};                            // [-]   - Index into Faces
-    std::vector<PolygonComplexFace>     Faces               = {};                            // [-]   - Per-face spans
-    std::vector<PolygonComplexEdge>     Edges               = {};                            // [-]   - Shared edge samplings
+    std::vector<PolygonNetFace>     Faces               = {};                            // [-]   - Per-face spans
+    std::vector<PolygonNetEdge>     Edges               = {};                            // [-]   - Shared edge samplings
     int                                 TopologicalVertices = 0;                             // [-]   - B-rep vertex count
 };
 
 struct TessellationOutcome
 {
-    PolygonComplex               Complex       = {};                                         // [-]   - Result (partial on refusal)
+    PolygonNetworkStructure               Complex       = {};                                         // [-]   - Result (partial on refusal)
     double                       Sag           = 0.0;                                        // [len] - Effective ε
     double                       EdgeLimit     = 0.0;                                        // [len] - Effective longest side
     double                       Diagonal      = 0.0;                                        // [len] - Body bounding diagonal

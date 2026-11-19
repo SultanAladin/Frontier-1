@@ -43,7 +43,7 @@ namespace
 TessellationAuditReport AuditTessellation(const ModelPartition& Partition, BodyToken Body, const TessellationOutcome& Outcome)
 {
     TessellationAuditReport Report;
-    const PolygonComplex&   Complex = Outcome.Complex;
+    const PolygonNetworkStructure&   Complex = Outcome.Complex;
     Report.Triangles = static_cast<int>(Complex.Triangles.size());
 
     // ① Directed side counts.
@@ -69,7 +69,7 @@ TessellationAuditReport AuditTessellation(const ModelPartition& Partition, BodyT
     }
     // 📝 A sheet's rim edge has one fin, so each of its sample pairs is used by exactly one triangle — the only sides a
     //    sheet may leave unpaired.
-    for (const PolygonComplexEdge& Edge : Complex.Edges)
+    for (const PolygonNetEdge& Edge : Complex.Edges)
     {
         const EdgeProfile& Profile = Partition.Edges.Resolve(Edge.Edge);
         if (Partition.Fins.Resolve(Profile.RadialFin).RadialSuccessor == Profile.RadialFin) Report.LaminarSides += static_cast<int64_t>(Edge.Vertices.size()) - 1;
@@ -87,7 +87,7 @@ TessellationAuditReport AuditTessellation(const ModelPartition& Partition, BodyT
     int64_t Below20 = 0, Free = 0, FreeBelow20 = 0;
     Report.MinimumAngle = 180.0;
     std::unordered_set<uint64_t> BoundarySides;
-    for (const PolygonComplexEdge& Edge : Complex.Edges)
+    for (const PolygonNetEdge& Edge : Complex.Edges)
     {
         for (size_t Index = 1; Index < Edge.Vertices.size(); ++Index)
         {
@@ -100,7 +100,7 @@ TessellationAuditReport AuditTessellation(const ModelPartition& Partition, BodyT
     {
         const auto&              Triangle = Complex.Triangles[Index];
         const auto&              Charts   = Complex.TriangleCharts[Index];
-        const PolygonComplexFace& Face    = Complex.Faces[Complex.TriangleFaces[Index]];
+        const PolygonNetFace& Face    = Complex.Faces[Complex.TriangleFaces[Index]];
         const FaceProfile&       Profile  = Partition.Faces.Resolve(Face.Face);
         const SurfaceGeometry&   Surface  = Partition.Surfaces.Resolve(Profile.Surface);
         const Vector3 P0 = Complex.Positions[Triangle[0]], P1 = Complex.Positions[Triangle[1]], P2 = Complex.Positions[Triangle[2]];
@@ -158,7 +158,7 @@ TessellationAuditReport AuditTessellation(const ModelPartition& Partition, BodyT
     Report.ExactVolume      = IntegrateBodyVolume(Partition, Body);
 
     // ③ Every consecutive edge-sample pair is a complex side, once per fin direction.
-    for (const PolygonComplexEdge& Edge : Complex.Edges)
+    for (const PolygonNetEdge& Edge : Complex.Edges)
     {
         const EdgeProfile& Profile = Partition.Edges.Resolve(Edge.Edge);
         int Forward = 0, Backward = 0;                                                       // [-] - Fins along / against τ
@@ -188,7 +188,7 @@ TessellationAuditReport AuditTessellation(const ModelPartition& Partition, BodyT
     return Report;
 }
 
-uint64_t DigestPolygonComplex(const PolygonComplex& Complex)
+uint64_t DigestPolygonComplex(const PolygonNetworkStructure& Complex)
 {
     uint64_t Digest = 1469598103934665603ULL;                                                // [-] - FNV-1a offset basis
     const auto Mix = [&](const void* Bytes, size_t Count)

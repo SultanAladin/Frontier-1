@@ -5,7 +5,7 @@
 
 #include "Engine/GeometrySpace/Parametric/Construction/BodyTransform.h"
 
-#include "Engine/GeometrySpace/Parametric/Construction/BodyAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Construction/BodyArrangement.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/ProjectedCurve.h"
 #include "Engine/GeometrySpace/Parametric/Intersection/IntersectionCurve.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/NurbsCarrier.h"
@@ -30,24 +30,24 @@ namespace
     constexpr double SimilaritySlack = 1.0e-12;                                              // [-] - Relative Gram-matrix agreement
 
     // 📝 Linear part, determinant, and the similarity split M = s·Q when it exists.
-    struct MapAnalysis
+    struct MappingAnalysis
     {
-        AffineMap Map         = {};                                                          // [-] - The map
+        AffineMapping Map         = {};                                                          // [-] - The map
         double    Determinant = 1.0;                                                         // [-] - det M
         bool      Similar     = true;                                                        // [-] - M = s·Q
         double    Scale       = 1.0;                                                         // [-] - s
     };
 
-    [[nodiscard]] Vector3 ApplyLinear(const AffineMap& Map, Vector3 Vector) noexcept
+    [[nodiscard]] Vector3 ApplyLinear(const AffineMapping& Map, Vector3 Vector) noexcept
     {
         return Map.ColumnX * Vector.X + Map.ColumnY * Vector.Y + Map.ColumnZ * Vector.Z;
     }
 
-    [[nodiscard]] Vector3 ApplyPoint(const AffineMap& Map, Vector3 Point) noexcept { return ApplyLinear(Map, Point) + Map.Shift; }
+    [[nodiscard]] Vector3 ApplyPoint(const AffineMapping& Map, Vector3 Point) noexcept { return ApplyLinear(Map, Point) + Map.Shift; }
 
-    [[nodiscard]] MapAnalysis AnalyseMap(const AffineMap& Map)
+    [[nodiscard]] MappingAnalysis AnalyseMap(const AffineMapping& Map)
     {
-        MapAnalysis Analysis;
+        MappingAnalysis Analysis;
         Analysis.Map         = Map;
         Analysis.Determinant = Dot(Map.ColumnX, Cross(Map.ColumnY, Map.ColumnZ));
         const double Square  = std::cbrt(Analysis.Determinant * Analysis.Determinant);       // [-] - s² if similar
@@ -59,10 +59,10 @@ namespace
     }
 
     // Q·v for a similarity (unit result for unit input).
-    [[nodiscard]] Vector3 Rotate(const MapAnalysis& Analysis, Vector3 Vector) noexcept { return ApplyLinear(Analysis.Map, Vector) * (1.0 / Analysis.Scale); }
+    [[nodiscard]] Vector3 Rotate(const MappingAnalysis& Analysis, Vector3 Vector) noexcept { return ApplyLinear(Analysis.Map, Vector) * (1.0 / Analysis.Scale); }
 
     // Frame of a mapped surface: X′ = Q·X, Y′ = ±Q·Y (sign of det), hence Z′ = Q·Z and the natural normal maps with Q.
-    [[nodiscard]] OrthonormalFrame MapSurfaceFrame(const MapAnalysis& Analysis, const OrthonormalFrame& Frame)
+    [[nodiscard]] OrthonormalBasis MapSurfaceFrame(const MappingAnalysis& Analysis, const OrthonormalBasis& Frame)
     {
         const Vector3 X = Rotate(Analysis, Frame.XAxis);
         const Vector3 Y = Rotate(Analysis, Frame.YAxis) * (Analysis.Determinant > 0.0 ? 1.0 : -1.0);
@@ -70,7 +70,7 @@ namespace
     }
 
     // Frame of a mapped circle / ellipse: X′ = Q·X, Y′ = Q·Y keeps τ (Z′ = X′ × Y′ is only the plane normal).
-    [[nodiscard]] OrthonormalFrame MapCurveFrame(const MapAnalysis& Analysis, const OrthonormalFrame& Frame)
+    [[nodiscard]] OrthonormalBasis MapCurveFrame(const MappingAnalysis& Analysis, const OrthonormalBasis& Frame)
     {
         const Vector3 X = Rotate(Analysis, Frame.XAxis), Y = Rotate(Analysis, Frame.YAxis);
         return { ApplyPoint(Analysis.Map, Frame.Origin), X, Y, Cross(X, Y) };
@@ -80,12 +80,12 @@ namespace
     struct AxialSurfaceScale
     {
         bool             ExactCondition = false;                                             // [-] - Orthogonal with equal radial scale
-        OrthonormalFrame Frame          = {};                                                // [-] - Mapped axis frame (Z′ = +M·Z / Axial)
+        OrthonormalBasis Frame          = {};                                                // [-] - Mapped axis frame (Z′ = +M·Z / Axial)
         double           Radial         = 1.0;                                               // [-] - |M·X| = |M·Y|
         double           Axial          = 1.0;                                               // [-] - |M·Z|
     };
 
-    [[nodiscard]] AxialSurfaceScale AnalyseAxialSurface(const MapAnalysis& Analysis, const OrthonormalFrame& Frame) noexcept
+    [[nodiscard]] AxialSurfaceScale AnalyseAxialSurface(const MappingAnalysis& Analysis, const OrthonormalBasis& Frame) noexcept
     {
         AxialSurfaceScale Result;
         const Vector3 ImageX = ApplyLinear(Analysis.Map, Frame.XAxis);
@@ -108,7 +108,7 @@ namespace
     }
 
     // Orthogonal conic image: M maps CosineAxis and SineAxis orthogonally without phase shift (|M·a| ≥ |M·b|).
-    [[nodiscard]] std::optional<CurveGeometry> TryMapOrthogonalConic(const MapAnalysis& Analysis, const CurveGeometry& Curve) noexcept
+    [[nodiscard]] std::optional<CurveGeometry> TryMapOrthogonalConic(const MappingAnalysis& Analysis, const CurveGeometry& Curve) noexcept
     {
         const std::optional<ConicForm> Conic = ResolveConicForm(Curve);
         if (!Conic) return std::nullopt;
@@ -120,7 +120,7 @@ namespace
         const Vector3 X      = ImageA * (1.0 / Major);
         const Vector3 Y      = ImageB * (1.0 / Minor);
         const Vector3 Origin = ApplyPoint(Analysis.Map, Conic->Centre);
-        const OrthonormalFrame Frame{ Origin, X, Y, Cross(X, Y) };
+        const OrthonormalBasis Frame{ Origin, X, Y, Cross(X, Y) };
         if (std::fabs(Major - Minor) <= SimilaritySlack * std::max(1.0, Major))
             return CurveGeometry{ CircularArc{ Frame, 0.5 * (Major + Minor) } };
         if (Major > Minor)
@@ -135,10 +135,10 @@ namespace
         std::string     Refusal = {};                                                        // [-] - Why not mappable
     };
 
-    [[nodiscard]] CurveGeometry MapCurveImage(const MapAnalysis& Analysis, const CurveGeometry& Curve);   // MapCurve(...).Curve
-    [[nodiscard]] double        MapCurveStretch(const MapAnalysis& Analysis, const CurveGeometry& Curve); // MapCurve(...).Stretch
+    [[nodiscard]] CurveGeometry MapCurveImage(const MappingAnalysis& Analysis, const CurveGeometry& Curve);   // MapCurve(...).Curve
+    [[nodiscard]] double        MapCurveStretch(const MappingAnalysis& Analysis, const CurveGeometry& Curve); // MapCurve(...).Stretch
 
-    [[nodiscard]] MappedSurface MapSurface(const MapAnalysis& Analysis, const SurfaceGeometry& Surface)
+    [[nodiscard]] MappedSurface MapSurface(const MappingAnalysis& Analysis, const SurfaceGeometry& Surface)
     {
         MappedSurface Mapped;
         if (const auto* Spline = std::get_if<NurbsSurface>(&Surface))
@@ -212,7 +212,7 @@ namespace
             if constexpr (std::is_same_v<Kind, RollingBallSurface> || std::is_same_v<Kind, NurbsSurface> || std::is_same_v<Kind, ParallelSurface>) return;   // Mapped above
             else
             {
-            const OrthonormalFrame Frame = MapSurfaceFrame(Analysis, Carrier.Frame);
+            const OrthonormalBasis Frame = MapSurfaceFrame(Analysis, Carrier.Frame);
             if constexpr (std::is_same_v<Kind, CylinderSurface>) Mapped.Surface = CylinderSurface{ Frame, Carrier.Radius * Scale };
             else if constexpr (std::is_same_v<Kind, ConeSurface>) Mapped.Surface = ConeSurface{ Frame, Carrier.OriginRadius * Scale, Carrier.RadialSlope };
             else if constexpr (std::is_same_v<Kind, SphereSurface>) Mapped.Surface = SphereSurface{ Frame, Carrier.Radius * Scale };
@@ -229,7 +229,7 @@ namespace
         std::string   Refusal    = {};                                                       // [-] - Why not mappable
     };
 
-    [[nodiscard]] MappedCurve MapCurve(const MapAnalysis& Analysis, const CurveGeometry& Curve)
+    [[nodiscard]] MappedCurve MapCurve(const MappingAnalysis& Analysis, const CurveGeometry& Curve)
     {
         MappedCurve Mapped;
         if (const auto* Spline = std::get_if<NurbsCurve>(&Curve))
@@ -269,7 +269,7 @@ namespace
                 // 📝 A ball-law spine runs on its edge's τ, so it stretches like the mapped edge; the size scales by s.
                 const MappedCurve Edge = MapCurve(Analysis, Source.Law->Edge);
                 if (!Edge.Refusal.empty()) { Mapped.Refusal = Edge.Refusal; return Mapped; }
-                auto Law = std::make_shared<BallLaw>(*Source.Law);
+                auto Law = std::make_shared<BallBlendProfile>(*Source.Law);
                 // Size(t) = Size + SizeRate·t on the stretched t′ = Stretch·t: Size′ = s·Size, SizeRate′ = s·SizeRate / Stretch.
                 Law->Edge     = Edge.Curve;
                 Law->Size    *= Analysis.Scale;
@@ -305,11 +305,11 @@ namespace
         return Mapped;
     }
 
-    CurveGeometry MapCurveImage(const MapAnalysis& Analysis, const CurveGeometry& Curve) { return MapCurve(Analysis, Curve).Curve; }
-    double        MapCurveStretch(const MapAnalysis& Analysis, const CurveGeometry& Curve) { return MapCurve(Analysis, Curve).Stretch; }
+    CurveGeometry MapCurveImage(const MappingAnalysis& Analysis, const CurveGeometry& Curve) { return MapCurve(Analysis, Curve).Curve; }
+    double        MapCurveStretch(const MappingAnalysis& Analysis, const CurveGeometry& Curve) { return MapCurve(Analysis, Curve).Stretch; }
 
     // Chart image of a point for the periodic-image choice: 𝑢 → ±𝑢 (mirror), 𝑣 scales along the axis on cylinders / cones.
-    [[nodiscard]] Vector2 MapAnchor(const MapAnalysis& Analysis, const SurfaceGeometry& Surface, Vector2 Parameter)
+    [[nodiscard]] Vector2 MapAnchor(const MappingAnalysis& Analysis, const SurfaceGeometry& Surface, Vector2 Parameter)
     {
         if (std::holds_alternative<PlaneSurface>(Surface)) return Parameter;                // No periodic image to choose
         if (std::holds_alternative<RollingBallSurface>(Surface)) return Parameter;          // Chart carried exactly (handedness)
@@ -347,7 +347,7 @@ namespace
     }
 
     // Curved analytic carriers promote to NURBS only when the map cannot carry them as exact analytic quadrics.
-    [[nodiscard]] bool PromotableSurface(const MapAnalysis& Analysis, const SurfaceGeometry& Surface) noexcept
+    [[nodiscard]] bool PromotableSurface(const MappingAnalysis& Analysis, const SurfaceGeometry& Surface) noexcept
     {
         if (std::holds_alternative<PlaneSurface>(Surface) || ProceduralSurfaceCondition(Surface)) return false;
         if (const auto* Cylinder = std::get_if<CylinderSurface>(&Surface)) return !AnalyseAxialSurface(Analysis, Cylinder->Frame).ExactCondition;
@@ -359,12 +359,12 @@ namespace
     //    line / conic edge before mapping; a non-similar map promotes the curved ones it could not otherwise carry.
     //    With Approximation (PromoteAll only) the procedural carriers left over — rolling-ball / parallel faces, traced
     //    edges — are replaced by certified cubic B-splines in their own parameterisation, tallied into Tally.
-    [[nodiscard]] TransformOutcome TransformBodyWith(const ModelPartition& Partition, BodyToken Source, ModelPartition& Target, const AffineMap& Map, bool PromoteAll,
+    [[nodiscard]] TransformOutcome TransformBodyWith(const ModelPartition& Partition, BodyToken Source, ModelPartition& Target, const AffineMapping& Map, bool PromoteAll,
                                                      const ApproximationSettings* Approximation = nullptr, ApproximationOutcome* Tally = nullptr, bool ReverseCondition = false,
                                                      double KnownVolume = std::numeric_limits<double>::quiet_NaN(), const std::set<uint32_t>* ReverseFaces = nullptr)
     {
         TransformOutcome Outcome;
-        const MapAnalysis Analysis = AnalyseMap(Map);
+        const MappingAnalysis Analysis = AnalyseMap(Map);
         if (!(std::fabs(Analysis.Determinant) > 1.0e-12)) { Outcome.Refusal = "Transform: the map is singular"; return Outcome; }
         const BodyInventory Inventory = Partition.CollectInventory(Source);
         BodyBlueprint Blueprint;
@@ -494,7 +494,7 @@ namespace
         //    image is one shell too (a cavity or a second lump falls back to integration).
         if (std::isfinite(KnownVolume) && !ReverseCondition && Approximation == nullptr && !PromoteAll) Blueprint.ShellVolumes = { KnownVolume * Analysis.Determinant };
         // ③ The blueprint is complete: assembling into Target (possibly the same partition) cannot disturb the reads above.
-        const AssemblyOutcome Assembly = AssembleBody(Target, Blueprint, Approximation != nullptr ? "Approximate" : PromoteAll ? "Promote" : "Transform");
+        const ArrangementOutcome Assembly = AssembleBody(Target, Blueprint, Approximation != nullptr ? "Approximate" : PromoteAll ? "Promote" : "Transform");
         if (!Assembly.Refusal.empty()) { Outcome.Refusal = Assembly.Refusal; return Outcome; }
         Outcome.Body        = Assembly.Body;
         Outcome.SourceFaces = Inventory.Faces;
@@ -514,25 +514,25 @@ namespace
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-AffineMap TranslationMap(Vector3 Displacement) noexcept
+AffineMapping TranslationMap(Vector3 Displacement) noexcept
 {
-    AffineMap Map;
+    AffineMapping Map;
     Map.Shift = Displacement;
     return Map;
 }
 
-AffineMap RotationMap(Vector3 AxisPoint, Vector3 AxisDirection, double Angle) noexcept
+AffineMapping RotationMap(Vector3 AxisPoint, Vector3 AxisDirection, double Angle) noexcept
 {
     // Rodrigues: R·v = v cos θ + (k × v) sin θ + k (k·v)(1 − cos θ).
     const Vector3 Axis = Normalize(AxisDirection);
     const double  Cosine = std::cos(Angle), Sine = std::sin(Angle);
     const auto    Turn = [&](Vector3 Vector) { return Vector * Cosine + Cross(Axis, Vector) * Sine + Axis * (Dot(Axis, Vector) * (1.0 - Cosine)); };
-    AffineMap Map{ Turn({ 1.0, 0.0, 0.0 }), Turn({ 0.0, 1.0, 0.0 }), Turn({ 0.0, 0.0, 1.0 }), {} };
+    AffineMapping Map{ Turn({ 1.0, 0.0, 0.0 }), Turn({ 0.0, 1.0, 0.0 }), Turn({ 0.0, 0.0, 1.0 }), {} };
     Map.Shift = AxisPoint - ApplyLinear(Map, AxisPoint);
     return Map;
 }
 
-AffineMap ReflectionMap(Vector3 PlanePoint, Vector3 PlaneNormal) noexcept
+AffineMapping ReflectionMap(Vector3 PlanePoint, Vector3 PlaneNormal) noexcept
 {
     // M = I − 2 n nᵀ, Shift = 2 (p·n) n.
     const Vector3 Normal = Normalize(PlaneNormal);
@@ -540,14 +540,14 @@ AffineMap ReflectionMap(Vector3 PlanePoint, Vector3 PlaneNormal) noexcept
     return { Mirror({ 1.0, 0.0, 0.0 }), Mirror({ 0.0, 1.0, 0.0 }), Mirror({ 0.0, 0.0, 1.0 }), Normal * (2.0 * Dot(PlanePoint, Normal)) };
 }
 
-AffineMap ScalingMap(Vector3 Centre, Vector3 Factors) noexcept
+AffineMapping ScalingMap(Vector3 Centre, Vector3 Factors) noexcept
 {
-    AffineMap Map{ { Factors.X, 0.0, 0.0 }, { 0.0, Factors.Y, 0.0 }, { 0.0, 0.0, Factors.Z }, {} };
+    AffineMapping Map{ { Factors.X, 0.0, 0.0 }, { 0.0, Factors.Y, 0.0 }, { 0.0, 0.0, Factors.Z }, {} };
     Map.Shift = Centre - ApplyLinear(Map, Centre);
     return Map;
 }
 
-TransformOutcome TransformBodyAcross(const ModelPartition& Partition, BodyToken Source, ModelPartition& Target, const AffineMap& Map)
+TransformOutcome TransformBodyAcross(const ModelPartition& Partition, BodyToken Source, ModelPartition& Target, const AffineMapping& Map)
 {
     return TransformBodyWith(Partition, Source, Target, Map, false);
 }
@@ -564,7 +564,7 @@ ApproximationOutcome ApproximateBodyAsNurbs(ModelPartition& Partition, BodyToken
     return Outcome;
 }
 
-TransformOutcome TransformBody(ModelPartition& Partition, BodyToken Source, const AffineMap& Map, double KnownVolume)
+TransformOutcome TransformBody(ModelPartition& Partition, BodyToken Source, const AffineMapping& Map, double KnownVolume)
 {
     return TransformBodyWith(Partition, Source, Partition, Map, false, nullptr, nullptr, false, KnownVolume);
 }

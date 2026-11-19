@@ -116,7 +116,7 @@ ParticleScalarChannel ParseScalarChannelKey(std::string_view Key) noexcept
 float ExtractParticleChannelScalar(
     ParticleScalarChannel                Channel,
     const ParticleSlot&                  Slot,
-    const ParticleTintEvaluationContext& Context) noexcept
+    const ParticleTintInput& Context) noexcept
 {
     const float NormLife = (Slot.LifespanSeconds > 1e-5f)
         ? std::clamp(Slot.AgeSeconds / Slot.LifespanSeconds, 0.0f, 1.0f)
@@ -206,7 +206,7 @@ ColourSpace::LinearRgba EvaluateParticleTint(
     const ParticleTintDriverSpec&           Driver,
     const ColourSpace::ColourSourceProfile& ColourProfile,
     const ParticleSlot&                     Slot,
-    const ParticleTintEvaluationContext&    Context) noexcept
+    const ParticleTintInput&    Context) noexcept
 {
     const float RawScalar  = ExtractParticleChannelScalar(Driver.Channel, Slot, Context);
     const float Normalized = ColourSpace::NormalizeScalarToRange(RawScalar, ColourProfile.Range);

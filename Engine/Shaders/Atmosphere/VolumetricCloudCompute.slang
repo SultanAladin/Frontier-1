@@ -14,7 +14,7 @@ struct GpuLocalCloudVolume
     float4 SoftAnisoPad;         // x = EdgeSoftness, y = AnisotropyG, z = FollowWind (0/1), w = Pad
 };
 
-struct GpuCloudWindForceProbe
+struct GpuCloudWindForceSensor
 {
     float4 PosRadius;       // xyz = EvaluatedCenterWorld, w = RadiusMeters
     float4 ForwardStrength; // xyz = ForwardUnitAxis,      w = StrengthMps
@@ -38,7 +38,7 @@ struct VolumetricCloudUniformBlock
     float4 CloudPassControl;     // x = CloudPassW, y = CloudPassH, z = CloudMarchSteps (12..96), w = WindProbeCount (0..8)
     float4 WindForceMeta;        // x = CouplingScaleHeightM, y = GlobalWindVX, z = GlobalWindVY, w = Pad
     GpuLocalCloudVolume      LocalClouds[8];
-    GpuCloudWindForceProbe   WindProbes[8];
+    GpuCloudWindForceSensor   WindProbes[8];
 };
 
 float HashCloudInt3(int IX, int IY, int IZ)
@@ -94,7 +94,7 @@ float3 EvaluateCloudWindProbesVelocityGpu(
     float CouplingSpan = max(500.0, Cfg.WindForceMeta.x);
     for (uint I = 0u; I < ProbeCount; ++I)
     {
-        GpuCloudWindForceProbe Pr = Cfg.WindProbes[I];
+        GpuCloudWindForceSensor Pr = Cfg.WindProbes[I];
         float Gain = Pr.Params.w;
         if (Gain <= 1.0e-5) continue;
 

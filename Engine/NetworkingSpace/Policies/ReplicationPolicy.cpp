@@ -16,9 +16,9 @@ namespace Frontier::NetworkingSpace
 //                                              CONTRACT BUILDERS & SCHEDULING
 //------------------------------------------------------------------------------------------------------------------------
 
-ReplicationScheduleContract BuildRealtimeKinematicContract(uint32_t ContractIdentifier, float PublishFrequencyHz) noexcept
+ReplicationScheduleSpec BuildRealtimeKinematicContract(uint32_t ContractIdentifier, float PublishFrequencyHz) noexcept
 {
-    ReplicationScheduleContract Contract{};
+    ReplicationScheduleSpec Contract{};
     Contract.ContractIdentifier         = ContractIdentifier;
     Contract.Authority                  = AuthorityMode::ClientPredictedHostReconciled;
     Contract.Channel                    = DeliveryChannel::UnreliableSequenced;
@@ -30,9 +30,9 @@ ReplicationScheduleContract BuildRealtimeKinematicContract(uint32_t ContractIden
     return Contract;
 }
 
-ReplicationScheduleContract BuildCollaborativeRevisionContract(uint32_t ContractIdentifier, float PublishFrequencyHz) noexcept
+ReplicationScheduleSpec BuildCollaborativeRevisionContract(uint32_t ContractIdentifier, float PublishFrequencyHz) noexcept
 {
-    ReplicationScheduleContract Contract{};
+    ReplicationScheduleSpec Contract{};
     Contract.ContractIdentifier         = ContractIdentifier;
     Contract.Authority                  = AuthorityMode::PeerAuthoritative;
     Contract.Channel                    = DeliveryChannel::ReliableOrdered;
@@ -42,7 +42,7 @@ ReplicationScheduleContract BuildCollaborativeRevisionContract(uint32_t Contract
     return Contract;
 }
 
-void AccumulateReplicationElapsed(ReplicationScheduleContract& Contract, double Δt) noexcept
+void AccumulateReplicationElapsed(ReplicationScheduleSpec& Contract, double Δt) noexcept
 {
     if (Δt > 0.0)
     {
@@ -50,7 +50,7 @@ void AccumulateReplicationElapsed(ReplicationScheduleContract& Contract, double 
     }
 }
 
-bool QueryPublishDue(const ReplicationScheduleContract& Contract, uint32_t CurrentRevision) noexcept
+bool QueryPublishDue(const ReplicationScheduleSpec& Contract, uint32_t CurrentRevision) noexcept
 {
     if (CurrentRevision <= Contract.LastPublishedRevision)
     {
@@ -64,7 +64,7 @@ bool QueryPublishDue(const ReplicationScheduleContract& Contract, uint32_t Curre
     return (Contract.LastPublishedRevision == 0u) || (Contract.SecondsSinceLastPublish + 1.0e-7 >= MinimumPeriodSeconds);
 }
 
-void AcknowledgePublishedRevision(ReplicationScheduleContract& Contract, uint32_t PublishedRevision) noexcept
+void AcknowledgePublishedRevision(ReplicationScheduleSpec& Contract, uint32_t PublishedRevision) noexcept
 {
     if (PublishedRevision > Contract.LastPublishedRevision)
     {

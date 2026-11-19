@@ -149,7 +149,7 @@ static_assert(sizeof(GpuRigUniformBlock) == 256u);
 //                                               VULKAN DEVICE IMPLEMENTATION
 //------------------------------------------------------------------------------------------------------------------------
 
-struct ParticleVulkanExecutor::VulkanDeviceState
+struct ParticleVulkanExecutor::VulkanDeviceStatus
 {
     VkInstance            Instance            = VK_NULL_HANDLE;
     VkPhysicalDevice      PhysicalDevice      = VK_NULL_HANDLE;
@@ -296,7 +296,7 @@ struct ParticleVulkanExecutor::VulkanDeviceState
 ParticleVulkanExecutor::ParticleVulkanExecutor() = default;
 ParticleVulkanExecutor::~ParticleVulkanExecutor() { Shutdown(); }
 
-bool ParticlePipelineArtifacts::AllShadersPresentOnDisk() const noexcept
+bool ParticleShaderArtifacts::AllShadersPresentOnDisk() const noexcept
 {
     std::error_code Ec;
     const std::filesystem::path All[21] = {
@@ -385,7 +385,7 @@ bool ParticleVulkanExecutor::InitializeGpuComputeDevice(const std::filesystem::p
         DeviceState->DestroyAll();
         DeviceState.reset();
     }
-    DeviceState = std::make_unique<VulkanDeviceState>();
+    DeviceState = std::make_unique<VulkanDeviceStatus>();
 
     std::vector<uint32_t> AdvectWords, ReduceWords;
     if (!ReadSpirvWords(Artifacts.AdvectComputeSpv, AdvectWords) || !ReadSpirvWords(Artifacts.ReductionComputeSpv, ReduceWords))
@@ -690,7 +690,7 @@ void ParticleVulkanExecutor::Shutdown() noexcept
 
 uint32_t ParticleVulkanExecutor::ExecuteRigStep(
     const ParticleRig&         Rig,
-    const ParticleStepContext& Context,
+    const ParticleStepInput& Context,
     std::span<ParticleSlot>    RigSlots,
     std::span<StrandVertex>    OptionalStrandHistory)
 {
@@ -700,7 +700,7 @@ uint32_t ParticleVulkanExecutor::ExecuteRigStep(
 
 bool ParticleVulkanExecutor::DispatchAdvectComputeGpu(
     const ParticleRig&         Rig,
-    const ParticleStepContext& Context,
+    const ParticleStepInput& Context,
     std::span<ParticleSlot>    RigSlots,
     std::string&               OutDiagnostic)
 {
@@ -938,7 +938,7 @@ bool ParticleVulkanExecutor::DispatchReductionComputeGpu(
     return true;
 }
 
-const ParticlePipelineArtifacts& ParticleVulkanExecutor::InspectArtifacts() const noexcept { return Artifacts; }
+const ParticleShaderArtifacts& ParticleVulkanExecutor::InspectArtifacts() const noexcept { return Artifacts; }
 const ParticleVulkanTelemetry&   ParticleVulkanExecutor::InspectTelemetry() const noexcept { return Telemetry; }
 
 } // namespace Frontier::ParticleSpace

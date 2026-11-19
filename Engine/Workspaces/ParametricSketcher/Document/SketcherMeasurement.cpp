@@ -9,7 +9,7 @@
 
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherMeasurement.h"
 
-#include "Engine/GeometrySpace/Parametric/Assembly/AssemblyAnalysis.h"
+#include "Engine/GeometrySpace/Parametric/Arrangement/ArrangementAnalysis.h"
 #include "Engine/GeometrySpace/Parametric/Audit/EnclosedVolume.h"
 #include "Engine/GeometrySpace/Parametric/Measurement/MassProperties.h"
 #include "Engine/GeometrySpace/Parametric/Measurement/MinimumDistance.h"
@@ -350,7 +350,7 @@ void MeasureTotals(const SketcherDocument& Document, const std::vector<MeasureOp
 //------------------------------------------------------------------------------------------------------------------------
 
 // Plane of a Face request: the named planar face of a shown body, moved Offset along the outward normal, kept side inward.
-bool ResolveFacePlane(const SketcherDocument& Document, const SketcherSectionRequest& Request, GeometrySpace::Parametric::OrthonormalFrame& Plane)
+bool ResolveFacePlane(const SketcherDocument& Document, const SketcherSectionRequest& Request, GeometrySpace::Parametric::OrthonormalBasis& Plane)
 {
     const GeometrySpace::Parametric::ModelPartition& Partition = *Document.Partition;
     for (const GeometrySpace::Parametric::RegeneratedBody& Body : Document.Regeneration.Bodies)
@@ -459,7 +459,7 @@ SketcherSection SectionSketcherDocument(const SketcherDocument& Document, const 
     SketcherSection Section = ResolveSketcherSectionPlane(Document, Request);
     if (!Section.PlaneCondition) return Section;
     if (!Document.Partition) { Section.Refusal = "Section: the document has no body"; return Section; }
-    const GeometrySpace::Parametric::OrthonormalFrame& Plane = Section.Plane;
+    const GeometrySpace::Parametric::OrthonormalBasis& Plane = Section.Plane;
     struct Piece { double Area; double U; double V; std::array<double, 3> Moments; };
     std::vector<Piece> Pieces;
     Vector3 Moment = {};

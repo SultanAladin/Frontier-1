@@ -9,7 +9,7 @@
 //                                                    INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <functional>
 
@@ -20,7 +20,7 @@ namespace Frontier::GeometrySpace::Parametric
 //                                                    STRUCTS
 //------------------------------------------------------------------------------------------------------------------------
 
-struct ShellVolumeMeasure
+struct SolidVolumeMeasure
 {
     double Volume        = 0.0;                                                              // [len³] - Σ face flux (signed)
     double FluxMagnitude = 0.0;                                                              // [len³] - Σ |face flux| (cancellation scale)
@@ -34,7 +34,7 @@ struct ShellVolumeMeasure
 //    in traversal order. Loop orientation in (𝑢, 𝑣) already carries the face sense, so the fin sum IS the outward flux.
 //    Works for any trimmed face with SP-curves — replaces the tessellation volume that Sketcher used as truth.
 [[nodiscard]] double IntegrateShellVolume(const ModelPartition& Partition, SolidShellToken SolidShell);
-[[nodiscard]] ShellVolumeMeasure MeasureShellVolume(const ModelPartition& Partition, SolidShellToken SolidShell);
+[[nodiscard]] SolidVolumeMeasure MeasureShellVolume(const ModelPartition& Partition, SolidShellToken SolidShell);
 [[nodiscard]] double IntegrateBodyVolume(const ModelPartition& Partition, BodyToken Body);
 
 // Signed parametric area Σ ∮ 𝑢 d𝑣 over a face's loops: positive when the loops run counter-clockwise in (𝑢, 𝑣).

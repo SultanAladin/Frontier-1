@@ -25,21 +25,21 @@ namespace
     constexpr double TangentSine        = 1.0e-7;                                            // [-] - |N·Ĉ′| below this is a touch
     constexpr double CoincidentFraction = 1.0e-13;                                           // [-] - Coefficients ≤ this × L^d vanish
 
-    struct DistanceProbe
+    struct DistanceQuery
     {
         double Distance = 0.0;                                                               // [len] - d(τ)
         double Slope    = 0.0;                                                               // [len] - d′(τ) = N·C′(τ)
         double Speed    = 0.0;                                                               // [len] - |C′(τ)|
     };
 
-    [[nodiscard]] DistanceProbe ProbeDistance(const CurveGeometry& Curve, const SurfaceGeometry& Surface, double τ)
+    [[nodiscard]] DistanceQuery ProbeDistance(const CurveGeometry& Curve, const SurfaceGeometry& Surface, double τ)
     {
         const CurveSample     Sample  = EvaluateCurve(Curve, τ);
         const SurfaceDistance Measure = MeasureSurfaceDistance(Surface, Sample.Position);
         return { Measure.Distance, Dot(Measure.Normal, Sample.Derivative), Length(Sample.Derivative) };
     }
 
-    [[nodiscard]] DistanceProbe ProbeDistanceNear(const CurveGeometry& Curve, const SurfaceGeometry& Surface, double τ, Vector2& Hint)
+    [[nodiscard]] DistanceQuery ProbeDistanceNear(const CurveGeometry& Curve, const SurfaceGeometry& Surface, double τ, Vector2& Hint)
     {
         const CurveSample     Sample  = EvaluateCurve(Curve, τ);
         const SurfaceDistance Measure = MeasureSurfaceDistanceNear(Surface, Sample.Position, Hint);
@@ -51,7 +51,7 @@ namespace
     {
         for (int Iteration = 0; Iteration < NewtonLimit; ++Iteration)
         {
-            const DistanceProbe Probe = ProbeDistanceNear(Curve, Surface, τ, Hint);
+            const DistanceQuery Probe = ProbeDistanceNear(Curve, Surface, τ, Hint);
             if (std::fabs(Probe.Slope) <= 1.0e-14 * Probe.Speed) break;
             const double Step = Probe.Distance / Probe.Slope;                                // [-] - Newton correction
             if (!std::isfinite(Step)) break;                                                 // Probe left the carrier's range
@@ -247,7 +247,7 @@ CurveSurfaceOutcome IntersectCurveSurface(const CurveGeometry& Curve, double Low
             //    keep the duplicate with the smaller |d′| / |C′| (it moved a tangent cap foot by 4.9·10⁻⁹).
             const auto Flatness = [&](const CurveSurfaceCrossing& Crossing)
             {
-                const DistanceProbe Probe = ProbeDistance(Curve, Surface, Crossing.CurveParameter);
+                const DistanceQuery Probe = ProbeDistance(Curve, Surface, Crossing.CurveParameter);
                 return std::fabs(Probe.Slope) / std::max(Probe.Speed, 1.0e-300);
             };
             if (Flatness(Touch) < Flatness(Merged.back())) Merged.back() = Touch;

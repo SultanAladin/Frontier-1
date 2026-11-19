@@ -56,11 +56,11 @@ struct SketcherNavigationKeypad
 
 // Plasticity orbit-controls: middle drag orbits (azimuth about world z, elevation about camera right), right drag
 // pans in the view plane, the wheel dollies. Returns true when the camera moved.
-bool NavigateSketcherPointer(OrbitCamera& Camera, const OrbitCameraFrame& Frame, const SketcherNavigationPointer& Pointer);
+bool NavigateSketcherPointer(OrbitCamera& Camera, const OrbitCameraBasis& Frame, const SketcherNavigationPointer& Pointer);
 
 // Numpad 5 toggles projection; 1 / 3 / 7 (Ctrl: opposite), 0 (Isometric), 9 (180° flip), 2 / 4 / 6 / 8 (15° orbit steps,
 // Ctrl: pan), + / - (zoom). Returns a named preset when entered so the caller updates the drawing grid plane.
 [[nodiscard]] std::optional<OrbitViewPreset> NavigateSketcherKeypad(OrbitCamera& Camera, const SketcherNavigationKeypad& Keypad,
-                                                                    const OrbitCameraFrame* Frame = nullptr, bool* MovedOut = nullptr);
+                                                                    const OrbitCameraBasis* Frame = nullptr, bool* MovedOut = nullptr);
 
 } // namespace Frontier::Workspaces::Sketcher

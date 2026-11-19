@@ -23,14 +23,14 @@ namespace
 {
     constexpr double DegenerateRadius = 1.0e-14;                                             // [len] - Circle collapses below
 
-    [[nodiscard]] Vector3 Radial(const OrthonormalFrame& Frame, double 𝑢) noexcept
+    [[nodiscard]] Vector3 Radial(const OrthonormalBasis& Frame, double 𝑢) noexcept
     {
         return Frame.XAxis * std::cos(𝑢) + Frame.YAxis * std::sin(𝑢);
     }
 
     // 📝 Latitude circle P = Centre + ρ·(cos 𝑢·X + sin 𝑢·Y), τ = 𝑢. A negative ρ is the same circle turned by π:
     //    flipping X and Y keeps Z = X × Y and keeps τ = 𝑢.
-    [[nodiscard]] IsoParameterCurve LatitudeCircle(const OrthonormalFrame& Frame, Vector3 Centre, double ρ) noexcept
+    [[nodiscard]] IsoParameterCurve LatitudeCircle(const OrthonormalBasis& Frame, Vector3 Centre, double ρ) noexcept
     {
         IsoParameterCurve Iso;
         const double      Sign = ρ < 0.0 ? -1.0 : 1.0;                                       // [-] - Orientation of the frame
@@ -40,7 +40,7 @@ namespace
     }
 
     // 📝 Meridian circle in the half-plane of azimuth 𝑢: P = Centre + r·(cos 𝑣·radial + sin 𝑣·Z), τ = 𝑣.
-    [[nodiscard]] IsoParameterCurve MeridianCircle(const OrthonormalFrame& Frame, double 𝑢, Vector3 Centre, double Radius) noexcept
+    [[nodiscard]] IsoParameterCurve MeridianCircle(const OrthonormalBasis& Frame, double 𝑢, Vector3 Centre, double Radius) noexcept
     {
         const Vector3 Direction = Radial(Frame, 𝑢);                                          // [-] - In-plane X axis
         IsoParameterCurve Iso;
@@ -88,14 +88,14 @@ IsoParameterCurve ExtractIsoParameterCurve(const SurfaceGeometry& Surface, IsoDi
     const bool FixedU = Direction == IsoDirection::FixedU;                                   // [-] - 𝑣 runs along the curve
     if (const auto* Plane = std::get_if<PlaneSurface>(&Surface))
     {
-        const OrthonormalFrame& Frame = Plane->Frame;
+        const OrthonormalBasis& Frame = Plane->Frame;
         IsoParameterCurve Iso;
         Iso.Curve = FixedU ? StraightLine{ Frame.Origin + Frame.XAxis * Value, Frame.YAxis } : StraightLine{ Frame.Origin + Frame.YAxis * Value, Frame.XAxis };
         return Iso;
     }
     if (const auto* Cylinder = std::get_if<CylinderSurface>(&Surface))
     {
-        const OrthonormalFrame& Frame = Cylinder->Frame;
+        const OrthonormalBasis& Frame = Cylinder->Frame;
         if (FixedU)
         {
             IsoParameterCurve Iso;
@@ -106,7 +106,7 @@ IsoParameterCurve ExtractIsoParameterCurve(const SurfaceGeometry& Surface, IsoDi
     }
     if (const auto* Cone = std::get_if<ConeSurface>(&Surface))
     {
-        const OrthonormalFrame& Frame = Cone->Frame;
+        const OrthonormalBasis& Frame = Cone->Frame;
         const double            s     = Cone->RadialSlope;                                   // [-] - dr/d𝑣
         if (FixedU)
         {
@@ -121,12 +121,12 @@ IsoParameterCurve ExtractIsoParameterCurve(const SurfaceGeometry& Surface, IsoDi
     }
     if (const auto* Sphere = std::get_if<SphereSurface>(&Surface))
     {
-        const OrthonormalFrame& Frame = Sphere->Frame;
+        const OrthonormalBasis& Frame = Sphere->Frame;
         if (FixedU) return MeridianCircle(Frame, Value, Frame.Origin, Sphere->Radius);
         return LatitudeCircle(Frame, Frame.Origin + Frame.ZAxis * (Sphere->Radius * std::sin(Value)), Sphere->Radius * std::cos(Value));
     }
     const auto&             Torus = std::get<TorusSurface>(Surface);
-    const OrthonormalFrame& Frame = Torus.Frame;
+    const OrthonormalBasis& Frame = Torus.Frame;
     if (FixedU) return MeridianCircle(Frame, Value, Frame.Origin + Radial(Frame, Value) * Torus.MajorRadius, Torus.MinorRadius);
     return LatitudeCircle(Frame, Frame.Origin + Frame.ZAxis * (Torus.MinorRadius * std::sin(Value)), Torus.MajorRadius + Torus.MinorRadius * std::cos(Value));
 }

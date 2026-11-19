@@ -151,7 +151,7 @@ struct SketcherDeviationNeedle
     double            Distance = 0.0;                                                        // [len] - |Point − Foot|
 };
 
-struct SketcherDeviationMap
+struct SketcherDeviationPlot
 {
     uint64_t                             Revision = 0;                                       // [-]   - Document revision measured
     std::vector<SketcherDeviationNeedle> Needles  = {};                                      // [-]   - One per imported point
@@ -162,7 +162,7 @@ struct SketcherDeviationMap
 // 💡 Distance from every SpaceCurve point (lofted or not — check loops count) to the nearest surface panel: best of a
 //    9 × 9 parameter grid per panel, then Newton projection (ProjectOntoNurbsSurface, clamped to the panel). Empty
 //    without panels.
-[[nodiscard]] SketcherDeviationMap MeasureSketcherDeviation(const SketcherDocument& Document);
+[[nodiscard]] SketcherDeviationPlot MeasureSketcherDeviation(const SketcherDocument& Document);
 
 // 💡 Zebra phase (mirrors SketcherSurface.slang): the view direction reflected in the unit normal, its angle to the
 //    camera up axis × Stripes / π — stripe k covers phase [k, k + ½). A function of the normal alone (view fixed), so
@@ -214,6 +214,6 @@ struct SketcherEdgeApproach
 
 // Identity → persistent name ("" for the background or an out-of-range code).
 [[nodiscard]] std::string NameSketcherIdentity(const SketcherScene& Scene, uint32_t Identity);
-[[nodiscard]] SketcherSelectionKind SketcherIdentityKind(uint32_t Identity) noexcept;
+[[nodiscard]] SketcherSelectionCategory SketcherIdentityKind(uint32_t Identity) noexcept;
 
 } // namespace Frontier::Workspaces::Sketcher

@@ -12,7 +12,7 @@
 #include "Engine/GeometrySpace/Parametric/Diagnostics/OperationTrace.h"
 
 #include "Engine/GeometrySpace/Parametric/Boolean/GeneralFuse.h"
-#include "Engine/GeometrySpace/Parametric/Local/TopologyRebuild.h"
+#include "Engine/GeometrySpace/Parametric/Local/ConnectivityRebuild.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/NurbsCarrier.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/ParallelCarrier.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/RollingBallCarrier.h"
@@ -43,7 +43,7 @@ namespace
 
         [[nodiscard]] Vector3 Turn(Vector3 Direction) const { return { Dot(Rows[0], Direction), Dot(Rows[1], Direction), Dot(Rows[2], Direction) }; }
         [[nodiscard]] Vector3 Move(Vector3 Point) const { return Turn(Point) * Scale + Translation; }
-        [[nodiscard]] OrthonormalFrame MoveFrame(const OrthonormalFrame& Frame) const { return { Move(Frame.Origin), Turn(Frame.XAxis), Turn(Frame.YAxis), Turn(Frame.ZAxis) }; }
+        [[nodiscard]] OrthonormalBasis MoveFrame(const OrthonormalBasis& Frame) const { return { Move(Frame.Origin), Turn(Frame.XAxis), Turn(Frame.YAxis), Turn(Frame.ZAxis) }; }
     };
 
     [[nodiscard]] SimilarityMotion TranslationMotion(Vector3 Translation) { SimilarityMotion Motion; Motion.Translation = Translation; return Motion; }
@@ -88,7 +88,7 @@ namespace
             if (Source.Law)
             {
                 // 📝 A ball-law spine runs on its edge's τ: it stretches like the edge (conics keep τ, open traces scale).
-                auto Law = std::make_shared<BallLaw>(*Source.Law);
+                auto Law = std::make_shared<BallBlendProfile>(*Source.Law);
                 const auto* Edge = std::get_if<IntersectionCurve>(&Source.Law->Edge);
                 Stretch = Edge && !Edge->Trace->Closed ? Motion.Scale : 1.0;
                 Law->Edge      = MoveCurve(Source.Law->Edge, Motion);
@@ -342,18 +342,18 @@ namespace
         };
         switch (Settings.Kind)
         {
-            case FaceOperationKind::Offset:
-            case FaceOperationKind::OffsetBody:
+            case FaceOperationCategory::Offset:
+            case FaceOperationCategory::OffsetBody:
                 for (FaceToken Face : Faces) if (std::string Refusal = Offset(Face, Settings.Distance); !Refusal.empty()) return Refusal;
                 return {};
-            case FaceOperationKind::Extend:
-            case FaceOperationKind::Trim:
+            case FaceOperationCategory::Extend:
+            case FaceOperationCategory::Trim:
             {
-                const double Distance = Settings.Kind == FaceOperationKind::Extend ? Settings.Distance : -Settings.Distance;
+                const double Distance = Settings.Kind == FaceOperationCategory::Extend ? Settings.Distance : -Settings.Distance;
                 for (FaceToken Face : NeighbourFaces(Partition, Faces)) if (std::string Refusal = Offset(Face, Distance); !Refusal.empty()) return Refusal;
                 return {};
             }
-            case FaceOperationKind::Push:
+            case FaceOperationCategory::Push:
                 for (FaceToken Face : Faces)
                 {
                     const Vector3 Centre = MeasureFaceBoundaryCentre(Partition, Face);
@@ -363,21 +363,21 @@ namespace
                                              Planar ? Settings.Distance : std::numeric_limits<double>::quiet_NaN() });
                 }
                 return {};
-            case FaceOperationKind::Tweak:
+            case FaceOperationCategory::Tweak:
                 for (FaceToken Face : Faces) Replacements.push_back({ Face, MoveSurface(CarrierOf(Partition, Face), TranslationMotion(Settings.Vector)) });
                 return {};
-            case FaceOperationKind::Scale:
+            case FaceOperationCategory::Scale:
                 if (!(Settings.Factor > 0.0)) return "scale factor must be positive";
                 for (FaceToken Face : Faces) if (std::string Refusal = ScaleReplacements(Partition, Face, Settings.Factor, Replacements); !Refusal.empty()) return Refusal;
                 return {};
-            case FaceOperationKind::Rotate:
+            case FaceOperationCategory::Rotate:
                 if (Length(Settings.Axis) < 1.0e-12) return "rotation axis is zero";
                 for (FaceToken Face : Faces)
                 {
                     Replacements.push_back({ Face, MoveSurface(CarrierOf(Partition, Face), RotationMotion(MeasureFaceBoundaryCentre(Partition, Face), Settings.Axis, Settings.Angle)) });
                 }
                 return {};
-            case FaceOperationKind::Draft:
+            case FaceOperationCategory::Draft:
             {
                 if (Length(Settings.PullDirection) < 1.0e-12) return "pull direction is zero";
                 const Vector3 Pull = Normalize(Settings.PullDirection);
@@ -497,16 +497,16 @@ static FaceOperationOutcome ApplyFaceOperationUntraced(ModelPartition& Partition
     }
     switch (Settings.Kind)
     {
-        case FaceOperationKind::Hollow:   return Finish(HollowBody(Partition, Body, Settings, Outcome));
-        case FaceOperationKind::Extrude: return Finish(ExtrudePlanarFaces(Partition, Body, Settings.Faces, Settings.Distance, Outcome.Body, Outcome.FaceHistories, Outcome.Audit, Outcome.Method));
-        case FaceOperationKind::Inset:   return Finish(InsetPlanarFaces(Partition, Body, Settings.Faces, Settings.Distance, Settings.Depth, Outcome.Body, Outcome.FaceHistories, Outcome.Audit, Outcome.Method));
-        case FaceOperationKind::Delete:  return Finish(DeleteBodyFaces(Partition, Body, Settings.Faces, Outcome.Body, Outcome.Category, Outcome.FaceHistories, Outcome.Audit, Outcome.Method));
-        case FaceOperationKind::Heal:    return Finish(HealBody(Partition, Body, Outcome.Body, Outcome.FaceHistories, Outcome.Audit, Outcome.Method, Settings.Edges, Settings.Vertices));
-        case FaceOperationKind::Reshape: return Finish(ReshapeBodyVertices(Partition, Body, Settings.Vertices, Settings.Placement, Outcome.Body, Outcome.FaceHistories, Outcome.Audit, Outcome.Method));
-        case FaceOperationKind::Thicken: return Finish(ThickenSheet(Partition, Body, Settings.Distance, Outcome.Body, Outcome.FaceHistories, Outcome.Audit, Outcome.Method));
+        case FaceOperationCategory::Hollow:   return Finish(HollowBody(Partition, Body, Settings, Outcome));
+        case FaceOperationCategory::Extrude: return Finish(ExtrudePlanarFaces(Partition, Body, Settings.Faces, Settings.Distance, Outcome.Body, Outcome.FaceHistories, Outcome.Audit, Outcome.Method));
+        case FaceOperationCategory::Inset:   return Finish(InsetPlanarFaces(Partition, Body, Settings.Faces, Settings.Distance, Settings.Depth, Outcome.Body, Outcome.FaceHistories, Outcome.Audit, Outcome.Method));
+        case FaceOperationCategory::Delete:  return Finish(DeleteBodyFaces(Partition, Body, Settings.Faces, Outcome.Body, Outcome.Category, Outcome.FaceHistories, Outcome.Audit, Outcome.Method));
+        case FaceOperationCategory::Heal:    return Finish(HealBody(Partition, Body, Outcome.Body, Outcome.FaceHistories, Outcome.Audit, Outcome.Method, Settings.Edges, Settings.Vertices));
+        case FaceOperationCategory::Reshape: return Finish(ReshapeBodyVertices(Partition, Body, Settings.Vertices, Settings.Placement, Outcome.Body, Outcome.FaceHistories, Outcome.Audit, Outcome.Method));
+        case FaceOperationCategory::Thicken: return Finish(ThickenSheet(Partition, Body, Settings.Distance, Outcome.Body, Outcome.FaceHistories, Outcome.Audit, Outcome.Method));
         default: break;
     }
-    if (Settings.Faces.empty() && Settings.Kind != FaceOperationKind::OffsetBody) return Finish("no faces selected");
+    if (Settings.Faces.empty() && Settings.Kind != FaceOperationCategory::OffsetBody) return Finish("no faces selected");
     std::vector<FaceReplacement> Replacements;
     if (std::string Refusal = CollectReplacements(Partition, Body, Settings, Replacements); !Refusal.empty()) return Finish(Refusal);
     const FaceChangeOutcome Change = ChangeFaces(Partition, Body, Replacements, FaceOperationLabel(Settings.Kind));
@@ -531,26 +531,26 @@ FaceOperationOutcome ApplyFaceOperation(ModelPartition& Partition, BodyToken Bod
 }
 
 
-const char* FaceOperationLabel(FaceOperationKind Kind) noexcept
+const char* FaceOperationLabel(FaceOperationCategory Kind) noexcept
 {
     switch (Kind)
     {
-        case FaceOperationKind::Offset:     return "OffsetFace";
-        case FaceOperationKind::Push:       return "Push";
-        case FaceOperationKind::Tweak:      return "Tweak";
-        case FaceOperationKind::Scale:      return "Scale";
-        case FaceOperationKind::Rotate:     return "Rotate";
-        case FaceOperationKind::Draft:      return "Draft";
-        case FaceOperationKind::Extend:     return "ExtendFace";
-        case FaceOperationKind::Trim:       return "TrimFace";
-        case FaceOperationKind::OffsetBody: return "OffsetBody";
-        case FaceOperationKind::Hollow:      return "Hollow";
-        case FaceOperationKind::Extrude:    return "ExtrudeFaces";
-        case FaceOperationKind::Delete:     return "DeleteFace";
-        case FaceOperationKind::Heal:       return "Heal";
-        case FaceOperationKind::Thicken:    return "Thicken";
-        case FaceOperationKind::Inset:      return "InsetFaces";
-        case FaceOperationKind::Reshape:    return "Reshape";
+        case FaceOperationCategory::Offset:     return "OffsetFace";
+        case FaceOperationCategory::Push:       return "Push";
+        case FaceOperationCategory::Tweak:      return "Tweak";
+        case FaceOperationCategory::Scale:      return "Scale";
+        case FaceOperationCategory::Rotate:     return "Rotate";
+        case FaceOperationCategory::Draft:      return "Draft";
+        case FaceOperationCategory::Extend:     return "ExtendFace";
+        case FaceOperationCategory::Trim:       return "TrimFace";
+        case FaceOperationCategory::OffsetBody: return "OffsetBody";
+        case FaceOperationCategory::Hollow:      return "Hollow";
+        case FaceOperationCategory::Extrude:    return "ExtrudeFaces";
+        case FaceOperationCategory::Delete:     return "DeleteFace";
+        case FaceOperationCategory::Heal:       return "Heal";
+        case FaceOperationCategory::Thicken:    return "Thicken";
+        case FaceOperationCategory::Inset:      return "InsetFaces";
+        case FaceOperationCategory::Reshape:    return "Reshape";
     }
     return "?";
 }

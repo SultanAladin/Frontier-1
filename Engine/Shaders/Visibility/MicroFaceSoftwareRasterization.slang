@@ -21,7 +21,7 @@ struct MicroRasterUniforms
     uint   InstanceOrdinal;
 };
 
-struct GpuMicroTriangleItem
+struct GpuMicroTriangleEntry
 {
     float3 WorldP0;
     uint   ClusterOrdinal;
@@ -32,7 +32,7 @@ struct GpuMicroTriangleItem
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<MicroRasterUniforms>      MicroCam;
-[[vk::binding(1, 0)]] StructuredBuffer<GpuMicroTriangleItem>   MicroTriangles;
+[[vk::binding(1, 0)]] StructuredBuffer<GpuMicroTriangleEntry>   MicroTriangles;
 [[vk::binding(2, 0)]] RWStructuredBuffer<uint64_t>             VisibilityBuffer64;
 
 bool ProjectMicroVertex(float3 WorldPos, out float2 OutScreen, out float OutReversedZ)
@@ -67,7 +67,7 @@ void MicroFaceComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         return;
     }
 
-    GpuMicroTriangleItem Item = MicroTriangles[TriIdx];
+    GpuMicroTriangleEntry Item = MicroTriangles[TriIdx];
     float2 S0, S1, S2;
     float  Z0, Z1, Z2;
     if (!ProjectMicroVertex(Item.WorldP0, S0, Z0) ||

@@ -35,7 +35,7 @@ namespace Frontier::NetworkingSpace
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct InboundEnvelopeRecord
+struct InboundEnvelopeEntry
 {
     uint32_t              SourceEndpointIdentifier = 0u;                                  // [-] - Verified remote sender slot id
     double                ArrivalTimestampSeconds  = 0.0;                                 // [s] - Local arrival timestamp
@@ -83,7 +83,7 @@ public:
         uint32_t                 SimulationTick,
         std::span<const uint8_t> LargePayload);
 
-    void               DrainReceivedEnvelopes(std::vector<InboundEnvelopeRecord>& OutEnvelopes);
+    void               DrainReceivedEnvelopes(std::vector<InboundEnvelopeEntry>& OutEnvelopes);
     void               DrainCompletedChunkTransfers(std::vector<CompletedChunkTransfer>& OutTransfers);
 
     // Graceful reverse-order session teardown routine
@@ -134,7 +134,7 @@ private:
     InputDirectiveStream                   LocalInputStream       {};
     ReliableDirectiveRouter                ReliableRouter         {};
 
-    std::vector<InboundEnvelopeRecord>     InboundEnvelopeQueue   {};
+    std::vector<InboundEnvelopeEntry>     InboundEnvelopeQueue   {};
     std::vector<CompletedChunkTransfer>    CompletedChunkQueue    {};
 
     TransportChannelCategory               ActiveCategory           = TransportChannelCategory::None;

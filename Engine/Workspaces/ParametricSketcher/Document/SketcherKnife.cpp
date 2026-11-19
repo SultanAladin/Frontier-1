@@ -78,7 +78,7 @@ namespace
     const double Width = std::max(High[0] - Low[0], High[1] - Low[1]);                      // [len]
     if (!(Width > 1.0e-9) || !(High[2] - Low[2] > 1.0e-9)) return "the cutter body is flat";
     const double Factor = 1.0 / Width;
-    AffineMap Map;
+    AffineMapping Map;
     Map.ColumnX = { Factor, 0.0, 0.0 };
     Map.ColumnY = { 0.0, Factor, 0.0 };
     Map.ColumnZ = { 0.0, 0.0, Factor };
@@ -128,7 +128,7 @@ namespace
 [[nodiscard]] std::string SweepFlatCutter(SketcherDocument& Scratch, SketcherDrawingRequest Request, double Top, double Bottom, std::string& Key)
 {
     Request.PlaneCondition = true;
-    Request.Plane          = OrthonormalFrame{};
+    Request.Plane          = OrthonormalBasis{};
     Request.Plane.Origin   = { 0.0, 0.0, Top };
     Request.FillCondition  = true;
     const SketcherCommandOutcome Drawn = DrawSketcherSketch(Scratch, Request);
@@ -147,7 +147,7 @@ constexpr double CountersinkCone = -0.25;                                       
 [[nodiscard]] std::string TurnCountersink(SketcherDocument& Scratch, std::string& Key, double Bottom)
 {
     SketcherDrawingRequest Request;
-    Request.Kind            = SketcherDrawingKind::Line;
+    Request.Kind            = SketcherDrawingCategory::Line;
     Request.GridPlane       = 1;
     Request.ClosedCondition = true;
     Request.FillCondition   = true;
@@ -180,7 +180,7 @@ void AddBuiltIn(SketcherInsertLibrary& Library, const std::string& Name, Sketche
     Library.Inserts.push_back(std::move(Insert));
 }
 
-[[nodiscard]] SketcherDrawingRequest Shape(SketcherDrawingKind Kind, std::vector<Vector2> Points, bool CentreCondition = false, int Sides = 6, bool ClosedCondition = false)
+[[nodiscard]] SketcherDrawingRequest Shape(SketcherDrawingCategory Kind, std::vector<Vector2> Points, bool CentreCondition = false, int Sides = 6, bool ClosedCondition = false)
 {
     SketcherDrawingRequest Request;
     Request.Kind            = Kind;
@@ -206,13 +206,13 @@ SketcherInsertLibrary AssembleSketcherInserts(const std::string& Folder)
     {
         return [Request](SketcherDocument& Scratch, std::string& Key, double Bottom) { return SweepFlatCutter(Scratch, Request, 0.05, Bottom, Key); };
     };
-    AddBuiltIn(Library, "Square pocket", Flat(Shape(SketcherDrawingKind::Rectangle, { { 0.0, 0.0 }, { 0.5, 0.5 } }, true)), -0.3, 0.05);
-    AddBuiltIn(Library, "Round hole", Flat(Shape(SketcherDrawingKind::Circle, { { 0.0, 0.0 }, { 0.5, 0.0 } }, true)), -0.5, 0.05);
+    AddBuiltIn(Library, "Square pocket", Flat(Shape(SketcherDrawingCategory::Rectangle, { { 0.0, 0.0 }, { 0.5, 0.5 } }, true)), -0.3, 0.05);
+    AddBuiltIn(Library, "Round hole", Flat(Shape(SketcherDrawingCategory::Circle, { { 0.0, 0.0 }, { 0.5, 0.0 } }, true)), -0.5, 0.05);
     AddBuiltIn(Library, "Countersink", TurnCountersink, -0.8, CountersinkCone);
-    AddBuiltIn(Library, "Slot", Flat(Shape(SketcherDrawingKind::Slot, { { -0.35, 0.0 }, { 0.35, 0.0 }, { 0.35, 0.15 } })), -0.3, 0.05);
-    AddBuiltIn(Library, "Hex pocket", Flat(Shape(SketcherDrawingKind::Polygon, { { 0.0, 0.0 }, { 0.5, 0.0 } }, true, 6)), -0.3, 0.05);
-    AddBuiltIn(Library, "Triangle", Flat(Shape(SketcherDrawingKind::Polygon, { { 0.0, 0.0 }, { 0.0, 0.5 } }, true, 3)), -0.3, 0.05);
-    AddBuiltIn(Library, "Cross", Flat(Shape(SketcherDrawingKind::Line, { { -0.15, -0.5 }, { 0.15, -0.5 }, { 0.15, -0.15 }, { 0.5, -0.15 }, { 0.5, 0.15 }, { 0.15, 0.15 },
+    AddBuiltIn(Library, "Slot", Flat(Shape(SketcherDrawingCategory::Slot, { { -0.35, 0.0 }, { 0.35, 0.0 }, { 0.35, 0.15 } })), -0.3, 0.05);
+    AddBuiltIn(Library, "Hex pocket", Flat(Shape(SketcherDrawingCategory::Polygon, { { 0.0, 0.0 }, { 0.5, 0.0 } }, true, 6)), -0.3, 0.05);
+    AddBuiltIn(Library, "Triangle", Flat(Shape(SketcherDrawingCategory::Polygon, { { 0.0, 0.0 }, { 0.0, 0.5 } }, true, 3)), -0.3, 0.05);
+    AddBuiltIn(Library, "Cross", Flat(Shape(SketcherDrawingCategory::Line, { { -0.15, -0.5 }, { 0.15, -0.5 }, { 0.15, -0.15 }, { 0.5, -0.15 }, { 0.5, 0.15 }, { 0.15, 0.15 },
                                                                            { 0.15, 0.5 }, { -0.15, 0.5 }, { -0.15, 0.15 }, { -0.5, 0.15 }, { -0.5, -0.15 }, { -0.15, -0.15 } },
                                                   false, 6, true)), -0.3, 0.05);
     std::error_code Error;
@@ -245,12 +245,12 @@ SketcherInsertLibrary AssembleSketcherInserts(const std::string& Folder)
     return Library;
 }
 
-AffineMap PlaceSketcherInsert(const OrthonormalFrame& Spot, double Size, double Turn, bool RaisedCondition, double Stretch, double Aspect)
+AffineMapping PlaceSketcherInsert(const OrthonormalBasis& Spot, double Size, double Turn, bool RaisedCondition, double Stretch, double Aspect)
 {
     const Vector3 Across = Spot.XAxis * std::cos(Turn) + Spot.YAxis * std::sin(Turn);
     const Vector3 Along  = Spot.YAxis * std::cos(Turn) - Spot.XAxis * std::sin(Turn);
     const double  Flip   = RaisedCondition ? -1.0 : 1.0;                                     // Half turn about x̂: det stays +1
-    AffineMap Map;
+    AffineMapping Map;
     Map.ColumnX = Across * Size;
     Map.ColumnY = Along * (Size * Aspect * Flip);
     Map.ColumnZ = Spot.ZAxis * (Size * Flip * Stretch);
@@ -395,10 +395,10 @@ std::vector<std::array<Vector3, 2>> BuildSketcherCompoundCutterSegments(const Sk
     {
         std::vector<Vector2> Loop;
         constexpr double TwoPi = 2.0 * std::numbers::pi;
-        if (Spec.Kind == SketcherCompoundCutterKind::Countersink ||
-            Spec.Kind == SketcherCompoundCutterKind::Counterbore ||
-            Spec.Kind == SketcherCompoundCutterKind::SteppedHole ||
-            (!OuterStage && Spec.Kind == SketcherCompoundCutterKind::HexSocket))
+        if (Spec.Kind == SketcherCompoundCutterCategory::Countersink ||
+            Spec.Kind == SketcherCompoundCutterCategory::Counterbore ||
+            Spec.Kind == SketcherCompoundCutterCategory::SteppedHole ||
+            (!OuterStage && Spec.Kind == SketcherCompoundCutterCategory::HexSocket))
         {
             constexpr int Steps = 32;
             for (int Index = 0; Index < Steps; ++Index)
@@ -407,7 +407,7 @@ std::vector<std::array<Vector3, 2>> BuildSketcherCompoundCutterSegments(const Sk
                 Loop.push_back({ Rad * std::cos(Angle), Rad * std::sin(Angle) });
             }
         }
-        else if (OuterStage && Spec.Kind == SketcherCompoundCutterKind::HexSocket)
+        else if (OuterStage && Spec.Kind == SketcherCompoundCutterCategory::HexSocket)
         {
             for (int Index = 0; Index < 6; ++Index)
             {
@@ -415,7 +415,7 @@ std::vector<std::array<Vector3, 2>> BuildSketcherCompoundCutterSegments(const Sk
                 Loop.push_back({ Rad * std::cos(Angle), Rad * std::sin(Angle) });
             }
         }
-        else if (Spec.Kind == SketcherCompoundCutterKind::SteppedSlot)
+        else if (Spec.Kind == SketcherCompoundCutterCategory::SteppedSlot)
         {
             const double HalfSpan = 1.15 * R1;
             constexpr int ArcSteps = 12;
@@ -449,7 +449,7 @@ std::vector<std::array<Vector3, 2>> BuildSketcherCompoundCutterSegments(const Sk
     const std::vector<Vector2> TopOuter = SampleLoop(true, R1);
     const std::vector<Vector2> Inner    = SampleLoop(false, R2);
     EmitLoop(TopOuter, 0.0);
-    if (Spec.Kind == SketcherCompoundCutterKind::Countersink)
+    if (Spec.Kind == SketcherCompoundCutterCategory::Countersink)
     {
         EmitLoop(Inner, D1);
         EmitLoop(Inner, D1 + D2);
@@ -465,7 +465,7 @@ std::vector<std::array<Vector3, 2>> BuildSketcherCompoundCutterSegments(const Sk
     {
         EmitLoop(TopOuter, D1);
         EmitLoop(Inner, D1);
-        const double Tip = Spec.Kind == SketcherCompoundCutterKind::SteppedHole ? std::min(0.45 * D2, 0.58 * R2) : 0.0;
+        const double Tip = Spec.Kind == SketcherCompoundCutterCategory::SteppedHole ? std::min(0.45 * D2, 0.58 * R2) : 0.0;
         const double ShaftFloor = D1 + D2 - Tip;
         EmitLoop(Inner, ShaftFloor);
         const int Ribs = static_cast<int>(TopOuter.size()) == 6 ? 6 : 4;

@@ -364,7 +364,7 @@ int main()
 
     const uint32_t TileW = 340u;
     const uint32_t TileH = 210u;
-    PerspectiveCameraFrame Cam {};
+    PerspectiveCameraBasis Cam {};
     Cam.CameraOrigin     = { 0.0f, -3.6f, 1.25f };
     Cam.TargetPoint      = { 0.0f,  2.2f, 2.25f };
     Cam.WorldUpAxis      = { 0.0f,  0.0f, 1.0f };
@@ -442,7 +442,7 @@ int main()
         }};
         std::vector<uint8_t> Sheet(static_cast<std::size_t>(TileW * 4u) * (TileH * 3u) * 4u, 255u);
 
-        PerspectiveCameraFrame SkyCam = Cam;
+        PerspectiveCameraBasis SkyCam = Cam;
         SkyCam.CameraOrigin = { 0.0f, -4.5f, 1.4f };
         SkyCam.TargetPoint  = { 0.0f,  5.0f, 3.8f };
 
@@ -481,7 +481,7 @@ int main()
         Scene.Atmosphere.Stars.BrightnessMultiplier = 1.8f;
         Scene.Atmosphere.Stars.PointSizeScale    = 1.7f;
 
-        PerspectiveCameraFrame NightCam = Cam;
+        PerspectiveCameraBasis NightCam = Cam;
         NightCam.CameraOrigin = { 0.0f, -4.5f, 1.2f };
         NightCam.TargetPoint  = { 0.0f,  5.0f, 3.6f };
         NightCam.ViewportWidthPx  = 800u;
@@ -533,7 +533,7 @@ int main()
         Scene.Atmosphere.Moons[2].Visible = false;
         Scene.Atmosphere.Moons[3].Visible = false;
 
-        PerspectiveCameraFrame HeroCam = Cam;
+        PerspectiveCameraBasis HeroCam = Cam;
         HeroCam.ViewportWidthPx  = 640u;
         HeroCam.ViewportHeightPx = 400u;
 
@@ -584,7 +584,7 @@ int main()
 
         const uint32_t FrameW = 360u;
         const uint32_t FrameH = 200u;
-        PerspectiveCameraFrame SkyOnlyCam {};
+        PerspectiveCameraBasis SkyOnlyCam {};
         SkyOnlyCam.CameraOrigin       = { 0.0f, 0.0f, 1.5f };
         SkyOnlyCam.TargetPoint        = { 0.0f, 12.0f, 4.8f };
         SkyOnlyCam.WorldUpAxis        = { 0.0f, 0.0f, 1.0f };
@@ -706,7 +706,7 @@ int main()
             const float Aspect       = static_cast<float>(PresetW) / static_cast<float>(PresetH);
             const float VerticalFov  = 2.0f * std::atan(TanHalfHoriz / Aspect);
 
-            PerspectiveCameraFrame StarCam {};
+            PerspectiveCameraBasis StarCam {};
             StarCam.CameraOrigin       = { 0.0f, 0.0f, 1.5f };
             StarCam.TargetPoint        = { Fwd.X * 12.0f, Fwd.Y * 12.0f, 1.5f + Fwd.Z * 12.0f };
             StarCam.WorldUpAxis        = { 0.0f, 0.0f, 1.0f };

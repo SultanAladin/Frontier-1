@@ -744,7 +744,8 @@ float3 EvaluateZodiacalLightGpu(float3 EqDir, float3 SolarEqDir)
     float Width       = 20.0 + 0.10 * LonDeg;
     float SmoothLat   = sqrt(LatDeg * LatDeg + 16.0) - 4.0;
     float CosLat      = sqrt(max(0.0, 1.0 - LatSin * LatSin));
-    float S10         = PoleS10 + (EclipticS10 - PoleS10) * exp(-SmoothLat / Width) * CosLat + Gegenschein;
+    float GlareFade   = smoothstep(10.0, 22.0, LonDeg);
+    float S10         = PoleS10 + (EclipticS10 - PoleS10) * exp(-SmoothLat / Width) * CosLat * GlareFade + Gegenschein;
     return float3(1.0, 0.93, 0.80) * S10;
 }
 
@@ -1067,6 +1068,12 @@ float3 EvaluateZodiacalBackdropGpu(
     {
         return float3(0.0, 0.0, 0.0);
     }
+    bool   Orbital         = (Flags & 2u) != 0u;
+    float  ZodiacalDayFade = Orbital ? clamp(1.0 - (SunDir.z + 0.05) * 8.0, 0.0, 1.0) : DayFade;
+    if (ZodiacalDayFade <= 0.01)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
     float  Scale    = float(Flags >> 4u) * (1.0 / 255.0);
     if (Scale <= 0.0)
     {
@@ -1074,7 +1081,7 @@ float3 EvaluateZodiacalBackdropGpu(
     }
     float3 SolarEq  = TransformHorizonToEquatorialGpu(SunDir, Cfg.StarScintillationRot.w);
     float3 Zodiacal = EvaluateZodiacalLightGpu(EqDir, SolarEq);
-    float  ZGain    = (0.0135 / 533.1) * Scale * Cfg.StarParams.z * DayFade * AltFade;
+    float  ZGain    = (0.0135 / 533.1) * Scale * Cfg.StarParams.z * ZodiacalDayFade * AltFade;
     return StarTransmittance * (Zodiacal * ZGain) * AtmoTrans;
 }
 

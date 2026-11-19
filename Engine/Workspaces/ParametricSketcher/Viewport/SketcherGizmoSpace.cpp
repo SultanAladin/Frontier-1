@@ -172,7 +172,7 @@ public:
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-OrbitCameraFrame ResolveGizmoCamera(const std::array<double, 3>& Eye, const std::array<double, 3>& Forward, const std::array<double, 3>& Up,
+OrbitCameraBasis ResolveGizmoCamera(const std::array<double, 3>& Eye, const std::array<double, 3>& Forward, const std::array<double, 3>& Up,
                                    double VerticalFieldOfView, double Width, double Height)
 {
     // 📝 Vulkan clip space as the Sketcher camera writes it: x right, y down, depth in [0, 1] between Near and Far.
@@ -190,7 +190,7 @@ OrbitCameraFrame ResolveGizmoCamera(const std::array<double, 3>& Eye, const std:
         { Ahead.X * Depth, Ahead.Y * Depth, Ahead.Z * Depth, -Dot(Ahead, Station) * Depth - Near * Depth },
         { Ahead.X, Ahead.Y, Ahead.Z, -Dot(Ahead, Station) },
     };
-    OrbitCameraFrame Camera;
+    OrbitCameraBasis Camera;
     for (int Row = 0; Row < 4; ++Row)
         for (int Column = 0; Column < 4; ++Column) Camera.ClipFromWorld[Column * 4 + Row] = Rows[Row][Column];
     Camera.Eye           = Eye;
@@ -203,7 +203,7 @@ OrbitCameraFrame ResolveGizmoCamera(const std::array<double, 3>& Eye, const std:
     return Camera;
 }
 
-double MeasureGizmoSize(const OrbitCameraFrame& Frame, Vector3 Origin, double Pixels)
+double MeasureGizmoSize(const OrbitCameraBasis& Frame, Vector3 Origin, double Pixels)
 {
     // Project Origin and Origin + Right: their pixel distance is the screen scale at Origin's depth.
     const auto Project = [&](Vector3 Point, double& X, double& Y)
@@ -222,7 +222,7 @@ double MeasureGizmoSize(const OrbitCameraFrame& Frame, Vector3 Origin, double Pi
     return PerUnit > 1.0e-9 ? Pixels / PerUnit : Pixels * Frame.WorldPerPixel;
 }
 
-GizmoGeometry BuildGizmoGeometry(const GizmoPose& Pose, const OrbitCameraFrame& Frame, GizmoHandle Hover, GizmoHandle Grabbed)
+GizmoGeometry BuildGizmoGeometry(const GizmoPose& Pose, const OrbitCameraBasis& Frame, GizmoHandle Hover, GizmoHandle Grabbed)
 {
     GizmoGeometry Geometry;
     if (Pose.Modes == 0) return Geometry;
@@ -291,7 +291,7 @@ GizmoGeometry BuildGizmoGeometry(const GizmoPose& Pose, const OrbitCameraFrame& 
     return Geometry;
 }
 
-GizmoHandle PickGizmoHandle(const GizmoGeometry& Geometry, const OrbitCameraFrame& Frame, double PixelX, double PixelY, double Reach)
+GizmoHandle PickGizmoHandle(const GizmoGeometry& Geometry, const OrbitCameraBasis& Frame, double PixelX, double PixelY, double Reach)
 {
     struct Projected { double X = 0.0, Y = 0.0, Depth = 0.0; bool Valid = false; };
     const auto Project = [&](const GizmoVertex& Vertex)

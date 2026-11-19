@@ -49,12 +49,12 @@ namespace
         char Text[160];
         switch (Step.Kind)
         {
-        case FaceOperationKind::Rotate:
-        case FaceOperationKind::Draft:   std::snprintf(Text, sizeof(Text), "%s %.4g°", FaceOperationLabel(Step.Kind), Step.Angle * 180.0 / 3.14159265358979323846); break;
-        case FaceOperationKind::Scale:   std::snprintf(Text, sizeof(Text), "%s ×%.4g", FaceOperationLabel(Step.Kind), Step.Factor); break;
-        case FaceOperationKind::Tweak:   std::snprintf(Text, sizeof(Text), "%s (%.4g, %.4g, %.4g)", FaceOperationLabel(Step.Kind), Step.Vector.X, Step.Vector.Y, Step.Vector.Z); break;
-        case FaceOperationKind::Delete:
-        case FaceOperationKind::Heal:    std::snprintf(Text, sizeof(Text), "%s", FaceOperationLabel(Step.Kind)); break;
+        case FaceOperationCategory::Rotate:
+        case FaceOperationCategory::Draft:   std::snprintf(Text, sizeof(Text), "%s %.4g°", FaceOperationLabel(Step.Kind), Step.Angle * 180.0 / 3.14159265358979323846); break;
+        case FaceOperationCategory::Scale:   std::snprintf(Text, sizeof(Text), "%s ×%.4g", FaceOperationLabel(Step.Kind), Step.Factor); break;
+        case FaceOperationCategory::Tweak:   std::snprintf(Text, sizeof(Text), "%s (%.4g, %.4g, %.4g)", FaceOperationLabel(Step.Kind), Step.Vector.X, Step.Vector.Y, Step.Vector.Z); break;
+        case FaceOperationCategory::Delete:
+        case FaceOperationCategory::Heal:    std::snprintf(Text, sizeof(Text), "%s", FaceOperationLabel(Step.Kind)); break;
         default:                         std::snprintf(Text, sizeof(Text), "%s %.4g", FaceOperationLabel(Step.Kind), Step.Distance); break;
         }
         std::string Result = Text;

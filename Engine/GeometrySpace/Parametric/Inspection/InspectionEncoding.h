@@ -11,7 +11,7 @@
 
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
 #include "Engine/GeometrySpace/Parametric/Inspection/JsonWriter.h"
-#include "Engine/GeometrySpace/Parametric/Inspection/SpecimenCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Inspection/SpecimenRepository.h"
 
 #include <string>
 

@@ -73,7 +73,7 @@ namespace
         Poles.back()  = Points.back();
         const int Unknowns = Count - 2;
         if (Unknowns <= 0) return Poles;
-        DenseMatrix Matrix(Unknowns, Unknowns), RightSides(Unknowns, 3);
+        DenseLinearArray Matrix(Unknowns, Unknowns), RightSides(Unknowns, 3);
         auto Interior = [&](int Pole) { return Pole >= 1 && Pole <= Count - 2; };
         for (size_t Point = 0; Point < Points.size(); ++Point)
         {
@@ -128,7 +128,7 @@ namespace
                 }
             }
         }
-        const std::optional<DenseMatrix> Solution = SolveDenseSystem(std::move(Matrix), std::move(RightSides));
+        const std::optional<DenseLinearArray> Solution = SolveDenseSystem(std::move(Matrix), std::move(RightSides));
         if (!Solution) return std::nullopt;
         for (int Pole = 1; Pole <= Count - 2; ++Pole) Poles[Pole] = { Solution->At(Pole - 1, 0), Solution->At(Pole - 1, 1), Solution->At(Pole - 1, 2) };
         return Poles;
@@ -159,7 +159,7 @@ namespace
             Forms[Pole].Terms = { { Unknowns, { 1.0, 0.0, 0.0 } }, { Unknowns + 1, { 0.0, 1.0, 0.0 } }, { Unknowns + 2, { 0.0, 0.0, 1.0 } } };
             Unknowns += 3;
         }
-        DenseMatrix Matrix(Unknowns, Unknowns), RightSides(Unknowns, 1);
+        DenseLinearArray Matrix(Unknowns, Unknowns), RightSides(Unknowns, 1);
         // One row of the model: Σₖ cₖ·Pₖ ≈ Target with weight w.
         auto Accumulate = [&](const NurbsBasisSample& Basis, int Order, Vector3 Target, double Weight)
         {
@@ -193,7 +193,7 @@ namespace
                 }
             }
         }
-        const std::optional<DenseMatrix> Solution = SolveDenseSystem(std::move(Matrix), std::move(RightSides));
+        const std::optional<DenseLinearArray> Solution = SolveDenseSystem(std::move(Matrix), std::move(RightSides));
         if (!Solution) return std::nullopt;
         std::vector<Vector3> Poles(Count);
         for (int Pole = 0; Pole < Count; ++Pole)

@@ -264,14 +264,14 @@ float LinearCosineLightIntegration::ComputeLagardeSpecularOcclusion(
     return std::clamp(std::pow(SafeNV + SafeAo, ExpPow) - 1.0f + SafeAo, 0.0f, 1.0f);
 }
 
-DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFrame(
+DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrame(
     DirectShadowTier                                Tier,
-    const PerspectiveCameraFrame&                   Camera,
+    const PerspectiveCameraBasis&                   Camera,
     std::span<const RigidClusterInstance>           Instances,
     const VisibilityBufferTargets&                  VisibilityTargets,
     const MaterialSpace::CompactMaterialRegister&   MaterialRegister,
     const SpatialAcceleration::WideBoundingTree&    SceneTree,
-    const SolarDirectionalEmitter&                  Sun,
+    const SolarDirectionalSource&                  Sun,
     std::span<const PolygonalAreaQuadLight>         AreaLights,
     const DistanceFieldSpace::SignedDistanceVolume* OptionalSdfVolume,
     const OrthographicShadowCascade*                OptionalFineClip,
@@ -296,14 +296,14 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
         AoSettings);
 }
 
-DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWithAlgorithm(
+DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWithAlgorithm(
     SolarShadowAlgorithm                                         Algorithm,
-    const PerspectiveCameraFrame&                                Camera,
+    const PerspectiveCameraBasis&                                Camera,
     std::span<const RigidClusterInstance>                        Instances,
     const VisibilityBufferTargets&                               VisibilityTargets,
     const MaterialSpace::CompactMaterialRegister&                MaterialRegister,
     const SpatialAcceleration::WideBoundingTree&                 SceneTree,
-    const SolarDirectionalEmitter&                               Sun,
+    const SolarDirectionalSource&                               Sun,
     std::span<const PolygonalAreaQuadLight>                      AreaLights,
     const OrthographicShadowCascade*                             OptionalFineClip,
     const OrthographicShadowCascade*                             OptionalCoarseClip,
@@ -312,7 +312,7 @@ DirectLightingFrameOutput LinearCosineLightIntegration::EvaluateDirectLightingFr
     std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> DynamicObjects,
     std::span<const DistanceFieldSpace::VoxelPointLightSpec>     PointLights)
 {
-    DirectLightingFrameOutput Out {};
+    DirectLightingOutput Out {};
     Out.WidthPx  = VisibilityTargets.WidthPx;
     Out.HeightPx = VisibilityTargets.HeightPx;
     const std::size_t TotalPixels = static_cast<std::size_t>(Out.WidthPx) * Out.HeightPx;

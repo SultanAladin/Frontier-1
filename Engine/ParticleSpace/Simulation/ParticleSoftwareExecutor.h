@@ -30,7 +30,7 @@ namespace Frontier::ParticleSpace
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct ParticleStepContext
+struct ParticleStepInput
 {
     const ParticleDocument&                                            Document;
     const SimulationSpace::ForceFields::ForceFieldAccumulator&         ForceAccumulator;
@@ -49,7 +49,7 @@ struct ParticleStepContext
 /// Advances all live slots of a single ParticleRig across all enabled dynamics modules, ForceFields, colliders, and ColourSpace tinting.
 [[nodiscard]] uint32_t ExecuteParticleRigStepCpu(
     const ParticleRig&       Rig,
-    const ParticleStepContext& Context,
+    const ParticleStepInput& Context,
     std::span<ParticleSlot>  RigSlots,
     std::span<StrandVertex>  OptionalStrandHistory = {});
 

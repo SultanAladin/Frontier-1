@@ -6,7 +6,7 @@
 #include "Engine/Shaders/ComponentEditor/ComponentEditorShared.slang"
 
 [[vk::push_constant]]
-ConstantBuffer<ComponentSurfacePushConstants> DrawPush;
+ConstantBuffer<ComponentSurfacePushConstants> SurfacePush;
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<ComponentViewportUniforms> Viewport;
@@ -22,8 +22,8 @@ struct ConstraintVertexInput
 [shader("vertex")]
 ComponentVertexOutput VertexMain(ConstraintVertexInput Input)
 {
-    float4 World4 = mul(DrawPush.ModelMatrix, float4(Input.PositionMeters, 1.0));
-    float3x3 M3   = (float3x3)DrawPush.ModelMatrix;
+    float4 World4 = mul(SurfacePush.WorldTransform, float4(Input.PositionMeters, 1.0));
+    float3x3 M3   = (float3x3)SurfacePush.WorldTransform;
 
     ComponentVertexOutput Out;
     Out.ClipPosition = mul(Viewport.ViewProjection, World4);
@@ -44,11 +44,11 @@ ComponentVertexOutput VertexMain(ConstraintVertexInput Input)
 [shader("fragment")]
 ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
 {
-    float  SubMode = DrawPush.ChannelModifiers.z;
+    float  SubMode = SurfacePush.ChannelModifiers.z;
     float  TimeSec = Viewport.CameraPositionTime.w;
-    float3 Accent  = DrawPush.AlbedoRoughness.rgb;
+    float3 Accent  = SurfacePush.AlbedoRoughness.rgb;
     float3 FinalRgb = Accent;
-    float  Alpha   = saturate(DrawPush.ChannelModifiers.y);
+    float  Alpha   = saturate(SurfacePush.ChannelModifiers.y);
 
     if (SubMode < 0.5) // Shaded constraint hardware solid
     {
@@ -60,16 +60,16 @@ ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
             N,
             V,
             Accent,
-            DrawPush.AlbedoRoughness.w,
-            DrawPush.EmissiveMetalness.w,
-            DrawPush.EmissiveMetalness.rgb);
+            SurfacePush.AlbedoRoughness.w,
+            SurfacePush.EmissiveMetalness.w,
+            SurfacePush.EmissiveMetalness.rgb);
     }
     else if (SubMode < 1.5) // Hinge / Ball angular range fan
     {
         float Radial = smoothstep(0.0, 0.30, In.ParameterUv.y) * (1.0 - smoothstep(0.80, 1.0, In.ParameterUv.y));
         float Edge   = max(1.0 - smoothstep(0.0, 0.035, In.ParameterUv.x),
                            1.0 - smoothstep(0.0, 0.035, 1.0 - In.ParameterUv.x));
-        float CurNorm = DrawPush.ChannelModifiers.w;
+        float CurNorm = SurfacePush.ChannelModifiers.w;
         float CurGlow = (CurNorm >= 0.0) ? exp(-pow((In.ParameterUv.x - CurNorm) / 0.035, 2.0)) : 0.0;
         float Shimmer = 0.85 + 0.15 * sin(In.ParameterUv.y * 18.0 - TimeSec * 3.0);
         Alpha = clamp((0.07 + 0.22 * In.ParameterUv.y) * Radial * Shimmer + Edge * 0.75 * Radial + CurGlow * 0.90 * Radial, 0.0, 1.0);
@@ -79,7 +79,7 @@ ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
     {
         float Radial = smoothstep(0.0, 0.30, In.ParameterUv.y) * (1.0 - smoothstep(0.80, 1.0, In.ParameterUv.y));
         float Comet  = pow(frac(In.ParameterUv.x * 3.0), 4.0);
-        Alpha = clamp(Comet * Radial * DrawPush.ChannelModifiers.y, 0.0, 1.0);
+        Alpha = clamp(Comet * Radial * SurfacePush.ChannelModifiers.y, 0.0, 1.0);
         FinalRgb = Accent * Alpha;
     }
     else // Dock pulsing iris disc
@@ -90,8 +90,8 @@ ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
         {
             discard;
         }
-        float SpinSense = (DrawPush.ChannelModifiers.w > 0.5) ? 1.0 : -1.0;
-        float Steady    = (DrawPush.ChannelModifiers.w > 0.5) ? 1.0 : 0.0;
+        float SpinSense = (SurfacePush.ChannelModifiers.w > 0.5) ? 1.0 : -1.0;
+        float Steady    = (SurfacePush.ChannelModifiers.w > 0.5) ? 1.0 : 0.0;
         float Rings     = pow(0.5 + 0.5 * sin(R * 22.0 + TimeSec * 7.0 * SpinSense), 6.0);
         float Core   = exp(-R * R * 6.0);
         Alpha = clamp(lerp(Rings * (1.0 - R) * 0.9, Core * 0.9 + 0.15 * (1.0 - R), Steady), 0.0, 1.0);
@@ -100,6 +100,6 @@ ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
 
     ComponentFragmentOutput Out;
     Out.ColorRGBA = float4(FinalRgb, Alpha);
-    Out.PickIDs   = uint4(DrawPush.PickPacked.x, DrawPush.PickPacked.y, DrawPush.PickPacked.z, 0u);
+    Out.PickIDs   = uint4(SurfacePush.PickPacked.x, SurfacePush.PickPacked.y, SurfacePush.PickPacked.z, 0u);
     return Out;
 }

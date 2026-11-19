@@ -75,7 +75,7 @@ struct Vector3
 //------------------------------------------------------------------------------------------------------------------------
 
 // 📝 Right-handed orthonormal frame: XAxis × YAxis = ZAxis. Every analytic curve and surface is placed by one.
-struct OrthonormalFrame
+struct OrthonormalBasis
 {
     Vector3 Origin = { 0.0, 0.0, 0.0 };                                                      // [len] - Frame origin
     Vector3 XAxis  = { 1.0, 0.0, 0.0 };                                                      // [-]   - Unit reference direction
@@ -84,7 +84,7 @@ struct OrthonormalFrame
 };
 
 // Construct a right-handed frame from an axis and a reference direction (re-orthogonalised against the axis).
-[[nodiscard]] inline OrthonormalFrame ConstructFrame(Vector3 Origin, Vector3 Axis, Vector3 Reference) noexcept
+[[nodiscard]] inline OrthonormalBasis ConstructFrame(Vector3 Origin, Vector3 Axis, Vector3 Reference) noexcept
 {
     const Vector3 ZAxis = Normalize(Axis);                                                   // [-] - Unit axis
     const Vector3 XAxis = Normalize(Reference - ZAxis * Dot(Reference, ZAxis));               // [-] - Reference projected off the axis

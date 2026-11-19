@@ -151,7 +151,7 @@ namespace
     class FaceTessellator
     {
     public:
-        FaceTessellator(const ModelPartition& Partition, FaceToken Face, PolygonComplex& Complex, const std::unordered_map<uint32_t, int>& EdgeIndex,
+        FaceTessellator(const ModelPartition& Partition, FaceToken Face, PolygonNetworkStructure& Complex, const std::unordered_map<uint32_t, int>& EdgeIndex,
                         std::unordered_set<uint64_t>& ClaimedSides, const std::unordered_set<uint64_t>& FixedSides, double Sag, double EdgeLimit, double Bound)
             : Partition(Partition), Face(Face), Complex(Complex), EdgeIndex(EdgeIndex), ClaimedSides(ClaimedSides), FixedSides(FixedSides), Sag(Sag), EdgeLimit(EdgeLimit),
               Bound(Bound), Surface(Partition.Surfaces.Resolve(Partition.Faces.Resolve(Face).Surface)) {}
@@ -193,7 +193,7 @@ namespace
                         Missing = "fin without edge sampling or SP-curve";
                         return;
                     }
-                    const PolygonComplexEdge& Samples = Complex.Edges[Found->second];
+                    const PolygonNetEdge& Samples = Complex.Edges[Found->second];
                     FinRun Run;
                     const int Count = static_cast<int>(Samples.Parameters.size());
                     for (int Step = 0; Step < Count; ++Step)
@@ -293,7 +293,7 @@ namespace
         [[nodiscard]] Vector2 Unscale(Vector2 Scaled) const { return { Centre.X + Scaled.X / Summary.ScaleU, Centre.Y + Scaled.Y / Summary.ScaleV }; }
 
         // 📝 An emitted triangle in the natural orientation (chart counter-clockwise = ∂P/∂𝑢 × ∂P/∂𝑣 side).
-        struct Facet
+        struct TessTriangle
         {
             std::array<int, 3>     Vertices = {};                                            // [-] - Complex vertices
             std::array<Vector2, 3> Charts   = {};                                            // [-] - Chart per corner
@@ -309,7 +309,7 @@ namespace
         //    Folded: the normal turns away from the surface normal at a non-singular corner. Refining folded triangles was
         //    tried and made things worse: inserted points crowd the singular row and create new folds (cone and sphere
         //    ran to the triangle limit); folds are repaired by RepairStar instead.
-        [[nodiscard]] bool FoldedFacet(const Facet& Candidate) const
+        [[nodiscard]] bool FoldedTriangle(const TessTriangle& Candidate) const
         {
             const Vector3 P0 = Complex.Positions[Candidate.Vertices[0]], P1 = Complex.Positions[Candidate.Vertices[1]], P2 = Complex.Positions[Candidate.Vertices[2]];
             const Vector3 Normal    = Cross(P1 - P0, P2 - P0);
@@ -328,14 +328,14 @@ namespace
         //    seam samples are shared, else a chain. When any star triangle is folded, P and the link are projected along
         //    the mean outward normal (the axis, for a pole or an apex, where the star is faithful) and the polygon is
         //    re-triangulated by the same exact CDT. A non-simple projection makes constraint recovery fail: no change.
-        void RepairStar(int Pole, std::vector<Facet>& Facets)
+        void RepairStar(int Pole, std::vector<TessTriangle>& Triangles)
         {
             bool AnyFolded = false;
-            for (size_t Index = 0; Index < Facets.size(); ++Index)
+            for (size_t Index = 0; Index < Triangles.size(); ++Index)
             {
-                const auto& Vertices = Facets[Index].Vertices;
+                const auto& Vertices = Triangles[Index].Vertices;
                 if (Vertices[0] != Pole && Vertices[1] != Pole && Vertices[2] != Pole) continue;
-                AnyFolded = AnyFolded || FoldedFacet(Facets[Index]);
+                AnyFolded = AnyFolded || FoldedTriangle(Triangles[Index]);
             }
             if (!AnyFolded) return;
 
@@ -500,7 +500,7 @@ namespace
                 if (!Patch.ConstrainSegment(Ring[Index], Ring[(Index + 1) % Ring.size()])) return;
             }
             // P keeps every edge-sample side it owns (a seam inside the face ends at the pole): those are B-rep edges.
-            for (const PolygonComplexEdge& Edge : Complex.Edges)
+            for (const PolygonNetEdge& Edge : Complex.Edges)
             {
                 for (size_t Index = 1; Index < Edge.Vertices.size(); ++Index)
                 {
@@ -514,11 +514,11 @@ namespace
             }
             Patch.Legalize();
             Patch.ClassifyInterior();
-            std::vector<Facet> Fresh;
+            std::vector<TessTriangle> Fresh;
             for (const ChartTriangle& Triangle : Patch.Triangles())
             {
                 if (!Triangle.Alive || !Triangle.Interior) continue;
-                Facet Candidate;
+                TessTriangle Candidate;
                 for (int Corner = 0; Corner < 3; ++Corner) Candidate.Vertices[Corner] = Owner[Triangle.Corners[Corner]];
                 for (int Corner = 0; Corner < 3; ++Corner)
                 {
@@ -531,7 +531,7 @@ namespace
                     const Vector2 Left = Candidate.Charts[(Corner + 1) % 3], Right = Candidate.Charts[(Corner + 2) % 3];
                     Candidate.Charts[Corner] = { 0.5 * (Left.X + Right.X), PoleV };
                 }
-                if (FoldedFacet(Candidate)) return;                                          // No improvement: keep the original
+                if (FoldedTriangle(Candidate)) return;                                          // No improvement: keep the original
                 Fresh.push_back(Candidate);
             }
             // Polygon of n vertices with k enclosed points: n − 2 + 2k triangles (a closed link encloses P as well).
@@ -539,46 +539,46 @@ namespace
             const size_t Enclosed = Steiner.size() + (Closed ? 1 : 0);
             if (Fresh.size() != Boundary - 2 + 2 * Enclosed) return;
 
-            std::vector<Facet> Kept;
-            for (const Facet& Candidate : Facets)
+            std::vector<TessTriangle> Kept;
+            for (const TessTriangle& Candidate : Triangles)
             {
                 std::array<int, 3> Triple = Candidate.Vertices;
                 std::sort(Triple.begin(), Triple.end());
                 if (!Replaced.count(Triple)) Kept.push_back(Candidate);
             }
-            if (Facets.size() - Kept.size() != Proper) return;                               // Facets already altered: keep them
+            if (Triangles.size() - Kept.size() != Proper) return;                               // Triangles already altered: keep them
             Kept.insert(Kept.end(), Fresh.begin(), Fresh.end());
-            Facets = std::move(Kept);
+            Triangles = std::move(Kept);
             Summary.StarRepairs += 1;
         }
 
         // 💡 Folded slivers off the singular vertices (chart-CCW but flipped in 3D next to a pole, where the chart metric
         //    degenerates) are repaired by 3D side flips: a folded facet (a, b, c) and its neighbour (b, a, d) across a side
         //    that is not a B-rep edge sample become (c, a, d) and (d, b, c) when both are unfolded and the diagonal is new.
-        void FlipFolded(std::vector<Facet>& Facets)
+        void FlipFolded(std::vector<TessTriangle>& Triangles)
         {
             const auto Key = [](int From, int To) { return (static_cast<uint64_t>(static_cast<uint32_t>(From)) << 32) | static_cast<uint32_t>(To); };
             std::unordered_map<uint64_t, size_t> Sides;                                      // [-] - Directed side → facet
             const auto Register = [&](size_t Index)
             {
-                const auto& Vertices = Facets[Index].Vertices;
+                const auto& Vertices = Triangles[Index].Vertices;
                 for (int Corner = 0; Corner < 3; ++Corner) Sides[Key(Vertices[Corner], Vertices[(Corner + 1) % 3])] = Index;
             };
-            for (size_t Index = 0; Index < Facets.size(); ++Index) Register(Index);
+            for (size_t Index = 0; Index < Triangles.size(); ++Index) Register(Index);
             for (int Sweep = 0; Sweep < 8; ++Sweep)
             {
                 bool Changed = false;
-                for (size_t Index = 0; Index < Facets.size(); ++Index)
+                for (size_t Index = 0; Index < Triangles.size(); ++Index)
                 {
-                    if (!FoldedFacet(Facets[Index])) continue;
+                    if (!FoldedTriangle(Triangles[Index])) continue;
                     for (int Corner = 0; Corner < 3; ++Corner)
                     {
-                        const Facet Folded = Facets[Index];
+                        const TessTriangle Folded = Triangles[Index];
                         const int   A = Folded.Vertices[Corner], B = Folded.Vertices[(Corner + 1) % 3], C = Folded.Vertices[(Corner + 2) % 3];
                         if (FixedSides.count(UndirectedSide(A, B))) continue;
                         const auto Across = Sides.find(Key(B, A));
                         if (Across == Sides.end() || Across->second == Index) continue;
-                        const Facet Opposite = Facets[Across->second];
+                        const TessTriangle Opposite = Triangles[Across->second];
                         int         Slot     = 0;
                         while (Slot < 3 && Opposite.Vertices[Slot] != B) ++Slot;
                         if (Slot == 3 || Opposite.Vertices[(Slot + 1) % 3] != A) continue;
@@ -586,17 +586,17 @@ namespace
                         if (D == C || Sides.count(Key(C, D)) || Sides.count(Key(D, C))) continue;
                         const Vector2 ChartA = Folded.Charts[Corner], ChartB = Folded.Charts[(Corner + 1) % 3], ChartC = Folded.Charts[(Corner + 2) % 3];
                         const Vector2 ChartD = Opposite.Charts[(Slot + 2) % 3];
-                        const Facet   First{ { C, A, D }, { ChartC, ChartA, ChartD } };
-                        const Facet   Second{ { D, B, C }, { ChartD, ChartB, ChartC } };
-                        if (FoldedFacet(First) || FoldedFacet(Second)) continue;
+                        const TessTriangle   First{ { C, A, D }, { ChartC, ChartA, ChartD } };
+                        const TessTriangle   Second{ { D, B, C }, { ChartD, ChartB, ChartC } };
+                        if (FoldedTriangle(First) || FoldedTriangle(Second)) continue;
                         const size_t Other = Across->second;
                         for (int Side = 0; Side < 3; ++Side)
                         {
                             Sides.erase(Key(Folded.Vertices[Side], Folded.Vertices[(Side + 1) % 3]));
                             Sides.erase(Key(Opposite.Vertices[Side], Opposite.Vertices[(Side + 1) % 3]));
                         }
-                        Facets[Index] = First;
-                        Facets[Other] = Second;
+                        Triangles[Index] = First;
+                        Triangles[Other] = Second;
                         Register(Index);
                         Register(Other);
                         Summary.FoldFlips += 1;
@@ -612,50 +612,50 @@ namespace
         //    pokes less than ε through a plane — and their CDTs may pick the same diagonal: a side used by four triangles.
         //    A side already claimed by an earlier face is split here at the surface image of its chart midpoint, turning
         //    (a, b, c) + (b, a, d) into four triangles around a vertex this face owns. Afterwards the face claims its sides.
-        void SplitClaimedSides(std::vector<Facet>& Facets)
+        void SplitClaimedSides(std::vector<TessTriangle>& Triangles)
         {
             const std::unordered_set<uint64_t>& Fixed      = FixedSides;                     // [-] - Edge-sample sides
-            const size_t                        SplitLimit = std::max<size_t>(256, 8 * Facets.size());
+            const size_t                        SplitLimit = std::max<size_t>(256, 8 * Triangles.size());
             size_t                              Splits     = 0;
             for (bool Changed = true; Changed && Splits < SplitLimit;)
             {
                 Changed = false;
-                for (size_t Index = 0; Index < Facets.size() && !Changed; ++Index)
+                for (size_t Index = 0; Index < Triangles.size() && !Changed; ++Index)
                 {
                     for (int Corner = 0; Corner < 3 && !Changed; ++Corner)
                     {
-                        const Facet Claimed = Facets[Index];
+                        const TessTriangle Claimed = Triangles[Index];
                         const int   A = Claimed.Vertices[Corner], B = Claimed.Vertices[(Corner + 1) % 3], C = Claimed.Vertices[(Corner + 2) % 3];
                         const uint64_t Side = UndirectedSide(A, B);
                         if (Fixed.count(Side) || !ClaimedSides.count(Side)) continue;
-                        size_t Other = Facets.size();
+                        size_t Other = Triangles.size();
                         int    Slot  = 0;
-                        for (size_t Search = 0; Search < Facets.size() && Other == Facets.size(); ++Search)
+                        for (size_t Search = 0; Search < Triangles.size() && Other == Triangles.size(); ++Search)
                         {
                             for (Slot = 0; Slot < 3; ++Slot)
                             {
-                                if (Facets[Search].Vertices[Slot] == B && Facets[Search].Vertices[(Slot + 1) % 3] == A) { Other = Search; break; }
+                                if (Triangles[Search].Vertices[Slot] == B && Triangles[Search].Vertices[(Slot + 1) % 3] == A) { Other = Search; break; }
                             }
                         }
-                        if (Other == Facets.size()) continue;
-                        const Facet   Opposite = Facets[Other];
+                        if (Other == Triangles.size()) continue;
+                        const TessTriangle   Opposite = Triangles[Other];
                         const int     D        = Opposite.Vertices[(Slot + 2) % 3];
                         const Vector2 ChartA = Claimed.Charts[Corner], ChartB = Claimed.Charts[(Corner + 1) % 3], ChartC = Claimed.Charts[(Corner + 2) % 3];
                         const Vector2 ChartD = Opposite.Charts[(Slot + 2) % 3];
                         const Vector2 ChartM = (ChartA + ChartB) * 0.5;
                         const int     M      = static_cast<int>(Complex.Positions.size());
                         Complex.Positions.push_back(EvaluateSurface(Surface, ChartM).Position);
-                        Facets[Index] = Facet{ { A, M, C }, { ChartA, ChartM, ChartC } };
-                        Facets[Other] = Facet{ { M, B, C }, { ChartM, ChartB, ChartC } };
-                        Facets.push_back(Facet{ { B, M, D }, { ChartB, ChartM, ChartD } });
-                        Facets.push_back(Facet{ { M, A, D }, { ChartM, ChartA, ChartD } });
+                        Triangles[Index] = TessTriangle{ { A, M, C }, { ChartA, ChartM, ChartC } };
+                        Triangles[Other] = TessTriangle{ { M, B, C }, { ChartM, ChartB, ChartC } };
+                        Triangles.push_back(TessTriangle{ { B, M, D }, { ChartB, ChartM, ChartD } });
+                        Triangles.push_back(TessTriangle{ { M, A, D }, { ChartM, ChartA, ChartD } });
                         Summary.ClaimedSplits += 1;
                         Splits                += 1;
                         Changed = true;
                     }
                 }
             }
-            for (const Facet& Candidate : Facets)
+            for (const TessTriangle& Candidate : Triangles)
             {
                 for (int Corner = 0; Corner < 3; ++Corner)
                 {
@@ -849,11 +849,11 @@ namespace
             const ChartTriangulation& Tiling  = *Triangulation;
             const bool                Flip  = Partition.Faces.Resolve(Face).Sense == Orientation::Reversed;
             const int                 Index = static_cast<int>(Complex.Faces.size());
-            std::vector<Facet>        Facets;
+            std::vector<TessTriangle>        Triangles;
             for (const ChartTriangle& Triangle : Tiling.Triangles())
             {
                 if (!Triangle.Alive || !Triangle.Interior) continue;
-                Facet Candidate;
+                TessTriangle Candidate;
                 for (int Corner = 0; Corner < 3; ++Corner)
                 {
                     const int Point = Triangle.Corners[Corner];
@@ -871,16 +871,16 @@ namespace
                     Summary.SingularDropped += 1;
                     continue;
                 }
-                Facets.push_back(Candidate);
+                Triangles.push_back(Candidate);
             }
-            for (int Pole : SingularVertices) RepairStar(Pole, Facets);
-            FlipFolded(Facets);
-            SplitClaimedSides(Facets);
+            for (int Pole : SingularVertices) RepairStar(Pole, Triangles);
+            FlipFolded(Triangles);
+            SplitClaimedSides(Triangles);
 
             Summary.FirstTriangle = static_cast<int>(Complex.Triangles.size());
-            for (Facet& Candidate : Facets)
+            for (TessTriangle& Candidate : Triangles)
             {
-                if (FoldedFacet(Candidate)) Summary.FoldedResidual += 1;
+                if (FoldedTriangle(Candidate)) Summary.FoldedResidual += 1;
                 if (Flip)
                 {
                     std::swap(Candidate.Vertices[1], Candidate.Vertices[2]);
@@ -895,7 +895,7 @@ namespace
 
         const ModelPartition&                   Partition;
         FaceToken                               Face;
-        PolygonComplex&                         Complex;
+        PolygonNetworkStructure&                         Complex;
         const std::unordered_map<uint32_t, int>& EdgeIndex;
         std::unordered_set<uint64_t>&           ClaimedSides;
         const std::unordered_set<uint64_t>&     FixedSides;                                  // [-] - Edge-sample sides of the body (undirected)
@@ -903,7 +903,7 @@ namespace
         double                                  EdgeLimit;
         double                                  Bound;
         const SurfaceGeometry&                  Surface;
-        PolygonComplexFace                      Summary;
+        PolygonNetFace                      Summary;
         std::vector<std::vector<LoopPoint>>     Loops;
         Vector2                                 Centre;
         double                                  SingularFloor = 0.0;
@@ -947,7 +947,7 @@ static TessellationOutcome TessellateBodyUntraced(const ModelPartition& Partitio
 {
     const Clock::time_point Start = Clock::now();
     TessellationOutcome     Outcome;
-    PolygonComplex&         Complex   = Outcome.Complex;
+    PolygonNetworkStructure&         Complex   = Outcome.Complex;
     const BodyInventory     Inventory = Partition.CollectInventory(Body);
 
     // ① Bounding diagonal from vertices and coarse edge samples sets ε and the side limit.
@@ -999,7 +999,7 @@ static TessellationOutcome TessellateBodyUntraced(const ModelPartition& Partitio
         }
         const CurveGeometry& Curve  = Partition.Curves.Resolve(Profile.Curve);
         const bool           Closed = Profile.Start == Profile.End;
-        PolygonComplexEdge   Samples;
+        PolygonNetEdge   Samples;
         Samples.Edge       = Edge;
         Samples.Parameters = { Profile.IntervalLow };
         EdgeSampler Sampler(Curve, Uses, Outcome.Sag, Outcome.EdgeLimit, Closed ? 2 : 0);
@@ -1022,7 +1022,7 @@ static TessellationOutcome TessellateBodyUntraced(const ModelPartition& Partitio
     // ④ Faces. Interior sides are claimed body-wide: a face that reproduces another face's interior side splits it.
     //    The edge-sample sides are fixed for every face: gathered once here, not once per face.
     std::unordered_set<uint64_t> FixedSides;
-    for (const PolygonComplexEdge& Edge : Complex.Edges)
+    for (const PolygonNetEdge& Edge : Complex.Edges)
     {
         for (size_t Index = 1; Index < Edge.Vertices.size(); ++Index) FixedSides.insert(UndirectedSide(Edge.Vertices[Index - 1], Edge.Vertices[Index]));
     }

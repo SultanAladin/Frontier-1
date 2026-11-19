@@ -240,9 +240,9 @@ namespace
     // the outward normals there.
     [[nodiscard]] double LawRadiusAtPoint(const TracedIntersection& Trace, double EdgeParameter, Vector3 Point) noexcept
     {
-        const BallLaw& Law  = *Trace.Law;
+        const BallBlendProfile& Law  = *Trace.Law;
         const double   Size = Law.Size + Law.SizeRate * EdgeParameter;                       // [len] - d(t) or r(t)
-        if (Law.Form == BallLawForm::Radius) return Size;
+        if (Law.Form == BallProfileForm::Radius) return Size;
         const Vector3  First  = MeasureSurfaceDistance(Trace.First, Point).Normal * Law.Senses[0];
         const Vector3  Second = MeasureSurfaceDistance(Trace.Second, Point).Normal * Law.Senses[1];
         const double   Wedge  = std::atan2(Length(Cross(First, Second)), -Dot(First, Second));   // [rad] - θ
@@ -251,7 +251,7 @@ namespace
 
     [[nodiscard]] double LawRadiusAt(const TracedIntersection& Trace, double EdgeParameter) noexcept
     {
-        if (Trace.Law->Form == BallLawForm::Radius) return Trace.Law->Size + Trace.Law->SizeRate * EdgeParameter;
+        if (Trace.Law->Form == BallProfileForm::Radius) return Trace.Law->Size + Trace.Law->SizeRate * EdgeParameter;
         return LawRadiusAtPoint(Trace, EdgeParameter, EvaluateCurve(Trace.Law->Edge, EdgeParameter).Position);
     }
 
@@ -259,7 +259,7 @@ namespace
     //    then the 3×3 derivative rows; r′ and E″ by central differences (h = 5e-6, error ~1e-10, positions unaffected).
     [[nodiscard]] bool SolveBallCentre(const TracedIntersection& Trace, double EdgeParameter, Vector3& Centre, Vector3& Derivative) noexcept
     {
-        const BallLaw&    Law    = *Trace.Law;
+        const BallBlendProfile&    Law    = *Trace.Law;
         const CurveSample Edge   = EvaluateCurve(Law.Edge, EdgeParameter);
         const double      Radius = LawRadiusAtPoint(Trace, EdgeParameter, Edge.Position);                  // [len] - r(t)
         if (!(Radius > 0.0) || !std::isfinite(Radius)) return false;
@@ -271,7 +271,7 @@ namespace
         const double      Step   = 5.0e-6 * (1.0 + std::fabs(EdgeParameter));              // [-]   - h
         const CurveSample Ahead  = EvaluateCurve(Law.Edge, EdgeParameter + Step);
         const CurveSample Behind = EvaluateCurve(Law.Edge, EdgeParameter - Step);
-        const double  Rate   = Law.Form == BallLawForm::Radius ? Law.SizeRate                // [len] - r′ (exact for a radius law)
+        const double  Rate   = Law.Form == BallProfileForm::Radius ? Law.SizeRate                // [len] - r′ (exact for a radius law)
                              : (LawRadiusAtPoint(Trace, EdgeParameter + Step, Ahead.Position) - LawRadiusAtPoint(Trace, EdgeParameter - Step, Behind.Position)) / (2.0 * Step);
         // E″ exact on lines and conics (E″ = centre − E): a difference leaves ~10⁻¹² of rounding in C′, which a canal
         // carrier's ∂n/∂𝑢 (through T = C′/|C′|) amplifies by 1/h. Traced edges keep the difference.
@@ -378,7 +378,7 @@ CurveGeometry ReverseIntersectionCurve(const TracedIntersection& Trace)
     auto Reversed = std::make_shared<TracedIntersection>(Trace);
     if (Trace.Law)
     {
-        auto Law = std::make_shared<BallLaw>(*Trace.Law);
+        auto Law = std::make_shared<BallBlendProfile>(*Trace.Law);
         Law->Direction = -Law->Direction;
         Reversed->Law  = std::move(Law);
     }
@@ -390,13 +390,13 @@ CurveGeometry ReverseIntersectionCurve(const TracedIntersection& Trace)
     return IntersectionCurve{ std::move(Reversed) };
 }
 
-std::optional<CurveGeometry> BuildBallLawCurve(const SurfaceGeometry& First, const SurfaceGeometry& Second, const BallLaw& Law, double Low, double High, bool Closed)
+std::optional<CurveGeometry> BuildBallLawCurve(const SurfaceGeometry& First, const SurfaceGeometry& Second, const BallBlendProfile& Law, double Low, double High, bool Closed)
 {
     auto Trace = std::make_shared<TracedIntersection>();
     Trace->First  = First;
     Trace->Second = Second;
     Trace->Closed = Closed;
-    auto Owned = std::make_shared<BallLaw>(Law);
+    auto Owned = std::make_shared<BallBlendProfile>(Law);
     Owned->Direction = 1.0;
     Trace->Law = Owned;
     if (Closed) High = Low + FullTurn;

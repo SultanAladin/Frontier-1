@@ -34,7 +34,7 @@ namespace Frontier::MaterialSpace::Scattering
 //                                        SHADING CONTEXT & BSDF SAMPLE STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct SurfaceShadingFrame
+struct SurfaceShadingBasis
 {
     Mathematics::Axis3D TangentX   { 1.0f, 0.0f, 0.0f }; // [-] - Orthonormal surface tangent (+X in local BSDF frame)
     Mathematics::Axis3D BitangentY { 0.0f, 1.0f, 0.0f }; // [-] - Orthonormal surface bitangent (+Y in local BSDF frame)
@@ -346,7 +346,7 @@ struct WhiteFurnaceAuditReport
 [[nodiscard]] inline BsdfDirectionSample SampleOpenPbrScattering(
     const SurfaceMaterial&   Mat,
     uint32_t                 ActiveLobeMask,
-    const SurfaceShadingFrame& Frame,
+    const SurfaceShadingBasis& Frame,
     Mathematics::Axis3D      OutgoingWorld,
     float                    LobeSelectorU0,
     float                    SampleU1,

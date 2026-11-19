@@ -25,7 +25,7 @@ namespace Frontier::GeometricRaster
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct ProjectedLensFlareFrame
+struct ProjectedLensFlareSlice
 {
     float                  ScreenU       = 0.5f;                       // [uv]  - Projected solar source horizontal UV
     float                  ScreenV       = 0.5f;                       // [uv]  - Projected solar source vertical UV
@@ -72,7 +72,7 @@ public:
     [[nodiscard]] static const std::vector<uint8_t>& QueryBakedLensFlareAtlasRgba8();
 
     // Projects the Sun through CameraFrame + checks solar disc visibility & transmittance
-    [[nodiscard]] static ProjectedLensFlareFrame ResolveSolarFlareProjection(
+    [[nodiscard]] static ProjectedLensFlareSlice ResolveSolarFlareProjection(
         const Mathematics::Axis3D&                  CameraOrigin,
         const Mathematics::Axis3D&                  CameraForward,
         const Mathematics::Axis3D&                  CameraRight,
@@ -85,7 +85,7 @@ public:
     // Evaluates the baked 2D kernel tile + spectral halos + coated aperture ghosts at screen UV
     [[nodiscard]] static Mathematics::LinearRGB EvaluateBakedLensFlare(
         const LensFlareConfiguration&  Config,
-        const ProjectedLensFlareFrame& Projection,
+        const ProjectedLensFlareSlice& Projection,
         float                          ScreenU,
         float                          ScreenV,
         float                          AspectRatio) noexcept;

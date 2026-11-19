@@ -10,10 +10,10 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
-#include "Engine/GeometrySpace/Parametric/Construction/BodyAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Construction/BodyArrangement.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/CurveGeometry.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/SurfaceGeometry.h"
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <cstdint>
 #include <limits>

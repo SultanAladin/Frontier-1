@@ -389,7 +389,7 @@ void AppendAnnularSector(
 //------------------------------------------------------------------------------------------------------------------------
 
 CompiledGeometryVisualBatch ComponentGizmoGeometry::BuildCompiledAssetBatch(
-    const ComponentClass::CompiledGeometryCatalogEntry& Entry)
+    const ComponentClass::CompiledGeometryRepositoryEntry& Entry)
 {
     CompiledGeometryVisualBatch Batch {};
     const auto& Net = Entry.Asset.Network;
@@ -476,7 +476,7 @@ CompiledGeometryVisualBatch ComponentGizmoGeometry::BuildCompiledAssetBatch(
         return Batch;
     }
 
-    Batch.HasValidUvs   = AnyNonZeroUv;
+    Batch.ValidUvsPresent   = AnyNonZeroUv;
     Batch.TriangleCount = static_cast<uint32_t>(Tris.size());
 
     std::vector<float> SortedAreas = Areas;
@@ -599,21 +599,21 @@ std::vector<ComponentShaderVertex> ComponentGizmoGeometry::BuildDotFloorQuad(flo
     return Out;
 }
 
-std::vector<ComponentShaderVertex> ComponentGizmoGeometry::BuildUnitBoxShell()
+std::vector<ComponentShaderVertex> ComponentGizmoGeometry::ConstructUnitBoxHull()
 {
     std::vector<ComponentShaderVertex> Out {};
     AppendOrientedBox(Out, { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, 1.0f, 1.0f, 1.0f);
     return Out;
 }
 
-std::vector<ComponentShaderVertex> ComponentGizmoGeometry::BuildUnitSphereShell(uint32_t Stacks, uint32_t Slices)
+std::vector<ComponentShaderVertex> ComponentGizmoGeometry::ConstructUnitSphereHull(uint32_t Stacks, uint32_t Slices)
 {
     std::vector<ComponentShaderVertex> Out {};
     AppendSphere(Out, { 0.0f, 0.0f, 0.0f }, 1.0f, Stacks, Slices);
     return Out;
 }
 
-std::vector<ComponentShaderVertex> ComponentGizmoGeometry::BuildCapsuleShell(float Radius, float HalfHeight, uint8_t AxisIndex)
+std::vector<ComponentShaderVertex> ComponentGizmoGeometry::ConstructCapsuleHull(float Radius, float HalfHeight, uint8_t AxisIndex)
 {
     std::vector<ComponentShaderVertex> Out {};
     Mathematics::Axis3D Axis{}, U{}, V{};
@@ -629,7 +629,7 @@ std::vector<ComponentShaderVertex> ComponentGizmoGeometry::BuildCapsuleShell(flo
 std::vector<ComponentShaderVertex> ComponentGizmoGeometry::BuildSpotBeamCone(float LengthMeters, float RadiusMeters, uint32_t Sides)
 {
     std::vector<ComponentShaderVertex> Out {};
-    const Mathematics::Axis3D Apex { 0.0f, 0.0f, 0.0f };
+    const Mathematics::Axis3D Peak { 0.0f, 0.0f, 0.0f };
     for (uint32_t I = 0u; I < Sides; ++I)
     {
         const float P0 = TauF * static_cast<float>(I) / static_cast<float>(Sides);
@@ -638,7 +638,7 @@ std::vector<ComponentShaderVertex> ComponentGizmoGeometry::BuildSpotBeamCone(flo
         const Mathematics::Axis3D N1 { 0.0f, std::cos(P1), std::sin(P1) };
         const Mathematics::Axis3D B0 { LengthMeters, N0.Y * RadiusMeters, N0.Z * RadiusMeters };
         const Mathematics::Axis3D B1 { LengthMeters, N1.Y * RadiusMeters, N1.Z * RadiusMeters };
-        AppendTri(Out, Apex, B0, B1, N0, N0, N1);
+        AppendTri(Out, Peak, B0, B1, N0, N0, N1);
     }
     return Out;
 }
@@ -651,15 +651,15 @@ std::vector<ComponentShaderVertex> ComponentGizmoGeometry::BuildCameraFrustumBea
     std::vector<ComponentShaderVertex> Out {};
     const float HalfH = std::tan((VerticalFovDeg * PiF / 180.0f) * 0.5f) * LengthMeters;
     const float HalfW = HalfH * std::max(AspectRatio, 0.25f);
-    const Mathematics::Axis3D Apex { 0.0f, 0.0f, 0.0f };
+    const Mathematics::Axis3D Peak { 0.0f, 0.0f, 0.0f };
     const Mathematics::Axis3D C0 { LengthMeters, -HalfH, -HalfW };
     const Mathematics::Axis3D C1 { LengthMeters,  HalfH, -HalfW };
     const Mathematics::Axis3D C2 { LengthMeters,  HalfH,  HalfW };
     const Mathematics::Axis3D C3 { LengthMeters, -HalfH,  HalfW };
-    AppendFlatTri(Out, Apex, C0, C1);
-    AppendFlatTri(Out, Apex, C1, C2);
-    AppendFlatTri(Out, Apex, C2, C3);
-    AppendFlatTri(Out, Apex, C3, C0);
+    AppendFlatTri(Out, Peak, C0, C1);
+    AppendFlatTri(Out, Peak, C1, C2);
+    AppendFlatTri(Out, Peak, C2, C3);
+    AppendFlatTri(Out, Peak, C3, C0);
     return Out;
 }
 
@@ -683,18 +683,18 @@ std::vector<ComponentShaderVertex> ComponentGizmoGeometry::BuildOriginRing(float
 }
 
 std::array<float, 3> ComponentGizmoGeometry::QueryConstraintAccentLinearRgb(
-    ComponentClass::PhysicsConstraintKind Kind) noexcept
+    ComponentClass::PhysicsConstraintCategory Form) noexcept
 {
-    switch (Kind)
+    switch (Form)
     {
-        case ComponentClass::PhysicsConstraintKind::Fixed:  return SrgbHexToLinear(0x8a95a5u);
-        case ComponentClass::PhysicsConstraintKind::Hinge:  return SrgbHexToLinear(0x59b8ffu);
-        case ComponentClass::PhysicsConstraintKind::Slider: return SrgbHexToLinear(0xffd15cu);
-        case ComponentClass::PhysicsConstraintKind::Ball:   return SrgbHexToLinear(0xff8c5au);
-        case ComponentClass::PhysicsConstraintKind::Spring: return SrgbHexToLinear(0x6ae092u);
-        case ComponentClass::PhysicsConstraintKind::Spin:   return SrgbHexToLinear(0xb88cffu);
-        case ComponentClass::PhysicsConstraintKind::Tether: return SrgbHexToLinear(0xff6b8au);
-        case ComponentClass::PhysicsConstraintKind::Dock:   return SrgbHexToLinear(0x4dd6c4u);
+        case ComponentClass::PhysicsConstraintCategory::Fixed:  return SrgbHexToLinear(0x8a95a5u);
+        case ComponentClass::PhysicsConstraintCategory::Hinge:  return SrgbHexToLinear(0x59b8ffu);
+        case ComponentClass::PhysicsConstraintCategory::Slider: return SrgbHexToLinear(0xffd15cu);
+        case ComponentClass::PhysicsConstraintCategory::Ball:   return SrgbHexToLinear(0xff8c5au);
+        case ComponentClass::PhysicsConstraintCategory::Spring: return SrgbHexToLinear(0x6ae092u);
+        case ComponentClass::PhysicsConstraintCategory::Spin:   return SrgbHexToLinear(0xb88cffu);
+        case ComponentClass::PhysicsConstraintCategory::Tether: return SrgbHexToLinear(0xff6b8au);
+        case ComponentClass::PhysicsConstraintCategory::Dock:   return SrgbHexToLinear(0x4dd6c4u);
     }
     return SrgbHexToLinear(0x8a95a5u);
 }
@@ -710,7 +710,7 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
     Mathematics::Axis3D Axis{}, U{}, V{};
     AxisBasisVectors(Settings.Axis, Axis, U, V);
 
-    const std::array<float, 3> Accent   = QueryConstraintAccentLinearRgb(Settings.Kind);
+    const std::array<float, 3> Accent   = QueryConstraintAccentLinearRgb(Settings.Form);
     const std::array<float, 3> Graphite = SrgbHexToLinear(0x2a2d34u);
     const std::array<float, 3> Steel    = SrgbHexToLinear(0x8d939du);
 
@@ -718,7 +718,7 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
     {
         Pieces.emplace_back();
         auto& P = Pieces.back();
-        P.PieceKind   = ConstraintPieceKind::ShadedSolid;
+        P.PieceCategory   = ConstraintPieceCategory::ShadedSolid;
         P.AlbedoRgb   = Albedo;
         P.EmissiveRgb = Emissive;
         P.Metalness   = Metal;
@@ -726,12 +726,12 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
         return P;
     };
 
-    switch (Settings.Kind)
+    switch (Settings.Form)
     {
-        case ComponentClass::PhysicsConstraintKind::Fixed:
+        case ComponentClass::PhysicsConstraintCategory::Fixed:
         {
-            auto& Base = PushSolid(Graphite, 0.5f, 0.35f, { 0.0f, 0.0f, 0.0f });
-            AppendOrientedCylinder(Base.Vertices, { 0.0f, 0.0f, 0.0f }, Axis, U, V, 0.056f, 0.050f, 0.018f, 6u);
+            auto& PrimaryRoot = PushSolid(Graphite, 0.5f, 0.35f, { 0.0f, 0.0f, 0.0f });
+            AppendOrientedCylinder(PrimaryRoot.Vertices, { 0.0f, 0.0f, 0.0f }, Axis, U, V, 0.056f, 0.050f, 0.018f, 6u);
             auto& Face = PushSolid(Accent, 0.1f, 0.35f, { Accent[0] * 0.9f, Accent[1] * 0.9f, Accent[2] * 0.9f });
             AppendOrientedCylinder(Face.Vertices, { Axis.X * 0.011f, Axis.Y * 0.011f, Axis.Z * 0.011f }, Axis, U, V, 0.030f, 0.030f, 0.004f, 6u);
             auto& Bolts = PushSolid(Steel, 1.0f, 0.2f, { 0.0f, 0.0f, 0.0f });
@@ -747,7 +747,7 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
             }
             break;
         }
-        case ComponentClass::PhysicsConstraintKind::Hinge:
+        case ComponentClass::PhysicsConstraintCategory::Hinge:
         {
             auto& Pin = PushSolid(Steel, 1.0f, 0.18f, { 0.0f, 0.0f, 0.0f });
             AppendOrientedCylinder(Pin.Vertices, { 0.0f, 0.0f, 0.0f }, Axis, U, V, 0.009f, 0.009f, 0.16f, 14u);
@@ -762,7 +762,7 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
             const float Hi = std::max(Settings.MinAngleDegrees, Settings.MaxAngleDegrees) * PiF / 180.0f;
             Pieces.emplace_back();
             auto& Fan = Pieces.back();
-            Fan.PieceKind  = ConstraintPieceKind::RangeFan;
+            Fan.PieceCategory  = ConstraintPieceCategory::RangeFan;
             Fan.AlbedoRgb  = Accent;
             Fan.NormCursor = (CurrentCoordinate - Lo) / std::max(Hi - Lo, 1.0e-5f);
             AppendAnnularSector(Fan.Vertices, U, V, 0.03f, 0.20f, Lo, std::max(Hi - Lo, 0.02f), 40u);
@@ -773,7 +773,7 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
             AppendOrientedBox(Needle.Vertices, { RotU.X * 0.115f, RotU.Y * 0.115f, RotU.Z * 0.115f }, RotU, Axis, RotV, 0.085f, 0.003f, 0.007f);
             break;
         }
-        case ComponentClass::PhysicsConstraintKind::Slider:
+        case ComponentClass::PhysicsConstraintCategory::Slider:
         {
             const float Lo = std::min(Settings.MinTravelMeters, Settings.MaxTravelMeters);
             const float Hi = std::max(Settings.MinTravelMeters, Settings.MaxTravelMeters);
@@ -788,7 +788,7 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
             AppendOrientedBox(Carriage.Vertices, { Axis.X * CurrentCoordinate, Axis.Y * CurrentCoordinate, Axis.Z * CurrentCoordinate }, U, Axis, V, 0.024f, 0.026f, 0.024f);
             break;
         }
-        case ComponentClass::PhysicsConstraintKind::Ball:
+        case ComponentClass::PhysicsConstraintCategory::Ball:
         {
             auto& Socket = PushSolid(Graphite, 0.5f, 0.35f, { 0.0f, 0.0f, 0.0f });
             AppendOrientedTorus(Socket.Vertices, { 0.0f, 0.0f, 0.0f }, Axis, U, V, 0.045f, 0.006f, 24u, 8u);
@@ -797,13 +797,13 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
             const float HalfCone = Settings.ConeAngleDegrees * PiF / 180.0f;
             Pieces.emplace_back();
             auto& Cone = Pieces.back();
-            Cone.PieceKind  = ConstraintPieceKind::RangeFan;
+            Cone.PieceCategory  = ConstraintPieceCategory::RangeFan;
             Cone.AlbedoRgb  = Accent;
             Cone.NormCursor = 0.5f;
             AppendAnnularSector(Cone.Vertices, Axis, U, 0.025f, 0.16f, -HalfCone, std::max(HalfCone * 2.0f, 0.04f), 32u);
             break;
         }
-        case ComponentClass::PhysicsConstraintKind::Spring:
+        case ComponentClass::PhysicsConstraintCategory::Spring:
         {
             const float RestLen = std::max(Settings.TravelEachWayMeters, 0.08f) * 2.4f;
             const float CurLen  = std::max(RestLen + CurrentCoordinate, 0.03f);
@@ -828,7 +828,7 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
             AppendTubeStrip(Coil.Vertices, Helix, 0.0055f, 8u);
             break;
         }
-        case ComponentClass::PhysicsConstraintKind::Spin:
+        case ComponentClass::PhysicsConstraintCategory::Spin:
         {
             auto& Collar = PushSolid(Steel, 0.9f, 0.2f, { 0.0f, 0.0f, 0.0f });
             AppendOrientedCylinder(Collar.Vertices, { 0.0f, 0.0f, 0.0f }, Axis, U, V, 0.025f, 0.025f, 0.05f, 16u);
@@ -837,13 +837,13 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
             const Mathematics::Axis3D RotV = Norm3(Cross3(Axis, RotU), V);
             Pieces.emplace_back();
             auto& Comet = Pieces.back();
-            Comet.PieceKind    = ConstraintPieceKind::CometBand;
+            Comet.PieceCategory    = ConstraintPieceCategory::CometBand;
             Comet.AlbedoRgb    = Accent;
             Comet.AlphaOrScale = 0.95f;
             AppendAnnularSector(Comet.Vertices, RotU, RotV, 0.045f, 0.145f, 0.0f, TauF, 48u);
             break;
         }
-        case ComponentClass::PhysicsConstraintKind::Tether:
+        case ComponentClass::PhysicsConstraintCategory::Tether:
         {
             const float RopeLen = std::max(Settings.RopeLengthMeters, 0.12f);
             auto& Anchors = PushSolid(Steel, 0.8f, 0.25f, { 0.0f, 0.0f, 0.0f });
@@ -860,7 +860,7 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
             AppendTubeStrip(Rope.Vertices, Strand, 0.006f, 8u);
             break;
         }
-        case ComponentClass::PhysicsConstraintKind::Dock:
+        case ComponentClass::PhysicsConstraintCategory::Dock:
         {
             const std::array<float, 3> DockCol = DockIntact
                 ? SrgbHexToLinear(0x4dd6c4u)
@@ -869,7 +869,7 @@ std::vector<ConstraintVisualPiece> ComponentGizmoGeometry::BuildConstraintVisual
             AppendOrientedTorus(Collar.Vertices, { 0.0f, 0.0f, 0.0f }, Axis, U, V, 0.070f, 0.008f, 28u, 8u);
             Pieces.emplace_back();
             auto& Iris = Pieces.back();
-            Iris.PieceKind  = ConstraintPieceKind::DockIrisDisc;
+            Iris.PieceCategory  = ConstraintPieceCategory::DockIrisDisc;
             Iris.AlbedoRgb  = DockCol;
             Iris.NormCursor = DockIntact ? 1.0f : 0.0f;
             const float R = 0.075f;

@@ -51,14 +51,14 @@ struct CompiledGeometryVisualBatch
     std::vector<ComponentShaderVertex> DensityVertices    {};
     std::vector<ComponentShaderVertex> LodVertices        {};
     std::vector<GeometrySlotSlice>     SlotSlices         {};
-    bool                               HasValidUvs        = true;
+    bool                               ValidUvsPresent        = true;
     uint32_t                           TriangleCount      = 0u;
     uint32_t                           LodTriangleCount   = 0u;
     Mathematics::Axis3D                BoundsMin          { 0.0f, 0.0f, 0.0f };
     Mathematics::Axis3D                BoundsMax          { 0.0f, 0.0f, 0.0f };
 };
 
-enum class ConstraintPieceKind : uint8_t
+enum class ConstraintPieceCategory : uint8_t
 {
     ShadedSolid  = 0u, // [-] - SubMode 0: OpenPbrDirect shaded hardware (graphite/steel/accent)
     RangeFan     = 1u, // [-] - SubMode 1: Additive Hinge/Ball limit fan
@@ -68,7 +68,7 @@ enum class ConstraintPieceKind : uint8_t
 
 struct ConstraintVisualPiece
 {
-    ConstraintPieceKind                PieceKind     = ConstraintPieceKind::ShadedSolid;
+    ConstraintPieceCategory                PieceCategory     = ConstraintPieceCategory::ShadedSolid;
     std::vector<ComponentShaderVertex> Vertices      {};
     std::array<float, 3>               AlbedoRgb     { 0.6f, 0.6f, 0.6f };
     std::array<float, 3>               EmissiveRgb   { 0.0f, 0.0f, 0.0f };
@@ -86,12 +86,12 @@ class ComponentGizmoGeometry
 {
 public:
     [[nodiscard]] static CompiledGeometryVisualBatch BuildCompiledAssetBatch(
-        const ComponentClass::CompiledGeometryCatalogEntry& Entry);
+        const ComponentClass::CompiledGeometryRepositoryEntry& Entry);
 
     [[nodiscard]] static std::vector<ComponentShaderVertex> BuildDotFloorQuad(float HalfSpanMeters = 120.0f);
-    [[nodiscard]] static std::vector<ComponentShaderVertex> BuildUnitBoxShell();
-    [[nodiscard]] static std::vector<ComponentShaderVertex> BuildUnitSphereShell(uint32_t Stacks = 18u, uint32_t Slices = 32u);
-    [[nodiscard]] static std::vector<ComponentShaderVertex> BuildCapsuleShell(float Radius, float HalfHeight, uint8_t AxisIndex);
+    [[nodiscard]] static std::vector<ComponentShaderVertex> ConstructUnitBoxHull();
+    [[nodiscard]] static std::vector<ComponentShaderVertex> ConstructUnitSphereHull(uint32_t Stacks = 18u, uint32_t Slices = 32u);
+    [[nodiscard]] static std::vector<ComponentShaderVertex> ConstructCapsuleHull(float Radius, float HalfHeight, uint8_t AxisIndex);
     [[nodiscard]] static std::vector<ComponentShaderVertex> BuildSpotBeamCone(float LengthMeters, float RadiusMeters, uint32_t Sides = 32u);
     [[nodiscard]] static std::vector<ComponentShaderVertex> BuildCameraFrustumBeam(float LengthMeters, float VerticalFovDeg, float AspectRatio);
     [[nodiscard]] static std::vector<ComponentShaderVertex> BuildSolidArrow(float LengthMeters);
@@ -105,7 +105,7 @@ public:
         float                                              TimeSeconds);
 
     [[nodiscard]] static std::array<float, 3> QueryConstraintAccentLinearRgb(
-        ComponentClass::PhysicsConstraintKind Kind) noexcept;
+        ComponentClass::PhysicsConstraintCategory Form) noexcept;
 };
 
 } // namespace Frontier::GeometricRaster::ComponentEditor

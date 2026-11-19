@@ -8,7 +8,7 @@
 #include "Engine/GeometrySpace/Parametric/Construction/PrimitiveConstruction.h"
 #include "Engine/GeometrySpace/Parametric/Exchange/StepExchange.h"
 #include "Engine/GeometrySpace/Parametric/Exchange/StlExchange.h"
-#include "Engine/GeometrySpace/Parametric/Feature/FeatureCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Feature/FeatureRepository.h"
 #include "Engine/GeometrySpace/Parametric/Feature/FeatureTree.h"
 #include "Engine/GeometrySpace/Parametric/Measurement/MassProperties.h"
 #include "Engine/Interchange/GeometryInterchange.h"
@@ -54,13 +54,13 @@ int main()
         const int L2 = AppendSketchLine(Sketch, P2, P3, 3);
         const int L3 = AppendSketchLine(Sketch, P3, P0, 4);
 
-        (void)AppendSketchConstraint(Sketch, SketchConstraintKind::Fixed, P0, -1, -1, 0.0, {}, 0.0);
-        (void)AppendSketchConstraint(Sketch, SketchConstraintKind::Horizontal, L0);
-        (void)AppendSketchConstraint(Sketch, SketchConstraintKind::Vertical, L1);
-        (void)AppendSketchConstraint(Sketch, SketchConstraintKind::Horizontal, L2);
-        (void)AppendSketchConstraint(Sketch, SketchConstraintKind::Vertical, L3);
-        (void)AppendSketchConstraint(Sketch, SketchConstraintKind::Length, L0, -1, -1, 4.0);
-        (void)AppendSketchConstraint(Sketch, SketchConstraintKind::Length, L1, -1, -1, 2.5);
+        (void)AppendSketchConstraint(Sketch, SketchConstraintCategory::Fixed, P0, -1, -1, 0.0, {}, 0.0);
+        (void)AppendSketchConstraint(Sketch, SketchConstraintCategory::Horizontal, L0);
+        (void)AppendSketchConstraint(Sketch, SketchConstraintCategory::Vertical, L1);
+        (void)AppendSketchConstraint(Sketch, SketchConstraintCategory::Horizontal, L2);
+        (void)AppendSketchConstraint(Sketch, SketchConstraintCategory::Vertical, L3);
+        (void)AppendSketchConstraint(Sketch, SketchConstraintCategory::Length, L0, -1, -1, 4.0);
+        (void)AppendSketchConstraint(Sketch, SketchConstraintCategory::Length, L1, -1, -1, 2.5);
 
         const SketchSolveOutcome Solve = SolveSketch(Sketch);
         if (!VerifyCheck(Solve.DegreesOfFreedom == 0 && Solve.MaxResidual < 1.0e-8, "2D sketch solved to 0 DOF"))
@@ -82,7 +82,7 @@ int main()
         const auto BlockOut = ConstructBlock(Partition, { -2.0, -2.0, 0.0 }, { 4.0, 4.0, 2.0 });
         const auto CylOut = ConstructCylinder(
             Partition,
-            OrthonormalFrame { { 0.0, 0.0, -0.5 }, { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0 } },
+            OrthonormalBasis { { 0.0, 0.0, -0.5 }, { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0 } },
             1.0,
             3.0);
         if (!VerifyCheck(BlockOut.SucceededCondition() && CylOut.SucceededCondition(), "ConstructBlock & ConstructCylinder"))

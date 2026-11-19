@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometrySpace/Parametric/Surfacing/CarrierApproximation.h"
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <string>
 #include <limits>
@@ -24,7 +24,7 @@ namespace Frontier::GeometrySpace::Parametric
 //------------------------------------------------------------------------------------------------------------------------
 
 // 📝 x ↦ M·x + Shift with M given by its columns (the images of the unit axes).
-struct AffineMap
+struct AffineMapping
 {
     Vector3 ColumnX = { 1.0, 0.0, 0.0 };                                                     // [-]   - M·x̂
     Vector3 ColumnY = { 0.0, 1.0, 0.0 };                                                     // [-]   - M·ŷ
@@ -57,10 +57,10 @@ struct ApproximationOutcome
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] AffineMap TranslationMap(Vector3 Displacement) noexcept;
-[[nodiscard]] AffineMap RotationMap(Vector3 AxisPoint, Vector3 AxisDirection, double Angle) noexcept;
-[[nodiscard]] AffineMap ReflectionMap(Vector3 PlanePoint, Vector3 PlaneNormal) noexcept;
-[[nodiscard]] AffineMap ScalingMap(Vector3 Centre, Vector3 Factors) noexcept;
+[[nodiscard]] AffineMapping TranslationMap(Vector3 Displacement) noexcept;
+[[nodiscard]] AffineMapping RotationMap(Vector3 AxisPoint, Vector3 AxisDirection, double Angle) noexcept;
+[[nodiscard]] AffineMapping ReflectionMap(Vector3 PlanePoint, Vector3 PlaneNormal) noexcept;
+[[nodiscard]] AffineMapping ScalingMap(Vector3 Centre, Vector3 Factors) noexcept;
 
 // 💡 Copies Source through Map into a new body (blueprint assembly). Similarities (M = s·Q, Q orthogonal) are exact on
 //    every analytic carrier: frames become X′ = Q·X, Y′ = ±Q·Y (sign of det M), so Z′ = Q·Z, face senses are kept and
@@ -70,12 +70,12 @@ struct ApproximationOutcome
 //    Intersection-curve edges and rolling-ball faces map exactly under similarities only (refused otherwise).
 //    KnownVolume: the source's volume when the caller already has it (a body moved before); a one-shell image then
 //    skips the assembly's volume integral (det M · V).
-[[nodiscard]] TransformOutcome TransformBody(ModelPartition& Partition, BodyToken Source, const AffineMap& Map,
+[[nodiscard]] TransformOutcome TransformBody(ModelPartition& Partition, BodyToken Source, const AffineMapping& Map,
                                              double KnownVolume = std::numeric_limits<double>::quiet_NaN());
 
 // As TransformBody, reading Source from Partition and assembling the copy into Target (Map = TranslationMap({}) is a
 // plain transfer): composite constructions can be built in a scratch partition and only the result kept.
-[[nodiscard]] TransformOutcome TransformBodyAcross(const ModelPartition& Partition, BodyToken Source, ModelPartition& Target, const AffineMap& Map);
+[[nodiscard]] TransformOutcome TransformBodyAcross(const ModelPartition& Partition, BodyToken Source, ModelPartition& Target, const AffineMapping& Map);
 
 // Exact NURBS copy: every analytic face becomes its rational B-spline form (covering the face chart), every line and
 // conic edge its NURBS curve over the same τ interval. Traced edges and rolling-ball faces are kept as they are.

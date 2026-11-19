@@ -109,7 +109,7 @@ void FluidWorkspaceSession::TriggerBlastNow()
         Blast.Temperature *= 1.4f;
     }
 
-    SimulationSpace::FluidSpace::FluidStepContext Ctx {};
+    SimulationSpace::FluidSpace::FluidStepInput Ctx {};
     Ctx.ForceFieldSource   = &ForceFields;
     Ctx.MutableForceFields = &ForceFields;
     Ctx.WindLatticeCascade = &WindLattice;
@@ -130,7 +130,7 @@ void FluidWorkspaceSession::StepSimulation(double DeltaSeconds)
         Camera.YawRadians += static_cast<float>(DeltaSeconds) * 0.35f;
     }
     const float Dt = std::clamp(static_cast<float>(DeltaSeconds) * PlaybackSpeed, 1.0f / 180.0f, 1.0f / 24.0f);
-    SimulationSpace::FluidSpace::FluidStepContext Ctx {};
+    SimulationSpace::FluidSpace::FluidStepInput Ctx {};
     Ctx.ForceFieldSource   = &ForceFields;
     Ctx.MutableForceFields = &ForceFields;
     Ctx.WindLatticeCascade = &WindLattice;

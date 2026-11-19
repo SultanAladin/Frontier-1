@@ -24,7 +24,7 @@ namespace Frontier::GeometrySpace::Parametric
 //------------------------------------------------------------------------------------------------------------------------
 
 // 📝 Corpus section E verbs. "Faces" is the selection; the carrier each verb gives is listed per entry.
-enum class FaceOperationKind : uint8_t
+enum class FaceOperationCategory : uint8_t
 {
     Offset     = 0,                                                                          // Faces offset by Distance along the outward normal
     Push       = 1,                                                                          // Faces translated by Distance along their outward normal
@@ -46,7 +46,7 @@ enum class FaceOperationKind : uint8_t
 
 struct FaceOperationSettings
 {
-    FaceOperationKind      Kind          = FaceOperationKind::Offset;                        // [-]   - Verb
+    FaceOperationCategory      Kind          = FaceOperationCategory::Offset;                        // [-]   - Verb
     std::vector<FaceToken> Faces         = {};                                               // [-]   - Selection (empty: verb default)
     double                 Distance      = 0.0;                                              // [len] - Offset, push, wall, extrusion
     double                 Depth         = 0.0;                                              // [len] - Inset: inner face shift along the outward normal (− pocket)
@@ -57,7 +57,7 @@ struct FaceOperationSettings
     Vector3                PullDirection = { 0.0, 0.0, 1.0 };                                // [-]   - Draft pull direction
     std::vector<VertexToken> Vertices    = {};                                               // [-]   - Reshape: vertices carried (edges give both ends) · Heal: only these join
     std::vector<EdgeToken>   Edges       = {};                                               // [-]   - Heal: only these dissolve (empty with no vertices: every seam)
-    AffineMap              Placement     = {};                                               // [-]   - Reshape: x ↦ M·x + Shift for those vertices
+    AffineMapping              Placement     = {};                                               // [-]   - Reshape: x ↦ M·x + Shift for those vertices
 };
 
 struct FaceOperationOutcome
@@ -81,7 +81,7 @@ struct FaceOperationOutcome
 //    Thicken (sheet offset + rim faces). Refusals are prefixed with the verb label and leave the input untouched.
 [[nodiscard]] FaceOperationOutcome ApplyFaceOperation(ModelPartition& Partition, BodyToken Body, const FaceOperationSettings& Settings);
 
-[[nodiscard]] const char* FaceOperationLabel(FaceOperationKind Kind) noexcept;
+[[nodiscard]] const char* FaceOperationLabel(FaceOperationCategory Kind) noexcept;
 
 // Centre of the body's bounding box (vertices and edge samples) and the length-weighted centre of a face's boundary.
 [[nodiscard]] Vector3 MeasureBodyBoxCentre(const ModelPartition& Partition, BodyToken Body);

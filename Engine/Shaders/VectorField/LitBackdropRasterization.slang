@@ -14,7 +14,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 [[vk::push_constant]]
-ConstantBuffer<DrawObjectPushConstants> DrawPush;
+ConstantBuffer<RenderInstancePushConstants> SurfacePush;
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<ViewportOverlayUniforms> Overlay;
@@ -83,6 +83,6 @@ OverlayFragmentOutput FragmentMain(LitVaryings In)
     float3 FinalRgb = lerp(Shaded, float3(0.075, 0.086, 0.105), FogAmt);
 
     Out.Color  = float4(pow(saturate(FinalRgb), 1.0 / 2.2), In.Albedo.a);
-    Out.PickId = uint4(DrawPush.PickCategory, DrawPush.PickPrimaryId, DrawPush.PickSecondaryId, 0u);
+    Out.PickId = uint4(SurfacePush.PickCategory, SurfacePush.PickPrimaryId, SurfacePush.PickSecondaryId, 0u);
     return Out;
 }

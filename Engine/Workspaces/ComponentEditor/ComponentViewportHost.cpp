@@ -5,7 +5,7 @@
 
 #include "Engine/Workspaces/ComponentEditor/ComponentViewportHost.h"
 #include "Engine/Components/Controls/CapsuleButton.h"
-#include "Engine/Components/Panes/AssemblySequencePane.h"
+#include "Engine/Components/Panes/ExecutionSequencePane.h"
 #include "Engine/Components/VectorIcons/VectorIconRepository.h"
 
 #include <algorithm>
@@ -36,9 +36,9 @@ const char* QueryChannelNote(GeometricRaster::ComponentEditor::ComponentInspecti
     return "";
 }
 
-const char* QueryRoleCaption(ComponentClass::ComponentClassRole Role) noexcept
+const char* QueryArchetypeCaption(ComponentClass::ComponentClassArchetype Archetype) noexcept
 {
-    return ComponentClass::ComponentClassDefinition::QueryRoleLabel(Role);
+    return ComponentClass::ComponentClassDefinition::QueryArchetypeLabel(Archetype);
 }
 
 } // namespace
@@ -106,18 +106,18 @@ void ComponentViewportHost::Render(
     char SubBuf[96] {};
     std::snprintf(
         SubBuf, sizeof(SubBuf), "Component class · Role %s · %u components",
-        QueryRoleCaption(Doc->ClassDefinition.ClassRole), Metrics.TotalComponents);
+        QueryArchetypeCaption(Doc->ClassDefinition.ClassArchetype), Metrics.TotalComponents);
     WorkspaceAppearance::ConstructWeightedText(
         Surface, FontWeightClass::Regular, { ClassIconTile.Right() + 10.0f, HeaderRect.Y + 28.0f }, 9.8f,
         WorkspaceSurfaceColors::MutedInk, SubBuf);
 
     // Status chip: COMPILED / DIRTY / ERRORS
     const float TitleW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::SemiBold, 13.5f, Doc->ClassDefinition.Title);
-    const char* CompileLabel = !Doc->CanCompile ? "ERRORS" : (Doc->Dirty ? "DIRTY" : "COMPILED");
-    const ColorRgba CompileFill = !Doc->CanCompile
+    const char* CompileLabel = !Doc->CompilePermitted ? "ERRORS" : (Doc->Dirty ? "DIRTY" : "COMPILED");
+    const ColorRgba CompileFill = !Doc->CompilePermitted
         ? ColorRgba { 68u, 24u, 28u, 255u }
         : (Doc->Dirty ? ColorRgba { 66u, 48u, 18u, 255u } : ColorRgba { 20u, 52u, 32u, 255u });
-    const ColorRgba CompileInk = !Doc->CanCompile
+    const ColorRgba CompileInk = !Doc->CompilePermitted
         ? ColorRgba { 255u, 118u, 118u, 255u }
         : (Doc->Dirty ? WorkspaceSurfaceColors::SelectionAmber : ColorRgba { 112u, 232u, 148u, 255u });
     const Rectangle2D CompileChip { std::max(ClassIconTile.Right() + 10.0f + TitleW + 14.0f, HeaderRect.X + 230.0f), HeaderRect.Y + 12.0f, 72.0f, 22.0f };
@@ -184,7 +184,7 @@ void ComponentViewportHost::Render(
 
     if (CapsuleButton::ConstructRoundIcon(Surface, FocusBtn.Center().X, FocusBtn.Center().Y, ControlIcon::EditFocus, Ptr).Clicked)
     {
-        Session.FrameSelectedOrClass();
+        Session.FocusSelectedOrClass();
     }
     if (CapsuleButton::ConstructRoundIcon(Surface, GridBtn.Center().X, GridBtn.Center().Y, ControlIcon::LayoutGrid, Ptr).Clicked)
     {
@@ -194,9 +194,9 @@ void ComponentViewportHost::Render(
     // 3. Main Canvas Area
     const Rectangle2D CanvasRect { Bounds.X, BarRect.Bottom(), Bounds.Width, std::max(140.0f, Bounds.Bottom() - BarRect.Bottom()) };
 
-    if (Session.ActiveCenterTab == CenterViewTab::AssemblySequence)
+    if (Session.ActiveCenterTab == CenterViewTab::ExecutionSequence)
     {
-        Doc->SelectedToken = AssemblySequencePane::ConstructWithInput(
+        Doc->SelectedToken = ExecutionSequencePane::ConstructWithInput(
             Surface, CanvasRect, Doc->ClassDefinition, Doc->SelectedToken, Doc->SequenceView, Input);
         return;
     }
@@ -242,7 +242,7 @@ void ComponentViewportHost::Render(
                 Doc->SelectedToken = Picked;
                 if (Input.DoubleClicked)
                 {
-                    Session.FrameSelectedOrClass();
+                    Session.FocusSelectedOrClass();
                 }
             }
         }
@@ -271,9 +271,9 @@ void ComponentViewportHost::Render(
     if (Renderer != nullptr && Renderer->QueryVulkanReady() &&
         (Sig != CachedSignature || RenderW != CachedWidthPx || RenderH != CachedHeightPx || ViewportTexture.Pixels == nullptr))
     {
-        const auto Out = Renderer->RenderClassFrame(
+        const auto Out = Renderer->RenderClassViewport(
             Doc->ClassDefinition,
-            Session.Catalog,
+            Session.Repository,
             Doc->Camera,
             Session.RenderOptions,
             RenderW,
@@ -359,15 +359,15 @@ void ComponentViewportHost::Render(
                 ? Session.RenderOptions.LiveConstraintCoordinates.at(SelHdr->Token.SlotIndex)
                 : 0.0f;
             char TagBuf[96] {};
-            if (Con->Kind == ComponentClass::PhysicsConstraintKind::Spring)
+            if (Con->Form == ComponentClass::PhysicsConstraintCategory::Spring)
             {
                 std::snprintf(TagBuf, sizeof(TagBuf), "SPRING  %s  %.0f mm · %.1f Hz",
                     SelHdr->Title.c_str(), Coord * 1000.0f, Con->NaturalFrequencyHz);
             }
-            else if (Con->Kind == ComponentClass::PhysicsConstraintKind::Dock)
+            else if (Con->Form == ComponentClass::PhysicsConstraintCategory::Dock)
             {
-                const bool Intact = Session.RenderOptions.DockIntactFlags.contains(SelHdr->Token.SlotIndex)
-                    ? Session.RenderOptions.DockIntactFlags.at(SelHdr->Token.SlotIndex)
+                const bool Intact = Session.RenderOptions.DockIntactMask.contains(SelHdr->Token.SlotIndex)
+                    ? Session.RenderOptions.DockIntactMask.at(SelHdr->Token.SlotIndex)
                     : Con->DockConnected;
                 std::snprintf(TagBuf, sizeof(TagBuf), "DOCK  %s  %s",
                     SelHdr->Title.c_str(), Intact ? "LOCKED" : "RELEASED");

@@ -30,20 +30,20 @@ namespace Frontier::GeometrySpace::Parametric
 // 📝 P(𝑢, 𝑣) = Origin + 𝑢·XAxis + 𝑣·YAxis; normal = ZAxis.
 struct PlaneSurface
 {
-    OrthonormalFrame Frame = {};                                                             // [-] - Chart frame
+    OrthonormalBasis Frame = {};                                                             // [-] - Chart frame
 };
 
 // 📝 P(𝑢, 𝑣) = Origin + r·(cos 𝑢·X + sin 𝑢·Y) + 𝑣·Z; 𝑢 periodic 2π.
 struct CylinderSurface
 {
-    OrthonormalFrame Frame  = {};                                                            // [-]   - Axis frame
+    OrthonormalBasis Frame  = {};                                                            // [-]   - Axis frame
     double           Radius = 1.0;                                                           // [len] - Radius
 };
 
 // 📝 P(𝑢, 𝑣) = Origin + (r₀ + 𝑣·s)·(cos 𝑢·X + sin 𝑢·Y) + 𝑣·Z; apex where r₀ + 𝑣·s = 0; 𝑢 periodic 2π.
 struct ConeSurface
 {
-    OrthonormalFrame Frame        = {};                                                      // [-]   - Axis frame
+    OrthonormalBasis Frame        = {};                                                      // [-]   - Axis frame
     double           OriginRadius = 1.0;                                                     // [len] - r₀, radius at 𝑣 = 0
     double           RadialSlope  = -1.0;                                                    // [-]   - s = dr/d𝑣
 };
@@ -51,14 +51,14 @@ struct ConeSurface
 // 📝 P(𝑢, 𝑣) = Origin + r·(cos 𝑣·(cos 𝑢·X + sin 𝑢·Y) + sin 𝑣·Z); 𝑣 ∈ [−π/2, π/2]; poles at 𝑣 = ±π/2.
 struct SphereSurface
 {
-    OrthonormalFrame Frame  = {};                                                            // [-]   - Centre frame
+    OrthonormalBasis Frame  = {};                                                            // [-]   - Centre frame
     double           Radius = 1.0;                                                           // [len] - Radius
 };
 
 // 📝 P(𝑢, 𝑣) = Origin + (R + r·cos 𝑣)·(cos 𝑢·X + sin 𝑢·Y) + r·sin 𝑣·Z; 𝑢 and 𝑣 periodic 2π.
 struct TorusSurface
 {
-    OrthonormalFrame Frame       = {};                                                       // [-]   - Centre frame
+    OrthonormalBasis Frame       = {};                                                       // [-]   - Centre frame
     double           MajorRadius = 2.0;                                                      // [len] - R, centre to tube axis
     double           MinorRadius = 0.5;                                                      // [len] - r, tube radius
 };

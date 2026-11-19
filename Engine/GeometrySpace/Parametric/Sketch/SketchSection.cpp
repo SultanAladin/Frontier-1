@@ -37,7 +37,7 @@ constexpr int    BisectionSteps = 80;                                           
 //                                                    INTERNAL FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] Vector3 Lift(const OrthonormalFrame& Plane, Vector2 Point)
+[[nodiscard]] Vector3 Lift(const OrthonormalBasis& Plane, Vector2 Point)
 {
     return Plane.Origin + Plane.XAxis * Point.X + Plane.YAxis * Point.Y;
 }
@@ -56,19 +56,19 @@ constexpr int    BisectionSteps = 80;                                           
 }
 
 // One segment, in its traversal direction, as an exact NURBS on the plane.
-[[nodiscard]] std::optional<NurbsCurveDefinition> ConvertSegment(const ProfileSegment& Segment, const OrthonormalFrame& Plane)
+[[nodiscard]] std::optional<NurbsCurveDefinition> ConvertSegment(const ProfileSegment& Segment, const OrthonormalBasis& Plane)
 {
     switch (Segment.Kind)
     {
-    case ProfileSegmentKind::Line:
+    case ProfileSegmentCategory::Line:
     {
         const Vector3 From = Lift(Plane, Segment.Start), To = Lift(Plane, Segment.End);
         const double  Span = Length(To - From);
         if (!(Span > 0.0)) return std::nullopt;
         return *ConvertLineToNurbs(StraightLine{ From, (To - From) * (1.0 / Span) }, 0.0, Span).Definition;
     }
-    case ProfileSegmentKind::Arc:
-    case ProfileSegmentKind::Circle:
+    case ProfileSegmentCategory::Arc:
+    case ProfileSegmentCategory::Circle:
     {
         const double Sweep = Segment.Sweep != 0.0 ? Segment.Sweep : 2.0 * std::numbers::pi;   // [rad] - Circles: a full turn
         if (!(Segment.Radius > 0.0)) return std::nullopt;
@@ -77,7 +77,7 @@ constexpr int    BisectionSteps = 80;                                           
         const NurbsCurve Forward = ConvertConicToNurbs(Conic, Segment.StartAngle + Sweep, Segment.StartAngle);
         return *ReverseNurbsCurve(*Forward.Definition).Definition;
     }
-    case ProfileSegmentKind::Spline:
+    case ProfileSegmentCategory::Spline:
     {
         std::vector<Vector3> Poles;
         for (const Vector2& Pole : Segment.Spline.Poles) Poles.push_back(Lift(Plane, Pole));
@@ -139,7 +139,7 @@ constexpr int    BisectionSteps = 80;                                           
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-SketchSectionOutcome ComposeSketchSection(const SketchModel& Sketch, const OrthonormalFrame& Plane)
+SketchSectionOutcome ComposeSketchSection(const SketchModel& Sketch, const OrthonormalBasis& Plane)
 {
     SketchSectionOutcome Outcome;
     // ① the drawn curves as segments

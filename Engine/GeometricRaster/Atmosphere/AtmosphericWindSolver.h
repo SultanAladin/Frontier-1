@@ -23,7 +23,7 @@ namespace Frontier::GeometricRaster
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class WindBindingSource : uint8_t
+enum class WindCouplingSource : uint8_t
 {
     GlobalWind        = 0u, // [-] - Master AtmosphericWindParameters (plus optional ForceFields weather tier)
     CloudWind         = 1u, // [-] - Cloud deck Speed / Bearing / Shear
@@ -93,7 +93,7 @@ public:
         const AtmosphericWindParameters&                         GlobalWind,
         float                                                    DeckWindSpeedMps,
         float                                                    DeckWindBearingDeg,
-        WindBindingSource                                        Source,
+        WindCouplingSource                                        Source,
         const Mathematics::Axis3D&                               WorldPoint,
         float                                                    AltitudeMeters,
         float                                                    TimeSeconds,
@@ -105,7 +105,7 @@ public:
         const AtmosphericWindParameters&                           GlobalWind,
         float                                                      DeckWindSpeedMps,
         float                                                      DeckWindBearingDeg,
-        WindBindingSource                                          Source,
+        WindCouplingSource                                          Source,
         const Mathematics::Axis3D&                                 WorldPoint,
         float                                                      AltitudeMeters,
         float                                                      TotalSeconds,

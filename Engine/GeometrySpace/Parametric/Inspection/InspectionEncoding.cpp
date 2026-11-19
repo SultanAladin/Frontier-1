@@ -5,13 +5,13 @@
 
 #include "Engine/GeometrySpace/Parametric/Inspection/InspectionEncoding.h"
 
-#include "Engine/GeometrySpace/Parametric/Blend/BlendCatalogue.h"
-#include "Engine/GeometrySpace/Parametric/Boolean/BooleanCatalogue.h"
-#include "Engine/GeometrySpace/Parametric/Inspection/IntersectionCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Blend/BlendRepository.h"
+#include "Engine/GeometrySpace/Parametric/Boolean/BooleanRepository.h"
+#include "Engine/GeometrySpace/Parametric/Inspection/IntersectionRepository.h"
 #include "Engine/GeometrySpace/Parametric/Inspection/JsonWriter.h"
-#include "Engine/GeometrySpace/Parametric/Local/FaceOperationCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Local/FaceOperationRepository.h"
 #include "Engine/GeometrySpace/Parametric/Inspection/FeatureEncoding.h"
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <algorithm>
 #include <cmath>

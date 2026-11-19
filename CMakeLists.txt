@@ -192,7 +192,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Docking/WorkspaceTabStrip.cpp
     Engine/Components/Docking/WorkspaceDockContainer.cpp
     Engine/Components/Panes/WorkspaceAppearance.cpp
-    Engine/Components/Panes/AssemblySequencePane.cpp
+    Engine/Components/Panes/ExecutionSequencePane.cpp
     Engine/Components/Panes/OutlinerPanel.cpp
     Engine/Components/Panes/InspectorPanel.cpp
     Engine/Components/Panes/ViewportPanel.cpp
@@ -344,7 +344,7 @@ frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   DenoiseCom
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ShadowCascadeComputeEntry compute  WorldViewportShadowCascadeCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   SdfRadiosityComputeEntry  compute  WorldViewportSdfRadiosityCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   DdgiLatticeComputeEntry    compute  WorldViewportDdgiLatticeCompute.comp.spv)
-frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ReservoirSpatialReuseEntry compute  WorldViewportReservoirReuseCompute.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ImportanceSpatialReuseEntry compute  WorldViewportImportanceReuseCompute.comp.spv)
 frontier_compile_slang_shader(SignedDistanceGridCompute.slang         ComputeEntry          compute  SignedDistanceGridCompute.comp.spv)
 
 set(FRONTIER_MODULAR_SHADER_DIR "${CMAKE_SOURCE_DIR}/Engine/Shaders")
@@ -430,9 +430,9 @@ frontier_compile_modular_slang_shader(Visibility/AnalyticBarycentricResolve.slan
 frontier_compile_modular_slang_shader(DirectLighting/SolarFrustumShadow.slang                    SolarShadowComputeEntry         compute  SolarFrustumShadow.comp.spv)
 frontier_compile_modular_slang_shader(DirectLighting/ContactClipShadow.slang                     ContactClipComputeEntry         compute  ContactClipShadow.comp.spv)
 frontier_compile_modular_slang_shader(DirectLighting/PlaneAwareShadowFilter.slang                PlaneFilterComputeEntry         compute  PlaneAwareShadowFilter.comp.spv)
-frontier_compile_modular_slang_shader(GlobalIllumination/DynamicProbeCache.slang             DynamicProbeCacheComputeEntry     compute  DynamicProbeCache.comp.spv)
-frontier_compile_modular_slang_shader(GlobalIllumination/ReservoirPathReplay.slang           ReservoirPathReplayComputeEntry   compute  ReservoirPathReplay.comp.spv)
-frontier_compile_modular_slang_shader(GlobalIllumination/ReservoirTemporalFilter.slang       ReservoirTemporalFilterComputeEntry compute ReservoirTemporalFilter.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/DynamicIrradianceCache.slang             DynamicIrradianceCacheComputeEntry     compute  DynamicIrradianceCache.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/WeightedPathReplay.slang           WeightedPathReplayComputeEntry   compute  WeightedPathReplay.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/WeightedTemporalFilter.slang       WeightedTemporalFilterComputeEntry compute WeightedTemporalFilter.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/VoxelSdfClipmapCompute.slang            ComposeDynamicLocalSdfClip0Entry      compute  VoxelSdfClipmapCompose.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/VoxelSdfClipmapCompute.slang            PropagateClipmapRadiosityBounceEntry  compute  VoxelSdfClipmapRadiosity.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/VoxelSdfClipmapCompute.slang            EvaluateClipmapConeGiEntry            compute  VoxelSdfClipmapConeGi.comp.spv)
@@ -693,7 +693,7 @@ endfunction()
 
 foreach(CE_SHADER_STEM
     ComponentChannelInspection
-    ComponentFieldShell
+    ComponentFieldHull
     ComponentLightVolume
     ComponentDotFloor
     ComponentConstraintVisual)
@@ -726,9 +726,9 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Visibility/VisibilityMaterialResolve.cpp
     Engine/GeometricRaster/DirectLighting/SolarShadowSequence.cpp
     Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.cpp
-    Engine/GeometricRaster/GlobalIllumination/DynamicProbeCacheSequence.cpp
+    Engine/GeometricRaster/GlobalIllumination/DynamicIrradianceCacheSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/IrradianceLatticeSequence.cpp
-    Engine/GeometricRaster/GlobalIllumination/ReservoirPathReplaySequence.cpp
+    Engine/GeometricRaster/GlobalIllumination/WeightedPathReplaySequence.cpp
     Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.cpp
@@ -756,19 +756,19 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometrySpace/Fracture/FastRuntimeFracture.cpp
     Engine/GeometrySpace/Fracture/EngineeringBakedFracture.cpp
     Engine/GeometrySpace/Fracture/ConvexPartitioning.cpp
-    Engine/GeometrySpace/Parametric/Assembly/AssemblyAnalysis.cpp
-    Engine/GeometrySpace/Parametric/Assembly/JointSolver.cpp
+    Engine/GeometrySpace/Parametric/Arrangement/ArrangementAnalysis.cpp
+    Engine/GeometrySpace/Parametric/Arrangement/JointSolver.cpp
     Engine/GeometrySpace/Parametric/Audit/EnclosedVolume.cpp
     Engine/GeometrySpace/Parametric/Audit/IntersectionAudit.cpp
     Engine/GeometrySpace/Parametric/Audit/ModelAudit.cpp
     Engine/GeometrySpace/Parametric/Audit/TessellationAudit.cpp
-    Engine/GeometrySpace/Parametric/Blend/BlendCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Blend/BlendRepository.cpp
     Engine/GeometrySpace/Parametric/Blend/EdgeBlend.cpp
     Engine/GeometrySpace/Parametric/Blend/FairPatch.cpp
     Engine/GeometrySpace/Parametric/Blend/RollingBallGeometry.cpp
-    Engine/GeometrySpace/Parametric/Boolean/BooleanCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Boolean/BooleanRepository.cpp
     Engine/GeometrySpace/Parametric/Boolean/GeneralFuse.cpp
-    Engine/GeometrySpace/Parametric/Construction/BodyAssembly.cpp
+    Engine/GeometrySpace/Parametric/Construction/BodyArrangement.cpp
     Engine/GeometrySpace/Parametric/Construction/BodyModifiers.cpp
     Engine/GeometrySpace/Parametric/Construction/BodyTransform.cpp
     Engine/GeometrySpace/Parametric/Construction/PrimitiveConstruction.cpp
@@ -782,7 +782,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometrySpace/Parametric/Exchange/StepReading.cpp
     Engine/GeometrySpace/Parametric/Exchange/StlExchange.cpp
     Engine/GeometrySpace/Parametric/Feature/BodyCut.cpp
-    Engine/GeometrySpace/Parametric/Feature/FeatureCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Feature/FeatureRepository.cpp
     Engine/GeometrySpace/Parametric/Feature/FeatureTree.cpp
     Engine/GeometrySpace/Parametric/Feature/PathSweep.cpp
     Engine/GeometrySpace/Parametric/Feature/ProfileSweep.cpp
@@ -799,9 +799,9 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometrySpace/Parametric/Inspection/FaceOperationEncoding.cpp
     Engine/GeometrySpace/Parametric/Inspection/FeatureEncoding.cpp
     Engine/GeometrySpace/Parametric/Inspection/InspectionEncoding.cpp
-    Engine/GeometrySpace/Parametric/Inspection/IntersectionCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Inspection/IntersectionRepository.cpp
     Engine/GeometrySpace/Parametric/Inspection/IntersectionEncoding.cpp
-    Engine/GeometrySpace/Parametric/Inspection/SpecimenCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Inspection/SpecimenRepository.cpp
     Engine/GeometrySpace/Parametric/Inspection/TessellationEncoding.cpp
     Engine/GeometrySpace/Parametric/Intersection/BernsteinPolynomial.cpp
     Engine/GeometrySpace/Parametric/Intersection/CurveSurfaceIntersection.cpp
@@ -810,19 +810,19 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometrySpace/Parametric/Intersection/IsoParameterCurve.cpp
     Engine/GeometrySpace/Parametric/Intersection/SurfaceIntersection.cpp
     Engine/GeometrySpace/Parametric/Local/FaceChange.cpp
-    Engine/GeometrySpace/Parametric/Local/FaceOperationCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Local/FaceOperationRepository.cpp
     Engine/GeometrySpace/Parametric/Local/FaceOperations.cpp
-    Engine/GeometrySpace/Parametric/Local/RedundantTopology.cpp
-    Engine/GeometrySpace/Parametric/Local/TopologyRebuild.cpp
+    Engine/GeometrySpace/Parametric/Local/RedundantConnectivity.cpp
+    Engine/GeometrySpace/Parametric/Local/ConnectivityRebuild.cpp
     Engine/GeometrySpace/Parametric/Measurement/MassProperties.cpp
     Engine/GeometrySpace/Parametric/Measurement/MinimumDistance.cpp
     Engine/GeometrySpace/Parametric/Measurement/PlaneSection.cpp
     Engine/GeometrySpace/Parametric/Precision/ExactPredicates.cpp
-    Engine/GeometrySpace/Parametric/Sketch/SketchCatalogue.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchRepository.cpp
     Engine/GeometrySpace/Parametric/Sketch/SketchConstraining.cpp
     Engine/GeometrySpace/Parametric/Sketch/SketchCorner.cpp
     Engine/GeometrySpace/Parametric/Sketch/SketchEditing.cpp
-    Engine/GeometrySpace/Parametric/Sketch/SketchFlow.cpp
+    Engine/GeometrySpace/Parametric/Sketch/SketchRailDeform.cpp
     Engine/GeometrySpace/Parametric/Sketch/SketchProfile.cpp
     Engine/GeometrySpace/Parametric/Sketch/SketchRegion.cpp
     Engine/GeometrySpace/Parametric/Sketch/SketchSection.cpp
@@ -833,14 +833,14 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometrySpace/Parametric/Surfacing/CurveFitting.cpp
     Engine/GeometrySpace/Parametric/Surfacing/CurveNetwork.cpp
     Engine/GeometrySpace/Parametric/Surfacing/LinearSystem.cpp
-    Engine/GeometrySpace/Parametric/Surfacing/PanelAssembly.cpp
+    Engine/GeometrySpace/Parametric/Surfacing/PanelJoining.cpp
     Engine/GeometrySpace/Parametric/Surfacing/SectionLoft.cpp
     Engine/GeometrySpace/Parametric/Surfacing/SurfaceAlgebra.cpp
     Engine/GeometrySpace/Parametric/Surfacing/SurfaceDistanceCurve.cpp
     Engine/GeometrySpace/Parametric/Tessellation/BodyTessellation.cpp
     Engine/GeometrySpace/Parametric/Tessellation/ChartTriangulation.cpp
-    Engine/GeometrySpace/Parametric/Topology/EulerEdits.cpp
-    Engine/GeometrySpace/Parametric/Topology/ModelPartition.cpp
+    Engine/GeometrySpace/Parametric/Connectivity/EulerEdits.cpp
+    Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.cpp
     Engine/Workspaces/ParametricSketcher/Viewport/SketcherCamera.cpp
     Engine/Workspaces/ParametricSketcher/Viewport/SketcherGizmoSpace.cpp
     Engine/Workspaces/ParametricSketcher/Viewport/SketcherOrbitCamera.cpp
@@ -964,7 +964,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/SimulationSpace/FluidSpace/FluidPresets.cpp
     Engine/SimulationSpace/FluidSpace/FluidCodec.cpp
     Engine/SimulationSpace/FluidSpace/FluidGridBuffers.cpp
-    Engine/SimulationSpace/FluidSpace/FluidWorldGridManager.cpp
+    Engine/SimulationSpace/FluidSpace/FluidWorldGridPartition.cpp
     Engine/SimulationSpace/FluidSpace/FluidObstacleVoxelizer.cpp
     Engine/SimulationSpace/FluidSpace/FluidForceCoupler.cpp
     Engine/SimulationSpace/FluidSpace/FluidParticleCoupler.cpp

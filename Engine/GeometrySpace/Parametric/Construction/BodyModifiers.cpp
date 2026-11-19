@@ -7,7 +7,7 @@
 
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
 #include "Engine/GeometrySpace/Parametric/Boolean/GeneralFuse.h"
-#include "Engine/GeometrySpace/Parametric/Construction/BodyAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Construction/BodyArrangement.h"
 #include "Engine/GeometrySpace/Parametric/Diagnostics/OperationTrace.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/ParallelCarrier.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/ProjectedCurve.h"
@@ -89,7 +89,7 @@ namespace
         Vector3 Binormal  = { 0.0, 0.0, 1.0 };                                               // [-]   - Unit RMF B = T × N
     };
 
-    struct RailTable
+    struct RailSpanSchedule
     {
         const NurbsCurveDefinition* Definition    = nullptr;                                 // [-]     - Underlying NURBS definition
         std::vector<RailStation>    Stations      = {};                                      // [-]     - Dense monotonic table
@@ -112,9 +112,9 @@ namespace
         return Normalize(Cross(Reference, Axis));
     }
 
-    [[nodiscard]] RailTable BuildRailTable(const NurbsCurve& Rail, int SampleCount = 2048)
+    [[nodiscard]] RailSpanSchedule BuildRailTable(const NurbsCurve& Rail, int SampleCount = 2048)
     {
-        RailTable Table;
+        RailSpanSchedule Table;
         Table.Definition = Rail.Definition.get();
         const NurbsDomain Domain = MeasureNurbsCurveDomain(*Table.Definition);
         Table.Stations.resize(static_cast<size_t>(SampleCount + 1));
@@ -180,7 +180,7 @@ namespace
         return Table;
     }
 
-    [[nodiscard]] EvaluatedStation EvaluateRailAt(const RailTable& Table, double ArcLength, bool ClosedCondition)
+    [[nodiscard]] EvaluatedStation EvaluateRailAt(const RailSpanSchedule& Table, double ArcLength, bool ClosedCondition)
     {
         if (Table.Stations.empty() || Table.TotalLength <= 1.0e-14) return {};
         if (ClosedCondition)
@@ -260,7 +260,7 @@ namespace
     }
 
     // Rigid frame-to-frame map carrying SourceOrigin + (SourceX, SourceY, SourceZ) onto TargetOrigin + (TargetX, TargetY, TargetZ).
-    [[nodiscard]] AffineMap RigidFrameMap(Vector3 SourceOrigin, Vector3 SourceX, Vector3 SourceY, Vector3 SourceZ,
+    [[nodiscard]] AffineMapping RigidFrameMap(Vector3 SourceOrigin, Vector3 SourceX, Vector3 SourceY, Vector3 SourceZ,
                                           Vector3 TargetOrigin, Vector3 TargetX, Vector3 TargetY, Vector3 TargetZ) noexcept
     {
         // R = [TargetX TargetY TargetZ] · [SourceX SourceY SourceZ]ᵀ.
@@ -470,7 +470,7 @@ ModifierBodyOutcome ArrayBodyRadial(ModelPartition& Partition, BodyToken Source,
     std::vector<BodyNaming> Namings;
     for (int Index = 0; Index < Count; ++Index)
     {
-        AffineMap Map = RotationMap(AxisOrigin, UnitAxis, Pitch * static_cast<double>(Index));
+        AffineMapping Map = RotationMap(AxisOrigin, UnitAxis, Pitch * static_cast<double>(Index));
         Map.Shift = Map.Shift + UnitAxis * (RiseStep * static_cast<double>(Index));
         const std::string Prefix = Index == 0 ? std::string{} : (Label + "[" + std::to_string(Index) + "]");
         const TransformOutcome Copy = TransformBody(Partition, Source, Map);
@@ -491,7 +491,7 @@ ModifierBodyOutcome ArrayBodyAlongCurve(ModelPartition& Partition, BodyToken Sou
     if (Count > 512) { Outcome.Refusal = Label + ": curve array count exceeds 512 instances"; return Outcome; }
     if (!Rail.Definition) { Outcome.Refusal = Label + ": rail curve is empty"; return Outcome; }
 
-    const RailTable Table = BuildRailTable(Rail);
+    const RailSpanSchedule Table = BuildRailTable(Rail);
     if (!(Table.TotalLength > 1.0e-9)) { Outcome.Refusal = Label + ": rail curve has zero length"; return Outcome; }
 
     const BoxBounds SourceBox = MeasureBodyBounds(Partition, Source);
@@ -507,7 +507,7 @@ ModifierBodyOutcome ArrayBodyAlongCurve(ModelPartition& Partition, BodyToken Sou
     for (int Index = 0; Index < Count; ++Index)
     {
         const EvaluatedStation Station = EvaluateRailAt(Table, Step * static_cast<double>(Index), ClosedRailCondition);
-        const AffineMap Map = AlignCondition
+        const AffineMapping Map = AlignCondition
                             ? RigidFrameMap(SourceCentre, StartStation.Tangent, StartStation.Normal, StartStation.Binormal,
                                             Station.Position, Station.Tangent, Station.Normal, Station.Binormal)
                             : TranslationMap(Station.Position - SourceCentre);
@@ -579,7 +579,7 @@ ModifierBodyOutcome ArrayBodyOnSurface(ModelPartition& Partition, BodyToken Sour
             const Vector3 TangentV = Normalize(Cross(Outward, TangentU));
             const Vector3 TargetPoint = Sample.Position + Outward * NormalOffset;
 
-            const AffineMap Map = AlignCondition
+            const AffineMapping Map = AlignCondition
                                 ? RigidFrameMap(Anchor, { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0 },
                                                 TargetPoint, TangentU, TangentV, Outward)
                                 : TranslationMap(TargetPoint - Anchor);
@@ -620,7 +620,7 @@ ModifierBodyOutcome DeformBodyAlongCurve(ModelPartition& Partition, BodyToken So
     const Vector3 Centre     = (Bounds.Low + Bounds.High) * 0.5;
     const Vector3 Reference  = Centre - AlongAxis * (0.5 * Spans[Axis]);                     // [len] - Start face centre on bend axis
 
-    const RailTable Table = BuildRailTable(Rail);
+    const RailSpanSchedule Table = BuildRailTable(Rail);
     if (!(Table.TotalLength > 1.0e-9)) { Outcome.Refusal = Label + ": bend curve has zero length"; return Outcome; }
 
     const double LateralReach = 0.5 * std::hypot(Spans[(Axis + 1) % 3], Spans[(Axis + 2) % 3]);
@@ -729,7 +729,7 @@ ModifierBodyOutcome DeformBodyAlongCurve(ModelPartition& Partition, BodyToken So
         Blueprint.Vertices[Edge.End].Precision   = std::fmax(Blueprint.Vertices[Edge.End].Precision, Tube);
     }
 
-    const AssemblyOutcome Assembly = AssembleBody(Partition, Blueprint, Label);
+    const ArrangementOutcome Assembly = AssembleBody(Partition, Blueprint, Label);
     if (!Assembly.Refusal.empty()) { Outcome.Refusal = Assembly.Refusal; return Outcome; }
 
     BodyNaming Naming;

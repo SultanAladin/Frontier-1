@@ -295,7 +295,7 @@ namespace
                     "WideBoundingTree populated cached per-triangle smooth vertex normals");
 
         bool AllOpaqueCached = true;
-        for (const ShowcaseWorldObjectEntry& Object : Bundle.Objects)
+        for (const ShowcaseWorldAssetEntry& Object : Bundle.Objects)
         {
             if (!Object.GlassShell && Object.LocalSmoothTriangles.empty())
             {
@@ -308,7 +308,7 @@ namespace
 
         // 2. Mutate object position + yaw and rebuild BVH4 without CPU SDF
         const std::size_t FirstTriCount = Bundle.Scene.SceneTree.Primitives.size();
-        for (ShowcaseWorldObjectEntry& Object : Bundle.Objects)
+        for (ShowcaseWorldAssetEntry& Object : Bundle.Objects)
         {
             if (!Object.GlassShell)
             {
@@ -344,11 +344,11 @@ namespace
                 Gpu.SynchronizeSceneResources(Bundle.Scene, nullptr, true);
                 VerifyCheck(Gpu.QueryCachedSdfVoxelCount() > 0u,
                             "GPU SDF compute shader generated dense narrow-band SDF directly from BVH4 without CPU SDF");
-                VerifyCheck(!Gpu.QueryIrradianceLatticeUploaded(),
-                            "Irradiance lattice remains un-uploaded before async RTX bake arrives");
+                VerifyCheck(Gpu.QueryIrradianceLatticeUploaded() && Gpu.QueryDdgiManagedByGpu(),
+                            "GPU DDGI irradiance lattice builds autonomously before async RTX bake arrives");
 
                 Gpu.SynchronizeSceneResources(Bundle.Scene, &Tiered.InspectIrradianceLattice(), false);
-                VerifyCheck(Gpu.QueryIrradianceLatticeUploaded(),
+                VerifyCheck(Gpu.QueryIrradianceLatticeUploaded() && !Gpu.QueryDdgiManagedByGpu(),
                             "Decoupled RTX Irradiance Lattice uploads cleanly when RebuildSdfGrid = false");
 
                 std::vector<std::uint8_t> PixelsGtx;

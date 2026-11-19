@@ -124,7 +124,7 @@ StlExport WriteStl(const ModelPartition& Partition, const std::vector<BodyToken>
         const TessellationOutcome Tessellation = TessellateBody(Partition, Body, Request.Tessellation);
         if (!Tessellation.Refusal.empty()) { Out.Refusal = "STL: tessellation refused (" + Tessellation.Refusal + ")"; return Finish(); }
         Out.Sag = std::max(Out.Sag, Tessellation.Sag);
-        const PolygonComplex& Complex = Tessellation.Complex;
+        const PolygonNetworkStructure& Complex = Tessellation.Complex;
         std::vector<FloatCorner> Corners(Complex.Positions.size());
         for (size_t Index = 0; Index < Complex.Positions.size(); ++Index)
         {

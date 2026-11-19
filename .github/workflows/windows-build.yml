@@ -128,8 +128,8 @@ jobs:
           @'
           Frontier Standalone Workspaces Suite for Windows x64
 
-          Each workspace is compiled as its own independent executable (no cross-workspace bridge yet):
-            - Frontier.exe            : Project Browser (primary launcher)
+          Each workspace is compiled as its own independent executable (plus integrated Component Editor in Frontier.exe):
+            - Frontier.exe            : Project Browser & Component Editor launcher
             - FrontierEditor.exe      : 3D World Editor
             - FrontierUV.exe          : UV Unwrap & UDIM Packing Studio
             - FrontierBaking.exe      : GPU Surface Texture & 3D Volume SDF Baking Studio
@@ -140,6 +140,7 @@ jobs:
             - FrontierFracture.exe    : 6-Solver Fracture & JoltPhysics Simulation Studio
             - FrontierForceField.exe  : 3D Vector Field & Force Simulation Studio
             - FrontierFluid.exe       : Eulerian Pyro, Smoke & Fire Simulation Studio
+            - FrontierSketcher.exe    : Parametric B-Rep CAD & Sketching Studio
 
           Keep CompiledShaders, EngineContent, and Binaries/Win64 beside the executables.
           A Windows Vulkan 1.2+ graphics driver is required.

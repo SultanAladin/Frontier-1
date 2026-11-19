@@ -182,9 +182,9 @@ UnitQuaternion SlerpUnitQuaternion(const UnitQuaternion& Start, const UnitQuater
     });
 }
 
-QuantizedSpatialRecord QuantizeEntityKinematics(const ReplicatedEntityKinematics& Entity) noexcept
+QuantizedSpatialEntry QuantizeEntityKinematics(const ReplicatedActorKinematics& Entity) noexcept
 {
-    QuantizedSpatialRecord Record{};
+    QuantizedSpatialEntry Record{};
     Record.EntityIdentifier = Entity.EntityIdentifier;
 
     const std::array<double, 3u> WorldCoords = {
@@ -220,9 +220,9 @@ QuantizedSpatialRecord QuantizeEntityKinematics(const ReplicatedEntityKinematics
     return Record;
 }
 
-ReplicatedEntityKinematics DequantizeEntityKinematics(const QuantizedSpatialRecord& Quantized) noexcept
+ReplicatedActorKinematics DequantizeEntityKinematics(const QuantizedSpatialEntry& Quantized) noexcept
 {
-    ReplicatedEntityKinematics Entity{};
+    ReplicatedActorKinematics Entity{};
     Entity.EntityIdentifier = Quantized.EntityIdentifier;
 
     const double Span     = static_cast<double>(WorldSectorSpanMeters);
@@ -257,9 +257,9 @@ ReplicatedEntityKinematics DequantizeEntityKinematics(const QuantizedSpatialReco
 
 bool EncodeWorldSnapshotDelta(
     uint32_t                                    BaselineTick,
-    std::span<const ReplicatedEntityKinematics> BaselineEntities,
+    std::span<const ReplicatedActorKinematics> BaselineEntities,
     uint32_t                                    TargetTick,
-    std::span<const ReplicatedEntityKinematics> TargetEntities,
+    std::span<const ReplicatedActorKinematics> TargetEntities,
     std::vector<uint8_t>&                       OutDeltaBytes,
     uint32_t&                                   OutChangedEntityCount)
 {
@@ -271,19 +271,19 @@ bool EncodeWorldSnapshotDelta(
         return false;
     }
 
-    std::vector<QuantizedSpatialRecord> BaselineQuantized;
+    std::vector<QuantizedSpatialEntry> BaselineQuantized;
     BaselineQuantized.reserve(BaselineEntities.size());
-    for (const ReplicatedEntityKinematics& Entity : BaselineEntities)
+    for (const ReplicatedActorKinematics& Entity : BaselineEntities)
     {
         BaselineQuantized.push_back(QuantizeEntityKinematics(Entity));
     }
 
-    std::vector<QuantizedSpatialRecord> ChangedRecords;
-    for (const ReplicatedEntityKinematics& TargetEntity : TargetEntities)
+    std::vector<QuantizedSpatialEntry> ChangedRecords;
+    for (const ReplicatedActorKinematics& TargetEntity : TargetEntities)
     {
-        const QuantizedSpatialRecord Candidate = QuantizeEntityKinematics(TargetEntity);
+        const QuantizedSpatialEntry Candidate = QuantizeEntityKinematics(TargetEntity);
         bool UnchangedInBaseline               = false;
-        for (const QuantizedSpatialRecord& PriorRecord : BaselineQuantized)
+        for (const QuantizedSpatialEntry& PriorRecord : BaselineQuantized)
         {
             if (PriorRecord.EntityIdentifier == Candidate.EntityIdentifier)
             {
@@ -298,10 +298,10 @@ bool EncodeWorldSnapshotDelta(
     }
 
     std::vector<uint32_t> RemovedIdentifiers;
-    for (const QuantizedSpatialRecord& PriorRecord : BaselineQuantized)
+    for (const QuantizedSpatialEntry& PriorRecord : BaselineQuantized)
     {
         bool PresentInTarget = false;
-        for (const ReplicatedEntityKinematics& TargetEntity : TargetEntities)
+        for (const ReplicatedActorKinematics& TargetEntity : TargetEntities)
         {
             if (TargetEntity.EntityIdentifier == PriorRecord.EntityIdentifier)
             {
@@ -326,7 +326,7 @@ bool EncodeWorldSnapshotDelta(
     AppendLittleEndian16(OutDeltaBytes, static_cast<uint16_t>(RemovedIdentifiers.size()));
 
     // Each changed entity occupies exact 35 bytes (4B id + 6B sector + 9B local24 + 4B quat + 6B linVel + 6B angVel)
-    for (const QuantizedSpatialRecord& Record : ChangedRecords)
+    for (const QuantizedSpatialEntry& Record : ChangedRecords)
     {
         AppendLittleEndian32(OutDeltaBytes, Record.EntityIdentifier);
         for (int16_t Sector : Record.SectorIndices)
@@ -358,11 +358,11 @@ bool EncodeWorldSnapshotDelta(
 }
 
 bool DecodeWorldSnapshotDelta(
-    std::span<const ReplicatedEntityKinematics> BaselineEntities,
+    std::span<const ReplicatedActorKinematics> BaselineEntities,
     std::span<const uint8_t>                    DeltaBytes,
     uint32_t&                                   OutBaselineTick,
     uint32_t&                                   OutTargetTick,
-    std::vector<ReplicatedEntityKinematics>&    OutReconstructedEntities)
+    std::vector<ReplicatedActorKinematics>&    OutReconstructedEntities)
 {
     if (DeltaBytes.size() < 16u ||
         DeltaBytes[0] != static_cast<uint8_t>('F') ||
@@ -387,14 +387,14 @@ bool DecodeWorldSnapshotDelta(
     // Seed reconstructed list with quantized-canonicalized baseline entities so host & client bit-align identically
     OutReconstructedEntities.clear();
     OutReconstructedEntities.reserve(BaselineEntities.size() + ChangedCount);
-    for (const ReplicatedEntityKinematics& PriorEntity : BaselineEntities)
+    for (const ReplicatedActorKinematics& PriorEntity : BaselineEntities)
     {
         OutReconstructedEntities.push_back(DequantizeEntityKinematics(QuantizeEntityKinematics(PriorEntity)));
     }
 
     for (uint16_t Index = 0u; Index < ChangedCount; ++Index)
     {
-        QuantizedSpatialRecord Record{};
+        QuantizedSpatialEntry Record{};
         if (!ReadLittleEndian32(DeltaBytes, Cursor, Record.EntityIdentifier))
         {
             return false;
@@ -438,9 +438,9 @@ bool DecodeWorldSnapshotDelta(
             Record.AngularVelocitySigned16[Axis] = static_cast<int16_t>(RawAng);
         }
 
-        const ReplicatedEntityKinematics Reconstructed = DequantizeEntityKinematics(Record);
+        const ReplicatedActorKinematics Reconstructed = DequantizeEntityKinematics(Record);
         bool UpdatedExisting = false;
-        for (ReplicatedEntityKinematics& Existing : OutReconstructedEntities)
+        for (ReplicatedActorKinematics& Existing : OutReconstructedEntities)
         {
             if (Existing.EntityIdentifier == Reconstructed.EntityIdentifier)
             {
@@ -462,7 +462,7 @@ bool DecodeWorldSnapshotDelta(
         {
             return false;
         }
-        std::erase_if(OutReconstructedEntities, [RemovedId](const ReplicatedEntityKinematics& Entry) noexcept
+        std::erase_if(OutReconstructedEntities, [RemovedId](const ReplicatedActorKinematics& Entry) noexcept
         {
             return Entry.EntityIdentifier == RemovedId;
         });
@@ -474,23 +474,23 @@ bool DecodeWorldSnapshotDelta(
     }
 
     std::sort(OutReconstructedEntities.begin(), OutReconstructedEntities.end(),
-        [](const ReplicatedEntityKinematics& Left, const ReplicatedEntityKinematics& Right) noexcept
+        [](const ReplicatedActorKinematics& Left, const ReplicatedActorKinematics& Right) noexcept
         {
             return Left.EntityIdentifier < Right.EntityIdentifier;
         });
     return true;
 }
 
-uint64_t ComputeWorldAlignmentDigest(std::span<const ReplicatedEntityKinematics> Entities) noexcept
+uint64_t ComputeWorldAlignmentDigest(std::span<const ReplicatedActorKinematics> Entities) noexcept
 {
-    std::vector<QuantizedSpatialRecord> SortedRecords;
+    std::vector<QuantizedSpatialEntry> SortedRecords;
     SortedRecords.reserve(Entities.size());
-    for (const ReplicatedEntityKinematics& Entity : Entities)
+    for (const ReplicatedActorKinematics& Entity : Entities)
     {
         SortedRecords.push_back(QuantizeEntityKinematics(Entity));
     }
     std::sort(SortedRecords.begin(), SortedRecords.end(),
-        [](const QuantizedSpatialRecord& Left, const QuantizedSpatialRecord& Right) noexcept
+        [](const QuantizedSpatialEntry& Left, const QuantizedSpatialEntry& Right) noexcept
         {
             return Left.EntityIdentifier < Right.EntityIdentifier;
         });
@@ -509,7 +509,7 @@ uint64_t ComputeWorldAlignmentDigest(std::span<const ReplicatedEntityKinematics>
         MixByte(static_cast<uint8_t>((Word >> 24u) & 0xFFu));
     };
 
-    for (const QuantizedSpatialRecord& Record : SortedRecords)
+    for (const QuantizedSpatialEntry& Record : SortedRecords)
     {
         MixUint32(Record.EntityIdentifier);
         for (int16_t Sector : Record.SectorIndices) MixUint32(static_cast<uint16_t>(Sector));
@@ -546,7 +546,7 @@ void SpatialInterpolationWindow::ClearHistory() noexcept
 
 bool SpatialInterpolationWindow::SampleInterpolatedEntities(
     double                                   RenderTimestampSeconds,
-    std::vector<ReplicatedEntityKinematics>& OutInterpolatedEntities) const
+    std::vector<ReplicatedActorKinematics>& OutInterpolatedEntities) const
 {
     OutInterpolatedEntities.clear();
     if (History.empty())
@@ -577,10 +577,10 @@ bool SpatialInterpolationWindow::SampleInterpolatedEntities(
                                          : 1.0f;
 
     OutInterpolatedEntities.reserve(Newer.Entities.size());
-    for (const ReplicatedEntityKinematics& TargetEntity : Newer.Entities)
+    for (const ReplicatedActorKinematics& TargetEntity : Newer.Entities)
     {
-        const ReplicatedEntityKinematics* PriorMatch = nullptr;
-        for (const ReplicatedEntityKinematics& Candidate : Older.Entities)
+        const ReplicatedActorKinematics* PriorMatch = nullptr;
+        for (const ReplicatedActorKinematics& Candidate : Older.Entities)
         {
             if (Candidate.EntityIdentifier == TargetEntity.EntityIdentifier)
             {
@@ -595,7 +595,7 @@ bool SpatialInterpolationWindow::SampleInterpolatedEntities(
             continue;
         }
 
-        ReplicatedEntityKinematics Blended{};
+        ReplicatedActorKinematics Blended{};
         Blended.EntityIdentifier     = TargetEntity.EntityIdentifier;
         Blended.PositionMeters.X     = PriorMatch->PositionMeters.X + Alpha * (TargetEntity.PositionMeters.X - PriorMatch->PositionMeters.X);
         Blended.PositionMeters.Y     = PriorMatch->PositionMeters.Y + Alpha * (TargetEntity.PositionMeters.Y - PriorMatch->PositionMeters.Y);

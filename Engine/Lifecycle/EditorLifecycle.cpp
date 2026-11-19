@@ -1324,7 +1324,7 @@ OutlinerSlotToken EditorLifecycle::SpawnComponentClassPlacement(
     std::vector<std::pair<uint32_t, OutlinerSlotToken>> CompToOutliner {};
     auto LookupEnclosingOutliner = [&](uint32_t EnclosingIdx) -> OutlinerSlotToken
     {
-        if (EnclosingIdx == ComponentClass::InvalidHierarchyIndex)
+        if (EnclosingIdx == ComponentClass::InvalidNestingIndex)
         {
             return RootOutlinerSlot;
         }
@@ -1357,7 +1357,7 @@ OutlinerSlotToken EditorLifecycle::SpawnComponentClassPlacement(
     };
 
     const float WorldScale = 0.38f;
-    ClassDef.Storage.WalkSpatialHierarchy(
+    ClassDef.Storage.WalkSpatialNesting(
         [&](const ComponentClass::ComponentInstanceHeader& Hdr)
         {
             if (Hdr.Token == OriginTok)
@@ -2058,7 +2058,7 @@ bool EditorLifecycle::UpdateForceFieldOverlayCache(
         {
             const uint32_t OutlinerId = (I < LiveSources.size()) ? LiveSources[I].OutlinerTokenId : static_cast<uint32_t>(I + 1u);
             const bool     IsOrbit    = (I < LiveSources.size()) &&
-                                        (LiveSources[I].Motion.Topology == SimulationSpace::ForceFields::MotionPathTopology::HelicalOrbit);
+                                        (LiveSources[I].Motion.Topology == SimulationSpace::ForceFields::MotionPathGeometry::HelicalOrbit);
             SourceTokens.push_back(OutlinerId);
             WaypointOffsets.push_back(PackedSources[I].WaypointStartIdx);
             WaypointCounts.push_back(PackedSources[I].WaypointCount);
@@ -2066,7 +2066,7 @@ bool EditorLifecycle::UpdateForceFieldOverlayCache(
         }
     }
 
-    Editor::Simulation::OverlayFrameRequest Req{};
+    Editor::Simulation::OverlayRenderRequest Req{};
     Req.PaneIndex              = 0u;
     Req.WidthPx                = WidthPx;
     Req.HeightPx               = HeightPx;
@@ -2177,7 +2177,7 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
         bool ForceUpdated = false;
         const bool ForceActive = UpdateForceFieldOverlayCache(LastTargetWidthPx, LastTargetHeightPx, ForceUpdated);
         const auto ForceEnd = std::chrono::steady_clock::now();
-        LatestFrameTiming.ForceOverlayMs = static_cast<float>(
+        LatestViewportTiming.ForceOverlayMs = static_cast<float>(
             std::chrono::duration<double, std::milli>(ForceEnd - ForceStart).count());
 
         const Rectangle2D CanvasBounds = Panes->Viewport.QueryLastCanvasPaneBounds();
@@ -2193,7 +2193,7 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
             PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, LastTargetHeightPx) - 1u));
         }
 
-        GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportCompositeRequest CompReq {};
+        GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayRequest CompReq {};
         CompReq.WorldSourceView      = LastWorldImageView;
         CompReq.TargetWidthPx        = LastTargetWidthPx;
         CompReq.TargetHeightPx       = LastTargetHeightPx;
@@ -2209,11 +2209,11 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
         CompReq.PickCursorX          = PickX;
         CompReq.PickCursorY          = PickY;
 
-        GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportCompositeResult CompOut {};
+        GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayResult CompOut {};
         const auto GizmoStart = std::chrono::steady_clock::now();
         const bool CompOk = WorldGizmoRasterizer->CompositeOntoGpuViewport(CompReq, CompOut);
         const auto GizmoEnd = std::chrono::steady_clock::now();
-        LatestFrameTiming.GizmoOverlayMs = static_cast<float>(
+        LatestViewportTiming.GizmoOverlayMs = static_cast<float>(
             std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
 
         if (CompOk && CompOut.ColorImageView != VK_NULL_HANDLE)
@@ -2241,7 +2241,7 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
     const auto ForceStart = std::chrono::steady_clock::now();
     CompositeForceFieldOverlayOntoBuffer(ViewportRgba, CachedWorldWidthPx, CachedWorldHeightPx);
     const auto ForceEnd = std::chrono::steady_clock::now();
-    LatestFrameTiming.ForceOverlayMs = static_cast<float>(
+    LatestViewportTiming.ForceOverlayMs = static_cast<float>(
         std::chrono::duration<double, std::milli>(ForceEnd - ForceStart).count());
 
     const auto GizmoStart = std::chrono::steady_clock::now();
@@ -2255,7 +2255,7 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
             WorldTransformGizmo);
     }
     const auto GizmoEnd = std::chrono::steady_clock::now();
-    LatestFrameTiming.GizmoOverlayMs = static_cast<float>(
+    LatestViewportTiming.GizmoOverlayMs = static_cast<float>(
         std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
     Panes->Viewport.AssignCanvasRasterImage(ViewportRgba.data(), CachedWorldWidthPx, CachedWorldHeightPx);
 }
@@ -2533,9 +2533,9 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
             LastTargetWidthPx  = TargetW;
             LastTargetHeightPx = TargetH;
 
-            const float SavedTickMs = LatestFrameTiming.EditorTickMs;
-            LatestFrameTiming = GpuWorldRenderer->QueryLastTimingBreakdown();
-            LatestFrameTiming.EditorTickMs = SavedTickMs;
+            const float SavedTickMs = LatestViewportTiming.EditorTickMs;
+            LatestViewportTiming = GpuWorldRenderer->QueryLastTimingBreakdown();
+            LatestViewportTiming.EditorTickMs = SavedTickMs;
 
             if (RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DeterministicPathTrace && !CameraInteractiveDrag)
             {
@@ -2547,7 +2547,7 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
             bool ForceUpdated = false;
             const bool ForceActive = UpdateForceFieldOverlayCache(TargetW, TargetH, ForceUpdated);
             const auto ForceEnd = std::chrono::steady_clock::now();
-            LatestFrameTiming.ForceOverlayMs = static_cast<float>(
+            LatestViewportTiming.ForceOverlayMs = static_cast<float>(
                 std::chrono::duration<double, std::milli>(ForceEnd - ForceStart).count());
 
             SynchronizeShowcaseGizmoAnchor();
@@ -2563,7 +2563,7 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
                 PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, TargetH) - 1u));
             }
 
-            GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportCompositeRequest CompReq {};
+            GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayRequest CompReq {};
             CompReq.WorldSourceView      = WorldView;
             CompReq.TargetWidthPx        = TargetW;
             CompReq.TargetHeightPx       = TargetH;
@@ -2579,11 +2579,11 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
             CompReq.PickCursorX          = PickX;
             CompReq.PickCursorY          = PickY;
 
-            GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportCompositeResult CompOut {};
+            GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayResult CompOut {};
             const auto GizmoStart = std::chrono::steady_clock::now();
             const bool CompOk = WorldGizmoRasterizer->CompositeOntoGpuViewport(CompReq, CompOut);
             const auto GizmoEnd = std::chrono::steady_clock::now();
-            LatestFrameTiming.GizmoOverlayMs = static_cast<float>(
+            LatestViewportTiming.GizmoOverlayMs = static_cast<float>(
                 std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
 
             if (CompOk && CompOut.ColorImageView != VK_NULL_HANDLE)
@@ -2610,9 +2610,9 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
             CleanWorldRgba);
         if (RenderedOnGpu)
         {
-            const float SavedTickMs = LatestFrameTiming.EditorTickMs;
-            LatestFrameTiming = GpuWorldRenderer->QueryLastTimingBreakdown();
-            LatestFrameTiming.EditorTickMs = SavedTickMs;
+            const float SavedTickMs = LatestViewportTiming.EditorTickMs;
+            LatestViewportTiming = GpuWorldRenderer->QueryLastTimingBreakdown();
+            LatestViewportTiming.EditorTickMs = SavedTickMs;
         }
         if (RenderedOnGpu && RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DeterministicPathTrace && !CameraInteractiveDrag)
         {
@@ -2647,7 +2647,7 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         const auto ForceStart = std::chrono::steady_clock::now();
         CompositeForceFieldOverlayOntoBuffer(CleanWorldRgba, OutWidthPx, OutHeightPx);
         const auto ForceEnd = std::chrono::steady_clock::now();
-        LatestFrameTiming.ForceOverlayMs = static_cast<float>(
+        LatestViewportTiming.ForceOverlayMs = static_cast<float>(
             std::chrono::duration<double, std::milli>(ForceEnd - ForceStart).count());
 
         SynchronizeShowcaseGizmoAnchor();
@@ -2662,7 +2662,7 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
                 WorldTransformGizmo);
         }
         const auto GizmoEnd = std::chrono::steady_clock::now();
-        LatestFrameTiming.GizmoOverlayMs = static_cast<float>(
+        LatestViewportTiming.GizmoOverlayMs = static_cast<float>(
             std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
 
         Panes->Viewport.AssignCanvasRasterImage(CleanWorldRgba.data(), OutWidthPx, OutHeightPx);
@@ -2728,10 +2728,10 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
     }
 
     const auto TickStart = std::chrono::steady_clock::now();
-    LatestFrameTiming.WorldDispatched = false;
-    LatestFrameTiming.ForceOverlayMs  = 0.0f;
-    LatestFrameTiming.GizmoOverlayMs  = 0.0f;
-    LatestFrameTiming.SceneSyncGpuMs  = 0.0f;
+    LatestViewportTiming.WorldDispatched = false;
+    LatestViewportTiming.ForceOverlayMs  = 0.0f;
+    LatestViewportTiming.GizmoOverlayMs  = 0.0f;
+    LatestViewportTiming.SceneSyncGpuMs  = 0.0f;
 
     const double MaxStep  = StartupConfig.MaximumStep > 0.0 ? StartupConfig.MaximumStep : 0.100;
     const double SafeStep = (std::isfinite(Δt) && Δt > 0.0) ? std::min(Δt, MaxStep) : 0.0;
@@ -2968,7 +2968,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             const bool ProgressivePathTraceTick =
                 GpuReady && DisplayCfg.RenderEngineIndex == 4u && PathTraceAccumIndex < 64u && !CameraInteractiveDrag;
             const auto TickPrepEnd = std::chrono::steady_clock::now();
-            LatestFrameTiming.EditorTickMs = static_cast<float>(
+            LatestViewportTiming.EditorTickMs = static_cast<float>(
                 std::chrono::duration<double, std::milli>(TickPrepEnd - TickStart).count());
             if (InteractionWorldRefresh || SceneMutated || DisplayChanged || LatticeUpdated || ProgressivePathTraceTick)
             {
@@ -2990,38 +2990,38 @@ void EditorLifecycle::RecordFramePresentationTiming(
     float TotalFrameMs) noexcept
 {
     ++TimingFrameCounter;
-    LatestFrameTiming.FrameIndex         = TimingFrameCounter;
-    LatestFrameTiming.DesktopPollAndUiMs = DesktopPollAndUiMs;
-    LatestFrameTiming.SwapchainPresentMs = SwapchainPresentMs;
-    LatestFrameTiming.TotalFrameMs       = TotalFrameMs;
+    LatestViewportTiming.FrameIndex         = TimingFrameCounter;
+    LatestViewportTiming.DesktopPollAndUiMs = DesktopPollAndUiMs;
+    LatestViewportTiming.SwapchainPresentMs = SwapchainPresentMs;
+    LatestViewportTiming.TotalFrameMs       = TotalFrameMs;
 
-    if (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady() && LatestFrameTiming.RenderWidthPx == 0u)
+    if (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady() && LatestViewportTiming.RenderWidthPx == 0u)
     {
-        LatestFrameTiming.HardwareGpuActive = GpuWorldRenderer->QueryHardwareGpuActive();
-        LatestFrameTiming.AdapterName       = std::string(GpuWorldRenderer->QueryAdapterTitle());
+        LatestViewportTiming.HardwareGpuActive = GpuWorldRenderer->QueryHardwareGpuActive();
+        LatestViewportTiming.AdapterName       = std::string(GpuWorldRenderer->QueryAdapterTitle());
     }
 
     if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
     {
-        Panes->Viewport.ConfigureFrameTimingBreakdown(LatestFrameTiming);
+        Panes->Viewport.ConfigureViewportTimingBreakdown(LatestViewportTiming);
     }
 
     if (!TimingLogInitialized)
     {
         InitializeTimingLogFile(
-            LatestFrameTiming.TimingLogPath,
-            LatestFrameTiming.AdapterName,
-            LatestFrameTiming.HardwareGpuActive);
+            LatestViewportTiming.TimingLogPath,
+            LatestViewportTiming.AdapterName,
+            LatestViewportTiming.HardwareGpuActive);
         TimingLogInitialized = true;
     }
 
     const bool LogStartup = (TimingFrameCounter <= 5ull);
     const bool LogPeriodic = (TimingFrameCounter % 60ull) == 0ull;
-    const bool LogSpike = (TotalFrameMs > 30.0f) || (LatestFrameTiming.SceneSyncGpuMs > 10.0f);
+    const bool LogSpike = (TotalFrameMs > 30.0f) || (LatestViewportTiming.SceneSyncGpuMs > 10.0f);
     if (LogStartup || LogPeriodic || LogSpike)
     {
         const char* Tag = LogStartup ? "INIT" : (LogSpike ? "SPIKE" : "SAMPLE");
-        AppendTimingLogLine(LatestFrameTiming.TimingLogPath, LatestFrameTiming, Tag);
+        AppendTimingLogLine(LatestViewportTiming.TimingLogPath, LatestViewportTiming, Tag);
     }
 }
 

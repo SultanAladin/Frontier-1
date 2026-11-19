@@ -39,7 +39,7 @@ struct NetworkSpaceConfiguration
     std::string                                               StunServerHostname    = "stun.frontier.invalid";                         // [-] - Public STUN endpoint host
     uint16_t                                                  StunServerPort        = 3478u;                                           // [-] - Public STUN UDP port
     bool                                                      AllowEncryptedRelay   = true;                                            // [-] - Permit ChaCha20-Poly1305 relay
-    std::vector<NetworkingSpace::ReplicationScheduleContract> ReplicationContracts  {};                                                // [-] - Binary replication contracts
+    std::vector<NetworkingSpace::ReplicationScheduleSpec> ReplicationContracts  {};                                                // [-] - Binary replication contracts
 };
 
 //------------------------------------------------------------------------------------------------------------------------

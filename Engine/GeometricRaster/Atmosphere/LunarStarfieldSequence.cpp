@@ -5,7 +5,7 @@
 
 #include "Engine/GeometricRaster/Atmosphere/LunarStarfieldSequence.h"
 #include "Engine/GeometricRaster/Atmosphere/AtmosphericSkySequence.h"
-#include "Engine/GeometricRaster/Atmosphere/J2000BrightStarCatalog.h"
+#include "Engine/GeometricRaster/Atmosphere/J2000BrightStarRepository.h"
 
 #if __has_include(<stb_image.h>)
 #define STB_IMAGE_STATIC
@@ -1044,7 +1044,7 @@ struct StellarCubeSpatialIndex
     return Index;
 }
 
-[[nodiscard]] std::vector<StarfieldCatalogEntry> BuildJ2000BrightStars()
+[[nodiscard]] std::vector<StarfieldRepositoryEntry> BuildJ2000BrightStars()
 {
     static constexpr std::array<const char*, 20u> FamousNames {{
         "Sirius", "Canopus", "Arcturus", "RigilKentaurus", "Vega",
@@ -1052,7 +1052,7 @@ struct StellarCubeSpatialIndex
         "Hadar", "Altair", "Acrux", "Aldebaran", "Antares",
         "Spica", "Pollux", "Fomalhaut", "Deneb", "Mimosa",
     }};
-    std::vector<StarfieldCatalogEntry> Catalog;
+    std::vector<StarfieldRepositoryEntry> Catalog;
     Catalog.reserve(J2000BrightStarCount);
     for (std::size_t I = 0u; I < J2000BrightStarCount; ++I)
     {
@@ -1238,9 +1238,9 @@ const std::vector<uint8_t>& LunarStarfieldSequence::QueryLunarSurfaceAtlasRgba8(
     return CachedAtlas;
 }
 
-std::span<const StarfieldCatalogEntry> LunarStarfieldSequence::QueryJ2000BrightStarCatalog() noexcept
+std::span<const StarfieldRepositoryEntry> LunarStarfieldSequence::QueryJ2000BrightStarRepository() noexcept
 {
-    static const std::vector<StarfieldCatalogEntry> Catalog = BuildJ2000BrightStars();
+    static const std::vector<StarfieldRepositoryEntry> Catalog = BuildJ2000BrightStars();
     return Catalog;
 }
 
@@ -1289,7 +1289,9 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateZodiacalLight(
     const float Width       = 20.0f + 0.10f * LongitudeDeg;
     const float SmoothLat   = std::sqrt(LatitudeDeg * LatitudeDeg + 16.0f) - 4.0f;
     const float CosLat      = std::sqrt(std::max(0.0f, 1.0f - LatitudeSin * LatitudeSin));
-    const float S10         = PoleS10 + (EclipticS10 - PoleS10) * std::exp(-SmoothLat / Width) * CosLat + Gegenschein;
+    const float GlareT      = std::clamp((LongitudeDeg - 10.0f) / 12.0f, 0.0f, 1.0f);
+    const float GlareFade   = GlareT * GlareT * (3.0f - 2.0f * GlareT);
+    const float S10         = PoleS10 + (EclipticS10 - PoleS10) * std::exp(-SmoothLat / Width) * CosLat * GlareFade + Gegenschein;
     return { S10, 0.93f * S10, 0.80f * S10 };
 }
 
@@ -1383,7 +1385,7 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
     const StarfieldConfiguration&         Stars,
     float                                 SimulationSeconds,
     const AtmosphericMediumConfiguration* AtmosphereMedium,
-    std::span<const StarfieldCatalogEntry> ExtraCatalogStars,
+    std::span<const StarfieldRepositoryEntry> ExtraRepositoryStars,
     float                                 PixelAngularRad) noexcept
 {
     Mathematics::LinearRGB Out { 0.0f, 0.0f, 0.0f };
@@ -1787,9 +1789,9 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
             }
 
             // 2c. Optional Caller-Supplied Horizon Star Catalog Entries
-            for (std::size_t I = 0u; I < ExtraCatalogStars.size(); ++I)
+            for (std::size_t I = 0u; I < ExtraRepositoryStars.size(); ++I)
             {
-                const auto& S = ExtraCatalogStars[I];
+                const auto& S = ExtraRepositoryStars[I];
                 if (S.MagnitudeV > MagLimit)
                 {
                     continue;

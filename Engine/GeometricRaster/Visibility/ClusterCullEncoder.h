@@ -70,15 +70,15 @@ class ClusterCullEncoder
 public:
     // Phase 1: Select continuous LOD cut, cull against frustum + normal cone + reprojected previous-frame Hi-Z, and split HW vs SW
     [[nodiscard]] static TwoPhaseCullReport EncodePhaseOneVisibility(
-        const PerspectiveCameraFrame&         CurrentCamera,
+        const PerspectiveCameraBasis&         CurrentCamera,
         std::span<const RigidClusterInstance> Instances,
         const DepthPyramidSequence*           PreviousFrameHiZ = nullptr,
-        const PerspectiveCameraFrame*         PreviousCamera   = nullptr,
+        const PerspectiveCameraBasis*         PreviousCamera   = nullptr,
         const ClusterCullSettings&            Settings         = {});
 
     // Phase 2: Re-test PhaseOneDeferredQueue against freshly built current-frame Hi-Z to rescue newly disoccluded clusters with zero popping!
     static void ResolvePhaseTwoDisocclusions(
-        const PerspectiveCameraFrame&         Camera,
+        const PerspectiveCameraBasis&         Camera,
         std::span<const RigidClusterInstance> Instances,
         const DepthPyramidSequence&           CurrentFrameHiZ,
         TwoPhaseCullReport&                   InOutReport,

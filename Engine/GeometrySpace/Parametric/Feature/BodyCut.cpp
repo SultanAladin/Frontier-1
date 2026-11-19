@@ -32,7 +32,7 @@ namespace
     [[nodiscard]] ProfileSegment StraightSegment(Vector2 Start, Vector2 End, const std::string& Name)
     {
         ProfileSegment Segment;
-        Segment.Kind  = ProfileSegmentKind::Line;
+        Segment.Kind  = ProfileSegmentCategory::Line;
         Segment.Start = Start;
         Segment.End   = End;
         Segment.Name  = Name;
@@ -44,7 +44,7 @@ namespace
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-double MeasureCutReach(const ModelPartition& Partition, BodyToken Body, const OrthonormalFrame& Plane)
+double MeasureCutReach(const ModelPartition& Partition, BodyToken Body, const OrthonormalBasis& Plane)
 {
     TessellationSettings Settings;
     Settings.SagRatio        = 1.0e-2;
@@ -111,7 +111,7 @@ SketchProfile BuildSketchCutProfile(const SketchModel& Sketch, double Reach)
         std::string Refusal;
         ProfileSegment Segment = ResolveSketchCurveSegment(Sketch, Index, Join, Refusal);
         if (!Refusal.empty()) { SketchProfile Profile; Profile.Refusal = "Cut: " + Refusal; return Profile; }
-        if (Segment.Kind == ProfileSegmentKind::Circle) { SketchProfile Profile; Profile.Refusal = "Cut: " + Closed.Refusal; return Profile; }
+        if (Segment.Kind == ProfileSegmentCategory::Circle) { SketchProfile Profile; Profile.Refusal = "Cut: " + Closed.Refusal; return Profile; }
         Segments.push_back(std::move(Segment));
     }
     if (Segments.empty()) { SketchProfile Profile; Profile.Refusal = "Cut: the sketch has no cutting curves"; return Profile; }
@@ -140,14 +140,14 @@ SketchProfile BuildSketchCutProfile(const SketchModel& Sketch, double Reach)
     return CloseCutChain(std::move(Chain), Reach);
 }
 
-std::optional<ProfileSegment> ProjectCutCurve(const NurbsCurve& Curve, const OrthonormalFrame& Plane, const std::string& Name)
+std::optional<ProfileSegment> ProjectCutCurve(const NurbsCurve& Curve, const OrthonormalBasis& Plane, const std::string& Name)
 {
     if (!Curve.Definition) return std::nullopt;
     const NurbsCurveDefinition& Definition = *Curve.Definition;
     if (Definition.Period != 0.0) return std::nullopt;
     for (double Weight : Definition.Weights) if (std::fabs(Weight - 1.0) > 1.0e-12) return std::nullopt;
     ProfileSegment Segment;
-    Segment.Kind          = ProfileSegmentKind::Spline;
+    Segment.Kind          = ProfileSegmentCategory::Spline;
     Segment.Name          = Name;
     Segment.Spline.Degree = Definition.Degree;
     Segment.Spline.Knots  = Definition.Knots;
@@ -161,7 +161,7 @@ std::optional<ProfileSegment> ProjectCutCurve(const NurbsCurve& Curve, const Ort
     return Segment;
 }
 
-static BodyCutOutcome CutBodyUntraced(ModelPartition& Partition, BodyToken Body, const SketchProfile& Profile, const OrthonormalFrame& Plane, double Reach)
+static BodyCutOutcome CutBodyUntraced(ModelPartition& Partition, BodyToken Body, const SketchProfile& Profile, const OrthonormalBasis& Plane, double Reach)
 {
     BodyCutOutcome Outcome;
     Outcome.Profile        = Profile;
@@ -170,7 +170,7 @@ static BodyCutOutcome CutBodyUntraced(ModelPartition& Partition, BodyToken Body,
     if (!Profile.Refusal.empty()) { Outcome.Refusal = Profile.Refusal.rfind("Cut:", 0) == 0 ? Profile.Refusal : "Cut: " + Profile.Refusal; return Outcome; }
 
     // ① Tool: the profile swept from −2·Reach to +2·Reach along the plane normal.
-    OrthonormalFrame Floor = Plane;
+    OrthonormalBasis Floor = Plane;
     Floor.Origin = Plane.Origin - Plane.ZAxis * (2.0 * Outcome.Reach);
     Outcome.Tool = ExtrudeProfile(Partition, Profile, Floor, 4.0 * Outcome.Reach);
     if (!Outcome.Tool.Refusal.empty()) { Outcome.Refusal = "Cut: " + Outcome.Tool.Refusal; return Outcome; }
@@ -201,7 +201,7 @@ static BodyCutOutcome CutBodyUntraced(ModelPartition& Partition, BodyToken Body,
 
 // 📝 Traced entry (Diagnostics/OperationTrace.h): the request on entry, the outcome before the duration line.
 
-BodyCutOutcome CutBody(ModelPartition& Partition, BodyToken Body, const SketchProfile& Profile, const OrthonormalFrame& Plane, double Reach)
+BodyCutOutcome CutBody(ModelPartition& Partition, BodyToken Body, const SketchProfile& Profile, const OrthonormalBasis& Plane, double Reach)
 {
     FRONTIER_TRACE_SCOPE("Cut", "CutBody · body " + std::to_string(Body.Slot) + " · " + std::to_string(Profile.Loops.size()) + " loop(s)");
     BodyCutOutcome Outcome = CutBodyUntraced(Partition, Body, Profile, Plane, Reach);

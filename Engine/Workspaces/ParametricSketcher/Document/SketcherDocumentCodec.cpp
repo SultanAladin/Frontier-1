@@ -41,7 +41,7 @@ constexpr int64_t FormatVersion = 1;                                            
 
 [[nodiscard]] toml::array EncodeVector(const Vector3& Value) { return toml::array{ Value.X, Value.Y, Value.Z }; }
 
-[[nodiscard]] toml::table EncodeValue(const FeatureValue& Value)
+[[nodiscard]] toml::table EncodeValue(const FeatureScalar& Value)
 {
     toml::table Table{ { "Literal", Value.Literal } };
     if (!Value.Parameter.empty())
@@ -58,10 +58,10 @@ constexpr int64_t FormatVersion = 1;                                            
     return Table;
 }
 
-[[nodiscard]] toml::array EncodeReferences(const std::vector<TopologyReference>& References)
+[[nodiscard]] toml::array EncodeReferences(const std::vector<ConnectivityReference>& References)
 {
     toml::array Entries;
-    for (const TopologyReference& Reference : References)
+    for (const ConnectivityReference& Reference : References)
     {
         toml::table Entry{ { "Kind", static_cast<int64_t>(Reference.Kind) }, { "Name", Reference.Name } };
         if (Reference.Signature.CapturedCondition)
@@ -86,7 +86,7 @@ constexpr int64_t FormatVersion = 1;                                            
         toml::table Entry{ { "Kind", static_cast<int64_t>(Curve.Kind) }, { "Identifier", Curve.Identifier },
                            { "Start", Curve.Start }, { "End", Curve.End }, { "Centre", Curve.Centre },
                            { "Radius", Curve.Radius }, { "Construction", Curve.Construction } };
-        if (Curve.Kind == SketchCurveKind::Spline)
+        if (Curve.Kind == SketchCurveCategory::Spline)
         {
             toml::array Indices;
             for (int Index : Curve.Points) Indices.push_back(Index);
@@ -135,7 +135,7 @@ constexpr int64_t FormatVersion = 1;                                            
     if (Step.ReverseNormals) Table.insert("ReverseNormals", true);
     switch (Step.Kind)
     {
-    case FeatureStepKind::Sketch:
+    case FeatureStepCategory::Sketch:
         Table.insert("PlaneOrigin", EncodeVector(Step.Plane.Origin));
         Table.insert("PlaneXAxis", EncodeVector(Step.Plane.XAxis));
         Table.insert("PlaneYAxis", EncodeVector(Step.Plane.YAxis));
@@ -144,27 +144,27 @@ constexpr int64_t FormatVersion = 1;                                            
         if (!Step.FillCondition) Table.insert("Fill", false);                                // Absent: filled (older files)
         Table.insert("Sketch", EncodeSketch(Step.Sketch));
         break;
-    case FeatureStepKind::Extrude:
-    case FeatureStepKind::Revolve:
+    case FeatureStepCategory::Extrude:
+    case FeatureStepCategory::Revolve:
         Table.insert("Profile", Step.Profile);
         Table.insert("Extent", EncodeValue(Step.Extent));
         if (Step.Start.Literal != 0.0 || !Step.Start.Parameter.empty()) Table.insert("Start", EncodeValue(Step.Start));   // Absent: 0 (older files)
         Table.insert("Combination", static_cast<int64_t>(Step.Combination));
         Table.insert("AxisIdentifier", Step.AxisIdentifier);
         Table.insert("Angle", EncodeValue(Step.Angle));
-        if (Step.Kind == FeatureStepKind::Revolve && Step.AxisIdentifier < 0)              // Axis without a line (absent in older files)
+        if (Step.Kind == FeatureStepCategory::Revolve && Step.AxisIdentifier < 0)              // Axis without a line (absent in older files)
         {
             Table.insert("AxisOrigin", toml::array{ Step.AxisOrigin.X, Step.AxisOrigin.Y });
             Table.insert("AxisDirection", toml::array{ Step.AxisDirection.X, Step.AxisDirection.Y });
         }
         break;
-    case FeatureStepKind::Evolution:
+    case FeatureStepCategory::Evolution:
         // The profile sketch and the path (a one-curve sketch or a SpaceCurve).
         Table.insert("Profile", Step.Profile);
         Table.insert("Path", Step.Path);
         Table.insert("Combination", static_cast<int64_t>(Step.Combination));
         break;
-    case FeatureStepKind::Blend:
+    case FeatureStepCategory::Blend:
         Table.insert("Shape", static_cast<int64_t>(Step.Shape));
         Table.insert("Size", EncodeValue(Step.Size));
         if (Step.EndSize)
@@ -175,16 +175,16 @@ constexpr int64_t FormatVersion = 1;                                            
         else if (!Step.AnchorSizes.empty())
         {
             toml::array Sizes;                                                               // Per-vertex sizes (blend handles), one per anchor
-            for (const FeatureValue& Size : Step.AnchorSizes) Sizes.push_back(EncodeValue(Size));
+            for (const FeatureScalar& Size : Step.AnchorSizes) Sizes.push_back(EncodeValue(Size));
             Table.insert("SizeAnchors", EncodeReferences(Step.SizeAnchors));
             Table.insert("AnchorSizes", std::move(Sizes));
         }
         break;
-    case FeatureStepKind::FaceOperation:
+    case FeatureStepCategory::FaceOperation:
         Table.insert("Operation", static_cast<int64_t>(Step.Operation));
         Table.insert("Amount", EncodeValue(Step.Amount));
-        if (Step.Operation == FaceOperationKind::Inset) Table.insert("Extent", EncodeValue(Step.Extent));
-        if (Step.Operation == FaceOperationKind::Reshape)
+        if (Step.Operation == FaceOperationCategory::Inset) Table.insert("Extent", EncodeValue(Step.Extent));
+        if (Step.Operation == FaceOperationCategory::Reshape)
         {
             // Reshape: the map carrying the picked vertices / edge ends (x′ = X·x + Y·y + Z·z + Shift).
             Table.insert("PlacementX", EncodeVector(Step.Placement.ColumnX));
@@ -199,7 +199,7 @@ constexpr int64_t FormatVersion = 1;                                            
             Table.insert("Points", std::move(Points));
         }
         break;
-    case FeatureStepKind::SpaceCurve:
+    case FeatureStepCategory::SpaceCurve:
     {
         toml::array Points;
         for (const Vector3& Point : Step.Points) Points.push_back(EncodeVector(Point));
@@ -225,8 +225,8 @@ constexpr int64_t FormatVersion = 1;                                            
         }
         break;
     }
-    case FeatureStepKind::Loft:
-    case FeatureStepKind::Network:
+    case FeatureStepCategory::Loft:
+    case FeatureStepCategory::Network:
     {
         toml::array Sections;
         for (const std::string& Section : Step.Sections) Sections.push_back(Section);
@@ -235,13 +235,13 @@ constexpr int64_t FormatVersion = 1;                                            
         if (Step.ClosedCondition) Table.insert("Closed", true);                            // Solid loft (written only when set: older bytes stay)
         break;
     }
-    case FeatureStepKind::Mirror:
+    case FeatureStepCategory::Mirror:
         Table.insert("PlaneOrigin", EncodeVector(Step.Plane.Origin));
         Table.insert("PlaneZAxis", EncodeVector(Step.Plane.ZAxis));
         break;
-    case FeatureStepKind::Close:
+    case FeatureStepCategory::Close:
         break;
-    case FeatureStepKind::Combine:
+    case FeatureStepCategory::Combine:
         Table.insert("Combination", static_cast<int64_t>(Step.Combination));
         Table.insert("Tool", Step.Tool);
         if (Step.Offset.Literal != 0.0 || !Step.Offset.Parameter.empty() || !Step.Offset.SecondParameter.empty() || Step.Offset.Offset != 0.0)
@@ -250,7 +250,7 @@ constexpr int64_t FormatVersion = 1;                                            
             Table.insert("OffsetAxis", EncodeVector(Step.OffsetAxis));
         }
         break;
-    case FeatureStepKind::Cut:
+    case FeatureStepCategory::Cut:
         // A sketch cutter (Profile), or a SpaceCurve projected along PlaneZAxis (Sections).
         if (!Step.Profile.empty()) Table.insert("Profile", Step.Profile);
         if (!Step.Sections.empty())
@@ -263,9 +263,9 @@ constexpr int64_t FormatVersion = 1;                                            
             Table.insert("PlaneZAxis", EncodeVector(Step.Plane.ZAxis));
         }
         break;
-    case FeatureStepKind::Remove:
+    case FeatureStepCategory::Remove:
         break;
-    case FeatureStepKind::Joint:
+    case FeatureStepCategory::Joint:
     {
         // Target moves onto Tool; References = moving, fixed joint origin; every value may bind a parameter.
         const FeatureJoint& Joint = Step.Joint;
@@ -282,8 +282,8 @@ constexpr int64_t FormatVersion = 1;                                            
         if (Joint.SlideRange) Table.insert("JointSlideRange", toml::array{ Joint.SlideRange->Low, Joint.SlideRange->High });
         break;
     }
-    case FeatureStepKind::Transform:
-    case FeatureStepKind::Duplicate:
+    case FeatureStepCategory::Transform:
+    case FeatureStepCategory::Duplicate:
         // The affine map as its three linear columns and the shift (x′ = X·x + Y·y + Z·z + Shift).
         Table.insert("PlacementX", EncodeVector(Step.Placement.ColumnX));
         Table.insert("PlacementY", EncodeVector(Step.Placement.ColumnY));
@@ -296,20 +296,20 @@ constexpr int64_t FormatVersion = 1;                                            
             Table.insert("OffsetAxis", EncodeVector(Step.OffsetAxis));
         }
         break;
-    case FeatureStepKind::Flip:
+    case FeatureStepCategory::Flip:
         // Only the body key (Target, below): the sheet is turned over as it stands.
         break;
-    case FeatureStepKind::Imprint:
+    case FeatureStepCategory::Imprint:
         // The outline sketch and the side the tool stands on (Extent's sign; the body key is Target, below).
         Table.insert("Profile", Step.Profile);
         Table.insert("Extent", EncodeValue(Step.Extent));
         break;
-    case FeatureStepKind::Import:
+    case FeatureStepCategory::Import:
         // The kernel's canonical STEP text of the body (millimetres) and the model unit it is read at.
         Table.insert("Exchange", Step.Exchange);
         Table.insert("ExchangeUnit", Step.ExchangeUnit);
         break;
-    case FeatureStepKind::Pipe:
+    case FeatureStepCategory::Pipe:
         // The path: a sketch (Profile) or a SpaceCurve (Sections); the radius is Size.
         if (!Step.Profile.empty()) Table.insert("Profile", Step.Profile);
         if (!Step.Sections.empty())
@@ -338,10 +338,10 @@ constexpr int64_t FormatVersion = 1;                                            
     return { (*Array)[0].value_or(Fallback.X), (*Array)[1].value_or(Fallback.Y), (*Array)[2].value_or(Fallback.Z) };
 }
 
-[[nodiscard]] FeatureValue DecodeValue(const toml::node_view<const toml::node> View, FeatureValue Fallback = {})
+[[nodiscard]] FeatureScalar DecodeValue(const toml::node_view<const toml::node> View, FeatureScalar Fallback = {})
 {
     if (!View.is_table()) return Fallback;
-    FeatureValue Value;
+    FeatureScalar Value;
     Value.Literal         = View["Literal"].value_or(0.0);
     Value.Parameter       = View["Parameter"].value_or(std::string{});
     Value.Factor          = View["Factor"].value_or(1.0);
@@ -351,16 +351,16 @@ constexpr int64_t FormatVersion = 1;                                            
     return Value;
 }
 
-[[nodiscard]] std::vector<TopologyReference> DecodeReferences(const toml::node_view<const toml::node> View)
+[[nodiscard]] std::vector<ConnectivityReference> DecodeReferences(const toml::node_view<const toml::node> View)
 {
-    std::vector<TopologyReference> References;
+    std::vector<ConnectivityReference> References;
     const toml::array* Entries = View.as_array();
     if (!Entries) return References;
     for (const toml::node& Entry : *Entries)
     {
         const toml::node_view<const toml::node> Reference{ Entry };
-        TopologyReference Decoded;
-        Decoded.Kind = static_cast<ReferenceKind>(Reference["Kind"].value_or(int64_t{ 1 }));
+        ConnectivityReference Decoded;
+        Decoded.Kind = static_cast<ReferenceCategory>(Reference["Kind"].value_or(int64_t{ 1 }));
         Decoded.Name = Reference["Name"].value_or(std::string{});
         if (Reference["Position"])
         {
@@ -392,7 +392,7 @@ constexpr int64_t FormatVersion = 1;                                            
         {
             const toml::node_view<const toml::node> Curve{ Entry };
             SketchCurve Decoded;
-            Decoded.Kind         = static_cast<SketchCurveKind>(Curve["Kind"].value_or(int64_t{ 0 }));
+            Decoded.Kind         = static_cast<SketchCurveCategory>(Curve["Kind"].value_or(int64_t{ 0 }));
             Decoded.Identifier   = static_cast<int>(Curve["Identifier"].value_or(int64_t{ 0 }));
             Decoded.Start        = static_cast<int>(Curve["Start"].value_or(int64_t{ -1 }));
             Decoded.End          = static_cast<int>(Curve["End"].value_or(int64_t{ -1 }));
@@ -413,7 +413,7 @@ constexpr int64_t FormatVersion = 1;                                            
         {
             const toml::node_view<const toml::node> Constraint{ Entry };
             SketchConstraint Decoded;
-            Decoded.Kind        = static_cast<SketchConstraintKind>(Constraint["Kind"].value_or(int64_t{ 0 }));
+            Decoded.Kind        = static_cast<SketchConstraintCategory>(Constraint["Kind"].value_or(int64_t{ 0 }));
             Decoded.First       = static_cast<int>(Constraint["First"].value_or(int64_t{ -1 }));
             Decoded.Second      = static_cast<int>(Constraint["Second"].value_or(int64_t{ -1 }));
             Decoded.Third       = static_cast<int>(Constraint["Third"].value_or(int64_t{ -1 }));
@@ -790,8 +790,8 @@ SketcherDocumentFile DecodeSketcherDocument(const std::string& Text)
             const toml::node_view<const toml::node> View{ Entry };
             FeatureStep Step;
             const int64_t Kind = View["Kind"].value_or(int64_t{ 0 });
-            if (Kind < 0 || Kind > static_cast<int64_t>(FeatureStepKind::Imprint)) { File.Refusal = "a step has an unknown kind " + std::to_string(Kind) + " (newer Sketcher?)"; return File; }
-            Step.Kind  = static_cast<FeatureStepKind>(Kind);
+            if (Kind < 0 || Kind > static_cast<int64_t>(FeatureStepCategory::Imprint)) { File.Refusal = "a step has an unknown kind " + std::to_string(Kind) + " (newer Sketcher?)"; return File; }
+            Step.Kind  = static_cast<FeatureStepCategory>(Kind);
             Step.Label = View["Label"].value_or(std::string{});
             if (Step.Label.empty()) { File.Refusal = "a step has no label"; return File; }
             if (const auto Caption = View["Caption"].value<std::string>()) File.Captions[Step.Label] = *Caption;
@@ -827,19 +827,19 @@ SketcherDocumentFile DecodeSketcherDocument(const std::string& Text)
             Step.Path           = View["Path"].value_or(std::string{});
             Step.Shape          = static_cast<BlendProfile>(View["Shape"].value_or(int64_t{ 0 }));
             Step.Size           = DecodeValue(View["Size"]);
-            Step.Operation      = static_cast<FaceOperationKind>(View["Operation"].value_or(int64_t{ 1 }));
+            Step.Operation      = static_cast<FaceOperationCategory>(View["Operation"].value_or(int64_t{ 1 }));
             Step.Amount         = DecodeValue(View["Amount"]);
             Step.Placement.ColumnX = DecodeVector(View["PlacementX"], Step.Placement.ColumnX);
             Step.Placement.ColumnY = DecodeVector(View["PlacementY"], Step.Placement.ColumnY);
             Step.Placement.ColumnZ = DecodeVector(View["PlacementZ"], Step.Placement.ColumnZ);
             Step.Placement.Shift   = DecodeVector(View["PlacementShift"], Step.Placement.Shift);
             Step.Source            = View["Source"].value_or(std::string{});
-            if (Step.Kind == FeatureStepKind::Joint)
+            if (Step.Kind == FeatureStepCategory::Joint)
             {
                 const int64_t JointCode = View["JointKind"].value_or(int64_t{ 0 });
-                if (JointCode < 0 || JointCode > static_cast<int64_t>(JointKind::Ball)) { File.Refusal = Step.Label + " has an unknown joint kind " + std::to_string(JointCode); return File; }
+                if (JointCode < 0 || JointCode > static_cast<int64_t>(JointCategory::Ball)) { File.Refusal = Step.Label + " has an unknown joint kind " + std::to_string(JointCode); return File; }
                 FeatureJoint& Joint = Step.Joint;
-                Joint.Kind             = static_cast<JointKind>(JointCode);
+                Joint.Kind             = static_cast<JointCategory>(JointCode);
                 Joint.Angle            = DecodeValue(View["JointAngle"]);
                 Joint.Slide            = DecodeValue(View["JointSlide"]);
                 Joint.SecondSlide      = DecodeValue(View["JointSecondSlide"]);
@@ -856,7 +856,7 @@ SketcherDocumentFile DecodeSketcherDocument(const std::string& Text)
                 Joint.AngleRange = Range("JointAngleRange");
                 Joint.SlideRange = Range("JointSlideRange");
             }
-            if (Step.Kind == FeatureStepKind::Import)
+            if (Step.Kind == FeatureStepCategory::Import)
             {
                 Step.Exchange     = View["Exchange"].value_or(std::string{});
                 Step.ExchangeUnit = View["ExchangeUnit"].value_or(1.0);
@@ -923,9 +923,9 @@ SketcherDocumentFile DecodeSketcherDocument(const std::string& Text)
                     const toml::node_view<const toml::node> Item{ RawEntry };
                     toml::array SingleRef;
                     if (const toml::table* Table = RawEntry.as_table()) SingleRef.push_back(*Table);
-                    std::vector<TopologyReference> DecodedRefs = DecodeReferences(toml::node_view<const toml::node>{ SingleRef });
+                    std::vector<ConnectivityReference> DecodedRefs = DecodeReferences(toml::node_view<const toml::node>{ SingleRef });
                     if (DecodedRefs.empty()) continue;
-                    Group.Entries.push_back({ std::move(DecodedRefs.front()), DecodeValue(Item["Weight"], FeatureValue{ 1.0 }) });
+                    Group.Entries.push_back({ std::move(DecodedRefs.front()), DecodeValue(Item["Weight"], FeatureScalar{ 1.0 }) });
                 }
             }
             File.Tree.EdgeGroups.push_back(std::move(Group));
@@ -938,12 +938,12 @@ SketcherDocumentFile DecodeSketcherDocument(const std::string& Text)
             const toml::node_view<const toml::node> View{ Node };
             FeatureModifier Modifier;
             const int64_t Kind = View["Kind"].value_or(int64_t{ 0 });
-            if (Kind < 0 || Kind > static_cast<int64_t>(ModifierKind::CurveBend))
+            if (Kind < 0 || Kind > static_cast<int64_t>(ModifierCategory::CurveBend))
             {
                 File.Refusal = "a modifier has an unknown kind " + std::to_string(Kind);
                 return File;
             }
-            Modifier.Kind             = static_cast<ModifierKind>(Kind);
+            Modifier.Kind             = static_cast<ModifierCategory>(Kind);
             Modifier.Label            = View["Label"].value_or(std::string{});
             if (Modifier.Label.empty()) { File.Refusal = "a modifier has no Label"; return File; }
             if (const auto Caption = View["Caption"].value<std::string>()) File.Captions[Modifier.Label] = *Caption;
@@ -986,15 +986,15 @@ SketcherDocumentFile DecodeSketcherDocument(const std::string& Text)
             Dim.Id = View["Id"].value_or(std::string{});
             if (Dim.Id.empty()) { File.Refusal = "a dimension entry has no Id"; return File; }
             const int64_t Kind = View["Kind"].value_or(int64_t{ 0 });
-            if (Kind < 0 || Kind > static_cast<int64_t>(SketcherDimensionKind::Angular))
+            if (Kind < 0 || Kind > static_cast<int64_t>(SketcherDimensionCategory::Angular))
             {
                 File.Refusal = "a dimension has an unknown Kind " + std::to_string(Kind);
                 return File;
             }
-            Dim.Kind             = static_cast<SketcherDimensionKind>(Kind);
-            Dim.FirstKind        = static_cast<SketcherSelectionKind>(std::clamp<int64_t>(View["FirstKind"].value_or(int64_t{ 0 }), 0, 3));
+            Dim.Kind             = static_cast<SketcherDimensionCategory>(Kind);
+            Dim.FirstKind        = static_cast<SketcherSelectionCategory>(std::clamp<int64_t>(View["FirstKind"].value_or(int64_t{ 0 }), 0, 3));
             Dim.FirstName        = View["FirstName"].value_or(std::string{});
-            Dim.SecondKind       = static_cast<SketcherSelectionKind>(std::clamp<int64_t>(View["SecondKind"].value_or(int64_t{ 0 }), 0, 3));
+            Dim.SecondKind       = static_cast<SketcherSelectionCategory>(std::clamp<int64_t>(View["SecondKind"].value_or(int64_t{ 0 }), 0, 3));
             Dim.SecondName       = View["SecondName"].value_or(std::string{});
             Dim.FirstPoint       = DecodeVector(View["FirstPoint"], Dim.FirstPoint);
             Dim.SecondPoint      = DecodeVector(View["SecondPoint"], Dim.SecondPoint);

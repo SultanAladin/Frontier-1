@@ -28,7 +28,7 @@ namespace Frontier::ParticleSpace
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct ParticlePipelineArtifacts
+struct ParticleShaderArtifacts
 {
     std::filesystem::path ReleaseComputeSpv          {};
     std::filesystem::path AdvectComputeSpv           {};
@@ -87,14 +87,14 @@ public:
     /// Executes one full rig physics step (software bridge for specialized CPU solvers, GPU compute when requested).
     [[nodiscard]] uint32_t ExecuteRigStep(
         const ParticleRig&         Rig,
-        const ParticleStepContext& Context,
+        const ParticleStepInput& Context,
         std::span<ParticleSlot>    RigSlots,
         std::span<StrandVertex>    OptionalStrandHistory = {});
 
     /// Dispatches ParticleAdvectCompute.comp.spv directly on the active Vulkan 1.3 compute queue and reads back updated slots.
     [[nodiscard]] bool DispatchAdvectComputeGpu(
         const ParticleRig&         Rig,
-        const ParticleStepContext& Context,
+        const ParticleStepInput& Context,
         std::span<ParticleSlot>    RigSlots,
         std::string&               OutDiagnostic);
 
@@ -104,13 +104,13 @@ public:
         ParticleSimulationMetrics&    OutMetrics,
         std::string&                  OutDiagnostic);
 
-    [[nodiscard]] const ParticlePipelineArtifacts& InspectArtifacts() const noexcept;
+    [[nodiscard]] const ParticleShaderArtifacts& InspectArtifacts() const noexcept;
     [[nodiscard]] const ParticleVulkanTelemetry&   InspectTelemetry() const noexcept;
 
 private:
-    struct VulkanDeviceState;
-    std::unique_ptr<VulkanDeviceState> DeviceState {};
-    ParticlePipelineArtifacts          Artifacts   {};
+    struct VulkanDeviceStatus;
+    std::unique_ptr<VulkanDeviceStatus> DeviceState {};
+    ParticleShaderArtifacts          Artifacts   {};
     ParticleVulkanTelemetry            Telemetry   {};
 };
 

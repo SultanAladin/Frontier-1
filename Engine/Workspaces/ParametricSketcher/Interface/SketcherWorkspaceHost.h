@@ -48,8 +48,8 @@ public:
     void EndFrame(double DeltaSeconds, bool DrawFloatingOverlays = true, bool HostedOverlayMode = true);
     bool IntakeExternalFileDrop(const std::string& FilePath, std::string* OutDiagnostic = nullptr);
 
-    [[nodiscard]] Sketcher::SketcherWorkspaceState&       AccessState() noexcept        { return State; }
-    [[nodiscard]] const Sketcher::SketcherWorkspaceState& InspectState() const noexcept { return State; }
+    [[nodiscard]] Sketcher::SketcherWorkspaceStatus&       AccessState() noexcept        { return State; }
+    [[nodiscard]] const Sketcher::SketcherWorkspaceStatus& InspectState() const noexcept { return State; }
     [[nodiscard]] uint32_t QueryRegisteredTabCount() const noexcept { return RegisteredTabCount; }
 
 private:
@@ -57,7 +57,7 @@ private:
     void UploadViewportPixels(const uint32_t* Pixels, uint32_t Width, uint32_t Height);
 
     GeometricRaster::VulkanInterchange* Device            = nullptr;
-    Sketcher::SketcherWorkspaceState    State              {};
+    Sketcher::SketcherWorkspaceStatus    State              {};
     Sketcher::SketcherOptions           Options            {};
     Sketcher::SketcherRasterization     Rasterizer         {};
     ImTextureData                       ViewportTexture    {};

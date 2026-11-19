@@ -58,7 +58,7 @@ public:
         std::string&                                 OutDiagnostic);
 
     [[nodiscard]] static bool ImportParametricComplex(
-        const GeometrySpace::Parametric::PolygonComplex& Complex,
+        const GeometrySpace::Parametric::PolygonNetworkStructure& Complex,
         std::string_view                                 DefaultTitle,
         GeometrySpace::ConstructedSampleAsset&           OutAsset,
         std::string&                                     OutDiagnostic);

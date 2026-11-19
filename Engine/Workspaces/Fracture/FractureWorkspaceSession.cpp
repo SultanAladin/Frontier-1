@@ -889,8 +889,8 @@ void FractureWorkspaceSession::ApplyCameraView(uint32_t ViewIndex) noexcept
 
 void FractureWorkspaceSession::RebuildSourceGeometry()
 {
-    const uint32_t AroundN = (FacetDetail == FractureFacetDetail::Low) ? 24u
-                           : (FacetDetail == FractureFacetDetail::High) ? 64u : 40u;
+    const uint32_t AroundN = (FacetDetail == FractureFaceDetail::Low) ? 24u
+                           : (FacetDetail == FractureFaceDetail::High) ? 64u : 40u;
     SourceParts.clear();
     switch (ActiveShape)
     {
@@ -1265,8 +1265,8 @@ void FractureWorkspaceSession::ExecuteFracturePartitionOnly()
         }
         else if (SolverMethod == FractureSolverMethod::GriffithStressBudget) // Planar slices
         {
-            struct SliceItem { ConvexPolyhedron Poly; bool Touch; };
-            std::vector<SliceItem> Items { { MakeBoxFromMinMax(TightLo, TightHi, true), true } };
+            struct SliceOptionEntry { ConvexPolyhedron Poly; bool Touch; };
+            std::vector<SliceOptionEntry> Items { { MakeBoxFromMinMax(TightLo, TightHi, true), true } };
             uint32_t TouchCount = 1u;
             const double Spread = Falloff * 0.55;
             for (uint32_t K = 0u; K < 72u && TouchCount < TargetCells; ++K)
@@ -1290,7 +1290,7 @@ void FractureWorkspaceSession::ExecuteFracturePartitionOnly()
                 }
                 std::sort(Ranked.begin(), Ranked.end());
 
-                std::vector<SliceItem> NextItems;
+                std::vector<SliceOptionEntry> NextItems;
                 std::vector<bool> Replaced(Items.size(), false);
                 for (const auto& [Dist, Idx] : Ranked)
                 {
@@ -1374,8 +1374,8 @@ void FractureWorkspaceSession::ExecuteFracturePartitionOnly()
         }
         else // DendriticSpallHull / Recursive split
         {
-            struct SplitItem { ConvexPolyhedron Poly; bool Touch; };
-            std::vector<SplitItem> Items { { MakeBoxFromMinMax(TightLo, TightHi, true), true } };
+            struct SplitOptionEntry { ConvexPolyhedron Poly; bool Touch; };
+            std::vector<SplitOptionEntry> Items { { MakeBoxFromMinMax(TightLo, TightHi, true), true } };
             uint32_t TouchCount = 1u;
             for (uint32_t K = 0u; K < TargetCells * 6u && TouchCount < TargetCells; ++K)
             {

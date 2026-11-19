@@ -20,14 +20,14 @@ namespace Frontier::GeometrySpace::Parametric
 //------------------------------------------------------------------------------------------------------------------------
 
 // 📝 Row-major dense matrix: entry (Row, Column) at Values[Row · Columns + Column].
-struct DenseMatrix
+struct DenseLinearArray
 {
     int                 Rows    = 0;                                                         // [-] - Row count
     int                 Columns = 0;                                                         // [-] - Column count
     std::vector<double> Values  = {};                                                        // [-] - Entries
 
-    DenseMatrix() = default;
-    DenseMatrix(int RowCount, int ColumnCount) : Rows(RowCount), Columns(ColumnCount), Values(static_cast<size_t>(RowCount) * ColumnCount, 0.0) {}
+    DenseLinearArray() = default;
+    DenseLinearArray(int RowCount, int ColumnCount) : Rows(RowCount), Columns(ColumnCount), Values(static_cast<size_t>(RowCount) * ColumnCount, 0.0) {}
 
     [[nodiscard]] double& At(int Row, int Column)       noexcept { return Values[static_cast<size_t>(Row) * Columns + Column]; }
     [[nodiscard]] double  At(int Row, int Column) const noexcept { return Values[static_cast<size_t>(Row) * Columns + Column]; }
@@ -39,6 +39,6 @@ struct DenseMatrix
 
 // 💡 A·X = B for square A (n × n) and B (n × k). Refuses (nullopt) when a pivot falls below PivotFloor · max |Aᵢⱼ|, so
 //    a singular or numerically rank-deficient system is never answered with garbage.
-[[nodiscard]] std::optional<DenseMatrix> SolveDenseSystem(DenseMatrix Matrix, DenseMatrix RightSides, double PivotFloor = 1.0e-13);
+[[nodiscard]] std::optional<DenseLinearArray> SolveDenseSystem(DenseLinearArray Matrix, DenseLinearArray RightSides, double PivotFloor = 1.0e-13);
 
 }

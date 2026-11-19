@@ -14,7 +14,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 [[vk::push_constant]]
-ConstantBuffer<DrawObjectPushConstants> DrawPush;
+ConstantBuffer<RenderInstancePushConstants> SurfacePush;
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<ViewportOverlayUniforms> Overlay;
@@ -47,7 +47,7 @@ HeatmapVaryings VertexMain(uint VertexId : SV_VertexID)
     float2 Corner   = QuadCorners[VertexId % 6u];
     float  HalfSpan = max(10.0, Overlay.CrossSectionPlaneParams.z);
     float  OffsetM  = Overlay.CrossSectionPlaneParams.y;
-    uint   Axis     = DrawPush.SubMode; // 0 = XY (+Z normal), 1 = XZ (+Y normal), 2 = YZ (+X normal)
+    uint   Axis     = SurfacePush.SubMode; // 0 = XY (+Z normal), 1 = XZ (+Y normal), 2 = YZ (+X normal)
 
     float3 WorldPos;
     if (Axis == 1u)

@@ -186,9 +186,9 @@ int main()
     // 6. Verify Outliner node selection & Preset card selection
     Studio.AccessSession().FlipbookModalOpen = false;
     RenderStep(Idle);
-    const Rectangle2D GiNodeRow = Studio.AccessOutliner().QueryLastNodeRowBounds(FluidOutlinerNode::GiLighting);
+    const Rectangle2D GiNodeRow = Studio.AccessOutliner().QueryLastNodeRowBounds(FluidOutlinerRow::GiLighting);
     ClickAt(GiNodeRow.Center());
-    if (!VerifyCheck(Studio.InspectSession().SelectedNode == FluidOutlinerNode::GiLighting, "Outliner Directional light selection"))
+    if (!VerifyCheck(Studio.InspectSession().SelectedNode == FluidOutlinerRow::GiLighting, "Outliner Directional light selection"))
     {
         ImGui::DestroyContext(Gui);
         return 1;

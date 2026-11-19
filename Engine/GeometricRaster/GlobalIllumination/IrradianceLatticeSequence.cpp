@@ -8,7 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometricRaster/GlobalIllumination/IrradianceLatticeSequence.h"
-#include "Engine/GeometricRaster/GlobalIllumination/DynamicProbeCacheSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/DynamicIrradianceCacheSequence.h"
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/GeometrySpace/Analysis/CurvatureAnalysis.h"
 
@@ -112,7 +112,7 @@ void IrradianceLatticeSequence::PropagateRtxIrradianceLattice(
     const IrradianceLatticeConfiguration&           Config,
     const SpatialAcceleration::WideBoundingTree&    SceneTree,
     std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
-    const SolarDirectionalEmitter&                  Sun,
+    const SolarDirectionalSource&                  Sun,
     Mathematics::LinearRGB                          SkyRadiance)
 {
     ActiveConfig        = Config;
@@ -120,40 +120,40 @@ void IrradianceLatticeSequence::PropagateRtxIrradianceLattice(
     ActiveConfig.CountY = std::max(2u, Config.CountY);
     ActiveConfig.CountZ = std::max(2u, Config.CountZ);
 
-    DynamicProbeCacheConfiguration ProbeCfg {};
-    ProbeCfg.GridMinimumWorld  = ActiveConfig.GridMinimumWorld;
-    ProbeCfg.GridMaximumWorld  = ActiveConfig.GridMaximumWorld;
-    ProbeCfg.CountX            = ActiveConfig.CountX;
-    ProbeCfg.CountY            = ActiveConfig.CountY;
-    ProbeCfg.CountZ            = ActiveConfig.CountZ;
-    ProbeCfg.FibonacciRayCount = std::clamp(ActiveConfig.FibonacciRayCount, 32u, 256u);
-    ProbeCfg.BouncePasses      = std::clamp(ActiveConfig.BouncePasses, 1u, 4u);
+    DynamicIrradianceCacheConfiguration IrradianceCfg {};
+    IrradianceCfg.GridMinimumWorld  = ActiveConfig.GridMinimumWorld;
+    IrradianceCfg.GridMaximumWorld  = ActiveConfig.GridMaximumWorld;
+    IrradianceCfg.CountX            = ActiveConfig.CountX;
+    IrradianceCfg.CountY            = ActiveConfig.CountY;
+    IrradianceCfg.CountZ            = ActiveConfig.CountZ;
+    IrradianceCfg.FibonacciRayCount = std::clamp(ActiveConfig.FibonacciRayCount, 32u, 256u);
+    IrradianceCfg.BouncePasses      = std::clamp(ActiveConfig.BouncePasses, 1u, 4u);
 
-    DynamicProbeCacheSequence ProbeSolver {};
-    ProbeSolver.UpdateProbeCache(
-        ProbeCfg,
+    DynamicIrradianceCacheSequence IrradianceSolver {};
+    IrradianceSolver.UpdateIrradianceCache(
+        IrradianceCfg,
         SceneTree,
         BounceSummaries,
         Sun,
         std::span<const PolygonalAreaQuadLight>{},
         SkyRadiance);
 
-    AdoptProbeCacheCells(ProbeSolver);
+    AdoptIrradianceCacheCells(IrradianceSolver);
 }
 
-void IrradianceLatticeSequence::AdoptProbeCacheCells(const DynamicProbeCacheSequence& ProbeCache)
+void IrradianceLatticeSequence::AdoptIrradianceCacheCells(const DynamicIrradianceCacheSequence& IrradianceCache)
 {
-    const auto& ProbeCfg = ProbeCache.InspectConfig();
-    ActiveConfig.GridMinimumWorld  = ProbeCfg.GridMinimumWorld;
-    ActiveConfig.GridMaximumWorld  = ProbeCfg.GridMaximumWorld;
-    ActiveConfig.CountX            = std::max(2u, ProbeCfg.CountX);
-    ActiveConfig.CountY            = std::max(2u, ProbeCfg.CountY);
-    ActiveConfig.CountZ            = std::max(2u, ProbeCfg.CountZ);
-    ActiveConfig.FibonacciRayCount = ProbeCfg.FibonacciRayCount;
-    ActiveConfig.BouncePasses      = ProbeCfg.BouncePasses;
-    CellSpacing                    = ProbeCache.InspectCellSpacing();
+    const auto& IrradianceCfg = IrradianceCache.InspectConfig();
+    ActiveConfig.GridMinimumWorld  = IrradianceCfg.GridMinimumWorld;
+    ActiveConfig.GridMaximumWorld  = IrradianceCfg.GridMaximumWorld;
+    ActiveConfig.CountX            = std::max(2u, IrradianceCfg.CountX);
+    ActiveConfig.CountY            = std::max(2u, IrradianceCfg.CountY);
+    ActiveConfig.CountZ            = std::max(2u, IrradianceCfg.CountZ);
+    ActiveConfig.FibonacciRayCount = IrradianceCfg.FibonacciRayCount;
+    ActiveConfig.BouncePasses      = IrradianceCfg.BouncePasses;
+    CellSpacing                    = IrradianceCache.InspectCellSpacing();
 
-    const auto ProbeCells = ProbeCache.InspectCells();
+    const auto ProbeCells = IrradianceCache.InspectCells();
     Cells.assign(ProbeCells.size(), OctahedralIrradianceCell{});
     for (std::size_t Idx = 0u; Idx < ProbeCells.size(); ++Idx)
     {
@@ -243,7 +243,7 @@ void SignedDistanceRadiosityVolume::BuildRadiosityLevels(
     const DistanceFieldSpace::SignedDistanceVolume& SdfVolume,
     const SpatialAcceleration::WideBoundingTree&    SceneTree,
     std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
-    const SolarDirectionalEmitter&                  Sun,
+    const SolarDirectionalSource&                  Sun,
     Mathematics::LinearRGB                          SkyRadiance)
 {
     BoundsMin = SdfVolume.VolumeBoundsMin;

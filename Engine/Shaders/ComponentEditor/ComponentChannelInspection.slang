@@ -6,7 +6,7 @@
 #include "Engine/Shaders/ComponentEditor/ComponentEditorShared.slang"
 
 [[vk::push_constant]]
-ConstantBuffer<ComponentSurfacePushConstants> DrawPush;
+ConstantBuffer<ComponentSurfacePushConstants> SurfacePush;
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<ComponentViewportUniforms> Viewport;
@@ -22,8 +22,8 @@ struct GeometryVertexInput
 [shader("vertex")]
 ComponentVertexOutput VertexMain(GeometryVertexInput Input)
 {
-    float4 World4 = mul(DrawPush.ModelMatrix, float4(Input.PositionMeters, 1.0));
-    float3x3 M3   = (float3x3)DrawPush.ModelMatrix;
+    float4 World4 = mul(SurfacePush.WorldTransform, float4(Input.PositionMeters, 1.0));
+    float3x3 M3   = (float3x3)SurfacePush.WorldTransform;
 
     ComponentVertexOutput Out;
     Out.ClipPosition = mul(Viewport.ViewProjection, World4);
@@ -49,9 +49,9 @@ ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
     float3 N = CeNormalizeSafe(In.WorldNormal, float3(0.0, 1.0, 0.0));
     float3 V = CeNormalizeSafe(Viewport.CameraPositionTime.xyz - In.WorldPos, float3(0.0, 0.0, 1.0));
 
-    uint   Channel = DrawPush.PickPacked.w;
+    uint   Channel = SurfacePush.PickPacked.w;
     float3 Display = float3(0.0, 0.0, 0.0);
-    float  Alpha   = saturate(DrawPush.ChannelModifiers.y);
+    float  Alpha   = saturate(SurfacePush.ChannelModifiers.y);
 
     if (Channel == 0u) // Lit (OpenPbrDirect, Zero GI)
     {
@@ -60,14 +60,14 @@ ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
             In.WorldPos,
             N,
             V,
-            DrawPush.AlbedoRoughness.rgb,
-            DrawPush.AlbedoRoughness.w,
-            DrawPush.EmissiveMetalness.w,
-            DrawPush.EmissiveMetalness.rgb);
+            SurfacePush.AlbedoRoughness.rgb,
+            SurfacePush.AlbedoRoughness.w,
+            SurfacePush.EmissiveMetalness.w,
+            SurfacePush.EmissiveMetalness.rgb);
     }
     else if (Channel == 1u) // Unlit
     {
-        Display = CeLinearToSrgb(saturate(DrawPush.AlbedoRoughness.rgb + DrawPush.EmissiveMetalness.rgb));
+        Display = CeLinearToSrgb(saturate(SurfacePush.AlbedoRoughness.rgb + SurfacePush.EmissiveMetalness.rgb));
     }
     else if (Channel == 2u) // Density heat ramp (carried in VertexColor)
     {
@@ -80,7 +80,7 @@ ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
     }
     else if (Channel == 4u) // UV Checker (8x8 grid with missing-UV #7a2d5a indicator)
     {
-        if (DrawPush.ChannelModifiers.z > 0.5)
+        if (SurfacePush.ChannelModifiers.z > 0.5)
         {
             Display = float3(0.478, 0.176, 0.353); // #7a2d5a missing UV indicator
         }
@@ -110,9 +110,9 @@ ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
             In.WorldPos,
             N,
             V,
-            DrawPush.AlbedoRoughness.rgb,
-            DrawPush.AlbedoRoughness.w,
-            DrawPush.EmissiveMetalness.w,
+            SurfacePush.AlbedoRoughness.rgb,
+            SurfacePush.AlbedoRoughness.w,
+            SurfacePush.EmissiveMetalness.w,
             float3(0.0, 0.0, 0.0));
         Alpha = min(Alpha, 0.35);
     }
@@ -122,11 +122,11 @@ ComponentFragmentOutput FragmentMain(ComponentVertexOutput In)
         N,
         V,
         Viewport.CameraPositionTime.w,
-        DrawPush.ChannelModifiers.x,
+        SurfacePush.ChannelModifiers.x,
         Viewport.HaloTintParams.rgb);
 
     ComponentFragmentOutput Out;
     Out.ColorRGBA = float4(Display, Alpha);
-    Out.PickIDs   = uint4(DrawPush.PickPacked.x, DrawPush.PickPacked.y, DrawPush.PickPacked.z, Channel);
+    Out.PickIDs   = uint4(SurfacePush.PickPacked.x, SurfacePush.PickPacked.y, SurfacePush.PickPacked.z, Channel);
     return Out;
 }

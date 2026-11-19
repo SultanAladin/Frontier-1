@@ -20,7 +20,7 @@ namespace Frontier
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class ProceduralSpriteFamily : uint8_t
+enum class ProceduralSpriteGroup : uint8_t
 {
     SnowCrystal   = 0, // [-] - D6 / D12 dendritic and faceted atmospheric ice crystals
     OpticalFlare  = 1, // [-] - Aperture bokeh, starburst flares, and Gaussian plasma halos
@@ -89,7 +89,7 @@ struct ProceduralSpriteChannelSet
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] ProceduralSpriteFamily QueryProceduralSpriteFamily(ProceduralSpriteArchetype Archetype) noexcept;
+[[nodiscard]] ProceduralSpriteGroup QueryProceduralSpriteFamily(ProceduralSpriteArchetype Archetype) noexcept;
 [[nodiscard]] std::string_view       QueryProceduralSpriteTitle(ProceduralSpriteArchetype Archetype) noexcept;
 [[nodiscard]] ProceduralSpriteSpec   QueryDefaultProceduralSpriteSpec(ProceduralSpriteArchetype Archetype) noexcept;
 

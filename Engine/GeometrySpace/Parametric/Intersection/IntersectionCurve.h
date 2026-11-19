@@ -43,16 +43,16 @@ namespace Frontier::GeometrySpace::Parametric
 // 📝 Ball size along the edge parameter t: Size(t) = Size + SizeRate·t (linear; SizeRate = 0 for a constant size).
 //    WedgeSetback (chamfer): r(t) = Size(t)·tan(θ(t)/2), θ the local wedge — equal setbacks Size(t) on both faces.
 //    Radius (variable fillet): r(t) = Size(t), the balls' envelope is a canal surface.
-enum class BallLawForm : std::uint8_t
+enum class BallProfileForm : std::uint8_t
 {
     WedgeSetback = 0,                                                                        // r = d(t)·tan(θ/2)
     Radius       = 1,                                                                        // r = r(t)
 };
 
-struct BallLaw
+struct BallBlendProfile
 {
     CurveGeometry Edge      = StraightLine{};                                               // [-]   - Exact edge carrier E
-    BallLawForm   Form      = BallLawForm::WedgeSetback;                                    // [-]   - Meaning of Size
+    BallProfileForm   Form      = BallProfileForm::WedgeSetback;                                    // [-]   - Meaning of Size
     double        Size      = 0.0;                                                          // [len] - Setback d or radius r at t = 0
     double        SizeRate  = 0.0;                                                          // [len] - d(Size)/dt (0: constant)
     double        Signs[2]  = { 1.0, 1.0 };                                                 // [-]   - σᵢ: signed side of the centre
@@ -69,7 +69,7 @@ struct TracedIntersection
     std::vector<double>  Knots    = {};                                                     // [-]   - τ at the knots, ascending
     bool                 Closed   = false;                                                  // [-]   - Loop of period 2π
     double               Perimeter = 0.0;                                                   // [len] - Chord length of the guide
-    std::shared_ptr<const BallLaw> Law = {};                                                // [-]   - Present: ball-law spine
+    std::shared_ptr<const BallBlendProfile> Law = {};                                                // [-]   - Present: ball-law spine
     std::vector<std::array<Vector2, 2>> Feet = {};                                          // [-]   - Chart feet on First / Second at the knots (NURBS / parallel only)
 };
 
@@ -89,7 +89,7 @@ struct TracedIntersection
 
 // 💡 Ball-law spine over the edge interval [Low, High] (closed: one 2π turn): the guide is exact spine samples, refined
 //    like a traced curve. nullopt where the solve fails anywhere (a wedge too tight for the setback, θ → 0 or π).
-[[nodiscard]] std::optional<CurveGeometry> BuildBallLawCurve(const SurfaceGeometry& First, const SurfaceGeometry& Second, const BallLaw& Law, double Low, double High, bool Closed);
+[[nodiscard]] std::optional<CurveGeometry> BuildBallLawCurve(const SurfaceGeometry& First, const SurfaceGeometry& Second, const BallBlendProfile& Law, double Low, double High, bool Closed);
 
 // Chart feet on First / Second at τ, interpolated from the knot feet (NaN when none were recorded): a seed for the
 // certified local inversion (MeasureSurfaceDistanceNear) of points on or near the trace.

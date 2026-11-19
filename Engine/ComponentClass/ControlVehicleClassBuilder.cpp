@@ -146,7 +146,7 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
 
     for (const PartSpec& Spec : FileParts)
     {
-        CompiledGeometryCatalogEntry Entry {};
+        CompiledGeometryRepositoryEntry Entry {};
         Entry.AssetIdentifier = Spec.Identifier;
         Entry.DisplayTitle    = Spec.Title;
         Entry.SourceFormat    = "FCT1";
@@ -158,21 +158,21 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
         {
             return false;
         }
-        OutResult.GeometryCatalog.push_back(std::move(Entry));
+        OutResult.GeometryRepository.push_back(std::move(Entry));
     }
 
     {
-        CompiledGeometryCatalogEntry WingEntry {};
+        CompiledGeometryRepositoryEntry WingEntry {};
         WingEntry.AssetIdentifier = "RearWing";
         WingEntry.DisplayTitle    = "Rear Wing";
         WingEntry.SourceFormat    = "Procedural";
         WingEntry.Asset           = ConstructProceduralRearWing();
-        OutResult.GeometryCatalog.push_back(std::move(WingEntry));
+        OutResult.GeometryRepository.push_back(std::move(WingEntry));
     }
 
     ComponentClassDefinition& Def = OutResult.ClassDefinition;
     Def.Title     = "ControlVehicle";
-    Def.ClassRole = ComponentClassRole::Driveable;
+    Def.ClassArchetype = ComponentClassArchetype::Driveable;
     Def.Storage.ResetWithSpatialOrigin("Origin");
 
     const ComponentInstanceToken Origin = Def.Storage.QueryOriginToken();
@@ -220,7 +220,7 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
             ComponentTransform{ { Axle.AuthoredX, Axle.AuthoredZ, -Axle.AuthoredY }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } });
         if (ConstraintComponentSettings* C = Def.Storage.ResolveConstraint(Spring))
         {
-            C->Kind                = PhysicsConstraintKind::Spring;
+            C->Form                = PhysicsConstraintCategory::Spring;
             C->Axis                = ConstraintAxis::AxisY;
             C->NaturalFrequencyHz  = 2.00f;
             C->DampingRatioZeta    = 0.42f;
@@ -240,7 +240,7 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
                 ComponentTransform{});
             if (ConstraintComponentSettings* C = Def.Storage.ResolveConstraint(WheelMount))
             {
-                C->Kind               = PhysicsConstraintKind::Hinge;
+                C->Form               = PhysicsConstraintCategory::Hinge;
                 C->Axis               = ConstraintAxis::AxisY;
                 C->DriveMode          = ConstraintDriveMode::Steer;
                 C->MinAngleDegrees    = -32.0f;
@@ -286,7 +286,7 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
             ComponentTransform{ { 2.95f, 0.42f, Side == 0 ? -0.78f : 0.78f }, { 0.0f, 0.0f, -4.0f }, { 1.0f, 1.0f, 1.0f } });
         if (LightComponentSettings* L = Def.Storage.ResolveLight(Lamp))
         {
-            L->Kind                   = LightEmitterKind::SpotBeam;
+            L->Form                   = LightSourceCategory::SpotBeam;
             L->LinearColourRGB        = { 0.96f, 0.97f, 1.00f };
             L->IntensityCandela       = 30.0f;
             L->AttenuationRangeMeters = 30.0f;
@@ -302,7 +302,7 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
         ComponentTransform{ { -2.9822f, 0.8367f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } });
     if (ConstraintComponentSettings* C = Def.Storage.ResolveConstraint(WingDock))
     {
-        C->Kind              = PhysicsConstraintKind::Dock;
+        C->Form              = PhysicsConstraintCategory::Dock;
         C->DockKey           = "wing";
         C->SnapRadiusMeters  = 0.30f;
         C->BreakForceNewtons = 1200.0f;
@@ -332,7 +332,7 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
         ComponentTransform{ { -3.10f, 0.10f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } });
     if (ConstraintComponentSettings* C = Def.Storage.ResolveConstraint(TowStrap))
     {
-        C->Kind              = PhysicsConstraintKind::Tether;
+        C->Form              = PhysicsConstraintCategory::Tether;
         C->RopeLengthMeters  = 0.32f;
         C->BreakForceNewtons = 1800.0f;
     }
@@ -365,7 +365,7 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
         ComponentTransform{ { 3.05f, 0.10f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } });
     if (CollisionVolumeSettings* Col = Def.Storage.ResolveCollision(Bumper))
     {
-        Col->Kind               = CollisionVolumeKind::Box;
+        Col->Form               = CollisionVolumeCategory::Box;
         Col->HalfExtentsMeters  = { 0.18f, 0.28f, 1.05f };
         Col->TriggerOverlapOnly = true;
     }
@@ -390,7 +390,7 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
     if (FluidComponentSettings* F = Def.Storage.ResolveFluid(TyreSmoke))
     {
         F->VolumeIdentifier   = "TyreSmokePlume";
-        F->EmissionMode       = FluidEmissionKind::Smoke;
+        F->EmissionMode       = FluidSourceCategory::Smoke;
         F->BoundsExtentMeters = { 0.65f, 0.55f, 1.25f };
     }
 
@@ -410,7 +410,7 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
         V->AeroLiftAreaM2    = 1.10f;
         V->FinalDriveRatio   = 3.55f;
         V->GearRatios        = { 4.2f, 3.1f, 2.5f, 1.9f, 1.5f, 1.2f };
-        V->Interpolation     = CurveInterpolationKind::SmoothSpline;
+        V->Interpolation     = CurveInterpolationForm::SmoothSpline;
         V->BoundWheelTokens  = std::move(WheelTokens);
         V->TorqueCurve       = {
             {  800.0f, 234.0f }, { 1200.0f, 300.0f }, { 1600.0f, 352.0f }, { 2000.0f, 392.0f },

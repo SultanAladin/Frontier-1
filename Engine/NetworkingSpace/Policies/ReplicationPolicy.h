@@ -47,7 +47,7 @@ enum class ReplicationComponentMask : uint32_t
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct ReplicationScheduleContract
+struct ReplicationScheduleSpec
 {
     uint32_t      ContractIdentifier        = 0u;                                  // [-]  - Stable replication contract identifier
     AuthorityMode Authority                 = AuthorityMode::HostAuthoritative;    // [-]  - Ownership authority rule
@@ -63,12 +63,12 @@ struct ReplicationScheduleContract
 //                                                  FUNCTION PROTOTYPES
 //------------------------------------------------------------------------------------------------------------------------
 
-[[nodiscard]] ReplicationScheduleContract BuildRealtimeKinematicContract(uint32_t ContractIdentifier, float PublishFrequencyHz = 30.0f) noexcept;
-[[nodiscard]] ReplicationScheduleContract BuildCollaborativeRevisionContract(uint32_t ContractIdentifier, float PublishFrequencyHz = 20.0f) noexcept;
+[[nodiscard]] ReplicationScheduleSpec BuildRealtimeKinematicContract(uint32_t ContractIdentifier, float PublishFrequencyHz = 30.0f) noexcept;
+[[nodiscard]] ReplicationScheduleSpec BuildCollaborativeRevisionContract(uint32_t ContractIdentifier, float PublishFrequencyHz = 20.0f) noexcept;
 
-void                                      AccumulateReplicationElapsed(ReplicationScheduleContract& Contract, double Δt) noexcept;
-[[nodiscard]] bool                        QueryPublishDue(const ReplicationScheduleContract& Contract, uint32_t CurrentRevision) noexcept;
-void                                      AcknowledgePublishedRevision(ReplicationScheduleContract& Contract, uint32_t PublishedRevision) noexcept;
+void                                      AccumulateReplicationElapsed(ReplicationScheduleSpec& Contract, double Δt) noexcept;
+[[nodiscard]] bool                        QueryPublishDue(const ReplicationScheduleSpec& Contract, uint32_t CurrentRevision) noexcept;
+void                                      AcknowledgePublishedRevision(ReplicationScheduleSpec& Contract, uint32_t PublishedRevision) noexcept;
 [[nodiscard]] std::string_view            InspectDeliveryChannelTitle(DeliveryChannel Channel) noexcept;
 
 } // namespace Frontier::NetworkingSpace

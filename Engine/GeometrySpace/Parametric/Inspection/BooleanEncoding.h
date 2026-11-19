@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
-#include "Engine/GeometrySpace/Parametric/Boolean/BooleanCatalogue.h"
+#include "Engine/GeometrySpace/Parametric/Boolean/BooleanRepository.h"
 #include "Engine/GeometrySpace/Parametric/Boolean/GeneralFuse.h"
 
 #include <array>

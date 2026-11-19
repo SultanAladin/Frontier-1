@@ -285,7 +285,7 @@ void ParallelForZ(uint32_t ZCount, Fn&& Func)
     Mathematics::Axis3D                                   WorldPos,
     const VoxelSdfClipmapVolume&                          Volume,
     const ClipmapLightingMask&                            Mask,
-    const GeometricRaster::SolarDirectionalEmitter&       Sun,
+    const GeometricRaster::SolarDirectionalSource&       Sun,
     std::span<const VoxelPointLightSpec>                  PointLights,
     std::span<const GeometricRaster::PolygonalAreaQuadLight> AreaLights,
     Mathematics::LinearRGB                                SkyRadiance,
@@ -632,7 +632,7 @@ void VoxelClipmapCascade::RebuildMip1() noexcept
 //                                             LOCAL OBJECT SDF ASSET & TRANSFORM
 //------------------------------------------------------------------------------------------------------------------------
 
-bool LocalObjectSdfAsset::BakeFromLocalTree(
+bool LocalGeometrySdfAsset::BakeFromLocalTree(
     std::string_view                              Name,
     const SpatialAcceleration::WideBoundingTree&  LocalTree,
     const MaterialSpace::CompactMaterialRegister& Materials,
@@ -644,18 +644,18 @@ bool LocalObjectSdfAsset::BakeFromLocalTree(
     DebugName = std::string(Name);
     if (LocalTree.Primitives.empty()) return false;
 
-    // Build exact arena/f2d37e4b-frontier FacetAtlas + 80x40x32 BakedFacetDistance
-    std::vector<Facet> Facets;
-    Facets.reserve(LocalTree.Primitives.size());
+    // Build exact arena/f2d37e4b-frontier FaceBvhRepository + 80x40x32 BakedFaceDistance
+    std::vector<SurfaceFace> SurfaceFaces;
+    SurfaceFaces.reserve(LocalTree.Primitives.size());
     for (const auto& Prim : LocalTree.Primitives)
     {
         const ClipVector A { Prim.Corner0.X, Prim.Corner0.Y, Prim.Corner0.Z };
         const ClipVector B { Prim.Corner0.X + Prim.Edge01.X, Prim.Corner0.Y + Prim.Edge01.Y, Prim.Corner0.Z + Prim.Edge01.Z };
         const ClipVector C { Prim.Corner0.X + Prim.Edge02.X, Prim.Corner0.Y + Prim.Edge02.Y, Prim.Corner0.Z + Prim.Edge02.Z };
         const ClipVector N = Normalize(Cross(B - A, C - A));
-        Facets.push_back(Facet{ {{ A, B, C }}, {{ N, N, N }}, static_cast<unsigned>(Prim.MaterialOrdinal) });
+        SurfaceFaces.push_back(SurfaceFace{ {{ A, B, C }}, {{ N, N, N }}, static_cast<unsigned>(Prim.MaterialOrdinal) });
     }
-    LocalAtlas.Construct(std::move(Facets));
+    LocalAtlas.Construct(std::move(SurfaceFaces));
     BakedDistance.Extent = { 80u, 40u, 32u };
     BakedDistance.Bake(LocalAtlas);
 
@@ -717,17 +717,17 @@ bool LocalObjectSdfAsset::BakeFromLocalTree(
     return true;
 }
 
-DistanceInterval LocalObjectSdfAsset::SampleConservativeLocalInterval(Mathematics::Axis3D LocalPos) const noexcept
+DistanceInterval LocalGeometrySdfAsset::SampleConservativeLocalInterval(Mathematics::Axis3D LocalPos) const noexcept
 {
     return BakedDistance.Sample({ LocalPos.X, LocalPos.Y, LocalPos.Z });
 }
 
-float LocalObjectSdfAsset::SampleConservativeLocalDistance(Mathematics::Axis3D LocalPos) const noexcept
+float LocalGeometrySdfAsset::SampleConservativeLocalDistance(Mathematics::Axis3D LocalPos) const noexcept
 {
     return BakedDistance.Sample({ LocalPos.X, LocalPos.Y, LocalPos.Z }).Raw;
 }
 
-bool LocalObjectSdfAsset::SampleLocalSurfaceCache(
+bool LocalGeometrySdfAsset::SampleLocalSurfaceCache(
     Mathematics::Axis3D     LocalPos,
     VoxelSurfaceCacheEntry& OutEntry) const noexcept
 {
@@ -748,7 +748,7 @@ bool LocalObjectSdfAsset::SampleLocalSurfaceCache(
     return OutEntry.HasSurface != 0u;
 }
 
-Mathematics::Axis3D LocalObjectSdfAsset::EvaluateLocalNormal(Mathematics::Axis3D LocalPos) const noexcept
+Mathematics::Axis3D LocalGeometrySdfAsset::EvaluateLocalNormal(Mathematics::Axis3D LocalPos) const noexcept
 {
     const float H = std::max(0.015f, VoxelSpacingM * 0.90f);
     const float D0 = SampleConservativeLocalDistance({ LocalPos.X + H, LocalPos.Y - H, LocalPos.Z - H });
@@ -879,17 +879,17 @@ void VoxelSdfClipmapVolume::BuildStaticClipmap(
     BoundMaterials = &Materials;
     if (!StaticTree.Primitives.empty())
     {
-        std::vector<Facet> StaticFacets;
-        StaticFacets.reserve(StaticTree.Primitives.size());
+        std::vector<SurfaceFace> StaticSurfaceFaces;
+        StaticSurfaceFaces.reserve(StaticTree.Primitives.size());
         for (const auto& Prim : StaticTree.Primitives)
         {
             const ClipVector A { Prim.Corner0.X, Prim.Corner0.Y, Prim.Corner0.Z };
             const ClipVector B { Prim.Corner0.X + Prim.Edge01.X, Prim.Corner0.Y + Prim.Edge01.Y, Prim.Corner0.Z + Prim.Edge01.Z };
             const ClipVector C { Prim.Corner0.X + Prim.Edge02.X, Prim.Corner0.Y + Prim.Edge02.Y, Prim.Corner0.Z + Prim.Edge02.Z };
             const ClipVector N = Normalize(Cross(B - A, C - A));
-            StaticFacets.push_back(Facet{ {{ A, B, C }}, {{ N, N, N }}, static_cast<unsigned>(Prim.MaterialOrdinal) });
+            StaticSurfaceFaces.push_back(SurfaceFace{ {{ A, B, C }}, {{ N, N, N }}, static_cast<unsigned>(Prim.MaterialOrdinal) });
         }
-        StaticAtlas.Construct(std::move(StaticFacets));
+        StaticAtlas.Construct(std::move(StaticSurfaceFaces));
     }
     ToroidalClipmap.ClosedSurfaces      = ClosedBoxes;
     ToroidalClipmap.StaticTriangleAtlas = StaticAtlas.Surfaces.empty() ? nullptr : &StaticAtlas;
@@ -972,7 +972,7 @@ void VoxelSdfClipmapVolume::BuildStaticClipmap(
 
 void VoxelSdfClipmapVolume::BakeStaticSurfaceCacheLighting(
     const ClipmapLightingMask&                            Mask,
-    const GeometricRaster::SolarDirectionalEmitter&       Sun,
+    const GeometricRaster::SolarDirectionalSource&       Sun,
     std::span<const VoxelPointLightSpec>                  PointLights,
     std::span<const GeometricRaster::PolygonalAreaQuadLight> AreaLights,
     Mathematics::LinearRGB                                SkyRadiance,
@@ -1138,7 +1138,7 @@ void VoxelSdfClipmapVolume::BakeStaticSurfaceCacheLighting(
 void VoxelSdfClipmapVolume::ComposeDynamicObjectsIntoActiveClip0(
     std::span<const DynamicLocalSdfInstance>              DynamicObjects,
     const ClipmapLightingMask&                            Mask,
-    const GeometricRaster::SolarDirectionalEmitter&       Sun,
+    const GeometricRaster::SolarDirectionalSource&       Sun,
     std::span<const VoxelPointLightSpec>                  PointLights,
     std::span<const GeometricRaster::PolygonalAreaQuadLight> AreaLights,
     Mathematics::LinearRGB                                SkyRadiance,
@@ -1433,7 +1433,7 @@ bool VoxelSdfClipmapVolume::TraceHybridOccluded(
         const ClipVector LocalOrigin { LP0.X, LP0.Y, LP0.Z };
         const ClipVector LocalDirection { LD0.X, LD0.Y, LD0.Z };
         float Near = 0.0f;
-        if (!FacetAtlas::IntersectEnclosure(
+        if (!FaceBvhRepository::IntersectEnclosure(
                 LocalOrigin, LocalDirection, Obj.Asset->LocalAtlas.Low, Obj.Asset->LocalAtlas.High, 0.0f, Limit, Near))
         {
             continue;

@@ -28,7 +28,7 @@ namespace Frontier::Workspaces
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class FluidOutlinerNode : uint8_t
+enum class FluidOutlinerRow : uint8_t
 {
     HeroVolume     = 0u,
     EmitterSource  = 1u,
@@ -88,7 +88,7 @@ enum class FluidNavView : uint8_t
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct FluidOrbitCameraState
+struct FluidOrbitCameraBasis
 {
     float               YawRadians     = 0.72f;
     float               PitchRadians   = 0.36f;
@@ -120,9 +120,9 @@ public:
     [[nodiscard]] SimulationSpace::ForceFields::ForceFieldAccumulator&        AccessForceFields() noexcept      { return ForceFields; }
     [[nodiscard]] const SimulationSpace::ForceFields::ForceFieldAccumulator&  InspectForceFields() const noexcept { return ForceFields; }
 
-    FluidOrbitCameraState     Camera               {};
+    FluidOrbitCameraBasis     Camera               {};
     FluidCameraPreset         CameraPreset         = FluidCameraPreset::Perspective;
-    FluidOutlinerNode         SelectedNode         = FluidOutlinerNode::EmitterSource;
+    FluidOutlinerRow         SelectedNode         = FluidOutlinerRow::EmitterSource;
     FluidOutlinerFilter       OutlinerFilter       = FluidOutlinerFilter::All;
     FluidPresetFilter         PresetFilter         = FluidPresetFilter::All;
     FluidInspectorTab         ActiveTab            = FluidInspectorTab::Source;

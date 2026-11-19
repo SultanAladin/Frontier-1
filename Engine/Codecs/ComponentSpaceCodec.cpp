@@ -89,7 +89,7 @@ SpaceContainerPayload ComponentSpaceEncoder::ConstructPayload(
 
     toml::table HeaderTbl;
     HeaderTbl.insert_or_assign("Title", Definition.Title);
-    HeaderTbl.insert_or_assign("ClassRole", static_cast<int64_t>(Definition.ClassRole));
+    HeaderTbl.insert_or_assign("ClassRole", static_cast<int64_t>(Definition.ClassArchetype));
     HeaderTbl.insert_or_assign("RevisionNumber", static_cast<int64_t>(Definition.RevisionNumber));
     HeaderTbl.insert_or_assign("CompiledRevision", static_cast<int64_t>(Definition.CompiledRevision));
     HeaderTbl.insert_or_assign("CompiledDirty", Definition.CompiledDirty);
@@ -103,7 +103,7 @@ SpaceContainerPayload ComponentSpaceEncoder::ConstructPayload(
         toml::table Entry;
         Entry.insert_or_assign("Title", H.Title);
         Entry.insert_or_assign("Category", static_cast<int64_t>(H.Category));
-        if (H.EnclosingIndex != ComponentClass::InvalidHierarchyIndex)
+        if (H.EnclosingIndex != ComponentClass::InvalidNestingIndex)
         {
             if (const auto* Enc = Storage.InspectHeaderByIndex(H.EnclosingIndex))
             {
@@ -134,7 +134,7 @@ SpaceContainerPayload ComponentSpaceEncoder::ConstructPayload(
             case ComponentClass::ComponentCategory::ConstraintInstance:
                 if (const auto* C = Storage.InspectConstraint(H.Token))
                 {
-                    Entry.insert_or_assign("ConstraintKind", static_cast<int64_t>(C->Kind));
+                    Entry.insert_or_assign("ConstraintKind", static_cast<int64_t>(C->Form));
                     Entry.insert_or_assign("Axis", static_cast<int64_t>(C->Axis));
                     Entry.insert_or_assign("DriveMode", static_cast<int64_t>(C->DriveMode));
                     Entry.insert_or_assign("MinAngleDegrees", static_cast<double>(C->MinAngleDegrees));
@@ -182,7 +182,7 @@ SpaceContainerPayload ComponentSpaceEncoder::ConstructPayload(
             case ComponentClass::ComponentCategory::LightInstance:
                 if (const auto* L = Storage.InspectLight(H.Token))
                 {
-                    Entry.insert_or_assign("LightKind", static_cast<int64_t>(L->Kind));
+                    Entry.insert_or_assign("LightKind", static_cast<int64_t>(L->Form));
                     Entry.insert_or_assign("LinearColourRGB", EncodeScalar3(L->LinearColourRGB));
                     Entry.insert_or_assign("IntensityCandela", static_cast<double>(L->IntensityCandela));
                     Entry.insert_or_assign("AttenuationRangeMeters", static_cast<double>(L->AttenuationRangeMeters));
@@ -204,7 +204,7 @@ SpaceContainerPayload ComponentSpaceEncoder::ConstructPayload(
             case ComponentClass::ComponentCategory::CollisionVolume:
                 if (const auto* Col = Storage.InspectCollision(H.Token))
                 {
-                    Entry.insert_or_assign("CollisionKind", static_cast<int64_t>(Col->Kind));
+                    Entry.insert_or_assign("CollisionKind", static_cast<int64_t>(Col->Form));
                     Entry.insert_or_assign("HalfExtentsMeters", EncodeScalar3(Col->HalfExtentsMeters));
                     Entry.insert_or_assign("RadiusMeters", static_cast<double>(Col->RadiusMeters));
                     Entry.insert_or_assign("HalfHeightMeters", static_cast<double>(Col->HalfHeightMeters));
@@ -273,7 +273,7 @@ SpaceContainerPayload ComponentSpaceEncoder::ConstructPayload(
         InstancesArray.push_back(std::move(Entry));
     };
 
-    Storage.WalkSpatialHierarchy(AppendEntry);
+    Storage.WalkSpatialNesting(AppendEntry);
     std::vector<ComponentClass::ComponentInstanceToken> Behaviours {};
     Storage.CollectBehaviourTokens(Behaviours);
     for (const auto Tok : Behaviours)
@@ -351,7 +351,7 @@ bool ComponentSpaceDecoder::ExtractDefinition(
     if (const toml::table* Header = Payload.DomainManifest[".DocumentHeader"].as_table())
     {
         OutDefinition.Title            = (*Header)["Title"].value_or(Payload.DocumentTitle);
-        OutDefinition.ClassRole        = static_cast<ComponentClass::ComponentClassRole>((*Header)["ClassRole"].value_or<int64_t>(0));
+        OutDefinition.ClassArchetype        = static_cast<ComponentClass::ComponentClassArchetype>((*Header)["ClassRole"].value_or<int64_t>(0));
         OutDefinition.RevisionNumber   = static_cast<uint64_t>((*Header)["RevisionNumber"].value_or<int64_t>(1));
         OutDefinition.CompiledRevision = static_cast<uint64_t>((*Header)["CompiledRevision"].value_or<int64_t>(0));
         OutDefinition.CompiledDirty    = (*Header)["CompiledDirty"].value_or(false);
@@ -422,7 +422,7 @@ bool ComponentSpaceDecoder::ExtractDefinition(
             case ComponentClass::ComponentCategory::ConstraintInstance:
                 if (auto* C = OutDefinition.Storage.ResolveConstraint(Token))
                 {
-                    C->Kind                = static_cast<ComponentClass::PhysicsConstraintKind>((*Entry)["ConstraintKind"].value_or<int64_t>(0));
+                    C->Form                = static_cast<ComponentClass::PhysicsConstraintCategory>((*Entry)["ConstraintKind"].value_or<int64_t>(0));
                     C->Axis                = static_cast<ComponentClass::ConstraintAxis>((*Entry)["Axis"].value_or<int64_t>(1));
                     C->DriveMode           = static_cast<ComponentClass::ConstraintDriveMode>((*Entry)["DriveMode"].value_or<int64_t>(0));
                     C->MinAngleDegrees     = static_cast<float>((*Entry)["MinAngleDegrees"].value_or(-32.0));
@@ -460,7 +460,7 @@ bool ComponentSpaceDecoder::ExtractDefinition(
                 if (auto* F = OutDefinition.Storage.ResolveFluid(Token))
                 {
                     F->VolumeIdentifier   = (*Entry)["VolumeIdentifier"].value_or(std::string("TyreSmokePlume"));
-                    F->EmissionMode       = static_cast<ComponentClass::FluidEmissionKind>((*Entry)["EmissionMode"].value_or<int64_t>(0));
+                    F->EmissionMode       = static_cast<ComponentClass::FluidSourceCategory>((*Entry)["EmissionMode"].value_or<int64_t>(0));
                     F->BoundsExtentMeters = DecodeScalar3((*Entry)["BoundsExtentMeters"].as_array(), { 0.8f, 0.8f, 1.2f });
                     F->BuoyancyScale      = static_cast<float>((*Entry)["BuoyancyScale"].value_or(1.2));
                     F->FuelInjectionRate  = static_cast<float>((*Entry)["FuelInjectionRate"].value_or(0.45));
@@ -470,7 +470,7 @@ bool ComponentSpaceDecoder::ExtractDefinition(
             case ComponentClass::ComponentCategory::LightInstance:
                 if (auto* L = OutDefinition.Storage.ResolveLight(Token))
                 {
-                    L->Kind                   = static_cast<ComponentClass::LightEmitterKind>((*Entry)["LightKind"].value_or<int64_t>(1));
+                    L->Form                   = static_cast<ComponentClass::LightSourceCategory>((*Entry)["LightKind"].value_or<int64_t>(1));
                     L->LinearColourRGB        = DecodeScalar3((*Entry)["LinearColourRGB"].as_array(), { 1.0f, 1.0f, 1.0f });
                     L->IntensityCandela       = static_cast<float>((*Entry)["IntensityCandela"].value_or(30.0));
                     L->AttenuationRangeMeters = static_cast<float>((*Entry)["AttenuationRangeMeters"].value_or(30.0));
@@ -492,7 +492,7 @@ bool ComponentSpaceDecoder::ExtractDefinition(
             case ComponentClass::ComponentCategory::CollisionVolume:
                 if (auto* Col = OutDefinition.Storage.ResolveCollision(Token))
                 {
-                    Col->Kind               = static_cast<ComponentClass::CollisionVolumeKind>((*Entry)["CollisionKind"].value_or<int64_t>(0));
+                    Col->Form               = static_cast<ComponentClass::CollisionVolumeCategory>((*Entry)["CollisionKind"].value_or<int64_t>(0));
                     Col->HalfExtentsMeters  = DecodeScalar3((*Entry)["HalfExtentsMeters"].as_array(), { 0.5f, 0.5f, 0.5f });
                     Col->RadiusMeters       = static_cast<float>((*Entry)["RadiusMeters"].value_or(0.35));
                     Col->HalfHeightMeters   = static_cast<float>((*Entry)["HalfHeightMeters"].value_or(0.45));
@@ -517,7 +517,7 @@ bool ComponentSpaceDecoder::ExtractDefinition(
                     V->FrontalAreaM2     = static_cast<float>((*Entry)["FrontalAreaM2"].value_or(2.15));
                     V->AeroLiftAreaM2    = static_cast<float>((*Entry)["AeroLiftAreaM2"].value_or(1.1));
                     V->FinalDriveRatio   = static_cast<float>((*Entry)["FinalDriveRatio"].value_or(3.55));
-                    V->Interpolation     = static_cast<ComponentClass::CurveInterpolationKind>((*Entry)["Interpolation"].value_or<int64_t>(1));
+                    V->Interpolation     = static_cast<ComponentClass::CurveInterpolationForm>((*Entry)["Interpolation"].value_or<int64_t>(1));
                     if (const toml::array* Gears = (*Entry)["GearRatios"].as_array())
                     {
                         for (std::size_t GIdx = 0u; GIdx < std::min<std::size_t>(Gears->size(), V->GearRatios.size()); ++GIdx)

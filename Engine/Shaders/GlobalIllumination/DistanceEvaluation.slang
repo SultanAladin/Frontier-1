@@ -15,7 +15,7 @@ struct EnclosureFootprint
     float4 Maximum;
     uint4  Links;
 };
-struct FacetFootprint
+struct FaceFootprint
 {
     float3 A;
     uint   Material;
@@ -27,7 +27,7 @@ struct BoxFootprint
     float4 Centre;
     float4 HalfExtent;
 };
-struct ProbeFootprint
+struct IrradianceFootprint
 {
     float4 OriginLimit;
     float4 Direction;
@@ -46,10 +46,10 @@ struct DistanceFootprint
 };
 
 [[vk::binding(0, 0)]] StructuredBuffer<EnclosureFootprint> Enclosures;
-[[vk::binding(1, 0)]] StructuredBuffer<FacetFootprint>     Facets;
+[[vk::binding(1, 0)]] StructuredBuffer<FaceFootprint>     Facets;
 [[vk::binding(2, 0)]] RWStructuredBuffer<float>            LocalDistances;
 [[vk::binding(3, 0)]] RWStructuredBuffer<float4>           ClipDistances;
-[[vk::binding(4, 0)]] StructuredBuffer<ProbeFootprint>     Probes;
+[[vk::binding(4, 0)]] StructuredBuffer<IrradianceFootprint>     Probes;
 [[vk::binding(5, 0)]] RWStructuredBuffer<float4>           Results;
 [[vk::binding(6, 0)]] StructuredBuffer<BoxFootprint>       Boxes;
 [[vk::binding(7, 0)]] RWStructuredBuffer<float4>           SurfaceRadiance;
@@ -146,7 +146,7 @@ float Nearest(float3 P)
         }
         for (uint Slot = Region.Links.x; Slot < Region.Links.x + Region.Links.y; ++Slot)
         {
-            const FacetFootprint Triangle = Facets[Slot];
+            const FaceFootprint Triangle = Facets[Slot];
             BestSquared = min(BestSquared, TriangleSquared(P, Triangle.A.xyz, Triangle.B.xyz, Triangle.C.xyz));
         }
     }
@@ -185,7 +185,7 @@ uint Trace(float3 Origin, float3 Direction, float Limit, bool Any)
         }
         for (uint Slot = Region.Links.x; Slot < Region.Links.x + Region.Links.y; ++Slot)
         {
-            const FacetFootprint Triangle = Facets[Slot];
+            const FaceFootprint Triangle = Facets[Slot];
             const float3         EdgeAB = Triangle.B.xyz - Triangle.A.xyz, EdgeAC = Triangle.C.xyz - Triangle.A.xyz;
             const float3         Perpendicular = cross(Direction, EdgeAC);
             const float          Determinant   = dot(EdgeAB, Perpendicular);
@@ -343,7 +343,7 @@ bool HybridOccluded(float3 Origin, float3 Direction, float Limit, out uint Steps
 {
     const uint Index = DispatchCoordinate.x;
     if (Index >= Parameters.ExtentAndCount.w) return;
-    const ProbeFootprint Probe = Probes[Index];
+    const IrradianceFootprint Probe = Probes[Index];
     uint                 Steps;
     const bool Occluded = HybridOccluded(Probe.OriginLimit.xyz, Probe.Direction.xyz, Probe.OriginLimit.w, Steps);
     Results[Index]      = float4(
@@ -381,7 +381,7 @@ float3 Reflectance(uint Material)
     const uint Index      = DispatchCoordinate.x;
     const uint FacetCount = uint(Parameters.PoseCosineSine.z);
     if (Index >= FacetCount * 2) return;
-    const FacetFootprint Triangle = Facets[Index % FacetCount];
+    const FaceFootprint Triangle = Facets[Index % FacetCount];
     const float3 P = Rotate((Triangle.A.xyz + Triangle.B.xyz + Triangle.C.xyz) / 3) + Parameters.Translation.xyz;
     const float3 Perpendicular = cross(Triangle.B.xyz - Triangle.A.xyz, Triangle.C.xyz - Triangle.A.xyz);
     const float  Magnitude     = length(Perpendicular);
@@ -421,7 +421,7 @@ float3 Reflectance(uint Material)
 {
     const uint Index = DispatchCoordinate.x;
     if (Index >= Parameters.ExtentAndCount.w) return;
-    const ProbeFootprint Probe          = Probes[Index];
+    const IrradianceFootprint Probe          = Probes[Index];
     const float3         LocalDirection = Unrotate(Probe.Direction.xyz);
     const uint           Slot = Trace(ToLocal(Probe.OriginLimit.xyz), LocalDirection, Probe.OriginLimit.w, false);
     if (Slot == 0xffffffff)
@@ -429,7 +429,7 @@ float3 Reflectance(uint Material)
         Results[Index] = float4(0);
         return;
     }
-    const FacetFootprint Triangle = Facets[Slot];
+    const FaceFootprint Triangle = Facets[Slot];
     const bool           ReverseSide =
         dot(cross(Triangle.B.xyz - Triangle.A.xyz, Triangle.C.xyz - Triangle.A.xyz), LocalDirection) > 0;
     const uint CacheSlot = Slot + (ReverseSide ? uint(Parameters.PoseCosineSine.z) : 0u);

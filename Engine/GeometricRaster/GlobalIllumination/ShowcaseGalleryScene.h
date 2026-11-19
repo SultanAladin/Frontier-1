@@ -56,7 +56,7 @@ struct CachedLocalSmoothTriangle
     Mathematics::Axis3D Normal2 { 0.0f, 0.0f, 1.0f };   // [-] - Precomputed 49-deg smooth normal at Corner2
 };
 
-struct ShowcaseWorldObjectEntry
+struct ShowcaseWorldAssetEntry
 {
     std::string            Title                {};                          // [-]   - Outliner & HTML mirror entry title
     std::string            StableIdentifier     {};                          // [-]   - 1:1 HTML mirror row identifier
@@ -77,7 +77,7 @@ struct ShowcaseWorldObjectEntry
     std::vector<CachedLocalSmoothTriangle> LocalSmoothTriangles {};          // [-]   - Cached local triangles & 49-deg smooth normals
 };
 
-struct ShowcaseAreaLightBinding
+struct ShowcaseAreaLightLink
 {
     OutlinerSlotToken      SlotToken            {};                        // [id]  - Bound OutlinerPanel light slot token
     uint32_t               AreaLightIndex       = 0u;                      // [idx] - Index in Scene.AreaLights
@@ -89,9 +89,9 @@ struct ShowcaseWorldSceneBundle
     std::array<ShowcaseGeometryAsset, 8u>                  GeometryAssets       {}; // [-] - Persistent canonical cluster pyramid owners
     std::vector<std::unique_ptr<ShowcaseGeometryAsset>>    DynamicGeometryAssets{}; // [-] - Heap-stable dynamically constructed geometry
     WorldSceneSpecification                                Scene                {}; // [-] - Complete world scene specification
-    PerspectiveCameraFrame                                 EditorCamera         {}; // [-] - Canonical EditorCamera navigation frame
-    std::vector<ShowcaseWorldObjectEntry>                  Objects              {}; // [-] - Registered gallery & constructed geometry
-    std::vector<ShowcaseAreaLightBinding>                  AreaLightBindings    {}; // [-] - Registered LTC polygonal area lights
+    PerspectiveCameraBasis                                 EditorCamera         {}; // [-] - Canonical EditorCamera navigation frame
+    std::vector<ShowcaseWorldAssetEntry>                  Objects              {}; // [-] - Registered gallery & constructed geometry
+    std::vector<ShowcaseAreaLightLink>                  AreaLightBindings    {}; // [-] - Registered LTC polygonal area lights
 
     OutlinerSlotToken                                      ShowcaseFolderToken  {}; // [id] - "Showcase" collection folder token
     OutlinerSlotToken                                      CamerasFolderToken   {}; // [id] - "Cameras" collection folder token

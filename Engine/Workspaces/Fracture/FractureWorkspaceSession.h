@@ -47,7 +47,7 @@ enum class FractureMethodMode : uint8_t
     Realtime = 1u,
 };
 
-enum class FractureFacetDetail : uint8_t
+enum class FractureFaceDetail : uint8_t
 {
     Low    = 0u,
     Medium = 1u,
@@ -153,7 +153,7 @@ public:
 
     // Active primitive & dimensions
     FractureIcons::PrimitiveShapeId                ActiveShape         = FractureIcons::PrimitiveShapeId::Torus;
-    FractureFacetDetail                            FacetDetail         = FractureFacetDetail::Medium;
+    FractureFaceDetail                            FacetDetail         = FractureFaceDetail::Medium;
     uint32_t                                       SourceSegmentCount  = 40u;
     uint32_t                                       SourceFaceCount     = 800u;
     float                                          DimPrimaryA         = 0.50f; // Torus R / Box W / Sphere R / Pipe R / Pane W / Hex F

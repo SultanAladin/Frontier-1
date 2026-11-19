@@ -28,7 +28,7 @@ struct ResolveCameraUniforms
     float  ReservedB;
 };
 
-struct ResolveTriangleRecord
+struct ResolveTriangleEntry
 {
     float3 WorldP0;
     uint   MaterialSlot;
@@ -50,7 +50,7 @@ struct ResolveTriangleRecord
 
 [[vk::binding(10, 0)]] ConstantBuffer<ResolveCameraUniforms>       ResolveCam;
 [[vk::binding(11, 0)]] StructuredBuffer<uint64_t>                  OpaqueVisibility64;
-[[vk::binding(12, 0)]] StructuredBuffer<ResolveTriangleRecord>     TriangleTable;
+[[vk::binding(12, 0)]] StructuredBuffer<ResolveTriangleEntry>     TriangleTable;
 [[vk::binding(13, 0)]] StructuredBuffer<GpuCompactMaterialEntry>   MaterialTable;
 [[vk::binding(14, 0)]] RWTexture2D<float4>                         ResolvedColorHdr;
 [[vk::binding(15, 0)]] RWTexture2D<float2>                         MotionVectorsOut;
@@ -110,7 +110,7 @@ void AnalyticResolveComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     uint TriIndex = Token32 & 0x1FFFFFu;
-    ResolveTriangleRecord Rec = TriangleTable[TriIndex];
+    ResolveTriangleEntry Rec = TriangleTable[TriIndex];
     GpuCompactMaterialEntry MatEntry = MaterialTable[Rec.MaterialSlot];
 
     // Wavefront-coherent lobe mask union across all active threads in the 8x8 tile!

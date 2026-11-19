@@ -51,14 +51,14 @@ SketcherDocument BuildSketcherSpecimen(std::vector<std::string>* Notes)
 {
     SketcherDocument Document = CreateSketcherDocument("Bracket");
     SketcherConstructRequest Request;
-    Request.Kind = SketcherConstructKind::Block; Request.Width = 4.0; Request.Depth = 2.5; Request.Height = 1.0;
+    Request.Kind = SketcherConstructCategory::Block; Request.Width = 4.0; Request.Depth = 2.5; Request.Height = 1.0;
     Note(Notes, ConstructSketcherPrimitive(Document, Request));
     Request = {};
-    Request.Kind = SketcherConstructKind::Cylinder; Request.Position = { 1.0, 1.25, 1.0 }; Request.Radius = 0.5; Request.Height = 0.75;
+    Request.Kind = SketcherConstructCategory::Cylinder; Request.Position = { 1.0, 1.25, 1.0 }; Request.Radius = 0.5; Request.Height = 0.75;
     Request.Combination = FeatureCombination::Union;
     Note(Notes, ConstructSketcherPrimitive(Document, Request));
     Request = {};
-    Request.Kind = SketcherConstructKind::Cylinder; Request.Position = { 3.0, 1.25, -0.5 }; Request.Radius = 0.3; Request.Height = 2.0;
+    Request.Kind = SketcherConstructCategory::Cylinder; Request.Position = { 3.0, 1.25, -0.5 }; Request.Radius = 0.3; Request.Height = 2.0;
     Request.Combination = FeatureCombination::Difference;
     Note(Notes, ConstructSketcherPrimitive(Document, Request));
     PickTowards(Document, { 5.0, 0.6, 2.0 }, { 4.0, 0.6, 1.0 });

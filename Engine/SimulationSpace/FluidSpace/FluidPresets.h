@@ -44,9 +44,9 @@ public:
     [[nodiscard]] static Mathematics::LinearRGB EvaluateBlackbodyPalette(
         float             RawTemperature,
         float             TemperatureScale,
-        FluidColorPalette Palette) noexcept;
+        FluidColorScheme Palette) noexcept;
 
-    [[nodiscard]] static std::string_view QueryPaletteLabel(FluidColorPalette Palette) noexcept;
+    [[nodiscard]] static std::string_view QueryPaletteLabel(FluidColorScheme Palette) noexcept;
     [[nodiscard]] static std::string_view QueryObstacleLabel(FluidObstacleType Type) noexcept;
     [[nodiscard]] static std::string_view QueryChannelLabel(FluidRenderChannel Channel) noexcept;
 };

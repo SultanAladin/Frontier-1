@@ -119,7 +119,7 @@ void SerializeInlineForceSourcesToManifest(
         Src.insert_or_assign("FormulaSourceText",     Entry.FormulaSourceText);
         SourceArray.push_back(std::move(Src));
 
-        if (Entry.Motion.Topology != MotionPathTopology::Static || Entry.Motion.WaypointCount > 0u)
+        if (Entry.Motion.Topology != MotionPathGeometry::Static || Entry.Motion.WaypointCount > 0u)
         {
             toml::table Mot;
             Mot.insert_or_assign("ForceToken",                   static_cast<int64_t>(Entry.UniqueToken));
@@ -179,7 +179,7 @@ void DeserializeInlineForceSourcesFromManifest(
                 Entry.Label                 = (*T)["Label"].value_or(std::string{ "Force Field" });
                 Entry.Model                 = static_cast<ForceModel>((*T)["ForceModel"].value_or<int64_t>(0));
                 Entry.Domain                = QueryDomainForModel(Entry.Model);
-                Entry.StreamProfile         = static_cast<FlowStreamProfile>((*T)["StreamProfile"].value_or<int64_t>(0));
+                Entry.StreamProfile         = static_cast<StreamTransportProfile>((*T)["StreamProfile"].value_or<int64_t>(0));
                 Entry.Attenuation           = static_cast<ForceAttenuationMode>((*T)["Attenuation"].value_or<int64_t>(0));
                 Entry.DurationMode          = static_cast<ForceDurationMode>((*T)["DurationMode"].value_or<int64_t>(0));
                 Entry.Envelope              = static_cast<ReachEnvelopeCategory>((*T)["ReachEnvelope"].value_or<int64_t>(0));
@@ -221,7 +221,7 @@ void DeserializeInlineForceSourcesFromManifest(
                 {
                     if (Entry.UniqueToken == Token)
                     {
-                        Entry.Motion.Topology                     = static_cast<MotionPathTopology>((*T)["Topology"].value_or<int64_t>(0));
+                        Entry.Motion.Topology                     = static_cast<MotionPathGeometry>((*T)["Topology"].value_or<int64_t>(0));
                         Entry.Motion.CycleBehavior                = static_cast<MotionCycleBehavior>((*T)["CycleBehavior"].value_or<int64_t>(0));
                         Entry.Motion.SpeedMetresPerSecond         = static_cast<float>((*T)["SpeedMetresPerSecond"].value_or(8.0));
                         Entry.Motion.PhaseOffset                  = static_cast<float>((*T)["PhaseOffset"].value_or(0.0));

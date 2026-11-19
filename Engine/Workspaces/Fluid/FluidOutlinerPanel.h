@@ -26,7 +26,7 @@ public:
         const ControlPointer&  Pointer,
         float                  Opacity = 1.0f) noexcept;
 
-    [[nodiscard]] Rectangle2D QueryLastNodeRowBounds(FluidOutlinerNode Node) const noexcept;
+    [[nodiscard]] Rectangle2D QueryLastNodeRowBounds(FluidOutlinerRow Node) const noexcept;
     [[nodiscard]] Rectangle2D QueryLastPresetCardBounds(std::size_t Index) const noexcept;
 
 private:

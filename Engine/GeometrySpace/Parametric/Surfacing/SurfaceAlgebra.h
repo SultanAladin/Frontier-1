@@ -25,18 +25,18 @@ namespace Frontier::GeometrySpace::Parametric
 
 // 📝 Derivative conditions at one end of a skinned family, one vector per pole of the (compatible) curves: First is
 //    ∂S/∂𝑣 and Second ∂²S/∂𝑣² of each pole column at that end. Empty vectors mean "no condition".
-struct FamilyEndCondition
+struct CurveGroupEndCondition
 {
     std::vector<Vector3> First  = {};                                                        // [len] - ∂𝑣 per pole column
     std::vector<Vector3> Second = {};                                                        // [len] - ∂𝑣𝑣 per pole column
 };
 
-struct FamilySkinning
+struct CurveGroupSkinning
 {
     int                 Degree     = 3;                                                      // [-] - Degree across (lowered to what the rows allow)
     std::vector<double> Parameters = {};                                                     // [-] - 𝑣ₖ per curve, 𝑣₀ = 0 … 𝑣ₘ = 1, increasing
-    FamilyEndCondition  Start      = {};                                                     // [-] - Conditions at 𝑣 = 0
-    FamilyEndCondition  End        = {};                                                     // [-] - Conditions at 𝑣 = 1
+    CurveGroupEndCondition  Start      = {};                                                     // [-] - Conditions at 𝑣 = 0
+    CurveGroupEndCondition  End        = {};                                                     // [-] - Conditions at 𝑣 = 1
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -90,7 +90,7 @@ struct FamilySkinning
 //    homogeneous form at the 𝑣ₖ, optionally with ∂𝑣 / ∂𝑣𝑣 conditions at either end (non-rational curves only). Each
 //    condition adds one pole per column; the 𝑣-knots average the parameter list with the conditioned ends repeated
 //    (P&T § 9.2.2), so S(𝑢, 𝑣ₖ) ≡ curve k and the end derivatives hold exactly. Refusal is filled when empty.
-[[nodiscard]] std::optional<NurbsSurfaceDefinition> SkinCurveFamily(const std::vector<NurbsCurveDefinition>& Curves, const FamilySkinning& Skinning,
+[[nodiscard]] std::optional<NurbsSurfaceDefinition> SkinCurveFamily(const std::vector<NurbsCurveDefinition>& Curves, const CurveGroupSkinning& Skinning,
                                                                     std::string& Refusal);
 
 // Affine τ′ = (τ − Low) / (High − Low): the same curve on [0, 1] (clamped end knots exactly 0 and 1, periodic flag cleared).

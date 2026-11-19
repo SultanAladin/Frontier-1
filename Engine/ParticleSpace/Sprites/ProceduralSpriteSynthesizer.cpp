@@ -307,7 +307,7 @@ struct VoronoiDistancePair
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-ProceduralSpriteFamily QueryProceduralSpriteFamily(ProceduralSpriteArchetype Archetype) noexcept
+ProceduralSpriteGroup QueryProceduralSpriteFamily(ProceduralSpriteArchetype Archetype) noexcept
 {
     switch (Archetype)
     {
@@ -315,32 +315,32 @@ ProceduralSpriteFamily QueryProceduralSpriteFamily(ProceduralSpriteArchetype Arc
         case ProceduralSpriteArchetype::SnowFernlikeDendrite:
         case ProceduralSpriteArchetype::SnowHexPlate:
         case ProceduralSpriteArchetype::SnowTwelveFoldStar:
-            return ProceduralSpriteFamily::SnowCrystal;
+            return ProceduralSpriteGroup::SnowCrystal;
 
         case ProceduralSpriteArchetype::OpticalHexBokeh:
         case ProceduralSpriteArchetype::OpticalStarburstFlare:
         case ProceduralSpriteArchetype::OpticalSoftGlow:
-            return ProceduralSpriteFamily::OpticalFlare;
+            return ProceduralSpriteGroup::OpticalFlare;
 
         case ProceduralSpriteArchetype::PyroFlameWisp:
         case ProceduralSpriteArchetype::PyroSmokePuff:
         case ProceduralSpriteArchetype::PyroEmberSpark:
-            return ProceduralSpriteFamily::PyroPlume;
+            return ProceduralSpriteGroup::PyroPlume;
 
         case ProceduralSpriteArchetype::LiquidRainDrop:
         case ProceduralSpriteArchetype::LiquidSoapBubble:
-            return ProceduralSpriteFamily::LiquidDroplet;
+            return ProceduralSpriteGroup::LiquidDroplet;
 
         case ProceduralSpriteArchetype::BotanicalAzureButterfly:
         case ProceduralSpriteArchetype::BotanicalSakuraPetal:
-            return ProceduralSpriteFamily::BotanicalWing;
+            return ProceduralSpriteGroup::BotanicalWing;
 
         case ProceduralSpriteArchetype::TechHexEnergyShield:
         case ProceduralSpriteArchetype::TechVoronoiDissolveMask:
         case ProceduralSpriteArchetype::Count:
-            return ProceduralSpriteFamily::TechShield;
+            return ProceduralSpriteGroup::TechShield;
     }
-    return ProceduralSpriteFamily::SnowCrystal;
+    return ProceduralSpriteGroup::SnowCrystal;
 }
 
 std::string_view QueryProceduralSpriteTitle(ProceduralSpriteArchetype Archetype) noexcept

@@ -14,7 +14,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 [[vk::push_constant]]
-ConstantBuffer<DrawObjectPushConstants> DrawPush;
+ConstantBuffer<RenderInstancePushConstants> SurfacePush;
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<ViewportOverlayUniforms> Overlay;
@@ -40,7 +40,7 @@ EnvelopeVaryings VertexMain(
     float3 UnitPos    : POSITION,
     float3 UnitNormal : NORMAL)
 {
-    uint SrcIdx = DrawPush.ObjectIndex;
+    uint SrcIdx = SurfacePush.ObjectIndex;
     ForceSourceShaderEntry Src = SourceBuffer[SrcIdx];
 
     float3 Anchor   = Src.CentreRadiusPacked.xyz;
@@ -71,8 +71,8 @@ EnvelopeVaryings VertexMain(
     Out.ClipPosition = VfProjectWorldToClip(Overlay, WorldPos);
     Out.WorldPos     = WorldPos;
     Out.WorldNormal  = WorldNormal;
-    Out.SourceToken  = DrawPush.PickPrimaryId;
-    Out.SelectedFlag = (DrawPush.PickPrimaryId == Overlay.ActiveSourceCounts.y) ? 1u : 0u;
+    Out.SourceToken  = SurfacePush.PickPrimaryId;
+    Out.SelectedFlag = (SurfacePush.PickPrimaryId == Overlay.ActiveSourceCounts.y) ? 1u : 0u;
     return Out;
 }
 

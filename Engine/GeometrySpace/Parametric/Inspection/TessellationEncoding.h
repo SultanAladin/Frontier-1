@@ -1,7 +1,7 @@
 /*====================================================================================================================================
                                                     TESSELLATIONENCODING.H
 ====================================================================================================================================*/
-// 🧩 One-line JSON description of a PolygonComplex for the viewer's shaded mode (triangles, per-face records, N-gates)
+// 🧩 One-line JSON description of a PolygonNetworkStructure for the viewer's shaded mode (triangles, per-face records, N-gates)
 
 #pragma once
 

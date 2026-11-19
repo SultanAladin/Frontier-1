@@ -160,7 +160,7 @@ void FluidParticleCoupler::AdvectExternalParticleSlots(
 
 void FluidParticleCoupler::StepCoupledParticles(
     const FluidDomainSettings&           Domain,
-    const FluidEmitterSettings&          Emitter,
+    const FluidSourceSettings&          Emitter,
     const FluidParticleCouplingSettings& Settings,
     const FluidShadingSettings&          Shading,
     const FluidGridVolume&               HeroGrid,

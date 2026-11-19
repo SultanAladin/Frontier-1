@@ -22,7 +22,7 @@ namespace Frontier::GeometrySpace::Parametric
 //                                                    ENUMS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class SketchCurveKind : uint8_t
+enum class SketchCurveCategory : uint8_t
 {
     Line   = 0,                                                                              // Start → End
     Circle = 1,                                                                              // Centre + own radius unknown
@@ -42,7 +42,7 @@ enum class SketchSplineForm : uint8_t
 
 // 📝 References per kind (First / Second / Third): P = point index, L = line, C = circle or arc, S = spline, K = any curve,
 //    E = the point index of one end of the spline (its first or last defining point).
-enum class SketchConstraintKind : uint8_t
+enum class SketchConstraintCategory : uint8_t
 {
     Coincident         = 0,                                                                  // P, P            · 2 equations
     Fixed              = 1,                                                                  // P at (Value, SecondValue) · 2
@@ -101,7 +101,7 @@ struct SketchPoint
 
 struct SketchCurve
 {
-    SketchCurveKind Kind         = SketchCurveKind::Line;                                     // [-]   - Curve type
+    SketchCurveCategory Kind         = SketchCurveCategory::Line;                                     // [-]   - Curve type
     int             Identifier   = 0;                                                        // [-]   - Stable id (names: Line7, Arc3, Circle2)
     int             Start        = -1;                                                       // [-]   - Point index (line, arc)
     int             End          = -1;                                                       // [-]   - Point index (line, arc)
@@ -118,7 +118,7 @@ struct SketchCurve
 
 struct SketchConstraint
 {
-    SketchConstraintKind Kind        = SketchConstraintKind::Coincident;                     // [-]       - Equation family
+    SketchConstraintCategory Kind        = SketchConstraintCategory::Coincident;                     // [-]       - Equation family
     int                  First       = -1;                                                   // [-]       - Reference (see kind)
     int                  Second      = -1;                                                   // [-]       - Reference
     int                  Third       = -1;                                                   // [-]       - Reference
@@ -197,7 +197,7 @@ int AppendSketchLine(SketchModel& Sketch, int Start, int End, int Identifier, bo
 int AppendSketchCircle(SketchModel& Sketch, int Centre, double Radius, int Identifier, bool Construction = false);
 int AppendSketchArc(SketchModel& Sketch, int Centre, int Start, int End, int Identifier, bool Construction = false);
 int AppendSketchSpline(SketchModel& Sketch, std::vector<int> Points, SketchSplineForm Form, int Identifier, bool Construction = false);
-int AppendSketchConstraint(SketchModel& Sketch, SketchConstraintKind Kind, int First, int Second = -1, int Third = -1, double Value = 0.0,
+int AppendSketchConstraint(SketchModel& Sketch, SketchConstraintCategory Kind, int First, int Second = -1, int Third = -1, double Value = 0.0,
                            const std::string& Label = {}, double SecondValue = 0.0);
 
 // Current value of a dimension kind (length, distance, x / y distance, radius; angle in (−π, π] from the first line to
@@ -213,7 +213,7 @@ int AppendSketchConstraint(SketchModel& Sketch, SketchConstraintKind Kind, int F
 // "Line7", "Arc3", "Circle2", "Spline4".
 [[nodiscard]] std::string SketchCurveName(const SketchCurve& Curve);
 
-[[nodiscard]] const char* SketchConstraintLabel(SketchConstraintKind Kind) noexcept;
+[[nodiscard]] const char* SketchConstraintLabel(SketchConstraintCategory Kind) noexcept;
 [[nodiscard]] const char* SketchConstraintStatusLabel(SketchConstraintStatus Status) noexcept;
 [[nodiscard]] const char* SketchSplineFormLabel(SketchSplineForm Form) noexcept;
 

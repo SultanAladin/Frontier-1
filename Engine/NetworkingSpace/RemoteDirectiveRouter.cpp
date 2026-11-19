@@ -190,7 +190,7 @@ void InputDirectiveStream::ClearStream() noexcept
 
 uint32_t ReliableDirectiveRouter::EnqueueDirective(uint16_t DirectiveOpcode, std::span<const uint8_t> ParameterBytes)
 {
-    ReliableDirectiveRecord Record{};
+    ReliableDirectiveEntry Record{};
     Record.DirectiveSequence = NextOutboundSequence++;
     Record.DirectiveOpcode   = DirectiveOpcode;
     Record.ParameterBytes.assign(ParameterBytes.begin(), ParameterBytes.end());
@@ -205,7 +205,7 @@ bool ReliableDirectiveRouter::BuildOutboundBatch(std::vector<uint8_t>& OutPayloa
     AppendLittleEndian16(OutPayload, 0u); // Placeholder for serialized directive count
 
     uint16_t WrittenCount = 0u;
-    for (const ReliableDirectiveRecord& Record : PendingOutbound)
+    for (const ReliableDirectiveEntry& Record : PendingOutbound)
     {
         const std::size_t EntryBytes = 4u + 2u + 2u + Record.ParameterBytes.size();
         if (OutPayload.size() + EntryBytes > MaxPayloadBytes || Record.ParameterBytes.size() > 65535u)
@@ -226,7 +226,7 @@ bool ReliableDirectiveRouter::BuildOutboundBatch(std::vector<uint8_t>& OutPayloa
 
 void ReliableDirectiveRouter::AcknowledgeUpToSequence(uint32_t AckedDirectiveSequence) noexcept
 {
-    std::erase_if(PendingOutbound, [AckedDirectiveSequence](const ReliableDirectiveRecord& Record) noexcept
+    std::erase_if(PendingOutbound, [AckedDirectiveSequence](const ReliableDirectiveEntry& Record) noexcept
     {
         return Record.DirectiveSequence <= AckedDirectiveSequence;
     });
@@ -234,7 +234,7 @@ void ReliableDirectiveRouter::AcknowledgeUpToSequence(uint32_t AckedDirectiveSeq
 
 bool ReliableDirectiveRouter::IngestInboundBatch(
     std::span<const uint8_t>              Payload,
-    std::vector<ReliableDirectiveRecord>& OutDeliveredInOrder)
+    std::vector<ReliableDirectiveEntry>& OutDeliveredInOrder)
 {
     OutDeliveredInOrder.clear();
     if (Payload.size() < 6u)
@@ -255,7 +255,7 @@ bool ReliableDirectiveRouter::IngestInboundBatch(
 
     for (uint16_t Index = 0u; Index < EntryCount; ++Index)
     {
-        ReliableDirectiveRecord Incoming{};
+        ReliableDirectiveEntry Incoming{};
         uint16_t ParamBytes = 0u;
         if (!ReadLittleEndian32(Payload, Cursor, Incoming.DirectiveSequence) ||
             !ReadLittleEndian16(Payload, Cursor, Incoming.DirectiveOpcode) ||
@@ -274,7 +274,7 @@ bool ReliableDirectiveRouter::IngestInboundBatch(
         }
 
         bool AlreadyHeld = false;
-        for (const ReliableDirectiveRecord& Held : OutOfOrderHoldback)
+        for (const ReliableDirectiveEntry& Held : OutOfOrderHoldback)
         {
             if (Held.DirectiveSequence == Incoming.DirectiveSequence)
             {
@@ -294,7 +294,7 @@ bool ReliableDirectiveRouter::IngestInboundBatch(
     }
 
     std::sort(OutOfOrderHoldback.begin(), OutOfOrderHoldback.end(),
-        [](const ReliableDirectiveRecord& Left, const ReliableDirectiveRecord& Right) noexcept
+        [](const ReliableDirectiveEntry& Left, const ReliableDirectiveEntry& Right) noexcept
         {
             return Left.DirectiveSequence < Right.DirectiveSequence;
         });

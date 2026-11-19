@@ -3,7 +3,7 @@
 ============================================================================================================================================*/
 // 🧩 2D UDIM UVTile parameter canvas shader rendering checker/custom backdrops, authored-polygon UV edges, GPU seam/pin/selection & 2D Pick IDs
 
-struct UVCanvasVertexRecord
+struct UVCanvasVertexEntry
 {
     float4 UVAndBaryXY;    // xy = ParameterUV (U, V), zw = Barycentric.xy
     float4 BaryZAndStats;  // x = Barycentric.z, y = StretchMetric, z = SignedAreaSign, w = OverlapFlag
@@ -22,7 +22,7 @@ struct UVCanvasUniformBlock
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<UVCanvasUniformBlock>  CanvasUniforms;
-[[vk::binding(1, 0)]] StructuredBuffer<UVCanvasVertexRecord> CanvasVertices;
+[[vk::binding(1, 0)]] StructuredBuffer<UVCanvasVertexEntry> CanvasVertices;
 [[vk::binding(2, 0)]] StructuredBuffer<uint>                 FaceSelectionBitmask;
 [[vk::binding(3, 0)]] StructuredBuffer<uint>                 EdgeSelectionBitmask;
 [[vk::binding(4, 0)]] StructuredBuffer<uint>                 VertexSelectionBitmask;
@@ -125,7 +125,7 @@ float3 EvaluateBackdropTexture(uint BackdropPreset, float2 LocalUV)
 [shader("vertex")]
 UVVertexOutput VertexEntry(uint VertexID : SV_VertexID)
 {
-    UVCanvasVertexRecord Rec = CanvasVertices[VertexID];
+    UVCanvasVertexEntry Rec = CanvasVertices[VertexID];
     float2 MinUV = CanvasUniforms.CanvasMinMaxUV.xy;
     float2 MaxUV = CanvasUniforms.CanvasMinMaxUV.zw;
     float2 Norm  = (Rec.UVAndBaryXY.xy - MinUV) / max(MaxUV - MinUV, float2(1.0e-5, 1.0e-5));

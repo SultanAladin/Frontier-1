@@ -29,12 +29,12 @@ public:
     [[nodiscard]] static bool BakeClassThumbnail(
         ComponentViewportRenderer&                                    Renderer,
         ComponentClass::ComponentClassDefinition&                     InOutClassDef,
-        std::span<const ComponentClass::CompiledGeometryCatalogEntry> Catalog,
+        std::span<const ComponentClass::CompiledGeometryRepositoryEntry> Repository,
         uint32_t                                                      ResolutionPixels = 128u);
 
     [[nodiscard]] static bool BakeGeometryAssetThumbnail(
         ComponentViewportRenderer&                          Renderer,
-        const ComponentClass::CompiledGeometryCatalogEntry& Entry,
+        const ComponentClass::CompiledGeometryRepositoryEntry& Entry,
         std::vector<uint8_t>&                               OutRgba8,
         uint32_t                                            ResolutionPixels = 128u);
 };

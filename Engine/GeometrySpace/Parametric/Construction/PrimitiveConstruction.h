@@ -9,7 +9,7 @@
 //                                                    INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/GeometrySpace/Parametric/Topology/EulerEdits.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/EulerEdits.h"
 
 #include <vector>
 
@@ -21,7 +21,7 @@ namespace Frontier::GeometrySpace::Parametric
 //------------------------------------------------------------------------------------------------------------------------
 
 // 📝 Faces of a translational sweep, for callers that keep building on it (holes, cavities).
-struct PrismAssembly
+struct PrismArrangement
 {
     BodyToken              Body       = {};                                                  // [-] - Swept body
     FaceToken              StartFace  = {};                                                  // [-] - Cap at the profile
@@ -34,24 +34,24 @@ struct PrismAssembly
 //------------------------------------------------------------------------------------------------------------------------
 
 // Prism over a planar polygon (counter-clockwise about Displacement) swept by Displacement. Lines and planes throughout.
-[[nodiscard]] EditOutcome<PrismAssembly> ConstructPrism(ModelPartition& Partition, const std::vector<Vector3>& Profile, Vector3 Displacement);
+[[nodiscard]] EditOutcome<PrismArrangement> ConstructPrism(ModelPartition& Partition, const std::vector<Vector3>& Profile, Vector3 Displacement);
 
 [[nodiscard]] EditOutcome<BodyToken> ConstructBlock(ModelPartition& Partition, Vector3 Corner, Vector3 Extent);
 
 // Cylinder on Frame.ZAxis: base circle centred at Frame.Origin, seam through Origin + Radius·XAxis.
-[[nodiscard]] EditOutcome<BodyToken> ConstructCylinder(ModelPartition& Partition, const OrthonormalFrame& Frame, double Radius, double Height);
+[[nodiscard]] EditOutcome<BodyToken> ConstructCylinder(ModelPartition& Partition, const OrthonormalBasis& Frame, double Radius, double Height);
 
 // Pointed cone: base circle at Frame.Origin, apex at Origin + Height·ZAxis.
-[[nodiscard]] EditOutcome<BodyToken> ConstructCone(ModelPartition& Partition, const OrthonormalFrame& Frame, double Radius, double Height);
+[[nodiscard]] EditOutcome<BodyToken> ConstructCone(ModelPartition& Partition, const OrthonormalBasis& Frame, double Radius, double Height);
 
 // Truncated cone: circle of OriginRadius at Frame.Origin, top circle of TopRadius at Origin + Height·ZAxis, seam through +XAxis.
-[[nodiscard]] EditOutcome<BodyToken> ConstructFrustum(ModelPartition& Partition, const OrthonormalFrame& Frame, double OriginRadius, double TopRadius, double Height);
+[[nodiscard]] EditOutcome<BodyToken> ConstructFrustum(ModelPartition& Partition, const OrthonormalBasis& Frame, double OriginRadius, double TopRadius, double Height);
 
 // Sphere: one face, one seam edge from the south pole to the north pole, singular rows at the poles.
-[[nodiscard]] EditOutcome<BodyToken> ConstructSphere(ModelPartition& Partition, const OrthonormalFrame& Frame, double Radius);
+[[nodiscard]] EditOutcome<BodyToken> ConstructSphere(ModelPartition& Partition, const OrthonormalBasis& Frame, double Radius);
 
 // Torus: one face, one vertex, two seam circles (genus 1).
-[[nodiscard]] EditOutcome<BodyToken> ConstructTorus(ModelPartition& Partition, const OrthonormalFrame& Frame, double MajorRadius, double MinorRadius);
+[[nodiscard]] EditOutcome<BodyToken> ConstructTorus(ModelPartition& Partition, const OrthonormalBasis& Frame, double MajorRadius, double MinorRadius);
 
 // Block with a rectangular through hole along Z (genus 1, made with KEMR + KFMRH).
 [[nodiscard]] EditOutcome<BodyToken> ConstructPerforatedBlock(ModelPartition& Partition, Vector3 Extent, Vector3 HoleExtent);

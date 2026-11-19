@@ -31,7 +31,7 @@ struct alignas(16) GPUWorldGizmoUniformBlock
 };
 
 void ComputeCameraBasis(
-    const PerspectiveCameraFrame& Cam,
+    const PerspectiveCameraBasis& Cam,
     Mathematics::Axis3D&          OutEye,
     Mathematics::Axis3D&          OutRight,
     Mathematics::Axis3D&          OutUp,
@@ -720,7 +720,7 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
     std::vector<uint8_t>&         InOutDisplayRgba8,
     uint32_t                      WidthPx,
     uint32_t                      HeightPx,
-    const PerspectiveCameraFrame& Camera,
+    const PerspectiveCameraBasis& Camera,
     const Editor::TransformGizmo& Gizmo3D)
 {
     if (!Ready || DeviceInterchange == nullptr || WidthPx == 0u || HeightPx == 0u)
@@ -977,8 +977,8 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
 }
 
 bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
-    const GpuViewportCompositeRequest& Request,
-    GpuViewportCompositeResult&        OutResult)
+    const GpuViewportOverlayRequest& Request,
+    GpuViewportOverlayResult&        OutResult)
 {
     OutResult = {};
     if (!Ready || DeviceInterchange == nullptr || !DeviceInterchange->Ready() ||

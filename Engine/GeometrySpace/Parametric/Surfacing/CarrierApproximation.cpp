@@ -86,10 +86,10 @@ namespace
         return Abscissae;
     }
 
-    [[nodiscard]] DenseMatrix CollocationMatrix(const std::vector<double>& Knots, const std::vector<double>& Abscissae)
+    [[nodiscard]] DenseLinearArray CollocationMatrix(const std::vector<double>& Knots, const std::vector<double>& Abscissae)
     {
         const int   Count = PoleCount(Knots);
-        DenseMatrix Matrix(Count, Count);
+        DenseLinearArray Matrix(Count, Count);
         for (int Row = 0; Row < Count; ++Row)
         {
             const NurbsBasisSample Basis = EvaluateNurbsBasis(Knots, SplineDegree, Count, Abscissae[Row]);
@@ -99,11 +99,11 @@ namespace
     }
 
     // Solves Matrix · X = Samples for Bundle columns of points at once (Samples[member][row]); nullopt when singular.
-    [[nodiscard]] std::optional<std::vector<std::vector<Vector3>>> SolveBundle(const DenseMatrix& Matrix, const std::vector<std::vector<Vector3>>& Samples)
+    [[nodiscard]] std::optional<std::vector<std::vector<Vector3>>> SolveBundle(const DenseLinearArray& Matrix, const std::vector<std::vector<Vector3>>& Samples)
     {
         const int   Count = Matrix.Rows;
         const int   Members = static_cast<int>(Samples.size());
-        DenseMatrix Sides(Count, 3 * Members);
+        DenseLinearArray Sides(Count, 3 * Members);
         for (int Member = 0; Member < Members; ++Member)
             for (int Row = 0; Row < Count; ++Row)
             {
@@ -111,7 +111,7 @@ namespace
                 Sides.At(Row, 3 * Member + 1) = Samples[Member][Row].Y;
                 Sides.At(Row, 3 * Member + 2) = Samples[Member][Row].Z;
             }
-        const std::optional<DenseMatrix> Solution = SolveDenseSystem(Matrix, Sides);
+        const std::optional<DenseLinearArray> Solution = SolveDenseSystem(Matrix, Sides);
         if (!Solution) return std::nullopt;
         std::vector<std::vector<Vector3>> Poles(static_cast<size_t>(Members), std::vector<Vector3>(static_cast<size_t>(Count)));
         for (int Member = 0; Member < Members; ++Member)

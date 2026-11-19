@@ -10,7 +10,7 @@
 #include "Engine/GeometrySpace/Parametric/Surfacing/CurveNetwork.h"
 #include "Engine/GeometrySpace/Parametric/Surfacing/CurveFitting.h"
 #include "Engine/GeometrySpace/Parametric/Surfacing/LinearSystem.h"
-#include "Engine/GeometrySpace/Parametric/Surfacing/PanelAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Surfacing/PanelJoining.h"
 #include "Engine/GeometrySpace/Parametric/Surfacing/SectionLoft.h"
 #include "Engine/GeometrySpace/Parametric/Surfacing/SurfaceAlgebra.h"
 
@@ -51,7 +51,7 @@ namespace
 
     // 📝 Monotone piecewise-cubic Hermite map through (Xₖ, Yₖ) (Fritsch & Carlson 1980): slopes from the secant harmonic
     //    rule, zero where the data turns, limited to 3·secant — strictly increasing data gives a strictly increasing map.
-    struct MonotoneMap
+    struct MonotoneMapping
     {
         std::vector<double> Nodes  = {};                                                     // [-] - Xₖ
         std::vector<double> Values = {};                                                     // [-] - Yₖ
@@ -79,9 +79,9 @@ namespace
         }
     };
 
-    [[nodiscard]] MonotoneMap BuildMonotoneMap(const std::vector<double>& Nodes, const std::vector<double>& Values)
+    [[nodiscard]] MonotoneMapping BuildMonotoneMap(const std::vector<double>& Nodes, const std::vector<double>& Values)
     {
-        MonotoneMap Map{ Nodes, Values, std::vector<double>(Nodes.size(), 0.0) };
+        MonotoneMapping Map{ Nodes, Values, std::vector<double>(Nodes.size(), 0.0) };
         const size_t Count = Nodes.size();
         std::vector<double> Secants(Count - 1);
         for (size_t Index = 0; Index + 1 < Count; ++Index) Secants[Index] = (Values[Index + 1] - Values[Index]) / (Nodes[Index + 1] - Nodes[Index]);
@@ -170,7 +170,7 @@ namespace
     //                                            FAMILY REFIT
     //--------------------------------------------------------------------------------------------------------------------
 
-    struct FamilyRefit
+    struct CurveGroupRefit
     {
         std::vector<NurbsCurveDefinition> Curves               = {};                         // [-]   - On one knot vector
         double                            WorstShift           = 0.0;                        // [len] - max |δ|
@@ -181,15 +181,15 @@ namespace
     // 💡 Each curve j becomes Tⱼ(𝑢) = Cⱼ(φⱼ(𝑢)) + δⱼ(𝑢), then one shared knot vector carries a least-squares fit of every
     //    Tⱼ with Tⱼ(𝑈ₖ) = Pⱼₖ imposed exactly (Lagrange multipliers). Spans holding an error above the reapproximation
     //    tolerance split at their middle, for the whole family, until the limit.
-    [[nodiscard]] FamilyRefit RefitFamily(const std::vector<NurbsCurveDefinition>& Originals, const std::vector<std::vector<double>>& Crossings,
+    [[nodiscard]] CurveGroupRefit RefitFamily(const std::vector<NurbsCurveDefinition>& Originals, const std::vector<std::vector<double>>& Crossings,
                                           const std::vector<double>& Nodes, const std::vector<std::vector<Vector3>>& Targets, const NetworkSettings& Settings,
                                           const std::string& FamilyName)
     {
-        FamilyRefit Refit;
+        CurveGroupRefit Refit;
         const int CountCurves = static_cast<int>(Originals.size()), CountNodes = static_cast<int>(Nodes.size());
         int Degree = 1;
         for (const NurbsCurveDefinition& Curve : Originals) Degree = std::max(Degree, Curve.Degree);
-        std::vector<MonotoneMap>  Maps;
+        std::vector<MonotoneMapping>  Maps;
         std::vector<OffsetSpline> Shifts;
         for (int Curve = 0; Curve < CountCurves; ++Curve)
         {
@@ -238,7 +238,7 @@ namespace
 
             // ② Normal matrix NᵀN (shared by the family) bordered by the crossing rows.
             const int Size = Count + CountNodes;
-            DenseMatrix Normal(Size, Size);
+            DenseLinearArray Normal(Size, Size);
             std::vector<NurbsBasisSample> Bases;
             for (double Sample : Samples)
             {
@@ -258,7 +258,7 @@ namespace
                     Normal.At(Basis.First + Column, Count + Node) = Basis.Values[0][Column];
                 }
             }
-            DenseMatrix RightSides(Size, 3 * CountCurves);
+            DenseLinearArray RightSides(Size, 3 * CountCurves);
             for (int Curve = 0; Curve < CountCurves; ++Curve)
             {
                 for (size_t Sample = 0; Sample < Samples.size(); ++Sample)
@@ -279,7 +279,7 @@ namespace
                     RightSides.At(Count + Node, 3 * Curve + 2) = Targets[Curve][Node].Z;
                 }
             }
-            const std::optional<DenseMatrix> Solution = SolveDenseSystem(std::move(Normal), std::move(RightSides));
+            const std::optional<DenseLinearArray> Solution = SolveDenseSystem(std::move(Normal), std::move(RightSides));
             if (!Solution) { Refit.Refusal = FamilyName + ": singular refit at " + std::to_string(Spans) + " spans"; return Refit; }
             Refit.Curves.clear();
             for (int Curve = 0; Curve < CountCurves; ++Curve)
@@ -338,7 +338,7 @@ namespace
             Point.Weights = { 1.0, 1.0 };
             Rows.push_back(Point);
         }
-        FamilySkinning Skinning;
+        CurveGroupSkinning Skinning;
         Skinning.Degree     = Degree;
         Skinning.Parameters = Parameters;
         std::string Refusal;
@@ -556,19 +556,19 @@ NetworkSurfaceOutcome ConstructGordonSurface(const std::vector<NurbsCurve>& Firs
             SecondTargets.back().push_back(Points[Other][Index]);
         }
     }
-    const FamilyRefit RefitFirst = RefitFamily(SortedFirst, FirstCrossings, ParametersU, FirstTargets, Settings, "first family");
+    const CurveGroupRefit RefitFirst = RefitFamily(SortedFirst, FirstCrossings, ParametersU, FirstTargets, Settings, "first family");
     if (!RefitFirst.Refusal.empty()) return Refuse(RefitFirst.Refusal);
-    const FamilyRefit RefitSecond = RefitFamily(SortedSecond, SecondCrossings, ParametersV, SecondTargets, Settings, "second family");
+    const CurveGroupRefit RefitSecond = RefitFamily(SortedSecond, SecondCrossings, ParametersV, SecondTargets, Settings, "second family");
     if (!RefitSecond.Refusal.empty()) return Refuse(RefitSecond.Refusal);
     Outcome.WorstShift           = std::max(RefitFirst.WorstShift, RefitSecond.WorstShift);
     Outcome.WorstReapproximation = std::max(RefitFirst.WorstReapproximation, RefitSecond.WorstReapproximation);
 
     // ⑧ S₁ (first family skinned across 𝑣), S₂ (second family skinned across 𝑢), T (Pᵢⱼ interpolated in both).
     std::string Reason;
-    FamilySkinning AcrossV;
+    CurveGroupSkinning AcrossV;
     AcrossV.Degree     = 3;
     AcrossV.Parameters = ParametersV;
-    FamilySkinning AcrossU;
+    CurveGroupSkinning AcrossU;
     AcrossU.Degree     = 3;
     AcrossU.Parameters = ParametersU;
     const std::optional<NurbsSurfaceDefinition> SkinFirst = SkinCurveFamily(RefitFirst.Curves, AcrossV, Reason);
@@ -827,8 +827,8 @@ std::vector<ClosedCurveLoop> DetectClosedCurveLoops(const std::vector<NurbsCurve
         EpVertex[Index] = It->second;
     }
 
-    struct GraphEdge { int Curve; int U; int V; double Len; bool Alive; };
-    std::vector<GraphEdge> Edges;
+    struct ConnectivityEdge { int Curve; int U; int V; double Len; bool Alive; };
+    std::vector<ConnectivityEdge> Edges;
     std::vector<int> CurveToGraphEdge(Count, -1);
     for (int Ep = 0; Ep < EpCount; Ep += 2)
     {
@@ -1377,11 +1377,11 @@ NetworkSheetOutcome ConstructNetworkSheet(ModelPartition& Partition, const std::
     NetworkSheetOutcome Outcome;
     Outcome.Network = ConstructNetworkSurface(Curves, Settings, Names);
     if (!Outcome.Network.Refusal.empty()) { Outcome.Sheet.Refusal = Outcome.Network.Refusal; return Outcome; }
-    const PanelAssemblyOutcome Assembly = AssemblePanels(Partition, { SurfacePanel{ Outcome.Network.Surface } }, PanelAssemblySettings{}, "Network");
+    const PanelJoiningOutcome Assembly = AssemblePanels(Partition, { SurfacePanel{ Outcome.Network.Surface } }, PanelJoiningSettings{}, "Network");
     if (!Assembly.Refusal.empty()) { Outcome.Sheet.Refusal = Assembly.Refusal; return Outcome; }
     Outcome.Sheet.Body  = Assembly.Body;
     Outcome.Sheet.Faces = Assembly.Faces;
-    Outcome.Sheet.Roles = { SweepFace{ SweepFaceRole::Side, "Surface", 0 } };
+    Outcome.Sheet.Roles = { SweepFace{ SweepFacePlacement::Side, "Surface", 0 } };
     return Outcome;
 }
 

@@ -46,7 +46,7 @@ enum class EndpointAttributeMask : uint32_t
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct EndpointTelemetryRecord
+struct EndpointTelemetryEntry
 {
     uint32_t              EndpointIdentifier      = 0u;                                       // [-]  - Non-zero endpoint slot id
     uint64_t              ProductAccountHash      = 0u;                                       // [-]  - Non-secret account fingerprint
@@ -100,17 +100,17 @@ public:
 
     void                   AdvanceSilenceTimers(double Δt) noexcept;
 
-    [[nodiscard]] const EndpointTelemetryRecord* FindEndpoint(uint32_t EndpointIdentifier) const noexcept;
-    [[nodiscard]] std::span<const EndpointTelemetryRecord> InspectAllEndpoints() const noexcept { return Records; }
+    [[nodiscard]] const EndpointTelemetryEntry* FindEndpoint(uint32_t EndpointIdentifier) const noexcept;
+    [[nodiscard]] std::span<const EndpointTelemetryEntry> InspectAllEndpoints() const noexcept { return Records; }
 
     [[nodiscard]] uint32_t QueryRealEndpointCount() const noexcept;
     [[nodiscard]] uint32_t QuerySyntheticEndpointCount() const noexcept;
     [[nodiscard]] std::vector<SessionParticipantCandidate> CollectSessionCandidates() const;
 
 private:
-    [[nodiscard]] EndpointTelemetryRecord* FindMutableEndpoint(uint32_t EndpointIdentifier) noexcept;
+    [[nodiscard]] EndpointTelemetryEntry* FindMutableEndpoint(uint32_t EndpointIdentifier) noexcept;
 
-    std::vector<EndpointTelemetryRecord> Records                {};
+    std::vector<EndpointTelemetryEntry> Records                {};
     uint32_t                             NextEndpointIdentifier = 1u;
 };
 

@@ -63,15 +63,15 @@ void ComponentInstanceStorage::ResetWithSpatialOrigin(std::string_view OriginTit
     Vehicles.clear();
     Rotations.clear();
 
-    SlotRecord OriginSlot {};
+    SlotEntry OriginSlot {};
     OriginSlot.Occupied                 = true;
     OriginSlot.Gen                      = 1u;
     OriginSlot.Header.Token             = { 1u, 1u };
     OriginSlot.Header.Category          = ComponentCategory::SpatialOrigin;
     OriginSlot.Header.Title             = OriginTitle.empty() ? std::string("Origin") : std::string(OriginTitle);
-    OriginSlot.Header.EnclosingIndex    = InvalidHierarchyIndex;
-    OriginSlot.Header.FirstNestedIndex  = InvalidHierarchyIndex;
-    OriginSlot.Header.NextPeerIndex     = InvalidHierarchyIndex;
+    OriginSlot.Header.EnclosingIndex    = InvalidNestingIndex;
+    OriginSlot.Header.FirstNestedIndex  = InvalidNestingIndex;
+    OriginSlot.Header.NextPeerIndex     = InvalidNestingIndex;
     OriginSlot.Header.DepthLevel        = 0u;
     OriginSlot.Header.VisibilityEnabled = true;
 
@@ -90,7 +90,7 @@ bool ComponentInstanceStorage::AuthenticateToken(ComponentInstanceToken Token) c
     {
         return false;
     }
-    const SlotRecord& Rec = Headers[ZeroIdx];
+    const SlotEntry& Rec = Headers[ZeroIdx];
     return Rec.Occupied && Rec.Gen == Token.Generation;
 }
 
@@ -137,15 +137,15 @@ uint32_t ComponentInstanceStorage::AllocateTypedSlot(ComponentCategory Category)
 
 std::string ComponentInstanceStorage::ConstructUniqueTitle(std::string_view Desired) const
 {
-    std::string BaseTitle = TrimWhitespace(Desired);
-    if (BaseTitle.empty())
+    std::string PrimaryTitle = TrimWhitespace(Desired);
+    if (PrimaryTitle.empty())
     {
-        BaseTitle = "Component";
+        PrimaryTitle = "Component";
     }
 
     auto Exists = [this](std::string_view Candidate) -> bool
     {
-        for (const SlotRecord& Rec : Headers)
+        for (const SlotEntry& Rec : Headers)
         {
             if (Rec.Occupied && Rec.Header.Title == Candidate)
             {
@@ -155,20 +155,20 @@ std::string ComponentInstanceStorage::ConstructUniqueTitle(std::string_view Desi
         return false;
     };
 
-    if (!Exists(BaseTitle))
+    if (!Exists(PrimaryTitle))
     {
-        return BaseTitle;
+        return PrimaryTitle;
     }
 
     for (uint32_t Suffix = 2u; Suffix < 10000u; ++Suffix)
     {
-        std::string Candidate = BaseTitle + std::to_string(Suffix);
+        std::string Candidate = PrimaryTitle + std::to_string(Suffix);
         if (!Exists(Candidate))
         {
             return Candidate;
         }
     }
-    return BaseTitle + "_Extra";
+    return PrimaryTitle + "_Extra";
 }
 
 void ComponentInstanceStorage::UnlinkFromEnclosing(uint32_t TargetZeroIdx) noexcept
@@ -178,21 +178,21 @@ void ComponentInstanceStorage::UnlinkFromEnclosing(uint32_t TargetZeroIdx) noexc
         return;
     }
     const uint32_t EnclosingIdx = Headers[TargetZeroIdx].Header.EnclosingIndex;
-    if (EnclosingIdx == InvalidHierarchyIndex || EnclosingIdx >= Headers.size())
+    if (EnclosingIdx == InvalidNestingIndex || EnclosingIdx >= Headers.size())
     {
-        Headers[TargetZeroIdx].Header.EnclosingIndex = InvalidHierarchyIndex;
-        Headers[TargetZeroIdx].Header.NextPeerIndex  = InvalidHierarchyIndex;
+        Headers[TargetZeroIdx].Header.EnclosingIndex = InvalidNestingIndex;
+        Headers[TargetZeroIdx].Header.NextPeerIndex  = InvalidNestingIndex;
         return;
     }
 
     uint32_t Cursor = Headers[EnclosingIdx].Header.FirstNestedIndex;
-    uint32_t Prev   = InvalidHierarchyIndex;
-    while (Cursor != InvalidHierarchyIndex && Cursor < Headers.size())
+    uint32_t Prev   = InvalidNestingIndex;
+    while (Cursor != InvalidNestingIndex && Cursor < Headers.size())
     {
         if (Cursor == TargetZeroIdx)
         {
             const uint32_t Next = Headers[Cursor].Header.NextPeerIndex;
-            if (Prev == InvalidHierarchyIndex)
+            if (Prev == InvalidNestingIndex)
             {
                 Headers[EnclosingIdx].Header.FirstNestedIndex = Next;
             }
@@ -206,8 +206,8 @@ void ComponentInstanceStorage::UnlinkFromEnclosing(uint32_t TargetZeroIdx) noexc
         Cursor = Headers[Cursor].Header.NextPeerIndex;
     }
 
-    Headers[TargetZeroIdx].Header.EnclosingIndex = InvalidHierarchyIndex;
-    Headers[TargetZeroIdx].Header.NextPeerIndex  = InvalidHierarchyIndex;
+    Headers[TargetZeroIdx].Header.EnclosingIndex = InvalidNestingIndex;
+    Headers[TargetZeroIdx].Header.NextPeerIndex  = InvalidNestingIndex;
 }
 
 void ComponentInstanceStorage::LinkUnderEnclosing(uint32_t TargetZeroIdx, uint32_t EnclosingZeroIdx) noexcept
@@ -217,17 +217,17 @@ void ComponentInstanceStorage::LinkUnderEnclosing(uint32_t TargetZeroIdx, uint32
         return;
     }
     Headers[TargetZeroIdx].Header.EnclosingIndex = EnclosingZeroIdx;
-    Headers[TargetZeroIdx].Header.NextPeerIndex  = InvalidHierarchyIndex;
+    Headers[TargetZeroIdx].Header.NextPeerIndex  = InvalidNestingIndex;
 
     uint32_t First = Headers[EnclosingZeroIdx].Header.FirstNestedIndex;
-    if (First == InvalidHierarchyIndex)
+    if (First == InvalidNestingIndex)
     {
         Headers[EnclosingZeroIdx].Header.FirstNestedIndex = TargetZeroIdx;
     }
     else
     {
         uint32_t Tail = First;
-        while (Headers[Tail].Header.NextPeerIndex != InvalidHierarchyIndex)
+        while (Headers[Tail].Header.NextPeerIndex != InvalidNestingIndex)
         {
             Tail = Headers[Tail].Header.NextPeerIndex;
         }
@@ -245,20 +245,20 @@ void ComponentInstanceStorage::RefreshDepthLevels(uint32_t RootZeroIdx, uint16_t
     }
     Headers[RootZeroIdx].Header.DepthLevel = Depth;
     uint32_t Nested = Headers[RootZeroIdx].Header.FirstNestedIndex;
-    while (Nested != InvalidHierarchyIndex && Nested < Headers.size())
+    while (Nested != InvalidNestingIndex && Nested < Headers.size())
     {
         RefreshDepthLevels(Nested, static_cast<uint16_t>(Depth + 1u));
         Nested = Headers[Nested].Header.NextPeerIndex;
     }
 }
 
-bool ComponentInstanceStorage::QueryAncestorMatch(uint32_t CandidateZeroIdx, uint32_t ProbeZeroIdx) const noexcept
+bool ComponentInstanceStorage::QueryEnclosingMatch(uint32_t CandidateZeroIdx, uint32_t SampleZeroIdx) const noexcept
 {
     uint32_t Cursor = CandidateZeroIdx;
     uint32_t Guard  = 0u;
-    while (Cursor != InvalidHierarchyIndex && Cursor < Headers.size() && Guard++ < Headers.size())
+    while (Cursor != InvalidNestingIndex && Cursor < Headers.size() && Guard++ < Headers.size())
     {
-        if (Cursor == ProbeZeroIdx)
+        if (Cursor == SampleZeroIdx)
         {
             return true;
         }
@@ -278,9 +278,9 @@ ComponentInstanceToken ComponentInstanceStorage::AppendInstance(
         return OriginToken;
     }
 
-    const bool HasTransform = QueryCategoryHasTransform(Category);
-    uint32_t EnclosingZeroIdx = InvalidHierarchyIndex;
-    if (HasTransform)
+    const bool TransformPresent = QueryCategoryHasTransform(Category);
+    uint32_t EnclosingZeroIdx = InvalidNestingIndex;
+    if (TransformPresent)
     {
         if (AuthenticateToken(EnclosingToken))
         {
@@ -290,7 +290,7 @@ ComponentInstanceToken ComponentInstanceStorage::AppendInstance(
                 EnclosingZeroIdx = CandidateIdx;
             }
         }
-        if (EnclosingZeroIdx == InvalidHierarchyIndex)
+        if (EnclosingZeroIdx == InvalidNestingIndex)
         {
             EnclosingZeroIdx = OriginToken.SlotIndex - 1u;
         }
@@ -308,7 +308,7 @@ ComponentInstanceToken ComponentInstanceStorage::AppendInstance(
         Headers.emplace_back();
     }
 
-    SlotRecord& Rec = Headers[SlotZeroIdx];
+    SlotEntry& Rec = Headers[SlotZeroIdx];
     Rec.Occupied                   = true;
     Rec.Gen                        = (Rec.Gen == 0u) ? 1u : Rec.Gen;
     Rec.Header                     = ComponentInstanceHeader{};
@@ -316,13 +316,13 @@ ComponentInstanceToken ComponentInstanceStorage::AppendInstance(
     Rec.Header.Category            = Category;
     Rec.Header.Title               = ConstructUniqueTitle(RequestedTitle.empty() ? QueryCategoryLabel(Category) : RequestedTitle);
     Rec.Header.CategorySlotIndex   = AllocateTypedSlot(Category);
-    Rec.Header.LocalTransform      = HasTransform ? InitialTransform : ComponentTransform{};
+    Rec.Header.LocalTransform      = TransformPresent ? InitialTransform : ComponentTransform{};
     Rec.Header.VisibilityEnabled   = true;
-    Rec.Header.EnclosingIndex      = InvalidHierarchyIndex;
-    Rec.Header.FirstNestedIndex    = InvalidHierarchyIndex;
-    Rec.Header.NextPeerIndex       = InvalidHierarchyIndex;
+    Rec.Header.EnclosingIndex      = InvalidNestingIndex;
+    Rec.Header.FirstNestedIndex    = InvalidNestingIndex;
+    Rec.Header.NextPeerIndex       = InvalidNestingIndex;
 
-    if (HasTransform)
+    if (TransformPresent)
     {
         LinkUnderEnclosing(SlotZeroIdx, EnclosingZeroIdx);
     }
@@ -349,7 +349,7 @@ bool ComponentInstanceStorage::AttachInstance(ComponentInstanceToken TargetToken
         return false;
     }
 
-    if (QueryAncestorMatch(EnclosingIdx, TargetIdx))
+    if (QueryEnclosingMatch(EnclosingIdx, TargetIdx))
     {
         return false;
     }
@@ -372,20 +372,20 @@ bool ComponentInstanceStorage::RemoveInstance(ComponentInstanceToken TargetToken
     // Lift nested spatial instances to TargetIdx's enclosing parent (matching ComponentViewer behavior)
     if (QueryCategoryHasTransform(Headers[TargetIdx].Header.Category))
     {
-        const uint32_t FallbackParent = (EnclosingIdx != InvalidHierarchyIndex) ? EnclosingIdx : (OriginToken.SlotIndex - 1u);
+        const uint32_t FallbackEnclosing = (EnclosingIdx != InvalidNestingIndex) ? EnclosingIdx : (OriginToken.SlotIndex - 1u);
         std::vector<uint32_t> NestedIndices {};
         uint32_t Cursor = Headers[TargetIdx].Header.FirstNestedIndex;
-        while (Cursor != InvalidHierarchyIndex && Cursor < Headers.size())
+        while (Cursor != InvalidNestingIndex && Cursor < Headers.size())
         {
             NestedIndices.push_back(Cursor);
             Cursor = Headers[Cursor].Header.NextPeerIndex;
         }
-        Headers[TargetIdx].Header.FirstNestedIndex = InvalidHierarchyIndex;
+        Headers[TargetIdx].Header.FirstNestedIndex = InvalidNestingIndex;
         for (const uint32_t NestedIdx : NestedIndices)
         {
-            Headers[NestedIdx].Header.EnclosingIndex = InvalidHierarchyIndex;
-            Headers[NestedIdx].Header.NextPeerIndex  = InvalidHierarchyIndex;
-            LinkUnderEnclosing(NestedIdx, FallbackParent);
+            Headers[NestedIdx].Header.EnclosingIndex = InvalidNestingIndex;
+            Headers[NestedIdx].Header.NextPeerIndex  = InvalidNestingIndex;
+            LinkUnderEnclosing(NestedIdx, FallbackEnclosing);
         }
         UnlinkFromEnclosing(TargetIdx);
     }
@@ -405,7 +405,7 @@ ComponentInstanceToken ComponentInstanceStorage::DuplicateInstance(ComponentInst
 
     const uint32_t TargetIdx = TargetToken.SlotIndex - 1u;
     const ComponentInstanceHeader SourceHeader = Headers[TargetIdx].Header;
-    const ComponentInstanceToken EnclosingToken = (SourceHeader.EnclosingIndex != InvalidHierarchyIndex)
+    const ComponentInstanceToken EnclosingToken = (SourceHeader.EnclosingIndex != InvalidNestingIndex)
         ? Headers[SourceHeader.EnclosingIndex].Header.Token
         : OriginToken;
 
@@ -514,7 +514,7 @@ const ComponentInstanceHeader* ComponentInstanceStorage::InspectHeaderByIndex(ui
 
 ComponentInstanceToken ComponentInstanceStorage::FindTokenByTitle(std::string_view Title) const noexcept
 {
-    for (const SlotRecord& Rec : Headers)
+    for (const SlotEntry& Rec : Headers)
     {
         if (Rec.Occupied && Rec.Header.Title == Title)
         {
@@ -524,7 +524,7 @@ ComponentInstanceToken ComponentInstanceStorage::FindTokenByTitle(std::string_vi
     return {};
 }
 
-#define FRONTIER_DEFINE_CATEGORY_ACCESSORS(FnSuffix, CatEnum, VecMember, StructType)              \
+#define FRONTIER_DEFINE_CATEGORY_ACCESSORS(FnSuffix, CatEnum, VecElementCount, StructType)              \
     StructType* ComponentInstanceStorage::Resolve##FnSuffix(ComponentInstanceToken Token) noexcept \
     {                                                                                             \
         const ComponentInstanceHeader* H = InspectHeader(Token);                                  \
@@ -532,7 +532,7 @@ ComponentInstanceToken ComponentInstanceStorage::FindTokenByTitle(std::string_vi
         {                                                                                         \
             return nullptr;                                                                       \
         }                                                                                         \
-        return &VecMember[H->CategorySlotIndex];                                                  \
+        return &VecElementCount[H->CategorySlotIndex];                                                  \
     }                                                                                             \
     const StructType* ComponentInstanceStorage::Inspect##FnSuffix(ComponentInstanceToken Token) const noexcept \
     {                                                                                             \
@@ -541,7 +541,7 @@ ComponentInstanceToken ComponentInstanceStorage::FindTokenByTitle(std::string_vi
         {                                                                                         \
             return nullptr;                                                                       \
         }                                                                                         \
-        return &VecMember[H->CategorySlotIndex];                                                  \
+        return &VecElementCount[H->CategorySlotIndex];                                                  \
     }
 
 FRONTIER_DEFINE_CATEGORY_ACCESSORS(Geometry, GeometryInstance, Geometries, GeometryComponentSettings)
@@ -557,7 +557,7 @@ FRONTIER_DEFINE_CATEGORY_ACCESSORS(Rotation, RotationalMotion, Rotations, Rotati
 
 #undef FRONTIER_DEFINE_CATEGORY_ACCESSORS
 
-void ComponentInstanceStorage::WalkSpatialHierarchy(const std::function<void(const ComponentInstanceHeader&)>& Visitor) const
+void ComponentInstanceStorage::WalkSpatialNesting(const std::function<void(const ComponentInstanceHeader&)>& Visitor) const
 {
     if (!AuthenticateToken(OriginToken))
     {
@@ -572,7 +572,7 @@ void ComponentInstanceStorage::WalkSpatialHierarchy(const std::function<void(con
         }
         Visitor(Headers[ZeroIdx].Header);
         uint32_t Nested = Headers[ZeroIdx].Header.FirstNestedIndex;
-        while (Nested != InvalidHierarchyIndex && Nested < Headers.size())
+        while (Nested != InvalidNestingIndex && Nested < Headers.size())
         {
             Self(Self, Nested);
             Nested = Headers[Nested].Header.NextPeerIndex;
@@ -585,7 +585,7 @@ void ComponentInstanceStorage::WalkSpatialHierarchy(const std::function<void(con
 void ComponentInstanceStorage::CollectBehaviourTokens(std::vector<ComponentInstanceToken>& OutTokens) const
 {
     OutTokens.clear();
-    for (const SlotRecord& Rec : Headers)
+    for (const SlotEntry& Rec : Headers)
     {
         if (Rec.Occupied && !QueryCategoryHasTransform(Rec.Header.Category))
         {
@@ -602,7 +602,7 @@ void ComponentInstanceStorage::CollectNestedTokens(ComponentInstanceToken Enclos
         return;
     }
     uint32_t Cursor = Headers[EnclosingToken.SlotIndex - 1u].Header.FirstNestedIndex;
-    while (Cursor != InvalidHierarchyIndex && Cursor < Headers.size())
+    while (Cursor != InvalidNestingIndex && Cursor < Headers.size())
     {
         if (Headers[Cursor].Occupied)
         {
@@ -615,7 +615,7 @@ void ComponentInstanceStorage::CollectNestedTokens(ComponentInstanceToken Enclos
 ClassSummaryMetrics ComponentInstanceStorage::ComputeSummaryMetrics() const noexcept
 {
     ClassSummaryMetrics Metrics {};
-    for (const SlotRecord& Rec : Headers)
+    for (const SlotEntry& Rec : Headers)
     {
         if (!Rec.Occupied)
         {

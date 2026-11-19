@@ -132,7 +132,7 @@ public:
     }
 };
 
-struct ControlKitPalette
+struct ControlKitTheme
 {
     ImVec4 Background       { 0.09f, 0.09f, 0.10f, 1.0f };
     ImVec4 Surface          { 0.12f, 0.12f, 0.13f, 1.0f };
@@ -144,14 +144,14 @@ struct ControlKitPalette
 namespace ControlKit
 {
 
-inline ControlKitPalette& MutablePalette() noexcept
+inline ControlKitTheme& MutablePalette() noexcept
 {
-    static ControlKitPalette Instance {};
+    static ControlKitTheme Instance {};
     return Instance;
 }
 
-[[nodiscard]] inline ControlKitPalette Palette() noexcept { return MutablePalette(); }
-inline void ConfigurePalette(const ControlKitPalette& Next) noexcept { MutablePalette() = Next; }
+[[nodiscard]] inline ControlKitTheme Palette() noexcept { return MutablePalette(); }
+inline void ConfigurePalette(const ControlKitTheme& Next) noexcept { MutablePalette() = Next; }
 
 [[nodiscard]] inline ColorQuad Faded(ColorQuad Ink, float Opacity) noexcept
 {
@@ -174,7 +174,7 @@ struct DockChromeToken
     int VarCount   = 0;
 };
 
-[[nodiscard]] inline ControlKitPalette StudioPalette(ControlKitPalette Base, ImVec4 SurfaceCol, ImVec4 AccentCol) noexcept
+[[nodiscard]] inline ControlKitTheme StudioPalette(ControlKitTheme Base, ImVec4 SurfaceCol, ImVec4 AccentCol) noexcept
 {
     Base.Surface         = SurfaceCol;
     Base.AccentSecondary = AccentCol;

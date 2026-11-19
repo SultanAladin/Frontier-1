@@ -66,11 +66,11 @@ struct ComponentRenderOptions
     float                      ElapsedSeconds      = 0.0f;
     ComponentClass::ComponentInstanceToken SelectedToken {};
     std::unordered_map<uint32_t, float>              LiveConstraintCoordinates {}; // SlotIndex -> rad or m
-    std::unordered_map<uint32_t, bool>               DockIntactFlags           {}; // SlotIndex -> latched
+    std::unordered_map<uint32_t, bool>               DockIntactMask           {}; // SlotIndex -> latched
     std::unordered_map<uint32_t, std::array<float, 16>> SimulationWorldOverrides {}; // Optional 4x4 row-major body matrices
 };
 
-struct ComponentViewportFrameOutput
+struct ComponentViewportOutput
 {
     uint32_t             WidthPx          = 0u;
     uint32_t             HeightPx         = 0u;
@@ -107,13 +107,13 @@ public:
 
     [[nodiscard]] ComponentViewportCamera ComputeFramedCameraForClass(
         const ComponentClass::ComponentClassDefinition&               ClassDef,
-        std::span<const ComponentClass::CompiledGeometryCatalogEntry> Catalog,
+        std::span<const ComponentClass::CompiledGeometryRepositoryEntry> Repository,
         float                                                         YawRadians   = 0.72f,
         float                                                         PitchRadians = 0.28f) const;
 
-    [[nodiscard]] ComponentViewportFrameOutput RenderClassFrame(
+    [[nodiscard]] ComponentViewportOutput RenderClassViewport(
         const ComponentClass::ComponentClassDefinition&               ClassDef,
-        std::span<const ComponentClass::CompiledGeometryCatalogEntry> Catalog,
+        std::span<const ComponentClass::CompiledGeometryRepositoryEntry> Repository,
         const ComponentViewportCamera&                                Camera,
         const ComponentRenderOptions&                                 Options,
         uint32_t                                                      WidthPx,

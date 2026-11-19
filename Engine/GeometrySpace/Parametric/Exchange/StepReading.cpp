@@ -14,7 +14,7 @@
 #include "Engine/GeometrySpace/Parametric/Exchange/ExchangePath.h"
 
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
-#include "Engine/GeometrySpace/Parametric/Construction/BodyAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Construction/BodyArrangement.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/CurveGeometry.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/NurbsCarrier.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/SurfaceGeometry.h"
@@ -50,7 +50,7 @@ Vector3 KeepUnit(Vector3 Value)
     return std::fabs(Dot(Value, Value) - 1.0) <= 4.0e-16 ? Value : Normalize(Value);
 }
 
-enum class StepKind : uint8_t
+enum class StepCategory : uint8_t
 {
     Omitted,                                                                                 // $
     Derived,                                                                                 // *
@@ -64,7 +64,7 @@ enum class StepKind : uint8_t
 
 struct StepParameter
 {
-    StepKind                   Kind      = StepKind::Omitted;                                // [-]
+    StepCategory                   Kind      = StepCategory::Omitted;                                // [-]
     double                     Number    = 0.0;                                              // [-] - Number
     int                        Reference = 0;                                                // [-] - Reference
     std::string                Text      = {};                                               // [-] - Text, Enumeration, Typed name
@@ -246,22 +246,22 @@ private:
     {
         SkipBlank();
         const char Letter = Peek();
-        if (Letter == '$') { ++At; Out.Kind = StepKind::Omitted; return true; }
-        if (Letter == '*') { ++At; Out.Kind = StepKind::Derived; return true; }
+        if (Letter == '$') { ++At; Out.Kind = StepCategory::Omitted; return true; }
+        if (Letter == '*') { ++At; Out.Kind = StepCategory::Derived; return true; }
         if (Letter == '#')
         {
             ++At;
             const size_t Begin = At;
             while (At < Text.size() && Text[At] >= '0' && Text[At] <= '9') ++At;
             if (At == Begin) return false;
-            Out.Kind      = StepKind::Reference;
+            Out.Kind      = StepCategory::Reference;
             Out.Reference = std::atoi(Text.c_str() + Begin);
             return true;
         }
         if (Letter == '\'')
         {
             ++At;
-            Out.Kind = StepKind::Text;
+            Out.Kind = StepCategory::Text;
             while (At < Text.size())
             {
                 if (Text[At] == '\'')
@@ -278,7 +278,7 @@ private:
         {
             const size_t Close = Text.find('"', At + 1);
             if (Close == std::string::npos) return false;
-            Out.Kind = StepKind::Text;
+            Out.Kind = StepCategory::Text;
             Out.Text = Text.substr(At + 1, Close - At - 1);
             At       = Close + 1;
             return true;
@@ -287,20 +287,20 @@ private:
         {
             const size_t Close = Text.find('.', At + 1);
             if (Close == std::string::npos) return false;
-            Out.Kind = StepKind::Enumeration;
+            Out.Kind = StepCategory::Enumeration;
             Out.Text = Text.substr(At + 1, Close - At - 1);
             At       = Close + 1;
             return true;
         }
         if (Letter == '(')
         {
-            Out.Kind = StepKind::List;
+            Out.Kind = StepCategory::List;
             return ScanList(Out.List);
         }
         if (Letter == '-' || Letter == '+' || (Letter >= '0' && Letter <= '9'))
         {
             char* End  = nullptr;
-            Out.Kind   = StepKind::Number;
+            Out.Kind   = StepCategory::Number;
             Out.Number = std::strtod(Text.c_str() + At, &End);
             if (End == Text.c_str() + At) return false;
             At = static_cast<size_t>(End - Text.c_str());
@@ -308,7 +308,7 @@ private:
         }
         if (KeywordLetter(Letter))
         {
-            Out.Kind = StepKind::Typed;
+            Out.Kind = StepCategory::Typed;
             if (!ScanKeyword(Out.Text)) return false;
             return ScanList(Out.List);
         }
@@ -419,7 +419,7 @@ std::vector<double> ImpliedKnots(KnotRule Rule, int Degree, int Count)
 //------------------------------------------------------------------------------------------------------------------------
 
 // 📝 Units of one representation context: millimetres per file length unit, radians per file angle unit.
-struct ContextUnits
+struct TransferUnits
 {
     double LengthMillimetres = 1.0;                                                          // [mm]
     double AngleRadians      = 1.0;                                                          // [rad]
@@ -489,23 +489,23 @@ public:
     // ---- attribute access
     double Real(const StepParameter& Parameter)
     {
-        if (Parameter.Kind == StepKind::Number) return Parameter.Number;
-        if (Parameter.Kind == StepKind::Typed && !Parameter.List.empty() && Parameter.List.front().Kind == StepKind::Number) return Parameter.List.front().Number;
+        if (Parameter.Kind == StepCategory::Number) return Parameter.Number;
+        if (Parameter.Kind == StepCategory::Typed && !Parameter.List.empty() && Parameter.List.front().Kind == StepCategory::Number) return Parameter.List.front().Number;
         Fail("a REAL attribute is missing or not a number");
         return 0.0;
     }
 
     int Ref(const StepParameter& Parameter)
     {
-        if (Parameter.Kind == StepKind::Reference) return Parameter.Reference;
+        if (Parameter.Kind == StepCategory::Reference) return Parameter.Reference;
         Fail("an entity reference attribute is missing");
         return 0;
     }
 
     bool Flag(const StepParameter& Parameter)
     {
-        if (Parameter.Kind == StepKind::Enumeration && (Parameter.Text == "T" || Parameter.Text == "TRUE")) return true;
-        if (Parameter.Kind == StepKind::Enumeration && (Parameter.Text == "F" || Parameter.Text == "FALSE")) return false;
+        if (Parameter.Kind == StepCategory::Enumeration && (Parameter.Text == "T" || Parameter.Text == "TRUE")) return true;
+        if (Parameter.Kind == StepCategory::Enumeration && (Parameter.Text == "F" || Parameter.Text == "FALSE")) return false;
         Fail("a BOOLEAN attribute is not .T. or .F.");
         return true;
     }
@@ -513,7 +513,7 @@ public:
     const std::vector<StepParameter>& List(const StepParameter& Parameter)
     {
         static const std::vector<StepParameter> Empty;
-        if (Parameter.Kind == StepKind::List) return Parameter.List;
+        if (Parameter.Kind == StepCategory::List) return Parameter.List;
         Fail("a list attribute is missing");
         return Empty;
     }
@@ -569,7 +569,7 @@ public:
 
     double Prefix(const StepParameter& Parameter)
     {
-        if (Parameter.Kind != StepKind::Enumeration) return 1.0;
+        if (Parameter.Kind != StepCategory::Enumeration) return 1.0;
         static const std::map<std::string, double> Prefixes = { { "EXA", 1e18 },   { "PETA", 1e15 }, { "TERA", 1e12 }, { "GIGA", 1e9 },   { "MEGA", 1e6 },
                                                                 { "KILO", 1e3 },   { "HECTO", 1e2 }, { "DECA", 1e1 },  { "DECI", 1e-1 },  { "CENTI", 1e-2 },
                                                                 { "MILLI", 1e-3 }, { "MICRO", 1e-6 }, { "NANO", 1e-9 }, { "PICO", 1e-12 }, { "FEMTO", 1e-15 },
@@ -578,9 +578,9 @@ public:
         return Found == Prefixes.end() ? 1.0 : Found->second;
     }
 
-    ContextUnits UnitsOf(int Context)
+    TransferUnits UnitsOf(int Context)
     {
-        ContextUnits Units;
+        TransferUnits Units;
         const StepPartial* Assigned = Partial(Context, "GLOBAL_UNIT_ASSIGNED_CONTEXT");
         if (!Assigned || Assigned->Parameters.empty()) return Units;
         Units.DeclaredCondition = true;
@@ -620,13 +620,13 @@ public:
     }
 
     // AXIS2_PLACEMENT_3D: axis defaults to +Z, reference to +X (+Z when the axis is along X), made orthogonal.
-    OrthonormalFrame Placement(int Reference)
+    OrthonormalBasis Placement(int Reference)
     {
         const std::vector<StepParameter>* Attributes = Parameters(Reference, "AXIS2_PLACEMENT_3D", 2);
         if (!Attributes) return {};
         const Vector3 Origin = Point(Ref((*Attributes)[1]));
-        const Vector3 Axis   = Attributes->size() > 2 && (*Attributes)[2].Kind == StepKind::Reference ? Direction((*Attributes)[2].Reference) : Vector3{ 0.0, 0.0, 1.0 };
-        Vector3 Reference3   = Attributes->size() > 3 && (*Attributes)[3].Kind == StepKind::Reference ? Direction((*Attributes)[3].Reference) : Vector3{ 1.0, 0.0, 0.0 };
+        const Vector3 Axis   = Attributes->size() > 2 && (*Attributes)[2].Kind == StepCategory::Reference ? Direction((*Attributes)[2].Reference) : Vector3{ 0.0, 0.0, 1.0 };
+        Vector3 Reference3   = Attributes->size() > 3 && (*Attributes)[3].Kind == StepCategory::Reference ? Direction((*Attributes)[3].Reference) : Vector3{ 1.0, 0.0, 0.0 };
         if (Length(Cross(Axis, Reference3)) < 1.0e-12) Reference3 = std::fabs(Axis.X) < 0.9 ? Vector3{ 1.0, 0.0, 0.0 } : Vector3{ 0.0, 0.0, 1.0 };
         // Already orthogonal to rounding: kept as read (re-orthogonalising would move the last bit, see KeepUnit).
         if (std::fabs(Dot(Axis, Reference3)) > 1.0e-15) Reference3 = KeepUnit(Reference3 - Axis * Dot(Reference3, Axis));
@@ -741,7 +741,7 @@ public:
         {
             const std::vector<StepParameter>* Attributes = Parameters(Reference, "ELLIPSE", 4);
             if (!Attributes) return std::nullopt;
-            OrthonormalFrame Frame = Placement(Ref((*Attributes)[1]));
+            OrthonormalBasis Frame = Placement(Ref((*Attributes)[1]));
             double First = Real((*Attributes)[2]) * Scale, Second = Real((*Attributes)[3]) * Scale;
             if (!(First > 0.0) || !(Second > 0.0)) { Fail("ELLIPSE #" + std::to_string(Reference) + " has a non-positive semi-axis"); return std::nullopt; }
             if (First < Second)                                                              // Major axis along X: rotate the frame a quarter turn
@@ -973,7 +973,7 @@ public:
             const std::vector<StepParameter>* Axis = Parameters(Ref((*Attributes)[2]), "AXIS1_PLACEMENT", 2);
             if (!Axis) return std::nullopt;
             const Vector3 Origin    = Point(Ref((*Axis)[1]));
-            const Vector3 Direction3 = Axis->size() > 2 && (*Axis)[2].Kind == StepKind::Reference ? Direction((*Axis)[2].Reference) : Vector3{ 0.0, 0.0, 1.0 };
+            const Vector3 Direction3 = Axis->size() > 2 && (*Axis)[2].Kind == StepCategory::Reference ? Direction((*Axis)[2].Reference) : Vector3{ 0.0, 0.0, 1.0 };
             const std::optional<NurbsCurveDefinition> Profile = SweptProfile(Ref((*Attributes)[1]), Samples);
             if (!Profile) return std::nullopt;
             const Vector3 Seed = std::fabs(Direction3.X) < 0.9 ? Vector3{ 1.0, 0.0, 0.0 } : Vector3{ 0.0, 1.0, 0.0 };
@@ -1115,7 +1115,7 @@ public:
     {
         const auto* Sphere = std::get_if<SphereSurface>(&Face.Surface);
         if (!Sphere) return Fail("a face bounded by no edge on a " + std::string(SurfaceCategoryLabel(Face.Surface)) + " carrier (only full spheres are completed with a seam)");
-        const OrthonormalFrame& Frame = Sphere->Frame;
+        const OrthonormalBasis& Frame = Sphere->Frame;
         const Vector3 South = Frame.Origin - Frame.ZAxis * Sphere->Radius, North = Frame.Origin + Frame.ZAxis * Sphere->Radius;
         int SouthIndex = -1, NorthIndex = -1;
         for (const int Candidate : LoopVertices)
@@ -1128,7 +1128,7 @@ public:
         if (SouthIndex < 0) { SouthIndex = static_cast<int>(Body.Blueprint.Vertices.size()); Body.Blueprint.Vertices.push_back({ South }); }
         if (NorthIndex < 0) { NorthIndex = static_cast<int>(Body.Blueprint.Vertices.size()); Body.Blueprint.Vertices.push_back({ North }); }
         BlueprintEdge Seam;
-        Seam.Curve = CircularArc{ OrthonormalFrame{ Frame.Origin, -Frame.ZAxis, Frame.XAxis, Cross(-Frame.ZAxis, Frame.XAxis) }, Sphere->Radius };
+        Seam.Curve = CircularArc{ OrthonormalBasis{ Frame.Origin, -Frame.ZAxis, Frame.XAxis, Cross(-Frame.ZAxis, Frame.XAxis) }, Sphere->Radius };
         Seam.Low   = 0.0;
         Seam.High  = 0.5 * FullCircle;
         Seam.Start = SouthIndex;
@@ -1369,9 +1369,9 @@ public:
             const StepPartial& Simple = Instance.Partials.front();
             const size_t       Suffix = Simple.Name.size() >= 14 ? Simple.Name.size() - 14 : std::string::npos;
             if (Suffix == std::string::npos || Simple.Name.compare(Suffix, 14, "REPRESENTATION") != 0 || Simple.Parameters.size() < 3) continue;
-            if (Simple.Parameters[1].Kind != StepKind::List || Simple.Parameters[2].Kind != StepKind::Reference) continue;
+            if (Simple.Parameters[1].Kind != StepCategory::List || Simple.Parameters[2].Kind != StepCategory::Reference) continue;
             for (const StepParameter& Member : Simple.Parameters[1].List)
-                if (Member.Kind == StepKind::Reference && !Contexts.count(Member.Reference)) Contexts[Member.Reference] = Simple.Parameters[2].Reference;
+                if (Member.Kind == StepCategory::Reference && !Contexts.count(Member.Reference)) Contexts[Member.Reference] = Simple.Parameters[2].Reference;
         }
         return Contexts;
     }
@@ -1431,7 +1431,7 @@ StepImport ReadStep(ModelPartition& Partition, const std::string& Bytes, const S
     bool UnitNoted = false;
     for (const int Root : Roots)
     {
-        ContextUnits Units;
+        TransferUnits Units;
         if (const auto Found = Contexts.find(Root); Found != Contexts.end()) Units = Interpreter.UnitsOf(Found->second);
         if (!Units.DeclaredCondition)
         {
@@ -1484,7 +1484,7 @@ StepImport ReadStep(ModelPartition& Partition, const std::string& Bytes, const S
         ModelPartition Scratch;
         for (size_t Index = 0; Index < Blueprints.size(); ++Index)
         {
-            const AssemblyOutcome Assembly = AssembleBody(Scratch, Blueprints[Index], Request.Label);
+            const ArrangementOutcome Assembly = AssembleBody(Scratch, Blueprints[Index], Request.Label);
             if (!Assembly.Refusal.empty())
             {
                 const std::string Prefix = Request.Label + ": ";                             // AssembleBody labels its refusal too
@@ -1503,7 +1503,7 @@ StepImport ReadStep(ModelPartition& Partition, const std::string& Bytes, const S
     }
     for (const BodyBlueprint& Blueprint : Blueprints)
     {
-        const AssemblyOutcome Assembly = AssembleBody(Partition, Blueprint, Request.Label);
+        const ArrangementOutcome Assembly = AssembleBody(Partition, Blueprint, Request.Label);
         Out.Bodies.push_back(Assembly.Body);
         const BodyInventory Inventory = Partition.CollectInventory(Assembly.Body);
         Out.Edges    += static_cast<int>(Inventory.Edges.size());

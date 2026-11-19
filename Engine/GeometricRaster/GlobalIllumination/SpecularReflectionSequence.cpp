@@ -64,7 +64,7 @@ namespace
     const SpatialAcceleration::WideBoundingTree&    SceneTree,
     std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
     const IrradianceLatticeSequence&                GiLattice,
-    const SolarDirectionalEmitter&                  Sun,
+    const SolarDirectionalSource&                  Sun,
     Mathematics::Axis3D                             RayOrigin,
     Mathematics::Axis3D                             RayDirection,
     Mathematics::LinearRGB                          SkyRadiance,
@@ -158,7 +158,7 @@ namespace
 
 SpecularReflectionBuffer SpecularReflectionSequence::EvaluateSpecularRefractionWithSource(
     SpecularReflectionSource                        Source,
-    const PerspectiveCameraFrame&                   Camera,
+    const PerspectiveCameraBasis&                   Camera,
     std::span<const RigidClusterInstance>           Instances,
     const VisibilityBufferTargets&                  VisibilityTargets,
     std::span<const AnalyticResolvedSurfaceSample>  PrimarySamples,
@@ -166,7 +166,7 @@ SpecularReflectionBuffer SpecularReflectionSequence::EvaluateSpecularRefractionW
     std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
     const SpatialAcceleration::WideBoundingTree&    SceneTree,
     const IrradianceLatticeSequence&                GiLattice,
-    const SolarDirectionalEmitter&                  Sun,
+    const SolarDirectionalSource&                  Sun,
     Mathematics::LinearRGB                          SkyRadiance)
 {
     if (Source == SpecularReflectionSource::WideTreeRaytrace)
@@ -247,7 +247,7 @@ SpecularReflectionBuffer SpecularReflectionSequence::EvaluateSpecularRefractionW
 }
 
 SpecularReflectionBuffer SpecularReflectionSequence::EvaluateRtxSpecularRefraction(
-    const PerspectiveCameraFrame&                   Camera,
+    const PerspectiveCameraBasis&                   Camera,
     std::span<const RigidClusterInstance>           Instances,
     const VisibilityBufferTargets&                  VisibilityTargets,
     std::span<const AnalyticResolvedSurfaceSample>  PrimarySamples,
@@ -255,7 +255,7 @@ SpecularReflectionBuffer SpecularReflectionSequence::EvaluateRtxSpecularRefracti
     std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
     const SpatialAcceleration::WideBoundingTree&    SceneTree,
     const IrradianceLatticeSequence&                GiLattice,
-    const SolarDirectionalEmitter&                  Sun,
+    const SolarDirectionalSource&                  Sun,
     Mathematics::LinearRGB                          SkyRadiance)
 {
     SpecularReflectionBuffer Out {};
@@ -399,7 +399,7 @@ SpecularReflectionBuffer SpecularReflectionSequence::EvaluateRtxSpecularRefracti
 }
 
 SpecularReflectionBuffer SpecularReflectionSequence::EvaluateGtxHiZSpecularRefraction(
-    const PerspectiveCameraFrame&                  Camera,
+    const PerspectiveCameraBasis&                  Camera,
     std::span<const RigidClusterInstance>          Instances,
     const VisibilityBufferTargets&                 VisibilityTargets,
     const DepthPyramidSequence&                    DepthPyramid,

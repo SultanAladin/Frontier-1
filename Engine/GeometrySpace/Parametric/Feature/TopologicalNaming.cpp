@@ -107,9 +107,9 @@ namespace
         return Found == Names.end() ? std::string("Unnamed") : Found->second;
     }
 
-    [[nodiscard]] const std::map<uint32_t, std::string>& NamesOf(const BodyNaming& Naming, ReferenceKind Kind)
+    [[nodiscard]] const std::map<uint32_t, std::string>& NamesOf(const BodyNaming& Naming, ReferenceCategory Kind)
     {
-        return Kind == ReferenceKind::Face ? Naming.Faces : Kind == ReferenceKind::Edge ? Naming.Edges : Naming.Vertices;
+        return Kind == ReferenceCategory::Face ? Naming.Faces : Kind == ReferenceCategory::Edge ? Naming.Edges : Naming.Vertices;
     }
 }
 
@@ -237,11 +237,11 @@ std::string StripDisambiguators(const std::string& Name)
     return std::regex_replace(Name, Disambiguator, "");
 }
 
-ReferenceSignature CaptureSignature(const ModelPartition& Partition, ReferenceKind Kind, uint32_t Slot)
+ReferenceSignature CaptureSignature(const ModelPartition& Partition, ReferenceCategory Kind, uint32_t Slot)
 {
     ReferenceSignature Signature;
     Signature.CapturedCondition = true;
-    if (Kind == ReferenceKind::Face)
+    if (Kind == ReferenceCategory::Face)
     {
         const FaceToken    Face   = Partition.Faces.TokenAt(Slot);
         const FaceProfile& Record = Partition.Faces.Resolve(Face);
@@ -250,7 +250,7 @@ ReferenceSignature CaptureSignature(const ModelPartition& Partition, ReferenceKi
         for (LoopToken Loop : Record.Loops) Partition.EnumerateLoopFins(Loop, [&](FinToken Fin) { Signature.Size += MeasureEdgeLength(Partition, Partition.Fins.Resolve(Fin).Edge); });
         return Signature;
     }
-    if (Kind == ReferenceKind::Edge)
+    if (Kind == ReferenceCategory::Edge)
     {
         const EdgeToken   Edge   = Partition.Edges.TokenAt(Slot);
         const CurveSample Middle = EdgeMiddle(Partition, Edge);
@@ -265,7 +265,7 @@ ReferenceSignature CaptureSignature(const ModelPartition& Partition, ReferenceKi
     return Signature;
 }
 
-ResolvedReference ResolveReference(const ModelPartition& Partition, BodyToken Body, const BodyNaming& Naming, const TopologyReference& Reference)
+ResolvedReference ResolveReference(const ModelPartition& Partition, BodyToken Body, const BodyNaming& Naming, const ConnectivityReference& Reference)
 {
     ResolvedReference Resolved;
     const std::map<uint32_t, std::string>& Names = NamesOf(Naming, Reference.Kind);
@@ -304,14 +304,14 @@ ResolvedReference ResolveReference(const ModelPartition& Partition, BodyToken Bo
     {
         const ReferenceSignature Present = CaptureSignature(Partition, Reference.Kind, Slot);
         if (Present.Category != Wanted.Category) continue;
-        if (Reference.Kind != ReferenceKind::Vertex && (Present.Size < 0.5 * Wanted.Size || Present.Size > 2.0 * Wanted.Size)) continue;
+        if (Reference.Kind != ReferenceCategory::Vertex && (Present.Size < 0.5 * Wanted.Size || Present.Size > 2.0 * Wanted.Size)) continue;
         double Separation = Distance(Present.Position, Wanted.Position);
-        if (Reference.Kind == ReferenceKind::Edge) Separation += Wanted.Size * (1.0 - std::fabs(Dot(Present.Direction, Wanted.Direction)));
+        if (Reference.Kind == ReferenceCategory::Edge) Separation += Wanted.Size * (1.0 - std::fabs(Dot(Present.Direction, Wanted.Direction)));
         Ranked.push_back({ Slot, Separation });
     }
     std::sort(Ranked.begin(), Ranked.end(), [](const Candidate& First, const Candidate& Second) { return First.Separation < Second.Separation; });
     const BodyInventory Inventory = Partition.CollectInventory(Body);
-    const double Reach = Reference.Kind == ReferenceKind::Vertex ? 0.25 * MeasureBodyScale(Partition, Inventory) : Wanted.Size;   // [len] - Max rebind distance
+    const double Reach = Reference.Kind == ReferenceCategory::Vertex ? 0.25 * MeasureBodyScale(Partition, Inventory) : Wanted.Size;   // [len] - Max rebind distance
     const double Floor = 1.0e-9 * MeasureBodyScale(Partition, Inventory);
     if (!Ranked.empty() && Ranked[0].Separation <= Reach && (Ranked.size() == 1 || Ranked[1].Separation >= 2.0 * Ranked[0].Separation + Floor))
     {

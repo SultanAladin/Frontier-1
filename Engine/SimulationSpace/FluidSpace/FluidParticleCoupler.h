@@ -51,7 +51,7 @@ public:
     // Steps internal Ember/Ash & Shrapnel ParticleSlots in the live Hero + World fluid velocity/temperature grids
     void StepCoupledParticles(
         const FluidDomainSettings&           Domain,
-        const FluidEmitterSettings&          Emitter,
+        const FluidSourceSettings&          Emitter,
         const FluidParticleCouplingSettings& Settings,
         const FluidShadingSettings&          Shading,
         const FluidGridVolume&               HeroGrid,

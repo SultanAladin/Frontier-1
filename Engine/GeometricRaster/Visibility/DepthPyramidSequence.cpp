@@ -20,7 +20,7 @@ namespace Frontier::GeometricRaster
 //                                                  CAMERA PROJECTION HELPERS
 //------------------------------------------------------------------------------------------------------------------------
 
-OrthonormalCameraBasis ComputeCameraBasis(const PerspectiveCameraFrame& Camera) noexcept
+OrthonormalCameraBasis ComputeCameraBasis(const PerspectiveCameraBasis& Camera) noexcept
 {
     OrthonormalCameraBasis Basis {};
     Basis.CameraOrigin = Camera.CameraOrigin;

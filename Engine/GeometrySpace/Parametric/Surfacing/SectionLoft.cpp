@@ -10,7 +10,7 @@
 #include "Engine/GeometrySpace/Parametric/Surfacing/SectionLoft.h"
 #include "Engine/GeometrySpace/Parametric/Surfacing/LinearSystem.h"
 #include "Engine/GeometrySpace/Parametric/Surfacing/SurfaceAlgebra.h"
-#include "Engine/GeometrySpace/Parametric/Construction/BodyAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Construction/BodyArrangement.h"
 
 #include <algorithm>
 #include <array>
@@ -237,7 +237,7 @@ LoftSurfaceOutcome LoftSectionSurface(const std::vector<NurbsCurve>& Sections, c
     }
 
     // ③′ End conditions per pole column: ∂𝑣 = σ·α·R𝑣, ∂𝑣𝑣 = α²·R𝑣𝑣 at the shared row (α = across-chord ratio).
-    FamilySkinning Skinning;
+    CurveGroupSkinning Skinning;
     Skinning.Degree     = Settings.DegreeAcross;
     Skinning.Parameters = Parameters;
     for (int Side = 0; Side < 2; ++Side)
@@ -254,7 +254,7 @@ LoftSurfaceOutcome LoftSectionSurface(const std::vector<NurbsCurve>& Sections, c
         const double Scale = Across / ReferenceAcross;
         // Start meets the reference's 𝑣 = 1 row, or end meets its 𝑣 = 0 row: the loft continues the reference (σ = +1).
         const double Sign = (Side == 0) == (End.Boundary == 1.0) ? 1.0 : -1.0;
-        FamilyEndCondition& Condition = Side == 0 ? Skinning.Start : Skinning.End;
+        CurveGroupEndCondition& Condition = Side == 0 ? Skinning.Start : Skinning.End;
         for (int Column = 0; Column < CountU; ++Column)
         {
             const NurbsCurveDerivatives Pillar = EvaluateNurbsCurveDerivatives(ExtractPoleColumn(End.Reference, Column), End.Boundary);
@@ -370,11 +370,11 @@ LoftSheetOutcome LoftSectionSheet(ModelPartition& Partition, const std::vector<N
         Face.Loops.push_back(std::move(Loop));
     }
     Blueprint.Faces.push_back(std::move(Face));
-    const AssemblyOutcome Assembly = AssembleBody(Partition, Blueprint, "Loft");
+    const ArrangementOutcome Assembly = AssembleBody(Partition, Blueprint, "Loft");
     if (!Assembly.Refusal.empty()) { Outcome.Sheet.Refusal = "Loft: " + Assembly.Refusal; return Outcome; }
     Outcome.Sheet.Body  = Assembly.Body;
     Outcome.Sheet.Faces = Assembly.Faces;
-    Outcome.Sheet.Roles = { SweepFace{ SweepFaceRole::Side, "Surface", 0 } };
+    Outcome.Sheet.Roles = { SweepFace{ SweepFacePlacement::Side, "Surface", 0 } };
     return Outcome;
 }
 

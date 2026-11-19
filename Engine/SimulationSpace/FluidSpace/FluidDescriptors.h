@@ -24,7 +24,7 @@ namespace Frontier::SimulationSpace::FluidSpace
 //                                                      ENUMERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class FluidColorPalette : uint32_t
+enum class FluidColorScheme : uint32_t
 {
     PlanckianBlackbody    = 0u, // [-] - Physical Planckian flame (black -> crimson -> orange -> amber -> white)
     CinemaNapalm          = 1u, // [-] - Rich saturated hydrocarbon fireball
@@ -138,7 +138,7 @@ struct FluidDomainSettings
     float              WorldGridSpanMeters       = 24.0f; // [m]    - Horizontal & vertical span of sliding world smoke grid
 };
 
-struct FluidEmitterSettings
+struct FluidSourceSettings
 {
     bool  Enabled           = true;  // [-]    - Continuous plume emission toggle
     float Rate              = 1.0f;  // [x]    - Emission intensity multiplier
@@ -196,7 +196,7 @@ struct FluidObstacleSettings
 struct FluidShadingSettings
 {
     FluidRenderChannel     RenderChannel      = FluidRenderChannel::LitVolume;
-    FluidColorPalette      ColorPalette       = FluidColorPalette::PlanckianBlackbody;
+    FluidColorScheme      ColorPalette       = FluidColorScheme::PlanckianBlackbody;
     uint32_t               RaymarchSteps      = 72u;
     uint32_t               ShadowSteps        = 6u;
     float                  RenderScale        = 1.0f;
@@ -260,7 +260,7 @@ struct FluidEmissiveLightProxy
     Mathematics::LinearRGB ColorIrradiance {};
 };
 
-struct FluidSceneCameraState
+struct FluidSceneCameraBasis
 {
     float               ThetaRadians   = -0.95f;
     float               PhiRadians     = 0.92f;
@@ -293,14 +293,14 @@ struct FluidSceneDocument
     std::string                   SceneName       { "Pyro plume" };
     std::string                   PresetKey       { "ue5_pyro_default" };
     FluidDomainSettings           Domain          {};
-    FluidEmitterSettings          Emitter         {};
+    FluidSourceSettings          Emitter         {};
     FluidBlastSpecification       Blast           {};
     FluidCombustionSettings       Combustion      {};
     FluidObstacleSettings         Obstacle        {};
     FluidShadingSettings          Shading         {};
     FluidParticleCouplingSettings Particles       {};
     FluidGiCouplingSettings       GiCoupling      {};
-    FluidSceneCameraState         Camera          {};
+    FluidSceneCameraBasis         Camera          {};
     FluidSceneNames               Names           {};
     FluidViewportOverlaySettings  Overlays        {};
 };

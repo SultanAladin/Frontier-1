@@ -216,7 +216,7 @@ int main()
 
     const BakeCompletionSummary GtxSurf = Baker.ExecuteSurfaceBake(SurfSpec);
     if (!Verify(GtxSurf.SurfaceSucceeded, GtxSurf.DiagnosticText.c_str()) ||
-        !Verify(GtxSurf.ExecutedBackend == BakeAccelerationBackend::GtxComputeBvh4, "GTX Compute BVH4 selected"))
+        !Verify(GtxSurf.ExecutedBackend == BakeAccelerationEngine::GtxComputeBvh4, "GTX Compute BVH4 selected"))
     {
         return 1;
     }
@@ -247,7 +247,7 @@ int main()
         SurfSpec.PreferComputeBvh4 = false;
         const BakeCompletionSummary RtxSurf = Baker.ExecuteSurfaceBake(SurfSpec);
         if (!Verify(RtxSurf.SurfaceSucceeded, RtxSurf.DiagnosticText.c_str()) ||
-            !Verify(RtxSurf.ExecutedBackend == BakeAccelerationBackend::RtxHardwareRayQuery, "RTX RayQuery selected") ||
+            !Verify(RtxSurf.ExecutedBackend == BakeAccelerationEngine::RtxHardwareRayQuery, "RTX RayQuery selected") ||
             !Verify(HasNonTrivialColorVariance(Baker.InspectChannelRgba8(5u), 256u, 256u), "RTX AO pixels non-trivial"))
         {
             return 1;

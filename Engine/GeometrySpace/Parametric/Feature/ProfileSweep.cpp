@@ -30,7 +30,7 @@ using namespace Sweeping;
 //                                                    EXTRUDE
 //------------------------------------------------------------------------------------------------------------------------
 
-static SweepOutcome ExtrudeProfileUntraced(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalFrame& Plane, double Extent, bool CapsCondition)
+static SweepOutcome ExtrudeProfileUntraced(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalBasis& Plane, double Extent, bool CapsCondition)
 {
     SweepOutcome Refused;
     if (!Profile.Refusal.empty()) { Refused.Refusal = "Extrude: " + Profile.Refusal; return Refused; }
@@ -63,7 +63,7 @@ static SweepOutcome ExtrudeProfileUntraced(ModelPartition& Partition, const Sket
             int Bottom = -1, Top = -1;
             Orientation Sense = Orientation::Forward;
             std::optional<NurbsCurve> LowRim, HighRim;
-            if (Segment.Kind == ProfileSegmentKind::Spline)
+            if (Segment.Kind == ProfileSegmentCategory::Spline)
             {
                 LowRim  = LiftSpline(Segment.Spline, [&](Vector2 Point) { return Place(Point, Floor); });
                 HighRim = LiftSpline(Segment.Spline, [&](Vector2 Point) { return Place(Point, Floor + Height); });
@@ -72,7 +72,7 @@ static SweepOutcome ExtrudeProfileUntraced(ModelPartition& Partition, const Sket
                 Bottom = Writer.AddEdge(*LowRim, LowTau, HighTau, Low[Index], Low[Next]);
                 Top    = Writer.AddEdge(*HighRim, LowTau, HighTau, High[Index], High[Next]);
             }
-            else if (Segment.Kind == ProfileSegmentKind::Line)
+            else if (Segment.Kind == ProfileSegmentCategory::Line)
             {
                 const double  Length    = Distance(Segment.Start, Segment.End);
                 const Vector3 Direction = Lift(Normalize(Segment.End - Segment.Start));
@@ -98,8 +98,8 @@ static SweepOutcome ExtrudeProfileUntraced(ModelPartition& Partition, const Sket
             const Vector3 Probe   = Place(Middle, Floor + 0.5 * Height);
             const Vector3 Outward = Lift(OutwardAt(Segment, 0.5));
             LoopPlan Plan;
-            const SweepFace Role{ SweepFaceRole::Side, Segment.Name, static_cast<int>(LoopIndex) };
-            if (Segment.Kind == ProfileSegmentKind::Line)
+            const SweepFace Role{ SweepFacePlacement::Side, Segment.Name, static_cast<int>(LoopIndex) };
+            if (Segment.Kind == ProfileSegmentCategory::Line)
             {
                 const Vector3 Direction = Lift(Normalize(Segment.End - Segment.Start));
                 const PlaneSurface Surface{ ConstructFrame(Place(Segment.Start, Floor), Cross(Direction, Axis), Direction) };
@@ -107,7 +107,7 @@ static SweepOutcome ExtrudeProfileUntraced(ModelPartition& Partition, const Sket
                 Writer.AddFace(Surface, Probe, Outward, { Plan }, Role);
                 continue;
             }
-            if (Segment.Kind == ProfileSegmentKind::Spline)
+            if (Segment.Kind == ProfileSegmentCategory::Spline)
             {
                 // Exact ruled side: poles of the rim at 𝑣 = 0 and 𝑣 = H, degree (p, 1); a closed single spline reuses
                 // its one rise as the seam (𝑢 = a and 𝑢 = b), as the circle does.
@@ -123,7 +123,7 @@ static SweepOutcome ExtrudeProfileUntraced(ModelPartition& Partition, const Sket
                 Writer.AddFace(*Surface, Probe, Outward, { Plan }, Role);
                 continue;
             }
-            if (Segment.Kind == ProfileSegmentKind::Circle)
+            if (Segment.Kind == ProfileSegmentCategory::Circle)
             {
                 const CylinderSurface Surface{ { Place(Segment.Centre, Floor), Plane.XAxis, Plane.YAxis, Axis }, Segment.Radius };
                 const double Up = Sense == Orientation::Forward ? FullTurn : 0.0;            // [rad] - 𝑢 of the upward seam use
@@ -167,7 +167,7 @@ static SweepOutcome ExtrudeProfileUntraced(ModelPartition& Partition, const Sket
             }
             const PlaneSurface Surface{ { Place({ 0.0, 0.0 }, Elevation), Plane.XAxis, Plane.YAxis, Axis } };
             const bool OnSketch = std::fabs(Elevation) <= 1.0e-12 * Profile.Scale;           // The cap lying in the sketch plane is Start
-            const SweepFace Role{ OnSketch ? SweepFaceRole::StartCap : SweepFaceRole::EndCap, {}, static_cast<int>(Outer) };
+            const SweepFace Role{ OnSketch ? SweepFacePlacement::StartCap : SweepFacePlacement::EndCap, {}, static_cast<int>(Outer) };
             Writer.AddFace(Surface, Place(Profile.Loops[Outer].Segments[0].Start, Elevation), Axis * (End == 1 ? 1.0 : -1.0), Plans, Role);
         }
     }
@@ -176,7 +176,7 @@ static SweepOutcome ExtrudeProfileUntraced(ModelPartition& Partition, const Sket
 
 // 📝 Traced entry (Diagnostics/OperationTrace.h): the request on entry, the outcome before the duration line.
 
-SweepOutcome ExtrudeProfile(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalFrame& Plane, double Extent, bool CapsCondition)
+SweepOutcome ExtrudeProfile(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalBasis& Plane, double Extent, bool CapsCondition)
 {
     FRONTIER_TRACE_SCOPE("Sweep", "Extrude · " + std::to_string(Profile.Loops.size()) + " loop(s) · extent " + TraceNumber(Extent) + (CapsCondition ? "" : " · walls"));
     SweepOutcome Outcome = ExtrudeProfileUntraced(Partition, Profile, Plane, Extent, CapsCondition);
@@ -189,7 +189,7 @@ SweepOutcome ExtrudeProfile(ModelPartition& Partition, const SketchProfile& Prof
 //                                                    REVOLVE
 //------------------------------------------------------------------------------------------------------------------------
 
-static SweepOutcome RevolveProfileUntraced(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalFrame& Plane, Vector2 AxisPoint, Vector2 AxisDirection, double Angle)
+static SweepOutcome RevolveProfileUntraced(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalBasis& Plane, Vector2 AxisPoint, Vector2 AxisDirection, double Angle)
 {
     SweepOutcome Refused;
     if (!Profile.Refusal.empty()) { Refused.Refusal = "Revolve: " + Profile.Refusal; return Refused; }
@@ -253,7 +253,7 @@ static SweepOutcome RevolveProfileUntraced(ModelPartition& Partition, const Sket
 
         // ③ Full circle off the axis → torus (closed: equator + meridian through one vertex, chart [0, 2π]²; partial:
         //    meridians at 𝑢 = 0 and 𝑢 = Angle joined by the equator track, which is the 𝑣-seam).
-        if (Count == 1 && Loop.Segments[0].Kind == ProfileSegmentKind::Circle)
+        if (Count == 1 && Loop.Segments[0].Kind == ProfileSegmentCategory::Circle)
         {
             const ProfileSegment& Segment = Loop.Segments[0];
             const Vector2 Centre = Meridian(Segment.Centre);
@@ -271,7 +271,7 @@ static SweepOutcome RevolveProfileUntraced(ModelPartition& Partition, const Sket
             Plan.Uses = { { Equator, Orientation::Forward, Vector2{ TrackMiddle, 0.0 } }, { FarRing, Orientation::Forward, Vector2{ FarSeam, Pi } },
                           { Equator, Orientation::Reversed, Vector2{ TrackMiddle, FullTurn } }, { Ring, Orientation::Reversed, Vector2{ 0.0, Pi } } };
             const Vector2 Outward = OutwardAt(Segment, 0.0);
-            Writer.AddFace(Surface, Place(Segment.Start), Lift(Outward), { Plan }, { SweepFaceRole::Side, Segment.Name, static_cast<int>(LoopIndex) });
+            Writer.AddFace(Surface, Place(Segment.Start), Lift(Outward), { Plan }, { SweepFacePlacement::Side, Segment.Name, static_cast<int>(LoopIndex) });
             StartRims[LoopIndex] = { { Ring, Orientation::Forward } };
             EndRims[LoopIndex]   = { { FarRing, Orientation::Forward } };
             continue;
@@ -296,19 +296,19 @@ static SweepOutcome RevolveProfileUntraced(ModelPartition& Partition, const Sket
             const ProfileSegment& Segment = Loop.Segments[Index];
             const int     Next  = (Index + 1) % Count;
             const Vector2 Start = RZ[Index], End = RZ[Next];
-            const SweepFace Role{ SweepFaceRole::Side, Segment.Name, static_cast<int>(LoopIndex) };
+            const SweepFace Role{ SweepFacePlacement::Side, Segment.Name, static_cast<int>(LoopIndex) };
             const Vector2 Middle  = EvaluateProfileSegment(Segment, 0.5);
             const Vector3 Probe   = Place(Middle);
             const Vector3 Outward = Lift(OutwardAt(Segment, 0.5));
-            const bool    OnAxisLine = Segment.Kind == ProfileSegmentKind::Line && Start.X <= Tolerance && End.X <= Tolerance;   // Sweeps nothing
-            const bool    Flat       = Segment.Kind == ProfileSegmentKind::Line && !OnAxisLine && std::fabs(Start.Y - End.Y) <= Tolerance;  // Plane ⟂ axis
+            const bool    OnAxisLine = Segment.Kind == ProfileSegmentCategory::Line && Start.X <= Tolerance && End.X <= Tolerance;   // Sweeps nothing
+            const bool    Flat       = Segment.Kind == ProfileSegmentCategory::Line && !OnAxisLine && std::fabs(Start.Y - End.Y) <= Tolerance;  // Plane ⟂ axis
 
             // Profile copy at 𝑢 = 0 (the seam of a full turn) and its turned copy at 𝑢 = Angle.
             SurfaceGeometry Surface;
             CurveGeometry   SeamCurve;
             double SeamLow = 0.0, SeamHigh = 0.0, StartV = 0.0, EndV = 0.0;
             Orientation SeamSense = Orientation::Forward;                                    // Seam use running Start → End
-            if (Segment.Kind == ProfileSegmentKind::Line)
+            if (Segment.Kind == ProfileSegmentCategory::Line)
             {
                 const double Length = Distance(Segment.Start, Segment.End);
                 SeamCurve = StraightLine{ OnAxisLine ? Origin + AxisZ * Start.Y : Place(Segment.Start), Lift(Normalize(Segment.End - Segment.Start)) };
@@ -327,7 +327,7 @@ static SweepOutcome RevolveProfileUntraced(ModelPartition& Partition, const Sket
                     StartV = Start.Y - Wide; EndV = End.Y - Wide;
                 }
             }
-            else if (Segment.Kind == ProfileSegmentKind::Spline)
+            else if (Segment.Kind == ProfileSegmentCategory::Spline)
             {
                 // 📝 Spline meridian: the spline lifted at 𝑢 = 0 swept by exact rational circles (ConstructNurbsRevolution),
                 //    𝑢 the turn over [0, Angle], 𝑣 the spline's own τ (stored in traversal order, so the seam runs Start → End).
@@ -431,7 +431,7 @@ static SweepOutcome RevolveProfileUntraced(ModelPartition& Partition, const Sket
                 const Vector3 CapX = End == 0 ? AxisX : FarX;
                 const PlaneSurface Surface{ { Origin, CapX, AxisZ, Cross(CapX, AxisZ) } };
                 const Vector3 Probe = End == 0 ? Place(Profile.Loops[Outer].Segments[0].Start) : TurnPoint(Place(Profile.Loops[Outer].Segments[0].Start));
-                const SweepFace Role{ End == 0 ? SweepFaceRole::StartCap : SweepFaceRole::EndCap, {}, static_cast<int>(Outer) };
+                const SweepFace Role{ End == 0 ? SweepFacePlacement::StartCap : SweepFacePlacement::EndCap, {}, static_cast<int>(Outer) };
                 Writer.AddFace(Surface, Probe, End == 0 ? AxisY * -1.0 : FarY, Plans, Role);
             }
         }
@@ -439,7 +439,7 @@ static SweepOutcome RevolveProfileUntraced(ModelPartition& Partition, const Sket
     return Assemble(Partition, Writer, "Revolve");
 }
 
-SweepOutcome RevolveProfile(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalFrame& Plane, Vector2 AxisPoint, Vector2 AxisDirection, double Angle)
+SweepOutcome RevolveProfile(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalBasis& Plane, Vector2 AxisPoint, Vector2 AxisDirection, double Angle)
 {
     FRONTIER_TRACE_SCOPE("Sweep", "Revolve · " + std::to_string(Profile.Loops.size()) + " loop(s) · angle " + TraceNumber(Angle));
     SweepOutcome Outcome = RevolveProfileUntraced(Partition, Profile, Plane, AxisPoint, AxisDirection, Angle);
@@ -452,9 +452,9 @@ std::string SweepRoleName(const SweepFace& Role)
 {
     switch (Role.Role)
     {
-    case SweepFaceRole::Side:     return "Side(" + Role.Curve + ")";
-    case SweepFaceRole::StartCap: return "Cap(Start)";
-    case SweepFaceRole::EndCap:   return "Cap(End)";
+    case SweepFacePlacement::Side:     return "Side(" + Role.Curve + ")";
+    case SweepFacePlacement::StartCap: return "Cap(Start)";
+    case SweepFacePlacement::EndCap:   return "Cap(End)";
     }
     return "?";
 }

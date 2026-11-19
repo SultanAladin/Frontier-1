@@ -223,10 +223,10 @@ bool BakingWorkspaceSession::EnsureGpuEngineReady()
     }
 
     const bool PreferCompute = (ComputeDevice == BakerComputeDevice::GtxComputeBvh4);
-    const BakeAccelerationBackend ActiveBackend = GpuStorage->Baker.QueryActiveBackend(PreferCompute);
+    const BakeAccelerationEngine ActiveBackend = GpuStorage->Baker.QueryActiveBackend(PreferCompute);
     const std::string_view Adapter = GpuStorage->ActiveDevice->QueryAdapterName();
     const std::string AdapterShort(Adapter.substr(0u, std::min<std::size_t>(Adapter.size(), 22u)));
-    DeviceIndicatorText = (ActiveBackend == BakeAccelerationBackend::RtxHardwareRayQuery)
+    DeviceIndicatorText = (ActiveBackend == BakeAccelerationEngine::RtxHardwareRayQuery)
         ? ("RTX RayQuery · " + AdapterShort)
         : ("GTX BVH4 · " + AdapterShort);
     return true;
@@ -440,7 +440,7 @@ void BakingWorkspaceSession::ExecuteBakeSimulation() noexcept
     BakingActive = true;
     const bool PreferCompute = (ComputeDevice == BakerComputeDevice::GtxComputeBvh4);
     double TotalMs           = 0.0;
-    BakeAccelerationBackend BackendUsed = GpuStorage->Baker.QueryActiveBackend(PreferCompute);
+    BakeAccelerationEngine BackendUsed = GpuStorage->Baker.QueryActiveBackend(PreferCompute);
 
     if (AnySurface)
     {
@@ -515,7 +515,7 @@ void BakingWorkspaceSession::ExecuteBakeSimulation() noexcept
     BakingActive = false;
     BakeProgress = 1.0f;
     char Buf[112];
-    const char* DeviceTag = (BackendUsed == BakeAccelerationBackend::RtxHardwareRayQuery) ? "RTX RayQuery" : "GTX BVH4";
+    const char* DeviceTag = (BackendUsed == BakeAccelerationEngine::RtxHardwareRayQuery) ? "RTX RayQuery" : "GTX BVH4";
     std::snprintf(Buf, sizeof(Buf), "Done · %s · %zu maps · %.0f ms", DeviceTag, AnySelected, TotalMs);
     ProgressStatus = Buf;
     char BadgeBuf[80];

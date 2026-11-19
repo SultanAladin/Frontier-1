@@ -241,14 +241,14 @@ AnalyticResolvedSurfaceSample VisibilityMaterialResolve::ReconstructAnalyticPixe
     return Sample;
 }
 
-VisibilityResolveFrameBuffer VisibilityMaterialResolve::ResolveVisibilityFrame(
-    const PerspectiveCameraFrame&                 CurrentCamera,
-    const PerspectiveCameraFrame&                 PreviousCamera,
+VisibilityResolveBuffer VisibilityMaterialResolve::ResolveVisibilityFrame(
+    const PerspectiveCameraBasis&                 CurrentCamera,
+    const PerspectiveCameraBasis&                 PreviousCamera,
     std::span<const RigidClusterInstance>         Instances,
     const VisibilityBufferTargets&                VisibilityTargets,
     const MaterialSpace::CompactMaterialRegister& MaterialRegister)
 {
-    VisibilityResolveFrameBuffer Frame {};
+    VisibilityResolveBuffer Frame {};
     Frame.WidthPx  = VisibilityTargets.WidthPx;
     Frame.HeightPx = VisibilityTargets.HeightPx;
     const std::size_t TotalPixels = static_cast<std::size_t>(Frame.WidthPx) * Frame.HeightPx;

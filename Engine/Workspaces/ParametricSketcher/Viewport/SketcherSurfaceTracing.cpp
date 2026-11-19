@@ -7,8 +7,8 @@ namespace Frontier::Workspaces::Sketcher
 {
 using namespace GeometrySpace::Parametric;
 
-SketcherSnap SnapSketcherTrace(SketcherSnapCatalogue& Catalogue, const SketcherDocument& Document,
-    const SketcherScene& Scene, const OrbitCameraFrame& Frame, double X, double Y, bool CurveSnap, bool AutoCurves)
+SketcherSnap SnapSketcherTrace(SketcherSnapRepository& Catalogue, const SketcherDocument& Document,
+    const SketcherScene& Scene, const OrbitCameraBasis& Frame, double X, double Y, bool CurveSnap, bool AutoCurves)
 {
     SketcherSnapQuery Query;
     Query.Frame = Frame;
@@ -27,20 +27,20 @@ SketcherSnap SnapSketcherTrace(SketcherSnapCatalogue& Catalogue, const SketcherD
         Snap=FindSketcherSnap(Catalogue,Document,Scene,Query);
         Query.Filter.EndpointEnabled = false; Query.Filter.CurveEnabled = true;
     }
-    if(Snap.Kind==SketcherSnapKind::None) Snap = FindSketcherSnap(Catalogue, Document, Scene, Query);
-    if (CurveSnap && Snap.Kind == SketcherSnapKind::None)
+    if(Snap.Kind==SketcherSnapCategory::None) Snap = FindSketcherSnap(Catalogue, Document, Scene, Query);
+    if (CurveSnap && Snap.Kind == SketcherSnapCategory::None)
     {
         Query.FreeCurvesOnly = false;
         Query.BodyCurvesOnly = true;
         Snap = FindSketcherSnap(Catalogue, Document, Scene, Query);
     }
-    if (Curves && Snap.Kind == SketcherSnapKind::None)
+    if (Curves && Snap.Kind == SketcherSnapCategory::None)
     {
         Query.Filter.CurveEnabled = false;
         Query.Filter.FaceEnabled = true;
         Snap = FindSketcherSnap(Catalogue, Document, Scene, Query);
     }
-    if (Snap.Kind == SketcherSnapKind::Face)
+    if (Snap.Kind == SketcherSnapCategory::Face)
     {
         double PX, PY;
         // Newton refinement at a silhouette can land on a different branch. Never
@@ -51,7 +51,7 @@ SketcherSnap SnapSketcherTrace(SketcherSnapCatalogue& Catalogue, const SketcherD
 }
 
 SketcherControlTrace MakeSketcherControlTrace(const std::vector<Vector3>& Controls,
-    SketcherDrawingKind Kind, SketchSplineForm Form, bool Closed)
+    SketcherDrawingCategory Kind, SketchSplineForm Form, bool Closed)
 {
     SketcherControlTrace Result;
     if (Controls.size() < 2) { Result.Refusal = "Place at least two controls"; return Result; }
@@ -65,7 +65,7 @@ SketcherControlTrace MakeSketcherControlTrace(const std::vector<Vector3>& Contro
     }
     if (Closed && (Controls.size() < 4 || Distance(Controls.front(), Controls.back()) > 1e-12))
     { Result.Refusal = "Close by explicitly placing the last control on the first (at least three distinct controls)"; return Result; }
-    if (Kind == SketcherDrawingKind::Arc)
+    if (Kind == SketcherDrawingCategory::Arc)
     {
         if (Controls.size() != 3) { Result.Refusal = "Arc: place start, end, then a point on the arc"; return Result; }
         const auto X = Controls[1] - Controls[0], N = Cross(X, Controls[2] - Controls[0]);
@@ -83,11 +83,11 @@ SketcherControlTrace MakeSketcherControlTrace(const std::vector<Vector3>& Contro
         Result.Arc = Request;
         return Result;
     }
-    if (Kind != SketcherDrawingKind::Line && Kind != SketcherDrawingKind::Curve)
+    if (Kind != SketcherDrawingCategory::Line && Kind != SketcherDrawingCategory::Curve)
     { Result.Refusal = "Use Line, Curve or Arc"; return Result; }
-    if (Kind == SketcherDrawingKind::Curve && Form != SketchSplineForm::Nurbs && Form != SketchSplineForm::Bezier)
+    if (Kind == SketcherDrawingCategory::Curve && Form != SketchSplineForm::Nurbs && Form != SketchSplineForm::Bezier)
     { Result.Refusal = "Point-only tracing uses NURBS (3) or Bezier (2); interpolating forms need extra tangent poles"; return Result; }
-    const int Degree = Kind == SketcherDrawingKind::Line ? 1 : Form == SketchSplineForm::Bezier ? int(Controls.size()) - 1 : std::min(3, int(Controls.size()) - 1);
+    const int Degree = Kind == SketcherDrawingCategory::Line ? 1 : Form == SketchSplineForm::Bezier ? int(Controls.size()) - 1 : std::min(3, int(Controls.size()) - 1);
     if (Degree > 15) { Result.Refusal = "Bezier supports at most 16 controls; use NURBS"; return Result; }
     NurbsCurveDefinition Definition;
     Definition.Degree = Degree;
@@ -104,9 +104,9 @@ SketcherControlTrace MakeSketcherControlTrace(const std::vector<Vector3>& Contro
     return Result;
 }
 
-SketcherSurfaceTrace ProjectSketcherTrace(SketcherSnapCatalogue& Catalogue, const SketcherDocument& Document,
-    const SketcherScene& Scene, const OrbitCameraFrame& Frame, const std::vector<Vector3>& Controls,
-    SketcherDrawingKind Kind, SketchSplineForm Form, bool Closed, bool Fit, double Tolerance)
+SketcherSurfaceTrace ProjectSketcherTrace(SketcherSnapRepository& Catalogue, const SketcherDocument& Document,
+    const SketcherScene& Scene, const OrbitCameraBasis& Frame, const std::vector<Vector3>& Controls,
+    SketcherDrawingCategory Kind, SketchSplineForm Form, bool Closed, bool Fit, double Tolerance)
 {
     SketcherSurfaceTrace Result;
     if (Controls.size() < 2 || Controls.size() > 65 || !(Tolerance > 0.0) || !std::isfinite(Tolerance))
@@ -125,20 +125,20 @@ SketcherSurfaceTrace ProjectSketcherTrace(SketcherSnapCatalogue& Catalogue, cons
         if (!ProjectSketcherPoint(Frame, Control, X, Y))
         { Result.Refusal = "Surface trace: a control left the view; restore the view or split the section"; return Result; }
         SketcherSnap Hit = SnapSketcherTrace(Catalogue, Document, Scene, Frame, X, Y, false);
-        if (Hit.Kind == SketcherSnapKind::None || Distance(Hit.Position, Control) > Tolerance)
+        if (Hit.Kind == SketcherSnapCategory::None || Distance(Hit.Position, Control) > Tolerance)
             Hit = SnapSketcherTrace(Catalogue, Document, Scene, Frame, X, Y, true);
-        if (Hit.Kind == SketcherSnapKind::None || Distance(Hit.Position, Control) > Tolerance)
+        if (Hit.Kind == SketcherSnapCategory::None || Distance(Hit.Position, Control) > Tolerance)
         { Result.Refusal = "Surface trace: a control is hidden / off the current surface; restore the view or split the section"; return Result; }
     }
     std::vector<Vector3> Seed;
-    if (Kind == SketcherDrawingKind::Arc)
+    if (Kind == SketcherDrawingCategory::Arc)
     {
         if (Controls.size() != 3) { Result.Refusal = "Surface arc: click start, end, then a point on the arc"; return Result; }
         const Vector3 Along = Controls[1] - Controls[0];
         const Vector3 Normal = Cross(Along, Controls[2] - Controls[0]);
         if (Length(Along) < 1.0e-10 || Length(Normal) < 1.0e-12)
         { Result.Refusal = "Surface arc: the three points are collinear"; return Result; }
-        OrthonormalFrame Plane;
+        OrthonormalBasis Plane;
         Plane.Origin = Controls[0]; Plane.XAxis = Normalize(Along); Plane.ZAxis = Normalize(Normal);
         Plane.YAxis = Cross(Plane.ZAxis, Plane.XAxis);
         SketcherDrawingRequest Request;
@@ -161,14 +161,14 @@ SketcherSurfaceTrace ProjectSketcherTrace(SketcherSnapCatalogue& Catalogue, cons
             Seed.push_back(Plane.Origin + Plane.XAxis * Point.X + Plane.YAxis * Point.Y);
         }
     }
-    else if (Kind == SketcherDrawingKind::Line)
+    else if (Kind == SketcherDrawingCategory::Line)
     {
         for (size_t Span = 1; Span < Controls.size(); ++Span)
             for (int Step = Span == 1 ? 0 : 1; Step <= 32; ++Step)
                 Seed.push_back(Controls[Span - 1] * (1.0 - double(Step) / 32.0) + Controls[Span] * (double(Step) / 32.0));
         if (Closed) { Result.Refusal = "Surface polyline: finish open sections separately"; return Result; }
     }
-    else if (Kind == SketcherDrawingKind::Curve) Seed = SampleThroughCurve(Controls, Closed, Form, Fit ? 48 : 16);
+    else if (Kind == SketcherDrawingCategory::Curve) Seed = SampleThroughCurve(Controls, Closed, Form, Fit ? 48 : 16);
     else { Result.Refusal = "Surface trace supports Curve, Arc and Line; turn Surface off for planar shapes"; return Result; }
     if (Seed.size() < 2) { Result.Refusal = "Surface trace: cannot form the seed curve"; return Result; }
     // Bounded work even with a long clicked path. Each finished fit also receives
@@ -181,14 +181,14 @@ SketcherSurfaceTrace ProjectSketcherTrace(SketcherSnapCatalogue& Catalogue, cons
         if (!ProjectSketcherPoint(Frame, Point, X, Y))
         { Result.Refusal = "Surface trace leaves the view; draw a shorter section"; return Result; }
         SketcherSnap Hit = SnapSketcherTrace(Catalogue, Document, Scene, Frame, X, Y, false);
-        if (Hit.Kind == SketcherSnapKind::None && (Index == 0 || Index + 1 == Count))
+        if (Hit.Kind == SketcherSnapCategory::None && (Index == 0 || Index + 1 == Count))
         {
             // Exact boundary controls may project a fraction beyond the faceted
             // silhouette. Only an exact BODY edge at the same 3D point is valid.
             Hit = SnapSketcherTrace(Catalogue, Document, Scene, Frame, X, Y, true);
-            if (Hit.Kind != SketcherSnapKind::Curve || Distance(Hit.Position, Point) > Tolerance) Hit = {};
+            if (Hit.Kind != SketcherSnapCategory::Curve || Distance(Hit.Position, Point) > Tolerance) Hit = {};
         }
-        if (Hit.Kind == SketcherSnapKind::None)
+        if (Hit.Kind == SketcherSnapCategory::None)
         { Result.Refusal = "Surface trace crosses a gap / silhouette; add controls or split the curve"; return Result; }
         if (Result.Samples.empty() || Distance(Result.Samples.back(), Hit.Position) > 1.0e-10) Result.Samples.push_back(Hit.Position);
     }
@@ -211,12 +211,12 @@ SketcherSurfaceTrace ProjectSketcherTrace(SketcherSnapCatalogue& Catalogue, cons
             double X, Y;
             if (!ProjectSketcherPoint(Frame, Point, X, Y)) { Miss = true; break; }
             SketcherSnap Hit = SnapSketcherTrace(Catalogue, Document, Scene, Frame, X, Y, false);
-            if (Hit.Kind == SketcherSnapKind::None && (Step == 0 || Step == 256))
+            if (Hit.Kind == SketcherSnapCategory::None && (Step == 0 || Step == 256))
             {
                 Hit = SnapSketcherTrace(Catalogue, Document, Scene, Frame, X, Y, true);
-                if (Hit.Kind != SketcherSnapKind::Curve || Distance(Hit.Position, Point) > Tolerance) Hit = {};
+                if (Hit.Kind != SketcherSnapCategory::Curve || Distance(Hit.Position, Point) > Tolerance) Hit = {};
             }
-            if (Hit.Kind == SketcherSnapKind::None) { Miss = true; break; }
+            if (Hit.Kind == SketcherSnapCategory::None) { Miss = true; break; }
             Result.WorstSurfaceDeviation = std::max(Result.WorstSurfaceDeviation, Distance(Point, Hit.Position));
         }
         if (!Miss && Result.WorstSurfaceDeviation <= Tolerance) return Result;

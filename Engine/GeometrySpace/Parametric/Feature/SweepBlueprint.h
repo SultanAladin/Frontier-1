@@ -9,7 +9,7 @@
 //                                                    INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/GeometrySpace/Parametric/Construction/BodyAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Construction/BodyArrangement.h"
 #include "Engine/GeometrySpace/Parametric/Feature/ProfileSweep.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/NurbsCarrier.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/ProjectedCurve.h"
@@ -132,7 +132,7 @@ namespace Frontier::GeometrySpace::Parametric::Sweeping
     [[nodiscard]] inline SweepOutcome Assemble(ModelPartition& Partition, BlueprintWriter& Writer, const char* Label)
     {
         SweepOutcome Outcome;
-        const AssemblyOutcome Assembly = AssembleBody(Partition, Writer.Blueprint, Label);
+        const ArrangementOutcome Assembly = AssembleBody(Partition, Writer.Blueprint, Label);
         if (!Assembly.Refusal.empty()) { Outcome.Refusal = Assembly.Refusal; return Outcome; }
         Outcome.Body  = Assembly.Body;
         Outcome.Faces = Assembly.Faces;

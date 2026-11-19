@@ -59,7 +59,7 @@ public:
     [[nodiscard]] VectorFieldOverlaySequence&                                AccessOverlaySequence() noexcept;
     [[nodiscard]] ForceInspectorView&                                        AccessForceInspectorView() noexcept;
     [[nodiscard]] ForcePresetBrowserPanel&                                       AccessContentBrowser() noexcept;
-    [[nodiscard]] OverlayCameraState&                                        AccessCamera(uint32_t PaneIndex) noexcept;
+    [[nodiscard]] OverlayCameraBasis&                                        AccessCamera(uint32_t PaneIndex) noexcept;
 
     [[nodiscard]] int32_t QuerySelectedWaypointIndex() const noexcept;
     void                  ConfigureSelectedWaypointIndex(int32_t WaypointIdx) noexcept;
@@ -94,7 +94,7 @@ private:
     OutlinerSlotToken                                                 DefaultForceFolderToken{};
     uint32_t                                                          NextForceToken = 1u;
 
-    std::array<OverlayCameraState, 2> Cameras            {};
+    std::array<OverlayCameraBasis, 2> Cameras            {};
     std::vector<float>                AnemometerHistoryMs{};
     int32_t                           SelectedWaypointIdx = -1;
     double                            SimulationTimeSec   = 0.0;

@@ -1250,7 +1250,7 @@ MaterialSpace::SpecimenPreviewImage RasterizeGeometrySpecimenPreview(
                 const Mathematics::Axis3D RefAxis    = (std::fabs(WorldNormal.Z) < 0.92f) ? Mathematics::Axis3D{ 0.0f, 0.0f, 1.0f } : Mathematics::Axis3D{ 1.0f, 0.0f, 0.0f };
                 const Mathematics::Axis3D TangentX   = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(RefAxis, WorldNormal), { 1.0f, 0.0f, 0.0f });
                 const Mathematics::Axis3D BitangentY = Mathematics::EvaluateCross(WorldNormal, TangentX);
-                const MaterialSpace::Scattering::SurfaceShadingFrame Frame{ TangentX, BitangentY, WorldNormal };
+                const MaterialSpace::Scattering::SurfaceShadingBasis Frame{ TangentX, BitangentY, WorldNormal };
                 const Mathematics::Axis3D LocalWo = Frame.WorldToLocal(ViewDir);
 
                 Mathematics::LinearRGB Radiance{};

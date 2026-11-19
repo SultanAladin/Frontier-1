@@ -55,7 +55,7 @@ uint32_t NetworkEndpointRegister::RegisterRealEndpoint(
     const uint32_t CleanMask = InitialAttributeMask &
                                ~static_cast<uint32_t>(EndpointAttributeMask::EnableSyntheticReadinessOnly);
 
-    EndpointTelemetryRecord Record{};
+    EndpointTelemetryEntry Record{};
     Record.EndpointIdentifier = AssignedId;
     Record.ProductAccountHash = ProductAccountHash;
     Record.DisplayAlias       = std::string(DisplayAlias);
@@ -67,7 +67,7 @@ uint32_t NetworkEndpointRegister::RegisterRealEndpoint(
 
 uint32_t NetworkEndpointRegister::RegisterSyntheticReadinessEndpoint(std::string_view DisplayAlias)
 {
-    EndpointTelemetryRecord Record{};
+    EndpointTelemetryEntry Record{};
     Record.EndpointIdentifier = NextEndpointIdentifier++;
     Record.ProductAccountHash = 0u;
     Record.DisplayAlias       = std::string(DisplayAlias);
@@ -102,7 +102,7 @@ bool NetworkEndpointRegister::AssignEndpointAttributes(
     uint32_t MaskToEnable,
     uint32_t MaskToClear) noexcept
 {
-    EndpointTelemetryRecord* Target = FindMutableEndpoint(EndpointIdentifier);
+    EndpointTelemetryEntry* Target = FindMutableEndpoint(EndpointIdentifier);
     if (Target == nullptr)
     {
         return false;
@@ -127,7 +127,7 @@ uint32_t NetworkEndpointRegister::IssueOutboundSequence(
     uint32_t& OutAckLatest,
     uint32_t& OutAckBitfield) noexcept
 {
-    EndpointTelemetryRecord* Target = FindMutableEndpoint(EndpointIdentifier);
+    EndpointTelemetryEntry* Target = FindMutableEndpoint(EndpointIdentifier);
     if (Target == nullptr)
     {
         OutAckLatest   = 0u;
@@ -148,7 +148,7 @@ bool NetworkEndpointRegister::RecordInboundSequence(
     uint32_t RemoteAckLatest,
     uint32_t RemoteAckBitfield) noexcept
 {
-    EndpointTelemetryRecord* Target = FindMutableEndpoint(EndpointIdentifier);
+    EndpointTelemetryEntry* Target = FindMutableEndpoint(EndpointIdentifier);
     if (Target == nullptr || InboundSequence == 0u)
     {
         return false;
@@ -210,7 +210,7 @@ bool NetworkEndpointRegister::RecordRoundTripSample(
     float    SampleRttMilliseconds,
     float    EstimatedClockOffsetMilliseconds) noexcept
 {
-    EndpointTelemetryRecord* Target = FindMutableEndpoint(EndpointIdentifier);
+    EndpointTelemetryEntry* Target = FindMutableEndpoint(EndpointIdentifier);
     if (Target == nullptr || SampleRttMilliseconds < 0.0f)
     {
         return false;
@@ -239,7 +239,7 @@ void NetworkEndpointRegister::AdvanceSilenceTimers(double Δt) noexcept
     {
         return;
     }
-    for (EndpointTelemetryRecord& Record : Records)
+    for (EndpointTelemetryEntry& Record : Records)
     {
         Record.SecondsSinceLastInbound += Δt;
     }
@@ -249,9 +249,9 @@ void NetworkEndpointRegister::AdvanceSilenceTimers(double Δt) noexcept
 //                                                    ROSTER QUERIES
 //------------------------------------------------------------------------------------------------------------------------
 
-const EndpointTelemetryRecord* NetworkEndpointRegister::FindEndpoint(uint32_t EndpointIdentifier) const noexcept
+const EndpointTelemetryEntry* NetworkEndpointRegister::FindEndpoint(uint32_t EndpointIdentifier) const noexcept
 {
-    for (const EndpointTelemetryRecord& Record : Records)
+    for (const EndpointTelemetryEntry& Record : Records)
     {
         if (Record.EndpointIdentifier == EndpointIdentifier)
         {
@@ -261,9 +261,9 @@ const EndpointTelemetryRecord* NetworkEndpointRegister::FindEndpoint(uint32_t En
     return nullptr;
 }
 
-EndpointTelemetryRecord* NetworkEndpointRegister::FindMutableEndpoint(uint32_t EndpointIdentifier) noexcept
+EndpointTelemetryEntry* NetworkEndpointRegister::FindMutableEndpoint(uint32_t EndpointIdentifier) noexcept
 {
-    for (EndpointTelemetryRecord& Record : Records)
+    for (EndpointTelemetryEntry& Record : Records)
     {
         if (Record.EndpointIdentifier == EndpointIdentifier)
         {
@@ -277,7 +277,7 @@ uint32_t NetworkEndpointRegister::QueryRealEndpointCount() const noexcept
 {
     uint32_t Count = 0u;
     const uint32_t SyntheticBit = static_cast<uint32_t>(EndpointAttributeMask::EnableSyntheticReadinessOnly);
-    for (const EndpointTelemetryRecord& Record : Records)
+    for (const EndpointTelemetryEntry& Record : Records)
     {
         if ((Record.AttributeMask & SyntheticBit) == 0u)
         {
@@ -291,7 +291,7 @@ uint32_t NetworkEndpointRegister::QuerySyntheticEndpointCount() const noexcept
 {
     uint32_t Count = 0u;
     const uint32_t SyntheticBit = static_cast<uint32_t>(EndpointAttributeMask::EnableSyntheticReadinessOnly);
-    for (const EndpointTelemetryRecord& Record : Records)
+    for (const EndpointTelemetryEntry& Record : Records)
     {
         if ((Record.AttributeMask & SyntheticBit) != 0u)
         {
@@ -309,7 +309,7 @@ std::vector<SessionParticipantCandidate> NetworkEndpointRegister::CollectSession
     const uint32_t SyntheticBit = static_cast<uint32_t>(EndpointAttributeMask::EnableSyntheticReadinessOnly);
     const uint32_t ReadyBit     = static_cast<uint32_t>(EndpointAttributeMask::EnableReadyStatus);
 
-    for (const EndpointTelemetryRecord& Record : Records)
+    for (const EndpointTelemetryEntry& Record : Records)
     {
         SessionParticipantCandidate Candidate{};
         Candidate.EndpointIdentifier = Record.EndpointIdentifier;

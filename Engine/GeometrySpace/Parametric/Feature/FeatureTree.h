@@ -9,7 +9,7 @@
 //                                                    INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/GeometrySpace/Parametric/Assembly/JointSolver.h"
+#include "Engine/GeometrySpace/Parametric/Arrangement/JointSolver.h"
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
 #include "Engine/GeometrySpace/Parametric/Construction/BodyTransform.h"
 #include "Engine/GeometrySpace/Parametric/Feature/TopologicalNaming.h"
@@ -32,7 +32,7 @@ namespace Frontier::GeometrySpace::Parametric
 //                                                    ENUMS
 //------------------------------------------------------------------------------------------------------------------------
 
-enum class FeatureStepKind : uint8_t
+enum class FeatureStepCategory : uint8_t
 {
     Sketch        = 0,                                                                       // Constrained 2D sketch on a plane
     Extrude       = 1,                                                                       // Sketch profile swept linearly
@@ -77,7 +77,7 @@ enum class FeatureStepStatus : uint8_t
 //------------------------------------------------------------------------------------------------------------------------
 
 // 📝 A number in the tree: Literal, or Factor·Parameter + SecondFactor·SecondParameter + Offset when Parameter is named.
-struct FeatureValue
+struct FeatureScalar
 {
     double      Literal   = 0.0;                                                             // [len|rad|-] - Value without a parameter
     std::string Parameter = {};                                                              // [-]         - Named parameter (empty: literal)
@@ -107,13 +107,13 @@ struct FeaturePoleEdit
 // 📝 A joint step's values (Assembly/JointSolver.h); each kind reads only its own, every value may bind a parameter.
 struct FeatureJoint
 {
-    JointKind                 Kind             = JointKind::Rigid;                           // [-]   - Fusion joint type
-    FeatureValue              Angle            = {};                                         // [rad] - Turn about 𝑧 (ball: yaw)
-    FeatureValue              Slide            = {};                                         // [len] - Slider / cylindrical: along 𝑧 · pin-slot / planar: along 𝑥
-    FeatureValue              SecondSlide      = {};                                         // [len] - Planar: along 𝑦
-    FeatureValue              Pitch            = {};                                         // [rad] - Ball: about 𝑦
-    FeatureValue              Roll             = {};                                         // [rad] - Ball: about 𝑥
-    FeatureValue              Offset           = {};                                         // [len] - Along 𝑧, every kind
+    JointCategory                 Kind             = JointCategory::Rigid;                           // [-]   - Fusion joint type
+    FeatureScalar              Angle            = {};                                         // [rad] - Turn about 𝑧 (ball: yaw)
+    FeatureScalar              Slide            = {};                                         // [len] - Slider / cylindrical: along 𝑧 · pin-slot / planar: along 𝑥
+    FeatureScalar              SecondSlide      = {};                                         // [len] - Planar: along 𝑦
+    FeatureScalar              Pitch            = {};                                         // [rad] - Ball: about 𝑦
+    FeatureScalar              Roll             = {};                                         // [rad] - Ball: about 𝑥
+    FeatureScalar              Offset           = {};                                         // [len] - Along 𝑧, every kind
     bool                      FlippedCondition = false;                                      // [-]   - Origins aligned instead of facing each other
     std::optional<JointRange> AngleRange       = {};                                         // [rad] - Limits on Angle (refused outside)
     std::optional<JointRange> SlideRange       = {};                                         // [len] - Limits on Slide (refused outside)
@@ -121,37 +121,37 @@ struct FeatureJoint
 
 struct FeatureStep
 {
-    FeatureStepKind                Kind           = FeatureStepKind::Sketch;                 // [-]   - Step type
+    FeatureStepCategory                Kind           = FeatureStepCategory::Sketch;                 // [-]   - Step type
     std::string                    Label          = {};                                      // [-]   - Unique tag, prefix of the names it creates
     SketchModel                    Sketch         = {};                                      // [-]   - Sketch: unsolved model (constraints may bind parameters)
-    OrthonormalFrame               Plane          = {};                                      // [-]   - Sketch: plane frame · mirror: plane · cut by a curve: ZAxis = cut direction
-    FeatureValue                   Elevation      = {};                                      // [len] - Sketch: plane shift along its normal
+    OrthonormalBasis               Plane          = {};                                      // [-]   - Sketch: plane frame · mirror: plane · cut by a curve: ZAxis = cut direction
+    FeatureScalar                   Elevation      = {};                                      // [len] - Sketch: plane shift along its normal
     bool                           FillCondition  = true;                                    // [-]   - Sketch: closed loops are filled faces (extrude → solid);
                                                                                              //         unfilled (Plasticity's fresh curves) → extrude makes walls
     std::string                    Profile        = {};                                      // [-]   - Extrude / revolve / cut: sketch step label
-    FeatureValue                   Extent         = {};                                      // [len] - Extrude distance (negative: below the plane) · inset depth
-    FeatureValue                   Start          = {};                                      // [len] - Extrude: where the sweep starts along the normal (negative: sunk
+    FeatureScalar                   Extent         = {};                                      // [len] - Extrude distance (negative: below the plane) · inset depth
+    FeatureScalar                   Start          = {};                                      // [len] - Extrude: where the sweep starts along the normal (negative: sunk
                                                                                              //         into the curved face the sketch is tangent to, so a Union closes)
     FeatureCombination             Combination    = FeatureCombination::New;                 // [-]   - Extrude / revolve: Boolean with the current body
     int                            AxisIdentifier = -1;                                      // [-]   - Revolve: identifier of the axis line in the sketch (−1: AxisOrigin / AxisDirection)
     Vector2                        AxisOrigin     = {};                                      // [len] - Revolve without an axis line: a point of the axis (sketch coordinates)
     Vector2                        AxisDirection  = {};                                      // [-]   - Revolve without an axis line: axis direction (sketch coordinates)
     std::string                    Path           = {};                                      // [-]   - Evolution: path — a one-curve sketch or a SpaceCurve label
-    FeatureValue                   Angle          = { 2.0 * std::numbers::pi };              // [rad] - Revolve: turn angle in (0, 2π]
+    FeatureScalar                   Angle          = { 2.0 * std::numbers::pi };              // [rad] - Revolve: turn angle in (0, 2π]
     BlendProfile                   Shape          = BlendProfile::Fillet;                    // [-]   - Blend cross-section
-    FeatureValue                   Size           = {};                                      // [len] - Blend radius / setback (at the anchors)
-    std::optional<FeatureValue>    EndSize        = {};                                      // [len] - Blend: size at the far ends (empty = constant)
-    std::vector<TopologyReference> SizeAnchors    = {};                                      // [-]   - Blend (variable): vertices that take Size, one per edge
-    std::vector<FeatureValue>      AnchorSizes    = {};                                      // [len] - Blend (per vertex): size at SizeAnchors[i] (empty: Size / EndSize)
-    FaceOperationKind              Operation      = FaceOperationKind::Push;                 // [-]   - Face-operation verb
-    FeatureValue                   Amount         = {};                                      // [len|rad|-] - Distance / angle / factor (by verb)
-    std::vector<TopologyReference> References     = {};                                      // [-]   - Blend: edges · face operation: faces
+    FeatureScalar                   Size           = {};                                      // [len] - Blend radius / setback (at the anchors)
+    std::optional<FeatureScalar>    EndSize        = {};                                      // [len] - Blend: size at the far ends (empty = constant)
+    std::vector<ConnectivityReference> SizeAnchors    = {};                                      // [-]   - Blend (variable): vertices that take Size, one per edge
+    std::vector<FeatureScalar>      AnchorSizes    = {};                                      // [len] - Blend (per vertex): size at SizeAnchors[i] (empty: Size / EndSize)
+    FaceOperationCategory              Operation      = FaceOperationCategory::Push;                 // [-]   - Face-operation verb
+    FeatureScalar                   Amount         = {};                                      // [len|rad|-] - Distance / angle / factor (by verb)
+    std::vector<ConnectivityReference> References     = {};                                      // [-]   - Blend: edges · face operation: faces
     std::vector<Vector3>           Points         = {};                                      // [len] - SpaceCurve: imported points in order · FaceOperation
                                                                                              //         Tweak / Rotate: [0] = direction / axis (gizmo)
     bool                           ClosedCondition = false;                                  // [-]   - SpaceCurve: the loop closes (last joins first) · Loft: capped into a solid of its own
     bool                           ReverseNormals = false;                                   // Loft/network: persistent, explicit sheet orientation
     bool                           PlanarCondition = false;                                  // [-]   - SpaceCurve: fit in the points' best plane (cap sections)
-    FeatureValue                   Tolerance      = { 2.0e-4 };                              // [len] - SpaceCurve: fit tolerance (0.2 mm)
+    FeatureScalar                   Tolerance      = { 2.0e-4 };                              // [len] - SpaceCurve: fit tolerance (0.2 mm)
     std::vector<double>            CurveKnots     = {};                                      // [-]   - SpaceCurve: exact clamped knots — Points are then the
                                                                                              //         poles (degree = knots − poles − 1), no fit (drawn 3D curves)
     std::string                    CurveOffsetGuide = {};                                  // Live intrinsic surface-distance relationship (empty: independent)
@@ -164,13 +164,13 @@ struct FeatureStep
     int                            Continuity     = 0;                                       // [-]   - Loft: 0 G0 · 1 G1 · 2 G2 to panels sharing an end section
     std::string                    Target         = {};                                      // [-]   - Extrude / revolve Boolean, blend, face operation, combine, cut, remove: body key (empty = active body)
     std::string                    Tool           = {};                                      // [-]   - Combine: body key consumed by the Boolean
-    AffineMap                      Placement      = {};                                      // [-]   - Transform / duplicate: x ↦ M·x + Shift (identity: none)
+    AffineMapping                      Placement      = {};                                      // [-]   - Transform / duplicate: x ↦ M·x + Shift (identity: none)
     std::string                    Source         = {};                                      // [-]   - Duplicate: step after which Target is copied (empty: as it is now)
     FeatureJoint                   Joint          = {};                                      // [-]   - Joint: kind and values (Target moves onto Tool; References = moving, fixed origin)
     std::string                    Exchange       = {};                                      // [-]   - Import: STEP (ISO 10303-21) text of one body, embedded so the
                                                                                              //         document stands alone
     double                         ExchangeUnit   = 1.0;                                     // [mm]  - Import: millimetres per model unit (1000 in a metre document)
-    FeatureValue                   Offset         = {};                                      // [len] - Combine / Transform: parametric shift along OffsetAxis
+    FeatureScalar                   Offset         = {};                                      // [len] - Combine / Transform: parametric shift along OffsetAxis
     Vector3                        OffsetAxis     = { 0.0, 0.0, 1.0 };                       // [-]   - Combine / Transform: unit direction for Offset
 };
 
@@ -178,8 +178,8 @@ struct FeatureStep
 //    that Bevel modifiers multiply against their base Size (interpolated per-vertex for smooth variable blends).
 struct EdgeWeightEntry
 {
-    TopologyReference Edge   = {};                                                           // [-] - Persistent edge reference + signature
-    FeatureValue      Weight = { 1.0 };                                                      // [-] - Weight factor (can bind to a FeatureParameter)
+    ConnectivityReference Edge   = {};                                                           // [-] - Persistent edge reference + signature
+    FeatureScalar      Weight = { 1.0 };                                                      // [-] - Weight factor (can bind to a FeatureParameter)
 };
 
 struct FeatureEdgeGroup
@@ -189,7 +189,7 @@ struct FeatureEdgeGroup
     std::vector<EdgeWeightEntry> Entries = {};                                               // [-] - Painted / weighted edges
 };
 
-enum class ModifierKind
+enum class ModifierCategory
 {
     Boolean,                                                                                 // [-] - Live non-destructive Boolean with optional Offset
     Bevel,                                                                                   // [-] - Edge-group / picked-edge / crease-angle fillet or chamfer
@@ -203,33 +203,33 @@ enum class ModifierKind
 enum class BevelLimitMode
 {
     EdgeGroup,                                                                               // [-] - Reference a named FeatureEdgeGroup with per-edge weights
-    Picked,                                                                                  // [-] - Explicit TopologyReference list on the modifier
+    Picked,                                                                                  // [-] - Explicit ConnectivityReference list on the modifier
     Angle                                                                                    // [-] - All manifold creases with dihedral angle ≥ Angle
 };
 
 struct FeatureModifier
 {
     std::string                    Label              = {};                                  // [-]     - Unique modifier tag ("Bevel#1", "LiveCut#1")
-    ModifierKind                   Kind               = ModifierKind::Bevel;                 // [-]     - Modifier operation
+    ModifierCategory                   Kind               = ModifierCategory::Bevel;                 // [-]     - Modifier operation
     bool                           EnabledCondition   = true;                                // [-]     - False: muted / bypassed in stack
     std::string                    Target             = {};                                  // [-]     - Target body key (empty = active body)
     std::string                    Tool               = {};                                  // [-]     - Boolean / SurfaceArray: cutter or host shape body key
     FeatureCombination             Combination        = FeatureCombination::Difference;      // [-]     - Boolean operation
-    FeatureValue                   Offset             = {};                                  // [len]   - Boolean tool offset / CircularArray rise / SurfaceArray normal offset
+    FeatureScalar                   Offset             = {};                                  // [len]   - Boolean tool offset / CircularArray rise / SurfaceArray normal offset
     Vector3                        OffsetAxis         = { 0.0, 0.0, 1.0 };                   // [-]     - Boolean offset direction
     bool                           KeepToolCondition  = true;                                // [-]     - Boolean: keep cutter body in scene for Live Boolean gizmo moves
     BlendProfile                   Shape              = BlendProfile::Fillet;                // [-]     - Bevel cross-section (Fillet / Chamfer)
     BevelLimitMode                 LimitMode          = BevelLimitMode::EdgeGroup;           // [-]     - Bevel edge selection mode
     std::string                    EdgeGroup          = {};                                  // [-]     - Bevel: referenced FeatureEdgeGroup name
-    std::vector<TopologyReference> References         = {};                                  // [-]     - Bevel (Picked): edges · SurfaceArray: host face (empty = largest face)
-    FeatureValue                   Size               = { 1.0 };                             // [len]   - Bevel base radius / setback
-    FeatureValue                   Angle              = { std::numbers::pi / 6.0 };          // [rad]   - Bevel crease threshold · CircularArray sweep angle (default 2π when created)
-    FeatureValue                   Count              = { 3.0 };                             // [-]     - Primary instance count (bindable to parameter)
-    FeatureValue                   SecondaryCount     = { 1.0 };                             // [-]     - Secondary grid count (LinearArray Y / SurfaceArray V)
+    std::vector<ConnectivityReference> References         = {};                                  // [-]     - Bevel (Picked): edges · SurfaceArray: host face (empty = largest face)
+    FeatureScalar                   Size               = { 1.0 };                             // [len]   - Bevel base radius / setback
+    FeatureScalar                   Angle              = { std::numbers::pi / 6.0 };          // [rad]   - Bevel crease threshold · CircularArray sweep angle (default 2π when created)
+    FeatureScalar                   Count              = { 3.0 };                             // [-]     - Primary instance count (bindable to parameter)
+    FeatureScalar                   SecondaryCount     = { 1.0 };                             // [-]     - Secondary grid count (LinearArray Y / SurfaceArray V)
     Vector3                        Direction          = { 1.0, 0.0, 0.0 };                   // [-]     - LinearArray step 1 direction
-    FeatureValue                   Distance           = { 20.0 };                            // [len]   - LinearArray step 1 distance · CurveArray fixed spacing (≤0 = auto)
+    FeatureScalar                   Distance           = { 20.0 };                            // [len]   - LinearArray step 1 distance · CurveArray fixed spacing (≤0 = auto)
     Vector3                        SecondaryDirection = { 0.0, 1.0, 0.0 };                   // [-]     - LinearArray step 2 direction
-    FeatureValue                   SecondaryDistance  = { 20.0 };                            // [len]   - LinearArray step 2 distance
+    FeatureScalar                   SecondaryDistance  = { 20.0 };                            // [len]   - LinearArray step 2 distance
     Vector3                        AxisOrigin         = {};                                  // [len]   - CircularArray axis point
     Vector3                        AxisDirection      = { 0.0, 0.0, 1.0 };                   // [-]     - CircularArray axis direction
     std::string                    Curve              = {};                                  // [-]     - CurveArray / CurveBend: Sketch or SpaceCurve step label
@@ -237,13 +237,13 @@ struct FeatureModifier
     bool                           AlignCondition     = true;                                // [-]     - CurveArray RMF alignment · SurfaceArray normal alignment
     bool                           StretchCondition   = true;                                // [-]     - CurveBend: stretch body extent to curve arc length
     bool                           MergeCondition     = false;                               // [-]     - Arrays: Boolean-union touching copies
-    FeatureValue                   Margin             = { 0.1 };                             // [-]     - SurfaceArray UV border inset [0..0.45]
+    FeatureScalar                   Margin             = { 0.1 };                             // [-]     - SurfaceArray UV border inset [0..0.45]
 };
 
 struct FeatureModifierReport
 {
     std::string       Label        = {};                                                     // [-]  - Modifier tag
-    ModifierKind      Kind         = ModifierKind::Bevel;                                    // [-]  - Modifier type
+    ModifierCategory      Kind         = ModifierCategory::Bevel;                                    // [-]  - Modifier type
     FeatureStepStatus Status       = FeatureStepStatus::Built;                               // [-]  - Built / refused
     std::string       Refusal      = {};                                                     // [-]  - Reason when refused
     std::string       Target       = {};                                                     // [-]  - Modified body key
@@ -264,7 +264,7 @@ struct FeatureTree
 struct FeatureStepReport
 {
     std::string                    Label        = {};                                        // [-]  - Step tag
-    FeatureStepKind                Kind         = FeatureStepKind::Sketch;                   // [-]  - Step type
+    FeatureStepCategory                Kind         = FeatureStepCategory::Sketch;                   // [-]  - Step type
     FeatureStepStatus              Status       = FeatureStepStatus::Built;                  // [-]  - Built / refused
     std::string                    Refusal      = {};                                        // [-]  - Reason when refused
     std::vector<ResolvedReference> Resolutions  = {};                                        // [-]  - One per reference
@@ -291,9 +291,9 @@ struct RegeneratedJoint
     std::string      Label        = {};                                                      // [-] - Joint step label
     std::string      Moving       = {};                                                      // [-] - Key of the placed body
     std::string      Fixed        = {};                                                      // [-] - Key of the body it is jointed to
-    JointKind        Kind         = JointKind::Rigid;                                        // [-] - Joint type
-    OrthonormalFrame MovingOrigin = {};                                                      // [-] - Moving body's joint origin
-    OrthonormalFrame FixedOrigin  = {};                                                      // [-] - Fixed body's joint origin
+    JointCategory        Kind         = JointCategory::Rigid;                                        // [-] - Joint type
+    OrthonormalBasis MovingOrigin = {};                                                      // [-] - Moving body's joint origin
+    OrthonormalBasis FixedOrigin  = {};                                                      // [-] - Fixed body's joint origin
 };
 
 struct RegenerationOutcome
@@ -363,34 +363,34 @@ struct RegenerationCache
                                                         RegenerationCache* Cache = nullptr);
 
 // A sketch step's solve frame: its plane raised along the normal by the elevation.
-[[nodiscard]] OrthonormalFrame SketchStepFrame(const FeatureTree& Tree, const FeatureStep& Step);
+[[nodiscard]] OrthonormalBasis SketchStepFrame(const FeatureTree& Tree, const FeatureStep& Step);
 
 // A solved earlier sketch a link reads from (null Model: no such sketch before this one).
 struct LinkedSketchSource
 {
     const SketchModel* Model = nullptr;                                                      // [-] - Solved positions
-    OrthonormalFrame   Plane = {};                                                           // [-] - Its solve frame
+    OrthonormalBasis   Plane = {};                                                           // [-] - Its solve frame
 };
 
 // 📝 Linked points of Model (solved in Plane) re-projected orthogonally from their source sketches, linked circle radii
 //    copied when the planes are parallel. A missing source or bad index keeps the last position (held); the returned
 //    notes say so ("Point0: link to Sketch#9 is dangling (held where it was)").
-[[nodiscard]] std::vector<std::string> ProjectSketchLinks(SketchModel& Model, const OrthonormalFrame& Plane,
+[[nodiscard]] std::vector<std::string> ProjectSketchLinks(SketchModel& Model, const OrthonormalBasis& Plane,
                                                           const std::function<LinkedSketchSource(const std::string&)>& Source);
 
-[[nodiscard]] double EvaluateFeatureValue(const FeatureTree& Tree, const FeatureValue& Value);
+[[nodiscard]] double EvaluateFeatureValue(const FeatureTree& Tree, const FeatureScalar& Value);
 
 // Sets a parameter; false when no parameter has that name.
 bool AssignFeatureParameter(FeatureTree& Tree, const std::string& Name, double Value);
 
 // Shorthands for catalogue authors.
-[[nodiscard]] FeatureValue LiteralValue(double Value);
-[[nodiscard]] FeatureValue ParameterValue(const std::string& Name, double Factor = 1.0, double Offset = 0.0);
-[[nodiscard]] FeatureValue SumValue(const std::string& First, double FirstFactor, const std::string& Second, double SecondFactor, double Offset = 0.0);
+[[nodiscard]] FeatureScalar LiteralValue(double Value);
+[[nodiscard]] FeatureScalar ParameterValue(const std::string& Name, double Factor = 1.0, double Offset = 0.0);
+[[nodiscard]] FeatureScalar SumValue(const std::string& First, double FirstFactor, const std::string& Second, double SecondFactor, double Offset = 0.0);
 
-[[nodiscard]] const char* FeatureStepKindLabel(FeatureStepKind Kind) noexcept;
+[[nodiscard]] const char* FeatureStepKindLabel(FeatureStepCategory Kind) noexcept;
 [[nodiscard]] const char* FeatureCombinationLabel(FeatureCombination Combination) noexcept;
-[[nodiscard]] const char* ModifierKindLabel(ModifierKind Kind) noexcept;
+[[nodiscard]] const char* ModifierKindLabel(ModifierCategory Kind) noexcept;
 [[nodiscard]] const char* BevelLimitModeLabel(BevelLimitMode Mode) noexcept;
 
 } // namespace Frontier::GeometrySpace::Parametric

@@ -39,7 +39,7 @@ namespace Frontier::Editor::Explorer
 namespace
 {
 
-struct BrowserPalette
+struct BrowserSwatchScheme
 {
     ColorRgba MainBg   {};
     ColorRgba PanelBg  {};
@@ -57,9 +57,9 @@ struct BrowserPalette
     ColorRgba DotGeom  { 180u, 167u, 189u, 255u };
 };
 
-[[nodiscard]] BrowserPalette QueryBrowserPalette(ThemePreset Preset) noexcept
+[[nodiscard]] BrowserSwatchScheme QueryBrowserPalette(ThemePreset Preset) noexcept
 {
-    BrowserPalette P {};
+    BrowserSwatchScheme P {};
     switch (Preset)
     {
     case ThemePreset::Light:
@@ -234,7 +234,7 @@ void ConstructStarPolygon(PixelSpace& Surface, Rectangle2D Box, bool Filled, Col
     return "Project";
 }
 
-[[nodiscard]] ColorRgba QueryCategoryDot(BrowserEntryCategory Cat, const BrowserPalette& P) noexcept
+[[nodiscard]] ColorRgba QueryCategoryDot(BrowserEntryCategory Cat, const BrowserSwatchScheme& P) noexcept
 {
     switch (Cat)
     {
@@ -352,7 +352,7 @@ void ProjectBrowser::RenderThumbnailForEntry(BrowserCollectionEntry& Entry, uint
 {
     EnsurePreviewRendererReady();
 
-    GeometricRaster::PerspectiveCameraFrame Cam = PreviewSceneBundle->EditorCamera;
+    GeometricRaster::PerspectiveCameraBasis Cam = PreviewSceneBundle->EditorCamera;
     Cam.ViewportWidthPx  = 264u;
     Cam.ViewportHeightPx = 160u;
 
@@ -424,7 +424,7 @@ void ProjectBrowser::RefreshReaderPreviewTexture()
     }
     EnsurePreviewRendererReady();
 
-    GeometricRaster::PerspectiveCameraFrame Cam = PreviewSceneBundle->EditorCamera;
+    GeometricRaster::PerspectiveCameraBasis Cam = PreviewSceneBundle->EditorCamera;
     Cam.ViewportWidthPx  = 560u;
     Cam.ViewportHeightPx = 384u;
 
@@ -480,7 +480,7 @@ void ProjectBrowser::RefreshReaderPreviewTexture()
     }
     for (std::size_t VIdx = 0u; VIdx < ActiveEntry.ViewTitles.size(); ++VIdx)
     {
-        GeometricRaster::PerspectiveCameraFrame ThumbCam = PreviewSceneBundle->EditorCamera;
+        GeometricRaster::PerspectiveCameraBasis ThumbCam = PreviewSceneBundle->EditorCamera;
         ThumbCam.ViewportWidthPx  = 220u;
         ThumbCam.ViewportHeightPx = 148u;
         const float VYaw          = static_cast<float>(VIdx) * 0.52f - static_cast<float>(ActiveRevisionIndex) * 0.22f;
@@ -961,7 +961,7 @@ void ProjectBrowser::Render(Rectangle2D ViewportBounds, double DeltaSeconds, flo
 
     if (StatusBannerRemaining > 0.0 && !StatusBannerMessage.empty())
     {
-        const BrowserPalette P = QueryBrowserPalette(ActiveTheme);
+        const BrowserSwatchScheme P = QueryBrowserPalette(ActiveTheme);
         PixelSpace ToastSurface(ImGui::GetForegroundDrawList(), Point2D{ ViewportBounds.X, ViewportBounds.Y }, SafeScale);
         const float ToastW = std::min(560.0f, LogicalBounds.Width - 40.0f);
         const Rectangle2D ToastRect { (LogicalBounds.Width - ToastW) * 0.5f, LogicalBounds.Height - 54.0f, ToastW, 34.0f };
@@ -978,7 +978,7 @@ void ProjectBrowser::RenderLibraryMode(
     double                DeltaSeconds)
 {
     (void)DeltaSeconds;
-    const BrowserPalette P = QueryBrowserPalette(ActiveTheme);
+    const BrowserSwatchScheme P = QueryBrowserPalette(ActiveTheme);
     Surface.FillRectangle(LogicalBounds, P.MainBg, 0.0f);
 
     constexpr float HeaderH = 64.0f;
@@ -1412,7 +1412,7 @@ void ProjectBrowser::RenderReaderMode(
 {
     (void)DeltaSeconds;
     auto& Entry = Collection[static_cast<std::size_t>(ActiveEntryIndex)];
-    const BrowserPalette P = QueryBrowserPalette(ActiveTheme);
+    const BrowserSwatchScheme P = QueryBrowserPalette(ActiveTheme);
     Surface.FillRectangle(LogicalBounds, P.MainBg, 0.0f);
 
     constexpr float HeaderH = 64.0f;
@@ -1822,7 +1822,7 @@ void ProjectBrowser::RenderNewProjectModal(
     Rectangle2D           LogicalBounds,
     const ControlPointer& Pointer)
 {
-    const BrowserPalette P = QueryBrowserPalette(ActiveTheme);
+    const BrowserSwatchScheme P = QueryBrowserPalette(ActiveTheme);
     Surface.FillRectangle(LogicalBounds, { 0u, 0u, 0u, 175u }, 0.0f);
 
     const float ModalW = std::min(540.0f, LogicalBounds.Width - 40.0f);
@@ -1928,7 +1928,7 @@ void ProjectBrowser::RenderDiskPathModal(
     Rectangle2D           LogicalBounds,
     const ControlPointer& Pointer)
 {
-    const BrowserPalette P = QueryBrowserPalette(ActiveTheme);
+    const BrowserSwatchScheme P = QueryBrowserPalette(ActiveTheme);
     Surface.FillRectangle(LogicalBounds, { 0u, 0u, 0u, 175u }, 0.0f);
 
     const float ModalW = std::min(500.0f, LogicalBounds.Width - 40.0f);

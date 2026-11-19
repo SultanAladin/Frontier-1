@@ -184,7 +184,7 @@ bool FractureSimulationRunner::LoadPartitionResult(
             Token = Physics.IssueRigidBody(Desc);
         }
 
-        FractureBodyTransformState State {};
+        FractureBodyTransformPose State {};
         State.FragmentIndex          = Frag.Index;
         State.Token                  = Token;
         State.PositionMeters         = Desc.PositionMeters;
@@ -204,7 +204,7 @@ bool FractureSimulationRunner::LoadPartitionResult(
         for (uint32_t BIdx = 0u; BIdx < Partition.Bonds.size(); ++BIdx)
         {
             const auto& Bond = Partition.Bonds[BIdx];
-            FractureBondState State {};
+            FractureBondCondition State {};
             State.BondIndex   = BIdx;
             State.IndexA      = Bond.IndexA;
             State.IndexB      = Bond.IndexB;
@@ -302,12 +302,12 @@ bool FractureSimulationRunner::QueryLoaded() const noexcept
     return Loaded;
 }
 
-const std::vector<FractureBodyTransformState>& FractureSimulationRunner::InspectBodyStates() const noexcept
+const std::vector<FractureBodyTransformPose>& FractureSimulationRunner::InspectBodyStates() const noexcept
 {
     return BodyStates;
 }
 
-const std::vector<FractureBondState>& FractureSimulationRunner::InspectBondStates() const noexcept
+const std::vector<FractureBondCondition>& FractureSimulationRunner::InspectBondStates() const noexcept
 {
     return BondStates;
 }

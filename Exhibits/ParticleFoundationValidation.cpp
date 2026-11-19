@@ -491,7 +491,7 @@ int main()
         TestSlot.SpinRadians       = 1.57f;
         TestSlot.AuxScalar         = 0.65f;
 
-        ParticleTintEvaluationContext Ctx {};
+        ParticleTintInput Ctx {};
         Ctx.ElapsedSeconds = 4.2f;
 
         ColourSpace::ColourAliasRepository TestCodex {};

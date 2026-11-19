@@ -40,7 +40,7 @@ struct UnitQuaternion
     float W = 1.0f; // [-] - Real scalar component
 };
 
-struct ReplicatedEntityKinematics
+struct ReplicatedActorKinematics
 {
     uint32_t            EntityIdentifier           = 0u;   // [-]     - Non-zero replicated entity id
     Mathematics::Axis3D PositionMeters             {};     // [m]     - Right-handed Z-up world coordinates
@@ -49,7 +49,7 @@ struct ReplicatedEntityKinematics
     Mathematics::Axis3D AngularVelocityRadPerSec   {};     // [rad/s] - Body/world angular velocity
 };
 
-struct QuantizedSpatialRecord
+struct QuantizedSpatialEntry
 {
     uint32_t               EntityIdentifier        = 0u;       // [-] - Entity id
     std::array<int16_t, 3> SectorIndices           { 0, 0, 0 };// [-] - 256 m sector coordinates (X, Y, Z)
@@ -58,14 +58,14 @@ struct QuantizedSpatialRecord
     std::array<int16_t, 3> LinearVelocitySigned16  { 0, 0, 0 };// [-] - Quantized linear velocity
     std::array<int16_t, 3> AngularVelocitySigned16 { 0, 0, 0 };// [-] - Quantized angular velocity
 
-    [[nodiscard]] bool operator==(const QuantizedSpatialRecord&) const noexcept = default;
+    [[nodiscard]] bool operator==(const QuantizedSpatialEntry&) const noexcept = default;
 };
 
 struct WorldSnapshotView
 {
     uint32_t                              SimulationTick    = 0u;  // [-] - Authoritative tick index
     double                                TimestampSeconds  = 0.0; // [s] - Authoritative simulation timestamp
-    std::vector<ReplicatedEntityKinematics> Entities        {};    // [-] - Sorted or unsorted entity kinematics
+    std::vector<ReplicatedActorKinematics> Entities        {};    // [-] - Sorted or unsorted entity kinematics
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -76,25 +76,25 @@ struct WorldSnapshotView
 [[nodiscard]] UnitQuaternion             UnpackSmallestThreeQuaternion(uint32_t PackedQuaternion) noexcept;
 [[nodiscard]] UnitQuaternion             SlerpUnitQuaternion(const UnitQuaternion& Start, const UnitQuaternion& Target, float Alpha) noexcept;
 
-[[nodiscard]] QuantizedSpatialRecord     QuantizeEntityKinematics(const ReplicatedEntityKinematics& Entity) noexcept;
-[[nodiscard]] ReplicatedEntityKinematics DequantizeEntityKinematics(const QuantizedSpatialRecord& Quantized) noexcept;
+[[nodiscard]] QuantizedSpatialEntry     QuantizeEntityKinematics(const ReplicatedActorKinematics& Entity) noexcept;
+[[nodiscard]] ReplicatedActorKinematics DequantizeEntityKinematics(const QuantizedSpatialEntry& Quantized) noexcept;
 
 [[nodiscard]] bool                       EncodeWorldSnapshotDelta(
     uint32_t                                    BaselineTick,
-    std::span<const ReplicatedEntityKinematics> BaselineEntities,
+    std::span<const ReplicatedActorKinematics> BaselineEntities,
     uint32_t                                    TargetTick,
-    std::span<const ReplicatedEntityKinematics> TargetEntities,
+    std::span<const ReplicatedActorKinematics> TargetEntities,
     std::vector<uint8_t>&                       OutDeltaBytes,
     uint32_t&                                   OutChangedEntityCount);
 
 [[nodiscard]] bool                       DecodeWorldSnapshotDelta(
-    std::span<const ReplicatedEntityKinematics> BaselineEntities,
+    std::span<const ReplicatedActorKinematics> BaselineEntities,
     std::span<const uint8_t>                    DeltaBytes,
     uint32_t&                                   OutBaselineTick,
     uint32_t&                                   OutTargetTick,
-    std::vector<ReplicatedEntityKinematics>&    OutReconstructedEntities);
+    std::vector<ReplicatedActorKinematics>&    OutReconstructedEntities);
 
-[[nodiscard]] uint64_t                   ComputeWorldAlignmentDigest(std::span<const ReplicatedEntityKinematics> Entities) noexcept;
+[[nodiscard]] uint64_t                   ComputeWorldAlignmentDigest(std::span<const ReplicatedActorKinematics> Entities) noexcept;
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        CLASSES
@@ -110,7 +110,7 @@ public:
 
     [[nodiscard]] bool SampleInterpolatedEntities(
         double                                   RenderTimestampSeconds,
-        std::vector<ReplicatedEntityKinematics>& OutInterpolatedEntities) const;
+        std::vector<ReplicatedActorKinematics>& OutInterpolatedEntities) const;
 
     [[nodiscard]] uint32_t QueryBufferedSnapshotCount() const noexcept { return static_cast<uint32_t>(History.size()); }
 

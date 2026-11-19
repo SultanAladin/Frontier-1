@@ -80,9 +80,9 @@ constexpr ImU32 MutedColour     = IM_COL32(0xaa, 0xaa, 0xaa, 0xff);             
 constexpr ImU32 RefusalColour   = IM_COL32(0xff, 0x6b, 0x6b, 0xff);                          // Refused step / reason
 constexpr ImU32 AxisColours[3]  = { IM_COL32(0xe0, 0x4b, 0x4b, 0xff), IM_COL32(0x4b, 0xc8, 0x5a, 0xff), IM_COL32(0x4b, 0x7c, 0xe8, 0xff) };
 
-constexpr FaceOperationKind FaceVerbs[] = { FaceOperationKind::Push, FaceOperationKind::Offset, FaceOperationKind::Extrude, FaceOperationKind::Draft,
-                                            FaceOperationKind::Extend, FaceOperationKind::Trim, FaceOperationKind::Scale, FaceOperationKind::Hollow,
-                                            FaceOperationKind::Delete, FaceOperationKind::Inset };
+constexpr FaceOperationCategory FaceVerbs[] = { FaceOperationCategory::Push, FaceOperationCategory::Offset, FaceOperationCategory::Extrude, FaceOperationCategory::Draft,
+                                            FaceOperationCategory::Extend, FaceOperationCategory::Trim, FaceOperationCategory::Scale, FaceOperationCategory::Hollow,
+                                            FaceOperationCategory::Delete, FaceOperationCategory::Inset };
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    HELPERS
@@ -104,7 +104,7 @@ ImVec4 Tint(ImU32 Colour)
 }
 
 // Records the last widget's rectangle under its ID text (after "###" when present) for scripted pointer input.
-void RegisterWidget(SketcherWorkspaceState& State, const char* Label)
+void RegisterWidget(SketcherWorkspaceStatus& State, const char* Label)
 {
     const char* Marker = std::strstr(Label, "###");
     const std::string Key = Marker ? std::string(Marker + 3) : std::string(Label);
@@ -114,7 +114,7 @@ void RegisterWidget(SketcherWorkspaceState& State, const char* Label)
 }
 
 // 📝 The same authoring controls used by Texture Workspace; retain Sketcher's automation identities.
-VectorAuthoringControlSurface SketcherAuthoringControls(SketcherWorkspaceState& State)
+VectorAuthoringControlSurface SketcherAuthoringControls(SketcherWorkspaceStatus& State)
 {
     VectorAuthoringControlSurface Controls;
     Controls.RegisterExtent = [&State](std::string_view Caption, PlaneExtent Extent)
@@ -127,12 +127,12 @@ VectorAuthoringControlSurface SketcherAuthoringControls(SketcherWorkspaceState& 
     return Controls;
 }
 
-bool SketcherAuthoringToggle(SketcherWorkspaceState& State, const char* Caption, bool* Enabled)
+bool SketcherAuthoringToggle(SketcherWorkspaceStatus& State, const char* Caption, bool* Enabled)
 {
     return SketcherAuthoringControls(State).Toggle(Caption, *Enabled);
 }
 
-bool SketcherAuthoringSlider(SketcherWorkspaceState& State, const char* Caption, float* Quantity, float Minimum, float Maximum)
+bool SketcherAuthoringSlider(SketcherWorkspaceStatus& State, const char* Caption, float* Quantity, float Minimum, float Maximum)
 {
     auto Controls = SketcherAuthoringControls(State);
     const char* Marker = std::strstr(Caption, "###");
@@ -149,7 +149,7 @@ bool SketcherAuthoringSlider(SketcherWorkspaceState& State, const char* Caption,
     return Changed;
 }
 
-bool PressButton(SketcherWorkspaceState& State, const char* Label, ImVec2 Size = ImVec2(0, 0), bool EnabledCondition = true)
+bool PressButton(SketcherWorkspaceStatus& State, const char* Label, ImVec2 Size = ImVec2(0, 0), bool EnabledCondition = true)
 {
     ImGui::BeginDisabled(!EnabledCondition);
     const bool Pressed = ImGui::Button(Label, Size);
@@ -158,7 +158,7 @@ bool PressButton(SketcherWorkspaceState& State, const char* Label, ImVec2 Size =
     return Pressed && EnabledCondition;
 }
 
-bool ToggleButton(SketcherWorkspaceState& State, const char* Label, bool OnCondition, ImVec2 Size = ImVec2(0, 0))
+bool ToggleButton(SketcherWorkspaceStatus& State, const char* Label, bool OnCondition, ImVec2 Size = ImVec2(0, 0))
 {
     // HTML .button.active: #ffffff29 wash with white text; off is the plain #222 pill with #999 text.
     ImGui::PushStyleColor(ImGuiCol_Button, OnCondition ? Tint(IM_COL32(0xff, 0xff, 0xff, 0x29)) : Tint(IM_COL32(0x22, 0x22, 0x22, 0xff)));
@@ -188,7 +188,7 @@ std::string Legible(const std::string& Text)
     return Result;
 }
 
-void Announce(SketcherWorkspaceState& State, const std::string& RawMessage)
+void Announce(SketcherWorkspaceStatus& State, const std::string& RawMessage)
 {
     const std::string Message = Legible(RawMessage);
     State.Status = Message;
@@ -197,7 +197,7 @@ void Announce(SketcherWorkspaceState& State, const std::string& RawMessage)
     if (State.Journal.size() > 200) State.Journal.erase(State.Journal.begin());
 }
 
-void Conclude(SketcherWorkspaceState& State, const SketcherCommandOutcome& Outcome)
+void Conclude(SketcherWorkspaceStatus& State, const SketcherCommandOutcome& Outcome)
 {
     if (Outcome.AcceptedCondition)
     {
@@ -266,28 +266,28 @@ const FeatureStepReport* FindReport(const SketcherDocument& Document, const std:
     return nullptr;
 }
 
-const char* FaceAmountUnit(FaceOperationKind Verb)
+const char* FaceAmountUnit(FaceOperationCategory Verb)
 {
     switch (Verb)
     {
-    case FaceOperationKind::Draft:
-    case FaceOperationKind::Rotate: return "deg";
-    case FaceOperationKind::Scale:  return "factor";
-    case FaceOperationKind::Delete: return "-";
+    case FaceOperationCategory::Draft:
+    case FaceOperationCategory::Rotate: return "deg";
+    case FaceOperationCategory::Scale:  return "factor";
+    case FaceOperationCategory::Delete: return "-";
     default:                        return "m";
     }
 }
 
-double FaceAmountToModel(FaceOperationKind Verb, double Amount)
+double FaceAmountToModel(FaceOperationCategory Verb, double Amount)
 {
-    return (Verb == FaceOperationKind::Draft || Verb == FaceOperationKind::Rotate) ? Amount * std::numbers::pi / 180.0 : Amount;
+    return (Verb == FaceOperationCategory::Draft || Verb == FaceOperationCategory::Rotate) ? Amount * std::numbers::pi / 180.0 : Amount;
 }
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    DOCUMENT LIFECYCLE
 //------------------------------------------------------------------------------------------------------------------------
 
-std::string PreviousRecoveryPath(const SketcherWorkspaceState& State)
+std::string PreviousRecoveryPath(const SketcherWorkspaceStatus& State)
 {
     return SketcherPreviousRecoveryPath(State.Options);
 }
@@ -300,7 +300,7 @@ bool WriteDocument(const SketcherDocument& Document, const std::string& Path)
     return SaveSketcherDocument(Document, Path);
 }
 
-void AdoptDocument(SketcherWorkspaceState& State, SketcherDocument Document, bool FitCondition)
+void AdoptDocument(SketcherWorkspaceStatus& State, SketcherDocument Document, bool FitCondition)
 {
     State.Bevel              = {};
     State.Isolate            = {};
@@ -312,7 +312,7 @@ void AdoptDocument(SketcherWorkspaceState& State, SketcherDocument Document, boo
     if (FitCondition && !State.Scene.Faces.empty()) FitSketcherCamera(State.Camera, State.Scene);
 }
 
-bool OpenDocument(SketcherWorkspaceState& State, const std::string& Path, bool AdoptPathCondition)
+bool OpenDocument(SketcherWorkspaceStatus& State, const std::string& Path, bool AdoptPathCondition)
 {
     const SketcherDocumentFile File = LoadSketcherDocumentFile(Path);
     if (!File.Refusal.empty())
@@ -334,7 +334,7 @@ bool OpenDocument(SketcherWorkspaceState& State, const std::string& Path, bool A
     return true;
 }
 
-void SaveDocument(SketcherWorkspaceState& State, const std::string& Path)
+void SaveDocument(SketcherWorkspaceStatus& State, const std::string& Path)
 {
     if (WriteDocument(State.Document, Path))
     {
@@ -348,7 +348,7 @@ void SaveDocument(SketcherWorkspaceState& State, const std::string& Path)
     }
 }
 
-void StartNewDocument(SketcherWorkspaceState& State)
+void StartNewDocument(SketcherWorkspaceStatus& State)
 {
     std::error_code Failure;
     if (std::filesystem::exists(State.Options.RecoveryPath))
@@ -361,14 +361,14 @@ void StartNewDocument(SketcherWorkspaceState& State)
     Announce(State, "New document (previous recovery copy kept)");
 }
 
-void MarkDirty(SketcherWorkspaceState& State)
+void MarkDirty(SketcherWorkspaceStatus& State)
 {
     State.DirtyCondition = true;
     State.AutosaveTimer  = State.Options.AutosaveDelay;
 }
 
 // 📝 A matcap entry leaves the body (and its scene) as it is: only the state words change, so no re-tessellation.
-void Undo(SketcherWorkspaceState& State)
+void Undo(SketcherWorkspaceStatus& State)
 {
     if (State.Bevel.ActiveCondition) return;
     const bool AppearanceCondition = !State.Document.UndoEntries.empty() && State.Document.UndoEntries.back().AppearanceCondition;
@@ -381,7 +381,7 @@ void Undo(SketcherWorkspaceState& State)
     }
 }
 
-void Redo(SketcherWorkspaceState& State)
+void Redo(SketcherWorkspaceStatus& State)
 {
     if (State.Bevel.ActiveCondition) return;
     const bool AppearanceCondition = !State.Document.RedoEntries.empty() && State.Document.RedoEntries.back().AppearanceCondition;
@@ -398,7 +398,7 @@ void Redo(SketcherWorkspaceState& State)
 //                                                    MATCAPS
 //------------------------------------------------------------------------------------------------------------------------
 
-void ConcludeAppearance(SketcherWorkspaceState& State, const SketcherCommandOutcome& Outcome)
+void ConcludeAppearance(SketcherWorkspaceStatus& State, const SketcherCommandOutcome& Outcome)
 {
     if (Outcome.AcceptedCondition)
     {
@@ -409,19 +409,19 @@ void ConcludeAppearance(SketcherWorkspaceState& State, const SketcherCommandOutc
 }
 
 // M picker / swatch click: the selected faces (or the body) take the matcap.
-void AssignMatcap(SketcherWorkspaceState& State, const std::string& Name)
+void AssignMatcap(SketcherWorkspaceStatus& State, const std::string& Name)
 {
     ConcludeAppearance(State, AssignSketcherMatcap(State.Document, Name));
 }
 
 // Alt+M (Plasticity remove-material).
-void RemoveMatcap(SketcherWorkspaceState& State)
+void RemoveMatcap(SketcherWorkspaceStatus& State)
 {
     ConcludeAppearance(State, RemoveSketcherMatcap(State.Document));
 }
 
 // A user picture: the file stem becomes the matcap name ("Shop steel.png" → "Shopsteel").
-void AddMatcapPicture(SketcherWorkspaceState& State, const std::string& Path)
+void AddMatcapPicture(SketcherWorkspaceStatus& State, const std::string& Path)
 {
     std::string Stem = Path.substr(Path.find_last_of("/\\") == std::string::npos ? 0 : Path.find_last_of("/\\") + 1);
     Stem = Stem.substr(0, Stem.find_last_of('.'));
@@ -431,12 +431,12 @@ void AddMatcapPicture(SketcherWorkspaceState& State, const std::string& Path)
 }
 
 // 📝 The matcap the selection shows: faces first, else picked bodies, else the default; one name when all agree, else "mixed".
-std::string SelectionMatcap(const SketcherWorkspaceState& State)
+std::string SelectionMatcap(const SketcherWorkspaceStatus& State)
 {
     const SketcherDocument&   Document   = State.Document;
     const SketcherAppearance& Appearance = Document.Appearance;
     const auto FaceShows = [&](const std::string& Face)
-    { return SketcherFaceMatcap(Appearance, SketcherBodyOfName(Document, SketcherSelectionKind::Face, Face), Face); };
+    { return SketcherFaceMatcap(Appearance, SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Face), Face); };
     if (!Document.Selection.Faces.empty())
     {
         const std::string Shown = FaceShows(Document.Selection.Faces.front());
@@ -450,7 +450,7 @@ std::string SelectionMatcap(const SketcherWorkspaceState& State)
 }
 
 // The body a Union / Difference / Intersection acts on: the first body picked in mode 4, else the active body (empty).
-std::string BooleanTarget(const SketcherWorkspaceState& State)
+std::string BooleanTarget(const SketcherWorkspaceStatus& State)
 {
     return State.Document.Selection.Bodies.empty() ? std::string{} : State.Document.Selection.Bodies.front();
 }
@@ -459,7 +459,7 @@ std::string BooleanTarget(const SketcherWorkspaceState& State)
 //    order Studio · Metal · Plastic · Other · Pictures. TitledCondition writes the category above each group (the picker);
 //    otherwise one compact flow fills the available width (the Inspector). Columns = 0 fits as many as the width allows.
 //    Returns the clicked matcap name or "". Widget keys: Prefix + name ("MatcapBrass", "PickMatcapBrass").
-std::string DrawMatcapSwatches(SketcherWorkspaceState& State, const char* Prefix, int Columns, float Side, bool TitledCondition)
+std::string DrawMatcapSwatches(SketcherWorkspaceStatus& State, const char* Prefix, int Columns, float Side, bool TitledCondition)
 {
     const SketcherMatcapLibrary& Library = State.Matcaps.Library;
     const std::string Current = SelectionMatcap(State);
@@ -519,7 +519,7 @@ std::string DrawMatcapSwatches(SketcherWorkspaceState& State, const char* Prefix
 
 // 📝 Inspector card: what the selection shows, the library, Remove (Alt+M) and Add picture (a sphere image, e.g. a Blender
 //    matcap). Face assignments whose names left the body are counted, never re-targeted.
-void DrawAppearanceCard(SketcherWorkspaceState& State)
+void DrawAppearanceCard(SketcherWorkspaceStatus& State)
 {
     if (!State.Document.Summary.PresentCondition) return;
     BeginCard("Appearance");
@@ -554,7 +554,7 @@ void DrawAppearanceCard(SketcherWorkspaceState& State)
 }
 
 // 📝 Plasticity M (command:set-material): a floating picker over the viewport; a click applies and closes, Esc closes.
-void DrawMatcapPicker(SketcherWorkspaceState& State)
+void DrawMatcapPicker(SketcherWorkspaceStatus& State)
 {
     if (!State.Matcaps.PickerOpen) return;
     ImGui::SetNextWindowPos(ImVec2(State.ViewportRect[0] + 0.5f * State.ViewportRect[2], State.ViewportRect[1] + 56.0f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
@@ -582,11 +582,11 @@ void DrawMatcapPicker(SketcherWorkspaceState& State)
 //------------------------------------------------------------------------------------------------------------------------
 
 [[nodiscard]] std::vector<std::string> SelectedSketchLabels(const SketcherDocument& Document);
-[[nodiscard]] bool FocusedSketchCondition(const SketcherWorkspaceState& State);
+[[nodiscard]] bool FocusedSketchCondition(const SketcherWorkspaceStatus& State);
 
 // B on sketches (Plasticity fillet-curve): the picked mode-1 points of one sketch, else every corner of the picked
 // sketches, else of the focused sketch.
-[[nodiscard]] SketcherCornerRequest CornerTargets(const SketcherWorkspaceState& State)
+[[nodiscard]] SketcherCornerRequest CornerTargets(const SketcherWorkspaceStatus& State)
 {
     SketcherCornerRequest Request;
     if (!State.SketchPoints.Sketch.empty() && !State.SketchPoints.Points.empty())
@@ -634,7 +634,7 @@ void WriteBevelText(SketcherBevelSession& Bevel)
 }
 
 // 📝 Handles: re-measured when the picked edges change (a corner keeps its size while its vertex stays picked).
-void RefreshBevelHandles(SketcherWorkspaceState& State, bool ForceCondition)
+void RefreshBevelHandles(SketcherWorkspaceStatus& State, bool ForceCondition)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     if (!Bevel.ActiveCondition || Bevel.Verb != SketcherSessionVerb::Blend)
@@ -703,7 +703,7 @@ constexpr float BevelHandleReach = 11.0f;                                       
 
 // V: variable size on / off; the far size starts at half the current size so the taper is visible at once (a typed far
 //    size is kept when V is pressed again).
-void ToggleBevelVariable(SketcherWorkspaceState& State)
+void ToggleBevelVariable(SketcherWorkspaceStatus& State)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     if (!Bevel.ActiveCondition || Bevel.Verb != SketcherSessionVerb::Blend) return;
@@ -715,7 +715,7 @@ void ToggleBevelVariable(SketcherWorkspaceState& State)
 }
 
 // F: anchor each edge at its other end (the start size moves to the opposite corner).
-void FlipBevelAnchor(SketcherWorkspaceState& State)
+void FlipBevelAnchor(SketcherWorkspaceStatus& State)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     if (!Bevel.ActiveCondition || Bevel.Verb != SketcherSessionVerb::Blend || !Bevel.VariableEnabled) return;
@@ -723,7 +723,7 @@ void FlipBevelAnchor(SketcherWorkspaceState& State)
     Announce(State, Bevel.ReversedCondition ? "Anchor flipped: the start size is at each edge's end corner" : "Anchor: the start size is at each edge's start corner");
 }
 
-void OpenBevelSession(SketcherWorkspaceState& State, BlendProfile Shape)
+void OpenBevelSession(SketcherWorkspaceStatus& State, BlendProfile Shape)
 {
     if (State.Document.Selection.Edges.empty())
     {
@@ -769,7 +769,7 @@ void OpenBevelSession(SketcherWorkspaceState& State, BlendProfile Shape)
 // 📝 Blender's extrude axis: the faces' outward normals averaged through the centre of their feet (face E, inset depth),
 //    or the sketch's +𝑧 through its profile centroid (sketch E). Opposed normals (no common direction) leave no axis, and
 //    the pointer's x drives the distance as before.
-void ResolveExtrudeAxis(SketcherWorkspaceState& State)
+void ResolveExtrudeAxis(SketcherWorkspaceStatus& State)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     Bevel.AxisCondition       = false;
@@ -779,9 +779,9 @@ void ResolveExtrudeAxis(SketcherWorkspaceState& State)
     if (Bevel.Verb == SketcherSessionVerb::Profile)
     {
         const auto Found = std::find_if(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(),
-                                        [&](const FeatureStep& Step) { return Step.Label == Bevel.ProfileLabel && Step.Kind == FeatureStepKind::Sketch; });
+                                        [&](const FeatureStep& Step) { return Step.Label == Bevel.ProfileLabel && Step.Kind == FeatureStepCategory::Sketch; });
         if (Found == State.Document.Tree.Steps.end()) return;
-        OrthonormalFrame Plane = Found->Plane;
+        OrthonormalBasis Plane = Found->Plane;
         Plane.Origin           = Plane.Origin + Plane.ZAxis * EvaluateFeatureValue(State.Document.Tree, Found->Elevation);
         const auto          Solved  = State.Document.Regeneration.Sketches.find(Bevel.ProfileLabel);
         const SketchProfile Profile = ExtractSketchProfile(Solved != State.Document.Regeneration.Sketches.end() ? Solved->second : Found->Sketch);
@@ -794,7 +794,7 @@ void ResolveExtrudeAxis(SketcherWorkspaceState& State)
     {
         for (const std::string& Name : State.Document.Selection.Faces)
         {
-            const SketcherJointOrigin Origin = ResolveSketcherJointOrigin(State.Document, SketcherSelectionKind::Face, Name);
+            const SketcherJointOrigin Origin = ResolveSketcherJointOrigin(State.Document, SketcherSelectionCategory::Face, Name);
             if (!Origin.Refusal.empty()) continue;
             const SketcherFaceFoot Foot = ProjectOntoSketcherFace(State.Document, Name, Origin.Frame.Origin);
             if (!Foot.FoundCondition) continue;
@@ -831,7 +831,7 @@ SketcherCommandOutcome RunFaceExtrudeWithMode(SketcherDocument& Document, double
         for (const std::string& FaceName : Faces)
         {
             Document.Selection.Faces = { FaceName };
-            LastOutcome = ChangeSketcherSelection(Document, FaceOperationKind::Extrude, Size);
+            LastOutcome = ChangeSketcherSelection(Document, FaceOperationCategory::Extrude, Size);
             if (!LastOutcome.AcceptedCondition)
             {
                 Document.Selection.Faces = Faces;
@@ -844,20 +844,20 @@ SketcherCommandOutcome RunFaceExtrudeWithMode(SketcherDocument& Document, double
     if (Mode == SketcherExtrudeMode::Symmetric)
     {
         const double Half = 0.5 * Size;
-        const SketcherCommandOutcome First = ChangeSketcherSelection(Document, FaceOperationKind::Extrude, Half);
+        const SketcherCommandOutcome First = ChangeSketcherSelection(Document, FaceOperationCategory::Extrude, Half);
         if (!First.AcceptedCondition) return First;
         if (std::abs(Half) > 1.0e-9)
         {
-            return ChangeSketcherSelection(Document, FaceOperationKind::Push, -Half);
+            return ChangeSketcherSelection(Document, FaceOperationCategory::Push, -Half);
         }
         return First;
     }
-    return ChangeSketcherSelection(Document, FaceOperationKind::Extrude, Size);
+    return ChangeSketcherSelection(Document, FaceOperationCategory::Extrude, Size);
 }
 
-void OpenSketchExtrudeSession(SketcherWorkspaceState& State);
+void OpenSketchExtrudeSession(SketcherWorkspaceStatus& State);
 
-void OpenExtrudeSessionWithMode(SketcherWorkspaceState& State, SketcherExtrudeMode Mode)
+void OpenExtrudeSessionWithMode(SketcherWorkspaceStatus& State, SketcherExtrudeMode Mode)
 {
     State.LastExtrudeMode = Mode;
     if (State.Document.Selection.Faces.empty() && FocusedSketchCondition(State))
@@ -875,7 +875,7 @@ void OpenExtrudeSessionWithMode(SketcherWorkspaceState& State, SketcherExtrudeMo
         Announce(State, std::string(SketcherExtrudeModeLabel(Mode)) + " needs selected faces (mode 3) or a focused sketch");
         return;
     }
-    const double Remembered = State.LastCommand.Kind == SketcherRepeatKind::Face && State.LastCommand.Operation == FaceOperationKind::Extrude ? State.LastCommand.Amount : 0.5;
+    const double Remembered = State.LastCommand.Kind == SketcherRepeatCategory::Face && State.LastCommand.Operation == FaceOperationCategory::Extrude ? State.LastCommand.Amount : 0.5;
     State.Bevel                   = {};
     State.Bevel.ActiveCondition   = true;
     State.Bevel.Verb              = SketcherSessionVerb::Extrude;
@@ -888,21 +888,21 @@ void OpenExtrudeSessionWithMode(SketcherWorkspaceState& State, SketcherExtrudeMo
 }
 
 // Plasticity E: extrude the selected faces; the pointer sets the signed distance like the fillet size.
-void OpenExtrudeSession(SketcherWorkspaceState& State)
+void OpenExtrudeSession(SketcherWorkspaceStatus& State)
 {
     OpenExtrudeSessionWithMode(State, State.LastExtrudeMode);
 }
 
 // Plasticity O on faces (offset-curve of the face boundary) · Blender I: inset the selected planar faces. The pointer sets
 // the inset distance (D) or the depth of the inner face (H: + boss, − pocket); Tab-free, the card fields take typed values.
-void OpenInsetSession(SketcherWorkspaceState& State)
+void OpenInsetSession(SketcherWorkspaceStatus& State)
 {
     if (State.Document.Selection.Faces.empty())
     {
         Announce(State, "Inset needs selected planar faces (mode 3)");
         return;
     }
-    const bool Remembered = State.LastCommand.Kind == SketcherRepeatKind::Face && State.LastCommand.Operation == FaceOperationKind::Inset;
+    const bool Remembered = State.LastCommand.Kind == SketcherRepeatCategory::Face && State.LastCommand.Operation == FaceOperationCategory::Inset;
     State.Bevel                 = {};
     State.Bevel.ActiveCondition = true;
     State.Bevel.Verb            = SketcherSessionVerb::Inset;
@@ -945,7 +945,7 @@ void ResolveProfileCombination(SketcherBevelSession& Bevel)
 //------------------------------------------------------------------------------------------------------------------------
 
 // Everything a bound depends on except the bounded parameter itself (shape, variable taper, flip, edges, other corners).
-[[nodiscard]] std::string ComposeBevelLimitKey(const SketcherWorkspaceState& State, int Parameter)
+[[nodiscard]] std::string ComposeBevelLimitKey(const SketcherWorkspaceStatus& State, int Parameter)
 {
     const SketcherBevelSession& Bevel = State.Bevel;
     std::string Key = Compose("%d|%d|%d|%.9g|%d|%llu|", int(Bevel.Verb), int(Bevel.Shape), Bevel.VariableEnabled ? 1 : 0, Bevel.EndSize, Bevel.ReversedCondition ? 1 : 0,
@@ -965,7 +965,7 @@ void ResolveProfileCombination(SketcherBevelSession& Bevel)
 }
 
 // The largest size known to work for Parameter (0: none known in the current state).
-[[nodiscard]] double BevelLimitOf(const SketcherWorkspaceState& State, int Parameter)
+[[nodiscard]] double BevelLimitOf(const SketcherWorkspaceStatus& State, int Parameter)
 {
     const SketcherBevelSession& Bevel = State.Bevel;
     if (!BevelBoundedCondition(Bevel) || Bevel.LimitParameter != Parameter || !(Bevel.LimitCeiling > 0.0) || !(Bevel.LimitGood > 0.0)) return 0.0;
@@ -977,7 +977,7 @@ void ResolveProfileCombination(SketcherBevelSession& Bevel)
 //    leaves nothing, so a size past it must not reach the modeller at all. The face width (Span) is no limit — the report
 //    "it suppose to go longer even if i put a value greater it refuses … this is a cube": past it the blend runs on over
 //    the next face (overflow), and at an obtuse edge a fillet's radius is far larger than its setback.
-[[nodiscard]] double BoundBevelValue(SketcherWorkspaceState& State, int Parameter, double Value)
+[[nodiscard]] double BoundBevelValue(SketcherWorkspaceStatus& State, int Parameter, double Value)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     const double Reach = Bevel.Shape == BlendProfile::Chamfer ? Bevel.Fit.ChamferReach : Bevel.Fit.FilletReach;   // [len] - Body-eating size
@@ -1006,7 +1006,7 @@ void ResolveProfileCombination(SketcherBevelSession& Bevel)
 
 // 📝 After each preview: an accepted value raises the floor, a refused one above it lowers the ceiling; while the gap is
 //    over 0.2 % (≥ 0.1 mm) the next preview tries the middle, then the value settles on the floor (the bound).
-void ConfineBevelLimit(SketcherWorkspaceState& State, int Parameter, bool AcceptedCondition)
+void ConfineBevelLimit(SketcherWorkspaceStatus& State, int Parameter, bool AcceptedCondition)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     if (!BevelBoundedCondition(Bevel)) return;
@@ -1052,7 +1052,7 @@ void ConfineBevelLimit(SketcherWorkspaceState& State, int Parameter, bool Accept
     if (Parameter > 0 && Parameter == Bevel.FocusCorner) std::snprintf(Bevel.CornerText.data(), Bevel.CornerText.size(), "%.4g", Value);
 }
 
-void StageBevelPreview(SketcherWorkspaceState& State)
+void StageBevelPreview(SketcherWorkspaceStatus& State)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     if (!Bevel.ActiveCondition) return;
@@ -1118,7 +1118,7 @@ void StageBevelPreview(SketcherWorkspaceState& State)
     ConfineBevelLimit(State, Parameter, Outcome.AcceptedCondition && Bevel.Refusal.empty());
 }
 
-void ApplyBevelSession(SketcherWorkspaceState& State)
+void ApplyBevelSession(SketcherWorkspaceStatus& State)
 {
     // A refusal of a stale preview (the pointer moved on while a slow preview waited) does not block: the kernel decides.
     if (!State.Bevel.ActiveCondition) return;
@@ -1179,7 +1179,7 @@ void ApplyBevelSession(SketcherWorkspaceState& State)
     {
         const double                 Depth   = State.Bevel.Depth;
         const SketcherCommandOutcome Outcome = Run([&] { return InsetSketcherSelection(State.Document, Size, Depth); });
-        if (Outcome.AcceptedCondition) State.LastCommand = { SketcherRepeatKind::Face, Shape, 0.0, FaceOperationKind::Inset, Size, {}, {}, Depth };
+        if (Outcome.AcceptedCondition) State.LastCommand = { SketcherRepeatCategory::Face, Shape, 0.0, FaceOperationCategory::Inset, Size, {}, {}, Depth };
         Conclude(State, Outcome);
         return;
     }
@@ -1190,9 +1190,9 @@ void ApplyBevelSession(SketcherWorkspaceState& State)
         if (Outcome.AcceptedCondition)
         {
             SketcherRepeat Rep{};
-            Rep.Kind      = SketcherRepeatKind::Face;
+            Rep.Kind      = SketcherRepeatCategory::Face;
             Rep.Shape     = Shape;
-            Rep.Operation = FaceOperationKind::Extrude;
+            Rep.Operation = FaceOperationCategory::Extrude;
             Rep.Amount    = Size;
             State.LastCommand = std::move(Rep);
         }
@@ -1203,7 +1203,7 @@ void ApplyBevelSession(SketcherWorkspaceState& State)
     if (Outcome.AcceptedCondition)
     {
         SketcherRepeat Rep{};
-        Rep.Kind  = SketcherRepeatKind::Blend;
+        Rep.Kind  = SketcherRepeatCategory::Blend;
         Rep.Shape = Shape;
         Rep.Size  = Size;
         Rep.Blend = Request;
@@ -1212,7 +1212,7 @@ void ApplyBevelSession(SketcherWorkspaceState& State)
     Conclude(State, Outcome);
 }
 
-void CancelBevelSession(SketcherWorkspaceState& State)
+void CancelBevelSession(SketcherWorkspaceStatus& State)
 {
     if (!State.Bevel.ActiveCondition) return;
     State.Bevel.ActiveCondition = false;
@@ -1221,7 +1221,7 @@ void CancelBevelSession(SketcherWorkspaceState& State)
 }
 
 // Positive signed size = fillet radius, negative = chamfer setback (Sketcher pointer convention).
-void AdjustBevelSize(SketcherWorkspaceState& State, double Delta)
+void AdjustBevelSize(SketcherWorkspaceStatus& State, double Delta)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     if (Bevel.Verb == SketcherSessionVerb::Inset)
@@ -1253,15 +1253,15 @@ constexpr double DrawingSnap      = 0.1;                                        
 
 // 📝 Placement without a key is free (no grid): Ctrl snaps to object points, Alt slides along a curve. The 0.1 grid only
 //    applies with Snaps › Grid on (Ctrl then frees the pointer, as before).
-[[nodiscard]] bool GridSnapCondition(const SketcherWorkspaceState& State)
+[[nodiscard]] bool GridSnapCondition(const SketcherWorkspaceStatus& State)
 {
     return State.Picker.GridEnabled && !ImGui::GetIO().KeyCtrl;
 }
 constexpr float  ClosingTolerance = 10.0f;                                                   // [px]  - Click on the first point closes
 
-OrbitCameraFrame ViewportFrame(const SketcherWorkspaceState& State);
+OrbitCameraBasis ViewportFrame(const SketcherWorkspaceStatus& State);
 
-[[nodiscard]] Vector3 PlacePlanePoint(const OrthonormalFrame& Plane, Vector2 Point)
+[[nodiscard]] Vector3 PlacePlanePoint(const OrthonormalBasis& Plane, Vector2 Point)
 {
     return Plane.Origin + Plane.XAxis * Point.X + Plane.YAxis * Point.Y;
 }
@@ -1273,23 +1273,23 @@ OrbitCameraFrame ViewportFrame(const SketcherWorkspaceState& State);
     return !SketcherCurveHiddenCondition(Document, Label) && !SketcherLockedCondition(Document, Label);
 }
 
-[[nodiscard]] OrthonormalFrame DrawingPlane(const SketcherDrawingSession& Drawing)
+[[nodiscard]] OrthonormalBasis DrawingPlane(const SketcherDrawingSession& Drawing)
 {
     if (Drawing.FacePlaneCondition) return Drawing.FacePlane;                              // Sketch / solid on a body face
-    OrthonormalFrame Plane = SketcherSketchPlane(Drawing.GridPlane);
+    OrthonormalBasis Plane = SketcherSketchPlane(Drawing.GridPlane);
     Plane.Origin = Plane.Origin + Plane.ZAxis * Drawing.Elevation;
     return Plane;
 }
 
 // Plane clicks before the height (or before the solid, when it has no height).
-[[nodiscard]] size_t SolidPlaneClicks(SketcherConstructKind Kind)
+[[nodiscard]] size_t SolidPlaneClicks(SketcherConstructCategory Kind)
 {
-    return Kind == SketcherConstructKind::Torus || Kind == SketcherConstructKind::Tube ? 3 : 2;
+    return Kind == SketcherConstructCategory::Torus || Kind == SketcherConstructCategory::Tube ? 3 : 2;
 }
 
-[[nodiscard]] bool SolidLiftedCondition(SketcherConstructKind Kind)
+[[nodiscard]] bool SolidLiftedCondition(SketcherConstructCategory Kind)
 {
-    return Kind != SketcherConstructKind::Sphere && Kind != SketcherConstructKind::Torus;
+    return Kind != SketcherConstructCategory::Sphere && Kind != SketcherConstructCategory::Torus;
 }
 
 // Prompt for the next click of a solid session.
@@ -1298,23 +1298,23 @@ OrbitCameraFrame ViewportFrame(const SketcherWorkspaceState& State);
     const size_t Placed = Drawing.Points.size();
     switch (Drawing.Solid)
     {
-    case SketcherConstructKind::Block:
-    case SketcherConstructKind::Wedge:    return Placed == 0 ? (Drawing.CentreCondition ? "click the centre" : "click the first corner") : Placed == 1 ? "click the opposite corner" : "move up, click the height";
-    case SketcherConstructKind::Cylinder:
-    case SketcherConstructKind::Cone:     return Placed == 0 ? "click the base centre" : Placed == 1 ? "click the radius" : Drawing.Solid == SketcherConstructKind::Cone ? "move up, click the apex height" : "move up, click the height";
-    case SketcherConstructKind::Sphere:   return Placed == 0 ? "click the centre" : "click the radius";
-    case SketcherConstructKind::Torus:    return Placed == 0 ? "click the centre" : Placed == 1 ? "click the major radius (ring centre line)" : "click the tube (minor) radius";
-    case SketcherConstructKind::Prism:    return Placed == 0 ? "click the centre" : Placed == 1 ? "click a vertex (+ / − sides)" : "move up, click the height";
-    case SketcherConstructKind::Tube:     return Placed == 0 ? "click the centre" : Placed == 1 ? "click the outer radius" : Placed == 2 ? "click the bore radius" : "move up, click the height";
+    case SketcherConstructCategory::Block:
+    case SketcherConstructCategory::Wedge:    return Placed == 0 ? (Drawing.CentreCondition ? "click the centre" : "click the first corner") : Placed == 1 ? "click the opposite corner" : "move up, click the height";
+    case SketcherConstructCategory::Cylinder:
+    case SketcherConstructCategory::Cone:     return Placed == 0 ? "click the base centre" : Placed == 1 ? "click the radius" : Drawing.Solid == SketcherConstructCategory::Cone ? "move up, click the apex height" : "move up, click the height";
+    case SketcherConstructCategory::Sphere:   return Placed == 0 ? "click the centre" : "click the radius";
+    case SketcherConstructCategory::Torus:    return Placed == 0 ? "click the centre" : Placed == 1 ? "click the major radius (ring centre line)" : "click the tube (minor) radius";
+    case SketcherConstructCategory::Prism:    return Placed == 0 ? "click the centre" : Placed == 1 ? "click a vertex (+ / − sides)" : "move up, click the height";
+    case SketcherConstructCategory::Tube:     return Placed == 0 ? "click the centre" : Placed == 1 ? "click the outer radius" : Placed == 2 ? "click the bore radius" : "move up, click the height";
     }
     return "click";
 }
 
-void FinishSolidSession(SketcherWorkspaceState& State);
-void FinishKnifeSolid(SketcherWorkspaceState& State);
+void FinishSolidSession(SketcherWorkspaceStatus& State);
+void FinishKnifeSolid(SketcherWorkspaceStatus& State);
 
 // World point → frame pixel (absolute); false behind the eye.
-bool ProjectWorldPoint(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, Vector3 Point, ImVec2& Pixel)
+bool ProjectWorldPoint(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, Vector3 Point, ImVec2& Pixel)
 {
     const auto& Rect = State.ViewportRect;
     double Clip[4] = {};
@@ -1328,7 +1328,7 @@ bool ProjectWorldPoint(const SketcherWorkspaceState& State, const OrbitCameraFra
 // 💡 Blender's extrude drive: the closest point of the pointer ray to the extrusion axis, for the verbs that move along it
 //    (face E, sketch E, inset depth H). None when the axis points at the camera (its 80 px of travel projects under 24 px,
 //    where the closest point is ill-conditioned): the pointer's x drives instead.
-[[nodiscard]] std::optional<double> MeasureExtrudeAxis(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local)
+[[nodiscard]] std::optional<double> MeasureExtrudeAxis(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local)
 {
     const SketcherBevelSession& Bevel = State.Bevel;
     const bool Along = Bevel.Verb == SketcherSessionVerb::Extrude || Bevel.Verb == SketcherSessionVerb::Profile || (Bevel.Verb == SketcherSessionVerb::Inset && Bevel.DepthEnabled);
@@ -1342,7 +1342,7 @@ bool ProjectWorldPoint(const SketcherWorkspaceState& State, const OrbitCameraFra
 
 // Drives the extrusion from the pointer's axis parameter: the distance (inset: depth) at the anchor plus the travel since
 // (Shift a tenth). A new anchor is taken when the drive starts or Shift changes, so the face never jumps.
-void DriveExtrudeAxis(SketcherWorkspaceState& State, double Parameter)
+void DriveExtrudeAxis(SketcherWorkspaceStatus& State, double Parameter)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     const bool Fine  = ImGui::GetIO().KeyShift;
@@ -1360,7 +1360,7 @@ void DriveExtrudeAxis(SketcherWorkspaceState& State, double Parameter)
 }
 
 // Viewport pixel (local) → construction-plane coordinates; false when the ray runs parallel to the plane.
-bool IntersectSketchPlane(const OrbitCameraFrame& Frame, ImVec2 Local, const OrthonormalFrame& Plane, Vector2& Point)
+bool IntersectSketchPlane(const OrbitCameraBasis& Frame, ImVec2 Local, const OrthonormalBasis& Plane, Vector2& Point)
 {
     const OrbitRay      Ray    = CastOrbitRay(Frame, Local.x, Local.y);
     const Vector3          Origin{ Ray.Origin[0], Ray.Origin[1], Ray.Origin[2] }, Direction{ Ray.Direction[0], Ray.Direction[1], Ray.Direction[2] };
@@ -1374,7 +1374,7 @@ bool IntersectSketchPlane(const OrbitCameraFrame& Frame, ImVec2 Local, const Ort
 // The pointer shapes the drawing until its clicks are in (a polygon's two clicks are in once it waits for its confirmation).
 [[nodiscard]] bool DrawingPointerLive(const SketcherDrawingSession& Drawing)
 {
-    return Drawing.PointerCondition && !(Drawing.Kind == SketcherDrawingKind::Polygon && Drawing.Points.size() >= 2);
+    return Drawing.PointerCondition && !(Drawing.Kind == SketcherDrawingCategory::Polygon && Drawing.Points.size() >= 2);
 }
 
 [[nodiscard]] SketcherDrawingRequest ComposeDrawingRequest(const SketcherDrawingSession& Drawing, bool PointerCondition, bool ClosedCondition)
@@ -1394,29 +1394,29 @@ bool IntersectSketchPlane(const OrbitCameraFrame& Frame, ImVec2 Local, const Ort
 }
 
 // Points that finish the tool on their last click (0: open-ended chain).
-[[nodiscard]] size_t DrawingClicks(SketcherDrawingKind Kind)
+[[nodiscard]] size_t DrawingClicks(SketcherDrawingCategory Kind)
 {
     switch (Kind)
     {
-    case SketcherDrawingKind::Rectangle:
-    case SketcherDrawingKind::Circle:
-    case SketcherDrawingKind::Polygon: return 2;
-    case SketcherDrawingKind::Arc:
-    case SketcherDrawingKind::Slot:   return 3;
+    case SketcherDrawingCategory::Rectangle:
+    case SketcherDrawingCategory::Circle:
+    case SketcherDrawingCategory::Polygon: return 2;
+    case SketcherDrawingCategory::Arc:
+    case SketcherDrawingCategory::Slot:   return 3;
     default:                          return 0;
     }
 }
 
 [[nodiscard]] std::string DrawingCaption(const SketcherDrawingSession& Drawing)
 {
-    if (Drawing.SolidCondition) return std::string(SketcherConstructLabel(Drawing.Solid)) + (Drawing.Solid == SketcherConstructKind::Prism ? Compose(" · %d sides", Drawing.Sides) : std::string()) +
+    if (Drawing.SolidCondition) return std::string(SketcherConstructLabel(Drawing.Solid)) + (Drawing.Solid == SketcherConstructCategory::Prism ? Compose(" · %d sides", Drawing.Sides) : std::string()) +
                                        " · " + (Drawing.Combination == GeometrySpace::Parametric::FeatureCombination::Separate ? "new body" : FeatureCombinationLabel(Drawing.Combination));
     std::string Caption = SketcherDrawingLabel(Drawing.Kind);
-    if (Drawing.Kind == SketcherDrawingKind::Polygon) Caption += Compose(" · %d sides", Drawing.Sides);
-    if (Drawing.Kind == SketcherDrawingKind::Line) Caption += Drawing.SegmentCondition ? " · segment" : " · polyline";
-    if (Drawing.Kind == SketcherDrawingKind::Curve) Caption += std::string(" · ") + SketchSplineFormLabel(Drawing.Form);
-    if (Drawing.Kind == SketcherDrawingKind::Rectangle) Caption += Drawing.CentreCondition ? " · centre" : " · corner";
-    if (Drawing.Kind == SketcherDrawingKind::Circle) Caption += Drawing.CentreCondition ? " · centre" : " · two-point";
+    if (Drawing.Kind == SketcherDrawingCategory::Polygon) Caption += Compose(" · %d sides", Drawing.Sides);
+    if (Drawing.Kind == SketcherDrawingCategory::Line) Caption += Drawing.SegmentCondition ? " · segment" : " · polyline";
+    if (Drawing.Kind == SketcherDrawingCategory::Curve) Caption += std::string(" · ") + SketchSplineFormLabel(Drawing.Form);
+    if (Drawing.Kind == SketcherDrawingCategory::Rectangle) Caption += Drawing.CentreCondition ? " · centre" : " · corner";
+    if (Drawing.Kind == SketcherDrawingCategory::Circle) Caption += Drawing.CentreCondition ? " · centre" : " · two-point";
     if (Drawing.SurfaceCondition) Caption += " · SURFACE POINTS → no added controls";
     else if (Drawing.FacePlaneCondition) Caption += Drawing.FaceName.empty() ? std::string(" · level with the snap") : " · on face " + Drawing.FaceName;
     return Caption;
@@ -1424,13 +1424,13 @@ bool IntersectSketchPlane(const OrbitCameraFrame& Frame, ImVec2 Local, const Ort
 
 int ViewGridPlane(const OrbitCamera& Camera) noexcept;
 
-void OpenDrawingSession(SketcherWorkspaceState& State, SketcherDrawingKind Kind)
+void OpenDrawingSession(SketcherWorkspaceStatus& State, SketcherDrawingCategory Kind)
 {
     if (State.Bevel.ActiveCondition) return;
     // Knife profiles are planar sections on the first-clicked face, not retopology
     // traces. Keep the user's tracing preference unchanged for the next normal tool.
     const bool SurfaceTrace = State.SurfaceTraceEnabled && !State.Knife.ActiveCondition;
-    if (SurfaceTrace && Kind != SketcherDrawingKind::Curve && Kind != SketcherDrawingKind::Arc && Kind != SketcherDrawingKind::Line)
+    if (SurfaceTrace && Kind != SketcherDrawingCategory::Curve && Kind != SketcherDrawingCategory::Arc && Kind != SketcherDrawingCategory::Line)
     { Announce(State, "Surface trace supports Curve, Arc and Line; turn Surface off for planar shapes"); return; }
     const SketchSplineForm Form  = State.Drawing.Form;
     const int              Sides = State.Drawing.Sides;
@@ -1438,9 +1438,9 @@ void OpenDrawingSession(SketcherWorkspaceState& State, SketcherDrawingKind Kind)
     State.Drawing.Sides           = Sides;
     State.Drawing.ActiveCondition = true;
     State.Drawing.Kind            = Kind;
-    State.Drawing.SurfaceCondition = SurfaceTrace && Kind != SketcherDrawingKind::Arc;
+    State.Drawing.SurfaceCondition = SurfaceTrace && Kind != SketcherDrawingCategory::Arc;
     State.Drawing.GridPlane       = ViewGridPlane(State.Camera);
-    State.Drawing.CentreCondition = Kind == SketcherDrawingKind::Circle;                     // Plasticity center-circle; V → two-point
+    State.Drawing.CentreCondition = Kind == SketcherDrawingCategory::Circle;                     // Plasticity center-circle; V → two-point
     State.Drawing.Form            = SurfaceTrace ? SketchSplineForm::Nurbs : Form;
     if (State.Drawing.SurfaceCondition)
     {
@@ -1452,13 +1452,13 @@ void OpenDrawingSession(SketcherWorkspaceState& State, SketcherDrawingKind Kind)
                                    "click both cap centres, then the rim", "click points · 1 Hermite · 2 Bezier · 3 NURBS · 4 cubic spline · Enter / right-click finishes · Ctrl+Z drops a point",
                                    "click the centre, then a vertex · + / − sides" };
     static const char* Planes[] = { "XY", "XZ", "YZ" };
-    Announce(State, std::string(SketcherDrawingLabel(Kind)) + " on plane " + Planes[State.Drawing.GridPlane] + (Kind==SketcherDrawingKind::Arc?" (planar, no surface snap): ":" (or the body face under the first click): ") + Hints[int(Kind)]
+    Announce(State, std::string(SketcherDrawingLabel(Kind)) + " on plane " + Planes[State.Drawing.GridPlane] + (Kind==SketcherDrawingCategory::Arc?" (planar, no surface snap): ":" (or the body face under the first click): ") + Hints[int(Kind)]
                         + " · hold Ctrl to snap to ends / midpoints / centres, Alt to slide along a curve · Esc aborts");
 }
 
-void AdoptKnifeSketch(SketcherWorkspaceState& State, const std::string& Sketch, const std::string& Face);
+void AdoptKnifeSketch(SketcherWorkspaceStatus& State, const std::string& Sketch, const std::string& Face);
 
-void CancelDrawingSession(SketcherWorkspaceState& State)
+void CancelDrawingSession(SketcherWorkspaceStatus& State)
 {
     if (!State.Drawing.ActiveCondition) return;
     State.Drawing.ActiveCondition = false;
@@ -1470,12 +1470,12 @@ void CancelDrawingSession(SketcherWorkspaceState& State)
 // when PointerCondition; empty when every point lies on the plane (a planar sketch).
 [[nodiscard]] std::vector<Vector3> LiftedDrawingPoints(const SketcherDrawingSession& Drawing, bool PointerCondition)
 {
-    if ((Drawing.Kind != SketcherDrawingKind::Curve && !Drawing.SurfaceCondition) || Drawing.SolidCondition) return {};
+    if ((Drawing.Kind != SketcherDrawingCategory::Curve && !Drawing.SurfaceCondition) || Drawing.SolidCondition) return {};
     const bool Pointer = PointerCondition && DrawingPointerLive(Drawing);
     bool       Any     = Pointer && Drawing.PointerLifted.has_value();
     for (size_t Index = 0; Index < Drawing.Lifted.size() && Index < Drawing.Points.size(); ++Index) Any = Any || Drawing.Lifted[Index].has_value();
     if (!Any) return {};
-    const OrthonormalFrame Plane = DrawingPlane(Drawing);
+    const OrthonormalBasis Plane = DrawingPlane(Drawing);
     std::vector<Vector3>   Points;
     for (size_t Index = 0; Index < Drawing.Points.size(); ++Index)
         Points.push_back(Index < Drawing.Lifted.size() && Drawing.Lifted[Index] ? *Drawing.Lifted[Index] : PlacePlanePoint(Plane, Drawing.Points[Index]));
@@ -1483,16 +1483,16 @@ void CancelDrawingSession(SketcherWorkspaceState& State)
     return Points;
 }
 
-SketcherSnapCatalogue& SnapCatalogue(SketcherWorkspaceState& State, const std::vector<std::string>& Excluded);
+SketcherSnapRepository& SnapCatalogue(SketcherWorkspaceStatus& State, const std::vector<std::string>& Excluded);
 
 // Commits the collected points as a sketch step; the new sketch becomes the focused step (E extrudes it).
-void FinishDrawingSession(SketcherWorkspaceState& State, bool ClosedCondition)
+void FinishDrawingSession(SketcherWorkspaceStatus& State, bool ClosedCondition)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     if (!Drawing.ActiveCondition) return;
     if (Drawing.SolidCondition) { FinishSolidSession(State); return; }
     const bool KnifeCondition = State.Knife.ActiveCondition && State.Knife.DrawPendingCondition;
-    if (Drawing.SurfaceCondition || (State.DrawingAutoSplit && Drawing.Kind==SketcherDrawingKind::Curve &&
+    if (Drawing.SurfaceCondition || (State.DrawingAutoSplit && Drawing.Kind==SketcherDrawingCategory::Curve &&
         (Drawing.Form==SketchSplineForm::Nurbs || Drawing.Form==SketchSplineForm::Bezier)))
     {
         auto Controls=LiftedDrawingPoints(Drawing,false);
@@ -1553,7 +1553,7 @@ void FinishDrawingSession(SketcherWorkspaceState& State, bool ClosedCondition)
                          Drawing.FacePlaneCondition ? Drawing.FaceName : std::string{});
 }
 
-void AppendDrawingPoint(SketcherWorkspaceState& State, Vector2 Point, bool ClosingCondition)
+void AppendDrawingPoint(SketcherWorkspaceStatus& State, Vector2 Point, bool ClosingCondition)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     if (Drawing.SolidCondition)
@@ -1567,14 +1567,14 @@ void AppendDrawingPoint(SketcherWorkspaceState& State, Vector2 Point, bool Closi
         Drawing.Refusal.clear();
         Drawing.Lift = 0.0;
         State.Picker.Placed = State.Picker.Current;
-        State.Picker.Lock   = SketcherSnapLockKind::None;
+        State.Picker.Lock   = SketcherSnapLockCategory::None;
         if (Drawing.Points.size() >= Needed && !SolidLiftedCondition(Drawing.Solid)) { FinishSolidSession(State); return; }
         Announce(State, std::string(SketcherConstructLabel(Drawing.Solid)) + ": " + SolidPrompt(Drawing));
         return;
     }
     // 💡 A polygon (as the HTML reference): centre, then a vertex; it then waits, the wheel changing its sides, for a
     //    click / right-click / Enter that confirms it.
-    if (Drawing.Kind == SketcherDrawingKind::Polygon && Drawing.Points.size() >= 2) { FinishDrawingSession(State, false); return; }
+    if (Drawing.Kind == SketcherDrawingCategory::Polygon && Drawing.Points.size() >= 2) { FinishDrawingSession(State, false); return; }
     const bool Chain = DrawingClicks(Drawing.Kind) == 0 && !Drawing.SegmentCondition;
     if (Chain && ClosingCondition)
     {
@@ -1599,9 +1599,9 @@ void AppendDrawingPoint(SketcherWorkspaceState& State, Vector2 Point, bool Closi
     Drawing.Refusal.clear();
     SketcherPointPicker& Picker = State.Picker;
     Picker.Placed = Picker.Current;                                                          // t / n / b use the snapped curve or face
-    if ((Picker.Current.Kind >= SketcherSnapKind::Endpoint && Picker.Current.Kind <= SketcherSnapKind::Face) || Picker.Current.Kind == SketcherSnapKind::Quarter) ++Picker.Snapped;
-    Picker.Lock = SketcherSnapLockKind::None;                                                // A lock serves one point (Plasticity)
-    if (Drawing.Kind == SketcherDrawingKind::Polygon && Drawing.Points.size() >= 2)
+    if ((Picker.Current.Kind >= SketcherSnapCategory::Endpoint && Picker.Current.Kind <= SketcherSnapCategory::Face) || Picker.Current.Kind == SketcherSnapCategory::Quarter) ++Picker.Snapped;
+    Picker.Lock = SketcherSnapLockCategory::None;                                                // A lock serves one point (Plasticity)
+    if (Drawing.Kind == SketcherDrawingCategory::Polygon && Drawing.Points.size() >= 2)
     {
         Announce(State, Compose("Polygon · %d sides · wheel (or + / −) changes the sides · click / right-click / Enter confirms · Esc aborts", Drawing.Sides));
         return;
@@ -1612,7 +1612,7 @@ void AppendDrawingPoint(SketcherWorkspaceState& State, Vector2 Point, bool Closi
 // 💡 Right-click / Enter confirm what is drawn (Plasticity): a shape still short of a click takes the pointer as that
 //    click (a rectangle's far corner, a circle's rim, a box's square and then its height), a waiting polygon is
 //    confirmed, a chain (line, polyline, curve) finishes where it is.
-void ConfirmDrawingSession(SketcherWorkspaceState& State)
+void ConfirmDrawingSession(SketcherWorkspaceStatus& State)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     if (!Drawing.ActiveCondition) return;
@@ -1627,13 +1627,13 @@ void ConfirmDrawingSession(SketcherWorkspaceState& State)
         FinishSolidSession(State);
         return;
     }
-    if (Drawing.Kind == SketcherDrawingKind::Polygon && Drawing.Points.size() >= 2) { FinishDrawingSession(State, false); return; }
+    if (Drawing.Kind == SketcherDrawingCategory::Polygon && Drawing.Points.size() >= 2) { FinishDrawingSession(State, false); return; }
     const bool Chain = DrawingClicks(Drawing.Kind) == 0 && !Drawing.SegmentCondition;
     if (!Chain) { PointerClick(); return; }
     FinishDrawingSession(State, false);
 }
 
-void RetractDrawingPoint(SketcherWorkspaceState& State)
+void RetractDrawingPoint(SketcherWorkspaceStatus& State)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     if (Drawing.Points.empty()) { Announce(State, "No point to drop"); return; }
@@ -1643,20 +1643,20 @@ void RetractDrawingPoint(SketcherWorkspaceState& State)
     if (Drawing.SolidCondition && Drawing.Points.empty()) Drawing.Elevation = 0.0;
     Drawing.Refusal.clear();
     State.Picker.Placed = {};
-    State.Picker.Lock   = SketcherSnapLockKind::None;
+    State.Picker.Lock   = SketcherSnapLockCategory::None;
     Announce(State, Compose("Point dropped · %d left", int(Drawing.Points.size())));
 }
 
 // 📝 Object snapping (Plasticity point picker). The catalogue of exact carriers follows the document revision, the
 //    scene's faces and the bodies excluded (Move skips the bodies it carries).
-const SketcherSectionClip* ActiveSectionClip(const SketcherWorkspaceState& State);
+const SketcherSectionClip* ActiveSectionClip(const SketcherWorkspaceStatus& State);
 
-[[nodiscard]] bool PointSnapCondition(SketcherSnapKind Kind)
+[[nodiscard]] bool PointSnapCondition(SketcherSnapCategory Kind)
 {
-    return (Kind >= SketcherSnapKind::Endpoint && Kind <= SketcherSnapKind::Perpendicular) || Kind == SketcherSnapKind::Quarter;
+    return (Kind >= SketcherSnapCategory::Endpoint && Kind <= SketcherSnapCategory::Perpendicular) || Kind == SketcherSnapCategory::Quarter;
 }
 
-SketcherSnapCatalogue& SnapCatalogue(SketcherWorkspaceState& State, const std::vector<std::string>& Excluded)
+SketcherSnapRepository& SnapCatalogue(SketcherWorkspaceStatus& State, const std::vector<std::string>& Excluded)
 {
     SketcherPointPicker& Picker = State.Picker;
     std::string Key;
@@ -1664,7 +1664,7 @@ SketcherSnapCatalogue& SnapCatalogue(SketcherWorkspaceState& State, const std::v
     for (const std::string& Hidden : State.Document.Appearance.HiddenCurves) Key += "~" + Hidden + ";";   // Hidden curves offer no snaps
     if (!Picker.Catalogue || Picker.Catalogue->Revision != State.Document.Revision || Picker.Catalogue->ExclusionKey != Key || Picker.SceneFaces != State.Scene.Faces.size())
     {
-        Picker.Catalogue  = std::make_unique<SketcherSnapCatalogue>(CatalogueSketcherSnaps(State.Document, State.Scene, Excluded));
+        Picker.Catalogue  = std::make_unique<SketcherSnapRepository>(CatalogueSketcherSnaps(State.Document, State.Scene, Excluded));
         Picker.Catalogue->ExclusionKey = Key;                                                // Exclusions and hidden curves
         Picker.SceneFaces = State.Scene.Faces.size();
     }
@@ -1676,14 +1676,14 @@ SketcherSnapCatalogue& SnapCatalogue(SketcherWorkspaceState& State, const std::v
 //    edge (the point stays on it); Ctrl+Alt offers both, the important points winning. Without either the pointer is free
 //    (Snaps › Grid: 0.1 steps). AnchorCondition (the grab point of a move)
 //    snaps without a key, faces and edges included.
-SketcherSnap FindPointerSnap(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, std::optional<Vector3> Reference,
+SketcherSnap FindPointerSnap(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, std::optional<Vector3> Reference,
                              std::vector<SketcherSnapPoint> Transient, const std::vector<std::string>& Excluded, bool AnchorCondition)
 {
     const ImGuiIO& Io             = ImGui::GetIO();
     const bool     CurveWorkflow  = (State.Drawing.ActiveCondition && !State.Drawing.SolidCondition &&
-                                     (State.Drawing.Kind == SketcherDrawingKind::Curve || State.Drawing.Kind == SketcherDrawingKind::Arc ||
-                                      State.Drawing.Kind == SketcherDrawingKind::Line || State.Drawing.Kind == SketcherDrawingKind::Polygon ||
-                                      State.Drawing.Kind == SketcherDrawingKind::Slot)) ||
+                                     (State.Drawing.Kind == SketcherDrawingCategory::Curve || State.Drawing.Kind == SketcherDrawingCategory::Arc ||
+                                      State.Drawing.Kind == SketcherDrawingCategory::Line || State.Drawing.Kind == SketcherDrawingCategory::Polygon ||
+                                      State.Drawing.Kind == SketcherDrawingCategory::Slot)) ||
                                     State.PickMode == SketcherPickMode::Curve ||
                                     State.PickMode == SketcherPickMode::ControlPoint ||
                                     State.Trim.ActiveCondition ||
@@ -1727,24 +1727,24 @@ SketcherSnap FindPointerSnap(SketcherWorkspaceState& State, const OrbitCameraFra
         }
     }
     const SketcherSnap Found = FindSketcherSnap(SnapCatalogue(State, Excluded), State.Document, State.Scene, Query);
-    if (AlongCondition && Found.Kind == SketcherSnapKind::Curve) State.Picker.AlongUsedCondition = true;   // Alt was a snap, not a tap
+    if (AlongCondition && Found.Kind == SketcherSnapCategory::Curve) State.Picker.AlongUsedCondition = true;   // Alt was a snap, not a tap
     return Found;
 }
 
 // n / b / t / x / y / z while drawing: a line through the last point the next point slides along; the same key again
 // releases it. Directions leaving the drawing plane are refused (the sketch stays planar).
-void ChooseSnapLock(SketcherWorkspaceState& State, SketcherSnapLockKind Kind)
+void ChooseSnapLock(SketcherWorkspaceStatus& State, SketcherSnapLockCategory Kind)
 {
     SketcherPointPicker&          Picker  = State.Picker;
     const SketcherDrawingSession& Drawing = State.Drawing;
     if (Picker.Lock == Kind)
     {
-        Picker.Lock = SketcherSnapLockKind::None;
+        Picker.Lock = SketcherSnapLockCategory::None;
         Announce(State, std::string("Lock ") + SketcherSnapLockLabel(Kind) + " released");
         return;
     }
     if (Drawing.Points.empty()) { Announce(State, std::string("Lock ") + SketcherSnapLockLabel(Kind) + ": place a point first"); return; }
-    const OrthonormalFrame Plane  = DrawingPlane(Drawing);
+    const OrthonormalBasis Plane  = DrawingPlane(Drawing);
     const Vector3          Origin = PlacePlanePoint(Plane, Drawing.Points.back());
     Vector3 Tangent = Picker.Placed.Tangent;
     if (Length(Tangent) < 0.5 && Drawing.Points.size() >= 2)
@@ -1757,12 +1757,12 @@ void ChooseSnapLock(SketcherWorkspaceState& State, SketcherSnapLockKind Kind)
     Vector3 Direction;
     switch (Kind)
     {
-    case SketcherSnapLockKind::X:        Direction = { 1.0, 0.0, 0.0 }; break;
-    case SketcherSnapLockKind::Y:        Direction = { 0.0, 1.0, 0.0 }; break;
-    case SketcherSnapLockKind::Z:        Direction = { 0.0, 0.0, 1.0 }; break;
-    case SketcherSnapLockKind::Tangent:  Direction = Tangent; break;
-    case SketcherSnapLockKind::Normal:   Direction = Normal; break;
-    case SketcherSnapLockKind::Binormal: Direction = Length(Tangent) > 0.5 && Length(Normal) > 0.5 ? Normalize(Cross(Tangent, Normal)) : Vector3{}; break;
+    case SketcherSnapLockCategory::X:        Direction = { 1.0, 0.0, 0.0 }; break;
+    case SketcherSnapLockCategory::Y:        Direction = { 0.0, 1.0, 0.0 }; break;
+    case SketcherSnapLockCategory::Z:        Direction = { 0.0, 0.0, 1.0 }; break;
+    case SketcherSnapLockCategory::Tangent:  Direction = Tangent; break;
+    case SketcherSnapLockCategory::Normal:   Direction = Normal; break;
+    case SketcherSnapLockCategory::Binormal: Direction = Length(Tangent) > 0.5 && Length(Normal) > 0.5 ? Normalize(Cross(Tangent, Normal)) : Vector3{}; break;
     default: return;
     }
     static const char* Planes[] = { "XY", "XZ", "YZ" };
@@ -1785,14 +1785,14 @@ void ChooseSnapLock(SketcherWorkspaceState& State, SketcherSnapLockKind Kind)
 // An object snap carried into a sketch plane (its foot along the plane normal). On-curve snaps count only on curves in
 // the plane: an edge above the plane that merely overlaps the pointer on screen would move the point away from where
 // it was clicked (its distinct points still snap). Sets Picker.Current; nullopt when nothing snaps.
-std::optional<Vector2> SnapOntoPlane(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, const OrthonormalFrame& Plane,
+std::optional<Vector2> SnapOntoPlane(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, const OrthonormalBasis& Plane,
                                      std::optional<Vector3> Reference, std::vector<SketcherSnapPoint> Transient, const std::vector<std::string>& Excluded)
 {
     SketcherSnap Object = FindPointerSnap(State, Frame, Local, Reference, std::move(Transient), Excluded, false);
     // A curve off the plane (an edge above the sketch, a loft rim) counts by its foot on the plane, and only when that
     // foot is still under the pointer (a top view onto the plane); in a slanted view it would jump away from the click.
     const double Height = Dot(Object.Position - Plane.Origin, Plane.ZAxis);
-    if (Object.Kind == SketcherSnapKind::Curve && std::abs(Height) > 1.0e-9 * (1.0 + Length(Object.Position)))
+    if (Object.Kind == SketcherSnapCategory::Curve && std::abs(Height) > 1.0e-9 * (1.0 + Length(Object.Position)))
     {
         const Vector3 Foot = Object.Position - Plane.ZAxis * Height;
         ImVec2 Pixel;
@@ -1805,45 +1805,45 @@ std::optional<Vector2> SnapOntoPlane(SketcherWorkspaceState& State, const OrbitC
         else Object = {};
     }
     State.Picker.Current = Object;
-    if (Object.Kind == SketcherSnapKind::None) return std::nullopt;
+    if (Object.Kind == SketcherSnapCategory::None) return std::nullopt;
     return Vector2{ Dot(Object.Position - Plane.Origin, Plane.XAxis), Dot(Object.Position - Plane.Origin, Plane.YAxis) };
 }
 
 // The drawing pointer: on the lock line (aligned with a point snap), else (Ctrl) on an important object point or edge
 // projected into the drawing plane, else free (Snaps › Grid: 0.1 steps). Rectangle s squares the second corner.
-void PlaceDrawingPointer(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, Vector2& Point)
+void PlaceDrawingPointer(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, Vector2& Point)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     SketcherPointPicker&    Picker  = State.Picker;
-    const OrthonormalFrame  Plane   = DrawingPlane(Drawing);
+    const OrthonormalBasis  Plane   = DrawingPlane(Drawing);
     auto Flatten = [&](Vector3 World) { return Vector2{ Dot(World - Plane.Origin, Plane.XAxis), Dot(World - Plane.Origin, Plane.YAxis) }; };
     std::vector<SketcherSnapPoint> Chain;
     for (size_t Index = 0; Index < Drawing.Points.size(); ++Index)
-        Chain.push_back({ SketcherSnapKind::Endpoint, PlacePlanePoint(Plane, Drawing.Points[Index]), {}, {}, Compose("Point %d", int(Index) + 1), {} });
+        Chain.push_back({ SketcherSnapCategory::Endpoint, PlacePlanePoint(Plane, Drawing.Points[Index]), {}, {}, Compose("Point %d", int(Index) + 1), {} });
     std::optional<Vector3> Reference;
     if (!Drawing.Points.empty()) Reference = PlacePlanePoint(Plane, Drawing.Points.back());
     Picker.Current = {};
     Drawing.PointerLifted.reset();
     if(State.DrawingCurveSnap && !Drawing.SolidCondition &&
-       (Drawing.Kind==SketcherDrawingKind::Curve || Drawing.Kind==SketcherDrawingKind::Arc || Drawing.Kind==SketcherDrawingKind::Line)) {
+       (Drawing.Kind==SketcherDrawingCategory::Curve || Drawing.Kind==SketcherDrawingCategory::Arc || Drawing.Kind==SketcherDrawingCategory::Line)) {
         SketcherSnapQuery Q;Q.Frame=Frame;Q.PixelX=Local.x;Q.PixelY=Local.y;Q.PointReach=8;Q.CurveReach=12;
         Q.Filter={true,false,false,false,true,false,false,true,false};Q.FreeCurvesOnly=true;Q.OverlayCurvesVisible=true;
         auto Hit=FindSketcherSnap(SnapCatalogue(State,{}),State.Document,State.Scene,Q);
-        if(Hit.Kind!=SketcherSnapKind::None) {
-            if(Drawing.Kind==SketcherDrawingKind::Arc && Drawing.Points.empty())Drawing.Elevation=Dot(Hit.Position,SketcherSketchPlane(Drawing.GridPlane).ZAxis);
+        if(Hit.Kind!=SketcherSnapCategory::None) {
+            if(Drawing.Kind==SketcherDrawingCategory::Arc && Drawing.Points.empty())Drawing.Elevation=Dot(Hit.Position,SketcherSketchPlane(Drawing.GridPlane).ZAxis);
             const auto ActivePlane=DrawingPlane(Drawing);auto Delta=Hit.Position-ActivePlane.Origin;
             Point={Dot(Delta,ActivePlane.XAxis),Dot(Delta,ActivePlane.YAxis)};
-            if(Drawing.Kind==SketcherDrawingKind::Curve || Drawing.SurfaceCondition)Drawing.PointerLifted=Hit.Position;
+            if(Drawing.Kind==SketcherDrawingCategory::Curve || Drawing.SurfaceCondition)Drawing.PointerLifted=Hit.Position;
             else {Hit.Position=PlacePlanePoint(ActivePlane,Point);if(std::abs(Dot(Delta,ActivePlane.ZAxis))>1e-6)Hit.Source+=" (projected to drawing plane)";}
             Picker.Current=Hit;return;
         }
     }
-    if (Drawing.Kind == SketcherDrawingKind::Curve && !Drawing.SolidCondition && Picker.Lock == SketcherSnapLockKind::None && ImGui::GetIO().KeyAlt)
+    if (Drawing.Kind == SketcherDrawingCategory::Curve && !Drawing.SolidCondition && Picker.Lock == SketcherSnapLockCategory::None && ImGui::GetIO().KeyAlt)
     {
         // A curve point on a curve off the plane keeps its 3D place (the finished curve becomes a 3D curve).
         const SketcherSnap Object = FindPointerSnap(State, Frame, Local, Reference, Chain, {}, false);
         const double       Height = Dot(Object.Position - Plane.Origin, Plane.ZAxis);
-        if (Object.Kind != SketcherSnapKind::None && std::abs(Height) > 1.0e-9 * (1.0 + Length(Object.Position)))
+        if (Object.Kind != SketcherSnapCategory::None && std::abs(Height) > 1.0e-9 * (1.0 + Length(Object.Position)))
         {
             Drawing.PointerLifted = Object.Position;
             Point                 = Flatten(Object.Position);
@@ -1852,7 +1852,7 @@ void PlaceDrawingPointer(SketcherWorkspaceState& State, const OrbitCameraFrame& 
             return;
         }
     }
-    if (Picker.Lock != SketcherSnapLockKind::None)
+    if (Picker.Lock != SketcherSnapLockCategory::None)
     {
         const std::optional<double> Along = ApproachSketcherLine(CastOrbitRay(Frame, Local.x, Local.y), Picker.LockOrigin, Picker.LockDirection);
         if (Along)
@@ -1868,7 +1868,7 @@ void PlaceDrawingPointer(SketcherWorkspaceState& State, const OrbitCameraFrame& 
             else if (GridSnapCondition(State)) Travel = std::round(Travel / DrawingSnap) * DrawingSnap;
             const Vector3 World = Picker.LockOrigin + Picker.LockDirection * Travel;
             Point          = Flatten(World);
-            Picker.Current = { SketcherSnapKind::Axis, World, Picker.LockDirection, {}, std::string("Lock ") + SketcherSnapLockLabel(Picker.Lock) + Note, 0.0 };
+            Picker.Current = { SketcherSnapCategory::Axis, World, Picker.LockDirection, {}, std::string("Lock ") + SketcherSnapLockLabel(Picker.Lock) + Note, 0.0 };
         }
     }
     else
@@ -1876,8 +1876,8 @@ void PlaceDrawingPointer(SketcherWorkspaceState& State, const OrbitCameraFrame& 
         if (const std::optional<Vector2> Snapped = SnapOntoPlane(State, Frame, Local, Plane, Reference, Chain, {})) Point = *Snapped;
         else if (GridSnapCondition(State)) Point = { std::round(Point.X / DrawingSnap) * DrawingSnap, std::round(Point.Y / DrawingSnap) * DrawingSnap };
     }
-    if (Drawing.Kind == SketcherDrawingKind::Rectangle && (Drawing.SquareCondition || ImGui::GetIO().KeyShift) && Drawing.Points.size() == 1 &&
-        (!Drawing.SolidCondition || Drawing.Solid == SketcherConstructKind::Block || Drawing.Solid == SketcherConstructKind::Wedge))
+    if (Drawing.Kind == SketcherDrawingCategory::Rectangle && (Drawing.SquareCondition || ImGui::GetIO().KeyShift) && Drawing.Points.size() == 1 &&
+        (!Drawing.SolidCondition || Drawing.Solid == SketcherConstructCategory::Block || Drawing.Solid == SketcherConstructCategory::Wedge))
     {
         const Vector2 From  = Drawing.Points.front();
         const double  Side  = std::max(std::abs(Point.X - From.X), std::abs(Point.Y - From.Y));
@@ -1887,17 +1887,17 @@ void PlaceDrawingPointer(SketcherWorkspaceState& State, const OrbitCameraFrame& 
 
 // A temporary Shift chord, not a persistent picker lock: lines and polylines/curves snap straight along orthogonal axes;
 // arc endpoints / slot centres use their first click. Rectangle square is handled in PlaceDrawingPointer.
-bool ApplyDrawingShiftConstraint(SketcherWorkspaceState& State, Vector2& Point)
+bool ApplyDrawingShiftConstraint(SketcherWorkspaceStatus& State, Vector2& Point)
 {
     auto& Drawing = State.Drawing;
     if (!ImGui::GetIO().KeyShift || Drawing.SolidCondition || Drawing.Points.empty() ||
-        State.Picker.Lock != SketcherSnapLockKind::None) return false;
-    const bool Baseline = Drawing.Kind == SketcherDrawingKind::Line ||
-        Drawing.Kind == SketcherDrawingKind::Curve ||
-        Drawing.Kind == SketcherDrawingKind::Polygon ||
-        ((Drawing.Kind == SketcherDrawingKind::Arc || Drawing.Kind == SketcherDrawingKind::Slot) && Drawing.Points.size() == 1);
+        State.Picker.Lock != SketcherSnapLockCategory::None) return false;
+    const bool Baseline = Drawing.Kind == SketcherDrawingCategory::Line ||
+        Drawing.Kind == SketcherDrawingCategory::Curve ||
+        Drawing.Kind == SketcherDrawingCategory::Polygon ||
+        ((Drawing.Kind == SketcherDrawingCategory::Arc || Drawing.Kind == SketcherDrawingCategory::Slot) && Drawing.Points.size() == 1);
     if (!Baseline) return false;
-    const OrthonormalFrame Plane = DrawingPlane(Drawing);
+    const OrthonormalBasis Plane = DrawingPlane(Drawing);
     Vector3 World, Direction;
     std::string Label;
     if (Drawing.SurfaceCondition)
@@ -1929,7 +1929,7 @@ bool ApplyDrawingShiftConstraint(SketcherWorkspaceState& State, Vector2& Point)
             if (std::abs(Value) > 1.0 - 1.0e-9) Label = std::string("world ") + "XYZ"[I];
         }
     }
-    State.Picker.Current = { SketcherSnapKind::Axis, World, Direction, Plane.ZAxis, "Shift straight · " + Label, 0.0 };
+    State.Picker.Current = { SketcherSnapCategory::Axis, World, Direction, Plane.ZAxis, "Shift straight · " + Label, 0.0 };
     return true;
 }
 
@@ -1964,8 +1964,8 @@ std::string ComposeSolidRequest(const SketcherDrawingSession& Drawing, bool Poin
     const double  Reach  = Distance(Points[0], Points[1]);
     switch (Drawing.Solid)
     {
-    case SketcherConstructKind::Block:
-    case SketcherConstructKind::Wedge:
+    case SketcherConstructCategory::Block:
+    case SketcherConstructCategory::Wedge:
     {
         const Vector2 First  = Drawing.CentreCondition ? Points[0] * 2.0 - Points[1] : Points[0];
         const Vector2 Second = Points[1];
@@ -1976,26 +1976,26 @@ std::string ComposeSolidRequest(const SketcherDrawingSession& Drawing, bool Poin
         if (Request.Width < 1.0e-9 || Request.Depth < 1.0e-9) return "the base has no width or no depth";
         break;
     }
-    case SketcherConstructKind::Cylinder:
-    case SketcherConstructKind::Prism:
+    case SketcherConstructCategory::Cylinder:
+    case SketcherConstructCategory::Prism:
         Request.Position = { Centre.X, Centre.Y, Base };
         Request.Radius   = Reach;
         Request.Height   = std::abs(Lift);
         Request.Angle    = std::atan2(Points[1].Y - Centre.Y, Points[1].X - Centre.X);
         if (Reach < 1.0e-9) return "the radius is zero";
         break;
-    case SketcherConstructKind::Cone:
+    case SketcherConstructCategory::Cone:
         Request.Position = { Centre.X, Centre.Y, Drawing.Elevation };
         Request.Radius   = Reach;
         Request.Height   = Lift;
         if (Reach < 1.0e-9) return "the radius is zero";
         break;
-    case SketcherConstructKind::Sphere:
+    case SketcherConstructCategory::Sphere:
         Request.Position = { Centre.X, Centre.Y, Drawing.Elevation };
         Request.Radius   = Reach;
         if (Reach < 1.0e-9) return "the radius is zero";
         return {};
-    case SketcherConstructKind::Torus:
+    case SketcherConstructCategory::Torus:
         Request.Position = { Centre.X, Centre.Y, Drawing.Elevation };
         Request.Major    = Reach;
         Request.Minor    = Points.size() >= 3 ? std::abs(Distance(Points[0], Points[2]) - Reach) : 0.0;
@@ -2003,7 +2003,7 @@ std::string ComposeSolidRequest(const SketcherDrawingSession& Drawing, bool Poin
         if (Points.size() < 3) return "Torus: " + std::string(SolidPrompt(Drawing));
         if (Request.Minor < 1.0e-9 || Request.Minor >= Request.Major) return "the tube radius must be between 0 and the major radius";
         return {};
-    case SketcherConstructKind::Tube:
+    case SketcherConstructCategory::Tube:
     {
         Request.Position = { Centre.X, Centre.Y, Base };
         const double Other = Points.size() >= 3 ? Distance(Points[0], Points[2]) : 0.0;
@@ -2021,7 +2021,7 @@ std::string ComposeSolidRequest(const SketcherDrawingSession& Drawing, bool Poin
     return {};
 }
 
-void OpenSolidSession(SketcherWorkspaceState& State, SketcherConstructKind Kind)
+void OpenSolidSession(SketcherWorkspaceStatus& State, SketcherConstructCategory Kind)
 {
     if (State.Bevel.ActiveCondition) return;
     const int Sides = State.Drawing.Sides;
@@ -2029,7 +2029,7 @@ void OpenSolidSession(SketcherWorkspaceState& State, SketcherConstructKind Kind)
     State.Drawing.ActiveCondition = true;
     State.Drawing.SolidCondition  = true;
     State.Drawing.Solid           = Kind;
-    State.Drawing.Kind            = SketcherDrawingKind::Rectangle;                          // Unused for solids (pointer rules only)
+    State.Drawing.Kind            = SketcherDrawingCategory::Rectangle;                          // Unused for solids (pointer rules only)
     State.Drawing.GridPlane       = 0;
     State.Drawing.Sides           = Sides;
     State.Drawing.Combination     = GeometrySpace::Parametric::FeatureCombination::Separate;
@@ -2038,7 +2038,7 @@ void OpenSolidSession(SketcherWorkspaceState& State, SketcherConstructKind Kind)
 }
 
 // Creates the drawn solid; the session closes on success, stays open with the reason on a refusal.
-void FinishSolidSession(SketcherWorkspaceState& State)
+void FinishSolidSession(SketcherWorkspaceStatus& State)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     SketcherConstructRequest Request;
@@ -2062,18 +2062,18 @@ void FinishSolidSession(SketcherWorkspaceState& State)
         const size_t Before = Probe.Tree.Steps.size();
         if (ConstructSketcherPrimitive(Probe, Footprint).AcceptedCondition)
             for (size_t Index = Before; Index < Probe.Tree.Steps.size(); ++Index)
-                if (Probe.Tree.Steps[Index].Kind == FeatureStepKind::Sketch) { Request.Start = -MeasureSketcherProfileSink(Probe, State.Scene, Probe.Tree.Steps[Index].Label); break; }
+                if (Probe.Tree.Steps[Index].Kind == FeatureStepCategory::Sketch) { Request.Start = -MeasureSketcherProfileSink(Probe, State.Scene, Probe.Tree.Steps[Index].Label); break; }
     }
     Drawing.ActiveCondition = false;
-    State.LastCommand = { SketcherRepeatKind::Construct, BlendProfile::Fillet, 0.0, FaceOperationKind::Extrude, 0.0, Request };
+    State.LastCommand = { SketcherRepeatCategory::Construct, BlendProfile::Fillet, 0.0, FaceOperationCategory::Extrude, 0.0, Request };
     const SketcherCommandOutcome Outcome = ConstructSketcherPrimitive(State.Document, Request);
     if (Outcome.AcceptedCondition && Request.Combination == GeometrySpace::Parametric::FeatureCombination::Separate)
-        SelectSketcherName(State.Document, SketcherSelectionKind::Body, State.Document.Regeneration.Active, false);
+        SelectSketcherName(State.Document, SketcherSelectionCategory::Body, State.Document.Regeneration.Active, false);
     Conclude(State, Outcome);
 }
 
 // Tab: the size form, filled with what is drawn so far (the session closes; Create in the form makes the solid).
-void OpenSolidExactForm(SketcherWorkspaceState& State)
+void OpenSolidExactForm(SketcherWorkspaceStatus& State)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     SketcherConstructRequest Request;
@@ -2096,10 +2096,10 @@ void OpenSolidExactForm(SketcherWorkspaceState& State)
 
 // Height from the pointer: closest approach to the vertical line through the last click; 0.1 steps (Ctrl free), or
 // level with a point snap.
-void PlaceSolidLift(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local)
+void PlaceSolidLift(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
-    const OrthonormalFrame  Plane   = DrawingPlane(Drawing);
+    const OrthonormalBasis  Plane   = DrawingPlane(Drawing);
     const Vector3           Anchor  = PlacePlanePoint(Plane, Drawing.Points.back());
     const std::optional<double> Along = ApproachSketcherLine(CastOrbitRay(Frame, Local.x, Local.y), Anchor, Plane.ZAxis);
     State.Picker.Current = {};
@@ -2109,7 +2109,7 @@ void PlaceSolidLift(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
     if (PointSnapCondition(Object.Kind))
     {
         Lift = Dot(Object.Position - Anchor, Plane.ZAxis);
-        State.Picker.Current = { SketcherSnapKind::Axis, Anchor + Plane.ZAxis * Lift, Plane.ZAxis, {}, std::string("level with ") + SketcherSnapLabel(Object.Kind) + " " + Object.Source, 0.0 };
+        State.Picker.Current = { SketcherSnapCategory::Axis, Anchor + Plane.ZAxis * Lift, Plane.ZAxis, {}, std::string("level with ") + SketcherSnapLabel(Object.Kind) + " " + Object.Source, 0.0 };
     }
     else if (GridSnapCondition(State)) Lift = std::round(Lift / DrawingSnap) * DrawingSnap;
     Drawing.Lift = Lift;
@@ -2146,7 +2146,7 @@ void PlaceSolidLift(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
 //    on level faces (else the horizontal n̂-perpendicular), ŷ = n̂ × x̂, origin at the foot of the world origin — so the
 //    0.1 grid on the face lines up with the world grid. A planar face gives its exact plane (resolved once per face and
 //    document revision); a curved face gives the tangent plane at the point under the pointer (Orient to faces).
-bool ResolveHoveredFacePlane(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, std::string& Name, OrthonormalFrame& Plane)
+bool ResolveHoveredFacePlane(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, std::string& Name, OrthonormalBasis& Plane)
 {
     OrbitRay                          Ray  = CastOrbitRay(Frame, Local.x, Local.y);
     // A placement frame needs a face, even at an exactly snapped edge. A negative
@@ -2176,7 +2176,7 @@ bool ResolveHoveredFacePlane(SketcherWorkspaceState& State, const OrbitCameraFra
     Vector3 Normal, Anchor;
     if (Flat)
     {
-        const SketcherJointOrigin Origin = ResolveSketcherJointOrigin(State.Document, SketcherSelectionKind::Face, Name);
+        const SketcherJointOrigin Origin = ResolveSketcherJointOrigin(State.Document, SketcherSelectionCategory::Face, Name);
         if (!Origin.Refusal.empty() || !(Length(Origin.Frame.ZAxis) > 0.0)) return false;
         Normal = Normalize(Origin.Frame.ZAxis);
         Anchor = Origin.Frame.Origin;
@@ -2212,10 +2212,10 @@ bool ResolveHoveredFacePlane(SketcherWorkspaceState& State, const OrbitCameraFra
 
 // Before the first click of a sketch: the drawing plane follows the planar face under the pointer; off a face, a Ctrl
 // snap keeps the face plane through it (else a grid-parallel plane through the snapped point); otherwise the grid plane.
-void FollowFacePlane(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local)
+void FollowFacePlane(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
-    if (Drawing.SolidCondition || !Drawing.Points.empty() || State.Picker.Lock != SketcherSnapLockKind::None) return;
+    if (Drawing.SolidCondition || !Drawing.Points.empty() || State.Picker.Lock != SketcherSnapLockCategory::None) return;
     // An armed tool may have been opened in Top and then moved to a side pane.
     // Re-resolve until the first point ONLY; a partially drawn arc never changes plane.
     const int PlaneIndex = ViewGridPlane(State.Camera);
@@ -2227,7 +2227,7 @@ void FollowFacePlane(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
         Drawing.PointerLifted.reset();
     }
     std::string      Name;
-    OrthonormalFrame Plane;
+    OrthonormalBasis Plane;
     if ((State.Picker.FaceOrientEnabled || State.Knife.ActiveCondition) && ResolveHoveredFacePlane(State, Frame, Local, Name, Plane))
     {
         Drawing.FacePlaneCondition = true;
@@ -2252,7 +2252,7 @@ void FollowFacePlane(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
 
 // Before the first click of a solid: Ctrl snaps onto an important point (the plane height there); else a level body
 // face under the pointer is the floor, and the grid still holds on it.
-bool PlaceSolidStart(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, Vector2& Point)
+bool PlaceSolidStart(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, Vector2& Point)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     const SketcherSnap Object = FindPointerSnap(State, Frame, Local, std::nullopt, {}, {}, false);
@@ -2260,7 +2260,7 @@ bool PlaceSolidStart(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
     Drawing.FacePlaneCondition = false;
     Drawing.StartFace.clear();
     std::string      Name;
-    OrthonormalFrame Plane;
+    OrthonormalBasis Plane;
     const bool CutterFace = State.Knife.ActiveCondition && ResolveHoveredFacePlane(State, Frame, Local, Name, Plane);
     if (PointSnapCondition(Object.Kind) && !CutterFace)
     {
@@ -2288,7 +2288,7 @@ bool PlaceSolidStart(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
         Drawing.FacePlaneCondition    = true;
         Drawing.FacePlane             = Plane;
         Drawing.FaceName              = Name;
-        State.Picker.Current.Kind     = SketcherSnapKind::Face;
+        State.Picker.Current.Kind     = SketcherSnapCategory::Face;
         State.Picker.Current.Position = PlacePlanePoint(Plane, Point);
         State.Picker.Current.Normal   = Plane.ZAxis;
         State.Picker.Current.Source   = "Face " + Name;
@@ -2296,7 +2296,7 @@ bool PlaceSolidStart(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
         return true;
     }
     Point = GridSnapCondition(State) ? Vector2{ std::round(Flat.X / DrawingSnap) * DrawingSnap, std::round(Flat.Y / DrawingSnap) * DrawingSnap } : Flat;
-    State.Picker.Current.Kind     = SketcherSnapKind::Face;
+    State.Picker.Current.Kind     = SketcherSnapCategory::Face;
     State.Picker.Current.Position = { Point.X, Point.Y, Plane.Origin.Z };
     State.Picker.Current.Normal   = Plane.ZAxis;
     State.Picker.Current.Source   = "Face " + Name;
@@ -2324,7 +2324,7 @@ void DrawDimensionPill(ImDrawList* Canvas, ImVec2 Centre, const std::string& Tex
     Canvas->AddText(ImVec2(Centre.x - 0.5f * Size.x, Centre.y - 0.5f * Size.y), Ink, Text.c_str());
 }
 
-void DrawDimensionLine(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImDrawList* Canvas, Vector3 From, Vector3 To, const std::string& Text,
+void DrawDimensionLine(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImDrawList* Canvas, Vector3 From, Vector3 To, const std::string& Text,
                        ImVec2 Offset = ImVec2(0.0f, 0.0f))
 {
     ImVec2 Start, End;
@@ -2342,7 +2342,7 @@ void DrawDimensionLine(const SketcherWorkspaceState& State, const OrbitCameraFra
 }
 
 // Arc at Vertex from ray A to ray B (plane coordinates, the shorter way) with its angle in degrees.
-void DrawAngleDimension(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImDrawList* Canvas, const OrthonormalFrame& Plane, Vector2 Vertex, Vector2 A, Vector2 B)
+void DrawAngleDimension(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImDrawList* Canvas, const OrthonormalBasis& Plane, Vector2 Vertex, Vector2 A, Vector2 B)
 {
     const double From  = std::atan2(A.Y - Vertex.Y, A.X - Vertex.X);
     const double Raw   = std::atan2(B.Y - Vertex.Y, B.X - Vertex.X) - From;
@@ -2363,7 +2363,7 @@ void DrawAngleDimension(const SketcherWorkspaceState& State, const OrbitCameraFr
         DrawDimensionPill(Canvas, Label, Compose("%.1f°", std::abs(Sweep) * 180.0 / std::numbers::pi), AngleInk);
 }
 
-void DrawConstructionLine(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImDrawList* Canvas, Vector3 From, Vector3 To)
+void DrawConstructionLine(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImDrawList* Canvas, Vector3 From, Vector3 To)
 {
     ImVec2 Start, End;
     if (!ProjectWorldPoint(State, Frame, From, Start) || !ProjectWorldPoint(State, Frame, To, End)) return;
@@ -2382,10 +2382,10 @@ void DrawConstructionLine(const SketcherWorkspaceState& State, const OrbitCamera
 }
 
 // Live dimensions of a 2-D drawing session (clicks + pointer).
-void DrawSketchDimensions(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImDrawList* Canvas)
+void DrawSketchDimensions(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImDrawList* Canvas)
 {
     const SketcherDrawingSession& Drawing = State.Drawing;
-    const OrthonormalFrame        Plane   = DrawingPlane(Drawing);
+    const OrthonormalBasis        Plane   = DrawingPlane(Drawing);
     std::vector<Vector2> Points = Drawing.Points;
     if (DrawingPointerLive(Drawing)) Points.push_back(Drawing.Pointer);
     if (Points.size() < 2) return;
@@ -2393,13 +2393,13 @@ void DrawSketchDimensions(const SketcherWorkspaceState& State, const OrbitCamera
     const Vector2 First = Points[0], Second = Points[1];
     switch (Drawing.Kind)
     {
-    case SketcherDrawingKind::Line:
-    case SketcherDrawingKind::Curve:
+    case SketcherDrawingCategory::Line:
+    case SketcherDrawingCategory::Curve:
     {
         const Vector2 From = Points[Points.size() - 2], To = Points.back();
         if (Distance(From, To) < 1.0e-12) return;
         DrawDimensionLine(State, Frame, Canvas, World(From), World(To), DimensionText("", Distance(From, To)), ImVec2(0.0f, -14.0f));
-        if (Drawing.Kind == SketcherDrawingKind::Curve) return;
+        if (Drawing.Kind == SketcherDrawingCategory::Curve) return;
         if (Points.size() >= 3) DrawAngleDimension(State, Frame, Canvas, Plane, From, Points[Points.size() - 3], To);
         else
         {
@@ -2409,7 +2409,7 @@ void DrawSketchDimensions(const SketcherWorkspaceState& State, const OrbitCamera
         }
         return;
     }
-    case SketcherDrawingKind::Rectangle:
+    case SketcherDrawingCategory::Rectangle:
     {
         const Vector2 Corner = Drawing.CentreCondition ? First * 2.0 - Second : First;
         const Vector2 Low{ std::min(Corner.X, Second.X), std::min(Corner.Y, Second.Y) }, High{ std::max(Corner.X, Second.X), std::max(Corner.Y, Second.Y) };
@@ -2418,7 +2418,7 @@ void DrawSketchDimensions(const SketcherWorkspaceState& State, const OrbitCamera
         DrawDimensionLine(State, Frame, Canvas, World({ High.X + Gap, Low.Y }), World({ High.X + Gap, High.Y }), DimensionText("H", High.Y - Low.Y));
         return;
     }
-    case SketcherDrawingKind::Circle:
+    case SketcherDrawingCategory::Circle:
     {
         const Vector2 Centre = Drawing.CentreCondition ? First : (First + Second) * 0.5;
         const double  Radius = Drawing.CentreCondition ? Distance(First, Second) : 0.5 * Distance(First, Second);
@@ -2428,20 +2428,20 @@ void DrawSketchDimensions(const SketcherWorkspaceState& State, const OrbitCamera
         DrawDimensionLine(State, Frame, Canvas, World(Centre - Diagonal), World(Centre + Diagonal), DimensionText("Ø", 2.0 * Radius), ImVec2(0.0f, 14.0f));
         return;
     }
-    case SketcherDrawingKind::Arc:
+    case SketcherDrawingCategory::Arc:
     {
         DrawDimensionLine(State, Frame, Canvas, World(First), World(Second), DimensionText("chord", Distance(First, Second)), ImVec2(0.0f, 14.0f));
         if (Points.size() < 3) return;
         SketchModel Sketch;
         SketcherDrawingRequest Request;
-        Request.Kind = SketcherDrawingKind::Arc;
+        Request.Kind = SketcherDrawingCategory::Arc;
         Request.Points = { First, Second, Points[2] };
         if (!ComposeSketcherSketch(Request, Sketch).empty() || Sketch.Points.empty()) return;
         const Vector2 Centre = Sketch.Points[0].Position;
         DrawDimensionLine(State, Frame, Canvas, World(Centre), World(Points[2]), DimensionText("R", Distance(Centre, Points[2])), ImVec2(0.0f, -14.0f));
         return;
     }
-    case SketcherDrawingKind::Slot:
+    case SketcherDrawingCategory::Slot:
     {
         DrawDimensionLine(State, Frame, Canvas, World(First), World(Second), DimensionText("L", Distance(First, Second)), ImVec2(0.0f, -14.0f));
         if (Points.size() < 3 || Distance(First, Second) < 1.0e-12) return;
@@ -2451,7 +2451,7 @@ void DrawSketchDimensions(const SketcherWorkspaceState& State, const OrbitCamera
         DrawDimensionLine(State, Frame, Canvas, World(Second), World(Second + Left * Radius), DimensionText("R", Radius), ImVec2(14.0f, 0.0f));
         return;
     }
-    case SketcherDrawingKind::Polygon:
+    case SketcherDrawingCategory::Polygon:
     {
         const int    Sides  = std::clamp(Drawing.Sides, 3, 64);
         const double Radius = Distance(First, Second);
@@ -2472,10 +2472,10 @@ void DrawSketchDimensions(const SketcherWorkspaceState& State, const OrbitCamera
 }
 
 // Wireframe of the solid being drawn and its dimension lines (width, depth, height, radii).
-void DrawSolidPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawSolidPreview(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     const SketcherDrawingSession& Drawing = State.Drawing;
-    const OrthonormalFrame        Plane   = DrawingPlane(Drawing);
+    const OrthonormalBasis        Plane   = DrawingPlane(Drawing);
     SketcherConstructRequest Request;
     const std::string Refusal = ComposeSolidRequest(Drawing, true, Request);
     const bool Lifted = Drawing.Points.size() >= SolidPlaneClicks(Drawing.Solid);
@@ -2483,7 +2483,7 @@ void DrawSolidPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
     const auto World = [&](Vector3 Point) { return Request.PlaneCondition ? PlacePlanePoint(Request.Plane, { Point.X, Point.Y }) + Request.Plane.ZAxis * Point.Z : Point; };
     auto Pixel    = [&](Vector3 Point, ImVec2& Out) { return ProjectWorldPoint(State, Frame, World(Point), Out); };
     auto RawPixel = [&](Vector3 Point, ImVec2& Out) { return ProjectWorldPoint(State, Frame, Point, Out); };   // Already a world point
-    const auto DrawDimensionLine = [&](const SketcherWorkspaceState& Workspace, const OrbitCameraFrame& Camera, ImDrawList* List, Vector3 From, Vector3 To, const std::string& Text,
+    const auto DrawDimensionLine = [&](const SketcherWorkspaceStatus& Workspace, const OrbitCameraBasis& Camera, ImDrawList* List, Vector3 From, Vector3 To, const std::string& Text,
                                        ImVec2 Offset = ImVec2(0.0f, 0.0f)) { ::Frontier::Workspaces::Sketcher::DrawDimensionLine(Workspace, Camera, List, World(From), World(To), Text, Offset); };
     auto Stroke = [&](const std::vector<Vector3>& Chain, bool Closed, ImU32 Ink, float Width)
     {
@@ -2510,11 +2510,11 @@ void DrawSolidPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
         const Vector3 Spot = Request.Position;
         switch (Drawing.Solid)
         {
-        case SketcherConstructKind::Block:
-        case SketcherConstructKind::Wedge:
+        case SketcherConstructCategory::Block:
+        case SketcherConstructCategory::Wedge:
         {
             const double X0 = Spot.X, X1 = Spot.X + Request.Width, Y0 = Spot.Y, Y1 = Spot.Y + Request.Depth, Z0 = Spot.Z, Z1 = Spot.Z + Request.Height;
-            const bool   Wedge = Drawing.Solid == SketcherConstructKind::Wedge;
+            const bool   Wedge = Drawing.Solid == SketcherConstructCategory::Wedge;
             Stroke({ { X0, Y0, Z0 }, { X1, Y0, Z0 }, { X1, Y1, Z0 }, { X0, Y1, Z0 } }, true, Ink, 2.0f);
             if (Request.Height > 0.0)
             {
@@ -2535,18 +2535,18 @@ void DrawSolidPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
             if (Lifted) DrawDimensionLine(State, Frame, Canvas, { X0 - Gap, Y0 - Gap, Z0 }, { X0 - Gap, Y0 - Gap, Z0 + Request.Height }, DimensionText("H", Request.Height), ImVec2(-18.0f, 0.0f));
             break;
         }
-        case SketcherConstructKind::Cylinder:
-        case SketcherConstructKind::Prism:
-        case SketcherConstructKind::Cone:
-        case SketcherConstructKind::Tube:
+        case SketcherConstructCategory::Cylinder:
+        case SketcherConstructCategory::Prism:
+        case SketcherConstructCategory::Cone:
+        case SketcherConstructCategory::Tube:
         {
-            const bool   Prism = Drawing.Solid == SketcherConstructKind::Prism;
-            const bool   Cone  = Drawing.Solid == SketcherConstructKind::Cone;
+            const bool   Prism = Drawing.Solid == SketcherConstructCategory::Prism;
+            const bool   Cone  = Drawing.Solid == SketcherConstructCategory::Cone;
             const int    Count = Prism ? std::clamp(Drawing.Sides, 3, 64) : 72;
             const double Turn  = Prism ? Request.Angle : 0.0;
             const double Top   = Spot.Z + Request.Height;
             Stroke(Ring(Spot, Request.Radius, Count, Turn), true, Ink, 2.0f);
-            if (Drawing.Solid == SketcherConstructKind::Tube && Request.Inner > 0.0) Stroke(Ring(Spot, Request.Inner, 72, 0.0), true, Ink, 2.0f);
+            if (Drawing.Solid == SketcherConstructCategory::Tube && Request.Inner > 0.0) Stroke(Ring(Spot, Request.Inner, 72, 0.0), true, Ink, 2.0f);
             if (Lifted && std::abs(Request.Height) > 0.0)
             {
                 const Vector3 Lid{ Spot.X, Spot.Y, Top };
@@ -2561,7 +2561,7 @@ void DrawSolidPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
                 else
                 {
                     Stroke(Ring(Lid, Request.Radius, Count, Turn), true, Ink, 2.0f);
-                    if (Drawing.Solid == SketcherConstructKind::Tube && Request.Inner > 0.0) Stroke(Ring(Lid, Request.Inner, 72, 0.0), true, Ink, 2.0f);
+                    if (Drawing.Solid == SketcherConstructCategory::Tube && Request.Inner > 0.0) Stroke(Ring(Lid, Request.Inner, 72, 0.0), true, Ink, 2.0f);
                     const int Posts = Prism ? Count : 4;
                     for (int Index = 0; Index < Posts; ++Index)
                     {
@@ -2573,7 +2573,7 @@ void DrawSolidPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
             }
             const Vector3 Rim{ Spot.X + Request.Radius * std::cos(Turn), Spot.Y + Request.Radius * std::sin(Turn), Spot.Z };
             DrawDimensionLine(State, Frame, Canvas, Spot, Rim, DimensionText("R", Request.Radius), ImVec2(0.0f, -14.0f));
-            if (Drawing.Solid == SketcherConstructKind::Tube && Request.Inner > 0.0)
+            if (Drawing.Solid == SketcherConstructCategory::Tube && Request.Inner > 0.0)
                 DrawDimensionLine(State, Frame, Canvas, Spot, { Spot.X - Request.Inner, Spot.Y, Spot.Z }, DimensionText("r", Request.Inner), ImVec2(0.0f, 14.0f));
             else if (!Prism)
             {
@@ -2598,7 +2598,7 @@ void DrawSolidPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
             }
             break;
         }
-        case SketcherConstructKind::Sphere:
+        case SketcherConstructCategory::Sphere:
         {
             const double R = Request.Radius;
             Stroke(Ring(Spot, R, 72, 0.0), true, Ink, 2.0f);
@@ -2615,7 +2615,7 @@ void DrawSolidPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
             DrawDimensionLine(State, Frame, Canvas, Spot, { Rim.X, Rim.Y, Spot.Z }, DimensionText("R", R), ImVec2(0.0f, -14.0f));
             break;
         }
-        case SketcherConstructKind::Torus:
+        case SketcherConstructCategory::Torus:
         {
             const double Major = Request.Major, Minor = Request.Minor;
             Stroke(Ring(Spot, Major, 96, 0.0), true, ConstructionInk, 1.0f);
@@ -2658,7 +2658,7 @@ void DrawSolidPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
 }
 
 // Plasticity E on a sketch region: the focused sketch step's profile, pointer-adjusted distance, Q/W/E/R Boolean.
-void OpenSketchExtrudeSession(SketcherWorkspaceState& State)
+void OpenSketchExtrudeSession(SketcherWorkspaceStatus& State)
 {
     const std::string Label = State.FocusedStep;
     const double Remembered = State.Bevel.Verb == SketcherSessionVerb::Profile && State.Bevel.Size != 0.0 ? State.Bevel.Size : 0.5;
@@ -2680,15 +2680,15 @@ void OpenSketchExtrudeSession(SketcherWorkspaceState& State)
                     " · Q union · W difference · E intersect · R new body · A auto · Enter / right-click applies · Esc aborts");
 }
 
-[[nodiscard]] bool FocusedSketchCondition(const SketcherWorkspaceState& State)
+[[nodiscard]] bool FocusedSketchCondition(const SketcherWorkspaceStatus& State)
 {
     if (State.FocusedStep.empty()) return false;
-    for (const FeatureStep& Step : State.Document.Tree.Steps) if (Step.Label == State.FocusedStep) return Step.Kind == FeatureStepKind::Sketch;
+    for (const FeatureStep& Step : State.Document.Tree.Steps) if (Step.Label == State.FocusedStep) return Step.Kind == FeatureStepCategory::Sketch;
     return false;
 }
 
 // Plasticity Q (command:boolean): needs two or more bodies picked in mode 4 (first = target, rest = tools).
-void OpenBooleanSession(SketcherWorkspaceState& State)
+void OpenBooleanSession(SketcherWorkspaceStatus& State)
 {
     const size_t Picked = State.Document.Selection.Bodies.size();
     if (State.Document.Summary.Bodies.size() < 2)
@@ -2707,13 +2707,13 @@ void OpenBooleanSession(SketcherWorkspaceState& State)
                             SketcherBodyCaption(State.Document, State.Document.Selection.Bodies.front()).c_str(), int(Picked) - 1));
 }
 
-void ChooseBooleanCombination(SketcherWorkspaceState& State, FeatureCombination Combination)
+void ChooseBooleanCombination(SketcherWorkspaceStatus& State, FeatureCombination Combination)
 {
     State.Boolean.Combination = Combination;
     Announce(State, std::string("Boolean: ") + FeatureCombinationLabel(Combination));
 }
 
-void ApplyBooleanSession(SketcherWorkspaceState& State)
+void ApplyBooleanSession(SketcherWorkspaceStatus& State)
 {
     const std::vector<std::string> Picked = State.Document.Selection.Bodies;
     const bool LiveCondition = State.Boolean.LiveCondition;
@@ -2740,7 +2740,7 @@ void ApplyBooleanSession(SketcherWorkspaceState& State)
     if (Outcome.AcceptedCondition)
     {
         ++State.Boolean.Commits;
-        SelectSketcherName(State.Document, SketcherSelectionKind::Body, Picked.front(), false);
+        SelectSketcherName(State.Document, SketcherSelectionCategory::Body, Picked.front(), false);
     }
     Conclude(State, Outcome);
 }
@@ -2748,7 +2748,7 @@ void ApplyBooleanSession(SketcherWorkspaceState& State)
 // 💡 Plasticity C (command:cut): splits the picked body (mode 4; else the active body) by the focused sketch step or the
 //    selected curve, a curve being projected along the view axis snapped to x / y / z (character line from the Top
 //    view). The inside piece comes out picked in mode 4, so X deletes it right away (the loft → C → X panel flow).
-void ApplyCut(SketcherWorkspaceState& State)
+void ApplyCut(SketcherWorkspaceStatus& State)
 {
     SketcherCutRequest Request;
     if (!State.Document.Selection.Bodies.empty()) Request.Target = State.Document.Selection.Bodies.front();
@@ -2759,7 +2759,7 @@ void ApplyCut(SketcherWorkspaceState& State)
         Announce(State, "Cut (C): focus a sketch step or select a curve (the cutter), pick the body in mode 4 (else the active body)");
         return;
     }
-    const OrbitCameraFrame Frame = ViewportFrame(State);
+    const OrbitCameraBasis Frame = ViewportFrame(State);
     int Axis = 0;
     for (int Index = 1; Index < 3; ++Index) if (std::fabs(Frame.Forward[Index]) > std::fabs(Frame.Forward[Axis])) Axis = Index;
     const double Sign = Frame.Forward[Axis] < 0.0 ? -1.0 : 1.0;
@@ -2769,14 +2769,14 @@ void ApplyCut(SketcherWorkspaceState& State)
     {
         State.FocusedStep = {};
         State.PickMode    = SketcherPickMode::Solid;
-        SelectSketcherName(State.Document, SketcherSelectionKind::Body, State.Document.Tree.Steps.back().Label, false);
+        SelectSketcherName(State.Document, SketcherSelectionCategory::Body, State.Document.Tree.Steps.back().Label, false);
     }
     Conclude(State, Outcome);
 }
 
-[[nodiscard]] OrthonormalFrame ElevatedSketchPlane(const SketcherDocument& Document, const FeatureStep& Step)
+[[nodiscard]] OrthonormalBasis ElevatedSketchPlane(const SketcherDocument& Document, const FeatureStep& Step)
 {
-    OrthonormalFrame Plane = Step.Plane;
+    OrthonormalBasis Plane = Step.Plane;
     Plane.Origin = Plane.Origin + Plane.ZAxis * EvaluateFeatureValue(Document.Tree, Step.Elevation);
     return Plane;
 }
@@ -2785,7 +2785,7 @@ void ApplyCut(SketcherWorkspaceState& State)
 [[nodiscard]] const FeatureStep* FindSketchStepByLabel(const SketcherDocument& Document, const std::string& Label)
 {
     for (const FeatureStep& Step : Document.Tree.Steps)
-        if (Step.Label == Label && Step.Kind == FeatureStepKind::Sketch) return &Step;
+        if (Step.Label == Label && Step.Kind == FeatureStepCategory::Sketch) return &Step;
     return nullptr;
 }
 
@@ -2806,7 +2806,7 @@ void ApplyCut(SketcherWorkspaceState& State)
 }
 
 // The document the viewport overlays show: the staged preview while a gizmo or sketch-point drag runs.
-[[nodiscard]] const SketcherDocument& DisplayedSketcherDocument(const SketcherWorkspaceState& State)
+[[nodiscard]] const SketcherDocument& DisplayedSketcherDocument(const SketcherWorkspaceStatus& State)
 {
     if (State.SketchPoints.DragCondition && State.SketchPoints.Preview && State.SketchPoints.Refusal.empty()) return *State.SketchPoints.Preview;
     if (State.Gizmo.DragCondition && State.Gizmo.Preview && State.Gizmo.Refusal.empty()) return *State.Gizmo.Preview;
@@ -2815,14 +2815,14 @@ void ApplyCut(SketcherWorkspaceState& State)
 }
 
 std::vector<std::string> TouchedBodies(const SketcherDocument& Document);
-void CloseFillSession(SketcherWorkspaceState& State);
+void CloseFillSession(SketcherWorkspaceStatus& State);
 
 // SplitCondition: the sketch Cut tool (the curve breaks at the click, nothing comes off) instead of Trim.
 // InsertCondition: the Point tool (a point is added on the curve at the click, the shape stays; mode 1 so it can move).
-void OpenTrimSession(SketcherWorkspaceState& State, bool SplitCondition = false, bool InsertCondition = false)
+void OpenTrimSession(SketcherWorkspaceStatus& State, bool SplitCondition = false, bool InsertCondition = false)
 {
     const char* Tool = InsertCondition ? "Point" : SplitCondition ? "Split" : "Trim";
-    const bool SketchCondition = std::any_of(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Kind == FeatureStepKind::Sketch || (SplitCondition && Step.Kind == FeatureStepKind::SpaceCurve); });
+    const bool SketchCondition = std::any_of(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Kind == FeatureStepCategory::Sketch || (SplitCondition && Step.Kind == FeatureStepCategory::SpaceCurve); });
     if (!SketchCondition) { Announce(State, std::string(Tool) + " needs sketch curves: draw some first (Shift+A line, Shift+S curve, Shift+W circle …)"); return; }
     State.Trim = { true, false, {}, -1, {}, {}, {}, State.Trim.Commits };
     State.Trim.SplitCondition  = SplitCondition && !InsertCondition;
@@ -2840,7 +2840,7 @@ void OpenTrimSession(SketcherWorkspaceState& State, bool SplitCondition = false,
                                    : "Trim: click the piece of a curve to remove (between its crossings) · Esc ends");
 }
 
-void CloseTrimSession(SketcherWorkspaceState& State)
+void CloseTrimSession(SketcherWorkspaceStatus& State)
 {
     State.Trim.ActiveCondition = false;
     State.Trim.HoverCondition  = false;
@@ -2851,7 +2851,7 @@ void CloseTrimSession(SketcherWorkspaceState& State)
 
 // 📝 The sketch curve nearest the pointer in pixels (≤ 8 px; later steps win ties), the pointer on its plane, and the
 //    piece that would come off (red preview) — recomputed every frame from the solved sketches.
-void HoverTrimPiece(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, bool PointerCondition)
+void HoverTrimPiece(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, bool PointerCondition)
 {
     SketcherTrimSession& Trim = State.Trim;
     Trim.HoverCondition = false;
@@ -2868,7 +2868,7 @@ void HoverTrimPiece(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
     {
         // Cut with Ctrl: snap onto a crossing / end / midpoint / quarter point; every curve through it breaks there.
         const SketcherSnap Snap = FindPointerSnap(State, Frame, Local, std::nullopt, {}, {}, false);
-        if (Snap.Kind != SketcherSnapKind::None)
+        if (Snap.Kind != SketcherSnapCategory::None)
         {
             SketcherPointCut Cut = PreviewSketcherPointCut(State.Document, Snap.Position);
             if (Cut.Curves > 0)
@@ -2893,10 +2893,10 @@ void HoverTrimPiece(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
     const FeatureStep* Chosen  = nullptr;
     for (const FeatureStep& Step : State.Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch || !CurveReachableCondition(State.Document, Step.Label)) continue;
+        if (Step.Kind != FeatureStepCategory::Sketch || !CurveReachableCondition(State.Document, Step.Label)) continue;
         const auto Solved = State.Document.Regeneration.Sketches.find(Step.Label);
         if (Solved == State.Document.Regeneration.Sketches.end()) continue;
-        const OrthonormalFrame Plane = ElevatedSketchPlane(State.Document, Step);
+        const OrthonormalBasis Plane = ElevatedSketchPlane(State.Document, Step);
         for (int Curve = 0; Curve < int(Solved->second.Curves.size()); ++Curve)
         {
             std::vector<ImVec2> Pixels;
@@ -2927,7 +2927,7 @@ void HoverTrimPiece(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
         double SpaceParameter = 0.0;
         for (const FeatureStep& Step : State.Document.Tree.Steps)
         {
-            if (Step.Kind != FeatureStepKind::SpaceCurve || !CurveReachableCondition(State.Document, Step.Label)) continue;
+            if (Step.Kind != FeatureStepCategory::SpaceCurve || !CurveReachableCondition(State.Document, Step.Label)) continue;
             const auto Found = State.Document.Regeneration.Curves.find(Step.Label);
             if (Found == State.Document.Regeneration.Curves.end() || !Found->second.Curve.Definition) continue;
             const auto& Definition = *Found->second.Curve.Definition;
@@ -2975,14 +2975,14 @@ void HoverTrimPiece(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
         }
     }
     if (!Chosen) return;
-    const OrthonormalFrame Plane = ElevatedSketchPlane(State.Document, *Chosen);
+    const OrthonormalBasis Plane = ElevatedSketchPlane(State.Document, *Chosen);
     Vector2 Pick;
     if (!IntersectSketchPlane(Frame, Local, Plane, Pick)) return;
     if (Trim.InsertCondition && ImGui::GetIO().KeyCtrl)
     {
         // Point tool with Ctrl: the pick lands on the snapped point (midpoint, quarter point, crossing …) of the curve.
         const SketcherSnap Snap = FindPointerSnap(State, Frame, Local, std::nullopt, {}, {}, false);
-        if (Snap.Kind != SketcherSnapKind::None) Pick = { Dot(Snap.Position - Plane.Origin, Plane.XAxis), Dot(Snap.Position - Plane.Origin, Plane.YAxis) };
+        if (Snap.Kind != SketcherSnapCategory::None) Pick = { Dot(Snap.Position - Plane.Origin, Plane.XAxis), Dot(Snap.Position - Plane.Origin, Plane.YAxis) };
     }
     Trim.Sketch         = Chosen->Label;
     Trim.Pick           = Pick;
@@ -3006,7 +3006,7 @@ void HoverTrimPiece(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
     for (const Vector2& Point : Outcome.Removed) Trim.Preview.push_back(PlacePlanePoint(Plane, Point));
 }
 
-void ApplyTrim(SketcherWorkspaceState& State)
+void ApplyTrim(SketcherWorkspaceStatus& State)
 {
     SketcherTrimSession& Trim = State.Trim;
     if (!Trim.HoverCondition) { Announce(State, Trim.InsertCondition ? "Point: no curve under the pointer" : Trim.SplitCondition ? "Cut: no curve under the pointer" : "Trim: no curve under the pointer"); return; }
@@ -3046,7 +3046,7 @@ void ApplyTrim(SketcherWorkspaceState& State)
     Conclude(State, Outcome);
 }
 
-void DrawTrimPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawTrimPreview(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     if (State.Trim.ActiveCondition && State.Trim.PointCondition)
     {
@@ -3152,15 +3152,15 @@ void FillPixelPolygon(ImDrawList* Canvas, std::vector<ImVec2> Polygon, std::vect
     for (const ProfileSegment& Segment : Loop.Segments)
     {
         int Count = 1;
-        if (Segment.Kind == ProfileSegmentKind::Arc || Segment.Kind == ProfileSegmentKind::Circle) Count = std::max(4, int(std::ceil(std::fabs(Segment.Sweep) / 0.05)));
-        if (Segment.Kind == ProfileSegmentKind::Spline) Count = 16 * std::max(1, int(Segment.Spline.Knots.size()) - 2 * Segment.Spline.Degree - 1);
+        if (Segment.Kind == ProfileSegmentCategory::Arc || Segment.Kind == ProfileSegmentCategory::Circle) Count = std::max(4, int(std::ceil(std::fabs(Segment.Sweep) / 0.05)));
+        if (Segment.Kind == ProfileSegmentCategory::Spline) Count = 16 * std::max(1, int(Segment.Spline.Knots.size()) - 2 * Segment.Spline.Degree - 1);
         for (int Index = 0; Index < Count; ++Index) Points.push_back(EvaluateProfileSegment(Segment, double(Index) / Count));
     }
     return Points;
 }
 
 // 📝 The tint loops of a closed sketch (cached by a digest of the solved points, curves and fill flag); empty when open.
-const SketcherSketchTint& SketchTintOf(SketcherWorkspaceState& State, const FeatureStep& Step, const SketchModel& Sketch)
+const SketcherSketchTint& SketchTintOf(SketcherWorkspaceStatus& State, const FeatureStep& Step, const SketchModel& Sketch)
 {
     double Fingerprint = 1.0 + 7.0 * double(Sketch.Points.size()) + 13.0 * double(Sketch.Curves.size()) + (Step.FillCondition ? 0.5 : 0.0);
     for (size_t Index = 0; Index < Sketch.Points.size(); ++Index) Fingerprint += (1.37 * Sketch.Points[Index].Position.X + 2.11 * Sketch.Points[Index].Position.Y) * double(Index + 1);
@@ -3184,8 +3184,8 @@ const SketcherSketchTint& SketchTintOf(SketcherWorkspaceState& State, const Feat
 }
 
 // Closed sketches show a faint tint (unfilled, Plasticity's fresh curves) or a stronger one (filled: E makes a solid).
-void DrawSketchTint(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame, const FeatureStep& Step, const SketchModel& Sketch,
-                    const OrthonormalFrame& Plane, bool FocusedCondition)
+void DrawSketchTint(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame, const FeatureStep& Step, const SketchModel& Sketch,
+                    const OrthonormalBasis& Plane, bool FocusedCondition)
 {
     const SketcherSketchTint& Tint = SketchTintOf(State, Step, Sketch);
     const ImU32 Colour = Tint.FillCondition ? IM_COL32(0x9f, 0xd8, 0xff, FocusedCondition ? 0x60 : 0x48) : IM_COL32(0x9f, 0xd8, 0xff, FocusedCondition ? 0x26 : 0x16);
@@ -3203,9 +3203,9 @@ void DrawSketchTint(SketcherWorkspaceState& State, ImDrawList* Canvas, const Orb
     }
 }
 
-void OpenFillSession(SketcherWorkspaceState& State)
+void OpenFillSession(SketcherWorkspaceStatus& State)
 {
-    const bool SketchCondition = std::any_of(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [](const FeatureStep& Step) { return Step.Kind == FeatureStepKind::Sketch || Step.Kind == FeatureStepKind::SpaceCurve; });
+    const bool SketchCondition = std::any_of(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [](const FeatureStep& Step) { return Step.Kind == FeatureStepCategory::Sketch || Step.Kind == FeatureStepCategory::SpaceCurve; });
     if (!SketchCondition) { Announce(State, "Fill needs closed sketch or 3D curve loops: draw some first (Shift+A line, Shift+S curve …)"); return; }
     const int Commits = State.Fill.Commits;
     State.Fill = {};
@@ -3217,7 +3217,7 @@ void OpenFillSession(SketcherWorkspaceState& State)
     Announce(State, "Fill: hover a closed region or 3D curve loop · click builds its surface · Esc ends");
 }
 
-void CloseFillSession(SketcherWorkspaceState& State)
+void CloseFillSession(SketcherWorkspaceStatus& State)
 {
     State.Fill.ActiveCondition = false;
     State.Fill.HoverCondition  = false;
@@ -3228,7 +3228,7 @@ void CloseFillSession(SketcherWorkspaceState& State)
 
 // 📝 The region under the pointer on the nearest shown sketch plane (each distinct plane tried once, nearest hit that
 //    holds a region wins); cached while the pointer and the document stay put.
-void HoverFillRegion(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, bool PointerCondition)
+void HoverFillRegion(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, bool PointerCondition)
 {
     SketcherFillSession& Fill = State.Fill;
     if (!PointerCondition)
@@ -3248,14 +3248,14 @@ void HoverFillRegion(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
     Fill.WholeSketch.clear();
     Fill.LoopLabels.clear();
     Fill.Refusal = "no closed region under the pointer";
-    std::vector<OrthonormalFrame> Tried;
+    std::vector<OrthonormalBasis> Tried;
     double Nearest = std::numeric_limits<double>::infinity();
     const Vector3 Eye{ Frame.Eye[0], Frame.Eye[1], Frame.Eye[2] };
     for (const FeatureStep& Step : State.Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch || SketcherCurveHiddenCondition(State.Document, Step.Label)) continue;
-        const OrthonormalFrame Plane = ElevatedSketchPlane(State.Document, Step);
-        const bool Seen = std::any_of(Tried.begin(), Tried.end(), [&](const OrthonormalFrame& Other)
+        if (Step.Kind != FeatureStepCategory::Sketch || SketcherCurveHiddenCondition(State.Document, Step.Label)) continue;
+        const OrthonormalBasis Plane = ElevatedSketchPlane(State.Document, Step);
+        const bool Seen = std::any_of(Tried.begin(), Tried.end(), [&](const OrthonormalBasis& Other)
         {
             return std::fabs(Dot(Other.ZAxis, Plane.ZAxis)) >= 1.0 - 1.0e-9 && std::fabs(Dot(Other.Origin - Plane.Origin, Plane.ZAxis)) <= 1.0e-9 * std::max(1.0, Length(Other.Origin - Plane.Origin));
         });
@@ -3298,7 +3298,7 @@ void HoverFillRegion(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
     }
 }
 
-void ApplyFill(SketcherWorkspaceState& State)
+void ApplyFill(SketcherWorkspaceStatus& State)
 {
     SketcherFillSession& Fill = State.Fill;
     if (!Fill.HoverCondition) { Announce(State, "Fill: no closed region under the pointer"); return; }
@@ -3317,7 +3317,7 @@ void ApplyFill(SketcherWorkspaceState& State)
     Conclude(State, Outcome);
 }
 
-void DrawFillPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawFillPreview(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     if (!State.Fill.ActiveCondition || !State.Fill.HoverCondition || State.Fill.Outlines.empty()) return;
     std::vector<std::vector<ImVec2>> Loops;
@@ -3332,7 +3332,7 @@ void DrawFillPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const Or
 }
 
 // F: fill on / off for the focused and picked sketches (closed ones); with no sketch picked, the Fill tool opens.
-void ToggleSketchFill(SketcherWorkspaceState& State)
+void ToggleSketchFill(SketcherWorkspaceStatus& State)
 {
     std::vector<std::string> Labels = SelectedSketchLabels(State.Document);
     if (FocusedSketchCondition(State) && std::find(Labels.begin(), Labels.end(), State.FocusedStep) == Labels.end()) Labels.insert(Labels.begin(), State.FocusedStep);
@@ -3343,7 +3343,7 @@ void ToggleSketchFill(SketcherWorkspaceState& State)
 }
 
 // Alt+N: flip normals of the picked sheets (bodies in mode 4, or the owners of picked faces / edges).
-void FlipPickedNormals(SketcherWorkspaceState& State)
+void FlipPickedNormals(SketcherWorkspaceStatus& State)
 {
     // Picked faces (mode 3): their pieces of the sheet; otherwise the whole picked sheets.
     if (!State.Document.Selection.Faces.empty())
@@ -3378,7 +3378,7 @@ constexpr ImU32  OtherSketchColour = IM_COL32(0xc9, 0xd1, 0xdc, 0xd0);          
 constexpr ImU32  OtherSketchCasing = IM_COL32(0x20, 0x24, 0x2c, 0xb0);                       // #20242c  - Their dark casing (reads on faces too)
 
 // 📝 One clickable constraint mark in pixels: a pill (letter or stroke symbol) or a dimension (lines + value pill).
-struct ConstraintGlyph
+struct ConstraintSymbol
 {
     int                                    Constraint = -1;                                   // [-]  - Index in the sketch
     ImVec2                                 Centre     = {};                                   // [px] - Pill centre
@@ -3394,20 +3394,20 @@ struct ConstraintView
     const FeatureStep*        Step   = nullptr;                                              // [-] - Sketch step
     const SketchModel*        Sketch = nullptr;                                              // [-] - Solved sketch
     const SketchSolveOutcome* Solve  = nullptr;                                              // [-] - Its report (null: none)
-    OrthonormalFrame          Plane  = {};                                                   // [-] - Elevated plane
+    OrthonormalBasis          Plane  = {};                                                   // [-] - Elevated plane
 };
 
-std::string ConstraintSketchLabel(const SketcherWorkspaceState& State)
+std::string ConstraintSketchLabel(const SketcherWorkspaceStatus& State)
 {
     const std::string Label = State.Constrain.ActiveCondition ? State.Constrain.Sketch : State.FocusedStep;
-    for (const FeatureStep& Step : State.Document.Tree.Steps) if (Step.Label == Label && Step.Kind == FeatureStepKind::Sketch) return Label;
+    for (const FeatureStep& Step : State.Document.Tree.Steps) if (Step.Label == Label && Step.Kind == FeatureStepCategory::Sketch) return Label;
     return {};
 }
 
-[[nodiscard]] ConstraintView ViewConstraintSketch(const SketcherWorkspaceState& State, const std::string& Label)
+[[nodiscard]] ConstraintView ViewConstraintSketch(const SketcherWorkspaceStatus& State, const std::string& Label)
 {
     ConstraintView View;
-    for (const FeatureStep& Step : State.Document.Tree.Steps) if (Step.Label == Label && Step.Kind == FeatureStepKind::Sketch) View.Step = &Step;
+    for (const FeatureStep& Step : State.Document.Tree.Steps) if (Step.Label == Label && Step.Kind == FeatureStepCategory::Sketch) View.Step = &Step;
     if (!View.Step) return View;
     const auto Solved = State.Document.Regeneration.Sketches.find(Label);
     View.Sketch = Solved != State.Document.Regeneration.Sketches.end() ? &Solved->second : &View.Step->Sketch;
@@ -3431,9 +3431,9 @@ std::string ConstraintSketchLabel(const SketcherWorkspaceState& State)
 // 📝 Glyph layout from the solved sketch: dimensions stand outside (away from the sketch's pixel centroid) as offset
 //    lines with the value, letter pills inside beside line middles (sliding along the line for each further pill), at
 //    points and on circle tops; angles as an arc at the lines' meeting. A lone line: dimensions above, letters below.
-std::vector<ConstraintGlyph> LayoutConstraintGlyphs(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, const SketchModel& Sketch, const OrthonormalFrame& Plane)
+std::vector<ConstraintSymbol> LayoutConstraintGlyphs(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, const SketchModel& Sketch, const OrthonormalBasis& Plane)
 {
-    std::vector<ConstraintGlyph> Glyphs;
+    std::vector<ConstraintSymbol> Glyphs;
     std::map<int, int> CurveSlots, PointSlots;
     auto Pixel = [&](Vector2 Point) { ImVec2 Out(-1.0e6f, -1.0e6f); ProjectWorldPoint(State, Frame, PlacePlanePoint(Plane, Point), Out); return Out; };
     auto PointPixel = [&](int Point) { return Point >= 0 && Point < int(Sketch.Points.size()) ? Pixel(Sketch.Points[Point].Position) : ImVec2(-1.0e6f, -1.0e6f); };
@@ -3451,7 +3451,7 @@ std::vector<ConstraintGlyph> LayoutConstraintGlyphs(const SketcherWorkspaceState
     };
     auto Pill = [&](int Constraint, ImVec2 Centre, const std::string& Text, int Symbol)
     {
-        ConstraintGlyph Glyph;
+        ConstraintSymbol Glyph;
         Glyph.Constraint = Constraint;
         Glyph.Centre     = Centre;
         Glyph.Text       = Text;
@@ -3473,14 +3473,14 @@ std::vector<ConstraintGlyph> LayoutConstraintGlyphs(const SketcherWorkspaceState
         const SketchCurve* Shape = CurveOf(Curve);
         if (!Shape) return;
         const int Slot = CurveSlots[Curve]++;
-        if (Shape->Kind == SketchCurveKind::Line)
+        if (Shape->Kind == SketchCurveCategory::Line)
         {
             ImVec2 Start, End, Along, Normal;
             LineFrame(*Shape, Start, End, Along, Normal);
             const float Shift = float(Slot) * GlyphStride;
             Pill(Constraint, ImVec2(0.5f * (Start.x + End.x) - Normal.x * GlyphOffset + Along.x * Shift, 0.5f * (Start.y + End.y) - Normal.y * GlyphOffset + Along.y * Shift), Text, Symbol);
         }
-        else if (Shape->Kind == SketchCurveKind::Circle || Shape->Kind == SketchCurveKind::Arc)
+        else if (Shape->Kind == SketchCurveCategory::Circle || Shape->Kind == SketchCurveCategory::Arc)
         {
             const Vector2 Centre = Sketch.Points[Shape->Centre].Position;
             const double  Radius = MeasureSketchRadius(Sketch, *Shape);
@@ -3499,7 +3499,7 @@ std::vector<ConstraintGlyph> LayoutConstraintGlyphs(const SketcherWorkspaceState
     {
         const ImVec2 A(From.x + Normal.x * DimensionOffset, From.y + Normal.y * DimensionOffset);
         const ImVec2 B(To.x + Normal.x * DimensionOffset, To.y + Normal.y * DimensionOffset);
-        ConstraintGlyph* Glyph = Pill(Constraint, ImVec2(0.5f * (A.x + B.x), 0.5f * (A.y + B.y)), Text, 0);
+        ConstraintSymbol* Glyph = Pill(Constraint, ImVec2(0.5f * (A.x + B.x), 0.5f * (A.y + B.y)), Text, 0);
         Glyph->Strokes = { { A, B }, { From, ImVec2(A.x + Normal.x * 4.0f, A.y + Normal.y * 4.0f) }, { To, ImVec2(B.x + Normal.x * 4.0f, B.y + Normal.y * 4.0f) } };
     };
     for (int Index = 0; Index < int(Sketch.Constraints.size()); ++Index)
@@ -3507,50 +3507,50 @@ std::vector<ConstraintGlyph> LayoutConstraintGlyphs(const SketcherWorkspaceState
         const SketchConstraint& Constraint = Sketch.Constraints[Index];
         switch (Constraint.Kind)
         {
-        case SketchConstraintKind::Horizontal:    OnCurve(Index, Constraint.First, "H", 0); break;
-        case SketchConstraintKind::Vertical:      OnCurve(Index, Constraint.First, "V", 0); break;
-        case SketchConstraintKind::Parallel:      OnCurve(Index, Constraint.First, {}, 1); OnCurve(Index, Constraint.Second, {}, 1); break;
-        case SketchConstraintKind::Perpendicular: OnCurve(Index, Constraint.First, {}, 2); OnCurve(Index, Constraint.Second, {}, 2); break;
-        case SketchConstraintKind::EqualLength:
-        case SketchConstraintKind::EqualRadius:   OnCurve(Index, Constraint.First, "=", 0); OnCurve(Index, Constraint.Second, "=", 0); break;
-        case SketchConstraintKind::Coincident:    AtPoint(Index, Constraint.First, "C"); break;
-        case SketchConstraintKind::Fixed:         AtPoint(Index, Constraint.First, "F"); break;
-        case SketchConstraintKind::PointOnLine:
-        case SketchConstraintKind::PointOnCircle: AtPoint(Index, Constraint.First, "O"); break;
-        case SketchConstraintKind::Midpoint:      AtPoint(Index, Constraint.First, "M"); break;
-        case SketchConstraintKind::Concentric:    if (const SketchCurve* Shape = CurveOf(Constraint.First)) AtPoint(Index, Shape->Centre, "CC"); break;
-        case SketchConstraintKind::Tangent:
-            if (const SketchCurve* Shape = CurveOf(Constraint.First); Shape && Shape->Kind == SketchCurveKind::Line) OnCurve(Index, Constraint.First, "T", 0);
+        case SketchConstraintCategory::Horizontal:    OnCurve(Index, Constraint.First, "H", 0); break;
+        case SketchConstraintCategory::Vertical:      OnCurve(Index, Constraint.First, "V", 0); break;
+        case SketchConstraintCategory::Parallel:      OnCurve(Index, Constraint.First, {}, 1); OnCurve(Index, Constraint.Second, {}, 1); break;
+        case SketchConstraintCategory::Perpendicular: OnCurve(Index, Constraint.First, {}, 2); OnCurve(Index, Constraint.Second, {}, 2); break;
+        case SketchConstraintCategory::EqualLength:
+        case SketchConstraintCategory::EqualRadius:   OnCurve(Index, Constraint.First, "=", 0); OnCurve(Index, Constraint.Second, "=", 0); break;
+        case SketchConstraintCategory::Coincident:    AtPoint(Index, Constraint.First, "C"); break;
+        case SketchConstraintCategory::Fixed:         AtPoint(Index, Constraint.First, "F"); break;
+        case SketchConstraintCategory::PointOnLine:
+        case SketchConstraintCategory::PointOnCircle: AtPoint(Index, Constraint.First, "O"); break;
+        case SketchConstraintCategory::Midpoint:      AtPoint(Index, Constraint.First, "M"); break;
+        case SketchConstraintCategory::Concentric:    if (const SketchCurve* Shape = CurveOf(Constraint.First)) AtPoint(Index, Shape->Centre, "CC"); break;
+        case SketchConstraintCategory::Tangent:
+            if (const SketchCurve* Shape = CurveOf(Constraint.First); Shape && Shape->Kind == SketchCurveCategory::Line) OnCurve(Index, Constraint.First, "T", 0);
             else OnCurve(Index, Constraint.Second, "T", 0);
             break;
-        case SketchConstraintKind::SplineTangent:   AtPoint(Index, Constraint.Third, "G1"); break;
-        case SketchConstraintKind::SplineCurvature: AtPoint(Index, Constraint.Third, "G2"); break;
-        case SketchConstraintKind::PointOnSpline:   AtPoint(Index, Constraint.First, "O"); break;
-        case SketchConstraintKind::SplineDirection: AtPoint(Index, Constraint.Third, std::abs(Constraint.Value) < 1.0e-12 ? "H" : "V"); break;
-        case SketchConstraintKind::Symmetric:
+        case SketchConstraintCategory::SplineTangent:   AtPoint(Index, Constraint.Third, "G1"); break;
+        case SketchConstraintCategory::SplineCurvature: AtPoint(Index, Constraint.Third, "G2"); break;
+        case SketchConstraintCategory::PointOnSpline:   AtPoint(Index, Constraint.First, "O"); break;
+        case SketchConstraintCategory::SplineDirection: AtPoint(Index, Constraint.Third, std::abs(Constraint.Value) < 1.0e-12 ? "H" : "V"); break;
+        case SketchConstraintCategory::Symmetric:
         {
             const ImVec2 A = PointPixel(Constraint.First), B = PointPixel(Constraint.Second);
             Pill(Index, ImVec2(0.5f * (A.x + B.x), 0.5f * (A.y + B.y) - GlyphOffset), "Y", 0);
             break;
         }
-        case SketchConstraintKind::Length:
-            if (const SketchCurve* Shape = CurveOf(Constraint.First); Shape && Shape->Kind == SketchCurveKind::Line)
+        case SketchConstraintCategory::Length:
+            if (const SketchCurve* Shape = CurveOf(Constraint.First); Shape && Shape->Kind == SketchCurveCategory::Line)
             {
                 ImVec2 Start, End, Along, Normal;
                 LineFrame(*Shape, Start, End, Along, Normal);
                 Dimension(Index, Start, End, Normal, FormatLength(MeasureSketchConstraint(Sketch, Constraint)));
             }
             break;
-        case SketchConstraintKind::Distance:
+        case SketchConstraintCategory::Distance:
         {
             const ImVec2 A = PointPixel(Constraint.First), B = PointPixel(Constraint.Second);
             Dimension(Index, A, B, Outward(A, B), FormatLength(MeasureSketchConstraint(Sketch, Constraint)));
             break;
         }
-        case SketchConstraintKind::HorizontalDistance:
-        case SketchConstraintKind::VerticalDistance:
+        case SketchConstraintCategory::HorizontalDistance:
+        case SketchConstraintCategory::VerticalDistance:
         {
-            const bool Across = Constraint.Kind == SketchConstraintKind::HorizontalDistance;
+            const bool Across = Constraint.Kind == SketchConstraintCategory::HorizontalDistance;
             if (Constraint.Value == 0.0 && Constraint.Parameter.empty())
             {
                 // Level / plumb points (H / V on two points): a letter between them.
@@ -3565,7 +3565,7 @@ std::vector<ConstraintGlyph> LayoutConstraintGlyphs(const SketcherWorkspaceState
             Dimension(Index, A, B, Outward(A, B), FormatLength(std::abs(MeasureSketchConstraint(Sketch, Constraint))));
             break;
         }
-        case SketchConstraintKind::Radius:
+        case SketchConstraintCategory::Radius:
             if (const SketchCurve* Shape = CurveOf(Constraint.First); Shape && Shape->Centre >= 0)
             {
                 const Vector2 Centre = Sketch.Points[Shape->Centre].Position;
@@ -3575,15 +3575,15 @@ std::vector<ConstraintGlyph> LayoutConstraintGlyphs(const SketcherWorkspaceState
                 const ImVec2  Out    = Unit(ImVec2(Rim.x - Middle.x, Rim.y - Middle.y), ImVec2(0.7f, -0.7f));
                 const std::string Text = "R" + FormatLength(Radius);
                 const float   Reach  = ImGui::CalcTextSize(Text.c_str()).x * 0.5f + 12.0f;
-                ConstraintGlyph* Glyph = Pill(Index, ImVec2(Rim.x + Out.x * Reach, Rim.y + Out.y * Reach), Text, 0);
+                ConstraintSymbol* Glyph = Pill(Index, ImVec2(Rim.x + Out.x * Reach, Rim.y + Out.y * Reach), Text, 0);
                 Glyph->Strokes = { { Middle, Rim } };
             }
             break;
-        case SketchConstraintKind::Angle:
+        case SketchConstraintCategory::Angle:
         {
             const SketchCurve* FirstLine = CurveOf(Constraint.First);
             const SketchCurve* SecondLine = CurveOf(Constraint.Second);
-            if (!FirstLine || !SecondLine || FirstLine->Kind != SketchCurveKind::Line || SecondLine->Kind != SketchCurveKind::Line) break;
+            if (!FirstLine || !SecondLine || FirstLine->Kind != SketchCurveCategory::Line || SecondLine->Kind != SketchCurveCategory::Line) break;
             const Vector2 P0 = Sketch.Points[FirstLine->Start].Position, P1 = Sketch.Points[FirstLine->End].Position;
             const Vector2 Q0 = Sketch.Points[SecondLine->Start].Position, Q1 = Sketch.Points[SecondLine->End].Position;
             const Vector2 U = P1 - P0, W = Q1 - Q0;
@@ -3609,7 +3609,7 @@ std::vector<ConstraintGlyph> LayoutConstraintGlyphs(const SketcherWorkspaceState
             char Text[32];
             std::snprintf(Text, sizeof(Text), "%.4g°", std::abs(MeasureSketchConstraint(Sketch, Constraint)) * 180.0 / std::numbers::pi);
             const float  Middle = From + Sweep * 0.5f;
-            ConstraintGlyph* Glyph = Pill(Index, ImVec2(Hub.x + std::cos(Middle) * 46.0f, Hub.y + std::sin(Middle) * 46.0f), Text, 0);
+            ConstraintSymbol* Glyph = Pill(Index, ImVec2(Hub.x + std::cos(Middle) * 46.0f, Hub.y + std::sin(Middle) * 46.0f), Text, 0);
             constexpr int Steps = 16;
             for (int Step = 0; Step < Steps; ++Step)
             {
@@ -3622,7 +3622,7 @@ std::vector<ConstraintGlyph> LayoutConstraintGlyphs(const SketcherWorkspaceState
         }
         // A reference (driven) dimension reads in parentheses, SolveSpace style.
         if (Constraint.DrivenCondition)
-            for (ConstraintGlyph& Glyph : Glyphs)
+            for (ConstraintSymbol& Glyph : Glyphs)
                 if (Glyph.Constraint == Index && !Glyph.Text.empty() && Glyph.Text.front() != '(')
                 {
                     Glyph.Text         = "(" + Glyph.Text + ")";
@@ -3637,10 +3637,10 @@ struct OtherSketch
 {
     std::string        Label  = {};                                                          // [-] - Sketch step label
     const SketchModel* Sketch = nullptr;                                                     // [-] - Solved sketch
-    OrthonormalFrame   Plane  = {};                                                          // [-] - Elevated plane
+    OrthonormalBasis   Plane  = {};                                                          // [-] - Elevated plane
 };
 
-[[nodiscard]] std::vector<OtherSketch> OtherSketches(const SketcherWorkspaceState& State)
+[[nodiscard]] std::vector<OtherSketch> OtherSketches(const SketcherWorkspaceStatus& State)
 {
     std::vector<OtherSketch> Sketches;
     for (const std::string& Label : SketcherLinkSources(State.Document, State.Constrain.Sketch))
@@ -3648,7 +3648,7 @@ struct OtherSketch
         const auto Solved = State.Document.Regeneration.Sketches.find(Label);
         if (Solved == State.Document.Regeneration.Sketches.end()) continue;
         for (const FeatureStep& Step : State.Document.Tree.Steps)
-            if (Step.Label == Label && Step.Kind == FeatureStepKind::Sketch) Sketches.push_back({ Label, &Solved->second, ElevatedSketchPlane(State.Document, Step) });
+            if (Step.Label == Label && Step.Kind == FeatureStepCategory::Sketch) Sketches.push_back({ Label, &Solved->second, ElevatedSketchPlane(State.Document, Step) });
     }
     return Sketches;
 }
@@ -3658,11 +3658,11 @@ struct OtherSketch
     return First.Sketch == Second.Sketch && First.Pick.Kind == Second.Pick.Kind && First.Pick.Index == Second.Pick.Index;
 }
 
-void OpenConstraintSession(SketcherWorkspaceState& State)
+void OpenConstraintSession(SketcherWorkspaceStatus& State)
 {
     std::string Label = FocusedSketchCondition(State) ? State.FocusedStep : std::string{};
     if (Label.empty())
-        for (const FeatureStep& Step : State.Document.Tree.Steps) if (Step.Kind == FeatureStepKind::Sketch) Label = Step.Label;   // newest sketch
+        for (const FeatureStep& Step : State.Document.Tree.Steps) if (Step.Kind == FeatureStepCategory::Sketch) Label = Step.Label;   // newest sketch
     if (Label.empty()) { Announce(State, "Constrain (K) needs a sketch: draw one first (Shift+A line, Shift+Q rectangle, Shift+W circle …)"); return; }
     const int Commits = State.Constrain.Commits;
     State.Constrain                 = {};
@@ -3678,7 +3678,7 @@ void OpenConstraintSession(SketcherWorkspaceState& State)
                             int(View.Sketch->Constraints.size()), View.Solve ? View.Solve->DegreesOfFreedom : -1));
 }
 
-void CloseConstraintSession(SketcherWorkspaceState& State)
+void CloseConstraintSession(SketcherWorkspaceStatus& State)
 {
     State.Constrain.ActiveCondition = false;
     State.Constrain.DragCondition   = false;
@@ -3687,7 +3687,7 @@ void CloseConstraintSession(SketcherWorkspaceState& State)
 }
 
 // Drops picks that no longer exist (after undo) and ends the session when its sketch is gone.
-void ReconcileConstraintSession(SketcherWorkspaceState& State)
+void ReconcileConstraintSession(SketcherWorkspaceStatus& State)
 {
     SketcherConstraintSession& Session = State.Constrain;
     const ConstraintView View = ViewConstraintSketch(State, Session.Sketch);
@@ -3700,31 +3700,31 @@ void ReconcileConstraintSession(SketcherWorkspaceState& State)
             const auto Solved = State.Document.Regeneration.Sketches.find(Pick.Sketch);
             Sketch = Solved != State.Document.Regeneration.Sketches.end() ? &Solved->second : nullptr;
         }
-        return !Sketch || Pick.Pick.Index < 0 || Pick.Pick.Index >= int(Pick.Pick.Kind == SketchPickKind::Point ? Sketch->Points.size() : Sketch->Curves.size());
+        return !Sketch || Pick.Pick.Index < 0 || Pick.Pick.Index >= int(Pick.Pick.Kind == SketchPickCategory::Point ? Sketch->Points.size() : Sketch->Curves.size());
     });
     if (Session.PickedConstraint >= int(View.Sketch->Constraints.size())) Session.PickedConstraint = -1;
 }
 
 // 📝 Under the pointer, in order: a point (≤ 8 px), a constraint glyph, a curve (≤ 8 px) of the session sketch, then a
 //    point and a curve of an earlier sketch (for links).
-void HoverConstraintTarget(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, const ConstraintView& View, const std::vector<ConstraintGlyph>& Glyphs)
+void HoverConstraintTarget(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, const ConstraintView& View, const std::vector<ConstraintSymbol>& Glyphs)
 {
     SketcherConstraintSession& Session = State.Constrain;
     Session.HoverCondition  = false;
     Session.HoverConstraint = -1;
     const ImVec2 Mouse   = ImGui::GetIO().MousePos;
     double       Nearest = ConstraintReach;
-    auto NearestPoint = [&](const SketchModel& Sketch, const OrthonormalFrame& Plane, const std::string& Label)
+    auto NearestPoint = [&](const SketchModel& Sketch, const OrthonormalBasis& Plane, const std::string& Label)
     {
         for (int Point = 0; Point < int(Sketch.Points.size()); ++Point)
         {
             ImVec2 Pixel;
             if (!ProjectWorldPoint(State, Frame, PlacePlanePoint(Plane, Sketch.Points[Point].Position), Pixel)) continue;
             const double Gap = std::hypot(Pixel.x - Mouse.x, Pixel.y - Mouse.y);
-            if (Gap <= Nearest) { Nearest = Gap; Session.HoverCondition = true; Session.Hover = { Label, { SketchPickKind::Point, Point } }; }
+            if (Gap <= Nearest) { Nearest = Gap; Session.HoverCondition = true; Session.Hover = { Label, { SketchPickCategory::Point, Point } }; }
         }
     };
-    auto NearestCurve = [&](const SketchModel& Sketch, const OrthonormalFrame& Plane, const std::string& Label)
+    auto NearestCurve = [&](const SketchModel& Sketch, const OrthonormalBasis& Plane, const std::string& Label)
     {
         for (int Curve = 0; Curve < int(Sketch.Curves.size()); ++Curve)
         {
@@ -3740,13 +3740,13 @@ void HoverConstraintTarget(SketcherWorkspaceState& State, const OrbitCameraFrame
                 const double Square = AlongX * AlongX + AlongY * AlongY;
                 const double Share  = Square > 0.0 ? std::clamp(((Mouse.x - Pixels[Index].x) * AlongX + (Mouse.y - Pixels[Index].y) * AlongY) / Square, 0.0, 1.0) : 0.0;
                 const double Gap    = std::hypot(Pixels[Index].x + AlongX * Share - Mouse.x, Pixels[Index].y + AlongY * Share - Mouse.y);
-                if (Gap <= Nearest) { Nearest = Gap; Session.HoverCondition = true; Session.Hover = { Label, { SketchPickKind::Curve, Curve } }; }
+                if (Gap <= Nearest) { Nearest = Gap; Session.HoverCondition = true; Session.Hover = { Label, { SketchPickCategory::Curve, Curve } }; }
             }
         }
     };
     NearestPoint(*View.Sketch, View.Plane, {});
     if (Session.HoverCondition) return;
-    for (const ConstraintGlyph& Glyph : Glyphs)
+    for (const ConstraintSymbol& Glyph : Glyphs)
         if (std::abs(Mouse.x - Glyph.Centre.x) <= Glyph.HalfExtent.x + 2.0f && std::abs(Mouse.y - Glyph.Centre.y) <= Glyph.HalfExtent.y + 2.0f) { Session.HoverConstraint = Glyph.Constraint; return; }
     NearestCurve(*View.Sketch, View.Plane, {});
     if (Session.HoverCondition) return;
@@ -3757,7 +3757,7 @@ void HoverConstraintTarget(SketcherWorkspaceState& State, const OrbitCameraFrame
 }
 
 // "Line1.End", or "Line2.End of Rectangle1" for an earlier sketch's geometry.
-[[nodiscard]] std::string NameSessionPick(const SketcherWorkspaceState& State, const SketcherSketchPick& Pick)
+[[nodiscard]] std::string NameSessionPick(const SketcherWorkspaceStatus& State, const SketcherSketchPick& Pick)
 {
     const std::string Label  = Pick.Sketch.empty() ? State.Constrain.Sketch : Pick.Sketch;
     const auto        Solved = State.Document.Regeneration.Sketches.find(Label);
@@ -3766,7 +3766,7 @@ void HoverConstraintTarget(SketcherWorkspaceState& State, const OrbitCameraFrame
     return Pick.Sketch.empty() ? Name : Name + " of " + CaptionOf(State.Document, Pick.Sketch);
 }
 
-[[nodiscard]] std::string ListConstraintPicks(const SketcherWorkspaceState& State)
+[[nodiscard]] std::string ListConstraintPicks(const SketcherWorkspaceStatus& State)
 {
     const ConstraintView View = ViewConstraintSketch(State, State.Constrain.Sketch);
     std::string Names;
@@ -3775,7 +3775,7 @@ void HoverConstraintTarget(SketcherWorkspaceState& State, const OrbitCameraFrame
     return Names;
 }
 
-void ConcludeConstraint(SketcherWorkspaceState& State, const SketcherCommandOutcome& Outcome)
+void ConcludeConstraint(SketcherWorkspaceStatus& State, const SketcherCommandOutcome& Outcome)
 {
     SketcherConstraintSession& Session = State.Constrain;
     Session.Refusal = Outcome.AcceptedCondition ? std::string{} : Outcome.Refusal;
@@ -3783,7 +3783,7 @@ void ConcludeConstraint(SketcherWorkspaceState& State, const SketcherCommandOutc
     Conclude(State, Outcome);
 }
 
-void CommitConstraint(SketcherWorkspaceState& State, SketchConstraint Constraint)
+void CommitConstraint(SketcherWorkspaceStatus& State, SketchConstraint Constraint)
 {
     SketcherConstraintSession& Session = State.Constrain;
     const SketcherCommandOutcome Outcome = ConstrainSketcherSketch(State.Document, Session.Sketch, Constraint, Session.Picks);
@@ -3797,7 +3797,7 @@ void CommitConstraint(SketcherWorkspaceState& State, SketchConstraint Constraint
 }
 
 // 📝 A verb key: the picks become a constraint (D / N wait for a value first), or the refusal says why not.
-void ApplyConstraintVerb(SketcherWorkspaceState& State, SketchConstraintVerb Verb)
+void ApplyConstraintVerb(SketcherWorkspaceStatus& State, SketchConstraintVerb Verb)
 {
     SketcherConstraintSession& Session = State.Constrain;
     const SketcherLinkedPicks Linked = LinkSketcherPicks(State.Document, Session.Sketch, Session.Picks);
@@ -3830,7 +3830,7 @@ void ApplyConstraintVerb(SketcherWorkspaceState& State, SketchConstraintVerb Ver
 }
 
 // Shift+D: the picks become a reference (driven) dimension at once; it reads, it never drives.
-void ApplyConstraintReference(SketcherWorkspaceState& State)
+void ApplyConstraintReference(SketcherWorkspaceStatus& State)
 {
     SketcherConstraintSession& Session = State.Constrain;
     const SketcherLinkedPicks Linked = LinkSketcherPicks(State.Document, Session.Sketch, Session.Picks);
@@ -3847,7 +3847,7 @@ void ApplyConstraintReference(SketcherWorkspaceState& State)
 }
 
 // E: the picked dimension between driving and reference.
-void TogglePickedReference(SketcherWorkspaceState& State)
+void TogglePickedReference(SketcherWorkspaceStatus& State)
 {
     SketcherConstraintSession& Session = State.Constrain;
     if (Session.PickedConstraint < 0) { Announce(State, "Reference (E): click a dimension first"); return; }
@@ -3855,7 +3855,7 @@ void TogglePickedReference(SketcherWorkspaceState& State)
 }
 
 // Delete on one picked linked point / curve: the link dropped, the geometry stays (free).
-void UnlinkPickedGeometry(SketcherWorkspaceState& State)
+void UnlinkPickedGeometry(SketcherWorkspaceStatus& State)
 {
     SketcherConstraintSession& Session = State.Constrain;
     const SketcherCommandOutcome Outcome = UnlinkSketcherGeometry(State.Document, Session.Sketch, Session.Picks.front().Pick);
@@ -3863,16 +3863,16 @@ void UnlinkPickedGeometry(SketcherWorkspaceState& State)
     if (Outcome.AcceptedCondition) Session.Picks.clear();
 }
 
-void CommitPendingConstraint(SketcherWorkspaceState& State)
+void CommitPendingConstraint(SketcherWorkspaceStatus& State)
 {
     SketcherConstraintSession& Session = State.Constrain;
     SketchConstraint Constraint = Session.Proposed;
     double Typed = 0.0;
-    if (ParseTypedAmount(Session.Typed, Typed)) Constraint.Value = Constraint.Kind == SketchConstraintKind::Angle ? Typed * std::numbers::pi / 180.0 : Typed;
+    if (ParseTypedAmount(Session.Typed, Typed)) Constraint.Value = Constraint.Kind == SketchConstraintCategory::Angle ? Typed * std::numbers::pi / 180.0 : Typed;
     CommitConstraint(State, Constraint);
 }
 
-void RemovePickedConstraint(SketcherWorkspaceState& State)
+void RemovePickedConstraint(SketcherWorkspaceStatus& State)
 {
     SketcherConstraintSession& Session = State.Constrain;
     if (Session.PickedConstraint < 0) { Announce(State, "Remove: click a constraint glyph or dimension first"); return; }
@@ -3881,18 +3881,18 @@ void RemovePickedConstraint(SketcherWorkspaceState& State)
     if (Outcome.AcceptedCondition) Session.PickedConstraint = -1;
 }
 
-void EditPickedDimension(SketcherWorkspaceState& State)
+void EditPickedDimension(SketcherWorkspaceStatus& State)
 {
     SketcherConstraintSession& Session = State.Constrain;
     const ConstraintView View = ViewConstraintSketch(State, Session.Sketch);
     double Value = 0.0;
     if (!View.Sketch || Session.PickedConstraint < 0 || !ParseTypedAmount(Session.Typed, Value)) return;
-    const bool Angular = View.Sketch->Constraints[Session.PickedConstraint].Kind == SketchConstraintKind::Angle;
+    const bool Angular = View.Sketch->Constraints[Session.PickedConstraint].Kind == SketchConstraintCategory::Angle;
     ConcludeConstraint(State, ChangeSketcherDimension(State.Document, Session.Sketch, Session.PickedConstraint, Angular ? Value * std::numbers::pi / 180.0 : Value));
     Session.Typed.clear();
 }
 
-void ClickConstraintTarget(SketcherWorkspaceState& State)
+void ClickConstraintTarget(SketcherWorkspaceStatus& State)
 {
     SketcherConstraintSession& Session = State.Constrain;
     Session.Refusal.clear();
@@ -3926,7 +3926,7 @@ void ClickConstraintTarget(SketcherWorkspaceState& State)
 }
 
 // 📝 Viewport gestures while K is open: hover, click picks, press-travel-release drags a point.
-void DriveConstraintSession(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, bool PointerCondition, bool LeftClick, bool RightClick)
+void DriveConstraintSession(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, bool PointerCondition, bool LeftClick, bool RightClick)
 {
     ReconcileConstraintSession(State);
     SketcherConstraintSession& Session = State.Constrain;
@@ -3938,7 +3938,7 @@ void DriveConstraintSession(SketcherWorkspaceState& State, const OrbitCameraFram
         if (PointerCondition) HoverConstraintTarget(State, Frame, View, LayoutConstraintGlyphs(State, Frame, *View.Sketch, View.Plane));
         else { Session.HoverCondition = false; Session.HoverConstraint = -1; }
     }
-    if (PointerCondition && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && Session.HoverCondition && Session.Hover.Sketch.empty() && Session.Hover.Pick.Kind == SketchPickKind::Point)
+    if (PointerCondition && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && Session.HoverCondition && Session.Hover.Sketch.empty() && Session.Hover.Pick.Kind == SketchPickCategory::Point)
     {
         Session.PressCondition = true;
         Session.DragPoint      = Session.Hover.Pick.Index;
@@ -3969,7 +3969,7 @@ void DriveConstraintSession(SketcherWorkspaceState& State, const OrbitCameraFram
         Session.DragCondition  = false;
         if (Dragged)
         {
-            if (Session.DragPreviewCondition && State.Picker.Current.Kind != SketcherSnapKind::None) ++State.Picker.Snapped;
+            if (Session.DragPreviewCondition && State.Picker.Current.Kind != SketcherSnapCategory::None) ++State.Picker.Snapped;
             State.Picker.Current = {};
             if (Session.DragPreviewCondition) ConcludeConstraint(State, DragSketcherSketchPoint(State.Document, Session.Sketch, Session.DragPoint, Session.DragTarget));
             Session.DragPreviewCondition = false;
@@ -3986,7 +3986,7 @@ void DriveConstraintSession(SketcherWorkspaceState& State, const OrbitCameraFram
 }
 
 // Pixel polyline of one sketch curve.
-[[nodiscard]] std::vector<ImVec2> CurvePixels(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, const SketchModel& Sketch, const SketchCurve& Curve, const OrthonormalFrame& Plane)
+[[nodiscard]] std::vector<ImVec2> CurvePixels(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, const SketchModel& Sketch, const SketchCurve& Curve, const OrthonormalBasis& Plane)
 {
     std::vector<ImVec2> Pixels;
     for (const Vector2& Sample : SampleSketchCurve(Sketch, Curve)) { ImVec2 Pixel; if (ProjectWorldPoint(State, Frame, PlacePlanePoint(Plane, Sample), Pixel)) Pixels.push_back(Pixel); }
@@ -4033,7 +4033,7 @@ void DrawDashedPolyline(ImDrawList* Canvas, const std::vector<ImVec2>& Pixels, I
 
 // 📝 The session sketch on top of the ordinary overlay: curves green when fully fixed, picks blue, hover white, points
 //    (green fixed · light blue free), the drag preview, then every constraint glyph / dimension coloured by status.
-void DrawConstraintOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawConstraintOverlay(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     const SketcherConstraintSession& Session = State.Constrain;
     if (!Session.ActiveCondition) return;
@@ -4041,10 +4041,10 @@ void DrawConstraintOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
     if (!View.Sketch) return;
     const bool         Dragging = Session.DragCondition && Session.DragPreviewCondition;
     const SketchModel& Shown    = Dragging ? Session.DragPreview : *View.Sketch;
-    auto PickedIn = [&](const std::string& Label, SketchPickKind Kind, int Index) { return std::any_of(Session.Picks.begin(), Session.Picks.end(), [&](const SketcherSketchPick& Pick) { return SamePick(Pick, { Label, { Kind, Index } }); }); };
-    auto HoveredIn = [&](const std::string& Label, SketchPickKind Kind, int Index) { return Session.HoverCondition && SamePick(Session.Hover, { Label, { Kind, Index } }); };
-    auto Picked  = [&](SketchPickKind Kind, int Index) { return PickedIn({}, Kind, Index); };
-    auto Hovered = [&](SketchPickKind Kind, int Index) { return HoveredIn({}, Kind, Index); };
+    auto PickedIn = [&](const std::string& Label, SketchPickCategory Kind, int Index) { return std::any_of(Session.Picks.begin(), Session.Picks.end(), [&](const SketcherSketchPick& Pick) { return SamePick(Pick, { Label, { Kind, Index } }); }); };
+    auto HoveredIn = [&](const std::string& Label, SketchPickCategory Kind, int Index) { return Session.HoverCondition && SamePick(Session.Hover, { Label, { Kind, Index } }); };
+    auto Picked  = [&](SketchPickCategory Kind, int Index) { return PickedIn({}, Kind, Index); };
+    auto Hovered = [&](SketchPickCategory Kind, int Index) { return HoveredIn({}, Kind, Index); };
     // Earlier sketches first, dimmed: their points and curves can be picked to link them in.
     for (const OtherSketch& Other : OtherSketches(State))
     {
@@ -4052,7 +4052,7 @@ void DrawConstraintOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
         {
             const std::vector<ImVec2> Pixels = CurvePixels(State, Frame, *Other.Sketch, Other.Sketch->Curves[Curve], Other.Plane);
             if (Pixels.size() < 2) continue;
-            const bool Chosen = PickedIn(Other.Label, SketchPickKind::Curve, Curve), Over = HoveredIn(Other.Label, SketchPickKind::Curve, Curve);
+            const bool Chosen = PickedIn(Other.Label, SketchPickCategory::Curve, Curve), Over = HoveredIn(Other.Label, SketchPickCategory::Curve, Curve);
             if (Chosen || Over) Canvas->AddPolyline(Pixels.data(), int(Pixels.size()), Chosen ? SelectedColour : IM_COL32(0xff, 0xff, 0xff, 0xff), 3.0f);
             else DrawDashedPolyline(Canvas, Pixels, OtherSketchColour, 1.5f);
         }
@@ -4060,10 +4060,10 @@ void DrawConstraintOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
         {
             ImVec2 Pixel;
             if (!ProjectWorldPoint(State, Frame, PlacePlanePoint(Other.Plane, Other.Sketch->Points[Point].Position), Pixel)) continue;
-            const bool Chosen = PickedIn(Other.Label, SketchPickKind::Point, Point);
+            const bool Chosen = PickedIn(Other.Label, SketchPickCategory::Point, Point);
             if (!Chosen) Canvas->AddCircleFilled(Pixel, 4.5f, OtherSketchCasing);
             Canvas->AddCircleFilled(Pixel, Chosen ? 5.0f : 3.0f, Chosen ? SelectedColour : OtherSketchColour);
-            if (HoveredIn(Other.Label, SketchPickKind::Point, Point)) Canvas->AddCircle(Pixel, 8.0f, IM_COL32(0xff, 0xff, 0xff, 0xff), 0, 1.5f);
+            if (HoveredIn(Other.Label, SketchPickCategory::Point, Point)) Canvas->AddCircle(Pixel, 8.0f, IM_COL32(0xff, 0xff, 0xff, 0xff), 0, 1.5f);
         }
     }
     for (int Curve = 0; Curve < int(Shown.Curves.size()); ++Curve)
@@ -4072,20 +4072,20 @@ void DrawConstraintOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
         if (Pixels.size() < 2) continue;
         const bool  Fixed  = !Dragging && View.Solve && Curve < int(View.Solve->CurveFixed.size()) && View.Solve->CurveFixed[Curve];
         const bool  Linked = !Shown.Curves[Curve].Link.Sketch.empty();
-        const ImU32 Colour = Picked(SketchPickKind::Curve, Curve) ? SelectedColour : Hovered(SketchPickKind::Curve, Curve) ? IM_COL32(0xff, 0xff, 0xff, 0xff) : Linked ? LinkColour : Fixed ? ActiveColour : FreeColour;
-        Canvas->AddPolyline(Pixels.data(), int(Pixels.size()), Colour, Picked(SketchPickKind::Curve, Curve) || Hovered(SketchPickKind::Curve, Curve) ? 3.5f : 2.5f);
+        const ImU32 Colour = Picked(SketchPickCategory::Curve, Curve) ? SelectedColour : Hovered(SketchPickCategory::Curve, Curve) ? IM_COL32(0xff, 0xff, 0xff, 0xff) : Linked ? LinkColour : Fixed ? ActiveColour : FreeColour;
+        Canvas->AddPolyline(Pixels.data(), int(Pixels.size()), Colour, Picked(SketchPickCategory::Curve, Curve) || Hovered(SketchPickCategory::Curve, Curve) ? 3.5f : 2.5f);
     }
     for (int Point = 0; Point < int(Shown.Points.size()); ++Point)
     {
         ImVec2 Pixel;
         if (!ProjectWorldPoint(State, Frame, PlacePlanePoint(View.Plane, Shown.Points[Point].Position), Pixel)) continue;
         const bool  Fixed  = !Dragging && View.Solve && Point < int(View.Solve->PointFixed.size()) && View.Solve->PointFixed[Point];
-        const bool  Chosen = Picked(SketchPickKind::Point, Point) || (Dragging && Point == Session.DragPoint);
+        const bool  Chosen = Picked(SketchPickCategory::Point, Point) || (Dragging && Point == Session.DragPoint);
         const bool  Linked = !Shown.Points[Point].Link.Sketch.empty();
         Canvas->AddCircleFilled(Pixel, Chosen ? 5.5f : 4.0f, Chosen ? SelectedColour : Linked ? LinkColour : Fixed ? ActiveColour : FreeColour);
-        if (Hovered(SketchPickKind::Point, Point)) Canvas->AddCircle(Pixel, 8.0f, IM_COL32(0xff, 0xff, 0xff, 0xff), 0, 1.5f);
+        if (Hovered(SketchPickCategory::Point, Point)) Canvas->AddCircle(Pixel, 8.0f, IM_COL32(0xff, 0xff, 0xff, 0xff), 0, 1.5f);
     }
-    for (const ConstraintGlyph& Glyph : LayoutConstraintGlyphs(State, Frame, Shown, View.Plane))
+    for (const ConstraintSymbol& Glyph : LayoutConstraintGlyphs(State, Frame, Shown, View.Plane))
     {
         const SketchConstraintStatus Status = ConstraintStatusOf(View, Glyph.Constraint);
         const bool  Reading  = Glyph.Constraint >= 0 && Glyph.Constraint < int(Shown.Constraints.size()) && Shown.Constraints[Glyph.Constraint].DrivenCondition;
@@ -4115,7 +4115,7 @@ void DrawConstraintOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
 }
 
 // Status line for the K session: sketch, DOF / conflict state, constraint count, picks or the pending verb.
-[[nodiscard]] std::string ConstraintSessionReadout(const SketcherWorkspaceState& State, bool& TroubleCondition)
+[[nodiscard]] std::string ConstraintSessionReadout(const SketcherWorkspaceStatus& State, bool& TroubleCondition)
 {
     const SketcherConstraintSession& Session = State.Constrain;
     const ConstraintView View = ViewConstraintSketch(State, Session.Sketch);
@@ -4128,7 +4128,7 @@ void DrawConstraintOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
         Freedom = TroubleCondition ? std::string("conflicting") : View.Solve->DegreesOfFreedom == 0 ? std::string("fully constrained") : Compose("DOF %d", View.Solve->DegreesOfFreedom);
     }
     std::string Tail;
-    if (Session.DragCondition) Tail = Compose(" · drag %s to (%s, %s)", NameSketchPick(*View.Sketch, { SketchPickKind::Point, Session.DragPoint }).c_str(), FormatLength(Session.DragTarget.X).c_str(), FormatLength(Session.DragTarget.Y).c_str());
+    if (Session.DragCondition) Tail = Compose(" · drag %s to (%s, %s)", NameSketchPick(*View.Sketch, { SketchPickCategory::Point, Session.DragPoint }).c_str(), FormatLength(Session.DragTarget.X).c_str(), FormatLength(Session.DragTarget.Y).c_str());
     else if (Session.PendingCondition) Tail = " · " + DescribeSketchConstraint(*View.Sketch, Session.Proposed) + " · typed " + (Session.Typed.empty() ? std::string("(measured)") : Session.Typed);
     else if (Session.PickedConstraint >= 0)
     {
@@ -4141,7 +4141,7 @@ void DrawConstraintOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
 
 // 📝 Keyboard while K is open (after the view keys): Ctrl+Z / Ctrl+Shift+Z stay live.
 template <typename PressedKey>
-void RouteConstraintKeys(SketcherWorkspaceState& State, PressedKey&& Pressed, bool Control, bool Shift, bool Alternate)
+void RouteConstraintKeys(SketcherWorkspaceStatus& State, PressedKey&& Pressed, bool Control, bool Shift, bool Alternate)
 {
     SketcherConstraintSession& Session = State.Constrain;
     ReconcileConstraintSession(State);
@@ -4195,7 +4195,7 @@ void RouteConstraintKeys(SketcherWorkspaceState& State, PressedKey&& Pressed, bo
 }
 
 // Inspector card: the sketch's constraints (click picks, status words), DOF, the verb buttons and a dimension field.
-void DrawConstraintCard(SketcherWorkspaceState& State)
+void DrawConstraintCard(SketcherWorkspaceStatus& State)
 {
     const std::string Label = ConstraintSketchLabel(State);
     if (Label.empty()) return;
@@ -4253,7 +4253,7 @@ void DrawConstraintCard(SketcherWorkspaceState& State)
             }
             if (SketchDimensionCondition(Constraint.Kind) && !Constraint.DrivenCondition)
             {
-                const bool Angular = Constraint.Kind == SketchConstraintKind::Angle;
+                const bool Angular = Constraint.Kind == SketchConstraintCategory::Angle;
                 double Value = MeasureSketchConstraint(*View.Sketch, Constraint) * (Angular ? 180.0 / std::numbers::pi : 1.0);
                 ImGui::SetNextItemWidth(150);
                 if (ImGui::InputDouble(Angular ? "deg###DimensionValue" : "m###DimensionValue", &Value, 0.0, 0.0, "%.6g", ImGuiInputTextFlags_EnterReturnsTrue))
@@ -4294,15 +4294,15 @@ constexpr double SweepSnap  = 0.01;                                             
 {
     std::vector<std::string> Keys = Document.Selection.Bodies;
     auto Add = [&](const std::string& Key) { if (!Key.empty() && std::find(Keys.begin(), Keys.end(), Key) == Keys.end()) Keys.push_back(Key); };
-    for (const std::string& Face : Document.Selection.Faces) Add(SketcherBodyOfName(Document, SketcherSelectionKind::Face, Face));
-    for (const std::string& Edge : Document.Selection.Edges) Add(SketcherBodyOfName(Document, SketcherSelectionKind::Edge, Edge));
+    for (const std::string& Face : Document.Selection.Faces) Add(SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Face));
+    for (const std::string& Edge : Document.Selection.Edges) Add(SketcherBodyOfName(Document, SketcherSelectionCategory::Edge, Edge));
     return Keys;
 }
 
 // 💡 Rigid preview: the shown scene with the keyed bodies' corners and edge segments carried by the map — what a move /
 //    rotate / scale regeneration would tessellate, at the cost of a copy (no clone, no replay, no tessellation). Normals
 //    follow the inverse transpose (M⁻ᵀ = [b×c | c×a | a×b] / det). The release still commits through the kernel.
-[[nodiscard]] SketcherScene MapSceneBodies(const SketcherScene& Scene, const std::vector<std::string>& Keys, const AffineMap& Map)
+[[nodiscard]] SketcherScene MapSceneBodies(const SketcherScene& Scene, const std::vector<std::string>& Keys, const AffineMapping& Map)
 {
     static uint64_t Counter = 0;
     SketcherScene Mapped = Scene;
@@ -4439,7 +4439,7 @@ bool CollectTypedAmount(std::string& Typed)
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
         if (std::find(Labels.begin(), Labels.end(), Step.Label) == Labels.end()) continue;
-        if (Step.Kind == FeatureStepKind::SpaceCurve)
+        if (Step.Kind == FeatureStepCategory::SpaceCurve)
         {
             if (const CurveFitOutcome* Fit = FindFittedCurve(Document, Step.Label); Fit && Fit->Curve.Definition && !Fit->Curve.Definition->Poles.empty())
                 for (const Vector3& Pole : Fit->Curve.Definition->Poles) Include(Pole);
@@ -4447,10 +4447,10 @@ bool CollectTypedAmount(std::string& Typed)
                 for (const Vector3& Point : Step.Points) Include(Point);
             continue;
         }
-        if (Step.Kind != FeatureStepKind::Sketch) continue;
+        if (Step.Kind != FeatureStepCategory::Sketch) continue;
         const auto Solved = Document.Regeneration.Sketches.find(Step.Label);
         if (Solved == Document.Regeneration.Sketches.end()) continue;
-        const OrthonormalFrame Plane = ElevatedSketchPlane(Document, Step);
+        const OrthonormalBasis Plane = ElevatedSketchPlane(Document, Step);
         for (const SketchCurve& Curve : Solved->second.Curves)
             for (const Vector2& Sample : SampleSketchCurve(Solved->second, Curve))
                 Include(PlacePlanePoint(Plane, Sample));
@@ -4458,7 +4458,7 @@ bool CollectTypedAmount(std::string& Typed)
     return Low.X <= High.X ? (Low + High) * 0.5 : Vector3{};
 }
 
-void OpenTransformSession(SketcherWorkspaceState& State, SketcherTransformVerb Verb, bool DuplicateCondition)
+void OpenTransformSession(SketcherWorkspaceStatus& State, SketcherTransformVerb Verb, bool DuplicateCondition)
 {
     SketcherTransformTarget  TargetKind   = SketcherTransformTarget::Bodies;
     std::vector<std::string> Keys         = {};
@@ -4492,7 +4492,7 @@ void OpenTransformSession(SketcherWorkspaceState& State, SketcherTransformVerb V
                 if (const FeatureStep* Step = FindSketchStepByLabel(State.Document, State.SketchPoints.Sketch))
                 {
                     const SketchModel&     Sketch = SolvedSketchOf(State.Document, *Step);
-                    const OrthonormalFrame Plane  = ElevatedSketchPlane(State.Document, *Step);
+                    const OrthonormalBasis Plane  = ElevatedSketchPlane(State.Document, *Step);
                     Vector3 Sum{};
                     int     Count = 0;
                     for (int Pt : State.SketchPoints.Points)
@@ -4683,7 +4683,7 @@ void OpenTransformSession(SketcherWorkspaceState& State, SketcherTransformVerb V
                             DuplicateCondition ? " (at once: a copy in place)" : ""));
 }
 
-void CancelTransformSession(SketcherWorkspaceState& State)
+void CancelTransformSession(SketcherWorkspaceStatus& State)
 {
     State.Transform.ActiveCondition   = false;
     State.Transform.LeftDragCondition = false;
@@ -4692,13 +4692,13 @@ void CancelTransformSession(SketcherWorkspaceState& State)
     Announce(State, std::string(TransformVerbLabel(State.Transform.Verb)) + " cancelled");
 }
 
-[[nodiscard]] bool IdentityMapCondition(const AffineMap& Map)
+[[nodiscard]] bool IdentityMapCondition(const AffineMapping& Map)
 {
     return Length(Map.ColumnX - Vector3{ 1.0, 0.0, 0.0 }) + Length(Map.ColumnY - Vector3{ 0.0, 1.0, 0.0 }) + Length(Map.ColumnZ - Vector3{ 0.0, 0.0, 1.0 }) + Length(Map.Shift) < 1.0e-12;
 }
 
 // The session's command on Document: bodies, sketches/3D curves, or Mode-1 control points / poles / vertices.
-[[nodiscard]] SketcherCommandOutcome RunTransform(SketcherDocument& Document, const SketcherTransformSession& Transform, const AffineMap& Map)
+[[nodiscard]] SketcherCommandOutcome RunTransform(SketcherDocument& Document, const SketcherTransformSession& Transform, const AffineMapping& Map)
 {
     switch (Transform.TargetKind)
     {
@@ -4711,7 +4711,7 @@ void CancelTransformSession(SketcherWorkspaceState& State)
         const FeatureStep* Step = Transform.PointOwner.empty() ? nullptr : FindSketchStepByLabel(Document, Transform.PointOwner);
         if (!Step) break;
         const SketchModel&     Sketch = SolvedSketchOf(Document, *Step);
-        const OrthonormalFrame Plane  = ElevatedSketchPlane(Document, *Step);
+        const OrthonormalBasis Plane  = ElevatedSketchPlane(Document, *Step);
         std::vector<Vector2>   Targets;
         std::vector<Vector3>   Lifted;
         for (int Pt : Transform.PointIndices)
@@ -4780,8 +4780,8 @@ void CancelTransformSession(SketcherWorkspaceState& State)
                 const double  ShiftLength = Length(Moved);
                 const Vector3 Direction   = ShiftLength > 0.0 ? Moved * (1.0 / ShiftLength) : Transform.FaceNormal;
                 Outcome = std::abs(Dot(Direction, Transform.FaceNormal)) > 1.0 - 1.0e-5
-                        ? ChangeSketcherSelection(Document, FaceOperationKind::Offset, Dot(Moved, Transform.FaceNormal))
-                        : ChangeSketcherSelection(Document, FaceOperationKind::Tweak, ShiftLength, Direction);
+                        ? ChangeSketcherSelection(Document, FaceOperationCategory::Offset, Dot(Moved, Transform.FaceNormal))
+                        : ChangeSketcherSelection(Document, FaceOperationCategory::Tweak, ShiftLength, Direction);
             }
             else if (Transform.Verb == SketcherTransformVerb::Rotate)
             {
@@ -4791,12 +4791,12 @@ void CancelTransformSession(SketcherWorkspaceState& State)
                 const double  Angle  = std::atan2(Sine, Cosine);
                 const Vector3 Axis   = Sine > 1.0e-12 ? Normalize(AxisVec)
                                      : (Transform.Axis == 0 ? Vector3{ 1.0, 0.0, 0.0 } : Transform.Axis == 1 ? Vector3{ 0.0, 1.0, 0.0 } : Vector3{ 0.0, 0.0, 1.0 });
-                Outcome = ChangeSketcherSelection(Document, FaceOperationKind::Rotate, Angle, Axis);
+                Outcome = ChangeSketcherSelection(Document, FaceOperationCategory::Rotate, Angle, Axis);
             }
             else
             {
                 const double Factor = std::cbrt(std::max(1.0e-9, std::abs(Dot(Map.ColumnX, Cross(Map.ColumnY, Map.ColumnZ)))));
-                Outcome = ChangeSketcherSelection(Document, FaceOperationKind::Scale, Factor);
+                Outcome = ChangeSketcherSelection(Document, FaceOperationCategory::Scale, Factor);
             }
         }
         if (Document.Selection.Edges.empty()) Document.Selection.Edges = Saved.Edges;
@@ -4836,7 +4836,7 @@ void CancelTransformSession(SketcherWorkspaceState& State)
     return SketcherCommandOutcome{ false, {}, "transform: nothing selected" };
 }
 
-void ApplyTransformSession(SketcherWorkspaceState& State)
+void ApplyTransformSession(SketcherWorkspaceStatus& State)
 {
     SketcherTransformSession& Transform = State.Transform;
     if (!Transform.Refusal.empty()) { Announce(State, "Refused: " + Transform.Refusal); return; }
@@ -4866,7 +4866,7 @@ void ApplyTransformSession(SketcherWorkspaceState& State)
 // - When unconstrained (Axis < 0): full Move / Rotate / Scale gizmo at DisplayPivot.
 // - When constrained to X / Y / Z (Axis >= 0, !PlaneCondition): hides all other handles so ONLY the chosen axis gizmo handle shows.
 // - When constrained to a plane (Shift+X / Y / Z): shows only the two in-plane handles + plane quad.
-[[nodiscard]] GizmoPose MakeTransformSessionGizmoPose(const SketcherTransformSession& Transform, const OrbitCameraFrame& Frame, GizmoHandle& OutActiveHandle)
+[[nodiscard]] GizmoPose MakeTransformSessionGizmoPose(const SketcherTransformSession& Transform, const OrbitCameraBasis& Frame, GizmoHandle& OutActiveHandle)
 {
     GizmoPose Pose{};
     Pose.Origin  = Transform.DisplayPivot;
@@ -4913,7 +4913,7 @@ void ApplyTransformSession(SketcherWorkspaceState& State)
 
 // Viewport-spanning 3D axis constraint guide line(s) for active G / R / S sessions when X, Y, or Z is locked.
 // Clips endpoints against the camera near plane in 3D view space so perspective lines never flip behind the eye.
-void DrawTransformAxisOverlay(const SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawTransformAxisOverlay(const SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     const SketcherTransformSession& Transform = State.Transform;
     if (!Transform.ActiveCondition) return;
@@ -5010,7 +5010,7 @@ void DrawTransformAxisOverlay(const SketcherWorkspaceState& State, ImDrawList* C
 }
 
 // Pointer → affine map (see SketcherTransformSession), live gizmo geometry, then the staged preview when the map changed.
-void DriveTransformSession(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local)
+void DriveTransformSession(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local)
 {
     SketcherTransformSession& Transform = State.Transform;
     ImGuiIO& Io = ImGui::GetIO();
@@ -5021,7 +5021,7 @@ void DriveTransformSession(SketcherWorkspaceState& State, const OrbitCameraFrame
         {
             // Plasticity move: the grab point snaps (a vertex of the body), then follows the pointer's snaps elsewhere.
             const SketcherSnap Anchor = FindPointerSnap(State, Frame, Local, std::nullopt, {}, {}, true);
-            Transform.AnchorCondition = Anchor.Kind != SketcherSnapKind::None;
+            Transform.AnchorCondition = Anchor.Kind != SketcherSnapCategory::None;
             Transform.Anchor          = Anchor.Position;
             Transform.AnchorSource    = Transform.AnchorCondition ? std::string(SketcherSnapLabel(Anchor.Kind)) + " " + Anchor.Source : std::string{};
         }
@@ -5096,7 +5096,7 @@ void DriveTransformSession(SketcherWorkspaceState& State, const OrbitCameraFrame
             Vector3 From, To;
             const SketcherSnap Target = Transform.AnchorCondition ? FindPointerSnap(State, Frame, Local, std::nullopt, {}, Transform.Keys, false) : SketcherSnap{};   // Ctrl
             State.Picker.Current = Target;
-            if (Target.Kind != SketcherSnapKind::None)
+            if (Target.Kind != SketcherSnapCategory::None)
             {
                 // Anchor onto the target snap, within the axis / plane constraint
                 Shift = Target.Position - Transform.Anchor;
@@ -5124,7 +5124,7 @@ void DriveTransformSession(SketcherWorkspaceState& State, const OrbitCameraFrame
         Transform.Map          = TranslationMap(Shift);
         Transform.Readout      = Compose("Move%s%s (%s, %s, %s)", Transform.Axis < 0 ? " screen" : Transform.PlaneCondition ? " plane ⊥" : " ", Transform.Axis < 0 ? "" : AxisNames[Transform.Axis],
                                          FormatLength(Shift.X).c_str(), FormatLength(Shift.Y).c_str(), FormatLength(Shift.Z).c_str());
-        if (!TypedCondition && State.Picker.Current.Kind != SketcherSnapKind::None)
+        if (!TypedCondition && State.Picker.Current.Kind != SketcherSnapCategory::None)
             Transform.Readout += std::string(" · ") + Transform.AnchorSource + " → " + SketcherSnapLabel(State.Picker.Current.Kind) + " " + State.Picker.Current.Source;
         break;
     }
@@ -5205,7 +5205,7 @@ void DriveTransformSession(SketcherWorkspaceState& State, const OrbitCameraFrame
     }
 
     // Staged preview (one regeneration per distinct map).
-    const AffineMap& Map = Transform.Map;
+    const AffineMapping& Map = Transform.Map;
     const bool Same = Transform.StagedCondition && Length(Map.ColumnX - Transform.StagedMap.ColumnX) + Length(Map.ColumnY - Transform.StagedMap.ColumnY) + Length(Map.ColumnZ - Transform.StagedMap.ColumnZ)
                                                    + Length(Map.Shift - Transform.StagedMap.Shift) == 0.0;
     if (Same) return;
@@ -5240,7 +5240,7 @@ void DriveTransformSession(SketcherWorkspaceState& State, const OrbitCameraFrame
 //------------------------------------------------------------------------------------------------------------------------
 
 // No other session owns the pointer (the gizmo is a no-command tool, like Plasticity's selection gizmo).
-[[nodiscard]] bool GizmoAvailableCondition(const SketcherWorkspaceState& State)
+[[nodiscard]] bool GizmoAvailableCondition(const SketcherWorkspaceStatus& State)
 {
     return State.Gizmo.Modes != 0 && !State.DrawingSheet.ActiveCondition && !State.Drawing.ActiveCondition && !State.Transform.ActiveCondition && !State.Sweep.ActiveCondition && !State.Knife.ActiveCondition
         && !State.Constrain.ActiveCondition && !State.Trim.ActiveCondition && !State.Fill.ActiveCondition && !State.Joint.ActiveCondition && !State.Bevel.ActiveCondition && !State.PoleDrag.ActiveCondition
@@ -5281,7 +5281,7 @@ void DriveTransformSession(SketcherWorkspaceState& State, const OrbitCameraFrame
     std::vector<std::string> Labels;
     for (const std::string& Label : Document.Selection.Curves)
         for (const FeatureStep& Step : Document.Tree.Steps)
-            if (Step.Label == Label && (Step.Kind == FeatureStepKind::Sketch || Step.Kind == FeatureStepKind::SpaceCurve))
+            if (Step.Label == Label && (Step.Kind == FeatureStepCategory::Sketch || Step.Kind == FeatureStepCategory::SpaceCurve))
             {
                 Labels.push_back(Label);
                 break;
@@ -5292,7 +5292,7 @@ void DriveTransformSession(SketcherWorkspaceState& State, const OrbitCameraFrame
 // 📝 Target and frame from the selection: faces → area-weighted centroid, z = mean outward normal; bodies → bounds
 //    centre, world axes; sketches → curve-sample centroid, the first sketch's plane axes. Handles that do not apply are
 //    hidden (faces and sketches have no per-axis scale; sketches cannot scale at all).
-void ResolveGizmoTarget(SketcherWorkspaceState& State)
+void ResolveGizmoTarget(SketcherWorkspaceStatus& State)
 {
     SketcherGizmoSession&   Gizmo    = State.Gizmo;
     const SketcherDocument& Document = State.Document;
@@ -5311,7 +5311,7 @@ void ResolveGizmoTarget(SketcherWorkspaceState& State)
     {
         Vector3 Sum;
         int     Count = 0;
-        const std::string Owner = SketcherBodyOfName(Document, VertexCondition ? SketcherSelectionKind::Vertex : SketcherSelectionKind::Edge, Names.front());
+        const std::string Owner = SketcherBodyOfName(Document, VertexCondition ? SketcherSelectionCategory::Vertex : SketcherSelectionCategory::Edge, Names.front());
         const auto OnOwner = [&](uint32_t Body) { return Body < State.Scene.Bodies.size() && State.Scene.Bodies[Body].Key == Owner; };
         std::vector<std::array<double, 3>> Ends;
         const auto Carry = [&](const std::array<double, 3>& Point)
@@ -5418,7 +5418,7 @@ void ResolveGizmoTarget(SketcherWorkspaceState& State)
             if (Points.Points.empty()) Points.Sketch.clear();
             else
             {
-                const OrthonormalFrame Plane = ElevatedSketchPlane(Document, *Step);
+                const OrthonormalBasis Plane = ElevatedSketchPlane(Document, *Step);
                 Vector3 Sum;
                 for (int Point : Points.Points) Sum = Sum + PlacePlanePoint(Plane, Sketch.Points[Point].Position);
                 constexpr auto Bit = [](GizmoHandle Handle) { return 1u << uint32_t(Handle); };
@@ -5494,7 +5494,7 @@ void ResolveGizmoTarget(SketcherWorkspaceState& State)
     {
         const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Label; });
         if (Found == Document.Tree.Steps.end()) continue;
-        if (Found->Kind == FeatureStepKind::SpaceCurve)
+        if (Found->Kind == FeatureStepCategory::SpaceCurve)
         {
             AllPlanarSketch = false;
             if (const CurveFitOutcome* Fit = FindFittedCurve(Document, Label); Fit && Fit->Curve.Definition)
@@ -5507,7 +5507,7 @@ void ResolveGizmoTarget(SketcherWorkspaceState& State)
             }
             continue;
         }
-        const OrthonormalFrame Plane  = ElevatedSketchPlane(Document, *Found);
+        const OrthonormalBasis Plane  = ElevatedSketchPlane(Document, *Found);
         const auto             Solved = Document.Regeneration.Sketches.find(Label);
         const SketchModel&     Sketch = Solved != Document.Regeneration.Sketches.end() ? Solved->second : Found->Sketch;
         if (Count == 0 && Sketches.size() == 1)
@@ -5552,7 +5552,7 @@ void ResolveGizmoTarget(SketcherWorkspaceState& State)
 //    turns to the world axes first. Any other view shows the full 3D gizmo: picked sketch points get the arrow along their
 //    plane normal, the two upright plane quads and (several points) the tilting rings — moving them off the plane turns
 //    their curves into 3D curves (LiftSketcherSketchPoints).
-void FitGizmoToView(SketcherWorkspaceState& State)
+void FitGizmoToView(SketcherWorkspaceStatus& State)
 {
     SketcherGizmoSession& Gizmo = State.Gizmo;
     if (Gizmo.Target == SketcherGizmoTarget::None) return;
@@ -5634,7 +5634,7 @@ void FitGizmoToView(SketcherWorkspaceState& State)
 }
 
 // The rigid / affine map of the current drag (bodies and sketches).
-[[nodiscard]] AffineMap GizmoMap(const SketcherGizmoSession& Gizmo)
+[[nodiscard]] AffineMapping GizmoMap(const SketcherGizmoSession& Gizmo)
 {
     const GizmoHandle Handle = Gizmo.Grab;
     const int                 Axis   = GizmoHandleAxis(Handle);
@@ -5645,7 +5645,7 @@ void FitGizmoToView(SketcherWorkspaceState& State)
         // Along the frame axis a (world axes for bodies, the sketch plane axes for points): M = I + (f − 1)·a·aᵀ.
         const Vector3 Along = Gizmo.Pose.Axes[Axis];
         const double  Grow  = Gizmo.Factor - 1.0;
-        AffineMap Map;
+        AffineMapping Map;
         Map.ColumnX = Vector3{ 1.0, 0.0, 0.0 } + Along * (Grow * Along.X);
         Map.ColumnY = Vector3{ 0.0, 1.0, 0.0 } + Along * (Grow * Along.Y);
         Map.ColumnZ = Vector3{ 0.0, 0.0, 1.0 } + Along * (Grow * Along.Z);
@@ -5681,8 +5681,8 @@ void FitGizmoToView(SketcherWorkspaceState& State)
         const FeatureStep* Step = Gizmo.Names.empty() ? nullptr : FindSketchStepByLabel(Document, Gizmo.Names[0]);
         if (!Step) break;
         const SketchModel&     Sketch = SolvedSketchOf(Document, *Step);
-        const OrthonormalFrame Plane  = ElevatedSketchPlane(Document, *Step);
-        const AffineMap        Map    = GizmoMap(Gizmo);
+        const OrthonormalBasis Plane  = ElevatedSketchPlane(Document, *Step);
+        const AffineMapping        Map    = GizmoMap(Gizmo);
         std::vector<Vector2>   Targets;
         std::vector<Vector3>   Lifted;
         for (int Point : Gizmo.Points)
@@ -5702,7 +5702,7 @@ void FitGizmoToView(SketcherWorkspaceState& State)
     {
         const CurveFitOutcome* Fit = Gizmo.Names.empty() ? nullptr : FindFittedCurve(Document, Gizmo.Names[0]);
         if (!Fit || !Fit->Curve.Definition) break;
-        const AffineMap          Map = GizmoMap(Gizmo);
+        const AffineMapping          Map = GizmoMap(Gizmo);
         std::vector<Vector3>     Targets;
         const std::vector<Vector3>& Poles = Fit->Curve.Definition->Poles;
         for (int Pole : Gizmo.Points)
@@ -5731,15 +5731,15 @@ void FitGizmoToView(SketcherWorkspaceState& State)
         {
             Document.Selection.Faces = Gizmo.Names;
             if (GizmoRotateHandle(Handle))
-                return ChangeSketcherSelection(Document, FaceOperationKind::Rotate, Gizmo.Angle, Gizmo.Pose.Axes[Axis]);
+                return ChangeSketcherSelection(Document, FaceOperationCategory::Rotate, Gizmo.Angle, Gizmo.Pose.Axes[Axis]);
             if (GizmoScaleHandle(Gizmo, Handle))
-                return ChangeSketcherSelection(Document, FaceOperationKind::Scale, Gizmo.Factor);
+                return ChangeSketcherSelection(Document, FaceOperationCategory::Scale, Gizmo.Factor);
             const double  ShiftLength = Length(Gizmo.Shift);
             const Vector3 Direction   = ShiftLength > 0.0 ? Gizmo.Shift * (1.0 / ShiftLength) : Gizmo.FaceNormal;
             if ((Handle == GizmoHandle::TranslateZ && std::abs(Dot(Gizmo.Pose.Axes[2], Gizmo.FaceNormal)) > 1.0 - 1.0e-5)
                 || std::abs(Dot(Direction, Gizmo.FaceNormal)) > 1.0 - 1.0e-5)
-                return ChangeSketcherSelection(Document, FaceOperationKind::Offset, Dot(Gizmo.Shift, Gizmo.FaceNormal));
-            return ChangeSketcherSelection(Document, FaceOperationKind::Tweak, ShiftLength, Direction);
+                return ChangeSketcherSelection(Document, FaceOperationCategory::Offset, Dot(Gizmo.Shift, Gizmo.FaceNormal));
+            return ChangeSketcherSelection(Document, FaceOperationCategory::Tweak, ShiftLength, Direction);
         };
 
         // Infinite planes are invariant under in-plane translation, rotation about their own normal, and scaling about an in-plane pivot:
@@ -5779,7 +5779,7 @@ void FitGizmoToView(SketcherWorkspaceState& State)
     return Refused;
 }
 
-void CancelGizmoDrag(SketcherWorkspaceState& State, const std::string& Message)
+void CancelGizmoDrag(SketcherWorkspaceStatus& State, const std::string& Message)
 {
     SketcherGizmoSession& Gizmo = State.Gizmo;
     Gizmo.DragCondition = false;
@@ -5797,7 +5797,7 @@ void CancelGizmoDrag(SketcherWorkspaceState& State, const std::string& Message)
     return Compose("%d %.12g %.12g %.12g %.12g %.12g", int(Gizmo.Grab), Gizmo.Shift.X, Gizmo.Shift.Y, Gizmo.Shift.Z, Gizmo.Angle, Gizmo.Factor);
 }
 
-void CommitGizmoDrag(SketcherWorkspaceState& State)
+void CommitGizmoDrag(SketcherWorkspaceStatus& State)
 {
     SketcherGizmoSession& Gizmo = State.Gizmo;
     if (GizmoIdentityCondition(Gizmo)) { CancelGizmoDrag(State, "Gizmo: nothing changed"); return; }
@@ -5818,7 +5818,7 @@ void CommitGizmoDrag(SketcherWorkspaceState& State)
 }
 
 // Pointer → value of the held handle (start frame fixed), readout, then one staged preview per distinct value.
-void DriveGizmoDrag(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local)
+void DriveGizmoDrag(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local)
 {
     SketcherGizmoSession&    Gizmo = State.Gizmo;
     const GizmoPose& Pose  = Gizmo.Pose;
@@ -5931,7 +5931,7 @@ void DriveGizmoDrag(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
 
 // 📝 Script evidence: each drawn handle is a widget ("GizmoTranslateZ", "GizmoPlaneXY", "GizmoRotateX", "GizmoScaleY",
 //    "GizmoCentre") at a point that picks it — tips, cylinder middles, the plane quads' free corners, arc middles.
-void RecordGizmoWidgets(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame)
+void RecordGizmoWidgets(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame)
 {
     const SketcherGizmoSession& Gizmo = State.Gizmo;
     if (Gizmo.Target == SketcherGizmoTarget::None) return;
@@ -5960,10 +5960,10 @@ void RecordGizmoWidgets(SketcherWorkspaceState& State, const OrbitCameraFrame& F
 //    pick, press / drag / release; the triangles go to Style.Gizmo for the GPU and stay here for the pick. Returns true
 //    when the gizmo owns the left button this frame (a held handle, or the pointer over one), so the selection click and
 //    box selection stand aside.
-void               PickAtPointer(SketcherWorkspaceState& State, ImVec2 Local, SketcherPickIntent Intent);
+void               PickAtPointer(SketcherWorkspaceStatus& State, ImVec2 Local, SketcherPickIntent Intent);
 SketcherPickIntent PickIntentOf(const ImGuiIO& Io);
 
-bool DriveGizmo(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, bool PointerCondition)
+bool DriveGizmo(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, bool PointerCondition)
 {
     SketcherGizmoSession& Gizmo = State.Gizmo;
     State.Style.Gizmo = {};
@@ -6047,7 +6047,7 @@ bool DriveGizmo(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, Im
 }
 
 // y (free in Plasticity's map): off → move → rotate → scale → move + rotate → rotate + scale → all three → off.
-void CycleGizmoModes(SketcherWorkspaceState& State)
+void CycleGizmoModes(SketcherWorkspaceStatus& State)
 {
     static const uint32_t Cycle[] = { 0u, GizmoTranslate, GizmoRotate, GizmoScale, GizmoTranslate | GizmoRotate, GizmoRotate | GizmoScale, GizmoTranslate | GizmoRotate | GizmoScale };
     size_t Index = 0;
@@ -6068,20 +6068,20 @@ void CycleGizmoModes(SketcherWorkspaceState& State)
     return "Sweep";
 }
 
-[[nodiscard]] const FeatureStep* SweepStep(const SketcherWorkspaceState& State, const std::string& Label)
+[[nodiscard]] const FeatureStep* SweepStep(const SketcherWorkspaceStatus& State, const std::string& Label)
 {
     for (const FeatureStep& Step : State.Document.Tree.Steps) if (Step.Label == Label) return &Step;
     return nullptr;
 }
 
-[[nodiscard]] const SketchModel* SweepSketch(const SketcherWorkspaceState& State, const std::string& Label)
+[[nodiscard]] const SketchModel* SweepSketch(const SketcherWorkspaceStatus& State, const std::string& Label)
 {
     const auto Solved = State.Document.Regeneration.Sketches.find(Label);
     return Solved == State.Document.Regeneration.Sketches.end() ? nullptr : &Solved->second;
 }
 
 // A sketch holding exactly one drawn open curve: a path, never a profile.
-[[nodiscard]] bool SingleOpenCurveCondition(const SketcherWorkspaceState& State, const std::string& Label)
+[[nodiscard]] bool SingleOpenCurveCondition(const SketcherWorkspaceStatus& State, const std::string& Label)
 {
     const SketchModel* Sketch = SweepSketch(State, Label);
     if (!Sketch) return false;
@@ -6091,7 +6091,7 @@ void CycleGizmoModes(SketcherWorkspaceState& State)
     {
         if (Curve.Construction) continue;
         ++Drawn;
-        Open = Open && Curve.Kind != SketchCurveKind::Circle && !(Curve.Kind == SketchCurveKind::Spline && Curve.Points.size() > 1 && Curve.Points.front() == Curve.Points.back());
+        Open = Open && Curve.Kind != SketchCurveCategory::Circle && !(Curve.Kind == SketchCurveCategory::Spline && Curve.Points.size() > 1 && Curve.Points.front() == Curve.Points.back());
     }
     return Drawn == 1 && Open;
 }
@@ -6100,7 +6100,7 @@ void CycleGizmoModes(SketcherWorkspaceState& State)
 // newest sketch step.
 // Revolve / Evolution take the profile: the focused sketch, else the newest sketch that is not a lone open curve (a
 // focused lone open curve is Evolution's path instead).
-[[nodiscard]] std::string SweepPath(const SketcherWorkspaceState& State, SketcherSweepVerb Verb)
+[[nodiscard]] std::string SweepPath(const SketcherWorkspaceStatus& State, SketcherSweepVerb Verb)
 {
     const bool ProfileCondition = Verb == SketcherSweepVerb::Revolve || Verb == SketcherSweepVerb::Evolution;
     // Offset: the picked sketch first (pick the arc, O: the parallel arc), then the focused one.
@@ -6109,11 +6109,11 @@ void CycleGizmoModes(SketcherWorkspaceState& State)
     if (FocusedSketchCondition(State) && !(ProfileCondition && SingleOpenCurveCondition(State, State.FocusedStep))) return State.FocusedStep;
     if (Verb == SketcherSweepVerb::Pipe && !State.Document.Selection.Curves.empty()) return State.Document.Selection.Curves.front();
     for (auto Step = State.Document.Tree.Steps.rbegin(); Step != State.Document.Tree.Steps.rend(); ++Step)
-        if (Step->Kind == FeatureStepKind::Sketch && !(ProfileCondition && SingleOpenCurveCondition(State, Step->Label))) return Step->Label;
+        if (Step->Kind == FeatureStepCategory::Sketch && !(ProfileCondition && SingleOpenCurveCondition(State, Step->Label))) return Step->Label;
     return {};
 }
 
-void OpenSweepSession(SketcherWorkspaceState& State, SketcherSweepVerb Verb)
+void OpenSweepSession(SketcherWorkspaceStatus& State, SketcherSweepVerb Verb)
 {
     const std::string Path = SweepPath(State, Verb);
     if (Path.empty())
@@ -6158,14 +6158,14 @@ void OpenSweepSession(SketcherWorkspaceState& State, SketcherSweepVerb Verb)
                             CaptionOf(State.Document, Path).c_str(), Verb == SketcherSweepVerb::Pipe ? Booleans : ""));
 }
 
-void CancelSweepSession(SketcherWorkspaceState& State)
+void CancelSweepSession(SketcherWorkspaceStatus& State)
 {
     State.Sweep.ActiveCondition = false;
     State.Sweep.Preview.reset();
     Announce(State, std::string(SweepVerbName(State.Sweep.Verb)) + " cancelled");
 }
 
-void ChooseSweepCombination(SketcherWorkspaceState& State, FeatureCombination Combination)
+void ChooseSweepCombination(SketcherWorkspaceStatus& State, FeatureCombination Combination)
 {
     if (State.Sweep.Verb == SketcherSweepVerb::Offset) return;
     State.Sweep.Combination = State.Document.Regeneration.Bodies.empty() ? FeatureCombination::New : Combination;
@@ -6173,14 +6173,14 @@ void ChooseSweepCombination(SketcherWorkspaceState& State, FeatureCombination Co
 }
 
 // Revolve: X / Y turn about the sketch x- / y-axis.
-void ChooseRevolveAxis(SketcherWorkspaceState& State, Vector2 Direction)
+void ChooseRevolveAxis(SketcherWorkspaceStatus& State, Vector2 Direction)
 {
     if (State.Sweep.Verb != SketcherSweepVerb::Revolve) return;
     State.Sweep.Axis = { -1, { 0.0, 0.0 }, Direction };
     Announce(State, "Revolve about the " + DescribeSketcherRevolveAxis(State.Document, State.Sweep.Path, State.Sweep.Axis));
 }
 
-[[nodiscard]] SketcherCommandOutcome RunSweepVerb(const SketcherWorkspaceState& State, SketcherDocument& Document)
+[[nodiscard]] SketcherCommandOutcome RunSweepVerb(const SketcherWorkspaceStatus& State, SketcherDocument& Document)
 {
     const SketcherSweepSession& Sweep = State.Sweep;
     switch (Sweep.Verb)
@@ -6193,7 +6193,7 @@ void ChooseRevolveAxis(SketcherWorkspaceState& State, Vector2 Direction)
     return {};
 }
 
-void ApplySweepSession(SketcherWorkspaceState& State)
+void ApplySweepSession(SketcherWorkspaceStatus& State)
 {
     SketcherSweepSession& Sweep = State.Sweep;
     if (!Sweep.Refusal.empty()) { Announce(State, "Refused: " + Sweep.Refusal); return; }
@@ -6209,7 +6209,7 @@ void ApplySweepSession(SketcherWorkspaceState& State)
             State.FocusedStep = {};
             State.PickMode    = SketcherPickMode::Solid;
             if (State.Document.Tree.Steps.back().Combination == FeatureCombination::Separate || State.Document.Tree.Steps.back().Combination == FeatureCombination::New)
-                SelectSketcherName(State.Document, SketcherSelectionKind::Body, State.Document.Tree.Steps.back().Label, false);
+                SelectSketcherName(State.Document, SketcherSelectionCategory::Body, State.Document.Tree.Steps.back().Label, false);
         }
     }
     Conclude(State, Outcome);
@@ -6217,7 +6217,7 @@ void ApplySweepSession(SketcherWorkspaceState& State)
 
 // Revolve / Evolution left-click: a line of the profile under the pointer becomes the axis, another sketch's curve the
 // path; a click anywhere else commits.
-void ClickSweepSession(SketcherWorkspaceState& State)
+void ClickSweepSession(SketcherWorkspaceStatus& State)
 {
     SketcherSweepSession& Sweep = State.Sweep;
     const SketchModel* Sketch = Sweep.HoverCurve >= 0 ? SweepSketch(State, Sweep.HoverSketch) : nullptr;
@@ -6242,7 +6242,7 @@ void ClickSweepSession(SketcherWorkspaceState& State)
 
 // The curve under the pointer (≤ 8 px) that a click would take: Revolve the profile's lines, Evolution the drawn curves
 // of the other sketches.
-void HoverSweepCurve(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, bool HoveredCondition)
+void HoverSweepCurve(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, bool HoveredCondition)
 {
     SketcherSweepSession& Sweep = State.Sweep;
     Sweep.HoverSketch.clear();
@@ -6252,15 +6252,15 @@ void HoverSweepCurve(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
     double       Nearest = 8.0;                                                              // [px] - Pick radius
     for (const FeatureStep& Step : State.Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch) continue;
+        if (Step.Kind != FeatureStepCategory::Sketch) continue;
         const bool Candidate = Sweep.Verb == SketcherSweepVerb::Revolve ? Step.Label == Sweep.Path : Step.Label != Sweep.Profile;
         const SketchModel* Sketch = Candidate ? SweepSketch(State, Step.Label) : nullptr;
         if (!Sketch) continue;
-        const OrthonormalFrame Plane = ElevatedSketchPlane(State.Document, Step);
+        const OrthonormalBasis Plane = ElevatedSketchPlane(State.Document, Step);
         for (int Curve = 0; Curve < int(Sketch->Curves.size()); ++Curve)
         {
             const SketchCurve& Each = Sketch->Curves[Curve];
-            if (Sweep.Verb == SketcherSweepVerb::Revolve ? Each.Kind != SketchCurveKind::Line : Each.Construction) continue;
+            if (Sweep.Verb == SketcherSweepVerb::Revolve ? Each.Kind != SketchCurveCategory::Line : Each.Construction) continue;
             std::vector<ImVec2> Pixels;
             for (const Vector2& Sample : SampleSketchCurve(*Sketch, Each))
             {
@@ -6279,7 +6279,7 @@ void HoverSweepCurve(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
     }
 }
 
-void DriveSweepSession(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, bool HoveredCondition)
+void DriveSweepSession(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, bool HoveredCondition)
 {
     SketcherSweepSession& Sweep = State.Sweep;
     ImGuiIO& Io = ImGui::GetIO();
@@ -6317,7 +6317,7 @@ void DriveSweepSession(SketcherWorkspaceState& State, const OrbitCameraFrame& Fr
         if (!Outcome.Refusal.empty()) { Sweep.Refusal = Legible(Outcome.Refusal); return; }
         const FeatureStep* Step = SweepStep(State, Sweep.Path);
         if (!Step) return;
-        const OrthonormalFrame Plane = ElevatedSketchPlane(State.Document, *Step);
+        const OrthonormalBasis Plane = ElevatedSketchPlane(State.Document, *Step);
         for (const SketchCurve& Curve : Outcome.Sketch.Curves)
         {
             std::vector<Vector3> Line;
@@ -6333,13 +6333,13 @@ void DriveSweepSession(SketcherWorkspaceState& State, const OrbitCameraFrame& Fr
 }
 
 // One sketch curve in screen pixels (empty when the step or curve is gone).
-[[nodiscard]] std::vector<ImVec2> SweepCurvePixels(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, const std::string& Label, int Curve)
+[[nodiscard]] std::vector<ImVec2> SweepCurvePixels(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, const std::string& Label, int Curve)
 {
     std::vector<ImVec2> Pixels;
     const FeatureStep* Step   = SweepStep(State, Label);
     const SketchModel* Sketch = SweepSketch(State, Label);
     if (!Step || !Sketch) return Pixels;
-    const OrthonormalFrame Plane = ElevatedSketchPlane(State.Document, *Step);
+    const OrthonormalBasis Plane = ElevatedSketchPlane(State.Document, *Step);
     for (int Index = 0; Index < int(Sketch->Curves.size()); ++Index)
     {
         if (Curve >= 0 ? Index != Curve : Sketch->Curves[Index].Construction) continue;
@@ -6348,7 +6348,7 @@ void DriveSweepSession(SketcherWorkspaceState& State, const OrbitCameraFrame& Fr
     return Pixels;
 }
 
-void DrawSweepOutline(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawSweepOutline(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     if (!State.Sweep.ActiveCondition) return;
     const SketcherSweepSession& Sweep = State.Sweep;
@@ -6368,7 +6368,7 @@ void DrawSweepOutline(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
         {
             Vector2 Origin = Sweep.Axis.Origin, Direction = Sweep.Axis.Direction;
             for (const SketchCurve& Curve : Sketch->Curves)
-                if (Sweep.Axis.Line >= 0 && Curve.Identifier == Sweep.Axis.Line && Curve.Kind == SketchCurveKind::Line)
+                if (Sweep.Axis.Line >= 0 && Curve.Identifier == Sweep.Axis.Line && Curve.Kind == SketchCurveCategory::Line)
                 {
                     Origin    = Sketch->Points[Curve.Start].Position;
                     Direction = Sketch->Points[Curve.End].Position - Origin;
@@ -6378,7 +6378,7 @@ void DrawSweepOutline(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
             for (const SketchPoint& Point : Sketch->Points) Reach = std::max(Reach, 1.5 * std::hypot(Point.Position.X - Origin.X, Point.Position.Y - Origin.Y));
             if (Norm > 0.0)
             {
-                const OrthonormalFrame Plane = ElevatedSketchPlane(State.Document, *Step);
+                const OrthonormalBasis Plane = ElevatedSketchPlane(State.Document, *Step);
                 std::vector<ImVec2> Pixels;
                 for (int Index = 0; Index <= 32; ++Index)
                 {
@@ -6409,14 +6409,14 @@ void DrawSweepOutline(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
     for (const std::string& Label : Document.Selection.Curves)
     {
         const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Label; });
-        if (Found != Document.Tree.Steps.end() && Found->Kind == FeatureStepKind::Sketch && std::find(Labels.begin(), Labels.end(), Label) == Labels.end()) Labels.push_back(Label);
+        if (Found != Document.Tree.Steps.end() && Found->Kind == FeatureStepCategory::Sketch && std::find(Labels.begin(), Labels.end(), Label) == Labels.end()) Labels.push_back(Label);
     }
     return Labels;
 }
 
 // J / Inspector Join: two or more picked sketches join into the first picked (touching or not: one sketch, several
 // profiles); otherwise the focused sketch (else the newest) welds with every coplanar sketch touching it.
-void JoinSketches(SketcherWorkspaceState& State)
+void JoinSketches(SketcherWorkspaceStatus& State)
 {
     const std::vector<std::string> Picked = SelectedSketchLabels(State.Document);
     if (Picked.size() >= 2)
@@ -6433,7 +6433,7 @@ void JoinSketches(SketcherWorkspaceState& State)
         return;
     }
     std::string Base = FocusedSketchCondition(State) ? State.FocusedStep : std::string{};
-    if (Base.empty()) for (auto Step = State.Document.Tree.Steps.rbegin(); Step != State.Document.Tree.Steps.rend() && Base.empty(); ++Step) if (Step->Kind == FeatureStepKind::Sketch) Base = Step->Label;
+    if (Base.empty()) for (auto Step = State.Document.Tree.Steps.rbegin(); Step != State.Document.Tree.Steps.rend() && Base.empty(); ++Step) if (Step->Kind == FeatureStepCategory::Sketch) Base = Step->Label;
     if (Base.empty()) { Announce(State, "Join (J) needs sketches: draw some first"); return; }
     const std::vector<std::string> Group = SketcherJoinCandidates(State.Document, Base);
     if (Group.size() < 2) { Announce(State, "Join (J): no other sketch touches " + CaptionOf(State.Document, Base) + " (draw from its ends, or across it)"); return; }
@@ -6444,9 +6444,9 @@ void JoinSketches(SketcherWorkspaceState& State)
 
 // Rail and shapes of Flow from the picked sketches: the first pick is the rail (the curve to follow), the rest the 2D
 // shapes; FlowSwapCondition takes the last pick as the rail instead.
-[[nodiscard]] SketcherFlowRequest FlowRequestOf(const SketcherWorkspaceState& State)
+[[nodiscard]] SketcherRailDeformRequest FlowRequestOf(const SketcherWorkspaceStatus& State)
 {
-    SketcherFlowRequest            Request;
+    SketcherRailDeformRequest            Request;
     std::vector<std::string>       Picked = SelectedSketchLabels(State.Document);
     Request.Settings = State.Flow;
     if (Picked.size() < 2) return Request;
@@ -6458,9 +6458,9 @@ void JoinSketches(SketcherWorkspaceState& State)
 
 // Inspector › Curves › Flow (Rhino Flow / Plasticity bend-along): the picked 2D shapes follow the rail curve, as a
 // new sketch; the originals stay (hide them with H).
-void FlowSelectedSketches(SketcherWorkspaceState& State)
+void FlowSelectedSketches(SketcherWorkspaceStatus& State)
 {
-    const SketcherFlowRequest Request = FlowRequestOf(State);
+    const SketcherRailDeformRequest Request = FlowRequestOf(State);
     if (Request.Rail.empty()) { Announce(State, "Flow: pick the curve to follow first, then Shift-click the 2D shape(s) to bend along it, then press Flow"); return; }
     const SketcherCommandOutcome Outcome = FlowSketcherSketches(State.Document, Request);
     if (Outcome.AcceptedCondition && !State.Document.Tree.Steps.empty()) State.FocusedStep = State.Document.Tree.Steps.back().Label;
@@ -6469,11 +6469,11 @@ void FlowSelectedSketches(SketcherWorkspaceState& State)
 
 // Rail and shapes of Wrap: a picked sketch that is a lone circle or arc is the rail whatever the order (the can);
 // otherwise the last pick ("pick the text, then the circle"); FlowSwapCondition takes the other end of the picks.
-[[nodiscard]] SketcherWrapRequest WrapRequestOf(const SketcherWorkspaceState& State)
+[[nodiscard]] SketcherWrapRequest WrapRequestOf(const SketcherWorkspaceStatus& State)
 {
     SketcherWrapRequest      Request;
     std::vector<std::string> Picked = SelectedSketchLabels(State.Document);
-    Request.Settings.Kind = State.WrapMode == 1 ? SketchWrapKind::Project : SketchWrapKind::Wrap;
+    Request.Settings.Kind = State.WrapMode == 1 ? SketchWrapCategory::Project : SketchWrapCategory::Wrap;
     if (Picked.size() < 2) return Request;
     const auto LoneRound = [&](const std::string& Label)
     {
@@ -6484,7 +6484,7 @@ void FlowSelectedSketches(SketcherWorkspaceState& State)
         {
             if (Curve.Construction) continue;
             ++Drawn;
-            Round += Curve.Kind == SketchCurveKind::Circle || Curve.Kind == SketchCurveKind::Arc ? 1 : 0;
+            Round += Curve.Kind == SketchCurveCategory::Circle || Curve.Kind == SketchCurveCategory::Arc ? 1 : 0;
         }
         return Drawn == 1 && Round == 1;
     };
@@ -6510,13 +6510,13 @@ void FlowSelectedSketches(SketcherWorkspaceState& State)
 //    d points from the shapes towards the rail's centre, so the label lands on the side the text is drawn on; a shape
 //    plane through the centre takes the side facing the eye. False (the view or the popup decides): no rail plane, shapes
 //    on different planes, or shapes on a plane parallel to the rail's (|t × n| < 0.2, about 11°).
-[[nodiscard]] bool WrapAutoDirection(const SketcherWorkspaceState& State, const SketcherWrapRequest& Request, const Vector3& Forward, Vector3& Direction, std::string& Note)
+[[nodiscard]] bool WrapAutoDirection(const SketcherWorkspaceStatus& State, const SketcherWrapRequest& Request, const Vector3& Forward, Vector3& Direction, std::string& Note)
 {
     const FeatureStep* Rail = FindSketchStepByLabel(State.Document, Request.Rail);
     if (!Rail || Request.Shapes.empty()) return false;
-    const OrthonormalFrame RailPlane = ElevatedSketchPlane(State.Document, *Rail);
+    const OrthonormalBasis RailPlane = ElevatedSketchPlane(State.Document, *Rail);
     const Vector3          Axis      = Normalize(RailPlane.ZAxis);
-    const auto WorldPoints = [&](const std::string& Label, const OrthonormalFrame& Plane, bool CentreOnlyCondition)
+    const auto WorldPoints = [&](const std::string& Label, const OrthonormalBasis& Plane, bool CentreOnlyCondition)
     {
         std::vector<Vector3> Points;
         const auto Solved = State.Document.Regeneration.Sketches.find(Label);
@@ -6546,7 +6546,7 @@ void FlowSelectedSketches(SketcherWorkspaceState& State)
     {
         const FeatureStep* Shape = FindSketchStepByLabel(State.Document, Label);
         if (!Shape) return false;
-        const OrthonormalFrame Plane  = ElevatedSketchPlane(State.Document, *Shape);
+        const OrthonormalBasis Plane  = ElevatedSketchPlane(State.Document, *Shape);
         const Vector3          Normal = Normalize(Plane.ZAxis);
         if (ShapeCount == 0 && Length(Facing) == 0.0) Facing = Normal;
         else if (std::abs(Dot(Facing, Normal)) < 1.0 - 1.0e-6) return false;               // Shapes on different planes
@@ -6569,11 +6569,11 @@ void FlowSelectedSketches(SketcherWorkspaceState& State)
 //    world axis (pointing away from the eye), or — auto in perspective — the popup's answer (Choice: 0 / 1 / 2 axes,
 //    3 the view). A lone circle facing that direction stands up instead: the can's axis is the world axis nearest the
 //    screen's up that crosses the view, the circle giving centre and radius.
-void WrapSelectedSketches(SketcherWorkspaceState& State, int Choice)
+void WrapSelectedSketches(SketcherWorkspaceStatus& State, int Choice)
 {
     SketcherWrapRequest Request = WrapRequestOf(State);
     if (Request.Rail.empty()) { Announce(State, "Wrap: pick the 2D shapes (text, outlines), then Shift-click the curve to wrap them round (a circle: a can)"); return; }
-    const OrbitCameraFrame Frame = ViewportFrame(State);
+    const OrbitCameraBasis Frame = ViewportFrame(State);
     const Vector3 Forward{ Frame.Forward[0], Frame.Forward[1], Frame.Forward[2] };
     const Vector3 Up{ Frame.Up[0], Frame.Up[1], Frame.Up[2] };
     Vector3     AutoDirection{};
@@ -6631,7 +6631,7 @@ void WrapSelectedSketches(SketcherWorkspaceState& State, int Choice)
 }
 
 // H / Shift+H / Alt+H / Ctrl+H: visibility is appearance (no regeneration) but the scene drops hidden bodies.
-void ChangeVisibility(SketcherWorkspaceState& State, SketcherVisibilityVerb Verb)
+void ChangeVisibility(SketcherWorkspaceStatus& State, SketcherVisibilityVerb Verb)
 {
     const SketcherCommandOutcome Outcome = ChangeSketcherVisibility(State.Document, Verb);
     if (Outcome.AcceptedCondition)
@@ -6647,7 +6647,7 @@ void ChangeVisibility(SketcherWorkspaceState& State, SketcherVisibilityVerb Verb
 
 // Ctrl+I: Isolate toggle — hides all unselected bodies and curves while snapshotting pre-isolate visibility, and
 // restores that exact snapshot when pressed again while isolated.
-void ToggleIsolate(SketcherWorkspaceState& State)
+void ToggleIsolate(SketcherWorkspaceStatus& State)
 {
     SketcherDocument& Document = State.Document;
     if (Document.Selection.Bodies.empty() && Document.Selection.Faces.empty() && Document.Selection.Edges.empty()
@@ -6661,9 +6661,9 @@ void ToggleIsolate(SketcherWorkspaceState& State)
         // Check if the user narrowed selection to a smaller subset of currently visible items; otherwise exit isolate.
         std::set<std::string> PickedBodies(Document.Selection.Bodies.begin(), Document.Selection.Bodies.end());
         for (const std::string& Face : Document.Selection.Faces)
-            if (const std::string Key = SketcherBodyOfName(Document, SketcherSelectionKind::Face, Face); !Key.empty()) PickedBodies.insert(Key);
+            if (const std::string Key = SketcherBodyOfName(Document, SketcherSelectionCategory::Face, Face); !Key.empty()) PickedBodies.insert(Key);
         for (const std::string& Edge : Document.Selection.Edges)
-            if (const std::string Key = SketcherBodyOfName(Document, SketcherSelectionKind::Edge, Edge); !Key.empty()) PickedBodies.insert(Key);
+            if (const std::string Key = SketcherBodyOfName(Document, SketcherSelectionCategory::Edge, Edge); !Key.empty()) PickedBodies.insert(Key);
         const std::set<std::string> PickedCurves(Document.Selection.Curves.begin(), Document.Selection.Curves.end());
 
         bool HasUnselectedVisible = false;
@@ -6672,10 +6672,10 @@ void ToggleIsolate(SketcherWorkspaceState& State)
             for (const RegeneratedBody& Body : Document.Regeneration.Bodies)
                 if (!Document.Appearance.HiddenBodies.contains(Body.Key) && !PickedBodies.contains(Body.Key)) HasUnselectedVisible = true;
             for (const FeatureStep& Step : Document.Tree.Steps)
-                if ((Step.Kind == FeatureStepKind::Sketch || Step.Kind == FeatureStepKind::SpaceCurve)
+                if ((Step.Kind == FeatureStepCategory::Sketch || Step.Kind == FeatureStepCategory::SpaceCurve)
                     && !Document.Appearance.RemovedCurves.contains(Step.Label)
                     && !Document.Appearance.HiddenCurves.contains(Step.Label)
-                    && (Step.Kind == FeatureStepKind::SpaceCurve || !SketcherSketchConsumedCondition(Document, Step.Label))
+                    && (Step.Kind == FeatureStepCategory::SpaceCurve || !SketcherSketchConsumedCondition(Document, Step.Label))
                     && !PickedCurves.contains(Step.Label))
                     HasUnselectedVisible = true;
         }
@@ -6724,7 +6724,7 @@ void ToggleIsolate(SketcherWorkspaceState& State)
 }
 
 // Ctrl+A: Select all visible, unlocked entities matching the active PickMode, keeping Outliner and Viewport in sync.
-void SelectAll(SketcherWorkspaceState& State)
+void SelectAll(SketcherWorkspaceStatus& State)
 {
     SketcherDocument& Document = State.Document;
     if (State.PickMode == SketcherPickMode::Face && Document.Partition)
@@ -6740,7 +6740,7 @@ void SelectAll(SketcherWorkspaceState& State)
                     Document.Selection.Faces.push_back(Found->second);
             }
         }
-        Document.Selection.LastKind = SketcherSelectionKind::Face;
+        Document.Selection.LastKind = SketcherSelectionCategory::Face;
         Announce(State, Compose("Selected all · %d face(s)", int(Document.Selection.Faces.size())));
         return;
     }
@@ -6757,7 +6757,7 @@ void SelectAll(SketcherWorkspaceState& State)
                     Document.Selection.Edges.push_back(Found->second);
             }
         }
-        Document.Selection.LastKind = SketcherSelectionKind::Edge;
+        Document.Selection.LastKind = SketcherSelectionCategory::Edge;
         Announce(State, Compose("Selected all · %d edge(s)", int(Document.Selection.Edges.size())));
         return;
     }
@@ -6791,15 +6791,15 @@ void SelectAll(SketcherWorkspaceState& State)
         }
         for (const FeatureStep& Step : Document.Tree.Steps)
         {
-            if ((Step.Kind != FeatureStepKind::Sketch && Step.Kind != FeatureStepKind::SpaceCurve)
+            if ((Step.Kind != FeatureStepCategory::Sketch && Step.Kind != FeatureStepCategory::SpaceCurve)
                 || Document.Appearance.RemovedCurves.contains(Step.Label)
                 || SketcherCurveHiddenCondition(Document, Step.Label)
                 || SketcherLockedCondition(Document, Step.Label))
                 continue;
-            if (Step.Kind == FeatureStepKind::Sketch && SketcherSketchConsumedCondition(Document, Step.Label)) continue;
+            if (Step.Kind == FeatureStepCategory::Sketch && SketcherSketchConsumedCondition(Document, Step.Label)) continue;
             Document.Selection.Curves.push_back(Step.Label);
         }
-        Document.Selection.LastKind = SketcherSelectionKind::Vertex;
+        Document.Selection.LastKind = SketcherSelectionCategory::Vertex;
         Announce(State, Compose("Selected all · %d vertex(es), %d curve(s)", int(Document.Selection.Vertices.size()), int(Document.Selection.Curves.size())));
         return;
     }
@@ -6819,16 +6819,16 @@ void SelectAll(SketcherWorkspaceState& State)
     std::string FirstSketch;
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        if ((Step.Kind != FeatureStepKind::Sketch && Step.Kind != FeatureStepKind::SpaceCurve)
+        if ((Step.Kind != FeatureStepCategory::Sketch && Step.Kind != FeatureStepCategory::SpaceCurve)
             || Document.Appearance.RemovedCurves.contains(Step.Label)
             || SketcherCurveHiddenCondition(Document, Step.Label)
             || SketcherLockedCondition(Document, Step.Label))
             continue;
-        if (Step.Kind == FeatureStepKind::Sketch && SketcherSketchConsumedCondition(Document, Step.Label)) continue;
+        if (Step.Kind == FeatureStepCategory::Sketch && SketcherSketchConsumedCondition(Document, Step.Label)) continue;
         Document.Selection.Curves.push_back(Step.Label);
-        if (Step.Kind == FeatureStepKind::Sketch && FirstSketch.empty()) FirstSketch = Step.Label;
+        if (Step.Kind == FeatureStepCategory::Sketch && FirstSketch.empty()) FirstSketch = Step.Label;
     }
-    if (!Document.Selection.Bodies.empty()) Document.Selection.LastKind = SketcherSelectionKind::Body;
+    if (!Document.Selection.Bodies.empty()) Document.Selection.LastKind = SketcherSelectionCategory::Body;
     State.FocusedStep = FirstSketch;
     if (!Document.Selection.Bodies.empty()) State.Outliner.AnchorKey = Document.Selection.Bodies.front();
     else if (!Document.Selection.Curves.empty()) State.Outliner.AnchorKey = Document.Selection.Curves.front();
@@ -6836,7 +6836,7 @@ void SelectAll(SketcherWorkspaceState& State)
 }
 
 // Ctrl+C: remember the picked bodies and the step they stand after; Ctrl+V pastes them in place as they stood then.
-void CopyBodies(SketcherWorkspaceState& State)
+void CopyBodies(SketcherWorkspaceStatus& State)
 {
     const std::vector<std::string> Keys = PickedBodies(State.Document);
     if (Keys.empty() || State.Document.Tree.Steps.empty()) { Announce(State, "Copy (Ctrl+C) needs picked bodies (mode 4)"); return; }
@@ -6846,7 +6846,7 @@ void CopyBodies(SketcherWorkspaceState& State)
     Announce(State, "Copied " + Captions);
 }
 
-void PasteBodies(SketcherWorkspaceState& State)
+void PasteBodies(SketcherWorkspaceStatus& State)
 {
     const SketcherCommandOutcome Outcome = DuplicateSketcherBodies(State.Document, State.Clipboard.Keys, TranslationMap({}), State.Clipboard.Source.empty() ? std::string("—") : State.Clipboard.Source);
     if (Outcome.AcceptedCondition) State.PickMode = SketcherPickMode::Solid;
@@ -6858,7 +6858,7 @@ void PasteBodies(SketcherWorkspaceState& State)
 //------------------------------------------------------------------------------------------------------------------------
 
 SketcherPickIntent PickIntentOf(const ImGuiIO& Io);
-void               PickAtPointer(SketcherWorkspaceState& State, ImVec2 Local, SketcherPickIntent Intent);
+void               PickAtPointer(SketcherWorkspaceStatus& State, ImVec2 Local, SketcherPickIntent Intent);
 
 [[nodiscard]] double KnifeClock()
 {
@@ -6924,12 +6924,12 @@ bool MeasureSceneBody(const SketcherScene& Scene, const std::string& Key, Vector
 // 💡 The body a sketch cutter cuts: the owner of the face it was drawn on, else the first body met by a ray down the
 //    sketch normal through the middle of its curves (from just above the plane, then from outside the scene), else the
 //    first picked body, else the only body.
-[[nodiscard]] std::string KnifeSketchTarget(const SketcherWorkspaceState& State, const std::string& Label)
+[[nodiscard]] std::string KnifeSketchTarget(const SketcherWorkspaceStatus& State, const std::string& Label)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     if (!Knife.Face.empty())
     {
-        const std::string Owner = SketcherBodyOfName(State.Document, SketcherSelectionKind::Face, Knife.Face);
+        const std::string Owner = SketcherBodyOfName(State.Document, SketcherSelectionCategory::Face, Knife.Face);
         if (!Owner.empty()) return Owner;
     }
     const auto Step   = std::find_if(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [&](const FeatureStep& Each) { return Each.Label == Label; });
@@ -6945,7 +6945,7 @@ bool MeasureSceneBody(const SketcherScene& Scene, const std::string& Key, Vector
         }
         if (Count > 0)
         {
-            const OrthonormalFrame Plane  = ElevatedSketchPlane(State.Document, *Step);
+            const OrthonormalBasis Plane  = ElevatedSketchPlane(State.Document, *Step);
             const Vector3          Middle = PlacePlanePoint(Plane, Sum * (1.0 / Count));
             const double           Reach  = 2.0 * std::hypot(State.Scene.BoundsHigh[0] - State.Scene.BoundsLow[0], State.Scene.BoundsHigh[1] - State.Scene.BoundsLow[1],
                                                              State.Scene.BoundsHigh[2] - State.Scene.BoundsLow[2]) + 1.0;
@@ -6967,7 +6967,7 @@ bool MeasureSceneBody(const SketcherScene& Scene, const std::string& Key, Vector
 // 💡 A knife line (an open chain: a segment or polyline drawn across a face, edge to edge) has no inside to pocket: it
 //    slices. The body splits along the sheet the chain sweeps through it (Plasticity C, CutSketcherBody): two bodies,
 //    through, whatever the depth or the Boolean says. Only a branching chain still refuses.
-[[nodiscard]] bool KnifeSliceCondition(const SketcherWorkspaceState& State)
+[[nodiscard]] bool KnifeSliceCondition(const SketcherWorkspaceStatus& State)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     if (Knife.Mode != SketcherKnifeMode::Sketch || Knife.Sketch.empty()) return false;
@@ -6979,7 +6979,7 @@ bool MeasureSceneBody(const SketcherScene& Scene, const std::string& Key, Vector
 // Sketch cutter span along the plane normal: Cut / Intersect / Separate from a lift above the plane down to the depth
 // (through: past both sides of the target); Add rises from just inside the face up to the depth (a boss). A slice
 // spans the body (through).
-void KnifeSketchSpan(const SketcherWorkspaceState& State, const std::string& Target, double& Top, double& Bottom)
+void KnifeSketchSpan(const SketcherWorkspaceStatus& State, const std::string& Target, double& Top, double& Bottom)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     const double Lift  = KnifeLift(State.Scene, Target);
@@ -6991,7 +6991,7 @@ void KnifeSketchSpan(const SketcherWorkspaceState& State, const std::string& Tar
     const auto Step = std::find_if(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [&](const FeatureStep& Each) { return Each.Label == Knife.Sketch; });
     const auto Body = std::find_if(State.Scene.Bodies.begin(), State.Scene.Bodies.end(), [&](const SketcherSceneBody& Each) { return Each.Key == Target; });
     if (Step == State.Document.Tree.Steps.end() || Body == State.Scene.Bodies.end()) return;
-    const OrthonormalFrame Plane = ElevatedSketchPlane(State.Document, *Step);
+    const OrthonormalBasis Plane = ElevatedSketchPlane(State.Document, *Step);
     double Above = 0.0, Below = 0.0;                                                         // [len] - Body reach either side of the plane
     for (uint32_t Face = Body->FirstFace; Face < Body->FirstFace + Body->FaceCount; ++Face)
         for (uint32_t Corner = State.Scene.Faces[Face].FirstCorner; Corner < State.Scene.Faces[Face].FirstCorner + State.Scene.Faces[Face].CornerCount; ++Corner)
@@ -7010,18 +7010,18 @@ void KnifeSketchSpan(const SketcherWorkspaceState& State, const std::string& Tar
 //    with live dimension lines). Started on a body face (an upward one lifts the floor, any other carries its frame),
 //    a cut / intersect goes into the body and an add stands out of it (the lift is held on that side), and the end on
 //    the face is carried past it by the knife lift so no cutter face is flush.
-[[nodiscard]] bool KnifeSolidCondition(const SketcherWorkspaceState& State)
+[[nodiscard]] bool KnifeSolidCondition(const SketcherWorkspaceStatus& State)
 {
     return State.Knife.ActiveCondition && State.Knife.DrawPendingCondition && State.Drawing.ActiveCondition && State.Drawing.SolidCondition;
 }
 
 // The body a 3D cutter cuts: the owner of the face under its first click, else the active body, else the only body.
-[[nodiscard]] std::string KnifeSolidTarget(const SketcherWorkspaceState& State)
+[[nodiscard]] std::string KnifeSolidTarget(const SketcherWorkspaceStatus& State)
 {
     const SketcherDrawingSession& Drawing = State.Drawing;
     if (!Drawing.StartFace.empty())
     {
-        const std::string Owner = SketcherBodyOfName(State.Document, SketcherSelectionKind::Face, Drawing.StartFace);
+        const std::string Owner = SketcherBodyOfName(State.Document, SketcherSelectionCategory::Face, Drawing.StartFace);
         if (!Owner.empty()) return Owner;
     }
     if (!BooleanTarget(State).empty()) return BooleanTarget(State);
@@ -7029,7 +7029,7 @@ void KnifeSketchSpan(const SketcherWorkspaceState& State, const std::string& Tar
 }
 
 // Height stage on a face: a cut / intersect keeps the lift below the face, an add above it (as the 2D knife's depth).
-void BoundKnifeSolidLift(SketcherWorkspaceState& State)
+void BoundKnifeSolidLift(SketcherWorkspaceStatus& State)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     if (!KnifeSolidCondition(State) || Drawing.StartFace.empty() || !SolidLiftedCondition(Drawing.Solid)) return;
@@ -7041,7 +7041,7 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
 
 // The drawn primitive as the knife's cutter (with the pointer standing in for a missing click when PointerCondition):
 // its request, the face-side end carried past the face, and the body it cuts. Empty text when complete.
-[[nodiscard]] std::string ComposeKnifeSolid(const SketcherWorkspaceState& State, bool PointerCondition, SketcherConstructRequest& Request, std::string& Target)
+[[nodiscard]] std::string ComposeKnifeSolid(const SketcherWorkspaceStatus& State, bool PointerCondition, SketcherConstructRequest& Request, std::string& Target)
 {
     const SketcherDrawingSession& Drawing = State.Drawing;
     if (const std::string Refusal = ComposeSolidRequest(Drawing, PointerCondition, Request); !Refusal.empty()) return Refusal;
@@ -7051,15 +7051,15 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
     const double Lift   = Drawing.Lift;
     switch (Request.Kind)
     {
-    case SketcherConstructKind::Block:
-    case SketcherConstructKind::Wedge:
-    case SketcherConstructKind::Cylinder:
-    case SketcherConstructKind::Prism:
-    case SketcherConstructKind::Tube:
+    case SketcherConstructCategory::Block:
+    case SketcherConstructCategory::Wedge:
+    case SketcherConstructCategory::Cylinder:
+    case SketcherConstructCategory::Prism:
+    case SketcherConstructCategory::Tube:
         if (Lift > 0.0) Request.Position.Z -= Margin;                                        // Standing out: the foot sinks in
         Request.Height += Margin;                                                            // Sunk in: the top clears the face
         break;
-    case SketcherConstructKind::Cone:
+    case SketcherConstructCategory::Cone:
         if (std::abs(Lift) > 1.0e-12)
         {
             // The same cone surface with its base moved Margin away from the apex (radius grows in proportion).
@@ -7069,14 +7069,14 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
             Request.Height      = Lift + Sign * Margin;
         }
         break;
-    case SketcherConstructKind::Sphere:
-    case SketcherConstructKind::Torus:
+    case SketcherConstructCategory::Sphere:
+    case SketcherConstructCategory::Torus:
         break;                                                                               // Centred on the face: they cross it
     }
     return {};
 }
 
-[[nodiscard]] std::string KnifeSolidKey(const SketcherWorkspaceState& State, const SketcherConstructRequest& Request, const std::string& Target)
+[[nodiscard]] std::string KnifeSolidKey(const SketcherWorkspaceStatus& State, const SketcherConstructRequest& Request, const std::string& Target)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     return Compose("solid|%d|%d|%d|%s|%.17g,%.17g,%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%d|%.17g|%d|%.17g,%.17g,%.17g|%.17g,%.17g,%.17g|%.17g,%.17g,%.17g|%llu",
@@ -7090,7 +7090,7 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
 //    rides on the face under the pointer (faces of the cutter itself are skipped); Ctrl turns its z onto the face
 //    normal, [ / ] turn it about the normal, and once placed (click / right-click) the pointer along the normal sets
 //    how far it sinks in (Sink > 0) or stands out (< 0).
-[[nodiscard]] bool KnifePlacementCondition(const SketcherWorkspaceState& State)
+[[nodiscard]] bool KnifePlacementCondition(const SketcherWorkspaceStatus& State)
 {
     return State.Knife.Mode == SketcherKnifeMode::Object && State.Document.Selection.Bodies.size() == 1;
 }
@@ -7102,10 +7102,10 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
     return Vector * Cosine + Cross(Axis, Vector) * Sine + Axis * (Dot(Axis, Vector) * (1.0 - Cosine));
 }
 
-[[nodiscard]] AffineMap KnifePlacementMap(const SketcherWorkspaceState& State)
+[[nodiscard]] AffineMapping KnifePlacementMap(const SketcherWorkspaceStatus& State)
 {
     const SketcherKnifeSession& Knife = State.Knife;
-    AffineMap Map;
+    AffineMapping Map;
     if (!KnifePlacementCondition(State)) return Map;
     Vector3 Low, High;
     if (!MeasureSceneBody(State.Scene, State.Document.Selection.Bodies.front(), Low, High)) return Map;
@@ -7190,7 +7190,7 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
 [[nodiscard]] std::string KnifeLibraryEntryName(const SketcherKnifeSession& Knife, int Index)
 {
     if (Index >= 0 && Index < SketcherCompoundCutterCount)
-        return SketcherCompoundCutterLabel(static_cast<SketcherCompoundCutterKind>(Index));
+        return SketcherCompoundCutterLabel(static_cast<SketcherCompoundCutterCategory>(Index));
     const int UserIndex = Index - SketcherCompoundCutterCount;
     if (UserIndex >= 0 && UserIndex < static_cast<int>(Knife.Library.Inserts.size()))
         return Knife.Library.Inserts[static_cast<size_t>(UserIndex)].Name;
@@ -7204,7 +7204,7 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
     return UserIndex >= 0 && UserIndex < int(Knife.Library.Inserts.size()) ? &Knife.Library.Inserts[size_t(UserIndex)] : nullptr;
 }
 
-[[nodiscard]] double KnifeThroughSpan(const SketcherWorkspaceState& State)
+[[nodiscard]] double KnifeThroughSpan(const SketcherWorkspaceStatus& State)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     Vector3 Low, High;
@@ -7224,7 +7224,7 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
 
 // Insert depth [len] below the face (height above it for Q): the dragged / typed one, or with T straight through the
 // target — the farthest corner of its box behind the face, plus 2 % of its diagonal.
-[[nodiscard]] double KnifeInsertDepth(const SketcherWorkspaceState& State)
+[[nodiscard]] double KnifeInsertDepth(const SketcherWorkspaceStatus& State)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     if (KnifeCompoundCondition(Knife))
@@ -7244,11 +7244,11 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
     return Knife.InsertDepth;
 }
 
-[[nodiscard]] SketcherCompoundCutterSpec ComposeKnifeCompoundSpec(const SketcherWorkspaceState& State)
+[[nodiscard]] SketcherCompoundCutterSpec ComposeKnifeCompoundSpec(const SketcherWorkspaceStatus& State)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     SketcherCompoundCutterSpec Spec;
-    Spec.Kind          = static_cast<SketcherCompoundCutterKind>(std::clamp(Knife.Insert, 0, SketcherCompoundCutterCount - 1));
+    Spec.Kind          = static_cast<SketcherCompoundCutterCategory>(std::clamp(Knife.Insert, 0, SketcherCompoundCutterCount - 1));
     Spec.Spot          = Knife.Spot;
     Spec.Turn          = Knife.Turn;
     Spec.OuterRadius   = std::max(0.002, Knife.OuterRadius);
@@ -7270,7 +7270,7 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
 }
 
 // The knife as it stands, applied to Document (the workspace document or a preview clone).
-[[nodiscard]] SketcherCommandOutcome RunKnife(const SketcherWorkspaceState& State, SketcherDocument& Document)
+[[nodiscard]] SketcherCommandOutcome RunKnife(const SketcherWorkspaceStatus& State, SketcherDocument& Document)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     switch (Knife.Mode)
@@ -7292,7 +7292,7 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
                 const SketcherKnifeBlend& Blend = Knife.Blends[Index];
                 Document.Selection            = {};
                 Document.Selection.Edges      = { Blend.Edge };
-                Document.Selection.LastKind   = SketcherSelectionKind::Edge;
+                Document.Selection.LastKind   = SketcherSelectionCategory::Edge;
                 Document.Selection.PickedBody = Blend.Body;
                 const SketcherCommandOutcome Blended = BlendSketcherSelection(Document, Blend.Shape, Blend.Size);
                 if (!Blended.AcceptedCondition)
@@ -7361,7 +7361,7 @@ void BoundKnifeSolidLift(SketcherWorkspaceState& State)
     return RefusedKnife("unknown knife mode");
 }
 
-void EnsureKnifeLibrary(SketcherWorkspaceState& State)
+void EnsureKnifeLibrary(SketcherWorkspaceStatus& State)
 {
     SketcherKnifeSession& Knife = State.Knife;
     if (Knife.LibraryCondition) return;
@@ -7375,7 +7375,7 @@ void EnsureKnifeLibrary(SketcherWorkspaceState& State)
 
 // Everything the knife preview depends on (a slice ignores the depth, through and the Boolean: moving the pointer for
 // a depth then never restages it).
-[[nodiscard]] std::string KnifeStageKey(const SketcherWorkspaceState& State)
+[[nodiscard]] std::string KnifeStageKey(const SketcherWorkspaceStatus& State)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     std::string Picked;
@@ -7400,7 +7400,7 @@ void DropKnifePreview(SketcherKnifeSession& Knife)
     Knife.GhostKey.clear();
 }
 
-void ChooseKnifeMode(SketcherWorkspaceState& State, SketcherKnifeMode Mode)
+void ChooseKnifeMode(SketcherWorkspaceStatus& State, SketcherKnifeMode Mode)
 {
     SketcherKnifeSession& Knife = State.Knife;
     Knife.Mode = Mode;
@@ -7440,7 +7440,7 @@ void ChooseKnifeMode(SketcherWorkspaceState& State, SketcherKnifeMode Mode)
                                          : "Knife · Sketch " + CaptionOf(State.Document, Knife.Sketch) + " · pull along the face normal for the depth (as Construct heights) · T through");
 }
 
-void ChooseKnifeCombination(SketcherWorkspaceState& State, FeatureCombination Combination)
+void ChooseKnifeCombination(SketcherWorkspaceStatus& State, FeatureCombination Combination)
 {
     if (State.Knife.Mode == SketcherKnifeMode::Object && Combination == FeatureCombination::Separate) return;
     State.Knife.Combination = Combination;
@@ -7450,16 +7450,16 @@ void ChooseKnifeCombination(SketcherWorkspaceState& State, FeatureCombination Co
 
 // Starts a drawing for the knife: the shape is filled, and once finished becomes the knife's cutter on that face.
 // Caption of a sketch cutter: a knife line drawn as a polyline reads "Polyline".
-[[nodiscard]] const char* KnifeShapeLabel(SketcherDrawingKind Kind, bool PolylineCondition)
+[[nodiscard]] const char* KnifeShapeLabel(SketcherDrawingCategory Kind, bool PolylineCondition)
 {
-    return Kind == SketcherDrawingKind::Line && PolylineCondition ? "Polyline" : SketcherDrawingLabel(Kind);
+    return Kind == SketcherDrawingCategory::Line && PolylineCondition ? "Polyline" : SketcherDrawingLabel(Kind);
 }
 
-void ImprintKnifeSketch(SketcherWorkspaceState& State, const std::string& Sketch);
+void ImprintKnifeSketch(SketcherWorkspaceStatus& State, const std::string& Sketch);
 
-void AnnounceImprintShape(SketcherWorkspaceState& State);
+void AnnounceImprintShape(SketcherWorkspaceStatus& State);
 
-void DrawKnifeShape(SketcherWorkspaceState& State, SketcherDrawingKind Kind, bool PolylineCondition = false)
+void DrawKnifeShape(SketcherWorkspaceStatus& State, SketcherDrawingCategory Kind, bool PolylineCondition = false)
 {
     SketcherKnifeSession& Knife = State.Knife;
     Knife.Mode = SketcherKnifeMode::Sketch;
@@ -7467,17 +7467,17 @@ void DrawKnifeShape(SketcherWorkspaceState& State, SketcherDrawingKind Kind, boo
     Knife.Face.clear();
     Knife.Typed.clear();
     DropKnifePreview(Knife);
-    State.Picker.Lock = SketcherSnapLockKind::None; // A previous drawing's axis lock must not pin a new cutter to its grid.
+    State.Picker.Lock = SketcherSnapLockCategory::None; // A previous drawing's axis lock must not pin a new cutter to its grid.
     OpenDrawingSession(State, Kind);
     // A knife line is one cut across the face: it finishes on its second click (edge to edge), no Enter needed. A knife
     // polyline takes clicks until Enter / right-click (the open chain slices along every segment; clicking the first
     // point closes it into a pocket outline instead).
-    if (Kind == SketcherDrawingKind::Line) State.Drawing.SegmentCondition = !PolylineCondition;
+    if (Kind == SketcherDrawingCategory::Line) State.Drawing.SegmentCondition = !PolylineCondition;
     Knife.DrawPendingCondition = State.Drawing.ActiveCondition;
 }
 
 // Starts a 3D cutter for the knife: a Construct primitive drawn on a face (base, then the height into the body).
-void DrawKnifeSolid(SketcherWorkspaceState& State, SketcherConstructKind Kind)
+void DrawKnifeSolid(SketcherWorkspaceStatus& State, SketcherConstructCategory Kind)
 {
     SketcherKnifeSession& Knife = State.Knife;
     Knife.Mode = SketcherKnifeMode::Sketch;
@@ -7485,7 +7485,7 @@ void DrawKnifeSolid(SketcherWorkspaceState& State, SketcherConstructKind Kind)
     Knife.Face.clear();
     Knife.Typed.clear();
     DropKnifePreview(Knife);
-    State.Picker.Lock = SketcherSnapLockKind::None;
+    State.Picker.Lock = SketcherSnapLockCategory::None;
     OpenSolidSession(State, Kind);
     State.Drawing.Combination  = Knife.Combination;
     Knife.DrawPendingCondition = State.Drawing.ActiveCondition;
@@ -7494,7 +7494,7 @@ void DrawKnifeSolid(SketcherWorkspaceState& State, SketcherConstructKind Kind)
                         " on a face (live dimensions) · the height goes into the body (Q: out of it) · the cut shows as you pull · Q / W / E / R · K keep · Esc cancels");
 }
 
-void OpenKnifeSession(SketcherWorkspaceState& State)
+void OpenKnifeSession(SketcherWorkspaceStatus& State)
 {
     if (State.Bevel.ActiveCondition) { Announce(State, "Knife: finish the bevel first"); return; }
     if (!State.Document.Summary.PresentCondition) { Announce(State, "Knife needs a body to cut: make one first (Shift+C box, E extrude …)"); return; }
@@ -7505,9 +7505,9 @@ void OpenKnifeSession(SketcherWorkspaceState& State)
     SketcherInsertLibrary Library   = std::move(Knife.Library);
     const bool            Assembled = Knife.LibraryCondition;
     const SketcherKnifeMode   PreferredMode  = Knife.PreferredMode;
-    const SketcherDrawingKind PreferredShape = Knife.PreferredShape;
+    const SketcherDrawingCategory PreferredShape = Knife.PreferredShape;
     const bool                  PreferredSolidCondition = Knife.PreferredSolidCondition;
-    const SketcherConstructKind PreferredSolid          = Knife.PreferredSolid;
+    const SketcherConstructCategory PreferredSolid          = Knife.PreferredSolid;
     const bool                  PreferredPolyline       = Knife.PreferredPolylineCondition;
     const bool                  PreferredImprint        = Knife.PreferredImprintCondition;
     Knife                  = {};
@@ -7558,13 +7558,13 @@ void OpenKnifeSession(SketcherWorkspaceState& State)
 }
 
 // Toolbar tool menu: remembers the cutter and opens (or switches) the knife on it.
-void ChooseKnifeTool(SketcherWorkspaceState& State, SketcherKnifeMode Mode, SketcherDrawingKind Shape, int Insert, bool PolylineCondition = false, bool ImprintCondition = false)
+void ChooseKnifeTool(SketcherWorkspaceStatus& State, SketcherKnifeMode Mode, SketcherDrawingCategory Shape, int Insert, bool PolylineCondition = false, bool ImprintCondition = false)
 {
     SketcherKnifeSession& Knife = State.Knife;
     Knife.PreferredMode  = Mode;
     Knife.PreferredShape = Shape;
     Knife.PreferredImprintCondition = Mode == SketcherKnifeMode::Sketch && ImprintCondition;
-    if (Mode == SketcherKnifeMode::Sketch) Knife.PreferredPolylineCondition = PolylineCondition && Shape == SketcherDrawingKind::Line;
+    if (Mode == SketcherKnifeMode::Sketch) Knife.PreferredPolylineCondition = PolylineCondition && Shape == SketcherDrawingCategory::Line;
     if (Mode == SketcherKnifeMode::Sketch || Mode == SketcherKnifeMode::Insert) Knife.PreferredSolidCondition = false;
     if (Insert >= 0) { Knife.Insert = Insert; Knife.Aspect = 1.0; }
     if (!Knife.ActiveCondition) OpenKnifeSession(State);
@@ -7572,7 +7572,7 @@ void ChooseKnifeTool(SketcherWorkspaceState& State, SketcherKnifeMode Mode, Sket
     if (Mode == SketcherKnifeMode::Sketch)
     {
         const bool Same = Knife.DrawPendingCondition && State.Drawing.ActiveCondition && State.Drawing.Kind == Shape && State.Drawing.Points.empty()
-                       && (Shape != SketcherDrawingKind::Line || State.Drawing.SegmentCondition != Knife.PreferredPolylineCondition);
+                       && (Shape != SketcherDrawingCategory::Line || State.Drawing.SegmentCondition != Knife.PreferredPolylineCondition);
         if (!Same) DrawKnifeShape(State, Shape, Knife.PreferredPolylineCondition);
         if (Knife.PreferredImprintCondition) AnnounceImprintShape(State);
         else if (Knife.PreferredPolylineCondition)
@@ -7585,7 +7585,7 @@ void ChooseKnifeTool(SketcherWorkspaceState& State, SketcherKnifeMode Mode, Sket
 }
 
 // Toolbar menu / card: a Construct primitive as the cutter (remembered, as the 2D shapes are).
-void ChooseKnifeSolid(SketcherWorkspaceState& State, SketcherConstructKind Kind)
+void ChooseKnifeSolid(SketcherWorkspaceStatus& State, SketcherConstructCategory Kind)
 {
     SketcherKnifeSession& Knife = State.Knife;
     Knife.PreferredMode           = SketcherKnifeMode::Sketch;
@@ -7597,7 +7597,7 @@ void ChooseKnifeSolid(SketcherWorkspaceState& State, SketcherConstructKind Kind)
 }
 
 // Toolbar caption of the cutter the knife uses (or opens with).
-[[nodiscard]] std::string KnifeToolLabel(SketcherWorkspaceState& State)
+[[nodiscard]] std::string KnifeToolLabel(SketcherWorkspaceStatus& State)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     const SketcherKnifeMode Mode = Knife.ActiveCondition ? Knife.Mode : Knife.PreferredMode;
@@ -7607,12 +7607,12 @@ void ChooseKnifeSolid(SketcherWorkspaceState& State, SketcherConstructKind Kind)
     if (KnifeSolidCondition(State)) return SketcherConstructLabel(State.Drawing.Solid);
     if (!Knife.ActiveCondition && Knife.PreferredSolidCondition) return SketcherConstructLabel(Knife.PreferredSolid);
     const bool                Drawing = Knife.ActiveCondition && Knife.DrawPendingCondition && State.Drawing.ActiveCondition;
-    const SketcherDrawingKind Shape   = Drawing ? State.Drawing.Kind : Knife.PreferredShape;
+    const SketcherDrawingCategory Shape   = Drawing ? State.Drawing.Kind : Knife.PreferredShape;
     const std::string         Caption = KnifeShapeLabel(Shape, Drawing ? !State.Drawing.SegmentCondition : Knife.PreferredPolylineCondition);
     return Knife.PreferredImprintCondition ? "2D " + Caption : Caption;
 }
 
-void CloseKnifeSession(SketcherWorkspaceState& State, const std::string& Message)
+void CloseKnifeSession(SketcherWorkspaceStatus& State, const std::string& Message)
 {
     SketcherKnifeSession& Knife = State.Knife;
     if (Knife.DrawPendingCondition) State.Drawing.ActiveCondition = false;
@@ -7624,7 +7624,7 @@ void CloseKnifeSession(SketcherWorkspaceState& State, const std::string& Message
     if (!Message.empty()) Announce(State, Message);
 }
 
-void AnnounceImprintShape(SketcherWorkspaceState& State)
+void AnnounceImprintShape(SketcherWorkspaceStatus& State)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     Announce(State, std::string("2D cutter · ") + KnifeShapeLabel(Knife.PreferredShape, Knife.PreferredPolylineCondition)
@@ -7636,7 +7636,7 @@ void AnnounceImprintShape(SketcherWorkspaceState& State)
 // 💡 2D cutter: the outline (drawn, or the picked sketch) is imprinted into the faces of the body it lies on — split,
 //    not cut; the volume stays. The knife closes into face picking so the new region can be clicked and E dragged.
 //    Refused (off the body, a branching chain): the drawn sketch stays and the shape is armed again.
-void ImprintKnifeSketch(SketcherWorkspaceState& State, const std::string& Sketch)
+void ImprintKnifeSketch(SketcherWorkspaceStatus& State, const std::string& Sketch)
 {
     SketcherKnifeSession&        Knife   = State.Knife;
     const std::string            Target  = KnifeSketchTarget(State, Sketch);
@@ -7660,7 +7660,7 @@ void ImprintKnifeSketch(SketcherWorkspaceState& State, const std::string& Sketch
 }
 
 // FinishDrawingSession / CancelDrawingSession: the shape drawn for the knife (empty Sketch: refused or aborted).
-void AdoptKnifeSketch(SketcherWorkspaceState& State, const std::string& Sketch, const std::string& Face)
+void AdoptKnifeSketch(SketcherWorkspaceStatus& State, const std::string& Sketch, const std::string& Face)
 {
     SketcherKnifeSession& Knife = State.Knife;
     if (!Knife.ActiveCondition || !Knife.DrawPendingCondition) return;
@@ -7681,7 +7681,7 @@ void AdoptKnifeSketch(SketcherWorkspaceState& State, const std::string& Sketch, 
                             " · pull along the face normal for the depth (Ctrl free) or type it · T through · Q add · W cut · E intersect · R separate · click / right-click / Enter applies");
 }
 
-void ApplyKnifeSession(SketcherWorkspaceState& State)
+void ApplyKnifeSession(SketcherWorkspaceStatus& State)
 {
     SketcherKnifeSession& Knife = State.Knife;
     if (Knife.DrawPendingCondition) { Announce(State, "Knife: finish the shape first"); return; }
@@ -7713,7 +7713,7 @@ void ApplyKnifeSession(SketcherWorkspaceState& State)
 }
 
 // Insert hover: the face under the pointer gives the spot (the hit carried onto its plane) and the body it cuts.
-void HoverKnifeSpot(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local)
+void HoverKnifeSpot(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local)
 {
     SketcherKnifeSession& Knife = State.Knife;
     Knife.HoverCondition = false;
@@ -7721,7 +7721,7 @@ void HoverKnifeSpot(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
     const std::optional<SketcherPick> Pick = PickSketcherScene(State.Scene, Ray, 0.0, false, ActiveSectionClip(State));
     const std::string                 Body = PickedSceneBody(State.Scene, Pick);
     std::string      Name;
-    OrthonormalFrame Plane;
+    OrthonormalBasis Plane;
     if (Body.empty() || !ResolveHoveredFacePlane(State, Frame, Local, Name, Plane)) return;
     const Vector3 Hit = Vector3{ Ray.Origin[0], Ray.Origin[1], Ray.Origin[2] } + Vector3{ Ray.Direction[0], Ray.Direction[1], Ray.Direction[2] } * Pick->Distance;
     Plane.Origin = Hit - Plane.ZAxis * Dot(Hit - Plane.Origin, Plane.ZAxis);
@@ -7738,7 +7738,7 @@ void HoverKnifeSpot(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
 }
 
 // Placement hover: the face under the pointer (not the cutter's own) carries the cutter; Ctrl aligns it to the normal.
-void HoverKnifeCutterSpot(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local)
+void HoverKnifeCutterSpot(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local)
 {
     SketcherKnifeSession& Knife = State.Knife;
     Vector3     Hit, Normal;
@@ -7753,7 +7753,7 @@ void HoverKnifeCutterSpot(SketcherWorkspaceState& State, const OrbitCameraFrame&
     Knife.SpotBody       = Body;
 }
 
-void PlaceKnifeCutter(SketcherWorkspaceState& State)
+void PlaceKnifeCutter(SketcherWorkspaceStatus& State)
 {
     SketcherKnifeSession& Knife = State.Knife;
     if (!Knife.HoverCondition) { Announce(State, "Knife: point at a face of the body to cut (the picked body follows the pointer)"); return; }
@@ -7767,7 +7767,7 @@ void PlaceKnifeCutter(SketcherWorkspaceState& State)
 //    Compound Cutters (0..5): Stage 0 click face centre → Stage 1 radial circle/profile → Stage 2 normal extrude →
 //                             Stage 3 radial inner circle/profile → Stage 4 normal inner extrude (T through) → click applies.
 //    User STEP inserts (≥ 6): Stage 0 click face centre → Stage 1 uniform width (Aspect = 1.0) → Stage 2 normal depth → click applies.
-void PressKnifeInsert(SketcherWorkspaceState& State)
+void PressKnifeInsert(SketcherWorkspaceStatus& State)
 {
     SketcherKnifeSession& Knife = State.Knife;
     if (Knife.PlacedCondition) return;
@@ -7805,7 +7805,7 @@ void MeasureInsertFootprint(const SketcherInsert& Insert, Vector2& Low, Vector2&
     if (!(High.Y - Low.Y > 1.0e-9)) { Low.Y = -0.5; High.Y = 0.5; }
 }
 
-[[nodiscard]] std::optional<double> MeasurePlaneRadialDistance(const OrbitCameraFrame& Frame, ImVec2 Local, Vector3 PlaneOrigin, Vector3 PlaneNormal)
+[[nodiscard]] std::optional<double> MeasurePlaneRadialDistance(const OrbitCameraBasis& Frame, ImVec2 Local, Vector3 PlaneOrigin, Vector3 PlaneNormal)
 {
     const OrbitRay Ray       = CastOrbitRay(Frame, Local.x, Local.y);
     const Vector3  Origin    = { Ray.Origin[0], Ray.Origin[1], Ray.Origin[2] };
@@ -7820,7 +7820,7 @@ void MeasureInsertFootprint(const SketcherInsert& Insert, Vector2& Low, Vector2&
     return Length(InPlane);
 }
 
-void DragKnifeInsert(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local)
+void DragKnifeInsert(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local)
 {
     SketcherKnifeSession& Knife = State.Knife;
     const std::optional<double> Radial = MeasurePlaneRadialDistance(Frame, Local, Knife.Spot.Origin, Knife.Spot.ZAxis);
@@ -7842,7 +7842,7 @@ void DragKnifeInsert(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
     Knife.SizedCondition = true;
 }
 
-void ReleaseKnifeInsert(SketcherWorkspaceState& State)
+void ReleaseKnifeInsert(SketcherWorkspaceStatus& State)
 {
     SketcherKnifeSession& Knife = State.Knife;
     Knife.SizingCondition     = false;
@@ -7863,7 +7863,7 @@ void ReleaseKnifeInsert(SketcherWorkspaceState& State)
 //    (one polyline per profile curve, construction curves skipped). Empty when no sketch cutter is drawn yet.
 struct KnifeCutterOutline
 {
-    OrthonormalFrame                  Plane    = {};                                         // [len] - Elevated sketch plane
+    OrthonormalBasis                  Plane    = {};                                         // [len] - Elevated sketch plane
     std::vector<std::vector<Vector2>> Chains   = {};                                         // [len] - Outline samples per curve
     Vector2                           Low      = {};                                         // [len] - Plane bounding box
     Vector2                           High     = {};                                         // [len]
@@ -7871,7 +7871,7 @@ struct KnifeCutterOutline
     double                            Diameter = 0.0;                                        // [len] - Lone circle: its Ø (else 0)
 };
 
-[[nodiscard]] bool MeasureKnifeCutter(const SketcherWorkspaceState& State, KnifeCutterOutline& Outline)
+[[nodiscard]] bool MeasureKnifeCutter(const SketcherWorkspaceStatus& State, KnifeCutterOutline& Outline)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     if (Knife.Sketch.empty()) return false;
@@ -7888,7 +7888,7 @@ struct KnifeCutterOutline
     {
         if (Curve.Construction) continue;
         ++Profiles;
-        if (Curve.Kind == SketchCurveKind::Circle) { ++Circles; Radius = Curve.Radius; }
+        if (Curve.Kind == SketchCurveCategory::Circle) { ++Circles; Radius = Curve.Radius; }
         std::vector<Vector2> Chain = SampleSketchCurve(Solved->second, Curve);
         for (const Vector2& Sample : Chain)
         {
@@ -7905,7 +7905,7 @@ struct KnifeCutterOutline
     return true;
 }
 
-void DriveKnifeSession(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, bool HoveredCondition)
+void DriveKnifeSession(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, bool HoveredCondition)
 {
     SketcherKnifeSession& Knife = State.Knife;
     ImGuiIO& Io = ImGui::GetIO();
@@ -8098,7 +8098,7 @@ void DriveKnifeSession(SketcherWorkspaceState& State, const OrbitCameraFrame& Fr
 }
 
 // 3D cutter: the cut stages live while its size is drawn (at rest once a stage is slow), as the 2D knife's depth does.
-void StageKnifeSolid(SketcherWorkspaceState& State)
+void StageKnifeSolid(SketcherWorkspaceStatus& State)
 {
     SketcherKnifeSession& Knife = State.Knife;
     SketcherConstructRequest Request;
@@ -8127,7 +8127,7 @@ void StageKnifeSolid(SketcherWorkspaceState& State)
 
 // FinishSolidSession for a knife's 3D cutter: the staged cut is adopted when it shows exactly this cutter, else run. A
 // refusal keeps the drawing open with the reason (as Construct does).
-void FinishKnifeSolid(SketcherWorkspaceState& State)
+void FinishKnifeSolid(SketcherWorkspaceStatus& State)
 {
     SketcherKnifeSession&   Knife   = State.Knife;
     SketcherDrawingSession& Drawing = State.Drawing;
@@ -8163,11 +8163,11 @@ void FinishKnifeSolid(SketcherWorkspaceState& State)
 
 // Slice knife: the edge of a staged piece under the pointer (8 px) becomes an edge treatment (the next profile and size),
 // or, already one, takes the focus. False when no piece edge is there (the click then applies).
-bool PickKnifeBlendEdge(SketcherWorkspaceState& State, ImVec2 Local)
+bool PickKnifeBlendEdge(SketcherWorkspaceStatus& State, ImVec2 Local)
 {
     SketcherKnifeSession& Knife = State.Knife;
     if (!Knife.Preview || Knife.PreviewScene.Edges.empty()) return false;
-    const OrbitCameraFrame            Frame = ViewportFrame(State);
+    const OrbitCameraBasis            Frame = ViewportFrame(State);
     const OrbitRay                    Ray   = CastOrbitRay(Frame, Local.x, Local.y);
     const std::optional<SketcherPick> Pick  = PickSketcherScene(Knife.PreviewScene, Ray, 8.0 * Frame.WorldPerPixel, State.Style.XRayEnabled, ActiveSectionClip(State));
     if (!Pick || !(Pick->Identity & IdentityEdgeBit)) return false;
@@ -8195,7 +8195,7 @@ bool PickKnifeBlendEdge(SketcherWorkspaceState& State, ImVec2 Local)
 }
 
 // Left-click: Insert places (then applies), Object picks bodies, Sketch applies (a slice: an edge of a piece is treated).
-void ClickKnifeSession(SketcherWorkspaceState& State, ImVec2 Local)
+void ClickKnifeSession(SketcherWorkspaceStatus& State, ImVec2 Local)
 {
     SketcherKnifeSession& Knife = State.Knife;
     if (Knife.Mode == SketcherKnifeMode::Object)
@@ -8264,7 +8264,7 @@ void ClickKnifeSession(SketcherWorkspaceState& State, ImVec2 Local)
 // Sketch cutter, drawn like a Construct primitive: the profile on the face, the same outline at the depth (or through
 // the body, or out of it for a Q boss), the side lines at the outline's extremes, and dimension lines: Ø for a lone
 // circle else W / H of its box, and the depth along the normal ("through" with T).
-void DrawKnifeCutter(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawKnifeCutter(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     if (!Knife.ActiveCondition || Knife.Mode != SketcherKnifeMode::Sketch || Knife.DrawPendingCondition) return;
@@ -8338,7 +8338,7 @@ void DrawKnifeCutter(SketcherWorkspaceState& State, ImDrawList* Canvas, const Or
 
 // Compound cutter / user STEP ghost: Stage 1 + Stage 2 wireframe at the spot (amber on hover; cyan once placed) plus
 // live radial Ø₁ / Ø₂ and axial D₁ / D₂ dimension lines for the multi-stage interactive workflow.
-void DrawKnifeGhost(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawKnifeGhost(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     if (!Knife.ActiveCondition || Knife.Mode != SketcherKnifeMode::Insert || !(Knife.HoverCondition || Knife.PlacedCondition)) return;
@@ -8392,7 +8392,7 @@ void DrawKnifeGhost(SketcherWorkspaceState& State, ImDrawList* Canvas, const Orb
     if (!Insert) return;
     const double    Depth  = KnifeInsertDepth(State);
     const double    Reach  = Depth / std::max(1.0e-9, Knife.Size);
-    const AffineMap Map    = PlaceSketcherInsert(Knife.Spot, Knife.Size, Knife.Turn, Raised, 1.0, 1.0);
+    const AffineMapping Map    = PlaceSketcherInsert(Knife.Spot, Knife.Size, Knife.Turn, Raised, 1.0, 1.0);
     const auto      Carry  = [&](Vector3 Point) { return Map.ColumnX * Point.X + Map.ColumnY * Point.Y + Map.ColumnZ * Point.Z + Map.Shift; };
     for (const std::array<Vector3, 2>& Segment : Insert->Segments)
     {
@@ -8424,7 +8424,7 @@ void DrawKnifeGhost(SketcherWorkspaceState& State, ImDrawList* Canvas, const Orb
 //    uniform handle sets the size; a corner handle gives its corner its own size. True while a handle owns the pointer.
 // Screen base and tip of a handle. A bisector that points (nearly) at the camera would project to a dot, so its tip
 // stands straight up from the base on screen instead (ScreenCondition: the drag then sizes by pointer x).
-[[nodiscard]] bool ProjectBevelHandle(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, int Index, double Lead, ImVec2& Base, ImVec2& Tip,
+[[nodiscard]] bool ProjectBevelHandle(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, int Index, double Lead, ImVec2& Base, ImVec2& Tip,
                                       bool& ScreenCondition)
 {
     const SketcherBevelSession& Bevel = State.Bevel;
@@ -8435,7 +8435,7 @@ void DrawKnifeGhost(SketcherWorkspaceState& State, ImDrawList* Canvas, const Orb
     return true;
 }
 
-bool DriveBevelHandles(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, bool PointerCondition)
+bool DriveBevelHandles(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, bool PointerCondition)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     Bevel.HoverHandle = -1;
@@ -8519,7 +8519,7 @@ bool DriveBevelHandles(SketcherWorkspaceState& State, const OrbitCameraFrame& Fr
 // Handles: a stick from the bevel's mid-line to the grip; the uniform grip a cyan ring, corner grips diamonds (amber
 // once they carry their own size). The size shows beside a hovered, dragged or sized handle. Tips register as
 // widgets BevelHandle0 (uniform), BevelHandle1 … for scripts.
-void DrawBevelHandles(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawBevelHandles(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     const SketcherBevelSession& Bevel = State.Bevel;
     if (!Bevel.ActiveCondition || Bevel.Verb != SketcherSessionVerb::Blend || Bevel.Handles.empty()) return;
@@ -8548,7 +8548,7 @@ void DrawBevelHandles(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
     }
 }
 
-[[nodiscard]] std::string KnifeReadout(const SketcherWorkspaceState& State)
+[[nodiscard]] std::string KnifeReadout(const SketcherWorkspaceStatus& State)
 {
     const SketcherKnifeSession& Knife = State.Knife;
     const std::string Typed = Knife.Typed.empty() ? std::string{} : " · typed " + Knife.Typed;
@@ -8590,7 +8590,7 @@ void DrawBevelHandles(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
 }
 
 // Slice knife edge treatments: the next profile, then one row per picked edge (focus, fillet / chamfer, size, remove).
-void DrawKnifeBlendRows(SketcherWorkspaceState& State)
+void DrawKnifeBlendRows(SketcherWorkspaceStatus& State)
 {
     SketcherKnifeSession& Knife = State.Knife;
     ImGui::TextDisabled("Edge blends · click edges of the pieces");
@@ -8635,7 +8635,7 @@ void DrawKnifeBlendRows(SketcherWorkspaceState& State)
     }
 }
 
-void DrawKnifeCard(SketcherWorkspaceState& State)
+void DrawKnifeCard(SketcherWorkspaceStatus& State)
 {
     SketcherKnifeSession& Knife = State.Knife;
     BeginCard("Knife", KnifeModeLabel(Knife.Mode));
@@ -8660,16 +8660,16 @@ void DrawKnifeCard(SketcherWorkspaceState& State)
         {
             const char* Drawn = KnifeSolidCondition(State) ? SketcherConstructLabel(State.Drawing.Solid) : SketcherDrawingLabel(State.Drawing.Kind);
             ImGui::TextDisabled("%s", Knife.DrawPendingCondition ? (std::string("Drawing a ") + Drawn + " for the knife").c_str() : "Draw a shape for the knife");
-            static const struct { const char* Label; SketcherDrawingKind Kind; } Shapes[] = {
-                { "Circle###KnifeDrawCircle", SketcherDrawingKind::Circle }, { "Rectangle###KnifeDrawRectangle", SketcherDrawingKind::Rectangle },
-                { "Polygon###KnifeDrawPolygon", SketcherDrawingKind::Polygon }, { "Slot###KnifeDrawSlot", SketcherDrawingKind::Slot }, { "Line###KnifeDrawLine", SketcherDrawingKind::Line },
-                { "Polyline###KnifeDrawPolyline", SketcherDrawingKind::Line } };
+            static const struct { const char* Label; SketcherDrawingCategory Kind; } Shapes[] = {
+                { "Circle###KnifeDrawCircle", SketcherDrawingCategory::Circle }, { "Rectangle###KnifeDrawRectangle", SketcherDrawingCategory::Rectangle },
+                { "Polygon###KnifeDrawPolygon", SketcherDrawingCategory::Polygon }, { "Slot###KnifeDrawSlot", SketcherDrawingCategory::Slot }, { "Line###KnifeDrawLine", SketcherDrawingCategory::Line },
+                { "Polyline###KnifeDrawPolyline", SketcherDrawingCategory::Line } };
             for (int Index = 0; Index < 6; ++Index)
             {
                 if (Index > 0 && Index != 3) ImGui::SameLine();
                 const bool Polyline = Index == 5;
                 const bool Drawing  = Knife.DrawPendingCondition && !State.Drawing.SolidCondition && State.Drawing.Kind == Shapes[Index].Kind
-                                   && (Shapes[Index].Kind != SketcherDrawingKind::Line || State.Drawing.SegmentCondition != Polyline);
+                                   && (Shapes[Index].Kind != SketcherDrawingCategory::Line || State.Drawing.SegmentCondition != Polyline);
                 if (ToggleButton(State, Shapes[Index].Label, Drawing, RowSpan(3)))
                 {
                     State.Knife.PreferredPolylineCondition = Polyline;
@@ -8689,10 +8689,10 @@ void DrawKnifeCard(SketcherWorkspaceState& State)
                 else Announce(State, "Knife: sketch shapes cut to a depth again (3D)");
             }
             ImGui::TextDisabled("Shaped cutters · same surface placement");
-            static const struct { const char* Label; SketcherConstructKind Kind; } Solids[] = {
-                { "Cone###KnifeDrawCone", SketcherConstructKind::Cone },
-                { "Sphere###KnifeDrawSphere", SketcherConstructKind::Sphere }, { "Torus###KnifeDrawTorus", SketcherConstructKind::Torus },
-                { "Wedge###KnifeDrawWedge", SketcherConstructKind::Wedge }, { "Tube###KnifeDrawTube", SketcherConstructKind::Tube } };
+            static const struct { const char* Label; SketcherConstructCategory Kind; } Solids[] = {
+                { "Cone###KnifeDrawCone", SketcherConstructCategory::Cone },
+                { "Sphere###KnifeDrawSphere", SketcherConstructCategory::Sphere }, { "Torus###KnifeDrawTorus", SketcherConstructCategory::Torus },
+                { "Wedge###KnifeDrawWedge", SketcherConstructCategory::Wedge }, { "Tube###KnifeDrawTube", SketcherConstructCategory::Tube } };
             for (int Index = 0; Index < int(std::size(Solids)); ++Index)
             {
                 if (Index % 3 != 0) ImGui::SameLine();
@@ -8726,7 +8726,7 @@ void DrawKnifeCard(SketcherWorkspaceState& State)
             if (ToggleButton(State, "Through###KnifeThrough", Knife.ThroughCondition, RowSpan(2))) { Knife.ThroughCondition = !Knife.ThroughCondition; Announce(State, Knife.ThroughCondition ? "Knife: through" : "Knife: to depth"); }
             if (KnifeSliceCondition(State)) ImGui::EndDisabled();
             ImGui::SameLine();
-            if (PressButton(State, "New shape###KnifeNewShape", RowSpan(2))) DrawKnifeShape(State, SketcherDrawingKind::Circle);
+            if (PressButton(State, "New shape###KnifeNewShape", RowSpan(2))) DrawKnifeShape(State, SketcherDrawingCategory::Circle);
         }
     }
     else if (Knife.Mode == SketcherKnifeMode::Insert)
@@ -8736,7 +8736,7 @@ void DrawKnifeCard(SketcherWorkspaceState& State)
         for (int Index = 0; Index < SketcherCompoundCutterCount; ++Index)
         {
             if (Index % 2 == 1) ImGui::SameLine();
-            const std::string Name  = SketcherCompoundCutterLabel(static_cast<SketcherCompoundCutterKind>(Index));
+            const std::string Name  = SketcherCompoundCutterLabel(static_cast<SketcherCompoundCutterCategory>(Index));
             const std::string Label = Name + "###KnifeInsert" + std::to_string(Index);
             if (ToggleButton(State, Label.c_str(), Knife.Insert == Index, RowSpan(2)))
             {
@@ -8863,7 +8863,7 @@ void DrawKnifeCard(SketcherWorkspaceState& State)
     EndCard();
 }
 
-void DrawBooleanCard(SketcherWorkspaceState& State)
+void DrawBooleanCard(SketcherWorkspaceStatus& State)
 {
     const std::vector<std::string>& Picked = State.Document.Selection.Bodies;
     BeginCard("Boolean");
@@ -8897,7 +8897,7 @@ void DrawBooleanCard(SketcherWorkspaceState& State)
     EndCard();
 }
 
-void ChooseProfileAutomatic(SketcherWorkspaceState& State)
+void ChooseProfileAutomatic(SketcherWorkspaceStatus& State)
 {
     if (State.Bevel.ProfileMaterial == 0)
     {
@@ -8909,7 +8909,7 @@ void ChooseProfileAutomatic(SketcherWorkspaceState& State)
     Announce(State, "Extrude Boolean: auto — drag into the body cuts, out of it adds");
 }
 
-void ChooseProfileCombination(SketcherWorkspaceState& State, FeatureCombination Combination)
+void ChooseProfileCombination(SketcherWorkspaceStatus& State, FeatureCombination Combination)
 {
     State.Bevel.AutoCombinationCondition = false;
     State.Bevel.Combination = Combination;
@@ -8917,12 +8917,12 @@ void ChooseProfileCombination(SketcherWorkspaceState& State, FeatureCombination 
 }
 
 // Polyline of every sketch step on its plane (solved positions), the focused one highlighted, used ones dimmed.
-void DrawSketchOverlays(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawSketchOverlays(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     const SketcherDocument& Document = DisplayedSketcherDocument(State);                     // live while a drag stages a preview
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch || SketcherCurveHiddenCondition(Document, Step.Label)) continue;   // Outliner eye
+        if (Step.Kind != FeatureStepCategory::Sketch || SketcherCurveHiddenCondition(Document, Step.Label)) continue;   // Outliner eye
         const auto Solved = Document.Regeneration.Sketches.find(Step.Label);
         const SketchModel& Sketch = Solved != Document.Regeneration.Sketches.end() ? Solved->second : Step.Sketch;
         const bool  Locked   = SketcherLockedCondition(Document, Step.Label);
@@ -8930,7 +8930,7 @@ void DrawSketchOverlays(SketcherWorkspaceState& State, ImDrawList* Canvas, const
                             || std::find(Document.Selection.Curves.begin(), Document.Selection.Curves.end(), Step.Label) != Document.Selection.Curves.end();   // picked (loft order, gizmo)
         const bool  Consumed = SketcherSketchConsumedCondition(Document, Step.Label);
         const ImU32 Colour   = Focused ? IM_COL32(0xff, 0xd2, 0x4d, 0xff) : Consumed || Locked ? IM_COL32(0x7f, 0x9c, 0xbf, 0x90) : IM_COL32(0x9f, 0xd8, 0xff, 0xff);
-        OrthonormalFrame Plane = Step.Plane;
+        OrthonormalBasis Plane = Step.Plane;
         Plane.Origin = Plane.Origin + Plane.ZAxis * EvaluateFeatureValue(Document.Tree, Step.Elevation);
         if (!Consumed || Focused) DrawSketchTint(State, Canvas, Frame, Step, Sketch, Plane, Focused);   // a solid covers a consumed one
         for (const SketchCurve& Curve : Sketch.Curves)
@@ -8959,7 +8959,7 @@ void DrawSketchOverlays(SketcherWorkspaceState& State, ImDrawList* Canvas, const
         // 📝 Mode 1 (and selected free curves in mode 5): Bezier / NURBS control polygons, then every defining point.
         for (const SketchCurve& Curve : Sketch.Curves)
         {
-            if (Curve.Kind != SketchCurveKind::Spline || (Curve.Form != SketchSplineForm::Bezier && Curve.Form != SketchSplineForm::Nurbs)) continue;
+            if (Curve.Kind != SketchCurveCategory::Spline || (Curve.Form != SketchSplineForm::Bezier && Curve.Form != SketchSplineForm::Nurbs)) continue;
             std::vector<ImVec2> Hull;
             for (int Point : Curve.Points)
             {
@@ -8984,20 +8984,20 @@ void DrawSketchOverlays(SketcherWorkspaceState& State, ImDrawList* Canvas, const
 }
 
 // Nearest shown sketch point within PoleReach of Pointer (mode 1, or selected free curves in mode 5); false when none.
-bool FindSketchPointNear(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Pointer, std::string& Label, int& Point)
+bool FindSketchPointNear(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Pointer, std::string& Label, int& Point)
 {
     float Best = 8.0f;
     Point = -1;
     for (const FeatureStep& Step : State.Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch || !CurveReachableCondition(State.Document, Step.Label)) continue;
+        if (Step.Kind != FeatureStepCategory::Sketch || !CurveReachableCondition(State.Document, Step.Label)) continue;
         if (State.PickMode != SketcherPickMode::ControlPoint)
         {
             const bool Selected = std::find(State.Document.Selection.Curves.begin(), State.Document.Selection.Curves.end(), Step.Label) != State.Document.Selection.Curves.end();
             if (State.PickMode != SketcherPickMode::Any || !Selected || SketcherSketchConsumedCondition(State.Document, Step.Label)) continue;
         }
         const SketchModel&     Sketch = SolvedSketchOf(State.Document, Step);
-        const OrthonormalFrame Plane  = ElevatedSketchPlane(State.Document, Step);
+        const OrthonormalBasis Plane  = ElevatedSketchPlane(State.Document, Step);
         for (int Index = 0; Index < int(Sketch.Points.size()); ++Index)
         {
             ImVec2 Pixel;
@@ -9010,14 +9010,14 @@ bool FindSketchPointNear(const SketcherWorkspaceState& State, const OrbitCameraF
 }
 
 // Script evidence: each sketch point is a widget in mode 1 (SketchPointWidget).
-void RecordSketchPointWidgets(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame)
+void RecordSketchPointWidgets(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame)
 {
     if (State.PickMode != SketcherPickMode::ControlPoint) return;
     for (const FeatureStep& Step : State.Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch || !CurveReachableCondition(State.Document, Step.Label)) continue;
+        if (Step.Kind != FeatureStepCategory::Sketch || !CurveReachableCondition(State.Document, Step.Label)) continue;
         const SketchModel&     Sketch = SolvedSketchOf(State.Document, Step);
-        const OrthonormalFrame Plane  = ElevatedSketchPlane(State.Document, Step);
+        const OrthonormalBasis Plane  = ElevatedSketchPlane(State.Document, Step);
         for (int Index = 0; Index < int(Sketch.Points.size()); ++Index)
         {
             ImVec2 Pixel;
@@ -9035,7 +9035,7 @@ constexpr float  BodyVertexReach    = 10.0f;                                    
 constexpr size_t BodyVertexDotLimit = 192;                                                   // [-]  - More vertices: dots only for picked / hovered
 
 // A body vertex is shown and pickable when the first face along the view ray through it is not nearer (x-ray: always).
-[[nodiscard]] bool BodyVertexVisibleCondition(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, const SketcherSceneVertex& Vertex, ImVec2 Pixel)
+[[nodiscard]] bool BodyVertexVisibleCondition(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, const SketcherSceneVertex& Vertex, ImVec2 Pixel)
 {
     if (State.Style.XRayEnabled) return true;
     const Vector3  Point{ Vertex.Position[0], Vertex.Position[1], Vertex.Position[2] };
@@ -9047,13 +9047,13 @@ constexpr size_t BodyVertexDotLimit = 192;                                      
     return Hit->Distance >= Dot(Point - Origin, Direction) - Slack;
 }
 
-[[nodiscard]] bool BodyVertexPickableCondition(const SketcherWorkspaceState& State, const SketcherSceneVertex& Vertex)
+[[nodiscard]] bool BodyVertexPickableCondition(const SketcherWorkspaceStatus& State, const SketcherSceneVertex& Vertex)
 {
     return Vertex.Body < State.Scene.Bodies.size() && !SketcherLockedCondition(State.Document, State.Scene.Bodies[Vertex.Body].Key);
 }
 
 // Nearest visible body vertex within BodyVertexReach of Pointer (screen pixels); −1 when none.
-[[nodiscard]] int FindBodyVertexNear(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Pointer)
+[[nodiscard]] int FindBodyVertexNear(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Pointer)
 {
     float Best  = BodyVertexReach;
     int   Found = -1;
@@ -9070,28 +9070,28 @@ constexpr size_t BodyVertexDotLimit = 192;                                      
     return Found;
 }
 
-[[nodiscard]] bool BodyVertexPickedCondition(const SketcherWorkspaceState& State, const SketcherSceneVertex& Vertex)
+[[nodiscard]] bool BodyVertexPickedCondition(const SketcherWorkspaceStatus& State, const SketcherSceneVertex& Vertex)
 {
     const std::vector<std::string>& Picked = State.Document.Selection.Vertices;
     return std::find(Picked.begin(), Picked.end(), Vertex.Name) != Picked.end();
 }
 
 // A click on a body vertex: replace / add / remove (one body at a time, like faces and edges); sketch points give way.
-void PickBodyVertex(SketcherWorkspaceState& State, int Index, SketcherPickIntent Intent)
+void PickBodyVertex(SketcherWorkspaceStatus& State, int Index, SketcherPickIntent Intent)
 {
     const SketcherSceneVertex& Vertex = State.Scene.Vertices[size_t(Index)];
     const std::string&         Key    = State.Scene.Bodies[Vertex.Body].Key;
     const bool                 Member = BodyVertexPickedCondition(State, Vertex);
     State.SketchPoints.Points.clear();
     State.SketchPoints.Sketch.clear();
-    if (Intent == SketcherPickIntent::Remove) { if (Member) SelectSketcherName(State.Document, SketcherSelectionKind::Vertex, Vertex.Name, true, Key); }
-    else if (Intent == SketcherPickIntent::Add) { if (!Member) SelectSketcherName(State.Document, SketcherSelectionKind::Vertex, Vertex.Name, true, Key); }
-    else SelectSketcherName(State.Document, SketcherSelectionKind::Vertex, Vertex.Name, false, Key);
+    if (Intent == SketcherPickIntent::Remove) { if (Member) SelectSketcherName(State.Document, SketcherSelectionCategory::Vertex, Vertex.Name, true, Key); }
+    else if (Intent == SketcherPickIntent::Add) { if (!Member) SelectSketcherName(State.Document, SketcherSelectionCategory::Vertex, Vertex.Name, true, Key); }
+    else SelectSketcherName(State.Document, SketcherSelectionCategory::Vertex, Vertex.Name, false, Key);
     Announce(State, Compose("Vertex %s · %d picked (gizmo moves them; the faces at them follow)", Vertex.Name.c_str(), int(State.Document.Selection.Vertices.size())));
 }
 
 // Mode 1: a dot per visible body vertex (picked: amber, hovered: white ring); script widgets BodyVertex<index>.
-void DrawBodyVertices(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawBodyVertices(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     if (State.PickMode != SketcherPickMode::ControlPoint || State.Scene.Vertices.empty()) return;
     const ImVec2 Pointer = ImGui::GetIO().MousePos;
@@ -9117,10 +9117,10 @@ void DrawBodyVertices(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
 
 SketcherPickIntent PickIntentOf(const ImGuiIO& Io);
 
-void PickCurve(SketcherWorkspaceState&, const std::string&, SketcherPickIntent);
+void PickCurve(SketcherWorkspaceStatus&, const std::string&, SketcherPickIntent);
 
 // A click on a sketch point: replace / add / remove in the picked set (one sketch at a time).
-void PickSketchPoint(SketcherWorkspaceState& State, const std::string& Label, int Point, SketcherPickIntent Intent)
+void PickSketchPoint(SketcherWorkspaceStatus& State, const std::string& Label, int Point, SketcherPickIntent Intent)
 {
     SketcherSketchPointSession& Points = State.SketchPoints;
     if ((Intent == SketcherPickIntent::Add || Intent == SketcherPickIntent::Remove) && Points.Sketch != Label)
@@ -9147,16 +9147,16 @@ void PickSketchPoint(SketcherWorkspaceState& State, const std::string& Label, in
 
 // Mode-1 box: the sketch points inside it (of the first sketch that has any) join / replace / leave the picked set.
 // False when the box holds no sketch point (the ordinary box selection runs instead).
-bool PickSketchPointsInBox(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Start, ImVec2 End, SketcherPickIntent Intent)
+bool PickSketchPointsInBox(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Start, ImVec2 End, SketcherPickIntent Intent)
 {
     const float Left = std::min(Start.x, End.x), Right = std::max(Start.x, End.x), Top = std::min(Start.y, End.y), Bottom = std::max(Start.y, End.y);
     SketcherSketchPointSession& Points = State.SketchPoints;
     for (const FeatureStep& Step : State.Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch || !CurveReachableCondition(State.Document, Step.Label)) continue;
+        if (Step.Kind != FeatureStepCategory::Sketch || !CurveReachableCondition(State.Document, Step.Label)) continue;
         if (Intent != SketcherPickIntent::Replace && !Points.Sketch.empty() && Step.Label != Points.Sketch) continue;
         const SketchModel&     Sketch = SolvedSketchOf(State.Document, Step);
-        const OrthonormalFrame Plane  = ElevatedSketchPlane(State.Document, Step);
+        const OrthonormalBasis Plane  = ElevatedSketchPlane(State.Document, Step);
         std::vector<int>       Inside;
         for (int Index = 0; Index < int(Sketch.Points.size()); ++Index)
         {
@@ -9179,7 +9179,7 @@ bool PickSketchPointsInBox(SketcherWorkspaceState& State, const OrbitCameraFrame
     return false;
 }
 
-void CancelSketchPointDrag(SketcherWorkspaceState& State)
+void CancelSketchPointDrag(SketcherWorkspaceStatus& State)
 {
     SketcherSketchPointSession& Points = State.SketchPoints;
     Points.DragCondition = false;
@@ -9192,13 +9192,13 @@ void CancelSketchPointDrag(SketcherWorkspaceState& State)
 // 💡 Direct drag of a held sketch point: the pointer meets the sketch plane, 0.1 grid and object snaps (Ctrl free); each
 //    distinct target stages a preview (the sketch re-solves, extrudes / lofts regenerate live); the release commits one
 //    DragSketcherSketchPoint, a release without movement picks the point.
-void DriveSketchPointDrag(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local)
+void DriveSketchPointDrag(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local)
 {
     SketcherSketchPointSession& Points = State.SketchPoints;
     const ImGuiIO&              Io     = ImGui::GetIO();
     const FeatureStep*          Step   = FindSketchStepByLabel(State.Document, Points.DragSketch);
     if (!Step) { CancelSketchPointDrag(State); return; }
-    const OrthonormalFrame Plane = ElevatedSketchPlane(State.Document, *Step);
+    const OrthonormalBasis Plane = ElevatedSketchPlane(State.Document, *Step);
     const bool             Moved = Io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] > ClickTolerance * ClickTolerance;
     if (Moved)
     {
@@ -9245,7 +9245,7 @@ void DriveSketchPointDrag(SketcherWorkspaceState& State, const OrbitCameraFrame&
 }
 
 // The drawing in progress: the shape through the pointer, its clicks, a spline's control polygon.
-void DrawDrawingPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame, bool ReprojectTrace = true)
+void DrawDrawingPreview(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame, bool ReprojectTrace = true)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     if (Drawing.SolidCondition) { DrawSolidPreview(State, Canvas, Frame); return; }
@@ -9272,7 +9272,7 @@ void DrawDrawingPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const
         }
         return;
     }
-    const OrthonormalFrame  Plane   = DrawingPlane(Drawing);
+    const OrthonormalBasis  Plane   = DrawingPlane(Drawing);
     auto Pixel = [&](Vector2 Point, ImVec2& Out) { return ProjectWorldPoint(State, Frame, PlacePlanePoint(Plane, Point), Out); };
     if (const std::vector<Vector3> Lifted = LiftedDrawingPoints(Drawing, true); !Lifted.empty())
     {
@@ -9302,7 +9302,7 @@ void DrawDrawingPreview(SketcherWorkspaceState& State, ImDrawList* Canvas, const
     }
     std::vector<Vector2> Marks = Drawing.Points;
     if (DrawingPointerLive(Drawing)) Marks.push_back(Drawing.Pointer);
-    if (Drawing.Kind == SketcherDrawingKind::Curve && Drawing.Form != SketchSplineForm::Hermite && Drawing.Form != SketchSplineForm::CubicSpline && Marks.size() >= 2)
+    if (Drawing.Kind == SketcherDrawingCategory::Curve && Drawing.Form != SketchSplineForm::Hermite && Drawing.Form != SketchSplineForm::CubicSpline && Marks.size() >= 2)
     {
         std::vector<ImVec2> Polygon;
         for (const Vector2& Mark : Marks) { ImVec2 Out; if (Pixel(Mark, Out)) Polygon.push_back(Out); }
@@ -9340,7 +9340,7 @@ std::string CaptionOf(const SketcherDocument& Document, const std::string& Label
 }
 
 // 1-based loft order of a selected curve, 0 when unselected.
-int CurveOrder(const SketcherWorkspaceState& State, const std::string& Label)
+int CurveOrder(const SketcherWorkspaceStatus& State, const std::string& Label)
 {
     const std::vector<std::string>& Curves = State.Document.Selection.Curves;
     const auto Found = std::find(Curves.begin(), Curves.end(), Label);
@@ -9348,7 +9348,7 @@ int CurveOrder(const SketcherWorkspaceState& State, const std::string& Label)
 }
 
 // Poles show on the selected curves, and on every curve in mode 1.
-bool PolesShownCondition(const SketcherWorkspaceState& State, const std::string& Label)
+bool PolesShownCondition(const SketcherWorkspaceStatus& State, const std::string& Label)
 {
     return State.PickMode == SketcherPickMode::ControlPoint || CurveOrder(State, Label) > 0;
 }
@@ -9356,12 +9356,12 @@ bool PolesShownCondition(const SketcherWorkspaceState& State, const std::string&
 bool CurveConsumedCondition(const SketcherDocument& Document, const std::string& Label)
 {
     for (const FeatureStep& Step : Document.Tree.Steps)
-        if ((Step.Kind == FeatureStepKind::Loft || Step.Kind == FeatureStepKind::Network) && std::find(Step.Sections.begin(), Step.Sections.end(), Label) != Step.Sections.end()) return true;
+        if ((Step.Kind == FeatureStepCategory::Loft || Step.Kind == FeatureStepCategory::Network) && std::find(Step.Sections.begin(), Step.Sections.end(), Label) != Step.Sections.end()) return true;
     return false;
 }
 
 // The definition as displayed: during a pole drag the grabbed pole follows the pointer.
-NurbsCurveDefinition DisplayedDefinition(const SketcherWorkspaceState& State, const std::string& Label, const NurbsCurveDefinition& Definition)
+NurbsCurveDefinition DisplayedDefinition(const SketcherWorkspaceStatus& State, const std::string& Label, const NurbsCurveDefinition& Definition)
 {
     NurbsCurveDefinition Shown = Definition;
     const SketcherPoleDrag& Drag = State.PoleDrag;
@@ -9369,7 +9369,7 @@ NurbsCurveDefinition DisplayedDefinition(const SketcherWorkspaceState& State, co
     return Shown;
 }
 
-std::vector<ImVec2> ProjectFittedCurve(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, const NurbsCurveDefinition& Definition)
+std::vector<ImVec2> ProjectFittedCurve(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, const NurbsCurveDefinition& Definition)
 {
     const NurbsDomain   Domain = MeasureNurbsCurveDomain(Definition);
     std::vector<ImVec2> Pixels;
@@ -9396,17 +9396,17 @@ float DistanceToPolyline(const std::vector<ImVec2>& Pixels, ImVec2 Pointer)
 }
 
 // Nearest curve within CurveReach of the pointer (frame pixels); empty when none.
-std::string FindCurveNear(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Pointer)
+std::string FindCurveNear(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Pointer)
 {
     std::string Nearest;
     float       Best = CurveReach;
     for (const FeatureStep& Step : State.Document.Tree.Steps)
     {
         if (!CurveReachableCondition(State.Document, Step.Label)) continue;                  // Hidden or locked
-        if (Step.Kind == FeatureStepKind::Sketch && !SketcherSketchConsumedCondition(State.Document, Step.Label))
+        if (Step.Kind == FeatureStepCategory::Sketch && !SketcherSketchConsumedCondition(State.Document, Step.Label))
         {
             // Free sketches (loft sections, paths) pick like curves; an extruded sketch stays with its body.
-            const OrthonormalFrame Plane  = ElevatedSketchPlane(State.Document, Step);
+            const OrthonormalBasis Plane  = ElevatedSketchPlane(State.Document, Step);
             const auto             Solved = State.Document.Regeneration.Sketches.find(Step.Label);
             const SketchModel&     Sketch = Solved != State.Document.Regeneration.Sketches.end() ? Solved->second : Step.Sketch;
             for (const SketchCurve& Curve : Sketch.Curves)
@@ -9419,7 +9419,7 @@ std::string FindCurveNear(const SketcherWorkspaceState& State, const OrbitCamera
             }
             continue;
         }
-        const CurveFitOutcome* Fit = Step.Kind == FeatureStepKind::SpaceCurve ? FindFittedCurve(State.Document, Step.Label) : nullptr;
+        const CurveFitOutcome* Fit = Step.Kind == FeatureStepCategory::SpaceCurve ? FindFittedCurve(State.Document, Step.Label) : nullptr;
         if (!Fit) continue;
         const float Distance = DistanceToPolyline(ProjectFittedCurve(State, Frame, *Fit->Curve.Definition), Pointer);
         if (Distance <= Best) { Best = Distance; Nearest = Step.Label; }
@@ -9428,7 +9428,7 @@ std::string FindCurveNear(const SketcherWorkspaceState& State, const OrbitCamera
 }
 
 // Nearest shown pole within PoleReach of the pointer.
-bool FindPoleNear(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Pointer, std::string& Label, int& Pole)
+bool FindPoleNear(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Pointer, std::string& Label, int& Pole)
 {
     float Best = PoleReach;
     Pole = -1;
@@ -9449,7 +9449,7 @@ bool FindPoleNear(const SketcherWorkspaceState& State, const OrbitCameraFrame& F
 
 // 📝 Curvature comb (Plasticity / Alias style): teeth along −N with length κ·scale, N toward the centre of curvature,
 //    κ = |C′ × C″| / |C′|³; the scale makes the longest tooth 15 % of the chord so every curve reads at any zoom.
-void DrawCurvatureComb(const SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame, const NurbsCurveDefinition& Definition)
+void DrawCurvatureComb(const SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame, const NurbsCurveDefinition& Definition)
 {
     constexpr int       Teeth  = 72;
     const NurbsDomain   Domain = MeasureNurbsCurveDomain(Definition);
@@ -9484,11 +9484,11 @@ void DrawCurvatureComb(const SketcherWorkspaceState& State, ImDrawList* Canvas, 
 
 // Every fitted SpaceCurve: polyline (selected: blue with its loft order, lofted: dimmed), combs on selected curves,
 // poles and control polygon where shown, the dragged pole live.
-void PickCurve(SketcherWorkspaceState&, const std::string&, SketcherPickIntent);
+void PickCurve(SketcherWorkspaceStatus&, const std::string&, SketcherPickIntent);
 
 // Mode 2 selects intervals between consecutive control parameters. The cage and
 // corresponding exact curve interval are both hit targets; this never selects a body edge.
-bool PickSplineSpan(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Mouse, bool Commit)
+bool PickSplineSpan(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Mouse, bool Commit)
 {
     double Best=8.0; std::string Label; int Span=-1;
     auto Gap=[&](ImVec2 A,ImVec2 B)
@@ -9537,7 +9537,7 @@ bool PickSplineSpan(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame
     return true;
 }
 
-void SubdividePickedSpline(SketcherWorkspaceState& State)
+void SubdividePickedSpline(SketcherWorkspaceStatus& State)
 {
     const bool SpanOwnerSelected=std::find(State.Document.Selection.Curves.begin(),State.Document.Selection.Curves.end(),State.SplineSpans.Label)!=State.Document.Selection.Curves.end();
     std::string Label=State.PickMode==SketcherPickMode::Edge && SpanOwnerSelected && !State.SplineSpans.Indices.empty()?State.SplineSpans.Label:std::string{};
@@ -9555,12 +9555,12 @@ void SubdividePickedSpline(SketcherWorkspaceState& State)
     Conclude(State,Outcome);
 }
 
-void DrawCurveOverlays(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawCurveOverlays(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     const SketcherDocument& Document = State.Document;
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        const CurveFitOutcome* Fit = Step.Kind == FeatureStepKind::SpaceCurve ? FindFittedCurve(Document, Step.Label) : nullptr;
+        const CurveFitOutcome* Fit = Step.Kind == FeatureStepCategory::SpaceCurve ? FindFittedCurve(Document, Step.Label) : nullptr;
         if (!Fit || SketcherCurveHiddenCondition(Document, Step.Label)) continue;           // Outliner eye
         const NurbsCurveDefinition Shown  = DisplayedDefinition(State, Step.Label, *Fit->Curve.Definition);
         const int                  Order  = CurveOrder(State, Step.Label);
@@ -9607,7 +9607,7 @@ void DrawCurveOverlays(SketcherWorkspaceState& State, ImDrawList* Canvas, const 
 }
 
 // X-ray (Plasticity viewport:toggle-x-ray, Alt+Z): ghost faces at α, hidden edges drawn faded and picked / boxed through.
-void ToggleXRay(SketcherWorkspaceState& State)
+void ToggleXRay(SketcherWorkspaceStatus& State)
 {
     State.Style.XRayEnabled = !State.Style.XRayEnabled;
     Announce(State, State.Style.XRayEnabled ? Compose("X-ray on · faces %d %% · hidden edges pickable", int(std::lround(State.Style.XRayOpacity * 100.0f)))
@@ -9619,7 +9619,7 @@ void DrawStatusPill(ImDrawList* Canvas, ImVec2& Cursor, const std::string& Text,
 // 📝 Snap glyphs (Fusion / Plasticity style): square endpoint, triangle midpoint, ringed centre, cross intersection,
 //    ring + bar tangent, ⊥ perpendicular, dot on curve, dot + normal tick on face, dot on a lock line; the caption pill
 //    sits at the pointer (+14, +14). The active lock draws as a dashed line through the last point.
-void DrawSnapOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawSnapOverlay(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     constexpr ImU32 SnapColour    = IM_COL32(0xe6, 0xff, 0x4d, 0xff);                         // #e6ff4d - Snapped point
     constexpr ImU32 OutlineColour = IM_COL32(0x10, 0x12, 0x16, 0xd0);                         // Dark halo behind the glyph
@@ -9630,7 +9630,7 @@ void DrawSnapOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const Or
     const bool Dragging     = (State.Constrain.ActiveCondition && State.Constrain.DragCondition) || State.PoleDrag.ActiveCondition;
     const bool Dimensioning = State.DimensionTool.ActiveCondition;
     if (!Drawing && !Moving && !Dragging && !Dimensioning) return;
-    if (Drawing && Picker.Lock != SketcherSnapLockKind::None)
+    if (Drawing && Picker.Lock != SketcherSnapLockCategory::None)
     {
         const double Span = 4000.0 * Frame.WorldPerPixel;
         std::vector<ImVec2> Pixels;
@@ -9642,7 +9642,7 @@ void DrawSnapOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const Or
         if (Pixels.size() >= 2) DrawDashedPolyline(Canvas, Pixels, LockColours[int(Picker.Lock)], 1.5f);
     }
     const SketcherSnap& Snap = Picker.Current;
-    const bool ShiftAxis = Drawing && Picker.Lock == SketcherSnapLockKind::None && Snap.Kind == SketcherSnapKind::Axis && Snap.Source.rfind("Shift straight", 0) == 0;
+    const bool ShiftAxis = Drawing && Picker.Lock == SketcherSnapLockCategory::None && Snap.Kind == SketcherSnapCategory::Axis && Snap.Source.rfind("Shift straight", 0) == 0;
     ImU32 AxisInk = LockColours[int(Picker.Lock)];
     if (ShiftAxis)
     {
@@ -9659,7 +9659,7 @@ void DrawSnapOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const Or
         }
         if (Pixels.size() >= 2) DrawDashedPolyline(Canvas, Pixels, AxisInk, 1.5f);
     }
-    if (Snap.Kind == SketcherSnapKind::None || Snap.Kind == SketcherSnapKind::Grid) return;
+    if (Snap.Kind == SketcherSnapCategory::None || Snap.Kind == SketcherSnapCategory::Grid) return;
     ImVec2 At;
     if (!ProjectWorldPoint(State, Frame, Snap.Position, At)) return;
     auto Glyph = [&](ImU32 Colour, float Width)
@@ -9667,30 +9667,30 @@ void DrawSnapOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const Or
         const float R = 6.0f;
         switch (Snap.Kind)
         {
-        case SketcherSnapKind::Endpoint: Canvas->AddRect(ImVec2(At.x - R, At.y - R), ImVec2(At.x + R, At.y + R), Colour, 0.0f, Width); break;
-        case SketcherSnapKind::Midpoint: Canvas->AddTriangle(ImVec2(At.x, At.y - R - 1.0f), ImVec2(At.x - R, At.y + R - 1.0f), ImVec2(At.x + R, At.y + R - 1.0f), Colour, Width); break;
-        case SketcherSnapKind::Quarter:                                                      // A diamond: ¼ / ¾ points, quadrants
+        case SketcherSnapCategory::Endpoint: Canvas->AddRect(ImVec2(At.x - R, At.y - R), ImVec2(At.x + R, At.y + R), Colour, 0.0f, Width); break;
+        case SketcherSnapCategory::Midpoint: Canvas->AddTriangle(ImVec2(At.x, At.y - R - 1.0f), ImVec2(At.x - R, At.y + R - 1.0f), ImVec2(At.x + R, At.y + R - 1.0f), Colour, Width); break;
+        case SketcherSnapCategory::Quarter:                                                      // A diamond: ¼ / ¾ points, quadrants
             Canvas->AddQuad(ImVec2(At.x, At.y - R), ImVec2(At.x + R, At.y), ImVec2(At.x, At.y + R), ImVec2(At.x - R, At.y), Colour, Width);
             break;
-        case SketcherSnapKind::Centre:
+        case SketcherSnapCategory::Centre:
             Canvas->AddCircle(At, R, Colour, 20, Width);
             Canvas->AddLine(ImVec2(At.x - R - 3.0f, At.y), ImVec2(At.x + R + 3.0f, At.y), Colour, Width * 0.5f);
             Canvas->AddLine(ImVec2(At.x, At.y - R - 3.0f), ImVec2(At.x, At.y + R + 3.0f), Colour, Width * 0.5f);
             break;
-        case SketcherSnapKind::Intersection:
+        case SketcherSnapCategory::Intersection:
             Canvas->AddLine(ImVec2(At.x - R, At.y - R), ImVec2(At.x + R, At.y + R), Colour, Width);
             Canvas->AddLine(ImVec2(At.x - R, At.y + R), ImVec2(At.x + R, At.y - R), Colour, Width);
             break;
-        case SketcherSnapKind::Tangent:
+        case SketcherSnapCategory::Tangent:
             Canvas->AddCircle(ImVec2(At.x, At.y + R * 0.5f), R * 0.8f, Colour, 20, Width);
             Canvas->AddLine(ImVec2(At.x - R - 3.0f, At.y - R * 0.3f), ImVec2(At.x + R + 3.0f, At.y - R * 0.3f), Colour, Width);
             break;
-        case SketcherSnapKind::Perpendicular:
+        case SketcherSnapCategory::Perpendicular:
             Canvas->AddLine(ImVec2(At.x - R, At.y + R), ImVec2(At.x + R, At.y + R), Colour, Width);
             Canvas->AddLine(ImVec2(At.x, At.y + R), ImVec2(At.x, At.y - R), Colour, Width);
             Canvas->AddRect(ImVec2(At.x, At.y + R * 0.2f), ImVec2(At.x + R * 0.8f, At.y + R), Colour, 0.0f, Width * 0.5f);
             break;
-        case SketcherSnapKind::Face:
+        case SketcherSnapCategory::Face:
         {
             ImVec2 Tip;
             if (ProjectWorldPoint(State, Frame, Snap.Position + Snap.Normal * (24.0 * Frame.WorldPerPixel), Tip)) Canvas->AddLine(At, Tip, Colour, Width);
@@ -9701,9 +9701,9 @@ void DrawSnapOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const Or
         }
     };
     Glyph(OutlineColour, 4.0f);
-    Glyph(Snap.Kind == SketcherSnapKind::Axis ? AxisInk : SnapColour, 2.0f);
+    Glyph(Snap.Kind == SketcherSnapCategory::Axis ? AxisInk : SnapColour, 2.0f);
     const ImVec2 Pointer = ImGui::GetIO().MousePos;
-    std::string Text = Snap.Kind == SketcherSnapKind::Axis ? Snap.Source : std::string(SketcherSnapLabel(Snap.Kind)) + " · " + Snap.Source;
+    std::string Text = Snap.Kind == SketcherSnapCategory::Axis ? Snap.Source : std::string(SketcherSnapLabel(Snap.Kind)) + " · " + Snap.Source;
     if (Text.size() > 72) Text = Text.substr(0, 69) + "...";
     // Flip left / up near the viewport's right and bottom edges (the hint line lives along the bottom)
     const float  Width  = ImGui::CalcTextSize(Text.c_str()).x + 26.0f;
@@ -9712,7 +9712,7 @@ void DrawSnapOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const Or
     ImVec2 Caption(Pointer.x + 14.0f, Pointer.y + 14.0f);
     if (Caption.x + Width > Right - 8.0f) Caption.x = Pointer.x - 14.0f - Width;
     if (Caption.y + 26.0f > Bottom - 40.0f) Caption.y = Pointer.y - 14.0f - 26.0f;
-    DrawStatusPill(Canvas, Caption, Text, Snap.Kind == SketcherSnapKind::Axis ? AxisInk : SnapColour);
+    DrawStatusPill(Canvas, Caption, Text, Snap.Kind == SketcherSnapCategory::Axis ? AxisInk : SnapColour);
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -9726,7 +9726,7 @@ std::string JointRequestKey(const SketcherJointRequest& Request)
                    int(Request.Kind), Request.Angle, Request.Offset, Request.Slide, Request.SecondSlide, Request.Pitch, Request.Roll, Request.Flipped ? 1 : 0);
 }
 
-void StageJointPreview(SketcherWorkspaceState& State)
+void StageJointPreview(SketcherWorkspaceStatus& State)
 {
     SketcherJointSession& Joint = State.Joint;
     if (!Joint.ActiveCondition || Joint.Phase < 2) return;
@@ -9740,7 +9740,7 @@ void StageJointPreview(SketcherWorkspaceState& State)
     Joint.PreviewScene = BuildSketcherScene(*Joint.Preview);
 }
 
-void CloseJointSession(SketcherWorkspaceState& State, const char* Message)
+void CloseJointSession(SketcherWorkspaceStatus& State, const char* Message)
 {
     State.Joint.ActiveCondition = false;
     State.Joint.Preview.reset();
@@ -9749,7 +9749,7 @@ void CloseJointSession(SketcherWorkspaceState& State, const char* Message)
     if (Message) Announce(State, Message);
 }
 
-void AnnounceJointAdjust(SketcherWorkspaceState& State)
+void AnnounceJointAdjust(SketcherWorkspaceStatus& State)
 {
     const SketcherJointSession& Joint = State.Joint;
     Announce(State, Compose("Joint: %s onto %s · R V S C P L B kind · drag the values · F flip · Enter / right-click applies", SketcherBodyCaption(State.Document, Joint.Moving.Body).c_str(),
@@ -9758,7 +9758,7 @@ void AnnounceJointAdjust(SketcherWorkspaceState& State)
 
 // 💡 Alt+J (Fusion Joint; Plasticity has none). Two entities picked beforehand on two bodies skip the picking: the earlier
 //    pick (pick order of one kind; for a face and an edge, the one picked last is fixed) is on the moving body.
-void OpenJointSession(SketcherWorkspaceState& State)
+void OpenJointSession(SketcherWorkspaceStatus& State)
 {
     if (State.Document.Summary.Bodies.size() < 2)
     {
@@ -9767,17 +9767,17 @@ void OpenJointSession(SketcherWorkspaceState& State)
     }
     SketcherJointSession& Joint   = State.Joint;
     const int             Commits = Joint.Commits;
-    const JointKind       Kind    = Joint.Request.Kind;                                     // The last kind is kept, as the bevel keeps its shape
+    const JointCategory       Kind    = Joint.Request.Kind;                                     // The last kind is kept, as the bevel keeps its shape
     CloseJointSession(State, nullptr);
     Joint                 = SketcherJointSession{};
     Joint.Commits         = Commits;
     Joint.Request.Kind    = Kind;
     Joint.ActiveCondition = true;
     const SketcherSelection& Selection = State.Document.Selection;
-    std::vector<std::pair<SketcherSelectionKind, std::string>> Picks;
+    std::vector<std::pair<SketcherSelectionCategory, std::string>> Picks;
     if (Selection.Faces.size() + Selection.Edges.size() == 2)
     {
-        constexpr SketcherSelectionKind Edge = SketcherSelectionKind::Edge, Face = SketcherSelectionKind::Face;
+        constexpr SketcherSelectionCategory Edge = SketcherSelectionCategory::Edge, Face = SketcherSelectionCategory::Face;
         if (Selection.Edges.size() == 2) Picks = { { Edge, Selection.Edges[0] }, { Edge, Selection.Edges[1] } };
         else if (Selection.Faces.size() == 2) Picks = { { Face, Selection.Faces[0] }, { Face, Selection.Faces[1] } };
         else if (Selection.LastKind == Edge) Picks = { { Face, Selection.Faces[0] }, { Edge, Selection.Edges[0] } };
@@ -9804,14 +9804,14 @@ void OpenJointSession(SketcherWorkspaceState& State)
     Announce(State, "Joint: pick the joint origin on the moving body (an edge or a face)");
 }
 
-void ChooseJointKind(SketcherWorkspaceState& State, JointKind Kind)
+void ChooseJointKind(SketcherWorkspaceStatus& State, JointCategory Kind)
 {
     State.Joint.Request.Kind = Kind;
     StageJointPreview(State);
     Announce(State, Compose("Joint: %s · %d degree(s) of freedom", JointKindLabel(Kind), JointFreedom(Kind)));
 }
 
-void FlipJoint(SketcherWorkspaceState& State)
+void FlipJoint(SketcherWorkspaceStatus& State)
 {
     State.Joint.Request.Flipped = !State.Joint.Request.Flipped;
     StageJointPreview(State);
@@ -9819,7 +9819,7 @@ void FlipJoint(SketcherWorkspaceState& State)
 }
 
 // The edge (within 8 px, else the face) under the pointer and the joint origin it offers — the hover glyph.
-void HoverJointOrigin(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, bool Hovered)
+void HoverJointOrigin(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, bool Hovered)
 {
     SketcherJointSession& Joint = State.Joint;
     if (Joint.Phase >= 2) return;
@@ -9832,14 +9832,14 @@ void HoverJointOrigin(SketcherWorkspaceState& State, const OrbitCameraFrame& Fra
     }
     if (Identity == IdentitySectionCap) Identity = 0;
     const std::string           Name = Identity ? NameSketcherIdentity(State.Scene, Identity) : std::string();
-    const SketcherSelectionKind Kind = Identity ? SketcherIdentityKind(Identity) : SketcherSelectionKind::Edge;
+    const SketcherSelectionCategory Kind = Identity ? SketcherIdentityKind(Identity) : SketcherSelectionCategory::Edge;
     if (Name == Joint.HoverName && Kind == Joint.HoverKind) return;
     Joint.HoverName = Name;
     Joint.HoverKind = Kind;
     Joint.Hover     = Name.empty() ? SketcherJointOrigin{} : ResolveSketcherJointOrigin(State.Document, Kind, Name);
 }
 
-void ClickJointSession(SketcherWorkspaceState& State)
+void ClickJointSession(SketcherWorkspaceStatus& State)
 {
     SketcherJointSession& Joint = State.Joint;
     if (Joint.Phase >= 2) return;
@@ -9864,7 +9864,7 @@ void ClickJointSession(SketcherWorkspaceState& State)
     AnnounceJointAdjust(State);
 }
 
-void ApplyJointSession(SketcherWorkspaceState& State)
+void ApplyJointSession(SketcherWorkspaceStatus& State)
 {
     SketcherJointSession& Joint = State.Joint;
     if (Joint.Phase < 2) { Announce(State, "Joint: pick both joint origins first"); return; }
@@ -9879,14 +9879,14 @@ void ApplyJointSession(SketcherWorkspaceState& State)
     Conclude(State, Outcome);
 }
 
-void DrawJointCard(SketcherWorkspaceState& State)
+void DrawJointCard(SketcherWorkspaceStatus& State)
 {
     SketcherJointSession& Joint = State.Joint;
     BeginCard("Joint");
-    static const struct { const char* Label; JointKind Kind; } Kinds[] = {
-        { "Rigid (R)###JointRigid", JointKind::Rigid }, { "Revolute (V)###JointRevolute", JointKind::Revolute }, { "Slider (S)###JointSlider", JointKind::Slider },
-        { "Cylindrical (C)###JointCylindrical", JointKind::Cylindrical }, { "Pin-slot (P)###JointPinSlot", JointKind::PinSlot }, { "Planar (L)###JointPlanar", JointKind::Planar },
-        { "Ball (B)###JointBall", JointKind::Ball } };
+    static const struct { const char* Label; JointCategory Kind; } Kinds[] = {
+        { "Rigid (R)###JointRigid", JointCategory::Rigid }, { "Revolute (V)###JointRevolute", JointCategory::Revolute }, { "Slider (S)###JointSlider", JointCategory::Slider },
+        { "Cylindrical (C)###JointCylindrical", JointCategory::Cylindrical }, { "Pin-slot (P)###JointPinSlot", JointCategory::PinSlot }, { "Planar (L)###JointPlanar", JointCategory::Planar },
+        { "Ball (B)###JointBall", JointCategory::Ball } };
     const float Half = std::floor((ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2.0f);
     for (int Index = 0; Index < 7; ++Index)
     {
@@ -9911,16 +9911,16 @@ void DrawJointCard(SketcherWorkspaceState& State)
             Changed |= ImGui::DragScalar(Label, ImGuiDataType_Double, &Value, Speed, nullptr, nullptr, Format);
             RegisterWidget(State, Label);
         };
-        const JointKind Kind = Request.Kind;
-        Field(Kind == JointKind::Ball ? "Yaw###JointAngle" : "Angle###JointAngle", Request.Angle, 0.5f, "%.2f deg");
-        if (Kind == JointKind::Ball)
+        const JointCategory Kind = Request.Kind;
+        Field(Kind == JointCategory::Ball ? "Yaw###JointAngle" : "Angle###JointAngle", Request.Angle, 0.5f, "%.2f deg");
+        if (Kind == JointCategory::Ball)
         {
             Field("Pitch###JointPitch", Request.Pitch, 0.5f, "%.2f deg");
             Field("Roll###JointRoll", Request.Roll, 0.5f, "%.2f deg");
         }
-        if (Kind == JointKind::Slider || Kind == JointKind::Cylindrical || Kind == JointKind::PinSlot || Kind == JointKind::Planar)
-            Field(Kind == JointKind::Planar ? "Slide x###JointSlide" : "Slide###JointSlide", Request.Slide, 0.005f, "%.4f m");
-        if (Kind == JointKind::Planar) Field("Slide y###JointSecondSlide", Request.SecondSlide, 0.005f, "%.4f m");
+        if (Kind == JointCategory::Slider || Kind == JointCategory::Cylindrical || Kind == JointCategory::PinSlot || Kind == JointCategory::Planar)
+            Field(Kind == JointCategory::Planar ? "Slide x###JointSlide" : "Slide###JointSlide", Request.Slide, 0.005f, "%.4f m");
+        if (Kind == JointCategory::Planar) Field("Slide y###JointSecondSlide", Request.SecondSlide, 0.005f, "%.4f m");
         Field("Offset###JointOffset", Request.Offset, 0.005f, "%.4f m");
         Changed |= SketcherAuthoringToggle(State, "Flip (F)###JointFlip", &Request.Flipped);
         RegisterWidget(State, "Flip (F)###JointFlip");
@@ -9944,7 +9944,7 @@ void DrawJointCard(SketcherWorkspaceState& State)
 }
 
 // 📝 Joint origin glyph: a ring in the origin's plane (while picking), z (blue, long) and x (red) arrows, a caption pill.
-void DrawJointGlyph(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame, const OrthonormalFrame& Origin, const std::string& Caption, ImU32 Accent,
+void DrawJointGlyph(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame, const OrthonormalBasis& Origin, const std::string& Caption, ImU32 Accent,
                     bool RingCondition = true)
 {
     constexpr ImU32 HaloColour = IM_COL32(0x10, 0x12, 0x16, 0xd0);
@@ -9982,7 +9982,7 @@ void DrawJointGlyph(SketcherWorkspaceState& State, ImDrawList* Canvas, const Orb
 }
 
 // Overlay of the Joint card (hovered origin, picked origins, the placed origin of the preview) and of a focused Joint step.
-void DrawJointOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawJointOverlay(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     constexpr ImU32 HoverColour  = IM_COL32(0x4d, 0xd2, 0xff, 0xff);                         // Cyan: what a click takes
     constexpr ImU32 PickedColour = IM_COL32(0xff, 0xc8, 0x3d, 0xff);                         // Amber: chosen origins
@@ -10005,7 +10005,7 @@ void DrawJointOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const O
 }
 
 // Measure (I): recompute only when the selection or the document revision moved (a NURBS body takes ~1 s).
-void RefreshMeasure(SketcherWorkspaceState& State)
+void RefreshMeasure(SketcherWorkspaceStatus& State)
 {
     SketcherMeasureSession& Measure = State.Measure;
     if (!Measure.ActiveCondition) return;
@@ -10016,7 +10016,7 @@ void RefreshMeasure(SketcherWorkspaceState& State)
 }
 
 // Measure (I; Fusion Inspect → Measure, no Plasticity default): card + overlay of the selection's exact figures.
-void ToggleMeasure(SketcherWorkspaceState& State)
+void ToggleMeasure(SketcherWorkspaceStatus& State)
 {
     SketcherMeasureSession& Measure = State.Measure;
     Measure.ActiveCondition = !Measure.ActiveCondition;
@@ -10029,7 +10029,7 @@ void ToggleMeasure(SketcherWorkspaceState& State)
 }
 
 // 📝 Inspector card: subject, then caption / value rows (values wrap under long captions), timing and the selection rule.
-void DrawMeasureCard(SketcherWorkspaceState& State)
+void DrawMeasureCard(SketcherWorkspaceStatus& State)
 {
     if (!State.Measure.ActiveCondition) return;
     const SketcherMeasurement& Measurement = State.Measure.Measurement;
@@ -10080,9 +10080,9 @@ void DrawMeasureCard(SketcherWorkspaceState& State)
 void ResetDimensionToolStage(SketcherDimensionSession& Tool)
 {
     Tool.Stage               = 0;
-    Tool.PreviewKind         = SketcherDimensionKind::Linear;
-    Tool.FirstKind           = SketcherSelectionKind::Vertex;
-    Tool.SecondKind          = SketcherSelectionKind::Vertex;
+    Tool.PreviewKind         = SketcherDimensionCategory::Linear;
+    Tool.FirstKind           = SketcherSelectionCategory::Vertex;
+    Tool.SecondKind          = SketcherSelectionCategory::Vertex;
     Tool.FirstEntity.clear();
     Tool.SecondEntity.clear();
     Tool.FirstLineCondition  = false;
@@ -10093,7 +10093,7 @@ void ResetDimensionToolStage(SketcherDimensionSession& Tool)
     Tool.TypedOffset.clear();
 }
 
-void CloseDimensionSession(SketcherWorkspaceState& State, const std::string& Message = {})
+void CloseDimensionSession(SketcherWorkspaceStatus& State, const std::string& Message = {})
 {
     State.DimensionTool.ActiveCondition = false;
     State.DimensionTool.HoverCondition  = false;
@@ -10107,7 +10107,7 @@ void CloseDimensionSession(SketcherWorkspaceState& State, const std::string& Mes
 [[nodiscard]] Vector3 DimensionSafeNormal(Vector3 Candidate, Vector3 Fallback = { 0.0, 0.0, 1.0 });
 [[nodiscard]] Vector3 DefaultDimensionPlaneNormal(Vector3 Span);
 
-[[nodiscard]] bool TrySeedDimensionFromPreselection(SketcherWorkspaceState& State)
+[[nodiscard]] bool TrySeedDimensionFromPreselection(SketcherWorkspaceStatus& State)
 {
     const SketcherDocument&  Doc = State.Document;
     const SketcherSelection& Sel = Doc.Selection;
@@ -10132,8 +10132,8 @@ void CloseDimensionSession(SketcherWorkspaceState& State, const std::string& Mes
                     {
                         const double Sweep       = std::abs(Prof.IntervalHigh - Prof.IntervalLow);
                         const bool   FullCircle  = Sweep >= 2.0 * std::numbers::pi - 1.0e-2;
-                        Tool.PreviewKind         = FullCircle ? SketcherDimensionKind::Diameter : SketcherDimensionKind::Radius;
-                        Tool.FirstKind           = SketcherSelectionKind::Edge;
+                        Tool.PreviewKind         = FullCircle ? SketcherDimensionCategory::Diameter : SketcherDimensionCategory::Radius;
+                        Tool.FirstKind           = SketcherSelectionCategory::Edge;
                         Tool.FirstEntity         = EdgeName;
                         Tool.SecondEntity.clear();
                         Tool.FirstPoint          = Arc->Frame.Origin;
@@ -10157,8 +10157,8 @@ void CloseDimensionSession(SketcherWorkspaceState& State, const std::string& Mes
                 const Vector3 P0 = Doc.Partition->Vertices.Resolve(Prof.Start).Position;
                 const Vector3 P1 = Doc.Partition->Vertices.Resolve(Prof.End).Position;
                 if (Distance(P0, P1) < 1.0e-7) return false;
-                Tool.PreviewKind         = SketcherDimensionKind::Linear;
-                Tool.FirstKind           = SketcherSelectionKind::Edge;
+                Tool.PreviewKind         = SketcherDimensionCategory::Linear;
+                Tool.FirstKind           = SketcherSelectionCategory::Edge;
                 Tool.FirstEntity         = EdgeName;
                 Tool.SecondEntity.clear();
                 Tool.FirstPoint          = P0;
@@ -10194,10 +10194,10 @@ void CloseDimensionSession(SketcherWorkspaceState& State, const std::string& Mes
         }
         if (Found[0] && Found[1] && Distance(Pts[0], Pts[1]) > 1.0e-7)
         {
-            Tool.PreviewKind         = SketcherDimensionKind::Linear;
-            Tool.FirstKind           = SketcherSelectionKind::Vertex;
+            Tool.PreviewKind         = SketcherDimensionCategory::Linear;
+            Tool.FirstKind           = SketcherSelectionCategory::Vertex;
             Tool.FirstEntity         = Sel.Vertices[0];
-            Tool.SecondKind          = SketcherSelectionKind::Vertex;
+            Tool.SecondKind          = SketcherSelectionCategory::Vertex;
             Tool.SecondEntity        = Sel.Vertices[1];
             Tool.FirstPoint          = Pts[0];
             Tool.SecondPoint         = Pts[1];
@@ -10212,7 +10212,7 @@ void CloseDimensionSession(SketcherWorkspaceState& State, const std::string& Mes
     return false;
 }
 
-void ToggleDimensionSession(SketcherWorkspaceState& State)
+void ToggleDimensionSession(SketcherWorkspaceStatus& State)
 {
     if (State.DimensionTool.ActiveCondition)
     {
@@ -10238,7 +10238,7 @@ void ToggleDimensionSession(SketcherWorkspaceState& State)
         Announce(State, "Dimension tool (D): click Point 1 -> Point 2 (or click circle / arc / edge), drag offset · X/Y/Z slides along world axis · Shift+X/Y/Z dX/dY/dZ · Esc ends");
 }
 
-void TriggerDimensionShortcut(SketcherWorkspaceState& State)
+void TriggerDimensionShortcut(SketcherWorkspaceStatus& State)
 {
     ToggleDimensionSession(State);
 }
@@ -10250,7 +10250,7 @@ void TriggerDimensionShortcut(SketcherWorkspaceState& State)
     return nullptr;
 }
 
-bool StartPlacedDimensionSlide(SketcherWorkspaceState& State, const std::string& Id, std::optional<int> ForcedSlideAxis = std::nullopt)
+bool StartPlacedDimensionSlide(SketcherWorkspaceStatus& State, const std::string& Id, std::optional<int> ForcedSlideAxis = std::nullopt)
 {
     const SketcherDimension* Dim = FindPlacedDimension(State.Document, Id);
     if (!Dim) return false;
@@ -10271,11 +10271,11 @@ bool StartPlacedDimensionSlide(SketcherWorkspaceState& State, const std::string&
     return true;
 }
 
-struct DimensionProbeHit
+struct DimensionQueryHit
 {
     enum class TargetType : uint8_t { None = 0, Point = 1, Segment = 2, Radial = 3, FreePlane = 4 };
     TargetType            Type                = TargetType::None;
-    SketcherSelectionKind EntityKind          = SketcherSelectionKind::Vertex;
+    SketcherSelectionCategory EntityKind          = SketcherSelectionCategory::Vertex;
     std::string           EntityName          = {};
     std::string           StartPointEntity    = {};
     std::string           EndPointEntity      = {};
@@ -10308,9 +10308,9 @@ struct DimensionProbeHit
          : (std::abs(UnitSpan.Y) < 0.92 ? Vector3{ 0.0, -1.0, 0.0 } : Vector3{ 1.0, 0.0, 0.0 });
 }
 
-[[nodiscard]] DimensionProbeHit ProbeDimensionTarget(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local)
+[[nodiscard]] DimensionQueryHit ProbeDimensionTarget(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local)
 {
-    DimensionProbeHit Out;
+    DimensionQueryHit Out;
     const ImVec2 ScreenMouse(State.ViewportRect[0] + Local.x, State.ViewportRect[1] + Local.y);
     const SketcherDocument& Doc = State.Document;
 
@@ -10324,11 +10324,11 @@ struct DimensionProbeHit
     for (const FeatureStep& Step : Doc.Tree.Steps)
     {
         if (!CurveReachableCondition(Doc, Step.Label)) continue;
-        if (Step.Kind == FeatureStepKind::Sketch && State.PickMode != SketcherPickMode::ControlPoint && SketcherSketchConsumedCondition(Doc, Step.Label))
+        if (Step.Kind == FeatureStepCategory::Sketch && State.PickMode != SketcherPickMode::ControlPoint && SketcherSketchConsumedCondition(Doc, Step.Label))
             continue;   // Extruded / consumed sketches yield to their 3D B-Rep body
-        if (Step.Kind == FeatureStepKind::Sketch)
+        if (Step.Kind == FeatureStepCategory::Sketch)
         {
-            const OrthonormalFrame Plane  = ElevatedSketchPlane(Doc, Step);
+            const OrthonormalBasis Plane  = ElevatedSketchPlane(Doc, Step);
             const SketchModel&     Sketch = SolvedSketchOf(Doc, Step);
             for (int PtIdx = 0; PtIdx < int(Sketch.Points.size()); ++PtIdx)
             {
@@ -10340,8 +10340,8 @@ struct DimensionProbeHit
                 {
                     BestPointScore       = Dist;
                     Out                  = {};
-                    Out.Type             = DimensionProbeHit::TargetType::Point;
-                    Out.EntityKind       = SketcherSelectionKind::Vertex;
+                    Out.Type             = DimensionQueryHit::TargetType::Point;
+                    Out.EntityKind       = SketcherSelectionCategory::Vertex;
                     Out.EntityName       = Step.Label + "@Point:" + std::to_string(PtIdx);
                     Out.Point            = WorldPt;
                     Out.PlaneNormal      = DimensionSafeNormal(Plane.ZAxis);
@@ -10353,7 +10353,7 @@ struct DimensionProbeHit
             {
                 for (const SketchCurve& Curve : Sketch.Curves)
                 {
-                    if (Curve.Construction || (Curve.Kind != SketchCurveKind::Line && Curve.Kind != SketchCurveKind::Arc)) continue;
+                    if (Curve.Construction || (Curve.Kind != SketchCurveCategory::Line && Curve.Kind != SketchCurveCategory::Arc)) continue;
                     const std::vector<Vector2> Samples = SampleSketchCurve(Sketch, Curve);
                     if (Samples.empty()) continue;
                     const Vector3 MidWorld = PlacePlanePoint(Plane, Samples[Samples.size() / 2]);
@@ -10364,8 +10364,8 @@ struct DimensionProbeHit
                     {
                         BestPointScore       = Dist;
                         Out                  = {};
-                        Out.Type             = DimensionProbeHit::TargetType::Point;
-                        Out.EntityKind       = SketcherSelectionKind::Vertex;
+                        Out.Type             = DimensionQueryHit::TargetType::Point;
+                        Out.EntityKind       = SketcherSelectionCategory::Vertex;
                         Out.EntityName       = Step.Label + "@Mid:" + std::to_string(Curve.Identifier);
                         Out.Point            = MidWorld;
                         Out.PlaneNormal      = DimensionSafeNormal(Plane.ZAxis);
@@ -10375,7 +10375,7 @@ struct DimensionProbeHit
                 }
             }
         }
-        else if (Step.Kind == FeatureStepKind::SpaceCurve)
+        else if (Step.Kind == FeatureStepCategory::SpaceCurve)
         {
             const CurveFitOutcome* Fit = FindFittedCurve(Doc, Step.Label);
             const std::vector<Vector3>& Pts = (Fit && Fit->Curve.Definition) ? Fit->Curve.Definition->Poles : Step.Points;
@@ -10388,8 +10388,8 @@ struct DimensionProbeHit
                 {
                     BestPointScore = Dist;
                     Out            = {};
-                    Out.Type       = DimensionProbeHit::TargetType::Point;
-                    Out.EntityKind = SketcherSelectionKind::Vertex;
+                    Out.Type       = DimensionQueryHit::TargetType::Point;
+                    Out.EntityKind = SketcherSelectionCategory::Vertex;
                     Out.EntityName = Step.Label + "@Pole:" + std::to_string(PoleIdx);
                     Out.Point      = Pts[PoleIdx];
                     Out.Badge      = "Curve Point";
@@ -10435,8 +10435,8 @@ struct DimensionProbeHit
                     BestPointScore = std::min(BestPointScore, Dist);
                     BestPointDepth = Depth;
                     Out            = {};
-                    Out.Type       = DimensionProbeHit::TargetType::Point;
-                    Out.EntityKind = SketcherSelectionKind::Vertex;
+                    Out.Type       = DimensionQueryHit::TargetType::Point;
+                    Out.EntityKind = SketcherSelectionCategory::Vertex;
                     Out.EntityName = It->second;
                     Out.Point      = WorldPt;
                     Out.Badge      = "Vertex";
@@ -10447,30 +10447,30 @@ struct DimensionProbeHit
 
     const std::optional<Vector3> Ref = State.DimensionTool.Stage >= 1 ? std::optional<Vector3>(State.DimensionTool.FirstPoint) : std::nullopt;
     const SketcherSnap SnapHit = FindPointerSnap(State, Frame, Local, Ref, {}, {}, true);
-    if (Out.Type == DimensionProbeHit::TargetType::Point)
+    if (Out.Type == DimensionQueryHit::TargetType::Point)
     {
         State.Picker.Current          = {};
-        State.Picker.Current.Kind     = SketcherSnapKind::Endpoint;
+        State.Picker.Current.Kind     = SketcherSnapCategory::Endpoint;
         State.Picker.Current.Position = Out.Point;
         return Out;
     }
     const bool AllowMidSnap = State.DimensionTool.Stage == 1;
     bool SnapIsPeriodicSeam = false;
-    if (SnapHit.Kind == SketcherSnapKind::Endpoint)
+    if (SnapHit.Kind == SketcherSnapCategory::Endpoint)
     {
         for (const Vector3& SeamPt : SeamVertices)
             if (Length(SnapHit.Position - SeamPt) <= 1.0e-5) { SnapIsPeriodicSeam = true; break; }
     }
-    if (!SnapIsPeriodicSeam && (SnapHit.Kind == SketcherSnapKind::Centre || SnapHit.Kind == SketcherSnapKind::Endpoint
-        || (AllowMidSnap && SnapHit.Kind == SketcherSnapKind::Midpoint)))
+    if (!SnapIsPeriodicSeam && (SnapHit.Kind == SketcherSnapCategory::Centre || SnapHit.Kind == SketcherSnapCategory::Endpoint
+        || (AllowMidSnap && SnapHit.Kind == SketcherSnapCategory::Midpoint)))
     {
         ImVec2 SnapPix{};
         if (ProjectWorldPoint(State, Frame, SnapHit.Position, SnapPix) && std::hypot(SnapPix.x - ScreenMouse.x, SnapPix.y - ScreenMouse.y) < 10.5f)
         {
             State.Picker.Current = SnapHit;
-            Out.Type             = DimensionProbeHit::TargetType::Point;
+            Out.Type             = DimensionQueryHit::TargetType::Point;
             Out.Point            = SnapHit.Position;
-            Out.Badge            = SnapHit.Kind == SketcherSnapKind::Centre ? "Centre" : SnapHit.Kind == SketcherSnapKind::Midpoint ? "Midpoint" : "Endpoint";
+            Out.Badge            = SnapHit.Kind == SketcherSnapCategory::Centre ? "Centre" : SnapHit.Kind == SketcherSnapCategory::Midpoint ? "Midpoint" : "Endpoint";
             return Out;
         }
     }
@@ -10480,9 +10480,9 @@ struct DimensionProbeHit
     double BestCurveDepth = 1.0e300;
     for (const FeatureStep& Step : Doc.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::Sketch || !CurveReachableCondition(Doc, Step.Label)) continue;
+        if (Step.Kind != FeatureStepCategory::Sketch || !CurveReachableCondition(Doc, Step.Label)) continue;
         if (State.PickMode != SketcherPickMode::ControlPoint && SketcherSketchConsumedCondition(Doc, Step.Label)) continue;
-        const OrthonormalFrame Plane  = ElevatedSketchPlane(Doc, Step);
+        const OrthonormalBasis Plane  = ElevatedSketchPlane(Doc, Step);
         const SketchModel&     Sketch = SolvedSketchOf(Doc, Step);
         for (const SketchCurve& Curve : Sketch.Curves)
         {
@@ -10503,14 +10503,14 @@ struct DimensionProbeHit
             BestCurveDist  = Dist;
             BestCurveDepth = Samples3D.empty() ? 1.0e300 : CameraDepth(Samples3D[Samples3D.size() / 2]);
             Out            = {};
-            Out.EntityKind       = SketcherSelectionKind::Edge;
+            Out.EntityKind       = SketcherSelectionCategory::Edge;
             Out.EntityName       = Step.Label + "@Curve:" + std::to_string(Curve.Identifier);
             Out.PlaneNormal      = DimensionSafeNormal(Plane.ZAxis);
             Out.HasExplicitPlane = true;
             Out.Highlight        = std::move(Samples3D);
-            if (Curve.Kind == SketchCurveKind::Circle && Curve.Centre >= 0 && Curve.Centre < int(Sketch.Points.size()))
+            if (Curve.Kind == SketchCurveCategory::Circle && Curve.Centre >= 0 && Curve.Centre < int(Sketch.Points.size()))
             {
-                Out.Type                = DimensionProbeHit::TargetType::Radial;
+                Out.Type                = DimensionQueryHit::TargetType::Radial;
                 Out.FullCircleCondition = true;
                 Out.Centre              = PlacePlanePoint(Plane, Sketch.Points[Curve.Centre].Position);
                 Out.Radius              = Curve.Radius;
@@ -10518,10 +10518,10 @@ struct DimensionProbeHit
                 Out.Point               = Out.Rim;
                 Out.Badge               = "Circle \xC3\x98";
             }
-            else if (Curve.Kind == SketchCurveKind::Arc && Curve.Centre >= 0 && Curve.Centre < int(Sketch.Points.size())
+            else if (Curve.Kind == SketchCurveCategory::Arc && Curve.Centre >= 0 && Curve.Centre < int(Sketch.Points.size())
                      && Curve.Start >= 0 && Curve.Start < int(Sketch.Points.size()) && Curve.End >= 0 && Curve.End < int(Sketch.Points.size()))
             {
-                Out.Type                = DimensionProbeHit::TargetType::Radial;
+                Out.Type                = DimensionQueryHit::TargetType::Radial;
                 Out.FullCircleCondition = false;
                 Out.Centre              = PlacePlanePoint(Plane, Sketch.Points[Curve.Centre].Position);
                 Out.Point               = PlacePlanePoint(Plane, Sketch.Points[Curve.Start].Position);
@@ -10530,10 +10530,10 @@ struct DimensionProbeHit
                 Out.Rim                 = !Out.Highlight.empty() ? Out.Highlight[Out.Highlight.size() / 2] : Out.Point;
                 Out.Badge               = "Arc R";
             }
-            else if (Curve.Kind == SketchCurveKind::Line && Curve.Start >= 0 && Curve.Start < int(Sketch.Points.size())
+            else if (Curve.Kind == SketchCurveCategory::Line && Curve.Start >= 0 && Curve.Start < int(Sketch.Points.size())
                      && Curve.End >= 0 && Curve.End < int(Sketch.Points.size()))
             {
-                Out.Type             = DimensionProbeHit::TargetType::Segment;
+                Out.Type             = DimensionQueryHit::TargetType::Segment;
                 Out.StartPointEntity = Step.Label + "@Point:" + std::to_string(Curve.Start);
                 Out.EndPointEntity   = Step.Label + "@Point:" + std::to_string(Curve.End);
                 Out.Point            = PlacePlanePoint(Plane, Sketch.Points[Curve.Start].Position);
@@ -10544,7 +10544,7 @@ struct DimensionProbeHit
             }
             else if (Out.Highlight.size() >= 2)
             {
-                Out.Type           = DimensionProbeHit::TargetType::Segment;
+                Out.Type           = DimensionQueryHit::TargetType::Segment;
                 Out.Point          = Out.Highlight.front();
                 Out.SecondEndpoint = Out.Highlight.back();
                 Out.Badge          = "Curve";
@@ -10605,7 +10605,7 @@ struct DimensionProbeHit
                 BestCurveDist  = std::min(BestCurveDist, Dist);
                 BestCurveDepth = MidDepth;
                 Out            = {};
-                Out.EntityKind = SketcherSelectionKind::Edge;
+                Out.EntityKind = SketcherSelectionCategory::Edge;
                 Out.EntityName = NameIt->second;
                 Out.Highlight  = std::move(Samples3D);
 
@@ -10642,7 +10642,7 @@ struct DimensionProbeHit
                     if (const auto* Arc = std::get_if<CircularArc>(&Curve))
                     {
                         const double Sweep      = std::abs(Prof.IntervalHigh - Prof.IntervalLow);
-                        Out.Type                = DimensionProbeHit::TargetType::Radial;
+                        Out.Type                = DimensionQueryHit::TargetType::Radial;
                         Out.FullCircleCondition = Sweep >= 2.0 * std::numbers::pi - 1.0e-2;
                         Out.Centre              = Arc->Frame.Origin;
                         Out.Radius              = Arc->Radius;
@@ -10659,7 +10659,7 @@ struct DimensionProbeHit
                         Out.HasLineDir = true;
                     }
                 }
-                Out.Type           = DimensionProbeHit::TargetType::Segment;
+                Out.Type           = DimensionQueryHit::TargetType::Segment;
                 Out.Point          = Doc.Partition->Vertices.Resolve(Prof.Start).Position;
                 Out.SecondEndpoint = Doc.Partition->Vertices.Resolve(Prof.End).Position;
                 if (const auto StartIt = Body.Naming.Vertices.find(Prof.Start.Slot); StartIt != Body.Naming.Vertices.end()) Out.StartPointEntity = StartIt->second;
@@ -10670,14 +10670,14 @@ struct DimensionProbeHit
         }
     }
 
-    if (Out.Type != DimensionProbeHit::TargetType::None)
+    if (Out.Type != DimensionQueryHit::TargetType::None)
     {
         State.Picker.Current = {};
         return Out;
     }
 
     // 3. Cylindrical / Spherical B-Rep Face under cursor
-    if (Doc.Partition && State.HoverIdentity != 0u && SketcherIdentityKind(State.HoverIdentity) == SketcherSelectionKind::Face)
+    if (Doc.Partition && State.HoverIdentity != 0u && SketcherIdentityKind(State.HoverIdentity) == SketcherSelectionCategory::Face)
     {
         const std::string FaceName = NameSketcherIdentity(State.Scene, State.HoverIdentity);
         for (const RegeneratedBody& Body : Doc.Regeneration.Bodies)
@@ -10692,9 +10692,9 @@ struct DimensionProbeHit
                 const SurfaceGeometry& Surf = Doc.Partition->Surfaces.Resolve(FProf.Surface);
                 if (const auto* Cyl = std::get_if<CylinderSurface>(&Surf))
                 {
-                    Out.Type                = DimensionProbeHit::TargetType::Radial;
+                    Out.Type                = DimensionQueryHit::TargetType::Radial;
                     Out.FullCircleCondition = true;
-                    Out.EntityKind          = SketcherSelectionKind::Face;
+                    Out.EntityKind          = SketcherSelectionCategory::Face;
                     Out.EntityName          = FaceName;
                     Out.Radius              = Cyl->Radius;
                     Out.PlaneNormal         = DimensionSafeNormal(Cyl->Frame.ZAxis);
@@ -10708,9 +10708,9 @@ struct DimensionProbeHit
                 }
                 if (const auto* Sph = std::get_if<SphereSurface>(&Surf))
                 {
-                    Out.Type                = DimensionProbeHit::TargetType::Radial;
+                    Out.Type                = DimensionQueryHit::TargetType::Radial;
                     Out.FullCircleCondition = true;
-                    Out.EntityKind          = SketcherSelectionKind::Face;
+                    Out.EntityKind          = SketcherSelectionCategory::Face;
                     Out.EntityName          = FaceName;
                     Out.Radius              = Sph->Radius;
                     Out.PlaneNormal         = { 0.0, 0.0, 1.0 };
@@ -10727,10 +10727,10 @@ struct DimensionProbeHit
     }
 
     // 4. Curve/Face Snap or Free Grid Plane fallback
-    if (SnapHit.Kind != SketcherSnapKind::None)
+    if (SnapHit.Kind != SketcherSnapCategory::None)
     {
         State.Picker.Current = SnapHit;
-        Out.Type             = DimensionProbeHit::TargetType::FreePlane;
+        Out.Type             = DimensionQueryHit::TargetType::FreePlane;
         Out.Point            = SnapHit.Position;
         return Out;
     }
@@ -10752,7 +10752,7 @@ struct DimensionProbeHit
                 Pt.Y = std::round(Pt.Y / Step) * Step;
                 Pt.Z = std::round(Pt.Z / Step) * Step;
             }
-            Out.Type        = DimensionProbeHit::TargetType::FreePlane;
+            Out.Type        = DimensionQueryHit::TargetType::FreePlane;
             Out.Point       = Pt;
             Out.PlaneNormal = NormalAxis == 0 ? Vector3{ 1.0, 0.0, 0.0 } : NormalAxis == 1 ? Vector3{ 0.0, 1.0, 0.0 } : Vector3{ 0.0, 0.0, 1.0 };
         }
@@ -10841,8 +10841,8 @@ struct DimensionProbeHit
     return true;
 }
 
-void ComputeDimensionDragPlacement(const SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local,
-                                   SketcherDimensionKind Kind, Vector3 FirstPoint, Vector3 SecondPoint, Vector3 PlaneNormal,
+void ComputeDimensionDragPlacement(const SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local,
+                                   SketcherDimensionCategory Kind, Vector3 FirstPoint, Vector3 SecondPoint, Vector3 PlaneNormal,
                                    int AxisFilter, int SlideAxis, double Radius, double& InOutOffset, Vector3& InOutDirection)
 {
     const OrbitRay Ray = CastOrbitRay(Frame, Local.x, Local.y);
@@ -10866,7 +10866,7 @@ void ComputeDimensionDragPlacement(const SketcherWorkspaceState& State, const Or
         return true;
     };
 
-    if (Kind == SketcherDimensionKind::Radius || Kind == SketcherDimensionKind::Diameter)
+    if (Kind == SketcherDimensionCategory::Radius || Kind == SketcherDimensionCategory::Diameter)
     {
         const double EffRadius = Radius > 1.0e-7 ? Radius : Distance(FirstPoint, SecondPoint);
         Vector3 Hit{};
@@ -10884,7 +10884,7 @@ void ComputeDimensionDragPlacement(const SketcherWorkspaceState& State, const Or
         return;
     }
 
-    if (Kind == SketcherDimensionKind::Angular)
+    if (Kind == SketcherDimensionCategory::Angular)
     {
         Vector3 Hit{};
         if (IntersectPlaneSafe(FirstPoint, PlaneNormal, Hit))
@@ -10977,7 +10977,7 @@ void ComputeDimensionDragPlacement(const SketcherWorkspaceState& State, const Or
     }
 }
 
-void CommitInteractiveDimension(SketcherWorkspaceState& State)
+void CommitInteractiveDimension(SketcherWorkspaceStatus& State)
 {
     SketcherDimensionSession& Tool = State.DimensionTool;
     SketcherDimension Spec;
@@ -10991,8 +10991,8 @@ void CommitInteractiveDimension(SketcherWorkspaceState& State)
     Spec.PlaneNormal = Tool.PlaneNormal;
     Spec.Direction   = Tool.Direction;
     Spec.Offset      = Tool.Offset;
-    Spec.AxisFilter  = Tool.PreviewKind == SketcherDimensionKind::Linear ? Tool.AxisFilter : -1;
-    Spec.SlideAxis   = Tool.PreviewKind == SketcherDimensionKind::Linear ? Tool.SlideAxis : -1;
+    Spec.AxisFilter  = Tool.PreviewKind == SketcherDimensionCategory::Linear ? Tool.AxisFilter : -1;
+    Spec.SlideAxis   = Tool.PreviewKind == SketcherDimensionCategory::Linear ? Tool.SlideAxis : -1;
 
     const SketcherCommandOutcome Out = AddSketcherInteractiveDimension(State.Document, Spec);
     if (Out.AcceptedCondition)
@@ -11006,7 +11006,7 @@ void CommitInteractiveDimension(SketcherWorkspaceState& State)
     ResetDimensionToolStage(Tool);
 }
 
-void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, bool Hovered, bool LeftClick, bool RightClick)
+void DriveDimensionSession(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, bool Hovered, bool LeftClick, bool RightClick)
 {
     SketcherDimensionSession& Tool = State.DimensionTool;
     if (!Tool.ActiveCondition) return;
@@ -11056,7 +11056,7 @@ void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame
             ComputeDimensionDragPlacement(State, Frame, Local, Tool.PreviewKind, Tool.FirstPoint, Tool.SecondPoint,
                                           Tool.PlaneNormal, Tool.AxisFilter, Tool.SlideAxis, Tool.Radius, Tool.Offset, Tool.Direction);
         }
-        if (Tool.PreviewKind == SketcherDimensionKind::Radius || Tool.PreviewKind == SketcherDimensionKind::Diameter)
+        if (Tool.PreviewKind == SketcherDimensionCategory::Radius || Tool.PreviewKind == SketcherDimensionCategory::Diameter)
             Tool.SecondPoint = Tool.FirstPoint + Tool.Direction * Tool.Radius;
 
         if (Tool.Stage2HoldCondition)
@@ -11075,17 +11075,17 @@ void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame
             return;
         }
 
-        if (LeftClick && Tool.FirstLineCondition && Tool.PreviewKind == SketcherDimensionKind::Linear)
+        if (LeftClick && Tool.FirstLineCondition && Tool.PreviewKind == SketcherDimensionCategory::Linear)
         {
-            const DimensionProbeHit SecondProbe = ProbeDimensionTarget(State, Frame, Local);
-            if (SecondProbe.Type == DimensionProbeHit::TargetType::Segment && SecondProbe.HasLineDir
+            const DimensionQueryHit SecondProbe = ProbeDimensionTarget(State, Frame, Local);
+            if (SecondProbe.Type == DimensionQueryHit::TargetType::Segment && SecondProbe.HasLineDir
                 && SecondProbe.EntityName != Tool.FirstEntity && !SecondProbe.EntityName.empty() && !Tool.FirstEntity.empty())
             {
                 const double CosVal = std::abs(Dot(Tool.FirstLineDir, SecondProbe.LineDir));
                 if (CosVal < 0.999)
                 {
-                    Tool.PreviewKind        = SketcherDimensionKind::Angular;
-                    Tool.SecondKind         = SketcherSelectionKind::Edge;
+                    Tool.PreviewKind        = SketcherDimensionCategory::Angular;
+                    Tool.SecondKind         = SketcherSelectionCategory::Edge;
                     Tool.SecondEntity       = SecondProbe.EntityName;
                     Tool.FirstLineCondition = false;
                     Tool.SlideAxis          = -1;
@@ -11107,8 +11107,8 @@ void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame
         return;
     }
 
-    const DimensionProbeHit Hit = ProbeDimensionTarget(State, Frame, Local);
-    Tool.HoverCondition = Hit.Type != DimensionProbeHit::TargetType::None;
+    const DimensionQueryHit Hit = ProbeDimensionTarget(State, Frame, Local);
+    Tool.HoverCondition = Hit.Type != DimensionQueryHit::TargetType::None;
     Tool.HoverPoint     = Hit.Point;
     Tool.HoverHighlight = Hit.Highlight;
     Tool.HoverBadge     = Hit.Badge;
@@ -11117,9 +11117,9 @@ void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame
 
     if (Tool.Stage == 0)
     {
-        if (Hit.Type == DimensionProbeHit::TargetType::Radial)
+        if (Hit.Type == DimensionQueryHit::TargetType::Radial)
         {
-            Tool.PreviewKind         = Hit.FullCircleCondition ? SketcherDimensionKind::Diameter : SketcherDimensionKind::Radius;
+            Tool.PreviewKind         = Hit.FullCircleCondition ? SketcherDimensionCategory::Diameter : SketcherDimensionCategory::Radius;
             Tool.FirstKind           = Hit.EntityKind;
             Tool.FirstEntity         = Hit.EntityName;
             Tool.SecondEntity.clear();
@@ -11139,13 +11139,13 @@ void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame
             ComputeDimensionDragPlacement(State, Frame, Local, Tool.PreviewKind, Tool.FirstPoint, Tool.SecondPoint,
                                           Tool.PlaneNormal, -1, -1, Tool.Radius, Tool.Offset, Tool.Direction);
             Tool.SecondPoint = Tool.FirstPoint + Tool.Direction * Tool.Radius;
-            Announce(State, std::string(Tool.PreviewKind == SketcherDimensionKind::Diameter ? "Circle \xC3\x98" : "Arc R")
+            Announce(State, std::string(Tool.PreviewKind == SketcherDimensionCategory::Diameter ? "Circle \xC3\x98" : "Arc R")
                             + ": drag around circle to position leader (R switches R/\xC3\x98) · click / release to place");
             return;
         }
-        if (Hit.Type == DimensionProbeHit::TargetType::Segment)
+        if (Hit.Type == DimensionQueryHit::TargetType::Segment)
         {
-            Tool.PreviewKind         = SketcherDimensionKind::Linear;
+            Tool.PreviewKind         = SketcherDimensionCategory::Linear;
             Tool.FirstKind           = Hit.EntityKind;
             Tool.FirstEntity         = Hit.EntityName;
             Tool.SecondEntity.clear();
@@ -11164,10 +11164,10 @@ void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame
             return;
         }
 
-        Tool.PreviewKind        = SketcherDimensionKind::Linear;
+        Tool.PreviewKind        = SketcherDimensionCategory::Linear;
         Tool.FirstPoint         = Hit.Point;
-        Tool.FirstKind          = SketcherSelectionKind::Vertex;
-        Tool.FirstEntity        = Hit.Type == DimensionProbeHit::TargetType::Point ? Hit.EntityName : std::string{};
+        Tool.FirstKind          = SketcherSelectionCategory::Vertex;
+        Tool.FirstEntity        = Hit.Type == DimensionQueryHit::TargetType::Point ? Hit.EntityName : std::string{};
         Tool.PlaneNormal        = Hit.HasExplicitPlane ? Hit.PlaneNormal : Vector3{ 0.0, 0.0, 1.0 };
         Tool.FirstLineCondition = false;
         Tool.TypedOffset.clear();
@@ -11179,8 +11179,8 @@ void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame
     if (Tool.Stage == 1)
     {
         Vector3 Pt2 = Hit.Point;
-        std::string Ent2 = Hit.Type == DimensionProbeHit::TargetType::Point ? Hit.EntityName : std::string{};
-        if (Hit.Type == DimensionProbeHit::TargetType::Segment)
+        std::string Ent2 = Hit.Type == DimensionQueryHit::TargetType::Point ? Hit.EntityName : std::string{};
+        if (Hit.Type == DimensionQueryHit::TargetType::Segment)
         {
             ImVec2 PA{}, PB{};
             const float DA = ProjectWorldPoint(State, Frame, Hit.Point, PA) ? std::hypot(PA.x - Io.MousePos.x, PA.y - Io.MousePos.y) : 1.0e9f;
@@ -11188,7 +11188,7 @@ void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame
             if (DB < DA) { Pt2 = Hit.SecondEndpoint; Ent2 = Hit.EndPointEntity; }
             else { Pt2 = Hit.Point; Ent2 = Hit.StartPointEntity; }
         }
-        else if (Hit.Type == DimensionProbeHit::TargetType::Radial)
+        else if (Hit.Type == DimensionQueryHit::TargetType::Radial)
         {
             Pt2  = Hit.Centre;
             Ent2 = {};
@@ -11199,7 +11199,7 @@ void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame
             return;
         }
         Tool.SecondPoint         = Pt2;
-        Tool.SecondKind          = SketcherSelectionKind::Vertex;
+        Tool.SecondKind          = SketcherSelectionCategory::Vertex;
         Tool.SecondEntity        = Ent2;
         const Vector3 Span       = Tool.SecondPoint - Tool.FirstPoint;
         if (!Hit.HasExplicitPlane && std::abs(Dot(DimensionSafeNormal(Span), Tool.PlaneNormal)) > 0.92)
@@ -11217,7 +11217,7 @@ void DriveDimensionSession(SketcherWorkspaceState& State, const OrbitCameraFrame
 }
 
 // Cutter-style top-of-Inspector editor card for the active Dimension Tool or an explicitly selected placed dimension.
-void DrawSelectedDimensionCard(SketcherWorkspaceState& State)
+void DrawSelectedDimensionCard(SketcherWorkspaceStatus& State)
 {
     SketcherDimensionSession& Tool = State.DimensionTool;
     const SketcherDimension*  Sel  = !Tool.SelectedId.empty() ? FindPlacedDimension(State.Document, Tool.SelectedId) : nullptr;
@@ -11237,7 +11237,7 @@ void DrawSelectedDimensionCard(SketcherWorkspaceState& State)
         ImGui::Text("%s  ·  %s", FormatSketcherDimension(*Sel).c_str(),
                     Sel->FirstName.empty() ? "Free points" : Sel->FirstName.c_str());
 
-        if (Sel->Kind == SketcherDimensionKind::Linear)
+        if (Sel->Kind == SketcherDimensionCategory::Linear)
         {
             ImGui::TextDisabled("Slide axis (extension lines)");
             const int ActiveSlide = (Tool.EditingId == DimId || Tool.DraggingId == DimId) ? Tool.DragLiveSlideAxis : Sel->SlideAxis;
@@ -11275,16 +11275,16 @@ void DrawSelectedDimensionCard(SketcherWorkspaceState& State)
                 }
             }
         }
-        else if (Sel->Kind == SketcherDimensionKind::Diameter || Sel->Kind == SketcherDimensionKind::Radius)
+        else if (Sel->Kind == SketcherDimensionCategory::Diameter || Sel->Kind == SketcherDimensionCategory::Radius)
         {
-            if (ToggleButton(State, "Diameter \xC3\x98###DimEdDia", Sel->Kind == SketcherDimensionKind::Diameter, ImVec2(Half, 0))
-                && Sel->Kind != SketcherDimensionKind::Diameter)
+            if (ToggleButton(State, "Diameter \xC3\x98###DimEdDia", Sel->Kind == SketcherDimensionCategory::Diameter, ImVec2(Half, 0))
+                && Sel->Kind != SketcherDimensionCategory::Diameter)
             {
                 if (ToggleSketcherDimensionRadialKind(State.Document, DimId).AcceptedCondition) MarkDirty(State);
             }
             ImGui::SameLine();
-            if (ToggleButton(State, "Radius R###DimEdRad", Sel->Kind == SketcherDimensionKind::Radius, ImVec2(Half, 0))
-                && Sel->Kind != SketcherDimensionKind::Radius)
+            if (ToggleButton(State, "Radius R###DimEdRad", Sel->Kind == SketcherDimensionCategory::Radius, ImVec2(Half, 0))
+                && Sel->Kind != SketcherDimensionCategory::Radius)
             {
                 if (ToggleSketcherDimensionRadialKind(State.Document, DimId).AcceptedCondition) MarkDirty(State);
             }
@@ -11385,7 +11385,7 @@ void DrawSelectedDimensionCard(SketcherWorkspaceState& State)
     EndCard();
 }
 
-void DrawDimensionsCard(SketcherWorkspaceState& State)
+void DrawDimensionsCard(SketcherWorkspaceStatus& State)
 {
     if (!State.DimensionTool.ActiveCondition && State.Document.Dimensions.empty()) return;
     BeginCard("Dimensions", "CAD ANNOTATIONS");
@@ -11408,7 +11408,7 @@ void DrawDimensionsCard(SketcherWorkspaceState& State)
     }
     if (PressButton(State, "+ Angle###DimAddAngle", ImVec2(Half, 0)))
     {
-        const SketcherCommandOutcome Out = AddSketcherDimensionFromSelection(State.Document, SketcherDimensionKind::Angular);
+        const SketcherCommandOutcome Out = AddSketcherDimensionFromSelection(State.Document, SketcherDimensionCategory::Angular);
         if (Out.AcceptedCondition)
         {
             State.DimensionsEnabled      = true;
@@ -11461,7 +11461,7 @@ void DrawDimensionsCard(SketcherWorkspaceState& State)
             ImGui::PushID(Dim.Id.c_str());
             const bool Selected = State.DimensionTool.SelectedId == Dim.Id;
             if (Selected) ImGui::PushStyleColor(ImGuiCol_Text, Tint(ActiveColour));
-            const std::string SlideSuffix = (Dim.Kind == SketcherDimensionKind::Linear && Dim.SlideAxis >= 0)
+            const std::string SlideSuffix = (Dim.Kind == SketcherDimensionCategory::Linear && Dim.SlideAxis >= 0)
                                           ? (std::string(" [") + WorldAxisShortTag(Dim.SlideAxis) + "]")
                                           : std::string{};
             if (ImGui::Selectable((Dim.Id + " · " + FormatSketcherDimension(Dim) + SlideSuffix + "###Row").c_str(), Selected, 0, ImVec2(Full - 110.0f, 0)))
@@ -11481,9 +11481,9 @@ void DrawDimensionsCard(SketcherWorkspaceState& State)
             }
             if (Selected) ImGui::PopStyleColor();
             ImGui::SameLine(Full - 102.0f);
-            if (Dim.Kind == SketcherDimensionKind::Diameter || Dim.Kind == SketcherDimensionKind::Radius)
+            if (Dim.Kind == SketcherDimensionCategory::Diameter || Dim.Kind == SketcherDimensionCategory::Radius)
             {
-                if (PressButton(State, Dim.Kind == SketcherDimensionKind::Diameter ? "R###Rad" : "\xC3\x98###Rad", ImVec2(28.0f, 0)))
+                if (PressButton(State, Dim.Kind == SketcherDimensionCategory::Diameter ? "R###Rad" : "\xC3\x98###Rad", ImVec2(28.0f, 0)))
                     PendingToggleRad = Dim.Id;
                 ImGui::SameLine();
             }
@@ -11535,7 +11535,7 @@ void DrawCadArrowhead(ImDrawList* Canvas, ImVec2 Tip, ImVec2 DirectionIntoTip, I
 
 // 📝 Viewport overlay: amber dimension line between the closest points with CAD arrowheads and a distance pill at its middle;
 //    a centroid cross-hair for a body / face.
-void DrawMeasureOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawMeasureOverlay(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     if (!State.Measure.ActiveCondition) return;
     const SketcherMeasurement& Measurement = State.Measure.Measurement;
@@ -11586,7 +11586,7 @@ void DrawMeasureOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const
     }
 }
 
-[[nodiscard]] std::vector<SketcherDimension> DisplayedWorkspaceDimensions(const SketcherWorkspaceState& State)
+[[nodiscard]] std::vector<SketcherDimension> DisplayedWorkspaceDimensions(const SketcherWorkspaceStatus& State)
 {
     const SketcherDocument& Doc = DisplayedSketcherDocument(State);
     std::vector<SketcherDimension> Shown = EvaluateSketcherDimensions(Doc);
@@ -11600,7 +11600,7 @@ void DrawMeasureOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const
             bool Touched = false;
             if (Dim.FirstName == PoleKey) { Dim.FirstPoint = State.PoleDrag.Position; Touched = true; }
             if (Dim.SecondName == PoleKey) { Dim.SecondPoint = State.PoleDrag.Position; Touched = true; }
-            if (Touched && Dim.Kind == SketcherDimensionKind::Linear)
+            if (Touched && Dim.Kind == SketcherDimensionCategory::Linear)
             {
                 const Vector3 Delta = Dim.SecondPoint - Dim.FirstPoint;
                 Dim.Value = Dim.AxisFilter == 0 ? std::abs(Delta.X) : Dim.AxisFilter == 1 ? std::abs(Delta.Y)
@@ -11616,7 +11616,7 @@ void DrawMeasureOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const
                             && State.Gizmo.Target == SketcherGizmoTarget::Bodies && State.Gizmo.Refusal.empty();
     if (LiveModalBody || LiveGizmoBody)
     {
-        const AffineMap LiveMap = LiveModalBody ? State.Transform.StagedMap : GizmoMap(State.Gizmo);
+        const AffineMapping LiveMap = LiveModalBody ? State.Transform.StagedMap : GizmoMap(State.Gizmo);
         const std::vector<std::string>& BodyKeys = LiveModalBody ? State.Transform.Keys : State.Gizmo.Names;
         const auto ApplyPt = [&](Vector3 P) -> Vector3
         {
@@ -11629,10 +11629,10 @@ void DrawMeasureOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const
         const double Det   = std::abs(Dot(Cross(LiveMap.ColumnX, LiveMap.ColumnY), LiveMap.ColumnZ));
         const double Scale = std::isfinite(Det) && Det > 1.0e-12 ? std::cbrt(Det) : 1.0;
 
-        auto OwnedByMovedBody = [&](SketcherSelectionKind K, const std::string& Name) -> bool
+        auto OwnedByMovedBody = [&](SketcherSelectionCategory K, const std::string& Name) -> bool
         {
             if (Name.empty() || Name.find('@') != std::string::npos) return false;
-            const std::string Owner = K == SketcherSelectionKind::Body ? Name : SketcherBodyOfName(Doc, K, Name);
+            const std::string Owner = K == SketcherSelectionCategory::Body ? Name : SketcherBodyOfName(Doc, K, Name);
             return !Owner.empty() && std::find(BodyKeys.begin(), BodyKeys.end(), Owner) != BodyKeys.end();
         };
 
@@ -11644,7 +11644,7 @@ void DrawMeasureOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const
             if (MoveFirst) Dim.FirstPoint = ApplyPt(Dim.FirstPoint);
             if (MoveSecond || (Dim.SecondName.empty() && MoveFirst))
             {
-                if (Dim.Kind == SketcherDimensionKind::Angular) Dim.SecondPoint = DimensionSafeNormal(ApplyLin(Dim.SecondPoint), Dim.SecondPoint);
+                if (Dim.Kind == SketcherDimensionCategory::Angular) Dim.SecondPoint = DimensionSafeNormal(ApplyLin(Dim.SecondPoint), Dim.SecondPoint);
                 else Dim.SecondPoint = ApplyPt(Dim.SecondPoint);
             }
             const Vector3 RotN = ApplyLin(Dim.PlaneNormal);
@@ -11653,17 +11653,17 @@ void DrawMeasureOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const
             if (Length(RotD) > 1.0e-9) Dim.Direction = Normalize(RotD);
             if (MoveFirst && (MoveSecond || Dim.SecondName.empty()) && std::abs(Scale - 1.0) > 1.0e-6)
                 Dim.Offset *= Scale;
-            if (Dim.Kind == SketcherDimensionKind::Linear)
+            if (Dim.Kind == SketcherDimensionCategory::Linear)
             {
                 const Vector3 Delta = Dim.SecondPoint - Dim.FirstPoint;
                 Dim.Value = Dim.AxisFilter == 0 ? std::abs(Delta.X) : Dim.AxisFilter == 1 ? std::abs(Delta.Y)
                           : Dim.AxisFilter == 2 ? std::abs(Delta.Z) : Length(Delta);
             }
-            else if (Dim.Kind == SketcherDimensionKind::Radius)
+            else if (Dim.Kind == SketcherDimensionCategory::Radius)
             {
                 Dim.Value = Distance(Dim.FirstPoint, Dim.SecondPoint);
             }
-            else if (Dim.Kind == SketcherDimensionKind::Diameter)
+            else if (Dim.Kind == SketcherDimensionCategory::Diameter)
             {
                 Dim.Value = 2.0 * Distance(Dim.FirstPoint, Dim.SecondPoint);
             }
@@ -11679,7 +11679,7 @@ void DrawMeasureOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const
             if (Dim.Id != LiveId) continue;
             Dim.Offset    = State.DimensionTool.DragLiveOffset;
             Dim.SlideAxis = State.DimensionTool.DragLiveSlideAxis;
-            if ((Dim.Kind == SketcherDimensionKind::Radius || Dim.Kind == SketcherDimensionKind::Diameter) && Length(State.DimensionTool.DragLiveDirection) > 1.0e-6)
+            if ((Dim.Kind == SketcherDimensionCategory::Radius || Dim.Kind == SketcherDimensionCategory::Diameter) && Length(State.DimensionTool.DragLiveDirection) > 1.0e-6)
             {
                 const double Rad = Distance(Dim.FirstPoint, Dim.SecondPoint);
                 Dim.Direction    = DimensionSafeNormal(State.DimensionTool.DragLiveDirection, Dim.Direction);
@@ -11690,7 +11690,7 @@ void DrawMeasureOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const
     return Shown;
 }
 
-bool DrivePlacedDimensionDrag(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Local, bool HoveredCondition)
+bool DrivePlacedDimensionDrag(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Local, bool HoveredCondition)
 {
     SketcherDimensionSession& Tool = State.DimensionTool;
     if (!State.DimensionsEnabled && !Tool.ActiveCondition && Tool.EditingId.empty()) return false;
@@ -11724,7 +11724,7 @@ bool DrivePlacedDimensionDrag(SketcherWorkspaceState& State, const OrbitCameraFr
                 for (const SketcherDimension& Dim : EvaluateSketcherDimensions(State.Document))
                 {
                     if (Dim.Id != Tool.EditingId) continue;
-                    const double Rad = (Dim.Kind == SketcherDimensionKind::Radius || Dim.Kind == SketcherDimensionKind::Diameter)
+                    const double Rad = (Dim.Kind == SketcherDimensionCategory::Radius || Dim.Kind == SketcherDimensionCategory::Diameter)
                                      ? Distance(Dim.FirstPoint, Dim.SecondPoint) : 0.0;
                     ComputeDimensionDragPlacement(State, Frame, Local, Dim.Kind, Dim.FirstPoint, Dim.SecondPoint,
                                                   Dim.PlaneNormal, Dim.AxisFilter, Tool.DragLiveSlideAxis, Rad,
@@ -11768,7 +11768,7 @@ bool DrivePlacedDimensionDrag(SketcherWorkspaceState& State, const OrbitCameraFr
             for (const SketcherDimension& Dim : EvaluateSketcherDimensions(State.Document))
             {
                 if (Dim.Id != Tool.DraggingId) continue;
-                const double Rad = (Dim.Kind == SketcherDimensionKind::Radius || Dim.Kind == SketcherDimensionKind::Diameter)
+                const double Rad = (Dim.Kind == SketcherDimensionCategory::Radius || Dim.Kind == SketcherDimensionCategory::Diameter)
                                  ? Distance(Dim.FirstPoint, Dim.SecondPoint) : 0.0;
                 ComputeDimensionDragPlacement(State, Frame, Local, Dim.Kind, Dim.FirstPoint, Dim.SecondPoint,
                                               Dim.PlaneNormal, Dim.AxisFilter, Tool.DragLiveSlideAxis, Rad,
@@ -11797,7 +11797,7 @@ bool DrivePlacedDimensionDrag(SketcherWorkspaceState& State, const OrbitCameraFr
             return Io.MousePos.x >= Pix.x - HalfW && Io.MousePos.x <= Pix.x + HalfW
                 && Io.MousePos.y >= Pix.y - HalfH && Io.MousePos.y <= Pix.y + HalfH;
         };
-        if (Dim.Kind == SketcherDimensionKind::Linear)
+        if (Dim.Kind == SketcherDimensionCategory::Linear)
         {
             Vector3 B0{}, B1{}, SlideDir{};
             if (ComputeLinearDimensionEndpoints(Dim.FirstPoint, Dim.SecondPoint, Dim.PlaneNormal,
@@ -11820,7 +11820,7 @@ bool DrivePlacedDimensionDrag(SketcherWorkspaceState& State, const OrbitCameraFr
                 }
             }
         }
-        else if (Dim.Kind == SketcherDimensionKind::Diameter || Dim.Kind == SketcherDimensionKind::Radius)
+        else if (Dim.Kind == SketcherDimensionCategory::Diameter || Dim.Kind == SketcherDimensionCategory::Radius)
         {
             const Vector3 Radial = Dim.SecondPoint - Dim.FirstPoint;
             const double  RadLen = Length(Radial);
@@ -11828,7 +11828,7 @@ bool DrivePlacedDimensionDrag(SketcherWorkspaceState& State, const OrbitCameraFr
             {
                 const Vector3 UnitRad = Radial * (1.0 / RadLen);
                 const Vector3 RimB    = Dim.FirstPoint + UnitRad * RadLen;
-                const Vector3 RimA    = Dim.Kind == SketcherDimensionKind::Diameter ? (Dim.FirstPoint - UnitRad * RadLen) : Dim.FirstPoint;
+                const Vector3 RimA    = Dim.Kind == SketcherDimensionCategory::Diameter ? (Dim.FirstPoint - UnitRad * RadLen) : Dim.FirstPoint;
                 const double  OutExt  = Dim.Offset >= 0.0 ? std::max(Dim.Offset, 18.0 * Frame.WorldPerPixel) : 0.0;
                 const Vector3 Leader  = RimB + UnitRad * OutExt;
                 ImVec2 PixCentre{}, PixA{}, PixLeader{};
@@ -11859,7 +11859,7 @@ bool DrivePlacedDimensionDrag(SketcherWorkspaceState& State, const OrbitCameraFr
                 }
             }
         }
-        else if (Dim.Kind == SketcherDimensionKind::Angular)
+        else if (Dim.Kind == SketcherDimensionCategory::Angular)
         {
             Vector3 RayA = Dim.SecondPoint, RayB = Dim.Direction;
             const double LenA = Length(RayA), LenB = Length(RayB);
@@ -11903,7 +11903,7 @@ bool DrivePlacedDimensionDrag(SketcherWorkspaceState& State, const OrbitCameraFr
     return false;
 }
 
-void DrawSingleDimensionGraphic(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame,
+void DrawSingleDimensionGraphic(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame,
                                 const SketcherDimension& Dim, bool PreviewCondition, bool SelectedCondition, bool PrimaryPaneCondition = true)
 {
     if (!Dim.VisibleCondition && !PreviewCondition) return;
@@ -11933,14 +11933,14 @@ void DrawSingleDimensionGraphic(SketcherWorkspaceState& State, ImDrawList* Canva
             State.Widgets.Record("Dim:" + Dim.Id, Low, High);
     };
 
-    if (Dim.Kind == SketcherDimensionKind::Radius || Dim.Kind == SketcherDimensionKind::Diameter)
+    if (Dim.Kind == SketcherDimensionCategory::Radius || Dim.Kind == SketcherDimensionCategory::Diameter)
     {
         Vector3 Radial = Dim.SecondPoint - Dim.FirstPoint;
         const double RadLen = Length(Radial);
         if (RadLen < 1.0e-7) return;
         const Vector3 UnitRad = Radial * (1.0 / RadLen);
         const Vector3 RimB    = Dim.FirstPoint + UnitRad * RadLen;
-        const Vector3 RimA    = Dim.Kind == SketcherDimensionKind::Diameter ? (Dim.FirstPoint - UnitRad * RadLen) : Dim.FirstPoint;
+        const Vector3 RimA    = Dim.Kind == SketcherDimensionCategory::Diameter ? (Dim.FirstPoint - UnitRad * RadLen) : Dim.FirstPoint;
         const double  OutExt  = Dim.Offset >= 0.0 ? std::max(Dim.Offset, 18.0 * Frame.WorldPerPixel) : 0.0;
         const Vector3 Leader  = RimB + UnitRad * OutExt;
         ImVec2 PixCentre{}, PixA{}, PixB{}, PixLeader{};
@@ -11953,7 +11953,7 @@ void DrawSingleDimensionGraphic(SketcherWorkspaceState& State, ImDrawList* Canva
         Canvas->AddLine(PixA, PixLeader, StrokeColour, 1.7f);
         const ImVec2 DirScreen(PixB.x - PixA.x, PixB.y - PixA.y);
         DrawCadArrowhead(Canvas, PixB, DirScreen, StrokeColour);
-        if (Dim.Kind == SketcherDimensionKind::Diameter) DrawCadArrowhead(Canvas, PixA, ImVec2(-DirScreen.x, -DirScreen.y), StrokeColour);
+        if (Dim.Kind == SketcherDimensionCategory::Diameter) DrawCadArrowhead(Canvas, PixA, ImVec2(-DirScreen.x, -DirScreen.y), StrokeColour);
         if (Dim.Offset < 0.0)
         {
             const Vector3 InsidePt = RimB + UnitRad * std::clamp(Dim.Offset, -0.85 * RadLen, -0.1 * RadLen);
@@ -11971,7 +11971,7 @@ void DrawSingleDimensionGraphic(SketcherWorkspaceState& State, ImDrawList* Canva
         return;
     }
 
-    if (Dim.Kind == SketcherDimensionKind::Angular)
+    if (Dim.Kind == SketcherDimensionCategory::Angular)
     {
         Vector3 RayA = Dim.SecondPoint, RayB = Dim.Direction;
         const double LenA = Length(RayA), LenB = Length(RayB);
@@ -12063,7 +12063,7 @@ void DrawSingleDimensionGraphic(SketcherWorkspaceState& State, ImDrawList* Canva
     DrawPillAt(Mid);
 }
 
-void DrawDimensionSlideAxisGuide(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame,
+void DrawDimensionSlideAxisGuide(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame,
                                  Vector3 AnchorA, Vector3 AnchorB, Vector3 SlideDir, int SlideAxis, double Offset,
                                  const std::string& TypedOffset)
 {
@@ -12098,7 +12098,7 @@ void DrawDimensionSlideAxisGuide(SketcherWorkspaceState& State, ImDrawList* Canv
     }
 }
 
-void DrawDimensionsOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame, bool PrimaryPaneCondition = true)
+void DrawDimensionsOverlay(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame, bool PrimaryPaneCondition = true)
 {
     if (!State.DimensionsEnabled && !State.DimensionTool.ActiveCondition && State.DimensionTool.EditingId.empty()) return;
 
@@ -12111,7 +12111,7 @@ void DrawDimensionsOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
         {
             const bool ActivelySliding = Tool.DraggingId == Dim.Id || Tool.EditingId == Dim.Id;
             const bool Highlighted     = Tool.SelectedId == Dim.Id || ActivelySliding;
-            if (ActivelySliding && Dim.Kind == SketcherDimensionKind::Linear && Dim.SlideAxis >= 0 && Dim.SlideAxis < 3)
+            if (ActivelySliding && Dim.Kind == SketcherDimensionCategory::Linear && Dim.SlideAxis >= 0 && Dim.SlideAxis < 3)
             {
                 Vector3 B0{}, B1{}, SlideDir{};
                 if (ComputeLinearDimensionEndpoints(Dim.FirstPoint, Dim.SecondPoint, Dim.PlaneNormal, Dim.AxisFilter,
@@ -12163,8 +12163,8 @@ void DrawDimensionsOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
         Preview.Kind             = Tool.PreviewKind;
         Preview.PlaneNormal      = Tool.PlaneNormal;
         Preview.Direction        = Tool.Direction;
-        Preview.AxisFilter       = Tool.PreviewKind == SketcherDimensionKind::Linear ? Tool.AxisFilter : -1;
-        Preview.SlideAxis        = Tool.PreviewKind == SketcherDimensionKind::Linear ? Tool.SlideAxis : -1;
+        Preview.AxisFilter       = Tool.PreviewKind == SketcherDimensionCategory::Linear ? Tool.AxisFilter : -1;
+        Preview.SlideAxis        = Tool.PreviewKind == SketcherDimensionCategory::Linear ? Tool.SlideAxis : -1;
         Preview.VisibleCondition = true;
 
         if (Tool.Stage == 1)
@@ -12172,7 +12172,7 @@ void DrawDimensionsOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
             const Vector3 EndPt = Tool.HoverCondition ? Tool.HoverPoint : Tool.FirstPoint;
             if (Distance(Tool.FirstPoint, EndPt) > 1.0e-6)
             {
-                Preview.Kind        = SketcherDimensionKind::Linear;
+                Preview.Kind        = SketcherDimensionCategory::Linear;
                 Preview.FirstPoint  = Tool.FirstPoint;
                 Preview.SecondPoint = EndPt;
                 Preview.Offset      = 0.0;
@@ -12187,7 +12187,7 @@ void DrawDimensionsOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
             Preview.FirstPoint  = Tool.FirstPoint;
             Preview.SecondPoint = Tool.SecondPoint;
             Preview.Offset      = Tool.Offset;
-            if (Preview.Kind == SketcherDimensionKind::Linear && Preview.SlideAxis >= 0 && Preview.SlideAxis < 3)
+            if (Preview.Kind == SketcherDimensionCategory::Linear && Preview.SlideAxis >= 0 && Preview.SlideAxis < 3)
             {
                 Vector3 B0{}, B1{}, SlideDir{};
                 if (ComputeLinearDimensionEndpoints(Preview.FirstPoint, Preview.SecondPoint, Preview.PlaneNormal,
@@ -12197,11 +12197,11 @@ void DrawDimensionsOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
                                                 SlideDir, Preview.SlideAxis, Preview.Offset, Tool.TypedOffset);
                 }
             }
-            if (Preview.Kind == SketcherDimensionKind::Radius)
+            if (Preview.Kind == SketcherDimensionCategory::Radius)
                 Preview.Value = Tool.Radius > 0.0 ? Tool.Radius : Distance(Preview.FirstPoint, Preview.SecondPoint);
-            else if (Preview.Kind == SketcherDimensionKind::Diameter)
+            else if (Preview.Kind == SketcherDimensionCategory::Diameter)
                 Preview.Value = 2.0 * (Tool.Radius > 0.0 ? Tool.Radius : Distance(Preview.FirstPoint, Preview.SecondPoint));
-            else if (Preview.Kind == SketcherDimensionKind::Angular)
+            else if (Preview.Kind == SketcherDimensionCategory::Angular)
             {
                 constexpr double RadToDeg = 180.0 / std::numbers::pi;
                 const Vector3 RA = DimensionSafeNormal(Preview.SecondPoint, { 1.0, 0.0, 0.0 });
@@ -12220,7 +12220,7 @@ void DrawDimensionsOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
         ImVec2 AnchorPix{};
         if (ProjectWorldPoint(State, Frame, Tool.FirstPoint, AnchorPix))
             Canvas->AddCircleFilled(AnchorPix, 4.5f, IM_COL32(0x52, 0xd6, 0xff, 0xff));
-        if (Tool.Stage == 2 && Tool.PreviewKind == SketcherDimensionKind::Linear)
+        if (Tool.Stage == 2 && Tool.PreviewKind == SketcherDimensionCategory::Linear)
         {
             ImVec2 AnchorBPix{};
             if (ProjectWorldPoint(State, Frame, Tool.SecondPoint, AnchorBPix))
@@ -12230,7 +12230,7 @@ void DrawDimensionsOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, co
 }
 
 // Plane equation (n, w) of a section frame: the kept side n·P + w ≥ 0 is the frame's +Z side.
-std::array<double, 4> SectionEquation(const OrthonormalFrame& Plane)
+std::array<double, 4> SectionEquation(const OrthonormalBasis& Plane)
 {
     return { Plane.ZAxis.X, Plane.ZAxis.Y, Plane.ZAxis.Z, -Dot(Plane.ZAxis, Plane.Origin) };
 }
@@ -12246,7 +12246,7 @@ std::string DescribeSectionRequest(const SketcherSectionRequest& Request)
 
 // Default offsets: world planes through the centre of the shown scene's bounds; a face plane halfway through the
 // bounds behind the face (offset along the outward normal, negative = into the body).
-double DefaultSectionOffset(const SketcherWorkspaceState& State, const SketcherSectionRequest& Request)
+double DefaultSectionOffset(const SketcherWorkspaceStatus& State, const SketcherSectionRequest& Request)
 {
     const SketcherScene& Scene = State.Scene;
     if (Request.Axis != SketcherSectionAxis::Face)
@@ -12276,7 +12276,7 @@ void StoreSectionOffsetText(SketcherSectionSession& Session)
 
 // 💡 Every frame while Section is on: the plane goes to the viewport programs (clip + cap) and the CPU pick; the exact
 //    kernel section is recomputed only when the request or the document revision moved (0.2 … 2 s for curved bodies).
-void RefreshSection(SketcherWorkspaceState& State)
+void RefreshSection(SketcherWorkspaceStatus& State)
 {
     SketcherSectionSession& Session = State.Section;
     State.Style.SectionEnabled = false;
@@ -12296,12 +12296,12 @@ void RefreshSection(SketcherWorkspaceState& State)
 }
 
 // The section clip for CPU picks while Section is on (null otherwise).
-const SketcherSectionClip* ActiveSectionClip(const SketcherWorkspaceState& State)
+const SketcherSectionClip* ActiveSectionClip(const SketcherWorkspaceStatus& State)
 {
     return State.Style.SectionEnabled ? &State.Section.Clip : nullptr;
 }
 
-void ChooseSectionAxis(SketcherWorkspaceState& State, SketcherSectionAxis Axis)
+void ChooseSectionAxis(SketcherWorkspaceStatus& State, SketcherSectionAxis Axis)
 {
     SketcherSectionSession& Session = State.Section;
     Session.Request.Axis = Axis;
@@ -12318,7 +12318,7 @@ void ChooseSectionAxis(SketcherWorkspaceState& State, SketcherSectionAxis Axis)
 
 // Section (Alt+S; Fusion Section Analysis, no Plasticity default): default plane y through the scene centre with the
 // front half (facing the isometric camera) removed; a selected planar face starts a face section instead.
-void ToggleSection(SketcherWorkspaceState& State)
+void ToggleSection(SketcherWorkspaceStatus& State)
 {
     SketcherSectionSession& Session = State.Section;
     Session.ActiveCondition = !Session.ActiveCondition;
@@ -12334,7 +12334,7 @@ void ToggleSection(SketcherWorkspaceState& State)
     if (!Session.Section.Refusal.empty() && Session.Request.Axis == SketcherSectionAxis::Face) ChooseSectionAxis(State, SketcherSectionAxis::Y);
 }
 
-void AdjustSectionOffset(SketcherWorkspaceState& State, double Delta)
+void AdjustSectionOffset(SketcherWorkspaceStatus& State, double Delta)
 {
     State.Section.Request.Offset += Delta;
     StoreSectionOffsetText(State.Section);
@@ -12342,7 +12342,7 @@ void AdjustSectionOffset(SketcherWorkspaceState& State, double Delta)
     Announce(State, DescribeSectionRequest(State.Section.Request));
 }
 
-void FlipSection(SketcherWorkspaceState& State)
+void FlipSection(SketcherWorkspaceStatus& State)
 {
     State.Section.Request.Flipped = !State.Section.Request.Flipped;
     RefreshSection(State);
@@ -12351,7 +12351,7 @@ void FlipSection(SketcherWorkspaceState& State)
 
 // 📝 Inspector card: plane family (X / Y / Z / Face), offset field (Enter applies; units as everywhere), − / + steps of
 //    1/20 of the bounds diagonal, Flip, and the exact figures (u = plane x axis, v = plane y axis, about the centroid).
-void DrawSectionCard(SketcherWorkspaceState& State)
+void DrawSectionCard(SketcherWorkspaceStatus& State)
 {
     SketcherSectionSession& Session = State.Section;
     if (!Session.ActiveCondition) return;
@@ -12413,7 +12413,7 @@ void DrawSectionCard(SketcherWorkspaceState& State)
 
 // 📝 The exact section outline (kernel polylines) over the viewport while the eye is on the removed side, where the cap
 //    is visible; drawn only when the figures describe the plane in force (no stale outline during a recomputation).
-void DrawSectionOutline(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawSectionOutline(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     const SketcherSectionSession& Session = State.Section;
     if (!State.Style.SectionEnabled || !Session.Section.Refusal.empty() || Session.Section.RequestKey != SketcherSectionKey(Session.Request)
@@ -12430,7 +12430,7 @@ void DrawSectionOutline(SketcherWorkspaceState& State, ImDrawList* Canvas, const
 
 // 💡 Drawing sheet (Alt+D): recomposed only when the document revision or the settings moved (14 ms … 1 s; a section
 //    view costs the most).
-void RefreshDrawingSheet(SketcherWorkspaceState& State)
+void RefreshDrawingSheet(SketcherWorkspaceStatus& State)
 {
     SketcherDrawingSheetSession& Session = State.DrawingSheet;
     if (!Session.ActiveCondition) return;
@@ -12440,7 +12440,7 @@ void RefreshDrawingSheet(SketcherWorkspaceState& State)
     Session.Refreshes += 1;
 }
 
-std::string DescribeDrawingSheet(const SketcherWorkspaceState& State)
+std::string DescribeDrawingSheet(const SketcherWorkspaceStatus& State)
 {
     const SketcherDrawingSheet& Sheet = State.DrawingSheet.Sheet;
     if (!Sheet.Refusal.empty()) return Sheet.Refusal;
@@ -12450,7 +12450,7 @@ std::string DescribeDrawingSheet(const SketcherWorkspaceState& State)
     return Text;
 }
 
-void StoreDrawingSheetTexts(SketcherWorkspaceState& State)
+void StoreDrawingSheetTexts(SketcherWorkspaceStatus& State)
 {
     SketcherDrawingSheetSession& Session = State.DrawingSheet;
     const SketcherTitleFields&   Title   = State.Document.DrawingSheet.Title;
@@ -12460,7 +12460,7 @@ void StoreDrawingSheetTexts(SketcherWorkspaceState& State)
     std::snprintf(Session.MaterialText.data(), Session.MaterialText.size(), "%s", Title.Material.c_str());
 }
 
-void ToggleDrawingSheet(SketcherWorkspaceState& State)
+void ToggleDrawingSheet(SketcherWorkspaceStatus& State)
 {
     SketcherDrawingSheetSession& Session = State.DrawingSheet;
     Session.ActiveCondition = !Session.ActiveCondition;
@@ -12474,7 +12474,7 @@ void ToggleDrawingSheet(SketcherWorkspaceState& State)
 }
 
 // A settings change: saved with the document (dirty, autosaved), not an undo step; the sheet recomposes at once.
-void ReviseDrawingSheet(SketcherWorkspaceState& State, const std::function<void(SketcherDrawingSheetSettings&)>& Change)
+void ReviseDrawingSheet(SketcherWorkspaceStatus& State, const std::function<void(SketcherDrawingSheetSettings&)>& Change)
 {
     Change(State.Document.DrawingSheet);
     State.DirtyCondition = true;
@@ -12483,7 +12483,7 @@ void ReviseDrawingSheet(SketcherWorkspaceState& State, const std::function<void(
 }
 
 // − / + step through the ISO 5455 scales from the one in force (the automatic choice included); Auto returns to 0.
-void StepDrawingSheetScale(SketcherWorkspaceState& State, int Direction)
+void StepDrawingSheetScale(SketcherWorkspaceStatus& State, int Direction)
 {
     const std::vector<double> Scales  = GeometrySpace::Parametric::EnumerateStandardScales();                 // Largest first
     const double              Current = State.Document.DrawingSheet.Scale > 0.0 ? State.Document.DrawingSheet.Scale : State.DrawingSheet.Sheet.Sheet.Scale;
@@ -12495,7 +12495,7 @@ void StepDrawingSheetScale(SketcherWorkspaceState& State, int Direction)
 }
 
 // Section A-A follows the Section card's plane while Alt+S is on, else y through the scene centre (the Front direction).
-void ToggleDrawingSheetSection(SketcherWorkspaceState& State)
+void ToggleDrawingSheetSection(SketcherWorkspaceStatus& State)
 {
     SketcherSectionRequest Plane = State.Section.ActiveCondition ? State.Section.Request : SketcherSectionRequest{ SketcherSectionAxis::Y, 0.0, false, {} };
     if (!State.Section.ActiveCondition) Plane.Offset = DefaultSectionOffset(State, Plane);
@@ -12506,7 +12506,7 @@ void ToggleDrawingSheetSection(SketcherWorkspaceState& State)
     });
 }
 
-void ExportDrawingSheet(SketcherWorkspaceState& State, const char* Extension)
+void ExportDrawingSheet(SketcherWorkspaceStatus& State, const char* Extension)
 {
     SketcherDrawingSheetSession& Session = State.DrawingSheet;
     RefreshDrawingSheet(State);
@@ -12521,7 +12521,7 @@ void ExportDrawingSheet(SketcherWorkspaceState& State, const char* Extension)
 
 // 📝 Inspector card: paper A4 … A0, first / third angle, scale (− / Auto / +), views and line kinds, the title block
 //    fields (Enter applies) and SVG / DXF export beside the document.
-void DrawDrawingSheetCard(SketcherWorkspaceState& State)
+void DrawDrawingSheetCard(SketcherWorkspaceStatus& State)
 {
     SketcherDrawingSheetSession& Session  = State.DrawingSheet;
     if (!Session.ActiveCondition) return;
@@ -12650,7 +12650,7 @@ void DrawPatternedPolyline(ImDrawList* Canvas, const std::vector<ImVec2>& Points
 // 💡 The paper in the viewport: fitted with a 24 px margin × Zoom, centre offset by Pan; layer widths and dash patterns
 //    of ISO 128-2 scaled to the zoom (≥ 1 px); texts by cap height (≈ 0.7 em), rotated by turning their vertices about
 //    the baseline anchor. ⌀ prints as Ø (the interface font has no U+2300; exports keep ⌀ / %%c).
-void DrawDrawingSheetPaper(SketcherWorkspaceState& State, ImDrawList* Canvas, ImVec2 Image, ImVec2 Extent, bool Hovered)
+void DrawDrawingSheetPaper(SketcherWorkspaceStatus& State, ImDrawList* Canvas, ImVec2 Image, ImVec2 Extent, bool Hovered)
 {
     SketcherDrawingSheetSession& Session = State.DrawingSheet;
     RefreshDrawingSheet(State);
@@ -12730,7 +12730,7 @@ void DrawDrawingSheetPaper(SketcherWorkspaceState& State, ImDrawList* Canvas, Im
 }
 
 // Zebra (V8): stripe count to the surface shader, and a finer tessellation so interpolated normals follow the surface.
-void ToggleZebra(SketcherWorkspaceState& State)
+void ToggleZebra(SketcherWorkspaceStatus& State)
 {
     State.ZebraEnabled       = !State.ZebraEnabled;
     State.Style.ZebraStripes = State.ZebraEnabled ? ZebraStripeCount : 0.0f;
@@ -12749,11 +12749,11 @@ ImU32 DeviationColour(double Distance)
 
 // 💡 V8 deviation map: every imported point gets a dot, and a needle along point → foot magnified so the worst needle
 //    is 5 % of the scene radius; legend bottom-left (colour scale 0 … 0.2 mm, measured worst / mean, magnification).
-void DrawDeviationOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, const OrbitCameraFrame& Frame)
+void DrawDeviationOverlay(SketcherWorkspaceStatus& State, ImDrawList* Canvas, const OrbitCameraBasis& Frame)
 {
     if (State.Deviation.Revision != State.Document.Revision || (State.Deviation.Needles.empty() && !State.Document.Regeneration.Panels.empty()))
         State.Deviation = MeasureSketcherDeviation(State.Document);
-    const SketcherDeviationMap& Map = State.Deviation;
+    const SketcherDeviationPlot& Map = State.Deviation;
     if (Map.Needles.empty()) return;
     const double Gain = Map.Worst > 0.0 ? 0.05 * State.Camera.SceneRadius / Map.Worst : 1.0;
     for (const SketcherDeviationNeedle& Needle : Map.Needles)
@@ -12780,9 +12780,9 @@ void DrawDeviationOverlay(SketcherWorkspaceState& State, ImDrawList* Canvas, con
 }
 
 // Import curves… / --curves: VehicleCurves.toml → one SpaceCurve step per curve (one undo entry), framed.
-void FrameSelection(SketcherWorkspaceState& State);
+void FrameSelection(SketcherWorkspaceStatus& State);
 
-void ImportCurves(SketcherWorkspaceState& State, const std::string& Path)
+void ImportCurves(SketcherWorkspaceStatus& State, const std::string& Path)
 {
     const VehicleCurveFile       File    = ReadVehicleCurves(Path);
     const SketcherCommandOutcome Outcome = ImportSketcherCurves(State.Document, File);
@@ -12797,7 +12797,7 @@ void ImportCurves(SketcherWorkspaceState& State, const std::string& Path)
 
 // 💡 Import… with a .step / .stp file (or Open… with one, as Plasticity opens STEP into the scene): every solid becomes
 //    an Import step and a body of its own (one undo entry); the new bodies are selected and framed.
-void ImportStep(SketcherWorkspaceState& State, const std::string& Path)
+void ImportStep(SketcherWorkspaceStatus& State, const std::string& Path)
 {
     SketcherExchangeSession& Session = State.Exchange;
     const auto Start = std::chrono::steady_clock::now();
@@ -12814,7 +12814,7 @@ void ImportStep(SketcherWorkspaceState& State, const std::string& Path)
     if (!Outcome.AcceptedCondition) return;
     ++Session.Imports;
     SketcherSelection Picked;
-    Picked.LastKind = SketcherSelectionKind::Body;
+    Picked.LastKind = SketcherSelectionCategory::Body;
     for (size_t Index = Before; Index < State.Document.Tree.Steps.size(); ++Index) Picked.Bodies.push_back(State.Document.Tree.Steps[Index].Label);
     State.Document.Selection = Picked;
     FrameSelection(State);
@@ -12825,7 +12825,7 @@ void ImportStep(SketcherWorkspaceState& State, const std::string& Path)
 
 // Export… (or Save as… with a .step / .stp / .stl name, as Plasticity exports by file type): the selected bodies, else
 // every shown body, in millimetres; the document path is left as it is.
-void ExportBodies(SketcherWorkspaceState& State, const std::string& Path)
+void ExportBodies(SketcherWorkspaceStatus& State, const std::string& Path)
 {
     SketcherExchangeSession& Session = State.Exchange;
     Session.Export = ExportSketcherBodies(State.Document, Path);
@@ -12839,7 +12839,7 @@ void ExportBodies(SketcherWorkspaceState& State, const std::string& Path)
 }
 
 // Import… dispatches by extension: .step / .stp → bodies, .toml → VehicleCurves.
-void ImportFile(SketcherWorkspaceState& State, const std::string& Path)
+void ImportFile(SketcherWorkspaceStatus& State, const std::string& Path)
 {
     const SketcherExchangeFormat Format = SketcherExchangeFormatOf(Path);
     if (Format == SketcherExchangeFormat::Step) ImportStep(State, Path);
@@ -12854,7 +12854,7 @@ void ImportFile(SketcherWorkspaceState& State, const std::string& Path)
 
 // L (Plasticity loft): the selected curves, in pick order. Closed sections loft a solid shell of its own (the skin and
 // its two plane caps); open sections — or G1 / G2 to a neighbour — loft a panel; crossing curves make a Gordon network.
-void LoftSelectedCurves(SketcherWorkspaceState& State)
+void LoftSelectedCurves(SketcherWorkspaceStatus& State)
 {
     const size_t           TotalCount = State.Document.Selection.Curves.size() + State.Document.Selection.Edges.size();
     SketcherCommandOutcome Outcome;
@@ -12873,7 +12873,7 @@ void LoftSelectedCurves(SketcherWorkspaceState& State)
                                 State.Document.Summary.SoundCondition ? "sound" : "audit findings", Outcome.Milliseconds));
         return;
     }
-    const bool NetworkCondition = !State.Document.Tree.Steps.empty() && State.Document.Tree.Steps.back().Kind == FeatureStepKind::Network;
+    const bool NetworkCondition = !State.Document.Tree.Steps.empty() && State.Document.Tree.Steps.back().Kind == FeatureStepCategory::Network;
     const char* Order = State.LoftContinuity == 2 ? " · G2" : State.LoftContinuity == 1 ? " · G1" : "";
     Announce(State, Compose("%s %d curve(s) into a panel%s (%s) · %d panel(s) · open sections stay a sheet · %.0f ms", NetworkCondition ? "Network of" : "Lofted", int(TotalCount),
                             NetworkCondition ? "" : Order, State.Document.Summary.SoundCondition ? "sound" : "audit findings", int(State.Document.Regeneration.Panels.size()),
@@ -12881,7 +12881,7 @@ void LoftSelectedCurves(SketcherWorkspaceState& State)
 }
 
 // Alt+X (Plasticity mirror, gizmo x): every panel gets its image through x = 0; halves sew along the plane.
-void MirrorPanels(SketcherWorkspaceState& State)
+void MirrorPanels(SketcherWorkspaceStatus& State)
 {
     const SketcherCommandOutcome Outcome = MirrorSketcherPanels(State.Document, 0);
     Conclude(State, Outcome);
@@ -12890,7 +12890,7 @@ void MirrorPanels(SketcherWorkspaceState& State)
 }
 
 // Close: plane caps on the planar rim loops → solid.
-void ClosePanels(SketcherWorkspaceState& State)
+void ClosePanels(SketcherWorkspaceStatus& State)
 {
     const SketcherCommandOutcome Outcome = CloseSketcherPanels(State.Document);
     Conclude(State, Outcome);
@@ -12898,7 +12898,7 @@ void ClosePanels(SketcherWorkspaceState& State)
                                                            Outcome.Milliseconds));
 }
 
-void PickCurve(SketcherWorkspaceState& State, const std::string& Label, SketcherPickIntent Intent)
+void PickCurve(SketcherWorkspaceStatus& State, const std::string& Label, SketcherPickIntent Intent)
 {
     if (Intent == SketcherPickIntent::Remove && CurveOrder(State, Label) == 0) return;
     State.SplineSpans = {};
@@ -12962,13 +12962,13 @@ int ViewGridPlane(const OrbitCamera& Camera) noexcept
     return std::abs(Turn) < Tolerance ? 2 : 1;
 }
 
-void PresentView(SketcherWorkspaceState& State, OrbitViewPreset Preset)
+void PresentView(SketcherWorkspaceStatus& State, OrbitViewPreset Preset)
 {
     PresentOrbitView(State.Camera, Preset);
     State.Style.GridPlane = ViewGridPlane(State.Camera);
 }
 
-OrbitCameraFrame ViewportFrame(const SketcherWorkspaceState& State)
+OrbitCameraBasis ViewportFrame(const SketcherWorkspaceStatus& State)
 {
     return FrameOrbitCamera(State.Camera, std::max(1.0f, State.ViewportRect[2]), std::max(1.0f, State.ViewportRect[3]));
 }
@@ -12978,17 +12978,17 @@ OrbitCameraFrame ViewportFrame(const SketcherWorkspaceState& State)
 // 💡 Blender's loop / ring clicks (edit-mode select_loop): Alt loops, Ctrl+Alt rings — the selection becomes the walk;
 //    with Shift the walk joins, or leaves when the clicked edge is already picked (toggle). Face mode: the face loop
 //    across the quads of the edge's ring. Double-click: the tangent chain (smoothly joined edges) joins.
-void PickEdgeWalk(SketcherWorkspaceState& State, SketcherSelectionKind Kind, const std::string& Name, SketcherPickIntent Intent, const std::string& Body)
+void PickEdgeWalk(SketcherWorkspaceStatus& State, SketcherSelectionCategory Kind, const std::string& Name, SketcherPickIntent Intent, const std::string& Body)
 {
     const bool RingCondition   = Intent == SketcherPickIntent::Ring || Intent == SketcherPickIntent::RingToggle;
     const bool ToggleCondition = Intent == SketcherPickIntent::LoopToggle || Intent == SketcherPickIntent::RingToggle;
-    const SketcherSelectionKind Picked = Kind == SketcherSelectionKind::Face ? SketcherSelectionKind::Face : SketcherSelectionKind::Edge;
+    const SketcherSelectionCategory Picked = Kind == SketcherSelectionCategory::Face ? SketcherSelectionCategory::Face : SketcherSelectionCategory::Edge;
     const auto Member = [&](const std::string& Candidate)
     {
-        const std::vector<std::string>& Names = Picked == SketcherSelectionKind::Edge ? State.Document.Selection.Edges : State.Document.Selection.Faces;
+        const std::vector<std::string>& Names = Picked == SketcherSelectionCategory::Edge ? State.Document.Selection.Edges : State.Document.Selection.Faces;
         return std::find(Names.begin(), Names.end(), Candidate) != Names.end();
     };
-    if (Kind == SketcherSelectionKind::Face && Intent == SketcherPickIntent::Chain)
+    if (Kind == SketcherSelectionCategory::Face && Intent == SketcherPickIntent::Chain)
     {
         SelectSketcherName(State.Document, Kind, Name, false, Body);                          // A double-click on a face picks it
         Announce(State, "Selected " + Name);
@@ -12996,7 +12996,7 @@ void PickEdgeWalk(SketcherWorkspaceState& State, SketcherSelectionKind Kind, con
     }
     std::vector<std::string> Walk;
     const char*              Caption = "Edge loop";
-    if (Kind == SketcherSelectionKind::Face)
+    if (Kind == SketcherSelectionCategory::Face)
     {
         Walk    = { Name };                                                                  // A face hit without an edge: just the face
         Caption = "Face";
@@ -13017,18 +13017,18 @@ void PickEdgeWalk(SketcherWorkspaceState& State, SketcherSelectionKind Kind, con
     }
     ++State.RingPicks;
     Announce(State, Compose("%s: %d %s %s · Alt loop · Ctrl+Alt ring · Shift toggles · double-click tangent chain", Caption, int(Walk.size()),
-                            Picked == SketcherSelectionKind::Edge ? "edge(s)" : "face(s)", Leave ? "removed" : ToggleCondition || Intent == SketcherPickIntent::Chain ? "added" : "selected"));
+                            Picked == SketcherSelectionCategory::Edge ? "edge(s)" : "face(s)", Leave ? "removed" : ToggleCondition || Intent == SketcherPickIntent::Chain ? "added" : "selected"));
 }
 
 // 📝 Edge path: the picked edges become PathBase + the path From … To (To last, so a further Ctrl+click goes on from it).
 //    A refused path leaves PathBase picked and says why (Along loop never leaves the loop: Shortest takes any edges).
-void ApplyEdgePath(SketcherWorkspaceState& State)
+void ApplyEdgePath(SketcherWorkspaceStatus& State)
 {
     std::vector<std::string>& Edges = State.Document.Selection.Edges;
     const auto Member = [&](const std::string& Candidate) { return std::find(Edges.begin(), Edges.end(), Candidate) != Edges.end(); };
     const auto Based  = [&](const std::string& Candidate) { return std::find(State.PathBase.begin(), State.PathBase.end(), Candidate) != State.PathBase.end(); };
-    for (const std::string& Picked : std::vector<std::string>(Edges)) if (!Based(Picked)) SelectSketcherName(State.Document, SketcherSelectionKind::Edge, Picked, true);
-    for (const std::string& Kept : State.PathBase) if (!Member(Kept)) SelectSketcherName(State.Document, SketcherSelectionKind::Edge, Kept, true, State.PathBody);
+    for (const std::string& Picked : std::vector<std::string>(Edges)) if (!Based(Picked)) SelectSketcherName(State.Document, SketcherSelectionCategory::Edge, Picked, true);
+    for (const std::string& Kept : State.PathBase) if (!Member(Kept)) SelectSketcherName(State.Document, SketcherSelectionCategory::Edge, Kept, true, State.PathBody);
     State.PathLast = SketcherEdgePathBetween(State.Document, State.PathFrom, State.PathTo, State.PathMode, State.PathOtherSideCondition, State.PathBody);
     if (!State.PathLast.Refusal.empty())
     {
@@ -13036,7 +13036,7 @@ void ApplyEdgePath(SketcherWorkspaceState& State)
         Announce(State, "Edge path (" + std::string(SketcherEdgePathModeLabel(State.PathMode)) + "): " + State.PathLast.Refusal);
         return;
     }
-    for (const std::string& Link : State.PathLast.Edges) if (!Member(Link)) SelectSketcherName(State.Document, SketcherSelectionKind::Edge, Link, true, State.PathBody);
+    for (const std::string& Link : State.PathLast.Edges) if (!Member(Link)) SelectSketcherName(State.Document, SketcherSelectionCategory::Edge, Link, true, State.PathBody);
     if (Member(State.PathTo) && Edges.back() != State.PathTo)
     {
         Edges.erase(std::find(Edges.begin(), Edges.end(), State.PathTo));                    // To is the active (last) edge
@@ -13050,7 +13050,7 @@ void ApplyEdgePath(SketcherWorkspaceState& State)
 }
 
 // Ctrl+click on an unpicked edge with edges picked (Blender's pick shortest path): the path from the active edge to it.
-void PickEdgePath(SketcherWorkspaceState& State, const std::string& Name, const std::string& Body)
+void PickEdgePath(SketcherWorkspaceStatus& State, const std::string& Name, const std::string& Body)
 {
     State.PathFrom               = State.Document.Selection.Edges.back();
     State.PathTo                 = Name;
@@ -13062,7 +13062,7 @@ void PickEdgePath(SketcherWorkspaceState& State, const std::string& Name, const 
 }
 
 // Inspector › Edge path: a new mode / side redoes the last pick while the selection is still the one it made.
-void ChangeEdgePath(SketcherWorkspaceState& State, SketcherEdgePathMode Mode, bool OtherSideCondition)
+void ChangeEdgePath(SketcherWorkspaceStatus& State, SketcherEdgePathMode Mode, bool OtherSideCondition)
 {
     State.PathMode               = Mode;
     State.PathOtherSideCondition = OtherSideCondition;
@@ -13071,7 +13071,7 @@ void ChangeEdgePath(SketcherWorkspaceState& State, SketcherEdgePathMode Mode, bo
 }
 
 // Face-mode Alt+click: Blender's face loop through the edge nearest the pointer.
-void PickFaceLoop(SketcherWorkspaceState& State, const std::string& Edge, SketcherPickIntent Intent, const std::string& Body)
+void PickFaceLoop(SketcherWorkspaceStatus& State, const std::string& Edge, SketcherPickIntent Intent, const std::string& Body)
 {
     const std::vector<std::string> Faces = SketcherFaceLoop(State.Document, Edge, Body);
     if (Faces.empty()) { Announce(State, "Face loop: no four-sided face beside " + Edge); return; }
@@ -13087,15 +13087,15 @@ void PickFaceLoop(SketcherWorkspaceState& State, const std::string& Edge, Sketch
     for (const std::string& Face : Faces)
     {
         const bool Member = std::find(State.Document.Selection.Faces.begin(), State.Document.Selection.Faces.end(), Face) != State.Document.Selection.Faces.end();
-        if (Leave ? Member : !Member) SelectSketcherName(State.Document, SketcherSelectionKind::Face, Face, true);
+        if (Leave ? Member : !Member) SelectSketcherName(State.Document, SketcherSelectionCategory::Face, Face, true);
     }
     ++State.RingPicks;
     Announce(State, Compose("Face loop: %d face(s) %s", int(Faces.size()), Leave ? "removed" : ToggleCondition ? "added" : "selected"));
 }
 
-void PickAtPointer(SketcherWorkspaceState& State, ImVec2 Local, SketcherPickIntent Intent)
+void PickAtPointer(SketcherWorkspaceStatus& State, ImVec2 Local, SketcherPickIntent Intent)
 {
-    const OrbitCameraFrame Frame = ViewportFrame(State);
+    const OrbitCameraBasis Frame = ViewportFrame(State);
     const OrbitRay         Ray   = CastOrbitRay(Frame, Local.x, Local.y);
     uint32_t                  Identity = State.HoverIdentity;
     if (State.PickMode == SketcherPickMode::ControlPoint || State.PickMode == SketcherPickMode::Edge || State.PickMode == SketcherPickMode::Any || State.PickMode==SketcherPickMode::Curve)
@@ -13186,26 +13186,26 @@ void PickAtPointer(SketcherWorkspaceState& State, ImVec2 Local, SketcherPickInte
         const bool                      Member   = std::find(Picked.begin(), Picked.end(), Body.Key) != Picked.end();
         if (Intent == SketcherPickIntent::Replace)
         {
-            SelectSketcherName(State.Document, SketcherSelectionKind::Body, Body.Key, false);
+            SelectSketcherName(State.Document, SketcherSelectionCategory::Body, Body.Key, false);
             State.Outliner.AnchorKey = Body.Key;
             Announce(State, Compose("Selected %s (%d faces)", Body.Caption.c_str(), int(Body.FaceCount)));
         }
         else if (Intent == SketcherPickIntent::Add)
         {
-            if (!Member) SelectSketcherName(State.Document, SketcherSelectionKind::Body, Body.Key, true);
+            if (!Member) SelectSketcherName(State.Document, SketcherSelectionCategory::Body, Body.Key, true);
             if (State.Outliner.AnchorKey.empty()) State.Outliner.AnchorKey = Body.Key;
             Announce(State, Compose("Added %s · %d bodies picked", Body.Caption.c_str(), int(State.Document.Selection.Bodies.size())));
         }
         else
         {
-            SelectSketcherName(State.Document, SketcherSelectionKind::Body, Body.Key, true);
+            SelectSketcherName(State.Document, SketcherSelectionCategory::Body, Body.Key, true);
             if (!Member && State.Outliner.AnchorKey.empty()) State.Outliner.AnchorKey = Body.Key;
             Announce(State, Member ? ("Removed " + Body.Caption) : Compose("Added %s · %d bodies picked", Body.Caption.c_str(), int(State.Document.Selection.Bodies.size())));
         }
         return;
     }
     const std::string           Name = NameSketcherIdentity(State.Scene, Identity);
-    const SketcherSelectionKind Kind = SketcherIdentityKind(Identity);
+    const SketcherSelectionCategory Kind = SketcherIdentityKind(Identity);
     // The body under the pointer: a cut's two pieces carry the same names, so the pick remembers which one it was.
     const uint32_t    PickIndex = (Identity & ~IdentityEdgeBit) - 1u;
     const uint32_t    PickBody  = (Identity & IdentityEdgeBit) ? (PickIndex < State.Scene.Edges.size() ? State.Scene.Edges[PickIndex].Body : ~0u)
@@ -13213,7 +13213,7 @@ void PickAtPointer(SketcherWorkspaceState& State, ImVec2 Local, SketcherPickInte
     const std::string PickKey   = PickBody < State.Scene.Bodies.size() ? State.Scene.Bodies[PickBody].Key : std::string{};
     const auto Member = [&](const std::string& Candidate)
     {
-        const std::vector<std::string>& Names = Kind == SketcherSelectionKind::Edge ? State.Document.Selection.Edges : State.Document.Selection.Faces;
+        const std::vector<std::string>& Names = Kind == SketcherSelectionCategory::Edge ? State.Document.Selection.Edges : State.Document.Selection.Faces;
         return std::find(Names.begin(), Names.end(), Candidate) != Names.end();
     };
     switch (Intent)
@@ -13230,7 +13230,7 @@ void PickAtPointer(SketcherWorkspaceState& State, ImVec2 Local, SketcherPickInte
         break;
     case SketcherPickIntent::Remove:
         // Ctrl on an unpicked edge with edges picked (same body): Blender's path pick; on a picked one: Plasticity's remove.
-        if (Kind == SketcherSelectionKind::Edge && !Member(Name) && !State.Document.Selection.Edges.empty()
+        if (Kind == SketcherSelectionCategory::Edge && !Member(Name) && !State.Document.Selection.Edges.empty()
             && (State.Document.Selection.PickedBody.empty() || PickKey.empty() || State.Document.Selection.PickedBody == PickKey))
         {
             PickEdgePath(State, Name, PickKey);
@@ -13259,7 +13259,7 @@ void PickAtPointer(SketcherWorkspaceState& State, ImVec2 Local, SketcherPickInte
 }
 
 // Curves wholly inside the screen box, appended in feature-tree order (the import order of sections).
-void SelectInBox(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, ImVec2 Corner, ImVec2 Opposite, SketcherPickIntent Intent)
+void SelectInBox(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame, ImVec2 Corner, ImVec2 Opposite, SketcherPickIntent Intent)
 {
     const ImVec2 Low(std::min(Corner.x, Opposite.x), std::min(Corner.y, Opposite.y));
     const ImVec2 High(std::max(Corner.x, Opposite.x), std::max(Corner.y, Opposite.y));
@@ -13267,7 +13267,7 @@ void SelectInBox(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, I
     int Count = 0;
     for (const FeatureStep& Step : State.Document.Tree.Steps)
     {
-        const CurveFitOutcome* Fit = Step.Kind == FeatureStepKind::SpaceCurve ? FindFittedCurve(State.Document, Step.Label) : nullptr;
+        const CurveFitOutcome* Fit = Step.Kind == FeatureStepCategory::SpaceCurve ? FindFittedCurve(State.Document, Step.Label) : nullptr;
         if (!Fit || !CurveReachableCondition(State.Document, Step.Label)) continue;
         const std::vector<ImVec2> Pixels = ProjectFittedCurve(State, Frame, *Fit->Curve.Definition);
         if (int(Pixels.size()) != CurveSamples + 1) continue;                               // Partly off screen / behind the eye
@@ -13290,7 +13290,7 @@ void SelectInBox(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame, I
             if (Body < State.Scene.Bodies.size() && SketcherLockedCondition(State.Document, State.Scene.Bodies[Body].Key)) continue;   // Locked body
             const std::vector<std::string>& Edges = State.Document.Selection.Edges;
             const bool Member = std::find(Edges.begin(), Edges.end(), Name) != Edges.end();
-            if (Intent == SketcherPickIntent::Remove ? Member : !Member) SelectSketcherName(State.Document, SketcherSelectionKind::Edge, Name, true, Body < State.Scene.Bodies.size() ? State.Scene.Bodies[Body].Key : std::string{});
+            if (Intent == SketcherPickIntent::Remove ? Member : !Member) SelectSketcherName(State.Document, SketcherSelectionCategory::Edge, Name, true, Body < State.Scene.Bodies.size() ? State.Scene.Bodies[Body].Key : std::string{});
             ++State.Box.Edges;
         }
     }
@@ -13320,7 +13320,7 @@ SketcherPickIntent PickIntentOf(const ImGuiIO& Io)
 // The Open / Save / Import / Export path forms and the Examples list (on the header ID stack).
 // 📝 Construct › Image plane: decode the picture (refuse unreadable files), size it Width wide with the picture's aspect,
 //    centred on the origin of the chosen view plane, upright (top of the picture up, or −y on the top plane).
-bool AddImagePlane(SketcherWorkspaceState& State)
+bool AddImagePlane(SketcherWorkspaceStatus& State)
 {
     const std::string Path = State.PicturePath.data();
     if (Path.empty()) { Announce(State, "Image plane: type a picture path (or Browse…)"); return false; }
@@ -13354,7 +13354,7 @@ bool AddImagePlane(SketcherWorkspaceState& State)
     return true;
 }
 
-void DrawImagePlanePopup(SketcherWorkspaceState& State)
+void DrawImagePlanePopup(SketcherWorkspaceStatus& State)
 {
     if (!ImGui::BeginPopupModal("Image plane", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
     ImGui::TextUnformatted("A reference picture (.ImageSpace / PNG / JPEG / BMP / GIF) on a view plane · not part of the history");
@@ -13396,7 +13396,7 @@ void DrawImagePlanePopup(SketcherWorkspaceState& State)
     ImGui::EndPopup();
 }
 
-void DrawPathPopups(SketcherWorkspaceState& State)
+void DrawPathPopups(SketcherWorkspaceStatus& State)
 {
     DrawImagePlanePopup(State);
     for (const char* Title : { "Open document", "Save document", "Import", "Export" })
@@ -13459,7 +13459,7 @@ void DrawPathPopups(SketcherWorkspaceState& State)
 
 // 📝 HTML .button: 35 px pill, #222, #ffffff0d border, padding 0 16, 11 px; hover #292929 / #fff. Glyph (17 px, gap 8)
 //    leads the label when given. Returns the press; the rectangle is recorded under Key for the scripts.
-bool SheetButton(SketcherWorkspaceState& State, SketcherSheet& Sheet, const char* Key, float Left, float Centre, const char* Label,
+bool SheetButton(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const char* Key, float Left, float Centre, const char* Label,
                  bool EnabledCondition = true, IconSymbol Glyph = IconSymbol::Count, float* Width = nullptr)
 {
     const bool        GlyphCondition = Glyph != IconSymbol::Count;
@@ -13481,7 +13481,7 @@ bool SheetButton(SketcherWorkspaceState& State, SketcherSheet& Sheet, const char
 }
 
 // 📝 HTML .text-button: 11 px #969696, padding 6 8, radius 16, gap 8, glyph 13 after the label when given.
-bool SheetTextButton(SketcherWorkspaceState& State, SketcherSheet& Sheet, const char* Key, float Right, float Centre, const char* Label,
+bool SheetTextButton(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const char* Key, float Right, float Centre, const char* Label,
                      IconSymbol Glyph = IconSymbol::Count, float* Width = nullptr)
 {
     const bool        GlyphCondition = Glyph != IconSymbol::Count;
@@ -13498,7 +13498,7 @@ bool SheetTextButton(SketcherWorkspaceState& State, SketcherSheet& Sheet, const 
 }
 
 // 📝 HTML .icon-button: circle of Size, glyph centred (#888, hover #292929 / #fff), optional hairline border.
-bool SheetIconButton(SketcherWorkspaceState& State, SketcherSheet& Sheet, const char* Key, float CentreX, float CentreY, float Size, IconSymbol Glyph,
+bool SheetIconButton(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const char* Key, float CentreX, float CentreY, float Size, IconSymbol Glyph,
                      float GlyphSize, uint32_t BorderAlpha = 0, bool EnabledCondition = true, bool ActiveCondition = false)
 {
     const PlaneExtent   Box   = Spanning(CentreX - 0.5f * Size, CentreY - 0.5f * Size, Size, Size);
@@ -13533,7 +13533,7 @@ void EndSheetWindow()
 
 // 📝 HTML .status-bar (31 px, padding 0 21, gap 14, 9 px #8c8c8c): kernel state, figures, the last message; on the right the
 //    frame time and device, Metres · Z up, SOLIDARC NATIVE.
-void DrawStatusBar(SketcherWorkspaceState& State, const ImVec2 Frame)
+void DrawStatusBar(SketcherWorkspaceStatus& State, const ImVec2 Frame)
 {
     BeginSheetWindow("Status", ImVec2(0, Frame.y - StatusHeight), ImVec2(Frame.x, StatusHeight));
     SketcherSheet Sheet;
@@ -13597,7 +13597,7 @@ void DrawStatusBar(SketcherWorkspaceState& State, const ImVec2 Frame)
 //                                                    OUTLINER
 //------------------------------------------------------------------------------------------------------------------------
 
-void DrawConstructDialog(SketcherWorkspaceState& State)
+void DrawConstructDialog(SketcherWorkspaceStatus& State)
 {
     if (State.ConstructOpen)
     {
@@ -13641,12 +13641,12 @@ void DrawConstructDialog(SketcherWorkspaceState& State)
     Field("Z [m]###ConstructZ", Form.Position.Z);
     switch (Form.Kind)
     {
-    case SketcherConstructKind::Block:
+    case SketcherConstructCategory::Block:
         Field("Width [m]###ConstructWidth", Form.Width);
         Field("Depth [m]###ConstructDepth", Form.Depth);
         Field("Height [m]###ConstructHeight", Form.Height);
         break;
-    case SketcherConstructKind::Cylinder:
+    case SketcherConstructCategory::Cylinder:
     {
         Field("Radius [m]###ConstructRadius", Form.Radius);
         Field("Height [m]###ConstructHeight", Form.Height);
@@ -13658,23 +13658,23 @@ void DrawConstructDialog(SketcherWorkspaceState& State)
         }
         break;
     }
-    case SketcherConstructKind::Sphere:
+    case SketcherConstructCategory::Sphere:
         Field("Radius [m]###ConstructRadius", Form.Radius);
         break;
-    case SketcherConstructKind::Torus:
+    case SketcherConstructCategory::Torus:
         Field("Major [m]###ConstructMajor", Form.Major);
         Field("Minor [m]###ConstructMinor", Form.Minor);
         break;
-    case SketcherConstructKind::Cone:
+    case SketcherConstructCategory::Cone:
         Field("Radius [m]###ConstructRadius", Form.Radius);
         Field("Height [m]###ConstructHeight", Form.Height);
         break;
-    case SketcherConstructKind::Wedge:
+    case SketcherConstructCategory::Wedge:
         Field("Width [m]###ConstructWidth", Form.Width);
         Field("Depth [m]###ConstructDepth", Form.Depth);
         Field("Height [m]###ConstructHeight", Form.Height);
         break;
-    case SketcherConstructKind::Prism:
+    case SketcherConstructCategory::Prism:
     {
         Field("Radius [m]###ConstructRadius", Form.Radius);
         Field("Height [m]###ConstructHeight", Form.Height);
@@ -13687,7 +13687,7 @@ void DrawConstructDialog(SketcherWorkspaceState& State)
         Form.Angle = Degrees * std::numbers::pi / 180.0;
         break;
     }
-    case SketcherConstructKind::Tube:
+    case SketcherConstructCategory::Tube:
         Field("Radius [m]###ConstructRadius", Form.Radius);
         Field("Inner [m]###ConstructInner", Form.Inner);
         Field("Height [m]###ConstructHeight", Form.Height);
@@ -13719,7 +13719,7 @@ void DrawConstructDialog(SketcherWorkspaceState& State)
         if (FirstBody) Request.Combination = FeatureCombination::New;
         Request.Target = Request.Combination == FeatureCombination::Separate || FirstBody ? std::string{} : BooleanTarget(State);
         const bool FitCondition = FirstBody;
-        State.LastCommand = { SketcherRepeatKind::Construct, BlendProfile::Fillet, 0.0, FaceOperationKind::Extrude, 0.0, Request };
+        State.LastCommand = { SketcherRepeatCategory::Construct, BlendProfile::Fillet, 0.0, FaceOperationCategory::Extrude, 0.0, Request };
         Conclude(State, ConstructSketcherPrimitive(State.Document, Request));
         if (FitCondition && !State.Scene.Faces.empty()) FitSketcherCamera(State.Camera, State.Scene);
         ImGui::CloseCurrentPopup();
@@ -13739,38 +13739,38 @@ struct SketcherConstructTile
     const char*           Key;                                                               // [-] - Widget name
     IconSymbol            Glyph;                                                             // [-] - 24 px glyph
     bool                  SolidCondition;                                                    // [-] - Solid (else a sketch tool)
-    SketcherConstructKind Solid;                                                             // [-] - Solid kind
-    SketcherDrawingKind   Sketch;                                                            // [-] - Sketch tool
+    SketcherConstructCategory Solid;                                                             // [-] - Solid kind
+    SketcherDrawingCategory   Sketch;                                                            // [-] - Sketch tool
     bool                  CentreCondition;                                                   // [-] - Sketch tool in centre mode
     bool                  SegmentCondition;                                                  // [-] - Line finishes on its second click
     SketchSplineForm      Form;                                                              // [-] - Curve form of a curve tile
 };
 
 constexpr SketcherConstructTile ConstructSolids[] = {
-    { "Box", "ConstructBlock", IconSymbol::SketcherBody, true, SketcherConstructKind::Block, {}, false, false, SketchSplineForm::Hermite },
-    { "Cylinder", "ConstructCylinder", IconSymbol::SketcherCylinder, true, SketcherConstructKind::Cylinder, {}, false, false, SketchSplineForm::Hermite },
-    { "Cone", "ConstructCone", IconSymbol::SketcherCone, true, SketcherConstructKind::Cone, {}, false, false, SketchSplineForm::Hermite },
-    { "Sphere", "ConstructSphere", IconSymbol::SketcherSphere, true, SketcherConstructKind::Sphere, {}, false, false, SketchSplineForm::Hermite },
-    { "Torus", "ConstructTorus", IconSymbol::SketcherRing, true, SketcherConstructKind::Torus, {}, false, false, SketchSplineForm::Hermite },
-    { "Wedge", "ConstructWedge", IconSymbol::SketcherWedge, true, SketcherConstructKind::Wedge, {}, false, false, SketchSplineForm::Hermite },
-    { "Prism", "ConstructPrism", IconSymbol::SketcherPrism, true, SketcherConstructKind::Prism, {}, false, false, SketchSplineForm::Hermite },
-    { "Tube", "ConstructTube", IconSymbol::SketcherTube, true, SketcherConstructKind::Tube, {}, false, false, SketchSplineForm::Hermite } };
+    { "Box", "ConstructBlock", IconSymbol::SketcherBody, true, SketcherConstructCategory::Block, {}, false, false, SketchSplineForm::Hermite },
+    { "Cylinder", "ConstructCylinder", IconSymbol::SketcherCylinder, true, SketcherConstructCategory::Cylinder, {}, false, false, SketchSplineForm::Hermite },
+    { "Cone", "ConstructCone", IconSymbol::SketcherCone, true, SketcherConstructCategory::Cone, {}, false, false, SketchSplineForm::Hermite },
+    { "Sphere", "ConstructSphere", IconSymbol::SketcherSphere, true, SketcherConstructCategory::Sphere, {}, false, false, SketchSplineForm::Hermite },
+    { "Torus", "ConstructTorus", IconSymbol::SketcherRing, true, SketcherConstructCategory::Torus, {}, false, false, SketchSplineForm::Hermite },
+    { "Wedge", "ConstructWedge", IconSymbol::SketcherWedge, true, SketcherConstructCategory::Wedge, {}, false, false, SketchSplineForm::Hermite },
+    { "Prism", "ConstructPrism", IconSymbol::SketcherPrism, true, SketcherConstructCategory::Prism, {}, false, false, SketchSplineForm::Hermite },
+    { "Tube", "ConstructTube", IconSymbol::SketcherTube, true, SketcherConstructCategory::Tube, {}, false, false, SketchSplineForm::Hermite } };
 
 // Lines · rectangles · circles and arcs · slot and polygon · the four curve forms (SketchSplineForm).
 constexpr SketcherConstructTile ConstructSketches[] = {
-    { "Line", "ConstructSketchSegment", IconSymbol::SketcherEdge, false, {}, SketcherDrawingKind::Line, false, true, SketchSplineForm::Hermite },
-    { "Polyline", "ConstructSketchLine", IconSymbol::SketcherPolyline, false, {}, SketcherDrawingKind::Line, false, false, SketchSplineForm::Hermite },
-    { "Rectangle", "ConstructSketchRectangle", IconSymbol::SketcherRectangle, false, {}, SketcherDrawingKind::Rectangle, false, false, SketchSplineForm::Hermite },
-    { "Centre rect", "ConstructSketchRectangleCentre", IconSymbol::SketcherCentrerect, false, {}, SketcherDrawingKind::Rectangle, true, false, SketchSplineForm::Hermite },
-    { "Circle", "ConstructSketchCircleCentre", IconSymbol::SketcherCircle, false, {}, SketcherDrawingKind::Circle, true, false, SketchSplineForm::Hermite },
-    { "2-pt circle", "ConstructSketchCircle", IconSymbol::SketcherCentre, false, {}, SketcherDrawingKind::Circle, false, false, SketchSplineForm::Hermite },
-    { "Arc", "ConstructSketchArc", IconSymbol::SketcherArc, false, {}, SketcherDrawingKind::Arc, false, false, SketchSplineForm::Hermite },
-    { "Slot", "ConstructSketchSlot", IconSymbol::SketcherSlot, false, {}, SketcherDrawingKind::Slot, false, false, SketchSplineForm::Hermite },
-    { "Polygon", "ConstructSketchPolygon", IconSymbol::SketcherPolygon, false, {}, SketcherDrawingKind::Polygon, false, false, SketchSplineForm::Hermite },
-    { "Hermite", "ConstructSketchCurve", IconSymbol::SketcherHermite, false, {}, SketcherDrawingKind::Curve, false, false, SketchSplineForm::Hermite },
-    { "Bezier", "ConstructSketchBezier", IconSymbol::SketcherBezier, false, {}, SketcherDrawingKind::Curve, false, false, SketchSplineForm::Bezier },
-    { "NURBS", "ConstructSketchNurbs", IconSymbol::SketcherNurbs, false, {}, SketcherDrawingKind::Curve, false, false, SketchSplineForm::Nurbs },
-    { "Cubic spline", "ConstructSketchCubic", IconSymbol::SketcherCurve, false, {}, SketcherDrawingKind::Curve, false, false, SketchSplineForm::CubicSpline } };
+    { "Line", "ConstructSketchSegment", IconSymbol::SketcherEdge, false, {}, SketcherDrawingCategory::Line, false, true, SketchSplineForm::Hermite },
+    { "Polyline", "ConstructSketchLine", IconSymbol::SketcherPolyline, false, {}, SketcherDrawingCategory::Line, false, false, SketchSplineForm::Hermite },
+    { "Rectangle", "ConstructSketchRectangle", IconSymbol::SketcherRectangle, false, {}, SketcherDrawingCategory::Rectangle, false, false, SketchSplineForm::Hermite },
+    { "Centre rect", "ConstructSketchRectangleCentre", IconSymbol::SketcherCentrerect, false, {}, SketcherDrawingCategory::Rectangle, true, false, SketchSplineForm::Hermite },
+    { "Circle", "ConstructSketchCircleCentre", IconSymbol::SketcherCircle, false, {}, SketcherDrawingCategory::Circle, true, false, SketchSplineForm::Hermite },
+    { "2-pt circle", "ConstructSketchCircle", IconSymbol::SketcherCentre, false, {}, SketcherDrawingCategory::Circle, false, false, SketchSplineForm::Hermite },
+    { "Arc", "ConstructSketchArc", IconSymbol::SketcherArc, false, {}, SketcherDrawingCategory::Arc, false, false, SketchSplineForm::Hermite },
+    { "Slot", "ConstructSketchSlot", IconSymbol::SketcherSlot, false, {}, SketcherDrawingCategory::Slot, false, false, SketchSplineForm::Hermite },
+    { "Polygon", "ConstructSketchPolygon", IconSymbol::SketcherPolygon, false, {}, SketcherDrawingCategory::Polygon, false, false, SketchSplineForm::Hermite },
+    { "Hermite", "ConstructSketchCurve", IconSymbol::SketcherHermite, false, {}, SketcherDrawingCategory::Curve, false, false, SketchSplineForm::Hermite },
+    { "Bezier", "ConstructSketchBezier", IconSymbol::SketcherBezier, false, {}, SketcherDrawingCategory::Curve, false, false, SketchSplineForm::Bezier },
+    { "NURBS", "ConstructSketchNurbs", IconSymbol::SketcherNurbs, false, {}, SketcherDrawingCategory::Curve, false, false, SketchSplineForm::Nurbs },
+    { "Cubic spline", "ConstructSketchCubic", IconSymbol::SketcherCurve, false, {}, SketcherDrawingCategory::Curve, false, false, SketchSplineForm::CubicSpline } };
 
 // Reference: a picture on a view plane (blueprints to trace over); the tile opens the Image plane form.
 constexpr SketcherConstructTile ConstructReferences[] = {
@@ -13787,7 +13787,7 @@ constexpr int ConstructReferenceCount = int(sizeof(ConstructReferences) / sizeof
     return std::max(330.0f, 41.0f + 10.0f + float(Rows) * 72.0f + float(std::max(0, Rows - 1)) * 6.0f + 10.0f + 28.0f + 2.0f);
 }
 
-void DrawConstructMenu(SketcherWorkspaceState& State, ImVec2 Anchor)
+void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
 {
     if (State.ConstructMenuRequest)
     {
@@ -13866,9 +13866,9 @@ void DrawConstructMenu(SketcherWorkspaceState& State, ImVec2 Anchor)
                 OpenDrawingSession(State, Entry.Sketch);
                 State.Drawing.CentreCondition  = Entry.CentreCondition;
                 State.Drawing.SegmentCondition = Entry.SegmentCondition;
-                if (Entry.Sketch == SketcherDrawingKind::Curve) State.Drawing.Form = State.SurfaceTraceEnabled && Entry.Form != SketchSplineForm::Bezier ? SketchSplineForm::Nurbs : Entry.Form;
+                if (Entry.Sketch == SketcherDrawingCategory::Curve) State.Drawing.Form = State.SurfaceTraceEnabled && Entry.Form != SketchSplineForm::Bezier ? SketchSplineForm::Nurbs : Entry.Form;
                 if (Entry.SegmentCondition) Announce(State, "Line: click the start, then the end · hold Shift for a straight axis · Esc aborts");
-                if (Entry.Sketch == SketcherDrawingKind::Curve) Announce(State, std::string("Curve · ") + SketchSplineFormLabel(State.Drawing.Form) + (State.Drawing.SurfaceCondition ? ": click controls · 2 Bezier / 3 NURBS · no extra poles · Enter finishes · Esc aborts" : ": click points · 1-4 switch form · Enter / right-click finishes · Ctrl+Z drops a point · Esc aborts"));
+                if (Entry.Sketch == SketcherDrawingCategory::Curve) Announce(State, std::string("Curve · ") + SketchSplineFormLabel(State.Drawing.Form) + (State.Drawing.SurfaceCondition ? ": click controls · 2 Bezier / 3 NURBS · no extra poles · Enter finishes · Esc aborts" : ": click points · 1-4 switch form · Enter / right-click finishes · Ctrl+Z drops a point · Esc aborts"));
             }
         }
     }
@@ -13881,7 +13881,7 @@ void DrawConstructMenu(SketcherWorkspaceState& State, ImVec2 Anchor)
 }
 
 // Outliner eye: a body leaves view and picking (Plasticity H); a sketch / curve also leaves snapping, and the focus.
-void ToggleFigureVisibility(SketcherWorkspaceState& State, const SketcherFigure& Figure)
+void ToggleFigureVisibility(SketcherWorkspaceStatus& State, const SketcherFigure& Figure)
 {
     const bool BodyCondition = Figure.Source == SketcherFigureSource::Body;
     const SketcherCommandOutcome Outcome = BodyCondition ? ToggleSketcherBodyVisibility(State.Document, Figure.Key) : ToggleSketcherCurveVisibility(State.Document, Figure.Key);
@@ -13897,7 +13897,7 @@ void ToggleFigureVisibility(SketcherWorkspaceState& State, const SketcherFigure&
 }
 
 // Outliner lock: the figure stays in view but takes no pick, drag, gizmo or trim until unlocked.
-void ToggleFigureLock(SketcherWorkspaceState& State, const SketcherFigure& Figure)
+void ToggleFigureLock(SketcherWorkspaceStatus& State, const SketcherFigure& Figure)
 {
     const SketcherCommandOutcome Outcome = ToggleSketcherLock(State.Document, Figure.Key);
     if (!Outcome.AcceptedCondition) { Announce(State, "Refused: " + Outcome.Refusal); return; }
@@ -13909,7 +13909,7 @@ void ToggleFigureLock(SketcherWorkspaceState& State, const SketcherFigure& Figur
 }
 
 // Outliner eye / lock on an image plane: shown ↔ hidden, or placement locked ↔ free (saved with the document).
-void ToggleImageFigure(SketcherWorkspaceState& State, const std::string& Name, bool LockCondition)
+void ToggleImageFigure(SketcherWorkspaceStatus& State, const std::string& Name, bool LockCondition)
 {
     for (SketcherImagePlane& Plane : State.Document.ImagePlanes)
     {
@@ -13928,7 +13928,7 @@ void ToggleImageFigure(SketcherWorkspaceState& State, const std::string& Name, b
 }
 
 // The Outliner panel (SketcherOutliner) and what its rows ask for.
-void DrawOutliner(SketcherWorkspaceState& State, ImVec2 Position, ImVec2 Size, bool Hosted = false)
+void DrawOutliner(SketcherWorkspaceStatus& State, ImVec2 Position, ImVec2 Size, bool Hosted = false)
 {
     if (!Hosted) BeginSheetWindow("Outliner", Position, Size);
     const SketcherOutlinerIntent Intent = ConstructSketcherOutliner(State, Spanning(Position.x, Position.y, Size.x, Position.y + Size.y - Position.y));
@@ -14074,7 +14074,7 @@ void DrawOutliner(SketcherWorkspaceState& State, ImVec2 Position, ImVec2 Size, b
         case SketcherFigureSource::Body:
             if (Intent.AdditiveCondition) PromoteSubShapeBodies();
             else State.Document.Selection.Curves.clear();
-            SelectSketcherName(State.Document, SketcherSelectionKind::Body, Intent.Figure.Key, Intent.AdditiveCondition);
+            SelectSketcherName(State.Document, SketcherSelectionCategory::Body, Intent.Figure.Key, Intent.AdditiveCondition);
             State.PickMode = SketcherPickMode::Solid;
             State.Outliner.AnchorKey = Intent.Figure.Key;
             Announce(State, Compose("%s · %d bodies picked", Intent.Figure.Name.c_str(), int(State.Document.Selection.Bodies.size())));
@@ -14146,14 +14146,14 @@ struct CubeFace
 //    orthographic is active) so its perspective convergence tracks the grid during rotation, with face captions ("Top",
 //    "Bottom", "Front", "Back", "Right", "Left") textured directly onto the 3D UV tangent planes of the six faces from
 //    the active ImGui theme font atlas.
-bool DrawOrientationCube(SketcherWorkspaceState& State, ImDrawList* Canvas, ImVec2 Corner, bool ClickCondition, bool PrimaryPaneCondition = true)
+bool DrawOrientationCube(SketcherWorkspaceStatus& State, ImDrawList* Canvas, ImVec2 Corner, bool ClickCondition, bool PrimaryPaneCondition = true)
 {
     static const CubeFace Faces[] = {
         { { 0, 0, 1 }, OrbitViewPreset::Top, "Top" },     { { 0, 0, -1 }, OrbitViewPreset::Bottom, "Bottom" },
         { { 0, -1, 0 }, OrbitViewPreset::Front, "Front" }, { { 0, 1, 0 }, OrbitViewPreset::Back, "Back" },
         { { 1, 0, 0 }, OrbitViewPreset::Right, "Right" },  { { -1, 0, 0 }, OrbitViewPreset::Left, "Left" },
     };
-    const OrbitCameraFrame Frame  = ViewportFrame(State);
+    const OrbitCameraBasis Frame  = ViewportFrame(State);
     const ImVec2           Centre(Corner.x + CubeExtent * 0.5f, Corner.y + CubeExtent * 0.5f);
     const bool             PerspectiveCondition = !Frame.OrthographicEnabled;
     const float            Scale  = CubeExtent * (PerspectiveCondition ? 0.245f : 0.285f);
@@ -14186,7 +14186,7 @@ bool DrawOrientationCube(SketcherWorkspaceState& State, ImDrawList* Canvas, ImVe
         // so every face's UV plane matches the viewport orientation and grid plane when that preset view is active.
         OrbitCamera FaceCam{};
         PresentOrbitView(FaceCam, Face.Preset);
-        const OrbitCameraFrame FaceBasis = FrameOrbitCamera(FaceCam, 100.0f, 100.0f);
+        const OrbitCameraBasis FaceBasis = FrameOrbitCamera(FaceCam, 100.0f, 100.0f);
         // Squared distance from perspective eye (-Forward * EyeDistance) to face centre (Normal) for exact painter order.
         const double DistSq = PerspectiveCondition
             ? ((Face.Normal[0] + Frame.Forward[0] * EyeDistance) * (Face.Normal[0] + Frame.Forward[0] * EyeDistance)
@@ -14258,12 +14258,12 @@ bool DrawOrientationCube(SketcherWorkspaceState& State, ImDrawList* Canvas, ImVe
         // from the active ImGui theme font atlas.
         if (Baked && (FontTex._TexData != nullptr || FontTex.GetTexID() != ImTextureID_Invalid))
         {
-            struct PlacedGlyph
+            struct PlacedSymbol
             {
                 const ImFontGlyph* Glyph = nullptr;
                 float              X0 = 0.0f, Y0 = 0.0f, X1 = 0.0f, Y1 = 0.0f;
             };
-            std::vector<PlacedGlyph> Glyphs;
+            std::vector<PlacedSymbol> Glyphs;
             float PenX = 0.0f;
             float MinX = 1.0e9f, MaxX = -1.0e9f, MinY = 1.0e9f, MaxY = -1.0e9f;
             for (const char* Ptr = Entry.Face->Label; *Ptr; ++Ptr)
@@ -14298,7 +14298,7 @@ bool DrawOrientationCube(SketcherWorkspaceState& State, ImDrawList* Canvas, ImVe
                         Entry.Face->Normal[2] + Entry.TangentU[2] * UCoord + Entry.TangentV[2] * VCoord,
                     });
                 };
-                for (const PlacedGlyph& Item : Glyphs)
+                for (const PlacedSymbol& Item : Glyphs)
                 {
                     const double U0 = double((Item.X0 - MidX) * UnitScale);
                     const double U1 = double((Item.X1 - MidX) * UnitScale);
@@ -14422,7 +14422,7 @@ const char* ViewportLayoutShortLabel(SketcherViewportLayout Layout) noexcept
     return "1 View";
 }
 
-void ComputeSplitPaneRects(SketcherSplitViewState& Split) noexcept
+void ComputeSplitPaneRects(SketcherSplitViewMode& Split) noexcept
 {
     const float X = Split.FullRect[0];
     const float Y = Split.FullRect[1];
@@ -14474,9 +14474,9 @@ OrbitCamera MakePresetPaneCamera(const OrbitCamera& Reference, OrbitViewPreset P
 
 } // namespace
 
-void SetSketcherViewportLayout(SketcherWorkspaceState& State, SketcherViewportLayout Layout)
+void SetSketcherViewportLayout(SketcherWorkspaceStatus& State, SketcherViewportLayout Layout)
 {
-    SketcherSplitViewState& Split = State.SplitView;
+    SketcherSplitViewMode& Split = State.SplitView;
     const int PrevCount = SketcherViewportPaneCount(Split.Layout);
     if (PrevCount > 1 && Split.ActivePane >= 0 && Split.ActivePane < PrevCount)
         Split.Cameras[Split.ActivePane] = State.Camera;
@@ -14534,9 +14534,9 @@ void SetSketcherViewportLayout(SketcherWorkspaceState& State, SketcherViewportLa
     State.Style.GridPlane = ViewGridPlane(State.Camera);
 }
 
-std::vector<SketcherRasterPane> ComposeSketcherRasterPanes(const SketcherWorkspaceState& State, uint32_t TargetWidth, uint32_t TargetHeight)
+std::vector<SketcherRasterPane> ComposeSketcherRasterPanes(const SketcherWorkspaceStatus& State, uint32_t TargetWidth, uint32_t TargetHeight)
 {
-    auto BuildPaneGizmo = [&](const OrbitCamera& Cam, const OrbitCameraFrame& PaneFrame, bool ActivePaneCondition) -> GizmoGeometry
+    auto BuildPaneGizmo = [&](const OrbitCamera& Cam, const OrbitCameraBasis& PaneFrame, bool ActivePaneCondition) -> GizmoGeometry
     {
         if (State.Transform.ActiveCondition)
         {
@@ -14554,7 +14554,7 @@ std::vector<SketcherRasterPane> ComposeSketcherRasterPanes(const SketcherWorkspa
             Riding.Size   = MeasureGizmoSize(PaneFrame, Riding.Origin, GizmoPixels);
             return BuildGizmoGeometry(Riding, PaneFrame, GizmoHandle::None, State.Gizmo.Grab);
         }
-        SketcherWorkspaceState TempState;
+        SketcherWorkspaceStatus TempState;
         TempState.Camera                = Cam;
         TempState.Gizmo.Target          = State.Gizmo.Target;
         TempState.Gizmo.Names           = State.Gizmo.Names;
@@ -14586,7 +14586,7 @@ std::vector<SketcherRasterPane> ComposeSketcherRasterPanes(const SketcherWorkspa
         return Panes;
     }
 
-    SketcherSplitViewState SplitCopy = State.SplitView;
+    SketcherSplitViewMode SplitCopy = State.SplitView;
     if (SplitCopy.ActivePane >= 0 && SplitCopy.ActivePane < Count)
         SplitCopy.Cameras[SplitCopy.ActivePane] = State.Camera;
     ComputeSplitPaneRects(SplitCopy);
@@ -14690,7 +14690,7 @@ void EndSelectList()
     ImGui::PopStyleVar(4);
 }
 
-bool SelectListEntry(SketcherWorkspaceState& State, const std::string& Label, bool SelectedCondition)
+bool SelectListEntry(SketcherWorkspaceStatus& State, const std::string& Label, bool SelectedCondition)
 {
     const bool Pressed = ImGui::Selectable(Label.c_str(), SelectedCondition, ImGuiSelectableFlags_None, ImVec2(150.0f, 26.0f));
     RegisterWidget(State, Label.c_str());
@@ -14699,7 +14699,7 @@ bool SelectListEntry(SketcherWorkspaceState& State, const std::string& Label, bo
 
 // 📝 File menu (the Outliner ☰ button): what the removed app header held — new, open, save, save as, import, export,
 //    examples, restore previous — with their shortcuts, then the Outliner's compact rows toggle.
-void DrawFileMenu(SketcherWorkspaceState& State)
+void DrawFileMenu(SketcherWorkspaceStatus& State)
 {
     if (!BeginSelectList("FileMenu", ImVec2(State.FileMenuAnchor[0], State.FileMenuAnchor[1]))) return;
     const auto Entry = [&](const char* Label, const char* Shortcut, bool EnabledCondition = true)
@@ -14738,7 +14738,7 @@ void DrawFileMenu(SketcherWorkspaceState& State)
     EndSelectList();
 }
 
-void DrawExtrudeTypeMenu(SketcherWorkspaceState& State)
+void DrawExtrudeTypeMenu(SketcherWorkspaceStatus& State)
 {
     if (State.ExtrudeMenuRequest)
     {
@@ -14775,7 +14775,7 @@ void DrawExtrudeTypeMenu(SketcherWorkspaceState& State)
 
 // 📝 Popup host: the file menu, extrude type menu and the path / examples / image popups open here (an input-transparent
 //    window of its own) whenever PopupRequest / ExtrudeMenuRequest names one — from the menu, shortcuts or a card.
-void DrawWorkspacePopups(SketcherWorkspaceState& State)
+void DrawWorkspacePopups(SketcherWorkspaceStatus& State)
 {
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
     ImGui::SetNextWindowSize(ImVec2(1.0f, 1.0f));
@@ -14795,7 +14795,7 @@ void DrawWorkspacePopups(SketcherWorkspaceState& State)
 // 📝 Display select in the viewport bar (moved from the viewport corner, less clutter over the model): "Display" and a
 //    chevron like the view select; the list toggles the overlays (grid, combs, zebra, deviation, reference images) and
 //    the tooltip names the ones on. Returns its width.
-float DrawDisplaySelect(SketcherWorkspaceState& State, SketcherSheet& Sheet, float Left, float Centre, bool CompactCondition = false)
+float DrawDisplaySelect(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, float Left, float Centre, bool CompactCondition = false)
 {
     struct DisplayToggle
     {
@@ -14835,7 +14835,7 @@ float DrawDisplaySelect(SketcherWorkspaceState& State, SketcherSheet& Sheet, flo
     return Select.MaximumX - Select.MinimumX;
 }
 
-float DrawSnapSelect(SketcherWorkspaceState& State, SketcherSheet& Sheet, float Left, float Centre, bool CompactCondition = false)
+float DrawSnapSelect(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, float Left, float Centre, bool CompactCondition = false)
 {
     const float         Label  = CompactCondition ? 15.0f : Sheet.Measure("Snap", 11.0f);
     const PlaneExtent   Select = Spanning(Left, Centre - 13.0f, 10.0f + Label + 24.0f, 26.0f);
@@ -14866,8 +14866,8 @@ float DrawSnapSelect(SketcherWorkspaceState& State, SketcherSheet& Sheet, float 
         if (SelectListEntry(State, "Orient on Face###SnapFaceOrient", State.Picker.FaceOrientEnabled))
             State.Picker.FaceOrientEnabled = !State.Picker.FaceOrientEnabled;
         ImGui::Separator();
-        struct SnapTargetItem { const char* Label; bool* Flag; };
-        const SnapTargetItem Targets[] = {
+        struct SnapTargetEntry { const char* Label; bool* Flag; };
+        const SnapTargetEntry Targets[] = {
             { "Points / Endpoints###SnapEndpoint",         &State.Picker.Filter.EndpointEnabled },
             { "Midpoints###SnapMidpoint",                  &State.Picker.Filter.MidpointEnabled },
             { "Quarter Points###SnapQuarter",              &State.Picker.Filter.QuarterEnabled },
@@ -14878,7 +14878,7 @@ float DrawSnapSelect(SketcherWorkspaceState& State, SketcherSheet& Sheet, float 
             { "Curves / Edges (Alt)###SnapCurve",          &State.Picker.Filter.CurveEnabled },
             { "Surfaces / Faces###SnapFace",               &State.Picker.Filter.FaceEnabled },
         };
-        for (const SnapTargetItem& Item : Targets)
+        for (const SnapTargetEntry& Item : Targets)
         {
             if (SelectListEntry(State, Item.Label, *Item.Flag)) *Item.Flag = !*Item.Flag;
         }
@@ -14910,7 +14910,7 @@ float DrawSnapSelect(SketcherWorkspaceState& State, SketcherSheet& Sheet, float 
 
 // 📝 HTML .viewport-bar (44 px, padding 0 12, gap 4): the Construct chip, a divider, the camera-view select … the
 //    Perspective text button and the edges / fit / maximize icon buttons.
-void DrawViewportBar(SketcherWorkspaceState& State, SketcherSheet& Sheet, const PlaneExtent& Bar)
+void DrawViewportBar(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const PlaneExtent& Bar)
 {
     const float Centre = 0.5f * (Bar.MinimumY + Bar.MaximumY);
     float       Cursor = Bar.MinimumX + 12.0f;
@@ -15107,7 +15107,7 @@ void DrawViewportBar(SketcherWorkspaceState& State, SketcherSheet& Sheet, const 
 
 // 📝 HTML .viewport-label (top 21, left 20, gap 9): the NURBS / B-REP pill (8 px, 1.2 spacing, #161a21ae, radius 10),
 //    the selection caption (10 px #afb0b3) and the active mode pills; below, the 9 px #8a8f98 kernel line.
-void DrawViewportLabel(SketcherWorkspaceState& State, SketcherSheet& Sheet, ImVec2 Image, bool HoveredCondition)
+void DrawViewportLabel(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, ImVec2 Image, bool HoveredCondition)
 {
     const float PillHeight = 2.0f + 10.0f + 8.0f * SketcherStyleTokens::FontScale;
     float       Cursor     = Image.x + 20.0f;
@@ -15211,7 +15211,7 @@ float DrawViewportInstructions(SketcherSheet& Sheet, float Left, float Bottom, f
 // 📝 HTML .selection-tools (top 98, left 17): #15191edd column, #ffffff0a hairline, radius 22, padding 7 5, gap 5;
 //    30 px round buttons (#a7abb2, active #ffffff15 / #eee, glyph 16). Native order: modes 4 · 3 · 2 · 1 · 5, a rule,
 //    then X-ray (Alt+Z). Its own window, so the viewport surface underneath does not take the clicks.
-void DrawSelectionRail(SketcherWorkspaceState& State, ImVec2 Image)
+void DrawSelectionRail(SketcherWorkspaceStatus& State, ImVec2 Image)
 {
     struct RailButton
     {
@@ -15257,7 +15257,7 @@ void DrawSelectionRail(SketcherWorkspaceState& State, ImVec2 Image)
 
 // 📝 Gizmo modes (top right of the viewport, #191919e8 pill): Move / Rotate / Scale as icons that toggle independently,
 //    so any mix is one click away (the tooltip names it and its key); y cycles the same set from the keyboard.
-void DrawGizmoChips(SketcherWorkspaceState& State, ImVec2 Image, float Width)
+void DrawGizmoChips(SketcherWorkspaceStatus& State, ImVec2 Image, float Width)
 {
     struct GizmoChip
     {
@@ -15305,9 +15305,9 @@ void DrawGizmoChips(SketcherWorkspaceState& State, ImVec2 Image, float Width)
 //    sketch / picked curve), Trim opens the trim session (T). It keeps clear of the orientation cube and the hint lines:
 //    centred when the labelled bar fits beside the cube, else shifted left, else icons only (names in the tooltips),
 //    else the knife caption folds to its chevron too, else the icons tighten, else the bar rises above the cube's band.
-void DrawSketchToolbar(SketcherWorkspaceState& State, ImVec2 Image, ImVec2 Extent, float HintTop)
+void DrawSketchToolbar(SketcherWorkspaceStatus& State, ImVec2 Image, ImVec2 Extent, float HintTop)
 {
-    const bool SketchCondition = std::any_of(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [](const FeatureStep& Step) { return Step.Kind == FeatureStepKind::Sketch; });
+    const bool SketchCondition = std::any_of(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [](const FeatureStep& Step) { return Step.Kind == FeatureStepCategory::Sketch; });
     const bool SplitCondition  = State.Trim.ActiveCondition && State.Trim.SplitCondition;
     const bool InsertCondition = State.Trim.ActiveCondition && State.Trim.InsertCondition;
     const bool TrimCondition   = State.Trim.ActiveCondition && !State.Trim.SplitCondition && !State.Trim.InsertCondition;
@@ -15433,10 +15433,10 @@ void DrawSketchToolbar(SketcherWorkspaceState& State, ImVec2 Image, ImVec2 Exten
             if (Columns) ImGui::TableNextColumn();
             ImGui::TextDisabled("Imprint only");
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Imprints the shape into the face: splits it, cuts nothing · then E on the new face pushes / pulls it");
-            static const struct { const char* Label; SketcherDrawingKind Kind; bool PolylineCondition; } Flats[] = {
-                { "Rectangle###KnifeFlatRectangle", SketcherDrawingKind::Rectangle, false }, { "Circle###KnifeFlatCircle", SketcherDrawingKind::Circle, false },
-                { "Polygon###KnifeFlatPolygon", SketcherDrawingKind::Polygon, false }, { "Slot###KnifeFlatSlot", SketcherDrawingKind::Slot, false },
-                { "Line###KnifeFlatLine", SketcherDrawingKind::Line, false }, { "Polyline###KnifeFlatPolyline", SketcherDrawingKind::Line, true } };
+            static const struct { const char* Label; SketcherDrawingCategory Kind; bool PolylineCondition; } Flats[] = {
+                { "Rectangle###KnifeFlatRectangle", SketcherDrawingCategory::Rectangle, false }, { "Circle###KnifeFlatCircle", SketcherDrawingCategory::Circle, false },
+                { "Polygon###KnifeFlatPolygon", SketcherDrawingCategory::Polygon, false }, { "Slot###KnifeFlatSlot", SketcherDrawingCategory::Slot, false },
+                { "Line###KnifeFlatLine", SketcherDrawingCategory::Line, false }, { "Polyline###KnifeFlatPolyline", SketcherDrawingCategory::Line, true } };
             for (const auto& Flat : Flats)
             {
                 const bool Chosen = Mode == SketcherKnifeMode::Sketch && !Knife.PreferredSolidCondition && Knife.PreferredImprintCondition && Knife.PreferredShape == Flat.Kind
@@ -15446,23 +15446,23 @@ void DrawSketchToolbar(SketcherWorkspaceState& State, ImVec2 Image, ImVec2 Exten
             if (Columns) ImGui::TableNextColumn();
             ImGui::TextDisabled("Surface cutters");
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("First click attaches to the surface, including in orthographic views. Draw the outline, then set depth inward; Q adds outward, T cuts through.");
-            static const SketcherDrawingKind Shapes[] = { SketcherDrawingKind::Circle, SketcherDrawingKind::Rectangle, SketcherDrawingKind::Polygon, SketcherDrawingKind::Slot,
-                                                          SketcherDrawingKind::Line };
-            for (SketcherDrawingKind Shape : Shapes)
+            static const SketcherDrawingCategory Shapes[] = { SketcherDrawingCategory::Circle, SketcherDrawingCategory::Rectangle, SketcherDrawingCategory::Polygon, SketcherDrawingCategory::Slot,
+                                                          SketcherDrawingCategory::Line };
+            for (SketcherDrawingCategory Shape : Shapes)
             {
                 const std::string Label = std::string(SketcherDrawingLabel(Shape)) + "###KnifeTool" + SketcherDrawingLabel(Shape);
                 const bool Chosen = Mode == SketcherKnifeMode::Sketch && !Knife.PreferredSolidCondition && !Knife.PreferredImprintCondition && Knife.PreferredShape == Shape
                                  && !Knife.PreferredPolylineCondition;
                 if (SelectListEntry(State, Label, Chosen)) ChooseKnifeTool(State, SketcherKnifeMode::Sketch, Shape, -1);
             }
-            const bool PolylineChosen = Mode == SketcherKnifeMode::Sketch && !Knife.PreferredSolidCondition && !Knife.PreferredImprintCondition && Knife.PreferredShape == SketcherDrawingKind::Line
+            const bool PolylineChosen = Mode == SketcherKnifeMode::Sketch && !Knife.PreferredSolidCondition && !Knife.PreferredImprintCondition && Knife.PreferredShape == SketcherDrawingCategory::Line
                                      && Knife.PreferredPolylineCondition;
-            if (SelectListEntry(State, "Polyline###KnifeToolPolyline", PolylineChosen)) ChooseKnifeTool(State, SketcherKnifeMode::Sketch, SketcherDrawingKind::Line, -1, true);
+            if (SelectListEntry(State, "Polyline###KnifeToolPolyline", PolylineChosen)) ChooseKnifeTool(State, SketcherKnifeMode::Sketch, SketcherDrawingCategory::Line, -1, true);
             ImGui::Separator();
             ImGui::TextDisabled("Shaped cutters");
-            static const SketcherConstructKind Solids[] = { SketcherConstructKind::Cone, SketcherConstructKind::Sphere, SketcherConstructKind::Torus,
-                                                            SketcherConstructKind::Wedge, SketcherConstructKind::Tube };
-            for (SketcherConstructKind Solid : Solids)
+            static const SketcherConstructCategory Solids[] = { SketcherConstructCategory::Cone, SketcherConstructCategory::Sphere, SketcherConstructCategory::Torus,
+                                                            SketcherConstructCategory::Wedge, SketcherConstructCategory::Tube };
+            for (SketcherConstructCategory Solid : Solids)
             {
                 const std::string Label = std::string(SketcherConstructLabel(Solid)) + "###KnifeTool" + SketcherConstructLabel(Solid);
                 if (SelectListEntry(State, Label, Mode == SketcherKnifeMode::Sketch && Knife.PreferredSolidCondition && Knife.PreferredSolid == Solid)) ChooseKnifeSolid(State, Solid);
@@ -15474,7 +15474,7 @@ void DrawSketchToolbar(SketcherWorkspaceState& State, ImVec2 Image, ImVec2 Exten
             ImGui::TextDisabled("Boolean library");
             for (int Index = 0; Index < SketcherCompoundCutterCount; ++Index)
             {
-                const std::string Name  = SketcherCompoundCutterLabel(static_cast<SketcherCompoundCutterKind>(Index));
+                const std::string Name  = SketcherCompoundCutterLabel(static_cast<SketcherCompoundCutterCategory>(Index));
                 const std::string Label = Name + "###KnifeToolInsert" + std::to_string(Index);
                 if (SelectListEntry(State, Label, Mode == SketcherKnifeMode::Insert && Knife.Insert == Index))
                     ChooseKnifeTool(State, SketcherKnifeMode::Insert, Knife.PreferredShape, Index);
@@ -15498,35 +15498,35 @@ std::pair<IconSymbol, const char*> StepGlyph(const FeatureStep& Step)
 {
     switch (Step.Kind)
     {
-    case FeatureStepKind::Sketch:        return { IconSymbol::SketcherCurve, "sketch" };
-    case FeatureStepKind::Extrude:       return { IconSymbol::SketcherExtrude, "extrude" };
-    case FeatureStepKind::Revolve:       return { IconSymbol::SketcherRotate, "revolve" };
-    case FeatureStepKind::Blend:         return Step.Shape == BlendProfile::Fillet ? std::pair{ IconSymbol::SketcherFillet, "fillet" } : std::pair{ IconSymbol::SketcherChamfer, "chamfer" };
-    case FeatureStepKind::FaceOperation: return { IconSymbol::SketcherMove, "face" };
-    case FeatureStepKind::SpaceCurve:    return { IconSymbol::SketcherNurbs, "curve" };
-    case FeatureStepKind::Loft:          return { IconSymbol::SketcherSurface, "loft" };
-    case FeatureStepKind::Network:       return { IconSymbol::SketcherCage, "network" };
-    case FeatureStepKind::Mirror:        return { IconSymbol::SketcherLayers, "mirror" };
-    case FeatureStepKind::Close:         return { IconSymbol::SketcherBody, "close" };
-    case FeatureStepKind::Combine:
+    case FeatureStepCategory::Sketch:        return { IconSymbol::SketcherCurve, "sketch" };
+    case FeatureStepCategory::Extrude:       return { IconSymbol::SketcherExtrude, "extrude" };
+    case FeatureStepCategory::Revolve:       return { IconSymbol::SketcherRotate, "revolve" };
+    case FeatureStepCategory::Blend:         return Step.Shape == BlendProfile::Fillet ? std::pair{ IconSymbol::SketcherFillet, "fillet" } : std::pair{ IconSymbol::SketcherChamfer, "chamfer" };
+    case FeatureStepCategory::FaceOperation: return { IconSymbol::SketcherMove, "face" };
+    case FeatureStepCategory::SpaceCurve:    return { IconSymbol::SketcherNurbs, "curve" };
+    case FeatureStepCategory::Loft:          return { IconSymbol::SketcherSurface, "loft" };
+    case FeatureStepCategory::Network:       return { IconSymbol::SketcherCage, "network" };
+    case FeatureStepCategory::Mirror:        return { IconSymbol::SketcherLayers, "mirror" };
+    case FeatureStepCategory::Close:         return { IconSymbol::SketcherBody, "close" };
+    case FeatureStepCategory::Combine:
         return Step.Combination == FeatureCombination::Difference     ? std::pair{ IconSymbol::SketcherSubtract, "subtract" }
              : Step.Combination == FeatureCombination::Intersection   ? std::pair{ IconSymbol::SketcherIntersect, "intersect" }
                                                                       : std::pair{ IconSymbol::SketcherUnion, "union" };
-    case FeatureStepKind::Cut:           return { IconSymbol::SketcherCut, "cut" };
-    case FeatureStepKind::Remove:        return { IconSymbol::SketcherTrash, "remove" };
-    case FeatureStepKind::Transform:     return { IconSymbol::SketcherMove, "move" };
-    case FeatureStepKind::Duplicate:     return { IconSymbol::SketcherBody, "copy" };
-    case FeatureStepKind::Pipe:          return { IconSymbol::SketcherSurface, "pipe" };
-    case FeatureStepKind::Evolution:     return { IconSymbol::SketcherExtrude, "sweep" };
-    case FeatureStepKind::Joint:         return { IconSymbol::SketcherLink, "joint" };
-    case FeatureStepKind::Import:        return { IconSymbol::SketcherFile, "import" };
-    case FeatureStepKind::Flip:          return { IconSymbol::SketcherFlip, "flip" };
-    case FeatureStepKind::Imprint:       return { IconSymbol::SketcherCut, "imprint" };
+    case FeatureStepCategory::Cut:           return { IconSymbol::SketcherCut, "cut" };
+    case FeatureStepCategory::Remove:        return { IconSymbol::SketcherTrash, "remove" };
+    case FeatureStepCategory::Transform:     return { IconSymbol::SketcherMove, "move" };
+    case FeatureStepCategory::Duplicate:     return { IconSymbol::SketcherBody, "copy" };
+    case FeatureStepCategory::Pipe:          return { IconSymbol::SketcherSurface, "pipe" };
+    case FeatureStepCategory::Evolution:     return { IconSymbol::SketcherExtrude, "sweep" };
+    case FeatureStepCategory::Joint:         return { IconSymbol::SketcherLink, "joint" };
+    case FeatureStepCategory::Import:        return { IconSymbol::SketcherFile, "import" };
+    case FeatureStepCategory::Flip:          return { IconSymbol::SketcherFlip, "flip" };
+    case FeatureStepCategory::Imprint:       return { IconSymbol::SketcherCut, "imprint" };
     }
     return { IconSymbol::SketcherBody, "step" };
 }
 
-void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, ImVec2 Position, ImVec2 Size, bool Hosted = false)
+void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, ImVec2 Position, ImVec2 Size, bool Hosted = false)
 {
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
     if (!Hosted) { ImGui::SetNextWindowPos(Position); ImGui::SetNextWindowSize(Size); }
@@ -15588,7 +15588,7 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
     bool OverPaneHeader   = false;
     if (MultiCondition)
     {
-        SketcherSplitViewState& Split = State.SplitView;
+        SketcherSplitViewMode& Split = State.SplitView;
         const bool HasX = (Split.Layout == SketcherViewportLayout::TwoVertical || Split.Layout == SketcherViewportLayout::Three || Split.Layout == SketcherViewportLayout::Quad);
         const bool HasY = (Split.Layout == SketcherViewportLayout::TwoHorizontal || Split.Layout == SketcherViewportLayout::Three || Split.Layout == SketcherViewportLayout::Quad);
         const float SplitLineX = Split.PaneRects[0][0] + Split.PaneRects[0][2] + 2.0f;
@@ -15706,7 +15706,7 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
     Canvas->PushClipRect(ActiveOrigin, ImVec2(ActiveOrigin.x + ActiveExtent.x, ActiveOrigin.y + ActiveExtent.y), true);
     const bool   OverCube   = DrawOrientationCube(State, Canvas, CubeCorner, LeftClick, true);
     Canvas->PopClipRect();
-    OrbitCameraFrame Frame = ViewportFrame(State);
+    OrbitCameraBasis Frame = ViewportFrame(State);
     SketcherNavigationPointer Navigation;
     Navigation.DeltaX              = Io.MouseDelta.x;
     Navigation.DeltaY              = Io.MouseDelta.y;
@@ -15717,7 +15717,7 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
     Navigation.HoveredCondition    = Hovered;
     // 💡 Drawing a polygon (or a prism), the wheel changes its sides instead of zooming (the HTML reference: up 3 → 4 …).
     if (Hovered && Io.MouseWheel != 0.0f && State.Drawing.ActiveCondition &&
-        (State.Drawing.SolidCondition ? State.Drawing.Solid == SketcherConstructKind::Prism : State.Drawing.Kind == SketcherDrawingKind::Polygon))
+        (State.Drawing.SolidCondition ? State.Drawing.Solid == SketcherConstructCategory::Prism : State.Drawing.Kind == SketcherDrawingCategory::Polygon))
     {
         State.Drawing.Sides   = std::clamp(State.Drawing.Sides + (Io.MouseWheel > 0.0f ? 1 : -1), 3, 64);
         Navigation.WheelSteps = 0.0f;
@@ -15843,12 +15843,12 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
                 // Object snaps (points, curves, edges; never the dragged curve) place the pole exactly
                 const SketcherSnap Object = FindPointerSnap(State, Frame, Local, std::nullopt, {}, { Drag.Label }, false);
                 State.Picker.Current = Object;
-                if (Object.Kind != SketcherSnapKind::None) Drag.Position = Object.Position;
+                if (Object.Kind != SketcherSnapCategory::None) Drag.Position = Object.Position;
             }
             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) || !ImGui::IsMouseDown(ImGuiMouseButton_Left))
             {
                 Drag.ActiveCondition = false;
-                if (Moved && State.Picker.Current.Kind != SketcherSnapKind::None) ++State.Picker.Snapped;
+                if (Moved && State.Picker.Current.Kind != SketcherSnapCategory::None) ++State.Picker.Snapped;
                 State.Picker.Current = {};
                 if (Moved)
                 {
@@ -15924,17 +15924,17 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
         {
             Drawing.PointerLifted.reset();
             State.Picker.Current = Hovered ? SnapSketcherTrace(SnapCatalogue(State, {}), State.Document, State.Scene, Frame, Local.x, Local.y, Io.KeyCtrl, State.DrawingCurveSnap) : SketcherSnap{};
-            Drawing.PointerCondition = State.Picker.Current.Kind != SketcherSnapKind::None;
+            Drawing.PointerCondition = State.Picker.Current.Kind != SketcherSnapCategory::None;
             if (Drawing.PointerCondition)
             {
                 Drawing.PointerLifted = State.Picker.Current.Position;
-                const OrthonormalFrame Plane = DrawingPlane(Drawing);
+                const OrthonormalBasis Plane = DrawingPlane(Drawing);
                 const Vector3 Delta = *Drawing.PointerLifted - Plane.Origin;
                 Point = { Dot(Delta, Plane.XAxis), Dot(Delta, Plane.YAxis) };
                 Drawing.Pointer = Point;
             }
         }
-        else if (Hovered && (Drawing.Kind!=SketcherDrawingKind::Arc || State.Knife.ActiveCondition)) FollowFacePlane(State, Frame, Local);                                   // Sketch: plane of the face under the first click
+        else if (Hovered && (Drawing.Kind!=SketcherDrawingCategory::Arc || State.Knife.ActiveCondition)) FollowFacePlane(State, Frame, Local);                                   // Sketch: plane of the face under the first click
         if (!Drawing.SurfaceCondition) Drawing.PointerCondition = Hovered && IntersectSketchPlane(Frame, Local, DrawingPlane(Drawing), Point);
         if (LiftStage)
         {
@@ -15951,12 +15951,12 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
             Drawing.Pointer          = Point;
         }
         else if (!Drawing.PointerCondition) State.Picker.Current = {};
-        if (Drawing.PointerCondition && !LiftStage && !(Drawing.SolidCondition && Drawing.Points.empty() && State.Picker.Current.Kind != SketcherSnapKind::None))
+        if (Drawing.PointerCondition && !LiftStage && !(Drawing.SolidCondition && Drawing.Points.empty() && State.Picker.Current.Kind != SketcherSnapCategory::None))
         {
             if (!Drawing.SurfaceCondition) PlaceDrawingPointer(State, Frame, Local, Point);
             const bool ShiftAligned = ApplyDrawingShiftConstraint(State, Point);
             ImVec2 First;
-            const OrthonormalFrame Plane = DrawingPlane(Drawing);
+            const OrthonormalBasis Plane = DrawingPlane(Drawing);
             bool ClosingOnAxis = true;
             if (ShiftAligned && Drawing.Points.size() >= 2)
             {
@@ -16214,7 +16214,7 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
             const ImVec2 PMin(PR[0], PR[1]), PMax(PR[0] + PR[2], PR[1] + PR[3]);
             State.ViewportRect = PR;
             State.Camera       = State.SplitView.Cameras[P];
-            const OrbitCameraFrame PFrame = ViewportFrame(State);
+            const OrbitCameraBasis PFrame = ViewportFrame(State);
             Canvas->PushClipRect(PMin, PMax, true);
             DrawSketchOverlays(State, Canvas, PFrame);
             DrawBodyVertices(State, Canvas, PFrame);
@@ -16240,7 +16240,7 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
 
         // Draw crisp splitter bars and per-pane view selector pills inside the docked viewport.
         Canvas->PushClipRect(Image, ImVec2(Image.x + Extent.x, Image.y + Extent.y), true);
-        const SketcherSplitViewState& Split = State.SplitView;
+        const SketcherSplitViewMode& Split = State.SplitView;
         const bool HasX = (Split.Layout == SketcherViewportLayout::TwoVertical || Split.Layout == SketcherViewportLayout::Three || Split.Layout == SketcherViewportLayout::Quad);
         const bool HasY = (Split.Layout == SketcherViewportLayout::TwoHorizontal || Split.Layout == SketcherViewportLayout::Three || Split.Layout == SketcherViewportLayout::Quad);
         const float SplitLineX = Split.PaneRects[0][0] + Split.PaneRects[0][2] + 2.0f;
@@ -16369,7 +16369,7 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
                             : (State.DimensionTool.Stage == 1
                                ? "click Point B (or 2nd edge for angle)"
                                : "drag to position dimension · Click / Enter places");
-        const char* ExtraTxt = (State.DimensionTool.Stage == 2 && (State.DimensionTool.PreviewKind == SketcherDimensionKind::Diameter || State.DimensionTool.PreviewKind == SketcherDimensionKind::Radius))
+        const char* ExtraTxt = (State.DimensionTool.Stage == 2 && (State.DimensionTool.PreviewKind == SketcherDimensionCategory::Diameter || State.DimensionTool.PreviewKind == SketcherDimensionCategory::Radius))
                              ? " · R toggles Ø/R"
                              : " · X/Y/Z/A axis";
         DrawStatusPill(Canvas, Below, std::string("Dimension") + AxisTxt + " · " + StepTxt + ExtraTxt + " · Esc cancels", IM_COL32(0x52, 0xd6, 0xff, 0xff));
@@ -16497,12 +16497,12 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
                        : State.Drawing.ActiveCondition
                            ? (KnifeSolidCondition(State) ? "Knife cutter: draw its base on the body face (snaps, Ctrl free) · then pull into the body for the depth (Q add: out of it) · the cut shows live · W cut · E intersect · R separate · K keep · click / right-click / Enter cuts · Esc cancels"
                            : State.Drawing.SolidCondition ? "Draw on the ground or any body face (oriented to it; snaps, Ctrl free) · move out for the height (0.1 steps) · R new body · Q union · W difference · E intersect · Tab exact size · Ctrl+Z drop · Esc abort"
-                              : State.Drawing.Kind == SketcherDrawingKind::Polygon ? (State.Drawing.Points.size() >= 2 ? "Polygon drawn: wheel (or + / −) changes the sides · click / right-click / Enter confirms · Ctrl+Z drop · Esc abort" : "Click (or press-drag) the centre, then a vertex (snaps, Ctrl free) · wheel or + / − sides · x y z t n b lock · Ctrl+Z drop · Esc abort")
-                              : State.Drawing.Kind == SketcherDrawingKind::Curve ? "Click points (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · 1 Hermite · 2 Bezier · 3 NURBS · 4 cubic · click first point closes · Enter / right-click finish · Ctrl+Z drop · Esc abort"
-                              : State.Drawing.Kind == SketcherDrawingKind::Line ? "Click points (hold Shift for straight axes; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · click first point closes · Enter / right-click finish · Ctrl+Z drop · Esc abort"
-                              : State.Drawing.Kind == SketcherDrawingKind::Rectangle ? "Click two corners (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · s square · Alt centre / corner · Ctrl+Z drop · Esc abort"
-                              : State.Drawing.Kind == SketcherDrawingKind::Circle ? "Click centre then rim (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · V two-point / centre · Ctrl+Z drop · Esc abort"
-                              : State.Drawing.Kind == SketcherDrawingKind::Arc ? "Click start, Shift-align end, then free bulge point (planar; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · Ctrl+Z drop · Esc abort"
+                              : State.Drawing.Kind == SketcherDrawingCategory::Polygon ? (State.Drawing.Points.size() >= 2 ? "Polygon drawn: wheel (or + / −) changes the sides · click / right-click / Enter confirms · Ctrl+Z drop · Esc abort" : "Click (or press-drag) the centre, then a vertex (snaps, Ctrl free) · wheel or + / − sides · x y z t n b lock · Ctrl+Z drop · Esc abort")
+                              : State.Drawing.Kind == SketcherDrawingCategory::Curve ? "Click points (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · 1 Hermite · 2 Bezier · 3 NURBS · 4 cubic · click first point closes · Enter / right-click finish · Ctrl+Z drop · Esc abort"
+                              : State.Drawing.Kind == SketcherDrawingCategory::Line ? "Click points (hold Shift for straight axes; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · click first point closes · Enter / right-click finish · Ctrl+Z drop · Esc abort"
+                              : State.Drawing.Kind == SketcherDrawingCategory::Rectangle ? "Click two corners (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · s square · Alt centre / corner · Ctrl+Z drop · Esc abort"
+                              : State.Drawing.Kind == SketcherDrawingCategory::Circle ? "Click centre then rim (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · V two-point / centre · Ctrl+Z drop · Esc abort"
+                              : State.Drawing.Kind == SketcherDrawingCategory::Arc ? "Click start, Shift-align end, then free bulge point (planar; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · Ctrl+Z drop · Esc abort"
                               : "Click cap centres (Shift aligns), then free rim (Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · Ctrl+Z drop · Esc abort")
                        : State.Constrain.ActiveCondition
                            ? "Constrain: click points / curves · D dimension · N angle · H / V · O on · Q equal · M midpoint · Y symmetric · L parallel / tangent · [ perpendicular · ] lock · drag a point · click a glyph: Delete removes, digits + Enter edit · Esc / K end"
@@ -16546,7 +16546,7 @@ void DrawViewport(SketcherWorkspaceState& State, ImTextureRef ViewportTexture, I
 //                                                    INSPECTOR
 //------------------------------------------------------------------------------------------------------------------------
 
-void DrawTransformSessionCard(SketcherWorkspaceState& State)
+void DrawTransformSessionCard(SketcherWorkspaceStatus& State)
 {
     SketcherTransformSession& Transform = State.Transform;
     const char* Heading = Transform.DuplicateCondition ? "Duplicate + Move"
@@ -16643,14 +16643,14 @@ void DrawTransformSessionCard(SketcherWorkspaceState& State)
     if (CommittedEnter)
     {
         // Re-evaluate map immediately from the newly committed Typed value before applying.
-        const OrbitCameraFrame CurFrame = FrameOrbitCamera(State.Camera, std::max(1.0f, State.ViewportRect[2]), std::max(1.0f, State.ViewportRect[3]));
+        const OrbitCameraBasis CurFrame = FrameOrbitCamera(State.Camera, std::max(1.0f, State.ViewportRect[2]), std::max(1.0f, State.ViewportRect[3]));
         DriveTransformSession(State, CurFrame, ImVec2(0.0f, 0.0f));
         ApplyTransformSession(State);
     }
     EndCard();
 }
 
-void DrawBevelCard(SketcherWorkspaceState& State)
+void DrawBevelCard(SketcherWorkspaceStatus& State)
 {
     SketcherBevelSession& Bevel   = State.Bevel;
     const bool            Profile = Bevel.Verb == SketcherSessionVerb::Profile;
@@ -16877,7 +16877,7 @@ void DrawBevelCard(SketcherWorkspaceState& State)
 }
 
 // Tool cards of the picked figures (Geometry tab): curves (loft, combs, continuity) and face edit.
-void DrawSelectionToolCards(SketcherWorkspaceState& State)
+void DrawSelectionToolCards(SketcherWorkspaceStatus& State)
 {
     const SketcherSelection& Selection = State.Document.Selection;
 
@@ -16941,7 +16941,7 @@ void DrawSelectionToolCards(SketcherWorkspaceState& State)
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", ModeTips[Mode]);
             }
             const bool FlatCondition = State.WrapMode == 2;
-            const SketcherFlowRequest Flat     = FlowRequestOf(State);
+            const SketcherRailDeformRequest Flat     = FlowRequestOf(State);
             const SketcherWrapRequest Round    = WrapRequestOf(State);
             const bool                Possible = (FlatCondition ? !Flat.Rail.empty() : !Round.Rail.empty()) && !State.Bevel.ActiveCondition;
             const std::string Rail   = FlatCondition ? Flat.Rail : Round.Rail;
@@ -16954,7 +16954,7 @@ void DrawSelectionToolCards(SketcherWorkspaceState& State)
             State.WrapAutoNote.clear();
             if (Possible && !FlatCondition && State.WrapAxis < 0)
             {
-                const OrbitCameraFrame View = ViewportFrame(State);
+                const OrbitCameraBasis View = ViewportFrame(State);
                 Vector3 Direction{};
                 if (!WrapAutoDirection(State, Round, Vector3{ View.Forward[0], View.Forward[1], View.Forward[2] }, Direction, State.WrapAutoNote))
                     State.WrapAutoNote.clear();
@@ -17071,7 +17071,7 @@ void DrawSelectionToolCards(SketcherWorkspaceState& State)
             ImGui::EndCombo();
         }
         RegisterWidget(State, "FaceVerb");
-        if (State.FaceVerb != FaceOperationKind::Delete)
+        if (State.FaceVerb != FaceOperationCategory::Delete)
         {
             ImGui::SetNextItemWidth(150);
             const std::string Label = Compose("Amount [%s]###FaceAmount", FaceAmountUnit(State.FaceVerb));
@@ -17081,16 +17081,16 @@ void DrawSelectionToolCards(SketcherWorkspaceState& State)
         if (PressButton(State, "Apply  (E: extrude)###FaceApply", ImVec2(-1, 0)))
         {
             const double                 Amount  = FaceAmountToModel(State.FaceVerb, State.FaceAmount);
-            const SketcherCommandOutcome Outcome = State.FaceVerb == FaceOperationKind::Inset ? InsetSketcherSelection(State.Document, Amount, 0.0)
+            const SketcherCommandOutcome Outcome = State.FaceVerb == FaceOperationCategory::Inset ? InsetSketcherSelection(State.Document, Amount, 0.0)
                                                                                               : ChangeSketcherSelection(State.Document, State.FaceVerb, Amount);
-            if (Outcome.AcceptedCondition) State.LastCommand = { SketcherRepeatKind::Face, BlendProfile::Fillet, 0.0, State.FaceVerb, Amount, {} };
+            if (Outcome.AcceptedCondition) State.LastCommand = { SketcherRepeatCategory::Face, BlendProfile::Fillet, 0.0, State.FaceVerb, Amount, {} };
             Conclude(State, Outcome);
         }
         EndCard();
     }
 }
 
-void DrawStepCard(SketcherWorkspaceState& State)
+void DrawStepCard(SketcherWorkspaceStatus& State)
 {
     const FeatureStep* Step = nullptr;
     for (const FeatureStep& Candidate : State.Document.Tree.Steps)
@@ -17109,7 +17109,7 @@ void DrawStepCard(SketcherWorkspaceState& State)
         ImGui::TextWrapped("Refused: %s", Legible(Report->Refusal).c_str());
         ImGui::PopStyleColor();
     }
-    if (const CurveFitOutcome* Fit = Step->Kind == FeatureStepKind::SpaceCurve ? FindFittedCurve(State.Document, Label) : nullptr)
+    if (const CurveFitOutcome* Fit = Step->Kind == FeatureStepCategory::SpaceCurve ? FindFittedCurve(State.Document, Label) : nullptr)
     {
         ImGui::Text("%d points → %d poles · degree %d · %d span(s)", int(Step->Points.size()), int(Fit->Curve.Definition->Poles.size()), Fit->Curve.Definition->Degree, Fit->Spans);
         ImGui::Text("Fit worst %.4f mm · mean %.4f mm (≤ %.2f mm)", Fit->WorstDeviation * 1000.0, Fit->MeanDeviation * 1000.0, EvaluateFeatureValue(State.Document.Tree, Step->Tolerance) * 1000.0);
@@ -17119,51 +17119,51 @@ void DrawStepCard(SketcherWorkspaceState& State)
         {SubdividePickedSpline(State);EndCard();return;}
 
     }
-    if (Step->Kind == FeatureStepKind::Loft || Step->Kind == FeatureStepKind::Network)
+    if (Step->Kind == FeatureStepCategory::Loft || Step->Kind == FeatureStepCategory::Network)
     {
         std::string Sections;
-        for (const std::string& Section : Step->Sections) Sections += (Sections.empty() ? "" : Step->Kind == FeatureStepKind::Loft ? " → " : " · ") + CaptionOf(State.Document, Section);
-        ImGui::TextWrapped("%s: %s", Step->Kind == FeatureStepKind::Loft ? "Sections" : "Network curves", Sections.c_str());
-        if (Step->Kind == FeatureStepKind::Loft) ImGui::Text("Continuity G%d to the neighbouring panel", Step->Continuity);
+        for (const std::string& Section : Step->Sections) Sections += (Sections.empty() ? "" : Step->Kind == FeatureStepCategory::Loft ? " → " : " · ") + CaptionOf(State.Document, Section);
+        ImGui::TextWrapped("%s: %s", Step->Kind == FeatureStepCategory::Loft ? "Sections" : "Network curves", Sections.c_str());
+        if (Step->Kind == FeatureStepCategory::Loft) ImGui::Text("Continuity G%d to the neighbouring panel", Step->Continuity);
     }
-    if (Step->Kind == FeatureStepKind::Mirror) ImGui::Text("Plane through (%.3f, %.3f, %.3f), normal (%.0f, %.0f, %.0f)", Step->Plane.Origin.X, Step->Plane.Origin.Y, Step->Plane.Origin.Z,
+    if (Step->Kind == FeatureStepCategory::Mirror) ImGui::Text("Plane through (%.3f, %.3f, %.3f), normal (%.0f, %.0f, %.0f)", Step->Plane.Origin.X, Step->Plane.Origin.Y, Step->Plane.Origin.Z,
                                                            Step->Plane.ZAxis.X, Step->Plane.ZAxis.Y, Step->Plane.ZAxis.Z);
-    if (Step->Kind == FeatureStepKind::Close) ImGui::TextUnformatted("Plane caps on the planar rim loops of the panels");
-    if (Step->Kind == FeatureStepKind::Cut)
+    if (Step->Kind == FeatureStepCategory::Close) ImGui::TextUnformatted("Plane caps on the planar rim loops of the panels");
+    if (Step->Kind == FeatureStepCategory::Cut)
     {
         const std::string Cutter = Step->Sections.empty() ? CaptionOf(State.Document, Step->Profile) : CaptionOf(State.Document, Step->Sections.front());
         ImGui::TextWrapped("Splits %s by %s%s · inside piece → %s", SketcherBodyCaption(State.Document, Step->Target).c_str(), Cutter.c_str(),
                            Step->Sections.empty() ? "" : Compose(" seen along (%.0f, %.0f, %.0f)", Step->Plane.ZAxis.X, Step->Plane.ZAxis.Y, Step->Plane.ZAxis.Z).c_str(),
                            SketcherBodyCaption(State.Document, Step->Label).c_str());
     }
-    if (Step->Kind == FeatureStepKind::Imprint)
+    if (Step->Kind == FeatureStepCategory::Imprint)
         ImGui::TextWrapped("Imprints %s into the faces of %s (2D cutter: split, nothing cut) · face E pushes / pulls the regions", CaptionOf(State.Document, Step->Profile).c_str(),
                            SketcherBodyCaption(State.Document, Step->Target).c_str());
-    if (Step->Kind == FeatureStepKind::Remove) ImGui::Text("Deletes %s", SketcherBodyCaption(State.Document, Step->Target).c_str());
-    if (Step->Kind == FeatureStepKind::Transform || Step->Kind == FeatureStepKind::Duplicate)
+    if (Step->Kind == FeatureStepCategory::Remove) ImGui::Text("Deletes %s", SketcherBodyCaption(State.Document, Step->Target).c_str());
+    if (Step->Kind == FeatureStepCategory::Transform || Step->Kind == FeatureStepCategory::Duplicate)
     {
-        const AffineMap& Map = Step->Placement;
+        const AffineMapping& Map = Step->Placement;
         const Vector3 Factors{ Length(Map.ColumnX), Length(Map.ColumnY), Length(Map.ColumnZ) };
         const double Trace = Map.ColumnX.X / Factors.X + Map.ColumnY.Y / Factors.Y + Map.ColumnZ.Z / Factors.Z;
         const double Turn  = std::acos(std::clamp((Trace - 1.0) * 0.5, -1.0, 1.0)) * 180.0 / std::numbers::pi;   // [°] - Rotation part (uniform scale)
         const std::string Subject = SketcherBodyCaption(State.Document, Step->Target.empty() ? std::string("the active body") : Step->Target);
-        ImGui::TextWrapped("%s %s · shift (%.3f, %.3f, %.3f) · turn %.2f° · scale (%.3f, %.3f, %.3f)%s", Step->Kind == FeatureStepKind::Transform ? "Moves" : "Copies", Subject.c_str(),
+        ImGui::TextWrapped("%s %s · shift (%.3f, %.3f, %.3f) · turn %.2f° · scale (%.3f, %.3f, %.3f)%s", Step->Kind == FeatureStepCategory::Transform ? "Moves" : "Copies", Subject.c_str(),
                            Map.Shift.X, Map.Shift.Y, Map.Shift.Z, Turn, Factors.X, Factors.Y, Factors.Z,
                            Step->Source.empty() ? "" : (" · as it stood after " + CaptionOf(State.Document, Step->Source)).c_str());
     }
-    if (Step->Kind == FeatureStepKind::Revolve && !Step->Profile.empty() && CaptionOf(State.Document, Label).rfind("Revolve", 0) == 0)   // Alt+R revolves (not the sphere / torus tiles)
+    if (Step->Kind == FeatureStepCategory::Revolve && !Step->Profile.empty() && CaptionOf(State.Document, Label).rfind("Revolve", 0) == 0)   // Alt+R revolves (not the sphere / torus tiles)
     {
         const SketcherRevolveAxis Axis{ Step->AxisIdentifier, Step->AxisOrigin, Step->AxisDirection };
         ImGui::TextWrapped("Turns %s %.2f° about %s", CaptionOf(State.Document, Step->Profile).c_str(), EvaluateFeatureValue(State.Document.Tree, Step->Angle) * 180.0 / std::numbers::pi,
                            DescribeSketcherRevolveAxis(State.Document, Step->Profile, Axis).c_str());
     }
-    if (Step->Kind == FeatureStepKind::Evolution)
+    if (Step->Kind == FeatureStepCategory::Evolution)
         ImGui::TextWrapped("Sweeps %s along %s (rotation-minimizing frames)", CaptionOf(State.Document, Step->Profile).c_str(), CaptionOf(State.Document, Step->Path).c_str());
-    if (Step->Kind == FeatureStepKind::Joint)
+    if (Step->Kind == FeatureStepCategory::Joint)
         ImGui::TextWrapped("%s joint: %s onto %s · %d degree(s) of freedom%s · drag a value (Ctrl+click types it)", JointKindLabel(Step->Joint.Kind),
                            SketcherBodyCaption(State.Document, Step->Target).c_str(), SketcherBodyCaption(State.Document, Step->Tool).c_str(), JointFreedom(Step->Joint.Kind),
                            Step->Joint.FlippedCondition ? " · flipped" : "");
-    if (Step->Kind == FeatureStepKind::Flip)
+    if (Step->Kind == FeatureStepCategory::Flip)
     {
         if (Step->References.empty())
             ImGui::TextWrapped("Normals of %s turned over (every face's sense reversed) · Alt+N on it again removes this step", SketcherBodyCaption(State.Document, Step->Target).c_str());
@@ -17171,7 +17171,7 @@ void DrawStepCard(SketcherWorkspaceState& State)
             ImGui::TextWrapped("Normals of %d picked face(s) of %s turned over, with the rest of their piece of the sheet (neighbours must agree) · the same faces again remove this step",
                                int(Step->References.size()), SketcherBodyCaption(State.Document, Step->Target).c_str());
     }
-    if (Step->Kind == FeatureStepKind::Import)
+    if (Step->Kind == FeatureStepCategory::Import)
     {
         // The embedded file's PRODUCT name and size; faces are named Face(k) in file order.
         const size_t      Mark    = Step->Exchange.find("PRODUCT('");
@@ -17179,7 +17179,7 @@ void DrawStepCard(SketcherWorkspaceState& State)
         ImGui::TextWrapped("STEP body %s embedded (%.1f kB, %.0f mm per model unit) · faces %s.Face(1 …) in file order", Product.c_str(), Step->Exchange.size() / 1000.0,
                            Step->ExchangeUnit, Label.c_str());
     }
-    if (Step->Kind == FeatureStepKind::Pipe)
+    if (Step->Kind == FeatureStepCategory::Pipe)
     {
         const std::string Path = Step->Sections.empty() ? CaptionOf(State.Document, Step->Profile) : CaptionOf(State.Document, Step->Sections.front());
         ImGui::TextWrapped("Tube of radius %.4f along %s", EvaluateFeatureValue(State.Document.Tree, Step->Size), Path.c_str());
@@ -17192,7 +17192,7 @@ void DrawStepCard(SketcherWorkspaceState& State)
     for (FeatureParameter& Parameter : Parameters)
     {
         const std::string Field = Parameter.Name.substr(Prefix.size()) + "###Parameter:" + Parameter.Name;
-        if (Step->Kind == FeatureStepKind::Joint)
+        if (Step->Kind == FeatureStepCategory::Joint)
         {
             // Dragged: a staged document shows the motion (replayed from the joint); the document takes the value on release.
             SketcherParameterDrag& Drag    = State.ParameterDrag;
@@ -17233,7 +17233,7 @@ void DrawStepCard(SketcherWorkspaceState& State)
     }
     const FeatureStep* Current = nullptr;                                                    // A parameter edit above may have moved Step
     for (const FeatureStep& Candidate : State.Document.Tree.Steps) if (Candidate.Label == Label) Current = &Candidate;
-    if (Current && Current->Kind == FeatureStepKind::Sketch)
+    if (Current && Current->Kind == FeatureStepCategory::Sketch)
     {
         // Fill on / off (closed sketches only): filled loops extrude into solids, unfilled ones into walls (a sheet).
         const auto Solved = State.Document.Regeneration.Sketches.find(Label);
@@ -17254,7 +17254,7 @@ void DrawStepCard(SketcherWorkspaceState& State)
         }
         else ImGui::TextDisabled("Open curves: nothing to fill (close the loop, or use the Fill tool on crossings)");
     }
-    if (Current && (Current->Kind == FeatureStepKind::Combine || Current->Kind == FeatureStepKind::Transform || Current->Kind == FeatureStepKind::Duplicate))
+    if (Current && (Current->Kind == FeatureStepCategory::Combine || Current->Kind == FeatureStepCategory::Transform || Current->Kind == FeatureStepCategory::Duplicate))
     {
         double OffsetVal = EvaluateFeatureValue(State.Document.Tree, Current->Offset);
         ImGui::SetNextItemWidth(130);
@@ -17288,14 +17288,14 @@ void DrawStepCard(SketcherWorkspaceState& State)
     }
     if (Current)
     {
-        struct BindableField { const char* Name; const FeatureValue* Value; };
+        struct BindableField { const char* Name; const FeatureScalar* Value; };
         std::vector<BindableField> Fields;
-        if (Current->Kind == FeatureStepKind::Blend || Current->Kind == FeatureStepKind::Pipe) Fields.push_back({ "Size", &Current->Size });
-        if (Current->Kind == FeatureStepKind::Blend && Current->EndSize) Fields.push_back({ "EndSize", &*Current->EndSize });
-        if (Current->Kind == FeatureStepKind::Extrude) Fields.push_back({ "Extent", &Current->Extent });
-        if (Current->Kind == FeatureStepKind::Revolve) Fields.push_back({ "Angle", &Current->Angle });
-        if (Current->Kind == FeatureStepKind::FaceOperation) Fields.push_back({ "Amount", &Current->Amount });
-        if (Current->Kind == FeatureStepKind::Combine || Current->Kind == FeatureStepKind::Transform || Current->Kind == FeatureStepKind::Duplicate)
+        if (Current->Kind == FeatureStepCategory::Blend || Current->Kind == FeatureStepCategory::Pipe) Fields.push_back({ "Size", &Current->Size });
+        if (Current->Kind == FeatureStepCategory::Blend && Current->EndSize) Fields.push_back({ "EndSize", &*Current->EndSize });
+        if (Current->Kind == FeatureStepCategory::Extrude) Fields.push_back({ "Extent", &Current->Extent });
+        if (Current->Kind == FeatureStepCategory::Revolve) Fields.push_back({ "Angle", &Current->Angle });
+        if (Current->Kind == FeatureStepCategory::FaceOperation) Fields.push_back({ "Amount", &Current->Amount });
+        if (Current->Kind == FeatureStepCategory::Combine || Current->Kind == FeatureStepCategory::Transform || Current->Kind == FeatureStepCategory::Duplicate)
             Fields.push_back({ "Offset", &Current->Offset });
         if (!Fields.empty())
         {
@@ -17350,8 +17350,8 @@ void DrawStepCard(SketcherWorkspaceState& State)
 
 namespace
 {
-    bool DrawModifierValueRow(SketcherWorkspaceState& State, const char* Caption, const std::string& IdKey,
-                              FeatureValue& Val, bool IntegerCondition = false, const char* Format = "%.4f")
+    bool DrawModifierValueRow(SketcherWorkspaceStatus& State, const char* Caption, const std::string& IdKey,
+                              FeatureScalar& Val, bool IntegerCondition = false, const char* Format = "%.4f")
     {
         bool Changed = false;
         std::vector<std::string> UserVars;
@@ -17393,7 +17393,7 @@ namespace
             {
                 if (ImGui::Selectable("[Literal]", Val.Parameter.empty()))
                 {
-                    Val = FeatureValue{ std::isfinite(Evaluated) ? Evaluated : Val.Literal };
+                    Val = FeatureScalar{ std::isfinite(Evaluated) ? Evaluated : Val.Literal };
                     Changed = true;
                 }
                 for (const std::string& Var : UserVars)
@@ -17412,7 +17412,7 @@ namespace
     }
 } // namespace
 
-void DrawVariablesCard(SketcherWorkspaceState& State)
+void DrawVariablesCard(SketcherWorkspaceStatus& State)
 {
     std::vector<FeatureParameter> Variables;
     for (const FeatureParameter& Param : State.Document.Tree.Parameters)
@@ -17469,7 +17469,7 @@ void DrawVariablesCard(SketcherWorkspaceState& State)
     EndCard();
 }
 
-void DrawEdgeWeightsCard(SketcherWorkspaceState& State)
+void DrawEdgeWeightsCard(SketcherWorkspaceStatus& State)
 {
     if (State.Document.Selection.Edges.empty() && State.Document.Tree.EdgeGroups.empty()) return;
     BeginCard("Edge Weights", Compose("%d group(s)", int(State.Document.Tree.EdgeGroups.size())).c_str());
@@ -17498,13 +17498,13 @@ void DrawEdgeWeightsCard(SketcherWorkspaceState& State)
     const bool HasEdges = !State.Document.Selection.Edges.empty();
     if (PressButton(State, "Paint Selected###EdgeGroupAssign", RowSpan(2), HasEdges))
     {
-        FeatureValue Weight = State.EdgeGroupVariable.empty() ? FeatureValue{ State.EdgeGroupWeight } : ParameterValue(State.EdgeGroupVariable);
+        FeatureScalar Weight = State.EdgeGroupVariable.empty() ? FeatureScalar{ State.EdgeGroupWeight } : ParameterValue(State.EdgeGroupVariable);
         Weight.Literal      = State.EdgeGroupWeight;
         Conclude(State, AssignSketcherEdgeWeights(State.Document, State.EdgeGroupNameText.data(), {}, Weight));
     }
     ImGui::SameLine();
     if (PressButton(State, "Erase Selected###EdgeGroupErase", RowSpan(2), HasEdges))
-        Conclude(State, AssignSketcherEdgeWeights(State.Document, State.EdgeGroupNameText.data(), {}, FeatureValue{ 0.0 }));
+        Conclude(State, AssignSketcherEdgeWeights(State.Document, State.EdgeGroupNameText.data(), {}, FeatureScalar{ 0.0 }));
 
     for (const FeatureEdgeGroup& Group : State.Document.Tree.EdgeGroups)
     {
@@ -17526,7 +17526,7 @@ void DrawEdgeWeightsCard(SketcherWorkspaceState& State)
     EndCard();
 }
 
-void DrawModifierStackCard(SketcherWorkspaceState& State)
+void DrawModifierStackCard(SketcherWorkspaceStatus& State)
 {
     BeginCard("Modifiers", State.Document.Tree.Modifiers.empty() ? "stack" : Compose("%d active", int(State.Document.Tree.Modifiers.size())).c_str());
     static const char* KindTitles[] = {
@@ -17546,7 +17546,7 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
     if (PressButton(State, "+ Add###ModifierAdd", ImVec2(62, 0), HasBody))
     {
         FeatureModifier Mod;
-        Mod.Kind = static_cast<ModifierKind>(State.AddModifierKind);
+        Mod.Kind = static_cast<ModifierCategory>(State.AddModifierKind);
         const SketcherSelection& Sel = State.Document.Selection;
         Mod.Target = !Sel.Bodies.empty() ? Sel.Bodies.front() : (!Sel.PickedBody.empty() ? Sel.PickedBody : State.Document.Regeneration.Active);
 
@@ -17556,49 +17556,49 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
             if (!State.FocusedStep.empty())
             {
                 for (const FeatureStep& Step : State.Document.Tree.Steps)
-                    if (Step.Label == State.FocusedStep && (Step.Kind == FeatureStepKind::Sketch || Step.Kind == FeatureStepKind::SpaceCurve)) return Step.Label;
+                    if (Step.Label == State.FocusedStep && (Step.Kind == FeatureStepCategory::Sketch || Step.Kind == FeatureStepCategory::SpaceCurve)) return Step.Label;
             }
             for (auto It = State.Document.Tree.Steps.rbegin(); It != State.Document.Tree.Steps.rend(); ++It)
-                if (It->Kind == FeatureStepKind::SpaceCurve || (It->Kind == FeatureStepKind::Sketch && !SketcherSketchConsumedCondition(State.Document, It->Label)))
+                if (It->Kind == FeatureStepCategory::SpaceCurve || (It->Kind == FeatureStepCategory::Sketch && !SketcherSketchConsumedCondition(State.Document, It->Label)))
                     return It->Label;
             return {};
         };
 
         switch (Mod.Kind)
         {
-        case ModifierKind::LinearArray:
-            Mod.Count     = FeatureValue{ 3.0 };
-            Mod.Distance  = FeatureValue{ 1.2 };
+        case ModifierCategory::LinearArray:
+            Mod.Count     = FeatureScalar{ 3.0 };
+            Mod.Distance  = FeatureScalar{ 1.2 };
             Mod.Direction = { 1.0, 0.0, 0.0 };
             break;
-        case ModifierKind::CircularArray:
-            Mod.Count         = FeatureValue{ 6.0 };
-            Mod.Angle         = FeatureValue{ 2.0 * std::numbers::pi };
+        case ModifierCategory::CircularArray:
+            Mod.Count         = FeatureScalar{ 6.0 };
+            Mod.Angle         = FeatureScalar{ 2.0 * std::numbers::pi };
             Mod.AxisDirection = { 0.0, 0.0, 1.0 };
             break;
-        case ModifierKind::CurveArray:
+        case ModifierCategory::CurveArray:
             Mod.Curve          = PickDefaultCurve();
-            Mod.Count          = FeatureValue{ 4.0 };
-            Mod.Distance       = FeatureValue{ 0.0 };
+            Mod.Count          = FeatureScalar{ 4.0 };
+            Mod.Distance       = FeatureScalar{ 0.0 };
             Mod.AlignCondition = true;
             break;
-        case ModifierKind::SurfaceArray:
-            Mod.Count          = FeatureValue{ 3.0 };
-            Mod.SecondaryCount = FeatureValue{ 3.0 };
-            Mod.Margin         = FeatureValue{ 0.12 };
+        case ModifierCategory::SurfaceArray:
+            Mod.Count          = FeatureScalar{ 3.0 };
+            Mod.SecondaryCount = FeatureScalar{ 3.0 };
+            Mod.Margin         = FeatureScalar{ 0.12 };
             if (!Sel.Faces.empty())
             {
-                Mod.Tool       = SketcherBodyOfName(State.Document, SketcherSelectionKind::Face, Sel.Faces.front());
-                Mod.References = { { ReferenceKind::Face, Sel.Faces.front(), {} } };
+                Mod.Tool       = SketcherBodyOfName(State.Document, SketcherSelectionCategory::Face, Sel.Faces.front());
+                Mod.References = { { ReferenceCategory::Face, Sel.Faces.front(), {} } };
             }
             break;
-        case ModifierKind::CurveBend:
+        case ModifierCategory::CurveBend:
             Mod.Curve            = PickDefaultCurve();
             Mod.DeformAxis       = -1;
             Mod.StretchCondition = true;
             break;
-        case ModifierKind::Bevel:
-            Mod.Size  = FeatureValue{ 0.05 };
+        case ModifierCategory::Bevel:
+            Mod.Size  = FeatureScalar{ 0.05 };
             Mod.Shape = BlendProfile::Fillet;
             if (!State.Document.Tree.EdgeGroups.empty())
             {
@@ -17608,15 +17608,15 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
             else if (!Sel.Edges.empty())
             {
                 Mod.LimitMode = BevelLimitMode::Picked;
-                for (const std::string& EdgeName : Sel.Edges) Mod.References.push_back({ ReferenceKind::Edge, EdgeName, {} });
+                for (const std::string& EdgeName : Sel.Edges) Mod.References.push_back({ ReferenceCategory::Edge, EdgeName, {} });
             }
             else
             {
                 Mod.LimitMode = BevelLimitMode::Angle;
-                Mod.Angle     = FeatureValue{ std::numbers::pi / 6.0 };
+                Mod.Angle     = FeatureScalar{ std::numbers::pi / 6.0 };
             }
             break;
-        case ModifierKind::Boolean:
+        case ModifierCategory::Boolean:
             Mod.Combination       = FeatureCombination::Difference;
             Mod.KeepToolCondition = true;
             if (Sel.Bodies.size() >= 2) { Mod.Target = Sel.Bodies[0]; Mod.Tool = Sel.Bodies[1]; }
@@ -17680,7 +17680,7 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
         bool Edited = false;
         ImGui::TextDisabled("Target: %s", SketcherBodyCaption(State.Document, Copy.Target.empty() ? State.Document.Regeneration.Active : Copy.Target).c_str());
 
-        if (Copy.Kind == ModifierKind::LinearArray)
+        if (Copy.Kind == ModifierCategory::LinearArray)
         {
             Edited |= DrawModifierValueRow(State, "Count X", ModLabel + ":Count", Copy.Count, true);
             Edited |= DrawModifierValueRow(State, "Step X (m)", ModLabel + ":Dist", Copy.Distance);
@@ -17689,7 +17689,7 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
             bool Merge = Copy.MergeCondition;
             if (SketcherAuthoringToggle(State, ("Merge overlapping###ModMerge:" + ModLabel).c_str(), &Merge)) { Copy.MergeCondition = Merge; Edited = true; }
         }
-        else if (Copy.Kind == ModifierKind::CircularArray)
+        else if (Copy.Kind == ModifierCategory::CircularArray)
         {
             Edited |= DrawModifierValueRow(State, "Count", ModLabel + ":Count", Copy.Count, true);
             Edited |= DrawModifierValueRow(State, "Sweep (rad)", ModLabel + ":Angle", Copy.Angle);
@@ -17708,7 +17708,7 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
             bool Merge = Copy.MergeCondition;
             if (SketcherAuthoringToggle(State, ("Merge overlapping###ModMerge:" + ModLabel).c_str(), &Merge)) { Copy.MergeCondition = Merge; Edited = true; }
         }
-        else if (Copy.Kind == ModifierKind::CurveArray)
+        else if (Copy.Kind == ModifierCategory::CurveArray)
         {
             ImGui::Text("Curve: %s", Copy.Curve.empty() ? "(none)" : CaptionOf(State.Document, Copy.Curve).c_str());
             if (!State.Document.Selection.Curves.empty())
@@ -17725,7 +17725,7 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
             bool Orient = Copy.AlignCondition;
             if (SketcherAuthoringToggle(State, ("Follow curve frame###ModOrient:" + ModLabel).c_str(), &Orient)) { Copy.AlignCondition = Orient; Edited = true; }
         }
-        else if (Copy.Kind == ModifierKind::SurfaceArray)
+        else if (Copy.Kind == ModifierCategory::SurfaceArray)
         {
             const std::string FaceName = Copy.References.empty() ? std::string("(largest face)") : Copy.References.front().Name;
             ImGui::Text("Face: %s", FaceName.c_str());
@@ -17735,8 +17735,8 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
                 if (PressButton(State, ("Use picked###ModUseFace:" + ModLabel).c_str(), ImVec2(78, 0)))
                 {
                     const std::string PickedFace = State.Document.Selection.Faces.front();
-                    Copy.Tool       = SketcherBodyOfName(State.Document, SketcherSelectionKind::Face, PickedFace);
-                    Copy.References = { { ReferenceKind::Face, PickedFace, {} } };
+                    Copy.Tool       = SketcherBodyOfName(State.Document, SketcherSelectionCategory::Face, PickedFace);
+                    Copy.References = { { ReferenceCategory::Face, PickedFace, {} } };
                     Edited          = true;
                 }
             }
@@ -17744,7 +17744,7 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
             Edited |= DrawModifierValueRow(State, "Count V", ModLabel + ":CountV", Copy.SecondaryCount, true);
             Edited |= DrawModifierValueRow(State, "Margin", ModLabel + ":Margin", Copy.Margin);
         }
-        else if (Copy.Kind == ModifierKind::CurveBend)
+        else if (Copy.Kind == ModifierCategory::CurveBend)
         {
             ImGui::Text("Curve: %s", Copy.Curve.empty() ? "(none)" : CaptionOf(State.Document, Copy.Curve).c_str());
             if (!State.Document.Selection.Curves.empty())
@@ -17769,7 +17769,7 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
             bool Stretch = Copy.StretchCondition;
             if (SketcherAuthoringToggle(State, ("Stretch along curve###ModStretch:" + ModLabel).c_str(), &Stretch)) { Copy.StretchCondition = Stretch; Edited = true; }
         }
-        else if (Copy.Kind == ModifierKind::Bevel)
+        else if (Copy.Kind == ModifierCategory::Bevel)
         {
             if (ToggleButton(State, ("Fillet###ModFillet:" + ModLabel).c_str(), Copy.Shape == BlendProfile::Fillet, RowSpan(2)))
             {
@@ -17806,12 +17806,12 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
                 if (PressButton(State, ("Use Picked Edges###ModPickEdges:" + ModLabel).c_str(), RowSpan()))
                 {
                     Copy.References.clear();
-                    for (const std::string& EdgeName : State.Document.Selection.Edges) Copy.References.push_back({ ReferenceKind::Edge, EdgeName, {} });
+                    for (const std::string& EdgeName : State.Document.Selection.Edges) Copy.References.push_back({ ReferenceCategory::Edge, EdgeName, {} });
                     Edited = true;
                 }
             }
         }
-        else if (Copy.Kind == ModifierKind::Boolean)
+        else if (Copy.Kind == ModifierCategory::Boolean)
         {
             ImGui::Text("Cutter: %s", SketcherBodyCaption(State.Document, Copy.Tool).c_str());
             static const struct { const char* Name; FeatureCombination Comb; } Combs[] = {
@@ -17846,7 +17846,7 @@ void DrawModifierStackCard(SketcherWorkspaceState& State)
     EndCard();
 }
 
-void DrawBodyCard(SketcherWorkspaceState& State)
+void DrawBodyCard(SketcherWorkspaceStatus& State)
 {
     const SketcherBodySummary& Summary = State.Document.Summary;
     BeginCard("Body");
@@ -17960,7 +17960,7 @@ void TurnImagePlane(SketcherImagePlane& Plane, double Angle)
 //    the Outliner (eye, lock, pick). Every plane has a row; the picked one (Outliner, or its name here) opens its
 //    properties: opacity (1 − transparency), line art / photograph, mirror, crop margins, width, turn and centre. Edits
 //    mark the document dirty; they are not undo entries (reference pictures, not geometry). A locked plane only shows.
-void DrawImagePlaneCard(SketcherWorkspaceState& State)
+void DrawImagePlaneCard(SketcherWorkspaceStatus& State)
 {
     std::vector<SketcherImagePlane>& Planes = State.Document.ImagePlanes;
     if (Planes.empty()) return;
@@ -18111,7 +18111,7 @@ void DrawImagePlaneCard(SketcherWorkspaceState& State)
 // 📝 Inspector › History: the construction history (one row per feature step, numbered, the newest amber, the focused
 //    one blue, refused red; a click focuses the step and its parameters show in the step card below), the step and undo
 //    counts and the command log. Moved from under the viewport so the viewport keeps its full height.
-void DrawConstructionHistory(SketcherWorkspaceState& State)
+void DrawConstructionHistory(SketcherWorkspaceStatus& State)
 {
     const std::vector<FeatureStep>& Steps = State.Document.Tree.Steps;
     BeginCard("Construction history", Compose("%d steps", int(Steps.size())).c_str());
@@ -18181,7 +18181,7 @@ void DrawConstructionHistory(SketcherWorkspaceState& State)
     EndCard();
 }
 
-void DrawHistoryCard(SketcherWorkspaceState& State)
+void DrawHistoryCard(SketcherWorkspaceStatus& State)
 {
     BeginCard("History");
     const auto& Undo = State.Document.UndoEntries;
@@ -18194,7 +18194,7 @@ void DrawHistoryCard(SketcherWorkspaceState& State)
 
 // 📝 Drawing tools on the construction plane (the viewport bar's plane at open). Plasticity keys where it has them.
 // Non-modal, compact tool menu: closing it never cancels or confirms a curve.
-void DrawDrawingOptions(SketcherWorkspaceState& State)
+void DrawDrawingOptions(SketcherWorkspaceStatus& State)
 {
     auto& D=State.Drawing;
     if(!D.ActiveCondition || D.SolidCondition || State.Knife.ActiveCondition || !State.DrawingOptionsVisible) return;
@@ -18203,7 +18203,7 @@ void DrawDrawingOptions(SketcherWorkspaceState& State)
     if(ImGui::Begin("Drawing options###CurveToolOptions",&State.DrawingOptionsVisible,ImGuiWindowFlags_AlwaysAutoResize|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoCollapse)) {
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,ImVec2(4,2));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(4,4));
-        const bool Arc=D.Kind==SketcherDrawingKind::Arc;
+        const bool Arc=D.Kind==SketcherDrawingCategory::Arc;
         ImGui::TextUnformatted(Arc?"Arc: planar only":"Curve placement");
         bool Surface=D.SurfaceCondition;
         ImGui::BeginDisabled(Arc || !D.Points.empty());
@@ -18225,16 +18225,16 @@ void DrawDrawingOptions(SketcherWorkspaceState& State)
             ImGui::SetNextItemWidth(110);ImGui::InputDouble("Depth (m)###ToolPlaneDepth",&D.Elevation,0,0,"%.4f");RegisterWidget(State,"###ToolPlaneDepth");
             ImGui::EndDisabled();
         }
-        if (D.Kind == SketcherDrawingKind::Line) ImGui::TextDisabled("Shift: straight axis from last click");
+        if (D.Kind == SketcherDrawingCategory::Line) ImGui::TextDisabled("Shift: straight axis from last click");
         else if (Arc) ImGui::TextDisabled("Shift: align endpoints; bulge stays free");
-        else if (D.Kind == SketcherDrawingKind::Slot) ImGui::TextDisabled("Shift: align centres; width stays free");
+        else if (D.Kind == SketcherDrawingCategory::Slot) ImGui::TextDisabled("Shift: align centres; width stays free");
         ImGui::TextDisabled("Enter: finish | Esc: cancel");
         ImGui::PopStyleVar(2);
     }
     ImGui::End();
 }
 
-void DrawSurfaceOffsetCard(SketcherWorkspaceState& State)
+void DrawSurfaceOffsetCard(SketcherWorkspaceStatus& State)
 {
     const auto Selected = State.Document.Selection.Curves;
     auto Step = Selected.empty() ? State.Document.Tree.Steps.end() : std::find_if(
@@ -18345,7 +18345,7 @@ void DrawSurfaceOffsetCard(SketcherWorkspaceState& State)
     EndCard();
 }
 
-void DrawDrawingCard(SketcherWorkspaceState& State)
+void DrawDrawingCard(SketcherWorkspaceStatus& State)
 {
     SketcherDrawingSession& Drawing = State.Drawing;
     BeginCard("Surface tracing");
@@ -18369,14 +18369,14 @@ void DrawDrawingCard(SketcherWorkspaceState& State)
     if (!Drawing.ActiveCondition)
     {
         BeginCard("Draw");
-        static const struct { const char* Label; SketcherDrawingKind Kind; } Tools[] = {
-            { "Line (Shift+A)###DrawLine", SketcherDrawingKind::Line }, { "Rectangle (Shift+Q)###DrawRectangle", SketcherDrawingKind::Rectangle },
-            { "Circle (Shift+W)###DrawCircle", SketcherDrawingKind::Circle }, { "Curve (Shift+S)###DrawCurve", SketcherDrawingKind::Curve },
-            { "Arc (3 points)###DrawArc", SketcherDrawingKind::Arc }, { "Slot###DrawSlot", SketcherDrawingKind::Slot },
-            { "Polygon###DrawPolygon", SketcherDrawingKind::Polygon } };
+        static const struct { const char* Label; SketcherDrawingCategory Kind; } Tools[] = {
+            { "Line (Shift+A)###DrawLine", SketcherDrawingCategory::Line }, { "Rectangle (Shift+Q)###DrawRectangle", SketcherDrawingCategory::Rectangle },
+            { "Circle (Shift+W)###DrawCircle", SketcherDrawingCategory::Circle }, { "Curve (Shift+S)###DrawCurve", SketcherDrawingCategory::Curve },
+            { "Arc (3 points)###DrawArc", SketcherDrawingCategory::Arc }, { "Slot###DrawSlot", SketcherDrawingCategory::Slot },
+            { "Polygon###DrawPolygon", SketcherDrawingCategory::Polygon } };
         for (int Index = 0; Index < 7; ++Index)
         {
-            if (State.SurfaceTraceEnabled && Tools[Index].Kind != SketcherDrawingKind::Line && Tools[Index].Kind != SketcherDrawingKind::Curve && Tools[Index].Kind != SketcherDrawingKind::Arc) continue;
+            if (State.SurfaceTraceEnabled && Tools[Index].Kind != SketcherDrawingCategory::Line && Tools[Index].Kind != SketcherDrawingCategory::Curve && Tools[Index].Kind != SketcherDrawingCategory::Arc) continue;
             if (Index % 2 == 1) ImGui::SameLine();
             if (PressButton(State, Tools[Index].Label, RowSpan(), !State.Bevel.ActiveCondition)) OpenDrawingSession(State, Tools[Index].Kind);
         }
@@ -18406,13 +18406,13 @@ void DrawDrawingCard(SketcherWorkspaceState& State)
             if (Index % 2 == 1) ImGui::SameLine();
             if (ToggleButton(State, Combinations[Index].second, Drawing.Combination == Combinations[Index].first, RowSpan())) Drawing.Combination = Combinations[Index].first;
         }
-        if (Drawing.Solid == SketcherConstructKind::Prism)
+        if (Drawing.Solid == SketcherConstructCategory::Prism)
         {
             ImGui::SetNextItemWidth(-1);
             ImGui::SliderInt("###SolidSides", &Drawing.Sides, 3, 24, "%d sides (+ / −)");
             RegisterWidget(State, "###SolidSides");
         }
-        if (Drawing.Solid == SketcherConstructKind::Block || Drawing.Solid == SketcherConstructKind::Wedge)
+        if (Drawing.Solid == SketcherConstructCategory::Block || Drawing.Solid == SketcherConstructCategory::Wedge)
         {
             if (ToggleButton(State, "Corner###SolidCorner", !Drawing.CentreCondition, RowSpan())) Drawing.CentreCondition = false;
             ImGui::SameLine();
@@ -18436,7 +18436,7 @@ void DrawDrawingCard(SketcherWorkspaceState& State)
     if (Drawing.SurfaceCondition) ImGui::Text("SURFACE · %d control(s) · Ctrl: model edge", int(Drawing.Points.size()));
     else if (Drawing.FacePlaneCondition) ImGui::Text("On face %s · %d point(s)", Drawing.FaceName.c_str(), int(Drawing.Points.size()));
     else                            ImGui::Text("Plane %s · %d point(s)", Planes[std::clamp(Drawing.GridPlane, 0, 2)], int(Drawing.Points.size()));
-    if (Drawing.Kind == SketcherDrawingKind::Curve)
+    if (Drawing.Kind == SketcherDrawingCategory::Curve)
     {
         static const struct { const char* Label; SketchSplineForm Form; } Forms[] = {
             { "Hermite (1)###FormHermite", SketchSplineForm::Hermite }, { "Bezier (2)###FormBezier", SketchSplineForm::Bezier },
@@ -18448,15 +18448,15 @@ void DrawDrawingCard(SketcherWorkspaceState& State)
             if (ToggleButton(State, Forms[Index].Label, Drawing.Form == Forms[Index].Form, RowSpan())) { Drawing.Form = Forms[Index].Form; Drawing.Refusal.clear(); }
         }
     }
-    if (Drawing.Kind == SketcherDrawingKind::Polygon)
+    if (Drawing.Kind == SketcherDrawingCategory::Polygon)
     {
         ImGui::SetNextItemWidth(-1);
         ImGui::SliderInt("###DrawSides", &Drawing.Sides, 3, 24, "%d sides (+ / −)");
         RegisterWidget(State, "###DrawSides");
     }
-    if (Drawing.Kind == SketcherDrawingKind::Rectangle || Drawing.Kind == SketcherDrawingKind::Circle)
+    if (Drawing.Kind == SketcherDrawingCategory::Rectangle || Drawing.Kind == SketcherDrawingCategory::Circle)
     {
-        const char* Off = Drawing.Kind == SketcherDrawingKind::Rectangle ? "Corner###ModeCorner" : "Two-point###ModeTwoPoint";
+        const char* Off = Drawing.Kind == SketcherDrawingCategory::Rectangle ? "Corner###ModeCorner" : "Two-point###ModeTwoPoint";
         if (ToggleButton(State, Off, !Drawing.CentreCondition, RowSpan())) Drawing.CentreCondition = false;
         ImGui::SameLine();
         if (ToggleButton(State, "Centre###ModeCentre", Drawing.CentreCondition, RowSpan())) Drawing.CentreCondition = true;
@@ -18481,7 +18481,7 @@ void DrawDrawingCard(SketcherWorkspaceState& State)
 }
 
 // 📝 Object snaps while drawing or moving: master switch, per-kind filter, the active direction lock.
-void DrawSnapCard(SketcherWorkspaceState& State)
+void DrawSnapCard(SketcherWorkspaceStatus& State)
 {
     const bool Moving   = State.Transform.ActiveCondition && State.Transform.Verb == SketcherTransformVerb::Move;
     // 📝 Outside drawing and Move the card only joins while a sketch point (K) or a pole (mode 1) is actually held: the
@@ -18498,7 +18498,7 @@ void DrawSnapCard(SketcherWorkspaceState& State)
         Picker.GridEnabled = !Picker.GridEnabled;
         Announce(State, Picker.GridEnabled ? "Grid snap on: points land on 0.1 steps (Ctrl: free)" : "Grid snap off: points are free (Ctrl snaps to objects)");
     }
-    ImGui::Text("Lock %s", Picker.Lock == SketcherSnapLockKind::None ? "none" : SketcherSnapLockLabel(Picker.Lock));
+    ImGui::Text("Lock %s", Picker.Lock == SketcherSnapLockCategory::None ? "none" : SketcherSnapLockLabel(Picker.Lock));
     if (State.Drawing.ActiveCondition)
     {
         // Sketches and Construct solids drawn on a body face take its orientation (curved faces: the tangent plane there).
@@ -18535,7 +18535,7 @@ void DrawSnapCard(SketcherWorkspaceState& State)
 //                                                 INSPECTOR LAYOUT
 //------------------------------------------------------------------------------------------------------------------------
 
-void OpenConstruct(SketcherWorkspaceState& State, SketcherConstructKind Kind);
+void OpenConstruct(SketcherWorkspaceStatus& State, SketcherConstructCategory Kind);
 
 constexpr float CardSpacing   = 10.0f;                                                       // [px] - .inspector-card margin-bottom
 constexpr float CardRounding  = 22.0f;                                                       // [px] - .inspector-card border-radius
@@ -18597,7 +18597,7 @@ void CloseSheetCard(const PlaneExtent& Card)
 }
 
 // 📝 HTML .operation-button — 62 px, #212121, #ffffff05 hairline, radius 13; glyph 19 #c3c3c3 over a 9 px #aaa caption.
-bool OperationButton(SketcherWorkspaceState& State, SketcherSheet& Sheet, const std::string& Key, const PlaneExtent& Box, IconSymbol Glyph,
+bool OperationButton(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const std::string& Key, const PlaneExtent& Box, IconSymbol Glyph,
                      const char* Caption, bool EnabledCondition = true)
 {
     const SketcherPress Press   = PressSketcherRegion(State.Widgets, Key, Box, EnabledCondition);
@@ -18622,7 +18622,7 @@ struct InspectorOperation
 };
 
 // .operation-grid — 3 columns, gap 7, 62 px rows. Returns the key pressed (empty when none).
-std::string DrawOperationGrid(SketcherWorkspaceState& State, SketcherSheet& Sheet, float Left, float Top, float Width, const std::vector<InspectorOperation>& Operations)
+std::string DrawOperationGrid(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, float Left, float Top, float Width, const std::vector<InspectorOperation>& Operations)
 {
     std::string Pressed;
     const float Column = (Width - 2.0f * 7.0f) / 3.0f;
@@ -18641,7 +18641,7 @@ float OperationGridHeight(size_t Count)
     return Rows == 0 ? 0.0f : float(Rows) * 62.0f + float(Rows - 1) * 7.0f;
 }
 
-void RunOperation(SketcherWorkspaceState& State, const std::string& Key)
+void RunOperation(SketcherWorkspaceStatus& State, const std::string& Key)
 {
     if (Key == "Fillet") OpenBevelSession(State, BlendProfile::Fillet);
     else if (Key == "Chamfer") OpenBevelSession(State, BlendProfile::Chamfer);
@@ -18667,9 +18667,9 @@ void RunOperation(SketcherWorkspaceState& State, const std::string& Key)
     else if (Key == "Move") OpenTransformSession(State, SketcherTransformVerb::Move, false);
     else if (Key == "Rotate") OpenTransformSession(State, SketcherTransformVerb::Rotate, false);
     else if (Key == "Scale") OpenTransformSession(State, SketcherTransformVerb::Scale, false);
-    else if (Key == "Block") OpenConstruct(State, SketcherConstructKind::Block);
-    else if (Key == "Circle") OpenDrawingSession(State, SketcherDrawingKind::Circle);
-    else if (Key == "Rectangle") OpenDrawingSession(State, SketcherDrawingKind::Rectangle);
+    else if (Key == "Block") OpenConstruct(State, SketcherConstructCategory::Block);
+    else if (Key == "Circle") OpenDrawingSession(State, SketcherDrawingCategory::Circle);
+    else if (Key == "Rectangle") OpenDrawingSession(State, SketcherDrawingCategory::Rectangle);
     else if (Key == "Extrude")
     {
         if (State.Document.Selection.Faces.empty() && FocusedSketchCondition(State)) OpenSketchExtrudeSession(State);
@@ -18686,13 +18686,13 @@ void RunOperation(SketcherWorkspaceState& State, const std::string& Key)
 std::vector<std::string> TouchedBodies(const SketcherDocument& Document)
 {
     std::vector<std::string> Keys = Document.Selection.Bodies;
-    const auto Touch = [&](SketcherSelectionKind Kind, const std::string& Name)
+    const auto Touch = [&](SketcherSelectionCategory Kind, const std::string& Name)
     {
         const std::string Key = SketcherBodyOfName(Document, Kind, Name);
         if (!Key.empty() && std::find(Keys.begin(), Keys.end(), Key) == Keys.end()) Keys.push_back(Key);
     };
-    for (const std::string& Face : Document.Selection.Faces) Touch(SketcherSelectionKind::Face, Face);
-    for (const std::string& Edge : Document.Selection.Edges) Touch(SketcherSelectionKind::Edge, Edge);
+    for (const std::string& Face : Document.Selection.Faces) Touch(SketcherSelectionCategory::Face, Face);
+    for (const std::string& Edge : Document.Selection.Edges) Touch(SketcherSelectionCategory::Edge, Edge);
     return Keys;
 }
 
@@ -18705,7 +18705,7 @@ const SketcherBodyFigures* FiguresOf(const SketcherDocument& Document, const std
 
 // 📝 HTML .intro-card (nothing picked): body glyph 35 #777, "Select geometry", the hint; then "Start constructing" with
 //    Block · Circle · Rectangle · Extrude.
-void DrawIntroCards(SketcherWorkspaceState& State, SketcherSheet& Sheet)
+void DrawIntroCards(SketcherWorkspaceStatus& State, SketcherSheet& Sheet)
 {
     const float  Width   = ImGui::GetContentRegionAvail().x;
     const float  Inner   = Width - 44.0f;
@@ -18742,7 +18742,7 @@ void DrawIntroCards(SketcherWorkspaceState& State, SketcherSheet& Sheet)
 
 // 📝 HTML .selection-card: the 39 px glyph disc (amber body, blue sheet, cyan curve), the name (20 px Light), the class
 //    line (8 px, letter-spaced) and the eye; then three count tiles (9 px caption, 22 px Light value).
-void DrawSelectionSummary(SketcherWorkspaceState& State, SketcherSheet& Sheet)
+void DrawSelectionSummary(SketcherWorkspaceStatus& State, SketcherSheet& Sheet)
 {
     const SketcherSelection&       Selection = State.Document.Selection;
     const std::vector<std::string> Bodies    = TouchedBodies(State.Document);
@@ -18753,8 +18753,8 @@ void DrawSelectionSummary(SketcherWorkspaceState& State, SketcherSheet& Sheet)
     int Others = 0;
     if (!Bodies.empty())
     {
-        BodyKey = Selection.LastKind == SketcherSelectionKind::Face && !Selection.Faces.empty()   ? SketcherBodyOfName(State.Document, SketcherSelectionKind::Face, Selection.Faces.back())
-                : Selection.LastKind == SketcherSelectionKind::Edge && !Selection.Edges.empty()   ? SketcherBodyOfName(State.Document, SketcherSelectionKind::Edge, Selection.Edges.back())
+        BodyKey = Selection.LastKind == SketcherSelectionCategory::Face && !Selection.Faces.empty()   ? SketcherBodyOfName(State.Document, SketcherSelectionCategory::Face, Selection.Faces.back())
+                : Selection.LastKind == SketcherSelectionCategory::Edge && !Selection.Edges.empty()   ? SketcherBodyOfName(State.Document, SketcherSelectionCategory::Edge, Selection.Edges.back())
                                                                                                   : Bodies.front();
         if (BodyKey.empty()) BodyKey = Bodies.front();
         const SketcherBodyFigures* Figures = FiguresOf(State.Document, BodyKey);
@@ -18835,7 +18835,7 @@ void DrawSelectionSummary(SketcherWorkspaceState& State, SketcherSheet& Sheet)
 
 // 📝 HTML .ordered-selection (two or more bodies): numbered rows in pick order — the first is the Boolean target (ACTIVE,
 //    green), the rest are tools (SECTION, blue) — Reverse order, then Union / Subtract / Intersect and the operand note.
-void DrawOrderedSelection(SketcherWorkspaceState& State, SketcherSheet& Sheet)
+void DrawOrderedSelection(SketcherWorkspaceStatus& State, SketcherSheet& Sheet)
 {
     std::vector<std::string>& Picked = State.Document.Selection.Bodies;
     const float       Width = ImGui::GetContentRegionAvail().x - 2.0f * CardInset;
@@ -18878,11 +18878,11 @@ void DrawOrderedSelection(SketcherWorkspaceState& State, SketcherSheet& Sheet)
 }
 
 // 📝 HTML Bevel history (EDITABLE FEATURES): every fillet / chamfer step (click focuses it), then the Bevel / Chamfer · B button.
-void DrawBevelHistory(SketcherWorkspaceState& State, SketcherSheet& Sheet)
+void DrawBevelHistory(SketcherWorkspaceStatus& State, SketcherSheet& Sheet)
 {
     std::vector<const FeatureStep*> Blends;
     for (const FeatureStep& Step : State.Document.Tree.Steps)
-        if (Step.Kind == FeatureStepKind::Blend) Blends.push_back(&Step);
+        if (Step.Kind == FeatureStepCategory::Blend) Blends.push_back(&Step);
     const float       Width = ImGui::GetContentRegionAvail().x - 2.0f * CardInset;
     const std::string Empty = "No bevels yet. Pick solid edges (mode 2), then B.";
     const float       Row   = 11.0f * SketcherStyleTokens::FontScale + 14.0f;
@@ -18911,7 +18911,7 @@ void DrawBevelHistory(SketcherWorkspaceState& State, SketcherSheet& Sheet)
 }
 
 // 📝 HTML .inspector-tabs — #070707 pill (34 px, #ffffff08 hairline, padding 3, margin 13 2 16); tabs 10 px, active #292929.
-void DrawInspectorTabs(SketcherWorkspaceState& State, SketcherSheet& Sheet)
+void DrawInspectorTabs(SketcherWorkspaceStatus& State, SketcherSheet& Sheet)
 {
     const ImVec2      Origin = ImGui::GetCursorScreenPos();
     const float       Spacing = ImGui::GetStyle().ItemSpacing.y;
@@ -18944,7 +18944,7 @@ void DrawInspectorTabs(SketcherWorkspaceState& State, SketcherSheet& Sheet)
 }
 
 // World bounds of the picked bodies (else every shown body) and of the picked curves' poles.
-bool SelectionBounds(const SketcherWorkspaceState& State, std::array<double, 3>& Low, std::array<double, 3>& High)
+bool SelectionBounds(const SketcherWorkspaceStatus& State, std::array<double, 3>& Low, std::array<double, 3>& High)
 {
     Low  = { 1.0e300, 1.0e300, 1.0e300 };
     High = { -1.0e300, -1.0e300, -1.0e300 };
@@ -18978,7 +18978,7 @@ bool SelectionBounds(const SketcherWorkspaceState& State, std::array<double, 3>&
 
 // 📝 HTML Bounds (WORLD · m): three cells (gap 8, 33 px, #101010, radius 12, padding 0 9) — axis letter 10 px in its axis
 //    colour, the extent 11 px, the unit 8 px.
-void DrawBoundsCard(SketcherWorkspaceState& State, SketcherSheet& Sheet, const char* Title)
+void DrawBoundsCard(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const char* Title)
 {
     std::array<double, 3> Low, High;
     if (!SelectionBounds(State, Low, High)) return;
@@ -19003,7 +19003,7 @@ void DrawBoundsCard(SketcherWorkspaceState& State, SketcherSheet& Sheet, const c
 }
 
 // 📝 HTML Operations (NATIVE SOLVERS): the commands this selection takes, then "n faces · m edges selected".
-void DrawOperationsCard(SketcherWorkspaceState& State, SketcherSheet& Sheet)
+void DrawOperationsCard(SketcherWorkspaceStatus& State, SketcherSheet& Sheet)
 {
     const SketcherSelection&        Selection = State.Document.Selection;
     std::vector<InspectorOperation> Operations;
@@ -19074,7 +19074,7 @@ void DrawOperationsCard(SketcherWorkspaceState& State, SketcherSheet& Sheet)
 //    object (depends on what is selected)"): shown near the top whenever the selection touches an open sheet. Picked faces of a
 //    sheet turn over on their own; "Flip whole object" turns every touched sheet. Alt+N does the same as the left
 //    button when faces are picked, else the right one. A closed solid has one outside, so its normals stay outward.
-void DrawNormalsCard(SketcherWorkspaceState& State, SketcherSheet& Sheet)
+void DrawNormalsCard(SketcherWorkspaceStatus& State, SketcherSheet& Sheet)
 {
     const SketcherSelection&       Selection = State.Document.Selection;
     const std::vector<std::string> Keys      = TouchedBodies(State.Document);
@@ -19106,7 +19106,7 @@ void DrawNormalsCard(SketcherWorkspaceState& State, SketcherSheet& Sheet)
 }
 
 // 📝 Transform tab: G / R / S on the picked bodies (Plasticity transform gizmos with typed values in the viewport).
-void DrawTransformCard(SketcherWorkspaceState& State, SketcherSheet& Sheet)
+void DrawTransformCard(SketcherWorkspaceStatus& State, SketcherSheet& Sheet)
 {
     const SketcherSelection& Selection = State.Document.Selection;
     const float       Width  = ImGui::GetContentRegionAvail().x - 2.0f * CardInset;
@@ -19129,7 +19129,7 @@ void DrawTransformCard(SketcherWorkspaceState& State, SketcherSheet& Sheet)
 }
 
 // Topology tab: what is picked, face by face and edge by edge.
-void DrawPickedCard(SketcherWorkspaceState& State)
+void DrawPickedCard(SketcherWorkspaceStatus& State)
 {
     const SketcherSelection& Selection = State.Document.Selection;
     if (Selection.Faces.empty() && Selection.Edges.empty() && Selection.Curves.empty()) return;
@@ -19138,7 +19138,7 @@ void DrawPickedCard(SketcherWorkspaceState& State)
     for (const SketcherSceneFace& Face : State.Scene.Faces)
     {
         if (std::find(Selection.Faces.begin(), Selection.Faces.end(), Face.Name) == Selection.Faces.end() || ++Shown > 12) continue;
-        const bool Active = Selection.LastKind == SketcherSelectionKind::Face && Selection.Faces.back() == Face.Name;
+        const bool Active = Selection.LastKind == SketcherSelectionCategory::Face && Selection.Faces.back() == Face.Name;
         ImGui::TextColored(Tint(Active ? ActiveColour : SelectedColour), "Face");
         ImGui::SameLine();
         ImGui::TextWrapped("%s · %s · %.4f m²", Face.Name.c_str(), Face.Surface.c_str(), Face.Area);
@@ -19146,7 +19146,7 @@ void DrawPickedCard(SketcherWorkspaceState& State)
     for (const SketcherSceneEdge& Edge : State.Scene.Edges)
     {
         if (std::find(Selection.Edges.begin(), Selection.Edges.end(), Edge.Name) == Selection.Edges.end() || ++Shown > 12) continue;
-        const bool Active = Selection.LastKind == SketcherSelectionKind::Edge && Selection.Edges.back() == Edge.Name;
+        const bool Active = Selection.LastKind == SketcherSelectionCategory::Edge && Selection.Edges.back() == Edge.Name;
         ImGui::TextColored(Tint(Active ? ActiveColour : SelectedColour), "Edge");
         ImGui::SameLine();
         ImGui::TextWrapped("%s · %s · %.4f m", Edge.Name.c_str(), Edge.Curve.c_str(), Edge.Length);
@@ -19208,7 +19208,7 @@ void PopInspectorStyle()
 // 📝 HTML .panel.inspector: heading (Inspector 18 px, inspect button → Topology), the scrolling #inspector-body (padding
 //    0 10 10) and the footer. Sessions (Boolean, Joint, Bevel) take the top; otherwise the selection summary, the ordered
 //    selection, Bevel history, the tabs and the tab's cards.
-void DrawInspector(SketcherWorkspaceState& State, ImVec2 Position, ImVec2 Size, bool Hosted = false)
+void DrawInspector(SketcherWorkspaceStatus& State, ImVec2 Position, ImVec2 Size, bool Hosted = false)
 {
     if (!Hosted) BeginSheetWindow("Inspector", Position, Size);
     SketcherSheet Sheet;
@@ -19321,7 +19321,7 @@ void DrawInspector(SketcherWorkspaceState& State, ImVec2 Position, ImVec2 Size, 
 //------------------------------------------------------------------------------------------------------------------------
 
 // Plasticity Space (viewport:navigate:selection): frame the selected faces and edges, or the whole body.
-void FrameSelection(SketcherWorkspaceState& State)
+void FrameSelection(SketcherWorkspaceStatus& State)
 {
     const SketcherSelection& Selection = State.Document.Selection;
     if (State.Scene.Faces.empty() && State.Document.Regeneration.Curves.empty()) return;
@@ -19392,21 +19392,21 @@ void FrameSelection(SketcherWorkspaceState& State)
 }
 
 // Plasticity Shift+R (edit:repeat-last-command) on the current selection.
-void RepeatLastCommand(SketcherWorkspaceState& State)
+void RepeatLastCommand(SketcherWorkspaceStatus& State)
 {
     const SketcherRepeat& Last = State.LastCommand;
     switch (Last.Kind)
     {
-    case SketcherRepeatKind::None:      Announce(State, "Nothing to repeat yet"); return;
-    case SketcherRepeatKind::Blend:     Conclude(State, BlendSketcherSelection(State.Document, Last.Blend)); return;
-    case SketcherRepeatKind::Face:      Conclude(State, Last.Operation == FaceOperationKind::Inset ? InsetSketcherSelection(State.Document, Last.Amount, Last.Depth)
+    case SketcherRepeatCategory::None:      Announce(State, "Nothing to repeat yet"); return;
+    case SketcherRepeatCategory::Blend:     Conclude(State, BlendSketcherSelection(State.Document, Last.Blend)); return;
+    case SketcherRepeatCategory::Face:      Conclude(State, Last.Operation == FaceOperationCategory::Inset ? InsetSketcherSelection(State.Document, Last.Amount, Last.Depth)
                                                                                               : ChangeSketcherSelection(State.Document, Last.Operation, Last.Amount)); return;
-    case SketcherRepeatKind::Construct: Conclude(State, ConstructSketcherPrimitive(State.Document, Last.Construct)); return;
+    case SketcherRepeatCategory::Construct: Conclude(State, ConstructSketcherPrimitive(State.Document, Last.Construct)); return;
     }
 }
 
 // Plasticity Shift+C / V / X / Z (box, cylinder, sphere, …): the drawn solid command; Tab inside it opens the size form.
-void OpenConstruct(SketcherWorkspaceState& State, SketcherConstructKind Kind)
+void OpenConstruct(SketcherWorkspaceStatus& State, SketcherConstructCategory Kind)
 {
     OpenSolidSession(State, Kind);
 }
@@ -19419,7 +19419,7 @@ void OpenConstruct(SketcherWorkspaceState& State, SketcherConstructKind Kind)
 //------------------------------------------------------------------------------------------------------------------------
 
 // Image planes live outside the feature tree (as the Inspector's remove button): erased directly, not an undo entry.
-void DeleteImageFigure(SketcherWorkspaceState& State, const std::string& Name)
+void DeleteImageFigure(SketcherWorkspaceStatus& State, const std::string& Name)
 {
     std::vector<SketcherImagePlane>& Planes = State.Document.ImagePlanes;
     const auto Found = std::find_if(Planes.begin(), Planes.end(), [&](const SketcherImagePlane& Plane) { return Plane.Name == Name; });
@@ -19434,7 +19434,7 @@ void DeleteImageFigure(SketcherWorkspaceState& State, const std::string& Name)
 // X/Delete uses the explicitly selected component before its owning object.
 // An unsupported component edit refuses atomically; neither hover nor history focus
 // may turn it into a parent deletion. Whole-object deletion requires object/any mode.
-void DeletePicked(SketcherWorkspaceState& State)
+void DeletePicked(SketcherWorkspaceStatus& State)
 {
     SketcherDocument& Document = State.Document;
     const bool PointsMode=State.PickMode==SketcherPickMode::ControlPoint || State.PickMode==SketcherPickMode::Any;
@@ -19491,7 +19491,7 @@ void DeletePicked(SketcherWorkspaceState& State)
         return;
     }
     const auto Focused = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == State.FocusedStep; });
-    const bool CurveFocused = Focused != Document.Tree.Steps.end() && (Focused->Kind == FeatureStepKind::Sketch || Focused->Kind == FeatureStepKind::SpaceCurve);
+    const bool CurveFocused = Focused != Document.Tree.Steps.end() && (Focused->Kind == FeatureStepCategory::Sketch || Focused->Kind == FeatureStepCategory::SpaceCurve);
     if (Focused != Document.Tree.Steps.end() && !CurveFocused && State.InspectorTab==SketcherInspectorTab::History && Document.Selection.Bodies.empty() && Document.Selection.Faces.empty() && Document.Selection.Edges.empty() && Document.Selection.Vertices.empty() && Document.Selection.Curves.empty())
     {
         Conclude(State, DeleteSketcherStep(Document, State.FocusedStep));                     // History row
@@ -19508,7 +19508,7 @@ void DeletePicked(SketcherWorkspaceState& State)
         else if (!Document.Selection.Faces.empty())
         {
             Outcome = DeleteSketcherFaces(Document);
-            if (Outcome.AcceptedCondition) State.LastCommand = { SketcherRepeatKind::Face, BlendProfile::Fillet, 0.0, FaceOperationKind::Delete, 0.0, {} };
+            if (Outcome.AcceptedCondition) State.LastCommand = { SketcherRepeatCategory::Face, BlendProfile::Fillet, 0.0, FaceOperationCategory::Delete, 0.0, {} };
         }
         else if (!Document.Selection.Edges.empty()) Outcome = DeleteSketcherEdges(Document);
         else Outcome = DeleteSketcherVertices(Document);
@@ -19537,7 +19537,7 @@ void DeletePicked(SketcherWorkspaceState& State)
     if (Said.empty()) Announce(State, "Delete (X): pick something first — bodies (4), faces (3), edges (2), vertices or sketch points (1), sketches, dimensions, or hover an Outliner row");
 }
 
-void ApplyShortcuts(SketcherWorkspaceState& State)
+void ApplyShortcuts(SketcherWorkspaceStatus& State)
 {
     ImGuiIO& Io = ImGui::GetIO();
 #ifdef FRONTIER_DEVELOPMENT_TRACE
@@ -19607,7 +19607,7 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
             Announce(State, std::string(SketcherConstructLabel(Drawing.Solid)) + ": " + (Drawing.Combination == GeometrySpace::Parametric::FeatureCombination::Separate ? "new body" : FeatureCombinationLabel(Drawing.Combination)));
             if (KnifeSolidCondition(State)) ChooseKnifeCombination(State, Drawing.Combination);   // The knife's own Q / W / E / R
         }
-        else if ((Drawing.Kind == SketcherDrawingKind::Polygon || (Drawing.SolidCondition && Drawing.Solid == SketcherConstructKind::Prism)) && !Control && !Alternate &&
+        else if ((Drawing.Kind == SketcherDrawingCategory::Polygon || (Drawing.SolidCondition && Drawing.Solid == SketcherConstructCategory::Prism)) && !Control && !Alternate &&
                  (Pressed(ImGuiKey_Equal) || Pressed(ImGuiKey_KeypadAdd) || Pressed(ImGuiKey_Minus) || Pressed(ImGuiKey_KeypadSubtract)))
         {
             Drawing.Sides = std::clamp(Drawing.Sides + (Pressed(ImGuiKey_Minus) || Pressed(ImGuiKey_KeypadSubtract) ? -1 : 1), 3, 64);
@@ -19617,15 +19617,15 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
         else if (!Drawing.SurfaceCondition && !Control && !Alternate && !Io.KeyShift && (Pressed(ImGuiKey_X) || Pressed(ImGuiKey_Y) || Pressed(ImGuiKey_Z) || Pressed(ImGuiKey_T) || Pressed(ImGuiKey_N) || Pressed(ImGuiKey_B)))
         {
             // body[gizmo=point-picker]: x / y / z, set-tangent, set-normal, set-binormal
-            ChooseSnapLock(State, Pressed(ImGuiKey_X) ? SketcherSnapLockKind::X : Pressed(ImGuiKey_Y) ? SketcherSnapLockKind::Y : Pressed(ImGuiKey_Z) ? SketcherSnapLockKind::Z
-                                : Pressed(ImGuiKey_T) ? SketcherSnapLockKind::Tangent : Pressed(ImGuiKey_N) ? SketcherSnapLockKind::Normal : SketcherSnapLockKind::Binormal);
+            ChooseSnapLock(State, Pressed(ImGuiKey_X) ? SketcherSnapLockCategory::X : Pressed(ImGuiKey_Y) ? SketcherSnapLockCategory::Y : Pressed(ImGuiKey_Z) ? SketcherSnapLockCategory::Z
+                                : Pressed(ImGuiKey_T) ? SketcherSnapLockCategory::Tangent : Pressed(ImGuiKey_N) ? SketcherSnapLockCategory::Normal : SketcherSnapLockCategory::Binormal);
         }
-        else if (Drawing.Kind == SketcherDrawingKind::Rectangle && !Control && !Alternate && Pressed(ImGuiKey_S))
+        else if (Drawing.Kind == SketcherDrawingCategory::Rectangle && !Control && !Alternate && Pressed(ImGuiKey_S))
         {
             Drawing.SquareCondition = !Drawing.SquareCondition;                               // body[gizmo=point-picker]: set-square
             Announce(State, Drawing.SquareCondition ? "Rectangle: square (s releases)" : "Rectangle: free sides");
         }
-        else if (Drawing.Kind == SketcherDrawingKind::Curve && !Control && !Alternate)
+        else if (Drawing.Kind == SketcherDrawingCategory::Curve && !Control && !Alternate)
         {
             static const ImGuiKey Keys[] = { ImGuiKey_1, ImGuiKey_2, ImGuiKey_3, ImGuiKey_4 };
             static const SketchSplineForm Forms[] = { SketchSplineForm::Hermite, SketchSplineForm::Bezier, SketchSplineForm::Nurbs, SketchSplineForm::CubicSpline };
@@ -19639,14 +19639,14 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
                     Announce(State, std::string("Curve form: ") + SketchSplineFormLabel(Drawing.Form));
                 }
         }
-        else if (Drawing.Kind == SketcherDrawingKind::Rectangle && (ImGui::IsKeyReleased(ImGuiKey_LeftAlt) || ImGui::IsKeyReleased(ImGuiKey_RightAlt)) &&
+        else if (Drawing.Kind == SketcherDrawingCategory::Rectangle && (ImGui::IsKeyReleased(ImGuiKey_LeftAlt) || ImGui::IsKeyReleased(ImGuiKey_RightAlt)) &&
                  !std::exchange(State.Picker.AlongUsedCondition, false))
         {
             // 📝 A tap of Alt toggles centre mode on release; an Alt held to slide along a curve does not.
             Drawing.CentreCondition = !Drawing.CentreCondition;                               // keyboard:rectangle:mode
             Announce(State, Drawing.CentreCondition ? "Rectangle: centre mode (first click is the centre)" : "Rectangle: corner mode");
         }
-        else if (Drawing.Kind == SketcherDrawingKind::Circle && !Control && !Alternate && Pressed(ImGuiKey_V))
+        else if (Drawing.Kind == SketcherDrawingCategory::Circle && !Control && !Alternate && Pressed(ImGuiKey_V))
         {
             Drawing.CentreCondition = !Drawing.CentreCondition;                               // gizmo:circle:mode
             Announce(State, Drawing.CentreCondition ? "Circle: centre and rim" : "Circle: two diameter points");
@@ -19661,13 +19661,13 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
         else if (Pressed(ImGuiKey_Escape)) CloseJointSession(State, "Joint cancelled");
         else if (!Control && !Alternate)
         {
-            if (Pressed(ImGuiKey_R)) ChooseJointKind(State, JointKind::Rigid);
-            if (Pressed(ImGuiKey_V)) ChooseJointKind(State, JointKind::Revolute);
-            if (Pressed(ImGuiKey_S)) ChooseJointKind(State, JointKind::Slider);
-            if (Pressed(ImGuiKey_C)) ChooseJointKind(State, JointKind::Cylindrical);
-            if (Pressed(ImGuiKey_P)) ChooseJointKind(State, JointKind::PinSlot);
-            if (Pressed(ImGuiKey_L)) ChooseJointKind(State, JointKind::Planar);
-            if (Pressed(ImGuiKey_B)) ChooseJointKind(State, JointKind::Ball);
+            if (Pressed(ImGuiKey_R)) ChooseJointKind(State, JointCategory::Rigid);
+            if (Pressed(ImGuiKey_V)) ChooseJointKind(State, JointCategory::Revolute);
+            if (Pressed(ImGuiKey_S)) ChooseJointKind(State, JointCategory::Slider);
+            if (Pressed(ImGuiKey_C)) ChooseJointKind(State, JointCategory::Cylindrical);
+            if (Pressed(ImGuiKey_P)) ChooseJointKind(State, JointCategory::PinSlot);
+            if (Pressed(ImGuiKey_L)) ChooseJointKind(State, JointCategory::Planar);
+            if (Pressed(ImGuiKey_B)) ChooseJointKind(State, JointCategory::Ball);
             if (Pressed(ImGuiKey_F)) FlipJoint(State);
         }
         return;
@@ -19901,7 +19901,7 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
         Keypad.ZoomInPressed     = Pressed(ImGuiKey_KeypadAdd);
         Keypad.ZoomOutPressed    = Pressed(ImGuiKey_KeypadSubtract);
         Keypad.ControlCondition  = Control;
-        const OrbitCameraFrame KFrame = ViewportFrame(State);
+        const OrbitCameraBasis KFrame = ViewportFrame(State);
         bool CamChanged = false;
         if (const std::optional<OrbitViewPreset> View = NavigateSketcherKeypad(State.Camera, Keypad, &KFrame, &CamChanged))
         {
@@ -20040,12 +20040,12 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
         }
         if (Pressed(ImGuiKey_D)) { CloseDimensionSession(State, "Dimension tool closed"); return; }
         if (Pressed(ImGuiKey_R) && State.DimensionTool.Stage == 2 &&
-            (State.DimensionTool.PreviewKind == SketcherDimensionKind::Diameter || State.DimensionTool.PreviewKind == SketcherDimensionKind::Radius))
+            (State.DimensionTool.PreviewKind == SketcherDimensionCategory::Diameter || State.DimensionTool.PreviewKind == SketcherDimensionCategory::Radius))
         {
-            State.DimensionTool.PreviewKind = (State.DimensionTool.PreviewKind == SketcherDimensionKind::Diameter)
-                                            ? SketcherDimensionKind::Radius
-                                            : SketcherDimensionKind::Diameter;
-            Announce(State, State.DimensionTool.PreviewKind == SketcherDimensionKind::Diameter ? "Circle/arc mode: Diameter (Ø)" : "Circle/arc mode: Radius (R)");
+            State.DimensionTool.PreviewKind = (State.DimensionTool.PreviewKind == SketcherDimensionCategory::Diameter)
+                                            ? SketcherDimensionCategory::Radius
+                                            : SketcherDimensionCategory::Diameter;
+            Announce(State, State.DimensionTool.PreviewKind == SketcherDimensionCategory::Diameter ? "Circle/arc mode: Diameter (Ø)" : "Circle/arc mode: Radius (R)");
             return;
         }
         if (Pressed(ImGuiKey_X)) { State.DimensionTool.SlideAxis = State.DimensionTool.SlideAxis == 0 ? -1 : 0; Announce(State, State.DimensionTool.SlideAxis == 0 ? "Slide dimension along World X" : "Slide dimension: Free plane"); return; }
@@ -20114,7 +20114,7 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
             if (Pressed(ImGuiKey_R))
             {
                 if (const SketcherDimension* D = FindPlacedDimension(State.Document, SelDimId);
-                    D && (D->Kind == SketcherDimensionKind::Diameter || D->Kind == SketcherDimensionKind::Radius))
+                    D && (D->Kind == SketcherDimensionCategory::Diameter || D->Kind == SketcherDimensionCategory::Radius))
                 {
                     if (ToggleSketcherDimensionRadialKind(State.Document, SelDimId).AcceptedCondition) MarkDirty(State);
                     return;
@@ -20209,17 +20209,17 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
         if (Pressed(ImGuiKey_C) || Pressed(ImGuiKey_V))                                     // corner / centre box
         {
             const bool Centre = Pressed(ImGuiKey_V);
-            OpenConstruct(State, SketcherConstructKind::Block);
+            OpenConstruct(State, SketcherConstructCategory::Block);
             State.Drawing.CentreCondition = Centre;
         }
-        if (Pressed(ImGuiKey_X)) OpenConstruct(State, SketcherConstructKind::Cylinder);
-        if (Pressed(ImGuiKey_Z)) OpenConstruct(State, SketcherConstructKind::Sphere);
+        if (Pressed(ImGuiKey_X)) OpenConstruct(State, SketcherConstructCategory::Cylinder);
+        if (Pressed(ImGuiKey_Z)) OpenConstruct(State, SketcherConstructCategory::Sphere);
         if (Pressed(ImGuiKey_R)) RepeatLastCommand(State);
         if (Pressed(ImGuiKey_D)) OpenTransformSession(State, SketcherTransformVerb::Move, true);        // duplicate (then move)
-        if (Pressed(ImGuiKey_A)) OpenDrawingSession(State, SketcherDrawingKind::Line);                  // line
-        if (Pressed(ImGuiKey_S)) OpenDrawingSession(State, SketcherDrawingKind::Curve);                 // curve
-        if (Pressed(ImGuiKey_Q)) OpenDrawingSession(State, SketcherDrawingKind::Rectangle);             // corner-rectangle
-        if (Pressed(ImGuiKey_W)) OpenDrawingSession(State, SketcherDrawingKind::Circle);                // center-circle
+        if (Pressed(ImGuiKey_A)) OpenDrawingSession(State, SketcherDrawingCategory::Line);                  // line
+        if (Pressed(ImGuiKey_S)) OpenDrawingSession(State, SketcherDrawingCategory::Curve);                 // curve
+        if (Pressed(ImGuiKey_Q)) OpenDrawingSession(State, SketcherDrawingCategory::Rectangle);             // corner-rectangle
+        if (Pressed(ImGuiKey_W)) OpenDrawingSession(State, SketcherDrawingCategory::Circle);                // center-circle
         if (Pressed(ImGuiKey_H)) ChangeVisibility(State, SketcherVisibilityVerb::HideUnselected);       // hide-unselected
         if (Pressed(ImGuiKey_P)) OpenSweepSession(State, SketcherSweepVerb::Evolution);     // command:evolution
         if (Pressed(ImGuiKey_K)) OpenKnifeSession(State);                                   // knife (KitOps-style cutters; free in Plasticity's map)
@@ -20308,7 +20308,7 @@ void ApplyShortcuts(SketcherWorkspaceState& State)
     }
 }
 
-void DrawWelcome(SketcherWorkspaceState& State)
+void DrawWelcome(SketcherWorkspaceStatus& State)
 {
     if (State.WelcomeOpen && !ImGui::IsPopupOpen("Welcome back")) ImGui::OpenPopup("Welcome back");
     if (!ImGui::BeginPopupModal("Welcome back", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
@@ -20331,7 +20331,7 @@ void DrawWelcome(SketcherWorkspaceState& State)
     ImGui::EndPopup();
 }
 
-void AdvanceAutosave(SketcherWorkspaceState& State, double DeltaSeconds)
+void AdvanceAutosave(SketcherWorkspaceStatus& State, double DeltaSeconds)
 {
     if (State.AutosaveTimer < 0.0) return;
     if (ImGui::IsAnyMouseDown() || State.Bevel.ActiveCondition) return;
@@ -20452,7 +20452,7 @@ void ConfigureSketcherInterface(const SketcherOptions& Options)
 }
 
 // Optional project launcher settings. Defaults leave existing workspaces unchanged.
-void ConfigureSketcherStartupViews(SketcherWorkspaceState& State)
+void ConfigureSketcherStartupViews(SketcherWorkspaceStatus& State)
 {
     const SketcherOptions& Options = State.Options;
     if (!Options.Refusal.empty()) return;
@@ -20496,7 +20496,7 @@ void ConfigureSketcherStartupViews(SketcherWorkspaceState& State)
     else if (Options.InitialLayout == "Single") SetSketcherViewportLayout(State, SketcherViewportLayout::Single);
 }
 
-void InitialiseSketcherWorkspace(SketcherWorkspaceState& State, const SketcherOptions& Options)
+void InitialiseSketcherWorkspace(SketcherWorkspaceStatus& State, const SketcherOptions& Options)
 {
     State.Options                    = Options;
     State.Document                   = CreateSketcherDocument("Untitled");
@@ -20512,7 +20512,7 @@ void InitialiseSketcherWorkspace(SketcherWorkspaceState& State, const SketcherOp
 
 // 📝 F12 (development builds): the newest operation trace lines, the same text SketcherTrace.log receives. A filter keeps
 //    the lines containing its text; Copy puts the shown lines on the clipboard for a bug report.
-void DrawTracePanel(SketcherWorkspaceState& State)
+void DrawTracePanel(SketcherWorkspaceStatus& State)
 {
 #ifdef FRONTIER_DEVELOPMENT_TRACE
     if (!State.TraceShown) return;
@@ -20569,20 +20569,20 @@ void DrawTracePanel(SketcherWorkspaceState& State)
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-SketcherPhaseClock::SketcherPhaseClock(SketcherFrameProfile& Profile, const char* Name) : Profile(Profile), Name(Name), Start(SteadySeconds())
+SketcherPhaseClock::SketcherPhaseClock(SketcherRenderProfile& Profile, const char* Name) : Profile(Profile), Name(Name), Start(SteadySeconds())
 {
 }
 
 SketcherPhaseClock::~SketcherPhaseClock()
 {
     const double Milliseconds = (SteadySeconds() - Start) * 1.0e3;
-    for (SketcherFramePhase& Phase : Profile.Phases)
+    for (SketcherRenderPhase& Phase : Profile.Phases)
         if (Phase.Name == Name) { Phase.Milliseconds += Milliseconds; ++Phase.Calls; return; }
     Profile.Phases.push_back({ Name, Milliseconds, 1 });
 }
 
 // What owns the pointer this frame, for the slow-frame line ("bevel session", "gizmo drag", "idle", …).
-[[nodiscard]] std::string ActiveSessionLabel(const SketcherWorkspaceState& State)
+[[nodiscard]] std::string ActiveSessionLabel(const SketcherWorkspaceStatus& State)
 {
     if (State.Bevel.ActiveCondition) return State.Bevel.Preview ? "bevel session (preview staged)" : "bevel session";
     if (State.Transform.ActiveCondition) return std::string(TransformVerbLabel(State.Transform.Verb)) + " session";
@@ -20600,9 +20600,9 @@ SketcherPhaseClock::~SketcherPhaseClock()
     return "idle";
 }
 
-void ConcludeSketcherFrame(SketcherWorkspaceState& State)
+void ConcludeSketcherFrame(SketcherWorkspaceStatus& State)
 {
-    SketcherFrameProfile& Profile = State.Profile;
+    SketcherRenderProfile& Profile = State.Profile;
     const double Total = State.FrameMs + Profile.GpuWaitMs;
     Profile.WorstMs = std::max(Profile.WorstMs, Total);
     const double Now  = SteadySeconds();
@@ -20611,14 +20611,14 @@ void ConcludeSketcherFrame(SketcherWorkspaceState& State)
     else if (Slow)
     {
         // 📝 Phases nest ("viewport" holds "viewport · overlays"), so the list is a ranking, not a sum.
-        std::vector<SketcherFramePhase> Ranked = Profile.Phases;
-        std::sort(Ranked.begin(), Ranked.end(), [](const SketcherFramePhase& Left, const SketcherFramePhase& Right) { return Left.Milliseconds > Right.Milliseconds; });
+        std::vector<SketcherRenderPhase> Ranked = Profile.Phases;
+        std::sort(Ranked.begin(), Ranked.end(), [](const SketcherRenderPhase& Left, const SketcherRenderPhase& Right) { return Left.Milliseconds > Right.Milliseconds; });
         const SketcherScene& Scene = DisplayedSketcherScene(State);
         std::string Line = Compose("slow frame %llu · %.0f ms (CPU %.0f · interface %.0f · upload %.0f · GPU wait %.0f) · %s · %zu triangles · %zu steps",
                                    static_cast<unsigned long long>(State.FrameNumber), Total, State.FrameMs, Profile.InterfaceMs, Profile.UploadMs, Profile.GpuWaitMs,
                                    ActiveSessionLabel(State).c_str(), Scene.Corners.size() / 3, State.Document.Tree.Steps.size());
         int Listed = 0;
-        for (const SketcherFramePhase& Phase : Ranked)
+        for (const SketcherRenderPhase& Phase : Ranked)
         {
             if (Listed == 6 || Phase.Milliseconds < 1.0) break;
             Line += Phase.Calls > 1 ? Compose(" · %s %.0f ms ×%d", Phase.Name, Phase.Milliseconds, Phase.Calls) : Compose(" · %s %.0f ms", Phase.Name, Phase.Milliseconds);
@@ -20634,12 +20634,12 @@ void ConcludeSketcherFrame(SketcherWorkspaceState& State)
     Profile.InterfaceMs = 0.0;
 }
 
-AffineMap GizmoPreviewMap(const SketcherGizmoSession& Gizmo)
+AffineMapping GizmoPreviewMap(const SketcherGizmoSession& Gizmo)
 {
     return GizmoMap(Gizmo);
 }
 
-double RigidPreviewVolume(const SketcherDocument& Document, const std::vector<std::string>& Keys, const AffineMap& Map)
+double RigidPreviewVolume(const SketcherDocument& Document, const std::vector<std::string>& Keys, const AffineMapping& Map)
 {
     const double Determinant = Dot(Map.ColumnX, Cross(Map.ColumnY, Map.ColumnZ));
     double       Volume      = 0.0;
@@ -20648,7 +20648,7 @@ double RigidPreviewVolume(const SketcherDocument& Document, const std::vector<st
     return Volume;
 }
 
-void DrawCurveGuide(SketcherWorkspaceState& State)
+void DrawCurveGuide(SketcherWorkspaceStatus& State)
 {
     if (!State.CurveGuideVisible) return;
     ImGui::SetNextWindowSize(ImVec2(520, 440), ImGuiCond_FirstUseEver);
@@ -20687,12 +20687,12 @@ void DrawCurveGuide(SketcherWorkspaceState& State)
     ImGui::End();
 }
 
-void DrawSketcherInterface(SketcherWorkspaceState& State, ImTextureID ViewportTexture, double DeltaSeconds)
+void DrawSketcherInterface(SketcherWorkspaceStatus& State, ImTextureID ViewportTexture, double DeltaSeconds)
 {
     const double Entered = SteadySeconds();
     const auto SavedPalette = ControlKit::Palette();
     ControlKit::ConfigurePalette(PanelChrome::StudioPalette(SavedPalette, {.20f, .19f, .15f, 1}, {.85f, .70f, .51f, 1}));
-    SketcherFrameProfile& Profile = State.Profile;
+    SketcherRenderProfile& Profile = State.Profile;
     State.Widgets.Clear();
     State.ViewportHovered = false;
     State.Style.GridPlane = ViewGridPlane(State.Camera);                                     // Orbiting off a 90° view: the ground again
@@ -20757,7 +20757,7 @@ void DrawSketcherInterface(SketcherWorkspaceState& State, ImTextureID ViewportTe
     if (CamShortcutChanged || XformShortcutChanged)
     {
         // Keep gizmo geometry & widget hit-boxes synchronized with any shortcut-driven camera zoom/view/transform change on this same frame.
-        const OrbitCameraFrame LatestFrame = ViewportFrame(State);
+        const OrbitCameraBasis LatestFrame = ViewportFrame(State);
         if (State.Transform.ActiveCondition)
         {
             GizmoHandle ActiveH = GizmoHandle::None;
@@ -20804,10 +20804,10 @@ void DrawSketcherInterface(SketcherWorkspaceState& State, ImTextureID ViewportTe
     ControlKit::ConfigurePalette(SavedPalette);
 }
 
-void BeginSketcherHostedFrame(SketcherWorkspaceState& State)
+void BeginSketcherHostedFrame(SketcherWorkspaceStatus& State)
 {
     ControlKit::ConfigurePalette(PanelChrome::StudioPalette(ControlKit::Palette(), {.20f, .19f, .15f, 1}, {.85f, .70f, .51f, 1}));
-    SketcherFrameProfile& Profile = State.Profile;
+    SketcherRenderProfile& Profile = State.Profile;
     State.Widgets.Clear();
     State.ViewportHovered = false;
     State.Style.GridPlane = ViewGridPlane(State.Camera);
@@ -20817,28 +20817,28 @@ void BeginSketcherHostedFrame(SketcherWorkspaceState& State)
     { SketcherPhaseClock Clock(Profile, "section"); RefreshSection(State); }
 }
 
-void DrawSketcherOutlinerPanel(SketcherWorkspaceState& State)
+void DrawSketcherOutlinerPanel(SketcherWorkspaceStatus& State)
 {
     const ImVec2 Pos = ImGui::GetCursorScreenPos();
     const ImVec2 Avail = ImGui::GetContentRegionAvail();
     DrawOutliner(State, Pos, ImVec2(std::max(60.0f, Avail.x), std::max(60.0f, Avail.y)), true);
 }
 
-void DrawSketcherViewportPanel(SketcherWorkspaceState& State, ImTextureRef ViewportTexture)
+void DrawSketcherViewportPanel(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture)
 {
     const ImVec2 Pos = ImGui::GetCursorScreenPos();
     const ImVec2 Avail = ImGui::GetContentRegionAvail();
     DrawViewport(State, ViewportTexture, Pos, ImVec2(std::max(60.0f, Avail.x), std::max(60.0f, Avail.y)), true);
 }
 
-void DrawSketcherInspectorPanel(SketcherWorkspaceState& State)
+void DrawSketcherInspectorPanel(SketcherWorkspaceStatus& State)
 {
     const ImVec2 Pos = ImGui::GetCursorScreenPos();
     const ImVec2 Avail = ImGui::GetContentRegionAvail();
     DrawInspector(State, Pos, ImVec2(std::max(60.0f, Avail.x), std::max(60.0f, Avail.y)), true);
 }
 
-void DrawSketcherConstructPanel(SketcherWorkspaceState& State)
+void DrawSketcherConstructPanel(SketcherWorkspaceStatus& State)
 {
     ImGui::TextDisabled("Construct Solids");
     ImGui::Separator();
@@ -20858,13 +20858,13 @@ void DrawSketcherConstructPanel(SketcherWorkspaceState& State)
     ImGui::Spacing();
     ImGui::TextDisabled("Sketch Tools");
     ImGui::Separator();
-    const struct { const char* Label; SketcherDrawingKind Kind; } SketchTools[] = {
-        { "Line", SketcherDrawingKind::Line },
-        { "Rectangle", SketcherDrawingKind::Rectangle },
-        { "Circle", SketcherDrawingKind::Circle },
-        { "Arc", SketcherDrawingKind::Arc },
-        { "Spline", SketcherDrawingKind::Curve },
-        { "Polygon", SketcherDrawingKind::Polygon },
+    const struct { const char* Label; SketcherDrawingCategory Kind; } SketchTools[] = {
+        { "Line", SketcherDrawingCategory::Line },
+        { "Rectangle", SketcherDrawingCategory::Rectangle },
+        { "Circle", SketcherDrawingCategory::Circle },
+        { "Arc", SketcherDrawingCategory::Arc },
+        { "Spline", SketcherDrawingCategory::Curve },
+        { "Polygon", SketcherDrawingCategory::Polygon },
     };
     for (int I = 0; I < 6; ++I)
     {
@@ -20893,7 +20893,7 @@ void DrawSketcherConstructPanel(SketcherWorkspaceState& State)
     }
 }
 
-void DrawSketcherDrawingSheetPanel(SketcherWorkspaceState& State)
+void DrawSketcherDrawingSheetPanel(SketcherWorkspaceStatus& State)
 {
     const ImVec2 Pos = ImGui::GetCursorScreenPos();
     const ImVec2 Avail = ImGui::GetContentRegionAvail();
@@ -20908,9 +20908,9 @@ void DrawSketcherDrawingSheetPanel(SketcherWorkspaceState& State)
     State.DrawingSheet.ActiveCondition = PrevActive;
 }
 
-void EndSketcherHostedFrame(SketcherWorkspaceState& State, double DeltaSeconds, bool DrawFloatingOverlays, bool HostedOverlayMode)
+void EndSketcherHostedFrame(SketcherWorkspaceStatus& State, double DeltaSeconds, bool DrawFloatingOverlays, bool HostedOverlayMode)
 {
-    SketcherFrameProfile& Profile = State.Profile;
+    SketcherRenderProfile& Profile = State.Profile;
     const ImVec2 Frame = ImGui::GetIO().DisplaySize;
     { SketcherPhaseClock Clock(Profile, "shortcuts"); ApplyShortcuts(State); }
     if (DrawFloatingOverlays)
@@ -20932,7 +20932,7 @@ void EndSketcherHostedFrame(SketcherWorkspaceState& State, double DeltaSeconds, 
     State.FrameNumber += 1;
 }
 
-bool IntakeSketcherDroppedFile(SketcherWorkspaceState& State, const std::string& FilePath, std::string* OutDiagnostic)
+bool IntakeSketcherDroppedFile(SketcherWorkspaceStatus& State, const std::string& FilePath, std::string* OutDiagnostic)
 {
     namespace Files = std::filesystem;
     const Files::path Path(FilePath);
@@ -20963,7 +20963,7 @@ bool IntakeSketcherDroppedFile(SketcherWorkspaceState& State, const std::string&
     return true;
 }
 
-const SketcherScene& DisplayedSketcherScene(const SketcherWorkspaceState& State)
+const SketcherScene& DisplayedSketcherScene(const SketcherWorkspaceStatus& State)
 {
     if (State.Bevel.ActiveCondition && State.Bevel.Preview && State.Bevel.Refusal.empty()) return State.Bevel.PreviewScene;
     if (State.Bevel.ActiveCondition && State.Bevel.GoodCondition && State.Bevel.Verb == SketcherSessionVerb::Blend) return State.Bevel.GoodScene;   // Refused: the last size that worked
@@ -20978,7 +20978,7 @@ const SketcherScene& DisplayedSketcherScene(const SketcherWorkspaceState& State)
     return State.Scene;
 }
 
-void RefreshSketcherMatcaps(SketcherWorkspaceState& State)
+void RefreshSketcherMatcaps(SketcherWorkspaceStatus& State)
 {
     SketcherMatcapShelf& Shelf = State.Matcaps;
     if (!Shelf.Library.Names.empty() && Shelf.Library.Key == SketcherMatcapKey(State.Document.Appearance)) return;
@@ -20986,7 +20986,7 @@ void RefreshSketcherMatcaps(SketcherWorkspaceState& State)
     Shelf.Generation += 1;
 }
 
-SketcherSceneStates DisplayedSketcherStates(const SketcherWorkspaceState& State)
+SketcherSceneStates DisplayedSketcherStates(const SketcherWorkspaceStatus& State)
 {
     const SketcherScene& Scene = DisplayedSketcherScene(State);
     SketcherSceneStates States = &Scene == &State.Bevel.PreviewScene ? ComposeSketcherStates(Scene, State.Bevel.Preview->Selection, State.HoverIdentity)
@@ -21006,7 +21006,7 @@ SketcherSceneStates DisplayedSketcherStates(const SketcherWorkspaceState& State)
     return States;
 }
 
-void RefreshSketcherScene(SketcherWorkspaceState& State, bool DirtyCondition)
+void RefreshSketcherScene(SketcherWorkspaceStatus& State, bool DirtyCondition)
 {
     SketcherPhaseClock Clock(State.Profile, "scene rebuild");
     // An adopted preview brings its display arrays (same document revision, same density): no second tessellation.
@@ -21062,12 +21062,12 @@ bool ParseSketcherLength(const std::string& Text, double& Value)
     return false;
 }
 
-std::string SketcherConstraintSketch(const SketcherWorkspaceState& State)
+std::string SketcherConstraintSketch(const SketcherWorkspaceStatus& State)
 {
     return ConstraintSketchLabel(State);
 }
 
-std::string DescribeSketcherWorkspace(const SketcherWorkspaceState& State)
+std::string DescribeSketcherWorkspace(const SketcherWorkspaceStatus& State)
 {
     const SketcherDocument&    Document = State.Document;
     const SketcherBodySummary& Summary  = Document.Summary;
@@ -21112,7 +21112,7 @@ std::string DescribeSketcherWorkspace(const SketcherWorkspaceState& State)
     size_t Written = 0;
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        const CurveFitOutcome* Fit = Step.Kind == FeatureStepKind::SpaceCurve ? FindFittedCurve(Document, Step.Label) : nullptr;
+        const CurveFitOutcome* Fit = Step.Kind == FeatureStepCategory::SpaceCurve ? FindFittedCurve(Document, Step.Label) : nullptr;
         if (!Fit) continue;
         Stream << (Written++ ? ", " : "") << "{\"Caption\": ";
         AppendJsonText(Stream, CaptionOf(Document, Step.Label));
@@ -21152,7 +21152,7 @@ std::string DescribeSketcherWorkspace(const SketcherWorkspaceState& State)
     return Stream.str();
 }
 
-void EvaluateSketcherGizmo(SketcherWorkspaceState& State, const OrbitCameraFrame& Frame)
+void EvaluateSketcherGizmo(SketcherWorkspaceStatus& State, const OrbitCameraBasis& Frame)
 {
     SketcherGizmoSession& Gizmo = State.Gizmo;
     Gizmo.Geometry = {};
@@ -21170,7 +21170,7 @@ void EvaluateSketcherGizmo(SketcherWorkspaceState& State, const OrbitCameraFrame
     Gizmo.Geometry   = BuildGizmoGeometry(Gizmo.Pose, Frame, GizmoHandle::None, GizmoHandle::None);
 }
 
-SketcherCommandOutcome ApplySketcherGizmo(SketcherWorkspaceState& State, GizmoHandle Handle, Vector3 Shift, double Angle, double Factor)
+SketcherCommandOutcome ApplySketcherGizmo(SketcherWorkspaceStatus& State, GizmoHandle Handle, Vector3 Shift, double Angle, double Factor)
 {
     SketcherGizmoSession& Gizmo = State.Gizmo;
     Gizmo.Grab   = Handle;

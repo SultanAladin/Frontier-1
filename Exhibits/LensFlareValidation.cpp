@@ -239,9 +239,9 @@ void BlitScaledRegion(
     return Scene;
 }
 
-[[nodiscard]] GeometricRaster::PerspectiveCameraFrame BuildHorizonCamera(uint32_t WidthPx, uint32_t HeightPx)
+[[nodiscard]] GeometricRaster::PerspectiveCameraBasis BuildHorizonCamera(uint32_t WidthPx, uint32_t HeightPx)
 {
-    GeometricRaster::PerspectiveCameraFrame Cam {};
+    GeometricRaster::PerspectiveCameraBasis Cam {};
     Cam.CameraOrigin       = { 0.0f, -3.5f, 0.72f };
     Cam.TargetPoint        = { -0.4f, 8.0f, 2.35f };
     Cam.WorldUpAxis        = { 0.0f, 0.0f, 1.0f };
@@ -315,7 +315,7 @@ int main()
         Cfg.HaloIntensity  = 1.1f;
         Cfg.GhostIntensity = 0.7f;
 
-        ProjectedLensFlareFrame Proj {};
+        ProjectedLensFlareSlice Proj {};
         Proj.ScreenU       = 0.35f;
         Proj.ScreenV       = 0.32f;
         Proj.EffectiveGain = 1.0f;

@@ -13,7 +13,7 @@
 #include "Engine/ComponentClass/ComponentClassValidator.h"
 #include "Engine/ComponentClass/ControlVehicleClassBuilder.h"
 #include "Engine/Components/Controls/TextInputField.h"
-#include "Engine/Components/Panes/AssemblySequencePane.h"
+#include "Engine/Components/Panes/ExecutionSequencePane.h"
 #include "Engine/GeometricRaster/ComponentEditor/ComponentViewportRenderer.h"
 #include "Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.h"
 #include "Engine/SimulationSpace/PhysicsSpace/VehicleDynamicsSolver.h"
@@ -40,7 +40,7 @@ enum class LeftDockTab : uint8_t
 enum class CenterViewTab : uint8_t
 {
     Viewport         = 0u,
-    AssemblySequence = 1u,
+    ExecutionSequence = 1u,
 };
 
 enum class BottomDrawerTab : uint8_t
@@ -58,10 +58,10 @@ struct ComponentClassDocument
     ComponentClass::ComponentClassDefinition            ClassDefinition {};
     ComponentClass::ComponentInstanceToken              SelectedToken   {};
     std::vector<ComponentClass::ClassDiagnosticIssue>   Diagnostics     {};
-    bool                                                CanCompile      = true;
+    bool                                                CompilePermitted      = true;
     bool                                                Dirty           = false;
     bool                                                IconBaked       = false;
-    AssemblySequenceViewport                            SequenceView    {};
+    ExecutionSequenceViewport                            SequenceView    {};
     GeometricRaster::ComponentEditor::ComponentViewportCamera Camera    {};
 };
 
@@ -102,16 +102,16 @@ public:
     void AddComponentToActive(
         ComponentClass::ComponentCategory     Category,
         std::string_view                      Title,
-        ComponentClass::PhysicsConstraintKind ConstraintKind = ComponentClass::PhysicsConstraintKind::Fixed,
+        ComponentClass::PhysicsConstraintCategory ConstraintCategory = ComponentClass::PhysicsConstraintCategory::Fixed,
         std::string_view                      AssetId        = "");
 
     void DuplicateSelectedComponent();
     void RemoveSelectedComponent();
-    void FrameSelectedOrClass();
+    void FocusSelectedOrClass();
 
     void ToggleSimulation() noexcept;
     void TriggerConstraintKick(ComponentClass::ComponentInstanceToken Token) noexcept;
-    void ResetMotionState() noexcept;
+    void ResetMotionKinematics() noexcept;
     void Tick(double DeltaSeconds) noexcept;
 
     [[nodiscard]] uint64_t ComputeRenderSignature() const noexcept;
@@ -120,7 +120,7 @@ public:
     std::filesystem::path                                                RepoRoot {};
     std::vector<ComponentClassDocument>                                  Documents {};
     std::size_t                                                          ActiveDocIndex = 0u;
-    std::vector<ComponentClass::CompiledGeometryCatalogEntry>            Catalog {};
+    std::vector<ComponentClass::CompiledGeometryRepositoryEntry>            Repository {};
     std::unordered_map<std::string, BakedAssetThumbnail>                 AssetIcons {};
 
     LeftDockTab                                                          ActiveLeftTab     = LeftDockTab::Components;

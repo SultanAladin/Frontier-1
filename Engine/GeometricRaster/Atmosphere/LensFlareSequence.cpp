@@ -419,7 +419,7 @@ const std::vector<uint8_t>& LensFlareSequence::QueryBakedLensFlareAtlasRgba8()
     return Cached;
 }
 
-ProjectedLensFlareFrame LensFlareSequence::ResolveSolarFlareProjection(
+ProjectedLensFlareSlice LensFlareSequence::ResolveSolarFlareProjection(
     const Mathematics::Axis3D&                   CameraOrigin,
     const Mathematics::Axis3D&                   CameraForward,
     const Mathematics::Axis3D&                   CameraRight,
@@ -429,7 +429,7 @@ ProjectedLensFlareFrame LensFlareSequence::ResolveSolarFlareProjection(
     const WorldAtmosphereConfiguration&          Atmosphere,
     const SpatialAcceleration::WideBoundingTree* OptionalSceneTree) noexcept
 {
-    ProjectedLensFlareFrame Out {};
+    ProjectedLensFlareSlice Out {};
     if (!Atmosphere.Medium.AtmosphereEnabled || !Atmosphere.Solar.SolarEnabled || !Atmosphere.LensFlare.Enabled)
     {
         return Out;
@@ -507,7 +507,7 @@ ProjectedLensFlareFrame LensFlareSequence::ResolveSolarFlareProjection(
 
 Mathematics::LinearRGB LensFlareSequence::EvaluateBakedLensFlare(
     const LensFlareConfiguration&  Config,
-    const ProjectedLensFlareFrame& Projection,
+    const ProjectedLensFlareSlice& Projection,
     float                          ScreenU,
     float                          ScreenV,
     float                          AspectRatio) noexcept

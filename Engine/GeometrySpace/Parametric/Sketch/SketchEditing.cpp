@@ -67,11 +67,11 @@ namespace
         {
             const SketchCurve& Curve = Sketch.Curves[Index];
             if (Curve.Construction) continue;
-            if (Curve.Kind == SketchCurveKind::Spline) return "Offset: " + SketchCurveName(Curve) + " is a spline (🚧 splines have no exact offset; lines, arcs and circles offset exactly)";
+            if (Curve.Kind == SketchCurveCategory::Spline) return "Offset: " + SketchCurveName(Curve) + " is a spline (🚧 splines have no exact offset; lines, arcs and circles offset exactly)";
             std::string Refusal;
             const ProfileSegment Piece = ResolveSketchCurveSegment(Sketch, static_cast<int>(Index), Join, Refusal);
             if (!Refusal.empty()) return "Offset: " + Refusal;
-            if (Piece.Kind == ProfileSegmentKind::Circle) { Chains.push_back({ { Piece }, true }); continue; }
+            if (Piece.Kind == ProfileSegmentCategory::Circle) { Chains.push_back({ { Piece }, true }); continue; }
             Pieces.push_back(Piece);
         }
         // Ends: 2k = start of piece k, 2k + 1 = its end; clusters by a simple quadratic scan (sketches are small).
@@ -121,7 +121,7 @@ namespace
     [[nodiscard]] ProfileSegment OffsetPiece(const ProfileSegment& Piece, double Right, double Join, std::string& Refusal)
     {
         ProfileSegment Image = Piece;
-        if (Piece.Kind == ProfileSegmentKind::Line)
+        if (Piece.Kind == ProfileSegmentCategory::Line)
         {
             const Vector2 Normal = RightNormal(Piece.End - Piece.Start);
             Image.Start = Piece.Start + Normal * Right;
@@ -140,7 +140,7 @@ namespace
     [[nodiscard]] std::vector<Vector2> IntersectCarriers(const ProfileSegment& First, const ProfileSegment& Second)
     {
         std::vector<Vector2> Points;
-        const bool FirstLine = First.Kind == ProfileSegmentKind::Line, SecondLine = Second.Kind == ProfileSegmentKind::Line;
+        const bool FirstLine = First.Kind == ProfileSegmentCategory::Line, SecondLine = Second.Kind == ProfileSegmentCategory::Line;
         if (FirstLine && SecondLine)
         {
             const Vector2 A = First.End - First.Start, B = Second.End - Second.Start;
@@ -201,7 +201,7 @@ namespace
     // Writes one offset chain into Sketch: shared corner points, arcs counter-clockwise, circles with their own centre.
     void WriteChain(SketchModel& Sketch, const std::vector<ProfileSegment>& Images, bool ClosedCondition, int& Identifier)
     {
-        if (Images.size() == 1 && Images.front().Kind == ProfileSegmentKind::Circle)
+        if (Images.size() == 1 && Images.front().Kind == ProfileSegmentCategory::Circle)
         {
             const int Centre = AppendSketchPoint(Sketch, Images.front().Centre);
             AppendSketchCircle(Sketch, Centre, Images.front().Radius, Identifier++);
@@ -213,25 +213,25 @@ namespace
         for (size_t Index = 0; Index < Images.size(); ++Index)
         {
             const ProfileSegment& Image = Images[Index];
-            if (Image.Kind == ProfileSegmentKind::Line) { AppendSketchLine(Sketch, Corners[Index], Corners[Index + 1], Identifier++); continue; }
+            if (Image.Kind == ProfileSegmentCategory::Line) { AppendSketchLine(Sketch, Corners[Index], Corners[Index + 1], Identifier++); continue; }
             const int Centre = AppendSketchPoint(Sketch, Image.Centre);
             if (Image.Sweep > 0.0) AppendSketchArc(Sketch, Centre, Corners[Index], Corners[Index + 1], Identifier++);
             else AppendSketchArc(Sketch, Centre, Corners[Index + 1], Corners[Index], Identifier++);
         }
     }
 
-    // Constraint reference families (see SketchConstraintKind).
-    enum class ReferenceFamily : uint8_t { None, Point, Curve };
+    // Constraint reference families (see SketchConstraintCategory).
+    enum class ReferenceGroup : uint8_t { None, Point, Curve };
 
     struct ConstraintShape
     {
-        ReferenceFamily First = ReferenceFamily::None, Second = ReferenceFamily::None, Third = ReferenceFamily::None;
+        ReferenceGroup First = ReferenceGroup::None, Second = ReferenceGroup::None, Third = ReferenceGroup::None;
     };
 
-    [[nodiscard]] ConstraintShape ShapeOf(SketchConstraintKind Kind) noexcept
+    [[nodiscard]] ConstraintShape ShapeOf(SketchConstraintCategory Kind) noexcept
     {
-        using enum SketchConstraintKind;
-        constexpr ReferenceFamily P = ReferenceFamily::Point, C = ReferenceFamily::Curve, N = ReferenceFamily::None;
+        using enum SketchConstraintCategory;
+        constexpr ReferenceGroup P = ReferenceGroup::Point, C = ReferenceGroup::Curve, N = ReferenceGroup::None;
         switch (Kind)
         {
         case Coincident: case Distance: case HorizontalDistance: case VerticalDistance: return { P, P, N };
@@ -258,7 +258,7 @@ double MeasureSketchScale(const SketchModel& Sketch)
         High = { std::max(High.X, Point.Position.X), std::max(High.Y, Point.Position.Y) };
     }
     double Scale = std::max(Distance(Low, High), 1.0e-300);
-    for (const SketchCurve& Curve : Sketch.Curves) if (Curve.Kind == SketchCurveKind::Circle) Scale = std::max(Scale, 2.0 * Curve.Radius);
+    for (const SketchCurve& Curve : Sketch.Curves) if (Curve.Kind == SketchCurveCategory::Circle) Scale = std::max(Scale, 2.0 * Curve.Radius);
     return Scale;
 }
 
@@ -324,7 +324,7 @@ SketchOffsetOutcome OffsetSketchCurves(const SketchModel& Sketch, double Distanc
             for (size_t Index = 0; Index < Count; ++Index)
             {
                 ProfileSegment& Image = Images[Index];
-                if (Image.Kind == ProfileSegmentKind::Line)
+                if (Image.Kind == ProfileSegmentCategory::Line)
                 {
                     const Vector2 Direction = Chain.Pieces[Index].End - Chain.Pieces[Index].Start;
                     if (Dot(Ends[Index] - Starts[Index], Direction) <= Join * Length(Direction)) { Outcome.Refusal = "Offset: the offset turns " + Image.Name + " inside out (🚧 no loop clean-up)"; return Outcome; }
@@ -353,7 +353,7 @@ SketchModel PlaceSketchModel(const SketchModel& Sketch, const SketchPlacement& P
     SketchModel Placed = Sketch;
     for (SketchPoint& Point : Placed.Points) Point.Position = Placement.Origin + Placement.XAxis * Point.Position.X + Placement.YAxis * Point.Position.Y;
     if (Cross(Placement.XAxis, Placement.YAxis) < 0.0)
-        for (SketchCurve& Curve : Placed.Curves) if (Curve.Kind == SketchCurveKind::Arc) std::swap(Curve.Start, Curve.End);   // Arcs stay counter-clockwise
+        for (SketchCurve& Curve : Placed.Curves) if (Curve.Kind == SketchCurveCategory::Arc) std::swap(Curve.Start, Curve.End);   // Arcs stay counter-clockwise
     return Placed;
 }
 
@@ -379,7 +379,7 @@ SketchJoinOutcome JoinSketchModels(const SketchModel& Base, const SketchModel& J
         {
             if (Curve.Start >= 0) EndCondition[Shift + Curve.Start] = true;
             if (Curve.End >= 0) EndCondition[Shift + Curve.End] = true;
-            if (Curve.Kind == SketchCurveKind::Spline && !Curve.Points.empty()) { EndCondition[Shift + Curve.Points.front()] = true; EndCondition[Shift + Curve.Points.back()] = true; }
+            if (Curve.Kind == SketchCurveCategory::Spline && !Curve.Points.empty()) { EndCondition[Shift + Curve.Points.front()] = true; EndCondition[Shift + Curve.Points.back()] = true; }
         }
     };
     MarkEnds(Base, 0);
@@ -425,10 +425,10 @@ SketchJoinOutcome JoinSketchModels(const SketchModel& Base, const SketchModel& J
     for (SketchConstraint Constraint : Joined.Constraints)
     {
         const ConstraintShape Shape = ShapeOf(Constraint.Kind);
-        auto Renumber = [&](int& Reference, ReferenceFamily Family)
+        auto Renumber = [&](int& Reference, ReferenceGroup Family)
         {
-            if (Reference < 0 || Family == ReferenceFamily::None) return;
-            Reference = Family == ReferenceFamily::Point ? MapPoint(Reference) : Reference + CurveShift;
+            if (Reference < 0 || Family == ReferenceGroup::None) return;
+            Reference = Family == ReferenceGroup::Point ? MapPoint(Reference) : Reference + CurveShift;
         };
         Renumber(Constraint.First, Shape.First);
         Renumber(Constraint.Second, Shape.Second);
@@ -436,10 +436,10 @@ SketchJoinOutcome JoinSketchModels(const SketchModel& Base, const SketchModel& J
         bool Keep = true;
         switch (Constraint.Kind)
         {
-        case SketchConstraintKind::Coincident:
+        case SketchConstraintCategory::Coincident:
             if (Constraint.First == Constraint.Second) continue;                             // Welded already: a self pair has a zero row
             break;
-        case SketchConstraintKind::Fixed:
+        case SketchConstraintCategory::Fixed:
         {
             const Vector2 Position = Placement.Origin + X * Constraint.Value + Y * Constraint.SecondValue;
             Constraint.Value       = Position.X;
@@ -447,27 +447,27 @@ SketchJoinOutcome JoinSketchModels(const SketchModel& Base, const SketchModel& J
             Keep = Constraint.Parameter.empty() || Identity;
             break;
         }
-        case SketchConstraintKind::Horizontal:
-        case SketchConstraintKind::Vertical:
+        case SketchConstraintCategory::Horizontal:
+        case SketchConstraintCategory::Vertical:
         {
-            const Vector2 Axis = Constraint.Kind == SketchConstraintKind::Horizontal ? X : Y;  // Image of the line's direction
-            if (Aligned(Axis, { 1.0, 0.0 })) Constraint.Kind = SketchConstraintKind::Horizontal;
-            else if (Aligned(Axis, { 0.0, 1.0 })) Constraint.Kind = SketchConstraintKind::Vertical;
+            const Vector2 Axis = Constraint.Kind == SketchConstraintCategory::Horizontal ? X : Y;  // Image of the line's direction
+            if (Aligned(Axis, { 1.0, 0.0 })) Constraint.Kind = SketchConstraintCategory::Horizontal;
+            else if (Aligned(Axis, { 0.0, 1.0 })) Constraint.Kind = SketchConstraintCategory::Vertical;
             else Keep = false;
             break;
         }
-        case SketchConstraintKind::HorizontalDistance:
-        case SketchConstraintKind::VerticalDistance:
+        case SketchConstraintCategory::HorizontalDistance:
+        case SketchConstraintCategory::VerticalDistance:
         {
-            const Vector2 Axis = Constraint.Kind == SketchConstraintKind::HorizontalDistance ? X : Y;
+            const Vector2 Axis = Constraint.Kind == SketchConstraintCategory::HorizontalDistance ? X : Y;
             double Sign = 0.0;
-            if (Aligned(Axis, { 1.0, 0.0 })) { Constraint.Kind = SketchConstraintKind::HorizontalDistance; Sign = Axis.X > 0.0 ? 1.0 : -1.0; }
-            else if (Aligned(Axis, { 0.0, 1.0 })) { Constraint.Kind = SketchConstraintKind::VerticalDistance; Sign = Axis.Y > 0.0 ? 1.0 : -1.0; }
+            if (Aligned(Axis, { 1.0, 0.0 })) { Constraint.Kind = SketchConstraintCategory::HorizontalDistance; Sign = Axis.X > 0.0 ? 1.0 : -1.0; }
+            else if (Aligned(Axis, { 0.0, 1.0 })) { Constraint.Kind = SketchConstraintCategory::VerticalDistance; Sign = Axis.Y > 0.0 ? 1.0 : -1.0; }
             if (Sign == 0.0 || (Sign < 0.0 && !Constraint.Parameter.empty())) Keep = false;
             else Constraint.Value *= Sign;
             break;
         }
-        case SketchConstraintKind::Angle:
+        case SketchConstraintCategory::Angle:
             if (Mirrored)
             {
                 if (Constraint.Parameter.empty()) Constraint.Value = -Constraint.Value;     // A mirror turns counter-clockwise angles clockwise

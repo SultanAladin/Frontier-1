@@ -19,9 +19,9 @@ namespace
 
 using namespace ParticleAppearance;
 
-[[nodiscard]] const char* QueryPaletteName(SimulationSpace::FluidSpace::FluidColorPalette Pal) noexcept
+[[nodiscard]] const char* QueryPaletteName(SimulationSpace::FluidSpace::FluidColorScheme Pal) noexcept
 {
-    using P = SimulationSpace::FluidSpace::FluidColorPalette;
+    using P = SimulationSpace::FluidSpace::FluidColorScheme;
     switch (Pal)
     {
     case P::PlanckianBlackbody:     return "Physical Planckian Blackbody";
@@ -34,9 +34,9 @@ using namespace ParticleAppearance;
     return "Physical Planckian Blackbody";
 }
 
-void DrawNodeIcon(PixelSpace& Surface, Point2D C, FluidOutlinerNode Node, ColorRgba Ink) noexcept
+void DrawNodeIcon(PixelSpace& Surface, Point2D C, FluidOutlinerRow Node, ColorRgba Ink) noexcept
 {
-    if (Node == FluidOutlinerNode::EmitterSource || Node == FluidOutlinerNode::ParticleEmbers)
+    if (Node == FluidOutlinerRow::EmitterSource || Node == FluidOutlinerRow::ParticleEmbers)
     {
         const std::array<Point2D, 5> Flame = {{
             { C.X, C.Y - 7.5f },
@@ -47,7 +47,7 @@ void DrawNodeIcon(PixelSpace& Surface, Point2D C, FluidOutlinerNode Node, ColorR
         }};
         Surface.StrokePolyline(Flame, Ink, 1.4f, true);
     }
-    else if (Node == FluidOutlinerNode::GiLighting)
+    else if (Node == FluidOutlinerRow::GiLighting)
     {
         Surface.StrokeCircle(C, 4.2f, Ink, 1.3f);
         for (int K = 0; K < 4; ++K)
@@ -59,7 +59,7 @@ void DrawNodeIcon(PixelSpace& Surface, Point2D C, FluidOutlinerNode Node, ColorR
                 Ink, 1.1f);
         }
     }
-    else if (Node == FluidOutlinerNode::ForceFields)
+    else if (Node == FluidOutlinerRow::ForceFields)
     {
         RasterizeWindLinesGlyph(Surface, C, 6.5f, Ink);
     }
@@ -218,43 +218,43 @@ void FluidInspectorPanel::Render(
 
     switch (Session.SelectedNode)
     {
-    case FluidOutlinerNode::HeroVolume:
+    case FluidOutlinerRow::HeroVolume:
         EntityTitle = "Gas domain";
         EntityType  = "EULERIAN VOLUME";
         TogglePtr   = &Doc.Domain.AdaptiveCeilingEnabled;
         IconInk     = ColorRgba { 98u, 174u, 240u, 255u };
         break;
-    case FluidOutlinerNode::EmitterSource:
+    case FluidOutlinerRow::EmitterSource:
         EntityTitle = "Fire emitter";
         EntityType  = "CONTINUOUS SOURCE";
         TogglePtr   = &Doc.Emitter.Enabled;
         IconInk     = C.WarmAccent;
         break;
-    case FluidOutlinerNode::GiLighting:
+    case FluidOutlinerRow::GiLighting:
         EntityTitle = "Directional light";
         EntityType  = "GI & SHADOWS";
         TogglePtr   = &Doc.GiCoupling.EmitGiLights;
         IconInk     = ColorRgba { 240u, 198u, 96u, 255u };
         break;
-    case FluidOutlinerNode::SceneObstacle:
+    case FluidOutlinerRow::SceneObstacle:
         EntityTitle = "Scene collider";
         EntityType  = "ANALYTIC SDF";
         TogglePtr   = &Doc.Domain.WorldGridEnabled;
         IconInk     = ColorRgba { 170u, 178u, 192u, 255u };
         break;
-    case FluidOutlinerNode::ForceFields:
+    case FluidOutlinerRow::ForceFields:
         EntityTitle = "ForceFields wind";
         EntityType  = "VECTOR FIELD FORCE";
         TogglePtr   = &Doc.Combustion.CoupleForceFields;
         IconInk     = C.TealTint;
         break;
-    case FluidOutlinerNode::WorldDriftGrid:
+    case FluidOutlinerRow::WorldDriftGrid:
         EntityTitle = "World drift grid";
         EntityType  = "FAR-FIELD ADVECTION";
         TogglePtr   = &Doc.Domain.WorldGridEnabled;
         IconInk     = C.TealTint;
         break;
-    case FluidOutlinerNode::ParticleEmbers:
+    case FluidOutlinerRow::ParticleEmbers:
         EntityTitle = "Embers & GI";
         EntityType  = "FLUID-COUPLED PARTICLES";
         TogglePtr   = &Doc.Particles.ShowEmbers;
@@ -421,7 +421,7 @@ void FluidInspectorPanel::Render(
         if (PalHov && Pointer.Pressed)
         {
             const uint32_t Next = (static_cast<uint32_t>(Doc.Shading.ColorPalette) + 1u) % 6u;
-            Doc.Shading.ColorPalette = static_cast<SimulationSpace::FluidSpace::FluidColorPalette>(Next);
+            Doc.Shading.ColorPalette = static_cast<SimulationSpace::FluidSpace::FluidColorScheme>(Next);
             Edited = true;
         }
         CY += 34.0f;
@@ -445,7 +445,7 @@ void FluidInspectorPanel::Render(
         if (Pointer.Pressed && Strip.Contains({ Pointer.X, Pointer.Y }))
         {
             const uint32_t Next = (static_cast<uint32_t>(Doc.Shading.ColorPalette) + 1u) % 6u;
-            Doc.Shading.ColorPalette = static_cast<SimulationSpace::FluidSpace::FluidColorPalette>(Next);
+            Doc.Shading.ColorPalette = static_cast<SimulationSpace::FluidSpace::FluidColorScheme>(Next);
             Edited = true;
         }
         CY += 20.0f;

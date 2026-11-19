@@ -61,7 +61,7 @@ struct SketcherDrawingSheet
 [[nodiscard]] bool DefaultSketcherDrawingSheetCondition(const SketcherDrawingSheetSettings& Settings);
 
 // Kernel section frame of a Section-card plane: the card keeps its +normal side, the sheet keeps the −ZAxis side.
-[[nodiscard]] GeometrySpace::Parametric::OrthonormalFrame SketcherSheetSectionFrame(const GeometrySpace::Parametric::OrthonormalFrame& Plane);
+[[nodiscard]] GeometrySpace::Parametric::OrthonormalBasis SketcherSheetSectionFrame(const GeometrySpace::Parametric::OrthonormalBasis& Plane);
 
 // Where the sheet is exported: "Bracket.sketcher" → "Bracket.svg" / "Bracket.dxf" beside it; no document path →
 // "Untitled.svg" in the working folder. Extension includes the dot.

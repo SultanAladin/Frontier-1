@@ -93,7 +93,7 @@ struct SketcherInsertLibrary
 // [len]. RaisedCondition flips the insert about x̂ so it stands out of the surface (Union: a boss instead of a pocket).
 // Stretch scales the insert-frame z (SketcherInsertReach::Stretch).
 // Aspect scales the insert-frame y on top of Size (a base dragged corner to corner: x and y apart).
-[[nodiscard]] GeometrySpace::Parametric::AffineMap PlaceSketcherInsert(const GeometrySpace::Parametric::OrthonormalFrame& Spot, double Size, double Turn, bool RaisedCondition,
+[[nodiscard]] GeometrySpace::Parametric::AffineMapping PlaceSketcherInsert(const GeometrySpace::Parametric::OrthonormalBasis& Spot, double Size, double Turn, bool RaisedCondition,
                                                               double Stretch = 1.0, double Aspect = 1.0);
 
 // 💡 The insert at Depth (insert widths below its surface): a built-in is authored again with its bottom there (cached

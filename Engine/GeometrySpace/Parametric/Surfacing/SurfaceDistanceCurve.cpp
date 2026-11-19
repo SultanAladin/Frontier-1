@@ -55,7 +55,7 @@ double PointPath(Vector3 P,const std::vector<Vector3>& Path) {
     return Best;
 }
 }
-SurfaceDistanceCurveOutcome TraceSurfaceDistanceCurve(const PolygonComplex& M,const NurbsCurve& Guide,
+SurfaceDistanceCurveOutcome TraceSurfaceDistanceCurve(const PolygonNetworkStructure& M,const NurbsCurve& Guide,
     const NurbsCurve& Target,double Offset,double Tolerance) {
     SurfaceDistanceCurveOutcome Out;
     auto Fail=[&](const char* Why){Out.Refusal=Why;return Out;};

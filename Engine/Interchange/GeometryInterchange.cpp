@@ -1136,7 +1136,7 @@ bool GeometryInterchange::ImportPlyBytes(
     uint32_t FaceCount   = 0u;
     std::size_t VertStrideBytes = 0u;
     int XOff = -1, YOff = -1, ZOff = -1;
-    enum class ElementMode { None, Vertex, Face } Mode = ElementMode::None;
+    enum class PrimitiveCategory { None, Vertex, Face } Mode = PrimitiveCategory::None;
 
     std::size_t Cursor = 0u;
     while (Cursor < HeaderEnd)
@@ -1151,15 +1151,15 @@ bool GeometryInterchange::ImportPlyBytes(
         }
         else if (Line.starts_with("element vertex "))
         {
-            Mode = ElementMode::Vertex;
+            Mode = PrimitiveCategory::Vertex;
             (void)std::from_chars(Line.data() + 15, Line.data() + Line.size(), VertexCount);
         }
         else if (Line.starts_with("element face "))
         {
-            Mode = ElementMode::Face;
+            Mode = PrimitiveCategory::Face;
             (void)std::from_chars(Line.data() + 13, Line.data() + Line.size(), FaceCount);
         }
-        else if (Mode == ElementMode::Vertex && Line.starts_with("property "))
+        else if (Mode == PrimitiveCategory::Vertex && Line.starts_with("property "))
         {
             std::istringstream Iss{ std::string(Line.substr(9u)) };
             std::string TypeTok, NameTok;
@@ -1408,7 +1408,7 @@ std::string GeometryInterchange::ExportGltf2JsonText(const GeometrySpace::Polygo
 }
 
 bool GeometryInterchange::ImportParametricComplex(
-    const GeometrySpace::Parametric::PolygonComplex& Complex,
+    const GeometrySpace::Parametric::PolygonNetworkStructure& Complex,
     std::string_view                                 DefaultTitle,
     GeometrySpace::ConstructedSampleAsset&           OutAsset,
     std::string&                                     OutDiagnostic)

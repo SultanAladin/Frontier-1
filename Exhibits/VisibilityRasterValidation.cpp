@@ -199,7 +199,7 @@ int main()
     constexpr uint32_t ViewW = 652u;
     constexpr uint32_t ViewH = 312u;
 
-    GeometricRaster::PerspectiveCameraFrame PrevCamera {};
+    GeometricRaster::PerspectiveCameraBasis PrevCamera {};
     PrevCamera.CameraOrigin       = { 0.42f, -4.35f, 1.18f };
     PrevCamera.TargetPoint        = { 0.00f,  0.25f, 0.02f };
     PrevCamera.VerticalFovRadians = 0.72f;
@@ -228,7 +228,7 @@ int main()
                  "Conservative Reversed-Z DepthPyramid culls hidden Crimson Velvet clusters behind Jade Monolith");
 
     // Step B: Camera orbits left & Crimson Velvet sphere emerges from behind Jade Monolith in CurrentCamera!
-    GeometricRaster::PerspectiveCameraFrame CurCamera = PrevCamera;
+    GeometricRaster::PerspectiveCameraBasis CurCamera = PrevCamera;
     CurCamera.CameraOrigin = { -0.28f, -4.38f, 1.22f };
 
     auto CurCull = GeometricRaster::ClusterCullEncoder::EncodePhaseOneVisibility(

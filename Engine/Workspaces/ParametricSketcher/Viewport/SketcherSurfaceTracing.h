@@ -5,8 +5,8 @@
 namespace Frontier::Workspaces::Sketcher
 {
 // Surface hits are exact carrier evaluations, seeded by the visible tessellation.
-[[nodiscard]] SketcherSnap SnapSketcherTrace(SketcherSnapCatalogue& Catalogue, const SketcherDocument& Document,
-    const SketcherScene& Scene, const OrbitCameraFrame& Frame, double X, double Y, bool CurveSnap, bool AutoCurves = false);
+[[nodiscard]] SketcherSnap SnapSketcherTrace(SketcherSnapRepository& Catalogue, const SketcherDocument& Document,
+    const SketcherScene& Scene, const OrbitCameraBasis& Frame, double X, double Y, bool CurveSnap, bool AutoCurves = false);
 
 // Point-only authoring: exactly the supplied controls, never a surface fit.
 struct SketcherControlTrace
@@ -17,7 +17,7 @@ struct SketcherControlTrace
     std::string Refusal;
 };
 [[nodiscard]] SketcherControlTrace MakeSketcherControlTrace(const std::vector<GeometrySpace::Parametric::Vector3>& Controls,
-    SketcherDrawingKind Kind, GeometrySpace::Parametric::SketchSplineForm Form, bool Closed);
+    SketcherDrawingCategory Kind, GeometrySpace::Parametric::SketchSplineForm Form, bool Closed);
 
 struct SketcherSurfaceTrace
 {
@@ -29,8 +29,8 @@ struct SketcherSurfaceTrace
 // Project the ENTIRE seed curve, not just its control points. Misses / gaps refuse.
 // Arc is a three-point circular seed; a curved-surface projection becomes a NURBS.
 // The fit is checked at 257 samples against the visible source, to Tolerance metres.
-[[nodiscard]] SketcherSurfaceTrace ProjectSketcherTrace(SketcherSnapCatalogue& Catalogue, const SketcherDocument& Document,
-    const SketcherScene& Scene, const OrbitCameraFrame& Frame, const std::vector<GeometrySpace::Parametric::Vector3>& Controls,
-    SketcherDrawingKind Kind, GeometrySpace::Parametric::SketchSplineForm Form, bool Closed, bool Fit,
+[[nodiscard]] SketcherSurfaceTrace ProjectSketcherTrace(SketcherSnapRepository& Catalogue, const SketcherDocument& Document,
+    const SketcherScene& Scene, const OrbitCameraBasis& Frame, const std::vector<GeometrySpace::Parametric::Vector3>& Controls,
+    SketcherDrawingCategory Kind, GeometrySpace::Parametric::SketchSplineForm Form, bool Closed, bool Fit,
     double Tolerance = 0.0002);
 }

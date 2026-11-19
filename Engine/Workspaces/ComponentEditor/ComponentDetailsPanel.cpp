@@ -133,7 +133,7 @@ void ComponentDetailsPanel::Render(
     float CY = ScrollArea.Y - ScrollOffsetPx;
     const std::string_view Filter = Session.DetailsSearch.Text;
 
-    auto DrawSectionHeader = [&](const char* Title)
+    auto ConstructSectionHeader = [&](const char* Title)
     {
         CY += 6.0f;
         WorkspaceAppearance::ConstructWeightedText(
@@ -153,7 +153,7 @@ void ComponentDetailsPanel::Render(
     // A. CLASS DEFAULTS & COMPILER RESULTS (shown when SpatialOrigin is selected)
     if (SelHdr->Category == ComponentClass::ComponentCategory::SpatialOrigin && MatchesDetailsFilter("CLASS DEFAULTS", Filter))
     {
-        DrawSectionHeader("CLASS DEFAULTS");
+        ConstructSectionHeader("CLASS DEFAULTS");
         const auto Metrics = Doc->ClassDefinition.Storage.ComputeSummaryMetrics();
 
         // 128x128 baked class thumbnail + 2x2 metrics grid
@@ -184,7 +184,7 @@ void ComponentDetailsPanel::Render(
         const float GridX = ThumbRect.Right() + 8.0f;
         const float CellW = (Bounds.Right() - PadX - GridX - 6.0f) * 0.5f;
         const float CellH = 41.0f;
-        auto DrawMiniMetric = [&](float X, float Ym, uint32_t Val, const char* Cap)
+        auto ConstructMiniMetric = [&](float X, float Ym, uint32_t Val, const char* Cap)
         {
             const Rectangle2D MR { X, Ym, CellW, CellH };
             Surface.FillRectangle(MR, ColorRgba { 23u, 23u, 26u, 255u }, 8.0f);
@@ -195,18 +195,18 @@ void ComponentDetailsPanel::Render(
             WorkspaceAppearance::ConstructWeightedText(
                 Surface, FontWeightClass::Regular, { MR.X + 8.0f, MR.Y + 23.0f }, 7.8f, WorkspaceSurfaceColors::FaintInk, Cap);
         };
-        DrawMiniMetric(GridX, CY, Metrics.GeometryCount, "GEOMETRIES");
-        DrawMiniMetric(GridX + CellW + 6.0f, CY, Metrics.LightCount, "LIGHTS");
-        DrawMiniMetric(GridX, CY + CellH + 6.0f, Metrics.CollisionCount, "COLLIDERS");
-        DrawMiniMetric(GridX + CellW + 6.0f, CY + CellH + 6.0f, Metrics.BehaviourCount, "BEHAVIOURS");
+        ConstructMiniMetric(GridX, CY, Metrics.GeometryCount, "GEOMETRIES");
+        ConstructMiniMetric(GridX + CellW + 6.0f, CY, Metrics.LightCount, "LIGHTS");
+        ConstructMiniMetric(GridX, CY + CellH + 6.0f, Metrics.CollisionCount, "COLLIDERS");
+        ConstructMiniMetric(GridX + CellW + 6.0f, CY + CellH + 6.0f, Metrics.BehaviourCount, "BEHAVIOURS");
         CY += 98.0f;
 
         // Compiler Results
-        DrawSectionHeader("COMPILER RESULTS");
+        ConstructSectionHeader("COMPILER RESULTS");
         const Rectangle2D DiagnosticWell { Bounds.X + PadX, CY, InnerW, 38.0f };
         Surface.FillRectangle(DiagnosticWell, ColorRgba { 22u, 25u, 23u, 255u }, 8.0f);
         Surface.FillRectangle({ DiagnosticWell.X, DiagnosticWell.Y + 6.0f, 3.0f, DiagnosticWell.Height - 12.0f },
-            Doc->CanCompile ? ColorRgba { 88u, 214u, 128u, 255u } : ColorRgba { 240u, 82u, 72u, 255u }, 1.5f);
+            Doc->CompilePermitted ? ColorRgba { 88u, 214u, 128u, 255u } : ColorRgba { 240u, 82u, 72u, 255u }, 1.5f);
         WorkspaceAppearance::ConstructWeightedText(
             Surface, FontWeightClass::Regular, { DiagnosticWell.X + 12.0f, DiagnosticWell.Y + 12.0f }, 10.0f,
             WorkspaceSurfaceColors::SecondaryInk,
@@ -221,7 +221,7 @@ void ComponentDetailsPanel::Render(
         SelHdr->Category != ComponentClass::ComponentCategory::RotationalMotion &&
         MatchesDetailsFilter("TRANSFORM", Filter))
     {
-        DrawSectionHeader("TRANSFORM");
+        ConstructSectionHeader("TRANSFORM");
         if (auto* MutH = Doc->ClassDefinition.Storage.ResolveHeader(Doc->SelectedToken))
         {
             if (Vector3CapsuleInput::Construct(
@@ -265,12 +265,12 @@ void ComponentDetailsPanel::Render(
     // C. CONSTRAINT section
     if (SelHdr->Category == ComponentClass::ComponentCategory::ConstraintInstance && MatchesDetailsFilter("CONSTRAINT", Filter))
     {
-        DrawSectionHeader("CONSTRAINT");
+        ConstructSectionHeader("CONSTRAINT");
         if (auto* Con = Doc->ClassDefinition.Storage.ResolveConstraint(Doc->SelectedToken))
         {
             if (ConstraintTilePicker::Construct(
                     Surface, { Bounds.X + PadX, CY, InnerW, ConstraintTilePicker::RecommendedHeightPx },
-                    Con->Kind, Ptr, 1.0f))
+                    Con->Form, Ptr, 1.0f))
             {
                 Session.MarkActiveDirty();
             }
@@ -278,7 +278,7 @@ void ComponentDetailsPanel::Render(
 
             WorkspaceAppearance::ConstructWeightedText(
                 Surface, FontWeightClass::Regular, { Bounds.X + PadX, CY }, 9.6f, WorkspaceSurfaceColors::MutedInk,
-                ConstraintTilePicker::QueryKindSummary(Con->Kind));
+                ConstraintTilePicker::QueryCategorySummary(Con->Form));
             CY += 24.0f;
 
             // Axis X | Y | Z
@@ -318,7 +318,7 @@ void ComponentDetailsPanel::Render(
                 CY += 48.0f;
             };
 
-            if (Con->Kind == ComponentClass::PhysicsConstraintKind::Spring)
+            if (Con->Form == ComponentClass::PhysicsConstraintCategory::Spring)
             {
                 EmitSlider(1u, "Natural frequency", "Hz", Con->NaturalFrequencyHz, 0.5f, 8.0f, "%.2f");
                 EmitSlider(2u, "Damping ratio", "zeta", Con->DampingRatioZeta, 0.05f, 1.5f, "%.2f");
@@ -333,11 +333,11 @@ void ComponentDetailsPanel::Render(
                 }
                 if (CapsuleButton::Construct(Surface, RstBtn, ButtonDescriptor{ "Reset motion", ButtonTone::Secondary, 10.5f, 8.0f }, Ptr).Clicked)
                 {
-                    Session.ResetMotionState();
+                    Session.ResetMotionKinematics();
                 }
                 CY += 36.0f;
             }
-            else if (Con->Kind == ComponentClass::PhysicsConstraintKind::Dock)
+            else if (Con->Form == ComponentClass::PhysicsConstraintCategory::Dock)
             {
                 EmitSlider(4u, "Break force", "N", Con->BreakForceNewtons, 100.0f, 8000.0f, "%.0f");
                 const Rectangle2D DockBtn { Bounds.X + PadX, CY, InnerW, 28.0f };
@@ -347,12 +347,12 @@ void ComponentDetailsPanel::Render(
                         Ptr).Clicked)
                 {
                     Con->DockConnected = !Con->DockConnected;
-                    Session.RenderOptions.DockIntactFlags[Doc->SelectedToken.SlotIndex] = Con->DockConnected;
+                    Session.RenderOptions.DockIntactMask[Doc->SelectedToken.SlotIndex] = Con->DockConnected;
                     Session.MarkActiveDirty();
                 }
                 CY += 36.0f;
             }
-            else if (Con->Kind == ComponentClass::PhysicsConstraintKind::Hinge)
+            else if (Con->Form == ComponentClass::PhysicsConstraintCategory::Hinge)
             {
                 EmitSlider(5u, "Edit pose", "norm", Con->NormalizedEditPose, 0.0f, 1.0f, "%.2f");
             }
@@ -362,7 +362,7 @@ void ComponentDetailsPanel::Render(
     // D. LIGHT section
     if (SelHdr->Category == ComponentClass::ComponentCategory::LightInstance && MatchesDetailsFilter("LIGHT", Filter))
     {
-        DrawSectionHeader("LIGHT");
+        ConstructSectionHeader("LIGHT");
         if (auto* L = Doc->ClassDefinition.Storage.ResolveLight(Doc->SelectedToken))
         {
             WorkspaceAppearance::ConstructWeightedText(
@@ -392,7 +392,7 @@ void ComponentDetailsPanel::Render(
     // E. VEHICLE DYNAMICS section
     if (SelHdr->Category == ComponentClass::ComponentCategory::VehicleDynamics && MatchesDetailsFilter("VEHICLE", Filter))
     {
-        DrawSectionHeader("VEHICLE DYNAMICS");
+        ConstructSectionHeader("VEHICLE DYNAMICS");
         if (auto* V = Doc->ClassDefinition.Storage.ResolveVehicle(Doc->SelectedToken))
         {
             WorkspaceAppearance::ConstructWeightedText(
@@ -421,7 +421,7 @@ void ComponentDetailsPanel::Render(
         SelHdr->Category != ComponentClass::ComponentCategory::RotationalMotion &&
         MatchesDetailsFilter("RENDERING", Filter))
     {
-        DrawSectionHeader("RENDERING");
+        ConstructSectionHeader("RENDERING");
         if (auto* MutH = Doc->ClassDefinition.Storage.ResolveHeader(Doc->SelectedToken))
         {
             if (WorkspaceAppearance::ConstructCapsuleToggleRow(

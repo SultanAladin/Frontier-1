@@ -55,7 +55,7 @@ public:
     // Evaluates specular & Abbe glass refraction strictly through SpecularReflectionSource (Zero SDF Reflections!)
     [[nodiscard]] static SpecularReflectionBuffer EvaluateSpecularRefractionWithSource(
         SpecularReflectionSource                        Source,
-        const PerspectiveCameraFrame&                   Camera,
+        const PerspectiveCameraBasis&                   Camera,
         std::span<const RigidClusterInstance>           Instances,
         const VisibilityBufferTargets&                  VisibilityTargets,
         std::span<const AnalyticResolvedSurfaceSample>  PrimarySamples,
@@ -63,12 +63,12 @@ public:
         std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
         const SpatialAcceleration::WideBoundingTree&    SceneTree,
         const IrradianceLatticeSequence&                GiLattice,
-        const SolarDirectionalEmitter&                  Sun,
+        const SolarDirectionalSource&                  Sun,
         Mathematics::LinearRGB                          SkyRadiance = { 0.16f, 0.22f, 0.34f });
 
     // Evaluates Tier 2 RTX VNDF-jittered BVH4 reflections + solid Abbe glass refraction
     [[nodiscard]] static SpecularReflectionBuffer EvaluateRtxSpecularRefraction(
-        const PerspectiveCameraFrame&                   Camera,
+        const PerspectiveCameraBasis&                   Camera,
         std::span<const RigidClusterInstance>           Instances,
         const VisibilityBufferTargets&                  VisibilityTargets,
         std::span<const AnalyticResolvedSurfaceSample>  PrimarySamples,
@@ -76,12 +76,12 @@ public:
         std::span<const MaterialSpace::BounceSlabEntry> BounceSummaries,
         const SpatialAcceleration::WideBoundingTree&    SceneTree,
         const IrradianceLatticeSequence&                GiLattice,
-        const SolarDirectionalEmitter&                  Sun,
+        const SolarDirectionalSource&                  Sun,
         Mathematics::LinearRGB                          SkyRadiance = { 0.16f, 0.22f, 0.34f });
 
     // Evaluates Tier 1 GTX DepthPyramid Hi-Z screen-space reflection march + direct lit buffer fallback + 2-layer glass peel
     [[nodiscard]] static SpecularReflectionBuffer EvaluateGtxHiZSpecularRefraction(
-        const PerspectiveCameraFrame&                   Camera,
+        const PerspectiveCameraBasis&                   Camera,
         std::span<const RigidClusterInstance>           Instances,
         const VisibilityBufferTargets&                  VisibilityTargets,
         const DepthPyramidSequence&                     DepthPyramid,

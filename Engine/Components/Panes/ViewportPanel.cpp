@@ -307,9 +307,9 @@ void ViewportPanel::ConfigureSimulationTimeSeconds(double TimeSeconds) noexcept
     SimulationTimeSeconds = std::max(0.0, TimeSeconds);
 }
 
-void ViewportPanel::ConfigureFrameTimingBreakdown(const FrameTimingBreakdown& Breakdown) noexcept
+void ViewportPanel::ConfigureViewportTimingBreakdown(const ViewportTimingBreakdown& Breakdown) noexcept
 {
-    LastTimingBreakdown = Breakdown;
+    LastViewportTiming = Breakdown;
 }
 
 void ViewportPanel::ConfigureProbeReadoutText(std::string_view ReadoutText)
@@ -741,8 +741,8 @@ void ViewportPanel::RenderDiagnosticsPanel(
     char FpsUnitBuf[32]{};
     std::snprintf(FpsUnitBuf, sizeof(FpsUnitBuf), "ms  (%.1f fps)", RealFps);
 
-    const float ProfMs = (LastTimingBreakdown.TotalFrameMs > 0.0f)
-        ? LastTimingBreakdown.TotalFrameMs
+    const float ProfMs = (LastViewportTiming.TotalFrameMs > 0.0f)
+        ? LastViewportTiming.TotalFrameMs
         : CurMs;
     char ProfWhole[16]{};
     char ProfFrac[16]{};
@@ -756,17 +756,17 @@ void ViewportPanel::RenderDiagnosticsPanel(
         ProfSub,
         sizeof(ProfSub),
         "%ux%u  |  %s / %s",
-        LastTimingBreakdown.RenderWidthPx,
-        LastTimingBreakdown.RenderHeightPx,
-        QueryEngineShortLabel(LastTimingBreakdown.EngineMode),
-        QueryShadowShortLabel(LastTimingBreakdown.ShadowAlgorithm));
+        LastViewportTiming.RenderWidthPx,
+        LastViewportTiming.RenderHeightPx,
+        QueryEngineShortLabel(LastViewportTiming.EngineMode),
+        QueryShadowShortLabel(LastViewportTiming.ShadowAlgorithm));
 
     char ProfDebug[80]{};
     std::snprintf(
         ProfDebug,
         sizeof(ProfDebug),
         "Log: FrontierTiming.log  |  Scene sync: %.2f ms",
-        LastTimingBreakdown.SceneSyncGpuMs);
+        LastViewportTiming.SceneSyncGpuMs);
 
     const std::array<DiagnosticsMetricChannel, 4> Channels = {{
         DiagnosticsMetricChannel{
@@ -837,14 +837,14 @@ void ViewportPanel::RenderDiagnosticsPanel(
             false,
             ColorRgba{ 142, 198, 152, 240 },
             {
-                { "GPU World",      FormatMs(LastTimingBreakdown.GpuPrimaryTraceMs) },
-                { "GPU Denoise",    FormatMs(LastTimingBreakdown.GpuDenoiseMs) },
-                { "GPU Clouds+Sky", FormatMs(LastTimingBreakdown.GpuCloudsMs + LastTimingBreakdown.GpuSkyLutMs) },
-                { "GPU Readback",   FormatMs(LastTimingBreakdown.GpuReadbackCopyMs) },
-                { "GPU Frame Total",FormatMs(LastTimingBreakdown.GpuTotalPassMs) },
-                { "Force Overlay",  FormatMs(LastTimingBreakdown.ForceOverlayMs) },
-                { "UI + Gizmo",     FormatMs(LastTimingBreakdown.DesktopPollAndUiMs + LastTimingBreakdown.GizmoOverlayMs) },
-                { "Present / Swap", FormatMs(LastTimingBreakdown.SwapchainPresentMs) },
+                { "GPU World",      FormatMs(LastViewportTiming.GpuPrimaryTraceMs) },
+                { "GPU Denoise",    FormatMs(LastViewportTiming.GpuDenoiseMs) },
+                { "GPU Clouds+Sky", FormatMs(LastViewportTiming.GpuCloudsMs + LastViewportTiming.GpuSkyLutMs) },
+                { "GPU Readback",   FormatMs(LastViewportTiming.GpuReadbackCopyMs) },
+                { "GPU Frame Total",FormatMs(LastViewportTiming.GpuTotalPassMs) },
+                { "Force Overlay",  FormatMs(LastViewportTiming.ForceOverlayMs) },
+                { "UI + Gizmo",     FormatMs(LastViewportTiming.DesktopPollAndUiMs + LastViewportTiming.GizmoOverlayMs) },
+                { "Present / Swap", FormatMs(LastViewportTiming.SwapchainPresentMs) },
             }
         },
     }};

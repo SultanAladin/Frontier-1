@@ -20,7 +20,7 @@ namespace Frontier::GeometrySpace::Parametric
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-std::optional<DenseMatrix> SolveDenseSystem(DenseMatrix Matrix, DenseMatrix RightSides, double PivotFloor)
+std::optional<DenseLinearArray> SolveDenseSystem(DenseLinearArray Matrix, DenseLinearArray RightSides, double PivotFloor)
 {
     const int Size = Matrix.Rows, Width = RightSides.Columns;
     if (Matrix.Columns != Size || RightSides.Rows != Size) return std::nullopt;
@@ -48,7 +48,7 @@ std::optional<DenseMatrix> SolveDenseSystem(DenseMatrix Matrix, DenseMatrix Righ
         }
     }
     // ③ Back substitution.
-    DenseMatrix Solution(Size, Width);
+    DenseLinearArray Solution(Size, Width);
     for (int Row = Size - 1; Row >= 0; --Row)
     {
         for (int Index = 0; Index < Width; ++Index)

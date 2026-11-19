@@ -99,7 +99,7 @@ struct StarfieldPresetSpecification
     float                     RecommendedExposure    = 1.80f;
 };
 
-struct StarfieldCatalogEntry
+struct StarfieldRepositoryEntry
 {
     std::string            Name        {};
     Mathematics::Axis3D    Direction   { 0.0f, 0.0f, 1.0f };
@@ -141,7 +141,7 @@ public:
     [[nodiscard]] static const std::vector<uint8_t>& QueryLunarSurfaceAtlasRgba8();
 
     // Returns built-in J2000 bright navigation stars (Sirius, Orion, Aldebaran, Capella, Vega, etc.)
-    [[nodiscard]] static std::span<const StarfieldCatalogEntry> QueryJ2000BrightStarCatalog() noexcept;
+    [[nodiscard]] static std::span<const StarfieldRepositoryEntry> QueryJ2000BrightStarRepository() noexcept;
 
     // Builds named night-sky & twilight starfield framing presets (ZodiacalLightDusk, SouthernCrossCoalsack, WinterHunterBetelgeuse, MagellanicClouds)
     [[nodiscard]] static StarfieldPresetSpecification BuildStarfieldPreset(StarfieldPresetIdentifier Preset) noexcept;
@@ -159,7 +159,7 @@ public:
         const StarfieldConfiguration&         Stars,
         float                                 SimulationSeconds,
         const AtmosphericMediumConfiguration* AtmosphereMedium    = nullptr,
-        std::span<const StarfieldCatalogEntry> ExtraCatalogStars  = {},
+        std::span<const StarfieldRepositoryEntry> ExtraRepositoryStars  = {},
         float                                 PixelAngularRad     = (0.85f / 720.0f)) noexcept;
 };
 

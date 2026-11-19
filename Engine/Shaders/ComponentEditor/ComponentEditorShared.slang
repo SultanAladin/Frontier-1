@@ -27,7 +27,7 @@ struct ComponentViewportUniforms
 
 struct ComponentSurfacePushConstants
 {
-    float4x4 ModelMatrix;
+    float4x4 WorldTransform;
     float4   AlbedoRoughness;   // rgb = Linear base albedo, w = Roughness [0.04..1]
     float4   EmissiveMetalness; // rgb = Linear emissive,    w = Metalness [0..1]
     float4   ChannelModifiers;  // x = SelectedHighlight [0|1], y = SurfaceAlpha [0.35..1], z = MissingUv [0|1], w = AuxParam

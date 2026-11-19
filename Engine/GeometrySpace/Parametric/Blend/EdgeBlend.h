@@ -11,7 +11,7 @@
 
 #include "Engine/GeometrySpace/Parametric/Audit/ModelAudit.h"
 #include "Engine/GeometrySpace/Parametric/Blend/RollingBallGeometry.h"
-#include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
+#include "Engine/GeometrySpace/Parametric/Connectivity/ModelPartition.h"
 
 #include <cstdint>
 #include <string>

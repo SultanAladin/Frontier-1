@@ -261,8 +261,8 @@ int main()
                         (Win2D->Pos.x + Win2D->Size.x <= Win3D->Pos.x + 2.0f),
                     "2D UV sits left of 3D Surface in distinct non-overlapping docked panes") ||
                 !VerifyCondition(
-                    StandaloneHost.Access2DViewportHost().QueryHostRole() == UVViewportHostRole::Dedicated2D &&
-                        StandaloneHost.Access3DViewportHost().QueryHostRole() == UVViewportHostRole::Dedicated3D &&
+                    StandaloneHost.Access2DViewportHost().QueryHostRole() == UVViewportHostMode::Dedicated2D &&
+                        StandaloneHost.Access3DViewportHost().QueryHostRole() == UVViewportHostMode::Dedicated3D &&
                         StandaloneHost.Access2DViewportHost().InspectProjectionPane().QueryEffectiveSplitMode() == Editor::ViewportSplitMode::Planar2DOnly &&
                         StandaloneHost.Access3DViewportHost().InspectProjectionPane().QueryEffectiveSplitMode() == Editor::ViewportSplitMode::Spatial3DOnly,
                     "2D UV and 3D Surface enforce Dedicated2D / Dedicated3D split projection isolation"))

@@ -127,7 +127,7 @@ namespace
         const double Precision = 1.0e-9 * std::max(1.0, View.Reach);
         for (const DrawingStroke& Stroke : View.Strokes)
         {
-            if (Stroke.Visibility != DrawingVisibility::Visible || Stroke.Kind == DrawingStrokeKind::Hatch) continue;
+            if (Stroke.Visibility != DrawingVisibility::Visible || Stroke.Kind == DrawingStrokeCategory::Hatch) continue;
             const std::optional<CircleFit> Fit = FitCircle(Stroke.Points);
             if (!Fit) continue;
             bool Merged = false;
@@ -155,7 +155,7 @@ namespace
         bool    Found = false;
         for (const DrawingStroke& Stroke : View.Strokes)
         {
-            if (Stroke.Kind == DrawingStrokeKind::Hatch) continue;
+            if (Stroke.Kind == DrawingStrokeCategory::Hatch) continue;
             for (const Vector2& Point : Stroke.Points)
             {
                 const double Here = Axis == 0 ? Point.X : Point.Y, There = Axis == 0 ? Best.X : Best.Y;
@@ -268,7 +268,7 @@ namespace
                 {
                     const LinearPlan& Selected = Chosen[Tier];
                     DrawingDimension Dimension;
-                    Dimension.Kind   = Vertical ? DrawingDimensionKind::Vertical : DrawingDimensionKind::Horizontal;
+                    Dimension.Kind   = Vertical ? DrawingDimensionCategory::Vertical : DrawingDimensionCategory::Horizontal;
                     Dimension.Value  = Selected.Value;
                     Dimension.Text   = FormatDimensionValue(Selected.Value * Unit);
                     Dimension.First  = Local(Selected.First);
@@ -325,7 +325,7 @@ namespace
                 }
                 else Out = { std::cos(Circle.Middle), std::sin(Circle.Middle) };
                 DrawingDimension Dimension;
-                Dimension.Kind   = Full ? DrawingDimensionKind::Diameter : DrawingDimensionKind::Radius;
+                Dimension.Kind   = Full ? DrawingDimensionCategory::Diameter : DrawingDimensionCategory::Radius;
                 Dimension.Value  = Full ? 2.0 * Circle.Radius : Circle.Radius;
                 Dimension.Text   = (Full ? std::string("⌀") : std::string("R")) + FormatDimensionValue(Dimension.Value * Unit);
                 Dimension.First  = Centre;
@@ -533,7 +533,7 @@ DrawingSheet ComposeDrawingSheet(const ModelPartition& Partition, const std::vec
 
     // ---- ② projections: Front, Top, Right, then the section (or the isometric) for the free quadrant
     std::vector<PlacedDrawingView> Views;
-    const auto Project = [&](const char* Label, OrthonormalFrame Frame, bool Hidden, std::optional<OrthonormalFrame> Section, double HatchSpacing) -> bool
+    const auto Project = [&](const char* Label, OrthonormalBasis Frame, bool Hidden, std::optional<OrthonormalBasis> Section, double HatchSpacing) -> bool
     {
         DrawingViewRequest ViewRequest;
         ViewRequest.Frame               = Frame;
@@ -551,19 +551,19 @@ DrawingSheet ComposeDrawingSheet(const ModelPartition& Partition, const std::vec
     if (!Project("Front", StandardDrawingFrame(DrawingStandardView::Front), true, {}, 0.0)) return Finish();
     if (!Project("Top", StandardDrawingFrame(DrawingStandardView::Top), true, {}, 0.0)) return Finish();
     if (!Project("Right", StandardDrawingFrame(DrawingStandardView::Right), true, {}, 0.0)) return Finish();
-    OrthonormalFrame SectionFrame = {};
+    OrthonormalBasis SectionBasis = {};
     if (Request.Section)
     {
         const Vector3 Normal = Request.Section->ZAxis;
         bool Matched = false;
         for (DrawingStandardView Kind : { DrawingStandardView::Front, DrawingStandardView::Back, DrawingStandardView::Top, DrawingStandardView::Bottom, DrawingStandardView::Right, DrawingStandardView::Left })
-            if (!Matched && Dot(StandardDrawingFrame(Kind).ZAxis, Normal) > 1.0 - 1.0e-12) { SectionFrame = StandardDrawingFrame(Kind); Matched = true; }
+            if (!Matched && Dot(StandardDrawingFrame(Kind).ZAxis, Normal) > 1.0 - 1.0e-12) { SectionBasis = StandardDrawingFrame(Kind); Matched = true; }
         if (!Matched)
         {
             const Vector3 Up = std::fabs(Normal.Z) < 0.9 ? Vector3{ 0.0, 0.0, 1.0 } : Vector3{ 0.0, 1.0, 0.0 };
-            SectionFrame = ConstructFrame({}, Normal, Cross(Up, Normal));
+            SectionBasis = ConstructFrame({}, Normal, Cross(Up, Normal));
         }
-        if (!Project("Section A-A", SectionFrame, true, Request.Section, 0.0)) return Finish();
+        if (!Project("Section A-A", SectionBasis, true, Request.Section, 0.0)) return Finish();
     }
     else if (Request.IsometricEnabled)
     {
@@ -576,10 +576,10 @@ DrawingSheet ComposeDrawingSheet(const ModelPartition& Partition, const std::vec
     Vector2                                   Looking = {};
     if (Request.Section)
     {
-        const OrthonormalFrame& Plane = *Request.Section;
+        const OrthonormalBasis& Plane = *Request.Section;
         for (int Index = 0; Index < 3 && CuttingView < 0; ++Index)
         {
-            const OrthonormalFrame& Frame = Views[static_cast<size_t>(Index)].View.Frame;
+            const OrthonormalBasis& Frame = Views[static_cast<size_t>(Index)].View.Frame;
             if (std::fabs(Dot(Plane.ZAxis, Frame.ZAxis)) > 1.0e-9) continue;
             const Vector2 Normal = { Dot(Plane.ZAxis, Frame.XAxis), Dot(Plane.ZAxis, Frame.YAxis) };
             const double  Level  = Dot(Plane.Origin - Frame.Origin, Plane.ZAxis);
@@ -688,7 +688,7 @@ DrawingSheet ComposeDrawingSheet(const ModelPartition& Partition, const std::vec
     if (Request.Section)
     {
         Views.pop_back();
-        if (!Project("Section A-A", SectionFrame, true, Request.Section, Request.HatchSpacing / Millimetres)) return Finish();
+        if (!Project("Section A-A", SectionBasis, true, Request.Section, Request.HatchSpacing / Millimetres)) return Finish();
         (void)Layout(Chosen);
     }
 
@@ -701,10 +701,10 @@ DrawingSheet ComposeDrawingSheet(const ModelPartition& Partition, const std::vec
         for (const DrawingStroke& Stroke : Placed.View.Strokes)
         {
             SheetLayer Layer = SheetLayer::Visible;
-            if (Stroke.Kind == DrawingStrokeKind::Hatch) Layer = SheetLayer::Hatch;
+            if (Stroke.Kind == DrawingStrokeCategory::Hatch) Layer = SheetLayer::Hatch;
             else if (Stroke.Visibility == DrawingVisibility::Hidden) Layer = SheetLayer::Hidden;
-            else if (Stroke.Kind == DrawingStrokeKind::TangentEdge) Layer = SheetLayer::Tangent;
-            else if (Stroke.Kind == DrawingStrokeKind::SectionOutline) Layer = SheetLayer::SectionOutline;
+            else if (Stroke.Kind == DrawingStrokeCategory::TangentEdge) Layer = SheetLayer::Tangent;
+            else if (Stroke.Kind == DrawingStrokeCategory::SectionOutline) Layer = SheetLayer::SectionOutline;
             SheetPolyline Line{ Layer, {} };
             for (const Vector2& Point : Stroke.Points) Line.Points.push_back({ Placed.Origin.X + Millimetres * Point.X, Placed.Origin.Y + Millimetres * Point.Y });
             Sheet.Lines.push_back(std::move(Line));

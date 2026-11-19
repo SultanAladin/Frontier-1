@@ -112,10 +112,10 @@ namespace
     };
 
     // 📝 Evaluation context: in Collect mode every unknown touched is registered; otherwise unknowns are seeded.
-    class EquationContext
+    class EquationEnvironment
     {
     public:
-        EquationContext(const SketchModel& Sketch, const std::vector<double>& Unknowns, SketchEquation& Equation, bool CollectCondition)
+        EquationEnvironment(const SketchModel& Sketch, const std::vector<double>& Unknowns, SketchEquation& Equation, bool CollectCondition)
             : Sketch(Sketch), Unknowns(Unknowns), Equation(Equation), CollectCondition(CollectCondition) {}
 
         LocalDual Variable(int Index)
@@ -141,13 +141,13 @@ namespace
         LocalDual Radius(int Curve)
         {
             const SketchCurve& Shape = Sketch.Curves[Curve];
-            if (Shape.Kind == SketchCurveKind::Arc) return Norm(Difference(Point(Shape.Start), Point(Shape.Centre)));
+            if (Shape.Kind == SketchCurveCategory::Arc) return Norm(Difference(Point(Shape.Start), Point(Shape.Centre)));
             return Variable(2 * static_cast<int>(Sketch.Points.size()) + RadiusSlot(Curve));
         }
         int RadiusSlot(int Curve) const
         {
             int Slot = 0;
-            for (int Index = 0; Index < Curve; ++Index) Slot += Sketch.Curves[Index].Kind == SketchCurveKind::Circle ? 1 : 0;
+            for (int Index = 0; Index < Curve; ++Index) Slot += Sketch.Curves[Index].Kind == SketchCurveCategory::Circle ? 1 : 0;
             return Slot;
         }
 
@@ -157,29 +157,29 @@ namespace
         bool                       CollectCondition;
     };
 
-    [[nodiscard]] int EquationCount(SketchConstraintKind Kind) noexcept
+    [[nodiscard]] int EquationCount(SketchConstraintCategory Kind) noexcept
     {
         switch (Kind)
         {
-        case SketchConstraintKind::Coincident:
-        case SketchConstraintKind::Fixed:
-        case SketchConstraintKind::Midpoint:
-        case SketchConstraintKind::Symmetric:
-        case SketchConstraintKind::Concentric:
-        case SketchConstraintKind::SplineCurvature: return 2;
+        case SketchConstraintCategory::Coincident:
+        case SketchConstraintCategory::Fixed:
+        case SketchConstraintCategory::Midpoint:
+        case SketchConstraintCategory::Symmetric:
+        case SketchConstraintCategory::Concentric:
+        case SketchConstraintCategory::SplineCurvature: return 2;
         default:                               return 1;
         }
     }
 
-    [[nodiscard]] bool RatioCondition(SketchConstraintKind Kind) noexcept
+    [[nodiscard]] bool RatioCondition(SketchConstraintCategory Kind) noexcept
     {
-        return Kind == SketchConstraintKind::Parallel || Kind == SketchConstraintKind::Perpendicular || Kind == SketchConstraintKind::Angle;
+        return Kind == SketchConstraintCategory::Parallel || Kind == SketchConstraintCategory::Perpendicular || Kind == SketchConstraintCategory::Angle;
     }
 
     // Point index shared as an end by two open curves (line / arc), else −1.
     [[nodiscard]] int SharedEndpoint(const SketchCurve& First, const SketchCurve& Second) noexcept
     {
-        if (First.Kind == SketchCurveKind::Circle || Second.Kind == SketchCurveKind::Circle) return -1;
+        if (First.Kind == SketchCurveCategory::Circle || Second.Kind == SketchCurveCategory::Circle) return -1;
         for (int Point : { First.Start, First.End }) if (Point >= 0 && (Point == Second.Start || Point == Second.End)) return Point;
         return -1;
     }
@@ -190,17 +190,17 @@ namespace
     [[nodiscard]] bool RatioCondition(const SketchModel& Sketch, const SketchConstraint& Constraint) noexcept
     {
         if (RatioCondition(Constraint.Kind)) return true;
-        return Constraint.Kind == SketchConstraintKind::Tangent && SharedEndpoint(Sketch.Curves[Constraint.First], Sketch.Curves[Constraint.Second]) >= 0;
+        return Constraint.Kind == SketchConstraintCategory::Tangent && SharedEndpoint(Sketch.Curves[Constraint.First], Sketch.Curves[Constraint.Second]) >= 0;
     }
 
     //--------------------------------------------------------------------------------------------------------------------
     //                                                SPLINE ROWS
     //--------------------------------------------------------------------------------------------------------------------
 
-    [[nodiscard]] bool SplineKind(SketchConstraintKind Kind) noexcept
+    [[nodiscard]] bool SplineKind(SketchConstraintCategory Kind) noexcept
     {
-        return Kind == SketchConstraintKind::SplineTangent || Kind == SketchConstraintKind::SplineCurvature || Kind == SketchConstraintKind::PointOnSpline
-            || Kind == SketchConstraintKind::SplineDirection;
+        return Kind == SketchConstraintCategory::SplineTangent || Kind == SketchConstraintCategory::SplineCurvature || Kind == SketchConstraintCategory::PointOnSpline
+            || Kind == SketchConstraintCategory::SplineDirection;
     }
 
     // 📝 A spline row touches every defining point (a cubic spline's end tangent depends on all of them), so it carries a
@@ -251,7 +251,7 @@ namespace
     [[nodiscard]] int CircleRadiusSlot(const SketchModel& Sketch, int Curve) noexcept
     {
         int Slot = 0;
-        for (int Index = 0; Index < Curve; ++Index) Slot += Sketch.Curves[Index].Kind == SketchCurveKind::Circle ? 1 : 0;
+        for (int Index = 0; Index < Curve; ++Index) Slot += Sketch.Curves[Index].Kind == SketchCurveCategory::Circle ? 1 : 0;
         return 2 * static_cast<int>(Sketch.Points.size()) + Slot;
     }
 
@@ -270,16 +270,16 @@ namespace
         {
             if (Index < 0 || Index >= static_cast<int>(Sketch.Curves.size())) return;
             const SketchCurve& Curve = Sketch.Curves[Index];
-            if (Curve.Kind == SketchCurveKind::Spline) { for (int Point : Curve.Points) AddPoint(Point); return; }
+            if (Curve.Kind == SketchCurveCategory::Spline) { for (int Point : Curve.Points) AddPoint(Point); return; }
             for (int Point : { Curve.Start, Curve.End, Curve.Centre }) AddPoint(Point);
-            if (Curve.Kind == SketchCurveKind::Circle) Variables.push_back(CircleRadiusSlot(Sketch, Index));
+            if (Curve.Kind == SketchCurveCategory::Circle) Variables.push_back(CircleRadiusSlot(Sketch, Index));
         };
         switch (Constraint.Kind)
         {
-        case SketchConstraintKind::SplineTangent:
-        case SketchConstraintKind::SplineCurvature: AddCurve(Constraint.First); AddCurve(Constraint.Second); AddPoint(Constraint.Third); break;
-        case SketchConstraintKind::PointOnSpline:   AddPoint(Constraint.First); AddCurve(Constraint.Second); break;
-        case SketchConstraintKind::SplineDirection: AddCurve(Constraint.First); break;
+        case SketchConstraintCategory::SplineTangent:
+        case SketchConstraintCategory::SplineCurvature: AddCurve(Constraint.First); AddCurve(Constraint.Second); AddPoint(Constraint.Third); break;
+        case SketchConstraintCategory::PointOnSpline:   AddPoint(Constraint.First); AddCurve(Constraint.Second); break;
+        case SketchConstraintCategory::SplineDirection: AddCurve(Constraint.First); break;
         default:                                    break;
         }
         std::sort(Variables.begin(), Variables.end());
@@ -287,10 +287,10 @@ namespace
         return Variables;
     }
 
-    class WideContext
+    class WideEnvironment
     {
     public:
-        WideContext(const SketchModel& Sketch, const std::vector<double>& Raw, const std::vector<int>& Variables)
+        WideEnvironment(const SketchModel& Sketch, const std::vector<double>& Raw, const std::vector<int>& Variables)
             : Sketch(Sketch), Raw(Raw), Variables(Variables) {}
 
         WideDual Variable(int Index) const
@@ -310,7 +310,7 @@ namespace
         WideDual  Radius(int Curve) const
         {
             const SketchCurve& Shape = Sketch.Curves[Curve];
-            if (Shape.Kind == SketchCurveKind::Arc) return Norm(Difference(Point(Shape.Start), Point(Shape.Centre)));
+            if (Shape.Kind == SketchCurveCategory::Arc) return Norm(Difference(Point(Shape.Start), Point(Shape.Centre)));
             return Variable(CircleRadiusSlot(Sketch, Curve));
         }
         // Σ wⱼ·Qⱼ over the spline's defining slots.
@@ -340,7 +340,7 @@ namespace
         bool        ValidCondition = false;                                                  // [-]   - Weights resolved
     };
 
-    [[nodiscard]] WideEnd SplineEnd(const WideContext& Context, const SketchCurve& Spline, bool StartCondition)
+    [[nodiscard]] WideEnd SplineEnd(const WideEnvironment& Context, const SketchCurve& Spline, bool StartCondition)
     {
         WideEnd End;
         const double Infinity = std::numeric_limits<double>::infinity();
@@ -360,20 +360,20 @@ namespace
     }
 
     // 📝 Spline residual in raw units (tangent / direction: sin of an angle · curvature: 1 / len · on-spline: length).
-    WideDual EvaluateSplineEquation(const WideContext& Context, const SketchConstraint& Constraint, int Row)
+    WideDual EvaluateSplineEquation(const WideEnvironment& Context, const SketchConstraint& Constraint, int Row)
     {
         const SketchModel& Sketch = Context.Sketch;
         switch (Constraint.Kind)
         {
-        case SketchConstraintKind::SplineDirection:
+        case SketchConstraintCategory::SplineDirection:
         {
             const SketchCurve& Spline = Sketch.Curves[Constraint.First];
             const WideEnd      End    = SplineEnd(Context, Spline, Constraint.Third == Spline.Points.front());
             if (!End.ValidCondition) return {};
             return (End.Tangent.Y * std::cos(Constraint.Value) - End.Tangent.X * std::sin(Constraint.Value)) / Norm(End.Tangent);
         }
-        case SketchConstraintKind::SplineTangent:
-        case SketchConstraintKind::SplineCurvature:
+        case SketchConstraintCategory::SplineTangent:
+        case SketchConstraintCategory::SplineCurvature:
         {
             const SketchCurve& Spline = Sketch.Curves[Constraint.First];
             const SketchCurve& Other  = Sketch.Curves[Constraint.Second];
@@ -381,8 +381,8 @@ namespace
             if (!End.ValidCondition) return {};
             WidePoint Direction;
             WideDual  OtherCurvature;
-            if (Other.Kind == SketchCurveKind::Line) Direction = Difference(Context.Point(Other.End), Context.Point(Other.Start));
-            else if (Other.Kind == SketchCurveKind::Spline)
+            if (Other.Kind == SketchCurveCategory::Line) Direction = Difference(Context.Point(Other.End), Context.Point(Other.Start));
+            else if (Other.Kind == SketchCurveCategory::Spline)
             {
                 const WideEnd OtherEnd = SplineEnd(Context, Other, Constraint.SecondValue < 0.5);
                 if (!OtherEnd.ValidCondition) return {};
@@ -400,7 +400,7 @@ namespace
             const double Orientation = DotProduct(End.Tangent, Direction).Value < 0.0 ? -1.0 : 1.0;
             return SignedCurvature(End) - OtherCurvature * Orientation;
         }
-        case SketchConstraintKind::PointOnSpline:
+        case SketchConstraintCategory::PointOnSpline:
         {
             // Signed distance n·(P − C(τ*)) with τ* the closest parameter: ∂/∂τ vanishes there (envelope theorem), so τ*
             // and n enter as constants and the gradient is exact: n for P, −wⱼ(τ*)·n for each defining point.
@@ -454,53 +454,53 @@ namespace
     }
 
     // 📝 Residual of one equation in raw units (length, or dimensionless for the angular family).
-    LocalDual EvaluateEquation(EquationContext& Context, const SketchConstraint& Constraint, int Row)
+    LocalDual EvaluateEquation(EquationEnvironment& Context, const SketchConstraint& Constraint, int Row)
     {
         const SketchModel& Sketch = Context.Sketch;
         switch (Constraint.Kind)
         {
-        case SketchConstraintKind::Coincident:
+        case SketchConstraintCategory::Coincident:
         {
             const DualPoint First = Context.Point(Constraint.First), Second = Context.Point(Constraint.Second);
             return Row == 0 ? First.X - Second.X : First.Y - Second.Y;
         }
-        case SketchConstraintKind::Fixed:
+        case SketchConstraintCategory::Fixed:
         {
             const DualPoint Point = Context.Point(Constraint.First);
             return Row == 0 ? Point.X - Constraint.Value : Point.Y - Constraint.SecondValue;
         }
-        case SketchConstraintKind::Horizontal: return Context.LineDirection(Constraint.First).Y;
-        case SketchConstraintKind::Vertical:   return Context.LineDirection(Constraint.First).X;
-        case SketchConstraintKind::Distance:   return Norm(Difference(Context.Point(Constraint.Second), Context.Point(Constraint.First))) - Constraint.Value;
-        case SketchConstraintKind::HorizontalDistance: return Context.Point(Constraint.Second).X - Context.Point(Constraint.First).X - Constraint.Value;
-        case SketchConstraintKind::VerticalDistance:   return Context.Point(Constraint.Second).Y - Context.Point(Constraint.First).Y - Constraint.Value;
-        case SketchConstraintKind::Length:     return Norm(Context.LineDirection(Constraint.First)) - Constraint.Value;
-        case SketchConstraintKind::Parallel:
-        case SketchConstraintKind::Perpendicular:
-        case SketchConstraintKind::Angle:
+        case SketchConstraintCategory::Horizontal: return Context.LineDirection(Constraint.First).Y;
+        case SketchConstraintCategory::Vertical:   return Context.LineDirection(Constraint.First).X;
+        case SketchConstraintCategory::Distance:   return Norm(Difference(Context.Point(Constraint.Second), Context.Point(Constraint.First))) - Constraint.Value;
+        case SketchConstraintCategory::HorizontalDistance: return Context.Point(Constraint.Second).X - Context.Point(Constraint.First).X - Constraint.Value;
+        case SketchConstraintCategory::VerticalDistance:   return Context.Point(Constraint.Second).Y - Context.Point(Constraint.First).Y - Constraint.Value;
+        case SketchConstraintCategory::Length:     return Norm(Context.LineDirection(Constraint.First)) - Constraint.Value;
+        case SketchConstraintCategory::Parallel:
+        case SketchConstraintCategory::Perpendicular:
+        case SketchConstraintCategory::Angle:
         {
             const DualPoint First = Context.LineDirection(Constraint.First), Second = Context.LineDirection(Constraint.Second);
             const LocalDual Scale = Norm(First) * Norm(Second);
-            if (Constraint.Kind == SketchConstraintKind::Parallel) return CrossProduct(First, Second) / Scale;
-            if (Constraint.Kind == SketchConstraintKind::Perpendicular) return DotProduct(First, Second) / Scale;
+            if (Constraint.Kind == SketchConstraintCategory::Parallel) return CrossProduct(First, Second) / Scale;
+            if (Constraint.Kind == SketchConstraintCategory::Perpendicular) return DotProduct(First, Second) / Scale;
             // sin(φ − θ) with φ the CCW angle from the first line to the second.
             return (CrossProduct(First, Second) * std::cos(Constraint.Value) - DotProduct(First, Second) * std::sin(Constraint.Value)) / Scale;
         }
-        case SketchConstraintKind::EqualLength: return Norm(Context.LineDirection(Constraint.First)) - Norm(Context.LineDirection(Constraint.Second));
-        case SketchConstraintKind::Radius:      return Context.Radius(Constraint.First) - Constraint.Value;
-        case SketchConstraintKind::EqualRadius: return Context.Radius(Constraint.First) - Context.Radius(Constraint.Second);
-        case SketchConstraintKind::PointOnLine:
+        case SketchConstraintCategory::EqualLength: return Norm(Context.LineDirection(Constraint.First)) - Norm(Context.LineDirection(Constraint.Second));
+        case SketchConstraintCategory::Radius:      return Context.Radius(Constraint.First) - Constraint.Value;
+        case SketchConstraintCategory::EqualRadius: return Context.Radius(Constraint.First) - Context.Radius(Constraint.Second);
+        case SketchConstraintCategory::PointOnLine:
         {
             const SketchCurve& Line = Sketch.Curves[Constraint.Second];
             const DualPoint Direction = Context.LineDirection(Constraint.Second);
             return CrossProduct(Direction, Difference(Context.Point(Constraint.First), Context.Point(Line.Start))) / Norm(Direction);
         }
-        case SketchConstraintKind::PointOnCircle:
+        case SketchConstraintCategory::PointOnCircle:
         {
             const SketchCurve& Shape = Sketch.Curves[Constraint.Second];
             return Norm(Difference(Context.Point(Constraint.First), Context.Point(Shape.Centre))) - Context.Radius(Constraint.Second);
         }
-        case SketchConstraintKind::Tangent:
+        case SketchConstraintCategory::Tangent:
         {
             const SketchCurve& First = Sketch.Curves[Constraint.First];
             const SketchCurve& Second = Sketch.Curves[Constraint.Second];
@@ -513,7 +513,7 @@ namespace
                 //    only the starting side as a root and the same slope there as the cosine form. Value 0: either side.
                 const DualPoint Contact = Context.Point(Joint);
                 const DualPoint Radial  = Difference(Contact, Context.Point(Second.Centre));
-                if (First.Kind == SketchCurveKind::Line)
+                if (First.Kind == SketchCurveCategory::Line)
                 {
                     const DualPoint Direction = Context.LineDirection(Constraint.First);
                     if (Constraint.Value != 0.0) return Bearing(CrossProduct(Direction, Radial), DotProduct(Direction, Radial)) - Constraint.Value * 0.5 * std::numbers::pi;
@@ -524,7 +524,7 @@ namespace
                 if (Constraint.Value != 0.0) return Bearing(CrossProduct(Other, Radial) * Constraint.Value, DotProduct(Other, Radial) * Constraint.Value);
                 return CrossProduct(Other, Radial) / (Norm(Other) * Norm(Radial));
             }
-            if (First.Kind == SketchCurveKind::Line)
+            if (First.Kind == SketchCurveCategory::Line)
             {
                 const DualPoint Direction = Context.LineDirection(Constraint.First);
                 const LocalDual Offset    = CrossProduct(Direction, Difference(Context.Point(Second.Centre), Context.Point(First.Start))) / Norm(Direction);
@@ -534,13 +534,13 @@ namespace
             if (Constraint.SecondValue < 0.0) return Separation - Magnitude(Context.Radius(Constraint.First) - Context.Radius(Constraint.Second));
             return Separation - (Context.Radius(Constraint.First) + Context.Radius(Constraint.Second));
         }
-        case SketchConstraintKind::Midpoint:
+        case SketchConstraintCategory::Midpoint:
         {
             const SketchCurve& Line = Sketch.Curves[Constraint.Second];
             const DualPoint Point = Context.Point(Constraint.First), Start = Context.Point(Line.Start), End = Context.Point(Line.End);
             return Row == 0 ? Point.X * 2.0 - Start.X - End.X : Point.Y * 2.0 - Start.Y - End.Y;
         }
-        case SketchConstraintKind::Symmetric:
+        case SketchConstraintCategory::Symmetric:
         {
             const SketchCurve& Line = Sketch.Curves[Constraint.Third];
             const DualPoint First = Context.Point(Constraint.First), Second = Context.Point(Constraint.Second);
@@ -552,21 +552,21 @@ namespace
             }
             return DotProduct(Difference(Second, First), Direction) / Norm(Direction);
         }
-        case SketchConstraintKind::Concentric:
+        case SketchConstraintCategory::Concentric:
         {
             const DualPoint First = Context.Point(Sketch.Curves[Constraint.First].Centre), Second = Context.Point(Sketch.Curves[Constraint.Second].Centre);
             return Row == 0 ? First.X - Second.X : First.Y - Second.Y;
         }
-        case SketchConstraintKind::ArcRule:
+        case SketchConstraintCategory::ArcRule:
         {
             const SketchCurve& Arc = Sketch.Curves[Constraint.First];
             const DualPoint Centre = Context.Point(Arc.Centre);
             return Norm(Difference(Context.Point(Arc.Start), Centre)) - Norm(Difference(Context.Point(Arc.End), Centre));
         }
-        case SketchConstraintKind::SplineTangent:
-        case SketchConstraintKind::SplineCurvature:
-        case SketchConstraintKind::PointOnSpline:
-        case SketchConstraintKind::SplineDirection:
+        case SketchConstraintCategory::SplineTangent:
+        case SketchConstraintCategory::SplineCurvature:
+        case SketchConstraintCategory::PointOnSpline:
+        case SketchConstraintCategory::SplineDirection:
             break;                                                                           // Spline kinds: dense gradients (above)
         }
         return {};
@@ -576,14 +576,14 @@ namespace
     //                                                DENSE LINEAR ALGEBRA
     //--------------------------------------------------------------------------------------------------------------------
 
-    struct DenseMatrix
+    struct DenseLinearArray
     {
         int                 Rows    = 0;                                                     // [-] - Row count
         int                 Columns = 0;                                                     // [-] - Column count
         std::vector<double> Values  = {};                                                    // [-] - Row-major
 
-        DenseMatrix() = default;
-        DenseMatrix(int RowCount, int ColumnCount) : Rows(RowCount), Columns(ColumnCount), Values(static_cast<size_t>(RowCount) * ColumnCount, 0.0) {}
+        DenseLinearArray() = default;
+        DenseLinearArray(int RowCount, int ColumnCount) : Rows(RowCount), Columns(ColumnCount), Values(static_cast<size_t>(RowCount) * ColumnCount, 0.0) {}
         double& At(int Row, int Column) { return Values[static_cast<size_t>(Row) * Columns + Column]; }
         double  At(int Row, int Column) const { return Values[static_cast<size_t>(Row) * Columns + Column]; }
     };
@@ -592,19 +592,19 @@ namespace
     //    pivots are linearly independent columns, Q[:, Rank:] spans the orthogonal complement of their span.
     struct PivotedDecomposition
     {
-        DenseMatrix      Q      = {};                                                        // [-] - Rows × Rows orthogonal
-        DenseMatrix      R      = {};                                                        // [-] - Rows × Columns upper trapezoidal (pivoted)
+        DenseLinearArray      Q      = {};                                                        // [-] - Rows × Rows orthogonal
+        DenseLinearArray      R      = {};                                                        // [-] - Rows × Columns upper trapezoidal (pivoted)
         std::vector<int> Pivots = {};                                                        // [-] - Column order
         int              Rank   = 0;                                                         // [-] - |R_kk| above the cut
     };
 
     // 📝 OrderedCondition: take the first column (authoring order) still above the cut instead of the largest one, so the
     //    earliest constraints form the independent set and the later ones are reported as redundant / conflicting.
-    [[nodiscard]] PivotedDecomposition DecomposeColumnPivoted(DenseMatrix Matrix, double RankTolerance, bool OrderedCondition = true)
+    [[nodiscard]] PivotedDecomposition DecomposeColumnPivoted(DenseLinearArray Matrix, double RankTolerance, bool OrderedCondition = true)
     {
         PivotedDecomposition Result;
         const int Rows = Matrix.Rows, Columns = Matrix.Columns;
-        Result.Q = DenseMatrix(Rows, Rows);
+        Result.Q = DenseLinearArray(Rows, Rows);
         for (int Index = 0; Index < Rows; ++Index) Result.Q.At(Index, Index) = 1.0;
         Result.Pivots.resize(Columns);
         for (int Column = 0; Column < Columns; ++Column) Result.Pivots[Column] = Column;
@@ -665,7 +665,7 @@ namespace
     }
 
     // Solves (A + λI)·x = b by Gaussian elimination with partial pivoting (A symmetric positive semi-definite here).
-    [[nodiscard]] std::vector<double> SolveDense(DenseMatrix Matrix, std::vector<double> Right)
+    [[nodiscard]] std::vector<double> SolveDense(DenseLinearArray Matrix, std::vector<double> Right)
     {
         const int Size = Matrix.Rows;
         for (int Step = 0; Step < Size; ++Step)
@@ -696,14 +696,14 @@ namespace
         return Solution;
     }
 
-    [[nodiscard]] DenseMatrix Transpose(const DenseMatrix& Matrix)
+    [[nodiscard]] DenseLinearArray Transpose(const DenseLinearArray& Matrix)
     {
-        DenseMatrix Result(Matrix.Columns, Matrix.Rows);
+        DenseLinearArray Result(Matrix.Columns, Matrix.Rows);
         for (int Row = 0; Row < Matrix.Rows; ++Row) for (int Column = 0; Column < Matrix.Columns; ++Column) Result.At(Column, Row) = Matrix.At(Row, Column);
         return Result;
     }
 
-    [[nodiscard]] double MeasureConditioning(const DenseMatrix& Jacobian, double RankTolerance)
+    [[nodiscard]] double MeasureConditioning(const DenseLinearArray& Jacobian, double RankTolerance)
     {
         const PivotedDecomposition Largest = DecomposeColumnPivoted(Transpose(Jacobian), RankTolerance, false);
         double Conditioning = 1.0;
@@ -717,14 +717,14 @@ namespace
     {
         const int PointCount = static_cast<int>(Sketch.Points.size()), CurveCount = static_cast<int>(Sketch.Curves.size());
         auto PointSlot  = [&](int Index) { return Index >= 0 && Index < PointCount; };
-        auto LineSlot   = [&](int Index) { return Index >= 0 && Index < CurveCount && Sketch.Curves[Index].Kind == SketchCurveKind::Line; };
+        auto LineSlot   = [&](int Index) { return Index >= 0 && Index < CurveCount && Sketch.Curves[Index].Kind == SketchCurveCategory::Line; };
         auto CircleSlot = [&](int Index)
         {
-            return Index >= 0 && Index < CurveCount && (Sketch.Curves[Index].Kind == SketchCurveKind::Circle || Sketch.Curves[Index].Kind == SketchCurveKind::Arc);
+            return Index >= 0 && Index < CurveCount && (Sketch.Curves[Index].Kind == SketchCurveCategory::Circle || Sketch.Curves[Index].Kind == SketchCurveCategory::Arc);
         };
         auto SplineSlot = [&](int Index)
         {
-            if (Index < 0 || Index >= CurveCount || Sketch.Curves[Index].Kind != SketchCurveKind::Spline || Sketch.Curves[Index].Points.size() < 2) return false;
+            if (Index < 0 || Index >= CurveCount || Sketch.Curves[Index].Kind != SketchCurveCategory::Spline || Sketch.Curves[Index].Points.size() < 2) return false;
             for (int Point : Sketch.Curves[Index].Points) if (!PointSlot(Point)) return false;
             return true;
         };
@@ -735,36 +735,36 @@ namespace
         };
         switch (Constraint.Kind)
         {
-        case SketchConstraintKind::Coincident:
-        case SketchConstraintKind::Distance:
-        case SketchConstraintKind::HorizontalDistance:
-        case SketchConstraintKind::VerticalDistance:   return PointSlot(Constraint.First) && PointSlot(Constraint.Second);
-        case SketchConstraintKind::Fixed:              return PointSlot(Constraint.First);
-        case SketchConstraintKind::Horizontal:
-        case SketchConstraintKind::Vertical:
-        case SketchConstraintKind::Length:             return LineSlot(Constraint.First);
-        case SketchConstraintKind::Parallel:
-        case SketchConstraintKind::Perpendicular:
-        case SketchConstraintKind::Angle:
-        case SketchConstraintKind::EqualLength:        return LineSlot(Constraint.First) && LineSlot(Constraint.Second);
-        case SketchConstraintKind::Radius:             return CircleSlot(Constraint.First);
-        case SketchConstraintKind::EqualRadius:
-        case SketchConstraintKind::Concentric:         return CircleSlot(Constraint.First) && CircleSlot(Constraint.Second);
-        case SketchConstraintKind::PointOnLine:
-        case SketchConstraintKind::Midpoint:           return PointSlot(Constraint.First) && LineSlot(Constraint.Second);
-        case SketchConstraintKind::PointOnCircle:      return PointSlot(Constraint.First) && CircleSlot(Constraint.Second);
-        case SketchConstraintKind::Tangent:            return (LineSlot(Constraint.First) || CircleSlot(Constraint.First)) && CircleSlot(Constraint.Second);
-        case SketchConstraintKind::Symmetric:          return PointSlot(Constraint.First) && PointSlot(Constraint.Second) && LineSlot(Constraint.Third);
-        case SketchConstraintKind::ArcRule:            return CircleSlot(Constraint.First);
-        case SketchConstraintKind::SplineTangent:
-        case SketchConstraintKind::SplineCurvature:
+        case SketchConstraintCategory::Coincident:
+        case SketchConstraintCategory::Distance:
+        case SketchConstraintCategory::HorizontalDistance:
+        case SketchConstraintCategory::VerticalDistance:   return PointSlot(Constraint.First) && PointSlot(Constraint.Second);
+        case SketchConstraintCategory::Fixed:              return PointSlot(Constraint.First);
+        case SketchConstraintCategory::Horizontal:
+        case SketchConstraintCategory::Vertical:
+        case SketchConstraintCategory::Length:             return LineSlot(Constraint.First);
+        case SketchConstraintCategory::Parallel:
+        case SketchConstraintCategory::Perpendicular:
+        case SketchConstraintCategory::Angle:
+        case SketchConstraintCategory::EqualLength:        return LineSlot(Constraint.First) && LineSlot(Constraint.Second);
+        case SketchConstraintCategory::Radius:             return CircleSlot(Constraint.First);
+        case SketchConstraintCategory::EqualRadius:
+        case SketchConstraintCategory::Concentric:         return CircleSlot(Constraint.First) && CircleSlot(Constraint.Second);
+        case SketchConstraintCategory::PointOnLine:
+        case SketchConstraintCategory::Midpoint:           return PointSlot(Constraint.First) && LineSlot(Constraint.Second);
+        case SketchConstraintCategory::PointOnCircle:      return PointSlot(Constraint.First) && CircleSlot(Constraint.Second);
+        case SketchConstraintCategory::Tangent:            return (LineSlot(Constraint.First) || CircleSlot(Constraint.First)) && CircleSlot(Constraint.Second);
+        case SketchConstraintCategory::Symmetric:          return PointSlot(Constraint.First) && PointSlot(Constraint.Second) && LineSlot(Constraint.Third);
+        case SketchConstraintCategory::ArcRule:            return CircleSlot(Constraint.First);
+        case SketchConstraintCategory::SplineTangent:
+        case SketchConstraintCategory::SplineCurvature:
         {
             if (!EndSlot(Constraint.First, Constraint.Third) || Constraint.Second == Constraint.First) return false;
             if (LineSlot(Constraint.Second) || CircleSlot(Constraint.Second)) return true;
             return SplineSlot(Constraint.Second) && !ClosedSpline(Sketch.Curves[Constraint.Second]);
         }
-        case SketchConstraintKind::PointOnSpline:      return PointSlot(Constraint.First) && SplineSlot(Constraint.Second);
-        case SketchConstraintKind::SplineDirection:    return EndSlot(Constraint.First, Constraint.Third);
+        case SketchConstraintCategory::PointOnSpline:      return PointSlot(Constraint.First) && SplineSlot(Constraint.Second);
+        case SketchConstraintCategory::SplineDirection:    return EndSlot(Constraint.First, Constraint.Third);
         }
         return false;
     }
@@ -782,7 +782,7 @@ namespace
             : Sketch(Sketch), Constraints(Constraints), Scale(Scale)
         {
             Unknowns = 2 * static_cast<int>(Sketch.Points.size());
-            for (const SketchCurve& Curve : Sketch.Curves) Unknowns += Curve.Kind == SketchCurveKind::Circle ? 1 : 0;
+            for (const SketchCurve& Curve : Sketch.Curves) Unknowns += Curve.Kind == SketchCurveCategory::Circle ? 1 : 0;
             // Linked unknowns stay where the feature tree projected them: their Jacobian columns are left at zero.
             Frozen.assign(Unknowns, false);
             for (size_t Point = 0; Point < Sketch.Points.size(); ++Point)
@@ -792,7 +792,7 @@ namespace
             }
             for (int Curve = 0; Curve < static_cast<int>(Sketch.Curves.size()); ++Curve)
             {
-                if (Sketch.Curves[Curve].Kind == SketchCurveKind::Circle && !Sketch.Curves[Curve].Link.Sketch.empty()) Frozen[CircleRadiusSlot(Sketch, Curve)] = true;
+                if (Sketch.Curves[Curve].Kind == SketchCurveCategory::Circle && !Sketch.Curves[Curve].Link.Sketch.empty()) Frozen[CircleRadiusSlot(Sketch, Curve)] = true;
             }
             FrozenCount = static_cast<int>(std::count(Frozen.begin(), Frozen.end(), true));
             std::vector<double> Probe = Pack();
@@ -806,16 +806,16 @@ namespace
                     Equation.Row             = Row;
                     if (SplineKind(Constraints[Index].Kind))
                     {
-                        const SketchConstraintKind Kind = Constraints[Index].Kind;
+                        const SketchConstraintCategory Kind = Constraints[Index].Kind;
                         Equation.WideCondition    = true;
                         Equation.WideVariables    = CollectWideVariables(Sketch, Constraints[Index]);
-                        Equation.LengthCondition  = Kind == SketchConstraintKind::PointOnSpline;
-                        Equation.InverseCondition = Kind == SketchConstraintKind::SplineCurvature && Row == 1;
+                        Equation.LengthCondition  = Kind == SketchConstraintCategory::PointOnSpline;
+                        Equation.InverseCondition = Kind == SketchConstraintCategory::SplineCurvature && Row == 1;
                         Equations.push_back(Equation);
                         continue;
                     }
                     Equation.LengthCondition = !RatioCondition(Sketch, Constraints[Index]);
-                    EquationContext Context(Sketch, Probe, Equation, true);
+                    EquationEnvironment Context(Sketch, Probe, Equation, true);
                     (void)EvaluateEquation(Context, Constraints[Index], Row);
                     Equations.push_back(Equation);
                 }
@@ -833,7 +833,7 @@ namespace
             std::vector<double> Values;
             Values.reserve(Unknowns);
             for (const SketchPoint& Point : Sketch.Points) { Values.push_back(Point.Position.X); Values.push_back(Point.Position.Y); }
-            for (const SketchCurve& Curve : Sketch.Curves) if (Curve.Kind == SketchCurveKind::Circle) Values.push_back(Curve.Radius);
+            for (const SketchCurve& Curve : Sketch.Curves) if (Curve.Kind == SketchCurveCategory::Circle) Values.push_back(Curve.Radius);
             return Values;
         }
 
@@ -841,21 +841,21 @@ namespace
         {
             size_t Cursor = 0;
             for (SketchPoint& Point : Target.Points) { Point.Position.X = Values[Cursor]; Point.Position.Y = Values[Cursor + 1]; Cursor += 2; }
-            for (SketchCurve& Curve : Target.Curves) if (Curve.Kind == SketchCurveKind::Circle) Curve.Radius = Values[Cursor++];
+            for (SketchCurve& Curve : Target.Curves) if (Curve.Kind == SketchCurveCategory::Circle) Curve.Radius = Values[Cursor++];
         }
 
         // Residuals (scaled) and, when wanted, the scaled Jacobian (equations × unknowns).
-        void Evaluate(const std::vector<double>& Raw, std::vector<double>& Residuals, DenseMatrix* Jacobian) const
+        void Evaluate(const std::vector<double>& Raw, std::vector<double>& Residuals, DenseLinearArray* Jacobian) const
         {
             Residuals.assign(Equations.size(), 0.0);
-            if (Jacobian) *Jacobian = DenseMatrix(static_cast<int>(Equations.size()), Unknowns);
+            if (Jacobian) *Jacobian = DenseLinearArray(static_cast<int>(Equations.size()), Unknowns);
             for (size_t Index = 0; Index < Equations.size(); ++Index)
             {
                 const double Divisor = RowUnit(Equations[Index]);
                 if (Equations[Index].WideCondition)
                 {
                     const SketchEquation& Wide = Equations[Index];
-                    const WideContext     Context(Sketch, Raw, Wide.WideVariables);
+                    const WideEnvironment     Context(Sketch, Raw, Wide.WideVariables);
                     const WideDual        Result = EvaluateSplineEquation(Context, Constraints[Wide.Constraint], Wide.Row);
                     Residuals[Index] = Result.Value / Divisor;
                     if (!Jacobian) continue;
@@ -866,7 +866,7 @@ namespace
                     continue;
                 }
                 SketchEquation  Equation = Equations[Index];
-                EquationContext Context(Sketch, Raw, Equation, false);
+                EquationEnvironment Context(Sketch, Raw, Equation, false);
                 const LocalDual Result = EvaluateEquation(Context, Constraints[Equation.Constraint], Equation.Row);
                 Residuals[Index] = Result.Value / Divisor;
                 if (!Jacobian) continue;
@@ -909,16 +909,16 @@ namespace
             High = { std::max(High.X, Point.Position.X), std::max(High.Y, Point.Position.Y) };
         }
         double Scale = Sketch.Points.empty() ? 0.0 : Distance(Low, High);
-        for (const SketchCurve& Curve : Sketch.Curves) if (Curve.Kind == SketchCurveKind::Circle) Scale = std::max(Scale, 2.0 * std::fabs(Curve.Radius));
+        for (const SketchCurve& Curve : Sketch.Curves) if (Curve.Kind == SketchCurveCategory::Circle) Scale = std::max(Scale, 2.0 * std::fabs(Curve.Radius));
         for (const SketchConstraint& Constraint : Constraints)
         {
-            if (!RatioCondition(Constraint.Kind) && Constraint.Kind != SketchConstraintKind::Fixed) Scale = std::max(Scale, std::fabs(Constraint.Value));
+            if (!RatioCondition(Constraint.Kind) && Constraint.Kind != SketchConstraintCategory::Fixed) Scale = std::max(Scale, std::fabs(Constraint.Value));
         }
         return Scale > 1.0e-300 ? Scale : 1.0;
     }
 
     // 📝 Minimum-norm step over the independent rows: J = P·Rᵀ·Qᵀ from Jᵀ·P = Q·R, so R₁₁ᵀ·y = −(PᵀF)₁..ᵣ, Δ = Q₁·y.
-    [[nodiscard]] std::vector<double> MinimumNormStep(const DenseMatrix& Jacobian, const std::vector<double>& Residuals, double RankTolerance,
+    [[nodiscard]] std::vector<double> MinimumNormStep(const DenseLinearArray& Jacobian, const std::vector<double>& Residuals, double RankTolerance,
                                                       std::vector<int>& IndependentRows)
     {
         const PivotedDecomposition Decomposition = DecomposeColumnPivoted(Transpose(Jacobian), RankTolerance);
@@ -936,10 +936,10 @@ namespace
         return Step;
     }
 
-    [[nodiscard]] std::vector<double> DampedStep(const DenseMatrix& Jacobian, const std::vector<double>& Residuals, double Damping)
+    [[nodiscard]] std::vector<double> DampedStep(const DenseLinearArray& Jacobian, const std::vector<double>& Residuals, double Damping)
     {
         const int Unknowns = Jacobian.Columns;
-        DenseMatrix Normal(Unknowns, Unknowns);
+        DenseLinearArray Normal(Unknowns, Unknowns);
         std::vector<double> Right(Unknowns, 0.0);
         for (int Row = 0; Row < Jacobian.Rows; ++Row)
         {
@@ -966,14 +966,14 @@ static void HoldTangentSides(const SketchModel& Sketch, std::vector<SketchConstr
     for (int Index = 0; Index < Count; ++Index)
     {
         SketchConstraint& Constraint = Constraints[Index];
-        if (Constraint.Kind != SketchConstraintKind::Tangent || Constraint.Value != 0.0 || !ReferenceCondition(Sketch, Constraint)) continue;
+        if (Constraint.Kind != SketchConstraintCategory::Tangent || Constraint.Value != 0.0 || !ReferenceCondition(Sketch, Constraint)) continue;
         const SketchCurve& First  = Sketch.Curves[Constraint.First];
         const SketchCurve& Second = Sketch.Curves[Constraint.Second];
         const int          Joint  = SharedEndpoint(First, Second);
         if (Joint < 0 || Second.Centre < 0) continue;
         const Vector2 Contact = Sketch.Points[Joint].Position;
         const Vector2 Radial  = Contact - Sketch.Points[Second.Centre].Position;
-        if (First.Kind == SketchCurveKind::Line)
+        if (First.Kind == SketchCurveCategory::Line)
         {
             const Vector2 Direction = Sketch.Points[First.End].Position - Sketch.Points[First.Start].Position;
             const double  Turn      = Cross(Direction, Radial);
@@ -1009,9 +1009,9 @@ static SketchSolveOutcome SolveSketchUntraced(SketchModel& Sketch, const SketchS
     const int UserConstraints = static_cast<int>(Constraints.size());
     for (int Curve = 0; Curve < static_cast<int>(Sketch.Curves.size()); ++Curve)
     {
-        if (Sketch.Curves[Curve].Kind != SketchCurveKind::Arc) continue;
+        if (Sketch.Curves[Curve].Kind != SketchCurveCategory::Arc) continue;
         SketchConstraint Rule;
-        Rule.Kind  = SketchConstraintKind::ArcRule;
+        Rule.Kind  = SketchConstraintCategory::ArcRule;
         Rule.First = Curve;
         Rule.Label = "ArcRule(" + SketchCurveName(Sketch.Curves[Curve]) + ")";
         Constraints.push_back(Rule);
@@ -1031,7 +1031,7 @@ static SketchSolveOutcome SolveSketchUntraced(SketchModel& Sketch, const SketchS
     //    independent rows only, so conflicting dependants are left unmet instead of smeared into a least-squares compromise.
     std::vector<double> Raw = Division.Pack();
     std::vector<double> Residuals, Trial, TrialResiduals;
-    DenseMatrix         Jacobian;
+    DenseLinearArray         Jacobian;
     double              Damping = 1.0e-3;
     for (int Iteration = 0; Iteration < Settings.IterationLimit && Division.Unknowns > 0 && !Division.Equations.empty(); ++Iteration)
     {
@@ -1050,7 +1050,7 @@ static SketchSolveOutcome SolveSketchUntraced(SketchModel& Sketch, const SketchS
             Division.Evaluate(Trial, TrialResiduals, nullptr);
             if (SquaredNorm(TrialResiduals, IndependentRows) <= (1.0 - 1.0e-4 * Fraction) * Merit) { Raw = Trial; Accepted = true; }
         }
-        DenseMatrix         Reduced = Jacobian;
+        DenseLinearArray         Reduced = Jacobian;
         std::vector<double> ReducedResiduals(Residuals.size(), 0.0);
         std::vector<bool>   Keep(Residuals.size(), false);
         for (int Row : IndependentRows) { Keep[Row] = true; ReducedResiduals[Row] = Residuals[Row]; }
@@ -1173,7 +1173,7 @@ static SketchSolveOutcome SolveSketchUntraced(SketchModel& Sketch, const SketchS
         bool Fixed = true;
         for (int Point : { Shape.Start, Shape.End, Shape.Centre }) if (Point >= 0) Fixed = Fixed && Outcome.PointFixed[Point];
         for (int Point : Shape.Points) if (Point >= 0) Fixed = Fixed && Outcome.PointFixed[Point];
-        if (Shape.Kind == SketchCurveKind::Circle) Fixed = Fixed && UnknownFixed[RadiusCursor++];
+        if (Shape.Kind == SketchCurveCategory::Circle) Fixed = Fixed && UnknownFixed[RadiusCursor++];
         Outcome.CurveFixed[Curve] = Fixed;
     }
 
@@ -1185,7 +1185,7 @@ static SketchSolveOutcome SolveSketchUntraced(SketchModel& Sketch, const SketchS
         Seed = Seed * 6364136223846793005ull + 1442695040888963407ull;
         if (!Division.Frozen[Unknown]) Perturbed[Unknown] += Scale * 0.01 * (static_cast<double>(Seed >> 11) / 9007199254740992.0 - 0.5);
     }
-    DenseMatrix GenericJacobian;
+    DenseLinearArray GenericJacobian;
     std::vector<double> GenericResiduals;
     Division.Evaluate(Perturbed, GenericResiduals, &GenericJacobian);
     Outcome.StructuralRank = DecomposeColumnPivoted(Transpose(GenericJacobian), Settings.RankTolerance).Rank;
@@ -1226,7 +1226,7 @@ int AppendSketchPoint(SketchModel& Sketch, Vector2 Position)
 int AppendSketchLine(SketchModel& Sketch, int Start, int End, int Identifier, bool Construction)
 {
     SketchCurve Curve;
-    Curve.Kind = SketchCurveKind::Line; Curve.Identifier = Identifier; Curve.Start = Start; Curve.End = End; Curve.Construction = Construction;
+    Curve.Kind = SketchCurveCategory::Line; Curve.Identifier = Identifier; Curve.Start = Start; Curve.End = End; Curve.Construction = Construction;
     Sketch.Curves.push_back(Curve);
     return static_cast<int>(Sketch.Curves.size()) - 1;
 }
@@ -1234,7 +1234,7 @@ int AppendSketchLine(SketchModel& Sketch, int Start, int End, int Identifier, bo
 int AppendSketchCircle(SketchModel& Sketch, int Centre, double Radius, int Identifier, bool Construction)
 {
     SketchCurve Curve;
-    Curve.Kind = SketchCurveKind::Circle; Curve.Identifier = Identifier; Curve.Centre = Centre; Curve.Radius = Radius; Curve.Construction = Construction;
+    Curve.Kind = SketchCurveCategory::Circle; Curve.Identifier = Identifier; Curve.Centre = Centre; Curve.Radius = Radius; Curve.Construction = Construction;
     Sketch.Curves.push_back(Curve);
     return static_cast<int>(Sketch.Curves.size()) - 1;
 }
@@ -1242,7 +1242,7 @@ int AppendSketchCircle(SketchModel& Sketch, int Centre, double Radius, int Ident
 int AppendSketchArc(SketchModel& Sketch, int Centre, int Start, int End, int Identifier, bool Construction)
 {
     SketchCurve Curve;
-    Curve.Kind = SketchCurveKind::Arc; Curve.Identifier = Identifier; Curve.Centre = Centre; Curve.Start = Start; Curve.End = End; Curve.Construction = Construction;
+    Curve.Kind = SketchCurveCategory::Arc; Curve.Identifier = Identifier; Curve.Centre = Centre; Curve.Start = Start; Curve.End = End; Curve.Construction = Construction;
     Sketch.Curves.push_back(Curve);
     return static_cast<int>(Sketch.Curves.size()) - 1;
 }
@@ -1250,7 +1250,7 @@ int AppendSketchArc(SketchModel& Sketch, int Centre, int Start, int End, int Ide
 int AppendSketchSpline(SketchModel& Sketch, std::vector<int> Points, SketchSplineForm Form, int Identifier, bool Construction)
 {
     SketchCurve Curve;
-    Curve.Kind = SketchCurveKind::Spline; Curve.Identifier = Identifier; Curve.Form = Form; Curve.Construction = Construction;
+    Curve.Kind = SketchCurveCategory::Spline; Curve.Identifier = Identifier; Curve.Form = Form; Curve.Construction = Construction;
     Curve.Start  = Points.empty() ? -1 : Points.front();
     Curve.End    = Points.empty() ? -1 : Points.back();
     Curve.Points = std::move(Points);
@@ -1258,7 +1258,7 @@ int AppendSketchSpline(SketchModel& Sketch, std::vector<int> Points, SketchSplin
     return static_cast<int>(Sketch.Curves.size()) - 1;
 }
 
-int AppendSketchConstraint(SketchModel& Sketch, SketchConstraintKind Kind, int First, int Second, int Third, double Value, const std::string& Label, double SecondValue)
+int AppendSketchConstraint(SketchModel& Sketch, SketchConstraintCategory Kind, int First, int Second, int Third, double Value, const std::string& Label, double SecondValue)
 {
     SketchConstraint Constraint;
     Constraint.Kind = Kind; Constraint.First = First; Constraint.Second = Second; Constraint.Third = Third;
@@ -1272,25 +1272,25 @@ double MeasureSketchDimension(const SketchModel& Sketch, const SketchConstraint&
     const double Missing    = std::numeric_limits<double>::quiet_NaN();
     const int    PointCount = static_cast<int>(Sketch.Points.size()), CurveCount = static_cast<int>(Sketch.Curves.size());
     auto PointSlot = [&](int Index) { return Index >= 0 && Index < PointCount; };
-    auto CurveSlot = [&](int Index, SketchCurveKind Kind) { return Index >= 0 && Index < CurveCount && Sketch.Curves[Index].Kind == Kind; };
+    auto CurveSlot = [&](int Index, SketchCurveCategory Kind) { return Index >= 0 && Index < CurveCount && Sketch.Curves[Index].Kind == Kind; };
     auto Position  = [&](int Index) { return Sketch.Points[Index].Position; };
     auto Direction = [&](int Line) { return Position(Sketch.Curves[Line].End) - Position(Sketch.Curves[Line].Start); };
     switch (Constraint.Kind)
     {
-    case SketchConstraintKind::Length:
-        return CurveSlot(Constraint.First, SketchCurveKind::Line) ? std::sqrt(Dot(Direction(Constraint.First), Direction(Constraint.First))) : Missing;
-    case SketchConstraintKind::Distance:
+    case SketchConstraintCategory::Length:
+        return CurveSlot(Constraint.First, SketchCurveCategory::Line) ? std::sqrt(Dot(Direction(Constraint.First), Direction(Constraint.First))) : Missing;
+    case SketchConstraintCategory::Distance:
         return PointSlot(Constraint.First) && PointSlot(Constraint.Second) ? Distance(Position(Constraint.First), Position(Constraint.Second)) : Missing;
-    case SketchConstraintKind::HorizontalDistance:
+    case SketchConstraintCategory::HorizontalDistance:
         return PointSlot(Constraint.First) && PointSlot(Constraint.Second) ? Position(Constraint.Second).X - Position(Constraint.First).X : Missing;
-    case SketchConstraintKind::VerticalDistance:
+    case SketchConstraintCategory::VerticalDistance:
         return PointSlot(Constraint.First) && PointSlot(Constraint.Second) ? Position(Constraint.Second).Y - Position(Constraint.First).Y : Missing;
-    case SketchConstraintKind::Radius:
-        if (CurveSlot(Constraint.First, SketchCurveKind::Circle) || CurveSlot(Constraint.First, SketchCurveKind::Arc)) return MeasureSketchRadius(Sketch, Sketch.Curves[Constraint.First]);
+    case SketchConstraintCategory::Radius:
+        if (CurveSlot(Constraint.First, SketchCurveCategory::Circle) || CurveSlot(Constraint.First, SketchCurveCategory::Arc)) return MeasureSketchRadius(Sketch, Sketch.Curves[Constraint.First]);
         return Missing;
-    case SketchConstraintKind::Angle:
+    case SketchConstraintCategory::Angle:
     {
-        if (!CurveSlot(Constraint.First, SketchCurveKind::Line) || !CurveSlot(Constraint.Second, SketchCurveKind::Line)) return Missing;
+        if (!CurveSlot(Constraint.First, SketchCurveCategory::Line) || !CurveSlot(Constraint.Second, SketchCurveCategory::Line)) return Missing;
         const Vector2 First = Direction(Constraint.First), Second = Direction(Constraint.Second);
         return std::atan2(First.X * Second.Y - First.Y * Second.X, Dot(First, Second));
     }
@@ -1300,7 +1300,7 @@ double MeasureSketchDimension(const SketchModel& Sketch, const SketchConstraint&
 
 int NearestSketchSplineEnd(const SketchModel& Sketch, const SketchCurve& Curve, Vector2 Position) noexcept
 {
-    if (Curve.Kind != SketchCurveKind::Spline || Curve.Points.size() < 2 || ClosedSpline(Curve)) return -1;
+    if (Curve.Kind != SketchCurveCategory::Spline || Curve.Points.size() < 2 || ClosedSpline(Curve)) return -1;
     const int Front = Curve.Points.front(), Back = Curve.Points.back();
     const int Count = static_cast<int>(Sketch.Points.size());
     if (Front < 0 || Back < 0 || Front >= Count || Back >= Count) return -1;
@@ -1309,45 +1309,45 @@ int NearestSketchSplineEnd(const SketchModel& Sketch, const SketchCurve& Curve, 
 
 double MeasureSketchRadius(const SketchModel& Sketch, const SketchCurve& Curve) noexcept
 {
-    if (Curve.Kind == SketchCurveKind::Arc) return Distance(Sketch.Points[Curve.Start].Position, Sketch.Points[Curve.Centre].Position);
+    if (Curve.Kind == SketchCurveCategory::Arc) return Distance(Sketch.Points[Curve.Start].Position, Sketch.Points[Curve.Centre].Position);
     return Curve.Radius;
 }
 
 std::string SketchCurveName(const SketchCurve& Curve)
 {
-    const char* Prefix = Curve.Kind == SketchCurveKind::Line ? "Line" : Curve.Kind == SketchCurveKind::Arc ? "Arc" : Curve.Kind == SketchCurveKind::Spline ? "Spline" : "Circle";
+    const char* Prefix = Curve.Kind == SketchCurveCategory::Line ? "Line" : Curve.Kind == SketchCurveCategory::Arc ? "Arc" : Curve.Kind == SketchCurveCategory::Spline ? "Spline" : "Circle";
     return Prefix + std::to_string(Curve.Identifier);
 }
 
-const char* SketchConstraintLabel(SketchConstraintKind Kind) noexcept
+const char* SketchConstraintLabel(SketchConstraintCategory Kind) noexcept
 {
     switch (Kind)
     {
-    case SketchConstraintKind::Coincident:         return "Coincident";
-    case SketchConstraintKind::Fixed:              return "Fixed";
-    case SketchConstraintKind::Horizontal:         return "Horizontal";
-    case SketchConstraintKind::Vertical:           return "Vertical";
-    case SketchConstraintKind::Distance:           return "Distance";
-    case SketchConstraintKind::HorizontalDistance: return "HorizontalDistance";
-    case SketchConstraintKind::VerticalDistance:   return "VerticalDistance";
-    case SketchConstraintKind::Length:             return "Length";
-    case SketchConstraintKind::Parallel:           return "Parallel";
-    case SketchConstraintKind::Perpendicular:      return "Perpendicular";
-    case SketchConstraintKind::Angle:              return "Angle";
-    case SketchConstraintKind::EqualLength:        return "EqualLength";
-    case SketchConstraintKind::Radius:             return "Radius";
-    case SketchConstraintKind::EqualRadius:        return "EqualRadius";
-    case SketchConstraintKind::PointOnLine:        return "PointOnLine";
-    case SketchConstraintKind::PointOnCircle:      return "PointOnCircle";
-    case SketchConstraintKind::Tangent:            return "Tangent";
-    case SketchConstraintKind::Midpoint:           return "Midpoint";
-    case SketchConstraintKind::Symmetric:          return "Symmetric";
-    case SketchConstraintKind::Concentric:         return "Concentric";
-    case SketchConstraintKind::ArcRule:            return "ArcRule";
-    case SketchConstraintKind::SplineTangent:      return "SplineTangent";
-    case SketchConstraintKind::SplineCurvature:    return "SplineCurvature";
-    case SketchConstraintKind::PointOnSpline:      return "PointOnSpline";
-    case SketchConstraintKind::SplineDirection:    return "SplineDirection";
+    case SketchConstraintCategory::Coincident:         return "Coincident";
+    case SketchConstraintCategory::Fixed:              return "Fixed";
+    case SketchConstraintCategory::Horizontal:         return "Horizontal";
+    case SketchConstraintCategory::Vertical:           return "Vertical";
+    case SketchConstraintCategory::Distance:           return "Distance";
+    case SketchConstraintCategory::HorizontalDistance: return "HorizontalDistance";
+    case SketchConstraintCategory::VerticalDistance:   return "VerticalDistance";
+    case SketchConstraintCategory::Length:             return "Length";
+    case SketchConstraintCategory::Parallel:           return "Parallel";
+    case SketchConstraintCategory::Perpendicular:      return "Perpendicular";
+    case SketchConstraintCategory::Angle:              return "Angle";
+    case SketchConstraintCategory::EqualLength:        return "EqualLength";
+    case SketchConstraintCategory::Radius:             return "Radius";
+    case SketchConstraintCategory::EqualRadius:        return "EqualRadius";
+    case SketchConstraintCategory::PointOnLine:        return "PointOnLine";
+    case SketchConstraintCategory::PointOnCircle:      return "PointOnCircle";
+    case SketchConstraintCategory::Tangent:            return "Tangent";
+    case SketchConstraintCategory::Midpoint:           return "Midpoint";
+    case SketchConstraintCategory::Symmetric:          return "Symmetric";
+    case SketchConstraintCategory::Concentric:         return "Concentric";
+    case SketchConstraintCategory::ArcRule:            return "ArcRule";
+    case SketchConstraintCategory::SplineTangent:      return "SplineTangent";
+    case SketchConstraintCategory::SplineCurvature:    return "SplineCurvature";
+    case SketchConstraintCategory::PointOnSpline:      return "PointOnSpline";
+    case SketchConstraintCategory::SplineDirection:    return "SplineDirection";
     }
     return "?";
 }

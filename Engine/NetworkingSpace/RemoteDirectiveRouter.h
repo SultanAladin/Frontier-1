@@ -52,7 +52,7 @@ struct QuantizedInputDirective
     uint8_t TriggerMask         = 0u;   // [mask]   - DiscreteTriggerMask bits
 };
 
-struct ReliableDirectiveRecord
+struct ReliableDirectiveEntry
 {
     uint32_t             DirectiveSequence = 0u; // [-] - Strictly monotonic sequence number
     uint16_t             DirectiveOpcode   = 0u; // [-] - Domain / workspace command opcode
@@ -105,15 +105,15 @@ public:
 
     [[nodiscard]] bool     IngestInboundBatch(
         std::span<const uint8_t>              Payload,
-        std::vector<ReliableDirectiveRecord>& OutDeliveredInOrder);
+        std::vector<ReliableDirectiveEntry>& OutDeliveredInOrder);
 
     [[nodiscard]] uint32_t QueryHighestContiguousInbound() const noexcept { return ExpectedInboundSequence - 1u; }
     [[nodiscard]] uint32_t QueryPendingOutboundCount() const noexcept { return static_cast<uint32_t>(PendingOutbound.size()); }
     void                   ResetRouter() noexcept;
 
 private:
-    std::vector<ReliableDirectiveRecord> PendingOutbound         {};
-    std::vector<ReliableDirectiveRecord> OutOfOrderHoldback      {};
+    std::vector<ReliableDirectiveEntry> PendingOutbound         {};
+    std::vector<ReliableDirectiveEntry> OutOfOrderHoldback      {};
     uint32_t                             NextOutboundSequence    = 1u;
     uint32_t                             ExpectedInboundSequence = 1u;
 };

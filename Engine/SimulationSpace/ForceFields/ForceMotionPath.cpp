@@ -43,13 +43,13 @@ namespace
 
 [[nodiscard]] SpatialVector3 SampleRawCurvePosition(const ForceSourceRecordEntry& Entry, float NormalizedU) noexcept
 {
-    if (Entry.Motion.Topology == MotionPathTopology::Static)
+    if (Entry.Motion.Topology == MotionPathGeometry::Static)
     {
         return Entry.CentreMeters;
     }
 
     const uint32_t Count = std::min<uint32_t>(Entry.Motion.WaypointCount, MaxForceMotionWaypoints);
-    if (Entry.Motion.Topology == MotionPathTopology::HelicalOrbit)
+    if (Entry.Motion.Topology == MotionPathGeometry::HelicalOrbit)
     {
         const SpatialVector3 Anchor = (Count > 0u) ? Entry.Motion.Waypoints[0] : Entry.CentreMeters;
         const float          θ      = NormalizedU * Constants::TauFloat * std::max(0.25f, Entry.Motion.OrbitTurns);
@@ -74,7 +74,7 @@ namespace
     }
 
     const float ClampedU = std::clamp(NormalizedU, 0.0f, 1.0f);
-    if (Entry.Motion.Topology == MotionPathTopology::LinearSpan || Count == 2u)
+    if (Entry.Motion.Topology == MotionPathGeometry::LinearSpan || Count == 2u)
     {
         const float          Scaled = ClampedU * static_cast<float>(Count - 1u);
         const uint32_t       SegIdx = std::min(Count - 2u, static_cast<uint32_t>(std::floor(Scaled)));
@@ -105,14 +105,14 @@ namespace
 
 void AssignPresetMotionPath(
     ForceSourceRecordEntry& Entry,
-    MotionPathTopology      PresetTopology) noexcept
+    MotionPathGeometry      PresetTopology) noexcept
 {
     const SpatialVector3 Base = Entry.CentreMeters;
     Entry.Motion.Topology     = PresetTopology;
 
     switch (PresetTopology)
     {
-        case MotionPathTopology::Static:
+        case MotionPathGeometry::Static:
         {
             Entry.DynamicMotion          = false;
             Entry.Motion.WaypointCount   = 0u;
@@ -121,7 +121,7 @@ void AssignPresetMotionPath(
             break;
         }
 
-        case MotionPathTopology::LinearSpan:
+        case MotionPathGeometry::LinearSpan:
         {
             Entry.DynamicMotion        = true;
             Entry.Motion.WaypointCount = 2u;
@@ -130,7 +130,7 @@ void AssignPresetMotionPath(
             break;
         }
 
-        case MotionPathTopology::CatmullSpline:
+        case MotionPathGeometry::CatmullSpline:
         {
             Entry.DynamicMotion        = true;
             Entry.Motion.WaypointCount = 4u;
@@ -141,7 +141,7 @@ void AssignPresetMotionPath(
             break;
         }
 
-        case MotionPathTopology::HelicalOrbit:
+        case MotionPathGeometry::HelicalOrbit:
         {
             Entry.DynamicMotion                      = true;
             Entry.Motion.WaypointCount               = 1u;
@@ -164,11 +164,11 @@ void AssignPresetMotionPath(
 
 float ComputeMotionPathArcLengthMeters(const ForceSourceRecordEntry& Entry) noexcept
 {
-    if (Entry.Motion.Topology == MotionPathTopology::Static)
+    if (Entry.Motion.Topology == MotionPathGeometry::Static)
     {
         return 0.0f;
     }
-    if (Entry.Motion.Topology == MotionPathTopology::HelicalOrbit)
+    if (Entry.Motion.Topology == MotionPathGeometry::HelicalOrbit)
     {
         const float Circumference = Constants::TauFloat * std::max(0.25f, Entry.Motion.OrbitRadiusMeters) *
                                     std::max(0.25f, Entry.Motion.OrbitTurns);
@@ -255,7 +255,7 @@ MotionSamplePoint EvaluateForceMotionAtTime(
     const ForceSourceRecordEntry& Entry,
     double                        TimeSeconds) noexcept
 {
-    if (!Entry.DynamicMotion || Entry.Motion.Topology == MotionPathTopology::Static)
+    if (!Entry.DynamicMotion || Entry.Motion.Topology == MotionPathGeometry::Static)
     {
         const BasisVectors3 Basis = ConstructOrthonormalBasisFromEuler(Entry.EulerDegrees);
         return { Entry.CentreMeters, Basis.Forward, 0.0f };
@@ -282,7 +282,7 @@ void StepAnimatedForceSources(
 {
     for (ForceSourceRecordEntry& Entry : Sources)
     {
-        if (!Entry.DynamicMotion || Entry.Motion.Topology == MotionPathTopology::Static)
+        if (!Entry.DynamicMotion || Entry.Motion.Topology == MotionPathGeometry::Static)
         {
             Entry.EvaluatedCentreMeters = Entry.CentreMeters;
             continue;
@@ -300,7 +300,7 @@ void StepAnimatedForceSources(
         Entry.EvaluatedCentreMeters     = Sample.PositionMeters;
         Entry.Motion.NormalizedProgress = Sample.NormalizedPhase;
 
-        if (Entry.Motion.OrientAlongPathTangent && Entry.Motion.Topology != MotionPathTopology::Static)
+        if (Entry.Motion.OrientAlongPathTangent && Entry.Motion.Topology != MotionPathGeometry::Static)
         {
             Entry.EulerDegrees = ComputeEulerDegreesFromDirection(Sample.TangentVector);
         }

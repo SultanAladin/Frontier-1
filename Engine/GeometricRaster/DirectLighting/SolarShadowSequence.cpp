@@ -432,7 +432,7 @@ struct CascadeSampleOutcome
 //------------------------------------------------------------------------------------------------------------------------
 
 void SolarShadowSequence::BuildTwoCascadeContactClips(
-    const SolarDirectionalEmitter&               Sun,
+    const SolarDirectionalSource&               Sun,
     Mathematics::Axis3D                          FocusCenterWorld,
     const SpatialAcceleration::WideBoundingTree& SceneTree,
     OrthographicShadowCascade&                   OutFineCascade,
@@ -470,7 +470,7 @@ void SolarShadowSequence::BuildTwoCascadeContactClips(
 
 SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorithm(
     SolarShadowAlgorithm                                    Algorithm,
-    const SolarDirectionalEmitter&                          Sun,
+    const SolarDirectionalSource&                          Sun,
     uint32_t                                                ViewportWidth,
     uint32_t                                                ViewportHeight,
     std::span<const AnalyticResolvedSurfaceSample>          PrimarySamples,
@@ -732,7 +732,7 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
 
 SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowField(
     DirectShadowTier                                Tier,
-    const SolarDirectionalEmitter&                  Sun,
+    const SolarDirectionalSource&                  Sun,
     uint32_t                                        ViewportWidth,
     uint32_t                                        ViewportHeight,
     std::span<const AnalyticResolvedSurfaceSample>  PrimarySamples,

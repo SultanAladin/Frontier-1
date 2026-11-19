@@ -237,15 +237,15 @@ struct BodyTessellationEntry
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-SketcherDeviationMap MeasureSketcherDeviation(const SketcherDocument& Document)
+SketcherDeviationPlot MeasureSketcherDeviation(const SketcherDocument& Document)
 {
-    SketcherDeviationMap Map;
+    SketcherDeviationPlot Map;
     Map.Revision = Document.Revision;
     if (Document.Regeneration.Panels.empty()) return Map;
     constexpr int Grid = 8;                                                                  // 9 × 9 seeds per panel
     for (const FeatureStep& Step : Document.Tree.Steps)
     {
-        if (Step.Kind != FeatureStepKind::SpaceCurve) continue;
+        if (Step.Kind != FeatureStepCategory::SpaceCurve) continue;
         for (const Vector3& Point : Step.Points)
         {
             SketcherDeviationNeedle Needle;
@@ -311,7 +311,7 @@ SketcherScene BuildSketcherScene(const SketcherDocument& Document, double SagRat
             const TessellationOutcome Outcome = TessellateBodyCached(Partition, Regenerated.Body, Settings);
             Scene.Sag = std::max(Scene.Sag, Outcome.Sag);
             if (!Outcome.Refusal.empty()) Scene.Refusal += (Scene.Refusal.empty() ? "" : "; ") + Outcome.Refusal;
-            const PolygonComplex&  Complex   = Outcome.Complex;
+            const PolygonNetworkStructure&  Complex   = Outcome.Complex;
             const BodyNaming&      Naming    = Regenerated.Naming;
             const uint32_t         BodyIndex = static_cast<uint32_t>(Scene.Bodies.size());
             SketcherSceneBody      Listed;
@@ -321,7 +321,7 @@ SketcherScene BuildSketcherScene(const SketcherDocument& Document, double SagRat
             Listed.FirstEdge = static_cast<uint32_t>(Scene.Edges.size());
 
             // ① faces: three corners per triangle (both opaque solids and semitransparent LiveCutters emit full faces for shading & picking)
-            for (const PolygonComplexFace& Patch : Complex.Faces)
+            for (const PolygonNetFace& Patch : Complex.Faces)
             {
                 SketcherSceneFace Face;
                 const auto Named  = Naming.Faces.find(Patch.Face.Slot);
@@ -365,7 +365,7 @@ SketcherScene BuildSketcherScene(const SketcherDocument& Document, double SagRat
             }
 
             // ② edges: the shared samplings, so edges sit exactly on the face boundaries
-            for (const PolygonComplexEdge& Sampled : Complex.Edges)
+            for (const PolygonNetEdge& Sampled : Complex.Edges)
             {
                 SketcherSceneEdge Edge;
                 const auto Named   = Naming.Edges.find(Sampled.Edge.Slot);
@@ -517,13 +517,13 @@ SketcherSceneStates ComposeSketcherStates(const SketcherScene& Scene, const Sket
             if (ActiveCondition && Found == Names.end() - 1) Words[Index] |= 2u;
         }
     };
-    Mark(Scene.Faces, States.Faces, Selection.Faces, Selection.LastKind == SketcherSelectionKind::Face);
-    Mark(Scene.Edges, States.Edges, Selection.Edges, Selection.LastKind == SketcherSelectionKind::Edge);
+    Mark(Scene.Faces, States.Faces, Selection.Faces, Selection.LastKind == SketcherSelectionCategory::Face);
+    Mark(Scene.Edges, States.Edges, Selection.Edges, Selection.LastKind == SketcherSelectionCategory::Edge);
     for (const SketcherSceneBody& Body : Scene.Bodies)
     {
         const auto Found = std::find(Selection.Bodies.begin(), Selection.Bodies.end(), Body.Key);
         if (Found == Selection.Bodies.end()) continue;
-        const uint32_t Word = 1u | (Selection.LastKind == SketcherSelectionKind::Body && Found == Selection.Bodies.end() - 1 ? 2u : 0u);
+        const uint32_t Word = 1u | (Selection.LastKind == SketcherSelectionCategory::Body && Found == Selection.Bodies.end() - 1 ? 2u : 0u);
         for (uint32_t Index = Body.FirstFace; Index < Body.FirstFace + Body.FaceCount; ++Index) States.Faces[Index] |= Word;
         for (uint32_t Index = Body.FirstEdge; Index < Body.FirstEdge + Body.EdgeCount; ++Index) States.Edges[Index] |= Word;
     }
@@ -557,9 +557,9 @@ std::string NameSketcherIdentity(const SketcherScene& Scene, uint32_t Identity)
     return Index < Scene.Faces.size() ? Scene.Faces[Index].Name : std::string{};
 }
 
-SketcherSelectionKind SketcherIdentityKind(uint32_t Identity) noexcept
+SketcherSelectionCategory SketcherIdentityKind(uint32_t Identity) noexcept
 {
-    return (Identity & IdentityEdgeBit) ? SketcherSelectionKind::Edge : SketcherSelectionKind::Face;
+    return (Identity & IdentityEdgeBit) ? SketcherSelectionCategory::Edge : SketcherSelectionCategory::Face;
 }
 
 std::vector<uint32_t> ComposeSketcherMatcapLayers(const SketcherScene& Scene, const SketcherAppearance& Appearance, const SketcherMatcapLibrary& Library)
@@ -592,9 +592,9 @@ size_t CountDanglingMatcaps(const SketcherScene& Scene, const SketcherAppearance
 double MeasureSketcherProfileSink(const SketcherDocument& Document, const SketcherScene& Scene, const std::string& SketchLabel)
 {
     const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(),
-                                    [&](const FeatureStep& Step) { return Step.Label == SketchLabel && Step.Kind == FeatureStepKind::Sketch; });
+                                    [&](const FeatureStep& Step) { return Step.Label == SketchLabel && Step.Kind == FeatureStepCategory::Sketch; });
     if (Found == Document.Tree.Steps.end()) return 0.0;
-    OrthonormalFrame Plane = Found->Plane;
+    OrthonormalBasis Plane = Found->Plane;
     Plane.Origin           = Plane.Origin + Plane.ZAxis * EvaluateFeatureValue(Document.Tree, Found->Elevation);
     const auto        Solved = Document.Regeneration.Sketches.find(SketchLabel);
     const SketchModel& Sketch = Solved != Document.Regeneration.Sketches.end() ? Solved->second : Found->Sketch;
@@ -634,12 +634,12 @@ double MeasureSketcherProfileSink(const SketcherDocument& Document, const Sketch
 int MeasureSketcherProfileMaterial(const SketcherDocument& Document, const std::string& SketchLabel, const std::string& Target)
 {
     const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(),
-                                    [&](const FeatureStep& Step) { return Step.Label == SketchLabel && Step.Kind == FeatureStepKind::Sketch; });
+                                    [&](const FeatureStep& Step) { return Step.Label == SketchLabel && Step.Kind == FeatureStepCategory::Sketch; });
     if (Found == Document.Tree.Steps.end() || !Document.Partition) return 0;
     const std::string Key = Target.empty() ? Document.Regeneration.Active : Target;
     const auto Body = std::find_if(Document.Regeneration.Bodies.begin(), Document.Regeneration.Bodies.end(), [&](const RegeneratedBody& Entry) { return Entry.Key == Key; });
     if (Body == Document.Regeneration.Bodies.end() || Document.Partition->Bodies.Resolve(Body->Body).Category != BodyCategory::Solid) return 0;
-    OrthonormalFrame Plane = Found->Plane;
+    OrthonormalBasis Plane = Found->Plane;
     Plane.Origin           = Plane.Origin + Plane.ZAxis * EvaluateFeatureValue(Document.Tree, Found->Elevation);
     const auto         Solved  = Document.Regeneration.Sketches.find(SketchLabel);
     const SketchModel& Sketch  = Solved != Document.Regeneration.Sketches.end() ? Solved->second : Found->Sketch;

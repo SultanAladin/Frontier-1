@@ -114,7 +114,7 @@ namespace
         const Vector3 Radial  = Offset - Arc.Frame.ZAxis * Height;                           // [len] - Radial part
         const double  Reach   = Dot(Radial, Arc.Frame.XAxis);                                // [len] - Contact radius ρ
         if (!(Reach > 1.0e-9 * Scale) || Length(Radial - Arc.Frame.XAxis * Reach) > 1.0e-9 * Scale) return std::nullopt;
-        OrthonormalFrame Frame = Arc.Frame;
+        OrthonormalBasis Frame = Arc.Frame;
         Frame.Origin = Arc.Frame.Origin + Arc.Frame.ZAxis * Height;
         return CircularArc{ Frame, Reach };
     }
@@ -421,9 +421,9 @@ EdgeBlendSheetOutcome ResolveEdgeBlendSheet(const ModelPartition& Partition, Edg
         const bool  LawEdge   = std::holds_alternative<EllipticalArc>(Carrier) || std::holds_alternative<NurbsCurve>(Carrier) || (EdgeTrace && !EdgeTrace->Trace->Law) || (VariableSize && ConicEdge);
         if (!LawEdge) return Refuse("chamfer on a variable-angle edge of this carrier kind (🚧)");
         if (VariableSize && Profile.Start == Profile.End) return Refuse("variable size on a closed edge (the size would jump at its only vertex)");
-        BallLaw Law;
+        BallBlendProfile Law;
         Law.Edge = Carrier;
-        Law.Form = Settings.Profile == BlendProfile::Chamfer ? BallLawForm::WedgeSetback : BallLawForm::Radius;
+        Law.Form = Settings.Profile == BlendProfile::Chamfer ? BallProfileForm::WedgeSetback : BallProfileForm::Radius;
         Law.Size = Settings.Size;
         for (int Side = 0; Side < 2; ++Side)
         {
@@ -672,7 +672,7 @@ EdgeBlendSheetOutcome ResolveEdgeBlendSheet(const ModelPartition& Partition, Edg
             const auto&  ArcB = std::get<CircularArc>(Sheet.Contacts[1]);
             const double HeightA = Dot(ArcA.Frame.Origin - Arc.Frame.Origin, Arc.Frame.ZAxis);  // [len] - Axial position of A
             const double HeightB = Dot(ArcB.Frame.Origin - Arc.Frame.Origin, Arc.Frame.ZAxis);  // [len] - Axial position of B
-            OrthonormalFrame Frame = Arc.Frame;
+            OrthonormalBasis Frame = Arc.Frame;
             Frame.Origin = ArcA.Frame.Origin;
             if (std::fabs(HeightB - HeightA) <= 1.0e-12 * Scale)
             {

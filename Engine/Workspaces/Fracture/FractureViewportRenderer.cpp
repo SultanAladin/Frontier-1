@@ -695,7 +695,7 @@ FractureRenderOutput FractureViewportRenderer::RenderFrame(
                     const auto  Ref = std::abs(N.Z) < 0.85f ? Mathematics::Axis3D { 0.0f, 0.0f, 1.0f } : Mathematics::Axis3D { 1.0f, 0.0f, 0.0f };
                     const auto  Tx  = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Ref, N));
                     const auto  Ty  = Mathematics::EvaluateCross(N, Tx);
-                    const MaterialSpace::Scattering::SurfaceShadingFrame Frame { Tx, Ty, N };
+                    const MaterialSpace::Scattering::SurfaceShadingBasis Frame { Tx, Ty, N };
                     const auto  LocalWo = Frame.WorldToLocal(V);
 
                     auto AccumLight = [&](Mathematics::Axis3D LWorld, Mathematics::LinearRGB LCol, float Gain)

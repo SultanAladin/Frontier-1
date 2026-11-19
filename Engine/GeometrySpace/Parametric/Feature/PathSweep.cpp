@@ -8,7 +8,7 @@
 
 #include "Engine/GeometrySpace/Parametric/Construction/PrimitiveConstruction.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/NurbsCarrier.h"
-#include "Engine/GeometrySpace/Parametric/Surfacing/PanelAssembly.h"
+#include "Engine/GeometrySpace/Parametric/Surfacing/PanelJoining.h"
 #include "Engine/GeometrySpace/Parametric/Surfacing/SectionLoft.h"
 
 #include <algorithm>
@@ -48,7 +48,7 @@ namespace
     constexpr int    FootIterations  = 30;                                                   // [-] - Newton steps for the path foot
 
     // 📝 Dense path table: parameter, point, unit tangent, rotation-minimising normal and cumulative length.
-    struct PathTable
+    struct PathSchedule
     {
         std::vector<double>  Parameters = {};                                                // [-]
         std::vector<Vector3> Points     = {};                                                // [len]
@@ -58,9 +58,9 @@ namespace
         double               Bend       = 0.0;                                               // [1/len] - κmax
     };
 
-    [[nodiscard]] PathTable TabulatePath(const NurbsCurveDefinition& Path)
+    [[nodiscard]] PathSchedule TabulatePath(const NurbsCurveDefinition& Path)
     {
-        PathTable Table;
+        PathSchedule Table;
         const NurbsDomain Domain = MeasureNurbsCurveDomain(Path);
         for (int Sample = 0; Sample <= PathSamples; ++Sample)
         {
@@ -98,7 +98,7 @@ namespace
     }
 
     // Path parameter and frame normal at arc length Along (linear in the table, then the normal re-squared to the exact tangent).
-    void LocateStation(const PathTable& Table, double Along, double& Parameter, Vector3& Normal)
+    void LocateStation(const PathSchedule& Table, double Along, double& Parameter, Vector3& Normal)
     {
         const auto Upper = std::lower_bound(Table.Lengths.begin(), Table.Lengths.end(), Along);
         const size_t High = std::clamp<size_t>(static_cast<size_t>(Upper - Table.Lengths.begin()), 1, Table.Lengths.size() - 1), Low = High - 1;
@@ -148,10 +148,10 @@ SweepOutcome PipeAlongPath(ModelPartition& Partition, const CurveGeometry& Path,
         //    section is the circle at (R, 0), revolved about the sketch y-axis — the revolve turns toward Z × radial,
         //    which is the arc's direction of increasing τ.
         const Vector3 Radial = Arc->Frame.XAxis * std::cos(Low) + Arc->Frame.YAxis * std::sin(Low);   // [-] - Centre → path start
-        const OrthonormalFrame Plane{ Arc->Frame.Origin, Radial, Arc->Frame.ZAxis, Cross(Radial, Arc->Frame.ZAxis) };
+        const OrthonormalBasis Plane{ Arc->Frame.Origin, Radial, Arc->Frame.ZAxis, Cross(Radial, Arc->Frame.ZAxis) };
         SketchProfile Section;
         ProfileSegment Circle;
-        Circle.Kind   = ProfileSegmentKind::Circle;
+        Circle.Kind   = ProfileSegmentCategory::Circle;
         Circle.Centre = { Arc->Radius, 0.0 };
         Circle.Radius = Radius;
         Circle.Sweep  = 2.0 * std::numbers::pi;
@@ -177,7 +177,7 @@ PipeOutcome PipeAlongCurve(ModelPartition& Partition, const NurbsCurve& Path, do
     if (!Path.Definition) { Outcome.Refusal = "Pipe: the path has no carrier"; return Outcome; }
     if (!(Radius > 0.0)) { Outcome.Refusal = "Pipe: radius must be positive"; return Outcome; }
     const NurbsCurveDefinition& Definition = *Path.Definition;
-    const PathTable Table = TabulatePath(Definition);
+    const PathSchedule Table = TabulatePath(Definition);
     Outcome.Length = Table.Lengths.back();
     Outcome.Bend   = Radius * Table.Bend;
     if (!(Outcome.Length > 0.0)) { Outcome.Refusal = "Pipe: the path has no length"; return Outcome; }
@@ -234,9 +234,9 @@ PipeOutcome PipeAlongCurve(ModelPartition& Partition, const NurbsCurve& Path, do
         if (Worst > Tolerance) continue;
 
         // ③ One NURBS side, plane caps on the two rim circles → closed solid.
-        PanelAssemblySettings Assembly;
+        PanelJoiningSettings Assembly;
         Assembly.CapCondition = true;
-        const PanelAssemblyOutcome Assembled = AssemblePanels(Partition, { SurfacePanel{ Skin.Surface } }, Assembly, "Pipe");
+        const PanelJoiningOutcome Assembled = AssemblePanels(Partition, { SurfacePanel{ Skin.Surface } }, Assembly, "Pipe");
         if (!Assembled.Refusal.empty()) { Outcome.Refusal = "Pipe: " + Assembled.Refusal; return Outcome; }
         if (!Assembled.SolidCondition || Assembled.Faces.size() != 1 || Assembled.Caps.size() != 2) { Outcome.Refusal = "Pipe: the tube did not close (" + std::to_string(Assembled.LaminarEdges) + " open rim edges)"; return Outcome; }
         Outcome.Body = Assembled.Body;
@@ -248,7 +248,7 @@ PipeOutcome PipeAlongCurve(ModelPartition& Partition, const NurbsCurve& Path, do
     return Outcome;
 }
 
-EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalFrame& Plane, const NurbsCurve& Path, const EvolutionSettings& Settings)
+EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalBasis& Plane, const NurbsCurve& Path, const EvolutionSettings& Settings)
 {
     using namespace Sweeping;
     EvolutionOutcome Outcome;
@@ -256,7 +256,7 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
     if (!Profile.Refusal.empty()) return Refused(Profile.Refusal);
     if (!Path.Definition) return Refused("the path has no carrier");
     const NurbsCurveDefinition& Definition = *Path.Definition;
-    const PathTable Table = TabulatePath(Definition);
+    const PathSchedule Table = TabulatePath(Definition);
     Outcome.Length = Table.Lengths.back();
     if (!(Outcome.Length > 0.0)) return Refused("the path has no length");
     if (Distance(Table.Points.front(), Table.Points.back()) <= 1.0e-9 * Outcome.Length) return Refused("the path is closed (🚧 closed sweeps; open the curve or sweep along a part of it)");
@@ -265,7 +265,7 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
     const auto Lift  = [&](Vector2 Direction) { return Plane.XAxis * Direction.X + Plane.YAxis * Direction.Y; };
 
     // ① Rigid frame map at an arc length: x ↦ C(s) + F(s)·F(0)ᵀ·(x − C(0)), F = [T N B] from the rotation-minimising table.
-    struct FrameMap { Vector3 Point, Tangent, Normal, Binormal; };
+    struct BasisMapping { Vector3 Point, Tangent, Normal, Binormal; };
     const auto FrameAt = [&](double Along)
     {
         double  Parameter = 0.0;
@@ -274,14 +274,14 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
         const NurbsCurveDerivatives Derivatives = EvaluateNurbsCurveDerivatives(Definition, Parameter);
         const Vector3 Tangent = Normalize(Derivatives.First);
         Normal = Normalize(Normal - Tangent * Dot(Normal, Tangent));
-        return FrameMap{ Derivatives.Position, Tangent, Normal, Cross(Tangent, Normal) };
+        return BasisMapping{ Derivatives.Position, Tangent, Normal, Cross(Tangent, Normal) };
     };
-    const FrameMap Start = FrameAt(0.0);
-    const auto Turn  = [&](const FrameMap& Frame, Vector3 Direction)
+    const BasisMapping Start = FrameAt(0.0);
+    const auto Turn  = [&](const BasisMapping& Frame, Vector3 Direction)
     {
         return Frame.Tangent * Dot(Direction, Start.Tangent) + Frame.Normal * Dot(Direction, Start.Normal) + Frame.Binormal * Dot(Direction, Start.Binormal);
     };
-    const auto Carry = [&](const FrameMap& Frame, Vector3 Point) { return Frame.Point + Turn(Frame, Point - Start.Point); };
+    const auto Carry = [&](const BasisMapping& Frame, Vector3 Point) { return Frame.Point + Turn(Frame, Point - Start.Point); };
 
     // ② The path must leave the profile plane, and no profile point may reach the tightest bend radius.
     const double Facing = Dot(Start.Tangent, Plane.ZAxis);                                   // [-] - cos(path, plane normal)
@@ -308,12 +308,12 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
         for (const ProfileSegment& Segment : Profile.Loops[LoopIndex].Segments)
         {
             std::optional<NurbsCurve> Section;
-            if (Segment.Kind == ProfileSegmentKind::Line)
+            if (Segment.Kind == ProfileSegmentCategory::Line)
             {
                 const double Span = Distance(Segment.Start, Segment.End);
                 Section = ConvertLineToNurbs(StraightLine{ Lift3(Segment.Start), Lift(Normalize(Segment.End - Segment.Start)) }, 0.0, Span);
             }
-            else if (Segment.Kind == ProfileSegmentKind::Spline) Section = LiftSpline(Segment.Spline, Lift3);
+            else if (Segment.Kind == ProfileSegmentCategory::Spline) Section = LiftSpline(Segment.Spline, Lift3);
             else
             {
                 const double Sign = Segment.Sweep > 0.0 ? 1.0 : -1.0;
@@ -330,7 +330,7 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
     for (int Count = std::max(Settings.FirstSections, 2); Count <= Settings.SectionLimit; Count = 2 * Count - 1)
     {
         // ④ Stations at equal arc length; one fixed 𝑣-list for every side so shared rails coincide.
-        std::vector<FrameMap> Frames;
+        std::vector<BasisMapping> Frames;
         std::vector<double>   Parameters;
         for (int Station = 0; Station < Count; ++Station)
         {
@@ -348,7 +348,7 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
             for (const SideSource& Source : Sources[LoopIndex])
             {
                 std::vector<NurbsCurve> Sections;
-                for (const FrameMap& Frame : Frames) Sections.push_back(MapNurbsCurve(*Source.Section.Definition, [&](Vector3 Point) { return Carry(Frame, Point); }));
+                for (const BasisMapping& Frame : Frames) Sections.push_back(MapNurbsCurve(*Source.Section.Definition, [&](Vector3 Point) { return Carry(Frame, Point); }));
                 const LoftSurfaceOutcome Skin = LoftSectionSurface(Sections, Loft);
                 if (!Skin.Refusal.empty()) return Refused(Source.Segment->Name + ": " + Skin.Refusal);
                 Skins[LoopIndex].push_back(Skin.Surface);
@@ -356,7 +356,7 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
                 const NurbsDomain Domain = MeasureNurbsCurveDomain(*Source.Section.Definition);
                 for (int Station = 0; Station + 1 < Count; ++Station)
                 {
-                    const FrameMap Middle = FrameAt(Outcome.Length * (Station + 0.5) / (Count - 1));
+                    const BasisMapping Middle = FrameAt(Outcome.Length * (Station + 0.5) / (Count - 1));
                     const double   Across = 0.5 * (Parameters[Station] + Parameters[Station + 1]);
                     for (int Around = 0; Around <= 8; ++Around)
                     {
@@ -373,7 +373,7 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
 
         // ⑥ Topology: per profile vertex a start / end vertex and a rail (the 𝑢 = 0 iso of the side it starts), per
         //    curve a bottom (𝑣 = 0) and top (𝑣 = 1) edge; a closed single curve uses its rail twice as the seam.
-        const FrameMap Last = Frames.back();
+        const BasisMapping Last = Frames.back();
         BlueprintWriter Writer;
         struct LoopEdges { std::vector<int> Bottom, Top; };
         std::vector<LoopEdges> Rims(Profile.Loops.size());
@@ -401,9 +401,9 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
                 LoopPlan Plan;
                 Plan.Uses = { { Bottom, Orientation::Forward, Vector2{ 0.5, 0.0 } }, { Rail[Next], Orientation::Forward, Vector2{ 1.0, 0.5 } },
                               { Top, Orientation::Reversed, Vector2{ 0.5, 1.0 } }, { Rail[Index], Orientation::Reversed, Vector2{ 0.0, 0.5 } } };
-                const FrameMap Middle  = FrameAt(0.5 * Outcome.Length);
+                const BasisMapping Middle  = FrameAt(0.5 * Outcome.Length);
                 const Vector3  Outward = Turn(Middle, Lift(OutwardAt(Segment, 0.5)));
-                Writer.AddFace(Skin, EvaluateNurbsSurface(Skin, { 0.5, 0.5 }).Position, Outward, { Plan }, { SweepFaceRole::Side, Segment.Name, static_cast<int>(LoopIndex) }, Vector2{ 0.5, 0.5 });
+                Writer.AddFace(Skin, EvaluateNurbsSurface(Skin, { 0.5, 0.5 }).Position, Outward, { Plan }, { SweepFacePlacement::Side, Segment.Name, static_cast<int>(LoopIndex) }, Vector2{ 0.5, 0.5 });
             }
         }
 
@@ -423,10 +423,10 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
                     for (int Edge : End == 0 ? Rims[LoopIndex].Bottom : Rims[LoopIndex].Top) Plan.Uses.push_back({ Edge, Orientation::Forward });
                     Plans.push_back(Plan);
                 }
-                const OrthonormalFrame CapFrame = End == 0 ? Plane : OrthonormalFrame{ Carry(Last, Plane.Origin), Turn(Last, Plane.XAxis), Turn(Last, Plane.YAxis), Turn(Last, Plane.ZAxis) };
+                const OrthonormalBasis CapFrame = End == 0 ? Plane : OrthonormalBasis{ Carry(Last, Plane.Origin), Turn(Last, Plane.XAxis), Turn(Last, Plane.YAxis), Turn(Last, Plane.ZAxis) };
                 const Vector3 Corner = Lift3(Profile.Loops[Outer].Segments[0].Start);
                 const Vector3 Probe  = End == 0 ? Corner : Carry(Last, Corner);
-                const SweepFace Role{ End == 0 ? SweepFaceRole::StartCap : SweepFaceRole::EndCap, {}, static_cast<int>(Outer) };
+                const SweepFace Role{ End == 0 ? SweepFacePlacement::StartCap : SweepFacePlacement::EndCap, {}, static_cast<int>(Outer) };
                 Writer.AddFace(PlaneSurface{ CapFrame }, Probe, CapFrame.ZAxis * (End == 0 ? -Ahead : Ahead), Plans, Role);
             }
         }
@@ -437,7 +437,7 @@ EvolutionOutcome EvolveProfile(ModelPartition& Partition, const SketchProfile& P
     return Refused(std::to_string(Settings.SectionLimit) + " stations still deviate " + std::to_string(Outcome.Deviation) + " from the true sweep (allowed " + std::to_string(Tolerance) + ")");
 }
 
-SweepOutcome SweepProfileAlongLine(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalFrame& Plane, Vector3 Displacement)
+SweepOutcome SweepProfileAlongLine(ModelPartition& Partition, const SketchProfile& Profile, const OrthonormalBasis& Plane, Vector3 Displacement)
 {
     const double Distance = Length(Displacement);                                            // [len] - |d|
     if (!(Distance > 0.0)) return Refuse("Sweep: zero displacement");
@@ -457,7 +457,7 @@ SweepOutcome LoftCircles(ModelPartition& Partition, Vector3 FirstCentre, Vector3
     {
         return Refuse("Loft: 🚧 non-coaxial sections need a skinned surface");
     }
-    const OrthonormalFrame Frame = ConstructFrame(FirstCentre, Axis, AnyPerpendicular(Axis));
+    const OrthonormalBasis Frame = ConstructFrame(FirstCentre, Axis, AnyPerpendicular(Axis));
     if (std::fabs(FirstRadius - SecondRadius) <= 1.0e-12 * std::max(FirstRadius, SecondRadius)) return FromPrimitive(ConstructCylinder(Partition, Frame, FirstRadius, Height), "Loft");
     return FromPrimitive(ConstructFrustum(Partition, Frame, FirstRadius, SecondRadius, Height), "Loft");
 }

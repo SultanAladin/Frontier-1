@@ -243,7 +243,7 @@ void ExecuteOpaqueClusterSpan(
 //------------------------------------------------------------------------------------------------------------------------
 
 void VisibilityClusterRasterization::RasterizeOpaqueClusters(
-    const PerspectiveCameraFrame&          Camera,
+    const PerspectiveCameraBasis&          Camera,
     std::span<const RigidClusterInstance>  Instances,
     std::span<const VisibleClusterCommand> HardwareBatches,
     std::span<const VisibleClusterCommand> MicroSoftwareBatches,
@@ -255,7 +255,7 @@ void VisibilityClusterRasterization::RasterizeOpaqueClusters(
 }
 
 void VisibilityClusterRasterization::RasterizeTwoLayerGlassPeel(
-    const PerspectiveCameraFrame&          Camera,
+    const PerspectiveCameraBasis&          Camera,
     std::span<const RigidClusterInstance>  Instances,
     std::span<const VisibleClusterCommand> GlassBatches,
     VisibilityBufferTargets&               InOutTargets)

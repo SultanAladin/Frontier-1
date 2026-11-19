@@ -43,7 +43,7 @@ struct GpuCullCameraUniforms
     float2 ReservedPad;
 };
 
-struct GpuVisibleClusterWorkItem
+struct GpuVisibleClusterWorkEntry
 {
     uint  InstanceOrdinal;
     uint  ClusterOrdinal;
@@ -55,8 +55,8 @@ struct GpuVisibleClusterWorkItem
 [[vk::binding(1, 0)]] StructuredBuffer<GpuClusterHeader128>       ClusterHeaders;
 [[vk::binding(2, 0)]] Texture2D<float>                            DepthPyramidTex;
 [[vk::binding(3, 0)]] SamplerState                                PointClampSampler;
-[[vk::binding(4, 0)]] RWStructuredBuffer<GpuVisibleClusterWorkItem> HardwareQueue;
-[[vk::binding(5, 0)]] RWStructuredBuffer<GpuVisibleClusterWorkItem> MicroComputeQueue;
+[[vk::binding(4, 0)]] RWStructuredBuffer<GpuVisibleClusterWorkEntry> HardwareQueue;
+[[vk::binding(5, 0)]] RWStructuredBuffer<GpuVisibleClusterWorkEntry> MicroComputeQueue;
 [[vk::binding(6, 0)]] RWStructuredBuffer<uint>                    QueueCounters; // [0]=HW, [1]=SW
 
 float EncodeReversedZ(float ViewZ, float NearZ, float FarZ)
@@ -132,7 +132,7 @@ void ClusterCullComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         }
     }
 
-    GpuVisibleClusterWorkItem Item;
+    GpuVisibleClusterWorkEntry Item;
     Item.InstanceOrdinal  = 0u;
     Item.ClusterOrdinal   = ClusterIdx;
     Item.ProjectedSpanPx  = SpanPx;

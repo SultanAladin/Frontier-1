@@ -16,7 +16,7 @@
 namespace Frontier::Workspaces
 {
 
-enum class UVViewportHostRole : uint8_t
+enum class UVViewportHostMode : uint8_t
 {
     DualCombined = 0u,
     Dedicated2D  = 1u,
@@ -39,8 +39,8 @@ public:
     UVViewportHost& operator=(const UVViewportHost&) = delete;
 
     void AttachSession(UVWorkspaceSession* TargetSession) noexcept;
-    void ConfigureHostRole(UVViewportHostRole Role) noexcept;
-    [[nodiscard]] UVViewportHostRole QueryHostRole() const noexcept { return HostRole; }
+    void ConfigureHostRole(UVViewportHostMode Role) noexcept;
+    [[nodiscard]] UVViewportHostMode QueryHostRole() const noexcept { return HostRole; }
 
     [[nodiscard]] ViewportProjectionPane&       AccessProjectionPane() noexcept { return ProjectionPane; }
     [[nodiscard]] const ViewportProjectionPane& InspectProjectionPane() const noexcept { return ProjectionPane; }
@@ -61,7 +61,7 @@ private:
     void RefreshCachedIslandCount() noexcept;
 
     UVWorkspaceSession*         Session                 = nullptr;
-    UVViewportHostRole          HostRole                = UVViewportHostRole::DualCombined;
+    UVViewportHostMode          HostRole                = UVViewportHostMode::DualCombined;
     UVViewportInteractor        Interactor              {};
     ViewportProjectionPane      ProjectionPane          {};
     bool                        MoreShelfExpanded       = false;

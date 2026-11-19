@@ -42,7 +42,7 @@ struct FractureSimulationParameters
     FractureCollisionShapeMode CollisionMode     = FractureCollisionShapeMode::ConvexHull; // [-] - Fragment collision geometry mode
 };
 
-struct FractureBodyTransformState
+struct FractureBodyTransformPose
 {
     uint32_t                   FragmentIndex  = 0u;
     RigidBodyToken             Token          {};
@@ -58,7 +58,7 @@ struct FractureBodyTransformState
     uint32_t                   CollisionSubShapeCount = 1u;
 };
 
-struct FractureBondState
+struct FractureBondCondition
 {
     uint32_t        BondIndex      = 0u;
     uint32_t        IndexA         = 0u;
@@ -112,8 +112,8 @@ public:
         float                      InfluenceRadiusM = 0.45f) noexcept;
 
     [[nodiscard]] bool                                       QueryLoaded() const noexcept;
-    [[nodiscard]] const std::vector<FractureBodyTransformState>& InspectBodyStates() const noexcept;
-    [[nodiscard]] const std::vector<FractureBondState>&          InspectBondStates() const noexcept;
+    [[nodiscard]] const std::vector<FractureBodyTransformPose>& InspectBodyStates() const noexcept;
+    [[nodiscard]] const std::vector<FractureBondCondition>&          InspectBondStates() const noexcept;
     [[nodiscard]] FractureSimulationTelemetry                InspectTelemetry() const noexcept;
     [[nodiscard]] const PhysicsExtension&                    InspectPhysics() const noexcept;
     [[nodiscard]] PhysicsExtension&                          AccessPhysics() noexcept;
@@ -124,8 +124,8 @@ private:
     PhysicsExtension                        Physics         {};
     FractureSimulationParameters            ActiveParams    {};
     RigidBodyToken                          GroundToken     {};
-    std::vector<FractureBodyTransformState> BodyStates      {};
-    std::vector<FractureBondState>          BondStates      {};
+    std::vector<FractureBodyTransformPose> BodyStates      {};
+    std::vector<FractureBondCondition>          BondStates      {};
     std::vector<Mathematics::Axis3D>        InitialCentroids {};
     bool                                    Loaded          = false;
 };

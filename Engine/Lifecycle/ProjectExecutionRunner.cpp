@@ -49,7 +49,7 @@ int FrontierRunShippingProjectLoop(const FrontierProjectLaunchDescriptor* Descri
     // Shipping runtime executes strictly against FrontierEngine (TieredWorldRenderSequence + simulation tick) with zero Editor/UI code
     Frontier::GeometricRaster::WorldSceneSpecification   ShippingScene {};
     Frontier::GeometricRaster::TieredWorldRenderSequence WorldRenderer {};
-    Frontier::GeometricRaster::PerspectiveCameraFrame    ShippingCam   {};
+    Frontier::GeometricRaster::PerspectiveCameraBasis    ShippingCam   {};
     ShippingCam.ViewportWidthPx  = std::clamp(Descriptor->InitialWidthPx / 4u, 160u, 640u);
     ShippingCam.ViewportHeightPx = std::clamp(Descriptor->InitialHeightPx / 4u, 90u, 360u);
     WorldRenderer.PrepareWorldScene(ShippingScene);

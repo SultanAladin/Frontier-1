@@ -777,8 +777,8 @@ void RenderCurlStreamRigIntoCanvas(
     if (Spec.ManifoldMode == 3u && VertsPerStrand >= 6u)
     {
         // Depth-order heads back-to-front so large translucent bokeh discs compose harmoniously
-        struct StreamItem { uint32_t Idx; float DepthZ; };
-        std::vector<StreamItem> Order {};
+        struct StreamEntry { uint32_t Idx; float DepthZ; };
+        std::vector<StreamEntry> Order {};
         Order.reserve(Slots.size());
         for (uint32_t I = 0u; I < static_cast<uint32_t>(Slots.size()); ++I)
         {
@@ -787,7 +787,7 @@ void RenderCurlStreamRigIntoCanvas(
             const Vec3 P { Slots[I].PositionMeters[0], Slots[I].PositionMeters[1], Slots[I].PositionMeters[2] };
             if (Cam.Project(P, Sx, Sy, Sz)) Order.push_back({ I, Sz });
         }
-        std::sort(Order.begin(), Order.end(), [](const StreamItem& A, const StreamItem& B) { return A.DepthZ > B.DepthZ; });
+        std::sort(Order.begin(), Order.end(), [](const StreamEntry& A, const StreamEntry& B) { return A.DepthZ > B.DepthZ; });
 
         struct ProjPt { float X, Y, Z; };
         std::vector<ProjPt> RibbonPts {};

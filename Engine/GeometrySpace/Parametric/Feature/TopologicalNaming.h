@@ -38,7 +38,7 @@ struct BodyNaming
     std::map<uint32_t, std::string> Vertices = {};                                           // [-] - Vertex slot → name
 };
 
-enum class ReferenceKind : uint8_t
+enum class ReferenceCategory : uint8_t
 {
     Face   = 0,                                                                              // A face of the current body
     Edge   = 1,                                                                              // An edge
@@ -55,9 +55,9 @@ struct ReferenceSignature
     double      Size              = 0.0;                                                     // [len] - Boundary length / edge length
 };
 
-struct TopologyReference
+struct ConnectivityReference
 {
-    ReferenceKind      Kind      = ReferenceKind::Edge;                                      // [-] - What it names
+    ReferenceCategory      Kind      = ReferenceCategory::Edge;                                      // [-] - What it names
     std::string        Name      = {};                                                       // [-] - Persistent name
     ReferenceSignature Signature = {};                                                       // [-] - Authoring-time geometry
 };
@@ -104,13 +104,13 @@ struct ResolvedReference
 void CompleteNaming(const ModelPartition& Partition, BodyToken Body, BodyNaming& Naming);
 
 // Signature of a named subject as it is now (authoring capture).
-[[nodiscard]] ReferenceSignature CaptureSignature(const ModelPartition& Partition, ReferenceKind Kind, uint32_t Slot);
+[[nodiscard]] ReferenceSignature CaptureSignature(const ModelPartition& Partition, ReferenceCategory Kind, uint32_t Slot);
 
 // 💡 Resolution order (plan § 4): ① exact name; ② the unique subject whose name equals the reference with split /k and
 //    #k ordinals removed (same sources); ③ geometric rebind among the same-source candidates (else every subject of the
 //    same category and comparable size): nearest signature position, accepted only if it is within the reference size
 //    and the runner-up is ≥ 2× farther; ④ otherwise refused with the candidates listed — never a silent best guess.
-[[nodiscard]] ResolvedReference ResolveReference(const ModelPartition& Partition, BodyToken Body, const BodyNaming& Naming, const TopologyReference& Reference);
+[[nodiscard]] ResolvedReference ResolveReference(const ModelPartition& Partition, BodyToken Body, const BodyNaming& Naming, const ConnectivityReference& Reference);
 
 // Name with split (/k) and ordinal (#k) disambiguators removed, recursively inside Edge(…|…) / Vertex(…).
 [[nodiscard]] std::string StripDisambiguators(const std::string& Name);

@@ -113,7 +113,7 @@ std::optional<NurbsCurveDefinition> ElevateNurbsCurveDegree(const NurbsCurveDefi
     const int SourceCount = static_cast<int>(Source.Poles.size());
 
     // ① Greville abscissae ξᵢ = (τᵢ₊₁ + … + τᵢ₊ₚ) / p of the elevated space; ② homogeneous samples of the curve there.
-    DenseMatrix Matrix(Count, Count), RightSides(Count, 4);
+    DenseLinearArray Matrix(Count, Count), RightSides(Count, 4);
     for (int Row = 0; Row < Count; ++Row)
     {
         double Greville = 0.0;
@@ -132,7 +132,7 @@ std::optional<NurbsCurveDefinition> ElevateNurbsCurveDegree(const NurbsCurveDefi
             RightSides.At(Row, 3) += Scaled;
         }
     }
-    const std::optional<DenseMatrix> Solution = SolveDenseSystem(std::move(Matrix), std::move(RightSides));
+    const std::optional<DenseLinearArray> Solution = SolveDenseSystem(std::move(Matrix), std::move(RightSides));
     if (!Solution) return std::nullopt;
     NurbsCurveDefinition Result;
     Result.Degree = Degree;
@@ -303,7 +303,7 @@ std::optional<NurbsSurface> FinishNurbsSurface(const NurbsSurfaceDefinition& Def
                                  Definition.Poles, Definition.Weights);
 }
 
-std::optional<NurbsSurfaceDefinition> SkinCurveFamily(const std::vector<NurbsCurveDefinition>& Curves, const FamilySkinning& Skinning, std::string& Refusal)
+std::optional<NurbsSurfaceDefinition> SkinCurveFamily(const std::vector<NurbsCurveDefinition>& Curves, const CurveGroupSkinning& Skinning, std::string& Refusal)
 {
     const int CountRows = static_cast<int>(Curves.size());
     if (CountRows < 2 || static_cast<int>(Skinning.Parameters.size()) != CountRows) { Refusal = "needs at least 2 curves, one parameter each"; return std::nullopt; }
@@ -312,14 +312,14 @@ std::optional<NurbsSurfaceDefinition> SkinCurveFamily(const std::vector<NurbsCur
     {
         if (Curve.Degree != Curves.front().Degree || Curve.Knots != Curves.front().Knots) { Refusal = "curves are not compatible (degree / knots)"; return std::nullopt; }
     }
-    auto Conditions = [&](const FamilyEndCondition& Condition) { return (Condition.First.empty() ? 0 : 1) + (Condition.Second.empty() ? 0 : 1); };
+    auto Conditions = [&](const CurveGroupEndCondition& Condition) { return (Condition.First.empty() ? 0 : 1) + (Condition.Second.empty() ? 0 : 1); };
     const int StartCount = Conditions(Skinning.Start), EndCount = Conditions(Skinning.End);
     if ((!Skinning.Start.Second.empty() && Skinning.Start.First.empty()) || (!Skinning.End.Second.empty() && Skinning.End.First.empty()))
     {
         Refusal = "a second-derivative condition needs the first-derivative condition too";
         return std::nullopt;
     }
-    for (const FamilyEndCondition* Condition : { &Skinning.Start, &Skinning.End })
+    for (const CurveGroupEndCondition* Condition : { &Skinning.Start, &Skinning.End })
     {
         for (const std::vector<Vector3>* Vectors : { &Condition->First, &Condition->Second })
         {
@@ -347,7 +347,7 @@ std::optional<NurbsSurfaceDefinition> SkinCurveFamily(const std::vector<NurbsCur
     const std::vector<double> Knots = AveragedKnots(Augmented, Degree);
 
     // ② Rows: interpolation at every 𝑣ₖ, then N′ / N″ at the conditioned ends.
-    DenseMatrix Matrix(Count, Count), RightSides(Count, 4 * CountU);
+    DenseLinearArray Matrix(Count, Count), RightSides(Count, 4 * CountU);
     int Row = 0;
     for (int Curve = 0; Curve < CountRows; ++Curve, ++Row)
     {
@@ -380,7 +380,7 @@ std::optional<NurbsSurfaceDefinition> SkinCurveFamily(const std::vector<NurbsCur
     if (!Skinning.Start.Second.empty()) AddDerivative(Skinning.Parameters.front(), 2, Skinning.Start.Second);
     if (!Skinning.End.First.empty())    AddDerivative(Skinning.Parameters.back(), 1, Skinning.End.First);
     if (!Skinning.End.Second.empty())   AddDerivative(Skinning.Parameters.back(), 2, Skinning.End.Second);
-    const std::optional<DenseMatrix> Solution = SolveDenseSystem(std::move(Matrix), std::move(RightSides));
+    const std::optional<DenseLinearArray> Solution = SolveDenseSystem(std::move(Matrix), std::move(RightSides));
     if (!Solution) { Refusal = "singular interpolation across the curves"; return std::nullopt; }
 
     // ③ Back to Euclidean poles (polynomial curves keep w ≡ 1 exactly: the weight column solves to 1 ± ε).

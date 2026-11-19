@@ -2,7 +2,7 @@
                                                     WORLDVIEWPORTRADIOMETRICCOMPUTE.SLANG
 ============================================================================================================================================*/
 // 🧩 Unified 5-Engine GPU Compute Shader:
-// 0=MatCap, 1=OpenPbrDirect, 2=DdgiRaytracing (DynamicProbeCache + Chebyshev), 3=SdfGlobalIllumination (Hybrid ReSTIR Path Replay + 5-Pass SVGF), 4=DeterministicPathTrace (MIS/VNDF)
+// 0=MatCap, 1=OpenPbrDirect, 2=DdgiRaytracing (DynamicIrradianceCache + Chebyshev), 3=SdfGlobalIllumination (Hybrid ReSTIR Path Replay + 5-Pass SVGF), 4=DeterministicPathTrace (MIS/VNDF)
 // Enforces Zero SDF Shadows (5 Shadow Lab algorithms over depth32float + BVH4) & Zero SDF Reflections (BVH4 or Sky Environment).
 
 #define FRONTIER_ATMOSPHERE_EMBEDDED 1
@@ -121,7 +121,7 @@ struct GpuWorldMaterial64
 [[vk::binding(25, 0)]] RWStructuredBuffer<float4>                CloudRadiometricBuffer;
 [[vk::binding(26, 0)]] Sampler3D<float4>                         SdfBakedVolumeRead;
 [[vk::binding(27, 0)]] RWTexture3D<float4>                       SdfBakedVolumeWrite;
-[[vk::binding(28, 0)]] RWStructuredBuffer<float4>                ReservoirCurrentBuffer;
+[[vk::binding(28, 0)]] RWStructuredBuffer<float4>                WeightedCurrentBuffer;
 [[vk::binding(29, 0)]] RWStructuredBuffer<float4>                ReservoirHistoryBuffer;
 [[vk::binding(30, 0)]] StructuredBuffer<GpuProjectedStar>        ProjectedCatalogStars;
 [[vk::binding(31, 0)]] StructuredBuffer<uint>                    StellarTileBins;
@@ -1416,7 +1416,7 @@ float3 SampleRtxIrradianceLatticeChebyshev(float3 WorldPos, float3 Normal, float
 }
 
 // Hybrid ReSTIR Path Replay GI for EngineMode == 3 (4-Candidate Owen-Sobol RIS + 1-Bounce BVH Replay + DynamicProbe 2nd Bounce + Temporal Reuse)
-float3 EvaluateReservoirPathReplayCandidate(float3 WorldPos, float3 Normal, uint2 PixelXY, uint PixelIdx)
+float3 EvaluateWeightedPathReplayCandidate(float3 WorldPos, float3 Normal, uint2 PixelXY, uint PixelIdx)
 {
     (void)PixelXY;
     float3 T, B;
@@ -1545,8 +1545,8 @@ float3 EvaluateReservoirPathReplayCandidate(float3 WorldPos, float3 Normal, uint
     float3 GiVal   = WinRad * ((CosY * InvPiConst) * FinalW);
 
     uint Meta = min(TotalM, 0xFFFFu) | (1u << 16u) | ((WinSky & 1u) << 17u);
-    ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(WinPos, FinalW);
-    ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(WinRad, asfloat(Meta));
+    WeightedCurrentBuffer[PixelIdx * 2u + 0u] = float4(WinPos, FinalW);
+    WeightedCurrentBuffer[PixelIdx * 2u + 1u] = float4(WinRad, asfloat(Meta));
     return GiVal;
 }
 
@@ -1742,15 +1742,15 @@ void ShadePrimarySurfaceDemod(
         {
             uint Width = max(1u, uint(WorldUniforms.CameraUpWidth.w + 0.5));
             uint PixelIdx = PixelXY.y * Width + PixelXY.x;
-            OutDemodGiOverPi = EvaluateReservoirPathReplayCandidate(Hit.Position, N, PixelXY, PixelIdx);
+            OutDemodGiOverPi = EvaluateWeightedPathReplayCandidate(Hit.Position, N, PixelXY, PixelIdx);
         }
     }
     if (!IsGiEnabled() || EngineMode != 3u)
     {
         uint Width    = max(1u, uint(WorldUniforms.CameraUpWidth.w + 0.5));
         uint PixelIdx = PixelXY.y * Width + PixelXY.x;
-        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
-        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
+        WeightedCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        WeightedCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
     }
 
     // 5. Secondary Specular Reflection (BVH4 WideTreeRaytrace or SkyEnvironment — Zero SDF!)
@@ -2675,8 +2675,8 @@ void ComputePathTraceEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     GBufAlbedo[PixelIdx]     = float4(SafeAlb, LastSpecRough);
     PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, Count);
     PingGiHdr[PixelIdx]      = float4(DemodMean, Count);
-    ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
-    ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
+    WeightedCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+    WeightedCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
 }
 
 [shader("compute")]
@@ -2780,8 +2780,8 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GBufAlbedo[PixelIdx]     = float4(0.0, 0.0, 0.0, 1.0);
         PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, 1.0);
         PingGiHdr[PixelIdx]      = float4(0.0, 0.0, 0.0, 1.0);
-        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
-        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
+        WeightedCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        WeightedCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
         return;
     }
 
@@ -2829,8 +2829,8 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GBufAlbedo[PixelIdx]     = float4(0.0, 0.0, 0.0, 1.0);
         PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, 1.0);
         PingGiHdr[PixelIdx]      = float4(0.0, 0.0, 0.0, 1.0);
-        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
-        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
+        WeightedCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        WeightedCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
         return;
     }
 
@@ -2844,8 +2844,8 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GBufAlbedo[PixelIdx]     = float4(0.0, 0.0, 0.0, 1.0);
         PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, 1.0);
         PingGiHdr[PixelIdx]      = float4(0.0, 0.0, 0.0, 1.0);
-        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
-        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
+        WeightedCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        WeightedCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
         return;
     }
 
@@ -2859,8 +2859,8 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GBufAlbedo[PixelIdx]     = float4(0.0, 0.0, 0.0, 1.0);
         PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, 1.0);
         PingGiHdr[PixelIdx]      = float4(0.0, 0.0, 0.0, 1.0);
-        ReservoirCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
-        ReservoirCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
+        WeightedCurrentBuffer[PixelIdx * 2u + 0u] = float4(0.0);
+        WeightedCurrentBuffer[PixelIdx * 2u + 1u] = float4(0.0);
         return;
     }
 
@@ -3445,7 +3445,7 @@ void DdgiLatticeComputeEntry(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : S
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
-void ReservoirSpatialReuseEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
+void ImportanceSpatialReuseEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
     uint Width  = uint(WorldUniforms.CameraUpWidth.w + 0.5);
     uint Height = uint(WorldUniforms.CameraForwardHeight.w + 0.5);
@@ -3469,8 +3469,8 @@ void ReservoirSpatialReuseEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float3 N1        = normalize(CenterNorm.xyz);
     float3 CenterAlb = GBufAlbedo[PixelIdx].rgb;
 
-    float4 Cur0  = ReservoirCurrentBuffer[PixelIdx * 2u + 0u];
-    float4 Cur1  = ReservoirCurrentBuffer[PixelIdx * 2u + 1u];
+    float4 Cur0  = WeightedCurrentBuffer[PixelIdx * 2u + 0u];
+    float4 Cur1  = WeightedCurrentBuffer[PixelIdx * 2u + 1u];
     uint   Meta  = asuint(Cur1.w);
     uint   CM    = Meta & 0xFFFFu;
     bool   CVal  = ((Meta & (1u << 16u)) != 0u);
@@ -3504,8 +3504,8 @@ void ReservoirSpatialReuseEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         float3 NAlb = GBufAlbedo[NIdx].rgb;
         if (dot(abs(CenterAlb - NAlb), float3(1.0)) > 0.35) continue;
 
-        float4 N0    = ReservoirCurrentBuffer[NIdx * 2u + 0u];
-        float4 N1Buf = ReservoirCurrentBuffer[NIdx * 2u + 1u];
+        float4 N0    = WeightedCurrentBuffer[NIdx * 2u + 0u];
+        float4 N1Buf = WeightedCurrentBuffer[NIdx * 2u + 1u];
         uint   NMeta = asuint(N1Buf.w);
         uint   NM    = min(NMeta & 0xFFFFu, 16u);
         if (((NMeta & (1u << 16u)) == 0u) || NM == 0u) continue;

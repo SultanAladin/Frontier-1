@@ -152,7 +152,7 @@ void UVViewportHost::AttachSession(UVWorkspaceSession* TargetSession) noexcept
         });
 }
 
-void UVViewportHost::ConfigureHostRole(UVViewportHostRole Role) noexcept
+void UVViewportHost::ConfigureHostRole(UVViewportHostMode Role) noexcept
 {
     HostRole = Role;
     SynchronizeProjectionPolicy();
@@ -165,12 +165,12 @@ void UVViewportHost::SynchronizeProjectionPolicy() noexcept
         return;
     }
     auto& Projection = ProjectionPane.AccessProjection();
-    if (HostRole == UVViewportHostRole::Dedicated2D)
+    if (HostRole == UVViewportHostMode::Dedicated2D)
     {
         ProjectionPane.ConfigureLockedSplitMode(Editor::ViewportSplitMode::Planar2DOnly);
         return;
     }
-    if (HostRole == UVViewportHostRole::Dedicated3D)
+    if (HostRole == UVViewportHostMode::Dedicated3D)
     {
         ProjectionPane.ConfigureLockedSplitMode(Editor::ViewportSplitMode::Spatial3DOnly);
         return;
@@ -278,10 +278,10 @@ void UVViewportHost::Render(
             DocTitle);
 
         const float TitleW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 13.0f, DocTitle);
-        const char* TagLabel = (HostRole == UVViewportHostRole::Dedicated2D)
+        const char* TagLabel = (HostRole == UVViewportHostMode::Dedicated2D)
             ? "2D UV"
-            : (HostRole == UVViewportHostRole::Dedicated3D ? "3D" : "UV");
-        const float TagW = (HostRole == UVViewportHostRole::Dedicated2D) ? 44.0f : 28.0f;
+            : (HostRole == UVViewportHostMode::Dedicated3D ? "3D" : "UV");
+        const float TagW = (HostRole == UVViewportHostMode::Dedicated2D) ? 44.0f : 28.0f;
         const Rectangle2D UVTag{ CubeIndicator.Right() + 16.0f + TitleW, HeaderTopY + 2.0f, TagW, 17.0f };
         Surface.FillRectangle(UVTag, Theme.AccentSoft, 8.5f);
         Surface.StrokeRectangle(UVTag, Theme.AccentBorder, 8.5f, 1.0f);
@@ -293,9 +293,9 @@ void UVViewportHost::Render(
             Theme.AccentFill,
             TagLabel);
 
-        const char* HeaderSubtitle = (HostRole == UVViewportHostRole::Dedicated2D)
+        const char* HeaderSubtitle = (HostRole == UVViewportHostMode::Dedicated2D)
             ? "2D UV CANVAS · UDIM PARAMETERIZATION + ISLANDS"
-            : (HostRole == UVViewportHostRole::Dedicated3D
+            : (HostRole == UVViewportHostMode::Dedicated3D
                 ? "3D SURFACE VIEWPORT · FAST LIT + MULTI-MATCAP"
                 : "UV WORKSPACE · FAST LIT + MULTI-MATCAP");
         WorkspaceAppearance::ConstructWeightedText(
@@ -307,7 +307,7 @@ void UVViewportHost::Render(
             HeaderSubtitle);
 
         // Right-aligned .pz-mode-capsule (Split | 2D UV | 3D Surface) when hosted as a single combined viewport
-        if (HostRole == UVViewportHostRole::DualCombined)
+        if (HostRole == UVViewportHostMode::DualCombined)
         {
             constexpr float   SplitW = 54.0f;
             constexpr float   TwoDW  = 58.0f;
@@ -378,9 +378,9 @@ void UVViewportHost::Render(
     const float StripY = SepY + 7.0f;
     const float StripW = RightX - LeftX;
     const bool  ShowWireSeamsInline =
-        (HostRole == UVViewportHostRole::DualCombined && StripW >= 720.0f) ||
-        (HostRole == UVViewportHostRole::Dedicated2D  && StripW >= 580.0f) ||
-        (HostRole == UVViewportHostRole::Dedicated3D  && StripW >= 630.0f);
+        (HostRole == UVViewportHostMode::DualCombined && StripW >= 720.0f) ||
+        (HostRole == UVViewportHostMode::Dedicated2D  && StripW >= 580.0f) ||
+        (HostRole == UVViewportHostMode::Dedicated3D  && StripW >= 630.0f);
 
     {
         float CurX = LeftX;
@@ -418,7 +418,7 @@ void UVViewportHost::Render(
         }
         CurX = UnwrapBtn.Right() + 6.0f;
 
-        if (HostRole != UVViewportHostRole::Dedicated3D)
+        if (HostRole != UVViewportHostMode::Dedicated3D)
         {
             // Secondary "Pack | ^P" capsule (86x31)
             const Rectangle2D PackBtn{ CurX, StripY, 86.0f, 31.0f };
@@ -545,9 +545,9 @@ void UVViewportHost::Render(
 
         // Middle display/debug/view dropdowns filtered by host role and available width
         const float MiddleControlsRight = RightEdgeX - 2.0f;
-        if (HostRole != UVViewportHostRole::Dedicated2D && CurX + 98.0f <= MiddleControlsRight)
+        if (HostRole != UVViewportHostMode::Dedicated2D && CurX + 98.0f <= MiddleControlsRight)
         {
-            const float SurfCap = (HostRole == UVViewportHostRole::Dedicated3D)
+            const float SurfCap = (HostRole == UVViewportHostMode::Dedicated3D)
                 ? std::max(98.0f, std::min(120.0f, MiddleControlsRight - CurX - 88.0f))
                 : 130.0f;
             const float SurfW = std::min(SurfCap, MiddleControlsRight - CurX);
@@ -575,7 +575,7 @@ void UVViewportHost::Render(
             }
             CurX = SurfaceDropdownBounds.Right() + 5.0f;
         }
-        if (HostRole != UVViewportHostRole::Dedicated3D && CurX + 106.0f <= MiddleControlsRight)
+        if (HostRole != UVViewportHostMode::Dedicated3D && CurX + 106.0f <= MiddleControlsRight)
         {
             const float DbgW = std::min(126.0f, MiddleControlsRight - CurX);
             CanvasDebugDropdownBounds = { CurX, StripY, DbgW, 31.0f };
@@ -602,7 +602,7 @@ void UVViewportHost::Render(
             }
             CurX = CanvasDebugDropdownBounds.Right() + 5.0f;
         }
-        if (HostRole != UVViewportHostRole::Dedicated2D && CurX + 78.0f <= MiddleControlsRight)
+        if (HostRole != UVViewportHostMode::Dedicated2D && CurX + 78.0f <= MiddleControlsRight)
         {
             const float ProjW = std::min(116.0f, MiddleControlsRight - CurX);
             ViewProjectionDropdownBounds = { CurX, StripY, ProjW, 31.0f };
@@ -646,7 +646,7 @@ void UVViewportHost::Render(
 
         if (!ShowWireSeamsInline)
         {
-            if (HostRole != UVViewportHostRole::Dedicated2D &&
+            if (HostRole != UVViewportHostMode::Dedicated2D &&
                 ConstructCapsuleButton(
                     Surface, { OpX, OpY, 48.0f, 24.0f }, "Wire", Theme, Cursor, Pressed, Prefs.WireframeOverlayEnabled, false, 9.0f, -1.0f,
                     OptionalTooltip::FromText("Toggle 3D surface wireframe overlay.")))
@@ -655,7 +655,7 @@ void UVViewportHost::Render(
                 Prefs.WireframeOverlayEnabled = !Prefs.WireframeOverlayEnabled;
                 Session->FramebuffersDirty    = true;
             }
-            if (HostRole != UVViewportHostRole::Dedicated2D)
+            if (HostRole != UVViewportHostMode::Dedicated2D)
             {
                 OpX += 52.0f;
             }
@@ -670,7 +670,7 @@ void UVViewportHost::Render(
             OpX += 58.0f;
         }
 
-        if (HostRole != UVViewportHostRole::Dedicated3D)
+        if (HostRole != UVViewportHostMode::Dedicated3D)
         {
             if (ConstructCapsuleButton(
                     Surface, { OpX, OpY, 64.0f, 24.0f }, "Checker", Theme, Cursor, Pressed, Prefs.CheckerOverlayEnabled, false, 9.0f, -1.0f,
@@ -944,7 +944,7 @@ void UVViewportHost::Render(
         ViewportDirectiveSheetOpen = true;
         ActiveDirectiveSheetKind   = ViewportDirectiveSheetCategory::UnwrapMenu;
         ViewportDirectiveAnchor    = { UnwrapBtnBounds.X, UnwrapBtnBounds.Bottom() + 4.0f };
-        ViewportDirectiveInPlanar  = (HostRole != UVViewportHostRole::Dedicated3D);
+        ViewportDirectiveInPlanar  = (HostRole != UVViewportHostMode::Dedicated3D);
         SurfaceDropdownOpen        = false;
         CanvasDebugDropdownOpen    = false;
         ProjectionDropdownOpen     = false;
@@ -1044,7 +1044,7 @@ void UVViewportHost::Render(
                 ViewportDirectiveAnchor    = Bounds.Contains(Cursor)
                     ? Cursor
                     : Point2D{ CanvasBounds.X + CanvasBounds.Width * 0.5f, CanvasBounds.Y + 48.0f };
-                ViewportDirectiveInPlanar  = (HostRole != UVViewportHostRole::Dedicated3D);
+                ViewportDirectiveInPlanar  = (HostRole != UVViewportHostMode::Dedicated3D);
                 SurfaceDropdownOpen        = false;
                 CanvasDebugDropdownOpen    = false;
                 ProjectionDropdownOpen     = false;
@@ -1570,9 +1570,9 @@ void UVViewportHost::PresentInImGuiPane(double Δt, float ScaleFactor)
     const float  TopY      = CursorPos.y - ImGui::GetStyle().WindowPadding.y;
     const float  PaneH     = std::max(1.0f, (WinPos.y + WinSize.y) - TopY);
 
-    const char* CanvasWidgetId = (HostRole == UVViewportHostRole::Dedicated2D)
+    const char* CanvasWidgetId = (HostRole == UVViewportHostMode::Dedicated2D)
         ? "##UVViewportHostCanvas_2D"
-        : (HostRole == UVViewportHostRole::Dedicated3D ? "##UVViewportHostCanvas_3D" : "##UVViewportHostCanvas");
+        : (HostRole == UVViewportHostMode::Dedicated3D ? "##UVViewportHostCanvas_3D" : "##UVViewportHostCanvas");
     ImGui::InvisibleButton(
         CanvasWidgetId,
         ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x), std::max(1.0f, ImGui::GetContentRegionAvail().y)),
@@ -1612,7 +1612,7 @@ void UVViewportHost::PresentInImGuiPane(double Δt, float ScaleFactor)
         Input,
         Interactor.QueryDragCaptureActive() || ProjectionPane.QuerySplitterDragActive());
 
-    if (Session != nullptr && HostRole != UVViewportHostRole::Dedicated2D)
+    if (Session != nullptr && HostRole != UVViewportHostMode::Dedicated2D)
     {
         if (ContentBrowserPanel* Browser = Session->QueryBrowserPanel())
         {
