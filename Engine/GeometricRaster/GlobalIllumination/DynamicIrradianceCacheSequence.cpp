@@ -220,7 +220,7 @@ void DynamicIrradianceCacheSequence::UpdateIrradianceCache(
     ActiveConfig.CountX            = std::max(2u, Config.CountX);
     ActiveConfig.CountY            = std::max(2u, Config.CountY);
     ActiveConfig.CountZ            = std::max(2u, Config.CountZ);
-    ActiveConfig.FibonacciRayCount = std::clamp(Config.FibonacciRayCount, 32u, 256u);
+    ActiveConfig.FibonacciRayCount = std::clamp(Config.FibonacciRayCount, 32u, 512u);
     ActiveConfig.BouncePasses      = std::clamp(Config.BouncePasses, 1u, 4u);
 
     const Mathematics::Axis3D Span = ActiveConfig.GridMaximumWorld - ActiveConfig.GridMinimumWorld;
@@ -253,7 +253,46 @@ void DynamicIrradianceCacheSequence::UpdateIrradianceCache(
     const float GoldenRatioInv = 0.61803398875f;
     const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis(Sun.DirectionToSun, { 0.42f, -0.55f, 0.72f });
 
-    // Step 1: Trace Spherical Fibonacci probe rays against BVH4 + detect reverse hits + encode 16x16 Chebyshev moments
+    // Collect emissive mesh triangles from SceneTree for exact Next-Event Estimation (eliminates 48-ray firefly spikes!)
+    struct EmissiveTriangleEntry
+    {
+        Mathematics::Axis3D    P0 {};
+        Mathematics::Axis3D    E1 {};
+        Mathematics::Axis3D    E2 {};
+        Mathematics::Axis3D    Normal {};
+        float                  Area = 0.0f;
+        Mathematics::LinearRGB Radiance {};
+    };
+    std::vector<EmissiveTriangleEntry> EmissiveTris;
+    if (!BounceSummaries.empty())
+    {
+        for (const auto& Prim : SceneTree.Primitives)
+        {
+            const uint16_t Slot = (Prim.MaterialOrdinal < BounceSummaries.size()) ? Prim.MaterialOrdinal : 0u;
+            const auto Emit = UnpackProbeSlabEmissive(BounceSummaries[Slot]);
+            if (std::max({ Emit.R, Emit.G, Emit.B }) <= 1.0e-3f)
+            {
+                continue;
+            }
+            const auto CrossN = Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02);
+            const float DoubleArea = Mathematics::EvaluateLength(CrossN);
+            if (DoubleArea <= 1.0e-6f)
+            {
+                continue;
+            }
+            EmissiveTris.push_back(EmissiveTriangleEntry{
+                Prim.Corner0,
+                Prim.Edge01,
+                Prim.Edge02,
+                CrossN * (1.0f / DoubleArea),
+                DoubleArea * 0.5f,
+                Emit,
+            });
+        }
+    }
+
+    // Step 1: Trace Spherical Fibonacci probe rays against BVH4 + relocate embedded probes + encode 16x16 Chebyshev moments
+    const float MaxRelocateDist = 0.45f * std::min({ CellSpacing.X, CellSpacing.Y, CellSpacing.Z });
     for (uint32_t IZ = 0u; IZ < ActiveConfig.CountZ; ++IZ)
     {
         for (uint32_t IY = 0u; IY < ActiveConfig.CountY; ++IY)
@@ -261,54 +300,102 @@ void DynamicIrradianceCacheSequence::UpdateIrradianceCache(
             for (uint32_t IX = 0u; IX < ActiveConfig.CountX; ++IX)
             {
                 const std::size_t CellIdx = (static_cast<std::size_t>(IZ) * ActiveConfig.CountY + IY) * ActiveConfig.CountX + IX;
-                const Mathematics::Axis3D CellPos {
+                Mathematics::Axis3D CellPos {
                     ActiveConfig.GridMinimumWorld.X + static_cast<float>(IX) * CellSpacing.X,
                     ActiveConfig.GridMinimumWorld.Y + static_cast<float>(IY) * CellSpacing.Y,
                     ActiveConfig.GridMinimumWorld.Z + static_cast<float>(IZ) * CellSpacing.Z,
                 };
-                Cells[CellIdx].WorldPosition = CellPos;
+                auto& RayList = CellRays[CellIdx];
+
+                auto TraceCellRays = [&](Mathematics::Axis3D Origin, uint32_t& OutBackfaces, Mathematics::Axis3D& OutEscapeDir)
+                {
+                    OutBackfaces = 0u;
+                    Mathematics::Axis3D BackEscape {};
+                    float ClosestFrontDist = 1.0e9f;
+                    Mathematics::Axis3D ClosestFrontNormal {};
+                    bool HasFront = false;
+
+                    for (uint32_t RIdx = 0u; RIdx < RayCount; ++RIdx)
+                    {
+                        const float Z     = 1.0f - (2.0f * (static_cast<float>(RIdx) + 0.5f)) / static_cast<float>(RayCount);
+                        const float RadXY = std::sqrt(std::max(0.0f, 1.0f - Z * Z));
+                        const float Phi   = Constants::TauFloat * std::fmod(static_cast<float>(RIdx) * GoldenRatioInv, 1.0f);
+                        const Mathematics::Axis3D RayDir { RadXY * std::cos(Phi), RadXY * std::sin(Phi), Z };
+
+                        IrradianceRayHitEntry Rec {};
+                        Rec.Direction = RayDir;
+
+                        SpatialAcceleration::RaySegmentQuery Ray {};
+                        Ray.Origin          = Origin;
+                        Ray.UnitDirection   = RayDir;
+                        Ray.MinimumDistance = 1.0e-3f;
+                        Ray.MaximumDistance = 60.0f;
+
+                        const auto Hit = SceneTree.TraceClosestRay(Ray, false);
+                        if (Hit.HitConfirmed)
+                        {
+                            Rec.HitSurface      = true;
+                            Rec.HitDistance     = Hit.HitDistanceMeters;
+                            Rec.HitPosition     = Origin + RayDir * Hit.HitDistanceMeters;
+                            Rec.MaterialOrdinal = Hit.MaterialOrdinal;
+                            const float Side    = Mathematics::EvaluateDot(Hit.GeometricNormal, RayDir);
+                            Rec.BackfaceHit     = (Side >= 0.0f);
+                            if (Rec.BackfaceHit)
+                            {
+                                ++OutBackfaces;
+                                BackEscape = BackEscape + RayDir * std::min(1.0f, Hit.HitDistanceMeters + 0.05f);
+                            }
+                            else if (Hit.HitDistanceMeters < ClosestFrontDist)
+                            {
+                                ClosestFrontDist   = Hit.HitDistanceMeters;
+                                ClosestFrontNormal = Hit.GeometricNormal;
+                                HasFront           = true;
+                            }
+                            Rec.HitNormal = Rec.BackfaceHit ? (Hit.GeometricNormal * -1.0f) : Hit.GeometricNormal;
+                        }
+                        else
+                        {
+                            Rec.HitDistance = MaxDepthClamp;
+                        }
+                        RayList[RIdx] = Rec;
+                    }
+
+                    const float EscapeLen = Mathematics::EvaluateLength(BackEscape);
+                    if (EscapeLen > 1.0e-4f)
+                    {
+                        OutEscapeDir = BackEscape * (1.0f / EscapeLen);
+                    }
+                    else if (HasFront)
+                    {
+                        OutEscapeDir = ClosestFrontNormal;
+                    }
+                };
 
                 uint32_t BackfaceHits = 0u;
-                auto& RayList = CellRays[CellIdx];
-                for (uint32_t RIdx = 0u; RIdx < RayCount; ++RIdx)
+                Mathematics::Axis3D EscapeDir {};
+                TraceCellRays(CellPos, BackfaceHits, EscapeDir);
+                float BackRatio = static_cast<float>(BackfaceHits) / static_cast<float>(RayCount);
+                if (BackRatio > 0.25f && MaxRelocateDist > 0.02f && Mathematics::EvaluateLengthSquared(EscapeDir) > 0.25f)
                 {
-                    const float Z     = 1.0f - (2.0f * (static_cast<float>(RIdx) + 0.5f)) / static_cast<float>(RayCount);
-                    const float RadXY = std::sqrt(std::max(0.0f, 1.0f - Z * Z));
-                    const float Phi   = Constants::TauFloat * std::fmod(static_cast<float>(RIdx) * GoldenRatioInv, 1.0f);
-                    const Mathematics::Axis3D RayDir { RadXY * std::cos(Phi), RadXY * std::sin(Phi), Z };
-
-                    IrradianceRayHitEntry Rec {};
-                    Rec.Direction = RayDir;
-
-                    SpatialAcceleration::RaySegmentQuery Ray {};
-                    Ray.Origin          = CellPos;
-                    Ray.UnitDirection   = RayDir;
-                    Ray.MinimumDistance = 1.0e-3f;
-                    Ray.MaximumDistance = 60.0f;
-
-                    const auto Hit = SceneTree.TraceClosestRay(Ray, false);
-                    if (Hit.HitConfirmed)
+                    const Mathematics::Axis3D RelocPos = CellPos + EscapeDir * MaxRelocateDist;
+                    uint32_t RelocBack = 0u;
+                    Mathematics::Axis3D DummyEsc {};
+                    TraceCellRays(RelocPos, RelocBack, DummyEsc);
+                    const float RelocRatio = static_cast<float>(RelocBack) / static_cast<float>(RayCount);
+                    if (RelocRatio < BackRatio)
                     {
-                        Rec.HitSurface      = true;
-                        Rec.HitDistance     = Hit.HitDistanceMeters;
-                        Rec.HitPosition     = CellPos + RayDir * Hit.HitDistanceMeters;
-                        Rec.MaterialOrdinal = Hit.MaterialOrdinal;
-                        const float Side    = Mathematics::EvaluateDot(Hit.GeometricNormal, RayDir);
-                        Rec.BackfaceHit     = (Side >= 0.0f);
-                        if (Rec.BackfaceHit)
-                        {
-                            ++BackfaceHits;
-                        }
-                        Rec.HitNormal       = Rec.BackfaceHit ? (Hit.GeometricNormal * -1.0f) : Hit.GeometricNormal;
+                        CellPos      = RelocPos;
+                        BackfaceHits = RelocBack;
+                        BackRatio    = RelocRatio;
                     }
                     else
                     {
-                        Rec.HitDistance = MaxDepthClamp;
+                        TraceCellRays(CellPos, BackfaceHits, DummyEsc);
                     }
-                    RayList[RIdx] = Rec;
                 }
 
-                Cells[CellIdx].BackfaceRatio = static_cast<float>(BackfaceHits) / static_cast<float>(RayCount);
+                Cells[CellIdx].WorldPosition = CellPos;
+                Cells[CellIdx].BackfaceRatio = BackRatio;
 
                 // Convolve 16x16 Chebyshev distance moments (MeanR, MeanR^2)
                 for (uint32_t OY = 0u; OY < ProbeChebyshevOctaWidth; ++OY)
@@ -327,7 +414,7 @@ void DynamicIrradianceCacheSequence::UpdateIrradianceCache(
                             const float CosAlign = Mathematics::EvaluateDot(TexDir, RayList[RIdx].Direction);
                             if (CosAlign > 0.0f)
                             {
-                                const float W        = std::pow(CosAlign, 16.0f);
+                                const float W        = std::pow(CosAlign, 8.0f);
                                 const float ClampedD = std::min(MaxDepthClamp, RayList[RIdx].HitDistance);
                                 SumR  += ClampedD * W;
                                 SumR2 += (ClampedD * ClampedD) * W;
@@ -371,7 +458,10 @@ void DynamicIrradianceCacheSequence::UpdateIrradianceCache(
                 const auto& Slab    = BounceSummaries[Slot];
                 const auto  DiffAlb = UnpackProbeSlabDiffuse(Slab);
 
-                Mathematics::LinearRGB HitExitance = UnpackProbeSlabEmissive(Slab);
+                // When EmissiveTris NEE is active, stochastic rays skip direct emissive exitance to avoid double-counting & fireflies
+                Mathematics::LinearRGB HitExitance = EmissiveTris.empty()
+                    ? UnpackProbeSlabEmissive(Slab)
+                    : Mathematics::LinearRGB{ 0.0f, 0.0f, 0.0f };
                 if (Mathematics::EvaluateDot(Sample.HitNormal, SunDir) > 0.0f)
                 {
                     SpatialAcceleration::RaySegmentQuery SunRay {};
@@ -422,6 +512,68 @@ void DynamicIrradianceCacheSequence::UpdateIrradianceCache(
                     }
                     const float NormScale = (SumCosWeight > 1.0e-5f) ? (1.0f / SumCosWeight) : 0.0f;
                     NextIrradiance[CellIdx][OY * ProbeIrradianceOctaWidth + OX] = SumLw * NormScale;
+                }
+            }
+
+            // Deterministic Next-Event Estimation over emissive triangles into 8x8 octahedral irradiance texels
+            if (!EmissiveTris.empty() && Cells[CellIdx].BackfaceRatio <= 0.35f)
+            {
+                static constexpr std::array<std::array<float, 2u>, 4u> Bary4 {{
+                    {{ 1.0f / 6.0f, 1.0f / 6.0f }},
+                    {{ 2.0f / 3.0f, 1.0f / 6.0f }},
+                    {{ 1.0f / 6.0f, 2.0f / 3.0f }},
+                    {{ 1.0f / 3.0f, 1.0f / 3.0f }},
+                }};
+                const Mathematics::Axis3D ProbePos = Cells[CellIdx].WorldPosition;
+                for (const auto& Emis : EmissiveTris)
+                {
+                    const float SubArea = Emis.Area * 0.25f;
+                    for (const auto& UV : Bary4)
+                    {
+                        const Mathematics::Axis3D SubP = Emis.P0 + Emis.E1 * UV[0] + Emis.E2 * UV[1];
+                        const Mathematics::Axis3D ToL  = SubP - ProbePos;
+                        const float Dist2 = Mathematics::EvaluateLengthSquared(ToL);
+                        const float Dist  = std::sqrt(std::max(1.0e-6f, Dist2));
+                        const Mathematics::Axis3D Dir = ToL * (1.0f / Dist);
+                        const float EmitCos = Mathematics::EvaluateDot(Emis.Normal, Dir * -1.0f);
+                        if (EmitCos <= 1.0e-4f)
+                        {
+                            continue;
+                        }
+
+                        SpatialAcceleration::RaySegmentQuery VisRay {};
+                        VisRay.Origin          = ProbePos;
+                        VisRay.UnitDirection   = Dir;
+                        VisRay.MinimumDistance = 1.0e-3f;
+                        VisRay.MaximumDistance = std::max(0.01f, Dist - 0.025f);
+                        if (SceneTree.QueryRayOccluded(VisRay))
+                        {
+                            continue;
+                        }
+
+                        const float SoftDist2  = std::max(0.28f, Dist2 + Emis.Area * 0.35f);
+                        const float SolidAngle = std::min(1.60f, (SubArea * EmitCos) / SoftDist2);
+                        const float ScaleOverPi = SolidAngle * (1.0f / Constants::PiFloat);
+                        const Mathematics::LinearRGB ContribOverPi = Emis.Radiance * ScaleOverPi;
+
+                        for (uint32_t OY = 0u; OY < ProbeIrradianceOctaWidth; ++OY)
+                        {
+                            for (uint32_t OX = 0u; OX < ProbeIrradianceOctaWidth; ++OX)
+                            {
+                                const Mathematics::Axis3D NormalDir = DecodeProbeOctahedral(
+                                    (static_cast<float>(OX) + 0.5f) / static_cast<float>(ProbeIrradianceOctaWidth),
+                                    (static_cast<float>(OY) + 0.5f) / static_cast<float>(ProbeIrradianceOctaWidth));
+                                const float CosTheta = std::max(0.0f, Mathematics::EvaluateDot(NormalDir, Dir));
+                                if (CosTheta > 0.0f)
+                                {
+                                    auto& Tex = NextIrradiance[CellIdx][OY * ProbeIrradianceOctaWidth + OX];
+                                    Tex.R += ContribOverPi.R * CosTheta;
+                                    Tex.G += ContribOverPi.G * CosTheta;
+                                    Tex.B += ContribOverPi.B * CosTheta;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -482,9 +634,12 @@ Mathematics::LinearRGB DynamicIrradianceCacheSequence::SampleIrradianceOverPi(
     const uint32_t IX1 = std::min(ActiveConfig.CountX - 1u, IX0 + 1u);
     const uint32_t IY1 = std::min(ActiveConfig.CountY - 1u, IY0 + 1u);
     const uint32_t IZ1 = std::min(ActiveConfig.CountZ - 1u, IZ0 + 1u);
-    const float TX = FX - static_cast<float>(IX0);
-    const float TY = FY - static_cast<float>(IY0);
-    const float TZ = FZ - static_cast<float>(IZ0);
+    const float LinTX = FX - static_cast<float>(IX0);
+    const float LinTY = FY - static_cast<float>(IY0);
+    const float LinTZ = FZ - static_cast<float>(IZ0);
+    const float TX = LinTX * LinTX * (3.0f - 2.0f * LinTX);
+    const float TY = LinTY * LinTY * (3.0f - 2.0f * LinTY);
+    const float TZ = LinTZ * LinTZ * (3.0f - 2.0f * LinTZ);
 
     Mathematics::LinearRGB Accum { 0.0f, 0.0f, 0.0f };
     float                  TotalWeight = 0.0f;
@@ -512,21 +667,23 @@ Mathematics::LinearRGB DynamicIrradianceCacheSequence::SampleIrradianceOverPi(
                     : (SurfaceNormal * -1.0f);
                 const Mathematics::Axis3D DirSurfToProbe = DirProbeToSurf * -1.0f;
 
-                // Wrapped cosine-squared smooth falloff + backface probe rejection + cubed Chebyshev visibility
+                // Wrapped cosine-squared smooth falloff + strict backface probe rejection + cubed Chebyshev visibility
                 const float WrappedDot = 0.5f * (Mathematics::EvaluateDot(DirSurfToProbe, SurfaceNormal) + 1.0f);
                 const float SmoothBack = std::max(0.02f, WrappedDot * WrappedDot);
-                const float ValidGate  = (Cell.BackfaceRatio > 0.25f) ? 0.02f : 1.0f;
+                const float ValidGate  = (Cell.BackfaceRatio > 0.20f) ? 1.0e-4f : 1.0f;
 
                 const Mathematics::Axis2D Moments = SampleProbeOctahedralBilinear<Mathematics::Axis2D, ProbeChebyshevOctaWidth>(
                     Cell.DepthMoments, DirProbeToSurf);
-                const float MeanR    = Moments.X;
-                const float Variance = std::max(1.0e-4f, std::fabs(Moments.Y - MeanR * MeanR));
-                float Chebyshev      = 1.0f;
-                if (DistToProbe > MeanR)
+                const float MinCellStep  = std::min({ CellSpacing.X, CellSpacing.Y, CellSpacing.Z });
+                const float ChebBias     = 0.08f * MinCellStep;
+                const float MeanR        = Moments.X;
+                const float Variance     = std::max(0.035f, std::fabs(Moments.Y - MeanR * MeanR));
+                float Chebyshev          = 1.0f;
+                if (DistToProbe > MeanR + ChebBias)
                 {
-                    const float Excess = DistToProbe - MeanR;
+                    const float Excess = DistToProbe - (MeanR + ChebBias);
                     Chebyshev = Variance / (Variance + Excess * Excess);
-                    Chebyshev = Chebyshev * Chebyshev * Chebyshev;
+                    Chebyshev = Chebyshev * Chebyshev;
                 }
 
                 const float CellWeight = WX * WY * WZ * SmoothBack * ValidGate * std::max(1.0e-4f, Chebyshev);

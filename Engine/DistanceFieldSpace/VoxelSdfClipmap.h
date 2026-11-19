@@ -328,13 +328,14 @@ public:
         std::span<const DynamicLocalSdfInstance> DynamicObjects = {},
         bool                                     ForceCoarseOnly = false) const noexcept;
 
-    // Deterministic 16-cone Fibonacci Surface-Cache Cone GI (zero RNG, zero splotches, zero denoiser!)
+    // Deterministic Cone GI (zero RNG; optional deterministic per-pixel AzimuthOffsetRad breaks radial spoke aliasing)
     [[nodiscard]] Mathematics::LinearRGB EvaluateDeterministicConeGiOverPi(
         Mathematics::Axis3D                      WorldPos,
         Mathematics::Axis3D                      SurfaceNormal,
         Mathematics::LinearRGB                   SkyRadiance,
-        uint32_t                                 ConeCount = 16u,
-        std::span<const DynamicLocalSdfInstance> DynamicObjects = {}) const noexcept;
+        uint32_t                                 ConeCount = 24u,
+        std::span<const DynamicLocalSdfInstance> DynamicObjects = {},
+        float                                    AzimuthOffsetRad = 0.0f) const noexcept;
 };
 
 } // namespace Frontier::DistanceFieldSpace

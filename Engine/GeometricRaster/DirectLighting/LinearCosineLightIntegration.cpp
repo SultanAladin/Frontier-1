@@ -310,7 +310,8 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
     const AmbientOcclusionSettings&                              AoSettings,
     const DistanceFieldSpace::VoxelSdfClipmapVolume*             OptionalClipmap,
     std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> DynamicObjects,
-    std::span<const DistanceFieldSpace::VoxelPointLightSpec>     PointLights)
+    std::span<const DistanceFieldSpace::VoxelPointLightSpec>     PointLights,
+    Mathematics::LinearRGB                                       SkyFillRadiance)
 {
     DirectLightingOutput Out {};
     Out.WidthPx  = VisibilityTargets.WidthPx;
@@ -456,7 +457,11 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
             const auto& Hit       = PrimarySamples[Off];
             if (!Hit.ValidHit || Hit.MaterialSlot >= MatCount)
             {
-                Out.DirectHdrRadiance[Off] = { 0.05f, 0.08f, 0.14f };
+                Out.DirectHdrRadiance[Off] = {
+                    SkyFillRadiance.R * 0.36f,
+                    SkyFillRadiance.G * 0.42f,
+                    SkyFillRadiance.B * 0.50f,
+                };
                 const auto Tone = ApplyAcesFilmic(Out.DirectHdrRadiance[Off]);
                 Out.ToneMappedSrgb8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.R) * 255.0f));
                 Out.ToneMappedSrgb8[Off * 4u + 1u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Tone.G) * 255.0f));
@@ -553,7 +558,7 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
             }
 
             // Physically Occluded Sky Dome Fill (Diffuse gated by DiffAo, Specular gated by Lagarde SpecAo!)
-            const Mathematics::LinearRGB SkyHemisphere { 0.14f, 0.19f, 0.28f };
+            const Mathematics::LinearRGB SkyHemisphere = SkyFillRadiance;
             const float DiffWeight = (1.0f - Mat.Specular.Metalness) * (1.0f - Mat.Transmission.TransmissionWeight);
             const auto MetalEnvF   = MaterialSpace::Scattering::EvaluateConductorEdgeTintFresnel(
                 LocalWo.Z, Mat.Diffuse.BaseColor, Mat.Specular.EdgeTintF82);

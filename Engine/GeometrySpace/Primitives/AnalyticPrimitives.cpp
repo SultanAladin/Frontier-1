@@ -122,7 +122,17 @@ void AppendBoxPrimitive(
             { U1, V1 },
             { U0, V1 },
         }};
-        (void)TargetNetwork.AppendFace(QuadFaces[FaceIdx], QuadUV, Shading, PriorityLayerOrdinal, PartGroupOrdinal);
+        const uint32_t FaceId = TargetNetwork.AppendFace(QuadFaces[FaceIdx], QuadUV, Shading, PriorityLayerOrdinal, PartGroupOrdinal);
+        if (FaceId < TargetNetwork.Faces.size())
+        {
+            uint32_t EdgeIdx = TargetNetwork.Faces[FaceId].BoundaryLoopEdgeIndex;
+            for (uint32_t K = 0u; K < 4u && EdgeIdx < TargetNetwork.Edges.size(); ++K)
+            {
+                TargetNetwork.Edges[EdgeIdx].AttributeMask =
+                    TargetNetwork.Edges[EdgeIdx].AttributeMask | EdgeAttributeMask::EnableSharpCrease;
+                EdgeIdx = TargetNetwork.Edges[EdgeIdx].NextEdgeIndex;
+            }
+        }
     }
 }
 

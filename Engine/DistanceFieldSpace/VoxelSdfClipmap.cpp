@@ -391,9 +391,9 @@ void ParallelForZ(uint32_t ZCount, Fn&& Func)
     }
 
     return {
-        std::clamp(TotalRad.R, 0.0f, 28.0f),
-        std::clamp(TotalRad.G, 0.0f, 28.0f),
-        std::clamp(TotalRad.B, 0.0f, 28.0f),
+        std::clamp(TotalRad.R, 0.0f, 96.0f),
+        std::clamp(TotalRad.G, 0.0f, 96.0f),
+        std::clamp(TotalRad.B, 0.0f, 96.0f),
     };
 }
 
@@ -466,15 +466,40 @@ Mathematics::LinearRGB VoxelClipmapCascade::SampleRadiosityTrilinear(
         const float TY = FY - static_cast<float>(Y0);
         const float TZ = FZ - static_cast<float>(Z0);
         const uint32_t SXY = DimX * DimY;
-        const auto At = [&](uint32_t X, uint32_t Y, uint32_t Z) noexcept -> Mathematics::LinearRGB
+        const auto At = [&](uint32_t X, uint32_t Y, uint32_t Z) noexcept -> const VoxelSurfaceCacheEntry&
         {
-            return Voxels[static_cast<std::size_t>(Z) * SXY + static_cast<std::size_t>(Y) * DimX + X].BounceRadiance;
+            return Voxels[static_cast<std::size_t>(Z) * SXY + static_cast<std::size_t>(Y) * DimX + X];
         };
-        const auto C00 = At(X0, Y0, Z0) * (1.0f - TX) + At(X1, Y0, Z0) * TX;
-        const auto C10 = At(X0, Y1, Z0) * (1.0f - TX) + At(X1, Y1, Z0) * TX;
-        const auto C01 = At(X0, Y0, Z1) * (1.0f - TX) + At(X1, Y0, Z1) * TX;
-        const auto C11 = At(X0, Y1, Z1) * (1.0f - TX) + At(X1, Y1, Z1) * TX;
-        return (C00 * (1.0f - TY) + C10 * TY) * (1.0f - TZ) + (C01 * (1.0f - TY) + C11 * TY) * TZ;
+        Mathematics::LinearRGB Sum {};
+        float WSum = 0.0f;
+        for (uint32_t DZ = 0u; DZ < 2u; ++DZ)
+        {
+            const float WZ = (DZ == 0u) ? (1.0f - TZ) : TZ;
+            const uint32_t CZ = (DZ == 0u) ? Z0 : Z1;
+            for (uint32_t DY = 0u; DY < 2u; ++DY)
+            {
+                const float WY = (DY == 0u) ? (1.0f - TY) : TY;
+                const uint32_t CY = (DY == 0u) ? Y0 : Y1;
+                for (uint32_t DX = 0u; DX < 2u; ++DX)
+                {
+                    const float WX = (DX == 0u) ? (1.0f - TX) : TX;
+                    const uint32_t CX = (DX == 0u) ? X0 : X1;
+                    const auto& V = At(CX, CY, CZ);
+                    if (V.HasSurface != 0u)
+                    {
+                        const float W = WX * WY * WZ;
+                        Sum   = Sum + V.BounceRadiance * W;
+                        WSum += W;
+                    }
+                }
+            }
+        }
+        if (WSum > 1.0e-4f)
+        {
+            const float Coverage = std::clamp(WSum * 1.45f, 0.0f, 1.0f);
+            return Sum * (Coverage / WSum);
+        }
+        return {};
     };
 
     const auto SampleGrid3 = [&](
@@ -579,9 +604,9 @@ void VoxelClipmapCascade::RebuildMip1() noexcept
                 }
                 if (Active > 0.0f)
                 {
-                    // Energy-conserving dilution prevents sparse emissive voxels from spiking across wide blocks
+                    // Preserve thin 1-2 voxel emissive strips (headlights/taillights) while keeping flat walls exact
                     Mip1Radiance[static_cast<std::size_t>(Z) * SXY1 + static_cast<std::size_t>(Y) * Mip1DimX + X] =
-                        Sum * (1.0f / std::max(1.0f, Active * 0.62f + 8.0f * 0.38f));
+                        Sum * (1.0f / std::max(1.25f, Active));
                 }
             }
         }
@@ -621,7 +646,7 @@ void VoxelClipmapCascade::RebuildMip1() noexcept
                 if (Active > 0.0f)
                 {
                     Mip2Radiance[static_cast<std::size_t>(Z) * SXY2 + static_cast<std::size_t>(Y) * Mip2DimX + X] =
-                        Sum * (1.0f / std::max(1.0f, Active * 0.65f + 8.0f * 0.35f));
+                        Sum * (1.0f / std::max(1.50f, Active));
                 }
             }
         }
@@ -699,9 +724,10 @@ bool LocalGeometrySdfAsset::BakeFromLocalTree(
                         {
                             const uint32_t Slot = std::min(static_cast<uint32_t>(Hit.MaterialSlot), MatCount - 1u);
                             const auto& Mat = Materials.InspectAuthoredMaterial(Slot);
+                            const float EmissiveProx = 1.0f - SmoothStep(VoxelSpacingM * 0.15f, VoxelSpacingM * 1.10f, std::fabs(D));
                             Entry.MaterialSlot  = static_cast<uint16_t>(Slot);
                             Entry.AlbedoRgb     = Mat.Diffuse.BaseColor * Mat.Diffuse.BaseWeight;
-                            Entry.EmissiveRgb   = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight);
+                            Entry.EmissiveRgb   = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight) * EmissiveProx;
                             Entry.SurfaceNormal = Hit.Normal;
                             Entry.Metalness     = Mat.Specular.Metalness;
                             Entry.Roughness     = Mat.Specular.Roughness;
@@ -744,7 +770,52 @@ bool LocalGeometrySdfAsset::SampleLocalSurfaceCache(
     const uint32_t IX = static_cast<uint32_t>(std::round(FX));
     const uint32_t IY = static_cast<uint32_t>(std::round(FY));
     const uint32_t IZ = static_cast<uint32_t>(std::round(FZ));
-    OutEntry = LocalVoxels[static_cast<std::size_t>(IZ) * (DimX * DimY) + static_cast<std::size_t>(IY) * DimX + IX];
+    const uint32_t SXY = DimX * DimY;
+    OutEntry = LocalVoxels[static_cast<std::size_t>(IZ) * SXY + static_cast<std::size_t>(IY) * DimX + IX];
+
+    // Trilinearly blend Albedo/Emissive across surface-valid 2x2x2 neighbors to avoid stair-stepped emissive blocks
+    const uint32_t X0 = static_cast<uint32_t>(std::floor(FX));
+    const uint32_t Y0 = static_cast<uint32_t>(std::floor(FY));
+    const uint32_t Z0 = static_cast<uint32_t>(std::floor(FZ));
+    const uint32_t X1 = std::min(DimX - 1u, X0 + 1u);
+    const uint32_t Y1 = std::min(DimY - 1u, Y0 + 1u);
+    const uint32_t Z1 = std::min(DimZ - 1u, Z0 + 1u);
+    const float TX = FX - static_cast<float>(X0);
+    const float TY = FY - static_cast<float>(Y0);
+    const float TZ = FZ - static_cast<float>(Z0);
+
+    Mathematics::LinearRGB AlbSum {};
+    Mathematics::LinearRGB EmisSum {};
+    float WSum = 0.0f;
+    for (uint32_t DZ = 0u; DZ < 2u; ++DZ)
+    {
+        const float WZ = (DZ == 0u) ? (1.0f - TZ) : TZ;
+        const uint32_t CZ = (DZ == 0u) ? Z0 : Z1;
+        for (uint32_t DY = 0u; DY < 2u; ++DY)
+        {
+            const float WY = (DY == 0u) ? (1.0f - TY) : TY;
+            const uint32_t CY = (DY == 0u) ? Y0 : Y1;
+            for (uint32_t DX = 0u; DX < 2u; ++DX)
+            {
+                const float WX = (DX == 0u) ? (1.0f - TX) : TX;
+                const uint32_t CX = (DX == 0u) ? X0 : X1;
+                const auto& N = LocalVoxels[static_cast<std::size_t>(CZ) * SXY + static_cast<std::size_t>(CY) * DimX + CX];
+                if (N.HasSurface != 0u)
+                {
+                    const float W = WX * WY * WZ;
+                    AlbSum  = AlbSum  + N.AlbedoRgb   * W;
+                    EmisSum = EmisSum + N.EmissiveRgb * W;
+                    WSum   += W;
+                }
+            }
+        }
+    }
+    if (WSum > 1.0e-4f)
+    {
+        OutEntry.AlbedoRgb   = AlbSum  * (1.0f / WSum);
+        OutEntry.EmissiveRgb = EmisSum * (1.0f / WSum);
+        OutEntry.HasSurface  = 1u;
+    }
     return OutEntry.HasSurface != 0u;
 }
 
@@ -947,9 +1018,10 @@ void VoxelSdfClipmapVolume::BuildStaticClipmap(
                         {
                             const uint32_t Slot = std::min(static_cast<uint32_t>(Hit.MaterialSlot), MatCount - 1u);
                             const auto& Mat = Materials.InspectAuthoredMaterial(Slot);
+                            const float EmissiveProx = 1.0f - SmoothStep(Dst.VoxelSpacingM * 0.15f, Dst.VoxelSpacingM * 1.15f, std::fabs(D));
                             Entry.MaterialSlot  = static_cast<uint16_t>(Slot);
                             Entry.AlbedoRgb     = Mat.Diffuse.BaseColor * Mat.Diffuse.BaseWeight;
-                            Entry.EmissiveRgb   = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight);
+                            Entry.EmissiveRgb   = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight) * EmissiveProx;
                             Entry.SurfaceNormal = Hit.Normal;
                             Entry.Metalness     = Mat.Specular.Metalness;
                             Entry.Roughness     = Mat.Specular.Roughness;
@@ -1255,8 +1327,9 @@ void VoxelSdfClipmapVolume::ComposeDynamicObjectsIntoActiveClip0(
                             VoxelSurfaceCacheEntry LocalSurf {};
                             if (BestObj->Asset->SampleLocalSurfaceCache(BestLocalPos, LocalSurf))
                             {
+                                const float EmisProx = 1.0f - SmoothStep(ActiveClip0.VoxelSpacingM * 0.65f, ActiveClip0.VoxelSpacingM * 1.45f, std::fabs(BestDynD));
                                 Out.AlbedoRgb     = LocalSurf.AlbedoRgb;
-                                Out.EmissiveRgb   = LocalSurf.EmissiveRgb;
+                                Out.EmissiveRgb   = LocalSurf.EmissiveRgb * EmisProx;
                                 Out.Metalness     = LocalSurf.Metalness;
                                 Out.Roughness     = LocalSurf.Roughness;
                                 Out.MaterialSlot  = LocalSurf.MaterialSlot;
@@ -1272,9 +1345,9 @@ void VoxelSdfClipmapVolume::ComposeDynamicObjectsIntoActiveClip0(
                                 const auto EnvBounce = StaticClip0.SampleRadiosityTrilinear(
                                     WP + Out.SurfaceNormal * 0.45f, 0.35f);
                                 Out.BounceRadiance = {
-                                    std::min(32.0f, Out.DirectRadiance.R + Out.AlbedoRgb.R * DiffW * EnvBounce.R * 0.70f),
-                                    std::min(32.0f, Out.DirectRadiance.G + Out.AlbedoRgb.G * DiffW * EnvBounce.G * 0.70f),
-                                    std::min(32.0f, Out.DirectRadiance.B + Out.AlbedoRgb.B * DiffW * EnvBounce.B * 0.70f),
+                                    std::min(96.0f, Out.DirectRadiance.R + Out.AlbedoRgb.R * DiffW * EnvBounce.R * 0.70f),
+                                    std::min(96.0f, Out.DirectRadiance.G + Out.AlbedoRgb.G * DiffW * EnvBounce.G * 0.70f),
+                                    std::min(96.0f, Out.DirectRadiance.B + Out.AlbedoRgb.B * DiffW * EnvBounce.B * 0.70f),
                                 };
                             }
                         }
@@ -1286,7 +1359,8 @@ void VoxelSdfClipmapVolume::ComposeDynamicObjectsIntoActiveClip0(
         }
     });
 
-    // Pass 2: Modulate nearby static surface voxels (ground & adjacent walls) by dynamic shadow + dynamic vehicle emissive bounce!
+    // Pass 2: Modulate nearby static surface voxels (ground & adjacent walls) by live dynamic vehicle shadow occlusion
+    //         without baking a dirty 4-probe rectangular smear directly into floor bounce voxels.
     ParallelForZ(Z1 - Z0 + 1u, [&](uint32_t RelS, uint32_t RelE)
     {
         for (uint32_t RZ = RelS; RZ < RelE; ++RZ)
@@ -1308,7 +1382,6 @@ void VoxelSdfClipmapVolume::ComposeDynamicObjectsIntoActiveClip0(
 
                     const float PX = ActiveClip0.BoundsMin.X + (static_cast<float>(X) / static_cast<float>(ActiveClip0.DimX - 1u)) * Span.X;
                     const Mathematics::Axis3D WP { PX, PY, PZ };
-                    const Mathematics::Axis3D N = Mathematics::NormalizeAxis(StaticV.SurfaceNormal, { 0.0f, 0.0f, 1.0f });
 
                     // Re-evaluate direct lighting including dynamic objects' occlusion so shadow under & behind moving car updates live!
                     const auto DynDirect = EvaluateDirectVoxelSurfaceLighting(
@@ -1319,32 +1392,11 @@ void VoxelSdfClipmapVolume::ComposeDynamicObjectsIntoActiveClip0(
                         std::max(0.0f, StaticV.BounceRadiance.B - StaticV.DirectRadiance.B),
                     };
 
-                    // Add immediate 1-bounce radiosity from dynamic vehicle emissives/sunlit body onto nearby floor/walls!
-                    Mathematics::LinearRGB DynBounce {};
-                    const float DiffW = 1.0f - std::clamp(StaticV.Metalness, 0.0f, 1.0f);
-                    if (DiffW > 0.02f)
-                    {
-                        Mathematics::Axis3D T {}, B {};
-                        BuildOrthonormalDuff(N, T, B);
-                        for (uint32_t K = 0u; K < 4u; ++K)
-                        {
-                            const float R   = std::sqrt((static_cast<float>(K) + 0.5f) * 0.25f);
-                            const float Ang = static_cast<float>(K) * 2.39996323f + 0.4f;
-                            const Mathematics::Axis3D CDir = Mathematics::NormalizeAxis(
-                                T * (R * std::cos(Ang)) + B * (R * std::sin(Ang)) + N * std::sqrt(std::max(0.0f, 1.0f - R * R)));
-                            const Mathematics::Axis3D ProbeP = WP + N * ActiveClip0.VoxelSpacingM + CDir * 0.75f;
-                            if (ActiveClip0.ContainsInsideMargin(ProbeP, 0.015f))
-                            {
-                                DynBounce = DynBounce + ActiveClip0.SampleRadiosityTrilinear(ProbeP, 0.35f) * 0.25f;
-                            }
-                        }
-                    }
-
                     V.DirectRadiance = DynDirect;
                     V.BounceRadiance = {
-                        std::min(32.0f, DynDirect.R + StaticBounceDelta.R * 0.55f + StaticV.AlbedoRgb.R * DiffW * DynBounce.R * 0.45f),
-                        std::min(32.0f, DynDirect.G + StaticBounceDelta.G * 0.55f + StaticV.AlbedoRgb.G * DiffW * DynBounce.G * 0.45f),
-                        std::min(32.0f, DynDirect.B + StaticBounceDelta.B * 0.55f + StaticV.AlbedoRgb.B * DiffW * DynBounce.B * 0.45f),
+                        std::min(96.0f, DynDirect.R + StaticBounceDelta.R * 0.72f),
+                        std::min(96.0f, DynDirect.G + StaticBounceDelta.G * 0.72f),
+                        std::min(96.0f, DynDirect.B + StaticBounceDelta.B * 0.72f),
                     };
                 }
             }
@@ -1542,11 +1594,26 @@ Mathematics::LinearRGB VoxelSdfClipmapVolume::SampleClipmapRadiosity(
     int                 Cascade,
     float               ConeRadiusM) const noexcept
 {
-    if (Cascade == 0)
+    (void)Cascade;
+    // Always evaluate radiosity from the actual ActiveClip0 / StaticClip1 spatial bounds (independent of ToroidalClipmap tier!)
+    if (ActiveClip0.ContainsInsideMargin(WorldPos, 0.015f))
     {
-        return ActiveClip0.SampleRadiosityTrilinear(WorldPos, ConeRadiusM);
+        const auto R0 = ActiveClip0.SampleRadiosityTrilinear(WorldPos, ConeRadiusM);
+        if (ActiveClip0.ContainsInsideMargin(WorldPos, 0.08f) || !StaticClip1.ContainsInsideMargin(WorldPos, 0.015f))
+        {
+            return R0;
+        }
+        const float UX = std::min((WorldPos.X - ActiveClip0.BoundsMin.X) * ActiveClip0.InvSpan.X,
+                                  (ActiveClip0.BoundsMax.X - WorldPos.X) * ActiveClip0.InvSpan.X);
+        const float UY = std::min((WorldPos.Y - ActiveClip0.BoundsMin.Y) * ActiveClip0.InvSpan.Y,
+                                  (ActiveClip0.BoundsMax.Y - WorldPos.Y) * ActiveClip0.InvSpan.Y);
+        const float UZ = std::min((WorldPos.Z - ActiveClip0.BoundsMin.Z) * ActiveClip0.InvSpan.Z,
+                                  (ActiveClip0.BoundsMax.Z - WorldPos.Z) * ActiveClip0.InvSpan.Z);
+        const float Blend = SmoothStep(0.015f, 0.08f, std::min({ UX, UY, UZ }));
+        const auto R1 = StaticClip1.SampleRadiosityTrilinear(WorldPos, ConeRadiusM);
+        return R1 * (1.0f - Blend) + R0 * Blend;
     }
-    if (Cascade == 1)
+    if (StaticClip1.ContainsInsideMargin(WorldPos, 0.015f))
     {
         return StaticClip1.SampleRadiosityTrilinear(WorldPos, ConeRadiusM);
     }
@@ -1655,57 +1722,57 @@ Mathematics::LinearRGB VoxelSdfClipmapVolume::EvaluateDeterministicConeGiOverPi(
     Mathematics::Axis3D                      SurfaceNormal,
     Mathematics::LinearRGB                   SkyRadiance,
     uint32_t                                 ConeCount,
-    std::span<const DynamicLocalSdfInstance> DynamicObjects) const noexcept
+    std::span<const DynamicLocalSdfInstance> DynamicObjects,
+    float                                    AzimuthOffsetRad) const noexcept
 {
-    const uint32_t Count = std::clamp(ConeCount, 12u, 24u);
+    const uint32_t Count = std::clamp(ConeCount, 12u, 32u);
     const float InvCount = 1.0f / static_cast<float>(Count);
     const Mathematics::Axis3D N = Mathematics::NormalizeAxis(SurfaceNormal, { 0.0f, 0.0f, 1.0f });
     Mathematics::Axis3D T {}, B {};
     BuildOrthonormalDuff(N, T, B);
 
-    const float BaseBias = std::max(0.032f, ActiveClip0.VoxelSpacingM * 0.75f);
+    const float BaseBias = std::max(0.055f, ActiveClip0.VoxelSpacingM * 0.85f);
     const Mathematics::Axis3D Origin = WorldPos + N * BaseBias;
 
     Mathematics::LinearRGB GiIrr {};
     for (uint32_t K = 0u; K < Count; ++K)
     {
-        // Pure deterministic 24-cone cosine-weighted Fibonacci lattice (zero PCG, zero pixel jitter, zero denoiser!)
+        // Deterministic cosine-weighted Fibonacci cone lattice with optional per-pixel R2 azimuthal phase
         const float URad = (static_cast<float>(K) + 0.5f) * InvCount;
         const float R    = std::sqrt(std::clamp(URad, 0.015f, 0.96f));
-        const float Ang  = static_cast<float>(K) * 2.39996323f + 0.31f;
+        const float Ang  = static_cast<float>(K) * 2.39996323f + 0.31f + AzimuthOffsetRad;
         const Mathematics::Axis3D CDir = Mathematics::NormalizeAxis(
             T * (R * std::cos(Ang)) + B * (R * std::sin(Ang)) + N * std::sqrt(std::max(0.0f, 1.0f - R * R)));
 
-        float CT = std::max(0.14f, ActiveClip0.VoxelSpacingM * 1.15f);
+        float CT = std::max(0.16f, ActiveClip0.VoxelSpacingM * 1.25f);
         float CAlpha = 0.0f;
         Mathematics::LinearRGB CCol {};
 
-        for (uint32_t St = 0u; St < 24u && CAlpha < 0.97f && CT < 14.0f; ++St)
+        for (uint32_t St = 0u; St < 28u && CAlpha < 0.97f && CT < 14.0f; ++St)
         {
             const Mathematics::Axis3D SP = Origin + CDir * CT;
             int Casc = 3;
             const float CD = SampleClipmapDistance(SP, Casc, DynamicObjects);
             if (Casc >= 3 || CD > 4.0e3f) break;
 
-            const float Vox   = (Casc == 0) ? 0.125f : (Casc == 1) ? 0.25f : 0.50f;
-            const float ConeR = std::max(Vox * 1.15f, CT * 0.42f);
-            if (CD < ConeR)
+            const bool InFine = ActiveClip0.ContainsInsideMargin(SP, 0.015f);
+            const float Vox   = InFine ? ActiveClip0.VoxelSpacingM : StaticClip1.VoxelSpacingM;
+            const float ConeR = std::max(Vox * 1.05f, CT * 0.44f);
+            const float NormalOffset = Mathematics::EvaluateDot(SP - WorldPos, N);
+            if (CD < ConeR && NormalOffset > Vox * 0.85f)
             {
-                float Occ = (1.0f - SmoothStep(0.0f, ConeR, CD)) * 0.78f;
-                const auto SRad  = SampleClipmapRadiosity(SP, Casc, ConeR * 1.45f);
-                const auto SurfN = EvaluateClipmapNormal(SP, Casc, DynamicObjects);
-                const float FrontEmit = 0.45f + 0.70f * SmoothStep(-0.15f, 0.55f, Mathematics::EvaluateDot(SurfN, CDir * -1.0f));
-                if (CT < 0.85f && std::max({ SRad.R, SRad.G, SRad.B }) < 0.25f)
-                {
-                    Occ = std::min(1.0f, Occ * 1.25f);
-                }
+                const float Occ  = (1.0f - SmoothStep(-Vox * 0.15f, ConeR, CD)) * 0.85f;
+                const auto SRad  = SampleClipmapRadiosity(SP, Casc, ConeR * 1.40f);
+                const auto SurfN = EvaluateClipmapNormal(SP, InFine ? 0 : 1, DynamicObjects);
+                // Directional front-facing emission gate prevents headlights from bleeding backwards through hood/bumper
+                const float FrontEmit = 0.08f + 0.92f * SmoothStep(-0.18f, 0.35f, Mathematics::EvaluateDot(SurfN, CDir * -1.0f));
                 const float StepW = (1.0f - CAlpha) * Occ;
-                CCol.R += std::min(SRad.R, 2.5f) * FrontEmit * StepW;
-                CCol.G += std::min(SRad.G, 2.5f) * FrontEmit * StepW;
-                CCol.B += std::min(SRad.B, 2.5f) * FrontEmit * StepW;
+                CCol.R += std::min(SRad.R, 36.0f) * FrontEmit * StepW;
+                CCol.G += std::min(SRad.G, 36.0f) * FrontEmit * StepW;
+                CCol.B += std::min(SRad.B, 36.0f) * FrontEmit * StepW;
                 CAlpha += StepW;
             }
-            CT += std::max(CD * 0.75f, Vox * 0.75f);
+            CT += std::max(CD * 0.72f, Vox * 0.68f);
         }
 
         const float SkyHem = 0.5f + 0.5f * CDir.Z;
@@ -1721,9 +1788,9 @@ Mathematics::LinearRGB VoxelSdfClipmapVolume::EvaluateDeterministicConeGiOverPi(
     }
 
     return {
-        std::min(GiIrr.R, 18.0f),
-        std::min(GiIrr.G, 18.0f),
-        std::min(GiIrr.B, 18.0f),
+        std::min(GiIrr.R, 24.0f),
+        std::min(GiIrr.G, 24.0f),
+        std::min(GiIrr.B, 24.0f),
     };
 }
 

@@ -85,18 +85,19 @@ struct GpuShadedTriangle96
     float4 Normal2Slot; // xyz = SmoothNormal2, w = float(MaterialSlot)
 };
 
-struct GpuWorldMaterial64
+struct GpuWorldMaterial80
 {
     float4 DiffuseAlbedoRoughness; // xyz = EffectiveDiffuseAlbedo, w = DiffuseRoughness
     float4 SpecParams;             // x = SpecRoughness, y = Metalness, z = DielectricIOR, w = Anisotropy
     float4 EdgeTintCoatWeight;     // xyz = EdgeTintF82, w = CoatWeight
     float4 CoatRoughnessOptics;    // x = CoatRoughness, y = TransmissionWeight, z = AbbeDispersion, w = Pad
+    float4 EmissiveRadiancePad;    // xyz = Planckian Blackbody Emissive RGB, w = Pad
 };
 
 [[vk::binding(0,  0)]] ConstantBuffer<WorldViewportUniformBlock> WorldUniforms;
 [[vk::binding(1,  0)]] StructuredBuffer<GpuWideTreeEntry128>     SceneBvhEntries;
 [[vk::binding(2,  0)]] StructuredBuffer<GpuShadedTriangle96>     SceneTriangles;
-[[vk::binding(3,  0)]] StructuredBuffer<GpuWorldMaterial64>      MaterialEntries;
+[[vk::binding(3,  0)]] StructuredBuffer<GpuWorldMaterial80>      MaterialEntries;
 [[vk::binding(4,  0)]] StructuredBuffer<float>                   SignedDistanceGrid;
 [[vk::binding(5,  0)]] RWStructuredBuffer<float4>                IrradianceLatticeTexels;
 [[vk::binding(6,  0)]] RWStructuredBuffer<uint>                  OutDisplayRgba8;
@@ -829,7 +830,7 @@ float IntegrateSphericalEdgeZ(float3 V1, float3 V2)
     return (V1.x * V2.y - V1.y * V2.x) * ThetaOverSin;
 }
 
-float3 EvaluateSurfaceBrdf(GpuWorldMaterial64 Mat, float3 N, float3 V, float3 L)
+float3 EvaluateSurfaceBrdf(GpuWorldMaterial80 Mat, float3 N, float3 V, float3 L)
 {
     float NdotL = max(0.0, dot(N, L));
     float NdotV = max(1.0e-4, dot(N, V));
@@ -918,7 +919,7 @@ float IntegrateClippedQuadFormFactor(float3 LocalQ[4])
     return saturate(abs(ContourSum) / TauConst);
 }
 
-float3 EvaluateAreaQuadLight(GpuAreaQuadLight Quad, float3 Pos, float3 N, float3 V, GpuWorldMaterial64 Mat)
+float3 EvaluateAreaQuadLight(GpuAreaQuadLight Quad, float3 Pos, float3 N, float3 V, GpuWorldMaterial80 Mat)
 {
     float3 RightT = Quad.RightHalfHeight.xyz;
     float3 UpB    = Quad.UpTwoSided.xyz;
@@ -1461,10 +1462,11 @@ float3 EvaluateWeightedPathReplayCandidate(float3 WorldPos, float3 Normal, uint2
             CandPos = Hit2.Position;
             float3 N2 = Hit2.ShadingNormal;
             if (dot(N2, Dir) > 0.0) N2 = -N2;
-            GpuWorldMaterial64 Mat2 = MaterialEntries[min(Hit2.MaterialSlot, MatCount - 1u)];
+            GpuWorldMaterial80 Mat2 = MaterialEntries[min(Hit2.MaterialSlot, MatCount - 1u)];
             float3 SafeHit2 = Hit2.Position + N2 * 4.0e-3;
             float3 DiffAlb2 = Mat2.DiffuseAlbedoRoughness.xyz * (1.0 - saturate(Mat2.SpecParams.y)) * (1.0 - saturate(Mat2.CoatRoughnessOptics.y));
 
+            CandRad += Mat2.EmissiveRadiancePad.xyz;
             if (dot(N2, SunDir) > 0.0 && !TraceSceneAnyHit(SafeHit2, SunDir, 0.02, 80.0))
             {
                 CandRad += EvaluateSurfaceBrdf(Mat2, N2, -Dir, SunDir) * SunIrr;
@@ -1569,14 +1571,14 @@ float3 ShadeSecondaryBounce(float3 RayOrigin, float3 RayDir)
     }
 
     uint MatCount = max(1u, WorldUniforms.LatticeDimsMaterialCount.w);
-    GpuWorldMaterial64 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
+    GpuWorldMaterial80 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
     float3 V      = -RayDir;
     float3 N      = Hit.ShadingNormal;
     float3 SunDir = WorldUniforms.SunDirConeTan.xyz;
     float3 SunIrr = WorldUniforms.SolarIrradianceTier.xyz;
 
     float3 SafeSecondaryPos = Hit.Position + Hit.GeomNormal * 0.012 + N * 0.006;
-    float3 ColorHdr = float3(0.0);
+    float3 ColorHdr = Mat.EmissiveRadiancePad.xyz;
     if (dot(N, SunDir) > 0.0 && !TraceSceneAnyHit(SafeSecondaryPos, SunDir, 0.032, 80.0))
     {
         float TermGate = saturate(dot(Hit.GeomNormal, SunDir) * 6.0 + 0.35);
@@ -1602,7 +1604,7 @@ float3 ShadeSecondaryBounce(float3 RayOrigin, float3 RayDir)
 float3 EvaluateMatCapSurface(RayHitReading Hit)
 {
     uint MatCount = max(1u, WorldUniforms.LatticeDimsMaterialCount.w);
-    GpuWorldMaterial64 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
+    GpuWorldMaterial80 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
     float3 N      = Hit.ShadingNormal;
     float3 CamR   = WorldUniforms.CameraRightTanY.xyz;
     float3 CamU   = WorldUniforms.CameraUpWidth.xyz;
@@ -1625,7 +1627,8 @@ float3 EvaluateMatCapSurface(RayHitReading Hit)
     float3 Base = Mat.DiffuseAlbedoRoughness.xyz;
     return Base * (StudioL * (1.0 - Metal * 0.78) + KeySpec * SpecGain * Metal)
          + float3(KeySpec * SpecGain * (1.0 - Metal))
-         + float3(0.26, 0.28, 0.32) * RimGlow;
+         + float3(0.26, 0.28, 0.32) * RimGlow
+         + Mat.EmissiveRadiancePad.xyz;
 }
 
 void ShadePrimarySurfaceDemod(
@@ -1645,13 +1648,13 @@ void ShadePrimarySurfaceDemod(
 {
     uint EngineMode = WorldUniforms.EngineShadowReflSample.x;
     uint MatCount   = max(1u, WorldUniforms.LatticeDimsMaterialCount.w);
-    GpuWorldMaterial64 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
+    GpuWorldMaterial80 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
     float3 N      = Hit.ShadingNormal;
     float3 SunDir = WorldUniforms.SunDirConeTan.xyz;
     float3 SunIrr = WorldUniforms.SolarIrradianceTier.xyz;
 
     // 1. Direct Solar Shadow (Two-Cascade Fine/Coarse + BVH4 Contact Gate)
-    OutDirectBaseHdr      = float3(0.0);
+    OutDirectBaseHdr      = Mat.EmissiveRadiancePad.xyz;
     OutSpecReflHdr        = float3(0.0);
     OutUnoccludedSunHdr   = float3(0.0);
     OutSunVis             = 1.0;
@@ -1980,7 +1983,8 @@ float3 TracePathTail(
             break;
         }
 
-        GpuWorldMaterial64 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
+        GpuWorldMaterial80 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
+        Radiance += Throughput * Mat.EmissiveRadiancePad.xyz;
         float3 N = Hit.ShadingNormal;
         float3 V = -RayD;
         float3 T, BVec;
@@ -2118,7 +2122,7 @@ float3 TraceDeterministicPathSample(
     float  GlassDisp   = 0.01;
     float  GlassFres   = 0.0;
 
-    GpuWorldMaterial64 Mat = MaterialEntries[0u];
+    GpuWorldMaterial80 Mat = MaterialEntries[0u];
     float3 SurfN = float3(0.0, 0.0, 1.0), SurfV = float3(0.0, 0.0, 1.0);
     float3 SurfT = float3(1.0, 0.0, 0.0), SurfB = float3(0.0, 1.0, 0.0);
     float  SurfRough = 0.5, SurfMetal = 0.0;
@@ -2152,6 +2156,7 @@ float3 TraceDeterministicPathSample(
     {
         // Depth-0 Deterministic Lobe Splitting (Direct NEE + Explicit Diffuse Bounce + Explicit GGX Specular Bounce)
         Mat          = MaterialEntries[min(OutPrimaryHit.MaterialSlot, MatCount - 1u)];
+        Radiance    += Mat.EmissiveRadiancePad.xyz;
         SurfN        = OutPrimaryHit.ShadingNormal;
         SurfV        = -CamRayDir;
         SurfMetal    = saturate(Mat.SpecParams.y);
@@ -2751,7 +2756,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         else if (PrimaryHit.Hit)
         {
             uint MatCount = max(1u, WorldUniforms.LatticeDimsMaterialCount.w);
-            GpuWorldMaterial64 Mat = MaterialEntries[min(PrimaryHit.MaterialSlot, MatCount - 1u)];
+            GpuWorldMaterial80 Mat = MaterialEntries[min(PrimaryHit.MaterialSlot, MatCount - 1u)];
             if (DebugMode == 1u)       DbgHdr = float3(pow(saturate(1.0 - PrimaryHit.Distance / 11.0), 1.8));
             else if (DebugMode == 2u)  DbgHdr = Mat.DiffuseAlbedoRoughness.xyz;
             else if (DebugMode == 3u)  DbgHdr = PrimaryHit.ShadingNormal * 0.5 + 0.5;
@@ -3269,7 +3274,7 @@ void SdfRadiosityComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     uint MatCount = max(1u, WorldUniforms.LatticeDimsMaterialCount.w);
-    GpuWorldMaterial64 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
+    GpuWorldMaterial80 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
     float3 HitNrm = (dot(Hit.GeomNormal, -Grad) < 0.0) ? Hit.GeomNormal : -Hit.GeomNormal;
     float3 DiffAlb = Mat.DiffuseAlbedoRoughness.xyz * (1.0 - saturate(Mat.SpecParams.y)) * (1.0 - saturate(Mat.CoatRoughnessOptics.y));
 
@@ -3282,7 +3287,7 @@ void SdfRadiosityComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
     DirectIrr += EvaluateDirectAreaRadiosityGpu(Hit.Position, HitNrm);
 
-    float3 VoxelRad = DiffAlb * DirectIrr;
+    float3 VoxelRad = Mat.EmissiveRadiancePad.xyz + DiffAlb * DirectIrr;
     SdfRadiosityVoxels[Idx] = float4(VoxelRad, 1.0);
     SdfBakedVolumeWrite[uint3(IX, IY, IZ)] = float4(VoxelRad, SdfD);
 }
@@ -3337,7 +3342,7 @@ void DdgiLatticeComputeEntry(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : S
         if (FrontFlag > 0.5)
         {
             uint MatCount = max(1u, WorldUniforms.LatticeDimsMaterialCount.w);
-            GpuWorldMaterial64 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
+            GpuWorldMaterial80 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
             float3 HitNrm = -Hit.GeomNormal;
             float3 DiffAlb = Mat.DiffuseAlbedoRoughness.xyz * (1.0 - saturate(Mat.SpecParams.y)) * (1.0 - saturate(Mat.CoatRoughnessOptics.y));
 
@@ -3379,7 +3384,7 @@ void DdgiLatticeComputeEntry(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : S
                 }
                 DirectIrr += PrevIrr * 0.85;
             }
-            RayRad = DiffAlb * DirectIrr;
+            RayRad = Mat.EmissiveRadiancePad.xyz + DiffAlb * DirectIrr;
         }
     }
 

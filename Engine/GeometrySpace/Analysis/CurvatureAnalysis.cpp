@@ -268,8 +268,8 @@ std::vector<CornerTangentBasis> EvaluateContinuousCornerTangents(const PolygonNe
             for (const uint32_t EdgeB : IncidentCorners)
             {
                 const Face& FaceB = Network.Faces[Network.Edges[EdgeB].EnclosingFaceIndex];
-                if (EdgeA != EdgeB && HardIncidentA &&
-                    Mathematics::EvaluateDot(FaceA.GeometricNormal, FaceB.GeometricNormal) < CreaseCosThreshold)
+                const float FaceDot = Mathematics::EvaluateDot(FaceA.GeometricNormal, FaceB.GeometricNormal);
+                if (EdgeA != EdgeB && ((HardIncidentA && FaceDot < CreaseCosThreshold) || FaceDot < 0.35f))
                 {
                     continue;
                 }

@@ -344,7 +344,7 @@ void PropagateClipmapRadiosityBounceEntry(uint3 DispatchThreadID : SV_DispatchTh
     SurfaceCacheRadiosityWrite0[Idx] = float4(max(PrevDirect, Emis.xyz + DiffAlbedo * IndirectOverPi), 1.0);
 }
 
-// Deterministic 24-cone SDF Clipmap Global Illumination pass (ZERO RNG!)
+// Deterministic 24-cone SDF Clipmap Global Illumination pass (ZERO RNG; IGN azimuthal rotation breaks spoke aliasing)
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void EvaluateClipmapConeGiEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
@@ -365,46 +365,60 @@ void EvaluateClipmapConeGiEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float3 T, B;
     ConstructBasis(N, T, B);
 
-    float  Spacing0 = Uniforms.Clip0CenterSpacing.w;
-    float3 Origin   = PosW.xyz + N * max(0.032, Spacing0 * 0.75);
-    float3 Accum    = float3(0.0);
+    float  Spacing0   = Uniforms.Clip0CenterSpacing.w;
+    float3 Origin     = PosW.xyz + N * max(0.055, Spacing0 * 0.85);
+    float  R2Phase    = frac(float(DispatchThreadID.x) * 0.75487766 + float(DispatchThreadID.y) * 0.56984029);
+    float  AzimuthOff = R2Phase * 6.28318530718;
+    float3 Accum      = float3(0.0);
 
     for (uint C = 0u; C < 24u; ++C)
     {
         float U1   = (float(C) + 0.5) / 24.0;
-        float Phi  = float(C) * 2.39996323 + 0.31;
+        float Phi  = float(C) * 2.39996323 + 0.31 + AzimuthOff;
         float SinT = sqrt(clamp(U1, 0.015, 0.96));
         float CosT = sqrt(max(0.0, 1.0 - SinT * SinT));
         float3 Dir = T * (SinT * cos(Phi)) + B * (SinT * sin(Phi)) + N * CosT;
 
-        float  Dist   = max(0.055, Spacing0 * 0.90);
+        float  Dist   = max(0.16, Spacing0 * 1.25);
         float  Trans  = 1.0;
         float3 Bounce = float3(0.0);
-        for (uint Step = 0u; Step < 24u && Dist < 12.0; ++Step)
+        for (uint Step = 0u; Step < 28u && Dist < 14.0; ++Step)
         {
             float3 SPos = Origin + Dir * Dist;
             uint   Cas  = 0u;
             float  H    = Spacing0;
             float  SdfD = SampleClipmapDistance(SPos, Cas, H);
             if (Cas == 2u) break;
-            float  ConeR = max(H * 0.85, Dist * 0.32);
-            if (SdfD < ConeR)
+            float  ConeR = max(H * 1.05, Dist * 0.44);
+            if (SdfD < ConeR && dot(SPos - PosW.xyz, N) > Spacing0 * 0.65)
             {
-                float Occ = saturate((1.0 - SdfD / ConeR) * ((Dist < 0.85) ? 1.20 : 1.0));
+                float Occ = saturate((1.0 - smoothstep(-H * 0.15, ConeR, SdfD)) * 0.85);
                 float3 VRad0 = SampleGridFloat4Trilinear(SurfaceCacheRadiosityRead0, Uniforms.Clip0Dims.xyz, Uniforms.Clip0CenterSpacing.xyz, Uniforms.Clip0HalfExtents.xyz, Uniforms.Clip0CenterSpacing.w, SPos);
                 float3 VRad1 = SampleGridFloat4Trilinear(SurfaceCacheRadiosityRead1, Uniforms.Clip1Dims.xyz, Uniforms.Clip1CenterSpacing.xyz, Uniforms.Clip1HalfExtents.xyz, Uniforms.Clip1CenterSpacing.w, SPos);
                 float  MipW  = saturate((ConeR - H * 1.1) / max(0.04, H * 2.2));
-                float3 VRad  = min((Cas == 0u) ? lerp(VRad0, VRad1, MipW * 0.55) : VRad1, float3(8.0));
-                Bounce += VRad * (Occ * Trans);
-                Trans  *= (1.0 - Occ * 0.76);
+                float3 VRad  = min((Cas == 0u) ? lerp(VRad0, VRad1, MipW * 0.55) : VRad1, float3(36.0));
+
+                // SDF gradient normal for directional front-facing emission gate
+                uint DummyC = 0u;
+                float DummyH = H;
+                float GH = max(0.02, H * 0.85);
+                float G0 = SampleClipmapDistance(SPos + float3( GH, -GH, -GH), DummyC, DummyH);
+                float G1 = SampleClipmapDistance(SPos + float3(-GH, -GH,  GH), DummyC, DummyH);
+                float G2 = SampleClipmapDistance(SPos + float3(-GH,  GH, -GH), DummyC, DummyH);
+                float G3 = SampleClipmapDistance(SPos + float3( GH,  GH,  GH), DummyC, DummyH);
+                float3 SurfN = normalize(float3(G0 - G1 - G2 + G3, -G0 - G1 + G2 + G3, -G0 + G1 - G2 + G3) + float3(1.0e-5));
+                float FrontEmit = 0.08 + 0.92 * smoothstep(-0.18, 0.35, dot(SurfN, -Dir));
+
+                Bounce += VRad * (FrontEmit * Occ * Trans);
+                Trans  *= (1.0 - Occ * 0.78);
                 if (Trans < 0.035) { Trans = 0.0; break; }
             }
-            Dist += max(H * 0.68, abs(SdfD) * 0.78);
+            Dist += max(H * 0.70, abs(SdfD) * 0.72);
         }
         float SkyHem = 0.5 + 0.5 * Dir.z;
         float3 SkyAmb = Uniforms.SkyRadiancePad.xyz * (0.45 + 0.85 * SkyHem);
         Accum += (SkyAmb * Trans + Bounce) * (1.0 / 24.0);
     }
 
-    OutClipmapConeGiOverPi[DispatchThreadID.xy] = float4(Accum, 1.0);
+    OutClipmapConeGiOverPi[DispatchThreadID.xy] = float4(min(Accum, float3(24.0)), 1.0);
 }

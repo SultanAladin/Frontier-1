@@ -17,6 +17,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <thread>
 
 namespace Frontier::GeometricRaster
 {
@@ -320,52 +321,68 @@ void ApplyDiffuseGiBilateralFilter(
         return;
     }
 
-    constexpr int Radius = 3; // 7x7 joint bilateral spatial filter
-    for (uint32_t PY = 0u; PY < HeightPx; ++PY)
+    // 3-pass edge-preserving à-trous bilateral wavelet filter (steps 1, 2, 4 -> 17x17 effective support)
+    static constexpr std::array<float, 3u> KernelW {{ 3.0f / 8.0f, 1.0f / 4.0f, 1.0f / 16.0f }};
+    static constexpr std::array<int, 3u>   StepSizes {{ 1, 2, 4 }};
+    std::vector<Mathematics::LinearRGB> Ping(RawGi.begin(), RawGi.end());
+    std::vector<Mathematics::LinearRGB> Pong(RawGi.size());
+
+    for (std::size_t Pass = 0u; Pass < StepSizes.size(); ++Pass)
     {
-        for (uint32_t PX = 0u; PX < WidthPx; ++PX)
+        const int Step = StepSizes[Pass];
+        const float InvPhiLum = (Pass == 0u) ? 0.35f : 0.25f;
+
+        for (uint32_t PY = 0u; PY < HeightPx; ++PY)
         {
-            const std::size_t CenterOff = static_cast<std::size_t>(PY) * WidthPx + PX;
-            const auto& CenterHit       = PrimarySamples[CenterOff];
-            if (!CenterHit.ValidHit)
+            for (uint32_t PX = 0u; PX < WidthPx; ++PX)
             {
-                continue;
-            }
-            const float CenterDepth = Mathematics::EvaluateLength(CenterHit.WorldPosition - CameraOrigin);
-
-            Mathematics::LinearRGB Accum {};
-            float WeightSum = 0.0f;
-            for (int DY = -Radius; DY <= Radius; ++DY)
-            {
-                const int NY = std::clamp(static_cast<int>(PY) + DY, 0, static_cast<int>(HeightPx) - 1);
-                for (int DX = -Radius; DX <= Radius; ++DX)
+                const std::size_t CenterOff = static_cast<std::size_t>(PY) * WidthPx + PX;
+                const auto& CenterHit       = PrimarySamples[CenterOff];
+                if (!CenterHit.ValidHit)
                 {
-                    const int NX = std::clamp(static_cast<int>(PX) + DX, 0, static_cast<int>(WidthPx) - 1);
-                    const std::size_t NOff = static_cast<std::size_t>(NY) * WidthPx + static_cast<uint32_t>(NX);
-                    const auto& NHit       = PrimarySamples[NOff];
-                    if (!NHit.ValidHit)
-                    {
-                        continue;
-                    }
-                    const float NDepth = Mathematics::EvaluateLength(NHit.WorldPosition - CameraOrigin);
-
-                    const float SpaceDist2 = static_cast<float>(DX * DX + DY * DY);
-                    const float WSpace     = std::exp(-SpaceDist2 / (2.0f * 2.1f * 2.1f));
-                    const float NrmDot     = std::max(0.0f, Mathematics::EvaluateDot(CenterHit.TangentFrame.NormalZ, NHit.TangentFrame.NormalZ));
-                    const float WNrm       = std::pow(NrmDot, 24.0f);
-                    const float DepthDiff  = std::fabs(CenterDepth - NDepth);
-                    const float WDepth     = std::exp(-(DepthDiff * DepthDiff) / std::max(1.0e-4f, 0.08f * CenterDepth));
-                    const float W          = WSpace * WNrm * WDepth;
-                    Accum      = Accum + RawGi[NOff] * W;
-                    WeightSum += W;
+                    Pong[CenterOff] = Ping[CenterOff];
+                    continue;
                 }
-            }
-            if (WeightSum > 1.0e-5f)
-            {
-                OutFiltered[CenterOff] = Accum * (1.0f / WeightSum);
+                const float CenterDepth = Mathematics::EvaluateLength(CenterHit.WorldPosition - CameraOrigin);
+                const float PlaneTol2   = std::max(1.0e-5f, 0.0025f * CenterDepth * CenterDepth);
+                const auto  CenterGi    = Ping[CenterOff];
+                const float CenterLum   = 0.2126f * CenterGi.R + 0.7152f * CenterGi.G + 0.0722f * CenterGi.B;
+
+                Mathematics::LinearRGB Accum {};
+                float WeightSum = 0.0f;
+                for (int DY = -2; DY <= 2; ++DY)
+                {
+                    const int NY = std::clamp(static_cast<int>(PY) + DY * Step, 0, static_cast<int>(HeightPx) - 1);
+                    const float KY = KernelW[static_cast<std::size_t>(std::abs(DY))];
+                    for (int DX = -2; DX <= 2; ++DX)
+                    {
+                        const int NX = std::clamp(static_cast<int>(PX) + DX * Step, 0, static_cast<int>(WidthPx) - 1);
+                        const std::size_t NOff = static_cast<std::size_t>(NY) * WidthPx + static_cast<uint32_t>(NX);
+                        const auto& NHit       = PrimarySamples[NOff];
+                        if (!NHit.ValidHit)
+                        {
+                            continue;
+                        }
+                        const float KX        = KernelW[static_cast<std::size_t>(std::abs(DX))];
+                        const float NrmDot    = std::max(0.0f, Mathematics::EvaluateDot(CenterHit.TangentFrame.NormalZ, NHit.TangentFrame.NormalZ));
+                        const float WNrm      = std::pow(NrmDot, 32.0f);
+                        const float PlaneDist = Mathematics::EvaluateDot(CenterHit.TangentFrame.NormalZ, NHit.WorldPosition - CenterHit.WorldPosition);
+                        const float WPlane    = std::exp(-(PlaneDist * PlaneDist) / PlaneTol2);
+                        const auto  NGi       = Ping[NOff];
+                        const float NLum      = 0.2126f * NGi.R + 0.7152f * NGi.G + 0.0722f * NGi.B;
+                        const float DLum      = std::fabs(CenterLum - NLum);
+                        const float WLum      = std::exp(-DLum * InvPhiLum / std::max(0.15f, CenterLum + 0.10f));
+                        const float W         = KX * KY * WNrm * WPlane * WLum;
+                        Accum      = Accum + NGi * W;
+                        WeightSum += W;
+                    }
+                }
+                Pong[CenterOff] = (WeightSum > 1.0e-5f) ? (Accum * (1.0f / WeightSum)) : CenterGi;
             }
         }
+        Ping.swap(Pong);
     }
+    OutFiltered.swap(Ping);
 }
 
 [[nodiscard]] bool IntersectCpuGlassSphere(
@@ -1636,7 +1653,8 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         {},
         ClipmapPtr,
         PreparedScene.DynamicSdfObjects,
-        PreparedScene.PointLights);
+        PreparedScene.PointLights,
+        PreparedScene.SkyRadiance);
 
     Result.SpecularGlass = SpecularReflectionSequence::EvaluateSpecularRefractionWithSource(
         Config.ReflectionSource,
@@ -1670,21 +1688,52 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     {
         if (ClipmapPtr != nullptr)
         {
-            for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
+            const uint32_t ThreadCount = std::min(Result.HeightPx, std::max(1u, std::thread::hardware_concurrency()));
+            const auto EvalConeRows = [&](uint32_t YStart, uint32_t YEnd)
             {
-                for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
+                for (uint32_t PY = YStart; PY < YEnd; ++PY)
                 {
-                    const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
-                    const auto& Hit       = PrimarySamples[Off];
-                    if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                    for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
                     {
-                        RawIndirectOverPi[Off] = ClipmapPtr->EvaluateDeterministicConeGiOverPi(
-                            Hit.WorldPosition,
-                            Hit.TangentFrame.NormalZ,
-                            PreparedScene.SkyRadiance,
-                            16u,
-                            PreparedScene.DynamicSdfObjects);
+                        const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
+                        const auto& Hit       = PrimarySamples[Off];
+                        if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                        {
+                            // 2D R2 quasirandom azimuthal phase eliminates 15px IGN spatial moire on small emitters
+                            const float R2Phase    = std::fmod(static_cast<float>(PX) * 0.75487766f + static_cast<float>(PY) * 0.56984029f, 1.0f);
+                            const float AzimuthRad = R2Phase * Constants::TauFloat;
+                            RawIndirectOverPi[Off] = ClipmapPtr->EvaluateDeterministicConeGiOverPi(
+                                Hit.WorldPosition,
+                                Hit.TangentFrame.NormalZ,
+                                PreparedScene.SkyRadiance,
+                                24u,
+                                PreparedScene.DynamicSdfObjects,
+                                AzimuthRad);
+                        }
                     }
+                }
+            };
+            if (ThreadCount <= 1u || Result.HeightPx <= 4u)
+            {
+                EvalConeRows(0u, Result.HeightPx);
+            }
+            else
+            {
+                std::vector<std::thread> Workers;
+                Workers.reserve(ThreadCount);
+                const uint32_t Chunk = (Result.HeightPx + ThreadCount - 1u) / ThreadCount;
+                for (uint32_t T = 0u; T < ThreadCount; ++T)
+                {
+                    const uint32_t Y0 = T * Chunk;
+                    const uint32_t Y1 = std::min(Result.HeightPx, Y0 + Chunk);
+                    if (Y0 < Y1)
+                    {
+                        Workers.emplace_back([&, Y0, Y1]() { EvalConeRows(Y0, Y1); });
+                    }
+                }
+                for (auto& W : Workers)
+                {
+                    W.join();
                 }
             }
             if (Config.SdfGiBilateral)

@@ -93,7 +93,8 @@ public:
         const AmbientOcclusionSettings&                              AoSettings          = {},
         const DistanceFieldSpace::VoxelSdfClipmapVolume*             OptionalClipmap     = nullptr,
         std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> DynamicObjects      = {},
-        std::span<const DistanceFieldSpace::VoxelPointLightSpec>     PointLights         = {});
+        std::span<const DistanceFieldSpace::VoxelPointLightSpec>     PointLights         = {},
+        Mathematics::LinearRGB                                       SkyFillRadiance     = { 0.14f, 0.19f, 0.28f });
 
     // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm (ignores OptionalSdfVolume)
     [[nodiscard]] static DirectLightingOutput EvaluateDirectLightingFrame(

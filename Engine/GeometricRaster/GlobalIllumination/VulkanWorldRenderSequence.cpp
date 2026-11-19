@@ -11,6 +11,7 @@
 #include "Engine/GeometricRaster/Atmosphere/J2000BrightStarRepository.h"
 #include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
 #include "Engine/GeometrySpace/Analysis/CurvatureAnalysis.h"
+#include "Engine/MaterialSpace/Scattering/BlackbodyEmission.h"
 
 #include <algorithm>
 #include <array>
@@ -254,15 +255,16 @@ struct GpuShadedTriangle96
 
 static_assert(sizeof(GpuShadedTriangle96) == 96u, "GpuShadedTriangle96 must equal 96 bytes.");
 
-struct GpuWorldMaterial64
+struct GpuWorldMaterial80
 {
     float DiffuseAlbedoRoughness[4] {};
-    float SpecParams[4]            {};
-    float EdgeTintCoatWeight[4] {};
+    float SpecParams[4]             {};
+    float EdgeTintCoatWeight[4]     {};
     float CoatRoughnessOptics[4]    {};
+    float EmissiveRadiancePad[4]    {};
 };
 
-static_assert(sizeof(GpuWorldMaterial64) == 64u, "GpuWorldMaterial64 must equal 64 bytes.");
+static_assert(sizeof(GpuWorldMaterial80) == 80u, "GpuWorldMaterial80 must equal 80 bytes.");
 
 struct QuantizedPositionKey
 {
@@ -1839,32 +1841,37 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
     const uint64_t TriBytes = ShadedTris.size() * sizeof(GpuShadedTriangle96);
     UploadToDeviceBuffer(ShadedTriangleBuffer, ShadedTris.data(), TriBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
-    // 3. Upload 64-byte OpenPBR surface material entries into DEVICE_LOCAL VRAM
+    // 3. Upload 80-byte OpenPBR surface material entries (including Planckian emissive RGB) into DEVICE_LOCAL VRAM
     const uint32_t MatCount = std::max(1u, Scene.MaterialRegister.QuerySlotCount());
-    std::vector<GpuWorldMaterial64> GpuMats(MatCount);
+    std::vector<GpuWorldMaterial80> GpuMats(MatCount);
     for (uint32_t Slot = 0u; Slot < Scene.MaterialRegister.QuerySlotCount(); ++Slot)
     {
         const auto& Src = Scene.MaterialRegister.InspectAuthoredMaterial(static_cast<uint16_t>(Slot));
-        GpuWorldMaterial64 Dst {};
+        const Mathematics::LinearRGB Emis = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Src.PorosityLight);
+        GpuWorldMaterial80 Dst {};
         Dst.DiffuseAlbedoRoughness[0] = Src.Diffuse.BaseColor.R * Src.Diffuse.BaseWeight;
         Dst.DiffuseAlbedoRoughness[1] = Src.Diffuse.BaseColor.G * Src.Diffuse.BaseWeight;
         Dst.DiffuseAlbedoRoughness[2] = Src.Diffuse.BaseColor.B * Src.Diffuse.BaseWeight;
         Dst.DiffuseAlbedoRoughness[3] = Src.Diffuse.DiffuseRoughness;
-        Dst.SpecParams[0]            = Src.Specular.Roughness;
-        Dst.SpecParams[1]            = Src.Specular.Metalness;
-        Dst.SpecParams[2]            = Src.Specular.DielectricIOR;
-        Dst.SpecParams[3]            = Src.Specular.Anisotropy;
-        Dst.EdgeTintCoatWeight[0] = Src.Specular.EdgeTintF82.R;
-        Dst.EdgeTintCoatWeight[1] = Src.Specular.EdgeTintF82.G;
-        Dst.EdgeTintCoatWeight[2] = Src.Specular.EdgeTintF82.B;
-        Dst.EdgeTintCoatWeight[3] = Src.Clearcoat.CoatWeight;
+        Dst.SpecParams[0]             = Src.Specular.Roughness;
+        Dst.SpecParams[1]             = Src.Specular.Metalness;
+        Dst.SpecParams[2]             = Src.Specular.DielectricIOR;
+        Dst.SpecParams[3]             = Src.Specular.Anisotropy;
+        Dst.EdgeTintCoatWeight[0]     = Src.Specular.EdgeTintF82.R;
+        Dst.EdgeTintCoatWeight[1]     = Src.Specular.EdgeTintF82.G;
+        Dst.EdgeTintCoatWeight[2]     = Src.Specular.EdgeTintF82.B;
+        Dst.EdgeTintCoatWeight[3]     = Src.Clearcoat.CoatWeight;
         Dst.CoatRoughnessOptics[0]    = Src.Clearcoat.CoatRoughness;
         Dst.CoatRoughnessOptics[1]    = Src.Transmission.TransmissionWeight;
         Dst.CoatRoughnessOptics[2]    = Src.Transmission.AbbeDispersionNumber;
         Dst.CoatRoughnessOptics[3]    = 0.0f;
-        GpuMats[Slot]                = Dst;
+        Dst.EmissiveRadiancePad[0]    = Emis.R;
+        Dst.EmissiveRadiancePad[1]    = Emis.G;
+        Dst.EmissiveRadiancePad[2]    = Emis.B;
+        Dst.EmissiveRadiancePad[3]    = 0.0f;
+        GpuMats[Slot]                 = Dst;
     }
-    const uint64_t MatBytes = GpuMats.size() * sizeof(GpuWorldMaterial64);
+    const uint64_t MatBytes = GpuMats.size() * sizeof(GpuWorldMaterial80);
     UploadToDeviceBuffer(MaterialEntryBuffer, GpuMats.data(), MatBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     UploadedMaterialCount = MatCount;
 

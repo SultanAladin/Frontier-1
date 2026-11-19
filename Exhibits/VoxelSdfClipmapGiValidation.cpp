@@ -552,9 +552,9 @@ void RebuildWorldTreeAndInstances(
     AddPrimaryTile({  3.45f,  1.05f,  1.15f }, { 0.24f, 0.24f, 1.15f }, Bundle.SlotCobalt);  // Mid-right pillar cleanly clear of bumper
     AddPrimaryTile({ -2.85f,  1.95f,  1.15f }, { 0.28f, 0.28f, 1.15f }, Bundle.SlotPlaster); // Back-left pillar
 
-    // Clipmap 2-cascade configuration: Clip0 covers +/-4.65 m (72^3 -> ~12.9 cm voxels), Clip1 covers +/-12.0 m (48^3 -> 50 cm)
-    Scene.ClipmapConfig.Clip0CenterWorld      = { 0.0f, 0.0f, 1.10f };
-    Scene.ClipmapConfig.Clip0HalfExtentMeters = 4.65f;
+    // Clipmap 2-cascade configuration: Clip0 covers +/-5.45 m (72^3 -> ~15.3 cm voxels including all studio walls), Clip1 covers +/-12.0 m
+    Scene.ClipmapConfig.Clip0CenterWorld      = { 0.0f, 0.0f, 1.35f };
+    Scene.ClipmapConfig.Clip0HalfExtentMeters = 5.45f;
     Scene.ClipmapConfig.Clip0Resolution       = 72u;
     Scene.ClipmapConfig.Clip1CenterWorld      = { 0.0f, 0.0f, 2.00f };
     Scene.ClipmapConfig.Clip1HalfExtentMeters = 12.00f;
@@ -563,12 +563,12 @@ void RebuildWorldTreeAndInstances(
     Scene.ClipmapConfig.ConeSteps             = 24u;
     Scene.ClipmapConfig.MaxConeTraceMeters    = 9.5f;
 
-    Scene.LatticeConfig.GridMinimumWorld  = { -4.8f, -3.5f, 0.1f };
-    Scene.LatticeConfig.GridMaximumWorld  = {  4.8f,  3.8f, 3.0f };
-    Scene.LatticeConfig.CountX            = 7u;
-    Scene.LatticeConfig.CountY            = 6u;
-    Scene.LatticeConfig.CountZ            = 4u;
-    Scene.LatticeConfig.FibonacciRayCount = 48u;
+    Scene.LatticeConfig.GridMinimumWorld  = { -4.35f, -3.15f, 0.42f };
+    Scene.LatticeConfig.GridMaximumWorld  = {  4.35f,  3.35f, 2.95f };
+    Scene.LatticeConfig.CountX            = 15u;
+    Scene.LatticeConfig.CountY            = 12u;
+    Scene.LatticeConfig.CountZ            = 6u;
+    Scene.LatticeConfig.FibonacciRayCount = 192u;
     Scene.LatticeConfig.BouncePasses      = 2u;
 
     return Bundle;
@@ -674,8 +674,9 @@ int main()
     const double StaticBakeMs = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - StaticBakeStart).count();
 
-    // Now re-attach vehicle triangles into SceneTree for primary visibility & BVH path tracing
+    // Now re-attach vehicle triangles into SceneTree for primary visibility, BVH path tracing, & DDGI lattice
     RebuildWorldTreeAndInstances(Bundle, PoseA, true);
+    Renderer.PrepareRtxIrradianceLatticeOnly(Scene);
 
     const auto& Clipmap = Renderer.InspectClipmapVolume();
     Score.Verify(Clipmap.StaticClip0.DimX == 72u && Clipmap.StaticClip1.DimX == 48u &&
@@ -846,12 +847,15 @@ int main()
                      MakeSideBySidePair(W, H, AlbImg.DisplayRgba8, RadImg.DisplayRgba8));
     }
 
-    // 3b. Emissive-Only GI Proof (Zero Sun, Zero Sky, Zero Point, Zero Area — ONLY Headlight & Taillight emissive surfaces!)
+    // 3b. Emissive-Only GI Proof on the Same Vehicle (Zero Sun, Zero Sky, Zero Point, Zero Area — ONLY Headlight & Taillight emissives!)
+    //     Treats Cone GI, DDGI, and Path-Traced Reference separately on the exact same vehicle scene.
     float EmissiveGiMeanLum = 0.0f;
+    float EmissiveDdgiMeanLum = 0.0f;
     {
         StudioSceneBundle EmisBundle = BuildControlVehicleStudioScene();
         RebuildWorldTreeAndInstances(EmisBundle, PoseA, false);
         EmisBundle.Scene.DynamicSdfObjects = { MakeVehicleDynamicSdfInstance(EmisBundle, PoseA) };
+        EmisBundle.Scene.Atmosphere.Medium.AtmosphereEnabled = false;
         EmisBundle.Scene.Sun.SolarIrradiance = { 0.0f, 0.0f, 0.0f };
         EmisBundle.Scene.SkyRadiance = { 0.0f, 0.0f, 0.0f };
         EmisBundle.Scene.AreaLights.clear();
@@ -860,16 +864,56 @@ int main()
         GeometricRaster::TieredWorldRenderSequence EmisRenderer {};
         EmisRenderer.PrepareWorldScene(EmisBundle.Scene);
         RebuildWorldTreeAndInstances(EmisBundle, PoseA, true);
+        EmisRenderer.PrepareRtxIrradianceLatticeOnly(EmisBundle.Scene);
 
-        GeometricRaster::WorldRenderConfiguration Cfg {};
-        Cfg.Engine = GeometricRaster::WorldRenderEngine::SdfGlobalIllumination;
-        Cfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::HybridSdf;
-        Cfg.SdfGiBilateral = true;
-        const auto EmisFrame = EmisRenderer.RenderWorldFrameWithEngine(Cfg, Cam, Cam, EmisBundle.Scene);
-        EmissiveGiMeanLum = ComputeMeanLinearLum(EmisFrame.IndirectDiffuseHdr);
-        SavePngRgba8(OutDir / "04_EmissiveOnly_SdfClipmapGi.png", W, H, EmisFrame.DisplayRgba8);
+        // (i) Emissive-Only Cone GI
+        GeometricRaster::WorldRenderConfiguration ConeCfg {};
+        ConeCfg.Engine = GeometricRaster::WorldRenderEngine::SdfGlobalIllumination;
+        ConeCfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::HybridSdf;
+        ConeCfg.SdfGiBilateral = true;
+        const auto EmisConeFrame = EmisRenderer.RenderWorldFrameWithEngine(ConeCfg, Cam, Cam, EmisBundle.Scene);
+        EmissiveGiMeanLum = ComputeMeanLinearLum(EmisConeFrame.IndirectDiffuseHdr);
+        SavePngRgba8(OutDir / "04_EmissiveOnly_SdfClipmapGi.png", W, H, EmisConeFrame.DisplayRgba8);
         Score.Verify(EmissiveGiMeanLum > 1.0e-3f,
-                     "Emissive-Only GI (Headlights+Taillights with zero sun/sky/point/area) produces measurable floor/wall GI");
+                     "Emissive-Only Cone GI (Headlights+Taillights with zero sun/sky/point/area) produces measurable floor/wall GI");
+
+        // (ii) Emissive-Only DDGI (DynamicIrradianceCache with Emissive Triangle NEE + Probe Relocation)
+        GeometricRaster::WorldRenderConfiguration DdgiCfg {};
+        DdgiCfg.Engine = GeometricRaster::WorldRenderEngine::DdgiRaytracing;
+        DdgiCfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::WideTreeRayQuery;
+        DdgiCfg.ReflectionSource = GeometricRaster::SpecularReflectionSource::WideTreeRaytrace;
+        const auto EmisDdgiFrame = EmisRenderer.RenderWorldFrameWithEngine(DdgiCfg, Cam, Cam, EmisBundle.Scene);
+        EmissiveDdgiMeanLum = ComputeMeanLinearLum(EmisDdgiFrame.IndirectDiffuseHdr);
+        SavePngRgba8(OutDir / "16_EmissiveOnly_DdgiIrradianceCache.png", W, H, EmisDdgiFrame.DisplayRgba8);
+        Score.Verify(EmissiveDdgiMeanLum > 1.0e-3f,
+                     "Emissive-Only DDGI (DynamicIrradianceCache on same vehicle) produces measurable floor/wall GI");
+
+        // (iii) Emissive-Only Deterministic Path Tracer Reference (16 SPP)
+        GeometricRaster::WorldRenderConfiguration PtEmisCfg {};
+        PtEmisCfg.Engine = GeometricRaster::WorldRenderEngine::DeterministicPathTrace;
+        PtEmisCfg.PathTraceSamples = 16u;
+        PtEmisCfg.PathTraceMaxBounces = 4u;
+        PtEmisCfg.PathTraceDenoise = true;
+        const auto EmisPtFrame = EmisRenderer.RenderWorldFrameWithEngine(PtEmisCfg, Cam, Cam, EmisBundle.Scene);
+        SavePngRgba8(OutDir / "17_EmissiveOnly_PathTraceReference.png", W, H, EmisPtFrame.DisplayRgba8);
+
+        // 3-panel side-by-side comparison: [Cone GI | DDGI | Path Trace Reference]
+        constexpr uint32_t Gap = 6u;
+        const uint32_t TriW = W * 3u + Gap * 2u;
+        std::vector<uint8_t> TriImg(static_cast<std::size_t>(TriW) * H * 4u, 22u);
+        for (uint32_t Y = 0u; Y < H; ++Y)
+        {
+            std::memcpy(&TriImg[static_cast<std::size_t>(Y) * TriW * 4u],
+                        &EmisConeFrame.DisplayRgba8[static_cast<std::size_t>(Y) * W * 4u],
+                        static_cast<std::size_t>(W) * 4u);
+            std::memcpy(&TriImg[(static_cast<std::size_t>(Y) * TriW + W + Gap) * 4u],
+                        &EmisDdgiFrame.DisplayRgba8[static_cast<std::size_t>(Y) * W * 4u],
+                        static_cast<std::size_t>(W) * 4u);
+            std::memcpy(&TriImg[(static_cast<std::size_t>(Y) * TriW + (W + Gap) * 2u) * 4u],
+                        &EmisPtFrame.DisplayRgba8[static_cast<std::size_t>(Y) * W * 4u],
+                        static_cast<std::size_t>(W) * 4u);
+        }
+        SavePngRgba8(OutDir / "18_EmissiveOnly_Comparison_ConeGi_Ddgi_PathTrace.png", TriW, H, TriImg);
     }
 
     // 3c. Point-Light GI Proof (Zero Sun, Zero Area, Point Light + Emissive + Clipmap GI)
@@ -1036,6 +1080,14 @@ int main()
                      MakeSideBySidePair(W, H, FakeFrame.DisplayRgba8, CombinedA.DisplayRgba8));
         Score.Verify(RealVsPtRmse < FakeVsPtRmse,
                      "Real Multi-Bounce Clipmap GI achieves lower RMSE vs Path-Traced reference than Fake Direct-Only");
+
+        // Combined Lighting DDGI on the exact same vehicle scene
+        GeometricRaster::WorldRenderConfiguration DdgiCombinedCfg {};
+        DdgiCombinedCfg.Engine = GeometricRaster::WorldRenderEngine::DdgiRaytracing;
+        DdgiCombinedCfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::WideTreeRayQuery;
+        DdgiCombinedCfg.ReflectionSource = GeometricRaster::SpecularReflectionSource::WideTreeRaytrace;
+        const auto DdgiCombinedFrame = Renderer.RenderWorldFrameWithEngine(DdgiCombinedCfg, Cam, Cam, Scene);
+        SavePngRgba8(OutDir / "19_CombinedLighting_DdgiIrradianceCache.png", W, H, DdgiCombinedFrame.DisplayRgba8);
     }
 
     // 3i. Multi-Frame Moving ControlVehicle Animation GIF (Incremental Dirty-AABB ActiveClip0 Updates!)
@@ -1153,6 +1205,16 @@ int main()
                 {
                     SavePngRgba8(OutDir / "14_VulkanSlangGpu_RadiometricSdfGi.png", W, H, GpuFrameRgba8);
                 }
+                std::vector<uint8_t> GpuDdgiRgba8 {};
+                GeometricRaster::WorldRenderConfiguration GpuDdgiCfg {};
+                GpuDdgiCfg.Engine = GeometricRaster::WorldRenderEngine::DdgiRaytracing;
+                GpuDdgiCfg.ShadowAlgorithm = GeometricRaster::SolarShadowAlgorithm::WideTreeRayQuery;
+                GpuDdgiCfg.ReflectionSource = GeometricRaster::SpecularReflectionSource::WideTreeRaytrace;
+                if (GpuSeq.RenderWorldViewportWithEngine(GpuDdgiCfg, 0u, Cam, Scene, GpuDdgiRgba8) &&
+                    GpuDdgiRgba8.size() == static_cast<std::size_t>(W) * H * 4u)
+                {
+                    SavePngRgba8(OutDir / "20_VulkanSlangGpu_DdgiVehicle.png", W, H, GpuDdgiRgba8);
+                }
                 GpuSlangExecuted = ClipmapGpuOk && FrameGpuOk && (GpuLumSum > 0.0);
 
                 // Also run exact arena/f2d37e4b-frontier DistanceEvaluation.slang GPU parity test!
@@ -1251,6 +1313,7 @@ int main()
              << "  \"fake_vs_pt_rmse\": " << FakeVsPtRmse << ",\n"
              << "  \"real_clipmap_vs_pt_rmse\": " << RealVsPtRmse << ",\n"
              << "  \"emissive_only_gi_mean_lum\": " << EmissiveGiMeanLum << ",\n"
+             << "  \"emissive_only_ddgi_mean_lum\": " << EmissiveDdgiMeanLum << ",\n"
              << "  \"gi_determinism_rmse\": " << GiDeterminismRmse << ",\n"
              << "  \"pt_determinism_rmse\": " << PtDeterminismRmse << ",\n"
              << "  \"gpu_clipmap_slang_ms\": " << GpuClipmapSlangMs << ",\n"
