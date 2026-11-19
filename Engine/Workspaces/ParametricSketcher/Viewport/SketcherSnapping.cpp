@@ -13,6 +13,7 @@
 #include "Engine/GeometrySpace/Parametric/Measurement/MassProperties.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchSpline.h"
 #include "Engine/GeometrySpace/Parametric/Sketch/SketchTrim.h"
+#include "Engine/GeometrySpace/Parametric/Surfacing/CurveNetwork.h"
 
 #include <algorithm>
 #include <array>
@@ -582,6 +583,8 @@ SketcherSnapCatalogue CatalogueSketcherSnaps(const SketcherDocument& Document, c
         }
 
     // ---- Fitted SpaceCurves (NURBS over [0, 1])
+    const size_t FirstSpaceCurve = Catalogue.Curves.size();
+    std::vector<GeometrySpace::Parametric::NurbsCurve> SpaceNurbs;
     for (const auto& [Label, Fit] : Document.Regeneration.Curves)
     {
         if (!Fit.Curve.Definition || ExcludedCondition(Label) || Document.Appearance.HiddenCurves.contains(Label)) continue;
@@ -597,6 +600,23 @@ SketcherSnapCatalogue CatalogueSketcherSnaps(const SketcherDocument& Document, c
         const bool Open = GeometrySpace::Parametric::Distance(Curve.Points.front(), Curve.Points.back()) > 1.0e-12 * (1.0 + Catalogue.Scale);
         CatalogueCurvePoints(Catalogue, Curve, Open);
         Catalogue.Curves.push_back(std::move(Curve));
+        SpaceNurbs.push_back(Fit.Curve);
+    }
+    // 3D SpaceCurve x SpaceCurve intersection snaps
+    const double SpaceCrossTol = std::max(1.0e-4, Catalogue.Scale * 1.0e-3);
+    for (size_t I = 0; I < SpaceNurbs.size() && SpaceNurbs.size() <= 96u; ++I)
+    {
+        for (size_t J = I + 1; J < SpaceNurbs.size(); ++J)
+        {
+            const auto Cross = GeometrySpace::Parametric::FindCurveCrossing(*SpaceNurbs[I].Definition, *SpaceNurbs[J].Definition);
+            if (Cross.Gap > SpaceCrossTol) continue;
+            const auto& CurveA = Catalogue.Curves[FirstSpaceCurve + I];
+            const auto& CurveB = Catalogue.Curves[FirstSpaceCurve + J];
+            Vector3 Tangent, Normal;
+            DescribeCurvePoint(CurveA, Cross.First, Tangent, Normal);
+            const Vector3 Pos = GeometrySpace::Parametric::EvaluateNurbsCurve(*SpaceNurbs[I].Definition, Cross.First).Position;
+            AppendPoint(Catalogue.Points, { SketcherSnapKind::Intersection, Pos, Tangent, Normal, CurveA.Source + " × " + CurveB.Source, {} }, Catalogue.Scale);
+        }
     }
     return Catalogue;
 }
@@ -611,7 +631,7 @@ SketcherSnap FindSketcherSnap(SketcherSnapCatalogue& Catalogue, const SketcherDo
     for (const SketcherSnapPoint& Point : Catalogue.Points)
     {
         if (!EnabledCondition(Query.Filter, Point.Kind)) continue;
-        const bool Overlay = std::any_of(Catalogue.Curves.begin(),Catalogue.Curves.end(),[&](const auto& C){return C.OverlaySnap && C.Source==Point.Source;});
+        const bool Overlay = std::any_of(Catalogue.Curves.begin(),Catalogue.Curves.end(),[&](const auto& C){return C.OverlaySnap && (C.Source==Point.Source || Point.Source.rfind(C.Source + " × ", 0) == 0);});
         if(Query.FreeCurvesOnly && !Overlay) continue;
         const double Pixels = MeasurePixels(Query, Point.Position);
         if (Pixels > Query.PointReach || !VisibleCondition(Scene, Query, Point.Position, Scale, Query.OverlayCurvesVisible && Overlay)) continue;

@@ -11,6 +11,7 @@
 
 #include "Engine/GeometrySpace/Parametric/Feature/ProfileSweep.h"
 #include "Engine/GeometrySpace/Parametric/Geometry/SurfaceGeometry.h"
+#include "Engine/GeometrySpace/Parametric/Surfacing/PanelAssembly.h"
 #include "Engine/GeometrySpace/Parametric/Topology/ModelPartition.h"
 
 #include <string>
@@ -61,6 +62,23 @@ struct NetworkSheetOutcome
     SweepOutcome          Sheet   = {};                                                      // [-] - Sheet body (one face) and its role
 };
 
+struct ClosedLoopEdge
+{
+    int  CurveIndex        = -1;                                                             // [-] - Index into input Curves
+    bool ReversedCondition = false;                                                          // [-] - Traverse curve 1 -> 0 around the loop
+};
+
+struct ClosedCurveLoop
+{
+    std::vector<ClosedLoopEdge> Edges = {};                                                  // [-] - Consecutive loop edges (head-to-tail)
+};
+
+struct ClosedLoopSurfaceOutcome
+{
+    std::vector<SurfacePanel> Panels  = {};                                                  // [-] - 1 panel for N <= 4, N panels for N >= 5
+    std::string               Refusal = {};                                                  // [-] - Non-empty when refused
+};
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    PUBLIC FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
@@ -80,12 +98,22 @@ struct NetworkSheetOutcome
                                                            const std::vector<std::string>& SecondNames = {});
 
 // 💡 Unsorted network: curves that meet are joined, the meeting relation must 2-colour into two families (an odd cycle
-//    or a curve meeting nothing is refused, named), then ConstructGordonSurface. Indices in the outcome refer to Curves.
+//    or a curve meeting nothing is refused, named), then ConstructGordonSurface. Also accepts closed 1..4-edge boundary
+//    loops (triangles, squares, rectangles). Indices in the outcome refer to Curves.
 [[nodiscard]] NetworkSurfaceOutcome ConstructNetworkSurface(const std::vector<NurbsCurve>& Curves, const NetworkSettings& Settings,
                                                             const std::vector<std::string>& Names = {});
 
-// True when at least two of the curves meet (the workspace's loft command then builds a network instead).
+// True when curves form a 2-family crossing network OR a single closed 1..4-edge boundary loop.
 [[nodiscard]] bool DetectCurveNetwork(const std::vector<NurbsCurve>& Curves, const NetworkSettings& Settings);
+
+// Detects minimal closed boundary loops (triangles, squares, rectangles, N-gons, single closed curves)
+// from a set of curves, pruning dangling overhang stubs and rejecting composite outer perimeter cycles.
+[[nodiscard]] std::vector<ClosedCurveLoop> DetectClosedCurveLoops(const std::vector<NurbsCurve>& Curves, double CornerTolerance = 1.0e-3);
+
+// Builds NURBS surface panel(s) from one closed boundary loop (1-curve closed, 2-curve lens, 3-curve triangle,
+// 4-curve square/rectangle/quad, or N-curve polygon).
+[[nodiscard]] ClosedLoopSurfaceOutcome ConstructClosedLoopPanels(const std::vector<NurbsCurve>& OrderedEdges, double CornerTolerance = 1.0e-3,
+                                                                 const std::vector<std::string>& Names = {});
 
 // The network surface as a one-face sheet body (iso-curve boundary edges, exact iso-line chart curves).
 [[nodiscard]] NetworkSheetOutcome ConstructNetworkSheet(ModelPartition& Partition, const std::vector<NurbsCurve>& Curves, const NetworkSettings& Settings,

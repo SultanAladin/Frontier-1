@@ -854,7 +854,18 @@ struct SketcherStepReading;
     const std::string& Target, const std::string& Body, double Distance, double Tolerance);
 [[nodiscard]] SketcherCommandOutcome DetachSketcherSurfaceOffset(SketcherDocument&, const std::string& Target);
 [[nodiscard]] SketcherCommandOutcome SplitSketcherSpaceCurveAt(SketcherDocument& Document, const std::string& Label, double Parameter);
-[[nodiscard]] SketcherCommandOutcome SplitSketcherCurveCrossings(SketcherDocument&, double Tolerance = 0.001);
+[[nodiscard]] SketcherCommandOutcome SplitSketcherCurveCrossings(SketcherDocument&, double Tolerance = 0.001, bool AutoSurface = false);
+[[nodiscard]] SketcherCommandOutcome BuildSketcherClosedLoopSurfaces(SketcherDocument& Document, double Tolerance = 0.001);
+
+struct SketcherSpaceLoopPreview
+{
+    std::vector<std::string>                        Labels  = {};
+    std::vector<GeometrySpace::Parametric::Vector3> Outline = {};
+    std::string                                     Refusal = {};
+};
+[[nodiscard]] SketcherSpaceLoopPreview PreviewSketcherSpaceLoop(const SketcherDocument& Document, GeometrySpace::Parametric::Vector3 RayOrigin,
+                                                                GeometrySpace::Parametric::Vector3 RayDirection, double Tolerance = 0.001);
+[[nodiscard]] SketcherCommandOutcome   FillSketcherSpaceLoop(SketcherDocument& Document, const std::vector<std::string>& Labels, double Tolerance = 0.001);
 
 [[nodiscard]] std::vector<double> SketcherCurveControlParameters(const GeometrySpace::Parametric::NurbsCurveDefinition& Definition);
 [[nodiscard]] SketcherCommandOutcome DeleteSketcherCurvePoles(SketcherDocument&, const std::string&, const std::vector<int>&);
@@ -862,7 +873,7 @@ struct SketcherStepReading;
 [[nodiscard]] SketcherCommandOutcome DeleteSketcherCurveSpans(SketcherDocument&, const std::string&, const std::vector<int>&);
 
 // An exact non-rational B-spline: persist supplied poles / knots without fitting, one undo entry.
-[[nodiscard]] SketcherCommandOutcome DrawSketcherProjectedCurve(SketcherDocument& Document, const GeometrySpace::Parametric::NurbsCurve& Curve, bool Closed, bool AutoSplit = false, double IntersectionTolerance = 0.001);
+[[nodiscard]] SketcherCommandOutcome DrawSketcherProjectedCurve(SketcherDocument& Document, const GeometrySpace::Parametric::NurbsCurve& Curve, bool Closed, bool AutoSplit = false, double IntersectionTolerance = 0.001, bool AutoSurface = false);
 
 // 💡 Sketch points moved off their plane (the 3D gizmo on mode-1 points in a 3D view): every curve through one becomes a
 //    3D curve of the same form through its points (Points of Sketch → Targets, in the world; Plane: the sketch's placed

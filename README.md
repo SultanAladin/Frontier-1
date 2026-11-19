@@ -9,13 +9,16 @@
 | Document | Description |
 | :--- | :--- |
 | **[CLAUDE.md](CLAUDE.md)** · **[AGENTS.md](AGENTS.md)** | Session entry point, non-negotiable GPU/`.slang`/cross-platform mandates, and startup sequence. |
+| **[Documentation/README.md](Documentation/README.md)** · **[Plans/README.md](Documentation/Plans/README.md)** | Documentation hub and index of all Markdown Studio architectural plans, reports & audits. |
 | **[Documentation/FolderStructure.md](Documentation/FolderStructure.md)** | Canonical repository directory tree, file-level module layout, and structural boundaries. |
 | **[Documentation/BannedWordsVocabulary.md](Documentation/BannedWordsVocabulary.md)** | Enforced vocabulary blacklist, restricted terms, approved replacements, and chronological rulings. |
 | **[Documentation/CodingStandards.md](Documentation/CodingStandards.md)** | ISO C++20 baseline, explicit function prototyping, `concept`-constrained templates, and build profiles. |
-| **[Documentation/ImportantNotes.md](Documentation/ImportantNotes.md)** | Hard architectural invariants (GPU-only overlays, ImGui 8-patch stack, `Frontier-OLD` reference rules). |
-| **[Documentation/Tracker.md](Documentation/Tracker.md)** · **[Backlog.md](Documentation/Backlog.md)** | Active milestone roadmap (`Input/` + `Editor/` bringup) and deferred items ledger. |
+| **[Documentation/ImportantNotes.md](Documentation/ImportantNotes.md)** | Hard architectural invariants (GPU-only overlays, ImGui 8-patch stack, `Experimental/` HTML-only policy). |
+| **[Documentation/Tracker.md](Documentation/Tracker.md)** · **[Backlog.md](Documentation/Backlog.md)** | Active milestone roadmap across 12 registered workspaces and deferred items ledger. |
 | `Documentation/AgenticInstructions/` | Mandatory skill protocols (`SKILL-CompactOutputProtocol`, `SKILL-Emoji`, `SKILL-Naming`, `SKILL-Formatting`). |
-| **[Experimental/README.md](Experimental/README.md)** | Ten staged reference editor UIs and studios (`FrontierEditor`, `ProjectZeroEditor`, `FluidEditor`, `FractureEditor`, `ParticleEditor`, `PhotometricEditor`, `ForceFieldEditor`, `VehicleLab`, `UVEditor`, `TextureStudio`) slated for shared C++20 `Engine/Components/` + `.slang` conversion. |
+| **[Engine/Workspaces/README.md](Engine/Workspaces/README.md)** | Master index of all 12 registered host workspaces (`WorkspaceCapabilityRegister`), UI controls, hotkeys & C++ naming audit. |
+| **[Engine/Lifecycle/README.md](Engine/Lifecycle/README.md)** · **[Engine/Editor/README.md](Engine/Editor/README.md)** | Application lifecycles, 12 standalone desktop executables (`Frontier*Launch.cpp`), World Editor, `Explorer/` & `ForceFieldWorkspace`. |
+| **[Experimental/README.md](Experimental/README.md)** | Staged HTML/JS reference editor UIs and studios (`ProjectZeroEditor`, `FrontierWorldMirror`, `UVEditor`, `TextureStudio`, etc.). |
 
 ---
 
@@ -68,8 +71,11 @@ ctest --test-dir Build/Editor --output-on-failure
 | **`Windowing/`** | Cross-platform window & surface abstractions across Win32, X11, Wayland, Android (`ANativeWindow`), and headless validation stubs (`PlatformWindow*`). |
 | **`Interchange/`** | Scene tree intake coordination and native format decoders for Wavefront OBJ, glTF 2.0 (JSON/GLB), and Filmbox FBX. |
 | **`Annotation/`** | **100% GPU-rasterized** visual annotations (`AnnotationExtension`), 2D/3D vector callouts, billboarded text markers, spatial debug bounds, and wireframe primitives (`DiagnosticPrimitives`) — never drawn on CPU or ImGui. |
-| **`Workspaces/`** | Multi-document session infrastructure (`WorkspaceExtension`), stale-detecting workspace tokens, domain authoring binders, and branching DAG document revision history (`Workspaces/Revision`). |
-| **`Editor/`** | **Excluded from `Development` and `Shipping` builds.** Concrete authoring workspaces (`Modeling`, `UV`, `Texturing`, `Baking`), scene/project/content browsers & debug console, 3D/2D viewports, GPU `.slang` gizmos/grids (`TransformGizmo`, `NavigationOverlay`), and CPU/GPU/memory diagnostics. |
-| **`Components/`** | Reusable UI controls: reflected property panels, tool ribbons & section blocks, strongly typed numerical/vector/enum controls, analytical unit-square vector icon rasterizers, and viewport overlays. |
+| **`GeometrySpace/`** | Half-edge `PolygonNetwork` (`FacePartitionRegister`), Voronoi/BSP fracture solvers, and from-scratch Parasolid-style B-rep/NURBS kernel (`Parametric/`, see [Engine/GeometrySpace/Parametric/README.md](Engine/GeometrySpace/Parametric/README.md)). |
+| **`MaterialSpace/`** | 10-lobe `MaterialSpace` definitions and time-varying `DynamicMaterialCompiler` / `DynamicMaterialRepository`. |
+| **`Workspaces/`** | Multi-document session infrastructure (`WorkspaceExtension`, `WorkspaceCapabilityRegister`), branching DAG history ([`Revision/`](Engine/Workspaces/Revision/README.md)), and native workspace studios: [`UV/`](Engine/Workspaces/UV/README.md), [`Texturing/`](Engine/Workspaces/Texturing/README.md) (`Pattern` · `Stamp` · `Baking`), [`Fracture/`](Engine/Workspaces/Fracture/README.md), [`ParametricSketcher/`](Engine/Workspaces/ParametricSketcher/README.md), [`Fluid/`](Engine/Workspaces/Fluid/README.md), [`Material/`](Engine/Workspaces/Material/README.md), [`Particle/`](Engine/Workspaces/Particle/README.md), and [`ComponentEditor/`](Engine/Workspaces/ComponentEditor/README.md). |
+| **`Editor/`** | **Excluded from `Development` and `Shipping` builds.** [`Explorer/`](Engine/Editor/README.md) (`ProjectBrowser`, `ContentBrowser`) and [`Workspaces/Simulation/`](Engine/Editor/README.md) (`ForceFieldWorkspace`: `VectorFieldViewportSession`, `ForceInspectorView`, `ForcePresetBrowserPanel`). |
+| **`Lifecycle/`** | Profile-gated application loops (`RuntimeLifecycle`, `WorkspaceLifecycle`, `EditorLifecycle` World Editor), `DesktopWorkspaceLaunch`, and 12 standalone desktop executables (`Frontier`, `FrontierEditor`, `FrontierUV`, `FrontierBaking`, `FrontierPattern`, `FrontierStamp`, `FrontierMaterial`, `FrontierParticle`, `FrontierFracture`, `FrontierForceField`, `FrontierFluid`, `FrontierSketcher`) — see [Engine/Lifecycle/README.md](Engine/Lifecycle/README.md). |
+| **`Components/`** | Reusable UI controls: `PixelSpace`, `WorkspaceDockContainer`, `ControlCentrePanel`, `ContentBrowserPanel`, `OutlinerPanel`, `ViewportPanel`, `InspectorPanel`, `CapsuleButton`, `ScalarSlider`, `ExclusiveSelector`, `DropdownSelector`, and analytical vector icon rasterizers. |
 | **`NetworkingSpace/`** | Distributed simulation (`NetworkingExtension`), non-blocking UDP/TCP socket transport, bit-packed packet serialization, authoritative snapshot replication, ordered remote directive routing, and peer session alignment. |
 | **`AudioSpace/`** | Audio lifecycle coordination (`AudioExtension`), native OS audio hardware output (`AudioHardwareOutput`), PCM/WAV/Ogg/FLAC waveform decoding, bus mixing & filtering (`AcousticMixer`), and 3D HRTF spatial acoustics. |

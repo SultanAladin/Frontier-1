@@ -1796,13 +1796,19 @@ SketcherCommandOutcome LoftSketcherCurves(SketcherDocument& Document, const std:
             }
         }
     }
-    const bool        NetworkCondition = Fitted.size() == Labels.size() && Fitted.size() >= 4 && DetectCurveNetwork(Fitted, NetworkSettings{});
+    NetworkSettings LoftNetSettings;
+    LoftNetSettings.MeetingGap = 1.0e-3;
+    const std::vector<ClosedCurveLoop> SelectedLoops = (Fitted.size() == Labels.size())
+        ? DetectClosedCurveLoops(Fitted, LoftNetSettings.MeetingGap)
+        : std::vector<ClosedCurveLoop>{};
+    const bool        MultiLoopCondition = Fitted.size() == Labels.size() && SelectedLoops.size() > 1;
+    const bool        NetworkCondition   = Fitted.size() == Labels.size() && (MultiLoopCondition || DetectCurveNetwork(Fitted, LoftNetSettings));
     const std::string Caption = NextCaption(Document, NetworkCondition ? "Network" : "Loft");
     const std::string Label   = Caption + " · " + std::to_string(Labels.size()) + (NetworkCondition ? " curves" : " sections")
                               + (Continuity > 0 ? " · G" + std::to_string(Continuity) : std::string()) + (SolidCondition && !NetworkCondition ? " · solid" : "");
     SketcherCommandOutcome Outcome = RunCommand(Document, Label, false, [&]() -> std::string
     {
-        if (Labels.size() < 2) return "loft needs at least 2 curves (select them in section order)";
+        if (Labels.empty() || (!NetworkCondition && Labels.size() < 2)) return "loft needs at least 2 curves (select them in section order)";
         for (size_t Index = 0; Index < Labels.size(); ++Index)
         {
             const auto Found = std::find_if(Document.Tree.Steps.begin(), Document.Tree.Steps.end(), [&](const FeatureStep& Step) { return Step.Label == Labels[Index]; });
@@ -1813,17 +1819,77 @@ SketcherCommandOutcome LoftSketcherCurves(SketcherDocument& Document, const std:
         if (NetworkCondition && Continuity > 0) return "these curves cross (a network): G1 / G2 is available for section lofts only (🚧 networks)";
         if (NetworkCondition && SolidCondition) return "these curves cross (a network): a solid loft needs closed sections in order";
         if (SolidCondition && Continuity > 0) return "a solid loft is G0 (G1 / G2 join a loft to neighbouring panels)";
+        if (MultiLoopCondition)
+        {
+            const auto Scene = BuildSketcherScene(Document);
+            for (size_t LoopIdx = 0; LoopIdx < SelectedLoops.size(); ++LoopIdx)
+            {
+                const ClosedCurveLoop& Loop = SelectedLoops[LoopIdx];
+                FeatureStep Step;
+                Step.Kind      = FeatureStepKind::Network;
+                Step.Label     = "Network#" + std::to_string(NextStepOrdinal(Document.Tree));
+                Step.Tolerance = { LoftNetSettings.MeetingGap };
+                std::vector<NurbsCurve> LoopCurves;
+                for (const ClosedLoopEdge& Edge : Loop.Edges)
+                {
+                    Step.Sections.push_back(Labels[Edge.CurveIndex]);
+                    LoopCurves.push_back(Edge.ReversedCondition ? ReverseNurbsCurve(*Fitted[Edge.CurveIndex].Definition) : Fitted[Edge.CurveIndex]);
+                }
+                const ClosedLoopSurfaceOutcome Closed = ConstructClosedLoopPanels(LoopCurves, LoftNetSettings.MeetingGap, Step.Sections);
+                if (Closed.Refusal.empty() && !Closed.Panels.empty())
+                {
+                    const auto Sample = EvaluateNurbsSurface(Closed.Panels[0].Surface, { 0.5, 0.5 });
+                    const auto Normal = Cross(Sample.DerivativeU, Sample.DerivativeV);
+                    Vector3 Expected{};
+                    double Nearest = INFINITY;
+                    for (const auto& Corner : Scene.Corners)
+                    {
+                        const auto& Face = Scene.Faces[Corner.Face];
+                        if (!Document.Appearance.LockedFigures.contains(Scene.Bodies[Face.Body].Key)) continue;
+                        const Vector3 Position{ Corner.Position[0], Corner.Position[1], Corner.Position[2] };
+                        const double Gap = Distance(Position, Sample.Position);
+                        if (Gap < Nearest) { Nearest = Gap; Expected = { Corner.Normal[0], Corner.Normal[1], Corner.Normal[2] }; }
+                    }
+                    if (Length(Expected) < 1e-12)
+                    {
+                        const double X = std::abs(Normal.X), Y = std::abs(Normal.Y), Z = std::abs(Normal.Z);
+                        Expected = Z >= X && Z >= Y ? Vector3{ 0, 0, 1 } : Y >= X ? Vector3{ 0, 1, 0 } : Vector3{ 1, 0, 0 };
+                    }
+                    Step.ReverseNormals = Dot(Normal, Expected) < 0;
+                }
+                Document.Captions[Step.Label] = LoopIdx == 0 ? Caption : NextCaption(Document, "Network");
+                Document.Tree.Steps.push_back(std::move(Step));
+            }
+            return {};
+        }
         FeatureStep Step;
         Step.Kind       = NetworkCondition ? FeatureStepKind::Network : FeatureStepKind::Loft;
         Step.Label      = (NetworkCondition ? "Network#" : "Loft#") + std::to_string(NextStepOrdinal(Document.Tree));
         Step.Sections   = Labels;
+        if (NetworkCondition) Step.Tolerance = { LoftNetSettings.MeetingGap };
         // An open sheet has no intrinsic outside. Match the locked tracing reference,
         // otherwise use the positive dominant normal, independently of pick order.
         if (!SolidCondition && NormalSections.size() == Labels.size())
         {
             std::optional<NurbsSurface> Preview;
-            if(NetworkCondition) {const auto N=ConstructNetworkSurface(NormalSections,NetworkSettings{},Labels);if(N.Refusal.empty()) Preview=N.Surface;}
-            else {const auto L=LoftSectionSurface(NormalSections,LoftSettings{});if(L.Refusal.empty()) Preview=L.Surface;}
+            if (NetworkCondition)
+            {
+                const auto N = ConstructNetworkSurface(NormalSections, LoftNetSettings, Labels);
+                if (N.Refusal.empty()) Preview = N.Surface;
+                else if (SelectedLoops.size() == 1)
+                {
+                    std::vector<NurbsCurve> Ordered;
+                    for (const ClosedLoopEdge& Edge : SelectedLoops[0].Edges)
+                        Ordered.push_back(Edge.ReversedCondition ? ReverseNurbsCurve(*NormalSections[Edge.CurveIndex].Definition) : NormalSections[Edge.CurveIndex]);
+                    const auto Closed = ConstructClosedLoopPanels(Ordered, LoftNetSettings.MeetingGap, Labels);
+                    if (Closed.Refusal.empty() && !Closed.Panels.empty()) Preview = Closed.Panels[0].Surface;
+                }
+            }
+            else
+            {
+                const auto L = LoftSectionSurface(NormalSections, LoftSettings{});
+                if (L.Refusal.empty()) Preview = L.Surface;
+            }
             if (Preview)
             {
                 const auto Sample = EvaluateNurbsSurface(*Preview, {0.5,0.5});
@@ -2193,8 +2259,12 @@ SketcherCommandOutcome DrawSketcherSpaceCurve(SketcherDocument& Document, const 
     return Outcome;
 }
 
-namespace { std::string SplitCrossingsInPlace(SketcherDocument&,double,const std::string& Only = {}); }
-SketcherCommandOutcome DrawSketcherProjectedCurve(SketcherDocument& Document, const NurbsCurve& Curve, bool Closed, bool AutoSplit, double IntersectionTolerance)
+namespace
+{
+    std::string SplitCrossingsInPlace(SketcherDocument&, double, const std::string& Only = {});
+    std::string BuildLoopsInPlace(SketcherDocument&, double, bool OnlyUnbuilt, int* BuiltCount = nullptr);
+}
+SketcherCommandOutcome DrawSketcherProjectedCurve(SketcherDocument& Document, const NurbsCurve& Curve, bool Closed, bool AutoSplit, double IntersectionTolerance, bool AutoSurface)
 {
     std::string Label;
     SketcherCommandOutcome Outcome = RunCommand(Document, "Draw surface trace", false, [&]() -> std::string
@@ -2206,7 +2276,17 @@ SketcherCommandOutcome DrawSketcherProjectedCurve(SketcherDocument& Document, co
         if (Closed && Distance(Definition.Poles.front(), Definition.Poles.back()) > 1.0e-8) return "surface trace is not closed";
         ExactThrough Exact{ Definition.Poles, Definition.Knots };
         Label = AppendSpaceCurveStep(Document, Definition.Poles, Closed, NextCaption(Document, "Surface trace"), Exact);
-        return AutoSplit ? SplitCrossingsInPlace(Document,IntersectionTolerance,Label) : std::string{};
+        if (AutoSplit)
+        {
+            const std::string SplitErr = SplitCrossingsInPlace(Document, IntersectionTolerance, Label);
+            if (!SplitErr.empty()) return SplitErr;
+        }
+        if (AutoSurface)
+        {
+            const std::string LoopErr = BuildLoopsInPlace(Document, IntersectionTolerance, true);
+            if (!LoopErr.empty()) return LoopErr;
+        }
+        return {};
     });
     if (Outcome.AcceptedCondition) Document.Selection.Curves = { Label };
     return Outcome;
@@ -2244,10 +2324,12 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
     for(const auto& S:D.Tree.Steps) {
         if(S.Kind!=FeatureStepKind::SpaceCurve || SketcherLockedCondition(D,S.Label)) continue;
         NurbsCurveDefinition Def;
-        if(auto It=D.Regeneration.Curves.find(S.Label);It!=D.Regeneration.Curves.end())Def=*It->second.Curve.Definition;
+        if(auto It=D.Regeneration.Curves.find(S.Label);It!=D.Regeneration.Curves.end() && It->second.Curve.Definition)
+            Def=MapCurveOntoUnit(*It->second.Curve.Definition);
         else {
             Def.Poles=S.Points;Def.Knots=S.CurveKnots;Def.Degree=int(Def.Knots.size())-int(Def.Poles.size())-1;Def.Weights.assign(Def.Poles.size(),1);
             if(Def.Degree<1 || Def.Poles.size()<2) continue;
+            Def=MapCurveOntoUnit(Def);
         }
         Curve C{S.Label,Def,{}};
         for(int I=0;I<=Samples;++I) C.Samples.push_back(EvaluateNurbsCurve(Def,I/double(Samples)).Position);
@@ -2262,33 +2344,72 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
             auto PA=CA.Samples[I],QA=CA.Samples[I+1],PB=CB.Samples[J],QB=CB.Samples[J+1];
             auto U=QA-PA,V=QB-PB,W=PA-PB;
             const double UU=Dot(U,U),VV=Dot(V,V),UV=Dot(U,V),UW=Dot(U,W),VW=Dot(V,W),Den=UU*VV-UV*UV;
-            if(Den<1e-14*UU*VV || UU<1e-24 || VV<1e-24)continue; // overlaps/tangencies are not transverse cuts
-            double S=std::clamp((UV*VW-VV*UW)/Den,0.0,1.0),T=std::clamp((UU*VW-UV*UW)/Den,0.0,1.0);
-            if(Distance(PA+U*S,PB+V*T)>Tolerance+Length(QA-PA)*.02+Length(QB-PB)*.02)continue;
+            if(UU<1e-24 || VV<1e-24) continue;
+            double S=0.5,T=0.5;
+            if(Den>=1e-14*UU*VV) {
+                S=std::clamp((UV*VW-VV*UW)/Den,0.0,1.0);
+                T=std::clamp((UU*VW-UV*UW)/Den,0.0,1.0);
+            } else {
+                // Parallel segment endpoints touching at a corner/seam: check nearest endpoint distance.
+                S = (I == 0) ? 0.0 : (I == Samples - 1 ? 1.0 : 0.5);
+                T = std::clamp(Dot(PA + U * S - PB, V) / VV, 0.0, 1.0);
+            }
+            if(Distance(PA+U*S,PB+V*T)>Tolerance+0.25*(Length(QA-PA)+Length(QB-PB)))continue;
             double X=(I+S)/Samples,Y=(J+T)/Samples;
-            for(int Iter=0;Iter<24;++Iter) {
+            for(int Iter=0;Iter<32;++Iter) {
                 auto E=EvaluateNurbsCurveDerivatives(CA.Definition,X),F=EvaluateNurbsCurveDerivatives(CB.Definition,Y);
-                auto R=E.Position-F.Position;double XX=Dot(E.First,E.First),YY=Dot(F.First,F.First),XY=Dot(E.First,F.First);
-                double Det=XX*YY-XY*XY;if(Det<1e-16*XX*YY)break;
-                double RX=Dot(E.First,R),RY=Dot(F.First,R);
-                double DX=(-YY*RX+XY*RY)/Det,DY=(-XY*RX+XX*RY)/Det;
-                X=std::clamp(X+DX,0.0,1.0);Y=std::clamp(Y+DY,0.0,1.0);
-                if(std::abs(DX)+std::abs(DY)<1e-12)break;
+                auto R=E.Position-F.Position;
+                const double GradX=Dot(R,E.First),GradY=-Dot(R,F.First);
+                const double Hxx=Dot(E.First,E.First)+Dot(R,E.Second),Hyy=Dot(F.First,F.First)-Dot(R,F.Second);
+                const double Hxy=-Dot(E.First,F.First);
+                const double Det=Hxx*Hyy-Hxy*Hxy;
+                double DX=0.0,DY=0.0;
+                if(Det>1e-30) { DX=-(Hyy*GradX-Hxy*GradY)/Det; DY=-(Hxx*GradY-Hxy*GradX)/Det; }
+                const bool FixX=(X<=0.0 && DX<0.0) || (X>=1.0 && DX>0.0);
+                const bool FixY=(Y<=0.0 && DY<0.0) || (Y>=1.0 && DY>0.0);
+                if(FixX && FixY) break;
+                if(FixX) { DX=0.0; DY=Hyy>0.0 ? -GradY/Hyy : 0.0; }
+                if(FixY) { DY=0.0; DX=Hxx>0.0 ? -GradX/Hxx : 0.0; }
+                if(Det<=1e-30 && !FixX && !FixY) break;
+                const double NX=std::clamp(X+DX,0.0,1.0),NY=std::clamp(Y+DY,0.0,1.0);
+                const double Moved=std::abs(NX-X)+std::abs(NY-Y);
+                X=NX; Y=NY;
+                if(Moved<1e-13) break;
             }
             auto P=EvaluateNurbsCurve(CA.Definition,X).Position,Q=EvaluateNurbsCurve(CB.Definition,Y).Position;
             if(Distance(P,Q)>Tolerance || (A==B && std::abs(X-Y)<1e-5))continue;
+            // Skip near-parallel collinear overlap away from endpoints unless both are endpoints.
+            auto EEnd=EvaluateNurbsCurveDerivatives(CA.Definition,X),FEnd=EvaluateNurbsCurveDerivatives(CB.Definition,Y);
+            const double TanLen=Length(EEnd.First)*Length(FEnd.First);
+            if(TanLen>1e-24 && std::abs(Dot(EEnd.First,FEnd.First))>(1.0-1e-10)*TanLen) {
+                const bool EndA=(X<=1e-6 || X>=1.0-1e-6),EndB=(Y<=1e-6 || Y>=1.0-1e-6);
+                if(!EndA || !EndB) continue;
+            }
             auto JointPoint=(P+Q)*.5;
             for(auto Entry:{std::pair<std::string,double>{CA.Label,X},{CB.Label,Y}}) {
                 auto& List=Cuts[Entry.first];if(std::none_of(List.begin(),List.end(),[&](const auto& C){return std::abs(C.T-Entry.second)<1e-6;}))List.push_back({Entry.second,JointPoint});
             }
         }
     }
+    auto HasNonNetworkDependent = [&](const std::string& CurveLabel) -> bool
+    {
+        for (const FeatureStep& Other : D.Tree.Steps)
+        {
+            if (Other.Label == CurveLabel) continue;
+            if (Other.CurveOffsetGuide == CurveLabel || Other.Profile == CurveLabel || Other.Path == CurveLabel) return true;
+            if (Other.Kind != FeatureStepKind::Network &&
+                std::find(Other.Sections.begin(), Other.Sections.end(), CurveLabel) != Other.Sections.end())
+                return true;
+        }
+        return std::any_of(D.Tree.Modifiers.begin(), D.Tree.Modifiers.end(),
+                           [&](const FeatureModifier& Modifier) { return Modifier.Curve == CurveLabel; });
+    };
     for(const auto& C:Curves) {
         auto It=Cuts.find(C.Label);if(It==Cuts.end())continue;
         auto& J=It->second;std::sort(J.begin(),J.end(),[](auto A,auto B){return A.T<B.T;});
         const bool Interior=std::any_of(J.begin(),J.end(),[](auto P){return P.T>1e-7 && P.T<1-1e-7;});
         auto Step=std::find_if(D.Tree.Steps.begin(),D.Tree.Steps.end(),[&](const auto& S){return S.Label==C.Label;});
-        if(!Step->CurveOffsetGuide.empty() || (Interior && SketcherSketchReferencedCondition(D,C.Label)))
+        if(!Step->CurveOffsetGuide.empty() || (Interior && HasNonNetworkDependent(C.Label)))
             return "A crossing curve has live dependents; detach those dependencies before auto-splitting (nothing changed)";
         FeatureStep Original=*Step;size_t Index=Step-D.Tree.Steps.begin();auto Remaining=C.Definition;
         std::vector<NurbsCurveDefinition> Pieces;
@@ -2300,11 +2421,134 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
         Pieces.push_back(Remaining);
         if(J.front().T<=1e-7)Pieces.front().Poles.front()=J.front().P;
         if(J.back().T>=1-1e-7)Pieces.back().Poles.back()=J.back().P;
+        std::vector<FeatureStep> InsertedPieces;
+        std::vector<std::string> NewPieceLabels;
+        int Ordinal = NextStepOrdinal(D.Tree);
         for(size_t I=0;I<Pieces.size();++I) {
             auto Piece=Original;StoreControlDefinition(Piece,Pieces[I]);if(Pieces.size()>1)Piece.ClosedCondition=false;
             if(I==0)D.Tree.Steps[Index]=std::move(Piece);
-            else {Piece.Label="Curve#"+std::to_string(NextStepOrdinal(D.Tree));D.Captions[Piece.Label]=NextCaption(D,"Curve piece");D.Tree.Steps.push_back(std::move(Piece));}
+            else {
+                Piece.Label="Curve#"+std::to_string(Ordinal++);
+                D.Captions[Piece.Label]=NextCaption(D,"Curve piece");
+                NewPieceLabels.push_back(Piece.Label);
+                InsertedPieces.push_back(std::move(Piece));
+            }
         }
+        if(!InsertedPieces.empty()) {
+            D.Tree.Steps.insert(D.Tree.Steps.begin()+static_cast<ptrdiff_t>(Index+1),InsertedPieces.begin(),InsertedPieces.end());
+            for(FeatureStep& Dependent:D.Tree.Steps) {
+                if(Dependent.Kind!=FeatureStepKind::Network)continue;
+                auto Pos=std::find(Dependent.Sections.begin(),Dependent.Sections.end(),C.Label);
+                if(Pos!=Dependent.Sections.end()) Dependent.Sections.insert(Pos+1,NewPieceLabels.begin(),NewPieceLabels.end());
+            }
+        }
+    }
+    return {};
+}
+
+[[nodiscard]] std::optional<NurbsCurve> ResolveSpaceCurveForLoop(const SketcherDocument& Document, const FeatureStep& Step)
+{
+    if (Step.Kind != FeatureStepKind::SpaceCurve) return std::nullopt;
+    if (!Step.CurveKnots.empty() && Step.Points.size() >= 2)
+    {
+        const int Degree = static_cast<int>(Step.CurveKnots.size()) - static_cast<int>(Step.Points.size()) - 1;
+        if (Degree >= 1 && Step.CurveKnots.front() < Step.CurveKnots.back())
+        {
+            NurbsCurveDefinition Def;
+            Def.Degree  = Degree;
+            Def.Poles   = Step.Points;
+            Def.Weights.assign(Step.Points.size(), 1.0);
+            Def.Knots   = Step.CurveKnots;
+            return NurbsCurve{ std::make_shared<NurbsCurveDefinition>(MapCurveOntoUnit(Def)) };
+        }
+    }
+    if (const auto Found = Document.Regeneration.Curves.find(Step.Label); Found != Document.Regeneration.Curves.end() && Found->second.Curve.Definition)
+    {
+        return NurbsCurve{ std::make_shared<NurbsCurveDefinition>(MapCurveOntoUnit(*Found->second.Curve.Definition)) };
+    }
+    return std::nullopt;
+}
+
+std::string BuildLoopsInPlace(SketcherDocument& Document, double Tolerance, bool OnlyUnbuilt, int* BuiltCount)
+{
+    if (BuiltCount) *BuiltCount = 0;
+    if (!(Tolerance > 0.0) || !std::isfinite(Tolerance)) return "Intersection tolerance must be finite and positive";
+    std::vector<std::string> Labels;
+    std::vector<NurbsCurve>  Curves;
+    for (const FeatureStep& Step : Document.Tree.Steps)
+    {
+        if (Step.Kind != FeatureStepKind::SpaceCurve || Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
+        const std::optional<NurbsCurve> Curve = ResolveSpaceCurveForLoop(Document, Step);
+        if (!Curve) continue;
+        Labels.push_back(Step.Label);
+        Curves.push_back(*Curve);
+    }
+    if (Curves.empty()) return {};
+
+    const std::vector<ClosedCurveLoop> Loops = DetectClosedCurveLoops(Curves, Tolerance);
+    if (Loops.empty()) return {};
+
+    std::set<std::vector<std::string>> ExistingLoopSets;
+    if (OnlyUnbuilt)
+    {
+        for (const FeatureStep& Step : Document.Tree.Steps)
+        {
+            if (Step.Kind != FeatureStepKind::Network && Step.Kind != FeatureStepKind::Loft) continue;
+            std::vector<std::string> Sorted = Step.Sections;
+            std::sort(Sorted.begin(), Sorted.end());
+            ExistingLoopSets.insert(std::move(Sorted));
+        }
+    }
+
+    const SketcherScene Scene = BuildSketcherScene(Document);
+    for (const ClosedCurveLoop& Loop : Loops)
+    {
+        std::vector<std::string> LoopLabels;
+        std::vector<NurbsCurve>  LoopCurves;
+        LoopLabels.reserve(Loop.Edges.size());
+        LoopCurves.reserve(Loop.Edges.size());
+        for (const ClosedLoopEdge& Edge : Loop.Edges)
+        {
+            LoopLabels.push_back(Labels[Edge.CurveIndex]);
+            const NurbsCurveDefinition& Def = *Curves[Edge.CurveIndex].Definition;
+            LoopCurves.push_back(Edge.ReversedCondition ? ReverseNurbsCurve(Def) : Curves[Edge.CurveIndex]);
+        }
+        std::vector<std::string> Canonical = LoopLabels;
+        std::sort(Canonical.begin(), Canonical.end());
+        if (OnlyUnbuilt && ExistingLoopSets.contains(Canonical)) continue;
+
+        const ClosedLoopSurfaceOutcome Closed = ConstructClosedLoopPanels(LoopCurves, Tolerance, LoopLabels);
+        if (!Closed.Refusal.empty() || Closed.Panels.empty()) continue;
+
+        FeatureStep Step;
+        Step.Kind      = FeatureStepKind::Network;
+        Step.Label     = "Network#" + std::to_string(NextStepOrdinal(Document.Tree));
+        Step.Sections  = std::move(LoopLabels);
+        Step.Tolerance = { Tolerance };
+        {
+            const auto Sample = EvaluateNurbsSurface(Closed.Panels[0].Surface, { 0.5, 0.5 });
+            const auto Normal = Cross(Sample.DerivativeU, Sample.DerivativeV);
+            Vector3 Expected{};
+            double Nearest = INFINITY;
+            for (const auto& Corner : Scene.Corners)
+            {
+                const auto& Face = Scene.Faces[Corner.Face];
+                if (!Document.Appearance.LockedFigures.contains(Scene.Bodies[Face.Body].Key)) continue;
+                const Vector3 Position{ Corner.Position[0], Corner.Position[1], Corner.Position[2] };
+                const double Gap = Distance(Position, Sample.Position);
+                if (Gap < Nearest) { Nearest = Gap; Expected = { Corner.Normal[0], Corner.Normal[1], Corner.Normal[2] }; }
+            }
+            if (Length(Expected) < 1e-12)
+            {
+                const double X = std::abs(Normal.X), Y = std::abs(Normal.Y), Z = std::abs(Normal.Z);
+                Expected = Z >= X && Z >= Y ? Vector3{ 0, 0, 1 } : Y >= X ? Vector3{ 0, 1, 0 } : Vector3{ 1, 0, 0 };
+            }
+            Step.ReverseNormals = Dot(Normal, Expected) < 0;
+        }
+        Document.Captions[Step.Label] = NextCaption(Document, "Network");
+        Document.Tree.Steps.push_back(std::move(Step));
+        ExistingLoopSets.insert(std::move(Canonical));
+        if (BuiltCount) ++(*BuiltCount);
     }
     return {};
 }
@@ -2351,9 +2595,108 @@ SketcherCommandOutcome SplitSketcherSpaceCurveAt(SketcherDocument& Document, con
     return Outcome;
 }
 
-SketcherCommandOutcome SplitSketcherCurveCrossings(SketcherDocument& D,double Tolerance)
+SketcherCommandOutcome SplitSketcherCurveCrossings(SketcherDocument& D,double Tolerance,bool AutoSurface)
 {
-    return RunCommand(D,"Split 3D curve crossings",false,[&](){return SplitCrossingsInPlace(D,Tolerance);},0);
+    return RunCommand(D,"Split 3D curve crossings",false,[&]() -> std::string {
+        const std::string SplitErr = SplitCrossingsInPlace(D,Tolerance);
+        if (!SplitErr.empty()) return SplitErr;
+        return AutoSurface ? BuildLoopsInPlace(D, Tolerance, true) : std::string{};
+    },0);
+}
+
+SketcherCommandOutcome BuildSketcherClosedLoopSurfaces(SketcherDocument& Document, double Tolerance)
+{
+    return RunCommand(Document, "Build surfaces from closed loops", false, [&]() -> std::string
+    {
+        const std::string SplitErr = SplitCrossingsInPlace(Document, Tolerance);
+        if (!SplitErr.empty()) return SplitErr;
+        int Built = 0;
+        const std::string LoopErr = BuildLoopsInPlace(Document, Tolerance, true, &Built);
+        if (!LoopErr.empty()) return LoopErr;
+        if (Built == 0) return "No unbuilt closed curve loops found (draw or close 3+ crossing curves)";
+        return {};
+    }, 0);
+}
+
+SketcherSpaceLoopPreview PreviewSketcherSpaceLoop(const SketcherDocument& Document, Vector3 RayOrigin, Vector3 RayDirection, double Tolerance)
+{
+    SketcherSpaceLoopPreview Preview;
+    const double RayLen = Length(RayDirection);
+    if (RayLen <= 1.0e-12 || !(Tolerance > 0.0)) { Preview.Refusal = "no loop under the pointer"; return Preview; }
+    const Vector3 Dir = RayDirection * (1.0 / RayLen);
+
+    std::vector<std::string> Labels;
+    std::vector<NurbsCurve>  Curves;
+    for (const FeatureStep& Step : Document.Tree.Steps)
+    {
+        if (Step.Kind != FeatureStepKind::SpaceCurve || Document.Appearance.HiddenCurves.contains(Step.Label)) continue;
+        const std::optional<NurbsCurve> Curve = ResolveSpaceCurveForLoop(Document, Step);
+        if (!Curve) continue;
+        Labels.push_back(Step.Label);
+        Curves.push_back(*Curve);
+    }
+    const std::vector<ClosedCurveLoop> Loops = DetectClosedCurveLoops(Curves, Tolerance);
+    if (Loops.empty()) { Preview.Refusal = "no closed 3D curve loop"; return Preview; }
+
+    double BestDepth = std::numeric_limits<double>::infinity();
+    for (const ClosedCurveLoop& Loop : Loops)
+    {
+        std::vector<Vector3> Poly;
+        Vector3 Centroid{};
+        for (const ClosedLoopEdge& Edge : Loop.Edges)
+        {
+            const NurbsCurveDefinition& Def = *Curves[Edge.CurveIndex].Definition;
+            for (int Step = 0; Step < 12; ++Step)
+            {
+                const double T = Edge.ReversedCondition ? (1.0 - static_cast<double>(Step) / 12.0) : (static_cast<double>(Step) / 12.0);
+                const Vector3 P = EvaluateNurbsCurve(Def, T).Position;
+                Centroid = Centroid + P;
+                Poly.push_back(P);
+            }
+        }
+        if (Poly.size() < 3) continue;
+        Centroid = Centroid * (1.0 / static_cast<double>(Poly.size()));
+        Vector3 NormalVec{};
+        for (size_t I = 0; I < Poly.size(); ++I)
+            NormalVec = NormalVec + Cross(Poly[I] - Centroid, Poly[(I + 1) % Poly.size()] - Centroid);
+        const double NormalLen = Length(NormalVec);
+        if (NormalLen <= 1.0e-12) continue;
+        const Vector3 Normal = NormalVec * (1.0 / NormalLen);
+        const double Denom = Dot(Dir, Normal);
+        if (std::abs(Denom) <= 1.0e-6) continue;
+        const double RayT = Dot(Centroid - RayOrigin, Normal) / Denom;
+        if (RayT <= 0.0 || RayT >= BestDepth) continue;
+        const Vector3 Hit = RayOrigin + Dir * RayT;
+
+        const Vector3 Ref = std::abs(Normal.Z) < 0.9 ? Vector3{ 0, 0, 1 } : Vector3{ 1, 0, 0 };
+        const Vector3 AxisU = Normalize(Cross(Ref, Normal));
+        const Vector3 AxisV = Cross(Normal, AxisU);
+        const Vector2 HitUV{ Dot(Hit - Centroid, AxisU), Dot(Hit - Centroid, AxisV) };
+        bool Inside = false;
+        for (size_t I = 0, J = Poly.size() - 1; I < Poly.size(); J = I++)
+        {
+            const Vector2 PI{ Dot(Poly[I] - Centroid, AxisU), Dot(Poly[I] - Centroid, AxisV) };
+            const Vector2 PJ{ Dot(Poly[J] - Centroid, AxisU), Dot(Poly[J] - Centroid, AxisV) };
+            if (((PI.Y > HitUV.Y) != (PJ.Y > HitUV.Y)) &&
+                (HitUV.X < (PJ.X - PI.X) * (HitUV.Y - PI.Y) / (PJ.Y - PI.Y) + PI.X))
+                Inside = !Inside;
+        }
+        if (!Inside) continue;
+        BestDepth = RayT;
+        Preview.Labels.clear();
+        for (const ClosedLoopEdge& Edge : Loop.Edges) Preview.Labels.push_back(Labels[Edge.CurveIndex]);
+        Preview.Outline = std::move(Poly);
+        Preview.Refusal.clear();
+    }
+    if (Preview.Labels.empty()) Preview.Refusal = "no closed region under the pointer";
+    return Preview;
+}
+
+SketcherCommandOutcome FillSketcherSpaceLoop(SketcherDocument& Document, const std::vector<std::string>& Labels, double Tolerance)
+{
+    (void)Tolerance;
+    if (Labels.empty()) return { false, "Fill: no closed loop selected" };
+    return LoftSketcherCurves(Document, Labels, 0, false);
 }
 
 SketcherCommandOutcome LinkSketcherSurfaceOffset(SketcherDocument& D,const std::string& GuideInput,const std::string& TargetInput,

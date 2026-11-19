@@ -77,3 +77,20 @@ Reference repository: `https://github.com/egoistm1inbox/Frontier-OLD/tree/arena/
 - **`Experimental/` Holds HTML/JS Reference Prototypes Only (Zero C++)**:
   - All prototypes under `Experimental/` are browser HTML/JS/CSS specifications; native C++20 implementations belong exclusively in `Engine/` and `Exhibits/`.
   - **`Experimental/ProjectZeroEditor/`** is the starting visual & structural reference for shared UI components (`Engine/Components/`). Note DM Sans metrics when rasterizing in ImGui: CSS `font-size` scales the `1000 em` box while ImGui scales `ascent - descent`, requiring a `1.302` multiplier (`hhea` ascent `992`, descent `-310`) so ImGui text matches browser pixel sizing.
+
+---
+
+## 🔴 7. WORKSPACE DOCUMENTATION & NAMING-AUDIT INVARIANT (2026-11-15)
+
+- **Every Workspace Maintains a `README.md` (`Engine/Workspaces/*/README.md`, `Engine/Editor/README.md`, `Engine/Lifecycle/README.md`)**:
+  - Each workspace README documents module architecture, every UI control, every keyboard/mouse shortcut, and a read-only C++ naming-compliance audit against [BannedWordsVocabulary.md](BannedWordsVocabulary.md), linked from [CLAUDE.md](../CLAUDE.md) and [Documentation/README.md](README.md).
+- **Prohibited `<K-suffix>` Ban Enforcement**:
+  - Never introduce the prohibited `K`-word suffix in new C++, `.slang`, or Markdown prose/tables; existing legacy occurrences in `Engine/Workspaces/` are catalogued in each workspace README (`BKL-011`) for dedicated refactoring.
+
+---
+
+## 🔴 8. MANDATORY REUSE-FIRST CHECK BEFORE CREATING OR REWRITING FILES (2026-11-15)
+
+- **Inspect Existing Codebase First**: Before creating a new file, class, shader, solver, or UI component — or rewriting an existing one — search `Engine/`, `Exhibits/`, `Automation/`, [FolderStructure.md](FolderStructure.md), and the workspace `README.md` files to verify whether equivalent functionality already exists.
+- **Reuse Over Recreation**: Wire into, extend, or refine existing modules (`Engine/Components/`, `Engine/GeometricRaster/`, `Engine/GeometrySpace/`, `Engine/SimulationSpace/`, `Engine/Workspaces/`, `Engine/Codecs/`, `Engine/Shaders/`) instead of inventing duplicate files or parallel implementations.
+- **New Files Only for Uncovered Responsibilities**: Add a new source/header/shader file only after confirming no existing unit already owns that mechanism, and place it strictly according to [FolderStructure.md](FolderStructure.md).

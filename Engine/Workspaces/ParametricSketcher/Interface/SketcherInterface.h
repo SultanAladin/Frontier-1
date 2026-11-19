@@ -355,6 +355,7 @@ struct SketcherFillSession
     GeometrySpace::Parametric::Vector2             Pick            = {};                            // [len] - Pointer on that plane
     std::vector<std::vector<GeometrySpace::Parametric::Vector3>> Outlines = {};                     // [len] - Region loops (world; [0] outer)
     std::string                             WholeSketch     = {};                            // [-]   - The region is this sketch's own loop
+    std::vector<std::string>                LoopLabels      = {};                            // [-]   - Closed 3D SpaceCurve loop under pointer
     std::string                             Refusal         = {};                            // [-]   - Why nothing fills under the pointer
     ImVec2                                  Pointer         = { -1.0f, -1.0f };              // [px]  - Pointer of the cached hover
     uint64_t                                Revision        = 0;                             // [-]   - Document revision of the cached hover
@@ -909,7 +910,8 @@ struct SketcherWorkspaceState
 {
     bool SurfaceTraceEnabled = false;
     bool DrawingCurveSnap = true;
-    bool DrawingAutoSplit = false;
+    bool DrawingAutoSplit = true;
+    bool DrawingAutoSurface = true;
     bool DrawingOptionsVisible = true;
     double DrawingIntersectionTolerance = 0.001;
     double SurfaceOffsetDistance = 0.05;

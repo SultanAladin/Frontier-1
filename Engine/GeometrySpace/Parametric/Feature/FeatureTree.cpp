@@ -1138,7 +1138,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             }
             if (Sections.size() == 3 && Step.Continuity == 0 && !Step.ClosedCondition)
             {
-                constexpr double HingeGap = 1.0e-4;
+                const double HingeGap = std::max(1.0e-4, EvaluateFeatureValue(Tree, Step.Tolerance));
                 bool AllOpenCondition = true;
                 Vector3 Starts[3] = {}, Ends[3] = {};
                 for (int Index = 0; Index < 3; ++Index)
@@ -1246,7 +1246,7 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
         }
         case FeatureStepKind::Network:
         {
-            // ⑦ Gordon / Coons panel through the named curves (families found by meeting, V5).
+            // ⑦ Gordon / Coons panel (or closed-loop triangle / quad / N-gon panels) through the named curves.
             std::vector<NurbsCurve> Curves;
             for (const std::string& Section : Step.Sections)
             {
@@ -1257,17 +1257,85 @@ RegenerationOutcome RegenerateFeatureTree(ModelPartition& Partition, FeatureTree
             if (Report.Status == FeatureStepStatus::Refused) break;
             if (Step.Continuity != 0) { Refuse("Network: G1 / G2 to a neighbour is not available for networks yet (🚧)"); break; }
             if (const std::string Blocked = PanelJoinRefusal("Network"); !Blocked.empty()) { Refuse(Blocked); break; }
-            const NetworkSurfaceOutcome Network = ConstructNetworkSurface(Curves, NetworkSettings{}, Step.Sections);
-            if (!Network.Refusal.empty()) { Refuse(Network.Refusal); break; }
-            std::vector<std::string> Boundaries;
-            for (const std::vector<int>* Order : { &Network.FirstOrder, &Network.SecondOrder })
+            NetworkSettings NetSettings;
+            NetSettings.MeetingGap = std::max(5.0e-4, EvaluateFeatureValue(Tree, Step.Tolerance));
+            const NetworkSurfaceOutcome Network = ConstructNetworkSurface(Curves, NetSettings, Step.Sections);
+            std::vector<SurfacePanel> NewPanels;
+            std::vector<std::string>  Boundaries;
+            if (Network.Refusal.empty())
             {
-                if (Order->empty()) continue;
-                Boundaries.push_back(Step.Sections[Order->front()]);
-                Boundaries.push_back(Step.Sections[Order->back()]);
+                NewPanels.push_back(SurfacePanel{ OrientSheet(Network.Surface, Step.ReverseNormals) });
+                for (const std::vector<int>* Order : { &Network.FirstOrder, &Network.SecondOrder })
+                {
+                    if (Order->empty()) continue;
+                    Boundaries.push_back(Step.Sections[Order->front()]);
+                    Boundaries.push_back(Step.Sections[Order->back()]);
+                }
             }
-            Panels.push_back({ SurfacePanel{ OrientSheet(Network.Surface,Step.ReverseNormals) }, Step.Label + ".Side(Surface)", Boundaries, false });
-            if (const std::string Problem = Reassemble("Sew", false); !Problem.empty()) { Panels.pop_back(); Refuse(Problem); }
+            else
+            {
+                const std::vector<ClosedCurveLoop> Loops = DetectClosedCurveLoops(Curves, NetSettings.MeetingGap);
+                if (Loops.size() != 1 || Loops[0].Edges.size() != Curves.size())
+                {
+                    Refuse(Network.Refusal);
+                    break;
+                }
+                std::vector<NurbsCurve> Ordered;
+                std::vector<std::string> OrderedNames;
+                for (const ClosedLoopEdge& Edge : Loops[0].Edges)
+                {
+                    const NurbsCurveDefinition& Def = *Curves[Edge.CurveIndex].Definition;
+                    Ordered.push_back(Edge.ReversedCondition ? ReverseNurbsCurve(Def) : Curves[Edge.CurveIndex]);
+                    OrderedNames.push_back(Step.Sections[Edge.CurveIndex]);
+                }
+                const ClosedLoopSurfaceOutcome Closed = ConstructClosedLoopPanels(Ordered, NetSettings.MeetingGap, OrderedNames);
+                if (!Closed.Refusal.empty() || Closed.Panels.empty())
+                {
+                    Refuse(Closed.Refusal.empty() ? Network.Refusal : Closed.Refusal);
+                    break;
+                }
+                for (const SurfacePanel& Panel : Closed.Panels)
+                    NewPanels.push_back(SurfacePanel{ OrientSheet(Panel.Surface, Step.ReverseNormals) });
+                Boundaries = Step.Sections;
+            }
+
+            const size_t PriorPanels = Panels.size();
+            for (size_t Index = 0; Index < NewPanels.size(); ++Index)
+            {
+                const std::string PanelName = NewPanels.size() == 1
+                    ? (Step.Label + ".Side(Surface)")
+                    : (Step.Label + ".Side(Surface." + std::to_string(Index) + ")");
+                Panels.push_back({ NewPanels[Index], PanelName, Index == 0 ? Boundaries : std::vector<std::string>{}, false });
+            }
+            const std::string Problem = Reassemble("Sew", false);
+            if (!Problem.empty())
+            {
+                Panels.resize(PriorPanels);
+                if (PriorPanels > 0)
+                {
+                    // When adjacent loops share an edge with differing parameterization or branch at a T-junction,
+                    // emit the closed-loop surface as an independent sheet body rather than refusing it.
+                    const PanelAssemblyOutcome Standalone = AssemblePanels(Partition, NewPanels, PanelAssemblySettings{}, "Sew");
+                    if (Standalone.Refusal.empty())
+                    {
+                        std::vector<std::string> Names;
+                        Names.reserve(NewPanels.size());
+                        for (size_t Index = 0; Index < NewPanels.size(); ++Index)
+                        {
+                            const std::string PanelName = NewPanels.size() == 1
+                                ? (Step.Label + ".Side(Surface)")
+                                : (Step.Label + ".Side(Surface." + std::to_string(Index) + ")");
+                            Names.push_back(PanelName);
+                            Outcome.Panels[PanelName] = NewPanels[Index].Surface;
+                        }
+                        Naming  = NamePanelBody(Partition, Standalone.Body, Standalone.Faces, Names);
+                        Current = Standalone.Body;
+                        Create();
+                        break;
+                    }
+                }
+                Refuse(Problem);
+            }
             break;
         }
         case FeatureStepKind::Mirror:

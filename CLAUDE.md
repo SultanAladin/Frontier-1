@@ -17,6 +17,25 @@ code, shaders, build scripts, or documentation.
 | ⑥ | `Documentation/CodingStandards.md` | ISO C++20 baseline, explicit function prototypes, `concept` templates |
 | ⑦ | `Documentation/FolderStructure.md` | Authoritative repository & `Engine/` module layout |
 | ⑧ | `Documentation/ImportantNotes.md` · `Tracker.md` · `Backlog.md` | Hard invariants, active milestones, and deferred work |
+| ⑨ | `Documentation/README.md` · `Documentation/Plans/README.md` | Documentation hub and Markdown Studio plan/report index |
+
+### 1.1 Workspace & Domain Reference Index
+
+| Scope | Documentation |
+| ----- | ------------- |
+| **Workspaces Master Index & Naming Audit** | [`Engine/Workspaces/README.md`](Engine/Workspaces/README.md) |
+| **World Editor & 12 Desktop Launchers** | [`Engine/Lifecycle/README.md`](Engine/Lifecycle/README.md) |
+| **Editor Explorer & `ForceFieldWorkspace`** | [`Engine/Editor/README.md`](Engine/Editor/README.md) |
+| **`UVWorkspace` (`FrontierUV`)** | [`Engine/Workspaces/UV/README.md`](Engine/Workspaces/UV/README.md) |
+| **`Pattern` · `Stamp` · `Baking` (`Texturing/`)** | [`Engine/Workspaces/Texturing/README.md`](Engine/Workspaces/Texturing/README.md) |
+| **`FractureWorkspace` (`FrontierFracture`)** | [`Engine/Workspaces/Fracture/README.md`](Engine/Workspaces/Fracture/README.md) |
+| **`Sketcher` (`ParametricSketcher` + B-rep Kernel)** | [`Engine/Workspaces/ParametricSketcher/README.md`](Engine/Workspaces/ParametricSketcher/README.md) · [`Engine/GeometrySpace/Parametric/README.md`](Engine/GeometrySpace/Parametric/README.md) |
+| **`FluidWorkspace` (`FrontierFluid`)** | [`Engine/Workspaces/Fluid/README.md`](Engine/Workspaces/Fluid/README.md) |
+| **`MaterialWorkspace` (`FrontierMaterial`)** | [`Engine/Workspaces/Material/README.md`](Engine/Workspaces/Material/README.md) |
+| **`ParticleWorkspace` (`FrontierParticle`)** | [`Engine/Workspaces/Particle/README.md`](Engine/Workspaces/Particle/README.md) |
+| **`ComponentEditor`** | [`Engine/Workspaces/ComponentEditor/README.md`](Engine/Workspaces/ComponentEditor/README.md) |
+| **Non-Linear Revision DAG (`Revision/`)** | [`Engine/Workspaces/Revision/README.md`](Engine/Workspaces/Revision/README.md) |
+| **HTML Reference Studios & Exhibits** | [`Experimental/README.md`](Experimental/README.md) · [`Exhibits/DeterministicPathTracer/README.md`](Exhibits/DeterministicPathTracer/README.md) · [`EngineContent/MatCaps/README.md`](EngineContent/MatCaps/README.md) |
 
 ---
 
@@ -62,6 +81,13 @@ code, shaders, build scripts, or documentation.
 - **NEVER** use the conjunction **`And`** inside any filename, class, struct, enum, function, variable, shader, or documentation plan name (e.g. **`GpuTextureAndSdfBaker.h`**, **`BuildAndUploadStudy`**, **`CameraEyeAndMode`**, **`VolumeAndDistance`** are **STRICTLY FORBIDDEN**).
 - Conjunction names signal conflated responsibilities. Either split into focused single-responsibility units (e.g. `TextureBaker.{h,cpp}` + `SdfBaker.{h,cpp}`) or choose one precise domain noun covering the unified mechanism (`SurfaceUpload`, `CameraOpticsHeader`, `VolumetricDistance`).
 - Applies to all new and refactored `.h`, `.cpp`, `.slang`, `.js`, `.jsx`, and `.md` files across the entire repository; also enforced in `Documentation/AgenticInstructions/SKILL-Naming.md` and `Documentation/BannedWordsVocabulary.md`.
+
+### 🔴 2.8 Reuse Existing Modules & Files — Check Before Creating or Rewriting
+- **ALWAYS check whether functionality already exists before creating new files, classes, shaders, UI panels, or helper implementations.**
+- Before authoring or rewriting any code:
+  1. Search `Engine/`, `EngineContent/`, `Exhibits/`, `Automation/`, and `Documentation/FolderStructure.md` (plus the workspace `README.md` index in `§1.1`) for existing modules, types, `.Space` codecs, `.slang` shaders, math/geometry solvers, and `Engine/Components/` UI primitives.
+  2. **Reuse and extend existing files/units** in place rather than creating parallel files, duplicate wrappers, or reimplemented algorithms.
+  3. Only create a new file when the capability is genuinely absent from the repository and fits a distinct, non-overlapping responsibility under `Documentation/FolderStructure.md`.
 
 ---
 

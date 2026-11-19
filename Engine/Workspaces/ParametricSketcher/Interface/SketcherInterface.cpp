@@ -1499,7 +1499,7 @@ void FinishDrawingSession(SketcherWorkspaceState& State, bool ClosedCondition)
         if(Controls.empty()) for(auto P:Drawing.Points) Controls.push_back(PlacePlanePoint(DrawingPlane(Drawing),P));
         const auto Trace = MakeSketcherControlTrace(Controls, Drawing.Kind, Drawing.Form, ClosedCondition);
         if (!Trace.Refusal.empty()) { Drawing.Refusal = Legible(Trace.Refusal); Announce(State, Drawing.Refusal); return; }
-        const SketcherCommandOutcome Outcome = Trace.Arc ? DrawSketcherSketch(State.Document, *Trace.Arc) : DrawSketcherProjectedCurve(State.Document, Trace.Curve, ClosedCondition, State.DrawingAutoSplit, State.DrawingIntersectionTolerance);
+        const SketcherCommandOutcome Outcome = Trace.Arc ? DrawSketcherSketch(State.Document, *Trace.Arc) : DrawSketcherProjectedCurve(State.Document, Trace.Curve, ClosedCondition, State.DrawingAutoSplit, State.DrawingIntersectionTolerance, State.DrawingAutoSurface);
         if (Outcome.AcceptedCondition)
         {
             Drawing.ActiveCondition = false;
@@ -1512,7 +1512,23 @@ void FinishDrawingSession(SketcherWorkspaceState& State, bool ClosedCondition)
     if (const std::vector<Vector3> Lifted = LiftedDrawingPoints(Drawing, false); !Lifted.empty() && !KnifeCondition)
     {
         Drawing.ActiveCondition = false;
-        const SketcherCommandOutcome Outcome = DrawSketcherSpaceCurve(State.Document, Lifted, ClosedCondition, Drawing.Form);
+        SketcherCommandOutcome Outcome {};
+        if (State.DrawingAutoSplit || State.DrawingAutoSurface)
+        {
+            const auto Trace = MakeSketcherControlTrace(Lifted, Drawing.Kind, Drawing.Form, ClosedCondition);
+            if (!Trace.Refusal.empty())
+            {
+                Drawing.Refusal = Legible(Trace.Refusal);
+                Announce(State, Drawing.Refusal);
+                return;
+            }
+            Outcome = Trace.Arc ? DrawSketcherSketch(State.Document, *Trace.Arc)
+                                : DrawSketcherProjectedCurve(State.Document, Trace.Curve, ClosedCondition, State.DrawingAutoSplit, State.DrawingIntersectionTolerance, State.DrawingAutoSurface);
+        }
+        else
+        {
+            Outcome = DrawSketcherSpaceCurve(State.Document, Lifted, ClosedCondition, Drawing.Form);
+        }
         if (Outcome.AcceptedCondition) State.FocusedStep = State.Document.Tree.Steps.back().Label;
         Conclude(State, Outcome);
         return;
@@ -1808,16 +1824,16 @@ void PlaceDrawingPointer(SketcherWorkspaceState& State, const OrbitCameraFrame& 
     if (!Drawing.Points.empty()) Reference = PlacePlanePoint(Plane, Drawing.Points.back());
     Picker.Current = {};
     Drawing.PointerLifted.reset();
-    if(State.DrawingCurveSnap && !Drawing.SolidCondition && !Drawing.SurfaceCondition &&
+    if(State.DrawingCurveSnap && !Drawing.SolidCondition &&
        (Drawing.Kind==SketcherDrawingKind::Curve || Drawing.Kind==SketcherDrawingKind::Arc || Drawing.Kind==SketcherDrawingKind::Line)) {
         SketcherSnapQuery Q;Q.Frame=Frame;Q.PixelX=Local.x;Q.PixelY=Local.y;Q.PointReach=8;Q.CurveReach=12;
-        Q.Filter={true,false,false,false,false,false,false,true,false};Q.FreeCurvesOnly=true;Q.OverlayCurvesVisible=true;
+        Q.Filter={true,false,false,false,true,false,false,true,false};Q.FreeCurvesOnly=true;Q.OverlayCurvesVisible=true;
         auto Hit=FindSketcherSnap(SnapCatalogue(State,{}),State.Document,State.Scene,Q);
         if(Hit.Kind!=SketcherSnapKind::None) {
             if(Drawing.Kind==SketcherDrawingKind::Arc && Drawing.Points.empty())Drawing.Elevation=Dot(Hit.Position,SketcherSketchPlane(Drawing.GridPlane).ZAxis);
             const auto ActivePlane=DrawingPlane(Drawing);auto Delta=Hit.Position-ActivePlane.Origin;
             Point={Dot(Delta,ActivePlane.XAxis),Dot(Delta,ActivePlane.YAxis)};
-            if(Drawing.Kind==SketcherDrawingKind::Curve)Drawing.PointerLifted=Hit.Position;
+            if(Drawing.Kind==SketcherDrawingKind::Curve || Drawing.SurfaceCondition)Drawing.PointerLifted=Hit.Position;
             else {Hit.Position=PlacePlanePoint(ActivePlane,Point);if(std::abs(Dot(Delta,ActivePlane.ZAxis))>1e-6)Hit.Source+=" (projected to drawing plane)";}
             Picker.Current=Hit;return;
         }
@@ -3189,8 +3205,8 @@ void DrawSketchTint(SketcherWorkspaceState& State, ImDrawList* Canvas, const Orb
 
 void OpenFillSession(SketcherWorkspaceState& State)
 {
-    const bool SketchCondition = std::any_of(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [](const FeatureStep& Step) { return Step.Kind == FeatureStepKind::Sketch; });
-    if (!SketchCondition) { Announce(State, "Fill needs closed sketch curves: draw some first (Shift+W circle, Shift+Q rectangle …)"); return; }
+    const bool SketchCondition = std::any_of(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [](const FeatureStep& Step) { return Step.Kind == FeatureStepKind::Sketch || Step.Kind == FeatureStepKind::SpaceCurve; });
+    if (!SketchCondition) { Announce(State, "Fill needs closed sketch or 3D curve loops: draw some first (Shift+A line, Shift+S curve …)"); return; }
     const int Commits = State.Fill.Commits;
     State.Fill = {};
     State.Fill.ActiveCondition    = true;
@@ -3198,13 +3214,14 @@ void OpenFillSession(SketcherWorkspaceState& State)
     State.Trim.ActiveCondition    = false;
     State.Drawing.ActiveCondition = false;
     State.Constrain.ActiveCondition = false;
-    Announce(State, "Fill: hover a closed region (overlaps split into their own regions) · click fills it · Esc ends");
+    Announce(State, "Fill: hover a closed region or 3D curve loop · click builds its surface · Esc ends");
 }
 
 void CloseFillSession(SketcherWorkspaceState& State)
 {
     State.Fill.ActiveCondition = false;
     State.Fill.HoverCondition  = false;
+    State.Fill.LoopLabels.clear();
     State.Fill.Outlines.clear();
     Announce(State, "Fill ended");
 }
@@ -3217,6 +3234,7 @@ void HoverFillRegion(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
     if (!PointerCondition)
     {
         Fill.HoverCondition = false;
+        Fill.LoopLabels.clear();
         Fill.Outlines.clear();
         Fill.Pointer = ImVec2(-1.0f, -1.0f);
         return;
@@ -3228,6 +3246,7 @@ void HoverFillRegion(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
     Fill.HoverCondition = false;
     Fill.Outlines.clear();
     Fill.WholeSketch.clear();
+    Fill.LoopLabels.clear();
     Fill.Refusal = "no closed region under the pointer";
     std::vector<OrthonormalFrame> Tried;
     double Nearest = std::numeric_limits<double>::infinity();
@@ -3261,19 +3280,38 @@ void HoverFillRegion(SketcherWorkspaceState& State, const OrbitCameraFrame& Fram
             for (const Vector2& Point : Outline) Fill.Outlines.back().push_back(PlacePlanePoint(Preview.Plane, Point));
         }
     }
+    if (!Fill.HoverCondition)
+    {
+        const OrbitRay Ray = CastOrbitRay(Frame, Local.x, Local.y);
+        const SketcherSpaceLoopPreview Loop = PreviewSketcherSpaceLoop(
+            State.Document,
+            Vector3{ Ray.Origin[0], Ray.Origin[1], Ray.Origin[2] },
+            Vector3{ Ray.Direction[0], Ray.Direction[1], Ray.Direction[2] },
+            State.DrawingIntersectionTolerance);
+        if (Loop.Refusal.empty() && !Loop.Labels.empty() && Loop.Outline.size() >= 3)
+        {
+            Fill.HoverCondition = true;
+            Fill.LoopLabels     = Loop.Labels;
+            Fill.Outlines       = { Loop.Outline };
+            Fill.Refusal.clear();
+        }
+    }
 }
 
 void ApplyFill(SketcherWorkspaceState& State)
 {
     SketcherFillSession& Fill = State.Fill;
     if (!Fill.HoverCondition) { Announce(State, "Fill: no closed region under the pointer"); return; }
-    const SketcherCommandOutcome Outcome = FillSketcherRegion(State.Document, { Fill.Sketch, Fill.Pick });
+    const SketcherCommandOutcome Outcome = !Fill.LoopLabels.empty()
+        ? FillSketcherSpaceLoop(State.Document, Fill.LoopLabels, State.DrawingIntersectionTolerance)
+        : FillSketcherRegion(State.Document, { Fill.Sketch, Fill.Pick });
     if (Outcome.AcceptedCondition)
     {
         ++Fill.Commits;
         State.FocusedStep = !Fill.WholeSketch.empty() ? Fill.WholeSketch : State.Document.Tree.Steps.back().Label;   // E extrudes it next
         Fill.Revision = 0;                                                                   // Hover again on the new document
         Fill.HoverCondition = false;
+        Fill.LoopLabels.clear();
         Fill.Outlines.clear();
     }
     Conclude(State, Outcome);
@@ -15288,7 +15326,7 @@ void DrawSketchToolbar(SketcherWorkspaceState& State, ImVec2 Image, ImVec2 Exten
                                  { "SketchCut", IconSymbol::SketcherCut, "Split", SplitCondition, (SketchCondition || !State.Document.Regeneration.Curves.empty()) && !State.Bevel.ActiveCondition },
                                  { "SketchInsert", IconSymbol::SketcherPoints, "Point", InsertCondition, SketchCondition && !State.Bevel.ActiveCondition },
                                  { "SketchTrim", IconSymbol::SketcherTrim, "Trim", TrimCondition, SketchCondition },
-                                 { "SketchFill", IconSymbol::SketcherFill, "Fill", State.Fill.ActiveCondition, SketchCondition },
+                                 { "SketchFill", IconSymbol::SketcherFill, "Fill", State.Fill.ActiveCondition, SketchCondition || !State.Document.Regeneration.Curves.empty() },
                                  { "SketchDimension", IconSymbol::SketcherSelect, "Dim", State.DimensionTool.ActiveCondition, !State.Bevel.ActiveCondition },
                                  { "SketchKnife", IconSymbol::SketcherSubtract, "Knife", State.Knife.ActiveCondition, State.Document.Summary.PresentCondition && !State.Bevel.ActiveCondition },
                                  { "SketchOffset", IconSymbol::SketcherSelect, "Offset", State.Sweep.ActiveCondition && State.Sweep.Verb == SketcherSweepVerb::Offset, SketchCondition && !State.Bevel.ActiveCondition },
@@ -18176,7 +18214,8 @@ void DrawDrawingOptions(SketcherWorkspaceState& State)
         ImGui::EndDisabled();
         SketcherAuthoringToggle(State, "Snap to curves###ToolCurveSnap",&State.DrawingCurveSnap);
         ImGui::BeginDisabled(Arc);SketcherAuthoringToggle(State, "Auto-split 3D crossings###ToolAutoSplit",&State.DrawingAutoSplit);ImGui::EndDisabled();
-        if(State.DrawingAutoSplit) {
+        ImGui::BeginDisabled(Arc);SketcherAuthoringToggle(State, "Auto-surface closed loops###ToolAutoSurface",&State.DrawingAutoSurface);ImGui::EndDisabled();
+        if(State.DrawingAutoSplit || State.DrawingAutoSurface) {
             ImGui::SetNextItemWidth(110);ImGui::InputDouble("Joint tolerance (m)###ToolJointTolerance",&State.DrawingIntersectionTolerance,0,0,"%.4f");
         }
         if(!D.SurfaceCondition) {
@@ -18312,7 +18351,8 @@ void DrawDrawingCard(SketcherWorkspaceState& State)
     BeginCard("Surface tracing");
     ImGui::TextWrapped("6: whole curves · 2: spans · 1: points. Arc: planar, not surface.");
     SketcherAuthoringToggle(State, "Drawing options###DrawingOptions",&State.DrawingOptionsVisible);
-    if(PressButton(State,"Split existing cage crossings###SplitCage",ImVec2(-1,0),!Drawing.ActiveCondition)) Conclude(State,SplitSketcherCurveCrossings(State.Document,State.DrawingIntersectionTolerance));
+    if(PressButton(State,"Split existing cage crossings###SplitCage",ImVec2(-1,0),!Drawing.ActiveCondition)) Conclude(State,SplitSketcherCurveCrossings(State.Document,State.DrawingIntersectionTolerance,State.DrawingAutoSurface));
+    if(PressButton(State,"Build surfaces from closed loops###BuildLoopSurfaces",ImVec2(-1,0),!Drawing.ActiveCondition)) Conclude(State,BuildSketcherClosedLoopSurfaces(State.Document,State.DrawingIntersectionTolerance));
     ImGui::BeginDisabled(Drawing.ActiveCondition || State.Knife.ActiveCondition);
     if (SketcherAuthoringToggle(State, "Surface snap###SurfaceTrace", &State.SurfaceTraceEnabled))
         Announce(State, State.SurfaceTraceEnabled ? "Surface tracing ON · Curve / Arc / Line · Ctrl: model edges · no planar fallback" : "Surface tracing OFF · ordinary sketch tools");
@@ -18990,7 +19030,18 @@ void DrawOperationsCard(SketcherWorkspaceState& State, SketcherSheet& Sheet)
             Operations.push_back({ "FillSketch", IconSymbol::SketcherFill, Filled ? "Unfill · F" : "Fill · F" });
         }
     }
+    bool SingleClosedCurve = false;
+    if (Selection.Curves.size() == 1)
+    {
+        const auto Found = State.Document.Regeneration.Curves.find(Selection.Curves.front());
+        if (Found != State.Document.Regeneration.Curves.end() && Found->second.Curve.Definition && Found->second.Curve.Definition->Poles.size() >= 3)
+        {
+            const auto& Poles = Found->second.Curve.Definition->Poles;
+            SingleClosedCurve = Distance(Poles.front(), Poles.back()) <= State.DrawingIntersectionTolerance;
+        }
+    }
     const bool CanLoftOperation = Selection.Curves.size() >= 2
+                               || SingleClosedCurve
                                || (!Selection.Curves.empty() && !Selection.Edges.empty())
                                || (Selection.Curves.size() == 1 && (!Selection.Bodies.empty() || !Selection.Faces.empty()));
     if (CanLoftOperation) Operations.push_back({ "Loft", IconSymbol::SketcherSurface, "Loft · L" });

@@ -45,14 +45,16 @@ Frontier/
 ├── EngineDocs/                                    // Authoritative architectural guides & domain references
 │
 ├── Documentation/                                 // Repository governance, active plans, and engineering tracking
+│   ├── README.md                                  // Documentation & workspace README index
 │   ├── AgenticInstructions/                       // Mandatory skill protocols (imported & harmonized)
 │   │   ├── SKILL-CompactOutputProtocol.md         // Skimmer-first output & mandatory decision tables
 │   │   ├── SKILL-Emoji.md                         // Approved emoji vocabulary & rating markers
-│   │   ├── SKILL-Naming.md                        // Mechanism-first naming construction & 6-gate check
+│   │   ├── SKILL-Naming.md                        // Mechanism-first naming construction & 7-gate check
 │   │   └── SKILL-Formatting.md                    // File banners, section rulers, unit tags, Allman braces
 │   ├── Plans/                                     // Architectural & domain implementation plans + Markdown Studio
-│   │   ├── DocumentFormatsInstancePlan.md      // Two-Tier Hybrid .Space format registry & Instance concepts
-│   │   ├── DocumentSpacesRevisionPlan.md       // Confirmed .Space codecs, 215/750 MiB revision & workspace tree
+│   │   ├── README.md                              // Index of all 34 architectural plans, reports & audits
+│   │   ├── DocumentFormatsInstancePlan.md         // Two-Tier Hybrid .Space format registry & Instance concepts
+│   │   ├── DocumentSpacesRevisionPlan.md          // Confirmed .Space codecs, 215/750 MiB revision & workspace tree
 │   │   ├── ThreadingArchitecturePlan.md           // Priority-budgeted ExecutionChannels, domain threads & DebugThread watchdog
 │   │   ├── ContentBrowserArchitecturePlan.md      // Pre-baked ThumbnailSheet, SSD/HDD streaming, quarantine import & UV masks
 │   │   ├── UVWorkspaceArchitecturePlan.md         // Native C++20 & .slang UV Workspace architecture & completion ledger
@@ -491,25 +493,30 @@ Frontier/
     │   ├── SpatialAnnotation.{h,cpp}              // GPU 3D debug bounding volumes, coordinate axes, and shapes
     │   └── DiagnosticPrimitives.{h,cpp}           // GPU wireframe boxes, spheres, rays, and cages (never CPU/ImGui)
     │
-    ├── Workspaces/                                // Headless multi-document session, revision & domain runtimes
+    ├── Workspaces/                                // Multi-document session, revision & domain studio runtimes
+    │   ├── README.md                              // Master index of 12 registered host workspaces, controls, hotkeys & naming audit
+    │   ├── WorkspaceCapabilityRegister.{h,cpp}    // Registry of all 12 active Frontier & domain workspace targets
     │   ├── WorkspaceExtension.{h,cpp}             // Workspace lifecycle participant & open tab control
     │   ├── WorkspaceDocument.{h,cpp}              // Live editable document identity & codec dispatch
     │   ├── WorkspaceRegistry.{h,cpp}              // Active workspace tracker & extension router
     │   ├── WorkspaceToken.h                       // Stale-detecting token with embedded workspace tag
     │   ├── WorkspaceExchange.{h,cpp}              // Live in-memory cross-workspace sync (Geometry ↔ UV ↔ Texture)
     │   │
-    │   ├── Revision/                              // Parametric per-document & global revision engine
+    │   ├── Revision/                              // Parametric per-document & global revision engine (README.md)
+    │   │   ├── README.md                          // Revision DAG architecture & read-only naming audit
     │   │   ├── RevisionExtension.{h,cpp}          // Revision lifecycle participant & 750 MiB global ceiling
     │   │   ├── ContentRegion.{h,cpp}              // Monotonic 215 MiB per-document 64B-aligned memory block
     │   │   ├── OperationRecorder.{h,cpp}          // Parametric operation recording & Redo-Purge / Prefix-Fold
     │   │   ├── CursorResolution.{h,cpp}           // Active revision cursor & arbitrary-resolution reconstruction
+    │   │   ├── RevisionTracker.{h,cpp}            // Per-document revision ledger
     │   │   └── NonLinearHistory.{h,cpp}           // Directed acyclic revision history tree
     │   │
-    │   ├── UV/                                    // UV workspace session, interactive viewport, panels & solvers
+    │   ├── UV/                                    // UV workspace session, interactive viewport, panels & solvers (README.md)
+    │   │   ├── README.md                          // UVWorkspace UI controls, hotkeys & C++ naming audit
     │   │   ├── UVPaneAppearance.h                 // ControlAppearance theme binder, studio controls & vector icons
     │   │   ├── UVWorkspaceSession.{h,cpp}         // Editable UV layers, UDIM settings, selection, Interchange & Revision
     │   │   ├── UVViewportInteractor.{h,cpp}       // 2D/3D camera orbit/pan/zoom, GPU picking, gizmo drag & G/R/S modal
-    │   │   ├── UVViewportHost.{h,cpp}             // Dual/single 2D+3D ViewportProjectionPane host, tool rail & drawer
+    │   │   ├── UVViewportHost.{h,cpp}             // Dual/single 2D+3D ViewportProjectionPane host, 12-slot rail & drawer
     │   │   ├── UVOutlinerPanel.{h,cpp}            // UV Space outliner, utilization/stretch gauges, layers & budget bar
     │   │   ├── UVInspectorPanel.{h,cpp}           // 5-tab Inspector (Pack, Unwrap, UDIM, Shading, Check)
     │   │   ├── UVWorkspaceHost.{h,cpp}            // Standalone & FeatureSet UV host, ControlCentre & OS file-drop intake
@@ -524,70 +531,67 @@ Frontier/
     │   │       ├── UVIslandLayoutOperations.{h,cpp}// Stack similar islands, unstack overlaps & fill empty pockets
     │   │       └── TexelDensityEqualizer.{h,cpp}  // Target texel density [px/m] & UDIM spillover equalizer
     │   │
-    │   ├── Geometry/                              // Headless GeometrySpace authoring runtime & operations
-    │   ├── Texture/                               // Headless TextureSpace authoring runtime & operations
-    │   ├── Material/                              // Headless MaterialSpace authoring runtime & operations
-    │   ├── Image/                                 // Headless ImageSpace authoring runtime & operations
-    │   ├── Vector/                                // Headless VectorSpace authoring runtime & operations
-    │   ├── Simulation/                            // Headless SimulationSpace authoring runtime & operations
-    │   ├── Volumetric/                            // Headless VolumetricSpace authoring runtime & operations
-    │   ├── Particle/                              // ParticleSpace authoring runtime, ParticleExchange handoff & UI panes
-    │   └── Fracture/                              // Fracture Studio UI (Session, Outliner, OpenPBR Viewport, Inspector, Host)
+    │   ├── Texturing/                             // Pattern, Stamp & Baking Studios (README.md)
+    │   │   ├── README.md                          // Pattern/Stamp/Baking UI controls, hotkeys & C++ naming audit
+    │   │   ├── TexturingPaneAppearance.h          // Shared dark/light theme tokens
+    │   │   ├── PatternStampWorkspaceHost.{h,cpp}  // Shared Pattern & Stamp host (+ PatternWorkspaceHost.h / StampWorkspaceHost.h)
+    │   │   ├── PatternStampStackSession.{h,cpp}   // 2D vector layer stack, 8 GPU modifiers & 22 OpenPBR channels
+    │   │   ├── PatternStampToolHeaderPane.{h,cpp} // Dual-band header, Presets/Snap/View/Save sheets & 15-tool rail
+    │   │   ├── PatternStampLayerStackPane.{h,cpp} // Vector layer hierarchy & blend stack
+    │   │   ├── PatternStampInspectorPane.{h,cpp}  // OpenPBR fill/stroke & modifier cards
+    │   │   ├── VectorViewportInteractor.{h,cpp}   // 2D vector tool routing, modal G/R/S, SVG clipboard & 1/2/3 channels
+    │   │   ├── BakingWorkspaceHost.{h,cpp}        // Baking Studio host
+    │   │   ├── BakingWorkspaceSession.{h,cpp}     // 18-target GPU baker & Float32 VolumeSdf session
+    │   │   ├── BakingTargetsPane.{h,cpp}          // 4 quick presets + 18-target categorized swatch grid
+    │   │   ├── BakingViewportPane.{h,cpp}         // 3D/2D/High-Wire/Cage preview & camera navigation
+    │   │   └── BakingInspectorPane.{h,cpp}        // Surface ray/cage offsets, Volume SDF bounds/slice & export
+    │   │
+    │   ├── Fracture/                              // Fracture Studio UI (README.md)
+    │   │   ├── README.md                          // FractureWorkspace UI controls, hotkeys & C++ naming audit
+    │   │   └── Fracture{Icons,InspectorPanel,OutlinerPanel,ViewportHost,ViewportRenderer,WorkspaceHost,WorkspaceSession}.*
+    │   │
+    │   ├── ParametricSketcher/                    // Parametric B-rep / NURBS CAD Studio (README.md)
+    │   │   ├── README.md                          // Sketcher UI controls, hotkeys & C++ naming audit
+    │   │   ├── Document/                          // SketcherDocument, Codec, Scene, Knife, Matcap, DrawingSheet, Exchange
+    │   │   ├── Interface/                         // SketcherWorkspaceHost, SketcherInterface, Outliner, Navigation, Script
+    │   │   └── Viewport/                          // SketcherRasterization, Camera, OrbitCamera, GizmoSpace, Snapping
+    │   │
+    │   ├── Fluid/                                 // Fluid & Pyro Simulation Studio (README.md)
+    │   │   ├── README.md                          // FluidWorkspace UI controls, hotkeys & C++ naming audit
+    │   │   └── Fluid{AtlasMinimap,FlipbookExporter,InspectorPanel,OutlinerPanel,PresetBrowser,ViewportHost,WorkspaceHost,WorkspaceSession}.*
+    │   │
+    │   ├── Material/                              // Dynamic OpenPBR Material Studio (README.md)
+    │   │   ├── README.md                          // MaterialWorkspace UI controls, hotkeys & C++ naming audit
+    │   │   └── Material{PreviewRenderer,ViewportHost,WorkspaceHost,WorkspaceSession}.*
+    │   │
+    │   ├── Particle/                              // Particle & VFX Studio (README.md)
+    │   │   ├── README.md                          // ParticleWorkspace UI controls, hotkeys & C++ naming audit
+    │   │   └── Particle{Exchange,InspectorPanel,OutlinerPanel,PaneAppearance,ViewportHost,WorkspaceHost,WorkspaceSession}.*
+    │   │
+    │   └── ComponentEditor/                       // Modular Component Class & Assembly Workspace (README.md)
+    │       ├── README.md                          // ComponentEditor UI controls, hotkeys & C++ naming audit
+    │       └── Component{ContentTray,DetailsPanel,DrawerPanel,TreePanel,ViewportHost,WorkspaceHost,WorkspaceSession}.*
     │
-    ├── Editor/                                    // Tooling, Viewports & Modular UI ONLY (Excluded from Shipping)
-    │   ├── Viewports/                             // Shared general-purpose 3D & 2D viewports
-    │   │   ├── ProjectionViewport.{h,cpp}         // Shared 3D perspective/orthographic viewport & camera host
-    │   │   ├── ViewportShadingCategory.h          // Wireframe, SolidClay, ShadedMaterial, TexelChecker, StretchHeat, Lit
-    │   │   ├── VectorCanvas.{h,cpp}               // General-purpose 2D vector painting & graphics canvas
-    │   │   ├── TransformGizmo.{h,cpp}             // GPU .slang 3D translation, rotation, and scale manipulators
-    │   │   └── NavigationOverlay.{h,cpp}          // GPU .slang reference grid, axes, and orientation indicator
-    │   │
-    │   ├── Workspaces/                            // Concrete modular editor workspace UI suites
-    │   │   ├── UV/                                // Modular UV Editor UI (pairs UVTileCanvas + shared ProjectionViewport)
-    │   │   │   ├── UVWorkspaceRegistration.{h,cpp}// Docking layout registration & workspace entry
-    │   │   │   ├── UVOutlinerPanel.{h,cpp}        // Island tree, priority groups & UDIM UVTile list
-    │   │   │   ├── UVInspectorPanel.{h,cpp}       // Pack budgets, padding & texel density properties
-    │   │   │   ├── Viewports/
-    │   │   │   │   └── UVTileCanvas.{h,cpp}       // 2D UVTile / UDIM projection viewport (3D view uses ProjectionViewport)
-    │   │   │   ├── Toolbars/
-    │   │   │   │   ├── UVOperationToolbar.{h,cpp} // Top strip: Unwrap, Pack, Relax & Stitch triggers
-    │   │   │   │   ├── UVSeamEditingToolbar.{h,cpp}// Edge cut, path mark, weld & seam mode toggles
-    │   │   │   │   ├── UVTransformToolbar.{h,cpp} // Island align, rotate 90°, flip & normalize tools
-    │   │   │   │   └── UVDisplayOptionToolbar.{h,cpp}// Grid snap, checkerboard & distortion heatmap toggles
-    │   │   │   └── Interactions/
-    │   │   │       ├── UVSelectionInteractors.{h,cpp}// Point pick, marquee box & brush select routers
-    │   │   │       ├── UVTransformGizmo.{h,cpp}   // 2D/3D interactive translation, rotation & scale handles
-    │   │   │       └── UVSeamPickRaycaster.{h,cpp}// 3D ray-facet intersection for live seam cutting & painting
-    │   │   ├── Geometry/                          // Modular Geometry Editor UI (panels, toolbars, interactions)
-    │   │   ├── Texture/                           // Modular Texture Editor UI (panels, toolbars, interactions)
-    │   │   ├── Material/                          // Modular Material Editor UI (panels, toolbars, interactions)
-    │   │   ├── Image/                             // Modular Image Editor UI (panels, toolbars, interactions)
-    │   │   ├── Vector/                            // Modular Vector Editor UI (panels, toolbars, interactions)
-    │   │   ├── Simulation/                        // Modular Simulation Editor UI (panels, toolbars, interactions)
-    │   │   ├── Volumetric/                        // Modular Volumetric Editor UI (panels, toolbars, interactions)
-    │   │   └── Particle/                          // Modular Particle Editor UI (panels, toolbars, interactions)
-    │   │
-    │   ├── Explorer/                              // Project structure and browser tools
-    │   │   ├── SceneOutliner.{h,cpp}              // Spatial world tree navigator
-    │   │   ├── PropertyInspectorHost.{h,cpp}      // Reflected attribute inspector
-    │   │   ├── ProjectBrowser.{h,cpp}             // Multi-workspace and .ProjectSpace document explorer
-    │   │   ├── ContentBrowser.{h,cpp}             // Asset packages, materials, and runtime contents
-    │   │   └── DebugConsole.{h,cpp}               // Interactive command interpreter & diagnostic log
-    │   │
-    │   └── Diagnostics/                           // Profiling and engine instrumentation
-    │       ├── CycleProfiler.{h,cpp}              // CPU/GPU tick profiler
-    │       ├── MemoryDebugger.{h,cpp}             // Allocation leak tracker and region visualizer
-    │       └── GPUCaptureRecorder.{h,cpp}         // RenderDoc / PIX programmatic capture recorder
+    ├── Editor/                                    // Editor Explorer & ForceField Workspace ONLY (Excluded from Dev/Shipping)
+    │   ├── README.md                              // Explorer & ForceFieldWorkspace UI controls, hotkeys & naming audit
+    │   ├── Explorer/                              // ProjectBrowser & ContentBrowser
+    │   │   ├── ProjectBrowser.{h,cpp}             // Multi-workspace & .ProjectSpace launcher hub
+    │   │   └── ContentBrowser.{h,cpp}             // Editor ContentBrowser wrapper
+    │   └── Workspaces/
+    │       └── Simulation/                        // ForceFieldWorkspace (FrontierForceField)
+    │           ├── VectorFieldViewportSession.{h,cpp} // Dual/Single vector field viewports, GPU overlays & probe telemetry
+    │           ├── ForceInspectorView.{h,cpp}     // 4-tab Force Inspector (Field, Formula, Layers, Cache)
+    │           └── ForcePresetBrowserPanel.{h,cpp}// Pull-up Force Presets (.ForceModel) & VectorFieldLang browser
     │
-    ├── Lifecycle/                                 // Deterministic sequence, game runtime, workspace & desktop launch
+    ├── Lifecycle/                                 // Deterministic sequence, game runtime, workspace & 12 desktop launchers
+    │   ├── README.md                              // World Editor UI controls, hotkeys, launchers & C++ naming audit
     │   ├── LifecycleSequence.h                    // C++20 concept & reverse-order teardown sequence (Editor/Dev/Shipping)
     │   ├── RuntimeLifecycle.{h,cpp}               // Standalone game/runtime loop (Development/Shipping Game)
     │   ├── WorkspaceLifecycle.{h,cpp}             // Multi-document session & revision loop (Editor/Development)
-    │   ├── EditorLifecycle.{h,cpp}                // Authoring loop & GPU overlay entry (FRONTIER_PROFILE_EDITOR only)
-    │   ├── DesktopWorkspaceLaunch.{h,cpp}         // GLFW + Vulkan 1.2 swapchain/offscreen launch & CLI smoke capture
-    │   ├── FrontierUVLaunch.cpp                   // Standalone FrontierUV desktop application entry
-    │   ├── FrontierFractureLaunch.cpp             // Standalone FrontierFracture desktop application entry
-    │   └── FrontierEditorLaunch.cpp               // Full FeatureSet FrontierEditor desktop application entry
+    │   ├── EditorLifecycle.{h,cpp}                // Frontier World Editor loop & GPU gizmo/render entry (FRONTIER_PROFILE_EDITOR)
+    │   ├── DesktopWorkspaceLaunch.{h,cpp}         // GLFW + Vulkan swapchain/offscreen launch, top pills & CLI smoke capture
+    │   ├── ProjectExecutionRunner.{h,cpp}         // Project launch & execution loop
+    │   └── Frontier{Host,Editor,UV,Baking,Pattern,Stamp,Material,Particle,Fracture,ForceField,Fluid,Sketcher}Launch.cpp
     │
     ├── Components/                                // Reusable UI controls, themes, typography, motion & panels
     │   ├── PixelSpace.{h,cpp}                     // Logical-to-physical 2D drawing canvas & group transforms

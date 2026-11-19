@@ -4,15 +4,19 @@
 // 🧩 Validation exhibit for Phase 3 Parametric Sketcher Vulkan viewport rasterization, MatCaps, R32 identity pick & Slang shaders
 
 #include "Engine/GeometricRaster/VulkanInterchange.h"
+#include "Engine/GeometrySpace/Parametric/Surfacing/CurveFitting.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocument.h"
+#include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocumentCodec.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherMatcap.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherScene.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherPortableImage.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherRasterization.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherSnapping.h"
 
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 namespace
@@ -174,6 +178,145 @@ int main()
         return 1;
     }
     ++Passed;
+
+    // 2. Curved-surface retopology visual proof + 3D SpaceCurve x SpaceCurve Intersection snap
+    {
+        auto SpherePoint = [](double Radius, double Theta, double Phi) -> Vector3
+        {
+            const double CosPhi = std::cos(Phi);
+            return { Radius * CosPhi * std::cos(Theta), Radius * CosPhi * std::sin(Theta), Radius * std::sin(Phi) };
+        };
+        auto SampleSphereArc = [&](double Radius, double Theta0, double Phi0, double Theta1, double Phi1, int Count = 9) -> NurbsCurve
+        {
+            std::vector<Vector3> Pts;
+            Pts.reserve(size_t(Count));
+            for (int I = 0; I < Count; ++I)
+            {
+                const double U = double(I) / double(Count - 1);
+                Pts.push_back(SpherePoint(Radius, Theta0 + (Theta1 - Theta0) * U, Phi0 + (Phi1 - Phi0) * U));
+            }
+            return FitSpaceCurve(Pts, {}).Curve;
+        };
+
+        SketcherDocument Retopo = CreateSketcherDocument("CurvedRetopologyProof");
+        SketcherConstructRequest RefSphere {};
+        RefSphere.Kind   = SketcherConstructKind::Sphere;
+        RefSphere.Radius = 2.0;
+        if (!VerifyCheck(ConstructSketcherPrimitive(Retopo, RefSphere).AcceptedCondition, "Construct curved Clay reference sphere"))
+        {
+            return 1;
+        }
+        const std::string RefBody = Retopo.Summary.Bodies.front().Key;
+        SelectSketcherName(Retopo, SketcherSelectionKind::Body, RefBody, false);
+        (void)AssignSketcherMatcap(Retopo, "Clay");
+        (void)ToggleSketcherLock(Retopo, RefBody);
+
+        // Trace crossing 3D curves on the curved surface (slightly proud at R=2.012 so CAD patches read crisply over Clay)
+        const double RCurve = 2.012;
+        // Latitudinal curves (phi = 0.12 and phi = 0.48, spanning theta = -0.95 to 0.30)
+        // Meridional curves (theta = -0.75, theta = -0.35 -> curved Square; theta = 0.15 -> curved Rectangle)
+        // Diagonal crossing curves forming a curved Triangle on top of the Square (crossing LatHigh inside [-0.75, -0.35])
+        const auto LatLow  = SampleSphereArc(RCurve, -0.95, 0.12,  0.30, 0.12);
+        const auto LatHigh = SampleSphereArc(RCurve, -0.95, 0.48,  0.30, 0.48);
+        const auto MerLeft = SampleSphereArc(RCurve, -0.75, -0.02, -0.75, 0.62);
+        const auto MerMid  = SampleSphereArc(RCurve, -0.35, -0.02, -0.35, 0.62);
+        const auto MerRgt  = SampleSphereArc(RCurve,  0.15, -0.02,  0.15, 0.62);
+        const auto TriLeft = SampleSphereArc(RCurve, -0.71, 0.40, -0.52, 0.86);
+        const auto TriRgt  = SampleSphereArc(RCurve, -0.39, 0.40, -0.58, 0.86);
+
+        const std::pair<const char*, NurbsCurve> TraceDefs[] = {
+            { "LatLow",  LatLow  }, { "LatHigh", LatHigh },
+            { "MerLeft", MerLeft }, { "MerMid",  MerMid  }, { "MerRgt", MerRgt },
+            { "TriLeft", TriLeft }, { "TriRgt",  TriRgt  }
+        };
+        for (const auto& [Tag, CurveDef] : TraceDefs)
+        {
+            const auto Out = DrawSketcherProjectedCurve(Retopo, CurveDef, false, true, 0.001, true);
+            if (!Out.AcceptedCondition)
+            {
+                std::fprintf(stderr, "Curve %s failed: %s\n", Tag, Out.Refusal.c_str());
+                return 1;
+            }
+        }
+
+        int RebuiltFaces = 0;
+        for (const auto& Body : Retopo.Summary.Bodies)
+        {
+            if (Body.Key == RefBody) continue;
+            RebuiltFaces += Body.Faces;
+            SelectSketcherName(Retopo, SketcherSelectionKind::Body, Body.Key, false);
+            (void)AssignSketcherMatcap(Retopo, "Ceramic");
+        }
+        if (!VerifyCheck(RebuiltFaces >= 3, "Curved retopology cage built Square, Rectangle, and Triangle CAD patches"))
+        {
+            std::fprintf(stderr, "RebuiltFaces=%d\n", RebuiltFaces);
+            return 1;
+        }
+        ClearSketcherSelection(Retopo);
+
+        const SketcherScene RetopoScene = BuildSketcherScene(Retopo);
+        const SketcherMatcapLibrary RetopoMatcaps = AssembleSketcherMatcaps(Retopo.Appearance);
+
+        // Verify 3D SpaceCurve x SpaceCurve Intersection snap at crossing (-0.35, 0.48)
+        OrbitCamera RetopoCam {};
+        RetopoCam.Target    = { 0.0, 0.0, 0.35 };
+        RetopoCam.Azimuth   = -0.45;
+        RetopoCam.Elevation = 0.42;
+        RetopoCam.Distance  = 5.2;
+        const OrbitCameraFrame RetopoFrame = FrameOrbitCamera(RetopoCam, 1280.0, 720.0);
+
+        SketcherSnapCatalogue RetopoCatalogue = CatalogueSketcherSnaps(Retopo, RetopoScene);
+        const Vector3 CrossPos = SpherePoint(RCurve, -0.35, 0.48);
+        double CrossPx = 0.0, CrossPy = 0.0;
+        if (!VerifyCheck(ProjectSketcherPoint(RetopoFrame, CrossPos, CrossPx, CrossPy), "Project SpaceCurve crossing to viewport"))
+        {
+            return 1;
+        }
+        SketcherSnapQuery CrossQ {};
+        CrossQ.Frame  = RetopoFrame;
+        CrossQ.PixelX = CrossPx;
+        CrossQ.PixelY = CrossPy;
+        CrossQ.Filter = { false, false, false, false, true, false, false, false, false };
+        CrossQ.FreeCurvesOnly = true;
+        CrossQ.OverlayCurvesVisible = true;
+        const SketcherSnap CrossHit = FindSketcherSnap(RetopoCatalogue, Retopo, RetopoScene, CrossQ);
+        if (!VerifyCheck(CrossHit.Kind == SketcherSnapKind::Intersection && Distance(CrossHit.Position, CrossPos) < 0.02,
+                         "FindSketcherSnap detects 3D SpaceCurve x SpaceCurve Intersection"))
+        {
+            return 1;
+        }
+        ++Passed;
+
+        // Save .solidarc for live FrontierSketcher UI capture
+        const std::filesystem::path SolidArcOut = std::filesystem::temp_directory_path() / "CurvedRetopologyProof.solidarc";
+        {
+            std::ofstream Out(SolidArcOut, std::ios::binary);
+            Out << EncodeSketcherDocument(Retopo);
+        }
+
+        // Render 1280x720 curved retopology viewport proof
+        Raster.Resize(1280u, 720u);
+        Raster.UploadMatcaps(RetopoMatcaps.Pictures);
+        Raster.UploadScene(RetopoScene);
+        SketcherViewportStyle RetopoStyle {};
+        RetopoStyle.GridEnabled = true;
+        VkCommandBuffer RetopoCmd = Device.BeginSingleTimeCommands();
+        Raster.Record(RetopoCmd, RetopoFrame, RetopoStyle, true, 640, 360);
+        vkEndCommandBuffer(RetopoCmd);
+        const uint64_t RetopoTick = Device.DispatchCommandBufferAsync(RetopoCmd);
+        if (!VerifyCheck(Device.AwaitTimelineTick(RetopoTick), "Await curved retopology GPU render"))
+        {
+            return 1;
+        }
+        Device.FreeCommandBuffer(RetopoCmd);
+        const std::filesystem::path RetopoPng = RepoRoot / "Exhibits/Images/ParametricSketcher/CurvedRetopologyViewportProof.png";
+        if (!VerifyCheck(WriteSketcherPng(RetopoPng.string(), 1280u, 720u, Raster.ReadbackColour()),
+                         "Write CurvedRetopologyViewportProof.png"))
+        {
+            return 1;
+        }
+        ++Passed;
+    }
 
     Raster.Destroy();
     Device.TeardownInterchange();
