@@ -392,7 +392,7 @@ struct DirectEmissiveTri
     const float Dist2 = std::max(1.0e-4f, Mathematics::EvaluateLengthSquared(Tri.Centroid - HitSample.WorldPosition));
     const float SolidAngleEst = Tri.Area / Dist2;
     float Visibility = 0.0f;
-    if (SolidAngleEst > 0.0004f)
+    if (SolidAngleEst > 0.0002f)
     {
         static constexpr std::array<std::array<float, 3u>, 9u> Bary9 {{
             {{ 0.70f, 0.15f, 0.15f }},

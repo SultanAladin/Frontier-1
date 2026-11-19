@@ -205,7 +205,32 @@ void AccumulateEmissiveSh9IndirectField(
 {
     if (Emissives.empty() || Scene.SceneTree.Primitives.empty()) return;
 
-    // 1. Scene-general deterministic bounce surfels over non-emissive geometry triangles (multi-threaded)
+    // 1. Interior probe bounds (use LatticeConfig when valid, else inset SceneTree bounds)
+    constexpr uint32_t NX = 15u, NY = 12u, NZ = 6u;
+    const Mathematics::Axis3D BoundsExt = Scene.SceneTree.RootBoundsMax - Scene.SceneTree.RootBoundsMin;
+    const Mathematics::Axis3D Pad {
+        std::min(1.5f, BoundsExt.X * 0.14f),
+        std::min(1.5f, BoundsExt.Y * 0.14f),
+        std::min(0.42f, BoundsExt.Z * 0.12f),
+    };
+    const bool HasLatticeBounds =
+        Scene.LatticeConfig.CountX >= 2u &&
+        Scene.LatticeConfig.GridMaximumWorld.X > Scene.LatticeConfig.GridMinimumWorld.X + 0.25f &&
+        Scene.LatticeConfig.GridMaximumWorld.Y > Scene.LatticeConfig.GridMinimumWorld.Y + 0.25f &&
+        Scene.LatticeConfig.GridMaximumWorld.Z > Scene.LatticeConfig.GridMinimumWorld.Z + 0.25f;
+    const Mathematics::Axis3D GMin = HasLatticeBounds
+        ? Scene.LatticeConfig.GridMinimumWorld
+        : (Scene.SceneTree.RootBoundsMin + Pad);
+    const Mathematics::Axis3D GMax = HasLatticeBounds
+        ? Scene.LatticeConfig.GridMaximumWorld
+        : (Scene.SceneTree.RootBoundsMax - Mathematics::Axis3D{ Pad.X, Pad.Y, std::min(0.25f, BoundsExt.Z * 0.08f) });
+    const Mathematics::Axis3D Step {
+        std::max(0.10f, (GMax.X - GMin.X) / static_cast<float>(NX - 1u)),
+        std::max(0.10f, (GMax.Y - GMin.Y) / static_cast<float>(NY - 1u)),
+        std::max(0.10f, (GMax.Z - GMin.Z) / static_cast<float>(NZ - 1u)),
+    };
+
+    // 2. Scene-general deterministic bounce surfels over non-emissive interior geometry triangles (multi-threaded)
     const uint32_t MatCount = Scene.MaterialRegister.QuerySlotCount();
     struct SurfelSeed
     {
@@ -218,7 +243,10 @@ void AccumulateEmissiveSh9IndirectField(
         float                  Rad  = 0.35f;
     };
     std::vector<SurfelSeed> Seeds;
-    Seeds.reserve(320u);
+    Seeds.reserve(512u);
+
+    const Mathematics::Axis3D SurfelMin = GMin - Mathematics::Axis3D{ 1.25f, 1.25f, 0.55f };
+    const Mathematics::Axis3D SurfelMax = GMax + Mathematics::Axis3D{ 1.25f, 1.25f, 0.85f };
 
     for (const auto& Prim : Scene.SceneTree.Primitives)
     {
@@ -240,7 +268,7 @@ void AccumulateEmissiveSh9IndirectField(
         const Mathematics::Axis3D P2 = Prim.Corner0 + Prim.Edge02;
         const Mathematics::LinearRGB Albedo = Mat.Diffuse.BaseColor * DiffW;
 
-        const uint32_t SubN = std::clamp(static_cast<uint32_t>(std::ceil(std::sqrt(TriArea / 0.65f))), 1u, 6u);
+        const uint32_t SubN = std::clamp(static_cast<uint32_t>(std::ceil(std::sqrt(TriArea / 0.55f))), 1u, 18u);
         const float SubArea = TriArea / static_cast<float>(SubN * SubN);
         const float SubRad  = std::sqrt(SubArea / Constants::PiFloat);
 
@@ -256,7 +284,14 @@ void AccumulateEmissiveSh9IndirectField(
                 float V = (static_cast<float>(IV) + 0.5f) / static_cast<float>(SubN);
                 if (U + V > 1.0f) { U = 1.0f - U; V = 1.0f - V; }
                 const float W0 = 1.0f - U - V;
-                Seeds.push_back(SurfelSeed{ P0 * W0 + P1 * U + P2 * V, Nrm, T1, T2, Albedo, SubArea, SubRad });
+                const Mathematics::Axis3D Pos = P0 * W0 + P1 * U + P2 * V;
+                if (Pos.X < SurfelMin.X || Pos.X > SurfelMax.X ||
+                    Pos.Y < SurfelMin.Y || Pos.Y > SurfelMax.Y ||
+                    Pos.Z < SurfelMin.Z || Pos.Z > SurfelMax.Z)
+                {
+                    continue;
+                }
+                Seeds.push_back(SurfelSeed{ Pos, Nrm, T1, T2, Albedo, SubArea, SubRad });
             }
         }
     }
@@ -338,22 +373,7 @@ void AccumulateEmissiveSh9IndirectField(
     }
     if (Surfels.empty()) return;
 
-    // 2. Build 15 x 12 x 6 Order-2 L2 SH9 Irradiance Field over interior scene bounds (multi-threaded)
-    constexpr uint32_t NX = 15u, NY = 12u, NZ = 6u;
-    const Mathematics::Axis3D BoundsExt = Scene.SceneTree.RootBoundsMax - Scene.SceneTree.RootBoundsMin;
-    const Mathematics::Axis3D Pad {
-        std::min(1.5f, BoundsExt.X * 0.14f),
-        std::min(1.5f, BoundsExt.Y * 0.14f),
-        std::min(0.42f, BoundsExt.Z * 0.12f),
-    };
-    const Mathematics::Axis3D GMin = Scene.SceneTree.RootBoundsMin + Pad;
-    const Mathematics::Axis3D GMax = Scene.SceneTree.RootBoundsMax - Mathematics::Axis3D{ Pad.X, Pad.Y, std::min(0.25f, BoundsExt.Z * 0.08f) };
-    const Mathematics::Axis3D Step {
-        std::max(0.10f, (GMax.X - GMin.X) / static_cast<float>(NX - 1u)),
-        std::max(0.10f, (GMax.Y - GMin.Y) / static_cast<float>(NY - 1u)),
-        std::max(0.10f, (GMax.Z - GMin.Z) / static_cast<float>(NZ - 1u)),
-    };
-
+    // 3. Build 15 x 12 x 6 Order-2 L2 SH9 Irradiance Field over interior scene bounds (multi-threaded)
     struct ShProbe
     {
         Mathematics::Axis3D Pos {};
@@ -379,9 +399,9 @@ void AccumulateEmissiveSh9IndirectField(
                 Probes[Idx].Pos = P;
 
                 uint32_t BackCnt = 0u;
-                for (uint32_t R = 0u; R < 16u; ++R)
+                for (uint32_t R = 0u; R < 32u; ++R)
                 {
-                    const float Z   = 1.0f - (2.0f * (static_cast<float>(R) + 0.5f)) / 16.0f;
+                    const float Z   = 1.0f - (2.0f * (static_cast<float>(R) + 0.5f)) / 32.0f;
                     const float Rxy = std::sqrt(std::max(0.0f, 1.0f - Z * Z));
                     const float Phi = Constants::TauFloat * std::fmod(static_cast<float>(R) * 0.61803398875f, 1.0f);
                     const Mathematics::Axis3D D { Rxy * std::cos(Phi), Rxy * std::sin(Phi), Z };
@@ -390,7 +410,7 @@ void AccumulateEmissiveSh9IndirectField(
                     const auto Hit = Scene.SceneTree.TraceClosestRay(Ray, false);
                     if (Hit.HitConfirmed && Mathematics::EvaluateDot(Hit.GeometricNormal, D) >= 0.0f) ++BackCnt;
                 }
-                Probes[Idx].BackfaceRatio = static_cast<float>(BackCnt) / 16.0f;
+                Probes[Idx].BackfaceRatio = static_cast<float>(BackCnt) / 32.0f;
                 if (Probes[Idx].BackfaceRatio > 0.25f) continue;
 
                 for (const auto& S : Surfels)
@@ -407,7 +427,7 @@ void AccumulateEmissiveSh9IndirectField(
                     VisRay.MinimumDistance = 1e-3f; VisRay.MaximumDistance = std::max(0.01f, Dist - 0.03f);
                     if (Scene.SceneTree.QueryRayOccluded(VisRay)) continue;
 
-                    const float SolidAngle = std::min(1.5f, (S.Area * CosS) / std::max(0.20f, Dist2 + S.Radius * S.Radius));
+                    const float SolidAngle = std::min(2.0f, (S.Area * CosS) / std::max(0.18f, Dist2 + std::min(0.25f, S.Radius * S.Radius)));
                     const auto Rad = S.ExitanceOverPi * SolidAngle;
                     const auto Y = EvaluateEmissiveSh9Basis(Dir);
                     for (uint32_t K = 0u; K < 9u; ++K)
@@ -2285,6 +2305,13 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         // Winning Emissive Algorithm (#3): Order-2 L2 SH9 Emissive Multi-Bounce Field (Zero Cone GI, Zero Jitter, Zero Denoiser)
         if (!SceneEmissives.empty())
         {
+            if (!HasExternalNonEmissiveLight)
+            {
+                // Pure emissive-only mode: bypass jittered BVH/RtxLattice specular so both diffuse & glossy indirect come cleanly from L2 SH9
+                std::fill(Result.SpecularGlass.IndirectSpecularHdr.begin(),
+                          Result.SpecularGlass.IndirectSpecularHdr.end(),
+                          Mathematics::LinearRGB{ 0.0f, 0.0f, 0.0f });
+            }
             AccumulateEmissiveSh9IndirectField(
                 PreparedScene,
                 SceneEmissives,

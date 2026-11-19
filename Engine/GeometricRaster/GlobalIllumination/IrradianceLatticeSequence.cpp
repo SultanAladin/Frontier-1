@@ -187,9 +187,12 @@ Mathematics::LinearRGB IrradianceLatticeSequence::SampleChebyshevIrradianceOverP
     const auto BaseY = std::min(ActiveConfig.CountY - 2u, static_cast<uint32_t>(std::floor(GridCoord.Y)));
     const auto BaseZ = std::min(ActiveConfig.CountZ - 2u, static_cast<uint32_t>(std::floor(GridCoord.Z)));
 
-    const float AlphaX = GridCoord.X - static_cast<float>(BaseX);
-    const float AlphaY = GridCoord.Y - static_cast<float>(BaseY);
-    const float AlphaZ = GridCoord.Z - static_cast<float>(BaseZ);
+    const float LinAlphaX = GridCoord.X - static_cast<float>(BaseX);
+    const float LinAlphaY = GridCoord.Y - static_cast<float>(BaseY);
+    const float LinAlphaZ = GridCoord.Z - static_cast<float>(BaseZ);
+    const float AlphaX    = LinAlphaX * LinAlphaX * (3.0f - 2.0f * LinAlphaX);
+    const float AlphaY    = LinAlphaY * LinAlphaY * (3.0f - 2.0f * LinAlphaY);
+    const float AlphaZ    = LinAlphaZ * LinAlphaZ * (3.0f - 2.0f * LinAlphaZ);
 
     Mathematics::LinearRGB WeightedIrradiance { 0.0f, 0.0f, 0.0f };
     float                  TotalWeight        = 0.0f;
