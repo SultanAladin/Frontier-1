@@ -37,7 +37,7 @@ struct VolumetricFogUniformBlock
 
 float HashFogInt3Gpu(int IX, int IY, int IZ)
 {
-    uint N = uint(IX * 374761393 + IY * 668265263 + IZ * 2147483647);
+    uint N = uint(IX) * 374761393u + uint(IY) * 668265263u + uint(IZ) * 2147483647u;
     N = (N ^ (N >> 13u)) * 1274126177u;
     N = N ^ (N >> 16u);
     return float(N) * (1.0 / 4294967296.0);
@@ -62,14 +62,17 @@ float LatticeNoiseFog3Gpu(float3 P)
 
 float FogFbmGpu3(float3 P)
 {
-    float Sum  = 0.0;
-    float Amp  = 0.54;
-    float Freq = 1.0;
+    float  Sum = 0.0;
+    float  Amp = 0.54;
+    float3 Q   = P;
     for (uint Oct = 0u; Oct < 4u; ++Oct)
     {
-        Sum  += Amp * LatticeNoiseFog3Gpu(P * Freq);
-        Freq *= 2.03;
-        Amp  *= 0.46;
+        Sum += Amp * LatticeNoiseFog3Gpu(Q);
+        Q = float3(
+             0.80 * Q.x - 0.48 * Q.y + 0.36 * Q.z,
+             0.48 * Q.x + 0.86 * Q.y + 0.16 * Q.z,
+            -0.36 * Q.x + 0.04 * Q.y + 0.93 * Q.z) * 2.03 + float3(7.1, -11.3, 5.7);
+        Amp *= 0.46;
     }
     return Sum;
 }
@@ -233,6 +236,32 @@ void EvaluateFogForceProbesGpu(
     OutCurl = max(BaseWindVelCurl.w, SumCurl);
 }
 
+float3 AdvectFogPointBackwardGpu(
+    VolumetricFogUniformBlock Fog,
+    float3                    P,
+    float                     TimeSec,
+    float4                    BaseWindVelCurl,
+    out float3                OutVel,
+    out float                 OutCurl)
+{
+    EvaluateFogForceProbesGpu(Fog, P, TimeSec, BaseWindVelCurl, OutVel, OutCurl);
+    if (abs(TimeSec) <= 1.0e-4) return P;
+    float AdvSec = TimeSec * 0.72;
+    float Dt     = AdvSec * 0.25;
+    float3 Pos   = P;
+    for (uint S = 0u; S < 4u; ++S)
+    {
+        float3 K1, K2;
+        float  C1, C2;
+        EvaluateFogForceProbesGpu(Fog, Pos, TimeSec, BaseWindVelCurl, K1, C1);
+        float3 Mid = Pos - K1 * (0.5 * Dt);
+        EvaluateFogForceProbesGpu(Fog, Mid, TimeSec, BaseWindVelCurl, K2, C2);
+        Pos -= K2 * Dt;
+        OutCurl = max(OutCurl, C2);
+    }
+    return Pos;
+}
+
 float EvaluateSingleLocalFogDensityGpu(
     VolumetricFogUniformBlock Fog,
     GpuLocalFogVolume         Vol,
@@ -251,26 +280,8 @@ float EvaluateSingleLocalFogDensityGpu(
 
     float3 Vel;
     float  Curl;
-    EvaluateFogForceProbesGpu(Fog, P, TimeSec, Vol.WindVelCurl, Vel, Curl);
-
+    float3 AdvP = AdvectFogPointBackwardGpu(Fog, P, TimeSec, Vol.WindVelCurl, Vel, Curl);
     float Speed = length(Vel);
-    float3 AdvP = float3(
-        P.x - Vel.x * TimeSec * 0.72,
-        P.y - Vel.y * TimeSec * 0.72,
-        P.z - Vel.z * TimeSec * 0.40);
-    float SpiralMod = 1.0;
-    if (Curl > 1.0e-3)
-    {
-        float2 Dxy   = P.xy - Center.xy;
-        float  RadXY = length(Dxy);
-        float  Theta = atan2(Dxy.y, Dxy.x);
-        float  Twist = clamp(Curl * 0.18, 0.0, 3.6) * (0.45 * TimeSec - 0.08 * RadXY);
-        float  Cs = cos(Twist), Sn = sin(Twist);
-        AdvP.x = Center.x + (Dxy.x * Cs - Dxy.y * Sn) - Vel.x * TimeSec * 0.42;
-        AdvP.y = Center.y + (Dxy.x * Sn + Dxy.y * Cs) - Vel.y * TimeSec * 0.42;
-        AdvP.z += sin(Theta * 2.0 + Twist) * 1.15;
-        SpiralMod = 0.62 + 0.72 * (0.5 + 0.5 * cos(Theta * 2.0 - RadXY * 0.22 + TimeSec * 1.1));
-    }
 
     float LScale  = Vol.DensityCovScaleSides.z;
     float Cov     = clamp(Vol.DensityCovScaleSides.y, 0.01, 1.0);
@@ -280,9 +291,9 @@ float EvaluateSingleLocalFogDensityGpu(
 
     if (uint(Fog.FogMeta.w + 0.5) > 0u || Speed > 0.25)
     {
-        float StreamWave = 0.5 + 0.5 * sin((AdvP.x * 0.30 - AdvP.y * 0.24) + Speed * 0.35);
-        float CurlBoost  = 1.0 + clamp(Curl * 0.28, 0.0, 1.15) * SpiralMod;
-        float JetClear   = 1.0 - clamp((Speed - 6.0) * 0.036, 0.0, 0.64) * (1.0 - StreamWave * 0.45);
+        float FilamentNoise = LatticeNoiseFog3Gpu(float3(AdvP.x * LScale * 1.85, AdvP.y * LScale * 1.85, AdvP.z * LScale * 1.45));
+        float CurlBoost     = 1.0 + clamp(Curl * 0.26, 0.0, 1.15) * (0.55 + 0.90 * FilamentNoise);
+        float JetClear      = 1.0 - clamp((Speed - 6.0) * 0.034, 0.0, 0.62) * (0.55 + 0.45 * (1.0 - FilamentNoise));
         BaseDen *= clamp(CurlBoost * JetClear, 0.22, 2.15);
         OutCurlHighlight = clamp(Curl * 0.14, 0.0, 0.40);
     }

@@ -85,7 +85,7 @@ struct CloudDeckConfiguration
     float                    WindVeerDegreesPerKm     = 12.0f;   // [d/km]   - Ekman wind bearing rotation with altitude [-60..60]
     float                    WindTurbulence           = 0.30f;   // [0..1]   - Wind eddy warp on cloud silhouettes
     float                    CloudRenderScale         = 0.50f;   // [0.25..1]- Offscreen cloud pass resolution scale (0.5 = half-res)
-    uint32_t                 CloudMarchSteps          = 48u;     // [16..96] - Volumetric cloud deck raymarch steps
+    uint32_t                 CloudMarchSteps          = 36u;     // [16..96] - Volumetric cloud deck raymarch steps
     CloudShadowConfiguration CloudShadow              {};
 };
 
@@ -125,12 +125,12 @@ struct WorldAtmosphereConfiguration
     AtmosphericMediumConfiguration Medium             {};
     SolarCelestialConfiguration    Solar              {};
     std::array<LunarBodyConfiguration, 6u> Moons      {{
-        { true,  false, LunarSurfacePreset::Luna,    0.62f, 1.60f, 0.80f, 0.52f, 300.0f, 28.0f, 0.0f, 0.0f },
+        { true,  false, LunarSurfacePreset::Luna,    0.62f, 1.60f, 0.80f, 0.52f, 300.0f, 28.0f, 0.0f,  0.0f },
         { false, false, LunarSurfacePreset::Ember,   0.35f, 1.40f, 0.90f, 0.78f, 115.0f, 22.0f, 12.0f, 0.0f },
         { false, false, LunarSurfacePreset::Glacier, 0.80f, 1.25f, 0.65f, 0.44f, 210.0f, 41.0f, 0.0f, -8.0f },
-        { false, false, LunarSurfacePreset::Sulfur,  0.50f, 1.80f, 1.00f, 0.60f, 45.0f,  19.0f, 0.0f, 0.0f },
-        { false, false, LunarSurfacePreset::Shroud,  0.65f, 1.75f, 0.90f, 0.68f, 165.0f, 26.0f, 8.0f, 4.0f },
-        { false, false, LunarSurfacePreset::Shard,   0.52f, 1.50f, 0.75f, 0.54f, 340.0f, 32.0f, -10.0f, 6.0f },
+        { false, false, LunarSurfacePreset::Sulfur,  0.50f, 1.80f, 1.00f, 0.60f,  45.0f, 19.0f, 0.0f,  0.0f },
+        { false, false, LunarSurfacePreset::Shroud,  0.56f, 1.75f, 0.85f, 0.58f, 165.0f, 26.0f, 8.0f,  4.0f },
+        { false, false, LunarSurfacePreset::Shard,   0.52f, 1.70f, 0.75f, 0.50f, 335.0f, 34.0f,-10.0f, 6.0f },
     }};
     StarfieldConfiguration         Stars              {};
     AtmosphericWindParameters      Wind               {};
@@ -173,20 +173,17 @@ public:
 
     // Evaluates raymarched global planetary cloud shell + optional BoundedCloudVolume with 3-octave multi-scattering & IGN anti-banding
     [[nodiscard]] static Mathematics::LinearRGB EvaluateVolumetricClouds(
-        const Mathematics::Axis3D&                               RayOriginWorld,
-        const Mathematics::Axis3D&                               RayDirection,
-        const Mathematics::Axis3D&                               SunDirection,
-        const Mathematics::LinearRGB&                            SolarIrradiance,
-        const Mathematics::LinearRGB&                            SkyRadiance,
-        const CloudDeckConfiguration&                            Deck,
-        const BoundedCloudVolume&                                LocalVolume,
-        const AtmosphericMediumConfiguration&                    Medium,
-        float                                                    SimulationSeconds,
-        float&                                                   OutTransmittance,
-        float                                                    PixelJitter01       = -1.0f,
-        const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields = nullptr,
-        const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice     = nullptr,
-        const AtmosphericWindParameters*                         OptionalGlobalWind  = nullptr) noexcept;
+        const Mathematics::Axis3D&            RayOriginWorld,
+        const Mathematics::Axis3D&            RayDirection,
+        const Mathematics::Axis3D&            SunDirection,
+        const Mathematics::LinearRGB&         SolarIrradiance,
+        const Mathematics::LinearRGB&         SkyRadiance,
+        const CloudDeckConfiguration&         Deck,
+        const BoundedCloudVolume&             LocalVolume,
+        const AtmosphericMediumConfiguration& Medium,
+        float                                 SimulationSeconds,
+        float&                                OutTransmittance,
+        float                                 PixelJitter01 = -1.0f) noexcept;
 
     // Overload taking full WorldAtmosphereConfiguration (Global Wind + ForceFields + multi-volume LocalClouds)
     [[nodiscard]] static Mathematics::LinearRGB EvaluateVolumetricCloudsWithWind(
@@ -201,14 +198,11 @@ public:
 
     // Evaluates soft volumetric cloud optical transmittance along a sun ray (deck only)
     [[nodiscard]] static float EvaluateSolarCloudTransmittance(
-        const Mathematics::Axis3D&                               WorldPos,
-        const Mathematics::Axis3D&                               SunDirection,
-        const CloudDeckConfiguration&                            Deck,
-        float                                                    PlanetRadiusMeters,
-        float                                                    SimulationSeconds,
-        const SimulationSpace::ForceFields::ForceFieldAccumulator* OptionalForceFields = nullptr,
-        const SimulationSpace::ForceFields::FieldLatticeCascade*   OptionalLattice     = nullptr,
-        const AtmosphericWindParameters*                         OptionalGlobalWind  = nullptr) noexcept;
+        const Mathematics::Axis3D&    WorldPos,
+        const Mathematics::Axis3D&    SunDirection,
+        const CloudDeckConfiguration& Deck,
+        float                         PlanetRadiusMeters,
+        float                         SimulationSeconds) noexcept;
 
     // Evaluates combined global CloudDeck + LocalCloud/LocalClouds volumetric transmittance along a sun ray
     [[nodiscard]] static float EvaluateAllSolarCloudTransmittance(

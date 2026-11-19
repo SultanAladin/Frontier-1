@@ -21,7 +21,9 @@ namespace
 
 [[nodiscard]] float HashFogInt3(int32_t IX, int32_t IY, int32_t IZ) noexcept
 {
-    uint32_t N = static_cast<uint32_t>(IX * 374761393 + IY * 668265263 + IZ * 2147483647);
+    uint32_t N = static_cast<uint32_t>(IX) * 374761393u +
+                 static_cast<uint32_t>(IY) * 668265263u +
+                 static_cast<uint32_t>(IZ) * 2147483647u;
     N = (N ^ (N >> 13u)) * 1274126177u;
     N = N ^ (N >> 16u);
     return static_cast<float>(N) * (1.0f / 4294967296.0f);
@@ -53,14 +55,19 @@ namespace
 
 [[nodiscard]] float FogFbm3(float X, float Y, float Z) noexcept
 {
-    float Sum  = 0.0f;
-    float Amp  = 0.54f;
-    float Freq = 1.0f;
+    float Sum = 0.0f;
+    float Amp = 0.54f;
+    float QX = X, QY = Y, QZ = Z;
     for (uint32_t Oct = 0u; Oct < 4u; ++Oct)
     {
-        Sum  += Amp * SmoothFogNoise3(X * Freq, Y * Freq, Z * Freq);
-        Freq *= 2.03f;
-        Amp  *= 0.46f;
+        Sum += Amp * SmoothFogNoise3(QX, QY, QZ);
+        const float NX =  0.80f * QX - 0.48f * QY + 0.36f * QZ;
+        const float NY =  0.48f * QX + 0.86f * QY + 0.16f * QZ;
+        const float NZ = -0.36f * QX + 0.04f * QY + 0.93f * QZ;
+        QX = NX * 2.03f + 7.1f;
+        QY = NY * 2.03f - 11.3f;
+        QZ = NZ * 2.03f + 5.7f;
+        Amp *= 0.46f;
     }
     return Sum;
 }
@@ -109,40 +116,28 @@ namespace
         Wind.VelocityMetersPerSec.Y * Wind.VelocityMetersPerSec.Y +
         Wind.VelocityMetersPerSec.Z * Wind.VelocityMetersPerSec.Z);
 
-    // Spatial streamline advection + helical vortex twist directly inside the fog domain
-    const float AdvScale = 0.72f;
-    float AdvX = P.X - Wind.VelocityMetersPerSec.X * SimulationSeconds * AdvScale;
-    float AdvY = P.Y - Wind.VelocityMetersPerSec.Y * SimulationSeconds * AdvScale;
-    float AdvZ = P.Z - Wind.VelocityMetersPerSec.Z * SimulationSeconds * 0.40f;
-    float SpiralMod = 1.0f;
-    if (Wind.CurlScalar > 1.0e-3f)
-    {
-        const float Dx = P.X - Vol.VolumeCenterMeters.X;
-        const float Dy = P.Y - Vol.VolumeCenterMeters.Y;
-        const float RadXY = std::sqrt(Dx * Dx + Dy * Dy);
-        const float Theta = std::atan2(Dy, Dx);
-        const float Twist = std::clamp(Wind.CurlScalar * 0.18f, 0.0f, 3.6f) *
-                            (0.45f * SimulationSeconds - 0.08f * RadXY);
-        const float Cs = std::cos(Twist), Sn = std::sin(Twist);
-        AdvX = Vol.VolumeCenterMeters.X + (Dx * Cs - Dy * Sn) - Wind.VelocityMetersPerSec.X * SimulationSeconds * 0.42f;
-        AdvY = Vol.VolumeCenterMeters.Y + (Dx * Sn + Dy * Cs) - Wind.VelocityMetersPerSec.Y * SimulationSeconds * 0.42f;
-        AdvZ += std::sin(Theta * 2.0f + Twist) * 1.15f;
-        SpiralMod = 0.62f + 0.72f * (0.5f + 0.5f * std::cos(Theta * 2.0f - RadXY * 0.22f + SimulationSeconds * 1.1f));
-    }
+    // Continuous 4-step RK2 semi-Lagrangian backward streamline advection (no sin/cos wobble discontinuities)
+    float LocalCurl = Wind.CurlScalar;
+    const Mathematics::Axis3D AdvP = Vol.FollowWind
+        ? AtmosphericWindSolver::AdvectWorldPointBackward(
+              GlobalWind, DeckWindSpeedMps, DeckWindBearingDeg, Vol.WindSource,
+              P, P.Z, SimulationSeconds * 0.72f, OptionalForceFields, OptionalLattice, &LocalCurl)
+        : P;
+    const float EffCurl = std::max(Wind.CurlScalar, LocalCurl);
 
     const float LScale = 1.0f / std::max(1.5f, Vol.FeatureScaleMeters);
-    const float N      = FogFbm3(AdvX * LScale, AdvY * LScale, AdvZ * LScale);
+    const float N      = FogFbm3(AdvP.X * LScale, AdvP.Y * LScale, AdvP.Z * LScale);
     const float Thresh = 1.0f - std::clamp(Vol.Coverage, 0.0f, 1.0f);
     float BaseDen = std::max(0.0f, (N - Thresh) / std::max(0.15f, Vol.Coverage));
 
     // ForceField & wind-stream internal sculpting: carves wake/eye channels in fast jets & condenses curl filaments
     if (Vol.FollowWind && (SpatialForces || Speed > 0.25f))
     {
-        const float StreamWave  = 0.5f + 0.5f * std::sin((AdvX * 0.30f - AdvY * 0.24f) + Speed * 0.35f);
-        const float CurlBoost   = 1.0f + std::clamp(Wind.CurlScalar * 0.28f, 0.0f, 1.15f) * SpiralMod;
-        const float JetClear    = 1.0f - std::clamp((Speed - 6.0f) * 0.036f, 0.0f, 0.64f) * (1.0f - StreamWave * 0.45f);
+        const float FilamentNoise = SmoothFogNoise3(AdvP.X * LScale * 1.85f, AdvP.Y * LScale * 1.85f, AdvP.Z * LScale * 1.45f);
+        const float CurlBoost     = 1.0f + std::clamp(EffCurl * 0.26f, 0.0f, 1.15f) * (0.55f + 0.90f * FilamentNoise);
+        const float JetClear      = 1.0f - std::clamp((Speed - 6.0f) * 0.034f, 0.0f, 0.62f) * (0.55f + 0.45f * (1.0f - FilamentNoise));
         BaseDen *= std::clamp(CurlBoost * JetClear, 0.22f, 2.15f);
-        OutCurlHighlight = std::clamp(Wind.CurlScalar * 0.14f, 0.0f, 0.40f);
+        OutCurlHighlight = std::clamp(EffCurl * 0.14f, 0.0f, 0.40f);
     }
 
     return BaseDen * ShapeMask * Vol.Density * 0.075f;

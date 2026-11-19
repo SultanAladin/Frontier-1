@@ -37,10 +37,11 @@ public:
         const SpatialVector3& BodyVelocity = {},
         double                TimeSeconds  = 0.0) const noexcept;
 
+    // Samples only ForceSources whose WindField subcomponent couples to clouds/atmosphere (optionally projecting across deck altitudes)
     [[nodiscard]] SpatialForceSample QueryWindFieldSample(
         const SpatialVector3& WorldPoint,
-        double                TimeSeconds            = 0.0,
-        bool                  ProjectToCloudAltitude = false) const noexcept;
+        double                TimeSeconds              = 0.0,
+        bool                  ProjectAcrossCloudDeck   = true) const noexcept;
 
     [[nodiscard]] ForceDiagnosticsReading QueryAnemometerDiagnostics(
         const SpatialVector3& WorldPoint,

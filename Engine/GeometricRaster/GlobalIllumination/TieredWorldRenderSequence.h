@@ -13,7 +13,9 @@
 #include "Engine/DistanceFieldSpace/VoxelSdfClipmap.h"
 #include "Engine/GeometricRaster/Atmosphere/VolumetricCloudSequence.h"
 #include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
+#include "Engine/GeometricRaster/GlobalIllumination/DynamicProbeCacheSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/IrradianceLatticeSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/ReservoirPathReplaySequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.h"
 #include "Engine/MaterialSpace/CompactMaterialRegister.h"
 #include "Engine/MaterialSpace/MaterialSurfaceLayer/BounceLayerSummary.h"
@@ -34,16 +36,16 @@ namespace Frontier::GeometricRaster
 
 enum class WorldRenderTier : uint8_t
 {
-    Tier1GtxCalibrated    = 0u, // [-] - Compatibility alias -> SdfGlobalIllumination + ContactPcss + WideTreeRaytrace
-    Tier2RtxDeterministic = 1u, // [-] - Compatibility alias -> DdgiRaytracing + WideTreeRayQuery + WideTreeRaytrace
+    Tier1GtxCalibrated    = 0u, // [-] - Compatibility alias -> SdfGlobalIllumination (Hybrid ReSTIR + 5-pass SVGF) + ContactPcss + WideTreeRaytrace
+    Tier2RtxDeterministic = 1u, // [-] - Compatibility alias -> DdgiRaytracing (DynamicProbeCache) + WideTreeRayQuery + WideTreeRaytrace
 };
 
 enum class WorldRenderEngine : uint8_t
 {
     MatCap                = 0u, // [-] - Studio MatCap Normal/Roughness Shading (Zero GI, Zero Shadow Maps)
     OpenPbrDirect         = 1u, // [-] - Direct OpenPBR + LTC Area Lights + Shadow Lab + BVH4/Sky Reflections (Zero GI)
-    DdgiRaytracing        = 2u, // [-] - Octahedral Chebyshev DDGI + Shadow Lab + BVH4/Sky Reflections
-    SdfGlobalIllumination = 3u, // [-] - 3D Radiosity SDF Mip-Volume + IGN Cone GI + Bilateral Filter (SDF GI Only!)
+    DdgiRaytracing        = 2u, // [-] - DynamicProbeCache (8x8 Octahedral + 16x16 Chebyshev + Backface Gating) + Shadow Lab + BVH4/Sky Reflections
+    SdfGlobalIllumination = 3u, // [-] - Hybrid ReSTIR Path Replay GI (4-Candidate RIS + BVH 1-Bounce + DynamicProbeCache 2nd Bounce + 5-Pass SVGF)
     DeterministicPathTrace = 4u,// [-] - MIS/NEE + Heitz GGX VNDF Monte Carlo Path Tracer + A-Trous Denoiser
 };
 
@@ -59,8 +61,8 @@ struct WorldRenderConfiguration
     uint32_t                 DebugChannel              = 0u;    // [0..20] - 0=Lit..15=SpecRefl, 16=ClipmapIso, 17=ClipmapSlice, 18=ClipmapRad, 19=SurfaceCacheAlbedo, 20=ClipmapCascadeId
     uint32_t                 PathTraceSamples          = 16u;   // [spp]  - Samples per pixel for DeterministicPathTrace
     uint32_t                 PathTraceMaxBounces       = 5u;    // [cnt]  - Maximum bounce depth for DeterministicPathTrace
-    bool                     PathTraceDenoise          = false; // [-]    - Optional 3-pass A-Trous denoiser (OFF by default for pure Sobol (0,2))
-    bool                     SdfGiBilateral            = false; // [-]    - Optional 7x7 spatial filter (OFF by default for deterministic cone GI)
+    bool                     PathTraceDenoise          = true;  // [-]    - 3-pass albedo/normal/depth A-Trous denoiser
+    bool                     SdfGiBilateral            = true;  // [-]    - 5-pass joint albedo/normal/depth/luma SVGF spatial filter for ReSTIR GI
     bool                     GlobalIlluminationEnabled = true;  // [-]    - Render setting toggle for indirect GI / bounces
     bool                     ReflectionsEnabled        = true;  // [-]    - Render setting toggle for specular reflections
     bool                     RaytracingEnabled         = true;  // [-]    - Render setting toggle for hardware/BVH raytracing
@@ -119,7 +121,7 @@ public:
     void PrepareRtxIrradianceLatticeOnly(WorldSceneSpecification& InOutScene);
 
     // Adopts an externally baked Tier 2 RTX Irradiance Lattice (e.g. from background propagation)
-    void AssignIrradianceLattice(IrradianceLatticeSequence&& BakedLattice) noexcept { RtxLattice = std::move(BakedLattice); }
+    void AssignIrradianceLattice(IrradianceLatticeSequence&& BakedLattice) noexcept;
 
     // Executes the complete unified world render frame for any of the 5 WorldRenderEngines
     [[nodiscard]] WorldRenderFrameResult RenderWorldFrameWithEngine(
@@ -142,19 +144,24 @@ public:
         std::span<const DistanceFieldSpace::DynamicLocalSdfInstance> CurrentObjects);
 
     [[nodiscard]] const IrradianceLatticeSequence&         InspectIrradianceLattice() const noexcept { return RtxLattice; }
+    [[nodiscard]] const DynamicProbeCacheSequence&         InspectDynamicProbeCache() const noexcept { return ProbeCache; }
     [[nodiscard]] const SignedDistanceRadiosityVolume&     InspectRadiosityVolume()   const noexcept { return RadiosityVolume; }
     [[nodiscard]] const DistanceFieldSpace::VoxelSdfClipmapVolume& InspectClipmapVolume() const noexcept { return ClipmapVolume; }
     [[nodiscard]] DistanceFieldSpace::VoxelSdfClipmapVolume&       AccessClipmapVolume()       noexcept { return ClipmapVolume; }
     [[nodiscard]] const AtmosphericSkySequence&            InspectAtmosphericSky()    const noexcept { return SkySequence; }
 
 private:
-    OrthographicShadowCascade                FineContactClip   {};
-    OrthographicShadowCascade                CoarseContactClip {};
-    IrradianceLatticeSequence                RtxLattice        {};
-    SignedDistanceRadiosityVolume            RadiosityVolume   {};
-    DistanceFieldSpace::VoxelSdfClipmapVolume ClipmapVolume    {};
-    AtmosphericSkySequence                   SkySequence       {};
-    DepthPyramidSequence                     PreviousHiZ       {};
+    OrthographicShadowCascade                FineContactClip      {};
+    OrthographicShadowCascade                CoarseContactClip    {};
+    IrradianceLatticeSequence                RtxLattice           {};
+    DynamicProbeCacheSequence                ProbeCache           {};
+    SignedDistanceRadiosityVolume            RadiosityVolume      {};
+    DistanceFieldSpace::VoxelSdfClipmapVolume ClipmapVolume       {};
+    AtmosphericSkySequence                   SkySequence          {};
+    DepthPyramidSequence                     PreviousHiZ          {};
+    std::vector<ReservoirSampleState>        PreviousReservoirs   {};
+    PerspectiveCameraFrame                   PreviousReplayCamera {};
+    uint32_t                                 ReplaySequenceIndex  = 0u;
 };
 
 } // namespace Frontier::GeometricRaster

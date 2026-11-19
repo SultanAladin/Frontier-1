@@ -2432,7 +2432,8 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     RenderConfig.ReflectionsEnabled        = DisplayCfg.ReflectionsEnabled;
     RenderConfig.RaytracingEnabled         = DisplayCfg.RaytracingEnabled;
 
-    if (RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DdgiRaytracing)
+    if (RenderConfig.Engine == GeometricRaster::WorldRenderEngine::DdgiRaytracing ||
+        RenderConfig.Engine == GeometricRaster::WorldRenderEngine::SdfGlobalIllumination)
     {
         if (GpuReady && GpuWorldRenderer->QueryIrradianceLatticeUploaded())
         {
