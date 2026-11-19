@@ -22,31 +22,43 @@ namespace
     return T * T * (3.0f - 2.0f * T);
 }
 
-[[nodiscard]] float Hash3Scalar(int32_t X, int32_t Y, int32_t Z) noexcept
+[[nodiscard]] Mathematics::Axis3D Hash33(float PX, float PY, float PZ) noexcept
 {
-    uint32_t N = static_cast<uint32_t>(X * 374761393 + Y * 668265263 + Z * 2147483647);
-    N = (N ^ (N >> 13u)) * 1274126177u;
-    N = N ^ (N >> 16u);
-    return static_cast<float>(N) * (1.0f / 4294967296.0f) * 2.0f - 1.0f;
+    // Exact 1:1 port of Experimental/FluidEditor/src/shaders-wgsl.js :: hash33
+    const auto Fract = [](float V) noexcept -> float { return V - std::floor(V); };
+    float X = Fract(PX * 0.1031f);
+    float Y = Fract(PY * 0.1030f);
+    float Z = Fract(PZ * 0.0973f);
+    const float D = X * (Y + 33.33f) + Y * (Z + 33.33f) + Z * (X + 33.33f);
+    X += D;
+    Y += D;
+    Z += D;
+    return {
+        Fract((X + Y) * Z) * 2.0f - 1.0f,
+        Fract((Y + Z) * X) * 2.0f - 1.0f,
+        Fract((Z + X) * Y) * 2.0f - 1.0f,
+    };
 }
 
-[[nodiscard]] float ValueNoise3(float X, float Y, float Z) noexcept
+[[nodiscard]] float GradientNoise3(float X, float Y, float Z) noexcept
 {
-    const int32_t IX = static_cast<int32_t>(std::floor(X));
-    const int32_t IY = static_cast<int32_t>(std::floor(Y));
-    const int32_t IZ = static_cast<int32_t>(std::floor(Z));
-    const float FX = X - static_cast<float>(IX);
-    const float FY = Y - static_cast<float>(IY);
-    const float FZ = Z - static_cast<float>(IZ);
+    // Exact 1:1 port of Experimental/FluidEditor/src/shaders-wgsl.js :: gradientNoise3
+    const float IX = std::floor(X), IY = std::floor(Y), IZ = std::floor(Z);
+    const float FX = X - IX, FY = Y - IY, FZ = Z - IZ;
     const float UX = FX * FX * (3.0f - 2.0f * FX);
     const float UY = FY * FY * (3.0f - 2.0f * FY);
     const float UZ = FZ * FZ * (3.0f - 2.0f * FZ);
     const auto Mix = [](float A, float B, float T) noexcept -> float { return A + (B - A) * T; };
+    const auto GradDot = [&](float OX, float OY, float OZ) noexcept -> float
+    {
+        const auto G = Hash33(IX + OX, IY + OY, IZ + OZ);
+        return G.X * (FX - OX) + G.Y * (FY - OY) + G.Z * (FZ - OZ);
+    };
 
-    const float N000 = Hash3Scalar(IX, IY, IZ),         N100 = Hash3Scalar(IX + 1, IY, IZ);
-    const float N010 = Hash3Scalar(IX, IY + 1, IZ),     N110 = Hash3Scalar(IX + 1, IY + 1, IZ);
-    const float N001 = Hash3Scalar(IX, IY, IZ + 1),     N101 = Hash3Scalar(IX + 1, IY, IZ + 1);
-    const float N011 = Hash3Scalar(IX, IY + 1, IZ + 1), N111 = Hash3Scalar(IX + 1, IY + 1, IZ + 1);
+    const float N000 = GradDot(0.0f, 0.0f, 0.0f), N100 = GradDot(1.0f, 0.0f, 0.0f);
+    const float N010 = GradDot(0.0f, 1.0f, 0.0f), N110 = GradDot(1.0f, 1.0f, 0.0f);
+    const float N001 = GradDot(0.0f, 0.0f, 1.0f), N101 = GradDot(1.0f, 0.0f, 1.0f);
+    const float N011 = GradDot(0.0f, 1.0f, 1.0f), N111 = GradDot(1.0f, 1.0f, 1.0f);
 
     return Mix(
         Mix(Mix(N000, N100, UX), Mix(N010, N110, UX), UY),
@@ -56,23 +68,27 @@ namespace
 
 [[nodiscard]] float Fbm2Noise3(float X, float Y, float Z) noexcept
 {
-    return 0.65f * ValueNoise3(X, Y, Z) + 0.35f * ValueNoise3(X * 2.13f + 7.3f, Y * 2.13f - 4.1f, Z * 2.13f + 5.7f);
+    return 0.65f * GradientNoise3(X, Y, Z) + 0.35f * GradientNoise3(X * 2.13f + 7.3f, Y * 2.13f - 4.1f, Z * 2.13f + 5.7f);
 }
 
 [[nodiscard]] Mathematics::Axis3D CurlNoise3(float X, float Y, float Z) noexcept
 {
-    constexpr float Eps = 0.25f;
-    const float N1 = ValueNoise3(X, Y + Eps, Z) - ValueNoise3(X, Y - Eps, Z);
-    const float N2 = ValueNoise3(X, Y, Z + Eps) - ValueNoise3(X, Y, Z - Eps);
-    const float N3 = ValueNoise3(X + Eps, Y, Z) - ValueNoise3(X - Eps, Y, Z);
-    return { (N1 - N2) / (2.0f * Eps), (N2 - N3) / (2.0f * Eps), (N3 - N1) / (2.0f * Eps) };
-}
+    // True divergence-free 3D curl of 3 decorrelated potential fields (no (1,1,1) axis bias)
+    constexpr float Eps = 0.15f;
+    const float Inv2Eps = 1.0f / (2.0f * Eps);
 
-[[nodiscard]] Mathematics::Axis3D CurlFbm2(float X, float Y, float Z) noexcept
-{
-    const auto C0 = CurlNoise3(X, Y, Z);
-    const auto C1 = CurlNoise3(X * 2.25f + 11.4f, Y * 2.25f + 3.2f, Z * 2.25f - 6.8f);
-    return { C0.X + 0.55f * C1.X, C0.Y + 0.55f * C1.Y, C0.Z + 0.55f * C1.Z };
+    const float DP0DY = (GradientNoise3(X, Y + Eps, Z) - GradientNoise3(X, Y - Eps, Z)) * Inv2Eps;
+    const float DP0DZ = (GradientNoise3(X, Y, Z + Eps) - GradientNoise3(X, Y, Z - Eps)) * Inv2Eps;
+
+    const float X1 = X + 31.4f, Y1 = Y + 17.2f, Z1 = Z + 43.1f;
+    const float DP1DX = (GradientNoise3(X1 + Eps, Y1, Z1) - GradientNoise3(X1 - Eps, Y1, Z1)) * Inv2Eps;
+    const float DP1DZ = (GradientNoise3(X1, Y1, Z1 + Eps) - GradientNoise3(X1, Y1, Z1 - Eps)) * Inv2Eps;
+
+    const float X2 = X - 19.7f, Y2 = Y + 53.8f, Z2 = Z - 11.3f;
+    const float DP2DX = (GradientNoise3(X2 + Eps, Y2, Z2) - GradientNoise3(X2 - Eps, Y2, Z2)) * Inv2Eps;
+    const float DP2DY = (GradientNoise3(X2, Y2 + Eps, Z2) - GradientNoise3(X2, Y2 - Eps, Z2)) * Inv2Eps;
+
+    return { DP2DY - DP1DZ, DP0DZ - DP2DX, DP1DX - DP0DY };
 }
 
 [[nodiscard]] float HgPhase(float CosTheta, float G) noexcept
@@ -334,10 +350,11 @@ void FluidSimulationSequence::ExecuteSplatAndObstacles(float Dt, const FluidStep
                         const float RadX    =  DX / XYDist;
                         const float RadY    =  DY / XYDist;
 
+                        const auto Turb = Hash33(WX * 14.0f + ElapsedSeconds * 7.1f, WY * 14.0f - ElapsedSeconds * 5.3f, WZ * 14.0f + ElapsedSeconds * 11.7f);
                         const float RadialBias = IsTornado ? -0.85f : 0.35f;
-                        const float TargetVX = TanX * Document.Emitter.Swirl + RadX * RadialBias + Fbm * 0.9f;
-                        const float TargetVY = TanY * Document.Emitter.Swirl + RadY * RadialBias - Fbm * 0.8f;
-                        const float TargetVZ = Document.Emitter.UpwardVelocityMps * (IsTornado ? 1.25f : 1.0f) * (0.82f + 0.42f * std::max(0.0f, Fbm));
+                        const float TargetVX = TanX * Document.Emitter.Swirl + RadX * RadialBias + Fbm * 0.9f + Turb.X * 0.65f;
+                        const float TargetVY = TanY * Document.Emitter.Swirl + RadY * RadialBias - Fbm * 0.8f + Turb.Y * 0.65f;
+                        const float TargetVZ = Document.Emitter.UpwardVelocityMps * (IsTornado ? 1.25f : 1.0f) * (0.82f + 0.42f * std::max(0.0f, Fbm)) + Turb.Z * 0.45f;
                         const float Blend    = std::clamp(Falloff * Dt * 11.0f, 0.0f, 0.85f);
 
                         Vel.X += (TargetVX - Vel.X) * Blend;
@@ -510,7 +527,7 @@ void FluidSimulationSequence::ExecuteMacCormackAdvection(float Dt)
                 Temp += BurnedFuel * Document.Combustion.BurnHeat;
                 Smoke += BurnedFuel * Document.Combustion.SootGeneration;
 
-                const float RadCool = Document.Combustion.CoolingRate * (0.55f * Temp + 0.14f * Temp * Temp) * Dt;
+                const float RadCool = Document.Combustion.CoolingRate * (0.65f * Temp + 0.24f * Temp * Temp) * Dt;
                 Temp  = std::max(0.0f, Temp - RadCool);
                 Smoke = std::max(0.0f, Smoke * std::exp(-Document.Combustion.SmokeDissipation * Dt));
                 Fuel  = std::max(0.0f, Fuel  * std::exp(-0.15f * Dt));
@@ -518,8 +535,8 @@ void FluidSimulationSequence::ExecuteMacCormackAdvection(float Dt)
                 if (!Document.Domain.EnclosedBox)
                 {
                     const float EdgeXY = std::min({ UX, 1.0f - UX, UY, 1.0f - UY });
-                    const float Sponge = SmoothStepF(0.0f, 0.06f, EdgeXY) * SmoothStepF(0.0f, 0.045f, 1.0f - UZ);
-                    const float FireSponge = SmoothStepF(0.0f, 0.14f, EdgeXY) * SmoothStepF(0.0f, 0.08f, 1.0f - UZ);
+                    const float Sponge = SmoothStepF(0.0f, 0.10f, EdgeXY) * SmoothStepF(0.0f, 0.11f, 1.0f - UZ);
+                    const float FireSponge = SmoothStepF(0.0f, 0.09f, EdgeXY) * SmoothStepF(0.0f, 0.09f, 1.0f - UZ);
                     Smoke *= Sponge;
                     Temp  *= FireSponge;
                     Fuel  *= FireSponge;
@@ -636,10 +653,16 @@ void FluidSimulationSequence::ExecuteVorticityAndCombustion(float Dt, const Flui
                 const float BaroY = (TF - TB) * (0.35f * Document.Combustion.Buoyancy);
 
                 const float Activity = std::clamp(Smoke * 0.65f + Temp * 0.85f + Fuel * 0.55f, 0.0f, 1.5f);
-                const auto  Turb = CurlFbm2(
-                    WX * Document.Combustion.TurbulenceScale * 0.95f + ElapsedSeconds * 0.75f,
-                    WY * Document.Combustion.TurbulenceScale * 0.95f + ElapsedSeconds * 0.55f,
-                    WZ * Document.Combustion.TurbulenceScale * 0.95f - ElapsedSeconds * 1.65f);
+                Mathematics::Axis3D Turb {};
+                if (Activity > 1.0e-4f)
+                {
+                    const float NX = UX * Document.Combustion.TurbulenceScale * 1.85f + ElapsedSeconds * 0.85f;
+                    const float NY = UY * Document.Combustion.TurbulenceScale * 1.85f + ElapsedSeconds * 0.60f;
+                    const float NZ = UZ * Document.Combustion.TurbulenceScale * 1.85f - ElapsedSeconds * 1.75f;
+                    const auto C0 = CurlNoise3(NX, NY, NZ);
+                    const auto C1 = CurlNoise3(NX * 2.15f + 9.7f, NY * 2.15f - 5.3f, NZ * 2.15f + 4.1f);
+                    Turb = { C0.X + 0.55f * C1.X, C0.Y + 0.55f * C1.Y, C0.Z + 0.55f * C1.Z };
+                }
 
                 // Helical Rankine vortex funnel confinement when high-swirl tornado mode is active
                 float FunnelX = 0.0f, FunnelY = 0.0f, FunnelZ = 0.0f;
@@ -843,10 +866,11 @@ float FluidSimulationSequence::EvaluateFluidShadowTransmittance(
 {
     if (!Document.GiCoupling.CastGiShadows) return 1.0f;
 
-    float Transmittance = 1.0f;
+    float OpticalDepth = 0.0f;
     const uint32_t Steps = std::clamp(Document.Shading.ShadowSteps, 2u, 12u);
+    const float ShadowGain = Document.Shading.ShadowDensity * Document.GiCoupling.GiShadowStrength;
 
-    // 1. Hero Pyro Grid self/GI shadow march
+    // 1. Hero Pyro Grid self/GI shadow march (1:1 WGSL normalized optical depth)
     float TNear = 0.0f, TFar = 0.0f;
     if (IntersectBox(RayOriginWorld, UnitDirToLight, HeroGrid.BoxMinWorld, HeroGrid.BoxMaxWorld, TNear, TFar))
     {
@@ -854,22 +878,25 @@ float FluidSimulationSequence::EvaluateFluidShadowTransmittance(
         const float T1 = std::min(MaxDistanceMeters, TFar);
         if (T1 > T0)
         {
-            const float Dt = (T1 - T0) / static_cast<float>(Steps);
+            const Mathematics::Axis3D BoxSpan = HeroGrid.BoxMaxWorld - HeroGrid.BoxMinWorld;
+            const float AvgSpan = std::max(0.5f, (BoxSpan.X + BoxSpan.Y + BoxSpan.Z) * (1.0f / 3.0f));
+            const float DtNorm  = ((T1 - T0) / static_cast<float>(Steps)) / AvgSpan;
+            const float DtMeters = (T1 - T0) / static_cast<float>(Steps);
             const uint32_t Rd = HeroGrid.ReadIdx();
             for (uint32_t S = 0u; S < Steps; ++S)
             {
-                const float T = T0 + (static_cast<float>(S) + 0.5f) * Dt;
+                const float T = T0 + (static_cast<float>(S) + 0.5f) * DtMeters;
                 const auto Th = HeroGrid.SampleWorldTrilinear(HeroGrid.Thermo[Rd], RayOriginWorld + UnitDirToLight * T);
                 if (Th.X > 1.0e-3f)
                 {
-                    Transmittance *= std::exp(-Th.X * Document.Shading.ShadowDensity * Document.GiCoupling.GiShadowStrength * Dt * 0.45f);
+                    OpticalDepth += Th.X * ShadowGain * DtNorm;
                 }
             }
         }
     }
 
     // 2. World Drift Smoke Grid shadow march
-    if (Document.Domain.WorldGridEnabled && WorldGrid.Resolution > 0u && Transmittance > 0.02f)
+    if (Document.Domain.WorldGridEnabled && WorldGrid.Resolution > 0u)
     {
         const float Half = 0.5f * WorldGrid.SpanMeters;
         const Mathematics::Axis3D WMin = WorldGrid.CenterWorld - Mathematics::Axis3D{ Half, Half, Half };
@@ -880,21 +907,22 @@ float FluidSimulationSequence::EvaluateFluidShadowTransmittance(
             const float T1 = std::min(MaxDistanceMeters, TFar);
             if (T1 > T0)
             {
-                const float Dt = (T1 - T0) / static_cast<float>(Steps);
+                const float DtMeters = (T1 - T0) / static_cast<float>(Steps);
+                const float DtNorm   = DtMeters / std::max(1.0f, WorldGrid.SpanMeters * 0.35f);
                 for (uint32_t S = 0u; S < Steps; ++S)
                 {
-                    const float T = T0 + (static_cast<float>(S) + 0.5f) * Dt;
+                    const float T = T0 + (static_cast<float>(S) + 0.5f) * DtMeters;
                     const auto Th = WorldGrid.SampleWorldTrilinear(WorldGrid.Thermo, RayOriginWorld + UnitDirToLight * T);
                     if (Th.X > 1.0e-3f)
                     {
-                        Transmittance *= std::exp(-Th.X * Document.Shading.ShadowDensity * Document.GiCoupling.GiShadowStrength * Dt * 0.25f);
+                        OpticalDepth += Th.X * ShadowGain * DtNorm * 0.45f;
                     }
                 }
             }
         }
     }
 
-    return std::clamp(Transmittance, 0.04f, 1.0f);
+    return std::clamp(std::exp(-OpticalDepth), 0.04f, 1.0f);
 }
 
 FluidRaymarchResult FluidSimulationSequence::EvaluateFluidSegment(
@@ -914,7 +942,35 @@ FluidRaymarchResult FluidSimulationSequence::EvaluateFluidSegment(
     const float CosTheta = Mathematics::EvaluateDot(RayDirection, SunDirection);
     const float Phase    = DualHgPhase(CosTheta, Document.Shading.PhaseAnisotropy);
     const uint32_t Steps = std::clamp(Document.Shading.RaymarchSteps, 16u, 144u);
+    const uint32_t ShSteps = std::clamp(Document.Shading.ShadowSteps, 2u, 10u);
     const uint32_t Rd    = HeroGrid.ReadIdx();
+
+    // 1:1 WGSL internal volumetric self-shadow march (geometric UVW steps + multi-scatter wrap)
+    const auto EvaluateSmokeSelfShadow = [&](const Mathematics::Axis3D& PWorld) noexcept -> float
+    {
+        const Mathematics::Axis3D BoxSpan = HeroGrid.BoxMaxWorld - HeroGrid.BoxMinWorld;
+        const float AvgSpan = std::max(0.5f, (BoxSpan.X + BoxSpan.Y + BoxSpan.Z) * (1.0f / 3.0f));
+        float OpticalDepth = 0.0f;
+        float StepNorm = 0.065f;
+        float DistMeters = 0.0f;
+        for (uint32_t I = 0u; I < ShSteps; ++I)
+        {
+            DistMeters += StepNorm * AvgSpan;
+            const Mathematics::Axis3D SP = PWorld + SunDirection * DistMeters;
+            if (SP.X < HeroGrid.BoxMinWorld.X || SP.X > HeroGrid.BoxMaxWorld.X ||
+                SP.Y < HeroGrid.BoxMinWorld.Y || SP.Y > HeroGrid.BoxMaxWorld.Y ||
+                SP.Z < HeroGrid.BoxMinWorld.Z || SP.Z > HeroGrid.BoxMaxWorld.Z)
+            {
+                break;
+            }
+            const auto STh = HeroGrid.SampleWorldTrilinear(HeroGrid.Thermo[Rd], SP);
+            OpticalDepth += std::max(0.0f, STh.X) * StepNorm * Document.Shading.ShadowDensity;
+            StepNorm *= 1.25f;
+        }
+        const float Primary   = std::exp(-OpticalDepth);
+        const float Secondary = std::exp(-OpticalDepth * 0.28f) * 0.65f;
+        return Primary + (std::max(Primary, Secondary) - Primary) * 0.48f;
+    };
 
     // 1. Hero Pyro Volume (Depth-clipped [TEnter, min(TExit, SafeMax)])
     float TNear = 0.0f, TFar = 0.0f;
@@ -925,10 +981,9 @@ FluidRaymarchResult FluidSimulationSequence::EvaluateFluidSegment(
         if (TExit > TEnter)
         {
             const Mathematics::Axis3D BoxSpan = HeroGrid.BoxMaxWorld - HeroGrid.BoxMinWorld;
-            const float BoxDiag = std::sqrt(BoxSpan.X * BoxSpan.X + BoxSpan.Y * BoxSpan.Y + BoxSpan.Z * BoxSpan.Z);
-            const float OpticalScale = 1.75f / std::max(1.0f, BoxDiag);
+            const float AvgSpan = std::max(0.5f, (BoxSpan.X + BoxSpan.Y + BoxSpan.Z) * (1.0f / 3.0f));
             const float Dt = (TExit - TEnter) / static_cast<float>(Steps);
-            const float EffStep = Dt * OpticalScale;
+            const float EffStep = Dt / AvgSpan; // Exact normalized WGSL optical path step
             for (uint32_t S = 0u; S < Steps; ++S)
             {
                 const float T = TEnter + (static_cast<float>(S) + Jitter) * Dt;
@@ -936,7 +991,8 @@ FluidRaymarchResult FluidSimulationSequence::EvaluateFluidSegment(
                 const auto Th = HeroGrid.SampleWorldTrilinear(HeroGrid.Thermo[Rd], P);
                 float Smoke = Th.X;
                 float Temp  = Th.Y;
-                const float Irr = Th.W;
+                const float Fuel = Th.Z;
+                const float Irr  = Th.W;
 
                 if (Document.Shading.RenderChannel == FluidRenderChannel::SmokeDensity && Smoke > 0.005f)
                 {
@@ -960,38 +1016,43 @@ FluidRaymarchResult FluidSimulationSequence::EvaluateFluidSegment(
 
                 if (Smoke <= 0.004f && Temp <= 0.01f) continue;
 
-                // Sub-voxel FBM pyro detail breakup for sharp rolling soot & licking flame tongues
+                // Non-destructive sub-voxel FBM detail breakup (sharpens soot wisps without hollowing out the fire core)
                 if (Document.Domain.VoxelQuantization <= 0.01f)
                 {
-                    const float Erode = Fbm2Noise3(P.X * 5.8f + ElapsedSeconds * 0.4f, P.Y * 5.8f - ElapsedSeconds * 0.3f, P.Z * 5.8f - ElapsedSeconds * 1.9f);
-                    Smoke = std::max(0.0f, Smoke * (0.76f + 0.48f * Erode) - 0.045f * std::max(0.0f, 0.35f - Erode));
-                    Temp  = std::max(0.0f, Temp  * (0.72f + 0.56f * Erode) - 0.06f * std::max(0.0f, 0.25f - Erode));
+                    const float Fbm = Fbm2Noise3(P.X * 5.8f + ElapsedSeconds * 0.4f, P.Y * 5.8f - ElapsedSeconds * 0.3f, P.Z * 5.8f - ElapsedSeconds * 1.9f);
+                    const float Fbm01 = std::clamp(0.5f + 0.5f * Fbm, 0.0f, 1.0f);
+                    const float CoolMask = 1.0f - SmoothStepF(0.45f, 1.85f, Temp);
+                    Smoke = std::max(0.0f, Smoke * (0.82f + 0.42f * Fbm01) - CoolMask * 0.03f * std::max(0.0f, 0.38f - Fbm01));
+                    Temp  = std::max(0.0f, Temp  * (0.84f + 0.34f * Fbm01));
                     if (Smoke <= 0.004f && Temp <= 0.008f) continue;
                 }
 
-                const float SunT = EvaluateFluidShadowTransmittance(P, SunDirection, 24.0f);
-                const float Powder = 1.0f - 0.45f * std::exp(-Smoke * Document.Shading.DensityExtinction * 2.2f);
-                const float HeightAo = 0.55f + 0.60f * std::clamp((P.Z - HeroGrid.BoxMinWorld.Z) / std::max(0.2f, BoxSpan.Z), 0.0f, 1.0f);
+                const float SunT = EvaluateSmokeSelfShadow(P);
+                const float Powder = 1.0f - 0.50f * std::exp(-Smoke * Document.Shading.DensityExtinction * 1.8f);
+                const float HeightAo = 0.52f + 0.48f * std::clamp((P.Z - HeroGrid.BoxMinWorld.Z) / std::max(0.2f, BoxSpan.Z), 0.0f, 1.0f);
+                // Internal fire scatter only illuminates soot folds near the hot core (avoid orange-tinting cold outer smoke)
+                const float CoreIrr = Irr * std::min(1.0f, Irr * 2.1f);
                 const auto InternalGlow = FluidPresets::EvaluateBlackbodyPalette(
-                    std::max(0.65f, Irr * 1.25f), Document.Shading.TemperatureScale, Document.Shading.ColorPalette);
-                const float Ig = Irr * Document.Shading.InternalScattering * (0.45f + 0.55f * std::exp(-Smoke * 0.9f));
+                    CoreIrr * 2.2f, Document.Shading.TemperatureScale, Document.Shading.ColorPalette);
+                const float Ig = CoreIrr * Document.Shading.InternalScattering * (0.35f + 0.65f * std::exp(-Smoke * 0.85f));
 
                 const Mathematics::LinearRGB SmokeScat {
-                    Document.Shading.SmokeAlbedo * (SolarIrradiance.R * SunT * Phase * Powder * 2.2f + (SkyRadiance.R + 0.16f) * Document.Shading.AmbientIntensity * HeightAo * 1.6f) + InternalGlow.R * Ig,
-                    Document.Shading.SmokeAlbedo * (SolarIrradiance.G * SunT * Phase * Powder * 2.2f + (SkyRadiance.G + 0.16f) * Document.Shading.AmbientIntensity * HeightAo * 1.6f) + InternalGlow.G * Ig,
-                    Document.Shading.SmokeAlbedo * (SolarIrradiance.B * SunT * Phase * Powder * 2.2f + (SkyRadiance.B + 0.18f) * Document.Shading.AmbientIntensity * HeightAo * 1.6f) + InternalGlow.B * Ig,
+                    Document.Shading.SmokeAlbedo * (SolarIrradiance.R * SunT * Phase * Powder * 0.85f + SkyRadiance.R * Document.Shading.AmbientIntensity * HeightAo * 1.15f) + InternalGlow.R * Ig,
+                    Document.Shading.SmokeAlbedo * (SolarIrradiance.G * SunT * Phase * Powder * 0.85f + SkyRadiance.G * Document.Shading.AmbientIntensity * HeightAo * 1.15f) + InternalGlow.G * Ig,
+                    Document.Shading.SmokeAlbedo * (SolarIrradiance.B * SunT * Phase * Powder * 0.85f + SkyRadiance.B * Document.Shading.AmbientIntensity * HeightAo * 1.15f) + InternalGlow.B * Ig,
                 };
-                const auto FireEmit = FluidPresets::EvaluateBlackbodyPalette(Temp, Document.Shading.TemperatureScale, Document.Shading.ColorPalette);
+                const auto FireRaw = FluidPresets::EvaluateBlackbodyPalette(Temp, Document.Shading.TemperatureScale, Document.Shading.ColorPalette);
+                const float ReactBoost = 1.0f + std::clamp(Fuel * 0.35f, 0.0f, 0.65f);
+                const float FireGain   = Document.Shading.FireIntensity * ReactBoost;
 
-                const float SmokeExt = Smoke * Document.Shading.DensityExtinction * 0.48f;
-                const float Ext      = std::max(0.002f, SmokeExt + Temp * 0.55f);
+                const float SmokeExt = Smoke * Document.Shading.DensityExtinction;
+                const float Ext      = std::max(0.002f, SmokeExt + Temp * 0.65f);
                 const float StepT    = std::exp(-Ext * EffStep);
                 const float IntW     = (1.0f - StepT) / Ext;
-                const float FireGain = Document.Shading.FireIntensity * 2.25f;
 
-                Out.RadianceHdr.R += Out.Transmittance * (SmokeScat.R * SmokeExt + FireEmit.R * FireGain) * IntW;
-                Out.RadianceHdr.G += Out.Transmittance * (SmokeScat.G * SmokeExt + FireEmit.G * FireGain) * IntW;
-                Out.RadianceHdr.B += Out.Transmittance * (SmokeScat.B * SmokeExt + FireEmit.B * FireGain) * IntW;
+                Out.RadianceHdr.R += Out.Transmittance * (SmokeScat.R * SmokeExt + FireRaw.R * FireGain) * IntW;
+                Out.RadianceHdr.G += Out.Transmittance * (SmokeScat.G * SmokeExt + FireRaw.G * FireGain) * IntW;
+                Out.RadianceHdr.B += Out.Transmittance * (SmokeScat.B * SmokeExt + FireRaw.B * FireGain) * IntW;
 
                 // Crepuscular shaft scattering inside tenuous smoke wisps around the plume
                 if (Document.Shading.GodRaysIntensity > 1.0e-3f && SunDirection.Z > 0.01f)
@@ -1024,6 +1085,7 @@ FluidRaymarchResult FluidSimulationSequence::EvaluateFluidSegment(
             {
                 const uint32_t WSteps = 44u;
                 const float Dt = (TExit - TEnter) / static_cast<float>(WSteps);
+                const float EffStep = Dt / std::max(1.0f, WorldGrid.SpanMeters * 0.28f);
                 for (uint32_t S = 0u; S < WSteps; ++S)
                 {
                     const float T = TEnter + (static_cast<float>(S) + Jitter) * Dt;
@@ -1043,29 +1105,30 @@ FluidRaymarchResult FluidSimulationSequence::EvaluateFluidSegment(
                     const float Temp = Th.Y * EdgeBlend;
                     if (Smoke <= 0.004f && Temp <= 0.01f) continue;
 
-                    const float Erode = Fbm2Noise3(
+                    const float Fbm = Fbm2Noise3(
                         P.X * 2.1f - Document.Combustion.WindVelocityXY.X * ElapsedSeconds * 0.35f,
                         P.Y * 2.1f - Document.Combustion.WindVelocityXY.Y * ElapsedSeconds * 0.35f,
                         P.Z * 2.1f - ElapsedSeconds * 0.45f);
-                    Smoke = std::max(0.0f, Smoke * (0.76f + 0.48f * Erode) - 0.025f * std::max(0.0f, 0.32f - Erode));
+                    const float Fbm01 = std::clamp(0.5f + 0.5f * Fbm, 0.0f, 1.0f);
+                    Smoke = std::max(0.0f, Smoke * (0.82f + 0.40f * Fbm01) - 0.02f * std::max(0.0f, 0.35f - Fbm01));
                     if (Smoke <= 0.004f && Temp <= 0.01f) continue;
 
                     const float SunT = EvaluateFluidShadowTransmittance(P, SunDirection, 24.0f);
                     const float Powder = 1.0f - 0.45f * std::exp(-Smoke * Document.Shading.DensityExtinction * 0.65f);
-                    const float SmokeExt = Smoke * Document.Shading.DensityExtinction * 0.34f;
+                    const float SmokeExt = Smoke * Document.Shading.DensityExtinction * 0.55f;
                     const float Ext      = std::max(0.002f, SmokeExt + Temp * 0.35f);
-                    const float StepT    = std::exp(-Ext * Dt * 0.55f);
+                    const float StepT    = std::exp(-Ext * EffStep);
                     const float IntW     = (1.0f - StepT) / Ext;
 
                     const Mathematics::LinearRGB SmokeScat {
-                        Document.Shading.SmokeAlbedo * (SolarIrradiance.R * SunT * Phase * Powder * 2.1f + (SkyRadiance.R + 0.16f) * Document.Shading.AmbientIntensity * 1.6f),
-                        Document.Shading.SmokeAlbedo * (SolarIrradiance.G * SunT * Phase * Powder * 2.1f + (SkyRadiance.G + 0.16f) * Document.Shading.AmbientIntensity * 1.6f),
-                        Document.Shading.SmokeAlbedo * (SolarIrradiance.B * SunT * Phase * Powder * 2.1f + (SkyRadiance.B + 0.18f) * Document.Shading.AmbientIntensity * 1.6f),
+                        Document.Shading.SmokeAlbedo * (SolarIrradiance.R * SunT * Phase * Powder * 0.85f + SkyRadiance.R * Document.Shading.AmbientIntensity * 1.15f),
+                        Document.Shading.SmokeAlbedo * (SolarIrradiance.G * SunT * Phase * Powder * 0.85f + SkyRadiance.G * Document.Shading.AmbientIntensity * 1.15f),
+                        Document.Shading.SmokeAlbedo * (SolarIrradiance.B * SunT * Phase * Powder * 0.85f + SkyRadiance.B * Document.Shading.AmbientIntensity * 1.15f),
                     };
                     const auto FireEmit = FluidPresets::EvaluateBlackbodyPalette(Temp, Document.Shading.TemperatureScale, Document.Shading.ColorPalette);
-                    Out.RadianceHdr.R += Out.Transmittance * (SmokeScat.R * SmokeExt + FireEmit.R * 0.45f) * IntW;
-                    Out.RadianceHdr.G += Out.Transmittance * (SmokeScat.G * SmokeExt + FireEmit.G * 0.45f) * IntW;
-                    Out.RadianceHdr.B += Out.Transmittance * (SmokeScat.B * SmokeExt + FireEmit.B * 0.45f) * IntW;
+                    Out.RadianceHdr.R += Out.Transmittance * (SmokeScat.R * SmokeExt + FireEmit.R * Document.Shading.FireIntensity * 0.45f) * IntW;
+                    Out.RadianceHdr.G += Out.Transmittance * (SmokeScat.G * SmokeExt + FireEmit.G * Document.Shading.FireIntensity * 0.45f) * IntW;
+                    Out.RadianceHdr.B += Out.Transmittance * (SmokeScat.B * SmokeExt + FireEmit.B * Document.Shading.FireIntensity * 0.45f) * IntW;
                     Out.Transmittance *= StepT;
                     if (Out.Transmittance < 0.008f) break;
                 }

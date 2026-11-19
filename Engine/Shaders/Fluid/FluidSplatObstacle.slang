@@ -69,9 +69,10 @@ void FluidSplatObstacleEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
             float2 TanXY = float2(-D.y, D.x) / XYDist;
             float2 RadXY = D.xy / XYDist;
 
+            float3 Turb = FluidHash33(WorldPos * 14.0 + float3(TimeSec * 7.1, -TimeSec * 5.3, TimeSec * 11.7));
             float RadialBias = IsTornado ? -0.85 : 0.35;
-            float2 TargetXY = TanXY * FluidCfg.EmitterParams.z + RadXY * RadialBias + float2(Fbm * 0.9, -Fbm * 0.8);
-            float  TargetZ  = FluidCfg.EmitterParams.y * (IsTornado ? 1.25 : 1.0) * (0.82 + 0.42 * max(0.0, Fbm));
+            float2 TargetXY = TanXY * FluidCfg.EmitterParams.z + RadXY * RadialBias + float2(Fbm * 0.9, -Fbm * 0.8) + Turb.xy * 0.65;
+            float  TargetZ  = FluidCfg.EmitterParams.y * (IsTornado ? 1.25 : 1.0) * (0.82 + 0.42 * max(0.0, Fbm)) + Turb.z * 0.45;
             float  Blend    = clamp(Falloff * Dt * 11.0, 0.0, 0.85);
 
             Vel.xy += (TargetXY - Vel.xy) * Blend;

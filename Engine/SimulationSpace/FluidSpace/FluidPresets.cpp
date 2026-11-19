@@ -79,11 +79,11 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
     {
         Doc.SceneName                       = "Shrapnel airburst";
         Doc.Emitter.Enabled                 = false;
-        Doc.Blast.StrengthMps               = 15.0f;
+        Doc.Blast.StrengthMps               = 12.0f;
         Doc.Blast.RadiusMeters              = 0.16f;
-        Doc.Blast.Temperature               = 6.8f;
-        Doc.Blast.Fuel                      = 5.8f;
-        Doc.Blast.Smoke                     = 3.2f;
+        Doc.Blast.Temperature               = 6.0f;
+        Doc.Blast.Fuel                      = 4.8f;
+        Doc.Blast.Smoke                     = 2.4f;
         Doc.Blast.Lobes                     = 7.0f;
         Doc.Particles.ShrapnelEnabled       = true;
         Doc.Particles.EmberCount            = 650u;
@@ -101,14 +101,19 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
         Doc.Domain.DynamicBounds            = true;
         Doc.Domain.AdaptiveCeilingEnabled   = true;
         Doc.Domain.MaxExplosionCeilingMeters = 28.0f;
-        Doc.Blast.StrengthMps               = 13.5f;
-        Doc.Blast.Temperature               = 6.5f;
-        Doc.Blast.Fuel                      = 5.4f;
-        Doc.Blast.Smoke                     = 3.0f;
+        Doc.Blast.CenterWorld               = { 0.0f, 0.0f, 0.45f };
+        Doc.Blast.RadiusMeters              = 0.20f;
+        Doc.Blast.StrengthMps               = 11.5f;
+        Doc.Blast.Temperature               = 6.4f;
+        Doc.Blast.Fuel                      = 5.2f;
+        Doc.Blast.Smoke                     = 2.8f;
         Doc.Blast.Lobes                     = 6.0f;
         Doc.Combustion.Buoyancy             = 6.2f;
-        Doc.Combustion.CombustionExpansion  = 5.8f;
-        Doc.Shading.FireIntensity           = 6.5f;
+        Doc.Combustion.CombustionExpansion  = 5.4f;
+        Doc.Combustion.BurnRate             = 2.2f;
+        Doc.Combustion.SootGeneration       = 2.2f;
+        Doc.Combustion.CoolingRate          = 2.05f;
+        Doc.Shading.FireIntensity           = 6.2f;
         Doc.Shading.DensityExtinction       = 20.0f;
     }
     else if (PresetKey == "camp_fire_steady")
@@ -186,26 +191,26 @@ FluidSceneDocument FluidPresets::ConstructPreset(std::string_view PresetKey) noe
     else if (PresetKey == "wildfire_tornado")
     {
         Doc.SceneName                       = "Fire tornado";
-        Doc.Domain.BoundsWidthMeters        = 2.2f;
-        Doc.Domain.BoundsHeightMeters       = 3.1f;
+        Doc.Domain.BoundsWidthMeters        = 2.3f;
+        Doc.Domain.BoundsHeightMeters       = 3.2f;
         Doc.Domain.DynamicBounds            = false;
-        Doc.Emitter.RadiusMeters            = 0.18f;
+        Doc.Emitter.RadiusMeters            = 0.135f;
         Doc.Emitter.HeightMeters            = 0.08f;
-        Doc.Emitter.UpwardVelocityMps       = 4.9f;
-        Doc.Emitter.Swirl                   = 6.2f;
-        Doc.Emitter.Temperature             = 4.5f;
-        Doc.Emitter.Fuel                    = 3.6f;
-        Doc.Emitter.Smoke                   = 1.1f;
-        Doc.Combustion.VorticityConfinement = 10.2f;
-        Doc.Combustion.Buoyancy             = 6.4f;
-        Doc.Combustion.SmokeWeight          = 0.35f;
-        Doc.Combustion.TurbulenceStrength   = 3.6f;
-        Doc.Combustion.SootGeneration       = 1.15f;
-        Doc.Combustion.CoolingRate          = 1.10f;
+        Doc.Emitter.UpwardVelocityMps       = 4.6f;
+        Doc.Emitter.Swirl                   = 6.4f;
+        Doc.Emitter.Temperature             = 3.6f;
+        Doc.Emitter.Fuel                    = 2.8f;
+        Doc.Emitter.Smoke                   = 1.45f;
+        Doc.Combustion.VorticityConfinement = 10.6f;
+        Doc.Combustion.Buoyancy             = 6.2f;
+        Doc.Combustion.SmokeWeight          = 0.55f;
+        Doc.Combustion.TurbulenceStrength   = 3.8f;
+        Doc.Combustion.SootGeneration       = 1.85f;
+        Doc.Combustion.CoolingRate          = 1.95f;
         Doc.Combustion.WindVelocityXY       = { 0.06f, 0.0f };
         Doc.Shading.ColorPalette            = FluidColorPalette::CinemaNapalm;
-        Doc.Shading.FireIntensity           = 6.2f;
-        Doc.Shading.DensityExtinction       = 17.5f;
+        Doc.Shading.FireIntensity           = 5.2f;
+        Doc.Shading.DensityExtinction       = 18.5f;
         Doc.Particles.EmberCount            = 480u;
         Doc.Particles.EmberLifetime         = 1.9f;
         Doc.Particles.EmberAshiness         = 0.25f;
@@ -280,67 +285,72 @@ Mathematics::LinearRGB FluidPresets::EvaluateBlackbodyPalette(
     float             TemperatureScale,
     FluidColorPalette Palette) noexcept
 {
-    const float T = std::clamp(RawTemperature * TemperatureScale * 0.155f, 0.0f, 1.30f);
+    // Exact 1:1 port of Experimental/FluidEditor/src/shaders-wgsl.js :: evaluateBlackbodyPalette
+    const float T = std::clamp(RawTemperature * TemperatureScale * 0.28f, 0.0f, 1.60f);
     if (T <= 0.01f)
     {
         return {};
     }
 
     Mathematics::LinearRGB Col {};
+    float Gain = T * T * 1.65f;
     switch (Palette)
     {
         case FluidColorPalette::CinemaNapalm:
         {
-            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.68f, 0.03f, 0.003f }, SmoothStepF(0.0f, 0.26f, T));
-            Col = MixRgb(Col, { 1.00f, 0.16f, 0.008f }, SmoothStepF(0.22f, 0.60f, T));
-            Col = MixRgb(Col, { 1.00f, 0.52f, 0.06f }, SmoothStepF(0.54f, 0.98f, T));
-            Col = MixRgb(Col, { 1.00f, 0.84f, 0.36f }, SmoothStepF(0.92f, 1.30f, T));
+            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.65f, 0.02f, 0.002f }, SmoothStepF(0.0f, 0.25f, T));
+            Col = MixRgb(Col, { 1.00f, 0.16f, 0.005f }, SmoothStepF(0.20f, 0.62f, T));
+            Col = MixRgb(Col, { 1.00f, 0.56f, 0.06f }, SmoothStepF(0.58f, 1.02f, T));
+            Col = MixRgb(Col, { 1.00f, 0.90f, 0.48f }, SmoothStepF(0.95f, 1.48f, T));
             break;
         }
         case FluidColorPalette::ThermobaricWhiteHot:
         {
-            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.72f, 0.12f, 0.01f }, SmoothStepF(0.0f, 0.20f, T));
-            Col = MixRgb(Col, { 1.00f, 0.44f, 0.08f }, SmoothStepF(0.18f, 0.48f, T));
-            Col = MixRgb(Col, { 1.00f, 0.86f, 0.48f }, SmoothStepF(0.44f, 0.82f, T));
-            Col = MixRgb(Col, { 1.12f, 1.10f, 1.18f }, SmoothStepF(0.78f, 1.25f, T));
+            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.72f, 0.12f, 0.01f }, SmoothStepF(0.0f, 0.18f, T));
+            Col = MixRgb(Col, { 1.00f, 0.45f, 0.08f }, SmoothStepF(0.15f, 0.42f, T));
+            Col = MixRgb(Col, { 1.00f, 0.90f, 0.55f }, SmoothStepF(0.38f, 0.75f, T));
+            Col = MixRgb(Col, { 1.25f, 1.22f, 1.35f }, SmoothStepF(0.70f, 1.22f, T));
+            Gain = T * T * 2.10f;
             break;
         }
         case FluidColorPalette::WildfireCopperEmerald:
         {
-            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.04f, 0.35f, 0.14f }, SmoothStepF(0.0f, 0.24f, T));
-            Col = MixRgb(Col, { 0.12f, 0.92f, 0.36f }, SmoothStepF(0.20f, 0.55f, T));
-            Col = MixRgb(Col, { 0.62f, 1.00f, 0.54f }, SmoothStepF(0.50f, 0.92f, T));
-            Col = MixRgb(Col, { 0.95f, 1.00f, 0.92f }, SmoothStepF(0.88f, 1.30f, T));
+            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.03f, 0.35f, 0.14f }, SmoothStepF(0.0f, 0.22f, T));
+            Col = MixRgb(Col, { 0.10f, 0.92f, 0.38f }, SmoothStepF(0.18f, 0.54f, T));
+            Col = MixRgb(Col, { 0.62f, 1.00f, 0.52f }, SmoothStepF(0.50f, 0.90f, T));
+            Col = MixRgb(Col, { 0.95f, 1.00f, 0.92f }, SmoothStepF(0.84f, 1.36f, T));
+            Gain = T * T * 1.70f;
             break;
         }
         case FluidColorPalette::CherenkovBluePlasma:
         {
-            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.05f, 0.12f, 0.62f }, SmoothStepF(0.0f, 0.22f, T));
-            Col = MixRgb(Col, { 0.14f, 0.56f, 1.00f }, SmoothStepF(0.18f, 0.52f, T));
-            Col = MixRgb(Col, { 0.58f, 0.88f, 1.00f }, SmoothStepF(0.48f, 0.90f, T));
-            Col = MixRgb(Col, { 0.94f, 0.98f, 1.05f }, SmoothStepF(0.85f, 1.30f, T));
+            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.04f, 0.10f, 0.62f }, SmoothStepF(0.0f, 0.20f, T));
+            Col = MixRgb(Col, { 0.12f, 0.52f, 1.00f }, SmoothStepF(0.16f, 0.50f, T));
+            Col = MixRgb(Col, { 0.58f, 0.88f, 1.00f }, SmoothStepF(0.46f, 0.88f, T));
+            Col = MixRgb(Col, { 0.94f, 0.98f, 1.08f }, SmoothStepF(0.82f, 1.35f, T));
+            Gain = T * T * 1.85f;
             break;
         }
         case FluidColorPalette::ArcaneVoidMagenta:
         {
-            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.38f, 0.03f, 0.48f }, SmoothStepF(0.0f, 0.22f, T));
-            Col = MixRgb(Col, { 0.88f, 0.16f, 0.96f }, SmoothStepF(0.18f, 0.54f, T));
-            Col = MixRgb(Col, { 1.00f, 0.54f, 0.98f }, SmoothStepF(0.50f, 0.92f, T));
-            Col = MixRgb(Col, { 1.00f, 0.92f, 1.00f }, SmoothStepF(0.86f, 1.30f, T));
+            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.38f, 0.02f, 0.48f }, SmoothStepF(0.0f, 0.20f, T));
+            Col = MixRgb(Col, { 0.88f, 0.14f, 0.98f }, SmoothStepF(0.16f, 0.52f, T));
+            Col = MixRgb(Col, { 1.00f, 0.52f, 0.98f }, SmoothStepF(0.48f, 0.90f, T));
+            Col = MixRgb(Col, { 1.00f, 0.92f, 1.00f }, SmoothStepF(0.84f, 1.36f, T));
+            Gain = T * T * 1.75f;
             break;
         }
         case FluidColorPalette::PlanckianBlackbody:
         default:
         {
-            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.58f, 0.025f, 0.003f }, SmoothStepF(0.0f, 0.25f, T));
-            Col = MixRgb(Col, { 1.00f, 0.20f, 0.008f }, SmoothStepF(0.20f, 0.58f, T));
-            Col = MixRgb(Col, { 1.00f, 0.60f, 0.07f }, SmoothStepF(0.52f, 0.94f, T));
-            Col = MixRgb(Col, { 1.00f, 0.90f, 0.58f }, SmoothStepF(0.88f, 1.30f, T));
+            Col = MixRgb({ 0.0f, 0.0f, 0.0f }, { 0.55f, 0.03f, 0.005f }, SmoothStepF(0.0f, 0.22f, T));
+            Col = MixRgb(Col, { 1.00f, 0.24f, 0.01f }, SmoothStepF(0.18f, 0.52f, T));
+            Col = MixRgb(Col, { 1.00f, 0.68f, 0.10f }, SmoothStepF(0.48f, 0.88f, T));
+            Col = MixRgb(Col, { 1.00f, 0.96f, 0.78f }, SmoothStepF(0.82f, 1.35f, T));
             break;
         }
     }
 
-    const float Gain = std::pow(T, 1.45f) * 0.78f;
     return { Col.R * Gain, Col.G * Gain, Col.B * Gain };
 }
 

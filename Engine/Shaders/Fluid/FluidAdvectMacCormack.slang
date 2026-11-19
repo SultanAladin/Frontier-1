@@ -68,7 +68,7 @@ void FluidAdvectMacCormackEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     Temp += BurnedFuel * FluidCfg.CombustionB.y;
     Smoke += BurnedFuel * FluidCfg.CombustionB.z;
 
-    float RadCool = FluidCfg.CombustionA.w * (0.55 * Temp + 0.14 * Temp * Temp) * Dt;
+    float RadCool = FluidCfg.CombustionA.w * (0.65 * Temp + 0.24 * Temp * Temp) * Dt;
     Temp  = max(0.0, Temp - RadCool);
     Smoke = max(0.0, Smoke * exp(-FluidCfg.CombustionC.z * Dt));
     Fuel  = max(0.0, Fuel  * exp(-0.15 * Dt));
@@ -76,7 +76,7 @@ void FluidAdvectMacCormackEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     if (FluidCfg.GridDims.z < 0.5)
     {
         float EdgeXY = min(min(UVW.x, 1.0 - UVW.x), min(UVW.y, 1.0 - UVW.y));
-        float Sponge = smoothstep(0.0, 0.045, EdgeXY) * smoothstep(0.0, 0.035, 1.0 - UVW.z);
+        float Sponge = smoothstep(0.0, 0.10, EdgeXY) * smoothstep(0.0, 0.11, 1.0 - UVW.z);
         Smoke *= Sponge;
         Temp  *= Sponge;
         Fuel  *= Sponge;

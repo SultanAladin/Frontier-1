@@ -118,6 +118,14 @@ struct SceneGeoAsset
     const Mathematics::LinearRGB SkyRad { 0.14f, 0.18f, 0.25f };
     const auto& Doc = Fluid.InspectDocument();
     const auto& Embers = Fluid.InspectParticleCoupler().InspectEmberSlots();
+    const auto& EmissiveLights = Fluid.InspectEmissiveLights();
+    const float Exposure = std::max(0.25f, Doc.Shading.Exposure) * 0.58f;
+
+    const auto AcesFilmic = [](float V) noexcept -> float
+    {
+        const float X = std::max(0.0f, V);
+        return (X * (2.51f * X + 0.03f)) / (X * (2.43f * X + 0.59f) + 0.14f);
+    };
 
     for (uint32_t PY = 0u; PY < H; ++PY)
     {
@@ -129,9 +137,9 @@ struct SceneGeoAsset
 
             float HitDist = 45.0f;
             Mathematics::LinearRGB Bg {
-                0.045f + 0.045f * std::clamp(Rd.Z * 0.5f + 0.5f, 0.0f, 1.0f),
-                0.055f + 0.065f * std::clamp(Rd.Z * 0.5f + 0.5f, 0.0f, 1.0f),
-                0.075f + 0.095f * std::clamp(Rd.Z * 0.5f + 0.5f, 0.0f, 1.0f),
+                0.035f + 0.035f * std::clamp(Rd.Z * 0.5f + 0.5f, 0.0f, 1.0f),
+                0.042f + 0.050f * std::clamp(Rd.Z * 0.5f + 0.5f, 0.0f, 1.0f),
+                0.058f + 0.075f * std::clamp(Rd.Z * 0.5f + 0.5f, 0.0f, 1.0f),
             };
 
             if (ShowGroundFloor && Rd.Z < -1.0e-4f && Eye.Z > 0.0f)
@@ -143,14 +151,26 @@ struct SceneGeoAsset
                     const Mathematics::Axis3D GP = Eye + Rd * TG;
                     const int CX = static_cast<int>(std::floor(GP.X * 2.0f));
                     const int CY = static_cast<int>(std::floor(GP.Y * 2.0f));
-                    const float Checker = ((CX + CY) & 1) ? 0.14f : 0.07f;
+                    const float Checker = ((CX + CY) & 1) ? 0.12f : 0.06f;
                     const float Fade    = std::exp(-0.08f * std::hypot(GP.X, GP.Y));
                     const float ShadowT = Fluid.EvaluateFluidShadowTransmittance(GP + Mathematics::Axis3D{ 0.0f, 0.0f, 0.02f }, SunDir, 16.0f);
+                    const float BaseAlb = 0.045f + Checker * Fade;
                     Bg = {
-                        (0.045f + Checker * Fade) * ShadowT,
-                        (0.050f + Checker * Fade) * ShadowT,
-                        (0.060f + Checker * Fade) * ShadowT,
+                        BaseAlb * ShadowT * 0.95f,
+                        BaseAlb * ShadowT * 1.00f,
+                        BaseAlb * ShadowT * 1.12f,
                     };
+                    // 1:1 WGSL warm pyro floor bounce illumination from extracted fire proxy lights
+                    for (const auto& FL : EmissiveLights)
+                    {
+                        const auto D = FL.WorldPosition - GP;
+                        const float Dist2 = std::max(0.22f, D.X * D.X + D.Y * D.Y + D.Z * D.Z);
+                        const float NdL = std::max(0.0f, D.Z / std::sqrt(Dist2));
+                        const float Atten = NdL / (1.0f + Dist2 * 1.35f);
+                        Bg.R += BaseAlb * FL.ColorIrradiance.R * Atten * 0.42f;
+                        Bg.G += BaseAlb * FL.ColorIrradiance.G * Atten * 0.42f;
+                        Bg.B += BaseAlb * FL.ColorIrradiance.B * Atten * 0.42f;
+                    }
                 }
             }
 
@@ -200,14 +220,14 @@ struct SceneGeoAsset
                 static_cast<float>((PX * 73u + PY * 179u) & 31u) / 31.0f);
 
             Mathematics::LinearRGB Hdr {
-                Bg.R * Res.Transmittance + Res.RadianceHdr.R,
-                Bg.G * Res.Transmittance + Res.RadianceHdr.G,
-                Bg.B * Res.Transmittance + Res.RadianceHdr.B,
+                (Bg.R * Res.Transmittance + Res.RadianceHdr.R) * Exposure,
+                (Bg.G * Res.Transmittance + Res.RadianceHdr.G) * Exposure,
+                (Bg.B * Res.Transmittance + Res.RadianceHdr.B) * Exposure,
             };
 
-            const auto Tonemap = [](float V) noexcept -> uint8_t
+            const auto Tonemap = [&](float V) noexcept -> uint8_t
             {
-                const float M = std::max(0.0f, V) / (1.0f + std::max(0.0f, V));
+                const float M = AcesFilmic(V);
                 const float S = (M <= 0.0031308f) ? (M * 12.92f) : (1.055f * std::pow(M, 1.0f / 2.4f) - 0.055f);
                 return static_cast<uint8_t>(std::round(std::clamp(S, 0.0f, 1.0f) * 255.0f));
             };
@@ -238,7 +258,7 @@ struct SceneGeoAsset
             : 0u;
         const auto Category = static_cast<FluidDebrisCategory>(CatIdx);
         const float ScreenPerMeter = static_cast<float>(H) / (2.0f * Z * TanY);
-        const float BaseRad = std::clamp(P.SizeMeters * ScreenPerMeter, IsDebris ? 1.35f : 0.95f, IsDebris ? 3.2f : 2.1f);
+        const float BaseRad = std::clamp(P.SizeMeters * ScreenPerMeter * 0.52f, IsDebris ? 0.65f : 0.60f, IsDebris ? 1.55f : 1.35f);
 
         const float VX = Mathematics::EvaluateDot({ P.VelocityMps[0], P.VelocityMps[1], P.VelocityMps[2] }, Right);
         const float VY = -Mathematics::EvaluateDot({ P.VelocityMps[0], P.VelocityMps[1], P.VelocityMps[2] }, Up);
@@ -277,9 +297,9 @@ struct SceneGeoAsset
         const int Y0 = std::max(0, static_cast<int>(std::floor(CY)) - Span);
         const int Y1 = std::min(static_cast<int>(H) - 1, static_cast<int>(std::ceil(CY)) + Span);
 
-        const auto ToneF = [](float Vc) noexcept -> float
+        const auto ToneF = [&](float Vc) noexcept -> float
         {
-            const float M = std::max(0.0f, Vc) / (1.0f + std::max(0.0f, Vc));
+            const float M = AcesFilmic(Vc * Exposure);
             return (M <= 0.0031308f) ? (M * 12.92f) : (1.055f * std::pow(M, 1.0f / 2.4f) - 0.055f);
         };
         const float SR = std::clamp(ToneF(P.ColourLinear[0]), 0.0f, 1.0f);
@@ -416,25 +436,25 @@ int main()
     {
         FluidSimulationSequence SimPyro;
         auto Doc = FluidPresets::ConstructPreset("ue5_pyro_default");
-        Doc.Domain.GridResolution = 40u;
+        Doc.Domain.GridResolution = 48u;
         SimPyro.Configure(Doc);
-        for (uint32_t S = 0u; S < 42u; ++S) SimPyro.StepSimulation(1.0f / 60.0f);
-        TilePyro = RenderFluidPreviewRgba(SimPyro, TileW, TileH, { 2.3f, -2.3f, 1.35f }, { 0.0f, 0.0f, 0.9f });
+        for (uint32_t S = 0u; S < 68u; ++S) SimPyro.StepSimulation(1.0f / 60.0f);
+        TilePyro = RenderFluidPreviewRgba(SimPyro, TileW, TileH, { 2.65f, -2.65f, 1.55f }, { 0.0f, 0.0f, 1.15f });
     }
     {
         FluidSimulationSequence SimTornado;
         auto Doc = FluidPresets::ConstructPreset("wildfire_tornado");
-        Doc.Domain.GridResolution = 40u;
+        Doc.Domain.GridResolution = 48u;
         SimTornado.Configure(Doc);
-        for (uint32_t S = 0u; S < 54u; ++S) SimTornado.StepSimulation(1.0f / 60.0f);
-        TileFireTornado = RenderFluidPreviewRgba(SimTornado, TileW, TileH, { 2.7f, -2.7f, 1.55f }, { 0.0f, 0.0f, 1.15f });
+        for (uint32_t S = 0u; S < 72u; ++S) SimTornado.StepSimulation(1.0f / 60.0f);
+        TileFireTornado = RenderFluidPreviewRgba(SimTornado, TileW, TileH, { 2.9f, -2.9f, 1.65f }, { 0.0f, 0.0f, 1.25f });
     }
     {
         FluidSimulationSequence SimDust;
         auto Doc = FluidPresets::ConstructPreset("dust_tornado");
-        Doc.Domain.GridResolution = 40u;
+        Doc.Domain.GridResolution = 48u;
         SimDust.Configure(Doc);
-        for (uint32_t S = 0u; S < 60u; ++S) SimDust.StepSimulation(1.0f / 60.0f);
+        for (uint32_t S = 0u; S < 72u; ++S) SimDust.StepSimulation(1.0f / 60.0f);
         std::array<bool, 6> SeenCategories {};
         for (const auto& P : SimDust.InspectParticleCoupler().InspectEmberSlots())
         {
@@ -451,13 +471,13 @@ int main()
     {
         FluidSimulationSequence SimMega;
         auto Doc = FluidPresets::ConstructPreset("megaton_open_bounds");
-        Doc.Domain.GridResolution = 40u;
+        Doc.Domain.GridResolution = 52u;
         SimMega.Configure(Doc);
         SimMega.TriggerBlast(Doc.Blast);
-        for (uint32_t S = 0u; S < 32u; ++S) SimMega.StepSimulation(1.0f / 60.0f);
+        for (uint32_t S = 0u; S < 44u; ++S) SimMega.StepSimulation(1.0f / 60.0f);
         Score.Verify(SimMega.InspectHeroGrid().BoxMaxWorld.Z > 4.2f,
                      "Adaptive explosion ceiling expands BoxMaxWorld.Z above base bounds");
-        TileMegaton = RenderFluidPreviewRgba(SimMega, TileW, TileH, { 4.2f, -4.2f, 2.5f }, { 0.0f, 0.0f, 2.0f });
+        TileMegaton = RenderFluidPreviewRgba(SimMega, TileW, TileH, { 6.2f, -6.2f, 3.1f }, { 0.0f, 0.0f, 1.75f });
     }
     ComposeAndSave2x2Sheet(
         ProofDir / "01-FluidPresetsAndBlackbodyPalettes.png",
@@ -558,12 +578,12 @@ int main()
         Doc.Domain.GridResolution = 32u;
         SimSh.Configure(Doc);
         SimSh.TriggerBlast(Doc.Blast);
-        for (uint32_t S = 0u; S < 20u; ++S) SimSh.StepSimulation(1.0f / 60.0f);
+        for (uint32_t S = 0u; S < 26u; ++S) SimSh.StepSimulation(1.0f / 60.0f);
         Score.Verify(!SimSh.InspectParticleCoupler().InspectShrapnelSlots().empty(),
                      "Fluid detonation spawns ParticleSlot shrapnel streamers");
         Score.Verify(!SimSh.InspectParticleCoupler().InspectEmberSlots().empty(),
                      "Fluid simulation maintains advected Ember ParticleSlots");
-        TileShrapnel = RenderFluidPreviewRgba(SimSh, TileW, TileH, { 2.7f, -2.7f, 1.55f }, { 0.0f, 0.0f, 1.0f });
+        TileShrapnel = RenderFluidPreviewRgba(SimSh, TileW, TileH, { 4.1f, -4.1f, 2.15f }, { 0.0f, 0.0f, 1.25f });
     }
     {
         FluidSimulationSequence SimC;
@@ -677,7 +697,7 @@ int main()
         Ctx.SceneSdf           = &Scene.SceneSdf;
         Ctx.SceneTree          = &Scene.SceneTree;
         Ctx.BakeGiObstaclesNow = true;
-        for (uint32_t S = 0u; S < 24u; ++S) GiFluid.StepSimulation(1.0f / 60.0f, Ctx);
+        for (uint32_t S = 0u; S < 42u; ++S) GiFluid.StepSimulation(1.0f / 60.0f, Ctx);
 
         uint32_t SolidBakedCount = 0u;
         float MaxTemp = 0.0f;

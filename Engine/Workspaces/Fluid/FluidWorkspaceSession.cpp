@@ -161,7 +161,7 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
     const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis({ -0.55f, 0.45f, 0.70f });
     const Mathematics::LinearRGB SunIrr { 3.2f, 2.95f, 2.65f };
     const Mathematics::LinearRGB SkyRad { 0.14f, 0.18f, 0.25f };
-    const float Exposure = std::max(0.25f, Simulation.InspectDocument().Shading.Exposure) * 0.24f;
+    const float Exposure = std::max(0.25f, Simulation.InspectDocument().Shading.Exposure) * 0.58f;
 
     for (uint32_t PY = 0u; PY < PreviewHeightPx; ++PY)
     {
@@ -230,7 +230,7 @@ void FluidWorkspaceSession::RenderPreviewFramebuffer(uint32_t WidthPx, uint32_t 
             : 0u;
         const auto Category = static_cast<SimulationSpace::FluidSpace::FluidDebrisCategory>(CatIdx);
         const float ScreenPerMeter = static_cast<float>(PreviewHeightPx) / (2.0f * Z * TanY);
-        const float BaseRad = std::clamp(P.SizeMeters * ScreenPerMeter, IsDebris ? 1.35f : 0.95f, IsDebris ? 3.2f : 2.15f);
+        const float BaseRad = std::clamp(P.SizeMeters * ScreenPerMeter * 0.58f, IsDebris ? 0.75f : 0.65f, IsDebris ? 1.75f : 1.55f);
 
         const float VX = Mathematics::EvaluateDot({ P.VelocityMps[0], P.VelocityMps[1], P.VelocityMps[2] }, Right);
         const float VY = -Mathematics::EvaluateDot({ P.VelocityMps[0], P.VelocityMps[1], P.VelocityMps[2] }, Up);
