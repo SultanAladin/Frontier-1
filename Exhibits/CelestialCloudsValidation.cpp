@@ -662,6 +662,80 @@ int main()
                      "Exported 05-SkyAloneDayToNightCycle.png");
     }
 
+    // Exhibit 06: 4 Named Astronomical Starfield Presets (ZodiacalLightDusk, SouthernCrossCoalsack, WinterHunterBetelgeuse, MagellanicClouds)
+    {
+        const std::array<StarfieldPresetIdentifier, 4u> Presets {{
+            StarfieldPresetIdentifier::ZodiacalLightDusk,
+            StarfieldPresetIdentifier::SouthernCrossCoalsack,
+            StarfieldPresetIdentifier::WinterHunterBetelgeuse,
+            StarfieldPresetIdentifier::MagellanicClouds,
+        }};
+        const std::array<const char*, 4u> FileNames {{
+            "10-ZodiacalLightDusk.png",
+            "11-SouthernCrossCoalsack.png",
+            "12-WinterHunterBetelgeuse.png",
+            "13-MagellanicClouds.png",
+        }};
+
+        for (std::size_t I = 0u; I < Presets.size(); ++I)
+        {
+            const StarfieldPresetSpecification Spec = LunarStarfieldSequence::BuildStarfieldPreset(Presets[I]);
+            WorldSceneSpecification StarScene {};
+            {
+                MaterialSpace::SurfaceMaterial DummyMat {};
+                (void)StarScene.MaterialRegister.RegisterMaterial(DummyMat);
+            }
+            StarScene.Atmosphere.Medium.AtmosphereEnabled  = true;
+            StarScene.Atmosphere.Solar.SolarEnabled        = true;
+            StarScene.Atmosphere.Solar.ManualDirectionOverride = true;
+            StarScene.Atmosphere.Solar.SunAzimuthDegrees   = Spec.SunAzimuthDegrees;
+            StarScene.Atmosphere.Solar.SunElevationDegrees = Spec.SunElevationDegrees;
+            StarScene.Atmosphere.Clouds.CloudsEnabled      = false;
+            StarScene.Atmosphere.LocalCloud.LocalEnabled   = false;
+            StarScene.Atmosphere.Stars                     = Spec.Stars;
+            for (auto& M : StarScene.Atmosphere.Moons)
+            {
+                M.Visible = false;
+            }
+
+            const uint32_t PresetW = 960u;
+            const uint32_t PresetH = 540u;
+            const auto Fwd = CelestialEphemerisSolver::ConvertAzimuthElevationToWorldAxis(
+                Spec.CameraAzimuthDegrees, Spec.CameraElevationDegrees);
+            const float TanHalfHoriz = std::tan(0.5f * Spec.HorizontalFovDegrees * Constants::DegToRadFloat);
+            const float Aspect       = static_cast<float>(PresetW) / static_cast<float>(PresetH);
+            const float VerticalFov  = 2.0f * std::atan(TanHalfHoriz / Aspect);
+
+            PerspectiveCameraFrame StarCam {};
+            StarCam.CameraOrigin       = { 0.0f, 0.0f, 1.5f };
+            StarCam.TargetPoint        = { Fwd.X * 12.0f, Fwd.Y * 12.0f, 1.5f + Fwd.Z * 12.0f };
+            StarCam.WorldUpAxis        = { 0.0f, 0.0f, 1.0f };
+            StarCam.VerticalFovRadians = VerticalFov;
+            StarCam.ViewportWidthPx    = PresetW;
+            StarCam.ViewportHeightPx   = PresetH;
+
+            WorldRenderConfiguration StarCfg {};
+            StarCfg.Engine = WorldRenderEngine::OpenPbrDirect;
+
+            CpuRenderer.PrepareWorldScene(StarScene);
+            CpuRenderer.SynchronizeWorldAtmosphere(StarScene);
+            if (GpuOk)
+            {
+                GpuRenderer.SynchronizeSceneResources(StarScene, &CpuRenderer.InspectIrradianceLattice(), true);
+            }
+
+            std::vector<uint8_t> StarRgba;
+            if (!GpuOk || !GpuRenderer.RenderWorldViewportWithEngine(StarCfg, 0u, StarCam, StarScene, StarRgba))
+            {
+                StarRgba = CpuRenderer.RenderWorldFrameWithEngine(StarCfg, StarCam, StarCam, StarScene).DisplayRgba8;
+            }
+
+            const std::filesystem::path PresetOut = OutDir / FileNames[I];
+            Score.Verify(WritePngRgba8(PresetOut, PresetW, PresetH, StarRgba.data()),
+                         FileNames[I]);
+        }
+    }
+
     if (GpuOk)
     {
         GpuRenderer.TeardownSequence();

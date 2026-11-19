@@ -37,6 +37,15 @@ enum class LunarSurfacePreset : uint8_t
     Shard   = 5u, // [-] - Pale seafoam mineral crust
 };
 
+enum class StarfieldPresetIdentifier : uint8_t
+{
+    GalacticBulge          = 0u, // [-] - Overhead Sagittarius bulge & Great Rift dust lanes
+    ZodiacalLightDusk      = 1u, // [-] - Steep southern-spring evening ecliptic zodiacal light & dusk stars
+    SouthernCrossCoalsack  = 2u, // [-] - Crux, Coalsack dark nebula, Alpha/Beta Centauri & Eta Carinae
+    WinterHunterBetelgeuse = 3u, // [-] - Orion (Betelgeuse, Rigel, Belt, M42), Sirius, Aldebaran & Pleiades
+    MagellanicClouds       = 4u, // [-] - Large & Small Magellanic Clouds, Achernar, Canopus & Eta Carinae
+};
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
@@ -72,6 +81,22 @@ struct StarfieldConfiguration
     float CelestialRotationDegrees  = 0.0f;                                   // [deg] - Celestial pole rotation [0..360)
     bool  EnableBrightStarCatalog   = true;                                   // [-]   - Renders J2000 bright navigation stars (Sirius, Rigel, Orion, etc.)
     bool  EnableGalacticBand        = true;                                   // [-]   - Concentrates faint micro-stars along tilted Milky Way plane
+    bool  ZodiacalLightEnabled      = true;                                   // [-]   - Enables Leinert (1998) ecliptic zodiacal light & gegenschein
+    float ZodiacalRadianceScale     = 1.0f;                                   // [x]   - Zodiacal dust scatter radiance multiplier [0..4]
+};
+
+struct StarfieldPresetSpecification
+{
+    StarfieldPresetIdentifier Preset                 = StarfieldPresetIdentifier::GalacticBulge;
+    const char*               Title                  = "";
+    const char*               OutputSlug             = "";
+    StarfieldConfiguration    Stars                  {};
+    float                     SunAzimuthDegrees      = 270.0f;
+    float                     SunElevationDegrees    = -40.0f;
+    float                     CameraAzimuthDegrees   = 180.0f;
+    float                     CameraElevationDegrees = 45.0f;
+    float                     HorizontalFovDegrees   = 80.0f;
+    float                     RecommendedExposure    = 1.80f;
 };
 
 struct StarfieldCatalogEntry
@@ -117,6 +142,14 @@ public:
 
     // Returns built-in J2000 bright navigation stars (Sirius, Orion, Aldebaran, Capella, Vega, etc.)
     [[nodiscard]] static std::span<const StarfieldCatalogEntry> QueryJ2000BrightStarCatalog() noexcept;
+
+    // Builds named night-sky & twilight starfield framing presets (ZodiacalLightDusk, SouthernCrossCoalsack, WinterHunterBetelgeuse, MagellanicClouds)
+    [[nodiscard]] static StarfieldPresetSpecification BuildStarfieldPreset(StarfieldPresetIdentifier Preset) noexcept;
+
+    // Evaluates Leinert et al. (1998) S10 zodiacal light + gegenschein interplanetary dust scatter in equatorial J2000 coordinates
+    [[nodiscard]] static Mathematics::LinearRGB EvaluateZodiacalLight(
+        const Mathematics::Axis3D& EquatorialDirection,
+        const Mathematics::Axis3D& SolarEquatorialDirection) noexcept;
 
     // Evaluates all active moon slots (up to 6 simultaneously with Lommel-Seeliger regolith & off-limb exospheres) + pinpoint stars
     [[nodiscard]] static Mathematics::LinearRGB EvaluateCelestialField(

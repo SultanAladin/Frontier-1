@@ -2697,10 +2697,15 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         Cel.ClockViewportDims[2]     = static_cast<float>(HeightPx);
         Cel.ClockViewportDims[3]     = static_cast<float>(LunarStarfieldSequence::MaxMoonSlots);
 
+        const uint32_t ZodiacalQuant = Atmo.Stars.ZodiacalLightEnabled
+            ? static_cast<uint32_t>(std::clamp(std::lround(std::max(0.0f, Atmo.Stars.ZodiacalRadianceScale) * 255.0f), 0l, 4095l))
+            : 0u;
         const uint32_t AtmoFlags =
             (Atmo.Medium.AtmosphereEnabled ? 1u : 0u) |
             ((Atmo.Medium.OrbitalViewEnabled || (Atmo.Medium.ObserverAltitudeMeters > Atmo.Medium.AtmosphereThicknessMeters)) ? 2u : 0u) |
-            (Atmo.Stars.EnableGalacticBand ? 4u : 0u);
+            (Atmo.Stars.EnableGalacticBand ? 4u : 0u) |
+            (Atmo.Stars.ZodiacalLightEnabled ? 8u : 0u) |
+            (ZodiacalQuant << 4u);
         Cel.AtmoMediumPack[0] = Atmo.Medium.RayleighStrength;
         Cel.AtmoMediumPack[1] = Atmo.Medium.MieStrength;
         Cel.AtmoMediumPack[2] = Atmo.Medium.OzoneStrength;

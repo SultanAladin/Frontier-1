@@ -719,7 +719,7 @@ constexpr uint32_t DeepFieldTotalCount  = 66000u;
     const float RiftNoise  = EvaluateGalacticFbm3(Axis * 14.0f, 5u, 1409u);
     const float RiftWidth  = 0.026f + 0.028f * RiftNoise;
     const float RiftDepth  = 2.6f * RiftMask * Lobe(Lat - RiftCenter, RiftWidth) * (0.20f + 1.25f * std::pow(RiftNoise, 1.35f));
-    const float Coalsack   = 1.85f * Lobe(Lon + 0.9f, 0.048f) * Lobe(Lat + 0.015f, 0.048f);
+    const float Coalsack   = 2.35f * Lobe(Lon + 1.00f, 0.052f) * Lobe(Lat - 0.006f, 0.048f);
 
     const Mathematics::Axis3D Stretched { Axis.X * 7.0f, Axis.Y * 7.0f, Axis.Z * 26.0f };
     const Mathematics::Axis3D Warp {
@@ -1244,6 +1244,138 @@ std::span<const StarfieldCatalogEntry> LunarStarfieldSequence::QueryJ2000BrightS
     return Catalog;
 }
 
+Mathematics::LinearRGB LunarStarfieldSequence::EvaluateZodiacalLight(
+    const Mathematics::Axis3D& EquatorialDirection,
+    const Mathematics::Axis3D& SolarEquatorialDirection) noexcept
+{
+    static const Mathematics::Axis3D EclipticPole = ConstructEquatorialDir(18.0f, 66.56071f);
+    static constexpr float ProfileLongitudes[] = {
+        15.0f, 20.0f, 25.0f, 30.0f, 35.0f, 40.0f, 45.0f, 60.0f,
+        75.0f, 90.0f, 105.0f, 120.0f, 140.0f, 160.0f, 170.0f, 180.0f
+    };
+    static constexpr float ProfileS10[] = {
+        9000.0f, 5000.0f, 3500.0f, 2690.0f, 2000.0f, 1440.0f, 1080.0f, 588.0f,
+        371.0f, 261.0f, 210.0f, 185.0f, 165.0f, 170.0f, 185.0f, 200.0f
+    };
+    constexpr float PoleS10 = 60.0f;
+
+    const float LatitudeSin = std::clamp(Mathematics::EvaluateDot(EquatorialDirection, EclipticPole), -1.0f, 1.0f);
+    const float LatitudeDeg = std::abs(std::asin(LatitudeSin)) * Constants::RadToDegFloat;
+    const Mathematics::Axis3D ViewPlane  = EquatorialDirection - EclipticPole * LatitudeSin;
+    const float SolarLatSin = Mathematics::EvaluateDot(SolarEquatorialDirection, EclipticPole);
+    const Mathematics::Axis3D SolarPlane = SolarEquatorialDirection - EclipticPole * SolarLatSin;
+    const float PlaneLengths = Mathematics::EvaluateLength(ViewPlane) * Mathematics::EvaluateLength(SolarPlane);
+    if (PlaneLengths < 1.0e-6f)
+    {
+        return { PoleS10, 0.93f * PoleS10, 0.80f * PoleS10 };
+    }
+
+    const float LongitudeDeg = std::acos(std::clamp(Mathematics::EvaluateDot(ViewPlane, SolarPlane) / PlaneLengths, -1.0f, 1.0f)) * Constants::RadToDegFloat;
+    constexpr uint32_t ProfileCount = sizeof(ProfileLongitudes) / sizeof(ProfileLongitudes[0]);
+    float EclipticS10 = ProfileS10[0];
+    for (uint32_t Knot = 1u; Knot < ProfileCount; ++Knot)
+    {
+        if (LongitudeDeg <= ProfileLongitudes[Knot])
+        {
+            const float Span = std::log(ProfileLongitudes[Knot] / ProfileLongitudes[Knot - 1u]);
+            const float Mix  = std::clamp(std::log(std::max(LongitudeDeg, ProfileLongitudes[0]) / ProfileLongitudes[Knot - 1u]) / Span, 0.0f, 1.0f);
+            EclipticS10 = std::exp(std::log(ProfileS10[Knot - 1u]) + Mix * std::log(ProfileS10[Knot] / ProfileS10[Knot - 1u]));
+            break;
+        }
+    }
+
+    const float AntiSolar   = 180.0f - LongitudeDeg;
+    const float Gegenschein = 45.0f * std::exp(-(AntiSolar * AntiSolar + LatitudeDeg * LatitudeDeg) / (2.0f * 7.0f * 7.0f));
+    const float Width       = 20.0f + 0.10f * LongitudeDeg;
+    const float SmoothLat   = std::sqrt(LatitudeDeg * LatitudeDeg + 16.0f) - 4.0f;
+    const float CosLat      = std::sqrt(std::max(0.0f, 1.0f - LatitudeSin * LatitudeSin));
+    const float S10         = PoleS10 + (EclipticS10 - PoleS10) * std::exp(-SmoothLat / Width) * CosLat + Gegenschein;
+    return { S10, 0.93f * S10, 0.80f * S10 };
+}
+
+StarfieldPresetSpecification LunarStarfieldSequence::BuildStarfieldPreset(StarfieldPresetIdentifier Preset) noexcept
+{
+    StarfieldPresetSpecification Spec {};
+    Spec.Preset                       = Preset;
+    Spec.Stars.StarfieldEnabled       = true;
+    Spec.Stars.ScintillationEnabled   = true;
+    Spec.Stars.LimitingMagnitude      = 7.8f;
+    Spec.Stars.BrightnessMultiplier   = 1.85f;
+    Spec.Stars.PointSizeScale         = 1.05f;
+    Spec.Stars.ScintillationDepthPercent = 28.0f;
+    Spec.Stars.ScintillationRateHertz = 1.20f;
+    Spec.Stars.EnableBrightStarCatalog = true;
+    Spec.Stars.EnableGalacticBand     = true;
+    Spec.Stars.ZodiacalLightEnabled   = true;
+    Spec.Stars.ZodiacalRadianceScale  = 1.0f;
+
+    switch (Preset)
+    {
+        case StarfieldPresetIdentifier::GalacticBulge:
+            Spec.Title                        = "Galactic Bulge & Great Rift";
+            Spec.OutputSlug                   = "GalacticBulge";
+            Spec.Stars.CelestialRotationDegrees = 188.25f; // LST 18.0h
+            Spec.SunAzimuthDegrees            = 270.0f;
+            Spec.SunElevationDegrees          = -40.0f;
+            Spec.CameraAzimuthDegrees         = 180.0f;
+            Spec.CameraElevationDegrees       = 68.0f;
+            Spec.HorizontalFovDegrees         = 82.0f;
+            Spec.RecommendedExposure          = 1.85f;
+            break;
+
+        case StarfieldPresetIdentifier::ZodiacalLightDusk:
+            Spec.Title                        = "Zodiacal Light Dusk";
+            Spec.OutputSlug                   = "ZodiacalLightDusk";
+            Spec.Stars.CelestialRotationDegrees = 188.25f; // LST 18.0h (steep spring evening ecliptic at -26.19 deg)
+            Spec.Stars.ZodiacalRadianceScale  = 1.35f;
+            Spec.SunAzimuthDegrees            = 270.0f;  // West horizon (-19 deg astronomical twilight)
+            Spec.SunElevationDegrees          = -19.0f;
+            Spec.CameraAzimuthDegrees         = 270.0f;
+            Spec.CameraElevationDegrees       = 26.0f;
+            Spec.HorizontalFovDegrees         = 110.0f;
+            Spec.RecommendedExposure          = 1.75f;
+            break;
+
+        case StarfieldPresetIdentifier::SouthernCrossCoalsack:
+            Spec.Title                        = "Southern Cross & Coalsack";
+            Spec.OutputSlug                   = "SouthernCrossCoalsack";
+            Spec.Stars.CelestialRotationDegrees = 105.75f; // LST 12.5h (Crux + Coalsack + Alpha/Beta Centauri due South)
+            Spec.SunAzimuthDegrees            = 90.0f;
+            Spec.SunElevationDegrees          = -40.0f;
+            Spec.CameraAzimuthDegrees         = 180.0f;  // South
+            Spec.CameraElevationDegrees       = 48.0f;
+            Spec.HorizontalFovDegrees         = 70.0f;
+            Spec.RecommendedExposure          = 1.80f;
+            break;
+
+        case StarfieldPresetIdentifier::WinterHunterBetelgeuse:
+            Spec.Title                        = "Winter Hunter Betelgeuse";
+            Spec.OutputSlug                   = "WinterHunterBetelgeuse";
+            Spec.Stars.CelestialRotationDegrees = 2.25f;   // LST 5.6h (Orion, Betelgeuse, Rigel, Belt, M42, Sirius, Pleiades due North)
+            Spec.SunAzimuthDegrees            = 180.0f;
+            Spec.SunElevationDegrees          = -40.0f;
+            Spec.CameraAzimuthDegrees         = 0.0f;    // North
+            Spec.CameraElevationDegrees       = 46.0f;
+            Spec.HorizontalFovDegrees         = 72.0f;
+            Spec.RecommendedExposure          = 1.80f;
+            break;
+
+        case StarfieldPresetIdentifier::MagellanicClouds:
+            Spec.Title                        = "Magellanic Clouds";
+            Spec.OutputSlug                   = "MagellanicClouds";
+            Spec.Stars.CelestialRotationDegrees = 323.25f; // LST 3.0h (LMC, SMC, Achernar, Canopus high in Southern sky)
+            Spec.SunAzimuthDegrees            = 0.0f;
+            Spec.SunElevationDegrees          = -40.0f;
+            Spec.CameraAzimuthDegrees         = 180.0f;  // South
+            Spec.CameraElevationDegrees       = 40.0f;
+            Spec.HorizontalFovDegrees         = 90.0f;
+            Spec.RecommendedExposure          = 1.85f;
+            break;
+    }
+
+    return Spec;
+}
+
 Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
     const Mathematics::Axis3D&            RayDirection,
     const Mathematics::Axis3D&            SunDirection,
@@ -1573,12 +1705,24 @@ Mathematics::LinearRGB LunarStarfieldSequence::EvaluateCelestialField(
                 const auto BulgeCol  = EvaluateGalacticBulgeRadiance(EqDir);
                 const auto NebulaCol = EvaluateDeepSkyNebulae(EqDir);
                 const float Gain     = Stars.BrightnessMultiplier * DayFade * AltFade;
-                const float GalR     = (BulgeCol.R * 0.0115f + NebulaCol.R * 0.48f) * Gain;
-                const float GalG     = (BulgeCol.G * 0.0115f + NebulaCol.G * 0.48f) * Gain;
-                const float GalB     = (BulgeCol.B * 0.0115f + NebulaCol.B * 0.48f) * Gain;
+                const float GalR     = (BulgeCol.R * 0.0135f + NebulaCol.R * 1.45f) * Gain;
+                const float GalG     = (BulgeCol.G * 0.0135f + NebulaCol.G * 1.45f) * Gain;
+                const float GalB     = (BulgeCol.B * 0.0135f + NebulaCol.B * 1.45f) * Gain;
                 Out.R += StarTransmittance.R * GalR * AtmoTrans.R;
                 Out.G += StarTransmittance.G * GalG * AtmoTrans.G;
                 Out.B += StarTransmittance.B * GalB * AtmoTrans.B;
+            }
+
+            // 2b. Interplanetary Zodiacal Dust Scatter (Leinert et al. 1998 S10 profile) + Gegenschein Ridge
+            if (Stars.ZodiacalLightEnabled && Stars.ZodiacalRadianceScale > 0.0f)
+            {
+                constexpr float ZodiacalS10Gain = 0.0135f / 533.1f;
+                const auto SolarEq  = TransformHorizonToEquatorial(SunDirection, RotRad);
+                const auto Zodiacal = EvaluateZodiacalLight(EqDir, SolarEq);
+                const float ZGain   = ZodiacalS10Gain * Stars.ZodiacalRadianceScale * Stars.BrightnessMultiplier * DayFade * AltFade;
+                Out.R += StarTransmittance.R * Zodiacal.R * ZGain * AtmoTrans.R;
+                Out.G += StarTransmittance.G * Zodiacal.G * ZGain * AtmoTrans.G;
+                Out.B += StarTransmittance.B * Zodiacal.B * ZGain * AtmoTrans.B;
             }
 
             auto AccumulateErfMoffatStar = [&](

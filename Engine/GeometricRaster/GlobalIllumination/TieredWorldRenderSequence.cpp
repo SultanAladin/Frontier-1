@@ -230,7 +230,7 @@ struct CpuDownsampledCloudField
             RayDir, SolarSolved.WorldDirectionToSun, Atmo.Solar, { 1.0f, 1.0f, 1.0f }, SolarSolved.EffectiveSolarTint, true,
             &Atmo.Medium, PixelAngularSizeRad);
         const auto MoonStarRad = LunarStarfieldSequence::EvaluateCelestialField(
-            RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds, &Atmo.Medium);
+            RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds, &Atmo.Medium, {}, PixelAngularSizeRad);
         return {
             OrbitalRad.R + SunRad.R + MoonStarRad.R,
             OrbitalRad.G + SunRad.G + MoonStarRad.G,
@@ -245,7 +245,7 @@ struct CpuDownsampledCloudField
         RayDir, SolarSolved.WorldDirectionToSun, Atmo.Solar, SolarTrans, SolarSolved.EffectiveSolarTint, false,
         &Atmo.Medium, PixelAngularSizeRad);
     const auto MoonStarRad = LunarStarfieldSequence::EvaluateCelestialField(
-        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds, &Atmo.Medium);
+        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds, &Atmo.Medium, {}, PixelAngularSizeRad);
 
     float CloudTrans = 1.0f;
     Mathematics::LinearRGB CloudRad {};

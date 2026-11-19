@@ -492,21 +492,20 @@ struct GpuProjectedStar
 
 float3 TransformHorizonToEquatorialGpu(float3 HorizonDir, float CelestialRotRad)
 {
-    float Alt    = asin(clamp(HorizonDir.z, -1.0, 1.0));
-    float CosAlt = cos(Alt);
-    float Az     = atan2(-HorizonDir.y, HorizonDir.x);
-    float SinAlt = sin(Alt);
-    float SinLat = sin(SiteObsLatRadGpu);
-    float CosLat = cos(SiteObsLatRadGpu);
-    float SinDec = SinAlt * SinLat + CosAlt * CosLat * cos(Az);
-    float Dec    = asin(clamp(SinDec, -1.0, 1.0));
-    float CosDec = max(1.0e-5, cos(Dec));
-    float CosH   = (SinAlt - SinDec * SinLat) / (CosDec * CosLat);
-    float SinH   = -CosAlt * sin(Az) / CosDec;
-    float H      = atan2(SinH, CosH);
-    float Ra     = (SiteSiderealZeroGpu + CelestialRotRad) - H;
-    float CD     = cos(Dec);
-    return normalize(float3(CD * cos(Ra), CD * sin(Ra), sin(Dec)));
+    float North      = HorizonDir.x;
+    float Up         = HorizonDir.z;
+    float SinPhi     = sin(SiteObsLatRadGpu);
+    float CosPhi     = cos(SiteObsLatRadGpu);
+    float SinDec     = clamp(SinPhi * Up + CosPhi * North, -1.0, 1.0);
+    float CosDecCosH = CosPhi * Up - SinPhi * North;
+    float CosDecSinH = HorizonDir.y;
+    float Lst        = SiteSiderealZeroGpu + CelestialRotRad;
+    float CosL       = cos(Lst);
+    float SinL       = sin(Lst);
+    return normalize(float3(
+        CosL * CosDecCosH + SinL * CosDecSinH,
+        SinL * CosDecCosH - CosL * CosDecSinH,
+        SinDec));
 }
 
 float EvaluateKastenYoungAirmassGpu(float SinElevation)
@@ -584,9 +583,9 @@ float3 EvaluateGalacticBulgeRadianceGpu(float3 EqDir)
     float DustNoise = smoothstep(0.28, 0.78, Warp2 * 0.55 + Cloud * 0.45);
     float DarkRift  = (Rift1 * 0.82 + Rift2 * 0.46) * pow(DustNoise, 1.3);
 
-    float CosCoal    = dot(Gal, normalize(float3(0.955, 0.296, 0.025)));
+    float CosCoal    = dot(Gal, normalize(float3(0.5403, -0.8415, 0.0065)));
     float CoalsackD  = exp(-(max(0.0, 1.0 - CosCoal)) * 260.0);
-    float DustAtten  = clamp(1.0 - (DarkRift + CoalsackD * 0.55) * 0.88, 0.08, 1.0);
+    float DustAtten  = clamp(1.0 - (DarkRift + CoalsackD * 0.78) * 0.88, 0.08, 1.0);
 
     float3 DiskCol   = float3(0.56, 0.72, 1.05);
     float3 BulgeCol  = float3(1.18, 0.88, 0.54);
@@ -600,60 +599,153 @@ float3 EvaluateGalacticBulgeRadianceGpu(float3 EqDir)
     return Light;
 }
 
+void ResolveNebulaTangentGpu(float3 EqDir, float3 TargetAxis, out float OutEast, out float OutNorth)
+{
+    float3 East  = normalize(cross(float3(0.0, 0.0, 1.0), TargetAxis));
+    float3 North = cross(TargetAxis, East);
+    float  Fwd   = max(1.0e-4, dot(EqDir, TargetAxis));
+    OutEast  = dot(EqDir, East) / Fwd;
+    OutNorth = dot(EqDir, North) / Fwd;
+}
+
 float3 EvaluateDeepSkyNebulaeGpu(float3 EqDir)
 {
     float3 Dir = normalize(EqDir);
     float3 Out = float3(0.0, 0.0, 0.0);
+    float  Deg = CelestialPiConst / 180.0;
+    float  East = 0.0;
+    float  North = 0.0;
+
+    // M42 Orion
     {
-        float3 Center = float3(0.1180,  0.9885, -0.0942);
-        float  CosD   = dot(Dir, Center);
-        if (CosD > 0.996)
+        float3 Center = float3(0.107176, 0.989793, -0.093935);
+        if (dot(Dir, Center) > 0.995)
         {
-            float Sep  = acos(clamp(CosD, 0.0, 1.0));
-            float N1   = EvaluateGalacticFbm3Gpu(Dir * 120.0 + float3(2.1, 4.3, 6.5));
-            float Core = exp(-(Sep * Sep) / (0.0085 * 0.0085)) * (0.7 + 0.6 * N1);
-            float Wing = exp(-(Sep * Sep) / (0.0220 * 0.0220)) * (0.4 + 0.6 * N1) * 0.42;
-            Out += float3(1.25, 0.42, 0.55) * (Core * 0.24) + float3(0.32, 0.58, 1.18) * (Wing * 0.14);
+            ResolveNebulaTangentGpu(Dir, Center, East, North);
+            float D2  = (East * East + North * North) / (Deg * Deg);
+            float Fil = EvaluateGalacticFbm3Gpu(Dir * 120.0 + float3(2.1, 4.3, 6.5));
+            float Glw = 0.030 * exp(-D2 / 0.10) + 0.010 * exp(-D2 / 0.55) * (0.4 + 1.2 * Fil);
+            float Cav = 0.016 * exp(-D2 / 0.012);
+            Out += float3(1.00, 0.30, 0.46) * Glw + float3(0.42, 0.92, 0.86) * Cav;
         }
     }
+    // M45 Pleiades
     {
-        float3 Center = float3(0.1816,  0.9032,  0.3895);
-        float  CosD   = dot(Dir, Center);
-        if (CosD > 0.996)
+        float3 Center = float3(0.502764, 0.761902, 0.408330);
+        if (dot(Dir, Center) > 0.997)
         {
-            float Sep = acos(clamp(CosD, 0.0, 1.0));
-            float N1  = EvaluateGalacticFbm3Gpu(Dir * 95.0 + float3(7.1, 1.8, 3.2));
-            float Glo = exp(-(Sep * Sep) / (0.024 * 0.024)) * (0.65 + 0.55 * N1);
-            Out += float3(0.42, 0.68, 1.25) * (Glo * 0.095);
+            ResolveNebulaTangentGpu(Dir, Center, East, North);
+            float D2   = (East * East + North * North) / (Deg * Deg);
+            float Wisp = EvaluateGalacticFbm3Gpu(float3(Dir.x * 140.0, Dir.y * 45.0, Dir.z * 95.0));
+            float Glo  = 0.0045 * exp(-D2 / 0.30) * (0.3 + 1.4 * Wisp);
+            Out += float3(0.42, 0.62, 1.00) * Glo;
         }
     }
+    // M31 Andromeda
     {
-        float3 Center = float3(0.7510,  0.1100,  0.6510);
-        float  CosD   = dot(Dir, Center);
-        if (CosD > 0.997)
+        float3 Center = float3(0.738590, 0.139291, 0.659608);
+        if (dot(Dir, Center) > 0.997)
         {
-            float3 Ref  = normalize(float3(0.0, 0.0, 1.0) - Center * Center.z);
-            float3 Bit  = cross(Center, Ref);
-            float3 Off  = Dir - Center;
-            float  U    = dot(Off, Ref) * 1.9 + dot(Off, Bit) * 0.9;
-            float  V    = -dot(Off, Ref) * 0.9 + dot(Off, Bit) * 1.9;
-            float  EllR = sqrt((U * U) / (0.017 * 0.017) + (V * V) / (0.006 * 0.006));
-            float  M31  = exp(-EllR * 1.7) * 0.14;
-            Out += float3(1.12, 0.96, 0.78) * M31;
+            ResolveNebulaTangentGpu(Dir, Center, East, North);
+            float PA  = 38.0 * Deg;
+            float Maj = (North * cos(PA) + East * sin(PA)) / (1.6 * Deg);
+            float Min = (East * cos(PA) - North * sin(PA)) / (0.42 * Deg);
+            float Ell = sqrt(Maj * Maj + Min * Min);
+            float Blg = 0.020 * exp(-Ell * Ell * 22.0);
+            float Dsc = 0.0042 * exp(-Ell * 3.2);
+            Out += float3(1.00, 0.86, 0.70) * Blg + float3(0.86, 0.88, 1.00) * Dsc;
         }
     }
+    // Large Magellanic Cloud (LMC)
     {
-        float3 Center = float3(-0.0725, -0.7136, -0.6968);
-        float  CosD   = dot(Dir, Center);
-        if (CosD > 0.995)
+        float3 Center = float3(0.054835, 0.341580, -0.938252);
+        if (dot(Dir, Center) > 0.97)
         {
-            float Sep = acos(clamp(CosD, 0.0, 1.0));
-            float N1  = EvaluateGalacticFbm3Gpu(Dir * 85.0 + float3(9.4, 2.7, 5.1));
-            float Glo = exp(-(Sep * Sep) / (0.028 * 0.028)) * (0.55 + 0.65 * N1);
-            Out += float3(1.22, 0.45, 0.62) * (Glo * 0.16);
+            ResolveNebulaTangentGpu(Dir, Center, East, North);
+            float D2    = (East * East + North * North) / (Deg * Deg * 3.4 * 3.4);
+            float Clump = EvaluateGalacticFbm3Gpu(Dir * 160.0 + float3(3.7, 8.1, 1.9));
+            Out += float3(0.86, 0.90, 1.00) * (0.0060 * exp(-D2) * (0.35 + 1.3 * Clump));
+        }
+    }
+    // Small Magellanic Cloud (SMC)
+    {
+        float3 Center = float3(0.287461, 0.067185, -0.955433);
+        if (dot(Dir, Center) > 0.97)
+        {
+            ResolveNebulaTangentGpu(Dir, Center, East, North);
+            float D2    = (East * East + North * North) / (Deg * Deg * 1.8 * 1.8);
+            float Clump = EvaluateGalacticFbm3Gpu(Dir * 160.0 + float3(6.2, 2.4, 9.5));
+            Out += float3(0.86, 0.90, 1.00) * (0.0035 * exp(-D2) * (0.35 + 1.3 * Clump));
+        }
+    }
+    // M8 Lagoon Nebula
+    {
+        float3 Center = float3(0.014307, -0.910715, -0.412787);
+        if (dot(Dir, Center) > 0.996)
+        {
+            ResolveNebulaTangentGpu(Dir, Center, East, North);
+            float D2   = (East * East + North * North) / (Deg * Deg * 0.45 * 0.45);
+            float Knot = EvaluateGalacticFbm3Gpu(Dir * 110.0 + float3(5.3, 1.4, 7.8));
+            Out += float3(1.00, 0.36, 0.50) * (0.010 * exp(-D2) * (0.3 + 1.4 * Knot));
+        }
+    }
+    // NGC 3372 Carina Nebula
+    {
+        float3 Center = float3(-0.475325, 0.161351, -0.864889);
+        if (dot(Dir, Center) > 0.996)
+        {
+            ResolveNebulaTangentGpu(Dir, Center, East, North);
+            float D2   = (East * East + North * North) / (Deg * Deg * 0.80 * 0.80);
+            float Knot = EvaluateGalacticFbm3Gpu(Dir * 110.0 + float3(9.4, 2.7, 5.1));
+            Out += float3(1.00, 0.36, 0.50) * (0.012 * exp(-D2) * (0.3 + 1.4 * Knot));
         }
     }
     return Out;
+}
+
+float3 EvaluateZodiacalLightGpu(float3 EqDir, float3 SolarEqDir)
+{
+    float3 EclipticPole = float3(0.0, -0.397777, 0.917482);
+    static const float ProfileLongitudes[16] = {
+        15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 60.0,
+        75.0, 90.0, 105.0, 120.0, 140.0, 160.0, 170.0, 180.0
+    };
+    static const float ProfileS10[16] = {
+        9000.0, 5000.0, 3500.0, 2690.0, 2000.0, 1440.0, 1080.0, 588.0,
+        371.0, 261.0, 210.0, 185.0, 165.0, 170.0, 185.0, 200.0
+    };
+    float PoleS10     = 60.0;
+    float RadToDeg    = 180.0 / CelestialPiConst;
+    float LatSin      = clamp(dot(EqDir, EclipticPole), -1.0, 1.0);
+    float LatDeg      = abs(asin(LatSin)) * RadToDeg;
+    float3 ViewPlane  = EqDir - EclipticPole * LatSin;
+    float3 SolarPlane = SolarEqDir - EclipticPole * dot(SolarEqDir, EclipticPole);
+    float PlaneLens   = length(ViewPlane) * length(SolarPlane);
+    if (PlaneLens < 1.0e-6)
+    {
+        return float3(1.0, 0.93, 0.80) * PoleS10;
+    }
+
+    float LonDeg      = acos(clamp(dot(ViewPlane, SolarPlane) / PlaneLens, -1.0, 1.0)) * RadToDeg;
+    float EclipticS10 = ProfileS10[0];
+    for (int Knot = 1; Knot < 16; ++Knot)
+    {
+        if (LonDeg <= ProfileLongitudes[Knot])
+        {
+            float Span = log(ProfileLongitudes[Knot] / ProfileLongitudes[Knot - 1]);
+            float Mix  = clamp(log(max(LonDeg, ProfileLongitudes[0]) / ProfileLongitudes[Knot - 1]) / Span, 0.0, 1.0);
+            EclipticS10 = exp(log(ProfileS10[Knot - 1]) + Mix * log(ProfileS10[Knot] / ProfileS10[Knot - 1]));
+            break;
+        }
+    }
+
+    float AntiSolar   = 180.0 - LonDeg;
+    float Gegenschein = 45.0 * exp(-(AntiSolar * AntiSolar + LatDeg * LatDeg) / (2.0 * 7.0 * 7.0));
+    float Width       = 20.0 + 0.10 * LonDeg;
+    float SmoothLat   = sqrt(LatDeg * LatDeg + 16.0) - 4.0;
+    float CosLat      = sqrt(max(0.0, 1.0 - LatSin * LatSin));
+    float S10         = PoleS10 + (EclipticS10 - PoleS10) * exp(-SmoothLat / Width) * CosLat + Gegenschein;
+    return float3(1.0, 0.93, 0.80) * S10;
 }
 
 float EvaluateStellarErfMoffatMassGpu(float DeltaPxX, float DeltaPxY, float PointScale)
@@ -957,8 +1049,33 @@ float3 EvaluateGalacticNebulaBackdropGpu(
     float3 Bulge  = EvaluateGalacticBulgeRadianceGpu(EqDir);
     float3 Nebula = EvaluateDeepSkyNebulaeGpu(EqDir);
     float  Gain   = Cfg.StarParams.z * DayFade * AltFade;
-    float3 SkyCol = (Bulge * 0.0115 + Nebula * 0.48) * Gain;
+    float3 SkyCol = (Bulge * 0.0135 + Nebula * 1.45) * Gain;
     return StarTransmittance * SkyCol * AtmoTrans;
+}
+
+float3 EvaluateZodiacalBackdropGpu(
+    CelestialFieldUniformBlock Cfg,
+    float3                     EqDir,
+    float3                     SunDir,
+    float                      DayFade,
+    float                      AltFade,
+    float3                     AtmoTrans,
+    float3                     StarTransmittance)
+{
+    uint Flags = uint(Cfg.AtmoMediumPack.w + 0.5);
+    if ((Flags & 8u) == 0u)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+    float  Scale    = float(Flags >> 4u) * (1.0 / 255.0);
+    if (Scale <= 0.0)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+    float3 SolarEq  = TransformHorizonToEquatorialGpu(SunDir, Cfg.StarScintillationRot.w);
+    float3 Zodiacal = EvaluateZodiacalLightGpu(EqDir, SolarEq);
+    float  ZGain    = (0.0135 / 533.1) * Scale * Cfg.StarParams.z * DayFade * AltFade;
+    return StarTransmittance * (Zodiacal * ZGain) * AtmoTrans;
 }
 
 float3 EvaluateDeepCubemapStarsGpu(
@@ -1161,6 +1278,7 @@ float3 EvaluateCelestialBodiesTiledGpu(
             float ScintFreq = max(0.1, Cfg.StarScintillationRot.z);
 
             OutRgb += EvaluateGalacticNebulaBackdropGpu(Cfg, EqDir, DayFade, AltFade, AtmoTrans, StarTransmittance);
+            OutRgb += EvaluateZodiacalBackdropGpu(Cfg, EqDir, SunDir, DayFade, AltFade, AtmoTrans, StarTransmittance);
             OutRgb += EvaluateTiledCatalogStarsGpu(Cfg, ProjectedStars, TileBins, PixelCoord, DayFade, ScintAmp, ScintFreq, AtmoTrans, StarTransmittance);
             OutRgb += EvaluateDeepCubemapStarsGpu(Cfg, EqDir, DayFade, AltFade, ScintAmp, ScintFreq, PixelAng, AtmoTrans, StarTransmittance);
         }
@@ -1201,6 +1319,7 @@ float3 EvaluateCelestialBodiesGpu(
             float ScintFreq = max(0.1, Cfg.StarScintillationRot.z);
 
             OutRgb += EvaluateGalacticNebulaBackdropGpu(Cfg, EqDir, DayFade, AltFade, AtmoTrans, StarTransmittance);
+            OutRgb += EvaluateZodiacalBackdropGpu(Cfg, EqDir, SunDir, DayFade, AltFade, AtmoTrans, StarTransmittance);
             OutRgb += EvaluateDeepCubemapStarsGpu(Cfg, EqDir, DayFade, AltFade, ScintAmp, ScintFreq, PixelAng, AtmoTrans, StarTransmittance);
         }
     }
