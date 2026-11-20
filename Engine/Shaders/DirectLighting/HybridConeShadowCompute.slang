@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                       HYBRIDCONESHADOWCOMPUTE.SLANG
 ============================================================================================================================================*/
-// 🧩 Order 2 GPU directional shadow: GtxLowEnd Hybrid Cone (0.28 m BVH4 + SmoothMin C0 48^3 SDF + Capsule Rig) vs HighEnd 0-SDF BVH4 Vogel
+// 🧩 Order 2 GPU directional shadow: GtxLowEnd Hybrid Cone (0.28 m BVH4 + Candidate 1 signed/unsigned SDF + Capsule Rig) vs HighEnd 0-SDF BVH4 Vogel
 
 import DirectLighting.WideTreeRayQuery;
 
@@ -23,13 +23,14 @@ struct GpuClosedBox32
 
 struct GpuHybridShadowUniforms
 {
-    float4 LightDirectionCone;   // xyz = UnitDirToLight, w = ConeSoftness (11.0)
-    float4 VolumeLocalMinRes;    // xyz = LocalMin, w = float(CubicRes)
+    float4 LightDirectionCone;   // xyz = UnitDirToLight, w = TanSunRadius (0.048)
+    float4 VolumeLocalMinRes;    // xyz = LocalMin, w = float(ResX)
     float4 VolumeLocalMaxBlend;  // xyz = LocalMax, w = SmoothBlendMeters (0.08)
     float4 VolumeSpacingContact; // xyz = VoxelSpacing, w = ContactRangeMeters (0.28)
     float4 PlacementYawTrans;    // x = CosYaw, y = SinYaw, z = TransX, w = TransY
     uint4  CountsTier;           // x = PixelCount, y = BvhEntryCount, z = CapsuleCount | (BoxCount << 16), w = HighEndZeroSdfTier (0 or 1)
     float4 VogelRadiusTransZ;    // x = SunAngularRadius, y = float(VogelRaySamples), z = TransZ, w = VolumeActive (0 or 1)
+    uint4  VolumeDimsY;          // x = ResY, y = ResZ, z = 0, w = 0
 };
 
 [[vk::binding(0, 0)]] StructuredBuffer<float4>                      SurfaceWorldPositions; // xyz = WorldPos, w = ValidMask (>0.5 = geometry)
@@ -42,18 +43,25 @@ struct GpuHybridShadowUniforms
 [[vk::binding(7, 0)]] ConstantBuffer<GpuHybridShadowUniforms>       ShadowUniforms;
 [[vk::binding(8, 0)]] RWStructuredBuffer<float>                     OutShadowVisibility;
 
-float EvaluateSmoothMinimum(float DistA, float DistB, float BlendRadius)
+float SmoothHermite(float Edge0, float Edge1, float X)
 {
-    if (BlendRadius <= 1.0e-5) return min(DistA, DistB);
-    float H = clamp(0.5 + 0.5 * (DistB - DistA) / BlendRadius, 0.0, 1.0);
-    return DistB * (1.0 - H) + DistA * H - BlendRadius * H * (1.0 - H);
+    float T = clamp((X - Edge0) / max(1.0e-6, Edge1 - Edge0), 0.0, 1.0);
+    return T * T * (3.0 - 2.0 * T);
 }
 
-float SampleC0VehicleDistance(float3 WorldPos)
+float SoftMinFloat(float A, float B, float K)
+{
+    float H = max(K - abs(A - B), 0.0) / K;
+    return min(A, B) - H * H * K * 0.25;
+}
+
+float SampleVehicleDistance(float3 WorldPos)
 {
     if (ShadowUniforms.VogelRadiusTransZ.w < 0.5) return 20.0;
-    uint Res = uint(ShadowUniforms.VolumeLocalMinRes.w);
-    if (Res < 2u) return 20.0;
+    uint ResX = uint(ShadowUniforms.VolumeLocalMinRes.w);
+    uint ResY = ShadowUniforms.VolumeDimsY.x;
+    uint ResZ = ShadowUniforms.VolumeDimsY.y;
+    if (ResX < 2u || ResY < 2u || ResZ < 2u) return 20.0;
 
     float3 Rel = WorldPos - float3(ShadowUniforms.PlacementYawTrans.z, ShadowUniforms.PlacementYawTrans.w, ShadowUniforms.VogelRadiusTransZ.z);
     float  CosY = ShadowUniforms.PlacementYawTrans.x;
@@ -66,12 +74,12 @@ float SampleC0VehicleDistance(float3 WorldPos)
     float  BoxD    = length(Outside);
 
     float3 Clamped = clamp(LocalP, LMin, LMax);
-    float3 FCoord  = clamp((Clamped - LMin) / ShadowUniforms.VolumeSpacingContact.xyz, float3(0.0), float3(float(Res - 1u)));
-    uint3  I0      = min(uint3(Res - 2u), uint3(FCoord));
+    float3 FCoord  = clamp((Clamped - LMin) / ShadowUniforms.VolumeSpacingContact.xyz, float3(0.0), float3(float(ResX - 1u), float(ResY - 1u), float(ResZ - 1u)));
+    uint3  I0      = min(uint3(ResX - 2u, ResY - 2u, ResZ - 2u), uint3(FCoord));
     float3 Frac    = FCoord - float3(I0);
 
-    uint StrideY = Res;
-    uint StrideZ = Res * Res;
+    uint StrideY = ResX;
+    uint StrideZ = ResX * ResY;
     uint LinearStart    = I0.z * StrideZ + I0.y * StrideY + I0.x;
 
     float C00 = lerp(LocalDistanceGrid[LinearStart],                     LocalDistanceGrid[LinearStart + 1u],                     Frac.x);
@@ -82,20 +90,22 @@ float SampleC0VehicleDistance(float3 WorldPos)
     return (BoxD > 0.0) ? sqrt(BoundaryD * BoundaryD + BoxD * BoxD) : BoundaryD;
 }
 
-float EvaluateCombinedDistance(float3 WorldPos)
+float EvaluateSignedStaticDistance(float3 WorldPos)
 {
     float BestD = 20.0;
     uint BoxCount = (ShadowUniforms.CountsTier.z >> 16u) & 0xFFFFu;
     for (uint B = 0u; B < BoxCount; ++B)
     {
         GpuClosedBox32 Box = InteriorBoxes[B];
+        if (Box.HalfExtent.x > 3.5 || Box.HalfExtent.y > 3.5) continue;
         float3 Q = abs(WorldPos - Box.CenterWorld) - Box.HalfExtent;
         BestD = min(BestD, length(max(Q, float3(0.0))) + min(max(Q.x, max(Q.y, Q.z)), 0.0));
     }
+    return BestD;
+}
 
-    float Blend = ShadowUniforms.VolumeLocalMaxBlend.w;
-    BestD = EvaluateSmoothMinimum(BestD, SampleC0VehicleDistance(WorldPos), Blend);
-
+float EvaluateRigDistance(float3 WorldPos)
+{
     uint CapCount = ShadowUniforms.CountsTier.z & 0xFFFFu;
     float RigD = 20.0;
     for (uint C = 0u; C < CapCount; ++C)
@@ -108,11 +118,7 @@ float EvaluateCombinedDistance(float3 WorldPos)
         float  Rad = lerp(Cap.RadiusStart, Cap.RadiusEnd, T);
         RigD       = min(RigD, length(Rel - Seg * T) - Rad);
     }
-    if (CapCount > 0u)
-    {
-        BestD = EvaluateSmoothMinimum(BestD, RigD, Blend);
-    }
-    return BestD;
+    return RigD;
 }
 
 void BuildOrthonormalBasis(float3 N, out float3 TanU, out float3 BitV)
@@ -141,7 +147,7 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     float3 ShadingPos = PosMask.xyz;
     float3 ShadingNrm = normalize(SurfaceWorldNormals[PixelIdx].xyz);
     float3 LightDir   = normalize(ShadowUniforms.LightDirectionCone.xyz);
-    if (dot(ShadingNrm, LightDir) <= 0.0)
+    if (dot(ShadingNrm, LightDir) <= 1.0e-4)
     {
         OutShadowVisibility[PixelIdx] = 0.0;
         return;
@@ -177,38 +183,43 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    // GtxLowEnd Candidate 1: 0.28 m exact BVH4 contact ray + SmoothMin C0 SDF + Capsule Rig cone
+    // GtxLowEnd Candidate 1: 0.28 m exact BVH4 contact ray + conservative signed/unsigned SDF cone march
     float ContactRange = ShadowUniforms.VolumeSpacingContact.w;
     if (ContactRange > 0.0 &&
-        TraceCompressedWideTreeAnyHit(SceneBvhEntries, ScenePrimitives, EntryCount, ShadingPos + ShadingNrm * 2.5e-3, LightDir, 1.0e-3, ContactRange))
+        TraceCompressedWideTreeAnyHit(SceneBvhEntries, ScenePrimitives, EntryCount, ShadingPos + ShadingNrm * 3.0e-3, LightDir, 1.5e-3, ContactRange))
     {
         OutShadowVisibility[PixelIdx] = 0.0;
         return;
     }
 
-    float3 Origin = ShadingPos + ShadingNrm * 0.015;
-    float  RayT   = max(0.08, ContactRange * 0.85);
-    float  Vis    = 1.0;
-    float  SoftK  = ShadowUniforms.LightDirectionCone.w;
-
-    for (uint Step = 0u; Step < 40u && RayT < 14.0; ++Step)
+    float TanSun = ShadowUniforms.LightDirectionCone.w;
+    float MinRatio = 2.0;
+    float Travel   = 0.04;
+    for (uint Step = 0u; Step < 112u && Travel < 8.5; ++Step)
     {
-        float Dist = EvaluateCombinedDistance(Origin + LightDir * RayT);
-        if (Dist < -0.025)
+        float3 SampleP = ShadingPos + LightDir * Travel;
+        float PlaneFade = SmoothHermite(0.015, 0.10, dot(SampleP - ShadingPos, ShadingNrm));
+        float SignedD = min(EvaluateSignedStaticDistance(SampleP), EvaluateRigDistance(SampleP));
+        float DynD    = SampleVehicleDistance(SampleP);
+        float MinD    = min(abs(SignedD), DynD);
+        if (PlaneFade > 1.0e-4)
         {
-            OutShadowVisibility[PixelIdx] = 0.0;
-            return;
+            float ConeR    = max(0.016, Travel * TanSun);
+            float SigRatio = clamp(SignedD / ConeR, -1.5, 1.5);
+            float DynMid   = max(0.056, ConeR * 0.65);
+            float DynHalf  = max(0.024, ConeR * 0.36);
+            float DynRatio = clamp((DynD - DynMid) / DynHalf, -1.5, 1.5);
+            float RawRatio = min(SigRatio, DynRatio);
+            float Ratio    = RawRatio * PlaneFade + 1.5 * (1.0 - PlaneFade);
+            MinRatio = SoftMinFloat(MinRatio, Ratio, 0.12);
+            if (MinRatio <= -1.0)
+            {
+                OutShadowVisibility[PixelIdx] = 0.0;
+                return;
+            }
         }
-        float Ramp = clamp((RayT - ContactRange * 0.65) / 0.22, 0.0, 1.0);
-        float Soft = clamp(SoftK * max(Dist, 0.0) / RayT, 0.0, 1.0);
-        Vis        = min(Vis, 1.0 - Ramp * (1.0 - Soft));
-        if (Vis < 0.008)
-        {
-            OutShadowVisibility[PixelIdx] = 0.0;
-            return;
-        }
-        RayT += clamp(Dist * 0.80, 0.032, 0.42);
+        Travel += clamp(MinD * 0.34, 0.014, 0.14);
     }
 
-    OutShadowVisibility[PixelIdx] = Vis * Vis * (3.0 - 2.0 * Vis);
+    OutShadowVisibility[PixelIdx] = SmoothHermite(-0.95, 0.95, MinRatio);
 }

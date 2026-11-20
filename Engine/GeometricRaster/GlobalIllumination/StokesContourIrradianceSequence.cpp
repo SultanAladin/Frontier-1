@@ -304,12 +304,36 @@ void StokesContourIrradianceSequence::BuildFromScene(
         }
     }
 
-    // 3. Relax 1st-bounce emissive -> patch radiance, then 2nd-bounce patch <-> patch diffuse bleed
+    // 3. Relax 1st-bounce emissive + solar -> patch radiance, then 2nd-bounce patch <-> patch diffuse bleed
     StokesContourTierSettings PatchSettings = Settings;
+    const float MaxSun = std::max({ Settings.SunRadiance.R, Settings.SunRadiance.G, Settings.SunRadiance.B });
     for (auto& P : Patches)
     {
         Mathematics::LinearRGB DirectEm {};
         (void)EvaluateTotalIrradiance(P.Position, P.Normal, Occluders, PatchSettings, &DirectEm, nullptr);
+        if (MaxSun > 1.0e-4f)
+        {
+            const float NdotS = std::max(0.0f, Mathematics::EvaluateDot(P.Normal, Settings.SunDirection));
+            if (NdotS > 0.0f)
+            {
+                float SunVis = 1.0f;
+                if (Settings.HighEndZeroSdfTier && Occluders.SceneBvh != nullptr)
+                {
+                    DirectLighting::HybridConeShadowSetup S {};
+                    S.VogelRaySamples = 1u;
+                    SunVis = DirectLighting::EvaluateHighEndBvhDirectionalShadow(
+                        *Occluders.SceneBvh, P.Position, P.Normal, Settings.SunDirection, 0u, S);
+                }
+                else
+                {
+                    SunVis = DirectLighting::EvaluateGtxHybridDirectionalShadow(
+                        Occluders, P.Position, P.Normal, Settings.SunDirection);
+                }
+                DirectEm.R += Settings.SunRadiance.R * NdotS * SunVis;
+                DirectEm.G += Settings.SunRadiance.G * NdotS * SunVis;
+                DirectEm.B += Settings.SunRadiance.B * NdotS * SunVis;
+            }
+        }
         P.Radiance1 = {
             (P.AlbedoRgb.R   * DirectEm.R)   / Constants::PiFloat,
             (P.AlbedoRgb.G * DirectEm.G) / Constants::PiFloat,

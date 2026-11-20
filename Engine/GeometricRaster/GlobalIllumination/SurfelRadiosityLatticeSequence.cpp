@@ -50,6 +50,78 @@ void EncodeOctahedralSheetUv(Mathematics::Axis3D UnitDir, float& OutU01, float& 
     OutV01 = std::clamp(0.5f * OY + 0.5f, 0.0f, 1.0f);
 }
 
+[[nodiscard]] float SmoothHermiteBake(float Edge0, float Edge1, float X) noexcept
+{
+    const float T = std::clamp((X - Edge0) / std::max(1.0e-6f, Edge1 - Edge0), 0.0f, 1.0f);
+    return T * T * (3.0f - 2.0f * T);
+}
+
+// Segment visibility for cascade bake (lattice nodes have no shading normal, so march SDF along the segment directly)
+[[nodiscard]] float EvaluateBakeSegmentVisibility(
+    const DirectLighting::HybridOccluderEnvironment& Occluders,
+    Mathematics::Axis3D                              FromPos,
+    Mathematics::Axis3D                              ToPos,
+    float                                            TargetRadius,
+    bool                                             HighEndZeroSdf) noexcept
+{
+    const Mathematics::Axis3D Delta = ToPos - FromPos;
+    const float FullDist = Mathematics::EvaluateLength(Delta);
+    if (FullDist <= 0.06f)
+    {
+        return 1.0f;
+    }
+    const Mathematics::Axis3D Dir = Delta * (1.0f / FullDist);
+
+    if (HighEndZeroSdf && Occluders.SceneBvh != nullptr)
+    {
+        SpatialAcceleration::RaySegmentQuery Ray {};
+        Ray.Origin          = FromPos;
+        Ray.UnitDirection   = Dir;
+        Ray.MinimumDistance = 0.002f;
+        Ray.MaximumDistance = FullDist - 0.035f;
+        if (Ray.MaximumDistance <= Ray.MinimumDistance)
+        {
+            return 1.0f;
+        }
+        return Occluders.SceneBvh->QueryRayOccluded(Ray) ? 0.0f : 1.0f;
+    }
+
+    const float SelfGuardM = 0.20f;
+    const float Margin = std::max(SelfGuardM, TargetRadius * 0.65f);
+    const float StartT = 0.12f;
+    const float EndT   = FullDist - Margin;
+    if (EndT <= StartT)
+    {
+        return 1.0f;
+    }
+    constexpr uint32_t StepCount = 32u;
+    constexpr float    InvSteps  = 1.0f / static_cast<float>(StepCount);
+    const float        StepDt    = (EndT - StartT) * InvSteps;
+    const float        AngRadius = std::clamp(TargetRadius / std::max(0.5f, FullDist), 0.025f, 0.075f);
+    float OpticalDepth = 0.0f;
+    for (uint32_t Step = 0u; Step < StepCount; ++Step)
+    {
+        const float U = (static_cast<float>(Step) + 0.5f) * InvSteps;
+        const float T = StartT + (EndT - StartT) * U;
+        const float RampIn  = SmoothHermiteBake(0.10f, 0.26f, T);
+        const float RampOut = 1.0f - SmoothHermiteBake(EndT - 0.14f, EndT, T);
+        const float Weight  = RampIn * RampOut;
+        if (Weight <= 1.0e-4f)
+        {
+            continue;
+        }
+        const float Dist    = DirectLighting::EvaluateInteriorOccluderDistance(Occluders, FromPos + Dir * T);
+        const float ConeR   = std::max(0.036f, T * AngRadius);
+        const float StepVis = SmoothHermiteBake(-0.025f, ConeR * 0.72f, Dist + 0.015f);
+        OpticalDepth += 2.6f * (1.0f - StepVis) * Weight * (StepDt / std::max(0.08f, ConeR));
+        if (OpticalDepth > 6.5f)
+        {
+            return 0.0f;
+        }
+    }
+    return std::exp(-OpticalDepth);
+}
+
 [[nodiscard]] Mathematics::LinearRGB SampleLatticeOctahedralSheet(
     const OctahedralIrradianceCascade& Cascade,
     std::size_t                        LatticeLinearIdx,
@@ -550,12 +622,15 @@ void SurfelRadiosityLatticeSequence::BuildRelaxedLatticeFromScene(
                             if (CosE <= 0.0f) continue;
 
                             const float SolidWeight = (Src.AreaMeters * CosE) / (DistSq + Src.AreaMeters / Constants::PiFloat);
+                            const float BakeVis = EvaluateBakeSegmentVisibility(
+                                Occluders, LatticePos, Src.Position, Src.RadiusMeters, Settings.HighEndZeroSdfTier);
+                            if (BakeVis <= 1.0e-4f) continue;
                             for (std::size_t TIdx = 0u; TIdx < SheetDirs.size(); ++TIdx)
                             {
                                 const float CosN = std::max(0.0f, Mathematics::EvaluateDot(SheetDirs[TIdx], Wi));
                                 if (CosN <= 0.0f) continue;
                                 auto& OutTexel = Cascade.IrradianceSheets[SheetStart + TIdx];
-                                const float K  = SolidWeight * CosN;
+                                const float K  = SolidWeight * CosN * BakeVis;
                                 OutTexel.R   += Src.ExitantRadiance.R   * K;
                                 OutTexel.G += Src.ExitantRadiance.G * K;
                                 OutTexel.B  += Src.ExitantRadiance.B  * K;

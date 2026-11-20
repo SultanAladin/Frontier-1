@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         LOCALSIGNEDDISTANCEVOLUME.H
 ============================================================================================================================================*/
-// 🧩 Order 2 GtxLowEnd-ONLY per-asset compact 48^3 distance volume with C0-continuous Euclidean outer-box distance clamping
+// 🧩 Order 2 GtxLowEnd-ONLY per-asset compact aspect-matched distance volume with C0-continuous Euclidean outer-box distance clamping
 
 #pragma once
 
@@ -53,7 +53,7 @@ public:
     Mathematics::Axis3D LocalMin        {};
     Mathematics::Axis3D LocalMax        {};
     Mathematics::Axis3D VoxelSpacing    {};
-    std::vector<uint16_t> HalfDistanceSamples {}; // Compact IEEE-754 binary16 distance samples (48^3 = 221,184 bytes << 3.7 MB budget)
+    std::vector<uint16_t> HalfDistanceSamples {}; // Compact IEEE-754 binary16 distance samples (80x40x32 = 204,800 bytes << 3.7 MB budget)
     std::vector<float>    DistanceSamples     {}; // Mirror float32 slice for direct GPU structured buffer upload when active
 
     void Reset() noexcept;
@@ -63,6 +63,14 @@ public:
         std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
         uint32_t                                                   CubicResolution = 48u,
         float                                                      MarginMeters    = 0.24f);
+
+    // Aspect-matched bake (e.g. 80x40x32 ControlVehicle at ~6.0 cm isotropic pitch) for near-isotropic voxel spacing
+    bool BakeFromTrianglesAspect(
+        std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
+        uint32_t                                                   ResolutionX,
+        uint32_t                                                   ResolutionY,
+        uint32_t                                                   ResolutionZ,
+        float                                                      MarginMeters = 0.24f);
 
     // Trilinear lookup inside [LocalMin, LocalMax]
     [[nodiscard]] float SampleTrilinearLocal(Mathematics::Axis3D ClampedLocalPos) const noexcept;

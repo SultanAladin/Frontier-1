@@ -29,17 +29,18 @@ struct HybridConeShadowSetup
     float    ContactRangeMeters = 0.28f;  // [m]   - Exact BVH4 short-range contact ray length before SDF handoff
     float    SmoothBlendMeters  = 0.08f;  // [m]   - C1 SmoothMin blend radius across asset SDF + static boxes + capsule rig
     float    ConeSoftness       = 11.0f;  // [-]   - Directional penumbra sharpness (higher = crisper solar disk)
-    float    MaxTraceMeters     = 14.0f;  // [m]   - Maximum SDF directional march distance
-    uint32_t MaxMarchSteps      = 40u;    // [cnt] - Maximum directional cone steps
+    float    MaxTraceMeters     = 8.5f;   // [m]   - Maximum SDF directional march distance
+    uint32_t MaxMarchSteps      = 112u;   // [cnt] - Maximum directional cone steps
     uint32_t VogelRaySamples    = 6u;     // [cnt] - HighEnd 0-SDF BVH4 Vogel solar disk ray count
     float    SunAngularRadius   = 0.032f; // [rad] - Apparent solar / studio key angular radius
+    float    TanSunRadius       = 0.048f; // [-]   - tan(SunAngularRadius) soft solar disc for GtxLowEnd cone penumbra
 };
 
 struct HybridOccluderEnvironment
 {
     const SpatialAcceleration::CompressedWideTree*               SceneBvh          = nullptr; // Shared BVH4 (contact on GtxLowEnd; full shadow on HighEnd)
     std::span<const DistanceFieldSpace::ClosedOccluderBox>       InteriorBoxes     {};        // GtxLowEnd-only analytic interior boxes
-    DistanceFieldSpace::RigidLocalVolumePlacement                VehiclePlacement  {};        // GtxLowEnd-only 48^3 C0 local distance volume
+    DistanceFieldSpace::RigidLocalVolumePlacement                VehiclePlacement  {};        // GtxLowEnd-only 80x40x32 C0 local distance volume
     const DistanceFieldSpace::ArticulatedCapsuleRig*             CharacterRig      = nullptr; // GtxLowEnd-only live deforming capsule rig
     bool                                                         ForbidDistanceField = false; // HighEnd invariant: true => zero SDF reads
 };
@@ -53,6 +54,11 @@ struct HybridOccluderEnvironment
     const HybridOccluderEnvironment& Env,
     Mathematics::Axis3D              WorldPos,
     float                            SmoothBlendMeters = 0.08f) noexcept;
+
+// Interior occluder distance: signed static boxes (boundary slabs skipped) + signed capsule rig + unsigned vehicle SDF
+[[nodiscard]] float EvaluateInteriorOccluderDistance(
+    const HybridOccluderEnvironment& Env,
+    Mathematics::Axis3D              WorldPos) noexcept;
 
 // Candidate 1 (GtxLowEnd): 0.28 m BVH4 contact ray + SmoothMin C0 SDF + Capsule Rig directional cone visibility in [0, 1]
 [[nodiscard]] float EvaluateGtxHybridDirectionalShadow(

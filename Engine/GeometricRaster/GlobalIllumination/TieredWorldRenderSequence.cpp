@@ -10,6 +10,7 @@
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
+#include "Engine/MaterialSpace/Scattering/BlackbodyEmission.h"
 
 #include <algorithm>
 #include <array>
@@ -649,18 +650,20 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             Order2Occluders.VehiclePlacement = PreparedScene.GtxVehicleVolume;
             Order2Occluders.CharacterRig     = &PreparedScene.GtxCharacterRig;
 
-            // Precompute GtxLowEnd HybridConeShadow (0.28 m BVH4 + C0 48^3 SDF + Capsule Rig) BEFORE OpenPBR direct shading
+            // Precompute GtxLowEnd HybridConeShadow (0.28 m BVH4 + C0 aspect SDF + Capsule Rig) BEFORE OpenPBR direct shading
             if (std::max({ PreparedScene.Sun.SolarIrradiance.R, PreparedScene.Sun.SolarIrradiance.G, PreparedScene.Sun.SolarIrradiance.B }) > 1.0e-4f)
             {
                 GtxSolarVisibility.assign(TotalPixels, 1.0f);
                 const Mathematics::Axis3D UnitSun = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
+                DirectLighting::HybridConeShadowSetup GtxSetup {};
+                GtxSetup.TanSunRadius = std::tan(std::clamp(PreparedScene.Sun.SunAngularRadiusRadians, 1.0e-4f, 0.25f));
                 for (std::size_t Off = 0u; Off < TotalPixels; ++Off)
                 {
                     const auto& Hit = PrimarySamples[Off];
                     if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
                     {
                         GtxSolarVisibility[Off] = DirectLighting::EvaluateGtxHybridDirectionalShadow(
-                            Order2Occluders, Hit.WorldPosition, Hit.TangentFrame.NormalZ, UnitSun);
+                            Order2Occluders, Hit.WorldPosition, Hit.TangentFrame.NormalZ, UnitSun, GtxSetup);
                     }
                 }
             }
@@ -699,14 +702,16 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 AuthMat.Diffuse.BaseColor.G * DiffK,
                 AuthMat.Diffuse.BaseColor.B * DiffK,
             };
-            MatEmissionBySlot[M] = {
-                AuthMat.PorosityLight.EmissionTint.R * AuthMat.PorosityLight.EmissionLuminanceNits,
-                AuthMat.PorosityLight.EmissionTint.G * AuthMat.PorosityLight.EmissionLuminanceNits,
-                AuthMat.PorosityLight.EmissionTint.B * AuthMat.PorosityLight.EmissionLuminanceNits,
-            };
+            MatEmissionBySlot[M] = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(AuthMat.PorosityLight);
         }
 
         StokesSettings.HighEndZeroSdfTier = HighEndZeroSdf;
+        StokesSettings.SunDirection       = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
+        StokesSettings.SunRadiance        = {
+            PreparedScene.Sun.SolarIrradiance.R,
+            PreparedScene.Sun.SolarIrradiance.G,
+            PreparedScene.Sun.SolarIrradiance.B,
+        };
         SurfelSettings.HighEndZeroSdfTier = HighEndZeroSdf;
         SurfelSettings.SunDirection       = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
         SurfelSettings.SunRadiance        = {
