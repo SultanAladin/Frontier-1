@@ -1,0 +1,600 @@
+/* Statistic tiles, not switches or slider tracks, have restrained rounding and no outlines. */
+#ReferenceMount:is(
+    [data-reference-kind="sun"],
+    [data-reference-kind="wind"],
+    [data-reference-kind="fog"],
+    [data-reference-kind="clouds"],
+    [data-reference-kind="pointlight"],
+    [data-reference-kind="spotlight"],
+    [data-reference-kind="ieslight"],
+    [data-reference-kind="arealight"],
+    [data-reference-kind="tubelight"]
+  )
+  .mp-pill,
+#ReferenceMount:is(
+    [data-reference-kind="sun"],
+    [data-reference-kind="wind"],
+    [data-reference-kind="fog"],
+    [data-reference-kind="clouds"],
+    [data-reference-kind="pointlight"],
+    [data-reference-kind="spotlight"],
+    [data-reference-kind="ieslight"],
+    [data-reference-kind="arealight"],
+    [data-reference-kind="tubelight"]
+  )
+  .mp-stat {
+  border-radius: 6px;
+  border: 0;
+  box-shadow: none;
+}
+#ReferenceMount:is(
+    [data-reference-kind="sun"],
+    [data-reference-kind="wind"],
+    [data-reference-kind="fog"],
+    [data-reference-kind="clouds"],
+    [data-reference-kind="pointlight"],
+    [data-reference-kind="spotlight"],
+    [data-reference-kind="ieslight"],
+    [data-reference-kind="arealight"],
+    [data-reference-kind="tubelight"]
+  )
+  .mp-rail {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+#ReferenceMount:is(
+    [data-reference-kind="sun"],
+    [data-reference-kind="wind"],
+    [data-reference-kind="fog"],
+    [data-reference-kind="clouds"],
+    [data-reference-kind="pointlight"],
+    [data-reference-kind="spotlight"],
+    [data-reference-kind="ieslight"],
+    [data-reference-kind="arealight"],
+    [data-reference-kind="tubelight"]
+  )
+  .mp-pill {
+  padding: 11px 12px;
+  min-height: 62px;
+  gap: 5px;
+  background: #191919;
+}
+#ReferenceMount:is(
+    [data-reference-kind="sun"],
+    [data-reference-kind="wind"],
+    [data-reference-kind="fog"],
+    [data-reference-kind="clouds"],
+    [data-reference-kind="pointlight"],
+    [data-reference-kind="spotlight"],
+    [data-reference-kind="ieslight"],
+    [data-reference-kind="arealight"],
+    [data-reference-kind="tubelight"]
+  )
+  .mp-pill
+  .v {
+  font-size: 18px;
+  letter-spacing: -0.35px;
+  line-height: 1.25;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+#ReferenceMount:is(
+    [data-reference-kind="sun"],
+    [data-reference-kind="wind"],
+    [data-reference-kind="fog"],
+    [data-reference-kind="clouds"],
+    [data-reference-kind="pointlight"],
+    [data-reference-kind="spotlight"],
+    [data-reference-kind="ieslight"],
+    [data-reference-kind="arealight"],
+    [data-reference-kind="tubelight"]
+  )
+  .mp-pill
+  .k {
+  font-size: 8px;
+  letter-spacing: 1.05px;
+}
+.lighting-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lighting-panel .lp-card {
+  padding: 17px 15px;
+  border-radius: 18px;
+  background: #191919;
+  border: 1px solid #ffffff0c;
+  min-width: 0;
+  overflow: hidden;
+}
+.lp-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 15px;
+}
+.lp-card h3 {
+  font-size: 14px;
+  font-weight: 500;
+  color: #dedede;
+  margin: 0;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.lp-card > header > span {
+  font-size: 8px;
+  color: #6e7470;
+  letter-spacing: 0.5px;
+  text-align: right;
+}
+.lp-card .lp-canvas {
+  display: block;
+  width: 100%;
+  border-radius: 6px;
+}
+.lighting-panel .lp-preview {
+  padding: 15px 12px 12px;
+}
+.lighting-panel .lp-readings {
+  margin: 0;
+}
+.lighting-panel .field {
+  margin: 17px 0;
+}
+.lighting-panel .field > span {
+  font-size: 10px;
+  color: #999;
+  margin-bottom: 9px;
+}
+.lighting-panel input {
+  color: #ddd;
+  font: inherit;
+  box-sizing: border-box;
+}
+.lp-profiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.lp-profiles button {
+  padding: 9px 6px;
+  border: 1px solid #ffffff0a;
+  border-radius: 4px;
+  background: #242424;
+  color: #909590;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.lp-profiles button[aria-pressed="true"] {
+  background: #363e37;
+  border-color: #788578;
+  color: #eef0eb;
+}
+.lp-profiles button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.lp-colour {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  color: #999;
+  margin-top: 17px;
+}
+.lp-colour > span {
+  flex: 1;
+}
+.lp-colour input {
+  width: 30px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.lp-colour output {
+  font-size: 9px;
+  color: #7d827e;
+  font-variant-numeric: tabular-nums;
+}
+.lp-note {
+  font-size: 9px;
+  color: #6e756f;
+  line-height: 1.5;
+  margin: 12px 0;
+}
+.lp-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #999;
+  margin: 15px 0;
+  gap: 12px;
+}
+.lp-switch {
+  padding: 2px;
+  width: 38px;
+  height: 21px;
+  border: 0;
+  border-radius: 24px;
+  background: #3c3c3c;
+  cursor: pointer;
+  flex: none;
+}
+.lp-switch i {
+  display: block;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #ddd;
+}
+.lp-switch[aria-checked="true"] {
+  background: #32c763;
+}
+.lp-switch[aria-checked="true"] i {
+  transform: translateX(17px);
+}
+.lp-switch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.lighting-panel input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.lighting-panel input::-webkit-inner-spin-button {
+  appearance: none;
+}
+.lighting-panel :focus-visible {
+  outline: 1px solid #a9bcad;
+  outline-offset: 3px;
+}
+/* The pinned reference also uses .field for its search box; do not inherit that pill. */
+.lighting-panel .field {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  flex: initial;
+}
+.lighting-panel .field input[type="range"] {
+  height: 26px;
+  background: linear-gradient(
+    90deg,
+    #454545 0 var(--fill, 50%),
+    #242424 var(--fill, 50%) 100%
+  );
+  border-radius: 30px;
+  padding: 0;
+}
+.lighting-panel .split-value input {
+  background: #000;
+  width: 58px;
+  font-size: 11px;
+  flex: none;
+}
+
+.lighting-panel .lp-transform .transform-card {
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.lighting-panel .transform-table input {
+  color: #c9c9c9;
+}
+.lighting-panel .transform-resets button {
+  border-radius: 6px;
+  background: #222;
+  border: 0;
+  color: #aaa;
+  height: 30px;
+}
+/* Compact source instruments; expanded mode is a dashboard, not a stretched strip. */
+#ReferenceMount .lighting-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 0 0 10px;
+  --light-accent: #a7b8a5;
+}
+#ReferenceMount .lighting-panel .lp-card {
+  background: #1b1d1c;
+  border: 0;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: none;
+}
+#ReferenceMount .lighting-panel .lp-preview {
+  background: radial-gradient(ellipse at 55% 65%, #252a26 0%, #1b1e1c 65%);
+  padding: 18px 14px 12px;
+}
+#ReferenceMount .lighting-panel .lp-card > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+#ReferenceMount .lighting-panel .lp-card > header h3 {
+  font-size: 14px;
+  color: #d3d9d0;
+  font-weight: 400;
+  flex: 1;
+}
+#ReferenceMount .lighting-panel .lp-card > header > span:not(.lp-source-icon) {
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: #7c887c;
+}
+#ReferenceMount .lighting-panel .lp-source-icon {
+  width: 25px;
+  height: 25px;
+  display: flex;
+  flex: none;
+}
+.lp-source-icon img {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+}
+#ReferenceMount .lighting-panel .lp-primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  font-size: 42px;
+  line-height: 1.05;
+  font-weight: 300;
+  letter-spacing: -1.8px;
+  color: #edf0e7;
+  font-variant-numeric: tabular-nums;
+}
+.lp-primary .lp-decimal {
+  color: #768074;
+}
+.lp-primary small {
+  font-size: 14px;
+  letter-spacing: 0;
+  color: #a9b3a4;
+  margin-left: 7px;
+  font-weight: 300;
+}
+.lp-primary-caption {
+  font-size: 10px;
+  color: #98a091;
+  margin: 8px 0 0;
+}
+.lp-descriptor {
+  font-size: 10px;
+  color: #b1b9a8;
+  line-height: 1.5;
+  border-top: 1px solid #ffffff0c;
+  margin-top: 16px;
+  padding-top: 11px;
+}
+.lp-study-note {
+  font-size: 9px;
+  color: #828d7e;
+  margin: 3px 0 0;
+  line-height: 1.5;
+}
+#ReferenceMount .lighting-panel .lp-readings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+#ReferenceMount .lighting-panel .lp-readings .mp-pill {
+  border: 0;
+  border-radius: 6px;
+  min-height: 80px;
+  background: #20231f;
+  padding: 13px 12px;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+#ReferenceMount .lighting-panel .lp-readings .v {
+  font-size: 24px;
+  line-height: 1.1;
+  font-weight: 300;
+  color: #dce4d5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  letter-spacing: -0.6px;
+}
+#ReferenceMount .lighting-panel .lp-readings .k {
+  font-size: 9px;
+  letter-spacing: 0;
+  color: #9ba993;
+  text-transform: none;
+  line-height: 1.3;
+}
+#ReferenceMount .lighting-panel .lp-output {
+  background: #20231f;
+}
+#ReferenceMount .lighting-panel .lp-shape {
+  background: #1b1d1e;
+}
+#ReferenceMount .lighting-panel .field {
+  margin: 17px 0 0;
+}
+#ReferenceMount .lighting-panel .field > span {
+  color: #aab3a5;
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+#ReferenceMount .lighting-panel .lp-profiles button {
+  border: 1px solid #ffffff0a;
+  border-radius: 6px;
+  background: #242927;
+  color: #9ca998;
+  font-size: 10px;
+  min-height: 32px;
+  padding: 8px;
+}
+#ReferenceMount .lighting-panel .lp-profiles button[aria-pressed="true"] {
+  border-color: #9cad8844;
+  background: #394431;
+  color: #e4ecd8;
+}
+#ReferenceMount .lighting-panel .lp-response-reading {
+  font-size: 32px;
+  color: #d8e1cd;
+  line-height: 1.1;
+  letter-spacing: -1px;
+  font-weight: 300;
+}
+#ReferenceMount .lighting-panel .lp-note {
+  font-size: 10px;
+  color: #8c9786;
+  line-height: 1.55;
+  margin: 12px 0;
+}
+#ReferenceMount .lighting-panel .lp-participation {
+  background: #181b19;
+}
+
+#ReferenceMount
+  .lighting-panel
+  :is(
+    .lp-summary-column,
+    .lp-status-column,
+    .lp-source-column,
+    .lp-control-column
+  ) {
+  display: contents;
+}
+#ReferenceMount .lighting-panel .lp-response {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #ffffff12;
+}
+.lp-response-samples {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.lp-response-samples th {
+  color: #929b8f;
+  font-weight: 400;
+}
+.lp-response-samples :is(th, td) {
+  padding: 7px 0;
+  text-align: right;
+  border-bottom: 1px solid #ffffff0b;
+}
+.lp-response-samples :is(th, td):first-child {
+  text-align: left;
+}
+@media (min-width: 650px) {
+  #ReferenceMount .lighting-panel {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 14px;
+    max-width: 1120px;
+    margin: 0 auto;
+    align-items: start;
+  }
+  #ReferenceMount
+    .lighting-panel
+    :is(
+      .lp-summary-column,
+      .lp-status-column,
+      .lp-source-column,
+      .lp-control-column
+    ) {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  #ReferenceMount .lighting-panel :is(.lp-summary-column, .lp-status-column) {
+    grid-column: 1 / -1;
+  }
+  #ReferenceMount .lighting-panel .lp-participation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 28px;
+    align-items: center;
+  }
+  #ReferenceMount .lighting-panel .lp-participation header {
+    flex: 1;
+    margin: 0;
+  }
+  #ReferenceMount .lighting-panel .lp-participation .lp-toggle-row {
+    gap: 18px;
+    margin: 0;
+  }
+  #ReferenceMount .lighting-panel .lp-preview {
+    padding: 20px 22px 12px;
+  }
+  #ReferenceMount .lighting-panel .lp-output {
+    padding: 20px 22px;
+  }
+  #ReferenceMount .lighting-panel .lp-profiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 260px) {
+  #ReferenceMount .lighting-panel .lp-primary {
+    font-size: 36px;
+  }
+  #ReferenceMount .lighting-panel .lp-card {
+    padding: 14px 10px;
+  }
+  #ReferenceMount .lighting-panel .lp-readings .v {
+    font-size: 20px;
+  }
+}
+
+.cl-local-domain {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  background: #11171c;
+  color: #939da3;
+  font-size: 8px;
+  letter-spacing: 0.4px;
+  padding: 2px 4px;
+}
+
+/* C052: only the compact environment statistic cards gain softer corners. */
+#ReferenceMount:is(
+    [data-reference-kind="wind"],
+    [data-reference-kind="sun"],
+    [data-reference-kind="fog"],
+    [data-reference-kind="clouds"]
+  )
+  :is(.mp-pill, .mp-stat) {
+  border-radius: 12px;
+}
+#ReferenceMount[data-reference-kind="fog"] .fg-chamber {
+  background: transparent;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+#ReferenceMount .lighting-panel .lp-response > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 14px;
+}
+#ReferenceMount .lighting-panel .lp-response > header span {
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: #84917e;
+}

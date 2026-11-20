@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Component Viewer · Frontier</title>
+<link rel="stylesheet" href="../Shared/Studio/Studio.css">
+<link rel="stylesheet" href="./ComponentViewer.css">
+</head>
+<body>
+<div id="Studio" class="workspace">
+
+  <!-- ============================================================ LEFT: Components / Content -->
+  <section class="dock left" aria-label="Components and content">
+    <div class="tab-strip">
+      <button type="button" class="document-tab active" data-left="components">Components</button>
+      <button type="button" class="document-tab" data-left="content">Content</button>
+    </div>
+
+    <div id="LeftComponents" class="left-pane">
+      <div class="outliner-heading"><h1>Components</h1><small id="BpCaption">—</small></div>
+      <div class="stats">
+        <div class="stat-tile"><span class="status-disc" data-icon="cube" data-icon-size="12"></span><small>Components</small><strong id="StatComponents">0</strong></div>
+        <div class="stat-tile"><span class="muted-disc" data-icon="layers" data-icon-size="12"></span><small>Triangles</small><strong id="StatTriangles">0</strong></div>
+      </div>
+      <div class="add-row">
+        <button type="button" id="AddComponentBtn" class="primary add-btn" data-icon="plus" data-icon-size="14">Add</button>
+        <label class="search-wrap"><span data-icon="search" data-icon-size="14"></span><input id="ComponentSearch" type="search" placeholder="Search components"></label>
+      </div>
+      <div id="AddMenu" class="add-menu" hidden>
+        <label class="search-wrap"><span data-icon="search" data-icon-size="14"></span><input id="AddSearch" type="search" placeholder="Search component classes"></label>
+        <div id="AddList" class="add-list"></div>
+      </div>
+      <div class="outliner-scroll" id="ComponentTree" role="tree"></div>
+      <footer class="dock-footer"><div><i>DRAG</i>re-parent</div><div><i>DBL-CLICK</i>frame</div><div><i>DEL · CTRL D</i>remove · copy</div></footer>
+    </div>
+
+    <div id="LeftContent" class="left-pane" hidden>
+      <div class="outliner-heading"><h1>Content</h1><small>compiled assets · <span id="ContentCount">0</span></small></div>
+      <div class="drop-zone">
+        <button type="button" id="ImportBtn" class="primary wide" data-icon="upload" data-icon-size="14">Import object…</button>
+        <p>Drop a file anywhere. Every import opens <b>Geometry Compile</b>: units, transform, UV charts, SDF, cluster LOD, collision and icon.</p>
+        <div class="chips" id="ImportFormats"></div>
+      </div>
+      <div class="outliner-scroll">
+        <div class="collection"><span data-icon="folder"></span><div><b>Compiled</b><small>Add places a Static Mesh under the selection</small></div></div>
+        <div id="ContentList" class="content-list"></div>
+        <div class="collection"><span data-icon="sparkle"></span><div><b>Sample sources</b><small>Open straight into Geometry Compile</small></div></div>
+        <div id="SampleList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ CENTRE: blueprint tabs, viewport / graph -->
+  <section class="dock centre" aria-label="Blueprint editor">
+    <div class="tab-strip" id="BlueprintTabs"></div>
+    <div class="viewport-heading">
+      <span class="scene-icon" data-icon="cube" data-icon-size="20"></span>
+      <div class="scene-title"><b id="BpTitle">—</b><small id="BpSubtitle">Blueprint class</small></div>
+      <span class="state-tag" id="BpState">—</span>
+      <span class="spacer"></span>
+      <div id="CentreModes"></div>
+      <button type="button" id="CompileBpBtn" class="primary compile-btn" data-icon="hammer" data-icon-size="14" title="Compile blueprint (Ctrl+S)">Compile</button>
+    </div>
+    <div class="viewport-tools" id="ViewportTools">
+      <div id="ChannelBar"></div>
+      <span class="divider"></span>
+      <button type="button" id="SimulateBtn" class="tool sim-btn" title="Simulate (Space)"><span class="ico" data-icon="play" data-icon-size="14"></span><span class="label">Simulate</span></button>
+      <button type="button" id="FrameBtn" class="tool round" title="Frame selection (F)" data-icon="frame" data-icon-size="15"></button>
+      <button type="button" id="GridBtn" class="tool round active" title="Grid (G)" data-icon="grid" data-icon-size="15"></button>
+    </div>
+    <div class="canvas-well" id="ViewportWell">
+      <canvas id="Viewport" tabindex="0" aria-label="Blueprint viewport"></canvas>
+      <div class="readout" id="Readout"></div>
+      <div class="legend" id="Legend"></div>
+      <div class="sim-hud" id="SimHud" hidden>
+        <div class="sim-title"><span class="live-dot"></span><b>VEHICLE MOVEMENT · DRIVE PREVIEW</b><span id="SimGear">GEAR 1</span></div>
+        <div class="sim-metrics"><span><small>SPEED</small><b id="SimSpeed">0 km/h</b></span><span><small>ENGINE</small><b id="SimRpm">700 rpm</b></span><span><small>ACCEL</small><b id="SimAccel">0.0 m/s²</b></span><span><small>TORQUE</small><b id="SimTorque">0 N·m</b></span></div>
+        <div class="rpm-bar"><i id="SimRpmBar"></i></div>
+        <div class="sim-pedals"><label>THROTTLE <input id="ThrottleInput" type="range" min="0" max="1" step="0.01" value="0.62"><b id="ThrottleValue">62%</b></label><label>BRAKE <input id="BrakeInput" type="range" min="0" max="1" step="0.01" value="0"><b id="BrakeValue">0%</b></label></div>
+      </div>
+      <div class="graph-pane" id="GraphPane" hidden><svg id="Graph" width="100%" height="100%"></svg></div>
+      <div class="drawer" id="Drawer">
+        <header>
+          <b id="DrawerTitle">Compiled data</b>
+          <span class="spacer"></span>
+          <div class="segmented small"><button type="button" data-drawer="compiled" class="active">Compiled data</button><button type="button" data-drawer="curves">Response curves</button></div>
+        </header>
+        <div id="DrawerBody" class="drawer-body"></div>
+      </div>
+    </div>
+    <div class="strip" id="Strip">COMPONENT VIEWER</div>
+    <button id="DrawerHandle" class="drawer-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 36 L22 0 L178 0 L200 36 Z"/></svg><span>Compiled data</span></button>
+  </section>
+
+  <!-- ============================================================ RIGHT: Details -->
+  <section class="dock right" aria-label="Details">
+    <div class="tab-strip"><div class="document-tab active">Details</div></div>
+    <div class="inspector-scroll" id="Details"></div>
+  </section>
+</div>
+
+<!-- ============================================================ GEOMETRY COMPILER (separate workspace, framed) -->
+<!-- Imports, samples and Recompile open Experimental/GeometryCompiler/Compile.html here; it hands the compiled asset
+     back through Shared/GeometryCompile/CompileExchange.js. The frame loads on the first compile. -->
+<iframe id="Compile" class="compile-frame" hidden title="Geometry Compiler" aria-label="Geometry Compile"></iframe>
+
+<!-- ============================================================ NOTCH: shortcuts -->
+<div id="Notch" class="notch-shell">
+  <div class="shade">
+    <div class="control-sheet">
+      <header><span>Frontier · Component Viewer</span><kbd>?</kbd></header>
+      <div class="keys">
+        <div>Orbit · pan · zoom<span>Drag · right-drag · wheel</span></div>
+        <div>Select component<span>Click in viewport or tree</span></div>
+        <div>Inspection channels<span><kbd>1</kbd>–<kbd>7</kbd></span></div>
+        <div>Orbit around the surface you grab<span>drag</span></div>
+        <div>Pan<span>right / middle drag · <kbd>Shift</kbd> drag</span></div>
+        <div>Glide toward the cursor<span>wheel</span></div>
+        <div>Lens (dolly zoom)<span><kbd>Alt</kbd> wheel</span></div>
+        <div>Drift<span>hold right · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Q</kbd><kbd>E</kbd></span></div>
+        <div>Fly to selection<span><kbd>F</kbd> · double-click</span></div>
+        <div>Turntable · look through camera<span><kbd>T</kbd> · <kbd>C</kbd></span></div>
+        <div>Simulate<span><kbd>Space</kbd></span></div>
+        <div>Delete · duplicate<span><kbd>Del</kbd> · <kbd>Ctrl D</kbd></span></div>
+        <div>Compile blueprint<span><kbd>Ctrl S</kbd></span></div>
+        <div>Geometry Compile steps<span><kbd>↑</kbd> <kbd>↓</kbd> · <kbd>Esc</kbd> cancels</span></div>
+      </div>
+      <p>Import any object (OBJ, glTF / GLB, STL, PLY, FCT1) and it opens in Geometry Compile, where it is converted, transformed, unwrapped, baked (SDF, cluster LOD, collision, icon) and named. Compiled assets become Static Mesh components in a Blueprint-style class. The ControlVehicle from Vehicle Lab loads as the starting class.</p>
+    </div>
+  </div>
+  <button id="NotchHandle" class="notch-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 0 L22 36 L178 36 L200 0 Z"/></svg><span>Frontier · Component Viewer</span></button>
+</div>
+
+<div class="boot" id="Boot"><div><b>Component Viewer</b><small id="BootText">Loading…</small><div class="progress"><i id="BootBar"></i></div></div></div>
+<div class="toast" id="Toast" role="status"></div>
+<input type="file" id="FileInput" hidden accept=".obj,.gltf,.glb,.stl,.ply,.facet,.fbx">
+<script>
+  document.getElementById('NotchHandle').addEventListener('click', () => {
+    const n = document.getElementById('Notch'); const open = !n.classList.contains('open');
+    n.classList.toggle('open', open); document.getElementById('NotchHandle').setAttribute('aria-expanded', String(open));
+  });
+  document.querySelector('#Notch .shade').addEventListener('click', (e) => { if (e.target.classList.contains('shade')) document.getElementById('NotchHandle').click(); });
+  addEventListener('keydown', (e) => { if (e.key === '?' && !e.target.matches('input, textarea, select')) document.getElementById('NotchHandle').click(); });
+</script>
+<script type="module" src="./Main.js"></script>
+</body>
+</html>
