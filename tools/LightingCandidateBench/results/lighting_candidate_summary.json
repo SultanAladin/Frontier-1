@@ -1,0 +1,19 @@
+{
+  "viewport": [400, 225],
+  "triangles": 694,
+  "emitters": 2,
+  "surfels": 1968,
+  "blocker_disks": 151,
+  "pose_update_ms": 1.30879,
+  "shadow_rmse": {"contact_pcss": 0.130057, "vogel_disc_8": 0.015267, "surfel_blockers": 0.29926},
+  "shadow_ms": {"contact_pcss": 25.0311, "vogel_disc_8": 71.3779, "surfel_blockers": 58.6996, "reference_128": 976.374, "cascade_build": 44.7552},
+  "gi_rmse": {"sh9_form_factor": 0.0804559, "surfel_cascade": 0.111772},
+  "gi_ms": {"sh9_form_factor": 217.637, "surfel_cascade": 368.869, "cascade_build": 50.319, "reference_path_trace": 2146.34},
+  "blocker_cluster_sweep": [{"cell_m": 0.28, "disks": 151, "rmse": 0.29926, "ms": 66.0346}, {"cell_m": 0.14, "disks": 339, "rmse": 0.292659, "ms": 142.126}, {"cell_m": 0.09, "disks": 495, "rmse": 0.294305, "ms": 226.541}, {"cell_m": 0.055, "disks": 596, "rmse": 0.295565, "ms": 264.758}],
+  "shadow_ray_sweep": [{"rays": 1, "rmse": 0.0852383, "ms": 9.86632}, {"rays": 2, "rmse": 0.0539614, "ms": 20.7492}, {"rays": 4, "rmse": 0.0267568, "ms": 29.967}, {"rays": 8, "rmse": 0.015267, "ms": 55.196}, {"rays": 16, "rmse": 0.00862215, "ms": 133.245}],
+  "gi_relative_rmse": {"sh9_form_factor": 1.26462, "surfel_cascade": 1.75685},
+  "gi_mean_luminance": {"sh9_form_factor": 0.0246834, "surfel_cascade": 0.00573616, "reference": 0.0636209},
+  "gi_correlation": {"sh9_form_factor": 0.771594, "surfel_cascade": 0.344284},
+  "pose_shift_rmse": 0.146221,
+  "determinism": {"shadow_hash": 17859717147700602435, "shadow_hash_repeat": 17859717147700602435, "gi_hash": 2186968641075119215, "identical": true}
+}
