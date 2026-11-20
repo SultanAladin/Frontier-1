@@ -7,19 +7,12 @@ on:
         description: Exact Frontier commit to compile
         required: true
         type: string
-  push:
-    branches:
-      - 'arena/**'
-    paths:
-      - '.github/workflows/solidarc-standalone-build.yml'
 
 permissions:
   contents: read
 
 env:
-  # On the workflow-creation push, compile the commit immediately before the
-  # workflow commit. Manual runs compile the explicitly requested immutable SHA.
-  SOLIDARC_SOURCE_SHA: ${{ github.event_name == 'push' && github.event.before || inputs.source_sha }}
+  SOLIDARC_SOURCE_SHA: ${{ inputs.source_sha }}
 
 jobs:
   solidarc-windows-x64:
@@ -80,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           cmake --build Build/SolidArc --config Release --parallel 4 --target `
-            FrontierSketcher `
+            FrontierSketcher FrontierEngineRuntimeDll FrontierWorkspaceUiDll `
             SketcherKernelValidation SketcherDocumentValidation `
             SketcherViewportValidation SketcherWorkspaceValidation
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
