@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                          SPECULARREFLECTIONSEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Specular & Abbe Glass Refraction: BVH4 WideBoundingTree Raytrace or Analytical Sky Environment (Zero GI / Zero SDF!)
+// 🧩 Specular & Abbe Glass Refraction: BVH4 WideBoundingTree Raytrace or Analytical Sky Environment
 
 #pragma once
 
@@ -29,7 +29,7 @@ namespace Frontier::GeometricRaster
 enum class SpecularReflectionSource : uint8_t
 {
     WideTreeRaytrace = 0u, // [-] - Trace secondary BVH4 rays + Abbe dispersed glass refraction
-    SkyEnvironment   = 1u, // [-] - Evaluate analytical sky hemisphere gradient (zero geometry bounce, zero SDF)
+    SkyEnvironment   = 1u, // [-] - Evaluate analytical sky hemisphere gradient (zero geometry bounce)
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -53,7 +53,7 @@ struct SpecularReflectionBuffer
 class SpecularReflectionSequence
 {
 public:
-    // Evaluates specular & Abbe glass refraction strictly through SpecularReflectionSource (Zero GI / Zero SDF)
+    // Evaluates specular & Abbe glass refraction strictly through SpecularReflectionSource
     [[nodiscard]] static SpecularReflectionBuffer EvaluateSpecularRefractionWithSource(
         SpecularReflectionSource                        Source,
         const PerspectiveCameraBasis&                   Camera,

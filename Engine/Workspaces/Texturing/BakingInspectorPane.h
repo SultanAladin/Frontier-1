@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                             BAKINGINSPECTORPANE.H
 ============================================================================================================================================*/
-// 🧩 Right-column inspector for Baking Studio: KPI trio, bake progress box, surface ray settings, 3D volume SDF & export bridge.
+// 🧩 Right-column inspector for Baking Studio: KPI trio, bake progress box, surface ray settings & Texture Paint export bridge.
 
 #pragma once
 
@@ -38,7 +38,6 @@ private:
     float                   MaxScrollY         = 0.0f;
     int32_t                 ActiveSliderId     = -1;
     bool                    SurfaceSectionOpen = true;
-    bool                    VolumeSectionOpen  = true;
     bool                    ExportSectionOpen  = true;
 };
 

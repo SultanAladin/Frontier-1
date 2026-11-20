@@ -90,7 +90,7 @@ void ComponentDrawerPanel::Render(
         const std::array<SummaryTile, 5> Tiles {{
             { "Icon",        Doc->IconBaked ? "128x128" : "Pending", "OpenPbrDirect cutout" },
             { "UV charts",   "Ready",                                AssetCountBuf },
-            { "SDF",         "64^3",                                 "Signed distance shell" },
+            { "Wide BVH4",   "Ready",                                "4-wide ray hierarchy" },
             { "Cluster LOD", "4 tiers",                              "100% -> 25% -> 6%" },
             { "Collision",   "Hulls",                                "JoltPhysics v5.6.0" },
         }};

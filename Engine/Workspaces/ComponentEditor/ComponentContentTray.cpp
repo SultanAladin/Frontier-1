@@ -72,7 +72,7 @@ void ComponentContentTray::Render(
 
     WorkspaceAppearance::ConstructTruncatedText(
         Surface, FontWeightClass::Regular, { ImportWell.X + 12.0f, ImportBtn.Bottom() + 8.0f }, ImportWell.Width - 24.0f, 9.0f,
-        WorkspaceSurfaceColors::MutedInk, "Runs Geometry Compile (UV, SDF, LOD, Collision).");
+        WorkspaceSurfaceColors::MutedInk, "Runs Geometry Compile (UV, BVH4, LOD, Collision).");
 
     const std::array<const char*, 7> Fmts {{ "OBJ", "glTF", "GLB", "STL", "PLY", "FCT1", "FBX" }};
     float Fx = ImportWell.X + 10.0f;
@@ -150,7 +150,7 @@ void ComponentContentTray::Render(
         }
 
         // Status chips
-        const std::array<const char*, 5> Chips {{ "Compiled", InUse ? "In use" : "Ready", "UV", "SDF", "LOD" }};
+        const std::array<const char*, 5> Chips {{ "Compiled", InUse ? "In use" : "Ready", "UV", "BVH4", "LOD" }};
         float Cx = Thumb.Right() + 10.0f;
         const float Cy = Tile.Y + 42.0f;
         for (std::size_t I = 0u; I < Chips.size(); ++I)

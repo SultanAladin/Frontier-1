@@ -68,7 +68,7 @@ WorkspaceCapabilityRegister::WorkspaceCapabilityRegister()
         HostWorkspaceTarget::BakingWorkspace,
         "BakingWorkspace",
         "Open with Baking Studio",
-        "Baking Studio · Pure-GPU GTX BVH4 & RTX RayQuery 18-target PBR & 3D Volume SDF baker",
+        "Baking Studio · Pure-GPU GTX BVH4 & RTX RayQuery 17-target PBR surface baker",
         true,
     });
     RegisteredEntries.push_back({

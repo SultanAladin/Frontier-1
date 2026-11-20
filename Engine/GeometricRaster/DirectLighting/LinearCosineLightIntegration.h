@@ -87,7 +87,7 @@ public:
         float DiffuseAmbientOcclusion,
         float PerceptualRoughness) noexcept;
 
-    // Evaluates full Direct Lighting Frame with explicit Shadow Lab algorithm (BVH4 & Shadow Cascades, Zero GI / Zero SDF)
+    // Evaluates full Direct Lighting Frame with explicit Shadow Lab algorithm (BVH4 & Orthographic Cascades)
     [[nodiscard]] static DirectLightingOutput EvaluateDirectLightingFrameWithAlgorithm(
         SolarShadowAlgorithm                           Algorithm,
         const PerspectiveCameraBasis&                  Camera,

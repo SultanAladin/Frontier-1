@@ -76,6 +76,7 @@ void BakingTargetsPane::RenderTargetSwatchGraphic(
     BakerTargetId Target,
     bool          Ready) const noexcept
 {
+    (void)Ready;
     Surface.PushClip(SwatchBounds);
 
     const float Cx = SwatchBounds.X + SwatchBounds.Width * 0.5f;
@@ -84,15 +85,6 @@ void BakingTargetsPane::RenderTargetSwatchGraphic(
 
     switch (Target)
     {
-        case BakerTargetId::VolumeSdf:
-        {
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 20u, 36u, 58u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R * 1.15f, ColorRgba{ 46u, 82u, 134u, 255u });
-            Surface.FillCircle({ Cx, Cy }, R * 0.85f, ColorRgba{ 232u, 238u, 200u, 255u });
-            Surface.FillCircle({ Cx, Cy }, R * 0.62f, ColorRgba{ 165u, 72u, 46u, 255u });
-            Surface.TextCentered(SwatchBounds, 9.0f, ColorRgba{ 238u, 241u, 246u, 255u }, Ready ? "SDF OK" : "SDF");
-            break;
-        }
         case BakerTargetId::TangentNormal:
             Surface.FillRectangle(SwatchBounds, ColorRgba{ 118u, 126u, 238u, 255u }, 7.0f);
             Surface.FillCircle({ Cx, Cy }, R, ColorRgba{ 138u, 146u, 250u, 255u });
@@ -264,7 +256,7 @@ void BakingTargetsPane::Render(
     };
     const std::array<PresetRowEntry, 4u> Presets {{
         { "PBR Core",     BakerQuickPreset::PbrStandard },
-        { "PBR + Volume", BakerQuickPreset::PbrPlusVolume },
+        { "PBR + Bent",   BakerQuickPreset::OcclusionPlus },
         { "Normals",      BakerQuickPreset::Normals },
         { "Select All",   BakerQuickPreset::SelectAll },
     }};

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                             SPATIALACOUSTICS.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of 3D VBAP surround panning, physical Doppler pitch shift, Woodworth binaural cues, tunnel zones & SDF/Physics probes
+// 🧩 Implementation of 3D VBAP surround panning, physical Doppler pitch shift, Woodworth binaural cues, tunnel zones & ray/physics occlusion
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -716,12 +716,12 @@ float SpatialAcoustics::EvaluatePhysicsOcclusion(
     return std::clamp(0.45f + 0.47f * (1.0f - ClampedFrac), 0.0f, 0.92f);
 }
 
-SdfAcousticFieldReading SpatialAcoustics::EvaluateRayAcousticField(
+RayAcousticFieldReading SpatialAcoustics::EvaluateRayAcousticField(
     const SpatialAcceleration::WideBoundingTree& SceneTree,
     Mathematics::Axis3D                          ReceiverPositionMeters,
     Mathematics::Axis3D                          OriginPositionMeters) noexcept
 {
-    SdfAcousticFieldReading Reading{};
+    RayAcousticFieldReading Reading{};
 
     const Mathematics::Axis3D Delta = OriginPositionMeters - ReceiverPositionMeters;
     const float               Dist  = std::sqrt(LengthSquared3(Delta));

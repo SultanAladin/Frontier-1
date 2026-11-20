@@ -557,7 +557,7 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
         }
     }
 
-    // 1. Evaluate Shadow Lab Solar Shadows + Plane-Aware Penumbra Filter (Zero GI / Zero SDF)
+    // 1. Evaluate Shadow Lab Solar Shadows + Plane-Aware Penumbra Filter
     Out.SolarShadows = SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorithm(
         Algorithm, Sun, Out.WidthPx, Out.HeightPx, PrimarySamples, SceneTree,
         OptionalFineClip, OptionalCoarseClip);

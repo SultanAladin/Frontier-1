@@ -962,11 +962,11 @@ int main()
             CorridorBvh.BuildFromTrianglePrimitives(CorridorTris),
             "Build corridor WideBoundingTree for acoustic ray probing");
 
-        const SdfAcousticFieldReading ClearFieldReading = SpatialAcoustics::EvaluateRayAcousticField(
+        const RayAcousticFieldReading ClearFieldReading = SpatialAcoustics::EvaluateRayAcousticField(
             CorridorBvh,
             { -2.0f, 0.0f, 0.0f },
             {  1.5f, 0.0f, 0.0f });
-        const SdfAcousticFieldReading BlockedFieldReading = SpatialAcoustics::EvaluateRayAcousticField(
+        const RayAcousticFieldReading BlockedFieldReading = SpatialAcoustics::EvaluateRayAcousticField(
             CorridorBvh,
             { -2.0f, 0.0f, 0.0f },
             {  5.0f, 0.0f, 0.0f });

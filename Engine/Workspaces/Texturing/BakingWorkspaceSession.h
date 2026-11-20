@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            BAKINGWORKSPACESESSION.H
 ============================================================================================================================================*/
-// 🧩 Authoring session for Frontier Baking Studio: 18 PBR surface & 3D volume SDF targets, High/Low studies & Vulkan GPU baker bridge.
+// 🧩 Authoring session for Frontier Baking Studio: 17 PBR surface map targets, High/Low studies & Vulkan GPU baker bridge.
 
 #pragma once
 
@@ -32,34 +32,32 @@ namespace Frontier::Workspaces
 
 enum class BakerTargetId : uint8_t
 {
-    VolumeSdf          = 0,
-    TangentNormal      = 1,
-    WorldNormal        = 2,
-    ModelSpaceNormal   = 3,
-    BentNormal         = 4,
-    BevelNormal        = 5,
-    AmbientOcclusion   = 6,
-    SecondaryAo        = 7,
-    Curvature          = 8,
-    Convexity          = 9,
-    Concavity          = 10,
-    Thickness          = 11,
-    HeightDisplacement = 12,
-    TopDownDust        = 13,
-    UvIslandId         = 14,
-    PartMaterialId     = 15,
-    WorldPosition      = 16,
-    UvWireframe        = 17,
-    Count              = 18,
+    TangentNormal      = 0,
+    WorldNormal        = 1,
+    ModelSpaceNormal   = 2,
+    BentNormal         = 3,
+    BevelNormal        = 4,
+    AmbientOcclusion   = 5,
+    SecondaryAo        = 6,
+    Curvature          = 7,
+    Convexity          = 8,
+    Concavity          = 9,
+    Thickness          = 10,
+    HeightDisplacement = 11,
+    TopDownDust        = 12,
+    UvIslandId         = 13,
+    PartMaterialId     = 14,
+    WorldPosition      = 15,
+    UvWireframe        = 16,
+    Count              = 17,
 };
 
 enum class BakerTargetGroup : uint8_t
 {
-    VolumeDistance = 0,
-    Normals           = 1,
-    Surface           = 2,
-    DiagnosticMasks       = 3,
-    Count             = 4,
+    Normals         = 0,
+    Surface         = 1,
+    DiagnosticMasks = 2,
+    Count           = 3,
 };
 
 enum class BakerStudyShape : uint8_t
@@ -95,18 +93,10 @@ enum class TangentNormalConvention : uint8_t
     Count         = 2,
 };
 
-enum class VolumeSectionAxis : uint8_t
-{
-    AxisZ = 0,
-    AxisY = 1,
-    AxisX = 2,
-    Count = 3,
-};
-
 enum class BakerQuickPreset : uint8_t
 {
     PbrStandard   = 0,
-    PbrPlusVolume = 1,
+    OcclusionPlus = 1,
     Normals       = 2,
     SelectAll     = 3,
     Count         = 4,
@@ -122,7 +112,6 @@ struct BakerTargetDescriptor
     BakerTargetGroup Group        = BakerTargetGroup::Normals;
     const char*      Label        = "Tangent Normal";
     const char*      ShortSummary = "High-to-Low normal";
-    bool             VolumeTarget = false;
 };
 
 struct BakerStudyDescriptor
@@ -166,18 +155,11 @@ struct BakingWorkspaceSession
     bool                    ShowHighWireOverlay     = false;
     bool                    ShowCageOverlay         = false;
 
-    uint32_t                VolumeGridDim           = 36u;
-    bool                    SignedInteriorDistance  = true;
-    float                   VolumeBoundsPadding     = 0.16f;
-    VolumeSectionAxis       SectionAxis             = VolumeSectionAxis::AxisZ;
-    float                   SectionDepthNormalized  = 0.50f;
-
     BakerTargetId           InspectedTarget         = BakerTargetId::TangentNormal;
     std::array<bool, TargetCount> SelectedTargets   {};
     std::array<bool, TargetCount> BakedReadyTargets {};
 
     bool                    BakingActive            = false;
-    bool                    VolumeSdfBaked          = false;
     bool                    SurfaceBaked            = false;
     bool                    BridgedToPaint          = false;
     float                   BakeProgress            = 0.0f;
@@ -218,9 +200,7 @@ struct BakingWorkspaceSession
     void InspectTarget(BakerTargetId Target) noexcept;
     void SelectStudy(BakerStudyShape NextStudy) noexcept;
     void AssignResolution(uint32_t NextResPx) noexcept;
-    void AssignVolumeGridDim(uint32_t NextDim) noexcept;
     void ExecuteBakeSimulation() noexcept;
-    void RefreshSdfSectionOnGpu() noexcept;
     void SendBakedTargetsToPaint() noexcept;
 
     void ResetOrbitCamera() noexcept;
@@ -244,7 +224,6 @@ struct BakingWorkspaceSession
         std::string*                 OutDiagnostic = nullptr);
 
     [[nodiscard]] bool ExportInspectedTargetPng(const std::filesystem::path& ExplicitOutputPath = {});
-    [[nodiscard]] bool ExportVolumeSdfFvol(const std::filesystem::path& ExplicitOutputPath = {});
 
     [[nodiscard]] uint32_t QueryActiveLowTriangles() const noexcept;
     [[nodiscard]] uint32_t QueryActiveHighTriangles() const noexcept;

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            BAKINGINSPECTORPANE.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of BakingInspectorPane: study title, KPI trio, progress bar, raycaster sliders, volume SDF section & Paint bridge.
+// 🧩 Implementation of BakingInspectorPane: study title, KPI trio, progress bar, raycaster sliders & Texture Paint bridge.
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -105,13 +105,13 @@ void BakingInspectorPane::Render(
         Bounds.Y + HeaderTopY,
         InnerW,
         "Baker Parameters",
-        "SURFACE + VOLUME SDF",
+        "17 PBR SURFACE MAPS",
         Theme);
 
     // Footer
     constexpr float   FooterH = 26.0f;
     const Rectangle2D FooterBounds{ Bounds.X, Bounds.Bottom() - FooterH, Bounds.Width, FooterH };
-    ConstructPaneStatusFooter(Surface, FooterBounds, "Edge Dilation Padding Included", "Real Float32 SDF", Theme);
+    ConstructPaneStatusFooter(Surface, FooterBounds, "Edge Dilation Padding Included", "GTX BVH4 / RTX RayQuery", Theme);
 
     // Scrollable region
     const float       ScrollTop = Bounds.Y + HeaderTopY + HeaderH;
@@ -142,16 +142,16 @@ void BakingInspectorPane::Render(
     char ResVal[32];
     char ResSub[32];
     char SamplesVal[16];
-    char VolumeVal[16];
+    char PaddingVal[16];
     std::snprintf(ResVal, sizeof(ResVal), "%upx", Session->TargetResolutionPx);
     std::snprintf(ResSub, sizeof(ResSub), "%zu Maps", Session->CountSelectedTargets());
     std::snprintf(SamplesVal, sizeof(SamplesVal), "%d", Session->AoSampleCount);
-    std::snprintf(VolumeVal, sizeof(VolumeVal), "%u³", Session->VolumeGridDim);
+    std::snprintf(PaddingVal, sizeof(PaddingVal), "%dpx", Session->UvEdgePaddingPx);
 
     const std::array<MetricTileReading, 3u> Kpis {{
-        { "Resolution", ResVal,     ResSub,                                       true  },
-        { "Rays / Px",  SamplesVal, "Hemisphere",                                 false },
-        { "Volume SDF", VolumeVal,  Session->VolumeSdfBaked ? "Baked" : "Pending", false },
+        { "Resolution", ResVal,     ResSub,                                     true  },
+        { "Rays / Px",  SamplesVal, "Hemisphere",                               false },
+        { "Dilation",   PaddingVal, Session->SurfaceBaked ? "Baked" : "Ready",  false },
     }};
     CurY += ConstructMetricTrioTiles(Surface, LeftX, CurY, InnerW, Kpis, Theme) + 12.0f;
 
@@ -189,7 +189,7 @@ void BakingInspectorPane::Render(
                 ControlIcon::BakeBox,
                 10.0f,
                 13.0f,
-                OptionalTooltip::FromTitled("Bake Selected Maps", "Compute all checked surface and volume SDF output targets.")))
+                OptionalTooltip::FromTitled("Bake Selected Maps", "Compute all checked high-to-low PBR surface output maps.")))
         {
             Session->ExecuteBakeSimulation();
         }
@@ -312,86 +312,7 @@ void BakingInspectorPane::Render(
         CurY += 12.0f;
     }
 
-    // 5. Section 2: 3D Volume SDF & Slice Inspector
-    {
-        const float       SecStartY = CurY;
-        const float       SecBodyH  = VolumeSectionOpen ? (40.0f + 56.0f * 2.0f + 52.0f * 2.0f + 36.0f) : 38.0f;
-        const Rectangle2D SecRect{ LeftX, SecStartY, InnerW, SecBodyH };
-        BeginSectionContainer(Surface, SecRect, Theme, 18.0f);
-
-        if (ConstructSectionHeaderRow(
-                Surface,
-                { LeftX + 12.0f, CurY + 10.0f, InnerW - 24.0f, 22.0f },
-                ControlIcon::VolumeBoxes,
-                "3D Volume SDF & Slice Inspector",
-                VolumeSectionOpen ? "-" : "+",
-                VolumeSectionOpen,
-                Theme,
-                Cursor,
-                Pressed))
-        {
-            VolumeSectionOpen = !VolumeSectionOpen;
-        }
-        CurY += 38.0f;
-
-        if (VolumeSectionOpen)
-        {
-            static constexpr const char* DimOpts[4] { "24³", "36³", "48³", "64³" };
-            static constexpr uint32_t    DimVals[4] { 24u, 36u, 48u, 64u };
-            uint32_t ActiveDimIdx = 1u;
-            for (uint32_t I = 0u; I < 4u; ++I)
-            {
-                if (DimVals[I] == Session->VolumeGridDim)
-                {
-                    ActiveDimIdx = I;
-                }
-            }
-            uint32_t ChosenDimIdx = ActiveDimIdx;
-            if (ConstructSegmentedCapsuleRow(Surface, LeftX + 12.0f, CurY, InnerW - 24.0f, "Voxel Grid Dim", DimOpts, 4u, ActiveDimIdx, ChosenDimIdx, Theme, Input.PrimaryPointer))
-            {
-                Session->AssignVolumeGridDim(DimVals[ChosenDimIdx]);
-            }
-            CurY += 56.0f;
-
-            const bool PrevSigned = Session->SignedInteriorDistance;
-            ConstructSwitchControlRow(
-                Surface,
-                LeftX + 12.0f,
-                CurY,
-                InnerW - 24.0f,
-                "Signed Interior Distance",
-                Session->SignedInteriorDistance,
-                Theme,
-                Input.PrimaryPointer);
-            if (Session->SignedInteriorDistance != PrevSigned)
-            {
-                Session->RefreshSdfSectionOnGpu();
-            }
-            CurY += 36.0f;
-
-            RenderFloatSlider(201, "Bounds Padding", 0.05f, 0.45f, "", "%.2f", Session->VolumeBoundsPadding);
-
-            static constexpr const char* AxisOpts[3] { "Z Slice", "Y Slice", "X Slice" };
-            uint32_t ChosenAxis = static_cast<uint32_t>(Session->SectionAxis);
-            if (ConstructSegmentedCapsuleRow(Surface, LeftX + 12.0f, CurY, InnerW - 24.0f, "Inspect Slice Axis", AxisOpts, 3u, ChosenAxis, ChosenAxis, Theme, Input.PrimaryPointer))
-            {
-                Session->SectionAxis = static_cast<VolumeSectionAxis>(ChosenAxis);
-                Session->InspectTarget(BakerTargetId::VolumeSdf);
-                Session->RefreshSdfSectionOnGpu();
-            }
-            CurY += 56.0f;
-
-            const float PrevDepth = Session->SectionDepthNormalized;
-            RenderFloatSlider(202, "Slice Depth", 0.0f, 1.0f, "", "%.2f", Session->SectionDepthNormalized);
-            if (std::abs(Session->SectionDepthNormalized - PrevDepth) > 0.0005f)
-            {
-                Session->RefreshSdfSectionOnGpu();
-            }
-        }
-        CurY += 12.0f;
-    }
-
-    // 6. Section 3: Export & Texture Paint Bridge
+    // 5. Section 2: Export & Texture Paint Bridge
     {
         const float       SecStartY = CurY;
         const float       SecBodyH  = ExportSectionOpen ? 120.0f : 38.0f;
@@ -415,10 +336,9 @@ void BakingInspectorPane::Render(
 
         if (ExportSectionOpen)
         {
-            const float HalfBtnW = (InnerW - 24.0f - 8.0f) * 0.5f;
             if (ConstructCapsuleButtonControl(
                     Surface,
-                    { LeftX + 12.0f, CurY, HalfBtnW, 28.0f },
+                    { LeftX + 12.0f, CurY, InnerW - 24.0f, 28.0f },
                     "Download Current PNG",
                     Theme,
                     Cursor,
@@ -430,23 +350,6 @@ void BakingInspectorPane::Render(
                     14.0f))
             {
                 (void)Session->ExportInspectedTargetPng();
-            }
-
-            if (ConstructCapsuleButtonControl(
-                    Surface,
-                    { LeftX + 12.0f + HalfBtnW + 8.0f, CurY, HalfBtnW, 28.0f },
-                    "Download .fvol SDF",
-                    Theme,
-                    Cursor,
-                    Pressed && Session->VolumeSdfBaked,
-                    Session->VolumeSdfBaked,
-                    false,
-                    ControlIcon::VolumeBoxes,
-                    9.5f,
-                    14.0f,
-                    OptionalTooltip::FromTitled("Download .fvol SDF", Session->VolumeSdfBaked ? "Export signed distance volume grid as .fvol JSON." : "Bake Volume SDF first.")))
-            {
-                (void)Session->ExportVolumeSdfFvol();
             }
             CurY += 36.0f;
 

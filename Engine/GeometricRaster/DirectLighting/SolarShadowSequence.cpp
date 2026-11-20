@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            SOLARSHADOWSEQUENCE.CPP
 ============================================================================================================================================*/
-// 🧩 Tiered Direct Solar Shadows (Zero VSM, Zero SDF!): RTX Vogel Solar Frustum + Plane-Aware Filter & GTX 3.9 mm 2-Cascade Contact Clip
+// 🧩 Tiered Direct Solar Shadows: RTX Vogel Solar Frustum + Plane-Aware Filter & GTX 3.9 mm 2-Cascade Contact Clip
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -593,7 +593,7 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
             }
             else
             {
-                // PcssPlaneAware OR ContactPcss (Zero SDF Shadows!)
+                // PcssPlaneAware OR ContactPcss orthographic shadow cascades
                 CascadeSampleOutcome ClipSample {};
                 if (OptionalFineClip != nullptr)
                 {
@@ -626,7 +626,7 @@ SolarShadowFieldResult SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorith
                 }
                 else if (!ClipSample.InsideCascade)
                 {
-                    // Outside cascade bounds, fall back cleanly to 1-ray BVH4 query (never SDF)
+                    // Outside cascade bounds, fall back cleanly to 1-ray BVH4 query
                     SpatialAcceleration::RaySegmentQuery FallbackRay {};
                     FallbackRay.Origin          = Hit.WorldPosition + Hit.TangentFrame.NormalZ * 2.0e-3f;
                     FallbackRay.UnitDirection   = SunDir;

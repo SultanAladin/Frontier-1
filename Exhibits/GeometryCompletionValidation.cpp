@@ -1,7 +1,7 @@
 /*==========================================================================================================================================
                                                      GEOMETRYCOMPLETIONVALIDATION.CPP
 ==========================================================================================================================================*/
-// 🧩 CTest & visual exhibit validating GeometrySpace completion, .GeometrySpace codec, 128-tri ClusterPyramid, BVH4 & 3D SDF
+// 🧩 CTest & visual exhibit validating GeometrySpace completion, .GeometrySpace codec, 128-tri ClusterPyramid & 4-Wide BVH4
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -510,7 +510,7 @@ int main()
     // Header Banner
     Bg->AddRectFilled(ImVec2(24.0f, 20.0f), ImVec2(1416.0f, 92.0f), ColPanel, 10.0f);
     Bg->AddRect(ImVec2(24.0f, 20.0f), ImVec2(1416.0f, 92.0f), ColBorder, 10.0f, 0, 1.5f);
-    Bg->AddText(ImVec2(44.0f, 34.0f), ColCyan, "FRONTIER ENGINE  //  GEOMETRYSPACE COMPLETION, CLUSTER PYRAMID, 4-WIDE BVH4 & SPARSE 3D SDF");
+    Bg->AddText(ImVec2(44.0f, 34.0f), ColCyan, "FRONTIER ENGINE  //  GEOMETRYSPACE COMPLETION, CLUSTER PYRAMID & 4-WIDE BVH4");
     char HeaderSub[256] {};
     std::snprintf(
         HeaderSub,
@@ -560,19 +560,19 @@ int main()
                   SphereCurvature.GaussBonnetEulerEstimate, TorusCurvature.GaussBonnetEulerEstimate);
     Bg->AddText(ImVec2(376.0f, 456.0f), ColAmber, GaussNote);
 
-    // Panel 2 (Top-Right): 128-Triangle ClusterPyramid & 128 B 4-Wide BVH4 + Sparse SDF Slice
+    // Panel 2 (Top-Right): 128-Triangle ClusterPyramid & 128 B 4-Wide BVH4 Equatorial Slice
     Bg->AddRectFilled(ImVec2(732.0f, 110.0f), ImVec2(1416.0f, 494.0f), ColPanel, 10.0f);
     Bg->AddRect(ImVec2(732.0f, 110.0f), ImVec2(1416.0f, 494.0f), ColBorder, 10.0f, 0, 1.5f);
     Bg->AddRectFilled(ImVec2(732.0f, 110.0f), ImVec2(1416.0f, 148.0f), ColSurface, 10.0f);
     Bg->AddRectFilled(ImVec2(746.0f, 121.0f), ImVec2(752.0f, 137.0f), ColGreen, 3.0f);
-    Bg->AddText(ImVec2(762.0f, 122.0f), ColText, "128-TRI CLUSTER PYRAMID, 128 B 4-WIDE BVH4 & SPARSE 8x8x8 SDF SLICE");
+    Bg->AddText(ImVec2(762.0f, 122.0f), ColText, "128-TRI CLUSTER PYRAMID & 128 B 4-WIDE BVH4 EQUATORIAL SLICE");
 
     // Construct 2D Equatorial Cross-Section Heatmap of SphereWideTree on Left of Panel 2
-    const float SdfBoxLeft = 752.0f;
-    const float SdfBoxTop  = 174.0f;
-    const float SdfBoxSize = 242.0f;
+    const float SliceBoxLeft = 752.0f;
+    const float SliceBoxTop  = 174.0f;
+    const float SliceBoxSize = 242.0f;
     constexpr int GridRes  = 44;
-    const float CellPx     = SdfBoxSize / static_cast<float>(GridRes);
+    const float CellPx     = SliceBoxSize / static_cast<float>(GridRes);
     for (int Row = 0; Row < GridRes; ++Row)
     {
         for (int Col = 0; Col < GridRes; ++Col)
@@ -590,12 +590,12 @@ int main()
             {
                 CellColor = IM_COL32(38, 60, 90, 255);
             }
-            const ImVec2 P0(SdfBoxLeft + static_cast<float>(Col) * CellPx, SdfBoxTop + static_cast<float>(Row) * CellPx);
+            const ImVec2 P0(SliceBoxLeft + static_cast<float>(Col) * CellPx, SliceBoxTop + static_cast<float>(Row) * CellPx);
             Bg->AddRectFilled(P0, ImVec2(P0.x + CellPx + 0.5f, P0.y + CellPx + 0.5f), CellColor);
         }
     }
-    Bg->AddRect(ImVec2(SdfBoxLeft, SdfBoxTop), ImVec2(SdfBoxLeft + SdfBoxSize, SdfBoxTop + SdfBoxSize), ColBorder, 4.0f, 0, 1.5f);
-    Bg->AddText(ImVec2(SdfBoxLeft + 6.0f, SdfBoxTop + SdfBoxSize + 14.0f), ColMuted, "4-Wide BVH4 Equatorial Top-Down Hits");
+    Bg->AddRect(ImVec2(SliceBoxLeft, SliceBoxTop), ImVec2(SliceBoxLeft + SliceBoxSize, SliceBoxTop + SliceBoxSize), ColBorder, 4.0f, 0, 1.5f);
+    Bg->AddText(ImVec2(SliceBoxLeft + 6.0f, SliceBoxTop + SliceBoxSize + 14.0f), ColMuted, "4-Wide BVH4 Equatorial Top-Down Hits");
 
     // Telemetry Bars on Right of Panel 2
     struct AccelMetricBar
@@ -605,20 +605,20 @@ int main()
         float       Fill;
         ImU32       Color;
     };
-    char ClsReadout[96] {}, BvhReadout[96] {}, LodReadout[96] {}, SdfReadout[96] {};
+    char ClsReadout[96] {}, BvhReadout[96] {}, LodReadout[96] {}, SphereReadout[96] {};
     std::snprintf(ClsReadout, sizeof(ClsReadout), "%u L0 (%u Levels)", VehiclePyramid.FinestClusterCount, VehiclePyramid.HierarchyDepth);
     std::snprintf(BvhReadout, sizeof(BvhReadout), "%zu Entries (%.1f%% Pruned)",
                   VehicleWideTree.WideEntries.size(),
                   100.0 * (1.0 - static_cast<double>(TotalWideTestedPrims) / static_cast<double>(std::max(1u, TotalBruteTests))));
     std::snprintf(LodReadout, sizeof(LodReadout), "%u -> %u Tris", NearCut.ActiveTriangleCount, FarCut.ActiveTriangleCount);
-    std::snprintf(SdfReadout, sizeof(SdfReadout), "%zu Entries / %zu Tris",
+    std::snprintf(SphereReadout, sizeof(SphereReadout), "%zu Entries / %zu Tris",
                   SphereWideTree.WideEntries.size(), SphereWideTree.Primitives.size());
 
     const std::array<AccelMetricBar, 4u> Bars {{
-        { "ClusterPyramid (<=128T)",   ClsReadout, 0.94f, ColCyan   },
-        { "4-Wide BVH4 Ray Prune",     BvhReadout, 0.97f, ColGreen  },
-        { "Monotonic QEM LOD Cut",     LodReadout, 0.86f, ColAmber  },
-        { "Sphere BVH4 Nodes/Tris",    SdfReadout, 0.78f, ColPurple },
+        { "ClusterPyramid (<=128T)",   ClsReadout,    0.94f, ColCyan   },
+        { "4-Wide BVH4 Ray Prune",     BvhReadout,    0.97f, ColGreen  },
+        { "Monotonic QEM LOD Cut",     LodReadout,    0.86f, ColAmber  },
+        { "Sphere BVH4 Nodes/Tris",    SphereReadout, 0.78f, ColPurple },
     }};
 
     for (std::size_t Idx = 0u; Idx < Bars.size(); ++Idx)

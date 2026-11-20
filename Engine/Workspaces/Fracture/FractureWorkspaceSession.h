@@ -140,7 +140,6 @@ public:
     [[nodiscard]] static const char* QuerySolverShortLabel(GeometrySpace::Fracture::FractureSolverMethod Method) noexcept;
     [[nodiscard]] const GeometrySpace::Fracture::FractureMaterialSpec& ActiveSurfaceMaterialSpec() const noexcept;
     [[nodiscard]] const GeometrySpace::Fracture::FractureMaterialSpec& ActiveMaterialSpec() const noexcept;
-    [[nodiscard]] GeometrySpace::Fracture::SdfVolumeFootprint          QuerySdfFootprint() const noexcept;
     [[nodiscard]] std::string                                          FormatPrimitiveSubtitle() const;
     [[nodiscard]] double                                               QueryExactVolumeM3() const noexcept;
     [[nodiscard]] double                                               QueryExactAreaM2() const noexcept;
@@ -185,8 +184,6 @@ public:
     bool                                           ClosedCaps          = true;
     bool                                           QualityFans         = true;
     bool                                           ExactNormals        = true;
-    bool                                           SdfEnabled          = true;
-    uint32_t                                       SdfResolution       = 48u;
 
     // Simulation recipe
     double                                         TransferRatio       = 0.72;

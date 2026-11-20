@@ -39,7 +39,7 @@ struct BakeViewportRenderSpec
 {
     uint32_t           WidthPx             = 800u;
     uint32_t           HeightPx            = 600u;
-    uint32_t           InspectedTargetId   = 1u;     // 0=VolumeSdf, 1..17=Surface targets
+    uint32_t           InspectedTargetId   = 0u;     // 0..16 = 17 surface targets
     bool               SurfaceBaked        = false;
     bool               ShowHighWireOverlay = false;
     bool               ShowCageOverlay     = false;

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                              BAKINGVIEWPORTPANE.H
 ============================================================================================================================================*/
-// 🧩 Center pane for Baking Studio: toolbar controls, real GPU 3D / 2D SDF & map viewports & right-click / Q Quick Overlay.
+// 🧩 Center pane for Baking Studio: toolbar controls, real GPU 3D / 2D PBR map viewports & right-click / Q Quick Overlay.
 
 #pragma once
 

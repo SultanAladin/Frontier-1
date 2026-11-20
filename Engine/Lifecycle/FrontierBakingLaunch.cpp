@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            FRONTIERBAKINGLAUNCH.CPP
 ============================================================================================================================================*/
-// 🧩 Standalone FrontierBaking desktop executable launching the GPU Surface Texture & 3D Volume SDF Baking Studio independently
+// 🧩 Standalone FrontierBaking desktop executable launching the GPU 17-Channel PBR Surface Texture Baking Studio independently
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES

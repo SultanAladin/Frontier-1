@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                              AUDIOEXTENSION.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of SuspendableParticipant AudioExtension orchestrating real-time AudioThread, Mixer, HardwareOutput, Zones & Physics/SDF
+// 🧩 Implementation of SuspendableParticipant AudioExtension orchestrating real-time AudioThread, Mixer, HardwareOutput, Zones & Physics/BVH4 rays
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -411,13 +411,13 @@ float AudioExtension::ApplyPhysicsOcclusionQuery(
     return Occlusion;
 }
 
-SdfAcousticFieldReading AudioExtension::ApplyRayAcousticField(
+RayAcousticFieldReading AudioExtension::ApplyRayAcousticField(
     const SpatialAcceleration::WideBoundingTree& SceneTree,
     AcousticVoiceToken                           Token,
     Mathematics::Axis3D                          OriginPositionMeters,
     Mathematics::Axis3D                          OriginVelocityMps) noexcept
 {
-    const SdfAcousticFieldReading Reading = SpatialAcoustics::EvaluateRayAcousticField(
+    const RayAcousticFieldReading Reading = SpatialAcoustics::EvaluateRayAcousticField(
         SceneTree,
         CachedReceiver.PositionMeters,
         OriginPositionMeters);

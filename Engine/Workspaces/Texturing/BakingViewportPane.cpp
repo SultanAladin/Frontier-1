@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                             BAKINGVIEWPORTPANE.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of BakingViewportPane: live Vulkan 3D PBR + High-wire + Cage view, GPU 2D maps & SDF sections, Quick Bake Menu.
+// 🧩 Implementation of BakingViewportPane: live Vulkan 3D PBR + High-wire + Cage view, GPU 2D surface maps & Quick Bake Menu.
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -40,17 +40,6 @@ namespace
         case BakerViewportLayout::TwoDOnly:   return "2D Map Only";
         case BakerViewportLayout::SplitView:  return "3D + 2D Split";
         default:                              return "3D Mesh Only";
-    }
-}
-
-[[nodiscard]] const char* QueryAxisLabel(VolumeSectionAxis Axis) noexcept
-{
-    switch (Axis)
-    {
-        case VolumeSectionAxis::AxisZ: return "Z";
-        case VolumeSectionAxis::AxisY: return "Y";
-        case VolumeSectionAxis::AxisX: return "X";
-        default:                       return "Z";
     }
 }
 
@@ -373,9 +362,8 @@ void BakingViewportPane::RenderInspectedTwoDPreview(PixelSpace& Surface, Rectang
     uint32_t                     PlanarW    = 0u;
     uint32_t                     PlanarH    = 0u;
 
-    const bool IsVolume = (Session->InspectedTarget == BakerTargetId::VolumeSdf);
     const bool HasGpuPixels =
-        ((IsVolume && Session->VolumeSdfBaked) || (!IsVolume && Session->QueryTargetReady(Session->InspectedTarget))) &&
+        Session->QueryTargetReady(Session->InspectedTarget) &&
         Session->QueryInspectedPlanarRgba8(PlanarPtr, PlanarW, PlanarH);
 
     if (HasGpuPixels)
@@ -387,27 +375,10 @@ void BakingViewportPane::RenderInspectedTwoDPreview(PixelSpace& Surface, Rectang
         Surface.StrokeRectangle(InnerTex, Theme.BorderSubtle, 8.0f, 1.0f);
 
         char ReadyText[96];
-        if (IsVolume)
-        {
-            std::snprintf(
-                ReadyText,
-                sizeof(ReadyText),
-                "%u³ SDF · %s %.2f",
-                Session->VolumeGridDim,
-                QueryAxisLabel(Session->SectionAxis),
-                Session->SectionDepthNormalized);
-        }
-        else
-        {
-            std::snprintf(ReadyText, sizeof(ReadyText), "%s (%ux%u)", TargetDesc.Label, PlanarW, PlanarH);
-        }
+        std::snprintf(ReadyText, sizeof(ReadyText), "%s (%ux%u)", TargetDesc.Label, PlanarW, PlanarH);
         const Rectangle2D CapBadge{ CanvasBox.X + 20.0f, CanvasBox.Bottom() - 34.0f, CanvasBox.Width - 40.0f, 22.0f };
         Surface.FillRectangle(CapBadge, ColorRgba{ 18u, 20u, 25u, 210u }, 11.0f);
         Surface.TextCentered(CapBadge, 10.5f, Theme.TextPrimary, ReadyText);
-    }
-    else if (IsVolume)
-    {
-        Surface.TextCentered(CanvasBox, 12.0f, Theme.TextMuted, "Click 'Bake Selected Maps' to compute GPU 3D Volume SDF");
     }
     else
     {
@@ -579,7 +550,7 @@ void BakingViewportPane::Render(
             ControlIcon::BakeBox,
             10.0f,
             15.0f,
-            OptionalTooltip::FromTitled("Bake Selected Maps", "Execute Vulkan GPU high-to-low surface and volume SDF bake.")))
+            OptionalTooltip::FromTitled("Bake Selected Maps", "Execute Vulkan GPU high-to-low 17-channel PBR surface bake.")))
     {
         Session->ExecuteBakeSimulation();
         InvalidateCachedFrames();

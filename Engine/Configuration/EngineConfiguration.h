@@ -35,7 +35,7 @@ enum class WorkspaceCategory : uint8_t
     Vector       = 6u, // [-] - 2D Bezier vector & icon workspace
     Simulation   = 7u, // [-] - Rigid-body dynamics & fracture physics workspace
     Audio        = 8u, // [-] - Spatial acoustic studio workspace
-    Baking       = 9u, // [-] - High-to-low surface & 3D volume SDF GPU baking studio
+    Baking       = 9u, // [-] - High-to-low 17-channel PBR surface GPU baking studio
     Fracture     = 10u,// [-] - Brittle/ductile/fibrous fracture & rigid-body simulation studio
 };
 

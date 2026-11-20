@@ -535,7 +535,7 @@ void FractureInspectorPanel::Render(
             };
 
             char StoredBuf[40] {}, BakeBuf[40] {};
-            std::snprintf(StoredBuf, sizeof(StoredBuf), "%zu pieces · SDF", Session.PartitionResult.Fragments.size());
+            std::snprintf(StoredBuf, sizeof(StoredBuf), "%zu pieces · Hulls", Session.PartitionResult.Fragments.size());
             std::snprintf(BakeBuf, sizeof(BakeBuf), "%.0f ms, ahead of time", Session.LastTimings.TotalMs);
             DrawMethodCard(FractureMethodMode::Baked, "Baked", "Pre-fractured in the editor",
                 "PATTERN", "Fixed at bake", "AT IMPACT", "Release only · 0 ms", true,

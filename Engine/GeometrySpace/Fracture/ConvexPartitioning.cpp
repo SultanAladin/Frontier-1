@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                          CONVEXPARTITIONING.CPP
 ============================================================================================================================================*/
-// 🧩 Exact 3D convex polyhedron half-space clipping, PolygonNetwork interchange, 6-solver fracture dispatch, bonds, and SDF sections
+// 🧩 Exact 3D convex polyhedron half-space clipping, PolygonNetwork interchange, 6-solver fracture dispatch & shared-cut bonds
 
 #include "Engine/GeometrySpace/Fracture/ConvexPartitioning.h"
 #include "Engine/GeometrySpace/Fracture/EngineeringBakedFracture.h"
@@ -1398,118 +1398,6 @@ FracturePartitionResult ConvexPartitioning::ExecuteFracturePartition(
         VolumeDriftRatio < 1.0e-4
     };
     return Result;
-}
-
-PieceSdfSectionOutput ConvexPartitioning::ComputePieceSdfSection(
-    const std::vector<FracturePieceEntry>& Fragments,
-    float                                  SectionZ,
-    uint32_t                               GridResolution,
-    float                                  BoundsRadius)
-{
-    struct PlaneEq
-    {
-        Mathematics::Axis3D Normal {};
-        float               Offset = 0.0f;
-    };
-    struct PiecePlanes
-    {
-        std::vector<PlaneEq> Planes   {};
-        Mathematics::Axis3D  Centroid {};
-        double               RadiusM  = 0.0;
-    };
-
-    std::vector<PiecePlanes> Precomputed;
-    for (const auto& Frag : Fragments)
-    {
-        if (!Frag.VisibilityEnabled) continue;
-        if (!Frag.SubConvexHulls.empty())
-        {
-            for (const auto& Sub : Frag.SubConvexHulls)
-            {
-                const auto Sm = ComputePolyhedronMetrics(Sub);
-                PiecePlanes Item {};
-                Item.Centroid = Sm.Centroid;
-                Item.RadiusM  = Sm.RadiusM;
-                for (const auto& Face : Sub.Faces)
-                {
-                    if (Face.Indices.empty()) continue;
-                    const auto N  = ComputeFaceNormal(Sub, Face);
-                    const auto V0 = Sub.Vertices[Face.Indices[0]];
-                    Item.Planes.push_back({ N, Mathematics::EvaluateDot(N, V0) });
-                }
-                Precomputed.push_back(std::move(Item));
-            }
-        }
-        else
-        {
-            PiecePlanes Item {};
-            Item.Centroid = Frag.Centroid;
-            Item.RadiusM  = Frag.RadiusM;
-            for (const auto& Face : Frag.Polyhedron.Faces)
-            {
-                if (Face.Indices.empty()) continue;
-                const auto N  = ComputeFaceNormal(Frag.Polyhedron, Face);
-                const auto V0 = Frag.Polyhedron.Vertices[Face.Indices[0]];
-                Item.Planes.push_back({ N, Mathematics::EvaluateDot(N, V0) });
-            }
-            Precomputed.push_back(std::move(Item));
-        }
-    }
-
-    PieceSdfSectionOutput Output {};
-    Output.Resolution = GridResolution;
-    Output.Field.resize(static_cast<size_t>(GridResolution) * static_cast<size_t>(GridResolution), BoundsRadius);
-
-    uint32_t InsideSamples = 0u;
-    for (uint32_t Row = 0u; Row < GridResolution; ++Row)
-    {
-        const float Y = ((static_cast<float>(Row) / static_cast<float>(GridResolution - 1u)) * 2.0f - 1.0f) * BoundsRadius;
-        for (uint32_t Col = 0u; Col < GridResolution; ++Col)
-        {
-            const float X = ((static_cast<float>(Col) / static_cast<float>(GridResolution - 1u)) * 2.0f - 1.0f) * BoundsRadius;
-            const Mathematics::Axis3D P { X, Y, SectionZ };
-            float MinSignedDist = std::numeric_limits<float>::infinity();
-
-            for (const auto& Item : Precomputed)
-            {
-                const float QuickDist = Mathematics::EvaluateDistance(P, Item.Centroid) - static_cast<float>(Item.RadiusM);
-                if (QuickDist > MinSignedDist) continue;
-                float PieceDist = -std::numeric_limits<float>::infinity();
-                for (const auto& Pl : Item.Planes)
-                {
-                    const float Sd = Mathematics::EvaluateDot(Pl.Normal, P) - Pl.Offset;
-                    if (Sd > PieceDist) PieceDist = Sd;
-                }
-                if (PieceDist < MinSignedDist) MinSignedDist = PieceDist;
-            }
-
-            Output.Field[static_cast<size_t>(Row) * GridResolution + Col] = MinSignedDist;
-            if (MinSignedDist <= 0.0f) ++InsideSamples;
-        }
-    }
-
-    Output.OccupancyRatio = static_cast<double>(InsideSamples) / static_cast<double>(GridResolution * GridResolution);
-    return Output;
-}
-
-SdfVolumeFootprint ConvexPartitioning::ComputeSdfVolumeFootprint(
-    uint32_t FragmentCount,
-    uint32_t SdfResolution,
-    bool     Enabled) noexcept
-{
-    if (!Enabled)
-    {
-        return {};
-    }
-    const uint64_t VoxelsPerPiece = static_cast<uint64_t>(SdfResolution) * SdfResolution * SdfResolution;
-    const uint64_t TotalVoxels    = static_cast<uint64_t>(FragmentCount) * VoxelsPerPiece;
-    const uint64_t Bytes          = TotalVoxels * 2ull;
-    return {
-        Bytes,
-        static_cast<double>(Bytes) / (1024.0 * 1024.0),
-        TotalVoxels,
-        std::min(96u, std::max(1u, FragmentCount))
-    };
 }
 
 } // namespace Frontier::GeometrySpace::Fracture

@@ -552,9 +552,6 @@ frontier_compile_baking_slang_shader(BakeSurfaceTransferCompute.slang ComputeEnt
 frontier_compile_baking_slang_shader(BakeSurfaceTransferCompute.slang ComputeEntry compute  BakeSurfaceTransferCompute_RTX.comp.spv TRUE)
 frontier_compile_baking_slang_shader(BakeChannelResolveCompute.slang ComputeEntry  compute  BakeChannelResolveCompute.comp.spv FALSE)
 frontier_compile_baking_slang_shader(BakeDilationCompute.slang       ComputeEntry  compute  BakeDilationCompute.comp.spv       FALSE)
-frontier_compile_baking_slang_shader(BakeVolumeSdfCompute.slang      ComputeEntry  compute  BakeVolumeSdfCompute_GTX.comp.spv  FALSE)
-frontier_compile_baking_slang_shader(BakeVolumeSdfCompute.slang      ComputeEntry  compute  BakeVolumeSdfCompute_RTX.comp.spv  TRUE)
-frontier_compile_baking_slang_shader(ExtractSdfSectionCompute.slang  ComputeEntry  compute  ExtractSdfSectionCompute.comp.spv  FALSE)
 frontier_compile_baking_slang_shader(BakeViewportPreview.slang       VertexEntry   vertex   BakeViewportPreview.vert.spv       FALSE)
 frontier_compile_baking_slang_shader(BakeViewportPreview.slang       FragmentEntry fragment BakeViewportPreview.frag.spv       FALSE)
 
@@ -781,7 +778,6 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Baking/StudyGeometryBuilder.cpp
     Engine/GeometricRaster/Baking/BakingAccelerationStructure.cpp
     Engine/GeometricRaster/Baking/GpuTextureBaker.cpp
-    Engine/GeometricRaster/Baking/GpuSdfBaker.cpp
     Engine/GeometricRaster/Baking/TextureBakerRasterizer.cpp
     Engine/GeometricRaster/ComponentEditor/ComponentGizmoGeometry.cpp
     Engine/GeometricRaster/ComponentEditor/ComponentViewportRenderer.cpp
