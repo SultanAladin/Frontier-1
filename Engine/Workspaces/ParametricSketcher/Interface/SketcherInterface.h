@@ -559,7 +559,7 @@ struct SketcherKnifeBlend
 //    the press puts one base corner down, the drag (or, after a click, the pointer) carries the opposite corner — the
 //    base stretches in x and y apart, Shift keeps it square — and the release (the next click) hands the pointer to its
 //    depth along the normal (as a Construct box's height), [ / ] turn it 15°, T through. Object: the first picked body is cut by the others, K
-//    keeps the cutters. Q union · W difference (default) · E intersect · R separate; a click / right-click / Enter applies,
+//    keeps the cutters. Q union · W difference (default) · E intersect · R separate; LMB / Enter applies and RMB / Esc cancels,
 //    Esc cancels. The result stages as a document (gated like the bevel when a stage is slow).
 struct SketcherKnifeSession
 {
@@ -588,7 +588,7 @@ struct SketcherKnifeSession
     bool                                   KeepCondition        = false;                     // [-]   - Object: K, cutters survive
     bool                                   LiveCondition        = false;                     // [-]   - L: place as Live Boolean cutter + modifier
     // 📝 Object with one picked body: that body is the cutter, carried to the face under the pointer (Ctrl: its z along
-    //    the face normal); a click / right-click places it, then the pointer pushes it in / pulls it out along the normal.
+    //    the face normal); LMB places it, then the pointer pushes it in / pulls it out along the normal; RMB cancels.
     bool                                   AlignCondition       = false;                     // [-]   - Placement: cutter z along the face normal (Ctrl)
     double                                 Sink                 = 0.0;                       // [len] - Placement: cutter centre below the face (− above)
     bool                                   RigidCondition       = false;                     // [-]   - PreviewScene is the carried cutter (no Boolean yet)

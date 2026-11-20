@@ -11,6 +11,7 @@
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherFileDialog.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherSurfaceTracing.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherNavigation.h"
+#include "Engine/Workspaces/ParametricSketcher/Interface/SketcherOperationInput.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherOutliner.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherStyleSheet.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
@@ -741,9 +742,9 @@ void OpenBevelSession(SketcherWorkspaceStatus& State, BlendProfile Shape)
         State.Bevel.Shape           = Shape;
         State.Bevel.Size            = Previous > 0.0 ? Previous : 0.1;
         State.Bevel.Corner          = std::move(Corner);
-        State.Bevel.PinnedCondition = true;                                                  // Plasticity: drag anywhere / type; the card stays usable
+        State.Bevel.PinnedCondition = false;                                                 // Blender: pointer motion sizes immediately; LMB confirms
         WriteBevelText(State.Bevel);
-        Announce(State, std::string(Shape == BlendProfile::Fillet ? "Fillet" : "Chamfer") + " sketch corners (B): drag anywhere to size (it stops at the largest that fits) · type a size · D fillet · C chamfer · Enter / right-click applies · Esc aborts");
+        Announce(State, std::string(Shape == BlendProfile::Fillet ? "Fillet" : "Chamfer") + " sketch corners (B): drag anywhere to size (it stops at the largest that fits) · type a size · D fillet · C chamfer · LMB / Enter applies · RMB / Esc cancels");
         return;
     }
     const double Previous = State.Bevel.Verb == SketcherSessionVerb::Blend ? State.Bevel.Size : 0.0;
@@ -757,12 +758,12 @@ void OpenBevelSession(SketcherWorkspaceStatus& State, BlendProfile Shape)
     State.Bevel.Fit = MeasureSketcherBlendFit(State.Document, State.Document.Selection.Edges);
     const bool Refitted = State.Bevel.Fit.Span > 0.0 && State.Bevel.Size > 0.35 * State.Bevel.Fit.Span;
     if (Refitted) State.Bevel.Size = State.Bevel.Fit.Fitted;
-    // 💡 Plasticity: the size changes only by a drag (anywhere, or on a handle) or a typed value, so the pointer can reach the
-    //    corner handles and the Bevel card without the size chasing it (Mouse adjust in the card follows the pointer again).
-    State.Bevel.PinnedCondition = true;
+    // Blender modal bevel: after B, pointer motion adjusts the amount without requiring
+    // a gizmo grab. A handle or numeric edit can still pin a precise value before confirm.
+    State.Bevel.PinnedCondition = false;
     RefreshBevelHandles(State, true);
     WriteBevelText(State.Bevel);
-    Announce(State, std::string(Shape == BlendProfile::Fillet ? "Fillet" : "Chamfer") + " (B): drag anywhere or the ring handle to size (it stops at the largest that fits) · drag a corner diamond for a variable size · type in the card · D fillet · C chamfer · V taper · Alt+click an edge loop, Ctrl+Alt+click a ring (Shift adds) · Enter / right-click applies · Esc aborts"
+    Announce(State, std::string(Shape == BlendProfile::Fillet ? "Fillet" : "Chamfer") + " (B): drag anywhere or the ring handle to size (it stops at the largest that fits) · drag a corner diamond for a variable size · type in the card · D fillet · C chamfer · V taper · Alt+click an edge loop, Ctrl+Alt+click a ring (Shift adds) · LMB / Enter applies · RMB / Esc cancels"
                     + (Refitted ? " · starts at " + FormatLength(State.Bevel.Size) + " m to fit the edges" : std::string{}));
 }
 
@@ -884,7 +885,7 @@ void OpenExtrudeSessionWithMode(SketcherWorkspaceStatus& State, SketcherExtrudeM
     State.Bevel.Size              = Remembered;
     ResolveExtrudeAxis(State);
     WriteBevelText(State.Bevel);
-    Announce(State, std::string(SketcherExtrudeModeLabel(Mode)) + " (E · Ctrl+E menu): drag along normal or type distance · Enter / right-click applies · Esc aborts");
+    Announce(State, std::string(SketcherExtrudeModeLabel(Mode)) + " (E · Ctrl+E menu): drag along normal or type distance · LMB / Enter applies · RMB / Esc cancels");
 }
 
 // Plasticity E: extrude the selected faces; the pointer sets the signed distance like the fillet size.
@@ -910,7 +911,7 @@ void OpenInsetSession(SketcherWorkspaceStatus& State)
     State.Bevel.Depth           = Remembered ? State.LastCommand.Depth : 0.0;
     ResolveExtrudeAxis(State);                                                               // H (depth) follows the pointer along the normal
     WriteBevelText(State.Bevel);
-    Announce(State, "Inset (O / I): move horizontally · D distance · H depth (− pocket) · click edits the faces · Enter / right-click applies · Esc aborts");
+    Announce(State, "Inset (O / I): move horizontally · D distance · H depth (− pocket) · click edits the faces · LMB / Enter applies · RMB / Esc cancels");
 }
 
 // Profile extrude start: a Union pointing out of the curved face the sketch is tangent to starts sunk into it.
@@ -2677,7 +2678,7 @@ void OpenSketchExtrudeSession(SketcherWorkspaceStatus& State)
     const auto Caption = State.Document.Captions.find(Label);
     Announce(State, "Extrude " + (Caption != State.Document.Captions.end() ? Caption->second : Label) +
                     (State.Bevel.AutoCombinationCondition ? std::string(" (E, extrude manifold): the profile follows the pointer — into the body cuts a pocket, out of it adds") : std::string(" (E): the profile follows the pointer along its normal")) +
-                    " · Q union · W difference · E intersect · R new body · A auto · Enter / right-click applies · Esc aborts");
+                    " · Q union · W difference · E intersect · R new body · A auto · LMB / Enter applies · RMB / Esc cancels");
 }
 
 [[nodiscard]] bool FocusedSketchCondition(const SketcherWorkspaceStatus& State)
@@ -7431,9 +7432,9 @@ void ChooseKnifeMode(SketcherWorkspaceStatus& State, SketcherKnifeMode Mode)
         Knife.Typed.clear();
         if (KnifePlacementCondition(State))
             Announce(State, "Knife · " + SketcherBodyCaption(State.Document, State.Document.Selection.Bodies.front()) +
-                                " follows the pointer onto a face (Ctrl: along its normal · [ / ] turn) · click / right-click places it · then in / out along the normal · click / right-click / Enter cuts");
+                                " follows the pointer onto a face (Ctrl: along its normal · [ / ] turn) · LMB places it · then in / out along the normal · LMB / Enter cuts · RMB cancels");
         else
-            Announce(State, "Knife · Object · the first picked body is cut by the others (Shift-pick cutters) · K keeps the cutters · click / right-click / Enter applies");
+            Announce(State, "Knife · Object · the first picked body is cut by the others (Shift-pick cutters) · K keeps the cutters · LMB / Enter applies · RMB cancels");
         return;
     }
     Announce(State, Knife.Sketch.empty() ? "Knife · Sketch · draw a closed shape on a face (card: Circle / Rectangle / Polygon / Slot / Line)"
@@ -7675,10 +7676,10 @@ void AdoptKnifeSketch(SketcherWorkspaceStatus& State, const std::string& Sketch,
     DropKnifePreview(Knife);
     if (KnifeSliceCondition(State))
         Announce(State, "Knife · " + CaptionOf(State.Document, Sketch) + " slices " + SketcherBodyCaption(State.Document, KnifeSketchTarget(State, Sketch)) +
-                            " through (two bodies) · click edges of the pieces to fillet / chamfer them (D / C, type a size) · right-click / Enter splits it · Esc cancels");
+                            " through (two bodies) · click edges of the pieces to fillet / chamfer them (D / C, type a size) · LMB away from an edge / Enter splits it · RMB / Esc cancels");
     else
         Announce(State, "Knife · " + CaptionOf(State.Document, Sketch) + " into " + SketcherBodyCaption(State.Document, KnifeSketchTarget(State, Sketch)) +
-                            " · pull along the face normal for the depth (Ctrl free) or type it · T through · Q add · W cut · E intersect · R separate · click / right-click / Enter applies");
+                            " · pull along the face normal for the depth (Ctrl free) or type it · T through · Q add · W cut · E intersect · R separate · LMB / Enter applies · RMB cancels");
 }
 
 void ApplyKnifeSession(SketcherWorkspaceStatus& State)
@@ -7759,7 +7760,7 @@ void PlaceKnifeCutter(SketcherWorkspaceStatus& State)
     if (!Knife.HoverCondition) { Announce(State, "Knife: point at a face of the body to cut (the picked body follows the pointer)"); return; }
     Knife.PlacedCondition = true;
     Knife.Typed.clear();
-    Announce(State, Compose("Knife · %s placed on %s · move the pointer along the normal to push it in / pull it out (Ctrl free) or type a depth · click / right-click / Enter cuts · Esc lifts it",
+    Announce(State, Compose("Knife · %s placed on %s · move the pointer along the normal to push it in / pull it out (Ctrl free) or type a depth · LMB / Enter cuts · RMB cancels · Esc lifts it",
                             SketcherBodyCaption(State.Document, State.Document.Selection.Bodies.front()).c_str(), SketcherBodyCaption(State.Document, Knife.SpotBody).c_str()));
 }
 
@@ -8188,7 +8189,7 @@ bool PickKnifeBlendEdge(SketcherWorkspaceStatus& State, ImVec2 Local)
     Knife.BlendFocus = int(Knife.Blends.size()) - 1;
     Knife.Typed.clear();
     Knife.StagedKey.clear();
-    Announce(State, Compose("Knife · %s %s m on %s of %s (edge blend %d) · D fillet · C chamfer · type a size · more edges, then right-click / Enter",
+    Announce(State, Compose("Knife · %s %s m on %s of %s (edge blend %d) · D fillet · C chamfer · type a size · more edges, then LMB / Enter",
                             Knife.BlendShape == BlendProfile::Fillet ? "fillet" : "chamfer", FormatLength(Knife.BlendSize).c_str(), Edge.Name.c_str(),
                             SketcherBodyCaption(*Knife.Preview, Body).c_str(), int(Knife.Blends.size())));
     return true;
@@ -8212,10 +8213,13 @@ void ClickKnifeSession(SketcherWorkspaceStatus& State, ImVec2 Local)
     }
     if (Knife.Mode == SketcherKnifeMode::Sketch && KnifeSliceCondition(State))
     {
-        // A slice: clicks pick edges of the pieces to blend; right-click / Enter / Apply split it (a stray click never does).
+        // Piece edges remain optional bevel/chamfer sub-targets. A click away from
+        // them confirms the staged slice, matching Blender's modal LMB contract.
         if (!PickKnifeBlendEdge(State, Local))
-            Announce(State, Knife.Preview ? "Knife · no piece edge there · click an edge to fillet / chamfer it · right-click / Enter applies"
-                                          : "Knife · the pieces are still staging · click an edge once they show · right-click / Enter applies");
+        {
+            if (Knife.Preview) ApplyKnifeSession(State);
+            else Announce(State, "Knife · the pieces are still staging · click once they show · RMB / Esc cancels");
+        }
         return;
     }
     if (Knife.Mode == SketcherKnifeMode::Insert)
@@ -8855,7 +8859,7 @@ void DrawKnifeCard(SketcherWorkspaceStatus& State)
         ImGui::PopStyleColor();
     }
     ImGui::PushStyleColor(ImGuiCol_Text, Tint(MutedColour));
-    ImGui::TextWrapped("Tab mode · Q add · W cut · E intersect · R separate · L live boolean · T through · [ / ] turn · K keep · type a value · click / right-click / Enter applies · Esc cancels");
+    ImGui::TextWrapped("Tab mode · Q add · W cut · E intersect · R separate · L live boolean · T through · [ / ] turn · K keep · type a value · LMB / Enter applies · RMB cancels · Esc cancels");
     ImGui::PopStyleColor();
     if (PressButton(State, "Apply###KnifeApply", RowSpan())) ApplyKnifeSession(State);
     ImGui::SameLine();
@@ -9752,7 +9756,7 @@ void CloseJointSession(SketcherWorkspaceStatus& State, const char* Message)
 void AnnounceJointAdjust(SketcherWorkspaceStatus& State)
 {
     const SketcherJointSession& Joint = State.Joint;
-    Announce(State, Compose("Joint: %s onto %s · R V S C P L B kind · drag the values · F flip · Enter / right-click applies", SketcherBodyCaption(State.Document, Joint.Moving.Body).c_str(),
+    Announce(State, Compose("Joint: %s onto %s · R V S C P L B kind · drag the values · F flip · LMB / Enter applies · RMB cancels", SketcherBodyCaption(State.Document, Joint.Moving.Body).c_str(),
                             SketcherBodyCaption(State.Document, Joint.Fixed.Body).c_str()));
 }
 
@@ -15701,8 +15705,9 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
     const float  CubeRightPad  = !MultiCondition ? 18.0f : 14.0f;
     const float  CubeBottomPad = (!MultiCondition || (ActiveOrigin.y + ActiveExtent.y >= Image.y + Extent.y - 4.0f)) ? 45.0f : 14.0f;
     const ImVec2 CubeCorner(ActiveOrigin.x + ActiveExtent.x - CubeExtent - CubeRightPad, ActiveOrigin.y + ActiveExtent.y - CubeExtent - CubeBottomPad);
-    const bool   LeftClick  = Hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && Io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] <= ClickTolerance * ClickTolerance;
-    const bool   RightClick = Hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right) && Io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Right] <= ClickTolerance * ClickTolerance;
+    const SketcherOperationInput OperationInput = SketcherOperationInput::Capture();
+    const bool   LeftClick  = Hovered && OperationInput.PrimaryReleased() && Io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] <= ClickTolerance * ClickTolerance;
+    const bool   RightClick = Hovered && OperationInput.SecondaryReleased() && Io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Right] <= ClickTolerance * ClickTolerance;
     Canvas->PushClipRect(ActiveOrigin, ImVec2(ActiveOrigin.x + ActiveExtent.x, ActiveOrigin.y + ActiveExtent.y), true);
     const bool   OverCube   = DrawOrientationCube(State, Canvas, CubeCorner, LeftClick, true);
     Canvas->PopClipRect();
@@ -16006,8 +16011,9 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
     else if (State.Transform.ActiveCondition)
     {
         DriveTransformSession(State, Frame, Local);
-        const bool ReleasedDrag = State.Transform.LeftDragCondition && ImGui::IsMouseReleased(ImGuiMouseButton_Left);
-        if ((LeftClick || RightClick || ReleasedDrag) && !OverCube) ApplyTransformSession(State);   // Click, LMB drag-release, right-click or Enter commits
+        const bool ReleasedDrag = State.Transform.LeftDragCondition && OperationInput.PrimaryReleased();
+        if ((LeftClick || ReleasedDrag) && !OverCube) ApplyTransformSession(State);           // Blender: LMB / drag-release confirms
+        else if (RightClick && !OverCube) CancelTransformSession(State);                      // Blender: RMB cancels
     }
     else if (State.Knife.ActiveCondition)
     {
@@ -16028,19 +16034,14 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
         if (LeftClick && !OverCube && !Released) ClickKnifeSession(State, Local);
         else if (RightClick && !OverCube)
         {
-            if (KnifePlacementCondition(State) && !State.Knife.PlacedCondition) PlaceKnifeCutter(State);     // Place, then in / out, then apply
-            else
-            {
-                if (State.Knife.Mode == SketcherKnifeMode::Insert && !State.Knife.PlacedCondition && State.Knife.HoverCondition) State.Knife.PlacedCondition = true;   // Place and apply
-                ApplyKnifeSession(State);                                                    // Right-click applies like Enter
-            }
+            CloseKnifeSession(State, "Knife cancelled (document untouched)");               // Blender: RMB cancels the modal operation
         }
     }
     else if (State.Sweep.ActiveCondition)
     {
         DriveSweepSession(State, Frame, Hovered);
-        if (LeftClick && !OverCube) ClickSweepSession(State);
-        else if (RightClick && !OverCube) ApplySweepSession(State);                       // Right-click commits like Enter
+        if (LeftClick && !OverCube) ClickSweepSession(State);                              // Select a required rail/axis, otherwise confirm
+        else if (RightClick && !OverCube) CancelSweepSession(State);                       // Blender: RMB cancels
     }
     else if (State.Constrain.ActiveCondition)
     {
@@ -16066,8 +16067,12 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
     else if (State.Joint.ActiveCondition)
     {
         HoverJointOrigin(State, Frame, Local, Hovered && !OverCube);
-        if (LeftClick && !OverCube) ClickJointSession(State);
-        if (RightClick && !OverCube) ApplyJointSession(State);                           // Right-click applies like Enter
+        if (LeftClick && !OverCube)
+        {
+            if (State.Joint.Phase >= 2) ApplyJointSession(State);                           // Blender: LMB confirms once both origins exist
+            else ClickJointSession(State);                                                  // Earlier clicks collect the two required origins
+        }
+        else if (RightClick && !OverCube) CloseJointSession(State, "Joint cancelled");     // Blender: RMB cancels
     }
     else if (State.Bevel.ActiveCondition)
     {
@@ -16090,10 +16095,11 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
             else if (Io.MousePos.x != Bevel.DragLast) AdjustBevelSize(State, (Io.MousePos.x - Bevel.DragLast) * Frame.WorldPerPixel * (Io.KeyShift ? 0.1 : 1.0) * 0.5);
             Bevel.DragLast = Io.MousePos.x;
         }
+        const bool ReleasedPointerDrag = OperationInput.PrimaryReleased() && Bevel.PointerDragCondition;
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && Bevel.PointerDragCondition)
         {
             Bevel.PointerDragCondition = false;
-            Bevel.PinnedCondition      = true;                                                   // The dragged size stays when the pointer moves on
+            Bevel.PinnedCondition      = true;                                               // The dragged size stays when the pointer moves on
         }
         if (!HandleOwned && Hovered && Idle && (!Bevel.PinnedCondition || (Bevel.Verb == SketcherSessionVerb::Inset && Bevel.DepthEnabled)))
         {
@@ -16101,33 +16107,21 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
             else if (Io.MouseDelta.x != 0.0f) AdjustBevelSize(State, Io.MouseDelta.x * Frame.WorldPerPixel * (Io.KeyShift ? 0.1 : 1.0) * 0.5);
         }
         if (!AxisDriven) Bevel.AxisAnchorCondition = false;                                  // The next drive re-anchors (typed / pinned values kept)
-        if (LeftClick && !OverCube && !HandleOwned)
-        {
-            bool EdgeCondition = Bevel.Verb != SketcherSessionVerb::Blend || (State.HoverIdentity & IdentityEdgeBit) != 0;
-            if (!EdgeCondition)
-            {
-                const OrbitRay Ray = CastOrbitRay(Frame, Local.x, Local.y);
-                const std::optional<SketcherPick> Nearby = PickSketcherScene(State.Scene, Ray, 8.0 * Frame.WorldPerPixel, State.Style.XRayEnabled, ActiveSectionClip(State));
-                EdgeCondition = Nearby && (Nearby->Identity & IdentityEdgeBit);
-            }
-            if (EdgeCondition)
-            {
-                PickAtPointer(State, Local, PickIntentOf(Io));
-                Bevel.StagedSize = -1.0;                                                     // Selection changed: rebuild the preview
-                RefreshBevelHandles(State, false);
-            }
-            else
-            {
-                if (!Bevel.PinnedCondition) Announce(State, "Bevel size held at " + FormatLength(Bevel.Size) + " m · drag anywhere / the handles to change it, or type it");
-                else Announce(State, "Bevel: the edges stay picked (click an edge to add / remove it, Alt+click its loop, Ctrl+Alt+click its ring) · drag anywhere or the handles to size");
-                Bevel.PinnedCondition = true;                                                // A click lets go of the pointer (Plasticity)
-            }
-        }
-        if (RightClick && !OverCube) ApplyBevelSession(State);
+        // Blender modal contract: B/E starts pointer-following adjustment; LMB confirms,
+        // including an empty-space click-drag-release. Gizmo-handle releases only finish
+        // that handle adjustment, leaving the operation active for a later confirmation.
+        if ((LeftClick || ReleasedPointerDrag) && !OverCube && !HandleOwned) ApplyBevelSession(State);
+        else if (RightClick && !OverCube) CancelBevelSession(State);                         // RMB cancels and preserves the document
+
     }
-    else if (State.Boolean.ActiveCondition && RightClick && !OverCube)
+    else if (State.Boolean.ActiveCondition)
     {
-        ApplyBooleanSession(State);                                                          // Right-click applies like Enter
+        if (LeftClick && !OverCube) ApplyBooleanSession(State);                              // Blender: LMB confirms
+        else if (RightClick && !OverCube)
+        {
+            State.Boolean.ActiveCondition = false;
+            Announce(State, "Boolean cancelled");                                           // Blender: RMB cancels
+        }
     }
     else if (GizmoOwned || DimDragOwned)
     {
@@ -16475,27 +16469,27 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
                        : State.Gizmo.Hover != GizmoHandle::None
                            ? "Gizmo: press and drag · cones move along an axis · squares move in a plane · arcs rotate · cylinders scale · ring screen move / uniform scale · y cycles modes"
                        : State.Transform.ActiveCondition
-                           ? (State.Transform.Verb == SketcherTransformVerb::Move ? "Move: pointer snaps to points / edges / faces (Ctrl free) · X / Y / Z axis · Shift+X / Y / Z plane · G screen · type a distance · click / right-click / Enter commit · Esc cancel"
-                              : State.Transform.Verb == SketcherTransformVerb::Rotate ? "Rotate: sweep about the centre (5° steps, Ctrl free) · X / Y / Z axis · R screen · type degrees · click / right-click / Enter commit · Esc cancel"
-                              : "Scale: distance to the centre (×0.1 steps, Ctrl free) · X / Y / Z one axis · S uniform · type a factor · click / right-click / Enter commit · Esc cancel")
+                           ? (State.Transform.Verb == SketcherTransformVerb::Move ? "Move: pointer snaps to points / edges / faces (Ctrl free) · X / Y / Z axis · Shift+X / Y / Z plane · G screen · type a distance · LMB / Enter commit · RMB cancel · Esc cancel"
+                              : State.Transform.Verb == SketcherTransformVerb::Rotate ? "Rotate: sweep about the centre (5° steps, Ctrl free) · X / Y / Z axis · R screen · type degrees · LMB / Enter commit · RMB cancel · Esc cancel"
+                              : "Scale: distance to the centre (×0.1 steps, Ctrl free) · X / Y / Z one axis · S uniform · type a factor · LMB / Enter commit · RMB cancel · Esc cancel")
                        : State.Knife.ActiveCondition && !State.Knife.DrawPendingCondition
                            ? (State.Knife.Mode == SketcherKnifeMode::Insert ? (!State.Knife.PlacedCondition ? "Knife boolean library: click a face for the centre → Stage 1 Ø → Stage 1 extrude → Stage 2 Ø → Stage 2 extrude (T through · L live boolean · [ / ] turn 15° · Esc cancel)"
                                : State.Knife.CompoundStage <= 1 ? "Knife Stage 1: move radially from centre for outer Ø / width (uniform, never stretched, Ctrl free) · click for Stage 1 extrude"
                                : State.Knife.CompoundStage == 2 && KnifeCompoundCondition(State.Knife) ? "Knife Stage 1 extrude: pull along normal for Stage 1 depth · click for Stage 2 inner circle · Backspace steps back"
                                : State.Knife.CompoundStage == 3 && KnifeCompoundCondition(State.Knife) ? "Knife Stage 2: move radially for inner Ø / width · click for Stage 2 extrude · Backspace steps back"
-                               : "Knife extrude: pull along normal for bore depth · T through · L live boolean · click / right-click / Enter cut · Backspace steps back · Esc lift")
-                              : KnifePlacementCondition(State) ? (State.Knife.PlacedCondition ? "Knife cutter: pointer along the normal pushes it in / pulls it out (Ctrl free) · type a depth · click / right-click / Enter cut · Esc lift"
-                                                                                               : "Knife cutter: the picked body follows the pointer over faces · Ctrl along the face normal · [ / ] turn · click / right-click place · Q / W / E · K keep · Esc cancel")
-                              : State.Knife.Mode == SketcherKnifeMode::Object ? "Knife object: the first picked body is cut by the others (Shift-click adds cutters) · K keep cutters · Q add · W cut · E intersect · right-click / Enter apply · Tab mode · Esc cancel"
-                              : KnifeSliceCondition(State) ? "Knife line: slices the body through along the line (two bodies) · click edges of the pieces to fillet / chamfer them (D / C, type a size, Delete drops) · right-click / Enter apply · Esc cancel"
-                              : "Knife sketch: pull along the face normal for the depth (Ctrl free) · type a depth · T through · Q add (boss) · W cut · E intersect · R separate · click / right-click / Enter apply · Tab mode · Esc cancel")
+                               : "Knife extrude: pull along normal for bore depth · T through · L live boolean · LMB / Enter cut · RMB cancel · Backspace steps back · Esc lift")
+                              : KnifePlacementCondition(State) ? (State.Knife.PlacedCondition ? "Knife cutter: pointer along the normal pushes it in / pulls it out (Ctrl free) · type a depth · LMB / Enter cut · RMB cancel · Esc lift"
+                                                                                               : "Knife cutter: the picked body follows the pointer over faces · Ctrl along the face normal · [ / ] turn · LMB place · RMB cancel · Q / W / E · K keep · Esc cancel")
+                              : State.Knife.Mode == SketcherKnifeMode::Object ? "Knife object: the first picked body is cut by the others (Shift-click adds cutters) · K keep cutters · Q add · W cut · E intersect · LMB / Enter apply · RMB cancel · Tab mode · Esc cancel"
+                              : KnifeSliceCondition(State) ? "Knife line: slices the body through along the line (two bodies) · click edges of the pieces to fillet / chamfer them (D / C, type a size, Delete drops) · LMB / Enter apply · RMB cancel · Esc cancel"
+                              : "Knife sketch: pull along the face normal for the depth (Ctrl free) · type a depth · T through · Q add (boss) · W cut · E intersect · R separate · LMB / Enter apply · RMB cancel · Tab mode · Esc cancel")
                        : State.Sweep.ActiveCondition
-                           ? (State.Sweep.Verb == SketcherSweepVerb::Offset ? "Offset: move sideways (Shift fine, Ctrl free; negative = inward / right) · type a distance · click / right-click / Enter commit · Esc cancel"
+                           ? (State.Sweep.Verb == SketcherSweepVerb::Offset ? "Offset: move sideways (Shift fine, Ctrl free; negative = inward / right) · type a distance · LMB / Enter commit · RMB cancel · Esc cancel"
                               : State.Sweep.Verb == SketcherSweepVerb::Revolve ? "Revolve: type degrees (360) · X / Y sketch axis · click a profile line for the axis · Q union · W difference · E intersect · R new body · click elsewhere / Enter commit · Esc cancel"
                               : State.Sweep.Verb == SketcherSweepVerb::Evolution ? "Evolution: click another sketch's curve for the path (or select a curve first) · Q union · W difference · E intersect · R new body · click elsewhere / Enter commit · Esc cancel"
                               : "Pipe: move sideways for the radius (Shift fine, Ctrl free) · type a radius · Q union · W difference · E intersect · R new body · click / Enter commit · Esc cancel")
                        : State.Drawing.ActiveCondition
-                           ? (KnifeSolidCondition(State) ? "Knife cutter: draw its base on the body face (snaps, Ctrl free) · then pull into the body for the depth (Q add: out of it) · the cut shows live · W cut · E intersect · R separate · K keep · click / right-click / Enter cuts · Esc cancels"
+                           ? (KnifeSolidCondition(State) ? "Knife cutter: draw its base on the body face (snaps, Ctrl free) · then pull into the body for the depth (Q add: out of it) · the cut shows live · W cut · E intersect · R separate · K keep · LMB / Enter cuts · RMB cancels · Esc cancels"
                            : State.Drawing.SolidCondition ? "Draw on the ground or any body face (oriented to it; snaps, Ctrl free) · move out for the height (0.1 steps) · R new body · Q union · W difference · E intersect · Tab exact size · Ctrl+Z drop · Esc abort"
                               : State.Drawing.Kind == SketcherDrawingCategory::Polygon ? (State.Drawing.Points.size() >= 2 ? "Polygon drawn: wheel (or + / −) changes the sides · click / right-click / Enter confirms · Ctrl+Z drop · Esc abort" : "Click (or press-drag) the centre, then a vertex (snaps, Ctrl free) · wheel or + / − sides · x y z t n b lock · Ctrl+Z drop · Esc abort")
                               : State.Drawing.Kind == SketcherDrawingCategory::Curve ? "Click points (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · 1 Hermite · 2 Bezier · 3 NURBS · 4 cubic · click first point closes · Enter / right-click finish · Ctrl+Z drop · Esc abort"
@@ -19549,11 +19543,12 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     const bool Alternate = Io.KeyAlt;
     if (ImGui::IsKeyPressed(ImGuiKey_LeftAlt, false) || ImGui::IsKeyPressed(ImGuiKey_RightAlt, false)) State.Picker.AlongUsedCondition = false;
     auto Pressed = [](ImGuiKey Key) { return ImGui::IsKeyPressed(Key, false); };
+    const SketcherOperationInput OperationInput = SketcherOperationInput::Capture();
 
     // Drawing sheet (Alt+D): the paper replaces the model — Esc or Alt+D returns, Ctrl+S still saves.
     if (State.DrawingSheet.ActiveCondition)
     {
-        if (Pressed(ImGuiKey_Escape) || (Alternate && !Control && !Shift && Pressed(ImGuiKey_D))) ToggleDrawingSheet(State);
+        if (OperationInput.CancelPressed() || (Alternate && !Control && !Shift && Pressed(ImGuiKey_D))) ToggleDrawingSheet(State);
         else if (Control && !Alternate && !Shift && Pressed(ImGuiKey_S)) SaveDocument(State, State.DocumentPath.empty() ? State.Options.DocumentPath : State.DocumentPath);
         return;
     }
@@ -19561,14 +19556,14 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     // Gizmo handle held: Esc drops the drag (no edit).
     if (State.Gizmo.DragCondition)
     {
-        if (Pressed(ImGuiKey_Escape)) CancelGizmoDrag(State, "Gizmo cancelled");
+        if (OperationInput.CancelPressed()) CancelGizmoDrag(State, "Gizmo cancelled");
         return;
     }
 
     // Mode 1 pole drag in progress: Esc drops it (no edit).
     if (State.SketchPoints.DragCondition)
     {
-        if (Pressed(ImGuiKey_Escape))
+        if (OperationInput.CancelPressed())
         {
             CancelSketchPointDrag(State);
             Announce(State, "Point drag dropped (document untouched)");
@@ -19577,7 +19572,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     }
     if (State.PoleDrag.ActiveCondition)
     {
-        if (Pressed(ImGuiKey_Escape))
+        if (OperationInput.CancelPressed())
         {
             State.PoleDrag.ActiveCondition = false;
             Announce(State, "Pole drag dropped");
@@ -19589,8 +19584,8 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     if (State.Drawing.ActiveCondition)
     {
         SketcherDrawingSession& Drawing = State.Drawing;
-        if (Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter)) ConfirmDrawingSession(State);
-        else if (Pressed(ImGuiKey_Escape)) CancelDrawingSession(State);
+        if (OperationInput.ConfirmPressed()) ConfirmDrawingSession(State);
+        else if (OperationInput.CancelPressed()) CancelDrawingSession(State);
         else if (Control && Pressed(ImGuiKey_Z)) RetractDrawingPoint(State);               // gizmo:line:undo / gizmo:curve:undo
         else if (Alternate && !Control && !Io.KeyShift && Pressed(ImGuiKey_Z)) ToggleXRay(State);       // viewport:toggle-x-ray stays live (hidden snaps)
         else if (KnifeSolidCondition(State) && !Control && !Alternate && Pressed(ImGuiKey_K))
@@ -19657,8 +19652,8 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     // Joint (Alt+J) — R V S C P L B kind · F flip · Enter applies · Esc cancels (letters free inside the command).
     if (State.Joint.ActiveCondition)
     {
-        if (Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter)) ApplyJointSession(State);
-        else if (Pressed(ImGuiKey_Escape)) CloseJointSession(State, "Joint cancelled");
+        if (OperationInput.ConfirmPressed()) ApplyJointSession(State);
+        else if (OperationInput.CancelPressed()) CloseJointSession(State, "Joint cancelled");
         else if (!Control && !Alternate)
         {
             if (Pressed(ImGuiKey_R)) ChooseJointKind(State, JointCategory::Rigid);
@@ -19676,8 +19671,8 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     // body[command='boolean'] — Q union · W difference · E intersect · Enter applies · Esc cancels.
     if (State.Boolean.ActiveCondition)
     {
-        if (Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter)) ApplyBooleanSession(State);
-        else if (Pressed(ImGuiKey_Escape)) { State.Boolean.ActiveCondition = false; Announce(State, "Boolean cancelled"); }
+        if (OperationInput.ConfirmPressed()) ApplyBooleanSession(State);
+        else if (OperationInput.CancelPressed()) { State.Boolean.ActiveCondition = false; Announce(State, "Boolean cancelled"); }
         else if (!Control && !Alternate)
         {
             if (Pressed(ImGuiKey_Q)) ChooseBooleanCombination(State, FeatureCombination::Union);            // gizmo:boolean:union
@@ -19695,8 +19690,8 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     // body[command] — a running command (fillet-solid, extrude).
     if (State.Bevel.ActiveCondition)
     {
-        if (Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter)) ApplyBevelSession(State);
-        if (Pressed(ImGuiKey_Escape)) CancelBevelSession(State);
+        if (OperationInput.ConfirmPressed()) ApplyBevelSession(State);
+        if (OperationInput.CancelPressed()) CancelBevelSession(State);
         if ((State.Bevel.Verb == SketcherSessionVerb::Blend || State.Bevel.Verb == SketcherSessionVerb::Corner) && !Control && !Alternate)
         {
             if (Pressed(ImGuiKey_D)) State.Bevel.Shape = BlendProfile::Fillet;                // gizmo:fillet-solid:fillet
@@ -19726,8 +19721,8 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     {
         SketcherTransformSession& Transform = State.Transform;
         if (CollectTypedAmount(Transform.Typed)) Transform.StagedCondition = false;
-        if (Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter)) ApplyTransformSession(State);
-        else if (Pressed(ImGuiKey_Escape)) CancelTransformSession(State);
+        if (OperationInput.ConfirmPressed()) ApplyTransformSession(State);
+        else if (OperationInput.CancelPressed()) CancelTransformSession(State);
         else if (!Control && !Alternate)
         {
             static const ImGuiKey AxisKeys[] = { ImGuiKey_X, ImGuiKey_Y, ImGuiKey_Z };
@@ -19780,8 +19775,8 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     {
         SketcherKnifeSession& Knife = State.Knife;
         if (CollectTypedAmount(Knife.Typed)) Knife.StagedKey.clear();
-        if (Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter)) ApplyKnifeSession(State);
-        else if (Pressed(ImGuiKey_Escape))
+        if (OperationInput.ConfirmPressed()) ApplyKnifeSession(State);
+        else if (OperationInput.CancelPressed())
         {
             if (Knife.Mode == SketcherKnifeMode::Insert && Knife.PlacedCondition)
             {
@@ -19867,8 +19862,8 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     if (State.Sweep.ActiveCondition)
     {
         if (CollectTypedAmount(State.Sweep.Typed)) State.Sweep.StagedAmount = -1.0e300;
-        if (Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter)) ApplySweepSession(State);
-        else if (Pressed(ImGuiKey_Escape)) CancelSweepSession(State);
+        if (OperationInput.ConfirmPressed()) ApplySweepSession(State);
+        else if (OperationInput.CancelPressed()) CancelSweepSession(State);
         else if (!Control && !Alternate)
         {
             if (Pressed(ImGuiKey_Q)) ChooseSweepCombination(State, FeatureCombination::Union);        // keyboard:pipe:union
@@ -19937,7 +19932,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     const bool PassingKey = !Control && (Pressed(ImGuiKey_L) || Pressed(ImGuiKey_H)) && !(Alternate && Pressed(ImGuiKey_L));
     if (State.Trim.ActiveCondition)
     {
-        if (Pressed(ImGuiKey_Escape) || Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter) || Pressed(ImGuiKey_T) || (State.Trim.InsertCondition && Pressed(ImGuiKey_V))) CloseTrimSession(State);
+        if (OperationInput.CancelPressed() || OperationInput.ConfirmPressed() || Pressed(ImGuiKey_T) || (State.Trim.InsertCondition && Pressed(ImGuiKey_V))) CloseTrimSession(State);
         if (!PassingKey) return;
         if (State.Trim.ActiveCondition) CloseTrimSession(State);
     }
@@ -19945,7 +19940,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     // Fill tool — click regions to fill · Enter / right-click / Esc / F ends (the view keys above stay live).
     if (State.Fill.ActiveCondition)
     {
-        if (Pressed(ImGuiKey_Escape) || Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter) || Pressed(ImGuiKey_F)) CloseFillSession(State);
+        if (OperationInput.CancelPressed() || OperationInput.ConfirmPressed() || Pressed(ImGuiKey_F)) CloseFillSession(State);
         if (!PassingKey) return;
         if (State.Fill.ActiveCondition) CloseFillSession(State);
     }
@@ -19967,7 +19962,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     {
         SketcherDimensionSession& Tool = State.DimensionTool;
         const std::string ActiveId     = !Tool.EditingId.empty() ? Tool.EditingId : Tool.DraggingId;
-        if (Pressed(ImGuiKey_Escape))
+        if (OperationInput.CancelPressed())
         {
             Tool.EditingId.clear();
             Tool.DraggingId.clear();
@@ -19976,7 +19971,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
             Announce(State, "Cancelled sliding " + ActiveId);
             return;
         }
-        if (Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter))
+        if (OperationInput.ConfirmPressed())
         {
             Tool.EditingId.clear();
             Tool.DraggingId.clear();
@@ -20025,7 +20020,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
             if (Pressed(ImGuiKey_Z)) { State.DimensionTool.AxisFilter = State.DimensionTool.AxisFilter == 2 ? -1 : 2; Announce(State, State.DimensionTool.AxisFilter == 2 ? "Dimension span: dZ" : "Dimension span: Parallel"); return; }
             return;
         }
-        if (Pressed(ImGuiKey_Escape))
+        if (OperationInput.CancelPressed())
         {
             if (State.DimensionTool.Stage > 0)
             {
@@ -20053,7 +20048,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
         if (Pressed(ImGuiKey_Z)) { State.DimensionTool.SlideAxis = State.DimensionTool.SlideAxis == 2 ? -1 : 2; Announce(State, State.DimensionTool.SlideAxis == 2 ? "Slide dimension along World Z" : "Slide dimension: Free plane"); return; }
         if (Pressed(ImGuiKey_A)) { State.DimensionTool.SlideAxis = -1; State.DimensionTool.AxisFilter = -1; Announce(State, "Dimension mode: Parallel / Free plane"); return; }
         if (State.DimensionTool.Stage == 2 && FeedDimensionTypedOffset(State.DimensionTool.Offset)) return;
-        if ((Pressed(ImGuiKey_Enter) || Pressed(ImGuiKey_KeypadEnter)) && State.DimensionTool.Stage == 2)
+        if ((OperationInput.ConfirmPressed()) && State.DimensionTool.Stage == 2)
         {
             CommitInteractiveDimension(State);
             return;
@@ -20228,7 +20223,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     }
 
     // body:not([gizmo]) — no command running. The M picker takes Esc first.
-    if (State.Matcaps.PickerOpen && Pressed(ImGuiKey_Escape))
+    if (State.Matcaps.PickerOpen && OperationInput.CancelPressed())
     {
         State.Matcaps.PickerOpen = false;
         Announce(State, "Set material closed");
@@ -20277,7 +20272,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     if (Pressed(ImGuiKey_O)) { if (State.Document.Selection.Faces.empty()) OpenSweepSession(State, SketcherSweepVerb::Offset); else OpenInsetSession(State); }
     if (Pressed(ImGuiKey_P)) OpenSweepSession(State, SketcherSweepVerb::Pipe);             // command:pipe
     if (Pressed(ImGuiKey_Y)) CycleGizmoModes(State);                                       // gizmo modes (y is free in Plasticity's map)
-    if (Pressed(ImGuiKey_Escape))
+    if (OperationInput.CancelPressed())
     {
         ClearSketcherSelection(State.Document);
         State.SketchPoints.Points.clear();

@@ -233,6 +233,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/ParametricSketcher/Interface/SketcherNavigation.cpp
     Engine/Workspaces/ParametricSketcher/Interface/SketcherFileDialog.cpp
     Engine/Workspaces/ParametricSketcher/Interface/SketcherScript.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherOperationInput.cpp
     Engine/Workspaces/ParametricSketcher/Interface/SketcherInterface.cpp
     Engine/Workspaces/ParametricSketcher/Interface/SketcherWorkspaceHost.cpp
     Engine/Workspaces/Texturing/PatternStampLayerStackPane.cpp

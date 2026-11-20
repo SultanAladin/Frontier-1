@@ -545,6 +545,62 @@ int main()
             return 1;
         }
 
+        // Blender modal contract: pointer movement adjusts, LMB confirms, RMB cancels.
+        State.Document.Selection = {};
+        State.Document.Selection.Bodies = { State.Document.Summary.Bodies.front().Key };
+        const uint64_t BeforeLmb = State.Document.Revision;
+        StepHostedFrame([&]()
+        {
+            Io.AddMousePosEvent(620.0f, 360.0f);
+            Io.AddKeyEvent(ImGuiKey_G, true);
+        });
+        StepHostedFrame([&]()
+        {
+            Io.AddKeyEvent(ImGuiKey_G, false);
+            Io.AddMousePosEvent(680.0f, 360.0f);
+        });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Left, true); });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Left, false); });
+        const bool LmbConfirmed = !State.Transform.ActiveCondition && State.Document.Revision > BeforeLmb;
+
+        const uint64_t BeforeRmb = State.Document.Revision;
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_G, true); });
+        StepHostedFrame([&]()
+        {
+            Io.AddKeyEvent(ImGuiKey_G, false);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+        });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Right, false); });
+        const bool RmbCancelled = !State.Transform.ActiveCondition && State.Document.Revision == BeforeRmb;
+
+        // B follows free pointer motion immediately; no bevel-gizmo grab is required.
+        State.Document.Selection = {};
+        State.Document.Selection.Edges = { State.Scene.Edges.front().Name };
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_B, true); });
+        const bool BevelPointerArmed = State.Bevel.ActiveCondition && !State.Bevel.PinnedCondition;
+        StepHostedFrame([&]()
+        {
+            Io.AddKeyEvent(ImGuiKey_B, false);
+            Io.AddMousePosEvent(600.0f, 360.0f);
+        });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Right, true); });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Right, false); });
+        const bool BevelRmbCancelled = !State.Bevel.ActiveCondition;
+
+        if (!VerifyCheck(LmbConfirmed && RmbCancelled && BevelPointerArmed && BevelRmbCancelled,
+                         "Blender gestures: B arms free-pointer bevel, LMB confirms, RMB cancels"))
+        {
+            std::fprintf(stderr, "LmbConfirmed=%d RmbCancelled=%d BevelPointerArmed=%d BevelCancelled=%d BeforeLmb=%llu BeforeRmb=%llu Revision=%llu\n",
+                         LmbConfirmed ? 1 : 0, RmbCancelled ? 1 : 0,
+                         BevelPointerArmed ? 1 : 0, BevelRmbCancelled ? 1 : 0,
+                         static_cast<unsigned long long>(BeforeLmb), static_cast<unsigned long long>(BeforeRmb),
+                         static_cast<unsigned long long>(State.Document.Revision));
+            Host.Finalize();
+            Dock.Finalize();
+            ImGui::DestroyContext(Gui);
+            return 1;
+        }
+
         // Verify Snap Filter & ContextAwareSnap defaults and Shift+A Line drawing mode
         if (!VerifyCheck(State.Picker.Enabled && State.Picker.ContextAwareSnap && State.Picker.Filter.CurveEnabled && State.Picker.Filter.EndpointEnabled,
                          "Snap Filter & ContextAwareSnap enabled by default"))
