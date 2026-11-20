@@ -20,6 +20,19 @@ Deferred items live in [Backlog.md](Backlog.md); architectural invariants live i
 
 ---
 
+## Lighting Milestone — Real-Mesh GI, Solar Shadow Selection & Unified Path Tracer (🟢 Phase 1 Complete)
+
+Plan of record: [Plans/WorldGiShadowPathTracerPlan.md](Plans/WorldGiShadowPathTracerPlan.md).
+
+- ✔️ **SDF retired** from GI, shadows and characters: `Engine/DistanceFieldSpace/` is absent; all occluders and all receivers are `WideBoundingTree` triangle geometry.
+- ✔️ **GI #1 `StokesSh9MultiBounce`** — MAE `0.0311` vs the path-traced reference; **GI #2 `SurfelCascadeDdgi`** — MAE `0.1934`, `58k` queries.
+- ✔️ **Shadow #1 `ContactPcss`** — MAE `0.0055`; **Shadow #2 `PcssPlaneAware`** — MAE `0.0064` with `0` BVH4 queries; exact `WideTreeRayQuery` field kept as ground truth.
+- ✔️ **One deterministic path tracer** (`DeterministicPathTraceSequence`) with GTX 4-wide-BVH4 and RTX `VK_KHR_ray_query` backends; fixed-point digests match across backends and repeats.
+- ✔️ `Exhibits/WorldGiShadowPathTraceValidation.cpp`: `21/21` checks, `1380`-triangle articulated character, pose rebuild in `4.2 ms` with no voxel rebake.
+- ✔️ Seven Slang variants compile in CI (`5` GTX `spirv_1_3`, `2` RTX `spirv_1_5+spvRayQueryKHR`).
+
+---
+
 ## Phase 0 — Governance, Dependencies & Build Architecture (🟢 Complete)
 
 - ✔️ Canonical layout established in [FolderStructure.md](FolderStructure.md).
