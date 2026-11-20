@@ -412,6 +412,52 @@ frontier_compile_modular_slang_shader(Visibility/AnalyticBarycentricResolve.slan
 frontier_compile_modular_slang_shader(DirectLighting/SolarFrustumShadow.slang                    SolarShadowComputeEntry         compute  SolarFrustumShadow.comp.spv)
 frontier_compile_modular_slang_shader(DirectLighting/PlaneAwareShadowFilter.slang                PlaneFilterComputeEntry         compute  PlaneAwareShadowFilter.comp.spv)
 frontier_compile_modular_slang_shader(GlobalIllumination/SpecularGlassRaytrace.slang          SpecularRaytraceComputeEntry    compute  SpecularGlassRaytrace.comp.spv)
+
+# 📝 Deterministic wavefront path tracer: identical source compiled for GTX 4-wide BVH4 and RTX VK_KHR_ray_query
+function(frontier_compile_ray_query_slang_shader DOMAIN_REL_PATH ENTRY_NAME OUT_SPV_NAME)
+    set(OUT_SPV "${FRONTIER_COMPILED_SHADER_DIR}/${OUT_SPV_NAME}")
+    file(GLOB DOMAIN_SLANG_DEPS
+        "${FRONTIER_MODULAR_SHADER_DIR}/DirectLighting/*.slang"
+        "${FRONTIER_MODULAR_SHADER_DIR}/GlobalIllumination/*.slang"
+    )
+    add_custom_command(
+        OUTPUT "${OUT_SPV}"
+        COMMAND "${FRONTIER_SLANGC_BIN}"
+            "${FRONTIER_MODULAR_SHADER_DIR}/${DOMAIN_REL_PATH}"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/MaterialSpace"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/Visibility"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/DirectLighting"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/GlobalIllumination"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/Atmosphere"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/Colour"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}/Compute"
+            -I "${FRONTIER_MODULAR_SHADER_DIR}"
+            -DFRONTIER_RTX_RAY_QUERY
+            -target spirv
+            -profile spirv_1_5+spvRayQueryKHR+spvInt64Atomics
+            -emit-spirv-directly
+            -fvk-use-entrypoint-name
+            -matrix-layout-row-major
+            -O0
+            -entry "${ENTRY_NAME}"
+            -stage compute
+            -o "${OUT_SPV}"
+        DEPENDS
+            "${FRONTIER_MODULAR_SHADER_DIR}/${DOMAIN_REL_PATH}"
+            ${DOMAIN_SLANG_DEPS}
+        COMMENT "[Slang] Compiling ${DOMAIN_REL_PATH} (${ENTRY_NAME}, ray query) -> ${OUT_SPV_NAME}"
+        VERBATIM
+    )
+    set(FRONTIER_SPV_OUTPUTS ${FRONTIER_SPV_OUTPUTS} "${OUT_SPV}" PARENT_SCOPE)
+endfunction()
+
+frontier_compile_modular_slang_shader(GlobalIllumination/DeterministicWavefrontPathTrace.slang   WaveGeneratePrimary             compute  DeterministicWavefrontGenerate.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/DeterministicWavefrontPathTrace.slang   WaveTraceClosest                compute  DeterministicWavefrontClosestGtx.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/DeterministicWavefrontPathTrace.slang   WaveTraceShadow                 compute  DeterministicWavefrontShadowGtx.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/DeterministicWavefrontPathTrace.slang   WaveShadeScatter                compute  DeterministicWavefrontShade.comp.spv)
+frontier_compile_modular_slang_shader(GlobalIllumination/DeterministicWavefrontPathTrace.slang   WaveFinalizeSample              compute  DeterministicWavefrontResolve.comp.spv)
+frontier_compile_ray_query_slang_shader(GlobalIllumination/DeterministicWavefrontPathTrace.slang WaveTraceClosest                DeterministicWavefrontClosestRtx.comp.spv)
+frontier_compile_ray_query_slang_shader(GlobalIllumination/DeterministicWavefrontPathTrace.slang WaveTraceShadow                 DeterministicWavefrontShadowRtx.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              TransmittanceLutComputeEntry    compute  TransmittanceLutCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              MultiScatterLutComputeEntry     compute  MultiScatterLutCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/SkyViewTransmittanceCompute.slang              ComputeEntry                    compute  SkyViewTransmittanceCompute.comp.spv)
@@ -621,6 +667,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.cpp
     Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/EmissiveGiCandidateSequence.cpp
+    Engine/GeometricRaster/GlobalIllumination/DeterministicPathTraceSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.cpp
     Engine/GeometricRaster/Atmosphere/CelestialEphemerisSolver.cpp
@@ -1063,6 +1110,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(SolarShadowValidation          Exhibits/SolarShadowValidation.cpp)
     frontier_register_exhibit(TieredWorldRenderValidation    Exhibits/TieredWorldRenderValidation.cpp)
     frontier_register_exhibit(CleanEmissiveGiCandidates      Exhibits/CleanEmissiveGiCandidates.cpp)
+    frontier_register_exhibit(WorldGiShadowPathTraceValidation Exhibits/WorldGiShadowPathTraceValidation.cpp)
     frontier_register_exhibit(VehicleShowcase               Exhibits/VehicleShowcase.cpp)
     frontier_register_exhibit(AudioSpaceValidation           Exhibits/AudioSpaceValidation.cpp)
     frontier_register_exhibit(CelestialCloudsValidation      Exhibits/CelestialCloudsValidation.cpp)

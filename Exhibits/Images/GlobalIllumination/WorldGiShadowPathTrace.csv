@@ -1,0 +1,11 @@
+family,candidate,mae,mse,leakage_ratio,ray_queries,visibility_rays,surfels,elapsed_ms,digest
+gtx_gi,Stokes_SH9_multi_bounce,0.031133,0.002596,0.000000,224091,0,0,73.602013,0
+gtx_gi,Surfel_cascade_DDGI,0.193432,0.062182,0.000000,58148,0,476,45.516563,0
+path_trace,GTX_wide_bvh4,0,0,0,410982,209620,0,128.691238,410907659043437737
+path_trace,RTX_ray_query,0,0,0,410982,209620,0,128.526779,410907659043437737
+gtx_shadow,Contact_PCSS,0.005500,0,0,2256,0,0,6.489859,0
+gtx_shadow,PCSS_plane_aware,0.006382,0,0,0,0,0,5.952244,0
+gtx_shadow,WideTree_ray_query_reference,0,0,0,18048,0,0,6.360792,0
+beauty,GTX_wide_bvh4,0.726018,0,0,2756165,1598939,0,634.845703,13380428487117197482
+beauty,RTX_ray_query,0.726018,0,0,2756165,1598939,0,735.154053,13380428487117197482
+scene,character_triangles,1380,0,0,2800,0,0,3.812517,0

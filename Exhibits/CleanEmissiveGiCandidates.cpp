@@ -13,6 +13,7 @@
 #include "Engine/GeometrySpace/Analysis/CurvatureAnalysis.h"
 #include "Engine/Mathematics/DeterministicSampling.h"
 #include "Exhibits/CleanEmissiveGiCandidates.h"
+#include "Exhibits/ProofImageWriter.h"
 
 #include <algorithm>
 #include <array>
@@ -37,6 +38,7 @@ namespace
 {
 
 using namespace Frontier;
+using namespace Frontier::Exhibits::ProofImage;
 
 struct Scorecard
 {
@@ -352,188 +354,6 @@ void AppendSphereTriangles(
     return Samples;
 }
 
-[[nodiscard]] uint32_t EncodeSrgbByte(float Value) noexcept
-{
-    const float Safe = std::clamp(Value, 0.0f, 1.0f);
-    const float Srgb = Safe <= 0.0031308f
-        ? 12.92f * Safe
-        : 1.055f * std::pow(Safe, 1.0f / 2.4f) - 0.055f;
-    return static_cast<uint32_t>(std::clamp(std::lround(Srgb * 255.0f), 0l, 255l));
-}
-
-[[nodiscard]] uint32_t ToneMapByte(float Radiance) noexcept
-{
-    const float SafeRadiance = std::isfinite(Radiance) ? std::max(0.0f, Radiance) : 0.0f;
-    const float Reinhard = SafeRadiance / (1.0f + SafeRadiance);
-    return EncodeSrgbByte(Reinhard);
-}
-
-void AppendBigEndian32(std::vector<uint8_t>& Output, uint32_t Value)
-{
-    Output.push_back(static_cast<uint8_t>((Value >> 24u) & 0xffu));
-    Output.push_back(static_cast<uint8_t>((Value >> 16u) & 0xffu));
-    Output.push_back(static_cast<uint8_t>((Value >> 8u) & 0xffu));
-    Output.push_back(static_cast<uint8_t>(Value & 0xffu));
-}
-
-[[nodiscard]] uint32_t ComputeCrc32(std::span<const uint8_t> Bytes) noexcept
-{
-    uint32_t Crc = 0xffffffffu;
-    for (const uint8_t Byte : Bytes)
-    {
-        Crc ^= Byte;
-        for (uint32_t Bit = 0u; Bit < 8u; ++Bit)
-        {
-            Crc = (Crc >> 1u) ^ (0xedb88320u & (0u - (Crc & 1u)));
-        }
-    }
-    return ~Crc;
-}
-
-void AppendPngChunk(
-    std::vector<uint8_t>&   Png,
-    const std::array<uint8_t, 4u>& ChunkType,
-    std::span<const uint8_t> Data)
-{
-    AppendBigEndian32(Png, static_cast<uint32_t>(Data.size()));
-    Png.insert(Png.end(), ChunkType.begin(), ChunkType.end());
-    Png.insert(Png.end(), Data.begin(), Data.end());
-    std::vector<uint8_t> CrcBytes(ChunkType.begin(), ChunkType.end());
-    CrcBytes.insert(CrcBytes.end(), Data.begin(), Data.end());
-    AppendBigEndian32(Png, ComputeCrc32(CrcBytes));
-}
-
-[[nodiscard]] bool WritePngRgba8(
-    const std::filesystem::path& OutputPath,
-    uint32_t                    WidthPx,
-    uint32_t                    HeightPx,
-    std::span<const uint8_t>    RgbaPixels)
-{
-    const std::size_t ExpectedSize = static_cast<std::size_t>(WidthPx) * HeightPx * 4u;
-    if (WidthPx == 0u || HeightPx == 0u || RgbaPixels.size() != ExpectedSize)
-    {
-        return false;
-    }
-
-    std::vector<uint8_t> RawScanlines {};
-    RawScanlines.reserve(static_cast<std::size_t>(HeightPx) * (static_cast<std::size_t>(WidthPx) * 4u + 1u));
-    for (uint32_t Row = 0u; Row < HeightPx; ++Row)
-    {
-        RawScanlines.push_back(0u);
-        const std::size_t RowStart = static_cast<std::size_t>(Row) * WidthPx * 4u;
-        RawScanlines.insert(
-            RawScanlines.end(),
-            RgbaPixels.begin() + static_cast<std::ptrdiff_t>(RowStart),
-            RgbaPixels.begin() + static_cast<std::ptrdiff_t>(RowStart + static_cast<std::size_t>(WidthPx) * 4u));
-    }
-
-    std::vector<uint8_t> Zlib {{ 0x78u, 0x01u }};
-    std::size_t RawOffset = 0u;
-    while (RawOffset < RawScanlines.size())
-    {
-        const std::size_t BlockSize = std::min<std::size_t>(65535u, RawScanlines.size() - RawOffset);
-        const bool FinalBlock = RawOffset + BlockSize == RawScanlines.size();
-        const uint16_t Length = static_cast<uint16_t>(BlockSize);
-        const uint16_t InverseLength = static_cast<uint16_t>(~Length);
-        Zlib.push_back(FinalBlock ? 0x01u : 0x00u);
-        Zlib.push_back(static_cast<uint8_t>(Length & 0xffu));
-        Zlib.push_back(static_cast<uint8_t>((Length >> 8u) & 0xffu));
-        Zlib.push_back(static_cast<uint8_t>(InverseLength & 0xffu));
-        Zlib.push_back(static_cast<uint8_t>((InverseLength >> 8u) & 0xffu));
-        Zlib.insert(
-            Zlib.end(),
-            RawScanlines.begin() + static_cast<std::ptrdiff_t>(RawOffset),
-            RawScanlines.begin() + static_cast<std::ptrdiff_t>(RawOffset + BlockSize));
-        RawOffset += BlockSize;
-    }
-
-    uint32_t AdlerA = 1u;
-    uint32_t AdlerB = 0u;
-    for (const uint8_t Byte : RawScanlines)
-    {
-        AdlerA = (AdlerA + Byte) % 65521u;
-        AdlerB = (AdlerB + AdlerA) % 65521u;
-    }
-    AppendBigEndian32(Zlib, (AdlerB << 16u) | AdlerA);
-
-    std::vector<uint8_t> Png {{ 137u, 80u, 78u, 71u, 13u, 10u, 26u, 10u }};
-    std::vector<uint8_t> Header {};
-    AppendBigEndian32(Header, WidthPx);
-    AppendBigEndian32(Header, HeightPx);
-    Header.insert(Header.end(), { 8u, 6u, 0u, 0u, 0u });
-    AppendPngChunk(Png, {{ 'I', 'H', 'D', 'R' }}, Header);
-    AppendPngChunk(Png, {{ 'I', 'D', 'A', 'T' }}, Zlib);
-    AppendPngChunk(Png, {{ 'I', 'E', 'N', 'D' }}, {});
-
-    if (OutputPath.has_parent_path())
-    {
-        std::error_code DirectoryError {};
-        std::filesystem::create_directories(OutputPath.parent_path(), DirectoryError);
-        if (DirectoryError)
-        {
-            return false;
-        }
-    }
-    std::ofstream Output(OutputPath, std::ios::binary);
-    if (!Output)
-    {
-        return false;
-    }
-    Output.write(reinterpret_cast<const char*>(Png.data()), static_cast<std::streamsize>(Png.size()));
-    return static_cast<bool>(Output);
-}
-
-void SetPixel(
-    std::vector<uint8_t>& Pixels,
-    uint32_t              WidthPx,
-    uint32_t              HeightPx,
-    uint32_t              X,
-    uint32_t              Y,
-    uint8_t               Red,
-    uint8_t               Green,
-    uint8_t               Blue)
-{
-    if (X >= WidthPx || Y >= HeightPx)
-    {
-        return;
-    }
-    const std::size_t Offset = (static_cast<std::size_t>(Y) * WidthPx + X) * 4u;
-    Pixels[Offset + 0u] = Red;
-    Pixels[Offset + 1u] = Green;
-    Pixels[Offset + 2u] = Blue;
-    Pixels[Offset + 3u] = 255u;
-}
-
-void DrawPanelNumber(
-    std::vector<uint8_t>& Pixels,
-    uint32_t              WidthPx,
-    uint32_t              HeightPx,
-    uint32_t              OriginX,
-    uint32_t              OriginY,
-    uint32_t              Number)
-{
-    constexpr std::array<std::array<uint8_t, 5u>, 3u> Glyphs {{
-        {{ 0b010u, 0b110u, 0b010u, 0b010u, 0b111u }},
-        {{ 0b110u, 0b001u, 0b010u, 0b100u, 0b111u }},
-        {{ 0b110u, 0b001u, 0b010u, 0b001u, 0b110u }},
-    }};
-    if (Number < 1u || Number > Glyphs.size())
-    {
-        return;
-    }
-    const auto& Glyph = Glyphs[Number - 1u];
-    for (uint32_t Row = 0u; Row < Glyph.size(); ++Row)
-    {
-        for (uint32_t Column = 0u; Column < 3u; ++Column)
-        {
-            if ((Glyph[Row] & (1u << (2u - Column))) != 0u)
-            {
-                SetPixel(Pixels, WidthPx, HeightPx, OriginX + Column, OriginY + Row, 255u, 255u, 255u);
-            }
-        }
-    }
-}
-
 [[nodiscard]] bool WriteRadianceComparisonPng(
     const std::filesystem::path& OutputPath,
     uint32_t                    SourceWidthPx,
@@ -795,7 +615,7 @@ void DrawPanelNumber(
     const GeometricRaster::EmissiveGiOutput& Repeat,
     const GeometricRaster::EmissiveGiOutput& Reference)
 {
-    const auto Error = Exhibits::CleanEmissiveGi::CompareLinearRadiance(
+    const auto Error = ::Exhibits::CleanEmissiveGi::CompareLinearRadiance(
         Candidate.IndirectRadiance, Reference.IndirectRadiance);
     CandidateMeasurement Measurement {};
     Measurement.Family = "gtx_gi";
