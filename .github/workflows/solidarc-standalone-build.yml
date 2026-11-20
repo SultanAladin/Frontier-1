@@ -1,0 +1,122 @@
+name: SolidArc Standalone Windows Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact Frontier commit to compile
+        required: true
+        type: string
+  push:
+    branches:
+      - 'arena/**'
+    paths:
+      - '.github/workflows/solidarc-standalone-build.yml'
+
+permissions:
+  contents: read
+
+env:
+  # On the workflow-creation push, compile the commit immediately before the
+  # workflow commit. Manual runs compile the explicitly requested immutable SHA.
+  SOLIDARC_SOURCE_SHA: ${{ github.event_name == 'push' && github.event.before || inputs.source_sha }}
+
+jobs:
+  solidarc-windows-x64:
+    name: Compile SolidArc standalone at exact commit
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact requested source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOLIDARC_SOURCE_SHA }}
+
+      - name: Record immutable source identity
+        id: source
+        shell: pwsh
+        run: |
+          $Resolved = (git rev-parse HEAD).Trim()
+          if ($Resolved -ne '${{ env.SOLIDARC_SOURCE_SHA }}') {
+            Write-Error "Requested ${{ env.SOLIDARC_SOURCE_SHA }} but checked out $Resolved"
+            exit 1
+          }
+          "sha=$Resolved" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "short=$($Resolved.Substring(0, 8))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Set up pinned build tools
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned font-generation dependency
+        run: python -m pip install --requirement Automation/FontRequirements.txt
+
+      - name: Recover pinned dependencies, fonts, and Slang compiler
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python Automation/PrepareDependencies.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python Automation/PrepareFonts.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python Automation/PrepareShaderToolchain.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Configure SolidArc Windows x64 build
+        shell: pwsh
+        run: |
+          cmake -S . -B Build/SolidArc -G "Visual Studio 17 2022" -A x64 `
+            -DFRONTIER_PROFILE=Editor `
+            -DBUILD_TESTING=ON `
+            '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Compile SolidArc standalone and validation targets
+        shell: pwsh
+        run: |
+          cmake --build Build/SolidArc --config Release --parallel 4 --target `
+            FrontierSketcher `
+            SketcherKernelValidation SketcherDocumentValidation `
+            SketcherViewportValidation SketcherWorkspaceValidation
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Run SolidArc validation suite
+        shell: pwsh
+        run: |
+          ctest --test-dir Build/SolidArc -C Release --output-on-failure `
+            -R '^(SketcherKernelValidation|SketcherDocumentValidation|SketcherViewportValidation|SketcherWorkspaceValidation)$'
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Assemble standalone SolidArc package
+        shell: pwsh
+        run: |
+          $Short = '${{ steps.source.outputs.short }}'
+          $Payload = Join-Path $env:RUNNER_TEMP "SolidArc-Windows-x64-$Short"
+          New-Item -ItemType Directory -Force `
+            "$Payload/CompiledShaders", "$Payload/EngineContent", "$Payload/Binaries/Win64" | Out-Null
+          Copy-Item 'Build/SolidArc/Release/FrontierSketcher.exe' "$Payload/SolidArc.exe"
+          Copy-Item 'Build/SolidArc/Binaries/Win64/*' "$Payload/Binaries/Win64/" -Recurse -Force
+          Copy-Item 'Build/SolidArc/CompiledShaders/Sketcher*.spv' "$Payload/CompiledShaders/" -Force
+          Copy-Item 'EngineContent/*' "$Payload/EngineContent/" -Recurse -Force
+          @"
+          SolidArc Standalone for Windows x64
+          Source commit: ${{ steps.source.outputs.sha }}
+
+          Run SolidArc.exe with CompiledShaders, EngineContent, and Binaries/Win64 beside it.
+          A Windows Vulkan 1.2+ graphics driver is required.
+          "@ | Set-Content "$Payload/README.txt" -Encoding utf8
+          Compress-Archive -Path "$Payload/*" `
+            -DestinationPath "Build/SolidArc-Windows-x64-$Short.zip" -CompressionLevel Optimal
+
+      - name: Upload SolidArc standalone artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SolidArc-Windows-x64-${{ steps.source.outputs.short }}
+          path: Build/SolidArc-Windows-x64-${{ steps.source.outputs.short }}.zip
+          if-no-files-found: error
+          retention-days: 14
