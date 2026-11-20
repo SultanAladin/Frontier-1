@@ -6,6 +6,7 @@
 
 #include "Engine/Workspaces/Texturing/PatternStampToolHeaderPane.h"
 
+#include "Engine/Components/Appearance/TypographyRepository.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 #include "Engine/Components/VectorIcons/VectorIconRepository.h"
 
@@ -1003,9 +1004,10 @@ void PatternStampToolHeaderPane::Render(
         const bool IsCurveStudio = (Session->ActiveTool == PatternStampToolCategory::Curve ||
                                     Session->ActiveTool == PatternStampToolCategory::Pen ||
                                     Session->ActiveTool == PatternStampToolCategory::EditPoints);
+        const bool IsTextStudio  = (Session->ActiveTool == PatternStampToolCategory::TextBlock);
 
-        const float MenuW = IsGradStudio || IsCurveStudio ? 368.0f : 412.0f;
-        const float MenuH = IsGradStudio ? 426.0f : (IsCurveStudio ? 310.0f : 564.0f);
+        const float MenuW = (IsGradStudio || IsCurveStudio || IsTextStudio) ? 368.0f : 412.0f;
+        const float MenuH = IsGradStudio ? 426.0f : (IsCurveStudio ? 310.0f : (IsTextStudio ? 430.0f : 564.0f));
         const float MenuX = std::clamp(Bounds.X + 118.0f, Bounds.X + 12.0f, Bounds.Right() - MenuW - 12.0f);
         const float MenuY = std::min(Band2Rect.Bottom() + 6.0f, Bounds.Bottom() - MenuH - 12.0f);
         const Rectangle2D ModalR{ MenuX, MenuY, MenuW, MenuH };
@@ -1014,8 +1016,8 @@ void PatternStampToolHeaderPane::Render(
         Surface.FillRectangle(ModalR, ColorRgba{ 18u, 18u, 20u, 250u }, 22.0f);
         Surface.StrokeRectangle(ModalR, ColorRgba{ 255u, 255u, 255u, 42u }, 22.0f, 1.0f);
 
-        const char* AtmTitle = IsGradStudio ? "Gradient" : (IsCurveStudio ? "Path" : "Shapes");
-        const char* AtmTool  = IsGradStudio ? "GRADIENT" : (IsCurveStudio ? "CURVE" : "CIRCLE");
+        const char* AtmTitle = IsGradStudio ? "Gradient" : (IsCurveStudio ? "Path" : (IsTextStudio ? "Text" : "Shapes"));
+        const char* AtmTool  = IsGradStudio ? "GRADIENT" : (IsCurveStudio ? "CURVE" : (IsTextStudio ? "TEXT" : "CIRCLE"));
 
         // .atm-bar header
         const Rectangle2D HeadR{ ModalR.X, ModalR.Y, ModalR.Width, 40.0f };
@@ -1169,6 +1171,87 @@ void PatternStampToolHeaderPane::Render(
             WorkspaceAppearance::ConstructTruncatedText(
                 Surface, FontWeightClass::Regular, { Bx + 4.0f, By }, Bw - 8.0f, 8.0f, Theme.TextFaint,
                 "Click to add points · click the first point or press Enter to finish.");
+        }
+        else if (IsTextStudio)
+        {
+            // Text menu (ArtworkToolMenu.js textView 1:1 + 5 real TypographyRepository font specimens)
+            const Rectangle2D Sec1{ Bx, By, Bw, 56.0f };
+            Surface.FillRectangle(Sec1, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "TEXT");
+            const Rectangle2D InputR{ Bx + 10.0f, By + 24.0f, Bw - 20.0f, 24.0f };
+            Surface.FillRectangle(InputR, ColorRgba{ 5u, 5u, 6u, 255u }, 8.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { InputR.X + 10.0f, InputR.Y + 5.0f }, 8.8f, Theme.TextPrimary, "FRONTIER");
+            By += 64.0f;
+
+            const Rectangle2D Sec2{ Bx, By, Bw, 232.0f };
+            Surface.FillRectangle(Sec2, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "TYPE");
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular,  { Bx + 10.0f, By + 29.0f }, 8.8f, Theme.TextMuted, "Font");
+            const Rectangle2D FontSelR{ Bx + 76.0f, By + 24.0f, Bw - 86.0f, 24.0f };
+            Surface.FillRectangle(FontSelR, ColorRgba{ 5u, 5u, 6u, 255u }, 12.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { FontSelR.X + 12.0f, FontSelR.Y + 5.0f }, 8.8f, Theme.TextPrimary, "DM Sans");
+            VectorIconRepository::ConstructControl(
+                Surface, ControlIcon::ChevronDown, VectorIconPlacement{ FontSelR.Right() - 16.0f, FontSelR.Y + 8.0f, 9.0f, Theme.TextMuted, 1.6f });
+
+            // 5 real TypographyRepository typeface specimen cards
+            static constexpr std::array<const char*, 5u> RepoFonts {{
+                "DM Sans", "Inter", "Space Grotesk", "Archivo", "JetBrains Mono"
+            }};
+            TypographyRepository* TypoRepo = TypographyRepository::QueryCurrent();
+            const float FGap = 5.0f;
+            const float FW   = (Bw - 20.0f - FGap * 4.0f) / 5.0f;
+            for (std::size_t F = 0u; F < 5u; ++F)
+            {
+                const Rectangle2D FCardR{ Bx + 10.0f + static_cast<float>(F) * (FW + FGap), By + 54.0f, FW, 52.0f };
+                const bool ActF = (F == 0u);
+                Surface.FillRectangle(FCardR, ActF ? ColorRgba{ 38u, 40u, 46u, 255u } : ColorRgba{ 5u, 5u, 6u, 255u }, 8.0f);
+                if (ActF)
+                {
+                    Surface.StrokeRectangle(FCardR, ColorRgba{ 239u, 244u, 207u, 200u }, 8.0f, 1.0f);
+                }
+
+                ImFont* Face = nullptr;
+                if (TypoRepo != nullptr)
+                {
+                    const int32_t GIdx = TypoRepo->ResolveGroupIndex(RepoFonts[F]);
+                    if (GIdx >= 0) Face = TypoRepo->QueryFont(static_cast<uint32_t>(GIdx), FontWeightClass::SemiBold);
+                }
+                if (Face != nullptr)
+                {
+                    Surface.PushTypeface(Face);
+                    Surface.Text({ FCardR.X + 8.0f, FCardR.Y + 6.0f }, 14.5f, ActF ? ColorRgba{ 239u, 244u, 207u, 255u } : Theme.TextPrimary, "Aa");
+                    Surface.PopTypeface();
+                }
+                else
+                {
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, FontWeightClass::SemiBold, { FCardR.X + 8.0f, FCardR.Y + 6.0f }, 14.5f, Theme.TextPrimary, "Aa");
+                }
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface, FontWeightClass::Regular, { FCardR.X + 5.0f, FCardR.Bottom() - 15.0f }, FCardR.Width - 8.0f, 7.2f,
+                    ActF ? Theme.TextPrimary : Theme.TextMuted, RepoFonts[F]);
+            }
+
+            static constexpr const char* WeightTabs[4] { "Light", "Regular", "Semi", "Bold" };
+            (void)DrawAtmSeg(By + 114.0f, WeightTabs, 2u);
+
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Bx + 10.0f, By + 154.0f }, 8.8f, Theme.TextMuted, "Size");
+            const Rectangle2D STrackSz{ Bx + 76.0f, By + 158.0f, Bw - 126.0f, 6.0f };
+            Surface.FillRectangle(STrackSz, ColorRgba{ 48u, 50u, 56u, 255u }, 3.0f);
+            Surface.FillCircle({ STrackSz.X + STrackSz.Width * 0.25f, STrackSz.Y + 3.0f }, 6.5f, ColorRgba{ 235u, 235u, 235u, 255u });
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { Bx + Bw - 10.0f, By + 154.0f }, 8.4f, Theme.TextPrimary, "54 px");
+
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Bx + 10.0f, By + 184.0f }, 8.8f, Theme.TextMuted, "Tracking");
+            const Rectangle2D STrackTr{ Bx + 76.0f, By + 188.0f, Bw - 126.0f, 6.0f };
+            Surface.FillRectangle(STrackTr, ColorRgba{ 48u, 50u, 56u, 255u }, 3.0f);
+            Surface.FillCircle({ STrackTr.X + STrackTr.Width * 0.42f, STrackTr.Y + 3.0f }, 6.5f, ColorRgba{ 235u, 235u, 235u, 255u });
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { Bx + Bw - 10.0f, By + 184.0f }, 8.4f, Theme.TextPrimary, "0.08 em");
+            By += 240.0f;
+
+            const Rectangle2D Sec3{ Bx, By, Bw, 54.0f };
+            Surface.FillRectangle(Sec3, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "LOOK");
+            DrawAtmColourPill(Bx + 10.0f, By + 22.0f, Bw - 20.0f, ColorRgba{ 239u, 244u, 207u, 255u }, "#EFF4CF");
         }
         else
         {

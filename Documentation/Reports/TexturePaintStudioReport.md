@@ -77,8 +77,9 @@ This report documents the complete C++ implementation and visual verification of
 ### 3.3 Viewport-Placed Linear Gradient Handles & Side-by-Side Channel Editors (`23-PatternLinearSceneFill.png`)
 ![Pattern Linear Scene Fill](../../Exhibits/Images/Texturing/23-PatternLinearSceneFill.png)
 
-### 3.4 `Curve & Pen · Bezier Path` Tool Context Menu (`24-PatternCurvePenStudioMenu.png`)
+### 3.4 `Curve & Pen · Bezier Path` & `Text · TEXT` Tool Context Menus (`24-PatternCurvePenStudioMenu.png`, `25-PatternTextStudioMenu.png`)
 ![Pattern Curve & Pen Studio Menu](../../Exhibits/Images/Texturing/24-PatternCurvePenStudioMenu.png)
+![Pattern Text Studio Menu](../../Exhibits/Images/Texturing/25-PatternTextStudioMenu.png)
 
 ### 3.5 Pattern Studio Main & Stamp Studio Main (`05-PatternWorkspaceMain.png`, `07-StampWorkspaceMain.png`)
 ![Pattern Studio Main](../../Exhibits/Images/Texturing/05-PatternWorkspaceMain.png)
@@ -117,3 +118,40 @@ This report documents the complete C++ implementation and visual verification of
 | `FrontierPattern --smoke-test` | `0` | Clean startup, 3-column dock presentation, and shutdown |
 | `FrontierStamp --smoke-test` | `0` | Clean startup, 3-column dock presentation, and shutdown |
 | `FrontierMaterial --smoke-test` | `0` | Clean startup, 3-column dock presentation, and shutdown |
+
+---
+
+## 7. PBR System Completeness Audit — What Is Complete vs. What Still Needs Work
+
+### 7.1 What Is 100% Complete & Verified in C++ / Vulkan Slang
+
+| Subsystem | Source Files | Status & Capabilities |
+| :--- | :--- | :--- |
+| **1. Core 10-Lobe OpenPBR 1.1 BSDF (CPU & GPU Slang)** | `Engine/MaterialSpace/SurfaceMaterial.h`<br>`Engine/MaterialSpace/Scattering/OpenPbrSurfaceScattering.h`<br>`Engine/Shaders/MaterialSpace/OpenPbrSurfaceScattering.slang` | **Complete (100%)** — Full reciprocal evaluation, VNDF/cosine mixture importance sampling, and White-Furnace energy conservation (`max(R+T) <= 1.0`) across all 10 physical lobes: **L1** Portsmouth 2025 Energy-Preserving Oren-Nayar diffuse, **L2** Anisotropic VNDF GGX + F0/F82 edge tint + Turquin multi-scatter, **L3** Beer-Lambert absorbing Clearcoat, **L4** Belcour & Barla Airy Thin-Film iridescence, **L5** Kemppinen 4D multiscale glinty microflakes, **L6** Rough GGX dielectric transmission + Abbe Cauchy dispersion, **L7** Christensen-Burley subsurface diffusion, **L8** Zeltner LTC cloth sheen, **L9** Chiang/Marschner dual-scattering hair/fiber BCSDF, **L10** Porosity water darkening + Planckian blackbody emission. |
+| **2. Bindless 128-Byte GPU Material Register** | `Engine/MaterialSpace/CompactMaterialRegister.{h,cpp}`<br>`Engine/GeometricRaster/Visibility/VisibilityMaterialResolve.{h,cpp}` | **Complete (100%)** — Byte-exact 128-byte (`32 × uint32`) half-float/unorm packing shared between C++20 and Slang with wave-uniform lobe bitmask branching. |
+| **3. Dynamic Material Compiler & 13 Procedural OpenPBR Recipes** | `Engine/MaterialSpace/Dynamic/*`<br>`Engine/Shaders/MaterialSpace/DynamicMaterialResolve.slang` | **Complete (100%)** — Vulkan 1.3 Direct Studio OpenPBR compute shader evaluating all 13 procedural & animated recipes (`Volcanic Pahoehoe Magma`, `Physical Ocean Water`, `Rain-Streaked Smoked Glass`, `Wet Asphalt Rain Puddles`, `Hoarfrost Sparkle Snow`, `Liquid Chrome Mercury`, `Battle-Damaged Shield`, etc.) on Shaderball, Draped Cloth, Rounded Box, and Ocean Plane. |
+| **4. Pattern & Stamp 22-Channel GPU PBR Compositor** | `Engine/GeometricRaster/Vector/VulkanVectorRenderMethod.{h,cpp}`<br>`Engine/Shaders/Vector/VectorPbrSurfaceCompute.slang` | **Complete (100%)** — Full 22-channel RGBA16F GPU layer stack (`StackedColor`, `StackedPbrPackA..D`, `StackedPbrExtra`) with finite-difference height-to-normal generation, OpenPBR lit preview, and all 22 individual diagnostic channel views. |
+| **5. High-to-Low Cage & 3D SDF GPU Map Baker** | `Engine/GeometricRaster/Baking/GpuTextureBaker.{h,cpp}`<br>`Engine/GeometricRaster/Baking/GpuSdfBaker.{h,cpp}`<br>`Engine/Shaders/Baking/*.slang` | **Complete (100%)** — Unquantized RGBA32F Vulkan compute baking pipeline for all 17 surface maps (`Tangent Normal`, `World Normal`, `Bent Normal`, `Ambient Occlusion`, `Curvature`, `Thickness`, `Height`, `Cavity`, `Position`, `UV Island ID`, etc.) + 3D Volume SDF without 8-bit staircase artifacts. |
+| **6. Container Codecs (`.MaterialSpace`, `.TextureSpace`, `.VectorSpace`, `.FontSpace`)** | `Engine/Codecs/MaterialCodec.{h,cpp}`<br>`Engine/Codecs/TextureCodec.{h,cpp}`<br>`Engine/Codecs/VectorCodec.{h,cpp}` | **Complete (100%)** — Deterministic round-trip serialization of OpenPBR parameters, texture layers, vector stacks, and font metrics. |
+
+---
+
+### 7.2 What We Still Need To Do (Remaining PBR Work)
+
+While the core OpenPBR 1.1 math, GPU bakers, vector compositor, and all five workspace UIs are complete, **four concrete engineering items remain** to make the end-to-end authoring pipeline 100% unified:
+
+1. **Upgrade Texture Paint 3D Viewport from 6-Channel CPU Shading to Full 22-Channel Vulkan OpenPBR Compute (`Engine/Workspaces/Texturing/TexturePaintSession.cpp`)**:
+   - **Current state**: `TexturePaintSession::RenderViewportRgba8` evaluates a fast CPU 3-light GGX + hemisphere IBL shader over the cached mesh ray hits using the primary 6 channels (`Albedo`, `Roughness`, `Metalness`, `Height`, `Normal`, `Emissive`) and supports diagnostic views `0..5`.
+   - **Remaining work**: Dispatch a Vulkan compute pass (reusing `OpenPbrSurfaceScattering.slang` / `VectorPbrSurfaceCompute.slang`) for the 3D painted mesh and wire all 22 paint channels (`Clearcoat`, `Coat Roughness`, `Sheen`, `Sheen Roughness`, `Anisotropy`, `Iridescence`, `Transmission`, `Subsurface`, `Specular Tint`, `Opacity`, etc.) into both the 3D lit surface and all 22 diagnostic channel views.
+2. **GPU Rasterization of 2D/3D Brush Strokes & Projection (`TexturePaintSession.cpp`)**:
+   - **Current state**: Brush stroke dabs, 3D Euclidean gradients, stamps, and procedural fills are composited on the CPU in `EvaluateLayerStackAtSurfacePoint`.
+   - **Remaining work**: Move stroke dab splatting and layer-stack blending (`Normal`, `Multiply`, `Screen`, `Overlay`, `HeightBlend`) into a Vulkan compute ping-pong atlas at full `1024px`–`4096px` resolution so high-resolution painting with dozens of strokes runs at zero CPU cost.
+3. **Live Cross-Workspace PBR Asset Bridge (`Baking` / `Pattern` / `Stamp` -> `Texture Paint` -> `Material Studio`)**:
+   - **Current state**: The header bridge buttons (`Tile on Material`, `Use in Paint`, `Bake 5 maps`) and disk codecs exist, but workspaces currently operate on independent sessions unless exported/imported.
+   - **Remaining work**: Wire live in-memory texture handoff so:
+     - Baking a mesh pair in `Baking Studio` automatically publishes the baked `Curvature`, `Ambient Occlusion`, `Thickness`, and `Tangent Normal` maps into `Texture Paint` and `Material Studio` for smart masks (edge wear, cavity dirt, subsurface thickness).
+     - Clicking `Use in Paint` in `Pattern` / `Stamp Studio` immediately binds the 22-channel vector output as a live Fill/Stamp source in `Texture Paint`.
+4. **Arbitrary Per-Channel `Field` / `Ramp` / `Image` Evaluation & Multi-Stratum Blending in `Material Studio` (`MaterialInspectorPane.cpp` -> `DynamicMaterialResolve.slang`)**:
+   - **Current state**: The Material Inspector UI exposes `Value | Field | Ramp | Image` tabs on every OpenPBR channel and `+ Detail stratum | Scuffs | Camo | Cells | Grain` in the Outliner, while the GPU shader (`DynamicMaterialResolve.slang`) evaluates fixed procedural graphs per preset (`0..12`).
+   - **Remaining work**: Generalize `GpuDynamicParameterBlock` so any of the 28 OpenPBR channels can independently switch between constant `Value`, procedural `Field` (Perlin/Worley/Voronoi/Gabor), multi-stop `Ramp`, or sampled `Image` texture, and blend multiple material strata (`Surface body` + `Scuffs` / `Camo` / `Cells` / `Grain` detail strata) on the GPU.
+

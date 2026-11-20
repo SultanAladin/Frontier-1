@@ -308,6 +308,14 @@ int main()
             return 1;
         }
 
+        // Exhibit 25: Text Context Menu (.atm-menu textView parity with 5 real TypographyRepository fonts)
+        PatternHost.AccessSession().ActiveTool                  = PatternStampToolCategory::TextBlock;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen  = true;
+        if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "25-PatternTextStudioMenu.png"))
+        {
+            return 1;
+        }
+
         // Exhibit 8: ControlCentre Light Theme sync
         PatternHost.AccessLayerStackPane().AddLayerSheetOpen   = false;
         PatternHost.AccessToolHeaderPane().MoreToolsSheetOpen  = false;

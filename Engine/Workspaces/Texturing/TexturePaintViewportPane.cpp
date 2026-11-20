@@ -5,6 +5,7 @@
 
 #include "Engine/Workspaces/Texturing/TexturePaintViewportPane.h"
 
+#include "Engine/Components/Appearance/TypographyRepository.h"
 #include "Engine/Components/Controls/CapsuleButton.h"
 #include "Engine/Components/Controls/ControlAppearance.h"
 #include "Engine/Components/VectorIcons/VectorIconRepository.h"
@@ -1443,16 +1444,40 @@ void TexturePaintViewportPane::Render(
         {
             if (IsTextStudio)
             {
+                VectorIconRepository::ConstructControl(
+                    Surface, ControlIcon::TextType, VectorIconPlacement{ CPadX, ContentY + 2.0f, 14.0f, ColorRgba{ 70u, 210u, 103u, 255u }, 1.7f });
                 WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Bold, { CPadX, ContentY }, 9.2f, Theme.TextFaint, "FONTS");
+                    Surface, FontWeightClass::Bold, { CPadX + 22.0f, ContentY - 2.0f }, 12.5f, Theme.TextPrimary, "Type & Fonts");
                 WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Medium, { RightPaneR.Right() - 26.0f, ContentY }, 9.2f, Theme.TextFaint, "6");
-                ContentY += 22.0f;
+                    Surface, FontWeightClass::Regular, { CPadX + 22.0f, ContentY + 14.0f }, 8.4f, Theme.TextFaint, "Font, weight, italic, align · 6 faces");
+                ContentY += 32.0f;
 
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Bold, { CPadX, ContentY }, 8.4f, Theme.TextFaint, "FONTS");
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Medium, { RightPaneR.Right() - 26.0f, ContentY }, 8.4f, Theme.TextFaint, "6");
+                ContentY += 17.0f;
+
+                struct FontCardMapping
+                {
+                    const char*     GroupKey;
+                    const char*     FamilyTag;
+                    FontWeightClass SpecimenWeight;
+                };
+                static constexpr std::array<FontCardMapping, 6u> FontMappings {{
+                    { "DM Sans",        "DM Sans · Geometric",  FontWeightClass::SemiBold },
+                    { "Inter",          "Inter · Editorial",    FontWeightClass::Regular  },
+                    { "JetBrains Mono", "JetBrains Mono · Code", FontWeightClass::Medium  },
+                    { "Archivo",        "Archivo · Condensed",  FontWeightClass::SemiBold },
+                    { "Space Grotesk",  "Space Grotesk · Display", FontWeightClass::Bold  },
+                    { "DM Sans",        "DM Sans · Light",      FontWeightClass::Light    },
+                }};
+
+                TypographyRepository* TypoRepo = TypographyRepository::QueryCurrent();
                 const auto& Fonts = TexturePaintSession::QueryFontLabels();
-                const float CardGap = 10.0f;
+                const float CardGap = 8.0f;
                 const float CardW   = (CInnerW - CardGap) * 0.5f;
-                const float CardH   = 82.0f;
+                const float CardH   = 66.0f;
 
                 for (std::size_t F = 0u; F < Fonts.size(); ++F)
                 {
@@ -1460,38 +1485,119 @@ void TexturePaintViewportPane::Render(
                     const std::size_t Row = F / 2u;
                     const Rectangle2D CardR{
                         CPadX + static_cast<float>(Col) * (CardW + CardGap),
-                        ContentY + static_cast<float>(Row) * (CardH + CardGap),
+                        ContentY + static_cast<float>(Row) * (CardH + 6.0f),
                         CardW,
                         CardH
                     };
                     const bool ActiveFont = (Session->Brush.TextFontIndex == static_cast<uint32_t>(F));
                     const bool HoverFont  = CardR.Contains(Cursor);
 
-                    Surface.FillRectangle(CardR, ActiveFont ? StudioRowSelected : Theme.SectionSurface, 10.0f);
+                    Surface.FillRectangle(CardR, ActiveFont ? StudioRowSelected : Theme.SectionSurface, 9.0f);
                     Surface.StrokeRectangle(
                         CardR,
                         ActiveFont ? ColorRgba{ 238u, 238u, 236u, 230u } : (HoverFont ? Theme.BorderStrong : Theme.BorderSubtle),
-                        10.0f,
+                        9.0f,
                         ActiveFont ? 1.5f : 1.0f);
 
-                    const Rectangle2D WellR{ CardR.X + 6.0f, CardR.Y + 6.0f, CardR.Width - 12.0f, 48.0f };
-                    Surface.FillRectangle(WellR, Theme.WellSurface, 7.0f);
-                    WorkspaceAppearance::ConstructWeightedText(
-                        Surface, FontWeightClass::Bold, { WellR.X + 12.0f, WellR.Y + 12.0f }, 19.0f, Theme.TextPrimary, "Aa");
-                    WorkspaceAppearance::ConstructWeightedText(
-                        Surface, FontWeightClass::Medium, { WellR.X + 46.0f, WellR.Y + 17.0f }, 12.5f, Theme.TextMuted, "Frontier");
+                    const Rectangle2D WellR{ CardR.X + 5.0f, CardR.Y + 5.0f, CardR.Width - 10.0f, 36.0f };
+                    Surface.FillRectangle(WellR, ColorRgba{ 12u, 13u, 15u, 255u }, 6.0f);
+
+                    ImFont* SpecimenFace = nullptr;
+                    if (TypoRepo != nullptr && F < FontMappings.size())
+                    {
+                        const int32_t GroupIdx = TypoRepo->ResolveGroupIndex(FontMappings[F].GroupKey);
+                        if (GroupIdx >= 0)
+                        {
+                            SpecimenFace = TypoRepo->QueryFont(static_cast<uint32_t>(GroupIdx), FontMappings[F].SpecimenWeight);
+                        }
+                    }
+                    if (SpecimenFace != nullptr)
+                    {
+                        Surface.PushTypeface(SpecimenFace);
+                        Surface.Text({ WellR.X + 10.0f, WellR.Y + 7.0f }, 17.0f, Theme.TextPrimary, "Aa");
+                        Surface.Text({ WellR.X + 42.0f, WellR.Y + 11.0f }, 12.0f, Theme.TextMuted, "Frontier");
+                        Surface.PopTypeface();
+                    }
+                    else
+                    {
+                        WorkspaceAppearance::ConstructWeightedText(
+                            Surface, FontWeightClass::Bold, { WellR.X + 10.0f, WellR.Y + 7.0f }, 17.0f, Theme.TextPrimary, "Aa");
+                        WorkspaceAppearance::ConstructWeightedText(
+                            Surface, FontWeightClass::Medium, { WellR.X + 42.0f, WellR.Y + 11.0f }, 12.0f, Theme.TextMuted, "Frontier");
+                    }
 
                     WorkspaceAppearance::ConstructWeightedText(
                         Surface,
                         ActiveFont ? FontWeightClass::SemiBold : FontWeightClass::Medium,
-                        { CardR.X + 10.0f, CardR.Bottom() - 21.0f },
-                        9.8f,
+                        { CardR.X + 8.0f, CardR.Bottom() - 19.0f },
+                        8.8f,
                         Theme.TextPrimary,
                         Fonts[F]);
+                    if (F < FontMappings.size())
+                    {
+                        const float TagW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 7.4f, FontMappings[F].FamilyTag);
+                        WorkspaceAppearance::ConstructWeightedText(
+                            Surface,
+                            FontWeightClass::Regular,
+                            { CardR.Right() - 8.0f - TagW, CardR.Bottom() - 18.0f },
+                            7.4f,
+                            Theme.TextFaint,
+                            FontMappings[F].FamilyTag);
+                    }
 
                     if (Pressed && HoverFont)
                     {
                         Session->SelectTextFont(static_cast<uint32_t>(F));
+                    }
+                }
+                ContentY += 3.0f * (CardH + 6.0f) + 8.0f;
+
+                // TYPE section card below the font specimen cards (matching studio-text.png)
+                const Rectangle2D TypeCardR{ CPadX, ContentY, CInnerW, RightPaneR.Bottom() - ContentY - 8.0f };
+                if (TypeCardR.Height > 70.0f)
+                {
+                    Surface.FillRectangle(TypeCardR, ColorRgba{ 25u, 26u, 30u, 255u }, 10.0f);
+                    const float Tx = TypeCardR.X + 12.0f;
+                    const float Tw = TypeCardR.Width - 24.0f;
+                    float Ty = TypeCardR.Y + 10.0f;
+
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, FontWeightClass::Bold, { Tx, Ty }, 7.8f, Theme.TextFaint, "TYPE");
+                    Ty += 15.0f;
+
+                    // Font dropdown bar + Weight segmented bar side-by-side / compact
+                    const float HalfW = (Tw - 10.0f) * 0.5f;
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, FontWeightClass::Regular, { Tx, Ty }, 8.0f, Theme.TextMuted, "Font");
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, FontWeightClass::Regular, { Tx + HalfW + 10.0f, Ty }, 8.0f, Theme.TextMuted, "Weight");
+                    Ty += 14.0f;
+
+                    const Rectangle2D FontDropR{ Tx, Ty, HalfW, 24.0f };
+                    Surface.FillRectangle(FontDropR, ColorRgba{ 16u, 17u, 20u, 255u }, 6.0f);
+                    const char* ActiveFontLabel = (Session->Brush.TextFontIndex < Fonts.size()) ? Fonts[Session->Brush.TextFontIndex] : "DM Sans";
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, FontWeightClass::Medium, { FontDropR.X + 10.0f, FontDropR.Y + 5.0f }, 8.4f, Theme.TextPrimary, ActiveFontLabel);
+                    VectorIconRepository::ConstructControl(
+                        Surface, ControlIcon::ChevronDown, VectorIconPlacement{ FontDropR.Right() - 16.0f, FontDropR.Y + 7.5f, 9.0f, Theme.TextMuted, 1.5f });
+
+                    constexpr std::array<const char*, 4u> WeightSegs {{ "300", "400", "600", "800" }};
+                    uint32_t WeightIdx = 2u;
+                    (void)ConstructSegmentedCapsuleRow(Surface, { Tx + HalfW + 10.0f, Ty, HalfW, 24.0f }, WeightSegs.data(), 4u, WeightIdx, Theme, Cursor, Pressed);
+                    Ty += 30.0f;
+
+                    // Italic toggle + Align segmented bar
+                    if (Ty + 24.0f <= TypeCardR.Bottom() - 6.0f)
+                    {
+                        WorkspaceAppearance::ConstructWeightedText(
+                            Surface, FontWeightClass::Medium, { Tx, Ty + 4.0f }, 8.4f, Theme.TextPrimary, "Italic");
+                        const Rectangle2D SwR{ Tx + HalfW - 32.0f, Ty + 3.0f, 32.0f, 18.0f };
+                        Surface.FillRectangle(SwR, ColorRgba{ 12u, 13u, 15u, 255u }, 9.0f);
+                        Surface.FillCircle({ SwR.X + 9.0f, SwR.Y + 9.0f }, 6.5f, ColorRgba{ 165u, 167u, 173u, 255u });
+
+                        constexpr std::array<const char*, 3u> AlignSegs {{ "Left", "Centre", "Right" }};
+                        uint32_t AlignIdx = 1u;
+                        (void)ConstructSegmentedCapsuleRow(Surface, { Tx + HalfW + 10.0f, Ty, HalfW, 24.0f }, AlignSegs.data(), 3u, AlignIdx, Theme, Cursor, Pressed);
                     }
                 }
             }
