@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {Palette, Circle, Cylinder, Square, Folder, Rainbow, ArrowDown, CloudFog, CloudRain, CloudSnow, CloudHail, Cloud, Trees, Mountain, Waves, Camera, Search, ChevronDown, ChevronRight, Eye, EyeOff, Plus, X, Box, ArrowUpRight, RotateCcw, MoveUpRight, Wind, SlidersHorizontal, Check, Layers, Orbit, Leaf, Sparkles, Droplets, Aperture, ScanLine, Spline} from 'lucide-react';
 import {Moon, Stars, Sun} from './celestial-icons.jsx';
 import './style.css';
+import './solar-cards.css';
 import ConstructMenu,{nativeWorld,constructItems,NativeEntityInspector} from './construct-menu.jsx';
 import OutlinerIcon from './outliner-icons.jsx';
 import {CloudControls,FogControls} from './atmosphere-shared-controls.jsx';
@@ -80,7 +81,7 @@ function App(){
  const card=(title,Icon,body,cls='')=><section className={`card ${cls} ${!featureOn(title)?'feature-disabled':''}`} style={{'--card-icon':cardIconColors[title]||obj.color}}><div className="card-heading"><span><Icon size={16}/>{title}</span>{!featureOn(title)&&<span className="card-off-label">OFF</span>}</div><fieldset className="card-body" disabled={!featureOn(title)} inert={!featureOn(title)?'':undefined}>{body}</fieldset></section>;
  const inspector=(<section className="inspector" style={{'--accent':obj.color}}>
    <header className="inspector-top"><div>Inspector <ChevronRight size={13}/><span>{obj.group}</span></div><a className="cad-launch" href="/cad.html"><Spline size={13}/> Automotive CAD</a><button className={`save-status ${saved?'saved':''}`} onClick={()=>{try{localStorage.setItem('frontier-project',JSON.stringify({values,hidden,organization,organizationVersion:2,extras:extras.map(({icon,...o})=>o)}));setSaved(true)}catch{setSaved(false);window.alert('Unable to save locally. Remove a baked image or free browser storage, then try again.')}}}>{saved?<Check size={13}/>:<span className="unsaved-dot"/>}{saved?'All changes saved':'Save changes'}</button></header>
-   <div className="inspector-content">
+   <div className="inspector-content" data-inspector-kind={kind}>
    <div className="object-header"><div className="object-title"><div><div className="eyebrow">{obj.type}</div><h1>{obj.name}</h1></div></div><div className="object-actions">{!obj.isContainer&&!obj.native&&<button className="reset" title="Reset object properties" onClick={reset}><RotateCcw size={14}/>Reset</button>}<button className={`enabled-pill ${isHidden(selected)?'disabled':''}`} title={isHidden(selected)&&!hidden[selected]?'Enable the containing folder, collection, or parent first':undefined} disabled={!!obj.native||(isHidden(selected)&&!hidden[selected])} onClick={()=>toggleHidden(selected)}><span/>{obj.native?'Native record':isHidden(selected)?'Disabled':'Enabled'}</button></div></div>
    <div className="section-label"><span>{obj.isContainer?'ORGANIZATION':'PROPERTIES'}</span><span>{(obj.native?'Native authoring record · read-only inspector':null)||(kind==='material'?'Surface channels & studio sphere':null)||(['cube','sphere','cylinder','plane'].includes(kind)?'Geometry, position & shared material':null)||(obj.isContainer?'Organization, membership & visibility':null)||(['local-cloud','local-fog'].includes(kind)?'Local volume · shared effects, bounds & position':null)||extraDescriptions[kind]||(speciesTypes[kind]&&'Forest / Species · generator asset & placement')||(kind==='sun'?'Light, direction & atmosphere':kind==='forest'?'Collection distribution & species layers':kind==='sky'?'Molecules, aerosols & absorption':kind==='cloud'?'Coverage, altitude & structure':kind==='air'?'Direction, speed & gusts':kind==='precip'?'Clouds / Precipitation · type, intensity & motion':kind==='terrain'?'Shape, surface & erosion':kind==='water'?'Surface, movement & depth':'Lens, focus & framing')}</span></div>
    <div className="property-switches" role="group" aria-label="Property switches">{(kind==='local-fog'?propertySwitches.sky.filter(([title])=>title==='Ground fog'):propertySwitches[kind==='local-cloud'?'cloud':kind]||[]).map(([title,label,ToggleIcon])=><button key={title} className={`property-switch ${featureOn(title)?'is-on':'is-off'}`} aria-label={`Toggle ${label}`} aria-pressed={featureOn(title)} onClick={()=>set('feature:'+title,!featureOn(title))}><span className="switch-icon"><ToggleIcon size={18} strokeWidth={1.7}/></span><span className="switch-name">{label}</span><span className="switch-state">{featureOn(title)?'ON':'OFF'}</span></button>)}</div>
@@ -93,10 +94,21 @@ function App(){
    <ExtraInspectors kind={kind} card={card} v={v} set={set} slider={slider} num={num} featureOn={featureOn} active={!isHidden(selected)}/>
    {['sun','sky'].includes(kind)&&<div className="effect-child-links">{all.filter(child=>child.parent===selected).map(child=><button key={child.id} className="cloud-child-link" onClick={()=>setSelected(child.id)}><span><child.icon size={16} style={{color:child.color}}/><span>{child.name}<small>Optical effect subcomponent</small></span></span><ChevronRight size={16}/></button>)}</div>}
    {kind==='sun'&&<>
+    {card('Daylight cycle',Sun,<>
+      <div className="solar-cycle-layout">
+        <div className="solar-cycle-summary">
+          <span className="solar-label">LOCAL TIME</span>
+          <div className="metric time">{String(Math.floor(v('time'))).padStart(2,'0')}<span>:{v('time')%1>=.5?'30':'00'}</span></div>
+          <span className="small-pill solar-phase" data-night={v('time')<6||v('time')>=18}>{v('time')<6||v('time')>=18?'Night':v('time')<12?'Morning':v('time')<17?'Afternoon':'Evening'}</span>
+        </div>
+        <DayCurve time={v('time')}/>
+      </div>
+      {slider('time',0,24,.5)}
+      <div className="range-labels"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+    </>,'cycle-card')}
     {card('Sun direction',Orbit,<><div className="direction-top"><div className="metric">{num('elevation','°')}</div><span className="metric-caption">{v('elevation')<0?'Below the horizon':'Above the horizon'}</span></div><SunGizmo azimuth={v('azimuth')} elevation={v('elevation')} onChange={(a,e)=>{set('azimuth',a);set('elevation',e)}}/><div className="direction-controls"><label><span>Azimuth <MoveUpRight size={12}/></span><div>{v('azimuth')}<small>°</small></div>{slider('azimuth',0,360)}</label><label><span>Elevation <ArrowUpRight size={12}/></span><div>{v('elevation')}<small>°</small></div>{slider('elevation',-90,90)}</label></div></>,'direction-card')}
     {card('Illuminance',Sun,<><div className="metric">{num('intensity','klux')}</div><p className="muted">Direct sunlight intensity</p><IlluminanceCurve intensity={v('intensity')}/>{slider('intensity',0,150)}<div className="range-labels"><span>0 klux</span><span>150 klux</span></div></>,'intensity-card')}
     {card('Temperature',Sparkles,<><div className="metric">{num('temperature','K')}</div><div className="temperature-track">{slider('temperature',2000,10000,100)}</div><div className="range-labels"><span>Warm</span><span>Cool</span></div><div className="temperature-footer"><span className="color-chip" style={{background:v('temperature')<4500?'#efd0a3':v('temperature')>7000?'#b9d4f3':'#efe6d3'}}/><span>{v('temperature')<4500?'Golden warmth':v('temperature')>7000?'Cool daylight':'Natural daylight'}</span></div></>,'temperature-card')}
-    {card('Daylight cycle',Sun,<><div className="cycle-title"><div className="metric time">{String(Math.floor(v('time'))).padStart(2,'0')}<span>:{v('time')%1>=.5?'30':'00'}</span></div><span className="small-pill">{v('time')<6||v('time')>=18?'Night':v('time')<12?'Morning':v('time')<17?'Afternoon':'Evening'}</span></div><DayCurve time={v('time')}/>{slider('time',0,24,.5)}<div className="range-labels"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div></>,'cycle-card')}
     {card('Sun disc',Sun,<><div className="disc-layout"><div><div className="metric">{num('discSize','°',2)}</div><p className="muted">Angular diameter</p></div><div className="solar-disc"><i style={{width:18+v('discSize')*30,height:18+v('discSize')*30}}/><span/></div></div>{slider('discSize',.1,2,.01)}<div className="range-labels"><span>Pinpoint</span><span>Broad disc</span></div><div className="disc-note"><span className="color-chip"/>Apparent size of the sun in the sky</div></>,'disc-card')}
 
    </>}
@@ -165,14 +177,17 @@ function App(){
  </main>
 }
 function DayCurve({time}){
+ const hatch=React.useId();
  const height=t=>60-42*Math.sin((t-6)/24*Math.PI*2),x=18+time/24*464,y=height(time);
  const path=Array.from({length:97},(_,i)=>`${i?'L':'M'}${18+i/96*464} ${height(i/4)}`).join(' ');
  return <svg className="day-curve full-day-curve" viewBox="0 0 500 123" role="img" aria-label={`24-hour daylight cycle, selected time ${Math.floor(time)}:${time%1?'30':'00'}`}>
- <rect x="18" y="10" width="116" height="98" rx="4" fill="#8397c109"/><rect x="366" y="10" width="116" height="98" rx="4" fill="#8397c109"/>
+ <defs><pattern id={hatch} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><path d="M0 0V6" stroke="#b4dcc4" strokeOpacity=".2"/></pattern></defs>
+ {[18,134,250,366,482].map(mark=><path key={mark} d={`M${mark} 10V108`} stroke="#ffffff13"/>)}
+ <path d={`${path} V108 H18Z`} fill={`url(#${hatch})`}/>
  <path d="M18 60 H482" stroke="#8c806b44" strokeDasharray="3 5"/>
  <path d={path} stroke="#a8a1a1" strokeOpacity=".45" fill="none" strokeWidth="1.3"/>
- <path d={Array.from({length:49},(_,i)=>`${i?'L':'M'}${134+i/48*232} ${height(6+i/4)}`).join(' ')} stroke="#dac18a" fill="none" strokeWidth="1.5"/>
- <path d={`M${x} 10 V110`} stroke="#c0ad8c" strokeDasharray="2 4" strokeOpacity=".45"/><circle cx={x} cy={y} r="11" fill={time<6||time>=18?'#a7b7df':'#e9c889'} opacity=".1"/><circle cx={x} cy={y} r="4" fill={time<6||time>=18?'#b3c2df':'#efd19a'}/>
+ <path d={Array.from({length:49},(_,i)=>`${i?'L':'M'}${134+i/48*232} ${height(6+i/4)}`).join(' ')} stroke="#b6e4be" fill="none" strokeWidth="1.8"/>
+ <path d={`M${x} 10 V110`} stroke="#c0ad8c" strokeDasharray="2 4" strokeOpacity=".45"/><circle cx={x} cy={y} r="11" fill={time<6||time>=18?'#eab2b7':'#b6e4be'} opacity=".1"/><circle cx={x} cy={y} r="4" fill={time<6||time>=18?'#eab2b7':'#c6f2ce'}/>
  <g fill="#7a7770" fontSize="8"><text x="28" y="115">NIGHT</text><text x="235" y="115">DAY</text><text x="442" y="115">NIGHT</text></g>
  </svg>;
 }

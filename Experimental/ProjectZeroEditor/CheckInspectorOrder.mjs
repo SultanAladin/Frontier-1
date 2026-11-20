@@ -97,6 +97,7 @@ const Sections = {
     Card("Baked atmosphere"),
   ],
   sun: [
+    Card("Daylight cycle"),
     [null, ".mp-hero"],
     [null, ".mp-rail"],
     [null, ".mp-duo"],

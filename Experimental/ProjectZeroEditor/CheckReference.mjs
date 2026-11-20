@@ -356,11 +356,12 @@ try {
         "Wind: Anemometer and statistics first, composite second; unnecessary trace readouts removed; chart animates",
       );
     } else {
+      const Leading = Id === "sun" ? ' + [data-card="Daylight cycle"]' : "";
       assert(
         await Page.locator(
-          `[data-panel="${Id}"] > header + .reference-inspector-copy`,
+          `[data-panel="${Id}"] > header${Leading} + .reference-inspector-copy`,
         ).count(),
-        "Preview follows the native inspector header",
+        "Preview follows the native inspector header or primary solar chart",
       );
       if (Id === "height-fog") {
         const DetailFrame = Page.frames().filter(

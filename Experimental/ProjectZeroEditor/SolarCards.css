@@ -1,0 +1,105 @@
+/* Solar inspector only. Other inspector cards still use their existing skin. */
+.specialized-inspector.sun {
+  --solar-surface: #151718;
+  --solar-line: #ffffff12;
+  --solar-green: #b6e4be;
+  --solar-muted: #a0a7a3;
+  padding-inline: clamp(13px, 5cqi, 30px);
+}
+.sun > .inspector-heading:not(:has(> .entity-notes)) { height: 96px; }
+.sun .inspector-heading h1 { top: 25px; font-size: 34px; letter-spacing: -.04em; }
+.sun .inspector-heading .eyebrow { top: 57px; }
+.sun .solar-reference-caption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 14px 0 8px;
+  color: var(--solar-muted);
+  font-size: 9px;
+  letter-spacing: .13em;
+}
+.sun .solar-reference-caption small { font-size: inherit; letter-spacing: 0; }
+.sun .section-caption { letter-spacing: .13em; margin: 17px 0 9px; }
+.sun .section-caption small { letter-spacing: 0; color: var(--solar-muted); }
+.sun .sun-tiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 115px), 1fr)); gap: 8px; margin: 0 0 12px; }
+.sun .sun-tiles button {
+  background: var(--solar-surface);
+  border: 1px solid var(--solar-line);
+  border-radius: 13px;
+  width: 100%;
+  min-height: 45px;
+  height: auto;
+  max-width: none;
+}
+.sun .sun-tiles .quick-tile {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  text-align: left;
+  justify-items: start;
+  gap: 2px 7px;
+  padding: 8px;
+}
+.sun .sun-tiles .quick-icon-seat { width: 24px; height: 24px; grid-row: span 2; }
+.sun .sun-tiles .quick-icon-seat svg { width: 15px; height: 15px; }
+.sun .sun-tiles .quick-label { font-size: 11px; }
+.sun .sun-tiles .quick-status { font-size: 8px; }
+.sun .sun-tiles .quick-tile.on { background: #18251e; border-color: #b6e4be33; }
+.sun .sun-tiles .quick-tile.on .quick-status { color: var(--solar-green); }
+.sun .sun-tiles .quick-tile.off:not(:disabled) .quick-status { color: #eab2b7; }
+.sun .sun-tiles .quick-tile:disabled { background: var(--solar-surface); }
+.specialized-inspector.sun .property-card {
+  background: var(--solar-surface) !important;
+  border: 1px solid var(--solar-line);
+  border-radius: 17px;
+  padding: clamp(13px, 2.5cqi, 22px);
+  box-shadow: none;
+  margin-bottom: 10px;
+}
+.specialized-inspector.sun .property-card h3 { margin-bottom: 13px; color: #eaede9; font-weight: 500; }
+.sun .property-card h3 > svg { color: #aab8ae; }
+.sun .metric {
+  font-size: clamp(31px, 5.5cqi, 48px);
+  letter-spacing: -.055em;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 5px;
+}
+.sun .metric-fraction { color: #a2aba5; }
+.sun .property-card > p { color: var(--solar-muted); }
+.sun .property-card .field { margin: 12px 0; }
+.sun .sun-properties { gap: 0 10px; }
+.sun .sun-properties .direction-card { min-height: 0; grid-row: span 1; }
+.sun .solved-directions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sun .solved-directions > div { border-radius: 11px; border: 1px solid var(--solar-line); background: #111314; padding: 9px; }
+.sun .graphic.tall { height: auto; }
+.sun .graphic.tall svg { max-height: 225px; }
+.specialized-inspector.sun .solar-cycle-card {
+  background: radial-gradient(ellipse at top left, #25352e, transparent 65%), #111516 !important;
+  border-color: #b6e4be29;
+}
+.solar-cycle-layout { display: grid; gap: 12px; align-items: center; }
+.solar-label { display: block; font-size: 9px; letter-spacing: .14em; color: #adbbb1; margin-bottom: 5px; }
+.solar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #b6e4be35;
+  background: #b6e4be11;
+  color: var(--solar-green);
+  padding: 5px 8px;
+  border-radius: 99px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.solar-status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.solar-status[data-night="true"] { color: #eab2b7; border-color: #eab2b744; background: #eab2b711; }
+.sun .solar-day-plot { margin: 0; }
+.solar-day-plot .live-plot-value > span:first-child { font-size: 11px; color: #cbd5cf; }
+.solar-day-plot .live-plot-value output { margin-bottom: 0; }
+.solar-day-plot .graph-note { margin-top: 0; }
+@container (min-width: 550px) {
+  .sun .sun-properties { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .solar-cycle-layout { grid-template-columns: max-content minmax(0, 1fr); gap: 20px; }
+}

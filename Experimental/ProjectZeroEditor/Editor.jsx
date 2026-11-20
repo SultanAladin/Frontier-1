@@ -48,6 +48,7 @@ import ActionIcon from "./ActionIcon.jsx";
 import ConstructPanel from "./ConstructPanel.jsx";
 import CheckerViewport, { PreviewVisible } from "./CheckerViewport.jsx";
 import "./Editor.css";
+import "./SolarCards.css";
 const InitialRows = [
   ["showcase", "Showcase", "group", "folder-scene", null, "Scene collection"],
   ["cube", "Cube", "geometry", "editor-cube", "showcase", "Geometry"],

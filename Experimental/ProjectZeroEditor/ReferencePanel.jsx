@@ -176,6 +176,12 @@ export default function ReferencePanel({
       data-reference-kind={TypeOf(Subject)}
       data-reference-slice={Slice}
     >
+      {Subject.Panel === "sun" && (
+        <div className="solar-reference-caption">
+          <span>REFERENCE SKY</span>
+          <small>Independent preview model</small>
+        </div>
+      )}
       <iframe
         ref={Frame}
         title={

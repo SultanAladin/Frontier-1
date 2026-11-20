@@ -1,0 +1,32 @@
+/* This layer skins the embedded solar summary without modifying the imported reference. */
+#ReferenceMount[data-reference-kind="sun"] .spanel {
+  --sun-line: #ffffff15;
+  --sun-surface: #151718;
+  --sun-muted: #a8afac;
+  --sun-text: #f0f2ee;
+}
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-hero { border-radius: 17px; border-color: var(--sun-line); margin-bottom: 8px; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-cap {
+  padding: 13px;
+  background: linear-gradient(transparent, #090e11d9 42%, #090e11);
+}
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-cap b { color: var(--sun-text); font-size: 19px; font-weight: 450; letter-spacing: -.03em; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-cap .mp-illum { color: #c2cdca; letter-spacing: .10em; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-cap .s-alt { display: inline-block; color: var(--sun-text); background: #13191de0; border: 1px solid #ffffff29; border-radius: 99px; padding: 4px 7px; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-rail { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-bottom: 7px; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-pill,
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-stat { background: var(--sun-surface); border: 1px solid var(--sun-line); border-radius: 12px; padding: 8px 10px; min-width: 0; min-height: 0; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-pill .v { font-size: clamp(14px, 4vw, 22px); color: var(--sun-text); font-weight: 450; letter-spacing: -.045em; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-pill :is(.k, .v em), .spanel .mp-stat .l { color: var(--sun-muted); }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-pill .k { letter-spacing: .05em; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-duo { gap: 7px; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-stat { margin: 0; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-stat .i { grid-column: auto; margin: 0; color: #b6e4be; background: #b6e4be17; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-stat.down .i { color: #eab2b7; background: #eab2b711; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-stat .l { align-self: center; }
+#ReferenceMount[data-reference-kind="sun"] .spanel .mp-stat .n { color: var(--sun-text); font-size: 12px; }
+@media (max-width: 380px) {
+  #ReferenceMount[data-reference-kind="sun"] .spanel .mp-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #ReferenceMount[data-reference-kind="sun"] .spanel .mp-stat .i { display: none; }
+  #ReferenceMount[data-reference-kind="sun"] .spanel .mp-stat { grid-template-columns: 1fr auto; }
+}

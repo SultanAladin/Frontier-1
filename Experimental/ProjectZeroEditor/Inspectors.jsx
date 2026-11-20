@@ -762,9 +762,24 @@ export function Inspector({
       Longitude: V("Longitude"),
     });
     const { Elevation, Azimuth } = Solved;
+    const Minutes = Math.floor(Time * 60);
+    const LocalTime = `${String(Math.floor(Minutes / 60)).padStart(2, "0")}:${String(Minutes % 60).padStart(2, "0")}`;
     Content = (
       <>
         {Header("Environment")}
+        <Card Title="Daylight cycle" Class="solar-cycle-card" GraphHandled>
+          <div className="solar-cycle-layout">
+            <div className="solar-cycle-summary">
+              <span className="solar-label">LOCAL SOLAR STUDY</span>
+              <Metric Value={LocalTime} />
+              <span className="solar-status" data-night={Elevation < 0}>
+                {Elevation < 0 ? "Below horizon" : "Above horizon"}
+              </span>
+            </div>
+            <SunGraph V={V} Change={AssignProperty} Mode="day" />
+          </div>
+          {F("Local Hours")}
+        </Card>
         {ReferenceCards}
         <div className="section-caption">
           PROPERTIES <small>Light, direction & atmosphere</small>
@@ -803,12 +818,11 @@ export function Inspector({
           <Glyph Name="arrow" />
         </div>
         <div className="card-grid sun-properties">
-          <Card Title="Sun direction" Height={711} Class="direction-card">
+          <Card Title="Sun direction" Class="direction-card">
             <Metric
-              Value={Elevation.toFixed(1) + "°"}
-              Caption={
-                Elevation < 0 ? "Below the horizon" : "Above the horizon"
-              }
+              Value={Elevation.toFixed(1)}
+              Unit="°"
+              Caption="Solved elevation"
             />
             <div
               className="graphic tall solved-gizmo"
@@ -835,7 +849,7 @@ export function Inspector({
               </div>
               <div>
                 <small>Elevation</small>
-                <Metric Value={Elevation.toFixed(1) + "°"} />
+                <Metric Value={Elevation.toFixed(1)} />
                 <input
                   type="range"
                   disabled
@@ -847,7 +861,7 @@ export function Inspector({
             </div>
             <p>Shared time above · angles solved by date / location</p>
           </Card>
-          <Card Title="Sunlight intensity" Height={347} GraphHandled>
+          <Card Title="Sunlight intensity" GraphHandled>
             <Metric
               Value={Number(V("Intensity")).toFixed(1)}
               Unit="×"
@@ -860,7 +874,7 @@ export function Inspector({
               <span>60 ×</span>
             </div>
           </Card>
-          <Card Title="Temperature" Height={347} GraphHandled>
+          <Card Title="Temperature" GraphHandled>
             <Metric
               Value={V("Colour source") ? V("Temperature") : "RGB"}
               Unit={V("Colour source") ? "K" : ""}
@@ -876,15 +890,8 @@ export function Inspector({
             <p>Blackbody tint approximation · linear RGB</p>
             {F("Sun Tint", !!V("Colour source"))}
           </Card>
-          <Card Title="Daylight cycle" Height={329} GraphHandled>
-            <Metric
-              Value={`${String(Math.floor(Time)).padStart(2, "0")}:${String(Math.floor((Time % 1) * 60)).padStart(2, "0")}`}
-            />
-            <SunGraph V={V} Change={AssignProperty} Mode="day" />
-            {F("Local Hours")}
-          </Card>
-          <Card Title="Sun disc" Height={329}>
-            <Metric Value={Number(V("Angular Diameter")).toFixed(2) + "°"} />
+          <Card Title="Sun disc">
+            <Metric Value={Number(V("Angular Diameter")).toFixed(2)} Unit="°" Caption="Angular diameter" />
             <div
               className="solar-disc"
               style={{

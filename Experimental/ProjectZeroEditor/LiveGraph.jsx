@@ -35,6 +35,7 @@ export function Plot({
   Change,
   XUnit = "",
   YUnit = "",
+  SolarDay = false,
   Note = "Drag to sample · arrow keys for precision",
 }) {
   const Id = useId(),
@@ -61,7 +62,7 @@ export function Plot({
     if (Drag.current) Change?.(Next);
   };
   return (
-    <div className="live-plot" data-live-plot={Name}>
+    <div className={SolarDay ? "live-plot solar-day-plot" : "live-plot"} data-live-plot={Name}>
       <div className="live-plot-value">
         <span>
           {Format(X)} <small>{XUnit}</small>
@@ -125,10 +126,15 @@ export function Plot({
         }}
       >
         <defs>
+          {SolarDay && (
+            <pattern id={Id + "-hatch"} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+              <path d="M0 0V6" stroke="#b4dcc4" strokeOpacity=".18" />
+            </pattern>
+          )}
           <linearGradient id={Id} x2="0" y2="1">
             <stop
               stopColor={Series[0]?.Colour || "#dac7a2"}
-              stopOpacity=".14"
+              stopOpacity={SolarDay ? ".25" : ".14"}
             />
             <stop offset="1" stopColor="#212121" stopOpacity="0" />
           </linearGradient>
@@ -144,6 +150,9 @@ export function Plot({
               {Format(Range[1] - (Range[1] - Range[0]) * T)}
             </text>
           </g>
+        ))}
+        {SolarDay && [0, 6, 12, 18, 24].map((Hour) => (
+          <path key={Hour} d={`M${PX(Hour)} 28V174`} stroke="#ffffff0f" />
         ))}
         {Series.map((Line, Index) => {
           const Samples = [
@@ -166,6 +175,9 @@ export function Plot({
                   fill={`url(#${Id})`}
                 />
               )}
+              {SolarDay && Index === 0 && (
+                <path d={`${Points}L${Width - 18} 174H42Z`} fill={`url(#${Id}-hatch)`} />
+              )}
               <path
                 data-series={Line.Name}
                 d={Points}
@@ -182,10 +194,10 @@ export function Plot({
             </g>
           );
         })}
-        <path d={`M${PX(X)} 28V174`} stroke="#e5d7bd77" strokeDasharray="3 5" />
-        {[0, 0.5, 1].map((T) => (
+        <path d={`M${PX(X)} 28V174`} stroke={SolarDay ? "#9eddb0a0" : "#e5d7bd77"} strokeDasharray="3 5" />
+        {(SolarDay ? [0, .25, .5, .75, 1] : [0, .5, 1]).map((T) => (
           <text key={T} x={42 + (Width - 60) * T} y="195" textAnchor="middle">
-            {Format(Domain[0] + (Domain[1] - Domain[0]) * T)} {XUnit}
+            {SolarDay ? `${String(24 * T).padStart(2, "0")}:00` : `${Format(Domain[0] + (Domain[1] - Domain[0]) * T)} ${XUnit}`}
           </text>
         ))}
       </svg>
@@ -513,13 +525,14 @@ export function SunGraph({ V, Change, Mode }) {
     return (
       <Plot
         Name="Sun daylight graph"
+        SolarDay
         Domain={[0, 24]}
         Range={[-90, 90]}
         Series={[
           {
             Name: "Elevation",
             At: (H) => Solar({ ...Base, LocalHours: H }).Elevation,
-            Colour: "#deccaa",
+            Colour: "#b6e4be",
           },
         ]}
         Value={V("Local Hours")}

@@ -1,0 +1,74 @@
+/* Match Project Zero's solar study without affecting other entities. */
+[data-inspector-kind="sun"] {
+  --solar-surface: #151718;
+  --solar-line: #ffffff12;
+  --solar-green: #b6e4be;
+  --solar-muted: #a0a7a3;
+  container-type: inline-size;
+}
+[data-inspector-kind="sun"] .cards.sun { gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cards.sun > .card {
+  background: var(--solar-surface);
+  border: 1px solid var(--solar-line);
+  border-radius: 17px;
+  padding: clamp(13px, 3cqi, 22px);
+}
+.cards.sun > .card > .card-heading { margin-bottom: 13px; font-size: 13px; color: #eaede9; }
+.cards.sun > .card > .card-heading svg { color: #aab8ae; }
+.cards.sun .metric { color: #f0f2ee; font-size: clamp(31px, 7cqi, 48px); letter-spacing: -.055em; }
+.cards.sun :is(.muted, .metric-caption, .range-labels) { color: var(--solar-muted); }
+.cards.sun .direction-card {
+  grid-row: auto;
+  background: radial-gradient(ellipse at 50% 42%, #292a23, transparent 60%), var(--solar-surface);
+}
+.cards.sun .direction-controls { gap: 8px; }
+.cards.sun .direction-controls label { border-color: var(--solar-line); background: #111314; padding: 9px; }
+.cards.sun .cycle-card {
+  grid-column: 1 / -1;
+  min-height: 0;
+  background: radial-gradient(ellipse at top left, #25352e, transparent 65%), #111516;
+  border-color: #b6e4be29;
+}
+.cards.sun .cycle-card.feature-disabled { border-color: #eab2b744; }
+.cards.sun .solar-cycle-layout { display: grid; align-items: center; gap: 12px; }
+.cards.sun .metric.time > span { color: #a2aba5; }
+.cards.sun .solar-label { display: block; font-size: 9px; letter-spacing: .14em; color: #adbbb1; margin: 0 0 5px; }
+.cards.sun .solar-phase {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--solar-green);
+  background: #b6e4be11;
+  border: 1px solid #b6e4be35;
+}
+.cards.sun .solar-phase::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.cards.sun .solar-phase[data-night="true"] { color: #eab2b7; background: #eab2b711; border-color: #eab2b744; }
+.cards.sun .day-curve { height: auto; margin: 0 0 5px; }
+.cards.sun .day-curve text { fill: #a0a7a3; }
+[data-inspector-kind="sun"] .property-switches { flex-wrap: wrap; margin-bottom: 14px; }
+[data-inspector-kind="sun"] .property-switch {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  text-align: left;
+  gap: 2px 7px;
+  flex: 1 0 106px;
+  padding: 8px;
+  border-radius: 13px;
+  background: var(--solar-surface);
+  border-color: var(--solar-line);
+}
+[data-inspector-kind="sun"] .property-switch .switch-icon { width: 24px; height: 24px; grid-row: span 2; background: #b6e4be16; color: var(--solar-green); }
+[data-inspector-kind="sun"] .property-switch .switch-icon svg { width: 14px; height: 14px; }
+[data-inspector-kind="sun"] .property-switch.is-on { background: #18251e; border-color: #b6e4be33; }
+[data-inspector-kind="sun"] .property-switch.is-on .switch-state { color: var(--solar-green); }
+[data-inspector-kind="sun"] .property-switch.is-off :is(.switch-icon, .switch-state) { color: #eab2b7; }
+[data-inspector-kind="sun"] .property-switch.is-off .switch-icon { background: #eab2b711; }
+[data-inspector-kind="sun"] .property-switch:hover { border-color: #ffffff45; }
+@container (min-width: 420px) {
+  .cards.sun .solar-cycle-layout { grid-template-columns: max-content minmax(0, 1fr); gap: 20px; }
+}
+@container (max-width: 460px) {
+  [data-inspector-kind="sun"] .cards.sun { grid-template-columns: minmax(0, 1fr); }
+}

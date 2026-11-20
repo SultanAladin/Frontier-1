@@ -86,6 +86,11 @@ try {
     name: "Sun daylight graph",
     exact: true,
   });
+  const Cycle = Card("Daylight cycle");
+  assert.equal(await Cycle.locator(".solar-day-plot pattern").count(), 1);
+  await Day.press("Home");
+  assert.equal(await Cycle.locator(".solar-status").getAttribute("data-night"), "true");
+  assert.match(await Cycle.locator(".solar-cycle-summary .metric").textContent(), /00:00/);
   await Drag(Day, 0.8);
   assert.ok((await Saved()).Values.sun["Local Hours"] > 17);
   const DayPath = await Day.locator("[data-series]").getAttribute("d");
