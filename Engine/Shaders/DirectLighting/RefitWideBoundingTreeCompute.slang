@@ -31,7 +31,7 @@ struct RefitPushUniforms
 
 [[vk::binding(0, 0)]] StructuredBuffer<GpuRayTrianglePrimitive48>    DeformedPrimitives;
 [[vk::binding(1, 0)]] StructuredBuffer<uint>                         BottomUpInternalOrder;
-[[vk::binding(2, 0)]] RWStructuredBuffer<GpuRefittableBinaryEntry32> BinaryHierarchy;
+[[vk::binding(2, 0)]] RWStructuredBuffer<GpuRefittableBinaryEntry32> BinaryTreeEntries;
 [[vk::binding(3, 0)]] ConstantBuffer<RefitPushUniforms>              RefitUniforms;
 
 [shader("compute")]
@@ -43,7 +43,7 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     if (RefitUniforms.DispatchPhase == 0u)
     {
         if (ThreadIdx >= RefitUniforms.TotalBinaryEntries) return;
-        GpuRefittableBinaryEntry32 Entry = BinaryHierarchy[ThreadIdx];
+        GpuRefittableBinaryEntry32 Entry = BinaryTreeEntries[ThreadIdx];
         if (Entry.PrimitiveCount == 0u) return;
 
         float3 BMin = float3( 1.0e30);
@@ -60,7 +60,7 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
         float3 Pad = select((BMax - BMin) < float3(1.0e-6), float3(5.0e-7), float3(0.0));
         Entry.BoundsMin = BMin - Pad;
         Entry.BoundsMax = BMax + Pad;
-        BinaryHierarchy[ThreadIdx] = Entry;
+        BinaryTreeEntries[ThreadIdx] = Entry;
     }
     else
     {
@@ -68,11 +68,11 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
         uint InternalIdx = BottomUpInternalOrder[RefitUniforms.InternalBatchStart + ThreadIdx];
         if (InternalIdx >= RefitUniforms.TotalBinaryEntries) return;
 
-        GpuRefittableBinaryEntry32 Cur   = BinaryHierarchy[InternalIdx];
-        GpuRefittableBinaryEntry32 Left  = BinaryHierarchy[Cur.LeftOrFirst];
-        GpuRefittableBinaryEntry32 Right = BinaryHierarchy[Cur.LeftOrFirst + 1u];
+        GpuRefittableBinaryEntry32 Cur   = BinaryTreeEntries[InternalIdx];
+        GpuRefittableBinaryEntry32 Left  = BinaryTreeEntries[Cur.LeftOrFirst];
+        GpuRefittableBinaryEntry32 Right = BinaryTreeEntries[Cur.LeftOrFirst + 1u];
         Cur.BoundsMin = min(Left.BoundsMin, Right.BoundsMin);
         Cur.BoundsMax = max(Left.BoundsMax, Right.BoundsMax);
-        BinaryHierarchy[InternalIdx] = Cur;
+        BinaryTreeEntries[InternalIdx] = Cur;
     }
 }

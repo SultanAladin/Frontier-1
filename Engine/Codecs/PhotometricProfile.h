@@ -28,7 +28,7 @@ namespace Frontier::Codecs
 
 inline constexpr uint32_t PhotometricVerticalCount   = 128u; // [samples] - Polar steps across [0, pi] inclusive
 inline constexpr uint32_t PhotometricHorizontalCount = 32u;  // [samples] - Azimuthal steps across [0, 2*pi) wrapping
-inline constexpr uint32_t PhotometricTableStride     = PhotometricVerticalCount * PhotometricHorizontalCount; // [4096 floats]
+inline constexpr uint32_t PhotometricGridStride     = PhotometricVerticalCount * PhotometricHorizontalCount; // [4096 floats]
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                       STRUCTURES
@@ -40,17 +40,17 @@ struct RawPhotometricDistribution
     std::vector<std::pair<std::string, std::string>> KeywordEntries   {};      // [-]  - Bracketed LM-63 [KEYWORD] metadata
     std::vector<float>                               VerticalAngles   {};      // [deg]- Monotonic polar angles (0..90 or 0..180)
     std::vector<float>                               HorizontalAngles {};      // [deg]- Monotonic azimuthal angles
-    std::vector<float>                               CandelaMatrix    {};      // [cd] - Row-major [HorizontalIndex * VerticalCount + VerticalIndex]
+    std::vector<float>                               CandelaSamples    {};      // [cd] - Row-major [HorizontalIndex * VerticalCount + VerticalIndex]
     float                                            PeakCandela      = 0.0f;  // [cd] - Maximum scaled candela reading
 };
 
 struct ResampledPhotometricProfile
 {
     std::string                                  ProfileLabel         {};      // [-]  - Originating profile title
-    std::array<float, PhotometricTableStride>    NormalizedCandela    {};      // [0-1]- [Horizontal * 128 + Vertical] normalized table
+    std::array<float, PhotometricGridStride>    NormalizedCandela    {};      // [0-1]- [Horizontal * 128 + Vertical] normalized grid
     float                                        PeakCandela          = 0.0f;  // [cd] - Peak luminous intensity prior to normalization
     float                                        NormalizedFluxSr     = 0.0f;  // [sr] - Solid-angle integral of NormalizedCandela over sphere
-    float                                        EmissionHalfAngleRad = 3.14159265f; // [rad]- Conservative polar cutoff beyond which table is zero
+    float                                        CutoffHalfAngleRad = 3.14159265f; // [rad]- Conservative polar cutoff beyond which grid is zero
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -60,7 +60,7 @@ struct ResampledPhotometricProfile
 class PhotometricProfileCodec
 {
 public:
-    // Parses an ANSI/IESNA LM-63-1995/2002 Type C text buffer into a scaled candela table
+    // Parses an ANSI/IESNA LM-63-1995/2002 Type C text buffer into a scaled candela grid
     [[nodiscard]] static bool ParseLm63Text(
         std::string_view            SourceText,
         std::string_view            ProfileLabel,
@@ -79,13 +79,13 @@ public:
         float                             VerticalDegrees,
         float                             HorizontalDegrees) noexcept;
 
-    // Resamples a parsed Type C distribution onto the canonical 128x32 GPU/CPU angular table
+    // Resamples a parsed Type C distribution onto the canonical 128x32 GPU/CPU angular grid
     [[nodiscard]] static bool ResampleToCanonicalGrid(
         const RawPhotometricDistribution& Distribution,
         ResampledPhotometricProfile&      OutProfile,
         std::string&                      OutDiagnostic);
 
-    // Convenience helper decoding and resampling an .ies file in one step
+    // Convenience routine decoding and resampling an .ies file in one step
     [[nodiscard]] static bool LoadResampledProfileFromFile(
         const std::filesystem::path& SourcePath,
         ResampledPhotometricProfile& OutProfile,

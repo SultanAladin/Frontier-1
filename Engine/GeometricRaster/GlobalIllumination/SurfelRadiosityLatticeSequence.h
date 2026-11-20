@@ -55,7 +55,7 @@ struct OctahedralIrradianceCascade
 struct SurfelLatticeTierSettings
 {
     bool     HighEndZeroSdfTier = false; // false = GtxLowEnd (12x10x4 + 8x6x3, 8x8 sheet); true = HighEnd (19x15x6 + 9x7x4, 16x16 sheet, 96 BVH4 rays)
-    uint32_t FibonacciMomentRays = 96u;  // [cnt] - HighEnd BVH4 Chebyshev depth moment rays per lattice node
+    uint32_t FibonacciMomentRays = 96u;  // [cnt] - HighEnd BVH4 Chebyshev depth moment rays per lattice cell
     Mathematics::Axis3D SunDirection    { 0.45f, -0.35f, 0.82f };
     Mathematics::LinearRGB SunRadiance  { 0.0f, 0.0f, 0.0f };
 };

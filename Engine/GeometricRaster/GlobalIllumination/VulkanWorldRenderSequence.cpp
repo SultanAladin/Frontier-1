@@ -1177,7 +1177,7 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
         if (!Scene.PhotometricProfiles.empty())
         {
             std::vector<float> FlatTables;
-            FlatTables.reserve(Scene.PhotometricProfiles.size() * Codecs::PhotometricTableStride);
+            FlatTables.reserve(Scene.PhotometricProfiles.size() * Codecs::PhotometricGridStride);
             for (const auto& Profile : Scene.PhotometricProfiles)
             {
                 FlatTables.insert(

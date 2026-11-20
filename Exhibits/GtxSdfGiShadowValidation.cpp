@@ -292,7 +292,7 @@ struct CornellVehicleBayLayout
     static constexpr std::size_t MaxAssets = 64u;
     std::array<GeometrySpace::PolygonNetwork, MaxAssets>       Networks {};
     std::array<SpatialAcceleration::ClusterPyramid, MaxAssets> Pyramids {};
-    std::array<uint16_t, static_cast<std::size_t>(VehicleSurfaceMaterialRole::Count)> RoleSlots {};
+    std::array<uint16_t, static_cast<std::size_t>(VehicleSurfaceSlot::Count)> MaterialSlots {};
     uint16_t CharacterSuitSlot   = 0u;
     uint16_t CharacterAccentSlot = 0u;
     uint16_t CeilingRadiatorSlot  = 0u;
@@ -309,13 +309,13 @@ void BuildCornellVehicleBay(
     auto& Reg = OutBay.Scene.MaterialRegister;
 
     // 1. Register ControlVehicle OpenPBR materials (warm pearl white coat so red/green Cornell GI bleed reads vividly!)
-    for (std::size_t R = 0u; R < static_cast<std::size_t>(VehicleSurfaceMaterialRole::Count); ++R)
+    for (std::size_t R = 0u; R < static_cast<std::size_t>(VehicleSurfaceSlot::Count); ++R)
     {
-        const auto Role = static_cast<VehicleSurfaceMaterialRole>(R);
+        const auto Slot = static_cast<VehicleSurfaceSlot>(R);
         MaterialSpace::SurfaceMaterial Mat {};
-        switch (Role)
+        switch (Slot)
         {
-            case VehicleSurfaceMaterialRole::BodyCoat:
+            case VehicleSurfaceSlot::BodyCoat:
                 Mat.MaterialName            = "PearlCeramicBodyCoat";
                 Mat.Diffuse.BaseColor       = { 0.78f, 0.79f, 0.82f };
                 Mat.Specular.Metalness      = 0.12f;
@@ -323,23 +323,23 @@ void BuildCornellVehicleBay(
                 Mat.Clearcoat.CoatWeight    = 0.65f;
                 Mat.Clearcoat.CoatRoughness = 0.08f;
                 break;
-            case VehicleSurfaceMaterialRole::CanopyGloss:
+            case VehicleSurfaceSlot::CanopyGloss:
                 Mat.MaterialName       = "DarkCanopyTrim";
                 Mat.Diffuse.BaseColor  = { 0.12f, 0.13f, 0.15f };
                 Mat.Specular.Roughness = 0.24f;
                 break;
-            case VehicleSurfaceMaterialRole::VehicleGlass:
+            case VehicleSurfaceSlot::VehicleGlass:
                 Mat.MaterialName       = "StudioWindshield";
                 Mat.Diffuse.BaseColor  = { 0.18f, 0.22f, 0.26f };
                 Mat.Specular.Roughness = 0.18f;
                 break;
-            case VehicleSurfaceMaterialRole::RimAlloy:
+            case VehicleSurfaceSlot::RimAlloy:
                 Mat.MaterialName       = "BrushedSilverRim";
                 Mat.Diffuse.BaseColor  = { 0.76f, 0.78f, 0.82f };
                 Mat.Specular.Metalness = 0.65f;
                 Mat.Specular.Roughness = 0.26f;
                 break;
-            case VehicleSurfaceMaterialRole::TyreRubber:
+            case VehicleSurfaceSlot::TyreRubber:
                 Mat.MaterialName       = "MatteTyreTread";
                 Mat.Diffuse.BaseColor  = { 0.10f, 0.10f, 0.11f };
                 Mat.Specular.Roughness = 0.72f;
@@ -350,7 +350,7 @@ void BuildCornellVehicleBay(
                 Mat.Specular.Roughness = 0.48f;
                 break;
         }
-        OutBay.RoleSlots[R] = Reg.RegisterMaterial(Mat);
+        OutBay.MaterialSlots[R] = Reg.RegisterMaterial(Mat);
     }
 
     MaterialSpace::SurfaceMaterial WhitePlaster {};
@@ -398,10 +398,10 @@ void BuildCornellVehicleBay(
 
     std::size_t NextAsset = 0u;
     // 2. Append ControlVehicle roles (25,068 triangles)
-    for (std::size_t R = 0u; R < static_cast<std::size_t>(VehicleSurfaceMaterialRole::Count); ++R)
+    for (std::size_t R = 0u; R < static_cast<std::size_t>(VehicleSurfaceSlot::Count); ++R)
     {
-        const auto Role = static_cast<VehicleSurfaceMaterialRole>(R);
-        OutBay.Networks[NextAsset] = ControlVehicleSurfaceDecoder::BuildPolygonNetworkFromRole(Vehicle, Role);
+        const auto Slot = static_cast<VehicleSurfaceSlot>(R);
+        OutBay.Networks[NextAsset] = ControlVehicleSurfaceDecoder::ConstructPolygonNetworkFromSlot(Vehicle, Slot);
         if (OutBay.Networks[NextAsset].Faces.empty())
         {
             continue;
@@ -412,7 +412,7 @@ void BuildCornellVehicleBay(
         Inst.WorldTranslation    = { 0.0f, 0.0f, 0.0f };
         Inst.PreviousTranslation = { 0.0f, 0.0f, 0.0f };
         Inst.UniformScale        = 1.0f;
-        Inst.MaterialSlot        = OutBay.RoleSlots[R];
+        Inst.MaterialSlot        = OutBay.MaterialSlots[R];
         OutBay.Scene.ClusterInstances.push_back(Inst);
         ++NextAsset;
     }
@@ -426,7 +426,7 @@ void BuildCornellVehicleBay(
         Prim.Edge02           = Src.CornerC - Src.CornerA;
         Prim.SourceFaceIndex  = TIdx;
         Prim.PrimitiveOrdinal = static_cast<uint32_t>(WorldPrims.size());
-        Prim.MaterialOrdinal  = OutBay.RoleSlots[static_cast<std::size_t>(Src.MaterialRole)];
+        Prim.MaterialOrdinal  = OutBay.MaterialSlots[static_cast<std::size_t>(Src.SurfaceSlot)];
         Prim.OpaqueMask       = 1u;
         WorldPrims.push_back(Prim);
         WorldNormals.push_back({ Src.NormalA, Src.NormalB, Src.NormalC });

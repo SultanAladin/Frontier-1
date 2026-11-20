@@ -206,7 +206,7 @@ struct VehicleShowroomSceneRig
     WorldSceneSpecification                                                     Scene           {};
     std::array<GeometrySpace::PolygonNetwork, 16u>                              Networks        {};
     std::array<SpatialAcceleration::ClusterPyramid, 16u>                        Pyramids        {};
-    std::array<uint16_t, static_cast<std::size_t>(VehicleSurfaceMaterialRole::Count)> RoleSlots {};
+    std::array<uint16_t, static_cast<std::size_t>(VehicleSurfaceSlot::Count)> MaterialSlots {};
 };
 
 void BuildDirectPbrVehicleShowroom(
@@ -219,12 +219,12 @@ void BuildDirectPbrVehicleShowroom(
     auto& Reg = OutRig.Scene.MaterialRegister;
 
     // 1. Register 11 Vehicle OpenPBR Materials + 5 Showroom / Calibration Materials
-    const auto MakeRoleMaterial = [](VehicleSurfaceMaterialRole Role) -> MaterialSpace::SurfaceMaterial
+    const auto ConstructSlotMaterial = [](VehicleSurfaceSlot Slot) -> MaterialSpace::SurfaceMaterial
     {
         MaterialSpace::SurfaceMaterial Mat {};
-        switch (Role)
+        switch (Slot)
         {
-            case VehicleSurfaceMaterialRole::BodyCoat:
+            case VehicleSurfaceSlot::BodyCoat:
                 Mat.MaterialName            = "VehicleCobaltSapphireCoat";
                 Mat.Diffuse.BaseColor       = { 0.09f, 0.28f, 0.74f };
                 Mat.Specular.Metalness      = 0.72f;
@@ -233,14 +233,14 @@ void BuildDirectPbrVehicleShowroom(
                 Mat.Clearcoat.CoatWeight    = 1.00f;
                 Mat.Clearcoat.CoatRoughness = 0.03f;
                 break;
-            case VehicleSurfaceMaterialRole::CanopyGloss:
+            case VehicleSurfaceSlot::CanopyGloss:
                 Mat.MaterialName            = "VehicleObsidianCanopy";
                 Mat.Diffuse.BaseColor       = { 0.03f, 0.035f, 0.045f };
                 Mat.Specular.Roughness      = 0.08f;
                 Mat.Clearcoat.CoatWeight    = 1.00f;
                 Mat.Clearcoat.CoatRoughness = 0.02f;
                 break;
-            case VehicleSurfaceMaterialRole::VehicleGlass:
+            case VehicleSurfaceSlot::VehicleGlass:
                 Mat.MaterialName            = "VehicleTintedWindshield";
                 Mat.Diffuse.BaseColor       = { 0.05f, 0.09f, 0.13f };
                 Mat.Specular.Roughness      = 0.025f;
@@ -248,43 +248,43 @@ void BuildDirectPbrVehicleShowroom(
                 Mat.Clearcoat.CoatWeight    = 1.00f;
                 Mat.Clearcoat.CoatRoughness = 0.015f;
                 break;
-            case VehicleSurfaceMaterialRole::VehiclePlastic:
+            case VehicleSurfaceSlot::VehiclePlastic:
                 Mat.MaterialName       = "VehicleIntakePolymer";
                 Mat.Diffuse.BaseColor  = { 0.07f, 0.075f, 0.082f };
                 Mat.Specular.Roughness = 0.52f;
                 break;
-            case VehicleSurfaceMaterialRole::TyreRubber:
+            case VehicleSurfaceSlot::TyreRubber:
                 Mat.MaterialName       = "VulcanizedTyreRubber";
                 Mat.Diffuse.BaseColor  = { 0.045f, 0.046f, 0.050f };
                 Mat.Specular.Roughness = 0.68f;
                 break;
-            case VehicleSurfaceMaterialRole::RimAlloy:
+            case VehicleSurfaceSlot::RimAlloy:
                 Mat.MaterialName          = "ForgedTitaniumRimAlloy";
                 Mat.Diffuse.BaseColor     = { 0.84f, 0.86f, 0.90f };
                 Mat.Specular.Metalness    = 0.96f;
                 Mat.Specular.Roughness    = 0.16f;
                 Mat.Specular.EdgeTintF82  = { 0.96f, 0.97f, 0.99f };
                 break;
-            case VehicleSurfaceMaterialRole::HubAccent:
+            case VehicleSurfaceSlot::WheelCapAccent:
                 Mat.MaterialName          = "AnodizedBronzeHubCap";
                 Mat.Diffuse.BaseColor     = { 0.78f, 0.54f, 0.24f };
                 Mat.Specular.Metalness    = 0.92f;
                 Mat.Specular.Roughness    = 0.20f;
                 break;
-            case VehicleSurfaceMaterialRole::BrakeDisc:
+            case VehicleSurfaceSlot::BrakeDisc:
                 Mat.MaterialName          = "MachinedSteelBrakeRotor";
                 Mat.Diffuse.BaseColor     = { 0.66f, 0.68f, 0.71f };
                 Mat.Specular.Metalness    = 0.94f;
                 Mat.Specular.Roughness    = 0.28f;
                 Mat.Specular.Anisotropy   = 0.55f;
                 break;
-            case VehicleSurfaceMaterialRole::VehicleTrim:
+            case VehicleSurfaceSlot::VehicleTrim:
                 Mat.MaterialName          = "SatinGraphiteTrim";
                 Mat.Diffuse.BaseColor     = { 0.14f, 0.15f, 0.17f };
                 Mat.Specular.Metalness    = 0.40f;
                 Mat.Specular.Roughness    = 0.34f;
                 break;
-            case VehicleSurfaceMaterialRole::HeadlightLens:
+            case VehicleSurfaceSlot::HeadlightLens:
                 Mat.MaterialName                             = "XenonHeadlampOptic";
                 Mat.Diffuse.BaseColor                        = { 0.92f, 0.95f, 1.00f };
                 Mat.Specular.Roughness                       = 0.04f;
@@ -292,7 +292,7 @@ void BuildDirectPbrVehicleShowroom(
                 Mat.PorosityLight.BlackbodyTemperatureKelvin = 5800.0f;
                 Mat.PorosityLight.EmissionTint               = { 0.94f, 0.97f, 1.00f };
                 break;
-            case VehicleSurfaceMaterialRole::TaillightLens:
+            case VehicleSurfaceSlot::TaillightLens:
             default:
                 Mat.MaterialName                        = "LedTaillampOptic";
                 Mat.Diffuse.BaseColor                   = { 0.85f, 0.05f, 0.04f };
@@ -304,9 +304,9 @@ void BuildDirectPbrVehicleShowroom(
         return Mat;
     };
 
-    for (std::size_t R = 0u; R < static_cast<std::size_t>(VehicleSurfaceMaterialRole::Count); ++R)
+    for (std::size_t R = 0u; R < static_cast<std::size_t>(VehicleSurfaceSlot::Count); ++R)
     {
-        OutRig.RoleSlots[R] = Reg.RegisterMaterial(MakeRoleMaterial(static_cast<VehicleSurfaceMaterialRole>(R)));
+        OutRig.MaterialSlots[R] = Reg.RegisterMaterial(ConstructSlotMaterial(static_cast<VehicleSurfaceSlot>(R)));
     }
 
     MaterialSpace::SurfaceMaterial FloorMat {};
@@ -345,10 +345,10 @@ void BuildDirectPbrVehicleShowroom(
     WorldPrims.reserve(Vehicle.Triangles.size() + 2048u);
     WorldNormals.reserve(Vehicle.Triangles.size() + 2048u);
 
-    for (std::size_t R = 0u; R < static_cast<std::size_t>(VehicleSurfaceMaterialRole::Count); ++R)
+    for (std::size_t R = 0u; R < static_cast<std::size_t>(VehicleSurfaceSlot::Count); ++R)
     {
-        const auto Role = static_cast<VehicleSurfaceMaterialRole>(R);
-        OutRig.Networks[R] = ControlVehicleSurfaceDecoder::BuildPolygonNetworkFromRole(Vehicle, Role);
+        const auto Slot = static_cast<VehicleSurfaceSlot>(R);
+        OutRig.Networks[R] = ControlVehicleSurfaceDecoder::ConstructPolygonNetworkFromSlot(Vehicle, Slot);
         if (OutRig.Networks[R].Faces.empty())
         {
             continue;
@@ -360,7 +360,7 @@ void BuildDirectPbrVehicleShowroom(
         Inst.WorldTranslation    = { 0.0f, 0.0f, 0.0f };
         Inst.PreviousTranslation = { 0.0f, 0.0f, 0.0f };
         Inst.UniformScale        = 1.0f;
-        Inst.MaterialSlot        = OutRig.RoleSlots[R];
+        Inst.MaterialSlot        = OutRig.MaterialSlots[R];
         OutRig.Scene.ClusterInstances.push_back(Inst);
     }
 
@@ -374,7 +374,7 @@ void BuildDirectPbrVehicleShowroom(
         Prim.Edge02           = Src.CornerC - Src.CornerA;
         Prim.SourceFaceIndex  = TIdx;
         Prim.PrimitiveOrdinal = static_cast<uint32_t>(WorldPrims.size());
-        Prim.MaterialOrdinal  = OutRig.RoleSlots[static_cast<std::size_t>(Src.MaterialRole)];
+        Prim.MaterialOrdinal  = OutRig.MaterialSlots[static_cast<std::size_t>(Src.SurfaceSlot)];
         Prim.OpaqueMask       = 1u;
         WorldPrims.push_back(Prim);
         WorldNormals.push_back({ Src.NormalA, Src.NormalB, Src.NormalC });
@@ -594,7 +594,7 @@ int main()
     {
         if (!RequireCondition(Profile.PeakCandela > 10.0f, "LM-63 PeakCandela > 10 cd") ||
             !RequireCondition(Profile.NormalizedFluxSr > 0.01f && Profile.NormalizedFluxSr <= Constants::TauFloat * 2.0f, "LM-63 NormalizedFluxSr physical") ||
-            !RequireCondition(Profile.EmissionHalfAngleRad > 0.15f && Profile.EmissionHalfAngleRad <= Constants::PiFloat + 1.0e-4f, "LM-63 EmissionHalfAngleRad valid"))
+            !RequireCondition(Profile.CutoffHalfAngleRad > 0.15f && Profile.CutoffHalfAngleRad <= Constants::PiFloat + 1.0e-4f, "LM-63 CutoffHalfAngleRad valid"))
         {
             return 1;
         }

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           ARTICULATEDCAPSULERIG.H
 ============================================================================================================================================*/
-// 🧩 Order 2 GtxLowEnd live deforming tapered bone-capsule evaluator (< 0.01 ms pose update) and articulated humanoid generator
+// 🧩 Order 2 GtxLowEnd live deforming tapered bone-capsule solver (< 0.01 ms pose update) and articulated humanoid generator
 
 #pragma once
 
@@ -142,7 +142,7 @@ inline void AppendTaperedLimbGeometry(
     }
 }
 
-// Builds identical topology (fixed vertex & face count across all PoseFraction in [0, 1]) so HighEnd can refit BVH4 in < 0.08 ms
+// Builds identical skeleton (fixed vertex & face count across all PoseFraction in [0, 1]) so HighEnd can refit BVH4 in < 0.08 ms
 [[nodiscard]] inline ArticulatedCapsuleRig BuildArticulatedHumanoidPose(
     float                          PoseFraction,
     Mathematics::Axis3D            RootWorld,

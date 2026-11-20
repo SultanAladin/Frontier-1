@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                       CONTROLVEHICLESURFACEDECODER.H
 ============================================================================================================================================*/
-// 🧩 FCT1 binary facet archive decoder assembling the 25,068-triangle Controlled Integrator vehicle (Body + 4 Rims + 4 Tyres)
+// 🧩 FCT1 binary face binary decoder assembling the 25,068-triangle Controlled Integrator vehicle (Body + 4 Rims + 4 Tyres)
 
 #pragma once
 
@@ -39,7 +39,7 @@ enum class VehicleSubassemblyPart : uint8_t
     TyreRearRight  = 8u,
 };
 
-enum class VehicleSurfaceMaterialRole : uint8_t
+enum class VehicleSurfaceSlot : uint8_t
 {
     BodyCoat       = 0u, // Clear-coated metallic car body paint
     CanopyGloss    = 1u, // Clear-coated dark roof/pillar canopy
@@ -47,11 +47,11 @@ enum class VehicleSurfaceMaterialRole : uint8_t
     VehiclePlastic = 3u, // Matte dark lower trim & intake grille
     TyreRubber     = 4u, // Vulcanized tyre tread & sidewall rubber
     RimAlloy       = 5u, // Satin forged wheel spoke alloy
-    HubAccent      = 6u, // Center wheel hub cap accent
+    WheelCapAccent      = 6u, // Center wheel wheel cap accent
     BrakeDisc      = 7u, // Brushed steel brake rotor
     VehicleTrim    = 8u, // Satin dark exterior trim
-    HeadlightLens  = 9u, // Front headlamp lens emitter
-    TaillightLens  = 10u,// Rear tail-lamp lens emitter
+    HeadlightLens  = 9u, // Front headlamp lens luminaire
+    TaillightLens  = 10u,// Rear tail-lamp lens luminaire
     Count          = 11u,
 };
 
@@ -65,17 +65,17 @@ enum class VehicleCoordinateConvention : uint8_t
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct DecodedFacetStream
+struct DecodedFaceStream
 {
     uint32_t              VertexCount   = 0u;
-    uint32_t              FacetCount    = 0u;
+    uint32_t              FaceCount    = 0u;
     std::vector<float>    Positions     {}; // [m] - 3 floats per vertex
-    std::vector<uint32_t> Indices       {}; // [-] - 3 vertex indices per facet
-    std::vector<uint32_t> FamilyCodes   {}; // [-] - 1 family code per facet
-    std::vector<float>    CornerNormals {}; // [-] - 9 floats per facet (38-deg creased if absent in archive)
+    std::vector<uint32_t> Indices       {}; // [-] - 3 vertex indices per face
+    std::vector<uint32_t> PartGroupCodes   {}; // [-] - 1 part group code per face
+    std::vector<float>    CornerNormals {}; // [-] - 9 floats per face (38-deg creased if absent in binary)
 };
 
-struct AssembledVehicleTriangle
+struct DecodedVehicleTriangle
 {
     Mathematics::Axis3D        CornerA      {};
     Mathematics::Axis3D        CornerB      {};
@@ -84,14 +84,14 @@ struct AssembledVehicleTriangle
     Mathematics::Axis3D        NormalB      { 0.0f, 0.0f, 1.0f };
     Mathematics::Axis3D        NormalC      { 0.0f, 0.0f, 1.0f };
     float                      AreaMeters2  = 0.0f;
-    uint32_t                   FamilyCode   = 6u;
+    uint32_t                   PartGroupCode   = 6u;
     VehicleSubassemblyPart     Part         = VehicleSubassemblyPart::BodyChassis;
-    VehicleSurfaceMaterialRole MaterialRole = VehicleSurfaceMaterialRole::BodyCoat;
+    VehicleSurfaceSlot SurfaceSlot = VehicleSurfaceSlot::BodyCoat;
 };
 
 struct AssembledControlVehicle
 {
-    std::vector<AssembledVehicleTriangle> Triangles          {};
+    std::vector<DecodedVehicleTriangle> Triangles          {};
     Mathematics::Axis3D                   BoundsMin          {};
     Mathematics::Axis3D                   BoundsMax          {};
     Mathematics::Axis3D                   BoundsCenter       {};
@@ -108,17 +108,17 @@ struct AssembledControlVehicle
 class ControlVehicleSurfaceDecoder
 {
 public:
-    // Decodes a single FCT1 binary buffer (.face or .facet) and derives 38-degree creased normals when omitted
-    [[nodiscard]] static bool DecodeFacetBytes(
-        std::span<const uint8_t> ArchiveBytes,
-        DecodedFacetStream&      OutStream,
+    // Decodes a single FCT1 binary buffer (.face or .face) and derives 38-degree creased normals when omitted
+    [[nodiscard]] static bool DecodeFaceBytes(
+        std::span<const uint8_t> PayloadBytes,
+        DecodedFaceStream&      OutStream,
         std::string&             OutDiagnostic,
         float                    CreaseAngleDegrees = 38.0f);
 
     // Decodes a single FCT1 binary file from disk
-    [[nodiscard]] static bool DecodeFacetFile(
+    [[nodiscard]] static bool DecodeFaceFile(
         const std::filesystem::path& FilePath,
-        DecodedFacetStream&          OutStream,
+        DecodedFaceStream&          OutStream,
         std::string&                 OutDiagnostic,
         float                        CreaseAngleDegrees = 38.0f);
 
@@ -130,9 +130,9 @@ public:
         std::string&                 OutDiagnostic);
 
     // Converts a subset (or all) of assembled vehicle triangles into a PolygonNetwork for ClusterPyramid / world instancing
-    [[nodiscard]] static GeometrySpace::PolygonNetwork BuildPolygonNetworkFromRole(
+    [[nodiscard]] static GeometrySpace::PolygonNetwork ConstructPolygonNetworkFromSlot(
         const AssembledControlVehicle& Vehicle,
-        VehicleSurfaceMaterialRole     TargetRole);
+        VehicleSurfaceSlot     TargetSlot);
 };
 
 } // namespace Frontier::Codecs

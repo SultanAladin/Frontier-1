@@ -517,7 +517,7 @@ void SurfelRadiosityLatticeSequence::BuildRelaxedLatticeFromScene(
                                         continue;
                                     }
                                     const float C2   = CosA * CosA;
-                                    const float Lobe = C2 * C2 * C2 * C2; // cos^8 directional kernel
+                                    const float Lobe = C2 * C2 * C2 * C2; // cos^8 directional stencil
                                     DepthSum[TIdx]   += D * Lobe;
                                     DepthSqSum[TIdx] += (D * D) * Lobe;
                                     WeightSum[TIdx]  += Lobe;

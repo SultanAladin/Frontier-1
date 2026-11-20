@@ -1,5 +1,7 @@
-# 🧩 World Rendering Ground-Up Redo Plan
+# 🧩 World Rendering Ground-Up Redo Plan (🟢 Complete — See [WorldRenderingRedoReport.md](WorldRenderingRedoReport.md))
 
+> **Status**: 🟢 **Complete (`2026-11-20`)** across Phase 0 + Order 1 + Order 2 + Order 3. Full quantitative verification metrics and rendered visual exhibits are documented in **[WorldRenderingRedoReport.md](WorldRenderingRedoReport.md)**.
+>
 > **TL;DR**: First, purge every remaining SDF and 3D Volume SDF-baking unit from `Engine/` (archiving `GpuSdfBaker` and volume SDF `.slang` units into `Experimental/RemovedSdfGi/Source/BakingSdf/`) so `Engine/` starts from a 100% SDF-free baseline. Next, build in three strict orders: **(1st) Standalone Direct PBR (`MatCap` + `OpenPbrDirect`, zero GI, zero SDF)**, **(2nd) Real-Time GI (`GtxLowEnd` & `HighEnd` presets)** pairing **GI Candidates 1 + 2 (`StokesContourIrradianceSequence` + `SurfelRadiosityLatticeSequence`)** with **Shadow Candidate 1 (`HybridConeShadowSequence`) on `GtxLowEnd`** and **exact `BVH4` / `RayQuery` Shadows (`SolarFrustumShadow` + `PlaneAwareShadowFilter` + GPU Skinned `BVH4` Refit, zero SDF!) on `HighEnd`**, and **(3rd) Unified Deterministic Path Tracer (`DeterministicPathTraceSequence`)** serving both **Games** and **Actual Scene Rendering** through settings alone (`1:1` with `Experimental/DeterministicPathTracer/`).
 
 ---

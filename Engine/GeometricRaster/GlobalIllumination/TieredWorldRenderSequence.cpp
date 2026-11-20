@@ -10,6 +10,7 @@
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/DeterministicPathTraceSequence.h"
 
 #include <algorithm>
 #include <array>
@@ -492,6 +493,48 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     Result.IndirectGiLinearHdr.assign(TotalPixels, { 0.0f, 0.0f, 0.0f });
     Result.DisplayRgba8.assign(TotalPixels * 4u, 255u);
     Result.SdfAllocatedBytes = 0u;
+
+    //====================================================================================================================
+    // ORDER 3: UNIFIED DETERMINISTIC PATH TRACER (GAMEREALTIME & SCENEFINALRENDER — ZERO SDF)
+    //====================================================================================================================
+    if ((Config.Engine == WorldRenderEngine::PathTracerGameRealtime ||
+         Config.Engine == WorldRenderEngine::PathTracerSceneFinalRender) &&
+        AttachedPathTracer != nullptr && AttachedPathTracer->Ready())
+    {
+        const DeterministicRenderProfile TargetProfile =
+            (Config.Engine == WorldRenderEngine::PathTracerGameRealtime)
+                ? DeterministicRenderProfile::GameRealtime
+                : DeterministicRenderProfile::SceneFinalRender;
+
+        auto& PtCfg = AttachedPathTracer->AccessConfiguration();
+        if (PtCfg.Profile != TargetProfile)
+        {
+            DeterministicPathTraceSequence::ApplyRenderProfile(TargetProfile, PtCfg);
+            if (TargetProfile == DeterministicRenderProfile::GameRealtime)
+            {
+                PtCfg.TraceScale = 1u; // Match requested viewport dimensions 1:1 when driven by TieredWorldRenderSequence
+            }
+        }
+        (void)AttachedPathTracer->ResizeAccumulation(Result.WidthPx, Result.HeightPx);
+        const uint32_t Batch = std::max(1u, Config.PathTraceSamples);
+        (void)AttachedPathTracer->AdvanceSamples(Batch);
+        (void)AttachedPathTracer->ResolveDisplayRgba8(Result.DisplayRgba8);
+
+        std::vector<float> LinearRgb {};
+        if (AttachedPathTracer->RetrieveDisplayLinearRgb(LinearRgb) && LinearRgb.size() >= TotalPixels * 3u)
+        {
+            for (std::size_t P = 0u; P < TotalPixels; ++P)
+            {
+                Result.CompositeLinearHdr[P] = {
+                    LinearRgb[P * 3u + 0u],
+                    LinearRgb[P * 3u + 1u],
+                    LinearRgb[P * 3u + 2u],
+                };
+            }
+        }
+        Result.SdfAllocatedBytes = 0u;
+        return Result;
+    }
 
     //====================================================================================================================
     // PASS 1: SHARED 64-BIT PRIMARY VISIBILITY, TWO-PHASE HI-Z CULL & 2-LAYER GLASS PEEL

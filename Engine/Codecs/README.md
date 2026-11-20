@@ -14,8 +14,8 @@
 | `ColourCodec.h` | .ColourSpace, .ColourRamp & .ColourSwatch encoder/decoder persisting radiometric swatches, modular ramps, spectra & 64B-aligned LUTs |
 | `ComponentSpaceCodec.cpp` | Implementation of .ComponentSpace Two-Tier Hybrid TOML manifest + 64B-aligned binary thumbnail & Revision serialization |
 | `ComponentSpaceCodec.h` | .ComponentSpace Two-Tier Hybrid encoder & decoder for ComponentClassDefinition hierarchies, physics constraints & behaviours |
-| `ControlVehicleSurfaceDecoder.cpp` | FCT1 binary facet archive decoder assembling the 25,068-triangle Controlled Integrator vehicle |
-| `ControlVehicleSurfaceDecoder.h` | FCT1 binary facet archive decoder (Body + 4 Rims + 4 Tyres) with 38-deg creased normals |
+| `ControlVehicleSurfaceDecoder.cpp` | FCT1 binary face stream decoder constructing the 25,068-triangle ControlVehicle surface |
+| `ControlVehicleSurfaceDecoder.h` | FCT1 binary face stream decoder (Body + 4 Rims + 4 Tyres) with 38-deg creased smooth normals |
 | `FontCodec.cpp` | .FontSpace encoder & decoder implementation |
 | `FontCodec.h` | .FontSpace encoder & decoder persisting vector typography metrics, kerning pairs, and 64B-aligned contour streams |
 | `GeometryCodec.cpp` | Implementation of .GeometrySpace Two-Tier Hybrid encoder & decoder (full n-gon PolygonNetwork + legacy VehiclePolygon support) |

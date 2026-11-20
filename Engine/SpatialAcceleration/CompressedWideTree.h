@@ -24,7 +24,7 @@ namespace Frontier::SpatialAcceleration
 //                                                       CONSTANTS
 //------------------------------------------------------------------------------------------------------------------------
 
-inline constexpr uint32_t CompressedEmptySlotLink     = 0xFFFFFFFFu; // [idx] - Unused branch link sentinel
+inline constexpr uint32_t CompressedEmptySlotLink     = 0xFFFFFFFFu; // [idx] - Unused branch link empty marker
 inline constexpr uint32_t CompressedLeafPrimCeiling   = 15u;         // [cnt] - Maximum triangles per compressed leaf
 inline constexpr uint32_t CompressedQuantizationSteps = 255u;        // [-]   - 8-bit quantized subtree bounds
 
@@ -32,7 +32,7 @@ inline constexpr uint32_t CompressedQuantizationSteps = 255u;        // [-]   - 
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-// 📝 Exact 64-byte (16 x uint32_t) 8-bit quantized 4-wide BVH4 node shared across CPU and .slang GPU ray queries
+// 📝 Exact 64-byte (16 x uint32_t) 8-bit quantized 4-wide BVH4 entry shared across CPU and .slang GPU ray queries
 struct alignas(64) CompressedWideEntry64
 {
     float    OriginX          = 0.0f; // [0]  - Shared lower X origin for 4 subtrees
@@ -42,7 +42,7 @@ struct alignas(64) CompressedWideEntry64
     uint32_t QuantizedBounds[6] {};   // [4..9] - 24 uint8s: minX[4], maxX[4], minY[4], maxY[4], minZ[4], maxZ[4]
     uint32_t PackedCounts01   = 0u;   // [10] - Count0 | (Count1 << 16)  (0 = internal subtree; >0 = leaf count)
     uint32_t PackedCounts23   = 0u;   // [11] - Count2 | (Count3 << 16)
-    uint32_t SubtreeLinks[4]  {       // [12..15] - Subtree node index (when Count==0) or FirstPrim (when Count>0)
+    uint32_t SubtreeLinks[4]  {       // [12..15] - Subtree entry index (when Count==0) or FirstPrim (when Count>0)
         CompressedEmptySlotLink,
         CompressedEmptySlotLink,
         CompressedEmptySlotLink,
@@ -52,14 +52,14 @@ struct alignas(64) CompressedWideEntry64
 
 static_assert(sizeof(CompressedWideEntry64) == 64u, "CompressedWideEntry64 must occupy 64 aligned bytes.");
 
-// 📝 Compact 32-byte rigid yaw+translation instance record for 50+ vehicle fleet & multi-asset TLAS4 traversal
+// 📝 Compact 32-byte rigid yaw+translation instance entry for 50+ vehicle fleet & multi-asset TLAS4 ray query
 struct alignas(16) RigidInstancePlacement32
 {
     float    CosineYaw         = 1.0f;     // [-]   - cos(yaw) around vertical axis
     float    SineYaw           = 0.0f;     // [-]   - sin(yaw) around vertical axis
     float    TranslationA      = 0.0f;     // [m]   - Horizontal translation axis A (X)
     float    TranslationB      = 0.0f;     // [m]   - Horizontal translation axis B (Y in Z-up, Z in Y-up)
-    uint32_t BlasRootEntryIndex = 0u;       // [idx] - Root CompressedWideEntry64 offset in shared node buffer
+    uint32_t BlasRootEntryIndex = 0u;       // [idx] - Root CompressedWideEntry64 offset in shared entry buffer
     uint32_t MaterialOverride0 = 0xFFFFu;  // [packed] - Low16 = BodyCoat swap, High16 = RimAlloy swap (0xFFFF = unchanged)
     uint32_t VerticalOffsetBits = 0u;      // [bits]- IEEE-754 float vertical translation (Z in Z-up, Y in Y-up)
     uint32_t AxisConvention    = 0u;       // [0/1] - 0 = Z-up (yaw in XY), 1 = Y-up (yaw in XZ, matches Studio WebGPU)
@@ -67,13 +67,13 @@ struct alignas(16) RigidInstancePlacement32
 
 static_assert(sizeof(RigidInstancePlacement32) == 32u, "RigidInstancePlacement32 must occupy 32 bytes.");
 
-// 📝 Flat 32-byte binary BVH node retained alongside deforming meshes for O(N) GPU/CPU bottom-up AABB refit
+// 📝 Flat 32-byte binary BVH entry retained alongside deforming surfaces for O(N) GPU/CPU bottom-up AABB refit
 struct alignas(16) RefittableBinaryEntry32
 {
     float    BoundsMin[3]   { 0.0f, 0.0f, 0.0f };
     uint32_t LeftOrFirst    = 0u; // Left binary entry index when PrimCount == 0, else first primitive index
     float    BoundsMax[3]   { 0.0f, 0.0f, 0.0f };
-    uint32_t PrimitiveCount = 0u; // 0 = internal binary node (right = LeftOrFirst + 1); >0 = leaf triangle count
+    uint32_t PrimitiveCount = 0u; // 0 = internal binary entry (right = LeftOrFirst + 1); >0 = leaf triangle count
 };
 
 static_assert(sizeof(RefittableBinaryEntry32) == 32u, "RefittableBinaryEntry32 must occupy 32 bytes.");
@@ -85,19 +85,19 @@ static_assert(sizeof(RefittableBinaryEntry32) == 32u, "RefittableBinaryEntry32 m
 class CompressedWideTree
 {
 public:
-    std::vector<CompressedWideEntry64>    WideEntries            {}; // [-] - Contiguous 64 B quantized 4-wide nodes
+    std::vector<CompressedWideEntry64>    WideEntries            {}; // [-] - Contiguous 64 B quantized 4-wide entries
     std::vector<RayTrianglePrimitive>    Primitives       {}; // [-] - Reordered contiguous leaf triangle stream
     std::vector<TriangleSmoothNormals>   PrimitiveNormals {}; // [-] - Reordered smooth normals aligned 1:1 with Primitives
-    std::vector<uint32_t>                SourceRemapOrder {}; // [-] - Maps reordered leaf slot -> input triangle index
-    std::vector<RefittableBinaryEntry32> BinaryHierarchy  {}; // [-] - Retained binary hierarchy for sub-0.08 ms refit
-    std::vector<uint32_t>                BinaryBottomUp   {}; // [-] - Post-order internal node indices for bottom-up refit
+    std::vector<uint32_t>                SourceRemapOrder {}; // [-] - Links reordered leaf slot -> input triangle index
+    std::vector<RefittableBinaryEntry32> BinaryTreeEntries  {}; // [-] - Retained binary tree for sub-0.08 ms refit
+    std::vector<uint32_t>                BinaryBottomUp   {}; // [-] - Post-order internal entry indices for bottom-up refit
     Mathematics::Axis3D                  RootBoundsMin    {};
     Mathematics::Axis3D                  RootBoundsMax    {};
     uint32_t                             MaxWideDepth     = 0u;
 
     void Reset() noexcept;
 
-    // Builds 32-bin SAH binary hierarchy and collapses via Ylitie-Karras-Laine (2017) DP into 64 B 4-wide quantized nodes
+    // Builds 32-bin SAH binary tree and collapses via Ylitie-Karras-Laine (2017) DP into 64 B 4-wide quantized entries
     bool BuildFromPrimitives(
         std::span<const RayTrianglePrimitive>  InputPrimitives,
         std::span<const TriangleSmoothNormals> InputNormals    = {},

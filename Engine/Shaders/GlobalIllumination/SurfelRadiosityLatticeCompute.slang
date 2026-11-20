@@ -16,7 +16,7 @@ struct GpuSurfelLatticeUniforms
 {
     uint4  PixelSurfelBvhTier; // x = PixelCount, y = EmissiveSurfelCount, z = BvhEntryCount, w = HighEndZeroSdfTier
     uint4  InnerDimsSheet;     // xyz = InnerGridDim, w = SheetRes
-    uint4  OuterDimsChebyshev;   // xyz = OuterGridDim, w = HasChebyshevMoments (0 or 1)
+    uint4  OuterDimsChebyshev;   // xyz = OuterGridDim, w = ChebyshevMomentsEnabled (0 or 1)
     float4 InnerBoundsMin;
     float4 InnerBoundsMax;
     float4 OuterBoundsMin;

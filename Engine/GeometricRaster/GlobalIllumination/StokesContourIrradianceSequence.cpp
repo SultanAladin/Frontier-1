@@ -69,7 +69,7 @@ float EvaluateClippedTriangleFormFactor(
         return 0.0f;
     }
 
-    // Sutherland-Hodgman clip against receiver horizon plane dot(ReceiverNormal, P - ReceiverPos) >= 1e-4
+    // Sutherland-Hodgman clip against receiver tangent plane plane dot(ReceiverNormal, P - ReceiverPos) >= 1e-4
     std::array<Mathematics::Axis3D, 3u> RawVerts {{
         TriV0 - ReceiverPos,
         TriV1 - ReceiverPos,

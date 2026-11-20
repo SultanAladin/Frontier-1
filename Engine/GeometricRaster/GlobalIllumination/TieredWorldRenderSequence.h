@@ -42,10 +42,12 @@ enum class WorldRenderTier : uint8_t
 
 enum class WorldRenderEngine : uint8_t
 {
-    MatCap              = 0u, // [-] - Order 1: Studio MatCap Normal/Roughness Shading (Zero GI, Zero SDF)
-    OpenPbrDirect       = 1u, // [-] - Order 1: Standalone Direct OpenPBR + LTC + .ies + Shadow Lab (Zero GI, Zero SDF)
-    RealTimeGiGtxLowEnd = 2u, // [-] - Order 2: GtxLowEnd Hybrid Cone Shadow (<=3.7 MB C0 SDF + Capsule Rig) + Stokes/Surfel GI
-    RealTimeGiHighEnd   = 3u, // [-] - Order 2: HighEnd 0 MB SDF + BVH4 Vogel Shadows + Skinned BVH4 Refit + Dual-Cascade GI
+    MatCap                     = 0u, // [-] - Order 1: Studio MatCap Normal/Roughness Shading (Zero GI, Zero SDF)
+    OpenPbrDirect              = 1u, // [-] - Order 1: Standalone Direct OpenPBR + LTC + .ies + Shadow Lab (Zero GI, Zero SDF)
+    RealTimeGiGtxLowEnd        = 2u, // [-] - Order 2: GtxLowEnd Hybrid Cone Shadow (<=3.7 MB C0 SDF + Capsule Rig) + Stokes/Surfel GI
+    RealTimeGiHighEnd          = 3u, // [-] - Order 2: HighEnd 0 MB SDF + BVH4 Vogel Shadows + Skinned BVH4 Refit + Dual-Cascade GI
+    PathTracerGameRealtime     = 4u, // [-] - Order 3: Unified Deterministic Path Tracer (GameRealtime: Blue-Noise (0,m,2) + A-Trous + Reprojection)
+    PathTracerSceneFinalRender = 5u, // [-] - Order 3: Unified Deterministic Path Tracer (SceneFinalRender: Shared (0,m,2) exact convergence)
 };
 
 enum class RealTimeGiCandidate : uint8_t
@@ -68,6 +70,7 @@ struct WorldRenderConfiguration
     bool                     ReflectionsEnabled  = true; // [-]     - Specular reflection toggle
     bool                     RaytracingEnabled   = true; // [-]     - Hardware/BVH raytracing toggle
     uint32_t                 QualityTier         = 1u;   // [0..4]  - Quality tier
+    uint32_t                 PathTraceSamples    = 4u;   // [spp]   - Progressive/realtime sample batch when Order 3 is active
 };
 
 struct WorldSceneSpecification
@@ -110,9 +113,17 @@ struct WorldRenderOutput
 //                                            TIERED WORLD RENDER SEQUENCE
 //------------------------------------------------------------------------------------------------------------------------
 
+class DeterministicPathTraceSequence;
+
 class TieredWorldRenderSequence
 {
 public:
+    // Attaches an optional Vulkan 1.3 DeterministicPathTraceSequence for Order 3 (GameRealtime & SceneFinalRender)
+    void AttachDeterministicPathTracer(DeterministicPathTraceSequence* Tracer) noexcept
+    {
+        AttachedPathTracer = Tracer;
+    }
+
     // Compiles compact 32 B BounceSlabEntries for every registered OpenPBR material slot
     static void CompileBounceSummaries(WorldSceneSpecification& InOutScene);
 
@@ -141,10 +152,11 @@ public:
     [[nodiscard]] const AtmosphericSkySequence&    InspectSkySequence() const noexcept       { return SkySequence; }
 
 private:
-    OrthographicShadowCascade FineContactClip   {};
-    OrthographicShadowCascade CoarseContactClip {};
-    DepthPyramidSequence      PreviousHiZ       {};
-    AtmosphericSkySequence    SkySequence       {};
+    DeterministicPathTraceSequence* AttachedPathTracer = nullptr;
+    OrthographicShadowCascade       FineContactClip    {};
+    OrthographicShadowCascade       CoarseContactClip  {};
+    DepthPyramidSequence            PreviousHiZ        {};
+    AtmosphericSkySequence          SkySequence        {};
 };
 
 } // namespace Frontier::GeometricRaster

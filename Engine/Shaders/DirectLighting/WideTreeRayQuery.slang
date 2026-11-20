@@ -218,7 +218,7 @@ public bool TraceWideBoundingTreeAnyHit(
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-//                                  64-BYTE 8-BIT QUANTIZED 4-WIDE BVH4 TRAVERSAL
+//                                  64-BYTE 8-BIT QUANTIZED 4-WIDE BVH4 RAY QUERY
 //------------------------------------------------------------------------------------------------------------------------
 
 public struct GpuCompressedWideEntry64

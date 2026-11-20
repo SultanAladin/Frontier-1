@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                      CONTROLVEHICLESURFACEDECODER.CPP
 ============================================================================================================================================*/
-// 🧩 FCT1 binary facet archive decoder assembling the 25,068-triangle Controlled Integrator vehicle (Body + 4 Rims + 4 Tyres)
+// 🧩 FCT1 binary face binary decoder assembling the 25,068-triangle Controlled Integrator vehicle (Body + 4 Rims + 4 Tyres)
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -25,7 +25,7 @@ namespace
 
 constexpr float    VehicleHeightRebase = 0.11285f;             // [m] - Authored Z of body origin above axle plane
 constexpr float    VehicleGroundLift   = 0.53000f;             // [m] - Places 0.509 m tyre contact on ground plane
-constexpr float    RimToHubScale       = 0.34460f / 0.344818f; // [-] - Rim archive radius -> hub socket radius
+constexpr float    RimWheelScale       = 0.34460f / 0.344818f; // [-] - Rim binary radius -> wheel socket radius
 constexpr uint32_t CornerNormalsBit    = 1u;                   // [-] - FCT1 header bit 0
 constexpr uint32_t Fct1HeaderByteCount = 48u;                  // [B] - FCT1 binary header length
 
@@ -58,24 +58,24 @@ constexpr std::array<WheelAxleMount, 4u> CanonicalAxleMounts {{
     return Scalar;
 }
 
-[[nodiscard]] VehicleSurfaceMaterialRole ResolveBodyFamilyRole(uint32_t FamilyCode) noexcept
+[[nodiscard]] VehicleSurfaceSlot ResolveBodyPartSlot(uint32_t PartGroupCode) noexcept
 {
-    switch (FamilyCode)
+    switch (PartGroupCode)
     {
-        case 6u:  return VehicleSurfaceMaterialRole::BodyCoat;
-        case 7u:  return VehicleSurfaceMaterialRole::VehicleGlass;
-        case 8u:  return VehicleSurfaceMaterialRole::VehiclePlastic;
-        case 9u:  return VehicleSurfaceMaterialRole::CanopyGloss; // Body archive family 9 = gloss roof/pillar canopy
-        case 10u: return VehicleSurfaceMaterialRole::HubAccent;
-        case 11u: return VehicleSurfaceMaterialRole::BrakeDisc;
-        case 12u: return VehicleSurfaceMaterialRole::VehicleTrim;
-        case 13u: return VehicleSurfaceMaterialRole::HeadlightLens;
-        case 14u: return VehicleSurfaceMaterialRole::TaillightLens;
-        default:  return VehicleSurfaceMaterialRole::VehicleTrim;
+        case 6u:  return VehicleSurfaceSlot::BodyCoat;
+        case 7u:  return VehicleSurfaceSlot::VehicleGlass;
+        case 8u:  return VehicleSurfaceSlot::VehiclePlastic;
+        case 9u:  return VehicleSurfaceSlot::CanopyGloss; // Body binary part group 9 = gloss roof/pillar canopy
+        case 10u: return VehicleSurfaceSlot::WheelCapAccent;
+        case 11u: return VehicleSurfaceSlot::BrakeDisc;
+        case 12u: return VehicleSurfaceSlot::VehicleTrim;
+        case 13u: return VehicleSurfaceSlot::HeadlightLens;
+        case 14u: return VehicleSurfaceSlot::TaillightLens;
+        default:  return VehicleSurfaceSlot::VehicleTrim;
     }
 }
 
-[[nodiscard]] Mathematics::Axis3D MapAuthoredPosition(
+[[nodiscard]] Mathematics::Axis3D ConvertAuthoredPosition(
     float                       AuthX,
     float                       AuthYLeft,
     float                       AuthZUp,
@@ -89,7 +89,7 @@ constexpr std::array<WheelAxleMount, 4u> CanonicalAxleMounts {{
     return { AuthX, AuthYLeft, LiftedZ };
 }
 
-[[nodiscard]] Mathematics::Axis3D MapAuthoredNormal(
+[[nodiscard]] Mathematics::Axis3D ConvertAuthoredNormal(
     float                       Nx,
     float                       NyLeft,
     float                       NzUp,
@@ -102,18 +102,18 @@ constexpr std::array<WheelAxleMount, 4u> CanonicalAxleMounts {{
     return Mathematics::NormalizeAxis({ Nx, NyLeft, NzUp }, { 0.0f, 0.0f, 1.0f });
 }
 
-[[nodiscard]] std::filesystem::path LocateArchiveOnDisk(
+[[nodiscard]] std::filesystem::path LocateFaceBinaryOnDisk(
     const std::filesystem::path& RepositoryRoot,
     const char*                  StemName)
 {
     const std::array<std::string, 2u> FileCandidates {{
         std::string(StemName) + ".face",
-        std::string(StemName) + ".facet",
+        std::string(StemName) + ".face",
     }};
     const std::array<std::filesystem::path, 6u> Directories {{
         RepositoryRoot / "EngineContent/EnvironmentArchives/ControlVehicle",
         RepositoryRoot / "Experimental/DeterministicPathTracer/Assets",
-        RepositoryRoot / "Experimental/Shared/Models",
+        RepositoryRoot / "Experimental/Shared/Shapes",
         std::filesystem::path("EngineContent/EnvironmentArchives/ControlVehicle"),
         std::filesystem::path("Experimental/DeterministicPathTracer/Assets"),
         std::filesystem::path("../EngineContent/EnvironmentArchives/ControlVehicle"),
@@ -135,8 +135,8 @@ constexpr std::array<WheelAxleMount, 4u> CanonicalAxleMounts {{
 }
 
 void AppendSubassemblyInstance(
-    std::vector<AssembledVehicleTriangle>& OutTriangles,
-    const DecodedFacetStream&              Stream,
+    std::vector<DecodedVehicleTriangle>& OutTriangles,
+    const DecodedFaceStream&              Stream,
     const float                            Mount[3],
     bool                                   MirrorLateral,
     float                                  UniformScale,
@@ -148,12 +148,12 @@ void AppendSubassemblyInstance(
         : std::array<uint32_t, 3u>{{ 0u, 1u, 2u }};
     const float LateralSign = MirrorLateral ? -1.0f : 1.0f;
 
-    OutTriangles.reserve(OutTriangles.size() + Stream.FacetCount);
-    for (uint32_t FacetIdx = 0u; FacetIdx < Stream.FacetCount; ++FacetIdx)
+    OutTriangles.reserve(OutTriangles.size() + Stream.FaceCount);
+    for (uint32_t FaceIdx = 0u; FaceIdx < Stream.FaceCount; ++FaceIdx)
     {
-        const uint32_t I0 = Stream.Indices[FacetIdx * 3u + CornerOrder[0]];
-        const uint32_t I1 = Stream.Indices[FacetIdx * 3u + CornerOrder[1]];
-        const uint32_t I2 = Stream.Indices[FacetIdx * 3u + CornerOrder[2]];
+        const uint32_t I0 = Stream.Indices[FaceIdx * 3u + CornerOrder[0]];
+        const uint32_t I1 = Stream.Indices[FaceIdx * 3u + CornerOrder[1]];
+        const uint32_t I2 = Stream.Indices[FaceIdx * 3u + CornerOrder[2]];
         if (I0 >= Stream.VertexCount || I1 >= Stream.VertexCount || I2 >= Stream.VertexCount)
         {
             continue;
@@ -164,44 +164,44 @@ void AppendSubassemblyInstance(
             const float Px = Mount[0] + Stream.Positions[VertexIdx * 3u + 0u] * UniformScale;
             const float Py = Mount[1] + Stream.Positions[VertexIdx * 3u + 1u] * UniformScale * LateralSign;
             const float Pz = Mount[2] + Stream.Positions[VertexIdx * 3u + 2u] * UniformScale;
-            return MapAuthoredPosition(Px, Py, Pz, Convention);
+            return ConvertAuthoredPosition(Px, Py, Pz, Convention);
         };
 
         const auto ReadNrm = [&](uint32_t SrcCorner) noexcept -> Mathematics::Axis3D
         {
-            const std::size_t Base = static_cast<std::size_t>(FacetIdx) * 9u + static_cast<std::size_t>(SrcCorner) * 3u;
-            const float Nx = Stream.CornerNormals[Base + 0u];
-            const float Ny = Stream.CornerNormals[Base + 1u] * LateralSign;
-            const float Nz = Stream.CornerNormals[Base + 2u];
-            return MapAuthoredNormal(Nx, Ny, Nz, Convention);
+            const std::size_t Origin = static_cast<std::size_t>(FaceIdx) * 9u + static_cast<std::size_t>(SrcCorner) * 3u;
+            const float Nx = Stream.CornerNormals[Origin + 0u];
+            const float Ny = Stream.CornerNormals[Origin + 1u] * LateralSign;
+            const float Nz = Stream.CornerNormals[Origin + 2u];
+            return ConvertAuthoredNormal(Nx, Ny, Nz, Convention);
         };
 
-        AssembledVehicleTriangle Tri {};
+        DecodedVehicleTriangle Tri {};
         Tri.CornerA    = ReadPos(I0);
         Tri.CornerB    = ReadPos(I1);
         Tri.CornerC    = ReadPos(I2);
         Tri.NormalA    = ReadNrm(CornerOrder[0]);
         Tri.NormalB    = ReadNrm(CornerOrder[1]);
         Tri.NormalC    = ReadNrm(CornerOrder[2]);
-        Tri.FamilyCode = Stream.FamilyCodes[FacetIdx];
+        Tri.PartGroupCode = Stream.PartGroupCodes[FaceIdx];
         Tri.Part       = Part;
 
         if (Part == VehicleSubassemblyPart::BodyChassis)
         {
-            Tri.MaterialRole = ResolveBodyFamilyRole(Tri.FamilyCode);
+            Tri.SurfaceSlot = ResolveBodyPartSlot(Tri.PartGroupCode);
         }
         else if (Part == VehicleSubassemblyPart::RimFrontLeft  ||
                  Part == VehicleSubassemblyPart::RimFrontRight ||
                  Part == VehicleSubassemblyPart::RimRearLeft   ||
                  Part == VehicleSubassemblyPart::RimRearRight)
         {
-            Tri.MaterialRole = (Tri.FamilyCode == 10u)
-                ? VehicleSurfaceMaterialRole::HubAccent
-                : VehicleSurfaceMaterialRole::RimAlloy;
+            Tri.SurfaceSlot = (Tri.PartGroupCode == 10u)
+                ? VehicleSurfaceSlot::WheelCapAccent
+                : VehicleSurfaceSlot::RimAlloy;
         }
         else
         {
-            Tri.MaterialRole = VehicleSurfaceMaterialRole::TyreRubber;
+            Tri.SurfaceSlot = VehicleSurfaceSlot::TyreRubber;
         }
 
         const Mathematics::Axis3D EdgeAB = Tri.CornerB - Tri.CornerA;
@@ -218,40 +218,40 @@ void AppendSubassemblyInstance(
 //                                                  PUBLIC IMPLEMENTATION
 //------------------------------------------------------------------------------------------------------------------------
 
-bool ControlVehicleSurfaceDecoder::DecodeFacetBytes(
-    std::span<const uint8_t> ArchiveBytes,
-    DecodedFacetStream&      OutStream,
+bool ControlVehicleSurfaceDecoder::DecodeFaceBytes(
+    std::span<const uint8_t> PayloadBytes,
+    DecodedFaceStream&      OutStream,
     std::string&             OutDiagnostic,
     float                    CreaseAngleDegrees)
 {
     OutStream = {};
     OutDiagnostic.clear();
 
-    if (ArchiveBytes.size() < Fct1HeaderByteCount)
+    if (PayloadBytes.size() < Fct1HeaderByteCount)
     {
-        OutDiagnostic = "FCT1 archive shorter than 48-byte header";
+        OutDiagnostic = "FCT1 binary shorter than 48-byte header";
         return false;
     }
-    if (ArchiveBytes[0] != 'F' || ArchiveBytes[1] != 'C' || ArchiveBytes[2] != 'T' || ArchiveBytes[3] != '1')
+    if (PayloadBytes[0] != 'F' || PayloadBytes[1] != 'C' || PayloadBytes[2] != 'T' || PayloadBytes[3] != '1')
     {
-        OutDiagnostic = "Archive magic is not FCT1";
+        OutDiagnostic = "Payload magic is not FCT1";
         return false;
     }
 
-    OutStream.VertexCount     = ReadLeUint32(ArchiveBytes.data() + 4u);
-    OutStream.FacetCount      = ReadLeUint32(ArchiveBytes.data() + 8u);
-    const uint32_t HeaderMask = ReadLeUint32(ArchiveBytes.data() + 12u);
+    OutStream.VertexCount     = ReadLeUint32(PayloadBytes.data() + 4u);
+    OutStream.FaceCount      = ReadLeUint32(PayloadBytes.data() + 8u);
+    const uint32_t HeaderMask = ReadLeUint32(PayloadBytes.data() + 12u);
 
     const std::size_t PosBytes  = static_cast<std::size_t>(OutStream.VertexCount) * 12u;
-    const std::size_t IdxBytes  = static_cast<std::size_t>(OutStream.FacetCount) * 12u;
-    const std::size_t FamBytes  = static_cast<std::size_t>(OutStream.FacetCount) * 4u;
-    const bool        HasCorner = (HeaderMask & CornerNormalsBit) != 0u;
-    const std::size_t NrmBytes  = HasCorner ? (static_cast<std::size_t>(OutStream.FacetCount) * 36u) : 0u;
+    const std::size_t IdxBytes  = static_cast<std::size_t>(OutStream.FaceCount) * 12u;
+    const std::size_t FamBytes  = static_cast<std::size_t>(OutStream.FaceCount) * 4u;
+    const bool        CornerAssigned = (HeaderMask & CornerNormalsBit) != 0u;
+    const std::size_t NrmBytes  = CornerAssigned ? (static_cast<std::size_t>(OutStream.FaceCount) * 36u) : 0u;
     const std::size_t Expected  = Fct1HeaderByteCount + PosBytes + IdxBytes + FamBytes + NrmBytes;
 
-    if (ArchiveBytes.size() != Expected)
+    if (PayloadBytes.size() != Expected)
     {
-        OutDiagnostic = "FCT1 archive byte length mismatch";
+        OutDiagnostic = "FCT1 binary byte length mismatch";
         return false;
     }
 
@@ -259,39 +259,39 @@ bool ControlVehicleSurfaceDecoder::DecodeFacetBytes(
     OutStream.Positions.resize(static_cast<std::size_t>(OutStream.VertexCount) * 3u);
     for (std::size_t I = 0u; I < OutStream.Positions.size(); ++I)
     {
-        OutStream.Positions[I] = ReadLeFloat32(ArchiveBytes.data() + Offset + I * 4u);
+        OutStream.Positions[I] = ReadLeFloat32(PayloadBytes.data() + Offset + I * 4u);
     }
     Offset += PosBytes;
 
-    OutStream.Indices.resize(static_cast<std::size_t>(OutStream.FacetCount) * 3u);
+    OutStream.Indices.resize(static_cast<std::size_t>(OutStream.FaceCount) * 3u);
     for (std::size_t I = 0u; I < OutStream.Indices.size(); ++I)
     {
-        OutStream.Indices[I] = ReadLeUint32(ArchiveBytes.data() + Offset + I * 4u);
+        OutStream.Indices[I] = ReadLeUint32(PayloadBytes.data() + Offset + I * 4u);
     }
     Offset += IdxBytes;
 
-    OutStream.FamilyCodes.resize(OutStream.FacetCount);
-    for (std::size_t I = 0u; I < OutStream.FamilyCodes.size(); ++I)
+    OutStream.PartGroupCodes.resize(OutStream.FaceCount);
+    for (std::size_t I = 0u; I < OutStream.PartGroupCodes.size(); ++I)
     {
-        OutStream.FamilyCodes[I] = ReadLeUint32(ArchiveBytes.data() + Offset + I * 4u);
+        OutStream.PartGroupCodes[I] = ReadLeUint32(PayloadBytes.data() + Offset + I * 4u);
     }
     Offset += FamBytes;
 
-    if (HasCorner)
+    if (CornerAssigned)
     {
-        OutStream.CornerNormals.resize(static_cast<std::size_t>(OutStream.FacetCount) * 9u);
+        OutStream.CornerNormals.resize(static_cast<std::size_t>(OutStream.FaceCount) * 9u);
         for (std::size_t I = 0u; I < OutStream.CornerNormals.size(); ++I)
         {
-            OutStream.CornerNormals[I] = ReadLeFloat32(ArchiveBytes.data() + Offset + I * 4u);
+            OutStream.CornerNormals[I] = ReadLeFloat32(PayloadBytes.data() + Offset + I * 4u);
         }
     }
     else
     {
         const float CreaseCosine = std::cos(CreaseAngleDegrees * Constants::DegToRadFloat);
-        std::vector<Mathematics::Axis3D>   AreaWeightedNormals(OutStream.FacetCount);
+        std::vector<Mathematics::Axis3D>   AreaWeightedNormals(OutStream.FaceCount);
         std::vector<std::vector<uint32_t>> VertexIncidence(OutStream.VertexCount);
 
-        for (uint32_t F = 0u; F < OutStream.FacetCount; ++F)
+        for (uint32_t F = 0u; F < OutStream.FaceCount; ++F)
         {
             const uint32_t Ia = OutStream.Indices[F * 3u + 0u];
             const uint32_t Ib = OutStream.Indices[F * 3u + 1u];
@@ -309,8 +309,8 @@ bool ControlVehicleSurfaceDecoder::DecodeFacetBytes(
             VertexIncidence[Ic].push_back(F);
         }
 
-        OutStream.CornerNormals.assign(static_cast<std::size_t>(OutStream.FacetCount) * 9u, 0.0f);
-        for (uint32_t F = 0u; F < OutStream.FacetCount; ++F)
+        OutStream.CornerNormals.assign(static_cast<std::size_t>(OutStream.FaceCount) * 9u, 0.0f);
+        for (uint32_t F = 0u; F < OutStream.FaceCount; ++F)
         {
             const Mathematics::Axis3D Fn  = AreaWeightedNormals[F];
             const float               FLen = std::sqrt(Mathematics::EvaluateLengthSquared(Fn));
@@ -338,10 +338,10 @@ bool ControlVehicleSurfaceDecoder::DecodeFacetBytes(
                     }
                 }
                 const Mathematics::Axis3D Unit = Mathematics::NormalizeAxis(Sum, { 0.0f, 0.0f, 1.0f });
-                const std::size_t OutBase = static_cast<std::size_t>(F) * 9u + static_cast<std::size_t>(C) * 3u;
-                OutStream.CornerNormals[OutBase + 0u] = Unit.X;
-                OutStream.CornerNormals[OutBase + 1u] = Unit.Y;
-                OutStream.CornerNormals[OutBase + 2u] = Unit.Z;
+                const std::size_t OutOrigin = static_cast<std::size_t>(F) * 9u + static_cast<std::size_t>(C) * 3u;
+                OutStream.CornerNormals[OutOrigin + 0u] = Unit.X;
+                OutStream.CornerNormals[OutOrigin + 1u] = Unit.Y;
+                OutStream.CornerNormals[OutOrigin + 2u] = Unit.Z;
             }
         }
     }
@@ -349,32 +349,32 @@ bool ControlVehicleSurfaceDecoder::DecodeFacetBytes(
     return true;
 }
 
-bool ControlVehicleSurfaceDecoder::DecodeFacetFile(
+bool ControlVehicleSurfaceDecoder::DecodeFaceFile(
     const std::filesystem::path& FilePath,
-    DecodedFacetStream&          OutStream,
+    DecodedFaceStream&          OutStream,
     std::string&                 OutDiagnostic,
     float                        CreaseAngleDegrees)
 {
     std::ifstream Input(FilePath, std::ios::binary | std::ios::ate);
     if (!Input.is_open())
     {
-        OutDiagnostic = "Unable to open FCT1 archive: " + FilePath.generic_string();
+        OutDiagnostic = "Unable to open FCT1 binary: " + FilePath.generic_string();
         return false;
     }
     const std::streamsize Size = Input.tellg();
     if (Size <= 0)
     {
-        OutDiagnostic = "Empty FCT1 archive: " + FilePath.generic_string();
+        OutDiagnostic = "Empty FCT1 binary: " + FilePath.generic_string();
         return false;
     }
     std::vector<uint8_t> Bytes(static_cast<std::size_t>(Size));
     Input.seekg(0, std::ios::beg);
     if (!Input.read(reinterpret_cast<char*>(Bytes.data()), Size))
     {
-        OutDiagnostic = "Failed reading FCT1 archive: " + FilePath.generic_string();
+        OutDiagnostic = "Failed reading FCT1 binary: " + FilePath.generic_string();
         return false;
     }
-    return DecodeFacetBytes(Bytes, OutStream, OutDiagnostic, CreaseAngleDegrees);
+    return DecodeFaceBytes(Bytes, OutStream, OutDiagnostic, CreaseAngleDegrees);
 }
 
 bool ControlVehicleSurfaceDecoder::DecodeAssembledVehicle(
@@ -387,22 +387,22 @@ bool ControlVehicleSurfaceDecoder::DecodeAssembledVehicle(
     OutVehicle.Convention = Convention;
     OutDiagnostic.clear();
 
-    const std::filesystem::path BodyPath = LocateArchiveOnDisk(RepositoryRoot, "ControlVehicleBody");
-    const std::filesystem::path RimPath  = LocateArchiveOnDisk(RepositoryRoot, "ControlVehicleRim");
-    const std::filesystem::path TyrePath = LocateArchiveOnDisk(RepositoryRoot, "ControlVehicleTyre");
+    const std::filesystem::path BodyPath = LocateFaceBinaryOnDisk(RepositoryRoot, "ControlVehicleBody");
+    const std::filesystem::path RimPath  = LocateFaceBinaryOnDisk(RepositoryRoot, "ControlVehicleRim");
+    const std::filesystem::path TyrePath = LocateFaceBinaryOnDisk(RepositoryRoot, "ControlVehicleTyre");
 
     if (BodyPath.empty() || RimPath.empty() || TyrePath.empty())
     {
-        OutDiagnostic = "ControlVehicle FCT1 archives not found under EngineContent or Experimental";
+        OutDiagnostic = "ControlVehicle FCT1 binaries not found under EngineContent or Experimental";
         return false;
     }
 
-    DecodedFacetStream BodyStream {};
-    DecodedFacetStream RimStream  {};
-    DecodedFacetStream TyreStream {};
-    if (!DecodeFacetFile(BodyPath, BodyStream, OutDiagnostic, 38.0f) ||
-        !DecodeFacetFile(RimPath,  RimStream,  OutDiagnostic, 38.0f) ||
-        !DecodeFacetFile(TyrePath, TyreStream, OutDiagnostic, 38.0f))
+    DecodedFaceStream BodyStream {};
+    DecodedFaceStream RimStream  {};
+    DecodedFaceStream TyreStream {};
+    if (!DecodeFaceFile(BodyPath, BodyStream, OutDiagnostic, 38.0f) ||
+        !DecodeFaceFile(RimPath,  RimStream,  OutDiagnostic, 38.0f) ||
+        !DecodeFaceFile(TyrePath, TyreStream, OutDiagnostic, 38.0f))
     {
         return false;
     }
@@ -437,7 +437,7 @@ bool ControlVehicleSurfaceDecoder::DecodeAssembledVehicle(
             RimStream,
             Mount.AuthoredMount,
             Mount.MirrorLateral,
-            RimToHubScale,
+            RimWheelScale,
             Mount.RimPart,
             Convention);
         OutVehicle.RimTriangleCount += static_cast<uint32_t>(OutVehicle.Triangles.size() - BeforeRim);
@@ -499,15 +499,15 @@ bool ControlVehicleSurfaceDecoder::DecodeAssembledVehicle(
     return true;
 }
 
-GeometrySpace::PolygonNetwork ControlVehicleSurfaceDecoder::BuildPolygonNetworkFromRole(
+GeometrySpace::PolygonNetwork ControlVehicleSurfaceDecoder::ConstructPolygonNetworkFromSlot(
     const AssembledControlVehicle& Vehicle,
-    VehicleSurfaceMaterialRole     TargetRole)
+    VehicleSurfaceSlot     TargetSlot)
 {
     GeometrySpace::PolygonNetwork Network {};
     uint32_t MatchingFaces = 0u;
     for (const auto& Tri : Vehicle.Triangles)
     {
-        if (Tri.MaterialRole == TargetRole)
+        if (Tri.SurfaceSlot == TargetSlot)
         {
             ++MatchingFaces;
         }
@@ -520,7 +520,7 @@ GeometrySpace::PolygonNetwork ControlVehicleSurfaceDecoder::BuildPolygonNetworkF
     Network.ReserveStorage(MatchingFaces * 3u, MatchingFaces * 3u, MatchingFaces);
     for (const auto& Tri : Vehicle.Triangles)
     {
-        if (Tri.MaterialRole != TargetRole)
+        if (Tri.SurfaceSlot != TargetSlot)
         {
             continue;
         }

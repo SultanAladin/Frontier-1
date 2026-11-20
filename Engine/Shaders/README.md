@@ -13,9 +13,9 @@
 | [`Colour/`](Colour/README.md) | Shared pure .slang GPU colour ramp LUT sampling, wrap/curve math, Oklab/LinearSrgb conversions, Kelvin blackbody & 3D lattice noise |
 | [`ComponentEditor/`](ComponentEditor/README.md) | Compiled geometry shader supporting OpenPbrDirect (Zero GI) plus all 7 Component Editor inspection channels & MRT PickID |
 | [`Compute/`](Compute/README.md) | Shared compute shader staging directory (reserved) |
-| [`DirectLighting/`](DirectLighting/README.md) | Coplanar Plane-Aware Shadow Denoiser, Deterministic Vogel Solar Frustum Raytracer + Chassis AO, & Shared 4-Wide BVH4 Query Library |
+| [`DirectLighting/`](DirectLighting/README.md) | Plane-Aware Shadow Denoiser, Vogel Solar Frustum Raytracer + Chassis AO, `HybridConeShadowCompute`, `RefitWideBoundingTreeCompute`, & Shared 128 B / 64 B `BVH4` Ray Query Library |
 | [`GeometricRaster/`](GeometricRaster/README.md) | Unified 2-Engine (`MatCap` & `OpenPbrDirect`) World Viewport Compute, Camera Visual Effects, Surface/UV/Gizmo Rasterization, & Pick Reduction |
-| [`GlobalIllumination/`](GlobalIllumination/README.md) | Specular Reflection & Abbe-Dispersed Dielectric Glass Refraction Compute Pass |
+| [`GlobalIllumination/`](GlobalIllumination/README.md) | Order 2 Real-Time GI (`StokesContourIrradianceCompute`, `SurfelRadiosityLatticeCompute`), Specular Glass Raytrace, & Order 3 Unified Deterministic Path Tracer (`GameRealtime` & `SceneFinalRender`) |
 | [`MaterialSpace/`](MaterialSpace/README.md) | Fast 5-ALU 32-byte BounceSlabEntry evaluation for secondary OpenPBR specular & refractive rays |
 | [`Sketcher/`](Sketcher/README.md) | Shared CAD stroke expansion: homogeneous edge clipping, the six-corner pixel-width quad and its coverage ramp. |
 | [`Vector/`](Vector/README.md) | Resolves 2x SSAA SurfacePreviewImage + StackedPick into FinalColorImage (RGBA8) & FinalPickImage (RGBA32UI), plus GPU vector guides/knots/pins/marquee. |

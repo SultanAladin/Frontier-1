@@ -94,7 +94,14 @@ namespace
 
 [[nodiscard]] const char* QueryRenderEngineName(uint32_t EngineIdx) noexcept
 {
-    constexpr std::array<const char*, 2> Names = {{ "MatCap", "OpenPBR Direct" }};
+    constexpr std::array<const char*, 6> Names = {{
+        "MatCap",
+        "OpenPBR Direct",
+        "GTX SDF GI",
+        "HighEnd BVH4 GI",
+        "Path Tracer (Real-Time)",
+        "Path Tracer (Final)",
+    }};
     return Names[std::min<std::size_t>(EngineIdx, Names.size() - 1u)];
 }
 
@@ -1243,12 +1250,16 @@ void ViewportPanel::RenderSettingsSheet(
     // Active Option Sheet rendered last for clean z-ordering
     if (EngineDropdownOpen)
     {
-        constexpr std::array<const char*, 2> EngineOptions = {{
+        constexpr std::array<const char*, 6> EngineOptions = {{
             "Engine: MatCap",
             "Engine: OpenPBR Direct",
+            "Engine: GTX SDF GI",
+            "Engine: HighEnd BVH4 GI",
+            "Engine: Path Tracer (Real-Time)",
+            "Engine: Path Tracer (Final)",
         }};
         const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(EngineBtn, static_cast<uint32_t>(EngineOptions.size()));
-        const uint32_t    CurIdx     = DisplaySettings.RenderEngineIndex % 2u;
+        const uint32_t    CurIdx     = DisplaySettings.RenderEngineIndex % static_cast<uint32_t>(EngineOptions.size());
         uint32_t          ChosenIdx  = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 Overlay, EngineBtn, EngineOptions.data(), static_cast<uint32_t>(EngineOptions.size()),

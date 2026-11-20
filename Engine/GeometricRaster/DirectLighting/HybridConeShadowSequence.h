@@ -48,7 +48,7 @@ struct HybridOccluderEnvironment
 //                                                 EVALUATION FUNCTIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-// Evaluates C1-smooth composite distance across interior boxes + C0 vehicle SDF + live capsule rig (GtxLowEnd only)
+// Evaluates C1-smooth combined distance across interior boxes + C0 vehicle SDF + live capsule rig (GtxLowEnd only)
 [[nodiscard]] float EvaluateCombinedOccludersDistance(
     const HybridOccluderEnvironment& Env,
     Mathematics::Axis3D              WorldPos,

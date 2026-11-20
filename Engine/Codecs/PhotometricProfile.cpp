@@ -249,7 +249,7 @@ bool PhotometricProfileCodec::ParseLm63Text(
         const int32_t TiltPairs = static_cast<int32_t>(std::lround(HeaderSlice[1]));
         if (TiltPairs < 0 || !ConsumeScalars(static_cast<std::size_t>(TiltPairs) * 2u, HeaderSlice))
         {
-            OutDiagnostic = OutDistribution.ProfileLabel + ": invalid TILT=INCLUDE table";
+            OutDiagnostic = OutDistribution.ProfileLabel + ": invalid TILT=INCLUDE grid";
             return false;
         }
     }
@@ -309,12 +309,12 @@ bool PhotometricProfileCodec::ParseLm63Text(
         return false;
     }
 
-    OutDistribution.CandelaMatrix.resize(TotalEntries, 0.0f);
+    OutDistribution.CandelaSamples.resize(TotalEntries, 0.0f);
     float Peak = 0.0f;
     for (std::size_t Index = 0u; Index < TotalEntries; ++Index)
     {
         const float Scaled = static_cast<float>(std::max(0.0, RawCandela[Index] * ScaleFactor));
-        OutDistribution.CandelaMatrix[Index] = Scaled;
+        OutDistribution.CandelaSamples[Index] = Scaled;
         Peak = std::max(Peak, Scaled);
     }
     OutDistribution.PeakCandela = Peak;
@@ -344,7 +344,7 @@ float PhotometricProfileCodec::EvaluateCandelaAtDegrees(
 {
     const auto& Vert = Distribution.VerticalAngles;
     const auto& Horz = Distribution.HorizontalAngles;
-    if (Vert.empty() || Horz.empty() || Distribution.CandelaMatrix.empty())
+    if (Vert.empty() || Horz.empty() || Distribution.CandelaSamples.empty())
     {
         return 0.0f;
     }
@@ -366,8 +366,8 @@ float PhotometricProfileCodec::EvaluateCandelaAtDegrees(
 
     const auto SampleRow = [&](std::size_t HRow) noexcept -> float
     {
-        const float C0 = Distribution.CandelaMatrix[HRow * VCount + VSpan.LowerIndex];
-        const float C1 = Distribution.CandelaMatrix[HRow * VCount + VSpan.UpperIndex];
+        const float C0 = Distribution.CandelaSamples[HRow * VCount + VSpan.LowerIndex];
+        const float C1 = Distribution.CandelaSamples[HRow * VCount + VSpan.UpperIndex];
         return C0 * (1.0f - VSpan.Fraction) + C1 * VSpan.Fraction;
     };
 
@@ -400,7 +400,7 @@ bool PhotometricProfileCodec::ResampleToCanonicalGrid(
 
     if (Peak <= 0.0f)
     {
-        OutDiagnostic = Distribution.ProfileLabel + ": resampled photometric table has zero luminous output";
+        OutDiagnostic = Distribution.ProfileLabel + ": resampled photometric grid has zero luminous output";
         return false;
     }
 
@@ -414,10 +414,10 @@ bool PhotometricProfileCodec::ResampleToCanonicalGrid(
         double RowSum = 0.0;
         for (uint32_t H = 0u; H < PhotometricHorizontalCount; ++H)
         {
-            const uint32_t TableIdx = H * PhotometricVerticalCount + V;
-            OutProfile.NormalizedCandela[TableIdx] /= Peak;
-            RowSum += static_cast<double>(OutProfile.NormalizedCandela[TableIdx]);
-            if (OutProfile.NormalizedCandela[TableIdx] > 0.0f)
+            const uint32_t GridIdx = H * PhotometricVerticalCount + V;
+            OutProfile.NormalizedCandela[GridIdx] /= Peak;
+            RowSum += static_cast<double>(OutProfile.NormalizedCandela[GridIdx]);
+            if (OutProfile.NormalizedCandela[GridIdx] > 0.0f)
             {
                 LastNonZeroPolar = V;
             }
@@ -429,7 +429,7 @@ bool PhotometricProfileCodec::ResampleToCanonicalGrid(
     }
 
     OutProfile.NormalizedFluxSr     = static_cast<float>(SolidAngleFlux);
-    OutProfile.EmissionHalfAngleRad = static_cast<float>(
+    OutProfile.CutoffHalfAngleRad = static_cast<float>(
         std::min(Constants::Pi, static_cast<double>(LastNonZeroPolar + 1u) * PolarStepRad));
     return true;
 }

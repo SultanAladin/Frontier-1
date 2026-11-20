@@ -666,7 +666,7 @@ void CompressedWideTree::Reset() noexcept
     Primitives.clear();
     PrimitiveNormals.clear();
     SourceRemapOrder.clear();
-    BinaryHierarchy.clear();
+    BinaryTreeEntries.clear();
     BinaryBottomUp.clear();
     RootBoundsMin = {};
     RootBoundsMax = {};
@@ -691,7 +691,7 @@ bool CompressedWideTree::BuildFromPrimitives(
         Boxes[I] = ComputePrimitiveBox(InputPrimitives[I]);
     }
 
-    BuildSahBinaryEntries(Boxes, SourceRemapOrder, BinaryHierarchy, 1u);
+    BuildSahBinaryEntries(Boxes, SourceRemapOrder, BinaryTreeEntries, 1u);
 
     Primitives.resize(SourceRemapOrder.size());
     const bool NormalsPresent = (InputNormals.size() == InputPrimitives.size());
@@ -709,11 +709,11 @@ bool CompressedWideTree::BuildFromPrimitives(
         }
     }
 
-    RootBoundsMin = { BinaryHierarchy[0].BoundsMin[0], BinaryHierarchy[0].BoundsMin[1], BinaryHierarchy[0].BoundsMin[2] };
-    RootBoundsMax = { BinaryHierarchy[0].BoundsMax[0], BinaryHierarchy[0].BoundsMax[1], BinaryHierarchy[0].BoundsMax[2] };
+    RootBoundsMin = { BinaryTreeEntries[0].BoundsMin[0], BinaryTreeEntries[0].BoundsMin[1], BinaryTreeEntries[0].BoundsMin[2] };
+    RootBoundsMax = { BinaryTreeEntries[0].BoundsMax[0], BinaryTreeEntries[0].BoundsMax[1], BinaryTreeEntries[0].BoundsMax[2] };
 
     CollapseBinaryIntoQuantizedWideEntries(
-        BinaryHierarchy,
+        BinaryTreeEntries,
         EntryStartOffset,
         std::min(MaxLeafCount, CompressedLeafPrimCeiling),
         WideEntries,
@@ -727,7 +727,7 @@ bool CompressedWideTree::RefitDeformedPrimitives(
     std::span<const TriangleSmoothNormals> UpdatedSourceNormals,
     uint32_t                               EntryStartOffset)
 {
-    if (BinaryHierarchy.empty() || SourceRemapOrder.empty() || UpdatedSourcePrimitives.size() < SourceRemapOrder.size())
+    if (BinaryTreeEntries.empty() || SourceRemapOrder.empty() || UpdatedSourcePrimitives.size() < SourceRemapOrder.size())
     {
         return false;
     }
@@ -744,7 +744,7 @@ bool CompressedWideTree::RefitDeformedPrimitives(
     }
 
     // 1. Update leaf binary AABBs
-    for (auto& Bin : BinaryHierarchy)
+    for (auto& Bin : BinaryTreeEntries)
     {
         if (Bin.PrimitiveCount == 0u)
         {
@@ -765,9 +765,9 @@ bool CompressedWideTree::RefitDeformedPrimitives(
     // 2. Bottom-up internal binary AABB union
     for (uint32_t InternalIdx : BinaryBottomUp)
     {
-        auto& CurEntry      = BinaryHierarchy[InternalIdx];
-        const auto& L   = BinaryHierarchy[CurEntry.LeftOrFirst];
-        const auto& R   = BinaryHierarchy[CurEntry.LeftOrFirst + 1u];
+        auto& CurEntry      = BinaryTreeEntries[InternalIdx];
+        const auto& L   = BinaryTreeEntries[CurEntry.LeftOrFirst];
+        const auto& R   = BinaryTreeEntries[CurEntry.LeftOrFirst + 1u];
         for (int A = 0; A < 3; ++A)
         {
             CurEntry.BoundsMin[A] = std::min(L.BoundsMin[A], R.BoundsMin[A]);
@@ -775,11 +775,11 @@ bool CompressedWideTree::RefitDeformedPrimitives(
         }
     }
 
-    RootBoundsMin = { BinaryHierarchy[0].BoundsMin[0], BinaryHierarchy[0].BoundsMin[1], BinaryHierarchy[0].BoundsMin[2] };
-    RootBoundsMax = { BinaryHierarchy[0].BoundsMax[0], BinaryHierarchy[0].BoundsMax[1], BinaryHierarchy[0].BoundsMax[2] };
+    RootBoundsMin = { BinaryTreeEntries[0].BoundsMin[0], BinaryTreeEntries[0].BoundsMin[1], BinaryTreeEntries[0].BoundsMin[2] };
+    RootBoundsMax = { BinaryTreeEntries[0].BoundsMax[0], BinaryTreeEntries[0].BoundsMax[1], BinaryTreeEntries[0].BoundsMax[2] };
 
     CollapseBinaryIntoQuantizedWideEntries(
-        BinaryHierarchy,
+        BinaryTreeEntries,
         EntryStartOffset,
         CompressedLeafPrimCeiling,
         WideEntries,
@@ -879,7 +879,7 @@ RayIntersectionResult CompressedWideTree::TraceClosestRay(
                 Hits[HitCount++] = { CurEntry.SubtreeLinks[S], Counts[S], EntryT };
             }
         }
-        // Push farthest first so nearest is popped next (4-element insertion sort avoids GCC -O3 introsort warning)
+        // Push farthest first so nearest is popped next (4-entry insertion sort avoids GCC -O3 introsort warning)
         for (uint32_t I = 1u; I < HitCount; ++I)
         {
             const PendingSlot Key = Hits[I];
@@ -1032,7 +1032,7 @@ bool CompressedInstanceForest::AssembleInstanceForest(
         return Out;
     };
 
-    // Reserve placeholder BLAS roots (resolved once TLAS node count is known)
+    // Reserve placeholder BLAS roots (resolved once TLAS entry count is known)
     const bool StaticPresent = !StaticWorldBlas.WideEntries.empty() && !StaticWorldBlas.Primitives.empty();
     const bool PrototypePresent  = !PrototypeBlas.WideEntries.empty() && !PrototypeBlas.Primitives.empty();
     if (!StaticPresent && (!PrototypePresent || PrototypeInstances.empty()))
@@ -1068,7 +1068,7 @@ bool CompressedInstanceForest::AssembleInstanceForest(
     CollapseBinaryIntoQuantizedWideEntries(TlasBinary, 0u, 1u, SharedEntries, TlasDepth, nullptr);
     const uint32_t TlasEntryCount = static_cast<uint32_t>(SharedEntries.size());
 
-    // Append StaticWorldBlas and PrototypeBlas with rebased internal node links and primitive offsets
+    // Append StaticWorldBlas and PrototypeBlas with rebased internal entry links and primitive offsets
     uint32_t StaticRootOffset = CompressedEmptySlotLink;
     if (StaticPresent)
     {
@@ -1079,7 +1079,7 @@ bool CompressedInstanceForest::AssembleInstanceForest(
         std::vector<CompressedWideEntry64> RebasedStatic;
         uint32_t DummyDepth = 0u;
         CollapseBinaryIntoQuantizedWideEntries(
-            StaticWorldBlas.BinaryHierarchy, StaticRootOffset, CompressedLeafPrimCeiling, RebasedStatic, DummyDepth, nullptr);
+            StaticWorldBlas.BinaryTreeEntries, StaticRootOffset, CompressedLeafPrimCeiling, RebasedStatic, DummyDepth, nullptr);
         for (auto& N : RebasedStatic)
         {
             const uint32_t C0 = N.PackedCounts01 & 0xFFFFu;
@@ -1108,7 +1108,7 @@ bool CompressedInstanceForest::AssembleInstanceForest(
         std::vector<CompressedWideEntry64> RebasedProto;
         uint32_t DummyDepth = 0u;
         CollapseBinaryIntoQuantizedWideEntries(
-            PrototypeBlas.BinaryHierarchy, ProtoRootOffset, CompressedLeafPrimCeiling, RebasedProto, DummyDepth, nullptr);
+            PrototypeBlas.BinaryTreeEntries, ProtoRootOffset, CompressedLeafPrimCeiling, RebasedProto, DummyDepth, nullptr);
         for (auto& N : RebasedProto)
         {
             const uint32_t C0 = N.PackedCounts01 & 0xFFFFu;

@@ -89,7 +89,7 @@ public:
 
     void Reset() noexcept;
 
-    // Extracts emissive triangles into clustered emitters and builds 2-bounce diffuse surface patches over non-emissive walls/car/rig
+    // Extracts emissive triangles into clustered luminaires and builds 2-bounce diffuse surface patches over non-emissive walls/car/rig
     void BuildFromScene(
         std::span<const SpatialAcceleration::RayTrianglePrimitive> Primitives,
         std::span<const Mathematics::LinearRGB>                    MaterialAlbedoBySlot,
