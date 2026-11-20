@@ -20809,7 +20809,9 @@ void BeginSketcherHostedFrame(SketcherWorkspaceStatus& State)
     ControlKit::ConfigurePalette(PanelChrome::StudioPalette(ControlKit::Palette(), {.20f, .19f, .15f, 1}, {.85f, .70f, .51f, 1}));
     SketcherRenderProfile& Profile = State.Profile;
     State.Widgets.Clear();
-    State.ViewportHovered = false;
+    // The hosted viewport is rasterized before its ImGui pane is drawn. Preserve the
+    // preceding pane result here so identity probing has a valid hover/rectangle;
+    // DrawSketcherViewportPanel refreshes it for the following hosted frame.
     State.Style.GridPlane = ViewGridPlane(State.Camera);
     { SketcherPhaseClock Clock(Profile, "matcaps"); RefreshSketcherMatcaps(State); }
     { SketcherPhaseClock Clock(Profile, "bevel preview"); StageBevelPreview(State); }

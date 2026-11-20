@@ -121,7 +121,7 @@ jobs:
         run: |
           payload="${RUNNER_TEMP}/Frontier-Workspaces-Linux-x64"
           mkdir -p "$payload/CompiledShaders" "$payload/EngineContent" "$payload/Binaries/Win64"
-          for app in Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp FrontierMaterial FrontierParticle FrontierFracture FrontierForceField FrontierFluid; do
+          for app in Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp FrontierMaterial FrontierTexturePaint FrontierFracture FrontierSketcher; do
             cp "Build/CI/Editor/${app}" "$payload/"
           done
           cp -r Build/CI/Editor/Binaries/Win64/* "$payload/Binaries/Win64/"

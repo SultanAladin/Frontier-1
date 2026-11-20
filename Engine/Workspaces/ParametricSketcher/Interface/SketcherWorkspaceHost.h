@@ -62,7 +62,6 @@ private:
     Sketcher::SketcherRasterization     Rasterizer         {};
     ImTextureData                       ViewportTexture    {};
     uint64_t                            UploadedMatcapGen  = 0u;
-    uint64_t                            UploadedSceneGen   = 0u;
     bool                                Initialized        = false;
     bool                                RasterReady        = false;
     ContentBrowserPanel*             BoundBrowser       = nullptr;

@@ -69,6 +69,7 @@ bool SketcherWorkspaceHost::Initialize(
             Rasterizer.Resize(640u, 360u);
             RasterReady = true;
             State.DeviceLabel = std::string(Device->QueryAdapterName());
+            Sketcher::RefreshSketcherMatcaps(State);
             RenderViewportTarget();
         }
         else if (OutDiagnostic != nullptr)
@@ -85,7 +86,6 @@ void SketcherWorkspaceHost::Finalize() noexcept
 {
     ViewportTexture.DestroyPixels();
     UploadedMatcapGen = 0u;
-    UploadedSceneGen  = 0u;
 
     if (RasterReady)
     {
@@ -179,6 +179,14 @@ void SketcherWorkspaceHost::BeginFrame(double DeltaSeconds)
 void SketcherWorkspaceHost::EndFrame(double DeltaSeconds, bool DrawFloatingOverlays, bool HostedOverlayMode)
 {
     Sketcher::EndSketcherHostedFrame(State, std::max(1.0e-4, DeltaSeconds), DrawFloatingOverlays, HostedOverlayMode);
+    // ApplyShortcuts runs in EndSketcherHostedFrame. Recompose once afterward so the
+    // CPU pick geometry and the next GPU frame agree immediately after hotkeys.
+    const bool Single = State.SplitView.Layout == Sketcher::SketcherViewportLayout::Single;
+    const auto& Rect = Single ? State.ViewportRect : State.SplitView.FullRect;
+    const uint32_t Width = static_cast<uint32_t>(std::max(1.0f, Rect[2]));
+    const uint32_t Height = static_cast<uint32_t>(std::max(1.0f, Rect[3]));
+    const auto Panes = Sketcher::ComposeSketcherRasterPanes(State, Width, Height);
+    State.Style.Gizmo = Panes.empty() ? GizmoGeometry{} : Panes.front().Style.Gizmo;
     Sketcher::ConcludeSketcherFrame(State);
 }
 
@@ -196,8 +204,10 @@ void SketcherWorkspaceHost::RenderViewportTarget()
 
     try
     {
-        const uint32_t TargetW = std::clamp(static_cast<uint32_t>(std::max(320.0f, State.ViewportRect[2])), 320u, 1920u);
-        const uint32_t TargetH = std::clamp(static_cast<uint32_t>(std::max(200.0f, State.ViewportRect[3])), 200u, 1080u);
+        const bool Single = State.SplitView.Layout == Sketcher::SketcherViewportLayout::Single;
+        const auto& TargetRect = Single ? State.ViewportRect : State.SplitView.FullRect;
+        const uint32_t TargetW = std::clamp(static_cast<uint32_t>(std::max(320.0f, TargetRect[2])), 320u, 1920u);
+        const uint32_t TargetH = std::clamp(static_cast<uint32_t>(std::max(200.0f, TargetRect[3])), 200u, 1080u);
         if (TargetW != Rasterizer.Width() || TargetH != Rasterizer.Height())
         {
             Rasterizer.Resize(TargetW, TargetH);
@@ -209,23 +219,80 @@ void SketcherWorkspaceHost::RenderViewportTarget()
             UploadedMatcapGen = State.Matcaps.Generation;
         }
 
-        const auto& Scene  = Sketcher::DisplayedSketcherScene(State);
-        const auto  States = Sketcher::DisplayedSketcherStates(State);
-        if (UploadedSceneGen != Scene.Revision)
+        const auto& Scene = Sketcher::DisplayedSketcherScene(State);
+        if (Scene.Generation != Rasterizer.SceneGeneration())
         {
             Rasterizer.UploadScene(Scene);
-            UploadedSceneGen = Scene.Revision;
         }
+
+        // Decode each distinct image-plane source only when its path set changes,
+        // then rebuild the lightweight draw quads from current document placement.
+        std::string PictureKey;
+        std::vector<std::string> PicturePaths;
+        for (const Sketcher::SketcherImagePlane& Plane : State.Document.ImagePlanes)
+        {
+            if (std::find(PicturePaths.begin(), PicturePaths.end(), Plane.Path) == PicturePaths.end())
+                PicturePaths.push_back(Plane.Path);
+        }
+        for (const std::string& Path : PicturePaths) PictureKey += Path + "\n";
+        if (PictureKey != State.Pictures.Key)
+        {
+            std::vector<Sketcher::SketcherPicture> Pictures;
+            State.Pictures = {};
+            State.Pictures.Key = PictureKey;
+            for (const std::string& Path : PicturePaths)
+            {
+                Pictures.push_back(Sketcher::DecodeSketcherPicture(Path));
+                State.Pictures.Paths.push_back(Path);
+                State.Pictures.Widths.push_back(Pictures.back().Width);
+                State.Pictures.Heights.push_back(Pictures.back().Height);
+                State.Pictures.Refusals.push_back(Pictures.back().Refusal);
+            }
+            Rasterizer.UploadPictures(Pictures);
+        }
+
+        State.Style.ImagePlanes.clear();
+        if (State.ImagePlanesEnabled)
+        {
+            for (const Sketcher::SketcherImagePlane& Plane : State.Document.ImagePlanes)
+            {
+                const auto Found = std::find(State.Pictures.Paths.begin(), State.Pictures.Paths.end(), Plane.Path);
+                const size_t Index = static_cast<size_t>(Found - State.Pictures.Paths.begin());
+                if (!Plane.VisibleCondition || Found == State.Pictures.Paths.end() || !State.Pictures.Refusals[Index].empty()) continue;
+                const float Width  = static_cast<float>(State.Pictures.Widths[Index]);
+                const float Height = static_cast<float>(State.Pictures.Heights[Index]);
+                if (Width <= 0.0f || Height <= 0.0f) continue;
+                const bool Whole = Plane.Crop[2] <= Plane.Crop[0] || Plane.Crop[3] <= Plane.Crop[1];
+                Sketcher::SketcherImagePlaneQuad Draw;
+                Draw.Picture = static_cast<uint32_t>(Index);
+                Draw.Corner  = { Plane.Corner.X, Plane.Corner.Y, Plane.Corner.Z };
+                Draw.Right   = { Plane.Right.X, Plane.Right.Y, Plane.Right.Z };
+                Draw.Down    = { Plane.Down.X, Plane.Down.Y, Plane.Down.Z };
+                if (!Whole) Draw.Crop = { Plane.Crop[0] / Width, Plane.Crop[1] / Height, Plane.Crop[2] / Width, Plane.Crop[3] / Height };
+                if (Plane.FlipAcrossCondition) std::swap(Draw.Crop[0], Draw.Crop[2]);
+                if (Plane.FlipDownCondition) std::swap(Draw.Crop[1], Draw.Crop[3]);
+                Draw.Opacity = static_cast<float>(Plane.Opacity);
+                Draw.Mode = Plane.PhotoCondition ? 1.0f : 0.0f;
+                Draw.FrontOnlyCondition = Plane.FrontOnlyCondition;
+                State.Style.ImagePlanes.push_back(Draw);
+            }
+        }
+        const OrbitCameraBasis ActiveFrame = FrameOrbitCamera(State.Camera, 1.0, 1.0);
+        State.Pictures.Drawn = static_cast<int>(std::count_if(State.Style.ImagePlanes.begin(), State.Style.ImagePlanes.end(),
+            [&](const Sketcher::SketcherImagePlaneQuad& Draw) { return Sketcher::FacesSketcherImagePlane(Draw, ActiveFrame); }));
+
+        const auto States = Sketcher::DisplayedSketcherStates(State);
         Rasterizer.AssignStates(States.Faces, States.Edges);
+        State.Style.EdgeStroke = State.Options.EdgeStroke;
 
         const auto Panes = Sketcher::ComposeSketcherRasterPanes(State, Rasterizer.Width(), Rasterizer.Height());
         int ProbeX = -1;
         int ProbeY = -1;
-        if (State.ViewportHovered && ImGui::GetCurrentContext() != nullptr && State.ViewportRect[2] > 1.0f && State.ViewportRect[3] > 1.0f)
+        if (State.ViewportHovered && ImGui::GetCurrentContext() != nullptr && TargetRect[2] > 1.0f && TargetRect[3] > 1.0f)
         {
             const ImVec2 Mouse = ImGui::GetIO().MousePos;
-            const float U = (Mouse.x - State.ViewportRect[0]) / State.ViewportRect[2];
-            const float V = (Mouse.y - State.ViewportRect[1]) / State.ViewportRect[3];
+            const float U = (Mouse.x - TargetRect[0]) / TargetRect[2];
+            const float V = (Mouse.y - TargetRect[1]) / TargetRect[3];
             if (U >= 0.0f && U < 1.0f && V >= 0.0f && V < 1.0f)
             {
                 ProbeX = std::clamp(static_cast<int>(U * float(Rasterizer.Width())), 0, int(Rasterizer.Width()) - 1);
@@ -234,27 +301,14 @@ void SketcherWorkspaceHost::RenderViewportTarget()
         }
 
         VkCommandBuffer Cmd = Device->BeginSingleTimeCommands();
-        if (Cmd == VK_NULL_HANDLE)
-        {
-            return;
-        }
-
-        if (Panes.size() > 1)
-        {
-            Rasterizer.RecordPanes(Cmd, Panes, State.Style.Background, true, ProbeX, ProbeY);
-        }
-        else
-        {
-            const OrbitCameraBasis Frame =
-                FrameOrbitCamera(State.Camera, double(Rasterizer.Width()), double(Rasterizer.Height()));
-            Rasterizer.Record(Cmd, Frame, State.Style, true, ProbeX, ProbeY);
-        }
+        if (Cmd == VK_NULL_HANDLE) return;
+        Rasterizer.RecordPanes(Cmd, Panes, State.Style.Background, true, ProbeX, ProbeY);
 
         // DispatchCommandBufferAsync ends Cmd internally; do not call vkEndCommandBuffer twice.
         const uint64_t Tick = Device->DispatchCommandBufferAsync(Cmd);
         if (Device->AwaitTimelineTick(Tick))
         {
-            State.HoverIdentity = Rasterizer.ProbedIdentity();
+            State.HoverIdentity = State.ViewportHovered ? Rasterizer.ProbedIdentity() : 0u;
             UploadViewportPixels(Rasterizer.ReadbackColour(), Rasterizer.Width(), Rasterizer.Height());
         }
         Device->FreeCommandBuffer(Cmd);
