@@ -393,6 +393,124 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
 
     auto& BrowserPanel = ContentBrowserDrawer.AccessPanel();
     BrowserPanel.AttachOutlinerFallback(&Panes->Outliner);
+
+    Panes->Inspector.ConfigureCustomSectionCallback(
+        [this](
+            PixelSpace&             Surface,
+            Rectangle2D             ScrollViewport,
+            float                   LeftX,
+            float                   TopY,
+            float                   InnerWidth,
+            OutlinerRecordEntry&    Entry,
+            const PaneInputReading& Input) -> float
+        {
+            (void)ScrollViewport;
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return TopY;
+            }
+            const bool IsCamera = (Entry.Token == ShowcaseBundle->EditorCameraToken) ||
+                                  (Entry.Category == ConstructSlotCategory::OpticsCamera);
+            if (!IsCamera)
+            {
+                return TopY;
+            }
+
+            auto& Disp = ActivePanes->Viewport.AccessDisplaySettings();
+            const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+            const auto HitTest = [&](Rectangle2D R) -> bool
+            {
+                return Input.PrimaryPointer.Pressed && R.Contains(Cursor);
+            };
+
+            float Y = TopY + 10.0f;
+
+            // Card 1: Render Settings (mirrors Inspectors.jsx Card + Control)
+            const float Card1H = 186.0f;
+            const Rectangle2D Card1{ LeftX, Y, InnerWidth, Card1H };
+            Surface.FillRectangle(Card1, WorkspaceSurfaceColors::SectionSurface, 20.0f);
+            Surface.StrokeRectangle(Card1, WorkspaceSurfaceColors::HairlineLight, 20.0f, 1.0f);
+
+            float CY = Y + 14.0f;
+            const float CX = LeftX + 14.0f;
+            const float CW = InnerWidth - 28.0f;
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { CX, CY }, 11.0f, WorkspaceSurfaceColors::PrimaryInk, "Render Settings");
+            CY += 24.0f;
+
+            static constexpr const char* kEngines[6] = { "MatCap", "OpenPBR Direct", "GTX SDF GI", "HighEnd BVH4", "Game Realtime", "Scene Final" };
+            const uint32_t EngIdx = (Disp.RenderEngineIndex < 6u) ? Disp.RenderEngineIndex : 2u;
+            const Rectangle2D EngRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(EngRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Engine");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, kEngines[EngIdx]);
+            if (HitTest(EngRow)) { Disp.RenderEngineIndex = (EngIdx + 1u) % 6u; }
+            CY += 32.0f;
+
+            static constexpr const char* kSdfModes[6] = { "0. Point SDF", "1. Analytic Cone", "2. Voxel Clipmap", "3. Voxel + Cone GI", "4. Hybrid Sobol", "5. MC PT Ref" };
+            const uint32_t SdfIdx = (Disp.SdfShadowPenumbraIndex < 6u) ? Disp.SdfShadowPenumbraIndex : 3u;
+            const Rectangle2D SdfRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(SdfRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "SDF Shadow");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, kSdfModes[SdfIdx]);
+            if (HitTest(SdfRow)) { Disp.SdfShadowPenumbraIndex = (SdfIdx + 1u) % 6u; }
+            CY += 32.0f;
+
+            static constexpr const char* kQuals[5] = { "Low", "Med", "Std", "High", "Ultra" };
+            const uint32_t QIdx = static_cast<uint32_t>(Disp.QualityTier) % 5u;
+            const float SegW = (CW - 8.0f) / 5.0f;
+            for (uint32_t Q = 0u; Q < 5u; ++Q)
+            {
+                const Rectangle2D Seg{ CX + static_cast<float>(Q) * (SegW + 2.0f), CY, SegW, 24.0f };
+                Surface.FillRectangle(Seg, (Q == QIdx) ? ColorRgba{ 46, 50, 57, 255 } : WorkspaceSurfaceColors::ControlWell, 12.0f);
+                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Seg.X + 8.0f, Seg.Y + 6.0f }, 9.0f,
+                    (Q == QIdx) ? WorkspaceSurfaceColors::PrimaryInk : WorkspaceSurfaceColors::SecondaryInk, kQuals[Q]);
+                if (HitTest(Seg)) { Disp.QualityTier = static_cast<decltype(Disp.QualityTier)>(Q); }
+            }
+            CY += 30.0f;
+
+            const Rectangle2D RtRow{ CX, CY, CW, 24.0f };
+            Surface.FillRectangle(RtRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 5.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Raytracing");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 5.0f }, 9.5f,
+                Disp.RaytracingEnabled ? ColorRgba{ 74, 222, 128, 255 } : WorkspaceSurfaceColors::SecondaryInk, Disp.RaytracingEnabled ? "ON" : "OFF");
+            if (HitTest(RtRow)) { Disp.RaytracingEnabled = !Disp.RaytracingEnabled; }
+
+            Y += Card1H + 12.0f;
+
+            // Card 2: Sky, Sun, Moon & Clouds
+            const float Card2H = 132.0f;
+            const Rectangle2D Card2{ LeftX, Y, InnerWidth, Card2H };
+            Surface.FillRectangle(Card2, WorkspaceSurfaceColors::SectionSurface, 20.0f);
+            Surface.StrokeRectangle(Card2, WorkspaceSurfaceColors::HairlineLight, 20.0f, 1.0f);
+
+            CY = Y + 14.0f;
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { CX, CY }, 11.0f, WorkspaceSurfaceColors::PrimaryInk, "Sky, Sun, Moon & Clouds");
+            CY += 24.0f;
+
+            char SunBuf[24];
+            std::snprintf(SunBuf, sizeof(SunBuf), "%.1f h", Disp.SolarTimeOfDayHours);
+            const Rectangle2D SunRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(SunRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Solar Time");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, SunBuf);
+            if (HitTest(SunRow)) { Disp.SolarTimeOfDayHours = (Disp.SolarTimeOfDayHours >= 22.0f) ? 6.0f : (Disp.SolarTimeOfDayHours + 2.0f); }
+            CY += 32.0f;
+
+            char CloudBuf[24];
+            std::snprintf(CloudBuf, sizeof(CloudBuf), "%.0f%%", Disp.CloudFraction * 100.0f);
+            const Rectangle2D CloudRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(CloudRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Cloud Cover");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, CloudBuf);
+            if (HitTest(CloudRow))
+            {
+                Disp.CloudFraction = (Disp.CloudFraction >= 0.80f) ? 0.0f : (Disp.CloudFraction + 0.20f);
+                Disp.VolumetricCloudsEnabled = (Disp.CloudFraction > 0.01f);
+            }
+
+            return Y + Card2H + 10.0f;
+        });
     BrowserPanel.AssignContentActivationCallback(
         [this](const ContentRepositoryEntry& Entry)
         {
