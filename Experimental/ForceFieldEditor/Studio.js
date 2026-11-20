@@ -22,13 +22,13 @@ const DefaultOverlay = () => ({
   ArrowSpacing: 0.5,
   VectorScale: 1.0,
   StreamlinesEnabled: true,
-  StreamlineCount: 64,
+  StreamlineCount: 48,
   StreamlineThickness: 1.6,
   StreamDrift: 1.2,
   StreamColourMode: "Ramp",
   StreamColour: "#68dcff",
   ParticlesEnabled: true,
-  ParticleCount: 2400,
+  ParticleCount: 1600,
   ParticleSize: 1.9,
   TrailLength: 6,
   ParticleRamp: "Engineering",
@@ -46,6 +46,7 @@ const StudioStatus = {
   View: { Mode: "Top XY", Zoom: 150, Centre: [0, 0, 0.8] },
   Clock: { TimeSec: 0, Playing: true, TimeScale: 1.0 },
   ViewportDirty: true,
+  SceneTimeVarying: true,
   DomainTint: "#4AA8FF",
   RequestDuplicate: null,
   RequestRemove: null,
@@ -61,6 +62,8 @@ let GeneratorSerial = 1;
 let AutosaveTimer = null;
 let TickDurationMs = 0;
 let LastHeatmapSamples = 0;
+let LastLiveParticles = 0;
+let TelemetryLastMs = 0;
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    HELPERS
@@ -98,6 +101,16 @@ function RebuildGeneratorsSignature() {
       Gen.Position.map((C) => C.toFixed(2)).join(","),
     ].join("|");
   }).join("##") + "#" + StudioStatus.Generators.length;
+
+  // Does any contributing law depend on simulation time? Drives the heatmap refresh cadence.
+  StudioStatus.SceneTimeVarying = StudioStatus.Generators.some((Gen) => {
+    const F = Gen.Force;
+    if (!F.Enabled || F.Muted) return false;
+    if (F.Duration !== "Continuous") return true;
+    if (F.MotionPattern !== "Static") return true;
+    return F.Model === "CurlNoise" || F.Model === "AtmosphericGust"
+      || F.Model === "VorticityConfinement" || F.Model === "BrownianNoise";
+  });
 }
 
 function TouchScene(NotifyViewport = true) {
@@ -421,7 +434,7 @@ function BuildFooter(HostEl) {
 function UpdateTelemetry() {
   const Cell = document.getElementById("TelemetryCell");
   if (!Cell) return;
-  const Particles = StudioStatus.Overlay.ParticlesEnabled ? Math.min(StudioStatus.Overlay.ParticleCount, StudioStatus.Overlay.ParticleCount) : 0;
+  const Particles = StudioStatus.Overlay.ParticlesEnabled ? LastLiveParticles : 0;
   Cell.textContent =
     "t " + StudioStatus.Clock.TimeSec.toFixed(1) + "s \u00B7 tick " + TickDurationMs.toFixed(1) + "ms \u00B7 " +
     StudioStatus.Generators.length + " generators \u00B7 " + LastHeatmapSamples + " slice samples \u00B7 " +
@@ -667,7 +680,11 @@ function BindViewportInteraction(CanvasEl) {
     const Sy = Ev.clientY - Rect.top;
     Viewport.NotifyPointerMove(Sx, Sy);
     MeterWorldPoint = Viewport.ScreenToWorldPlane(Sx, Sy);
-    if (!DragMode) return;
+    if (!DragMode) {
+      const Hovered = Viewport.PickGenerator(Sx, Sy);
+      CanvasEl.style.cursor = Hovered ? "grab" : "crosshair";
+      return;
+    }
     const DxScreen = Ev.clientX - DragLastScreen[0];
     const DyScreen = Ev.clientY - DragLastScreen[1];
     DragLastScreen = [Ev.clientX, Ev.clientY];
@@ -706,9 +723,17 @@ function BindViewportInteraction(CanvasEl) {
 
   CanvasEl.addEventListener("wheel", (Ev) => {
     Ev.preventDefault();
+    const Rect = CanvasEl.getBoundingClientRect();
+    const Sx = Ev.clientX - Rect.left;
+    const Sy = Ev.clientY - Rect.top;
+    const WorldBefore = Viewport.ScreenToWorldPlane(Sx, Sy);
     const ZoomFactor = Math.exp(-Ev.deltaY * 0.0011);
-    const Next = Math.max(40, Math.min(900, StudioStatus.View.Zoom * ZoomFactor));
-    StudioStatus.View.Zoom = Next;
+    StudioStatus.View.Zoom = Math.max(40, Math.min(900, StudioStatus.View.Zoom * ZoomFactor));
+    StudioStatus.NotifyViewChanged();
+    const WorldAfter = Viewport.ScreenToWorldPlane(Sx, Sy);
+    const Centre = StudioStatus.View.Centre;
+    Centre[0] = Math.max(-9, Math.min(9, Centre[0] + WorldBefore[0] - WorldAfter[0]));
+    Centre[1] = Math.max(-9, Math.min(9, Centre[1] + WorldBefore[1] - WorldAfter[1]));
     StudioStatus.NotifyViewChanged();
   }, { passive: false });
 
@@ -795,11 +820,15 @@ function MainLoop(TimestampMs) {
   const RenderReport = Viewport.RenderTick(Clock.TimeSec, DtSim || 1 / 60);
   TickDurationMs = performance.now() - TickStart;
   LastHeatmapSamples = RenderReport.HeatmapSamples || 0;
+  LastLiveParticles = RenderReport.ParticleCount || 0;
   AdaptQuality(TickDurationMs);
 
   UpdateFieldMeter(Clock.TimeSec);
-  UpdateTelemetry();
-  UpdateLegend();
+  if (TimestampMs - TelemetryLastMs >= 250) {
+    TelemetryLastMs = TimestampMs;
+    UpdateTelemetry();
+    UpdateLegend();
+  }
   requestAnimationFrame(MainLoop);
 }
 
