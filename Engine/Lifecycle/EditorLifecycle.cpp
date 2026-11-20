@@ -393,6 +393,156 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
 
     auto& BrowserPanel = ContentBrowserDrawer.AccessPanel();
     BrowserPanel.AttachOutlinerFallback(&Panes->Outliner);
+
+    // Hook Editor Camera Render Settings Component into the Inspector
+    Panes->Inspector.ConfigureCustomSectionCallback(
+        [this](
+            PixelSpace&             Surface,
+            Rectangle2D             ScrollViewport,
+            float                   LeftX,
+            float                   TopY,
+            float                   InnerWidth,
+            OutlinerRecordEntry&    Entry,
+            const PaneInputReading& Input) -> float
+        {
+            (void)ScrollViewport;
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return TopY;
+            }
+            const bool IsCamera = (Entry.Token == ShowcaseBundle->EditorCameraToken) ||
+                                  (Entry.Category == ConstructSlotCategory::OpticsCamera);
+            if (!IsCamera)
+            {
+                return TopY;
+            }
+
+            auto& Disp = ActivePanes->Viewport.AccessDisplaySettings();
+            float Y    = TopY + 6.0f;
+
+            // Section Header
+            Surface.FillRectangle({ LeftX, Y, InnerWidth, 26.0f }, ColorRgba{ 26, 28, 32, 255 }, 8.0f);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Medium, { LeftX + 10.0f, Y + 6.0f }, 10.5f, ColorRgba{ 220, 224, 230, 255 }, "RENDER SETTINGS COMPONENT");
+            Y += 32.0f;
+
+            const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+            const auto HitTest = [&](float X, float RY, float W, float H) -> bool
+            {
+                return Input.PrimaryPointer.Pressed && Rectangle2D{ X, RY, W, H }.Contains(Cursor);
+            };
+
+            // 1. Render Engine / Type
+            static constexpr const char* kEngineNames[6] = {
+                "MatCap", "OpenPBR Direct", "GTX SDF GI", "HighEnd BVH4", "Game Realtime", "Scene Final"
+            };
+            const uint32_t EngIdx = (Disp.RenderEngineIndex < 6u) ? Disp.RenderEngineIndex : 1u;
+            Surface.FillRectangle({ LeftX, Y, InnerWidth, 26.0f }, ColorRgba{ 35, 38, 43, 255 }, 13.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 6.0f }, 10.0f, ColorRgba{ 142, 149, 158, 255 }, "Render Type:");
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 95.0f, Y + 6.0f }, 10.0f, ColorRgba{ 241, 243, 245, 255 }, kEngineNames[EngIdx]);
+            if (HitTest(LeftX, Y, InnerWidth, 26.0f))
+            {
+                Disp.RenderEngineIndex = (EngIdx + 1u) % 6u;
+            }
+            Y += 32.0f;
+
+            // 2. SDF / Shadow Penumbra Mode
+            static constexpr const char* kSdfNames[6] = {
+                "0. Point-Sample SDF", "1. Analytic SDF Cone", "2. 3D Voxel Clipmap",
+                "3. Voxel SDF + Cone GI", "4. Hybrid Sobol Cap", "5. SDF MC PT Ref"
+            };
+            const uint32_t SdfIdx = (Disp.SdfShadowPenumbraIndex < 6u) ? Disp.SdfShadowPenumbraIndex : 1u;
+            Surface.FillRectangle({ LeftX, Y, InnerWidth, 26.0f }, ColorRgba{ 35, 38, 43, 255 }, 13.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 6.0f }, 10.0f, ColorRgba{ 142, 149, 158, 255 }, "SDF / Shadow:");
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 100.0f, Y + 6.0f }, 10.0f, ColorRgba{ 241, 243, 245, 255 }, kSdfNames[SdfIdx]);
+            if (HitTest(LeftX, Y, InnerWidth, 26.0f))
+            {
+                Disp.SdfShadowPenumbraIndex = (SdfIdx + 1u) % 6u;
+            }
+            Y += 32.0f;
+
+            // 3. Quality Tier Segmented Bar
+            static constexpr const char* kQualityNames[5] = { "Low", "Med", "Std", "High", "Ultra" };
+            const uint32_t QIdx = static_cast<uint32_t>(Disp.QualityTier) % 5u;
+            const float SegW    = (InnerWidth - 8.0f) / 5.0f;
+            for (uint32_t Q = 0u; Q < 5u; ++Q)
+            {
+                const float SX = LeftX + static_cast<float>(Q) * (SegW + 2.0f);
+                const bool Active = (Q == QIdx);
+                Surface.FillRectangle({ SX, Y, SegW, 24.0f },
+                    Active ? ColorRgba{ 46, 50, 57, 255 } : ColorRgba{ 22, 24, 28, 255 }, 12.0f);
+                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { SX + 8.0f, Y + 5.0f }, 9.5f,
+                    Active ? ColorRgba{ 241, 243, 245, 255 } : ColorRgba{ 142, 149, 158, 255 }, kQualityNames[Q]);
+                if (HitTest(SX, Y, SegW, 24.0f))
+                {
+                    Disp.QualityTier = static_cast<decltype(Disp.QualityTier)>(Q);
+                }
+            }
+            Y += 30.0f;
+
+            // 4. Render Scale
+            char ScaleBuf[32];
+            std::snprintf(ScaleBuf, sizeof(ScaleBuf), "Render Scale: %.0f%%", Disp.RenderScalePercent);
+            Surface.FillRectangle({ LeftX, Y, InnerWidth, 24.0f }, ColorRgba{ 25, 27, 31, 255 }, 12.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 5.0f }, 10.0f, ColorRgba{ 200, 205, 212, 255 }, ScaleBuf);
+            if (HitTest(LeftX, Y, InnerWidth, 24.0f))
+            {
+                Disp.RenderScalePercent = (Disp.RenderScalePercent >= 150.0f) ? 50.0f : (Disp.RenderScalePercent + 25.0f);
+            }
+            Y += 30.0f;
+
+            // 5. Raytracing Toggle
+            Surface.FillRectangle({ LeftX, Y, InnerWidth, 24.0f }, ColorRgba{ 25, 27, 31, 255 }, 12.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 5.0f }, 10.0f,
+                Disp.RaytracingEnabled ? ColorRgba{ 74, 222, 128, 255 } : ColorRgba{ 142, 149, 158, 255 },
+                Disp.RaytracingEnabled ? "Raytracing: ON" : "Raytracing: OFF");
+            if (HitTest(LeftX, Y, InnerWidth, 24.0f))
+            {
+                Disp.RaytracingEnabled = !Disp.RaytracingEnabled;
+            }
+            Y += 34.0f;
+
+            // 6. Atmosphere, Sun, Sky, Moon, Stars & Clouds Component
+            Surface.FillRectangle({ LeftX, Y, InnerWidth, 26.0f }, ColorRgba{ 26, 28, 32, 255 }, 8.0f);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Medium, { LeftX + 10.0f, Y + 6.0f }, 10.5f, ColorRgba{ 220, 224, 230, 255 }, "SKY, SUN, MOON & CLOUDS");
+            Y += 32.0f;
+
+            char SunBuf[40];
+            std::snprintf(SunBuf, sizeof(SunBuf), "Solar Time: %.1f h", Disp.SolarTimeOfDayHours);
+            Surface.FillRectangle({ LeftX, Y, InnerWidth, 24.0f }, ColorRgba{ 25, 27, 31, 255 }, 12.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 5.0f }, 10.0f, ColorRgba{ 200, 205, 212, 255 }, SunBuf);
+            if (HitTest(LeftX, Y, InnerWidth, 24.0f))
+            {
+                Disp.SolarTimeOfDayHours = (Disp.SolarTimeOfDayHours >= 22.0f) ? 6.0f : (Disp.SolarTimeOfDayHours + 2.0f);
+            }
+            Y += 30.0f;
+
+            char CloudBuf[40];
+            std::snprintf(CloudBuf, sizeof(CloudBuf), "Clouds: %.0f%% (%s)", Disp.CloudFraction * 100.0f, Disp.VolumetricCloudsEnabled ? "ON" : "OFF");
+            Surface.FillRectangle({ LeftX, Y, InnerWidth, 24.0f }, ColorRgba{ 25, 27, 31, 255 }, 12.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 5.0f }, 10.0f,
+                Disp.VolumetricCloudsEnabled ? ColorRgba{ 74, 222, 128, 255 } : ColorRgba{ 142, 149, 158, 255 }, CloudBuf);
+            if (HitTest(LeftX, Y, InnerWidth, 24.0f))
+            {
+                Disp.CloudFraction = (Disp.CloudFraction >= 0.80f) ? 0.0f : (Disp.CloudFraction + 0.20f);
+                Disp.VolumetricCloudsEnabled = (Disp.CloudFraction > 0.01f);
+            }
+            Y += 30.0f;
+
+            Surface.FillRectangle({ LeftX, Y, InnerWidth, 24.0f }, ColorRgba{ 25, 27, 31, 255 }, 12.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 5.0f }, 10.0f,
+                Disp.CelestialStarsEnabled ? ColorRgba{ 74, 222, 128, 255 } : ColorRgba{ 142, 149, 158, 255 },
+                Disp.CelestialStarsEnabled ? "Sun, Moon & Stars: ON" : "Sun, Moon & Stars: OFF");
+            if (HitTest(LeftX, Y, InnerWidth, 24.0f))
+            {
+                Disp.CelestialStarsEnabled = !Disp.CelestialStarsEnabled;
+            }
+            Y += 30.0f;
+
+            return Y;
+        });
     BrowserPanel.AssignContentActivationCallback(
         [this](const ContentRepositoryEntry& Entry)
         {
