@@ -7,7 +7,7 @@
 //      ContentBrowserPanel (bottom notch + empty top header strip).
 //   2. World Renderer acceleration fixes:
 //      - Per-object cached 49-degree smooth normals transform cleanly into WideBoundingTree without
-//        any SDF or GI lattice state.
+//        any voxel volume or GI lattice state.
 //      - GPU VulkanWorldRenderSequence uploads compact BVH4 + triangle descriptors directly for
 //        non-GI OpenPbrDirect & MatCap compute rendering.
 // =================================================================================================
@@ -302,7 +302,7 @@ namespace
         VerifyCheck(AllOpaqueCached,
                     "Every opaque ShowcaseWorldObjectEntry retains pre-split LocalSmoothTriangles cache");
 
-        // 2. Mutate object position + yaw and rebuild BVH4 without CPU SDF
+        // 2. Mutate object position + yaw and rebuild BVH4 directly from cached smooth triangles
         const std::size_t FirstTriCount = Bundle.Scene.SceneTree.Primitives.size();
         for (ShowcaseWorldAssetEntry& Object : Bundle.Objects)
         {
@@ -380,7 +380,7 @@ namespace
         else
         {
 #if defined(_WIN32)
-            std::cout << "[INFO] Vulkan GPU compute unavailable on runner; GPU SDF/RTX checks skipped on _WIN32.\n";
+            std::cout << "[INFO] Vulkan GPU compute unavailable on runner; GPU compute checks skipped on _WIN32.\n";
 #else
             VerifyCheck(false, "VulkanInterchange failed to initialize on Linux runner");
 #endif

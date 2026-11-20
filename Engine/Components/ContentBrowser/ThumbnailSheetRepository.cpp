@@ -1107,7 +1107,7 @@ void ThumbnailSheetRepository::PopulateDefaultWorkspaceEntries()
         // Simulations & Volumetrics (.SimulationSpace / .VolumetricSpace)
         { "Voronoi Fracture Rig", ContentCategory::Simulations, ContentOriginFilter::Project, { 232u, 148u, 96u,  255u } },
         // Volumetrics, Photometry, Audio, Shaders
-        { "Cumulus Density SDF",          ContentCategory::Volumetrics, ContentOriginFilter::Engine,  { 198u, 214u, 232u, 255u } },
+        { "Cumulus Density Grid",         ContentCategory::Volumetrics, ContentOriginFilter::Engine,  { 198u, 214u, 232u, 255u } },
         { "Downlight Narrow IES",         ContentCategory::Photometry,  ContentOriginFilter::Engine,  { 248u, 224u, 134u, 255u } },
         { "Turbine Loop Bus",             ContentCategory::Audio,       ContentOriginFilter::Engine,  { 124u, 218u, 156u, 255u } },
         { "MicrofacetGGX.slang",          ContentCategory::Shaders,     ContentOriginFilter::Engine,  { 186u, 156u, 238u, 255u } },

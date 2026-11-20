@@ -45,12 +45,17 @@ reinvented non-matching UIs, misrepresented rendering output, and broke shared e
 
 | Queued Redo Domain | Preserved Reference & Status |
 | :--- | :--- |
-| **SDF Shadows · SDF GI · Emissive GI · Path Tracing** *(Priority Redo)* | Byte-exact engine sources, `VoxelSdfClipmap`, `DeterministicIntegrators`, `ControlVehicleSurfaceLoader`, validation suites, and 16+ rendered proof sheets preserved in [`Experimental/RemovedSdfGi/README.md`](Experimental/RemovedSdfGi/README.md), alongside [`Experimental/SdfLightingDemoCpp/`](Experimental/SdfLightingDemoCpp/), [`Experimental/DeterministicPathTracer/README.md`](Experimental/DeterministicPathTracer/README.md), and [`Experimental/ShadowAlgorithmLab/`](Experimental/ShadowAlgorithmLab/). |
+| **SDF Shadows · SDF GI · Emissive GI · Path Tracing** *(Priority Redo — [`WorldRenderingRedoPlan.md`](Documentation/Plans/WorldRenderingRedoPlan.md))* | Byte-exact engine sources, `VoxelSdfClipmap`, `DeterministicIntegrators`, `ControlVehicleSurfaceLoader`, validation suites, and 16+ rendered proof sheets preserved in [`Experimental/RemovedSdfGi/README.md`](Experimental/RemovedSdfGi/README.md), alongside [`Experimental/SdfLightingDemoCpp/`](Experimental/SdfLightingDemoCpp/) and [`Experimental/DeterministicPathTracer/README.md`](Experimental/DeterministicPathTracer/README.md). Locked execution order: **(0)** purge all residual SDF / SDF-baking code from `Engine/`; **(1st)** Standalone Direct PBR (`MatCap` + `OpenPbrDirect`, zero GI, zero SDF); **(2nd)** Real-Time GI (`StokesContour` + `SurfelRadiosity`) using **Shadow Candidate 1** (`HybridConeShadow`) on `GtxLowEnd` and **exact `BVH4` / `RayQuery` shadows (`0 MB` SDF)** on `HighEnd`; **(3rd)** Unified **Deterministic Path Tracer** for both Games & Final Scene Rendering (differing strictly by settings). |
 | **Fluid · ForceField / VectorField · Particle** | Removed from `Engine/` and `Experimental/` (`daed305`). Paused until explicitly scheduled by the user; when redone, must pass every gate in **§2.1** (exact HTML UI & exact solver/shader parity — zero simplified billboard substitutes). |
 
 ---
 
 ## 2. Non-Negotiable Architectural & Fidelity Mandates
+
+### 🔴 2.0 Mandatory Continuous `git commit` + `git push` (Cloud Sandbox Reset Protection)
+- **Cloud sandboxes can reset at any moment without warning, permanently wiping uncommitted edits and unpushed local commits.**
+- **ALWAYS** stage, commit (`git commit`), and push (`git push origin <current-branch>`) **immediately after completing each logical step/milestone and ALWAYS before ending every turn** (including documentation-only and planning turns).
+- Never leave a dirty working tree or unpushed local commits at turn end, and never create, rename, or push to any branch other than the active session branch.
 
 ### 🔴 2.1 Automatic HTML-to-C++ Parity, Pre-Code Screenshot & Zero-Simplification Gate
 Run this sequence **automatically on every HTML-to-C++ port or UI/renderer task — never wait for the user to ask**:

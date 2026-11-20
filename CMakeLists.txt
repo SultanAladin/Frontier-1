@@ -197,6 +197,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Panes/InspectorPanel.cpp
     Engine/Components/Panes/ViewportPanel.cpp
     Engine/Components/Panes/ViewportProjectionPane.cpp
+    Engine/Components/Panes/DeterministicPathTracerPane.cpp
     Engine/Components/ControlCentre/ControlCentrePanel.cpp
     Engine/Components/ContentBrowser/ColourSwatchBrowserView.cpp
     Engine/Components/ContentBrowser/ThumbnailSheetRepository.cpp
@@ -600,6 +601,49 @@ foreach(CE_SHADER_STEM
     frontier_compile_component_editor_slang_shader("${CE_SHADER_STEM}" "FragmentMain" "fragment" "${CE_SHADER_STEM}.frag.spv")
 endforeach()
 
+function(frontier_compile_world_module_slang_shader SLANG_REL_PATH ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
+    set(IN_SLANG "${CMAKE_SOURCE_DIR}/Engine/Shaders/${SLANG_REL_PATH}")
+    set(OUT_SPV  "${FRONTIER_COMPILED_SHADER_DIR}/${OUT_SPV_NAME}")
+    add_custom_command(
+        OUTPUT "${OUT_SPV}"
+        COMMAND "${FRONTIER_SLANGC_BIN}"
+            "${IN_SLANG}"
+            -I "${CMAKE_SOURCE_DIR}/Engine/Shaders"
+            -I "${FRONTIER_SHADER_SRC_DIR}"
+            -target spirv
+            -profile spirv_1_3
+            -emit-spirv-directly
+            -fvk-use-entrypoint-name
+            -matrix-layout-row-major
+            -O0
+            -entry "${ENTRY_NAME}"
+            -stage "${SHADER_UNIT}"
+            -o "${OUT_SPV}"
+        DEPENDS
+            "${IN_SLANG}"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/DirectLighting/WideTreeRayQuery.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/GlobalIllumination/QuadratureSequence.slang"
+        COMMENT "[Slang] Compiling ${SLANG_REL_PATH} (${SHADER_UNIT}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
+        VERBATIM
+    )
+    set(FRONTIER_SPV_OUTPUTS ${FRONTIER_SPV_OUTPUTS} "${OUT_SPV}" PARENT_SCOPE)
+endfunction()
+
+frontier_compile_world_module_slang_shader(DirectLighting/RefitWideBoundingTreeCompute.slang            ComputeEntry           compute  RefitWideBoundingTreeCompute.comp.spv)
+frontier_compile_world_module_slang_shader(DirectLighting/HybridConeShadowCompute.slang                 ComputeEntry           compute  HybridConeShadowCompute.comp.spv)
+frontier_compile_world_module_slang_shader(DirectLighting/SdfEmissivePenumbraCompute.slang              ComputeEntry           compute  SdfEmissivePenumbraCompute.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/StokesContourIrradianceCompute.slang      ComputeEntry           compute  StokesContourIrradianceCompute.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/SurfelRadiosityLatticeCompute.slang       ComputeEntry           compute  SurfelRadiosityLatticeCompute.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/DeterministicRadianceIntegration.slang    IntegrateRadiance      compute  DeterministicRadianceIntegration.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/DeterministicRadianceIntegration.slang    ReprojectHistory       compute  DeterministicHistoryReproject.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/DeterministicRadianceIntegration.slang    ResolveSurfaceFeatures compute  DeterministicSurfaceFeatures.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/DeterministicRadianceIntegration.slang    ExtractQuadrature      compute  DeterministicQuadratureExtract.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/VisibilityTriangleRasterization.slang     VertexEntry            vertex   VisibilityTriangleRasterization.vert.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/VisibilityTriangleRasterization.slang     FragmentEntry          fragment VisibilityTriangleRasterization.frag.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/DisplayReconstructionFilter.slang         GatherEstimate         compute  DisplayReconstructionGather.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/DisplayReconstructionFilter.slang         FilterAtrous           compute  DisplayReconstructionAtrous.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/DisplayToneTransform.slang                ComputeEntry           compute  DisplayToneTransform.comp.spv)
+
 add_custom_target(FrontierShaders DEPENDS ${FRONTIER_SPV_OUTPUTS})
 
 set(FRONTIER_ENGINE_SOURCES
@@ -625,7 +669,13 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Visibility/VisibilityMaterialResolve.cpp
     Engine/GeometricRaster/DirectLighting/SolarShadowSequence.cpp
     Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.cpp
+    Engine/GeometricRaster/DirectLighting/HybridConeShadowSequence.cpp
+    Engine/GeometricRaster/DirectLighting/SdfEmissivePenumbraSequence.cpp
+    Engine/GeometricRaster/DirectLighting/PhotometricLightTree.cpp
     Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.cpp
+    Engine/GeometricRaster/GlobalIllumination/StokesContourIrradianceSequence.cpp
+    Engine/GeometricRaster/GlobalIllumination/SurfelRadiosityLatticeSequence.cpp
+    Engine/GeometricRaster/GlobalIllumination/DeterministicPathTraceSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.cpp
     Engine/GeometricRaster/Atmosphere/CelestialEphemerisSolver.cpp
@@ -755,8 +805,10 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Workspaces/ParametricSketcher/Document/SketcherMeasurement.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherScene.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherSpecimen.cpp
+    Engine/DistanceFieldSpace/LocalSignedDistanceVolume.cpp
     Engine/SpatialAcceleration/ClusterPyramid.cpp
     Engine/SpatialAcceleration/WideBoundingTree.cpp
+    Engine/SpatialAcceleration/CompressedWideTree.cpp
     Engine/AudioSpace/AudioBusAccumulator.cpp
     Engine/AudioSpace/AudioExtension.cpp
     Engine/AudioSpace/AudioHardwareOutput.cpp
@@ -823,6 +875,8 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Codecs/VectorCodec.cpp
     Engine/Codecs/NetworkCodec.cpp
     Engine/Codecs/ComponentSpaceCodec.cpp
+    Engine/Codecs/PhotometricProfile.cpp
+    Engine/Codecs/ControlVehicleSurfaceDecoder.cpp
     Engine/ComponentClass/ComponentInstanceStorage.cpp
     Engine/ComponentClass/ComponentClassDefinition.cpp
     Engine/ComponentClass/ComponentClassValidator.cpp
@@ -1094,6 +1148,10 @@ if(BUILD_TESTING)
     endif()
     frontier_register_exhibit(VectorGraphicsGPUValidation       Exhibits/VectorGraphicsGPUValidation.cpp)
     frontier_register_exhibit(BakingGPUValidation               Exhibits/BakingGPUValidation.cpp)
+    frontier_register_exhibit(DirectPbrWorldValidation          Exhibits/DirectPbrWorldValidation.cpp)
+    frontier_register_exhibit(GtxSdfGiShadowValidation          Exhibits/GtxSdfGiShadowValidation.cpp)
+    frontier_register_exhibit(SdfEmissivePenumbraValidation     Exhibits/SdfEmissivePenumbraValidation.cpp)
+    frontier_register_exhibit(DeterministicPathTracerValidation Exhibits/DeterministicPathTracerValidation.cpp)
     frontier_register_exhibit(WindCloudsFogValidation           Exhibits/WindCloudsFogValidation.cpp)
     frontier_register_exhibit(SketcherKernelValidation          Exhibits/ParametricSketcher/SketcherKernelValidation.cpp)
     frontier_register_exhibit(SketcherDocumentValidation        Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)

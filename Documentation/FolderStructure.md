@@ -218,10 +218,15 @@ Frontier/
     ├── SpatialAcceleration/                       // Broad-phase, cluster LOD pyramid & 4-wide ray acceleration
     │   ├── BoundingVolumeTree.{h,cpp}             // Area-heuristic binary bounding volume split tree
     │   ├── ClusterPyramid.{h,cpp}                 // 128-face PolygonNetwork LOD pyramid with locked seam/crease borders
+    │   ├── CompressedWideTree.{h,cpp}             // 64 B 8-bit quantized 4-Wide BVH4 + bottom-up dynamic refit & instancing
     │   ├── WideBoundingTree.{h,cpp}               // Compressed 128 B 4-Wide BVH4 + optional VK_KHR_acceleration_structure
     │   ├── LooseOctree.{h,cpp}                    // Expanded boundary volumetric spatial tree
     │   ├── DynamicAABBTree.{h,cpp}                // Self-balancing binary tree for dynamic colliders
     │   └── SpatialGridHash.{h,cpp}                // Sparse spatial hashing structure
+    │
+    ├── DistanceFieldSpace/                        // GtxLowEnd-only local C0-continuous SDF & articulated bone-capsule rig
+    │   ├── ArticulatedCapsuleRig.h                // Analytical tapered bone-capsule rig for GtxLowEnd cone shadows
+    │   └── LocalSignedDistanceVolume.{h,cpp}      // Bounded 48^3..64^3 fp16 C0-continuous local dynamic SDF (<= 3.7 MB)
     │
     ├── ColourSpace/                               // Tristimulus spaces, chromaticity, and transfer curves
     │   ├── ChromaticitySpace.{h,cpp}              // CIE XYZ, Linear sRGB, ACEScg, Rec.2020, and Oklab transforms
@@ -362,13 +367,19 @@ Frontier/
     │   │   ├── VisibilityClusterRasterization.{h,cpp}// uint64 (Depth32 | VisibilityToken32) + 2-layer glass depth peel
     │   │   └── VisibilityMaterialResolve.{h,cpp}  // Analytic ray-differential barycentrics & LobeMask tile resolve
     │   │
-    │   ├── DirectLighting/                        // First-hit solar shadows, analytic area lights & chassis AO
+    │   ├── DirectLighting/                        // First-hit solar/cone shadows, .ies light trees, analytic area lights & chassis AO
+    │   │   ├── HybridConeShadowSequence.{h,cpp}   // Order 2 GtxLowEnd local-SDF + capsule cone vs HighEnd 0 MB-SDF BVH4 shadows
+    │   │   ├── PhotometricLightTree.{h,cpp}       // Conty Estevez & Kulla binary .ies importance light tree + unified light register
     │   │   ├── SolarShadowSequence.{h,cpp}        // RTX deterministic solar frustum + GTX tight 2-cascade contact clip
-    │   │   └── LinearCosineLightIntegration.{h,cpp}// Visibility-gated analytic polygonal lights + 2.2 m chassis AO
+    │   │   └── LinearCosineLightIntegration.{h,cpp}// Visibility-gated analytic polygonal lights, .ies photometry & 2.2 m chassis AO
     │   │
-    │   ├── GlobalIllumination/                    // Specular reflections, glass refraction & tiered world composition
+    │   ├── GlobalIllumination/                    // Three-Order World Rendering: Direct PBR, Real-Time GI & Deterministic Path Tracer
+    │   │   ├── DeterministicPathTraceSequence.{h,cpp}// Order 3 Vulkan 1.3 + Slang unified path tracer (GameRealtime & SceneFinalRender)
     │   │   ├── SpecularReflectionSequence.{h,cpp} // Coherent WideBoundingTree multi-bounce specular & glass refraction
-    │   │   └── TieredWorldRenderSequence.{h,cpp}  // Complete ordered MatCap & OpenPbrDirect GTX/RTX world sequence bound to viewports
+    │   │   ├── StokesContourIrradianceSequence.{h,cpp}// Order 2 boundary-only Stokes polygonal contour diffuse GI
+    │   │   ├── SurfelRadiosityLatticeSequence.{h,cpp}// Order 2 2-cascade sparse spatial-hashed SH1 surfel radiosity lattice GI
+    │   │   ├── TieredWorldRenderSequence.{h,cpp}  // Unified router across Order 1 Direct, Order 2 GI & Order 3 Path Tracer
+    │   │   └── VulkanWorldRenderSequence.{h,cpp}  // Order 1 Vulkan .slang GPU compute direct PBR sequence
     │   │
     │   ├── Atmosphere/                            // 3-LUT sky, Neckel & Labs solar optics, unified PlanetaryClouds, 6 exosphere moons & BSC5 starfield
     │   │   ├── CelestialEphemerisSolver.{h,cpp}   // Solar/orbital ephemeris, Kelvin blackbody & azimuth/elevation basis
@@ -389,7 +400,7 @@ Frontier/
     │
     ├── Shaders/                                   // Single unified root for ALL Frontier .slang GPU shaders
     │   ├── Atmosphere/                            // SkyView, Solar/Moon/Stars, LensFlare, VolumetricFog & single-source PlanetaryClouds (CloudNoise/Density/Transport/AerialPerspective/Compute)
-    │   ├── Baking/                                // Surface transfer, channel resolve, dilation, Volume SDF & slice .slang
+    │   ├── Baking/                                // Surface transfer, channel resolve, low-UV raster & dilation .slang (zero SDF)
     │   ├── Colour/                                // GPU colour ramp LUT sampling .slang
     │   ├── ComponentEditor/                       // Component channel inspection, hulls, constraints & light volumes .slang
     │   ├── Compiler/
@@ -410,12 +421,21 @@ Frontier/
     │   │   ├── HardwareVisibilityRasterization.slang// >=4 px indirect cluster rasterization + 2-layer glass peel
     │   │   ├── MicroFaceSoftwareRasterization.slang// <4 px compute atomicMax64 sub-pixel face rasterization
     │   │   └── AnalyticBarycentricResolve.slang   // Ray-plane barycentrics, UV Jacobians & wave-uniform material shade
-    │   ├── DirectLighting/                        // WideTreeRayQuery, solar frustum & shadow filter
-    │   │   ├── WideTreeRayQuery.slang             // Shared 4-Wide BVH4 & VK_KHR_ray_query intersection routines
+    │   ├── DirectLighting/                        // WideTreeRayQuery, hybrid cone shadows, BVH4 refit, solar frustum & shadow filter
+    │   │   ├── WideTreeRayQuery.slang             // Shared 128 B & 64 B quantized 4-Wide BVH4 intersection routines
+    │   │   ├── HybridConeShadowCompute.slang      // GtxLowEnd local-SDF + capsule cone vs HighEnd 64 B BVH4 soft shadows
+    │   │   ├── RefitWideBoundingTreeCompute.slang // Sub-0.12 ms bottom-up GPU BVH4 AABB refit for dynamic surfaces
     │   │   ├── SolarFrustumShadow.slang           // Deterministic Vogel solar disc trace + chassis 2-scale AO
     │   │   └── PlaneAwareShadowFilter.slang       // Coplanar dilation + 3-step continuous-sigma edge-preserving filter
-    │   ├── GlobalIllumination/                    // Specular/glass raytrace compute shader
-    │   │   └── SpecularGlassRaytrace.slang        // Coherent cone-footprint multi-bounce specular & dielectric glass
+    │   ├── GlobalIllumination/                    // Real-Time GI, Specular/Glass & Unified Deterministic Path Tracer
+    │   │   ├── DeterministicRadianceIntegration.slang // Order 3 OpenPBR path tracer, history reproject, surface features & quadrature
+    │   │   ├── DisplayReconstructionFilter.slang  // Order 3 variance gather + 4-step edge-stopping a-trous wavelet filter
+    │   │   ├── DisplayToneTransform.slang         // Order 3 linear exposure + ACES fitted curve + IEC 61966-2-1 sRGB
+    │   │   ├── QuadratureSequence.slang           // Shared Laine-Karras Owen-scrambled (0, 2) Sobol' + blue-noise XOR shift
+    │   │   ├── SpecularGlassRaytrace.slang        // Coherent cone-footprint multi-bounce specular & dielectric glass
+    │   │   ├── StokesContourIrradianceCompute.slang // Order 2 Stokes boundary contour diffuse GI compute
+    │   │   ├── SurfelRadiosityLatticeCompute.slang// Order 2 sparse spatial-hashed SH1 surfel radiosity lattice compute
+    │   │   └── VisibilityTriangleRasterization.slang // Order 3 subpixel R32_UINT primary visibility rasterizer
     │   ├── GeometricRaster/                       // WorldViewportRadiometricCompute, SurfaceShading, MatCap, UVTile, Gizmo, ImGuiOverlay & Picking .slang
     │   ├── Sketcher/                              // Parametric CAD strokes, edges, gizmo, grid, matcap & projection .slang
     │   ├── Vector/                                // Vector modifier expand, stencil fill, cover, layer stack & PBR .slang

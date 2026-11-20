@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         SPECULARREFLECTIONSEQUENCE.CPP
 ============================================================================================================================================*/
-// 🧩 Specular & Abbe Glass Refraction: BVH4 WideBoundingTree Raytrace or Analytical Sky Environment (Zero SDF Reflections!)
+// 🧩 Specular & Abbe Glass Refraction: BVH4 WideBoundingTree Raytrace or Analytical Sky Environment
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -206,7 +206,7 @@ SpecularReflectionBuffer SpecularReflectionSequence::EvaluateSpecularRefractionW
             AreaLights);
     }
 
-    // SkyEnvironment: Analytical Sky Dome gradient + Fresnel directional albedo weight (Zero SDF Reflections!)
+    // SkyEnvironment: Analytical Sky Dome gradient + Fresnel directional albedo weight
     SpecularReflectionBuffer Out {};
     Out.WidthPx  = VisibilityTargets.WidthPx;
     Out.HeightPx = VisibilityTargets.HeightPx;

@@ -27,6 +27,8 @@ def collect_markdown_documents(include_content: bool = True) -> list[dict[str, o
     plans_dir = REPO_ROOT / "Documentation" / "Plans"
     if plans_dir.exists():
         for preferred_name in (
+            "WorldRenderingRedoReport.md",
+            "WorldRenderingRedoPlan.md",
             "DocumentationCleanupReport.md",
             "ProjectBrowserWorkspacePlan.md",
             "RemediationInputCameraPlan.md",

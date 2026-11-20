@@ -12,7 +12,7 @@
 | `ComponentConstraintVisual.slang` | Layer-1 X-ray constraint hardware, Hinge/Ball limit range fans, Spin comet ribbons, and Dock pulsing iris shader |
 | `ComponentDotFloor.slang` | Infinite metric (1.0 m) & quarter-meter (0.25 m) ground dot floor fading around CameraRig focus point with X/Z axis tinting |
 | `ComponentEditorShared.slang` | Shared uniforms, OpenPBR-direct (Zero GI) BRDF, ACES Filmic tonemapping, and selection halo helpers for Component Editor viewports |
-| `ComponentFieldHull.slang` | Fresnel rim, soft box face borders, rising world-Y scan band, and SDF voxel dust shell shader (no wireframe line cages) |
+| `ComponentFieldHull.slang` | Fresnel rim, soft box face borders, rising world-Y scan band, and analytical hull shell shader (no wireframe line cages) |
 | `ComponentLightVolume.slang` | Additive SpotBeam & Camera frustum volumetric beam shader attenuating smoothly along +X beam axis |
 
 ## Shader Entry Points & Compilation

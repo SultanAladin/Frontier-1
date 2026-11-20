@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Codecs/PhotometricProfile.h"
 #include "Engine/GeometricRaster/DirectLighting/SolarShadowSequence.h"
 #include "Engine/MaterialSpace/CompactMaterialRegister.h"
 
@@ -51,6 +52,17 @@ struct DirectPointLightSpec
     float                  RadiusMeters  = 0.10f;            // [m]   - Source sphere radius
 };
 
+struct PhotometricPointRadiator
+{
+    Mathematics::Axis3D    PositionWorld    { 0.0f, 0.0f, 3.0f };   // [m]    - Emitter apex in world space
+    Mathematics::Axis3D    BeamAxis         { 0.0f, 0.0f, -1.0f };  // [-]    - Unit polar theta=0 emission axis
+    Mathematics::Axis3D    ZeroAzimuthAxis  { 1.0f, 0.0f, 0.0f };   // [-]    - Unit orthogonal phi=0 reference axis
+    Mathematics::LinearRGB PeakIntensityRgb { 1.0f, 1.0f, 1.0f };   // [W/sr] - Radiometric intensity at normalized candela = 1
+    float                  RangeMeters      = 24.0f;                // [m]    - Smooth quartic distance cutoff
+    float                  RadiusMeters     = 0.06f;                // [m]    - Non-singular denominator clamp
+    uint32_t               ProfileOrdinal   = 0u;                   // [idx]  - Index into PhotometricProfiles array
+};
+
 struct DirectLightingOutput
 {
     uint32_t                            WidthPx                = 0u; // [px]    - Viewport width
@@ -87,7 +99,7 @@ public:
         float DiffuseAmbientOcclusion,
         float PerceptualRoughness) noexcept;
 
-    // Evaluates full Direct Lighting Frame with explicit Shadow Lab algorithm (BVH4 & Shadow Cascades, Zero GI / Zero SDF)
+    // Evaluates full Direct Lighting Frame with explicit Shadow Lab algorithm (BVH4 & Orthographic Cascades)
     [[nodiscard]] static DirectLightingOutput EvaluateDirectLightingFrameWithAlgorithm(
         SolarShadowAlgorithm                           Algorithm,
         const PerspectiveCameraBasis&                  Camera,
@@ -97,11 +109,15 @@ public:
         const SpatialAcceleration::WideBoundingTree&   SceneTree,
         const SolarDirectionalSource&                  Sun,
         std::span<const PolygonalAreaQuadLight>        AreaLights,
-        const OrthographicShadowCascade*               OptionalFineClip   = nullptr,
-        const OrthographicShadowCascade*               OptionalCoarseClip = nullptr,
-        const AmbientOcclusionSettings&                AoSettings         = {},
-        std::span<const DirectPointLightSpec>          PointLights        = {},
-        Mathematics::LinearRGB                         SkyFillRadiance    = { 0.14f, 0.19f, 0.28f });
+        const OrthographicShadowCascade*                        OptionalFineClip    = nullptr,
+        const OrthographicShadowCascade*                        OptionalCoarseClip  = nullptr,
+        const AmbientOcclusionSettings&                         AoSettings          = {},
+        std::span<const DirectPointLightSpec>                   PointLights               = {},
+        Mathematics::LinearRGB                                  SkyFillRadiance           = { 0.14f, 0.19f, 0.28f },
+        std::span<const PhotometricPointRadiator>                PhotometricRadiators       = {},
+        std::span<const Codecs::ResampledPhotometricProfile>    PhotometricProfiles       = {},
+        std::span<const float>                                  SolarVisibilityOverride   = {},
+        bool                                                    SkipEmissiveTriangleDirect = false);
 
     // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm
     [[nodiscard]] static DirectLightingOutput EvaluateDirectLightingFrame(

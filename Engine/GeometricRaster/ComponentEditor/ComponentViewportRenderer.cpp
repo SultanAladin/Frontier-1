@@ -1219,7 +1219,7 @@ ComponentViewportOutput ComponentViewportRenderer::RenderClassViewport(
         }
     }
 
-    // 3. Field shells (Collision channel SDF/Box shells + CollisionVolumes)
+    // 3. Field shells (Collision channel analytical box shells + CollisionVolumes)
     if (Options.ShowDebugHelpers)
     {
         BindRasterProgram(Impl->FieldHullRaster);

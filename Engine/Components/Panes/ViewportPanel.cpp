@@ -94,7 +94,14 @@ namespace
 
 [[nodiscard]] const char* QueryRenderEngineName(uint32_t EngineIdx) noexcept
 {
-    constexpr std::array<const char*, 2> Names = {{ "MatCap", "OpenPBR Direct" }};
+    constexpr std::array<const char*, 6> Names = {{
+        "MatCap",
+        "OpenPBR Direct",
+        "GTX SDF GI",
+        "HighEnd BVH4 GI",
+        "Path Tracer (Real-Time)",
+        "Path Tracer (Final)",
+    }};
     return Names[std::min<std::size_t>(EngineIdx, Names.size() - 1u)];
 }
 
@@ -102,6 +109,19 @@ namespace
 {
     constexpr std::array<const char*, 5> Names = {{ "Contact PCSS", "PCSS + Filter", "SMRT", "PCF 3x3", "BVH4 Ray" }};
     return Names[std::min<std::size_t>(AlgIdx, Names.size() - 1u)];
+}
+
+[[nodiscard]] const char* QuerySdfPenumbraName(uint32_t ModeIdx) noexcept
+{
+    constexpr std::array<const char*, 6> Names = {{
+        "0. Point SDF",
+        "1. Analytic SDF Cone",
+        "2. Voxel SDF Clipmap",
+        "3. Voxel SDF + Cone GI",
+        "4. Hybrid Sobol Cap",
+        "5. SDF MC Ref (96spp)",
+    }};
+    return Names[std::min<std::size_t>(ModeIdx, Names.size() - 1u)];
 }
 
 } // namespace
@@ -958,7 +978,7 @@ void ViewportPanel::RenderSettingsSheet(
     const PaneInputReading& Input)
 {
     const float SheetW = 286.0f;
-    const float SheetH = std::min(760.0f, std::max(426.0f, Bounds.Height - 22.0f));
+    const float SheetH = std::min(796.0f, std::max(426.0f, Bounds.Height - 22.0f));
     const float SheetX = std::clamp(GearButtonRightBottom.X - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
     const float SheetY = GearButtonRightBottom.Y + 6.0f;
     const Rectangle2D Sheet{ SheetX, SheetY, SheetW, SheetH };
@@ -1002,7 +1022,7 @@ void ViewportPanel::RenderSettingsSheet(
         RowY += 36.0f;
     }
 
-    const bool AnyDropdownOpen = (EngineDropdownOpen || ShadowDropdownOpen || DebugDropdownOpen);
+    const bool AnyDropdownOpen = (EngineDropdownOpen || ShadowDropdownOpen || SdfPenumbraDropdownOpen || DebugDropdownOpen);
 
     // ExclusiveSelector rows for Global Illumination, Reflections, Anti-Aliasing, Raytracing
     auto ConstructToggleRow = [&](const char* Label, bool& ToggleRef)
@@ -1114,9 +1134,10 @@ void ViewportPanel::RenderSettingsSheet(
         if (AnyDropdownOpen) Ptr.Enabled = EngineBtn.Contains(Cursor);
         if (DropdownSelector::ConstructButton(Overlay, EngineBtn, EngineLabel.c_str(), EngineDropdownOpen, Ptr).Pressed)
         {
-            EngineDropdownOpen = !EngineDropdownOpen;
-            ShadowDropdownOpen = false;
-            DebugDropdownOpen  = false;
+            EngineDropdownOpen      = !EngineDropdownOpen;
+            ShadowDropdownOpen      = false;
+            SdfPenumbraDropdownOpen = false;
+            DebugDropdownOpen       = false;
         }
     }
     RowY += 34.0f;
@@ -1131,9 +1152,28 @@ void ViewportPanel::RenderSettingsSheet(
         if (AnyDropdownOpen) Ptr.Enabled = ShadowBtn.Contains(Cursor);
         if (DropdownSelector::ConstructButton(Overlay, ShadowBtn, ShadowLabel.c_str(), ShadowDropdownOpen, Ptr).Pressed)
         {
-            ShadowDropdownOpen = !ShadowDropdownOpen;
-            EngineDropdownOpen = false;
-            DebugDropdownOpen  = false;
+            ShadowDropdownOpen      = !ShadowDropdownOpen;
+            EngineDropdownOpen      = false;
+            SdfPenumbraDropdownOpen = false;
+            DebugDropdownOpen       = false;
+        }
+    }
+    RowY += 34.0f;
+
+    // 2b. 6-Mode SDF Shadow & Penumbra Dropdown Button
+    const Rectangle2D SdfPenumbraBtn{ Sheet.X + 16.0f, RowY - 2.0f, Sheet.Width - 32.0f, 28.0f };
+    SdfPenumbraButtonBounds      = SdfPenumbraBtn;
+    std::string SdfPenumbraLabel = "SDF Penumbra: ";
+    SdfPenumbraLabel += QuerySdfPenumbraName(DisplaySettings.SdfShadowPenumbraIndex);
+    {
+        ControlPointer Ptr = Input.PrimaryPointer;
+        if (AnyDropdownOpen) Ptr.Enabled = SdfPenumbraBtn.Contains(Cursor);
+        if (DropdownSelector::ConstructButton(Overlay, SdfPenumbraBtn, SdfPenumbraLabel.c_str(), SdfPenumbraDropdownOpen, Ptr).Pressed)
+        {
+            SdfPenumbraDropdownOpen = !SdfPenumbraDropdownOpen;
+            EngineDropdownOpen      = false;
+            ShadowDropdownOpen      = false;
+            DebugDropdownOpen       = false;
         }
     }
     RowY += 34.0f;
@@ -1148,9 +1188,10 @@ void ViewportPanel::RenderSettingsSheet(
         if (AnyDropdownOpen) Ptr.Enabled = DebugBtn.Contains(Cursor);
         if (DropdownSelector::ConstructButton(Overlay, DebugBtn, DebugLabel.c_str(), DebugDropdownOpen, Ptr).Pressed)
         {
-            DebugDropdownOpen  = !DebugDropdownOpen;
-            EngineDropdownOpen = false;
-            ShadowDropdownOpen = false;
+            DebugDropdownOpen       = !DebugDropdownOpen;
+            EngineDropdownOpen      = false;
+            ShadowDropdownOpen      = false;
+            SdfPenumbraDropdownOpen = false;
         }
     }
     RowY += 36.0f;
@@ -1243,12 +1284,16 @@ void ViewportPanel::RenderSettingsSheet(
     // Active Option Sheet rendered last for clean z-ordering
     if (EngineDropdownOpen)
     {
-        constexpr std::array<const char*, 2> EngineOptions = {{
+        constexpr std::array<const char*, 6> EngineOptions = {{
             "Engine: MatCap",
             "Engine: OpenPBR Direct",
+            "Engine: GTX SDF GI",
+            "Engine: HighEnd BVH4 GI",
+            "Engine: Path Tracer (Real-Time)",
+            "Engine: Path Tracer (Final)",
         }};
         const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(EngineBtn, static_cast<uint32_t>(EngineOptions.size()));
-        const uint32_t    CurIdx     = DisplaySettings.RenderEngineIndex % 2u;
+        const uint32_t    CurIdx     = DisplaySettings.RenderEngineIndex % static_cast<uint32_t>(EngineOptions.size());
         uint32_t          ChosenIdx  = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 Overlay, EngineBtn, EngineOptions.data(), static_cast<uint32_t>(EngineOptions.size()),
@@ -1284,6 +1329,31 @@ void ViewportPanel::RenderSettingsSheet(
         else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !ShadowBtn.Contains(Cursor))
         {
             ShadowDropdownOpen = false;
+        }
+    }
+    else if (SdfPenumbraDropdownOpen)
+    {
+        constexpr std::array<const char*, 6> SdfOptions = {{
+            "0. Point-Sample SDF (No Penumbra)",
+            "1. Analytic SDF Cone Penumbra",
+            "2. 3D Voxel SDF Clipmap Penumbra",
+            "3. 3D Voxel SDF Penumbra + Cone GI",
+            "4. Hybrid SDF + Sobol Spherical Cap",
+            "5. SDF Monte Carlo PT Ref (96 SPP)",
+        }};
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(SdfPenumbraBtn, static_cast<uint32_t>(SdfOptions.size()));
+        const uint32_t    CurIdx     = DisplaySettings.SdfShadowPenumbraIndex % static_cast<uint32_t>(SdfOptions.size());
+        uint32_t          ChosenIdx  = CurIdx;
+        if (DropdownSelector::ConstructOptionSheet(
+                Overlay, SdfPenumbraBtn, SdfOptions.data(), static_cast<uint32_t>(SdfOptions.size()),
+                CurIdx, Input.PrimaryPointer, ChosenIdx).Clicked)
+        {
+            DisplaySettings.SdfShadowPenumbraIndex = ChosenIdx;
+            SdfPenumbraDropdownOpen                = false;
+        }
+        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !SdfPenumbraBtn.Contains(Cursor))
+        {
+            SdfPenumbraDropdownOpen = false;
         }
     }
     else if (DebugDropdownOpen)
@@ -1794,22 +1864,25 @@ void ViewportPanel::Render(
         if (OverlayOpenBefore && Input.PrimaryPointer.Pressed && !SettingsBtn.Contains(Cursor))
         {
             const float SheetW = 286.0f;
-            const float SheetH = std::min(716.0f, std::max(426.0f, Bounds.Height - 22.0f));
+            const float SheetH = std::min(796.0f, std::max(426.0f, Bounds.Height - 22.0f));
             const float SheetX = std::clamp(SettingsBtn.Right() - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
             const Rectangle2D SheetRect{ SheetX, SettingsBtn.Bottom() + 6.0f, SheetW, SheetH };
-            const Rectangle2D EngineSheetRect = DropdownSelector::QuerySheetBounds(EngineButtonBounds, 2u);
-            const Rectangle2D ShadowSheetRect = DropdownSelector::QuerySheetBounds(ShadowButtonBounds, 5u);
-            const Rectangle2D DebugSheetRect  = DropdownSelector::QuerySheetBounds(DebugButtonBounds, 12u);
+            const Rectangle2D EngineSheetRect      = DropdownSelector::QuerySheetBounds(EngineButtonBounds, 6u);
+            const Rectangle2D ShadowSheetRect      = DropdownSelector::QuerySheetBounds(ShadowButtonBounds, 5u);
+            const Rectangle2D SdfPenumbraSheetRect = DropdownSelector::QuerySheetBounds(SdfPenumbraButtonBounds, 6u);
+            const Rectangle2D DebugSheetRect       = DropdownSelector::QuerySheetBounds(DebugButtonBounds, 12u);
             const bool InDropdown =
-                (EngineDropdownOpen && EngineSheetRect.Contains(Cursor)) ||
-                (ShadowDropdownOpen && ShadowSheetRect.Contains(Cursor)) ||
-                (DebugDropdownOpen  && DebugSheetRect.Contains(Cursor));
+                (EngineDropdownOpen      && EngineSheetRect.Contains(Cursor)) ||
+                (ShadowDropdownOpen      && ShadowSheetRect.Contains(Cursor)) ||
+                (SdfPenumbraDropdownOpen && SdfPenumbraSheetRect.Contains(Cursor)) ||
+                (DebugDropdownOpen       && DebugSheetRect.Contains(Cursor));
             if (!SheetRect.Contains(Cursor) && !InDropdown)
             {
-                SettingsSheetOpen  = false;
-                EngineDropdownOpen = false;
-                ShadowDropdownOpen = false;
-                DebugDropdownOpen  = false;
+                SettingsSheetOpen       = false;
+                EngineDropdownOpen      = false;
+                ShadowDropdownOpen      = false;
+                SdfPenumbraDropdownOpen = false;
+                DebugDropdownOpen       = false;
             }
         }
     }

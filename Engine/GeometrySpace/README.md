@@ -9,7 +9,7 @@
 | Directory | Summary |
 | :--- | :--- |
 | [`Analysis/`](Analysis/README.md) | Discrete Meyer cotangent mean & angle-deficit Gaussian curvature plus Mikkelsen/Duff continuous corner tangent bases |
-| [`Fracture/`](Fracture/README.md) | Exact 3D convex polyhedron half-space clipping, PolygonNetwork bridges, 6-solver fracture dispatch, shared-cut bonds, and SDF section query |
+| [`Fracture/`](Fracture/README.md) | Exact 3D convex polyhedron half-space clipping, PolygonNetwork bridges, 6-solver fracture dispatch & shared-cut bonds |
 | [`Network/`](Network/README.md) | PriorityAllocationLayer & UVRevision-stamped FacePartitionSpan enabling O(1) GPU layer selection and sub-0.05ms CPU spans |
 | [`Parametric/`](Parametric/README.md) | 175 source/shader files |
 | [`Primitives/`](Primitives/README.md) | Parametric solid builders and 5 multi-part studio sample PolygonNetwork constructors with clean UDIM UVs and FacePartitionRegister |

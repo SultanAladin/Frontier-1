@@ -1873,14 +1873,6 @@ const FractureMaterialSpec& FractureWorkspaceSession::ActiveMaterialSpec() const
     return FractureMaterialRepository::LookupMaterial(MaterialId.c_str());
 }
 
-SdfVolumeFootprint FractureWorkspaceSession::QuerySdfFootprint() const noexcept
-{
-    return ConvexPartitioning::ComputeSdfVolumeFootprint(
-        static_cast<uint32_t>(PartitionResult.Fragments.size()),
-        SdfResolution,
-        SdfEnabled);
-}
-
 double FractureWorkspaceSession::QueryExactVolumeM3() const noexcept
 {
     switch (ActiveShape)

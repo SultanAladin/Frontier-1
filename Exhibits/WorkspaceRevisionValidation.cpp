@@ -215,11 +215,11 @@ namespace
 
     FontSpaceDocumentModel FontModel{};
     FontModel.KerningPairs.push_back({ 65u, 86u, -0.075 });
-    FontModel.SignedDistanceField = { -0.5f, 0.0f, 0.5f, 1.0f };
+    FontModel.GlyphContourSamples = { -0.5f, 0.0f, 0.5f, 1.0f };
     FontSpaceDocumentModel FontDecoded{};
     if (!VerifyCondition(FontEncoder::EncodeToFile(ScratchDir / "Display.FontSpace", FontModel, Diagnostic), "Encode .FontSpace") ||
         !VerifyCondition(FontDecoder::DecodeFromFile(ScratchDir / "Display.FontSpace", FontDecoded, Diagnostic), "Decode .FontSpace") ||
-        !VerifyCondition(FontDecoded.KerningPairs.size() == 1u && FontDecoded.SignedDistanceField.size() == 4u, ".FontSpace round-trip"))
+        !VerifyCondition(FontDecoded.KerningPairs.size() == 1u && FontDecoded.GlyphContourSamples.size() == 4u, ".FontSpace round-trip"))
     {
         return false;
     }

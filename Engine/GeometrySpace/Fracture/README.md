@@ -1,6 +1,6 @@
 # 🧩 `Engine/GeometrySpace/Fracture/`
 
-> **TL;DR**: Exact 3D convex polyhedron half-space clipping, PolygonNetwork bridges, 6-solver fracture dispatch, shared-cut bonds, and SDF section query (9 source/header/shader files under `Engine/GeometrySpace/Fracture/`).
+> **TL;DR**: Exact 3D convex polyhedron half-space clipping, PolygonNetwork bridges, 6-solver fracture dispatch & shared-cut bonds (9 source/header files under `Engine/GeometrySpace/Fracture/`).
 
 ---
 
@@ -8,8 +8,8 @@
 
 | File | Purpose |
 | :--- | :--- |
-| `ConvexPartitioning.cpp` | Exact 3D convex polyhedron half-space clipping, PolygonNetwork interchange, 6-solver fracture dispatch, bonds, and SDF sections |
-| `ConvexPartitioning.h` | Exact 3D convex polyhedron half-space clipping, PolygonNetwork bridges, 6-solver fracture dispatch, shared-cut bonds, and SDF section query |
+| `ConvexPartitioning.cpp` | Exact 3D convex polyhedron half-space clipping, PolygonNetwork interchange, 6-solver fracture dispatch & shared-cut bonds |
+| `ConvexPartitioning.h` | Exact 3D convex polyhedron half-space clipping, PolygonNetwork bridges, 6-solver fracture dispatch & shared-cut bonds |
 | `EngineeringBakedFracture.cpp` | Offline engineering fracture solver: Navier-Cauchy lattice, Rankine/Mohr-Coulomb wedge failure, wake relaxation, and non-planar fractography |
 | `EngineeringBakedFracture.h` | Offline engineering fracture solver: 3D Navier-Cauchy stress lattice, Smith 3x3 eigensolver, stress-shadow wake, and non-planar fractography |
 | `FastRuntimeFracture.cpp` | Sub-millisecond preallocated flat-array convex fracture kernel, Boussinesq-Hertz stress, and CutToken bond builder |
@@ -21,7 +21,7 @@
 ## Namespaces & Primary Types
 
 - **Namespaces**: `Frontier::GeometrySpace::Fracture`
-- **Primary Types**: `VertexKey`, `VertexKeyHasher`, `GriffithCandidate`, `SolverOutput`, `PolyhedronClipOutput`, `PieceSdfSectionOutput`, `SdfVolumeFootprint`, `ConvexPartitioning`, `ElastostaticLattice`, `CutPlaneEntry`, `CrossingPlaneEquation`, `EngineeringSurfaceBatch`, `PrincipalStressEigen`, `EngineeringBakedFracture`, `FlatClipScratch`, `FastRuntimeFracture`, `FractureMaterialCategory`, `FractureSolidCategory` (+18 more)
+- **Primary Types**: `VertexKey`, `VertexKeyHasher`, `GriffithCandidate`, `SolverOutput`, `PolyhedronClipOutput`, `ConvexPartitioning`, `ElastostaticLattice`, `CutPlaneEntry`, `CrossingPlaneEquation`, `EngineeringSurfaceBatch`, `PrincipalStressEigen`, `EngineeringBakedFracture`, `FlatClipScratch`, `FastRuntimeFracture`, `FractureMaterialCategory`, `FractureSolidCategory` (+18 more)
 
 ## Usage
 

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                             SOLARSHADOWSEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Direct Solar Shadows (Zero SDF Shadows!): Shadow Lab Modes (ContactPCSS, PCSS+PlaneAware, SMRT, PCF, BVH4 Ray Query)
+// 🧩 Direct Solar Shadows: Shadow Lab Modes (ContactPCSS, PCSS+PlaneAware, SMRT, PCF, BVH4 Ray Query)
 
 #pragma once
 
@@ -87,7 +87,7 @@ public:
         OrthographicShadowCascade&                   OutFineCascade,
         OrthographicShadowCascade&                   OutCoarseCascade);
 
-    // Evaluates Shadow Lab algorithm directly across primary surface samples (Zero GI / Zero SDF)
+    // Evaluates Shadow Lab algorithm directly across primary surface samples (BVH4 & Orthographic Cascades)
     [[nodiscard]] static SolarShadowFieldResult EvaluateSolarShadowFieldWithAlgorithm(
         SolarShadowAlgorithm                           Algorithm,
         const SolarDirectionalSource&                  Sun,
@@ -98,7 +98,7 @@ public:
         const OrthographicShadowCascade*               OptionalFineClip   = nullptr,
         const OrthographicShadowCascade*               OptionalCoarseClip = nullptr);
 
-    // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm (Zero SDF Shadows!)
+    // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm
     [[nodiscard]] static SolarShadowFieldResult EvaluateSolarShadowField(
         DirectShadowTier                               Tier,
         const SolarDirectionalSource&                  Sun,

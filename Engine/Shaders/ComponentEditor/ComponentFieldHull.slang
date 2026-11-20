@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         COMPONENTFIELDSHELL.SLANG
 ============================================================================================================================================*/
-// 🧩 Fresnel rim, soft box face borders, rising world-Y scan band, and SDF voxel dust shell shader (no wireframe line cages)
+// 🧩 Fresnel rim, soft box face borders, rising world-Y scan band, and analytical hull shell shader (no wireframe line cages)
 
 #include "Engine/Shaders/ComponentEditor/ComponentEditorShared.slang"
 

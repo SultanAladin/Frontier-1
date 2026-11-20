@@ -5,6 +5,13 @@ Durable engineering rules, non-negotiable architectural invariants, and referenc
 
 ---
 
+## 🔴 0. MANDATORY CONTINUOUS `git commit` + `git push` — CLOUD SANDBOX RESET PROTECTION (2026-11-20)
+
+- **Cloud Sandboxes Can Reset Anytime Without Warning**: Any uncommitted file edit or unpushed local commit is permanently lost if the sandbox recycles between or during turns.
+- **Commit & Push Every Milestone and Before Ending Every Turn**: Always run `git add`, `git commit`, and `git push origin <current-branch>` after each completed unit of work and prior to ending every turn (including plan-only and documentation-only turns). Never switch or push to any branch other than the active session branch.
+
+---
+
 ## 🔴 1. GPU-ONLY VIEWPORT OVERLAYS, VULKAN 1.3, RIGHT-HAND RULE & `1–5%` PIXEL-DELTA QUALITY GATE (2026-11-10)
 
 - **Vulkan 1.3 & Right-Hand Coordinate Rule (`Engine/Constants/EngineConstants.h`)**:

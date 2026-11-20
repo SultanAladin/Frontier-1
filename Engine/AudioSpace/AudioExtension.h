@@ -125,7 +125,7 @@ public:
     bool                            ReassignAcousticZone(AcousticZoneToken Token, const AcousticZoneDescriptor& Descriptor) noexcept;
     bool                            ReclaimAcousticZone(AcousticZoneToken Token) noexcept;
 
-    // Synchronous physics & SDF coupling helpers
+    // Synchronous physics & BVH4 ray coupling helpers
     [[nodiscard]] float ApplyPhysicsOcclusionQuery(
         const SimulationSpace::PhysicsSpace::PhysicsExtension& Physics,
         AcousticVoiceToken                                     Token,
@@ -133,7 +133,7 @@ public:
         Mathematics::Axis3D                                    OriginVelocityMps,
         uint32_t                                               CollisionChannelMask = 0xFFFFFFFFu) noexcept;
 
-    [[nodiscard]] SdfAcousticFieldReading ApplyRayAcousticField(
+    [[nodiscard]] RayAcousticFieldReading ApplyRayAcousticField(
         const SpatialAcceleration::WideBoundingTree& SceneTree,
         AcousticVoiceToken                           Token,
         Mathematics::Axis3D                          OriginPositionMeters,

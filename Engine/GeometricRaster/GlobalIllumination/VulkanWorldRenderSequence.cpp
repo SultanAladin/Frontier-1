@@ -218,6 +218,16 @@ struct GpuWorldMaterial80
 
 static_assert(sizeof(GpuWorldMaterial80) == 80u, "GpuWorldMaterial80 must equal 80 bytes.");
 
+struct GpuPhotometricLamp64
+{
+    float PositionRange[4]      {}; // xyz = PositionWorld, w = RangeMeters
+    float BeamAxisRadius[4]     {}; // xyz = BeamAxis,      w = RadiusMeters
+    float ZeroAzimuthProfile[4] {}; // xyz = ZeroAzimuth,   w = float(ProfileOrdinal)
+    float PeakIntensityPad[4]   {}; // xyz = PeakIntensity, w = Reserved
+};
+
+static_assert(sizeof(GpuPhotometricLamp64) == 64u, "GpuPhotometricLamp64 must equal 64 bytes.");
+
 struct QuantizedPositionKey
 {
     int32_t  QX          = 0;
@@ -308,7 +318,7 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
-    constexpr std::array<VkDescriptorType, 22u> SlotTypes {{
+    constexpr std::array<VkDescriptorType, 24u> SlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, // 0:  WorldUniforms
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 1:  SceneBvhEntries
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 2:  SceneTriangles
@@ -331,6 +341,8 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 19: StellarTileBins
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 20: PlanetaryCloudNoise
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 21: RawCatalogStars
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 22: PhotometricProfileTables
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 23: PhotometricLampEntries
     }};
 
     const std::filesystem::path ShaderBinaryPath = CompiledShaderDirectory / "WorldViewportRadiometricCompute.comp.spv";
@@ -521,6 +533,14 @@ bool VulkanWorldRenderSequence::InitializeSequence(
             UploadToDeviceBuffer(BakedLensFlareAtlasBuffer, &Zero, sizeof(Zero), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         }
     }
+    {
+        const float ZeroFloat = 0.0f;
+        UploadToDeviceBuffer(PhotometricProfileTableBuffer, &ZeroFloat, sizeof(ZeroFloat), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        const GpuPhotometricLamp64 ZeroLamp {};
+        UploadToDeviceBuffer(PhotometricLampEntryBuffer, &ZeroLamp, sizeof(ZeroLamp), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        UploadedPhotometricProfiles = 0u;
+        UploadedPhotometricLamps    = 0u;
+    }
     if (UniformBuffer.BufferHandle != VK_NULL_HANDLE)
     {
         std::fprintf(
@@ -572,6 +592,8 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(RawCatalogStarBuffer);
         BoundDevice->ReleaseBuffer(ProjectedCatalogStarBuffer);
         BoundDevice->ReleaseBuffer(StellarTileBinsBuffer);
+        BoundDevice->ReleaseBuffer(PhotometricProfileTableBuffer);
+        BoundDevice->ReleaseBuffer(PhotometricLampEntryBuffer);
         BoundDevice->ReleaseImage2D(DisplayOutputImage2D);
     }
     DispatchEncoder.TeardownEncoder();
@@ -585,6 +607,8 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     StellarCullProgramHandle      = UINT32_MAX;
     ShadowCascadeProgramHandle    = UINT32_MAX;
     UploadedCatalogStarCount      = 0u;
+    UploadedPhotometricProfiles   = 0u;
+    UploadedPhotometricLamps      = 0u;
     FrameSequenceIndex            = 0u;
     BoundDevice                   = nullptr;
     SceneUploadedOnce             = false;
@@ -874,29 +898,31 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
     EnsureBufferCapacity(UniformBuffer, 8192ull * 4ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     std::memcpy(UniformBuffer.HostAddress, &Uniforms, sizeof(Uniforms));
 
-    const std::array<ComputeSlotDescriptor, 22u> PrecomputeSlots {{
-        {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,              sizeof(WorldViewportUniformBlockStd140), 0ull },
-        {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
-        {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,       VK_WHOLE_SIZE },
-        {  3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MaterialEntryBuffer.BufferHandle,        VK_WHOLE_SIZE },
-        {  4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutputPixelBuffer.BufferHandle,          VK_WHOLE_SIZE },
-        {  5u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SolarShadowDepthBuffer.BufferHandle,     VK_WHOLE_SIZE },
-        {  6u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AccumulationHdrBuffer.BufferHandle,      VK_WHOLE_SIZE },
-        {  7u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AtmosphericSkyViewLutBuffer.BufferHandle,VK_WHOLE_SIZE },
-        {  8u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LunarSurfaceAtlasBuffer.BufferHandle,    VK_WHOLE_SIZE },
-        {  9u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BakedLensFlareAtlasBuffer.BufferHandle,  VK_WHOLE_SIZE },
-        { 10u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufPosMaskBuffer.BufferHandle,          VK_WHOLE_SIZE },
-        { 11u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufNormAoBuffer.BufferHandle,           VK_WHOLE_SIZE },
-        { 12u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufDirectBaseBuffer.BufferHandle,       VK_WHOLE_SIZE },
-        { 13u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufSunContribBuffer.BufferHandle,       VK_WHOLE_SIZE },
-        { 14u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufAlbedoBuffer.BufferHandle,           VK_WHOLE_SIZE },
-        { 15u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PingShadowAoBuffer.BufferHandle,         VK_WHOLE_SIZE },
-        { 16u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PongShadowAoBuffer.BufferHandle,         VK_WHOLE_SIZE },
-        { 17u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, CloudRadiometricBuffer.BufferHandle,     VK_WHOLE_SIZE },
-        { 18u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ProjectedCatalogStarBuffer.BufferHandle, VK_WHOLE_SIZE },
-        { 19u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, StellarTileBinsBuffer.BufferHandle,      VK_WHOLE_SIZE },
-        { 20u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PlanetaryCloudNoiseBuffer.BufferHandle,  VK_WHOLE_SIZE },
-        { 21u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, RawCatalogStarBuffer.BufferHandle,       VK_WHOLE_SIZE },
+    const std::array<ComputeSlotDescriptor, 24u> PrecomputeSlots {{
+        {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,                   sizeof(WorldViewportUniformBlockStd140), 0ull },
+        {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,                  VK_WHOLE_SIZE },
+        {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,            VK_WHOLE_SIZE },
+        {  3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MaterialEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
+        {  4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutputPixelBuffer.BufferHandle,               VK_WHOLE_SIZE },
+        {  5u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SolarShadowDepthBuffer.BufferHandle,          VK_WHOLE_SIZE },
+        {  6u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AccumulationHdrBuffer.BufferHandle,           VK_WHOLE_SIZE },
+        {  7u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AtmosphericSkyViewLutBuffer.BufferHandle,     VK_WHOLE_SIZE },
+        {  8u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LunarSurfaceAtlasBuffer.BufferHandle,         VK_WHOLE_SIZE },
+        {  9u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BakedLensFlareAtlasBuffer.BufferHandle,       VK_WHOLE_SIZE },
+        { 10u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufPosMaskBuffer.BufferHandle,               VK_WHOLE_SIZE },
+        { 11u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufNormAoBuffer.BufferHandle,                VK_WHOLE_SIZE },
+        { 12u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufDirectBaseBuffer.BufferHandle,            VK_WHOLE_SIZE },
+        { 13u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufSunContribBuffer.BufferHandle,            VK_WHOLE_SIZE },
+        { 14u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufAlbedoBuffer.BufferHandle,                VK_WHOLE_SIZE },
+        { 15u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PingShadowAoBuffer.BufferHandle,              VK_WHOLE_SIZE },
+        { 16u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PongShadowAoBuffer.BufferHandle,              VK_WHOLE_SIZE },
+        { 17u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, CloudRadiometricBuffer.BufferHandle,          VK_WHOLE_SIZE },
+        { 18u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ProjectedCatalogStarBuffer.BufferHandle,      VK_WHOLE_SIZE },
+        { 19u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, StellarTileBinsBuffer.BufferHandle,           VK_WHOLE_SIZE },
+        { 20u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PlanetaryCloudNoiseBuffer.BufferHandle,       VK_WHOLE_SIZE },
+        { 21u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, RawCatalogStarBuffer.BufferHandle,            VK_WHOLE_SIZE },
+        { 22u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PhotometricProfileTableBuffer.BufferHandle,   VK_WHOLE_SIZE },
+        { 23u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PhotometricLampEntryBuffer.BufferHandle,      VK_WHOLE_SIZE },
     }};
 
     DispatchEncoder.ResetTransientDescriptors();
@@ -1145,6 +1171,68 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
     const uint64_t MatBytes = GpuMats.size() * sizeof(GpuWorldMaterial80);
     UploadToDeviceBuffer(MaterialEntryBuffer, GpuMats.data(), MatBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     UploadedMaterialCount = MatCount;
+
+    // 3b. Upload Resampled 128x32 LM-63 Photometric Tables & Point Emitters
+    {
+        if (!Scene.PhotometricProfiles.empty())
+        {
+            std::vector<float> FlatTables;
+            FlatTables.reserve(Scene.PhotometricProfiles.size() * Codecs::PhotometricGridStride);
+            for (const auto& Profile : Scene.PhotometricProfiles)
+            {
+                FlatTables.insert(
+                    FlatTables.end(),
+                    Profile.NormalizedCandela.begin(),
+                    Profile.NormalizedCandela.end());
+            }
+            UploadToDeviceBuffer(
+                PhotometricProfileTableBuffer,
+                FlatTables.data(),
+                static_cast<uint64_t>(FlatTables.size()) * sizeof(float),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            UploadedPhotometricProfiles = static_cast<uint32_t>(Scene.PhotometricProfiles.size());
+        }
+        else
+        {
+            UploadedPhotometricProfiles = 0u;
+        }
+
+        if (!Scene.PhotometricRadiators.empty())
+        {
+            std::vector<GpuPhotometricLamp64> GpuLamps(Scene.PhotometricRadiators.size());
+            for (std::size_t L = 0u; L < Scene.PhotometricRadiators.size(); ++L)
+            {
+                const auto& Src = Scene.PhotometricRadiators[L];
+                auto&       Dst = GpuLamps[L];
+                Dst.PositionRange[0]      = Src.PositionWorld.X;
+                Dst.PositionRange[1]      = Src.PositionWorld.Y;
+                Dst.PositionRange[2]      = Src.PositionWorld.Z;
+                Dst.PositionRange[3]      = Src.RangeMeters;
+                Dst.BeamAxisRadius[0]     = Src.BeamAxis.X;
+                Dst.BeamAxisRadius[1]     = Src.BeamAxis.Y;
+                Dst.BeamAxisRadius[2]     = Src.BeamAxis.Z;
+                Dst.BeamAxisRadius[3]     = Src.RadiusMeters;
+                Dst.ZeroAzimuthProfile[0] = Src.ZeroAzimuthAxis.X;
+                Dst.ZeroAzimuthProfile[1] = Src.ZeroAzimuthAxis.Y;
+                Dst.ZeroAzimuthProfile[2] = Src.ZeroAzimuthAxis.Z;
+                Dst.ZeroAzimuthProfile[3] = static_cast<float>(Src.ProfileOrdinal);
+                Dst.PeakIntensityPad[0]   = Src.PeakIntensityRgb.R;
+                Dst.PeakIntensityPad[1]   = Src.PeakIntensityRgb.G;
+                Dst.PeakIntensityPad[2]   = Src.PeakIntensityRgb.B;
+                Dst.PeakIntensityPad[3]   = 0.0f;
+            }
+            UploadToDeviceBuffer(
+                PhotometricLampEntryBuffer,
+                GpuLamps.data(),
+                static_cast<uint64_t>(GpuLamps.size()) * sizeof(GpuPhotometricLamp64),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+            UploadedPhotometricLamps = static_cast<uint32_t>(GpuLamps.size());
+        }
+        else
+        {
+            UploadedPhotometricLamps = 0u;
+        }
+    }
 
     // 4. Build Two-Cascade Solar Shadow Depth on GPU
     if (RebuildShadows || !SceneUploadedOnce || SolarShadowDepthBuffer.BufferHandle == VK_NULL_HANDLE)
@@ -1506,6 +1594,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.CameraForwardHeight[1] = Basis.ForwardAxis.Y;
     Uniforms.CameraForwardHeight[2] = Basis.ForwardAxis.Z;
     Uniforms.CameraForwardHeight[3] = static_cast<float>(HeightPx);
+    Uniforms.DenoiseStepParams[2]   =
+        ((UploadedPhotometricProfiles & 0xFFFFu) << 16u) |
+        (UploadedPhotometricLamps & 0xFFFFu);
     Uniforms.DenoiseStepParams[3]   = FrameSequenceIndex++;
 
     const bool AtmoActive = Scene.Atmosphere.Medium.AtmosphereEnabled || Scene.Atmosphere.Medium.OrbitalViewEnabled;
@@ -2008,33 +2099,35 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     }
     WriteStamp(1u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-    auto MakePassSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 22u>
+    auto MakePassSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 24u>
     {
         const auto& InShadow  = SwapPingPong ? PongShadowAoBuffer : PingShadowAoBuffer;
         const auto& OutShadow = SwapPingPong ? PingShadowAoBuffer : PongShadowAoBuffer;
         return {{
-            {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,              sizeof(WorldViewportUniformBlockStd140), UniOffset },
-            {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
-            {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,       VK_WHOLE_SIZE },
-            {  3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MaterialEntryBuffer.BufferHandle,        VK_WHOLE_SIZE },
-            {  4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutputPixelBuffer.BufferHandle,          OutBytes      },
-            {  5u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SolarShadowDepthBuffer.BufferHandle,     VK_WHOLE_SIZE },
-            {  6u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AccumulationHdrBuffer.BufferHandle,      AccBytes      },
-            {  7u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AtmosphericSkyViewLutBuffer.BufferHandle,VK_WHOLE_SIZE },
-            {  8u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LunarSurfaceAtlasBuffer.BufferHandle,    VK_WHOLE_SIZE },
-            {  9u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BakedLensFlareAtlasBuffer.BufferHandle,  VK_WHOLE_SIZE },
-            { 10u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufPosMaskBuffer.BufferHandle,          AccBytes      },
-            { 11u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufNormAoBuffer.BufferHandle,           AccBytes      },
-            { 12u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufDirectBaseBuffer.BufferHandle,       AccBytes      },
-            { 13u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufSunContribBuffer.BufferHandle,       AccBytes      },
-            { 14u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufAlbedoBuffer.BufferHandle,           AccBytes      },
-            { 15u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, InShadow.BufferHandle,                   AccBytes      },
-            { 16u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutShadow.BufferHandle,                  AccBytes      },
-            { 17u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, CloudRadiometricBuffer.BufferHandle,     CloudBytes    },
-            { 18u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ProjectedCatalogStarBuffer.BufferHandle, VK_WHOLE_SIZE },
-            { 19u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, StellarTileBinsBuffer.BufferHandle,      VK_WHOLE_SIZE },
-            { 20u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PlanetaryCloudNoiseBuffer.BufferHandle,  VK_WHOLE_SIZE },
-            { 21u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, RawCatalogStarBuffer.BufferHandle,       VK_WHOLE_SIZE },
+            {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,                   sizeof(WorldViewportUniformBlockStd140), UniOffset },
+            {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,                  VK_WHOLE_SIZE },
+            {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,            VK_WHOLE_SIZE },
+            {  3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MaterialEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
+            {  4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutputPixelBuffer.BufferHandle,               OutBytes      },
+            {  5u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SolarShadowDepthBuffer.BufferHandle,          VK_WHOLE_SIZE },
+            {  6u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AccumulationHdrBuffer.BufferHandle,           AccBytes      },
+            {  7u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, AtmosphericSkyViewLutBuffer.BufferHandle,     VK_WHOLE_SIZE },
+            {  8u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LunarSurfaceAtlasBuffer.BufferHandle,         VK_WHOLE_SIZE },
+            {  9u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BakedLensFlareAtlasBuffer.BufferHandle,       VK_WHOLE_SIZE },
+            { 10u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufPosMaskBuffer.BufferHandle,               AccBytes      },
+            { 11u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufNormAoBuffer.BufferHandle,                AccBytes      },
+            { 12u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufDirectBaseBuffer.BufferHandle,            AccBytes      },
+            { 13u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufSunContribBuffer.BufferHandle,            AccBytes      },
+            { 14u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, GBufAlbedoBuffer.BufferHandle,                AccBytes      },
+            { 15u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, InShadow.BufferHandle,                        AccBytes      },
+            { 16u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, OutShadow.BufferHandle,                       AccBytes      },
+            { 17u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, CloudRadiometricBuffer.BufferHandle,          CloudBytes    },
+            { 18u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ProjectedCatalogStarBuffer.BufferHandle,      VK_WHOLE_SIZE },
+            { 19u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, StellarTileBinsBuffer.BufferHandle,           VK_WHOLE_SIZE },
+            { 20u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PlanetaryCloudNoiseBuffer.BufferHandle,       VK_WHOLE_SIZE },
+            { 21u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, RawCatalogStarBuffer.BufferHandle,            VK_WHOLE_SIZE },
+            { 22u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PhotometricProfileTableBuffer.BufferHandle,   VK_WHOLE_SIZE },
+            { 23u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PhotometricLampEntryBuffer.BufferHandle,      VK_WHOLE_SIZE },
         }};
     };
 

@@ -216,3 +216,125 @@ public bool TraceWideBoundingTreeAnyHit(
 
     return false;
 }
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                  64-BYTE 8-BIT QUANTIZED 4-WIDE BVH4 RAY QUERY
+//------------------------------------------------------------------------------------------------------------------------
+
+public struct GpuCompressedWideEntry64
+{
+    public float OriginX;
+    public float OriginY;
+    public float OriginZ;
+    public uint  PackedExponents;
+    public uint  QuantizedBounds0;
+    public uint  QuantizedBounds1;
+    public uint  QuantizedBounds2;
+    public uint  QuantizedBounds3;
+    public uint  QuantizedBounds4;
+    public uint  QuantizedBounds5;
+    public uint  PackedCounts01;
+    public uint  PackedCounts23;
+    public uint  SubtreeLink0;
+    public uint  SubtreeLink1;
+    public uint  SubtreeLink2;
+    public uint  SubtreeLink3;
+};
+
+public void UnpackCompressedWideBounds(
+    GpuCompressedWideEntry64 Entry,
+    out uint                OutActiveSlots,
+    out float4              OutMinX,
+    out float4              OutMaxX,
+    out float4              OutMinY,
+    out float4              OutMaxY,
+    out float4              OutMinZ,
+    out float4              OutMaxZ,
+    out uint4               OutCounts,
+    out uint4               OutLinks)
+{
+    OutActiveSlots = (Entry.PackedExponents >> 24u) & 0xFFu;
+    int ExpX = int(Entry.PackedExponents & 0xFFu) - 127;
+    int ExpY = int((Entry.PackedExponents >> 8u) & 0xFFu) - 127;
+    int ExpZ = int((Entry.PackedExponents >> 16u) & 0xFFu) - 127;
+    float ScaleX = ldexp(1.0, ExpX);
+    float ScaleY = ldexp(1.0, ExpY);
+    float ScaleZ = ldexp(1.0, ExpZ);
+
+    uint4 Shifts = uint4(0u, 8u, 16u, 24u);
+    OutMinX = float4(Entry.OriginX) + float4((uint4(Entry.QuantizedBounds0) >> Shifts) & 0xFFu) * ScaleX;
+    OutMaxX = float4(Entry.OriginX) + float4((uint4(Entry.QuantizedBounds1) >> Shifts) & 0xFFu) * ScaleX;
+    OutMinY = float4(Entry.OriginY) + float4((uint4(Entry.QuantizedBounds2) >> Shifts) & 0xFFu) * ScaleY;
+    OutMaxY = float4(Entry.OriginY) + float4((uint4(Entry.QuantizedBounds3) >> Shifts) & 0xFFu) * ScaleY;
+    OutMinZ = float4(Entry.OriginZ) + float4((uint4(Entry.QuantizedBounds4) >> Shifts) & 0xFFu) * ScaleZ;
+    OutMaxZ = float4(Entry.OriginZ) + float4((uint4(Entry.QuantizedBounds5) >> Shifts) & 0xFFu) * ScaleZ;
+
+    OutCounts = uint4(
+        Entry.PackedCounts01 & 0xFFFFu,
+        (Entry.PackedCounts01 >> 16u) & 0xFFFFu,
+        Entry.PackedCounts23 & 0xFFFFu,
+        (Entry.PackedCounts23 >> 16u) & 0xFFFFu);
+    OutLinks = uint4(Entry.SubtreeLink0, Entry.SubtreeLink1, Entry.SubtreeLink2, Entry.SubtreeLink3);
+}
+
+public bool TraceCompressedWideTreeAnyHit(
+    StructuredBuffer<GpuCompressedWideEntry64>    WideEntries,
+    StructuredBuffer<GpuRayTrianglePrimitive48>  Primitives,
+    uint                                         EntryCount,
+    float3                                       Origin,
+    float3                                       UnitDir,
+    float                                        MinT,
+    float                                        MaxT)
+{
+    if (EntryCount == 0u) return false;
+
+    float3 InvDir = 1.0 / select(abs(UnitDir) > float3(1.0e-8), UnitDir, float3(1.0e-8));
+    uint2  Stack[64];
+    int    StackTop = 0;
+    Stack[0] = uint2(0u, 0u);
+
+    while (StackTop >= 0)
+    {
+        uint2 Cur = Stack[StackTop--];
+        if (Cur.y > 0u)
+        {
+            for (uint K = 0u; K < Cur.y; ++K)
+            {
+                GpuRayTrianglePrimitive48 Prim = Primitives[Cur.x + K];
+                if ((Prim.PackedMaterialOpaque >> 16u) == 0u) continue;
+                float2 HitUV;
+                if (IntersectTriangleMollerTrumbore(Origin, UnitDir, MinT, MaxT, Prim, HitUV) > 0.0)
+                {
+                    return true;
+                }
+            }
+            continue;
+        }
+        if (Cur.x >= EntryCount) continue;
+
+        uint   ActiveSlots;
+        float4 MinX, MaxX, MinY, MaxY, MinZ, MaxZ;
+        uint4  Counts, Links;
+        UnpackCompressedWideBounds(WideEntries[Cur.x], ActiveSlots, MinX, MaxX, MinY, MaxY, MinZ, MaxZ, Counts, Links);
+
+        float4 TX0 = (MinX - Origin.xxxx) * InvDir.xxxx;
+        float4 TX1 = (MaxX - Origin.xxxx) * InvDir.xxxx;
+        float4 TY0 = (MinY - Origin.yyyy) * InvDir.yyyy;
+        float4 TY1 = (MaxY - Origin.yyyy) * InvDir.yyyy;
+        float4 TZ0 = (MinZ - Origin.zzzz) * InvDir.zzzz;
+        float4 TZ1 = (MaxZ - Origin.zzzz) * InvDir.zzzz;
+        float4 NearT = max(max(min(TX0, TX1), min(TY0, TY1)), max(min(TZ0, TZ1), float4(MinT)));
+        float4 FarT  = min(min(max(TX0, TX1), max(TY0, TY1)), min(max(TZ0, TZ1), float4(MaxT)));
+
+        [unroll]
+        for (uint S = 0u; S < 4u; ++S)
+        {
+            if (S < ActiveSlots && Links[S] != 0xFFFFFFFFu && NearT[S] <= FarT[S] && StackTop < 62)
+            {
+                Stack[++StackTop] = uint2(Links[S], Counts[S]);
+            }
+        }
+    }
+    return false;
+}
+

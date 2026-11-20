@@ -169,17 +169,7 @@ int main()
         FRONTIER_REQUIRE(GlassResult.Receipt.WatertightManifold);
     }
 
-    // 6. Verify 2D SDF section query
-    {
-        const auto Sdf = ConvexPartitioning::ComputePieceSdfSection(FastConcreteResult.Fragments, 0.0f, 48u, 1.25f);
-        FRONTIER_REQUIRE(Sdf.Field.size() == 48u * 48u);
-        FRONTIER_REQUIRE(Sdf.OccupancyRatio > 0.01 && Sdf.OccupancyRatio < 0.99);
-        const auto Mem = ConvexPartitioning::ComputeSdfVolumeFootprint(
-            static_cast<uint32_t>(FastConcreteResult.Fragments.size()), 48u, true);
-        FRONTIER_REQUIRE(Mem.Bytes > 0ull);
-    }
-
-    // 7. Verify JoltPhysics v5.6.0 FractureSimulationRunner (ConvexHull + BreakableBond + Z=0 ground plane)
+    // 6. Verify JoltPhysics v5.6.0 FractureSimulationRunner (ConvexHull + BreakableBond + Z=0 ground plane)
     {
         FractureSimulationRunner Runner {};
         FractureSimulationParameters SimParams {};

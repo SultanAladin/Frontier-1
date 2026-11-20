@@ -172,7 +172,7 @@ struct SpecimenRayHit
                 Out.Hit = true;
                 Out.DistanceT = T;
                 Out.HitPosition = P;
-                const auto BoxSdf = [](Mathematics::Axis3D V) noexcept -> float {
+                const auto ChamferBoxImplicit = [](Mathematics::Axis3D V) noexcept -> float {
                     const float BX = std::fabs(V.X) - 0.56f;
                     const float BitangentY = std::fabs(V.Y) - 0.56f;
                     const float BZ = std::fabs(V.Z) - 0.56f;
@@ -182,9 +182,9 @@ struct SpecimenRayHit
                 };
                 constexpr float E = 0.003f;
                 Out.Normal = Mathematics::NormalizeAxis({
-                    BoxSdf({ P.X + E, P.Y, P.Z }) - BoxSdf({ P.X - E, P.Y, P.Z }),
-                    BoxSdf({ P.X, P.Y + E, P.Z }) - BoxSdf({ P.X, P.Y - E, P.Z }),
-                    BoxSdf({ P.X, P.Y, P.Z + E }) - BoxSdf({ P.X, P.Y, P.Z - E })
+                    ChamferBoxImplicit({ P.X + E, P.Y, P.Z }) - ChamferBoxImplicit({ P.X - E, P.Y, P.Z }),
+                    ChamferBoxImplicit({ P.X, P.Y + E, P.Z }) - ChamferBoxImplicit({ P.X, P.Y - E, P.Z }),
+                    ChamferBoxImplicit({ P.X, P.Y, P.Z + E }) - ChamferBoxImplicit({ P.X, P.Y, P.Z - E })
                 }, { 0.0f, 0.0f, 1.0f });
                 return Out;
             }
@@ -198,7 +198,7 @@ struct SpecimenRayHit
     {
         // Sculpted draped sheet wave intersection via sphere-march
         float T = 0.25f;
-        const auto ClothSdf = [](Mathematics::Axis3D P) noexcept -> float {
+        const auto ClothWaveImplicit = [](Mathematics::Axis3D P) noexcept -> float {
             const float FoldZ = 0.16f * std::sin(P.X * 5.2f) * std::cos(P.Y * 2.2f) + 0.08f * std::cos(P.X * 9.5f - P.Y * 3.1f);
             const float Thick = std::fabs(P.Z - FoldZ) - 0.045f;
             const float BoundX = std::fabs(P.X) - 0.78f;
@@ -208,7 +208,7 @@ struct SpecimenRayHit
         for (int Step = 0; Step < 54; ++Step)
         {
             const Mathematics::Axis3D P = Origin + RayDir * T;
-            const float Dist = ClothSdf(P);
+            const float Dist = ClothWaveImplicit(P);
             if (Dist < 0.0025f)
             {
                 Out.Hit = true;
@@ -216,9 +216,9 @@ struct SpecimenRayHit
                 Out.HitPosition = P;
                 constexpr float E = 0.0035f;
                 Out.Normal = Mathematics::NormalizeAxis({
-                    ClothSdf({ P.X + E, P.Y, P.Z }) - ClothSdf({ P.X - E, P.Y, P.Z }),
-                    ClothSdf({ P.X, P.Y + E, P.Z }) - ClothSdf({ P.X, P.Y - E, P.Z }),
-                    ClothSdf({ P.X, P.Y, P.Z + E }) - ClothSdf({ P.X, P.Y, P.Z - E })
+                    ClothWaveImplicit({ P.X + E, P.Y, P.Z }) - ClothWaveImplicit({ P.X - E, P.Y, P.Z }),
+                    ClothWaveImplicit({ P.X, P.Y + E, P.Z }) - ClothWaveImplicit({ P.X, P.Y - E, P.Z }),
+                    ClothWaveImplicit({ P.X, P.Y, P.Z + E }) - ClothWaveImplicit({ P.X, P.Y, P.Z - E })
                 }, { 0.0f, 0.0f, 1.0f });
                 return Out;
             }

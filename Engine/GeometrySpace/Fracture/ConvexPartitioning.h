@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            CONVEXPARTITIONING.H
 ============================================================================================================================================*/
-// 🧩 Exact 3D convex polyhedron half-space clipping, PolygonNetwork bridges, 6-solver fracture dispatch, shared-cut bonds, and SDF section query
+// 🧩 Exact 3D convex polyhedron half-space clipping, PolygonNetwork bridges, 6-solver fracture dispatch & shared-cut bonds
 
 #pragma once
 
@@ -29,21 +29,6 @@ struct PolyhedronClipOutput
     bool             HasFront  = false;
     bool             HasBack   = false;
     double           CutAreaM2 = 0.0;
-};
-
-struct PieceSdfSectionOutput
-{
-    std::vector<float> Field          {};
-    uint32_t           Resolution     = 64u;
-    double             OccupancyRatio = 0.0;
-};
-
-struct SdfVolumeFootprint
-{
-    uint64_t Bytes          = 0ull;
-    double   Megabytes      = 0.0;
-    uint64_t VoxelCount     = 0ull;
-    uint32_t OccupiedBricks = 0u;
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -101,17 +86,6 @@ public:
     [[nodiscard]] static FracturePartitionResult ExecuteFracturePartition(
         const ConvexPolyhedron&      SourcePolyhedron,
         const FractureSpecification& Specification);
-
-    [[nodiscard]] static PieceSdfSectionOutput ComputePieceSdfSection(
-        const std::vector<FracturePieceEntry>& Fragments,
-        float                                  SectionZ       = 0.0f,
-        uint32_t                               GridResolution = 64u,
-        float                                  BoundsRadius   = 1.15f);
-
-    [[nodiscard]] static SdfVolumeFootprint ComputeSdfVolumeFootprint(
-        uint32_t FragmentCount,
-        uint32_t SdfResolution,
-        bool     Enabled) noexcept;
 };
 
 } // namespace Frontier::GeometrySpace::Fracture

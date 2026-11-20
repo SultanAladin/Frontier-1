@@ -12,7 +12,7 @@
 | `UVWorkspace` | `FrontierUV` | `Engine/Workspaces/UV/` | Dual 2D UDIM & 3D Surface GPU viewports, LSCM/ABF++ unwrap, GPU relax, concave packing | [UV/README.md](UV/README.md) |
 | `PatternWorkspace` | `FrontierPattern` | `Engine/Workspaces/Texturing/` | Seamless 2D vector stack, 8 GPU modifiers, 22 OpenPBR channels | [Texturing/README.md](Texturing/README.md) |
 | `StampWorkspace` | `FrontierStamp` | `Engine/Workspaces/Texturing/` | Alpha cutout vector contours, procedural masks, typography, OpenPBR relief | [Texturing/README.md](Texturing/README.md) |
-| `BakingWorkspace` | `FrontierBaking` | `Engine/Workspaces/Texturing/` | Pure-GPU GTX BVH4 & RTX RayQuery 18-target PBR & 3D Volume SDF baker | [Texturing/README.md](Texturing/README.md) |
+| `BakingWorkspace` | `FrontierBaking` | `Engine/Workspaces/Texturing/` | Pure-GPU GTX BVH4 & RTX RayQuery 17-target PBR surface baker | [Texturing/README.md](Texturing/README.md) |
 | `FractureWorkspace` | `FrontierFracture` | `Engine/Workspaces/Fracture/` | 6-solver brittle/ductile partitioning, fractography & JoltPhysics v5.6.0 | [Fracture/README.md](Fracture/README.md) |
 | `SketcherWorkspace` | `FrontierSketcher` | `Engine/Workspaces/ParametricSketcher/` | Exact NURBS / B-rep CAD, 2D constraints, Vulkan matcaps, STEP/STL & ISO 2D drawing sheets | [ParametricSketcher/README.md](ParametricSketcher/README.md) |
 | `MaterialWorkspace` | `FrontierMaterial` | `Engine/Workspaces/Material/` | Dynamic OpenPBR recipes, procedural & transition layer stack, `ContentBrowser` thumbnails | [Material/README.md](Material/README.md) |

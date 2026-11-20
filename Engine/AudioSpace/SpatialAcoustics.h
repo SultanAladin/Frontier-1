@@ -37,11 +37,11 @@ namespace Frontier::AudioSpace
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
-struct SdfAcousticFieldReading
+struct RayAcousticFieldReading
 {
-    float OcclusionFactor        = 0.0f; // [0-1] - Soft cone SDF barrier obstruction between receiver and origin
-    float EnclosureTunnelMix     = 0.0f; // [0-1] - Estimated architectural confinement around receiver
-    float EffectiveDiameterMeters = 6.0f; // [m]   - Estimated local corridor diameter from orthogonal SDF distances
+    float OcclusionFactor         = 0.0f; // [0-1] - WideBoundingTree ray barrier obstruction between receiver and origin
+    float EnclosureTunnelMix      = 0.0f; // [0-1] - Estimated architectural confinement around receiver
+    float EffectiveDiameterMeters = 6.0f; // [m]   - Estimated local corridor diameter from orthogonal ray distances
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -116,7 +116,7 @@ public:
         Mathematics::Axis3D                                    OriginPositionMeters,
         uint32_t                                               CollisionChannelMask = 0xFFFFFFFFu) noexcept;
 
-    [[nodiscard]] static SdfAcousticFieldReading EvaluateRayAcousticField(
+    [[nodiscard]] static RayAcousticFieldReading EvaluateRayAcousticField(
         const SpatialAcceleration::WideBoundingTree& SceneTree,
         Mathematics::Axis3D                          ReceiverPositionMeters,
         Mathematics::Axis3D                          OriginPositionMeters) noexcept;

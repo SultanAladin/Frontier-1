@@ -48,14 +48,14 @@ SpaceContainerPayload FontEncoder::BuildPayload(
         Payload.DomainManifest.insert_or_assign(".Kerning", std::move(KerningArray));
     }
 
-    if (!Model.SignedDistanceField.empty())
+    if (!Model.GlyphContourSamples.empty())
     {
         BinarySectionBlock ContourSection{};
         ContourSection.SectionIdentifier = "CharacterContourField";
         ContourSection.SubFormatTag      = ".CharacterSet";
-        const std::size_t ByteLength     = Model.SignedDistanceField.size() * sizeof(float);
+        const std::size_t ByteLength     = Model.GlyphContourSamples.size() * sizeof(float);
         ContourSection.PayloadBytes.resize(ByteLength);
-        std::memcpy(ContourSection.PayloadBytes.data(), Model.SignedDistanceField.data(), ByteLength);
+        std::memcpy(ContourSection.PayloadBytes.data(), Model.GlyphContourSamples.data(), ByteLength);
         Payload.BinarySections.push_back(std::move(ContourSection));
     }
 
@@ -117,10 +117,10 @@ bool FontDecoder::ExtractModel(
         if (Section.SubFormatTag == ".CharacterSet" && (Section.PayloadBytes.size() % sizeof(float)) == 0u)
         {
             const std::size_t Count = Section.PayloadBytes.size() / sizeof(float);
-            OutModel.SignedDistanceField.resize(Count);
+            OutModel.GlyphContourSamples.resize(Count);
             if (Count > 0u)
             {
-                std::memcpy(OutModel.SignedDistanceField.data(), Section.PayloadBytes.data(), Section.PayloadBytes.size());
+                std::memcpy(OutModel.GlyphContourSamples.data(), Section.PayloadBytes.data(), Section.PayloadBytes.size());
             }
         }
     }

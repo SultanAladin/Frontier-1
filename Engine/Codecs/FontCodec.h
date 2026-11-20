@@ -38,7 +38,7 @@ struct FontSpaceDocumentModel
     double                             AscenderEm           = 0.968;             // [em] - Ascender height above baseline
     double                             DescenderEm          = -0.242;            // [em] - Descender depth below baseline
     std::vector<KerningAdjustmentPair> KerningPairs         {};                  // [-]  - Explicit kerning pair adjustments
-    std::vector<float>                 SignedDistanceField  {};                  // [-]  - 64B-aligned .CharacterSet contour/SDF samples
+    std::vector<float>                 GlyphContourSamples  {};                  // [-]  - 64B-aligned .CharacterSet vector contour samples
 };
 
 class FontEncoder

@@ -14,6 +14,8 @@
 | `ColourCodec.h` | .ColourSpace, .ColourRamp & .ColourSwatch encoder/decoder persisting radiometric swatches, modular ramps, spectra & 64B-aligned LUTs |
 | `ComponentSpaceCodec.cpp` | Implementation of .ComponentSpace Two-Tier Hybrid TOML manifest + 64B-aligned binary thumbnail & Revision serialization |
 | `ComponentSpaceCodec.h` | .ComponentSpace Two-Tier Hybrid encoder & decoder for ComponentClassDefinition hierarchies, physics constraints & behaviours |
+| `ControlVehicleSurfaceDecoder.cpp` | FCT1 binary face stream decoder constructing the 25,068-triangle ControlVehicle surface |
+| `ControlVehicleSurfaceDecoder.h` | FCT1 binary face stream decoder (Body + 4 Rims + 4 Tyres) with 38-deg creased smooth normals |
 | `FontCodec.cpp` | .FontSpace encoder & decoder implementation |
 | `FontCodec.h` | .FontSpace encoder & decoder persisting vector typography metrics, kerning pairs, and 64B-aligned contour streams |
 | `GeometryCodec.cpp` | Implementation of .GeometrySpace Two-Tier Hybrid encoder & decoder (full n-gon PolygonNetwork + legacy VehiclePolygon support) |
@@ -26,6 +28,8 @@
 | `MaterialCodec.h` | .MaterialSpace encoder & decoder persisting .ShadingModel, .ParameterSlot, 10-lobe SurfaceMaterial, 128 B registers, & 32 B summaries |
 | `NetworkCodec.cpp` | .NetworkSpace Two-Tier Hybrid container encoder/decoder (TOML .SessionRouting tier + 64B-aligned .ReplicationPolicy binary tier) |
 | `NetworkCodec.h` | .NetworkSpace Two-Tier Hybrid container encoder/decoder (TOML .SessionRouting tier + 64B-aligned .ReplicationPolicy binary tier) |
+| `PhotometricProfile.cpp` | ANSI/IESNA LM-63-1995/2002 Type C (.ies) photometric profile parser, symmetry folder, and 128x32 resampler |
+| `PhotometricProfile.h` | ANSI/IESNA LM-63-1995/2002 Type C (.ies) photometric profile parser and canonical 128x32 candela grid |
 | `ProjectCodec.cpp` | .ProjectSpace encoder & decoder implementation |
 | `ProjectCodec.h` | .ProjectSpace encoder & decoder persisting project configuration, startup workspace, and dependency locks |
 | `RevisionCodec.cpp` | Binary .Baseline and .Revision section serialization implementation |

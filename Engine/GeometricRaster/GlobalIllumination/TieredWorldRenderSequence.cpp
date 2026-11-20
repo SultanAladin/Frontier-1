@@ -10,6 +10,8 @@
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/DeterministicPathTraceSequence.h"
+#include "Engine/MaterialSpace/Scattering/BlackbodyEmission.h"
 
 #include <algorithm>
 #include <array>
@@ -444,6 +446,13 @@ void TieredWorldRenderSequence::PrepareWorldScene(WorldSceneSpecification& InOut
     SynchronizeWorldAtmosphere(InOutScene);
     CompileBounceSummaries(InOutScene);
 
+    if (InOutScene.CompressedSceneTree.WideEntries.empty() && !InOutScene.SceneTree.Primitives.empty())
+    {
+        (void)InOutScene.CompressedSceneTree.BuildFromPrimitives(
+            InOutScene.SceneTree.Primitives,
+            InOutScene.SceneTree.PrimitiveNormals);
+    }
+
     const Mathematics::Axis3D FocusCenter = (InOutScene.SceneTree.RootBoundsMin + InOutScene.SceneTree.RootBoundsMax) * 0.5f;
     SolarShadowSequence::BuildTwoCascadeContactClips(
         InOutScene.Sun, FocusCenter, InOutScene.SceneTree, FineContactClip, CoarseContactClip);
@@ -482,7 +491,51 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
 
     const std::size_t TotalPixels = static_cast<std::size_t>(Result.WidthPx) * Result.HeightPx;
     Result.CompositeLinearHdr.assign(TotalPixels, { 0.0f, 0.0f, 0.0f });
+    Result.IndirectGiLinearHdr.assign(TotalPixels, { 0.0f, 0.0f, 0.0f });
     Result.DisplayRgba8.assign(TotalPixels * 4u, 255u);
+    Result.SdfAllocatedBytes = 0u;
+
+    //====================================================================================================================
+    // ORDER 3: UNIFIED DETERMINISTIC PATH TRACER (GAMEREALTIME & SCENEFINALRENDER — ZERO SDF)
+    //====================================================================================================================
+    if ((Config.Engine == WorldRenderEngine::PathTracerGameRealtime ||
+         Config.Engine == WorldRenderEngine::PathTracerSceneFinalRender) &&
+        AttachedPathTracer != nullptr && AttachedPathTracer->Ready())
+    {
+        const DeterministicRenderProfile TargetProfile =
+            (Config.Engine == WorldRenderEngine::PathTracerGameRealtime)
+                ? DeterministicRenderProfile::GameRealtime
+                : DeterministicRenderProfile::SceneFinalRender;
+
+        auto& PtCfg = AttachedPathTracer->AccessConfiguration();
+        if (PtCfg.Profile != TargetProfile)
+        {
+            DeterministicPathTraceSequence::ApplyRenderProfile(TargetProfile, PtCfg);
+            if (TargetProfile == DeterministicRenderProfile::GameRealtime)
+            {
+                PtCfg.TraceScale = 1u; // Match requested viewport dimensions 1:1 when driven by TieredWorldRenderSequence
+            }
+        }
+        (void)AttachedPathTracer->ResizeAccumulation(Result.WidthPx, Result.HeightPx);
+        const uint32_t Batch = std::max(1u, Config.PathTraceSamples);
+        (void)AttachedPathTracer->AdvanceSamples(Batch);
+        (void)AttachedPathTracer->ResolveDisplayRgba8(Result.DisplayRgba8);
+
+        std::vector<float> LinearRgb {};
+        if (AttachedPathTracer->RetrieveDisplayLinearRgb(LinearRgb) && LinearRgb.size() >= TotalPixels * 3u)
+        {
+            for (std::size_t P = 0u; P < TotalPixels; ++P)
+            {
+                Result.CompositeLinearHdr[P] = {
+                    LinearRgb[P * 3u + 0u],
+                    LinearRgb[P * 3u + 1u],
+                    LinearRgb[P * 3u + 2u],
+                };
+            }
+        }
+        Result.SdfAllocatedBytes = 0u;
+        return Result;
+    }
 
     //====================================================================================================================
     // PASS 1: SHARED 64-BIT PRIMARY VISIBILITY, TWO-PHASE HI-Z CULL & 2-LAYER GLASS PEEL
@@ -604,10 +657,83 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
     }
 
     //====================================================================================================================
-    // ENGINE 1: OPENPBR DIRECT + SHADOW LAB + BVH4 / SKY SPECULAR & ABBE GLASS (ZERO GI)
+    // ENGINE 1/2/3: OPENPBR DIRECT + ORDER 2 TIERED REAL-TIME GI (GtxLowEnd Hybrid SDF vs HighEnd 0-MB-SDF BVH4)
     //====================================================================================================================
+    const bool Order2Active =
+        (Config.Engine == WorldRenderEngine::RealTimeGiGtxLowEnd ||
+         Config.Engine == WorldRenderEngine::RealTimeGiHighEnd);
+    const bool HighEndZeroSdf = (Config.Engine == WorldRenderEngine::RealTimeGiHighEnd);
+
+    if (Config.Engine == WorldRenderEngine::RealTimeGiGtxLowEnd &&
+        PreparedScene.GtxVehicleVolume.ActiveToggle &&
+        PreparedScene.GtxVehicleVolume.VolumeAsset != nullptr)
+    {
+        Result.SdfAllocatedBytes = PreparedScene.GtxVehicleVolume.VolumeAsset->QueryCompactMemoryBytes();
+    }
+
+    const SolarShadowAlgorithm EffectiveShadowAlgo = HighEndZeroSdf
+        ? SolarShadowAlgorithm::WideTreeRayQuery
+        : Config.ShadowAlgorithm;
+
+    DirectLighting::HybridOccluderEnvironment Order2Occluders {};
+    GlobalIllumination::StokesContourIrradianceSequence Order2Stokes {};
+    GlobalIllumination::SurfelRadiosityLatticeSequence  Order2Surfels {};
+    GlobalIllumination::StokesContourTierSettings       StokesSettings {};
+    GlobalIllumination::SurfelLatticeTierSettings       SurfelSettings {};
+    std::vector<Mathematics::LinearRGB>                 MatEmissionBySlot {};
+    std::vector<float>                                  GtxSolarVisibility {};
+
+    if (Order2Active && !PreparedScene.CompressedSceneTree.Primitives.empty())
+    {
+        Order2Occluders.SceneBvh            = &PreparedScene.CompressedSceneTree;
+        Order2Occluders.ForbidDistanceField = HighEndZeroSdf;
+        if (!HighEndZeroSdf)
+        {
+            Order2Occluders.InteriorBoxes    = PreparedScene.GtxInteriorBoxes;
+            Order2Occluders.VehiclePlacement = PreparedScene.GtxVehicleVolume;
+            Order2Occluders.CharacterRig     = &PreparedScene.GtxCharacterRig;
+
+            // Precompute GtxLowEnd SDF Directional Shadow (Modes 0..5, defaulting to Candidate 1 AnalyticSdfConePenumbra)
+            if (std::max({ PreparedScene.Sun.SolarIrradiance.R, PreparedScene.Sun.SolarIrradiance.G, PreparedScene.Sun.SolarIrradiance.B }) > 1.0e-4f)
+            {
+                GtxSolarVisibility.assign(TotalPixels, 1.0f);
+                const Mathematics::Axis3D UnitSun   = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
+                const float               TanSunRad = std::tan(std::clamp(PreparedScene.Sun.SunAngularRadiusRadians, 1.0e-4f, 0.25f));
+
+                DirectLighting::SdfVoxelClipmapHierarchy OptionalClipmap {};
+                const bool NeedsVoxelClipmap =
+                    (Config.SdfPenumbraMode == DirectLighting::SdfShadowPenumbraMode::VoxelSdfClipmapPenumbra ||
+                     Config.SdfPenumbraMode == DirectLighting::SdfShadowPenumbraMode::VoxelSdfPenumbraPlusConeGi);
+                if (NeedsVoxelClipmap)
+                {
+                    const Mathematics::Axis3D FocusCenter =
+                        (PreparedScene.SceneTree.RootBoundsMin + PreparedScene.SceneTree.RootBoundsMax) * 0.5f;
+                    OptionalClipmap.BuildFromHybridEnvironment(Order2Occluders, FocusCenter, 2.2f, 3.6f);
+                }
+
+                for (std::size_t Off = 0u; Off < TotalPixels; ++Off)
+                {
+                    const auto& Hit = PrimarySamples[Off];
+                    if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                    {
+                        const uint32_t PixelKey = static_cast<uint32_t>(Off * 2654435761u + 0x9E3779B9u);
+                        GtxSolarVisibility[Off] = DirectLighting::EvaluateWorldDirectionalSdfShadow(
+                            Config.SdfPenumbraMode,
+                            Order2Occluders,
+                            NeedsVoxelClipmap ? &OptionalClipmap : nullptr,
+                            Hit.WorldPosition,
+                            Hit.TangentFrame.NormalZ,
+                            UnitSun,
+                            TanSunRad,
+                            PixelKey);
+                    }
+                }
+            }
+        }
+    }
+
     Result.DirectLighting = LinearCosineLightIntegration::EvaluateDirectLightingFrameWithAlgorithm(
-        Config.ShadowAlgorithm,
+        EffectiveShadowAlgo,
         CurrentCamera,
         PreparedScene.ClusterInstances,
         VisTargets,
@@ -619,7 +745,54 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         &CoarseContactClip,
         {},
         PreparedScene.PointLights,
-        { 0.0f, 0.0f, 0.0f });
+        { 0.0f, 0.0f, 0.0f },
+        PreparedScene.PhotometricRadiators,
+        PreparedScene.PhotometricProfiles,
+        GtxSolarVisibility,
+        Order2Active);
+
+    if (Order2Active && !PreparedScene.CompressedSceneTree.Primitives.empty())
+    {
+        std::vector<Mathematics::LinearRGB> MatAlbedoBySlot(MatCount);
+        MatEmissionBySlot.resize(MatCount);
+        for (uint32_t M = 0u; M < MatCount; ++M)
+        {
+            const auto& AuthMat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(M);
+            const float DiffK   = (1.0f - AuthMat.Specular.Metalness) * AuthMat.Diffuse.BaseWeight;
+            MatAlbedoBySlot[M]  = {
+                AuthMat.Diffuse.BaseColor.R * DiffK,
+                AuthMat.Diffuse.BaseColor.G * DiffK,
+                AuthMat.Diffuse.BaseColor.B * DiffK,
+            };
+            MatEmissionBySlot[M] = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(AuthMat.PorosityLight);
+        }
+
+        StokesSettings.HighEndZeroSdfTier = HighEndZeroSdf;
+        StokesSettings.SunDirection       = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
+        StokesSettings.SunRadiance        = {
+            PreparedScene.Sun.SolarIrradiance.R,
+            PreparedScene.Sun.SolarIrradiance.G,
+            PreparedScene.Sun.SolarIrradiance.B,
+        };
+        SurfelSettings.HighEndZeroSdfTier = HighEndZeroSdf;
+        SurfelSettings.SunDirection       = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
+        SurfelSettings.SunRadiance        = {
+            PreparedScene.Sun.SolarIrradiance.R,
+            PreparedScene.Sun.SolarIrradiance.G,
+            PreparedScene.Sun.SolarIrradiance.B,
+        };
+
+        if (Config.GiCandidate == RealTimeGiCandidate::StokesContour)
+        {
+            Order2Stokes.BuildFromScene(
+                PreparedScene.CompressedSceneTree.Primitives, MatAlbedoBySlot, MatEmissionBySlot, Order2Occluders, StokesSettings);
+        }
+        else
+        {
+            Order2Surfels.BuildRelaxedLatticeFromScene(
+                PreparedScene.CompressedSceneTree.Primitives, MatAlbedoBySlot, MatEmissionBySlot, Order2Occluders, SurfelSettings);
+        }
+    }
 
     Result.SpecularGlass = SpecularReflectionSequence::EvaluateSpecularRefractionWithSource(
         Config.ReflectionSource,
@@ -699,11 +872,32 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                                          (1.0f - Mat.Transmission.TransmissionWeight) *
                                          Mat.Diffuse.BaseWeight;
 
-                // Clean hemispherical ambient sky fill (Zero GI)
-                const auto SkyFill = EvaluateSkyDome(Hit.TangentFrame.NormalZ, PreparedScene.SkyRadiance, &PreparedScene, &SkySequence);
-                FinalHdr.R += SkyFill.R * 0.22f * Mat.Diffuse.BaseColor.R * DiffFactor * (0.35f + 0.65f * DiffAo);
-                FinalHdr.G += SkyFill.G * 0.22f * Mat.Diffuse.BaseColor.G * DiffFactor * (0.35f + 0.65f * DiffAo);
-                FinalHdr.B += SkyFill.B * 0.22f * Mat.Diffuse.BaseColor.B * DiffFactor * (0.35f + 0.65f * DiffAo);
+                if (Order2Active && !PreparedScene.CompressedSceneTree.Primitives.empty())
+                {
+                    const Mathematics::LinearRGB TotalGiE =
+                        (Config.GiCandidate == RealTimeGiCandidate::StokesContour)
+                            ? Order2Stokes.EvaluateTotalIrradiance(
+                                  Hit.WorldPosition, Hit.TangentFrame.NormalZ, Order2Occluders, StokesSettings)
+                            : Order2Surfels.EvaluateTotalIrradiance(
+                                  Hit.WorldPosition, Hit.TangentFrame.NormalZ, Order2Occluders, SurfelSettings);
+
+                    const float AoMod = 0.45f + 0.55f * DiffAo;
+                    const Mathematics::LinearRGB IndirectRgb {
+                        (Mat.Diffuse.BaseColor.R * DiffFactor / Constants::PiFloat) * TotalGiE.R   * AoMod,
+                        (Mat.Diffuse.BaseColor.G * DiffFactor / Constants::PiFloat) * TotalGiE.G * AoMod,
+                        (Mat.Diffuse.BaseColor.B * DiffFactor / Constants::PiFloat) * TotalGiE.B  * AoMod,
+                    };
+                    Result.IndirectGiLinearHdr[Off] = IndirectRgb;
+                    FinalHdr                        = FinalHdr + IndirectRgb;
+                }
+                else
+                {
+                    // Clean hemispherical ambient sky fill (Order 1: Zero GI)
+                    const auto SkyFill = EvaluateSkyDome(Hit.TangentFrame.NormalZ, PreparedScene.SkyRadiance, &PreparedScene, &SkySequence);
+                    FinalHdr.R += SkyFill.R * 0.22f * Mat.Diffuse.BaseColor.R * DiffFactor * (0.35f + 0.65f * DiffAo);
+                    FinalHdr.G += SkyFill.G * 0.22f * Mat.Diffuse.BaseColor.G * DiffFactor * (0.35f + 0.65f * DiffAo);
+                    FinalHdr.B += SkyFill.B * 0.22f * Mat.Diffuse.BaseColor.B * DiffFactor * (0.35f + 0.65f * DiffAo);
+                }
 
                 if (Config.ReflectionsEnabled)
                 {
