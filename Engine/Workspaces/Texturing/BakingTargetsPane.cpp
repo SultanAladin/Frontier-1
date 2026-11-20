@@ -1,35 +1,93 @@
-/*============================================================================================================================================
+/*==========================================================================================================================================
                                                             BAKINGTARGETSPANE.CPP
-============================================================================================================================================*/
-// 🧩 Implementation of BakingTargetsPane: 4 quick-select preset chips + 2-column categorized 18-target swatch tiles.
-
-//------------------------------------------------------------------------------------------------------------------------
-//                                                        INCLUDES
-//------------------------------------------------------------------------------------------------------------------------
+==========================================================================================================================================*/
+// 🧩 Implementation of BakingTargetsPane: Project Zero BakeOutliner Queue tree with stat tiles, preset chips & expandable target groups.
 
 #include "Engine/Workspaces/Texturing/BakingTargetsPane.h"
 
 #include "Engine/Components/Controls/ControlAppearance.h"
+#include "Engine/Components/VectorIcons/VectorIconRepository.h"
 #include "Engine/Workspaces/Texturing/TexturingPaneAppearance.h"
-
-#include <imgui.h>
 
 #include <algorithm>
 #include <array>
-#include <cmath>
+#include <cctype>
 #include <cstdio>
+#include <imgui.h>
+#include <string>
 
 namespace Frontier::Workspaces
 {
 
-using namespace TexturingAppearance;
-
 namespace
 {
 
-[[nodiscard]] bool PointInsideRect(Rectangle2D Rect, Point2D Cursor) noexcept
+using namespace TexturingAppearance;
+
+[[nodiscard]] ColorRgba QueryBakeTargetSwatchColor(BakerTargetId Target) noexcept
 {
-    return Cursor.X >= Rect.X && Cursor.X <= Rect.Right() && Cursor.Y >= Rect.Y && Cursor.Y <= Rect.Bottom();
+    switch (Target)
+    {
+        case BakerTargetId::TangentNormal:      return { 127u, 127u, 255u, 255u };
+        case BakerTargetId::ModelSpaceNormal:   return { 178u, 108u, 212u, 255u };
+        case BakerTargetId::WorldNormal:        return { 104u, 206u, 168u, 255u };
+        case BakerTargetId::BentNormal:         return { 138u, 166u, 240u, 255u };
+        case BakerTargetId::BevelNormal:        return { 162u, 152u, 248u, 255u };
+        case BakerTargetId::AmbientOcclusion:   return { 208u, 208u, 210u, 255u };
+        case BakerTargetId::SecondaryAo:        return { 182u, 182u, 186u, 255u };
+        case BakerTargetId::Curvature:          return { 176u, 176u, 180u, 255u };
+        case BakerTargetId::Convexity:          return { 212u, 196u, 154u, 255u };
+        case BakerTargetId::Concavity:          return { 148u, 148u, 152u, 255u };
+        case BakerTargetId::Thickness:          return { 232u, 118u,  88u, 255u };
+        case BakerTargetId::HeightDisplacement: return { 164u, 164u, 168u, 255u };
+        case BakerTargetId::TopDownDust:        return { 216u, 202u, 174u, 255u };
+        case BakerTargetId::PartMaterialId:     return { 224u,  96u, 136u, 255u };
+        case BakerTargetId::UvIslandId:         return { 136u, 212u, 118u, 255u };
+        case BakerTargetId::WorldPosition:      return { 216u, 148u,  92u, 255u };
+        case BakerTargetId::UvWireframe:        return { 196u, 202u, 212u, 255u };
+        case BakerTargetId::VolumeSdf:
+        default:                                return {  88u, 198u, 218u, 255u };
+    }
+}
+
+[[nodiscard]] uint32_t QueryBakeTargetGroupIndex(BakerTargetGroup Group) noexcept
+{
+    switch (Group)
+    {
+        case BakerTargetGroup::Normals:         return 1u;
+        case BakerTargetGroup::Surface:         return 2u;
+        case BakerTargetGroup::DiagnosticMasks: return 3u;
+        case BakerTargetGroup::VolumeDistance:
+        default:                                return 4u;
+    }
+}
+
+[[nodiscard]] bool TargetMatchesSearch(const BakerTargetDescriptor& Desc, std::string_view Query) noexcept
+{
+    if (Query.empty())
+    {
+        return true;
+    }
+    auto ContainsCaseInsensitive = [](std::string_view Haystack, std::string_view Needle) noexcept -> bool
+    {
+        if (Needle.size() > Haystack.size()) return false;
+        for (std::size_t I = 0u; I + Needle.size() <= Haystack.size(); ++I)
+        {
+            bool Match = true;
+            for (std::size_t J = 0u; J < Needle.size(); ++J)
+            {
+                if (std::tolower(static_cast<unsigned char>(Haystack[I + J])) !=
+                    std::tolower(static_cast<unsigned char>(Needle[J])))
+                {
+                    Match = false;
+                    break;
+                }
+            }
+            if (Match) return true;
+        }
+        return false;
+    };
+    return ContainsCaseInsensitive(Desc.Label, Query) || ContainsCaseInsensitive(Desc.ShortSummary, Query);
 }
 
 } // namespace
@@ -41,8 +99,7 @@ BakingTargetsPane::~BakingTargetsPane() noexcept
 
 void BakingTargetsPane::AttachSession(BakingWorkspaceSession* TargetSession) noexcept
 {
-    Session       = TargetSession;
-    ScrollOffsetY = 0.0f;
+    Session = TargetSession;
 }
 
 void BakingTargetsPane::PresentInImGuiPane(double DeltaSeconds, float ScaleFactor)
@@ -74,343 +131,468 @@ void BakingTargetsPane::RenderTargetSwatchGraphic(
     PixelSpace&   Surface,
     Rectangle2D   SwatchBounds,
     BakerTargetId Target,
-    bool          Ready) const noexcept
+    bool          /*Ready*/) const noexcept
 {
-    Surface.PushClip(SwatchBounds);
-
-    const float Cx = SwatchBounds.X + SwatchBounds.Width * 0.5f;
-    const float Cy = SwatchBounds.Y + SwatchBounds.Height * 0.5f;
-    const float R  = std::min(SwatchBounds.Width, SwatchBounds.Height) * 0.36f;
-
-    switch (Target)
-    {
-        case BakerTargetId::VolumeSdf:
-        {
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 20u, 36u, 58u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R * 1.15f, ColorRgba{ 46u, 82u, 134u, 255u });
-            Surface.FillCircle({ Cx, Cy }, R * 0.85f, ColorRgba{ 232u, 238u, 200u, 255u });
-            Surface.FillCircle({ Cx, Cy }, R * 0.62f, ColorRgba{ 165u, 72u, 46u, 255u });
-            Surface.TextCentered(SwatchBounds, 9.0f, ColorRgba{ 238u, 241u, 246u, 255u }, Ready ? "SDF OK" : "SDF");
-            break;
-        }
-        case BakerTargetId::TangentNormal:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 118u, 126u, 238u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R, ColorRgba{ 138u, 146u, 250u, 255u });
-            Surface.FillCircle({ Cx - R * 0.25f, Cy - R * 0.25f }, R * 0.55f, ColorRgba{ 170u, 136u, 242u, 180u });
-            break;
-        case BakerTargetId::WorldNormal:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 62u, 118u, 182u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R, ColorRgba{ 122u, 204u, 152u, 255u });
-            Surface.FillCircle({ Cx + R * 0.28f, Cy - R * 0.18f }, R * 0.45f, ColorRgba{ 216u, 116u, 142u, 180u });
-            break;
-        case BakerTargetId::ModelSpaceNormal:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 164u, 96u, 178u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R, ColorRgba{ 118u, 188u, 198u, 255u });
-            Surface.FillCircle({ Cx - R * 0.24f, Cy - R * 0.24f }, R * 0.48f, ColorRgba{ 222u, 154u, 108u, 175u });
-            break;
-        case BakerTargetId::BentNormal:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 106u, 148u, 192u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R, ColorRgba{ 152u, 198u, 178u, 255u });
-            Surface.FillCircle({ Cx + R * 0.22f, Cy + R * 0.20f }, R * 0.46f, ColorRgba{ 208u, 148u, 204u, 170u });
-            break;
-        case BakerTargetId::BevelNormal:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 98u, 106u, 224u, 255u }, 7.0f);
-            Surface.StrokeRectangle(
-                { Cx - R, Cy - R * 0.85f, R * 2.0f, R * 1.7f },
-                ColorRgba{ 192u, 198u, 255u, 235u },
-                4.0f,
-                2.0f);
-            break;
-        case BakerTargetId::AmbientOcclusion:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 194u, 198u, 204u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R * 1.04f, ColorRgba{ 126u, 130u, 136u, 255u });
-            Surface.FillCircle({ Cx, Cy }, R * 0.62f, ColorRgba{ 222u, 225u, 230u, 255u });
-            break;
-        case BakerTargetId::SecondaryAo:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 138u, 142u, 148u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R * 0.96f, ColorRgba{ 72u, 76u, 82u, 255u });
-            Surface.FillCircle({ Cx, Cy }, R * 0.56f, ColorRgba{ 182u, 186u, 192u, 255u });
-            break;
-        case BakerTargetId::Curvature:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 98u, 104u, 114u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx - R * 0.25f, Cy }, R * 0.72f, ColorRgba{ 88u, 196u, 162u, 230u });
-            Surface.FillCircle({ Cx + R * 0.30f, Cy }, R * 0.52f, ColorRgba{ 224u, 118u, 98u, 210u });
-            break;
-        case BakerTargetId::Convexity:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 32u, 36u, 42u, 255u }, 7.0f);
-            Surface.StrokeCircle({ Cx, Cy }, R * 0.85f, ColorRgba{ 224u, 232u, 238u, 240u }, 2.2f);
-            break;
-        case BakerTargetId::Concavity:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 32u, 36u, 42u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R * 0.80f, ColorRgba{ 204u, 94u, 76u, 230u });
-            break;
-        case BakerTargetId::Thickness:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 72u, 38u, 26u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R * 0.92f, ColorRgba{ 218u, 142u, 72u, 255u });
-            Surface.FillCircle({ Cx - R * 0.20f, Cy - R * 0.16f }, R * 0.44f, ColorRgba{ 246u, 206u, 134u, 240u });
-            break;
-        case BakerTargetId::HeightDisplacement:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 58u, 60u, 66u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx, Cy }, R * 0.96f, ColorRgba{ 168u, 172u, 180u, 255u });
-            Surface.FillCircle({ Cx, Cy }, R * 0.48f, ColorRgba{ 238u, 240u, 245u, 255u });
-            break;
-        case BakerTargetId::TopDownDust:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 62u, 66u, 72u, 255u }, 7.0f);
-            Surface.FillRectangle(
-                { SwatchBounds.X, SwatchBounds.Y, SwatchBounds.Width, SwatchBounds.Height * 0.48f },
-                ColorRgba{ 204u, 186u, 148u, 235u },
-                0.0f);
-            break;
-        case BakerTargetId::UvIslandId:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 56u, 128u, 184u, 255u }, 7.0f);
-            Surface.FillRectangle(
-                { SwatchBounds.X + 4.0f, SwatchBounds.Y + 4.0f, SwatchBounds.Width * 0.44f, SwatchBounds.Height * 0.44f },
-                ColorRgba{ 218u, 114u, 88u, 255u },
-                4.0f);
-            Surface.FillRectangle(
-                { SwatchBounds.X + SwatchBounds.Width * 0.50f, SwatchBounds.Y + SwatchBounds.Height * 0.42f, SwatchBounds.Width * 0.42f, SwatchBounds.Height * 0.46f },
-                ColorRgba{ 112u, 198u, 134u, 255u },
-                4.0f);
-            break;
-        case BakerTargetId::PartMaterialId:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 104u, 74u, 152u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx - R * 0.42f, Cy }, R * 0.56f, ColorRgba{ 232u, 176u, 68u, 255u });
-            Surface.FillCircle({ Cx + R * 0.42f, Cy }, R * 0.56f, ColorRgba{ 76u, 196u, 184u, 255u });
-            break;
-        case BakerTargetId::WorldPosition:
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 92u, 156u, 112u, 255u }, 7.0f);
-            Surface.FillCircle({ Cx - R * 0.25f, Cy + R * 0.16f }, R * 0.65f, ColorRgba{ 214u, 88u, 108u, 200u });
-            Surface.FillCircle({ Cx + R * 0.28f, Cy - R * 0.18f }, R * 0.62f, ColorRgba{ 88u, 146u, 232u, 210u });
-            break;
-        case BakerTargetId::UvWireframe:
-        default:
-        {
-            Surface.FillRectangle(SwatchBounds, ColorRgba{ 24u, 26u, 32u, 255u }, 7.0f);
-            const ColorRgba WireGold{ 214u, 178u, 96u, 210u };
-            for (int32_t Step = 1; Step <= 3; ++Step)
-            {
-                const float Fx = SwatchBounds.X + SwatchBounds.Width * (static_cast<float>(Step) * 0.25f);
-                const float Fy = SwatchBounds.Y + SwatchBounds.Height * (static_cast<float>(Step) * 0.25f);
-                Surface.StrokeLine({ Fx, SwatchBounds.Y + 4.0f }, { Fx, SwatchBounds.Bottom() - 4.0f }, WireGold, 1.0f);
-                Surface.StrokeLine({ SwatchBounds.X + 4.0f, Fy }, { SwatchBounds.Right() - 4.0f, Fy }, WireGold, 1.0f);
-            }
-            Surface.StrokeLine(
-                { SwatchBounds.X + 6.0f, SwatchBounds.Y + 6.0f },
-                { SwatchBounds.Right() - 6.0f, SwatchBounds.Bottom() - 6.0f },
-                WireGold,
-                1.0f);
-            break;
-        }
-    }
-
-    Surface.PopClip();
+    const ColorRgba Tint = QueryBakeTargetSwatchColor(Target);
+    Surface.FillRectangle(SwatchBounds, Tint, 6.0f);
+    Surface.StrokeRectangle(SwatchBounds, ColorRgba{ 255u, 255u, 255u, 42u }, 6.0f, 1.0f);
 }
 
 void BakingTargetsPane::Render(
     PixelSpace&             Surface,
     Rectangle2D             Bounds,
     const PaneInputReading& Input,
-    double                  DeltaSeconds)
+    double                  /*DeltaSeconds*/)
 {
-    (void)DeltaSeconds;
-    if (Session == nullptr || Bounds.Width < 60.0f || Bounds.Height < 120.0f)
+    if (Session == nullptr || Bounds.Width < 120.0f || Bounds.Height < 120.0f)
     {
         return;
     }
 
-    const TexturingThemeColors Theme   = QueryTexturingThemeColors();
-    const Point2D              Cursor  { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    const bool                 Pressed = Input.PrimaryPointer.Pressed;
-
+    const TexturingThemeColors Theme = QueryTexturingTheme(Surface);
     Surface.PushClip(Bounds);
-    Surface.FillRectangle(Bounds, Theme.PaneBackground, 0.0f);
+    Surface.FillRectangle(Bounds, Theme.PaneBackground);
+    Surface.StrokeLine({ Bounds.Right() - 0.5f, Bounds.Y }, { Bounds.Right() - 0.5f, Bounds.Bottom() }, Theme.BorderSubtle, 1.0f);
 
-    // Top Heading Bar
-    constexpr float PadX       = 14.0f;
-    constexpr float HeaderTopY = 12.0f;
-    const float     InnerW     = std::max(40.0f, Bounds.Width - PadX * 2.0f);
-    char            CountMeta[32];
-    std::snprintf(CountMeta, sizeof(CountMeta), "%zu MAPS", BakingWorkspaceSession::TargetCount);
-    const float HeaderConsumed = ConstructPaneHeadingBar(Surface, Bounds.X + PadX, Bounds.Y + HeaderTopY, InnerW, "Bake Map Targets", CountMeta, Theme);
+    const Point2D Cursor  { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+    const bool    Pressed = Input.PrimaryPointer.Pressed;
+    const float   PadX    = 12.0f;
+    const float   InnerW  = std::max(120.0f, Bounds.Width - PadX * 2.0f);
+    float         CurY    = Bounds.Y + 12.0f;
 
-    // Bottom Status Footer
-    constexpr float   FooterH = 26.0f;
-    const Rectangle2D FooterBounds{ Bounds.X, Bounds.Bottom() - FooterH, Bounds.Width, FooterH };
-    ConstructPaneStatusFooter(Surface, FooterBounds, "GTX BVH4 / RTX RayQuery", "High -> Low Cage", Theme);
+    // 1. Header ("Queue", "MAP BAKING · HIGH -> LOW")
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Bold, { Bounds.X + PadX, CurY }, 14.0f, Theme.TextPrimary, "Queue");
+    WorkspaceAppearance::ConstructTruncatedText(
+        Surface, FontWeightClass::Medium, { Bounds.X + PadX, CurY + 18.0f }, InnerW, 8.2f, Theme.TextFaint, "MAP BAKING · HIGH -> LOW");
+    CurY += 36.0f;
 
-    // Scrollable region
-    const float       ScrollTop = Bounds.Y + HeaderTopY + HeaderConsumed;
-    const Rectangle2D ScrollViewport{
-        Bounds.X,
-        ScrollTop,
-        Bounds.Width,
-        std::max(1.0f, FooterBounds.Y - ScrollTop),
-    };
-
-    if (PointInsideRect(ScrollViewport, Cursor) && std::abs(Input.WheelDeltaY) > 0.01f)
+    // 2. Stat Tiles ("QUEUED 5/18", "READY 0/18")
+    const std::size_t QueuedCount = Session->CountSelectedTargets();
+    std::size_t ReadyCount = 0u;
+    for (bool R : Session->BakedReadyTargets)
     {
-        ScrollOffsetY = std::clamp(ScrollOffsetY - Input.WheelDeltaY * 32.0f, 0.0f, MaxScrollY);
+        if (R) ++ReadyCount;
     }
+    char QueuedValBuf[32];
+    std::snprintf(QueuedValBuf, sizeof(QueuedValBuf), "%zu/%zu", QueuedCount, BakingWorkspaceSession::TargetCount);
+    char ReadyValBuf[32];
+    std::snprintf(ReadyValBuf, sizeof(ReadyValBuf), "%zu/%zu", ReadyCount, BakingWorkspaceSession::TargetCount);
 
-    Surface.PushClip(ScrollViewport);
-    const float InnerX = ScrollViewport.X + PadX;
-    float       CurY   = ScrollViewport.Y + 8.0f - ScrollOffsetY;
+    const float StatGap = 8.0f;
+    const float StatW   = (InnerW - StatGap) * 0.5f;
+    const Rectangle2D StatQueuedR{ Bounds.X + PadX, CurY, StatW, 42.0f };
+    const Rectangle2D StatReadyR { StatQueuedR.Right() + StatGap, CurY, StatW, 42.0f };
 
-    // Quick preset chips
-    struct PresetRowEntry
+    if (ConstructOutlinerStatTile(
+            Surface,
+            StatQueuedR,
+            ControlIcon::LayersSlabs,
+            "QUEUED",
+            QueuedValBuf,
+            QueuedCount > 0u,
+            ActiveFilterIndex == 1u,
+            Theme,
+            Cursor,
+            Pressed))
+    {
+        ActiveFilterIndex = (ActiveFilterIndex == 1u) ? 0u : 1u;
+    }
+    if (ConstructOutlinerStatTile(
+            Surface,
+            StatReadyR,
+            ControlIcon::CircleCheck,
+            "READY",
+            ReadyValBuf,
+            ReadyCount > 0u,
+            ActiveFilterIndex == 2u,
+            Theme,
+            Cursor,
+            Pressed))
+    {
+        ActiveFilterIndex = (ActiveFilterIndex == 2u) ? 0u : 2u;
+    }
+    CurY += 50.0f;
+
+    // 3. Search Bar + Filter Button
+    const float FilterBtnW = 64.0f;
+    const Rectangle2D SearchBoxR{ Bounds.X + PadX, CurY, InnerW - FilterBtnW - 6.0f, 28.0f };
+    const Rectangle2D FilterBtnR{ SearchBoxR.Right() + 6.0f, CurY, FilterBtnW, 28.0f };
+
+    Surface.FillRectangle(SearchBoxR, Theme.WellSurface, 8.0f);
+    Surface.StrokeRectangle(SearchBoxR, SearchBuffer.Active ? Theme.BorderStrong : Theme.BorderSubtle, 8.0f, 1.0f);
+    VectorIconRepository::ConstructControl(
+        Surface, ControlIcon::SearchGlass, VectorIconPlacement{ SearchBoxR.X + 8.0f, SearchBoxR.Y + 7.5f, 13.0f, Theme.TextFaint, 1.65f });
+    if (SearchBuffer.Length == 0u && !SearchBuffer.Active)
+    {
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular, { SearchBoxR.X + 26.0f, SearchBoxR.Y + 6.5f }, 9.4f, Theme.TextFaint, "Search targets...");
+    }
+    (void)TextInputField::Construct(
+        Surface,
+        { SearchBoxR.X + 22.0f, SearchBoxR.Y + 1.0f, SearchBoxR.Width - 26.0f, SearchBoxR.Height - 2.0f },
+        SearchBuffer,
+        Input.PrimaryPointer,
+        9.6f);
+
+    constexpr std::array<const char*, 4u> FilterLabels {{ "Filter", "Queued", "Ready", "Volume" }};
+    if (ConstructHeaderActionCapsule(Surface, FilterBtnR, ControlIcon::Count, FilterLabels[ActiveFilterIndex % 4u], true, FilterSheetOpen, Theme, Cursor, Pressed))
+    {
+        FilterSheetOpen = !FilterSheetOpen;
+    }
+    CurY += 34.0f;
+
+    // 4. Preset Chips Strip ("PBR Standard | PBR + Volume | Normals | All 18 | Clear")
+    struct PresetChipSpec
     {
         const char*      Label;
         BakerQuickPreset Preset;
+        bool             ClearAction;
     };
-    const std::array<PresetRowEntry, 4u> Presets {{
-        { "PBR Core",     BakerQuickPreset::PbrStandard },
-        { "PBR + Volume", BakerQuickPreset::PbrPlusVolume },
-        { "Normals",      BakerQuickPreset::Normals },
-        { "Select All",   BakerQuickPreset::SelectAll },
+    constexpr std::array<PresetChipSpec, 5u> PresetChips {{
+        { "PBR Standard", BakerQuickPreset::PbrStandard,   false },
+        { "PBR + Volume", BakerQuickPreset::PbrPlusVolume, false },
+        { "Normals",      BakerQuickPreset::Normals,       false },
+        { "All 18",       BakerQuickPreset::SelectAll,     false },
+        { "Clear",        BakerQuickPreset::PbrStandard,   true  },
     }};
-
-    int32_t ActivePresetIdx = -1;
-    for (std::size_t I = 0u; I < Presets.size(); ++I)
+    float ChipX = Bounds.X + PadX;
+    float ChipY = CurY;
+    for (const auto& Chip : PresetChips)
     {
-        if (Session->QueryPresetMatched(Presets[I].Preset))
+        const float ChipW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.6f, Chip.Label) + 14.0f;
+        if (ChipX + ChipW > Bounds.Right() - PadX && ChipX > Bounds.X + PadX)
         {
-            ActivePresetIdx = static_cast<int32_t>(I);
-            break;
+            ChipX = Bounds.X + PadX;
+            ChipY += 24.0f;
         }
+        const Rectangle2D ChipR{ ChipX, ChipY, ChipW, 21.0f };
+        const bool ActiveChip = !Chip.ClearAction && Session->QueryPresetMatched(Chip.Preset);
+        const bool HoverChip  = ChipR.Contains(Cursor);
+
+        const ColorRgba FillCol = ActiveChip
+            ? ColorRgba{ 240u, 240u, 238u, 255u }
+            : (HoverChip ? Theme.HoverSurface : Theme.WellSurface);
+        const ColorRgba InkCol  = ActiveChip
+            ? ColorRgba{ 18u, 19u, 22u, 255u }
+            : (HoverChip ? Theme.TextPrimary : Theme.TextMuted);
+        Surface.FillRectangle(ChipR, FillCol, 6.0f);
+        Surface.StrokeRectangle(ChipR, ActiveChip ? FillCol : Theme.BorderSubtle, 6.0f, 1.0f);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, ActiveChip ? FontWeightClass::SemiBold : FontWeightClass::Medium, { ChipR.X + 7.0f, ChipR.Y + 3.5f }, 8.6f, InkCol, Chip.Label);
+
+        if (!FilterSheetOpen && Pressed && HoverChip)
+        {
+            if (Chip.ClearAction)
+            {
+                Session->SelectedTargets.fill(false);
+            }
+            else
+            {
+                Session->ApplyQuickPreset(Chip.Preset);
+            }
+        }
+        ChipX += ChipW + 5.0f;
     }
-    const std::array<const char*, 4u> PresetLabels {{ Presets[0].Label, Presets[1].Label, Presets[2].Label, Presets[3].Label }};
-    const ChipStripOutcome PresetOutcome = ConstructWrappedChipStrip(
+    CurY = ChipY + 26.0f;
+    Surface.StrokeLine({ Bounds.X, CurY }, { Bounds.Right(), CurY }, Theme.BorderSubtle, 1.0f);
+    CurY += 4.0f;
+
+    // 5. Scrollable Queue Tree (Mesh Pair + 4 Target Groups)
+    constexpr float TelemetryH = 28.0f;
+    const Rectangle2D TreeViewportR{ Bounds.X, CurY, Bounds.Width, std::max(48.0f, Bounds.Bottom() - TelemetryH - CurY) };
+
+    if (!FilterSheetOpen && TreeViewportR.Contains(Cursor) && std::abs(Input.WheelDeltaY) > 1.0e-4f)
+    {
+        ScrollOffsetY = ControlAppearance::AdvanceScrollOffset(
+            ScrollOffsetY,
+            Input.WheelDeltaY * 32.0f,
+            TreeViewportR.Height + MaxScrollY,
+            TreeViewportR.Height);
+    }
+    ScrollOffsetY = std::clamp(ScrollOffsetY, 0.0f, MaxScrollY);
+
+    Surface.PushClip(TreeViewportR);
+    float RowY = TreeViewportR.Y + 2.0f - ScrollOffsetY;
+    constexpr float RowH = 38.0f;
+    const bool AllowTreeClicks = !FilterSheetOpen && TreeViewportR.Contains(Cursor);
+
+    // 5A. Mesh Pair Row ("Mesh Pair", "high -> low", badge "Utah Teapot")
+    const auto& ActiveStudy = Session->QueryActiveStudyDescriptor();
+    const OutlinerRowInteraction MeshPairAct = ConstructOutlinerTreeRow(
         Surface,
-        InnerX,
-        CurY,
-        InnerW,
-        PresetLabels,
-        ActivePresetIdx,
+        { Bounds.X + 8.0f, RowY, Bounds.Width - 16.0f, RowH },
+        0u,
+        true,
+        GroupExpanded[0],
+        false,
+        false,
+        ControlIcon::LayersSlabs,
+        Theme.TextMuted,
+        "Mesh Pair",
+        "high -> low",
+        {},
+        ActiveStudy.Label,
+        -1,
+        -1,
+        -1,
         Theme,
         Cursor,
-        Pressed,
-        22.0f,
-        9.2f);
-    if (PresetOutcome.ClickedIndex >= 0 && PresetOutcome.ClickedIndex < static_cast<int32_t>(Presets.size()))
+        AllowTreeClicks && Pressed,
+        false);
+    if (MeshPairAct.CaretToggled || MeshPairAct.RowSelected)
     {
-        Session->ApplyQuickPreset(Presets[static_cast<std::size_t>(PresetOutcome.ClickedIndex)].Preset);
+        GroupExpanded[0] = !GroupExpanded[0];
     }
-    CurY += PresetOutcome.ConsumedHeight + 12.0f;
+    RowY += RowH + 2.0f;
 
-    // 4 Categorized groups with 2-column target swatch tiles
-    const auto&     Registry    = BakingWorkspaceSession::QueryTargetRegistry();
-    constexpr float TileGap    = 8.0f;
-    const float     TileWidth  = std::max(60.0f, (InnerW - TileGap) * 0.5f);
-    constexpr float TileHeight = 96.0f;
-
-    for (std::size_t GroupIdx = 0u; GroupIdx < static_cast<std::size_t>(BakerTargetGroup::Count); ++GroupIdx)
+    if (GroupExpanded[0])
     {
-        const BakerTargetGroup Group = static_cast<BakerTargetGroup>(GroupIdx);
-        WorkspaceAppearance::ConstructTruncatedText(
+        char HighMeta[64];
+        std::snprintf(HighMeta, sizeof(HighMeta), "HIGH · %u tris", Session->QueryActiveHighTriangles());
+        (void)ConstructOutlinerTreeRow(
             Surface,
-            FontWeightClass::SemiBold,
-            { InnerX + 2.0f, CurY + 2.0f },
-            InnerW,
-            9.5f,
-            Theme.TextMuted,
-            BakingWorkspaceSession::QueryGroupHeading(Group));
-        CurY += 20.0f;
+            { Bounds.X + 8.0f, RowY, Bounds.Width - 16.0f, 34.0f },
+            1u,
+            false,
+            false,
+            false,
+            false,
+            ControlIcon::CubeShape,
+            Theme.TextPrimary,
+            !Session->CustomHighAssetLabel.empty() ? Session->CustomHighAssetLabel : std::string(ActiveStudy.Label) + " (High)",
+            HighMeta,
+            {},
+            "READY",
+            -1,
+            -1,
+            -1,
+            Theme,
+            Cursor,
+            false,
+            false);
+        RowY += 35.0f;
 
-        std::size_t ColumnIdx = 0u;
-        for (const BakerTargetDescriptor& Desc : Registry)
+        char LowMeta[64];
+        std::snprintf(LowMeta, sizeof(LowMeta), "LOW · %u tris", Session->QueryActiveLowTriangles());
+        (void)ConstructOutlinerTreeRow(
+            Surface,
+            { Bounds.X + 8.0f, RowY, Bounds.Width - 16.0f, 34.0f },
+            1u,
+            false,
+            false,
+            false,
+            false,
+            ControlIcon::CubeShape,
+            Theme.TextPrimary,
+            !Session->CustomLowAssetLabel.empty() ? Session->CustomLowAssetLabel : std::string(ActiveStudy.Label) + " (Low)",
+            LowMeta,
+            {},
+            "UVS",
+            -1,
+            -1,
+            -1,
+            Theme,
+            Cursor,
+            false,
+            false);
+        RowY += 35.0f;
+    }
+
+    // 5B. Four Target Groups: Normals (1), Surface & AO (2), IDs & Utility (3), Volume (4)
+    constexpr std::array<const char*, 5u> GroupTitles {{
+        "Mesh Pair",
+        "Normals",
+        "Surface & AO",
+        "IDs & Utility",
+        "Volume",
+    }};
+    const auto& TargetCatalog = BakingWorkspaceSession::QueryTargetRegistry();
+    char ResTagBuf[16];
+    if (Session->TargetResolutionPx >= 1024u)
+    {
+        std::snprintf(ResTagBuf, sizeof(ResTagBuf), "%uK", Session->TargetResolutionPx / 1024u);
+    }
+    else
+    {
+        std::snprintf(ResTagBuf, sizeof(ResTagBuf), "%u", Session->TargetResolutionPx);
+    }
+    char VolTagBuf[16];
+    std::snprintf(VolTagBuf, sizeof(VolTagBuf), "%u^3", Session->VolumeGridDim);
+
+    const std::string_view QueryView(SearchBuffer.Text, SearchBuffer.Length);
+
+    for (uint32_t G = 1u; G <= 4u; ++G)
+    {
+        std::size_t GroupTotal  = 0u;
+        std::size_t GroupQueued = 0u;
+        std::size_t GroupShown  = 0u;
+
+        for (std::size_t T = 0u; T < BakingWorkspaceSession::TargetCount; ++T)
         {
-            if (Desc.Group != Group)
+            const auto& Desc = TargetCatalog[T];
+            if (QueryBakeTargetGroupIndex(Desc.Group) != G)
             {
                 continue;
             }
-            const float       TileX = InnerX + static_cast<float>(ColumnIdx % 2u) * (TileWidth + TileGap);
-            const float       TileY = CurY + static_cast<float>(ColumnIdx / 2u) * (TileHeight + TileGap);
-            const Rectangle2D TileRect{ TileX, TileY, TileWidth, TileHeight };
+            ++GroupTotal;
+            if (Session->SelectedTargets[T]) ++GroupQueued;
 
-            const bool Checked   = Session->SelectedTargets[static_cast<std::size_t>(Desc.Id)];
-            const bool Inspected = Session->InspectedTarget == Desc.Id;
-            const bool Ready     = Session->QueryTargetReady(Desc.Id);
-            const bool Hovered   = PointInsideRect(TileRect, Cursor) && PointInsideRect(ScrollViewport, Cursor);
-
-            const ColorRgba TileBg = Inspected
-                ? Theme.AccentSoft
-                : (Hovered ? Theme.HoverSurface : Theme.WellSurface);
-            const ColorRgba TileBorder = Inspected
-                ? Theme.AccentBorder
-                : (Hovered ? Theme.BorderStrong : Theme.BorderSubtle);
-
-            Surface.FillRectangle(TileRect, TileBg, 10.0f);
-            Surface.StrokeRectangle(TileRect, TileBorder, 10.0f, Inspected ? 1.5f : 1.0f);
-
-            const Rectangle2D SwatchRect{ TileRect.X + 7.0f, TileRect.Y + 7.0f, TileRect.Width - 14.0f, 44.0f };
-            RenderTargetSwatchGraphic(Surface, SwatchRect, Desc.Id, Ready);
-
-            // Top-right selection toggle check circle inside swatch corner
-            const Rectangle2D CheckRect{ SwatchRect.Right() - 20.0f, SwatchRect.Y + 3.0f, 17.0f, 17.0f };
-            const bool        CheckHovered = PointInsideRect(CheckRect, Cursor) && PointInsideRect(ScrollViewport, Cursor);
-            const ColorRgba   CheckBg      = Checked
-                ? Theme.HighlightFill
-                : (CheckHovered ? Theme.HoverSurface : ColorRgba{ 16u, 18u, 22u, 225u });
-            const ColorRgba   CheckBorder  = Checked ? Theme.HighlightFill : Theme.BorderStrong;
-            Surface.FillCircle({ CheckRect.X + 8.5f, CheckRect.Y + 8.5f }, 8.5f, CheckBg);
-            Surface.StrokeCircle({ CheckRect.X + 8.5f, CheckRect.Y + 8.5f }, 8.5f, CheckBorder, 1.0f);
-            if (Checked)
-            {
-                WorkspaceAppearance::ConstructCheckSymbol(
-                    Surface,
-                    { CheckRect.X + 8.5f, CheckRect.Y + 8.5f },
-                    9.5f,
-                    Theme.HighlightInk,
-                    1.8f);
-            }
-
-            // Tile title & short caption
-            WorkspaceAppearance::ConstructTruncatedText(
-                Surface,
-                FontWeightClass::SemiBold,
-                { TileRect.X + 8.0f, SwatchRect.Bottom() + 5.0f },
-                TileRect.Width - 16.0f,
-                10.0f,
-                Theme.TextPrimary,
-                Desc.Label);
-            WorkspaceAppearance::ConstructTruncatedText(
-                Surface,
-                FontWeightClass::Regular,
-                { TileRect.X + 8.0f, SwatchRect.Bottom() + 21.0f },
-                TileRect.Width - 16.0f,
-                9.0f,
-                Ready ? Theme.ReadyGreen : Theme.TextMuted,
-                Ready ? "Ready" : Desc.ShortSummary);
-
-            if (Hovered)
-            {
-                ControlAppearance::RecordHoveredTooltip(
-                    TileRect,
-                    OptionalTooltip::FromTitled(Desc.Label, "Click tile to inspect · Click top-right check to toggle bake output."));
-                if (Pressed)
-                {
-                    if (CheckHovered)
-                    {
-                        Session->ToggleTargetSelected(Desc.Id);
-                    }
-                    else
-                    {
-                        Session->InspectTarget(Desc.Id);
-                    }
-                }
-            }
-            ++ColumnIdx;
+            if (ActiveFilterIndex == 1u && !Session->SelectedTargets[T])   continue;
+            if (ActiveFilterIndex == 2u && !Session->BakedReadyTargets[T]) continue;
+            if (ActiveFilterIndex == 3u && !Desc.VolumeTarget)             continue;
+            if (!TargetMatchesSearch(Desc, QueryView))                     continue;
+            ++GroupShown;
+        }
+        if (GroupShown == 0u)
+        {
+            continue;
         }
 
-        const std::size_t RowCount = (ColumnIdx + 1u) / 2u;
-        CurY += static_cast<float>(RowCount) * (TileHeight + TileGap) + 10.0f;
+        char GroupMeta[32];
+        std::snprintf(GroupMeta, sizeof(GroupMeta), "%zu/%zu", GroupQueued, GroupTotal);
+        const OutlinerRowInteraction GroupAct = ConstructOutlinerTreeRow(
+            Surface,
+            { Bounds.X + 8.0f, RowY, Bounds.Width - 16.0f, RowH },
+            0u,
+            true,
+            GroupExpanded[G],
+            false,
+            false,
+            (G == 4u) ? ControlIcon::CubeShape : ControlIcon::LayersSlabs,
+            Theme.TextMuted,
+            GroupTitles[G],
+            GroupMeta,
+            {},
+            {},
+            -1,
+            -1,
+            -1,
+            Theme,
+            Cursor,
+            AllowTreeClicks && Pressed,
+            false);
+        if (GroupAct.CaretToggled || GroupAct.RowSelected)
+        {
+            GroupExpanded[G] = !GroupExpanded[G];
+        }
+        RowY += RowH + 2.0f;
+
+        if (!GroupExpanded[G])
+        {
+            continue;
+        }
+
+        for (std::size_t T = 0u; T < BakingWorkspaceSession::TargetCount; ++T)
+        {
+            const auto& Desc = TargetCatalog[T];
+            if (QueryBakeTargetGroupIndex(Desc.Group) != G)
+            {
+                continue;
+            }
+            if (ActiveFilterIndex == 1u && !Session->SelectedTargets[T])   continue;
+            if (ActiveFilterIndex == 2u && !Session->BakedReadyTargets[T]) continue;
+            if (ActiveFilterIndex == 3u && !Desc.VolumeTarget)             continue;
+            if (!TargetMatchesSearch(Desc, QueryView))                     continue;
+
+            const bool IsSelected = (Session->InspectedTarget == Desc.Id);
+            const bool IsQueued   = Session->SelectedTargets[T];
+            const bool IsReady    = Session->BakedReadyTargets[T];
+
+            Rectangle2D IconSlotR {};
+            const OutlinerRowInteraction TargetAct = ConstructOutlinerTreeRow(
+                Surface,
+                { Bounds.X + 8.0f, RowY, Bounds.Width - 16.0f, RowH },
+                1u,
+                false,
+                false,
+                IsSelected,
+                !IsQueued,
+                ControlIcon::Count,
+                Theme.TextPrimary,
+                Desc.Label,
+                Desc.ShortSummary,
+                {},
+                IsReady ? "BAKED" : (Desc.VolumeTarget ? VolTagBuf : ResTagBuf),
+                -1,
+                IsQueued ? 1 : 0,
+                -1,
+                Theme,
+                Cursor,
+                AllowTreeClicks && Pressed,
+                false,
+                &IconSlotR);
+
+            RenderTargetSwatchGraphic(Surface, IconSlotR, Desc.Id, IsReady);
+
+            if (TargetAct.StatusToggled)
+            {
+                Session->ToggleTargetSelected(Desc.Id);
+            }
+            else if (TargetAct.RowSelected)
+            {
+                Session->InspectTarget(Desc.Id);
+            }
+            RowY += RowH + 2.0f;
+        }
     }
 
-    const float ContentBottom = CurY + ScrollOffsetY + 12.0f;
-    MaxScrollY                = std::max(0.0f, ContentBottom - ScrollViewport.Bottom());
-    ScrollOffsetY             = std::clamp(ScrollOffsetY, 0.0f, MaxScrollY);
-
+    const float ContentH = (RowY + ScrollOffsetY) - TreeViewportR.Y + 8.0f;
+    MaxScrollY = std::max(0.0f, ContentH - TreeViewportR.Height);
     Surface.PopClip();
+
+    // 6. Bottom Telemetry Strip ("RES 512 | QUEUED 5 | READY 0 | RAYS 60")
+    const Rectangle2D TelemetryR{ Bounds.X, Bounds.Bottom() - TelemetryH, Bounds.Width, TelemetryH };
+    char QueuedStr[16];
+    std::snprintf(QueuedStr, sizeof(QueuedStr), "%zu", QueuedCount);
+    char ReadyStr[16];
+    std::snprintf(ReadyStr, sizeof(ReadyStr), "%zu", ReadyCount);
+    char RaysStr[16];
+    std::snprintf(RaysStr, sizeof(RaysStr), "%d", static_cast<int>(QueuedCount) * Session->AoSampleCount);
+
+    const std::array<std::pair<std::string_view, std::string_view>, 4u> TelemetryCols {{
+        { "RES",    ResTagBuf },
+        { "QUEUED", QueuedStr },
+        { "READY",  ReadyStr  },
+        { "RAYS",   RaysStr   },
+    }};
+    ConstructOutlinerTelemetryStrip(Surface, TelemetryR, TelemetryCols, Theme);
+
+    if (FilterSheetOpen)
+    {
+        constexpr std::array<const char*, 4u> FilterMenuNames {{
+            "All targets",
+            "Queued only",
+            "Ready only",
+            "Volume only",
+        }};
+        const Rectangle2D SheetR{ FilterBtnR.Right() - 126.0f, FilterBtnR.Bottom() + 4.0f, 126.0f, 112.0f };
+        Surface.FillRectangle(SheetR, Theme.NestedSurface, 10.0f);
+        Surface.StrokeRectangle(SheetR, Theme.BorderStrong, 10.0f, 1.0f);
+        for (uint32_t I = 0u; I < 4u; ++I)
+        {
+            const Rectangle2D RowR{ SheetR.X + 5.0f, SheetR.Y + 5.0f + static_cast<float>(I) * 25.0f, SheetR.Width - 10.0f, 23.0f };
+            const bool Active = (ActiveFilterIndex == I);
+            const bool Hover  = RowR.Contains(Cursor);
+            if (Active || Hover)
+            {
+                Surface.FillRectangle(RowR, Active ? Theme.AccentSoft : Theme.HoverSurface, 6.0f);
+            }
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, Active ? FontWeightClass::SemiBold : FontWeightClass::Regular, { RowR.X + 8.0f, RowR.Y + 4.0f }, 9.4f, Theme.TextPrimary, FilterMenuNames[I]);
+            if (Pressed && Hover)
+            {
+                ActiveFilterIndex = I;
+                FilterSheetOpen   = false;
+                break;
+            }
+        }
+        if (Pressed && !SheetR.Contains(Cursor) && !FilterBtnR.Contains(Cursor))
+        {
+            FilterSheetOpen = false;
+        }
+    }
+
     Surface.PopClip();
 }
 

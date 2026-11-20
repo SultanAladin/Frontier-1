@@ -241,6 +241,10 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/Texturing/BakingViewportPane.cpp
     Engine/Workspaces/Texturing/BakingInspectorPane.cpp
     Engine/Workspaces/Texturing/BakingWorkspaceHost.cpp
+    Engine/Workspaces/Texturing/TexturePaintLayerStackPane.cpp
+    Engine/Workspaces/Texturing/TexturePaintViewportPane.cpp
+    Engine/Workspaces/Texturing/TexturePaintInspectorPane.cpp
+    Engine/Workspaces/Texturing/TexturePaintWorkspaceHost.cpp
     Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.cpp
     Engine/GeometricRaster/Gizmo/WorldGizmoOverlayRasterization.cpp
     Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.cpp
@@ -788,6 +792,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/ComponentEditor/ComponentSpecimenBaker.cpp
     Engine/Workspaces/Texturing/PatternStampStackSession.cpp
     Engine/Workspaces/Texturing/BakingWorkspaceSession.cpp
+    Engine/Workspaces/Texturing/TexturePaintSession.cpp
     Engine/Input/InputExchange.cpp
     Engine/Input/InputExtension.cpp
     Engine/Lifecycle/RuntimeLifecycle.cpp
@@ -991,12 +996,13 @@ endforeach()
     frontier_register_desktop_app(Frontier           Engine/Lifecycle/FrontierHostLaunch.cpp)
     frontier_register_desktop_app(FrontierEditor     Engine/Lifecycle/FrontierEditorLaunch.cpp)
     frontier_register_desktop_app(FrontierUV         Engine/Lifecycle/FrontierUVLaunch.cpp)
-    frontier_register_desktop_app(FrontierBaking     Engine/Lifecycle/FrontierBakingLaunch.cpp)
-    frontier_register_desktop_app(FrontierPattern    Engine/Lifecycle/FrontierPatternLaunch.cpp)
-    frontier_register_desktop_app(FrontierStamp      Engine/Lifecycle/FrontierStampLaunch.cpp)
-    frontier_register_desktop_app(FrontierMaterial   Engine/Lifecycle/FrontierMaterialLaunch.cpp)
-    frontier_register_desktop_app(FrontierFracture   Engine/Lifecycle/FrontierFractureLaunch.cpp)
-    frontier_register_desktop_app(FrontierSketcher   Engine/Lifecycle/FrontierSketcherLaunch.cpp)
+    frontier_register_desktop_app(FrontierBaking      Engine/Lifecycle/FrontierBakingLaunch.cpp)
+    frontier_register_desktop_app(FrontierPattern     Engine/Lifecycle/FrontierPatternLaunch.cpp)
+    frontier_register_desktop_app(FrontierStamp       Engine/Lifecycle/FrontierStampLaunch.cpp)
+    frontier_register_desktop_app(FrontierTexturePaint Engine/Lifecycle/FrontierTexturePaintLaunch.cpp)
+    frontier_register_desktop_app(FrontierMaterial    Engine/Lifecycle/FrontierMaterialLaunch.cpp)
+    frontier_register_desktop_app(FrontierFracture    Engine/Lifecycle/FrontierFractureLaunch.cpp)
+    frontier_register_desktop_app(FrontierSketcher    Engine/Lifecycle/FrontierSketcherLaunch.cpp)
 endif()
 
 #------------------------------------------------------------------------------------------------------------------------
@@ -1093,6 +1099,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(ComponentEditorRenderValidation   Exhibits/ComponentEditorRenderValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)
+        frontier_register_exhibit(TexturePaintWorkspaceUIValidation Exhibits/TexturePaintWorkspaceUIValidation.cpp)
         frontier_register_exhibit(SketcherWorkspaceValidation       Exhibits/ParametricSketcher/SketcherWorkspaceValidation.cpp)
     endif()
 
@@ -1116,6 +1123,10 @@ if(BUILD_TESTING)
         add_test(
             NAME FrontierBakingExecutableSmoke
             COMMAND FrontierBaking --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/Texturing/FrontierBaking_DesktopExecutable.png"
+        )
+        add_test(
+            NAME FrontierTexturePaintExecutableSmoke
+            COMMAND FrontierTexturePaint --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/Texturing/FrontierTexturePaint_DesktopExecutable.png"
         )
         add_test(
             NAME FrontierMaterialExecutableSmoke

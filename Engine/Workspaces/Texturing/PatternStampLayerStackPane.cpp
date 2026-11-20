@@ -363,7 +363,7 @@ void PatternStampLayerStackPane::Render(
     if (RenderStatBox(
             { LeftX, CursorY, StatW, StatH },
             ControlIcon::CircleCheck,
-            ColorRgba{ 118u, 198u, 126u, 230u },
+            ColorRgba{ 255u, 255u, 255u, 255u },
             "Visible",
             VisibleCount,
             Session->LayerFilter == PatternStampLayerFilterMode::VisibleOnly))
@@ -568,18 +568,18 @@ void PatternStampLayerStackPane::Render(
             const Rectangle2D RowRect{ LeftX + IndentPx, RowCursorY, std::max(120.0f, InnerW - IndentPx), 48.0f };
             const bool RowHover   = RowRect.Contains(ListCursor);
 
-            ColorRgba RowFill   = SelectedRow ? Theme.HoverSurface : (RowHover ? Theme.RaisedSurface : Theme.SectionSurface);
-            ColorRgba RowStroke = SelectedRow ? Theme.HighlightFill : (RowHover ? Theme.BorderStrong : Theme.BorderSubtle);
+            ColorRgba RowFill = SelectedRow
+                ? (Theme.LightSurface ? Theme.HoverSurface : StudioRowSelected)
+                : (RowHover ? (Theme.LightSurface ? Theme.RaisedSurface : StudioRowHover) : Theme.SectionSurface);
             if (!Entry.EffVis)
             {
                 RowFill.Alpha = 145u;
             }
             Surface.FillRectangle(RowRect, RowFill, 8.0f);
-            Surface.StrokeRectangle(RowRect, RowStroke, 8.0f, SelectedRow ? 1.2f : 1.0f);
 
             if (SelectedRow)
             {
-                Surface.FillRectangle({ RowRect.X, RowRect.Y + 4.0f, 3.0f, RowRect.Height - 8.0f }, Theme.HighlightFill, 1.5f);
+                Surface.FillRectangle({ RowRect.X, RowRect.Y + 6.0f, 3.0f, RowRect.Height - 12.0f }, ColorRgba{ 255u, 255u, 255u, 255u }, 1.5f);
             }
 
             // Drag grip

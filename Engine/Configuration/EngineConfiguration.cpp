@@ -112,6 +112,12 @@ void EngineConfiguration::ConfigureFromCommandLine(std::span<const std::string_v
             Modified.ActiveWorkspace  = WorkspaceCategory::GeometryCad;
             Modified.ApplicationTitle = "Frontier Parametric Sketcher";
         }
+        else if (Argument == "--standalone-paint" || Argument == "--standalone=paint" || Argument == "--workspace=paint" || Argument == "--paint")
+        {
+            Modified.LaunchMode       = HostLaunchMode::StandaloneWorkspace;
+            Modified.ActiveWorkspace  = WorkspaceCategory::TexturePaint;
+            Modified.ApplicationTitle = "Frontier Texture Paint";
+        }
         else if (Argument == "--feature-set" || Argument == "--workspace=all")
         {
             Modified.LaunchMode       = HostLaunchMode::FeatureSet;

@@ -28,6 +28,7 @@
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherWorkspaceHost.h"
 #include "Engine/Workspaces/Texturing/BakingWorkspaceHost.h"
 #include "Engine/Workspaces/Texturing/PatternStampWorkspaceHost.h"
+#include "Engine/Workspaces/Texturing/TexturePaintWorkspaceHost.h"
 #include "Engine/Workspaces/UV/UVWorkspaceHost.h"
 
 #if FRONTIER_EDITOR_ENABLED
@@ -447,12 +448,17 @@ int LaunchDesktopWorkspace(
         PatternWorkspaceSurface    = 3u,
         StampWorkspaceSurface      = 4u,
         BakingWorkspaceSurface     = 5u,
-        MaterialWorkspaceSurface   = 6u,
-        FractureWorkspaceSurface   = 7u,
+        MaterialWorkspaceSurface        = 6u,
+        FractureWorkspaceSurface        = 7u,
         SketcherWorkspaceSurface        = 8u,
         ComponentEditorWorkspaceSurface = 9u,
+        TexturePaintWorkspaceSurface    = 10u,
     };
 
+    const bool StandaloneTexturePaintLaunch =
+        (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::TexturePaint) &&
+        !InitialOptions.OpenWorldEditor &&
+        !InitialOptions.OpenProjectBrowser;
     const bool StandaloneVectorLaunch =
         (EngineConfig.QueryWorkspaceCategory() == WorkspaceCategory::Vector) &&
         !InitialOptions.OpenWorldEditor &&
@@ -483,6 +489,10 @@ int LaunchDesktopWorkspace(
     if (InitialOptions.OpenProjectBrowser)
     {
         CurrentSurface = ActiveHostSurface::ProjectBrowserSurface;
+    }
+    else if (StandaloneTexturePaintLaunch)
+    {
+        CurrentSurface = ActiveHostSurface::TexturePaintWorkspaceSurface;
     }
     else if (StandaloneMaterialLaunch)
     {
@@ -614,6 +624,7 @@ int LaunchDesktopWorkspace(
     std::unique_ptr<Workspaces::PatternStampWorkspaceHost> PatternHostPtr;
     std::unique_ptr<Workspaces::PatternStampWorkspaceHost> StampHostPtr;
     std::unique_ptr<Workspaces::BakingWorkspaceHost>       BakingHostPtr;
+    std::unique_ptr<Workspaces::TexturePaintWorkspaceHost> TexturePaintHostPtr;
 
     auto StandaloneDockPtr          = std::make_unique<Components::HeadlessWorkspaceDockContainer>();
     auto PatternDockPtr             = std::make_unique<Components::HeadlessWorkspaceDockContainer>();
@@ -643,6 +654,7 @@ int LaunchDesktopWorkspace(
     std::unique_ptr<Editor::Explorer::ContentBrowser>            PatternBrowserPtr;
     std::unique_ptr<Editor::Explorer::ContentBrowser>            StampBrowserPtr;
     std::unique_ptr<Editor::Explorer::ContentBrowser>            BakingBrowserPtr;
+    std::unique_ptr<Editor::Explorer::ContentBrowser>            TexturePaintBrowserPtr;
     std::unique_ptr<Editor::Explorer::ContentBrowser>            MaterialBrowserPtr;
     std::unique_ptr<Editor::Explorer::ContentBrowser>            FractureBrowserPtr;
     std::unique_ptr<Editor::Explorer::ContentBrowser>            SketcherBrowserPtr;
@@ -652,6 +664,7 @@ int LaunchDesktopWorkspace(
     bool                                               PatternHostReady          = false;
     bool                                               StampHostReady            = false;
     bool                                               BakingHostReady           = false;
+    bool                                               TexturePaintHostReady     = false;
     bool                                               MaterialHostReady         = false;
     bool                                               SketcherHostReady         = false;
     bool                                               FractureHostReady         = false;
@@ -911,6 +924,24 @@ int LaunchDesktopWorkspace(
         return true;
     };
 
+    auto EnsureTexturePaintHostReady = [&]() -> bool
+    {
+        EnsureSharedControlCentreReady();
+        if (!TexturePaintHostReady)
+        {
+            if (!TexturePaintHostPtr) TexturePaintHostPtr = std::make_unique<Workspaces::TexturePaintWorkspaceHost>();
+            if (!TexturePaintBrowserPtr) TexturePaintBrowserPtr = std::make_unique<Editor::Explorer::ContentBrowser>();
+            TexturePaintHostPtr->Initialize(&EngineConfig);
+            TexturePaintBrowserPtr->AttachThemeRepository(&StandaloneControlCentre.QueryThemeRepository());
+            TexturePaintBrowserPtr->AccessPanel().ConfigureShelfExtent(
+                InitialOptions.OpenContentBrowser ? ContentShelfExtent::SplitHalf : ContentShelfExtent::Closed,
+                true);
+            (void)TexturePaintBrowserPtr->AccessPanel().ActivateCategory(ContentCategory::Colours);
+            TexturePaintHostReady = true;
+        }
+        return true;
+    };
+
     auto EnsureMaterialHostReady = [&]() -> bool
     {
         EnsureSharedControlCentreReady();
@@ -1117,6 +1148,14 @@ int LaunchDesktopWorkspace(
     else if (CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface)
     {
         if (!EnsureBakingHostReady(InitialOptions.StartupImportPath))
+        {
+            ImGui::DestroyContext(GuiCtx);
+            return 1;
+        }
+    }
+    else if (CurrentSurface == ActiveHostSurface::TexturePaintWorkspaceSurface)
+    {
+        if (!EnsureTexturePaintHostReady())
         {
             ImGui::DestroyContext(GuiCtx);
             return 1;
@@ -1555,6 +1594,30 @@ int LaunchDesktopWorkspace(
             SketcherBrowserPtr->Render(FullBounds, Dt, HostUiScale);
             StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
         }
+        else if (CurrentSurface == ActiveHostSurface::TexturePaintWorkspaceSurface && TexturePaintHostPtr && TexturePaintBrowserPtr)
+        {
+            const float HostUiScale = std::clamp(StandaloneControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
+            ControlAppearance::ConfigureTheme(StandaloneControlCentre.QueryThemeRepository());
+            auto& PaintBrowserPanel = TexturePaintBrowserPtr->AccessPanel();
+            PaintBrowserPanel.SynchronizeHostBounds(FullBounds, HostUiScale);
+            StandaloneControlCentre.SynchronizeHostBounds(FullBounds, HostUiScale);
+            if (StandaloneControlCentre.QueryFullScreenBlocking() || PaintBrowserPanel.QueryShelfDragging())
+            {
+                WorkspaceAppearance::AssignOverlayPointerShield(FullBounds);
+            }
+            else
+            {
+                WorkspaceAppearance::AssignOverlayPointerShield(
+                    PaintBrowserPanel.QueryDrawerPhysicalBounds(),
+                    PaintBrowserPanel.QueryNotchPhysicalBounds());
+                WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryShadePhysicalBounds());
+                WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryTabPhysicalBounds());
+            }
+            TexturePaintHostPtr->PresentDockedLayout(Dt);
+            WorkspaceAppearance::ClearOverlayPointerShield();
+            TexturePaintBrowserPtr->Render(FullBounds, Dt, HostUiScale);
+            StandaloneControlCentre.Render(FullBounds, Dt, static_cast<float>(1.0 / Dt));
+        }
         else
         {
             Components::HeadlessWorkspaceDockContainer& ActiveDock =
@@ -1602,7 +1665,18 @@ int LaunchDesktopWorkspace(
                 const Point2D MouseLogical = TopOverlay.QueryMousePosition();
                 ControlPointer Ptr { MouseLogical.X, MouseLogical.Y, TopOverlay.QueryMouseDown(0), TopOverlay.QueryMouseClicked(0), TopOverlay.QueryMouseReleased(0) };
                 const float LogicalW = FullBounds.Width / HostUiScale;
-                float PillX = std::max(320.0f, LogicalW * 0.5f + 46.0f);
+                float PillX = std::max(280.0f, LogicalW * 0.5f + 10.0f);
+
+                const ButtonTone PaintTone = (CurrentSurface == ActiveHostSurface::TexturePaintWorkspaceSurface) ? ButtonTone::Primary : ButtonTone::Secondary;
+                if (CapsuleButton::Construct(TopOverlay, { PillX, 3.0f, 56.0f, 23.0f }, ButtonDescriptor{ "Paint", PaintTone, 10.2f, 11.5f }, Ptr).Pressed &&
+                    CurrentSurface != ActiveHostSurface::TexturePaintWorkspaceSurface)
+                {
+                    if (EnsureTexturePaintHostReady())
+                    {
+                        CurrentSurface = ActiveHostSurface::TexturePaintWorkspaceSurface;
+                    }
+                }
+                PillX += 62.0f;
 
                 const ButtonTone BakeTone = (CurrentSurface == ActiveHostSurface::BakingWorkspaceSurface) ? ButtonTone::Primary : ButtonTone::Secondary;
                 if (CapsuleButton::Construct(TopOverlay, { PillX, 3.0f, 56.0f, 23.0f }, ButtonDescriptor{ "Bake", BakeTone, 10.2f, 11.5f }, Ptr).Pressed &&
@@ -1771,6 +1845,10 @@ int LaunchDesktopWorkspace(
         BakingDock.Finalize();
         BakingHostPtr->AttachVulkanDevice(nullptr);
     }
+    if (TexturePaintHostReady && TexturePaintHostPtr)
+    {
+        TexturePaintHostPtr->Shutdown();
+    }
     if (MaterialHostReady && MaterialDockPtr && MaterialHostPtr)
     {
         MaterialDockPtr->Finalize();
@@ -1784,6 +1862,7 @@ int LaunchDesktopWorkspace(
     FractureHostPtr.reset();
     SketcherHostPtr.reset();
     MaterialHostPtr.reset();
+    TexturePaintHostPtr.reset();
     BakingHostPtr.reset();
     StampHostPtr.reset();
     PatternHostPtr.reset();
