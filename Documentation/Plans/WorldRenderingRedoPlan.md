@@ -65,10 +65,10 @@ Empirical metrics from [`Experimental/RemovedSdfGi/Evidence/CleanEmissiveGi/vali
    └── Gate: Deterministic CPU + Vulkan .slang parity proofs in Exhibits/Images/DirectPbr/
           │
           ▼
-[Order 2 (2nd): Real-Time GI — GtxLowEnd (SDF Shadow Cand 1) & HighEnd (BVH4 Shadows, Zero SDF)]
-   ├── GtxLowEnd : HybridConeShadowSequence (Cand 1) + LocalSignedDistanceVolume (48^3) + Stokes/Surfel GI
-   ├── HighEnd   : BVH4/RayQuery Vogel Shadows + PlaneAwareFilter + Skinned BVH4 Refit (0 MB SDF!) + Full Stokes + Surfel GI
-   └── Gate: Zero-denoiser ControlVehicle + deforming character proof (HDR RMSE <= 0.134, GI RMSE <= 0.224)
+[Order 2 (2nd): Real-Time GI — GtxLowEnd (SDF Shadow Cand 1) & HighEnd (BVH4 Shadows, Zero SDF)]  [VERIFIED 2026-11-20]
+   ├── GtxLowEnd : HybridConeShadowSequence (Cand 1) + LocalSignedDistanceVolume (80x40x32 FP16 = 204,800 B) + Stokes/Surfel GI
+   ├── HighEnd   : BVH4/RayQuery Shadows + PlaneAwareFilter + Skinned BVH4 Refit (0.1049 ms, 0 B SDF!) + Full Stokes + Surfel GI
+   └── Gate PASS : HDR RMSE = 0.0596 (Stokes) / 0.0640 (Surfel) / 0.0528 (HighEnd) <= 0.134; GI RMSE = 0.0389..0.0534 <= 0.224 (60/60 CTests)
           │
           ▼
 [Order 3 (3rd): Unified Deterministic Path Tracer — Games + Actual Scene Rendering]

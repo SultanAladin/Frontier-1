@@ -61,9 +61,11 @@ struct DiffuseBouncePatch
 
 struct StokesContourTierSettings
 {
-    bool     HighEndZeroSdfTier     = false; // false = GtxLowEnd (<=4.8 m contour + Hybrid SDF cone); true = HighEnd (all tris + BVH4)
-    float    ExactContourCutoffM    = 4.8f;  // [m] - GtxLowEnd switches to cluster Bunnell disk beyond 4.8 m
-    uint32_t ClusterShadowSamples   = 2u;    // [cnt] - HighEnd BVH4 luminaire rays per cluster
+    bool                   HighEndZeroSdfTier  = false;                    // false = GtxLowEnd (<=4.8 m contour + Hybrid SDF cone); true = HighEnd
+    float                  ExactContourCutoffM = 4.8f;                     // [m] - GtxLowEnd switches to cluster Bunnell disk beyond 4.8 m
+    uint32_t               ClusterShadowSamples = 2u;                      // [cnt] - HighEnd BVH4 luminaire rays per cluster
+    Mathematics::Axis3D    SunDirection        { 0.0f, 0.0f, 1.0f };       // [-] - Unit directional solar vector for diffuse patch bounce
+    Mathematics::LinearRGB SunRadiance         { 0.0f, 0.0f, 0.0f };       // [W/m^2] - Directional solar irradiance for diffuse patch bounce
 };
 
 //------------------------------------------------------------------------------------------------------------------------

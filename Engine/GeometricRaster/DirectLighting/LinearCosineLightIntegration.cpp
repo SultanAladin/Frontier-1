@@ -329,11 +329,13 @@ struct DirectEmissiveTri
 }
 
 [[nodiscard]] Mathematics::LinearRGB EvaluateDirectEmissiveTriangleLtc(
-    const DirectEmissiveTri&                     Tri,
-    const AnalyticResolvedSurfaceSample&         HitSample,
-    const MaterialSpace::SurfaceMaterial&        Mat,
-    uint32_t                                     ActiveLobeMask,
-    const SpatialAcceleration::WideBoundingTree& SceneTree) noexcept
+    const DirectEmissiveTri&                         Tri,
+    const AnalyticResolvedSurfaceSample&             HitSample,
+    const MaterialSpace::SurfaceMaterial&            Mat,
+    uint32_t                                         ActiveLobeMask,
+    const SpatialAcceleration::WideBoundingTree&     SceneTree,
+    bool                                             SpecularOnlyMode     = false,
+    const DirectLighting::HybridOccluderEnvironment* OptionalGtxOccluders = nullptr) noexcept
 {
     const Mathematics::Axis3D Nrm = HitSample.TangentFrame.NormalZ;
     // Reject pixels behind emitter plane or entirely below emitter horizon
@@ -367,7 +369,7 @@ struct DirectEmissiveTri
             Mathematics::EvaluateDot(Rel, Nrm),
         };
     }
-    const float DiffFF = IntegrateClippedTriCosineFormFactor(DiffLocal);
+    const float DiffFF = SpecularOnlyMode ? 0.0f : IntegrateClippedTriCosineFormFactor(DiffLocal);
 
     const float Alpha     = std::clamp(Mat.Specular.Roughness * Mat.Specular.Roughness, 0.004f, 1.0f);
     const float SinV      = std::sqrt(std::max(0.0f, 1.0f - NdotV * NdotV));
@@ -386,12 +388,17 @@ struct DirectEmissiveTri
     const float SpecFF = IntegrateClippedTriCosineFormFactor(SpecLocal);
     if ((DiffFF + SpecFF) <= 1.0e-6f) return {};
 
-    // Adaptive deterministic stratified barycentric visibility (zero jitter, zero denoiser):
-    // 9 taps for high-solid-angle emitters, 4 taps for medium, 1 centroid tap for small/distant triangles
+    // Adaptive deterministic visibility: GtxLowEnd uses 0.28 m BVH4 + hybrid cone; HighEnd/Order 1 uses stratified BVH4 rays
     const float Dist2 = std::max(1.0e-4f, Mathematics::EvaluateLengthSquared(Tri.Centroid - HitSample.WorldPosition));
     const float SolidAngleEst = Tri.Area / Dist2;
     float Visibility = 0.0f;
-    if (SolidAngleEst > 0.0002f)
+    if (OptionalGtxOccluders != nullptr && !OptionalGtxOccluders->ForbidDistanceField)
+    {
+        const float TriRadius = std::sqrt(Tri.Area / Constants::PiFloat);
+        Visibility = DirectLighting::EvaluateGtxHybridLuminaireVisibility(
+            *OptionalGtxOccluders, HitSample.WorldPosition, Nrm, Tri.Centroid, TriRadius);
+    }
+    else if (SolidAngleEst > 0.0002f)
     {
         static constexpr std::array<std::array<float, 3u>, 9u> Bary9 {{
             {{ 0.70f, 0.15f, 0.15f }},
@@ -465,7 +472,7 @@ struct DirectEmissiveTri
         SpecF0.G * AlbO.DirectionalAlbedoE + (1.0f - SpecF0.G) * (1.0f - AlbO.DirectionalAlbedoE) * 0.25f,
         SpecF0.B * AlbO.DirectionalAlbedoE + (1.0f - SpecF0.B) * (1.0f - AlbO.DirectionalAlbedoE) * 0.25f,
     };
-    const float DiffScale = ((ActiveLobeMask & MaterialSpace::LobeDiffuseEON) != 0u)
+    const float DiffScale = (!SpecularOnlyMode && ((ActiveLobeMask & MaterialSpace::LobeDiffuseEON) != 0u))
         ? ((1.0f - Mat.Specular.Metalness) * (1.0f - Mat.Transmission.TransmissionWeight) * Mat.Diffuse.BaseWeight)
         : 0.0f;
 
@@ -537,7 +544,8 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
     std::span<const PhotometricPointRadiator>                PhotometricRadiators,
     std::span<const Codecs::ResampledPhotometricProfile>    PhotometricProfiles,
     std::span<const float>                                  SolarVisibilityOverride,
-    bool                                                    SkipEmissiveTriangleDirect)
+    bool                                                    SkipEmissiveTriangleDirect,
+    const DirectLighting::HybridOccluderEnvironment*        OptionalGtxOccluders)
 {
     DirectLightingOutput Out {};
     Out.WidthPx  = VisibilityTargets.WidthPx;
@@ -684,9 +692,7 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
         Out.CombinedDiffuseAo = std::move(AoPing);
     }
 
-    const auto Emissives = SkipEmissiveTriangleDirect
-        ? std::vector<DirectEmissiveTri>{}
-        : ExtractDirectEmissiveTriangles(SceneTree, MaterialRegister);
+    const auto Emissives = ExtractDirectEmissiveTriangles(SceneTree, MaterialRegister);
 
     // 2. Shade Direct Sun + Visibility-Gated LTC Area Lights + Exact Analytic Emissive-Triangle LTC + Filtered 2-Scale AO + Lagarde specAO!
     const auto ShadeRows = [&](uint32_t YBegin, uint32_t YEnd)
@@ -742,10 +748,11 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
                 Hdr.B += AreaRad.B;
             }
 
-            // Exact Analytic Emissive-Triangle LTC + 9-Tap Deterministic Stratified Visibility (Zero Cone GI, Zero Jitter, Zero Denoiser)
+            // Exact Analytic Emissive-Triangle LTC (Specular-only when Order 2 GI owns diffuse emissive irradiance)
             for (const auto& EmisTri : Emissives)
             {
-                const auto EmisRad = EvaluateDirectEmissiveTriangleLtc(EmisTri, Hit, Mat, LobeMask, SceneTree);
+                const auto EmisRad = EvaluateDirectEmissiveTriangleLtc(
+                    EmisTri, Hit, Mat, LobeMask, SceneTree, SkipEmissiveTriangleDirect, OptionalGtxOccluders);
                 Hdr.R += EmisRad.R;
                 Hdr.G += EmisRad.G;
                 Hdr.B += EmisRad.B;

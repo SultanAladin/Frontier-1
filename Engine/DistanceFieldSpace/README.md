@@ -6,5 +6,5 @@ This directory provides compact, self-contained signed/unsigned distance primiti
 
 ## Units
 
-- `LocalSignedDistanceVolume.{h,cpp}` — Per-asset compact `48^3` binary16 (`221,184 B` << `3.7 MB` budget) local distance volume baked via BVH4 closest-triangle queries, with $C^0$-continuous Euclidean outer-box clamping $\sqrt{d_{\partial\Omega}^2 + d_{\text{box}}^2}$ eliminating AABB boundary seams.
+- `LocalSignedDistanceVolume.{h,cpp}` — Per-asset compact anisotropic `80x40x32` (`204,800 B` << `3.7 MB` budget) or cubic `48^3` (`221,184 B`) binary16 local distance volume baked via BVH4 closest-triangle queries, with exact trilinear interpolation and $C^0$-continuous Euclidean outer-box clamping $\sqrt{d_{\partial\Omega}^2 + d_{\text{box}}^2}$ eliminating AABB boundary seams.
 - `ArticulatedCapsuleRig.h` — Sub-`0.01 ms` live deforming tapered bone-capsule rig (`TaperedLimbCapsule32`, `ArticulatedCapsuleRig`) and fixed-topology humanoid generator (`BuildArticulatedHumanoidPose`) shared between `GtxLowEnd` `SmoothMin` capsule cones and `HighEnd` skinned `BVH4` AABB refits.

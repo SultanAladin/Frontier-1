@@ -8,7 +8,8 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
-| [WorldRenderingRedoPlan.md](WorldRenderingRedoPlan.md) | **Priority Redo Master Plan (`2026-11-20`)**: Phase 0 `Engine/` SDF/SDF-baking purge → **(1st)** Standalone Direct PBR (`0` GI, `0` SDF) → **(2nd)** GTX SDF Shadows (`Candidate 1: HybridConeShadow`) + GI (`Candidates 1 + 2: StokesContour + SurfelRadiosity`, Low-End & High-End) → **(3rd)** Unified Deterministic Path Tracer (Games + Scene Rendering via settings) |
+| [WorldRenderingRedoPlan.md](WorldRenderingRedoPlan.md) | **Priority Redo Master Plan (`2026-11-20`)**: Phase 0 `Engine/` SDF/SDF-baking purge (`🟢 Verified`) → **(1st)** Standalone Direct PBR (`0` GI, `0` SDF, `🟢 Verified`) → **(2nd)** GTX SDF Shadows (`Candidate 1: HybridConeShadow`) + GI (`Candidates 1 + 2: StokesContour + SurfelRadiosity`, Low-End & High-End, `🟢 Verified`) → **(3rd)** Unified Deterministic Path Tracer (Games + Scene Rendering via settings, `🚧 Next`) |
+| [HybridConeShadowDiagnosisReport.md](HybridConeShadowDiagnosisReport.md) | **2026-11-20** Order 2 10-point root-cause diagnosis & zero-denoiser verification (`HDR RMSE = 0.0596`, `GI RMSE = 0.0389`, `204,800 B` `80×40×32` FP16 local SDF, `60/60` CTests green) |
 | [DocumentationCleanupReport.md](DocumentationCleanupReport.md) | **2026-11-20** governance & documentation cleanup after retiring simplified `Fluid`, `ForceField`, `GI/SDF`, and `Particle` code + automatic HTML parity gate |
 | [GameEngineBringupPlan.md](GameEngineBringupPlan.md) | Overall engine bringup roadmap & domain ordering |
 | [ThreadingArchitecturePlan.md](ThreadingArchitecturePlan.md) | Priority-budgeted `ExecutionChannels`, `TaskScheduler`, `WorkspaceThread` & `AudioThread` |

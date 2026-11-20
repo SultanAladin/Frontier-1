@@ -612,6 +612,7 @@ function(frontier_compile_world_module_slang_shader SLANG_REL_PATH ENTRY_NAME SH
         DEPENDS
             "${IN_SLANG}"
             "${CMAKE_SOURCE_DIR}/Engine/Shaders/DirectLighting/WideTreeRayQuery.slang"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/DirectLighting/HybridConeOccluders.slang"
         COMMENT "[Slang] Compiling ${SLANG_REL_PATH} (${SHADER_UNIT}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
         VERBATIM
     )

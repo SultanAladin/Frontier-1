@@ -10,10 +10,12 @@
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
+#include "Engine/MaterialSpace/Scattering/BlackbodyEmission.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <thread>
 
 namespace Frontier::GeometricRaster
 {
@@ -649,19 +651,47 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             Order2Occluders.VehiclePlacement = PreparedScene.GtxVehicleVolume;
             Order2Occluders.CharacterRig     = &PreparedScene.GtxCharacterRig;
 
-            // Precompute GtxLowEnd HybridConeShadow (0.28 m BVH4 + C0 48^3 SDF + Capsule Rig) BEFORE OpenPBR direct shading
+            // Precompute GtxLowEnd HybridConeShadow (0.28 m BVH4 + SoftMin C0 80x40x32 SDF + Capsule Rig) BEFORE OpenPBR direct shading
             if (std::max({ PreparedScene.Sun.SolarIrradiance.R, PreparedScene.Sun.SolarIrradiance.G, PreparedScene.Sun.SolarIrradiance.B }) > 1.0e-4f)
             {
                 GtxSolarVisibility.assign(TotalPixels, 1.0f);
                 const Mathematics::Axis3D UnitSun = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
-                for (std::size_t Off = 0u; Off < TotalPixels; ++Off)
+                DirectLighting::HybridConeShadowSetup ConeSetup {};
+                ConeSetup.SunAngularRadius = std::tan(std::clamp(PreparedScene.Sun.SunAngularRadiusRadians, 0.012f, 0.12f));
+                const uint32_t WorkerCount = std::min<uint32_t>(
+                    Result.HeightPx, std::max(1u, std::thread::hardware_concurrency()));
+                const auto EvalShadowRows = [&](uint32_t YBegin, uint32_t YEnd)
                 {
-                    const auto& Hit = PrimarySamples[Off];
-                    if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                    for (uint32_t PY = YBegin; PY < YEnd; ++PY)
                     {
-                        GtxSolarVisibility[Off] = DirectLighting::EvaluateGtxHybridDirectionalShadow(
-                            Order2Occluders, Hit.WorldPosition, Hit.TangentFrame.NormalZ, UnitSun);
+                        for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
+                        {
+                            const std::size_t Off = static_cast<std::size_t>(PY) * Result.WidthPx + PX;
+                            const auto& Hit       = PrimarySamples[Off];
+                            if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
+                            {
+                                GtxSolarVisibility[Off] = DirectLighting::EvaluateGtxHybridDirectionalShadow(
+                                    Order2Occluders, Hit.WorldPosition, Hit.TangentFrame.NormalZ, UnitSun, ConeSetup);
+                            }
+                        }
                     }
+                };
+                if (WorkerCount <= 1u)
+                {
+                    EvalShadowRows(0u, Result.HeightPx);
+                }
+                else
+                {
+                    std::vector<std::thread> WorkerThreads;
+                    WorkerThreads.reserve(WorkerCount);
+                    const uint32_t RowsPerWorker = (Result.HeightPx + WorkerCount - 1u) / WorkerCount;
+                    for (uint32_t WIdx = 0u; WIdx < WorkerCount; ++WIdx)
+                    {
+                        const uint32_t Y0 = WIdx * RowsPerWorker;
+                        const uint32_t Y1 = std::min(Result.HeightPx, Y0 + RowsPerWorker);
+                        if (Y0 < Y1) WorkerThreads.emplace_back([&, Y0, Y1]() { EvalShadowRows(Y0, Y1); });
+                    }
+                    for (auto& Worker : WorkerThreads) Worker.join();
                 }
             }
         }
@@ -684,7 +714,8 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         PreparedScene.PhotometricRadiators,
         PreparedScene.PhotometricProfiles,
         GtxSolarVisibility,
-        Order2Active);
+        Order2Active,
+        Order2Active ? &Order2Occluders : nullptr);
 
     if (Order2Active && !PreparedScene.CompressedSceneTree.Primitives.empty())
     {
@@ -699,21 +730,22 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 AuthMat.Diffuse.BaseColor.G * DiffK,
                 AuthMat.Diffuse.BaseColor.B * DiffK,
             };
-            MatEmissionBySlot[M] = {
-                AuthMat.PorosityLight.EmissionTint.R * AuthMat.PorosityLight.EmissionLuminanceNits,
-                AuthMat.PorosityLight.EmissionTint.G * AuthMat.PorosityLight.EmissionLuminanceNits,
-                AuthMat.PorosityLight.EmissionTint.B * AuthMat.PorosityLight.EmissionLuminanceNits,
-            };
+            MatEmissionBySlot[M] = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(AuthMat.PorosityLight);
         }
 
-        StokesSettings.HighEndZeroSdfTier = HighEndZeroSdf;
-        SurfelSettings.HighEndZeroSdfTier = HighEndZeroSdf;
-        SurfelSettings.SunDirection       = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
-        SurfelSettings.SunRadiance        = {
+        const Mathematics::Axis3D UnitSunDir = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
+        const Mathematics::LinearRGB SunIrrad {
             PreparedScene.Sun.SolarIrradiance.R,
             PreparedScene.Sun.SolarIrradiance.G,
             PreparedScene.Sun.SolarIrradiance.B,
         };
+
+        StokesSettings.HighEndZeroSdfTier = HighEndZeroSdf;
+        StokesSettings.SunDirection       = UnitSunDir;
+        StokesSettings.SunRadiance        = SunIrrad;
+        SurfelSettings.HighEndZeroSdfTier = HighEndZeroSdf;
+        SurfelSettings.SunDirection       = UnitSunDir;
+        SurfelSettings.SunRadiance        = SunIrrad;
 
         if (Config.GiCandidate == RealTimeGiCandidate::StokesContour)
         {
@@ -740,7 +772,9 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         PreparedScene.SkyRadiance,
         PreparedScene.AreaLights);
 
-    for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
+    const auto CompositeRows = [&](uint32_t YBegin, uint32_t YEnd)
+    {
+    for (uint32_t PY = YBegin; PY < YEnd; ++PY)
     {
         for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
         {
@@ -946,6 +980,27 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             Result.DisplayRgba8[Off * 4u + 2u] = EncodeLinearToSrgbByteDithered(Tone.B, Dth);
             Result.DisplayRgba8[Off * 4u + 3u] = 255u;
         }
+    }
+    };
+
+    const uint32_t CompositeWorkers = std::min<uint32_t>(
+        Result.HeightPx, std::max(1u, std::thread::hardware_concurrency()));
+    if (CompositeWorkers <= 1u)
+    {
+        CompositeRows(0u, Result.HeightPx);
+    }
+    else
+    {
+        std::vector<std::thread> WorkerThreads;
+        WorkerThreads.reserve(CompositeWorkers);
+        const uint32_t RowsPerWorker = (Result.HeightPx + CompositeWorkers - 1u) / CompositeWorkers;
+        for (uint32_t WIdx = 0u; WIdx < CompositeWorkers; ++WIdx)
+        {
+            const uint32_t Y0 = WIdx * RowsPerWorker;
+            const uint32_t Y1 = std::min(Result.HeightPx, Y0 + RowsPerWorker);
+            if (Y0 < Y1) WorkerThreads.emplace_back([&, Y0, Y1]() { CompositeRows(Y0, Y1); });
+        }
+        for (auto& Worker : WorkerThreads) Worker.join();
     }
 
     PreviousHiZ = std::move(CurrentHiZ);

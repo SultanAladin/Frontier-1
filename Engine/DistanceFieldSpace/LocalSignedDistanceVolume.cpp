@@ -212,13 +212,15 @@ void LocalSignedDistanceVolume::Reset() noexcept
     DistanceSamples.shrink_to_fit();
 }
 
-bool LocalSignedDistanceVolume::BakeFromTriangles(
+bool LocalSignedDistanceVolume::BakeAnisotropicVolume(
     std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
-    uint32_t                                                   CubicResolution,
+    uint32_t                                                   ExtentX,
+    uint32_t                                                   ExtentY,
+    uint32_t                                                   ExtentZ,
     float                                                      MarginMeters)
 {
     Reset();
-    if (InputPrimitives.empty() || CubicResolution < 8u)
+    if (InputPrimitives.empty() || ExtentX < 8u || ExtentY < 8u || ExtentZ < 8u)
     {
         return false;
     }
@@ -229,9 +231,9 @@ bool LocalSignedDistanceVolume::BakeFromTriangles(
         return false;
     }
 
-    ResolutionX = CubicResolution;
-    ResolutionY = CubicResolution;
-    ResolutionZ = CubicResolution;
+    ResolutionX = ExtentX;
+    ResolutionY = ExtentY;
+    ResolutionZ = ExtentZ;
     LocalMin = {
         LocalTree.RootBoundsMin.X - MarginMeters,
         LocalTree.RootBoundsMin.Y - MarginMeters,
@@ -266,8 +268,8 @@ bool LocalSignedDistanceVolume::BakeFromTriangles(
                     const float PX          = LocalMin.X + static_cast<float>(IX) * VoxelSpacing.X;
                     const float Dist        = QueryExactUnsignedDistanceViaBvh(LocalTree, { PX, PY, PZ });
                     const std::size_t Index = (static_cast<std::size_t>(IZ) * ResolutionY + IY) * ResolutionX + IX;
-                    DistanceSamples[Index]        = Dist;
-                    HalfDistanceSamples[Index]    = PackFloat32ToHalf16(Dist);
+                    DistanceSamples[Index]     = Dist;
+                    HalfDistanceSamples[Index] = PackFloat32ToHalf16(Dist);
                 }
             }
         }
@@ -300,6 +302,23 @@ bool LocalSignedDistanceVolume::BakeFromTriangles(
     return true;
 }
 
+bool LocalSignedDistanceVolume::BakeFromTriangles(
+    std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
+    uint32_t                                                   CubicResolution,
+    float                                                      MarginMeters)
+{
+    return BakeAnisotropicVolume(InputPrimitives, CubicResolution, CubicResolution, CubicResolution, MarginMeters);
+}
+
+float LocalSignedDistanceVolume::QueryHalfVoxelShellMeters() const noexcept
+{
+    const float Diag = std::sqrt(
+        VoxelSpacing.X * VoxelSpacing.X +
+        VoxelSpacing.Y * VoxelSpacing.Y +
+        VoxelSpacing.Z * VoxelSpacing.Z);
+    return std::max(0.048f, 0.52f * Diag);
+}
+
 float LocalSignedDistanceVolume::SampleTrilinearLocal(Mathematics::Axis3D ClampedLocalPos) const noexcept
 {
     if (HalfDistanceSamples.empty() || ResolutionX < 2u || ResolutionY < 2u || ResolutionZ < 2u)
@@ -327,7 +346,7 @@ float LocalSignedDistanceVolume::SampleTrilinearLocal(Mathematics::Axis3D Clampe
     const float C00 = At(IX0, IY0, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0) * TX;
     const float C10 = At(IX0, IY0 + 1u, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0) * TX;
     const float C01 = At(IX0, IY0, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0 + 1u) * TX;
-    const float C11 = At(IX0, IY0 + 1u, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0 + 1u);
+    const float C11 = At(IX0, IY0 + 1u, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0 + 1u) * TX;
     const float C0  = C00 * (1.0f - TY) + C10 * TY;
     const float C1  = C01 * (1.0f - TY) + C11 * TY;
     return C0 * (1.0f - TZ) + C1 * TZ;

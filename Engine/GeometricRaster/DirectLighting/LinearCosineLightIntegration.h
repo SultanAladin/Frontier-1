@@ -10,6 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Codecs/PhotometricProfile.h"
+#include "Engine/GeometricRaster/DirectLighting/HybridConeShadowSequence.h"
 #include "Engine/GeometricRaster/DirectLighting/SolarShadowSequence.h"
 #include "Engine/MaterialSpace/CompactMaterialRegister.h"
 
@@ -115,9 +116,10 @@ public:
         std::span<const DirectPointLightSpec>                   PointLights               = {},
         Mathematics::LinearRGB                                  SkyFillRadiance           = { 0.14f, 0.19f, 0.28f },
         std::span<const PhotometricPointRadiator>                PhotometricRadiators       = {},
-        std::span<const Codecs::ResampledPhotometricProfile>    PhotometricProfiles       = {},
-        std::span<const float>                                  SolarVisibilityOverride   = {},
-        bool                                                    SkipEmissiveTriangleDirect = false);
+        std::span<const Codecs::ResampledPhotometricProfile>    PhotometricProfiles        = {},
+        std::span<const float>                                  SolarVisibilityOverride    = {},
+        bool                                                    SkipEmissiveTriangleDirect = false,
+        const DirectLighting::HybridOccluderEnvironment*        OptionalGtxOccluders       = nullptr);
 
     // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm
     [[nodiscard]] static DirectLightingOutput EvaluateDirectLightingFrame(

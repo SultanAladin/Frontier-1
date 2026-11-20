@@ -4,6 +4,7 @@
 // 🧩 Order 2 GI Candidate 2 GPU compute: Bunnell finite-disk near-field emissive + Dual-Cascade C1-Hermite Octahedral Lattice lookup
 
 import DirectLighting.WideTreeRayQuery;
+import DirectLighting.HybridConeOccluders;
 
 struct GpuRadiositySurfel48
 {
@@ -14,13 +15,14 @@ struct GpuRadiositySurfel48
 
 struct GpuSurfelLatticeUniforms
 {
-    uint4  PixelSurfelBvhTier; // x = PixelCount, y = EmissiveSurfelCount, z = BvhEntryCount, w = HighEndZeroSdfTier
-    uint4  InnerDimsSheet;     // xyz = InnerGridDim, w = SheetRes
-    uint4  OuterDimsChebyshev;   // xyz = OuterGridDim, w = HasChebyshevMoments (0 or 1)
-    float4 InnerBoundsMin;
-    float4 InnerBoundsMax;
-    float4 OuterBoundsMin;
-    float4 OuterBoundsMax;
+    uint4                       PixelSurfelBvhTier; // x = PixelCount, y = EmissiveSurfelCount, z = BvhEntryCount, w = HighEndZeroSdfTier
+    uint4                       InnerDimsSheet;     // xyz = InnerGridDim, w = SheetRes
+    uint4                       OuterDimsChebyshev; // xyz = OuterGridDim, w = HasChebyshevMoments (0 or 1)
+    float4                      InnerBoundsMin;
+    float4                      InnerBoundsMax;
+    float4                      OuterBoundsMin;
+    float4                      OuterBoundsMax;
+    GpuHybridOccluderParameters Occluders;          // GtxLowEnd hybrid cone parameters (ignored when HighEndZeroSdfTier != 0)
 };
 
 [[vk::binding(0, 0)]]  StructuredBuffer<float4>                    SurfaceWorldPositions;
@@ -34,6 +36,9 @@ struct GpuSurfelLatticeUniforms
 [[vk::binding(8, 0)]]  StructuredBuffer<float2>                    OuterChebyshevMoments;
 [[vk::binding(9, 0)]]  ConstantBuffer<GpuSurfelLatticeUniforms>    LatticeUniforms;
 [[vk::binding(10, 0)]] RWStructuredBuffer<float4>                  OutTotalIrradiance;
+[[vk::binding(11, 0)]] StructuredBuffer<float>                     LocalDistanceGrid;
+[[vk::binding(12, 0)]] StructuredBuffer<GpuTaperedCapsule32>       LimbCapsules;
+[[vk::binding(13, 0)]] StructuredBuffer<GpuClosedBox32>            InteriorBoxes;
 
 static const float PiConstant = 3.14159265358979323846;
 
@@ -104,15 +109,15 @@ float3 SampleCascadeHermite(
         {
             for (uint DX = 0u; DX < 2u; ++DX)
             {
-                uint3  N   = I0 + uint3(DX, DY, DZ);
-                uint   Idx = (N.z * Dims.y + N.y) * Dims.x + N.x;
+                uint3  N    = I0 + uint3(DX, DY, DZ);
+                uint   Idx  = (N.z * Dims.y + N.y) * Dims.x + N.x;
                 float3 NPos = BMin + float3(N) * Spacing;
                 float  HW   = ((DX == 0u) ? (1.0 - H.x) : H.x) *
                               ((DY == 0u) ? (1.0 - H.y) : H.y) *
                               ((DZ == 0u) ? (1.0 - H.z) : H.z);
-                float3 ToN  = NPos - ShadingPos;
-                float  TLen = length(ToN);
-                float3 DirN = (TLen > 1.0e-5) ? (ToN / TLen) : ShadingNrm;
+                float3 ToN   = NPos - ShadingPos;
+                float  TLen  = length(ToN);
+                float3 DirN  = (TLen > 1.0e-5) ? (ToN / TLen) : ShadingNrm;
                 float  BackW = max(0.08, 0.5 + 0.5 * dot(ShadingNrm, DirN));
                 float  ChebW = SampleChebyshevWeight(Moments, Idx, Res, MomentsPresent, ShadingPos, NPos);
                 float  W     = HW * BackW * ChebW;
@@ -161,13 +166,22 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
         float  FF    = clamp((Area * CosR * CosE) / (PiConstant * DSq + Area), 0.0, 1.0);
         if (FF <= 1.0e-5) continue;
 
-        float MaxRay = HighEnd ? max(0.02, Dist - 0.035) : min(0.28, max(0.02, Dist - 0.04));
-        bool  Hit    = (Dist > 0.05) &&
-            TraceCompressedWideTreeAnyHit(SceneBvhEntries, ScenePrimitives, BvhCnt, RPos + RNrm * 3.0e-3, Wi, 2.0e-3, MaxRay);
-        if (!Hit)
+        float Vis = 1.0;
+        if (HighEnd)
         {
-            EmissiveE += Surf.ExitantRadiance.xyz * (PiConstant * FF);
+            bool Hit = (Dist > 0.05) &&
+                TraceCompressedWideTreeAnyHit(SceneBvhEntries, ScenePrimitives, BvhCnt, RPos + RNrm * 3.0e-3, Wi, 2.0e-3, max(0.02, Dist - 0.035));
+            Vis = Hit ? 0.0 : 1.0;
         }
+        else
+        {
+            float SurfRadius = sqrt(Area / PiConstant);
+            Vis = EvaluateGtxHybridSegmentCone(
+                SceneBvhEntries, ScenePrimitives, BvhCnt,
+                LocalDistanceGrid, LimbCapsules, InteriorBoxes, LatticeUniforms.Occluders,
+                RPos, RNrm, Surf.PositionArea.xyz, SurfRadius);
+        }
+        EmissiveE += Surf.ExitantRadiance.xyz * (PiConstant * FF * Vis);
     }
 
     float3 InMin  = LatticeUniforms.InnerBoundsMin.xyz;
@@ -179,9 +193,9 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     float  T      = clamp((MaxN - 0.72) / 0.28, 0.0, 1.0);
     float  Blend  = T * T * (3.0 - 2.0 * T);
 
-    uint  SheetRes   = LatticeUniforms.InnerDimsSheet.w;
-    bool  MomentsPresent = (LatticeUniforms.OuterDimsChebyshev.w != 0u);
-    float3 CascadeE  = float3(0.0);
+    uint SheetRes       = LatticeUniforms.InnerDimsSheet.w;
+    bool MomentsPresent = (LatticeUniforms.OuterDimsChebyshev.w != 0u);
+    float3 CascadeE     = float3(0.0);
     if (Blend <= 0.001)
     {
         CascadeE = SampleCascadeHermite(

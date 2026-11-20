@@ -4,6 +4,7 @@
 // 🧩 Order 2 GI Candidate 1 GPU compute: Sutherland-Hodgman spherical-polygon Stokes contour integral + 2nd-bounce diffuse patch bleed
 
 import DirectLighting.WideTreeRayQuery;
+import DirectLighting.HybridConeOccluders;
 
 struct GpuEmissiveTriangle80
 {
@@ -29,20 +30,24 @@ struct GpuDiffuseBouncePatch48
 
 struct GpuStokesGiUniforms
 {
-    uint4  Counts;           // x = PixelCount, y = RadiatorCount, z = ClusterCount, w = PatchCount
-    uint4  BvhTierParams;    // x = BvhEntryCount, y = HighEndZeroSdfTier (0 or 1), z = 0, w = 0
-    float4 CutoffParams;     // x = ExactContourCutoffMeters (4.8), y = Pi, z = 0, w = 0
+    uint4                       Counts;        // x = PixelCount, y = RadiatorCount, z = ClusterCount, w = PatchCount
+    uint4                       BvhTierParams; // x = BvhEntryCount, y = HighEndZeroSdfTier (0 or 1), z = 0, w = 0
+    float4                      CutoffParams;  // x = ExactContourCutoffMeters (4.8), y = Pi, z = 0, w = 0
+    GpuHybridOccluderParameters Occluders;     // GtxLowEnd hybrid cone parameters (ignored when HighEndZeroSdfTier != 0)
 };
 
-[[vk::binding(0, 0)]] StructuredBuffer<float4>                      SurfaceWorldPositions;
-[[vk::binding(1, 0)]] StructuredBuffer<float4>                      SurfaceWorldNormals;
-[[vk::binding(2, 0)]] StructuredBuffer<GpuCompressedWideEntry64>     SceneBvhEntries;
-[[vk::binding(3, 0)]] StructuredBuffer<GpuRayTrianglePrimitive48>   ScenePrimitives;
-[[vk::binding(4, 0)]] StructuredBuffer<GpuEmissiveTriangle80>       EmissiveTriangles;
-[[vk::binding(5, 0)]] StructuredBuffer<GpuLuminaireCluster32>       LuminaireClusters;
-[[vk::binding(6, 0)]] StructuredBuffer<GpuDiffuseBouncePatch48>     BouncePatches;
-[[vk::binding(7, 0)]] ConstantBuffer<GpuStokesGiUniforms>           GiUniforms;
-[[vk::binding(8, 0)]] RWStructuredBuffer<float4>                    OutTotalIrradiance;
+[[vk::binding(0, 0)]]  StructuredBuffer<float4>                      SurfaceWorldPositions;
+[[vk::binding(1, 0)]]  StructuredBuffer<float4>                      SurfaceWorldNormals;
+[[vk::binding(2, 0)]]  StructuredBuffer<GpuCompressedWideEntry64>     SceneBvhEntries;
+[[vk::binding(3, 0)]]  StructuredBuffer<GpuRayTrianglePrimitive48>   ScenePrimitives;
+[[vk::binding(4, 0)]]  StructuredBuffer<GpuEmissiveTriangle80>       EmissiveTriangles;
+[[vk::binding(5, 0)]]  StructuredBuffer<GpuLuminaireCluster32>       LuminaireClusters;
+[[vk::binding(6, 0)]]  StructuredBuffer<GpuDiffuseBouncePatch48>     BouncePatches;
+[[vk::binding(7, 0)]]  ConstantBuffer<GpuStokesGiUniforms>           GiUniforms;
+[[vk::binding(8, 0)]]  RWStructuredBuffer<float4>                    OutTotalIrradiance;
+[[vk::binding(9, 0)]]  StructuredBuffer<float>                       LocalDistanceGrid;
+[[vk::binding(10, 0)]] StructuredBuffer<GpuTaperedCapsule32>         LimbCapsules;
+[[vk::binding(11, 0)]] StructuredBuffer<GpuClosedBox32>              InteriorBoxes;
 
 static const float PiConstant = 3.14159265358979323846;
 
@@ -66,7 +71,7 @@ float EvaluateClippedStokesFormFactor(
 
     float3 Clipped[6];
     uint   ClippedCount = 0u;
-    float  PlaneClipEps   = 1.0e-4;
+    float  PlaneClipEps = 1.0e-4;
     float3 PrevP        = Raw[2];
     float  PrevH        = dot(ReceiverNormal, PrevP);
 
@@ -102,7 +107,7 @@ float EvaluateClippedStokesFormFactor(
     float3 VecIrr = float3(0.0);
     for (uint I = 0u; I < ClippedCount; ++I)
     {
-        uint NextI   = (I + 1u < ClippedCount) ? (I + 1u) : 0u;
+        uint NextI     = (I + 1u < ClippedCount) ? (I + 1u) : 0u;
         float3 CrossUV = cross(UnitDirs[I], UnitDirs[NextI]);
         float  SinT    = length(CrossUV);
         float  CosT    = clamp(dot(UnitDirs[I], UnitDirs[NextI]), -1.0, 1.0);
@@ -128,6 +133,23 @@ float EvaluateDiskFallback(float3 RPos, float3 RNrm, float3 DPos, float3 DNrm, f
     return (Area * CosR * CosE) / (PiConstant * DSq + Area);
 }
 
+float EvaluateStokesSegmentVisibility(float3 RPos, float3 RNrm, float3 TargetPos, float SourceRadius, uint BvhEntryCount, bool HighEnd)
+{
+    if (HighEnd)
+    {
+        float3 Seg    = TargetPos - RPos;
+        float  SegLen = length(Seg);
+        if (SegLen <= 0.05) return 1.0;
+        bool Hit = TraceCompressedWideTreeAnyHit(
+            SceneBvhEntries, ScenePrimitives, BvhEntryCount, RPos + RNrm * 3.0e-3, Seg / SegLen, 2.0e-3, max(0.02, SegLen - 0.035));
+        return Hit ? 0.0 : 1.0;
+    }
+    return EvaluateGtxHybridSegmentCone(
+        SceneBvhEntries, ScenePrimitives, BvhEntryCount,
+        LocalDistanceGrid, LimbCapsules, InteriorBoxes, GiUniforms.Occluders,
+        RPos, RNrm, TargetPos, SourceRadius);
+}
+
 [shader("compute")]
 [numthreads(64, 1, 1)]
 void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -142,29 +164,29 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    float3 RPos = PosMask.xyz;
-    float3 RNrm = normalize(SurfaceWorldNormals[PixelIdx].xyz);
+    float3 RPos          = PosMask.xyz;
+    float3 RNrm          = normalize(SurfaceWorldNormals[PixelIdx].xyz);
     uint   BvhEntryCount = GiUniforms.BvhTierParams.x;
-    bool   HighEnd  = (GiUniforms.BvhTierParams.y != 0u);
-    float  CutoffSq = GiUniforms.CutoffParams.x * GiUniforms.CutoffParams.x;
+    bool   HighEnd       = (GiUniforms.BvhTierParams.y != 0u);
+    float  CutoffSq      = GiUniforms.CutoffParams.x * GiUniforms.CutoffParams.x;
 
     float ClusterVis[32];
     [unroll]
     for (uint InitC = 0u; InitC < 32u; ++InitC) ClusterVis[InitC] = 1.0;
-    uint  ClusterMask = 0u;
-    uint  ClusterCount = min(GiUniforms.Counts.z, 32u);
+    uint ClusterMask  = 0u;
+    uint ClusterCount = min(GiUniforms.Counts.z, 32u);
 
     float3 AccumE = float3(0.0);
     for (uint E = 0u; E < GiUniforms.Counts.y; ++E)
     {
         GpuEmissiveTriangle80 Em = EmissiveTriangles[E];
-        float3 V0 = Em.Vertex0Area.xyz;
-        float3 V1 = Em.Vertex1Cluster.xyz;
-        float3 V2 = Em.Vertex2TwoSided.xyz;
+        float3 V0       = Em.Vertex0Area.xyz;
+        float3 V1       = Em.Vertex1Cluster.xyz;
+        float3 V2       = Em.Vertex2TwoSided.xyz;
         float3 Centroid = (V0 + V1 + V2) * (1.0 / 3.0);
         bool   TwoSided = (Em.Vertex2TwoSided.w > 0.5);
 
-        float FF = 0.0;
+        float FF     = 0.0;
         float DistSq = dot(Centroid - RPos, Centroid - RPos);
         if (!HighEnd && DistSq > CutoffSq)
         {
@@ -176,21 +198,26 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
         }
         if (FF <= 1.0e-6) continue;
 
-        uint CId = asuint(Em.Vertex1Cluster.w);
+        uint  CId = asuint(Em.Vertex1Cluster.w);
         float Vis = 1.0;
-        if (CId < ClusterCount)
+        if (HighEnd)
+        {
+            float3 EmN = Em.NormalPad.xyz * 8.0e-3;
+            float  VSum = 0.0;
+            VSum += EvaluateStokesSegmentVisibility(RPos, RNrm, Centroid + EmN, 0.0, BvhEntryCount, true);
+            VSum += EvaluateStokesSegmentVisibility(RPos, RNrm, V0 * 0.65 + V1 * 0.175 + V2 * 0.175 + EmN, 0.0, BvhEntryCount, true);
+            VSum += EvaluateStokesSegmentVisibility(RPos, RNrm, V0 * 0.175 + V1 * 0.65 + V2 * 0.175 + EmN, 0.0, BvhEntryCount, true);
+            VSum += EvaluateStokesSegmentVisibility(RPos, RNrm, V0 * 0.175 + V1 * 0.175 + V2 * 0.65 + EmN, 0.0, BvhEntryCount, true);
+            Vis = 0.25 * VSum;
+        }
+        else if (CId < ClusterCount)
         {
             uint Bit = (1u << CId);
             if ((ClusterMask & Bit) == 0u)
             {
                 ClusterMask |= Bit;
-                float3 Target = LuminaireClusters[CId].RepPosRadius.xyz;
-                float3 Seg    = Target - RPos;
-                float  SegLen = length(Seg);
-                float  MaxRay = HighEnd ? max(0.02, SegLen - 0.035) : min(0.28, max(0.02, SegLen - 0.04));
-                bool Hit = (SegLen > 0.05) &&
-                    TraceCompressedWideTreeAnyHit(SceneBvhEntries, ScenePrimitives, BvhEntryCount, RPos + RNrm * 3.0e-3, Seg / SegLen, 2.0e-3, MaxRay);
-                ClusterVis[CId] = Hit ? 0.0 : 1.0;
+                float4 Rep = LuminaireClusters[CId].RepPosRadius;
+                ClusterVis[CId] = EvaluateStokesSegmentVisibility(RPos, RNrm, Rep.xyz, Rep.w, BvhEntryCount, false);
             }
             Vis = ClusterVis[CId];
         }
@@ -203,16 +230,15 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
         float FF = EvaluateDiskFallback(RPos, RNrm, Patch.PositionArea.xyz, Patch.NormalRadius.xyz, Patch.PositionArea.w, false);
         if (FF <= 1.0e-5) continue;
         float3 Seg = Patch.PositionArea.xyz - RPos;
-        float  SLen = length(Seg);
-        float  Vis  = 1.0;
-        if (SLen > 0.05 && SLen * SLen < 12.0)
+        float  DSq = dot(Seg, Seg);
+        float  Vis = 1.0;
+        if (DSq > 0.0025 && DSq < 33.64)
         {
-            float MaxRay = HighEnd ? (SLen - 0.035) : min(0.28, SLen - 0.04);
-            if (MaxRay > 2.0e-3 &&
-                TraceCompressedWideTreeAnyHit(SceneBvhEntries, ScenePrimitives, BvhEntryCount, RPos + RNrm * 3.0e-3, Seg / SLen, 2.0e-3, MaxRay))
-            {
-                Vis = 0.0;
-            }
+            float RawVis = EvaluateStokesSegmentVisibility(RPos, RNrm, Patch.PositionArea.xyz, Patch.NormalRadius.w, BvhEntryCount, HighEnd);
+            float Dist   = sqrt(DSq);
+            float Fade   = clamp((Dist - 3.6) / (5.8 - 3.6), 0.0, 1.0);
+            float H      = Fade * Fade * (3.0 - 2.0 * Fade);
+            Vis          = lerp(RawVis, 1.0, H);
         }
         AccumE += Patch.ExitantRadiance.xyz * (PiConstant * FF * Vis);
     }

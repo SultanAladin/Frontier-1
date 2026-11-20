@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         LOCALSIGNEDDISTANCEVOLUME.H
 ============================================================================================================================================*/
-// 🧩 Order 2 GtxLowEnd-ONLY per-asset compact 48^3 distance volume with C0-continuous Euclidean outer-box distance clamping
+// 🧩 Order 2 GtxLowEnd-ONLY per-asset compact FP16 local distance volume (anisotropic 80x40x32 or 48^3) with C0 Euclidean clamping
 
 #pragma once
 
@@ -58,11 +58,22 @@ public:
 
     void Reset() noexcept;
 
-    // Bakes a conservative unsigned/C0-clamped local distance volume around InputPrimitives (e.g. 48^3 ControlVehicle)
+    // Bakes an anisotropic conservative C0-clamped FP16 local distance volume (e.g. 80x40x32 = 204,800 B << 3.7 MB budget)
+    bool BakeAnisotropicVolume(
+        std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
+        uint32_t                                                   ExtentX      = 80u,
+        uint32_t                                                   ExtentY      = 40u,
+        uint32_t                                                   ExtentZ      = 32u,
+        float                                                      MarginMeters = 0.24f);
+
+    // Cubic convenience overload delegating to BakeAnisotropicVolume(CubicResolution, CubicResolution, CubicResolution)
     bool BakeFromTriangles(
         std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
         uint32_t                                                   CubicResolution = 48u,
         float                                                      MarginMeters    = 0.24f);
+
+    // Half-diagonal voxel shell radius in meters used by HybridConeShadow to prevent unsigned shell pinholes
+    [[nodiscard]] float QueryHalfVoxelShellMeters() const noexcept;
 
     // Trilinear lookup inside [LocalMin, LocalMax]
     [[nodiscard]] float SampleTrilinearLocal(Mathematics::Axis3D ClampedLocalPos) const noexcept;
