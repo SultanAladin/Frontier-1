@@ -189,26 +189,22 @@ void TexturePaintLayerStackPane::Render(
     const float   InnerW  = std::max(120.0f, Bounds.Width - PadX * 2.0f);
     float         CurY    = Bounds.Y + 12.0f;
 
-    // 1. Header ("Layers", "TEXTURE PAINT · UTAH TEAPOT", "+ Add v" button)
+    // 1. Header ("Layers", "Texture Paint · Utah Teapot", "+ Add v" button)
     const auto& ActiveStudy = Session->QueryActiveStudyDescriptor();
-    std::string UpperStudy  = std::string("TEXTURE PAINT · ") + ActiveStudy.Label;
-    for (char& Ch : UpperStudy)
-    {
-        Ch = static_cast<char>(std::toupper(static_cast<unsigned char>(Ch)));
-    }
+    const std::string SubStudy = std::string("Texture Paint · ") + ActiveStudy.Label;
     WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::Bold, { Bounds.X + PadX, CurY }, 14.0f, Theme.TextPrimary, "Layers");
+        Surface, FontWeightClass::Regular, { Bounds.X + PadX, CurY - 2.0f }, 15.0f, Theme.TextPrimary, "Layers");
     WorkspaceAppearance::ConstructTruncatedText(
-        Surface, FontWeightClass::Medium, { Bounds.X + PadX, CurY + 18.0f }, InnerW - 76.0f, 8.2f, Theme.TextFaint, UpperStudy);
+        Surface, FontWeightClass::Regular, { Bounds.X + PadX + 52.0f, CurY + 3.0f }, InnerW - 122.0f, 8.6f, Theme.TextFaint, SubStudy);
 
-    const Rectangle2D AddBtnR{ Bounds.Right() - PadX - 66.0f, CurY + 2.0f, 66.0f, 26.0f };
+    const Rectangle2D AddBtnR{ Bounds.Right() - PadX - 66.0f, CurY - 2.0f, 66.0f, 26.0f };
     if (ConstructHeaderActionCapsule(Surface, AddBtnR, ControlIcon::PlusAdd, "Add", true, AddLayerSheetOpen, Theme, Cursor, Pressed))
     {
         AddLayerSheetOpen  = !AddLayerSheetOpen;
         FooterAddSheetOpen = false;
         FilterSheetOpen    = false;
     }
-    CurY += 38.0f;
+    CurY += 30.0f;
 
     // 2. Stat Tiles ("LAYERS 2/2", "CHANNELS 4/22")
     const float StatGap = 8.0f;
@@ -260,24 +256,23 @@ void TexturePaintLayerStackPane::Render(
     const Rectangle2D SearchBoxR{ Bounds.X + PadX, CurY, InnerW - FilterBtnW - 6.0f, 28.0f };
     const Rectangle2D FilterBtnR{ SearchBoxR.Right() + 6.0f, CurY, FilterBtnW, 28.0f };
 
-    Surface.FillRectangle(SearchBoxR, Theme.WellSurface, 8.0f);
-    Surface.StrokeRectangle(SearchBoxR, SearchBuffer.Active ? Theme.BorderStrong : Theme.BorderSubtle, 8.0f, 1.0f);
+    Surface.FillRectangle(SearchBoxR, ColorRgba{ 19u, 20u, 23u, 255u }, 14.0f);
     VectorIconRepository::ConstructControl(
         Surface,
         ControlIcon::SearchGlass,
-        VectorIconPlacement{ SearchBoxR.X + 8.0f, SearchBoxR.Y + 7.5f, 13.0f, Theme.TextFaint, 1.65f });
+        VectorIconPlacement{ SearchBoxR.X + 10.0f, SearchBoxR.Y + 8.0f, 12.0f, Theme.TextFaint, 1.6f });
 
     if (SearchBuffer.Length == 0u && !SearchBuffer.Active)
     {
         WorkspaceAppearance::ConstructWeightedText(
-            Surface, FontWeightClass::Regular, { SearchBoxR.X + 26.0f, SearchBoxR.Y + 6.5f }, 9.4f, Theme.TextFaint, "Search layers...");
+            Surface, FontWeightClass::Regular, { SearchBoxR.X + 27.0f, SearchBoxR.Y + 6.5f }, 9.0f, Theme.TextFaint, "Search layers...");
     }
     const ControlContact SearchContact = TextInputField::Construct(
         Surface,
-        { SearchBoxR.X + 22.0f, SearchBoxR.Y + 1.0f, SearchBoxR.Width - 26.0f, SearchBoxR.Height - 2.0f },
+        { SearchBoxR.X + 24.0f, SearchBoxR.Y + 1.0f, SearchBoxR.Width - 28.0f, SearchBoxR.Height - 2.0f },
         SearchBuffer,
         Input.PrimaryPointer,
-        9.6f);
+        9.4f);
     if (SearchContact.Clicked || SearchBuffer.Active || SearchBuffer.Finalized)
     {
         Session->SearchQuery.assign(SearchBuffer.Text, SearchBuffer.Length);
@@ -295,8 +290,6 @@ void TexturePaintLayerStackPane::Render(
         FooterAddSheetOpen = false;
     }
     CurY += 36.0f;
-    Surface.StrokeLine({ Bounds.X, CurY }, { Bounds.Right(), CurY }, Theme.BorderSubtle, 1.0f);
-    CurY += 6.0f;
 
     // 4. Scrollable Outliner Tree Area (reserving 34px for action bar + 28px for telemetry strip)
     constexpr float ActionBarH  = 34.0f;
@@ -613,7 +606,7 @@ void TexturePaintLayerStackPane::Render(
                         PtSelected,
                         false,
                         ControlIcon::Count,
-                        Pt.TintColor,
+                        Theme.TextPrimary,
                         Pt.Label,
                         PtMeta,
                         {},
@@ -626,8 +619,8 @@ void TexturePaintLayerStackPane::Render(
                         AllowTreeClicks && Pressed,
                         false,
                         &PtIconSlot);
-                    Surface.FillCircle({ PtIconSlot.X + 12.0f, PtIconSlot.Y + 12.0f }, 6.0f, Pt.TintColor);
-                    Surface.StrokeCircle({ PtIconSlot.X + 12.0f, PtIconSlot.Y + 12.0f }, 6.0f, Theme.BorderStrong, 1.0f);
+                    Surface.FillRectangle({ PtIconSlot.X + 1.0f, PtIconSlot.Y + 1.0f, 22.0f, 22.0f }, Pt.TintColor, 6.0f);
+                    Surface.StrokeRectangle({ PtIconSlot.X + 1.0f, PtIconSlot.Y + 1.0f, 22.0f, 22.0f }, ColorRgba{ 255u, 255u, 255u, 36u }, 6.0f, 1.0f);
                     if (PtAct.RowSelected)
                     {
                         Session->SelectedLayerId         = Layer.Id;
@@ -655,7 +648,7 @@ void TexturePaintLayerStackPane::Render(
                     BgSelected,
                     false,
                     ControlIcon::Count,
-                    Layer.GradientBackgroundTint,
+                    Theme.TextPrimary,
                     "Background",
                     BgMeta,
                     {},
@@ -668,8 +661,8 @@ void TexturePaintLayerStackPane::Render(
                     AllowTreeClicks && Pressed,
                     false,
                     &BgIconSlot);
-                Surface.FillCircle({ BgIconSlot.X + 12.0f, BgIconSlot.Y + 12.0f }, 6.0f, Layer.GradientBackgroundTint);
-                Surface.StrokeCircle({ BgIconSlot.X + 12.0f, BgIconSlot.Y + 12.0f }, 6.0f, Theme.BorderStrong, 1.0f);
+                Surface.FillRectangle({ BgIconSlot.X + 1.0f, BgIconSlot.Y + 1.0f, 22.0f, 22.0f }, Layer.GradientBackgroundTint, 6.0f);
+                Surface.StrokeRectangle({ BgIconSlot.X + 1.0f, BgIconSlot.Y + 1.0f, 22.0f, 22.0f }, ColorRgba{ 255u, 255u, 255u, 36u }, 6.0f, 1.0f);
                 if (BgAct.RowSelected)
                 {
                     Session->SelectedLayerId         = Layer.Id;
@@ -731,10 +724,8 @@ void TexturePaintLayerStackPane::Render(
     MaxScrollY = std::max(0.0f, ContentH - TreeViewportR.Height);
     Surface.PopClip();
 
-    // 5. Outliner Footer Action Bar (8 icon buttons: +, ↑, ↓, duplicate, eye, lock, mask, trash)
-    const Rectangle2D ActionBarR{ Bounds.X, TreeBottomY, Bounds.Width, ActionBarH };
-    Surface.FillRectangle(ActionBarR, Theme.SectionSurface);
-    Surface.StrokeLine({ ActionBarR.X, ActionBarR.Y }, { ActionBarR.Right(), ActionBarR.Y }, Theme.BorderSubtle, 1.0f);
+    // 5. Outliner Footer Action Bar (8 icon buttons: +, ↑, ↓, duplicate, eye, lock, mask ... trash)
+    const Rectangle2D ActionBarR{ Bounds.X + 4.0f, TreeBottomY, Bounds.Width - 8.0f, ActionBarH };
 
     PaintLayerEntry* SelLayer = Session->AccessSelectedLayer();
     const bool HasSel         = (SelLayer != nullptr);

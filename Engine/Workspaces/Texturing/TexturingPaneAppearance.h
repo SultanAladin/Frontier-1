@@ -1085,41 +1085,38 @@ inline bool ConstructOutlinerStatTile(
 {
     const bool Hovered = Bounds.Contains(Cursor);
     const ColorRgba FillCol = FilterSelected
-        ? Theme.HoverSurface
-        : (Hovered ? Theme.RaisedSurface : Theme.SectionSurface);
-    Surface.FillRectangle(Bounds, FillCol, 10.0f);
-    if (FilterSelected)
-    {
-        Surface.StrokeRectangle(Bounds, Theme.BorderStrong, 10.0f, 1.0f);
-    }
+        ? (Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 38u, 40u, 45u, 255u })
+        : (Hovered ? (Theme.LightSurface ? Theme.RaisedSurface : ColorRgba{ 34u, 35u, 39u, 255u })
+                   : (Theme.LightSurface ? Theme.SectionSurface : ColorRgba{ 24u, 25u, 28u, 255u }));
+    Surface.FillRectangle(Bounds, FillCol, 14.0f);
 
-    const Point2D   DiscCenter{ Bounds.X + 18.0f, Bounds.Y + Bounds.Height * 0.5f };
+    const Point2D   DiscCenter{ Bounds.X + 20.0f, Bounds.Y + Bounds.Height * 0.5f };
     const ColorRgba DiscFill = ToneActive
         ? ColorRgba{ 255u, 255u, 255u, 255u }
-        : ColorRgba{ 48u, 50u, 56u, 255u };
+        : (Theme.LightSurface ? Theme.RaisedSurface : ColorRgba{ 34u, 35u, 39u, 255u });
     const ColorRgba DiscInk = ToneActive
-        ? ColorRgba{ 18u, 19u, 22u, 255u }
+        ? ColorRgba{ 17u, 17u, 17u, 255u }
         : Theme.TextMuted;
-    Surface.FillCircle(DiscCenter, 10.0f, DiscFill);
+    Surface.FillCircle(DiscCenter, 12.5f, DiscFill);
     VectorIconRepository::ConstructControl(
         Surface,
         SymbolIcon,
-        VectorIconPlacement{ DiscCenter.X - 6.0f, DiscCenter.Y - 6.0f, 12.0f, DiscInk, 1.8f });
+        VectorIconPlacement{ DiscCenter.X - 6.5f, DiscCenter.Y - 6.5f, 13.0f, DiscInk, 1.85f });
 
     WorkspaceAppearance::ConstructTruncatedText(
         Surface,
         FontWeightClass::Medium,
-        { Bounds.X + 34.0f, Bounds.Y + 8.0f },
-        std::max(24.0f, Bounds.Width - 42.0f),
-        8.2f,
+        { Bounds.X + 40.0f, Bounds.Y + 7.0f },
+        std::max(24.0f, Bounds.Width - 46.0f),
+        7.8f,
         Theme.TextFaint,
         UpperLabel);
     WorkspaceAppearance::ConstructTruncatedText(
         Surface,
-        FontWeightClass::SemiBold,
-        { Bounds.X + 34.0f, Bounds.Y + 20.0f },
-        std::max(24.0f, Bounds.Width - 42.0f),
-        13.0f,
+        FontWeightClass::Medium,
+        { Bounds.X + 40.0f, Bounds.Y + 18.0f },
+        std::max(24.0f, Bounds.Width - 46.0f),
+        14.8f,
         Theme.TextPrimary,
         ReadingText);
 
@@ -1162,15 +1159,15 @@ inline OutlinerRowInteraction ConstructOutlinerTreeRow(
     if (Selected || Hovered)
     {
         const ColorRgba RowFill = Selected
-            ? (Theme.LightSurface ? Theme.HoverSurface : StudioRowSelected)
-            : (Theme.LightSurface ? Theme.RaisedSurface : StudioRowHover);
-        Surface.FillRectangle(BoxR, RowFill, 7.0f);
+            ? (Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 34u, 35u, 39u, 255u })
+            : (Theme.LightSurface ? Theme.RaisedSurface : ColorRgba{ 28u, 29u, 33u, 255u });
+        Surface.FillRectangle(BoxR, RowFill, 8.0f);
     }
     if (Selected)
     {
         Surface.FillRectangle(
-            { BoxR.X, BoxR.Y + 6.0f, 3.0f, std::max(8.0f, BoxR.Height - 12.0f) },
-            Theme.LightSurface ? Theme.AccentFill : ColorRgba{ 255u, 255u, 255u, 255u },
+            { BoxR.X, BoxR.Y + 7.0f, 3.0f, std::max(8.0f, BoxR.Height - 14.0f) },
+            Theme.LightSurface ? Theme.AccentFill : ColorRgba{ 240u, 164u, 58u, 255u },
             1.5f);
     }
 
@@ -1353,8 +1350,7 @@ inline void ConstructOutlinerTelemetryStrip(
     std::span<const std::pair<std::string_view, std::string_view>> Columns,
     const TexturingThemeColors&                                   Theme) noexcept
 {
-    Surface.FillRectangle(Bounds, Theme.LightSurface ? Theme.NestedSurface : WorkspaceSurfaceColors::FooterBackground);
-    Surface.StrokeLine({ Bounds.X, Bounds.Y }, { Bounds.Right(), Bounds.Y }, Theme.BorderSubtle, 1.0f);
+    Surface.FillRectangle(Bounds, Theme.LightSurface ? Theme.NestedSurface : ColorRgba{ 21u, 22u, 24u, 255u }, 12.0f);
     if (Columns.empty())
     {
         return;
@@ -1366,7 +1362,85 @@ inline void ConstructOutlinerTelemetryStrip(
         WorkspaceAppearance::ConstructTruncatedText(
             Surface, FontWeightClass::Medium, { Cx, Bounds.Y + 4.0f }, ColW - 4.0f, 7.6f, Theme.TextFaint, Columns[I].first);
         WorkspaceAppearance::ConstructTruncatedText(
-            Surface, FontWeightClass::SemiBold, { Cx, Bounds.Y + 14.0f }, ColW - 4.0f, 9.6f, Theme.TextPrimary, Columns[I].second);
+            Surface, FontWeightClass::Medium, { Cx, Bounds.Y + 14.0f }, ColW - 4.0f, 9.6f, Theme.TextPrimary, Columns[I].second);
+    }
+}
+
+inline void ConstructProceduralChannelIcon(
+    PixelSpace&      Surface,
+    Rectangle2D      SwatchR,
+    std::string_view ChannelLabel,
+    ColorRgba        SwatchTint,
+    bool             ColorChannel,
+    float            ScalarNormalized,
+    bool             ChannelEnabled) noexcept
+{
+    const float Radius = 6.0f;
+    const ColorRgba BaseDark = ChannelEnabled ? ColorRgba{ 30u, 32u, 37u, 255u } : ColorRgba{ 25u, 26u, 30u, 255u };
+    const ColorRgba RimStroke = ChannelEnabled ? ColorRgba{ 255u, 255u, 255u, 28u } : ColorRgba{ 255u, 255u, 255u, 14u };
+
+    if (ColorChannel)
+    {
+        ColorRgba Tint = SwatchTint;
+        if (!ChannelEnabled)
+        {
+            Tint.Alpha = 110u;
+        }
+        Surface.FillRectangle(SwatchR, Tint, Radius);
+        Surface.StrokeRectangle(SwatchR, RimStroke, Radius, 1.0f);
+        return;
+    }
+
+    const bool IsNormal = (ChannelLabel.find("Normal") != std::string_view::npos ||
+                           ChannelLabel.find("normal") != std::string_view::npos);
+    const bool IsFlatGrey = (ChannelLabel.find("Occlusion") != std::string_view::npos ||
+                             ChannelLabel.find("Opacity") != std::string_view::npos ||
+                             ChannelLabel.find("Aniso") != std::string_view::npos ||
+                             ChannelLabel.find("IOR") != std::string_view::npos);
+
+    if (IsNormal && ChannelLabel != "Normal Str")
+    {
+        Surface.FillRectangle(SwatchR, BaseDark, Radius);
+        const ColorRgba DotCol = ChannelEnabled ? ColorRgba{ 118u, 130u, 245u, 255u } : ColorRgba{ 72u, 78u, 135u, 180u };
+        Surface.FillCircle({ SwatchR.X + SwatchR.Width * 0.5f, SwatchR.Y + SwatchR.Height * 0.5f }, SwatchR.Width * 0.25f, DotCol);
+        Surface.StrokeRectangle(SwatchR, RimStroke, Radius, 1.0f);
+        return;
+    }
+
+    if (IsFlatGrey)
+    {
+        const ColorRgba FlatCol = ChannelEnabled ? ColorRgba{ 98u, 102u, 110u, 255u } : ColorRgba{ 44u, 46u, 52u, 255u };
+        Surface.FillRectangle(SwatchR, FlatCol, Radius);
+        Surface.StrokeRectangle(SwatchR, RimStroke, Radius, 1.0f);
+        return;
+    }
+
+    // Horizontal split tile (Roughness, Metalness, Height, Normal Str, Specular, Coat, Sheen)
+    Surface.FillRectangle(SwatchR, BaseDark, Radius);
+    const float SplitFrac = std::clamp(ScalarNormalized > 0.02f ? ScalarNormalized : 0.42f, 0.28f, 0.58f);
+    const float BandH = std::max(5.0f, std::round(SwatchR.Height * SplitFrac));
+    const ColorRgba BandCol = ChannelEnabled ? ColorRgba{ 118u, 122u, 132u, 255u } : ColorRgba{ 54u, 56u, 62u, 255u };
+    Surface.PushClip({ SwatchR.X, SwatchR.Bottom() - BandH, SwatchR.Width, BandH });
+    Surface.FillRectangle(SwatchR, BandCol, Radius);
+    Surface.PopClip();
+    Surface.StrokeRectangle(SwatchR, RimStroke, Radius, 1.0f);
+}
+
+inline void ConstructCollapsedGroupMiniSwatches(
+    PixelSpace& Surface,
+    float       RightEdgeX,
+    float       CenterY,
+    uint32_t    SwatchCount) noexcept
+{
+    const uint32_t Clamped = std::min(SwatchCount, 6u);
+    constexpr float BoxSz  = 9.0f;
+    constexpr float Step   = 11.5f;
+    const float StartX     = RightEdgeX - static_cast<float>(Clamped) * Step;
+    for (uint32_t I = 0u; I < Clamped; ++I)
+    {
+        const Rectangle2D MiniR{ StartX + static_cast<float>(I) * Step, CenterY - BoxSz * 0.5f, BoxSz, BoxSz };
+        Surface.FillRectangle(MiniR, ColorRgba{ 34u, 36u, 41u, 255u }, 2.5f);
+        Surface.StrokeRectangle(MiniR, ColorRgba{ 255u, 255u, 255u, 14u }, 2.5f, 1.0f);
     }
 }
 
@@ -1393,73 +1467,59 @@ inline ChannelEntryRowOutcome ConstructChannelEntryRow(
 {
     ChannelEntryRowOutcome Outcome {};
     const bool Hovered = RowBounds.Contains(Cursor);
-    const ColorRgba FillCol = Expanded
-        ? (Theme.LightSurface ? Theme.HoverSurface : StudioRowSelected)
-        : (Hovered ? (Theme.LightSurface ? Theme.RaisedSurface : StudioRowHover) : Theme.SectionSurface);
-    Surface.FillRectangle(RowBounds, FillCol, 8.0f);
     if (Expanded)
     {
-        Surface.FillRectangle(
-            { RowBounds.X, RowBounds.Y + 6.0f, 3.0f, std::max(8.0f, RowBounds.Height - 12.0f) },
-            Theme.LightSurface ? Theme.AccentFill : ColorRgba{ 255u, 255u, 255u, 255u },
-            1.5f);
+        Surface.FillRectangle(RowBounds, Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 34u, 35u, 39u, 255u }, 10.0f);
+    }
+    else if (Hovered)
+    {
+        Surface.FillRectangle(RowBounds, Theme.LightSurface ? Theme.RaisedSurface : ColorRgba{ 28u, 29u, 33u, 255u }, 8.0f);
     }
 
-    const Rectangle2D SwatchR{ RowBounds.X + 10.0f, RowBounds.Y + (RowBounds.Height - 18.0f) * 0.5f, 18.0f, 18.0f };
-    if (ColorChannel)
-    {
-        Surface.FillRectangle(SwatchR, SwatchTint, 5.0f);
-    }
-    else
-    {
-        Surface.FillRectangle(SwatchR, Theme.WellSurface, 5.0f);
-        const float FillW = std::clamp(ScalarNormalized, 0.0f, 1.0f) * (SwatchR.Width - 2.0f);
-        if (FillW > 1.0f)
-        {
-            Surface.FillRectangle({ SwatchR.X + 1.0f, SwatchR.Y + 1.0f, FillW, SwatchR.Height - 2.0f }, SwatchTint, 4.0f);
-        }
-    }
-    Surface.StrokeRectangle(SwatchR, Theme.BorderSubtle, 5.0f, 1.0f);
+    const Rectangle2D SwatchR{ RowBounds.X + 6.0f, RowBounds.Y + (RowBounds.Height - 24.0f) * 0.5f, 24.0f, 24.0f };
+    ConstructProceduralChannelIcon(Surface, SwatchR, ChannelLabel, SwatchTint, ColorChannel, ScalarNormalized, ChannelEnabled);
 
-    const Rectangle2D SwitchR{ RowBounds.Right() - 42.0f, RowBounds.Y + (RowBounds.Height - 18.0f) * 0.5f, 32.0f, 18.0f };
+    const Rectangle2D SwitchR{ RowBounds.Right() - 40.0f, RowBounds.Y + (RowBounds.Height - 18.0f) * 0.5f, 34.0f, 18.0f };
     const bool SwitchHover = SwitchR.Contains(Cursor);
     const ColorRgba TrackFill = ChannelEnabled
-        ? (Theme.LightSurface ? Theme.AccentFill : ColorRgba{ 238u, 238u, 236u, 255u })
-        : (SwitchHover ? Theme.HoverSurface : Theme.WellSurface);
+        ? (Theme.LightSurface ? Theme.AccentFill : ColorRgba{ 255u, 255u, 255u, 255u })
+        : (SwitchHover ? ColorRgba{ 43u, 43u, 47u, 255u } : ColorRgba{ 35u, 35u, 38u, 255u });
     const ColorRgba KnobFill = ChannelEnabled
-        ? (Theme.LightSurface ? Theme.HighlightInk : ColorRgba{ 20u, 21u, 24u, 255u })
-        : Theme.TextMuted;
+        ? (Theme.LightSurface ? Theme.HighlightInk : ColorRgba{ 17u, 17u, 17u, 255u })
+        : ColorRgba{ 188u, 188u, 188u, 255u };
     Surface.FillRectangle(SwitchR, TrackFill, 9.0f);
-    Surface.StrokeRectangle(SwitchR, ChannelEnabled ? TrackFill : Theme.BorderStrong, 9.0f, 1.0f);
+    if (!ChannelEnabled)
+    {
+        Surface.StrokeRectangle(SwitchR, ColorRgba{ 255u, 255u, 255u, 24u }, 9.0f, 1.0f);
+    }
     const float KnobX = ChannelEnabled ? (SwitchR.Right() - 9.0f) : (SwitchR.X + 9.0f);
-    Surface.FillCircle({ KnobX, SwitchR.Y + 9.0f }, 6.0f, KnobFill);
+    Surface.FillCircle({ KnobX, SwitchR.Y + 9.0f }, 6.5f, KnobFill);
 
-    const float ReadoutW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.6f, ReadoutText) + 14.0f;
-    const Rectangle2D ReadoutR{ SwitchR.X - ReadoutW - 8.0f, RowBounds.Y + (RowBounds.Height - 18.0f) * 0.5f, ReadoutW, 18.0f };
-    Surface.FillRectangle(ReadoutR, Theme.WellSurface, 6.0f);
-    Surface.StrokeRectangle(ReadoutR, Theme.BorderSubtle, 6.0f, 1.0f);
+    const float ReadoutW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.6f, ReadoutText) + 16.0f;
+    const Rectangle2D ReadoutR{ SwitchR.X - ReadoutW - 8.0f, RowBounds.Y + (RowBounds.Height - 19.0f) * 0.5f, ReadoutW, 19.0f };
+    Surface.FillRectangle(ReadoutR, Theme.LightSurface ? Theme.WellSurface : ColorRgba{ 8u, 9u, 11u, 255u }, 9.5f);
     WorkspaceAppearance::ConstructWeightedText(
         Surface,
         FontWeightClass::Medium,
-        { ReadoutR.X + 7.0f, ReadoutR.Y + 3.0f },
+        { ReadoutR.X + 8.0f, ReadoutR.Y + 3.5f },
         8.6f,
         ChannelEnabled ? Theme.TextPrimary : Theme.TextFaint,
         ReadoutText);
 
-    const float TextX = SwatchR.Right() + 9.0f;
+    const float TextX = SwatchR.Right() + 10.0f;
     const float TextW = std::max(32.0f, ReadoutR.X - TextX - 6.0f);
     WorkspaceAppearance::ConstructTruncatedText(
         Surface,
         FontWeightClass::Medium,
-        { TextX, RowBounds.Y + 5.0f },
+        { TextX, RowBounds.Y + 4.5f },
         TextW,
         10.2f,
-        ChannelEnabled ? Theme.TextPrimary : Theme.TextMuted,
+        ChannelEnabled ? Theme.TextPrimary : Theme.TextFaint,
         ChannelLabel);
     WorkspaceAppearance::ConstructTruncatedText(
         Surface,
         FontWeightClass::Regular,
-        { TextX, RowBounds.Y + 20.0f },
+        { TextX, RowBounds.Y + 19.5f },
         TextW,
         8.2f,
         Theme.TextFaint,
@@ -1492,19 +1552,18 @@ inline bool ConstructHeaderIconButton(
     bool                        Pressed) noexcept
 {
     const bool Hovered = Enabled && Bounds.Contains(Cursor);
-    const ColorRgba Fill = Active
-        ? Theme.AccentSoft
-        : (Hovered ? Theme.HoverSurface : Theme.WellSurface);
-    const ColorRgba Stroke = Active
-        ? Theme.AccentBorder
-        : (Hovered ? Theme.BorderStrong : Theme.BorderSubtle);
     const ColorRgba Ink = !Enabled
         ? Theme.TextFaint
         : (Active || Hovered ? Theme.TextPrimary : Theme.TextMuted);
 
-    Surface.FillRectangle(Bounds, Fill, 7.0f);
-    Surface.StrokeRectangle(Bounds, Stroke, 7.0f, 1.0f);
-    const float IconSz = std::min(14.0f, std::min(Bounds.Width, Bounds.Height) * 0.54f);
+    if (Active || Hovered)
+    {
+        Surface.FillRectangle(
+            Bounds,
+            Active ? Theme.AccentSoft : (Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 42u, 44u, 49u, 255u }),
+            Bounds.Height * 0.5f);
+    }
+    const float IconSz = std::min(13.5f, std::min(Bounds.Width, Bounds.Height) * 0.52f);
     VectorIconRepository::ConstructControl(
         Surface,
         Icon,
@@ -1513,7 +1572,7 @@ inline bool ConstructHeaderIconButton(
             Bounds.Y + (Bounds.Height - IconSz) * 0.5f,
             IconSz,
             Ink,
-            1.7f });
+            1.65f });
     return Hovered && Pressed;
 }
 
@@ -1531,13 +1590,10 @@ inline bool ConstructHeaderActionCapsule(
     const bool Hovered = Bounds.Contains(Cursor);
     const ColorRgba Fill = Active
         ? Theme.AccentSoft
-        : (Hovered ? Theme.HoverSurface : Theme.WellSurface);
-    const ColorRgba Stroke = Active
-        ? Theme.AccentBorder
-        : (Hovered ? Theme.BorderStrong : Theme.BorderSubtle);
+        : (Hovered ? (Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 38u, 40u, 46u, 255u })
+                   : (Theme.LightSurface ? Theme.WellSurface : ColorRgba{ 21u, 22u, 24u, 255u }));
 
-    Surface.FillRectangle(Bounds, Fill, 8.0f);
-    Surface.StrokeRectangle(Bounds, Stroke, 8.0f, 1.0f);
+    Surface.FillRectangle(Bounds, Fill, Bounds.Height * 0.5f);
 
     float TextX = Bounds.X + 8.0f;
     if (LeadingIcon != ControlIcon::Count)

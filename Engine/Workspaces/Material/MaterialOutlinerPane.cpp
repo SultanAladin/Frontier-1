@@ -1,7 +1,9 @@
 /*============================================================================================================================================
                                                          MATERIALOUTLINERPANE.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of MaterialOutlinerPane: 28 OpenPBR 1.1 channels in 6 collapsible groups + bottom "+ Enable | Preset | Reset · Solo | Mute".
+// 🧩 Implementation of MaterialOutlinerPane: 1:1 parity with Experimental/TextureStudio docked Material Outliner (cards-material.png
+//    & outliner-footer-material.png): STRATA / DRIVEN KPI tiles, quick stratum pills, Scene -> Surface body -> Core/Specular/Coat/Sheen/Thin film
+//    tree with 2x2 quadrant group icons & 28x28 procedural channel icons, bottom action bar, and 4-column telemetry footer.
 
 #include "Engine/Workspaces/Material/MaterialOutlinerPane.h"
 
@@ -24,50 +26,71 @@ namespace
 {
 
 constexpr std::array<const char*, MaterialOutlinerPane::GroupCount> GroupLabels {{
-    "BASE SURFACE",
-    "MICROSURFACE",
-    "COAT & FILM",
-    "SHEEN & FUZZ",
-    "TRANSMISSION & SSS",
-    "EMISSION & OPACITY",
+    "Core",
+    "Specular",
+    "Coat",
+    "Sheen",
+    "Thin film",
+    "Transmission",
+}};
+
+constexpr std::array<const char*, MaterialOutlinerPane::GroupCount> GroupUpperLabels {{
+    "CORE",
+    "SPECULAR",
+    "COAT",
+    "SHEEN",
+    "THIN FILM",
+    "TRANSMISSION",
 }};
 
 constexpr std::array<MaterialChannelEntrySpec, MaterialOutlinerPane::ChannelCount> ChannelCatalog {{
-    // 0. Base Surface (7)
-    {  0u, MaterialChannelGroup::BaseSurface,     "Colour",         "Base albedo tint",       true,  { 185u, 122u,  69u, 255u }, 1.00f, "%"   },
-    {  1u, MaterialChannelGroup::BaseSurface,     "Diffuse Rough",  "Oren-Nayar roughness",   false, { 160u, 140u, 120u, 255u }, 0.25f, "%"   },
-    {  2u, MaterialChannelGroup::BaseSurface,     "Metalness",      "Conductor blend",        false, { 145u, 155u, 170u, 255u }, 0.10f, "%"   },
-    {  3u, MaterialChannelGroup::BaseSurface,     "Specular",       "Dielectric F0 weight",   false, { 210u, 215u, 225u, 255u }, 1.00f, "%"   },
-    {  4u, MaterialChannelGroup::BaseSurface,     "Specular Tint",  "Fresnel edge tint",      true,  { 255u, 255u, 255u, 255u }, 1.00f, "%"   },
-    {  5u, MaterialChannelGroup::BaseSurface,     "Anisotropy",     "Brushed highlight",      false, { 175u, 165u, 210u, 255u }, 0.00f, "%"   },
-    {  6u, MaterialChannelGroup::BaseSurface,     "Aniso Angle",    "Tangent rotation",       false, { 175u, 165u, 210u, 255u }, 0.00f, "deg" },
-    // 1. Microsurface (6)
-    {  7u, MaterialChannelGroup::Microsurface,    "Roughness",      "Microfacet scatter",     false, { 148u, 163u, 184u, 255u }, 0.42f, "%"   },
-    {  8u, MaterialChannelGroup::Microsurface,    "Normal",         "Tangent-space normal",   false, { 128u, 134u, 255u, 255u }, 1.00f, "%"   },
-    {  9u, MaterialChannelGroup::Microsurface,    "Height",         "Displacement relief",    false, { 180u, 184u, 192u, 255u }, 0.18f, "%"   },
-    { 10u, MaterialChannelGroup::Microsurface,    "Bump",           "Fine micro-relief",      false, { 165u, 170u, 180u, 255u }, 0.00f, "%"   },
-    { 11u, MaterialChannelGroup::Microsurface,    "Curvature",      "Convex/concave wear",    false, { 196u, 172u, 132u, 255u }, 0.35f, "%"   },
-    { 12u, MaterialChannelGroup::Microsurface,    "Ambient Occl",   "Cavity shadowing",       false, { 140u, 145u, 155u, 255u }, 1.00f, "%"   },
-    // 2. Coat & Film (6)
-    { 13u, MaterialChannelGroup::CoatAndFilm,     "Coat",           "Clearcoat weight",       false, { 207u, 227u, 255u, 255u }, 0.32f, "%"   },
-    { 14u, MaterialChannelGroup::CoatAndFilm,     "Coat Rough",     "Lacquer gloss",          false, { 190u, 210u, 240u, 255u }, 0.12f, "%"   },
-    { 15u, MaterialChannelGroup::CoatAndFilm,     "Coat IOR",       "Refractive index",       false, { 190u, 210u, 240u, 255u }, 0.60f, "ior" },
-    { 16u, MaterialChannelGroup::CoatAndFilm,     "Coat Tint",      "Absorption colour",      true,  { 255u, 255u, 255u, 255u }, 1.00f, "%"   },
-    { 17u, MaterialChannelGroup::CoatAndFilm,     "Thin Film",      "Iridescence weight",     false, { 168u, 220u, 240u, 255u }, 0.00f, "%"   },
-    { 18u, MaterialChannelGroup::CoatAndFilm,     "Film Thickness", "Interference nm",        false, { 168u, 220u, 240u, 255u }, 0.38f, "nm"  },
-    // 3. Sheen & Fuzz (3)
-    { 19u, MaterialChannelGroup::SheenAndFuzz,    "Sheen",          "Grazing cloth fuzz",     false, { 232u, 214u, 198u, 255u }, 0.14f, "%"   },
-    { 20u, MaterialChannelGroup::SheenAndFuzz,    "Sheen Rough",    "Microfiber spread",      false, { 218u, 200u, 184u, 255u }, 0.35f, "%"   },
-    { 21u, MaterialChannelGroup::SheenAndFuzz,    "Sheen Tint",     "Velvet edge colour",     true,  { 245u, 232u, 216u, 255u }, 1.00f, "%"   },
-    // 4. Transmission & SSS (5)
-    { 22u, MaterialChannelGroup::TransmissionSss, "Transmission",   "Refractive glass",       false, { 158u, 230u, 216u, 255u }, 0.00f, "%"   },
-    { 23u, MaterialChannelGroup::TransmissionSss, "IOR",            "Dielectric index",       false, { 158u, 230u, 216u, 255u }, 0.50f, "ior" },
-    { 24u, MaterialChannelGroup::TransmissionSss, "Subsurface",     "Volumetric scatter",     false, { 226u, 142u, 118u, 255u }, 0.08f, "%"   },
-    { 25u, MaterialChannelGroup::TransmissionSss, "SSS Radius",     "Mean free path",         false, { 226u, 142u, 118u, 255u }, 0.22f, "%"   },
-    { 26u, MaterialChannelGroup::TransmissionSss, "SSS Colour",     "Sub-dermal tint",        true,  { 217u, 107u,  67u, 255u }, 1.00f, "%"   },
-    // 5. Emission & Opacity (1)
-    { 27u, MaterialChannelGroup::EmissionOpacity, "Emission",       "Self-luminous radiance", true,  { 255u, 122u,  59u, 255u }, 0.00f, "ev"  },
+    // 0. Core (8) — matches cards-material.png & outliner-footer-material.png 1:1
+    {  0u, MaterialChannelGroup::Core,                    "Colour",          "Base albedo",           "color",         true,  false, {   9u,  12u,  17u, 255u }, 1.00f, ""   },
+    {  1u, MaterialChannelGroup::Core,                    "Roughness",       "Microfacet gloss",      "roughness",     false, false, { 118u, 122u, 132u, 255u }, 0.08f, ""   },
+    {  2u, MaterialChannelGroup::Core,                    "Metallic",        "Conductor mask",        "metallic",      false, false, { 118u, 122u, 132u, 255u }, 0.34f, ""   },
+    {  3u, MaterialChannelGroup::Core,                    "Normal",          "Surface tangent",       "normal",        false, true,  { 118u, 130u, 245u, 255u }, 1.00f, ""   },
+    {  4u, MaterialChannelGroup::Core,                    "Micro normal",    "Fine pore / grain",     "microNormal",   false, true,  { 118u, 130u, 245u, 255u }, 1.00f, ""   },
+    {  5u, MaterialChannelGroup::Core,                    "Height",          "Displacement relief",   "height",        false, false, { 118u, 122u, 132u, 255u }, 0.50f, ""   },
+    {  6u, MaterialChannelGroup::Core,                    "Occlusion",       "Cavity AO",             "occlusion",     false, false, {  98u, 102u, 110u, 255u }, 1.00f, ""   },
+    {  7u, MaterialChannelGroup::Core,                    "Opacity",         "Cutout / alpha",        "opacity",       false, false, { 118u, 122u, 132u, 255u }, 1.00f, ""   },
+    // 1. Specular (5)
+    {  8u, MaterialChannelGroup::Specular,                "Specular",        "Reflectance weight",    "specular",      false, false, { 118u, 122u, 132u, 255u }, 1.00f, ""   },
+    {  9u, MaterialChannelGroup::Specular,                "Specular Tint",   "Fresnel edge tint",     "specularTint",  true,  false, { 255u, 255u, 255u, 255u }, 1.00f, ""   },
+    { 10u, MaterialChannelGroup::Specular,                "IOR",             "Refractive index",      "ior",           false, false, {  98u, 102u, 110u, 255u }, 1.50f, ""   },
+    { 11u, MaterialChannelGroup::Specular,                "Anisotropy",      "Brushed highlight",     "anisotropy",    false, false, {  98u, 102u, 110u, 255u }, 0.00f, ""   },
+    { 12u, MaterialChannelGroup::Specular,                "Aniso Rotation",  "Tangent angle",         "anisoRotation", false, false, {  98u, 102u, 110u, 255u }, 0.00f, ""   },
+    // 2. Coat (4)
+    { 13u, MaterialChannelGroup::Coat,                    "Coat",            "Clearcoat weight",      "coat",          false, false, { 118u, 122u, 132u, 255u }, 0.32f, ""   },
+    { 14u, MaterialChannelGroup::Coat,                    "Coat Roughness",  "Lacquer gloss",         "coatRoughness", false, false, { 118u, 122u, 132u, 255u }, 0.12f, ""   },
+    { 15u, MaterialChannelGroup::Coat,                    "Coat IOR",        "Coat refractive index", "coatIor",       false, false, {  98u, 102u, 110u, 255u }, 1.50f, ""   },
+    { 16u, MaterialChannelGroup::Coat,                    "Coat Normal",     "Clearcoat tangent",     "coatNormal",    false, true,  { 118u, 130u, 245u, 255u }, 1.00f, ""   },
+    // 3. Sheen (3)
+    { 17u, MaterialChannelGroup::Sheen,                   "Sheen",           "Grazing cloth fuzz",    "sheen",         false, false, { 118u, 122u, 132u, 255u }, 0.14f, ""   },
+    { 18u, MaterialChannelGroup::Sheen,                   "Sheen Roughness", "Microfiber spread",     "sheenRoughness",false, false, { 118u, 122u, 132u, 255u }, 0.35f, ""   },
+    { 19u, MaterialChannelGroup::Sheen,                   "Sheen Colour",    "Velvet edge tint",      "sheenColor",    true,  false, { 245u, 232u, 216u, 255u }, 1.00f, ""   },
+    // 4. Thin film (3)
+    { 20u, MaterialChannelGroup::ThinFilm,                "Thin Film",       "Iridescence weight",    "thinFilm",      false, false, { 118u, 122u, 132u, 255u }, 0.00f, ""   },
+    { 21u, MaterialChannelGroup::ThinFilm,                "Film Thickness",  "Interference nm",       "filmThickness", false, false, { 118u, 122u, 132u, 255u }, 0.38f, "nm" },
+    { 22u, MaterialChannelGroup::ThinFilm,                "Film IOR",        "Film refractive index", "filmIor",       false, false, {  98u, 102u, 110u, 255u }, 1.40f, ""   },
+    // 5. Transmission & Emission (5)
+    { 23u, MaterialChannelGroup::TransmissionAndEmissive, "Transmission",    "Refractive glass",      "transmission",  false, false, { 118u, 122u, 132u, 255u }, 0.00f, ""   },
+    { 24u, MaterialChannelGroup::TransmissionAndEmissive, "Subsurface",      "Volumetric scatter",    "subsurface",    false, false, { 118u, 122u, 132u, 255u }, 0.08f, ""   },
+    { 25u, MaterialChannelGroup::TransmissionAndEmissive, "SSS Radius",      "Mean free path",        "sssRadius",     false, false, { 118u, 122u, 132u, 255u }, 0.22f, ""   },
+    { 26u, MaterialChannelGroup::TransmissionAndEmissive, "SSS Colour",      "Sub-dermal tint",       "sssColor",      true,  false, { 217u, 107u,  67u, 255u }, 1.00f, ""   },
+    { 27u, MaterialChannelGroup::TransmissionAndEmissive, "Emission",        "Self-luminous radiance","emission",      true,  false, { 255u, 122u,  59u, 255u }, 0.00f, "ev" },
 }};
+
+void DrawGroupQuadrantGlyph(PixelSpace& Surface, Rectangle2D SlotR) noexcept
+{
+    const float Cx = SlotR.X + SlotR.Width * 0.5f;
+    const float Cy = SlotR.Y + SlotR.Height * 0.5f;
+    const ColorRgba SqCol { 94u, 98u, 108u, 255u };
+    // 2x2 grid: TL square, TR square, BL square, BR purple circle (matches cards-material.png)
+    Surface.FillRectangle({ Cx - 7.5f, Cy - 7.5f, 6.5f, 6.5f }, SqCol, 1.8f);
+    Surface.FillRectangle({ Cx + 1.0f, Cy - 7.5f, 6.5f, 6.5f }, SqCol, 1.8f);
+    Surface.FillRectangle({ Cx - 7.5f, Cy + 1.0f, 6.5f, 6.5f }, SqCol, 1.8f);
+    Surface.FillCircle({ Cx + 4.2f, Cy + 4.2f }, 3.2f, ColorRgba{ 118u, 130u, 245u, 255u });
+}
 
 } // namespace
 
@@ -77,21 +100,13 @@ MaterialOutlinerPane::MaterialOutlinerPane() noexcept
     {
         ChannelScalars[I]   = ChannelCatalog[I].DefaultValue;
         ChannelTints[I]     = ChannelCatalog[I].DefaultTint;
-        ChannelEnabled[I]   = false;
+        ChannelEnabled[I]   = true;
         ChannelExpanded[I]  = false;
         ChannelSourceTab[I] = 0u;
     }
-    // Default 6 active OpenPBR channels matching cards-material.png ("Glazed Terracotta · 6/28 CHANNELS ACTIVE")
-    ChannelEnabled[0]  = true; // Colour (#b97a45)
-    ChannelEnabled[2]  = true; // Metalness (10%)
-    ChannelEnabled[7]  = true; // Roughness (42%)
-    ChannelEnabled[8]  = true; // Normal (100%)
-    ChannelEnabled[9]  = true; // Height (18%)
-    ChannelEnabled[13] = true; // Coat (32%)
-
-    // Open Colour + Roughness side-by-side by default (matching cards-material.png)
+    // Open Colour + Roughness simultaneously in the vertical stack (matching outliner-footer-material.png & CheckCardDock.mjs)
     ChannelExpanded[0] = true;
-    ChannelExpanded[7] = true;
+    ChannelExpanded[1] = true;
 }
 
 MaterialOutlinerPane::~MaterialOutlinerPane() noexcept
@@ -109,6 +124,11 @@ const std::array<const char*, MaterialOutlinerPane::GroupCount>& MaterialOutline
     return GroupLabels;
 }
 
+const std::array<const char*, MaterialOutlinerPane::GroupCount>& MaterialOutlinerPane::QueryGroupUpperNames() noexcept
+{
+    return GroupUpperLabels;
+}
+
 std::size_t MaterialOutlinerPane::CountEnabledChannels() const noexcept
 {
     std::size_t Total = 0u;
@@ -117,6 +137,19 @@ std::size_t MaterialOutlinerPane::CountEnabledChannels() const noexcept
         if (On) ++Total;
     }
     return Total;
+}
+
+std::size_t MaterialOutlinerPane::CountDrivenChannels() const noexcept
+{
+    std::size_t Driven = 0u;
+    for (std::size_t I = 0u; I < ChannelCount; ++I)
+    {
+        if (ChannelEnabled[I] && ChannelSourceTab[I] > 0u)
+        {
+            ++Driven;
+        }
+    }
+    return Driven;
 }
 
 void MaterialOutlinerPane::PresentInImGuiPane(double DeltaSeconds, float ScaleFactor)
@@ -161,54 +194,96 @@ void MaterialOutlinerPane::Render(
     const bool                 Pressed = Input.PrimaryPointer.Pressed;
 
     Surface.PushClip(Bounds);
-    Surface.FillRectangle(Bounds, Theme.PaneBackground, 0.0f);
-    Surface.StrokeLine({ Bounds.Right() - 1.0f, Bounds.Y }, { Bounds.Right() - 1.0f, Bounds.Bottom() }, Theme.BorderSubtle, 1.0f);
+    Surface.FillRectangle(Bounds, Theme.LightSurface ? Theme.PaneBackground : ColorRgba{ 24u, 25u, 28u, 255u }, 0.0f);
 
     const float PadX   = 12.0f;
     const float LeftX  = Bounds.X + PadX;
     const float InnerW = Bounds.Width - PadX * 2.0f;
     float       CurY   = Bounds.Y + 12.0f;
 
-    // 1. Outliner Header ("Outliner  28 CHANNELS · 6 GROUPS")
-    VectorIconRepository::ConstructControl(
-        Surface, ControlIcon::MaterialSphere, VectorIconPlacement{ LeftX, CurY + 3.0f, 13.5f, ColorRgba{ 232u, 194u, 122u, 255u }, 1.7f });
+    // 1. Outliner Header ("Outliner  Material Scene & Strata" + circular '+' button)
     WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::SemiBold, { LeftX + 19.0f, CurY + 1.0f }, 10.8f, Theme.TextPrimary, "Outliner");
+        Surface, FontWeightClass::Regular, { LeftX, CurY - 2.0f }, 15.0f, Theme.TextPrimary, "Outliner");
     WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::Bold, { LeftX + 70.0f, CurY + 3.0f }, 7.8f, ColorRgba{ 232u, 194u, 122u, 255u }, "28 CHANNELS · 6 GROUPS");
-    CurY += 26.0f;
+        Surface, FontWeightClass::Regular, { LeftX + 64.0f, CurY + 3.0f }, 9.2f, Theme.TextFaint, "Material Scene & Strata");
 
-    // 2. Search & Filter Row ("Filter channels..." + "All | On")
-    const float FilterSegW = 70.0f;
-    const Rectangle2D SearchR{ LeftX, CurY, InnerW - FilterSegW - 6.0f, 26.0f };
-    Surface.FillRectangle(SearchR, Theme.WellSurface, 7.0f);
-    Surface.StrokeRectangle(SearchR, Theme.BorderSubtle, 7.0f, 1.0f);
+    const Rectangle2D TopAddBtnR{ Bounds.Right() - PadX - 24.0f, CurY - 1.0f, 24.0f, 24.0f };
+    Surface.FillRectangle(TopAddBtnR, TopAddBtnR.Contains(Cursor) ? ColorRgba{ 44u, 45u, 49u, 255u } : ColorRgba{ 34u, 35u, 39u, 255u }, 12.0f);
     VectorIconRepository::ConstructControl(
-        Surface, ControlIcon::SearchGlass, VectorIconPlacement{ SearchR.X + 8.0f, SearchR.Y + 7.0f, 12.0f, Theme.TextFaint, 1.6f });
-    WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::Regular, { SearchR.X + 25.0f, SearchR.Y + 5.5f }, 8.8f, Theme.TextFaint, "Filter channels...");
+        Surface, ControlIcon::PlusAdd, VectorIconPlacement{ TopAddBtnR.X + 6.5f, TopAddBtnR.Y + 6.5f, 11.0f, Theme.TextPrimary, 1.7f });
+    CurY += 30.0f;
 
-    static constexpr const char* FilterLabels[2] { "All", "On" };
-    for (uint32_t Fi = 0u; Fi < 2u; ++Fi)
+    // 2. Two KPI Stat Tiles: STRATA (1/1) & DRIVEN (0/28)
+    const float StatGap = 8.0f;
+    const float StatW   = (InnerW - StatGap) * 0.5f;
+    const std::size_t DrivenCnt = CountDrivenChannels();
+    char DrivenBuf[24];
+    std::snprintf(DrivenBuf, sizeof(DrivenBuf), "%zu/%zu", DrivenCnt, ChannelCount);
+
+    ConstructOutlinerStatTile(
+        Surface, { LeftX, CurY, StatW, 42.0f }, ControlIcon::CircleCheck, "STRATA", "1/1", true, false, Theme, Cursor, Pressed);
+        if (ConstructOutlinerStatTile(
+                Surface, { LeftX + StatW + StatGap, CurY, StatW, 42.0f }, ControlIcon::NoiseWave, "DRIVEN", DrivenBuf, DrivenCnt > 0u, FilterActiveOnly, Theme, Cursor, Pressed))
     {
-        const Rectangle2D PillR{ SearchR.Right() + 6.0f + static_cast<float>(Fi) * 35.0f, CurY, 33.0f, 26.0f };
-        const bool Act = (Fi == 1u) ? FilterActiveOnly : !FilterActiveOnly;
-        Surface.FillRectangle(PillR, Act ? ColorRgba{ 238u, 238u, 236u, 255u } : Theme.SectionSurface, 6.0f);
-        WorkspaceAppearance::ConstructWeightedText(
-            Surface, Act ? FontWeightClass::SemiBold : FontWeightClass::Medium, { PillR.X + 9.0f, PillR.Y + 6.0f }, 8.2f,
-            Act ? ColorRgba{ 16u, 17u, 20u, 255u } : Theme.TextMuted, FilterLabels[Fi]);
-        if (Pressed && PillR.Contains(Cursor))
-        {
-            FilterActiveOnly = (Fi == 1u);
-        }
+        FilterActiveOnly = !FilterActiveOnly;
     }
-    CurY += 32.0f;
-    Surface.StrokeLine({ Bounds.X, CurY }, { Bounds.Right(), CurY }, Theme.BorderSubtle, 1.0f);
-    CurY += 4.0f;
+    CurY += 50.0f;
 
-    // Reserve space at bottom for the Action Footer Bar (38px) + Status Bar (26px) matching outliner-footer-material.png
-    constexpr float ActionBarH = 38.0f;
-    constexpr float StatusBarH = 26.0f;
+    // 3. Search & Filter Row ("Search strata, channels" + "Filter v")
+    const float FilterW = 68.0f;
+    const Rectangle2D SearchR{ LeftX, CurY, InnerW - FilterW - 6.0f, 28.0f };
+    Surface.FillRectangle(SearchR, ColorRgba{ 19u, 20u, 23u, 255u }, 14.0f);
+    VectorIconRepository::ConstructControl(
+        Surface, ControlIcon::SearchGlass, VectorIconPlacement{ SearchR.X + 10.0f, SearchR.Y + 8.0f, 12.0f, Theme.TextFaint, 1.6f });
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Regular, { SearchR.X + 27.0f, SearchR.Y + 6.5f }, 9.2f, Theme.TextFaint, "Search strata, channels");
+
+    const Rectangle2D FilterR{ SearchR.Right() + 6.0f, CurY, FilterW, 28.0f };
+    Surface.FillRectangle(FilterR, FilterR.Contains(Cursor) ? ColorRgba{ 34u, 35u, 39u, 255u } : ColorRgba{ 19u, 20u, 23u, 255u }, 14.0f);
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Medium, { FilterR.X + 12.0f, FilterR.Y + 6.5f }, 8.8f, Theme.TextMuted, "Filter");
+    VectorIconRepository::ConstructControl(
+        Surface, ControlIcon::ChevronDown, VectorIconPlacement{ FilterR.Right() - 16.0f, FilterR.Y + 9.5f, 9.0f, Theme.TextFaint, 1.6f });
+    CurY += 35.0f;
+
+    // 4. Quick Stratum Chips Row ("Detail stratum", "Scuffs", "Camo", "Cells", "Grain")
+    struct QuickChipSpec { const char* Label; bool HasGrad; ColorRgba C0; ColorRgba C1; };
+    static constexpr std::array<QuickChipSpec, 5u> QuickChips {{
+        { "+ Detail stratum", false, {}, {} },
+        { "Scuffs",           true,  {  55u,  58u,  64u, 255u }, { 215u, 218u, 224u, 255u } },
+        { "Camo",             true,  {  52u,  88u,  62u, 255u }, { 196u, 158u,  92u, 255u } },
+        { "Cells",            true,  {  40u,  44u,  52u, 255u }, { 225u, 228u, 235u, 255u } },
+        { "Grain",            true,  {  58u,  60u,  66u, 255u }, { 210u, 212u, 218u, 255u } },
+    }};
+    float ChipX = LeftX;
+    float ChipY = CurY;
+    for (const auto& Qc : QuickChips)
+    {
+        const float TextW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.2f, Qc.Label);
+        const float ChipW = TextW + (Qc.HasGrad ? 32.0f : 18.0f);
+        if (ChipX + ChipW > LeftX + InnerW && ChipX > LeftX)
+        {
+            ChipX = LeftX;
+            ChipY += 24.0f;
+        }
+        const Rectangle2D ChipR{ ChipX, ChipY, ChipW, 20.0f };
+        Surface.FillRectangle(ChipR, ChipR.Contains(Cursor) ? ColorRgba{ 40u, 42u, 48u, 255u } : ColorRgba{ 30u, 31u, 36u, 255u }, 10.0f);
+        float LabelX = ChipR.X + 9.0f;
+        if (Qc.HasGrad)
+        {
+            Surface.FillRectangle({ ChipR.X + 6.0f, ChipR.Y + 5.0f, 7.0f, 10.0f }, Qc.C0, 2.5f);
+            Surface.FillRectangle({ ChipR.X + 12.0f, ChipR.Y + 5.0f, 7.0f, 10.0f }, Qc.C1, 2.5f);
+            LabelX = ChipR.X + 23.0f;
+        }
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Medium, { LabelX, ChipR.Y + 3.5f }, 8.2f, Theme.TextMuted, Qc.Label);
+        ChipX += ChipW + 5.0f;
+    }
+    CurY = ChipY + 26.0f;
+
+    // Reserve space at bottom for the Action Bar (30px) + 4-Column Telemetry Strip (32px) matching outliner-footer-material.png
+    constexpr float ActionBarH = 30.0f;
+    constexpr float StatusBarH = 32.0f;
     const Rectangle2D ScrollRect{
         Bounds.X,
         CurY,
@@ -222,184 +297,165 @@ void MaterialOutlinerPane::Render(
     }
 
     Surface.PushClip(ScrollRect);
-    float Sy = ScrollRect.Y + 6.0f - ScrollOffsetY;
+    float Sy = ScrollRect.Y + 2.0f - ScrollOffsetY;
     const float ScrollStartY = Sy;
 
-    for (std::size_t G = 0u; G < GroupCount; ++G)
+    const char* ActiveMatTitle = (Session != nullptr && !Session->DocumentTabs.empty())
+        ? Session->InspectActiveRecipe().DisplayTitle.c_str()
+        : "Derez Lattice Dissolve (ControlVehicle)";
+
+    // Root Scene Row (Depth 0): "Derez Lattice Dissolve (ControlVehicle)" / "Animated & VFX · 1/1 strata"
     {
-        const MaterialChannelGroup GroupEnum = static_cast<MaterialChannelGroup>(G);
-        std::size_t GroupTotal = 0u;
-        std::size_t GroupOn    = 0u;
-        for (std::size_t C = 0u; C < ChannelCount; ++C)
+        const Rectangle2D SceneRowR{ LeftX, Sy, InnerW, 34.0f };
+        const auto SceneAct = ConstructOutlinerTreeRow(
+            Surface, SceneRowR, 0u, true, SceneNodeOpen, false, false,
+            ControlIcon::MaterialSphere, Theme.TextMuted,
+            ActiveMatTitle, "Animated & VFX · 1/1 strata",
+            {}, "", -1, -1, -1, Theme, Cursor, Pressed, false);
+        if (SceneAct.CaretToggled || SceneAct.RowSelected)
         {
-            if (ChannelCatalog[C].Group == GroupEnum)
-            {
-                ++GroupTotal;
-                if (ChannelEnabled[C]) ++GroupOn;
-            }
+            SceneNodeOpen = !SceneNodeOpen;
         }
-        if (FilterActiveOnly && GroupOn == 0u)
-        {
-            continue;
-        }
-
-        const Rectangle2D GHeadR{ LeftX, Sy, InnerW, 26.0f };
-        const bool GOpen = GroupOpen[G];
-        Surface.FillRectangle(GHeadR, GHeadR.Contains(Cursor) ? Theme.HoverSurface : Theme.SectionSurface, 6.0f);
-        VectorIconRepository::ConstructControl(
-            Surface, GOpen ? ControlIcon::ChevronDown : ControlIcon::ChevronForward,
-            VectorIconPlacement{ GHeadR.X + 7.0f, GHeadR.Y + 8.0f, 10.0f, Theme.TextMuted, 1.7f });
-        WorkspaceAppearance::ConstructWeightedText(
-            Surface, FontWeightClass::Bold, { GHeadR.X + 22.0f, GHeadR.Y + 6.5f }, 8.0f, Theme.TextMuted, GroupLabels[G]);
-
-        char GCntBuf[24];
-        std::snprintf(GCntBuf, sizeof(GCntBuf), "%zu/%zu", GroupOn, GroupTotal);
-        WorkspaceAppearance::ConstructWeightedText(
-            Surface, FontWeightClass::Medium, { GHeadR.Right() - 34.0f, GHeadR.Y + 6.5f }, 8.0f, Theme.TextFaint, GCntBuf);
-
-        if (Pressed && ScrollRect.Contains(Cursor) && GHeadR.Contains(Cursor))
-        {
-            GroupOpen[G] = !GroupOpen[G];
-        }
-        Sy += 29.0f;
-
-        if (!GOpen)
-        {
-            continue;
-        }
-
-        for (std::size_t C = 0u; C < ChannelCount; ++C)
-        {
-            const auto& Spec = ChannelCatalog[C];
-            if (Spec.Group != GroupEnum) continue;
-            if (FilterActiveOnly && !ChannelEnabled[C]) continue;
-
-            const Rectangle2D RowR{ LeftX, Sy, InnerW, 30.0f };
-            const bool SelRow = (SelectedChannelIndex == C);
-            const bool HovRow = ScrollRect.Contains(Cursor) && RowR.Contains(Cursor);
-
-            Surface.FillRectangle(RowR, SelRow ? Theme.HoverSurface : (HovRow ? Theme.SectionSurface : Theme.WellSurface), 7.0f);
-            if (SelRow)
-            {
-                Surface.FillRectangle({ RowR.X, RowR.Y + 5.0f, 3.0f, RowR.Height - 10.0f }, ColorRgba{ 255u, 255u, 255u, 255u }, 1.5f);
-            }
-
-            // Swatch or scalar mini-bar
-            if (Spec.ColorChannel)
-            {
-                Surface.FillRectangle({ RowR.X + 8.0f, RowR.Y + 8.0f, 14.0f, 14.0f }, ChannelTints[C], 4.0f);
-                Surface.StrokeRectangle({ RowR.X + 8.0f, RowR.Y + 8.0f, 14.0f, 14.0f }, Theme.BorderSubtle, 4.0f, 1.0f);
-            }
-            else
-            {
-                Surface.FillCircle({ RowR.X + 15.0f, RowR.Y + 15.0f }, 4.5f, ChannelEnabled[C] ? Spec.DefaultTint : Theme.TextFaint);
-            }
-
-            WorkspaceAppearance::ConstructTruncatedText(
-                Surface,
-                ChannelEnabled[C] ? FontWeightClass::SemiBold : FontWeightClass::Regular,
-                { RowR.X + 27.0f, RowR.Y + 7.5f },
-                InnerW - 96.0f,
-                9.2f,
-                ChannelEnabled[C] ? Theme.TextPrimary : Theme.TextMuted,
-                Spec.Label);
-
-            char ValBuf[24];
-            if (!ChannelEnabled[C])
-            {
-                std::snprintf(ValBuf, sizeof(ValBuf), "Off");
-            }
-            else if (Spec.ColorChannel)
-            {
-                std::snprintf(ValBuf, sizeof(ValBuf), "#%02x%02x%02x", ChannelTints[C].Red, ChannelTints[C].Green, ChannelTints[C].Blue);
-            }
-            else
-            {
-                std::snprintf(ValBuf, sizeof(ValBuf), "%d%%", static_cast<int>(std::lround(ChannelScalars[C] * 100.0f)));
-            }
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface, FontWeightClass::Medium, { RowR.Right() - 68.0f, RowR.Y + 8.5f }, 8.0f,
-                ChannelEnabled[C] ? Theme.TextMuted : Theme.TextFaint, ValBuf);
-
-            // Toggle pill on right of row
-            const Rectangle2D ToggleR{ RowR.Right() - 28.0f, RowR.Y + 8.0f, 22.0f, 14.0f };
-            Surface.FillRectangle(ToggleR, ChannelEnabled[C] ? ColorRgba{ 238u, 238u, 236u, 255u } : Theme.SectionSurface, 7.0f);
-            Surface.FillCircle(
-                { ChannelEnabled[C] ? (ToggleR.Right() - 7.0f) : (ToggleR.X + 7.0f), ToggleR.Y + 7.0f },
-                4.8f,
-                ChannelEnabled[C] ? ColorRgba{ 16u, 17u, 20u, 255u } : Theme.TextFaint);
-
-            if (Pressed && HovRow)
-            {
-                if (ToggleR.Contains(Cursor))
-                {
-                    ChannelEnabled[C] = !ChannelEnabled[C];
-                    if (ChannelEnabled[C]) ChannelExpanded[C] = true;
-                }
-                else
-                {
-                    SelectedChannelIndex = static_cast<uint32_t>(C);
-                    ChannelExpanded[C]   = !ChannelExpanded[C];
-                }
-            }
-            Sy += 32.0f;
-        }
-        Sy += 4.0f;
+        Sy += 35.0f;
     }
 
-    MaxScrollY = std::max(0.0f, (Sy - ScrollStartY) - ScrollRect.Height + 12.0f);
+    if (SceneNodeOpen)
+    {
+        // Stratum Row (Depth 1): "Surface body" / "Surface · 28 ch" + ACTIVE badge + white check disc
+        {
+            const Rectangle2D StratRowR{ LeftX, Sy, InnerW, 34.0f };
+            const auto StratAct = ConstructOutlinerTreeRow(
+                Surface, StratRowR, 1u, true, StratumNodeOpen, false, false,
+                ControlIcon::LayersSlabs, Theme.TextMuted,
+                "Surface body", "Surface · 28 ch",
+                {}, "ACTIVE", -1, 1, -1, Theme, Cursor, Pressed, false);
+            if (StratAct.CaretToggled || StratAct.RowSelected)
+            {
+                StratumNodeOpen = !StratumNodeOpen;
+            }
+            Sy += 35.0f;
+        }
+
+        if (StratumNodeOpen)
+        {
+            for (std::size_t G = 0u; G < GroupCount; ++G)
+            {
+                const MaterialChannelGroup GroupEnum = static_cast<MaterialChannelGroup>(G);
+                std::size_t GroupTotal = 0u;
+                for (std::size_t C = 0u; C < ChannelCount; ++C)
+                {
+                    if (ChannelCatalog[C].Group == GroupEnum) ++GroupTotal;
+                }
+
+                char CountTag[16];
+                std::snprintf(CountTag, sizeof(CountTag), "%zu ch", GroupTotal);
+
+                const Rectangle2D GHeadR{ LeftX, Sy, InnerW, 30.0f };
+                Rectangle2D GIconSlot {};
+                const auto GAct = ConstructOutlinerTreeRow(
+                    Surface, GHeadR, 2u, true, GroupOpen[G], false, false,
+                    ControlIcon::Count, Theme.TextPrimary,
+                    GroupLabels[G], "",
+                    {}, CountTag, -1, -1, -1, Theme, Cursor, Pressed, false, &GIconSlot);
+                DrawGroupQuadrantGlyph(Surface, GIconSlot);
+                if (GAct.CaretToggled || GAct.RowSelected)
+                {
+                    GroupOpen[G] = !GroupOpen[G];
+                }
+                Sy += 31.0f;
+
+                if (!GroupOpen[G])
+                {
+                    continue;
+                }
+
+                for (std::size_t C = 0u; C < ChannelCount; ++C)
+                {
+                    const auto& Spec = ChannelCatalog[C];
+                    if (Spec.Group != GroupEnum) continue;
+
+                    char MetaBuf[40];
+                    if (Spec.ColorChannel)
+                    {
+                        char HexB[12];
+                        FormatHexLower(ChannelTints[C], HexB, sizeof(HexB));
+                        for (char* P = HexB; *P; ++P)
+                        {
+                            if (*P >= 'a' && *P <= 'f') *P = static_cast<char>(*P - 'a' + 'A');
+                        }
+                        std::snprintf(MetaBuf, sizeof(MetaBuf), "Value · %s", HexB);
+                    }
+                    else if (Spec.NormalChannel)
+                    {
+                        std::snprintf(MetaBuf, sizeof(MetaBuf), "Value · Flat +Z");
+                    }
+                    else
+                    {
+                        std::snprintf(MetaBuf, sizeof(MetaBuf), "Value · %.2f", ChannelScalars[C]);
+                    }
+
+                    const Rectangle2D ChRowR{ LeftX, Sy, InnerW, 34.0f };
+                    Rectangle2D ChIconSlot {};
+                    const bool IsSel = (SelectedChannelIndex == C);
+                    const auto ChAct = ConstructOutlinerTreeRow(
+                        Surface, ChRowR, 3u, false, false, IsSel, false,
+                        ControlIcon::Count, Theme.TextPrimary,
+                        Spec.Label, MetaBuf,
+                        {}, "", -1, -1, -1, Theme, Cursor, Pressed, false, &ChIconSlot);
+                    ConstructProceduralChannelIcon(
+                        Surface, ChIconSlot, Spec.Label, ChannelTints[C], Spec.ColorChannel, ChannelScalars[C], true);
+
+                    if (ChAct.RowSelected)
+                    {
+                        SelectedChannelIndex = static_cast<uint32_t>(C);
+                        ChannelExpanded[C]   = !ChannelExpanded[C];
+                    }
+                    Sy += 35.0f;
+                }
+            }
+        }
+    }
+
+    const float ContentH = (Sy - ScrollStartY) + 8.0f;
+    MaxScrollY = std::max(0.0f, ContentH - ScrollRect.Height);
     Surface.PopClip();
 
-    // 3. Bottom Action Footer Bar ("+ Enable | Preset | Reset   Solo | Mute", matching outliner-footer-material.png)
-    const Rectangle2D ActionBarR{ Bounds.X, Bounds.Bottom() - StatusBarH - ActionBarH, Bounds.Width, ActionBarH };
-    Surface.FillRectangle(ActionBarR, Theme.PaneBackground, 0.0f);
-    Surface.StrokeLine({ ActionBarR.X, ActionBarR.Y }, { ActionBarR.Right(), ActionBarR.Y }, Theme.BorderSubtle, 1.0f);
-
-    auto DrawActionPill = [&](Rectangle2D R, const char* Text, bool Active) -> bool
+    // 5. Outliner Action Bar above Footer (+ | ^ | v | Eye ... Trash, matching outliner-footer-material.png)
+    const float ActY = Bounds.Bottom() - ActionBarH - StatusBarH;
+    static constexpr std::array<ControlIcon, 4u> LeftIcons {{
+        ControlIcon::PlusAdd,
+        ControlIcon::ChevronUp,
+        ControlIcon::ChevronDown,
+        ControlIcon::EyeVisible,
+    }};
+    for (std::size_t I = 0u; I < LeftIcons.size(); ++I)
     {
-        const bool Hov = R.Contains(Cursor);
-        Surface.FillRectangle(R, Active ? ColorRgba{ 238u, 238u, 236u, 255u } : (Hov ? Theme.HoverSurface : Theme.SectionSurface), 6.0f);
-        Surface.StrokeRectangle(R, Theme.BorderSubtle, 6.0f, 1.0f);
+        const Rectangle2D BtnR{ LeftX + static_cast<float>(I) * 26.0f, ActY + 3.0f, 24.0f, 24.0f };
+        ConstructHeaderIconButton(Surface, BtnR, LeftIcons[I], false, true, Theme, Cursor, Pressed);
+    }
+    const Rectangle2D TrashR{ Bounds.Right() - PadX - 24.0f, ActY + 3.0f, 24.0f, 24.0f };
+    ConstructHeaderIconButton(Surface, TrashR, ControlIcon::TrashDelete, false, false, Theme, Cursor, Pressed);
+
+    // 6. Bottom 4-Column Telemetry Strip (F0 2.8% | CLASS Hybrid | GLOSS Mirror | ALBEDO 5%)
+    const Rectangle2D FootR{ Bounds.X + 8.0f, Bounds.Bottom() - StatusBarH - 4.0f, Bounds.Width - 16.0f, StatusBarH };
+    Surface.FillRectangle(FootR, ColorRgba{ 19u, 20u, 23u, 255u }, 10.0f);
+    struct FootCol { const char* Label; const char* Value; bool Amber; };
+    static constexpr std::array<FootCol, 4u> FootCols {{
+        { "F0",     "2.8%",   false },
+        { "CLASS",  "Hybrid", true  },
+        { "GLOSS",  "Mirror", false },
+        { "ALBEDO", "5%",     true  },
+    }};
+    const float ColW = (FootR.Width - 16.0f) / 4.0f;
+    for (std::size_t I = 0u; I < 4u; ++I)
+    {
+        const float Cx = FootR.X + 8.0f + static_cast<float>(I) * ColW;
         WorkspaceAppearance::ConstructWeightedText(
-            Surface, Active ? FontWeightClass::SemiBold : FontWeightClass::Medium, { R.X + 8.0f, R.Y + 5.5f }, 8.2f,
-            Active ? ColorRgba{ 16u, 17u, 20u, 255u } : Theme.TextPrimary, Text);
-        return Hov && Pressed;
-    };
-
-    const float BtnY = ActionBarR.Y + 7.0f;
-    if (DrawActionPill({ LeftX, BtnY, 58.0f, 24.0f }, "+ Enable", false))
-    {
-        ChannelEnabled[SelectedChannelIndex % ChannelCount]  = true;
-        ChannelExpanded[SelectedChannelIndex % ChannelCount] = true;
+            Surface, FontWeightClass::Medium, { Cx, FootR.Y + 4.0f }, 7.2f, Theme.TextFaint, FootCols[I].Label);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Medium, { Cx, FootR.Y + 15.0f }, 9.2f,
+            FootCols[I].Amber ? ColorRgba{ 240u, 164u, 58u, 255u } : Theme.TextPrimary, FootCols[I].Value);
     }
-    if (DrawActionPill({ LeftX + 62.0f, BtnY, 48.0f, 24.0f }, "Preset", false) && Session != nullptr && !Session->PresetRepository.empty())
-    {
-        const std::size_t NextIdx = (Session->ActiveTabIndex + 1u) % Session->PresetRepository.size();
-        Session->SelectPresetIdentity(Session->PresetRepository[NextIdx].PresetIdentity);
-    }
-    if (DrawActionPill({ LeftX + 114.0f, BtnY, 44.0f, 24.0f }, "Reset", false))
-    {
-        for (std::size_t I = 0u; I < ChannelCount; ++I)
-        {
-            ChannelScalars[I] = ChannelCatalog[I].DefaultValue;
-            ChannelTints[I]   = ChannelCatalog[I].DefaultTint;
-        }
-    }
-
-    if (DrawActionPill({ Bounds.Right() - PadX - 86.0f, BtnY, 40.0f, 24.0f }, "Solo", SoloActive))
-    {
-        SoloActive = !SoloActive;
-    }
-    if (DrawActionPill({ Bounds.Right() - PadX - 42.0f, BtnY, 42.0f, 24.0f }, "Mute", MuteActive))
-    {
-        MuteActive = !MuteActive;
-    }
-
-    // 4. Bottom Status Footer
-    const Rectangle2D FooterR{ Bounds.X, Bounds.Bottom() - StatusBarH, Bounds.Width, StatusBarH };
-    char StatusLeft[48];
-    std::snprintf(StatusLeft, sizeof(StatusLeft), "%zu/%zu active", CountEnabledChannels(), ChannelCount);
-    ConstructPaneStatusFooter(Surface, FooterR, StatusLeft, "OpenPBR 1.1", Theme, false);
 
     Surface.PopClip();
 }

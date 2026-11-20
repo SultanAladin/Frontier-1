@@ -238,60 +238,71 @@ int main()
             }
         }
 
-        // Exhibit 6: Add Layer overlay sheet + More Tools overlay sheet + Inspector scrolled to PBR Surface Channels + Modifiers (matches 04-HTML-pattern-overlay sheets-and-modifiers.png)
-        PatternHost.AccessLayerStackPane().AddLayerSheetOpen  = true;
-        PatternHost.AccessToolHeaderPane().MoreToolsSheetOpen = true;
-        PatternHost.AccessInspectorPane().ScrollOffsetY       = 560.0f;
+        // Exhibit 6: Add Layer overlay sheet + More Tools overlay sheet + Inspector with Fill & Outline open vertically (rows-side-by-side.png parity)
+        PatternHost.AccessLayerStackPane().AddLayerSheetOpen    = true;
+        PatternHost.AccessToolHeaderPane().MoreToolsSheetOpen   = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[1]    = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[2]    = true;
+        PatternHost.AccessInspectorPane().ScrollOffsetY         = 120.0f;
         if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "06-PatternWorkspaceOverlaySheetsAndModifiers.png"))
         {
             return 1;
         }
 
-        // Exhibit 21: Shapes Context Menu Studio (menu-shapes.png parity — 16 Motif Shapes library)
-        PatternHost.AccessLayerStackPane().AddLayerSheetOpen   = false;
-        PatternHost.AccessToolHeaderPane().MoreToolsSheetOpen  = false;
-        PatternHost.AccessSession().ActiveTool                 = PatternStampToolCategory::Circle;
-        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen = true;
-        PatternHost.AccessInspectorPane().ScrollOffsetY        = 480.0f;
+        // Exhibit 21: Shapes Context Menu Studio (menu-shapes.png parity — 17 Motif Shapes 4-col grid + Fill + Outline)
+        PatternHost.AccessLayerStackPane().AddLayerSheetOpen    = false;
+        PatternHost.AccessToolHeaderPane().MoreToolsSheetOpen   = false;
+        PatternHost.AccessSession().ActiveTool                  = PatternStampToolCategory::Circle;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen  = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[1]    = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[2]    = true;
+        PatternHost.AccessInspectorPane().ScrollOffsetY         = 110.0f;
         if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "21-PatternShapesStudioMenu.png"))
         {
             return 1;
         }
 
-        // Exhibit 22: Gradient Context Menu Studio + Point Field Pins on Canvas & Side-by-Side Inspector (menu-gradient.png & fill-point-field.png parity)
+        // Exhibit 22: Gradient Context Menu (.atm-menu) + Point Field Inspector (menu-gradient.png & fill-point-field.png parity)
         if (auto* Sel = PatternHost.AccessSession().InspectSelectedLayer())
         {
             Sel->FillSource = PatternStampFillSourceMode::PointField;
             PatternStampWorkspaceSession::InitializeDefaultPointFieldPins(*Sel);
         }
-        PatternHost.AccessSession().ActiveTool                 = PatternStampToolCategory::PointGradient;
-        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen = true;
-        PatternHost.AccessInspectorPane().ScrollOffsetY        = 480.0f;
+        PatternHost.AccessSession().ActiveTool                  = PatternStampToolCategory::PointGradient;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen  = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[1]    = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[2]    = false;
+        PatternHost.AccessInspectorPane().ScrollOffsetY         = 140.0f;
         if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "22-PatternGradientStudioMenu.png"))
         {
             return 1;
         }
 
-        // Exhibit 23: Viewport-Placed Linear Gradient Handles + Side-by-Side Multi-Open Channels (fill-linear-scene.png & rows-side-by-side.png parity)
+        // Exhibit 23: Viewport-Placed Linear Gradient Handles + Vertically Open Fill & Outline Rows (fill-linear-scene.png & rows-side-by-side.png parity)
         if (auto* Sel = PatternHost.AccessSession().InspectSelectedLayer())
         {
             Sel->FillSource = PatternStampFillSourceMode::LinearGradient;
         }
-        PatternHost.AccessSession().ActiveTool                 = PatternStampToolCategory::Select;
-        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen = false;
-        PatternHost.AccessInspectorPane().ScrollOffsetY        = 480.0f;
+        PatternHost.AccessSession().ActiveTool                  = PatternStampToolCategory::Select;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen  = false;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[1]    = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[2]    = true;
+        PatternHost.AccessInspectorPane().ScrollOffsetY         = 140.0f;
         if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "23-PatternLinearSceneFill.png"))
         {
             return 1;
         }
 
-        // Exhibit 24: Curve & Pen Studio Context Menu
+        // Exhibit 24: Path (Curve & Pen) Context Menu (.atm-menu pathView parity)
         if (auto* Sel = PatternHost.AccessSession().InspectSelectedLayer())
         {
             Sel->FillSource = PatternStampFillSourceMode::Solid;
         }
-        PatternHost.AccessSession().ActiveTool                 = PatternStampToolCategory::Curve;
-        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen = true;
+        PatternHost.AccessSession().ActiveTool                  = PatternStampToolCategory::Curve;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen  = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[1]    = false;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[2]    = false;
+        PatternHost.AccessInspectorPane().ScrollOffsetY         = 0.0f;
         if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "24-PatternCurvePenStudioMenu.png"))
         {
             return 1;

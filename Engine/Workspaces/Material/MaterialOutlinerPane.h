@@ -1,8 +1,8 @@
 /*============================================================================================================================================
                                                           MATERIALOUTLINERPANE.H
 ============================================================================================================================================*/
-// 🧩 Left-docked Outliner pane for the Frontier Material Workspace: 28 OpenPBR 1.1 channels organized into 6 collapsible groups,
-//    search & All/On filter bar, per-channel swatch/bar + toggle switch, and bottom "+ Enable | Preset | Reset · Solo | Mute" footer bar.
+// 🧩 Left-docked Project Zero Outliner pane for the Frontier Material Workspace: Material Scene & Strata header,
+//    STRATA / DRIVEN KPI tiles, quick stratum preset chips, hierarchical scene/strata/group/channel tree, action bar, and 4-column telemetry.
 
 #pragma once
 
@@ -23,25 +23,27 @@ namespace Frontier::Workspaces
 
 enum class MaterialChannelGroup : uint8_t
 {
-    BaseSurface     = 0,
-    Microsurface    = 1,
-    CoatAndFilm     = 2,
-    SheenAndFuzz    = 3,
-    TransmissionSss = 4,
-    EmissionOpacity = 5,
-    Count           = 6,
+    Core                   = 0,
+    Specular               = 1,
+    Coat                   = 2,
+    Sheen                  = 3,
+    ThinFilm               = 4,
+    TransmissionAndEmissive= 5,
+    Count                  = 6,
 };
 
 struct MaterialChannelEntrySpec
 {
     uint32_t             Index        = 0u;
-    MaterialChannelGroup Group        = MaterialChannelGroup::BaseSurface;
+    MaterialChannelGroup Group        = MaterialChannelGroup::Core;
     const char*          Label        = "";
     const char*          Subtitle     = "";
+    const char*          KeySlug      = "";
     bool                 ColorChannel = false;
-    ColorRgba            DefaultTint  { 185u, 122u, 69u, 255u };
+    bool                 NormalChannel= false;
+    ColorRgba            DefaultTint  { 9u, 12u, 17u, 255u };
     float                DefaultValue = 0.5f;
-    const char*          UnitSuffix   = "%";
+    const char*          UnitSuffix   = "";
 };
 
 class MaterialOutlinerPane
@@ -68,17 +70,22 @@ public:
 
     [[nodiscard]] static const std::array<MaterialChannelEntrySpec, ChannelCount>& QueryChannelCatalog() noexcept;
     [[nodiscard]] static const std::array<const char*, GroupCount>&               QueryGroupNames() noexcept;
+    [[nodiscard]] static const std::array<const char*, GroupCount>&               QueryGroupUpperNames() noexcept;
 
     [[nodiscard]] std::size_t CountEnabledChannels() const noexcept;
+    [[nodiscard]] std::size_t CountDrivenChannels() const noexcept;
 
 public:
-    std::array<bool, ChannelCount>      ChannelEnabled {};
-    std::array<bool, ChannelCount>      ChannelExpanded {};
+    std::array<bool, ChannelCount>      ChannelEnabled   {};
+    std::array<bool, ChannelCount>      ChannelExpanded  {};
     std::array<uint8_t, ChannelCount>   ChannelSourceTab {}; // 0: Value, 1: Field, 2: Ramp, 3: Image
-    std::array<float, ChannelCount>     ChannelScalars {};
-    std::array<ColorRgba, ChannelCount> ChannelTints   {};
-    std::array<bool, GroupCount>        GroupOpen      {{ true, true, true, false, false, false }};
+    std::array<float, ChannelCount>     ChannelScalars   {};
+    std::array<ColorRgba, ChannelCount> ChannelTints     {};
+    std::array<bool, GroupCount>        GroupOpen        {{ true, false, false, false, false, false }};
+    std::array<bool, GroupCount>        InspectorGroupOpen {{ true, false, false, false, false, false }};
 
+    bool     SceneNodeOpen        = true;
+    bool     StratumNodeOpen      = true;
     uint32_t SelectedChannelIndex = 0u;
     bool     FilterActiveOnly     = false;
     bool     SoloActive           = false;

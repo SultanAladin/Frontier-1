@@ -1,8 +1,9 @@
 /*============================================================================================================================================
                                                          PATTERNSTAMPINSPECTORPANE.H
 ============================================================================================================================================*/
-// 🧩 Right-docked Inspector pane shared by Pattern Studio and Stamp Studio: KPI trio, Layer Properties, 22 PBR Surface Channels,
-//    Layer Mask, 8 Non-Destructive Modifiers, Document Ground & Tile, fitted dropdown sheets, and 16-swatch colour picker.
+// 🧩 Right-docked Project Zero Artwork Inspector pane shared by Pattern Studio and Stamp Studio (cards-pattern.png, rows-side-by-side.png,
+//    fill-linear-scene.png, fill-point-field.png, menu-shapes.png): Document hero, 3 KPI tiles (Instances, Coverage, Palette), 7 vertical
+//    collapsible layer property rows (Shape, Fill, Outline, Placement, Blend, Surface, Mask), Modifiers list, Document fold, and Export bar.
 
 #pragma once
 
@@ -14,6 +15,7 @@
 #include "Engine/Workspaces/Texturing/PatternStampStackSession.h"
 #include "Engine/Workspaces/Texturing/TexturingPaneAppearance.h"
 
+#include <array>
 #include <cstdint>
 
 namespace Frontier::Workspaces
@@ -41,70 +43,16 @@ public:
 public:
     float ScrollOffsetY = 0.0f;
 
+    // 7 vertical collapsible layer property rows: 0=Shape, 1=Fill, 2=Outline, 3=Placement, 4=Blend, 5=Surface, 6=Mask
+    std::array<bool, 7u> PropertyRowOpen {{ false, false, false, false, false, false, false }};
+    bool                 WholeCanvasRamp = true;
+
 private:
-    enum class InspectorSheetVariant : uint8_t
-    {
-        None = 0,
-        MotifShape,
-        BlendMode,
-        SurfaceFinish,
-        AddChannel,
-        ModifierNoiseAlgo,
-        ModifierModTarget,
-    };
-
-    enum class SwatchTargetChannel : uint8_t
-    {
-        None = 0,
-        LayerFill,
-        LayerStroke,
-        GroundTint,
-        PbrChannel,
-        ModifierTintB,
-    };
-
     void CloseAllSheets() noexcept;
 
-    PatternStampWorkspaceSession* Session                  = nullptr;
-
-    // Collapsible sections
-    bool LayerSwitcherOpen      = false;
-    bool LayerPropsExpanded     = true;
-    bool PbrChannelsExpanded    = true;
-    bool ActiveOnlyChannels     = false;
-    std::array<bool, 5u> ChannelGroupOpen {{ true, true, false, false, false }};
-    std::array<bool, 22u> ChannelExpanded {{
-        true,  // Albedo (open by default for side-by-side pair)
-        false, // Roughness
-        false, // Metalness
-        true,  // Height (open by default alongside Albedo when in Surface/Microsurface or side-by-side)
-        false, false, false, false, false, false, false,
-        false, false, false, false, false, false, false,
-        false, false, false, false
-    }};
-    std::array<PatternStampFillSourceMode, 22u> ChannelSourceMode {};
-    bool LayerMaskExpanded      = false;
-    bool ModifiersExpanded      = true;
-    bool GroundSectionExpanded  = false;
-
-    // Active sheets / pickers / buffers
-    InspectorSheetVariant       ActiveSheet              = InspectorSheetVariant::None;
-    std::size_t              ActiveSheetModIdx        = 0u;
-    Rectangle2D              ActiveSheetAnchor        {};
-    float                    DropdownScrollY          = 0.0f;
-
-    SwatchTargetChannel      ActiveSwatchTarget       = SwatchTargetChannel::None;
-    PatternStampSurfaceChannelKey ActiveSwatchChannelKey   = PatternStampSurfaceChannelKey::Albedo;
-    std::size_t              ActiveSwatchModIdx       = 0u;
-    Rectangle2D              ActiveSwatchAnchor       {};
-
-    TextEditBuffer           LayerNameBuffer          {};
-    TextEditBuffer           TypographicBuffer        {};
-    uint32_t                 SyncedNameLayerId        = 0u;
-    uint32_t                 SyncedTextLayerId        = 0u;
-
-    int32_t                  ActiveSliderId           = -1;
-    float                    CachedContentHeight      = 0.0f;
+    PatternStampWorkspaceSession* Session             = nullptr;
+    int32_t                       ActiveSliderId      = -1;
+    float                         CachedContentHeight = 0.0f;
 };
 
 } // namespace Frontier::Workspaces

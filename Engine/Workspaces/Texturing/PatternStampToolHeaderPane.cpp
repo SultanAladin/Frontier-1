@@ -99,6 +99,11 @@ void DrawMotifPreviewInWell(PixelSpace& Surface, Rectangle2D WellR, std::size_t 
 {
     const Point2D C{ WellR.X + WellR.Width * 0.5f, WellR.Y + WellR.Height * 0.5f };
     const float R = std::min(WellR.Width, WellR.Height) * 0.34f;
+    if (ShapeIdx == 16u)
+    {
+        Surface.StrokeLine({ C.X - R, C.Y + R * 0.72f }, { C.X + R, C.Y - R * 0.72f }, Ink, 2.4f);
+        return;
+    }
     switch (ShapeIdx % 16u)
     {
         case 0u: Surface.FillCircle(C, R, Ink); break;
@@ -991,314 +996,253 @@ void PatternStampToolHeaderPane::Render(
             &ViewSheetScrollY);
     }
 
-    // 6. Floating Tool Context Menu Studio (menu-shapes.png, menu-gradient.png, Curve & Pen Studio, Text Studio)
+    // 6. Floating Tool Context Menu (.atm-menu from ArtworkToolMenu.js — menu-shapes.png & menu-gradient.png 1:1 parity)
     if (ToolStudioModalOpen)
     {
-        Surface.FillRectangle(Bounds, ColorRgba{ 0u, 0u, 0u, 132u });
-
-        const float ModalW = std::min(680.0f, Bounds.Width - 28.0f);
-        const float ModalH = std::min(540.0f, Bounds.Height - 28.0f);
-        const Rectangle2D ModalR{
-            Bounds.X + (Bounds.Width - ModalW) * 0.5f,
-            Bounds.Y + (Bounds.Height - ModalH) * 0.5f,
-            ModalW,
-            ModalH
-        };
-
-        Surface.FillRectangle(ModalR, Theme.PaneBackground, 16.0f);
-        Surface.StrokeRectangle(ModalR, Theme.BorderStrong, 16.0f, 1.2f);
-
         const bool IsGradStudio  = (Session->ActiveTool == PatternStampToolCategory::PointGradient);
-        const bool IsCurveStudio = (Session->ActiveTool == PatternStampToolCategory::Curve || Session->ActiveTool == PatternStampToolCategory::Pen || Session->ActiveTool == PatternStampToolCategory::EditPoints);
-        const bool IsTextStudio  = (Session->ActiveTool == PatternStampToolCategory::TextBlock);
+        const bool IsCurveStudio = (Session->ActiveTool == PatternStampToolCategory::Curve ||
+                                    Session->ActiveTool == PatternStampToolCategory::Pen ||
+                                    Session->ActiveTool == PatternStampToolCategory::EditPoints);
 
-        ControlIcon HeadIc  = ControlIcon::ShapeCircle;
-        const char* HeadTtl = "Shapes · Circle";
-        const char* HeadSub = "SHAPE LIBRARY · RIGHT-CLICK ANY TOOL TO SWITCH";
-        if (IsGradStudio)
-        {
-            HeadIc  = ControlIcon::PointGradient;
-            HeadTtl = "Gradient · Point Gradient";
-            HeadSub = "GRADIENT · RIGHT-CLICK ANY TOOL TO SWITCH";
-        }
-        else if (IsCurveStudio)
-        {
-            HeadIc  = ControlIcon::VectorCurve;
-            HeadTtl = "Curve & Pen · Bezier Path";
-            HeadSub = "VECTOR PATH · RIGHT-CLICK ANY TOOL TO SWITCH";
-        }
-        else if (IsTextStudio)
-        {
-            HeadIc  = ControlIcon::TextType;
-            HeadTtl = "Text Studio · Archivo Bold";
-            HeadSub = "VECTOR TYPE · RIGHT-CLICK ANY TOOL TO SWITCH";
-        }
+        const float MenuW = IsGradStudio || IsCurveStudio ? 368.0f : 412.0f;
+        const float MenuH = IsGradStudio ? 426.0f : (IsCurveStudio ? 310.0f : 564.0f);
+        const float MenuX = std::clamp(Bounds.X + 118.0f, Bounds.X + 12.0f, Bounds.Right() - MenuW - 12.0f);
+        const float MenuY = std::min(Band2Rect.Bottom() + 6.0f, Bounds.Bottom() - MenuH - 12.0f);
+        const Rectangle2D ModalR{ MenuX, MenuY, MenuW, MenuH };
 
-        const Rectangle2D HeadR{ ModalR.X, ModalR.Y, ModalR.Width, 52.0f };
-        Surface.StrokeLine({ HeadR.X, HeadR.Bottom() }, { HeadR.Right(), HeadR.Bottom() }, Theme.BorderSubtle, 1.0f);
-        const Rectangle2D HeadIconBox{ HeadR.X + 14.0f, HeadR.Y + 10.0f, 32.0f, 32.0f };
-        Surface.FillRectangle(HeadIconBox, Theme.WellSurface, 8.0f);
-        Surface.StrokeRectangle(HeadIconBox, Theme.BorderSubtle, 8.0f, 1.0f);
-        VectorIconRepository::ConstructControl(
-            Surface, HeadIc, VectorIconPlacement{ HeadIconBox.X + 8.0f, HeadIconBox.Y + 8.0f, 16.0f, Theme.TextPrimary, 1.75f });
+        // Outer .atm-menu frame (#121212 panel fill, 22px radius, --line-strong border, no canvas dim backdrop!)
+        Surface.FillRectangle(ModalR, ColorRgba{ 18u, 18u, 20u, 250u }, 22.0f);
+        Surface.StrokeRectangle(ModalR, ColorRgba{ 255u, 255u, 255u, 42u }, 22.0f, 1.0f);
+
+        const char* AtmTitle = IsGradStudio ? "Gradient" : (IsCurveStudio ? "Path" : "Shapes");
+        const char* AtmTool  = IsGradStudio ? "GRADIENT" : (IsCurveStudio ? "CURVE" : "CIRCLE");
+
+        // .atm-bar header
+        const Rectangle2D HeadR{ ModalR.X, ModalR.Y, ModalR.Width, 40.0f };
+        Surface.StrokeLine({ HeadR.X, HeadR.Bottom() }, { HeadR.Right(), HeadR.Bottom() }, ColorRgba{ 255u, 255u, 255u, 20u }, 1.0f);
+        const float TitleW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.8f, AtmTitle);
         WorkspaceAppearance::ConstructWeightedText(
-            Surface, FontWeightClass::Bold, { HeadIconBox.Right() + 10.0f, HeadR.Y + 10.0f }, 12.8f, Theme.TextPrimary, HeadTtl);
+            Surface, FontWeightClass::Regular, { HeadR.X + 16.0f, HeadR.Y + 12.0f }, 10.8f, Theme.TextPrimary, AtmTitle);
         WorkspaceAppearance::ConstructWeightedText(
-            Surface, FontWeightClass::Medium, { HeadIconBox.Right() + 10.0f, HeadR.Y + 28.0f }, 8.0f, Theme.TextFaint, HeadSub);
+            Surface, FontWeightClass::SemiBold, { HeadR.X + 24.0f + TitleW, HeadR.Y + 14.5f }, 8.2f,
+            ColorRgba{ 232u, 194u, 122u, 255u }, AtmTool);
 
-        const Rectangle2D CloseBtnR{ HeadR.Right() - 40.0f, HeadR.Y + 12.0f, 28.0f, 28.0f };
-        Surface.FillRectangle(CloseBtnR, CloseBtnR.Contains(Cursor) ? Theme.HoverSurface : Theme.SectionSurface, 7.0f);
+        const Rectangle2D CloseBtnR{ HeadR.Right() - 36.0f, HeadR.Y + 8.0f, 24.0f, 24.0f };
+        Surface.FillRectangle(CloseBtnR, CloseBtnR.Contains(Cursor) ? ColorRgba{ 48u, 50u, 56u, 255u } : ColorRgba{ 34u, 35u, 39u, 255u }, 12.0f);
         VectorIconRepository::ConstructControl(
-            Surface, ControlIcon::CloseCross, VectorIconPlacement{ CloseBtnR.X + 8.0f, CloseBtnR.Y + 8.0f, 12.0f, Theme.TextPrimary, 1.7f });
+            Surface, ControlIcon::CloseCross, VectorIconPlacement{ CloseBtnR.X + 7.0f, CloseBtnR.Y + 7.0f, 10.0f, Theme.TextMuted, 1.65f });
         if (Pressed && CloseBtnR.Contains(Cursor))
         {
             ToolStudioModalOpen = false;
         }
 
-        const float NavW = 176.0f;
-        const Rectangle2D NavColR{ ModalR.X, HeadR.Bottom() + 1.0f, NavW, ModalR.Height - HeadR.Height - 1.0f };
-        const Rectangle2D RightPaneR{ NavColR.Right() + 1.0f, NavColR.Y, ModalR.Width - NavW - 1.0f, NavColR.Height };
-        Surface.StrokeLine({ NavColR.Right(), NavColR.Y }, { NavColR.Right(), NavColR.Bottom() }, Theme.BorderSubtle, 1.0f);
-
-        struct StudioNavRow { const char* Label; const char* Badge; ControlIcon Icon; };
-        std::array<StudioNavRow, 4u> NavRows {{
-            { "Library",  IsGradStudio ? "4" : (IsCurveStudio || IsTextStudio ? "6" : "16"), ControlIcon::LayersSlabs },
-            { IsGradStudio ? "Stops" : (IsCurveStudio ? "Stroke & Cap" : (IsTextStudio ? "Typography" : "Shape")), "", ControlIcon::ShapeCircle },
-            { IsGradStudio ? "Geometry" : (IsCurveStudio ? "Smoothing" : (IsTextStudio ? "Layout" : "Transform")), "", ControlIcon::VectorCurve },
-            { "Material", "", ControlIcon::MaterialSphere },
-        }};
-
-        float NavY = NavColR.Y + 10.0f;
-        for (uint32_t Ni = 0u; Ni < 4u; ++Ni)
-        {
-            const Rectangle2D RowR{ NavColR.X + 8.0f, NavY, NavColR.Width - 16.0f, 30.0f };
-            const bool Act = (ToolStudioSubTab == Ni);
-            const bool Hov = RowR.Contains(Cursor);
-            if (Act || Hov)
-            {
-                Surface.FillRectangle(RowR, Act ? Theme.HoverSurface : Theme.SectionSurface, 7.0f);
-            }
-            if (Act)
-            {
-                Surface.FillRectangle({ RowR.X, RowR.Y + 6.0f, 3.0f, RowR.Height - 12.0f }, ColorRgba{ 255u, 255u, 255u, 255u }, 1.5f);
-            }
-            VectorIconRepository::ConstructControl(
-                Surface, NavRows[Ni].Icon, VectorIconPlacement{ RowR.X + 9.0f, RowR.Y + 8.0f, 14.0f, Act ? Theme.TextPrimary : Theme.TextMuted, 1.7f });
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface, Act ? FontWeightClass::SemiBold : FontWeightClass::Medium, { RowR.X + 29.0f, RowR.Y + 7.5f }, 9.6f, Act ? Theme.TextPrimary : Theme.TextMuted, NavRows[Ni].Label);
-            if (NavRows[Ni].Badge[0] != '\0')
-            {
-                WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Medium, { RowR.Right() - 22.0f, RowR.Y + 8.0f }, 8.4f, Theme.TextFaint, NavRows[Ni].Badge);
-            }
-            if (Pressed && Hov)
-            {
-                ToolStudioSubTab = Ni;
-            }
-            NavY += 33.0f;
-        }
-
-        Surface.PushClip(RightPaneR);
-        float Cy = RightPaneR.Y + 12.0f;
-        const float Cx = RightPaneR.X + 16.0f;
-        const float Cw = RightPaneR.Width - 32.0f;
+        const float Bx = ModalR.X + 12.0f;
+        const float Bw = ModalR.Width - 24.0f;
+        float       By = HeadR.Bottom() + 8.0f;
         PatternStampLayerSpec* SelLayer = Session->InspectSelectedLayer();
+
+        auto DrawAtmSeg = [&](float Y, std::span<const char* const> Labels, std::size_t ActiveIdx) -> std::size_t
+        {
+            const Rectangle2D SegR{ Bx + 10.0f, Y, Bw - 20.0f, 28.0f };
+            Surface.FillRectangle(SegR, ColorRgba{ 5u, 5u, 6u, 255u }, 14.0f);
+            const float BtnW = (SegR.Width - 6.0f) / static_cast<float>(Labels.size());
+            std::size_t Picked = ActiveIdx;
+            for (std::size_t I = 0u; I < Labels.size(); ++I)
+            {
+                const Rectangle2D Br{ SegR.X + 3.0f + static_cast<float>(I) * BtnW, SegR.Y + 3.0f, BtnW, 22.0f };
+                const bool Act = (I == ActiveIdx);
+                if (Act)
+                {
+                    Surface.FillRectangle(Br, ColorRgba{ 239u, 244u, 207u, 255u }, 11.0f);
+                }
+                const float Tw = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, Act ? FontWeightClass::SemiBold : FontWeightClass::Regular, 8.8f, Labels[I]);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, Act ? FontWeightClass::SemiBold : FontWeightClass::Regular,
+                    { Br.X + (Br.Width - Tw) * 0.5f, Br.Y + 4.5f }, 8.8f,
+                    Act ? ColorRgba{ 23u, 25u, 14u, 255u } : Theme.TextMuted, Labels[I]);
+                if (Pressed && Br.Contains(Cursor))
+                {
+                    Picked = I;
+                }
+            }
+            return Picked;
+        };
+
+        auto DrawAtmColourPill = [&](float X, float Y, float W, ColorRgba Col, const char* HexText)
+        {
+            const Rectangle2D PillR{ X, Y, W, 28.0f };
+            Surface.FillRectangle(PillR, ColorRgba{ 5u, 5u, 6u, 255u }, 14.0f);
+            Surface.FillCircle({ PillR.X + 14.0f, PillR.Y + 14.0f }, 10.0f, Col);
+            Surface.StrokeCircle({ PillR.X + 14.0f, PillR.Y + 14.0f }, 10.0f, ColorRgba{ 255u, 255u, 255u, 36u }, 1.0f);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Medium, { PillR.X + 30.0f, PillR.Y + 7.5f }, 8.6f, Theme.TextMuted, HexText);
+        };
 
         if (IsGradStudio)
         {
-            // menu-gradient.png parity: 4 Gradient Modes (Point Gradient, Linear, Radial, Angular)
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold, { Cx, Cy }, 9.0f, Theme.TextFaint, "GRADIENT MODES");
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { RightPaneR.Right() - 26.0f, Cy }, 9.0f, Theme.TextFaint, "4");
-            Cy += 20.0f;
+            // Section 1: TARGET (Fill | Outline | Ground + Editing Solid Disc / Fine Accent Rings)
+            const Rectangle2D Sec1{ Bx, By, Bw, 80.0f };
+            Surface.FillRectangle(Sec1, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "TARGET");
+            static constexpr const char* TargetTabs[3] { "Fill", "Outline", "Ground" };
+            (void)DrawAtmSeg(By + 24.0f, TargetTabs, 0u);
+            char EditNote[64];
+            std::snprintf(EditNote, sizeof(EditNote), "Editing %s", SelLayer != nullptr ? SelLayer->Name.c_str() : "Solid Disc");
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Bx + 10.0f, By + 58.0f }, 8.4f, Theme.TextMuted, EditNote);
+            By += 88.0f;
 
-            struct GradModeCard { const char* Title; const char* Sub; PatternStampFillSourceMode Mode; };
-            constexpr std::array<GradModeCard, 4u> GradModes {{
-                { "Point Gradient", "Multi-stop 2D pin field",         PatternStampFillSourceMode::PointField     },
-                { "Linear",         "Two-handle directional ramp",     PatternStampFillSourceMode::LinearGradient },
-                { "Radial",         "Concentric falloff from centre",  PatternStampFillSourceMode::RadialGradient },
-                { "Angular",        "Conical sweep around origin",     PatternStampFillSourceMode::LinearGradient },
+            // Section 2: SOURCE (Linear | Radial | Point field + Interpolation dropdown)
+            const Rectangle2D Sec2{ Bx, By, Bw, 94.0f };
+            Surface.FillRectangle(Sec2, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "SOURCE");
+            static constexpr const char* SourceTabs[3] { "Linear", "Radial", "Point field" };
+            const std::size_t CurSrc = (SelLayer != nullptr && SelLayer->FillSource == PatternStampFillSourceMode::PointField) ? 2u : 1u;
+            (void)DrawAtmSeg(By + 24.0f, SourceTabs, CurSrc);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Bx + 10.0f, By + 64.0f }, 8.8f, Theme.TextMuted, "Interpolation");
+            const Rectangle2D InterpR{ Bx + 96.0f, By + 58.0f, Bw - 106.0f, 26.0f };
+            Surface.FillRectangle(InterpR, ColorRgba{ 5u, 5u, 6u, 255u }, 13.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { InterpR.X + 12.0f, InterpR.Y + 6.0f }, 8.8f, Theme.TextPrimary, "Step");
+            VectorIconRepository::ConstructControl(
+                Surface, ControlIcon::ChevronDown, VectorIconPlacement{ InterpR.Right() - 16.0f, InterpR.Y + 8.5f, 9.0f, Theme.TextMuted, 1.6f });
+            By += 102.0f;
+
+            // Section 3: STOPS (ramp bar + 3 colour stop pills + help note)
+            const Rectangle2D Sec3{ Bx, By, Bw, 134.0f };
+            Surface.FillRectangle(Sec3, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "STOPS");
+            const Rectangle2D RampR{ Bx + 10.0f, By + 24.0f, Bw - 20.0f, 12.0f };
+            const std::array<ColorRgba, 3u> Stops {{
+                { 234u, 236u, 239u, 255u },
+                { 162u, 177u, 192u, 255u },
+                {  90u, 118u, 146u, 255u },
             }};
-
-            const float Gap = 10.0f;
-            const float CardW = (Cw - Gap) * 0.5f;
-            const float CardH = 104.0f;
-            for (std::size_t G = 0u; G < 4u; ++G)
+            const float SegW = RampR.Width / 3.0f;
+            for (std::size_t S = 0u; S < 3u; ++S)
             {
-                const std::size_t Col = G % 2u;
-                const std::size_t Row = G / 2u;
-                const Rectangle2D CardR{ Cx + static_cast<float>(Col) * (CardW + Gap), Cy + static_cast<float>(Row) * (CardH + Gap), CardW, CardH };
-                const bool Act = (G == 0u && (SelLayer == nullptr || SelLayer->FillSource == PatternStampFillSourceMode::PointField)) ||
-                                 (G == 1u && SelLayer != nullptr && SelLayer->FillSource == PatternStampFillSourceMode::LinearGradient) ||
-                                 (G == 2u && SelLayer != nullptr && SelLayer->FillSource == PatternStampFillSourceMode::RadialGradient);
-                Surface.FillRectangle(CardR, Act ? Theme.HoverSurface : Theme.SectionSurface, 10.0f);
-                Surface.StrokeRectangle(CardR, Act ? ColorRgba{ 240u, 240u, 238u, 240u } : Theme.BorderSubtle, 10.0f, Act ? 1.5f : 1.0f);
-
-                const Rectangle2D WellR{ CardR.X + 6.0f, CardR.Y + 6.0f, CardR.Width - 12.0f, 54.0f };
-                Surface.FillRectangle(WellR, ColorRgba{ 16u, 18u, 22u, 255u }, 7.0f);
-                if (G == 0u)
-                {
-                    Surface.FillCircle({ WellR.X + WellR.Width * 0.30f, WellR.Y + WellR.Height * 0.45f }, 22.0f, ColorRgba{ 232u, 194u, 122u, 150u });
-                    Surface.FillCircle({ WellR.X + WellR.Width * 0.70f, WellR.Y + WellR.Height * 0.55f }, 22.0f, ColorRgba{ 96u, 165u, 250u, 150u });
-                    Surface.FillCircle({ WellR.X + WellR.Width * 0.30f, WellR.Y + WellR.Height * 0.45f }, 4.5f, ColorRgba{ 239u, 244u, 207u, 255u });
-                    Surface.FillCircle({ WellR.X + WellR.Width * 0.70f, WellR.Y + WellR.Height * 0.55f }, 4.5f, ColorRgba{ 96u, 165u, 250u, 255u });
-                }
-                else if (G == 1u)
-                {
-                    for (int S = 0; S < 16; ++S)
-                    {
-                        const float T = static_cast<float>(S) / 15.0f;
-                        const ColorRgba Mix{
-                            static_cast<uint8_t>(232.0f + (58.0f - 232.0f) * T),
-                            static_cast<uint8_t>(194.0f + (120.0f - 194.0f) * T),
-                            static_cast<uint8_t>(122.0f + (196.0f - 122.0f) * T),
-                            255u };
-                        Surface.FillRectangle({ WellR.X + static_cast<float>(S) * (WellR.Width / 16.0f), WellR.Y, WellR.Width / 16.0f + 1.0f, WellR.Height }, Mix, 0.0f);
-                    }
-                }
-                else if (G == 2u)
-                {
-                    const Point2D Wc{ WellR.X + WellR.Width * 0.5f, WellR.Y + WellR.Height * 0.5f };
-                    Surface.FillCircle(Wc, 24.0f, ColorRgba{ 70u, 118u, 178u, 140u });
-                    Surface.FillCircle(Wc, 15.0f, ColorRgba{ 168u, 164u, 148u, 190u });
-                    Surface.FillCircle(Wc, 7.0f,  ColorRgba{ 239u, 244u, 207u, 255u });
-                }
-                else
-                {
-                    const Point2D Wc{ WellR.X + WellR.Width * 0.5f, WellR.Y + WellR.Height * 0.5f };
-                    Surface.FillCircle(Wc, 22.0f, ColorRgba{ 148u, 140u, 120u, 180u });
-                    Surface.StrokeLine(Wc, { Wc.X + 22.0f, Wc.Y }, ColorRgba{ 239u, 244u, 207u, 255u }, 2.0f);
-                }
-
-                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { CardR.X + 10.0f, CardR.Y + 66.0f }, 9.6f, Theme.TextPrimary, GradModes[G].Title);
-                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular,  { CardR.X + 10.0f, CardR.Y + 82.0f }, 8.0f, Theme.TextFaint,   GradModes[G].Sub);
-
-                if (Pressed && CardR.Contains(Cursor) && SelLayer != nullptr)
-                {
-                    SelLayer->FillSource = GradModes[G].Mode;
-                    if (SelLayer->FillSource == PatternStampFillSourceMode::PointField)
-                    {
-                        PatternStampWorkspaceSession::InitializeDefaultPointFieldPins(*SelLayer);
-                    }
-                    Session->BumpRevision();
-                }
+                Surface.FillRectangle({ RampR.X + static_cast<float>(S) * SegW, RampR.Y, SegW + 1.0f, RampR.Height }, Stops[S], 6.0f);
             }
+            DrawAtmColourPill(Bx + 10.0f,   By + 44.0f, 88.0f, Stops[0], "#EAECEF");
+            DrawAtmColourPill(Bx + 104.0f,  By + 44.0f, 88.0f, Stops[1], "#A2B1C0");
+            DrawAtmColourPill(Bx + 198.0f,  By + 44.0f, 88.0f, Stops[2], "#5A7692");
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Regular, { Bx + 10.0f, By + 82.0f }, Bw - 20.0f, 8.0f, Theme.TextFaint,
+                "Drag the centre to move the ramp, the rim handle to size it. Click the");
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Regular, { Bx + 10.0f, By + 96.0f }, Bw - 20.0f, 8.0f, Theme.TextFaint,
+                "line to add a stop, drag stops along it, double-click one to remove it.");
+            By += 142.0f;
+
+            // Reset placement button on bottom-right
+            const Rectangle2D ResetBtnR{ ModalR.Right() - 118.0f, By, 106.0f, 26.0f };
+            Surface.FillRectangle(ResetBtnR, ColorRgba{ 34u, 35u, 39u, 255u }, 13.0f);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Medium, { ResetBtnR.X + 14.0f, ResetBtnR.Y + 6.0f }, 8.4f, Theme.TextPrimary, "Reset placement");
         }
         else if (IsCurveStudio)
         {
-            // Curve & Pen Studio 6 vector curve/stroke presets
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold, { Cx, Cy }, 9.0f, Theme.TextFaint, "CURVE & PEN PRESETS");
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { RightPaneR.Right() - 26.0f, Cy }, 9.0f, Theme.TextFaint, "6");
-            Cy += 22.0f;
+            // Path menu (ArtworkToolMenu.js pathView 1:1): CURVE (Smoothing) + LOOK (Outline width, Colour, Fill closed paths)
+            const Rectangle2D Sec1{ Bx, By, Bw, 54.0f };
+            Surface.FillRectangle(Sec1, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "CURVE");
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular,  { Bx + 10.0f, By + 28.0f }, 8.8f, Theme.TextMuted, "Smoothing");
+            const Rectangle2D STrack1{ Bx + 96.0f, By + 32.0f, Bw - 146.0f, 6.0f };
+            Surface.FillRectangle(STrack1, ColorRgba{ 48u, 50u, 56u, 255u }, 3.0f);
+            Surface.FillCircle({ STrack1.X + STrack1.Width * 0.5f, STrack1.Y + 3.0f }, 6.5f, ColorRgba{ 235u, 235u, 235u, 255u });
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { Bx + Bw - 10.0f, By + 28.0f }, 8.4f, Theme.TextPrimary, "0.5");
+            By += 62.0f;
 
-            constexpr std::array<const char*, 6u> CurvePresets {{
-                "Smooth Cubic Spline", "Sharp Polyline", "Calligraphic Taper",
-                "Closed Contour Loop", "Precision Technical", "Symmetric Ribbon"
-            }};
-            const float Gap = 10.0f;
-            const float CardW = (Cw - Gap) * 0.5f;
-            const float CardH = 74.0f;
-            for (std::size_t K = 0u; K < 6u; ++K)
-            {
-                const std::size_t Col = K % 2u;
-                const std::size_t Row = K / 2u;
-                const Rectangle2D CardR{ Cx + static_cast<float>(Col) * (CardW + Gap), Cy + static_cast<float>(Row) * (CardH + Gap), CardW, CardH };
-                const bool Act = (K == 0u);
-                Surface.FillRectangle(CardR, Act ? Theme.HoverSurface : Theme.SectionSurface, 10.0f);
-                Surface.StrokeRectangle(CardR, Act ? ColorRgba{ 240u, 240u, 238u, 240u } : Theme.BorderSubtle, 10.0f, Act ? 1.5f : 1.0f);
+            const Rectangle2D Sec2{ Bx, By, Bw, 128.0f };
+            Surface.FillRectangle(Sec2, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "LOOK");
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular,  { Bx + 10.0f, By + 28.0f }, 8.8f, Theme.TextMuted, "Outline width");
+            const Rectangle2D STrack2{ Bx + 96.0f, By + 32.0f, Bw - 146.0f, 6.0f };
+            Surface.FillRectangle(STrack2, ColorRgba{ 48u, 50u, 56u, 255u }, 3.0f);
+            Surface.FillCircle({ STrack2.X + STrack2.Width * 0.25f, STrack2.Y + 3.0f }, 6.5f, ColorRgba{ 235u, 235u, 235u, 255u });
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { Bx + Bw - 10.0f, By + 28.0f }, 8.4f, Theme.TextPrimary, "6 px");
+            DrawAtmColourPill(Bx + 10.0f, By + 50.0f, Bw - 20.0f, ColorRgba{ 239u, 244u, 207u, 255u }, "#EFF4CF");
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Bx + 10.0f, By + 86.0f }, 8.8f, Theme.TextPrimary, "Fill closed paths");
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Bx + 10.0f, By + 100.0f }, 7.6f, Theme.TextFaint, "Closing on the first point makes a filled shape");
+            Surface.FillRectangle({ Bx + Bw - 44.0f, By + 90.0f, 34.0f, 18.0f }, ColorRgba{ 255u, 255u, 255u, 255u }, 9.0f);
+            Surface.FillCircle({ Bx + Bw - 19.0f, By + 99.0f }, 6.5f, ColorRgba{ 17u, 17u, 17u, 255u });
+            By += 138.0f;
 
-                const Rectangle2D WellR{ CardR.X + 6.0f, CardR.Y + 6.0f, CardR.Width - 12.0f, 40.0f };
-                Surface.FillRectangle(WellR, ColorRgba{ 14u, 15u, 18u, 255u }, 6.0f);
-                for (int S = 0; S < 16; ++S)
-                {
-                    const float T0 = static_cast<float>(S) / 16.0f;
-                    const float T1 = static_cast<float>(S + 1) / 16.0f;
-                    const Point2D P0{ WellR.X + 12.0f + T0 * (WellR.Width - 24.0f), WellR.Y + WellR.Height * 0.5f - std::sin(T0 * 6.28318f) * 10.0f };
-                    const Point2D P1{ WellR.X + 12.0f + T1 * (WellR.Width - 24.0f), WellR.Y + WellR.Height * 0.5f - std::sin(T1 * 6.28318f) * 10.0f };
-                    Surface.StrokeLine(P0, P1, ColorRgba{ 239u, 244u, 207u, 240u }, (K == 2u) ? (1.0f + std::sin(T0 * 3.14159f) * 4.0f) : 2.4f);
-                }
-                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { CardR.X + 10.0f, CardR.Bottom() - 20.0f }, 9.2f, Theme.TextPrimary, CurvePresets[K]);
-            }
-        }
-        else if (IsTextStudio)
-        {
-            // Text Studio 6 Typefaces
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold, { Cx, Cy }, 9.0f, Theme.TextFaint, "FONTS");
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { RightPaneR.Right() - 26.0f, Cy }, 9.0f, Theme.TextFaint, "6");
-            Cy += 22.0f;
-
-            constexpr std::array<const char*, 6u> FontNames {{
-                "Inter", "Fraunces", "Space Grotesk", "JetBrains Mono", "Playfair Display", "Syne"
-            }};
-            const float Gap = 10.0f;
-            const float CardW = (Cw - Gap) * 0.5f;
-            const float CardH = 80.0f;
-            for (std::size_t F = 0u; F < 6u; ++F)
-            {
-                const std::size_t Col = F % 2u;
-                const std::size_t Row = F / 2u;
-                const Rectangle2D CardR{ Cx + static_cast<float>(Col) * (CardW + Gap), Cy + static_cast<float>(Row) * (CardH + Gap), CardW, CardH };
-                const bool Act = (F == 0u);
-                Surface.FillRectangle(CardR, Act ? Theme.HoverSurface : Theme.SectionSurface, 10.0f);
-                Surface.StrokeRectangle(CardR, Act ? ColorRgba{ 240u, 240u, 238u, 240u } : Theme.BorderSubtle, 10.0f, Act ? 1.5f : 1.0f);
-                const Rectangle2D WellR{ CardR.X + 6.0f, CardR.Y + 6.0f, CardR.Width - 12.0f, 46.0f };
-                Surface.FillRectangle(WellR, ColorRgba{ 14u, 15u, 18u, 255u }, 6.0f);
-                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold, { WellR.X + 12.0f, WellR.Y + 11.0f }, 18.0f, Theme.TextPrimary, "Aa");
-                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { WellR.X + 44.0f, WellR.Y + 16.0f }, 12.0f, Theme.TextMuted, "Frontier");
-                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { CardR.X + 10.0f, CardR.Bottom() - 20.0f }, 9.4f, Theme.TextPrimary, FontNames[F]);
-            }
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Regular, { Bx + 4.0f, By }, Bw - 8.0f, 8.0f, Theme.TextFaint,
+                "Click to add points · click the first point or press Enter to finish.");
         }
         else
         {
-            // menu-shapes.png parity: 16 Motif Shapes in 2-column grid with dark preview wells
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold, { Cx, Cy }, 9.0f, Theme.TextFaint, "SHAPES");
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { RightPaneR.Right() - 26.0f, Cy }, 9.0f, Theme.TextFaint, "16");
-            Cy += 18.0f;
+            // Shapes menu (menu-shapes.png 1:1): SHAPE (4x5 grid of 17 tiles) + FILL + OUTLINE
+            static constexpr std::array<const char*, 17u> MotifNames {{
+                "Circle", "Ring", "Square", "Rounded Box",
+                "Diamond", "Hexagon", "Triangle", "Star",
+                "Cross", "Chevron", "Stripe", "Arc",
+                "Teardrop", "Botanical Leaf", "5-Petal Flower", "Cog",
+                "Line"
+            }};
+            const Rectangle2D Sec1{ Bx, By, Bw, 322.0f };
+            Surface.FillRectangle(Sec1, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "SHAPE");
 
-            const Rectangle2D FilterR{ Cx, Cy, Cw, 26.0f };
-            Surface.FillRectangle(FilterR, Theme.WellSurface, 7.0f);
-            Surface.StrokeRectangle(FilterR, Theme.BorderSubtle, 7.0f, 1.0f);
-            VectorIconRepository::ConstructControl(
-                Surface, ControlIcon::SearchGlass, VectorIconPlacement{ FilterR.X + 8.0f, FilterR.Y + 7.0f, 12.0f, Theme.TextFaint, 1.6f });
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { FilterR.X + 26.0f, FilterR.Y + 6.0f }, 9.0f, Theme.TextFaint, "Filter shapes...");
-            Cy += 32.0f;
-
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Cx, Cy }, 9.0f, Theme.TextMuted, "Shapes");
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { RightPaneR.Right() - 26.0f, Cy }, 8.6f, Theme.TextFaint, "16");
-            Cy += 16.0f;
-
-            const auto& ShapeLabels = PatternStampWorkspaceSession::InspectMotifShapeLabels();
-            const float Gap = 8.0f;
-            const float CardW = (Cw - Gap) * 0.5f;
-            const float CardH = 58.0f;
-            for (std::size_t S = 0u; S < 12u && S < ShapeLabels.size(); ++S)
+            const float GridX = Bx + 10.0f;
+            const float GridY = By + 24.0f;
+            const float Gap   = 6.0f;
+            const float TileW = (Bw - 20.0f - Gap * 3.0f) / 4.0f;
+            const float TileH = 52.0f;
+            for (std::size_t S = 0u; S < 17u; ++S)
             {
-                const std::size_t Col = S % 2u;
-                const std::size_t Row = S / 2u;
-                const Rectangle2D CardR{ Cx + static_cast<float>(Col) * (CardW + Gap), Cy + static_cast<float>(Row) * (CardH + Gap), CardW, CardH };
-                if (CardR.Bottom() > RightPaneR.Bottom() + 20.0f) continue;
+                const std::size_t Col = S % 4u;
+                const std::size_t Row = S / 4u;
+                const Rectangle2D TileR{
+                    GridX + static_cast<float>(Col) * (TileW + Gap),
+                    GridY + static_cast<float>(Row) * (TileH + Gap),
+                    TileW,
+                    TileH
+                };
+                const bool Act = (S == 0u);
+                Surface.FillRectangle(TileR, Act ? ColorRgba{ 36u, 37u, 42u, 255u } : ColorRgba{ 5u, 5u, 6u, 255u }, 10.0f);
+                if (Act)
+                {
+                    Surface.StrokeRectangle(TileR, ColorRgba{ 255u, 255u, 255u, 44u }, 10.0f, 1.0f);
+                }
 
-                const bool Act = (SelLayer != nullptr && static_cast<std::size_t>(SelLayer->MotifShape) == S) || (SelLayer == nullptr && S == 0u);
-                Surface.FillRectangle(CardR, Act ? Theme.HoverSurface : Theme.SectionSurface, 9.0f);
-                Surface.StrokeRectangle(CardR, Act ? ColorRgba{ 240u, 240u, 238u, 240u } : Theme.BorderSubtle, 9.0f, Act ? 1.5f : 1.0f);
+                const Rectangle2D IconWell{ TileR.X + 8.0f, TileR.Y + 4.0f, TileR.Width - 16.0f, 26.0f };
+                DrawMotifPreviewInWell(Surface, IconWell, S, Act ? ColorRgba{ 239u, 244u, 207u, 255u } : ColorRgba{ 240u, 240u, 242u, 255u });
 
-                const Rectangle2D WellR{ CardR.X + 5.0f, CardR.Y + 5.0f, CardR.Width - 10.0f, 32.0f };
-                Surface.FillRectangle(WellR, ColorRgba{ 12u, 13u, 15u, 255u }, 6.0f);
-                DrawMotifPreviewInWell(Surface, WellR, S, ColorRgba{ 239u, 244u, 207u, 255u });
-
+                const float Tw = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 7.8f, MotifNames[S]);
                 WorkspaceAppearance::ConstructTruncatedText(
-                    Surface, Act ? FontWeightClass::SemiBold : FontWeightClass::Medium, { CardR.X + 9.0f, CardR.Bottom() - 17.0f }, CardR.Width - 18.0f, 8.8f, Theme.TextPrimary, ShapeLabels[S]);
+                    Surface, FontWeightClass::Regular,
+                    { TileR.X + std::max(4.0f, (TileR.Width - Tw) * 0.5f), TileR.Bottom() - 15.0f },
+                    TileR.Width - 8.0f, 7.8f, Act ? Theme.TextPrimary : Theme.TextMuted, MotifNames[S]);
 
-                if (Pressed && CardR.Contains(Cursor) && SelLayer != nullptr)
+                if (Pressed && TileR.Contains(Cursor) && SelLayer != nullptr && S < 16u)
                 {
                     SelLayer->MotifShape = static_cast<PatternStampMotifShape>(S);
-                    SelLayer->CubicSubpaths.clear();
-                    PatternStampWorkspaceSession::SeedMotifCubicSubpathsIfEmpty(*SelLayer);
                     Session->BumpRevision();
                 }
             }
-        }
+            By += 330.0f;
 
-        Surface.PopClip();
+            // Section 2: FILL (Solid | Linear | Radial | Point + #E8C27A pill)
+            const Rectangle2D Sec2{ Bx, By, Bw, 92.0f };
+            Surface.FillRectangle(Sec2, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "FILL");
+            static constexpr const char* FillTabs[4] { "Solid", "Linear", "Radial", "Point" };
+            (void)DrawAtmSeg(By + 24.0f, FillTabs, 0u);
+            DrawAtmColourPill(Bx + 10.0f, By + 58.0f, 92.0f, ColorRgba{ 232u, 194u, 122u, 255u }, "#E8C27A");
+            By += 100.0f;
+
+            // Section 3: OUTLINE (Width 0 px + #16181C pill)
+            const Rectangle2D Sec3{ Bx, By, Bw, 82.0f };
+            Surface.FillRectangle(Sec3, ColorRgba{ 28u, 29u, 33u, 255u }, 14.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { Bx + 10.0f, By + 9.0f }, 7.6f, Theme.TextFaint, "OUTLINE");
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular,  { Bx + 10.0f, By + 26.0f }, 8.8f, Theme.TextMuted, "Width");
+            const Rectangle2D STrack{ Bx + 86.0f, By + 30.0f, Bw - 136.0f, 6.0f };
+            Surface.FillRectangle(STrack, ColorRgba{ 48u, 50u, 56u, 255u }, 3.0f);
+            Surface.FillCircle({ STrack.X + 4.0f, STrack.Y + 3.0f }, 6.5f, ColorRgba{ 235u, 235u, 235u, 255u });
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { Bx + Bw - 10.0f, By + 26.0f }, 8.4f, Theme.TextPrimary, "0 px");
+            DrawAtmColourPill(Bx + 10.0f, By + 46.0f, Bw - 20.0f, ColorRgba{ 22u, 24u, 28u, 255u }, "#16181C");
+        }
 
         if (Pressed && !ModalR.Contains(Cursor))
         {

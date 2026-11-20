@@ -1,8 +1,10 @@
 /*============================================================================================================================================
                                                         PATTERNSTAMPINSPECTORPANE.CPP
 ============================================================================================================================================*/
-// 🧩 Pattern Studio & Stamp Studio right inspector renderer: KPI summary tiles, Layer Properties, 22 PBR Surface Channels, Layer Mask,
-//    8 Non-Destructive Modifiers, Document Ground & Tile, fitted dropdown sheets, and 16-swatch colour picker.
+// 🧩 1:1 implementation of PatternStampInspectorPane matching Experimental/TextureStudio docked Artwork Inspector (cards-pattern.png,
+//    rows-side-by-side.png, fill-linear-scene.png, fill-point-field.png, menu-shapes.png): Pattern/Stamp Studio header, Document hero,
+//    3 KPI tiles (Instances, Coverage, Palette), 7 vertical collapsible property rows (Shape, Fill, Outline, Placement, Blend, Surface,
+//    Mask) that expand vertically in-place, Modifiers stack, Document fold, and .svg / Project / Copy footer.
 
 #include "Engine/Workspaces/Texturing/PatternStampInspectorPane.h"
 
@@ -24,59 +26,86 @@ using namespace TexturingAppearance;
 namespace
 {
 
-constexpr std::array<ColorRgba, 16u> PatternStampQuickSwatches {{
-    { 239u, 244u, 207u, 255u }, // Studio Cream
-    { 118u, 178u, 216u, 255u }, // Cerulean Slate
-    { 232u, 194u, 122u, 255u }, // Warm Gold Foil
-    { 234u, 236u, 239u, 255u }, // Chalk White
-    { 23u,  26u,  31u,  255u }, // Charcoal Ground
-    { 11u,  11u,  11u,  255u }, // Obsidian Ink
-    { 90u,  118u, 146u, 255u }, // Steel Blue
-    { 200u, 120u, 73u,  255u }, // Terracotta Ochre
-    { 105u, 156u, 140u, 255u }, // Patina Sage
-    { 216u, 144u, 168u, 255u }, // Rosewood Pink
-    { 143u, 184u, 222u, 255u }, // Sky Ceramic
-    { 52u,  95u,  66u,  255u }, // Racing Green
-    { 255u, 122u, 59u,  255u }, // Emissive Amber
-    { 168u, 140u, 92u,  255u }, // Brushed Brass
-    { 138u, 108u, 168u, 255u }, // Amethyst Dye
-    { 246u, 247u, 249u, 255u }, // Porcelain Bright
-}};
-
-std::string FormatFixedDecimals(float V, int Decimals) noexcept
+void FormatUpperHex(ColorRgba Rgba, char* OutBuf, std::size_t Cap) noexcept
 {
-    char Buf[32];
-    if (Decimals <= 0) std::snprintf(Buf, sizeof(Buf), "%d", static_cast<int>(std::lround(V)));
-    else if (Decimals == 1) std::snprintf(Buf, sizeof(Buf), "%.1f", V);
-    else std::snprintf(Buf, sizeof(Buf), "%.2f", V);
-    return std::string(Buf);
+    std::snprintf(OutBuf, Cap, "#%02X%02X%02X", Rgba.Red, Rgba.Green, Rgba.Blue);
 }
 
-std::string FormatHexColor(ColorRgba Rgba) noexcept
+void DrawFillSwatchTile(PixelSpace& Surface, Rectangle2D SwatchR, const PatternStampLayerSpec& Layer) noexcept
 {
-    char Buf[16];
-    FormatHexLower(Rgba, Buf, sizeof(Buf));
-    return std::string(Buf);
-}
-
-void AssignEditText(TextEditBuffer& Buf, std::string_view TextContent) noexcept
-{
-    const std::size_t CopyLen = std::min(TextContent.size(), static_cast<std::size_t>(TextEditBuffer::Capacity - 1u));
-    for (std::size_t I = 0u; I < CopyLen; ++I)
+    if (Layer.FillSource == PatternStampFillSourceMode::LinearGradient ||
+        Layer.FillSource == PatternStampFillSourceMode::RadialGradient ||
+        Layer.FillSource == PatternStampFillSourceMode::PointField)
     {
-        Buf.Text[I] = TextContent[I];
+        // Multi-stop gradient preview swatch
+        const std::array<ColorRgba, 4u> Stops {{
+            { 239u, 244u, 207u, 255u },
+            { 196u, 215u, 178u, 255u },
+            { 138u, 168u, 153u, 255u },
+            {  90u, 118u, 146u, 255u },
+        }};
+        Surface.FillRectangle(SwatchR, Stops[0], 6.0f);
+        const float SegW = SwatchR.Width / 4.0f;
+        for (std::size_t I = 0u; I < 4u; ++I)
+        {
+            Surface.PushClip({ SwatchR.X + static_cast<float>(I) * SegW, SwatchR.Y, SegW + 1.0f, SwatchR.Height });
+            Surface.FillRectangle(SwatchR, Stops[I], 6.0f);
+            Surface.PopClip();
+        }
+        Surface.StrokeRectangle(SwatchR, ColorRgba{ 255u, 255u, 255u, 28u }, 6.0f, 1.0f);
     }
-    Buf.Text[CopyLen]   = '\0';
-    Buf.Length          = static_cast<uint32_t>(CopyLen);
-    Buf.Caret           = Buf.Length;
-    Buf.SelectionAnchor = Buf.Length;
+    else
+    {
+        Surface.FillRectangle(SwatchR, Layer.FillTint, 6.0f);
+        Surface.StrokeRectangle(SwatchR, ColorRgba{ 255u, 255u, 255u, 28u }, 6.0f, 1.0f);
+    }
 }
 
-ControlIcon QueryIconForModifier(PatternStampModifierCategory Category) noexcept
+void DrawDockedSwitch(PixelSpace& Surface, Rectangle2D SwitchR, bool Enabled) noexcept
 {
-    return (Category == PatternStampModifierCategory::NoiseScale || Category == PatternStampModifierCategory::ScatterDropout)
-        ? ControlIcon::NoiseWave
-        : ControlIcon::ModifierStar;
+    const ColorRgba TrackFill = Enabled ? ColorRgba{ 255u, 255u, 255u, 255u } : ColorRgba{ 35u, 35u, 38u, 255u };
+    const ColorRgba KnobFill  = Enabled ? ColorRgba{  17u,  17u,  17u, 255u } : ColorRgba{ 188u, 188u, 188u, 255u };
+    Surface.FillRectangle(SwitchR, TrackFill, SwitchR.Height * 0.5f);
+    if (!Enabled)
+    {
+        Surface.StrokeRectangle(SwitchR, ColorRgba{ 255u, 255u, 255u, 24u }, SwitchR.Height * 0.5f, 1.0f);
+    }
+    const float KnobX = Enabled ? (SwitchR.Right() - 9.0f) : (SwitchR.X + 9.0f);
+    Surface.FillCircle({ KnobX, SwitchR.Y + SwitchR.Height * 0.5f }, 6.5f, KnobFill);
+}
+
+void DrawSplitSliderRow(
+    PixelSpace&                 Surface,
+    float                       LeftX,
+    float                       TopY,
+    float                       InnerW,
+    std::string_view            Label,
+    std::string_view            NumText,
+    std::string_view            UnitText,
+    float                       NormFrac,
+    const TexturingThemeColors& Theme) noexcept
+{
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Regular, { LeftX, TopY }, 8.6f, Theme.TextMuted, Label);
+
+    const float RowY = TopY + 15.0f;
+    const Rectangle2D SplitR{ LeftX, RowY, 68.0f, 24.0f };
+    Surface.FillRectangle(SplitR, ColorRgba{ 9u, 10u, 12u, 255u }, 12.0f);
+    Surface.PushClip({ SplitR.Right() - 24.0f, SplitR.Y, 24.0f, SplitR.Height });
+    Surface.FillRectangle(SplitR, ColorRgba{ 21u, 22u, 25u, 255u }, 12.0f);
+    Surface.PopClip();
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Medium, { SplitR.X + 10.0f, SplitR.Y + 5.5f }, 8.6f, Theme.TextPrimary, NumText);
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Regular, { SplitR.Right() - 18.0f, SplitR.Y + 6.0f }, 7.8f, Theme.TextFaint, UnitText);
+
+    const Rectangle2D TrackR{ SplitR.Right() + 8.0f, RowY + 2.0f, InnerW - 76.0f, 20.0f };
+    Surface.FillRectangle(TrackR, ColorRgba{ 23u, 24u, 27u, 255u }, 10.0f);
+    const float Clamped = std::clamp(NormFrac, 0.0f, 1.0f);
+    const float FillW   = std::max(10.0f, TrackR.Width * Clamped);
+    Surface.FillRectangle({ TrackR.X, TrackR.Y, FillW, TrackR.Height }, ColorRgba{ 76u, 77u, 82u, 255u }, 10.0f);
+    const float ThumbX = std::clamp(TrackR.X + TrackR.Width * Clamped, TrackR.X + 9.0f, TrackR.Right() - 9.0f);
+    Surface.FillCircle({ ThumbX, TrackR.Y + 10.0f }, 7.5f, ColorRgba{ 235u, 235u, 235u, 255u });
 }
 
 } // namespace
@@ -94,17 +123,13 @@ void PatternStampInspectorPane::AttachSession(PatternStampWorkspaceSession* Targ
 {
     Session = TargetSession;
     CloseAllSheets();
-    ActiveSliderId    = -1;
-    ScrollOffsetY     = 0.0f;
-    SyncedNameLayerId = 0u;
-    SyncedTextLayerId = 0u;
+    ActiveSliderId  = -1;
+    ScrollOffsetY   = 0.0f;
+    PropertyRowOpen = {{ false, false, false, false, false, false, false }};
 }
 
 void PatternStampInspectorPane::CloseAllSheets() noexcept
 {
-    ActiveSheet        = InspectorSheetVariant::None;
-    ActiveSwatchTarget = SwatchTargetChannel::None;
-    DropdownScrollY    = 0.0f;
 }
 
 void PatternStampInspectorPane::PresentInImGuiPane(double DeltaSeconds, float ScaleFactor)
@@ -142,1620 +167,646 @@ void PatternStampInspectorPane::Render(
     const PaneInputReading& Input,
     double                  DeltaSeconds)
 {
+    (void)DeltaSeconds;
     if (Session == nullptr || Bounds.Width < 160.0f || Bounds.Height < 200.0f)
     {
         return;
     }
 
-    const TexturingThemeColors Theme = QueryTexturingThemeColors();
+    const TexturingThemeColors Theme   = QueryTexturingThemeColors();
+    const Point2D              Cursor  { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+    const bool                 Pressed = Input.PrimaryPointer.Pressed;
+    const bool                 IsPat   = (Session->Mode == PatternStampWorkspaceMode::Pattern);
 
     Surface.PushClip(Bounds);
-    Surface.FillRectangle(Bounds, Theme.PaneBackground, 0.0f);
-    Surface.StrokeLine({ Bounds.X, Bounds.Y }, { Bounds.X, Bounds.Bottom() }, Theme.BorderSubtle, 1.0f);
+    Surface.FillRectangle(Bounds, Theme.LightSurface ? Theme.PaneBackground : ColorRgba{ 24u, 25u, 28u, 255u }, 0.0f);
 
-    const float PadX   = 12.0f;
-    const float InnerW = Bounds.Width - PadX * 2.0f;
+    const float PadX   = 14.0f;
     const float LeftX  = Bounds.X + PadX;
-    float       TopY   = Bounds.Y + 12.0f;
+    const float InnerW = Bounds.Width - PadX * 2.0f;
+    float       CurY   = Bounds.Y + 12.0f;
 
-    const bool PatternModeActive = (Session->Mode == PatternStampWorkspaceMode::Pattern);
-
-    // 1. Project Zero Card Header ("Layer & Modifiers  VECTOR + PBR" + Layers (N) switcher + Add/Copy/Trash)
-    const Point2D HeaderCursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    const bool    HeaderPressed = Input.PrimaryPointer.Pressed;
-
+    // 1. Top Card Bar ("Pattern Studio / SEAMLESS TILE" or "Stamp Studio / PBR DECAL" + Undo Redo Upload Reset)
     VectorIconRepository::ConstructControl(
-        Surface, ControlIcon::LayersSlabs, VectorIconPlacement{ LeftX, TopY + 3.0f, 13.0f, Theme.TextMuted, 1.7f });
+        Surface, IsPat ? ControlIcon::PatternTile : ControlIcon::StampTool,
+        VectorIconPlacement{ LeftX, CurY + 3.0f, 14.0f, ColorRgba{ 240u, 164u, 58u, 255u }, 1.75f });
     WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::SemiBold, { LeftX + 18.0f, TopY + 1.0f }, 10.5f, Theme.TextPrimary, "Layer & Modifiers");
+        Surface, FontWeightClass::Medium, { LeftX + 20.0f, CurY - 1.0f }, 10.2f, Theme.TextPrimary,
+        IsPat ? "Pattern Studio" : "Stamp Studio");
     WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::Bold, { LeftX + 126.0f, TopY + 3.0f }, 8.0f, ColorRgba{ 232u, 194u, 122u, 255u },
-        PatternModeActive ? "VECTOR + PBR" : "DECAL + PBR");
+        Surface, FontWeightClass::Medium, { LeftX + 20.0f, CurY + 11.5f }, 7.2f, Theme.TextFaint,
+        IsPat ? "SEAMLESS TILE" : "PBR DECAL");
 
-    const Rectangle2D TrashBtnR{ Bounds.Right() - PadX - 24.0f, TopY - 2.0f, 24.0f, 24.0f };
-    const Rectangle2D DupBtnR  { TrashBtnR.X - 26.0f, TopY - 2.0f, 24.0f, 24.0f };
-    const Rectangle2D AddBtnR  { DupBtnR.X - 26.0f, TopY - 2.0f, 24.0f, 24.0f };
-    char LayersSwitchBuf[32];
-    std::snprintf(LayersSwitchBuf, sizeof(LayersSwitchBuf), "Layers (%zu)", Session->Document.Layers.size());
-    const Rectangle2D SwitcherR{ std::max(LeftX + 190.0f, AddBtnR.X - 88.0f), TopY - 2.0f, 84.0f, 24.0f };
-
-    Surface.FillRectangle(SwitcherR, SwitcherR.Contains(HeaderCursor) ? Theme.HoverSurface : Theme.SectionSurface, 7.0f);
-    Surface.StrokeRectangle(SwitcherR, Theme.BorderSubtle, 7.0f, 1.0f);
-    WorkspaceAppearance::ConstructTruncatedText(
-        Surface, FontWeightClass::Medium, { SwitcherR.X + 8.0f, SwitcherR.Y + 5.0f }, SwitcherR.Width - 22.0f, 8.6f, Theme.TextPrimary, LayersSwitchBuf);
-    VectorIconRepository::ConstructControl(
-        Surface, ControlIcon::ChevronDown, VectorIconPlacement{ SwitcherR.Right() - 14.0f, SwitcherR.Y + 7.5f, 9.0f, Theme.TextMuted, 1.6f });
-    if (HeaderPressed && SwitcherR.Contains(HeaderCursor))
-    {
-        LayerSwitcherOpen = !LayerSwitcherOpen;
-    }
-
-    auto DrawMiniHeaderBtn = [&](Rectangle2D R, ControlIcon Ic) -> bool
-    {
-        const bool Hov = R.Contains(HeaderCursor);
-        Surface.FillRectangle(R, Hov ? Theme.HoverSurface : Theme.SectionSurface, 6.0f);
-        Surface.StrokeRectangle(R, Theme.BorderSubtle, 6.0f, 1.0f);
-        VectorIconRepository::ConstructControl(
-            Surface, Ic, VectorIconPlacement{ R.X + 6.0f, R.Y + 6.0f, 12.0f, Hov ? Theme.TextPrimary : Theme.TextMuted, 1.65f });
-        return Hov && HeaderPressed;
-    };
-    if (DrawMiniHeaderBtn(AddBtnR, ControlIcon::PlusAdd))
-    {
-        Session->AddLayer(PatternStampLayerCategory::Motif);
-    }
-    if (DrawMiniHeaderBtn(DupBtnR, ControlIcon::CopyDuplicate))
-    {
-        (void)Session->DuplicateSelectedLayer();
-    }
-    if (DrawMiniHeaderBtn(TrashBtnR, ControlIcon::TrashDelete))
-    {
-        (void)Session->DeleteSelectedLayer();
-    }
-    TopY += 28.0f;
-    Surface.StrokeLine({ Bounds.X, TopY }, { Bounds.Right(), TopY }, Theme.BorderSubtle, 1.0f);
-    TopY += 10.0f;
-
-    // 2. Active Layer Swatch + Title + Category Pill + Uppercase Subtitle (cards-pattern.png parity)
-    PatternStampLayerSpec* Sel = Session->InspectSelectedLayer();
-    const ColorRgba LayerSwatchCol = (Sel != nullptr) ? Sel->FillTint : ColorRgba{ 239u, 244u, 207u, 255u };
-    const Rectangle2D LayerSwR{ LeftX, TopY + 2.0f, 18.0f, 18.0f };
-    Surface.FillRectangle(LayerSwR, LayerSwatchCol, 5.0f);
-    Surface.StrokeRectangle(LayerSwR, Theme.BorderStrong, 5.0f, 1.0f);
-
-    const char* KindPillStr = "Motif";
-    if (Sel != nullptr)
-    {
-        if (Sel->Category == PatternStampLayerCategory::Typographic)       KindPillStr = "Text";
-        else if (Sel->Category == PatternStampLayerCategory::GradientWash) KindPillStr = "Gradient";
-        else if (Sel->Category == PatternStampLayerCategory::Folder)       KindPillStr = "Folder";
-    }
-    const Rectangle2D KindPillR{ Bounds.Right() - PadX - 54.0f, TopY + 1.0f, 54.0f, 20.0f };
-    Surface.FillRectangle(KindPillR, Theme.SectionSurface, 6.0f);
-    Surface.StrokeRectangle(KindPillR, Theme.BorderSubtle, 6.0f, 1.0f);
-    WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::Medium, { KindPillR.X + 12.0f, KindPillR.Y + 3.5f }, 8.6f, Theme.TextMuted, KindPillStr);
-
-    WorkspaceAppearance::ConstructTruncatedText(
-        Surface, FontWeightClass::Bold, { LayerSwR.Right() + 8.0f, TopY - 1.0f }, KindPillR.X - LayerSwR.Right() - 14.0f, 15.0f, Theme.TextPrimary,
-        Sel != nullptr ? Sel->Name : Session->Document.DocumentName);
-    TopY += 24.0f;
-
-    std::string SubUpper = (Sel != nullptr) ? PatternStampWorkspaceSession::DescribeLayerSubtitle(*Sel) : std::string("MOTIF · CIRCLE · NORMAL · 100%");
-    for (char& C : SubUpper)
-    {
-        if (C >= 'a' && C <= 'z') C = static_cast<char>(C - ('a' - 'A'));
-    }
-    WorkspaceAppearance::ConstructTruncatedText(
-        Surface, FontWeightClass::Medium, { LeftX, TopY }, InnerW, 8.2f, Theme.TextFaint, SubUpper);
-    TopY += 18.0f;
-
-    // 3. 3-Tile KPI Trio (Instances | Coverage | Channels + 5-segment group meter, matching cards-pattern.png)
-    const float MetricGap = 8.0f;
-    const float MetricW   = (InnerW - MetricGap * 2.0f) / 3.0f;
-    const Rectangle2D MetricInR{ LeftX, TopY, MetricW, 56.0f };
-    const Rectangle2D MetricCvR{ MetricInR.Right() + MetricGap, TopY, MetricW, 56.0f };
-    const Rectangle2D MetricChR{ MetricCvR.Right() + MetricGap, TopY, MetricW, 56.0f };
-    Surface.FillRectangle(MetricInR, Theme.SectionSurface, 10.0f);
-    Surface.FillRectangle(MetricCvR, Theme.SectionSurface, 10.0f);
-    Surface.FillRectangle(MetricChR, Theme.SectionSurface, 10.0f);
-
-    char ScaleBuf[32];
-    std::snprintf(ScaleBuf, sizeof(ScaleBuf), "%.2fx - %.2fx", Session->MinScaleReading, Session->MaxScaleReading);
-    const std::string InstStr = std::to_string(Session->InstancesEvaluated);
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium,   { MetricInR.X + 10.0f, MetricInR.Y + 6.0f },  8.2f, Theme.TextMuted, "Instances");
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,     { MetricInR.X + 10.0f, MetricInR.Y + 18.0f }, 13.0f, Theme.TextPrimary, InstStr);
-    WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { MetricInR.X + 10.0f, MetricInR.Y + 36.0f }, MetricW - 16.0f, 8.0f, Theme.TextFaint, ScaleBuf);
-
-    const std::string CovStr = std::to_string(Session->SurfaceFractionPct) + "%";
-    const std::string LaySub = std::to_string(Session->Document.Layers.size()) + " Layers";
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium,   { MetricCvR.X + 10.0f, MetricCvR.Y + 6.0f },  8.2f, Theme.TextMuted, "Coverage");
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,     { MetricCvR.X + 10.0f, MetricCvR.Y + 18.0f }, 13.0f, Theme.TextPrimary, CovStr);
-    WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { MetricCvR.X + 10.0f, MetricCvR.Y + 34.0f }, MetricW - 16.0f, 8.0f, Theme.TextFaint, LaySub);
-    Surface.FillRectangle({ MetricCvR.X + 10.0f, MetricCvR.Y + 47.0f, MetricW - 20.0f, 3.0f }, Theme.WellSurface, 1.5f);
-    Surface.FillRectangle({ MetricCvR.X + 10.0f, MetricCvR.Y + 47.0f, (MetricW - 20.0f) * std::clamp(static_cast<float>(Session->SurfaceFractionPct) / 100.0f, 0.0f, 1.0f), 3.0f }, ColorRgba{ 238u, 238u, 236u, 240u }, 1.5f);
-
-    const std::size_t ActiveChCount = (Sel != nullptr) ? Sel->Channels.size() : 4u;
-    char ChMetricBuf[32];
-    std::snprintf(ChMetricBuf, sizeof(ChMetricBuf), "%zu / 22", ActiveChCount);
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium,   { MetricChR.X + 10.0f, MetricChR.Y + 6.0f },  8.2f, Theme.TextMuted, "Channels");
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,     { MetricChR.X + 10.0f, MetricChR.Y + 18.0f }, 13.0f, Theme.TextPrimary, ChMetricBuf);
-    constexpr std::array<ColorRgba, 5u> GroupSegmentTints {{
-        { 232u, 194u, 122u, 255u },
-        { 143u, 163u, 191u, 255u },
-        { 207u, 227u, 255u, 255u },
-        { 158u, 230u, 216u, 255u },
-        { 255u, 122u,  59u, 255u },
+    static constexpr std::array<ControlIcon, 4u> TopActions {{
+        ControlIcon::UndoArrow,
+        ControlIcon::RedoArrow,
+        ControlIcon::UploadImport,
+        ControlIcon::RefreshCycle,
     }};
-    const float SegW = (MetricW - 20.0f - 8.0f) / 5.0f;
-    for (std::size_t G = 0u; G < 5u; ++G)
+    for (std::size_t I = 0u; I < TopActions.size(); ++I)
     {
-        const bool GroupOn = (G < 2u) || (ActiveChCount > 4u && G == 2u);
-        Surface.FillRectangle({ MetricChR.X + 10.0f + static_cast<float>(G) * (SegW + 2.0f), MetricChR.Y + 47.0f, SegW, 3.0f }, GroupOn ? GroupSegmentTints[G] : Theme.WellSurface, 1.5f);
+        const Rectangle2D ActR{
+            Bounds.Right() - PadX - static_cast<float>(TopActions.size() - I) * 24.0f,
+            CurY,
+            22.0f,
+            22.0f
+        };
+        if (ConstructHeaderIconButton(Surface, ActR, TopActions[I], false, true, Theme, Cursor, Pressed))
+        {
+            if (I == 0u)      (void)Session->ApplyUndo();
+            else if (I == 1u) (void)Session->ApplyRedo();
+        }
     }
+    CurY += 28.0f;
+    Surface.StrokeLine({ LeftX, CurY }, { LeftX + InnerW, CurY }, ColorRgba{ 255u, 255u, 255u, 14u }, 1.0f);
+    CurY += 10.0f;
 
-    TopY += 64.0f;
-    Surface.StrokeLine({ Bounds.X, TopY }, { Bounds.Right(), TopY }, Theme.BorderSubtle, 1.0f);
-    TopY += 6.0f;
-
-    // 4. Scroll Region
-    const float FooterH = 26.0f;
-    const Rectangle2D ScrollRect{ Bounds.X, TopY, Bounds.Width, std::max(40.0f, Bounds.Bottom() - FooterH - TopY) };
-
-    const bool SheetOpen = (ActiveSheet != InspectorSheetVariant::None) || (ActiveSwatchTarget != SwatchTargetChannel::None);
-    if (!SheetOpen && ScrollRect.Contains({ Input.PrimaryPointer.X, Input.PrimaryPointer.Y }) && std::abs(Input.WheelDeltaY) > 0.001f)
+    // Reserve space at bottom for Export Bar (38px) + Status Line (22px) matching cards-pattern.png
+    constexpr float ExportBarH = 38.0f;
+    constexpr float StatusBarH = 22.0f;
+    const Rectangle2D ScrollRect{
+        Bounds.X,
+        CurY,
+        Bounds.Width,
+        std::max(40.0f, Bounds.Bottom() - ExportBarH - StatusBarH - CurY)
+    };
+    if (ScrollRect.Contains(Cursor) && std::abs(Input.WheelDeltaY) > 0.01f)
     {
         const float MaxScroll = std::max(0.0f, CachedContentHeight - ScrollRect.Height);
-        ScrollOffsetY         = std::clamp(ScrollOffsetY - Input.WheelDeltaY * 34.0f, 0.0f, MaxScroll);
+        ScrollOffsetY         = std::clamp(ScrollOffsetY - Input.WheelDeltaY * 32.0f, 0.0f, MaxScroll);
     }
-
-    PaneInputReading BodyInput = Input;
-    if (SheetOpen || !ScrollRect.Contains({ Input.PrimaryPointer.X, Input.PrimaryPointer.Y }))
-    {
-        BodyInput.PrimaryPointer.Pressed  = false;
-        BodyInput.PrimaryPointer.Down     = false;
-        BodyInput.PrimaryPointer.Released = false;
-    }
-    if (!Input.PrimaryPointer.Down)
-    {
-        ActiveSliderId = -1;
-    }
-    const Point2D BodyCursor { BodyInput.PrimaryPointer.X, BodyInput.PrimaryPointer.Y };
-    const bool    BodyPressed = BodyInput.PrimaryPointer.Pressed;
-
-    bool SliderScratch = false;
-    auto BeginSlider = [this, &SliderScratch](int32_t SliderId) -> bool&
-    {
-        SliderScratch = (ActiveSliderId == SliderId);
-        return SliderScratch;
-    };
-    int32_t NextSliderId = 200;
-
-    Rectangle2D CapturedMotifBtn {};
-    Rectangle2D CapturedBlendBtn {};
-    Rectangle2D CapturedFinishBtn {};
-    Rectangle2D CapturedAddChBtn {};
-    Rectangle2D CapturedFillSwatch {};
-    Rectangle2D CapturedStrokeSwatch {};
-    Rectangle2D CapturedGroundSwatch {};
 
     Surface.PushClip(ScrollRect);
-    float CursorY          = ScrollRect.Y + 4.0f - ScrollOffsetY;
-    const float ScrollTopY = CursorY;
+    float Sy = ScrollRect.Y + 2.0f - ScrollOffsetY;
+    const float ScrollStartY = Sy;
 
-    if (Sel == nullptr)
+    // 2. Document Hero Block ("IMPORTED" / DocumentName / "Imported document" + Preset Dropdown Pill)
+    // Note: in Stamp mode (menu-shapes.png), a 44x44 preview thumb sits on the left; in Pattern mode (cards-pattern.png & CheckCardDock.mjs), no thumb!
+    float HeroTextX = LeftX;
+    if (!IsPat)
+    {
+        const Rectangle2D StampThumbR{ LeftX, Sy + 2.0f, 44.0f, 44.0f };
+        Surface.FillRectangle(StampThumbR, ColorRgba{ 20u, 22u, 26u, 255u }, 10.0f);
+        Surface.StrokeRectangle(StampThumbR, ColorRgba{ 255u, 255u, 255u, 22u }, 10.0f, 1.0f);
+        Surface.FillCircle({ StampThumbR.X + 22.0f, StampThumbR.Y + 22.0f }, 14.0f, ColorRgba{ 118u, 152u, 186u, 255u });
+        Surface.FillCircle({ StampThumbR.X + 22.0f, StampThumbR.Y + 22.0f }, 7.5f, ColorRgba{ 230u, 238u, 246u, 255u });
+        HeroTextX += 54.0f;
+    }
+
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Medium, { HeroTextX, Sy }, 7.4f, Theme.TextFaint, "IMPORTED");
+    Sy += 13.0f;
+
+    WorkspaceAppearance::ConstructTruncatedText(
+        Surface, FontWeightClass::Regular, { HeroTextX, Sy }, LeftX + InnerW - HeroTextX, 17.5f, Theme.TextPrimary,
+        Session->Document.DocumentName);
+    Sy += 24.0f;
+
+    const float DropW = std::min(168.0f, InnerW * 0.54f);
+    WorkspaceAppearance::ConstructTruncatedText(
+        Surface, FontWeightClass::Regular, { HeroTextX, Sy + 5.0f }, LeftX + InnerW - HeroTextX - DropW - 8.0f, 8.2f, Theme.TextFaint,
+        "Imported document");
+
+    char PresetPillText[64];
+    std::snprintf(PresetPillText, sizeof(PresetPillText), "%s (imported)", Session->Document.DocumentName.c_str());
+    const Rectangle2D PresetR{ LeftX + InnerW - DropW, Sy, DropW, 24.0f };
+    Surface.FillRectangle(PresetR, Theme.LightSurface ? Theme.WellSurface : ColorRgba{ 9u, 10u, 12u, 255u }, 12.0f);
+    WorkspaceAppearance::ConstructTruncatedText(
+        Surface, FontWeightClass::Medium, { PresetR.X + 10.0f, PresetR.Y + 5.0f }, PresetR.Width - 24.0f, 8.2f, Theme.TextPrimary, PresetPillText);
+    VectorIconRepository::ConstructControl(
+        Surface, ControlIcon::ChevronDown, VectorIconPlacement{ PresetR.Right() - 14.0f, PresetR.Y + 7.5f, 9.0f, Theme.TextMuted, 1.6f });
+    Sy += 32.0f;
+
+    // 3. Three KPI Metric Tiles: Instances, Coverage, Palette — matches cards-pattern.png & menu-shapes.png 1:1
+    const float TileGap = 8.0f;
+    const float TileW   = (InnerW - TileGap * 2.0f) / 3.0f;
+    const float TileH   = 66.0f;
+    const ColorRgba TileFill = Theme.LightSurface ? Theme.SectionSurface : ColorRgba{ 33u, 34u, 39u, 255u };
+
+    // Tile 1: Instances
+    {
+        const Rectangle2D T1{ LeftX, Sy, TileW, TileH };
+        Surface.FillRectangle(T1, TileFill, 12.0f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { T1.X + 10.0f, T1.Y + 7.0f }, 8.2f, Theme.TextMuted, "Instances");
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular, { T1.X + 10.0f, T1.Y + 20.0f }, 15.0f, Theme.TextPrimary, IsPat ? "125" : "1");
+        const Rectangle2D Bar{ T1.X + 10.0f, T1.Y + 42.0f, T1.Width - 20.0f, 3.5f };
+        Surface.FillRectangle(Bar, ColorRgba{ 19u, 20u, 23u, 255u }, 1.8f);
+        Surface.FillRectangle({ Bar.X, Bar.Y, Bar.Width * (IsPat ? 0.58f : 1.0f), Bar.Height }, ColorRgba{ 235u, 235u, 235u, 255u }, 1.8f);
+        WorkspaceAppearance::ConstructTruncatedText(
+            Surface, FontWeightClass::Medium, { T1.X + 10.0f, T1.Y + 50.0f }, T1.Width - 16.0f, 7.0f, Theme.TextFaint,
+            IsPat ? "2 LAYERS · 18 MS" : "1 LAYER · 1 MS");
+    }
+    // Tile 2: Coverage
+    {
+        const Rectangle2D T2{ LeftX + TileW + TileGap, Sy, TileW, TileH };
+        Surface.FillRectangle(T2, TileFill, 12.0f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { T2.X + 10.0f, T2.Y + 7.0f }, 8.2f, Theme.TextMuted, "Coverage");
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular, { T2.X + 10.0f, T2.Y + 20.0f }, 15.0f, Theme.TextPrimary, IsPat ? "46" : "27");
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular, { T2.X + 32.0f, T2.Y + 25.0f }, 9.2f, Theme.TextMuted, "%");
+        const Rectangle2D Bar{ T2.X + 10.0f, T2.Y + 42.0f, T2.Width - 20.0f, 3.5f };
+        Surface.FillRectangle(Bar, ColorRgba{ 19u, 20u, 23u, 255u }, 1.8f);
+        Surface.FillRectangle({ Bar.X, Bar.Y, Bar.Width * (IsPat ? 0.46f : 0.27f), Bar.Height }, ColorRgba{ 235u, 235u, 235u, 255u }, 1.8f);
+        WorkspaceAppearance::ConstructTruncatedText(
+            Surface, FontWeightClass::Medium, { T2.X + 10.0f, T2.Y + 50.0f }, T2.Width - 16.0f, 7.0f,
+            IsPat ? Theme.TextFaint : ColorRgba{ 74u, 222u, 128u, 255u },
+            IsPat ? "8 WRAP THE SEAM" : "106 PX MARGIN");
+    }
+    // Tile 3: Palette
+    {
+        const Rectangle2D T3{ LeftX + (TileW + TileGap) * 2.0f, Sy, TileW, TileH };
+        Surface.FillRectangle(T3, TileFill, 12.0f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { T3.X + 10.0f, T3.Y + 7.0f }, 8.2f, Theme.TextMuted, "Palette");
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular, { T3.X + 10.0f, T3.Y + 20.0f }, 15.0f, Theme.TextPrimary, IsPat ? "4" : "3");
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular, { T3.X + 23.0f, T3.Y + 25.0f }, 8.8f, Theme.TextMuted, "colours");
+        const Rectangle2D Bar{ T3.X + 10.0f, T3.Y + 42.0f, T3.Width - 20.0f, 4.0f };
+        const std::array<ColorRgba, 4u> PalCols {{
+            { 239u, 244u, 207u, 255u },
+            { 158u, 207u, 255u, 255u },
+            {  90u, 118u, 146u, 255u },
+            {  23u,  26u,  31u, 255u },
+        }};
+        const float SegW = Bar.Width / 4.0f;
+        for (std::size_t P = 0u; P < 4u; ++P)
+        {
+            Surface.FillRectangle({ Bar.X + static_cast<float>(P) * SegW, Bar.Y, SegW - 1.0f, Bar.Height }, PalCols[P], 1.5f);
+        }
+        WorkspaceAppearance::ConstructTruncatedText(
+            Surface, FontWeightClass::Medium, { T3.X + 10.0f, T3.Y + 50.0f }, T3.Width - 16.0f, 7.0f, Theme.TextFaint,
+            IsPat ? "CONTRAST 84%" : "CONTRAST 48%");
+    }
+    Sy += TileH + 14.0f;
+
+    // 4. Selected Layer Section ("Fine Accent Rings  RING · 2 MOD" or "Solid Disc  CIRCLE")
+    PatternStampLayerSpec* Sel = Session->InspectSelectedLayer();
+    if (Sel != nullptr)
     {
         WorkspaceAppearance::ConstructWeightedText(
-            Surface, FontWeightClass::Regular, { LeftX + 8.0f, CursorY + 12.0f }, 10.5f, Theme.TextFaint, "Select a layer to inspect its properties.");
-        CursorY += 40.0f;
-    }
-    else
-    {
-        const float Ix = LeftX + 12.0f;
-        const float Iw = InnerW - 24.0f;
-
-        // =========================================================================
-        // A. LAYER PROPERTIES SECTION
-        // =========================================================================
-        const char* CategoryTag = "MOTIF";
-        if (Sel->Category == PatternStampLayerCategory::Typographic) CategoryTag = "TEXT";
-        else if (Sel->Category == PatternStampLayerCategory::GradientWash) CategoryTag = "GRADIENT";
-        else if (Sel->Category == PatternStampLayerCategory::Folder) CategoryTag = "FOLDER";
-
-        float LayerBodyH = 0.0f;
-        if (LayerPropsExpanded)
+            Surface, FontWeightClass::Regular, { LeftX, Sy }, 10.2f, Theme.TextPrimary, Sel->Name);
+        char RightMeta[48];
+        if (!Sel->Modifiers.empty())
         {
-            LayerBodyH = 54.0f;
-            if (Sel->Category == PatternStampLayerCategory::Motif) LayerBodyH += 48.0f;
-            else if (Sel->Category == PatternStampLayerCategory::Typographic) LayerBodyH += 54.0f + 52.0f;
-
-            if (Sel->Category != PatternStampLayerCategory::Folder)
-            {
-                if (Sel->Category != PatternStampLayerCategory::GradientWash) LayerBodyH += 34.0f;
-                if (Sel->FillEnabled || Sel->Category == PatternStampLayerCategory::GradientWash)
-                {
-                    LayerBodyH += 50.0f;
-                    LayerBodyH += (Sel->FillSource == PatternStampFillSourceMode::Solid) ? 38.0f : 56.0f;
-                }
-                LayerBodyH += 52.0f; // Stroke Outline
-                if (Sel->StrokeWidthPx > 0.01f || !Sel->FillEnabled) LayerBodyH += 38.0f;
-                LayerBodyH += 48.0f;        // Blend Mode
-                LayerBodyH += 52.0f * 6.0f; // Opacity, X, Y, W, H, Rotation
-                LayerBodyH += 8.0f;
-            }
-            else
-            {
-                LayerBodyH += 8.0f;
-            }
-        }
-
-        const Rectangle2D PropSecR{ LeftX, CursorY, InnerW, 38.0f + LayerBodyH };
-        BeginSectionContainer(Surface, PropSecR, Theme, 18.0f);
-        if (ConstructSectionHeaderRow(
-                Surface,
-                { LeftX + 12.0f, CursorY + 11.0f, InnerW - 24.0f, 20.0f },
-                ControlIcon::LayersSlabs,
-                "Layer Properties",
-                CategoryTag,
-                LayerPropsExpanded,
-                Theme,
-                BodyCursor,
-                BodyPressed))
-        {
-            LayerPropsExpanded = !LayerPropsExpanded;
-        }
-
-        if (LayerPropsExpanded)
-        {
-            float Py = CursorY + 42.0f;
-
-            if (SyncedNameLayerId != Sel->Identity)
-            {
-                SyncedNameLayerId = Sel->Identity;
-                AssignEditText(LayerNameBuffer, Sel->Name);
-                LayerNameBuffer.Active = false;
-            }
-            else if (!LayerNameBuffer.Active)
-            {
-                AssignEditText(LayerNameBuffer, Sel->Name);
-            }
-
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface, FontWeightClass::Regular, { Ix, Py }, 10.0f, Theme.TextMuted, "Layer Name");
-            const Rectangle2D NameBoxR{ Ix, Py + 16.0f, Iw, 28.0f };
-            Surface.FillRectangle(NameBoxR, LayerNameBuffer.Active ? Theme.HoverSurface : Theme.WellSurface, 12.0f);
-            Surface.StrokeRectangle(NameBoxR, LayerNameBuffer.Active ? Theme.HighlightFill : Theme.BorderSubtle, 12.0f, 1.0f);
-            if (BodyPressed) LayerNameBuffer.Active = NameBoxR.Contains(BodyCursor);
-            if (LayerNameBuffer.Active)
-            {
-                WorkspaceAppearance::ForwardInputToTextBuffer(LayerNameBuffer, BodyInput, DeltaSeconds);
-                if (LayerNameBuffer.Length > 0u) Sel->Name = std::string(LayerNameBuffer.Text);
-            }
-            WorkspaceAppearance::ConstructTruncatedText(
-                Surface, FontWeightClass::Regular, { NameBoxR.X + 12.0f, NameBoxR.Y + 7.0f }, NameBoxR.Width - 24.0f, 10.5f, Theme.TextPrimary, LayerNameBuffer.Text);
-            Py += 54.0f;
-
-            if (Sel->Category == PatternStampLayerCategory::Motif)
-            {
-                const auto& ShapeLabels = PatternStampWorkspaceSession::InspectMotifShapeLabels();
-                const std::size_t SIdx  = static_cast<std::size_t>(Sel->MotifShape) % ShapeLabels.size();
-                if (ConstructDropdownBarRow(
-                        Surface, Ix, Py, Iw, "Motif Shape", ShapeLabels[SIdx], ActiveSheet == InspectorSheetVariant::MotifShape, Theme, BodyInput.PrimaryPointer, CapturedMotifBtn))
-                {
-                    ActiveSheet        = (ActiveSheet == InspectorSheetVariant::MotifShape) ? InspectorSheetVariant::None : InspectorSheetVariant::MotifShape;
-                    ActiveSheetAnchor  = CapturedMotifBtn;
-                    ActiveSwatchTarget = SwatchTargetChannel::None;
-                    DropdownScrollY    = 0.0f;
-                }
-                Py += 48.0f;
-            }
-            else if (Sel->Category == PatternStampLayerCategory::Typographic)
-            {
-                if (SyncedTextLayerId != Sel->Identity)
-                {
-                    SyncedTextLayerId = Sel->Identity;
-                    AssignEditText(TypographicBuffer, Sel->TextContent);
-                    TypographicBuffer.Active = false;
-                }
-                else if (!TypographicBuffer.Active)
-                {
-                    AssignEditText(TypographicBuffer, Sel->TextContent);
-                }
-                WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Regular, { Ix, Py }, 10.0f, Theme.TextMuted, "Text Content");
-                const Rectangle2D TextBoxR{ Ix, Py + 16.0f, Iw, 28.0f };
-                Surface.FillRectangle(TextBoxR, TypographicBuffer.Active ? Theme.HoverSurface : Theme.WellSurface, 12.0f);
-                Surface.StrokeRectangle(TextBoxR, TypographicBuffer.Active ? Theme.HighlightFill : Theme.BorderSubtle, 12.0f, 1.0f);
-                if (BodyPressed) TypographicBuffer.Active = TextBoxR.Contains(BodyCursor);
-                if (TypographicBuffer.Active)
-                {
-                    WorkspaceAppearance::ForwardInputToTextBuffer(TypographicBuffer, BodyInput, DeltaSeconds);
-                    const std::string UpdatedText(TypographicBuffer.Text);
-                    if (UpdatedText != Sel->TextContent)
-                    {
-                        Sel->TextContent = UpdatedText;
-                        Session->BumpRevision();
-                    }
-                }
-                WorkspaceAppearance::ConstructTruncatedText(
-                    Surface, FontWeightClass::Regular, { TextBoxR.X + 12.0f, TextBoxR.Y + 7.0f }, TextBoxR.Width - 24.0f, 10.5f, Theme.TextPrimary, TypographicBuffer.Text);
-                Py += 54.0f;
-
-                const int32_t FsSid = NextSliderId++;
-                bool&         DragFs = BeginSlider(FsSid);
-                float         FsNorm = std::clamp((Sel->FontSizePx - 14.0f) / 146.0f, 0.0f, 1.0f);
-                if (ConstructSliderReadoutRow(
-                        Surface, Ix, Py, Iw, "Font Size", FormatFixedDecimals(Sel->FontSizePx, 0), "px", FsNorm, Theme, BodyInput.PrimaryPointer, DragFs))
-                {
-                    ActiveSliderId  = FsSid;
-                    Sel->FontSizePx = std::round((14.0f + FsNorm * 146.0f) * 0.5f) * 2.0f;
-                    Session->BumpRevision();
-                }
-                if (DragFs) ActiveSliderId = FsSid;
-                Py += 52.0f;
-            }
-
-            if (Sel->Category != PatternStampLayerCategory::Folder)
-            {
-                if (Sel->Category != PatternStampLayerCategory::GradientWash)
-                {
-                    bool FillOn = Sel->FillEnabled;
-                    if (ConstructSwitchControlRow(Surface, Ix, Py, Iw, "Fill Enabled", FillOn, Theme, BodyInput.PrimaryPointer))
-                    {
-                        Session->PushUndoSnapshot();
-                        Sel->FillEnabled = FillOn;
-                        Session->BumpRevision();
-                        Session->RecomputeSummaryMetrics();
-                    }
-                    Py += 34.0f;
-                }
-
-                if (Sel->FillEnabled || Sel->Category == PatternStampLayerCategory::GradientWash)
-                {
-                    static constexpr const char* SourceOpts[4] { "Solid", "Linear Grad", "Radial Grad", "Point Field" };
-                    uint32_t ChosenSrc = static_cast<uint32_t>(Sel->FillSource);
-                    if (ConstructSegmentedCapsuleRow(
-                            Surface, Ix, Py, Iw, "Fill Source", SourceOpts, 4u, static_cast<uint32_t>(Sel->FillSource), ChosenSrc, Theme, BodyInput.PrimaryPointer))
-                    {
-                        Sel->FillSource = static_cast<PatternStampFillSourceMode>(ChosenSrc);
-                        if (Sel->FillSource == PatternStampFillSourceMode::PointField)
-                        {
-                            PatternStampWorkspaceSession::InitializeDefaultPointFieldPins(*Sel);
-                        }
-                        Session->BumpRevision();
-                    }
-                    Py += 50.0f;
-
-                    if (Sel->FillSource == PatternStampFillSourceMode::Solid)
-                    {
-                        if (ConstructColourSwatchRow(
-                                Surface, Ix, Py, Iw, "Fill Colour", FormatHexColor(Sel->FillTint), Sel->FillTint, Theme, BodyInput.PrimaryPointer, CapturedFillSwatch))
-                        {
-                            ActiveSwatchTarget = (ActiveSwatchTarget == SwatchTargetChannel::LayerFill)
-                                ? SwatchTargetChannel::None
-                                : SwatchTargetChannel::LayerFill;
-                            ActiveSwatchAnchor = CapturedFillSwatch;
-                            ActiveSheet        = InspectorSheetVariant::None;
-                        }
-                        Py += 38.0f;
-                    }
-                    else
-                    {
-                        const Rectangle2D GradBarR{ Ix, Py, Iw, 14.0f };
-                        Surface.FillRectangle(GradBarR, Sel->FillTint, 7.0f);
-                        Surface.FillRectangle({ GradBarR.X + GradBarR.Width * 0.5f, GradBarR.Y, GradBarR.Width * 0.5f, GradBarR.Height }, Sel->FillTintB, 7.0f);
-                        Surface.StrokeRectangle(GradBarR, Theme.BorderStrong, 7.0f, 1.0f);
-                        Py += 20.0f;
-                        if (ConstructColourSwatchRow(
-                                Surface, Ix, Py, Iw, "Gradient Tint A", FormatHexColor(Sel->FillTint), Sel->FillTint, Theme, BodyInput.PrimaryPointer, CapturedFillSwatch))
-                        {
-                            ActiveSwatchTarget = (ActiveSwatchTarget == SwatchTargetChannel::LayerFill)
-                                ? SwatchTargetChannel::None
-                                : SwatchTargetChannel::LayerFill;
-                            ActiveSwatchAnchor = CapturedFillSwatch;
-                            ActiveSheet        = InspectorSheetVariant::None;
-                        }
-                        Py += 36.0f;
-                    }
-                }
-
-                {
-                    const int32_t SwSid  = NextSliderId++;
-                    bool&         DragSw = BeginSlider(SwSid);
-                    float         SwNorm = std::clamp(Sel->StrokeWidthPx / 18.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(
-                            Surface, Ix, Py, Iw, "Stroke Outline", FormatFixedDecimals(Sel->StrokeWidthPx, 1), "px", SwNorm, Theme, BodyInput.PrimaryPointer, DragSw))
-                    {
-                        ActiveSliderId     = SwSid;
-                        Sel->StrokeWidthPx = std::round(SwNorm * 18.0f * 2.0f) * 0.5f;
-                        Session->BumpRevision();
-                    }
-                    if (DragSw) ActiveSliderId = SwSid;
-                    Py += 52.0f;
-                }
-
-                if (Sel->StrokeWidthPx > 0.01f || !Sel->FillEnabled)
-                {
-                    if (ConstructColourSwatchRow(
-                            Surface, Ix, Py, Iw, "Stroke Colour", FormatHexColor(Sel->StrokeTint), Sel->StrokeTint, Theme, BodyInput.PrimaryPointer, CapturedStrokeSwatch))
-                    {
-                        ActiveSwatchTarget = (ActiveSwatchTarget == SwatchTargetChannel::LayerStroke)
-                            ? SwatchTargetChannel::None
-                            : SwatchTargetChannel::LayerStroke;
-                        ActiveSwatchAnchor = CapturedStrokeSwatch;
-                        ActiveSheet        = InspectorSheetVariant::None;
-                    }
-                    Py += 38.0f;
-                }
-
-                static constexpr const char* BlendOpts[6] { "Normal", "Multiply", "Screen", "Overlay", "Add", "Darken" };
-                if (ConstructDropdownBarRow(
-                        Surface, Ix, Py, Iw, "Blend Mode", BlendOpts[Sel->BlendMode % 6u], ActiveSheet == InspectorSheetVariant::BlendMode, Theme, BodyInput.PrimaryPointer, CapturedBlendBtn))
-                {
-                    ActiveSheet        = (ActiveSheet == InspectorSheetVariant::BlendMode) ? InspectorSheetVariant::None : InspectorSheetVariant::BlendMode;
-                    ActiveSheetAnchor  = CapturedBlendBtn;
-                    ActiveSwatchTarget = SwatchTargetChannel::None;
-                    DropdownScrollY    = 0.0f;
-                }
-                Py += 48.0f;
-
-                {
-                    const int32_t OpSid  = NextSliderId++;
-                    bool&         DragOp = BeginSlider(OpSid);
-                    float         OpNorm = std::clamp(Sel->Opacity, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(
-                            Surface, Ix, Py, Iw, "Layer Opacity", FormatFixedDecimals(Sel->Opacity, 2), "-", OpNorm, Theme, BodyInput.PrimaryPointer, DragOp))
-                    {
-                        ActiveSliderId = OpSid;
-                        Sel->Opacity   = std::round(OpNorm * 50.0f) / 50.0f;
-                    }
-                    if (DragOp) ActiveSliderId = OpSid;
-                    Py += 52.0f;
-                }
-                {
-                    const int32_t CxSid  = NextSliderId++;
-                    bool&         DragCx = BeginSlider(CxSid);
-                    float         CxNorm = std::clamp(Sel->CenterX / 512.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(
-                            Surface, Ix, Py, Iw, "Center X", FormatFixedDecimals(Sel->CenterX, 0), "px", CxNorm, Theme, BodyInput.PrimaryPointer, DragCx))
-                    {
-                        ActiveSliderId = CxSid;
-                        Sel->CenterX   = std::round(CxNorm * 512.0f);
-                    }
-                    if (DragCx) ActiveSliderId = CxSid;
-                    Py += 52.0f;
-                }
-                {
-                    const int32_t CySid  = NextSliderId++;
-                    bool&         DragCy = BeginSlider(CySid);
-                    float         CyNorm = std::clamp(Sel->CenterY / 512.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(
-                            Surface, Ix, Py, Iw, "Center Y", FormatFixedDecimals(Sel->CenterY, 0), "px", CyNorm, Theme, BodyInput.PrimaryPointer, DragCy))
-                    {
-                        ActiveSliderId = CySid;
-                        Sel->CenterY   = std::round(CyNorm * 512.0f);
-                    }
-                    if (DragCy) ActiveSliderId = CySid;
-                    Py += 52.0f;
-                }
-                {
-                    const int32_t WSid  = NextSliderId++;
-                    bool&         DragW = BeginSlider(WSid);
-                    float         WNorm = std::clamp((Sel->WidthPx - 6.0f) / 506.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(
-                            Surface, Ix, Py, Iw, "Width", FormatFixedDecimals(Sel->WidthPx, 0), "px", WNorm, Theme, BodyInput.PrimaryPointer, DragW))
-                    {
-                        ActiveSliderId    = WSid;
-                        const float PrevW = std::max(6.0f, Sel->WidthPx);
-                        const float NextW = std::round((6.0f + WNorm * 506.0f) * 0.5f) * 2.0f;
-                        const float Ratio = NextW / PrevW;
-                        Sel->WidthPx      = NextW;
-                        for (auto& Sub : Sel->CubicSubpaths)
-                        {
-                            for (auto& Knot : Sub.Knots)
-                            {
-                                Knot.AnchorX    *= Ratio;
-                                Knot.InHandleX  *= Ratio;
-                                Knot.OutHandleX *= Ratio;
-                            }
-                        }
-                        Session->BumpRevision();
-                        Session->RecomputeSummaryMetrics();
-                    }
-                    if (DragW) ActiveSliderId = WSid;
-                    Py += 52.0f;
-                }
-                {
-                    const int32_t HSid  = NextSliderId++;
-                    bool&         DragH = BeginSlider(HSid);
-                    float         HNorm = std::clamp((Sel->HeightPx - 6.0f) / 506.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(
-                            Surface, Ix, Py, Iw, "Height", FormatFixedDecimals(Sel->HeightPx, 0), "px", HNorm, Theme, BodyInput.PrimaryPointer, DragH))
-                    {
-                        ActiveSliderId    = HSid;
-                        const float PrevH = std::max(6.0f, Sel->HeightPx);
-                        const float NextH = std::round((6.0f + HNorm * 506.0f) * 0.5f) * 2.0f;
-                        const float Ratio = NextH / PrevH;
-                        Sel->HeightPx     = NextH;
-                        for (auto& Sub : Sel->CubicSubpaths)
-                        {
-                            for (auto& Knot : Sub.Knots)
-                            {
-                                Knot.AnchorY    *= Ratio;
-                                Knot.InHandleY  *= Ratio;
-                                Knot.OutHandleY *= Ratio;
-                            }
-                        }
-                        Session->BumpRevision();
-                        Session->RecomputeSummaryMetrics();
-                    }
-                    if (DragH) ActiveSliderId = HSid;
-                    Py += 52.0f;
-                }
-                {
-                    const int32_t RSid  = NextSliderId++;
-                    bool&         DragR = BeginSlider(RSid);
-                    float         RNorm = std::clamp((Sel->RotationDeg + 180.0f) / 360.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(
-                            Surface, Ix, Py, Iw, "Rotation", FormatFixedDecimals(Sel->RotationDeg, 0), "deg", RNorm, Theme, BodyInput.PrimaryPointer, DragR))
-                    {
-                        ActiveSliderId   = RSid;
-                        Sel->RotationDeg = std::round(-180.0f + RNorm * 360.0f);
-                    }
-                    if (DragR) ActiveSliderId = RSid;
-                }
-            }
-        }
-        CursorY += PropSecR.Height + 10.0f;
-
-        // =========================================================================
-        // B. PBR SURFACE CHANNELS SECTION
-        // =========================================================================
-        if (Sel->Category != PatternStampLayerCategory::Folder)
-        {
-            const std::vector<PatternStampSurfaceChannelKey> AvailCh = Session->QueryAvailableChannelsForSelectedLayer();
-
-            std::vector<RemovableChipEntry> ChEntries;
-            ChEntries.reserve(Sel->Channels.size());
-            float ChipX     = 0.0f;
-            float ChipRowsH = 26.0f;
-            for (const auto& B : Sel->Channels)
-            {
-                const auto& Desc = PatternStampWorkspaceSession::QueryChannelDescriptor(B.Key);
-                ChEntries.push_back({ Desc.Label, Desc.ColorChannel ? B.Tint : ColorRgba{ 158u, 162u, 170u, 255u }, false });
-                const float CW = std::min(Iw, 16.0f + WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.2f, Desc.Label) + 18.0f);
-                if (ChipX > 0.0f && ChipX + CW > Iw + 0.5f)
-                {
-                    ChipX = 0.0f;
-                    ChipRowsH += 27.0f;
-                }
-                ChipX += CW + 5.0f;
-            }
-            const std::string AddChLabel = AvailCh.empty() ? std::string() : ("+ Channel (" + std::to_string(AvailCh.size()) + ")");
-            if (!AddChLabel.empty())
-            {
-                const float AddW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.2f, AddChLabel) + 28.0f;
-                if (ChipX > 0.0f && ChipX + AddW > Iw + 0.5f)
-                {
-                    ChipRowsH += 27.0f;
-                }
-            }
-
-            const std::size_t NumChRows = (Sel->Channels.size() + 1u) / 2u;
-            const float ChCardH = (Sel->FillSource == PatternStampFillSourceMode::LinearGradient || Sel->FillSource == PatternStampFillSourceMode::PointField)
-                ? 176.0f
-                : 118.0f;
-            const float ChBlocksH = Sel->Channels.empty() ? 38.0f : (static_cast<float>(NumChRows) * (ChCardH + 8.0f) + 28.0f);
-
-            const float PbrBodyH = PbrChannelsExpanded ? (8.0f + 48.0f + 16.0f + ChipRowsH + 8.0f + ChBlocksH + 6.0f) : 0.0f;
-            const Rectangle2D PbrSecR{ LeftX, CursorY, InnerW, 38.0f + PbrBodyH };
-            BeginSectionContainer(Surface, PbrSecR, Theme, 18.0f);
-
-            const std::string PbrTag = std::to_string(Sel->Channels.size()) + " / 22";
-            if (ConstructSectionHeaderRow(
-                    Surface,
-                    { LeftX + 12.0f, CursorY + 11.0f, InnerW - 24.0f, 20.0f },
-                    ControlIcon::MaterialSphere,
-                    "Channels",
-                    PbrTag,
-                    PbrChannelsExpanded,
-                    Theme,
-                    BodyCursor,
-                    BodyPressed))
-            {
-                PbrChannelsExpanded = !PbrChannelsExpanded;
-            }
-
-            if (PbrChannelsExpanded)
-            {
-                float Sy = CursorY + 42.0f;
-
-                const auto& FinLabels = PatternStampWorkspaceSession::InspectFinishLabels();
-                const std::size_t FIdx = static_cast<std::size_t>(Sel->FinishPreset) % FinLabels.size();
-                if (ConstructDropdownBarRow(
-                        Surface, Ix, Sy, Iw, "Surface Finish", FinLabels[FIdx], ActiveSheet == InspectorSheetVariant::SurfaceFinish, Theme, BodyInput.PrimaryPointer, CapturedFinishBtn))
-                {
-                    ActiveSheet        = (ActiveSheet == InspectorSheetVariant::SurfaceFinish) ? InspectorSheetVariant::None : InspectorSheetVariant::SurfaceFinish;
-                    ActiveSheetAnchor  = CapturedFinishBtn;
-                    ActiveSwatchTarget = SwatchTargetChannel::None;
-                    DropdownScrollY    = 0.0f;
-                }
-                Sy += 48.0f;
-
-                WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Regular, { Ix, Sy }, 9.8f, Theme.TextMuted, "Active PBR Channels");
-                Sy += 16.0f;
-
-                const RemovableChipOutcome ChipOut = ConstructRemovableChannelChips(
-                    Surface,
-                    Ix,
-                    Sy,
-                    Iw,
-                    ChEntries,
-                    AddChLabel,
-                    ActiveSheet == InspectorSheetVariant::AddChannel,
-                    Theme,
-                    BodyCursor,
-                    BodyPressed);
-                if (ChipOut.AddTriggerClicked)
-                {
-                    ActiveSheet        = (ActiveSheet == InspectorSheetVariant::AddChannel) ? InspectorSheetVariant::None : InspectorSheetVariant::AddChannel;
-                    ActiveSheetAnchor  = ChipOut.AddTriggerBounds;
-                    CapturedAddChBtn   = ChipOut.AddTriggerBounds;
-                    ActiveSwatchTarget = SwatchTargetChannel::None;
-                    DropdownScrollY    = 0.0f;
-                }
-                bool PendingRemoveCh = false;
-                PatternStampSurfaceChannelKey RemoveChKey = PatternStampSurfaceChannelKey::Albedo;
-                if (ChipOut.RemovedIndex >= 0 && static_cast<std::size_t>(ChipOut.RemovedIndex) < Sel->Channels.size())
-                {
-                    PendingRemoveCh = true;
-                    RemoveChKey     = Sel->Channels[static_cast<std::size_t>(ChipOut.RemovedIndex)].Key;
-                }
-                Sy += ChipOut.ConsumedHeight + 8.0f;
-
-                // Group header bar ("Surface  2/3 on  ·  Microsurface  2/4 on")
-                const Rectangle2D GrpBarR{ Ix, Sy, Iw, 22.0f };
-                Surface.FillRectangle(GrpBarR, Theme.SectionSurface, 6.0f);
-                WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::SemiBold, { GrpBarR.X + 8.0f, GrpBarR.Y + 4.0f }, 8.6f, Theme.TextPrimary,
-                    "Surface · Microsurface · Coat & Sheen · Transmission · Emission");
-                WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Medium, { GrpBarR.Right() - 48.0f, GrpBarR.Y + 4.5f }, 8.0f, Theme.TextFaint, PbrTag);
-                Sy += 28.0f;
-
-                if (Sel->Channels.empty())
-                {
-                    WorkspaceAppearance::ConstructTruncatedText(
-                        Surface, FontWeightClass::Regular, { Ix, Sy + 6.0f }, Iw, 9.5f, Theme.TextFaint, "No PBR channels active - add channels above.");
-                }
-                else
-                {
-                    // Side-by-side 2-column open channel cards (rows-side-by-side.png, fill-linear-scene.png, fill-point-field.png parity)
-                    // Zero amber borders — subtle neutral border only!
-                    const auto SnapshotCh = Sel->Channels;
-                    const float ColGap    = 8.0f;
-                    const float ColW      = (Iw - ColGap) * 0.5f;
-
-                    for (std::size_t ChIdx = 0u; ChIdx < SnapshotCh.size(); ++ChIdx)
-                    {
-                        const auto& ChSnap = SnapshotCh[ChIdx];
-                        const auto& Desc   = PatternStampWorkspaceSession::QueryChannelDescriptor(ChSnap.Key);
-                        const std::size_t Col = ChIdx % 2u;
-                        const std::size_t Row = ChIdx / 2u;
-                        const bool SingleLastRow = (Col == 0u && ChIdx + 1u == SnapshotCh.size());
-                        const float CardW = SingleLastRow ? Iw : ColW;
-
-                        const Rectangle2D ChBlockR{
-                            Ix + static_cast<float>(Col) * (ColW + ColGap),
-                            Sy + static_cast<float>(Row) * (ChCardH + 8.0f),
-                            CardW,
-                            ChCardH
-                        };
-                        Surface.FillRectangle(ChBlockR, Theme.WellSurface, 10.0f);
-                        Surface.StrokeRectangle(ChBlockR, Theme.BorderSubtle, 10.0f, 1.0f);
-
-                        Surface.FillRectangle({ ChBlockR.X + 8.0f, ChBlockR.Y + 8.0f, 14.0f, 14.0f },
-                            Desc.ColorChannel ? ChSnap.Tint : ColorRgba{ 148u, 154u, 166u, 255u }, 4.0f);
-                        WorkspaceAppearance::ConstructTruncatedText(
-                            Surface, FontWeightClass::SemiBold, { ChBlockR.X + 26.0f, ChBlockR.Y + 7.5f }, CardW - 88.0f, 9.6f, Theme.TextPrimary, Desc.Label);
-
-                        const Rectangle2D RmBtnR{ ChBlockR.Right() - 22.0f, ChBlockR.Y + 6.0f, 16.0f, 18.0f };
-                        const Rectangle2D EyeBtnR{ RmBtnR.X - 18.0f, ChBlockR.Y + 6.0f, 16.0f, 18.0f };
-                        const std::string ReadStr = Desc.ColorChannel
-                            ? FormatHexColor(ChSnap.Tint)
-                            : (FormatFixedDecimals(ChSnap.ScalarReading * 100.0f, 0) + " %");
-                        WorkspaceAppearance::ConstructWeightedText(
-                            Surface, FontWeightClass::Medium, { EyeBtnR.X - 38.0f, ChBlockR.Y + 8.0f }, 8.2f, Theme.TextMuted, ReadStr);
-
-                        Surface.FillRectangle(EyeBtnR, EyeBtnR.Contains(BodyCursor) ? Theme.HoverSurface : Theme.SectionSurface, 5.0f);
-                        VectorIconRepository::ConstructControl(
-                            Surface, ControlIcon::EyeVisible, VectorIconPlacement{ EyeBtnR.X + 2.5f, EyeBtnR.Y + 3.5f, 10.5f, Theme.TextMuted, 1.6f });
-                        if (BodyPressed && EyeBtnR.Contains(BodyCursor))
-                        {
-                            Session->ViewChannel = static_cast<PatternStampViewChannel>(3u + static_cast<uint32_t>(ChSnap.Key));
-                        }
-
-                        Surface.FillRectangle(RmBtnR, RmBtnR.Contains(BodyCursor) ? Theme.HoverSurface : Theme.SectionSurface, 5.0f);
-                        VectorIconRepository::ConstructControl(
-                            Surface, ControlIcon::CloseCross, VectorIconPlacement{ RmBtnR.X + 3.5f, RmBtnR.Y + 4.5f, 8.5f, RmBtnR.Contains(BodyCursor) ? Theme.TextPrimary : Theme.TextMuted, 1.6f });
-                        if (BodyPressed && RmBtnR.Contains(BodyCursor))
-                        {
-                            PendingRemoveCh = true;
-                            RemoveChKey     = ChSnap.Key;
-                        }
-
-                        // 4-tab Source strip inside each open channel card ("Solid | Linear | Radial | Point")
-                        static constexpr const char* ChModeOpts[4] { "Solid", "Linear", "Radial", "Point" };
-                        const std::size_t KeyIdx = std::min<std::size_t>(static_cast<std::size_t>(ChSnap.Key), 21u);
-                        if (ChSnap.Key == PatternStampSurfaceChannelKey::Albedo)
-                        {
-                            ChannelSourceMode[KeyIdx] = Sel->FillSource;
-                        }
-                        uint32_t PickedMode = static_cast<uint32_t>(ChannelSourceMode[KeyIdx]);
-                        const float TabW = (ChBlockR.Width - 16.0f - 6.0f) / 4.0f;
-                        for (uint32_t Tm = 0u; Tm < 4u; ++Tm)
-                        {
-                            const Rectangle2D TabR{ ChBlockR.X + 8.0f + static_cast<float>(Tm) * (TabW + 2.0f), ChBlockR.Y + 28.0f, TabW, 20.0f };
-                            const bool TabAct = (PickedMode == Tm);
-                            const bool TabHov = TabR.Contains(BodyCursor);
-                            Surface.FillRectangle(TabR, TabAct ? ColorRgba{ 238u, 238u, 236u, 255u } : (TabHov ? Theme.HoverSurface : Theme.SectionSurface), 5.0f);
-                            WorkspaceAppearance::ConstructTruncatedText(
-                                Surface,
-                                TabAct ? FontWeightClass::SemiBold : FontWeightClass::Medium,
-                                { TabR.X + 4.0f, TabR.Y + 3.5f },
-                                TabW - 6.0f,
-                                7.8f,
-                                TabAct ? ColorRgba{ 16u, 17u, 20u, 255u } : Theme.TextMuted,
-                                ChModeOpts[Tm]);
-                            if (BodyPressed && TabHov)
-                            {
-                                ChannelSourceMode[KeyIdx] = static_cast<PatternStampFillSourceMode>(Tm);
-                                if (ChSnap.Key == PatternStampSurfaceChannelKey::Albedo)
-                                {
-                                    Sel->FillSource = ChannelSourceMode[KeyIdx];
-                                    if (Sel->FillSource == PatternStampFillSourceMode::PointField)
-                                    {
-                                        PatternStampWorkspaceSession::InitializeDefaultPointFieldPins(*Sel);
-                                    }
-                                    Session->BumpRevision();
-                                }
-                            }
-                        }
-
-                        if (auto* MutableCh = Session->FindChannelEntry(*Sel, ChSnap.Key))
-                        {
-                            const PatternStampFillSourceMode CurMode = ChannelSourceMode[KeyIdx];
-                            if (Desc.ColorChannel && CurMode == PatternStampFillSourceMode::LinearGradient)
-                            {
-                                // Linear gradient preview + scene handle readouts (fill-linear-scene.png parity)
-                                const Rectangle2D GradBarR{ ChBlockR.X + 8.0f, ChBlockR.Y + 54.0f, ChBlockR.Width - 16.0f, 12.0f };
-                                Surface.FillRectangle({ GradBarR.X, GradBarR.Y, GradBarR.Width * 0.5f, GradBarR.Height }, Sel->FillTint, 5.0f);
-                                Surface.FillRectangle({ GradBarR.X + GradBarR.Width * 0.5f, GradBarR.Y, GradBarR.Width * 0.5f, GradBarR.Height }, Sel->FillTintB, 5.0f);
-                                Surface.StrokeRectangle(GradBarR, Theme.BorderSubtle, 5.0f, 1.0f);
-
-                                WorkspaceAppearance::ConstructTruncatedText(
-                                    Surface, FontWeightClass::Regular, { ChBlockR.X + 8.0f, ChBlockR.Y + 72.0f }, ChBlockR.Width - 16.0f, 7.8f, Theme.TextMuted,
-                                    "Start (0.15, 0.50) · End (0.85, 0.50)");
-                                WorkspaceAppearance::ConstructTruncatedText(
-                                    Surface, FontWeightClass::Medium, { ChBlockR.X + 8.0f, ChBlockR.Y + 88.0f }, ChBlockR.Width - 16.0f, 7.8f, Theme.TextPrimary,
-                                    "Angle 0 deg · 2 stops · Drag in scene");
-
-                                const int32_t AngSid = NextSliderId++;
-                                bool& DragAng = BeginSlider(AngSid);
-                                float AngNorm = std::clamp((Sel->GradientAngleDeg + 180.0f) / 360.0f, 0.0f, 1.0f);
-                                if (ConstructSliderReadoutRow(
-                                        Surface, ChBlockR.X + 8.0f, ChBlockR.Y + 108.0f, ChBlockR.Width - 16.0f, "Angle", FormatFixedDecimals(Sel->GradientAngleDeg, 0), "deg", AngNorm, Theme, BodyInput.PrimaryPointer, DragAng))
-                                {
-                                    ActiveSliderId        = AngSid;
-                                    Sel->GradientAngleDeg = std::round(-180.0f + AngNorm * 360.0f);
-                                    Session->BumpRevision();
-                                }
-                                if (DragAng) ActiveSliderId = AngSid;
-                            }
-                            else if (Desc.ColorChannel && CurMode == PatternStampFillSourceMode::PointField)
-                            {
-                                // Point field 4-pin editor (fill-point-field.png parity)
-                                WorkspaceAppearance::ConstructTruncatedText(
-                                    Surface, FontWeightClass::Regular, { ChBlockR.X + 8.0f, ChBlockR.Y + 52.0f }, ChBlockR.Width - 16.0f, 7.6f, Theme.TextFaint,
-                                    "4 points · drag on canvas · click to add");
-                                for (std::size_t PIdx = 0u; PIdx < 4u; ++PIdx)
-                                {
-                                    const auto& Pin = Sel->PointFieldPins[PIdx];
-                                    const float PinY = ChBlockR.Y + 66.0f + static_cast<float>(PIdx) * 24.0f;
-                                    const Rectangle2D PinRowR{ ChBlockR.X + 8.0f, PinY, ChBlockR.Width - 16.0f, 21.0f };
-                                    Surface.FillRectangle(PinRowR, Theme.SectionSurface, 5.0f);
-                                    Surface.FillCircle({ PinRowR.X + 10.0f, PinRowR.Y + 10.5f }, 5.0f, Pin.Tint);
-                                    char PinLbl[48];
-                                    std::snprintf(PinLbl, sizeof(PinLbl), "#%zu  %s  (%.0f%%, %.0f%%)",
-                                        PIdx + 1u, FormatHexColor(Pin.Tint).c_str(), Pin.NormX * 100.0f, Pin.NormY * 100.0f);
-                                    WorkspaceAppearance::ConstructTruncatedText(
-                                        Surface, FontWeightClass::Medium, { PinRowR.X + 20.0f, PinRowR.Y + 3.5f }, PinRowR.Width - 26.0f, 7.8f, Theme.TextPrimary, PinLbl);
-                                }
-                            }
-                            else if (Desc.ColorChannel)
-                            {
-                                Rectangle2D SwBtnR {};
-                                if (ConstructColourSwatchRow(
-                                        Surface, ChBlockR.X + 8.0f, ChBlockR.Y + 56.0f, ChBlockR.Width - 16.0f, "Tint", FormatHexColor(MutableCh->Tint), MutableCh->Tint, Theme, BodyInput.PrimaryPointer, SwBtnR))
-                                {
-                                    ActiveSwatchTarget = (ActiveSwatchTarget == SwatchTargetChannel::PbrChannel && ActiveSwatchChannelKey == ChSnap.Key)
-                                        ? SwatchTargetChannel::None
-                                        : SwatchTargetChannel::PbrChannel;
-                                    ActiveSwatchChannelKey = ChSnap.Key;
-                                    ActiveSwatchAnchor     = SwBtnR;
-                                    ActiveSheet            = InspectorSheetVariant::None;
-                                }
-                            }
-                            else
-                            {
-                                const int32_t ChSid  = NextSliderId++;
-                                bool&         DragCh = BeginSlider(ChSid);
-                                const float   Span   = std::max(0.01f, Desc.MaxScalar - Desc.MinScalar);
-                                float         Norm   = std::clamp((MutableCh->ScalarReading - Desc.MinScalar) / Span, 0.0f, 1.0f);
-                                if (ConstructSliderReadoutRow(
-                                        Surface,
-                                        ChBlockR.X + 8.0f,
-                                        ChBlockR.Y + 56.0f,
-                                        ChBlockR.Width - 16.0f,
-                                        Desc.Label,
-                                        FormatFixedDecimals(MutableCh->ScalarReading * 100.0f, 0),
-                                        "%",
-                                        Norm,
-                                        Theme,
-                                        BodyInput.PrimaryPointer,
-                                        DragCh))
-                                {
-                                    ActiveSliderId           = ChSid;
-                                    const float Raw          = Desc.MinScalar + Norm * Span;
-                                    MutableCh->ScalarReading = std::round(Raw / Desc.StepScalar) * Desc.StepScalar;
-                                }
-                                if (DragCh) ActiveSliderId = ChSid;
-                            }
-                        }
-                    }
-                    Sy += static_cast<float>(NumChRows) * (ChCardH + 8.0f);
-                }
-
-                if (PendingRemoveCh)
-                {
-                    Session->RemoveChannelFromSelectedLayer(RemoveChKey);
-                }
-            }
-            CursorY += PbrSecR.Height + 10.0f;
-
-            // =========================================================================
-            // C. LAYER MASK SECTION
-            // =========================================================================
-            const float MaskBodyH = LayerMaskExpanded ? (Sel->Mask.Enabled ? 250.0f : 42.0f) : 0.0f;
-            const Rectangle2D MaskSecR{ LeftX, CursorY, InnerW, 38.0f + MaskBodyH };
-            BeginSectionContainer(Surface, MaskSecR, Theme, 18.0f);
-            if (ConstructSectionHeaderRow(
-                    Surface,
-                    { LeftX + 12.0f, CursorY + 11.0f, InnerW - 24.0f, 20.0f },
-                    ControlIcon::MaskCutout,
-                    "Layer Mask",
-                    Sel->Mask.Enabled ? "ON" : "OFF",
-                    LayerMaskExpanded,
-                    Theme,
-                    BodyCursor,
-                    BodyPressed))
-            {
-                LayerMaskExpanded = !LayerMaskExpanded;
-            }
-
-            if (LayerMaskExpanded)
-            {
-                float Ky = CursorY + 42.0f;
-                bool MOn = Sel->Mask.Enabled;
-                if (ConstructSwitchControlRow(Surface, Ix, Ky, Iw, "Enable Layer Mask", MOn, Theme, BodyInput.PrimaryPointer))
-                {
-                    Sel->Mask.Enabled = MOn;
-                    Session->RecomputeSummaryMetrics();
-                }
-                Ky += 34.0f;
-
-                if (Sel->Mask.Enabled)
-                {
-                    static constexpr const char* ModeOpts[3] { "Noise", "Radial", "Stripe" };
-                    uint32_t PickedM = static_cast<uint32_t>(Sel->Mask.Mode);
-                    if (ConstructSegmentedCapsuleRow(
-                            Surface, Ix, Ky, Iw, "Mask Mode", ModeOpts, 3u, static_cast<uint32_t>(Sel->Mask.Mode), PickedM, Theme, BodyInput.PrimaryPointer))
-                    {
-                        Sel->Mask.Mode = static_cast<PatternStampMaskMode>(PickedM);
-                    }
-                    Ky += 50.0f;
-
-                    const int32_t TSid = NextSliderId++;
-                    bool&         DragT = BeginSlider(TSid);
-                    float         TNorm = std::clamp(Sel->Mask.Threshold, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Ix, Ky, Iw, "Threshold", FormatFixedDecimals(Sel->Mask.Threshold, 2), "-", TNorm, Theme, BodyInput.PrimaryPointer, DragT))
-                    {
-                        ActiveSliderId      = TSid;
-                        Sel->Mask.Threshold = TNorm;
-                    }
-                    if (DragT) ActiveSliderId = TSid;
-                    Ky += 52.0f;
-
-                    const int32_t SSid = NextSliderId++;
-                    bool&         DragS = BeginSlider(SSid);
-                    float         SNorm = std::clamp((Sel->Mask.Softness - 0.02f) / 0.78f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Ix, Ky, Iw, "Softness", FormatFixedDecimals(Sel->Mask.Softness, 2), "-", SNorm, Theme, BodyInput.PrimaryPointer, DragS))
-                    {
-                        ActiveSliderId     = SSid;
-                        Sel->Mask.Softness = 0.02f + SNorm * 0.78f;
-                    }
-                    if (DragS) ActiveSliderId = SSid;
-                    Ky += 52.0f;
-
-                    const int32_t FSid = NextSliderId++;
-                    bool&         DragF = BeginSlider(FSid);
-                    float         FNorm = std::clamp((Sel->Mask.Frequency - 1.0f) / 15.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Ix, Ky, Iw, "Scale / Freq", FormatFixedDecimals(Sel->Mask.Frequency, 0), "-", FNorm, Theme, BodyInput.PrimaryPointer, DragF))
-                    {
-                        ActiveSliderId      = FSid;
-                        Sel->Mask.Frequency = std::round(1.0f + FNorm * 15.0f);
-                    }
-                    if (DragF) ActiveSliderId = FSid;
-                    Ky += 52.0f;
-
-                    bool Inv = Sel->Mask.Invert;
-                    if (ConstructSwitchControlRow(Surface, Ix, Ky, Iw, "Invert Mask", Inv, Theme, BodyInput.PrimaryPointer))
-                    {
-                        Sel->Mask.Invert = Inv;
-                    }
-                }
-            }
-            CursorY += MaskSecR.Height + 10.0f;
-        }
-
-        // =========================================================================
-        // D. NON-DESTRUCTIVE MODIFIERS SECTION
-        // =========================================================================
-        const auto& ModNames = PatternStampWorkspaceSession::InspectModifierLabels();
-        std::vector<std::string> AddModBufs;
-        std::vector<const char*> AddModPtrs;
-        AddModBufs.reserve(ModNames.size());
-        AddModPtrs.reserve(ModNames.size());
-        for (const char* MN : ModNames)
-        {
-            AddModBufs.push_back(std::string("+ ") + MN);
-            AddModPtrs.push_back(AddModBufs.back().c_str());
-        }
-
-        float ModChipH = 26.0f;
-        {
-            float RowCursorX = 0.0f;
-            for (const auto& Lbl : AddModBufs)
-            {
-                const float CW = std::min(Iw, WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.8f, Lbl) + 26.0f);
-                if (RowCursorX > 0.0f && RowCursorX + CW > Iw + 0.5f)
-                {
-                    RowCursorX = 0.0f;
-                    ModChipH += 29.0f;
-                }
-                RowCursorX += CW + 6.0f;
-            }
-        }
-
-        auto MeasureModifierBlockHeight = [](const PatternStampModifierSpec& M) -> float
-        {
-            switch (M.Category)
-            {
-                case PatternStampModifierCategory::NoiseScale:     return 38.0f + 48.0f * 2.0f + 52.0f * 3.0f + 38.0f + 8.0f;
-                case PatternStampModifierCategory::GridArray:      return 38.0f + 50.0f + 52.0f * 2.0f + 8.0f;
-                case PatternStampModifierCategory::RadialArray:    return 38.0f + 52.0f * 3.0f + 8.0f;
-                case PatternStampModifierCategory::MirrorSymmetry: return 38.0f + 50.0f + 8.0f;
-                case PatternStampModifierCategory::InsetEcho:      return 38.0f + 52.0f * 2.0f + 38.0f + 8.0f;
-                case PatternStampModifierCategory::ScatterDropout: return 38.0f + 52.0f * 3.0f + 8.0f;
-                case PatternStampModifierCategory::DomainWarp:     return 38.0f + 50.0f + 52.0f + 8.0f;
-                case PatternStampModifierCategory::BevelEdgeWear:  return 38.0f + 52.0f + 8.0f;
-                default:                                  return 56.0f;
-            }
-        };
-
-        float ModBlocksTotalH = 0.0f;
-        for (const auto& M : Sel->Modifiers)
-        {
-            ModBlocksTotalH += MeasureModifierBlockHeight(M) + 8.0f;
-        }
-
-        const float ModSecBodyH = ModifiersExpanded ? (8.0f + ModChipH + 10.0f + ModBlocksTotalH + 6.0f) : 0.0f;
-        const Rectangle2D ModSecR{ LeftX, CursorY, InnerW, 38.0f + ModSecBodyH };
-        BeginSectionContainer(Surface, ModSecR, Theme, 18.0f);
-
-        const std::string ModTag = std::to_string(Sel->Modifiers.size()) + " ACTIVE";
-        if (ConstructSectionHeaderRow(
-                Surface,
-                { LeftX + 12.0f, CursorY + 11.0f, InnerW - 24.0f, 20.0f },
-                ControlIcon::ModifierStar,
-                "Non-Destructive Modifiers",
-                ModTag,
-                ModifiersExpanded,
-                Theme,
-                BodyCursor,
-                BodyPressed))
-        {
-            ModifiersExpanded = !ModifiersExpanded;
-        }
-
-        if (ModifiersExpanded)
-        {
-            float My = CursorY + 42.0f;
-            const ChipStripOutcome ModChipPick = ConstructWrappedChipStrip(
-                Surface, Ix, My, Iw, AddModPtrs, -1, Theme, BodyCursor, BodyPressed, 23.0f, 8.8f);
-            if (ModChipPick.ClickedIndex >= 0 && static_cast<std::size_t>(ModChipPick.ClickedIndex) < static_cast<std::size_t>(PatternStampModifierCategory::Count))
-            {
-                Session->AddModifierToSelectedLayer(static_cast<PatternStampModifierCategory>(ModChipPick.ClickedIndex));
-            }
-            My += ModChipPick.ConsumedHeight + 10.0f;
-
-            bool        PendingRemoveMod = false;
-            std::size_t RemoveModIdx     = 0u;
-
-            for (std::size_t Mi = 0u; Mi < Sel->Modifiers.size(); ++Mi)
-            {
-                PatternStampModifierSpec& M     = Sel->Modifiers[Mi];
-                const float          BlockH = MeasureModifierBlockHeight(M);
-                const Rectangle2D    ModBlockR{ Ix, My, Iw, BlockH };
-                Surface.FillRectangle(ModBlockR, Theme.WellSurface, 12.0f);
-                Surface.StrokeRectangle(ModBlockR, Theme.BorderSubtle, 12.0f, 1.0f);
-
-                VectorIconRepository::ConstructControl(
-                    Surface, QueryIconForModifier(M.Category), VectorIconPlacement{ ModBlockR.X + 10.0f, ModBlockR.Y + 10.0f, 13.0f, Theme.TextMuted, 1.6f });
-                const std::size_t ModCatIdx = static_cast<std::size_t>(M.Category) % ModNames.size();
-                WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::SemiBold, { ModBlockR.X + 28.0f, ModBlockR.Y + 10.0f }, 10.2f, Theme.TextPrimary, ModNames[ModCatIdx]);
-
-                const Rectangle2D ModRmR{ ModBlockR.Right() - 26.0f, ModBlockR.Y + 7.0f, 18.0f, 20.0f };
-                const Rectangle2D ModEyeR{ ModRmR.X - 22.0f, ModBlockR.Y + 7.0f, 18.0f, 20.0f };
-                Surface.FillRectangle(ModEyeR, ModEyeR.Contains(BodyCursor) ? Theme.HoverSurface : Theme.SectionSurface, 6.0f);
-                VectorIconRepository::ConstructControl(
-                    Surface, M.Enabled ? ControlIcon::EyeVisible : ControlIcon::EyeHidden, VectorIconPlacement{ ModEyeR.X + 3.0f, ModEyeR.Y + 4.0f, 11.0f, M.Enabled ? Theme.HighlightFill : Theme.TextFaint, 1.6f });
-                if (BodyPressed && ModEyeR.Contains(BodyCursor))
-                {
-                    M.Enabled = !M.Enabled;
-                    Session->RecomputeSummaryMetrics();
-                }
-
-                Surface.FillRectangle(ModRmR, ModRmR.Contains(BodyCursor) ? Theme.HoverSurface : Theme.SectionSurface, 6.0f);
-                VectorIconRepository::ConstructControl(
-                    Surface, ControlIcon::CloseCross, VectorIconPlacement{ ModRmR.X + 4.0f, ModRmR.Y + 5.0f, 9.0f, ModRmR.Contains(BodyCursor) ? Theme.TextPrimary : Theme.TextMuted, 1.6f });
-                if (BodyPressed && ModRmR.Contains(BodyCursor))
-                {
-                    PendingRemoveMod = true;
-                    RemoveModIdx     = Mi;
-                }
-
-                float       By = ModBlockR.Y + 38.0f;
-                const float Bx = ModBlockR.X + 10.0f;
-                const float Bw = ModBlockR.Width - 20.0f;
-
-                if (M.Category == PatternStampModifierCategory::NoiseScale)
-                {
-                    static constexpr const char* AlgoOpts[5] { "FBM (Multi-Octave)", "Perlin Gradient", "Worley Cellular", "Ridged Folds", "Radial Falloff" };
-                    Rectangle2D AlgoBtn {};
-                    if (ConstructDropdownBarRow(
-                            Surface, Bx, By, Bw, "Noise Algorithm", AlgoOpts[M.NoiseAlgorithm % 5u], ActiveSheet == InspectorSheetVariant::ModifierNoiseAlgo && ActiveSheetModIdx == Mi, Theme, BodyInput.PrimaryPointer, AlgoBtn))
-                    {
-                        ActiveSheet        = (ActiveSheet == InspectorSheetVariant::ModifierNoiseAlgo && ActiveSheetModIdx == Mi) ? InspectorSheetVariant::None : InspectorSheetVariant::ModifierNoiseAlgo;
-                        ActiveSheetModIdx  = Mi;
-                        ActiveSheetAnchor  = AlgoBtn;
-                        ActiveSwatchTarget = SwatchTargetChannel::None;
-                        DropdownScrollY    = 0.0f;
-                    }
-                    By += 48.0f;
-
-                    static constexpr const char* TargetOpts[4] { "Scale + Color", "Scale Only", "Scale + Opacity", "Scale + Relief" };
-                    Rectangle2D TgtBtn {};
-                    if (ConstructDropdownBarRow(
-                            Surface, Bx, By, Bw, "Modulate Target", TargetOpts[M.ModulateTarget % 4u], ActiveSheet == InspectorSheetVariant::ModifierModTarget && ActiveSheetModIdx == Mi, Theme, BodyInput.PrimaryPointer, TgtBtn))
-                    {
-                        ActiveSheet        = (ActiveSheet == InspectorSheetVariant::ModifierModTarget && ActiveSheetModIdx == Mi) ? InspectorSheetVariant::None : InspectorSheetVariant::ModifierModTarget;
-                        ActiveSheetModIdx  = Mi;
-                        ActiveSheetAnchor  = TgtBtn;
-                        ActiveSwatchTarget = SwatchTargetChannel::None;
-                        DropdownScrollY    = 0.0f;
-                    }
-                    By += 48.0f;
-
-                    {
-                        const int32_t MinSid   = NextSliderId++;
-                        bool&         DragMinS = BeginSlider(MinSid);
-                        float         MinSNorm = std::clamp((M.MinScale - 0.05f) / 1.95f, 0.0f, 1.0f);
-                        if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Min Scale", FormatFixedDecimals(M.MinScale, 2), "-", MinSNorm, Theme, BodyInput.PrimaryPointer, DragMinS))
-                        {
-                            ActiveSliderId = MinSid;
-                            M.MinScale     = 0.05f + MinSNorm * 1.95f;
-                            Session->RecomputeSummaryMetrics();
-                        }
-                        if (DragMinS) ActiveSliderId = MinSid;
-                        By += 52.0f;
-                    }
-                    {
-                        const int32_t MaxSid   = NextSliderId++;
-                        bool&         DragMaxS = BeginSlider(MaxSid);
-                        float         MaxSNorm = std::clamp((M.MaxScale - 0.20f) / 2.80f, 0.0f, 1.0f);
-                        if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Max Scale", FormatFixedDecimals(M.MaxScale, 2), "-", MaxSNorm, Theme, BodyInput.PrimaryPointer, DragMaxS))
-                        {
-                            ActiveSliderId = MaxSid;
-                            M.MaxScale     = 0.20f + MaxSNorm * 2.80f;
-                            Session->RecomputeSummaryMetrics();
-                        }
-                        if (DragMaxS) ActiveSliderId = MaxSid;
-                        By += 52.0f;
-                    }
-                    {
-                        const int32_t FrSid    = NextSliderId++;
-                        bool&         DragFreq = BeginSlider(FrSid);
-                        float         FrNorm   = std::clamp((M.Frequency - 0.5f) / 13.5f, 0.0f, 1.0f);
-                        if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Frequency", FormatFixedDecimals(M.Frequency, 2), "-", FrNorm, Theme, BodyInput.PrimaryPointer, DragFreq))
-                        {
-                            ActiveSliderId = FrSid;
-                            M.Frequency    = 0.5f + FrNorm * 13.5f;
-                        }
-                        if (DragFreq) ActiveSliderId = FrSid;
-                        By += 52.0f;
-                    }
-
-                    Rectangle2D ModSwR {};
-                    if (ConstructColourSwatchRow(Surface, Bx, By, Bw, "Target Color B", FormatHexColor(M.TargetTintB), M.TargetTintB, Theme, BodyInput.PrimaryPointer, ModSwR))
-                    {
-                        ActiveSwatchTarget = (ActiveSwatchTarget == SwatchTargetChannel::ModifierTintB && ActiveSwatchModIdx == Mi) ? SwatchTargetChannel::None : SwatchTargetChannel::ModifierTintB;
-                        ActiveSwatchModIdx = Mi;
-                        ActiveSwatchAnchor = ModSwR;
-                        ActiveSheet        = InspectorSheetVariant::None;
-                    }
-                }
-                else if (M.Category == PatternStampModifierCategory::GridArray)
-                {
-                    static constexpr const char* GridOpts[4] { "Grid", "Brick", "Hex", "Drop" };
-                    uint32_t PickG = M.GridLayout;
-                    if (ConstructSegmentedCapsuleRow(Surface, Bx, By, Bw, "Grid Layout", GridOpts, 4u, M.GridLayout, PickG, Theme, BodyInput.PrimaryPointer))
-                    {
-                        M.GridLayout = static_cast<uint8_t>(PickG);
-                    }
-                    By += 50.0f;
-
-                    const int32_t CSid  = NextSliderId++;
-                    bool&         DragC = BeginSlider(CSid);
-                    float         CNorm = std::clamp(static_cast<float>(M.Columns - 1) / 23.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Columns", std::to_string(M.Columns), "-", CNorm, Theme, BodyInput.PrimaryPointer, DragC))
-                    {
-                        ActiveSliderId = CSid;
-                        M.Columns      = static_cast<int32_t>(std::lround(1.0f + CNorm * 23.0f));
-                        Session->RecomputeSummaryMetrics();
-                    }
-                    if (DragC) ActiveSliderId = CSid;
-                    By += 52.0f;
-
-                    const int32_t RSid  = NextSliderId++;
-                    bool&         DragR = BeginSlider(RSid);
-                    float         RNorm = std::clamp(static_cast<float>(M.Rows - 1) / 23.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Rows", std::to_string(M.Rows), "-", RNorm, Theme, BodyInput.PrimaryPointer, DragR))
-                    {
-                        ActiveSliderId = RSid;
-                        M.Rows         = static_cast<int32_t>(std::lround(1.0f + RNorm * 23.0f));
-                        Session->RecomputeSummaryMetrics();
-                    }
-                    if (DragR) ActiveSliderId = RSid;
-                }
-                else if (M.Category == PatternStampModifierCategory::RadialArray)
-                {
-                    const int32_t NSid  = NextSliderId++;
-                    bool&         DragN = BeginSlider(NSid);
-                    float         NNorm = std::clamp(static_cast<float>(M.RadialCount - 3) / 29.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Count", std::to_string(M.RadialCount), "-", NNorm, Theme, BodyInput.PrimaryPointer, DragN))
-                    {
-                        ActiveSliderId = NSid;
-                        M.RadialCount  = static_cast<int32_t>(std::lround(3.0f + NNorm * 29.0f));
-                        Session->RecomputeSummaryMetrics();
-                    }
-                    if (DragN) ActiveSliderId = NSid;
-                    By += 52.0f;
-
-                    const int32_t RadSid  = NextSliderId++;
-                    bool&         DragRad = BeginSlider(RadSid);
-                    float         RadNorm = std::clamp((M.RadiusPx - 20.0f) / 220.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Radius", FormatFixedDecimals(M.RadiusPx, 0), "px", RadNorm, Theme, BodyInput.PrimaryPointer, DragRad))
-                    {
-                        ActiveSliderId = RadSid;
-                        M.RadiusPx     = std::round(20.0f + RadNorm * 220.0f);
-                    }
-                    if (DragRad) ActiveSliderId = RadSid;
-                    By += 52.0f;
-
-                    const int32_t RngSid  = NextSliderId++;
-                    bool&         DragRng = BeginSlider(RngSid);
-                    float         RngNorm = std::clamp(static_cast<float>(M.Rings - 1) / 4.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Rings", std::to_string(M.Rings), "-", RngNorm, Theme, BodyInput.PrimaryPointer, DragRng))
-                    {
-                        ActiveSliderId = RngSid;
-                        M.Rings        = static_cast<int32_t>(std::lround(1.0f + RngNorm * 4.0f));
-                        Session->RecomputeSummaryMetrics();
-                    }
-                    if (DragRng) ActiveSliderId = RngSid;
-                }
-                else if (M.Category == PatternStampModifierCategory::MirrorSymmetry)
-                {
-                    static constexpr const char* MirOpts[4] { "X", "Y", "Quad", "Diag" };
-                    uint32_t PickM = M.MirrorAxis;
-                    if (ConstructSegmentedCapsuleRow(Surface, Bx, By, Bw, "Symmetry Axis", MirOpts, 4u, M.MirrorAxis, PickM, Theme, BodyInput.PrimaryPointer))
-                    {
-                        M.MirrorAxis = static_cast<uint8_t>(PickM);
-                    }
-                }
-                else if (M.Category == PatternStampModifierCategory::InsetEcho)
-                {
-                    const int32_t CpSid  = NextSliderId++;
-                    bool&         DragCp = BeginSlider(CpSid);
-                    float         CpNorm = std::clamp(static_cast<float>(M.EchoCopies - 1) / 7.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Echo Copies", std::to_string(M.EchoCopies), "-", CpNorm, Theme, BodyInput.PrimaryPointer, DragCp))
-                    {
-                        ActiveSliderId = CpSid;
-                        M.EchoCopies   = static_cast<int32_t>(std::lround(1.0f + CpNorm * 7.0f));
-                    }
-                    if (DragCp) ActiveSliderId = CpSid;
-                    By += 52.0f;
-
-                    const int32_t StSid  = NextSliderId++;
-                    bool&         DragSt = BeginSlider(StSid);
-                    float         StNorm = std::clamp((M.InsetStepPx - 8.0f) / 82.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Inset Step", FormatFixedDecimals(M.InsetStepPx, 0), "px", StNorm, Theme, BodyInput.PrimaryPointer, DragSt))
-                    {
-                        ActiveSliderId = StSid;
-                        M.InsetStepPx  = std::round(8.0f + StNorm * 82.0f);
-                    }
-                    if (DragSt) ActiveSliderId = StSid;
-                    By += 52.0f;
-
-                    Rectangle2D UnusedR {};
-                    ConstructColourSwatchRow(Surface, Bx, By, Bw, "Alt Color", FormatHexColor(M.AltTint), M.AltTint, Theme, BodyInput.PrimaryPointer, UnusedR);
-                }
-                else if (M.Category == PatternStampModifierCategory::ScatterDropout)
-                {
-                    const int32_t PSid  = NextSliderId++;
-                    bool&         DragP = BeginSlider(PSid);
-                    float         PNorm = std::clamp(M.PosJitterPx / 80.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Position Jitter", FormatFixedDecimals(M.PosJitterPx, 0), "px", PNorm, Theme, BodyInput.PrimaryPointer, DragP))
-                    {
-                        ActiveSliderId = PSid;
-                        M.PosJitterPx  = std::round(PNorm * 80.0f);
-                    }
-                    if (DragP) ActiveSliderId = PSid;
-                    By += 52.0f;
-
-                    const int32_t RtSid  = NextSliderId++;
-                    bool&         DragRt = BeginSlider(RtSid);
-                    float         RtNorm = std::clamp(M.RotJitterDeg / 180.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Rotation Jitter", FormatFixedDecimals(M.RotJitterDeg, 0), "deg", RtNorm, Theme, BodyInput.PrimaryPointer, DragRt))
-                    {
-                        ActiveSliderId = RtSid;
-                        M.RotJitterDeg = std::round(RtNorm * 180.0f);
-                    }
-                    if (DragRt) ActiveSliderId = RtSid;
-                    By += 52.0f;
-
-                    const int32_t DrSid  = NextSliderId++;
-                    bool&         DragDr = BeginSlider(DrSid);
-                    float         DrNorm = std::clamp(M.Dropout / 0.85f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Dropout", FormatFixedDecimals(M.Dropout, 2), "-", DrNorm, Theme, BodyInput.PrimaryPointer, DragDr))
-                    {
-                        ActiveSliderId = DrSid;
-                        M.Dropout      = DrNorm * 0.85f;
-                    }
-                    if (DragDr) ActiveSliderId = DrSid;
-                }
-                else if (M.Category == PatternStampModifierCategory::DomainWarp)
-                {
-                    static constexpr const char* WarpOpts[4] { "Wave", "Swirl", "Curl", "Pinch" };
-                    uint32_t PickW = M.WarpMode;
-                    if (ConstructSegmentedCapsuleRow(Surface, Bx, By, Bw, "Warp Mode", WarpOpts, 4u, M.WarpMode, PickW, Theme, BodyInput.PrimaryPointer))
-                    {
-                        M.WarpMode = static_cast<uint8_t>(PickW);
-                    }
-                    By += 50.0f;
-
-                    const int32_t AmpSid  = NextSliderId++;
-                    bool&         DragAmp = BeginSlider(AmpSid);
-                    float         AmpNorm = std::clamp(M.WarpAmplitude / 120.0f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Amplitude", FormatFixedDecimals(M.WarpAmplitude, 0), "px", AmpNorm, Theme, BodyInput.PrimaryPointer, DragAmp))
-                    {
-                        ActiveSliderId  = AmpSid;
-                        M.WarpAmplitude = std::round(AmpNorm * 120.0f);
-                    }
-                    if (DragAmp) ActiveSliderId = AmpSid;
-                }
-                else if (M.Category == PatternStampModifierCategory::BevelEdgeWear)
-                {
-                    const int32_t CwSid  = NextSliderId++;
-                    bool&         DragCw = BeginSlider(CwSid);
-                    float         CwNorm = std::clamp(M.ChipWearAmount / 0.90f, 0.0f, 1.0f);
-                    if (ConstructSliderReadoutRow(Surface, Bx, By, Bw, "Chip Wear", FormatFixedDecimals(M.ChipWearAmount, 2), "-", CwNorm, Theme, BodyInput.PrimaryPointer, DragCw))
-                    {
-                        ActiveSliderId   = CwSid;
-                        M.ChipWearAmount = CwNorm * 0.90f;
-                    }
-                    if (DragCw) ActiveSliderId = CwSid;
-                }
-
-                My += BlockH + 8.0f;
-            }
-
-            if (PendingRemoveMod)
-            {
-                Session->RemoveModifierFromSelectedLayer(RemoveModIdx);
-            }
-        }
-        CursorY += ModSecR.Height + 10.0f;
-    }
-
-    // =========================================================================
-    // E. DOCUMENT GROUND & TILE SECTION
-    // =========================================================================
-    float GroundBodyH = 0.0f;
-    if (GroundSectionExpanded)
-    {
-        GroundBodyH = 38.0f;
-        if (Session->Document.GroundEnabled) GroundBodyH += 38.0f;
-        if (PatternModeActive) GroundBodyH += 34.0f;
-    }
-    const Rectangle2D GroundSecR{ LeftX, CursorY, InnerW, 38.0f + GroundBodyH };
-    BeginSectionContainer(Surface, GroundSecR, Theme, 18.0f);
-    if (ConstructSectionHeaderRow(
-            Surface,
-            { LeftX + 12.0f, CursorY + 11.0f, InnerW - 24.0f, 20.0f },
-            ControlIcon::PatternTile,
-            "Document Ground & Tile",
-            Session->Document.GroundEnabled ? "ON" : "OFF",
-            GroundSectionExpanded,
-            Theme,
-            BodyCursor,
-            BodyPressed))
-    {
-        GroundSectionExpanded = !GroundSectionExpanded;
-    }
-
-    if (GroundSectionExpanded)
-    {
-        float Gy = CursorY + 42.0f;
-        bool GOn = Session->Document.GroundEnabled;
-        if (ConstructSwitchControlRow(Surface, LeftX + 12.0f, Gy, InnerW - 24.0f, "Ground Fill Enabled", GOn, Theme, BodyInput.PrimaryPointer))
-        {
-            Session->Document.GroundEnabled = GOn;
-            Session->RecomputeSummaryMetrics();
-        }
-        Gy += 34.0f;
-
-        if (Session->Document.GroundEnabled)
-        {
-            if (ConstructColourSwatchRow(
-                    Surface, LeftX + 12.0f, Gy, InnerW - 24.0f, "Ground Colour", FormatHexColor(Session->Document.GroundTintA), Session->Document.GroundTintA, Theme, BodyInput.PrimaryPointer, CapturedGroundSwatch))
-            {
-                ActiveSwatchTarget = (ActiveSwatchTarget == SwatchTargetChannel::GroundTint) ? SwatchTargetChannel::None : SwatchTargetChannel::GroundTint;
-                ActiveSwatchAnchor = CapturedGroundSwatch;
-                ActiveSheet        = InspectorSheetVariant::None;
-            }
-            Gy += 38.0f;
-        }
-        if (PatternModeActive)
-        {
-            bool BordersOn = Session->Document.ShowGhostTileBorders;
-            if (ConstructSwitchControlRow(Surface, LeftX + 12.0f, Gy, InnerW - 24.0f, "Show Ghost Repeat Borders", BordersOn, Theme, BodyInput.PrimaryPointer))
-            {
-                Session->Document.ShowGhostTileBorders = BordersOn;
-            }
-        }
-    }
-    CursorY += GroundSecR.Height + 12.0f;
-
-    CachedContentHeight = std::max(ScrollRect.Height, CursorY - ScrollTopY + 12.0f);
-    ScrollOffsetY       = std::clamp(ScrollOffsetY, 0.0f, std::max(0.0f, CachedContentHeight - ScrollRect.Height));
-    WorkspaceAppearance::ConstructVerticalScrollIndicator(Surface, ScrollRect, CachedContentHeight, ScrollOffsetY, BodyCursor);
-    Surface.PopClip();
-
-    // 5. Pane Footer
-    const Rectangle2D FooterR{ Bounds.X, Bounds.Bottom() - FooterH, Bounds.Width, FooterH };
-    ConstructPaneStatusFooter(Surface, FooterR, Session->StatusNotice, "Live SVG + PBR", Theme, false);
-
-    // 6. Overlay Sheets & Colour Swatch Board
-    if (ActiveSheet == InspectorSheetVariant::MotifShape && Sel != nullptr)
-    {
-        const auto& ShapeLabels = PatternStampWorkspaceSession::InspectMotifShapeLabels();
-        bool Open = true;
-        const uint32_t CurIdx = static_cast<uint32_t>(Sel->MotifShape);
-        RenderFittedDropdownSheet(
-            Surface,
-            ActiveSheetAnchor,
-            Bounds,
-            ShapeLabels.data(),
-            static_cast<uint32_t>(ShapeLabels.size()),
-            CurIdx,
-            Open,
-            Input,
-            [this, Sel](uint32_t Picked)
-            {
-                const auto& Labels = PatternStampWorkspaceSession::InspectMotifShapeLabels();
-                if (Picked < Labels.size())
-                {
-                    Sel->MotifShape = static_cast<PatternStampMotifShape>(Picked);
-                    Sel->CubicSubpaths.clear();
-                    PatternStampWorkspaceSession::SeedMotifCubicSubpathsIfEmpty(*Sel);
-                    Session->BumpRevision();
-                    Session->RecomputeSummaryMetrics();
-                }
-            },
-            &DropdownScrollY);
-        if (!Open) ActiveSheet = InspectorSheetVariant::None;
-    }
-    else if (ActiveSheet == InspectorSheetVariant::BlendMode && Sel != nullptr)
-    {
-        static constexpr const char* BlendOpts[6] { "Normal", "Multiply", "Screen", "Overlay", "Add", "Darken" };
-        bool Open = true;
-        RenderFittedDropdownSheet(
-            Surface,
-            ActiveSheetAnchor,
-            Bounds,
-            BlendOpts,
-            6u,
-            Sel->BlendMode,
-            Open,
-            Input,
-            [Sel](uint32_t Picked)
-            {
-                if (Picked < 6u) Sel->BlendMode = static_cast<uint8_t>(Picked);
-            },
-            &DropdownScrollY);
-        if (!Open) ActiveSheet = InspectorSheetVariant::None;
-    }
-    else if (ActiveSheet == InspectorSheetVariant::SurfaceFinish && Sel != nullptr)
-    {
-        const auto& FinLabels = PatternStampWorkspaceSession::InspectFinishLabels();
-        bool Open = true;
-        const uint32_t CurIdx = static_cast<uint32_t>(Sel->FinishPreset);
-        RenderFittedDropdownSheet(
-            Surface,
-            ActiveSheetAnchor,
-            Bounds,
-            FinLabels.data(),
-            static_cast<uint32_t>(FinLabels.size()),
-            CurIdx,
-            Open,
-            Input,
-            [this](uint32_t Picked)
-            {
-                const auto& Labels = PatternStampWorkspaceSession::InspectFinishLabels();
-                if (Picked < Labels.size()) Session->ApplyFinishPresetToSelectedLayer(static_cast<PatternStampFinishPreset>(Picked));
-            },
-            &DropdownScrollY);
-        if (!Open) ActiveSheet = InspectorSheetVariant::None;
-    }
-    else if (ActiveSheet == InspectorSheetVariant::AddChannel && Sel != nullptr)
-    {
-        const auto Avail = Session->QueryAvailableChannelsForSelectedLayer();
-        std::vector<const char*> Labels;
-        Labels.reserve(Avail.size());
-        for (PatternStampSurfaceChannelKey K : Avail)
-        {
-            Labels.push_back(PatternStampWorkspaceSession::QueryChannelDescriptor(K).Label);
-        }
-        bool Open = true;
-        RenderFittedDropdownSheet(
-            Surface,
-            ActiveSheetAnchor,
-            Bounds,
-            Labels.data(),
-            static_cast<uint32_t>(Labels.size()),
-            999u,
-            Open,
-            Input,
-            [this, &Avail](uint32_t Picked)
-            {
-                if (Picked < Avail.size()) Session->AddChannelToSelectedLayer(Avail[Picked]);
-            },
-            &DropdownScrollY);
-        if (!Open) ActiveSheet = InspectorSheetVariant::None;
-    }
-    else if (ActiveSheet == InspectorSheetVariant::ModifierNoiseAlgo && Sel != nullptr && ActiveSheetModIdx < Sel->Modifiers.size())
-    {
-        static constexpr const char* AlgoOpts[5] { "FBM (Multi-Octave)", "Perlin Gradient", "Worley Cellular", "Ridged Folds", "Radial Falloff" };
-        bool Open = true;
-        const std::size_t Idx = ActiveSheetModIdx;
-        RenderFittedDropdownSheet(
-            Surface,
-            ActiveSheetAnchor,
-            Bounds,
-            AlgoOpts,
-            5u,
-            Sel->Modifiers[Idx].NoiseAlgorithm,
-            Open,
-            Input,
-            [Sel, Idx](uint32_t Picked)
-            {
-                if (Picked < 5u) Sel->Modifiers[Idx].NoiseAlgorithm = static_cast<uint8_t>(Picked);
-            },
-            &DropdownScrollY);
-        if (!Open) ActiveSheet = InspectorSheetVariant::None;
-    }
-    else if (ActiveSheet == InspectorSheetVariant::ModifierModTarget && Sel != nullptr && ActiveSheetModIdx < Sel->Modifiers.size())
-    {
-        static constexpr const char* TargetOpts[4] { "Scale + Color", "Scale Only", "Scale + Opacity", "Scale + Relief" };
-        bool Open = true;
-        const std::size_t Idx = ActiveSheetModIdx;
-        RenderFittedDropdownSheet(
-            Surface,
-            ActiveSheetAnchor,
-            Bounds,
-            TargetOpts,
-            4u,
-            Sel->Modifiers[Idx].ModulateTarget,
-            Open,
-            Input,
-            [Sel, Idx](uint32_t Picked)
-            {
-                if (Picked < 4u) Sel->Modifiers[Idx].ModulateTarget = static_cast<uint8_t>(Picked);
-            },
-            &DropdownScrollY);
-        if (!Open) ActiveSheet = InspectorSheetVariant::None;
-    }
-
-    if (ActiveSwatchTarget != SwatchTargetChannel::None)
-    {
-        ColorRgba* EditTint = nullptr;
-        if (ActiveSwatchTarget == SwatchTargetChannel::GroundTint)
-        {
-            EditTint = &Session->Document.GroundTintA;
-        }
-        else if (Sel != nullptr)
-        {
-            if (ActiveSwatchTarget == SwatchTargetChannel::LayerFill) EditTint = &Sel->FillTint;
-            else if (ActiveSwatchTarget == SwatchTargetChannel::LayerStroke) EditTint = &Sel->StrokeTint;
-            else if (ActiveSwatchTarget == SwatchTargetChannel::PbrChannel)
-            {
-                if (auto* Ch = Session->FindChannelEntry(*Sel, ActiveSwatchChannelKey)) EditTint = &Ch->Tint;
-            }
-            else if (ActiveSwatchTarget == SwatchTargetChannel::ModifierTintB && ActiveSwatchModIdx < Sel->Modifiers.size())
-            {
-                EditTint = &Sel->Modifiers[ActiveSwatchModIdx].TargetTintB;
-            }
-        }
-
-        if (EditTint != nullptr)
-        {
-            const Rectangle2D BoardRect{
-                std::clamp(ActiveSwatchAnchor.X, Bounds.X + 8.0f, std::max(Bounds.X + 8.0f, Bounds.Right() - 210.0f)),
-                std::clamp(ActiveSwatchAnchor.Bottom() + 4.0f, Bounds.Y + 8.0f, std::max(Bounds.Y + 8.0f, Bounds.Bottom() - 126.0f)),
-                200.0f,
-                112.0f };
-            Surface.FillRectangle(BoardRect, Theme.SectionSurface, 12.0f);
-            Surface.StrokeRectangle(BoardRect, Theme.BorderStrong, 12.0f, 1.0f);
-
-            bool PickedSwatch = false;
-            const Point2D Cur { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-            for (std::size_t Si = 0u; Si < PatternStampQuickSwatches.size(); ++Si)
-            {
-                const std::size_t Col = Si % 4u;
-                const std::size_t Row = Si / 4u;
-                const Rectangle2D Tile{ BoardRect.X + 10.0f + static_cast<float>(Col) * 46.0f, BoardRect.Y + 10.0f + static_cast<float>(Row) * 24.0f, 40.0f, 18.0f };
-                Surface.FillRectangle(Tile, PatternStampQuickSwatches[Si], 5.0f);
-                const bool Match = (PatternStampQuickSwatches[Si].Red == EditTint->Red && PatternStampQuickSwatches[Si].Green == EditTint->Green && PatternStampQuickSwatches[Si].Blue == EditTint->Blue);
-                Surface.StrokeRectangle(Tile, Match ? Theme.HighlightFill : Theme.BorderSubtle, 5.0f, Match ? 2.0f : 1.0f);
-                if (Input.PrimaryPointer.Pressed && Tile.Contains(Cur))
-                {
-                    *EditTint          = PatternStampQuickSwatches[Si];
-                    PickedSwatch       = true;
-                    ActiveSwatchTarget = SwatchTargetChannel::None;
-                }
-            }
-            if (Input.PrimaryPointer.Pressed && !PickedSwatch && !BoardRect.Contains(Cur) && !ActiveSwatchAnchor.Contains(Cur))
-            {
-                ActiveSwatchTarget = SwatchTargetChannel::None;
-            }
+            std::snprintf(RightMeta, sizeof(RightMeta), "%s · %zu MOD",
+                IsPat ? "RING" : "CIRCLE", Sel->Modifiers.size());
         }
         else
         {
-            ActiveSwatchTarget = SwatchTargetChannel::None;
+            std::snprintf(RightMeta, sizeof(RightMeta), "%s", IsPat ? "RING" : "CIRCLE");
         }
+        WorkspaceAppearance::ConstructRightAlignedText(
+            Surface, FontWeightClass::Medium, { LeftX + InnerW, Sy + 2.0f }, 7.4f, Theme.TextFaint, RightMeta);
+        Sy += 22.0f;
+
+        // Helper to draw a closed property row header
+        auto DrawPropHead = [&](std::size_t RowIdx, ControlIcon Icon, bool DrawFillSwatch, std::string_view Title, std::string_view Sub, std::string_view PillText, Rectangle2D ContainerR, bool Open)
+        {
+            const Rectangle2D HeadR{ ContainerR.X, ContainerR.Y, ContainerR.Width, 38.0f };
+            if (!Open && HeadR.Contains(Cursor))
+            {
+                Surface.FillRectangle(HeadR, Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 29u, 30u, 34u, 255u }, 8.0f);
+            }
+            const Rectangle2D IconR{ HeadR.X + (Open ? 10.0f : 6.0f), HeadR.Y + 7.0f, 24.0f, 24.0f };
+            if (DrawFillSwatch)
+            {
+                DrawFillSwatchTile(Surface, IconR, *Sel);
+            }
+            else
+            {
+                VectorIconRepository::ConstructControl(
+                    Surface, Icon, VectorIconPlacement{ IconR.X + 4.5f, IconR.Y + 4.5f, 15.0f, Theme.TextMuted, 1.65f });
+            }
+
+            const float PillW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.4f, PillText) + 18.0f;
+            const Rectangle2D PillR{ HeadR.Right() - PillW - (Open ? 10.0f : 4.0f), HeadR.Y + 9.0f, PillW, 20.0f };
+            Surface.FillRectangle(PillR, Theme.LightSurface ? Theme.WellSurface : ColorRgba{ 9u, 10u, 12u, 255u }, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Medium, { PillR.X + 9.0f, PillR.Y + 3.5f }, 8.4f, Theme.TextPrimary, PillText);
+
+            const float TextX = IconR.Right() + 10.0f;
+            const float TextW = std::max(32.0f, PillR.X - TextX - 8.0f);
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Medium, { TextX, HeadR.Y + 5.5f }, TextW, 10.0f, Theme.TextPrimary, Title);
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Regular, { TextX, HeadR.Y + 20.0f }, TextW, 8.2f, Theme.TextFaint, Sub);
+
+            if (Pressed && HeadR.Contains(Cursor))
+            {
+                PropertyRowOpen[RowIdx] = !PropertyRowOpen[RowIdx];
+            }
+        };
+
+        // Row 0: Shape ("Motif primitive")
+        static constexpr std::array<const char*, 6u> BlendNames {{ "Normal", "Multiply", "Screen", "Overlay", "Add", "Darken" }};
+        const auto& MotifLabels  = PatternStampWorkspaceSession::InspectMotifShapeLabels();
+        const auto& ModLabels    = PatternStampWorkspaceSession::InspectModifierLabels();
+        const auto& FinishLabels = PatternStampWorkspaceSession::InspectFinishLabels();
+        {
+            const std::string_view ShapeName = MotifLabels[std::min<std::size_t>(static_cast<std::size_t>(Sel->MotifShape), MotifLabels.size() - 1u)];
+            const Rectangle2D R0{ LeftX, Sy, InnerW, 38.0f };
+            DrawPropHead(0u, ControlIcon::ShapeCircle, false, "Shape", "Motif primitive", ShapeName, R0, false);
+            Sy += 40.0f;
+        }
+
+        // Row 1: Fill ("Albedo source") — supports Solid, Linear, Radial, Point Field open states (rows-side-by-side.png, fill-linear-scene.png, fill-point-field.png)
+        {
+            char FillPill[32];
+            if (Sel->FillSource == PatternStampFillSourceMode::LinearGradient)
+            {
+                std::snprintf(FillPill, sizeof(FillPill), "Linear · 4 stops");
+            }
+            else if (Sel->FillSource == PatternStampFillSourceMode::RadialGradient)
+            {
+                std::snprintf(FillPill, sizeof(FillPill), "Radial · 3 stops");
+            }
+            else if (Sel->FillSource == PatternStampFillSourceMode::PointField)
+            {
+                std::snprintf(FillPill, sizeof(FillPill), "Point field");
+            }
+            else
+            {
+                FormatUpperHex(Sel->FillTint, FillPill, sizeof(FillPill));
+            }
+
+            if (!PropertyRowOpen[1])
+            {
+                const Rectangle2D R1{ LeftX, Sy, InnerW, 38.0f };
+                DrawPropHead(1u, ControlIcon::Count, true, "Fill", "Albedo source", FillPill, R1, false);
+                Sy += 40.0f;
+            }
+            else
+            {
+                const bool IsLinearOrRadial = (Sel->FillSource == PatternStampFillSourceMode::LinearGradient ||
+                                               Sel->FillSource == PatternStampFillSourceMode::RadialGradient);
+                const bool IsPoint          = (Sel->FillSource == PatternStampFillSourceMode::PointField);
+                const float CardH           = IsLinearOrRadial ? 314.0f : (IsPoint ? 290.0f : 154.0f);
+                const Rectangle2D CardR{ LeftX, Sy, InnerW, CardH };
+                Surface.FillRectangle(CardR, Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 34u, 35u, 39u, 255u }, 12.0f);
+
+                DrawPropHead(1u, ControlIcon::Count, true, "Fill", "Albedo source", FillPill, CardR, true);
+                float Fy = CardR.Y + 44.0f;
+                const float Fx = CardR.X + 10.0f;
+                const float Fw = CardR.Width - 20.0f;
+
+                // "Fill shape / Interior colour or ramp" + switch
+                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { Fx, Fy }, 9.2f, Theme.TextPrimary, "Fill shape");
+                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Fx, Fy + 13.0f }, 7.8f, Theme.TextFaint, "Interior colour or ramp");
+                DrawDockedSwitch(Surface, { CardR.Right() - 44.0f, Fy + 4.0f, 34.0f, 18.0f }, Sel->FillEnabled);
+                Fy += 32.0f;
+
+                // Segmented source bar: Solid | Linear | Radial | Point
+                const Rectangle2D SegR{ Fx, Fy, Fw, 24.0f };
+                Surface.FillRectangle(SegR, ColorRgba{ 18u, 18u, 20u, 255u }, 12.0f);
+                static constexpr const char* FillTabs[4] { "Solid", "Linear", "Radial", "Point" };
+                const float TabW = (Fw - 6.0f) / 4.0f;
+                const uint8_t CurTab = static_cast<uint8_t>(Sel->FillSource);
+                for (uint8_t Ti = 0u; Ti < 4u; ++Ti)
+                {
+                    const Rectangle2D Tr{ SegR.X + 3.0f + static_cast<float>(Ti) * TabW, SegR.Y + 2.0f, TabW, 20.0f };
+                    const bool Act = (CurTab == Ti);
+                    if (Act)
+                    {
+                        Surface.FillRectangle(Tr, ColorRgba{ 255u, 255u, 255u, 255u }, 10.0f);
+                    }
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, Act ? FontWeightClass::SemiBold : FontWeightClass::Medium,
+                        { Tr.X + (TabW - 26.0f) * 0.5f, Tr.Y + 3.5f }, 8.4f,
+                        Act ? ColorRgba{ 17u, 17u, 17u, 255u } : Theme.TextMuted, FillTabs[Ti]);
+                    if (Pressed && Tr.Contains(Cursor))
+                    {
+                        Sel->FillSource = static_cast<PatternStampFillSourceMode>(Ti);
+                    }
+                }
+                Fy += 32.0f;
+
+                if (!IsLinearOrRadial && !IsPoint)
+                {
+                    // Solid colour bar (#EFF4CF  sRGB)
+                    const Rectangle2D ColBarR{ Fx, Fy, Fw, 30.0f };
+                    Surface.FillRectangle(ColBarR, ColorRgba{ 9u, 10u, 12u, 255u }, 15.0f);
+                    Surface.FillRectangle({ ColBarR.X + 5.0f, ColBarR.Y + 4.0f, 22.0f, 22.0f }, Sel->FillTint, 11.0f);
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, FontWeightClass::Medium, { ColBarR.X + 34.0f, ColBarR.Y + 8.0f }, 9.2f, Theme.TextPrimary, FillPill);
+                    WorkspaceAppearance::ConstructRightAlignedText(
+                        Surface, FontWeightClass::Regular, { ColBarR.Right() - 12.0f, ColBarR.Y + 8.5f }, 8.2f, Theme.TextFaint, "sRGB");
+                }
+                else
+                {
+                    // Multi-stop gradient ramp bar + 4 stop chips + '-' / '+' buttons
+                    const std::array<ColorRgba, 4u> Stops {{
+                        { 239u, 244u, 207u, 255u },
+                        { 196u, 215u, 178u, 255u },
+                        { 138u, 168u, 153u, 255u },
+                        {  90u, 118u, 146u, 255u },
+                    }};
+                    const Rectangle2D RampR{ Fx, Fy, Fw, 16.0f };
+                    const float SegW = Fw / 4.0f;
+                    for (std::size_t S = 0u; S < 4u; ++S)
+                    {
+                        Surface.FillRectangle({ RampR.X + static_cast<float>(S) * SegW, RampR.Y, SegW + 1.0f, RampR.Height }, Stops[S], 6.0f);
+                    }
+                    Fy += 22.0f;
+
+                    const float ChipW = (Fw - 56.0f - 12.0f) / 4.0f;
+                    for (std::size_t S = 0u; S < 4u; ++S)
+                    {
+                        const Rectangle2D Cr{ Fx + static_cast<float>(S) * (ChipW + 4.0f), Fy, ChipW, 20.0f };
+                        Surface.FillRectangle(Cr, Stops[S], 6.0f);
+                    }
+                    Surface.FillRectangle({ Fx + Fw - 50.0f, Fy, 22.0f, 20.0f }, ColorRgba{ 24u, 25u, 28u, 255u }, 6.0f);
+                    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { Fx + Fw - 42.0f, Fy + 3.0f }, 9.0f, Theme.TextMuted, "-");
+                    Surface.FillRectangle({ Fx + Fw - 24.0f, Fy, 24.0f, 20.0f }, ColorRgba{ 24u, 25u, 28u, 255u }, 6.0f);
+                    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { Fx + Fw - 15.0f, Fy + 3.0f }, 9.0f, Theme.TextMuted, "+");
+                    Fy += 28.0f;
+
+                    if (IsLinearOrRadial)
+                    {
+                        DrawSplitSliderRow(Surface, Fx, Fy, Fw, "Angle", "-32", "deg", 0.41f, Theme);
+                        Fy += 44.0f;
+
+                        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Fx, Fy }, 8.4f, Theme.TextMuted, "Interpolation");
+                        const Rectangle2D InterpR{ Fx, Fy + 14.0f, Fw, 26.0f };
+                        Surface.FillRectangle(InterpR, ColorRgba{ 9u, 10u, 12u, 255u }, 13.0f);
+                        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { InterpR.X + 12.0f, InterpR.Y + 6.0f }, 8.8f, Theme.TextPrimary, "Cubic");
+                        VectorIconRepository::ConstructControl(
+                            Surface, ControlIcon::ChevronDown, VectorIconPlacement{ InterpR.Right() - 16.0f, InterpR.Y + 8.5f, 9.0f, Theme.TextMuted, 1.6f });
+                        Fy += 46.0f;
+
+                        // Each shape | Whole canvas
+                        const Rectangle2D SpaceR{ Fx, Fy, Fw, 24.0f };
+                        Surface.FillRectangle(SpaceR, ColorRgba{ 18u, 18u, 20u, 255u }, 12.0f);
+                        const float HalfW = (Fw - 6.0f) * 0.5f;
+                        const Rectangle2D S0{ SpaceR.X + 3.0f, SpaceR.Y + 2.0f, HalfW, 20.0f };
+                        const Rectangle2D S1{ SpaceR.X + 3.0f + HalfW, SpaceR.Y + 2.0f, HalfW, 20.0f };
+                        Surface.FillRectangle(WholeCanvasRamp ? S1 : S0, ColorRgba{ 255u, 255u, 255u, 255u }, 10.0f);
+                        WorkspaceAppearance::ConstructWeightedText(
+                            Surface, !WholeCanvasRamp ? FontWeightClass::SemiBold : FontWeightClass::Medium,
+                            { S0.X + 24.0f, S0.Y + 3.5f }, 8.4f, !WholeCanvasRamp ? ColorRgba{ 17u, 17u, 17u, 255u } : Theme.TextMuted, "Each shape");
+                        WorkspaceAppearance::ConstructWeightedText(
+                            Surface, WholeCanvasRamp ? FontWeightClass::SemiBold : FontWeightClass::Medium,
+                            { S1.X + 20.0f, S1.Y + 3.5f }, 8.4f, WholeCanvasRamp ? ColorRgba{ 17u, 17u, 17u, 255u } : Theme.TextMuted, "Whole canvas");
+                        Fy += 30.0f;
+
+                        // "Place line in viewport" & "Reset placement"
+                        const float BtnW = (Fw - 8.0f) * 0.5f;
+                        const Rectangle2D B0{ Fx, Fy, BtnW, 24.0f };
+                        const Rectangle2D B1{ Fx + BtnW + 8.0f, Fy, BtnW, 24.0f };
+                        Surface.FillRectangle(B0, ColorRgba{ 24u, 25u, 28u, 255u }, 12.0f);
+                        Surface.FillRectangle(B1, ColorRgba{ 24u, 25u, 28u, 255u }, 12.0f);
+                        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { B0.X + 12.0f, B0.Y + 5.5f }, 8.2f, Theme.TextPrimary, "Place line in viewport");
+                        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { B1.X + 18.0f, B1.Y + 5.5f }, 8.2f, Theme.TextMuted, "Reset placement");
+                    }
+                    else
+                    {
+                        DrawSplitSliderRow(Surface, Fx, Fy, Fw, "Spread", "1.00", "x", 0.35f, Theme);
+                        Fy += 44.0f;
+
+                        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Fx, Fy }, 8.4f, Theme.TextMuted, "Field base");
+                        const Rectangle2D BaseR{ Fx, Fy + 14.0f, Fw, 26.0f };
+                        Surface.FillRectangle(BaseR, ColorRgba{ 9u, 10u, 12u, 255u }, 13.0f);
+                        Surface.FillRectangle({ BaseR.X + 5.0f, BaseR.Y + 4.0f, 18.0f, 18.0f }, ColorRgba{ 90u, 118u, 146u, 255u }, 9.0f);
+                        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { BaseR.X + 29.0f, BaseR.Y + 6.0f }, 8.8f, Theme.TextPrimary, "#5A7692");
+                        WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Regular, { BaseR.Right() - 12.0f, BaseR.Y + 6.5f }, 8.0f, Theme.TextFaint, "sRGB");
+                        Fy += 44.0f;
+
+                        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Fx, Fy }, 8.4f, Theme.TextMuted, "Interpolation");
+                        const Rectangle2D InterpR{ Fx, Fy + 14.0f, Fw, 26.0f };
+                        Surface.FillRectangle(InterpR, ColorRgba{ 9u, 10u, 12u, 255u }, 13.0f);
+                        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { InterpR.X + 12.0f, InterpR.Y + 6.0f }, 8.8f, Theme.TextPrimary, "Hermite");
+                        VectorIconRepository::ConstructControl(
+                            Surface, ControlIcon::ChevronDown, VectorIconPlacement{ InterpR.Right() - 16.0f, InterpR.Y + 8.5f, 9.0f, Theme.TextMuted, 1.6f });
+                        Fy += 44.0f;
+
+                        const Rectangle2D PlaceBtnR{ Fx, Fy, Fw, 24.0f };
+                        Surface.FillRectangle(PlaceBtnR, ColorRgba{ 24u, 25u, 28u, 255u }, 12.0f);
+                        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { PlaceBtnR.X + (Fw - 110.0f) * 0.5f, PlaceBtnR.Y + 5.5f }, 8.4f, Theme.TextPrimary, "Place points in viewport");
+                    }
+                }
+                Sy += CardH + 6.0f;
+            }
+        }
+
+        // Row 2: Outline ("Contour stroke") — expands vertically in-place alongside Fill (rows-side-by-side.png)
+        {
+            if (!PropertyRowOpen[2])
+            {
+                const Rectangle2D R2{ LeftX, Sy, InnerW, 38.0f };
+                DrawPropHead(2u, ControlIcon::ShapeSquare, false, "Outline", "Contour stroke", "None", R2, false);
+                Sy += 40.0f;
+            }
+            else
+            {
+                const float CardH = 116.0f;
+                const Rectangle2D CardR{ LeftX, Sy, InnerW, CardH };
+                Surface.FillRectangle(CardR, Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 34u, 35u, 39u, 255u }, 12.0f);
+                DrawPropHead(2u, ControlIcon::ShapeSquare, false, "Outline", "Contour stroke", "None", CardR, true);
+                DrawSplitSliderRow(Surface, CardR.X + 10.0f, CardR.Y + 44.0f, CardR.Width - 20.0f, "Width", "0.0", "px", 0.0f, Theme);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Regular, { CardR.X + 10.0f, CardR.Y + 92.0f }, 8.2f, Theme.TextFaint,
+                    "Give the outline a width to colour it.");
+                Sy += CardH + 6.0f;
+            }
+        }
+
+        // Row 3: Placement ("Position · size · turn")
+        {
+            char PlacePill[48];
+            std::snprintf(PlacePill, sizeof(PlacePill), "%.0f, %.0f · %.0f×%.0f",
+                Sel->CenterX, Sel->CenterY, Sel->WidthPx, Sel->HeightPx);
+            const Rectangle2D R3{ LeftX, Sy, InnerW, 38.0f };
+            DrawPropHead(3u, ControlIcon::MoveArrows, false, "Placement", "Position · size · turn", PlacePill, R3, false);
+            Sy += 40.0f;
+        }
+
+        // Row 4: Blend ("Compositing")
+        {
+            char BlendPill[32];
+            const char* BlendLbl = BlendNames[std::min<std::size_t>(Sel->BlendMode, BlendNames.size() - 1u)];
+            std::snprintf(BlendPill, sizeof(BlendPill), "%s · %d%%",
+                BlendLbl,
+                static_cast<int>(std::lround(Sel->Opacity * 100.0f)));
+            const Rectangle2D R4{ LeftX, Sy, InnerW, 38.0f };
+            DrawPropHead(4u, ControlIcon::CircleNotice, false, "Blend", "Compositing", BlendPill, R4, false);
+            Sy += 40.0f;
+        }
+
+        // Row 5: Surface ("PBR channels")
+        {
+            char SurfPill[48];
+            const char* FinLbl = FinishLabels[std::min<std::size_t>(static_cast<std::size_t>(Sel->FinishPreset), FinishLabels.size() - 1u)];
+            std::snprintf(SurfPill, sizeof(SurfPill), "%s · %zu ch", FinLbl, Sel->Channels.size());
+            if (!PropertyRowOpen[5])
+            {
+                const Rectangle2D R5{ LeftX, Sy, InnerW, 38.0f };
+                DrawPropHead(5u, ControlIcon::LayersSlabs, false, "Surface", "PBR channels", SurfPill, R5, false);
+                Sy += 40.0f;
+            }
+            else
+            {
+                const float CardH = 48.0f + static_cast<float>(Sel->Channels.size()) * 40.0f;
+                const Rectangle2D CardR{ LeftX, Sy, InnerW, CardH };
+                Surface.FillRectangle(CardR, Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 34u, 35u, 39u, 255u }, 12.0f);
+                DrawPropHead(5u, ControlIcon::LayersSlabs, false, "Surface", "PBR channels", SurfPill, CardR, true);
+                float Cy = CardR.Y + 44.0f;
+                for (auto& Ch : Sel->Channels)
+                {
+                    const auto& Meta = PatternStampWorkspaceSession::QueryChannelDescriptor(Ch.Key);
+                    char Readout[24];
+                    if (Meta.ColorChannel)
+                    {
+                        FormatUpperHex(Ch.Tint, Readout, sizeof(Readout));
+                    }
+                    else
+                    {
+                        std::snprintf(Readout, sizeof(Readout), "%d %%", static_cast<int>(std::lround(Ch.ScalarReading * 100.0f)));
+                    }
+                    (void)ConstructChannelEntryRow(
+                        Surface, { CardR.X + 8.0f, Cy, CardR.Width - 16.0f, 38.0f },
+                        Meta.ColorChannel ? Ch.Tint : Meta.DefaultTint,
+                        Meta.ColorChannel, Ch.ScalarReading, Meta.Label, Meta.Subtitle,
+                        Readout, true, false, Theme, Cursor, Pressed);
+                    Cy += 40.0f;
+                }
+                Sy += CardH + 6.0f;
+            }
+        }
+
+        // Row 6: Mask ("Layer cut-out")
+        {
+            const Rectangle2D R6{ LeftX, Sy, InnerW, 38.0f };
+            DrawPropHead(6u, ControlIcon::MaskCutout, false, "Mask", "Layer cut-out", Sel->Mask.Enabled ? "On" : "Off", R6, false);
+            Sy += 44.0f;
+        }
+
+        // 5. Modifiers Section ("Modifiers  2 OF 2 ACTIVE · IN ORDER" + "+ Modifier" button)
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular, { LeftX, Sy + 2.0f }, 10.2f, Theme.TextPrimary, "Modifiers");
+        char ModHeadMeta[48];
+        if (!Sel->Modifiers.empty())
+        {
+            std::snprintf(ModHeadMeta, sizeof(ModHeadMeta), "%zu OF %zu ACTIVE · IN ORDER",
+                Sel->Modifiers.size(), Sel->Modifiers.size());
+        }
+        else
+        {
+            std::snprintf(ModHeadMeta, sizeof(ModHeadMeta), "NONE");
+        }
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Medium, { LeftX + 56.0f, Sy + 4.5f }, 7.4f, Theme.TextFaint, ModHeadMeta);
+
+        const Rectangle2D AddModBtnR{ LeftX + InnerW - 76.0f, Sy, 76.0f, 22.0f };
+        Surface.FillRectangle(AddModBtnR, Theme.LightSurface ? Theme.SectionSurface : ColorRgba{ 33u, 34u, 39u, 255u }, 11.0f);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Medium, { AddModBtnR.X + 12.0f, AddModBtnR.Y + 4.0f }, 8.4f, Theme.TextPrimary, "+ Modifier");
+        if (Pressed && AddModBtnR.Contains(Cursor))
+        {
+            Session->AddModifierToSelectedLayer(PatternStampModifierCategory::GridArray);
+        }
+        Sy += 28.0f;
+
+        if (Sel->Modifiers.empty())
+        {
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Regular, { LeftX, Sy + 2.0f }, InnerW, 8.4f, Theme.TextFaint,
+                "No modifiers - the motif is drawn once. Add an array to repeat it.");
+            Sy += 26.0f;
+        }
+        else
+        {
+            for (std::size_t MIdx = 0u; MIdx < Sel->Modifiers.size(); ++MIdx)
+            {
+                const auto& Mod = Sel->Modifiers[MIdx];
+                const bool IsNoise = (Mod.Category == PatternStampModifierCategory::NoiseScale ||
+                                      Mod.Category == PatternStampModifierCategory::ScatterDropout);
+                const Rectangle2D ModRowR{ LeftX, Sy, InnerW, 38.0f };
+                Surface.FillCircle({ ModRowR.X + 6.0f, ModRowR.Y + 19.0f }, 3.0f, ColorRgba{ 52u, 199u, 89u, 255u });
+                VectorIconRepository::ConstructControl(
+                    Surface, IsNoise ? ControlIcon::NoiseWave : ControlIcon::PatternTile,
+                    VectorIconPlacement{ ModRowR.X + 16.0f, ModRowR.Y + 12.0f, 14.0f, Theme.TextMuted, 1.65f });
+
+                char ModSub[32], ModPill[48];
+                std::snprintf(ModSub, sizeof(ModSub), "%s · #%zu", IsNoise ? "NOISE" : "ARRAY", MIdx + 1u);
+                if (IsNoise)
+                {
+                    std::snprintf(ModPill, sizeof(ModPill), "WORLEY · %.2f-%.2fx", Mod.MinScale, Mod.MaxScale);
+                }
+                else
+                {
+                    std::snprintf(ModPill, sizeof(ModPill), "Grid %dx%d", Mod.Columns, Mod.Rows);
+                }
+
+                const float PillW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.2f, ModPill) + 18.0f;
+                const Rectangle2D PillR{ ModRowR.Right() - PillW - 4.0f, ModRowR.Y + 9.0f, PillW, 20.0f };
+                Surface.FillRectangle(PillR, Theme.LightSurface ? Theme.WellSurface : ColorRgba{ 9u, 10u, 12u, 255u }, 10.0f);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Medium, { PillR.X + 9.0f, PillR.Y + 3.5f }, 8.2f, Theme.TextPrimary, ModPill);
+
+                const char* ModName = ModLabels[std::min<std::size_t>(static_cast<std::size_t>(Mod.Category), ModLabels.size() - 1u)];
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface, FontWeightClass::Medium, { ModRowR.X + 36.0f, ModRowR.Y + 5.5f }, PillR.X - ModRowR.X - 42.0f, 9.8f,
+                    Theme.TextPrimary, ModName);
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface, FontWeightClass::Medium, { ModRowR.X + 36.0f, ModRowR.Y + 20.5f }, PillR.X - ModRowR.X - 42.0f, 7.4f,
+                    Theme.TextFaint, ModSub);
+                Sy += 40.0f;
+            }
+        }
+        Sy += 6.0f;
     }
+
+    // 6. Document Fold Bar ("Document  GROUND ON · 1024 PX  >")
+    {
+        const Rectangle2D DocFoldR{ LeftX, Sy, InnerW, 34.0f };
+        Surface.FillRectangle(DocFoldR, Theme.LightSurface ? Theme.SectionSurface : ColorRgba{ 28u, 29u, 33u, 255u }, 10.0f);
+        VectorIconRepository::ConstructControl(
+            Surface, ControlIcon::ImageTile, VectorIconPlacement{ DocFoldR.X + 10.0f, DocFoldR.Y + 10.5f, 13.0f, Theme.TextMuted, 1.6f });
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Medium, { DocFoldR.X + 28.0f, DocFoldR.Y + 9.5f }, 9.2f, Theme.TextPrimary, "Document");
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Medium, { DocFoldR.X + 82.0f, DocFoldR.Y + 11.0f }, 7.4f, Theme.TextFaint,
+            IsPat ? "GROUND ON · 1024 PX" : "TRANSPARENT · 1024 PX");
+        VectorIconRepository::ConstructControl(
+            Surface, ControlIcon::ChevronForward, VectorIconPlacement{ DocFoldR.Right() - 16.0f, DocFoldR.Y + 12.0f, 9.0f, Theme.TextMuted, 1.6f });
+        Sy += 42.0f;
+    }
+
+    CachedContentHeight = (Sy - ScrollStartY) + 8.0f;
+    Surface.PopClip();
+
+    // 7. Bottom Export Bar (.svg | Project | Copy) + Status Line ("Saved locally   Double-click a layer to rename · Esc closes")
+    const float ExpY  = Bounds.Bottom() - ExportBarH - StatusBarH + 4.0f;
+    const float BtnGap = 8.0f;
+    const float BtnW   = (InnerW - BtnGap * 2.0f) / 3.0f;
+    struct ExpBtnSpec { ControlIcon Icon; const char* Label; bool Primary; };
+    static constexpr std::array<ExpBtnSpec, 3u> ExpBtns {{
+        { ControlIcon::DownloadExport, ".svg",    true  },
+        { ControlIcon::DownloadExport, "Project", false },
+        { ControlIcon::CopyDuplicate,  "Copy",    false },
+    }};
+    for (std::size_t I = 0u; I < 3u; ++I)
+    {
+        const Rectangle2D Br{ LeftX + static_cast<float>(I) * (BtnW + BtnGap), ExpY, BtnW, 28.0f };
+        const ColorRgba Fill = ExpBtns[I].Primary
+            ? ColorRgba{ 255u, 255u, 255u, 255u }
+            : (Theme.LightSurface ? Theme.SectionSurface : ColorRgba{ 34u, 35u, 39u, 255u });
+        const ColorRgba Ink = ExpBtns[I].Primary ? ColorRgba{ 17u, 17u, 17u, 255u } : Theme.TextPrimary;
+        Surface.FillRectangle(Br, Fill, 14.0f);
+        VectorIconRepository::ConstructControl(
+            Surface, ExpBtns[I].Icon, VectorIconPlacement{ Br.X + Br.Width * 0.5f - 22.0f, Br.Y + 8.0f, 11.5f, Ink, 1.7f });
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Medium, { Br.X + Br.Width * 0.5f - 6.0f, Br.Y + 6.5f }, 8.8f, Ink, ExpBtns[I].Label);
+    }
+
+    const float StatY = Bounds.Bottom() - StatusBarH + 4.0f;
+    Surface.FillCircle({ LeftX + 4.0f, StatY + 6.5f }, 2.8f, ColorRgba{ 52u, 199u, 89u, 255u });
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Regular, { LeftX + 12.0f, StatY }, 7.8f, Theme.TextFaint, "Saved locally");
+    WorkspaceAppearance::ConstructRightAlignedText(
+        Surface, FontWeightClass::Regular, { LeftX + InnerW, StatY }, 7.6f, Theme.TextFaint,
+        "Double-click a layer to rename · Esc closes");
 
     Surface.PopClip();
 }

@@ -171,8 +171,8 @@ int main()
         ControlCentre.ApplyDraftAppearanceImmediate();
         ControlCentre.AccessNotificationStream().ClearPending();
 
-        // Exhibit 09: Main Baking Workspace (matches 05-HTML-baking.png)
-        BakingHost.AccessSession().InspectTarget(BakerTargetId::BentNormal);
+        // Exhibit 09: Main Baking Workspace (matches cards-bake.png 1:1 with TangentNormal open)
+        BakingHost.AccessSession().InspectTarget(BakerTargetId::TangentNormal);
         if (!CaptureBakingWorkspacePng(Io, Dock, ControlCentre, ImageDir / "09-BakingWorkspaceMain.png"))
         {
             return 1;

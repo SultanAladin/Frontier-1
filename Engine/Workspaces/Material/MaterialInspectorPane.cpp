@@ -1,8 +1,9 @@
 /*============================================================================================================================================
                                                         MATERIALINSPECTORPANE.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of MaterialInspectorPane: OpenPBR 1.1 header, 4-tile telemetry (F0, CLASS, GLOSS, ALBEDO), Tiling & UV card,
-//    and 6-group 28-channel stack with side-by-side multi-open channel editors and zero amber borders.
+// 🧩 Implementation of MaterialInspectorPane: 1:1 parity with Experimental/TextureStudio docked Material Inspector (cards-material.png
+//    & outliner-footer-material.png): LOOK-DEV PBR header, 3 KPI metric tiles (Response, Albedo, Signal), 28-channel stack with 28x28
+//    procedural icons, in-place vertical multi-open channel cards (Value | Field | Ramp | Image), and collapsed group mini swatches.
 
 #include "Engine/Workspaces/Material/MaterialInspectorPane.h"
 
@@ -73,34 +74,63 @@ void MaterialInspectorPane::Render(
     }
 
     Surface.PushClip(Bounds);
-    Surface.FillRectangle(Bounds, Theme.PaneBackground, 0.0f);
-    Surface.StrokeLine({ Bounds.X, Bounds.Y }, { Bounds.X, Bounds.Bottom() }, Theme.BorderSubtle, 1.0f);
+    Surface.FillRectangle(Bounds, Theme.LightSurface ? Theme.PaneBackground : ColorRgba{ 24u, 25u, 28u, 255u }, 0.0f);
 
-    const float PadX   = 12.0f;
+    const float PadX   = 14.0f;
     const float LeftX  = Bounds.X + PadX;
     const float InnerW = Bounds.Width - PadX * 2.0f;
     float       CurY   = Bounds.Y + 12.0f;
 
-    // 1. Project Zero Card Header ("Material Inspector  OPENPBR 1.1" + Preset pill + Refresh + Export)
+    // 1. Top Card Bar ("Material Inspector / LOOK-DEV PBR" + Undo Redo Upload Reset)
     VectorIconRepository::ConstructControl(
-        Surface, ControlIcon::MaterialSphere, VectorIconPlacement{ LeftX, CurY + 3.0f, 13.5f, ColorRgba{ 232u, 194u, 122u, 255u }, 1.7f });
+        Surface, ControlIcon::MaterialSphere, VectorIconPlacement{ LeftX, CurY + 3.0f, 14.0f, ColorRgba{ 242u, 140u, 56u, 255u }, 1.75f });
     WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::SemiBold, { LeftX + 19.0f, CurY + 1.0f }, 10.6f, Theme.TextPrimary, "Material Inspector");
+        Surface, FontWeightClass::Medium, { LeftX + 20.0f, CurY - 1.0f }, 10.2f, Theme.TextPrimary, "Material Inspector");
     WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::Bold, { LeftX + 124.0f, CurY + 3.0f }, 7.8f, ColorRgba{ 232u, 194u, 122u, 255u }, "OPENPBR 1.1");
+        Surface, FontWeightClass::Medium, { LeftX + 20.0f, CurY + 11.5f }, 7.2f, Theme.TextFaint, "LOOK-DEV PBR");
 
+    static constexpr std::array<ControlIcon, 4u> TopActions {{
+        ControlIcon::UndoArrow,
+        ControlIcon::RedoArrow,
+        ControlIcon::UploadImport,
+        ControlIcon::RefreshCycle,
+    }};
+    for (std::size_t I = 0u; I < TopActions.size(); ++I)
+    {
+        const Rectangle2D ActR{
+            Bounds.Right() - PadX - static_cast<float>(TopActions.size() - I) * 24.0f,
+            CurY,
+            22.0f,
+            22.0f
+        };
+        ConstructHeaderIconButton(Surface, ActR, TopActions[I], false, I >= 2u, Theme, Cursor, Pressed);
+    }
+    CurY += 28.0f;
+    Surface.StrokeLine({ LeftX, CurY }, { LeftX + InnerW, CurY }, ColorRgba{ 255u, 255u, 255u, 14u }, 1.0f);
+    CurY += 10.0f;
+
+    // 2. Hero Title Block ("ANIMATED & VFX / 01", Large Title, Subtitle + Preset Dropdown Pill)
     const char* ActiveMatTitle = (Session != nullptr && !Session->DocumentTabs.empty())
         ? Session->InspectActiveRecipe().DisplayTitle.c_str()
-        : "Glazed Terracotta";
+        : "Derez Lattice Dissolve (ControlVehicle)";
 
-    const Rectangle2D ExpBtnR{ Bounds.Right() - PadX - 24.0f, CurY - 2.0f, 24.0f, 24.0f };
-    const Rectangle2D RefBtnR{ ExpBtnR.X - 26.0f, CurY - 2.0f, 24.0f, 24.0f };
-    const Rectangle2D PresetR{ std::max(LeftX + 186.0f, RefBtnR.X - 118.0f), CurY - 2.0f, 114.0f, 24.0f };
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Medium, { LeftX, CurY }, 7.6f, Theme.TextFaint, "ANIMATED & VFX / 01");
+    CurY += 13.0f;
 
-    Surface.FillRectangle(PresetR, PresetR.Contains(Cursor) ? Theme.HoverSurface : Theme.SectionSurface, 7.0f);
-    Surface.StrokeRectangle(PresetR, Theme.BorderSubtle, 7.0f, 1.0f);
     WorkspaceAppearance::ConstructTruncatedText(
-        Surface, FontWeightClass::Medium, { PresetR.X + 8.0f, PresetR.Y + 5.0f }, PresetR.Width - 22.0f, 8.2f, Theme.TextPrimary, ActiveMatTitle);
+        Surface, FontWeightClass::Regular, { LeftX, CurY }, InnerW, 17.5f, Theme.TextPrimary, ActiveMatTitle);
+    CurY += 24.0f;
+
+    const float DropW = std::min(156.0f, InnerW * 0.48f);
+    WorkspaceAppearance::ConstructTruncatedText(
+        Surface, FontWeightClass::Medium, { LeftX, CurY + 5.0f }, InnerW - DropW - 8.0f, 7.6f, Theme.TextFaint,
+        "ANIMATED 16² LATTICE · HMI DEREZ");
+
+    const Rectangle2D PresetR{ LeftX + InnerW - DropW, CurY, DropW, 24.0f };
+    Surface.FillRectangle(PresetR, PresetR.Contains(Cursor) ? ColorRgba{ 20u, 21u, 24u, 255u } : ColorRgba{ 10u, 11u, 13u, 255u }, 12.0f);
+    WorkspaceAppearance::ConstructTruncatedText(
+        Surface, FontWeightClass::Medium, { PresetR.X + 10.0f, PresetR.Y + 5.0f }, PresetR.Width - 24.0f, 8.2f, Theme.TextPrimary, ActiveMatTitle);
     VectorIconRepository::ConstructControl(
         Surface, ControlIcon::ChevronDown, VectorIconPlacement{ PresetR.Right() - 14.0f, PresetR.Y + 7.5f, 9.0f, Theme.TextMuted, 1.6f });
     if (Pressed && PresetR.Contains(Cursor) && Session != nullptr && !Session->PresetRepository.empty())
@@ -108,103 +138,74 @@ void MaterialInspectorPane::Render(
         const std::size_t NextIdx = (Session->ActiveTabIndex + 1u) % Session->PresetRepository.size();
         Session->SelectPresetIdentity(Session->PresetRepository[NextIdx].PresetIdentity);
     }
-
-    Surface.FillRectangle(RefBtnR, RefBtnR.Contains(Cursor) ? Theme.HoverSurface : Theme.SectionSurface, 6.0f);
-    Surface.StrokeRectangle(RefBtnR, Theme.BorderSubtle, 6.0f, 1.0f);
-    VectorIconRepository::ConstructControl(
-        Surface, ControlIcon::RefreshCycle, VectorIconPlacement{ RefBtnR.X + 6.0f, RefBtnR.Y + 6.0f, 12.0f, Theme.TextMuted, 1.65f });
-
-    Surface.FillRectangle(ExpBtnR, ExpBtnR.Contains(Cursor) ? Theme.HoverSurface : Theme.SectionSurface, 6.0f);
-    Surface.StrokeRectangle(ExpBtnR, Theme.BorderSubtle, 6.0f, 1.0f);
-    VectorIconRepository::ConstructControl(
-        Surface, ControlIcon::DownloadExport, VectorIconPlacement{ ExpBtnR.X + 6.0f, ExpBtnR.Y + 6.0f, 12.0f, Theme.TextMuted, 1.65f });
-
-    CurY += 28.0f;
-    Surface.StrokeLine({ Bounds.X, CurY }, { Bounds.Right(), CurY }, Theme.BorderSubtle, 1.0f);
-    CurY += 10.0f;
-
-    // 2. Material Swatch + Title + Subtitle ("CERAMIC · IOR 1.50 · 6/28 CHANNELS ACTIVE", matching cards-material.png)
-    const ColorRgba BaseCol = Outliner->ChannelTints[0];
-    Surface.FillRectangle({ LeftX, CurY, 22.0f, 22.0f }, BaseCol, 6.0f);
-    Surface.StrokeRectangle({ LeftX, CurY, 22.0f, 22.0f }, Theme.BorderStrong, 6.0f, 1.0f);
-
-    WorkspaceAppearance::ConstructTruncatedText(
-        Surface, FontWeightClass::Bold, { LeftX + 30.0f, CurY - 2.0f }, InnerW - 34.0f, 14.5f, Theme.TextPrimary, ActiveMatTitle);
-    char SubMeta[80];
-    std::snprintf(SubMeta, sizeof(SubMeta), "CERAMIC · IOR 1.50 · %zu/%zu CHANNELS ACTIVE", Outliner->CountEnabledChannels(), MaterialOutlinerPane::ChannelCount);
-    WorkspaceAppearance::ConstructTruncatedText(
-        Surface, FontWeightClass::Medium, { LeftX + 30.0f, CurY + 14.0f }, InnerW - 34.0f, 7.8f, Theme.TextFaint, SubMeta);
     CurY += 32.0f;
 
-    // 3. 4-Column Telemetry Strip (F0 | CLASS | GLOSS | ALBEDO, matching cards-material.png)
-    const float TeleGap = 6.0f;
-    const float TeleW   = (InnerW - TeleGap * 3.0f) / 4.0f;
-    const float MetalVal = Outliner->ChannelScalars[2];
-    const float RoughVal = Outliner->ChannelScalars[7];
-    const int   GlossPct = static_cast<int>(std::lround((1.0f - RoughVal) * 100.0f));
-    const int   AlbedoPct = static_cast<int>(std::lround(((BaseCol.Red + BaseCol.Green + BaseCol.Blue) / (3.0f * 255.0f)) * 100.0f));
-    char GlossBuf[16], AlbedoBuf[16];
-    std::snprintf(GlossBuf, sizeof(GlossBuf), "%d%%", GlossPct);
-    std::snprintf(AlbedoBuf, sizeof(AlbedoBuf), "%d%%", AlbedoPct);
-
-    struct TeleSpec { const char* Title; const char* Value; };
-    const std::array<TeleSpec, 4u> TeleItems {{
-        { "F0",     MetalVal > 0.5f ? "92.0%" : "4.0%"        },
-        { "CLASS",  MetalVal > 0.5f ? "Conductor" : "Dielectric" },
-        { "GLOSS",  GlossBuf                                  },
-        { "ALBEDO", AlbedoBuf                                 },
+    // 3. Three KPI Metric Tiles: Response (0.028 F0), Albedo (5 %), Signal (0 / 28) — matches cards-material.png 1:1
+    const float TileGap = 8.0f;
+    const float TileW   = (InnerW - TileGap * 2.0f) / 3.0f;
+    const float TileH   = 66.0f;
+    struct MetricSpec
+    {
+        const char* Label;
+        const char* BigNum;
+        const char* Unit;
+        float       BarFrac;
+        ColorRgba   BarCol;
+        const char* SubText;
+    };
+    const std::array<MetricSpec, 3u> Metrics {{
+        { "Response", "0.028", "F0",   0.18f, { 235u, 235u, 235u, 255u }, "HYBRID · MIRROR" },
+        { "Albedo",   "5",     "%",    0.08f, { 180u, 182u, 188u, 255u }, "TOO DARK"        },
+        { "Signal",   "0",     "/ 28", 0.02f, { 120u, 122u, 128u, 255u }, "ALL FLAT VALUES" },
     }};
-    for (std::size_t Ti = 0u; Ti < 4u; ++Ti)
+    for (std::size_t Mi = 0u; Mi < 3u; ++Mi)
     {
-        const Rectangle2D TileR{ LeftX + static_cast<float>(Ti) * (TeleW + TeleGap), CurY, TeleW, 38.0f };
-        Surface.FillRectangle(TileR, Theme.SectionSurface, 8.0f);
-        Surface.StrokeRectangle(TileR, Theme.BorderSubtle, 8.0f, 1.0f);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,     { TileR.X + 8.0f, TileR.Y + 5.0f  }, 7.2f, Theme.TextFaint,   TeleItems[Ti].Title);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { TileR.X + 8.0f, TileR.Y + 18.0f }, 9.6f, Theme.TextPrimary, TeleItems[Ti].Value);
+        const Rectangle2D TileR{ LeftX + static_cast<float>(Mi) * (TileW + TileGap), CurY, TileW, TileH };
+        Surface.FillRectangle(TileR, ColorRgba{ 33u, 34u, 39u, 255u }, 12.0f);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular, { TileR.X + 10.0f, TileR.Y + 7.0f }, 8.2f, Theme.TextMuted, Metrics[Mi].Label);
+        const float BigW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 15.0f, Metrics[Mi].BigNum);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular, { TileR.X + 10.0f, TileR.Y + 20.0f }, 15.0f, Theme.TextPrimary, Metrics[Mi].BigNum);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular, { TileR.X + 13.0f + BigW, TileR.Y + 25.0f }, 9.2f, Theme.TextMuted, Metrics[Mi].Unit);
+
+        const Rectangle2D BarTrack{ TileR.X + 10.0f, TileR.Y + 42.0f, TileR.Width - 20.0f, 3.5f };
+        Surface.FillRectangle(BarTrack, ColorRgba{ 19u, 20u, 23u, 255u }, 1.8f);
+        const float FillW = std::max(3.0f, BarTrack.Width * Metrics[Mi].BarFrac);
+        Surface.FillRectangle({ BarTrack.X, BarTrack.Y, FillW, BarTrack.Height }, Metrics[Mi].BarCol, 1.8f);
+
+        WorkspaceAppearance::ConstructTruncatedText(
+            Surface, FontWeightClass::Medium, { TileR.X + 10.0f, TileR.Y + 50.0f }, TileR.Width - 16.0f, 7.0f, Theme.TextFaint, Metrics[Mi].SubText);
     }
-    CurY += 46.0f;
+    CurY += TileH + 12.0f;
 
-    // 4. Tiling & UV Collapsible Card ("Scale, offset, rotation & triplanar", matching cards-material.png)
-    const Rectangle2D TilingHeadR{ LeftX, CurY, InnerW, 36.0f };
-    Surface.FillRectangle(TilingHeadR, TilingHeadR.Contains(Cursor) ? Theme.HoverSurface : Theme.SectionSurface, 8.0f);
-    Surface.StrokeRectangle(TilingHeadR, Theme.BorderSubtle, 8.0f, 1.0f);
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { TilingHeadR.X + 10.0f, TilingHeadR.Y + 5.0f }, 9.4f, Theme.TextPrimary, "Tiling & UV");
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular,  { TilingHeadR.X + 10.0f, TilingHeadR.Y + 19.0f }, 7.8f, Theme.TextFaint,  "Scale, offset, rotation & triplanar");
-    VectorIconRepository::ConstructControl(
-        Surface, TilingSectionOpen ? ControlIcon::ChevronDown : ControlIcon::ChevronForward,
-        VectorIconPlacement{ TilingHeadR.Right() - 18.0f, TilingHeadR.Y + 12.5f, 10.0f, Theme.TextMuted, 1.7f });
-    if (Pressed && TilingHeadR.Contains(Cursor))
-    {
-        TilingSectionOpen = !TilingSectionOpen;
-    }
-    CurY += 42.0f;
-
-    // 5. CHANNELS Header Row ("CHANNELS  6/28" + "Active only" toggle)
-    char ChBadgeBuf[32];
-    std::snprintf(ChBadgeBuf, sizeof(ChBadgeBuf), "%zu/%zu", Outliner->CountEnabledChannels(), MaterialOutlinerPane::ChannelCount);
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,   { LeftX, CurY + 3.0f }, 8.4f, Theme.TextFaint, "CHANNELS");
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { LeftX + 58.0f, CurY + 3.0f }, 8.2f, Theme.TextMuted, ChBadgeBuf);
-
-    const Rectangle2D ActOnlyBtnR{ Bounds.Right() - PadX - 78.0f, CurY, 78.0f, 20.0f };
-    Surface.FillRectangle(ActOnlyBtnR, ActiveOnlyFilter ? ColorRgba{ 238u, 238u, 236u, 255u } : Theme.SectionSurface, 6.0f);
+    // 4. Channels Section Header ("Channels  28 ON SURFACE" + "+ Channel" button + "Filter 28 channels..." search pill)
     WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::Medium, { ActOnlyBtnR.X + 10.0f, ActOnlyBtnR.Y + 3.5f }, 7.8f,
-        ActiveOnlyFilter ? ColorRgba{ 16u, 17u, 20u, 255u } : Theme.TextMuted, "Active only");
-    if (Pressed && ActOnlyBtnR.Contains(Cursor))
-    {
-        ActiveOnlyFilter = !ActiveOnlyFilter;
-    }
-    CurY += 26.0f;
-    Surface.StrokeLine({ Bounds.X, CurY }, { Bounds.Right(), CurY }, Theme.BorderSubtle, 1.0f);
-    CurY += 4.0f;
+        Surface, FontWeightClass::Regular, { LeftX, CurY + 2.0f }, 10.2f, Theme.TextPrimary, "Channels");
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Medium, { LeftX + 54.0f, CurY + 4.0f }, 7.6f, Theme.TextFaint, "28 ON SURFACE");
 
-    // 6. Scrollable 6-Group ChannelStack with Side-by-Side Open Channel Cards (cards-material.png parity)
-    constexpr float FooterH = 26.0f;
+    const Rectangle2D AddChBtnR{ LeftX + InnerW - 72.0f, CurY, 72.0f, 22.0f };
+    Surface.FillRectangle(AddChBtnR, AddChBtnR.Contains(Cursor) ? ColorRgba{ 42u, 44u, 50u, 255u } : ColorRgba{ 33u, 34u, 39u, 255u }, 11.0f);
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Medium, { AddChBtnR.X + 11.0f, AddChBtnR.Y + 4.0f }, 8.4f, Theme.TextPrimary, "+ Channel");
+    CurY += 28.0f;
+
+    const Rectangle2D SearchR{ LeftX, CurY, InnerW, 28.0f };
+    Surface.FillRectangle(SearchR, ColorRgba{ 19u, 20u, 23u, 255u }, 14.0f);
+    VectorIconRepository::ConstructControl(
+        Surface, ControlIcon::SearchGlass, VectorIconPlacement{ SearchR.X + 10.0f, SearchR.Y + 8.0f, 12.0f, Theme.TextFaint, 1.6f });
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Regular, { SearchR.X + 28.0f, SearchR.Y + 6.5f }, 9.0f, Theme.TextFaint, "Filter 28 channels...");
+    CurY += 34.0f;
+
+    // 5. Scrollable 6-Group Vertical Channel Stack (in-place multi-open editors, zero 2-column grid!)
     const Rectangle2D ScrollRect{
         Bounds.X,
         CurY,
         Bounds.Width,
-        std::max(40.0f, Bounds.Bottom() - FooterH - CurY)
+        std::max(40.0f, Bounds.Bottom() - CurY)
     };
     if (ScrollRect.Contains(Cursor) && std::abs(Input.WheelDeltaY) > 0.01f)
     {
@@ -212,232 +213,238 @@ void MaterialInspectorPane::Render(
     }
 
     Surface.PushClip(ScrollRect);
-    float Sy = ScrollRect.Y + 6.0f - ScrollOffsetY;
+    float Sy = ScrollRect.Y + 2.0f - ScrollOffsetY;
     const float ScrollStartY = Sy;
 
-    const auto& Catalog    = MaterialOutlinerPane::QueryChannelCatalog();
-    const auto& GroupNames = MaterialOutlinerPane::QueryGroupNames();
+    const auto& Catalog         = MaterialOutlinerPane::QueryChannelCatalog();
+    const auto& GroupUpperNames = MaterialOutlinerPane::QueryGroupUpperNames();
 
-    // Render Side-by-Side Open Channels Showcase Row at the top of the stack (Colour + Roughness side-by-side, matching cards-material.png)
-    std::vector<std::size_t> OpenChannelIndices;
-    for (std::size_t C = 0u; C < MaterialOutlinerPane::ChannelCount; ++C)
-    {
-        if (Outliner->ChannelExpanded[C] && (!ActiveOnlyFilter || Outliner->ChannelEnabled[C]))
-        {
-            OpenChannelIndices.push_back(C);
-        }
-    }
-
-    if (!OpenChannelIndices.empty())
-    {
-        const float ColGap = 8.0f;
-        const float ColW   = (InnerW - ColGap) * 0.5f;
-        const float CardH  = 114.0f;
-        const std::size_t PairRows = (OpenChannelIndices.size() + 1u) / 2u;
-
-        for (std::size_t K = 0u; K < OpenChannelIndices.size(); ++K)
-        {
-            const std::size_t CIdx = OpenChannelIndices[K];
-            const auto& Spec       = Catalog[CIdx];
-            const std::size_t Col  = K % 2u;
-            const std::size_t Row  = K / 2u;
-            const bool SingleLast  = (Col == 0u && K + 1u == OpenChannelIndices.size());
-            const float CardW      = SingleLast ? InnerW : ColW;
-
-            const Rectangle2D CardR{
-                LeftX + static_cast<float>(Col) * (ColW + ColGap),
-                Sy + static_cast<float>(Row) * (CardH + 8.0f),
-                CardW,
-                CardH
-            };
-
-            // Subtle neutral border only — zero amber border!
-            Surface.FillRectangle(CardR, Theme.WellSurface, 10.0f);
-            Surface.StrokeRectangle(CardR, Theme.BorderSubtle, 10.0f, 1.0f);
-
-            // Header inside open channel card
-            Surface.FillRectangle({ CardR.X + 8.0f, CardR.Y + 8.0f, 14.0f, 14.0f },
-                Spec.ColorChannel ? Outliner->ChannelTints[CIdx] : Spec.DefaultTint, 4.0f);
-            WorkspaceAppearance::ConstructTruncatedText(
-                Surface, FontWeightClass::SemiBold, { CardR.X + 26.0f, CardR.Y + 7.5f }, CardW - 76.0f, 9.4f, Theme.TextPrimary, Spec.Label);
-
-            char ReadoutBuf[24];
-            if (Spec.ColorChannel)
-            {
-                std::snprintf(ReadoutBuf, sizeof(ReadoutBuf), "#%02x%02x%02x",
-                    Outliner->ChannelTints[CIdx].Red, Outliner->ChannelTints[CIdx].Green, Outliner->ChannelTints[CIdx].Blue);
-            }
-            else
-            {
-                std::snprintf(ReadoutBuf, sizeof(ReadoutBuf), "%d %%", static_cast<int>(std::lround(Outliner->ChannelScalars[CIdx] * 100.0f)));
-            }
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface, FontWeightClass::Medium, { CardR.Right() - 48.0f, CardR.Y + 8.0f }, 8.0f, Theme.TextMuted, ReadoutBuf);
-
-            // 4-tab strip: "Value | Field | Ramp | Image" (matching cards-material.png)
-            static constexpr const char* SourceTabs[4] { "Value", "Field", "Ramp", "Image" };
-            const float TabW = (CardW - 16.0f - 6.0f) / 4.0f;
-            for (uint32_t Tm = 0u; Tm < 4u; ++Tm)
-            {
-                const Rectangle2D TabR{ CardR.X + 8.0f + static_cast<float>(Tm) * (TabW + 2.0f), CardR.Y + 28.0f, TabW, 20.0f };
-                const bool TabAct = (Outliner->ChannelSourceTab[CIdx] == Tm);
-                Surface.FillRectangle(TabR, TabAct ? ColorRgba{ 238u, 238u, 236u, 255u } : Theme.SectionSurface, 5.0f);
-                WorkspaceAppearance::ConstructTruncatedText(
-                    Surface, TabAct ? FontWeightClass::SemiBold : FontWeightClass::Medium, { TabR.X + 5.0f, TabR.Y + 3.5f }, TabW - 8.0f, 7.8f,
-                    TabAct ? ColorRgba{ 16u, 17u, 20u, 255u } : Theme.TextMuted, SourceTabs[Tm]);
-                if (Pressed && ScrollRect.Contains(Cursor) && TabR.Contains(Cursor))
-                {
-                    Outliner->ChannelSourceTab[CIdx] = static_cast<uint8_t>(Tm);
-                }
-            }
-
-            // Control inside open channel card
-            if (Spec.ColorChannel)
-            {
-                const Rectangle2D SwBarR{ CardR.X + 8.0f, CardR.Y + 56.0f, CardW - 16.0f, 28.0f };
-                Surface.FillRectangle(SwBarR, Theme.SectionSurface, 7.0f);
-                Surface.StrokeRectangle(SwBarR, Theme.BorderSubtle, 7.0f, 1.0f);
-                Surface.FillRectangle({ SwBarR.X + 4.0f, SwBarR.Y + 4.0f, 24.0f, 20.0f }, Outliner->ChannelTints[CIdx], 5.0f);
-                WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Medium, { SwBarR.X + 34.0f, SwBarR.Y + 7.0f }, 8.8f, Theme.TextPrimary, ReadoutBuf);
-
-                // Quick swatch dots
-                constexpr std::array<ColorRgba, 5u> QuickDots {{
-                    { 185u, 122u,  69u, 255u },
-                    { 232u, 194u, 122u, 255u },
-                    {  92u, 148u, 188u, 255u },
-                    { 112u, 158u, 126u, 255u },
-                    { 224u, 226u, 230u, 255u },
-                }};
-                for (std::size_t Qd = 0u; Qd < QuickDots.size(); ++Qd)
-                {
-                    const Point2D DotC{ CardR.X + 16.0f + static_cast<float>(Qd) * 20.0f, CardR.Y + 96.0f };
-                    Surface.FillCircle(DotC, 6.0f, QuickDots[Qd]);
-                    if (Pressed && ScrollRect.Contains(Cursor))
-                    {
-                        const float Dx = Cursor.X - DotC.X;
-                        const float Dy = Cursor.Y - DotC.Y;
-                        if (Dx * Dx + Dy * Dy <= 49.0f)
-                        {
-                            Outliner->ChannelTints[CIdx] = QuickDots[Qd];
-                        }
-                    }
-                }
-            }
-            else
-            {
-                const int32_t Sid = 400 + static_cast<int32_t>(CIdx);
-                bool Drag = (ActiveSliderId == Sid);
-                float Norm = std::clamp(Outliner->ChannelScalars[CIdx], 0.0f, 1.0f);
-                char NumStr[24];
-                std::snprintf(NumStr, sizeof(NumStr), "%d", static_cast<int>(std::lround(Norm * 100.0f)));
-                if (ConstructSliderReadoutRow(
-                        Surface, CardR.X + 8.0f, CardR.Y + 56.0f, CardW - 16.0f, Spec.Label, NumStr, Spec.UnitSuffix, Norm, Theme, Input.PrimaryPointer, Drag))
-                {
-                    Outliner->ChannelScalars[CIdx] = Norm;
-                }
-                if (Drag) ActiveSliderId = Sid;
-            }
-        }
-        Sy += static_cast<float>(PairRows) * (CardH + 8.0f) + 4.0f;
-    }
-
-    // Collapsible 6-Group Channel Stack
     for (std::size_t G = 0u; G < MaterialOutlinerPane::GroupCount; ++G)
     {
         const MaterialChannelGroup GroupEnum = static_cast<MaterialChannelGroup>(G);
-        std::size_t GroupTotal = 0u;
-        std::size_t GroupOn    = 0u;
+        std::size_t               GroupTotal = 0u;
+        std::array<ColorRgba, 6u> MiniColors {};
+        std::array<bool, 6u>      MiniIsCol  {};
+        std::array<float, 6u>     MiniScalar {};
+        std::size_t               MiniCount  = 0u;
         for (std::size_t C = 0u; C < MaterialOutlinerPane::ChannelCount; ++C)
         {
             if (Catalog[C].Group == GroupEnum)
             {
                 ++GroupTotal;
-                if (Outliner->ChannelEnabled[C]) ++GroupOn;
+                if (MiniCount < 6u)
+                {
+                    MiniColors[MiniCount] = Outliner->ChannelTints[C];
+                    MiniIsCol[MiniCount]  = Catalog[C].ColorChannel;
+                    MiniScalar[MiniCount] = Outliner->ChannelScalars[C];
+                    ++MiniCount;
+                }
             }
         }
-        if (ActiveOnlyFilter && GroupOn == 0u) continue;
 
         const Rectangle2D GHeadR{ LeftX, Sy, InnerW, 26.0f };
-        const bool GOpen = Outliner->GroupOpen[G];
-        Surface.FillRectangle(GHeadR, GHeadR.Contains(Cursor) ? Theme.HoverSurface : Theme.SectionSurface, 6.0f);
+        const bool GOpen = Outliner->InspectorGroupOpen[G];
+        if (GHeadR.Contains(Cursor))
+        {
+            Surface.FillRectangle(GHeadR, ColorRgba{ 30u, 31u, 36u, 255u }, 6.0f);
+        }
         VectorIconRepository::ConstructControl(
             Surface, GOpen ? ControlIcon::ChevronDown : ControlIcon::ChevronForward,
-            VectorIconPlacement{ GHeadR.X + 8.0f, GHeadR.Y + 8.0f, 10.0f, Theme.TextMuted, 1.7f });
+            VectorIconPlacement{ GHeadR.X + 4.0f, GHeadR.Y + 8.0f, 9.0f, Theme.TextMuted, 1.7f });
         WorkspaceAppearance::ConstructWeightedText(
-            Surface, FontWeightClass::SemiBold, { GHeadR.X + 24.0f, GHeadR.Y + 6.0f }, 8.6f, Theme.TextPrimary, GroupNames[G]);
+            Surface, FontWeightClass::Medium, { GHeadR.X + 18.0f, GHeadR.Y + 5.5f }, 8.2f, Theme.TextMuted, GroupUpperNames[G]);
 
-        char GCntBuf[24];
-        std::snprintf(GCntBuf, sizeof(GCntBuf), "%zu/%zu on", GroupOn, GroupTotal);
+        char CntBuf[16];
+        std::snprintf(CntBuf, sizeof(CntBuf), "%zu", GroupTotal);
+        const float NameW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.2f, GroupUpperNames[G]);
         WorkspaceAppearance::ConstructWeightedText(
-            Surface, FontWeightClass::Medium, { GHeadR.Right() - 48.0f, GHeadR.Y + 6.5f }, 8.0f, Theme.TextFaint, GCntBuf);
+            Surface, FontWeightClass::Medium, { GHeadR.X + 24.0f + NameW, GHeadR.Y + 5.5f }, 8.0f, Theme.TextFaint, CntBuf);
 
-        if (Pressed && ScrollRect.Contains(Cursor) && GHeadR.Contains(Cursor))
+        if (!GOpen && GroupTotal > 0u)
         {
-            Outliner->GroupOpen[G] = !Outliner->GroupOpen[G];
+            ConstructCollapsedGroupMiniSwatches(
+                Surface,
+                GHeadR.Right() - 4.0f,
+                GHeadR.Y + 13.0f,
+                static_cast<uint32_t>(GroupTotal));
         }
-        Sy += 29.0f;
+        if (Pressed && GHeadR.Contains(Cursor))
+        {
+            Outliner->InspectorGroupOpen[G] = !Outliner->InspectorGroupOpen[G];
+        }
+        Sy += 28.0f;
 
-        if (!GOpen) continue;
+        if (!GOpen)
+        {
+            continue;
+        }
 
         for (std::size_t C = 0u; C < MaterialOutlinerPane::ChannelCount; ++C)
         {
             const auto& Spec = Catalog[C];
             if (Spec.Group != GroupEnum) continue;
-            if (ActiveOnlyFilter && !Outliner->ChannelEnabled[C]) continue;
 
-            const Rectangle2D RowR{ LeftX, Sy, InnerW, 30.0f };
-            const bool Hov = ScrollRect.Contains(Cursor) && RowR.Contains(Cursor);
-            Surface.FillRectangle(RowR, Outliner->ChannelExpanded[C] ? Theme.HoverSurface : (Hov ? Theme.SectionSurface : Theme.WellSurface), 7.0f);
-            Surface.StrokeRectangle(RowR, Theme.BorderSubtle, 7.0f, 1.0f);
-
-            Surface.FillRectangle({ RowR.X + 8.0f, RowR.Y + 8.0f, 14.0f, 14.0f },
-                Spec.ColorChannel ? Outliner->ChannelTints[C] : Spec.DefaultTint, 4.0f);
-            WorkspaceAppearance::ConstructTruncatedText(
-                Surface, Outliner->ChannelEnabled[C] ? FontWeightClass::SemiBold : FontWeightClass::Regular,
-                { RowR.X + 28.0f, RowR.Y + 7.5f }, InnerW - 110.0f, 9.0f,
-                Outliner->ChannelEnabled[C] ? Theme.TextPrimary : Theme.TextMuted, Spec.Label);
-
-            char ValBuf[24];
-            if (!Outliner->ChannelEnabled[C]) std::snprintf(ValBuf, sizeof(ValBuf), "Off");
-            else if (Spec.ColorChannel) std::snprintf(ValBuf, sizeof(ValBuf), "#%02x%02x%02x", Outliner->ChannelTints[C].Red, Outliner->ChannelTints[C].Green, Outliner->ChannelTints[C].Blue);
-            else std::snprintf(ValBuf, sizeof(ValBuf), "%d %%", static_cast<int>(std::lround(Outliner->ChannelScalars[C] * 100.0f)));
-
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface, FontWeightClass::Medium, { RowR.Right() - 68.0f, RowR.Y + 8.0f }, 8.0f, Theme.TextMuted, ValBuf);
-
-            const Rectangle2D ToggleR{ RowR.Right() - 28.0f, RowR.Y + 8.0f, 22.0f, 14.0f };
-            Surface.FillRectangle(ToggleR, Outliner->ChannelEnabled[C] ? ColorRgba{ 238u, 238u, 236u, 255u } : Theme.SectionSurface, 7.0f);
-            Surface.FillCircle(
-                { Outliner->ChannelEnabled[C] ? (ToggleR.Right() - 7.0f) : (ToggleR.X + 7.0f), ToggleR.Y + 7.0f },
-                4.8f,
-                Outliner->ChannelEnabled[C] ? ColorRgba{ 16u, 17u, 20u, 255u } : Theme.TextFaint);
-
-            if (Pressed && Hov)
+            char ReadoutBuf[24];
+            if (Spec.ColorChannel)
             {
-                if (ToggleR.Contains(Cursor))
+                FormatHexLower(Outliner->ChannelTints[C], ReadoutBuf, sizeof(ReadoutBuf));
+                for (char* P = ReadoutBuf; *P; ++P)
                 {
-                    Outliner->ChannelEnabled[C] = !Outliner->ChannelEnabled[C];
+                    if (*P >= 'a' && *P <= 'f') *P = static_cast<char>(*P - 'a' + 'A');
+                }
+            }
+            else if (Spec.NormalChannel)
+            {
+                std::snprintf(ReadoutBuf, sizeof(ReadoutBuf), "Flat +Z");
+            }
+            else
+            {
+                std::snprintf(ReadoutBuf, sizeof(ReadoutBuf), "%.2f", Outliner->ChannelScalars[C]);
+            }
+
+            const bool IsOpen = Outliner->ChannelExpanded[C];
+            if (!IsOpen)
+            {
+                const Rectangle2D RowR{ LeftX, Sy, InnerW, 38.0f };
+                if (RowR.Contains(Cursor))
+                {
+                    Surface.FillRectangle(RowR, ColorRgba{ 29u, 30u, 34u, 255u }, 8.0f);
+                }
+                const Rectangle2D SwatchR{ RowR.X + 6.0f, RowR.Y + 7.0f, 24.0f, 24.0f };
+                ConstructProceduralChannelIcon(
+                    Surface, SwatchR, Spec.Label, Outliner->ChannelTints[C], Spec.ColorChannel, Outliner->ChannelScalars[C], true);
+
+                const float PillW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.6f, ReadoutBuf) + 18.0f;
+                const Rectangle2D PillR{ RowR.Right() - PillW - 4.0f, RowR.Y + 9.0f, PillW, 20.0f };
+                Surface.FillRectangle(PillR, ColorRgba{ 9u, 10u, 12u, 255u }, 10.0f);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Medium, { PillR.X + 9.0f, PillR.Y + 3.5f }, 8.6f, Theme.TextPrimary, ReadoutBuf);
+
+                const float TextX = SwatchR.Right() + 10.0f;
+                const float TextW = std::max(32.0f, PillR.X - TextX - 8.0f);
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface, FontWeightClass::Medium, { TextX, RowR.Y + 5.5f }, TextW, 10.0f, Theme.TextPrimary, Spec.Label);
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface, FontWeightClass::Regular, { TextX, RowR.Y + 20.0f }, TextW, 8.2f, Theme.TextFaint, Spec.Subtitle);
+
+                if (Pressed && RowR.Contains(Cursor))
+                {
+                    Outliner->ChannelExpanded[C]  = true;
+                    Outliner->SelectedChannelIndex = static_cast<uint32_t>(C);
+                }
+                Sy += 40.0f;
+            }
+            else
+            {
+                // Open channel card in-place vertically (matches cards-material.png & outliner-footer-material.png 1:1)
+                const float CardH = Spec.ColorChannel ? 132.0f : 148.0f;
+                const Rectangle2D CardR{ LeftX, Sy, InnerW, CardH };
+                Surface.FillRectangle(CardR, ColorRgba{ 34u, 35u, 39u, 255u }, 12.0f);
+
+                const Rectangle2D HeadR{ CardR.X, CardR.Y, CardR.Width, 38.0f };
+                const Rectangle2D SwatchR{ CardR.X + 10.0f, CardR.Y + 8.0f, 24.0f, 24.0f };
+                ConstructProceduralChannelIcon(
+                    Surface, SwatchR, Spec.Label, Outliner->ChannelTints[C], Spec.ColorChannel, Outliner->ChannelScalars[C], true);
+
+                const float PillW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.6f, ReadoutBuf) + 18.0f;
+                const Rectangle2D PillR{ CardR.Right() - PillW - 10.0f, CardR.Y + 10.0f, PillW, 20.0f };
+                Surface.FillRectangle(PillR, ColorRgba{ 9u, 10u, 12u, 255u }, 10.0f);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Medium, { PillR.X + 9.0f, PillR.Y + 3.5f }, 8.6f, Theme.TextPrimary, ReadoutBuf);
+
+                const float TextX = SwatchR.Right() + 10.0f;
+                const float TextW = std::max(32.0f, PillR.X - TextX - 8.0f);
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface, FontWeightClass::Medium, { TextX, CardR.Y + 6.5f }, TextW, 10.0f, Theme.TextPrimary, Spec.Label);
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface, FontWeightClass::Regular, { TextX, CardR.Y + 21.0f }, TextW, 8.2f, Theme.TextFaint, Spec.Subtitle);
+
+                if (Pressed && HeadR.Contains(Cursor))
+                {
+                    Outliner->ChannelExpanded[C] = false;
+                }
+
+                // Segmented source bar: Value | Field | Ramp | Image
+                const Rectangle2D SegBarR{ CardR.X + 10.0f, CardR.Y + 42.0f, CardR.Width - 20.0f, 24.0f };
+                Surface.FillRectangle(SegBarR, ColorRgba{ 18u, 18u, 20u, 255u }, 12.0f);
+                static constexpr const char* TabLabels[4] { "Value", "Field", "Ramp", "Image" };
+                const float TabW = (SegBarR.Width - 6.0f) / 4.0f;
+                for (uint8_t Ti = 0u; Ti < 4u; ++Ti)
+                {
+                    const Rectangle2D TabR{ SegBarR.X + 3.0f + static_cast<float>(Ti) * TabW, SegBarR.Y + 2.0f, TabW, 20.0f };
+                    const bool TabAct = (Outliner->ChannelSourceTab[C] == Ti);
+                    if (TabAct)
+                    {
+                        Surface.FillRectangle(TabR, ColorRgba{ 255u, 255u, 255u, 255u }, 10.0f);
+                        Surface.FillCircle({ TabR.X + 10.0f, TabR.Y + 10.0f }, 2.2f, ColorRgba{ 17u, 17u, 17u, 255u });
+                    }
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, TabAct ? FontWeightClass::SemiBold : FontWeightClass::Medium,
+                        { TabR.X + (TabAct ? 16.0f : (TabW - 24.0f) * 0.5f), TabR.Y + 3.5f }, 8.2f,
+                        TabAct ? ColorRgba{ 17u, 17u, 17u, 255u } : Theme.TextMuted, TabLabels[Ti]);
+                    if (Pressed && TabR.Contains(Cursor))
+                    {
+                        Outliner->ChannelSourceTab[C] = Ti;
+                    }
+                }
+
+                if (Spec.ColorChannel)
+                {
+                    const Rectangle2D ColBarR{ CardR.X + 10.0f, CardR.Y + 73.0f, CardR.Width - 20.0f, 28.0f };
+                    Surface.FillRectangle(ColBarR, ColorRgba{ 9u, 10u, 12u, 255u }, 14.0f);
+                    Surface.FillRectangle({ ColBarR.X + 5.0f, ColBarR.Y + 4.0f, 20.0f, 20.0f }, Outliner->ChannelTints[C], 10.0f);
+                    Surface.StrokeRectangle({ ColBarR.X + 5.0f, ColBarR.Y + 4.0f, 20.0f, 20.0f }, ColorRgba{ 255u, 255u, 255u, 36u }, 10.0f, 1.0f);
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, FontWeightClass::Medium, { ColBarR.X + 32.0f, ColBarR.Y + 7.5f }, 9.0f, Theme.TextPrimary, ReadoutBuf);
+                    WorkspaceAppearance::ConstructRightAlignedText(
+                        Surface, FontWeightClass::Regular, { ColBarR.Right() - 12.0f, ColBarR.Y + 8.0f }, 8.2f, Theme.TextFaint, "sRGB");
                 }
                 else
                 {
-                    Outliner->ChannelExpanded[C] = !Outliner->ChannelExpanded[C];
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, FontWeightClass::Regular, { CardR.X + 10.0f, CardR.Y + 70.0f }, 8.4f, Theme.TextMuted, Spec.Label);
+                    const Rectangle2D ValBoxR{ CardR.X + 10.0f, CardR.Y + 86.0f, 54.0f, 24.0f };
+                    Surface.FillRectangle(ValBoxR, ColorRgba{ 9u, 10u, 12u, 255u }, 12.0f);
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, FontWeightClass::Medium, { ValBoxR.X + 11.0f, ValBoxR.Y + 5.5f }, 8.8f, Theme.TextPrimary, ReadoutBuf);
+
+                    const Rectangle2D TrackR{ ValBoxR.Right() + 8.0f, CardR.Y + 88.0f, CardR.Right() - 10.0f - (ValBoxR.Right() + 8.0f), 20.0f };
+                    Surface.FillRectangle(TrackR, ColorRgba{ 23u, 24u, 27u, 255u }, 10.0f);
+                    const float Norm  = std::clamp(Outliner->ChannelScalars[C], 0.0f, 1.0f);
+                    const float FillW = std::max(10.0f, TrackR.Width * Norm);
+                    Surface.FillRectangle({ TrackR.X, TrackR.Y, FillW, TrackR.Height }, ColorRgba{ 76u, 77u, 82u, 255u }, 10.0f);
+                    const float ThumbX = std::clamp(TrackR.X + TrackR.Width * Norm, TrackR.X + 9.0f, TrackR.Right() - 9.0f);
+                    Surface.FillCircle({ ThumbX, TrackR.Y + 10.0f }, 7.5f, ColorRgba{ 235u, 235u, 235u, 255u });
+
+                    const int32_t SliderId = 1000 + static_cast<int32_t>(C);
+                    if (Pressed && TrackR.Contains(Cursor))
+                    {
+                        ActiveSliderId = SliderId;
+                    }
+                    if (ActiveSliderId == SliderId && Input.PrimaryPointer.Down)
+                    {
+                        Outliner->ChannelScalars[C] = std::clamp((Cursor.X - TrackR.X) / std::max(1.0f, TrackR.Width), 0.0f, 1.0f);
+                    }
                 }
+
+                // Bottom footer row inside open channel card: slug on left + "× Remove" button on right
+                const float FootY = CardR.Bottom() - 22.0f;
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Regular, { CardR.X + 12.0f, FootY + 2.0f }, 8.0f, Theme.TextFaint, Spec.KeySlug);
+                const Rectangle2D RemBtnR{ CardR.Right() - 68.0f, FootY - 1.0f, 58.0f, 18.0f };
+                Surface.FillRectangle(RemBtnR, ColorRgba{ 24u, 25u, 28u, 255u }, 9.0f);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Medium, { RemBtnR.X + 9.0f, RemBtnR.Y + 2.5f }, 7.8f, Theme.TextMuted, "x Remove");
+
+                Sy += CardH + 6.0f;
             }
-            Sy += 33.0f;
         }
         Sy += 4.0f;
     }
 
-    MaxScrollY = std::max(0.0f, (Sy - ScrollStartY) - ScrollRect.Height + 12.0f);
+    const float ContentH = (Sy - ScrollStartY) + 12.0f;
+    MaxScrollY = std::max(0.0f, ContentH - ScrollRect.Height);
     Surface.PopClip();
-
-    // 7. Bottom Status Footer
-    const Rectangle2D FooterR{ Bounds.X, Bounds.Bottom() - FooterH, Bounds.Width, FooterH };
-    char StatusLeft[48];
-    std::snprintf(StatusLeft, sizeof(StatusLeft), "%zu / %zu channels active", Outliner->CountEnabledChannels(), MaterialOutlinerPane::ChannelCount);
-    ConstructPaneStatusFooter(Surface, FooterR, StatusLeft, "OpenPBR 1.1 · Linear sRGB", Theme, false);
-
     Surface.PopClip();
 }
 
