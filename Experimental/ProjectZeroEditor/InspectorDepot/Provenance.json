@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/c7egoist/Frontier",
+  "deployedCommit": "f65f2f90f033e17671963c6731ea9e7653bc13b6",
+  "pagesSource": "arena/01a08158-frontier /docs",
+  "packageLicense": "ISC",
+  "copyScope": "Inspector presentation and browser-local controls only. No viewport or C++ port.",
+  "unchangedFiles": {
+    "styles.css": "34340bef55e8719a741bbb9d231ec68a0b735d3c595375423acf2032ddb15e7c",
+    "kit.js": "badf2103189ffdc253da6c3c9788a242c51d85f1ad0c57ba98b210a7c0696086",
+    "icons.js": "8ce57436ee569d19958e2f260f03d5bf03a82db7eb53844888f751ee99b51dd7",
+    "world.js": "f49d390828204fc5d2112b356b9eab41e89e5d66dce5d4989c8af3546c0c44ea",
+    "bus.js": "9b4c48af5849c086cd732606eea4d952a965bc154c0c54ea20db28b00e5c6b59",
+    "inspector.js": "bb3dfd8b5740dad3cde1bc21dc00c9b77b0260f355623fa20346cbd7f637e62a",
+    "panels/controls.js": "d3cb50b03c475f63f52f6306cdbb7831265fe208990d8f1e6a555613ff594bdc",
+    "panels/folder.js": "29339db125bb94fe18f5f1734871939e0fcd977fd96f9f7dfb283ffe17c23959",
+    "panels/moon.js": "7610afb5e1b9f56b2255b7fde82ad7f8df7450d6953d01ee164801f569c9dcb3",
+    "panels/clouds.js": "26120cef7b924da4f06109f2f1ffcb907465f2c3f983f4cfae3c973ef8459897",
+    "panels/fog.js": "ca2e302547fc00c312e7ec2d4e7e140266f05b27802cd534072844caa3968e04",
+    "panels/lights.js": "eb369cbf5a053a0fc963c15150aaf4d106a64409f75ee558f95dfa1bfb1f24e3",
+    "panels/advancedLights.js": "6d1b7c7972d5d534d8311e22e138e7a6be48a40107bf7c9586ae112aef149dc9",
+    "panels/sun.js": "f2df258e62064466a30e5c1e119729fae5c9fd08b80d8a0b23439d4b4df4086d"
+  },
+  "adaptedFiles": {
+    "panels/index.js": "Requested additive inspector panels only. Folder and Moon are not registered; wind uses the original reference builder after the C041 rollback.",
+    "panels/wind.js": "Observe the retained Anemometer rather than the removed hero for animation visibility. Original SHA256: 2ee5f0ab23d36951d6ea0a85993691f48be86f9d0ebb6a2610b9cc7f89bf4e7a"
+  }
+}
