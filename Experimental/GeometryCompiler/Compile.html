@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geometry Compiler · Frontier</title>
+<link rel="stylesheet" href="../Shared/Studio/Studio.css">
+<link rel="stylesheet" href="./GeometryCompiler.css">
+</head>
+<body>
+<!-- Geometry Compiler workspace (step shell). Split out of the Component Viewer (M0 of
+     Documentation/Plans/ComponentViewerPortPlan.md). Standalone it shows the start screen below; framed by the
+     Component Viewer it waits for an 'open' message (Shared/GeometryCompile/CompileExchange.js). -->
+
+<!-- ============================================================ START: import / samples / session -->
+<div id="Start" class="compile-start">
+  <header class="compile-head">
+    <span class="compile-mark" data-icon="hammer" data-icon-size="18"></span>
+    <div class="compile-title"><b>Geometry Compiler</b><small id="StartCaption">Import an object to start a compile session</small></div>
+    <span class="spacer"></span>
+    <a class="tool start-link" id="ViewerLink" href="../ComponentViewer/" data-icon="cube" data-icon-size="14">Component Viewer</a>
+  </header>
+  <div class="start-body">
+    <section class="dock start-dock">
+      <div class="tab-strip"><div class="document-tab active">Import</div></div>
+      <div class="drop-zone">
+        <button type="button" id="ImportBtn" class="primary wide" data-icon="upload" data-icon-size="14">Import object…</button>
+        <p>Drop a file anywhere. Each import runs the step pipeline: units, transform, UV charts, SDF, cluster LOD, collision, icon and metadata.</p>
+        <div class="chips" id="ImportFormats"></div>
+      </div>
+      <div class="outliner-scroll">
+        <div class="collection"><span data-icon="sparkle"></span><div><b>Sample sources</b><small>Open straight into a compile session</small></div></div>
+        <div id="SampleList"></div>
+        <div class="collection"><span data-icon="folder"></span><div><b>Compiled this session</b><small>Click to recompile</small></div><span class="count" id="SessionCount">0</span></div>
+        <div id="SessionList"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ============================================================ GEOMETRY COMPILE (step shell) -->
+<div id="Compile" class="compile-shell" hidden role="dialog" aria-label="Geometry Compile">
+  <header class="compile-head">
+    <span class="compile-mark" data-icon="hammer" data-icon-size="18"></span>
+    <div class="compile-title"><b>Geometry Compile</b><small id="CompileFile">—</small></div>
+    <div class="compile-progress"><div class="progress"><i id="CompileBar"></i></div><small id="CompileStatus">—</small></div>
+    <span class="spacer"></span>
+    <button type="button" id="CompileCancel" class="tool">Cancel</button>
+    <button type="button" id="CompileRunAll" class="tool" data-icon="hammer" data-icon-size="14">Compile all</button>
+    <button type="button" id="CompileOpen" class="primary" data-icon="chevron" data-icon-size="14"><span id="CompileOpenLabel">Compile &amp; open in Component Viewer</span></button>
+  </header>
+  <div class="compile-body">
+    <section class="dock">
+      <div class="tab-strip"><div class="document-tab active">Import</div></div>
+      <div class="source-card" id="SourceCard"></div>
+      <div class="collection pipeline-head"><span data-icon="layers"></span><div><b>Pipeline</b><small>↑ ↓ to step · settings on the right</small></div><span class="count" id="CompileStepCount">0/8</span></div>
+      <div class="outliner-scroll" id="StepList"></div>
+      <footer class="dock-footer"><div><i>BAKE TIME</i><span id="CompileTotal">0 ms</span></div><div><i>COMPILED DATA</i><span id="CompileMemory">0 KB</span></div></footer>
+    </section>
+    <section class="dock centre">
+      <div class="tab-strip"><div class="document-tab active" id="PreviewTab">Preview</div></div>
+      <div class="viewport-heading">
+        <span class="scene-icon" data-icon="viewport" data-icon-size="20"></span>
+        <div class="scene-title"><b id="PreviewTitle">—</b><small id="PreviewSubtitle">—</small></div>
+        <span class="state-tag" id="PreviewState">—</span>
+        <span class="spacer"></span>
+        <div id="PreviewModes"></div>
+      </div>
+      <div class="canvas-well compile-well">
+        <canvas id="CompileViewport" aria-label="Compile preview"></canvas>
+        <div class="well-2d"><canvas id="Compile2d" hidden></canvas></div>
+        <div class="readout" id="CompileReadout"></div>
+        <div class="capture-box" id="CaptureFrame" hidden><span class="capture-label">ICON CAMERA · SQUARE CROP</span></div>
+        <div class="compile-card" id="CompileCard" hidden></div>
+        <div class="compile-empty" id="CompileEmpty" hidden></div>
+      </div>
+      <div class="compile-log" id="CompileLog" aria-live="polite"></div>
+    </section>
+    <section class="dock right">
+      <div class="tab-strip"><div class="document-tab active">Settings</div></div>
+      <div class="inspector-scroll" id="StepSettings"></div>
+    </section>
+  </div>
+</div>
+
+<div class="toast" id="Toast" role="status"></div>
+<input type="file" id="FileInput" hidden accept=".obj,.gltf,.glb,.stl,.ply,.facet,.fbx">
+<script type="module" src="./CompileMain.js"></script>
+</body>
+</html>
