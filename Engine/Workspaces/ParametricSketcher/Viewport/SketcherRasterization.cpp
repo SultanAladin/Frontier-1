@@ -591,8 +591,8 @@ void SketcherRasterization::CreatePipelines(const std::filesystem::path& Compile
     const VkShaderModule GridFragment    = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherGrid.frag.spv");
     const VkShaderModule PlaneVertex     = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherImagePlane.vert.spv");
     const VkShaderModule PlaneFragment   = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherImagePlane.frag.spv");
-    const VkShaderModule GizmoVertex     = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherGizmo.vert.spv");
-    const VkShaderModule GizmoFragment   = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherGizmo.frag.spv");
+    const VkShaderModule GizmoVertexModule   = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherGizmo.vert.spv");
+    const VkShaderModule GizmoFragmentModule = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherGizmo.frag.spv");
 
     RenderProgramRecipe Surface;
     Surface.Samples    = Samples;
@@ -667,21 +667,23 @@ void SketcherRasterization::CreatePipelines(const std::filesystem::path& Compile
 
     RenderProgramRecipe Gizmo;
     Gizmo.Samples       = Samples;
-    Gizmo.Vertex        = GizmoVertex;
-    Gizmo.Fragment      = GizmoFragment;
+    Gizmo.Vertex        = GizmoVertexModule;
+    Gizmo.Fragment      = GizmoFragmentModule;
+    // The vertex stride must describe the complete CPU record. A former shader-module
+    // local named GizmoVertex shadowed this type and reduced the stride from 32 to 8 bytes,
+    // turning positions, normals and packed colours into cascading triangles.
     Gizmo.Bindings      = { { 0u, sizeof(GizmoVertex), VK_VERTEX_INPUT_RATE_VERTEX } };
     Gizmo.Attributes    = {
         { 0u, 0u, VK_FORMAT_R32G32B32_SFLOAT, 0u },
         { 1u, 0u, VK_FORMAT_R32G32B32_SFLOAT, 12u },
         { 2u, 0u, VK_FORMAT_R8G8B8A8_UNORM,   24u },
-        { 3u, 0u, VK_FORMAT_R32_UINT,         28u },
     };
     Gizmo.ColourBlend   = true;
     Gizmo.IdentityWrite = false;
     GizmoPipeline       = CreatePipeline(LogicalDevice, RenderPass, PipelineLayout, Gizmo);
 
     for (VkShaderModule Module : { SurfaceVertex, SurfaceFragment, EdgeVertex, EdgeFragment, EdgeOccluded, EdgeIdentity,
-                                   GridVertex, GridFragment, PlaneVertex, PlaneFragment, GizmoVertex, GizmoFragment })
+                                   GridVertex, GridFragment, PlaneVertex, PlaneFragment, GizmoVertexModule, GizmoFragmentModule })
     {
         vkDestroyShaderModule(LogicalDevice, Module, nullptr);
     }

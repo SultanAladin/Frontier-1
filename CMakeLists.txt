@@ -435,7 +435,7 @@ function(frontier_compile_sketcher_slang_shader SLANG_FILE ENTRY_NAME SHADER_UNI
     add_custom_command(
         OUTPUT "${OUT_SPV}"
         COMMAND "${FRONTIER_SLANGC_BIN}"
-            -profile spirv_1_3
+            -profile spirv_1_5
             -target spirv
             -emit-spirv-directly
             -O0

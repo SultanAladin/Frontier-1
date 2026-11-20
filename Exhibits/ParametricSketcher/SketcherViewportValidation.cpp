@@ -179,6 +179,46 @@ int main()
     }
     ++Passed;
 
+    // Render the transform gizmo in isolation. Its 32-byte vertex stream must remain
+    // confined to the intended ~150 px footprint; an 8-byte stride turns normals and
+    // packed colours into positions and produces full-viewport cascading triangles.
+    SketcherViewportStyle GizmoStyle {};
+    GizmoStyle.GridEnabled = false;
+    GizmoStyle.EdgesEnabled = false;
+    GizmoStyle.SurfacesEnabled = false;
+    GizmoPose Pose {};
+    Pose.Origin = { 0.0, 0.0, 0.0 };
+    Pose.Modes = GizmoTranslate | GizmoRotate | GizmoScale;
+    Pose.Size = MeasureGizmoSize(Frame, Pose.Origin, GizmoPixels);
+    GizmoStyle.Gizmo = BuildGizmoGeometry(Pose, Frame, GizmoHandle::None, GizmoHandle::None);
+    VkCommandBuffer GizmoCmd = Device.BeginSingleTimeCommands();
+    Raster.Record(GizmoCmd, Frame, GizmoStyle, true, -1, -1);
+    vkEndCommandBuffer(GizmoCmd);
+    const uint64_t GizmoTick = Device.DispatchCommandBufferAsync(GizmoCmd);
+    if (!VerifyCheck(Device.AwaitTimelineTick(GizmoTick), "Await isolated transform-gizmo render")) return 1;
+    Device.FreeCommandBuffer(GizmoCmd);
+    const uint32_t* GizmoPixelsOut = Raster.ReadbackColour();
+    const uint32_t BackgroundPixel = GizmoPixelsOut[0];
+    uint32_t Changed = 0u, MinX = 640u, MinY = 360u, MaxX = 0u, MaxY = 0u;
+    for (uint32_t Y = 0u; Y < 360u; ++Y)
+    {
+        for (uint32_t X = 0u; X < 640u; ++X)
+        {
+            if (GizmoPixelsOut[size_t(Y) * 640u + X] == BackgroundPixel) continue;
+            ++Changed;
+            MinX = std::min(MinX, X); MinY = std::min(MinY, Y);
+            MaxX = std::max(MaxX, X); MaxY = std::max(MaxY, Y);
+        }
+    }
+    const bool GizmoConfined = Changed > 100u && MaxX >= MinX && MaxY >= MinY
+                            && (MaxX - MinX) < 300u && (MaxY - MinY) < 300u;
+    if (!VerifyCheck(GizmoConfined, "Transform gizmo uses the 32-byte vertex stride and remains spatially confined"))
+    {
+        std::fprintf(stderr, "Gizmo changed=%u bounds=[%u,%u]-[%u,%u]\n", Changed, MinX, MinY, MaxX, MaxY);
+        return 1;
+    }
+    ++Passed;
+
     // 2. Curved-surface retopology visual proof + 3D SpaceCurve x SpaceCurve Intersection snap
     {
         auto SpherePoint = [](double Radius, double Theta, double Phi) -> Vector3
@@ -298,6 +338,9 @@ int main()
         Raster.Resize(1280u, 720u);
         Raster.UploadMatcaps(RetopoMatcaps.Pictures);
         Raster.UploadScene(RetopoScene);
+        Raster.AssignStates(
+            ComposeSketcherMatcapLayers(RetopoScene, Retopo.Appearance, RetopoMatcaps),
+            std::vector<uint32_t>(RetopoScene.Edges.size(), 0u));
         SketcherViewportStyle RetopoStyle {};
         RetopoStyle.GridEnabled = true;
         VkCommandBuffer RetopoCmd = Device.BeginSingleTimeCommands();

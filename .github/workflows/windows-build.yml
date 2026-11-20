@@ -73,8 +73,7 @@ jobs:
         run: |
           $Output = & cmake --build Build/Windows --config Release --parallel 4 --target `
             Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp `
-            FrontierMaterial FrontierParticle FrontierFracture FrontierForceField FrontierFluid `
-            FrontierSketcher `
+            FrontierMaterial FrontierTexturePaint FrontierFracture FrontierSketcher `
             FrontierEngineRuntimeDll FrontierWorkspaceUiDll `
             UVBoundaryValidation ProjectBrowserValidation `
             SketcherKernelValidation SketcherDocumentValidation SketcherViewportValidation SketcherWorkspaceValidation 2>&1
@@ -113,10 +112,8 @@ jobs:
             'FrontierPattern.exe',
             'FrontierStamp.exe',
             'FrontierMaterial.exe',
-            'FrontierParticle.exe',
+            'FrontierTexturePaint.exe',
             'FrontierFracture.exe',
-            'FrontierForceField.exe',
-            'FrontierFluid.exe',
             'FrontierSketcher.exe'
           )
           foreach ($App in $Apps) {
@@ -136,10 +133,8 @@ jobs:
             - FrontierPattern.exe     : Seamless Vector & PBR Pattern Studio
             - FrontierStamp.exe       : Alpha Cutout Decal Stamp Studio
             - FrontierMaterial.exe    : Dynamic OpenPBR Material Studio
-            - FrontierParticle.exe    : 93-Preset Particle & ForceField Studio
+            - FrontierTexturePaint.exe: Layered 3D Texture Paint Studio
             - FrontierFracture.exe    : 6-Solver Fracture & JoltPhysics Simulation Studio
-            - FrontierForceField.exe  : 3D Vector Field & Force Simulation Studio
-            - FrontierFluid.exe       : Eulerian Pyro, Smoke & Fire Simulation Studio
             - FrontierSketcher.exe    : Parametric B-Rep CAD & Sketching Studio
 
           Keep CompiledShaders, EngineContent, and Binaries/Win64 beside the executables.
