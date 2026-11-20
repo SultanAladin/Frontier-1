@@ -1,0 +1,227 @@
+/*==========================================================================================================================================
+                                                             PANELLAYOUT.CSS
+==========================================================================================================================================*/
+/* 🧩 Fixed shared columns, column-aligned headers, reversible panel collapse and uncropped A4 document flow. */
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                     SHARED COLUMN DIMENSIONS
+------------------------------------------------------------------------------------------------------------------------*/
+:root {
+    --rail-width: 204px;
+    --inspector-width: 302px;
+    --pane-header-height: 64px;
+}
+body { height: 100dvh; overflow: hidden; }
+body.left-collapsed { --rail-width: 44px; }
+body.right-collapsed { --inspector-width: 44px; }
+.library, .reader-body {
+    display: grid;
+    grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--inspector-width);
+    height: 100dvh;
+    min-height: 0;
+    width: 100%;
+}
+.reader { height: 100dvh; }
+.library-rail, .preview-rail, .library-main, .preview-main, .inspector, .library-inspector {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    height: 100%;
+    margin: 0;
+    max-width: none;
+}
+.library-rail, .preview-rail { background: var(--panel); border-right: 1px solid var(--line); }
+.library-inspector, .inspector { grid-column: auto; background: var(--panel); border-left: 1px solid var(--line); border-top: 0; }
+.rail-scroll, .library-scroll, .viewer-scroll, .inspector-scroll {
+    min-height: 0;
+    overflow: auto;
+    flex: 1;
+    scrollbar-width: thin;
+    scrollbar-color: var(--nested) transparent;
+}
+.rail-scroll { padding: 27px 16px 22px; }
+.library-rail .rail-scroll { display: flex; flex-direction: column; gap: 4px; }
+.library-main .library-scroll { padding: 28px clamp(20px, 3vw, 48px); }
+.viewer-scroll { padding: 24px clamp(18px, 2.5vw, 36px) 0; }
+.inspector-scroll { padding: 24px 22px 0; display: flex; flex-direction: column; }
+.inspector-content { flex: 1; }
+.library-inspector-content { padding: 36px 24px; color: var(--faint); font-size: 11px; }
+.library-inspector-content .icon { margin-bottom: 14px; }
+.rail-bottom { padding-top: 45px; }
+.section-heading { margin: 0 0 23px; }
+.cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.library-main .prototype-note { padding-bottom: 10px; }
+.preview-heading { margin-bottom: 23px; }
+.preview-bottom { margin-top: 0; }
+.viewer-toolbar { margin: 14px auto 25px; width: max-content; max-width: 100%; }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                     COLUMN HEADERS
+------------------------------------------------------------------------------------------------------------------------*/
+.pane-header {
+    height: var(--pane-header-height);
+    min-height: var(--pane-header-height);
+    max-height: var(--pane-header-height);
+    padding: 0 18px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+.left-pane .pane-header { padding: 0 11px; gap: 8px; }
+.left-pane .pane-header > strong { font-size: 12px; flex: 1; }
+.left-pane .pane-header .rail-heading { flex: 1; min-width: 0; gap: 6px; }
+.left-pane .pane-header .rail-heading > .icon { display: none; }
+.left-pane .pane-header .rail-heading h2 { font-size: 11px; white-space: nowrap; }
+.left-pane .pane-header .rail-heading > span { margin-left: 3px; }
+.collapse-toggle { flex-shrink: 0; font-size: 22px; color: var(--muted); width: 27px; height: 29px; border: 0; padding: 0; }
+.library-viewer-header h1 { font-size: 16px; letter-spacing: -.3px; font-weight: 500; margin-right: auto; white-space: nowrap; }
+.library-viewer-header .primary { font-size: 10px; padding: 9px 13px; }
+.library-viewer-header .primary .icon { width: 14px; height: 14px; }
+.theme-control { display: inline-flex; }
+.theme-control select { border-radius: 30px; font-size: 10px; padding: 7px 20px 7px 11px; }
+.viewer-pane-header { padding: 0 16px; gap: 9px; }
+.reader-identity { flex: 1; min-width: 0; gap: 8px; }
+.reader-identity .breadcrumb, .reader-identity .file-tag { display: none; }
+.reader-identity strong { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: none; }
+.reader-actions { gap: 7px; flex-shrink: 0; }
+.reader-actions .primary { font-size: 10px; padding: 9px 12px; }
+.reader-actions select#RevisionSelect {
+    appearance: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background-color: var(--selected);
+    padding: 8px 28px 8px 13px;
+    min-width: 112px;
+    max-width: 150px;
+    font-size: 10px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23888' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+}
+.inspector-pane-header { justify-content: space-between; padding: 0 13px 0 20px; gap: 7px; }
+.inspector-pane-header .inspector-tabs { gap: 16px; min-width: 0; }
+.inspector-pane-header .inspector-tabs button { font-size: 10px; }
+.inspector-tabs button:disabled { cursor: default; opacity: .65; }
+.inspector-pane-header .collapse-toggle { margin-left: auto; }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                     COLLAPSED PANELS
+------------------------------------------------------------------------------------------------------------------------*/
+body.left-collapsed .left-pane .rail-scroll,
+body.right-collapsed .right-pane .inspector-scroll,
+body.right-collapsed .right-pane .library-inspector-content { display: none; }
+body.left-collapsed .left-pane .pane-header > :not(.collapse-toggle),
+body.right-collapsed .right-pane .pane-header > :not(.collapse-toggle) { display: none; }
+body.left-collapsed .left-pane .pane-header,
+body.right-collapsed .right-pane .pane-header { justify-content: center; padding: 0; gap: 0; }
+body.right-collapsed .right-pane .collapse-toggle { margin: 0; }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                     COMPLETE A4 DOCUMENT
+------------------------------------------------------------------------------------------------------------------------*/
+.preview-canvas.document-canvas {
+    display: block;
+    position: relative;
+    aspect-ratio: auto;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 8px 0 24px;
+    border-radius: 0;
+}
+.document-canvas .document-page {
+    display: block;
+    width: 100%;
+    max-width: 794px;
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 210 / 297;
+    margin: 0 auto;
+    padding: clamp(24px, 4vw, 60px);
+    background: var(--card);
+    border: 1px solid var(--line);
+    box-shadow: 0 10px 38px var(--shadow);
+    border-radius: 2px;
+    overflow: visible;
+    font-size: clamp(10px, .9vw, 13px);
+    line-height: 1.85;
+    flex: none;
+    align-self: auto;
+}
+.document-page .rendered-thumbnail { aspect-ratio: 1.6; max-width: 100%; height: auto; }
+.document-page img { max-width: 100%; height: auto; }
+.comment-form { flex-shrink: 0; margin-top: 24px; }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                     RESPONSIVE SHARED GEOMETRY
+------------------------------------------------------------------------------------------------------------------------*/
+@media (min-width: 1500px) {
+    .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+    .viewer-pane-header { gap: 6px; padding: 0 12px; }
+    .reader-actions .primary { font-size: 0; width: 31px; height: 31px; padding: 6px; gap: 0; }
+    .reader-actions .primary .icon { width: 15px; height: 15px; }
+    .reader-actions select#RevisionSelect { min-width: 100px; max-width: 115px; font-size: 9px; }
+    .theme-control select { font-size: 9px; }
+    .inspector-scroll { padding: 22px 18px 0; }
+    .comment-form { margin-left: -18px; margin-right: -18px; padding-left: 18px; padding-right: 18px; }
+}
+@media (max-width: 700px) {
+    :root { --rail-width: 140px; --inspector-width: 220px; --pane-header-height: 72px; }
+    .pane-header { padding: 0 9px; }
+    .library-main .library-scroll { padding: 20px 14px; }
+    .library-viewer-header { flex-wrap: wrap; align-content: center; gap: 6px; }
+    .library-viewer-header h1 { font-size: 13px; }
+    .library-viewer-header .primary { padding: 6px 9px; font-size: 9px; }
+    .library-viewer-header .primary .icon { width: 12px; height: 12px; }
+    .theme-control select { padding: 5px 12px 5px 8px; }
+    .viewer-pane-header { flex-wrap: wrap; align-content: center; padding: 6px 9px; gap: 5px; }
+    .reader-identity { width: 100%; flex-basis: 100%; }
+    .reader-identity strong { font-size: 10px; }
+    .reader-actions { margin-right: auto; gap: 5px; }
+    .reader-actions select#RevisionSelect { padding-top: 5px; padding-bottom: 5px; font-size: 9px; min-width: 100px; }
+    .reader-actions .icon-button, .reader-actions .primary { width: 25px; height: 25px; padding: 4px; }
+    .viewer-scroll { padding: 18px 12px 0; }
+    .cards { grid-template-columns: 1fr; }
+    .collection-controls { flex-wrap: wrap; }
+    .collection-controls .search { min-width: 0; width: 100%; }
+    .collection-controls select { margin-left: auto; }
+    .left-pane .pane-header { padding: 0 5px; gap: 3px; }
+    .left-pane .pane-header #Back { width: 24px; }
+    .left-pane .pane-header .rail-heading h2 { font-size: 9px; }
+    .left-pane .pane-header .rail-heading > span { display: none; }
+    .library-rail .nav { padding: 9px 8px; font-size: 10px; }
+    .library-rail .rail-title { display: block; font-size: 8px; padding: 0 4px; }
+    .rail-scroll { padding: 18px 9px; }
+    .library-rail .rail-bottom { display: block; padding: 32px 4px 0; }
+    .inspector-pane-header .inspector-tabs { gap: 9px; }
+    .inspector-pane-header .inspector-tabs button { font-size: 9px; }
+    .preview-caption { font-size: 8px; }
+    .document-canvas .document-page { padding: 22px 18px; font-size: 10px; }
+    .preview-heading > .subtle { display: none; }
+    .preview-canvas { min-height: 280px; }
+    .preview-canvas.document-canvas { min-height: 0; }
+}
+/* A4 is laid out at 96 dpi, then fitted as one complete sheet instead of cropping its content. */
+.document-canvas .document-page {
+    width: 794px;
+    max-width: none;
+    min-height: 1123px;
+    padding: 60px;
+    font-size: 13px;
+    line-height: 1.85;
+}
+.document-canvas .document-page h1 { font-size: 25px; }
+.document-canvas .document-page h2 { font-size: 15px; }

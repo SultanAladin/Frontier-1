@@ -1,0 +1,4 @@
+"""Bake-to-texture control: light entering a cached image tile, native SVG."""
+def register_bake_icon(icon):
+    body='''<g transform="translate(8 8) scale(10)" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="6" width="13" height="15" rx="2" fill="#303b46" stroke="#9aafbd" stroke-width="1.2"/><path d="M13 9h3v3h-3Zm3 3h3v3h-3Zm-3 3h3v3h-3Z" fill="#9ebac6"/><path d="M16 9h3v3h-3Zm-3 3h3v3h-3Zm3 3h3v3h-3Z" fill="#536d7b"/><path d="M2 13h9m-3-3 3 3-3 3" stroke="#edc181" stroke-width="1.9" fill="none"/><path d="M5 1.5 6.1 4.4 9 5.5 6.1 6.6 5 9.5 3.9 6.6 1 5.5 3.9 4.4Z" fill="#f4d69e"/><path d="m17 21 2 2 4-4" stroke="#95c3ad" stroke-width="1.5" fill="none"/></g>'''
+    icon('editor-bake','Bake','Editor','Light sampled into a checker-texture tile with a stored-output check. A custom bake-to-image control, not an oven symbol.','',body)

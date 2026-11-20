@@ -1,0 +1,156 @@
+name: Frontier Windows Build
+
+on:
+  push:
+    branches:
+      - 'arena/**'
+      - 'main'
+    paths:
+      - '.github/workflows/windows-build.yml'
+      - 'CMakeLists.txt'
+      - 'Automation/**'
+      - 'Engine/**'
+      - 'EngineContent/**'
+      - 'Exhibits/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    name: Build portable Frontier workspace package
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Check out branch source
+        uses: actions/checkout@v4
+
+      - name: Set up pinned build tools
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned font-generation dependency
+        run: python -m pip install --requirement Automation/FontRequirements.txt
+
+      - name: Recover pinned native dependencies
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $Output = & python Automation/PrepareDependencies.py 2>&1
+          $Result = $LASTEXITCODE
+          $Output | ForEach-Object { Write-Output "$_" }
+          if ($Result -ne 0) {
+            $Details = ($Output | Select-Object -Last 12 | ForEach-Object { "$_" }) -join ' '
+            Write-Output "::error title=Dependency preparation failed::$Details"
+            exit $Result
+          }
+
+      - name: Prepare bundled fonts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python Automation/PrepareFonts.py
+
+      - name: Install pinned Windows Slang compiler
+        run: python Automation/PrepareShaderToolchain.py
+
+      - name: Configure Windows x64 build
+        shell: pwsh
+        run: |
+          cmake -S . -B Build/Windows -G "Visual Studio 17 2022" -A x64 `
+            -DFRONTIER_PROFILE=Editor `
+            -DBUILD_TESTING=ON `
+            '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Build Windows x64 applications and boundary checks
+        shell: pwsh
+        run: |
+          $Output = & cmake --build Build/Windows --config Release --parallel 4 --target `
+            Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp `
+            FrontierMaterial FrontierParticle FrontierFracture FrontierForceField FrontierFluid `
+            FrontierSketcher `
+            FrontierEngineRuntimeDll FrontierWorkspaceUiDll `
+            UVBoundaryValidation ProjectBrowserValidation `
+            SketcherKernelValidation SketcherDocumentValidation SketcherViewportValidation SketcherWorkspaceValidation 2>&1
+          $Result = $LASTEXITCODE
+          $Output | ForEach-Object { Write-Output "$_" }
+          if ($Result -ne 0) {
+            $Diagnostics = $Output | Select-String -Pattern '(?i)(:\s*(?:fatal\s+)?error\b|LNK[0-9]+|FAILED|Build FAILED|MSB[0-9]+)' | Select-Object -Last 12
+            if (-not $Diagnostics) { $Diagnostics = $Output | Select-Object -Last 10 }
+            $Details = ($Diagnostics | ForEach-Object { "$_" }) -join ' '
+            Write-Output "::error title=Windows build diagnostics::$Details"
+            exit $Result
+          }
+
+      - name: Run Windows hostile-input, UV chart, and Project Browser checks
+        shell: pwsh
+        run: |
+          $Output = & ctest --test-dir Build/Windows -C Release --output-on-failure -R '^(UVBoundaryValidation|ProjectBrowserValidation|SketcherKernelValidation|SketcherDocumentValidation|SketcherViewportValidation|SketcherWorkspaceValidation)$' 2>&1
+          $Result = $LASTEXITCODE
+          $Output | ForEach-Object { Write-Output "$_" }
+          if ($Result -ne 0) {
+            $Details = ($Output | Select-Object -Last 25 | ForEach-Object { "$_" }) -join ' | '
+            Write-Output "::error title=Windows CTest diagnostics::$Details"
+            exit $Result
+          }
+
+      - name: Assemble portable folder
+        shell: pwsh
+        run: |
+          $Payload = Join-Path $env:RUNNER_TEMP 'Frontier-Workspaces-Windows-x64'
+          New-Item -ItemType Directory -Force "$Payload/CompiledShaders", "$Payload/EngineContent", "$Payload/Binaries/Win64" | Out-Null
+          $Apps = @(
+            'Frontier.exe',
+            'FrontierEditor.exe',
+            'FrontierUV.exe',
+            'FrontierBaking.exe',
+            'FrontierPattern.exe',
+            'FrontierStamp.exe',
+            'FrontierMaterial.exe',
+            'FrontierParticle.exe',
+            'FrontierFracture.exe',
+            'FrontierForceField.exe',
+            'FrontierFluid.exe',
+            'FrontierSketcher.exe'
+          )
+          foreach ($App in $Apps) {
+            Copy-Item "Build/Windows/Release/$App" "$Payload/"
+          }
+          Copy-Item 'Build/Windows/Binaries/Win64/*' "$Payload/Binaries/Win64/" -Recurse -Force
+          Copy-Item 'Build/Windows/CompiledShaders/*' "$Payload/CompiledShaders/" -Recurse -Force
+          Copy-Item 'EngineContent/*' "$Payload/EngineContent/" -Recurse -Force
+          @'
+          Frontier Standalone Workspaces Suite for Windows x64
+
+          Each workspace is compiled as its own independent executable (plus integrated Component Editor in Frontier.exe):
+            - Frontier.exe            : Project Browser & Component Editor launcher
+            - FrontierEditor.exe      : 3D World Editor
+            - FrontierUV.exe          : UV Unwrap & UDIM Packing Studio
+            - FrontierBaking.exe      : GPU Surface Texture & 3D Volume SDF Baking Studio
+            - FrontierPattern.exe     : Seamless Vector & PBR Pattern Studio
+            - FrontierStamp.exe       : Alpha Cutout Decal Stamp Studio
+            - FrontierMaterial.exe    : Dynamic OpenPBR Material Studio
+            - FrontierParticle.exe    : 93-Preset Particle & ForceField Studio
+            - FrontierFracture.exe    : 6-Solver Fracture & JoltPhysics Simulation Studio
+            - FrontierForceField.exe  : 3D Vector Field & Force Simulation Studio
+            - FrontierFluid.exe       : Eulerian Pyro, Smoke & Fire Simulation Studio
+            - FrontierSketcher.exe    : Parametric B-Rep CAD & Sketching Studio
+
+          Keep CompiledShaders, EngineContent, and Binaries/Win64 beside the executables.
+          A Windows Vulkan 1.2+ graphics driver is required.
+          '@ | Set-Content "$Payload/README.txt" -Encoding utf8
+          Compress-Archive -Path "$Payload/*" -DestinationPath 'Build/Frontier-Workspaces-Windows-x64.zip' -CompressionLevel Optimal
+
+      - name: Upload Windows x64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Frontier-Workspaces-Windows-x64
+          path: Build/Frontier-Workspaces-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14

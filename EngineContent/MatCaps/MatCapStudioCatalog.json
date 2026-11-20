@@ -1,0 +1,114 @@
+[
+  {
+    "slot": 0,
+    "id": "cnc-alu",
+    "label": "CNC Aluminum",
+    "short": "CNC Alu",
+    "category": "metal"
+  },
+  {
+    "slot": 1,
+    "id": "ti-grade5",
+    "label": "Grade-5 Titanium",
+    "short": "Titanium",
+    "category": "metal"
+  },
+  {
+    "slot": 2,
+    "id": "cad-clay",
+    "label": "CAD Clay",
+    "short": "CAD Clay",
+    "category": "diagnostic"
+  },
+  {
+    "slot": 3,
+    "id": "studio-chrome",
+    "label": "Class-A Chrome",
+    "short": "Chrome",
+    "category": "metal"
+  },
+  {
+    "slot": 4,
+    "id": "gunmetal-ano",
+    "label": "Gunmetal Ano",
+    "short": "Gunmetal",
+    "category": "metal"
+  },
+  {
+    "slot": 5,
+    "id": "layout-blue",
+    "label": "Steel Blue",
+    "short": "Steel Blue",
+    "category": "metal"
+  },
+  {
+    "slot": 6,
+    "id": "cnc-brass",
+    "label": "Turned Brass",
+    "short": "Brass",
+    "category": "metal"
+  },
+  {
+    "slot": 7,
+    "id": "cad-zebra",
+    "label": "Zebra CAD",
+    "short": "Zebra",
+    "category": "diagnostic"
+  },
+  {
+    "slot": 8,
+    "id": "vulcan-rubber",
+    "label": "Vulcan Rubber",
+    "short": "Rubber",
+    "category": "polymer"
+  },
+  {
+    "slot": 9,
+    "id": "normal-rgb",
+    "label": "Normal Map",
+    "short": "Normal",
+    "category": "diagnostic"
+  },
+  {
+    "slot": 10,
+    "id": "car-flake-blue",
+    "label": "Car Flake Blue",
+    "short": "Flake Blue",
+    "category": "automotive"
+  },
+  {
+    "slot": 11,
+    "id": "car-flake-ruby",
+    "label": "Car Flake Ruby",
+    "short": "Flake Ruby",
+    "category": "automotive"
+  },
+  {
+    "slot": 12,
+    "id": "carbon-fiber",
+    "label": "Carbon Fibre",
+    "short": "Carbon",
+    "category": "composite"
+  },
+  {
+    "slot": 13,
+    "id": "woven-fabric",
+    "label": "Woven Fabric",
+    "short": "Fabric",
+    "category": "fabric"
+  },
+  {
+    "slot": 14,
+    "id": "velvet-suede",
+    "label": "Velvet Suede",
+    "short": "Velvet",
+    "category": "fabric"
+  },
+  {
+    "slot": 15,
+    "id": "ripstop-fabric",
+    "label": "Ripstop Nylon",
+    "short": "Ripstop",
+    "category": "fabric"
+  }
+]
