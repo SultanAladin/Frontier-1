@@ -1,0 +1,11 @@
+view,caption,path,width,height,primary_rays,sun_rays,triangles,bvh_entries,pixel_digest_fnv1a64
+0,"01 FRONT","Exhibits/Images/Vehicle/Vehicle_Turntable_00_01_FRONT.png",1920,1080,4,6,25070,3859,5f78b0b20023f67a
+1,"02 FRONT-LEFT 3/4","Exhibits/Images/Vehicle/Vehicle_Turntable_01_02_FRONT-LEFT_3-4.png",1920,1080,4,6,25070,3859,d28cb0245e7b09e0
+2,"03 LEFT PROFILE","Exhibits/Images/Vehicle/Vehicle_Turntable_02_03_LEFT_PROFILE.png",1920,1080,4,6,25070,3859,2200eb048ef34214
+3,"04 REAR-LEFT 3/4","Exhibits/Images/Vehicle/Vehicle_Turntable_03_04_REAR-LEFT_3-4.png",1920,1080,4,6,25070,3859,09656c2d0b573e4e
+4,"05 REAR","Exhibits/Images/Vehicle/Vehicle_Turntable_04_05_REAR.png",1920,1080,4,6,25070,3859,3a79911da6857b6d
+5,"06 REAR-RIGHT 3/4","Exhibits/Images/Vehicle/Vehicle_Turntable_05_06_REAR-RIGHT_3-4.png",1920,1080,4,6,25070,3859,8e7da380facbe561
+6,"07 RIGHT PROFILE","Exhibits/Images/Vehicle/Vehicle_Turntable_06_07_RIGHT_PROFILE.png",1920,1080,4,6,25070,3859,ee1f5a82fe6ffa7d
+7,"08 FRONT-RIGHT 3/4","Exhibits/Images/Vehicle/Vehicle_Turntable_07_08_FRONT-RIGHT_3-4.png",1920,1080,4,6,25070,3859,cd7f0c982d2cb260
+8,"09 HIGH TOP","Exhibits/Images/Vehicle/Vehicle_Turntable_08_09_HIGH_TOP.png",1920,1080,4,6,25070,3859,82c87caac4e8c1dc
+9,"10 FRONT DETAIL","Exhibits/Images/Vehicle/Vehicle_Turntable_09_10_FRONT_DETAIL.png",1920,1080,4,6,25070,3859,0b4e34512f47a9e9
