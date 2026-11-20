@@ -1,0 +1,18 @@
+{
+  "denoiser_enabled": false,
+  "resolution": "560x315",
+  "vehicle_triangles": 25068,
+  "emissive_triangles": 42,
+  "rmse_vs_128spp_ref": {
+    "engine_ddgi": 0.5361,
+    "engine_clipmap": 0.2402,
+    "cand1_stokes_normal_gi": 0.2238,
+    "cand1_stokes_ddgi": 0.2238,
+    "cand2_surfel_normal_gi": 0.2239,
+    "cand2_surfel_ddgi": 0.2269,
+    "cand3_l1field_normal_gi": 0.2259,
+    "cand3_l1field_ddgi": 0.2262
+  },
+  "verified": 9,
+  "failed": 0
+}

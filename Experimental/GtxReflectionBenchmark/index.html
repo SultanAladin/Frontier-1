@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frontier — GTX Global SDF vs Compute BVH: GI, Soft Penumbra, Color Bleed &amp; Reflections</title>
+  <link rel="stylesheet" href="./BenchmarkStyle.css" />
+</head>
+<body>
+  <canvas id="viewport-canvas"></canvas>
+
+  <div id="split-divider" class="split-divider" style="left: 50%; display: block;">
+    <span class="split-badge left">GLOBAL SDF (GI · CONE PENUMBRA · REFL)</span>
+    <span class="split-badge right">COMPUTE BVH (RAY GI · DISK PENUMBRA · REFL)</span>
+  </div>
+
+  <header class="top-bar">
+    <div class="brand-panel">
+      <div>
+        <div class="brand-kicker">Frontier GTX Non-RT Lighting Lab · Zero Ghosting · Zero Smearing · Zero Jitter</div>
+        <div class="brand-title">Global SDF vs. Compute BVH — GI, Soft Penumbra, Color Bleed &amp; Multi-Bounce Reflections</div>
+      </div>
+      <span class="rh-pill">Vulkan 1.3 · RH (+X Fwd · +Y Left · +Z Up)</span>
+      <span id="hud-fps-pill" class="fps-hud-pill">— FPS</span>
+    </div>
+
+    <div class="segmented-track" role="group" aria-label="Lighting Backend">
+      <button data-mode="0" aria-pressed="false">Global SDF</button>
+      <button data-mode="1" aria-pressed="false">Compute BVH</button>
+      <button data-mode="2" aria-pressed="true">Split SDF | BVH</button>
+      <button data-mode="4" aria-pressed="false">Clay GI + Penumbra</button>
+      <button data-mode="3" aria-pressed="false">Pixel Delta</button>
+    </div>
+  </header>
+
+  <aside class="telemetry-panel" aria-label="GPU GI and Reflection Benchmark Telemetry">
+    <div class="fps-hero-banner">
+      <div class="fps-hero-left">
+        <span class="fps-hero-label">LIVE DISPLAY FPS</span>
+        <span id="fps-hero-readout" class="fps-hero-value">— FPS</span>
+      </div>
+      <div class="fps-hero-right">
+        <span class="fps-hero-label">UNCAPPED PASS EQUIV</span>
+        <span id="uncapped-fps-readout" class="fps-hero-sub">SDF — · BVH — FPS</span>
+      </div>
+    </div>
+
+    <div class="telemetry-header">
+      <h2>Isolated GI + Penumbra + Refl Cost</h2>
+      <span id="speedup-readout" class="speedup-pill">Calibrating…</span>
+    </div>
+
+    <div class="metric-bars">
+      <div class="metric-row">
+        <div class="metric-label-line">
+          <span class="metric-name">Global SDF (GI + Cone Penumbra + Refl)</span>
+          <span id="sdf-ms-readout" class="metric-ms sdf">— ms</span>
+        </div>
+        <div class="bar-track"><div id="sdf-bar" class="bar-fill sdf" style="width: 12%;"></div></div>
+      </div>
+
+      <div class="metric-row">
+        <div class="metric-label-line">
+          <span class="metric-name">Compute BVH (Ray GI + Disk Penumbra + Refl)</span>
+          <span id="bvh-ms-readout" class="metric-ms bvh">— ms</span>
+        </div>
+        <div class="bar-track"><div id="bvh-bar" class="bar-fill bvh" style="width: 88%;"></div></div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-cell">
+        <div class="stat-k">Active Frame / FPS</div>
+        <div id="fps-readout" class="stat-v">— FPS</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-k">GI | Refl Split (SDF / BVH)</div>
+        <div id="union-ms-readout" class="stat-v">— ms</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-k">Mean Pixel Delta (≤5% Gate)</div>
+        <div id="delta-readout" class="stat-v">— %</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-k">GPU Adapter</div>
+        <div id="gpu-readout" class="stat-v">Detecting…</div>
+      </div>
+    </div>
+
+    <button id="run-benchmark-btn" class="bench-btn">Run Exact GTX A/B Benchmark (12x Sync)</button>
+  </aside>
+
+  <footer class="controls-dock">
+    <div class="dock-row">
+      <div class="slider-group">
+        <label for="slider-penumbra">
+          <span class="cluster-label">Sun Penumbra</span>
+          <span id="val-penumbra" class="slider-val">2.10</span>
+        </label>
+        <input id="slider-penumbra" type="range" min="0.00" max="3.50" step="0.05" value="2.10" />
+      </div>
+
+      <div class="slider-group">
+        <label for="slider-gi">
+          <span class="cluster-label">GI + Color Bleed</span>
+          <span id="val-gi" class="slider-val">1.85×</span>
+        </label>
+        <input id="slider-gi" type="range" min="0.00" max="3.00" step="0.05" value="1.85" />
+      </div>
+
+      <div class="slider-group">
+        <label for="slider-sun">
+          <span class="cluster-label">Sun Azimuth / Elev</span>
+          <span id="val-sun" class="slider-val">50° / 41°</span>
+        </label>
+        <input id="slider-sun" type="range" min="-80" max="110" step="1" value="50" />
+      </div>
+
+      <div class="control-cluster">
+        <span class="cluster-label">Lighting Toggles</span>
+        <button id="toggle-gi" class="toggle-chip" aria-pressed="true">GI + Bleed</button>
+        <button id="toggle-shadows" class="toggle-chip" aria-pressed="true">Sun Shadows</button>
+        <button id="toggle-penumbra" class="toggle-chip" aria-pressed="true">Soft Penumbra</button>
+        <button id="toggle-hiz" class="toggle-chip" aria-pressed="true">Hi-Z Assist</button>
+        <button id="toggle-nee" class="toggle-chip" aria-pressed="true">BVH NEE</button>
+      </div>
+    </div>
+
+    <div class="dock-row dock-row-accent">
+      <div class="control-cluster">
+        <span class="cluster-label">GI Bounces</span>
+        <div class="segmented-track" role="group" aria-label="Diffuse GI Bounces">
+          <button data-gi-bounces="1" aria-pressed="false" title="1-Bounce Direct->Diffuse GI">1B</button>
+          <button data-gi-bounces="2" aria-pressed="true" title="2-Bounce Inter-Reflection GI (Voxel Cache vs Path Trace)">2B</button>
+          <button data-gi-bounces="3" aria-pressed="false" title="3-Bounce Deep Cornell Radiosity">3B</button>
+        </div>
+      </div>
+
+      <div class="control-cluster">
+        <span class="cluster-label">Samples / Px (SPP)</span>
+        <div class="segmented-track" role="group" aria-label="Ray Samples Per Pixel">
+          <button data-spp="0" aria-pressed="false" title="4 GI Rays / 2 Disk Shadow Rays / 4 SDF Cones">Low 4/2</button>
+          <button data-spp="1" aria-pressed="true" title="6 GI Rays / 4 Disk Shadow Rays / 6 SDF Cones">Std 6/4</button>
+          <button data-spp="2" aria-pressed="false" title="12 GI Rays / 8 Disk Shadow Rays / 9 SDF Cones">High 12/8</button>
+          <button data-spp="3" aria-pressed="false" title="24 GI Rays / 12 Disk Shadow Rays / 12 SDF Cones">Ultra 24/12</button>
+        </div>
+      </div>
+
+      <div class="control-cluster">
+        <span class="cluster-label">Improvements (A/B)</span>
+        <button id="toggle-dir-sdf" class="toggle-chip fix-chip" aria-pressed="true" title="Directional Lambertian SDF Voxel Emission — fixes pink 'emissive' underglow on Left">Dir SDF GI</button>
+        <button id="toggle-contact-ao" class="toggle-chip fix-chip" aria-pressed="true" title="6-Tap Full-Res Horizon Contact AO — grounds tyres &amp; blocks under-chassis GI leak">Contact AO</button>
+        <button id="toggle-smooth-pcss" class="toggle-chip fix-chip" aria-pressed="true" title="3×3 Blocker Dilation + Continuous Gaussian PCSS — fixes sharp->soft halo cliff on Right">Smooth PCSS</button>
+        <button id="toggle-deblotch" class="toggle-chip fix-chip" aria-pressed="true" title="R2 Quasi-Random Stratification + Pass-1 Variance Clamp — fixes cloudy Ray GI blotches on Right">R2 De-Blotch</button>
+        <button id="toggle-fullres" class="toggle-chip" aria-pressed="false" title="Trace GI &amp; Reflections at 1.0× Native Resolution vs 0.5× Half-Res">Full-Res 1.0×</button>
+        <button id="btn-ab-fixes" class="ab-master-btn" data-all="on" title="Flip all 4 visual quality improvements OFF vs ON in one click">A/B: Fixes ON</button>
+      </div>
+    </div>
+
+    <div class="dock-row">
+      <div class="control-cluster">
+        <span class="cluster-label">Reflections</span>
+        <div class="segmented-track" role="group" aria-label="Reflection Bounces">
+          <button data-bounces="0" aria-pressed="false">Off</button>
+          <button data-bounces="1" aria-pressed="false">1B</button>
+          <button data-bounces="2" aria-pressed="true">2 Bounces</button>
+          <button data-bounces="3" aria-pressed="false">3B</button>
+        </div>
+      </div>
+
+      <div class="control-cluster">
+        <span class="cluster-label">Vehicle Motion</span>
+        <div class="segmented-track" role="group" aria-label="Vehicle Drive Mode">
+          <button data-drive="auto" aria-pressed="true">Auto-Glide</button>
+          <button data-drive="pose" aria-pressed="false">Static Pose</button>
+          <button data-drive="manual" aria-pressed="false">WASD Drive</button>
+        </div>
+        <button id="toggle-chase" class="toggle-chip" aria-pressed="false">Chase Cam</button>
+      </div>
+
+      <div class="control-cluster">
+        <span class="cluster-label">Body Paint</span>
+        <div class="swatch-row" id="swatch-row">
+          <button class="paint-swatch" data-paint="0" aria-pressed="true" style="background:#ebeffa;" title="Pearl White Clearcoat (Shows Color Bleed Best)"></button>
+          <button class="paint-swatch" data-paint="1" aria-pressed="false" style="background:#155eef;" title="Sapphire Clearcoat"></button>
+          <button class="paint-swatch" data-paint="2" aria-pressed="false" style="background:#dc2626;" title="Crimson Metallic"></button>
+          <button class="paint-swatch" data-paint="3" aria-pressed="false" style="background:#eab308;" title="Solar Gold"></button>
+          <button class="paint-swatch" data-paint="4" aria-pressed="false" style="background:#059669;" title="Emerald Pearl"></button>
+          <button class="paint-swatch" data-paint="5" aria-pressed="false" style="background:#18191e;" title="Obsidian Mirror"></button>
+        </div>
+        <span class="drive-hint">Drag Split Line · Orbit Drag · Wheel Zoom · WASD</span>
+      </div>
+    </div>
+  </footer>
+
+  <div id="loading-banner" class="loading-banner">
+    Loading ControlVehicle + Color-Bleed Proving Ground (25,512 Instanced Tris · 2-Cascade Global SDF)…
+  </div>
+
+  <script type="module" src="./BenchmarkApp.js"></script>
+</body>
+</html>
