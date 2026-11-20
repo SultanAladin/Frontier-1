@@ -343,7 +343,7 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
     }
     GeometricRaster::RegisterShowcaseGalleryInOutliner(Panes->Outliner, *ShowcaseBundle, true);
     Panes->Viewport.ConfigureSceneTitle(
-        ActiveProjectTitle.empty() ? "Cornell-Studio Gallery" : (ActiveProjectTitle + " · Cornell-Studio Gallery"));
+        ActiveProjectTitle.empty() ? "Sky & Plane Studio" : (ActiveProjectTitle + " · Sky & Plane Studio"));
 
     Panes->Viewport.ConfigureInteractionCallback(
         [this](uint32_t PaneIdx, Rectangle2D PaneBounds, const PaneInputReading& Input)
