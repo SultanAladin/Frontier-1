@@ -1,0 +1,21 @@
+Inspector design and browser implementation copied at the user’s request from c7egoist/Frontier, deployed commit f65f2f90f033e17671963c6731ea9e7653bc13b6.
+Original source: https://github.com/c7egoist/Frontier/tree/f65f2f90f033e17671963c6731ea9e7653bc13b6/src
+The source package declares ISC. Original file comments are retained. See Provenance.json for exact source hashes and the limited adapter changes.
+This is a browser-only visual review copy, not a native implementation or renderer.
+
+General Sans is requested directly from Fontshare's official CDN, as in the reference.
+The font itself is not redistributed in this directory. ITF Free Font License:
+https://www.fontshare.com/licenses/itf-ffl
+Fontshare.css contains the official API's font-face URLs (retrieved 2026-10-05),
+embedded as CSS to avoid making inspector startup depend on another stylesheet request.
+
+ISC license (identified by the original package):
+Permission to use, copy, modify, and/or distribute this software for any purpose with
+or without fee is hereby granted, provided that the above copyright notice and this
+permission notice appear in all copies.
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD
+TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR
+CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
+PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

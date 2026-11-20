@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project-Zero · Frontier Cloth Atelier</title>
+    <link rel="stylesheet" href="./Styles/ClothAtelier.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "./Vendor/three.esm.min.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="atelier-shell">
+        <header class="notch-shell" id="pz-notch"></header>
+
+        <aside class="dock dock-left" id="pz-left-dock"></aside>
+        <aside class="dock dock-right" id="pz-right-dock"></aside>
+
+        <main class="viewport-stage">
+            <section class="pane-box" id="pane-3d">
+                <div class="pane-badge"><strong>3D Drape Stage</strong> · PBR + SDF</div>
+                <div class="pane-controls-tr">
+                    <button class="pane-chip-btn" data-cam="front">Front</button>
+                    <button class="pane-chip-btn active" data-cam="threeQuarter">3/4</button>
+                    <button class="pane-chip-btn" data-cam="side">Side</button>
+                    <button class="pane-chip-btn" data-cam="back">Back</button>
+                </div>
+                <div id="viewport-3d" style="width:100%;height:100%;"></div>
+            </section>
+
+            <section class="pane-box" id="pane-2d">
+                <div class="pane-badge"><strong>2D Pattern CAD</strong> · M:N Seams (mm)</div>
+                <div class="pane-controls-tr">
+                    <button class="pane-chip-btn" id="btn-2d-fit">Fit View</button>
+                </div>
+                <canvas id="pattern-2d-canvas"></canvas>
+            </section>
+        </main>
+
+        <nav class="viewport-toolbar" id="pz-toolbar"></nav>
+        <section class="timeline-bar" id="pz-timeline"></section>
+        <footer class="drawer-shell" id="pz-drawer"></footer>
+    </div>
+
+    <script type="module">
+        import { ClothStudioApp } from './Engine/ClothStudioApp.js';
+        import { mountAtelierUI } from './UI/AtelierPanels.js';
+
+        const refs = {
+            notch: document.getElementById('pz-notch'),
+            leftDock: document.getElementById('pz-left-dock'),
+            rightDock: document.getElementById('pz-right-dock'),
+            toolbar: document.getElementById('pz-toolbar'),
+            timeline: document.getElementById('pz-timeline'),
+            drawer: document.getElementById('pz-drawer'),
+            pane3d: document.getElementById('pane-3d'),
+            pane2d: document.getElementById('pane-2d'),
+        };
+
+        let ui = null;
+        const app = new ClothStudioApp({
+            viewport3dEl: document.getElementById('viewport-3d'),
+            canvas2dEl: document.getElementById('pattern-2d-canvas'),
+            onMetrics: (metrics) => ui && ui.updateMetricsOnly(metrics),
+            onTimeline: (tl) => ui && ui.updateTimelineOnly(tl),
+            onStateChange: (snap) => ui && ui.renderAll(snap),
+        });
+
+        ui = mountAtelierUI({ app, refs });
+
+        document.querySelectorAll('[data-cam]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('[data-cam]').forEach((b) => b.classList.remove('active'));
+                btn.classList.add('active');
+                app.viewport3d.setCameraPreset(btn.dataset.cam);
+            });
+        });
+
+        document.getElementById('btn-2d-fit').addEventListener('click', () => app.pattern2d.fitToView());
+
+        app.init().catch((err) => {
+            console.error('Atelier startup failure:', err);
+        });
+        window.__CLOTH_ATELIER__ = app;
+    </script>
+</body>
+</html>

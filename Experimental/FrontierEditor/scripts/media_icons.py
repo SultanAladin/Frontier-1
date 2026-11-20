@@ -1,0 +1,44 @@
+"""Four reference-led media icons. Native SVG geometry, no raster assets."""
+
+def clapper(key, video=False):
+    defs=f'''<linearGradient id="{key}-body" x2=".7" y2="1"><stop stop-color="#51575b"/><stop offset=".5" stop-color="#363c3f"/><stop offset="1" stop-color="#242a2d"/></linearGradient><linearGradient id="{key}-edge" x2="1" y2="1"><stop stop-color="#282e31"/><stop offset="1" stop-color="#11171a"/></linearGradient><linearGradient id="{key}-bar" x2=".15" y2="1"><stop stop-color="#646b6f"/><stop offset=".25" stop-color="#42494d"/><stop offset="1" stop-color="#292f32"/></linearGradient><linearGradient id="{key}-white" x2=".25" y2="1"><stop stop-color="#f5f3eb"/><stop offset="1" stop-color="#b9bdba"/></linearGradient><linearGradient id="{key}-red" x2=".7" y2="1"><stop stop-color="#ff8274"/><stop offset=".35" stop-color="#ff5b50"/><stop offset="1" stop-color="#c92e29"/></linearGradient><clipPath id="{key}-lower"><rect x="42" y="92" width="172" height="32" rx="5"/></clipPath><clipPath id="{key}-upper"><rect x="42" y="60" width="172" height="31" rx="6"/></clipPath>'''
+    body=f'''<g transform="rotate(-10 128 128)"><path d="M36 110 48 101h164v105q0 14-13 17H54q-18 0-18-18Z" fill="url(#{key}-edge)"/><rect x="46" y="108" width="168" height="111" rx="14" fill="url(#{key}-body)" stroke="#768084" stroke-opacity=".25"/><path d="M52 209q3 7 11 7h133" stroke="#a3abad" stroke-opacity=".12"/><rect x="41" y="94" width="174" height="35" rx="6" fill="#1b2326"/><rect x="42" y="92" width="172" height="32" rx="5" fill="url(#{key}-bar)"/><g clip-path="url(#{key}-lower)">'''
+    for x in [68,122,176]:
+        body+=f'<path d="m{x} 89 24 0-21 39h-24Z" fill="url(#{key}-white)"/>'
+    body+=f'''</g><path d="M50 94h157" stroke="#fff" stroke-opacity=".14"/><g transform="rotate(-23 48 94)"><rect x="42" y="63" width="172" height="33" rx="6" fill="#1c2225"/><rect x="42" y="60" width="172" height="31" rx="6" fill="url(#{key}-bar)"/><g clip-path="url(#{key}-upper)">'''
+    for x in [69,123,177]:
+        body+=f'<path d="m{x} 56 25 0 21 39h-25Z" fill="url(#{key}-white)"/>'
+    body+='</g><path d="M51 62h151" stroke="#ecf2ee" stroke-opacity=".23" stroke-width="1.3"/></g>'
+    if video:
+        body+=f'''<circle cx="49" cy="96" r="13" fill="#862324"/><circle cx="47" cy="93" r="13" fill="url(#{key}-red)"/><circle cx="47" cy="93" r="6.5" fill="url(#{key}-white)" stroke="#555b5e" stroke-width="2"/><path d="M112 139q-5-4-7 3l-9 55q-1 7 6 5l49-20q7-3 1-8Z" fill="#131a1c" opacity=".6"/><path d="M110 136q-5-4-7 3l-9 55q-1 7 6 5l49-20q7-3 1-8Z" fill="url(#{key}-red)" stroke="#ff9b83" stroke-opacity=".22" stroke-width="1.2"/>'''
+    else:
+        body+=f'''<path d="M42 91q0-10 10-11 6-1 12 5l30 31q10 14-6 19H53q-11 0-11-11Z" fill="url(#{key}-bar)" stroke="#737c80" stroke-opacity=".45"/>'''
+        for x,y in [(54,96),(55,123),(79,121)]:
+            body+=f'<circle cx="{x+1}" cy="{y+1}" r="5.7" fill="#182024"/><circle cx="{x}" cy="{y}" r="5" fill="url(#{key}-bar)" stroke="#949d9e" stroke-opacity=".23"/>'
+        for y in [153,183,198]:
+            body+=f'<rect x="65" y="{y+2}" width="132" height="6" rx="2" fill="#141c20" opacity=".7"/><rect x="65" y="{y}" width="132" height="5" rx="2" fill="url(#{key}-bar)" stroke="#98a5a9" stroke-opacity=".2" stroke-width=".7"/>'
+        body+='<path d="M112 159v24" stroke="#1e272b" stroke-width="4"/><path d="M113 159v24" stroke="#727d80" stroke-opacity=".4" stroke-width="1"/>'
+    return defs,'<g transform="translate(16 26) scale(.87)">'+body+'</g></g>'
+
+
+def register_media_icons(icon):
+    defs,body=clapper('video',True)
+    icon('video','Video','Objects','A dimensional open clapper with ivory stripes, a red hinge, and a raised coral play symbol.',defs,body)
+
+    defs='''<linearGradient id="headphones-band" x2=".8" y2="1"><stop stop-color="#757982"/><stop offset=".24" stop-color="#4a4e57"/><stop offset=".66" stop-color="#2c3038"/><stop offset="1" stop-color="#191e26"/></linearGradient><linearGradient id="headphones-blue" x2="1" y2=".4"><stop stop-color="#8094bd"/><stop offset=".24" stop-color="#586e9c"/><stop offset="1" stop-color="#354367"/></linearGradient><radialGradient id="headphones-pad" cx="30%" cy="24%" r="79%"><stop stop-color="#6c727d"/><stop offset=".36" stop-color="#41464e"/><stop offset=".68" stop-color="#292e36"/><stop offset="1" stop-color="#151b24"/></radialGradient><radialGradient id="headphones-inner"><stop stop-color="#090d13"/><stop offset=".7" stop-color="#111822"/><stop offset="1" stop-color="#343b46"/></radialGradient>'''
+    body='''<path d="M47 125 50 97l18 1-3 35Z" fill="url(#headphones-blue)" stroke="#9aabd0" stroke-opacity=".2"/><path d="M186 116 181 91l20-3 7 35Z" fill="url(#headphones-blue)"/><path d="M47 101C49 23 126 13 174 55q33 28 34 61l-23 5c-5-38-33-69-64-73-29-4-52 18-53 50q-7 8-21 3Z" fill="url(#headphones-band)" stroke="#9ca4b1" stroke-opacity=".22"/><path d="M51 87c9-50 49-66 86-50" stroke="#b1b6c3" stroke-opacity=".2" stroke-width="2.5" stroke-linecap="round"/>
+<g transform="translate(61 157) rotate(10) scale(.63 1)"><circle r="49" fill="url(#headphones-blue)"/><circle cx="13" r="49" fill="#222a34"/><circle cx="19" r="48" fill="url(#headphones-pad)"/><circle cx="24" r="27" fill="url(#headphones-inner)"/><path d="M17-43c-35 9-42 60-14 83" stroke="#a9b0bd" stroke-opacity=".22" stroke-width="1.4"/></g>
+<g transform="translate(168 173) rotate(12) scale(.68 1)"><circle r="50" fill="url(#headphones-pad)"/><circle cx="2" r="27" fill="url(#headphones-inner)"/><circle cx="19" r="49" fill="#1a202b"/><circle cx="29" r="47" fill="url(#headphones-blue)" stroke="#91a1bd" stroke-opacity=".25" stroke-width=".9"/><path d="M24-40c-31 10-35 55-14 73" stroke="#a6b4d1" stroke-opacity=".16" stroke-width="1.8"/></g>
+<path d="m191 106 4 26q2 5 13 3l-3-27" fill="url(#headphones-blue)" stroke="#a2b0ce" stroke-opacity=".17"/>'''
+    icon('headphones','Headphones','Objects','Padded over-ear headphones with a charcoal arch, recessed ear cushions, and muted blue shells.',defs,body)
+
+    defs='''<linearGradient id="joystick-base" x2=".5" y2="1"><stop stop-color="#53534f"/><stop offset=".4" stop-color="#353632"/><stop offset="1" stop-color="#222521"/></linearGradient><linearGradient id="joystick-side" x2="1" y2="1"><stop stop-color="#454641"/><stop offset="1" stop-color="#1b1e1c"/></linearGradient><linearGradient id="joystick-metal" x2="1" y2=".1"><stop stop-color="#383e3d"/><stop offset=".27" stop-color="#a6aba8"/><stop offset=".45" stop-color="#d0d1c8"/><stop offset=".63" stop-color="#7a807c"/><stop offset="1" stop-color="#303834"/></linearGradient><radialGradient id="joystick-red" cx="30%" cy="25%" r="78%"><stop stop-color="#ff8470"/><stop offset=".25" stop-color="#f6432c"/><stop offset=".6" stop-color="#d62515"/><stop offset="1" stop-color="#881b13"/></radialGradient><linearGradient id="joystick-rubber" x2=".5" y2="1"><stop stop-color="#5c5e59"/><stop offset=".4" stop-color="#363735"/><stop offset=".75" stop-color="#1b1d1b"/><stop offset="1" stop-color="#3e403c"/></linearGradient><linearGradient id="joystick-button" x2=".5" y2="1"><stop stop-color="#ff694a"/><stop offset="1" stop-color="#d72916"/></linearGradient>'''
+    body='''<g transform="rotate(-17 128 164)"><path d="M30 123q0-17 19-17h159q18 0 18 18v75q0 23-23 23H53q-23 0-23-23Z" fill="url(#joystick-side)"/><rect x="30" y="103" width="196" height="102" rx="22" fill="url(#joystick-base)" stroke="#777c6e" stroke-opacity=".25"/><rect x="35" y="107" width="185" height="91" rx="18" stroke="#9ca18c" stroke-opacity=".16" stroke-width="1.2"/>
+<g transform="translate(118 146) scale(1 .64)"><circle r="44" fill="#191c19"/><circle cy="-3" r="42" fill="url(#joystick-rubber)"/><circle cy="-10" r="32" fill="url(#joystick-rubber)" stroke="#777c6b" stroke-opacity=".17"/><circle cy="-16" r="23" fill="url(#joystick-rubber)"/><circle cy="-18" r="14" fill="#181b18"/></g>'''
+    for x,y in [(64,175),(190,150)]:
+        body+=f'''<g transform="translate({x} {y}) scale(1 .7)"><circle cy="3" r="19" fill="#131b16"/><circle r="17" fill="#74231a"/><circle cy="-4" r="16" fill="url(#joystick-button)"/><path d="M-13 4q11 12 25 0" stroke="#ff9d70" stroke-opacity=".3" stroke-width="1"/></g>'''
+    body+='''<path d="m106 134-9-57 17-3 11 57q-7 10-19 3Z" fill="url(#joystick-metal)" stroke="#222d26" stroke-opacity=".35"/><circle cx="103" cy="65" r="32" fill="url(#joystick-red)" stroke="#f87c58" stroke-opacity=".23"/></g>'''
+    icon('joystick','Joystick','Objects','A retro arcade joystick with a sculpted graphite base, rubber bellows, steel shaft, red ball grip, and two raised red buttons.',defs,body)
+
+    defs,body=clapper('clapperboard')
+    icon('clapperboard','Clapperboard','Objects','An open charcoal film slate with ivory diagonal stripes, a three-rivet hinge, and embossed slate dividers.',defs,body)
