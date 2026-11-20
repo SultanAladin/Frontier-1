@@ -1,0 +1,199 @@
+{
+  "Summary": {
+    "shared": {
+      "SecondsPerSample": 0.391,
+      "Digest64": "81a50a32",
+      "Rms": {
+        "1": 0.3472,
+        "2": 0.1582,
+        "4": 0.0822,
+        "8": 0.0561,
+        "16": 0.0362,
+        "32": 0.0241,
+        "64": 0.0151
+      },
+      "BlurredRms": {
+        "1": 0.1723,
+        "2": 0.08,
+        "4": 0.0415,
+        "8": 0.0202,
+        "16": 0.0146,
+        "32": 0.0105,
+        "64": 0.0053
+      }
+    },
+    "pixel": {
+      "SecondsPerSample": 0.447,
+      "Digest64": "260dfe67",
+      "Rms": {
+        "1": 0.3641,
+        "2": 0.1607,
+        "4": 0.0825,
+        "8": 0.0601,
+        "16": 0.0378,
+        "32": 0.0233,
+        "64": 0.0149
+      },
+      "BlurredRms": {
+        "1": 0.1741,
+        "2": 0.0599,
+        "4": 0.0261,
+        "8": 0.0199,
+        "16": 0.0115,
+        "32": 0.0076,
+        "64": 0.0043
+      }
+    },
+    "bluenoise": {
+      "SecondsPerSample": 0.454,
+      "Digest64": "d3fbac0b",
+      "Rms": {
+        "1": 0.3601,
+        "2": 0.1595,
+        "4": 0.0794,
+        "8": 0.0583,
+        "16": 0.037,
+        "32": 0.0241,
+        "64": 0.0146
+      },
+      "BlurredRms": {
+        "1": 0.1685,
+        "2": 0.0565,
+        "4": 0.0233,
+        "8": 0.0187,
+        "16": 0.0106,
+        "32": 0.0076,
+        "64": 0.0041
+      }
+    }
+  },
+  "Width": 160,
+  "Height": 90,
+  "ReferenceSamples": 1024,
+  "Curves": {
+    "shared": {
+      "SecondsPerSample": 0.39051093749998833,
+      "Digest": "81a50a32",
+      "Curve": [
+        {
+          "Samples": 1,
+          "RelativeRms": 0.347216447691977,
+          "BlurredRelativeRms": 0.172346125552508
+        },
+        {
+          "Samples": 2,
+          "RelativeRms": 0.1582464180585933,
+          "BlurredRelativeRms": 0.0799883625109211
+        },
+        {
+          "Samples": 4,
+          "RelativeRms": 0.08218284451549981,
+          "BlurredRelativeRms": 0.041529596920379365
+        },
+        {
+          "Samples": 8,
+          "RelativeRms": 0.056137918901033944,
+          "BlurredRelativeRms": 0.020204913156717307
+        },
+        {
+          "Samples": 16,
+          "RelativeRms": 0.03619820156520422,
+          "BlurredRelativeRms": 0.014598046969288707
+        },
+        {
+          "Samples": 32,
+          "RelativeRms": 0.024059710503990497,
+          "BlurredRelativeRms": 0.010507275486250913
+        },
+        {
+          "Samples": 64,
+          "RelativeRms": 0.015128533071674924,
+          "BlurredRelativeRms": 0.005267151604036437
+        }
+      ]
+    },
+    "pixel": {
+      "SecondsPerSample": 0.4471484375,
+      "Digest": "260dfe67",
+      "Curve": [
+        {
+          "Samples": 1,
+          "RelativeRms": 0.3640645480107969,
+          "BlurredRelativeRms": 0.174064948801522
+        },
+        {
+          "Samples": 2,
+          "RelativeRms": 0.1607100365978589,
+          "BlurredRelativeRms": 0.05986326078722503
+        },
+        {
+          "Samples": 4,
+          "RelativeRms": 0.08245055124055646,
+          "BlurredRelativeRms": 0.026118495260400873
+        },
+        {
+          "Samples": 8,
+          "RelativeRms": 0.06012068789690214,
+          "BlurredRelativeRms": 0.019920652356996162
+        },
+        {
+          "Samples": 16,
+          "RelativeRms": 0.037847104399489295,
+          "BlurredRelativeRms": 0.011543507013735466
+        },
+        {
+          "Samples": 32,
+          "RelativeRms": 0.02332762802252676,
+          "BlurredRelativeRms": 0.007592296045063513
+        },
+        {
+          "Samples": 64,
+          "RelativeRms": 0.014901141767147002,
+          "BlurredRelativeRms": 0.00427488916440667
+        }
+      ]
+    },
+    "bluenoise": {
+      "SecondsPerSample": 0.45430781249998836,
+      "Digest": "d3fbac0b",
+      "Curve": [
+        {
+          "Samples": 1,
+          "RelativeRms": 0.36006187348099994,
+          "BlurredRelativeRms": 0.16848128099836973
+        },
+        {
+          "Samples": 2,
+          "RelativeRms": 0.1595143493389847,
+          "BlurredRelativeRms": 0.056453680847238834
+        },
+        {
+          "Samples": 4,
+          "RelativeRms": 0.07938832057260917,
+          "BlurredRelativeRms": 0.02330722218570171
+        },
+        {
+          "Samples": 8,
+          "RelativeRms": 0.058256927491289266,
+          "BlurredRelativeRms": 0.01870857677371194
+        },
+        {
+          "Samples": 16,
+          "RelativeRms": 0.037033776084703804,
+          "BlurredRelativeRms": 0.010613457579915919
+        },
+        {
+          "Samples": 32,
+          "RelativeRms": 0.02406608643229261,
+          "BlurredRelativeRms": 0.007602730836321797
+        },
+        {
+          "Samples": 64,
+          "RelativeRms": 0.014627544646592312,
+          "BlurredRelativeRms": 0.004145686438421325
+        }
+      ]
+    }
+  },
+  "Note": "Hero view. Reference: shared pattern at 1024 spp (its own prefixes are slightly favoured). Blurred = σ 1 px Gaussian on both."
+}

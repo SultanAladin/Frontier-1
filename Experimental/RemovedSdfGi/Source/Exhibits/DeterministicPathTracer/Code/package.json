@@ -1,0 +1,13 @@
+{
+  "name": "deterministic-path-tracer-validation",
+  "private": true,
+  "type": "module",
+  "description": "Headless Chromium (SwiftShader WebGPU) validation of Experimental/DeterministicPathTracer",
+  "scripts": {
+    "validate": "node RunValidation.mjs all"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "153.0.0",
+    "puppeteer-core": "25.x"
+  }
+}

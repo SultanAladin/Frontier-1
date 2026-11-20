@@ -1,0 +1,339 @@
+/*============================================================================================================================================
+                                                               VIEWPORTPANEL.H
+============================================================================================================================================*/
+// 🧩 Workspace Viewport pane with Edit/Simulate/Play-Pause strip, Construct sheet, Split Viewport, Diagnostics, and Settings
+
+#pragma once
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                        INCLUDES
+//------------------------------------------------------------------------------------------------------------------------
+
+#include "Engine/Components/Controls/CapsuleButton.h"
+#include "Engine/Components/Controls/ExecutionModeStrip.h"
+#include "Engine/Components/Diagnostics/DiagnosticsOverlay.h"
+#include "Engine/Components/Diagnostics/ViewportTimingTelemetry.h"
+#include "Engine/Components/Panes/OutlinerPanel.h"
+
+#include <imgui.h>
+
+#include <array>
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace Frontier
+{
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                      ENUMERATIONS
+//------------------------------------------------------------------------------------------------------------------------
+
+enum class ViewportExecutionMode : uint8_t
+{
+    Edit     = 0, // [-] - Authoring & manipulation mode
+    Simulate = 1, // [-] - In-place physics/world simulation mode
+    Play     = 2, // [-] - Runtime play session mode (supports Play/Pause)
+};
+
+enum class DiagnosticsTabCategory : uint8_t
+{
+    Timing   = 0, // [-] - Frame time sparkline & percentile statistics
+    Scene    = 1, // [-] - Constructed/visible slot breakdown
+    Render   = 2, // [-] - Quality, raytracing & render scale telemetry
+    Profiler = 3, // [-] - Detailed per-stage GPU + CPU millisecond breakdown
+};
+
+enum class ConstructCategoryRail : uint8_t
+{
+    All             = 0, // [-] - All constructable templates and folders
+    ScenePrimitives = 1, // [-] - Generic constructable entries (generic construct slots)
+    Organization    = 2, // [-] - Organizational folders
+};
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                       STRUCTURES
+//------------------------------------------------------------------------------------------------------------------------
+
+struct ViewportDisplaySettings
+{
+    uint32_t QualityTier           = 2u;     // [idx] - 0=Low, 1=Medium, 2=Standard, 3=High, 4=Ultra
+    uint32_t DebugChannelIndex     = 0u;     // [idx] - 0=Off, 1..11=Modular Debug Channels
+    uint32_t RenderEngineIndex     = 1u;     // [idx] - 0=MatCap, 1=OpenPbrDirect
+    uint32_t ShadowAlgorithmIndex  = 4u;     // [idx] - 0=ContactPcss, 1=PcssPlaneAware, 2=ShadowRayMarch, 3=PcfBilinear, 4=WideTreeRayQuery
+    uint32_t ReflectionSourceIndex = 0u;     // [idx] - 0=WideTreeRaytrace, 1=SkyEnvironment
+    uint32_t TraceResolutionIndex  = 0u;     // [idx] - 0=Full Trace, 1=1/2 Trace, 2=1/4 Trace
+    float    RenderScalePercent    = 100.0f; // [%]   - Internal resolution percentage [50..200]
+    bool     ReflectionsEnabled    = true;   // [-]   - Specular reflections toggle
+    bool     AntiAliasingEnabled   = true;   // [-]   - Spatial shadow filter / AA toggle
+    bool     RaytracingEnabled     = true;   // [-]   - Hardware BVH4 raytracing toggle
+    bool     AtmosphereSkyEnabled  = true;   // [-]   - Physical Bruneton/Hillaire atmospheric sky toggle
+    bool     VolumetricCloudsEnabled = true; // [-]   - Raymarched volumetric cloud deck toggle
+    bool     CloudShadowsEnabled   = true;   // [-]   - Volumetric cloud ground shadow casting toggle
+    bool     CelestialStarsEnabled = true;   // [-]   - Sun disc, moons & nocturnal starfield toggle
+    bool     DayCyclePlaying       = false;  // [-]   - Advances solar ephemeris time of day
+    float    SolarTimeOfDayHours   = 10.5f;  // [h]   - Solar time of day [0..24]
+    float    CloudFraction         = 0.34f;  // [0-1] - Cloud sky fraction [0..1]
+    float    CloudWindSpeedMps     = 7.0f;   // [m/s] - Cloud deck wind speed [0..35]
+};
+
+struct ViewportPaneSurfaceSpecification
+{
+    uint32_t                 PaneIndex     = 0u;
+    uint32_t                 WidthPx       = 0u;
+    uint32_t                 HeightPx      = 0u;
+    ViewportProjectionPreset Projection    = ViewportProjectionPreset::Perspective;
+    ViewportExecutionMode    ExecutionMode = ViewportExecutionMode::Edit;
+    bool                     PlayPaused    = false;
+    ViewportDisplaySettings  Display       {};
+};
+
+struct ViewportRasterSurface
+{
+    const void* SoftwareTextureData = nullptr; // [-] - Optional ImTextureData* for headless / CPU readback display
+    uint64_t    NativeTextureHandle = 0ull;    // [-] - Optional GPU ImTextureID handle
+};
+
+using ViewportPaneRasterCallback      = std::function<ViewportRasterSurface(const ViewportPaneSurfaceSpecification&)>;
+using ViewportPaneInteractionCallback = std::function<void(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input)>;
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                  FUNCTION PROTOTYPES
+//------------------------------------------------------------------------------------------------------------------------
+
+class ViewportPanel
+{
+public:
+    using NavigationCallback          = std::function<void(ViewportNavigationDirective)>;
+    using ConstructCanvasDropCallback = std::function<void(int32_t TemplateIndex, int32_t PresetIndex, Point2D CanvasLogicalPos)>;
+
+    ViewportPanel() noexcept;
+    ~ViewportPanel() noexcept;
+
+    ViewportPanel(const ViewportPanel&)            = delete;
+    ViewportPanel& operator=(const ViewportPanel&) = delete;
+
+    void AttachOutliner(OutlinerPanel* SourceOutliner) noexcept;
+    void AssignNavigationCallback(NavigationCallback Callback);
+    void AssignCanvasRasterImage(const uint8_t* RgbaPixels, uint32_t WidthPx, uint32_t HeightPx);
+    void AssignCanvasGpuTexture(uint64_t NativeTextureHandle, uint32_t WidthPx, uint32_t HeightPx) noexcept;
+    void ClearCanvasRasterImage() noexcept;
+    void ConfigureConstructCanvasDropCallback(ConstructCanvasDropCallback Callback);
+    void ConfigureOpenContentBrowserCallback(std::function<void()> Callback);
+    void ConfigureRasterCallback(ViewportPaneRasterCallback Callback);
+    void ConfigureInteractionCallback(ViewportPaneInteractionCallback Callback);
+    void ConfigureViewportTimingBreakdown(const ViewportTimingBreakdown& Breakdown) noexcept;
+    void ConfigureProbeReadoutText(std::string_view ReadoutText);
+    void ConfigureSceneTitle(std::string_view Title);
+    void ConfigureExecutionMode(ViewportExecutionMode Mode, bool Paused = false) noexcept;
+    void TogglePlayPause() noexcept;
+    void ConfigureSplitViewport(bool SplitEnabled) noexcept;
+    void ConfigureDiagnosticsVisible(bool Visible) noexcept;
+    void ConfigureSettingsSheetOpen(bool Open) noexcept;
+    void ConfigureConstructSheetOpen(bool Open) noexcept;
+    void ConfigureProjectionDropdownOpen(bool Open) noexcept;
+    void ConfigurePrimaryProjection(ViewportProjectionPreset Preset) noexcept;
+    void ConfigureSecondaryProjection(ViewportProjectionPreset Preset) noexcept;
+
+    void Render(
+        PixelSpace&             Surface,
+        Rectangle2D             Bounds,
+        const PaneInputReading& Input,
+        double                  Δt,
+        PixelSpace*             OverlaySurface = nullptr);
+
+    void PresentInImGuiPane(double Δt, float ScaleFactor = 1.0f);
+
+    [[nodiscard]] ViewportExecutionMode          QueryExecutionMode() const noexcept;
+    [[nodiscard]] bool                           QueryPlayPaused() const noexcept;
+    [[nodiscard]] bool                           QuerySplitViewportEnabled() const noexcept;
+    [[nodiscard]] bool                           QueryDiagnosticsVisible() const noexcept;
+    [[nodiscard]] bool                           QuerySettingsSheetOpen() const noexcept;
+    [[nodiscard]] bool                           QueryConstructSheetOpen() const noexcept;
+    [[nodiscard]] bool                           QueryProjectionDropdownOpen() const noexcept;
+    [[nodiscard]] ViewportProjectionPreset       QueryPrimaryProjection() const noexcept;
+    [[nodiscard]] ViewportProjectionPreset       QuerySecondaryProjection() const noexcept;
+    [[nodiscard]] uint32_t                       QueryActivePaneIndex() const noexcept;
+    [[nodiscard]] float                          QueryViewportZoomScale() const noexcept;
+    [[nodiscard]] Rectangle2D                    QueryLastCanvasPaneBounds() const noexcept;
+    [[nodiscard]] Rectangle2D                    QueryLastCanvasPhysicalBounds() const noexcept;
+    [[nodiscard]] const ViewportDisplaySettings& QueryDisplaySettings() const noexcept;
+    [[nodiscard]] ViewportDisplaySettings&       AccessDisplaySettings() noexcept;
+    [[nodiscard]] const ImTextureData&           QueryCanvasRasterTexture() const noexcept { return CanvasRasterTexture; }
+
+private:
+    void PushDiagnosticsSample(double Δt) noexcept;
+    void RenderCanvasPane(
+        PixelSpace&              Surface,
+        Rectangle2D              PaneBounds,
+        ViewportProjectionPreset Projection,
+        uint32_t                 PaneIndex,
+        uint32_t                 ConstructedCount,
+        const PaneInputReading&  Input,
+        bool                     OverlayCoversCanvas);
+    void RenderDiagnosticsPanel(
+        PixelSpace&             Surface,
+        Rectangle2D             CanvasBounds,
+        uint32_t                ConstructedCount,
+        uint32_t                VisibleCount,
+        const PaneInputReading& Input);
+    [[nodiscard]] Rectangle2D QueryConstructDialogBounds(Rectangle2D Bounds) const noexcept;
+    void RenderConstructDialog(
+        PixelSpace&             Overlay,
+        Rectangle2D             Bounds,
+        const PaneInputReading& Input);
+    void RenderSettingsSheet(
+        PixelSpace&             Overlay,
+        Rectangle2D             Bounds,
+        Point2D                 GearButtonRightBottom,
+        const PaneInputReading& Input);
+
+    OutlinerPanel*             AttachedOutliner        = nullptr;                                 // [-]   - Bound Outliner / LayerStack
+    std::string                SceneTitle              = "Scene";                                 // [-]   - Viewport identity heading
+    ViewportExecutionMode      ExecutionMode           = ViewportExecutionMode::Edit;             // [-]   - Active Edit/Simulate/Play mode
+    bool                       PlayPaused              = false;                                   // [-]   - Play session paused indicator
+    bool                       SplitViewportEnabled    = false;                                   // [-]   - Dual side-by-side viewport toggle
+    bool                       DiagnosticsVisible      = false;                                   // [-]   - Diagnostics overlay active
+    bool                       SettingsSheetOpen       = false;                                   // [-]   - Viewport settings sheet open
+    bool                       ConstructSheetOpen      = false;                                   // [-]   - Construct dialog open
+    bool                       ProjectionDropdownOpen  = false;                                   // [-]   - Projection selector open
+    bool                       HeaderDebugDropdownOpen = false;                                   // [-]   - Header Debug View DropdownSelector open
+    bool                       DebugDropdownOpen       = false;                                   // [-]   - Debug View DropdownSelector open
+    bool                       EngineDropdownOpen      = false;                                   // [-]   - Render Engine DropdownSelector open
+    bool                       ShadowDropdownOpen      = false;                                   // [-]   - Shadow Algorithm DropdownSelector open
+    Rectangle2D                HeaderDebugButtonBounds {};                                        // [px]  - Last Header Debug button bounds
+    Rectangle2D                DebugButtonBounds       {};                                        // [px]  - Last Debug View button bounds
+    Rectangle2D                EngineButtonBounds      {};                                        // [px]  - Last Engine selector button bounds
+    Rectangle2D                ShadowButtonBounds      {};                                        // [px]  - Last Shadow selector button bounds
+    ViewportProjectionPreset   PrimaryProjection       = ViewportProjectionPreset::Perspective;   // [-]   - Primary pane projection
+    ViewportProjectionPreset   SecondaryProjection     = ViewportProjectionPreset::Top;           // [-]   - Split secondary pane projection
+    uint32_t                   ActivePaneIndex         = 0u;                                      // [idx] - Focused pane in split mode (0/1)
+    ViewportDisplaySettings    DisplaySettings         {};                                        // [-]   - Quality, AA, GI, RT & scale
+    DiagnosticsTabCategory     DiagnosticsCategory     = DiagnosticsTabCategory::Timing;          // [-]   - Active diagnostics view tab
+    bool                       DiagnosticsPaused       = false;                                   // [-]   - Freeze sparkline sampling
+    DiagnosticsOverlaySession  DiagnosticsSession      {};                                        // [-]   - Reusable DiagnosticsOverlay session
+    std::array<float, 120>     IntervalHistoryMs      {};                                        // [ms]  - Rolling 120-step timing samples
+    uint32_t                   HistoryWriteCursor      = 0u;                                      // [idx] - Ring buffer write cursor
+    ViewportTimingBreakdown       LastViewportTiming     {};                                        // [ms]  - Latest per-stage GPU/CPU telemetry
+    ConstructCategoryRail      ConstructRail           = ConstructCategoryRail::All;              // [-]   - Active Construct category rail
+    float                      ConstructGridScrollY    = 0.0f;                                    // [px]  - Construct tile grid scroll offset
+    TextEditBuffer             ConstructSearchEditor   {};                                        // [-]   - Construct search filter buffer
+    float                      ViewportZoomScale       = 1.0f;                                    // [x]   - Interactive canvas zoom multiplier
+    Rectangle2D                LastCanvasPaneBounds    {};                                        // [px]  - Last rendered active sub-viewport rect
+    Rectangle2D                LastCanvasPhysicalBounds{};                                        // [px]  - Last rendered active sub-viewport physical rect
+    NavigationCallback         OnNavigationDirective   {};                                        // [-]   - Optional callback when + / - / Fit triggers
+    ConstructCanvasDropCallback OnConstructCanvasDrop  {};                                        // [-]   - Optional drag-to-canvas Construct drop callback
+    std::function<void()>      OpenContentBrowserCallback {};                                     // [-]   - Callback invoked by Content Browser button
+    bool                       ConstructTilePressed    = false;                                   // [-]   - Tile pressed inside Construct dialog
+    bool                       ConstructDragActive     = false;                                   // [-]   - Tile dragged onto 3D canvas
+    Point2D                    ConstructDragOrigin     {};                                        // [px]  - Press position for Construct drag deadzone
+    int32_t                    ConstructDragTemplateIndex = -1;                                   // [idx] - Template index being dragged/clicked
+    ConstructSlotCategory      ConstructDragCategory   = ConstructSlotCategory::GeometryVolume;
+    std::string                ConstructDragLabel      {};                                        // [-]   - Label shown on floating Construct ghost
+
+    ViewportPaneRasterCallback      RasterCallback          {};                                        // [-]   - Optional GPU / software surface feeder
+    ViewportPaneInteractionCallback InteractionCallback     {};                                        // [-]   - Optional canvas pointer router
+    std::string                     ProbeReadoutText        {};                                        // [-]   - Optional bottom strip readout
+    ImTextureData                   CanvasRasterTexture     {};                                        // [-]   - Optional live GTX/RTX viewport texture
+    uint64_t                        CanvasGpuTextureHandle  = 0ull;                                    // [-]   - GPU-resident ImTextureID (zero-copy viewport)
+    uint32_t                        CanvasGpuWidthPx        = 0u;                                      // [px]  - GPU-resident viewport width
+    uint32_t                        CanvasGpuHeightPx       = 0u;                                      // [px]  - GPU-resident viewport height
+};
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                 INLINE IMPLEMENTATIONS
+//------------------------------------------------------------------------------------------------------------------------
+
+inline void ViewportPanel::AttachOutliner(OutlinerPanel* SourceOutliner) noexcept
+{
+    AttachedOutliner = SourceOutliner;
+}
+
+inline void ViewportPanel::AssignNavigationCallback(NavigationCallback Callback)
+{
+    OnNavigationDirective = std::move(Callback);
+}
+
+inline float ViewportPanel::QueryViewportZoomScale() const noexcept
+{
+    return ViewportZoomScale;
+}
+
+inline Rectangle2D ViewportPanel::QueryLastCanvasPaneBounds() const noexcept
+{
+    return LastCanvasPaneBounds;
+}
+
+inline Rectangle2D ViewportPanel::QueryLastCanvasPhysicalBounds() const noexcept
+{
+    return LastCanvasPhysicalBounds;
+}
+
+inline ViewportExecutionMode ViewportPanel::QueryExecutionMode() const noexcept
+{
+    return ExecutionMode;
+}
+
+inline bool ViewportPanel::QueryPlayPaused() const noexcept
+{
+    return PlayPaused;
+}
+
+inline bool ViewportPanel::QuerySplitViewportEnabled() const noexcept
+{
+    return SplitViewportEnabled;
+}
+
+inline bool ViewportPanel::QueryDiagnosticsVisible() const noexcept
+{
+    return DiagnosticsVisible;
+}
+
+inline bool ViewportPanel::QuerySettingsSheetOpen() const noexcept
+{
+    return SettingsSheetOpen;
+}
+
+inline bool ViewportPanel::QueryConstructSheetOpen() const noexcept
+{
+    return ConstructSheetOpen;
+}
+
+inline void ViewportPanel::ConfigureProjectionDropdownOpen(bool Enabled) noexcept
+{
+    ProjectionDropdownOpen = Enabled;
+}
+
+inline bool ViewportPanel::QueryProjectionDropdownOpen() const noexcept
+{
+    return ProjectionDropdownOpen;
+}
+
+inline ViewportProjectionPreset ViewportPanel::QueryPrimaryProjection() const noexcept
+{
+    return PrimaryProjection;
+}
+
+inline ViewportProjectionPreset ViewportPanel::QuerySecondaryProjection() const noexcept
+{
+    return SecondaryProjection;
+}
+
+inline uint32_t ViewportPanel::QueryActivePaneIndex() const noexcept
+{
+    return ActivePaneIndex;
+}
+
+inline const ViewportDisplaySettings& ViewportPanel::QueryDisplaySettings() const noexcept
+{
+    return DisplaySettings;
+}
+
+inline ViewportDisplaySettings& ViewportPanel::AccessDisplaySettings() noexcept
+{
+    return DisplaySettings;
+}
+
+} // namespace Frontier

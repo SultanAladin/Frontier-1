@@ -1,0 +1,35 @@
+{
+  "Summary": {
+    "Samples": 32,
+    "Runs": 5,
+    "DistinctDigests": 1
+  },
+  "Digests": [
+    {
+      "Instance": "first page",
+      "Batch": 1,
+      "Digest": "2dc6f6ca"
+    },
+    {
+      "Instance": "first page",
+      "Batch": 4,
+      "Digest": "2dc6f6ca"
+    },
+    {
+      "Instance": "first page",
+      "Batch": 32,
+      "Digest": "2dc6f6ca"
+    },
+    {
+      "Instance": "first page after reconfiguration",
+      "Batch": 8,
+      "Digest": "2dc6f6ca"
+    },
+    {
+      "Instance": "second browser process",
+      "Batch": 2,
+      "Digest": "2dc6f6ca"
+    }
+  ],
+  "Note": "FNV-1a over the raw float32 accumulation (sum RGB + sample count) of the 160 x 90 Hero view."
+}
