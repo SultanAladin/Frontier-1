@@ -67,6 +67,8 @@ public:
     bool ViewSheetOpen       = false;
     bool SaveSheetOpen       = false;
     bool SnapSheetOpen       = false;
+    bool ToolStudioModalOpen = false;
+    uint32_t ToolStudioSubTab = 0u; // 0: Library, 1: Parameters/Stops/Shape, 2: Material/Channels
 
 private:
     void CloseAllSheets() noexcept;

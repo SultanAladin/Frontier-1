@@ -216,6 +216,8 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/Material/MaterialPreviewRenderer.cpp
     Engine/Workspaces/Material/MaterialWorkspaceSession.cpp
     Engine/Workspaces/Material/MaterialViewportHost.cpp
+    Engine/Workspaces/Material/MaterialOutlinerPane.cpp
+    Engine/Workspaces/Material/MaterialInspectorPane.cpp
     Engine/Workspaces/Material/MaterialWorkspaceHost.cpp
     Engine/Workspaces/Fracture/FractureViewportRenderer.cpp
     Engine/Workspaces/Fracture/FractureWorkspaceSession.cpp

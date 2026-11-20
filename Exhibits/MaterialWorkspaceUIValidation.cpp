@@ -150,7 +150,7 @@ int main()
             return 1;
         }
         MaterialHost.RegisterDockPanes(Dock);
-        if (!VerifyCondition(MaterialHost.QueryRegisteredTabCount() == 1u, "Viewport-only single Material dock tab registered"))
+        if (!VerifyCondition(MaterialHost.QueryRegisteredTabCount() == 3u, "Full 3-column Material dock (Outliner | Material | Material Inspector) registered"))
         {
             Dock.Finalize();
             ImGui::DestroyContext(GuiCtx);
@@ -165,7 +165,7 @@ int main()
         ControlCentre.ApplyDraftAppearanceImmediate();
         ControlCentre.AccessNotificationStream().ClearPending();
 
-        // Proof 1: Full Material Viewport + Closed ContentBrowser bottom notch (Volcanic Pahoehoe Magma)
+        // Proof 1: Full 3-Column Material Workspace (Outliner 28 Channels + Material Viewport + Material Inspector OpenPBR 1.1 with side-by-side Colour & Roughness)
         MaterialHost.AccessSession().SelectPresetIdentity(DynamicPresetIdentity::VolcanicPahoehoeMagma);
         MaterialHost.AccessSession().PlaybackRunning      = false;
         MaterialHost.AccessSession().PlaybackClockSeconds = 1.45;
@@ -177,10 +177,11 @@ int main()
             return 1;
         }
 
-        // Verify strictly viewport-only dock pane (no deferred Inspector / Layer Stack windows mounted)
+        // Verify 3-column Outliner | Material | Material Inspector dock alignment
         {
-            bool FoundMaterialWin = false;
-            bool FoundDeferredWin = false;
+            ImGuiWindow* OutlinerWin  = nullptr;
+            ImGuiWindow* MaterialWin  = nullptr;
+            ImGuiWindow* InspectorWin = nullptr;
             if (ImGuiContext* Ctx = ImGui::GetCurrentContext())
             {
                 for (ImGuiWindow* Win : Ctx->Windows)
@@ -188,12 +189,14 @@ int main()
                     if (Win != nullptr && Win->Active)
                     {
                         const std::string_view Name(Win->Name);
-                        if (Name.starts_with("Material##")) FoundMaterialWin = true;
-                        if (Name.starts_with("Inspector##") || Name.starts_with("Layers##")) FoundDeferredWin = true;
+                        if (Name.starts_with("Outliner##")) OutlinerWin = Win;
+                        else if (Name.starts_with("Material##")) MaterialWin = Win;
+                        else if (Name.starts_with("Material Inspector##")) InspectorWin = Win;
                     }
                 }
             }
-            if (!VerifyCondition(FoundMaterialWin && !FoundDeferredWin, "Strictly Viewport-only Material pane mounted (Inspector deferred)"))
+            if (!VerifyCondition(OutlinerWin != nullptr && MaterialWin != nullptr && InspectorWin != nullptr, "All 3 Material columns (Outliner | Material | Material Inspector) mounted") ||
+                !VerifyCondition(OutlinerWin->Pos.x + OutlinerWin->Size.x <= MaterialWin->Pos.x + 2.0f && MaterialWin->Pos.x + MaterialWin->Size.x <= InspectorWin->Pos.x + 2.0f, "Left -> Center -> Right 3-column alignment verified"))
             {
                 Dock.Finalize();
                 ImGui::DestroyContext(GuiCtx);

@@ -39,6 +39,8 @@ MaterialWorkspaceHost::MaterialWorkspaceHost()
 {
     ViewportHost.AttachSession(&Session);
     ViewportHost.AttachRenderer(&PreviewRenderer);
+    OutlinerPane.AttachSession(&Session);
+    InspectorPane.AttachSession(&Session, &OutlinerPane);
 }
 
 void MaterialWorkspaceHost::ConfigureLaunchPolicy(const Configuration::EngineConfiguration& Config) noexcept
@@ -215,7 +217,20 @@ void MaterialWorkspaceHost::RegisterDockPanes(Components::HeadlessWorkspaceDockC
 
     RegisteredTabCount = 0u;
 
-    // Viewport-only Material Workspace dock (Inspector & Layer Stack intentionally deferred pending redesign)
+    // 1. Left Outliner ("Outliner · 28 CHANNELS · 6 GROUPS" + "+ Enable | Preset | Reset · Solo | Mute")
+    (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
+        "Outliner",
+        DockPlacementDirection::SplitLeft,
+        0.195f,
+        PaneDirectiveMask::StandardPaneDirectives,
+        [this]()
+        {
+            OutlinerPane.PresentInImGuiPane(1.0 / 60.0, 1.0f);
+        },
+    });
+    ++RegisteredTabCount;
+
+    // 2. Center Material Viewport
     (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
         "Material",
         DockPlacementDirection::CenterTabGroup,
@@ -225,6 +240,19 @@ void MaterialWorkspaceHost::RegisterDockPanes(Components::HeadlessWorkspaceDockC
         {
             SynchronizeContentBrowserOcclusion(1.0f);
             ViewportHost.PresentImGuiPane(1.0 / 60.0, 1.0f);
+        },
+    });
+    ++RegisteredTabCount;
+
+    // 3. Right Project Zero Material Inspector ("Material Inspector · OPENPBR 1.1")
+    (void)DockContainer.RegisterPane(WorkspaceDockPaneDescriptor{
+        "Material Inspector",
+        DockPlacementDirection::SplitRight,
+        0.265f,
+        PaneDirectiveMask::StandardPaneDirectives,
+        [this]()
+        {
+            InspectorPane.PresentInImGuiPane(1.0 / 60.0, 1.0f);
         },
     });
     ++RegisteredTabCount;

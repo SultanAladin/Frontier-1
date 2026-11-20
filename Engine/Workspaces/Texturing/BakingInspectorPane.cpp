@@ -95,18 +95,47 @@ void BakingInspectorPane::Render(
     Surface.PushClip(Bounds);
     Surface.FillRectangle(Bounds, Theme.PaneBackground, 0.0f);
 
-    // Header
+    // Header: Project Zero "Map Baking  HIGH -> LOW CAGE" + Preset pill + Refresh (cards-bake.png parity)
     constexpr float PadX       = 14.0f;
     constexpr float HeaderTopY = 12.0f;
     const float     InnerW     = std::max(80.0f, Bounds.Width - PadX * 2.0f);
-    const float     HeaderH    = ConstructPaneHeadingBar(
-        Surface,
-        Bounds.X + PadX,
-        Bounds.Y + HeaderTopY,
-        InnerW,
-        "Baker Parameters",
-        "SURFACE + VOLUME SDF",
-        Theme);
+    const float     Hx         = Bounds.X + PadX;
+    const float     Hy         = Bounds.Y + HeaderTopY;
+
+    VectorIconRepository::ConstructControl(
+        Surface, ControlIcon::BakeBox, VectorIconPlacement{ Hx, Hy + 3.0f, 13.5f, ColorRgba{ 232u, 194u, 122u, 255u }, 1.7f });
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::SemiBold, { Hx + 19.0f, Hy + 1.0f }, 10.8f, Theme.TextPrimary, "Map Baking");
+    WorkspaceAppearance::ConstructWeightedText(
+        Surface, FontWeightClass::Bold, { Hx + 88.0f, Hy + 3.0f }, 7.8f, ColorRgba{ 232u, 194u, 122u, 255u }, "HIGH -> LOW CAGE");
+
+    const BakerStudyDescriptor& StudyDesc = Session->QueryActiveStudyDescriptor();
+    const char* StudyTitle = !Session->CustomLowAssetLabel.empty() ? Session->CustomLowAssetLabel.c_str() : StudyDesc.Label;
+    const Rectangle2D RefreshBtnR{ Bounds.Right() - PadX - 24.0f, Hy - 2.0f, 24.0f, 24.0f };
+    const Rectangle2D PresetPillR{ std::max(Hx + 186.0f, RefreshBtnR.X - 112.0f), Hy - 2.0f, 108.0f, 24.0f };
+    Surface.FillRectangle(PresetPillR, PresetPillR.Contains(Cursor) ? Theme.HoverSurface : Theme.SectionSurface, 7.0f);
+    Surface.StrokeRectangle(PresetPillR, Theme.BorderSubtle, 7.0f, 1.0f);
+    WorkspaceAppearance::ConstructTruncatedText(
+        Surface, FontWeightClass::Medium, { PresetPillR.X + 8.0f, PresetPillR.Y + 5.0f }, PresetPillR.Width - 22.0f, 8.4f, Theme.TextPrimary, StudyTitle);
+    VectorIconRepository::ConstructControl(
+        Surface, ControlIcon::ChevronDown, VectorIconPlacement{ PresetPillR.Right() - 14.0f, PresetPillR.Y + 7.5f, 9.0f, Theme.TextMuted, 1.6f });
+    if (Pressed && PresetPillR.Contains(Cursor))
+    {
+        const uint32_t NextStudy = (static_cast<uint32_t>(Session->Study) + 1u) % 4u;
+        Session->SelectStudy(static_cast<BakerStudyShape>(NextStudy));
+    }
+
+    Surface.FillRectangle(RefreshBtnR, RefreshBtnR.Contains(Cursor) ? Theme.HoverSurface : Theme.SectionSurface, 6.0f);
+    Surface.StrokeRectangle(RefreshBtnR, Theme.BorderSubtle, 6.0f, 1.0f);
+    VectorIconRepository::ConstructControl(
+        Surface, ControlIcon::RefreshCycle, VectorIconPlacement{ RefreshBtnR.X + 6.0f, RefreshBtnR.Y + 6.0f, 12.0f, Theme.TextMuted, 1.65f });
+    if (Pressed && RefreshBtnR.Contains(Cursor))
+    {
+        Session->ApplyQuickPreset(BakerQuickPreset::PbrPlusVolume);
+    }
+
+    Surface.StrokeLine({ Bounds.X, Hy + 26.0f }, { Bounds.Right(), Hy + 26.0f }, Theme.BorderSubtle, 1.0f);
+    const float HeaderH = 30.0f;
 
     // Footer
     constexpr float   FooterH = 26.0f;
@@ -131,12 +160,42 @@ void BakingInspectorPane::Render(
     const float LeftX = ScrollViewport.X + PadX;
     float       CurY  = ScrollViewport.Y + 8.0f - ScrollOffsetY;
 
-    // 1. Study Object Heading
-    const BakerStudyDescriptor& StudyDesc = Session->QueryActiveStudyDescriptor();
-    char TriMeta[64];
-    std::snprintf(TriMeta, sizeof(TriMeta), "%u LOW · %u HIGH TRIS", Session->QueryActiveLowTriangles(), Session->QueryActiveHighTriangles());
-    const char* StudyTitle = !Session->CustomLowAssetLabel.empty() ? Session->CustomLowAssetLabel.c_str() : StudyDesc.Label;
-    CurY += ConstructSubjectHeadingBlock(Surface, LeftX, CurY, InnerW, ControlIcon::BakeBox, StudyTitle, TriMeta, Theme) + 10.0f;
+    // 1. MESH PAIR Section ("Utah Teapot · 544 LOW · 8,704 HIGH TRIS" + Low -> High mesh cards + Bake 5 maps + Auto|GPU|CPU)
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold, { LeftX, CurY }, 8.2f, Theme.TextFaint, "MESH PAIR");
+    CurY += 15.0f;
+
+    char TriMeta[80];
+    std::snprintf(
+        TriMeta,
+        sizeof(TriMeta),
+        "%u LOW · %u HIGH TRIS · %uX%u",
+        Session->QueryActiveLowTriangles(),
+        Session->QueryActiveHighTriangles(),
+        Session->TargetResolutionPx,
+        Session->TargetResolutionPx);
+    CurY += ConstructSubjectHeadingBlock(Surface, LeftX, CurY, InnerW, ControlIcon::BakeBox, StudyTitle, TriMeta, Theme) + 8.0f;
+
+    // Side-by-side Low -> High Mesh Cards (cards-bake.png parity)
+    const float MeshCardW = (InnerW - 22.0f) * 0.5f;
+    const Rectangle2D LowCardR { LeftX, CurY, MeshCardW, 38.0f };
+    const Rectangle2D HighCardR{ LeftX + MeshCardW + 22.0f, CurY, MeshCardW, 38.0f };
+    Surface.FillRectangle(LowCardR, Theme.SectionSurface, 8.0f);
+    Surface.StrokeRectangle(LowCardR, Theme.BorderSubtle, 8.0f, 1.0f);
+    Surface.FillRectangle(HighCardR, Theme.SectionSurface, 8.0f);
+    Surface.StrokeRectangle(HighCardR, Theme.BorderSubtle, 8.0f, 1.0f);
+
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold, { LowCardR.X + 8.0f, LowCardR.Y + 5.0f }, 7.4f, Theme.TextFaint, "LOW");
+    char LowSub[48];
+    std::snprintf(LowSub, sizeof(LowSub), "Low Mesh · %u tris", Session->QueryActiveLowTriangles());
+    WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Medium, { LowCardR.X + 8.0f, LowCardR.Y + 19.0f }, MeshCardW - 14.0f, 8.6f, Theme.TextPrimary, LowSub);
+
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold, { LowCardR.Right() + 5.0f, CurY + 12.0f }, 9.5f, Theme.TextFaint, "->");
+
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold, { HighCardR.X + 8.0f, HighCardR.Y + 5.0f }, 7.4f, Theme.TextFaint, "HIGH");
+    char HighSub[48];
+    std::snprintf(HighSub, sizeof(HighSub), "High Mesh · %u tris", Session->QueryActiveHighTriangles());
+    WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Medium, { HighCardR.X + 8.0f, HighCardR.Y + 19.0f }, MeshCardW - 14.0f, 8.6f, Theme.TextPrimary, HighSub);
+    CurY += 46.0f;
 
     // 2. KPI Trio
     char ResVal[32];
@@ -153,47 +212,124 @@ void BakingInspectorPane::Render(
         { "Rays / Px",  SamplesVal, "Hemisphere",                                 false },
         { "Volume SDF", VolumeVal,  Session->VolumeSdfBaked ? "Baked" : "Pending", false },
     }};
-    CurY += ConstructMetricTrioTiles(Surface, LeftX, CurY, InnerW, Kpis, Theme) + 12.0f;
+    CurY += ConstructMetricTrioTiles(Surface, LeftX, CurY, InnerW, Kpis, Theme) + 10.0f;
 
-    // 3. Bake Progress Box
+    // 3. Bake Progress & Action Row ("|> Bake N maps" + "Auto | GPU | CPU" + telemetry)
     {
-        const Rectangle2D ProgBox{ LeftX, CurY, InnerW, 78.0f };
-        BeginSectionContainer(Surface, ProgBox, Theme, 16.0f);
-        WorkspaceAppearance::ConstructTruncatedText(
-            Surface,
-            FontWeightClass::Regular,
-            { LeftX + 12.0f, CurY + 10.0f },
-            InnerW - 24.0f,
-            10.0f,
-            Theme.TextMuted,
-            Session->ProgressStatus);
+        const Rectangle2D ProgBox{ LeftX, CurY, InnerW, 96.0f };
+        BeginSectionContainer(Surface, ProgBox, Theme, 14.0f);
 
-        const Rectangle2D TrackRect{ LeftX + 12.0f, CurY + 28.0f, InnerW - 24.0f, 6.0f };
-        Surface.FillRectangle(TrackRect, Theme.WellSurface, 3.0f);
-        const float ClampedProg = std::clamp(Session->BakeProgress, 0.0f, 1.0f);
-        if (ClampedProg > 0.005f)
-        {
-            Surface.FillRectangle({ TrackRect.X, TrackRect.Y, std::max(6.0f, TrackRect.Width * ClampedProg), TrackRect.Height }, Theme.HighlightFill, 3.0f);
-        }
-
-        const Rectangle2D BakeBtnRect{ LeftX + 12.0f, CurY + 42.0f, InnerW - 24.0f, 26.0f };
+        char BakeBtnLabel[48];
+        std::snprintf(BakeBtnLabel, sizeof(BakeBtnLabel), Session->BakingActive ? "Baking..." : "Bake %zu maps", Session->CountSelectedTargets());
+        const float BakeBtnW = (InnerW - 24.0f) * 0.50f;
+        const Rectangle2D BakeBtnRect{ LeftX + 10.0f, CurY + 10.0f, BakeBtnW, 28.0f };
         if (ConstructCapsuleButtonControl(
                 Surface,
                 BakeBtnRect,
-                Session->BakingActive ? "Baking..." : "Bake Selected Maps",
+                BakeBtnLabel,
                 Theme,
                 Cursor,
                 Pressed,
                 false,
                 true,
                 ControlIcon::BakeBox,
-                10.0f,
+                9.8f,
                 13.0f,
                 OptionalTooltip::FromTitled("Bake Selected Maps", "Compute all checked surface and volume SDF output targets.")))
         {
             Session->ExecuteBakeSimulation();
         }
-        CurY += ProgBox.Height + 12.0f;
+
+        // Inline "Auto | GPU | CPU" pills on the right of the Bake button (cards-bake.png parity)
+        static constexpr const char* ShortDev[3] { "Auto", "GPU", "CPU" };
+        const float DevTotalW = InnerW - 20.0f - BakeBtnW - 6.0f;
+        const float DevPillW  = (DevTotalW - 4.0f) / 3.0f;
+        for (uint32_t Di = 0u; Di < 3u; ++Di)
+        {
+            const Rectangle2D DevR{ BakeBtnRect.Right() + 6.0f + static_cast<float>(Di) * (DevPillW + 2.0f), CurY + 10.0f, DevPillW, 28.0f };
+            const bool DevAct = (static_cast<uint32_t>(Session->ComputeDevice) == Di);
+            const bool DevHov = DevR.Contains(Cursor);
+            Surface.FillRectangle(DevR, DevAct ? ColorRgba{ 238u, 238u, 236u, 255u } : (DevHov ? Theme.HoverSurface : Theme.WellSurface), 7.0f);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, DevAct ? FontWeightClass::SemiBold : FontWeightClass::Medium, { DevR.X + 7.0f, DevR.Y + 7.5f }, 8.2f,
+                DevAct ? ColorRgba{ 16u, 17u, 20u, 255u } : Theme.TextMuted, ShortDev[Di]);
+            if (Pressed && DevHov)
+            {
+                Session->ComputeDevice = static_cast<BakerComputeDevice>(Di);
+            }
+        }
+
+        const Rectangle2D TrackRect{ LeftX + 10.0f, CurY + 46.0f, InnerW - 20.0f, 5.0f };
+        Surface.FillRectangle(TrackRect, Theme.WellSurface, 2.5f);
+        const float ClampedProg = std::clamp(Session->BakeProgress, 0.0f, 1.0f);
+        if (ClampedProg > 0.005f)
+        {
+            Surface.FillRectangle({ TrackRect.X, TrackRect.Y, std::max(6.0f, TrackRect.Width * ClampedProg), TrackRect.Height }, Theme.HighlightFill, 2.5f);
+        }
+
+        WorkspaceAppearance::ConstructTruncatedText(
+            Surface, FontWeightClass::Regular, { LeftX + 10.0f, CurY + 57.0f }, InnerW - 20.0f, 8.6f, Theme.TextMuted, Session->ProgressStatus);
+
+        char TeleBuf[64];
+        std::snprintf(TeleBuf, sizeof(TeleBuf), "Last bake 48 ms · %zu maps   %ux%u · 4x AA",
+            Session->CountSelectedTargets(), Session->TargetResolutionPx, Session->TargetResolutionPx);
+        WorkspaceAppearance::ConstructTruncatedText(
+            Surface, FontWeightClass::Medium, { LeftX + 10.0f, CurY + 74.0f }, InnerW - 20.0f, 8.0f, Theme.TextFaint, TeleBuf);
+
+        CurY += ProgBox.Height + 10.0f;
+    }
+
+    // 3B. Open Inspected Map Card (cards-bake.png parity: "Tangent Normal  OpenGL +Y | DirectX -Y" + side-by-side Cage front & Cage rear)
+    {
+        const Rectangle2D OpenMapR{ LeftX, CurY, InnerW, 114.0f };
+        BeginSectionContainer(Surface, OpenMapR, Theme, 14.0f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold, { LeftX + 12.0f, CurY + 8.0f }, 8.0f, Theme.TextFaint, "OPEN MAP · GEOMETRY");
+        char MapCntBuf[24];
+        std::snprintf(MapCntBuf, sizeof(MapCntBuf), "%zu/18 on", Session->CountSelectedTargets());
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { OpenMapR.Right() - 56.0f, CurY + 8.0f }, 8.0f, Theme.TextFaint, MapCntBuf);
+
+        const char* InspectedTitle = BakingWorkspaceSession::QueryTargetDescriptor(Session->InspectedTarget).Label;
+        Surface.FillCircle({ LeftX + 18.0f, CurY + 31.0f }, 5.0f, ColorRgba{ 128u, 134u, 255u, 255u });
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { LeftX + 28.0f, CurY + 24.0f }, 10.0f, Theme.TextPrimary, InspectedTitle);
+
+        static constexpr const char* NormShort[2] { "OpenGL +Y", "DirectX -Y" };
+        for (uint32_t Ni = 0u; Ni < 2u; ++Ni)
+        {
+            const Rectangle2D NormR{ OpenMapR.Right() - 144.0f + static_cast<float>(Ni) * 68.0f, CurY + 21.0f, 64.0f, 20.0f };
+            const bool NAct = (static_cast<uint32_t>(Session->NormalConvention) == Ni);
+            Surface.FillRectangle(NormR, NAct ? ColorRgba{ 238u, 238u, 236u, 255u } : Theme.WellSurface, 5.0f);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, NAct ? FontWeightClass::SemiBold : FontWeightClass::Medium, { NormR.X + 7.0f, NormR.Y + 3.5f }, 7.8f,
+                NAct ? ColorRgba{ 16u, 17u, 20u, 255u } : Theme.TextMuted, NormShort[Ni]);
+            if (Pressed && NormR.Contains(Cursor))
+            {
+                Session->NormalConvention = static_cast<TangentNormalConvention>(Ni);
+            }
+        }
+
+        // Side-by-side Cage front & Cage rear readouts
+        const float HalfCageW = (InnerW - 24.0f - 8.0f) * 0.5f;
+        bool DragCf = (ActiveSliderId == 191);
+        float CfNorm = std::clamp((Session->FrontCageOffsetMeters - 0.02f) / 0.78f, 0.0f, 1.0f);
+        char CfBuf[24];
+        std::snprintf(CfBuf, sizeof(CfBuf), "%.2f", Session->FrontCageOffsetMeters);
+        if (ConstructSliderReadoutRow(Surface, LeftX + 12.0f, CurY + 52.0f, HalfCageW, "Cage front", CfBuf, "m", CfNorm, Theme, Input.PrimaryPointer, DragCf))
+        {
+            Session->FrontCageOffsetMeters = 0.02f + CfNorm * 0.78f;
+        }
+        if (DragCf) ActiveSliderId = 191;
+
+        bool DragCr = (ActiveSliderId == 192);
+        float CrNorm = std::clamp((Session->RearCageOffsetMeters - 0.02f) / 0.78f, 0.0f, 1.0f);
+        char CrBuf[24];
+        std::snprintf(CrBuf, sizeof(CrBuf), "%.2f", Session->RearCageOffsetMeters);
+        if (ConstructSliderReadoutRow(Surface, LeftX + 12.0f + HalfCageW + 8.0f, CurY + 52.0f, HalfCageW, "Cage rear", CrBuf, "m", CrNorm, Theme, Input.PrimaryPointer, DragCr))
+        {
+            Session->RearCageOffsetMeters = 0.02f + CrNorm * 0.78f;
+        }
+        if (DragCr) ActiveSliderId = 192;
+
+        CurY += OpenMapR.Height + 10.0f;
     }
 
     // Interactive slider row retaining ActiveSliderId across drags

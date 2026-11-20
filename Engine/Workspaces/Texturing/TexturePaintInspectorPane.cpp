@@ -254,14 +254,16 @@ void TexturePaintInspectorPane::Render(
     std::snprintf(OpValBuf, sizeof(OpValBuf), "%d%%", static_cast<int>(std::lround(SelLayer->Opacity * 100.0f)));
     const auto& BlendNames = TexturePaintSession::QueryBlendMethodLabels();
     const char* BlendLabel = BlendNames[std::min<std::size_t>(static_cast<std::size_t>(SelLayer->BlendMethod), BlendNames.size() - 1u)];
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { MetricOpR.X + 10.0f, MetricOpR.Y + 7.0f }, 7.8f, Theme.TextFaint, "OPACITY");
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,     { MetricOpR.X + 10.0f, MetricOpR.Y + 19.0f }, 13.5f, Theme.TextPrimary, OpValBuf);
-    WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { MetricOpR.X + 10.0f, MetricOpR.Y + 38.0f }, MetricW - 16.0f, 8.2f, Theme.TextMuted, BlendLabel);
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium,   { MetricOpR.X + 10.0f, MetricOpR.Y + 6.0f },  8.2f, Theme.TextMuted, "Opacity");
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,     { MetricOpR.X + 10.0f, MetricOpR.Y + 18.0f }, 13.0f, Theme.TextPrimary, OpValBuf);
+    WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { MetricOpR.X + 10.0f, MetricOpR.Y + 34.0f }, MetricW - 16.0f, 8.0f, Theme.TextFaint, BlendLabel);
+    Surface.FillRectangle({ MetricOpR.X + 10.0f, MetricOpR.Y + 47.0f, MetricW - 20.0f, 3.0f }, Theme.WellSurface, 1.5f);
+    Surface.FillRectangle({ MetricOpR.X + 10.0f, MetricOpR.Y + 47.0f, (MetricW - 20.0f) * std::clamp(SelLayer->Opacity, 0.0f, 1.0f), 3.0f }, ColorRgba{ 238u, 238u, 236u, 240u }, 1.5f);
 
     char ChMetricBuf[32];
     std::snprintf(ChMetricBuf, sizeof(ChMetricBuf), "%zu / %zu", SelLayer->CountActiveChannels(), TexturePaintSession::ChannelCount);
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { MetricChR.X + 10.0f, MetricChR.Y + 7.0f }, 7.8f, Theme.TextFaint, "CHANNELS");
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,     { MetricChR.X + 10.0f, MetricChR.Y + 19.0f }, 13.5f, Theme.TextPrimary, ChMetricBuf);
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium,   { MetricChR.X + 10.0f, MetricChR.Y + 6.0f },  8.2f, Theme.TextMuted, "Channels");
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,     { MetricChR.X + 10.0f, MetricChR.Y + 18.0f }, 13.0f, Theme.TextPrimary, ChMetricBuf);
 
     constexpr std::array<ColorRgba, 5u> GroupSegmentTints {{
         { 232u, 194u, 122u, 255u },
@@ -284,15 +286,16 @@ void TexturePaintInspectorPane::Render(
                 break;
             }
         }
-        const Rectangle2D SegR{ MetricChR.X + 10.0f + static_cast<float>(G) * (SegW + 2.0f), MetricChR.Y + 42.0f, SegW, 4.5f };
-        Surface.FillRectangle(SegR, AnyInGroup ? GroupSegmentTints[G] : Theme.WellSurface, 2.0f);
+        const Rectangle2D SegR{ MetricChR.X + 10.0f + static_cast<float>(G) * (SegW + 2.0f), MetricChR.Y + 47.0f, SegW, 3.0f };
+        Surface.FillRectangle(SegR, AnyInGroup ? GroupSegmentTints[G] : Theme.WellSurface, 1.5f);
     }
 
     const char* MaskStatusStr = SelLayer->Mask.Attached ? (SelLayer->Mask.Enabled ? "Active" : "Muted") : "None";
     const char* MaskSubStr    = SelLayer->Mask.Attached ? "Manual paint" : "No mask";
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::SemiBold, { MetricMkR.X + 10.0f, MetricMkR.Y + 7.0f }, 7.8f, Theme.TextFaint, "MASK");
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,     { MetricMkR.X + 10.0f, MetricMkR.Y + 19.0f }, 13.5f, Theme.TextPrimary, MaskStatusStr);
-    WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { MetricMkR.X + 10.0f, MetricMkR.Y + 38.0f }, MetricW - 16.0f, 8.2f, Theme.TextMuted, MaskSubStr);
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium,   { MetricMkR.X + 10.0f, MetricMkR.Y + 6.0f },  8.2f, Theme.TextMuted, "Mask");
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Bold,     { MetricMkR.X + 10.0f, MetricMkR.Y + 18.0f }, 13.0f, Theme.TextPrimary, MaskStatusStr);
+    WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { MetricMkR.X + 10.0f, MetricMkR.Y + 34.0f }, MetricW - 16.0f, 8.0f, Theme.TextFaint, MaskSubStr);
+    Surface.FillRectangle({ MetricMkR.X + 10.0f, MetricMkR.Y + 47.0f, MetricW - 20.0f, 3.0f }, SelLayer->Mask.Attached ? ColorRgba{ 238u, 238u, 236u, 220u } : Theme.WellSurface, 1.5f);
 
     CurY += 64.0f;
     Surface.StrokeLine({ Bounds.X, CurY }, { Bounds.Right(), CurY }, Theme.BorderSubtle, 1.0f);
@@ -381,107 +384,123 @@ void TexturePaintInspectorPane::Render(
     //----------------------------------------------------------------------------------------------------------------------
     if (SelLayer->Category == PaintLayerCategory::Gradient)
     {
+        const Rectangle2D GradFoldR{ Bounds.X + PadX, Sy + 2.0f, InnerW, 38.0f };
+        Surface.FillRectangle(GradFoldR, GradFoldR.Contains(Cursor) ? StudioRowHover : Theme.SectionSurface, 8.0f);
         WorkspaceAppearance::ConstructWeightedText(
-            Surface, FontWeightClass::Bold, { Bounds.X + PadX, Sy + 4.0f }, 9.2f, Theme.TextFaint, "GRADIENT POINTS");
-
-        const Rectangle2D RemPtBtnR{ Bounds.Right() - PadX - 62.0f, Sy, 62.0f, 24.0f };
-        const Rectangle2D AddPtBtnR{ RemPtBtnR.X - 6.0f - 54.0f, Sy, 54.0f, 24.0f };
-        if (ConstructHeaderActionCapsule(Surface, AddPtBtnR, ControlIcon::PlusAdd, "Add", false, false, Theme, Cursor, AllowBodyClicks && Pressed))
+            Surface, FontWeightClass::SemiBold, { GradFoldR.X + 10.0f, GradFoldR.Y + 5.0f }, 10.0f, Theme.TextPrimary, "Gradient points");
+        WorkspaceAppearance::ConstructTruncatedText(
+            Surface, FontWeightClass::Regular, { GradFoldR.X + 10.0f, GradFoldR.Y + 20.0f }, GradFoldR.Width - 34.0f, 7.8f, Theme.TextFaint,
+            "DRAG ON 3D SURFACE · CLICK TO ADD WHEN TOOL ACTIVE");
+        VectorIconRepository::ConstructControl(
+            Surface, KindSectionOpen ? ControlIcon::ChevronDown : ControlIcon::ChevronForward,
+            VectorIconPlacement{ GradFoldR.Right() - 20.0f, GradFoldR.Y + 13.0f, 11.0f, Theme.TextMuted, 1.7f });
+        if (AllowBodyClicks && Pressed && GradFoldR.Contains(Cursor))
         {
-            Session->AddGradientPointToSelectedLayer();
+            KindSectionOpen = !KindSectionOpen;
         }
-        if (ConstructHeaderActionCapsule(Surface, RemPtBtnR, ControlIcon::Count, "Remove", false, false, Theme, Cursor, AllowBodyClicks && Pressed))
-        {
-            Session->RemoveGradientPointFromSelectedLayer();
-        }
-        Sy += 28.0f;
+        Sy += 46.0f;
 
-        for (std::size_t PtIdx = 0u; PtIdx < SelLayer->GradientPoints.size(); ++PtIdx)
+        if (KindSectionOpen)
         {
-            const auto& Pt = SelLayer->GradientPoints[PtIdx];
-            const Rectangle2D PtRowR{ Bounds.X + PadX, Sy, InnerW, 32.0f };
-            const bool PtSelected = (SelLayer->SelectedGradientPointIndex == static_cast<int32_t>(PtIdx));
-            const bool PtHover    = PtRowR.Contains(Cursor);
-
-            Surface.FillRectangle(PtRowR, PtSelected ? StudioRowSelected : (PtHover ? StudioRowHover : Theme.SectionSurface), 7.0f);
-            if (PtSelected)
+            for (std::size_t PtIdx = 0u; PtIdx < SelLayer->GradientPoints.size(); ++PtIdx)
             {
-                Surface.FillRectangle({ PtRowR.X, PtRowR.Y + 5.0f, 3.0f, PtRowR.Height - 10.0f }, ColorRgba{ 255u, 255u, 255u, 255u }, 1.5f);
+                const auto& Pt = SelLayer->GradientPoints[PtIdx];
+                const Rectangle2D PtRowR{ Bounds.X + PadX, Sy, InnerW, 32.0f };
+                const bool PtSelected = (SelLayer->SelectedGradientPointIndex == static_cast<int32_t>(PtIdx));
+                const bool PtHover    = PtRowR.Contains(Cursor);
+
+                Surface.FillRectangle(PtRowR, PtSelected ? StudioRowSelected : (PtHover ? StudioRowHover : Theme.SectionSurface), 7.0f);
+                if (PtSelected)
+                {
+                    Surface.FillRectangle({ PtRowR.X, PtRowR.Y + 5.0f, 3.0f, PtRowR.Height - 10.0f }, ColorRgba{ 255u, 255u, 255u, 255u }, 1.5f);
+                }
+                Surface.FillCircle({ PtRowR.X + 15.0f, PtRowR.Y + 16.0f }, 6.0f, Pt.TintColor);
+                Surface.StrokeCircle({ PtRowR.X + 15.0f, PtRowR.Y + 16.0f }, 6.0f, Theme.BorderStrong, 1.0f);
+
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, PtSelected ? FontWeightClass::SemiBold : FontWeightClass::Medium, { PtRowR.X + 28.0f, PtRowR.Y + 8.0f }, 9.8f, Theme.TextPrimary, Pt.Label);
+
+                char PtMeta[64];
+                std::snprintf(
+                    PtMeta,
+                    sizeof(PtMeta),
+                    "rough %d · metal %d · height %d",
+                    static_cast<int>(std::lround(Pt.Roughness * 100.0f)),
+                    static_cast<int>(std::lround(Pt.Metalness * 100.0f)),
+                    static_cast<int>(std::lround(Pt.Height * 100.0f)));
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Regular, { PtRowR.Right() - 142.0f, PtRowR.Y + 9.0f }, 8.2f, Theme.TextFaint, PtMeta);
+
+                if (AllowBodyClicks && Pressed && PtHover)
+                {
+                    SelLayer->SelectedGradientPointIndex = static_cast<int32_t>(PtIdx);
+                }
+                Sy += 34.0f;
             }
-            Surface.FillCircle({ PtRowR.X + 15.0f, PtRowR.Y + 16.0f }, 6.0f, Pt.TintColor);
-            Surface.StrokeCircle({ PtRowR.X + 15.0f, PtRowR.Y + 16.0f }, 6.0f, Theme.BorderStrong, 1.0f);
 
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface, PtSelected ? FontWeightClass::SemiBold : FontWeightClass::Medium, { PtRowR.X + 28.0f, PtRowR.Y + 8.0f }, 9.8f, Theme.TextPrimary, Pt.Label);
-
-            char PtMeta[64];
-            std::snprintf(
-                PtMeta,
-                sizeof(PtMeta),
-                "rough %d · metal %d · height %d",
-                static_cast<int>(std::lround(Pt.Roughness * 100.0f)),
-                static_cast<int>(std::lround(Pt.Metalness * 100.0f)),
-                static_cast<int>(std::lround(Pt.Height * 100.0f)));
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface, FontWeightClass::Regular, { PtRowR.Right() - 142.0f, PtRowR.Y + 9.0f }, 8.2f, Theme.TextFaint, PtMeta);
-
-            if (AllowBodyClicks && Pressed && PtHover)
+            const Rectangle2D BgRowR{ Bounds.X + PadX, Sy, InnerW, 32.0f };
+            const bool BgSelected = (SelLayer->SelectedGradientPointIndex == -1);
+            const bool BgHover    = BgRowR.Contains(Cursor);
+            Surface.FillRectangle(BgRowR, BgSelected ? StudioRowSelected : (BgHover ? StudioRowHover : Theme.SectionSurface), 7.0f);
+            if (BgSelected)
             {
-                SelLayer->SelectedGradientPointIndex = static_cast<int32_t>(PtIdx);
+                Surface.FillRectangle({ BgRowR.X, BgRowR.Y + 5.0f, 3.0f, BgRowR.Height - 10.0f }, ColorRgba{ 255u, 255u, 255u, 255u }, 1.5f);
             }
-            Sy += 34.0f;
-        }
-
-        const Rectangle2D BgRowR{ Bounds.X + PadX, Sy, InnerW, 32.0f };
-        const bool BgSelected = (SelLayer->SelectedGradientPointIndex == -1);
-        const bool BgHover    = BgRowR.Contains(Cursor);
-        Surface.FillRectangle(BgRowR, BgSelected ? StudioRowSelected : (BgHover ? StudioRowHover : Theme.SectionSurface), 7.0f);
-        if (BgSelected)
-        {
-            Surface.FillRectangle({ BgRowR.X, BgRowR.Y + 5.0f, 3.0f, BgRowR.Height - 10.0f }, ColorRgba{ 255u, 255u, 255u, 255u }, 1.5f);
-        }
-        Surface.FillCircle({ BgRowR.X + 15.0f, BgRowR.Y + 16.0f }, 6.0f, SelLayer->GradientBackgroundTint);
-        WorkspaceAppearance::ConstructWeightedText(
-            Surface, BgSelected ? FontWeightClass::SemiBold : FontWeightClass::Medium, { BgRowR.X + 28.0f, BgRowR.Y + 8.0f }, 9.8f, Theme.TextPrimary, "Background");
-        if (AllowBodyClicks && Pressed && BgHover)
-        {
-            SelLayer->SelectedGradientPointIndex = -1;
-        }
-        Sy += 38.0f;
-
-        if (SelLayer->SelectedGradientPointIndex >= 0 &&
-            static_cast<std::size_t>(SelLayer->SelectedGradientPointIndex) < SelLayer->GradientPoints.size())
-        {
-            auto& ActivePt = SelLayer->GradientPoints[static_cast<std::size_t>(SelLayer->SelectedGradientPointIndex)];
-            if (ConstructColourSwatchRow(
-                    Surface,
-                    { Bounds.X + PadX, Sy, InnerW, 32.0f },
-                    "Colour",
-                    ActivePt.TintColor,
-                    TexturePaintSession::QueryBrushQuickSwatches(),
-                    Theme,
-                    Cursor,
-                    AllowBodyClicks && Pressed))
+            Surface.FillCircle({ BgRowR.X + 15.0f, BgRowR.Y + 16.0f }, 6.0f, SelLayer->GradientBackgroundTint);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, BgSelected ? FontWeightClass::SemiBold : FontWeightClass::Medium, { BgRowR.X + 28.0f, BgRowR.Y + 8.0f }, 9.8f, Theme.TextPrimary, "Background");
+            if (AllowBodyClicks && Pressed && BgHover)
             {
-                Session->MarkContentModified();
+                SelLayer->SelectedGradientPointIndex = -1;
+            }
+            Sy += 38.0f;
+
+            const Rectangle2D AddPtBtnR{ Bounds.X + PadX, Sy, HalfColW, 28.0f };
+            const Rectangle2D RemPtBtnR{ Bounds.X + PadX + HalfColW + 8.0f, Sy, HalfColW, 28.0f };
+            if (ConstructHeaderActionCapsule(Surface, AddPtBtnR, ControlIcon::PlusAdd, "Add point", false, false, Theme, Cursor, AllowBodyClicks && Pressed))
+            {
+                Session->AddGradientPointToSelectedLayer();
+            }
+            if (ConstructHeaderActionCapsule(Surface, RemPtBtnR, ControlIcon::Count, "Remove point", false, false, Theme, Cursor, AllowBodyClicks && Pressed))
+            {
+                Session->RemoveGradientPointFromSelectedLayer();
             }
             Sy += 36.0f;
-            if (ConstructSliderReadoutRow(Surface, { Bounds.X + PadX, Sy, InnerW, 44.0f }, "Radius", ActivePt.Radius, 0.15f, 2.50f, "%.0f %%", 100.0f, BodyInput, Theme))
+
+            if (SelLayer->SelectedGradientPointIndex >= 0 &&
+                static_cast<std::size_t>(SelLayer->SelectedGradientPointIndex) < SelLayer->GradientPoints.size())
             {
-                Session->MarkContentModified();
+                auto& ActivePt = SelLayer->GradientPoints[static_cast<std::size_t>(SelLayer->SelectedGradientPointIndex)];
+                if (ConstructColourSwatchRow(
+                        Surface,
+                        { Bounds.X + PadX, Sy, InnerW, 32.0f },
+                        "Colour",
+                        ActivePt.TintColor,
+                        TexturePaintSession::QueryBrushQuickSwatches(),
+                        Theme,
+                        Cursor,
+                        AllowBodyClicks && Pressed))
+                {
+                    Session->MarkContentModified();
+                }
+                Sy += 36.0f;
+
+                if (ConstructSliderReadoutRow(Surface, { Bounds.X + PadX, Sy, HalfColW, 44.0f }, "Radius", ActivePt.Radius, 0.15f, 2.50f, "%.0f %%", 100.0f, BodyInput, Theme))
+                {
+                    Session->MarkContentModified();
+                }
+                if (ConstructSliderReadoutRow(Surface, { Bounds.X + PadX + HalfColW + 8.0f, Sy, HalfColW, 44.0f }, "Strength", ActivePt.Strength, 0.0f, 2.00f, "%.0f %%", 100.0f, BodyInput, Theme))
+                {
+                    Session->MarkContentModified();
+                }
+                Sy += 48.0f;
             }
-            Sy += 48.0f;
-            if (ConstructSliderReadoutRow(Surface, { Bounds.X + PadX, Sy, InnerW, 44.0f }, "Strength", ActivePt.Strength, 0.0f, 2.00f, "%.0f %%", 100.0f, BodyInput, Theme))
+            if (ConstructSliderReadoutRow(Surface, { Bounds.X + PadX, Sy, InnerW, 44.0f }, "Falloff", SelLayer->GradientFalloff, 0.25f, 3.00f, "%.0f %%", 100.0f, BodyInput, Theme))
             {
                 Session->MarkContentModified();
             }
             Sy += 48.0f;
         }
-        if (ConstructSliderReadoutRow(Surface, { Bounds.X + PadX, Sy, InnerW, 44.0f }, "Falloff", SelLayer->GradientFalloff, 0.25f, 3.00f, "%.0f %%", 100.0f, BodyInput, Theme))
-        {
-            Session->MarkContentModified();
-        }
-        Sy += 48.0f;
     }
     else
     {

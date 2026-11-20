@@ -68,8 +68,21 @@ private:
     PatternStampWorkspaceSession* Session                  = nullptr;
 
     // Collapsible sections
+    bool LayerSwitcherOpen      = false;
     bool LayerPropsExpanded     = true;
     bool PbrChannelsExpanded    = true;
+    bool ActiveOnlyChannels     = false;
+    std::array<bool, 5u> ChannelGroupOpen {{ true, true, false, false, false }};
+    std::array<bool, 22u> ChannelExpanded {{
+        true,  // Albedo (open by default for side-by-side pair)
+        false, // Roughness
+        false, // Metalness
+        true,  // Height (open by default alongside Albedo when in Surface/Microsurface or side-by-side)
+        false, false, false, false, false, false, false,
+        false, false, false, false, false, false, false,
+        false, false, false, false
+    }};
+    std::array<PatternStampFillSourceMode, 22u> ChannelSourceMode {};
     bool LayerMaskExpanded      = false;
     bool ModifiersExpanded      = true;
     bool GroundSectionExpanded  = false;

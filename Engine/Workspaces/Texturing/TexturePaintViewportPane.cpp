@@ -69,13 +69,179 @@ constexpr std::array<BrushStudioSectionSpec, 14u> BrushSectionsCatalog {{
     { BrushDetailSubTab::About,          ControlIcon::CircleNotice,         "About",           ""   },
 }};
 
-constexpr std::array<BrushStudioSectionSpec, 5u> TextSectionsCatalog {{
+constexpr std::array<BrushStudioSectionSpec, 6u> TextSectionsCatalog {{
     { BrushDetailSubTab::LibraryGrid,    ControlIcon::LayersSlabs,          "Library",         "6"  },
     { BrushDetailSubTab::StrokePath,     ControlIcon::TextType,             "Text",            ""   },
-    { BrushDetailSubTab::Properties,     ControlIcon::SlidersQuality,       "Type & layout",   ""   },
+    { BrushDetailSubTab::Properties,     ControlIcon::SlidersQuality,       "Type",            ""   },
+    { BrushDetailSubTab::Shape,          ControlIcon::PatternTile,          "Layout",          ""   },
     { BrushDetailSubTab::Rendering,      ControlIcon::FillBucket,           "Look",            ""   },
-    { BrushDetailSubTab::Channels,       ControlIcon::LayersSlabs,          "Channels",        ""   },
+    { BrushDetailSubTab::Channels,       ControlIcon::MaterialSphere,       "Material",        ""   },
 }};
+
+constexpr std::array<BrushStudioSectionSpec, 6u> StampSectionsCatalog {{
+    { BrushDetailSubTab::LibraryGrid,    ControlIcon::LayersSlabs,          "Library",         "16" },
+    { BrushDetailSubTab::Shape,          ControlIcon::StampTool,            "Decal",           ""   },
+    { BrushDetailSubTab::Properties,     ControlIcon::MoveArrows,           "Transform",       ""   },
+    { BrushDetailSubTab::Rendering,      ControlIcon::EyeVisible,           "Look",            ""   },
+    { BrushDetailSubTab::Channels,       ControlIcon::MaterialSphere,       "Material",        ""   },
+    { BrushDetailSubTab::About,          ControlIcon::CircleNotice,         "About",           ""   },
+}};
+
+constexpr std::array<BrushStudioSectionSpec, 5u> EraseSectionsCatalog {{
+    { BrushDetailSubTab::LibraryGrid,    ControlIcon::EraserTool,           "Eraser",          ""   },
+    { BrushDetailSubTab::Properties,     ControlIcon::ShapeCircle,          "Tip",             ""   },
+    { BrushDetailSubTab::Curves,         ControlIcon::GaugeRate,            "Feel",            ""   },
+    { BrushDetailSubTab::Channels,       ControlIcon::LayersSlabs,          "Channels",        ""   },
+    { BrushDetailSubTab::About,          ControlIcon::CircleNotice,         "About erase",     ""   },
+}};
+
+constexpr std::array<BrushStudioSectionSpec, 4u> FillSectionsCatalog {{
+    { BrushDetailSubTab::Shape,          ControlIcon::PatternTile,          "Scope",           ""   },
+    { BrushDetailSubTab::Properties,     ControlIcon::FillBucket,           "Source",          ""   },
+    { BrushDetailSubTab::Channels,       ControlIcon::MaterialSphere,       "Material",        ""   },
+    { BrushDetailSubTab::About,          ControlIcon::CircleNotice,         "About fill",      ""   },
+}};
+
+constexpr std::array<BrushStudioSectionSpec, 6u> GradientSectionsCatalog {{
+    { BrushDetailSubTab::Shape,          ControlIcon::ShapeCircle,          "Shape",           ""   },
+    { BrushDetailSubTab::LibraryGrid,    ControlIcon::AppearanceSwatches,   "Colours",         "10" },
+    { BrushDetailSubTab::Rendering,      ControlIcon::SlidersQuality,       "Blend",           ""   },
+    { BrushDetailSubTab::StrokePath,     ControlIcon::VectorPen,            "Line",            ""   },
+    { BrushDetailSubTab::Channels,       ControlIcon::LayersSlabs,          "Channels",        ""   },
+    { BrushDetailSubTab::About,          ControlIcon::CircleNotice,         "About",           ""   },
+}};
+
+constexpr std::array<const char*, 16u> StampShapeCatalog {{
+    "Round", "Hard round", "Square", "Flat nib",
+    "Chalk", "Graphite", "Bristle", "Splatter",
+    "Spray", "Leaf", "Ink blot", "Cloud",
+    "Star", "Sparkle", "Hexagon", "Knife"
+}};
+
+struct GradientRampPresetSpec
+{
+    const char* Name;
+    ColorRgba   StopA;
+    ColorRgba   StopB;
+    ColorRgba   StopC;
+};
+
+constexpr std::array<GradientRampPresetSpec, 10u> GradientRampPresets {{
+    { "Ember Glow",       { 244u,  68u,  54u, 255u }, { 251u, 146u,  60u, 255u }, { 253u, 224u, 118u, 255u } },
+    { "Oceanic Mint",     {  20u, 184u, 166u, 255u }, {  56u, 189u, 248u, 255u }, { 167u, 243u, 208u, 255u } },
+    { "Iridescent Oil",   { 168u,  85u, 247u, 255u }, {  45u, 212u, 191u, 255u }, { 250u, 204u,  21u, 255u } },
+    { "Sunset Neon",      { 236u,  72u, 153u, 255u }, { 249u, 115u,  22u, 255u }, { 250u, 204u,  21u, 255u } },
+    { "Oxidized Bronze",  { 120u,  82u,  48u, 255u }, {  68u, 156u, 138u, 255u }, { 174u, 224u, 204u, 255u } },
+    { "Earth & Indigo",   { 180u, 116u,  68u, 255u }, {  88u,  96u, 148u, 255u }, {  42u,  52u,  98u, 255u } },
+    { "Arctic Aurora",    {  34u, 211u, 238u, 255u }, {  52u, 211u, 153u, 255u }, { 163u, 230u,  53u, 255u } },
+    { "Volcanic Magma",   {  48u,  22u,  24u, 255u }, { 220u,  38u,  38u, 255u }, { 251u, 191u,  36u, 255u } },
+    { "Gold Foil Patina", { 161u, 118u,  44u, 255u }, { 232u, 194u, 122u, 255u }, { 254u, 243u, 199u, 255u } },
+    { "Cyber Berry",      {  59u, 130u, 246u, 255u }, { 168u,  85u, 247u, 255u }, { 244u,  63u,  94u, 255u } },
+}};
+
+void ConstructProceduralStampPreview(
+    PixelSpace& Surface,
+    Rectangle2D WellBounds,
+    std::size_t ShapeIdx) noexcept
+{
+    const Point2D Center{ WellBounds.X + WellBounds.Width * 0.5f, WellBounds.Y + WellBounds.Height * 0.5f };
+    const ColorRgba WhiteFull{ 246u, 247u, 249u, 245u };
+    const ColorRgba WhiteMid { 246u, 247u, 249u, 135u };
+    const ColorRgba WhiteSoft{ 246u, 247u, 249u,  55u };
+
+    switch (ShapeIdx % 16u)
+    {
+        case 0u: // Round (soft)
+            Surface.FillCircle(Center, 17.0f, WhiteSoft);
+            Surface.FillCircle(Center, 12.5f, WhiteMid);
+            Surface.FillCircle(Center, 7.5f,  WhiteFull);
+            break;
+        case 1u: // Hard round
+            Surface.FillCircle(Center, 15.5f, WhiteFull);
+            break;
+        case 2u: // Square
+            Surface.FillRectangle({ Center.X - 14.0f, Center.Y - 14.0f, 28.0f, 28.0f }, WhiteFull, 2.0f);
+            break;
+        case 3u: // Flat nib
+            Surface.FillRectangle({ Center.X - 20.0f, Center.Y - 5.5f, 40.0f, 11.0f }, WhiteFull, 2.0f);
+            break;
+        case 4u: // Chalk
+            for (int I = 0; I < 28; ++I)
+            {
+                const float Dx = std::sin(static_cast<float>(I) * 2.3f) * 14.0f;
+                const float Dy = std::cos(static_cast<float>(I) * 3.7f) * 10.0f;
+                Surface.FillCircle({ Center.X + Dx, Center.Y + Dy }, 3.2f, (I % 2 == 0) ? WhiteFull : WhiteMid);
+            }
+            break;
+        case 5u: // Graphite
+            Surface.FillCircle(Center, 15.5f, WhiteSoft);
+            for (int I = 0; I < 36; ++I)
+            {
+                const float A  = static_cast<float>(I) * 0.85f;
+                const float R  = static_cast<float>((I * 7) % 14);
+                Surface.FillCircle({ Center.X + std::cos(A) * R, Center.Y + std::sin(A) * R }, 1.8f, WhiteFull);
+            }
+            break;
+        case 6u: // Bristle
+            for (int I = -2; I <= 2; ++I)
+            {
+                Surface.FillCircle({ Center.X + std::sin(static_cast<float>(I)) * 4.0f, Center.Y + static_cast<float>(I) * 5.0f }, 3.6f, WhiteMid);
+                Surface.FillCircle({ Center.X + std::sin(static_cast<float>(I)) * 3.0f, Center.Y + static_cast<float>(I) * 5.0f }, 2.2f, WhiteFull);
+            }
+            break;
+        case 7u: // Splatter
+            Surface.FillCircle({ Center.X - 4.0f, Center.Y + 2.0f }, 5.5f, WhiteFull);
+            Surface.FillCircle({ Center.X + 8.0f, Center.Y - 6.0f }, 3.5f, WhiteFull);
+            Surface.FillCircle({ Center.X - 11.0f, Center.Y - 7.0f }, 2.4f, WhiteMid);
+            Surface.FillCircle({ Center.X + 10.0f, Center.Y + 7.0f }, 2.8f, WhiteFull);
+            Surface.FillCircle({ Center.X + 2.0f, Center.Y + 10.0f }, 1.9f, WhiteMid);
+            break;
+        case 8u: // Spray
+            for (int I = 0; I < 40; ++I)
+            {
+                const float A = static_cast<float>(I) * 1.41f;
+                const float R = static_cast<float>((I * 5) % 17);
+                Surface.FillCircle({ Center.X + std::cos(A) * R, Center.Y + std::sin(A) * R * 0.8f }, 1.1f, WhiteMid);
+            }
+            break;
+        case 9u: // Leaf
+            Surface.FillRectangle({ Center.X - 16.0f, Center.Y - 6.0f, 32.0f, 12.0f }, WhiteFull, 6.0f);
+            Surface.StrokeLine({ Center.X - 16.0f, Center.Y }, { Center.X + 16.0f, Center.Y }, ColorRgba{ 24u, 25u, 28u, 220u }, 1.2f);
+            break;
+        case 10u: // Ink blot
+            Surface.FillCircle(Center, 10.5f, WhiteFull);
+            Surface.FillCircle({ Center.X - 7.5f, Center.Y + 3.0f }, 7.0f, WhiteFull);
+            Surface.FillCircle({ Center.X + 8.0f, Center.Y - 2.0f }, 6.5f, WhiteFull);
+            Surface.FillCircle({ Center.X + 3.0f, Center.Y + 7.5f }, 5.5f, WhiteFull);
+            break;
+        case 11u: // Cloud
+            Surface.FillCircle(Center, 11.0f, WhiteSoft);
+            Surface.FillCircle({ Center.X - 7.0f, Center.Y + 2.0f }, 8.0f, WhiteMid);
+            Surface.FillCircle({ Center.X + 6.0f, Center.Y + 1.0f }, 7.5f, WhiteMid);
+            Surface.FillCircle(Center, 6.5f, WhiteFull);
+            break;
+        case 12u: // Star
+            for (int I = 0; I < 5; ++I)
+            {
+                const float A = static_cast<float>(I) * 1.256637f - 1.570796f;
+                Surface.StrokeLine(Center, { Center.X + std::cos(A) * 15.0f, Center.Y + std::sin(A) * 15.0f }, WhiteFull, 3.2f);
+            }
+            Surface.FillCircle(Center, 5.5f, WhiteFull);
+            break;
+        case 13u: // Sparkle
+            Surface.StrokeLine({ Center.X - 14.0f, Center.Y }, { Center.X + 14.0f, Center.Y }, WhiteFull, 2.0f);
+            Surface.StrokeLine({ Center.X, Center.Y - 14.0f }, { Center.X, Center.Y + 14.0f }, WhiteFull, 2.0f);
+            Surface.FillCircle(Center, 3.8f, WhiteFull);
+            break;
+        case 14u: // Hexagon
+            Surface.FillRectangle({ Center.X - 12.0f, Center.Y - 12.0f, 24.0f, 24.0f }, WhiteFull, 5.0f);
+            break;
+        case 15u: // Knife
+        default:
+            Surface.StrokeLine({ Center.X - 15.0f, Center.Y - 9.0f }, { Center.X + 15.0f, Center.Y + 9.0f }, WhiteFull, 3.6f);
+            break;
+    }
+}
 
 void UploadViewportTexturePixels(
     ImTextureData&              TargetTex,
@@ -430,7 +596,42 @@ void TexturePaintViewportPane::Render(
         }
         Surface.StrokeRectangle(LastSpatialCanvasRect, Theme.BorderSubtle, 10.0f, 1.0f);
 
-        // 3D Gradient Point Gizmos ("1", "2", ...)
+        // Top-left "3D SURFACE VIEWPORT" pill (cards-paint.png parity)
+        const Rectangle2D ViewportTagPillR{ LastSpatialCanvasRect.X + 12.0f, LastSpatialCanvasRect.Y + 12.0f, 128.0f, 22.0f };
+        Surface.FillRectangle(ViewportTagPillR, ColorRgba{ 16u, 17u, 20u, 210u }, 11.0f);
+        Surface.StrokeRectangle(ViewportTagPillR, Theme.BorderSubtle, 11.0f, 1.0f);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::SemiBold, { ViewportTagPillR.X + 10.0f, ViewportTagPillR.Y + 4.5f }, 7.8f, Theme.TextMuted, "3D SURFACE VIEWPORT");
+
+        // Bottom HUD hint + active tool size readout (cards-paint.png parity)
+        WorkspaceAppearance::ConstructTruncatedText(
+            Surface,
+            FontWeightClass::Regular,
+            { LastSpatialCanvasRect.X + 14.0f, LastSpatialCanvasRect.Bottom() - 20.0f },
+            LastSpatialCanvasRect.Width - 150.0f,
+            8.2f,
+            Theme.TextFaint,
+            "Drag paint · Hold Shift straight line · U 3D Curve · D 3D Gradient · T Text · Righ-click Brush Studio");
+
+        const char* ActiveToolTag = "Brush";
+        if (Session->ActiveTool == PaintToolCategory::Eraser)          ActiveToolTag = "Eraser";
+        else if (Session->ActiveTool == PaintToolCategory::Fill)       ActiveToolTag = "Fill";
+        else if (Session->ActiveTool == PaintToolCategory::Gradient3D) ActiveToolTag = "3D Gradient";
+        else if (Session->ActiveTool == PaintToolCategory::Curve3D)    ActiveToolTag = "3D Curve";
+        else if (Session->ActiveTool == PaintToolCategory::Stamp)      ActiveToolTag = "Stamp";
+        else if (Session->ActiveTool == PaintToolCategory::Text)       ActiveToolTag = "Text";
+        else if (Session->ActiveTool == PaintToolCategory::Move)       ActiveToolTag = "Transform";
+        char ToolReadoutBuf[48];
+        std::snprintf(ToolReadoutBuf, sizeof(ToolReadoutBuf), "%s · %dpx", ActiveToolTag, static_cast<int>(Session->Brush.PixelRadius));
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface,
+            FontWeightClass::Medium,
+            { LastSpatialCanvasRect.Right() - 96.0f, LastSpatialCanvasRect.Bottom() - 20.0f },
+            8.4f,
+            Theme.TextMuted,
+            ToolReadoutBuf);
+
+        // 3D Gradient Point Gizmos ("1", "2", ... + prominent ring on active point matching paint-gradient-points.png)
         const PaintLayerEntry* SelLayer = Session->InspectSelectedLayer();
         if (SelLayer != nullptr && (SelLayer->Category == PaintLayerCategory::Gradient || Session->ActiveTool == PaintToolCategory::Gradient3D))
         {
@@ -452,25 +653,19 @@ void TexturePaintViewportPane::Render(
                         const bool PtSelected = (SelLayer->SelectedGradientPointIndex == static_cast<int32_t>(PtIdx));
                         if (PtSelected)
                         {
-                            Surface.StrokeCircle(ScreenPt, 13.5f, ColorRgba{ 255u, 255u, 255u, 230u }, 1.8f);
+                            Surface.FillCircle(ScreenPt, 24.0f, ColorRgba{ 255u, 255u, 255u, 220u });
+                            Surface.FillCircle(ScreenPt, 19.0f, Pt.TintColor);
+                            Surface.StrokeCircle(ScreenPt, 24.0f, ColorRgba{ 18u, 19u, 22u, 180u }, 1.5f);
                         }
-                        Surface.FillCircle(ScreenPt, 9.5f, Pt.TintColor);
-                        Surface.StrokeCircle(ScreenPt, 9.5f, ColorRgba{ 18u, 19u, 22u, 240u }, 1.6f);
-
-                        char NumBuf[24];
-                        std::snprintf(NumBuf, sizeof(NumBuf), "%zu", PtIdx + 1u);
-                        const uint32_t Lum = (static_cast<uint32_t>(Pt.TintColor.Red) * 299u +
-                                              static_cast<uint32_t>(Pt.TintColor.Green) * 587u +
-                                              static_cast<uint32_t>(Pt.TintColor.Blue) * 114u) / 1000u;
-                        const ColorRgba NumInk = (Lum > 145u)
-                            ? ColorRgba{ 16u, 17u, 20u, 255u }
-                            : ColorRgba{ 248u, 248u, 250u, 255u };
-                        WorkspaceAppearance::ConstructWeightedText(
-                            Surface, FontWeightClass::Bold, { ScreenPt.X - 3.2f, ScreenPt.Y - 6.0f }, 9.2f, NumInk, NumBuf);
+                        else
+                        {
+                            Surface.FillCircle(ScreenPt, 7.5f, Pt.TintColor);
+                            Surface.StrokeCircle(ScreenPt, 7.5f, ColorRgba{ 255u, 255u, 255u, 210u }, 1.5f);
+                        }
 
                         const float HitDx = Cursor.X - ScreenPt.X;
                         const float HitDy = Cursor.Y - ScreenPt.Y;
-                        if (!PopupOpen && Pressed && (HitDx * HitDx + HitDy * HitDy <= 196.0f))
+                        if (!PopupOpen && Pressed && (HitDx * HitDx + HitDy * HitDy <= 576.0f))
                         {
                             if (auto* MutLayer = Session->AccessSelectedLayer())
                             {
@@ -683,14 +878,14 @@ void TexturePaintViewportPane::Render(
     }
 
     //======================================================================================================================
-    // 5. FLOATING BRUSH STUDIO MODAL (brush-menu-paint.png & brush-menu-text.png)
+    // 5. FLOATING BRUSH STUDIO MODAL (All Per-Tool Context Menus: Paint, Stamp, Erase, Fill, Gradient, Text, Curve, Move)
     //======================================================================================================================
     if (BrushStudioModalOpen)
     {
-        Surface.FillRectangle(Bounds, ColorRgba{ 0u, 0u, 0u, 128u });
+        Surface.FillRectangle(Bounds, ColorRgba{ 0u, 0u, 0u, 138u });
 
-        const float ModalW = std::min(692.0f, Bounds.Width - 28.0f);
-        const float ModalH = std::min(538.0f, Bounds.Height - 28.0f);
+        const float ModalW = std::min(740.0f, Bounds.Width - 24.0f);
+        const float ModalH = std::min(590.0f, Bounds.Height - 24.0f);
         const Rectangle2D ModalR{
             Bounds.X + (Bounds.Width - ModalW) * 0.5f,
             Bounds.Y + (Bounds.Height - ModalH) * 0.5f,
@@ -698,103 +893,161 @@ void TexturePaintViewportPane::Render(
             ModalH
         };
 
-        Surface.FillRectangle(ModalR, Theme.PaneBackground, 16.0f);
+        Surface.FillRectangle(ModalR, ColorRgba{ 16u, 17u, 20u, 255u }, 16.0f);
         Surface.StrokeRectangle(ModalR, Theme.BorderStrong, 16.0f, 1.2f);
 
-        const Rectangle2D HeadR{ ModalR.X, ModalR.Y, ModalR.Width, 54.0f };
-        Surface.StrokeLine({ HeadR.X, HeadR.Bottom() }, { HeadR.Right(), HeadR.Bottom() }, Theme.BorderSubtle, 1.0f);
+        const bool IsTextStudio     = (Session->InspectorTab == BrushInspectorTab::Text     || Session->ActiveTool == PaintToolCategory::Text);
+        const bool IsStampStudio    = (Session->InspectorTab == BrushInspectorTab::Stamp    || Session->ActiveTool == PaintToolCategory::Stamp);
+        const bool IsEraseStudio    = (Session->InspectorTab == BrushInspectorTab::Erase    || Session->ActiveTool == PaintToolCategory::Eraser);
+        const bool IsFillStudio     = (Session->InspectorTab == BrushInspectorTab::Fill     || Session->ActiveTool == PaintToolCategory::Fill);
+        const bool IsGradientStudio = (Session->InspectorTab == BrushInspectorTab::Gradient || Session->ActiveTool == PaintToolCategory::Gradient3D);
+        const bool IsCurveStudio    = (Session->InspectorTab == BrushInspectorTab::Curve    || Session->ActiveTool == PaintToolCategory::Curve3D);
+        const bool IsMoveStudio     = (Session->InspectorTab == BrushInspectorTab::Move     || Session->ActiveTool == PaintToolCategory::Move);
 
-        const Rectangle2D HeadIconBox{ HeadR.X + 14.0f, HeadR.Y + 11.0f, 32.0f, 32.0f };
-        Surface.FillRectangle(HeadIconBox, Theme.WellSurface, 8.0f);
-        Surface.StrokeRectangle(HeadIconBox, Theme.BorderSubtle, 8.0f, 1.0f);
+        const char* ContextBadgeTag = "PAINT";
+        ControlIcon StudioIcon      = ControlIcon::BrushTool;
+        ColorRgba   StudioIconTint  = ColorRgba{ 240u, 102u, 144u, 255u };
+        std::string StudioTitle     = "Brush Studio";
+        std::string StudioSub       = "Hog Bristle Flat #12 (Oil) · 3 edited";
 
-        ControlIcon StudioIcon  = ControlIcon::BrushTool;
-        std::string StudioTitle = "Brush Studio";
-        std::string StudioSub   = "BRUSH · RIGHT-CLICK ANY TOOL TO SWITCH";
-        const auto& Presets     = TexturePaintSession::QueryBrushLibraryRegistry();
+        const auto& Presets      = TexturePaintSession::QueryBrushLibraryRegistry();
         const auto& ActivePreset = Presets[std::min<std::size_t>(Session->Brush.ActivePresetIndex, Presets.size() - 1u)];
 
-        if (Session->InspectorTab == BrushInspectorTab::Text || Session->ActiveTool == PaintToolCategory::Text)
+        if (IsStampStudio)
         {
-            StudioIcon  = ControlIcon::TextType;
-            StudioTitle = "Text Studio";
-            StudioSub   = "STAMP LETTERING · RIGHT-CLICK ANY TOOL TO SWITCH";
+            ContextBadgeTag = "STAMP";
+            StudioIcon      = ControlIcon::StampTool;
+            StudioIconTint  = ColorRgba{ 88u, 214u, 141u, 255u };
+            StudioTitle     = "Stamp Studio";
+            StudioSub       = "Decals · click, drag or grid";
         }
-        else if (Session->InspectorTab == BrushInspectorTab::Erase || Session->ActiveTool == PaintToolCategory::Eraser)
+        else if (IsEraseStudio)
         {
-            StudioIcon  = ControlIcon::EraserTool;
-            StudioTitle = "Eraser Studio";
-            StudioSub   = "ERASE CHANNELS · RIGHT-CLICK ANY TOOL TO SWITCH";
+            ContextBadgeTag = "ERASE";
+            StudioIcon      = ControlIcon::EraserTool;
+            StudioIconTint  = ColorRgba{ 240u, 120u, 100u, 255u };
+            StudioTitle     = "Eraser Studio";
+            StudioSub       = "Remove paint per channel";
         }
-        else if (Session->InspectorTab == BrushInspectorTab::Fill || Session->ActiveTool == PaintToolCategory::Fill)
+        else if (IsFillStudio)
         {
-            StudioIcon  = ControlIcon::FillBucket;
-            StudioTitle = "Fill Studio";
-            StudioSub   = "FLOOD FILL · RIGHT-CLICK ANY TOOL TO SWITCH";
+            ContextBadgeTag = "FILL";
+            StudioIcon      = ControlIcon::FillBucket;
+            StudioIconTint  = ColorRgba{ 96u, 165u, 250u, 255u };
+            StudioTitle     = "Fill Studio";
+            StudioSub       = "Flood regions and similar colour";
         }
-        else if (Session->InspectorTab == BrushInspectorTab::Gradient || Session->ActiveTool == PaintToolCategory::Gradient3D)
+        else if (IsGradientStudio)
         {
-            StudioIcon  = ControlIcon::PointGradient;
-            StudioTitle = "Gradient Studio";
-            StudioSub   = "3D POINT GRADIENT · RIGHT-CLICK ANY TOOL TO SWITCH";
+            ContextBadgeTag = "GRADIENT";
+            StudioIcon      = ControlIcon::PointGradient;
+            StudioIconTint  = ColorRgba{ 74u, 222u, 180u, 255u };
+            StudioTitle     = "Gradient Studio";
+            StudioSub       = "Linear, radial and 3D point ramps";
+        }
+        else if (IsTextStudio)
+        {
+            ContextBadgeTag = "TEXT";
+            StudioIcon      = ControlIcon::TextType;
+            StudioIconTint  = ColorRgba{ 192u, 132u, 252u, 255u };
+            StudioTitle     = "Text Studio";
+            StudioSub       = "Lettering painted into the texture";
+        }
+        else if (IsCurveStudio)
+        {
+            ContextBadgeTag = "CURVE";
+            StudioIcon      = ControlIcon::VectorCurve;
+            StudioIconTint  = ColorRgba{ 251u, 191u, 36u, 255u };
+            StudioTitle     = "Curve Studio";
+            StudioSub       = "3D spline stroke along surface";
+        }
+        else if (IsMoveStudio)
+        {
+            ContextBadgeTag = "MOVE";
+            StudioIcon      = ControlIcon::MoveArrows;
+            StudioIconTint  = ColorRgba{ 163u, 230u, 53u, 255u };
+            StudioTitle     = "Transform Studio";
+            StudioSub       = "Translate, scale and rotate layer UV";
         }
         else
         {
-            StudioIcon  = ControlIcon::BrushTool;
-            StudioTitle = std::string("Brush Studio · ") + ActivePreset.Label;
-            StudioSub   = "BRUSH · HOG BRISTLE FLAT · RIGHT-CLICK ANY TOOL TO SWITCH";
+            ContextBadgeTag = "PAINT";
+            StudioIcon      = ControlIcon::BrushTool;
+            StudioIconTint  = ColorRgba{ 240u, 102u, 144u, 255u };
+            StudioTitle     = "Brush Studio";
+            StudioSub       = std::string(ActivePreset.Label) + " (Oil) · 3 edited";
         }
 
-        VectorIconRepository::ConstructControl(
-            Surface, StudioIcon, VectorIconPlacement{ HeadIconBox.X + 8.0f, HeadIconBox.Y + 8.0f, 16.0f, Theme.TextPrimary, 1.75f });
-        WorkspaceAppearance::ConstructTruncatedText(
-            Surface, FontWeightClass::Bold, { HeadIconBox.Right() + 10.0f, HeadR.Y + 11.0f }, HeadR.Width - 280.0f, 13.0f, Theme.TextPrimary, StudioTitle);
-        WorkspaceAppearance::ConstructTruncatedText(
-            Surface, FontWeightClass::Medium, { HeadIconBox.Right() + 10.0f, HeadR.Y + 30.0f }, HeadR.Width - 280.0f, 8.0f, Theme.TextFaint, StudioSub);
+        // Outer Context Menu Bar ("Brush Studio  <TOOL>" + Close X, matching cards-brush-library.png & cards-brush-stamp.png)
+        const Rectangle2D OuterTopBarR{ ModalR.X, ModalR.Y, ModalR.Width, 38.0f };
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::SemiBold, { OuterTopBarR.X + 18.0f, OuterTopBarR.Y + 11.0f }, 11.0f, Theme.TextPrimary, "Brush Studio");
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Bold, { OuterTopBarR.X + 96.0f, OuterTopBarR.Y + 12.5f }, 8.6f, ColorRgba{ 232u, 194u, 122u, 255u }, ContextBadgeTag);
 
-        float HBtnX = HeadR.Right() - 12.0f - 28.0f;
-        const float HBtnY = HeadR.Y + 13.0f;
-        const Rectangle2D CloseBtnR{ HBtnX, HBtnY, 28.0f, 28.0f };
-        if (ConstructHeaderIconButton(Surface, CloseBtnR, ControlIcon::CloseCross, false, true, Theme, Cursor, Pressed))
+        const Rectangle2D OuterCloseBtnR{ OuterTopBarR.Right() - 38.0f, OuterTopBarR.Y + 6.0f, 26.0f, 26.0f };
+        if (ConstructHeaderIconButton(Surface, OuterCloseBtnR, ControlIcon::CloseCross, false, true, Theme, Cursor, Pressed))
         {
             BrushStudioModalOpen = false;
         }
-        HBtnX -= 32.0f;
-        (void)ConstructHeaderIconButton(Surface, { HBtnX, HBtnY, 28.0f, 28.0f }, ControlIcon::DownloadExport, false, true, Theme, Cursor, Pressed);
-        HBtnX -= 32.0f;
-        (void)ConstructHeaderIconButton(Surface, { HBtnX, HBtnY, 28.0f, 28.0f }, ControlIcon::UploadImport, false, true, Theme, Cursor, Pressed);
-        HBtnX -= 32.0f;
-        if (ConstructHeaderIconButton(Surface, { HBtnX, HBtnY, 28.0f, 28.0f }, ControlIcon::RefreshCycle, false, true, Theme, Cursor, Pressed))
+
+        // Inner Card Container inside ModalR
+        const Rectangle2D InnerCardR{ ModalR.X + 10.0f, OuterTopBarR.Bottom() + 2.0f, ModalR.Width - 20.0f, ModalR.Height - 50.0f };
+        Surface.FillRectangle(InnerCardR, Theme.PaneBackground, 12.0f);
+        Surface.StrokeRectangle(InnerCardR, Theme.BorderSubtle, 12.0f, 1.0f);
+
+        const Rectangle2D HeadR{ InnerCardR.X, InnerCardR.Y, InnerCardR.Width, 48.0f };
+        Surface.StrokeLine({ HeadR.X, HeadR.Bottom() }, { HeadR.Right(), HeadR.Bottom() }, Theme.BorderSubtle, 1.0f);
+
+        VectorIconRepository::ConstructControl(
+            Surface, StudioIcon, VectorIconPlacement{ HeadR.X + 16.0f, HeadR.Y + 15.0f, 16.0f, StudioIconTint, 1.75f });
+        WorkspaceAppearance::ConstructTruncatedText(
+            Surface, FontWeightClass::Bold, { HeadR.X + 42.0f, HeadR.Y + 9.0f }, HeadR.Width - 250.0f, 12.2f, Theme.TextPrimary, StudioTitle);
+        WorkspaceAppearance::ConstructTruncatedText(
+            Surface, FontWeightClass::Regular, { HeadR.X + 42.0f, HeadR.Y + 26.0f }, HeadR.Width - 250.0f, 8.6f, Theme.TextFaint, StudioSub);
+
+        float HBtnX = HeadR.Right() - 12.0f - 26.0f;
+        const float HBtnY = HeadR.Y + 11.0f;
+        (void)ConstructHeaderIconButton(Surface, { HBtnX, HBtnY, 26.0f, 26.0f }, ControlIcon::DownloadExport, false, true, Theme, Cursor, Pressed);
+        HBtnX -= 29.0f;
+        if (ConstructHeaderIconButton(Surface, { HBtnX, HBtnY, 26.0f, 26.0f }, ControlIcon::RefreshCycle, false, true, Theme, Cursor, Pressed))
         {
             Session->SelectBrushPreset(6u);
         }
-        HBtnX -= 32.0f;
-        (void)ConstructHeaderIconButton(Surface, { HBtnX, HBtnY, 28.0f, 28.0f }, ControlIcon::CopyDuplicate, false, true, Theme, Cursor, Pressed);
-        HBtnX -= 32.0f;
-        if (ConstructHeaderIconButton(Surface, { HBtnX, HBtnY, 28.0f, 28.0f }, ControlIcon::RedoArrow, false, Session->QueryRedoAvailable(), Theme, Cursor, Pressed))
+        HBtnX -= 29.0f;
+        if (ConstructHeaderIconButton(Surface, { HBtnX, HBtnY, 26.0f, 26.0f }, ControlIcon::RedoArrow, false, Session->QueryRedoAvailable(), Theme, Cursor, Pressed))
         {
             Session->ApplyRedo();
         }
-        HBtnX -= 32.0f;
-        if (ConstructHeaderIconButton(Surface, { HBtnX, HBtnY, 28.0f, 28.0f }, ControlIcon::UndoArrow, false, Session->QueryUndoAvailable(), Theme, Cursor, Pressed))
+        HBtnX -= 29.0f;
+        if (ConstructHeaderIconButton(Surface, { HBtnX, HBtnY, 26.0f, 26.0f }, ControlIcon::UndoArrow, false, Session->QueryUndoAvailable(), Theme, Cursor, Pressed))
         {
             Session->ApplyUndo();
         }
 
-        const float NavW = 182.0f;
-        const Rectangle2D NavColR{ ModalR.X, HeadR.Bottom() + 1.0f, NavW, ModalR.Height - HeadR.Height - 1.0f };
-        const Rectangle2D RightPaneR{ NavColR.Right() + 1.0f, NavColR.Y, ModalR.Width - NavW - 1.0f, NavColR.Height };
+        const float NavW = 176.0f;
+        const Rectangle2D NavColR{ InnerCardR.X, HeadR.Bottom() + 1.0f, NavW, InnerCardR.Height - HeadR.Height - 1.0f };
+        const Rectangle2D RightPaneR{ NavColR.Right() + 1.0f, NavColR.Y, InnerCardR.Width - NavW - 1.0f, NavColR.Height };
         Surface.StrokeLine({ NavColR.Right(), NavColR.Y }, { NavColR.Right(), NavColR.Bottom() }, Theme.BorderSubtle, 1.0f);
 
-        const bool IsTextStudio = (Session->InspectorTab == BrushInspectorTab::Text || Session->ActiveTool == PaintToolCategory::Text);
-        const std::span<const BrushStudioSectionSpec> NavItems = IsTextStudio
-            ? std::span<const BrushStudioSectionSpec>(TextSectionsCatalog)
-            : std::span<const BrushStudioSectionSpec>(BrushSectionsCatalog);
+        std::span<const BrushStudioSectionSpec> NavItems(BrushSectionsCatalog);
+        if (IsTextStudio)          NavItems = std::span<const BrushStudioSectionSpec>(TextSectionsCatalog);
+        else if (IsStampStudio)    NavItems = std::span<const BrushStudioSectionSpec>(StampSectionsCatalog);
+        else if (IsEraseStudio)    NavItems = std::span<const BrushStudioSectionSpec>(EraseSectionsCatalog);
+        else if (IsFillStudio)     NavItems = std::span<const BrushStudioSectionSpec>(FillSectionsCatalog);
+        else if (IsGradientStudio) NavItems = std::span<const BrushStudioSectionSpec>(GradientSectionsCatalog);
 
         float NavY = NavColR.Y + 8.0f;
-        for (const auto& Sec : NavItems)
+        for (std::size_t SIdx = 0u; SIdx < NavItems.size(); ++SIdx)
         {
-            const Rectangle2D SecRowR{ NavColR.X + 8.0f, NavY, NavColR.Width - 16.0f, 31.0f };
+            const auto& Sec = NavItems[SIdx];
+            if (SIdx == 1u)
+            {
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Bold, { NavColR.X + 14.0f, NavY + 2.0f }, 7.6f, Theme.TextFaint, ContextBadgeTag);
+                NavY += 16.0f;
+            }
+            const Rectangle2D SecRowR{ NavColR.X + 8.0f, NavY, NavColR.Width - 16.0f, 29.0f };
             const bool ActiveSec = (Session->InspectorSubTab == Sec.SubTab);
             const bool HoverSec  = SecRowR.Contains(Cursor);
 
@@ -809,27 +1062,27 @@ void TexturePaintViewportPane::Render(
             VectorIconRepository::ConstructControl(
                 Surface,
                 Sec.Icon,
-                VectorIconPlacement{ SecRowR.X + 9.0f, SecRowR.Y + 8.0f, 14.5f, ActiveSec ? Theme.TextPrimary : Theme.TextMuted, 1.7f });
+                VectorIconPlacement{ SecRowR.X + 9.0f, SecRowR.Y + 7.5f, 14.0f, ActiveSec ? Theme.TextPrimary : StudioIconTint, 1.7f });
             WorkspaceAppearance::ConstructTruncatedText(
                 Surface,
                 ActiveSec ? FontWeightClass::SemiBold : FontWeightClass::Medium,
-                { SecRowR.X + 30.0f, SecRowR.Y + 7.5f },
-                SecRowR.Width - 54.0f,
-                9.8f,
+                { SecRowR.X + 29.0f, SecRowR.Y + 6.5f },
+                SecRowR.Width - 52.0f,
+                9.5f,
                 ActiveSec ? Theme.TextPrimary : Theme.TextMuted,
                 Sec.Label);
 
             if (Sec.CountBadge != nullptr && Sec.CountBadge[0] != '\0')
             {
                 WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Medium, { SecRowR.Right() - 22.0f, SecRowR.Y + 8.5f }, 8.6f, Theme.TextFaint, Sec.CountBadge);
+                    Surface, FontWeightClass::Medium, { SecRowR.Right() - 22.0f, SecRowR.Y + 7.5f }, 8.4f, Theme.TextFaint, Sec.CountBadge);
             }
             if (Pressed && HoverSec)
             {
                 Session->InspectorSubTab = Sec.SubTab;
                 ModalScrollY             = 0.0f;
             }
-            NavY += 33.0f;
+            NavY += 31.0f;
         }
 
         Surface.PushClip(RightPaneR);
@@ -837,7 +1090,331 @@ void TexturePaintViewportPane::Render(
         const float CPadX = RightPaneR.X + 16.0f;
         const float CInnerW = RightPaneR.Width - 32.0f;
 
-        if (Session->InspectorSubTab == BrushDetailSubTab::LibraryGrid)
+        if (Session->InspectorSubTab == BrushDetailSubTab::Channels)
+        {
+            // Shared 5-Group ChannelStack inside Brush Studio / Tool Studio (channels-brush.png parity)
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Bold, { CPadX, ContentY }, 12.0f, Theme.TextPrimary, "Channels");
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX, ContentY + 16.0f }, 8.6f, Theme.TextFaint, "22 OpenPBR channels · toggle & edit per-channel contribution");
+            ContentY += 36.0f;
+
+            const auto& ChannelReg = TexturePaintSession::QueryChannelRegistry();
+            const auto& GroupNames = TexturePaintSession::QueryChannelGroupLabels();
+            PaintLayerEntry* SelLayer = Session->AccessSelectedLayer();
+
+            for (std::size_t G = 0u; G < 5u; ++G)
+            {
+                const PaintChannelGroup GroupEnum = static_cast<PaintChannelGroup>(G);
+                std::size_t GroupTotal  = 0u;
+                std::size_t GroupActive = 0u;
+                for (std::size_t C = 0u; C < TexturePaintSession::ChannelCount; ++C)
+                {
+                    if (ChannelReg[C].Group == GroupEnum)
+                    {
+                        ++GroupTotal;
+                        if (Session->Brush.PaintChannels[C]) ++GroupActive;
+                    }
+                }
+                const Rectangle2D GHeadR{ CPadX, ContentY, CInnerW, 28.0f };
+                const bool GOpen = Session->ChannelGroupOpen[G];
+                Surface.FillRectangle(GHeadR, GHeadR.Contains(Cursor) ? StudioRowHover : Theme.SectionSurface, 7.0f);
+                VectorIconRepository::ConstructControl(
+                    Surface, GOpen ? ControlIcon::ChevronDown : ControlIcon::ChevronForward,
+                    VectorIconPlacement{ GHeadR.X + 8.0f, GHeadR.Y + 8.5f, 11.0f, Theme.TextMuted, 1.7f });
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::SemiBold, { GHeadR.X + 24.0f, GHeadR.Y + 6.0f }, 9.4f, Theme.TextPrimary, GroupNames[G]);
+                char GCnt[24];
+                std::snprintf(GCnt, sizeof(GCnt), "%zu/%zu on", GroupActive, GroupTotal);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Medium, { GHeadR.Right() - 56.0f, GHeadR.Y + 7.0f }, 8.2f, Theme.TextFaint, GCnt);
+                if (Pressed && GHeadR.Contains(Cursor))
+                {
+                    Session->ChannelGroupOpen[G] = !Session->ChannelGroupOpen[G];
+                }
+                ContentY += 31.0f;
+                if (!GOpen) continue;
+
+                for (std::size_t C = 0u; C < TexturePaintSession::ChannelCount; ++C)
+                {
+                    const auto& Desc = ChannelReg[C];
+                    if (Desc.Group != GroupEnum) continue;
+                    if (ContentY + 34.0f > RightPaneR.Bottom()) break;
+
+                    const bool ChOn = Session->Brush.PaintChannels[C];
+                    const ColorRgba SwatchCol = Desc.ColorChannel ? Session->Brush.InkColor : Desc.SwatchTint;
+                    const float ValNorm = (Desc.Key == PaintSurfaceChannel::Roughness) ? Session->Brush.Roughness
+                                        : (Desc.Key == PaintSurfaceChannel::Metalness) ? Session->Brush.Metalness
+                                        : (Desc.Key == PaintSurfaceChannel::Height)    ? (Session->Brush.HeightRelief + 1.0f) * 0.5f : 0.5f;
+                    char Readout[24];
+                    if (!ChOn) std::snprintf(Readout, sizeof(Readout), "Off");
+                    else if (Desc.ColorChannel) std::snprintf(Readout, sizeof(Readout), "#%02X%02X%02X", SwatchCol.Red, SwatchCol.Green, SwatchCol.Blue);
+                    else std::snprintf(Readout, sizeof(Readout), "%d %%", static_cast<int>(std::lround(ValNorm * 100.0f)));
+
+                    const ChannelEntryRowOutcome Act = ConstructChannelEntryRow(
+                        Surface, { CPadX, ContentY, CInnerW, 33.0f }, SwatchCol, Desc.ColorChannel, ValNorm,
+                        Desc.Label, Desc.SubHint, Readout, ChOn, false, Theme, Cursor, Pressed);
+                    if (Act.SwitchToggled || Act.RowClicked)
+                    {
+                        Session->Brush.PaintChannels[C] = !Session->Brush.PaintChannels[C];
+                        if (SelLayer != nullptr)
+                        {
+                            SelLayer->ActiveChannels[C] = Session->Brush.PaintChannels[C];
+                        }
+                    }
+                    ContentY += 35.0f;
+                }
+            }
+        }
+        else if (IsStampStudio && (Session->InspectorSubTab == BrushDetailSubTab::LibraryGrid || Session->InspectorSubTab == BrushDetailSubTab::Shape))
+        {
+            // Stamp Studio 16-shape 4x4 grid (cards-brush-stamp.png & studio-stamp-decals.png parity)
+            VectorIconRepository::ConstructControl(
+                Surface, ControlIcon::LayersSlabs, VectorIconPlacement{ CPadX, ContentY + 3.0f, 15.0f, Theme.TextMuted, 1.7f });
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Bold, { CPadX + 24.0f, ContentY - 2.0f }, 13.0f, Theme.TextPrimary, "Stamps");
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX + 24.0f, ContentY + 15.0f }, 8.6f, Theme.TextFaint, "16 presets · Stamp Studio");
+            ContentY += 34.0f;
+
+            const Rectangle2D SearchR{ CPadX, ContentY, CInnerW, 28.0f };
+            Surface.FillRectangle(SearchR, Theme.WellSurface, 8.0f);
+            VectorIconRepository::ConstructControl(
+                Surface, ControlIcon::SearchGlass, VectorIconPlacement{ SearchR.X + 9.0f, SearchR.Y + 7.5f, 13.0f, Theme.TextFaint, 1.65f });
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { SearchR.X + 28.0f, SearchR.Y + 6.5f }, 9.4f, Theme.TextFaint, "Search stamps");
+            ContentY += 36.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::SemiBold, { CPadX, ContentY }, 9.4f, Theme.TextPrimary, "Shapes");
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Medium, { RightPaneR.Right() - 28.0f, ContentY }, 8.8f, Theme.TextFaint, "16");
+            ContentY += 20.0f;
+
+            const float CardGap = 8.0f;
+            const float CardW   = (CInnerW - CardGap * 3.0f) / 4.0f;
+            const float CardH   = 74.0f;
+
+            for (std::size_t S = 0u; S < StampShapeCatalog.size(); ++S)
+            {
+                const std::size_t Col = S % 4u;
+                const std::size_t Row = S / 4u;
+                const Rectangle2D CardR{
+                    CPadX + static_cast<float>(Col) * (CardW + CardGap),
+                    ContentY + static_cast<float>(Row) * (CardH + CardGap),
+                    CardW,
+                    CardH
+                };
+                if (CardR.Bottom() > RightPaneR.Bottom() + 30.0f) continue;
+
+                const bool ActiveStamp = (Session->Brush.ActiveStampName == StampShapeCatalog[S]);
+                const bool HoverStamp  = CardR.Contains(Cursor);
+                Surface.FillRectangle(CardR, ActiveStamp ? StudioRowSelected : Theme.SectionSurface, 9.0f);
+                Surface.StrokeRectangle(
+                    CardR,
+                    ActiveStamp ? ColorRgba{ 240u, 240u, 238u, 240u } : (HoverStamp ? Theme.BorderStrong : Theme.BorderSubtle),
+                    9.0f,
+                    ActiveStamp ? 1.5f : 1.0f);
+
+                const Rectangle2D WellR{ CardR.X + 5.0f, CardR.Y + 5.0f, CardR.Width - 10.0f, 44.0f };
+                Surface.FillRectangle(WellR, ColorRgba{ 12u, 13u, 15u, 255u }, 6.0f);
+                ConstructProceduralStampPreview(Surface, WellR, S);
+
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface,
+                    ActiveStamp ? FontWeightClass::SemiBold : FontWeightClass::Medium,
+                    { CardR.X + 7.0f, CardR.Bottom() - 18.0f },
+                    CardR.Width - 14.0f,
+                    8.8f,
+                    ActiveStamp ? Theme.TextPrimary : Theme.TextMuted,
+                    StampShapeCatalog[S]);
+
+                if (Pressed && HoverStamp)
+                {
+                    Session->Brush.ActiveStampName = StampShapeCatalog[S];
+                }
+            }
+        }
+        else if (IsEraseStudio)
+        {
+            // Eraser Studio Tip & Controls (studio-eraser.png parity)
+            VectorIconRepository::ConstructControl(
+                Surface, ControlIcon::ShapeCircle, VectorIconPlacement{ CPadX, ContentY + 3.0f, 15.0f, StudioIconTint, 1.7f });
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Bold, { CPadX + 24.0f, ContentY - 2.0f }, 13.0f, Theme.TextPrimary, "Tip");
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX + 24.0f, ContentY + 15.0f }, 8.6f, Theme.TextFaint, "Size, strength, flow, edge");
+            ContentY += 38.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Bold, { CPadX, ContentY }, 8.2f, Theme.TextFaint, "TIP");
+            ContentY += 16.0f;
+
+            float EraseRad = static_cast<float>(Session->Brush.EraserRadius);
+            if (ConstructSliderReadoutRow(Surface, { CPadX, ContentY, CInnerW, 44.0f }, "Size", EraseRad, 1.0f, 100.0f, "%.0f %%", 1.0f, Input, Theme))
+            {
+                Session->Brush.EraserRadius = static_cast<int32_t>(std::lround(EraseRad));
+            }
+            ContentY += 48.0f;
+            (void)ConstructSliderReadoutRow(Surface, { CPadX, ContentY, CInnerW, 44.0f }, "Strength", Session->Brush.EraserStrength, 0.0f, 1.0f, "%.0f %%", 100.0f, Input, Theme);
+            ContentY += 48.0f;
+            (void)ConstructSliderReadoutRow(Surface, { CPadX, ContentY, CInnerW, 44.0f }, "Flow", Session->Brush.DeliveryRate, 0.02f, 1.0f, "%.0f %%", 100.0f, Input, Theme);
+            ContentY += 48.0f;
+            (void)ConstructSliderReadoutRow(Surface, { CPadX, ContentY, CInnerW, 44.0f }, "Hardness", Session->Brush.EraserHardness, 0.0f, 1.0f, "%.0f %%", 100.0f, Input, Theme);
+            ContentY += 52.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Medium, { CPadX, ContentY }, 9.2f, Theme.TextPrimary, "Edge");
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX + 34.0f, ContentY + 1.0f }, 8.2f, Theme.TextFaint, "Grain erases through the paper texture");
+            ContentY += 18.0f;
+
+            constexpr std::array<const char*, 3u> EdgeSegs {{ "Soft", "Hard", "Grain" }};
+            uint32_t EdgeIdx = Session->Brush.EraseWithBrush ? 2u : (Session->Brush.EraserHardness > 0.8f ? 1u : 0u);
+            if (ConstructSegmentedCapsuleRow(Surface, { CPadX, ContentY, CInnerW, 28.0f }, EdgeSegs.data(), 3u, EdgeIdx, Theme, Cursor, Pressed))
+            {
+                Session->Brush.EraseWithBrush = (EdgeIdx == 2u);
+                Session->Brush.EraserHardness = (EdgeIdx == 1u) ? 0.95f : 0.70f;
+            }
+        }
+        else if (IsFillStudio)
+        {
+            // Fill Studio Source & Scope (studio-fill.png parity)
+            VectorIconRepository::ConstructControl(
+                Surface, ControlIcon::FillBucket, VectorIconPlacement{ CPadX, ContentY + 3.0f, 15.0f, StudioIconTint, 1.7f });
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Bold, { CPadX + 24.0f, ContentY - 2.0f }, 13.0f, Theme.TextPrimary, "Source");
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX + 24.0f, ContentY + 15.0f }, 8.6f, Theme.TextFaint, "Colour or grain, opacity, blend");
+            ContentY += 38.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Bold, { CPadX, ContentY }, 8.2f, Theme.TextFaint, "SOURCE");
+            ContentY += 16.0f;
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX, ContentY }, 8.8f, Theme.TextMuted, "Paint with");
+            ContentY += 16.0f;
+
+            constexpr std::array<const char*, 2u> FillWithSegs {{ "Colour", "Grain" }};
+            uint32_t FillWithIdx = 0u;
+            (void)ConstructSegmentedCapsuleRow(Surface, { CPadX, ContentY, CInnerW, 28.0f }, FillWithSegs.data(), 2u, FillWithIdx, Theme, Cursor, Pressed);
+            ContentY += 36.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX, ContentY }, 8.8f, Theme.TextMuted, "Colour");
+            ContentY += 16.0f;
+
+            const Rectangle2D ColBarR{ CPadX, ContentY, CInnerW, 34.0f };
+            Surface.FillRectangle(ColBarR, Theme.WellSurface, 8.0f);
+            Surface.StrokeRectangle(ColBarR, Theme.BorderSubtle, 8.0f, 1.0f);
+            Surface.FillRectangle({ ColBarR.X + 5.0f, ColBarR.Y + 5.0f, 32.0f, 24.0f }, Session->Brush.InkColor, 6.0f);
+            char HexBuf[24];
+            std::snprintf(HexBuf, sizeof(HexBuf), "#%02X%02X%02X", Session->Brush.InkColor.Red, Session->Brush.InkColor.Green, Session->Brush.InkColor.Blue);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Medium, { ColBarR.X + 46.0f, ColBarR.Y + 9.0f }, 10.0f, Theme.TextPrimary, HexBuf);
+            ContentY += 42.0f;
+
+            (void)ConstructSliderReadoutRow(Surface, { CPadX, ContentY, CInnerW, 44.0f }, "Opacity", Session->Brush.Opacity, 0.0f, 1.0f, "%.0f %%", 100.0f, Input, Theme);
+            ContentY += 48.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX, ContentY }, 8.8f, Theme.TextMuted, "Scope");
+            ContentY += 16.0f;
+            constexpr std::array<const char*, 3u> ScopeSegs {{ "Asset part", "UV island", "Whole mesh" }};
+            uint32_t ScopeIdx = static_cast<uint32_t>(Session->Brush.FillScope);
+            if (ConstructSegmentedCapsuleRow(Surface, { CPadX, ContentY, CInnerW, 28.0f }, ScopeSegs.data(), 3u, ScopeIdx, Theme, Cursor, Pressed))
+            {
+                Session->Brush.FillScope = static_cast<PaintFillScope>(ScopeIdx);
+            }
+        }
+        else if (IsGradientStudio)
+        {
+            // Gradient Studio 10-preset ramp library + Stops editor (studio-gradient.png parity)
+            VectorIconRepository::ConstructControl(
+                Surface, ControlIcon::PointGradient, VectorIconPlacement{ CPadX, ContentY + 3.0f, 15.0f, StudioIconTint, 1.7f });
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Bold, { CPadX + 24.0f, ContentY - 2.0f }, 13.0f, Theme.TextPrimary, "Colours");
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX + 24.0f, ContentY + 15.0f }, 8.6f, Theme.TextFaint, "Preset and stops");
+            ContentY += 36.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Bold, { CPadX, ContentY }, 8.2f, Theme.TextFaint, "COLOURS");
+            ContentY += 15.0f;
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX, ContentY }, 8.6f, Theme.TextMuted, "Preset");
+            ContentY += 16.0f;
+
+            const float CardGap = 8.0f;
+            const float CardW   = (CInnerW - CardGap) * 0.5f;
+            const float CardH   = 30.0f;
+            for (std::size_t RIdx = 0u; RIdx < GradientRampPresets.size(); ++RIdx)
+            {
+                const std::size_t Col = RIdx % 2u;
+                const std::size_t Row = RIdx / 2u;
+                const Rectangle2D PillR{
+                    CPadX + static_cast<float>(Col) * (CardW + CardGap),
+                    ContentY + static_cast<float>(Row) * (CardH + 6.0f),
+                    CardW,
+                    CardH
+                };
+                const bool ActiveRamp = (Session->Brush.RampPresetIndex == static_cast<uint32_t>(RIdx));
+                const bool HoverRamp  = PillR.Contains(Cursor);
+                Surface.FillRectangle(PillR, ActiveRamp ? ColorRgba{ 238u, 238u, 236u, 255u } : (HoverRamp ? StudioRowHover : Theme.WellSurface), 8.0f);
+
+                // 3-segment mini gradient chip
+                const Rectangle2D SwR{ PillR.X + 6.0f, PillR.Y + 6.0f, 28.0f, 18.0f };
+                Surface.FillRectangle({ SwR.X, SwR.Y, 10.0f, 18.0f }, GradientRampPresets[RIdx].StopA, 4.0f);
+                Surface.FillRectangle({ SwR.X + 9.0f, SwR.Y, 10.0f, 18.0f }, GradientRampPresets[RIdx].StopB, 0.0f);
+                Surface.FillRectangle({ SwR.X + 18.0f, SwR.Y, 10.0f, 18.0f }, GradientRampPresets[RIdx].StopC, 4.0f);
+
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface,
+                    ActiveRamp ? FontWeightClass::SemiBold : FontWeightClass::Medium,
+                    { SwR.Right() + 8.0f, PillR.Y + 7.5f },
+                    PillR.Width - 46.0f,
+                    9.0f,
+                    ActiveRamp ? ColorRgba{ 16u, 17u, 20u, 255u } : Theme.TextPrimary,
+                    GradientRampPresets[RIdx].Name);
+
+                if (Pressed && HoverRamp)
+                {
+                    Session->Brush.RampPresetIndex = static_cast<uint32_t>(RIdx);
+                    Session->Brush.InkColor        = GradientRampPresets[RIdx].StopA;
+                    Session->Brush.SecondaryColor  = GradientRampPresets[RIdx].StopC;
+                }
+            }
+            ContentY += 5.0f * (CardH + 6.0f) + 10.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX, ContentY }, 8.6f, Theme.TextMuted, "Stops");
+            ContentY += 16.0f;
+
+            const auto& ActiveRampSpec = GradientRampPresets[std::min<std::size_t>(Session->Brush.RampPresetIndex, GradientRampPresets.size() - 1u)];
+            const Rectangle2D RampBarR{ CPadX, ContentY, CInnerW, 14.0f };
+            constexpr int Segs = 24;
+            const float SegW = RampBarR.Width / static_cast<float>(Segs);
+            for (int S = 0; S < Segs; ++S)
+            {
+                const float T = static_cast<float>(S) / static_cast<float>(Segs - 1);
+                const ColorRgba C0 = (T < 0.5f) ? ActiveRampSpec.StopA : ActiveRampSpec.StopB;
+                const ColorRgba C1 = (T < 0.5f) ? ActiveRampSpec.StopB : ActiveRampSpec.StopC;
+                const float LocalT = (T < 0.5f) ? (T * 2.0f) : ((T - 0.5f) * 2.0f);
+                const ColorRgba Mix{
+                    static_cast<uint8_t>(C0.Red   + (C1.Red   - C0.Red)   * LocalT),
+                    static_cast<uint8_t>(C0.Green + (C1.Green - C0.Green) * LocalT),
+                    static_cast<uint8_t>(C0.Blue  + (C1.Blue  - C0.Blue)  * LocalT),
+                    255u
+                };
+                Surface.FillRectangle({ RampBarR.X + static_cast<float>(S) * SegW, RampBarR.Y, SegW + 1.0f, RampBarR.Height }, Mix, (S == 0 || S + 1 == Segs) ? 6.0f : 0.0f);
+            }
+            ContentY += 22.0f;
+
+            Surface.FillRectangle({ CPadX, ContentY, 24.0f, 24.0f }, ActiveRampSpec.StopA, 6.0f);
+            Surface.FillRectangle({ CPadX + 30.0f, ContentY, 24.0f, 24.0f }, ActiveRampSpec.StopB, 6.0f);
+            Surface.FillRectangle({ CPadX + 60.0f, ContentY, 24.0f, 24.0f }, ActiveRampSpec.StopC, 6.0f);
+        }
+        else if (Session->InspectorSubTab == BrushDetailSubTab::LibraryGrid)
         {
             if (IsTextStudio)
             {
@@ -895,11 +1472,13 @@ void TexturePaintViewportPane::Render(
             }
             else
             {
+                VectorIconRepository::ConstructControl(
+                    Surface, ControlIcon::LayersSlabs, VectorIconPlacement{ CPadX, ContentY + 3.0f, 15.0f, Theme.TextMuted, 1.7f });
                 WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Bold, { CPadX, ContentY }, 9.0f, Theme.TextFaint, "BRUSH LIBRARY");
+                    Surface, FontWeightClass::Bold, { CPadX + 24.0f, ContentY - 2.0f }, 13.0f, Theme.TextPrimary, "Brushes");
                 WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Medium, { RightPaneR.Right() - 28.0f, ContentY }, 9.0f, Theme.TextFaint, "12");
-                ContentY += 20.0f;
+                    Surface, FontWeightClass::Regular, { CPadX + 24.0f, ContentY + 15.0f }, 8.6f, Theme.TextFaint, "12 presets · Brush Studio");
+                ContentY += 34.0f;
 
                 const Rectangle2D SearchR{ CPadX, ContentY, CInnerW, 28.0f };
                 Surface.FillRectangle(SearchR, Theme.WellSurface, 8.0f);
@@ -907,18 +1486,19 @@ void TexturePaintViewportPane::Render(
                 VectorIconRepository::ConstructControl(
                     Surface, ControlIcon::SearchGlass, VectorIconPlacement{ SearchR.X + 9.0f, SearchR.Y + 7.5f, 13.0f, Theme.TextFaint, 1.65f });
                 WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::Regular, { SearchR.X + 28.0f, SearchR.Y + 6.5f }, 9.6f, Theme.TextFaint, "Filter brushes...");
+                    Surface, FontWeightClass::Regular, { SearchR.X + 28.0f, SearchR.Y + 6.5f }, 9.6f, Theme.TextFaint, "Search brushes");
                 ContentY += 36.0f;
 
+                Surface.FillCircle({ CPadX + 4.0f, ContentY + 7.0f }, 3.5f, ColorRgba{ 96u, 165u, 250u, 255u });
                 WorkspaceAppearance::ConstructWeightedText(
-                    Surface, FontWeightClass::SemiBold, { CPadX, ContentY }, 9.4f, Theme.TextMuted, "Brushes");
+                    Surface, FontWeightClass::SemiBold, { CPadX + 14.0f, ContentY }, 9.4f, Theme.TextPrimary, "Brushes & Inks");
                 WorkspaceAppearance::ConstructWeightedText(
                     Surface, FontWeightClass::Medium, { RightPaneR.Right() - 28.0f, ContentY }, 9.0f, Theme.TextFaint, "12");
                 ContentY += 20.0f;
 
                 const float CardGap = 8.0f;
                 const float CardW   = (CInnerW - CardGap) * 0.5f;
-                const float CardH   = 62.0f;
+                const float CardH   = 58.0f;
 
                 for (std::size_t P = 0u; P < Presets.size(); ++P)
                 {
@@ -944,16 +1524,16 @@ void TexturePaintViewportPane::Render(
                         9.0f,
                         ActiveCard ? 1.5f : 1.0f);
 
-                    const Rectangle2D PreviewWellR{ CardR.X + 5.0f, CardR.Y + 5.0f, CardR.Width - 10.0f, 36.0f };
-                    Surface.FillRectangle(PreviewWellR, Theme.WellSurface, 6.0f);
+                    const Rectangle2D PreviewWellR{ CardR.X + 5.0f, CardR.Y + 5.0f, CardR.Width - 10.0f, 32.0f };
+                    Surface.FillRectangle(PreviewWellR, ColorRgba{ 12u, 13u, 15u, 255u }, 6.0f);
                     ConstructBrushStrokePreviewWave(Surface, PreviewWellR, Presets[P], ActiveCard, Theme);
 
                     WorkspaceAppearance::ConstructTruncatedText(
                         Surface,
                         ActiveCard ? FontWeightClass::SemiBold : FontWeightClass::Medium,
-                        { CardR.X + 9.0f, CardR.Bottom() - 18.0f },
+                        { CardR.X + 9.0f, CardR.Bottom() - 17.5f },
                         CardR.Width - 18.0f,
-                        9.2f,
+                        9.0f,
                         ActiveCard ? Theme.TextPrimary : Theme.TextMuted,
                         Presets[P].Label);
 
@@ -999,6 +1579,55 @@ void TexturePaintViewportPane::Render(
             (void)ConstructSliderReadoutRow(Surface, { CPadX, ContentY, CInnerW, 44.0f }, "Size Jitter", Session->Brush.SizeJitter, 0.0f, 1.0f, "%.0f%%", 100.0f, Input, Theme);
             ContentY += 50.0f;
             (void)ConstructSliderReadoutRow(Surface, { CPadX, ContentY, CInnerW, 44.0f }, "Opacity Jitter", Session->Brush.OpacityJitter, 0.0f, 1.0f, "%.0f%%", 100.0f, Input, Theme);
+        }
+        else if (IsTextStudio)
+        {
+            // Text Studio Type & Layout (studio-text.png parity)
+            VectorIconRepository::ConstructControl(
+                Surface, ControlIcon::TextType, VectorIconPlacement{ CPadX, ContentY + 3.0f, 15.0f, StudioIconTint, 1.7f });
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Bold, { CPadX + 24.0f, ContentY - 2.0f }, 13.0f, Theme.TextPrimary, "Type");
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX + 24.0f, ContentY + 15.0f }, 8.6f, Theme.TextFaint, "Font, weight, italic, align");
+            ContentY += 38.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Bold, { CPadX, ContentY }, 8.2f, Theme.TextFaint, "TYPE");
+            ContentY += 16.0f;
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX, ContentY }, 8.8f, Theme.TextMuted, "Font");
+            ContentY += 16.0f;
+
+            const auto& Fonts = TexturePaintSession::QueryFontLabels();
+            const char* ActiveFontName = Fonts[std::min<std::size_t>(Session->Brush.TextFontIndex, Fonts.size() - 1u)];
+            (void)ConstructHeaderActionCapsule(Surface, { CPadX, ContentY, CInnerW, 30.0f }, ControlIcon::Count, ActiveFontName, true, false, Theme, Cursor, Pressed);
+            ContentY += 38.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX, ContentY }, 8.8f, Theme.TextMuted, "Weight");
+            ContentY += 16.0f;
+            constexpr std::array<const char*, 4u> WeightSegs {{ "300", "400", "600", "800" }};
+            uint32_t WeightIdx = 2u;
+            (void)ConstructSegmentedCapsuleRow(Surface, { CPadX, ContentY, CInnerW, 28.0f }, WeightSegs.data(), 4u, WeightIdx, Theme, Cursor, Pressed);
+            ContentY += 36.0f;
+
+            bool ItalicFlag = false;
+            (void)ConstructSwitchControlRow(Surface, { CPadX, ContentY, CInnerW, 30.0f }, "Italic", ItalicFlag, Theme, Cursor, Pressed);
+            ContentY += 36.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { CPadX, ContentY }, 8.8f, Theme.TextMuted, "Align");
+            ContentY += 16.0f;
+            constexpr std::array<const char*, 3u> AlignSegs {{ "Left", "Centre", "Right" }};
+            uint32_t AlignIdx = 1u;
+            (void)ConstructSegmentedCapsuleRow(Surface, { CPadX, ContentY, CInnerW, 28.0f }, AlignSegs.data(), 3u, AlignIdx, Theme, Cursor, Pressed);
+            ContentY += 38.0f;
+
+            float TxtSz = static_cast<float>(Session->Brush.TextSizePx);
+            if (ConstructSliderReadoutRow(Surface, { CPadX, ContentY, CInnerW, 44.0f }, "Font size", TxtSz, 12.0f, 160.0f, "%.0f px", 1.0f, Input, Theme))
+            {
+                Session->Brush.TextSizePx = static_cast<int32_t>(std::lround(TxtSz));
+            }
         }
         else
         {

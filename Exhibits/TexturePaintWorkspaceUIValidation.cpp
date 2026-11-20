@@ -293,11 +293,67 @@ int main()
         return 1;
     }
 
+    // State 5: Stamp Studio Context Menu (cards-brush-stamp.png & studio-stamp-decals.png parity — 16 procedural stamp shapes in 4x4 grid)
+    Host.AccessSession().ViewportLayout = Frontier::Workspaces::PaintViewportLayout::ThreeDOnly;
+    Host.AccessSession().SelectTool(Frontier::Workspaces::PaintToolCategory::Stamp);
+    Host.AccessSession().InspectorSubTab = Frontier::Workspaces::BrushDetailSubTab::LibraryGrid;
+    Host.AccessViewportPane().ConfigureBrushInspectorOpen(true);
+    if (!RenderAndCaptureState("16-TexturePaintStampStudio.png"))
+    {
+        Presenter.TeardownOverlay();
+        ImGui::DestroyContext(GuiCtx);
+        return 1;
+    }
+
+    // State 6: Eraser Studio Context Menu (studio-eraser.png parity — Tip Size, Strength, Flow, Hardness & Soft|Hard|Grain edge)
+    Host.AccessSession().SelectTool(Frontier::Workspaces::PaintToolCategory::Eraser);
+    Host.AccessSession().InspectorSubTab = Frontier::Workspaces::BrushDetailSubTab::Shape;
+    Host.AccessViewportPane().ConfigureBrushInspectorOpen(true);
+    if (!RenderAndCaptureState("17-TexturePaintEraserStudio.png"))
+    {
+        Presenter.TeardownOverlay();
+        ImGui::DestroyContext(GuiCtx);
+        return 1;
+    }
+
+    // State 7: Fill Studio Context Menu (studio-fill.png parity — Source Colour|Grain, #D9A441 swatch, Opacity & Scope)
+    Host.AccessSession().SelectTool(Frontier::Workspaces::PaintToolCategory::Fill);
+    Host.AccessSession().InspectorSubTab = Frontier::Workspaces::BrushDetailSubTab::Shape;
+    Host.AccessViewportPane().ConfigureBrushInspectorOpen(true);
+    if (!RenderAndCaptureState("18-TexturePaintFillStudio.png"))
+    {
+        Presenter.TeardownOverlay();
+        ImGui::DestroyContext(GuiCtx);
+        return 1;
+    }
+
+    // State 8: Gradient Studio Context Menu (studio-gradient.png parity — 10 multi-stop ramp presets & Stops bar)
+    Host.AccessSession().SelectTool(Frontier::Workspaces::PaintToolCategory::Gradient3D);
+    Host.AccessSession().InspectorSubTab = Frontier::Workspaces::BrushDetailSubTab::ColourDynamics;
+    Host.AccessViewportPane().ConfigureBrushInspectorOpen(true);
+    if (!RenderAndCaptureState("19-TexturePaintGradientStudio.png"))
+    {
+        Presenter.TeardownOverlay();
+        ImGui::DestroyContext(GuiCtx);
+        return 1;
+    }
+
+    // State 9: Brush Studio Materials / 22-Channel Stack (channels-brush.png parity)
+    Host.AccessSession().SelectTool(Frontier::Workspaces::PaintToolCategory::Brush);
+    Host.AccessSession().InspectorSubTab = Frontier::Workspaces::BrushDetailSubTab::Channels;
+    Host.AccessViewportPane().ConfigureBrushInspectorOpen(true);
+    if (!RenderAndCaptureState("20-TexturePaintBrushChannels.png"))
+    {
+        Presenter.TeardownOverlay();
+        ImGui::DestroyContext(GuiCtx);
+        return 1;
+    }
+
     Host.Shutdown();
     Presenter.TeardownOverlay();
     Frontier::TypographyRepository::AssignCurrent(nullptr);
     ImGui::DestroyContext(GuiCtx);
 
-    std::printf("[TexturePaintValidation] All Texture Paint workspace checks and 4 PNG exhibits succeeded.\n");
+    std::printf("[TexturePaintValidation] All Texture Paint workspace checks and 9 PNG exhibits succeeded.\n");
     return 0;
 }
