@@ -1735,8 +1735,10 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     const char* EngineShortTag = "OpenPBR";
     switch (RenderConfig.Engine)
     {
-    case GeometricRaster::WorldRenderEngine::MatCap:        EngineShortTag = "MatCap"; break;
-    case GeometricRaster::WorldRenderEngine::OpenPbrDirect: EngineShortTag = "OpenPBR"; break;
+    case GeometricRaster::WorldRenderEngine::MatCap:              EngineShortTag = "MatCap";  break;
+    case GeometricRaster::WorldRenderEngine::OpenPbrDirect:       EngineShortTag = "OpenPBR"; break;
+    case GeometricRaster::WorldRenderEngine::RealTimeGiGtxLowEnd: EngineShortTag = "GTX GI";  break;
+    case GeometricRaster::WorldRenderEngine::RealTimeGiHighEnd:   EngineShortTag = "BVH4 GI"; break;
     }
     if (RenderedOnGpu)
     {

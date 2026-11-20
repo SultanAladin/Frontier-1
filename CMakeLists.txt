@@ -591,6 +591,38 @@ foreach(CE_SHADER_STEM
     frontier_compile_component_editor_slang_shader("${CE_SHADER_STEM}" "FragmentMain" "fragment" "${CE_SHADER_STEM}.frag.spv")
 endforeach()
 
+function(frontier_compile_world_module_slang_shader SLANG_REL_PATH ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
+    set(IN_SLANG "${CMAKE_SOURCE_DIR}/Engine/Shaders/${SLANG_REL_PATH}")
+    set(OUT_SPV  "${FRONTIER_COMPILED_SHADER_DIR}/${OUT_SPV_NAME}")
+    add_custom_command(
+        OUTPUT "${OUT_SPV}"
+        COMMAND "${FRONTIER_SLANGC_BIN}"
+            "${IN_SLANG}"
+            -I "${CMAKE_SOURCE_DIR}/Engine/Shaders"
+            -I "${FRONTIER_SHADER_SRC_DIR}"
+            -target spirv
+            -profile spirv_1_3
+            -emit-spirv-directly
+            -fvk-use-entrypoint-name
+            -matrix-layout-row-major
+            -O0
+            -entry "${ENTRY_NAME}"
+            -stage "${SHADER_UNIT}"
+            -o "${OUT_SPV}"
+        DEPENDS
+            "${IN_SLANG}"
+            "${CMAKE_SOURCE_DIR}/Engine/Shaders/DirectLighting/WideTreeRayQuery.slang"
+        COMMENT "[Slang] Compiling ${SLANG_REL_PATH} (${SHADER_UNIT}:${ENTRY_NAME}) -> ${OUT_SPV_NAME}"
+        VERBATIM
+    )
+    set(FRONTIER_SPV_OUTPUTS ${FRONTIER_SPV_OUTPUTS} "${OUT_SPV}" PARENT_SCOPE)
+endfunction()
+
+frontier_compile_world_module_slang_shader(DirectLighting/RefitWideBoundingTreeCompute.slang        ComputeEntry compute RefitWideBoundingTreeCompute.comp.spv)
+frontier_compile_world_module_slang_shader(DirectLighting/HybridConeShadowCompute.slang             ComputeEntry compute HybridConeShadowCompute.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/StokesContourIrradianceCompute.slang  ComputeEntry compute StokesContourIrradianceCompute.comp.spv)
+frontier_compile_world_module_slang_shader(GlobalIllumination/SurfelRadiosityLatticeCompute.slang   ComputeEntry compute SurfelRadiosityLatticeCompute.comp.spv)
+
 add_custom_target(FrontierShaders DEPENDS ${FRONTIER_SPV_OUTPUTS})
 
 set(FRONTIER_ENGINE_SOURCES
@@ -616,7 +648,10 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Visibility/VisibilityMaterialResolve.cpp
     Engine/GeometricRaster/DirectLighting/SolarShadowSequence.cpp
     Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.cpp
+    Engine/GeometricRaster/DirectLighting/HybridConeShadowSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.cpp
+    Engine/GeometricRaster/GlobalIllumination/StokesContourIrradianceSequence.cpp
+    Engine/GeometricRaster/GlobalIllumination/SurfelRadiosityLatticeSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.cpp
     Engine/GeometricRaster/Atmosphere/CelestialEphemerisSolver.cpp
@@ -746,8 +781,10 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Workspaces/ParametricSketcher/Document/SketcherMeasurement.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherScene.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherSpecimen.cpp
+    Engine/DistanceFieldSpace/LocalSignedDistanceVolume.cpp
     Engine/SpatialAcceleration/ClusterPyramid.cpp
     Engine/SpatialAcceleration/WideBoundingTree.cpp
+    Engine/SpatialAcceleration/CompressedWideTree.cpp
     Engine/AudioSpace/AudioBusAccumulator.cpp
     Engine/AudioSpace/AudioExtension.cpp
     Engine/AudioSpace/AudioHardwareOutput.cpp
@@ -1085,6 +1122,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(VectorGraphicsGPUValidation       Exhibits/VectorGraphicsGPUValidation.cpp)
     frontier_register_exhibit(BakingGPUValidation               Exhibits/BakingGPUValidation.cpp)
     frontier_register_exhibit(DirectPbrWorldValidation          Exhibits/DirectPbrWorldValidation.cpp)
+    frontier_register_exhibit(GtxSdfGiShadowValidation          Exhibits/GtxSdfGiShadowValidation.cpp)
     frontier_register_exhibit(WindCloudsFogValidation           Exhibits/WindCloudsFogValidation.cpp)
     frontier_register_exhibit(SketcherKernelValidation          Exhibits/ParametricSketcher/SketcherKernelValidation.cpp)
     frontier_register_exhibit(SketcherDocumentValidation        Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)

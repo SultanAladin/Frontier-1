@@ -527,7 +527,7 @@ void BuildDirectPbrVehicleShowroom(
         const float FrontLensX = Vehicle.BoundsMax.X + 0.06f;
         for (float LateralY : { 0.68f, -0.68f })
         {
-            PhotometricPointEmitter Headlamp {};
+            PhotometricPointRadiator Headlamp {};
             Headlamp.PositionWorld    = { FrontLensX, LateralY, 0.68f };
             Headlamp.BeamAxis         = HeadlampAim;
             Headlamp.ZeroAzimuthAxis  = { 0.0f, -1.0f, 0.0f };
@@ -535,7 +535,7 @@ void BuildDirectPbrVehicleShowroom(
             Headlamp.RangeMeters      = 24.0f;
             Headlamp.RadiusMeters     = 0.06f;
             Headlamp.ProfileOrdinal   = 0u;
-            OutRig.Scene.PhotometricEmitters.push_back(Headlamp);
+            OutRig.Scene.PhotometricRadiators.push_back(Headlamp);
         }
 
         // Profile [1]: TailLamp.ies (Left & Right rear crimson tail lamps aimed along -X)
@@ -543,7 +543,7 @@ void BuildDirectPbrVehicleShowroom(
         const float RearLensX = Vehicle.BoundsMin.X - 0.06f;
         for (float LateralY : { 0.72f, -0.72f })
         {
-            PhotometricPointEmitter TailLamp {};
+            PhotometricPointRadiator TailLamp {};
             TailLamp.PositionWorld    = { RearLensX, LateralY, 0.82f };
             TailLamp.BeamAxis         = TailAim;
             TailLamp.ZeroAzimuthAxis  = { 0.0f, 1.0f, 0.0f };
@@ -551,13 +551,13 @@ void BuildDirectPbrVehicleShowroom(
             TailLamp.RangeMeters      = 14.0f;
             TailLamp.RadiusMeters     = 0.06f;
             TailLamp.ProfileOrdinal   = 1u;
-            OutRig.Scene.PhotometricEmitters.push_back(TailLamp);
+            OutRig.Scene.PhotometricRadiators.push_back(TailLamp);
         }
 
         // Profile [2]: CarParkDownlight.ies (3 architectural ceiling downlights along the vehicle bay)
         for (float BayX : { -1.80f, 0.65f, 3.60f })
         {
-            PhotometricPointEmitter Downlight {};
+            PhotometricPointRadiator Downlight {};
             Downlight.PositionWorld    = { BayX, -0.25f, 3.75f };
             Downlight.BeamAxis         = { 0.0f, 0.0f, -1.0f };
             Downlight.ZeroAzimuthAxis  = { 1.0f, 0.0f, 0.0f };
@@ -565,7 +565,7 @@ void BuildDirectPbrVehicleShowroom(
             Downlight.RangeMeters      = 16.0f;
             Downlight.RadiusMeters     = 0.10f;
             Downlight.ProfileOrdinal   = 2u;
-            OutRig.Scene.PhotometricEmitters.push_back(Downlight);
+            OutRig.Scene.PhotometricRadiators.push_back(Downlight);
         }
     }
 }

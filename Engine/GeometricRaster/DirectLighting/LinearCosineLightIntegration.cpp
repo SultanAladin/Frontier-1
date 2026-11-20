@@ -534,8 +534,10 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
     const AmbientOcclusionSettings&                         AoSettings,
     std::span<const DirectPointLightSpec>                   PointLights,
     Mathematics::LinearRGB                                  SkyFillRadiance,
-    std::span<const PhotometricPointEmitter>                PhotometricEmitters,
-    std::span<const Codecs::ResampledPhotometricProfile>    PhotometricProfiles)
+    std::span<const PhotometricPointRadiator>                PhotometricRadiators,
+    std::span<const Codecs::ResampledPhotometricProfile>    PhotometricProfiles,
+    std::span<const float>                                  SolarVisibilityOverride,
+    bool                                                    SkipEmissiveTriangleDirect)
 {
     DirectLightingOutput Out {};
     Out.WidthPx  = VisibilityTargets.WidthPx;
@@ -559,10 +561,20 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
         }
     }
 
-    // 1. Evaluate Shadow Lab Solar Shadows + Plane-Aware Penumbra Filter
-    Out.SolarShadows = SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorithm(
-        Algorithm, Sun, Out.WidthPx, Out.HeightPx, PrimarySamples, SceneTree,
-        OptionalFineClip, OptionalCoarseClip);
+    // 1. Evaluate Shadow Lab Solar Shadows + Plane-Aware Penumbra Filter (or consume GtxLowEnd HybridConeShadow override)
+    if (SolarVisibilityOverride.size() == TotalPixels)
+    {
+        Out.SolarShadows.WidthPx            = Out.WidthPx;
+        Out.SolarShadows.HeightPx           = Out.HeightPx;
+        Out.SolarShadows.RawVisibility.assign(SolarVisibilityOverride.begin(), SolarVisibilityOverride.end());
+        Out.SolarShadows.FilteredVisibility.assign(SolarVisibilityOverride.begin(), SolarVisibilityOverride.end());
+    }
+    else
+    {
+        Out.SolarShadows = SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorithm(
+            Algorithm, Sun, Out.WidthPx, Out.HeightPx, PrimarySamples, SceneTree,
+            OptionalFineClip, OptionalCoarseClip);
+    }
 
     const Mathematics::Axis3D SunDir = Mathematics::NormalizeAxis(Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
     const uint32_t MatCount = MaterialRegister.QuerySlotCount();
@@ -672,7 +684,9 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
         Out.CombinedDiffuseAo = std::move(AoPing);
     }
 
-    const auto Emissives = ExtractDirectEmissiveTriangles(SceneTree, MaterialRegister);
+    const auto Emissives = SkipEmissiveTriangleDirect
+        ? std::vector<DirectEmissiveTri>{}
+        : ExtractDirectEmissiveTriangles(SceneTree, MaterialRegister);
 
     // 2. Shade Direct Sun + Visibility-Gated LTC Area Lights + Exact Analytic Emissive-Triangle LTC + Filtered 2-Scale AO + Lagarde specAO!
     const auto ShadeRows = [&](uint32_t YBegin, uint32_t YEnd)
@@ -771,9 +785,9 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
             }
 
             // ANSI/IESNA LM-63 Type C Photometric Point Emitters (128x32 Resampled Candela Table + BVH4 Occlusion)
-            if (!PhotometricEmitters.empty() && !PhotometricProfiles.empty())
+            if (!PhotometricRadiators.empty() && !PhotometricProfiles.empty())
             {
-                for (const auto& Lamp : PhotometricEmitters)
+                for (const auto& Lamp : PhotometricRadiators)
                 {
                     if (Lamp.ProfileOrdinal >= PhotometricProfiles.size())
                     {
@@ -845,7 +859,7 @@ DirectLightingOutput LinearCosineLightIntegration::EvaluateDirectLightingFrameWi
         }
     }
     };
-    const uint32_t ThreadCount = (!Emissives.empty() || !PhotometricEmitters.empty() || TotalPixels >= 65536u)
+    const uint32_t ThreadCount = (!Emissives.empty() || !PhotometricRadiators.empty() || TotalPixels >= 65536u)
         ? std::min(Out.HeightPx, std::max(1u, std::thread::hardware_concurrency()))
         : 1u;
     if (ThreadCount <= 1u || Out.HeightPx <= 4u)

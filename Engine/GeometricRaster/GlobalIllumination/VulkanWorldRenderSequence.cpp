@@ -1197,12 +1197,12 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
             UploadedPhotometricProfiles = 0u;
         }
 
-        if (!Scene.PhotometricEmitters.empty())
+        if (!Scene.PhotometricRadiators.empty())
         {
-            std::vector<GpuPhotometricLamp64> GpuLamps(Scene.PhotometricEmitters.size());
-            for (std::size_t L = 0u; L < Scene.PhotometricEmitters.size(); ++L)
+            std::vector<GpuPhotometricLamp64> GpuLamps(Scene.PhotometricRadiators.size());
+            for (std::size_t L = 0u; L < Scene.PhotometricRadiators.size(); ++L)
             {
-                const auto& Src = Scene.PhotometricEmitters[L];
+                const auto& Src = Scene.PhotometricRadiators[L];
                 auto&       Dst = GpuLamps[L];
                 Dst.PositionRange[0]      = Src.PositionWorld.X;
                 Dst.PositionRange[1]      = Src.PositionWorld.Y;

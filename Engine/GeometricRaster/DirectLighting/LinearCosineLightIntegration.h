@@ -52,7 +52,7 @@ struct DirectPointLightSpec
     float                  RadiusMeters  = 0.10f;            // [m]   - Source sphere radius
 };
 
-struct PhotometricPointEmitter
+struct PhotometricPointRadiator
 {
     Mathematics::Axis3D    PositionWorld    { 0.0f, 0.0f, 3.0f };   // [m]    - Emitter apex in world space
     Mathematics::Axis3D    BeamAxis         { 0.0f, 0.0f, -1.0f };  // [-]    - Unit polar theta=0 emission axis
@@ -112,10 +112,12 @@ public:
         const OrthographicShadowCascade*                        OptionalFineClip    = nullptr,
         const OrthographicShadowCascade*                        OptionalCoarseClip  = nullptr,
         const AmbientOcclusionSettings&                         AoSettings          = {},
-        std::span<const DirectPointLightSpec>                   PointLights         = {},
-        Mathematics::LinearRGB                                  SkyFillRadiance     = { 0.14f, 0.19f, 0.28f },
-        std::span<const PhotometricPointEmitter>                PhotometricEmitters = {},
-        std::span<const Codecs::ResampledPhotometricProfile>    PhotometricProfiles = {});
+        std::span<const DirectPointLightSpec>                   PointLights               = {},
+        Mathematics::LinearRGB                                  SkyFillRadiance           = { 0.14f, 0.19f, 0.28f },
+        std::span<const PhotometricPointRadiator>                PhotometricRadiators       = {},
+        std::span<const Codecs::ResampledPhotometricProfile>    PhotometricProfiles       = {},
+        std::span<const float>                                  SolarVisibilityOverride   = {},
+        bool                                                    SkipEmissiveTriangleDirect = false);
 
     // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm
     [[nodiscard]] static DirectLightingOutput EvaluateDirectLightingFrame(

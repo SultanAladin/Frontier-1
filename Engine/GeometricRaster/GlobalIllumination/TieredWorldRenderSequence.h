@@ -9,12 +9,18 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/DistanceFieldSpace/ArticulatedCapsuleRig.h"
+#include "Engine/DistanceFieldSpace/LocalSignedDistanceVolume.h"
 #include "Engine/GeometricRaster/Atmosphere/VolumetricCloudSequence.h"
+#include "Engine/GeometricRaster/DirectLighting/HybridConeShadowSequence.h"
 #include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
 #include "Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/StokesContourIrradianceSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/SurfelRadiosityLatticeSequence.h"
 #include "Engine/MaterialSpace/CompactMaterialRegister.h"
 #include "Engine/MaterialSpace/MaterialSurfaceLayer/BounceLayerSummary.h"
 #include "Engine/SpatialAcceleration/ClusterPyramid.h"
+#include "Engine/SpatialAcceleration/CompressedWideTree.h"
 #include "Engine/SpatialAcceleration/WideBoundingTree.h"
 
 #include <cstdint>
@@ -36,8 +42,16 @@ enum class WorldRenderTier : uint8_t
 
 enum class WorldRenderEngine : uint8_t
 {
-    MatCap        = 0u, // [-] - Studio MatCap Normal/Roughness Shading (Zero GI, Zero Shadow Maps)
-    OpenPbrDirect = 1u, // [-] - Plain OpenPBR Direct + LTC Area Lights + Shadow Lab + BVH4/Sky Reflections (Zero GI)
+    MatCap              = 0u, // [-] - Order 1: Studio MatCap Normal/Roughness Shading (Zero GI, Zero SDF)
+    OpenPbrDirect       = 1u, // [-] - Order 1: Standalone Direct OpenPBR + LTC + .ies + Shadow Lab (Zero GI, Zero SDF)
+    RealTimeGiGtxLowEnd = 2u, // [-] - Order 2: GtxLowEnd Hybrid Cone Shadow (<=3.7 MB C0 SDF + Capsule Rig) + Stokes/Surfel GI
+    RealTimeGiHighEnd   = 3u, // [-] - Order 2: HighEnd 0 MB SDF + BVH4 Vogel Shadows + Skinned BVH4 Refit + Dual-Cascade GI
+};
+
+enum class RealTimeGiCandidate : uint8_t
+{
+    StokesContour   = 0u, // [-] - Candidate 1: Sutherland-Hodgman Clipped Spherical-Polygon Stokes Contour + Bounce Patches
+    SurfelRadiosity = 1u, // [-] - Candidate 2: 2-Bounce Bunnell Disk Radiosity + Dual-Cascade C1-Hermite Octahedral Lattice
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -49,6 +63,7 @@ struct WorldRenderConfiguration
     WorldRenderEngine        Engine              = WorldRenderEngine::OpenPbrDirect;
     SolarShadowAlgorithm     ShadowAlgorithm     = SolarShadowAlgorithm::WideTreeRayQuery;
     SpecularReflectionSource ReflectionSource    = SpecularReflectionSource::WideTreeRaytrace;
+    RealTimeGiCandidate      GiCandidate         = RealTimeGiCandidate::SurfelRadiosity;
     uint32_t                 DebugChannel        = 0u;   // [0..11] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=Metalness, 6=ClusterId, 7=GeomNrm, 8=SunShadow, 9=AmbientOcc, 10=DirectLit, 11=Specular
     bool                     ReflectionsEnabled  = true; // [-]     - Specular reflection toggle
     bool                     RaytracingEnabled   = true; // [-]     - Hardware/BVH raytracing toggle
@@ -61,13 +76,19 @@ struct WorldSceneSpecification
     MaterialSpace::CompactMaterialRegister                      MaterialRegister    {};
     std::vector<MaterialSpace::BounceSlabEntry>                 BounceSummaries     {};
     SpatialAcceleration::WideBoundingTree                       SceneTree           {};
+    SpatialAcceleration::CompressedWideTree                     CompressedSceneTree {}; // 64 B quantized 4-wide BVH4 (Order 2 & 3)
     std::vector<DirectPointLightSpec>                           PointLights         {};
-    std::vector<PhotometricPointEmitter>                        PhotometricEmitters {};
+    std::vector<PhotometricPointRadiator>                        PhotometricRadiators {};
     std::vector<Codecs::ResampledPhotometricProfile>            PhotometricProfiles {};
     SolarDirectionalSource                                      Sun                 {};
     std::vector<PolygonalAreaQuadLight>                         AreaLights          {};
     Mathematics::LinearRGB                                      SkyRadiance         { 0.15f, 0.21f, 0.32f };
     WorldAtmosphereConfiguration                                Atmosphere          {};
+
+    // Order 2 GtxLowEnd-ONLY optional distance-field & capsule rig bindings (strictly ignored / 0 MB on RealTimeGiHighEnd)
+    DistanceFieldSpace::RigidLocalVolumePlacement               GtxVehicleVolume    {};
+    DistanceFieldSpace::ArticulatedCapsuleRig                   GtxCharacterRig     {};
+    std::vector<DistanceFieldSpace::ClosedOccluderBox>          GtxInteriorBoxes    {};
 };
 
 struct WorldRenderOutput
@@ -76,7 +97,9 @@ struct WorldRenderOutput
     uint32_t                            HeightPx           = 0u;   // [px]    - Viewport height
     WorldRenderTier                     ActiveTier         = WorldRenderTier::Tier2RtxDeterministic;
     WorldRenderEngine                   ActiveEngine       = WorldRenderEngine::OpenPbrDirect;
-    std::vector<Mathematics::LinearRGB> CompositeLinearHdr {};     // [cd/m2] - Final Direct + Specular + Glass HDR
+    std::size_t                         SdfAllocatedBytes  = 0u;   // [bytes] - Must equal 0 for Order 1 & RealTimeGiHighEnd
+    std::vector<Mathematics::LinearRGB> CompositeLinearHdr {};     // [cd/m2] - Final Direct + Indirect GI + Specular + Glass HDR
+    std::vector<Mathematics::LinearRGB> IndirectGiLinearHdr{};     // [cd/m2] - Isolated diffuse + emissive GI component (Order 2)
     std::vector<uint8_t>                DisplayRgba8       {};     // [rgba8] - ACES filmic + sRGB8 viewport output
     TwoPhaseCullReport                  VisibilityCull     {};     // [-]     - Cluster culling telemetry
     DirectLightingOutput                DirectLighting     {};     // [-]     - Solar shadow, LTC, & chassis AO telemetry
