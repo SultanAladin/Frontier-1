@@ -442,7 +442,7 @@ void PatternStampInspectorPane::Render(
                 const bool IsLinearOrRadial = (Sel->FillSource == PatternStampFillSourceMode::LinearGradient ||
                                                Sel->FillSource == PatternStampFillSourceMode::RadialGradient);
                 const bool IsPoint          = (Sel->FillSource == PatternStampFillSourceMode::PointField);
-                const float CardH           = IsLinearOrRadial ? 314.0f : (IsPoint ? 290.0f : 154.0f);
+                const float CardH           = IsLinearOrRadial ? 318.0f : (IsPoint ? 326.0f : 154.0f);
                 const Rectangle2D CardR{ LeftX, Sy, InnerW, CardH };
                 Surface.FillRectangle(CardR, Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 34u, 35u, 39u, 255u }, 12.0f);
 

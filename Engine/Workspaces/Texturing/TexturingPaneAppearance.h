@@ -574,45 +574,61 @@ inline bool ConstructSliderReadoutRow(
     const OptionalTooltip&      Tooltip = {}) noexcept
 {
     WorkspaceAppearance::ConstructWeightedText(
-        Surface, FontWeightClass::Regular, { LeftX, TopY }, 10.5f, Theme.TextMuted, Label);
+        Surface, FontWeightClass::Regular, { LeftX, TopY }, 9.2f, Theme.TextMuted, Label);
 
-    constexpr float CapsuleW = 88.0f;
-    constexpr float CapsuleH = 28.0f;
-    constexpr float ControlY = 17.0f;
+    const bool      HasUnit  = !UnitText.empty();
+    const float     CapsuleW = HasUnit ? 84.0f : ((Width < 180.0f) ? 48.0f : 56.0f);
+    constexpr float CapsuleH = 24.0f;
+    constexpr float ControlY = 14.0f;
 
     const Rectangle2D ReadoutCapsule{ LeftX, TopY + ControlY, CapsuleW, CapsuleH };
-    Surface.FillRectangle(ReadoutCapsule, Theme.WellSurface, 14.0f);
-    Surface.StrokeRectangle(ReadoutCapsule, Theme.BorderSubtle, 14.0f, 1.0f);
-    Surface.FillRectangle(
-        { ReadoutCapsule.Right() - 30.0f, ReadoutCapsule.Y + 1.0f, 29.0f, ReadoutCapsule.Height - 2.0f },
-        Theme.NestedSurface,
-        0.0f);
-    Surface.StrokeLine(
-        { ReadoutCapsule.Right() - 30.0f, ReadoutCapsule.Y + 4.0f },
-        { ReadoutCapsule.Right() - 30.0f, ReadoutCapsule.Bottom() - 4.0f },
-        Theme.BorderSubtle,
-        1.0f);
+    Surface.FillRectangle(ReadoutCapsule, Theme.LightSurface ? Theme.WellSurface : ColorRgba{ 12u, 13u, 16u, 255u }, 8.0f);
+    Surface.StrokeRectangle(ReadoutCapsule, Theme.BorderSubtle, 8.0f, 1.0f);
 
-    const float NumW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 11.0f, NumberText);
-    WorkspaceAppearance::ConstructWeightedText(
-        Surface,
-        FontWeightClass::Regular,
-        { ReadoutCapsule.X + (CapsuleW - 30.0f - NumW) * 0.5f, ReadoutCapsule.Y + 7.5f },
-        11.0f,
-        Theme.TextPrimary,
-        NumberText);
-    const float UnitW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.0f, UnitText);
-    WorkspaceAppearance::ConstructWeightedText(
-        Surface,
-        FontWeightClass::Regular,
-        { ReadoutCapsule.Right() - 15.0f - UnitW * 0.5f, ReadoutCapsule.Y + 8.5f },
-        9.0f,
-        Theme.TextMuted,
-        UnitText);
+    if (HasUnit)
+    {
+        Surface.FillRectangle(
+            { ReadoutCapsule.Right() - 28.0f, ReadoutCapsule.Y + 1.0f, 27.0f, ReadoutCapsule.Height - 2.0f },
+            Theme.NestedSurface,
+            0.0f);
+        Surface.StrokeLine(
+            { ReadoutCapsule.Right() - 28.0f, ReadoutCapsule.Y + 4.0f },
+            { ReadoutCapsule.Right() - 28.0f, ReadoutCapsule.Bottom() - 4.0f },
+            Theme.BorderSubtle,
+            1.0f);
 
-    const float       TrackX = ReadoutCapsule.Right() + 9.0f;
-    const float       TrackW = std::max(36.0f, (LeftX + Width) - TrackX);
-    const Rectangle2D Track  { TrackX, TopY + ControlY + 1.0f, TrackW, 26.0f };
+        const float NumW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 9.4f, NumberText);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface,
+            FontWeightClass::Medium,
+            { ReadoutCapsule.X + (CapsuleW - 28.0f - NumW) * 0.5f, ReadoutCapsule.Y + 5.5f },
+            9.4f,
+            Theme.TextPrimary,
+            NumberText);
+        const float UnitW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.2f, UnitText);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface,
+            FontWeightClass::Regular,
+            { ReadoutCapsule.Right() - 14.0f - UnitW * 0.5f, ReadoutCapsule.Y + 6.5f },
+            8.2f,
+            Theme.TextMuted,
+            UnitText);
+    }
+    else
+    {
+        const float NumW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 9.2f, NumberText);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface,
+            FontWeightClass::Medium,
+            { ReadoutCapsule.X + std::max(4.0f, (CapsuleW - NumW) * 0.5f), ReadoutCapsule.Y + 5.5f },
+            9.2f,
+            Theme.TextPrimary,
+            NumberText);
+    }
+
+    const float       TrackX = ReadoutCapsule.Right() + 8.0f;
+    const float       TrackW = std::max(32.0f, (LeftX + Width) - TrackX);
+    const Rectangle2D Track  { TrackX, TopY + ControlY + 1.0f, TrackW, 22.0f };
     const Rectangle2D HitBox { Track.X - 2.0f, Track.Y - 4.0f, Track.Width + 4.0f, Track.Height + 8.0f };
     const bool        Hover  = HitBox.Contains({ Pointer.X, Pointer.Y });
 
@@ -621,19 +637,20 @@ inline bool ConstructSliderReadoutRow(
         ControlAppearance::RecordHoveredTooltip({ LeftX, TopY, Width, ControlY + CapsuleH }, Tooltip);
     }
 
-    constexpr float ThumbRadius = 11.5f;
+    constexpr float ThumbRadius = 9.5f;
     const float     InnerSpan   = std::max(1.0f, Track.Width - ThumbRadius * 2.0f);
     const float     Clamped     = std::clamp(InOutNormalized, 0.0f, 1.0f);
     const float     ThumbX      = Track.X + ThumbRadius + InnerSpan * Clamped;
     const float     CenterY     = Track.Y + Track.Height * 0.5f;
 
-    const ColorRgba RailColor = Theme.LightSurface ? ColorRgba{ 212u, 217u, 225u, 255u } : ColorRgba{ 36u, 36u, 38u, 255u };
-    const ColorRgba FillColor = Theme.LightSurface ? ColorRgba{ 162u, 171u, 186u, 255u } : ColorRgba{ 68u, 68u, 72u, 255u };
-    const ColorRgba KnobColor = Theme.LightSurface ? ColorRgba{ 255u, 255u, 255u, 255u } : ColorRgba{ 238u, 238u, 236u, 255u };
-    const ColorRgba KnobRing  = Theme.LightSurface ? ColorRgba{ 15u,  23u,  42u,  65u }  : ColorRgba{ 0u,  0u,  0u,  96u };
+    const ColorRgba RailColor = Theme.LightSurface ? ColorRgba{ 212u, 217u, 225u, 255u } : ColorRgba{ 14u, 15u, 18u, 255u };
+    const ColorRgba FillColor = Theme.LightSurface ? ColorRgba{ 162u, 171u, 186u, 255u } : ColorRgba{ 76u, 78u, 86u, 255u };
+    const ColorRgba KnobColor = Theme.LightSurface ? ColorRgba{ 255u, 255u, 255u, 255u } : ColorRgba{ 242u, 242u, 240u, 255u };
+    const ColorRgba KnobRing  = Theme.LightSurface ? ColorRgba{ 15u,  23u,  42u,  65u }  : ColorRgba{ 0u,  0u,  0u,  110u };
 
-    Surface.FillRectangle(Track, RailColor, 13.0f);
-    Surface.FillRectangle({ Track.X, Track.Y, std::max(24.0f, ThumbX + ThumbRadius - Track.X), Track.Height }, FillColor, 13.0f);
+    Surface.FillRectangle(Track, RailColor, 11.0f);
+    Surface.StrokeRectangle(Track, Theme.LightSurface ? Theme.BorderSubtle : ColorRgba{ 255u, 255u, 255u, 18u }, 11.0f, 1.0f);
+    Surface.FillRectangle({ Track.X, Track.Y, std::max(20.0f, ThumbX + ThumbRadius - Track.X), Track.Height }, FillColor, 11.0f);
     Surface.FillCircle({ ThumbX, CenterY }, ThumbRadius, KnobColor);
     Surface.StrokeCircle({ ThumbX, CenterY }, ThumbRadius, KnobRing, 1.0f);
 
@@ -1161,14 +1178,14 @@ inline OutlinerRowInteraction ConstructOutlinerTreeRow(
         const ColorRgba RowFill = Selected
             ? (Theme.LightSurface ? Theme.HoverSurface : ColorRgba{ 34u, 35u, 39u, 255u })
             : (Theme.LightSurface ? Theme.RaisedSurface : ColorRgba{ 28u, 29u, 33u, 255u });
-        Surface.FillRectangle(BoxR, RowFill, 8.0f);
+        Surface.FillRectangle(BoxR, RowFill, 0.0f);
     }
     if (Selected)
     {
         Surface.FillRectangle(
-            { BoxR.X, BoxR.Y + 7.0f, 3.0f, std::max(8.0f, BoxR.Height - 14.0f) },
+            { BoxR.X, BoxR.Y, 3.0f, BoxR.Height },
             Theme.LightSurface ? Theme.AccentFill : ColorRgba{ 240u, 164u, 58u, 255u },
-            1.5f);
+            0.0f);
     }
 
     float CurX = BoxR.X + 5.0f;
