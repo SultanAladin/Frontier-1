@@ -964,3 +964,6 @@ body.playing .vp-menus,body.playing .axisorb{opacity:0;pointer-events:none;}
 
 .fg-chamber{background:#191919;}
 .fogpanel.disabled .fg-chamber canvas{filter:saturate(.72);opacity:1;}
+/* Solar instruments: matte surfaces; reserve warm emphasis for live readings. */
+.spanel .pcard{background:#171717;border:1px solid #292929;border-radius:15px;box-shadow:none}
+.spanel .mp-stat{grid-template-columns:auto 1fr;align-items:center;gap:8px;padding:13px}.spanel .mp-stat .i{grid-column:1;color:#e8c58f;background:#322c22}.spanel .mp-stat .l{align-self:center}.spanel .mp-stat .n{grid-column:1/-1;margin-top:6px;font-size:32px}.spanel .mp-pill{background:#1b1b1b;border-radius:10px}.spanel .mp-pill .k{order:-1}

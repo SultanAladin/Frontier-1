@@ -1,3 +1,4 @@
+import SolarOverview from '../FrontierEditor/SolarOverview.jsx';
 import { CloudEdit, CloudValue } from "./CloudSpecification.js";
 import CloudDeckPanel from "./CloudDeckPanel.jsx";
 import { FogBeamChamber } from "./FogPanel.jsx";
@@ -765,6 +766,7 @@ export function Inspector({
     Content = (
       <>
         {Header("Environment")}
+        <SolarOverview elevation={Elevation} azimuth={Azimuth} time={Time}/>
         {ReferenceCards}
         <div className="section-caption">
           PROPERTIES <small>Light, direction & atmosphere</small>
