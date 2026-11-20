@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Frontier ForceField Studio — bounded force generators with live 3-D and cross-section field visualisation, in the Project-Zero editor UI.">
+<title>ForceField Studio — Frontier</title>
+<link rel="stylesheet" href="Styles/Studio.css">
+</head>
+<body>
+<!-- Project-Zero shell: Outliner | Viewport | Inspector, with the top Control-Centre notch and the bottom Telemetry drawer. -->
+<div id="Boot" class="boot"><div><b>ForceField Studio</b><small>assembling generators and field viewport…</small><div class="progress"><i style="width:60%"></i></div></div></div>
+<div id="Toast" class="toast" role="status" aria-live="polite"></div>
+<noscript><div style="padding:40px;font:400 13px system-ui;color:#ccc">ForceField Studio needs JavaScript and a WebGL2-capable browser (a software viewport is used when WebGL2 is unavailable).</div></noscript>
+<script type="module" src="Main.js"></script>
+<script>
+  // Module failures must never leave a silent black page: surface the reason in place.
+  window.addEventListener('error', (event) => {
+    const boot = document.getElementById('Boot');
+    if (!boot) return;
+    boot.classList.remove('done');
+    boot.innerHTML = `<div style="max-width:520px"><b>ForceField Studio failed to start</b><small style="color:#ff9a90;line-height:1.6">${String(event.message || 'Unknown module error')}<br>Open the browser console for the stack; serve this folder over HTTP rather than file://.</small></div>`;
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[ForceFieldStudio] unhandled rejection', event.reason);
+  });
+</script>
+</body>
+</html>
