@@ -1,10 +1,11 @@
 /*==========================================================================================================================================
                                                         BAKINGGPUVALIDATION.CPP
 ==========================================================================================================================================*/
-// 🧩 Vulkan GPU Baking Engine Validation: GTX BVH4 + optional RTX RayQuery 17-channel surface bake, OBJ/STL import, PNG export & 3D preview.
+// 🧩 Vulkan GPU Baking Engine Validation: GTX BVH4 + optional RTX RayQuery surface/SDF bake, OBJ/STL import, PNG/.fvol export & 3D preview.
 
 #include "Engine/GeometricRaster/Baking/BakingAccelerationStructure.h"
 #include "Engine/GeometricRaster/Baking/GpuTextureBaker.h"
+#include "Engine/GeometricRaster/Baking/GpuSdfBaker.h"
 #include "Engine/GeometricRaster/Baking/StudyGeometryBuilder.h"
 #include "Engine/GeometricRaster/Baking/TextureBakerRasterizer.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
@@ -182,7 +183,9 @@ int main()
         Device.QueryHardwareRayQuerySupported() ? "YES" : "NO");
 
     GpuTextureBaker Baker {};
-    if (!Verify(Baker.InitializeBaker(&Device), "Initialize GpuTextureBaker"))
+    GpuSdfBaker     SdfBaker {};
+    if (!Verify(Baker.InitializeBaker(&Device), "Initialize GpuTextureBaker") ||
+        !Verify(SdfBaker.InitializeSdfBaker(&Device), "Initialize GpuSdfBaker"))
     {
         return 1;
     }
@@ -208,7 +211,7 @@ int main()
     SurfSpec.AoMaxRayDistanceMeters = 0.45f;
     SurfSpec.TangentSignY           = 1.0f;
     SurfSpec.EdgePaddingPx          = 4u;
-    SurfSpec.ActiveTargetBitmask    = 0x1FFFFu;
+    SurfSpec.ActiveTargetBitmask    = 0x3FFFEu;
     SurfSpec.PreferComputeBvh4      = true;
 
     const BakeCompletionSummary GtxSurf = Baker.ExecuteSurfaceBake(SurfSpec);
@@ -251,19 +254,72 @@ int main()
         }
     }
 
-    // 6. Export PNG and validate output artifacts
-    const std::filesystem::path PngPath = TempDir / "Baked_AO.png";
-    if (!Verify(Baker.ExportSurfaceChannelPng(5u, PngPath), "Export AO PNG") ||
-        !Verify(std::filesystem::file_size(PngPath) > 512u, "PNG file non-trivial"))
+    // 6. Execute GPU 3D Volume SDF + 2D section extract across Z/Y/X
+    VolumeBakeExecutionSpec VolSpec {};
+    VolSpec.GridDim                = 36u;
+    VolSpec.SignedInteriorDistance = true;
+    VolSpec.BoundsPaddingFraction  = 0.16f;
+    VolSpec.SectionAxis            = 0u;
+    VolSpec.SectionDepthNormalized = 0.50f;
+    VolSpec.SectionSizePx          = 256u;
+    VolSpec.PreferComputeBvh4      = true;
+
+    const BakeCompletionSummary VolRes = SdfBaker.ExecuteVolumeSdfBake(Baker.InspectAccel(), Baker.InspectActiveStudy(), VolSpec);
+    if (!Verify(VolRes.VolumeSucceeded, VolRes.DiagnosticText.c_str()))
     {
         return 1;
     }
 
-    // 7. Execute 3D studio preview rasterizer (unbaked + baked + HighWire + Cage)
+    const auto& Voxels = SdfBaker.InspectVolumeDistances();
+    if (!Verify(Voxels.size() == 36u * 36u * 36u, "36^3 Volume SDF float count matches"))
+    {
+        return 1;
+    }
+    float MinSdf = 1e9f;
+    float MaxSdf = -1e9f;
+    for (float D : Voxels)
+    {
+        MinSdf = std::min(MinSdf, D);
+        MaxSdf = std::max(MaxSdf, D);
+    }
+    if (!Verify(MinSdf < -0.01f && MaxSdf > 0.05f, "Signed SDF contains both negative interior and positive exterior values"))
+    {
+        return 1;
+    }
+
+    for (uint32_t Axis = 0u; Axis < 3u; ++Axis)
+    {
+        if (!Verify(SdfBaker.UpdateSdfSectionPreview(Axis, 0.50f, true, 256u), "Extract 2D SDF section slice") ||
+            !Verify(HasNonTrivialColorVariance(SdfBaker.InspectSdfSectionRgba8(), 256u, 256u), "2D SDF section pixels non-trivial"))
+        {
+            return 1;
+        }
+    }
+
+    // 7. Export PNG + .fvol and validate output artifacts
+    const std::filesystem::path PngPath  = TempDir / "Baked_AO.png";
+    const std::filesystem::path FvolPath = TempDir / "Baked_UtahTeapot.fvol";
+    if (!Verify(Baker.ExportSurfaceChannelPng(5u, PngPath), "Export AO PNG") ||
+        !Verify(std::filesystem::file_size(PngPath) > 512u, "PNG file non-trivial") ||
+        !Verify(SdfBaker.ExportVolumeFvol(FvolPath), "Export .fvol SDF") ||
+        !Verify(std::filesystem::file_size(FvolPath) > 1024u, ".fvol file non-trivial"))
+    {
+        return 1;
+    }
+    {
+        std::ifstream FvolIn(FvolPath);
+        std::string Content((std::istreambuf_iterator<char>(FvolIn)), std::istreambuf_iterator<char>());
+        if (!Verify(Content.find("frontier.fvol.v1") != std::string::npos, ".fvol contains frontier.fvol.v1 header"))
+        {
+            return 1;
+        }
+    }
+
+    // 8. Execute 3D studio preview rasterizer (unbaked + baked + HighWire + Cage)
     BakeViewportRenderSpec ViewSpec {};
     ViewSpec.WidthPx             = 640u;
     ViewSpec.HeightPx            = 480u;
-    ViewSpec.InspectedTargetId   = 5u; // Ambient Occlusion
+    ViewSpec.InspectedTargetId   = 6u; // Ambient Occlusion
     ViewSpec.SurfaceBaked        = true;
     ViewSpec.ShowHighWireOverlay = true;
     ViewSpec.ShowCageOverlay     = true;
@@ -280,9 +336,10 @@ int main()
     std::error_code CleanupEc;
     std::filesystem::remove_all(TempDir, CleanupEc);
     ViewportRasterizer.TeardownRasterizer();
+    SdfBaker.TeardownSdfBaker();
     Baker.TeardownBaker();
     Device.TeardownInterchange();
 
-    std::printf("[BakingGPUValidation] ALL GPU BAKING CHECKS PASSED\n");
+    std::printf("[BakingGPUValidation] ALL GPU BAKING & SDF CHECKS PASSED\n");
     return 0;
 }

@@ -1,6 +1,6 @@
 # 🧩 `Engine/Workspaces/Texturing/` — Pattern, Stamp & Baking Studios
 
-> **TL;DR**: `Engine/Workspaces/Texturing/` hosts three workspaces: **`PatternWorkspace`** (`FrontierPattern`), **`StampWorkspace`** (`FrontierStamp`) sharing the ThorVG/Vulkan 2D vector stack + 8 GPU modifiers + 22 OpenPBR channels, and **`BakingWorkspace`** (`FrontierBaking`), a pure-GPU GTX BVH4 & RTX RayQuery 17-target PBR surface baker.
+> **TL;DR**: `Engine/Workspaces/Texturing/` hosts three workspaces: **`PatternWorkspace`** (`FrontierPattern`), **`StampWorkspace`** (`FrontierStamp`) sharing the ThorVG/Vulkan 2D vector stack + 8 GPU modifiers + 22 OpenPBR channels, and **`BakingWorkspace`** (`FrontierBaking`), a pure-GPU GTX BVH4 & RTX RayQuery 18-target PBR & 3D Volume SDF baker.
 
 ---
 
@@ -9,7 +9,7 @@
 | Workspace | Files | Core Capabilities |
 | :--- | :--- | :--- |
 | **`PatternWorkspace` & `StampWorkspace`** | `PatternStampWorkspaceHost.{h,cpp}`, `PatternWorkspaceHost.h`, `StampWorkspaceHost.h`, `PatternStampStackSession.{h,cpp}`, `PatternStampToolHeaderPane.{h,cpp}`, `PatternStampLayerStackPane.{h,cpp}`, `PatternStampInspectorPane.{h,cpp}`, `VectorViewportInteractor.{h,cpp}` | Seamless 2D vector authoring (`Pattern`), alpha-cutout decal/stencil authoring (`Stamp`), SVG clipboard import, 8 GPU modifiers, 22 OpenPBR output channels, 2×2 seamless tiling preview |
-| **`BakingWorkspace`** | `BakingWorkspaceHost.{h,cpp}`, `BakingWorkspaceSession.{h,cpp}`, `BakingTargetsPane.{h,cpp}`, `BakingViewportPane.{h,cpp}`, `BakingInspectorPane.{h,cpp}` | High-to-low cage raytracing (`GTX BVH4` / `RTX RayQuery`), 17 PBR surface map targets, 2D/3D/High-Wire/Cage viewport inspection, edge dilation padding |
+| **`BakingWorkspace`** | `BakingWorkspaceHost.{h,cpp}`, `BakingWorkspaceSession.{h,cpp}`, `BakingTargetsPane.{h,cpp}`, `BakingViewportPane.{h,cpp}`, `BakingInspectorPane.{h,cpp}` | High-to-low cage raytracing (`GTX BVH4` / `RTX RayQuery`), 18 PBR baked targets + Float32 `VolumeSdf`, 2D/3D/High-Wire/Cage viewport inspection, edge dilation padding |
 | **Shared Appearance** | `TexturingPaneAppearance.h` | Shared dark/light theme tokens, header/footer helpers |
 
 ---
@@ -29,9 +29,10 @@
 
 | Pane | Controls & Sections | Function |
 | :--- | :--- | :--- |
-| **`BakingTargetsPane`** | 4 quick-select preset chips + 2-column categorized 17-target swatch grid (`TangentNormal`, `WorldNormal`, `ModelSpaceNormal`, `BentNormal`, `BevelNormal`, `AmbientOcclusion`, `SecondaryAo`, `Curvature`, `Convexity`, `Concavity`, `Thickness`, `HeightDisplacement`, `TopDownDust`, `UvIslandId`, `PartMaterialId`, `WorldPosition`, `UvWireframe`) | Select & inspect individual bake targets (`GTX BVH4 / RTX RayQuery`, `High -> Low Cage`) |
+| **`BakingTargetsPane`** | 4 quick-select preset chips + 2-column categorized 18-target swatch grid (`VolumeSdf`, `TangentNormal`, `WorldNormal`, `ModelSpaceNormal`, `BentNormal`, `BevelNormal`, `AmbientOcclusion`, `SecondaryAo`, `Curvature`, `Convexity`, `Concavity`, `Thickness`, `HeightDisplacement`, `TopDownDust`, `UvIslandId`, `PartMaterialId`, `WorldPosition`, plus readiness state `SDF OK`/`SDF`) | Select & inspect individual bake targets (`GTX BVH4 / RTX RayQuery`, `High -> Low Cage`) |
 | **`BakingViewportPane`** | `Bake Selected Maps` · `Send to Paint` · `High-Wire` · `Cage` toggles · Target preview mode (3D Specimen / 2D Map / Split) | Trigger GPU bake, inspect high-poly wireframe & cage offset envelope |
 | **`BakingInspectorPane`** | **Surface Section**: `AO / Bent Samples` (`4–36 ray`), `Front Cage Offset` (`0.02–0.80 m`), `Rear Cage Offset` (`0.02–0.80 m`), `AO Max Ray Distance` (`0.10–2.00 m`), `UV Edge Padding` (`0–14 px`) | Configure raytracing & UV dilation |
+| **`BakingInspectorPane`** | **Volume Section**: `Bounds Padding` (`0.05–0.45`), `Slice Depth` (`0.00–1.00`) | Configure 3D Float32 SDF bounds & interactive slice plane |
 | **`BakingInspectorPane`** | **Export Section**: Format/output path & dilation export (`Edge Dilation Padding Included`) | Export baked maps & `.ImageSpace`/`.TextureSpace` assets |
 
 ---

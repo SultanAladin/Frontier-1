@@ -1,11 +1,12 @@
 /*============================================================================================================================================
                                                           BAKINGWORKSPACESESSION.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of BakingWorkspaceSession: real Vulkan GPU GTX BVH4 + RTX RayQuery surface baking, study import & PNG export.
+// 🧩 Implementation of BakingWorkspaceSession: real Vulkan GPU GTX BVH4 + RTX RayQuery baking, study import & PNG/.fvol export.
 
 #include "Engine/Workspaces/Texturing/BakingWorkspaceSession.h"
 
 #include "Engine/GeometricRaster/Baking/GpuTextureBaker.h"
+#include "Engine/GeometricRaster/Baking/GpuSdfBaker.h"
 #include "Engine/GeometricRaster/Baking/StudyGeometryBuilder.h"
 #include "Engine/GeometricRaster/Baking/TextureBakerRasterizer.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
@@ -26,6 +27,7 @@ struct BakingGpuEngineStorage
     VulkanInterchange*                 ActiveDevice = nullptr;
     std::filesystem::path              ShaderDirectory {};
     GpuTextureBaker                    Baker {};
+    GpuSdfBaker                        SdfBaker {};
     TextureBakerRasterizer             Rasterizer {};
     PreparedStudyPair                  StudyPair {};
     bool                               StudyUploadedToGpu = false;
@@ -37,6 +39,7 @@ struct BakingGpuEngineStorage
     ~BakingGpuEngineStorage()
     {
         Rasterizer.TeardownRasterizer();
+        SdfBaker.TeardownSdfBaker();
         Baker.TeardownBaker();
         if (OwnedDevice != nullptr)
         {
@@ -49,23 +52,24 @@ namespace
 {
 
 constexpr std::array<BakerTargetDescriptor, BakingWorkspaceSession::TargetCount> BakerTargetEntries {{
-    { BakerTargetId::TangentNormal,      BakerTargetGroup::Normals,         "Tangent Normal",        "High-to-Low normal"    },
-    { BakerTargetId::WorldNormal,        BakerTargetGroup::Normals,         "World Normal",          "Scene XYZ vector"      },
-    { BakerTargetId::ModelSpaceNormal,   BakerTargetGroup::Normals,         "Object Normal",         "Local XYZ vector"      },
-    { BakerTargetId::BentNormal,         BakerTargetGroup::Normals,         "Bent Normal",           "Average unoccluded ray"},
-    { BakerTargetId::BevelNormal,        BakerTargetGroup::Normals,         "Bevel Normal",          "Rounded edge filter"   },
-    { BakerTargetId::AmbientOcclusion,   BakerTargetGroup::Surface,         "Ambient Occlusion",     "Hemisphere sky AO"     },
-    { BakerTargetId::SecondaryAo,        BakerTargetGroup::Surface,         "Secondary AO",          "Tight contact creases" },
-    { BakerTargetId::Curvature,          BakerTargetGroup::Surface,         "Curvature",             "Ridge & cavity signed" },
-    { BakerTargetId::Convexity,          BakerTargetGroup::Surface,         "Convexity",             "Positive ridges"       },
-    { BakerTargetId::Concavity,          BakerTargetGroup::Surface,         "Concavity",             "Recessed grooves"      },
-    { BakerTargetId::Thickness,          BakerTargetGroup::Surface,         "Thickness",             "Interior ray depth"    },
-    { BakerTargetId::HeightDisplacement, BakerTargetGroup::Surface,         "Height / Displacement", "Cage ray offset"       },
-    { BakerTargetId::TopDownDust,        BakerTargetGroup::DiagnosticMasks, "Top-Down Dust",         "Directional overlay"   },
-    { BakerTargetId::UvIslandId,         BakerTargetGroup::DiagnosticMasks, "UV Island ID",          "Chart color index"     },
-    { BakerTargetId::PartMaterialId,     BakerTargetGroup::DiagnosticMasks, "Part / Material ID",    "Sub-surface ID color"  },
-    { BakerTargetId::WorldPosition,      BakerTargetGroup::DiagnosticMasks, "World Position",        "Normalized XYZ bbox"   },
-    { BakerTargetId::UvWireframe,        BakerTargetGroup::DiagnosticMasks, "UV Wireframe",          "Edge triangle overlay" },
+    { BakerTargetId::VolumeSdf,          BakerTargetGroup::VolumeDistance, "Volume SDF",            "3D distance grid",     true  },
+    { BakerTargetId::TangentNormal,      BakerTargetGroup::Normals,           "Tangent Normal",        "High-to-Low normal",   false },
+    { BakerTargetId::WorldNormal,        BakerTargetGroup::Normals,           "World Normal",          "Scene XYZ vector",     false },
+    { BakerTargetId::ModelSpaceNormal,   BakerTargetGroup::Normals,           "Object Normal",         "Local XYZ vector",     false },
+    { BakerTargetId::BentNormal,         BakerTargetGroup::Normals,           "Bent Normal",           "Average unoccluded ray", false },
+    { BakerTargetId::BevelNormal,        BakerTargetGroup::Normals,           "Bevel Normal",          "Rounded edge filter",  false },
+    { BakerTargetId::AmbientOcclusion,   BakerTargetGroup::Surface,           "Ambient Occlusion",     "Hemisphere sky AO",    false },
+    { BakerTargetId::SecondaryAo,        BakerTargetGroup::Surface,           "Secondary AO",          "Tight contact creases",false },
+    { BakerTargetId::Curvature,          BakerTargetGroup::Surface,           "Curvature",             "Ridge & cavity signed",false },
+    { BakerTargetId::Convexity,          BakerTargetGroup::Surface,           "Convexity",             "Positive ridges",      false },
+    { BakerTargetId::Concavity,          BakerTargetGroup::Surface,           "Concavity",             "Recessed grooves",     false },
+    { BakerTargetId::Thickness,          BakerTargetGroup::Surface,           "Thickness",             "Interior ray depth",   false },
+    { BakerTargetId::HeightDisplacement, BakerTargetGroup::Surface,           "Height / Displacement", "Cage ray offset",      false },
+    { BakerTargetId::TopDownDust,        BakerTargetGroup::DiagnosticMasks,       "Top-Down Dust",         "Directional overlay",  false },
+    { BakerTargetId::UvIslandId,         BakerTargetGroup::DiagnosticMasks,       "UV Island ID",          "Chart color index",    false },
+    { BakerTargetId::PartMaterialId,     BakerTargetGroup::DiagnosticMasks,       "Part / Material ID",    "Sub-surface ID color", false },
+    { BakerTargetId::WorldPosition,      BakerTargetGroup::DiagnosticMasks,       "World Position",        "Normalized XYZ bbox",  false },
+    { BakerTargetId::UvWireframe,        BakerTargetGroup::DiagnosticMasks,       "UV Wireframe",          "Edge triangle overlay",false },
 }};
 
 constexpr std::array<BakerStudyDescriptor, 5u> BakerStudyEntries {{
@@ -102,6 +106,7 @@ constexpr std::array<BakerStudyDescriptor, 5u> BakerStudyEntries {{
 {
     switch (Target)
     {
+        case BakerTargetId::VolumeSdf:          return "VolumeSdfSlice";
         case BakerTargetId::TangentNormal:      return "TangentNormal";
         case BakerTargetId::WorldNormal:        return "WorldNormal";
         case BakerTargetId::ModelSpaceNormal:   return "ObjectNormal";
@@ -141,6 +146,7 @@ void BakingWorkspaceSession::AttachExternalVulkanDevice(
         GpuStorage = std::make_unique<BakingGpuEngineStorage>();
     }
     GpuStorage->Rasterizer.TeardownRasterizer();
+    GpuStorage->SdfBaker.TeardownSdfBaker();
     GpuStorage->Baker.TeardownBaker();
     GpuStorage->OwnedDevice.reset();
     GpuStorage->ActiveDevice      = ExternalDevice;
@@ -170,7 +176,8 @@ bool BakingWorkspaceSession::EnsureGpuEngineReady()
 
     if (!GpuStorage->Baker.Ready())
     {
-        if (!GpuStorage->Baker.InitializeBaker(GpuStorage->ActiveDevice, GpuStorage->ShaderDirectory))
+        if (!GpuStorage->Baker.InitializeBaker(GpuStorage->ActiveDevice, GpuStorage->ShaderDirectory) ||
+            !GpuStorage->SdfBaker.InitializeSdfBaker(GpuStorage->ActiveDevice, GpuStorage->ShaderDirectory))
         {
             ProgressStatus      = "Shader compile/load failed";
             DeviceIndicatorText = "Baker Init Error";
@@ -240,9 +247,16 @@ void BakingWorkspaceSession::ResetDefaults() noexcept
     ShowHighWireOverlay    = false;
     ShowCageOverlay        = false;
 
+    VolumeGridDim          = 36u;
+    SignedInteriorDistance = true;
+    VolumeBoundsPadding    = 0.16f;
+    SectionAxis            = VolumeSectionAxis::AxisZ;
+    SectionDepthNormalized = 0.50f;
+
     InspectedTarget        = BakerTargetId::TangentNormal;
     BakedReadyTargets.fill(false);
     BakingActive           = false;
+    VolumeSdfBaked         = false;
     SurfaceBaked           = false;
     BridgedToPaint         = false;
     BakeProgress           = 0.0f;
@@ -254,7 +268,7 @@ void BakingWorkspaceSession::ResetDefaults() noexcept
     PaintTransferSnapshot  = {};
 
     ResetOrbitCamera();
-    ApplyQuickPreset(BakerQuickPreset::OcclusionPlus);
+    ApplyQuickPreset(BakerQuickPreset::PbrPlusVolume);
 }
 
 void BakingWorkspaceSession::ResetOrbitCamera() noexcept
@@ -311,10 +325,10 @@ void BakingWorkspaceSession::ApplyQuickPreset(BakerQuickPreset Preset) noexcept
         SelectedTargets[static_cast<std::size_t>(BakerTargetId::Curvature)]          = true;
         SelectedTargets[static_cast<std::size_t>(BakerTargetId::HeightDisplacement)] = true;
     }
-    else if (Preset == BakerQuickPreset::OcclusionPlus)
+    else if (Preset == BakerQuickPreset::PbrPlusVolume)
     {
+        SelectedTargets[static_cast<std::size_t>(BakerTargetId::VolumeSdf)]          = true;
         SelectedTargets[static_cast<std::size_t>(BakerTargetId::TangentNormal)]      = true;
-        SelectedTargets[static_cast<std::size_t>(BakerTargetId::BentNormal)]         = true;
         SelectedTargets[static_cast<std::size_t>(BakerTargetId::AmbientOcclusion)]   = true;
         SelectedTargets[static_cast<std::size_t>(BakerTargetId::Curvature)]          = true;
         SelectedTargets[static_cast<std::size_t>(BakerTargetId::HeightDisplacement)] = true;
@@ -355,6 +369,7 @@ void BakingWorkspaceSession::SelectStudy(BakerStudyShape NextStudy) noexcept
     {
         Study          = NextStudy;
         SurfaceBaked   = false;
+        VolumeSdfBaked = false;
         BridgedToPaint = false;
         BakedReadyTargets.fill(false);
         BakeProgress   = 0.0f;
@@ -378,9 +393,19 @@ void BakingWorkspaceSession::AssignResolution(uint32_t NextResPx) noexcept
     }
 }
 
+void BakingWorkspaceSession::AssignVolumeGridDim(uint32_t NextDim) noexcept
+{
+    if (NextDim == 24u || NextDim == 36u || NextDim == 48u || NextDim == 64u)
+    {
+        VolumeGridDim = NextDim;
+    }
+}
+
 void BakingWorkspaceSession::ExecuteBakeSimulation() noexcept
 {
     std::size_t AnySelected = 0u;
+    bool        AnySurface  = false;
+    bool        WantVolume  = false;
     uint32_t    ActiveMask  = 0u;
     for (std::size_t I = 0u; I < TargetCount; ++I)
     {
@@ -390,6 +415,14 @@ void BakingWorkspaceSession::ExecuteBakeSimulation() noexcept
         }
         ++AnySelected;
         ActiveMask |= (1u << I);
+        if (I == static_cast<std::size_t>(BakerTargetId::VolumeSdf))
+        {
+            WantVolume = true;
+        }
+        else
+        {
+            AnySurface = true;
+        }
     }
     if (AnySelected == 0u)
     {
@@ -406,36 +439,65 @@ void BakingWorkspaceSession::ExecuteBakeSimulation() noexcept
 
     BakingActive = true;
     const bool PreferCompute = (ComputeDevice == BakerComputeDevice::GtxComputeBvh4);
+    double TotalMs           = 0.0;
+    BakeAccelerationEngine BackendUsed = GpuStorage->Baker.QueryActiveBackend(PreferCompute);
 
-    SurfaceBakeExecutionSpec SurfSpec {};
-    SurfSpec.ResolutionPx           = TargetResolutionPx;
-    SurfSpec.AoSampleCount          = static_cast<uint32_t>(std::clamp(AoSampleCount, 4, 64));
-    SurfSpec.FrontCageMeters        = FrontCageOffsetMeters;
-    SurfSpec.RearCageMeters         = RearCageOffsetMeters;
-    SurfSpec.AoMaxRayDistanceMeters = AoMaxRayDistanceMeters;
-    SurfSpec.TangentSignY           = (NormalConvention == TangentNormalConvention::DirectXMinusY) ? -1.0f : 1.0f;
-    SurfSpec.EdgePaddingPx          = static_cast<uint32_t>(std::clamp(UvEdgePaddingPx, 0, 24));
-    SurfSpec.ActiveTargetBitmask    = ActiveMask;
-    SurfSpec.PreferComputeBvh4      = PreferCompute;
-
-    const BakeCompletionSummary SurfRes = GpuStorage->Baker.ExecuteSurfaceBake(SurfSpec);
-    if (!SurfRes.SurfaceSucceeded)
+    if (AnySurface)
     {
-        BakingActive   = false;
-        BakeProgress   = 0.0f;
-        ProgressStatus = SurfRes.DiagnosticText;
-        return;
+        SurfaceBakeExecutionSpec SurfSpec {};
+        SurfSpec.ResolutionPx           = TargetResolutionPx;
+        SurfSpec.AoSampleCount          = static_cast<uint32_t>(std::clamp(AoSampleCount, 4, 64));
+        SurfSpec.FrontCageMeters        = FrontCageOffsetMeters;
+        SurfSpec.RearCageMeters         = RearCageOffsetMeters;
+        SurfSpec.AoMaxRayDistanceMeters = AoMaxRayDistanceMeters;
+        SurfSpec.TangentSignY           = (NormalConvention == TangentNormalConvention::DirectXMinusY) ? -1.0f : 1.0f;
+        SurfSpec.EdgePaddingPx          = static_cast<uint32_t>(std::clamp(UvEdgePaddingPx, 0, 24));
+        SurfSpec.ActiveTargetBitmask    = ActiveMask;
+        SurfSpec.PreferComputeBvh4      = PreferCompute;
+
+        const BakeCompletionSummary SurfRes = GpuStorage->Baker.ExecuteSurfaceBake(SurfSpec);
+        if (!SurfRes.SurfaceSucceeded)
+        {
+            BakingActive   = false;
+            BakeProgress   = 0.0f;
+            ProgressStatus = SurfRes.DiagnosticText;
+            return;
+        }
+        SurfaceBaked = true;
+        TotalMs     += SurfRes.SurfaceElapsedMs;
+        BackendUsed  = SurfRes.ExecutedBackend;
+        for (std::size_t I = 1u; I < TargetCount; ++I)
+        {
+            if (SelectedTargets[I])
+            {
+                BakedReadyTargets[I] = true;
+            }
+        }
     }
 
-    SurfaceBaked = true;
-    const double TotalMs                    = SurfRes.SurfaceElapsedMs;
-    const BakeAccelerationEngine BackendUsed = SurfRes.ExecutedBackend;
-    for (std::size_t I = 0u; I < TargetCount; ++I)
+    if (WantVolume)
     {
-        if (SelectedTargets[I])
+        VolumeBakeExecutionSpec VolSpec {};
+        VolSpec.GridDim                = VolumeGridDim;
+        VolSpec.SignedInteriorDistance = SignedInteriorDistance;
+        VolSpec.BoundsPaddingFraction  = VolumeBoundsPadding;
+        VolSpec.SectionAxis            = static_cast<uint32_t>(SectionAxis);
+        VolSpec.SectionDepthNormalized = SectionDepthNormalized;
+        VolSpec.SectionSizePx          = 512u;
+        VolSpec.PreferComputeBvh4      = PreferCompute;
+
+        const BakeCompletionSummary VolRes = GpuStorage->SdfBaker.ExecuteVolumeSdfBake(GpuStorage->Baker.InspectAccel(), GpuStorage->Baker.InspectActiveStudy(), VolSpec);
+        if (!VolRes.VolumeSucceeded)
         {
-            BakedReadyTargets[I] = true;
+            BakingActive   = false;
+            BakeProgress   = 0.0f;
+            ProgressStatus = VolRes.DiagnosticText;
+            return;
         }
+        VolumeSdfBaked = true;
+        BakedReadyTargets[static_cast<std::size_t>(BakerTargetId::VolumeSdf)] = true;
+        TotalMs    += VolRes.VolumeElapsedMs;
+        BackendUsed = VolRes.ExecutedBackend;
     }
 
     if (!SelectedTargets[static_cast<std::size_t>(InspectedTarget)])
@@ -459,6 +521,19 @@ void BakingWorkspaceSession::ExecuteBakeSimulation() noexcept
     char BadgeBuf[80];
     std::snprintf(BadgeBuf, sizeof(BadgeBuf), "%s · %.0f ms", DeviceTag, TotalMs);
     DeviceIndicatorText = BadgeBuf;
+}
+
+void BakingWorkspaceSession::RefreshSdfSectionOnGpu() noexcept
+{
+    if (!VolumeSdfBaked || !GpuStorage || !GpuStorage->Baker.Ready())
+    {
+        return;
+    }
+    (void)GpuStorage->SdfBaker.UpdateSdfSectionPreview(
+        static_cast<uint32_t>(SectionAxis),
+        SectionDepthNormalized,
+        SignedInteriorDistance,
+        512u);
 }
 
 void BakingWorkspaceSession::SendBakedTargetsToPaint() noexcept
@@ -522,8 +597,21 @@ bool BakingWorkspaceSession::QueryInspectedPlanarRgba8(
     {
         return false;
     }
+    if (InspectedTarget == BakerTargetId::VolumeSdf)
+    {
+        const auto& Sec = GpuStorage->SdfBaker.InspectSdfSectionRgba8();
+        const uint32_t DimPx = GpuStorage->SdfBaker.QuerySdfSectionSizePx();
+        if (DimPx == 0u || Sec.size() < static_cast<std::size_t>(DimPx) * DimPx * 4u)
+        {
+            return false;
+        }
+        OutPixels   = Sec.data();
+        OutWidthPx  = DimPx;
+        OutHeightPx = DimPx;
+        return true;
+    }
 
-    const uint32_t ChannelSlot = static_cast<uint32_t>(InspectedTarget);
+    const uint32_t ChannelSlot = static_cast<uint32_t>(InspectedTarget) - 1u;
     const uint32_t ResPx       = GpuStorage->Baker.QuerySurfaceResolutionPx();
     const auto&    Pixels      = GpuStorage->Baker.InspectChannelRgba8(ChannelSlot);
     if (ResPx == 0u || Pixels.size() < static_cast<std::size_t>(ResPx) * ResPx * 4u)
@@ -586,6 +674,7 @@ bool BakingWorkspaceSession::LoadCustomStudyAsset(
     GpuStorage->StudyUploadedToGpu = false;
 
     SurfaceBaked   = false;
+    VolumeSdfBaked = false;
     BridgedToPaint = false;
     BakedReadyTargets.fill(false);
     BakeProgress   = 0.0f;
@@ -609,7 +698,15 @@ bool BakingWorkspaceSession::ExportInspectedTargetPng(const std::filesystem::pat
         OutPath = ExportDir / FileName;
     }
 
-    const bool Ok = GpuStorage->Baker.ExportSurfaceChannelPng(static_cast<uint32_t>(InspectedTarget), OutPath);
+    bool Ok = false;
+    if (InspectedTarget == BakerTargetId::VolumeSdf)
+    {
+        Ok = GpuStorage->SdfBaker.ExportSdfSectionPng(OutPath);
+    }
+    else
+    {
+        Ok = GpuStorage->Baker.ExportSurfaceChannelPng(static_cast<uint32_t>(InspectedTarget) - 1u, OutPath);
+    }
     if (Ok)
     {
         LastExportedPath = OutPath.string();
@@ -620,6 +717,29 @@ bool BakingWorkspaceSession::ExportInspectedTargetPng(const std::filesystem::pat
         ProgressStatus = "Bake target before exporting PNG";
     }
     return Ok;
+}
+
+bool BakingWorkspaceSession::ExportVolumeSdfFvol(const std::filesystem::path& ExplicitOutputPath)
+{
+    if (!VolumeSdfBaked || !GpuStorage || !GpuStorage->Baker.Ready())
+    {
+        ProgressStatus = "Bake Volume SDF first";
+        return false;
+    }
+
+    std::filesystem::path OutPath = ExplicitOutputPath;
+    if (OutPath.empty())
+    {
+        OutPath = DiscoverRepoRoot() / "EngineExports/Baking/BakedVolumeSdf.fvol";
+    }
+    if (GpuStorage->SdfBaker.ExportVolumeFvol(OutPath))
+    {
+        LastExportedPath = OutPath.string();
+        ProgressStatus   = "Exported " + OutPath.filename().string();
+        return true;
+    }
+    ProgressStatus = "Failed writing .fvol file";
+    return false;
 }
 
 uint32_t BakingWorkspaceSession::QueryActiveLowTriangles() const noexcept
@@ -692,10 +812,11 @@ const char* BakingWorkspaceSession::QueryGroupHeading(BakerTargetGroup Group) no
 {
     switch (Group)
     {
-        case BakerTargetGroup::Normals:         return "Normals & Vectors";
-        case BakerTargetGroup::Surface:         return "Surface, Occlusion & Curvature";
-        case BakerTargetGroup::DiagnosticMasks: return "Masks, Height & UV Layout";
-        default:                                return "Bake Targets";
+        case BakerTargetGroup::VolumeDistance: return "3D Volume & Distance Field";
+        case BakerTargetGroup::Normals:           return "Normals & Vectors";
+        case BakerTargetGroup::Surface:           return "Surface, Occlusion & Curvature";
+        case BakerTargetGroup::DiagnosticMasks:       return "Masks, Height & UV Layout";
+        default:                                  return "Bake Targets";
     }
 }
 

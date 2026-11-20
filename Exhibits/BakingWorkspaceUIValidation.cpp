@@ -1,7 +1,7 @@
 /*==========================================================================================================================================
                                                    BAKINGWORKSPACEUIVALIDATION.CPP
 ==========================================================================================================================================*/
-// 🧩 Domain & ImGui UI exhibit for Baking Studio + ControlIcon 0..85 verification (3-column layout, 3D + 2D surface split & Quick Menu).
+// 🧩 Domain & ImGui UI exhibit for Baking Studio + ControlIcon 0..85 verification (3-column layout, 3D + 2D SDF split & Quick Menu).
 
 #include "Engine/Components/Appearance/ThemeRepository.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"
@@ -87,7 +87,8 @@ int main()
         if (!VerifyCondition(Sess.Study == BakerStudyShape::UtahTeapot, "Default study is UtahTeapot") ||
             !VerifyCondition(Sess.TargetResolutionPx == 512u, "Default bake resolution is 512px") ||
             !VerifyCondition(Sess.AoSampleCount == 12, "Default AO ray count is 12") ||
-            !VerifyCondition(Sess.CountSelectedTargets() == 5u, "Default OcclusionPlus preset selects 5 targets") ||
+            !VerifyCondition(Sess.VolumeGridDim == 36u, "Default Volume SDF grid dim is 36") ||
+            !VerifyCondition(Sess.CountSelectedTargets() == 5u, "Default PBR + Volume preset selects 5 targets") ||
             !VerifyCondition(Sess.InspectedTarget == BakerTargetId::TangentNormal, "Default inspected target is TangentNormal"))
         {
             return 1;
@@ -99,15 +100,15 @@ int main()
             return 1;
         }
         Sess.ApplyQuickPreset(BakerQuickPreset::SelectAll);
-        if (!VerifyCondition(Sess.CountSelectedTargets() == 17u, "SelectAll selects all 17 targets"))
+        if (!VerifyCondition(Sess.CountSelectedTargets() == 18u, "SelectAll selects all 18 targets"))
         {
             return 1;
         }
-        Sess.ApplyQuickPreset(BakerQuickPreset::OcclusionPlus);
-        Sess.InspectTarget(BakerTargetId::AmbientOcclusion);
+        Sess.ApplyQuickPreset(BakerQuickPreset::PbrPlusVolume);
+        Sess.InspectTarget(BakerTargetId::VolumeSdf);
         Sess.ExecuteBakeSimulation();
-        if (!VerifyCondition(Sess.SurfaceBaked, Sess.ProgressStatus.c_str()) ||
-            !VerifyCondition(Sess.QueryTargetReady(BakerTargetId::AmbientOcclusion), "AmbientOcclusion ready after bake"))
+        if (!VerifyCondition(Sess.SurfaceBaked && Sess.VolumeSdfBaked, Sess.ProgressStatus.c_str()) ||
+            !VerifyCondition(Sess.QueryTargetReady(BakerTargetId::VolumeSdf), "VolumeSdf ready after bake"))
         {
             return 1;
         }
@@ -119,7 +120,7 @@ int main()
         }
 
         Sess.SelectStudy(BakerStudyShape::ShaderBall);
-        if (!VerifyCondition(!Sess.SurfaceBaked, "Study change clears previous baked buffers"))
+        if (!VerifyCondition(!Sess.SurfaceBaked && !Sess.VolumeSdfBaked, "Study change clears previous baked buffers"))
         {
             return 1;
         }
@@ -170,8 +171,8 @@ int main()
         ControlCentre.ApplyDraftAppearanceImmediate();
         ControlCentre.AccessNotificationStream().ClearPending();
 
-        // Exhibit 09: Main Baking Workspace (matches 05-HTML-baking.png)
-        BakingHost.AccessSession().InspectTarget(BakerTargetId::BentNormal);
+        // Exhibit 09: Main Baking Workspace (matches cards-bake.png 1:1 with TangentNormal open)
+        BakingHost.AccessSession().InspectTarget(BakerTargetId::TangentNormal);
         if (!CaptureBakingWorkspacePng(Io, Dock, ControlCentre, ImageDir / "09-BakingWorkspaceMain.png"))
         {
             return 1;
@@ -202,13 +203,13 @@ int main()
             }
         }
 
-        // Exhibit 10: Baked 3D + 2D Split inspecting Ambient Occlusion + Inspector scrolled to Export Bridge
+        // Exhibit 10: Baked 3D + 2D Split inspecting Volume SDF + Inspector scrolled to Volume SDF & Export Bridge
         BakingHost.AccessSession().ExecuteBakeSimulation();
         BakingHost.AccessSession().ViewportLayout  = BakerViewportLayout::SplitView;
-        BakingHost.AccessSession().InspectedTarget = BakerTargetId::AmbientOcclusion;
+        BakingHost.AccessSession().InspectedTarget = BakerTargetId::VolumeSdf;
         BakingHost.AccessTargetsPane().AssignScrollOffsetY(120.0f);
-        BakingHost.AccessInspectorPane().AssignScrollOffsetY(280.0f);
-        if (!CaptureBakingWorkspacePng(Io, Dock, ControlCentre, ImageDir / "10-BakingWorkspaceSplitSurface.png"))
+        BakingHost.AccessInspectorPane().AssignScrollOffsetY(520.0f);
+        if (!CaptureBakingWorkspacePng(Io, Dock, ControlCentre, ImageDir / "10-BakingWorkspaceSplitSdf.png"))
         {
             return 1;
         }

@@ -36,7 +36,6 @@ Deletion scope of `63db120` (114 paths, summarised):
 | `Source/Engine/GeometricRaster/GlobalIllumination/DeterministicIntegrators.h` | Deterministic quadrature / sampling integrators |
 | `Source/Engine/Shaders/*` | The three removed SDF/GI `.slang` units |
 | `Source/Engine/ParticleSpace/Origins/ControlVehicleSurfaceLoader.{h,cpp}` + `ParticleBuffers.h` | The FCT1 vehicle loader that every SDF/GI exhibit depends on for its `ControlVehicle` triangle set (paths preserved so the source still compiles when restored) |
-| `Source/BakingSdf/*` | Archived Baking Studio 3D Volume SDF baker (`GpuSdfBaker.{h,cpp}`, `BakeVolumeSdfCompute.slang`, `ExtractSdfSectionCompute.slang`, `10-BakingWorkspaceSplitSdf.png`) retired during Phase 0 of the World Rendering Redo (`WorldRenderingRedoPlan.md`) |
 | `Source/Exhibits/DeterministicPathTracer/` | The removed path-tracer report (`README.md`, `Code/`, `Results/`, `Images/`) |
 | `Evidence/CleanEmissiveGi/*` | 10 proof PNGs + `validation_summary.json` |
 | `Evidence/CleanEmissiveShadows/*` | 6 proof PNGs + `shadow_validation_summary.json` |

@@ -238,19 +238,89 @@ int main()
             }
         }
 
-        // Exhibit 6: Add Layer overlay sheet + More Tools overlay sheet + Inspector scrolled to PBR Surface Channels + Modifiers (matches 04-HTML-pattern-overlay sheets-and-modifiers.png)
-        PatternHost.AccessLayerStackPane().AddLayerSheetOpen  = true;
-        PatternHost.AccessToolHeaderPane().MoreToolsSheetOpen = true;
-        PatternHost.AccessInspectorPane().ScrollOffsetY       = 920.0f;
+        // Exhibit 6: Add Layer overlay sheet + More Tools overlay sheet + Inspector with Fill & Outline open vertically (rows-side-by-side.png parity)
+        PatternHost.AccessLayerStackPane().AddLayerSheetOpen    = true;
+        PatternHost.AccessToolHeaderPane().MoreToolsSheetOpen   = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[1]    = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[2]    = true;
+        PatternHost.AccessInspectorPane().ScrollOffsetY         = 120.0f;
         if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "06-PatternWorkspaceOverlaySheetsAndModifiers.png"))
         {
             return 1;
         }
 
+        // Exhibit 21: Shapes Context Menu Studio (menu-shapes.png parity — 17 Motif Shapes 4-col grid + Fill + Outline)
+        PatternHost.AccessLayerStackPane().AddLayerSheetOpen    = false;
+        PatternHost.AccessToolHeaderPane().MoreToolsSheetOpen   = false;
+        PatternHost.AccessSession().ActiveTool                  = PatternStampToolCategory::Circle;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen  = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[1]    = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[2]    = true;
+        PatternHost.AccessInspectorPane().ScrollOffsetY         = 110.0f;
+        if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "21-PatternShapesStudioMenu.png"))
+        {
+            return 1;
+        }
+
+        // Exhibit 22: Gradient Context Menu (.atm-menu) + Point Field Inspector (menu-gradient.png & fill-point-field.png parity)
+        if (auto* Sel = PatternHost.AccessSession().InspectSelectedLayer())
+        {
+            Sel->FillSource = PatternStampFillSourceMode::PointField;
+            PatternStampWorkspaceSession::InitializeDefaultPointFieldPins(*Sel);
+        }
+        PatternHost.AccessSession().ActiveTool                  = PatternStampToolCategory::PointGradient;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen  = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[1]    = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[2]    = false;
+        PatternHost.AccessInspectorPane().ScrollOffsetY         = 140.0f;
+        if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "22-PatternGradientStudioMenu.png"))
+        {
+            return 1;
+        }
+
+        // Exhibit 23: Viewport-Placed Linear Gradient Handles + Vertically Open Fill & Outline Rows (fill-linear-scene.png & rows-side-by-side.png parity)
+        if (auto* Sel = PatternHost.AccessSession().InspectSelectedLayer())
+        {
+            Sel->FillSource = PatternStampFillSourceMode::LinearGradient;
+        }
+        PatternHost.AccessSession().ActiveTool                  = PatternStampToolCategory::Select;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen  = false;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[1]    = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[2]    = true;
+        PatternHost.AccessInspectorPane().ScrollOffsetY         = 140.0f;
+        if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "23-PatternLinearSceneFill.png"))
+        {
+            return 1;
+        }
+
+        // Exhibit 24: Path (Curve & Pen) Context Menu (.atm-menu pathView parity)
+        if (auto* Sel = PatternHost.AccessSession().InspectSelectedLayer())
+        {
+            Sel->FillSource = PatternStampFillSourceMode::Solid;
+        }
+        PatternHost.AccessSession().ActiveTool                  = PatternStampToolCategory::Curve;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen  = true;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[1]    = false;
+        PatternHost.AccessInspectorPane().PropertyRowOpen[2]    = false;
+        PatternHost.AccessInspectorPane().ScrollOffsetY         = 0.0f;
+        if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "24-PatternCurvePenStudioMenu.png"))
+        {
+            return 1;
+        }
+
+        // Exhibit 25: Text Context Menu (.atm-menu textView parity with 5 real TypographyRepository fonts)
+        PatternHost.AccessSession().ActiveTool                  = PatternStampToolCategory::TextBlock;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen  = true;
+        if (!CapturePatternStampWorkspacePng(Io, Dock, ControlCentre, ImageDir / "25-PatternTextStudioMenu.png"))
+        {
+            return 1;
+        }
+
         // Exhibit 8: ControlCentre Light Theme sync
-        PatternHost.AccessLayerStackPane().AddLayerSheetOpen  = false;
-        PatternHost.AccessToolHeaderPane().MoreToolsSheetOpen = false;
-        PatternHost.AccessInspectorPane().ScrollOffsetY       = 0.0f;
+        PatternHost.AccessLayerStackPane().AddLayerSheetOpen   = false;
+        PatternHost.AccessToolHeaderPane().MoreToolsSheetOpen  = false;
+        PatternHost.AccessToolHeaderPane().ToolStudioModalOpen = false;
+        PatternHost.AccessInspectorPane().ScrollOffsetY        = 0.0f;
         Theme.ConfigureTheme(ThemePreset::Light);
         Components::ConfigureImGuiWorkspaceTheme(Dock.ActiveTabMetrics(), Theme);
         ControlCentre.AccessDraftAppearance().Theme = ThemePreset::Light;

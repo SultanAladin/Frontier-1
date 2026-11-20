@@ -89,9 +89,9 @@ float4 FragmentEntry(PreviewVertexOut In) : SV_Target0
         }
 
         uint InspectTarget = uint(PreviewConfig.CameraEyeMode.w + 0.5);
-        if (InspectTarget < 17u)
+        if (InspectTarget >= 1u && InspectTarget <= 17u)
         {
-            uint LayerIdx = InspectTarget;
+            uint LayerIdx = InspectTarget - 1u;
             float4 InspCol = BakedChannels.SampleLevel(BakedSampler, float3(SampleUv, float(LayerIdx)), 0.0);
             if (InspCol.a > 0.25)
             {

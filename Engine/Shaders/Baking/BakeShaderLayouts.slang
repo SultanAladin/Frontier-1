@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            BAKESHADERLAYOUTS.SLANG
 ============================================================================================================================================*/
-// 🧩 Shared GPU structures, mathematical helpers & Fibonacci hemisphere sampling for GTX BVH4 + RTX RayQuery surface baking.
+// 🧩 Shared GPU structures, mathematical kernels, Fibonacci hemisphere sampling & SDF colormaps for GTX BVH4 + RTX RayQuery baking.
 
 #ifndef FRONTIER_BAKE_SHADER_LAYOUTS_SLANG
 #define FRONTIER_BAKE_SHADER_LAYOUTS_SLANG
@@ -57,6 +57,22 @@ struct GpuSurfaceBakeConfig
     uint   ActiveTargetBitmask;
     uint   DilationRadiusPx;
     uint   DilationStepIndex;
+    uint   Pad0;
+};
+
+struct GpuVolumeBakeConfig
+{
+    uint   GridDim;
+    uint   HighTriangleCount;
+    uint   WideEntryCount;
+    uint   SignedMode;
+    float3 BoundsMin;
+    float  VoxelStepMeters;
+    float3 BoundsMax;
+    float  BoundsDiagMeters;
+    uint   SectionAxis;
+    float  SectionDepthNormalized;
+    uint   SectionSizePx;
     uint   Pad0;
 };
 
@@ -178,6 +194,36 @@ float3 IndexSwatchColor(uint Index)
     float Hue = frac(float(Index + 1u) * 0.61803398875 + 0.13);
     float3 RawRgb = clamp(abs(frac(Hue + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
     return 0.54 + (RawRgb - 0.5) * 0.62;
+}
+
+float3 ColorizeSdfDistance(float DistMeters, float ScaleSpan, bool SignedMode)
+{
+    float SafeSpan = max(1.0e-4, ScaleSpan);
+    float SignedD  = SignedMode ? DistMeters : abs(DistMeters);
+    float NormD    = clamp(SignedD / SafeSpan, -1.0, 1.0);
+
+    float IsoBands = 0.88 + 0.12 * cos(SignedD / max(1.0e-4, SafeSpan * 0.032) * 6.2831853);
+    float3 ZeroCol = float3(0.937, 0.957, 0.812); // Studio iso-zero highlight cream
+
+    float3 Color;
+    if (NormD < 0.0)
+    {
+        float T = saturate(-NormD * 2.1);
+        float3 InnerWarm = float3(0.84, 0.34, 0.21);
+        float3 DeepInterior = float3(0.49, 0.14, 0.10);
+        Color = lerp(InnerWarm, DeepInterior, T) * IsoBands;
+    }
+    else
+    {
+        float T = saturate(NormD * 1.45);
+        float3 NearSea  = float3(0.24, 0.54, 0.78);
+        float3 DeepVoid = float3(0.08, 0.14, 0.24);
+        Color = lerp(NearSea, DeepVoid, T) * IsoBands;
+    }
+
+    float IsoWidth = max(1.0e-4, SafeSpan * 0.014);
+    float IsoMask  = 1.0 - smoothstep(0.0, IsoWidth, abs(SignedD));
+    return lerp(Color, ZeroCol, IsoMask);
 }
 
 #endif

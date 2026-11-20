@@ -217,6 +217,8 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/Material/MaterialPreviewRenderer.cpp
     Engine/Workspaces/Material/MaterialWorkspaceSession.cpp
     Engine/Workspaces/Material/MaterialViewportHost.cpp
+    Engine/Workspaces/Material/MaterialOutlinerPane.cpp
+    Engine/Workspaces/Material/MaterialInspectorPane.cpp
     Engine/Workspaces/Material/MaterialWorkspaceHost.cpp
     Engine/Workspaces/Fracture/FractureViewportRenderer.cpp
     Engine/Workspaces/Fracture/FractureWorkspaceSession.cpp
@@ -242,6 +244,10 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/Texturing/BakingViewportPane.cpp
     Engine/Workspaces/Texturing/BakingInspectorPane.cpp
     Engine/Workspaces/Texturing/BakingWorkspaceHost.cpp
+    Engine/Workspaces/Texturing/TexturePaintLayerStackPane.cpp
+    Engine/Workspaces/Texturing/TexturePaintViewportPane.cpp
+    Engine/Workspaces/Texturing/TexturePaintInspectorPane.cpp
+    Engine/Workspaces/Texturing/TexturePaintWorkspaceHost.cpp
     Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.cpp
     Engine/GeometricRaster/Gizmo/WorldGizmoOverlayRasterization.cpp
     Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.cpp
@@ -553,6 +559,9 @@ frontier_compile_baking_slang_shader(BakeSurfaceTransferCompute.slang ComputeEnt
 frontier_compile_baking_slang_shader(BakeSurfaceTransferCompute.slang ComputeEntry compute  BakeSurfaceTransferCompute_RTX.comp.spv TRUE)
 frontier_compile_baking_slang_shader(BakeChannelResolveCompute.slang ComputeEntry  compute  BakeChannelResolveCompute.comp.spv FALSE)
 frontier_compile_baking_slang_shader(BakeDilationCompute.slang       ComputeEntry  compute  BakeDilationCompute.comp.spv       FALSE)
+frontier_compile_baking_slang_shader(BakeVolumeSdfCompute.slang      ComputeEntry  compute  BakeVolumeSdfCompute_GTX.comp.spv  FALSE)
+frontier_compile_baking_slang_shader(BakeVolumeSdfCompute.slang      ComputeEntry  compute  BakeVolumeSdfCompute_RTX.comp.spv  TRUE)
+frontier_compile_baking_slang_shader(ExtractSdfSectionCompute.slang  ComputeEntry  compute  ExtractSdfSectionCompute.comp.spv  FALSE)
 frontier_compile_baking_slang_shader(BakeViewportPreview.slang       VertexEntry   vertex   BakeViewportPreview.vert.spv       FALSE)
 frontier_compile_baking_slang_shader(BakeViewportPreview.slang       FragmentEntry fragment BakeViewportPreview.frag.spv       FALSE)
 
@@ -828,12 +837,14 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Baking/StudyGeometryBuilder.cpp
     Engine/GeometricRaster/Baking/BakingAccelerationStructure.cpp
     Engine/GeometricRaster/Baking/GpuTextureBaker.cpp
+    Engine/GeometricRaster/Baking/GpuSdfBaker.cpp
     Engine/GeometricRaster/Baking/TextureBakerRasterizer.cpp
     Engine/GeometricRaster/ComponentEditor/ComponentGizmoGeometry.cpp
     Engine/GeometricRaster/ComponentEditor/ComponentViewportRenderer.cpp
     Engine/GeometricRaster/ComponentEditor/ComponentSpecimenBaker.cpp
     Engine/Workspaces/Texturing/PatternStampStackSession.cpp
     Engine/Workspaces/Texturing/BakingWorkspaceSession.cpp
+    Engine/Workspaces/Texturing/TexturePaintSession.cpp
     Engine/Input/InputExchange.cpp
     Engine/Input/InputExtension.cpp
     Engine/Lifecycle/RuntimeLifecycle.cpp
@@ -1039,12 +1050,13 @@ endforeach()
     frontier_register_desktop_app(Frontier           Engine/Lifecycle/FrontierHostLaunch.cpp)
     frontier_register_desktop_app(FrontierEditor     Engine/Lifecycle/FrontierEditorLaunch.cpp)
     frontier_register_desktop_app(FrontierUV         Engine/Lifecycle/FrontierUVLaunch.cpp)
-    frontier_register_desktop_app(FrontierBaking     Engine/Lifecycle/FrontierBakingLaunch.cpp)
-    frontier_register_desktop_app(FrontierPattern    Engine/Lifecycle/FrontierPatternLaunch.cpp)
-    frontier_register_desktop_app(FrontierStamp      Engine/Lifecycle/FrontierStampLaunch.cpp)
-    frontier_register_desktop_app(FrontierMaterial   Engine/Lifecycle/FrontierMaterialLaunch.cpp)
-    frontier_register_desktop_app(FrontierFracture   Engine/Lifecycle/FrontierFractureLaunch.cpp)
-    frontier_register_desktop_app(FrontierSketcher   Engine/Lifecycle/FrontierSketcherLaunch.cpp)
+    frontier_register_desktop_app(FrontierBaking      Engine/Lifecycle/FrontierBakingLaunch.cpp)
+    frontier_register_desktop_app(FrontierPattern     Engine/Lifecycle/FrontierPatternLaunch.cpp)
+    frontier_register_desktop_app(FrontierStamp       Engine/Lifecycle/FrontierStampLaunch.cpp)
+    frontier_register_desktop_app(FrontierTexturePaint Engine/Lifecycle/FrontierTexturePaintLaunch.cpp)
+    frontier_register_desktop_app(FrontierMaterial    Engine/Lifecycle/FrontierMaterialLaunch.cpp)
+    frontier_register_desktop_app(FrontierFracture    Engine/Lifecycle/FrontierFractureLaunch.cpp)
+    frontier_register_desktop_app(FrontierSketcher    Engine/Lifecycle/FrontierSketcherLaunch.cpp)
 endif()
 
 #------------------------------------------------------------------------------------------------------------------------
@@ -1144,6 +1156,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(ComponentEditorRenderValidation   Exhibits/ComponentEditorRenderValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)
+        frontier_register_exhibit(TexturePaintWorkspaceUIValidation Exhibits/TexturePaintWorkspaceUIValidation.cpp)
         frontier_register_exhibit(SketcherWorkspaceValidation       Exhibits/ParametricSketcher/SketcherWorkspaceValidation.cpp)
     endif()
 
@@ -1167,6 +1180,10 @@ if(BUILD_TESTING)
         add_test(
             NAME FrontierBakingExecutableSmoke
             COMMAND FrontierBaking --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/Texturing/FrontierBaking_DesktopExecutable.png"
+        )
+        add_test(
+            NAME FrontierTexturePaintExecutableSmoke
+            COMMAND FrontierTexturePaint --frames=3 --open-browser "--capture-png=${CMAKE_SOURCE_DIR}/Exhibits/Images/Texturing/FrontierTexturePaint_DesktopExecutable.png"
         )
         add_test(
             NAME FrontierMaterialExecutableSmoke

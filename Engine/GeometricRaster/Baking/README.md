@@ -1,6 +1,6 @@
 # 🧩 `Engine/GeometricRaster/Baking/`
 
-> **TL;DR**: Dual GTX SAH-BVH4 + optional RTX VK_KHR_acceleration_structure (BLAS + TLAS) upload & synchronization for 17-channel GPU surface baking (10 source/header files under `Engine/GeometricRaster/Baking/`).
+> **TL;DR**: Dual GTX SAH-BVH4 + optional RTX VK_KHR_acceleration_structure (BLAS + TLAS) upload & synchronization for GPU baking (12 source/header/shader files under `Engine/GeometricRaster/Baking/`).
 
 ---
 
@@ -12,7 +12,9 @@
 | `BakingAccelerationStructure.h` | Dual GTX SAH-BVH4 + optional RTX VK_KHR_acceleration_structure (BLAS + TLAS) upload & synchronization for GPU baking |
 | `GeometrySpecimenRasterizer.cpp` | 1:1 C++ miniature 3-point OpenPBR studio thumbnail raytracer matching FrontierWorldMirror ModelThumbnailRenderer |
 | `GeometrySpecimenRasterizer.h` | Calibrated 3-point OpenPBR studio thumbnail raytracer baking transparent RGBA8 silhouettes with tight world-AABB auto-fit |
-| `GpuTextureBaker.cpp` | Implementation of Pure-GPU Vulkan 17-Channel Surface Texture Baker (UV G-Buffer, BVH4 GTX / RayQuery RTX, Dilation & PNG export) |
+| `GpuSdfBaker.cpp` | Implementation of Pure-GPU Vulkan 3D Volume SDF Baker, 2D slice section extraction, PNG & .fvol export |
+| `GpuSdfBaker.h` | Pure-GPU Vulkan 3D Volume Signed Distance Field baker, 2D slice section extractor, PNG & .fvol exporter (GTX BVH4 + RTX RayQuery) |
+| `GpuTextureBaker.cpp` | Implementation of Pure-GPU Vulkan Texture & 3D Volume SDF Baker (UV G-Buffer, BVH4 GTX / RayQuery RTX, Dilation, PNG & .fvol export) |
 | `GpuTextureBaker.h` | Pure-GPU Vulkan 17-channel surface texture baking engine (UV G-buffer, GTX BVH4 compute, RTX VK_KHR_ray_query, & gutter dilation) |
 | `StudyGeometryBuilder.cpp` | Implementation of High/Low procedural baking study pairs, Wavefront OBJ/STL import, UV-seam island flood & tangent smoothing. |
 | `StudyGeometryBuilder.h` | High/Low baking study synthesis, .OBJ/.STL file import, UV-island flood extraction, and GPU triangle/vertex upload preparation |
@@ -22,14 +24,14 @@
 ## Namespaces & Primary Types
 
 - **Namespaces**: `Frontier::GeometricRaster::Baking`, `Frontier::GeometricRaster`
-- **Primary Types**: `BakeAccelerationEngine`, `BakingAccelerationStructure`, `SpecimenPartShape`, `SpecimenStripePattern`, `Matrix3x3`, `SpecimenPart`, `GeometrySpecimenArchetype`, `GeometrySpecimenDescriptor`, `SurfaceBakeExecutionSpec`, `BakeCompletionSummary`, `GpuTextureBaker`, `TriangulatedCorner`, `StudyGeometryCategory`, `PreparedStudyPair`, `StudyGeometryBuilder`, `BakeOrbitCamera` (+2 more)
+- **Primary Types**: `BakeAccelerationEngine`, `BakingAccelerationStructure`, `SpecimenPartShape`, `SpecimenStripePattern`, `Matrix3x3`, `SpecimenPart`, `GeometrySpecimenArchetype`, `GeometrySpecimenDescriptor`, `VolumeBakeExecutionSpec`, `GpuSdfBaker`, `SurfaceBakeExecutionSpec`, `BakeCompletionSummary`, `GpuTextureBaker`, `TriangulatedCorner`, `StudyGeometryCategory`, `PreparedStudyPair`, `StudyGeometryBuilder`, `BakeOrbitCamera` (+2 more)
 
 ## Usage
 
 ```cpp
 #include "Engine/GeometricRaster/Baking/BakingAccelerationStructure.h"
 #include "Engine/GeometricRaster/Baking/GeometrySpecimenRasterizer.h"
-#include "Engine/GeometricRaster/Baking/GpuTextureBaker.h"
+#include "Engine/GeometricRaster/Baking/GpuSdfBaker.h"
 
 using namespace Frontier::GeometricRaster::Baking;
 BakeAccelerationEngine Instance {};

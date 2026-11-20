@@ -198,7 +198,7 @@ void ComputeEntry(uint3 Tid : SV_DispatchThreadID)
     float3 Pos01     = saturate((LowPos - BakeConfig.BoundsMin) / BboxSpan);
     float3 WireCol   = lerp(float3(0.118, 0.125, 0.141), float3(0.937, 0.957, 0.812), saturate(WireMask));
 
-    // Layer index = uint(BakerTargetId) (0..16 for all 17 surface channels)
+    // Layer index = uint(BakerTargetId) - 1 (0..16 for all 17 surface channels)
     OutSurfaceChannels[uint3(Tid.xy,  0u)] = float4(TangNorm, 1.0);
     OutSurfaceChannels[uint3(Tid.xy,  1u)] = float4(WorldNorm, 1.0);
     OutSurfaceChannels[uint3(Tid.xy,  2u)] = float4(ModelNorm, 1.0);

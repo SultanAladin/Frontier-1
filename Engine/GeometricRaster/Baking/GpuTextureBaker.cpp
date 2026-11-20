@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                              GPUTEXTUREBAKER.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of Pure-GPU Vulkan 17-Channel Surface Texture Baker (UV G-Buffer, BVH4 GTX / RayQuery RTX, Dilation & PNG export)
+// 🧩 Implementation of Pure-GPU Vulkan Texture & 3D Volume SDF Baker (UV G-Buffer, BVH4 GTX / RayQuery RTX, Dilation, PNG & .fvol export)
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -322,7 +322,7 @@ bool GpuTextureBaker::CreateShaderPrograms(const std::filesystem::path& ShaderDi
 {
     VkDevice Device = DeviceOwner->AccessDevice();
 
-    // 1. Descriptor Pool accommodating GTX, RTX, Channel Resolve & Ping-Pong Dilation
+    // 1. Descriptor Pool accommodating GTX, RTX, Channel Resolve, Ping-Pong Dilation, Volume SDF & Section Extract
     const std::array<VkDescriptorPoolSize, 5u> Sizes {{
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,           16u },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,           24u },

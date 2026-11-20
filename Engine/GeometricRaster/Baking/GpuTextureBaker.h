@@ -42,7 +42,9 @@ struct SurfaceBakeExecutionSpec
 struct BakeCompletionSummary
 {
     bool                    SurfaceSucceeded = false;
+    bool                    VolumeSucceeded  = false;
     double                  SurfaceElapsedMs = 0.0;
+    double                  VolumeElapsedMs  = 0.0;
     BakeAccelerationEngine ExecutedBackend  = BakeAccelerationEngine::GtxComputeBvh4;
     std::string             DiagnosticText   {};
 };
@@ -54,7 +56,7 @@ struct BakeCompletionSummary
 class GpuTextureBaker
 {
 public:
-    static constexpr uint32_t SurfaceTargetCount = 17u; // Channels 0..16 mapped directly to slots 0..16
+    static constexpr uint32_t SurfaceTargetCount = 17u; // Channels 1..17 mapped to slots 0..16
 
     GpuTextureBaker() = default;
     ~GpuTextureBaker();
