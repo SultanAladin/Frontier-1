@@ -15,6 +15,7 @@
 | [ContentBrowserArchitecturePlan.md](ContentBrowserArchitecturePlan.md) | Pre-baked `ThumbnailSheet`, streaming, quarantine import & UV masks |
 | [ColourSpaceArchitecturePlan.md](ColourSpaceArchitecturePlan.md) | Tristimulus color spaces, spectral distributions & tone transforms |
 | [RenderingRaytracingArchitecturePlan.md](RenderingRaytracingArchitecturePlan.md) | Dual-tier GTX Hybrid & Deterministic RTX architecture |
+| [WorldGiShadowPathTracerPlan.md](WorldGiShadowPathTracerPlan.md) | Mesh-only GTX GI and shared GTX/RTX path tracing proposal |
 | [WorldRenderEngineUnificationPlan.md](WorldRenderEngineUnificationPlan.md) | Shared Cornell-Studio World renderer & SDF Clipmap GI unification |
 | [MaterialVisibilityRenderingBringupPlan.md](MaterialVisibilityRenderingBringupPlan.md) | 10-lobe `MaterialSpace`, 64-bit VisBuffer & rendering bringup |
 | [DynamicMaterialSystemPlan.md](DynamicMaterialSystemPlan.md) | Time-varying procedural/transition OpenPBR material compiler |
