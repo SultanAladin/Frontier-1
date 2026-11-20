@@ -1,0 +1,5 @@
+method,gi_width_px,gi_height_px,mean_luminance,peak_luminance,ray_queries,visibility_rays,surfels,elapsed_ms,approximate_memory_bytes,pixel_digest_fnv1a64
+DirectOnly,800,450,0,0,0,0,0,0,0,ca597e1e6f2c4709
+StokesSh9MultiBounce,800,450,0.0620358,0.28032,9858790,2034253,0,3981.94,4320000,e761ad15985cf55d
+SurfelCascadeDdgi,800,450,0.00195134,0.0766646,1623355,1073763,2292,4140.68,4604208,7b47aa0c56ca00f5
+DeterministicPathTrace,800,450,0.0620912,0.253439,17917080,3348616,0,6367.01,4320000,f8fe4e579cf0bf45

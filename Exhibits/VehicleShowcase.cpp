@@ -9,8 +9,10 @@
 
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/GeometricRaster/DirectLighting/SolarShadowSequence.h"
+#include "Engine/GeometricRaster/GlobalIllumination/EmissiveGiCandidateSequence.h"
 #include "Engine/GeometrySpace/Network/PolygonNetwork.h"
 #include "Engine/MaterialSpace/CompactMaterialRegister.h"
+#include "Engine/MaterialSpace/Scattering/BlackbodyEmission.h"
 #include "Engine/MaterialSpace/SurfaceMaterial.h"
 #include "Engine/Mathematics/CoordinateSpace.h"
 #include "Engine/Mathematics/DeterministicSampling.h"
@@ -588,6 +590,15 @@ constexpr std::array<TurntableView, 10u> TurntableViews {{
 //                                                  RENDER SETTINGS
 //------------------------------------------------------------------------------------------------------------------------
 
+// 📝 Selects which deterministic global-illumination candidate feeds the indirect term
+enum class GiMethodSelection : uint8_t
+{
+    DirectOnly      = 0u, // [-] - Sun, sky ambient, AO and environment specular only (single bounce)
+    StokesSh9       = 1u, // [-] - SH9 cosine-convolved multi-bounce radiance gathering
+    SurfelCascade   = 2u, // [-] - Visibility-gated three-scale surfel cascade (DDGI)
+    PathTrace       = 3u, // [-] - Cosine path-traced multi-bounce reference
+};
+
 struct RenderSettings
 {
     uint32_t Width             = DefaultImageWidth;    // [px]   - Output width
@@ -595,7 +606,39 @@ struct RenderSettings
     uint32_t PrimarySamples    = DefaultPrimarySamples; // [rays] - R2 stratified camera rays per pixel
     uint32_t SunSamples        = DefaultSunSamples;    // [rays] - Solar disc samples per shaded hit
     float    Exposure          = 1.02f;                // [-]    - Pre-curve exposure multiplier
+    GiMethodSelection GiMethod = GiMethodSelection::SurfelCascade; // [-] - Indirect GI candidate
+    uint32_t GiDownsampleFactor = 4u;                  // [cnt]  - Linear GI resolution divisor (1 = full res)
+    uint32_t GiSamplesPerPixel  = 24u;                 // [rays] - GI sample budget per GI pixel
+    uint32_t GiBounceLimit      = 3u;                  // [cnt]  - Diffuse bounce depth
+    float    GiWeight           = 1.0f;                // [-]    - Indirect radiance blend weight
+    bool     StudioEnclosure    = false;               // [-]    - Add Cornell-style coloured bounce panels
+    bool     GiComparisonRun    = false;               // [-]    - Also emit the four-method GI comparison sheet
 };
+
+[[nodiscard]] const char* QueryGiMethodCaption(GiMethodSelection Method) noexcept
+{
+    switch (Method)
+    {
+        case GiMethodSelection::DirectOnly:    return "DIRECT ONLY";
+        case GiMethodSelection::StokesSh9:     return "SH9 MULTI-BOUNCE";
+        case GiMethodSelection::SurfelCascade: return "SURFEL CASCADE DDGI";
+        case GiMethodSelection::PathTrace:     return "PATH-TRACED";
+    }
+    return "DIRECT ONLY";
+}
+
+// 📝 Maps the exhibit selector onto the library candidate list
+[[nodiscard]] GeometricRaster::EmissiveGiMethod QueryLibraryGiMethod(GiMethodSelection Method) noexcept
+{
+    switch (Method)
+    {
+        case GiMethodSelection::StokesSh9:     return GeometricRaster::EmissiveGiMethod::StokesSh9MultiBounce;
+        case GiMethodSelection::SurfelCascade: return GeometricRaster::EmissiveGiMethod::SurfelCascadeDdgi;
+        case GiMethodSelection::PathTrace:     return GeometricRaster::EmissiveGiMethod::DeterministicPathTrace;
+        case GiMethodSelection::DirectOnly:    break;
+    }
+    return GeometricRaster::EmissiveGiMethod::SurfelCascadeDdgi;
+}
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                  SURFACE SHADING
@@ -607,6 +650,9 @@ struct SurfaceShadingParameters
     const MaterialSpace::CompactMaterialRegister* Materials = nullptr; // [-] - Material register
     const GeometricRaster::SolarDirectionalSource* Sun      = nullptr; // [-] - Solar directional source
     const SkyGradient*                            Sky       = nullptr; // [-] - Sky radiance gradient
+    Mathematics::LinearRGB                        IndirectGiRadiance { 0.0f, 0.0f, 0.0f }; // [cd/m2] - Bounced diffuse GI from the selected candidate
+    bool                                          GiActive  = false;   // [-] - True when a GI candidate supplied the indirect term
+    float                                         BouncedBlend = 1.0f; // [-] - Multiplier on the bounced diffuse return
 };
 
 [[nodiscard]] Mathematics::LinearRGB ShadeSurface(
@@ -742,12 +788,28 @@ struct SurfaceShadingParameters
 
     const float HemisphereBlend = std::clamp(0.5f + 0.5f * SurfaceNormal.Z, 0.0f, 1.0f);
     const Mathematics::LinearRGB AmbientRadiance = EvaluateSkyAverage(Sky);
-    const float AmbientScale = (0.30f + 0.55f * HemisphereBlend) * OcclusionTrace;
-    const Mathematics::LinearRGB AmbientDiffuse {
-        DiffuseAlbedo.R * AmbientRadiance.R * AmbientScale,
-        DiffuseAlbedo.G * AmbientRadiance.G * AmbientScale,
-        DiffuseAlbedo.B * AmbientRadiance.B * AmbientScale,
-    };
+
+    // 📝 With a GI candidate active the multi-bounce answer replaces the hemispherical sky fill
+    Mathematics::LinearRGB AmbientDiffuse { 0.0f, 0.0f, 0.0f };
+    if (Parameters.GiActive)
+    {
+        // 📝 The candidate output already carries the receiver albedo, so it enters the sum unscaled
+        const float Blend = std::clamp(Parameters.BouncedBlend, 0.0f, 1.0f);
+        AmbientDiffuse = {
+            Parameters.IndirectGiRadiance.R * Blend,
+            Parameters.IndirectGiRadiance.G * Blend,
+            Parameters.IndirectGiRadiance.B * Blend,
+        };
+    }
+    else
+    {
+        const float AmbientScale = (0.30f + 0.55f * HemisphereBlend) * OcclusionTrace;
+        AmbientDiffuse = {
+            DiffuseAlbedo.R * AmbientRadiance.R * AmbientScale,
+            DiffuseAlbedo.G * AmbientRadiance.G * AmbientScale,
+            DiffuseAlbedo.B * AmbientRadiance.B * AmbientScale,
+        };
+    }
 
     // ---- Environment specular reflection (sky gradient mirror lobe) ----
     const Mathematics::Axis3D ReflectionDirection = Normalize(
@@ -789,23 +851,171 @@ struct SurfaceShadingParameters
         }
     }
 
-    // ---- Explicit luminous exitance (headlights and taillights) ----
-    Mathematics::LinearRGB EmissionRadiance { 0.0f, 0.0f, 0.0f };
-    if (Authored.PorosityLight.EmissionLuminanceNits > 0.0f)
-    {
-        const float EmissionScale = Authored.PorosityLight.EmissionLuminanceNits * 0.02f;
-        EmissionRadiance = {
-            Authored.PorosityLight.EmissionTint.R * EmissionScale,
-            Authored.PorosityLight.EmissionTint.G * EmissionScale,
-            Authored.PorosityLight.EmissionTint.B * EmissionScale,
-        };
-    }
+    // ---- Lobe 10B luminous exitance, shared with the GI candidates so bounce agrees with direct ----
+    const Mathematics::LinearRGB EmissionRadiance =
+        MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Authored.PorosityLight);
 
     return {
         DirectRadiance.R + AmbientDiffuse.R + EnvironmentSpecular.R + EmissionRadiance.R,
         DirectRadiance.G + AmbientDiffuse.G + EnvironmentSpecular.G + EmissionRadiance.G,
         DirectRadiance.B + AmbientDiffuse.B + EnvironmentSpecular.B + EmissionRadiance.B,
     };
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                        GLOBAL ILLUMINATION CANDIDATE EVALUATION
+//------------------------------------------------------------------------------------------------------------------------
+
+struct GiFrameBuffer
+{
+    uint32_t                            WidthPx          = 0u; // [px]    - Reduced GI raster width
+    uint32_t                            HeightPx         = 0u; // [px]    - Reduced GI raster height
+    std::vector<Mathematics::LinearRGB> IndirectRadiance {};   // [cd/m2] - Diffuse indirect radiance per GI pixel
+    GeometricRaster::EmissiveGiMetrics  Metrics          {};   // [-]     - Ray, surfel, memory and timing telemetry
+    bool                                Populated        = false; // [-]   - True when a candidate produced values
+    float                               MeanLuminance    = 0.0f;  // [cd/m2] - Mean indirect luminance over covered pixels
+    float                               PeakLuminance    = 0.0f;  // [cd/m2] - Peak indirect luminance
+    uint32_t                            CoveredPixelCount = 0u;   // [count] - Pixels receiving non-zero indirect light
+};
+
+// 📝 Reconstructs the resolved surface samples the GI library consumes straight from the BVH4 primary hits
+[[nodiscard]] GiFrameBuffer EvaluateGiFrameBuffer(
+    const SpatialAcceleration::WideBoundingTree&    Tree,
+    const MaterialSpace::CompactMaterialRegister&   Materials,
+    const GeometricRaster::SolarDirectionalSource&  Sun,
+    const SkyGradient&                              Sky,
+    const CameraBasis&                              Camera,
+    const RenderSettings&                           Settings)
+{
+    GiFrameBuffer Buffer {};
+    Buffer.WidthPx  = std::max(2u, Settings.Width / std::max(1u, Settings.GiDownsampleFactor));
+    Buffer.HeightPx = std::max(2u, Settings.Height / std::max(1u, Settings.GiDownsampleFactor));
+    Buffer.IndirectRadiance.assign(static_cast<std::size_t>(Buffer.WidthPx) * Buffer.HeightPx, { 0.0f, 0.0f, 0.0f });
+
+    std::vector<GeometricRaster::AnalyticResolvedSurfaceSample> PrimarySamples(
+        static_cast<std::size_t>(Buffer.WidthPx) * Buffer.HeightPx);
+
+    for (uint32_t Row = 0u; Row < Buffer.HeightPx; ++Row)
+    {
+        for (uint32_t Column = 0u; Column < Buffer.WidthPx; ++Column)
+        {
+            const float NdcX = ((static_cast<float>(Column) + 0.5f) / static_cast<float>(Buffer.WidthPx)) * 2.0f - 1.0f;
+            const float NdcY = 1.0f - ((static_cast<float>(Row) + 0.5f) / static_cast<float>(Buffer.HeightPx)) * 2.0f;
+            const Mathematics::Axis3D RayDirection = Normalize(
+                Add(Add(Camera.Forward, Mul(Camera.Right, NdcX * Camera.TanHalfFovX)), Mul(Camera.Up, NdcY * Camera.TanHalfFovY)),
+                Camera.Forward);
+
+            SpatialAcceleration::RaySegmentQuery PrimaryRay {};
+            PrimaryRay.Origin          = Camera.Origin;
+            PrimaryRay.UnitDirection   = RayDirection;
+            PrimaryRay.MinimumDistance = Camera.NearClip;
+            PrimaryRay.MaximumDistance = Camera.FarClip;
+            const SpatialAcceleration::RayIntersectionResult Hit = Tree.TraceClosestRay(PrimaryRay, false);
+            if (!Hit.HitConfirmed)
+            {
+                continue;
+            }
+
+            Mathematics::Axis3D ShadingNormal = Hit.GeometricNormal;
+            if (Tree.PrimitiveNormals.size() == Tree.Primitives.size() && Hit.PrimitiveIndex < Tree.PrimitiveNormals.size())
+            {
+                const SpatialAcceleration::TriangleSmoothNormals& CornerNormals = Tree.PrimitiveNormals[Hit.PrimitiveIndex];
+                const float Weight0 = std::max(0.0f, 1.0f - Hit.BarycentricU - Hit.BarycentricV);
+                const float Weight1 = std::max(0.0f, Hit.BarycentricU);
+                const float Weight2 = std::max(0.0f, Hit.BarycentricV);
+                ShadingNormal = Normalize(
+                    Add(Add(Mul(CornerNormals.Normal0, Weight0), Mul(CornerNormals.Normal1, Weight1)), Mul(CornerNormals.Normal2, Weight2)),
+                    Hit.GeometricNormal);
+            }
+
+            GeometricRaster::AnalyticResolvedSurfaceSample& Sample =
+                PrimarySamples[static_cast<std::size_t>(Row) * Buffer.WidthPx + Column];
+            Sample.ValidHit           = true;
+            Sample.MaterialSlot       = Hit.MaterialOrdinal;
+            Sample.TriangleOrdinal    = Hit.PrimitiveIndex;
+            Sample.WorldPosition      = Add(Camera.Origin, Mul(RayDirection, Hit.HitDistanceMeters));
+            Sample.WorldViewDirection = Mul(RayDirection, -1.0f);
+            Sample.BarycentricWeights = { 1.0f - Hit.BarycentricU - Hit.BarycentricV, Hit.BarycentricU, Hit.BarycentricV };
+
+            const Mathematics::Axis3D TangentReference = (std::fabs(ShadingNormal.Z) < 0.95f)
+                ? Mathematics::Axis3D { 0.0f, 0.0f, 1.0f }
+                : Mathematics::Axis3D { 1.0f, 0.0f, 0.0f };
+            Sample.TangentFrame.TangentX   = Normalize(Cross(ShadingNormal, TangentReference), { 1.0f, 0.0f, 0.0f });
+            Sample.TangentFrame.BitangentY = Cross(ShadingNormal, Sample.TangentFrame.TangentX);
+            Sample.TangentFrame.NormalZ    = ShadingNormal;
+        }
+    }
+
+    GeometricRaster::EmissiveGiSceneView SceneView { Tree, Materials, Sun, {}, {}, EvaluateSkyAverage(Sky) };
+
+    GeometricRaster::EmissiveGiSettings GiSettings {};
+    GiSettings.SamplesPerPixel       = std::clamp(Settings.GiSamplesPerPixel, 4u, 128u);
+    GiSettings.BounceLimit           = std::clamp(Settings.GiBounceLimit, 1u, 6u);
+    GiSettings.MaximumTraceDistance  = 150.0f;
+
+    GeometricRaster::EmissiveGiCandidateSequence Sequence {};
+    GeometricRaster::EmissiveGiOutput Output = Sequence.Evaluate(
+        QueryLibraryGiMethod(Settings.GiMethod),
+        PrimarySamples,
+        Buffer.WidthPx,
+        Buffer.HeightPx,
+        SceneView,
+        GiSettings);
+
+    Buffer.IndirectRadiance = std::move(Output.IndirectRadiance);
+    Buffer.Metrics          = Output.Metrics;
+    Buffer.Populated        = true;
+
+    double LuminanceSum = 0.0;
+    double LuminancePeak = 0.0;
+    uint64_t CoveredPixels = 0ull;
+    for (const Mathematics::LinearRGB& Radiance : Buffer.IndirectRadiance)
+    {
+        const double Luminance = 0.2126 * Radiance.R + 0.7152 * Radiance.G + 0.0722 * Radiance.B;
+        if (Luminance <= 0.0)
+        {
+            continue;
+        }
+        LuminanceSum += Luminance;
+        LuminancePeak = std::max(LuminancePeak, Luminance);
+        ++CoveredPixels;
+    }
+    Buffer.MeanLuminance = (CoveredPixels > 0ull) ? static_cast<float>(LuminanceSum / static_cast<double>(CoveredPixels)) : 0.0f;
+    Buffer.PeakLuminance = static_cast<float>(LuminancePeak);
+    Buffer.CoveredPixelCount = static_cast<uint32_t>(CoveredPixels);
+    return Buffer;
+}
+
+// 📝 Bilinear reconstruction of the reduced GI raster onto the full-resolution primary hits
+[[nodiscard]] Mathematics::LinearRGB SampleGiBuffer(
+    const GiFrameBuffer& Buffer,
+    uint32_t             FullWidth,
+    uint32_t             FullHeight,
+    uint32_t             PixelX,
+    uint32_t             PixelY) noexcept
+{
+    if (!Buffer.Populated || Buffer.IndirectRadiance.empty())
+    {
+        return { 0.0f, 0.0f, 0.0f };
+    }
+
+    const float SampleX = ((static_cast<float>(PixelX) + 0.5f) / static_cast<float>(FullWidth)) * static_cast<float>(Buffer.WidthPx) - 0.5f;
+    const float SampleY = ((static_cast<float>(PixelY) + 0.5f) / static_cast<float>(FullHeight)) * static_cast<float>(Buffer.HeightPx) - 0.5f;
+    const int32_t X0 = static_cast<int32_t>(std::floor(SampleX));
+    const int32_t Y0 = static_cast<int32_t>(std::floor(SampleY));
+    const float FracX = SampleX - static_cast<float>(X0);
+    const float FracY = SampleY - static_cast<float>(Y0);
+
+    const auto Fetch = [&](int32_t X, int32_t Y) noexcept -> Mathematics::LinearRGB
+    {
+        const int32_t SafeX = std::clamp(X, 0, static_cast<int32_t>(Buffer.WidthPx) - 1);
+        const int32_t SafeY = std::clamp(Y, 0, static_cast<int32_t>(Buffer.HeightPx) - 1);
+        return Buffer.IndirectRadiance[static_cast<std::size_t>(SafeY) * Buffer.WidthPx + static_cast<std::size_t>(SafeX)];
+    };
+
+    const Mathematics::LinearRGB TopRow    = LerpColor(Fetch(X0, Y0), Fetch(X0 + 1, Y0), FracX);
+    const Mathematics::LinearRGB BottomRow = LerpColor(Fetch(X0, Y0 + 1), Fetch(X0 + 1, Y0 + 1), FracX);
+    return LerpColor(TopRow, BottomRow, FracY);
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -818,7 +1028,8 @@ struct SurfaceShadingParameters
     const GeometricRaster::SolarDirectionalSource& Sun,
     const SkyGradient&                            Sky,
     const CameraBasis&                            Camera,
-    const RenderSettings&                         Settings)
+    const RenderSettings&                         Settings,
+    const GiFrameBuffer*                          GiBuffer = nullptr)
 {
     const uint32_t Width  = Settings.Width;
     const uint32_t Height = Settings.Height;
@@ -827,10 +1038,12 @@ struct SurfaceShadingParameters
     std::vector<uint8_t> Rgba(static_cast<std::size_t>(Width) * Height * 4u, 0u);
 
     SurfaceShadingParameters Parameters {};
-    Parameters.Tree      = &Tree;
-    Parameters.Materials = &Materials;
-    Parameters.Sun       = &Sun;
-    Parameters.Sky       = &Sky;
+    Parameters.Tree          = &Tree;
+    Parameters.Materials     = &Materials;
+    Parameters.Sun           = &Sun;
+    Parameters.Sky           = &Sky;
+    Parameters.GiActive      = (GiBuffer != nullptr && GiBuffer->Populated && Settings.GiMethod != GiMethodSelection::DirectOnly);
+    Parameters.BouncedBlend  = std::clamp(Settings.GiWeight, 0.0f, 1.0f);
 
     for (uint32_t Row = 0u; Row < Height; ++Row)
     {
@@ -872,6 +1085,11 @@ struct SurfaceShadingParameters
                         InterpolatedNormal = Normalize(
                             Add(Add(Mul(CornerNormals.Normal0, Weight0), Mul(CornerNormals.Normal1, Weight1)), Mul(CornerNormals.Normal2, Weight2)),
                             Hit.GeometricNormal);
+                    }
+
+                    if (Parameters.GiActive)
+                    {
+                        Parameters.IndirectGiRadiance = SampleGiBuffer(*GiBuffer, Width, Height, Column, Row);
                     }
 
                     Radiance = ShadeSurface(Parameters, HitPosition, InterpolatedNormal, ViewDirection, Hit.MaterialOrdinal, PixelSeed, Ray);
@@ -916,10 +1134,12 @@ struct RenderedView
     uint32_t&                        OutWidth,
     uint32_t&                        OutHeight)
 {
+    // 📝 Grid adapts to the view count: single row up to five tiles, otherwise five per row
+    const uint32_t ViewCount   = static_cast<uint32_t>(Views.size());
     const uint32_t ThumbWidth  = ContactSheetThumbWidth;
     const uint32_t ThumbHeight = ContactSheetThumbHeight;
-    const uint32_t Columns     = ContactSheetColumns;
-    const uint32_t Rows        = ContactSheetRows;
+    const uint32_t Columns     = std::clamp(ViewCount, 1u, ContactSheetColumns);
+    const uint32_t Rows        = (ViewCount + Columns - 1u) / Columns;
 
     OutWidth  = Columns * ThumbWidth + (Columns + 1u) * ContactSheetGap;
     OutHeight = Rows * (ThumbHeight + ContactSheetHeader) + (Rows + 1u) * ContactSheetGap;
@@ -986,7 +1206,7 @@ struct RenderedView
         RasterizeText(Sheet, OutWidth, OutHeight, static_cast<int32_t>(DestinationX + 8u), static_cast<int32_t>(DestinationY + 11u), 1.6f, View.Caption, 232u, 236u, 246u);
     };
 
-    for (std::size_t Index = 0u; Index < Views.size() && Index < Columns * Rows; ++Index)
+    for (std::size_t Index = 0u; Index < Views.size() && Index < static_cast<std::size_t>(Columns) * Rows; ++Index)
     {
         BlitTile(static_cast<uint32_t>(Index) % Columns, static_cast<uint32_t>(Index) / Columns, Views[Index]);
     }
@@ -1032,6 +1252,39 @@ int main(int ArgumentCount, char** ArgumentValues)
         else if (HasNext && std::strcmp(Current, "--exposure") == 0)
         {
             Requested.Exposure = static_cast<float>(std::clamp(std::atof(ArgumentValues[++Argument]), 0.2, 4.0));
+        }
+        else if (HasNext && std::strcmp(Current, "--gi") == 0)
+        {
+            const std::string Mode(ArgumentValues[++Argument]);
+            if (Mode == "off" || Mode == "direct")      { Requested.GiMethod = GiMethodSelection::DirectOnly; }
+            else if (Mode == "sh9" || Mode == "sh")     { Requested.GiMethod = GiMethodSelection::StokesSh9; }
+            else if (Mode == "surfel" || Mode == "ddgi"){ Requested.GiMethod = GiMethodSelection::SurfelCascade; }
+            else if (Mode == "path" || Mode == "pt")    { Requested.GiMethod = GiMethodSelection::PathTrace; }
+            else { std::cerr << "[VehicleShowcase] unknown --gi mode '" << Mode << "'\n"; }
+        }
+        else if (HasNext && std::strcmp(Current, "--gi-scale") == 0)
+        {
+            Requested.GiDownsampleFactor = static_cast<uint32_t>(std::clamp(std::atoi(ArgumentValues[++Argument]), 1, 16));
+        }
+        else if (HasNext && std::strcmp(Current, "--gi-samples") == 0)
+        {
+            Requested.GiSamplesPerPixel = static_cast<uint32_t>(std::clamp(std::atoi(ArgumentValues[++Argument]), 4, 128));
+        }
+        else if (HasNext && std::strcmp(Current, "--gi-bounces") == 0)
+        {
+            Requested.GiBounceLimit = static_cast<uint32_t>(std::clamp(std::atoi(ArgumentValues[++Argument]), 1, 6));
+        }
+        else if (std::strcmp(Current, "--studio") == 0)
+        {
+            Requested.StudioEnclosure = true;
+        }
+        else if (std::strcmp(Current, "--gi-compare") == 0)
+        {
+            Requested.GiComparisonRun = true;
+        }
+        else if (HasNext && std::strcmp(Current, "--gi-weight") == 0)
+        {
+            Requested.GiWeight = static_cast<float>(std::clamp(std::atof(ArgumentValues[++Argument]), 0.0, 1.0));
         }
     }
 
@@ -1154,35 +1407,78 @@ int main(int ArgumentCount, char** ArgumentValues)
 
     const float FloorZ = BoundsMin.Z - 0.004f;
     const float FloorHalfSpan = std::max(14.0f, VehicleHalfLength * 4.5f);
-    const std::array<Mathematics::Axis3D, 4u> FloorCorners {{
+    const auto AppendQuad = [&](const Mathematics::Axis3D& PointA, const Mathematics::Axis3D& PointB,
+                                const Mathematics::Axis3D& PointC, const Mathematics::Axis3D& PointD,
+                                uint16_t MaterialOrdinal, const Mathematics::Axis3D& QuadNormal)
+    {
+        const std::array<Mathematics::Axis3D, 3u> Loops[2] = {{ PointA, PointB, PointC }, { PointA, PointC, PointD }};
+        for (const std::array<Mathematics::Axis3D, 3u>& Loop : Loops)
+        {
+            SpatialAcceleration::RayTrianglePrimitive Primitive {};
+            Primitive.Corner0          = Loop[0];
+            Primitive.Edge01           = Sub(Loop[1], Loop[0]);
+            Primitive.Edge02           = Sub(Loop[2], Loop[0]);
+            Primitive.MaterialOrdinal  = MaterialOrdinal;
+            Primitive.OpaqueMask       = 1u;
+            Primitive.SourceFaceIndex  = 0xFFFFFFFEu;
+            Primitive.PrimitiveOrdinal = static_cast<uint32_t>(Vehicle.Primitives.size());
+
+            SpatialAcceleration::TriangleSmoothNormals CornerNormals {};
+            CornerNormals.Normal0 = QuadNormal;
+            CornerNormals.Normal1 = QuadNormal;
+            CornerNormals.Normal2 = QuadNormal;
+
+            Vehicle.Primitives.push_back(Primitive);
+            Vehicle.SmoothNormals.push_back(CornerNormals);
+        }
+    };
+
+    const Mathematics::Axis3D FloorCorners[4] = {
         { VehicleCenter.X - FloorHalfSpan, VehicleCenter.Y - FloorHalfSpan, FloorZ },
         { VehicleCenter.X + FloorHalfSpan, VehicleCenter.Y - FloorHalfSpan, FloorZ },
         { VehicleCenter.X + FloorHalfSpan, VehicleCenter.Y + FloorHalfSpan, FloorZ },
         { VehicleCenter.X - FloorHalfSpan, VehicleCenter.Y + FloorHalfSpan, FloorZ },
-    }};
-    const std::array<std::array<uint32_t, 3u>, 2u> FloorTriangles {{ {{ 0u, 1u, 2u }}, {{ 0u, 2u, 3u }} }};
-    for (const std::array<uint32_t, 3u>& Loop : FloorTriangles)
+    };
+    AppendQuad(FloorCorners[0], FloorCorners[1], FloorCorners[2], FloorCorners[3], FloorMaterialOrdinal, { 0.0f, 0.0f, 1.0f });
+
+    // ---- Optional bounce panels: Cornell-style coloured walls that make colour bleeding readable ----
+    if (Requested.StudioEnclosure)
     {
-        const Mathematics::Axis3D& PointA = FloorCorners[Loop[0]];
-        const Mathematics::Axis3D& PointB = FloorCorners[Loop[1]];
-        const Mathematics::Axis3D& PointC = FloorCorners[Loop[2]];
+        const auto RegisterBouncePanel = [&](const char* PanelName, Mathematics::LinearRGB AlbedoColors) -> uint16_t
+        {
+            MaterialSpace::SurfaceMaterial Panel {};
+            Panel.MaterialName             = PanelName;
+            Panel.Diffuse.BaseColor        = AlbedoColors;
+            Panel.Diffuse.DiffuseRoughness = 0.95f;
+            Panel.Specular.Roughness       = 0.88f;
+            Panel.Specular.SpecularWeight  = 0.12f;
+            return Materials.RegisterMaterial(Panel);
+        };
 
-        SpatialAcceleration::RayTrianglePrimitive Primitive {};
-        Primitive.Corner0          = PointA;
-        Primitive.Edge01           = Sub(PointB, PointA);
-        Primitive.Edge02           = Sub(PointC, PointA);
-        Primitive.MaterialOrdinal  = FloorMaterialOrdinal;
-        Primitive.OpaqueMask       = 1u;
-        Primitive.SourceFaceIndex  = 0xFFFFFFFEu;
-        Primitive.PrimitiveOrdinal = static_cast<uint32_t>(Vehicle.Primitives.size());
+        const uint16_t WarmPanelOrdinal = RegisterBouncePanel("BouncePanelWarm", { 0.62f, 0.155f, 0.115f });
+        const uint16_t CoolPanelOrdinal = RegisterBouncePanel("BouncePanelCool", { 0.115f, 0.44f, 0.235f });
 
-        SpatialAcceleration::TriangleSmoothNormals CornerNormals {};
-        CornerNormals.Normal0 = { 0.0f, 0.0f, 1.0f };
-        CornerNormals.Normal1 = { 0.0f, 0.0f, 1.0f };
-        CornerNormals.Normal2 = { 0.0f, 0.0f, 1.0f };
+        // 📝 Panels sit outside the orbit radius so the camera is always between them and the vehicle
+        const float PanelHalfSpan = std::max(13.5f, VehicleHalfLength * 2.4f);
+        const float PanelHeight   = 5.2f;
 
-        Vehicle.Primitives.push_back(Primitive);
-        Vehicle.SmoothNormals.push_back(CornerNormals);
+        // Warm panel on the camera-left (+Y) side, facing back toward the vehicle
+        const Mathematics::Axis3D WarmCorners[4] = {
+            { VehicleCenter.X - PanelHalfSpan, VehicleCenter.Y + PanelHalfSpan, FloorZ },
+            { VehicleCenter.X + PanelHalfSpan, VehicleCenter.Y + PanelHalfSpan, FloorZ },
+            { VehicleCenter.X + PanelHalfSpan, VehicleCenter.Y + PanelHalfSpan, FloorZ + PanelHeight },
+            { VehicleCenter.X - PanelHalfSpan, VehicleCenter.Y + PanelHalfSpan, FloorZ + PanelHeight },
+        };
+        AppendQuad(WarmCorners[0], WarmCorners[1], WarmCorners[2], WarmCorners[3], WarmPanelOrdinal, { 0.0f, -1.0f, 0.0f });
+
+        // Cool panel on the camera-right (-Y) side, facing back toward the vehicle
+        const Mathematics::Axis3D CoolCorners[4] = {
+            { VehicleCenter.X + PanelHalfSpan, VehicleCenter.Y - PanelHalfSpan, FloorZ },
+            { VehicleCenter.X - PanelHalfSpan, VehicleCenter.Y - PanelHalfSpan, FloorZ },
+            { VehicleCenter.X - PanelHalfSpan, VehicleCenter.Y - PanelHalfSpan, FloorZ + PanelHeight },
+            { VehicleCenter.X + PanelHalfSpan, VehicleCenter.Y - PanelHalfSpan, FloorZ + PanelHeight },
+        };
+        AppendQuad(CoolCorners[0], CoolCorners[1], CoolCorners[2], CoolCorners[3], CoolPanelOrdinal, { 0.0f, 1.0f, 0.0f });
     }
 
     std::cout << "[VehicleShowcase] Scene triangles=" << Vehicle.Primitives.size() << '\n';
@@ -1230,6 +1526,18 @@ int main(int ArgumentCount, char** ArgumentValues)
     {
         Settings.Exposure = Requested.Exposure;
     }
+    Settings.GiMethod           = Requested.GiMethod;
+    Settings.GiDownsampleFactor = Requested.GiDownsampleFactor;
+    Settings.GiSamplesPerPixel  = Requested.GiSamplesPerPixel;
+    Settings.GiBounceLimit      = Requested.GiBounceLimit;
+    Settings.GiWeight           = Requested.GiWeight;
+    Settings.StudioEnclosure    = Requested.StudioEnclosure;
+    Settings.GiComparisonRun    = Requested.GiComparisonRun;
+    if (QuickMode)
+    {
+        Settings.GiDownsampleFactor = 6u;
+        Settings.GiSamplesPerPixel  = 8u;
+    }
     Sun.RtxSamplesPerPixel = Settings.SunSamples;
 
     const float VerticalFovRadians = 38.0f * Constants::DegToRadFloat;
@@ -1260,6 +1568,8 @@ int main(int ArgumentCount, char** ArgumentValues)
 
     std::vector<RenderedView> RenderedViews {};
     RenderedViews.reserve(TurntableViews.size());
+    std::vector<GeometricRaster::EmissiveGiMetrics> ViewGiMetrics {};
+    ViewGiMetrics.reserve(TurntableViews.size());
 
     for (std::size_t ViewIndex = 0u; ViewIndex < TurntableViews.size(); ++ViewIndex)
     {
@@ -1277,14 +1587,31 @@ int main(int ArgumentCount, char** ArgumentValues)
         std::cout << "[VehicleShowcase] Rendering " << (ViewIndex + 1u) << '/' << TurntableViews.size() << ' ' << ViewDefinition.Caption
                   << " eye(" << EyePosition.X << ", " << EyePosition.Y << ", " << EyePosition.Z << ") distance=" << Distance << " m ..." << std::flush;
 
-        std::vector<uint8_t> Rgba = RenderTurntableView(Tree, Materials, Sun, Sky, Camera, Settings);
+        // 📝 Evaluate the selected GI candidate for this camera before shading the full-resolution frame
+        GiFrameBuffer GiBuffer {};
+        if (Settings.GiMethod != GiMethodSelection::DirectOnly)
+        {
+            GiBuffer = EvaluateGiFrameBuffer(Tree, Materials, Sun, Sky, Camera, Settings);
+            ViewGiMetrics.push_back(GiBuffer.Metrics);
+            std::cout << "\n[VehicleShowcase] GI " << QueryGiMethodCaption(Settings.GiMethod)
+                      << " " << GiBuffer.WidthPx << 'x' << GiBuffer.HeightPx
+                      << " rays=" << GiBuffer.Metrics.RayQueryCount
+                      << " surfels=" << GiBuffer.Metrics.SurfelCount
+                      << " meanL=" << GiBuffer.MeanLuminance
+                      << " peakL=" << GiBuffer.PeakLuminance
+                      << " " << GiBuffer.Metrics.ElapsedMilliseconds << " ms"
+                      << " ..." << std::flush;
+        }
 
-        char CaptionBuffer[192];
-        std::snprintf(CaptionBuffer, sizeof(CaptionBuffer), "CONTROLLED INTEGRATOR  %s   %ux%u   %u SPP   yaw %d  pitch %d  dist %.2f m",
+        std::vector<uint8_t> Rgba = RenderTurntableView(Tree, Materials, Sun, Sky, Camera, Settings, &GiBuffer);
+
+        char CaptionBuffer[256];
+        std::snprintf(CaptionBuffer, sizeof(CaptionBuffer), "CONTROLLED INTEGRATOR  %s   %ux%u   %u SPP   GI %s   yaw %d  pitch %d  dist %.2f m",
                       ViewDefinition.Caption,
                       Settings.Width,
                       Settings.Height,
                       Settings.PrimarySamples * Settings.SunSamples,
+                      QueryGiMethodCaption(Settings.GiMethod),
                       static_cast<int>(ViewDefinition.YawDegrees),
                       static_cast<int>(ViewDefinition.PitchDegrees),
                       static_cast<double>(Distance));
@@ -1313,6 +1640,99 @@ int main(int ArgumentCount, char** ArgumentValues)
     const bool SheetWritten = WriteRgba8Png(ContactSheetPath, SheetWidth, SheetHeight, Sheet);
     Score.Check(SheetWritten, "Wrote ten-view contact sheet");
     std::cout << "[VehicleShowcase] Contact sheet -> " << ContactSheetPath.string() << ' ' << SheetWidth << 'x' << SheetHeight << '\n';
+
+    // ---- GI method comparison: same camera, same scene, four indirect policies ----
+    if (Settings.GiComparisonRun)
+    {
+        const TurntableView& ComparisonView = TurntableViews[1u];
+        const float YawRadians   = ComparisonView.YawDegrees * Constants::DegToRadFloat;
+        const float PitchRadians = ComparisonView.PitchDegrees * Constants::DegToRadFloat;
+        const float Distance     = EvaluateFramingDistance(PitchRadians) * ComparisonView.DistanceScale;
+        const Mathematics::Axis3D OrbitOffset = Mathematics::EvaluateOrbitOffsetFromAngles(
+            Distance, YawRadians, PitchRadians, Mathematics::WorldCoordinateBasis::RightHandedZUp);
+        const Mathematics::Axis3D FocusPoint { VehicleCenter.X, VehicleCenter.Y, VehicleCenter.Z + 0.06f };
+        const CameraBasis ComparisonCamera = ConstructCamera(Add(FocusPoint, OrbitOffset), FocusPoint, VerticalFovRadians, Settings.Width, Settings.Height);
+
+        const std::array<GiMethodSelection, 4u> ComparisonMethods {{
+            GiMethodSelection::DirectOnly,
+            GiMethodSelection::StokesSh9,
+            GiMethodSelection::SurfelCascade,
+            GiMethodSelection::PathTrace,
+        }};
+
+        std::vector<RenderedView> ComparisonViews {};
+        std::vector<GeometricRaster::EmissiveGiMetrics> ComparisonMetrics {};
+        std::vector<float> ComparisonMeanLuminance {};
+        std::vector<float> ComparisonPeakLuminance {};
+        ComparisonViews.reserve(ComparisonMethods.size());
+
+        for (const GiMethodSelection Method : ComparisonMethods)
+        {
+            RenderSettings ComparisonSettings = Settings;
+            ComparisonSettings.GiMethod = Method;
+
+            GiFrameBuffer ComparisonGiBuffer {};
+            if (Method != GiMethodSelection::DirectOnly)
+            {
+                ComparisonGiBuffer = EvaluateGiFrameBuffer(Tree, Materials, Sun, Sky, ComparisonCamera, ComparisonSettings);
+            }
+
+            std::vector<uint8_t> Rgba = RenderTurntableView(Tree, Materials, Sun, Sky, ComparisonCamera, ComparisonSettings,
+                                                            (Method == GiMethodSelection::DirectOnly) ? nullptr : &ComparisonGiBuffer);
+
+            char Caption[224];
+            std::snprintf(Caption, sizeof(Caption), "GI %s   meanL %.4f  rays %llu",
+                          QueryGiMethodCaption(Method),
+                          static_cast<double>(ComparisonGiBuffer.MeanLuminance),
+                          static_cast<unsigned long long>(ComparisonGiBuffer.Metrics.RayQueryCount));
+            OverlayCaptionBar(Rgba, Settings.Width, Settings.Height, Caption, 1.35f);
+
+            ComparisonMetrics.push_back(ComparisonGiBuffer.Metrics);
+            ComparisonMeanLuminance.push_back(ComparisonGiBuffer.MeanLuminance);
+            ComparisonPeakLuminance.push_back(ComparisonGiBuffer.PeakLuminance);
+            RenderedView ComparisonEntry {};
+            ComparisonEntry.Caption = QueryGiMethodCaption(Method);
+            ComparisonEntry.Rgba    = std::move(Rgba);
+            ComparisonEntry.Digest  = DigestPixelBytes(ComparisonEntry.Rgba);
+            ComparisonViews.push_back(std::move(ComparisonEntry));
+
+            std::cout << "[VehicleShowcase] GI comparison " << QueryGiMethodCaption(Method)
+                      << " meanL=" << ComparisonGiBuffer.MeanLuminance
+                      << " peakL=" << ComparisonGiBuffer.PeakLuminance
+                      << " rays=" << ComparisonGiBuffer.Metrics.RayQueryCount
+                      << " surfels=" << ComparisonGiBuffer.Metrics.SurfelCount
+                      << " " << ComparisonGiBuffer.Metrics.ElapsedMilliseconds << " ms\n";
+        }
+
+        uint32_t ComparisonWidth = 0u;
+        uint32_t ComparisonHeight = 0u;
+        std::vector<uint8_t> ComparisonSheet = StackContactSheet(ComparisonViews, Settings.Width, Settings.Height, ComparisonWidth, ComparisonHeight);
+        const std::filesystem::path ComparisonPath = OutputDirectory / "Vehicle_GiMethodComparison.png";
+        Score.Check(WriteRgba8Png(ComparisonPath, ComparisonWidth, ComparisonHeight, ComparisonSheet),
+                    "Wrote GI method comparison sheet");
+
+        std::ofstream GiCsv(OutputDirectory / "Vehicle_GiMethodComparison.csv");
+        GiCsv << "method,gi_width_px,gi_height_px,mean_luminance,peak_luminance,ray_queries,visibility_rays,surfels,elapsed_ms,approximate_memory_bytes,pixel_digest_fnv1a64\n";
+        const char* MethodNames[4] = { "DirectOnly", "StokesSh9MultiBounce", "SurfelCascadeDdgi", "DeterministicPathTrace" };
+        for (std::size_t Index = 0u; Index < ComparisonViews.size(); ++Index)
+        {
+            const GeometricRaster::EmissiveGiMetrics& Metrics = ComparisonMetrics[Index];
+            char DigestText[32];
+            std::snprintf(DigestText, sizeof(DigestText), "%016llx", static_cast<unsigned long long>(ComparisonViews[Index].Digest));
+            GiCsv << MethodNames[Index] << ','
+                  << (Settings.Width / std::max(1u, Settings.GiDownsampleFactor)) << ','
+                  << (Settings.Height / std::max(1u, Settings.GiDownsampleFactor)) << ','
+                  << ComparisonMeanLuminance[Index] << ','
+                  << ComparisonPeakLuminance[Index] << ','
+                  << Metrics.RayQueryCount << ','
+                  << Metrics.VisibilityRayCount << ','
+                  << Metrics.SurfelCount << ','
+                  << Metrics.ElapsedMilliseconds << ','
+                  << Metrics.ApproximateMemoryBytes << ','
+                  << DigestText << '\n';
+        }
+        GiCsv.close();
+    }
 
     // ---- Determinism and asset manifest ----
     const std::filesystem::path ManifestPath = OutputDirectory / "Vehicle_Turntable_Manifest.csv";
