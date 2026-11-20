@@ -184,6 +184,7 @@ Assets.ReferenceInspector = `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-${ReferenceHash}'; style-src 'unsafe-inline'; font-src https://cdn.fontshare.com; img-src data:; base-uri 'none'">
 <style>${fs.readFileSync(path.join(Folder, "InspectorDepot/Fontshare.css"), "utf8")}
 ${ReferenceStyle}
+${fs.readFileSync(path.join(Folder, "SunSummary.css"), "utf8")}
 ${LightControls}
 ${fs.readFileSync(path.join(Folder, "MaterialPanel.css"), "utf8").split(".material-panel {")[0]}
 ${fs.readFileSync(path.join(Folder, "LightPanel.css"), "utf8")}
